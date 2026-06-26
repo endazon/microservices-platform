@@ -43,6 +43,14 @@ builder.Services.AddMassTransit(x =>
 
 var app = builder.Build();
 
+// FR-01: 起動時にスキーマを最新 Migration へ更新
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<DataSourceDbContext>();
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+}
+
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();

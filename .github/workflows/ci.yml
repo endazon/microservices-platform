@@ -1,10 +1,10 @@
-# CI — lint / build / test gate for KnowledgePlatform (.NET 8 monorepo)
-# ADR-0007: CI/CD pipeline
+# CI — lint / build / test / coverage gate for KnowledgePlatform (.NET 10 monorepo)
+# Closes #9
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, init-setup]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -32,5 +32,15 @@ jobs:
           dotnet test KnowledgePlatform.slnx
           --no-build --configuration Release
           --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults
           --verbosity normal
           --filter "Category!=Integration"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          directory: src/TestResults
+          flags: unittests
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}

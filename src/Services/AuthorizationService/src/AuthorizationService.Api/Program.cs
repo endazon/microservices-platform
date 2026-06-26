@@ -27,6 +27,14 @@ builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connS
 
 var app = builder.Build();
 
+// FR-05: 起動時にスキーマを最新 Migration へ更新
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AuthorizationDbContext>();
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+}
+
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();

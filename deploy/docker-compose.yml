@@ -202,11 +202,15 @@ services:
     ports:
       - "5003:8080"
     environment:
-      <<: [*common-env, *db-env]
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=retrieval_svc;Username=kp;Password=kp
+      <<: *common-env
+      Qdrant__Host: qdrant
+      Qdrant__Port: 6334
+      Services__LlmGateway: http://llm-gateway:8080
     depends_on:
-      postgres:
+      qdrant:
         condition: service_healthy
+      llm-gateway:
+        condition: service_started
 
   aianalysis-service:
     build:
@@ -215,13 +219,14 @@ services:
     ports:
       - "5004:8080"
     environment:
-      <<: [*common-env, *db-env, *rabbit-env]
-      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=aianalysis_svc;Username=kp;Password=kp
+      <<: *common-env
+      Services__AuthorizationService: http://authorization-service:8080
+      Services__RetrievalService: http://retrieval-service:8080
+      Services__LlmGateway: http://llm-gateway:8080
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      - authorization-service
+      - retrieval-service
+      - llm-gateway
 
   authorization-service:
     build:

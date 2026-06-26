@@ -1,5 +1,6 @@
 using AuthorizationService.Api.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace AuthorizationService.Api.Infrastructure;
 
@@ -11,6 +12,16 @@ public class AuthorizationDbContext(DbContextOptions<AuthorizationDbContext> opt
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
+        var listComparer = new ValueComparer<List<string>>(
+            (a, b) => a!.SequenceEqual(b!),
+            v => v.Aggregate(0, (h, e) => HashCode.Combine(h, e.GetHashCode())),
+            v => v.ToList());
+
+        var dictListComparer = new ValueComparer<Dictionary<string, List<string>>>(
+            (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+            v => v.GetHashCode(),
+            v => v.ToDictionary(kv => kv.Key, kv => kv.Value.ToList()));
+
         mb.Entity<AttributeDefinition>(e =>
         {
             e.HasKey(a => a.Id);
@@ -21,7 +32,8 @@ public class AuthorizationDbContext(DbContextOptions<AuthorizationDbContext> opt
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                     v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
-                .HasColumnType("jsonb");
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(listComparer);
         });
 
         mb.Entity<AbacPolicy>(e =>
@@ -33,12 +45,14 @@ public class AuthorizationDbContext(DbContextOptions<AuthorizationDbContext> opt
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                     v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
-                .HasColumnType("jsonb");
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(dictListComparer);
             e.Property(p => p.DocumentConditions)
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                     v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<string>>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
-                .HasColumnType("jsonb");
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(dictListComparer);
         });
     }
 }
