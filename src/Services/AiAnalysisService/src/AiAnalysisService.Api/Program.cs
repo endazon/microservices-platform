@@ -1,5 +1,6 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using AiAnalysisService.Api.Endpoints;
+using AiAnalysisService.Api.Services;
+using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.aianalysis-service";
@@ -12,15 +13,27 @@ builder.Host.UseSerilog((ctx, logConfig) =>
 builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
 builder.Services.AddKnowledgePlatformHealthChecks()
-    .AddNpgSql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-            ?? "Host=postgres;Port=5432;Database=aianalysis_svc;Username=kp;Password=kp",
-        tags: ["ready"])
-    .AddRabbitMQ(
-        rabbitConnectionString: builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672",
-        tags: ["ready"]);
+    .AddUrlGroup(
+        new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),
+        "retrieval-service", tags: ["ready"])
+    .AddUrlGroup(
+        new Uri((builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007") + "/health/live"),
+        "llm-gateway", tags: ["ready"]);
 builder.Services.AddOpenApi();
+
+// FR-04: HTTP クライアント設定（サービス間通信）
+builder.Services.AddHttpClient("AuthorizationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
+        ?? "http://authorization-service:5005"));
+builder.Services.AddHttpClient("RetrievalService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
+        ?? "http://retrieval-service:5003"));
+builder.Services.AddHttpClient("LlmGateway", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
+        ?? "http://llm-gateway:5007"));
+
+// FR-04: RAG オーケストレーター
+builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 
 var app = builder.Build();
 
@@ -28,7 +41,7 @@ app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-AnalysisEndpoints.Map(app);
+app.MapAnalysisEndpoints();
 
 app.Run();
 

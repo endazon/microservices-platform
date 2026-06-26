@@ -1,7 +1,7 @@
+using Anthropic.SDK;
 using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using LlmGateway.Api.Endpoints;
 using LlmGateway.Api.Providers;
-using Anthropic.SDK;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.llm-gateway";
@@ -16,6 +16,7 @@ builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
 builder.Services.AddKnowledgePlatformHealthChecks();
 builder.Services.AddOpenApi();
 
+// ADR-0010: Claude SDK (Anthropic.SDK 4.0.0)
 builder.Services.AddSingleton(_ => new AnthropicClient(
     builder.Configuration["Llm:ApiKey"] ?? "placeholder"));
 builder.Services.AddSingleton<ILlmProvider, ClaudeProvider>();
@@ -26,8 +27,8 @@ app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-CompletionEndpoints.Map(app);
-EmbeddingEndpoints.Map(app);
+app.MapCompletionEndpoints();
+app.MapEmbeddingEndpoints();
 
 app.Run();
 

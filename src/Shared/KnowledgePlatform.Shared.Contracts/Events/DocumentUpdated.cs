@@ -5,4 +5,7 @@ public record DocumentUpdated(
     Guid DocumentId,
     string Title,
     string Status,
+    string? MarkdownUri,
+    Dictionary<string, string> Attributes,
+    List<string> Tags,
     DateTimeOffset UpdatedAt);

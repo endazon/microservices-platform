@@ -1,4 +1,5 @@
 using ConversionService.Worker.Consumers;
+using ConversionService.Worker.Services;
 using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using MassTransit;
 using Serilog;
@@ -12,6 +13,10 @@ builder.Services.AddSerilog((sp, logConfig) =>
 
 builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
 
+// FR-12: 変換サービス（pandoc ラッパー）
+builder.Services.AddSingleton<IConversionService, PandocConversionService>();
+
+// ADR-0003: MassTransit
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<RawDocumentFetchedConsumer>();

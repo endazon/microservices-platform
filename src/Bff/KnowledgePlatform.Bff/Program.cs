@@ -30,8 +30,8 @@ app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-SearchBffEndpoints.Map(app);
-AnalysisBffEndpoints.Map(app);
+app.MapSearchBffEndpoints();
+app.MapAnalysisBffEndpoints();
 
 app.Run();
 

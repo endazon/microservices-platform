@@ -1,5 +1,8 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using DocumentService.Api.Endpoints;
+using DocumentService.Api.Infrastructure;
+using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.document-service";
@@ -22,13 +25,29 @@ builder.Services.AddKnowledgePlatformHealthChecks()
         tags: ["ready"]);
 builder.Services.AddOpenApi();
 
+// FR-06: Document DbContext (ADR-0002 Database per Service)
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp";
+builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
+
+// ADR-0003: MassTransit + RabbitMQ
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((ctx, cfg) =>
+    {
+        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
+            ?? "amqp://guest:guest@rabbitmq:5672");
+        cfg.ConfigureEndpoints(ctx);
+    });
+});
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-DocumentEndpoints.Map(app);
+app.MapDocumentEndpoints();
 
 app.Run();
 

@@ -1,15 +1,19 @@
 namespace KnowledgePlatform.Bff.Endpoints;
 
+// FR-07, UC-02: BFF AI 分析集約エンドポイント
 public static class AnalysisBffEndpoints
 {
-    public static void Map(WebApplication app)
+    public static IEndpointRouteBuilder MapAnalysisBffEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/bff/analysis").WithTags("Analysis BFF");
-        // FR-07, UC-02: AI 分析依頼 (stub)
-        group.MapPost("/ask", (AnalysisRequest request) =>
-            Results.Accepted("/bff/analysis/sessions/stub-session-id",
-                new { sessionId = "stub-session-id", status = "processing" }))
+        var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF");
+
+        // Phase 2: AiAnalysisService を呼び出す
+        g.MapPost("/ask", (AnalysisRequest req) =>
+            Results.Accepted("/bff/analysis/sessions/stub",
+                new { sessionId = "stub", status = "processing" }))
             .WithName("BffAnalysisAsk");
+
+        return app;
     }
 }
 

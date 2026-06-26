@@ -1,6 +1,10 @@
+using Anthropic.SDK;
+using LlmGateway.Api.Providers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace LlmGateway.Api.Tests;
 
@@ -17,5 +21,22 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test"
             }));
+        builder.ConfigureServices(services =>
+        {
+            // API キーなしで動くようにスタブ LLM プロバイダーへ差し替え
+            services.RemoveAll<AnthropicClient>();
+            services.RemoveAll<ILlmProvider>();
+            services.AddSingleton<ILlmProvider, StubLlmProvider>();
+        });
     }
+}
+
+// テスト用スタブ LLM プロバイダー
+file class StubLlmProvider : ILlmProvider
+{
+    public Task<CompletionResult> CompleteAsync(CompletionRequest req, CancellationToken ct = default)
+        => Task.FromResult(new CompletionResult("テスト回答", 10, 20));
+
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+        => Task.FromResult(new float[1536]);
 }

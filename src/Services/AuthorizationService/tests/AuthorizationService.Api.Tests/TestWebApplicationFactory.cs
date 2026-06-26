@@ -1,6 +1,9 @@
+using AuthorizationService.Api.Infrastructure;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace AuthorizationService.Api.Tests;
 
@@ -12,9 +15,27 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureAppConfiguration((_, cfg) =>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:DefaultConnection"] = "Host=localhost;Port=5432;Database=test_db;Username=postgres;Password=postgres",
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test"
             }));
+        builder.ConfigureServices(services =>
+        {
+            ReplaceDbContext<AuthorizationDbContext>(services, "AuthzTest");
+        });
+    }
+
+    private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
+        where TContext : DbContext
+    {
+        var toRemove = services
+            .Where(d => d.ServiceType == typeof(DbContextOptions<TContext>)
+                     || (d.ServiceType.IsGenericType
+                         && d.ServiceType.GetGenericTypeDefinition().FullName?.Contains("IDbContextOptionsConfiguration") == true
+                         && d.ServiceType.GenericTypeArguments.Length == 1
+                         && d.ServiceType.GenericTypeArguments[0] == typeof(TContext)))
+            .ToList();
+        foreach (var d in toRemove) services.Remove(d);
+
+        services.AddDbContext<TContext>(opt => opt.UseInMemoryDatabase(dbName));
     }
 }

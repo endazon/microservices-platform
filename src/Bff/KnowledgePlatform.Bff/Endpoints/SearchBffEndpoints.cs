@@ -2,20 +2,18 @@ using KnowledgePlatform.Shared.Contracts.Dtos;
 
 namespace KnowledgePlatform.Bff.Endpoints;
 
+// FR-03, FR-04, UC-01: BFF 検索集約エンドポイント
 public static class SearchBffEndpoints
 {
-    public static void Map(WebApplication app)
+    public static IEndpointRouteBuilder MapSearchBffEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/bff/search").WithTags("Search BFF");
-        // FR-03, FR-04, UC-01: 横断検索 + AI 回答 (stub — P1 で RetrievalService + AiAnalysisService を呼ぶ)
-        group.MapPost("/", (SearchRequest request) =>
-            Results.Ok(new SearchResultDto
-            {
-                Query = request.Query,
-                AiAnswer = "stub answer (P1 will call RetrievalService + AiAnalysisService)"
-            }))
-            .WithName("BffSearch").Produces<SearchResultDto>();
+        var g = app.MapGroup("/bff/search").WithTags("Search BFF");
+
+        // 後段で AiAnalysisService を呼び出す（Phase 2 で実装）
+        g.MapPost("/", (SearchRequest req) =>
+            Results.Ok(new SearchResponse([], 0, 0)))
+            .WithName("BffSearch").Produces<SearchResponse>();
+
+        return app;
     }
 }
-
-public record SearchRequest(string Query, int Limit = 10);

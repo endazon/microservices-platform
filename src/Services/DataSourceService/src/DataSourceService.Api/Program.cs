@@ -1,5 +1,8 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using DataSourceService.Api.Endpoints;
+using DataSourceService.Api.Infrastructure;
+using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.datasource-service";
@@ -22,13 +25,29 @@ builder.Services.AddKnowledgePlatformHealthChecks()
         tags: ["ready"]);
 builder.Services.AddOpenApi();
 
+// FR-01: DataSource DbContext
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp";
+builder.Services.AddDbContext<DataSourceDbContext>(opt => opt.UseNpgsql(connStr));
+
+// ADR-0003: MassTransit
+builder.Services.AddMassTransit(x =>
+{
+    x.UsingRabbitMq((ctx, cfg) =>
+    {
+        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
+            ?? "amqp://guest:guest@rabbitmq:5672");
+        cfg.ConfigureEndpoints(ctx);
+    });
+});
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-DataSourceEndpoints.Map(app);
+app.MapDataSourceEndpoints();
 
 app.Run();
 

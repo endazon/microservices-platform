@@ -1,8 +1,7 @@
 namespace KnowledgePlatform.Shared.Contracts.Events;
 
-// FR-02: 取り込み完了イベント（チャンク化・埋め込み・索引登録完了）
+// FR-02, UC-04: 取り込みサービスが索引登録完了時に発行するイベント
 public record IngestionCompleted(
     Guid DocumentId,
-    Guid JobId,
     int ChunkCount,
     DateTimeOffset CompletedAt);

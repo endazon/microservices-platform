@@ -1,11 +1,20 @@
 namespace KnowledgePlatform.Shared.Contracts.Dtos;
 
-// FR-03, FR-04: 検索結果と AI 回答の複合レスポンス
-public class SearchResultDto
-{
-    public string Query { get; init; } = string.Empty;
-    public List<ChunkDto> Chunks { get; init; } = [];
-    public string? AiAnswer { get; init; }
-    public List<string> SourceUris { get; init; } = [];
-    public int TotalCount { get; init; }
-}
+// FR-03, FR-04: 検索結果の1件（チャンク単位）
+public record SearchResultDto(
+    Guid ChunkId,
+    Guid DocumentId,
+    string DocumentTitle,
+    string Text,
+    float Score,
+    string? MarkdownUri,
+    Dictionary<string, string> Attributes,
+    List<string> Tags);
+
+// FR-04: RAG 回答レスポンス
+public record AiAnswerDto(
+    string Answer,
+    List<SearchResultDto> Citations,
+    string Model,
+    int InputTokens,
+    int OutputTokens);

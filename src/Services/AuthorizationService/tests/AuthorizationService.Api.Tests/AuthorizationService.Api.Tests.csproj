@@ -6,6 +6,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <ProjectReference Include="..\..\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
   </ItemGroup>
 </Project>

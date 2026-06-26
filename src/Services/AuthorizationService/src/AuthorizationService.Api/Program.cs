@@ -1,5 +1,7 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using AuthorizationService.Api.Endpoints;
+using AuthorizationService.Api.Infrastructure;
+using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.authorization-service";
@@ -18,13 +20,18 @@ builder.Services.AddKnowledgePlatformHealthChecks()
         tags: ["ready"]);
 builder.Services.AddOpenApi();
 
+// FR-05: ABAC DbContext
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp";
+builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connStr));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
-AuthzEndpoints.Map(app);
+app.MapAuthzEndpoints();
 
 app.Run();
 
