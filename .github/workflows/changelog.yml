@@ -1,0 +1,58 @@
+# CHANGELOG / リリースノートの自動生成
+#
+# - main への push: コミット履歴から CHANGELOG.md を再生成し、変更があればコミットする。
+# - タグ push: 直近タグからのコミットでリリースノートを生成し、GitHub Release に反映する。
+#
+# このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
+
+name: Changelog
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  changelog:
+    # 自動コミットによる無限ループを避ける
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate CHANGELOG.md
+        run: node scripts/gen-changelog.js --out CHANGELOG.md
+
+      - name: Commit CHANGELOG if changed
+        if: startsWith(github.ref, 'refs/heads/')
+        run: |
+          if ! git diff --quiet -- CHANGELOG.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add CHANGELOG.md
+            git commit -m "docs: CHANGELOG を自動更新 [skip ci]"
+            git push
+          else
+            echo "CHANGELOG に変更なし"
+          fi
+
+      - name: Build release notes (tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node scripts/gen-changelog.js --out RELEASE_NOTES.md
+
+      - name: Create / update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: RELEASE_NOTES.md
