@@ -1,0 +1,66 @@
+# Claude Code — PR の自動 AI レビュー
+#
+# PR がオープン/更新されたときに、計画書との整合・トレーサビリティの観点で AI レビューを行う。
+#
+# 有効化（このファイルは .example。AI_SETUP.md のプロファイルに従って有効化する）:
+#   - 拡張子から .example を外す（git mv claude-code-review.example.yml claude-code-review.yml）。
+#   - 認証シークレットを「どちらか一方のみ」登録する:
+#       * Claude Code サブスクリプション: CLAUDE_CODE_OAUTH_TOKEN（`claude setup-token` で発行）
+#       * Anthropic API: ANTHROPIC_API_KEY（従量課金）
+#   - このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効
+#
+# モデル:
+#   レビューは速度・コストを優先し既定で claude-sonnet-4-6 を使う。
+#   より厳密にしたい場合は --model を claude-opus-4-8 に変更する。
+
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # 計画リポジトリを submodule 参照している場合は有効化する
+          # submodules: recursive
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          # 認証はどちらか一方のみ設定する（未設定の方は空文字で無視される）:
+          #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 既定モデル: 変更可（厳密さ優先なら claude-opus-4-8）
+          claude_args: |
+            --model claude-sonnet-4-6
+          prompt: |
+            このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
+            CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
+            指摘を「重大 / 推奨 / 軽微」に分類してコメントせよ。
+
+            1. トレーサビリティ: PR 本文・コミット・コードに起点 ID（FR-xx / UC-xx / SC-xx）が
+               残されているか。実装が対象の計画書（要求・ユースケース・画面）に忠実か。
+            2. 受け入れ基準: 計画書の受け入れ基準を満たし、基本/代替/例外フローを網羅しているか。
+               対応するテストがあるか。
+            3. ADR 制約: 関連 ADR（07_adr/ の Accepted）で確定した制約に違反していないか。
+            4. 一般的な品質: 不具合・抜け漏れがないか。
+            5. AI 実装に特有のリスク（重点）:
+               - 過剰実装（計画外の機能追加・不要な抽象化・起こり得ないケースへの防御）。
+               - 存在しない API/ライブラリ/設定の使用（幻覚）。
+               - エッジケース・例外フローの取りこぼし。
+               - 仕様の表面的充足（テストを通すためだけの空実装・空テスト）。
+               - 秘密情報のハードコードや不適切な扱い。
+
+            計画書は ../project-planning（submodule の場合 planning/）の projects/<name>/ にある。
+            参照できない場合は、その旨を明記したうえで PR 内の情報のみでレビューする。

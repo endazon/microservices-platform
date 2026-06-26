@@ -1,0 +1,63 @@
+# Claude Code — @claude メンションで Issue / PR に応答する対話ワークフロー
+#
+# 有効化（このファイルは .example。AI_SETUP.md のプロファイルに従って有効化する）:
+#   - 拡張子から .example を外す（git mv claude.example.yml claude.yml）。
+#     scripts/apply-profile.sh claude-code / api でも自動化できる。
+#   - 認証シークレットを「どちらか一方のみ」登録する
+#     （GitHub → Settings → Secrets and variables → Actions → New repository secret）:
+#       * Claude Code サブスクリプション（Pro/Max）: ローカルで `claude setup-token` を実行し
+#         OAuth トークン（sk-ant-oat01-...）を発行して CLAUDE_CODE_OAUTH_TOKEN に登録する。
+#         利用は購読プランのクォータに計上され、API キーは不要。
+#       * Anthropic API: ANTHROPIC_API_KEY（sk-ant-api03-...）を登録する（従量課金）。
+#     両方を設定しないこと（静的クレデンシャルが競合する）。未設定の方は空文字となり無視される。
+#   - Issue / PR のコメント、PR レビューコメント、Issue 本文で「@claude ...」と書くと起動する
+#   - このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効
+#
+# モデル:
+#   既定は最新の claude-opus-4-8。速度・コストを優先するなら claude_args の --model を
+#   claude-sonnet-4-6 に変更してよい。
+
+name: Claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    # @claude を含むイベントのみ起動する
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # 計画リポジトリを submodule 参照している場合は有効化する
+          # submodules: recursive
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          # 認証はどちらか一方のみ設定する（未設定の方は空文字で無視される）:
+          #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # 既定モデル: 変更可（レビュー用途は claude-sonnet-4-6 も可）
+          claude_args: |
+            --model claude-opus-4-8

@@ -1,0 +1,66 @@
+# OpenAPI / スキーマの自動生成
+#
+# 「生成可能なら必ず生成」の方針:
+#   1) コードからの生成コマンドが用意されていれば、それを実行する。
+#      - scripts/generate-openapi.sh が存在すればそれを実行（例: dotnet swagger / npx 等を記述）。
+#      - または リポジトリ変数 vars.OPENAPI_GENERATE_CMD にコマンドを設定。
+#   2) いずれも無ければ、通信仕様書（docs/api/）から雛形を生成する。
+#   生成物 docs/api/openapi.yaml に変更があればコミットする。
+#
+# このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
+
+name: OpenAPI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/api/**"
+      - "scripts/generate-openapi.sh"
+      - "src/**"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  openapi:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate OpenAPI
+        env:
+          OPENAPI_GENERATE_CMD: ${{ vars.OPENAPI_GENERATE_CMD }}
+        run: |
+          if [ -f scripts/generate-openapi.sh ]; then
+            echo "コード由来の生成: scripts/generate-openapi.sh"
+            bash scripts/generate-openapi.sh
+          elif [ -n "${OPENAPI_GENERATE_CMD}" ]; then
+            echo "コード由来の生成: OPENAPI_GENERATE_CMD"
+            bash -c "${OPENAPI_GENERATE_CMD}"
+          else
+            echo "生成コマンド未設定。通信仕様書から雛形を生成する。"
+            node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml --force
+          fi
+
+      - name: Commit OpenAPI if changed
+        run: |
+          if [ -f docs/api/openapi.yaml ] && ! git diff --quiet -- docs/api/openapi.yaml; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add docs/api/openapi.yaml
+            git commit -m "docs: OpenAPI を自動更新 [skip ci]"
+            git push
+          else
+            echo "OpenAPI に変更なし"
+          fi
