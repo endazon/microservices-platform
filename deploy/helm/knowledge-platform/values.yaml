@@ -1,0 +1,110 @@
+# ADR-0007: Helm values — overrideable per environment
+# ADR-0008: Kubernetes k3s runtime
+
+global:
+  image:
+    registry: harbor.internal
+    pullPolicy: IfNotPresent
+  otel:
+    endpoint: http://otel-collector:4317
+  auth:
+    authority: http://keycloak:8080/realms/knowledge-platform
+
+services:
+  document:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/document-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  datasource:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/datasource-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  conversion:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/conversion-service
+    tag: latest
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  ingestion:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/ingestion-service
+    tag: latest
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  retrieval:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/retrieval-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  aianalysis:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/aianalysis-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { cpu: 1000m, memory: 1Gi }
+
+  authorization:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/authorization-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  wiki:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/wiki-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  llmgateway:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/llm-gateway
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
+  bff:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/bff
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }

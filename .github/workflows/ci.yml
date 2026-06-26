@@ -1,0 +1,36 @@
+# CI — lint / build / test gate for KnowledgePlatform (.NET 8 monorepo)
+# ADR-0007: CI/CD pipeline
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        working-directory: src
+        run: dotnet restore KnowledgePlatform.slnx
+
+      - name: Build
+        working-directory: src
+        run: dotnet build KnowledgePlatform.slnx --no-restore --configuration Release
+
+      - name: Test (with coverage)
+        working-directory: src
+        run: >
+          dotnet test KnowledgePlatform.slnx
+          --no-build --configuration Release
+          --collect:"XPlat Code Coverage"
+          --verbosity normal
+          --filter "Category!=Integration"

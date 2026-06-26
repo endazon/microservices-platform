@@ -1,0 +1,7 @@
+apiVersion: v2
+name: knowledge-platform
+description: 社内ナレッジ活用プラットフォーム — Helm chart umbrella
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# ADR-0007: ArgoCD + Helm によるデプロイ

@@ -1,0 +1,74 @@
+<Solution>
+  <Folder Name="/Bff/">
+    <Project Path="Bff/KnowledgePlatform.Bff.Tests/KnowledgePlatform.Bff.Tests.csproj" />
+    <Project Path="Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj" />
+  </Folder>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/AiAnalysisService/" />
+  <Folder Name="/Services/AiAnalysisService/src/">
+    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Api/AiAnalysisService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/AiAnalysisService/tests/">
+    <Project Path="Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/AuthorizationService/" />
+  <Folder Name="/Services/AuthorizationService/src/">
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/AuthorizationService/tests/">
+    <Project Path="Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/ConversionService/" />
+  <Folder Name="/Services/ConversionService/src/">
+    <Project Path="Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj" />
+  </Folder>
+  <Folder Name="/Services/ConversionService/tests/">
+    <Project Path="Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DataSourceService/" />
+  <Folder Name="/Services/DataSourceService/src/">
+    <Project Path="Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DataSourceService/tests/">
+    <Project Path="Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DocumentService/" />
+  <Folder Name="/Services/DocumentService/src/">
+    <Project Path="Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DocumentService/tests/">
+    <Project Path="Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/IngestionService/" />
+  <Folder Name="/Services/IngestionService/src/">
+    <Project Path="Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj" />
+  </Folder>
+  <Folder Name="/Services/IngestionService/tests/">
+    <Project Path="Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/LlmGateway/" />
+  <Folder Name="/Services/LlmGateway/src/">
+    <Project Path="Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/LlmGateway/tests/">
+    <Project Path="Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/RetrievalService/" />
+  <Folder Name="/Services/RetrievalService/src/">
+    <Project Path="Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/RetrievalService/tests/">
+    <Project Path="Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/WikiService/" />
+  <Folder Name="/Services/WikiService/src/">
+    <Project Path="Services/WikiService/src/WikiService.Api/WikiService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/WikiService/tests/">
+    <Project Path="Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
+    <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />
+  </Folder>
+</Solution>
