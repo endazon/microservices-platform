@@ -14,10 +14,10 @@ builder.Host.UseSerilog((ctx, logConfig) =>
 
 builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
+var qdrantHealthUri = new Uri(
+    $"http://{builder.Configuration["Qdrant:Host"] ?? "qdrant"}:6333/healthz");
 builder.Services.AddKnowledgePlatformHealthChecks()
-    .AddUrlGroup(
-        new Uri((builder.Configuration["Qdrant:Endpoint"] ?? "http://qdrant:6334") + "/healthz"),
-        "qdrant", tags: ["ready"]);
+    .AddUrlGroup(qdrantHealthUri, "qdrant", tags: ["ready"]);
 builder.Services.AddOpenApi();
 
 // ADR-0009: Qdrant ベクトルDB クライアント
