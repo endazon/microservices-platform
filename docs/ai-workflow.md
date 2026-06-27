@@ -29,6 +29,15 @@ Pull Request
 
 ### 0. 初期セットアップ（プロファイル選択 ＋ `.example` の有効化）
 
+**初回チェックリスト**（着手前に上から順に確認する）:
+
+- [ ] repo-template の中身をこのリポジトリ直下にコピー済みである（`.claude/` `.github/` `docs/` など）。
+- [ ] 計画リポ（`project-planning`）を参照できる（git submodule か隣接クローン。既定パス `../project-planning`）。`/sync-plan` または計画書の該当 ID を開いて確認する。
+- [ ] `AI_SETUP.md` で利用可能な AI を宣言し、`bash scripts/apply-profile.sh <profile>` を実行済みである。
+- [ ] CI 系を有効化済みである（`ci.example.yml` / `codeql.example.yml` の `.example` を外す）。
+- [ ] GitHub Secrets（`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY`）を登録済みである（Copilot 利用時はリポジトリで Copilot を有効化）。
+- [ ] 環境セットアップ（`scripts/setup.sh`）が通り、ビルド・テストが実走できる。
+
 **最初に `AI_SETUP.md` で利用可能な AI（プロファイル）を宣言する。** プロファイルにより有効化するファイルとシークレットが変わる。`*.example` ファイルは拡張子から `.example` を外すと有効になる（GitHub Actions は `.github/workflows/*.yml` のみ実行する）。`scripts/apply-profile.sh` で自動化できる。
 
 技術非依存の CI 系は全プロファイル共通で有効化する。
@@ -56,7 +65,7 @@ bash scripts/apply-profile.sh copilot
 
 ### 1. タスクを起票する
 
-- 計画リポ側で `tools/impl-handoff-kit/generators/gen-issues.js` を実行し、要求/UC から Issue 下書き（JSON）を生成 → `gh` / GitHub MCP で起票。
+- 計画リポ側で `/handoff <project>`（または `node tools/impl-handoff-kit/generators/handoff.js <project>`）を実行し、`ai-context/<project>/issues.json` を生成 → `gh` / GitHub MCP で起票。
 - または「AI 実装タスク」テンプレート（`.github/ISSUE_TEMPLATE/ai-implementation.yml`）で起票。
 
 ### 2. AI に着手させる（プロファイル別）
@@ -101,6 +110,16 @@ GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule�
 - Require conversation resolution before merging
 
 これにより、AI が作成した PR も「機械チェック green ＋ 必要なレビュー承認」を満たさない限りマージされない。
+
+## よくある詰まり（FAQ）
+
+| 症状 | 対処 |
+| --- | --- |
+| スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
+| 計画書（`projects/<name>`）を参照できない | git submodule か隣接クローンを設定する（既定パス `../project-planning`）。`/sync-plan` で `.ai-context/` に再生成して確認する。 |
+| CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
+| `@claude` が反応しない | `claude.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
+| ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
 
 ## 安全に任せるための原則
 
