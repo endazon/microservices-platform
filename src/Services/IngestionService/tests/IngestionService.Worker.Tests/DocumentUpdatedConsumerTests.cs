@@ -21,7 +21,7 @@ public class DocumentUpdatedConsumerTests
             DateTimeOffset.UtcNow);
 
     private static ServiceProvider BuildHarness(
-        RecordingVectorStore store,
+        IIngestionVectorStore store,
         IDocumentContentReader reader)
         => new ServiceCollection()
             .AddSingleton<IChunkingService, MarkdownChunkingService>()
