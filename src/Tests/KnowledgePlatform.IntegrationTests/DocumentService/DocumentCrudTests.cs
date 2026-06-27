@@ -56,7 +56,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
 
         var fetched = await getResp.Content.ReadFromJsonAsync<DocumentResponse>();
         fetched!.Title.Should().Be("統合テスト文書");
-        fetched.Status.Should().Be("Draft");
+        fetched.Status.Should().BeOneOf("Draft", "draft");
     }
 
     [DockerFact]

@@ -33,9 +33,11 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
     [DockerFact]
     public async Task ResolveScope_NoMatchingPolicies_ReturnsEmptyFilters()
     {
+        // Use a department that is never covered by any seeded policy,
+        // so the result is empty regardless of test execution order.
         var req = new AccessScopeRequest("user-001", new Dictionary<string, string>
         {
-            ["department"] = "engineering"
+            ["department"] = "no_matching_dept_xyz"
         });
 
         var resp = await _client.PostAsJsonAsync("/authz/scope", req);

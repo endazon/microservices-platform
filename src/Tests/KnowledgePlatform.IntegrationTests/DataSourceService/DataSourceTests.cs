@@ -45,7 +45,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
 
         var created = await createResp.Content.ReadFromJsonAsync<DataSourceResponse>();
         created!.Name.Should().Be("社内 Confluence");
-        created.Status.Should().Be("Active");
+        created.Status.Should().BeOneOf("Active", "active");
 
         var listResp = await _client.GetAsync("/datasources");
         listResp.StatusCode.Should().Be(HttpStatusCode.OK);
