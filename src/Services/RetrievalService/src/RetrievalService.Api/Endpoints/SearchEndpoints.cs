@@ -11,12 +11,11 @@ public static class SearchEndpoints
     {
         var g = app.MapGroup("/search").WithTags("Search");
 
-        // FR-03: 意味検索（ベクトル + 属性フィルタ）
-        g.MapPost("/", async (SearchRequest req, IVectorStore store, IEmbeddingService embed) =>
+        // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 を RRF で統合 + ABAC フィルタ）
+        g.MapPost("/", async (SearchRequest req, IHybridSearchService search, CancellationToken ct) =>
         {
             var sw = Stopwatch.StartNew();
-            var vector = await embed.EmbedAsync(req.Query);
-            var results = await store.SearchAsync(vector, req.TopK, req.AttributeFilters);
+            var results = await search.SearchAsync(req, ct);
             sw.Stop();
             return Results.Ok(new SearchResponse(results, results.Count, sw.ElapsedMilliseconds));
         }).WithName("Search").Produces<SearchResponse>();

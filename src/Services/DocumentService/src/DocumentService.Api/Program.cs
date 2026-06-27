@@ -33,6 +33,8 @@ builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 // ADR-0003: MassTransit + RabbitMQ
 builder.Services.AddMassTransit(x =>
 {
+    // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
+    x.AddConsumer<DocumentService.Api.Consumers.DocumentNormalizedConsumer>();
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]

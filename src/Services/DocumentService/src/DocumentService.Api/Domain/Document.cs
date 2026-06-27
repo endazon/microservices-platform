@@ -28,9 +28,36 @@ public class Document
             Tags = tags ?? [],
         };
 
+    // FR-01, UC-04: 正規化文書（DocumentNormalized）からカタログ文書を生成する。
+    // パイプライン全体で ID を一貫させるため、変換側が採番した DocumentId を指定する（IADR-0001）。
+    public static Document CreateNormalized(Guid id, string title, string markdownUri,
+        Dictionary<string, string>? attributes = null, List<string>? tags = null)
+        => new()
+        {
+            Id = id,
+            Title = title,
+            MarkdownUri = markdownUri,
+            Status = DocumentStatus.Normalized,
+            Attributes = attributes ?? [],
+            Tags = tags ?? [],
+        };
+
     public void Update(string title, Dictionary<string, string> attributes, List<string> tags)
     {
         Title = title;
+        Attributes = attributes;
+        Tags = tags;
+        UpdatedAt = DateTimeOffset.UtcNow;
+        Version++;
+    }
+
+    // FR-01, UC-04: 同一文書の DocumentNormalized 再配信時に正規化内容を反映する（冪等更新）。
+    public void ApplyNormalized(string title, string markdownUri,
+        Dictionary<string, string> attributes, List<string> tags)
+    {
+        Title = title;
+        MarkdownUri = markdownUri;
+        Status = DocumentStatus.Normalized;
         Attributes = attributes;
         Tags = tags;
         UpdatedAt = DateTimeOffset.UtcNow;
