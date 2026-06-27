@@ -9,15 +9,10 @@ public class InMemoryVectorStore : IVectorStore
     private readonly List<ChunkPayload> _store = [];
 
     public Task<List<SearchResultDto>> SearchAsync(float[] queryVector, int topK,
-        Dictionary<string, string>? attributeFilters, CancellationToken ct = default)
+        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
     {
-        var filtered = _store.AsEnumerable();
-        if (attributeFilters is { Count: > 0 })
-            filtered = filtered.Where(c =>
-                attributeFilters.All(kv =>
-                    c.Attributes.TryGetValue(kv.Key, out var v) && v == kv.Value));
-
-        var results = filtered
+        var results = _store
+            .Where(c => MatchesFilters(c, filters))
             .Take(topK)
             .Select(c => new SearchResultDto(c.ChunkId, c.DocumentId, c.DocumentTitle,
                 c.Text, 0.9f, c.MarkdownUri, c.Attributes, c.Tags))
@@ -28,20 +23,15 @@ public class InMemoryVectorStore : IVectorStore
 
     // FR-03: 全文検索（語句オーバーラップによる簡易キーワード一致。テスト/ローカル用）
     public Task<List<SearchResultDto>> KeywordSearchAsync(string query, int topK,
-        Dictionary<string, string>? attributeFilters, CancellationToken ct = default)
+        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             return Task.FromResult(new List<SearchResultDto>());
 
         var terms = Tokenize(query);
 
-        var filtered = _store.AsEnumerable();
-        if (attributeFilters is { Count: > 0 })
-            filtered = filtered.Where(c =>
-                attributeFilters.All(kv =>
-                    c.Attributes.TryGetValue(kv.Key, out var v) && v == kv.Value));
-
-        var results = filtered
+        var results = _store
+            .Where(c => MatchesFilters(c, filters))
             .Select(c => (Chunk: c, Hits: terms.Count(t => c.Text.Contains(t, StringComparison.OrdinalIgnoreCase))))
             .Where(x => x.Hits > 0)
             .OrderByDescending(x => x.Hits)
@@ -51,6 +41,18 @@ public class InMemoryVectorStore : IVectorStore
             .ToList();
 
         return Task.FromResult(results);
+    }
+
+    // FR-05: ABAC 多値 allow-list 評価。フィルタ間は AND、値集合内は OR。
+    // 属性キーを持たない文書は不一致（deny-by-default）。
+    private static bool MatchesFilters(ChunkPayload c, IReadOnlyList<AttributeFilter>? filters)
+    {
+        if (filters is not { Count: > 0 })
+            return true;
+
+        return filters.All(f =>
+            c.Attributes.TryGetValue(f.Key, out var v)
+            && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
     }
 
     private static string[] Tokenize(string query) =>

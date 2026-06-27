@@ -12,22 +12,27 @@ public class RagOrchestrator(
     public async Task<AiAnswerDto> AskAsync(string question, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
     {
-        // FR-05: ABAC 権限スコープ解決
+        // FR-05: ABAC 権限スコープ解決。解決に失敗した場合も deny-by-default（Granted=false）とする。
         var authzClient = httpFactory.CreateClient("AuthorizationService");
         var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
             new AccessScopeRequest(userId, userAttributes), ct);
-        var scope = scopeResp.IsSuccessStatusCode
+        var scope = (scopeResp.IsSuccessStatusCode
             ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-            : new AccessScopeResponse(userId, []);
+            : null) ?? new AccessScopeResponse(userId, [], false);
 
-        // FR-03: ABAC フィルタ付きハイブリッド検索
-        var attributeFilters = scope?.AllowedFilters
-            .Where(f => f.AllowedValues.Count == 1)
-            .ToDictionary(f => f.Key, f => f.AllowedValues[0]) ?? [];
+        // FR-05: 閲覧可能な文書が無い（許可ポリシー無し）場合は、検索・LLM を呼ばず空回答へ縮退。
+        // 多値 allow-list を一切破棄せず後段へ伝播する（機密属性の漏れを防ぐ）。
+        var model = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
+        if (!scope.Granted)
+            return new AiAnswerDto(
+                "閲覧権限のある文書が見つかりませんでした。", [], model, 0, 0);
+
+        // FR-05: ABAC アクセススコープ（多値 allow-list）を検索へ伝播
+        var accessScope = new AccessScope(scope.AllowedFilters, scope.Granted);
 
         var retrievalClient = httpFactory.CreateClient("RetrievalService");
         var searchResp = await retrievalClient.PostAsJsonAsync("/search",
-            new SearchRequest(question, 5, attributeFilters.Count > 0 ? attributeFilters : null), ct);
+            new SearchRequest(question, 5, null, accessScope), ct);
         var searchResult = searchResp.IsSuccessStatusCode
             ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
             : new SearchResponse([], 0, 0);
@@ -45,7 +50,6 @@ public class RagOrchestrator(
 
         string answer;
         int inputTokens = 0, outputTokens = 0;
-        string model = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
 
         if (completionResp.IsSuccessStatusCode)
         {

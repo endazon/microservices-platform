@@ -18,10 +18,10 @@ public class QdrantVectorStore(
 
     public async Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector, int topK,
-        Dictionary<string, string>? attributeFilters,
+        IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default)
     {
-        var filter = BuildAttributeFilter(attributeFilters);
+        var filter = BuildAttributeFilter(filters);
 
         var results = await client.SearchAsync(_collection, queryVector, limit: (ulong)topK,
             filter: filter, cancellationToken: ct);
@@ -32,7 +32,7 @@ public class QdrantVectorStore(
     // FR-03: 全文検索（Qdrant のペイロード `text` への full-text Match）
     public async Task<List<SearchResultDto>> KeywordSearchAsync(
         string query, int topK,
-        Dictionary<string, string>? attributeFilters,
+        IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -43,15 +43,7 @@ public class QdrantVectorStore(
             new() { Field = new FieldCondition { Key = "text", Match = new Match { Text = query } } }
         };
         // FR-05: ABAC 属性フィルタを全文検索にも適用（権限外文書を候補から除外）
-        if (attributeFilters is { Count: > 0 })
-            conditions.AddRange(attributeFilters.Select(kv => new Condition
-            {
-                Field = new FieldCondition
-                {
-                    Key = $"attributes.{kv.Key}",
-                    Match = new Match { Keyword = kv.Value }
-                }
-            }));
+        conditions.AddRange(BuildAttributeConditions(filters));
 
         try
         {
@@ -73,21 +65,31 @@ public class QdrantVectorStore(
         }
     }
 
-    private static Filter? BuildAttributeFilter(Dictionary<string, string>? attributeFilters)
+    private static Filter? BuildAttributeFilter(IReadOnlyList<AttributeFilter>? filters)
     {
-        // FR-05: ABAC 属性フィルタをQdrantのペイロードフィルタに変換
-        if (attributeFilters is not { Count: > 0 })
-            return null;
+        // FR-05: ABAC 多値 allow-list を Qdrant のペイロードフィルタに変換
+        var conditions = BuildAttributeConditions(filters);
+        return conditions.Count > 0 ? new Filter { Must = { conditions } } : null;
+    }
 
-        var conditions = attributeFilters.Select(kv => new Condition
-        {
-            Field = new FieldCondition
+    // FR-05: 各属性キーを「key ∈ AllowedValues」（Match.Keywords=いずれか一致）へ変換。
+    // キー間は呼び出し側の Must（AND）で結合される。
+    private static List<Condition> BuildAttributeConditions(IReadOnlyList<AttributeFilter>? filters)
+    {
+        if (filters is not { Count: > 0 })
+            return [];
+
+        return filters
+            .Where(f => f.AllowedValues.Count > 0)
+            .Select(f => new Condition
             {
-                Key = $"attributes.{kv.Key}",
-                Match = new Match { Keyword = kv.Value }
-            }
-        }).ToList();
-        return new Filter { Must = { conditions } };
+                Field = new FieldCondition
+                {
+                    Key = $"attributes.{f.Key}",
+                    Match = new Match { Keywords = new RepeatedStrings { Strings = { f.AllowedValues } } }
+                }
+            })
+            .ToList();
     }
 
     private static SearchResultDto MapPayload(

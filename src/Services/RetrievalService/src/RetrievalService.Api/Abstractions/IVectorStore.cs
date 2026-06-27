@@ -6,17 +6,19 @@ namespace RetrievalService.Api.Abstractions;
 public interface IVectorStore
 {
     // FR-03: 意味検索（密ベクトル類似度）
+    // FR-05: filters は ABAC 多値 allow-list（key ∈ values の AND 結合）。
     Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector,
         int topK,
-        Dictionary<string, string>? attributeFilters,
+        IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default);
 
     // FR-03: 全文検索（キーワード／語句一致）。ハイブリッド検索の全文側を担う。
+    // FR-05: filters は ABAC 多値 allow-list（key ∈ values の AND 結合）。
     Task<List<SearchResultDto>> KeywordSearchAsync(
         string query,
         int topK,
-        Dictionary<string, string>? attributeFilters,
+        IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default);
 
     Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default);
