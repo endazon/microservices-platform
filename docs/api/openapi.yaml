@@ -1,0 +1,319 @@
+openapi: "3.1.0"
+info:
+  title: KnowledgePlatform API
+  description: |
+    社内ナレッジ活用プラットフォーム — BFF + マイクロサービス統合仕様書
+    FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-13, UC-01, UC-02
+  version: "0.1.0"
+  contact:
+    name: Platform Team
+servers:
+  - url: http://localhost:5000
+    description: BFF (ローカル開発)
+  - url: http://localhost:5001
+    description: DocumentService (直接)
+  - url: http://localhost:5003
+    description: RetrievalService (直接)
+  - url: http://localhost:5004
+    description: AiAnalysisService (直接)
+  - url: http://localhost:5005
+    description: AuthorizationService (直接)
+
+tags:
+  - name: Analysis
+    description: "FR-04, FR-07, UC-01: AI 質問回答 (RAG)"
+  - name: Search
+    description: "FR-03, UC-01: ベクトル検索"
+  - name: Documents
+    description: "FR-06, UC-03: ドキュメント管理"
+  - name: DataSources
+    description: "FR-01, UC-04: データソース管理"
+  - name: Authorization
+    description: "FR-05, ADR-0004: ABAC 認可"
+  - name: Wiki
+    description: "FR-13: Wiki ページ"
+
+paths:
+  # ── BFF ──────────────────────────────────────────
+  /search:
+    post:
+      tags: [Search]
+      summary: "FR-03: ベクトル検索"
+      operationId: bff-search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: 検索結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+
+  /analysis/ask:
+    post:
+      tags: [Analysis]
+      summary: "FR-04, UC-01: RAG 質問回答"
+      operationId: analysis-ask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: AI 回答 + 出典
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiAnswerDto"
+
+  # ── DocumentService ───────────────────────────────
+  /documents:
+    get:
+      tags: [Documents]
+      summary: "FR-06: ドキュメント一覧"
+      operationId: list-documents
+      responses:
+        "200":
+          description: ドキュメントリスト
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03: ドキュメント作成"
+      operationId: create-document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentRequest"
+      responses:
+        "201":
+          description: 作成されたドキュメント
+
+  /documents/{id}:
+    get:
+      tags: [Documents]
+      operationId: get-document
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: ドキュメント
+        "404":
+          description: 見つからない
+    put:
+      tags: [Documents]
+      operationId: update-document
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentRequest"
+      responses:
+        "200":
+          description: 更新成功
+    delete:
+      tags: [Documents]
+      operationId: delete-document
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204":
+          description: 削除成功
+
+  # ── DataSourceService ─────────────────────────────
+  /datasources:
+    get:
+      tags: [DataSources]
+      operationId: list-datasources
+      responses:
+        "200":
+          description: データソースリスト
+    post:
+      tags: [DataSources]
+      summary: "FR-01: データソース登録"
+      operationId: create-datasource
+      responses:
+        "201":
+          description: 登録成功
+
+  /datasources/{id}/sync:
+    post:
+      tags: [DataSources]
+      summary: "FR-01: 手動同期トリガー"
+      operationId: trigger-sync
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "202":
+          description: 同期キューに追加
+
+  # ── AuthorizationService ──────────────────────────
+  /authz/scope:
+    post:
+      tags: [Authorization]
+      summary: "FR-05, ADR-0004: ABAC スコープ解決"
+      operationId: resolve-scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessScopeRequest"
+      responses:
+        "200":
+          description: 許可されたフィルター
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessScopeResponse"
+
+  /authz/policies:
+    get:
+      tags: [Authorization]
+      operationId: list-policies
+      responses:
+        "200":
+          description: ポリシー一覧
+    post:
+      tags: [Authorization]
+      operationId: create-policy
+      responses:
+        "201":
+          description: 作成成功
+
+  # ── WikiService ───────────────────────────────────
+  /wiki/pages:
+    get:
+      tags: [Wiki]
+      summary: "FR-13: Wiki ページ一覧"
+      operationId: list-wiki-pages
+      responses:
+        "200":
+          description: ページリスト
+
+  /wiki/pages/{slug}:
+    get:
+      tags: [Wiki]
+      operationId: get-wiki-page
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Wiki ページ
+        "404":
+          description: 見つからない
+
+components:
+  schemas:
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, example: "ナレッジ管理とは" }
+        topK: { type: integer, default: 10 }
+        attributeFilters:
+          type: object
+          additionalProperties: { type: string }
+
+    SearchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResultDto"
+        totalHits: { type: integer }
+        elapsedMs: { type: integer }
+
+    SearchResultDto:
+      type: object
+      properties:
+        chunkId: { type: string, format: uuid }
+        documentId: { type: string, format: uuid }
+        documentTitle: { type: string }
+        text: { type: string }
+        score: { type: number, format: float }
+        markdownUri: { type: string, nullable: true }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+
+    AskRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, example: "プロジェクト憲章の承認フローを教えて" }
+
+    AiAnswerDto:
+      type: object
+      properties:
+        answer: { type: string }
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResultDto"
+        model: { type: string }
+        inputTokens: { type: integer }
+        outputTokens: { type: integer }
+
+    AccessScopeRequest:
+      type: object
+      required: [userId, userAttributes]
+      properties:
+        userId: { type: string }
+        userAttributes:
+          type: object
+          additionalProperties: { type: string }
+
+    AccessScopeResponse:
+      type: object
+      properties:
+        userId: { type: string }
+        allowedFilters:
+          type: array
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              allowedValues:
+                type: array
+                items: { type: string }
+
+    CreateDocumentRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        originalUri: { type: string, nullable: true }
+        contentType: { type: string, nullable: true }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+
+    UpdateDocumentRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        tags:
+          type: array
+          items: { type: string }

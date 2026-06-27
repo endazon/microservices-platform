@@ -1,0 +1,17 @@
+# Service template for HTTP-exposing services (port defined in values)
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.enabled $svc.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-service
+spec:
+  selector:
+    app: {{ $name }}-service
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP
+{{- end }}
+{{- end }}

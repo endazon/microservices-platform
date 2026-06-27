@@ -1,0 +1,74 @@
+# CI — lint / build / test / coverage gate for KnowledgePlatform (.NET 10 monorepo)
+# Closes #9
+name: CI
+
+on:
+  push:
+    branches: [main, develop, init-setup]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        working-directory: src
+        run: dotnet restore KnowledgePlatform.slnx
+
+      - name: Build
+        working-directory: src
+        run: dotnet build KnowledgePlatform.slnx --no-restore --configuration Release
+
+      - name: Test (with coverage)
+        working-directory: src
+        run: >
+          dotnet test KnowledgePlatform.slnx
+          --no-build --configuration Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ./TestResults
+          --verbosity normal
+          --filter "Category!=Integration"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          directory: src/TestResults
+          flags: unittests
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        working-directory: src
+        run: dotnet restore KnowledgePlatform.slnx
+
+      - name: Build
+        working-directory: src
+        run: dotnet build KnowledgePlatform.slnx --no-restore --configuration Release
+
+      - name: Integration Tests (TestContainers + Docker)
+        working-directory: src
+        env:
+          CI: "true"
+        run: >
+          dotnet test "Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj"
+          --no-build --configuration Release
+          --filter "Category=Integration"
+          --verbosity normal

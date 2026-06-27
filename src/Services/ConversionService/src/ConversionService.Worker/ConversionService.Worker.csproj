@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <ItemGroup>
+    <PackageReference Include="MassTransit.RabbitMQ" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

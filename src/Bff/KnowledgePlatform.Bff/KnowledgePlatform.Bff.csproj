@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Refit.HttpClientFactory" />
+    <PackageReference Include="AspNetCore.HealthChecks.Uris" />
+    <PackageReference Include="AspNetCore.HealthChecks.Redis" />
+    <ProjectReference Include="..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
