@@ -38,7 +38,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       # ↓ 技術スタックに合わせて差し替える（既定は C#/.NET 例）
       - name: Setup .NET
