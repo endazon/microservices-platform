@@ -11,11 +11,10 @@
 
 name: CI
 
+# Disabled: GitHub runs all *.yml files in .github/workflows/ regardless of name.
+# This is a template/example only — use workflow_dispatch to prevent auto-triggering.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   lint:
