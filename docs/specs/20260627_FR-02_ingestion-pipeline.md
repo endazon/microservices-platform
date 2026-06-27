@@ -13,7 +13,7 @@ plan_refs:
 related_specs:
   - ../functional/FR-02_ingestion.md
   - ../tests/FR-02_ingestion.md
-  - ../adr/IADR-0001_ingestion-pipeline-and-qdrant-bootstrap.md
+  - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
 related_adrs:
   - ADR-0003 (MassTransit + RabbitMQ)
   - ADR-0009 (Qdrant へ直接書き込み)
@@ -67,7 +67,7 @@ flowchart LR
   F --> G[IngestionCompleted 発行]
 ```
 
-### 主要な実装判断（詳細は IADR-0001）
+### 主要な実装判断（詳細は IADR-0002）
 
 1. **パース段**: `IDocumentContentReader` ポートを新設。`MarkdownUri` が `http(s)` の場合は HTTP で取得、それ以外（`storage://` 等、dev 未配備）の場合は警告ログの上でプレースホルダー本文を返す（`PandocConversionService` と同じグレースフルデグレード方針）。消費者はポートに依存し、テストでは本物の Markdown を返すスタブを注入できる。
 2. **冪等なチャンク ID**: `documentId` + `chunkIndex` から決定的な GUID を生成。再取り込みでも同一 ID となり、削除漏れ時も上書きで冪等性を担保。

@@ -1,5 +1,5 @@
 ---
-title: IADR-0001 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ
+title: IADR-0002 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ
 type: impl-adr
 status: Accepted
 related_ids:
@@ -14,7 +14,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
-# IADR-0001: 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ
+# IADR-0002: 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

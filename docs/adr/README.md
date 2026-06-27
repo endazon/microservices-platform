@@ -24,4 +24,5 @@
 | IADR | タイトル | 状態 |
 | --- | --- | --- |
 | IADR-0000 | 実装意思決定の記録方針 | Accepted |
-| IADR-0001 | 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ | Accepted |
+| IADR-0001 | カタログの正本所有と DocumentNormalized の購読責務 | Accepted |
+| IADR-0002 | 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ | Accepted |

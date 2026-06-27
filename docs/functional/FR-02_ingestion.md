@@ -13,7 +13,7 @@ plan_refs:
 related_specs:
   - ../specs/20260627_FR-02_ingestion-pipeline.md
   - ../tests/FR-02_ingestion.md
-  - ../adr/IADR-0001_ingestion-pipeline-and-qdrant-bootstrap.md
+  - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
 related_adrs:
   - ADR-0003
   - ADR-0009
