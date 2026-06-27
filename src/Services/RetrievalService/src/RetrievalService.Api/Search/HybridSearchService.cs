@@ -16,18 +16,54 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         if (string.IsNullOrWhiteSpace(request.Query))
             return [];
 
+        // FR-05: deny-by-default。許可ポリシーが無い利用者には何も返さない（権限外文書の漏えい防止）。
+        if (request.Scope is { GrantsAccess: false })
+            return [];
+
+        // FR-05: 単値フィルタ（後方互換）と ABAC 多値スコープを 1 本の allow-list に正規化する。
+        var filters = BuildFilters(request);
+
         // 融合精度のため topK より広めの候補を各系統から取得する
         var candidateK = Math.Max(request.TopK * 4, request.TopK);
 
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
         var vector = await embed.EmbedAsync(request.Query, ct);
-        var vectorTask = store.SearchAsync(vector, candidateK, request.AttributeFilters, ct);
-        var keywordTask = store.KeywordSearchAsync(request.Query, candidateK, request.AttributeFilters, ct);
+        var vectorTask = store.SearchAsync(vector, candidateK, filters, ct);
+        var keywordTask = store.KeywordSearchAsync(request.Query, candidateK, filters, ct);
         await Task.WhenAll(vectorTask, keywordTask);
 
         // FR-03: 順位ベースで両系統を統合（スコアのスケール差を正規化なしで吸収）
         var fused = ReciprocalRankFusion(vectorTask.Result, keywordTask.Result);
         return fused.Take(request.TopK).ToList();
+    }
+
+    // FR-05: 単値 AttributeFilters（FR-03 後方互換）と ABAC 多値 Scope を 1 本の allow-list へ統合。
+    // 同一キーが両方に現れた場合は値集合を結合（OR）する。
+    private static List<AttributeFilter>? BuildFilters(SearchRequest request)
+    {
+        var byKey = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        if (request.AttributeFilters is { Count: > 0 })
+            foreach (var (key, value) in request.AttributeFilters)
+                Add(key, [value]);
+
+        if (request.Scope is { Filters.Count: > 0 } scope)
+            foreach (var f in scope.Filters)
+                Add(f.Key, f.AllowedValues);
+
+        if (byKey.Count == 0)
+            return null;
+
+        return byKey.Select(kv => new AttributeFilter(kv.Key, kv.Value)).ToList();
+
+        void Add(string key, IEnumerable<string> values)
+        {
+            if (!byKey.TryGetValue(key, out var list))
+                byKey[key] = list = [];
+            foreach (var v in values)
+                if (!list.Contains(v, StringComparer.OrdinalIgnoreCase))
+                    list.Add(v);
+        }
     }
 
     // FR-03: Reciprocal Rank Fusion。両リストに現れる文書ほど上位になる。

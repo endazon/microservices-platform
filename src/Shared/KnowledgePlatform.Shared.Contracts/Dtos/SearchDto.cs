@@ -4,7 +4,10 @@ namespace KnowledgePlatform.Shared.Contracts.Dtos;
 public record SearchRequest(
     string Query,
     int TopK = 10,
-    Dictionary<string, string>? AttributeFilters = null);
+    // FR-03: 単値完全一致フィルタ（後方互換）。key → 単一の許可値。
+    Dictionary<string, string>? AttributeFilters = null,
+    // FR-05: ABAC アクセススコープ（多値 allow-list ＋ deny-by-default）。
+    AccessScope? Scope = null);
 
 public record SearchResponse(
     List<SearchResultDto> Results,

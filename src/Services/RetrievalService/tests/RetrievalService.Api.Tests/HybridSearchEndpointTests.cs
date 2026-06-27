@@ -64,6 +64,65 @@ public class HybridSearchEndpointTests
         ids.Should().NotContain(forbidden.ChunkId, "権限の無い文書は結果に現れない");
     }
 
+    // FR-05: 多値 allow-list（confidentiality ∈ {public, internal}）で許可文書のみ返り、機密は除外される
+    [Fact]
+    public async Task PostSearch_MultiValueScope_ReturnsOnlyAllowedConfidentiality()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var pub = Chunk("製品 概要 公開", new() { ["confidentiality"] = "public" });
+        var intl = Chunk("製品 概要 社内", new() { ["confidentiality"] = "internal" });
+        var conf = Chunk("製品 概要 機密", new() { ["confidentiality"] = "confidential" });
+        await SeedAsync(factory, pub, intl, conf);
+
+        var scope = new AccessScope(
+            [new AttributeFilter("confidentiality", ["public", "internal"])], GrantsAccess: true);
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("製品 概要", TopK: 10, Scope: scope));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var ids = body!.Results.Select(r => r.ChunkId).ToList();
+        ids.Should().Contain([pub.ChunkId, intl.ChunkId]);
+        ids.Should().NotContain(conf.ChunkId, "許可値集合に無い機密文書は現れない");
+    }
+
+    // FR-05: スコープ属性キーを持たない文書は除外される（deny-by-default の徹底）
+    [Fact]
+    public async Task PostSearch_DocumentMissingScopedAttribute_IsExcluded()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        var tagged = Chunk("規程 文書 タグ付き", new() { ["confidentiality"] = "internal" });
+        var untagged = Chunk("規程 文書 タグ無し");
+        await SeedAsync(factory, tagged, untagged);
+
+        var scope = new AccessScope(
+            [new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("規程 文書", TopK: 10, Scope: scope));
+
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var ids = body!.Results.Select(r => r.ChunkId).ToList();
+        ids.Should().Contain(tagged.ChunkId);
+        ids.Should().NotContain(untagged.ChunkId, "属性キーを持たない文書は除外される");
+    }
+
+    // FR-05: 許可ポリシー無し（GrantsAccess=false）の利用者には何も返さない（deny-by-default）
+    [Fact]
+    public async Task PostSearch_ScopeDeniesAccess_ReturnsEmpty()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("公開 文書", new() { ["confidentiality"] = "public" }));
+
+        var deniedScope = new AccessScope([], GrantsAccess: false);
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("公開 文書", TopK: 10, Scope: deniedScope));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        body!.Results.Should().BeEmpty("許可ポリシーが無い利用者は何も閲覧できない");
+    }
+
     // 空クエリは空結果（防御）
     [Fact]
     public async Task PostSearch_EmptyQuery_ReturnsEmpty()
