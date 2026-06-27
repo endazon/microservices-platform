@@ -29,13 +29,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v5
-        with:
-          fail-on-severity: high
+  # dependency-review requires GitHub Dependency graph to be enabled in repository settings.
+  # Enable it at Settings > Security > Dependency graph, then uncomment this job.
+  # dependency-review:
+  #   name: Dependency review
+  #   if: github.event_name == 'pull_request'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - name: Dependency Review
+  #       uses: actions/dependency-review-action@v5
+  #       with:
+  #         fail-on-severity: high

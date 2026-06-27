@@ -5,13 +5,9 @@
 
 name: CodeQL
 
+# Disabled: example file only — rename to codeql.yml after configuring matrix.language.
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  schedule:
-    - cron: "0 3 * * 1"
+  workflow_dispatch:
 
 permissions:
   security-events: write
