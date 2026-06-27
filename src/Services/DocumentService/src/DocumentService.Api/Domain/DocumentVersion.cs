@@ -4,7 +4,10 @@ namespace DocumentService.Api.Domain;
 // 任意時点のタイトル・状態・本文 URI・メタデータを ID＋版番号で再構成するために保持する。
 public class DocumentVersion
 {
-    public Guid Id { get; private set; } = Guid.NewGuid();
+    // FR-06: 版の主キーは EF（ValueGeneratedOnAdd）に採番させる。
+    // フィールド初期化で非デフォルト値を入れると、追跡済み Document への追記時に
+    // EF が「既存行」と誤認して UPDATE を発行し DbUpdateConcurrencyException になるため設定しない。
+    public Guid Id { get; private set; }
     public Guid DocumentId { get; private set; }
     public int Version { get; private set; }
     public string Title { get; private set; } = string.Empty;
