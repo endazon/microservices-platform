@@ -12,6 +12,13 @@
 # モデル:
 #   レビューは速度・コストを優先し既定で claude-sonnet-4-6 を使う。
 #   より厳密にしたい場合は --model を claude-opus-4-8 に変更する。
+#
+# permission_denials_count 対策:
+#   .claude/settings.json の allow リストには Bash/ファイル系しか含まれていない。
+#   アクションが settings.json を復元するため、GitHub MCP ツール
+#   (mcp__github__create_pull_request_review 等) が拒否されていた。
+#   恒久対策: settings.json に MCP ツールを追加。
+#   追加保護: use_sticky_comment: true でアクション自身が出力を投稿（ツール拒否時のフォールバック）。
 
 name: Claude Code Review
 
@@ -41,17 +48,56 @@ jobs:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # GitHub API アクセス用トークン（MCP GitHub ツール・スティッキーコメント投稿に必要）
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # Bot（GitHub App の Claude 等）が開いた PR もレビュー対象にする。
           # 再帰ループが心配な場合は '*' を 'claude' など特定ボット名に絞る。
           allowed_bots: '*'
+          # レビュー結果を PR スティッキーコメントとして投稿する（use_sticky_comment: true が重要）。
+          # Claude がコメント投稿ツールを呼べなかった場合のフォールバックとして機能する。
+          use_sticky_comment: true
+          # CI ログにもレビュー本文を出力する（デバッグ・監査用）
+          display_report: true
+          # レビュー進捗コメントを PR に表示する
+          track_progress: true
           # 既定モデル: 変更可（厳密さ優先なら claude-opus-4-8）
           claude_args: |
             --model claude-sonnet-4-6
+          # GitHub MCP ツールを追加許可（settings.json の allow リストを補完）
+          # これにより mcp__github__create_pull_request_review 等の権限拒否を解消する
+          additional_permissions: |
+            mcp__github__create_pull_request_review
+            mcp__github__add_pull_request_review_comment
+            mcp__github__get_pull_request
+            mcp__github__list_pull_request_files
+            mcp__github__get_file_contents
+            mcp__github__get_issue
+            mcp__github__add_issue_comment
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
             指摘を「重大 / 推奨 / 軽微」に分類してコメントせよ。
 
+            【出力必須ルール】
+            - 指摘が 0 件であっても、必ず以下のサマリ形式でコメントを出力すること。
+            - 無言終了・出力なし終了は禁止。レビューが完了したら必ずサマリを出力せよ。
+
+            出力フォーマット（Markdown）:
+            ## AI コードレビュー結果
+
+            ### 🔴 重大
+            - （指摘なし）または具体的な指摘内容
+
+            ### 🟡 推奨
+            - （指摘なし）または具体的な指摘内容
+
+            ### 🟢 軽微
+            - （指摘なし）または具体的な指摘内容
+
+            ---
+            *レビュー観点: トレーサビリティ / 受け入れ基準 / ADR 制約 / 品質 / AI 固有リスク*
+
+            レビュー観点の詳細:
             1. トレーサビリティ: PR 本文・コミット・コードに起点 ID（FR-xx / UC-xx / SC-xx）が
                残されているか。実装が対象の計画書（要求・ユースケース・画面）に忠実か。
             2. 受け入れ基準: 計画書の受け入れ基準を満たし、基本/代替/例外フローを網羅しているか。

@@ -23,7 +23,18 @@
       "Bash(dotnet format:*)",
       "Bash(dotnet restore:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__github__create_pull_request_review",
+      "mcp__github__add_pull_request_review_comment",
+      "mcp__github__get_pull_request",
+      "mcp__github__list_pull_request_files",
+      "mcp__github__get_file_contents",
+      "mcp__github__get_issue",
+      "mcp__github__add_issue_comment",
+      "mcp__github__create_issue_comment",
+      "mcp__github__update_issue_comment",
+      "mcp__github__list_issues",
+      "mcp__github__list_pull_requests"
     ],
     "ask": [
       "Bash(git merge:*)"
