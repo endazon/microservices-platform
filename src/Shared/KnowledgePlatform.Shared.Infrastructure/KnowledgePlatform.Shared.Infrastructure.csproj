@@ -12,6 +12,7 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" />
-    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+    <!-- NU1510 (Issue #33): Microsoft.Extensions.Diagnostics.HealthChecks は
+         Microsoft.AspNetCore.App 共有フレームワークが提供するため明示参照は不要 -->
   </ItemGroup>
 </Project>

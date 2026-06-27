@@ -73,6 +73,18 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
                 });
             }
 
+            // Issue #33: Bus 起動レース対策。既定では MassTransitHostedService が Bus を
+            // バックグラウンド起動するため、CreateClient() 直後の Publish が Consumer の
+            // キューバインド完了前に走り、メッセージが破棄され得る。WaitUntilStarted=true で
+            // レシーブエンドポイントのバインド完了までホスト起動を待機させ、購読確立後に
+            // Publish されることを保証する。
+            services.AddOptions<MassTransitHostOptions>().Configure(o =>
+            {
+                o.WaitUntilStarted = true;
+                o.StartTimeout = TimeSpan.FromSeconds(30);
+                o.StopTimeout = TimeSpan.FromSeconds(10);
+            });
+
             AdditionalServices(services);
         });
     }
