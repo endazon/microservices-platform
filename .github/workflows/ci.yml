@@ -34,22 +34,22 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - name: Format check
         run: dotnet format --verify-no-changes
 
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
       - name: Restore
         run: dotnet restore
       - name: Build
@@ -63,7 +63,7 @@ jobs:
 
       # 参考: 他スタックの例
       # Node.js:
-      #   - uses: actions/setup-node@v4
+      #   - uses: actions/setup-node@v6
       #     with: { node-version: "20" }
       #   - run: npm ci
       #   - run: npm run lint --if-present

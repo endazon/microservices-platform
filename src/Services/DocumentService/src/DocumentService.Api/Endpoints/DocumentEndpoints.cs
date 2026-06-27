@@ -65,9 +65,14 @@ public static class DocumentEndpoints
 
     private static DocumentDto ToDto(Document d) => new()
     {
-        Id = d.Id, Title = d.Title, Status = d.Status,
-        MarkdownUri = d.MarkdownUri, Attributes = d.Attributes,
-        Tags = d.Tags, CreatedAt = d.CreatedAt, UpdatedAt = d.UpdatedAt,
+        Id = d.Id,
+        Title = d.Title,
+        Status = d.Status,
+        MarkdownUri = d.MarkdownUri,
+        Attributes = d.Attributes,
+        Tags = d.Tags,
+        CreatedAt = d.CreatedAt,
+        UpdatedAt = d.UpdatedAt,
     };
 
     // FR-06, UC-03: DocumentUpdated イベント生成

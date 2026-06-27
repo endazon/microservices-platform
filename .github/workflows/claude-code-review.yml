@@ -41,6 +41,9 @@ jobs:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Bot（GitHub App の Claude 等）が開いた PR もレビュー対象にする。
+          # 再帰ループが心配な場合は '*' を 'claude' など特定ボット名に絞る。
+          allowed_bots: '*'
           # 既定モデル: 変更可（厳密さ優先なら claude-opus-4-8）
           claude_args: |
             --model claude-sonnet-4-6

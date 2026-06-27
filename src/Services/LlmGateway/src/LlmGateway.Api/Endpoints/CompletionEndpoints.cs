@@ -16,7 +16,9 @@ public static class CompletionEndpoints
                 new CompletionRequest(req.Prompt, req.MaxTokens, req.Model), ct);
             return Results.Ok(new
             {
-                result.Text, result.InputTokens, result.OutputTokens,
+                result.Text,
+                result.InputTokens,
+                result.OutputTokens,
                 Model = req.Model ?? "claude-sonnet-4-6"
             });
         }).WithName("Complete").Produces<CompletionResult>();
