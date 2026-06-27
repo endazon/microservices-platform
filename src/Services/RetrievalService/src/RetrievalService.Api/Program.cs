@@ -3,6 +3,7 @@ using Qdrant.Client;
 using RetrievalService.Api.Abstractions;
 using RetrievalService.Api.Endpoints;
 using RetrievalService.Api.Infrastructure;
+using RetrievalService.Api.Search;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.retrieval-service";
@@ -29,6 +30,9 @@ builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
+
+// FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
+builder.Services.AddScoped<IHybridSearchService, HybridSearchService>();
 
 var app = builder.Build();
 
