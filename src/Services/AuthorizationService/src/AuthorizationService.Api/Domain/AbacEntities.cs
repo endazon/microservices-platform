@@ -18,8 +18,11 @@ public class AttributeDefinition
         bool required, string scope)
         => new()
         {
-            Key = key, Label = label, AllowedValues = allowedValues,
-            Required = required, Scope = scope,
+            Key = key,
+            Label = label,
+            AllowedValues = allowedValues,
+            Required = required,
+            Scope = scope,
         };
 }
 
@@ -42,8 +45,10 @@ public class AbacPolicy
         Dictionary<string, List<string>> userCond, Dictionary<string, List<string>> docCond)
         => new()
         {
-            Name = name, Action = action,
-            UserConditions = userCond, DocumentConditions = docCond,
+            Name = name,
+            Action = action,
+            UserConditions = userCond,
+            DocumentConditions = docCond,
         };
 }
 

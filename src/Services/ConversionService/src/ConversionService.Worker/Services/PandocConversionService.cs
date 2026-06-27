@@ -31,7 +31,8 @@ public class PandocConversionService(ILogger<PandocConversionService> logger) : 
         {
             var psi = new ProcessStartInfo("pandoc", "--version")
             {
-                RedirectStandardOutput = true, UseShellExecute = false,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
                 CreateNoWindow = true
             };
             using var proc = Process.Start(psi);
