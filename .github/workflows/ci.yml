@@ -1,74 +1,77 @@
-# CI — lint / build / test / coverage gate for KnowledgePlatform (.NET 10 monorepo)
-# Closes #9
+# CI（検証ゲート）雛形 — 技術非依存の骨格
+#
+# このファイルは「例示」であり、そのままでは有効化されない（拡張子が .example.yml のため）。
+# 自プロジェクトのスタックに合わせて各ステップを書き換え、ci.yml にリネームして使うこと。
+# build / test / coverage / lint ステップは C#/.NET を例示している。
+#
+# ── スタック別 --allowedTools（claude.example.yml の claude_args 末尾を書き換える） ──
+# このファイルの build/test ステップを変更したら、claude.example.yml の claude_args 末尾
+# 4 行（スタック別ツール）を使用スタックに合わせて書き換えること。
+# .claude/settings.json の permissions.allow にも同じコマンドを追記すること。
+#
+# スタック別の対応コマンド例:
+#   C#/.NET : Bash(dotnet build:*), Bash(dotnet test:*), Bash(dotnet format:*), Bash(dotnet restore:*)
+#   Node.js : Bash(npm run:*), Bash(npm ci:*), Bash(npx:*)
+#   Python  : Bash(pytest:*), Bash(pip install:*), Bash(ruff:*)
+#   Go      : Bash(go build:*), Bash(go test:*), Bash(go vet:*)
+#   Java    : Bash(mvn:*) または Bash(gradle:*)
+# ─────────────────────────────────────────────────────────────────────────────────
+#
+# 推奨運用（README「全自動化のための推奨ツール・運用」も参照）:
+#   - main へのマージ前に lint → build → test → coverage を必須ステータスチェックにする
+#   - ブランチ保護で「マージ前に必須チェックの成功」と「レビュー承認」を要求する
+#   これにより AI が作成した PR も、人手の検証なしに最低限の品質を機械で担保できる。
+
 name: CI
 
 on:
   push:
-    branches: [main, develop, init-setup]
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # --- スタック別に書き換え（例: C#/.NET） ---
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Format check
+        run: dotnet format --verify-no-changes
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
-
+          dotnet-version: "8.0.x"
       - name: Restore
-        working-directory: src
-        run: dotnet restore KnowledgePlatform.slnx
-
+        run: dotnet restore
       - name: Build
-        working-directory: src
-        run: dotnet build KnowledgePlatform.slnx --no-restore --configuration Release
-
+        run: dotnet build --no-restore --configuration Release
       - name: Test (with coverage)
-        working-directory: src
-        run: >
-          dotnet test KnowledgePlatform.slnx
-          --no-build --configuration Release
-          --collect:"XPlat Code Coverage"
-          --results-directory ./TestResults
-          --verbosity normal
-          --filter "Category!=Integration"
+        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
+      # カバレッジ閾値を強制する場合の例（ツールは任意）:
+      #   - run: dotnet tool install --global dotnet-reportgenerator-globaltool
+      #   - run: reportgenerator -reports:'**/coverage.cobertura.xml' -targetdir:coverage -reporttypes:TextSummary
+      #   - run: cat coverage/Summary.txt
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: always()
-        with:
-          directory: src/TestResults
-          flags: unittests
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Restore
-        working-directory: src
-        run: dotnet restore KnowledgePlatform.slnx
-
-      - name: Build
-        working-directory: src
-        run: dotnet build KnowledgePlatform.slnx --no-restore --configuration Release
-
-      - name: Integration Tests (TestContainers + Docker)
-        working-directory: src
-        env:
-          CI: "true"
-        run: >
-          dotnet test "Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj"
-          --no-build --configuration Release
-          --filter "Category=Integration"
-          --verbosity normal
+      # 参考: 他スタックの例
+      # Node.js:
+      #   - uses: actions/setup-node@v4
+      #     with: { node-version: "20" }
+      #   - run: npm ci
+      #   - run: npm run lint --if-present
+      #   - run: npm run build --if-present
+      #   - run: npm test -- --coverage
+      # Python:
+      #   - uses: actions/setup-python@v5
+      #     with: { python-version: "3.12" }
+      #   - run: pip install -e .[test]
+      #   - run: ruff check .
+      #   - run: pytest --cov
