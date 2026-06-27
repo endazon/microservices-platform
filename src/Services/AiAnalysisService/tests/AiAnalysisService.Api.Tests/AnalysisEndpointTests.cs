@@ -23,4 +23,34 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
         answer.Citations[0].Number.Should().Be(1);
         answer.Citations[0].SourceUri.Should().NotBeNullOrEmpty();
     }
+
+    // FR-07, UC-02: /analysis/analyze が指定データ範囲での分析結果＋出典を返す。
+    [Fact]
+    public async Task PostAnalyze_ReturnsAnswerWithCitations()
+    {
+        var response = await factory.CreateClient()
+            .PostAsJsonAsync("/analysis/analyze", new
+            {
+                instruction = "2025 年の経費規程を比較して",
+                taskType = "Compare",
+                range = new { attributeFilters = new { year = new[] { "2025" } } }
+            });
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+
+        answer.Should().NotBeNull();
+        answer!.Answer.Should().NotBeNullOrWhiteSpace();
+        answer.Citations.Should().NotBeEmpty();
+    }
+
+    // FR-07: 指示が空の依頼は 400（バリデーション）。
+    [Fact]
+    public async Task PostAnalyze_RejectsEmptyInstruction()
+    {
+        var response = await factory.CreateClient()
+            .PostAsJsonAsync("/analysis/analyze", new { instruction = "" });
+
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+    }
 }
