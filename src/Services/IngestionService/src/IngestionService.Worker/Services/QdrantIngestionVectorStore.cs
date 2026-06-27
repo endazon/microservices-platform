@@ -7,10 +7,27 @@ namespace IngestionService.Worker.Services;
 public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration config)
     : IIngestionVectorStore
 {
-    private readonly string _collection = config["Qdrant:Collection"] ?? "knowledge-chunks";
+    // FR-02: コレクション名は CollectionName を正とし、後方互換で Collection、
+    // 既定 knowledge_chunks の順に解決する（appsettings と RetrievalService に整合）。
+    private readonly string _collection =
+        config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
+
+    private readonly ulong _vectorSize =
+        ulong.TryParse(config["Qdrant:VectorSize"], out var v) ? v : 1536UL;
+
+    // FR-02: 索引（コレクション）の存在を保証する。未作成なら作成する。
+    public async Task EnsureCollectionAsync(CancellationToken ct = default)
+    {
+        if (await client.CollectionExistsAsync(_collection, ct))
+            return;
+
+        await client.CreateCollectionAsync(_collection,
+            new VectorParams { Size = _vectorSize, Distance = Distance.Cosine },
+            cancellationToken: ct);
+    }
 
     public async Task UpsertChunkAsync(Guid chunkId, Guid documentId, string title,
-        string text, float[] vector, string? markdownUri,
+        string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         CancellationToken ct = default)
     {
@@ -20,9 +37,22 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
             ["document_title"] = new Value { StringValue = title },
             ["text"] = new Value { StringValue = text },
             ["markdown_uri"] = new Value { StringValue = markdownUri ?? "" },
+            // FR-02: チャンクの並び順・出典の一部として保持
+            ["chunk_index"] = new Value { IntegerValue = chunkIndex },
         };
-        foreach (var (k, v) in attributes)
-            payload[$"attributes.{k}"] = new Value { StringValue = v };
+
+        // FR-02: タグをペイロードに保持（検索結果の絞り込み・表示用）
+        if (tags.Count > 0)
+        {
+            var tagList = new ListValue();
+            foreach (var t in tags)
+                tagList.Values.Add(new Value { StringValue = t });
+            payload["tags"] = new Value { ListValue = tagList };
+        }
+
+        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）
+        foreach (var (k, val) in attributes)
+            payload[$"attributes.{k}"] = new Value { StringValue = val };
 
         await client.UpsertAsync(_collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],

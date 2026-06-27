@@ -8,7 +8,10 @@ namespace RetrievalService.Api.Infrastructure;
 // ADR-0009: Qdrant 実装（ポート = IVectorStore）
 public class QdrantVectorStore(QdrantClient client, IConfiguration config) : IVectorStore
 {
-    private readonly string _collection = config["Qdrant:Collection"] ?? "knowledge-chunks";
+    // FR-02 整合: 取り込み（IngestionService）と同一のコレクション名解決にする。
+    // CollectionName を正とし、後方互換で Collection、既定 knowledge_chunks の順。
+    private readonly string _collection =
+        config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
 
     public async Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector, int topK,

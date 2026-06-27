@@ -22,6 +22,12 @@ var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
 builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>();
 
+// FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
+builder.Services.AddHostedService<QdrantBootstrapHostedService>();
+
+// FR-02 parse: 本文（Markdown）取得（http(s) は実取得、それ以外はプレースホルダー）
+builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentReader>();
+
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）
 builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
