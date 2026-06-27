@@ -48,8 +48,10 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
             // DbContext: Npgsql で TestContainers Postgres を使う
             ReplaceDbContextWithNpgsql<TDbContext>(services, _postgres.ConnectionString ?? "Host=localhost");
 
-            // MassTransit: RabbitMQ があれば実コネクション、なければ InMemory
-            services.RemoveAll<IBusControl>();
+            // MassTransit: Program.cs が AddMassTransit() 済みのためアセンブリ単位で全削除してから再登録
+            // AddMassTransit() is idempotent-blocked by IBus presence check; remove all MT services first
+            RemoveAllMassTransitServices(services);
+
             if (_rabbit is not null)
             {
                 services.AddMassTransit(x =>
@@ -64,7 +66,11 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
             }
             else
             {
-                services.AddMassTransitTestHarness(x => RegisterConsumers(x));
+                services.AddMassTransit(x =>
+                {
+                    RegisterConsumers(x);
+                    x.UsingInMemory((ctx, cfg) => cfg.ConfigureEndpoints(ctx));
+                });
             }
 
             AdditionalServices(services);
@@ -73,6 +79,25 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
 
     protected virtual void RegisterConsumers(IBusRegistrationConfigurator x) { }
     protected virtual void AdditionalServices(IServiceCollection services) { }
+
+    private static void RemoveAllMassTransitServices(IServiceCollection services)
+    {
+        var toRemove = services
+            .Where(d =>
+                IsFromMassTransitAssembly(d.ServiceType) ||
+                IsFromMassTransitAssembly(d.ImplementationType) ||
+                (d.ImplementationInstance is not null &&
+                 IsFromMassTransitAssembly(d.ImplementationInstance.GetType())))
+            .ToList();
+        foreach (var d in toRemove) services.Remove(d);
+    }
+
+    private static bool IsFromMassTransitAssembly(Type? type)
+    {
+        if (type is null) return false;
+        var name = type.Assembly.GetName().Name;
+        return name is not null && name.StartsWith("MassTransit", StringComparison.Ordinal);
+    }
 
     private static void ReplaceDbContextWithNpgsql<T>(IServiceCollection services, string connStr)
         where T : DbContext
