@@ -24,6 +24,11 @@ builder.Services.AddKnowledgePlatformHealthChecks()
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
+// FR-04, UC-01: AiAnalysisService 集約用の名前付き HTTP クライアント
+builder.Services.AddHttpClient("AiAnalysisService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:AiAnalysisService"]
+        ?? "http://aianalysis-service:5004"));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();

@@ -11,10 +11,21 @@ public record SearchResultDto(
     Dictionary<string, string> Attributes,
     List<string> Tags);
 
-// FR-04: RAG 回答レスポンス
+// FR-04: 出典（番号付き＋元文書へのリンク）
+// AI 回答中の [1][2] と対応する根拠。利用者は SourceUri から元文書へ辿れる。
+public record CitationDto(
+    int Number,
+    Guid DocumentId,
+    string DocumentTitle,
+    Guid ChunkId,
+    string? SourceUri,
+    float Score,
+    string Snippet);
+
+// FR-04: RAG 回答レスポンス（回答本文＋番号付き出典）
 public record AiAnswerDto(
     string Answer,
-    List<SearchResultDto> Citations,
+    List<CitationDto> Citations,
     string Model,
     int InputTokens,
     int OutputTokens);

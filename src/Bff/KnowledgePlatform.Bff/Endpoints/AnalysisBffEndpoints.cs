@@ -1,17 +1,37 @@
+using KnowledgePlatform.Shared.Contracts.Dtos;
+using System.Net.Http.Json;
+
 namespace KnowledgePlatform.Bff.Endpoints;
 
-// FR-07, UC-02: BFF AI 分析集約エンドポイント
+// FR-04, FR-07, UC-01, UC-02: BFF AI 分析集約エンドポイント
 public static class AnalysisBffEndpoints
 {
     public static IEndpointRouteBuilder MapAnalysisBffEndpoints(this IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF");
 
-        // Phase 2: AiAnalysisService を呼び出す
-        g.MapPost("/ask", (AnalysisRequest req) =>
-            Results.Accepted("/bff/analysis/sessions/stub",
-                new { sessionId = "stub", status = "processing" }))
-            .WithName("BffAnalysisAsk");
+        // FR-04, UC-01, UC-02: 検索結果を根拠に AI 回答＋出典を返す。
+        // AiAnalysisService へ集約し、ABAC 権限解決のため Authorization ヘッダを伝播する。
+        g.MapPost("/ask", async (
+            AnalysisRequest req,
+            IHttpClientFactory httpFactory,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var client = httpFactory.CreateClient("AiAnalysisService");
+
+            // FR-05: 権限の無い文書を結果に出さないため、利用者の資格情報を後段へ引き継ぐ
+            var auth = http.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(auth))
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+
+            var resp = await client.PostAsJsonAsync("/analysis/ask", req, ct);
+            if (!resp.IsSuccessStatusCode)
+                return Results.StatusCode((int)resp.StatusCode);
+
+            var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(ct);
+            return answer is null ? Results.StatusCode(StatusCodes.Status502BadGateway) : Results.Ok(answer);
+        }).WithName("BffAnalysisAsk").Produces<AiAnswerDto>();
 
         return app;
     }

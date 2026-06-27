@@ -1,6 +1,5 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
-using System.Text;
 
 namespace AiAnalysisService.Api.Services;
 
@@ -33,8 +32,11 @@ public class RagOrchestrator(
             ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
             : new SearchResponse([], 0, 0);
 
+        // FR-04: 検索結果を番号付き出典へ写像（回答本文の [1][2] と一致させる）
+        var citations = CitationMapper.ToCitations(searchResult?.Results ?? []);
+
         // FR-04: 関連チャンクを文脈にして LLM ゲートウェイで回答生成
-        var context = BuildContext(searchResult?.Results ?? []);
+        var context = CitationMapper.BuildContext(citations);
         var prompt = BuildPrompt(question, context);
 
         var llmClient = httpFactory.CreateClient("LlmGateway");
@@ -62,15 +64,7 @@ public class RagOrchestrator(
                 : "関連する情報が見つかりませんでした。";
         }
 
-        return new AiAnswerDto(answer, searchResult?.Results ?? [], model, inputTokens, outputTokens);
-    }
-
-    private static string BuildContext(List<SearchResultDto> chunks)
-    {
-        var sb = new StringBuilder();
-        foreach (var (chunk, i) in chunks.Select((c, i) => (c, i + 1)))
-            sb.AppendLine($"[{i}] {chunk.DocumentTitle}\n{chunk.Text}\n");
-        return sb.ToString();
+        return new AiAnswerDto(answer, citations, model, inputTokens, outputTokens);
     }
 
     private static string BuildPrompt(string question, string context)
