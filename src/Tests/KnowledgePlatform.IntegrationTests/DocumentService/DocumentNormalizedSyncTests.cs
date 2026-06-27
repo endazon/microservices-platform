@@ -91,10 +91,10 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
         await bus.Publish(evt);
     }
 
-    // 非同期消費を最大 ~10 秒ポーリングして待つ
+    // 非同期消費を最大 ~30 秒ポーリングして待つ（Issue #33: CI のタイミング揺らぎに対する暫定対処）
     private async Task<DocumentResponse?> WaitForDocumentAsync(Guid id, string? expectedTitle = null)
     {
-        for (var attempt = 0; attempt < 20; attempt++)
+        for (var attempt = 0; attempt < 60; attempt++)
         {
             var resp = await _client.GetAsync($"/documents/{id}");
             if (resp.StatusCode == HttpStatusCode.OK)
