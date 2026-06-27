@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Api.Endpoints;
 
-// FR-06, UC-03: 文書 CRUD エンドポイント
+// FR-06, UC-03: 文書 CRUD・バージョン管理・メタデータ管理エンドポイント
 public static class DocumentEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentEndpoints(this IEndpointRouteBuilder app)
@@ -32,6 +32,13 @@ public static class DocumentEndpoints
         g.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
+            // FR-06, UC-03: タイトルは必須
+            if (string.IsNullOrWhiteSpace(req.Title))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["title"] = ["タイトルは必須です。"]
+                });
+
             var doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
                 req.Attributes, req.Tags);
             db.Documents.Add(doc);
@@ -43,12 +50,84 @@ public static class DocumentEndpoints
         g.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
+            if (string.IsNullOrWhiteSpace(req.Title))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["title"] = ["タイトルは必須です。"]
+                });
+
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
-            doc.Update(req.Title, req.Attributes ?? [], req.Tags ?? []);
+
+            // FR-06, UC-03: 楽観的並行制御。期待版が現在版と異なれば lost update を防ぐため 409。
+            if (req.ExpectedVersion is { } expected && expected != doc.Version)
+                return Results.Conflict(new
+                {
+                    error = "version_conflict",
+                    expectedVersion = expected,
+                    currentVersion = doc.Version
+                });
+
+            doc.Update(req.Title, req.Attributes ?? [], req.Tags ?? [], req.ChangeNote);
             await db.SaveChangesAsync();
             await bus.Publish(ToEvent(doc));
             return Results.Ok(ToDto(doc));
+        });
+
+        // FR-06, UC-03: メタデータ（属性・タグ）のみ更新する。
+        g.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
+            DocumentDbContext db, IPublishEndpoint bus) =>
+        {
+            var doc = await db.Documents.FindAsync(id);
+            if (doc is null) return Results.NotFound();
+
+            if (req.ExpectedVersion is { } expected && expected != doc.Version)
+                return Results.Conflict(new
+                {
+                    error = "version_conflict",
+                    expectedVersion = expected,
+                    currentVersion = doc.Version
+                });
+
+            doc.UpdateMetadata(req.Attributes ?? [], req.Tags ?? [], req.ChangeNote);
+            await db.SaveChangesAsync();
+            await bus.Publish(ToEvent(doc));
+            return Results.Ok(ToDto(doc));
+        });
+
+        // FR-06, UC-03: 文書を公開する。
+        g.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
+            IPublishEndpoint bus) =>
+        {
+            var doc = await db.Documents.FindAsync(id);
+            if (doc is null) return Results.NotFound();
+            doc.Publish();
+            await db.SaveChangesAsync();
+            await bus.Publish(ToEvent(doc));
+            return Results.Ok(ToDto(doc));
+        });
+
+        // FR-06, UC-03: 版履歴一覧（新しい順）。
+        g.MapGet("/{id:guid}/versions", async (Guid id, DocumentDbContext db) =>
+        {
+            var exists = await db.Documents.AnyAsync(d => d.Id == id);
+            if (!exists) return Results.NotFound();
+
+            var versions = await db.DocumentVersions
+                .Where(v => v.DocumentId == id)
+                .OrderByDescending(v => v.Version)
+                .Select(v => ToVersionDto(v))
+                .ToListAsync();
+            return Results.Ok(versions);
+        });
+
+        // FR-06, UC-03: 特定版の取得。
+        g.MapGet("/{id:guid}/versions/{version:int}", async (Guid id, int version,
+            DocumentDbContext db) =>
+        {
+            var snapshot = await db.DocumentVersions
+                .FirstOrDefaultAsync(v => v.DocumentId == id && v.Version == version);
+            return snapshot is null ? Results.NotFound() : Results.Ok(ToVersionDto(snapshot));
         });
 
         g.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db) =>
@@ -69,10 +148,24 @@ public static class DocumentEndpoints
         Title = d.Title,
         Status = d.Status,
         MarkdownUri = d.MarkdownUri,
+        Version = d.Version,
         Attributes = d.Attributes,
         Tags = d.Tags,
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,
+    };
+
+    private static DocumentVersionDto ToVersionDto(DocumentVersion v) => new()
+    {
+        DocumentId = v.DocumentId,
+        Version = v.Version,
+        Title = v.Title,
+        Status = v.Status,
+        MarkdownUri = v.MarkdownUri,
+        Attributes = v.Attributes,
+        Tags = v.Tags,
+        ChangeNote = v.ChangeNote,
+        CreatedAt = v.CreatedAt,
     };
 
     // FR-06, UC-03: DocumentUpdated イベント生成
@@ -91,4 +184,13 @@ public record CreateDocumentRequest(
 public record UpdateDocumentRequest(
     string Title,
     Dictionary<string, string>? Attributes,
-    List<string>? Tags);
+    List<string>? Tags,
+    int? ExpectedVersion = null,
+    string? ChangeNote = null);
+
+// FR-06, UC-03: メタデータ（属性・タグ）のみ更新するリクエスト
+public record UpdateMetadataRequest(
+    Dictionary<string, string>? Attributes,
+    List<string>? Tags,
+    int? ExpectedVersion = null,
+    string? ChangeNote = null);

@@ -130,6 +130,67 @@ paths:
         "204":
           description: 削除成功
 
+  /documents/{id}/metadata:
+    patch:
+      tags: [Documents]
+      summary: "FR-06, UC-03: メタデータ（属性・タグ）のみ更新"
+      operationId: update-document-metadata
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMetadataRequest"
+      responses:
+        "200":
+          description: 更新成功
+        "404":
+          description: 見つからない
+        "409":
+          description: 版競合（楽観的並行制御）
+
+  /documents/{id}/publish:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03: ドキュメントを公開する"
+      operationId: publish-document
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 公開成功
+        "404":
+          description: 見つからない
+
+  /documents/{id}/versions:
+    get:
+      tags: [Documents]
+      summary: "FR-06, UC-03: 版履歴一覧（新しい順）"
+      operationId: list-document-versions
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 版履歴
+        "404":
+          description: 見つからない
+
+  /documents/{id}/versions/{version}:
+    get:
+      tags: [Documents]
+      summary: "FR-06, UC-03: 特定版の取得"
+      operationId: get-document-version
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: version, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200":
+          description: 版スナップショット
+        "404":
+          description: 見つからない
+
   # ── DataSourceService ─────────────────────────────
   /datasources:
     get:
@@ -317,3 +378,17 @@ components:
         tags:
           type: array
           items: { type: string }
+        expectedVersion: { type: integer, nullable: true, description: "楽観的並行制御。現在版と不一致なら 409" }
+        changeNote: { type: string, nullable: true }
+
+    UpdateMetadataRequest:
+      type: object
+      properties:
+        attributes:
+          type: object
+          additionalProperties: { type: string }
+        tags:
+          type: array
+          items: { type: string }
+        expectedVersion: { type: integer, nullable: true, description: "楽観的並行制御。現在版と不一致なら 409" }
+        changeNote: { type: string, nullable: true }
