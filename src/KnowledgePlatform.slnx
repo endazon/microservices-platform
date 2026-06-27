@@ -71,4 +71,7 @@
     <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
     <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj" />
+  </Folder>
 </Solution>

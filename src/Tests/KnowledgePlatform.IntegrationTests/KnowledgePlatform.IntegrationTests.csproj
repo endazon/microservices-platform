@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- tmpディレクトリ（残骸）をコンパイルから除外 -->
+    <Compile Remove="KnowledgePlatform.IntegrationTests.tmp\**" />
+    <None Remove="KnowledgePlatform.IntegrationTests.tmp\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+    <PackageReference Include="MassTransit" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.RabbitMq" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 各サービスにテスト用マーカークラスを追加したためエイリアス不要 -->
+    <ProjectReference Include="..\..\Services\DocumentService\src\DocumentService.Api\DocumentService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\DataSourceService\src\DataSourceService.Api\DataSourceService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\AuthorizationService\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\RetrievalService\src\RetrievalService.Api\RetrievalService.Api.csproj" />
+    <ProjectReference Include="..\..\Services\AiAnalysisService\src\AiAnalysisService.Api\AiAnalysisService.Api.csproj" />
+    <ProjectReference Include="..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>
