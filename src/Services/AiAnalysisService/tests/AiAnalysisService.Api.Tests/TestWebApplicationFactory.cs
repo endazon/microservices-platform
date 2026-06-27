@@ -31,10 +31,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     }
 }
 
-// テスト用スタブ RAG オーケストレーター
+// テスト用スタブ RAG オーケストレーター（番号付き出典を含む回答を返す）
 file class StubRagOrchestrator : IRagOrchestrator
 {
     public Task<AiAnswerDto> AskAsync(string question, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
-        => Task.FromResult(new AiAnswerDto("テスト回答", [], "claude-sonnet-4-6", 10, 20));
+        => Task.FromResult(new AiAnswerDto(
+            "テスト回答 [1]",
+            [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(),
+                "s3://bucket/a.md", 0.9f, "抜粋")],
+            "claude-sonnet-4-6", 10, 20));
 }
