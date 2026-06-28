@@ -97,6 +97,7 @@ jobs:
             --allowedTools mcp__github__create_and_submit_pull_request_review
             --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
+            --allowedTools mcp__github__push_files
             --allowedTools Bash(dotnet build:*)
             --allowedTools Bash(dotnet test:*)
             --allowedTools Bash(dotnet format:*)

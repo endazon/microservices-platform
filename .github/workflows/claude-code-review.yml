@@ -78,6 +78,7 @@ jobs:
             --allowedTools mcp__github__create_and_submit_pull_request_review
             --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
+            --allowedTools mcp__github__push_files
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
