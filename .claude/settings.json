@@ -23,7 +23,18 @@
       "Bash(dotnet format:*)",
       "Bash(dotnet restore:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__github__get_file_contents",
+      "mcp__github__get_issue",
+      "mcp__github__add_issue_comment",
+      "mcp__github__list_issues",
+      "mcp__github__get_pull_request",
+      "mcp__github__get_pull_request_files",
+      "mcp__github__list_pull_requests",
+      "mcp__github__create_and_submit_pull_request_review",
+      "mcp__github__create_pending_pull_request_review",
+      "mcp__github__add_comment_to_pending_review",
+      "mcp__github__submit_pending_pull_request_review"
     ],
     "ask": [
       "Bash(git merge:*)"
@@ -74,5 +85,5 @@
       }
     ]
   },
-  "//": "技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
+  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する（両者を揃えると運用しやすい）。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
 }
