@@ -8,6 +8,11 @@
 #   生成物 docs/api/openapi.yaml に変更があればコミットする。
 #
 # このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
+#
+# 注意（ブランチ保護との両立）:
+#   下の手順は github-actions[bot] が main へ直接 push する。main にブランチ保護をかけて
+#   いる場合は拒否されるため、bypass に github-actions[bot] を追加するか、PR 経由へ変更する
+#   （changelog.yml と同様）。
 
 name: OpenAPI
 

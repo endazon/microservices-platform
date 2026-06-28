@@ -85,5 +85,5 @@
       }
     ]
   },
-  "//": "技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
+  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する（両者を揃えると運用しやすい）。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
 }
