@@ -58,25 +58,25 @@ jobs:
           #   再帰ループが心配な場合も同様に絞る。
           allowed_bots: '*'
           # レビュー結果を PR スティッキーコメントとして投稿する（use_sticky_comment: true が重要）。
-          # Claude がコメント投稿ツールを呼べなかった場合のフォールバックとして機能する。
+          # アクション自身が必ず PR にスティッキーコメントを投稿する（ツールの成否に関わらず保証される）。
           use_sticky_comment: true
           # CI ログにもレビュー本文を出力する（デバッグ・監査用）
           display_report: true
           # レビュー進捗コメントを PR に表示する
           track_progress: true
           # 既定モデル: 変更可（厳密さ優先なら claude-opus-4-8）。
-          # GitHub MCP ツールはここで許可する（mcp__github__create_pull_request_review 等の
+          # GitHub MCP ツールはここで許可する（mcp__github__create_and_submit_pull_request_review 等の
           # 権限拒否はこれで解消する。additional_permissions は使わない）。
           # Read は計画書（../project-planning）の参照に必要。
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools Read
             --allowedTools mcp__github__get_pull_request
-            --allowedTools mcp__github__list_pull_request_files
+            --allowedTools mcp__github__get_pull_request_files
             --allowedTools mcp__github__get_file_contents
             --allowedTools mcp__github__get_issue
-            --allowedTools mcp__github__create_pull_request_review
-            --allowedTools mcp__github__add_pull_request_review_comment
+            --allowedTools mcp__github__create_and_submit_pull_request_review
+            --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。

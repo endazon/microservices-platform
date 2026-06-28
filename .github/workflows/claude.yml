@@ -58,6 +58,8 @@ jobs:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # GitHub API アクセス用トークン（MCP GitHub ツール・スティッキーコメント投稿に必要）
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           # 既定モデル: 変更可（レビュー用途は claude-sonnet-4-6 も可）
           #
           # --allowedTools: CI での権限はここ（claude_args）で決まる。アクションは
@@ -88,11 +90,11 @@ jobs:
             --allowedTools Bash(mkdir:*)
             --allowedTools Bash(node:*)
             --allowedTools mcp__github__get_pull_request
-            --allowedTools mcp__github__list_pull_request_files
+            --allowedTools mcp__github__get_pull_request_files
             --allowedTools mcp__github__get_file_contents
             --allowedTools mcp__github__get_issue
-            --allowedTools mcp__github__create_pull_request_review
-            --allowedTools mcp__github__add_pull_request_review_comment
+            --allowedTools mcp__github__create_and_submit_pull_request_review
+            --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
             --allowedTools Bash(dotnet build:*)
             --allowedTools Bash(dotnet test:*)
