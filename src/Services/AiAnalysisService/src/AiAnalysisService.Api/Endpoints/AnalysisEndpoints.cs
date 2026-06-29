@@ -29,6 +29,13 @@ public static class AnalysisEndpoints
             if (string.IsNullOrWhiteSpace(req.Instruction))
                 return Results.BadRequest(new { error = "instruction is required" });
 
+            // FR-07: プロンプトインジェクション緩和。過大な指示は受け付けない。
+            if (req.Instruction.Length > AnalysisPromptBuilder.MaxInstructionLength)
+                return Results.BadRequest(new
+                {
+                    error = $"instruction must be {AnalysisPromptBuilder.MaxInstructionLength} characters or fewer"
+                });
+
             // FR-05: JWT から利用者を特定し、権限解決（範囲は権限を広げない）
             var userId = http.User.Identity?.Name ?? "anonymous";
             var userAttrs = ExtractUserAttributes(http);
