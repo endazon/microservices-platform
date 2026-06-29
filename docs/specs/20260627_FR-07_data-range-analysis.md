@@ -1,14 +1,14 @@
 ---
 title: 作業仕様書 — FR-07 指定データ範囲での分析・比較・抽出
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-07
   - UC-02
   - FR-05
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-06-29
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-07)"
   - "../../planning/projects/microservices-platform/03_usecases/ (UC-02)"

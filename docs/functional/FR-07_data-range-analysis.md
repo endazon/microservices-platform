@@ -1,14 +1,14 @@
 ---
 title: 指定データ範囲での分析・比較・抽出 機能仕様書
 type: functional-spec
-status: draft
+status: implemented
 related_ids:
   - FR-07
   - UC-02
   - FR-05
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-06-29
 plan_refs:
   - "../../project-planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
@@ -81,10 +81,10 @@ flowchart TD
 
 ## 受け入れ基準
 
-- [ ] 利用者は範囲と種別を指定して分析・比較・抽出を依頼でき、結果に出典が付く。
-- [ ] 指定データ範囲は ABAC を広げない（権限外文書は検索・回答のいずれにも現れない）。
-- [ ] 種別に応じてプロンプトが切り替わる。
-- [ ] `/bff/analysis/analyze` から単一窓口で結果＋出典を取得できる。
+- [x] 利用者は範囲と種別を指定して分析・比較・抽出を依頼でき、結果に出典が付く。
+- [x] 指定データ範囲は ABAC を広げない（権限外文書は検索・回答のいずれにも現れない）。
+- [x] 種別に応じてプロンプトが切り替わる。
+- [x] `/bff/analysis/analyze` から単一窓口で結果＋出典を取得できる。
 
 ## 関連仕様
 
