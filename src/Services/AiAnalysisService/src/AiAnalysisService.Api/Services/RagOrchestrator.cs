@@ -61,15 +61,10 @@ public class RagOrchestrator(
                 ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
                 : null) ?? new AccessScopeResponse(userId, [], false);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            // 呼び出し側のキャンセルは縮退せずに伝播する。
-            throw;
-        }
-        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException)
-        {
-            // 認可サービスへの通信失敗（ネットワーク障害・タイムアウト）時も
-            // deny-by-default（Granted=false）へ縮退し、500 を伝播させない。
+            // 認可サービスへの通信失敗（ネットワーク障害・タイムアウト）も deny-by-default へ縮退し、
+            // 500 を伝播させない。呼び出し側のキャンセル要求は通常どおり伝播させる。
             return new AccessScopeResponse(userId, [], false);
         }
     }
