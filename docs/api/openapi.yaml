@@ -21,7 +21,7 @@ servers:
 
 tags:
   - name: Analysis
-    description: "FR-04, FR-07, UC-01: AI 質問回答 (RAG)"
+    description: "FR-04, FR-07, UC-01, UC-02: AI 質問回答 (RAG) / 指定データ範囲の分析・比較・抽出"
   - name: Search
     description: "FR-03, UC-01: ベクトル検索"
   - name: Documents
@@ -72,6 +72,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiAnswerDto"
+
+  /analysis/analyze:
+    post:
+      tags: [Analysis]
+      summary: "FR-07, UC-02: 指定データ範囲での分析・比較・抽出"
+      description: |
+        指定データ範囲（attributeFilters / query）は ABAC 許可スコープと交差し、権限を一切広げない
+        （narrowing-only, IADR-0005）。範囲が権限外を指す場合は空回答へ縮退する。
+      operationId: analysis-analyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisTaskRequest"
+      responses:
+        "200":
+          description: 分析・比較・抽出の結果 + 出典
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiAnswerDto"
+        "400":
+          description: instruction 未指定
 
   # ── DocumentService ───────────────────────────────
   /documents:
@@ -317,6 +341,37 @@ components:
       required: [question]
       properties:
         question: { type: string, example: "プロジェクト憲章の承認フローを教えて" }
+
+    AnalysisTaskRequest:
+      type: object
+      required: [instruction]
+      properties:
+        instruction:
+          type: string
+          example: "2025 年度の経費規程の変更点を比較して"
+        taskType:
+          type: string
+          enum: [Analyze, Compare, Extract]
+          default: Analyze
+          description: "分析 / 比較 / 抽出"
+        range:
+          $ref: "#/components/schemas/AnalysisDataRange"
+
+    AnalysisDataRange:
+      type: object
+      description: "指定データ範囲。ABAC 許可スコープと交差し権限を広げない（narrowing-only）。"
+      properties:
+        query:
+          type: string
+          nullable: true
+          description: "範囲内で関連箇所を絞る検索クエリ（省略時は instruction を流用）"
+        attributeFilters:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+          description: "属性キー → 許可値集合（例: department: [sales]）"
+        topK: { type: integer, default: 8 }
 
     AiAnswerDto:
       type: object

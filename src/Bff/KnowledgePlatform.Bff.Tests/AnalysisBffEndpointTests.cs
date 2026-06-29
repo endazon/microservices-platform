@@ -36,4 +36,37 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
         // FR-05: 権限の無い文書を除外するため利用者の資格情報が後段へ引き継がれること
         factory.LastForwardedAuthorization.Should().Be("Bearer test-token");
     }
+
+    // FR-07, UC-02: BFF /bff/analysis/analyze が AiAnalysisService の分析結果＋出典を集約して返す
+    [Fact]
+    public async Task PostAnalyze_ReturnsAggregatedAnswerWithCitations()
+    {
+        var response = await factory.CreateClient()
+            .PostAsJsonAsync("/bff/analysis/analyze", new
+            {
+                instruction = "規程を比較して",
+                taskType = "Compare",
+                range = new { attributeFilters = new { department = new[] { "sales" } } }
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+
+        answer.Should().NotBeNull();
+        answer!.Citations.Should().NotBeEmpty();
+    }
+
+    // FR-07, FR-05: 分析でも利用者の資格情報が後段へ引き継がれる（権限外文書を出さない）
+    [Fact]
+    public async Task PostAnalyze_PropagatesAuthorizationHeaderToBackend()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", "analyze-token");
+
+        await client.PostAsJsonAsync("/bff/analysis/analyze",
+            new { instruction = "範囲内のみ抽出", taskType = "Extract" });
+
+        factory.LastForwardedAuthorization.Should().Be("Bearer analyze-token");
+    }
 }

@@ -36,9 +36,16 @@ file class StubRagOrchestrator : IRagOrchestrator
 {
     public Task<AiAnswerDto> AskAsync(string question, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
-        => Task.FromResult(new AiAnswerDto(
-            "テスト回答 [1]",
+        => Task.FromResult(Answer("テスト回答 [1]"));
+
+    public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
+        Dictionary<string, string> userAttributes, CancellationToken ct = default)
+        => Task.FromResult(Answer($"分析結果({request.TaskType}) [1]"));
+
+    private static AiAnswerDto Answer(string text)
+        => new(
+            text,
             [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(),
                 "s3://bucket/a.md", 0.9f, "抜粋")],
-            "claude-sonnet-4-6", 10, 20));
+            "claude-sonnet-4-6", 10, 20);
 }
