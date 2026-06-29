@@ -53,11 +53,20 @@ public class RagOrchestrator(
         Dictionary<string, string> userAttributes, CancellationToken ct)
     {
         var authzClient = httpFactory.CreateClient("AuthorizationService");
-        var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
-            new AccessScopeRequest(userId, userAttributes), ct);
-        return (scopeResp.IsSuccessStatusCode
-            ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-            : null) ?? new AccessScopeResponse(userId, [], false);
+        try
+        {
+            var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
+                new AccessScopeRequest(userId, userAttributes), ct);
+            return (scopeResp.IsSuccessStatusCode
+                ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
+                : null) ?? new AccessScopeResponse(userId, [], false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            // 認可サービスへの通信失敗（ネットワーク障害・タイムアウト）も deny-by-default へ縮退し、
+            // 500 を伝播させない。呼び出し側のキャンセル要求は通常どおり伝播させる。
+            return new AccessScopeResponse(userId, [], false);
+        }
     }
 
     // FR-04, FR-07: 実効スコープで検索 → 番号付き出典へ写像 → LLM で本文生成、の共通パイプライン。
