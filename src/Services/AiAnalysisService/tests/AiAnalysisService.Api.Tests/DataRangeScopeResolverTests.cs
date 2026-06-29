@@ -66,6 +66,26 @@ public class DataRangeScopeResolverTests
     }
 
     [Fact]
+    public void MultipleKeys_OneEmptyIntersection_DeniesAll()
+    {
+        // 複数キーのうち 1 つでも積が空（権限外）なら、全体を deny する（漏えい防止の中核不変条件）。
+        var abac = Abac(true,
+            new AttributeFilter("department", ["sales"]),
+            new AttributeFilter("year", ["2025"]));
+        var range = new AnalysisDataRange(
+            AttributeFilters: new()
+            {
+                ["department"] = ["sales"],   // 積 OK
+                ["year"] = ["finance"],       // 権限外 → 空交差
+            });
+
+        var scope = DataRangeScopeResolver.Resolve(abac, range);
+
+        scope.GrantsAccess.Should().BeFalse();
+        scope.Filters.Should().BeEmpty();
+    }
+
+    [Fact]
     public void RangeOnlyKey_NotConstrainedByAbac_IsAddedAsNarrowing()
     {
         // ABAC は department のみ制約。範囲が year を追加 → narrowing として安全に追加。

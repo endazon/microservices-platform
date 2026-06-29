@@ -69,4 +69,18 @@ public class AnalysisBffEndpointTests(BffTestFactory factory)
 
         factory.LastForwardedAuthorization.Should().Be("Bearer analyze-token");
     }
+
+    // FR-07: 後段（AiAnalysisService）が返した非 2xx を BFF がそのまま透過すること
+    // （空 instruction → 400 のバリデーションが後段で行われ、BFF が握り潰さない）。
+    // 共有フィクスチャを汚さないよう専用インスタンスでステータスを差し替える。
+    [Fact]
+    public async Task PostAnalyze_PropagatesBackendBadRequest()
+    {
+        using var badRequestFactory = new BffTestFactory { StubStatusCode = HttpStatusCode.BadRequest };
+
+        var response = await badRequestFactory.CreateClient()
+            .PostAsJsonAsync("/bff/analysis/analyze", new { instruction = "" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
 }
