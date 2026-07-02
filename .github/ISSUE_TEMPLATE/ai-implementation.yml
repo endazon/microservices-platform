@@ -8,7 +8,7 @@ body:
       value: |
         生成AIに実装を依頼するタスクです。起票後、有効化したプロファイル（`AI_SETUP.md`）に応じて着手します。
 
-        - Claude（サブスク / API）: コメントで `@claude このタスクを実装してください` とメンション（`.github/workflows/claude.yml`）。
+        - Claude（サブスク / API）: コメントで `@claude このタスクを実装してください` とメンション（`.github/workflows/claude-coding.yml`）。
         - GitHub Copilot: この Issue を Copilot にアサイン（coding agent が `copilot-setup-steps.yml` の環境で実装）。
 
         AI は仕様書作成 → 実装 → テスト → PR まで行います。運用全体は `docs/ai-workflow.md` を参照してください。

@@ -4,8 +4,8 @@
 # 自プロジェクトのスタックに合わせて各ステップを書き換え、ci.yml にリネームして使うこと。
 # build / test / coverage / lint ステップは C#/.NET を例示している。
 #
-# ── スタック別 --allowedTools（claude.example.yml の claude_args 末尾を書き換える） ──
-# このファイルの build/test ステップを変更したら、claude.example.yml の claude_args 末尾
+# ── スタック別 --allowedTools（claude-coding.example.yml の claude_args 末尾を書き換える） ──
+# このファイルの build/test ステップを変更したら、claude-coding.example.yml の claude_args 末尾
 # 4 行（スタック別ツール）を使用スタックに合わせて書き換えること。
 # .claude/settings.json の permissions.allow にも同じコマンドを追記すること。
 #

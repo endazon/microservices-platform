@@ -1,7 +1,7 @@
 # Claude Code — @claude メンションで Issue / PR に応答する対話ワークフロー
 #
 # 有効化（このファイルは .example。AI_SETUP.md のプロファイルに従って有効化する）:
-#   - 拡張子から .example を外す（git mv claude.example.yml claude.yml）。
+#   - 拡張子から .example を外す（git mv claude-coding.example.yml claude-coding.yml）。
 #     scripts/apply-profile.sh claude-code / api でも自動化できる。
 #   - 認証シークレットを「どちらか一方のみ」登録する
 #     （GitHub → Settings → Secrets and variables → Actions → New repository secret）:
@@ -17,7 +17,7 @@
 #   既定は最新の claude-opus-4-8。速度・コストを優先するなら claude_args の --model を
 #   claude-sonnet-5 に変更してよい。
 
-name: Claude Codeing
+name: Claude Coding
 
 on:
   issue_comment:
@@ -43,16 +43,40 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      workflows: write 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          # 計画リポジトリを submodule 参照している場合は有効化する
-          submodules: recursive
-          # organization の secret に fine-grained PAT を登録
-          # project-planning repo への Contents: Read 権限のみ付与すること
-          token: ${{ secrets.SUBMODULE_ACCESS_PAT }}
+          # 実装リポの checkout / push には既定の GITHUB_TOKEN を使う（上の
+          # permissions: contents: write が push を許可する）。ここで token を
+          # 上書きしないこと。上書きすると checkout がその資格情報を永続化し、
+          # 後段の git push もそのトークンで実行されるため、実装リポへの書き込み
+          # 権限が無い PAT だと 403（Permission denied）になる。
+
+      # 計画リポジトリ(project-planning)を submodule 参照している場合のみ有効。
+      # SUBMODULE_ACCESS_PAT は organization の secret に登録した fine-grained PAT で、
+      # project-planning への Contents: Read 権限のみを付与する。実装リポの push 認証
+      # (GITHUB_TOKEN) とは分離するため、submodule 取得の間だけ一時的に PAT を使い、
+      # 直後に解除して push へ漏れないようにする（.gitmodules が無ければ何もしない）。
+      - name: Fetch planning submodule (read-only PAT)
+        env:
+          SUBMODULE_PAT: ${{ secrets.SUBMODULE_ACCESS_PAT }}
+        run: |
+          if [ -f .gitmodules ]; then
+            git config --global url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf "https://github.com/"
+            git submodule sync --recursive
+            git submodule update --init --recursive
+            git config --global --unset-all url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf
+          fi
+
+      # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
+      # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。
+      # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
