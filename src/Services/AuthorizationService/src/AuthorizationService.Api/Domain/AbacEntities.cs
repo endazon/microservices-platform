@@ -54,23 +54,26 @@ public class AbacPolicy
     private AbacPolicy() { }
 
     public static AbacPolicy Create(string name, string action,
-        Dictionary<string, List<string>> userCond, Dictionary<string, List<string>> docCond)
+        Dictionary<string, List<string>>? userCond, Dictionary<string, List<string>>? docCond)
         => new()
         {
             Name = name,
             Action = action,
-            UserConditions = userCond,
-            DocumentConditions = docCond,
+            // FR-09: 条件は null を保存しない。省略時は「条件なし」（空辞書）として扱い、
+            // 評価エンジン（AbacEvaluator）が null を foreach して落ちるのを防ぐ。
+            UserConditions = userCond ?? [],
+            DocumentConditions = docCond ?? [],
         };
 
     // FR-09, UC-05: ポリシー本体の更新
     public void Update(string name, string action,
-        Dictionary<string, List<string>> userCond, Dictionary<string, List<string>> docCond)
+        Dictionary<string, List<string>>? userCond, Dictionary<string, List<string>>? docCond)
     {
         Name = name;
         Action = action;
-        UserConditions = userCond;
-        DocumentConditions = docCond;
+        // FR-09: Create と同じく null を保存しない（「条件なし」= 空辞書）。
+        UserConditions = userCond ?? [];
+        DocumentConditions = docCond ?? [];
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 

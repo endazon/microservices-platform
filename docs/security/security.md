@@ -2,10 +2,12 @@
 title: セキュリティ仕様書
 type: security-spec
 status: draft
-related_ids: []
-author: <作成者>
-created: <YYYY-MM-DD>
-updated: <YYYY-MM-DD>
+related_ids:
+  - FR-09
+  - ADR-0004
+author: claude
+created: 2026-07-02
+updated: 2026-07-02
 plan_refs: []
 ---
 
@@ -21,7 +23,13 @@ plan_refs: []
 
 ## 認証・認可
 
-<!-- 認証方式・認可モデル。詳細は権限・認可仕様書を参照 -->
+- **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証（ADR-0004）。各サービスは `AddKnowledgePlatformAuth` で JWT を検証する。
+- **認可（サービス内 RBAC）**: FR-09 の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
+  `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
+  `KnowledgePlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
+  は本ポリシーの対象外（認証のみ）。
+- **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う（FR-05, ADR-0004）。
+- 未対応: 全サービス横断のエンドポイント認可（P2 で拡充予定。ADR-0004）。
 
 ## データ保護
 

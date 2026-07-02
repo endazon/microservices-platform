@@ -127,6 +127,93 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
         del.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
+    // FR-09: 存在しないポリシー ID への取得／更新／無効化／削除は 404
+    [Fact]
+    public async Task PolicyOperations_NonExistentId_Return404()
+    {
+        var id = Guid.NewGuid();
+
+        (await Client.GetAsync($"/authz/policies/{id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var put = await Client.PutAsJsonAsync($"/authz/policies/{id}", new
+        {
+            Name = "ghost",
+            Action = "read",
+            UserConditions = new Dictionary<string, string[]>(),
+            DocumentConditions = new Dictionary<string, string[]>()
+        });
+        put.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var patch = await Client.PatchAsJsonAsync($"/authz/policies/{id}/active",
+            new { IsActive = false });
+        patch.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await Client.DeleteAsync($"/authz/policies/{id}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // FR-09, FR-05: 条件を省略（null）したポリシーでも保存でき、/scope が 500 で落ちない。
+    // 省略された条件は「条件なし」（空辞書）として扱われる（NRE 回帰防止）。
+    [Fact]
+    public async Task CreatePolicy_OmittedConditions_ScopeDoesNotCrash()
+    {
+        var create = await Client.PostAsJsonAsync("/authz/policies", new
+        {
+            Name = "policy_no_conditions",
+            Action = "read"
+            // UserConditions / DocumentConditions を意図的に省略
+        });
+        create.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var scope = await Client.PostAsJsonAsync("/authz/scope", new
+        {
+            UserId = "u-omit",
+            UserAttributes = new Dictionary<string, string> { ["role"] = "member" }
+        });
+        scope.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // 後片付け: 条件なしの有効ポリシーは全利用者にマッチするため削除しておく。
+        var created = await create.Content.ReadFromJsonAsync<PolicyDto>();
+        await Client.DeleteAsync($"/authz/policies/{created!.Id}");
+    }
+
+    // FR-09: 管理者ロールを持たない呼び出しは管理系エンドポイントで 403
+    [Fact]
+    public async Task ManagementEndpoint_WithoutAdminRole_Returns403()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "/authz/policies");
+        req.Headers.Add(TestAuthHandler.RolesHeader, ""); // ロール無しで認証
+        var res = await Client.SendAsync(req);
+        res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // FR-09, IADR-0006: ポリシーが参照中の属性辞書は削除できない（409）
+    [Fact]
+    public async Task DeleteAttribute_ReferencedByPolicy_Returns409()
+    {
+        var attr = await Client.PostAsJsonAsync("/authz/attributes",
+            AttributeBody("conf_del_ref", ["public", "internal"]));
+        var created = await attr.Content.ReadFromJsonAsync<AttributeDto>();
+
+        var policy = await Client.PostAsJsonAsync("/authz/policies", new
+        {
+            Name = "policy_ref_attr",
+            Action = "read",
+            UserConditions = new Dictionary<string, string[]>(),
+            DocumentConditions = new Dictionary<string, string[]> { ["conf_del_ref"] = ["public"] }
+        });
+        policy.StatusCode.Should().Be(HttpStatusCode.Created);
+        var createdPolicy = await policy.Content.ReadFromJsonAsync<PolicyDto>();
+
+        var del = await Client.DeleteAsync($"/authz/attributes/{created!.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // 後片付け: 参照ポリシーを消してから属性も削除する（他テストへの汚染回避）。
+        await Client.DeleteAsync($"/authz/policies/{createdPolicy!.Id}");
+        await Client.DeleteAsync($"/authz/attributes/{created.Id}");
+    }
+
     // FR-09: 不正なアクションのポリシーは 400
     [Fact]
     public async Task CreatePolicy_InvalidAction_Returns400()

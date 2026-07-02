@@ -154,6 +154,34 @@ public class AbacValidationTests
         errors.Should().Contain(e => e.Contains("空にできません"));
     }
 
+    // FR-09: 条件を省略（null）してもドメインは空辞書として保存し、null を保持しない（NRE 回帰防止）
+    [Fact]
+    public void AbacPolicy_Create_NullConditions_StoredAsEmpty()
+    {
+        var policy = AbacPolicy.Create("p", PolicyAction.Read, null, null);
+        policy.UserConditions.Should().NotBeNull().And.BeEmpty();
+        policy.DocumentConditions.Should().NotBeNull().And.BeEmpty();
+    }
+
+    // FR-09, IADR-0006: ポリシーの参照判定（scope 一致のキーのみ参照とみなす）
+    [Fact]
+    public void PolicyReferencesAttribute_MatchesByScopeAndKey()
+    {
+        var policy = AbacPolicy.Create("p", PolicyAction.Read,
+            new() { ["clearance"] = ["confidential"] },
+            new() { ["confidentiality"] = ["public"] });
+
+        AbacValidation.PolicyReferencesAttribute(policy, "confidentiality", AttributeScope.Document)
+            .Should().BeTrue();
+        AbacValidation.PolicyReferencesAttribute(policy, "clearance", AttributeScope.User)
+            .Should().BeTrue();
+        // scope 不一致（同名キーでも別スコープ）は参照とみなさない
+        AbacValidation.PolicyReferencesAttribute(policy, "confidentiality", AttributeScope.User)
+            .Should().BeFalse();
+        AbacValidation.PolicyReferencesAttribute(policy, "unused", AttributeScope.Document)
+            .Should().BeFalse();
+    }
+
     // ---- 文書属性 ----
 
     // FR-09: 必須属性を満たし許可値内なら valid

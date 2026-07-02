@@ -23,7 +23,7 @@ public class AbacEvaluator
             // マッチしたポリシーが存在する＝アクセスを許可する根拠がある
             granted = true;
 
-            foreach (var (key, values) in policy.DocumentConditions)
+            foreach (var (key, values) in policy.DocumentConditions ?? [])
             {
                 var existing = filters.FirstOrDefault(f => f.Key == key);
                 if (existing is null)
@@ -41,9 +41,10 @@ public class AbacEvaluator
     }
 
     private static bool MatchesUserConditions(
-        Dictionary<string, string> userAttrs, Dictionary<string, List<string>> conditions)
+        Dictionary<string, string> userAttrs, Dictionary<string, List<string>>? conditions)
     {
-        foreach (var (key, allowedValues) in conditions)
+        // FR-05: 条件 null（＝条件なし）は全利用者にマッチ。null を foreach して落ちないよう防御する。
+        foreach (var (key, allowedValues) in conditions ?? [])
         {
             if (!userAttrs.TryGetValue(key, out var userValue))
                 return false;

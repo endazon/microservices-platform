@@ -53,6 +53,15 @@ FR-09「管理者が文書属性・タグおよび ABAC ポリシーを**設定�
 - 属性辞書の **Key/Scope は不変**とし、更新はラベル・許可値・必須フラグに限定する。DB では `(Key, Scope)` を
   一意インデックスで担保する。
 - 検証エラーは RFC7807 `ValidationProblem`（400）で返す。ポリシーの有効/無効は削除せず `SetActive` で切替える。
+- **管理系 API の認可**: 破壊的操作（削除・無効化）を含む属性辞書・ポリシーの CRUD は管理者ロール
+  （`platform-admin`）の `AdminOnly` ポリシーで保護する。deny-by-default の根拠となるポリシーを匿名で
+  削除・無効化できないようにするため。サービス間呼び出しの `/authz/scope`・`/authz/attributes/validate`
+  は対象外（認証のみ）。ロール・ポリシー名は共通の `KnowledgePlatformAuthPolicies` に定義する。
+- **条件の null 非保存**: ポリシーの `UserConditions`/`DocumentConditions` が省略（null）されても、ドメイン
+  （`AbacPolicy.Create`/`Update`）で空辞書に正規化して保存する。`AbacEvaluator` が null を走査して
+  `NullReferenceException` を起こし、全 `/authz/scope`（FR-05 の検索・RAG 前段）が停止する障害を防ぐ。
+- **属性辞書の参照整合**: 既存ポリシーが条件に参照している属性辞書は削除を 409 で拒否する。削除により
+  辞書外チェックが無効化され、ポリシー条件の実効的制約が緩むのを防ぐ。
 
 ## 理由
 
@@ -70,6 +79,10 @@ FR-09「管理者が文書属性・タグおよび ABAC ポリシーを**設定�
   DocumentService 側で検証 API を呼ぶ実装は本作業対象外（後続タスク）。
 - フォローアップ: DocumentService の保存フローへの検証 API 組込み、未定義キー禁止（厳格化）への移行判断、
   利用者スコープ属性（clearance 等）の Keycloak クレーム取得経路の確定。
+  管理者ロール名（`platform-admin`）の Keycloak レルムロールとしての確定、全サービス横断の
+  エンドポイント認可（P2）への拡充。属性辞書削除時の参照整合は本 PR で 409 拒否として実装済み
+  （当初フォローアップ予定から前倒し）。`(Key, Scope)` 一意制約は同時登録の race を `DbUpdateException`
+  捕捉で 400 に正規化する。
 
 ## 関連
 

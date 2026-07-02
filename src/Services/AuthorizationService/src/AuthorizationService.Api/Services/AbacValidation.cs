@@ -104,6 +104,17 @@ public static class AbacValidation
         }
     }
 
+    // FR-09, IADR-0006: 指定ポリシーが当該属性キー（scope 一致）を条件に参照しているか。
+    // 属性辞書の削除可否判定に用いる（参照中の削除は制約緩みを招くため拒否する）。
+    public static bool PolicyReferencesAttribute(AbacPolicy policy, string key, string scope)
+    {
+        var conditions = string.Equals(scope, AttributeScope.User, StringComparison.OrdinalIgnoreCase)
+            ? policy.UserConditions
+            : policy.DocumentConditions;
+        return conditions is not null
+            && conditions.Keys.Any(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+    }
+
     // 文書に付与する属性値が辞書と整合するか検証する（必須充足＋許可値整合）。
     public static List<string> ValidateDocumentAttributes(
         Dictionary<string, string>? attributes,

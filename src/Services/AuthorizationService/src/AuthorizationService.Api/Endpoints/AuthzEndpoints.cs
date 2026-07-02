@@ -2,6 +2,7 @@ using AuthorizationService.Api.Domain;
 using AuthorizationService.Api.Infrastructure;
 using AuthorizationService.Api.Services;
 using KnowledgePlatform.Shared.Contracts.Dtos;
+using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuthorizationService.Api.Endpoints;
@@ -21,21 +22,24 @@ public static class AuthzEndpoints
             return Results.Ok(scope);
         });
 
-        // ---- FR-09, UC-05: ABAC ポリシー管理 ----
+        // ---- FR-09, UC-05: ABAC ポリシー・属性辞書管理（管理者のみ） ----
+        // FR-09: 管理系 CRUD は管理者ロールを要求する。deny-by-default のポリシー削除・無効化を
+        // 匿名で実行できないようにする。/scope・/attributes/validate はサービス間呼び出しのため対象外。
+        var admin = g.MapGroup("").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly);
 
         // ポリシー一覧
-        g.MapGet("/policies", async (AuthorizationDbContext db) =>
+        admin.MapGet("/policies", async (AuthorizationDbContext db) =>
             Results.Ok(await db.Policies.ToListAsync()));
 
         // ポリシー個別取得
-        g.MapGet("/policies/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
+        admin.MapGet("/policies/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
         {
             var policy = await db.Policies.FindAsync(id);
             return policy is null ? Results.NotFound() : Results.Ok(policy);
         });
 
         // ポリシー登録（保存前に矛盾検証）
-        g.MapPost("/policies", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
+        admin.MapPost("/policies", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
         {
             var definitions = await db.AttributeDefinitions.ToListAsync();
             var errors = AbacValidation.ValidatePolicy(
@@ -51,7 +55,7 @@ public static class AuthzEndpoints
         });
 
         // ポリシー更新（保存前に矛盾検証）
-        g.MapPut("/policies/{id:guid}", async (Guid id, CreatePolicyRequest req, AuthorizationDbContext db) =>
+        admin.MapPut("/policies/{id:guid}", async (Guid id, CreatePolicyRequest req, AuthorizationDbContext db) =>
         {
             var policy = await db.Policies.FindAsync(id);
             if (policy is null)
@@ -69,7 +73,7 @@ public static class AuthzEndpoints
         });
 
         // ポリシー有効／無効の切替（削除せず一時停止）
-        g.MapPatch("/policies/{id:guid}/active", async (Guid id, SetActiveRequest req, AuthorizationDbContext db) =>
+        admin.MapPatch("/policies/{id:guid}/active", async (Guid id, SetActiveRequest req, AuthorizationDbContext db) =>
         {
             var policy = await db.Policies.FindAsync(id);
             if (policy is null)
@@ -81,7 +85,7 @@ public static class AuthzEndpoints
         });
 
         // ポリシー削除
-        g.MapDelete("/policies/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
+        admin.MapDelete("/policies/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
         {
             var policy = await db.Policies.FindAsync(id);
             if (policy is null)
@@ -92,21 +96,21 @@ public static class AuthzEndpoints
             return Results.NoContent();
         });
 
-        // ---- FR-09, UC-05: 属性辞書管理 ----
+        // ---- FR-09, UC-05: 属性辞書管理（管理者のみ） ----
 
         // 属性辞書一覧
-        g.MapGet("/attributes", async (AuthorizationDbContext db) =>
+        admin.MapGet("/attributes", async (AuthorizationDbContext db) =>
             Results.Ok(await db.AttributeDefinitions.ToListAsync()));
 
         // 属性辞書個別取得
-        g.MapGet("/attributes/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
+        admin.MapGet("/attributes/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
         {
             var attr = await db.AttributeDefinitions.FindAsync(id);
             return attr is null ? Results.NotFound() : Results.Ok(attr);
         });
 
         // 属性辞書登録（キー重複・許可値検証）
-        g.MapPost("/attributes", async (CreateAttributeRequest req, AuthorizationDbContext db) =>
+        admin.MapPost("/attributes", async (CreateAttributeRequest req, AuthorizationDbContext db) =>
         {
             var scope = req.Scope ?? AttributeScope.Document;
             var existing = await db.AttributeDefinitions.ToListAsync();
@@ -118,12 +122,20 @@ public static class AuthzEndpoints
             var attr = AttributeDefinition.Create(req.Key, req.Label,
                 req.AllowedValues, req.Required, scope);
             db.AttributeDefinitions.Add(attr);
-            await db.SaveChangesAsync();
+            try
+            {
+                await db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                // (Key, Scope) 一意制約違反。事前検証をすり抜けた同時登録（race）を 400 で返す。
+                return ValidationProblem([$"key '{req.Key}' は scope '{scope}' に既に定義済みです。"]);
+            }
             return Results.Created($"/authz/attributes/{attr.Id}", attr);
         });
 
         // 属性辞書更新（Key / Scope は不変、許可値・重複検証）
-        g.MapPut("/attributes/{id:guid}", async (Guid id, UpdateAttributeRequest req, AuthorizationDbContext db) =>
+        admin.MapPut("/attributes/{id:guid}", async (Guid id, UpdateAttributeRequest req, AuthorizationDbContext db) =>
         {
             var attr = await db.AttributeDefinitions.FindAsync(id);
             if (attr is null)
@@ -142,11 +154,25 @@ public static class AuthzEndpoints
         });
 
         // 属性辞書削除
-        g.MapDelete("/attributes/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
+        // FR-09, IADR-0006: 既存ポリシーが当該キーを参照している場合、削除すると辞書外チェックが
+        // 効かなくなりポリシー条件の実効的制約が緩む。誤操作防止のため参照中は 409 で拒否する。
+        admin.MapDelete("/attributes/{id:guid}", async (Guid id, AuthorizationDbContext db) =>
         {
             var attr = await db.AttributeDefinitions.FindAsync(id);
             if (attr is null)
                 return Results.NotFound();
+
+            var policies = await db.Policies.ToListAsync();
+            var referencing = policies
+                .Where(p => AbacValidation.PolicyReferencesAttribute(p, attr.Key, attr.Scope))
+                .Select(p => p.Name)
+                .ToList();
+            if (referencing.Count > 0)
+                return Results.Problem(
+                    title: "属性辞書が参照中です",
+                    detail: $"属性 '{attr.Key}' (scope={attr.Scope}) は次のポリシーが参照しているため削除できません: "
+                            + string.Join(", ", referencing),
+                    statusCode: StatusCodes.Status409Conflict);
 
             db.AttributeDefinitions.Remove(attr);
             await db.SaveChangesAsync();
