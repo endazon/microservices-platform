@@ -1,0 +1,98 @@
+---
+title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
+type: test-spec
+status: draft
+related_ids:
+  - FR-09
+  - UC-05
+author: claude
+created: 2026-07-02
+updated: 2026-07-02
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
+---
+
+# テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
+
+## 起点となる計画書（トレーサビリティ）
+
+- 機能要求（FR）: FR-09
+- ユースケース（UC）: UC-05
+- 関連仕様: `../specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
+
+## テスト対象
+
+- `AbacValidation`（属性辞書・ポリシー・文書属性の検証ロジック）
+- `AuthzEndpoints`（属性辞書・ポリシー管理 API、文書属性検証 API）
+- `KeycloakRolesClaimsTransformation`（Keycloak `realm_access.roles` → `ClaimTypes.Role` 展開）
+
+## 単体テスト（`AbacValidationTests`）
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| 1 | 正常な属性辞書 | エラー無し |
+| 2 | key 未指定 | エラー（key 必須） |
+| 3 | 許可値が空 | エラー（allowedValues） |
+| 4 | 許可値の重複（大小無視） | エラー（重複） |
+| 5 | 不正なスコープ | エラー（scope） |
+| 6 | 同一スコープでキー重複 | エラー（既に定義済み） |
+| 7 | 別スコープの同名キー | エラー無し |
+| 8 | 更新時の自己除外 | エラー無し |
+| 9 | 定義済みキーに整合するポリシー | エラー無し |
+| 10 | 不正なアクション | エラー（action） |
+| 11 | 辞書外の文書条件値 | エラー（辞書外） |
+| 12 | 未定義キーの条件 | 許容（エラー無し） |
+| 13 | 条件の値集合が空 | エラー（空にできません） |
+| 14 | 必須属性を満たす文書属性 | エラー無し |
+| 15 | 必須属性の欠落 | エラー（必須属性） |
+| 16 | 許可値外の属性値 | エラー（許可値に含まれません） |
+| 17 | 未定義キー（自由タグ） | 許容（エラー無し） |
+| 18 | 条件 null でポリシー生成 | 空辞書として保存（null を保持しない） |
+| 19 | ポリシーの属性参照判定（scope 一致のみ） | 一致 true / 別スコープ・未使用 false |
+
+### ロールクレーム展開（`KeycloakRolesClaimsTransformationTests`）
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| R1 | `realm_access.roles` にロード | `IsInRole("platform-admin")`/`user` が true、未定義は false |
+| R2 | `realm_access` 無し | ロール付与なし |
+| R3 | `realm_access` が不正 JSON | ロール付与なし（fail-closed） |
+| R4 | 二重実行（冪等性） | `platform-admin` クレームは重複しない |
+
+## 結合テスト（`AuthzManagementEndpointTests`, InMemory）
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| 1 | 属性登録→個別取得 | 201 → 200、許可値往復 |
+| 2 | 許可値空で登録 | 400 |
+| 3 | 同一スコープでキー重複登録 | 2 件目 400 |
+| 4 | 属性更新（許可値差替） | 200、許可値・必須が反映 |
+| 5 | 属性削除→取得 | 204 → 404 |
+| 6 | ポリシー ライフサイクル（登録→更新→無効化→削除） | 201→200→200(IsActive=false)→204 |
+| 7 | 不正アクションのポリシー | 400 |
+| 8 | 辞書外の文書条件値ポリシー | 400 |
+| 9 | 文書属性検証（整合） | 200 `{valid:true}` |
+| 10 | 文書属性検証（辞書外の値） | 200 `{valid:false, errors:[...]}` |
+| 11 | 存在しないポリシー ID の取得／更新／無効化／削除 | いずれも 404 |
+| 12 | 条件を省略したポリシー登録→ `/scope` 呼び出し | 201 → 200（500 で落ちない） |
+| 13 | 管理者ロール無しで管理系呼び出し | 403 |
+| 14 | ポリシー参照中の属性辞書削除 | 409 |
+
+## 受け入れ基準の写像（UC-05）
+
+- 管理者が属性・タグ・ポリシーを設定できる → 結合 #1・#4・#5・#6。管理者のみ許可 → 結合 #13＋単体 R1〜R4
+  （実 Keycloak トークンでロールが `RequireRole` に届くことの担保）。
+- 矛盾するポリシーは保存前に検証しエラー → 単体 #10〜#13、結合 #7・#8。
+- 辞書整合の文書属性検証 → 単体 #14〜#17、結合 #9・#10。
+- 認可解決の堅牢性（条件 null で `/scope` が落ちない）→ 単体 #18、結合 #12。
+- 参照整合（参照中の属性辞書は削除不可）→ 単体 #19、結合 #14。
+
+## 備考
+
+- InMemory DB は同一テストクラス内で共有されるため、各ケースは一意なキー／名前を用い、
+  必須属性の累積で結果が揺れないよう文書属性検証は許可値整合で確認する（必須欠落は単体で網羅）。
+- 統合テスト（`AbacScopeTests`, 実 PostgreSQL）は管理系（`/authz/policies`）が `AdminOnly` を要求するため、
+  `IntegrationTestAuthHandler` で `platform-admin` として認証して DB 挙動を検証する。実 Keycloak トークンでの
+  E2E 認可検証は環境依存のためフォローアップ（IADR-0006）。
+- ビルド・テストの実走は CI（`dotnet test`）で行う。本実装環境では `dotnet` が承認制のため未実走。

@@ -48,6 +48,9 @@ namespace AuthorizationService.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("UserConditions")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -67,6 +70,9 @@ namespace AuthorizationService.Api.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Key")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -85,7 +91,13 @@ namespace AuthorizationService.Api.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
 
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Key", "Scope")
+                        .IsUnique();
 
                     b.ToTable("AttributeDefinitions");
                 });

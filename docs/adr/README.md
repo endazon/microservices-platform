@@ -27,3 +27,6 @@
 | IADR-0001 | カタログの正本所有と DocumentNormalized の購読責務 | Accepted |
 | IADR-0002 | 取り込みパイプライン構造・冪等チャンク ID・Qdrant ブートストラップ | Accepted |
 | IADR-0003 | EFCore.Relational のバージョン直接ピン（MSB3277 解消） | Accepted |
+| IADR-0004 | ABAC フィルタの多値 allow-list 化と deny-by-default | Accepted |
+| IADR-0005 | 指定データ範囲は ABAC スコープと交差させ権限を広げない（narrowing-only） | Accepted |
+| IADR-0006 | ABAC 属性・ポリシー管理の検証と DocumentService 疎結合 | Accepted |

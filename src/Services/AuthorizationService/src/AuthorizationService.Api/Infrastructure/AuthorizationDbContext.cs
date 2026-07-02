@@ -28,6 +28,8 @@ public class AuthorizationDbContext(DbContextOptions<AuthorizationDbContext> opt
             e.Property(a => a.Key).HasMaxLength(100).IsRequired();
             e.Property(a => a.Label).HasMaxLength(200).IsRequired();
             e.Property(a => a.Scope).HasMaxLength(50).IsRequired();
+            // FR-09: 同一スコープ内でキーは一意（辞書としての整合を DB でも担保）
+            e.HasIndex(a => new { a.Key, a.Scope }).IsUnique();
             e.Property(a => a.AllowedValues)
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),

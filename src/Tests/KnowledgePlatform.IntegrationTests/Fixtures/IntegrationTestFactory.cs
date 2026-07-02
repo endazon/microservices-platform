@@ -150,6 +150,16 @@ public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
     global::AuthorizationService.Api.AuthorizationServiceTestMarker, AuthorizationDbContext>
 {
     public AuthorizationServiceFactory(PostgresFixture pg) : base(pg, null) { }
+
+    // FR-09, ADR-0004: 管理系エンドポイント（/authz/policies 等）は AdminOnly を要求する。
+    // 実 Keycloak が無い統合環境では TestAuthHandler で platform-admin として認証し、
+    // DB 挙動（ポリシー登録→スコープ解決 等）を検証する。既定認証スキームを差し替える。
+    protected override void AdditionalServices(IServiceCollection services)
+    {
+        services.AddAuthentication(IntegrationTestAuthHandler.SchemeName)
+            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, IntegrationTestAuthHandler>(
+                IntegrationTestAuthHandler.SchemeName, _ => { });
+    }
 }
 
 public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
