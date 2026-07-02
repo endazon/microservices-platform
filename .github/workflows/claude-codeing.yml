@@ -50,6 +50,9 @@ jobs:
           fetch-depth: 0
           # 計画リポジトリを submodule 参照している場合は有効化する
           submodules: recursive
+          # organization の secret に fine-grained PAT を登録
+          # project-planning repo への Contents: Read 権限のみ付与すること
+          token: ${{ secrets.SUBMODULE_ACCESS_PAT }}
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
