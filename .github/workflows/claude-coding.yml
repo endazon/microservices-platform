@@ -43,7 +43,6 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      workflows: write 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
