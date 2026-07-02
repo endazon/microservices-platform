@@ -17,7 +17,7 @@
 #   既定は最新の claude-opus-4-8。速度・コストを優先するなら claude_args の --model を
 #   claude-sonnet-5 に変更してよい。
 
-name: Claude
+name: Claude Codeing
 
 on:
   issue_comment:
@@ -43,14 +43,13 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-      workflows: write 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           # 計画リポジトリを submodule 参照している場合は有効化する
-          # submodules: recursive
+          submodules: recursive
 
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
