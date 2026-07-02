@@ -8,9 +8,10 @@ namespace AuthorizationService.Api.Tests;
 
 // FR-09: テスト用認証ハンドラ。JWT/Keycloak に依存せず ClaimsPrincipal を注入する。
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。
-//   - ヘッダ無し        → platform-admin（管理系テストが通る）
-//   - "X-Test-Roles: "  → ロール無し（AdminOnly が 403 になることの確認用）
-//   - "X-Test-Roles: a,b"→ 指定ロール
+//   - ヘッダ無し          → platform-admin（管理系テストが通る）
+//   - "X-Test-Roles: a,b" → 指定ロール（例: "viewer" のみ → AdminOnly が 403 になる確認用）
+// ※ 空値ヘッダは HTTP で送信されずヘッダ無し扱い（既定 admin）になるため、
+//   非管理ケースは管理者以外のロールを明示的に指定すること。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,

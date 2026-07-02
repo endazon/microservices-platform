@@ -182,8 +182,9 @@ public class AuthzManagementEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task ManagementEndpoint_WithoutAdminRole_Returns403()
     {
+        // 管理者以外のロールで認証させる（空ヘッダ値は HTTP で送信されず既定 admin に戻るため使わない）。
         var req = new HttpRequestMessage(HttpMethod.Get, "/authz/policies");
-        req.Headers.Add(TestAuthHandler.RolesHeader, ""); // ロール無しで認証
+        req.Headers.Add(TestAuthHandler.RolesHeader, "viewer");
         var res = await Client.SendAsync(req);
         res.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }

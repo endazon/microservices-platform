@@ -77,12 +77,17 @@ FR-09「管理者が文書属性・タグおよび ABAC ポリシーを**設定�
 - 良い影響: UC-05 の「保存前検証」を満たしつつ、サービス独立性（基準④）を維持。属性整備を段階的に進められる。
 - 悪い影響・トレードオフ: 未定義キーを許容するため、辞書外タグの混入は防げない（運用ルールで統制）。
   DocumentService 側で検証 API を呼ぶ実装は本作業対象外（後続タスク）。
+- **Keycloak ロールクレーム展開**: `platform-admin` は Keycloak のレルムロールとして `realm_access.roles`
+  （ネストした JSON クレーム）に載る。標準 `JwtBearerHandler` はこれを `ClaimTypes.Role` へ展開しないため、
+  そのままでは `RequireRole("platform-admin")` が実トークンにマッチせず正規管理者が 403 になる。
+  `KeycloakRolesClaimsTransformation`（`IClaimsTransformation`）で検証後に展開して解消し、単体テストで
+  展開・冪等性・fail-closed を検証する。統合テストは実 Keycloak が無いため `IntegrationTestAuthHandler` で
+  `platform-admin` を注入して DB 挙動を検証する。
 - フォローアップ: DocumentService の保存フローへの検証 API 組込み、未定義キー禁止（厳格化）への移行判断、
-  利用者スコープ属性（clearance 等）の Keycloak クレーム取得経路の確定。
-  管理者ロール名（`platform-admin`）の Keycloak レルムロールとしての確定、全サービス横断の
-  エンドポイント認可（P2）への拡充。属性辞書削除時の参照整合は本 PR で 409 拒否として実装済み
-  （当初フォローアップ予定から前倒し）。`(Key, Scope)` 一意制約は同時登録の race を `DbUpdateException`
-  捕捉で 400 に正規化する。
+  利用者スコープ属性（clearance 等）の Keycloak クレーム取得経路の確定。実 Keycloak トークンでの
+  エンドツーエンド認可検証（実レルム／レルムロール割当）、全サービス横断のエンドポイント認可（P2）への拡充。
+  属性辞書削除時の参照整合は本 PR で 409 拒否として実装済み（当初フォローアップ予定から前倒し）。
+  `(Key, Scope)` 一意制約は同時登録の race を `DbUpdateException` 捕捉で 400 に正規化する。
 
 ## 関連
 

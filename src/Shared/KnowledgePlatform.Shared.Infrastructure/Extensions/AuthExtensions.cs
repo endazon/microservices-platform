@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,7 +32,15 @@ public static class AuthExtensions
                 options.Authority = authority;
                 options.RequireHttpsMetadata = false;
                 options.TokenValidationParameters.ValidateAudience = false;
+                // FR-09: RequireRole/IsInRole が参照するロールクレーム型を明示する。
+                // 実 Keycloak のレルムロールは realm_access.roles に格納され、標準ハンドラでは
+                // ClaimTypes.Role へ展開されないため、下記の IClaimsTransformation で補う。
+                options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
             });
+
+        // FR-09, ADR-0004: Keycloak の realm_access.roles を ClaimTypes.Role へ展開する。
+        // これがないと RequireRole("platform-admin") が実トークンにマッチしない。
+        services.AddTransient<IClaimsTransformation, KeycloakRolesClaimsTransformation>();
 
         // FR-09: 管理系エンドポイント用に管理者ロールポリシーを登録する。
         services.AddAuthorization(options =>

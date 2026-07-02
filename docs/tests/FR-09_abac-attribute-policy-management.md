@@ -25,6 +25,7 @@ plan_refs:
 
 - `AbacValidation`（属性辞書・ポリシー・文書属性の検証ロジック）
 - `AuthzEndpoints`（属性辞書・ポリシー管理 API、文書属性検証 API）
+- `KeycloakRolesClaimsTransformation`（Keycloak `realm_access.roles` → `ClaimTypes.Role` 展開）
 
 ## 単体テスト（`AbacValidationTests`）
 
@@ -50,6 +51,15 @@ plan_refs:
 | 18 | 条件 null でポリシー生成 | 空辞書として保存（null を保持しない） |
 | 19 | ポリシーの属性参照判定（scope 一致のみ） | 一致 true / 別スコープ・未使用 false |
 
+### ロールクレーム展開（`KeycloakRolesClaimsTransformationTests`）
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| R1 | `realm_access.roles` にロード | `IsInRole("platform-admin")`/`user` が true、未定義は false |
+| R2 | `realm_access` 無し | ロール付与なし |
+| R3 | `realm_access` が不正 JSON | ロール付与なし（fail-closed） |
+| R4 | 二重実行（冪等性） | `platform-admin` クレームは重複しない |
+
 ## 結合テスト（`AuthzManagementEndpointTests`, InMemory）
 
 | # | ケース | 期待 |
@@ -71,7 +81,8 @@ plan_refs:
 
 ## 受け入れ基準の写像（UC-05）
 
-- 管理者が属性・タグ・ポリシーを設定できる → 結合 #1・#4・#5・#6。管理者のみ許可 → 結合 #13。
+- 管理者が属性・タグ・ポリシーを設定できる → 結合 #1・#4・#5・#6。管理者のみ許可 → 結合 #13＋単体 R1〜R4
+  （実 Keycloak トークンでロールが `RequireRole` に届くことの担保）。
 - 矛盾するポリシーは保存前に検証しエラー → 単体 #10〜#13、結合 #7・#8。
 - 辞書整合の文書属性検証 → 単体 #14〜#17、結合 #9・#10。
 - 認可解決の堅牢性（条件 null で `/scope` が落ちない）→ 単体 #18、結合 #12。
@@ -81,4 +92,7 @@ plan_refs:
 
 - InMemory DB は同一テストクラス内で共有されるため、各ケースは一意なキー／名前を用い、
   必須属性の累積で結果が揺れないよう文書属性検証は許可値整合で確認する（必須欠落は単体で網羅）。
+- 統合テスト（`AbacScopeTests`, 実 PostgreSQL）は管理系（`/authz/policies`）が `AdminOnly` を要求するため、
+  `IntegrationTestAuthHandler` で `platform-admin` として認証して DB 挙動を検証する。実 Keycloak トークンでの
+  E2E 認可検証は環境依存のためフォローアップ（IADR-0006）。
 - ビルド・テストの実走は CI（`dotnet test`）で行う。本実装環境では `dotnet` が承認制のため未実走。
