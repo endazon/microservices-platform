@@ -265,16 +265,107 @@ paths:
   /authz/policies:
     get:
       tags: [Authorization]
+      summary: "FR-09: ABAC ポリシー一覧"
       operationId: list-policies
       responses:
         "200":
           description: ポリシー一覧
     post:
       tags: [Authorization]
+      summary: "FR-09, UC-05: ABAC ポリシー登録（保存前に矛盾検証）"
       operationId: create-policy
       responses:
         "201":
           description: 作成成功
+        "400":
+          description: バリデーションエラー（RFC7807）
+
+  /authz/policies/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Authorization]
+      summary: "FR-09: ポリシー個別取得"
+      operationId: get-policy
+      responses:
+        "200": { description: ポリシー }
+        "404": { description: 見つからない }
+    put:
+      tags: [Authorization]
+      summary: "FR-09, UC-05: ポリシー更新（保存前に矛盾検証）"
+      operationId: update-policy
+      responses:
+        "200": { description: 更新成功 }
+        "400": { description: バリデーションエラー（RFC7807） }
+        "404": { description: 見つからない }
+    delete:
+      tags: [Authorization]
+      summary: "FR-09: ポリシー削除"
+      operationId: delete-policy
+      responses:
+        "204": { description: 削除成功 }
+        "404": { description: 見つからない }
+
+  /authz/policies/{id}/active:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [Authorization]
+      summary: "FR-09: ポリシー有効／無効の切替"
+      operationId: set-policy-active
+      responses:
+        "200": { description: 切替成功 }
+        "404": { description: 見つからない }
+
+  /authz/attributes:
+    get:
+      tags: [Authorization]
+      summary: "FR-09: 属性辞書一覧"
+      operationId: list-attributes
+      responses:
+        "200": { description: 属性辞書一覧 }
+    post:
+      tags: [Authorization]
+      summary: "FR-09, UC-05: 属性辞書登録（キー重複・許可値検証）"
+      operationId: create-attribute
+      responses:
+        "201": { description: 作成成功 }
+        "400": { description: バリデーションエラー（RFC7807） }
+
+  /authz/attributes/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Authorization]
+      summary: "FR-09: 属性辞書個別取得"
+      operationId: get-attribute
+      responses:
+        "200": { description: 属性辞書 }
+        "404": { description: 見つからない }
+    put:
+      tags: [Authorization]
+      summary: "FR-09, UC-05: 属性辞書更新（Key/Scope は不変）"
+      operationId: update-attribute
+      responses:
+        "200": { description: 更新成功 }
+        "400": { description: バリデーションエラー（RFC7807） }
+        "404": { description: 見つからない }
+    delete:
+      tags: [Authorization]
+      summary: "FR-09: 属性辞書削除"
+      operationId: delete-attribute
+      responses:
+        "204": { description: 削除成功 }
+        "404": { description: 見つからない }
+
+  /authz/attributes/validate:
+    post:
+      tags: [Authorization]
+      summary: "FR-09, UC-05: 文書属性の辞書整合バリデーション（副作用なし）"
+      operationId: validate-document-attributes
+      responses:
+        "200":
+          description: "検証結果 { valid, errors }"
 
   # ── WikiService ───────────────────────────────────
   /wiki/pages:
