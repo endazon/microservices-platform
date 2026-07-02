@@ -13,6 +13,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-04 BFF テスト: 後段 AiAnalysisService への転送を捕捉・スタブ化する
     public string? LastForwardedAuthorization { get; private set; }
 
+    // FR-07 BFF テスト: 後段が返すステータスコードを差し替え、非 2xx の透過を検証する。
+    public HttpStatusCode StubStatusCode { get; set; } = HttpStatusCode.OK;
+
     public AiAnswerDto StubAnswer { get; set; } = new(
         "集約された回答 [1]",
         [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(),
@@ -46,7 +49,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             owner.LastForwardedAuthorization = request.Headers.Authorization?.ToString();
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            var response = new HttpResponseMessage(owner.StubStatusCode)
             {
                 Content = JsonContent.Create(owner.StubAnswer)
             };

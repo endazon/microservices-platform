@@ -11,9 +11,11 @@ using System.Net.Http.Json;
 
 namespace KnowledgePlatform.IntegrationTests.AiAnalysisService;
 
-// FR-04, FR-07, UC-01, UC-02: AiAnalysisService RAG フロー統合テスト
-// DownstreamサービスはスタブHTTPハンドラで代替（外部依存なし）
-[Trait("Category", "Integration")]
+// FR-04, FR-07, UC-01, UC-02: AiAnalysisService のエンドポイント配線（ルーティング）確認。
+// IRagOrchestrator を StubRagOrchestrator に差し替えているため、検証範囲は
+// 「/analysis/ask・/analysis/analyze が配線され、回答 DTO を返す」までで、
+// ABAC→検索→LLM の実際のオーケストレーションは対象外（純粋ロジックは各ユニットで検証）。
+[Trait("Category", "EndpointRouting")]
 public sealed class RagOrchestratorTests : IClassFixture<RagIntegrationFactory>
 {
     private readonly HttpClient _client;
