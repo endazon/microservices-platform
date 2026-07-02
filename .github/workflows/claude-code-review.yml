@@ -10,11 +10,11 @@
 #   - このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効
 #
 # モデル:
-#   レビューは速度・コストを優先し既定で claude-sonnet-4-6 を使う。
+#   レビューは速度・コストを優先し既定で claude-sonnet-5 を使う。
 #   より厳密にしたい場合は --model を claude-opus-4-8 に変更する。
 #
 # 権限（GitHub MCP ツール）について:
-#   GitHub MCP ツール（mcp__github__create_pull_request_review 等）は
+#   GitHub MCP ツール（mcp__github__pull_request_review_write 等）は
 #   claude_args の --allowedTools で許可する（これが CI での正しい指定方法）。
 #   アクションはリポジトリの .claude/settings.json を自動では読み込まないため、
 #   settings.json の allow リストに頼らないこと。
@@ -65,17 +65,16 @@ jobs:
           # レビュー進捗コメントを PR に表示する
           track_progress: true
           # 既定モデル: 変更可（厳密さ優先なら claude-opus-4-8）。
-          # GitHub MCP ツールはここで許可する（mcp__github__create_and_submit_pull_request_review 等の
+          # GitHub MCP ツールはここで許可する（mcp__github__pull_request_review_write 等の
           # 権限拒否はこれで解消する。additional_permissions は使わない）。
           # Read は計画書（../project-planning）の参照に必要。
           claude_args: |
-            --model claude-sonnet-4-6
+            --model claude-sonnet-5
             --allowedTools Read
-            --allowedTools mcp__github__get_pull_request
-            --allowedTools mcp__github__get_pull_request_files
+            --allowedTools mcp__github__pull_request_read
             --allowedTools mcp__github__get_file_contents
-            --allowedTools mcp__github__get_issue
-            --allowedTools mcp__github__create_and_submit_pull_request_review
+            --allowedTools mcp__github__issue_read
+            --allowedTools mcp__github__pull_request_review_write
             --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
             --allowedTools mcp__github__push_files

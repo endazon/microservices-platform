@@ -15,7 +15,7 @@
 #
 # モデル:
 #   既定は最新の claude-opus-4-8。速度・コストを優先するなら claude_args の --model を
-#   claude-sonnet-4-6 に変更してよい。
+#   claude-sonnet-5 に変更してよい。
 
 name: Claude
 
@@ -61,7 +61,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # GitHub API アクセス用トークン（MCP GitHub ツール・スティッキーコメント投稿に必要）
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # 既定モデル: 変更可（レビュー用途は claude-sonnet-4-6 も可）
+          # 既定モデル: 変更可（レビュー用途は claude-sonnet-5 も可）
           #
           # --allowedTools: CI での権限はここ（claude_args）で決まる。アクションは
           #   リポジトリの .claude/settings.json を自動では読み込まないため、ローカル用
@@ -90,11 +90,10 @@ jobs:
             --allowedTools Bash(cat:*)
             --allowedTools Bash(mkdir:*)
             --allowedTools Bash(node:*)
-            --allowedTools mcp__github__get_pull_request
-            --allowedTools mcp__github__get_pull_request_files
+            --allowedTools mcp__github__pull_request_read
             --allowedTools mcp__github__get_file_contents
-            --allowedTools mcp__github__get_issue
-            --allowedTools mcp__github__create_and_submit_pull_request_review
+            --allowedTools mcp__github__issue_read
+            --allowedTools mcp__github__pull_request_review_write
             --allowedTools mcp__github__add_comment_to_pending_review
             --allowedTools mcp__github__add_issue_comment
             --allowedTools mcp__github__push_files
