@@ -30,3 +30,4 @@
 | IADR-0004 | ABAC フィルタの多値 allow-list 化と deny-by-default | Accepted |
 | IADR-0005 | 指定データ範囲は ABAC スコープと交差させ権限を広げない（narrowing-only） | Accepted |
 | IADR-0006 | ABAC 属性・ポリシー管理の検証と DocumentService 疎結合 | Accepted |
+| IADR-0007 | LLM 呼び出し先の切替は設定駆動のエンドポイント定義＋越境マトリクスで行う | Accepted |

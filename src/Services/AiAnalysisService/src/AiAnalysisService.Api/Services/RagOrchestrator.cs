@@ -22,8 +22,9 @@ public class RagOrchestrator(
             return EmptyAnswer();
 
         var scope = new AccessScope(resolved.AllowedFilters, resolved.Granted);
+        // FR-11, UC-01: 用途は rag-answer。呼び出し先は LlmGateway が機密区分に応じて切り替える。
         return await GenerateAsync(question, scope, DefaultAskTopK,
-            context => BuildAskPrompt(question, context), ct);
+            context => BuildAskPrompt(question, context), "rag-answer", ct);
     }
 
     // FR-07, UC-02: 指定データ範囲での分析・比較・抽出。
@@ -44,8 +45,9 @@ public class RagOrchestrator(
             : request.Range!.Query!;
         var topK = request.Range?.TopK is > 0 ? request.Range.TopK : DefaultAskTopK;
 
+        // FR-11, UC-02: 用途は analysis。機密区分の高いデータは LlmGateway が外部送信を抑止する。
         return await GenerateAsync(query, scope, topK,
-            context => AnalysisPromptBuilder.Build(request, context), ct);
+            context => AnalysisPromptBuilder.Build(request, context), "analysis", ct);
     }
 
     // FR-05: ABAC スコープ解決。解決失敗時も deny-by-default（Granted=false）へ縮退する。
@@ -70,8 +72,9 @@ public class RagOrchestrator(
     }
 
     // FR-04, FR-07: 実効スコープで検索 → 番号付き出典へ写像 → LLM で本文生成、の共通パイプライン。
+    // FR-11: 文脈文書の最高機密区分と用途を LLM ゲートウェイへ渡し、呼び出し先の切替を委ねる。
     private async Task<AiAnswerDto> GenerateAsync(string query, AccessScope scope, int topK,
-        Func<string, string> buildPrompt, CancellationToken ct)
+        Func<string, string> buildPrompt, string purpose, CancellationToken ct)
     {
         var model = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
 
@@ -82,8 +85,13 @@ public class RagOrchestrator(
             ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
             : new SearchResponse([], 0, 0);
 
+        var results = searchResult?.Results ?? [];
+
         // FR-04: 検索結果を番号付き出典へ写像（回答本文の [1][2] と一致させる）
-        var citations = CitationMapper.ToCitations(searchResult?.Results ?? []);
+        var citations = CitationMapper.ToCitations(results);
+
+        // FR-11: 文脈に含む文書の最も高い機密区分を求める。ゲートウェイはこれで送信先ティアを判定する。
+        var confidentiality = HighestConfidentiality(results);
 
         // FR-04: 関連チャンクを文脈にして LLM ゲートウェイで本文生成
         var context = CitationMapper.BuildContext(citations);
@@ -91,12 +99,23 @@ public class RagOrchestrator(
 
         var llmClient = httpFactory.CreateClient("LlmGateway");
         var completionResp = await llmClient.PostAsJsonAsync("/complete",
-            new { prompt, maxTokens = 1024, model }, ct);
+            new { prompt, maxTokens = 1024, model, confidentiality, purpose }, ct);
 
         if (completionResp.IsSuccessStatusCode)
         {
             var completion = await completionResp.Content
                 .ReadFromJsonAsync<CompletionApiResponse>(ct);
+
+            // FR-11 縮退: ゲートウェイが送信を拒否（許容ティアに送信可能な呼び出し先が無い）した場合は、
+            // 外部送信せず検索結果（出典）のみ返す。
+            if (completion is { Sent: false })
+            {
+                var reason = citations.Count > 0
+                    ? "機密区分により AI 送信を行わなかったため、関連文書の一覧を返します。"
+                    : "機密区分により AI 送信を行いませんでした。";
+                return new AiAnswerDto(reason, citations, model, 0, 0);
+            }
+
             return new AiAnswerDto(
                 completion?.Text ?? "回答を生成できませんでした。",
                 citations,
@@ -110,6 +129,36 @@ public class RagOrchestrator(
             ? "LLM が現在利用できないため、関連文書の一覧を返します。"
             : "関連する情報が見つかりませんでした。";
         return new AiAnswerDto(fallback, citations, model, 0, 0);
+    }
+
+    // FR-11: 検索結果の confidentiality 属性から最も高い機密区分を求める。
+    // 値の序列は public < internal < confidential < restricted。属性欠落は internal（組織既定）扱い。
+    private static string HighestConfidentiality(IReadOnlyList<SearchResultDto> results)
+    {
+        if (results.Count == 0)
+            return "public";
+
+        var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["public"] = 0, ["internal"] = 1, ["confidential"] = 2, ["restricted"] = 3
+        };
+
+        var highest = "public";
+        var highestRank = 0;
+        foreach (var r in results)
+        {
+            var value = r.Attributes.TryGetValue("confidentiality", out var c) && !string.IsNullOrWhiteSpace(c)
+                ? c
+                : "internal";
+            // 未知の値は安全側（restricted 相当）に倒す。
+            var rank = order.TryGetValue(value, out var v) ? v : 3;
+            if (rank > highestRank)
+            {
+                highestRank = rank;
+                highest = order.ContainsKey(value) ? value : "restricted";
+            }
+        }
+        return highest;
     }
 
     // FR-05: 閲覧可能文書が無い場合の空回答（検索・LLM を呼ばずコストを抑える縮退）。
@@ -133,5 +182,8 @@ public class RagOrchestrator(
             ## 回答（日本語で、出典番号 [1][2] を付けてください）
             """;
 
-    private record CompletionApiResponse(string Text, string Model, int InputTokens, int OutputTokens);
+    // FR-11: Sent=false は機密区分による送信拒否（縮退）を示す。
+    private record CompletionApiResponse(
+        string Text, string Model, int InputTokens, int OutputTokens,
+        bool Sent = true, string? Endpoint = null, string? RoutingReason = null);
 }
