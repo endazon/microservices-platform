@@ -21,7 +21,7 @@
 | 能力 | Claude Code（Pro/Max） | Anthropic API | GitHub Copilot |
 | --- | --- | --- | --- |
 | ローカル AI 実装 | Claude Code CLI / Web / IDE | Claude Code CLI / Web / IDE | Copilot（IDE 補完・チャット） |
-| GitHub 上の自律実装 | `claude.yml`（`@claude` メンション） | `claude.yml`（`@claude` メンション） | Copilot coding agent（Issue を割当） |
+| GitHub 上の自律実装 | `claude-coding.yml`（`@claude` メンション） | `claude-coding.yml`（`@claude` メンション） | Copilot coding agent（Issue を割当） |
 | AI 自動 PR レビュー | `claude-code-review.yml` | `claude-code-review.yml` | Copilot code review |
 | AI 設定ファイル | `.claude/` ＋ `CLAUDE.md` | `.claude/` ＋ `CLAUDE.md` | `.github/copilot-instructions.md` |
 | 環境準備 | `.devcontainer/` ＋ SessionStart hook | 同左 | `.github/workflows/copilot-setup-steps.yml` |
@@ -44,7 +44,7 @@
 | 対象 | 操作 |
 | --- | --- |
 | `.claude/` ＋ `CLAUDE.md` | そのまま使う（Claude Code が読み込む） |
-| `.github/workflows/claude.example.yml` | `.example` を外して有効化（任意・GitHub 自律実装が必要なら） |
+| `.github/workflows/claude-coding.example.yml` | `.example` を外して有効化（任意・GitHub 自律実装が必要なら） |
 | `.github/workflows/claude-code-review.example.yml` | 同上（自動 PR レビューが必要なら） |
 | シークレット | `claude setup-token` で OAuth トークンを発行し、`CLAUDE_CODE_OAUTH_TOKEN` を登録 |
 

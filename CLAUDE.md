@@ -91,7 +91,7 @@
 ## 生成 AI の活用
 
 - 実装・レビュー・テスト生成にサブエージェントとスラッシュコマンドを活用する。一覧は `.claude/agents/` `.claude/commands/` を参照。
-- GitHub 上では `@claude` メンションで Issue/PR に AI を呼び出せる（`.github/workflows/claude.yml`。既定は `.example`。`AI_SETUP.md` のプロファイルで有効化する）。PR には自動 AI レビューが走る（`claude-code-review.yml`）。
+- GitHub 上では `@claude` メンションで Issue/PR に AI を呼び出せる（`.github/workflows/claude-coding.yml`。既定は `.example`。`AI_SETUP.md` のプロファイルで有効化する）。PR には自動 AI レビューが走る（`claude-code-review.yml`）。
   - 認証は **サブスクリプション＝`CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` で発行）/ API＝`ANTHROPIC_API_KEY`** のいずれか一方を登録する。サブスクのみでも GitHub 上の自律実装が可能。
 - 他の AI（Cursor / Codex / GitHub Copilot）を使う場合も、本ファイルおよび `AGENTS.md` の方針（特にトレーサビリティ最優先）に従う。Copilot 固有の運用は `.github/copilot-instructions.md` と `AI_SETUP.md` を参照。
 - **実装を AI に任せる前提の運用全体（起票→実装→検証→レビュー→マージ）と推奨ツールは `docs/ai-workflow.md` を参照する。**

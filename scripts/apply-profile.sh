@@ -48,7 +48,7 @@ has_profile() {
 enable_example() {
   local ex="$1"
   local active="${ex%.example.yml}.yml"
-  # 例: .github/workflows/claude.example.yml -> claude.yml
+  # 例: .github/workflows/claude-coding.example.yml -> claude-coding.yml
   if [ ! -f "$ex" ]; then
     return 0
   fi
@@ -73,7 +73,7 @@ has_profile copilot && WANT_COPILOT=1
 
 # --- Claude 系（claude-code / api 共通）---
 if [ "$WANT_CLAUDE" -eq 1 ]; then
-  enable_example ".github/workflows/claude.example.yml"
+  enable_example ".github/workflows/claude-coding.example.yml"
   enable_example ".github/workflows/claude-code-review.example.yml"
   log "Claude 系を有効化。シークレットは claude-code=CLAUDE_CODE_OAUTH_TOKEN / api=ANTHROPIC_API_KEY を登録（AI_SETUP.md 参照）"
 fi
@@ -89,9 +89,9 @@ if [ "$PRUNE" -eq 1 ]; then
   if [ "$WANT_CLAUDE" -eq 0 ]; then
     remove_path ".claude"
     remove_path "CLAUDE.md"
-    remove_path ".github/workflows/claude.example.yml"
+    remove_path ".github/workflows/claude-coding.example.yml"
     remove_path ".github/workflows/claude-code-review.example.yml"
-    remove_path ".github/workflows/claude.yml"
+    remove_path ".github/workflows/claude-coding.yml"
     remove_path ".github/workflows/claude-code-review.yml"
   fi
   if [ "$WANT_COPILOT" -eq 0 ]; then
