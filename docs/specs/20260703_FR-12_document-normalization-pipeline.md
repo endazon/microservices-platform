@@ -18,6 +18,9 @@ plan_refs:
 related_specs:
   - ./20260627_FR-02_ingestion-pipeline.md
   - ./20260702_FR-11_llm-egress-routing.md
+  - ../functional/FR-12_document-normalization.md
+  - ../tests/FR-12_document-normalization.md
+  - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
 related_adrs:
   - ADR-0012 (文書正規化変換 pandoc＋LLM)
   - ADR-0014 (本文・資産はオブジェクトストレージ)
@@ -56,7 +59,9 @@ FR-12「取得した原本を、AIが扱いやすい正規化形式へ変換し�
 ### 含むもの（本 PR）
 
 - **本文変換ポート** `IBodyConverter`（`PandocConversionService`）: 原本 → Markdown 本文 ＋ 抽出図一覧。
-  pandoc 未導入の dev 環境ではプレースホルダ本文へグレースフルデグレード（既存方針を踏襲）。
+  pandoc が利用可能かつ原本がローカル解決可能な場合は `pandoc -f <fmt> -t gfm --extract-media` を
+  実行し、抽出画像を `ExtractedFigure` に写す。pandoc 恒久失敗（非0終了）は例外送出→再試行/デッドレター。
+  pandoc 未導入／原本がローカル解決不能な dev 環境ではプレースホルダ本文（図0件）へグレースフルデグレード。
 - **図コード化ポート** `IDiagramCoder`（`LlmGatewayDiagramCoder`）: 図を LLMゲートウェイ `/complete`
   （`confidentiality` ＋ `purpose="diagram-coding"`）へ送り PlantUML/Mermaid 化。
   - `Sent=false`（機密区分で送信拒否）・コード化不可・呼び出し失敗はいずれも **画像保持** に倒す（deny-by-default）。
@@ -79,8 +84,11 @@ FR-12「取得した原本を、AIが扱いやすい正規化形式へ変換し�
 - LLMゲートウェイの **マルチモーダル（Vision）画像入力エンドポイント**。現行 `/complete` は
   テキスト契約のため、本 PR の `IDiagramCoder` は図のキャプション/抽出テキストをプロンプト化して送る。
   画像バイト列を直接送る Vision 対応はゲートウェイ拡張後のフォローアップ（`IADR` に記録）。
-- pandoc の実コマンド実行と実図抽出。dev では未導入のためグレースフルデグレード（本文プレースホルダ・図0件）。
-  → パイプラインの図分岐ロジックは `IBodyConverter` をフェイクした単体テストで検証する。
+- **実ストレージからの原本フェッチ**。pandoc 実行は本 PR で実装したが、入力は `file://`／ローカルパスのみ対応。
+  `storage://`/`s3://` 等の実オブジェクトストレージクライアント（ADR-0014 製品未確定）からの取得は後付けする。
+  それまでは原本がローカル解決不能な場合、プレースホルダ本文（図0件）へグレースフルデグレードする。
+  → パイプラインの図分岐ロジックは `IBodyConverter` をフェイクした単体テストで、pandoc 実行は
+  `PandocConversionServiceTests`（pandoc 導入環境でローカル Markdown を実変換）で検証する。
 - 人手補正フロー UI（UC-06 代替フロー）。イベント再投入で再変換可能な冪等設計のみ用意する。
 
 ## 受け入れ基準の写像（FR-12 固有）
@@ -92,9 +100,20 @@ FR-12「取得した原本を、AIが扱いやすい正規化形式へ変換し�
 - 各サービスを個別にデプロイ・ロールバックできる → 変換はワーカー内で完結、契約は後方互換（`AssetUris` は既存フィールド）。
 - 更新の反映（15分以内）→ 変換完了で `DocumentNormalized` を即時発行し後続（取り込み・Wiki同期）へ連鎖。
 
-## 実装判断（IADR 候補）
+## 実装判断（IADR）
 
+以下の実装判断は [IADR-0008](../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md) に記録した（Accepted）。
+
+- 用途別ポート（`IBodyConverter`/`IDiagramCoder`/`IObjectStore`）へ分離し、実クライアントは後付けする。
 - 図コード化を専用ポート `IDiagramCoder` に分離し、送信制御は FR-11 の `/complete`
   （越境マトリクス）へ委譲する。変換固有の送信可否ロジックを二重実装しない。
 - コード化不可・送信拒否・呼び出し失敗を **すべて画像保持へ収束**（deny-by-default）させ、
   変換パイプラインを常に完了させる（デッドレターは pandoc/保存の恒久失敗に限定）。
+- 冪等 `DocumentId` を `SourceId`＋原本パスから決定的に導出する（`DeterministicGuid`, RFC4122 v5 相当）。
+
+## 計画との差異（環流）
+
+- `04_workflows/03_conversion-flow.md` は「LLM 一時障害は再試行」と定めるが、本実装は図コード化の
+  一時障害を画像保持へ縮退させる（再試行しない）。この差異は
+  [feedback/20260703_conversion-retry-vs-image-fallback.md](../../feedback/20260703_conversion-retry-vs-image-fallback.md)
+  として `/plan-feedback` で計画側へ環流する。
