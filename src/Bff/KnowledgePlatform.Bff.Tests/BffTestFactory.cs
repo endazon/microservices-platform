@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -25,6 +26,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-08 BFF テスト: 後段 FeedbackService への転送を捕捉・スタブ化する。
     public string? LastFeedbackForwardedAuthorization { get; private set; }
 
+    // FR-10 BFF テスト: 後段 DashboardService への転送を捕捉・スタブ化する。
+    public string? LastDashboardForwardedAuthorization { get; private set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -36,7 +40,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
-                ["Services:FeedbackService"] = "http://localhost:5008"
+                ["Services:FeedbackService"] = "http://localhost:5008",
+                ["Services:DashboardService"] = "http://localhost:5009"
             }));
 
         builder.ConfigureServices(services =>
@@ -47,6 +52,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-08: 名前付きクライアント "FeedbackService" の通信をスタブハンドラに差し替える
             services.AddHttpClient("FeedbackService")
                 .ConfigurePrimaryHttpMessageHandler(() => new FeedbackStubHandler(this));
+            // FR-10: 名前付きクライアント "DashboardService" の通信をスタブハンドラに差し替える
+            services.AddHttpClient("DashboardService")
+                .ConfigurePrimaryHttpMessageHandler(() => new DashboardStubHandler(this));
+
+            // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
+            // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
         });
     }
 
@@ -90,6 +103,26 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         "anonymous", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))
                 };
             }
+            return Task.FromResult(response);
+        }
+    }
+
+    // FR-10: DashboardService への転送をスタブ化する。/dashboard/summary は DashboardUsageDto を返す。
+    private sealed class DashboardStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastDashboardForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var usage = new DashboardUsageDto(
+                5, 3,
+                [new UsagePointDto(new DateOnly(2026, 7, 3), "search", 5),
+                 new UsagePointDto(new DateOnly(2026, 7, 3), "answer", 3)],
+                [new SearchTrendDto("経費", 4), new SearchTrendDto("有給", 1)]);
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(usage)
+            };
             return Task.FromResult(response);
         }
     }

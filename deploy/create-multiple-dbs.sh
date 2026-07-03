@@ -11,6 +11,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE authz_svc;
     CREATE DATABASE wiki_svc;
     CREATE DATABASE feedback_svc;
+    CREATE DATABASE dashboard_svc;
 
     CREATE USER kp WITH PASSWORD 'kp';
     GRANT ALL PRIVILEGES ON DATABASE document_svc TO kp;
@@ -20,4 +21,5 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     GRANT ALL PRIVILEGES ON DATABASE authz_svc TO kp;
     GRANT ALL PRIVILEGES ON DATABASE wiki_svc TO kp;
     GRANT ALL PRIVILEGES ON DATABASE feedback_svc TO kp;
+    GRANT ALL PRIVILEGES ON DATABASE dashboard_svc TO kp;
 EOSQL
