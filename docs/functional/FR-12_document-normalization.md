@@ -1,0 +1,111 @@
+---
+title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコード化＋画像保持）
+type: functional-spec
+status: in-progress
+related_ids:
+  - FR-12
+  - UC-06
+author: claude
+created: 2026-07-03
+updated: 2026-07-03
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
+  - "../../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md"
+related_specs:
+  - ../specs/20260703_FR-12_document-normalization-pipeline.md
+  - ../tests/FR-12_document-normalization.md
+  - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
+  - ../adr/IADR-0007_llm-egress-routing-config-driven.md
+related_adrs:
+  - ADR-0012
+  - ADR-0014
+  - ADR-0010
+---
+
+# 機能仕様書: FR-12 原本の正規化変換
+
+## 起点
+
+- FR-12 / UC-06
+- 関連 ADR: ADR-0012（変換パイプライン pandoc＋LLM）、ADR-0014（本文・資産はオブジェクトストレージ）、ADR-0010（LLMゲートウェイで送信制御）
+- 関連 IADR: IADR-0008（ポート分離＋deny-by-default 縮退＋決定的 DocumentId）、IADR-0007（LLM 送信制御）
+
+## 機能概要
+
+`ConversionService.Worker` が `RawDocumentFetched` イベントを購読し、取得済みの原本を
+正規化形式（本文 Markdown＋資産）へ変換する。本文は **pandoc** で Markdown 化し、図は
+**LLM（LLMゲートウェイ `/complete` 経由）** で PlantUML/Mermaid にコード化する。コード化できない図は
+**画像として保持**し（ADR-0012、段階的に全面コード化）、本文・資産は **オブジェクトストレージ**（ADR-0014）へ
+保管する。完了時に `DocumentNormalized` を発行し、文書管理・取り込みへ連鎖する。
+
+## 入力 / 出力
+
+### 入力イベント: `RawDocumentFetched`
+
+| フィールド | 型 | 用途 |
+| --- | --- | --- |
+| `FetchId` | Guid | 取得イベント識別子（ログ相関）。 |
+| `SourceId` | Guid | データソース識別子。冪等 `DocumentId` の基。 |
+| `SourceType` | string | ソース種別（filesystem 等）。 |
+| `OriginalPath` | string | 原本パス。タイトル・冪等 `DocumentId` の基。 |
+| `StorageUri` | string | 原本の所在（pandoc 変換の入力）。 |
+| `ContentType` | string | 原本の MIME。pandoc 入力形式の判定に使う。 |
+| `Attributes` | Dictionary<string,string> | ABAC 属性。`confidentiality` を図コード化の送信制御に使う。 |
+| `Tags` | List<string> | タグ。`DocumentNormalized` へ引き継ぐ。 |
+| `FetchedAt` | DateTimeOffset | 取得時刻。 |
+
+### 出力イベント: `DocumentNormalized`
+
+`DocumentId`（冪等）/ `SourceId` / `Title` / `MarkdownUri` / `AssetUris` / `Attributes` / `Tags` /
+`NormalizedAt` を発行し、DocumentService の登録 → 取り込み（FR-02）→ Wiki 同期へ連鎖する。
+
+## 処理フロー（基本フロー / UC-06）
+
+1. `RawDocumentFetched` を受信する。
+2. `Attributes["confidentiality"]`（機密区分）を取り出す（図コード化の送信制御に使う）。
+3. **本文変換**（`IBodyConverter` / `PandocConversionService`）: 原本を pandoc で GFM へ変換し、
+   `--extract-media` で図（画像）を抽出する。本文 Markdown ＋ 抽出図一覧を得る。
+4. 冪等 `DocumentId` を `SourceId`＋`OriginalPath` から決定的に導出する（`DeterministicGuid`）。
+5. 各図について（`IDiagramCoder` / `LlmGatewayDiagramCoder`）:
+   1. LLMゲートウェイ `/complete` に `confidentiality` ＋ `purpose="diagram-coding"` を渡してコード化を依頼する。
+   2. **成功**（```mermaid / ```plantuml を抽出）: 本文へコードブロックを埋め込む。
+   3. **不可**（送信拒否 `Sent=false`／コード化不能／呼び出し失敗）: 画像を `IObjectStore` へ保存し、
+      本文へ `![figureId](uri)` を埋め込む（deny-by-default で画像保持へ収束）。
+6. **正規化 Markdown を保管**（`IObjectStore.SaveMarkdownAsync`）して参照 URI を得る。
+7. `DocumentNormalized`（`DocumentId`／`MarkdownUri`／`AssetUris` 等）を発行する。
+
+### 例外フロー
+
+- **E1（pandoc 未導入／原本がローカル解決不能）**: `PandocConversionService` がプレースホルダ本文
+  （図0件）へグレースフルデグレードする（dev 環境での動作保証。IADR-0008）。
+- **E2（pandoc 恒久失敗）**: pandoc が非0終了した場合は例外を送出し、MassTransit の再試行→
+  デッドレター（`<queue>_error`）へ委ねる。
+- **E3（図コード化の LLM 一時障害・送信拒否・コード化不能）**: 例外を送出せず**画像保持へ縮退**する
+  （パイプラインを完了させる）。この経路はメッセージ再試行を発火させない。計画書（draft）との差異は
+  `feedback/20260703_conversion-retry-vs-image-fallback.md` で計画側へ環流する。
+- **E4（保存の恒久失敗）**: `IObjectStore` が例外を送出した場合は E2 と同様に再試行→デッドレターへ委ねる。
+
+## 機密制御（ADR-0012 / ADR-0010）
+
+- 図コード化の LLM 呼び出しは FR-11 の `/complete`（越境マトリクス、[IADR-0007](../adr/IADR-0007_llm-egress-routing-config-driven.md)）へ委譲し、
+  変換固有の送信可否ロジックを二重実装しない。
+- 応答 `Sent=false`（機密区分による送信拒否）は画像保持へ縮退する。
+
+## 冪等性（ADR-0012）
+
+- `DocumentId = DeterministicGuid.ForDocument(SourceId, OriginalPath)`（RFC4122 v5 相当）。
+  再変換・イベント再投入でも同一 `DocumentId` となり、文書管理側で重複登録を避けられる。
+
+## スコープ外（フォローアップ）
+
+- 実オブジェクトストレージ（MinIO/S3）クライアント（ADR-0014 製品確定後）。現状は dev 決定的 URI。
+- LLMゲートウェイのマルチモーダル（Vision）画像入力。現状はキャプション/抽出テキストをプロンプト化。
+- 実ストレージからの原本フェッチ。現状の pandoc 入力は `file://`／ローカルパスのみ対応。
+
+## トレーサビリティ
+
+- コード: `ConversionService.Worker`（`RawDocumentFetchedConsumer`, `NormalizationService`,
+  `PandocConversionService`, `LlmGatewayDiagramCoder`, `StorageObjectStore`, `DeterministicGuid`）。
+  各所に `// FR-12, UC-06` 等を付す。
+- テスト: `ConversionService.Worker.Tests`（[テスト仕様書](../tests/FR-12_document-normalization.md)）。
