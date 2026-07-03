@@ -44,6 +44,17 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
         answer.Citations.Should().NotBeEmpty();
     }
 
+    // FR-08, UC-01: 回答にはフィードバック紐付け用の一意な AnswerId が付与される。
+    [Fact]
+    public async Task PostAnalysisAsk_AnswerHasAnswerId()
+    {
+        var response = await factory.CreateClient()
+            .PostAsJsonAsync("/analysis/ask", new { question = "経費規程は？" });
+
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        answer!.AnswerId.Should().NotBe(Guid.Empty);
+    }
+
     // FR-07: 指示が空の依頼は 400（バリデーション）。
     [Fact]
     public async Task PostAnalyze_RejectsEmptyInstruction()
