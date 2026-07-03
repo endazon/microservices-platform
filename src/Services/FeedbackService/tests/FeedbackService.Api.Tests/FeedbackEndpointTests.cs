@@ -93,6 +93,9 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     }
 
     // T-07: 集計（満足率）。同一回答へ複数利用者の想定として、AnswerId を分けて 👍×2・👎×1 を保存。
+    // NOTE: answerId 指定なしの全体集計は、同一テストクラスで共有される InMemory DB 上の
+    //       他テストが投入したデータも合算する。件数の絶対値は他テストに依存するため、
+    //       本テストが投入した最小件数を下限とする「>=」で緩く検証する（満足率の算出式のみ厳密に確認）。
     [Fact]
     public async Task Stats_ComputesSatisfaction()
     {
@@ -123,5 +126,51 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var list = await client.GetFromJsonAsync<List<FeedbackDto>>($"/feedback?rating=down&answerId={downId}");
         list!.Should().OnlyContain(f => f.Rating == "down");
         list.Should().ContainSingle(f => f.AnswerId == downId);
+    }
+
+    // T-12: 同一 (AnswerId, UserId) への同時 2 重送信でもサーバエラー(5xx)を返さない。
+    // POST の upsert は read-then-write（非アトミック）で、一意制約違反 (DbUpdateException) を
+    // 捕捉して既存行の更新へフォールバックする。全リクエストが成功ステータスへ収束することを確認する。
+    // NOTE: InMemory プロバイダは一意インデックスを強制しないため DbUpdateException 経路自体は
+    //       再現されない（実 Postgres の統合環境で担保）。本テストは非アトミック処理でも
+    //       未処理例外→500 を返さないこと（no-crash / 全 2xx）を保証する回帰テスト。
+    [Fact]
+    public async Task ConcurrentDoubleSubmit_NoServerError()
+    {
+        var client = factory.CreateClient();
+        var answerId = Guid.NewGuid();
+
+        var requests = Enumerable.Range(0, 8)
+            .Select(_ => client.PostAsJsonAsync("/feedback", new FeedbackRequest(answerId, "up")));
+        var responses = await Task.WhenAll(requests);
+
+        responses.Should().OnlyContain(r => r.IsSuccessStatusCode); // 500 等を出さない（冪等・no-crash）。
+    }
+
+    // T-13: 一覧 (GET /feedback) は個人特定情報(Comment/UserId)を含むため AdminOnly。非管理ロールは 403。
+    [Fact]
+    public async Task List_WithoutAdminRole_Returns403()
+    {
+        var client = factory.CreateClient();
+        var req = new HttpRequestMessage(HttpMethod.Get, "/feedback");
+        req.Headers.Add(TestAuthHandler.RolesHeader, "viewer"); // 管理者以外のロールを明示。
+
+        var resp = await client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // T-14: 一覧はページング（take）で返却件数を制限できる（全件無制限返却を防ぐ）。
+    [Fact]
+    public async Task List_RespectsTakeLimit()
+    {
+        var client = factory.CreateClient();
+        // 同一利用者(test-user)でも AnswerId が異なれば別行になる（3 行以上を投入）。
+        for (var i = 0; i < 3; i++)
+            await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"));
+
+        // 共有 DB には他テスト分も含め十分な行がある。take=2 で返却が 2 件に制限されることを確認する。
+        var list = await client.GetFromJsonAsync<List<FeedbackDto>>("/feedback?take=2");
+        list!.Should().HaveCount(2);
     }
 }

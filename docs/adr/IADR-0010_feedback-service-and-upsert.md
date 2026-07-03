@@ -46,6 +46,15 @@ FR-08 は「回答へのフィードバック（👍/👎・コメント）を�
   既存の位置引数コンストラクタ・呼び出し箇所を壊さない。
 - **upsert で冪等化**: `AnswerFeedback` は `(AnswerId, UserId)` に一意制約を持ち、同一利用者の同一回答への再送信は
   既存行を上書きする（`Rating` / `Comment` / `UpdatedAt` を更新）。
+- **競合の扱い（TOCTOU）**: upsert は「事前確認（`FirstOrDefaultAsync`）＋ INSERT/UPDATE」の read-then-write で
+  非アトミック。ほぼ同時の 2 重送信は両方が「既存なし」と判定して INSERT を試み、後勝ちが一意制約
+  (`IX_Feedback_AnswerId_UserId`) 違反で `DbUpdateException` を投げる。これを **捕捉し、相手が作成した行を
+  読み直して UPDATE へフォールバック**することで冪等（1 利用者 1 回答 1 行）を保証する。
+  （`AuthorizationService` の属性辞書登録と同じ「事前確認 + 競合捕捉」パターン。真のアトミック upsert が要れば
+  Npgsql の `ON CONFLICT DO UPDATE` へ移行可能だが、EF Core 標準機能で足りるため現行を採る。）
+- **一覧の認可**: `GET /feedback` は自由記述 `Comment` と `UserId`（個人特定情報）を返すため、`AdminOnly`
+  ポリシー（`platform-admin` ロール）で保護する。集計 `GET /feedback/stats` は件数・満足率のみで PII を含まず、
+  BFF ダッシュボードが匿名集約するため認可を課さない。一覧は `skip`/`take`（既定 100・上限 500）でページングする。
 
 ## 理由
 

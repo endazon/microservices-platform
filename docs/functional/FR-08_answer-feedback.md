@@ -45,8 +45,8 @@ AI 回答（FR-04, UC-01）に対し、利用者が **👍（up）/ 👎（down�
 | メソッド | パス | 説明 |
 | --- | --- | --- |
 | POST | `/feedback` | フィードバック送信（新規は 201、既存更新は 200） |
-| GET | `/feedback?rating=down&answerId=…` | 一覧（品質レビュー用。`rating`/`answerId` で絞り込み可） |
-| GET | `/feedback/stats?answerId=…` | 集計（👍/👎 件数・合計・満足率）。`answerId` 省略で全体集計 |
+| GET | `/feedback?rating=down&answerId=…&skip=…&take=…` | 一覧（**AdminOnly**。品質レビュー用。`rating`/`answerId` 絞り込み・`skip`/`take` ページング。既定 100・上限 500 件） |
+| GET | `/feedback/stats?answerId=…` | 集計（👍/👎 件数・合計・満足率）。`answerId` 省略で全体集計。集計値のみ・PII 無しのため認可なし |
 
 BFF 集約（UC-01 チャット画面向け）:
 
@@ -76,6 +76,9 @@ BFF 集約（UC-01 チャット画面向け）:
 ## 例外フロー
 
 - 同一 `(AnswerId, UserId)` の再送信: 追加せず既存を上書き（二重計上しない）。
+- 同一 `(AnswerId, UserId)` の**同時 2 重送信**（ダブルクリック・再試行）: 後勝ちの INSERT が一意制約違反となるが、
+  `DbUpdateException` を捕捉して既存行の更新へフォールバックし、冪等を保つ（500 を返さない。[IADR-0010](../adr/IADR-0010_feedback-service-and-upsert.md)）。
+- 一覧 `GET /feedback` への非管理ロールアクセス: 403（`Comment`/`UserId` を含むため `AdminOnly`）。
 - 未認証（JWT 無し）: 開発・テスト環境では `anonymous` として受理。本番は認可基盤（ADR-0004）の下で識別子を得る。
 
 ## トレーサビリティ

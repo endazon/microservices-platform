@@ -30,6 +30,12 @@ related_specs:
 | T-09 | ヘルス | — | `GET /health/live` | 200 | `GetHealthLive_Returns200` |
 | T-10 | BFF 集約 | — | `POST /bff/feedback` | 201/200（FeedbackService へ委譲） | `BffPostFeedback_Delegates` |
 | T-11 | 回答 ID 付与 | — | `POST /analysis/ask` | `AiAnswerDto.AnswerId` が非空 | `AskAnswer_HasAnswerId` |
+| T-12 | 同時 2 重送信 | 同一 (AnswerId, UserId) | 同時に 8 回 `POST` | いずれも 5xx を返さない（冪等・no-crash）※ | `ConcurrentDoubleSubmit_NoServerError` |
+| T-13 | 一覧の認可 | 非管理ロール | `GET /feedback` | 403（Comment/UserId は AdminOnly） | `List_WithoutAdminRole_Returns403` |
+| T-14 | 一覧ページング | 3 行以上 | `GET /feedback?take=2` | 2 件に制限される | `List_RespectsTakeLimit` |
 
-- 受け入れ基準（FR-08 固有）との対応: 収集=T-01/02、品質改善への活用=T-07/08、冪等=T-03、
-  入力規則=T-04/05/06、独立サービス稼働=T-09、画面連携=T-10、紐付け=T-11。
+- 受け入れ基準（FR-08 固有）との対応: 収集=T-01/02、品質改善への活用=T-07/08、冪等=T-03/T-12、
+  入力規則=T-04/05/06、独立サービス稼働=T-09、画面連携=T-10、紐付け=T-11、認可=T-13、ページング=T-14。
+- ※ T-12 注記: InMemory プロバイダは一意インデックスを強制しないため `DbUpdateException` の
+  フォールバック経路自体は再現されない（実 Postgres の統合環境で担保）。本テストは非アトミックな
+  read-then-write でも未処理例外→500 を返さないこと（no-crash / 全 2xx）を保証する回帰テスト。

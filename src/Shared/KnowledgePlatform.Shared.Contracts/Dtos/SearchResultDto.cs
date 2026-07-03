@@ -33,5 +33,8 @@ public record AiAnswerDto(
     int OutputTokens)
 {
     // FR-08, UC-01: この回答の識別子。利用者はこの ID を添えてフィードバックを送信する。
+    // 注意: record の自動生成 Equals/GetHashCode は init プロパティも含むため、本文が同一でも
+    //       AnswerId が異なる 2 つの AiAnswerDto は等価にならない（回答ごとに自動採番されるため常に別値）。
+    //       スナップショット比較・キャッシュキーにレコード全体等価（Should().Be(...)）を使う場合は留意する。
     public Guid AnswerId { get; init; } = Guid.NewGuid();
 }

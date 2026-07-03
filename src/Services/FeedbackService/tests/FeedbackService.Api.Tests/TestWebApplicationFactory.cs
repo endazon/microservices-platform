@@ -1,4 +1,5 @@
 using FeedbackService.Api.Infrastructure;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             ReplaceDbContext<FeedbackDbContext>(services, _dbName);
+
+            // FR-08: 一覧 (GET /feedback) は AdminOnly を要求する。テストでは Keycloak/JWT に依存せず
+            // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
         });
     }
 
