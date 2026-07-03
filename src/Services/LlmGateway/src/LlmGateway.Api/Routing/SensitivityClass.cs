@@ -13,14 +13,15 @@ public enum SensitivityClass
 public static class SensitivityClasses
 {
     // 文字列（ABAC の confidentiality 値）を機密区分へ写像する。
-    // 未指定は組織既定の Internal、未知の値は安全側で Restricted に倒す（既定は安全側の原則）。
+    // 08_data-egress-policy「既定は安全側」/ FR-05 deny-by-default に従い、
+    // 未指定（null/空）・未知の値はいずれも安全側の Restricted に倒す。
     public static SensitivityClass Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        null or "" => SensitivityClass.Internal,
         "public" => SensitivityClass.Public,
         "internal" => SensitivityClass.Internal,
         "confidential" => SensitivityClass.Confidential,
         "restricted" => SensitivityClass.Restricted,
+        // null / 空文字 / 未知の値はすべて安全側（Restricted）へ倒す。
         _ => SensitivityClass.Restricted
     };
 

@@ -25,10 +25,10 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         if (candidates.Count == 0)
         {
             // 08_data-egress-policy: 許容ティアに送信可能なエンドポイントが無い場合は送信しない（縮退/拒否）。
-            var reason = $"機密区分 {request.Sensitivity} は許容ティア {Format(allowedTiers)} に送信可能なエンドポイントが無いため送信を拒否";
+            var denyReason = $"機密区分 {request.Sensitivity} は許容ティア {Format(allowedTiers)} に送信可能なエンドポイントが無いため送信を拒否";
             logger.LogWarning("LLM routing denied: sensitivity={Sensitivity} purpose={Purpose} allowedTiers={AllowedTiers}",
                 request.Sensitivity, request.Purpose, Format(allowedTiers));
-            return new RoutingDecision(false, null, null, null, null, false, reason);
+            return new RoutingDecision(false, null, null, null, null, false, denyReason);
         }
 
         var endpoint = candidates[0];

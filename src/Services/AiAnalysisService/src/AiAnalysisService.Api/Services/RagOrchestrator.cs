@@ -76,7 +76,9 @@ public class RagOrchestrator(
     private async Task<AiAnswerDto> GenerateAsync(string query, AccessScope scope, int topK,
         Func<string, string> buildPrompt, string purpose, CancellationToken ct)
     {
-        var model = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
+        // FR-11: 明示モデルは指定しない。実際の呼び出しモデルは LlmGateway が用途（purpose）と
+        // 機密区分に応じて選択する（Llm:Routing:PurposeModels）。既定モデル名は縮退応答の表示用のみ。
+        var defaultModel = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
 
         var retrievalClient = httpFactory.CreateClient("RetrievalService");
         var searchResp = await retrievalClient.PostAsJsonAsync("/search",
@@ -98,8 +100,10 @@ public class RagOrchestrator(
         var prompt = buildPrompt(context);
 
         var llmClient = httpFactory.CreateClient("LlmGateway");
+        // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
         var completionResp = await llmClient.PostAsJsonAsync("/complete",
-            new { prompt, maxTokens = 1024, model, confidentiality, purpose }, ct);
+            new CompletionApiRequest(prompt, MaxTokens: 1024, Model: null,
+                Confidentiality: confidentiality, Purpose: purpose), ct);
 
         if (completionResp.IsSuccessStatusCode)
         {
@@ -113,13 +117,13 @@ public class RagOrchestrator(
                 var reason = citations.Count > 0
                     ? "機密区分により AI 送信を行わなかったため、関連文書の一覧を返します。"
                     : "機密区分により AI 送信を行いませんでした。";
-                return new AiAnswerDto(reason, citations, model, 0, 0);
+                return new AiAnswerDto(reason, citations, defaultModel, 0, 0);
             }
 
             return new AiAnswerDto(
                 completion?.Text ?? "回答を生成できませんでした。",
                 citations,
-                completion?.Model ?? model,
+                completion?.Model ?? defaultModel,
                 completion?.InputTokens ?? 0,
                 completion?.OutputTokens ?? 0);
         }
@@ -128,11 +132,12 @@ public class RagOrchestrator(
         var fallback = citations.Count > 0
             ? "LLM が現在利用できないため、関連文書の一覧を返します。"
             : "関連する情報が見つかりませんでした。";
-        return new AiAnswerDto(fallback, citations, model, 0, 0);
+        return new AiAnswerDto(fallback, citations, defaultModel, 0, 0);
     }
 
     // FR-11: 検索結果の confidentiality 属性から最も高い機密区分を求める。
-    // 値の序列は public < internal < confidential < restricted。属性欠落は internal（組織既定）扱い。
+    // 値の序列は public < internal < confidential < restricted。
+    // 08_data-egress-policy「既定は安全側」/ FR-05 deny-by-default に従い、属性欠落・未知値は restricted 扱い。
     private static string HighestConfidentiality(IReadOnlyList<SearchResultDto> results)
     {
         if (results.Count == 0)
@@ -140,17 +145,21 @@ public class RagOrchestrator(
 
         var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
-            ["public"] = 0, ["internal"] = 1, ["confidential"] = 2, ["restricted"] = 3
+            ["public"] = 0,
+            ["internal"] = 1,
+            ["confidential"] = 2,
+            ["restricted"] = 3
         };
 
         var highest = "public";
         var highestRank = 0;
         foreach (var r in results)
         {
+            // 属性が欠落・空文字の文書は安全側（restricted）とみなす。
             var value = r.Attributes.TryGetValue("confidentiality", out var c) && !string.IsNullOrWhiteSpace(c)
                 ? c
-                : "internal";
-            // 未知の値は安全側（restricted 相当）に倒す。
+                : "restricted";
+            // 未知の値も安全側（restricted 相当）に倒す。
             var rank = order.TryGetValue(value, out var v) ? v : 3;
             if (rank > highestRank)
             {
@@ -181,9 +190,4 @@ public class RagOrchestrator(
 
             ## 回答（日本語で、出典番号 [1][2] を付けてください）
             """;
-
-    // FR-11: Sent=false は機密区分による送信拒否（縮退）を示す。
-    private record CompletionApiResponse(
-        string Text, string Model, int InputTokens, int OutputTokens,
-        bool Sent = true, string? Endpoint = null, string? RoutingReason = null);
 }

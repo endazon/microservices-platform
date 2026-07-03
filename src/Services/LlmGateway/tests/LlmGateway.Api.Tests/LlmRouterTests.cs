@@ -10,21 +10,35 @@ public class LlmRouterTests
 {
     private static LlmEndpointOptions Claude(bool enabled = true, int priority = 10) => new()
     {
-        Name = "claude-managed", Tier = ProtectionTier.B, Provider = "claude",
-        Enabled = enabled, Priority = priority, DefaultModel = "claude-sonnet-4-6",
+        Name = "claude-managed",
+        Tier = ProtectionTier.B,
+        Provider = "claude",
+        Enabled = enabled,
+        Priority = priority,
+        DefaultModel = "claude-sonnet-4-6",
         Models = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
     };
 
     private static LlmEndpointOptions SelfHosted(bool enabled = true, int priority = 20) => new()
     {
-        Name = "selfhosted-oss", Tier = ProtectionTier.A, Provider = "selfhosted",
-        Enabled = enabled, Priority = priority, DefaultModel = "oss-llm", Models = ["oss-llm"]
+        Name = "selfhosted-oss",
+        Tier = ProtectionTier.A,
+        Provider = "selfhosted",
+        Enabled = enabled,
+        Priority = priority,
+        DefaultModel = "oss-llm",
+        Models = ["oss-llm"]
     };
 
     private static LlmEndpointOptions StandardExternal(bool enabled = true, int priority = 5) => new()
     {
-        Name = "standard-external", Tier = ProtectionTier.C, Provider = "claude",
-        Enabled = enabled, Priority = priority, DefaultModel = "std-model", Models = ["std-model"]
+        Name = "standard-external",
+        Tier = ProtectionTier.C,
+        Provider = "claude",
+        Enabled = enabled,
+        Priority = priority,
+        DefaultModel = "std-model",
+        Models = ["std-model"]
     };
 
     private static LlmRouter Build(LlmRoutingOptions options)
@@ -135,11 +149,13 @@ public class LlmRouterTests
         decision.Model.Should().Be("claude-haiku-4-5");
     }
 
-    // 未指定・未知の機密区分は安全側（Internal / Restricted）に倒す。
+    // 08_data-egress-policy「既定は安全側」: 未指定（null/空）・未知の機密区分は Restricted に倒す。
     [Theory]
-    [InlineData(null, SensitivityClass.Internal)]
-    [InlineData("", SensitivityClass.Internal)]
+    [InlineData(null, SensitivityClass.Restricted)]
+    [InlineData("", SensitivityClass.Restricted)]
+    [InlineData("  ", SensitivityClass.Restricted)]
     [InlineData("unknown-value", SensitivityClass.Restricted)]
+    [InlineData("internal", SensitivityClass.Internal)]
     [InlineData("PUBLIC", SensitivityClass.Public)]
     public void Parse_MapsToSafeSide(string? value, SensitivityClass expected)
         => SensitivityClasses.Parse(value).Should().Be(expected);

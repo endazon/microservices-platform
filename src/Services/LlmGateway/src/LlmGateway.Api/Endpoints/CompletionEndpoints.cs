@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Contracts.Dtos;
 using LlmGateway.Api.Providers;
 using LlmGateway.Api.Routing;
 
@@ -68,20 +69,3 @@ public static class CompletionEndpoints
         return app;
     }
 }
-
-// FR-11: confidentiality（入力文書の最高機密区分）・purpose（用途）で呼び出し先を切り替える。
-public record CompletionApiRequest(
-    string Prompt,
-    int MaxTokens = 1024,
-    string? Model = null,
-    string? Confidentiality = null,
-    string? Purpose = null);
-
-public record CompletionApiResponse(
-    string Text,
-    string Model,
-    int InputTokens,
-    int OutputTokens,
-    bool Sent,
-    string? Endpoint,
-    string? RoutingReason);
