@@ -29,6 +29,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-10 BFF テスト: 後段 DashboardService への転送を捕捉・スタブ化する。
     public string? LastDashboardForwardedAuthorization { get; private set; }
 
+    // FR-10 BFF テスト: 後段が返すステータスの差し替え・null 応答の再現（非 2xx 透過・502 分岐の検証用）。
+    public HttpStatusCode DashboardStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public HttpStatusCode FeedbackStatsStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool DashboardReturnsNullBody { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -89,7 +94,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpResponseMessage response;
             if (path.Contains("/stats"))
             {
-                response = new HttpResponseMessage(HttpStatusCode.OK)
+                response = new HttpResponseMessage(owner.FeedbackStatsStubStatusCode)
                 {
                     Content = JsonContent.Create(new FeedbackStatsDto(3, 1, 4, 0.75))
                 };
@@ -119,9 +124,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 [new UsagePointDto(new DateOnly(2026, 7, 3), "search", 5),
                  new UsagePointDto(new DateOnly(2026, 7, 3), "answer", 3)],
                 [new SearchTrendDto("経費", 4), new SearchTrendDto("有給", 1)]);
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            // 502 分岐の検証: 2xx でも本文が null（JSON リテラル "null"）なら BFF は 502 を返す。
+            var content = owner.DashboardReturnsNullBody
+                ? new StringContent("null", System.Text.Encoding.UTF8, "application/json")
+                : (HttpContent)JsonContent.Create(usage);
+            var response = new HttpResponseMessage(owner.DashboardStubStatusCode)
             {
-                Content = JsonContent.Create(usage)
+                Content = content
             };
             return Task.FromResult(response);
         }

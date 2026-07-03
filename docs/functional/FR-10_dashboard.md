@@ -44,7 +44,7 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 | メソッド | パス | 認可 | 説明 |
 | --- | --- | --- | --- |
-| POST | `/dashboard/events` | 認証済み | 利用イベント記録。`EventType` 必須（`search`/`answer`）。201 |
+| POST | `/dashboard/events` | 認証済み（`RequireAuthorization`。管理者限定にはしない） | 利用イベント記録。`EventType` 必須（`search`/`answer`）。201 |
 | GET | `/dashboard/usage?days=N` | AdminOnly | 日次利用状況（日付 × 種別の件数） |
 | GET | `/dashboard/trends?days=N&top=M` | AdminOnly | 検索傾向（検索語 × 件数の上位） |
 | GET | `/dashboard/summary?days=N&top=M` | AdminOnly | 利用側サマリ（総件数・利用状況・検索傾向） |
@@ -60,6 +60,10 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 - BFF は DashboardService（AdminOnly）へ `Authorization` ヘッダを伝播する。
 - 利用側サマリと回答品質は並行取得する（互いに独立）。後段が非 2xx ならそのステータスを透過する。
+  いずれかの応答本文が null（欠損）なら 502（BadGateway）を返す。
+- **期間の整合**: BFF は有効な `days`（既定 7・上限 90 にクランプ）を確定し、DashboardService（利用状況・検索傾向）と
+  FeedbackService（満足率）の**双方に同じ `days`** を渡す。これにより「直近 N 日間の利用状況」と「同 N 日間の満足率」が
+  同一期間で揃う。FeedbackService `GET /feedback/stats` は `days` 未指定なら従来どおり全期間（後方互換）。
 
 ## DTO（`Shared.Contracts`）
 
@@ -80,7 +84,8 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 ## 非機能・セキュリティ
 
 - 集計値（件数・満足率・検索語）のみを扱い、文書本文・回答本文は保持・返却しない。
-- 満足率は FeedbackService を単一の出所とし、DashboardService へ複製しない（乖離防止）。
+- 満足率は FeedbackService を単一の出所とし、DashboardService へ複製しない（乖離防止）。集計期間は BFF が渡す `days` に追随する。
+- 検索傾向の上位 N 件は DB 側で集計（`GROUP BY`＋`ORDER BY`＋`LIMIT`）し、期間内イベントの全件をアプリへロードしない。
 - DashboardService は専用 DB・専用 Dockerfile・compose 定義を持ち、独立してデプロイ・ロールバックできる（受け入れ基準④）。
 
 ## 対象外（別 PR）

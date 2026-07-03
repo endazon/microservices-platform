@@ -21,7 +21,7 @@ public static class DashboardEndpoints
         var g = app.MapGroup("/dashboard").WithTags("Dashboard");
 
         // FR-10: 利用イベント（検索・回答）を記録する。利用者は JWT から特定（テスト・開発は anonymous）。
-        // 集計の入力となるため、認証済みなら誰でも記録できる（管理者限定にしない）。
+        // 集計の入力となるため、認証済みなら誰でも記録できる（管理者限定にはしないが、認証は必須）。
         g.MapPost("/events", async (UsageEventRequest req, DashboardDbContext db, HttpContext http,
             CancellationToken ct) =>
         {
@@ -38,7 +38,7 @@ public static class DashboardEndpoints
             db.UsageEvents.Add(ev);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/dashboard/events/{ev.Id}", new { ev.Id });
-        }).WithName("RecordUsageEvent").Produces(StatusCodes.Status201Created);
+        }).WithName("RecordUsageEvent").RequireAuthorization().Produces(StatusCodes.Status201Created);
 
         // FR-10: 日次利用状況（日付 × 種別の件数）。利用状況グラフの入力。
         // 集計値のみだが利用傾向は運用情報のため、管理者ロールに限定する（FeedbackService 一覧と同方針）。
@@ -93,22 +93,20 @@ public static class DashboardEndpoints
     }
 
     // FR-10: 期間内の検索イベントを検索語で集計し、件数降順の上位を返す。
+    //   グルーピング・並べ替え・上位 N 件の絞り込みは DB 側で行い（検索語での GroupBy は
+    //   プロバイダで SQL 翻訳可能）、全件をメモリへロードしない。
     private static async Task<List<SearchTrendDto>> AggregateTrendsAsync(
         DashboardDbContext db, DateTimeOffset since, int top, CancellationToken ct)
     {
-        var terms = await db.UsageEvents
+        return await db.UsageEvents
             .Where(u => u.OccurredAt >= since
                 && u.EventType == UsageEventType.Search
                 && u.Query != null && u.Query != "")
-            .Select(u => u.Query!)
-            .ToListAsync(ct);
-
-        return terms
-            .GroupBy(t => t)
+            .GroupBy(u => u.Query!)
             .Select(gr => new SearchTrendDto(gr.Key, gr.Count()))
             .OrderByDescending(t => t.Count).ThenBy(t => t.Term)
             .Take(top)
-            .ToList();
+            .ToListAsync(ct);
     }
 
     // FR-10: days を [1, MaxDays] にクランプし、集計開始時刻（UTC 当日 00:00 を含む起点）を求める。

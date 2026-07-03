@@ -52,4 +52,52 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
+
+    // T-12: DashboardService が非 2xx を返したら、そのステータスを透過する。
+    [Fact]
+    public async Task GetSummary_WhenDashboardFails_PropagatesStatus()
+    {
+        try
+        {
+            factory.DashboardStubStatusCode = HttpStatusCode.InternalServerError;
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            resp.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        }
+        finally
+        {
+            factory.DashboardStubStatusCode = HttpStatusCode.OK;
+        }
+    }
+
+    // T-13: FeedbackService（回答品質）が非 2xx を返したら、そのステータスを透過する。
+    [Fact]
+    public async Task GetSummary_WhenFeedbackStatsFails_PropagatesStatus()
+    {
+        try
+        {
+            factory.FeedbackStatsStubStatusCode = HttpStatusCode.ServiceUnavailable;
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        }
+        finally
+        {
+            factory.FeedbackStatsStubStatusCode = HttpStatusCode.OK;
+        }
+    }
+
+    // T-14: 後段が 2xx でも本文が null なら 502（BadGateway）を返す。
+    [Fact]
+    public async Task GetSummary_WhenDashboardBodyNull_Returns502()
+    {
+        try
+        {
+            factory.DashboardReturnsNullBody = true;
+            var resp = await factory.CreateClient().GetAsync("/bff/dashboard/summary");
+            resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        }
+        finally
+        {
+            factory.DashboardReturnsNullBody = false;
+        }
+    }
 }
