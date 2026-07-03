@@ -67,6 +67,13 @@
   <Folder Name="/Services/WikiService/tests/">
     <Project Path="Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/Services/FeedbackService/" />
+  <Folder Name="/Services/FeedbackService/src/">
+    <Project Path="Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/FeedbackService/tests/">
+    <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
+  </Folder>
   <Folder Name="/Shared/">
     <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
     <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />

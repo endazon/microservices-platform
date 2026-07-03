@@ -22,6 +22,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             "s3://bucket/a.md", 0.92f, "抜粋")],
         "claude-sonnet-4-6", 12, 34);
 
+    // FR-08 BFF テスト: 後段 FeedbackService への転送を捕捉・スタブ化する。
+    public string? LastFeedbackForwardedAuthorization { get; private set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -32,7 +35,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",
-                ["Services:AiAnalysisService"] = "http://localhost:5004"
+                ["Services:AiAnalysisService"] = "http://localhost:5004",
+                ["Services:FeedbackService"] = "http://localhost:5008"
             }));
 
         builder.ConfigureServices(services =>
@@ -40,6 +44,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // 名前付きクライアント "AiAnalysisService" の通信をスタブハンドラに差し替える
             services.AddHttpClient("AiAnalysisService")
                 .ConfigurePrimaryHttpMessageHandler(() => new StubHandler(this));
+            // FR-08: 名前付きクライアント "FeedbackService" の通信をスタブハンドラに差し替える
+            services.AddHttpClient("FeedbackService")
+                .ConfigurePrimaryHttpMessageHandler(() => new FeedbackStubHandler(this));
         });
     }
 
@@ -53,6 +60,36 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = JsonContent.Create(owner.StubAnswer)
             };
+            return Task.FromResult(response);
+        }
+    }
+
+    // FR-08: FeedbackService への転送をスタブ化する。POST は 201+FeedbackDto、stats は FeedbackStatsDto を返す。
+    private sealed class FeedbackStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastFeedbackForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            HttpResponseMessage response;
+            if (path.Contains("/stats"))
+            {
+                response = new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new FeedbackStatsDto(3, 1, 4, 0.75))
+                };
+            }
+            else
+            {
+                response = new HttpResponseMessage(HttpStatusCode.Created)
+                {
+                    Content = JsonContent.Create(new FeedbackDto(
+                        Guid.NewGuid(), Guid.NewGuid(), "up", null, null,
+                        "anonymous", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))
+                };
+            }
             return Task.FromResult(response);
         }
     }

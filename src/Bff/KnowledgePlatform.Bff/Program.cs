@@ -20,7 +20,10 @@ builder.Services.AddKnowledgePlatformHealthChecks()
         "retrieval-service", tags: ["ready"])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:AiAnalysisService"] ?? "http://aianalysis-service:5004") + "/health/live"),
-        "aianalysis-service", tags: ["ready"]);
+        "aianalysis-service", tags: ["ready"])
+    .AddUrlGroup(
+        new Uri((builder.Configuration["Services:FeedbackService"] ?? "http://feedback-service:5008") + "/health/live"),
+        "feedback-service", tags: ["ready"]);
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
@@ -28,6 +31,11 @@ builder.Services.AddHttpClient();
 builder.Services.AddHttpClient("AiAnalysisService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AiAnalysisService"]
         ?? "http://aianalysis-service:5004"));
+
+// FR-08, UC-01: FeedbackService 集約用の名前付き HTTP クライアント
+builder.Services.AddHttpClient("FeedbackService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:FeedbackService"]
+        ?? "http://feedback-service:5008"));
 
 var app = builder.Build();
 
@@ -37,6 +45,7 @@ app.MapOpenApi();
 
 app.MapSearchBffEndpoints();
 app.MapAnalysisBffEndpoints();
+app.MapFeedbackBffEndpoints();
 
 app.Run();
 
