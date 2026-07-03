@@ -23,10 +23,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             }));
         builder.ConfigureServices(services =>
         {
-            // API キーなしで動くようにスタブ LLM プロバイダーへ差し替え
+            // API キーなしで動くようにスタブ LLM プロバイダーへ差し替え。
+            // FR-11: ルーターはキー付きプロバイダ（claude/selfhosted）を解決するため、キー付きでも差し替える。
             services.RemoveAll<AnthropicClient>();
             services.RemoveAll<ILlmProvider>();
-            services.AddSingleton<ILlmProvider, StubLlmProvider>();
+            services.AddSingleton<ILlmProvider, StubLlmProvider>();               // /embed 既定
+            services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("claude");   // ティアB
+            services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("selfhosted"); // ティアA
         });
     }
 }
