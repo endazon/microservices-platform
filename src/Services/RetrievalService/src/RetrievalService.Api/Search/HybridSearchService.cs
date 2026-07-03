@@ -16,8 +16,13 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         if (string.IsNullOrWhiteSpace(request.Query))
             return [];
 
-        // FR-05: deny-by-default。許可ポリシーが無い利用者には何も返さない（権限外文書の漏えい防止）。
-        if (request.Scope is { GrantsAccess: false })
+        // FR-05: deny-by-default（fail-closed）。IADR-0012。
+        //   Scope 未指定（null）＝呼び出し側が ABAC スコープを解決していない、
+        //   GrantsAccess=false＝許可ポリシーが無い（閲覧可能文書なし）。
+        //   いずれも「何も返さない」に倒す。GrantsAccess=true の明示的許可がある時だけ検索する。
+        //   ここを null 許容にすると Scope 無しの呼び出しがフィルタ無しで全文書を返し、
+        //   ネットワーク到達可能な相手が ABAC を全面バイパスできてしまう（呼び出し側 Scope の無検証信任）。
+        if (request.Scope is not { GrantsAccess: true })
             return [];
 
         // FR-05: 単値フィルタ（後方互換）と ABAC 多値スコープを 1 本の allow-list に正規化する。

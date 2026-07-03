@@ -33,3 +33,6 @@
 | IADR-0007 | LLM 呼び出し先の切替は設定駆動のエンドポイント定義＋越境マトリクスで行う | Accepted |
 | IADR-0008 | 正規化変換はポート分離＋deny-by-default 縮退＋決定的 DocumentId で構成する | Accepted |
 | IADR-0009 | Wiki 閲覧の権限外アクセスは 404 で存在秘匿し、ABAC はメモリ内で後段評価する | Accepted |
+| IADR-0010 | 回答フィードバックは専用サービスで保持し、1 ユーザー 1 回答は upsert で冪等化する | Accepted |
+| IADR-0011 | 業務指標ダッシュボードは専用サービスで集計し、回答品質は FeedbackService を単一の出所とする | Accepted |
+| IADR-0012 | Retrieval /search は Scope 未指定を deny 扱いにし fail-closed で ABAC を強制する | Accepted |
