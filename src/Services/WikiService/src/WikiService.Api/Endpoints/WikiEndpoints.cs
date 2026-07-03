@@ -4,9 +4,10 @@ using WikiService.Api.Services;
 
 namespace WikiService.Api.Endpoints;
 
-// FR-13, UC-07, ADR-0011: Wiki ページ閲覧エンドポイント。
-// ABAC は本システムがソースオブトゥルース（ADR-0011）。閲覧経路（一覧・本文）でも
-// deny-by-default の属性フィルタを適用し、権限外文書を一切露出しない（受け入れ基準②）。
+// FR-13, UC-07, ADR-0011, IADR-0013: Wiki ページ閲覧エンドポイント。
+// 閲覧は自前の軽量な読み取り専用 API で提供する（Wiki.js は配備しない。IADR-0013 が
+// ADR-0011 の Supersede を計画へ提案）。ABAC は本システムがソースオブトゥルース。閲覧経路
+// （一覧・本文）でも deny-by-default の属性フィルタを適用し、権限外文書を一切露出しない（受け入れ基準②）。
 public static class WikiEndpoints
 {
     public static IEndpointRouteBuilder MapWikiEndpoints(this IEndpointRouteBuilder app)

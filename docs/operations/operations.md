@@ -27,6 +27,17 @@ plan_refs: []
 | 手順 |  |
 | ロールバック |  |
 
+### サービス構成に関する運用注記
+
+- **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0013](../adr/IADR-0013_wiki-selfhosted-read-api-supersedes-adr-0011.md)）:
+  Wiki 閲覧は `WikiService` が自前 DB（`wiki_svc`）で提供する**自前の軽量読み取り専用 API** である。
+  外部 OSS の **Wiki.js は意図的に配備しない**（`deploy/docker-compose.yml`・`deploy/helm/` に含めない）。
+  計画 ADR-0011 は当初 Wiki.js 採用を決定していたが、認可（ABAC）の二重管理回避・要件（閲覧のみ）への適合の
+  ため自前 API を採用し、ADR-0011 の Supersede を `/plan-feedback`
+  （[記録](../../feedback/20260703_wiki-selfhosted-supersedes-adr-0011.md)）で提案済み。
+  監査（`adr-guardian`）で Wiki.js 不在を検出した場合は、逸脱ではなく本設計判断である点に留意する。
+  WikiService は独立サービス（独自 DB・Dockerfile）として個別デプロイ・ロールバック可能（受け入れ基準④）。
+
 ## 監視・アラート
 
 | 監視対象 | 指標 | 閾値 | 通知先 |
