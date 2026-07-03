@@ -93,20 +93,24 @@ public static class DashboardEndpoints
     }
 
     // FR-10: 期間内の検索イベントを検索語で集計し、件数降順の上位を返す。
-    //   グルーピング・並べ替え・上位 N 件の絞り込みは DB 側で行い（検索語での GroupBy は
-    //   プロバイダで SQL 翻訳可能）、全件をメモリへロードしない。
+    //   グルーピングはメモリ上で行う（GroupBy+集計はプロバイダ非依存にし、InMemory でも同結果にする）。
+    //   ただし DB からは集計に必要な Query 列のみを射影して取得し、全エンティティのロードは避ける。
     private static async Task<List<SearchTrendDto>> AggregateTrendsAsync(
         DashboardDbContext db, DateTimeOffset since, int top, CancellationToken ct)
     {
-        return await db.UsageEvents
+        var terms = await db.UsageEvents
             .Where(u => u.OccurredAt >= since
                 && u.EventType == UsageEventType.Search
                 && u.Query != null && u.Query != "")
-            .GroupBy(u => u.Query!)
+            .Select(u => u.Query!)
+            .ToListAsync(ct);
+
+        return terms
+            .GroupBy(term => term)
             .Select(gr => new SearchTrendDto(gr.Key, gr.Count()))
             .OrderByDescending(t => t.Count).ThenBy(t => t.Term)
             .Take(top)
-            .ToListAsync(ct);
+            .ToList();
     }
 
     // FR-10: days を [1, MaxDays] にクランプし、集計開始時刻（UTC 当日 00:00 を含む起点）を求める。
