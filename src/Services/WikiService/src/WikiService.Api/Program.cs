@@ -5,6 +5,7 @@ using Serilog;
 using WikiService.Api.Consumers;
 using WikiService.Api.Endpoints;
 using WikiService.Api.Infrastructure;
+using WikiService.Api.Services;
 
 const string ServiceName = "knowledge-platform.wiki-service";
 
@@ -30,6 +31,12 @@ builder.Services.AddOpenApi();
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<WikiDbContext>(opt => opt.UseNpgsql(connStr));
+
+// FR-13, FR-05, ADR-0011: 閲覧の ABAC 判定は本システム（AuthorizationService）が担う。
+builder.Services.AddHttpClient("AuthorizationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
+        ?? "http://authorization-service:5005"));
+builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 
 // ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
 builder.Services.AddMassTransit(x =>
