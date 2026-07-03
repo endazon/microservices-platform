@@ -32,8 +32,10 @@ public class HybridSearchEndpointTests
             Chunk("ベータ 別 の 概念"),
             Chunk("ガンマ 無関係 な 内容"));
 
+        // FR-05: 検索には許可スコープが必須（fail-closed）。全件許可の空フィルタ＋GrantsAccess=true。
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 10));
+            .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 10,
+                Scope: new AccessScope([], GrantsAccess: true)));
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
@@ -53,9 +55,11 @@ public class HybridSearchEndpointTests
         var forbidden = Chunk("四半期 売上 機密", new() { ["dept"] = "hr" });
         await SeedAsync(factory, authorized, forbidden);
 
+        // FR-05: 単値 AttributeFilters（FR-03 後方互換）は許可スコープと併用する（fail-closed）。
         var resp = await factory.CreateClient().PostAsJsonAsync("/search",
             new SearchRequest("四半期 売上", TopK: 10,
-                AttributeFilters: new() { ["dept"] = "sales" }));
+                AttributeFilters: new() { ["dept"] = "sales" },
+                Scope: new AccessScope([], GrantsAccess: true)));
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
@@ -121,6 +125,26 @@ public class HybridSearchEndpointTests
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
         body!.Results.Should().BeEmpty("許可ポリシーが無い利用者は何も閲覧できない");
+    }
+
+    // FR-05, IADR-0012: Scope 未指定（null）は許可ポリシー未解決とみなし何も返さない（fail-closed）。
+    //   受け入れ基準「Scope 未指定 → 結果 0 件」。呼び出し側 Scope を無検証で信任し、
+    //   フィルタ無しで全件返却する ABAC 全面バイパスを塞ぐ。
+    [Fact]
+    public async Task PostSearch_ScopeUnspecified_ReturnsEmpty()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        // クエリに一致する文書が存在しても、Scope が無ければ 1 件も返さない。
+        await SeedAsync(factory,
+            Chunk("公開 資料", new() { ["confidentiality"] = "public" }),
+            Chunk("公開 手順 書"));
+
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/search", new SearchRequest("公開", TopK: 10));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        body!.Results.Should().BeEmpty("Scope 未指定は deny-by-default（fail-closed）で 0 件");
     }
 
     // 空クエリは空結果（防御）
