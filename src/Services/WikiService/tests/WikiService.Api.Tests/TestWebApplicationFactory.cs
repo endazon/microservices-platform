@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Contracts.Dtos;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -6,11 +7,16 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using WikiService.Api.Infrastructure;
+using WikiService.Api.Services;
 
 namespace WikiService.Api.Tests;
 
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
+    // FR-13/FR-05: 閲覧テストで使う ABAC 許可スコープ。既定は全件許可（Health/一覧テスト用）。
+    // ABAC テストはテストごとに差し替える（クラス内テストは直列実行のため安全）。
+    public AccessScopeResponse Scope { get; set; } = new("test-user", [], true);
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -24,6 +30,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             ReplaceDbContext<WikiDbContext>(services, "WikiTest");
+
+            // FR-13: ABAC 解決を HTTP に依存させず、テスト制御可能なスタブへ差し替える。
+            services.RemoveAll<IWikiAccessResolver>();
+            services.AddSingleton<IWikiAccessResolver>(new StubWikiAccessResolver(this));
 
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
@@ -44,4 +54,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
         services.AddDbContext<TContext>(opt => opt.UseInMemoryDatabase(dbName));
     }
+}
+
+// FR-13, FR-05: 認可解決のテスト用スタブ。ファクトリの現在の Scope を返す。
+file class StubWikiAccessResolver(TestWebApplicationFactory factory) : IWikiAccessResolver
+{
+    public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
+        => Task.FromResult(factory.Scope);
 }
