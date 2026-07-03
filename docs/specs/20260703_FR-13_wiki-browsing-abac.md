@@ -76,10 +76,18 @@ Wiki 側は表示制御に留める。属性ベース（ABAC）の細粒度判�
 | ④ 個別デプロイ・ロールバック | WikiService は独立サービス（独自 DB・Dockerfile）。本 PR は他サービス非改変 |
 | ⑤ p95 レイテンシ | 対象外（負荷試験は別作業）。閲覧はインデックス済み一覧＋属性フィルタで軽量 |
 
-## 実装方針（IADR 化する判断）
+## 実装方針（IADR 化した判断）
 - 属性フィルタは jsonb のため DB 側 SQL ではなく**取得後のメモリ内評価**とする
   （検索側 `InMemoryVectorStore` と同方針、意味論の一致を優先）。
 - 個別ページの権限外アクセスは **404**（存在秘匿）に統一。
+- 以上 2 点は [IADR-0009](../adr/IADR-0009_wiki-browsing-404-hides-existence.md) に記録した。
+  評価意味論（多値 allow-list・deny-by-default）は既存 [IADR-0004](../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md) を流用する。
+
+## フォローアップ課題
+- 一覧 `GET /wiki/pages` は現状「全件取得 → メモリ内 ABAC 絞り込み」（検索側と同方針の意図的トレードオフ）。
+  Wiki ページ数の増加に伴いページング無しの全件ロードはコスト増となるため、**ページング／サーバ側絞り込みの導入**を
+  後続課題とする。受け入れ基準⑤（p95）の負荷試験実測も併せて別作業で対応する。
+- 計画側 `ADR-0004` / `ADR-0011` は現在 `Proposed`。Accepted への昇格を `/plan-feedback` でフォローする。
 
 ## テスト観点
 - deny-by-default：`Granted=false` で一覧が空・個別が 404。

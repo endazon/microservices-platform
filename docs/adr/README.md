@@ -32,3 +32,4 @@
 | IADR-0006 | ABAC 属性・ポリシー管理の検証と DocumentService 疎結合 | Accepted |
 | IADR-0007 | LLM 呼び出し先の切替は設定駆動のエンドポイント定義＋越境マトリクスで行う | Accepted |
 | IADR-0008 | 正規化変換はポート分離＋deny-by-default 縮退＋決定的 DocumentId で構成する | Accepted |
+| IADR-0009 | Wiki 閲覧の権限外アクセスは 404 で存在秘匿し、ABAC はメモリ内で後段評価する | Accepted |

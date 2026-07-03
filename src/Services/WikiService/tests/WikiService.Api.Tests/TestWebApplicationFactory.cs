@@ -1,6 +1,7 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
