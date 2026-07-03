@@ -12,6 +12,8 @@ public static class FeedbackEndpoints
     // FR-08: 一覧のページング既定・上限（無制限な全件返却を防ぐ）。
     private const int DefaultPageSize = 100;
     private const int MaxPageSize = 500;
+    // FR-10: 満足率の集計期間の上限（DashboardService の利用状況集計と揃える）。
+    private const int MaxStatsDays = 90;
 
     public static IEndpointRouteBuilder MapFeedbackEndpoints(this IEndpointRouteBuilder app)
     {
@@ -102,11 +104,19 @@ public static class FeedbackEndpoints
 
         // FR-08: 集計（👍/👎 件数・満足率）。品質可視化（FR-10 ダッシュボード）の入力。
         // 集計値のみで PII を含まないため一覧のような AdminOnly は課さない（BFF が集約して画面へ）。
-        g.MapGet("/stats", async (Guid? answerId, FeedbackDbContext db, CancellationToken ct) =>
+        //   days — FR-10: 期間指定（日数）。指定時はその範囲に絞る。未指定は全期間（後方互換）。
+        g.MapGet("/stats", async (Guid? answerId, int? days, FeedbackDbContext db, CancellationToken ct) =>
         {
             var q = db.Feedback.AsQueryable();
             if (answerId is { } aid && aid != Guid.Empty)
                 q = q.Where(f => f.AnswerId == aid);
+            // FR-10: 期間指定があれば絞り込む。ダッシュボードの利用状況と満足率の期間を揃えるため、
+            // BFF は利用状況と同じ days を渡す（DashboardService と同一のクランプ・起点算出）。
+            if (days is { } d)
+            {
+                var since = SinceUtc(d);
+                q = q.Where(f => f.CreatedAt >= since);
+            }
 
             var up = await q.CountAsync(f => f.Rating == FeedbackRating.Up, ct);
             var down = await q.CountAsync(f => f.Rating == FeedbackRating.Down, ct);
@@ -116,6 +126,15 @@ public static class FeedbackEndpoints
         }).WithName("FeedbackStats").Produces<FeedbackStatsDto>();
 
         return app;
+    }
+
+    // FR-10: days を [1, MaxStatsDays] にクランプし、集計開始時刻（UTC 当日 00:00 を含む起点）を求める。
+    //   DashboardService.SinceUtc と同一のロジック（利用状況と満足率の期間の起点を揃える）。
+    private static DateTimeOffset SinceUtc(int days)
+    {
+        var clamped = Math.Clamp(days, 1, MaxStatsDays);
+        var startDate = DateTimeOffset.UtcNow.UtcDateTime.Date.AddDays(-(clamped - 1));
+        return new DateTimeOffset(startDate, TimeSpan.Zero);
     }
 
     private static FeedbackDto ToDto(AnswerFeedback f)

@@ -23,7 +23,10 @@ builder.Services.AddKnowledgePlatformHealthChecks()
         "aianalysis-service", tags: ["ready"])
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:FeedbackService"] ?? "http://feedback-service:5008") + "/health/live"),
-        "feedback-service", tags: ["ready"]);
+        "feedback-service", tags: ["ready"])
+    .AddUrlGroup(
+        new Uri((builder.Configuration["Services:DashboardService"] ?? "http://dashboard-service:5009") + "/health/live"),
+        "dashboard-service", tags: ["ready"]);
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
@@ -37,6 +40,11 @@ builder.Services.AddHttpClient("FeedbackService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:FeedbackService"]
         ?? "http://feedback-service:5008"));
 
+// FR-10, UC-05: DashboardService 集約用の名前付き HTTP クライアント
+builder.Services.AddHttpClient("DashboardService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
+        ?? "http://dashboard-service:5009"));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
@@ -46,6 +54,7 @@ app.MapOpenApi();
 app.MapSearchBffEndpoints();
 app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
+app.MapDashboardBffEndpoints();
 
 app.Run();
 

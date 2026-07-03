@@ -74,6 +74,13 @@
   <Folder Name="/Services/FeedbackService/tests/">
     <Project Path="src/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/Services/DashboardService/" />
+  <Folder Name="/Services/DashboardService/src/">
+    <Project Path="src/Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DashboardService/tests/">
+    <Project Path="src/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj" />
+  </Folder>
   <Folder Name="/Shared/">
     <Project Path="src/Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
     <Project Path="src/Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />

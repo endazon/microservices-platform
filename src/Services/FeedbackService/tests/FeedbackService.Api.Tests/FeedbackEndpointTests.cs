@@ -115,6 +115,21 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         stats.SatisfactionRate.Should().Be((double)stats.Up / stats.Total);
     }
 
+    // FR-10 / T-15: 集計は days（期間）指定を受け付け、期間内（当日投入）の件数を含める。
+    //   ダッシュボードが利用状況と満足率の期間を揃えるために BFF が渡す days に対応する。
+    //   （CreatedAt は投入時刻＝当日。days=1 でも本テスト投入分は範囲内に含まれる）。
+    [Fact]
+    public async Task Stats_WithDays_CountsInRange()
+    {
+        var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"));
+
+        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>("/feedback/stats?days=1");
+
+        stats!.Total.Should().BeGreaterThanOrEqualTo(1); // 当日投入分は days=1 の範囲内。
+        stats.Total.Should().Be(stats.Up + stats.Down);
+    }
+
     // T-08: 一覧を rating で絞り込める。
     [Fact]
     public async Task List_FiltersByRating()

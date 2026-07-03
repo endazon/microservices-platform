@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -25,6 +26,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-08 BFF テスト: 後段 FeedbackService への転送を捕捉・スタブ化する。
     public string? LastFeedbackForwardedAuthorization { get; private set; }
 
+    // FR-10 BFF テスト: 後段 DashboardService への転送を捕捉・スタブ化する。
+    public string? LastDashboardForwardedAuthorization { get; private set; }
+
+    // FR-10 BFF テスト: 後段が返すステータスの差し替え・null 応答の再現（非 2xx 透過・502 分岐の検証用）。
+    public HttpStatusCode DashboardStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public HttpStatusCode FeedbackStatsStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public bool DashboardReturnsNullBody { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -36,7 +45,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
-                ["Services:FeedbackService"] = "http://localhost:5008"
+                ["Services:FeedbackService"] = "http://localhost:5008",
+                ["Services:DashboardService"] = "http://localhost:5009"
             }));
 
         builder.ConfigureServices(services =>
@@ -47,6 +57,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-08: 名前付きクライアント "FeedbackService" の通信をスタブハンドラに差し替える
             services.AddHttpClient("FeedbackService")
                 .ConfigurePrimaryHttpMessageHandler(() => new FeedbackStubHandler(this));
+            // FR-10: 名前付きクライアント "DashboardService" の通信をスタブハンドラに差し替える
+            services.AddHttpClient("DashboardService")
+                .ConfigurePrimaryHttpMessageHandler(() => new DashboardStubHandler(this));
+
+            // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
+            // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
         });
     }
 
@@ -76,7 +94,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpResponseMessage response;
             if (path.Contains("/stats"))
             {
-                response = new HttpResponseMessage(HttpStatusCode.OK)
+                response = new HttpResponseMessage(owner.FeedbackStatsStubStatusCode)
                 {
                     Content = JsonContent.Create(new FeedbackStatsDto(3, 1, 4, 0.75))
                 };
@@ -90,6 +108,30 @@ public class BffTestFactory : WebApplicationFactory<Program>
                         "anonymous", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow))
                 };
             }
+            return Task.FromResult(response);
+        }
+    }
+
+    // FR-10: DashboardService への転送をスタブ化する。/dashboard/summary は DashboardUsageDto を返す。
+    private sealed class DashboardStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastDashboardForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var usage = new DashboardUsageDto(
+                5, 3,
+                [new UsagePointDto(new DateOnly(2026, 7, 3), "search", 5),
+                 new UsagePointDto(new DateOnly(2026, 7, 3), "answer", 3)],
+                [new SearchTrendDto("経費", 4), new SearchTrendDto("有給", 1)]);
+            // 502 分岐の検証: 2xx でも本文が null（JSON リテラル "null"）なら BFF は 502 を返す。
+            var content = owner.DashboardReturnsNullBody
+                ? new StringContent("null", System.Text.Encoding.UTF8, "application/json")
+                : (HttpContent)JsonContent.Create(usage);
+            var response = new HttpResponseMessage(owner.DashboardStubStatusCode)
+            {
+                Content = content
+            };
             return Task.FromResult(response);
         }
     }
