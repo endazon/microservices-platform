@@ -39,12 +39,21 @@ related_issues:
 そのため App 実行時点では、新規スクリプト `scripts/check-commit-messages.js` と本仕様書のみをコミットし、
 ワークフロー・ルールの差分は「後述「適用が必要な差分」」として提示するに留めた。
 
-**2026-07-04 追記（ローカル適用済み）**: 後述「適用が必要な差分」の全 5 件を、ローカル環境で適用済み。
+**2026-07-04 追記（適用状況）**: 後述「適用が必要な差分」のうち **ワークフロー 4 件はブランチへ適用済み**
+（`git diff origin/develop...HEAD` に反映）。**`.claude/rules/traceability.md` は旧文言のまま適用されており
+再適用が必要**、また **PR #76 レビュー 🔴 の CI テスト配線（`ci.yml` へ `scripts.test.js` 実行を追加）は未適用**。
 
-- 適用: `ci.yml`（develop 追加＋`commit-messages` ジョブ）/ `changelog.yml`（develop 追加）/
-  `openapi.yml`（develop 追加＋`--force` ガード）/ `codeql.yml`（push・pull_request を develop 追加）/
-  `.claude/rules/traceability.md`（除外規定の追記）。
-- `scripts/check-commit-messages.js` は直近コミットに対して実行し、規約適合を確認済み（EXIT=0）。
+- 適用済み（ワークフロー）: `ci.yml`（develop 追加＋`commit-messages` ジョブ）/ `changelog.yml`（develop 追加）/
+  `openapi.yml`（develop 追加＋`--force` 撤去）/ `codeql.yml`（push・pull_request を develop 追加）。
+- **未適用（要人手・下記「適用が必要な差分」参照）**:
+  1. `ci.yml` に単体テスト実行（`node scripts/scripts.test.js`）ジョブ／ステップを追加（PR #76 レビュー 🔴）。
+     現状 `scripts/scripts.test.js`（19 ケース）はどの CI ジョブからも実行されておらず、回帰防止として機能していない。
+  2. `.claude/rules/traceability.md` を現行仕様へ再適用（スコープ必須化・`P0`〜`P3` 追加・`commit-allowlist.json`
+     除外の追記。旧文言「スコープ `()` は省略可」は `check-commit-messages.js` の実装と矛盾するため要修正）。
+  3. `openapi.yml` の雛形フォールバック末尾の `|| true` は不要（`gen-openapi-skeleton.js` は既存ファイルがあっても
+     exit 0 で正常終了するため。害は無いが起こり得ないケースへの防御。PR #76 レビュー 🟢）。
+- `scripts/check-commit-messages.js` は `origin/develop..HEAD` に対して実行し、規約適合を確認済み（EXIT=0）。
+- `scripts/scripts.test.js` はローカルで **19 ケース pass** を確認済み（`node scripts/scripts.test.js`）。
 
 ## 現状分析（確認済みの実害）
 
@@ -106,6 +115,24 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
 > 注: 上記 `jobs:` 断片は既存 `jobs:` 直下へ 1 ジョブとして追加する（`doc-links` 等と並列）。
 > `fetch-depth: 0` は `base..HEAD` の範囲解決に必須。
 
+さらに、`scripts/scripts.test.js`（`validateSubject`/`findAllowlisted`/`applyOverride` の回帰 19 ケース）を CI で
+実行し、既知の抜け穴が再発しても検知できるよう配線する（PR #76 レビュー 🔴）。`doc-links` と同様に
+Node 標準モジュールのみで動くため依存インストール不要。既存 `jobs:` 直下へ以下を追加する:
+
+```diff
++  # スクリプト単体テスト（check-commit-messages / gen-changelog の回帰防止・Issue #60 レビュー反映）。
++  # Node 標準の assert のみで動作し依存インストール不要。
++  script-tests:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v7
++      - uses: actions/setup-node@v6
++        with:
++          node-version: "20"
++      - name: Run script unit tests
++        run: node scripts/scripts.test.js
+```
+
 ### 2. `changelog.yml`（develop で CHANGELOG を再生成）
 
 ```diff
@@ -156,9 +183,20 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
      - cron: "0 3 * * 1"
 ```
 
-### 5. `.claude/rules/traceability.md`（除外規定の追記）
+### 5. `.claude/rules/traceability.md`（現行仕様への整合・要人手再適用）
 
-`.claude/` は App 権限で編集不可のため、以下を人手で「守ること」節の後に追記する。
+`.claude/` は App 権限で編集不可のため、以下を人手で適用する。**旧版は「スコープ `()` は省略可」で
+`P0`〜`P3`・allowlist の記載が無く、`check-commit-messages.js` の実装と矛盾する**ため、下記のとおり修正する
+（PR #76 レビュー 🟡 反映）。
+
+「## 起点 ID の種別」一覧の末尾へ `P0`〜`P3` を追加:
+
+```diff
+ - `IADR-xxxx`: 実装ADR（本リポ `docs/adr/`。計画ADR とは別系統）
++- `P0`〜`P3`: フェーズ骨格（基盤スケルトン等、単一 FR/UC に紐づかない横断的なフェーズ作業）
+```
+
+「## コミットメッセージの機械チェック」節を以下の内容にする（スコープ必須化・allowlist 除外を反映）:
 
 ```markdown
 ## コミットメッセージの機械チェック（CI・再発防止）
@@ -168,7 +206,10 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 
 - **許可する種別**: `feat` / `fix` / `perf` / `refactor` / `docs` / `test` / `build` / `ci` / `style` / `chore`。
 - **起点 ID の書式**: `FR-\d+` / `NFR` / `UC-\d+` / `SC-\d+` / `ADR-\d{3,4}` / `IADR-\d{3,4}` / `P0`〜`P3`。
-  複数 ID はカンマ区切りで併記。スコープ `()` は省略可。
+  複数 ID はカンマ区切りで併記。
+- **スコープ（起点 ID）の要否**: 内容変更を伴う種別（`feat` / `fix` / `perf` / `refactor` / `docs` / `test`）は
+  スコープ `(起点ID)` を**必須**とする。計画 ID に紐づかない雑多・ツールチェーン変更は `chore` / `style` /
+  `build` / `ci` を用い、スコープ省略を許す（`check-commit-messages.js` の `TYPES_ALLOW_NO_SCOPE`）。
 - **末尾の PR 番号**: ` (#123)` はスカッシュマージ既定件名として許容。
 
 ### 検査対象から除外する自動コミット
@@ -176,8 +217,11 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - **自動コミットの著者**: `dependabot[bot]` / `renovate[bot]` / `github-actions[bot]` 等の bot 著者。
 - **マージコミット**: `--no-merges` により除外。
 - **自動生成・リバート**: 件名に `[skip ci]` を含むコミット、および `Revert "..."`。
+- **規約導入前の既存コミット（grandfather）**: `scripts/commit-allowlist.json` に完全 SHA と理由を列挙した
+  コミットは `skip(allowlist)` として除外する（履歴改変・force push をせずに導入前の非準拠コミットを恒久除外
+  するため。将来の新規コミットは通常どおり検査対象）。
 
-除外リストは `scripts/check-commit-messages.js` の `BOT_AUTHORS` と同時に更新する。
+除外リストは `scripts/check-commit-messages.js` の `BOT_AUTHORS` および `scripts/commit-allowlist.json` と同時に更新する。
 ```
 
 ## 実装物（本 PR）
@@ -217,6 +261,8 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - [x] CHANGELOG / openapi.yaml の再生成方針を明記した（CHANGELOG は `changelog.yml` の develop 発火で自動再生成、
       `feat(FR-10)` 誤記コミット `b421761` は `changelog-overrides.json` により `feat`／scope `P0` へ補正）。
 - [x] `check-commit-messages.js`（`validateSubject`/`findAllowlisted`）と `gen-changelog.js`（`applyOverride`）に単体テストを追加した（`scripts/scripts.test.js`・19 ケース pass）。
+- [ ] 上記単体テストを CI で実行する（`ci.yml` へ `script-tests` ジョブ追加）。**要人手**（App は `.github/workflows/` を編集不可）。PR #76 レビュー 🔴。
+- [ ] `.claude/rules/traceability.md` を現行仕様（スコープ必須化・`P0`〜`P3`・allowlist 除外）へ再適用する。**要人手**（App は `.claude/` を編集不可）。PR #76 レビュー 🟡。
 - [x] 規約導入前の非準拠コミット 5 件を `commit-allowlist.json` で恒久適用除外し、`commit-messages` ジョブが `origin/develop..HEAD` で pass する（EXIT=0）ことをローカル検証した。
 - [x] 重要な実装判断を実装 ADR（`IADR-0015`）に記録した。
 - [x] 本作業仕様書を作成した。
@@ -228,5 +274,10 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
   コミット `b421761`（件名 `feat(FR-10)` は誤記・実体は P0 骨格）は `changelog-overrides.json` の remap により
   `feat`／scope `P0` として計上され、FR-10 誤帰属は解消される（履歴は書き換えない）。
 - **openapi.yaml への FR-08/10/11 反映**: 手書き 3.1.0 仕様への追記が必要（別 PR 推奨）。
-- ~~**`.github/workflows/` と `.claude/rules/traceability.md` の差分適用**: 上記差分を人手で適用する。~~
-  → 2026-07-04 ローカルで適用済み。
+- **CI への単体テスト配線（PR #76 レビュー 🔴・要人手）**: `scripts/scripts.test.js`（19 ケース）はローカルでは
+  pass するが、どの CI ジョブからも実行されていないため回帰防止として機能していない。上記「1. `ci.yml`」の
+  `script-tests` ジョブ差分を人手で適用する（App は `.github/workflows/` を編集不可）。
+- **`.claude/rules/traceability.md` の再適用（PR #76 レビュー 🟡・要人手）**: 旧文言（スコープ省略可・`P0`〜`P3` 欠落・
+  allowlist 未記載）が実装と矛盾しているため、上記「5.」の差分を人手で再適用する（App は `.claude/` を編集不可）。
+- **`openapi.yml` の不要な `|| true`（PR #76 レビュー 🟢・任意）**: `gen-openapi-skeleton.js` は既存ファイルがあっても
+  exit 0 で終了するため `|| true` は不要。害は無いため必須ではないが、整理する場合は上記「3.」参照。
