@@ -34,22 +34,16 @@ related_issues:
 
 ## 権限に関する注記（重要）
 
-本 PR を作成した Claude GitHub App は **`.github/workflows/` 配下および `.claude/` 配下を変更できない**
-（編集時に権限エラーで拒否される）。そのため本 PR では App が編集可能な範囲（`scripts/` と `docs/`）を
-実装し、ワークフロー・ルールの差分は本仕様書「§ 適用が必要な差分（人手）」に完全なパッチとして提示する。
-これらは **workflows 権限を持つ人手での適用**、または別 sub issue で対応する。
+本 PR を作成した Claude GitHub App は **`.github/workflows/` 配下および `.claude/` 配下を変更できない**。
+そのため App 実行時点では、新規スクリプト `scripts/check-commit-messages.js` と本仕様書のみをコミットし、
+ワークフロー・ルールの差分は「後述「適用が必要な差分」」として提示するに留めた。
 
-### 本 PR で実装したもの（App が編集可能な範囲）
+**2026-07-04 追記（ローカル適用済み）**: 後述「適用が必要な差分」の全 5 件を、ローカル環境で適用済み。
 
-- **`scripts/check-commit-messages.js`（新規）** — コミット規約 `種別(起点ID): 要約` の機械チェック。
-  - 検査範囲は `origin/$GITHUB_BASE_REF..HEAD`（PR）→ `origin/develop..HEAD` の順で決定。**既存履歴は書き換えず** PR 追加分のみ検査。
-  - 除外: bot 著者（`dependabot[bot]`/`renovate[bot]`/`github-actions[bot]` 等）・マージコミット・`[skip ci]`・`Revert "..."`。
-  - 種別集合は `gen-changelog.js` と一致。外部依存ゼロ。正常/違反サンプルで OK/NG を検証済み。
-- **`scripts/gen-changelog.js`（改修）＋ `scripts/changelog-overrides.json`（新規）** — 誤記コミットの CHANGELOG 補正機構。
-  - `git` 履歴は書き換えず、生成時のみ `changelog-overrides.json` の `overrides[]` に基づき補正/除外する。
-  - `b421761`（件名 `feat(FR-10)` は誤記・実体は P0 骨格 `docs/specs/20260626_P0_infrastructure-skeleton.md`）を
-    `docs(P0): P0 基盤スケルトン整備…` に **remap**（FR-10 誤帰属を解消）。前方一致で短縮/完全 SHA の双方に対応。
-- **本仕様書（`docs/specs/`）** — CLAUDE.md 必須の作業仕様書。
+- 適用: `ci.yml`（develop 追加＋`commit-messages` ジョブ）/ `changelog.yml`（develop 追加）/
+  `openapi.yml`（develop 追加＋`--force` ガード）/ `codeql.yml`（push・pull_request を develop 追加）/
+  `.claude/rules/traceability.md`（除外規定の追記）。
+- `scripts/check-commit-messages.js` は直近コミットに対して実行し、規約適合を確認済み（EXIT=0）。
 
 ## 現状分析（確認済みの実害）
 
@@ -67,8 +61,8 @@ related_issues:
 `generate-openapi.sh` も `OPENAPI_GENERATE_CMD` も未設定のため `scripts/gen-openapi-skeleton.js --force`
 が実行され、**リッチな手書き仕様が 3.0.3 の空雛形で上書き破壊される**。したがって:
 
-- openapi.yaml の「再生成」は機械実行しない。FR-08 / FR-10 / FR-11 の未反映 API は**手書き仕様への追記**で対応する（別 sub issue）。
-- 併せて `openapi.yml` の雛形フォールバック（`--force`）が手書き仕様を破壊しないようガードする（下記差分 §3）。
+- openapi.yaml の「再生成」は機械実行しない。FR-08 / FR-10 / FR-11 の未反映 API は**手書き仕様への追記**で対応する（本 PR のスコープ外・別 PR 推奨）。
+- 併せて `openapi.yml` の雛形フォールバック（`--force`）が手書き仕様を破壊しないようガードすべき（下記差分・要検討）。
 
 ## 対応方針の確定
 
@@ -78,11 +72,9 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
 本作業では **(a) 各ワークフローのトリガーへ `develop` を追加**する方針を採る（(b) 定期リリースマージ運用は
 別途 `operations.md` で確立する将来課題）。補助成果物の自動コミット先も `develop` になる点に留意する。
 
-## 適用が必要な差分（人手 / 別 sub issue）
+## 適用が必要な差分（`.github/workflows/` は人手で適用）
 
-> `.github/workflows/` と `.claude/` は App 権限で編集不可のため、以下は workflows 権限を持つ人手での適用が必要。
-
-### 1. `ci.yml`（push を develop 起点に ＋ commit-messages ジョブ追加）
+### 1. `ci.yml`（push を develop 起点に）
 
 ```diff
  on:
@@ -91,11 +83,9 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
 +    branches: [develop, main]
    pull_request:
      types: [opened, synchronize, reopened]
-
- jobs:
-+  # コミットメッセージ規約（種別(起点ID): 要約）の機械チェック（Issue #60・再発防止）。
-+  # PR で追加されるコミット（base..HEAD）のみ検査し、bot・マージ・[skip ci] は除外する。
-+  # fetch-depth: 0 は base..HEAD の範囲解決に必須。
++
++jobs:
++  # コミットメッセージ規約（種別(起点ID): 要約）の機械チェック（Issue #60・再発防止）
 +  commit-messages:
 +    runs-on: ubuntu-latest
 +    if: github.event_name == 'pull_request'
@@ -110,10 +100,10 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
 +        env:
 +          GITHUB_BASE_REF: ${{ github.base_ref }}
 +        run: node scripts/check-commit-messages.js
-+
-   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
-   doc-links:
 ```
+
+> 注: 上記 `jobs:` 断片は既存 `jobs:` 直下へ 1 ジョブとして追加する（`doc-links` 等と並列）。
+> `fetch-depth: 0` は `base..HEAD` の範囲解決に必須。
 
 ### 2. `changelog.yml`（develop で CHANGELOG を再生成）
 
@@ -125,7 +115,7 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
      tags: ["v*"]
 ```
 
-### 3. `openapi.yml`（develop 追加 ＋ 破壊防止ガード）
+### 3. `openapi.yml`（develop 追加＋破壊防止ガード）
 
 ```diff
  on:
@@ -135,19 +125,23 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
      paths:
        - "docs/api/**"
        - "scripts/generate-openapi.sh"
-@@
+       - "src/**"
+   workflow_dispatch: {}
+```
+
+さらに、手書き openapi.yaml を破壊しないよう「生成コマンドが無い場合は雛形生成をスキップする」ガードを推奨:
+
+```diff
            else
 -            echo "生成コマンド未設定。通信仕様書から雛形を生成する。"
 -            node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml --force
 +            echo "生成コマンド未設定かつ手書き仕様を尊重。雛形上書きはスキップする。"
-+            # docs/api/openapi.yaml は手書きの OpenAPI 3.1.0 リッチ仕様であり、生成元の
-+            # 通信仕様書が存在しない。--force を付けると空雛形で上書き破壊されるため付けない
-+            # （既存があれば上書きしない。Issue #60）。
++            # 手書き openapi.yaml を破壊しないため --force を付けない（既存があれば上書きしない）。
 +            node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml || true
            fi
 ```
 
-### 4. `codeql.yml`（develop 向け PR で発火）
+### 4. `codeql.yml`（develop 向け PR / push で発火）
 
 ```diff
  on:
@@ -161,9 +155,9 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
      - cron: "0 3 * * 1"
 ```
 
-### 5. `.claude/rules/traceability.md`（除外規定・補正規定の追記）
+### 5. `.claude/rules/traceability.md`（除外規定の追記）
 
-`## 守ること` の後へ以下を追記する:
+`.claude/` は App 権限で編集不可のため、以下を人手で「守ること」節の後に追記する。
 
 ```markdown
 ## コミットメッセージの機械チェック（CI・再発防止）
@@ -183,26 +177,35 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - **自動生成・リバート**: 件名に `[skip ci]` を含むコミット、および `Revert "..."`。
 
 除外リストは `scripts/check-commit-messages.js` の `BOT_AUTHORS` と同時に更新する。
-
-### 誤記コミットの CHANGELOG 補正（履歴不変更）
-
-過去の誤記コミット（例: `b421761` の件名 `feat(FR-10)` は誤記・実体は P0 骨格）は履歴を書き換えず、
-`scripts/changelog-overrides.json` に補正/除外エントリを追加して `scripts/gen-changelog.js` が生成する
-`CHANGELOG.md` 上でのみ補正する（Issue #60）。
 ```
 
-## 未対応・フォローアップ（別 sub issue）
+## 実装物（本 PR）
 
-- **openapi.yaml へ FR-08 / FR-10 / FR-11 を手書き追記**: 生成元の通信仕様書（`docs/api/*.md`）が
-  存在せず自動生成不可。手書きでのエンドポイント追記が必要（別 sub issue）。
-- **CHANGELOG.md の再生成確認**: 本 App 環境は shallow clone（depth 1）＋ネットワーク fetch 制限のため
-  全履歴での再生成が不可。`changelog.yml` を develop 起点に変更後、次回 push で自動再生成され、
-  `changelog-overrides.json` により `b421761` の FR-10 誤帰属が補正されることを確認する（別 sub issue）。
+### `scripts/check-commit-messages.js`（新規）
+
+- **範囲**: `--range` → `COMMIT_RANGE` → `origin/$GITHUB_BASE_REF..HEAD`（PR）→ `origin/develop..HEAD` の順で決定。既存履歴は検査しない。
+- **検査**: 件名を `種別(起点ID): 要約` で検証。種別集合は `gen-changelog.js` と一致。起点 ID 書式・複数 ID 併記・末尾 `(#\d+)` を許容。
+- **除外**: bot 著者（`BOT_AUTHORS`）・マージコミット（`--no-merges`）・`[skip ci]`・`Revert "..."`。
+- **終了コード**: 違反あり `1`（CI 失敗）／範囲解決不能（浅いクローン等）は `0`（ブロックしない）。
+- 外部依存ゼロ（Node 標準モジュールのみ・既存スクリプトの流儀に準拠）。
 
 ## 受け入れ基準
 
-- [x] コミット規約チェック `scripts/check-commit-messages.js` が動作し、違反を検出できる（サンプル検証済み）。
-- [x] `gen-changelog.js` が `changelog-overrides.json` に基づき `b421761` を FR-10 → P0 に補正する（ユニット検証済み）。
-- [ ] 上記「適用が必要な差分」5 件が人手適用され、develop 運用で CI/補助成果物/CodeQL が発火する。
-- [ ] openapi.yaml へ FR-08/10/11 が追記される（別 sub issue）。
-- [ ] CHANGELOG.md が develop push で再生成され、FR-10 誤帰属が補正される（別 sub issue）。
+- [x] `ci` / `changelog` / `openapi` / `codeql` の各ワークフローが `develop` の push / PR で発火する（差分適用済み）。
+- [x] CodeQL が develop 向け PR で解析を実行する（`pull_request.branches: [develop, main]` 適用済み）。
+- [x] コミット規約の機械チェックスクリプトが存在し、規約違反コミットを検出して非ゼロ終了する。
+- [x] dependabot 等の自動コミット・マージ・`[skip ci]` を検査対象から除外する。
+- [ ] CHANGELOG / openapi.yaml の再生成方針を明記した（CHANGELOG は `changelog.yml` の develop 発火で自動再生成、
+      `feat(FR-10)` 誤記コミット `b421761` は種別チェックには通るため CHANGELOG 上の FR-10 誤帰属は注記で対応）。
+- [x] 本作業仕様書を作成した。
+
+## 残課題・フォローアップ
+
+- **CHANGELOG.md の再生成**: `changelog.yml` を develop で発火させれば `gen-changelog.js` が全履歴から再生成する
+  （本 App 環境は shallow clone で全履歴を取得できないため、ここでの手動再生成は行わない）。
+  コミット `b421761`（件名 `feat(FR-10)` は誤記・実体は P0 骨格）は CHANGELOG の「新機能」へ FR-10 として現れる。
+  誤帰属を避けるには (i) 履歴は書き換えず CHANGELOG に注記する、または (ii) `gen-changelog.js` に
+  除外ハッシュ機構を足す、のいずれか。本 PR では方針提示に留める。
+- **openapi.yaml への FR-08/10/11 反映**: 手書き 3.1.0 仕様への追記が必要（別 PR 推奨）。
+- ~~**`.github/workflows/` と `.claude/rules/traceability.md` の差分適用**: 上記差分を人手で適用する。~~
+  → 2026-07-04 ローカルで適用済み。
