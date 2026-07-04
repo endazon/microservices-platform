@@ -1,3 +1,4 @@
+using System.Globalization;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Grpc.Core;
 using Qdrant.Client;
@@ -101,8 +102,55 @@ public class QdrantVectorStore(
             Text: payload.GetValueOrDefault("text")?.StringValue ?? "",
             Score: score,
             MarkdownUri: payload.GetValueOrDefault("markdown_uri")?.StringValue,
-            Attributes: [],
+            // FR-05, FR-11: ABAC 属性（confidentiality 等）を DTO へ復元する。
+            Attributes: ExtractAttributes(payload),
             Tags: []);
+
+    // FR-05, FR-11: ペイロードに保持した ABAC 属性を `Attributes` 辞書へ復元する。
+    // 復元しないと AiAnalysisService の機密区分判定（HighestConfidentiality）が常に
+    // 「属性欠落 → restricted」へ縮退し、FR-11 の機密区分別ルーティングが無効化される。
+    // 書き込み（UpsertAsync）はフラットキー `attributes.{k}` だが、Qdrant がドットを
+    // ネストパスとして解釈し `attributes` 構造体へ格納する可能性もあるため、両表現を復元する
+    // （実機での格納表現は IADR-0014 のとおり統合テストで確認する）。
+    internal static Dictionary<string, string> ExtractAttributes(
+        IReadOnlyDictionary<string, Value> payload)
+    {
+        var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        // (a) フラットキー表現: "attributes.confidentiality" → "confidentiality"
+        const string prefix = "attributes.";
+        foreach (var (key, value) in payload)
+        {
+            if (key.StartsWith(prefix, StringComparison.Ordinal) && key.Length > prefix.Length
+                && AsString(value) is { } text)
+            {
+                attributes[key[prefix.Length..]] = text;
+            }
+        }
+
+        // (b) ネスト構造体表現: "attributes" -> { confidentiality: ... }
+        if (payload.TryGetValue("attributes", out var nested)
+            && nested.KindCase == Value.KindOneofCase.StructValue)
+        {
+            foreach (var (name, value) in nested.StructValue.Fields)
+            {
+                if (AsString(value) is { } text)
+                    attributes.TryAdd(name, text);   // フラットキーが既にあれば尊重する
+            }
+        }
+
+        return attributes;
+    }
+
+    // 属性値をスカラー文字列へ写像する（属性は原則文字列だが、数値/真偽値も安全に文字列化する）。
+    private static string? AsString(Value value) => value.KindCase switch
+    {
+        Value.KindOneofCase.StringValue => value.StringValue,
+        Value.KindOneofCase.IntegerValue => value.IntegerValue.ToString(CultureInfo.InvariantCulture),
+        Value.KindOneofCase.DoubleValue => value.DoubleValue.ToString(CultureInfo.InvariantCulture),
+        Value.KindOneofCase.BoolValue => value.BoolValue ? "true" : "false",
+        _ => null
+    };
 
     public async Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default)
     {

@@ -46,7 +46,9 @@ ADR-0010 は切替を **LLMゲートウェイで一元化**し、08_data-egress-
 - 越境マトリクス（機密区分→許容ティア、`internal×C` の要承認）は `EgressMatrix` に固定表として実装する
   （08_data-egress-policy の表がそのまま根拠）。
 - 呼び出し先エンドポイントは `Llm:Routing:Endpoints`（名前・ティアA/B/C・プロバイダキー・モデル・有効/優先度）で定義する。
-- 用途→モデルは `Llm:Routing:PurposeModels` で切替（例: rag-answer→sonnet, analysis→opus, diagram→haiku）。
+- 用途→モデルは `Llm:Routing:PurposeModels` で切替（例: rag-answer→sonnet, analysis→opus, diagram-coding→haiku）。
+  設定キーは**呼び出し側が送る purpose 値と一致**させる（ConversionService は `diagram-coding` を送る。
+  不一致だと用途別モデル選択が発火せず既定モデルへ縮退する。Issue #58 で `diagram`→`diagram-coding` に統一）。
 - プロバイダはキー付き DI（`claude`＝ティアB / `selfhosted`＝ティアA）で登録し、ルーターの決定で切り替える。
 - 許容ティアに送信可能なエンドポイントが無い場合は**送信せず縮退**（`Sent=false`）とし、呼び出し側は出典のみ返す。
 - すべての送信判定（機密区分・ティア・エンドポイント・モデル・許否・理由）を監査ログに記録する（ADR-0010）。
