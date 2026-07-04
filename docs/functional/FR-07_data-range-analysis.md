@@ -10,7 +10,7 @@ author: claude
 created: 2026-06-27
 updated: 2026-06-29
 plan_refs:
-  - "../../project-planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
 # 機能仕様書: 指定データ範囲での分析・比較・抽出

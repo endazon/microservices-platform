@@ -10,7 +10,7 @@ author: claude
 created: 2026-06-27
 updated: 2026-06-27
 plan_refs:
-  - "../../project-planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
 # テスト仕様書: AI 回答・出典提示

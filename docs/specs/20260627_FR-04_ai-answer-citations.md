@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-04 AI 回答の出典（元文書リンク）提示
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-04
   - UC-01
@@ -11,7 +11,7 @@ author: claude
 created: 2026-06-27
 updated: 2026-06-27
 plan_refs:
-  - "../../project-planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
   - ../functional/FR-04_ai-answer-citations.md
   - ../tests/FR-04_ai-answer-citations.md

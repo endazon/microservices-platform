@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-13 Wiki 閲覧の ABAC 適用（横断検索・AI回答と統合）
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-13
   - FR-05

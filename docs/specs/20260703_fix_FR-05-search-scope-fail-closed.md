@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-05 /search の Scope 未指定を deny 化（fail-closed による ABAC バイパス是正）
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-05
   - UC-01

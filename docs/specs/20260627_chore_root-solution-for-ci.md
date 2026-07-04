@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — CI のルート実行に対応するルートソリューション配置
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - NFR
 author: claude

@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-02 取り込みパイプライン（パース→チャンク化→埋め込み→索引登録）
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-02
   - UC-04
