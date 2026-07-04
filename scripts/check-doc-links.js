@@ -57,11 +57,16 @@ function isBrokenRef(ref, baseDir) {
   const looksRelative = t.startsWith('./') || t.startsWith('../') || (t.includes('/') && !t.startsWith('/'));
   if (!looksRelative) return false;
   if (!LINK_EXT.test(t)) return false;
-  // planning/ サブモジュール未チェックアウト時は planning 配下リンクを検査しない
+  // planning/ サブモジュール未チェックアウト時は planning 配下リンクを検査しない。
+  // CI の actions/checkout（サブモジュール取得なし）は planning/ を「空のプレースホルダ
+  // ディレクトリ」として作るため、存在チェックだけでは未チェックアウトを判別できない。
+  // 中身が空（＝未 populate）の場合も検査対象外とする。
   if (/(^|\/)planning\//.test(t)) {
     const idx = t.indexOf('planning/') + 'planning'.length;
     const subRoot = path.resolve(baseDir, t.slice(0, idx));
-    if (!fs.existsSync(subRoot)) return false;
+    let populated = false;
+    try { populated = fs.existsSync(subRoot) && fs.readdirSync(subRoot).length > 0; } catch (e) { populated = false; }
+    if (!populated) return false;
   }
   const resolved = path.resolve(baseDir, t);
   try { return !fs.existsSync(resolved); } catch (e) { return false; }
