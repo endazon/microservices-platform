@@ -88,3 +88,16 @@ claude-code-action の同梱 github MCP サーバは read/comment 系のみを�
 - `gh` の認証は `GH_TOKEN`（=`GITHUB_TOKEN`）に依存する。トークン権限 `issues: write`
   が無いリポジトリでは作成が 403 になる。
 - モデル解析は `@claude <model>` 形式のみ対応。未知の指定は既定にフォールバックする。
+- **【AI 固有リスク】プロンプトインジェクション経由の Issue 乱発**:
+  `claude-code-review.yml` は `pull_request: [opened, synchronize]` で**無条件・自動起動**
+  し、レビューエージェントは PR 本文・差分・コード内容を読む。ここに `issues: write` と
+  `--allowedTools Bash(gh issue create:*)` が付与されたため、悪意ある PR 内容
+  （プロンプトインジェクション）によって意図しない `gh issue create` が誘発される
+  余地がある。`@claude` 明示メンション時のみ起動する `claude-coding.yml` と異なり、
+  こちらは外部からの PR でも自動起動する点に注意。
+  - **緩和策（要検討）**: (a) review ジョブから Issue 作成権限を外し、Issue 発行は
+    明示メンション起動の coding ジョブに限定する、(b) 作成した Issue に発行理由・
+    トリガ元 PR を必ず記録して事後監査可能にする、(c) fork からの PR に対しては
+    `issues: write` を付与しない（`pull_request_target` を使わない）運用を維持する。
+  - 現状は既定モデル・既定プロンプトのレビュー用途を想定しており即時の実害は
+    確認されていないが、権限拡張に伴う残存リスクとして記録する。
