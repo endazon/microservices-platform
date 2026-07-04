@@ -14,8 +14,9 @@
 #   - このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効
 #
 # モデル:
-#   既定は最新の claude-opus-4-8。速度・コストを優先するなら claude_args の --model を
-#   claude-sonnet-5 に変更してよい。
+#   既定は最新の claude-opus-4-8。メンションで「@claude opus / sonnet / haiku」と
+#   書くと、そのモデルで起動する（"Select model from mention" ステップが解析）。
+#   既定値を変えたい場合は同ステップの MODEL="..." を書き換える。
 
 name: Claude Coding
 
@@ -77,8 +78,34 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # @claude メンションでモデルを選択する。既定は claude-opus-4-8。
+      # 「@claude opus / sonnet / haiku」と書くとそのモデルで起動する。
+      # 本文はコマンドインジェクション防止のため env 経由で受け取り、run へ直接展開しない。
+      - name: Select model from mention
+        id: model
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          REVIEW_BODY: ${{ github.event.review.body }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+        run: |
+          BODY="${COMMENT_BODY}
+          ${REVIEW_BODY}
+          ${ISSUE_BODY}
+          ${ISSUE_TITLE}"
+          MODEL="claude-opus-4-8"
+          if   printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+opus';   then MODEL="claude-opus-4-8"
+          elif printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+sonnet'; then MODEL="claude-sonnet-5"
+          elif printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+haiku';  then MODEL="claude-haiku-4-5-20251001"
+          fi
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "Selected model: $MODEL"
+
       - name: Run Claude Code
         uses: anthropics/claude-code-action@v1
+        # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # 認証はどちらか一方のみ設定する（未設定の方は空文字で無視される）:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
@@ -96,7 +123,7 @@ jobs:
           #   ・スタック別ツール（末尾4行）は ci.example.yml 先頭コメントの対照表を参考に
           #     使用スタックのコマンドへ書き換えること（例: npm run:* / pytest:* / go test:*）。
           claude_args: |
-            --model claude-opus-4-8
+            --model ${{ steps.model.outputs.model }}
             --allowedTools Read
             --allowedTools Edit
             --allowedTools Write
@@ -115,6 +142,7 @@ jobs:
             --allowedTools Bash(cat:*)
             --allowedTools Bash(mkdir:*)
             --allowedTools Bash(node:*)
+            --allowedTools Bash(gh issue create:*)
             --allowedTools mcp__github__pull_request_read
             --allowedTools mcp__github__get_file_contents
             --allowedTools mcp__github__issue_read

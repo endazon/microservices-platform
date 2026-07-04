@@ -11,7 +11,8 @@
 #
 # モデル:
 #   レビューは速度・コストを優先し既定で claude-sonnet-5 を使う。
-#   より厳密にしたい場合は --model を claude-opus-4-8 に変更する。
+#   PR 本文/タイトルに「@claude opus / sonnet / haiku」と書くとそのモデルで起動する
+#   （"Select model from mention" ステップが解析）。既定は同ステップの MODEL="..." で変更。
 #
 # 権限（GitHub MCP ツール）について:
 #   GitHub MCP ツール（mcp__github__pull_request_review_write 等）は
@@ -34,6 +35,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
       id-token: write
     steps:
       - name: Checkout
@@ -69,8 +71,30 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # レビューは PR オープン/更新で自動起動するため、モデル指定は PR 本文/タイトルの
+      # 「@claude opus / sonnet / haiku」で切り替える。未指定時は既定 claude-sonnet-5。
+      # 本文はコマンドインジェクション防止のため env 経由で受け取り、run へ直接展開しない。
+      - name: Select model from mention
+        id: model
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          BODY="${PR_BODY}
+          ${PR_TITLE}"
+          MODEL="claude-sonnet-5"
+          if   printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+opus';   then MODEL="claude-opus-4-8"
+          elif printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+sonnet'; then MODEL="claude-sonnet-5"
+          elif printf '%s' "$BODY" | grep -qiE '@claude[[:space:]]+haiku';  then MODEL="claude-haiku-4-5-20251001"
+          fi
+          echo "model=$MODEL" >> "$GITHUB_OUTPUT"
+          echo "Selected model: $MODEL"
+
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
+        # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # 認証はどちらか一方のみ設定する（未設定の方は空文字で無視される）:
           #   サブスク = CLAUDE_CODE_OAUTH_TOKEN / API = ANTHROPIC_API_KEY
@@ -95,8 +119,9 @@ jobs:
           # 権限拒否はこれで解消する。additional_permissions は使わない）。
           # Read は計画書（../project-planning）の参照に必要。
           claude_args: |
-            --model claude-sonnet-5
+            --model ${{ steps.model.outputs.model }}
             --allowedTools Read
+            --allowedTools Bash(gh issue create:*)
             --allowedTools mcp__github__pull_request_read
             --allowedTools mcp__github__get_file_contents
             --allowedTools mcp__github__issue_read
