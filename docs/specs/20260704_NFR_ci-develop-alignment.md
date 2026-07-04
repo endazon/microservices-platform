@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — CI・補助成果物ワークフローの develop 運用整合
 type: work-spec
-status: in-progress
+status: review
 related_ids:
   - NFR
 author: claude
@@ -12,7 +12,8 @@ plan_refs:
 related_specs:
   - ../operations/operations.md
   - ../tech/tech-requirements.md
-related_adrs: []
+related_adrs:
+  - ../adr/IADR-0015_ci-develop-alignment-and-changelog-overrides.md
 issue: "#60"
 parent_issue: "#48"
 related_issues:
@@ -185,9 +186,17 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 
 - **範囲**: `--range` → `COMMIT_RANGE` → `origin/$GITHUB_BASE_REF..HEAD`（PR）→ `origin/develop..HEAD` の順で決定。既存履歴は検査しない。
 - **検査**: 件名を `種別(起点ID): 要約` で検証。種別集合は `gen-changelog.js` と一致。起点 ID 書式・複数 ID 併記・末尾 `(#\d+)` を許容。
+- **起点 ID の必須化（PR #76 レビュー 🔴 反映）**: 内容変更の種別（`feat`/`fix`/`perf`/`refactor`/`docs`/`test`）は起点 ID（スコープ）を**必須**とし、無い場合を違反として検出する。計画 ID に紐づかない雑多・ツールチェーン変更は `chore`/`style`/`build`/`ci`（`TYPES_ALLOW_NO_SCOPE`）で表現し ID 省略を許す。これにより「`feat: 説明`（ID 無し）が素通りする」抜け穴を塞ぐ。
 - **除外**: bot 著者（`BOT_AUTHORS`）・マージコミット（`--no-merges`）・`[skip ci]`・`Revert "..."`。
 - **終了コード**: 違反あり `1`（CI 失敗）／範囲解決不能（浅いクローン等）は `0`（ブロックしない）。
-- 外部依存ゼロ（Node 標準モジュールのみ・既存スクリプトの流儀に準拠）。
+- 外部依存ゼロ（Node 標準モジュールのみ・既存スクリプトの流儀に準拠）。`validateSubject` は `scripts/scripts.test.js` で単体テスト済み。
+
+### `scripts/changelog-overrides.json` / `gen-changelog.js`（誤帰属補正）
+
+- **補正方針**: git 履歴は書き換えず、CHANGELOG 生成時のみ誤記コミットを補正/除外する（`action: remap|exclude`）。
+- **`b421761` の補正（PR #76 レビュー 🔴 反映）**: 元件名 `feat(FR-10)` は誤記だが、当該コミットは約 9,200 行の P0 基盤スケルトン実装である。したがって `type` は実体どおり **`feat` のまま**、`scope` のみ `FR-10 → P0` に補正する（`docs` へ remap すると大規模実装をドキュメントとして過小計上する新たな誤帰属を生むため不可）。
+- **不正 `action` の検出（PR #76 レビュー 🟡 反映）**: `applyOverride` は未知の `action`（タイプミス等）を黙って remap 扱いにせず、警告を出して補正を無視する。
+- `applyOverride` / `hashMatches` は `scripts/scripts.test.js` で単体テスト済み（`b421761 → feat/P0` の回帰を含む）。
 
 ## 受け入れ基準
 
@@ -195,17 +204,18 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - [x] CodeQL が develop 向け PR で解析を実行する（`pull_request.branches: [develop, main]` 適用済み）。
 - [x] コミット規約の機械チェックスクリプトが存在し、規約違反コミットを検出して非ゼロ終了する。
 - [x] dependabot 等の自動コミット・マージ・`[skip ci]` を検査対象から除外する。
-- [ ] CHANGELOG / openapi.yaml の再生成方針を明記した（CHANGELOG は `changelog.yml` の develop 発火で自動再生成、
-      `feat(FR-10)` 誤記コミット `b421761` は種別チェックには通るため CHANGELOG 上の FR-10 誤帰属は注記で対応）。
+- [x] CHANGELOG / openapi.yaml の再生成方針を明記した（CHANGELOG は `changelog.yml` の develop 発火で自動再生成、
+      `feat(FR-10)` 誤記コミット `b421761` は `changelog-overrides.json` により `feat`／scope `P0` へ補正）。
+- [x] `check-commit-messages.js`（`validateSubject`）と `gen-changelog.js`（`applyOverride`）に単体テストを追加した（`scripts/scripts.test.js`）。
+- [x] 重要な実装判断を実装 ADR（`IADR-0015`）に記録した。
 - [x] 本作業仕様書を作成した。
 
 ## 残課題・フォローアップ
 
 - **CHANGELOG.md の再生成**: `changelog.yml` を develop で発火させれば `gen-changelog.js` が全履歴から再生成する
   （本 App 環境は shallow clone で全履歴を取得できないため、ここでの手動再生成は行わない）。
-  コミット `b421761`（件名 `feat(FR-10)` は誤記・実体は P0 骨格）は CHANGELOG の「新機能」へ FR-10 として現れる。
-  誤帰属を避けるには (i) 履歴は書き換えず CHANGELOG に注記する、または (ii) `gen-changelog.js` に
-  除外ハッシュ機構を足す、のいずれか。本 PR では方針提示に留める。
+  コミット `b421761`（件名 `feat(FR-10)` は誤記・実体は P0 骨格）は `changelog-overrides.json` の remap により
+  `feat`／scope `P0` として計上され、FR-10 誤帰属は解消される（履歴は書き換えない）。
 - **openapi.yaml への FR-08/10/11 反映**: 手書き 3.1.0 仕様への追記が必要（別 PR 推奨）。
 - ~~**`.github/workflows/` と `.claude/rules/traceability.md` の差分適用**: 上記差分を人手で適用する。~~
   → 2026-07-04 ローカルで適用済み。

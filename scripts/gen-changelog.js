@@ -33,10 +33,19 @@ function hashMatches(commitHash, key) {
   return commitHash.startsWith(key) || key.startsWith(commitHash);
 }
 
+const VALID_ACTIONS = ['remap', 'exclude'];
+
 /** override を適用する。exclude なら null（呼び出し側で除外）、remap なら差し替え済みのコミットを返す。 */
 function applyOverride(c) {
   const ov = OVERRIDES.find((o) => hashMatches(c.hash, o.hash));
   if (!ov) return c;
+  if (!VALID_ACTIONS.includes(ov.action)) {
+    // action のタイプミス（例: "romap"）を黙って remap 扱いにしないよう警告し、補正を適用しない。
+    process.stderr.write(
+      `警告: changelog-overrides.json の hash "${ov.hash}" の action "${ov.action}" は未知（許可: ${VALID_ACTIONS.join(' / ')}）。この補正は無視する。\n`
+    );
+    return c;
+  }
   if (ov.action === 'exclude') return null;
   return {
     ...c,
@@ -158,4 +167,9 @@ function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+// テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
+module.exports = { applyOverride, hashMatches, VALID_ACTIONS, TYPE_LABEL, TYPE_ORDER };

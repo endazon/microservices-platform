@@ -4,10 +4,10 @@
     {
       "hash": "b421761",
       "action": "remap",
-      "type": "docs",
+      "type": "feat",
       "scope": "P0",
-      "desc": "P0 基盤スケルトン整備（元コミット件名 feat(FR-10) は誤記・実体は docs/specs/20260626_P0_infrastructure-skeleton.md）",
-      "reason": "件名 feat(FR-10) は誤記。FR-10（Dashboard）とは無関係の P0 骨格作業であり、履歴は書き換えずに CHANGELOG 上でのみ補正する。Issue #60。"
+      "desc": "P0 マイクロサービス基盤スケルトン実装（共有ライブラリ・各 REST/Worker サービス・deploy・CI 有効化。元コミット件名 feat(FR-10) は誤記で FR-10 Dashboard とは無関係）",
+      "reason": "件名の起点 ID feat(FR-10) は誤記。当該コミットは約 9,200 行の P0 基盤スケルトン実装であり FR-10（Dashboard）とは無関係。type は実体どおり feat のまま、scope のみ FR-10 → P0 に補正する（docs へ remap すると大規模実装をドキュメントとして過小計上する新たな誤帰属を生むため不可）。履歴は書き換えず CHANGELOG 生成時のみ補正する。Issue #60。"
     }
   ]
 }

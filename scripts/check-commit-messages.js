@@ -24,6 +24,11 @@ const { execSync } = require('child_process');
 // gen-changelog.js の TYPE_ORDER と一致させること。
 const VALID_TYPES = ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'build', 'ci', 'style', 'chore'];
 
+// 起点 ID（スコープ）の省略を許す種別。ツールチェーン・雑多な housekeeping は計画 ID に
+// 紐づかないことがあるため（traceability.md「雑多な変更は理由を明記する」）。それ以外の
+// 内容変更（feat/fix/perf/refactor/docs/test）は起点 ID を必須とする（Issue #60・再発防止）。
+const TYPES_ALLOW_NO_SCOPE = ['chore', 'style', 'build', 'ci'];
+
 // 起点 ID の書式（.claude/rules/traceability.md と一致）。
 //   FR-xx / NFR / UC-xx / SC-xx / ADR-xxxx / IADR-xxxx / P0..P3（フェーズ骨格）
 const ID_PATTERN = /^(FR-\d+|NFR(?:-\w+)?|UC-\d+|SC-\d+|ADR-\d{3,4}|IADR-\d{3,4}|P[0-3])$/;
@@ -131,10 +136,19 @@ function validateSubject(subject) {
   }
   const [, type, scope, , desc] = m;
 
-  if (!VALID_TYPES.includes(type.toLowerCase())) {
+  const lowerType = type.toLowerCase();
+  if (!VALID_TYPES.includes(lowerType)) {
     reasons.push(`未知の種別 "${type}"（許可: ${VALID_TYPES.join(' / ')}）`);
   }
-  if (scope !== undefined) {
+  if (scope === undefined) {
+    // スコープ（起点 ID）が無い。内容変更の種別では必須（抜け穴防止・Issue #60）。
+    if (!TYPES_ALLOW_NO_SCOPE.includes(lowerType)) {
+      reasons.push(
+        `起点 ID が無い（${lowerType} は必須）。例: ${lowerType}(FR-08): ...。` +
+          `ID が本当に無い雑多な変更は ${TYPES_ALLOW_NO_SCOPE.join(' / ')} 種別を用いる`
+      );
+    }
+  } else {
     const ids = scope.split(',').map((x) => x.trim()).filter(Boolean);
     if (ids.length === 0) {
       reasons.push('スコープ () が空');
@@ -206,4 +220,9 @@ function main() {
   process.exit(0);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+// テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
+module.exports = { validateSubject, isBot, isSkippable, VALID_TYPES, TYPES_ALLOW_NO_SCOPE, ID_PATTERN };
