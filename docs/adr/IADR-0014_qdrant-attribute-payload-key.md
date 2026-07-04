@@ -11,8 +11,8 @@ author: claude
 created: 2026-07-04
 updated: 2026-07-04
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05, FR-11)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0009_vector-db-port.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0009_vector-store-qdrant.md"
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md"
 related_specs:
   - ../specs/20260704_FR-11_llm-routing-runtime-fixes.md

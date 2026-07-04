@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-09 文書属性・タグ／ABAC ポリシー管理
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-09
   - UC-05

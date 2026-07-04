@@ -6,10 +6,10 @@ author: claude
 created: 2026-06-26
 updated: 2026-06-26
 plan_refs:
-  - "../../../project-planning/projects/microservices-platform/06_technical/01_architecture-overview.md"
-  - "../../../project-planning/projects/microservices-platform/06_technical/02_service-decomposition.md"
-  - "../../../project-planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
-  - "../../../project-planning/projects/microservices-platform/06_technical/06_migration-roadmap.md"
+  - "../../../planning/projects/microservices-platform/06_technical/01_architecture-overview.md"
+  - "../../../planning/projects/microservices-platform/06_technical/02_service-decomposition.md"
+  - "../../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
+  - "../../../planning/projects/microservices-platform/06_technical/06_migration-roadmap.md"
 related_adrs:
   - ADR-0001 マイクロサービスアーキテクチャの採用
   - ADR-0002 サービス境界とDatabase per Service

@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-03 ハイブリッド検索（ベクトル＋全文）
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-03
   - UC-01

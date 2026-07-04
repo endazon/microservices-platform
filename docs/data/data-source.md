@@ -1,0 +1,132 @@
+---
+title: データソース・取り込みチャンク（DataSource / Vector Chunk） データ仕様書
+type: data-spec
+status: in-progress
+related_ids:
+  - FR-01
+  - FR-02
+  - ADR-0003
+author: claude
+created: 2026-07-04
+updated: 2026-07-04
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
+---
+
+# データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
+
+> データソースのカタログ（DataSourceService）と、取り込み時に生成するベクトルチャンク（IngestionService → Qdrant）を扱う。
+
+## 起点となる計画書（トレーサビリティ）
+
+- **関連機能要求(FR)**: FR-01（データソースの登録・接続・同期カタログ化）、FR-02（取り込み＝チャンク分割・埋め込み・ベクトルストア upsert）
+- **技術検討(06_technical)・ADR**:
+  - ADR-0003 メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携）
+  - 関連: ADR-0002 DB per Service（DataSourceService 専用 DB）、ADR-0009 ベクトルストア Qdrant、ADR-0013 埋め込みモデル
+- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`、`../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md`
+
+## 概要
+
+DataSource は登録済みデータソースのカタログエントリで、名前・種別・接続 URI・状態・最終同期時刻・接続設定（Config）を保持する。DataSourceService が専用 DB（PostgreSQL）で永続化する。
+
+IngestionService はリレーショナル DB を持たない Worker で、`DocumentUpdated` 相当のイベント受信時に本文を取得・チャンク分割・埋め込みし、結果を **Qdrant のコレクション**（既定 `knowledge_chunks`）へ upsert する。チャンクはリレーショナルエンティティではなくベクトルポイント（＋ payload）として保持される。
+
+## エンティティ定義
+
+### DataSource（テーブル `DataSources`、DataSourceService）
+
+| 属性 | 型 | 必須 | 制約（一意/既定値/範囲） | 説明 |
+| --- | --- | --- | --- | --- |
+| Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | データソースの一意識別子 |
+| Name | string (varchar(200)) | ○ | 最大長 200 | 表示名 |
+| SourceType | string (varchar(50)) | ○ | 最大長 50。値例: `filesystem` / `wiki` / `saas` / `db` | ソース種別 |
+| ConnectionUri | string (varchar(2048)) | ○ | 最大長 2048 | 接続先 URI |
+| Status | string (varchar(50)) | ○ | 最大長 50。既定 `active`。値: `active` / `disabled` | 稼働状態 |
+| LastSyncedAt | DateTimeOffset? (timestamptz) | - | NULL 可（未同期）。`RecordSync()` で更新 | 最終同期時刻 |
+| Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
+| CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
+
+### ベクトルチャンク（Qdrant コレクション `knowledge_chunks`、IngestionService）
+
+リレーショナルではなく Qdrant のポイント。ポイント ID とベクトル、および payload フィールドで構成される（`QdrantIngestionVectorStore`）。
+
+| フィールド | 型 | 説明 |
+| --- | --- | --- |
+| point id | Uuid | チャンク ID。`ChunkId.Derive(documentId, chunkIndex)`（MD5 由来の決定的 Guid）で冪等に導出 |
+| vector | float[]（既定 1536 次元、距離 Cosine） | 埋め込みベクトル。次元は `Qdrant:VectorSize`（既定 1536） |
+| payload `document_id` | string | 元文書 ID |
+| payload `document_title` | string | 文書タイトル |
+| payload `text` | string | チャンク本文 |
+| payload `markdown_uri` | string | 本文 Markdown の URI（未設定時は空文字） |
+| payload `chunk_index` | integer | 文書内のチャンク並び順 |
+| payload `tags` | list&lt;string&gt; | タグ（存在時のみ。絞り込み・表示用） |
+| payload `attributes.<key>` | string | ABAC 属性（キーごとに `attributes.` 接頭辞で展開。検索時フィルタ用、FR-05） |
+
+## ER 図
+
+```mermaid
+erDiagram
+    DATA_SOURCE {
+        uuid Id PK
+        varchar Name
+        varchar SourceType
+        varchar ConnectionUri
+        varchar Status
+        timestamptz LastSyncedAt
+        jsonb Config
+        timestamptz CreatedAt
+    }
+    VECTOR_CHUNK {
+        uuid point_id PK
+        vector embedding
+        string document_id
+        string document_title
+        string text
+        int chunk_index
+    }
+    DATA_SOURCE ||..|| VECTOR_CHUNK : "論理的関連（DB 越境・FK なし）"
+```
+
+> DataSource（DataSourceService の PostgreSQL）とベクトルチャンク（Qdrant）は物理的に別ストアであり、DB 上の外部キー関連は存在しない。文書 → チャンクの対応は payload `document_id` で表現する。
+
+## キー・インデックス・関連
+
+| 種別 | 対象 | 定義 |
+| --- | --- | --- |
+| 主キー | `DataSources.Id` | `HasKey(d => d.Id)` |
+| インデックス | （追加インデックスなし） | InitialCreate は主キーのみ。`Name` 等の一意制約は未設定 |
+| Qdrant ポイント ID | `knowledge_chunks` point id | `ChunkId.Derive(documentId, chunkIndex)` により決定的。再取り込み時は同一 ID で upsert（冪等） |
+| Qdrant 論理キー | payload `document_id` | 文書単位の削除（`DeleteByDocumentAsync`）のフィルタキー |
+
+## 整合性・制約ルール
+
+- **冪等な再取り込み（FR-02）**: チャンク ID を `documentId + chunkIndex` から決定的に導出。旧チャンク削除に失敗しても upsert が上書きとなり重複を防ぐ。
+- **コレクション名の解決**: `Qdrant:CollectionName` を正とし、後方互換で `Qdrant:Collection`、既定 `knowledge_chunks` の順（RetrievalService と整合）。
+- **コレクション自動作成**: `EnsureCollectionAsync` で未作成なら `VectorParams { Size, Distance = Cosine }` で作成。
+- **状態遷移**: DataSource は `active` →（`Disable()`）→ `disabled`。`RecordSync()` で `LastSyncedAt` を更新。
+- **設定の NULL 非許容**: `Config` はカラム上 NOT NULL。未設定時は空 JSON（`{}`）。
+
+## 永続化方針
+
+- **DataSource**: PostgreSQL、EF Core（`DataSourceDbContext`）。ADR-0002 に従い DataSourceService 専用 DB。`Config` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み）。
+- **ベクトルチャンク**: Qdrant（ADR-0009）。IngestionService は RDB を持たず、埋め込み結果を Qdrant コレクションへ直接 upsert（ADR-0009）。
+- **越境**: 両者は別ストアのため、整合はイベント（ADR-0003 メッセージング）と決定的 ID で担保する。
+
+## マイグレーション・初期データ
+
+- DataSourceService: `20260626150848_InitialCreate` — `DataSources` テーブル作成（主キーのみ）。シードなし。
+- IngestionService: マイグレーションなし（RDB 非使用）。Qdrant コレクションは実行時に `EnsureCollectionAsync` で確保。
+
+## 関連仕様
+
+- 機能仕様書: `../functional/FR-01_data-source-catalog.md`、`../functional/FR-02_ingestion.md`
+- 通信仕様書: `../api/openapi.yaml`
+- 技術要件書: `../tech/tech-requirements.md`
+- 関連データ仕様: `./document-and-version.md`（正規化文書・属性／タグの源泉）、`./abac-policy.md`（payload の属性フィルタ）
+
+## 未決事項
+
+- `DataSources.Name` / `ConnectionUri` の一意制約は未設定（重複登録の可否は要検討）。
+- DataSource と実際に取り込まれたチャンク／文書の突合（どのソース由来かの追跡属性）は payload に未保持。
+- Qdrant コレクションのシャーディング・レプリカ・保持方針は未定。

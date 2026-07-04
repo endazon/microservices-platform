@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ADR-0011 逸脱の正規化（自前軽量閲覧 API を正式決定し ADR-0011 を Supersede 提案）
 type: work-spec
-status: done
+status: completed
 related_ids:
   - FR-13
   - UC-07

@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-11 LLM 呼び出し先の用途・機密度による切り替え
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-11
   - UC-02

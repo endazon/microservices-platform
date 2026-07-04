@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — FR-08 回答へのフィードバック（👍/👎・コメント）収集
 type: work-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-08
   - UC-01
