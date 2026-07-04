@@ -249,6 +249,9 @@ services:
       postgres:
         condition: service_healthy
 
+  # FR-13, UC-07, IADR-0013: Wiki 閲覧は WikiService の自前軽量読み取り API で提供する。
+  # 外部 OSS の Wiki.js は意図的に配備しない（ADR-0011 の Supersede を計画へ提案済み。
+  # 認可の二重管理回避・要件=閲覧のみへの適合のため。docs/adr/IADR-0013 参照）。
   wiki-service:
     build:
       context: ..

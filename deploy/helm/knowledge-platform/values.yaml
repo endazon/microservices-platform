@@ -79,6 +79,8 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # FR-13, UC-07, IADR-0013: Wiki 閲覧は WikiService の自前軽量読み取り API。
+  # 外部 OSS の Wiki.js は意図的に配備しない（ADR-0011 Supersede 提案済み。docs/adr/IADR-0013）。
   wiki:
     enabled: true
     replicas: 1
