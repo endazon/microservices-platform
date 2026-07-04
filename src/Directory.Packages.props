@@ -1,11 +1,17 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <!-- NFR(セキュリティ): 推移的ピンを有効化し、脆弱な推移依存(下記 Microsoft.OpenApi)を
+         中央の PackageVersion でパッチ版へ固定できるようにする(#61)。 -->
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!-- ASP.NET Core (net10.0) -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+    <!-- NFR(セキュリティ): Microsoft.OpenApi を直接ピンし NU1903(GHSA-v5pm-xwqc-g5wc, High) を解消(#61)。
+         AspNetCore.OpenApi 10.0.9 の推移依存が脆弱な 2.0.0 を引き込むため、パッチ版 2.1.0 以上へ引き上げる。 -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.1.0" />
     <!-- OpenTelemetry -->
     <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.16.0" />

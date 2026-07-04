@@ -39,3 +39,4 @@
 | IADR-0013 | Wiki 閲覧は自前軽量読み取り API を採用し ADR-0011 の Supersede を計画へ提案する | Accepted |
 | IADR-0014 | Qdrant の ABAC 属性ペイロードは両表現で復元し、フィルタキー解釈を実機確認する | Accepted |
 | IADR-0015 | CI トリガーの develop 整合・コミット規約チェック・CHANGELOG 誤帰属補正 | Accepted |
+| IADR-0016 | Microsoft.OpenApi を推移的ピンでパッチ版に固定し NU1903 を解消する | Accepted |
