@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ADR-0011 逸脱の正規化（自前軽量閲覧 API を正式決定し ADR-0011 を Supersede 提案）
 type: work-spec
-status: in-progress
+status: done
 related_ids:
   - FR-13
   - UC-07
@@ -53,6 +53,7 @@ Issue の対応方針は (a) Wiki.js を配備し WikiService を同期責務へ
 - **運用仕様 `docs/operations/operations.md`** に WikiService（自前閲覧・Wiki.js 非配備）の運用注記を追加。
 - **deploy 構成のコメント**（`deploy/docker-compose.yml` / `deploy/helm`）に「Wiki.js を意図的に配備しない」設計判断を明記し、監査時の誤検知を防ぐ。
 - **コード側トレーサビリティ**: `WikiEndpoints.cs` のヘッダコメントに IADR-0013 を参照追加。
+- **ADR 索引の是正**: `docs/adr/README.md` に IADR-0013 の索引行を追加。併せて、既存で索引漏れだった IADR-0010・IADR-0011 の行も補完し「連番は欠番なし」の運用ルールに整合させる。
 
 ### 含まないもの
 - 閲覧ロジック自体の実装（FR-13 の ABAC 適用は既存 PR #65 で完了済み。本 PR は挙動を変えない）。
@@ -61,12 +62,12 @@ Issue の対応方針は (a) Wiki.js を配備し WikiService を同期責務へ
 
 ## 受け入れ基準
 
-- [ ] IADR-0013 が作成され、決定・理由・トレードオフ・関連（ADR-0011 supersede 提案）を記載している。
-- [ ] plan-feedback 記録が `feedback/` に作成され、category=`新たな制約(ADR要)`・related_ids・提案（Supersede）を含む。
-- [ ] FR-13 機能仕様が自前閲覧 API の内容で作成されている。
-- [ ] 運用仕様・deploy コメントが「Wiki.js 非配備は設計判断」である旨を明記している。
-- [ ] `WikiEndpoints.cs` のコメントが IADR-0013 を参照している。
-- [ ] 挙動変更が無い（既存テストがそのまま通る）。
+- [x] IADR-0013 が作成され、決定・理由・トレードオフ・関連（ADR-0011 supersede 提案）を記載している。
+- [x] plan-feedback 記録が `feedback/` に作成され、category=`新たな制約(ADR要)`・related_ids・提案（Supersede）を含む。
+- [x] FR-13 機能仕様が自前閲覧 API の内容で作成されている。
+- [x] 運用仕様・deploy コメントが「Wiki.js 非配備は設計判断」である旨を明記している。
+- [x] `WikiEndpoints.cs` のコメントが IADR-0013 を参照している。
+- [x] 挙動変更が無い（既存テストがそのまま通る）。
 
 ## トレーサビリティ
 
