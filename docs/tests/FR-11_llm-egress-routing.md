@@ -1,7 +1,7 @@
 ---
 title: テスト仕様書 — FR-11 用途別・機密度別 LLM ルーティング
 type: test-spec
-status: in-progress
+status: completed
 related_ids:
   - FR-11
   - FR-05
