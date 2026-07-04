@@ -43,10 +43,17 @@ Issue #59（必須仕様書の欠落補完・リンク切れ修正）の再発�
 ### 含むもの
 - `.github/workflows/ci.yml` に `doc-links` ジョブを追加
 
+### 含むもの（追記）
+- `scripts/check-doc-links.js` の `planning/` 未チェックアウト判定の修正（CI 実測で
+  判明。下記「追記: CI 実測による判定ロジック修正（`cd3b8d2`）」参照）。
+
 ### 含まないもの
-- `scripts/check-doc-links.js` のロジック変更（既存のまま使用）
 - `.claude/hooks/check-impl.js` の変更（保護対象・当初案から切替済み）
 - 既存 .NET ジョブ（lint / build-and-test）の変更
+
+> 注: 当初は「`scripts/check-doc-links.js` のロジック変更」をスコープ外としていたが、
+> CI 追加後の実測で `planning/` 未チェックアウト判定に漏れが判明したため、
+> `cd3b8d2` で最小限のロジック修正を行った（下記追記参照）。
 
 ## 受け入れ基準
 
@@ -62,3 +69,29 @@ Issue #59（必須仕様書の欠落補完・リンク切れ修正）の再発�
 - `.github/workflows/` は GitHub App 権限では編集不可のため、本変更はローカルで
   コミットする。App 経由の自動 push では `workflows` スコープが必要になる点に注意。
 - 破損リンクを含む既存 PR は本ジョブ追加後に赤くなる。マージ前に修正すること。
+
+## 追記: CI 実測による判定ロジック修正（`cd3b8d2`）
+
+`doc-links` ジョブ追加後、CI 上で「破損リンク 148 件」により失敗した。148 件はすべて
+`planning/` サブモジュール配下（planning/projects 以下の Markdown への相対リンク）だった。
+
+- **原因**: `scripts/check-doc-links.js` はサブモジュール未チェックアウト時に `planning/`
+  配下リンクを検査対象外にする設計だが、旧判定は `fs.existsSync(subRoot)` のみだった。
+  CI の `actions/checkout`（サブモジュール取得なし）は `planning/` を**空のプレース
+  ホルダディレクトリ**として作るため `existsSync` が `true` を返し、スキップされずに
+  全リンクが「破損」と誤検知されていた。
+- **修正（`cd3b8d2`）**: 判定を「ディレクトリが存在し **かつ中身が空でない**（実際に
+  populate 済み）」に変更した。
+
+  ```js
+  let populated = false;
+  try { populated = fs.existsSync(subRoot) && fs.readdirSync(subRoot).length > 0; }
+  catch (e) { populated = false; }
+  if (!populated) return false;
+  ```
+- **検証**: 空の `planning/`（CI と同条件）で planning リンクを正しくスキップ／非 planning
+  の実在しないリンクは従来どおり破損検出（回帰なし）／submodule populate 済みの実 docs
+  で破損リンクなしを確認。
+- **設計上の帰結**: `planning/` 配下リンクは CI（submodule 未取得）では検査されず、
+  submodule がチェックアウトされた環境（ローカル / AI レビュー）でのみ検査される。
+  これはスクリプト冒頭コメント記載の元設計に沿ったもの。
