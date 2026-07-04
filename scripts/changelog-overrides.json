@@ -1,0 +1,13 @@
+{
+  "_note": "gen-changelog.js が参照するコミット補正マップ。git 履歴は書き換えず、CHANGELOG 生成時のみ誤記コミットを補正/除外する（Issue #60）。hash は短縮 SHA でも可（前方一致で照合）。action: 'remap'（種別/スコープ/要約を差し替え）または 'exclude'（CHANGELOG から除外）。",
+  "overrides": [
+    {
+      "hash": "b421761",
+      "action": "remap",
+      "type": "docs",
+      "scope": "P0",
+      "desc": "P0 基盤スケルトン整備（元コミット件名 feat(FR-10) は誤記・実体は docs/specs/20260626_P0_infrastructure-skeleton.md）",
+      "reason": "件名 feat(FR-10) は誤記。FR-10（Dashboard）とは無関係の P0 骨格作業であり、履歴は書き換えずに CHANGELOG 上でのみ補正する。Issue #60。"
+    }
+  ]
+}
