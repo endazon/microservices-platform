@@ -31,3 +31,21 @@ paths:
 - 起点 ID を持たない大きな変更を作らない（雑多な変更は理由を明記する）。
 - 計画書に存在しない ID を参照しない（誤記・廃止に注意）。
 - ADR の制約に反する実装をしない。逸脱が必要なら新 ADR の起票を提案する。
+
+## コミットメッセージの機械チェック（CI・再発防止）
+
+PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-commit-messages.js` が検査し、規約
+`種別(起点ID): 要約` に違反していれば CI を失敗させる（Issue #60）。既存履歴は書き換えず、再発防止のみを目的とする。
+
+- **許可する種別**: `feat` / `fix` / `perf` / `refactor` / `docs` / `test` / `build` / `ci` / `style` / `chore`。
+- **起点 ID の書式**: `FR-\d+` / `NFR` / `UC-\d+` / `SC-\d+` / `ADR-\d{3,4}` / `IADR-\d{3,4}` / `P0`〜`P3`。
+  複数 ID はカンマ区切りで併記。スコープ `()` は省略可。
+- **末尾の PR 番号**: ` (#123)` はスカッシュマージ既定件名として許容。
+
+### 検査対象から除外する自動コミット
+
+- **自動コミットの著者**: `dependabot[bot]` / `renovate[bot]` / `github-actions[bot]` 等の bot 著者。
+- **マージコミット**: `--no-merges` により除外。
+- **自動生成・リバート**: 件名に `[skip ci]` を含むコミット、および `Revert "..."`。
+
+除外リストは `scripts/check-commit-messages.js` の `BOT_AUTHORS` と同時に更新する。

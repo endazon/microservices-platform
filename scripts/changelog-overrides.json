@@ -1,0 +1,13 @@
+{
+  "_note": "gen-changelog.js が参照するコミット補正マップ。git 履歴は書き換えず、CHANGELOG 生成時のみ誤記コミットを補正/除外する（Issue #60）。hash は短縮 SHA でも可（前方一致で照合）。action: 'remap'（種別/スコープ/要約を差し替え）または 'exclude'（CHANGELOG から除外）。",
+  "overrides": [
+    {
+      "hash": "b421761",
+      "action": "remap",
+      "type": "feat",
+      "scope": "P0",
+      "desc": "P0 マイクロサービス基盤スケルトン実装（共有ライブラリ・各 REST/Worker サービス・deploy・CI 有効化。元コミット件名 feat(FR-10) は誤記で FR-10 Dashboard とは無関係）",
+      "reason": "件名の起点 ID feat(FR-10) は誤記。当該コミットは約 9,200 行の P0 基盤スケルトン実装であり FR-10（Dashboard）とは無関係。type は実体どおり feat のまま、scope のみ FR-10 → P0 に補正する（docs へ remap すると大規模実装をドキュメントとして過小計上する新たな誤帰属を生むため不可）。履歴は書き換えず CHANGELOG 生成時のみ補正する。Issue #60。"
+    }
+  ]
+}

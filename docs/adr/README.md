@@ -37,3 +37,5 @@
 | IADR-0011 | ダッシュボードサービスの利用状況集計 | Accepted |
 | IADR-0012 | Retrieval /search は Scope 未指定を deny 扱いにし fail-closed で ABAC を強制する | Accepted |
 | IADR-0013 | Wiki 閲覧は自前軽量読み取り API を採用し ADR-0011 の Supersede を計画へ提案する | Accepted |
+| IADR-0014 | Qdrant の ABAC 属性ペイロードは両表現で復元し、フィルタキー解釈を実機確認する | Accepted |
+| IADR-0015 | CI トリガーの develop 整合・コミット規約チェック・CHANGELOG 誤帰属補正 | Accepted |

@@ -26,11 +26,29 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
+  # コミットメッセージ規約（種別(起点ID): 要約）の機械チェック（Issue #60・再発防止）。
+  # PR で追加されるコミット（base..HEAD）のみ検査し、bot・マージ・[skip ci] は除外する。
+  # fetch-depth: 0 は base..HEAD の範囲解決に必須。
+  commit-messages:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Check commit messages
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-commit-messages.js
+
   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
   doc-links:

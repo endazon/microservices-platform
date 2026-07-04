@@ -17,7 +17,7 @@ name: Changelog
 
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
     tags: ["v*"]
 
 permissions:
