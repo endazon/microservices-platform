@@ -50,6 +50,22 @@ CLAUDE.md は「`main` を安定版とする」とするが、実運用の既定
 > 経緯: 初版は「スコープが存在する場合のみ ID 書式を検証」する実装で、`feat: 説明`（ID 無し）が
 > 素通りし再発防止の目的を満たさなかった（PR #76 レビュー 🔴）。起点 ID を必須化してこの抜け穴を塞いだ。
 
+#### 2-1. 規約導入前の既存コミットは恒久適用除外リストで grandfather する
+
+起点 ID を必須化した結果、本 PR のブランチに含まれる**規約導入前**の既存コミット
+（`d1652dc`/`394fa1f`/`079490d`/`153810a`/`d4835097`。いずれも起点 ID 無し）が
+`commit-messages` ジョブで失敗する。これらは規約が存在しない時点で作られており、
+force push 禁止方針（CLAUDE.md）のため件名を書き換えられない。当初は squash マージのみで解消する
+運用としたが、`commit-messages` を必須チェックにすると「マージ前の必須チェックが落ちるため
+マージできず、squash マージでしか解消できない」という循環（chicken-and-egg）が生じる（PR #76）。
+
+これを解くため、`scripts/commit-allowlist.json`（`changelog-overrides.json` と同型）に**完全 SHA と
+理由を明記した恒久適用除外リスト**を設ける。`check-commit-messages.js` はこの列挙に一致した
+コミットのみを `skip(allowlist)`（CI ログに理由付きで常時表示＝監査可能）として検査対象から外す。
+**将来の新規コミットは通常どおり検査対象**であり、抜け穴（blanket loophole）ではない
+（`.git-blame-ignore-revs` と同種の、遡及不能な既存履歴に対する明示的除外）。
+本ファイルへ新規コミットの規約違反を安易に追加しないことを運用ルールとする。
+
 ### 3. OpenAPI 雛形フォールバックの `--force` を外す
 
 生成コマンド未設定時の雛形フォールバックから `--force` を外し、既存 `docs/api/openapi.yaml`（手書き 3.1.0）を
@@ -75,5 +91,7 @@ CHANGELOG 生成時のみ `remap`/`exclude` する。git 履歴は書き換え�
 - 良い影響: develop 運用で CI ゲート・補助成果物・SAST が発火し、コミット規約逸脱を CI で機械的に検出でき、
   手書き OpenAPI 破壊と CHANGELOG 誤帰属を防げる。`validateSubject`/`applyOverride` は `scripts/scripts.test.js` で回帰を固定した。
 - トレードオフ: 起点 ID 必須化により、既存の非準拠コミット（`feat:`/`fix:` の ID 無し）を含む PR は
-  commit-messages ジョブで失敗する。履歴改変は行わないため、squash マージ（準拠した PR タイトルで 1 コミット化）で解消する運用とする。
+  commit-messages ジョブで失敗する。履歴改変は行わないため、**規約導入前**の該当コミットは
+  `scripts/commit-allowlist.json` に SHA と理由を明記して恒久適用除外し（決定 2-1）、CI を通す。
+  将来の新規コミットは通常どおり検査対象。除外は完全 SHA の列挙に限り監査可能な形で残す。
 - 安全性: いずれの補正も履歴を書き換えず、範囲解決不能時はチェックを `exit 0` でブロックしない（fail-open）。

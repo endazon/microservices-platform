@@ -187,9 +187,19 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - **範囲**: `--range` → `COMMIT_RANGE` → `origin/$GITHUB_BASE_REF..HEAD`（PR）→ `origin/develop..HEAD` の順で決定。既存履歴は検査しない。
 - **検査**: 件名を `種別(起点ID): 要約` で検証。種別集合は `gen-changelog.js` と一致。起点 ID 書式・複数 ID 併記・末尾 `(#\d+)` を許容。
 - **起点 ID の必須化（PR #76 レビュー 🔴 反映）**: 内容変更の種別（`feat`/`fix`/`perf`/`refactor`/`docs`/`test`）は起点 ID（スコープ）を**必須**とし、無い場合を違反として検出する。計画 ID に紐づかない雑多・ツールチェーン変更は `chore`/`style`/`build`/`ci`（`TYPES_ALLOW_NO_SCOPE`）で表現し ID 省略を許す。これにより「`feat: 説明`（ID 無し）が素通りする」抜け穴を塞ぐ。
-- **除外**: bot 著者（`BOT_AUTHORS`）・マージコミット（`--no-merges`）・`[skip ci]`・`Revert "..."`。
+- **除外**: bot 著者（`BOT_AUTHORS`）・マージコミット（`--no-merges`）・`[skip ci]`・`Revert "..."`・恒久適用除外リスト（`commit-allowlist.json`）。
 - **終了コード**: 違反あり `1`（CI 失敗）／範囲解決不能（浅いクローン等）は `0`（ブロックしない）。
 - 外部依存ゼロ（Node 標準モジュールのみ・既存スクリプトの流儀に準拠）。`validateSubject` は `scripts/scripts.test.js` で単体テスト済み。
+
+### `scripts/commit-allowlist.json`（新規・規約導入前コミットの恒久適用除外）
+
+- **目的（PR #76 CI 対応）**: 起点 ID 必須化により、本ブランチに含まれる**規約導入前**の既存コミット
+  （`d1652dc`/`394fa1f`/`079490d`/`153810a`/`d4835097`。いずれも起点 ID 無し）が `commit-messages` で失敗する。
+  force push 禁止方針のため件名を書き換えられず、必須チェックにすると「落ちるからマージできない／squash マージでしか解消できない」循環が生じる。
+- **方針**: `changelog-overrides.json` と同型に、**完全 SHA と理由を明記した恒久適用除外リスト**を設ける。
+  `check-commit-messages.js` は一致コミットを `skip(allowlist)`（CI ログに理由付きで常時表示＝監査可能）として検査対象から外す。
+  **将来の新規コミットは通常どおり検査対象**（`.git-blame-ignore-revs` と同種の、遡及不能な既存履歴への明示的除外であり抜け穴ではない）。
+- **運用ルール**: 本ファイルへ新規コミットの規約違反を安易に追加しない。`findAllowlisted`/`loadAllowlist` は `scripts/scripts.test.js` で単体テスト済み（5 コミットの除外回帰を含む）。
 
 ### `scripts/changelog-overrides.json` / `gen-changelog.js`（誤帰属補正）
 
@@ -206,7 +216,8 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - [x] dependabot 等の自動コミット・マージ・`[skip ci]` を検査対象から除外する。
 - [x] CHANGELOG / openapi.yaml の再生成方針を明記した（CHANGELOG は `changelog.yml` の develop 発火で自動再生成、
       `feat(FR-10)` 誤記コミット `b421761` は `changelog-overrides.json` により `feat`／scope `P0` へ補正）。
-- [x] `check-commit-messages.js`（`validateSubject`）と `gen-changelog.js`（`applyOverride`）に単体テストを追加した（`scripts/scripts.test.js`）。
+- [x] `check-commit-messages.js`（`validateSubject`/`findAllowlisted`）と `gen-changelog.js`（`applyOverride`）に単体テストを追加した（`scripts/scripts.test.js`・19 ケース pass）。
+- [x] 規約導入前の非準拠コミット 5 件を `commit-allowlist.json` で恒久適用除外し、`commit-messages` ジョブが `origin/develop..HEAD` で pass する（EXIT=0）ことをローカル検証した。
 - [x] 重要な実装判断を実装 ADR（`IADR-0015`）に記録した。
 - [x] 本作業仕様書を作成した。
 

@@ -20,6 +20,11 @@
  *   node scripts/check-commit-messages.js [--range base..head] [--verbose]
  */
 const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+// 規約導入前の既存コミットの恒久適用除外リスト（force push 禁止のため件名を書き換えられない）。
+const ALLOWLIST_PATH = path.join(__dirname, 'commit-allowlist.json');
 
 // gen-changelog.js の TYPE_ORDER と一致させること。
 const VALID_TYPES = ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'build', 'ci', 'style', 'chore'];
@@ -115,6 +120,43 @@ function isBot(c) {
   return BOT_AUTHORS.some((b) => hay.includes(b.toLowerCase()));
 }
 
+/** 短縮/完全 SHA を前方一致で照合する（changelog-overrides.json と同方針）。 */
+function hashMatches(a, b) {
+  if (!a || !b) return false;
+  const x = String(a).toLowerCase();
+  const y = String(b).toLowerCase();
+  return x.startsWith(y) || y.startsWith(x);
+}
+
+/**
+ * 恒久適用除外リストを読み込む。未配置・不正 JSON でも CI をブロックしない（fail-open）。
+ * 返り値は {hash, reason} の配列。
+ */
+function loadAllowlist(file = ALLOWLIST_PATH) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if (e && e.code !== 'ENOENT') {
+      process.stderr.write(`commit-allowlist.json を読めなかった（無視）: ${e.message}\n`);
+    }
+    return [];
+  }
+  try {
+    const json = JSON.parse(raw);
+    const list = Array.isArray(json.allow) ? json.allow : [];
+    return list.filter((e) => e && typeof e.hash === 'string' && e.hash.trim());
+  } catch (e) {
+    process.stderr.write(`commit-allowlist.json が不正な JSON（無視）: ${e.message}\n`);
+    return [];
+  }
+}
+
+/** commit hash が allowlist に含まれれば該当エントリを、無ければ null を返す。 */
+function findAllowlisted(hash, allowlist) {
+  return allowlist.find((e) => hashMatches(hash, e.hash)) || null;
+}
+
 function isSkippable(subject) {
   // 自動生成コミット・リバートは規約対象外。
   if (/\[skip ci\]/i.test(subject)) return true;
@@ -180,6 +222,8 @@ function main() {
     process.exit(0);
   }
 
+  const allowlist = loadAllowlist();
+
   process.stdout.write(`コミット規約チェック: 範囲 ${range}（${commits.length} 件）\n`);
 
   const violations = [];
@@ -193,6 +237,14 @@ function main() {
     }
     if (isSkippable(c.subject)) {
       if (args.verbose) process.stdout.write(`  skip(auto)   ${short} ${c.subject}\n`);
+      skipped++;
+      continue;
+    }
+    // 規約導入前の既存コミットは恒久適用除外（監査のため常に表示する）。
+    const allowed = findAllowlisted(c.hash, allowlist);
+    if (allowed) {
+      process.stdout.write(`  skip(allowlist) ${short} ${c.subject}\n`);
+      if (allowed.reason) process.stdout.write(`      ↳ ${allowed.reason}\n`);
       skipped++;
       continue;
     }
@@ -225,4 +277,14 @@ if (require.main === module) {
 }
 
 // テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
-module.exports = { validateSubject, isBot, isSkippable, VALID_TYPES, TYPES_ALLOW_NO_SCOPE, ID_PATTERN };
+module.exports = {
+  validateSubject,
+  isBot,
+  isSkippable,
+  hashMatches,
+  loadAllowlist,
+  findAllowlisted,
+  VALID_TYPES,
+  TYPES_ALLOW_NO_SCOPE,
+  ID_PATTERN,
+};
