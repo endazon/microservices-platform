@@ -51,7 +51,7 @@ public class LlmRouterTests
         {
             ["rag-answer"] = "claude-sonnet-4-6",
             ["analysis"] = "claude-opus-4-8",
-            ["diagram"] = "claude-haiku-4-5"
+            ["diagram-coding"] = "claude-haiku-4-5"
         }
     };
 

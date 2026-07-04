@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using ConversionService.Worker.Services;
@@ -63,6 +64,23 @@ public class LlmGatewayDiagramCoderTests
         result.Reason.Should().Be("not-codeable");
     }
 
+    // FR-11: 送信 purpose は "diagram-coding"（LlmGateway の PurposeModels 設定キーと一致）であること。
+    // このキーが不一致だと用途別モデル（haiku）選択が発火せず既定モデルへ縮退する（Issue #58 の #1）。
+    [Fact]
+    public async Task Sends_purpose_diagram_coding()
+    {
+        var capture = new CapturingHandler(new CompletionApiResponse(
+            Text: "```mermaid\ngraph TD; A-->B\n```", Model: "m", InputTokens: 1, OutputTokens: 1));
+        var http = new HttpClient(capture) { BaseAddress = new Uri("http://llm-gateway:5007") };
+        var coder = new LlmGatewayDiagramCoder(http, NullLogger<LlmGatewayDiagramCoder>.Instance);
+
+        await coder.CodeAsync(Figure(), "internal");
+
+        capture.Request.Should().NotBeNull();
+        capture.Request!.Purpose.Should().Be("diagram-coding");
+        capture.Request.Confidentiality.Should().Be("internal");
+    }
+
     // 呼び出し失敗（例外）も画像保持へ縮退し、例外を送出しない（変換を止めない）。
     [Fact]
     public async Task Retains_when_call_fails()
@@ -89,6 +107,23 @@ public class LlmGatewayDiagramCoderTests
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             });
+        }
+    }
+
+    // 送信リクエスト本文を捕捉しつつ、定型応答を返すハンドラ。
+    private sealed class CapturingHandler(CompletionApiResponse response) : HttpMessageHandler
+    {
+        public CompletionApiRequest? Request { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Request = await request.Content!.ReadFromJsonAsync<CompletionApiRequest>(cancellationToken);
+            var json = JsonSerializer.Serialize(response);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
         }
     }
 
