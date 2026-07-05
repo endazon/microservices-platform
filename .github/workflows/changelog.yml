@@ -6,12 +6,11 @@
 # このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
 #
 # 注意（ブランチ保護との両立）:
-#   下の手順は github-actions[bot] が main へ直接 push する。main にブランチ保護
-#   （PR 必須・レビュー必須・必須ステータスチェック）をかけている場合、この push は
-#   拒否される。対処はいずれか:
-#     1) ブランチ保護で「Allow specified actors to bypass」に github-actions[bot] を追加する。
-#     2) 直接 push をやめ、peter-evans/create-pull-request 等で PR 経由に変更する。
-#   [skip ci] により本ワークフロー自身の再起動（無限ループ）は防いでいる。
+#   develop/main にブランチ保護（PR 必須・署名必須コミット・必須ステータスチェック）を
+#   かけているため、github-actions[bot] による直接 push は拒否される。そのため
+#   peter-evans/create-pull-request で更新用ブランチを切って PR を作成する方式に
+#   している（GitHub がマージ時に生成するコミットは検証済み署名を持つため、
+#   署名必須の制約にも抵触しない）。
 
 name: Changelog
 
@@ -22,11 +21,12 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   changelog:
-    # 自動コミットによる無限ループを避ける
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # PR マージ由来の push による無限ループを避ける（PR ブランチは automation/ 配下）
+    if: "!startsWith(github.event.head_commit.message, 'docs(NFR): CHANGELOG を自動更新')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,18 +42,21 @@ jobs:
       - name: Generate CHANGELOG.md
         run: node scripts/gen-changelog.js --out CHANGELOG.md
 
-      - name: Commit CHANGELOG if changed
+      - name: Create PR with CHANGELOG update
         if: startsWith(github.ref, 'refs/heads/')
-        run: |
-          if ! git diff --quiet -- CHANGELOG.md; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add CHANGELOG.md
-            git commit -m "docs: CHANGELOG を自動更新 [skip ci]"
-            git push
-          else
-            echo "CHANGELOG に変更なし"
-          fi
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: CHANGELOG.md
+          commit-message: "docs(NFR): CHANGELOG を自動更新"
+          branch: automation/changelog-update-${{ github.ref_name }}
+          delete-branch: true
+          base: ${{ github.ref_name }}
+          title: "docs(NFR): CHANGELOG を自動更新"
+          body: |
+            コミット履歴から CHANGELOG.md を自動再生成しました。
+            ブランチ保護（PR 必須・署名必須コミット）のため直接 push ではなく本 PR で反映します。
+          labels: automation
 
       - name: Build release notes (tag)
         if: startsWith(github.ref, 'refs/tags/')

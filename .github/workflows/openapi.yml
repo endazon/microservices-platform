@@ -10,9 +10,11 @@
 # このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
 #
 # 注意（ブランチ保護との両立）:
-#   下の手順は github-actions[bot] が main へ直接 push する。main にブランチ保護をかけて
-#   いる場合は拒否されるため、bypass に github-actions[bot] を追加するか、PR 経由へ変更する
-#   （changelog.yml と同様）。
+#   develop/main にブランチ保護（PR 必須・署名必須コミット・必須ステータスチェック）を
+#   かけているため、github-actions[bot] による直接 push は拒否される。そのため
+#   peter-evans/create-pull-request で更新用ブランチを切って PR を作成する方式に
+#   している（changelog.yml と同様。GitHub がマージ時に生成するコミットは検証済み
+#   署名を持つため、署名必須の制約にも抵触しない）。
 
 name: OpenAPI
 
@@ -27,10 +29,11 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   openapi:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    if: "!startsWith(github.event.head_commit.message, 'docs(NFR): OpenAPI を自動更新')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -61,14 +64,17 @@ jobs:
             node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml || true
           fi
 
-      - name: Commit OpenAPI if changed
-        run: |
-          if [ -f docs/api/openapi.yaml ] && ! git diff --quiet -- docs/api/openapi.yaml; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add docs/api/openapi.yaml
-            git commit -m "docs: OpenAPI を自動更新 [skip ci]"
-            git push
-          else
-            echo "OpenAPI に変更なし"
-          fi
+      - name: Create PR with OpenAPI update
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          add-paths: docs/api/openapi.yaml
+          commit-message: "docs(NFR): OpenAPI を自動更新"
+          branch: automation/openapi-update-${{ github.ref_name }}
+          delete-branch: true
+          base: ${{ github.ref_name }}
+          title: "docs(NFR): OpenAPI を自動更新"
+          body: |
+            docs/api/openapi.yaml を自動再生成しました。
+            ブランチ保護（PR 必須・署名必須コミット）のため直接 push ではなく本 PR で反映します。
+          labels: automation
