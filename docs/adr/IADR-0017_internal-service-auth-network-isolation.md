@@ -99,7 +99,20 @@ client credentials 実装を要し、mTLS 導入で不要になる。よって�
 - 良い影響: ホストからの無認証到達という監査指摘の中核を即座に解消。既存のサービス間フロー
   （無トークンの内部呼び出し・ワーカー）を壊さない。回帰は `NetworkIsolationTests` で固定。
 - トレードオフ（残余リスク）: **同一ネットワーク内**からは依然として内部 API へ無認証で到達可能。
-  これは mТLS（ADR-0005）到達までの受容リスクとし、Kubernetes では NetworkPolicy で補う前提。
+  これは mTLS（ADR-0005）到達までの受容リスクとし、Kubernetes では NetworkPolicy で補う前提。
   client credentials／mTLS の実装はフォローアップとして追跡する。
 - 影響範囲: 変更は `deploy/docker-compose.yml`（公開ポート）とドキュメント・テストに限定。
   アプリケーションコードの認証挙動は変更しない（既存テストへ影響なし）。
+
+## 残余リスク解消の前提（依拠する計画 ADR の状態）
+
+本 IADR の残余リスク（同一ネットワーク内からの内部 API 無認証到達）の**恒久的な解消**は、以下の計画 ADR の
+Accepted 化と実装に依存する。ただし**いずれも計画リポジトリ（`project-planning`）では現在 `status: Proposed`（未 Accepted）**である。
+
+- **ADR-0004（ABAC 認可）= Proposed**: エッジ（BFF）での OIDC/JWT 認証・認可の恒久方針の前提。
+- **ADR-0005（Service Mesh / Istio mTLS）= Proposed**: サービス間の相互認証＋暗号化による残余リスク解消の前提。
+
+したがって、本 IADR は「未確定の計画決定が Accepted 化・実装されるまでの**暫定（第一防御＝ネットワーク分離）**」であり、
+残余リスクの解消時期は ADR-0004/0005 の確定に従属する。ネットワーク分離のみで恒久運用することを意図しない。
+この従属関係の解消を促すため、ADR-0005（および NFR「全 API OIDC/JWT／サービス間 mTLS」草案との整合）の確定を
+優先課題として計画側へ環流する（`feedback/20260705_internal-service-auth-nfr-deviation.md`、`/plan-feedback`）。

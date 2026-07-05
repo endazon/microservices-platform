@@ -90,6 +90,9 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 - サービス間認証の恒久対策: Istio mTLS（ADR-0005）の導入、または client credentials による
   サービス間 JWT の全呼び出し元（トークン非保持ワーカー含む）への実装。IADR-0017 のフォローアップ。
+  なお前提の ADR-0004/0005 は計画リポでは `Proposed`（未 Accepted）であり、暫定運用と NFR 草案
+  （全 API OIDC/JWT・サービス間 mTLS）の相違・フェーズ分けは `feedback/20260705_internal-service-auth-nfr-deviation.md`
+  で計画側へ環流済み（ADR-0005 確定が残余リスク解消の律速）。
 - Helm/k8s の NetworkPolicy（デフォルト拒否）追補。
 - インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開は開発環境限定。共有・ステージング・本番では公開しない運用の明文化。
 - RetrievalService `/search` の ABAC 取り扱い（#55）。

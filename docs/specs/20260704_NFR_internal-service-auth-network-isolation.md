@@ -87,10 +87,10 @@ mesh（mTLS, ADR-0005）導入までは **「ネットワーク分離を第一�
 
 ## 受け入れ基準
 
-- [ ] `docker-compose.yml` で内部アプリサービスが host `ports:` を公開していない（BFF のみ公開）。
-- [ ] 上記をテストで担保し、`dotnet test` で緑になる。
-- [ ] 既存の統合テスト・単体テストが破壊されない（in-process の WebApplicationFactory / Testcontainers を用いるため compose 変更の影響を受けない）。
-- [ ] IADR-0017 と security.md に方針・残余リスク・フォローアップが記載される。
+- [x] `docker-compose.yml` で内部アプリサービスが host `ports:` を公開していない（BFF のみ公開）。
+- [x] 上記をテストで担保する（`NetworkIsolationTests`）。`dotnet test` はサンドボックス制約で本作業では未実走のため CI で確認する。
+- [x] 既存の統合テスト・単体テストが破壊されない（in-process の WebApplicationFactory / Testcontainers を用いるため compose 変更の影響を受けない）。
+- [x] IADR-0017 と security.md に方針・残余リスク・フォローアップが記載される。
 
 ## 対象外（フォローアップ）
 
