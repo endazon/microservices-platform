@@ -1,6 +1,12 @@
 # ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0006, ADR-0009
 # ローカル開発環境 — インフラ全体 + 全サービスコンテナ
 # 起動: docker compose -f deploy/docker-compose.yml up -d
+#
+# IADR-0017 / #62: mesh(mTLS, ADR-0005) 導入までのサービス間認証は「ネットワーク分離」を第一防御とする。
+# 内部サービス API は無認証で到達可能なため host へは公開せず `expose`（コンテナネットワーク内のみ）とする。
+# 外部からの入口は BFF（エッジ、5000）に一本化し、BFF が Keycloak JWT で認証する。
+# インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開ポートは開発利便のため維持するが、
+# 共有・ステージング・本番では公開しない（docs/security/security.md 参照）。
 
 x-common-env: &common-env
   OTLP__ENDPOINT: http://otel-collector:4317
@@ -150,8 +156,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/DocumentService/src/DocumentService.Api/Dockerfile
-    ports:
-      - "5001:8080"
+    # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env, *rabbit-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp
@@ -165,8 +172,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/DataSourceService/src/DataSourceService.Api/Dockerfile
-    ports:
-      - "5002:8080"
+    # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env, *rabbit-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
@@ -207,8 +215,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/RetrievalService/src/RetrievalService.Api/Dockerfile
-    ports:
-      - "5003:8080"
+    # IADR-0017: 内部 API のため host 公開しない（/search の ABAC は #55 で別管理）
+    expose:
+      - "8080"
     environment:
       <<: *common-env
       Qdrant__Host: qdrant
@@ -224,8 +233,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile
-    ports:
-      - "5004:8080"
+    # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    expose:
+      - "8080"
     environment:
       <<: *common-env
       Services__AuthorizationService: http://authorization-service:8080
@@ -240,8 +250,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile
-    ports:
-      - "5005:8080"
+    # IADR-0017: 内部 API のため host 公開しない（/authz/scope 等はサービス間呼び出し専用）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp
@@ -256,8 +267,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/WikiService/src/WikiService.Api/Dockerfile
-    ports:
-      - "5006:8080"
+    # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env, *rabbit-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
@@ -271,8 +283,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/LlmGateway/src/LlmGateway.Api/Dockerfile
-    ports:
-      - "5007:8080"
+    # IADR-0017: 内部 API のため host 公開しない（/complete・/embed はサービス間呼び出し専用）
+    expose:
+      - "8080"
     environment:
       <<: *common-env
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
@@ -285,8 +298,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/FeedbackService/src/FeedbackService.Api/Dockerfile
-    ports:
-      - "5008:8080"
+    # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=feedback_svc;Username=kp;Password=kp
@@ -299,8 +313,9 @@ services:
     build:
       context: ..
       dockerfile: src/Services/DashboardService/src/DashboardService.Api/Dockerfile
-    ports:
-      - "5009:8080"
+    # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
+    expose:
+      - "8080"
     environment:
       <<: [*common-env, *db-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=dashboard_svc;Username=kp;Password=kp
