@@ -3,7 +3,8 @@ info:
   title: KnowledgePlatform API
   description: |
     社内ナレッジ活用プラットフォーム — BFF + マイクロサービス統合仕様書
-    FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-13, UC-01, UC-02
+    FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13,
+    UC-01, UC-02, UC-05
   version: "0.1.0"
   contact:
     name: Platform Team
@@ -18,6 +19,8 @@ servers:
     description: AiAnalysisService (直接)
   - url: http://localhost:5005
     description: AuthorizationService (直接)
+  - url: http://localhost:5007
+    description: "LlmGateway (直接) — IADR-0017: 内部 API。host 非公開でサービス間呼び出し専用"
 
 tags:
   - name: Analysis
@@ -32,6 +35,12 @@ tags:
     description: "FR-05, ADR-0004: ABAC 認可"
   - name: Wiki
     description: "FR-13: Wiki ページ"
+  - name: Feedback
+    description: "FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集。IADR-0017: 内部 API（BFF 経由で到達）"
+  - name: Dashboard
+    description: "FR-10, UC-05: 利用状況・検索傾向・回答品質の可視化。IADR-0017: 内部 API（BFF 経由で到達）"
+  - name: Completions
+    description: "FR-04, FR-11, ADR-0010: LLM テキスト生成ゲートウェイ。機密区分・用途で呼び出し先を切替。IADR-0017: サービス間呼び出し専用"
 
 paths:
   # ── BFF ──────────────────────────────────────────
@@ -96,6 +105,86 @@ paths:
                 $ref: "#/components/schemas/AiAnswerDto"
         "400":
           description: instruction 未指定
+
+  /bff/feedback:
+    post:
+      tags: [Feedback]
+      summary: "FR-08, UC-01: 回答へのフィードバック送信（BFF 集約）"
+      description: |
+        チャット画面からの 👍/👎・コメント送信を FeedbackService へ委譲する。
+        送信者を後段で特定できるよう Authorization ヘッダを伝播する。
+        後段の 201（新規）/ 200（更新・upsert）ステータスをそのまま透過する。
+      operationId: bff-submit-feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackRequest"
+      responses:
+        "200":
+          description: 既存フィードバックの更新（upsert）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackDto"
+        "201":
+          description: 新規フィードバックの作成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackDto"
+
+  /bff/feedback/stats:
+    get:
+      tags: [Feedback]
+      summary: "FR-08: 満足率の集計取得（BFF 集約・品質可視化）"
+      operationId: bff-feedback-stats
+      parameters:
+        - name: answerId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: "指定時はその回答に絞って集計する"
+      responses:
+        "200":
+          description: フィードバック集計
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackStatsDto"
+
+  /bff/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: "FR-10, UC-05: ダッシュボードサマリ（BFF 集約）"
+      description: |
+        DashboardService（利用状況・検索傾向）と FeedbackService（回答品質）を 1 応答へ集約する。
+        利用状況と満足率の期間の起点を揃えるため、有効な days を BFF で確定し双方へ同じ値を渡す。
+        管理者ロール（AdminOnly）に限定する。
+      operationId: bff-dashboard-summary
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 7, minimum: 1, maximum: 90 }
+          description: "集計期間（日数）。既定 7 日、上限 90 日にクランプ"
+        - name: top
+          in: query
+          required: false
+          schema: { type: integer, default: 10, minimum: 1, maximum: 50 }
+          description: "検索傾向で返す上位件数。既定 10、上限 50"
+      responses:
+        "200":
+          description: 利用状況・検索傾向・回答品質を集約したサマリ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummaryDto"
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者ロール以外（AdminOnly）
 
   # ── DocumentService ───────────────────────────────
   /documents:
@@ -389,6 +478,237 @@ paths:
         "404":
           description: 見つからない
 
+  # ── FeedbackService（直接・内部 API / IADR-0017）─────
+  /feedback:
+    post:
+      tags: [Feedback]
+      summary: "FR-08, UC-01: フィードバック送信（upsert・冪等）"
+      description: |
+        新規は 201、既存 (answerId, userId) の更新は 200（upsert）。
+        利用者は JWT から特定する（テスト・開発環境では anonymous）。
+        同一 (answerId, userId) は二重計上しない（IADR-0010）。
+      operationId: submit-feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FeedbackRequest"
+      responses:
+        "200":
+          description: 既存フィードバックの更新（upsert）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackDto"
+        "201":
+          description: 新規フィードバックの作成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackDto"
+        "400":
+          description: "バリデーションエラー（answerId 未指定 / rating 不正 / comment 長超過）"
+    get:
+      tags: [Feedback]
+      summary: "FR-08: フィードバック一覧（品質レビュー用）"
+      description: |
+        NFR（認可）: 自由記述 Comment と UserId（個人特定情報）を返すため、管理者ロール（AdminOnly）のみ許可する。
+        全件無制限返却を防ぐページング（skip>=0 / 1<=take<=500）。
+      operationId: list-feedback
+      parameters:
+        - name: rating
+          in: query
+          required: false
+          schema: { type: string, enum: [up, down] }
+          description: "評価で絞り込む（低評価回答のレビュー等）"
+        - name: answerId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: skip
+          in: query
+          required: false
+          schema: { type: integer, default: 0, minimum: 0 }
+        - name: take
+          in: query
+          required: false
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: フィードバック一覧（更新日時の新しい順）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FeedbackDto"
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者ロール以外（AdminOnly）
+
+  /feedback/stats:
+    get:
+      tags: [Feedback]
+      summary: "FR-08, FR-10: フィードバック集計（👍/👎 件数・満足率）"
+      description: |
+        集計値のみで PII を含まないため AdminOnly は課さない（BFF が集約して画面へ）。
+        FR-10 ダッシュボードの回答品質の入力となる。
+      operationId: feedback-stats
+      parameters:
+        - name: answerId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: "指定時はその回答に絞って集計する"
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 90 }
+          description: "期間指定（日数、[1,90] にクランプ）。未指定は全期間（後方互換）"
+      responses:
+        "200":
+          description: フィードバック集計
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackStatsDto"
+
+  # ── DashboardService（直接・内部 API / IADR-0017）────
+  /dashboard/events:
+    post:
+      tags: [Dashboard]
+      summary: "FR-10: 利用イベント（検索・回答）を記録する"
+      description: |
+        集計の入力となるため、認証済みなら誰でも記録できる（認証は必須）。
+        利用者は JWT から特定する（テスト・開発環境では anonymous）。
+      operationId: record-usage-event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UsageEventRequest"
+      responses:
+        "201":
+          description: 記録された利用イベント
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageEventCreatedDto"
+        "400":
+          description: "eventType 不正（search / answer 以外）"
+        "401":
+          description: 未認証
+
+  /dashboard/usage:
+    get:
+      tags: [Dashboard]
+      summary: "FR-10: 日次利用状況（日付 × 種別の件数）"
+      description: "利用傾向は運用情報のため管理者ロール（AdminOnly）に限定する。"
+      operationId: dashboard-usage
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 7, minimum: 1, maximum: 90 }
+      responses:
+        "200":
+          description: 日次利用状況
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsagePointDto"
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者ロール以外（AdminOnly）
+
+  /dashboard/trends:
+    get:
+      tags: [Dashboard]
+      summary: "FR-10: 検索傾向（よく検索される語の上位）"
+      operationId: dashboard-trends
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 7, minimum: 1, maximum: 90 }
+        - name: top
+          in: query
+          required: false
+          schema: { type: integer, default: 10, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: 検索傾向（件数降順）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SearchTrendDto"
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者ロール以外（AdminOnly）
+
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: "FR-10: 利用側サマリ（総件数・利用状況・検索傾向）"
+      description: |
+        回答品質は含まず、BFF が FeedbackService から付加して DashboardSummaryDto を組み立てる。
+        管理者ロール（AdminOnly）に限定する。
+      operationId: dashboard-usage-summary
+      parameters:
+        - name: days
+          in: query
+          required: false
+          schema: { type: integer, default: 7, minimum: 1, maximum: 90 }
+        - name: top
+          in: query
+          required: false
+          schema: { type: integer, default: 10, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: 利用側サマリ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardUsageDto"
+        "401":
+          description: 未認証
+        "403":
+          description: 管理者ロール以外（AdminOnly）
+
+  # ── LlmGateway（直接・内部 API / IADR-0017）─────────
+  /complete:
+    post:
+      tags: [Completions]
+      summary: "FR-04, FR-11, ADR-0010: LLM テキスト生成"
+      description: |
+        AiAnalysisService が呼び出す。FR-11: 入力の機密区分（confidentiality）・用途（purpose）に応じて
+        呼び出し先（ティア/エンドポイント/モデル）を越境マトリクスで判定し切り替える。
+        機密区分による送信拒否・呼び出し先不調時も 500 を伝播せず、sent=false の縮退応答を 200 で返す
+        （呼び出し側が出典のみ返す等の縮退へ切り替えられるようにする）。
+      operationId: complete
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompletionApiRequest"
+      responses:
+        "200":
+          description: 生成結果（送信拒否・縮退時は sent=false）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompletionApiResponse"
+
 components:
   schemas:
     SearchRequest:
@@ -538,3 +858,151 @@ components:
           items: { type: string }
         expectedVersion: { type: integer, nullable: true, description: "楽観的並行制御。現在版と不一致なら 409" }
         changeNote: { type: string, nullable: true }
+
+    # ── FR-08: Feedback ───────────────────────────────
+    FeedbackRequest:
+      type: object
+      required: [answerId, rating]
+      properties:
+        answerId:
+          type: string
+          format: uuid
+          description: "対象 AI 回答の ID（AiAnswerDto 由来）。空 Guid は不可"
+        rating:
+          type: string
+          enum: [up, down]
+          description: "👍（up）/ 👎（down）"
+        comment:
+          type: string
+          nullable: true
+          maxLength: 2000
+          description: "自由記述（任意、最大 2000 文字）"
+        question:
+          type: string
+          nullable: true
+          description: "回答の元となった質問（品質レビュー用の文脈。任意）"
+
+    FeedbackDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        answerId: { type: string, format: uuid }
+        rating: { type: string, enum: [up, down] }
+        comment: { type: string, nullable: true }
+        question: { type: string, nullable: true }
+        userId: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    FeedbackStatsDto:
+      type: object
+      description: "フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）"
+      properties:
+        up: { type: integer }
+        down: { type: integer }
+        total: { type: integer }
+        satisfactionRate: { type: number, format: double }
+
+    # ── FR-10: Dashboard ──────────────────────────────
+    UsageEventRequest:
+      type: object
+      required: [eventType]
+      properties:
+        eventType:
+          type: string
+          enum: [search, answer]
+          description: "検索実行（search）/ AI 回答生成（answer）"
+        query:
+          type: string
+          nullable: true
+          description: "検索語（種別が search のとき任意。検索傾向の集計に用いる）"
+
+    UsageEventCreatedDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+
+    UsagePointDto:
+      type: object
+      description: "日次利用状況の 1 点（日付 × 種別の件数）"
+      properties:
+        date: { type: string, format: date }
+        eventType: { type: string, enum: [search, answer] }
+        count: { type: integer }
+
+    SearchTrendDto:
+      type: object
+      description: "検索傾向の 1 点（検索語 × 件数）"
+      properties:
+        term: { type: string }
+        count: { type: integer }
+
+    DashboardUsageDto:
+      type: object
+      description: "DashboardService が返す利用側サマリ（回答品質は含まない）"
+      properties:
+        totalSearches: { type: integer }
+        totalAnswers: { type: integer }
+        usageTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsagePointDto"
+        topSearchTerms:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchTrendDto"
+
+    DashboardSummaryDto:
+      type: object
+      description: "BFF が組み立てるダッシュボードサマリ（利用状況・検索傾向・回答品質を集約）"
+      properties:
+        totalSearches: { type: integer }
+        totalAnswers: { type: integer }
+        usageTrend:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsagePointDto"
+        topSearchTerms:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchTrendDto"
+        quality:
+          $ref: "#/components/schemas/FeedbackStatsDto"
+
+    # ── FR-11: LlmGateway completion ──────────────────
+    CompletionApiRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string }
+        maxTokens: { type: integer, default: 1024 }
+        model:
+          type: string
+          nullable: true
+          description: "明示要求モデル。null の場合はゲートウェイが用途（purpose）に応じて選択する"
+        confidentiality:
+          type: string
+          nullable: true
+          description: "入力文書の最高機密区分。越境マトリクスで呼び出し先を判定する"
+        purpose:
+          type: string
+          nullable: true
+          description: "用途。null/空は default 扱い"
+
+    CompletionApiResponse:
+      type: object
+      description: "sent=false は機密区分による送信拒否（縮退）または呼び出し先不調を示す"
+      properties:
+        text: { type: string }
+        model: { type: string }
+        inputTokens: { type: integer }
+        outputTokens: { type: integer }
+        sent: { type: boolean, default: true }
+        endpoint:
+          type: string
+          nullable: true
+          description: "選択・拒否した呼び出し先（監査・縮退表示用）"
+        routingReason:
+          type: string
+          nullable: true
+          description: "選択・拒否の理由（監査・縮退表示用）"
