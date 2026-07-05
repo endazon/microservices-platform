@@ -79,8 +79,8 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
-  # FR-13, UC-07, IADR-0013: Wiki 閲覧は WikiService の自前軽量読み取り API。
-  # 外部 OSS の Wiki.js は意図的に配備しない（ADR-0011 Supersede 提案済み。docs/adr/IADR-0013）。
+  # FR-13, UC-07, ADR-0011, IADR-0020: WikiService は「同期・統合・ABAC ゲートウェイ」責務。
+  # 閲覧・編集の実体は Wiki.js（下記 wikijs ブロック）へ委譲。ABAC は本サービスが前段で強制する。
   wiki:
     enabled: true
     replicas: 1
@@ -132,3 +132,36 @@ services:
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
+
+# FR-13, UC-07, ADR-0011, IADR-0020: Wiki.js（閲覧・編集 UI の実体）。専用 DB `wikijs`（Postgres）。
+# 認証は Keycloak(OIDC)。ABAC は WikiService ゲートウェイが前段で強制するため、Wiki.js への直接到達は
+# 塞ぐ（Ingress は既定で無効。公開する場合も WikiService ゲートウェイ経由に限定する。IADR-0017/IADR-0020）。
+# DB パスワードは Secret 経由（コミットしない。docs/security/security.md）。
+wikijs:
+  enabled: true
+  replicas: 1
+  registry: ghcr.io
+  image: requarks/wiki
+  tag: "2"
+  port: 3000
+  db:
+    type: postgres
+    host: postgres
+    port: 5432
+    user: kp
+    name: wikijs
+    # DB パスワードを保持する Secret（key=password）。事前に kubectl/ArgoCD で作成する。
+    existingSecret: wikijs-db
+    passwordKey: password
+  persistence:
+    enabled: true
+    size: 5Gi
+    # storageClass: ""
+  ingress:
+    enabled: false
+    className: nginx
+    host: wiki.knowledge-platform.local
+    tls: false
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 1Gi }

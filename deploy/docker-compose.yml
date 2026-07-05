@@ -69,10 +69,14 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
-    command: start-dev
+    # ADR-0004, FR-13/UC-07, IADR-0020: realm `knowledge-platform` を import して起動する。
+    # wiki-js クライアント（OIDC）と ABAC 属性クレーム（clearance/department/groups）を含む。
+    command: ["start-dev", "--import-realm"]
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/knowledge-platform-realm.json:/opt/keycloak/data/import/knowledge-platform-realm.json:ro
     ports:
       - "8080:8080"
     healthcheck:
@@ -260,9 +264,11 @@ services:
       postgres:
         condition: service_healthy
 
-  # FR-13, UC-07, IADR-0013: Wiki 閲覧は WikiService の自前軽量読み取り API で提供する。
-  # 外部 OSS の Wiki.js は意図的に配備しない（ADR-0011 の Supersede を計画へ提案済み。
-  # 認可の二重管理回避・要件=閲覧のみへの適合のため。docs/adr/IADR-0013 参照）。
+  # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集の実体は Wiki.js（下記 wiki-js）に委譲する。
+  # WikiService は「同期・統合・ABAC ゲートウェイ」に責務を縮退する（IADR-0020 が IADR-0013 を Supersede）。
+  # ABAC は本システムが単一の真実源。WikiService が Wiki.js 前段で deny-by-default の属性フィルタと
+  # 404 存在秘匿（IADR-0009）を強制する。同期方式は GraphQL API push（IADR-0021）。
+  # 段階導入: 同期コード置換・認可プロキシ化・wiki_svc 撤去は後続 PR（要 PoC/ビルド環境。IADR-0020 段2）。
   wiki-service:
     build:
       context: ..
@@ -273,11 +279,41 @@ services:
     environment:
       <<: [*common-env, *db-env, *rabbit-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
+      # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
+      Services__WikiJs: http://wiki-js:3000
+      WikiJs__GraphQlEndpoint: http://wiki-js:3000/graphql
+      WikiJs__ApiKey: ${WIKIJS_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+
+  # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）で永続化する。
+  # 認証は Keycloak(OIDC)。ローカルログインは Wiki.js 管理側で無効化し OIDC 単一経路にする（運用仕様参照）。
+  # dev 便宜のため host 公開（3001）するが、共有/stg/prod では公開せず WikiService ゲートウェイ経由に限定する
+  # （IADR-0017/IADR-0020: ABAC 強制点をゲートウェイに集約し Wiki.js への直接到達を塞ぐ）。
+  wiki-js:
+    image: ghcr.io/requarks/wiki:2
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: kp
+      DB_PASS: kp
+      DB_NAME: wikijs
+    ports:
+      - "3001:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
 
   llm-gateway:
     build:

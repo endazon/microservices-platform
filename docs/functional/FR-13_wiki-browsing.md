@@ -1,5 +1,5 @@
 ---
-title: Wiki 文書閲覧（自前軽量読み取り API・ABAC 適用）機能仕様書
+title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ）機能仕様書
 type: functional-spec
 status: draft
 related_ids:
@@ -8,7 +8,7 @@ related_ids:
   - FR-05
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-07-05
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
@@ -22,18 +22,25 @@ plan_refs:
 - 機能要求（FR）: FR-13（正規化文書を Wiki サービスで閲覧。ABAC・横断検索・AI 回答と統合）
 - ユースケース（UC）: UC-07（Wiki で閲覧する）, FR-05（ABAC アクセス制御）
 - 計画書リンク: `02_requirements/01_requirements.md`、`03_usecases/01_usecases.md`、`07_adr/ADR-0011`
-- 実装 ADR: [IADR-0013](../adr/IADR-0013_wiki-selfhosted-read-api-supersedes-adr-0011.md)（自前軽量閲覧 API を採用、ADR-0011 Supersede 提案）、[IADR-0009](../adr/IADR-0009_wiki-browsing-404-hides-existence.md)（404 存在秘匿・メモリ内 ABAC）
+- 実装 ADR: [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)（Wiki.js 配備・WikiService を
+  ABAC ゲートウェイへ縮退。IADR-0013 を Supersede）、
+  [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)（同期方式 GraphQL push）、
+  [IADR-0009](../adr/IADR-0009_wiki-browsing-404-hides-existence.md)（404 存在秘匿・メモリ内 ABAC）
 
 ## 概要
 
-管理している**正規化済み Markdown 文書**を、利用者が Wiki 形式で**閲覧**する機能。閲覧の実体は
-`WikiService`（`WikiService.Api`）が提供する**自前の軽量な読み取り専用 API** である。
+管理している**正規化済み Markdown 文書**を、利用者が Wiki 形式で**閲覧**する機能。閲覧・編集 UI の実体は
+**Wiki.js**（`ghcr.io/requarks/wiki:2`、専用 DB `wikijs`）が担い、`WikiService` は「**同期・統合・ABAC
+ゲートウェイ**」に責務を縮退する（ADR-0011 に追従）。
 
-> **実装方式に関する注記**: 計画 ADR-0011 は当初「閲覧基盤に Wiki.js（既存 OSS Wiki）を採用」と決定して
-> いたが、実装では自前の軽量読み取り API を採用している。理由は認可（ABAC）の二重管理リスク回避・要件
-> （閲覧のみ、編集は UC-03）への適合であり、[IADR-0013] に記録のうえ `/plan-feedback`
-> （[feedback 記録](../../feedback/20260703_wiki-selfhosted-supersedes-adr-0011.md)）で ADR-0011 の
-> Supersede を計画へ提案している。Wiki.js は**意図的に配備しない**。
+> **実装方式に関する注記**: 計画 ADR-0011 は「閲覧基盤に Wiki.js（既存 OSS Wiki）を採用」と決定している。
+> 実装は当初 [IADR-0013] で自前軽量閲覧 API（(b)）を採ったが、Issue #66 で人間が **(a) Wiki.js 配備**を
+> 選択したため、[IADR-0013] を Superseded とし [IADR-0020] で ADR-0011 に追従する。認可（ABAC）は本システムが
+> 単一の真実源であり、WikiService が Wiki.js の**前段**で deny-by-default の属性フィルタと 404 存在秘匿を強制する
+> （Wiki.js のページ/グループ権限だけでは属性ベース細粒度判定を代替しない）。
+> **段階導入**: 本 PR は Wiki.js の配備・OIDC 構成・意思決定記録まで。同期コードの Wiki.js 置換・閲覧経路の
+> 認可プロキシ化・`wiki_svc` 撤去は後続 PR（IADR-0020 段2）。下記「機能詳細／エンドポイント」は段2 完了後の
+> 目標であり、現行コードは既存の自前閲覧 API（[IADR-0009] 準拠）が暫定的に強制点を担う。
 
 ## 機能詳細
 
@@ -57,11 +64,16 @@ plan_refs:
 
 ## 主要コンポーネント
 
-- `WikiPage`（Domain）: `Id` / `DocumentId` / `Title` / `Slug` / `Status` / `Attributes`(jsonb) / `Tags` / `SyncedAt`。
-- `WikiDbContext`（Infrastructure）: 自前 DB `wiki_svc` に正規化 Markdown を保持。
-- `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し Wiki ページへ同期。文書更新後、定義時間内に閲覧へ反映（受け入れ基準③）。
+- **Wiki.js**（`ghcr.io/requarks/wiki:2`）: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）。認証は
+  Keycloak(OIDC)。ローカルログインは無効化し OIDC 単一経路（運用仕様参照）。
+- `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し、正規化 Markdown を
+  Wiki.js へ **GraphQL push**（[IADR-0021]）で同期する。文書更新後、定義時間内に反映（受け入れ基準③）。
+  ※段2 で置換予定（現行は `wiki_svc` へ書き込み）。
 - `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から `/authz/scope` を解決。障害時は deny-by-default。
-- `AbacPageFilter`（Services）: `AccessScopeResponse` を `WikiPage.Attributes` に適用する純粋関数。検索側 `InMemoryVectorStore.MatchesFilters` と同一意味論。
+- `AbacPageFilter`（Services）: `AccessScopeResponse` を文書属性に適用する純粋関数。検索側
+  `InMemoryVectorStore.MatchesFilters` と同一意味論。Wiki.js 前段ゲートウェイの到達可否判定へ転用する。
+- `WikiPage` / `WikiDbContext`（`wiki_svc`）: ゲートウェイの同期メタデータ（属性フィルタ用）として当面保持。
+  閲覧スキーマは段2 で撤去・整理する。
 
 ## 受け入れ基準の対応
 
@@ -75,6 +87,8 @@ plan_refs:
 
 ## 関連仕様
 
-- 作業仕様書: [20260703_FR-13_wiki-browsing-abac](../specs/20260703_FR-13_wiki-browsing-abac.md)、[20260703_ADR-0011-normalization-wiki-selfhosted](../specs/20260703_ADR-0011-normalization-wiki-selfhosted.md)
-- セキュリティ: [security](../security/security.md)、運用: [operations](../operations/operations.md)
+- 作業仕様書: [20260705_ADR-0011-wiki-js-deployment](../specs/20260705_ADR-0011-wiki-js-deployment.md)（本 Issue #66）、
+  [20260703_FR-13_wiki-browsing-abac](../specs/20260703_FR-13_wiki-browsing-abac.md)、
+  [20260703_ADR-0011-normalization-wiki-selfhosted](../specs/20260703_ADR-0011-normalization-wiki-selfhosted.md)（(b)、Superseded）
+- セキュリティ: [security](../security/security.md)（Wiki.js 前段 ABAC 強制点）、運用: [operations](../operations/operations.md)（Wiki.js 配備・OIDC）
 - ABAC: [FR-05_abac-access-control](./FR-05_abac-access-control.md)

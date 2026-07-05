@@ -4,10 +4,12 @@ using WikiService.Api.Services;
 
 namespace WikiService.Api.Endpoints;
 
-// FR-13, UC-07, ADR-0011, IADR-0013: Wiki ページ閲覧エンドポイント。
-// 閲覧は自前の軽量な読み取り専用 API で提供する（Wiki.js は配備しない。IADR-0013 が
-// ADR-0011 の Supersede を計画へ提案）。ABAC は本システムがソースオブトゥルース。閲覧経路
-// （一覧・本文）でも deny-by-default の属性フィルタを適用し、権限外文書を一切露出しない（受け入れ基準②）。
+// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0009: Wiki ページ閲覧エンドポイント。
+// 目標構成（IADR-0020）: 閲覧・編集の実体は Wiki.js に委譲し、本エンドポイントは Wiki.js 前段の
+// ABAC ゲートウェイ（認可プロキシ）へ改修する。ABAC は本システムがソースオブトゥルースであり、
+// deny-by-default の属性フィルタ（AbacPageFilter）と 404 存在秘匿（IADR-0009）を Wiki.js への到達可否として強制する。
+// 段階導入（IADR-0020 段2）: 現行は自前 wiki_svc に対する読み取り API が暫定的に強制点を担う。プロキシ化・
+// wiki_svc 閲覧スキーマ撤去は後続 PR（要 PoC/ビルド環境）。旧 IADR-0013（Wiki.js 非配備）は Superseded。
 public static class WikiEndpoints
 {
     public static IEndpointRouteBuilder MapWikiEndpoints(this IEndpointRouteBuilder app)

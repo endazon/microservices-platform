@@ -1,0 +1,127 @@
+# FR-13, UC-07, ADR-0011, IADR-0020: Wiki.js（閲覧・編集 UI の実体）の Deployment/Service/PVC/Ingress。
+# ABAC は WikiService ゲートウェイが前段で強制する。Wiki.js への直接到達は既定で塞ぐ（Ingress 既定 disabled）。
+{{- if .Values.wikijs.enabled }}
+{{- $w := .Values.wikijs }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiki-js
+  labels:
+    app: wiki-js
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: {{ $w.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: wiki-js
+  template:
+    metadata:
+      labels:
+        app: wiki-js
+    spec:
+      containers:
+        - name: wiki-js
+          image: "{{ $w.registry }}/{{ $w.image }}:{{ $w.tag }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $w.port }}
+          env:
+            - name: DB_TYPE
+              value: {{ $w.db.type | quote }}
+            - name: DB_HOST
+              value: {{ $w.db.host | quote }}
+            - name: DB_PORT
+              value: {{ $w.db.port | quote }}
+            - name: DB_USER
+              value: {{ $w.db.user | quote }}
+            - name: DB_NAME
+              value: {{ $w.db.name | quote }}
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $w.db.existingSecret }}
+                  key: {{ $w.db.passwordKey }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $w.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $w.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          {{- if $w.persistence.enabled }}
+          volumeMounts:
+            - name: wiki-data
+              mountPath: /wiki/data
+          {{- end }}
+          resources:
+            {{- toYaml $w.resources | nindent 12 }}
+      {{- if $w.persistence.enabled }}
+      volumes:
+        - name: wiki-data
+          persistentVolumeClaim:
+            claimName: wiki-js-data
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiki-js
+  labels:
+    app: wiki-js
+spec:
+  selector:
+    app: wiki-js
+  ports:
+    - port: {{ $w.port }}
+      targetPort: {{ $w.port }}
+      protocol: TCP
+{{- if $w.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wiki-js-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $w.persistence.storageClass }}
+  storageClassName: {{ $w.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $w.persistence.size }}
+{{- end }}
+{{- if $w.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wiki-js
+  labels:
+    app: wiki-js
+spec:
+  ingressClassName: {{ $w.ingress.className }}
+  rules:
+    - host: {{ $w.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wiki-js
+                port:
+                  number: {{ $w.port }}
+  {{- if $w.ingress.tls }}
+  tls:
+    - hosts:
+        - {{ $w.ingress.host }}
+      secretName: wiki-js-tls
+  {{- end }}
+{{- end }}
+{{- end }}

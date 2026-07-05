@@ -5,15 +5,20 @@ status: draft
 related_ids:
   - FR-05
   - FR-09
+  - FR-13
+  - UC-07
   - NFR
   - ADR-0004
   - ADR-0005
+  - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-07-04
+updated: 2026-07-05
 plan_refs: []
 related_adrs:
   - ../adr/IADR-0017_internal-service-auth-network-isolation.md
+  - ../adr/IADR-0020_wiki-js-deployment-abac-gateway.md
+  - ../adr/IADR-0009_wiki-browsing-404-hides-existence.md
 ---
 
 # セキュリティ仕様書
@@ -39,6 +44,29 @@ related_adrs:
   単体テスト（`KeycloakRolesClaimsTransformationTests`）で検証。不正 JSON は fail-closed（ロール無し）で扱う。
 - **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う（FR-05, ADR-0004）。
 - 未対応: 全サービス横断のエンドポイント認可（P2 で拡充予定。ADR-0004）。
+
+### Wiki.js 前段の ABAC 強制点（FR-13 / UC-07 / IADR-0020）— ⚠️ 機密性の要点
+
+閲覧・編集 UI の実体を **Wiki.js** に委譲する（[IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）。
+Wiki.js の権限モデルは**ページ／グループ単位**であり、属性ベース（ABAC）の細粒度判定・deny-by-default・
+存在秘匿を代替できない（ADR-0011 も明記）。したがって ABAC は**本システムが単一の真実源**とし、
+**WikiService を Wiki.js の前段ゲートウェイ**として強制点を集約する。
+
+- **強制内容**: 利用者 JWT 属性（`clearance` / `department`）× `/authz/scope` から許可スコープを解決し、
+  Wiki.js の閲覧要求に deny-by-default で適用する。一覧は権限内ページのみ、個別アクセスは**権限外／不存在とも
+  404 相当で存在秘匿**する（[IADR-0009] の意味論を継承。403 で存在を漏らさない）。判定は既存 `AbacPageFilter`
+  （検索側 `InMemoryVectorStore.MatchesFilters` と同一意味論）を到達可否へ転用する。
+- **直接到達の遮断**: 強制点をゲートウェイに集約するため、Wiki.js への**直接到達を塞ぐ**ネットワーク分離が
+  前提（[IADR-0017]）。共有/stg/prod では Wiki.js を host 公開せず、到達を WikiService 経由に限定する
+  （compose の `expose`、k8s の NetworkPolicy／Ingress 無効）。dev のみ開発便宜で Wiki.js を公開する。
+- **Wiki.js 側の権限**: 補助的な表示制御に留め、機密性の担保には用いない。Keycloak realm import の
+  `wiki-js` クライアントは `clearance`/`department`/`groups` クレームを付与するが、これは表示制御の補助であり
+  ABAC の正本ではない。
+- **秘密情報**: Wiki.js の OIDC クライアントシークレット・同期用 API キー（[IADR-0021]）は環境変数／Secret 経由で
+  注入し、リポジトリにコミットしない。realm import 内の dev 値（`wiki-js-dev-secret-change-me`）は開発専用で、
+  共有/stg/prod では必ず変更する。
+- **回帰防止**: `WikiEndpointsAbacTests` / `AbacPageFilterTests` が担保する受け入れ基準（一覧=権限内のみ・
+  個別=404）を新構成でも維持する。ゲートウェイ実装・結合テストは IADR-0020 段2 で追加する。
 
 ### サービス間（内部 API）の認証 — mesh 導入までの暫定方針（IADR-0017 / #62）
 

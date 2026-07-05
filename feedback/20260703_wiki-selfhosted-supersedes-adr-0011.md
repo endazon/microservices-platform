@@ -13,7 +13,14 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-56-20260703-1411 / Issue #56（親 #48）/ docs/adr/IADR-0013_wiki-selfhosted-read-api-supersedes-adr-0011.md"
 author: claude
 created: 2026-07-03
+updated: 2026-07-05
+superseded_by: ./20260705_wiki-js-deployment-follows-adr-0011.md
 ---
+
+> **⚠️ 取り下げ（withdrawn, 2026-07-05）**: Issue #66 で人間が正規化方針 **(a) Wiki.js 配備**を選択したため、
+> 本フィードバック（(b) ADR-0011 の Supersede 提案）は取り下げる。ADR-0011 は Supersede せず **`Proposed`→`Accepted`**
+> 化を提案する後継フィードバック [20260705_wiki-js-deployment-follows-adr-0011](./20260705_wiki-js-deployment-follows-adr-0011.md)
+> に置き換える。実装側は [IADR-0013] を Superseded とし [IADR-0020] で ADR-0011 に追従する。
 
 # フィードバック: ADR-0011（Wiki.js 採用）を Supersede し、自前軽量読み取り閲覧 API を正式決定とする
 
