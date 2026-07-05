@@ -4,6 +4,7 @@
 
 ### 新機能
 
+- **FR-13,UC-07,ADR-0011**: WikiService を Wiki.js 同期・ABAC 認可プロキシへカットオーバー (IADR-0020 段2) (#66) (#86) (c51edad)
 - **FR-13,UC-07,ADR-0011**: Wiki.js 配備・WikiService を ABAC ゲートウェイへ縮退 (#66) (#84) (bebfb2b)
 - **FR-01,FR-05**: データソースが原本へ機密区分を付与しfail-closed除外を解消 (#82) (7b5abf7)
 - **NFR**: OpenAPI と CHANGELOG の自動更新を PR 経由で反映する方式に変更 (2984229)
@@ -42,6 +43,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#85) (7c35072)
 - **NFR**: CHANGELOG を自動更新 (#83) (ca845a5)
 - **NFR**: CHANGELOG を自動更新 (#81) (7a54e1f)
 - **NFR**: CHANGELOG を自動更新 (#80) (d6bb073)
