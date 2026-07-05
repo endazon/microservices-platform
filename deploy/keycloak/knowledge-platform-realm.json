@@ -1,0 +1,142 @@
+{
+  "//": "ADR-0004, ADR-0011, FR-13, UC-07, IADR-0020: realm import for local/dev. Provisions the",
+  "//2": "knowledge-platform realm shared as Auth__Authority by all services, plus the wiki-js OIDC client.",
+  "//3": "Mounted read-only into keycloak and loaded via `start-dev --import-realm` (docker-compose.yml).",
+  "//4": "Dev credentials only — do NOT reuse client secrets in shared/staging/prod (docs/security/security.md).",
+  "realm": "knowledge-platform",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "platform-admin", "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）" },
+      { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" }
+    ]
+  },
+  "groups": [
+    {
+      "name": "clearance",
+      "subGroups": [
+        { "name": "public", "attributes": { "clearance": ["public"] } },
+        { "name": "internal", "attributes": { "clearance": ["internal"] } },
+        { "name": "confidential", "attributes": { "clearance": ["confidential"] } }
+      ]
+    },
+    {
+      "name": "department",
+      "subGroups": [
+        { "name": "engineering", "attributes": { "department": ["engineering"] } },
+        { "name": "sales", "attributes": { "department": ["sales"] } },
+        { "name": "hr", "attributes": { "department": ["hr"] } }
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "abac-attributes",
+      "description": "ABAC 属性（clearance / department）とグループを JWT に載せる。WikiService ゲートウェイと Wiki.js 表示制御が参照する。",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "clearance",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "clearance",
+            "claim.name": "clearance",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "groups",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "full.path": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "wiki-js",
+      "name": "Wiki.js (FR-13/UC-07, OIDC via Keycloak)",
+      "description": "ADR-0011/IADR-0020: Wiki.js の認証を Keycloak に OIDC 連携。ローカルログインは Wiki.js 側で無効化し OIDC 単一経路とする。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "wiki-js-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3001/*",
+        "http://wiki-js:3000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3001"
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles",
+        "abac-attributes"
+      ]
+    },
+    {
+      "clientId": "bff",
+      "name": "BFF (edge, Keycloak JWT authentication)",
+      "description": "IADR-0017: 外部からの入口。エッジで OIDC/JWT 認証し下流へ伝播する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:5000/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5000"
+      ],
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "roles",
+        "abac-attributes"
+      ]
+    }
+  ]
+}

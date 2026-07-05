@@ -1,7 +1,7 @@
 ---
 title: IADR-0013 Wiki 閲覧は自前の軽量読み取り専用 API を採用し、ADR-0011（Wiki.js 採用）の Supersede を計画へ提案する
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - FR-13
   - UC-07
@@ -18,7 +18,11 @@ plan_refs:
 
 # IADR-0013: Wiki 閲覧は自前の軽量読み取り専用 API を採用し、ADR-0011 の Supersede を計画へ提案する
 
-- 状態: Accepted
+> **⚠️ この決定は [IADR-0020](./IADR-0020_wiki-js-deployment-abac-gateway.md) により Superseded（2026-07-05）。**
+> Issue #66 で人間が正規化方針 **(a) Wiki.js 配備**を選択したため、実装は ADR-0011 に**追従**する方向へ転換した。
+> 本 IADR（(b) 自前閲覧 API を正式化し ADR-0011 を Supersede 提案）は無効化され、後継 IADR-0020 が置き換える。
+
+- 状態: Superseded（by IADR-0020）
 - 日付: 2026-07-03
 - 決定者: claude（実装）
 - 関連: ADR-0011（閲覧基盤に Wiki.js 採用）、ADR-0004（Keycloak + ABAC / deny-by-default）、
@@ -67,7 +71,7 @@ Issue #56（親 #48 の横断監査 `adr-guardian`）が、計画 ADR-0011 か�
 ## 関連
 
 - Supersedes: なし（実装側。計画 ADR-0011 の Supersede は計画側で確定）
-- Superseded by: なし
+- Superseded by: [IADR-0020](./IADR-0020_wiki-js-deployment-abac-gateway.md)（Wiki.js 配備・(a) 追従へ転換）
 - 作業仕様書: [20260703_ADR-0011-normalization-wiki-selfhosted](../specs/20260703_ADR-0011-normalization-wiki-selfhosted.md)
 - 計画フィードバック: [20260703_wiki-selfhosted-supersedes-adr-0011](../../feedback/20260703_wiki-selfhosted-supersedes-adr-0011.md)
 - 参照 IADR: [IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md), [IADR-0004](./IADR-0004_abac-multivalue-allowlist-deny-by-default.md)

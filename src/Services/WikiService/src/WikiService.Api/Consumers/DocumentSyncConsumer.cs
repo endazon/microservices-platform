@@ -6,7 +6,9 @@ using WikiService.Api.Infrastructure;
 
 namespace WikiService.Api.Consumers;
 
-// FR-13, UC-07: 文書更新イベントを受信し Wiki ページに同期する
+// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0021: 文書更新イベントを受信し Wiki へ同期する。
+// 目標構成（IADR-0020/0021）: 正規化 Markdown を Wiki.js へ GraphQL API push で反映する。
+// 段階導入（IADR-0020 段2）: 現行は自前 wiki_svc へ upsert する。Wiki.js 同期への置換は後続 PR（要 PoC/ビルド環境）。
 public class DocumentSyncConsumer(WikiDbContext db) : IConsumer<DocumentUpdated>
 {
     public async Task Consume(ConsumeContext<DocumentUpdated> ctx)
