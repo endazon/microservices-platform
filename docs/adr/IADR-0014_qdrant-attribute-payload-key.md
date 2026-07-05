@@ -66,9 +66,22 @@ related_adrs:
 > 追跡: PR #70（Closes #58）のレビュー指摘を受けたフォローアップ。Issue #71 で追跡する。実機確認後、
 > 下記に従い (b) ネスト復元パスの要否を確定する（`docs/DEFINITION_OF_DONE.md`「不要な防御的実装がない」観点）。
 
+**検証ハーネス**: 実機 Qdrant に対して下記2確認事項を再現・判定するスクリプト
+`scripts/verify-qdrant-attribute-payload.sh` を用意した（依存は bash/curl のみ）。Qdrant を
+起動できる環境で実行し、その出力をもって本チェックボックスと分岐を確定する。作業仕様は
+`docs/specs/20260705_IADR-0014_qdrant-attribute-payload-verification.md` を参照。
+
+```bash
+docker run -d --name qdrant -p 6333:6333 qdrant/qdrant:latest
+QDRANT_URL=http://localhost:6333 bash scripts/verify-qdrant-attribute-payload.sh
+```
+
+> 検証の**実行**は Docker 実機を要するため、Issue に着手した CI Runner（非対話・docker 承認ブロック）
+> では未実行。**検証を実行するまで (b) ネスト復元パスは保持する**（安全側＝過剰除外は漏えいを招かない）。
+
 - [ ] 実機 Qdrant に `attributes.confidentiality` を持つ点を upsert し、返却ペイロードのキー表現
-      （フラットキー or ネスト構造体）を確認する。
-- [ ] `attributes.{k}` を条件にした検索フィルタが、書き込んだ点を正しく通過（過剰除外しない）ことを確認する。
+      （フラットキー or ネスト構造体）を確認する。（ハーネス: 確認事項(1)）
+- [ ] `attributes.{k}` を条件にした検索フィルタが、書き込んだ点を正しく通過（過剰除外しない）ことを確認する。（ハーネス: 確認事項(2)）
 - [ ] **過剰除外あり**の場合: 書き込み・フィルタ・復元をネスト構造体へ統一（選択肢C）し、
       既存データの移行方針を本 IADR に追記する。
 - [ ] **過剰除外なし**（フラットキー格納で確定）の場合: `QdrantVectorStore.ExtractAttributes` の
