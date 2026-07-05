@@ -101,6 +101,17 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # FR-10, UC-05, IADR-0011: 利用状況・検索傾向・回答品質ダッシュボード集計サービス
+  dashboard:
+    enabled: true
+    replicas: 1
+    image: knowledge-platform/dashboard-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   # FR-08: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback:
     enabled: true

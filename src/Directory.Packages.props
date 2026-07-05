@@ -34,7 +34,8 @@
     <!-- Vector store -->
     <PackageVersion Include="Qdrant.Client" Version="1.18.1" />
     <!-- Health checks (9.x is latest; net10 compatible via netstandard2.0) -->
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.9" />
+    <!-- NU1510 (Issue #33/#63): Microsoft.Extensions.Diagnostics.HealthChecks は Microsoft.AspNetCore.App
+         共有フレームワーク由来で、どの csproj も直接参照しないため中央バージョン定義も撤去した。 -->
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.Rabbitmq" Version="8.0.1" />
     <PackageVersion Include="AspNetCore.HealthChecks.Redis" Version="9.0.0" />

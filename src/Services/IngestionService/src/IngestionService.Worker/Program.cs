@@ -40,6 +40,11 @@ builder.Services.AddMassTransit(x =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
             ?? "amqp://guest:guest@rabbitmq:5672");
+
+        // ADR-0003: 取り込み（チャンク化・埋め込み・ベクトル登録）の一時的失敗を再試行し、
+        // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
+        cfg.UseKnowledgePlatformRetry();
+
         cfg.ConfigureEndpoints(ctx);
     });
 });

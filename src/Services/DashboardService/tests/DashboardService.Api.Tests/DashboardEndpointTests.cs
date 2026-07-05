@@ -50,9 +50,13 @@ public class DashboardEndpointTests
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "b"));
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"));
 
-        var points = await client.GetFromJsonAsync<List<UsagePointDto>>("/dashboard/usage");
+        // レスポンスが null の場合は素の NullReferenceException ではなく明示的な失敗にしてから
+        // 非 null 変数へ確定させ、以降の拡張メソッド Where で CS8604 を誘発しないようにする。
+        var response = await client.GetFromJsonAsync<List<UsagePointDto>>("/dashboard/usage");
+        response.Should().NotBeNull();
+        var points = response!;
 
-        points!.Where(p => p.EventType == "search").Sum(p => p.Count).Should().Be(2);
+        points.Where(p => p.EventType == "search").Sum(p => p.Count).Should().Be(2);
         points.Where(p => p.EventType == "answer").Sum(p => p.Count).Should().Be(1);
     }
 
@@ -66,9 +70,11 @@ public class DashboardEndpointTests
             await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "経費"));
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "有給"));
 
-        var trends = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        trendsResponse.Should().NotBeNull();
+        var trends = trendsResponse!;
 
-        trends!.Should().HaveCountGreaterThanOrEqualTo(2);
+        trends.Should().HaveCountGreaterThanOrEqualTo(2);
         trends[0].Term.Should().Be("経費");
         trends[0].Count.Should().Be(3);
     }
@@ -83,9 +89,11 @@ public class DashboardEndpointTests
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", " foo "));
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "FOO"));
 
-        var trends = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        trendsResponse.Should().NotBeNull();
+        var trends = trendsResponse!;
 
-        trends!.Should().ContainSingle();
+        trends.Should().ContainSingle();
         trends[0].Term.Should().Be("foo");
         trends[0].Count.Should().Be(3);
     }
@@ -100,9 +108,11 @@ public class DashboardEndpointTests
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "契約"));
         await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"));
 
-        var summary = await client.GetFromJsonAsync<DashboardUsageDto>("/dashboard/summary");
+        var summaryResponse = await client.GetFromJsonAsync<DashboardUsageDto>("/dashboard/summary");
+        summaryResponse.Should().NotBeNull();
+        var summary = summaryResponse!;
 
-        summary!.TotalSearches.Should().Be(2);
+        summary.TotalSearches.Should().Be(2);
         summary.TotalAnswers.Should().Be(1);
         summary.TopSearchTerms.Should().ContainSingle(t => t.Term == "契約" && t.Count == 2);
     }
