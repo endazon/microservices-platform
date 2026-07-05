@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — Wiki.js 配備（ADR-0011 追従・WikiService を同期/ABAC ゲートウェイへ縮退）
 type: work-spec
-status: in-progress
+status: superseded
 related_ids:
   - FR-13
   - UC-07
@@ -87,11 +87,18 @@ Keycloak(realm: knowledge-platform) ──OIDC──> Wiki.js（ローカルロ�
 - **plan-feedback**: ADR-0011 追従（`Proposed`→`Accepted` 提案）へ環流記録を更新。
 - **コード側トレーサビリティ**: `WikiEndpoints.cs` / `DocumentSyncConsumer.cs` のヘッダコメントを新方針へ更新。
 
-### 含まないもの（後続 PR / 要 PoC・ビルド環境）
-- `DocumentSyncConsumer` の**実コード**を Wiki.js GraphQL push へ置換（現状は `wiki_svc` へ書き込み）。
-- WikiService 閲覧経路の**リバースプロキシ化**（Wiki.js への認可済みプロキシ）と `wiki_svc` 閲覧スキーマの撤去。
-- 上記に対する結合テスト（稼働 Wiki.js が必要）。`WikiEndpointsAbacTests` / `AbacPageFilterTests` の
-  意味論（一覧=権限内のみ・個別=404）は**受け入れ基準として維持**し、ゲートウェイ実装で再充足する。
+> **注記（2026-07-05 更新・superseded）**: 本作業仕様書は「段1（配備・OIDC 構成・意思決定記録・
+> ドキュメント）」の仕様であり、下記「含まないもの」に列挙した段2（同期コード置換・認可プロキシ化・
+> `wiki_svc` 縮退・結合テスト）は後続 PR で**実装済み**。段2 の作業仕様は
+> [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) を参照。以降の残作業は
+> 稼働環境が必要な検証・PoC と削除/アーカイブ同期の上流拡張のみ（[IADR-0021] フォロー課題）。
+
+### 含まないもの（段2＝後続 PR で実装済み。当初は要 PoC・ビルド環境）
+- ~~`DocumentSyncConsumer` の**実コード**を Wiki.js GraphQL push へ置換~~ → 段2 で実装済み。
+- ~~WikiService 閲覧経路の**リバースプロキシ化**と `wiki_svc` 閲覧スキーマの撤去~~ → 段2 で実装済み
+  （`WikiEndpoints` を前段 ABAC ゲートウェイ化・`wiki_svc` は同期メタデータに限定）。
+- ~~上記に対する結合テスト~~ → 段2 で `WikiEndpointsAbacTests` / `DocumentSyncConsumerTests` を更新済み。
+  `AbacPageFilterTests` の意味論（一覧=権限内のみ・個別=404）は不変で温存。
 
 ## 受け入れ基準の対応
 

@@ -268,7 +268,8 @@ services:
   # WikiService は「同期・統合・ABAC ゲートウェイ」に責務を縮退する（IADR-0020 が IADR-0013 を Supersede）。
   # ABAC は本システムが単一の真実源。WikiService が Wiki.js 前段で deny-by-default の属性フィルタと
   # 404 存在秘匿（IADR-0009）を強制する。同期方式は GraphQL API push（IADR-0021）。
-  # 段階導入: 同期コード置換・認可プロキシ化・wiki_svc 撤去は後続 PR（要 PoC/ビルド環境。IADR-0020 段2）。
+  # 段2（同期コード置換・認可プロキシ化・wiki_svc 縮退）は実装済み。残る稼働検証（OIDC ローカルログイン
+  # 無効化・GraphQL スキーマ整合の PoC・API キー投入）は運用時タスク（docs/operations・IADR-0021 フォロー）。
   wiki-service:
     build:
       context: ..
