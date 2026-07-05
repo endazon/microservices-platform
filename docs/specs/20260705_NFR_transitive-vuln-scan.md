@@ -13,7 +13,7 @@ related_specs:
   - ../security/security.md
   - ../operations/operations.md
 related_adrs:
-  - ../adr/IADR-0017_transitive-vulnerability-scan.md
+  - ../adr/IADR-0018_transitive-vulnerability-scan.md
 related_prs:
   - "#61"
 # 注: IADR-0016（PR #61・OpenApi 推移ピン）は未マージのため develop に未存在。相互参照は prose 内で #61 として記載。
@@ -68,8 +68,8 @@ GitHub App の権限で不可」であったが、**本作業はローカルの 
   - `on:` に `schedule`（`cron: "0 3 * * 1"`）を追加、`push` を `[develop, main]` に整合。
   - `vulnerable-scan` ジョブを追加（restore → `dotnet list package --vulnerable --include-transitive` →
     深刻度検出で `exit 1`）。
-- `docs/adr/IADR-0017_transitive-vulnerability-scan.md`（本作業の実装判断）。
-- `docs/adr/README.md` の一覧へ IADR-0017 を追記。
+- `docs/adr/IADR-0018_transitive-vulnerability-scan.md`（本作業の実装判断）。
+- `docs/adr/README.md` の一覧へ IADR-0018 を追記。
 
 ## 受け入れ基準
 
@@ -78,14 +78,14 @@ GitHub App の権限で不可」であったが、**本作業はローカルの 
 - [x] `dotnet list package --vulnerable` の exit 0 問題に対応し、深刻度検出時に CI を失敗させる判定を入れた。
 - [x] `schedule` トリガーで、変更が無くても定期的に既存依存へ新規 advisory を照合する。
 - [x] `security.yml` の `push` トリガーを develop 運用へ整合した（`[develop, main]`）。
-- [x] 重要な実装判断を IADR-0017 に記録した。
+- [x] 重要な実装判断を IADR-0018 に記録した。
 - [ ] **CI 実走での検証**: 本ブランチの `security.yml` が発火し、`vulnerable-scan` が緑（または脆弱性検出で
       正しく赤）になることを確認する。本作業環境は .NET SDK/ネットワーク無効のため `dotnet restore`/`list` を
       実走できず、ジョブの静的定義のみをコミットしている。実測は CI に委ねる。
 
 ## 残課題・フォローアップ
 
-- **#61（IADR-0016）のマージ順序**: 本 IADR は #61 が採番する IADR-0016 の後継として IADR-0017 を用いる。
+- **#61（IADR-0016）のマージ順序**: 本 IADR は #61 が採番する IADR-0016 の後継として IADR-0018 を用いる。
   #61 が未マージのうちに本ブランチが先行マージされると develop 上で 0016 が一時的に欠番になる。
   #61 → 本 PR の順でマージするのが望ましい。
 - **深刻度閾値の調整**: 現状は fail-closed（1件でも失敗）。誤検知や未修正 advisory の一時抑制が必要になれば
