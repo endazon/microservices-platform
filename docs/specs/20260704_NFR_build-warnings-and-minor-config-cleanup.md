@@ -46,7 +46,7 @@ CI（`ci.yml`）のビルドに委ねる。また `.github/workflows/` 配下は
 | 項目 | 現状（本ブランチ） | 対応 |
 | --- | --- | --- |
 | CS0618 Testcontainers Obsolete | `PostgresFixture` / `RabbitMqFixture` は既に `PostgreSqlBuilder().WithImage(...)` / `RabbitMqBuilder().WithImage(...)` の非 Obsolete API に置換済み。Obsolete コンストラクタの残存呼び出しは無し（`rg` で確認） | 追加変更なし（既に解消済みと確認） |
-| CS8604 null 参照 | `DashboardEndpointTests` が `GetFromJsonAsync<T>()`（`T?`）の戻り値を拡張メソッド `Where` 等の `source` へ渡し得る | 逆デシリアライズ結果を代入時に `!` で非 null 確定させ、以降の利用から `!` を除去 |
+| CS8604 null 参照 | `DashboardEndpointTests` が `GetFromJsonAsync<T>()`（`T?`）の戻り値を拡張メソッド `Where` 等の `source` へ渡し得る | 逆デシリアライズ結果を `.Should().NotBeNull()` で明示的に検証してから非 null 変数へ確定させ、以降の利用から null 許容を除去（null 時は素の `NullReferenceException` ではなく明確なアサーション失敗になる） |
 | NU1510 不要依存 | `Shared.Infrastructure.csproj` の `Microsoft.Extensions.Diagnostics.HealthChecks` 明示参照は既に除去済み（コメントのみ残存）。中央 `Directory.Packages.props` に未使用の `PackageVersion` が残存 | 未使用の中央 `PackageVersion` を撤去（どの csproj も直接参照せず、共有フレームワーク由来のため） |
 | helm values の欠落 | `deploy/helm/knowledge-platform/values.yaml` に dashboard-service エントリが無く、IADR-0011 実装がデプロイ対象から漏れる | `dashboard` サービスエントリ（port 8080・API 系と同一リソース）を追加 |
 | MassTransit リトライの偏在 | `UseMessageRetry` が ConversionService のみ。ADR-0003 は全非同期連携での再試行・デッドレターを要求 | `Shared.Infrastructure` に共通リトライ拡張 `UseKnowledgePlatformRetry` を提供し、消費者を持つ Ingestion / Document / Wiki へ適用。Conversion も共通化して DRY 化 |
@@ -68,8 +68,10 @@ CI（`ci.yml`）のビルドに委ねる。また `.github/workflows/` 配下は
 
 ### 2. CS8604 の解消（`DashboardEndpointTests`）
 
-- `var x = (await client.GetFromJsonAsync<T>(...))!;` の形で受け、拡張メソッド `Where` / インデクサ
-  へ null 許容値が渡らないようにする。テストの検証内容は不変。
+- `var x = await client.GetFromJsonAsync<T>(...); x.Should().NotBeNull(); var y = x!;` の形で受け、
+  レスポンスが null の場合はまず明示的なアサーション失敗にしてから、非 null 変数 `y` を以降の
+  拡張メソッド `Where` / インデクサへ渡す。これにより CS8604 の解消と失敗時の可読性を両立する
+  （AI レビュー推奨対応）。テストの検証内容は不変。
 
 ### 3. NU1510 の後片付け
 
@@ -89,7 +91,7 @@ CI（`ci.yml`）のビルドに委ねる。また `.github/workflows/` 配下は
       中央 `PackageVersion` の未使用エントリも撤去した。
 - [x] `values.yaml` に dashboard-service エントリを追加した（port 8080）。
 - [x] `Shared.Infrastructure` が共通リトライ拡張を提供し、Ingestion / Document / Wiki / Conversion の各
-      MassTransit 設定に適用されている（ADR-0003 整合）。
+      MassTransit 設定に適用されている（ADR-0003 の決定方向と整合。ADR-0003 は現時点 `Proposed`）。
 - [ ] CI（`ci.yml`）のビルドで対象警告が解消していること（本 App では `dotnet build` 不可のため CI で確認）。
 - [ ] `-warnaserror` / `TreatWarningsAsErrors` の CI 導入（警告ゼロ実測後・要人手。App は workflow 編集不可）。
 - [x] 本作業仕様書を作成した。
@@ -102,3 +104,6 @@ CI（`ci.yml`）のビルドに委ねる。また `.github/workflows/` 配下は
   反映は App 権限外のため人手適用が必要。
 - **DataSourceService**: 消費者（`AddConsumer`）を持たず発行のみのため、リトライ設定の対象外とした。
   将来コンシューマを追加する場合は同様に `UseKnowledgePlatformRetry()` を適用する。
+- **ADR-0003 の Accepted 化**: 本 PR のリトライ／デッドレター統一は ADR-0003（現状 `Proposed`）の決定
+  方向に沿うが、ADR 自体は未 Accepted である。実装が既定路線として全連携に展開された事実を踏まえ、
+  計画側で ADR-0003 を `Accepted` へ更新するよう `/plan-feedback` で環流する（AI レビュー推奨対応）。
