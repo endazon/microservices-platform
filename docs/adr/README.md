@@ -41,4 +41,5 @@
 | IADR-0015 | CI トリガーの develop 整合・コミット規約チェック・CHANGELOG 誤帰属補正 | Accepted |
 | IADR-0016 | Microsoft.OpenApi を推移的ピンでパッチ版に固定し NU1903 を解消する | Accepted |
 | IADR-0017 | mesh 導入までのサービス間認証はネットワーク分離を第一防御とする | Accepted |
-| IADR-0018 | 推移依存の脆弱性を CI で定期スキャンする | Accepted |
+| IADR-0018 | データソースが原本へ既定 ABAC 属性（機密区分）を付与する | Accepted |
+| IADR-0019 | 推移依存の脆弱性を CI で定期スキャンする | Accepted |
