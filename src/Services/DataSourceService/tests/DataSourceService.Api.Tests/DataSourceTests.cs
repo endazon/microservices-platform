@@ -52,4 +52,31 @@ public class DataSourceTests
 
         ds.DefaultAttributes["confidentiality"].Should().Be("public");
     }
+
+    // FR-05, IADR-0019: GetEffectiveAttributes は明示指定の機密区分をそのまま返す
+    [Fact]
+    public void GetEffectiveAttributes_PreservesExplicitConfidentiality()
+    {
+        var ds = DataSource.Create("hr", "wiki", "https://wiki",
+            defaultAttributes: new Dictionary<string, string>
+            {
+                ["confidentiality"] = "confidential",
+                ["department"] = "hr",
+            });
+
+        var effective = ds.GetEffectiveAttributes();
+        effective["confidentiality"].Should().Be("confidential");
+        effective["department"].Should().Be("hr");
+    }
+
+    // FR-05, IADR-0019: GetEffectiveAttributes は呼び出しごとに防御的コピーを返し、返値変更が内部に波及しない
+    [Fact]
+    public void GetEffectiveAttributes_ReturnsDefensiveCopy()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.GetEffectiveAttributes()["confidentiality"] = "public";
+
+        ds.GetEffectiveAttributes()["confidentiality"].Should().Be("internal");
+    }
 }

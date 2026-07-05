@@ -42,13 +42,15 @@ public static class DataSourceEndpoints
             // シミュレート: 原本取得イベント発行（実装では実際にファイルを取得する）
             var fetchId = Guid.NewGuid();
             // FR-01, FR-05: データソースの既定 ABAC 属性（機密区分）を原本へ付与して発行する。
-            // 空属性のまま流すと下流の fail-closed 検索（IADR-0012）で文書が検索結果から除外される。
+            // GetEffectiveAttributes() で機密区分欠落をフェイルセーフ補完する。既存（マイグレーション前）
+            // の空属性データソースでも、空のまま流して下流の fail-closed 検索（IADR-0012）で文書が
+            // 検索結果から除外されるのを防ぐ（IADR-0019）。
             await bus.Publish(new RawDocumentFetched(
                 fetchId, ds.Id, ds.SourceType,
                 "/sample/path/document.docx",
                 $"storage://{ds.Id}/{fetchId}/raw",
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                new Dictionary<string, string>(ds.DefaultAttributes), [], DateTimeOffset.UtcNow));
+                ds.GetEffectiveAttributes(), [], DateTimeOffset.UtcNow));
 
             ds.RecordSync();
             await db.SaveChangesAsync();

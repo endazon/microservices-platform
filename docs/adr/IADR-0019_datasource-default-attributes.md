@@ -1,5 +1,5 @@
 ---
-title: IADR-0018 データソースが原本へ既定 ABAC 属性を付与する（機密区分の発生源）
+title: IADR-0019 データソースが原本へ既定 ABAC 属性を付与する（機密区分の発生源）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ related_adrs:
   - IADR-0012 (Retrieval /search の fail-closed で ABAC を強制する)
 ---
 
-# IADR-0018: データソースが原本へ既定 ABAC 属性を付与する
+# IADR-0019: データソースが原本へ既定 ABAC 属性を付与する
 
 - 状態: Accepted
 - 日付: 2026-07-05
@@ -45,7 +45,7 @@ DataSourceService の同期トリガーは原本取得イベント `RawDocumentF
 
 ### 1. 機密区分の既定値は `internal`（フェイルセーフ）
 
-`confidentiality` が未指定・空文字の場合、`DataSource.Create` が既定値 `internal` を補完する。
+`confidentiality` が未指定・空文字の場合、既定値 `internal` を補完する。
 
 - 許可値は AuthorizationService の属性辞書に準拠（`public / internal / confidential / restricted`）。
 - **`public`（過剰公開）でも `restricted`（過剰制限）でもなく `internal`** を採る。社内データソース由来の
@@ -53,10 +53,23 @@ DataSourceService の同期トリガーは原本取得イベント `RawDocumentF
   fail-closed での全消失を防ぎつつ、公開扱いによる過剰露出も避ける。
 - 明示指定された属性（機密区分・部門など）はそのまま尊重し、既定値で上書きしない。
 
-### 2. 永続化は既存 `Config` と同一方式
+### 2. フェイルセーフは「発行時」に一元化する（既存行の回帰防止）
+
+補完ロジックを 2 箇所に置く。`DataSource.Create`（新規登録時）と、**原本発行時に必ず通る
+`DataSource.GetEffectiveAttributes()`** である。`/{id}/sync` は `DefaultAttributes` を直接コピーせず、
+必ず `GetEffectiveAttributes()` を経由して `RawDocumentFetched.Attributes` を組み立てる。
+
+- これにより、**本 IADR のマージ前から登録済みで `confidentiality` を持たない既存データソース**でも、
+  同期時に `internal` が確実に補完され、fail-closed 除外（IADR-0012）を再発させない。
+- 補完ロジックは `DataSource` 内の単一のプライベートヘルパに集約し、`Create` と
+  `GetEffectiveAttributes` の挙動が乖離しないようにする。
+
+### 3. 永続化は既存 `Config` と同一方式・既存行はマイグレーションで backfill
 
 `DefaultAttributes` は jsonb カラムとして保管する（`Config` と同じ JSON 変換・ValueComparer）。
-既存行にはマイグレーションで空 `{}` を既定値として付与する。
+既存行にはマイグレーションで **`{"confidentiality":"internal"}`** を既定値として付与し、永続表現も
+発行時のフェイルセーフと整合させる（空 `{}` ではない）。発行時の `GetEffectiveAttributes()` が
+最終防衛線であり、backfill 値に依存せず必ず機密区分を保証する。
 
 ## 検討した選択肢
 

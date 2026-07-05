@@ -29,21 +29,33 @@ public class DataSource
         Dictionary<string, string>? config = null,
         Dictionary<string, string>? defaultAttributes = null)
     {
-        // FR-01, FR-05: 原本には機密区分を必ず付与する。未指定・空はフェイルセーフ既定値で補う。
-        var attributes = defaultAttributes is null
-            ? new Dictionary<string, string>()
-            : new Dictionary<string, string>(defaultAttributes);
-        if (!attributes.TryGetValue(ConfidentialityKey, out var conf) || string.IsNullOrWhiteSpace(conf))
-            attributes[ConfidentialityKey] = DefaultConfidentiality;
-
         return new()
         {
             Name = name,
             SourceType = sourceType,
             ConnectionUri = connectionUri,
             Config = config ?? [],
-            DefaultAttributes = attributes,
+            // FR-01, FR-05: 原本には機密区分を必ず付与する。未指定・空はフェイルセーフ既定値で補う。
+            DefaultAttributes = WithConfidentialityFailsafe(defaultAttributes),
         };
+    }
+
+    // FR-01, FR-05, IADR-0019: 原本発行時に必ず通るフェイルセーフ。`DefaultAttributes` に機密区分が
+    // 欠落・空でも internal を補完した属性辞書を返す。sync が本アクセサ経由で属性を組み立てることで、
+    // 本対応マージ前から登録済みで confidentiality を持たない既存データソースでも、fail-closed 除外
+    // （IADR-0012）を再発させない最終防衛線となる。呼び出しごとに新しい辞書を返す（防御的コピー）。
+    public Dictionary<string, string> GetEffectiveAttributes() => WithConfidentialityFailsafe(DefaultAttributes);
+
+    // FR-05: 機密区分（confidentiality）の欠落・空を既定値で補う。`Create`（登録時）と
+    // `GetEffectiveAttributes`（発行時）で挙動が乖離しないよう補完ロジックを一元化する。
+    private static Dictionary<string, string> WithConfidentialityFailsafe(IReadOnlyDictionary<string, string>? attributes)
+    {
+        var result = attributes is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(attributes);
+        if (!result.TryGetValue(ConfidentialityKey, out var conf) || string.IsNullOrWhiteSpace(conf))
+            result[ConfidentialityKey] = DefaultConfidentiality;
+        return result;
     }
 
     public void RecordSync()
