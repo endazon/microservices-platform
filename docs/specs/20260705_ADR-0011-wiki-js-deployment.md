@@ -102,19 +102,24 @@ Keycloak(realm: knowledge-platform) ──OIDC──> Wiki.js（ローカルロ�
 
 ## 受け入れ基準の対応
 
-| # | 受け入れ基準 | 本 PR での対応 |
-| --- | --- | --- |
-| 1 | `docker compose up` で Wiki.js 起動・OIDC ログイン（ローカル不可） | compose に Wiki.js + realm import を追加。OIDC/ローカル無効化手順を運用仕様に明記（Wiki.js 側確定は要稼働検証） |
-| 2 | `DocumentUpdated` で Markdown が Wiki.js に反映 | 同期方式を IADR-0021 に確定。実コード置換は後続 PR（要 PoC・ビルド） |
-| 3 | 権限外は一覧非表示・個別 404（存在秘匿） | ABAC 強制点を IADR-0020 に確定（既存 `AbacPageFilter`/404 を前段ゲートウェイへ転用）。実装・結合試験は後続 |
-| 4 | Helm でも同等構成 | Helm に Wiki.js 一式を追加（本 PR） |
-| 5 | WikiService が同期・統合へ縮退・自前閲覧実体の撤去/非公開化 | 目標構成と撤去方針を確定（本 PR は設計・配備。コード撤去は後続） |
+> **注記（2026-07-05 更新）**: 下表の「段2」欄は当初「後続 PR」を前提としていたが、段2は
+> [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) で**実装済み**。残る要検証項目は
+> 稼働環境が必要な PoC・結合検証のみ（別 Issue 化）。
 
-## テスト観点（後続 PR で担保）
-- deny-by-default：`Granted=false` で一覧空・個別 404（ゲートウェイ層で再現）。
-- 個別：権限外 slug/doc は 404、権限内は 200（Wiki.js 実ページに対しても）。
-- 同期：`DocumentUpdated` 受信で Wiki.js のページが GraphQL で作成・更新される。
-- 機密性回帰：IADR-0009 の存在秘匿が新構成で退行しないこと。
+| # | 受け入れ基準 | 段1（本 PR）での対応 | 段2以降の状況 |
+| --- | --- | --- | --- |
+| 1 | `docker compose up` で Wiki.js 起動・OIDC ログイン（ローカル不可） | compose に Wiki.js + realm import を追加。OIDC/ローカル無効化手順を運用仕様に明記 | Wiki.js 側 OIDC 確定は要稼働検証（別 Issue） |
+| 2 | `DocumentUpdated` で Markdown が Wiki.js に反映 | 同期方式を IADR-0021 に確定 | 段2で GraphQL push を**実装済み**（`WikiJsGraphQlClient` / `DocumentSyncConsumer`）。稼働 PoC 検証は別 Issue |
+| 3 | 権限外は一覧非表示・個別 404（存在秘匿） | ABAC 強制点を IADR-0020 に確定（既存 `AbacPageFilter`/404 を前段ゲートウェイへ転用） | 段2で前段 ABAC ゲートウェイ化を**実装済み**（`WikiEndpoints` / `WikiEndpointsAbacTests`）。稼働結合試験は別 Issue |
+| 4 | Helm でも同等構成 | Helm に Wiki.js 一式を追加（本 PR） | — |
+| 5 | WikiService が同期・統合へ縮退・自前閲覧実体の撤去/非公開化 | 目標構成と撤去方針を確定（本 PR は設計・配備） | 段2でコード縮退を**実装済み**（`wiki_svc` は同期メタデータに限定） |
+
+## テスト観点（段2で担保済み）
+段2 [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) で以下を実装済み。稼働 Wiki.js を要する結合・機密性回帰の実走は別 Issue。
+- deny-by-default：`Granted=false` で一覧空・個別 404（ゲートウェイ層で再現）。→ `WikiEndpointsAbacTests` で担保。
+- 個別：権限外 slug/doc は 404、権限内は 200（Wiki.js 実ページに対しても）。→ ゲートウェイ層は担保、実ページ突合は要稼働検証。
+- 同期：`DocumentUpdated` 受信で Wiki.js のページが GraphQL で作成・更新される。→ `DocumentSyncConsumerTests` で担保、稼働 push は要 PoC。
+- 機密性回帰：IADR-0009 の存在秘匿が新構成で退行しないこと。→ `AbacPageFilterTests` の意味論は不変で温存。
 
 ## トレーサビリティ
 起点 ID: FR-13, UC-07, ADR-0011, IADR-0009（親 Issue: #56 → #48 / 本 Issue: #66）
