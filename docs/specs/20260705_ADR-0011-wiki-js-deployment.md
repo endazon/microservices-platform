@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — Wiki.js 配備（ADR-0011 追従・WikiService を同期/ABAC ゲートウェイへ縮退）
 type: work-spec
-status: in-progress
+status: superseded
 related_ids:
   - FR-13
   - UC-07
@@ -87,27 +87,39 @@ Keycloak(realm: knowledge-platform) ──OIDC──> Wiki.js（ローカルロ�
 - **plan-feedback**: ADR-0011 追従（`Proposed`→`Accepted` 提案）へ環流記録を更新。
 - **コード側トレーサビリティ**: `WikiEndpoints.cs` / `DocumentSyncConsumer.cs` のヘッダコメントを新方針へ更新。
 
-### 含まないもの（後続 PR / 要 PoC・ビルド環境）
-- `DocumentSyncConsumer` の**実コード**を Wiki.js GraphQL push へ置換（現状は `wiki_svc` へ書き込み）。
-- WikiService 閲覧経路の**リバースプロキシ化**（Wiki.js への認可済みプロキシ）と `wiki_svc` 閲覧スキーマの撤去。
-- 上記に対する結合テスト（稼働 Wiki.js が必要）。`WikiEndpointsAbacTests` / `AbacPageFilterTests` の
-  意味論（一覧=権限内のみ・個別=404）は**受け入れ基準として維持**し、ゲートウェイ実装で再充足する。
+> **注記（2026-07-05 更新・superseded）**: 本作業仕様書は「段1（配備・OIDC 構成・意思決定記録・
+> ドキュメント）」の仕様であり、下記「含まないもの」に列挙した段2（同期コード置換・認可プロキシ化・
+> `wiki_svc` 縮退・結合テスト）は後続 PR で**実装済み**。段2 の作業仕様は
+> [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) を参照。以降の残作業は
+> 稼働環境が必要な検証・PoC と削除/アーカイブ同期の上流拡張のみ（[IADR-0021] フォロー課題）。
+
+### 含まないもの（段2＝後続 PR で実装済み。当初は要 PoC・ビルド環境）
+- ~~`DocumentSyncConsumer` の**実コード**を Wiki.js GraphQL push へ置換~~ → 段2 で実装済み。
+- ~~WikiService 閲覧経路の**リバースプロキシ化**と `wiki_svc` 閲覧スキーマの撤去~~ → 段2 で実装済み
+  （`WikiEndpoints` を前段 ABAC ゲートウェイ化・`wiki_svc` は同期メタデータに限定）。
+- ~~上記に対する結合テスト~~ → 段2 で `WikiEndpointsAbacTests` / `DocumentSyncConsumerTests` を更新済み。
+  `AbacPageFilterTests` の意味論（一覧=権限内のみ・個別=404）は不変で温存。
 
 ## 受け入れ基準の対応
 
-| # | 受け入れ基準 | 本 PR での対応 |
-| --- | --- | --- |
-| 1 | `docker compose up` で Wiki.js 起動・OIDC ログイン（ローカル不可） | compose に Wiki.js + realm import を追加。OIDC/ローカル無効化手順を運用仕様に明記（Wiki.js 側確定は要稼働検証） |
-| 2 | `DocumentUpdated` で Markdown が Wiki.js に反映 | 同期方式を IADR-0021 に確定。実コード置換は後続 PR（要 PoC・ビルド） |
-| 3 | 権限外は一覧非表示・個別 404（存在秘匿） | ABAC 強制点を IADR-0020 に確定（既存 `AbacPageFilter`/404 を前段ゲートウェイへ転用）。実装・結合試験は後続 |
-| 4 | Helm でも同等構成 | Helm に Wiki.js 一式を追加（本 PR） |
-| 5 | WikiService が同期・統合へ縮退・自前閲覧実体の撤去/非公開化 | 目標構成と撤去方針を確定（本 PR は設計・配備。コード撤去は後続） |
+> **注記（2026-07-05 更新）**: 下表の「段2」欄は当初「後続 PR」を前提としていたが、段2は
+> [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) で**実装済み**。残る要検証項目は
+> 稼働環境が必要な PoC・結合検証のみ（別 Issue 化）。
 
-## テスト観点（後続 PR で担保）
-- deny-by-default：`Granted=false` で一覧空・個別 404（ゲートウェイ層で再現）。
-- 個別：権限外 slug/doc は 404、権限内は 200（Wiki.js 実ページに対しても）。
-- 同期：`DocumentUpdated` 受信で Wiki.js のページが GraphQL で作成・更新される。
-- 機密性回帰：IADR-0009 の存在秘匿が新構成で退行しないこと。
+| # | 受け入れ基準 | 段1（本 PR）での対応 | 段2以降の状況 |
+| --- | --- | --- | --- |
+| 1 | `docker compose up` で Wiki.js 起動・OIDC ログイン（ローカル不可） | compose に Wiki.js + realm import を追加。OIDC/ローカル無効化手順を運用仕様に明記 | Wiki.js 側 OIDC 確定は要稼働検証（別 Issue） |
+| 2 | `DocumentUpdated` で Markdown が Wiki.js に反映 | 同期方式を IADR-0021 に確定 | 段2で GraphQL push を**実装済み**（`WikiJsGraphQlClient` / `DocumentSyncConsumer`）。稼働 PoC 検証は別 Issue |
+| 3 | 権限外は一覧非表示・個別 404（存在秘匿） | ABAC 強制点を IADR-0020 に確定（既存 `AbacPageFilter`/404 を前段ゲートウェイへ転用） | 段2で前段 ABAC ゲートウェイ化を**実装済み**（`WikiEndpoints` / `WikiEndpointsAbacTests`）。稼働結合試験は別 Issue |
+| 4 | Helm でも同等構成 | Helm に Wiki.js 一式を追加（本 PR） | — |
+| 5 | WikiService が同期・統合へ縮退・自前閲覧実体の撤去/非公開化 | 目標構成と撤去方針を確定（本 PR は設計・配備） | 段2でコード縮退を**実装済み**（`wiki_svc` は同期メタデータに限定） |
+
+## テスト観点（段2で担保済み）
+段2 [20260705_wiki-js-stage2-sync-gateway](./20260705_wiki-js-stage2-sync-gateway.md) で以下を実装済み。稼働 Wiki.js を要する結合・機密性回帰の実走は別 Issue。
+- deny-by-default：`Granted=false` で一覧空・個別 404（ゲートウェイ層で再現）。→ `WikiEndpointsAbacTests` で担保。
+- 個別：権限外 slug/doc は 404、権限内は 200（Wiki.js 実ページに対しても）。→ ゲートウェイ層は担保、実ページ突合は要稼働検証。
+- 同期：`DocumentUpdated` 受信で Wiki.js のページが GraphQL で作成・更新される。→ `DocumentSyncConsumerTests` で担保、稼働 push は要 PoC。
+- 機密性回帰：IADR-0009 の存在秘匿が新構成で退行しないこと。→ `AbacPageFilterTests` の意味論は不変で温存。
 
 ## トレーサビリティ
 起点 ID: FR-13, UC-07, ADR-0011, IADR-0009（親 Issue: #56 → #48 / 本 Issue: #66）
