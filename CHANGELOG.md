@@ -43,6 +43,8 @@
 
 ### ドキュメント
 
+- **FR-13,UC-07,ADR-0011**: Wiki.js 段2実装完了に伴う陳腐化記述の整合 (#66) (#89) (789bef0)
+- **NFR**: CHANGELOG を自動更新 (#87) (42dc005)
 - **NFR**: CHANGELOG を自動更新 (#85) (7c35072)
 - **NFR**: CHANGELOG を自動更新 (#83) (ca845a5)
 - **NFR**: CHANGELOG を自動更新 (#81) (7a54e1f)
