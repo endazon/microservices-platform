@@ -24,7 +24,8 @@
       "subGroups": [
         { "name": "public", "attributes": { "clearance": ["public"] } },
         { "name": "internal", "attributes": { "clearance": ["internal"] } },
-        { "name": "confidential", "attributes": { "clearance": ["confidential"] } }
+        { "name": "confidential", "attributes": { "clearance": ["confidential"] } },
+        { "name": "restricted", "attributes": { "clearance": ["restricted"] } }
       ]
     },
     {
