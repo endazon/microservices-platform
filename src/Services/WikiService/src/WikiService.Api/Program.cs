@@ -38,6 +38,20 @@ builder.Services.AddHttpClient("AuthorizationService", c =>
         ?? "http://authorization-service:5005"));
 builder.Services.AddScoped<IWikiAccessResolver, WikiAccessResolver>();
 
+// FR-13, UC-07, ADR-0011, IADR-0021: Wiki.js への同期・本文取得（GraphQL API push）。
+// API キーは環境変数/シークレット経由で注入（コミットしない）。
+builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(c =>
+{
+    c.BaseAddress = new Uri(builder.Configuration["WikiJs:GraphQlEndpoint"]
+        ?? "http://wiki-js:3000/graphql");
+    var apiKey = builder.Configuration["WikiJs:ApiKey"];
+    if (!string.IsNullOrWhiteSpace(apiKey))
+        c.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+});
+// IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する。
+builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
+
 // ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
 builder.Services.AddMassTransit(x =>
 {

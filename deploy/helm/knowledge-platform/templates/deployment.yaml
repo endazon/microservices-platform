@@ -33,6 +33,17 @@ spec:
               value: {{ $.Values.global.otel.endpoint }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
+          {{- range $svc.extraEnv }}
+            - name: {{ .name }}
+              {{- if .value }}
+              value: {{ .value | quote }}
+              {{- else if .secretKeyRef }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .secretKeyRef.name }}
+                  key: {{ .secretKeyRef.key }}
+              {{- end }}
+          {{- end }}
           {{- if $svc.port }}
           livenessProbe:
             httpGet:

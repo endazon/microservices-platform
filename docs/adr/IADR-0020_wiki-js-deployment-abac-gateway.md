@@ -77,10 +77,13 @@ Issue #56 が検出した ADR-0011 逸脱（Wiki.js 不在のまま WikiService 
 1. **段1（本 PR・配備と決定記録）**: Wiki.js の配備（compose/Helm/DB）、Keycloak realm import と `wiki-js`
    クライアント、意思決定記録（本 IADR・[IADR-0021]・[IADR-0013] Supersede）、ドキュメント更新。
    既存 ABAC 実装（`AbacPageFilter`・`WikiEndpoints`・対応テスト）は**変更せず温存**し green を維持する。
-2. **段2（後続 PR・要 PoC/ビルド環境）**: `DocumentSyncConsumer` を Wiki.js への同期へ置換。
+2. **段2（本 PR で実装）**: `DocumentSyncConsumer` を Wiki.js への同期（GraphQL push・[IADR-0021]）へ置換。
    WikiService 閲覧経路を Wiki.js への**認可プロキシ**へ改修し、`AbacPageFilter` の判定を到達可否に転用。
    `WikiEndpointsAbacTests` / `AbacPageFilterTests` が担保する受け入れ基準（一覧=権限内のみ・個別=404）を
-   新構成で再充足する結合テストを追加。`wiki_svc` の閲覧スキーマを撤去。
+   新構成で再充足。自前 `wiki_svc` は**閲覧本文の実体提供を撤去**し、ABAC 判定用の**同期メタデータ**
+   （属性/タグ/slug/status）に限定する（[IADR-0021]: 認可属性は Wiki.js に持ち込まず本システムが単一真実源）。
+   稼働 Wiki.js を要する GraphQL スキーマ整合・エラー時再送・レイテンシの**PoC 実測は [IADR-0021] のフォロー**
+   として残る（実コードはスキーマ差異を吸収しやすい形で `IWikiJsClient` 背後に隔離）。
 
 ## 理由
 
@@ -99,7 +102,9 @@ Issue #56 が検出した ADR-0011 逸脱（Wiki.js 不在のまま WikiService 
   （Wiki.js は host 非公開、到達は WikiService ゲートウェイ経由に限定）。段階導入のため、段1 時点では
   自前閲覧 API と Wiki.js が併存する。
 - フォローアップ:
-  - 段2（同期コード置換・認可プロキシ化・`wiki_svc` 撤去・結合テスト）。
+  - ~~段2（同期コード置換・認可プロキシ化・`wiki_svc` 撤去・結合テスト）~~ → **本 PR で実装**。
+    残: 稼働 Wiki.js での GraphQL PoC 実測（[IADR-0021]）・OIDC ローカルログイン無効化の稼働検証
+    （手順は `docs/operations/operations.md`）。
   - 計画 ADR-0011 の `Proposed`→`Accepted` 確定を feedback で提案
     （[記録](../../feedback/20260705_wiki-js-deployment-follows-adr-0011.md)）。
   - Wiki.js への直接到達を塞ぐネットワーク分離（compose の `expose`、k8s の NetworkPolicy）の担保。
