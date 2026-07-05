@@ -13,4 +13,10 @@ public interface IWikiJsClient
 }
 
 // Wiki.js へ push する正規化済みページ内容（認可属性は含めない — IADR-0021）。
-public record WikiJsPage(string Path, string Title, string Markdown, IReadOnlyList<string> Tags);
+//
+// IsPrivate は機密区分由来の「粗粒度な表示制御」（ADR-0011: Wiki.js は表示制御に留める）。ABAC の
+// 代替ではなく、ネットワーク分離（IADR-0017）が退行・誤設定された場合でも public 以外の文書が
+// Wiki.js 上で無条件公開にならないための多層防御（deny-closed）。細粒度の認可判定は引き続き本システム
+// が単一真実源として担う（属性集合は Wiki.js へ持ち込まない）。
+public record WikiJsPage(
+    string Path, string Title, string Markdown, IReadOnlyList<string> Tags, bool IsPrivate);

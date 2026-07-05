@@ -81,7 +81,8 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
             description = "",
             editor = Editor,
             isPublished = true,
-            isPrivate = false,
+            // 多層防御（ADR-0011/IADR-0021）: 機密区分由来の粗粒度な非公開設定。public 以外は非公開。
+            isPrivate = page.IsPrivate,
             locale = Locale,
             path,
             tags = page.Tags,
@@ -107,7 +108,8 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
             content = page.Markdown,
             editor = Editor,
             isPublished = true,
-            isPrivate = false,
+            // 多層防御（ADR-0011/IADR-0021）: 機密区分由来の粗粒度な非公開設定。public 以外は非公開。
+            isPrivate = page.IsPrivate,
             locale = Locale,
             path,
             tags = page.Tags,

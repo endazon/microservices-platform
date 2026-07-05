@@ -77,6 +77,52 @@ public class DocumentSyncConsumerTests
             wiki.Pushed[0].Path.Should().Be($"doc/{DocId}");
             wiki.Pushed[0].Title.Should().Be("入社手続き");
             // IADR-0021: 認可属性は Wiki.js へ持ち込まない（push 内容は本文・タイトル・タグに限定）。
+            // 多層防御: confidentiality=internal は public 以外のため Wiki.js 上でも非公開（deny-closed）。
+            wiki.Pushed[0].IsPrivate.Should().BeTrue();
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // 多層防御（ADR-0011/IADR-0021）: confidentiality=public のみ Wiki.js 上で公開、以外は非公開。
+    [Theory]
+    [InlineData("public", false)]
+    [InlineData("internal", true)]
+    [InlineData("restricted", true)]
+    public async Task Consumer_SetsWikiJsPrivacy_FromConfidentiality(string confidentiality, bool expectedPrivate)
+    {
+        var dbName = $"wiki-sync-{Guid.NewGuid()}";
+        await using var provider = BuildHarness(dbName);
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(Event("規程", "published",
+                new() { ["confidentiality"] = confidentiality }));
+            await WaitForAsync(provider, p => p is not null);
+
+            var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+            wiki.Pushed.Should().ContainSingle();
+            wiki.Pushed[0].IsPrivate.Should().Be(expectedPrivate);
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // 多層防御: confidentiality 属性が欠落する場合も安全側（非公開）に倒す（deny-closed）。
+    [Fact]
+    public async Task Consumer_SetsWikiJsPrivate_WhenConfidentialityMissing()
+    {
+        var dbName = $"wiki-sync-{Guid.NewGuid()}";
+        await using var provider = BuildHarness(dbName);
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(Event("属性なし規程", "published", new Dictionary<string, string>()));
+            await WaitForAsync(provider, p => p is not null);
+
+            var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+            wiki.Pushed.Should().ContainSingle();
+            wiki.Pushed[0].IsPrivate.Should().BeTrue();
         }
         finally { await harness.Stop(); }
     }

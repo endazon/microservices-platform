@@ -47,9 +47,15 @@ public class DocumentSyncConsumer(
 
         // 2) 正規化 Markdown 本文を取得し、Wiki.js へ冪等 push（閲覧・編集の実体を Wiki.js に委譲）。
         //    認可属性（Attributes）は push しない（IADR-0021: 認可は本システムが単一真実源）。
+        //    多層防御（ADR-0011/IADR-0021）: 機密区分由来の粗粒度な非公開設定のみを Wiki.js へ伝える。
+        //    ネットワーク分離（IADR-0017）が退行しても public 以外が無条件公開にならないよう、public
+        //    以外（欠落含む）は Wiki.js 上でも非公開にする（deny-closed）。ABAC の代替ではない。
+        var isPublic = ev.Attributes.TryGetValue("confidentiality", out var confidentiality)
+            && string.Equals(confidentiality, "public", StringComparison.OrdinalIgnoreCase);
         var markdown = await contentReader.ReadAsync(ev.MarkdownUri, ev.Title, ctx.CancellationToken);
         await wikiJs.UpsertPageAsync(
-            new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags), ctx.CancellationToken);
+            new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags, IsPrivate: !isPublic),
+            ctx.CancellationToken);
 
         await db.SaveChangesAsync(ctx.CancellationToken);
         logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);

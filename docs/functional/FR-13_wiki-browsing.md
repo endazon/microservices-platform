@@ -71,6 +71,9 @@ plan_refs:
 - `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し、`IWikiContentReader`
   で正規化 Markdown を取得して `IWikiJsClient` 経由で Wiki.js へ **GraphQL push**（[IADR-0021]）で冪等同期する
   （path=`doc/<DocumentId>`）。文書更新後、定義時間内に反映（受け入れ基準③）。認可属性は Wiki.js へ push しない。
+  多層防御として機密区分由来の `isPrivate`（`confidentiality=public` 以外＝属性欠落含む は非公開・deny-closed）
+  のみを付与する（表示制御。ABAC の代替ではない。[IADR-0021]）。**削除・アーカイブ（非公開化）文書の Wiki.js
+  同期経路は未実装**（既存の設計ギャップ。[IADR-0021] フォロー課題。`isPrivate` で public 以外は非公開だが実体撤去は別途）。
 - `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
   と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
 - `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。

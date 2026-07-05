@@ -71,9 +71,26 @@ plan_refs:
   - `DocumentSyncConsumer`: 自前 DB 書き込み → Wiki.js push へ置換（属性は Wiki.js へ push せず、ゲートウェイの
     フィルタ用メタデータとして wiki_svc に保持）。同期失敗は例外を送出し `UseKnowledgePlatformRetry` に委ねる。
   - API キーのシークレット管理: compose の `WIKIJS_API_KEY` 環境変数・Helm の Secret `wikijs-sync`（key=apiKey）。
+- 多層防御（表示制御の `isPrivate`。AI レビュー指摘への対応）:
+  - ABAC は本システムが単一真実源だが、機密性の担保が**ネットワーク分離（[IADR-0017]）の単一防御線**にのみ
+    依存する構成を避けるため、push 時に機密区分由来の**粗粒度な非公開設定**を Wiki.js へも伝える。
+    `confidentiality=public` **以外（属性欠落を含む）は Wiki.js 上でも非公開**（`isPrivate=true`, deny-closed）。
+  - これは ADR-0011 の方針（Wiki.js は表示制御に留め、ABAC の細粒度判定・正本は本システム）と整合する。
+    属性集合そのものは引き続き Wiki.js へ持ち込まない（push するのは真偽値 1 つのみ）。NetworkPolicy が
+    退行・誤設定されても public 以外が無条件公開にならない第 2 の防御線となる。
+  - 検証: `DocumentSyncConsumerTests`（confidentiality→`isPrivate` 対応・属性欠落時の deny-closed）で担保。
 - フォローアップ:
   - 稼働 Wiki.js での GraphQL スキーマ整合・エラー時再送・レイテンシの PoC 実測（本実装は `IWikiJsClient`
-    背後に隔離しスキーマ差異を吸収しやすくしている）。
+    背後に隔離しスキーマ差異を吸収しやすくしている）。**`isPrivate=true` のページをサービスアカウント
+    （API キー）で本文取得（`singleByPath`）できるか**も PoC で確認する（取得不可なら認可プロキシは
+    fail-closed で 404 = 安全側だが、正当な閲覧まで塞ぐため要調整）。
+  - **文書の削除・アーカイブ（非公開化）に対する同期経路が未実装**（既存の設計ギャップ。AI レビュー指摘）。
+    現状 `DocumentSyncConsumer` は `published`/`normalized` の `DocumentUpdated` のみ処理し、文書が削除・
+    非公開化されても Wiki.js 側ページの撤去／非公開化・wiki_svc メタデータの `Archived` 化（`WikiPageStatus.Archived`
+    は定義済みだが未使用）を行わない。本 PR で Wiki.js が実コンテンツの実体を保持するようになったため、
+    社内文書が外部システムに残り続けるリスクが拡大している。`isPrivate` 多層防御で「public 以外は非公開」
+    は担保されるが、**論理削除・撤去の伝播は別途フォロー課題**とする（削除/アーカイブ用イベントまたは
+    `DocumentUpdated` の status 拡張に応じた `pages.delete`／非公開化・メタデータ `Archived` 化の追加）。
 
 ## 関連
 

@@ -106,6 +106,25 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // 個別（slug）: 権限内文書は 200 で、本文を Wiki.js からプロキシして返す（by-doc と対称）。
+    [Fact]
+    public async Task GetPageBySlug_Returns200_ProxyingWikiJsContent_ForPermittedDocument()
+    {
+        var (publicDoc, _) = await SeedAsync();
+        factory.Scope = new AccessScopeResponse("u",
+            [new AttributeFilter("confidentiality", ["public"])], Granted: true);
+
+        var publicSlug = ResolveSlug("公開規程");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{publicSlug}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var view = await response.Content.ReadFromJsonAsync<PageView>();
+        view.Should().NotBeNull();
+        // 本文は自前 DB ではなく Wiki.js（スタブ）から取得され、DocumentId 由来の安定パスを指す。
+        view!.WikiPath.Should().Be($"doc/{publicDoc}");
+        view.Content.Should().Contain($"doc/{publicDoc}");
+    }
+
     private string ResolveSlug(string title)
     {
         using var scope = factory.Services.CreateScope();

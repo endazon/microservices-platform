@@ -62,6 +62,11 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
 - **Wiki.js 側の権限**: 補助的な表示制御に留め、機密性の担保には用いない。Keycloak realm import の
   `wiki-js` クライアントは `clearance`/`department`/`groups` クレームを付与するが、これは表示制御の補助であり
   ABAC の正本ではない。
+- **多層防御（表示制御 `isPrivate`）**: ゲートウェイ経由 ABAC を第 1 防御・ネットワーク分離（[IADR-0017]）を
+  第 2 防御としつつ、同期時に機密区分由来の粗粒度な非公開設定を Wiki.js へも伝える（第 3 防御）。
+  `confidentiality=public` **以外（属性欠落を含む）は Wiki.js 上でも非公開**（`isPrivate=true`, deny-closed。
+  [IADR-0021]）。NetworkPolicy が退行・誤設定されても public 以外の文書が Wiki.js 上で無条件公開に
+  ならないための保険であり、細粒度の認可判定は引き続き本システムが単一真実源として担う。
 - **秘密情報**: Wiki.js の OIDC クライアントシークレット・同期用 API キー（[IADR-0021]）は環境変数／Secret 経由で
   注入し、リポジトリにコミットしない。同期用 API キーは compose の `WIKIJS_API_KEY`、Helm の Secret `wikijs-sync`
   （key=`apiKey`）で投入する。realm import 内の dev 値（`wiki-js-dev-secret-change-me`）は開発専用で、
@@ -116,6 +121,8 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | --- | --- | --- |
 | 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない（IADR-0017）。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保 |
 | 同一ネットワーク内からの内部 API 無認証到達（残余リスク） | ネットワーク内の侵害があれば内部 API へ到達可能 | ネットワーク分離で受容。k8s は NetworkPolicy、将来 mTLS（ADR-0005）で相互認証。フォローアップで追跡 |
+| NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与（IADR-0021）。稼働 Wiki.js での分離検証は PoC フォロー |
+| 削除・非公開化された文書が Wiki.js に残存 | 撤回済み社内文書が外部システム（Wiki.js）に残り続ける | 現状は削除/アーカイブ同期経路が未実装（フォロー課題。IADR-0021）。`isPrivate` により public 以外は非公開だが、実体撤去・メタデータ Archived 化は別途対応 |
 
 ## 未決事項
 
@@ -127,3 +134,8 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 - Helm/k8s の NetworkPolicy（デフォルト拒否）追補。
 - インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開は開発環境限定。共有・ステージング・本番では公開しない運用の明文化。
 - RetrievalService `/search` の ABAC 取り扱い（#55）。
+- Wiki.js 同期の**削除・アーカイブ経路**（削除/非公開化された文書の Wiki.js 側ページ撤去・非公開化、
+  wiki_svc メタデータの `Archived` 化）。本 PR で Wiki.js が実コンテンツを保持するようになったため優先度が上昇。
+  多層防御の `isPrivate`（public 以外は非公開）で緩和済みだが実体撤去は未対応（IADR-0021 フォロー）。
+- 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
+  ネットワーク分離の CI/E2E 検証）。IADR-0021 フォロー。

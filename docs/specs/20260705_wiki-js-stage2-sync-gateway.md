@@ -43,6 +43,9 @@ related_adrs:
      dev はプレースホルダ。`IngestionService.StorageDocumentContentReader` と同方針）。
    - `DocumentSyncConsumer`: 自前 `wiki_svc` 書き込み → **本文取得 → Wiki.js push ＋ ABAC 同期メタデータ upsert**。
      認可属性（`Attributes`）は Wiki.js へ push しない（認可は本システムが単一真実源）。
+   - **多層防御（AI レビュー対応）**: 機密区分由来の粗粒度な非公開設定 `isPrivate` を push に付与する。
+     `confidentiality=public` 以外（属性欠落含む）は Wiki.js 上でも非公開（deny-closed）。ネットワーク分離
+     （[IADR-0017]）が退行しても public 以外が無条件公開にならない第 3 の防御線（[IADR-0021]。ABAC の代替ではない）。
 
 2. **認可ゲートウェイ（前段 ABAC・[IADR-0009] 継承）**
    - `WikiEndpoints` を Wiki.js 前段の認可プロキシへ改修。一覧は `AbacPageFilter` で権限内メタデータのみ。
@@ -59,7 +62,9 @@ related_adrs:
 4. **テスト（受け入れ基準の再充足）**
    - `DocumentSyncConsumerTests`: Wiki.js push（記録スタブ）・DocumentId 由来パス・未公開は非同期を検証。
    - `WikiEndpointsAbacTests`: 一覧=権限内のみ・個別=404（権限外/不存在）を維持し、200 時は Wiki.js 本文を
-     プロキシすることを追加検証（スタブ `IWikiJsClient`）。`AbacPageFilterTests` は不変で温存。
+     プロキシすることを追加検証（slug・by-doc 双方で 200/404 を対称に検証。スタブ `IWikiJsClient`）。
+     `AbacPageFilterTests` は不変で温存。
+   - `DocumentSyncConsumerTests`: `confidentiality`→`isPrivate` 対応（public のみ公開）・属性欠落時の deny-closed も検証。
 
 ## 含まないもの（フォロー）
 
@@ -67,6 +72,10 @@ related_adrs:
   本実装は `IWikiJsClient` 背後にスキーマ結合を隔離し、差異吸収を容易にしている。
 - Wiki.js 側 OIDC ローカルログイン無効化の**稼働検証**（手順は `docs/operations/operations.md`）。
 - 検索側（Retrieval/AiAnalysis）との統合（受け入れ基準①）は別途担保済み。
+- **文書の削除・アーカイブ（非公開化）に対する Wiki.js 同期経路**（実体撤去・メタデータ `Archived` 化）は
+  既存の設計ギャップであり本 PR の範囲外。`isPrivate` 多層防御で public 以外は非公開だが、実体撤去は
+  別途フォロー課題とする（[IADR-0021] フォローアップ・`docs/security/security.md` 未決事項）。
+- 稼働 Wiki.js での `isPrivate=true` ページのサービスアカウント本文取得可否・ネットワーク分離の CI/E2E 検証。
 
 ## 受け入れ基準との対応
 
