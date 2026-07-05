@@ -26,6 +26,15 @@ public class DataSourceDbContext(DbContextOptions<DataSourceDbContext> options) 
                 .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, string>>(
                     (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
                     v => v.GetHashCode(), v => new Dictionary<string, string>(v)));
+            // FR-01, FR-05: 原本へ付与する既定 ABAC 属性（confidentiality 等）を jsonb 保管。
+            e.Property(d => d.DefaultAttributes)
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new())
+                .HasColumnType("jsonb")
+                .Metadata.SetValueComparer(new ValueComparer<Dictionary<string, string>>(
+                    (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+                    v => v.GetHashCode(), v => new Dictionary<string, string>(v)));
         });
     }
 }
