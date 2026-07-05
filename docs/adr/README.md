@@ -40,3 +40,4 @@
 | IADR-0014 | Qdrant の ABAC 属性ペイロードは両表現で復元し、フィルタキー解釈を実機確認する | Accepted |
 | IADR-0015 | CI トリガーの develop 整合・コミット規約チェック・CHANGELOG 誤帰属補正 | Accepted |
 | IADR-0016 | Microsoft.OpenApi を推移的ピンでパッチ版に固定し NU1903 を解消する | Accepted |
+| IADR-0017 | mesh 導入までのサービス間認証はネットワーク分離を第一防御とする | Accepted |
