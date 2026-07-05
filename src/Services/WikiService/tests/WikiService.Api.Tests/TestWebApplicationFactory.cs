@@ -36,6 +36,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.RemoveAll<IWikiAccessResolver>();
             services.AddSingleton<IWikiAccessResolver>(new StubWikiAccessResolver(this));
 
+            // IADR-0020/0021: 認可プロキシの本文取得を稼働 Wiki.js に依存させず、スタブへ差し替える。
+            // GetRenderedContentAsync は常に本文を返し、ABAC 通過ページのみ 200 になることを検証可能にする。
+            services.RemoveAll<IWikiJsClient>();
+            services.AddSingleton<IWikiJsClient>(new StubWikiJsClient());
+
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
         });
@@ -62,4 +67,14 @@ file class StubWikiAccessResolver(TestWebApplicationFactory factory) : IWikiAcce
 {
     public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
         => Task.FromResult(factory.Scope);
+}
+
+// FR-13, IADR-0020/0021: Wiki.js 同期・本文取得のテスト用スタブ。
+// 本文は常に返す（ABAC 到達可否の検証は WikiEndpoints 側の判定に委ねる）。
+file class StubWikiJsClient : IWikiJsClient
+{
+    public Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
+        => Task.FromResult<string?>($"<article data-path=\"{path}\">rendered</article>");
 }

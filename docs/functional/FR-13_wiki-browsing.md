@@ -38,9 +38,11 @@ plan_refs:
 > 選択したため、[IADR-0013] を Superseded とし [IADR-0020] で ADR-0011 に追従する。認可（ABAC）は本システムが
 > 単一の真実源であり、WikiService が Wiki.js の**前段**で deny-by-default の属性フィルタと 404 存在秘匿を強制する
 > （Wiki.js のページ/グループ権限だけでは属性ベース細粒度判定を代替しない）。
-> **段階導入**: 本 PR は Wiki.js の配備・OIDC 構成・意思決定記録まで。同期コードの Wiki.js 置換・閲覧経路の
-> 認可プロキシ化・`wiki_svc` 撤去は後続 PR（IADR-0020 段2）。下記「機能詳細／エンドポイント」は段2 完了後の
-> 目標であり、現行コードは既存の自前閲覧 API（[IADR-0009] 準拠）が暫定的に強制点を担う。
+> **段階導入**: 段1（Wiki.js の配備・OIDC 構成・意思決定記録）に続き、**段2（本 PR）で実コードを実装**した
+> ── `DocumentSyncConsumer` を Wiki.js への GraphQL push 同期へ置換し、`/wiki/pages` 系を Wiki.js 前段の
+> **認可プロキシ**へ改修（ABAC 通過時のみ Wiki.js 本文をプロキシ、権限外・不存在は 404）。自前 `wiki_svc` は
+> 閲覧本文の実体提供を撤去し、ABAC 判定用の同期メタデータに限定した。稼働 Wiki.js を要する GraphQL PoC 実測
+> （[IADR-0021]）と OIDC ローカルログイン無効化の稼働検証はフォローとして残る。
 
 ## 機能詳細
 
@@ -58,22 +60,25 @@ plan_refs:
 
 | メソッド | パス | 説明 | 権限外の挙動 |
 | --- | --- | --- | --- |
-| GET | `/wiki/pages` | 権限内ページの一覧（軽量サマリ） | `Granted=false` は空配列（列挙に出さない） |
-| GET | `/wiki/pages/{slug}` | slug 指定の個別ページ | 404（存在秘匿） |
-| GET | `/wiki/pages/by-doc/{documentId}` | documentId 指定の個別ページ | 404（存在秘匿） |
+| GET | `/wiki/pages` | 権限内ページの一覧（軽量サマリ。`WikiPath`=Wiki.js 上の閲覧パス） | `Granted=false` は空配列（列挙に出さない） |
+| GET | `/wiki/pages/{slug}` | slug 指定の個別ページ（ABAC 通過時のみ Wiki.js 本文をプロキシ） | 404（存在秘匿） |
+| GET | `/wiki/pages/by-doc/{documentId}` | documentId 指定の個別ページ（同上・プロキシ） | 404（存在秘匿） |
 
 ## 主要コンポーネント
 
 - **Wiki.js**（`ghcr.io/requarks/wiki:2`）: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）。認証は
   Keycloak(OIDC)。ローカルログインは無効化し OIDC 単一経路（運用仕様参照）。
-- `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し、正規化 Markdown を
-  Wiki.js へ **GraphQL push**（[IADR-0021]）で同期する。文書更新後、定義時間内に反映（受け入れ基準③）。
-  ※段2 で置換予定（現行は `wiki_svc` へ書き込み）。
+- `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し、`IWikiContentReader`
+  で正規化 Markdown を取得して `IWikiJsClient` 経由で Wiki.js へ **GraphQL push**（[IADR-0021]）で冪等同期する
+  （path=`doc/<DocumentId>`）。文書更新後、定義時間内に反映（受け入れ基準③）。認可属性は Wiki.js へ push しない。
+- `IWikiJsClient` / `WikiJsGraphQlClient`（Services）: Wiki.js 管理 GraphQL への upsert（`singleByPath`→`create`/`update`）
+  と、認可プロキシ用の本文取得。API キーは Bearer（環境変数/Secret）。
+- `IWikiContentReader` / `StorageMarkdownReader`（Services）: `MarkdownUri` から本文取得（http(s) 実取得・dev は代替）。
 - `IWikiAccessResolver` / `WikiAccessResolver`（Services）: JWT 属性から `/authz/scope` を解決。障害時は deny-by-default。
 - `AbacPageFilter`（Services）: `AccessScopeResponse` を文書属性に適用する純粋関数。検索側
   `InMemoryVectorStore.MatchesFilters` と同一意味論。Wiki.js 前段ゲートウェイの到達可否判定へ転用する。
-- `WikiPage` / `WikiDbContext`（`wiki_svc`）: ゲートウェイの同期メタデータ（属性フィルタ用）として当面保持。
-  閲覧スキーマは段2 で撤去・整理する。
+- `WikiPage` / `WikiDbContext`（`wiki_svc`）: ゲートウェイの**同期メタデータ**（属性/タグ/slug/status。属性フィルタ・
+  存在秘匿判定用）。閲覧本文の実体は保持せず Wiki.js に委譲する（自前閲覧実体は撤去済み）。
 
 ## 受け入れ基準の対応
 

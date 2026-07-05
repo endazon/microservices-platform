@@ -16,7 +16,7 @@ plan_refs:
 
 # IADR-0021: Wiki.js への同期は GraphQL API push を採用する
 
-- 状態: Accepted（同期経路の実装・PoC 実測は [IADR-0020] 段2 でフォロー）
+- 状態: Accepted（同期経路の実装は [IADR-0020] 段2 = 本 PR で完了。稼働 Wiki.js での PoC 実測はフォロー）
 - 日付: 2026-07-05
 - 決定者: claude（実装）
 - 関連: [IADR-0020](./IADR-0020_wiki-js-deployment-abac-gateway.md)（Wiki.js 配備・WikiService 縮退）、
@@ -63,10 +63,17 @@ plan_refs:
 - 悪い影響・トレードオフ: Wiki.js GraphQL スキーマ（バージョン差異）への結合が生じる。API キーの発行・保管・
   ローテーションが必要。**実際の GraphQL 呼び出し・エラー時再送・レイテンシは稼働 Wiki.js での PoC 実測が必要**
   であり、実コード置換は [IADR-0020] 段2 で行う（本 IADR は方式決定を確定）。
+- 実装（本 PR = [IADR-0020] 段2）:
+  - `IWikiJsClient` / `WikiJsGraphQlClient`: `pages.singleByPath` で既存を引き `pages.create`/`pages.update` を
+    冪等呼び出し（path = `doc/<DocumentId>` の安定キー）。認証は Bearer（API キー）。
+  - `IWikiContentReader` / `StorageMarkdownReader`: 正規化 Markdown を `MarkdownUri` から取得（http(s) 実取得・
+    dev はプレースホルダ）。
+  - `DocumentSyncConsumer`: 自前 DB 書き込み → Wiki.js push へ置換（属性は Wiki.js へ push せず、ゲートウェイの
+    フィルタ用メタデータとして wiki_svc に保持）。同期失敗は例外を送出し `UseKnowledgePlatformRetry` に委ねる。
+  - API キーのシークレット管理: compose の `WIKIJS_API_KEY` 環境変数・Helm の Secret `wikijs-sync`（key=apiKey）。
 - フォローアップ:
-  - `DocumentSyncConsumer` の Wiki.js GraphQL push への置換と結合テスト（段2）。
-  - API キーのシークレット管理（compose の環境変数、Helm の Secret）。
-  - 同期失敗時のデッドレター/リトライ方針（既存 `UseKnowledgePlatformRetry` を踏襲）。
+  - 稼働 Wiki.js での GraphQL スキーマ整合・エラー時再送・レイテンシの PoC 実測（本実装は `IWikiJsClient`
+    背後に隔離しスキーマ差異を吸収しやすくしている）。
 
 ## 関連
 

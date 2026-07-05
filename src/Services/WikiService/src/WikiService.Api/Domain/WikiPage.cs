@@ -13,6 +13,10 @@ public class WikiPage
     public List<string> Tags { get; private set; } = [];
     public DateTimeOffset SyncedAt { get; private set; } = DateTimeOffset.UtcNow;
 
+    // IADR-0021: Wiki.js 上の安定パス（DocumentId 由来）。同期 push と認可プロキシの本文取得で共有する
+    // 単一の正準パス。タイトル由来の Slug は人間可読の索引・メタデータ用途に留める。
+    public string WikiPath => $"doc/{DocumentId}";
+
     private WikiPage() { }
 
     public static WikiPage CreateFromDocument(Guid documentId, string title,

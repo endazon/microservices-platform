@@ -3,33 +3,55 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using WikiService.Api.Domain;
 using WikiService.Api.Infrastructure;
+using WikiService.Api.Services;
 
 namespace WikiService.Api.Consumers;
 
-// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0021: 文書更新イベントを受信し Wiki へ同期する。
-// 目標構成（IADR-0020/0021）: 正規化 Markdown を Wiki.js へ GraphQL API push で反映する。
-// 段階導入（IADR-0020 段2）: 現行は自前 wiki_svc へ upsert する。Wiki.js 同期への置換は後続 PR（要 PoC/ビルド環境）。
-public class DocumentSyncConsumer(WikiDbContext db) : IConsumer<DocumentUpdated>
+// FR-13, UC-07, ADR-0011, IADR-0020, IADR-0021: 文書更新イベントを受信し Wiki.js へ同期する。
+//
+// 責務（IADR-0020 で「同期・統合・ABAC ゲートウェイ」に縮退）:
+//   1. 正規化 Markdown 本文を MarkdownUri から取得し、Wiki.js へ GraphQL push（IADR-0021。閲覧・編集の実体）。
+//   2. ABAC 判定用メタデータ（属性/タグ/slug/status）を wiki_svc に upsert する。これは Wiki.js 前段
+//      ゲートウェイ（WikiEndpoints）が deny-by-default 属性フィルタ・404 存在秘匿を強制するための
+//      「同期メタデータ」であり、認可の単一真実源（IADR-0021: 認可属性は Wiki.js に持ち込まない）。
+//
+// 冪等性: DocumentId 由来の安定パス（WikiPage.WikiPath）で upsert するため、再配信に対して冪等。
+// 失敗時: Wiki.js push・本文取得の失敗は例外を送出し、MassTransit のリトライ／デッドレター
+//   （UseKnowledgePlatformRetry）へ委ねる。
+public class DocumentSyncConsumer(
+    WikiDbContext db,
+    IWikiJsClient wikiJs,
+    IWikiContentReader contentReader,
+    ILogger<DocumentSyncConsumer> logger) : IConsumer<DocumentUpdated>
 {
     public async Task Consume(ConsumeContext<DocumentUpdated> ctx)
     {
         var ev = ctx.Message;
         if (ev.Status != "published" && ev.Status != "normalized") return;
 
+        // 1) ABAC 同期メタデータの upsert（ゲートウェイのフィルタ用・単一真実源）。
         var existing = await db.Pages
             .FirstOrDefaultAsync(p => p.DocumentId == ev.DocumentId, ctx.CancellationToken);
 
-        if (existing is null)
+        var page = existing;
+        if (page is null)
         {
-            var page = WikiPage.CreateFromDocument(ev.DocumentId, ev.Title,
+            page = WikiPage.CreateFromDocument(ev.DocumentId, ev.Title,
                 ev.MarkdownUri, ev.Attributes, ev.Tags);
             db.Pages.Add(page);
         }
         else
         {
-            existing.Sync(ev.Title, ev.MarkdownUri, ev.Attributes, ev.Tags);
+            page.Sync(ev.Title, ev.MarkdownUri, ev.Attributes, ev.Tags);
         }
 
+        // 2) 正規化 Markdown 本文を取得し、Wiki.js へ冪等 push（閲覧・編集の実体を Wiki.js に委譲）。
+        //    認可属性（Attributes）は push しない（IADR-0021: 認可は本システムが単一真実源）。
+        var markdown = await contentReader.ReadAsync(ev.MarkdownUri, ev.Title, ctx.CancellationToken);
+        await wikiJs.UpsertPageAsync(
+            new WikiJsPage(page.WikiPath, ev.Title, markdown, ev.Tags), ctx.CancellationToken);
+
         await db.SaveChangesAsync(ctx.CancellationToken);
+        logger.LogInformation("Synced document {DocumentId} to Wiki.js at {Path}", ev.DocumentId, page.WikiPath);
     }
 }

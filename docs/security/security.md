@@ -63,10 +63,13 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
   `wiki-js` クライアントは `clearance`/`department`/`groups` クレームを付与するが、これは表示制御の補助であり
   ABAC の正本ではない。
 - **秘密情報**: Wiki.js の OIDC クライアントシークレット・同期用 API キー（[IADR-0021]）は環境変数／Secret 経由で
-  注入し、リポジトリにコミットしない。realm import 内の dev 値（`wiki-js-dev-secret-change-me`）は開発専用で、
+  注入し、リポジトリにコミットしない。同期用 API キーは compose の `WIKIJS_API_KEY`、Helm の Secret `wikijs-sync`
+  （key=`apiKey`）で投入する。realm import 内の dev 値（`wiki-js-dev-secret-change-me`）は開発専用で、
   共有/stg/prod では必ず変更する。
 - **回帰防止**: `WikiEndpointsAbacTests` / `AbacPageFilterTests` が担保する受け入れ基準（一覧=権限内のみ・
-  個別=404）を新構成でも維持する。ゲートウェイ実装・結合テストは IADR-0020 段2 で追加する。
+  個別=404）を**新構成（認可プロキシ）で再充足**した（IADR-0020 段2 = 本 PR）。認可プロキシは ABAC 通過時のみ
+  Wiki.js 本文を取得し、権限外・不存在・Wiki.js 未反映はいずれも 404 で存在秘匿する。稼働 Wiki.js を要する
+  結合検証（GraphQL PoC）はフォローとして残る。
 
 ### サービス間（内部 API）の認証 — mesh 導入までの暫定方針（IADR-0017 / #62）
 

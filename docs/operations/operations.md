@@ -42,8 +42,11 @@ plan_refs: []
   - **ネットワーク分離**: Wiki.js への ABAC は WikiService ゲートウェイに集約するため、共有/stg/prod では
     Wiki.js を host 公開せず、到達を WikiService 経由に限定する（[IADR-0017]。compose の `expose`、k8s の
     NetworkPolicy）。dev の compose は開発便宜で `3001:3000` を公開する。
-  - **段階導入（現状）**: 本 PR は Wiki.js の配備・OIDC 構成・意思決定記録まで。`DocumentSyncConsumer` の
-    Wiki.js 同期への置換・閲覧経路の認可プロキシ化・`wiki_svc` 撤去は後続 PR（要 PoC/ビルド環境。IADR-0020 段2）。
+  - **段階導入（現状）**: 段1（配備・OIDC 構成・意思決定記録）に続き、**段2（本 PR）で実コードを実装**した ──
+    `DocumentSyncConsumer` を Wiki.js への **GraphQL push 同期**（[IADR-0021]）へ置換し、`/wiki/pages` 系を
+    Wiki.js 前段の**認可プロキシ**へ改修（ABAC 通過時のみ Wiki.js 本文をプロキシ）。`wiki_svc` は同期メタデータに
+    限定した。**残作業**（フォロー）: 稼働 Wiki.js での GraphQL PoC 実測・同期用 API キーの発行/投入
+    （`WIKIJS_API_KEY` / Helm Secret `wikijs-sync`）・OIDC ローカルログイン無効化の稼働検証。
 
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 

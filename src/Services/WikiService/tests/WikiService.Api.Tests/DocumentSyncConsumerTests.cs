@@ -4,20 +4,27 @@ using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Collections.Concurrent;
 using WikiService.Api.Consumers;
 using WikiService.Api.Infrastructure;
+using WikiService.Api.Services;
 
 namespace WikiService.Api.Tests;
 
-// FR-13, UC-07: 文書更新イベント → Wiki ページ同期。
-// 受け入れ基準③「文書更新後、定義時間内に反映」をイベント駆動同期で担保することの検証。
+// FR-13, UC-07, IADR-0020, IADR-0021: 文書更新イベント → Wiki.js 同期（GraphQL push）＋ ABAC メタデータ upsert。
+// 受け入れ基準②「更新で正規化 Markdown が Wiki.js に反映」をイベント駆動同期で担保することの検証。
 public class DocumentSyncConsumerTests
 {
     private static readonly Guid DocId = Guid.Parse("22222222-2222-2222-2222-222222222222");
 
     private static ServiceProvider BuildHarness(string dbName)
         => new ServiceCollection()
+            .AddLogging()
             .AddDbContext<WikiDbContext>(o => o.UseInMemoryDatabase(dbName))
+            // IADR-0021: Wiki.js への push と本文取得を記録スタブへ差し替え、稼働 Wiki.js に依存させない。
+            .AddSingleton<RecordingWikiJsClient>()
+            .AddSingleton<IWikiJsClient>(sp => sp.GetRequiredService<RecordingWikiJsClient>())
+            .AddSingleton<IWikiContentReader, StubContentReader>()
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<DocumentSyncConsumer>())
             .BuildServiceProvider(true);
 
@@ -63,6 +70,13 @@ public class DocumentSyncConsumerTests
             page.Should().NotBeNull();
             page!.Title.Should().Be("入社手続き");
             page.Attributes["confidentiality"].Should().Be("internal");
+
+            // 受け入れ基準②: 正規化 Markdown が Wiki.js へ DocumentId 由来の安定パスで push される。
+            var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
+            wiki.Pushed.Should().ContainSingle();
+            wiki.Pushed[0].Path.Should().Be($"doc/{DocId}");
+            wiki.Pushed[0].Title.Should().Be("入社手続き");
+            // IADR-0021: 認可属性は Wiki.js へ持ち込まない（push 内容は本文・タイトル・タグに限定）。
         }
         finally { await harness.Stop(); }
     }
@@ -83,6 +97,8 @@ public class DocumentSyncConsumerTests
             using var scope = provider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
             db.Pages.Any(p => p.DocumentId == DocId).Should().BeFalse();
+            // 未公開は Wiki.js へも反映しない。
+            provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().BeEmpty();
         }
         finally { await harness.Stop(); }
     }
@@ -115,4 +131,27 @@ public class DocumentSyncConsumerTests
         }
         finally { await harness.Stop(); }
     }
+}
+
+// IADR-0021: Wiki.js への push を記録するテスト用スタブ（同期の呼び出し・内容を検証する）。
+file sealed class RecordingWikiJsClient : IWikiJsClient
+{
+    public ConcurrentQueue<WikiJsPage> PushedQueue { get; } = new();
+    public IReadOnlyList<WikiJsPage> Pushed => PushedQueue.ToArray();
+
+    public Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default)
+    {
+        PushedQueue.Enqueue(page);
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
+        => Task.FromResult<string?>($"<article data-path=\"{path}\">rendered</article>");
+}
+
+// IADR-0021: 正規化 Markdown 本文取得のテスト用スタブ（本文はタイトルから生成）。
+file sealed class StubContentReader : IWikiContentReader
+{
+    public Task<string> ReadAsync(string? markdownUri, string title, CancellationToken ct = default)
+        => Task.FromResult($"# {title}\n\n本文");
 }

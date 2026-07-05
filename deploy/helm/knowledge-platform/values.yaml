@@ -87,6 +87,15 @@ services:
     image: knowledge-platform/wiki-service
     tag: latest
     port: 8080
+    # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
+    # API キーは Secret 経由で注入（コミットしない。事前に kubectl/ArgoCD で作成する。docs/security）。
+    extraEnv:
+      - name: WikiJs__GraphQlEndpoint
+        value: "http://wiki-js:3000/graphql"
+      - name: WikiJs__ApiKey
+        secretKeyRef:
+          name: wikijs-sync
+          key: apiKey
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
