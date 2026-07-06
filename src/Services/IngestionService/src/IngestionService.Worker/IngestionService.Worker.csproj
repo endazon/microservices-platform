@@ -6,5 +6,6 @@
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+    <InternalsVisibleTo Include="IngestionService.Worker.Tests" />
   </ItemGroup>
 </Project>
