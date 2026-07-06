@@ -89,6 +89,13 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
 - **監査ログの安全化（log-forging 対策）**: `purpose` は呼び出し側由来の自由文字列のため、監査ログへ
   出力する前に改行・制御文字を除去する（`LlmRouter.Sanitize`）。ログ行の偽造（CodeQL `cs/log-forging`）を防ぐ。
   `Sensitivity` は enum のため対象外。
+  - **選択モデル（`model`）のテイント遮断**: 明示要求モデル（`RequestedModel`）が対応可能なとき、返却する
+    `model` は利用者由来の文字列ではなく **設定側（`endpoint.Models`）が保持する正規文字列**を採用する
+    （`LlmRouter.ResolveModel`）。`model` は監査ログへ出力されるため、値が一致していてもテイント源（利用者入力）を
+    選択結果へ持ち込まず、ログ行偽造の経路を断つ（CodeQL `cs/log-forging` 再指摘への対応）。
+  - **返却理由（`RoutingDecision.Reason`）の予防的サニタイズ**: `Reason` は現状 API レスポンス
+    （`RoutingReason`）としてのみ返し `ILogger` へは渡していないが、将来 `Reason` を監査ログ等へ出力する変更が
+    入っても偽造経路が再発しないよう、埋め込む `purpose` は sanitize 済みの値を用いる。
 - **GitHub Copilot 経路**: `CopilotProvider`（`ILlmProvider`）を追加し、キー付き DI（`copilot`）で登録する。
   トランスポートは OpenAI 互換 `/chat/completions`（`SelfHostedProvider` と同型、ベアラトークン付与）とし、
   専用 NuGet 依存を増やさない。エンドポイント `copilot-managed` を設定に定義する。

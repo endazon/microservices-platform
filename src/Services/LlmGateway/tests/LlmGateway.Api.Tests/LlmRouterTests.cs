@@ -204,6 +204,22 @@ public class LlmRouterTests
         // 未知 purpose のため既定モデル（opus）へフォールバックし、送信は許可される。
         decision.Allowed.Should().BeTrue();
         decision.Model.Should().Be("claude-opus-4-8");
+        // IADR-0022: Reason へ埋め込む purpose も sanitize 済みで、改行・制御文字を含まない
+        //（将来 Reason を監査ログへ出力しても偽造経路が再発しない）。
+        decision.Reason.Should().NotContain("\n").And.NotContain("\r");
+    }
+
+    // CodeQL(cs/log-forging): 明示要求モデルが対応可能なとき、返却 Model は利用者由来の文字列ではなく
+    // 設定側（endpoint.Models）の正規文字列を採用する。値そのものは一致するが、テイント源を選択結果へ
+    // 持ち込まない（監査ログ偽造の経路を断つ）。挙動として要求モデルが尊重されることを確認する。
+    [Fact]
+    public void Route_HonorsRequestedModel_ReturnsConfiguredModelValue()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-4-5"));
+
+        decision.Model.Should().Be("claude-haiku-4-5");
     }
 
     // FR-11: 許容ティアに送信可能なエンドポイントが無ければ送信を拒否する（縮退）。

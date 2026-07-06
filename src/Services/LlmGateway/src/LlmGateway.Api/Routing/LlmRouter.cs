@@ -60,7 +60,10 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         }
 
         var requiresApproval = EgressMatrix.RequiresApproval(request.Sensitivity, endpoint.Tier);
-        var reason = $"機密区分 {request.Sensitivity} / 用途 {request.Purpose} → ティア{endpoint.Tier} {endpoint.Name}";
+        // CodeQL(log-forging)予防: Reason は現状 API レスポンス（RoutingReason）としてのみ返し ILogger には
+        // 渡していないが、将来 Reason を監査ログ等へ出力する変更が入っても偽造経路が再発しないよう、
+        // 利用者由来の purpose は sanitize 済みの値（loggedPurpose）を埋め込む。
+        var reason = $"機密区分 {request.Sensitivity} / 用途 {loggedPurpose} → ティア{endpoint.Tier} {endpoint.Name}";
 
         // ADR-0010: 送信判定を監査ログへ記録する。
         logger.LogInformation(
@@ -88,9 +91,15 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     {
         var eligible = EligibleModels(endpoint, request.Sensitivity);
 
-        if (!string.IsNullOrWhiteSpace(request.RequestedModel)
-            && eligible.Contains(request.RequestedModel))
-            return request.RequestedModel!;
+        // CodeQL(cs/log-forging): 要求モデルが対応する場合でも、利用者由来の文字列（request.RequestedModel）
+        // ではなく設定側（eligible=endpoint.Models）が保持する正規の文字列を返す。返却値は監査ログ（model）へ
+        // 出力されるため、テイント源（利用者入力）を選択結果に持ち込まないことでログ行偽造の経路を断つ。
+        if (!string.IsNullOrWhiteSpace(request.RequestedModel))
+        {
+            var requested = eligible.FirstOrDefault(m => string.Equals(m, request.RequestedModel, StringComparison.Ordinal));
+            if (requested is not null)
+                return requested;
+        }
 
         if (_options.PurposeModels.TryGetValue(request.Purpose, out var purposeModel)
             && eligible.Contains(purposeModel))
