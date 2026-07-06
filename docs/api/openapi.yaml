@@ -20,7 +20,7 @@ servers:
   - url: http://localhost:5005
     description: AuthorizationService (直接)
   - url: http://localhost:5007
-    description: "LlmGateway (直接) — IADR-0017: 内部 API。host 非公開でサービス間呼び出し専用"
+    description: "LlmGateway — IADR-0017: 内部 API。通常は host 非公開でサービス間呼び出し専用（compose では expose のみ）。この URL は個別に dotnet run した場合のみ到達可能"
 
 tags:
   - name: Analysis
@@ -880,7 +880,8 @@ components:
         question:
           type: string
           nullable: true
-          description: "回答の元となった質問（品質レビュー用の文脈。任意）"
+          maxLength: 1000
+          description: "回答の元となった質問（品質レビュー用の文脈。任意、最大 1000 文字）。超過分は拒否せず黙って切り詰める"
 
     FeedbackDto:
       type: object
@@ -983,7 +984,10 @@ components:
         confidentiality:
           type: string
           nullable: true
-          description: "入力文書の最高機密区分。越境マトリクスで呼び出し先を判定する"
+          enum: [public, internal, confidential, restricted]
+          description: |
+            入力文書の最高機密区分（大文字小文字は無視）。越境マトリクスで呼び出し先を判定する。
+            未指定（null/空）・未知の値は安全側の restricted に倒す（fail-safe, deny-by-default）。
         purpose:
           type: string
           nullable: true
