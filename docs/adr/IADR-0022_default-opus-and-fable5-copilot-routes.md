@@ -82,6 +82,13 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
   除外する。除外の結果、confidential/restricted の analysis は fable-5 ではなく ZDR 対応の既定モデル
   （opus）へフォールバックする。適格モデルが 1 つも無い場合は送信しない（安全側で拒否）。
   public/internal（ZDR 非要件）では fable-5 を選択できる。
+  - **候補エンドポイントのフォールバック**: `LlmRouter` は候補エンドポイントを優先度順に走査し、
+    適格モデルを持つ最初の候補を採用する。先頭候補が ZDR 非対応モデルしか持たない場合でも、後続候補に
+    適格モデルがあればそちらを使い、いずれの候補にも適格モデルが無いときにのみ送信を拒否する
+    （先頭候補だけを見て誤って拒否しない。将来の別ティア/別エンドポイント追加に備える）。
+- **監査ログの安全化（log-forging 対策）**: `purpose` は呼び出し側由来の自由文字列のため、監査ログへ
+  出力する前に改行・制御文字を除去する（`LlmRouter.Sanitize`）。ログ行の偽造（CodeQL `cs/log-forging`）を防ぐ。
+  `Sensitivity` は enum のため対象外。
 - **GitHub Copilot 経路**: `CopilotProvider`（`ILlmProvider`）を追加し、キー付き DI（`copilot`）で登録する。
   トランスポートは OpenAI 互換 `/chat/completions`（`SelfHostedProvider` と同型、ベアラトークン付与）とし、
   専用 NuGet 依存を増やさない。エンドポイント `copilot-managed` を設定に定義する。

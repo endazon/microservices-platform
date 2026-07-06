@@ -165,6 +165,47 @@ public class LlmRouterTests
         decision.Reason.Should().Contain("拒否");
     }
 
+    // IADR-0022: 先頭候補（優先度最上位）が ZDR 非対応モデルしか持たなくても、後続候補に
+    // 適格モデルがあれば拒否せずそちらを採用する（候補をループして最初の適格候補を使う）。
+    [Fact]
+    public void Route_Confidential_FallsBackToNextCandidateWhenLeadHasNoZdrModel()
+    {
+        // 先頭候補（priority 5, ティアB）は fable-5 のみ＝ZDR 要件区分では適格モデル 0 件。
+        var fableOnlyLead = new LlmEndpointOptions
+        {
+            Name = "claude-fable-only",
+            Tier = ProtectionTier.B,
+            Provider = "claude",
+            Enabled = true,
+            Priority = 5,
+            DefaultModel = "claude-fable-5",
+            Models = ["claude-fable-5"],
+            NonZdrModels = ["claude-fable-5"]
+        };
+        // 後続候補（priority 10, ティアA）は ZDR 対応の oss-llm を持つ。
+        var router = Build(Opts(fableOnlyLead, SelfHosted(priority: 10)));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "analysis"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.EndpointName.Should().Be("selfhosted-oss");
+        decision.Tier.Should().Be(ProtectionTier.A);
+        decision.Model.Should().Be("oss-llm");
+    }
+
+    // CodeQL(log-forging): purpose に改行・制御文字が含まれても例外なく通常どおりルーティングできる。
+    [Fact]
+    public void Route_PurposeWithControlChars_StillRoutes()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis\r\nINJECTED log line"));
+
+        // 未知 purpose のため既定モデル（opus）へフォールバックし、送信は許可される。
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-opus-4-8");
+    }
+
     // FR-11: 許容ティアに送信可能なエンドポイントが無ければ送信を拒否する（縮退）。
     [Fact]
     public void Route_Confidential_WhenOnlyStandardExternal_IsDenied()

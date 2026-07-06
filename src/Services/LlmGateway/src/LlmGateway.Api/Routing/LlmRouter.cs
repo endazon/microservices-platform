@@ -11,6 +11,9 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     public RoutingDecision Route(RoutingRequest request)
     {
         var allowedTiers = EgressMatrix.AllowedTiers(request.Sensitivity);
+        // CodeQL(log-forging): purpose は呼び出し側（利用者）由来の自由文字列のため、ログ出力前に
+        // 改行・制御文字を除去してログ行の偽造を防ぐ（Sanitize）。Sensitivity は enum のため安全。
+        var loggedPurpose = Sanitize(request.Purpose);
 
         // 許容ティアに属し、有効なエンドポイントのみを候補にする。
         // 要承認（internal×C）は、明示許可が無い限り候補から除外する（既定は安全側）。
@@ -27,20 +30,32 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
             // 08_data-egress-policy: 許容ティアに送信可能なエンドポイントが無い場合は送信しない（縮退/拒否）。
             var denyReason = $"機密区分 {request.Sensitivity} は許容ティア {Format(allowedTiers)} に送信可能なエンドポイントが無いため送信を拒否";
             logger.LogWarning("LLM routing denied: sensitivity={Sensitivity} purpose={Purpose} allowedTiers={AllowedTiers}",
-                request.Sensitivity, request.Purpose, Format(allowedTiers));
+                request.Sensitivity, loggedPurpose, Format(allowedTiers));
             return new RoutingDecision(false, null, null, null, null, false, denyReason);
         }
 
-        var endpoint = candidates[0];
-        var model = ResolveModel(endpoint, request);
-
-        if (string.IsNullOrEmpty(model))
+        // IADR-0022: 候補を優先度順に走査し、適格モデル（ZDR 要件等を満たす）を持つ最初の
+        // エンドポイントを採用する。先頭候補が ZDR 非対応モデルしか持たない場合でも、後続候補に
+        // 適格モデルがあればそちらを使う（先頭候補だけを見て誤って拒否しない）。
+        LlmEndpointOptions? endpoint = null;
+        string model = string.Empty;
+        foreach (var candidate in candidates)
         {
-            // IADR-0022: ZDR を要件とする機密区分に対し、当該エンドポイントに ZDR 対応モデルが
-            // 1 つも無い場合は送信しない（安全側で拒否）。
+            var resolved = ResolveModel(candidate, request);
+            if (!string.IsNullOrEmpty(resolved))
+            {
+                endpoint = candidate;
+                model = resolved;
+                break;
+            }
+        }
+
+        if (endpoint is null)
+        {
+            // IADR-0022: いずれの候補エンドポイントにも ZDR 対応モデルが無い場合は送信しない（安全側で拒否）。
             var denyReason = $"機密区分 {request.Sensitivity} は ZDR 対応モデルを持つ送信可能なエンドポイントが無いため送信を拒否";
-            logger.LogWarning("LLM routing denied: sensitivity={Sensitivity} purpose={Purpose} endpoint={Endpoint} reason=no-zdr-model",
-                request.Sensitivity, request.Purpose, endpoint.Name);
+            logger.LogWarning("LLM routing denied: sensitivity={Sensitivity} purpose={Purpose} reason=no-zdr-model",
+                request.Sensitivity, loggedPurpose);
             return new RoutingDecision(false, null, null, null, null, false, denyReason);
         }
 
@@ -50,9 +65,19 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         // ADR-0010: 送信判定を監査ログへ記録する。
         logger.LogInformation(
             "LLM routing decision: sensitivity={Sensitivity} purpose={Purpose} endpoint={Endpoint} tier={Tier} model={Model} requiresApproval={RequiresApproval}",
-            request.Sensitivity, request.Purpose, endpoint.Name, endpoint.Tier, model, requiresApproval);
+            request.Sensitivity, loggedPurpose, endpoint.Name, endpoint.Tier, model, requiresApproval);
 
         return new RoutingDecision(true, endpoint.Name, endpoint.Provider, endpoint.Tier, model, requiresApproval, reason);
+    }
+
+    // CodeQL(cs/log-forging): ログに出力する利用者由来の文字列から改行・制御文字を除去する。
+    // 改行を注入したログ行の偽造（forged log entries）を防ぐ。
+    private static string Sanitize(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        return new string(Array.ConvertAll(value.ToCharArray(), c => char.IsControl(c) ? '_' : c));
     }
 
     // 用途→モデルを解決する。明示要求モデルがエンドポイント対応なら優先、次に用途別モデル、最後に既定。
