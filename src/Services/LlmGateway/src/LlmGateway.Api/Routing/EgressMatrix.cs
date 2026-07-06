@@ -30,4 +30,16 @@ public static class EgressMatrix
     // ティアC送信に承認が必要か（internal × C のみ「条件付き可（要承認）」）。
     public static bool RequiresApproval(SensitivityClass sensitivity, ProtectionTier tier)
         => sensitivity == SensitivityClass.Internal && tier == ProtectionTier.C;
+
+    // FR-11, IADR-0022, 08_data-egress-policy(注意点): ゼロデータ保持（ZDR）を要件とする機密区分か。
+    // confidential/restricted は「ZDR を要件とする用途」とみなし、ZDR 非対応モデル（例: claude-fable-5）を
+    // 候補から除外する。未知区分は安全側（ZDR 要求）に倒す。public/internal は要求しない。
+    public static bool RequiresZeroDataRetention(SensitivityClass sensitivity) => sensitivity switch
+    {
+        SensitivityClass.Public => false,
+        SensitivityClass.Internal => false,
+        SensitivityClass.Confidential => true,
+        SensitivityClass.Restricted => true,
+        _ => true
+    };
 }

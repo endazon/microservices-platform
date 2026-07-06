@@ -33,6 +33,11 @@ public sealed class LlmEndpointOptions
     // このエンドポイントが提供するモデル一覧。
     public List<string> Models { get; set; } = [];
 
+    // ZDR（ゼロデータ保持）非対応のモデル一覧（08_data-egress-policy の注意点 / IADR-0022）。
+    // 同一ティア内でもモデルによりデータ保持条件が異なるため、ここに列挙したモデルは ZDR を要件とする
+    // 機密区分（confidential/restricted）では候補から除外する。既定は空（=全モデル ZDR 対応扱い）。
+    public List<string> NonZdrModels { get; set; } = [];
+
     // 用途別モデルが未指定・非対応のときのフォールバックモデル。
     public string DefaultModel { get; set; } = string.Empty;
 

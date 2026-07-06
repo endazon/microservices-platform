@@ -33,6 +33,17 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
 
         var endpoint = candidates[0];
         var model = ResolveModel(endpoint, request);
+
+        if (string.IsNullOrEmpty(model))
+        {
+            // IADR-0022: ZDR を要件とする機密区分に対し、当該エンドポイントに ZDR 対応モデルが
+            // 1 つも無い場合は送信しない（安全側で拒否）。
+            var denyReason = $"機密区分 {request.Sensitivity} は ZDR 対応モデルを持つ送信可能なエンドポイントが無いため送信を拒否";
+            logger.LogWarning("LLM routing denied: sensitivity={Sensitivity} purpose={Purpose} endpoint={Endpoint} reason=no-zdr-model",
+                request.Sensitivity, request.Purpose, endpoint.Name);
+            return new RoutingDecision(false, null, null, null, null, false, denyReason);
+        }
+
         var requiresApproval = EgressMatrix.RequiresApproval(request.Sensitivity, endpoint.Tier);
         var reason = $"機密区分 {request.Sensitivity} / 用途 {request.Purpose} → ティア{endpoint.Tier} {endpoint.Name}";
 
@@ -45,19 +56,37 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
     }
 
     // 用途→モデルを解決する。明示要求モデルがエンドポイント対応なら優先、次に用途別モデル、最後に既定。
+    // IADR-0022: ZDR を要件とする機密区分（confidential/restricted）では、ZDR 非対応モデル
+    // （endpoint.NonZdrModels）を候補から除外し、ZDR 対応モデルへフォールバックする。
+    // 適格モデルが 1 つも無ければ空文字を返し、呼び出し側で送信拒否へ縮退させる。
     private string ResolveModel(LlmEndpointOptions endpoint, RoutingRequest request)
     {
+        var eligible = EligibleModels(endpoint, request.Sensitivity);
+
         if (!string.IsNullOrWhiteSpace(request.RequestedModel)
-            && endpoint.Models.Contains(request.RequestedModel))
+            && eligible.Contains(request.RequestedModel))
             return request.RequestedModel!;
 
         if (_options.PurposeModels.TryGetValue(request.Purpose, out var purposeModel)
-            && endpoint.Models.Contains(purposeModel))
+            && eligible.Contains(purposeModel))
             return purposeModel;
 
-        return string.IsNullOrWhiteSpace(endpoint.DefaultModel)
-            ? endpoint.Models.FirstOrDefault() ?? string.Empty
-            : endpoint.DefaultModel;
+        if (!string.IsNullOrWhiteSpace(endpoint.DefaultModel) && eligible.Contains(endpoint.DefaultModel))
+            return endpoint.DefaultModel;
+
+        return eligible.FirstOrDefault() ?? string.Empty;
+    }
+
+    // IADR-0022: ZDR 要件のある機密区分では ZDR 非対応モデルを除外した適格モデル一覧を返す。
+    // 要件が無い区分（public/internal）や NonZdrModels 未設定なら Models をそのまま返す。
+    private static IReadOnlyList<string> EligibleModels(LlmEndpointOptions endpoint, SensitivityClass sensitivity)
+    {
+        if (endpoint.NonZdrModels.Count == 0 || !EgressMatrix.RequiresZeroDataRetention(sensitivity))
+            return endpoint.Models;
+
+        return endpoint.Models
+            .Where(m => !endpoint.NonZdrModels.Contains(m, StringComparer.OrdinalIgnoreCase))
+            .ToList();
     }
 
     private static string Format(IReadOnlySet<ProtectionTier> tiers)

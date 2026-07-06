@@ -16,7 +16,9 @@ public class LlmRouterTests
         Enabled = enabled,
         Priority = priority,
         DefaultModel = "claude-opus-4-8",
-        Models = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
+        Models = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        // IADR-0022 / 08_data-egress-policy: fable-5 は ZDR 非対応。confidential/restricted では除外される。
+        NonZdrModels = ["claude-fable-5"]
     };
 
     private static LlmEndpointOptions SelfHosted(bool enabled = true, int priority = 20) => new()
@@ -96,8 +98,71 @@ public class LlmRouterTests
         decision.Tier.Should().Be(ProtectionTier.B);
         decision.EndpointName.Should().Be("claude-managed");
         decision.Provider.Should().Be("claude");
-        // 用途 analysis（最難関）→ fable-5（ADR-0010 / IADR-0022）
+        // IADR-0022 / 08_data-egress-policy: confidential は ZDR 要件のため ZDR 非対応の fable-5 は除外され、
+        // ZDR 対応の既定モデル（opus）へフォールバックする。
+        decision.Model.Should().Be("claude-opus-4-8");
+    }
+
+    // IADR-0022 / 08_data-egress-policy: public は ZDR 非要件のため analysis→fable-5（最難関）を選択できる。
+    [Fact]
+    public void Route_Public_Analysis_AllowsNonZdrFable5()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
+
+        decision.Allowed.Should().BeTrue();
         decision.Model.Should().Be("claude-fable-5");
+    }
+
+    // IADR-0022 / 08_data-egress-policy: restricted も ZDR 要件のため fable-5 を除外し opus へフォールバックする。
+    [Fact]
+    public void Route_Restricted_Analysis_ExcludesNonZdrFable5()
+    {
+        var router = Build(Opts(Claude(), SelfHosted(enabled: false)));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Restricted, "analysis"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Tier.Should().Be(ProtectionTier.B);
+        decision.Model.Should().Be("claude-opus-4-8");
+    }
+
+    // IADR-0022: confidential でも明示要求モデルが ZDR 非対応（fable-5）なら採用せず ZDR 対応へフォールバックする。
+    [Fact]
+    public void Route_Confidential_IgnoresRequestedNonZdrModel()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "rag-answer", "claude-fable-5"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().NotBe("claude-fable-5");
+        // 用途 rag-answer（ZDR 対応の sonnet）が適格モデルとして選択される。
+        decision.Model.Should().Be("claude-sonnet-4-6");
+    }
+
+    // IADR-0022: ZDR 要件区分で当該エンドポイントに ZDR 対応モデルが 1 つも無ければ送信を拒否する（安全側）。
+    [Fact]
+    public void Route_Confidential_WhenAllModelsNonZdr_IsDenied()
+    {
+        var fableOnly = new LlmEndpointOptions
+        {
+            Name = "claude-managed",
+            Tier = ProtectionTier.B,
+            Provider = "claude",
+            Enabled = true,
+            Priority = 10,
+            DefaultModel = "claude-fable-5",
+            Models = ["claude-fable-5"],
+            NonZdrModels = ["claude-fable-5"]
+        };
+        var router = Build(Opts(fableOnly));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "analysis"));
+
+        decision.Allowed.Should().BeFalse();
+        decision.Reason.Should().Contain("拒否");
     }
 
     // FR-11: 許容ティアに送信可能なエンドポイントが無ければ送信を拒否する（縮退）。

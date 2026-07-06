@@ -55,8 +55,9 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 ### 用途別モデル解決（`ResolveModel`）
 
-- 優先順位: ① 明示 `Model` 要求がエンドポイント対応なら採用 → ② `PurposeModels[purpose]` がエンドポイント対応なら採用 → ③ エンドポイントの `DefaultModel`（無ければ `Models` 先頭）。
-- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / IADR-0022）: 既定 `claude-opus-4-8`、定型 `rag-answer→claude-sonnet-4-6` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`、`default→claude-opus-4-8`。
+- 優先順位: ① 明示 `Model` 要求が**適格モデル**なら採用 → ② `PurposeModels[purpose]` が適格なら採用 → ③ エンドポイントの `DefaultModel`（適格なら）→ ④ 適格モデル先頭。適格モデルが無ければ空文字を返し送信拒否へ縮退。
+- **ZDR（ゼロデータ保持）によるモデル除外（IADR-0022 / 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデル（既定で `claude-fable-5`）を候補から除外する。除外により fable-5 は ZDR 非要件の `public`/`internal` の analysis に限定され、`confidential`/`restricted` の analysis は ZDR 対応の既定モデル（opus）へフォールバックする。
+- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / IADR-0022）: 既定 `claude-opus-4-8`、定型 `rag-answer→claude-sonnet-4-6` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`（ZDR 非要件区分のみ）、`default→claude-opus-4-8`。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正、#58 #1 / IADR-0007）。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
@@ -101,6 +102,7 @@ flowchart TD
 - [ ] `Confidential` / `Restricted` の入力は外部標準API（ティアC）へ送信されない。ティアA/B のみ候補になる。
 - [ ] 機密区分が未指定・未知の入力は `Restricted` 相当として扱われる（安全側フォールバック）。
 - [ ] `Model` 未指定時、用途に応じてモデルが切り替わる（`analysis→fable-5` / `rag-answer→sonnet` / `diagram-coding→haiku`、既定 `opus`。ADR-0010 / IADR-0022）。
+- [ ] ZDR を要件とする機密区分（`confidential`/`restricted`）では ZDR 非対応モデル（`claude-fable-5`）が選択されず、ZDR 対応モデル（opus）へフォールバックする。ZDR 非要件（`public`/`internal`）では fable-5 が選択できる（IADR-0022 / 08_data-egress-policy）。
 - [ ] 許容ティアに送信可能な有効エンドポイントが無い場合、送信せず `Sent=false`（縮退）を返す。
 - [ ] `Internal × ティアC` は既定（未承認）では選択されない。
 - [ ] 送信判定（機密区分・用途・ティア・エンドポイント・モデル・許否・理由）が監査ログに記録される。

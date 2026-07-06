@@ -73,6 +73,15 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
   - `analysis` → `claude-fable-5`（最難関）。深い AI 分析用途を最難関と位置づける。
 - **fable-5 経路**: `claude-fable-5` は Claude SDK 経由のモデルのため、claude-managed（ティアB、
   プロバイダ `claude`）エンドポイントの `Models` に追加する。新エンドポイントは作らない。
+- **fable-5 の ZDR 非対応対応（モデル単位の除外）**: 08_data-egress-policy の注意点は「Claude Fable 5 は
+  ZDR（ゼロデータ保持）非対応。ZDR を要件とする用途では ZDR 対応が確認できたモデルに限定する」と明記する。
+  IADR-0007 のティア判定はエンドポイント単位で、同一ティアB内のモデル差（fable-5 の ZDR 非対応）を区別できない。
+  そこで **モデル単位の ZDR メタデータ**を導入する。`LlmEndpointOptions.NonZdrModels` に ZDR 非対応モデルを
+  列挙し（`appsettings.json` の claude-managed では `["claude-fable-5"]`）、`EgressMatrix.RequiresZeroDataRetention`
+  が真となる機密区分（**confidential/restricted**、未知区分も安全側で真）では `LlmRouter` が当該モデルを候補から
+  除外する。除外の結果、confidential/restricted の analysis は fable-5 ではなく ZDR 対応の既定モデル
+  （opus）へフォールバックする。適格モデルが 1 つも無い場合は送信しない（安全側で拒否）。
+  public/internal（ZDR 非要件）では fable-5 を選択できる。
 - **GitHub Copilot 経路**: `CopilotProvider`（`ILlmProvider`）を追加し、キー付き DI（`copilot`）で登録する。
   トランスポートは OpenAI 互換 `/chat/completions`（`SelfHostedProvider` と同型、ベアラトークン付与）とし、
   専用 NuGet 依存を増やさない。エンドポイント `copilot-managed` を設定に定義する。
@@ -80,6 +89,9 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
   **安全側でティアC・`Enabled=false`** とする（selfhosted と同じ後付けパターン）。越境マトリクスにより
   ティアC は confidential/restricted で不可、internal×C は要承認となる。契約条件確定後に設定で
   有効化・ティア再判定する。
+  なお 08_data-egress-policy 62 行目は「GitHub Copilot／Azure 等も、エンタープライズデータ保護条件を
+  確認のうえティアBとして扱う」とする。本 IADR の判断（未確定のため安全側でティアC）はこの記述と矛盾せず、
+  **保護条件が確認できた段階で `copilot-managed` を設定でティアBへ再判定する**（下記フォローアップ）。
 
 ## 理由
 
@@ -98,10 +110,16 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
   Copilot 経路はプロバイダ・DI・エンドポイント・越境統制まで組み込み済みで、確定後は設定 1 行で有効化できる。
 - 悪い影響・トレードオフ: 既定 opus 化により既定経路のコストが上がる（用途別で定型は sonnet/haiku に
   縮退させ影響を限定）。Copilot は無効のため現時点では実送信されない（要件どおり経路のみ整備）。
+- fable-5 の ZDR 非対応は `NonZdrModels` メタデータ＋`RequiresZeroDataRetention` により、confidential/restricted で
+  自動除外される（fable-5 は public/internal の analysis に限定して発火）。IADR-0007 が挙げていた「ティア判定根拠の
+  メタデータ化」フォローアップの一部を、モデル単位の ZDR 属性という形で前進させた。
 - フォローアップ:
   - Copilot の送信先ティア確定（08_data-egress-policy の契約条件レビュー）→ 確定後に `copilot-managed`
     の `Tier`/`Enabled` を設定で更新。B 認定なら confidential まで、C のままなら public 用途に限定。
   - Copilot の実 API 認証・エンドポイント URL の確定（`Llm:Copilot:BaseUrl`/`Token`）。
+  - `CopilotProvider` は `SelfHostedProvider` と OpenAI 互換レスポンス型・リクエスト構築が重複する。現状は既定無効・
+    スコープ最小のため許容だが、Copilot 有効化時に共通の OpenAI 互換クライアント基底へ切り出す。
+  - ZDR 対応状況の継続確認（モデル・契約で変動しうるため、`NonZdrModels` は都度見直す）。
   - 既定 opus 化のコスト監視（トークン計測・上限制御は ADR-0010 のフォローアップに合流）。
 
 ## 関連
