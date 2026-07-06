@@ -75,6 +75,9 @@ public class QdrantVectorStore(
 
     // FR-05: 各属性キーを「key ∈ AllowedValues」（Match.Keywords=いずれか一致）へ変換。
     // キー間は呼び出し側の Must（AND）で結合される。
+    // IADR-0014: フィルタキー "attributes.{k}" は書き込み側のネスト構造体
+    // `attributes -> { k: v }` に対する JSON パスとして実機 Qdrant で正しく解決されることを確認済み
+    // （フラットキー書き込みとの組み合わせでは過剰除外が生じるため、書き込み側をネストへ統一した）。
     private static List<Condition> BuildAttributeConditions(IReadOnlyList<AttributeFilter>? filters)
     {
         if (filters is not { Count: > 0 })
@@ -109,33 +112,22 @@ public class QdrantVectorStore(
     // FR-05, FR-11: ペイロードに保持した ABAC 属性を `Attributes` 辞書へ復元する。
     // 復元しないと AiAnalysisService の機密区分判定（HighestConfidentiality）が常に
     // 「属性欠落 → restricted」へ縮退し、FR-11 の機密区分別ルーティングが無効化される。
-    // 書き込み（UpsertAsync）はフラットキー `attributes.{k}` だが、Qdrant がドットを
-    // ネストパスとして解釈し `attributes` 構造体へ格納する可能性もあるため、両表現を復元する
-    // （実機での格納表現は IADR-0014 のとおり統合テストで確認する）。
+    // IADR-0014（実機検証・Issue #71）: 実機 Qdrant はペイロードキーのドットをリテラルではなく
+    // ネストパスとして解釈し、フラットキー書き込み + フラットキーフィルタでは過剰除外が発生することを
+    // 確認した。書き込み（UpsertAsync）・フィルタ（BuildAttributeConditions）・復元をネスト構造体
+    // `attributes -> { k: v }` へ統一する（選択肢C）。フラットキー復元パスは不要となったため削除した。
     internal static Dictionary<string, string> ExtractAttributes(
         IReadOnlyDictionary<string, Value> payload)
     {
         var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        // (a) フラットキー表現: "attributes.confidentiality" → "confidentiality"
-        const string prefix = "attributes.";
-        foreach (var (key, value) in payload)
-        {
-            if (key.StartsWith(prefix, StringComparison.Ordinal) && key.Length > prefix.Length
-                && AsString(value) is { } text)
-            {
-                attributes[key[prefix.Length..]] = text;
-            }
-        }
-
-        // (b) ネスト構造体表現: "attributes" -> { confidentiality: ... }
         if (payload.TryGetValue("attributes", out var nested)
             && nested.KindCase == Value.KindOneofCase.StructValue)
         {
             foreach (var (name, value) in nested.StructValue.Fields)
             {
                 if (AsString(value) is { } text)
-                    attributes.TryAdd(name, text);   // フラットキーが既にあれば尊重する
+                    attributes[name] = text;
             }
         }
 
@@ -161,9 +153,15 @@ public class QdrantVectorStore(
             ["text"] = new Value { StringValue = chunk.Text },
             ["markdown_uri"] = new Value { StringValue = chunk.MarkdownUri ?? "" },
         };
-        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）
-        foreach (var (k, v) in chunk.Attributes)
-            payload[$"attributes.{k}"] = new Value { StringValue = v };
+        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。
+        // IADR-0014（選択肢C・実機検証済み）: ネスト構造体 `attributes -> { k: v }` へ統一する。
+        if (chunk.Attributes.Count > 0)
+        {
+            var attrs = new Struct();
+            foreach (var (k, v) in chunk.Attributes)
+                attrs.Fields[k] = new Value { StringValue = v };
+            payload["attributes"] = new Value { StructValue = attrs };
+        }
 
         var point = new PointStruct
         {
