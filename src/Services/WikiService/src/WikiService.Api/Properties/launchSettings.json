@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "WikiService.Api": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:60265;http://localhost:60266"
+    }
+  }
+}

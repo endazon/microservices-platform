@@ -43,6 +43,10 @@
 
 ### ドキュメント
 
+- **FR-08,FR-10,FR-11**: openapi.yaml へ Feedback/Dashboard/LlmGateway の API を手書き追記 (#91) (2bb03c1)
+- **NFR**: CHANGELOG を自動更新 (#90) (ca64cc9)
+- **FR-13,UC-07,ADR-0011**: Wiki.js 段2実装完了に伴う陳腐化記述の整合 (#66) (#89) (789bef0)
+- **NFR**: CHANGELOG を自動更新 (#87) (42dc005)
 - **NFR**: CHANGELOG を自動更新 (#85) (7c35072)
 - **NFR**: CHANGELOG を自動更新 (#83) (ca845a5)
 - **NFR**: CHANGELOG を自動更新 (#81) (7a54e1f)
@@ -68,6 +72,7 @@
 
 ### その他
 
+- traceability.md を更新 (01b5ebe)
 - claude-code-review.yml を更新 (eb444f8)
 - Update claude-coding.yml (b349c36)
 - Add comments for submodule access and token usage (85ee98e)

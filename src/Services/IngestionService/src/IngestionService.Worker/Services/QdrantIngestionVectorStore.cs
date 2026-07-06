@@ -50,9 +50,16 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
             payload["tags"] = new Value { ListValue = tagList };
         }
 
-        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）
-        foreach (var (k, val) in attributes)
-            payload[$"attributes.{k}"] = new Value { StringValue = val };
+        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。
+        // IADR-0014（選択肢C・実機検証済み・Issue #71）: ネスト構造体 `attributes -> { k: v }` へ統一する。
+        // RetrievalService.QdrantVectorStore の書き込み・フィルタ表現と一致させる。
+        if (attributes.Count > 0)
+        {
+            var attrs = new Struct();
+            foreach (var (k, val) in attributes)
+                attrs.Fields[k] = new Value { StringValue = val };
+            payload["attributes"] = new Value { StructValue = attrs };
+        }
 
         await client.UpsertAsync(_collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
