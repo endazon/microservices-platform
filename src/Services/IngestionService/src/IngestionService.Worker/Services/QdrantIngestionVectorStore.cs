@@ -31,6 +31,20 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
         Dictionary<string, string> attributes, List<string> tags,
         CancellationToken ct = default)
     {
+        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes, tags);
+
+        await client.UpsertAsync(_collection,
+            [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
+            cancellationToken: ct);
+    }
+
+    // FR-02, FR-05: チャンクの Qdrant ペイロードを構築する。
+    // IADR-0014（選択肢C・実機検証済み・Issue #71）: ABAC 属性はネスト構造体 `attributes -> { k: v }`
+    // へ統一する。RetrievalService.QdrantVectorStore の書き込み・フィルタ表現と一致させる。
+    internal static Dictionary<string, Value> BuildChunkPayload(Guid documentId, string title,
+        string text, int chunkIndex, string? markdownUri,
+        Dictionary<string, string> attributes, List<string> tags)
+    {
         var payload = new Dictionary<string, Value>
         {
             ["document_id"] = new Value { StringValue = documentId.ToString() },
@@ -50,9 +64,7 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
             payload["tags"] = new Value { ListValue = tagList };
         }
 
-        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。
-        // IADR-0014（選択肢C・実機検証済み・Issue #71）: ネスト構造体 `attributes -> { k: v }` へ統一する。
-        // RetrievalService.QdrantVectorStore の書き込み・フィルタ表現と一致させる。
+        // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。ネスト構造体へ統一する（IADR-0014 選択肢C）。
         if (attributes.Count > 0)
         {
             var attrs = new Struct();
@@ -61,9 +73,7 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
             payload["attributes"] = new Value { StructValue = attrs };
         }
 
-        await client.UpsertAsync(_collection,
-            [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
-            cancellationToken: ct);
+        return payload;
     }
 
     public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default)
