@@ -45,3 +45,4 @@
 | IADR-0019 | データソースが原本へ既定 ABAC 属性（機密区分）を付与する | Accepted |
 | IADR-0020 | Wiki.js を配備し WikiService を「同期・ABAC ゲートウェイ」へ縮退する（IADR-0013 を Supersede、ADR-0011 に追従） | Accepted |
 | IADR-0021 | Wiki.js への同期は GraphQL API push を採用する | Accepted |
+| IADR-0022 | 既定モデルを opus 化し、fable-5（最難関）と GitHub Copilot 経路を設定駆動で追加する | Accepted |

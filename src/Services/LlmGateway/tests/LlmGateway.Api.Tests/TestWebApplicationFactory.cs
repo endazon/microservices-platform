@@ -17,7 +17,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Llm:ApiKey"] = "test-key",
-                ["Llm:Model"] = "claude-sonnet-4-6",
+                ["Llm:Model"] = "claude-opus-4-8",
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test"
             }));
@@ -30,6 +30,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddSingleton<ILlmProvider, StubLlmProvider>();               // /embed 既定
             services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("claude");   // ティアB
             services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("selfhosted"); // ティアA
+            services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("copilot");  // 最難関別経路（既定は無効エンドポイント）
         });
     }
 }

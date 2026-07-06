@@ -78,7 +78,7 @@ public class RagOrchestrator(
     {
         // FR-11: 明示モデルは指定しない。実際の呼び出しモデルは LlmGateway が用途（purpose）と
         // 機密区分に応じて選択する（Llm:Routing:PurposeModels）。既定モデル名は縮退応答の表示用のみ。
-        var defaultModel = config["Llm:DefaultModel"] ?? "claude-sonnet-4-6";
+        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-4-8";
 
         var retrievalClient = httpFactory.CreateClient("RetrievalService");
         var searchResp = await retrievalClient.PostAsJsonAsync("/search",
@@ -175,7 +175,7 @@ public class RagOrchestrator(
         => new(
             "閲覧権限のある文書が見つかりませんでした。",
             [],
-            config["Llm:DefaultModel"] ?? "claude-sonnet-4-6",
+            config["Llm:DefaultModel"] ?? "claude-opus-4-8",
             0, 0);
 
     private static string BuildAskPrompt(string question, string context)
