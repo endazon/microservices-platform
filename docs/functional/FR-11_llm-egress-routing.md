@@ -7,7 +7,7 @@ related_ids:
   - UC-02
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -56,13 +56,14 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 ### 用途別モデル解決（`ResolveModel`）
 
 - 優先順位: ① 明示 `Model` 要求がエンドポイント対応なら採用 → ② `PurposeModels[purpose]` がエンドポイント対応なら採用 → ③ エンドポイントの `DefaultModel`（無ければ `Models` 先頭）。
-- 既定設定（`appsettings.json`）: `rag-answer→claude-sonnet-4-6` / `analysis→claude-opus-4-8` / `diagram-coding→claude-haiku-4-5` / `default→claude-sonnet-4-6`。
+- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / IADR-0022）: 既定 `claude-opus-4-8`、定型 `rag-answer→claude-sonnet-4-6` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`、`default→claude-opus-4-8`。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正、#58 #1 / IADR-0007）。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
-- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10）と `selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）。
+- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, Models に `claude-fable-5` を含む）、`selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は ADR-0010 のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
+- GitHub Copilot（最難関の別経路, ADR-0010 / IADR-0022）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。
 
 ## 処理フロー / 状態遷移
 
@@ -99,7 +100,7 @@ flowchart TD
 - [ ] 機密区分→許容ティアが 08_data-egress-policy の越境マトリクスと一致する（`EgressMatrix.AllowedTiers`）。
 - [ ] `Confidential` / `Restricted` の入力は外部標準API（ティアC）へ送信されない。ティアA/B のみ候補になる。
 - [ ] 機密区分が未指定・未知の入力は `Restricted` 相当として扱われる（安全側フォールバック）。
-- [ ] `Model` 未指定時、用途に応じてモデルが切り替わる（`analysis→opus` / `rag-answer→sonnet` / `diagram-coding→haiku`）。
+- [ ] `Model` 未指定時、用途に応じてモデルが切り替わる（`analysis→fable-5` / `rag-answer→sonnet` / `diagram-coding→haiku`、既定 `opus`。ADR-0010 / IADR-0022）。
 - [ ] 許容ティアに送信可能な有効エンドポイントが無い場合、送信せず `Sent=false`（縮退）を返す。
 - [ ] `Internal × ティアC` は既定（未承認）では選択されない。
 - [ ] 送信判定（機密区分・用途・ティア・エンドポイント・モデル・許否・理由）が監査ログに記録される。
@@ -116,7 +117,8 @@ flowchart TD
 
 ## 未決事項
 
-- 本実装が根拠とする ADR-0010 は `Proposed`、08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
+- ADR-0010 は `Accepted`（既定 `claude-opus-4-8` / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
+- GitHub Copilot（`copilot-managed`）の送信先ティアは 08_data-egress-policy の契約条件（ZDR/学習不使用/レジデンシー）確定待ち。確定まで安全側でティアC・既定無効とし、確定後に設定で有効化・ティア再判定する（IADR-0022 フォローアップ）。
 - `Restricted × ティアB` の「追加統制下」（承認フラグ・特別監査マーカー・匿名化/最小化要件）は未具体化で、現状 `Confidential × B` と同等（送信可）に扱う。
 - 例外送信（機密区分の一時ダウングレード）の申請・承認ワークフローは未実装。本仕様は要承認ゲート（`AllowUnapprovedTierC`）のみ。
 - 実セルフホスト LLM 基盤（GPU）は未構築で、`selfhosted-oss` エンドポイントは既定無効（定義のみ）。

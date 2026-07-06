@@ -30,11 +30,12 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Text.Should().NotBeNullOrWhiteSpace();
     }
 
-    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→opus / rag-answer→sonnet / diagram-coding→haiku）。
+    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→fable-5 / rag-answer→sonnet / diagram-coding→haiku）。
+    // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku / 最難関 analysis→fable-5。
     // 実運用経路（RagOrchestrator / LlmGatewayDiagramCoder）は Model=null で /complete を呼ぶため、この経路で用途別モデルが発火することを検証する。
     // purpose 値は呼び出し側が送る文字列（ConversionService は "diagram-coding"）と一致させる（設定キー統一のガード）。
     [Theory]
-    [InlineData("analysis", "claude-opus-4-8")]
+    [InlineData("analysis", "claude-fable-5")]
     [InlineData("rag-answer", "claude-sonnet-4-6")]
     [InlineData("diagram-coding", "claude-haiku-4-5")]
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)

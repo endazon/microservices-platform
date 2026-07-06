@@ -15,8 +15,8 @@ public class LlmRouterTests
         Provider = "claude",
         Enabled = enabled,
         Priority = priority,
-        DefaultModel = "claude-sonnet-4-6",
-        Models = ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
+        DefaultModel = "claude-opus-4-8",
+        Models = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
     };
 
     private static LlmEndpointOptions SelfHosted(bool enabled = true, int priority = 20) => new()
@@ -41,6 +41,19 @@ public class LlmRouterTests
         Models = ["std-model"]
     };
 
+    // ADR-0010 / IADR-0022: GitHub Copilot エンドポイント（最難関用途の別経路）。
+    // 送信先ティア確定までは安全側でティアC・既定無効として登録する。
+    private static LlmEndpointOptions Copilot(bool enabled = false, int priority = 30) => new()
+    {
+        Name = "copilot-managed",
+        Tier = ProtectionTier.C,
+        Provider = "copilot",
+        Enabled = enabled,
+        Priority = priority,
+        DefaultModel = "gpt-5",
+        Models = ["gpt-5"]
+    };
+
     private static LlmRouter Build(LlmRoutingOptions options)
         => new(Options.Create(options), NullLogger<LlmRouter>.Instance);
 
@@ -49,9 +62,11 @@ public class LlmRouterTests
         Endpoints = [.. endpoints],
         PurposeModels = new(StringComparer.OrdinalIgnoreCase)
         {
+            // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku / 最難関 analysis→fable-5。
             ["rag-answer"] = "claude-sonnet-4-6",
-            ["analysis"] = "claude-opus-4-8",
-            ["diagram-coding"] = "claude-haiku-4-5"
+            ["analysis"] = "claude-fable-5",
+            ["diagram-coding"] = "claude-haiku-4-5",
+            ["default"] = "claude-opus-4-8"
         }
     };
 
@@ -81,8 +96,8 @@ public class LlmRouterTests
         decision.Tier.Should().Be(ProtectionTier.B);
         decision.EndpointName.Should().Be("claude-managed");
         decision.Provider.Should().Be("claude");
-        // 用途 analysis → opus
-        decision.Model.Should().Be("claude-opus-4-8");
+        // 用途 analysis（最難関）→ fable-5（ADR-0010 / IADR-0022）
+        decision.Model.Should().Be("claude-fable-5");
     }
 
     // FR-11: 許容ティアに送信可能なエンドポイントが無ければ送信を拒否する（縮退）。
@@ -147,6 +162,44 @@ public class LlmRouterTests
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer", "claude-haiku-4-5"));
 
         decision.Model.Should().Be("claude-haiku-4-5");
+    }
+
+    // ADR-0010 / IADR-0022: 用途未指定（default）は既定モデル opus を選択する。
+    [Fact]
+    public void Route_DefaultPurpose_SelectsOpusDefaultModel()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "default"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-opus-4-8");
+    }
+
+    // ADR-0010 / IADR-0022: Copilot（ティアC）は confidential では候補にならない（越境マトリクスで C 不可）。
+    // 唯一の候補が Copilot のみなら送信を拒否する。
+    [Fact]
+    public void Route_Confidential_ExcludesCopilotTierC()
+    {
+        var router = Build(Opts(Copilot(enabled: true)));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "analysis"));
+
+        decision.Allowed.Should().BeFalse();
+        decision.Reason.Should().Contain("拒否");
+    }
+
+    // ADR-0010 / IADR-0022: Copilot は既定無効。有効な Claude（ティアB）が優先され、無効な Copilot は候補外。
+    [Fact]
+    public void Route_Public_PrefersClaudeOverDisabledCopilot()
+    {
+        var router = Build(Opts(Claude(priority: 10), Copilot(enabled: false, priority: 5)));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Provider.Should().Be("claude");
+        decision.EndpointName.Should().Be("claude-managed");
     }
 
     // 08_data-egress-policy「既定は安全側」: 未指定（null/空）・未知の機密区分は Restricted に倒す。

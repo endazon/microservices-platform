@@ -9,9 +9,10 @@ public sealed class LlmRoutingOptions
     // 呼び出し先エンドポイント一覧。
     public List<LlmEndpointOptions> Endpoints { get; set; } = [];
 
-    // 用途（purpose）→ 既定モデル。用途別にコスト・品質を最適化する（ADR-0010）。
+    // 用途（purpose）→ 既定モデル。用途別にコスト・品質を最適化する（ADR-0010 / IADR-0022）。
     // キーは呼び出し側が送る purpose 値と一致させる（例: rag-answer, analysis, diagram-coding）。
-    // 例: rag-answer→claude-sonnet-4-6, analysis→claude-opus-4-8, diagram-coding→claude-haiku-4-5
+    // 既定 claude-opus-4-8 / 定型 rag-answer→claude-sonnet-4-6・diagram-coding→claude-haiku-4-5 /
+    // 最難関 analysis→claude-fable-5。
     public Dictionary<string, string> PurposeModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // internal × ティアC（要承認）を自動許可するか。既定は安全側で false（承認が無ければ C を使わない）。

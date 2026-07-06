@@ -326,7 +326,8 @@ services:
     environment:
       <<: *common-env
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
-      Llm__Model: claude-sonnet-4-6
+      # ADR-0010 / IADR-0022: 既定は claude-opus-4-8（定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
+      Llm__Model: claude-opus-4-8
     depends_on:
       - otel-collector
 

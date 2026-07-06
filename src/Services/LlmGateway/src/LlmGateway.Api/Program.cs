@@ -28,9 +28,11 @@ builder.Services.Configure<LlmRoutingOptions>(
 builder.Services.AddSingleton<ILlmRouter, LlmRouter>();
 
 // FR-11: ルーターの判定に従って呼び出し先を切り替えるため、プロバイダをキー付きで登録する。
-// ティアB=保護契約済み外部API（Claude）、ティアA=セルフホスト（OSS, 既定は無効エンドポイント）。
+// ティアB=保護契約済み外部API（Claude）、ティアA=セルフホスト（OSS, 既定は無効エンドポイント）、
+// GitHub Copilot（最難関用途の別経路, ティア確定まで既定は無効エンドポイント）。ADR-0010 / IADR-0022。
 builder.Services.AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude");
 builder.Services.AddKeyedSingleton<ILlmProvider, SelfHostedProvider>("selfhosted");
+builder.Services.AddKeyedSingleton<ILlmProvider, CopilotProvider>("copilot");
 
 // /embed（埋め込み）は切替対象外。既定プロバイダ（Claude）を用いる。
 builder.Services.AddSingleton<ILlmProvider>(sp =>
