@@ -141,6 +141,21 @@ plan_refs: []
   有効化まで confidential/restricted 文書は**索引されない**（fail-closed。設計どおり）。
   - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
     （ADR-0017 の事前 PoC 代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。
+  - **⚠️ 配列インデックス依存の環境変数に注意（Issue #98）**: 上記 `Endpoints__0__Enabled`（Voyage）/
+    `Endpoints__1__Enabled`（セルフホスト）は `appsettings.json` の `Embedding:Routing:Endpoints` 配列の
+    並び順に依存する。エンドポイントの追加・並び替え時はインデックスを必ず見直すこと。取り違え
+    （例 Voyage を誤って無効化し、セルフホストも無効のまま＝全 public 取り込み・検索クエリが黙って
+    fail-closed）は起動時バリデーション（`EmbeddingRoutingOptionsValidator` / `ValidateOnStart`）が
+    fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
+    取り違え・必須項目欠落も同時に検証される。
+- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: `/embed` は応答に `Retryable` を返す。
+  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答など、`Retryable=true`）: 取り込み消費側
+    （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
+    受信リトライ／(枯渇後) DLQ に回す。一括再索引中に Voyage が一時的に不調でもチャンクを取りこぼさない。
+    → 運用: DLQ（`*_error` キュー）を監視し、滞留があれば原因（Voyage 障害・URL 誤設定等）を解消して再投入する。
+  - **fail-closed / 恒久的理由**（高機密でセルフホスト未有効・次元不整合・プロバイダ未登録、`Retryable=false`）:
+    設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
+    （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
 - **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
   1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`）を
      実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。

@@ -53,8 +53,19 @@ public class DocumentUpdatedConsumer(
             // FR-02 embed: 埋め込み生成（LLM Gateway 経由 / ADR-0013・ADR-0016）。機密区分で送信先・コレクションが決まる。
             var embedding = await embed.EmbedAsync(text, confidentiality, ct);
 
-            // FR-02, FR-05, ADR-0016: fail-closed。高機密でセルフホスト未有効・次元不整合・呼び出し失敗時は
-            // 索引しない（外部へ本文を送らず、誤ったコレクション/次元へも書かない）。
+            // FR-02（Issue #98 レビュー対応）: 一時的な障害（送信先の不調・タイムアウト等）は fail-closed
+            // （意図的拒否）と区別する。一時障害（Retryable=true）は恒久スキップにせず例外を送出し、
+            // MassTransit のリトライ/DLQ に委ねる（一括再索引中に外部が一時不調でもチャンクを取りこぼさない）。
+            if (!embedding.Embedded && embedding.Retryable)
+            {
+                logger.LogWarning(
+                    "Ingestion {Id} chunk {Index}: transient embedding failure, retrying via broker (confidentiality={Confidentiality})",
+                    ev.DocumentId, idx, confidentiality ?? "(unset)");
+                throw new EmbeddingTransientException(ev.DocumentId, idx);
+            }
+
+            // FR-02, FR-05, ADR-0016: fail-closed。高機密でセルフホスト未有効・次元不整合など恒久的な理由は
+            // 索引しない（外部へ本文を送らず、誤ったコレクション/次元へも書かない）。再試行では解消しないためスキップ。
             if (!embedding.Embedded)
             {
                 skipped++;
@@ -81,3 +92,8 @@ public class DocumentUpdatedConsumer(
         logger.LogInformation("Ingestion complete for {Id}: {Count} chunks", ev.DocumentId, chunkCount);
     }
 }
+
+// FR-02（Issue #98）: 埋め込みの一時的な障害を表す。送出すると MassTransit の受信リトライ／(枯渇後)DLQ に
+// 回り、外部（Voyage 等）の一時不調でチャンクを恒久的に取りこぼすのを防ぐ。fail-closed（意図的拒否）とは区別する。
+public sealed class EmbeddingTransientException(Guid documentId, int chunkIndex)
+    : Exception($"Transient embedding failure for document {documentId} chunk {chunkIndex}");

@@ -208,6 +208,32 @@ public class DocumentUpdatedConsumerTests
         finally { await harness.Stop(); }
     }
 
+    // T-11 (FR-02, Issue #98): 一時的な埋め込み障害（Retryable=true）は fail-closed（意図的スキップ）と区別し、
+    // 例外を送出して再試行/DLQ に委ねる。恒久スキップ（IngestionCompleted の縮小 chunkCount 発行）にしない。
+    [Fact]
+    public async Task Consumer_ShouldFaultForRetry_WhenEmbeddingTransientFailure()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる");
+        // 一時障害（送信先不調等）を模す: Embedded=false かつ Retryable=true。
+        var embed = new RecordingEmbeddingService(embedded: false, retryable: true);
+        await using var provider = BuildHarness(store, reader, embed);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent());
+
+            // 消費は例外で失敗（fault）する。恒久スキップにはしない。
+            (await harness.Consumed.Any<DocumentUpdated>(x => x.Exception is not null)).Should().BeTrue();
+            // 一時障害では索引せず、完了イベントも発行しない（取りこぼしを DLQ で検知可能にする）。
+            store.Upserts.Should().BeEmpty();
+            (await harness.Published.Any<IngestionCompleted>()).Should().BeFalse();
+        }
+        finally { await harness.Stop(); }
+    }
+
     // T-10 (FR-02, FR-05, ADR-0016): 取り込み冒頭で全モデル別コレクションから当該文書を削除する
     // （機密区分変更時の旧コレクション残存＝ABAC バイパスを防止）。
     [Fact]
@@ -238,11 +264,12 @@ file class StubEmbeddingService : IEmbeddingService
         => Task.FromResult(new EmbeddingResult(new float[1024], "knowledge_chunks_voyage_3_5", true));
 }
 
-// 呼び出しを記録し、コレクション/成否を制御できるスタブ。
+// 呼び出しを記録し、コレクション/成否/一時障害を制御できるスタブ。
 file class RecordingEmbeddingService(
     string collection = "knowledge_chunks_voyage_3_5",
     bool embedded = true,
-    int dimensions = 1024) : IEmbeddingService
+    int dimensions = 1024,
+    bool retryable = false) : IEmbeddingService
 {
     public List<(string Text, string? Confidentiality)> Requests { get; } = [];
 
@@ -250,7 +277,7 @@ file class RecordingEmbeddingService(
     {
         Requests.Add((text, confidentiality));
         return Task.FromResult(new EmbeddingResult(
-            embedded ? new float[dimensions] : [], collection, embedded));
+            embedded ? new float[dimensions] : [], collection, embedded, retryable));
     }
 }
 

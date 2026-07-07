@@ -377,6 +377,10 @@ services:
       # ADR-0017 / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
       # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
       Embedding__SelfHosted__BaseUrl: ${SELFHOSTED_EMBEDDING_URL:-}
+      # ⚠️ Issue #98: この上書きは appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が
+      # index 1（voyage が index 0）である前提。エンドポイントの追加・並び替え時はインデックスを見直すこと。
+      # 取り違え（例: 誤って Voyage を無効化）は LlmGateway 起動時バリデーション
+      # （EmbeddingRoutingOptionsValidator / ValidateOnStart）が fail-fast で検知し、起動に失敗する。
       Embedding__Routing__Endpoints__1__Enabled: ${SELFHOSTED_EMBEDDING_ENABLED:-false}
     depends_on:
       - otel-collector

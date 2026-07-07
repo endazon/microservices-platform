@@ -24,6 +24,9 @@ public record EmbedApiRequest(
 //   呼び出し側（Ingestion）は Embedded=false のとき索引をスキップする。
 //   Collection は索引/検索対象のモデル別コレクション名（例 knowledge_chunks_voyage_3_5 / _ruri_v3）。
 //   Endpoint / RoutingReason は選択・拒否した送信先と理由（監査・縮退表示用）。
+//   Retryable=true は「一時的な障害（送信先の不調・タイムアウト等）で今回は埋め込めなかった」ことを示し、
+//   呼び出し側はスキップ（恒久未索引）ではなく再試行（MassTransit リトライ/DLQ）に回す。
+//   機密区分による送信拒否（fail-closed）・次元不整合など恒久的な理由は Retryable=false（=スキップ）。
 public record EmbedApiResponse(
     float[] Vector,
     int Dimensions,
@@ -31,4 +34,5 @@ public record EmbedApiResponse(
     string Collection,
     bool Embedded = true,
     string? Endpoint = null,
-    string? RoutingReason = null);
+    string? RoutingReason = null,
+    bool Retryable = false);

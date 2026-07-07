@@ -3,6 +3,7 @@ using KnowledgePlatform.Shared.Infrastructure.Extensions;
 using LlmGateway.Api.Endpoints;
 using LlmGateway.Api.Providers;
 using LlmGateway.Api.Routing;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.llm-gateway";
@@ -37,8 +38,12 @@ builder.Services.AddKeyedSingleton<ILlmProvider, CopilotProvider>("copilot");
 // FR-02, FR-05, ADR-0016, ADR-0017: 埋め込みは LLM 生成とは別系統で機密区分ルーティングする。
 // ティアB=Voyage AI（voyage-3.5 / 1024次元・既定）、ティアA=セルフホスト（Ruri v3 / 768次元・既定は無効）。
 // confidential/restricted はティアA固定・無効なら fail-closed（EmbeddingRouter）。
-builder.Services.Configure<EmbeddingRoutingOptions>(
-    builder.Configuration.GetSection(EmbeddingRoutingOptions.SectionName));
+// Issue #98 レビュー対応: インデックス依存の環境変数上書き（Endpoints__N__Enabled）による取り違えを
+// 起動時に fail-fast する（ティア↔プロバイダ整合・既定経路の有効性を EmbeddingRoutingOptionsValidator で検証）。
+builder.Services.AddOptions<EmbeddingRoutingOptions>()
+    .Bind(builder.Configuration.GetSection(EmbeddingRoutingOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<EmbeddingRoutingOptions>, EmbeddingRoutingOptionsValidator>();
 builder.Services.AddSingleton<IEmbeddingRouter, EmbeddingRouter>();
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, VoyageEmbeddingProvider>("voyage");
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvider>("selfhosted-embedding");

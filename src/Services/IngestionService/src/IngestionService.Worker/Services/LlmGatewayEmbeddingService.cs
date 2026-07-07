@@ -16,10 +16,10 @@ public class LlmGatewayEmbeddingService(HttpClient http) : IEmbeddingService
         resp.EnsureSuccessStatusCode();
         var result = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(ct);
 
-        // 応答欠落は安全側で fail-closed（索引しない）扱いにする。
+        // 応答欠落（予期しない空応答）は一時的な異常とみなし Retryable=true で再試行に回す（恒久スキップにしない）。
         if (result is null)
-            return new EmbeddingResult([], string.Empty, false);
+            return new EmbeddingResult([], string.Empty, false, Retryable: true);
 
-        return new EmbeddingResult(result.Vector, result.Collection, result.Embedded);
+        return new EmbeddingResult(result.Vector, result.Collection, result.Embedded, result.Retryable);
     }
 }
