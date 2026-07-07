@@ -46,7 +46,8 @@ related_specs:
 2. `Minio`（公式 .NET SDK） — MinIO 専用で API は簡潔だが、S3 標準からは外れ差し替え余地が狭い。
 
 ### B. 参照 URI とキー設計
-1. **`storage://<bucket>/<key>`（本決定）** — 既存の発行形式（`storage://…`）と後方互換。バケットを host、
+1. **`storage://<bucket>/<key>`（本決定）** — 既存の `storage://` スキームを継続（読み取り側の分岐を保持）。
+   ただしバケット名・パス構造は旧スタブの発行形式から変更する（下記「互換性に関する注記」）。バケットを host、
    キーを path に写す。キーは IADR-0008 の決定的 `DocumentId` を基点に
    `"<documentId:N>/document.md"`・`"<documentId:N>/assets/<figureId>.<ext>"`（既存の `NormalizationService`）。
 2. 生の `s3://` URI — S3 慣習に近いが、既存発行 URI・読み取り側の分岐を作り直す必要がある。
@@ -72,6 +73,13 @@ related_specs:
   - `NullObjectStorageClient`：`ObjectStorage:Endpoint` 未設定の dev/test 向け縮退。保存は決定的 URI を返し、
     `CanResolve=false` で読み取り側をプレースホルダーへ縮退させる（従来挙動を保持）。
 - **バケット**: 既定 `knowledge-normalized`（正規化本文＋資産）。設定 `ObjectStorage:Bucket` で上書き可。
+  - **互換性に関する注記**: 旧スタブ（本 PR 以前）は保存を伴わず `Storage:NormalizedBaseUri`
+    （既定 `storage://knowledge/normalized`）を基点に `storage://knowledge/normalized/<key>` を発行して
+    いた。本実装ではバケットを host に写す `storage://<bucket>/<key>`（既定バケット `knowledge-normalized`）
+    へ変更したため、発行される URI のバケット名・パス構造は旧形式と非互換である。旧スタブは実体を
+    永続化していなかったため既存オブジェクトの破損は生じない。加えて develop 時点で旧形式 URI を DB に
+    永続化した文書は存在しない（旧実装は永続化せず、実クライアントは本 PR で初めて有効化される）ため、
+    実クライアント有効化に伴う旧バケットへの読み取り失敗も発生しない。以降のデータは新形式で一貫する。
 - **配備**: docker-compose と Helm に MinIO を追加。資格情報は compose=`.env`、helm=Secret（`minio-credentials`）。
 - **バックアップ・保持方針（運用）**: バケットバージョニングで論理削除・上書き履歴を保持し、実体バックアップは
   MinIO バケット複製（`mc mirror` もしくはボリューム／PVC スナップショット）を定期実行する。保持期間・
@@ -80,7 +88,8 @@ related_specs:
 ## 理由
 
 - S3 標準クライアントにより実装が局所化し、MinIO↔マネージド S3 の差し替え余地を残せる（ADR-0015 の理由と一致）。
-- `storage://` 継続で既存の発行 URI・イベント（`DocumentNormalized.MarkdownUri`）・読み取り分岐を壊さない。
+- `storage://` スキーム継続でイベント（`DocumentNormalized.MarkdownUri`）・読み取り分岐を壊さない
+  （バケット名・パス構造は変更。既存永続化データが無いため影響なし＝上記「互換性に関する注記」）。
 - 決定的キー＋バージョニングは IADR-0008 の冪等性と ADR-0014 の版管理方針を同時に満たす。
 - 直接非公開＋サービス経由は ADR-0014 のアクセス制御方針と IADR-0017 のネットワーク分離に整合する。
 
