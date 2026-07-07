@@ -69,6 +69,38 @@ plan_refs: []
   **Local** ストラテジを無効化し、OIDC のみを有効にする。これで受け入れ基準①「ローカルログイン不可」を満たす。
   （Wiki.js の OIDC 設定は管理 UI/DB シードで確定するため、Keycloak 側は本 PR で用意し、Wiki.js 側は本手順で実施する。）
 
+### Wiki.js 同期シークレットの発行・投入（FR-13 / IADR-0021 / Issue #88）
+
+同期（GraphQL push）用のサービスアカウント API キーと、Wiki.js 専用 DB のパスワードは
+**コミットせず**、以下の手順で発行・投入する。
+
+- **API キーの発行（Wiki.js 管理 UI）**:
+  1. 管理者で Wiki.js にログインし、Administration → **API Access** を開き、API を **Enabled** にする。
+  2. **New API Key** で作成する。名前は `wiki-service-sync`、有効期限は運用ポリシーに合わせる
+     （既定 3 年。ローテーション手順を後述）。権限グループは**ページの read/write/manage/delete を持つ
+     グループ**を割り当てる（同期は `pages.create/update/delete` と `pages.singleByPath` を呼ぶ）。
+  3. 表示されたキー（JWT）を安全な場所（シークレットマネージャ）へ控える。**再表示はできない**。
+- **compose（dev）への投入**: リポジトリ直下または `deploy/` の `.env`（gitignore 済み）に
+  `WIKIJS_API_KEY=<キー>` を記載し、`docker compose -f deploy/docker-compose.yml up -d wiki-service`
+  で反映する（compose は `WikiJs__ApiKey: ${WIKIJS_API_KEY:-}` を参照）。
+- **Helm（共有/stg/prod）への投入**: チャートは Secret を**参照のみ**するため、事前に作成する。
+  ```bash
+  # 同期用 API キー（wiki サービスの WikiJs__ApiKey が secretKeyRef で参照。key=apiKey）
+  kubectl create secret generic wikijs-sync -n <namespace> \
+    --from-literal=apiKey='<Wiki.js で発行した API キー>'
+  # Wiki.js 専用 DB のパスワード（wikijs Deployment が参照。key=password）
+  kubectl create secret generic wikijs-db -n <namespace> \
+    --from-literal=password='<wikijs DB ユーザのパスワード>'
+  ```
+  ArgoCD 等の GitOps では SealedSecret / ExternalSecret で同名 Secret を供給する。
+- **ローテーション**: Wiki.js 管理 UI で新キーを発行 → Secret を更新
+  （`kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`）→
+  `kubectl rollout restart deployment/wiki` → 旧キーを Wiki.js 側で Revoke する。
+  dev は `.env` を書き換えて `docker compose up -d wiki-service`。
+- **注意**: API キーは Wiki.js の管理 GraphQL 全体に及ぶ強い権限を持つ。付与グループは最小権限とし、
+  キーは wiki-service 以外へ配布しない（認可は本システムの ABAC ゲートウェイが単一真実源であり、
+  キー漏えい時は Wiki.js 全ページの読み書きが可能になるため即時 Revoke する）。
+
 ## 監視・アラート
 
 | 監視対象 | 指標 | 閾値 | 通知先 |
