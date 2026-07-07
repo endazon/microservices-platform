@@ -12,13 +12,13 @@ public static class KnowledgePlatformAuthPolicies
     // FR-09: 属性辞書・ABAC ポリシーの管理は管理者のみ許可する。
     public const string AdminOnly = "AdminOnly";
 
-    // FR-15, SC-11, IADR-0029: 構成情報の閲覧は管理者または運用者に許可する。
-    public const string AdminOrOperator = "AdminOrOperator";
+    // FR-15, SC-11, IADR-0030: 構成情報の閲覧は管理者・運用者ロールに限定する。
+    public const string ConfigViewer = "ConfigViewer";
 
     // 管理者ロール（Keycloak のレルムロール想定）。
     public const string AdminRole = "platform-admin";
 
-    // FR-15, IADR-0029: 運用者ロール（構成閲覧のみ。管理系操作は不可）。
+    // FR-15, SC-11, IADR-0030: 運用者ロール（Keycloak のレルムロール想定。構成閲覧のみ。管理系操作は不可）。
     public const string OperatorRole = "platform-operator";
 }
 
@@ -54,9 +54,9 @@ public static class AuthExtensions
             options.AddPolicy(KnowledgePlatformAuthPolicies.AdminOnly, policy =>
                 policy.RequireRole(KnowledgePlatformAuthPolicies.AdminRole));
 
-            // FR-15, SC-11, IADR-0029: 構成情報 API・構成ビューア用。
+            // FR-15, SC-11, IADR-0030: 構成情報 API・構成ビューア用。
             // RequireRole の複数指定はいずれか一致（OR）で許可する。
-            options.AddPolicy(KnowledgePlatformAuthPolicies.AdminOrOperator, policy =>
+            options.AddPolicy(KnowledgePlatformAuthPolicies.ConfigViewer, policy =>
                 policy.RequireRole(
                     KnowledgePlatformAuthPolicies.AdminRole,
                     KnowledgePlatformAuthPolicies.OperatorRole));

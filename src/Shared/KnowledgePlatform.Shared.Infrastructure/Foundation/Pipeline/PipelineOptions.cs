@@ -8,11 +8,27 @@ public sealed class PipelineOptions
 
     public int Version { get; set; } = 1;
 
+    // 宣言済みイベント型の一覧（CI 接続性・循環検証の基準。FR-15 のイベント接続組み立てにも用いる）。
+    public List<string> Events { get; set; } = [];
+
+    // 同期 API 起点のイベント発行（購読を持たないため段ではない）。FR-15 の発行者算出に用いる。
+    public List<PipelineSourceOptions> Sources { get; set; } = [];
+
     // 段（イベント購読→処理→発行）の宣言。空＝宣言なし（既定配線で動作。ローカル・テスト互換）。
     public List<PipelineStepOptions> Steps { get; set; } = [];
 
     public PipelineStepOptions? FindStep(string name) =>
         Steps.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.Ordinal));
+}
+
+// 同期 API 起点のイベント発行元（pipeline.json の sources[]）。
+public sealed class PipelineSourceOptions
+{
+    // 発行されるイベント型名（events に列挙済み）。
+    public string Event { get; set; } = "";
+
+    // 発行するサービス名（例: data-source-service）。
+    public string Service { get; set; } = "";
 }
 
 public sealed class PipelineStepOptions

@@ -7,10 +7,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace AuthorizationService.Api.Tests;
 
-// FR-15, SC-11, IADR-0029: AdminOrOperator ポリシーの単体テスト。
+// FR-15, SC-11, IADR-0030: ConfigViewer ポリシーの単体テスト。
 // AddKnowledgePlatformAuth が登録する認可ポリシーを IAuthorizationService で直接評価し、
 // 管理者・運用者のいずれか一方の保持で許可、どちらも無ければ拒否（fail-closed）を確認する。
-public class AdminOrOperatorPolicyTests
+public class ConfigViewerPolicyTests
 {
     private static IAuthorizationService BuildAuthorizationService()
     {
@@ -32,34 +32,34 @@ public class AdminOrOperatorPolicyTests
     [InlineData(KnowledgePlatformAuthPolicies.AdminRole)]
     [InlineData(KnowledgePlatformAuthPolicies.OperatorRole)]
     [InlineData(KnowledgePlatformAuthPolicies.AdminRole, KnowledgePlatformAuthPolicies.OperatorRole)]
-    public async Task AdminOrOperator_AllowsAdminOrOperatorRole(params string[] roles)
+    public async Task ConfigViewer_AllowsAdminOrOperatorRole(params string[] roles)
     {
         var authz = BuildAuthorizationService();
         var user = AuthenticatedUserWithRoles(roles);
 
-        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.AdminOrOperator);
+        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeTrue();
     }
 
     [Fact]
-    public async Task AdminOrOperator_DeniesAuthenticatedUserWithoutEitherRole()
+    public async Task ConfigViewer_DeniesAuthenticatedUserWithoutEitherRole()
     {
         var authz = BuildAuthorizationService();
         var user = AuthenticatedUserWithRoles("viewer");
 
-        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.AdminOrOperator);
+        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeFalse();
     }
 
     [Fact]
-    public async Task AdminOrOperator_DeniesAnonymousUser()
+    public async Task ConfigViewer_DeniesAnonymousUser()
     {
         var authz = BuildAuthorizationService();
         var anonymous = new ClaimsPrincipal(new ClaimsIdentity()); // 未認証
 
-        var result = await authz.AuthorizeAsync(anonymous, resource: null, KnowledgePlatformAuthPolicies.AdminOrOperator);
+        var result = await authz.AuthorizeAsync(anonymous, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeFalse();
     }

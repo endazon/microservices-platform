@@ -1,4 +1,6 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Audit;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +13,10 @@ namespace KnowledgePlatform.Bff.Tests;
 
 public class BffTestFactory : WebApplicationFactory<Program>
 {
+    // FR-15 BFF テスト: 構成情報 API の集約対象の自己申告をスタブ化し、監査記録を捕捉する。
+    public EffectiveCollection StubEffective { get; set; } = EffectiveCollection.Empty;
+    public List<(string Action, string Subject, string Outcome)> RecordedAudits { get; } = [];
+
     // FR-04 BFF テスト: 後段 AiAnalysisService への転送を捕捉・スタブ化する
     public string? LastForwardedAuthorization { get; private set; }
 
@@ -46,7 +52,12 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:RetrievalService"] = "http://localhost:5003",
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
                 ["Services:FeedbackService"] = "http://localhost:5008",
-                ["Services:DashboardService"] = "http://localhost:5009"
+                ["Services:DashboardService"] = "http://localhost:5009",
+                // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
+                ["Drift:Enabled"] = "false",
+                ["Config:GitCommit"] = "abc1234",
+                ["Config:AppliedAt"] = "2026-07-07T00:00:00Z",
+                ["Config:AppliedBy"] = "argocd"
             }));
 
         builder.ConfigureServices(services =>
@@ -65,7 +76,25 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // FR-15: 自己申告の収集と監査ログをスタブ化する（最後の登録が解決される）。
+            services.AddSingleton<IEffectiveConfigCollector>(new StubEffectiveConfigCollector(this));
+            services.AddSingleton<IAuditLogger>(new RecordingAuditLogger(this));
         });
+    }
+
+    // FR-15: 自己申告の収集をテスト制御の EffectiveCollection に差し替える。
+    private sealed class StubEffectiveConfigCollector(BffTestFactory owner) : IEffectiveConfigCollector
+    {
+        public Task<EffectiveCollection> CollectAsync(CancellationToken ct = default) =>
+            Task.FromResult(owner.StubEffective);
+    }
+
+    // FR-15: 監査記録を捕捉して検証可能にする。
+    private sealed class RecordingAuditLogger(BffTestFactory owner) : IAuditLogger
+    {
+        public void Record(string action, string subject, string outcome, string? detail = null) =>
+            owner.RecordedAudits.Add((action, subject, outcome));
     }
 
     private sealed class StubHandler(BffTestFactory owner) : HttpMessageHandler

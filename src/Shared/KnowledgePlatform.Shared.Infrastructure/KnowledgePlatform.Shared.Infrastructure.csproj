@@ -3,6 +3,10 @@
     <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <!-- FR-15, ADR-0018: 構成情報 API・イントロスペクションの契約 DTO（ServiceIntrospectionDto ほか）を参照する。 -->
+    <ProjectReference Include="..\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />

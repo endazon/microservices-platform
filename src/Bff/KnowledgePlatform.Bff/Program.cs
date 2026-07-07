@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Bff.Foundation.Endpoints;
 using Serilog;
 
@@ -30,6 +31,9 @@ builder.Services.AddKnowledgePlatformHealthChecks()
 builder.Services.AddOpenApi();
 builder.Services.AddHttpClient();
 
+// FR-15, ADR-0018: 構成情報 API（実効構成の集約・ドリフト定期検出・監査）を BFF へ同居させる。
+builder.AddKnowledgePlatformConfigInspection();
+
 // FR-04, UC-01: AiAnalysisService 集約用の名前付き HTTP クライアント
 builder.Services.AddHttpClient("AiAnalysisService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:AiAnalysisService"]
@@ -55,6 +59,7 @@ app.MapSearchBffEndpoints();
 app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
+app.MapConfigBffEndpoints();
 
 app.Run();
 

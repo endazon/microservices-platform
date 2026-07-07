@@ -20,7 +20,8 @@ related_specs:
   - "../specs/20260708_issue-102_composability-fixed-variable-separation.md"
   - "../specs/20260708_issue-113_sc11-open-items-operator-role.md"
   - "../adr/IADR-0028_declarative-pipeline-config.md"
-  - "../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md"
+  - "../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md"
+  - "../adr/IADR-0030_operator-role-and-config-viewer-policy.md"
 ---
 
 # 画面仕様書: 構成ビューア（SC-11）
@@ -42,7 +43,7 @@ related_specs:
 
 | 項目 | 状態 | 備考 |
 | --- | --- | --- |
-| 構成情報 API（#112） | **未完了（前提）** | 実効構成・ドリフト・履歴の**データソース**。本画面は #112 の応答を表示するだけで、独自に構成を収集・判定しない |
+| 構成情報 API（#112） | **完了（PR #116）** | 実効構成・ドリフトの**データソース**（`/bff/admin/config`・`/bff/admin/config/drift`、IADR-0029）。本画面は API の応答を表示するだけで、独自に構成を収集・判定しない |
 | 宣言的パイプライン構成（#111） | 完了（`develop`） | 宣言（Git）側の正データ。`deploy/helm/knowledge-platform/files/pipeline.json` ＋ `pipeline.schema.json` |
 | 固定/可変分離（#102） | 完了 | 段・ポート・コネクタの分類基盤 |
 | フロントエンド基盤 | 後続フェーズ | 本リポジトリに SPA 実装は未着手。他 SC 画面群と足並みを揃える |
@@ -179,10 +180,12 @@ flowchart LR
   （200 で空を返さず、認可不足として遮断する。存在を推測させない）。
 - **監査ログ**: 本画面（構成情報 API）の閲覧操作は監査ログに記録する（計画 §設計要素 6・SC-11）。
 - **既存実装との整合（解決済み・2026-07-08）**: 運用者ロール **`platform-operator`** と
-  ポリシー **`AdminOrOperator`**（`platform-admin` または `platform-operator` で許可）を
+  ポリシー **`ConfigViewer`**（`platform-admin` または `platform-operator` で許可）を
   `KnowledgePlatformAuthPolicies`（`src/Shared/.../AuthExtensions.cs`）に新設済み
-  （[IADR-0029](../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md)）。
-  #112/#113 の実装は本ポリシーを `RequireAuthorization` に指定する。詳細は「未決事項」1 を参照。
+  （[IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
+  構成情報 API（#112, PR #116）は本ポリシーで保護済みで、非権限には 404 で存在秘匿する
+  （[IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)）。
+  #113 の画面実装も本ポリシーを用いる。詳細は「未決事項」1 を参照。
 - **BFF 経由**: 構成情報は内部構造そのものであり、収集（自己申告）はサービスメッシュ内部に限定する。
   外部公開は BFF 経由の読み取り専用集約エンドポイントに限る（既存の `/bff/dashboard/summary` と同様、
   `RequireAuthorization` ＋資格情報の後段伝播パターンを踏襲する）。
@@ -219,21 +222,22 @@ flowchart LR
 
 ## 未決事項
 
-各項目の決定先を明示する。**本リポジトリで先行決定できるのは 1 のみ**であり、2〜4 は #112、
-5 は計画リポジトリ、6 はフロントエンドフェーズで決定する。
+各項目の決定先を明示する。1（issue #113）と 2（issue #112 / PR #116）は解決済み。
+3・4 は画面実装時、5 は計画リポジトリ、6 はフロントエンドフェーズで決定する。
 
 1. **運用者ロールの新設** — ✅ **解決済み（2026-07-08、issue #113）**: ステークホルダー判断により
    運用者ロールを**必要とする**方針で確定。ロール `platform-operator`（Keycloak レルムロール）と
-   ポリシー `AdminOrOperator`（`platform-admin` または `platform-operator` で許可）を
+   ポリシー `ConfigViewer`（`platform-admin` または `platform-operator` で許可）を
    `KnowledgePlatformAuthPolicies` に新設した。既存 `AdminOnly` 画面（SC-10 等）は計画上「管理者」
    向けのため**変更しない**。決定の詳細は
-   [IADR-0029](../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md) を参照。
-   #112/#113 の実装は `RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOrOperator)` を用いる。
-2. **構成情報 API の実装配置**（→ #112 で決定）: BFF 配下の管理 API か既存サービス同居か
-   （独立サービス化はしない方針）。本画面は BFF 経由の読み取り専用集約を前提とする。
-3. **バージョン履歴のデータ源・保持範囲**（→ #112 で決定）: GitOps/ArgoCD 適用履歴と API 側保持の
-   いずれを正とするか。
-4. **グラフのレイアウト方針**（→ #112 完了後の画面実装時に決定）: 段/イベント増大時の可読性
+   [IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md) を参照。
+   #113 の画面実装は `ConfigViewer` ポリシーを用いる（#112 の API は適用済み）。
+2. **構成情報 API の実装配置** — ✅ **解決済み（#112 / PR #116）**: BFF 配下の管理 API
+   （`/bff/admin/config`・`/bff/admin/config/drift`）へ同居。独立サービス化しない
+   （[IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)）。
+3. **バージョン履歴のデータ源・保持範囲**（→ 画面実装時に確定）: #112 の API は実効構成・ドリフトを
+   提供済み。適用履歴（GitOps/ArgoCD 適用履歴 or API 側保持）の正データ選定が残る。
+4. **グラフのレイアウト方針**（→ 画面実装時に決定）: 段/イベント増大時の可読性
    （自動レイアウト・折りたたみ）。初期は小規模。
 5. **ワイヤーフレーム**（→ 計画リポジトリ側の作業）: 計画側 `05_screens/wireframes/sc-11.drawio` の作成。
 6. **フロントエンド基盤**（→ フロントエンドフェーズで決定）: 本リポジトリの SPA 実装方針が未確定。
