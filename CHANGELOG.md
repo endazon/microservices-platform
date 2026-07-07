@@ -4,6 +4,7 @@
 
 ### 新機能
 
+- **FR-13,UC-07,IADR-0023**: Wiki.js 稼働検証・削除/アーカイブ同期・配備不備の修正 (Issue #88) (#104) (c686aa5)
 - **ADR-0010,IADR-0022**: 既定を opus 化し fable-5(最難関)/Copilot 経路を追加 (#96) (51c565f)
 - 各サービスの launchSettings.json を追加し、開発環境の設定を整備 (280fa9b)
 - **FR-13,UC-07,ADR-0011**: WikiService を Wiki.js 同期・ABAC 認可プロキシへカットオーバー (IADR-0020 段2) (#66) (#86) (c51edad)
@@ -33,6 +34,7 @@
 
 ### 不具合修正
 
+- サブプロジェクトのコミットIDを更新 (dc7e62a)
 - サブプロジェクトのコミットIDを更新 (fa7320e)
 - **NFR**: Microsoft.OpenApi のバージョンを2.7.5に引き上げ、脆弱性NU1903を解消 (200eaf3)
 - **NFR**: 推移依存の脆弱性スキャンに関するADRをIADR-0018に更新 (784c0be)
@@ -46,6 +48,8 @@
 
 ### ドキュメント
 
+- **IADR-0018**: 本文の採番を IADR-0017 から IADR-0018 へ統一 (#103) (b921fd8)
+- **NFR**: CHANGELOG を自動更新 (#93) (263d75f)
 - **NFR**: CHANGELOG を自動更新 (39cc8d5)
 - **FR-08,FR-10,FR-11**: openapi.yaml へ Feedback/Dashboard/LlmGateway の API を手書き追記 (#91) (2bb03c1)
 - **NFR**: CHANGELOG を自動更新 (#90) (ca64cc9)
