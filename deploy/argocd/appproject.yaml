@@ -1,0 +1,41 @@
+# ADR-0007: CI/CD・GitOps（ArgoCD + Helm + Harbor）
+# AppProject — knowledge-platform の配備を、許可したソース Git・配備先 Namespace・リソース種別に制約する。
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: knowledge-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  description: 社内ナレッジ活用プラットフォーム（8サービス + BFF + Wiki.js）
+  # 許可するソースリポジトリ（Git を単一の真実源とする）。
+  sourceRepos:
+    - https://github.com/endazon/microservices-platform.git
+  # 配備先クラスタ・Namespace。
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: knowledge-platform
+    # Istio リソース（PeerAuthentication/DestinationRule）は同 Namespace に閉じる。
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # 配備先 Namespace 内で許可するリソース種別を、本プラットフォームが実際に配備する
+  # 種別に限定する（最小権限）。恒久フェーズで新種別を追加する場合はここへ明示追加する。
+  namespaceResourceWhitelist:
+    # Helm チャートが実際にレンダリングする種別（deployment/service/ingress/minio/wikijs/
+    # networkpolicy/istio-mtls テンプレート由来）。
+    - group: "apps"
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: "networking.k8s.io"
+      kind: Ingress
+    - group: "networking.k8s.io"
+      kind: NetworkPolicy
+    - group: "security.istio.io"
+      kind: PeerAuthentication
+    - group: "networking.istio.io"
+      kind: DestinationRule

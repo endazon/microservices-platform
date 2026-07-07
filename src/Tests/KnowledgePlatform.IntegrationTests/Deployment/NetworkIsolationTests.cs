@@ -3,10 +3,11 @@ using FluentAssertions;
 
 namespace KnowledgePlatform.IntegrationTests.Deployment;
 
-// IADR-0017 / #62, FR-05, NFR(機密性), ADR-0005:
-// mesh(mTLS) 導入までのサービス間認証は「ネットワーク分離」を第一防御とする。
-// 内部サービス API は無認証で到達可能なため、docker-compose では host 公開せず expose に留める
-// （外部からの入口は BFF に一本化）。本テストは compose のホスト公開ポートの回帰（内部サービスの再公開）を防ぐ。
+// IADR-0017（Superseded by IADR-0026） / #62 / #100, FR-05, NFR(機密性), ADR-0005:
+// ネットワーク分離はもはや「第一防御」ではない（第一防御は Istio STRICT mTLS。MeshMtlsTests 参照）。
+// IADR-0026 により、docker-compose（ローカル開発ランタイム）の host 非公開は「多層防御
+// （defense-in-depth）」として維持する。外部からの入口は引き続き BFF に一本化する。
+// 本テストは compose のホスト公開ポートの回帰（内部サービスの再公開）を多層防御として防ぐ。
 [Trait("Category", "Deployment")]
 public sealed class NetworkIsolationTests
 {

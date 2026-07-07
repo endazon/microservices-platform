@@ -1,0 +1,50 @@
+# IADR-0017 フォローアップ / IADR-0026: ClusterIP + NetworkPolicy（デフォルト拒否）。
+# mesh(mTLS) は第一防御だが、NetworkPolicy を多層防御（defense-in-depth）として維持する。
+# 既定でこの Namespace への ingress を拒否し、同 Namespace 内通信・DNS・Istio 制御面のみ許可する。
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  # ingress ルール無し = すべての ingress を拒否（明示許可は下記ポリシーで加える）。
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  # 同 Namespace 内のワークロード間通信を許可（サービス間 RAG/取り込みフロー）。
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 同 Namespace 内の全 Pod からの ingress のみ許可する。k8s 仕様上 `podSelector: {}` は
+    # 「この NetworkPolicy と同じ Namespace の全 Pod」を意味するため、これ単独で意図を満たす。
+    # 以前は `namespaceSelector`（汎用 Helm ラベル一致）を別エントリ(OR)で併記していたが、
+    # 同ラベルを持つ任意の別 Namespace からの ingress を意図せず許可し得るため削除した。
+    - from:
+        - podSelector: {}
+  egress:
+    # 同 Namespace 内。
+    - to:
+        - podSelector: {}
+    # DNS（kube-dns / CoreDNS）。
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

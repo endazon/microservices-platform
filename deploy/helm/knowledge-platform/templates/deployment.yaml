@@ -20,6 +20,11 @@ spec:
       labels:
         app: {{ $name }}-service
     spec:
+      {{- with $.Values.imagePullSecrets }}
+      # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ $name }}-service
           image: "{{ $.Values.global.image.registry }}/{{ $svc.image }}:{{ $svc.tag | default "latest" }}"

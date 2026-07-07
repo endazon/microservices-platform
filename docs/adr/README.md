@@ -40,7 +40,7 @@
 | IADR-0014 | Qdrant の ABAC 属性ペイロードは両表現で復元し、フィルタキー解釈を実機確認する | Accepted |
 | IADR-0015 | CI トリガーの develop 整合・コミット規約チェック・CHANGELOG 誤帰属補正 | Accepted |
 | IADR-0016 | Microsoft.OpenApi を推移的ピンでパッチ版に固定し NU1903 を解消する | Accepted |
-| IADR-0017 | mesh 導入までのサービス間認証はネットワーク分離を第一防御とする | Accepted |
+| IADR-0017 | mesh 導入までのサービス間認証はネットワーク分離を第一防御とする | Superseded by IADR-0026 |
 | IADR-0018 | 推移依存の脆弱性を CI で定期スキャンする | Accepted |
 | IADR-0019 | データソースが原本へ既定 ABAC 属性（機密区分）を付与する | Accepted |
 | IADR-0020 | Wiki.js を配備し WikiService を「同期・ABAC ゲートウェイ」へ縮退する（IADR-0013 を Supersede、ADR-0011 に追従） | Accepted |
@@ -49,3 +49,4 @@
 | IADR-0023 | 文書の削除・アーカイブを Wiki.js へ伝播する（削除イベント新設＋status 拡張） | Accepted |
 | IADR-0024 | MinIO のバケット/キー設計・バージョニング・アクセス制御と共有クライアント | Accepted |
 | IADR-0025 | 埋め込みを機密区分ルーティング（Voyage 既定＋高機密セルフホスト fail-closed）とモデル別コレクションで実装する | Accepted |
+| IADR-0026 | Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017（ネットワーク分離）を解消する | Accepted |

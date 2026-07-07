@@ -26,9 +26,13 @@ plan_refs: []
 
 | 項目 | 内容 |
 | --- | --- |
-| 環境 | dev / stg / prod |
-| 手順 |  |
-| ロールバック |  |
+| 環境 | dev（docker-compose） / stg・prod（k3s + Istio + ArgoCD） |
+| 実行基盤 | k3s（ADR-0008）。Helm チャート `deploy/helm/knowledge-platform`。Namespace `knowledge-platform`（Istio 注入有効） |
+| 配備方式 | GitOps（ADR-0007）。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
+| サービス間通信 | Istio STRICT mTLS（ADR-0005 / IADR-0026）。手順 `deploy/istio/README.md` |
+| 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
+| デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
+| ロールバック | `argocd app rollback knowledge-platform <revision>` もしくは Git revert（GitOps 原則） |
 
 ### サービス構成に関する運用注記
 

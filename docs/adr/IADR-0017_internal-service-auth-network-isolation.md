@@ -1,7 +1,8 @@
 ---
 title: IADR-0017 mesh 導入までのサービス間認証はネットワーク分離を第一防御とする
 type: impl-adr
-status: Accepted
+status: Superseded
+superseded_by: IADR-0026
 related_ids:
   - FR-05
   - NFR
@@ -9,7 +10,7 @@ related_ids:
   - ADR-0005
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-07
 plan_refs:
   - "../../CLAUDE.md（自動化・検証・安全）"
 related_specs:
@@ -22,10 +23,16 @@ related_adrs:
 
 # IADR-0017: mesh 導入までのサービス間認証はネットワーク分離を第一防御とする
 
-- 状態: Accepted
-- 日付: 2026-07-04
+- 状態: **Superseded by IADR-0026**（2026-07-07）
+- 日付: 2026-07-04（Superseded: 2026-07-07）
 - 決定者: claude（実装）
-- 関連: FR-05、NFR（機密性）、ADR-0004、ADR-0005、Issue #62（親 #48、関連 #55）
+- 関連: FR-05、NFR（機密性）、ADR-0004、ADR-0005、Issue #62（親 #48、関連 #55）、Issue #100（解消）
+
+> **解消の記録**: ADR-0005（Istio / mTLS）の Accepted 確定（2026-07-06）と Issue #100 での本番実行基盤
+> 配備により、本 IADR が前提とした「mesh 未配備」の条件が解消された。サービス間認証の第一防御は
+> Istio STRICT mTLS へ移行し（[IADR-0026](IADR-0026_mesh-mtls-supersedes-network-isolation.md)）、
+> 本 IADR のネットワーク分離は「第一防御」から「多層防御（defense-in-depth）」へ格下げして維持する。
+> `NetworkIsolationTests` は多層防御の回帰として存続する。
 
 ## コンテキストと課題
 
