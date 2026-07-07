@@ -10,6 +10,33 @@ global:
   auth:
     authority: http://keycloak:8080/realms/knowledge-platform
 
+# ADR-0008: k3s 実行基盤 — 配備先 Namespace。
+# istio-injection: enabled により、この Namespace の Pod へサイドカーが自動注入される（段階2の前提）。
+namespace:
+  # チャート適用時に Namespace を作成するか（ArgoCD の CreateNamespace=true を使う場合は false でよい）。
+  create: true
+  name: knowledge-platform
+  # Istio サイドカー自動注入ラベル。mesh.enabled=true のとき有効化する。
+  istioInjection: true
+
+# ADR-0005: サービスメッシュ（Istio / mTLS）— サービス間通信を STRICT mTLS で暗号化・相互認証する。
+# これをもって暫定運用（IADR-0017: ネットワーク分離を第一防御）を解消する（後継 IADR-0024）。
+mesh:
+  enabled: true
+  # PeerAuthentication の mTLS モード。恒久像は STRICT（平文フォールバック無し）。
+  # 実クラスタへの初回導入時は PERMISSIVE で移行を確認してから STRICT へ切り替える運用を推奨。
+  mtlsMode: STRICT
+
+# IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
+# mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0024）。
+networkPolicy:
+  enabled: true
+
+# ADR-0007: Harbor レジストリからの Pull に用いる imagePullSecrets（docker-registry 型 Secret 名）。
+# Secret 本体はコミットしない。deploy/secrets/README.md の手順で事前作成する。
+imagePullSecrets: []
+  # - name: harbor-pull
+
 services:
   document:
     enabled: true

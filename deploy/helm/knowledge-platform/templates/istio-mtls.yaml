@@ -1,0 +1,34 @@
+# ADR-0005: サービスメッシュ（Istio / mTLS）
+# サービス間通信を STRICT mTLS で暗号化・相互認証する。これをもって暫定運用
+# （IADR-0017: ネットワーク分離を第一防御）を解消する（後継 IADR-0024）。
+#
+# - PeerAuthentication: mesh に参加するワークロードが受け付ける接続を mTLS のみに限定（STRICT）。
+#   STRICT では平文（plaintext）フォールバックが無く、サイドカー未注入クライアントからの平文到達を拒否する。
+# - DestinationRule: 同 Namespace 宛の送信側 TLS を ISTIO_MUTUAL（メッシュ発行証明書での相互 TLS）に固定。
+{{- if .Values.mesh.enabled }}
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: knowledge-platform-mtls
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  # namespace 全体（selector 無し）に適用。
+  mtls:
+    mode: {{ .Values.mesh.mtlsMode }}
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: knowledge-platform-mtls
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  # 同 Namespace 内の全ホスト宛の送信を ISTIO_MUTUAL に固定する。
+  host: "*.{{ .Values.namespace.name }}.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+{{- end }}

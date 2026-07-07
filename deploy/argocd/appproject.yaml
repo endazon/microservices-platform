@@ -1,0 +1,25 @@
+# ADR-0007: CI/CD・GitOps（ArgoCD + Helm + Harbor）
+# AppProject — knowledge-platform の配備を、許可したソース Git・配備先 Namespace・リソース種別に制約する。
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: knowledge-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+spec:
+  description: 社内ナレッジ活用プラットフォーム（8サービス + BFF + Wiki.js）
+  # 許可するソースリポジトリ（Git を単一の真実源とする）。
+  sourceRepos:
+    - https://github.com/endazon/microservices-platform.git
+  # 配備先クラスタ・Namespace。
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: knowledge-platform
+    # Istio リソース（PeerAuthentication/DestinationRule）は同 Namespace に閉じる。
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

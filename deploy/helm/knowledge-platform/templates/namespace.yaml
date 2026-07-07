@@ -1,0 +1,14 @@
+# ADR-0008: k3s 実行基盤 — 配備先 Namespace。
+# ADR-0005: mesh.enabled のとき istio-injection ラベルでサイドカーを自動注入する（STRICT mTLS の前提）。
+{{- if .Values.namespace.create }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+    {{- if and .Values.mesh.enabled .Values.namespace.istioInjection }}
+    # Istio: この Namespace の Pod へ Envoy サイドカーを自動注入する。
+    istio-injection: enabled
+    {{- end }}
+{{- end }}

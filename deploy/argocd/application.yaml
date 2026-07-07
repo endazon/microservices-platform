@@ -1,0 +1,45 @@
+# ADR-0007: CI/CD・GitOps（ArgoCD + Helm + Harbor）
+# Application — 本リポジトリの Helm チャート（deploy/helm/knowledge-platform）を
+# knowledge-platform Namespace へ宣言的に同期する。Git の状態が単一の真実源であり、
+# 手動 kubectl 適用に依存しない（受け入れ基準: ArgoCD 経由のデプロイが Git と同期）。
+#
+# 独立デプロイ・ロールバック（NFR）:
+#   - サービス単位のデプロイは values の services.<name>.tag（イメージタグ）を Git で更新して行う。
+#   - ロールバックは `argocd app rollback knowledge-platform <revision>` もしくは Git revert で行う。
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: knowledge-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: knowledge-platform
+  source:
+    repoURL: https://github.com/endazon/microservices-platform.git
+    # GitOps の配備対象リビジョン（安定版）。運用ポリシーに応じて変更する。
+    targetRevision: main
+    path: deploy/helm/knowledge-platform
+    helm:
+      releaseName: knowledge-platform
+      # 環境別の上書きは values-<env>.yaml を valueFiles に追加する。
+      # valueFiles:
+      #   - values-production.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: knowledge-platform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
