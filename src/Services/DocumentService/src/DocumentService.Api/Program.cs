@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
@@ -36,6 +37,10 @@ builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 builder.AddKnowledgePlatformPipelineConfig();
 var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
 
+// FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（catalog）の実効値を申告する。
+builder.Services.AddKnowledgePlatformIntrospection("document-service", pipeline,
+    i => i.AddStep<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>());
+
 builder.Services.AddMassTransit(x =>
 {
     // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
@@ -65,6 +70,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDocumentEndpoints();
