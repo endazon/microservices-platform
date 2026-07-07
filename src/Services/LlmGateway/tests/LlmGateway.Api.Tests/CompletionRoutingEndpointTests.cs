@@ -1,5 +1,5 @@
 using FluentAssertions;
-using LlmGateway.Api.Routing;
+using LlmGateway.Api.Foundation.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;

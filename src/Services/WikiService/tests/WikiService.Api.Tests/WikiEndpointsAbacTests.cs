@@ -3,8 +3,8 @@ using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
-using WikiService.Api.Domain;
-using WikiService.Api.Infrastructure;
+using WikiService.Api.Foundation.Domain;
+using WikiService.Api.Foundation.Persistence;
 
 namespace WikiService.Api.Tests;
 

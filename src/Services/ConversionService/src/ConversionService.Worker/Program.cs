@@ -1,6 +1,10 @@
-using ConversionService.Worker.Consumers;
-using ConversionService.Worker.Services;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
+using ConversionService.Worker.Composable.Steps;
+using ConversionService.Worker.Foundation.Ports;
+using ConversionService.Worker.Foundation.Services;
+using ConversionService.Worker.Foundation.Domain;
+using ConversionService.Worker.Composable.Adapters;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Serilog;
 

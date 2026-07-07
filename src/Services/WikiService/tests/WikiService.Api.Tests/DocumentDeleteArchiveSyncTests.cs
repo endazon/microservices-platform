@@ -5,10 +5,11 @@ using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
-using WikiService.Api.Consumers;
-using WikiService.Api.Domain;
-using WikiService.Api.Infrastructure;
-using WikiService.Api.Services;
+using WikiService.Api.Composable.Steps;
+using WikiService.Api.Foundation.Domain;
+using WikiService.Api.Foundation.Persistence;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
 
 namespace WikiService.Api.Tests;
 

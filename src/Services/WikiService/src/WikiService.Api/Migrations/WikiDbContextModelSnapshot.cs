@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using WikiService.Api.Infrastructure;
+using WikiService.Api.Foundation.Persistence;
 
 #nullable disable
 
@@ -22,7 +22,7 @@ namespace WikiService.Api.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("WikiService.Api.Domain.WikiPage", b =>
+            modelBuilder.Entity("WikiService.Api.Foundation.Domain.WikiPage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()

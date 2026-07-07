@@ -21,7 +21,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
         _factory = new WikiServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::WikiService.Api.Infrastructure.WikiDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::WikiService.Api.Foundation.Persistence.WikiDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

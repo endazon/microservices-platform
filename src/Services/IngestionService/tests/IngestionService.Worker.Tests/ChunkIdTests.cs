@@ -1,5 +1,6 @@
 using FluentAssertions;
-using IngestionService.Worker.Services;
+using IngestionService.Worker.Foundation.Ports;
+using IngestionService.Worker.Foundation.Domain;
 
 namespace IngestionService.Worker.Tests;
 

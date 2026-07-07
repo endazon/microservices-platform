@@ -1,5 +1,7 @@
+using IngestionService.Worker.Composable.Adapters;
 using FluentAssertions;
-using IngestionService.Worker.Services;
+using IngestionService.Worker.Foundation.Ports;
+using IngestionService.Worker.Foundation.Domain;
 using Qdrant.Client.Grpc;
 
 namespace IngestionService.Worker.Tests;

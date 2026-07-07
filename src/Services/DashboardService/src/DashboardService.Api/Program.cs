@@ -1,6 +1,6 @@
-using DashboardService.Api.Endpoints;
-using DashboardService.Api.Infrastructure;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using DashboardService.Api.Foundation.Endpoints;
+using DashboardService.Api.Foundation.Persistence;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 

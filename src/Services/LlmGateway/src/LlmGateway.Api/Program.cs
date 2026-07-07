@@ -1,8 +1,9 @@
 using Anthropic.SDK;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
-using LlmGateway.Api.Endpoints;
-using LlmGateway.Api.Providers;
-using LlmGateway.Api.Routing;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using LlmGateway.Api.Foundation.Endpoints;
+using LlmGateway.Api.Foundation.Ports;
+using LlmGateway.Api.Composable.Adapters;
+using LlmGateway.Api.Foundation.Routing;
 using Microsoft.Extensions.Options;
 using Serilog;
 

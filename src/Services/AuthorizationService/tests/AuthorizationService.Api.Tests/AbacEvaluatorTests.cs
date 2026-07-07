@@ -1,5 +1,5 @@
-using AuthorizationService.Api.Domain;
-using AuthorizationService.Api.Services;
+using AuthorizationService.Api.Foundation.Domain;
+using AuthorizationService.Api.Foundation.Services;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 

@@ -1,6 +1,6 @@
-using AiAnalysisService.Api.Endpoints;
-using AiAnalysisService.Api.Services;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using AiAnalysisService.Api.Foundation.Endpoints;
+using AiAnalysisService.Api.Foundation.Services;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.aianalysis-service";

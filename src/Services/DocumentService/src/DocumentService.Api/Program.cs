@@ -1,6 +1,6 @@
-using DocumentService.Api.Endpoints;
-using DocumentService.Api.Infrastructure;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using DocumentService.Api.Foundation.Endpoints;
+using DocumentService.Api.Foundation.Persistence;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -34,7 +34,7 @@ builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 builder.Services.AddMassTransit(x =>
 {
     // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
-    x.AddConsumer<DocumentService.Api.Consumers.DocumentNormalizedConsumer>();
+    x.AddConsumer<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>();
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]

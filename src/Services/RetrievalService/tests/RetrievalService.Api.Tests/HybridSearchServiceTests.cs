@@ -1,6 +1,6 @@
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using RetrievalService.Api.Search;
+using RetrievalService.Api.Foundation.Services;
 
 namespace RetrievalService.Api.Tests;
 

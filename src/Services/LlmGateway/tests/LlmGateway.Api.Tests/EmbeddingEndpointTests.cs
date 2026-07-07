@@ -1,7 +1,7 @@
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using LlmGateway.Api.Providers;
-using LlmGateway.Api.Routing;
+using LlmGateway.Api.Foundation.Ports;
+using LlmGateway.Api.Foundation.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

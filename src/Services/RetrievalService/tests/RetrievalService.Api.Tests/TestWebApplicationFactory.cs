@@ -1,11 +1,11 @@
+using RetrievalService.Api.Composable.Adapters;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Qdrant.Client;
-using RetrievalService.Api.Abstractions;
-using RetrievalService.Api.Infrastructure;
+using RetrievalService.Api.Foundation.Ports;
 
 namespace RetrievalService.Api.Tests;
 

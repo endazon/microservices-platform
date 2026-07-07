@@ -1,9 +1,9 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using Qdrant.Client;
-using RetrievalService.Api.Abstractions;
-using RetrievalService.Api.Endpoints;
-using RetrievalService.Api.Infrastructure;
-using RetrievalService.Api.Search;
+using RetrievalService.Api.Foundation.Ports;
+using RetrievalService.Api.Foundation.Endpoints;
+using RetrievalService.Api.Composable.Adapters;
+using RetrievalService.Api.Foundation.Services;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.retrieval-service";

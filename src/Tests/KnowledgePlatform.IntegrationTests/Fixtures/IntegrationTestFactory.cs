@@ -1,7 +1,7 @@
-using DocumentService.Api.Infrastructure;
-using DataSourceService.Api.Infrastructure;
-using AuthorizationService.Api.Infrastructure;
-using WikiService.Api.Infrastructure;
+using DocumentService.Api.Foundation.Persistence;
+using DataSourceService.Api.Foundation.Persistence;
+using AuthorizationService.Api.Foundation.Persistence;
+using WikiService.Api.Foundation.Persistence;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -137,7 +137,7 @@ public sealed class DocumentServiceFactory : IntegrationTestFactoryBase<
     public DocumentServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
     // FR-01, UC-04: DocumentNormalized 購読 Consumer
     protected override void RegisterConsumers(IBusRegistrationConfigurator x)
-        => x.AddConsumer<global::DocumentService.Api.Consumers.DocumentNormalizedConsumer>();
+        => x.AddConsumer<global::DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>();
 }
 
 public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
@@ -167,5 +167,5 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
 {
     public WikiServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
     protected override void RegisterConsumers(IBusRegistrationConfigurator x)
-        => x.AddConsumer<global::WikiService.Api.Consumers.DocumentSyncConsumer>();
+        => x.AddConsumer<global::WikiService.Api.Composable.Steps.DocumentSyncConsumer>();
 }

@@ -1,6 +1,6 @@
-using AuthorizationService.Api.Endpoints;
-using AuthorizationService.Api.Infrastructure;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using AuthorizationService.Api.Foundation.Endpoints;
+using AuthorizationService.Api.Foundation.Persistence;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 

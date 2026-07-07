@@ -7,8 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using WikiService.Api.Infrastructure;
-using WikiService.Api.Services;
+using WikiService.Api.Foundation.Persistence;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
 
 namespace WikiService.Api.Tests;
 

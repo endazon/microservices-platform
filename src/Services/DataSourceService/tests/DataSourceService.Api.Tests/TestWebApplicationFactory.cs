@@ -1,4 +1,4 @@
-using DataSourceService.Api.Infrastructure;
+using DataSourceService.Api.Foundation.Persistence;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

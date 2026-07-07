@@ -1,7 +1,7 @@
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
-using RetrievalService.Api.Abstractions;
+using RetrievalService.Api.Foundation.Ports;
 using System.Net;
 using System.Net.Http.Json;
 

@@ -1,6 +1,9 @@
-using IngestionService.Worker.Consumers;
-using IngestionService.Worker.Services;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
+using IngestionService.Worker.Composable.Steps;
+using IngestionService.Worker.Foundation.Ports;
+using IngestionService.Worker.Foundation.Domain;
+using IngestionService.Worker.Composable.Adapters;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Qdrant.Client;
 using Serilog;

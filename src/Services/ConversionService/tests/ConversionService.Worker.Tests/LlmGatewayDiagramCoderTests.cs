@@ -1,8 +1,11 @@
+using ConversionService.Worker.Composable.Adapters;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using ConversionService.Worker.Services;
+using ConversionService.Worker.Foundation.Ports;
+using ConversionService.Worker.Foundation.Services;
+using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.Logging.Abstractions;

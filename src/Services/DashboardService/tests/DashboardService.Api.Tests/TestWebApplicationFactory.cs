@@ -1,4 +1,4 @@
-using DashboardService.Api.Infrastructure;
+using DashboardService.Api.Foundation.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
