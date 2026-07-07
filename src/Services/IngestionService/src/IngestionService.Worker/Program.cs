@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Worker.Composable.Steps;
 using IngestionService.Worker.Foundation.Ports;
@@ -44,9 +45,13 @@ builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c 
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
 
 // ADR-0003: MassTransit
+// FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
+builder.AddKnowledgePlatformPipelineConfig();
+var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
+
 builder.Services.AddMassTransit(x =>
 {
-    x.AddConsumer<DocumentUpdatedConsumer>();
+    x.AddKnowledgePlatformPipelineStep<DocumentUpdatedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]

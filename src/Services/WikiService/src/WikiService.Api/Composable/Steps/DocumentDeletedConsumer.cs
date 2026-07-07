@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +21,11 @@ namespace WikiService.Api.Composable.Steps;
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
-    ILogger<DocumentDeletedConsumer> logger) : IConsumer<DocumentDeleted>
+    ILogger<DocumentDeletedConsumer> logger) : IConsumer<DocumentDeleted>, IPipelineStep
 {
+    // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
+    public static string StepName => "wiki-delete";
+
     public async Task Consume(ConsumeContext<DocumentDeleted> ctx)
     {
         var ev = ctx.Message;

@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
@@ -13,8 +14,11 @@ namespace ConversionService.Worker.Composable.Steps;
 public class RawDocumentFetchedConsumer(
     INormalizationService normalizer,
     IPublishEndpoint bus,
-    ILogger<RawDocumentFetchedConsumer> logger) : IConsumer<RawDocumentFetched>
+    ILogger<RawDocumentFetchedConsumer> logger) : IConsumer<RawDocumentFetched>, IPipelineStep
 {
+    // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
+    public static string StepName => "convert";
+
     public async Task Consume(ConsumeContext<RawDocumentFetched> context)
     {
         var ev = context.Message;
