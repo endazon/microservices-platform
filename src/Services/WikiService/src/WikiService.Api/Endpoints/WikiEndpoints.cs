@@ -29,7 +29,10 @@ public static class WikiEndpoints
                 return Results.Ok(Array.Empty<WikiPageSummary>());
 
             // 属性は jsonb のため取得後にメモリ内で ABAC 評価する（検索側と同方針）。
-            var pages = await db.Pages.OrderBy(p => p.Title).ToListAsync(ct);
+            // Issue #88: アーカイブ済み（非公開化）ページは権限があっても一覧に出さない。
+            var pages = await db.Pages
+                .Where(p => p.Status == WikiPageStatus.Active)
+                .OrderBy(p => p.Title).ToListAsync(ct);
             var visible = AbacPageFilter.Filter(pages, scope)
                 .Select(p => new WikiPageSummary(p.Id, p.DocumentId, p.Title, p.Slug, p.WikiPath, p.Status, p.SyncedAt))
                 .ToList();
@@ -62,7 +65,8 @@ public static class WikiEndpoints
         HttpContext http, CancellationToken ct)
     {
         var scope = await resolver.ResolveAsync(http, ct);
-        if (page is null || !AbacPageFilter.Matches(page, scope))
+        // Issue #88: アーカイブ済みページは権限があっても 404（存在秘匿の意味論を維持・IADR-0009）。
+        if (page is null || page.Status != WikiPageStatus.Active || !AbacPageFilter.Matches(page, scope))
             return Results.NotFound();
 
         var content = await wikiJs.GetRenderedContentAsync(page.WikiPath, ct);

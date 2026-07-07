@@ -51,6 +51,53 @@ public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> l
             : single.GetProperty("content").GetString();
     }
 
+    // Issue #88: アーカイブ（非公開化）。unpublish + private で Wiki.js 上から不可視にする。
+    // 未存在は冪等に成功扱い（再配信・未同期 ID に対して安全）。
+    public async Task ArchivePageAsync(string path, CancellationToken ct = default)
+    {
+        var normalized = NormalizePath(path);
+        var existingId = await GetPageIdByPathAsync(normalized, ct);
+        if (existingId is not int id)
+        {
+            logger.LogInformation("Wiki.js page archive skipped (not found): path={Path}", normalized);
+            return;
+        }
+
+        const string mutation = """
+            mutation ($id: Int!, $isPublished: Boolean!, $isPrivate: Boolean!) {
+              pages { update(id: $id, isPublished: $isPublished, isPrivate: $isPrivate) {
+                responseResult { succeeded errorCode message }
+              } }
+            }
+            """;
+        var data = await PostAsync(mutation, new { id, isPublished = false, isPrivate = true }, ct);
+        EnsureSucceeded(data.GetProperty("pages").GetProperty("update"), "update", normalized);
+        logger.LogInformation("Wiki.js page archived (unpublished/private): path={Path} id={Id}", normalized, id);
+    }
+
+    // Issue #88: 実体撤去（pages.delete）。社内文書の外部システム残存防止。未存在は冪等に成功扱い。
+    public async Task DeletePageAsync(string path, CancellationToken ct = default)
+    {
+        var normalized = NormalizePath(path);
+        var existingId = await GetPageIdByPathAsync(normalized, ct);
+        if (existingId is not int id)
+        {
+            logger.LogInformation("Wiki.js page delete skipped (not found): path={Path}", normalized);
+            return;
+        }
+
+        const string mutation = """
+            mutation ($id: Int!) {
+              pages { delete(id: $id) {
+                responseResult { succeeded errorCode message }
+              } }
+            }
+            """;
+        var data = await PostAsync(mutation, new { id }, ct);
+        EnsureSucceeded(data.GetProperty("pages").GetProperty("delete"), "delete", normalized);
+        logger.LogInformation("Wiki.js page deleted: path={Path} id={Id}", normalized, id);
+    }
+
     private async Task<int?> GetPageIdByPathAsync(string path, CancellationToken ct)
     {
         const string query = """

@@ -75,6 +75,10 @@ file class StubWikiJsClient : IWikiJsClient
 {
     public Task UpsertPageAsync(WikiJsPage page, CancellationToken ct = default) => Task.CompletedTask;
 
+    public Task ArchivePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task DeletePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
     public Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
         => Task.FromResult<string?>($"<article data-path=\"{path}\">rendered</article>");
 }

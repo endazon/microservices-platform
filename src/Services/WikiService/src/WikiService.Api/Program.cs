@@ -56,6 +56,8 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 builder.Services.AddMassTransit(x =>
 {
     x.AddConsumer<DocumentSyncConsumer>();
+    // Issue #88: 文書削除の伝播（Wiki.js 実体撤去・メタデータ削除）。
+    x.AddConsumer<DocumentDeletedConsumer>();
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
