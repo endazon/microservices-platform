@@ -8,7 +8,7 @@ related_ids:
   - UC-07
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-07-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
@@ -58,9 +58,20 @@ related_adrs:
 | T-12 | status=normalized の更新イベント | 発行→消費 | ページ作成・属性保持 | 更新反映 | 自動 |
 | T-13 | status=draft の更新イベント | 発行→消費 | 同期されない | 更新反映 | 自動 |
 | T-14 | 同一 DocumentId で 2 回発行 | 発行→消費 | 1 ページに更新（タイトル/属性が最新） | 更新反映 | 自動 |
+| T-15 | 同期済みページ・status=archived 受信 | 発行→消費 | Wiki.js 非公開化＋メタデータ Archived | 削除/アーカイブ伝播（IADR-0023） | 自動 |
+| T-16 | 未同期 ID の archived 受信 | 発行→消費 | 例外なし（冪等）・Wiki.js 非公開化のみ試行 | 同上 | 自動 |
+| T-17 | アーカイブ後に published 再受信 | 発行→消費 | メタデータ Active へ復帰（可逆） | 同上 | 自動 |
+| T-18 | 同期済みページ・DocumentDeleted 受信 | 発行→消費 | Wiki.js 実体撤去＋メタデータ行削除 | 同上 | 自動 |
+| T-19 | 未同期 ID / 再送の DocumentDeleted | 発行→消費 | 例外なし（冪等） | 同上 | 自動 |
+| T-20 | Archived ページ・権限あり | `GET /wiki/pages` / by-doc | 一覧に出ない・個別 404（存在秘匿維持） | 同上 | 自動 |
+| T-21 | 未存在ページの singleByPath（errors 6003） | `UpsertPageAsync` | 例外化せず create へ進む（稼働実測整合） | 更新反映 | 自動 |
+| T-22 | アーカイブの Wiki.js 送信シェイプ | `ArchivePageAsync` | content/title/tags を含む全項目 update＋unpublish | 削除/アーカイブ伝播 | 自動 |
 
 ## 実装マッピング
 
 - `AbacPageFilterTests`（T-01〜T-06）
-- `WikiEndpointsAbacTests`（T-07〜T-11）
+- `WikiEndpointsAbacTests`（T-07〜T-11、T-20）
 - `DocumentSyncConsumerTests`（T-12〜T-14）
+- `DocumentDeleteArchiveSyncTests`（T-15〜T-19）
+- `WikiJsGraphQlClientTests`（T-21〜T-22。稼働 Wiki.js 2.5.314 の実測応答を再生）
+- `DocumentLifecycleEventTests`（DocumentService 側: archive/delete のイベント発行）

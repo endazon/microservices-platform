@@ -107,6 +107,19 @@ public static class DocumentEndpoints
             return Results.Ok(ToDto(doc));
         });
 
+        // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流の Wiki.js 同期が
+        // status=archived を受けてページを非公開化・メタデータ Archived 化する。
+        g.MapPost("/{id:guid}/archive", async (Guid id, DocumentDbContext db,
+            IPublishEndpoint bus) =>
+        {
+            var doc = await db.Documents.FindAsync(id);
+            if (doc is null) return Results.NotFound();
+            doc.Archive();
+            await db.SaveChangesAsync();
+            await bus.Publish(ToEvent(doc));
+            return Results.Ok(ToDto(doc));
+        });
+
         // FR-06, UC-03: 版履歴一覧（新しい順）。
         g.MapGet("/{id:guid}/versions", async (Guid id, DocumentDbContext db) =>
         {
@@ -130,12 +143,15 @@ public static class DocumentEndpoints
             return snapshot is null ? Results.NotFound() : Results.Ok(ToVersionDto(snapshot));
         });
 
-        g.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db) =>
+        g.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
+            IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
             db.Documents.Remove(doc);
             await db.SaveChangesAsync();
+            // Issue #88: 削除を下流（Wiki.js 同期）へ伝播し、外部システムの実体を撤去する。
+            await bus.Publish(new DocumentDeleted(id, DateTimeOffset.UtcNow));
             return Results.NoContent();
         });
 

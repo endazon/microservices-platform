@@ -104,6 +104,15 @@ public class Document
         Snapshot("published");
     }
 
+    // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流（Wiki.js 同期）は
+    // status=archived の DocumentUpdated を受けてページを非公開化する。
+    public void Archive()
+    {
+        Status = DocumentStatus.Archived;
+        Touch();
+        Snapshot("archived");
+    }
+
     private void Touch()
     {
         UpdatedAt = DateTimeOffset.UtcNow;
@@ -120,4 +129,6 @@ public static class DocumentStatus
     public const string Draft = "draft";
     public const string Normalized = "normalized";
     public const string Published = "published";
+    // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持し、閲覧経路から不可視にする。
+    public const string Archived = "archived";
 }

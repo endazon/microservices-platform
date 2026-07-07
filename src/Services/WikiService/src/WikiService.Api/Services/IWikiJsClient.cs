@@ -10,6 +10,12 @@ public interface IWikiJsClient
 
     // 認可ゲートウェイの本文プロキシ用。ABAC 通過後にのみ呼ぶ。未存在は null。
     Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default);
+
+    // Issue #88: アーカイブ（非公開化）の伝播。ページを unpublish + private にする。未存在は冪等に成功扱い。
+    Task ArchivePageAsync(string path, CancellationToken ct = default);
+
+    // Issue #88: 削除の伝播（実体撤去・社内文書の外部システム残存防止）。未存在は冪等に成功扱い。
+    Task DeletePageAsync(string path, CancellationToken ct = default);
 }
 
 // Wiki.js へ push する正規化済みページ内容（認可属性は含めない — IADR-0021）。

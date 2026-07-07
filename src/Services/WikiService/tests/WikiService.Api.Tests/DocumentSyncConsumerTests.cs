@@ -191,6 +191,10 @@ file sealed class RecordingWikiJsClient : IWikiJsClient
         return Task.CompletedTask;
     }
 
+    public Task ArchivePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task DeletePageAsync(string path, CancellationToken ct = default) => Task.CompletedTask;
+
     public Task<string?> GetRenderedContentAsync(string path, CancellationToken ct = default)
         => Task.FromResult<string?>($"<article data-path=\"{path}\">rendered</article>");
 }

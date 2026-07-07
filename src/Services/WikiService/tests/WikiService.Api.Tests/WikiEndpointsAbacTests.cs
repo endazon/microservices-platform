@@ -125,6 +125,41 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         view.Content.Should().Contain($"doc/{publicDoc}");
     }
 
+    // Issue #88: アーカイブ済みページは権限があっても一覧に現れない（非公開化の伝播）。
+    [Fact]
+    public async Task GetPages_ExcludesArchivedPages()
+    {
+        var (publicDoc, _) = await SeedAsync();
+        await ArchiveAsync(publicDoc);
+        factory.Scope = new AccessScopeResponse("u", [], Granted: true);
+
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages");
+
+        pages!.Should().NotContain(p => p.DocumentId == publicDoc);
+    }
+
+    // Issue #88: アーカイブ済みページは権限があっても個別取得 404（存在秘匿の意味論を維持・IADR-0009）。
+    [Fact]
+    public async Task GetPageByDoc_Returns404_ForArchivedPage()
+    {
+        var (publicDoc, _) = await SeedAsync();
+        await ArchiveAsync(publicDoc);
+        factory.Scope = new AccessScopeResponse("u", [], Granted: true);
+
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{publicDoc}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private async Task ArchiveAsync(Guid documentId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        var page = db.Pages.First(p => p.DocumentId == documentId);
+        page.Archive();
+        await db.SaveChangesAsync();
+    }
+
     private string ResolveSlug(string title)
     {
         using var scope = factory.Services.CreateScope();

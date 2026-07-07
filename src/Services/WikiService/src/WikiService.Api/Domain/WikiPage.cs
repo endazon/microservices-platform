@@ -15,7 +15,11 @@ public class WikiPage
 
     // IADR-0021: Wiki.js 上の安定パス（DocumentId 由来）。同期 push と認可プロキシの本文取得で共有する
     // 単一の正準パス。タイトル由来の Slug は人間可読の索引・メタデータ用途に留める。
-    public string WikiPath => $"doc/{DocumentId}";
+    public string WikiPath => PathFor(DocumentId);
+
+    // Issue #88: 削除・アーカイブはメタデータ未同期でも Wiki.js 側へ伝播する必要があるため、
+    // DocumentId から正準パスを導出できるようにする（WikiPath と同一の導出規則）。
+    public static string PathFor(Guid documentId) => $"doc/{documentId}";
 
     private WikiPage() { }
 
@@ -39,6 +43,15 @@ public class WikiPage
         MarkdownUri = markdownUri;
         Attributes = attributes;
         Tags = tags;
+        // Issue #88: 再公開でアーカイブ状態を解除する（アーカイブは可逆）。
+        Status = WikiPageStatus.Active;
+        SyncedAt = DateTimeOffset.UtcNow;
+    }
+
+    // Issue #88: アーカイブ（非公開化）。ゲートウェイの一覧・個別取得から不可視になる。
+    public void Archive()
+    {
+        Status = WikiPageStatus.Archived;
         SyncedAt = DateTimeOffset.UtcNow;
     }
 

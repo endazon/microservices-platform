@@ -236,6 +236,7 @@ paths:
           description: 更新成功
     delete:
       tags: [Documents]
+      summary: "FR-06, UC-03, Issue #88: ドキュメントを削除する（DocumentDeleted を発行し Wiki.js 実体も撤去）"
       operationId: delete-document
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -274,6 +275,19 @@ paths:
       responses:
         "200":
           description: 公開成功
+        "404":
+          description: 見つからない
+
+  /documents/{id}/archive:
+    post:
+      tags: [Documents]
+      summary: "FR-06, UC-03, Issue #88: ドキュメントをアーカイブ（非公開化）する"
+      operationId: archive-document
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: アーカイブ成功（status=archived の DocumentUpdated を発行）
         "404":
           description: 見つからない
 

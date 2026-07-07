@@ -1,8 +1,4 @@
 {
-  "//": "ADR-0004, ADR-0011, FR-13, UC-07, IADR-0020: realm import for local/dev. Provisions the",
-  "//2": "knowledge-platform realm shared as Auth__Authority by all services, plus the wiki-js OIDC client.",
-  "//3": "Mounted read-only into keycloak and loaded via `start-dev --import-realm` (docker-compose.yml).",
-  "//4": "Dev credentials only — do NOT reuse client secrets in shared/staging/prod (docs/security/security.md).",
   "realm": "knowledge-platform",
   "enabled": true,
   "sslRequired": "external",
@@ -38,6 +34,83 @@
     }
   ],
   "clientScopes": [
+    {
+      "name": "profile",
+      "description": "OIDC 標準 profile スコープ（realm import で clientScopes を明示すると組み込みスコープが生成されないため定義する。Issue #88 稼働 PoC で実測）",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "full name",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-full-name-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "email",
+      "description": "OIDC 標準 email スコープ（同上。Wiki.js はユーザー同定に email クレームを必須とする）",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "email",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "roles",
+      "description": "レルムロールを realm_access.roles として発行する（KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開し、FR-09 の AdminOnly=platform-admin 判定に用いる。組み込みスコープが生成されないため定義する）",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
     {
       "name": "abac-attributes",
       "description": "ABAC 属性（clearance / department）とグループを JWT に載せる。WikiService ゲートウェイと Wiki.js 表示制御が参照する。",
@@ -109,7 +182,6 @@
         "http://localhost:3001"
       ],
       "defaultClientScopes": [
-        "openid",
         "profile",
         "email",
         "roles",
@@ -132,12 +204,24 @@
         "http://localhost:5000"
       ],
       "defaultClientScopes": [
-        "openid",
         "profile",
         "email",
         "roles",
         "abac-attributes"
       ]
+    }
+  ],
+  "users": [
+    {
+      "username": "poc-user",
+      "email": "poc-user@example.com",
+      "firstName": "PoC",
+      "lastName": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": { "clearance": ["internal"], "department": ["engineering"] },
+      "groups": ["/clearance/internal", "/department/engineering"],
+      "credentials": [{ "type": "password", "value": "poc-password", "temporary": false }]
     }
   ]
 }
