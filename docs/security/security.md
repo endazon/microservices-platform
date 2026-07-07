@@ -13,9 +13,10 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-07-05
+updated: 2026-07-07
 plan_refs: []
 related_adrs:
+  - ../adr/IADR-0024_mesh-mtls-supersedes-network-isolation.md
   - ../adr/IADR-0017_internal-service-auth-network-isolation.md
   - ../adr/IADR-0020_wiki-js-deployment-abac-gateway.md
   - ../adr/IADR-0009_wiki-browsing-404-hides-existence.md
@@ -76,25 +77,33 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
   Wiki.js 本文を取得し、権限外・不存在・Wiki.js 未反映はいずれも 404 で存在秘匿する。稼働 Wiki.js を要する
   結合検証（GraphQL PoC）はフォローとして残る。
 
-### サービス間（内部 API）の認証 — mesh 導入までの暫定方針（IADR-0017 / #62）
+### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする（IADR-0024 / #100）
 
 内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`・`/embed`、
 DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz/attributes/validate`）は
 「サービス間呼び出しのため認証対象外」として無認証で提供されている。これは **Istio mTLS（ADR-0005）を前提**にした
-設計だが、Istio は未実装のため防御に空白がある。加えて、内部呼び出し（`RagOrchestrator`・`WikiAccessResolver`・
-取り込み/変換ワーカー）は現状いずれも JWT を付与しておらず、特にバックグラウンドワーカーは
-ユーザーコンテキストを持たないため素朴な JWT 必須化は成立しない。
+設計であり、ADR-0005 の確定（2026-07-06）と Issue #100 の本番実行基盤配備により mTLS が実体化した。
 
-**方針（IADR-0017）**: mesh（mTLS, ADR-0005）導入までは **「ネットワーク分離」を第一防御**とする。
+**方針（IADR-0024）**: サービス間認証の**第一防御は Istio STRICT mTLS**（ADR-0005）とする。
 
-- 内部サービス API を **host へ公開しない**（`docker-compose.yml` は BFF=エッジのみ host 公開、他は `expose`）。
-  Kubernetes では ClusterIP + NetworkPolicy（デフォルト拒否）を前提とする。
+- `PeerAuthentication`（`mtls.mode: STRICT`）と `DestinationRule`（`ISTIO_MUTUAL`）を Helm で宣言し、
+  ArgoCD が継続的に同期する（`deploy/helm/knowledge-platform/templates/istio-mtls.yaml`）。
+  STRICT により平文フォールバックが無く、サイドカー未注入クライアントからの平文到達を拒否する。
+- サイドカー自動注入は Namespace ラベル `istio-injection: enabled` で行う。
+- mTLS がワークロード ID を保証するため、トークン非保持ワーカーを含むサービス間呼び出しでも
+  暗号化・相互認証が成立する（アプリ層の client credentials 実装は不要）。
+- 回帰防止として、STRICT mTLS の宣言を `MeshMtlsTests` で機械的に担保する。
+
+**多層防御（旧 IADR-0017、defense-in-depth へ格下げして維持）**:
+
+- Kubernetes では ClusterIP + NetworkPolicy（デフォルト拒否）を維持する
+  （`deploy/helm/knowledge-platform/templates/networkpolicy.yaml`）。
+- `docker-compose.yml`（ローカル開発）は BFF=エッジのみ host 公開、他は `expose` を維持。
+  回帰は `NetworkIsolationTests` で担保する。
 - 外部からの入口は **BFF（エッジ）に一本化**し、BFF が Keycloak JWT で認証する。
-- アプリ層のサービス間 JWT（client credentials）は全呼び出し元（トークン非保持ワーカー含む）対応が必要で
-  規模が大きく、mTLS 導入で不要になるため**本 IADR では見送り**、残余リスクをネットワーク分離で受容して
-  フォローアップで追跡する。
-- 回帰防止として、内部サービスが host ポートを公開していないことを `NetworkIsolationTests` で機械的に担保する。
-- RetrievalService `/search` の ABAC 取り扱いは #55 で別管理（host 公開停止のみ一律適用）。
+
+**恒久像への残課題**: 全 API の OIDC/JWT 認証（内部 API でのトークン検証）は継続課題として別 Issue で追跡する
+（IADR-0024 §4）。RetrievalService `/search` の ABAC 取り扱いは #55 で別管理。
 
 ## データ保護
 
@@ -102,7 +111,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | --- | --- | --- |
 | 保存時暗号化 |  |  |
 | 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端。ローカルは平文） |
-| 通信時暗号化（サービス間） | 内部サービス間 | 現状は平文。ネットワーク分離で保護（IADR-0017）。将来 Istio mTLS（ADR-0005）で相互認証＋暗号化 |
+| 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化（ADR-0005 / IADR-0024）。NetworkPolicy を多層防御として併用 |
 | 個人情報 / 機微情報 |  |  |
 
 ## 秘密情報管理
