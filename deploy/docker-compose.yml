@@ -18,6 +18,14 @@ x-db-env: &db-env
 x-rabbit-env: &rabbit-env
   RabbitMq__ConnectionString: amqp://guest:guest@rabbitmq:5672
 
+# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）接続。
+# 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+x-objectstorage-env: &objectstorage-env
+  ObjectStorage__Endpoint: http://minio:9000
+  ObjectStorage__AccessKey: ${MINIO_ROOT_USER:-minioadmin}
+  ObjectStorage__SecretKey: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  ObjectStorage__Bucket: knowledge-normalized
+
 services:
   # ─────────────────────────────────────────────
   # Infrastructure
@@ -98,6 +106,28 @@ services:
       - qdrant-data:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）。
+  # 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+  # IADR-0017/IADR-0024: API(9000) は内部サービス専用のため host 公開しない（expose）。直接公開はせず、
+  # ABAC を強制するサービス経由で読み取る。dev 便宜でコンソール(9001)のみ host 公開（stg/prod では公開しない）。
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    expose:
+      - "9000"
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -197,9 +227,12 @@ services:
       context: ..
       dockerfile: src/Services/ConversionService/src/ConversionService.Worker/Dockerfile
     environment:
-      <<: [*common-env, *rabbit-env]
+      # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
+      <<: [*common-env, *rabbit-env, *objectstorage-env]
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   ingestion-service:
@@ -207,7 +240,8 @@ services:
       context: ..
       dockerfile: src/Services/IngestionService/src/IngestionService.Worker/Dockerfile
     environment:
-      <<: [*common-env, *rabbit-env]
+      # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
+      <<: [*common-env, *rabbit-env, *objectstorage-env]
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
@@ -215,6 +249,8 @@ services:
       rabbitmq:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       llm-gateway:
         condition: service_started
@@ -282,7 +318,8 @@ services:
     expose:
       - "8080"
     environment:
-      <<: [*common-env, *db-env, *rabbit-env]
+      # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
@@ -292,6 +329,8 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）で永続化する。
@@ -391,5 +430,6 @@ volumes:
   rabbitmq-data:
   redis-data:
   qdrant-data:
+  minio-data:
   prometheus-data:
   grafana-data:

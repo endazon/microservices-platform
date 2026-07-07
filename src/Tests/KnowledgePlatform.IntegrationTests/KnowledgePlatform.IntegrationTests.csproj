@@ -21,6 +21,9 @@
     <PackageReference Include="Testcontainers" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.RabbitMq" />
+    <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->
+    <PackageReference Include="Testcontainers.Minio" />
+    <PackageReference Include="AWSSDK.S3" />
   </ItemGroup>
   <ItemGroup>
     <!-- 各サービスにテスト用マーカークラスを追加したためエイリアス不要 -->

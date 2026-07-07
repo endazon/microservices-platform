@@ -16,7 +16,10 @@ builder.Services.AddKnowledgePlatformObservability(builder.Configuration, Servic
 // FR-12, ADR-0012: 本文変換（pandoc ラッパー）。
 builder.Services.AddSingleton<IBodyConverter, PandocConversionService>();
 
-// FR-12, ADR-0014: 正規化本文・資産のオブジェクトストレージ保管。
+// FR-12, ADR-0014/ADR-0015, IADR-0024: 正規化本文・資産の S3 互換オブジェクトストレージ（MinIO）保管。
+// 共有クライアントを登録し、起動時にバケット存在・バージョニングを保証する。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+builder.Services.AddKnowledgePlatformObjectStorageBootstrap();
 builder.Services.AddSingleton<IObjectStore, StorageObjectStore>();
 
 // FR-12, ADR-0012/0010: 図のコード化（LLMゲートウェイ経由、機密区分で送信制御）。

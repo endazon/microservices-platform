@@ -47,3 +47,4 @@
 | IADR-0021 | Wiki.js への同期は GraphQL API push を採用する | Accepted |
 | IADR-0022 | 既定モデルを opus 化し、fable-5（最難関）と GitHub Copilot 経路を設定駆動で追加する | Accepted |
 | IADR-0023 | 文書の削除・アーカイブを Wiki.js へ伝播する（削除イベント新設＋status 拡張） | Accepted |
+| IADR-0024 | MinIO のバケット/キー設計・バージョニング・アクセス制御と共有クライアント | Accepted |
