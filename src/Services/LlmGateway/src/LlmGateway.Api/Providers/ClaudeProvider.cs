@@ -28,7 +28,4 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
         var text = msg.Content.OfType<TextContent>().FirstOrDefault()?.Text ?? "";
         return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens);
     }
-
-    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
-        => Task.FromResult(Array.Empty<float>()); // P1: embeddings API
 }

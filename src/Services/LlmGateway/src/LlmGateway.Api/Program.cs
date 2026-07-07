@@ -34,9 +34,14 @@ builder.Services.AddKeyedSingleton<ILlmProvider, ClaudeProvider>("claude");
 builder.Services.AddKeyedSingleton<ILlmProvider, SelfHostedProvider>("selfhosted");
 builder.Services.AddKeyedSingleton<ILlmProvider, CopilotProvider>("copilot");
 
-// /embed（埋め込み）は切替対象外。既定プロバイダ（Claude）を用いる。
-builder.Services.AddSingleton<ILlmProvider>(sp =>
-    sp.GetRequiredKeyedService<ILlmProvider>("claude"));
+// FR-02, FR-05, ADR-0016, ADR-0017: 埋め込みは LLM 生成とは別系統で機密区分ルーティングする。
+// ティアB=Voyage AI（voyage-3.5 / 1024次元・既定）、ティアA=セルフホスト（Ruri v3 / 768次元・既定は無効）。
+// confidential/restricted はティアA固定・無効なら fail-closed（EmbeddingRouter）。
+builder.Services.Configure<EmbeddingRoutingOptions>(
+    builder.Configuration.GetSection(EmbeddingRoutingOptions.SectionName));
+builder.Services.AddSingleton<IEmbeddingRouter, EmbeddingRouter>();
+builder.Services.AddKeyedSingleton<IEmbeddingProvider, VoyageEmbeddingProvider>("voyage");
+builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvider>("selfhosted-embedding");
 
 var app = builder.Build();
 

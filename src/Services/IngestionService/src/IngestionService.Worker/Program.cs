@@ -20,6 +20,10 @@ builder.Services.AddSingleton<IChunkingService, MarkdownChunkingService>();
 var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
+
+// FR-02, ADR-0016: モデル別コレクション（voyage/1024・ruri/768）の定義（起動時作成・残存防止削除に使用）。
+builder.Services.Configure<EmbeddingCollectionsOptions>(
+    builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
 builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>();
 
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する

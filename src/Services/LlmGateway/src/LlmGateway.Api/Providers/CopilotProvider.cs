@@ -42,10 +42,6 @@ public sealed class CopilotProvider(IHttpClientFactory httpFactory, IConfigurati
         return new CompletionResult(text, payload?.Usage?.PromptTokens ?? 0, payload?.Usage?.CompletionTokens ?? 0);
     }
 
-    // 埋め込みは別経路（FR-03 / ADR-0013）。本プロバイダでは未対応。
-    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
-        => Task.FromResult(Array.Empty<float>());
-
     private sealed record OpenAiCompletionResponse(List<OpenAiChoice>? Choices, OpenAiUsage? Usage);
     private sealed record OpenAiChoice(OpenAiMessage? Message);
     private sealed record OpenAiMessage(string? Content);

@@ -371,6 +371,13 @@ services:
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
       # ADR-0010 / IADR-0022: 既定は claude-opus-4-8（定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
       Llm__Model: claude-opus-4-8
+      # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
+      # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
+      Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
+      # ADR-0017 / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
+      # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
+      Embedding__SelfHosted__BaseUrl: ${SELFHOSTED_EMBEDDING_URL:-}
+      Embedding__Routing__Endpoints__1__Enabled: ${SELFHOSTED_EMBEDDING_ENABLED:-false}
     depends_on:
       - otel-collector
 
