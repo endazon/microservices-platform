@@ -10,6 +10,7 @@ namespace KnowledgePlatform.Bff.Tests;
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。
 //   - ヘッダ無し             → platform-admin（/bff/dashboard/summary の AdminOnly が通る）
 //   - "X-Test-Roles: viewer" → 非管理ロール（AdminOnly が 403 になる確認用）
+//   - "X-Test-Anonymous"     → 認証しない（無認証＝真の匿名リクエスト。FR-15 の存在秘匿 404 検証用）
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory logger,
@@ -18,8 +19,16 @@ public class TestAuthHandler(
     public const string SchemeName = "Test";
     public const string RolesHeader = "X-Test-Roles";
 
+    // FR-15: JWT を一切持たない匿名リクエストを再現する（このハンドラは既定で常に認証成功するため、
+    // 無認証の存在秘匿（404）を検証するには明示的に認証をスキップする必要がある）。
+    public const string AnonymousHeader = "X-Test-Anonymous";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        // FR-15: 無認証ケースは認証結果なし（NoResult）とし、http.User を未認証のまま通す。
+        if (Request.Headers.ContainsKey(AnonymousHeader))
+            return Task.FromResult(AuthenticateResult.NoResult());
+
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];

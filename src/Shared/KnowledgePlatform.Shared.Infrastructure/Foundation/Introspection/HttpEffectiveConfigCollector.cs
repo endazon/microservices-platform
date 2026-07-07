@@ -20,37 +20,51 @@ public sealed class HttpEffectiveConfigCollector(
 
     public async Task<EffectiveCollection> CollectAsync(CancellationToken ct = default)
     {
+        var client = httpClientFactory.CreateClient(HttpClientName);
+        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds));
+
+        // FR-15: 対象サービスの自己申告を並列に収集する（応答時間が対象サービス数に比例して
+        // 増えないよう Task.WhenAll でまとめる。集約は完了後に単一スレッドで行い競合を避ける）。
+        var results = await Task.WhenAll(
+            _options.Services.Select(kv => CollectOneAsync(client, kv.Key, kv.Value, ct)));
+
         var services = new List<ServiceIntrospectionDto>();
         var reachable = new HashSet<string>(StringComparer.Ordinal);
         var unreachable = new HashSet<string>(StringComparer.Ordinal);
 
-        var client = httpClientFactory.CreateClient(HttpClientName);
-        client.Timeout = TimeSpan.FromSeconds(Math.Max(1, _options.TimeoutSeconds));
-
-        foreach (var (service, baseUrl) in _options.Services)
+        foreach (var (service, report) in results)
         {
-            var url = baseUrl.TrimEnd('/') + _options.Path;
-            try
-            {
-                var report = await client.GetFromJsonAsync<ServiceIntrospectionDto>(url, ct);
-                if (report is null)
-                {
-                    unreachable.Add(service);
-                    logger.LogWarning(
-                        "Introspection for {Service} at {Url} returned empty body", service, url);
-                    continue;
-                }
-                services.Add(report);
-                reachable.Add(service);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            if (report is null)
             {
                 unreachable.Add(service);
-                logger.LogWarning(ex,
-                    "Failed to collect introspection for {Service} at {Url}", service, url);
+                continue;
             }
+            services.Add(report);
+            reachable.Add(service);
         }
 
         return new EffectiveCollection(services, reachable, unreachable);
+    }
+
+    // FR-15: 1 サービス分の自己申告を収集する。到達不能・空応答は report=null で返し、呼び出し側で
+    // UnreachableServices に集約する（適用漏れと到達不能を区別するため。IADR-0029）。
+    private async Task<(string Service, ServiceIntrospectionDto? Report)> CollectOneAsync(
+        HttpClient client, string service, string baseUrl, CancellationToken ct)
+    {
+        var url = baseUrl.TrimEnd('/') + _options.Path;
+        try
+        {
+            var report = await client.GetFromJsonAsync<ServiceIntrospectionDto>(url, ct);
+            if (report is null)
+                logger.LogWarning(
+                    "Introspection for {Service} at {Url} returned empty body", service, url);
+            return (service, report);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex,
+                "Failed to collect introspection for {Service} at {Url}", service, url);
+            return (service, null);
+        }
     }
 }

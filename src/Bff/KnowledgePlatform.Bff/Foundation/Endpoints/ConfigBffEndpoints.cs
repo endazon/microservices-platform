@@ -2,12 +2,15 @@ using KnowledgePlatform.Shared.Contracts.Dtos;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Audit;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using Microsoft.AspNetCore.Authorization;
 
 namespace KnowledgePlatform.Bff.Foundation.Endpoints;
 
 // FR-15, ADR-0018: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者へ返す。
 // 独立サービス化せず BFF 配下の管理 API として同居させる（過剰分割回避。IADR に記録）。
-// 閲覧は管理者・運用者ロールに限定し、非権限は 404 で応答自体を秘匿する（存在秘匿の方針と整合）。
+// 閲覧は ConfigViewer ポリシー（管理者・運用者）に限定し、非権限（無認証を含む一般利用者）は
+// 404 で応答自体を秘匿する（IADR-0009 の存在秘匿と整合）。RequireAuthorization を付けると
+// 無認証が 404 到達前に 401 で短絡し存在が漏れるため、認可はハンドラ内で判定する。
 // 取得操作は許可・拒否ともに監査ログへ記録する。
 public static class ConfigBffEndpoints
 {
@@ -19,54 +22,56 @@ public static class ConfigBffEndpoints
         g.MapGet("", async (
             HttpContext http,
             IConfigInspectionService inspection,
+            IAuthorizationService authz,
             IAuditLogger audit,
             CancellationToken ct) =>
         {
-            if (Deny(http, audit, "config.read", out var denied))
+            var denied = await DenyAsync(http, authz, audit, "config.read");
+            if (denied is not null)
                 return denied;
 
             var config = await inspection.GetEffectiveConfigAsync(ct);
             return Results.Ok(config);
         }).WithName("BffConfigEffective")
-          .RequireAuthorization()
           .Produces<EffectiveConfigDto>();
 
         // FR-15: 宣言（Git）と実効構成の不一致（ドリフト）を返す。
         g.MapGet("/drift", async (
             HttpContext http,
             IConfigInspectionService inspection,
+            IAuthorizationService authz,
             IAuditLogger audit,
             CancellationToken ct) =>
         {
-            if (Deny(http, audit, "config.drift.read", out var denied))
+            var denied = await DenyAsync(http, authz, audit, "config.drift.read");
+            if (denied is not null)
                 return denied;
 
             var drift = await inspection.GetDriftAsync(ct);
             return Results.Ok(drift);
         }).WithName("BffConfigDrift")
-          .RequireAuthorization()
           .Produces<DriftReportDto>();
 
         return app;
     }
 
-    // 閲覧権限（管理者・運用者）を検査する。非権限は監査へ「denied」を記録し 404 で存在を秘匿する。
-    // 権限ありは「granted」を記録して続行する。
-    private static bool Deny(HttpContext http, IAuditLogger audit, string action, out IResult result)
+    // 閲覧権限を ConfigViewer ポリシー（管理者・運用者）で検査する。無認証を含む非権限は監査へ
+    // 「denied」を記録し 404 で存在を秘匿する（→ 拒否時のみ IResult を返す）。権限ありは「granted」を
+    // 記録し null を返して続行する。RequireAuthorization を使わず、無認証でも 401 で短絡させない。
+    private static async Task<IResult?> DenyAsync(
+        HttpContext http, IAuthorizationService authz, IAuditLogger audit, string action)
     {
         var subject = http.User.Identity?.Name ?? "unknown";
-        var authorized = http.User.IsInRole(KnowledgePlatformAuthPolicies.AdminRole)
-            || http.User.IsInRole(KnowledgePlatformAuthPolicies.OperatorRole);
+        var authorized =
+            (await authz.AuthorizeAsync(http.User, KnowledgePlatformAuthPolicies.ConfigViewer)).Succeeded;
 
         if (!authorized)
         {
             audit.Record(action, subject, "denied");
-            result = Results.NotFound();
-            return true;
+            return Results.NotFound();
         }
 
         audit.Record(action, subject, "granted");
-        result = Results.Empty;
-        return false;
+        return null;
     }
 }

@@ -70,6 +70,35 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
             a.Action == "config.read" && a.Outcome == "denied");
     }
 
+    // 無認証（JWT を持たない一般利用者）も 404 で応答自体を秘匿し、拒否を監査する。
+    // RequireAuthorization による 401 短絡で存在が漏れないことを保証する（FR-15 / IADR-0029）。
+    [Fact]
+    public async Task GetConfig_AsAnonymous_Returns404AndAuditsDenied()
+    {
+        factory.RecordedAudits.Clear();
+
+        var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config");
+        req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
+
+        var resp = await factory.CreateClient().SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        factory.RecordedAudits.Should().Contain(a =>
+            a.Action == "config.read" && a.Outcome == "denied");
+    }
+
+    // ドリフト取得も無認証は 404 で秘匿する。
+    [Fact]
+    public async Task GetDrift_AsAnonymous_Returns404()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config/drift");
+        req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
+
+        var resp = await factory.CreateClient().SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     // 取得操作（許可）が監査ログに残る。
     [Fact]
     public async Task GetConfig_AsAdmin_AuditsGranted()
