@@ -8,7 +8,7 @@ related_ids:
   - ADR-0011
 author: claude（実装）
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-07
 plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md"
@@ -91,6 +91,15 @@ plan_refs:
     社内文書が外部システムに残り続けるリスクが拡大している。`isPrivate` 多層防御で「public 以外は非公開」
     は担保されるが、**論理削除・撤去の伝播は別途フォロー課題**とする（削除/アーカイブ用イベントまたは
     `DocumentUpdated` の status 拡張に応じた `pages.delete`／非公開化・メタデータ `Archived` 化の追加）。
+
+## フォローアップの結果（2026-07-07 追記・Issue #88）
+
+- 稼働 Wiki.js 2.5.314 での PoC 実測を完了した。**`isPrivate=true` ページはサービスアカウント
+  （fullAccess API キー）で `singleByPath` 本文取得が可能**であり、認可プロキシの調整は不要。
+  スキーマ実測で判明した差異（未存在ページは GraphQL errors 6003 を返す・update は全項目必須・
+  update の isPrivate 無視・ja ロケール要インストール）は実装へ反映済み。
+  詳細: [20260707_wikijs-poc-record](../tech/20260707_wikijs-poc-record.md)。
+- 削除・アーカイブの同期経路は [IADR-0023](./IADR-0023_document-delete-archive-wikijs-propagation.md) で実装した。
 
 ## 関連
 

@@ -45,8 +45,10 @@ plan_refs: []
   - **段階導入（現状）**: 段1（配備・OIDC 構成・意思決定記録）に続き、**段2（本 PR）で実コードを実装**した ──
     `DocumentSyncConsumer` を Wiki.js への **GraphQL push 同期**（[IADR-0021]）へ置換し、`/wiki/pages` 系を
     Wiki.js 前段の**認可プロキシ**へ改修（ABAC 通過時のみ Wiki.js 本文をプロキシ）。`wiki_svc` は同期メタデータに
-    限定した。**残作業**（フォロー）: 稼働 Wiki.js での GraphQL PoC 実測・同期用 API キーの発行/投入
-    （`WIKIJS_API_KEY` / Helm Secret `wikijs-sync`）・OIDC ローカルログイン無効化の稼働検証。
+    限定した。フォロー作業（Issue #88）は**完了**: 稼働 Wiki.js での GraphQL PoC 実測・OIDC ローカルログイン
+    無効化の稼働検証は [PoC 実測記録](../tech/20260707_wikijs-poc-record.md)、API キーの発行/投入手順は
+    後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
+    [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
 
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
@@ -56,18 +58,32 @@ plan_refs: []
   `/healthz` を叩く。dev では `http://localhost:3001/healthz`。
 - **管理者ブートストラップ**: 初回アクセス（`http://localhost:3001`）で管理者アカウントのセットアップ画面が出る。
   管理者メール/パスワードを設定してセットアップを完了する（初回のみ。この初期管理者は保守用）。
+- **ja ロケールのインストール（必須・Issue #88 実測）**: 素の Wiki.js は `en` のみで、同期
+  （GraphQL push）はロケール `ja` でページを作成するため、未インストールだと **FK 違反
+  （`pages_localecode_foreign`）で全同期が失敗する**。管理 UI → Administration → Locale で Japanese を
+  ダウンロードする（GraphQL では `mutation { localization { downloadLocale(locale: "ja") { ... } } }`。
+  Wiki.js のロケール配信サーバへの外向き通信が必要）。
 - **OIDC 連携（Keycloak）**: 管理 UI → Administration → Authentication で **Generic OpenID Connect / OAuth2** を
   追加し、以下を設定する。Keycloak 側クライアントは realm import 済み（`wiki-js`、confidential、
   redirect `http://localhost:3001/*`）。
   - Client ID: `wiki-js` / Client Secret: realm import の値（dev は `wiki-js-dev-secret-change-me`。**本番は必ず変更**）。
   - Authorization Endpoint URL: `http://localhost:8080/realms/knowledge-platform/protocol/openid-connect/auth`
   - Token Endpoint URL: `http://keycloak:8080/realms/knowledge-platform/protocol/openid-connect/token`
-    （サーバ間はコンテナ名 `keycloak`、ブラウザ経路は `localhost:8080`。issuer 整合のためホスト名の扱いに注意）
-  - User Info / Logout: 同 realm の対応エンドポイント。Scope: `openid profile email`（`abac-attributes` で
-    `clearance`/`department`/`groups` クレームを付与）。
+    （サーバ間はコンテナ名 `keycloak`、ブラウザ経路は `localhost:8080`）。
+  - **Issuer: `http://localhost:8080/realms/knowledge-platform`**。issuer はブラウザ経路のホストに
+    固定される（compose の `KC_HOSTNAME_URL` で固定済み）。`keycloak:8080` を設定すると ID トークン
+    検証と userinfo が失敗する（「Failed to fetch user profile」。Issue #88 実測）。
+  - User Info / Logout: 同 realm の対応エンドポイント（User Info はコンテナ内経路 `keycloak:8080`）。
+    Scope は Wiki.js 固定の `openid profile email`（realm 側は `profile`/`email` スコープを定義済み。
+    `abac-attributes` が default scope のため `clearance`/`department`/`groups` クレームは自動付与）。
+  - Email Claim: `email` / Display Name Claim: `name` / Map Groups: 有効・Groups Claim `groups`
+    （Keycloak サブグループ名に一致する Wiki.js グループへ自動割当。Self Registration 有効で
+    初回ログイン時にユーザー自動作成）。
 - **ローカルログイン無効化（OIDC 単一経路）**: OIDC が疎通したら、Administration → Authentication で
   **Local** ストラテジを無効化し、OIDC のみを有効にする。これで受け入れ基準①「ローカルログイン不可」を満たす。
-  （Wiki.js の OIDC 設定は管理 UI/DB シードで確定するため、Keycloak 側は本 PR で用意し、Wiki.js 側は本手順で実施する。）
+  **稼働検証済み（Issue #88）**: 無効化後のローカルログインは `errorCode 1003（Invalid authentication
+  provider）` で拒否され、OIDC 経路のみ有効となることを実測確認した。設定・検証の詳細は
+  [Wiki.js 稼働 PoC 実測記録](../tech/20260707_wikijs-poc-record.md) を参照。
 
 ### Wiki.js 同期シークレットの発行・投入（FR-13 / IADR-0021 / Issue #88）
 
