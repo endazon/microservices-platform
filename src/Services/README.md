@@ -52,4 +52,4 @@ src/Services/<ServiceName>/          ← サービスユニット（サブモジ
    ディレクトリ階層で自動継承されるため追加設定は不要。パッケージバージョンは
    中央管理（CPM）に従い、csproj に `Version=` を書かない。
 5. `KnowledgePlatform.Shared.*` への参照は相対パス
-   `..\..\..\..\Shared\<Project>\<Project>.csproj` とする（ユニットの配置場所が保証する）。
+   `../../../../Shared/<Project>/<Project>.csproj` とする（ユニットの配置場所が保証する）。
