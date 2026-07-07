@@ -4,6 +4,9 @@
 
 ### 新機能
 
+- **NFR,ADR-0005,ADR-0007,ADR-0008**: 本番実行基盤を配備する（k3s → Istio mTLS → ArgoCD/Harbor）— IADR-0017 解消 (#100) (#109) (f6ffd55)
+- **FR-02,UC-04**: 埋め込み生成の実体を実装（Voyage 既定＋高機密セルフホスト fail-closed / ADR-0016・0017） (#106) (4851501)
+- **FR-06,FR-12**: オブジェクトストレージ実体（MinIO）配備と IObjectStore 本実装（ADR-0015, IADR-0024） (#105) (b665785)
 - **FR-13,UC-07,IADR-0023**: Wiki.js 稼働検証・削除/アーカイブ同期・配備不備の修正 (Issue #88) (#104) (c686aa5)
 - **ADR-0010,IADR-0022**: 既定を opus 化し fable-5(最難関)/Copilot 経路を追加 (#96) (51c565f)
 - 各サービスの launchSettings.json を追加し、開発環境の設定を整備 (280fa9b)
@@ -48,6 +51,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#101) (a0adfb1)
 - **IADR-0018**: 本文の採番を IADR-0017 から IADR-0018 へ統一 (#103) (b921fd8)
 - **NFR**: CHANGELOG を自動更新 (#93) (263d75f)
 - **NFR**: CHANGELOG を自動更新 (39cc8d5)
