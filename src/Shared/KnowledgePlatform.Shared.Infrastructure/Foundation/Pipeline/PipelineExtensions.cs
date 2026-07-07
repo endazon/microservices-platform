@@ -56,9 +56,15 @@ public static class PipelineExtensions
             ?? throw new InvalidOperationException(
                 $"パイプライン構成に段 '{stepName}' が宣言されていません（pipeline.json の steps を確認）。");
 
+        // 宣言がある以上、照合対象（consumer/input）は必須。空なら CI 検証（V1）をすり抜けた
+        // 経路（手書き appsettings 等）であり、照合スキップではなく起動失敗にする（二重の安全弁）。
         var consumerType = typeof(TConsumer).FullName!;
-        if (!string.IsNullOrEmpty(step.Consumer)
-            && !string.Equals(step.Consumer, consumerType, StringComparison.Ordinal))
+        if (string.IsNullOrEmpty(step.Consumer))
+        {
+            throw new InvalidOperationException(
+                $"段 '{stepName}' の consumer 宣言が空です（pipeline.json の steps を確認）。");
+        }
+        if (!string.Equals(step.Consumer, consumerType, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
                 $"段 '{stepName}' の consumer 宣言 '{step.Consumer}' が実装 '{consumerType}' と一致しません。");
@@ -67,7 +73,12 @@ public static class PipelineExtensions
         var inputType = typeof(TConsumer).GetInterfaces()
             .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IConsumer<>))
             ?.GetGenericArguments()[0];
-        if (!string.IsNullOrEmpty(step.Input) && inputType is not null
+        if (string.IsNullOrEmpty(step.Input))
+        {
+            throw new InvalidOperationException(
+                $"段 '{stepName}' の input 宣言が空です（pipeline.json の steps を確認）。");
+        }
+        if (inputType is not null
             && !string.Equals(step.Input, inputType.Name, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(

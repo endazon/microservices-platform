@@ -22,7 +22,7 @@ spec:
       {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
       # FR-14, IADR-0028: 宣言的パイプライン構成の変更（Git → ArgoCD 同期）でロールアウトさせる。
       annotations:
-        checksum/pipeline-config: {{ $.Files.Get "files/pipeline.json" | sha256sum }}
+        checksum/pipeline-config: {{ $.Files.Get "files/pipeline.json" | sha256sum | quote }}
       {{- end }}
     spec:
       {{- with $.Values.imagePullSecrets }}

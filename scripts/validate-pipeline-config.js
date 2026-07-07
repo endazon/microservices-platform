@@ -88,12 +88,18 @@ function validate(config) {
     else if (!known.has(src.event)) err('V3', `sources[${i}].event が events に未列挙です: ${src.event}`);
   });
 
-  // V4: 接続性（input は 他段の outputs ∪ sources のいずれかで発行される）
+  // V4: 接続性（有効な段の input は「有効な他段の outputs ∪ sources」のいずれかで発行される）。
+  // enabled=false の段は発行も購読もしないため、発行側・購読側の両方から除外する
+  // （無効化した発行段に依存する有効な後続段の取り残し＝サイレントな配信停止を CI で検出する）。
   const produced = new Set(sources.map((s) => s.event));
-  for (const s of config.steps) for (const o of s.outputs) produced.add(o);
   for (const s of config.steps) {
+    if (s.enabled === false) continue;
+    for (const o of s.outputs) produced.add(o);
+  }
+  for (const s of config.steps) {
+    if (s.enabled === false) continue;
     if (!produced.has(s.input)) {
-      err('V4', `段 '${s.name}' の input '${s.input}' を発行する段・source がありません`);
+      err('V4', `段 '${s.name}' の input '${s.input}' を発行する有効な段・source がありません`);
     }
   }
 
@@ -150,6 +156,19 @@ function selfTest() {
     ['V2 段名重複', (() => { const c = clone(); c.steps[1].name = 'one'; return c; })(), 'V2'],
     ['V3 未知イベント型', (() => { const c = clone(); c.steps[0].input = 'Unknown'; return c; })(), 'V3'],
     ['V4 発行元なし input', (() => { const c = clone(); c.sources = []; return c; })(), 'V4'],
+    ['V4 無効化した発行段に依存する有効段', (() => {
+      const c = clone();
+      c.steps[0].enabled = false; // 'one'（B の発行段）を無効化
+      c.steps[1].enabled = true;  // 'two'（B を購読）は有効のまま → 配信されない
+      return c;
+    })(), 'V4'],
+    ['無効段の input は接続性を要求しない', (() => {
+      const c = clone();
+      c.sources = [];             // A の発行元なし
+      c.steps[0].enabled = false; // ただし A を購読する 'one' は無効 → V4 違反にしない
+      c.steps[1].enabled = false;
+      return c;
+    })(), null],
     ['V5 循環', (() => { const c = clone(); c.steps[1].enabled = true; c.steps[1].outputs = ['A']; return c; })(), 'V5'],
     ['V6 型名形式違反', (() => { const c = clone(); c.steps[0].consumer = 'not a type'; return c; })(), 'V6'],
   ];

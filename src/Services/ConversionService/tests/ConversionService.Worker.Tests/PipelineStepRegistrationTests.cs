@@ -122,6 +122,17 @@ public class PipelineStepRegistrationTests
         act.Should().Throw<InvalidOperationException>().WithMessage("*input*");
     }
 
+    [Theory]
+    [InlineData("", "RawDocumentFetched")]
+    [InlineData(ConvertConsumer, "")]
+    public void consumerまたはinputの宣言が空なら起動失敗する(string consumer, string input)
+    {
+        // 規則3・4 の補強: 宣言がある以上、照合対象の空欄は照合スキップではなく起動失敗
+        // （CI 検証をすり抜けた手書き構成への二重の安全弁。PR #114 レビュー指摘対応）
+        var act = () => Build(Options(consumer: consumer, input: input));
+        act.Should().Throw<InvalidOperationException>().WithMessage("*空*");
+    }
+
     [Fact]
     public void 構成セクションからパイプライン宣言をバインドできる()
     {
