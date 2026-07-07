@@ -58,7 +58,7 @@ created: 2026-07-07
 ## 実装で判明した経緯
 
 - 作業仕様書: `docs/specs/20260707_issue-100_production-runtime-k3s-istio-argocd.md`
-- 実装 IADR: `docs/adr/IADR-0024_mesh-mtls-supersedes-network-isolation.md`
+- 実装 IADR: `docs/adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md`
   （IADR-0017 を Superseded 化）
 - 回帰テスト: `MeshMtlsTests`（STRICT mTLS 宣言の固定）
 - 本 Issue が移行ロードマップ上、暫定セキュリティ運用解消の律速であった（`06_migration-roadmap.md`）。
@@ -68,7 +68,7 @@ created: 2026-07-07
 - 反映先候補: 要求更新（`02_requirements/01_requirements.md`）／ 移行ロードマップ更新（`06_migration-roadmap.md`）
 - 提案内容:
   1. 「暫定運用の注記」に、サービス間 mTLS の達成（第一防御を Istio STRICT mTLS へ移行、
-     ネットワーク分離は多層防御へ格下げ）と、実装リポジトリ IADR-0024 への参照を追記する。
+     ネットワーク分離は多層防御へ格下げ）と、実装リポジトリ IADR-0026 への参照を追記する。
   2. 恒久像の残課題を「全 API の OIDC/JWT 認証」に限定して明記し、移行ロードマップの
      「実装状況の反映」を更新する（IADR-0017 は Superseded）。
   3. シークレット管理（暫定=k8s Secret/環境変数）の恒久化（Vault/External Secrets）は引き続き恒久課題として残す。

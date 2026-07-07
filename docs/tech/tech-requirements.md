@@ -27,7 +27,7 @@ plan_refs: []
 | フレームワーク |  |  |  |
 | データストア |  |  |  |
 | 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/knowledge-platform`、Namespace `knowledge-platform` |
-| サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / IADR-0024。STRICT mTLS（`PeerAuthentication`/`DestinationRule`）、可観測性は Kiali |
+| サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / IADR-0026。STRICT mTLS（`PeerAuthentication`/`DestinationRule`）、可観測性は Kiali |
 | CI/CD・GitOps | ArgoCD + Helm | — | ADR-0007。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
 | コンテナレジストリ | Harbor | — | ADR-0007。`global.image.registry: harbor.internal`、Pull は `imagePullSecrets` |
 

@@ -1,7 +1,7 @@
 # Istio サービスメッシュ導入（STRICT mTLS）
 
 > 起点: ADR-0005（サービスメッシュ / Istio / mTLS）
-> 関連: IADR-0017（暫定: ネットワーク分離を第一防御）→ **IADR-0024（本 mTLS で Supersede）**
+> 関連: IADR-0017（暫定: ネットワーク分離を第一防御）→ **IADR-0026（本 mTLS で Supersede）**
 > 回帰テスト: `src/Tests/KnowledgePlatform.IntegrationTests/Deployment/MeshMtlsTests.cs`
 
 サービス間通信を **STRICT mTLS**（平文フォールバック無し）で暗号化・相互認証する。

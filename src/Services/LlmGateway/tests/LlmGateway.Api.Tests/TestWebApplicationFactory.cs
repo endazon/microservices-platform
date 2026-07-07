@@ -27,10 +27,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // FR-11: ルーターはキー付きプロバイダ（claude/selfhosted）を解決するため、キー付きでも差し替える。
             services.RemoveAll<AnthropicClient>();
             services.RemoveAll<ILlmProvider>();
-            services.AddSingleton<ILlmProvider, StubLlmProvider>();               // /embed 既定
             services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("claude");   // ティアB
             services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("selfhosted"); // ティアA
             services.AddKeyedSingleton<ILlmProvider, StubLlmProvider>("copilot");  // 最難関別経路（既定は無効エンドポイント）
+
+            // FR-02: 埋め込みも API 基盤なしで動くようスタブへ差し替える。要求次元どおりのベクトルを返す。
+            services.RemoveAll<IEmbeddingProvider>();
+            services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("voyage");
+            services.AddKeyedSingleton<IEmbeddingProvider, StubEmbeddingProvider>("selfhosted-embedding");
         });
     }
 }
@@ -40,7 +44,11 @@ file class StubLlmProvider : ILlmProvider
 {
     public Task<CompletionResult> CompleteAsync(CompletionRequest req, CancellationToken ct = default)
         => Task.FromResult(new CompletionResult("テスト回答", 10, 20));
+}
 
-    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
-        => Task.FromResult(new float[1536]);
+// テスト用スタブ埋め込みプロバイダー（要求次元どおりのゼロベクトルを返す）。
+file class StubEmbeddingProvider : IEmbeddingProvider
+{
+    public Task<float[]> EmbedAsync(string text, string model, int dimensions, CancellationToken ct = default)
+        => Task.FromResult(new float[dimensions]);
 }

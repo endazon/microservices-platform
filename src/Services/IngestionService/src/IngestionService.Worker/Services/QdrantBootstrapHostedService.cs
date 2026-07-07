@@ -16,8 +16,9 @@ public class QdrantBootstrapHostedService(
         var store = scope.ServiceProvider.GetRequiredService<IIngestionVectorStore>();
         try
         {
-            await store.EnsureCollectionAsync(ct);
-            logger.LogInformation("Qdrant collection ensured for ingestion index");
+            // ADR-0016: モデル別コレクション（voyage/1024・ruri/768）を実次元で作成・保証する。
+            await store.EnsureCollectionsAsync(ct);
+            logger.LogInformation("Qdrant collections ensured for ingestion index (per-model)");
         }
         catch (Exception ex)
         {

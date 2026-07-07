@@ -3,7 +3,7 @@ using FluentAssertions;
 
 namespace KnowledgePlatform.IntegrationTests.Deployment;
 
-// IADR-0024 / #100, NFR(機密性), ADR-0005:
+// IADR-0026 / #100, NFR(機密性), ADR-0005:
 // サービス間認証の第一防御は Istio STRICT mTLS。Helm の Istio マニフェスト
 // (deploy/helm/knowledge-platform/templates/istio-mtls.yaml) が STRICT mTLS を宣言し、
 // 平文許容(PERMISSIVE/DISABLE)へ後退していないことを回帰として固定する
@@ -42,9 +42,9 @@ public sealed class MeshMtlsTests
     {
         var values = ReadHelmFile("values.yaml");
 
-        // 恒久像（IADR-0024）: 既定の mTLS モードは STRICT。
+        // 恒久像（IADR-0026）: 既定の mTLS モードは STRICT。
         values.Should().MatchRegex(@"(?m)^\s*mtlsMode:\s*STRICT\b",
-            "IADR-0024: mesh.mtlsMode の既定は STRICT（平文フォールバック無し）であること");
+            "IADR-0026: mesh.mtlsMode の既定は STRICT（平文フォールバック無し）であること");
 
         // 平文許容モードを既定にしていないこと（移行期の一時措置のみ許容）。
         Regex.IsMatch(values, @"(?m)^\s*mtlsMode:\s*(PERMISSIVE|DISABLE)\b")

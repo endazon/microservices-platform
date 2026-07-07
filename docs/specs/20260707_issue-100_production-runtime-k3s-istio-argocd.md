@@ -21,13 +21,13 @@ related_specs:
   - ../security/security.md
   - ../operations/operations.md
   - ../adr/IADR-0017_internal-service-auth-network-isolation.md
-  - ../adr/IADR-0024_mesh-mtls-supersedes-network-isolation.md
+  - ../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md
 related_adrs:
   - ADR-0005 (Istio / mTLS)
   - ADR-0007 (ArgoCD + Helm + Harbor)
   - ADR-0008 (Kubernetes / k3s)
   - IADR-0017 (ネットワーク分離を第一防御 — 本作業で Superseded)
-  - IADR-0024 (mesh mTLS が IADR-0017 を Supersede)
+  - IADR-0026 (mesh mTLS が IADR-0017 を Supersede)
 ---
 
 # 作業仕様書: 本番実行基盤の段階配備（k3s → Istio mTLS → ArgoCD/Harbor）
@@ -39,7 +39,7 @@ Issue: #100（`[NFR | ADR-0005/0007/0008] 本番実行基盤を配備する`）
 計画 ADR-0005/0007/0008（いずれも 2026-07-06 Accepted）の確定を受け、本番実行基盤を
 **宣言的（Infrastructure as Code / GitOps）に配備可能な構成として整備**する。依存順は
 k3s → Istio mTLS → ArgoCD/Harbor。段階2（Istio STRICT mTLS）の適用をもって暫定運用
-（IADR-0017: ネットワーク分離を第一防御）を解消し、後継 IADR-0024 で記録する。
+（IADR-0017: ネットワーク分離を第一防御）を解消し、後継 IADR-0026 で記録する。
 
 ## 本作業の成果物の範囲（重要）
 
@@ -76,7 +76,7 @@ k3s → Istio mTLS → ArgoCD/Harbor。段階2（Istio STRICT mTLS）の適用�
 - `deploy/istio/README.md`
   — istioctl による Istio 導入、サイドカー注入、Kiali 配備、STRICT mTLS の検証手順。
 - `values.yaml` に `mesh`（`enabled` / `mtlsMode`）ブロックを追加。
-- **IADR-0017 を Superseded** 化し、後継 **IADR-0024** を起票（mesh mTLS が第一防御）。
+- **IADR-0017 を Superseded** 化し、後継 **IADR-0026** を起票（mesh mTLS が第一防御）。
 - `NetworkIsolationTests` を mTLS 前提の回帰テストへ更新（`MeshMtlsTests` を追加）。
 
 ### 段階3: ArgoCD + Harbor（ADR-0007）
@@ -97,7 +97,7 @@ k3s → Istio mTLS → ArgoCD/Harbor。段階2（Istio STRICT mTLS）の適用�
 
 - [ ] 全サービスが k3s 上で稼働し、サービス単位でデプロイ・ロールバックできる（配備構成＋手順で担保）
 - [ ] サービス間通信が STRICT mTLS で暗号化される（`PeerAuthentication STRICT` を Git 上に宣言）
-- [ ] IADR-0017 の暫定運用が解消され、後継 IADR-0024 で記録される（計画リポへ環流）
+- [ ] IADR-0017 の暫定運用が解消され、後継 IADR-0026 で記録される（計画リポへ環流）
 - [ ] ArgoCD 経由のデプロイが Git の状態と同期する構成（Application/AppProject を宣言、手動 kubectl 依存を排す）
 
 ## 検証
@@ -119,7 +119,7 @@ CI ジョブでは `helm`/`dotnet` が未許可のため未実走だった検証
   - `NetworkPolicy`（デフォルト拒否）2 件。
   - `imagePullSecrets` は既定 `[]` で非出力、`--set imagePullSecrets[0].name=harbor-pull` で各 Deployment に出力されることを確認（Harbor Pull）。
 - `dotnet test --filter Category=Deployment` → **合格 6 / 6**（`MeshMtlsTests` 4・`NetworkIsolationTests` 2）。
-- ドキュメント整合: IADR-0017 が `status: Superseded` / `superseded_by: IADR-0024`、`docs/adr/README.md` の索引も更新済みであることを確認。
+- ドキュメント整合: IADR-0017 が `status: Superseded` / `superseded_by: IADR-0026`、`docs/adr/README.md` の索引も更新済みであることを確認。
 - ArgoCD `Application.spec.source.targetRevision: main` は本プロジェクト規約の安定版ブランチ（`main` 実在を確認）を指し妥当。
 
 > 実クラスタ上での mTLS 到達検証（`istioctl authn tls-check`）と k3s 稼働は、実行基盤を持つ運用者フェーズで実施する（本 Issue の到達目標は「Git 上に宣言的構成が存在し ArgoCD が同期する」こと）。
@@ -129,7 +129,7 @@ CI ジョブでは `helm`/`dotnet` が未許可のため未実走だった検証
 - 実クラスタでの Istio 導入時は、STRICT mTLS を一括適用する前に `PERMISSIVE` で移行を確認する運用が安全。
   本チャートは `mesh.mtlsMode` で切替可能とし、既定は `STRICT`（To-Be）とする。
 - Secret（LLM/DB/registry）は Git にコミットしない。Sealed Secrets / External Secrets の導入は恒久フェーズの課題。
-- 恒久像（全 API OIDC/JWT）への移行は本 Issue の範囲外だが、IADR-0024 と計画 NFR 注記で移行方針を明記する。
+- 恒久像（全 API OIDC/JWT）への移行は本 Issue の範囲外だが、IADR-0026 と計画 NFR 注記で移行方針を明記する。
 
 ## 完了条件（Definition of Done 参照）
 

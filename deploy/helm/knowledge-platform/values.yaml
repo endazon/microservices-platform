@@ -9,6 +9,14 @@ global:
     endpoint: http://otel-collector:4317
   auth:
     authority: http://keycloak:8080/realms/knowledge-platform
+  # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）接続。
+  # 資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
+  objectStorage:
+    endpoint: http://minio:9000
+    bucket: knowledge-normalized
+    existingSecret: minio-credentials
+    accessKeyKey: accessKey
+    secretKeyKey: secretKey
 
 # ADR-0008: k3s 実行基盤 — 配備先 Namespace。
 # istio-injection: enabled により、この Namespace の Pod へサイドカーが自動注入される（段階2の前提）。
@@ -20,7 +28,7 @@ namespace:
   istioInjection: true
 
 # ADR-0005: サービスメッシュ（Istio / mTLS）— サービス間通信を STRICT mTLS で暗号化・相互認証する。
-# これをもって暫定運用（IADR-0017: ネットワーク分離を第一防御）を解消する（後継 IADR-0024）。
+# これをもって暫定運用（IADR-0017: ネットワーク分離を第一防御）を解消する（後継 IADR-0026）。
 mesh:
   enabled: true
   # PeerAuthentication の mTLS モード。恒久像は STRICT（平文フォールバック無し）。
@@ -28,7 +36,7 @@ mesh:
   mtlsMode: STRICT
 
 # IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
-# mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0024）。
+# mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:
   enabled: true
 
@@ -63,6 +71,8 @@ services:
     replicas: 1
     image: knowledge-platform/conversion-service
     tag: latest
+    # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
+    objectStorage: true
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -72,6 +82,8 @@ services:
     replicas: 1
     image: knowledge-platform/ingestion-service
     tag: latest
+    # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
+    objectStorage: true
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -114,6 +126,8 @@ services:
     image: knowledge-platform/wiki-service
     tag: latest
     port: 8080
+    # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
+    objectStorage: true
     # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
     # API キーは Secret 経由で注入（コミットしない。事前に kubectl/ArgoCD で作成する。docs/security）。
     extraEnv:
@@ -168,6 +182,29 @@ services:
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
+
+# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）。
+# 本文・資産の実体を保管する。資格情報は Secret（existingSecret, key=accessKey/secretKey）経由で注入する
+# （コミットしない。事前に kubectl/ArgoCD で作成する。docs/security/security.md）。
+# IADR-0017/IADR-0024: API は ClusterIP のみで Ingress を張らず、直接公開しない（ABAC 強制サービス経由）。
+minio:
+  enabled: true
+  replicas: 1
+  registry: docker.io
+  image: minio/minio
+  tag: "RELEASE.2025-04-08T15-41-24Z"
+  port: 9000
+  consolePort: 9001
+  existingSecret: minio-credentials
+  accessKeyKey: accessKey
+  secretKeyKey: secretKey
+  persistence:
+    enabled: true
+    size: 20Gi
+    # storageClass: ""
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
 
 # FR-13, UC-07, ADR-0011, IADR-0020: Wiki.js（閲覧・編集 UI の実体）。専用 DB `wikijs`（Postgres）。
 # 認証は Keycloak(OIDC)。ABAC は WikiService ゲートウェイが前段で強制するため、Wiki.js への直接到達は

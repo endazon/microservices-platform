@@ -10,22 +10,25 @@ namespace IngestionService.Worker.Tests;
 // FR-02, UC-04: IngestionService 取り込みパイプライン（parse→chunk→embed→index）テスト
 public class DocumentUpdatedConsumerTests
 {
-    private static DocumentUpdated SampleEvent(string? markdownUri = "https://storage.example/docs/test.md")
+    private static DocumentUpdated SampleEvent(
+        string? markdownUri = "https://storage.example/docs/test.md",
+        string confidentiality = "internal")
         => new(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "テスト文書",
             "normalized",
             markdownUri,
-            new Dictionary<string, string> { ["confidentiality"] = "internal" },
+            new Dictionary<string, string> { ["confidentiality"] = confidentiality },
             ["knowledge-mgmt", "ops"],
             DateTimeOffset.UtcNow);
 
     private static ServiceProvider BuildHarness(
         IIngestionVectorStore store,
-        IDocumentContentReader reader)
+        IDocumentContentReader reader,
+        IEmbeddingService? embed = null)
         => new ServiceCollection()
             .AddSingleton<IChunkingService, MarkdownChunkingService>()
-            .AddSingleton<IEmbeddingService, StubEmbeddingService>()
+            .AddSingleton<IEmbeddingService>(embed ?? new StubEmbeddingService())
             .AddSingleton<IDocumentContentReader>(reader)
             .AddSingleton<IIngestionVectorStore>(store)
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<DocumentUpdatedConsumer>())
@@ -137,13 +140,145 @@ public class DocumentUpdatedConsumerTests
         }
         finally { await harness.Stop(); }
     }
+
+    // T-07 (FR-02, ADR-0016): 文書の機密区分（confidentiality）が埋め込みへ渡される。
+    // ゲートウェイが越境判定（fail-closed）とモデル別コレクションを決めるために必須。
+    [Fact]
+    public async Task Consumer_ShouldPassConfidentialityToEmbedding()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる");
+        var embed = new RecordingEmbeddingService(); // 既定: voyage コレクション・Embedded=true
+        await using var provider = BuildHarness(store, reader, embed);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent()); // confidentiality=internal
+            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+
+            embed.Requests.Should().OnlyContain(r => r.Confidentiality == "internal");
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // T-08 (FR-02, ADR-0016): ゲートウェイが返したモデル別コレクションへ索引する。
+    [Fact]
+    public async Task Consumer_ShouldIndexToRoutedCollection()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ");
+        var embed = new RecordingEmbeddingService(collection: "knowledge_chunks_voyage_3_5");
+        await using var provider = BuildHarness(store, reader, embed);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent());
+            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+
+            store.Upserts.Should().OnlyContain(u => u.Collection == "knowledge_chunks_voyage_3_5");
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // T-09 (FR-02, FR-05, ADR-0016): fail-closed。埋め込みが Embedded=false（高機密でセルフホスト未有効等）なら
+    // 索引しない（外部へ本文を送らず、Qdrant へも書かない）。
+    [Fact]
+    public async Task Consumer_ShouldSkipIndexing_WhenEmbeddingFailClosed()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ");
+        var embed = new RecordingEmbeddingService(embedded: false); // fail-closed
+        await using var provider = BuildHarness(store, reader, embed);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent(confidentiality: "confidential"));
+            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+
+            // 索引は 0 件（fail-closed で書き込まない）。埋め込みは試行される（機密区分は渡る）。
+            store.Upserts.Should().BeEmpty();
+            embed.Requests.Should().OnlyContain(r => r.Confidentiality == "confidential");
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // T-11 (FR-02, Issue #98): 一時的な埋め込み障害（Retryable=true）は fail-closed（意図的スキップ）と区別し、
+    // 例外を送出して再試行/DLQ に委ねる。恒久スキップ（IngestionCompleted の縮小 chunkCount 発行）にしない。
+    [Fact]
+    public async Task Consumer_ShouldFaultForRetry_WhenEmbeddingTransientFailure()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる");
+        // 一時障害（送信先不調等）を模す: Embedded=false かつ Retryable=true。
+        var embed = new RecordingEmbeddingService(embedded: false, retryable: true);
+        await using var provider = BuildHarness(store, reader, embed);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent());
+
+            // 消費は例外で失敗（fault）する。恒久スキップにはしない。
+            (await harness.Consumed.Any<DocumentUpdated>(x => x.Exception is not null)).Should().BeTrue();
+            // 一時障害では索引せず、完了イベントも発行しない（取りこぼしを DLQ で検知可能にする）。
+            store.Upserts.Should().BeEmpty();
+            (await harness.Published.Any<IngestionCompleted>()).Should().BeFalse();
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // T-10 (FR-02, FR-05, ADR-0016): 取り込み冒頭で全モデル別コレクションから当該文書を削除する
+    // （機密区分変更時の旧コレクション残存＝ABAC バイパスを防止）。
+    [Fact]
+    public async Task Consumer_ShouldDeleteFromAllCollections_BeforeIndexing()
+    {
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる");
+        await using var provider = BuildHarness(store, reader);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent());
+            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+
+            store.DeletedFromAll.Should().Contain(SampleEvent().DocumentId);
+        }
+        finally { await harness.Stop(); }
+    }
 }
 
 // テスト用スタブ群
 file class StubEmbeddingService : IEmbeddingService
 {
-    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
-        => Task.FromResult(new float[1536]);
+    // 既定は voyage コレクション（1024次元）・索引可（Embedded=true）を模す。
+    public Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct = default)
+        => Task.FromResult(new EmbeddingResult(new float[1024], "knowledge_chunks_voyage_3_5", true));
+}
+
+// 呼び出しを記録し、コレクション/成否/一時障害を制御できるスタブ。
+file class RecordingEmbeddingService(
+    string collection = "knowledge_chunks_voyage_3_5",
+    bool embedded = true,
+    int dimensions = 1024,
+    bool retryable = false) : IEmbeddingService
+{
+    public List<(string Text, string? Confidentiality)> Requests { get; } = [];
+
+    public Task<EmbeddingResult> EmbedAsync(string text, string? confidentiality, CancellationToken ct = default)
+    {
+        Requests.Add((text, confidentiality));
+        return Task.FromResult(new EmbeddingResult(
+            embedded ? new float[dimensions] : [], collection, embedded, retryable));
+    }
 }
 
 file class StubContentReader(string markdown) : IDocumentContentReader
@@ -152,29 +287,33 @@ file class StubContentReader(string markdown) : IDocumentContentReader
         => Task.FromResult(markdown);
 }
 
-file record UpsertRecord(Guid ChunkId, Guid DocumentId, string Title, string Text,
+file record UpsertRecord(string Collection, Guid ChunkId, Guid DocumentId, string Title, string Text,
     int ChunkIndex, string? MarkdownUri, Dictionary<string, string> Attributes, List<string> Tags);
 
 file class RecordingVectorStore : IIngestionVectorStore
 {
     public List<UpsertRecord> Upserts { get; } = [];
-    public bool CollectionEnsured { get; private set; }
+    public List<Guid> DeletedFromAll { get; } = [];
+    public bool CollectionsEnsured { get; private set; }
 
-    public Task EnsureCollectionAsync(CancellationToken ct = default)
+    public Task EnsureCollectionsAsync(CancellationToken ct = default)
     {
-        CollectionEnsured = true;
+        CollectionsEnsured = true;
         return Task.CompletedTask;
     }
 
-    public Task UpsertChunkAsync(Guid chunkId, Guid documentId, string title,
+    public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags, CancellationToken ct = default)
     {
-        Upserts.Add(new UpsertRecord(chunkId, documentId, title, text, chunkIndex,
+        Upserts.Add(new UpsertRecord(collection, chunkId, documentId, title, text, chunkIndex,
             markdownUri, attributes, tags));
         return Task.CompletedTask;
     }
 
-    public Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default)
-        => Task.CompletedTask;
+    public Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
+    {
+        DeletedFromAll.Add(documentId);
+        return Task.CompletedTask;
+    }
 }

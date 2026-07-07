@@ -38,6 +38,23 @@ spec:
               value: {{ $.Values.global.otel.endpoint }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
+          {{- if $svc.objectStorage }}
+            # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO 接続。資格情報は Secret 経由。
+            - name: ObjectStorage__Endpoint
+              value: {{ $.Values.global.objectStorage.endpoint | quote }}
+            - name: ObjectStorage__Bucket
+              value: {{ $.Values.global.objectStorage.bucket | quote }}
+            - name: ObjectStorage__AccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.objectStorage.existingSecret }}
+                  key: {{ $.Values.global.objectStorage.accessKeyKey }}
+            - name: ObjectStorage__SecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $.Values.global.objectStorage.existingSecret }}
+                  key: {{ $.Values.global.objectStorage.secretKeyKey }}
+          {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
               {{- if .value }}

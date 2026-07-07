@@ -18,6 +18,14 @@ x-db-env: &db-env
 x-rabbit-env: &rabbit-env
   RabbitMq__ConnectionString: amqp://guest:guest@rabbitmq:5672
 
+# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）接続。
+# 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+x-objectstorage-env: &objectstorage-env
+  ObjectStorage__Endpoint: http://minio:9000
+  ObjectStorage__AccessKey: ${MINIO_ROOT_USER:-minioadmin}
+  ObjectStorage__SecretKey: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  ObjectStorage__Bucket: knowledge-normalized
+
 services:
   # ─────────────────────────────────────────────
   # Infrastructure
@@ -98,6 +106,28 @@ services:
       - qdrant-data:/qdrant/storage
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）。
+  # 資格情報は .env（MINIO_ROOT_USER / MINIO_ROOT_PASSWORD）で上書きする（コミットしない。dev 既定のみ）。
+  # IADR-0017/IADR-0024: API(9000) は内部サービス専用のため host 公開しない（expose）。直接公開はせず、
+  # ABAC を強制するサービス経由で読み取る。dev 便宜でコンソール(9001)のみ host 公開（stg/prod では公開しない）。
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    expose:
+      - "9000"
+    ports:
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -197,9 +227,12 @@ services:
       context: ..
       dockerfile: src/Services/ConversionService/src/ConversionService.Worker/Dockerfile
     environment:
-      <<: [*common-env, *rabbit-env]
+      # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
+      <<: [*common-env, *rabbit-env, *objectstorage-env]
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   ingestion-service:
@@ -207,7 +240,8 @@ services:
       context: ..
       dockerfile: src/Services/IngestionService/src/IngestionService.Worker/Dockerfile
     environment:
-      <<: [*common-env, *rabbit-env]
+      # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
+      <<: [*common-env, *rabbit-env, *objectstorage-env]
       Qdrant__Host: qdrant
       Qdrant__Port: 6334
       Services__LlmGateway: http://llm-gateway:8080
@@ -215,6 +249,8 @@ services:
       rabbitmq:
         condition: service_healthy
       qdrant:
+        condition: service_healthy
+      minio:
         condition: service_healthy
       llm-gateway:
         condition: service_started
@@ -282,7 +318,8 @@ services:
     expose:
       - "8080"
     environment:
-      <<: [*common-env, *db-env, *rabbit-env]
+      # FR-06: storage:// 本文を MinIO から実取得し Wiki.js へ push する（読み取り側）。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
@@ -292,6 +329,8 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）で永続化する。
@@ -332,6 +371,17 @@ services:
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
       # ADR-0010 / IADR-0022: 既定は claude-opus-4-8（定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
       Llm__Model: claude-opus-4-8
+      # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
+      # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
+      Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}
+      # ADR-0017 / IADR-0025: 高機密（confidential/restricted）はティアA=セルフホスト（Ruri v3/768次元）固定。
+      # URL 未設定時は fail-closed（高機密は索引せず外部へも送らない）。基盤構築後に設定して有効化する。
+      Embedding__SelfHosted__BaseUrl: ${SELFHOSTED_EMBEDDING_URL:-}
+      # ⚠️ Issue #98: この上書きは appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が
+      # index 1（voyage が index 0）である前提。エンドポイントの追加・並び替え時はインデックスを見直すこと。
+      # 取り違え（例: 誤って Voyage を無効化）は LlmGateway 起動時バリデーション
+      # （EmbeddingRoutingOptionsValidator / ValidateOnStart）が fail-fast で検知し、起動に失敗する。
+      Embedding__Routing__Endpoints__1__Enabled: ${SELFHOSTED_EMBEDDING_ENABLED:-false}
     depends_on:
       - otel-collector
 
@@ -391,5 +441,6 @@ volumes:
   rabbitmq-data:
   redis-data:
   qdrant-data:
+  minio-data:
   prometheus-data:
   grafana-data:

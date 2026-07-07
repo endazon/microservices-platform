@@ -20,12 +20,20 @@ builder.Services.AddSingleton<IChunkingService, MarkdownChunkingService>();
 var qdrantHost = builder.Configuration["Qdrant:Host"] ?? "qdrant";
 var qdrantPort = int.Parse(builder.Configuration["Qdrant:Port"] ?? "6334");
 builder.Services.AddSingleton(new QdrantClient(qdrantHost, qdrantPort));
+
+// FR-02, ADR-0016: モデル別コレクション（voyage/1024・ruri/768）の定義（起動時作成・残存防止削除に使用）。
+builder.Services.Configure<EmbeddingCollectionsOptions>(
+    builder.Configuration.GetSection(EmbeddingCollectionsOptions.SectionName));
 builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>();
 
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 
-// FR-02 parse: 本文（Markdown）取得（http(s) は実取得、それ以外はプレースホルダー）
+// FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+
+// FR-02/FR-06 parse: 本文（Markdown）取得（storage:// はオブジェクトストレージ、http(s) は実取得、
+// それ以外はプレースホルダー）
 builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentReader>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）

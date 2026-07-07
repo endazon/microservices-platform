@@ -1,6 +1,6 @@
 # Secret ブートストラップ（k3s / knowledge-platform）
 
-> 起点: ADR-0008（k3s）/ ADR-0007（Harbor）/ IADR-0017・IADR-0024（シークレット管理）
+> 起点: ADR-0008（k3s）/ ADR-0007（Harbor）/ IADR-0017・IADR-0026（シークレット管理）
 > 関連仕様: [`docs/security/security.md`](../../docs/security/security.md)
 
 Git を単一の真実源とする GitOps（ADR-0007）でも、**Secret 実値は Git に載せない**。

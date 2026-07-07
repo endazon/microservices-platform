@@ -1,4 +1,4 @@
-# IADR-0017 フォローアップ / IADR-0024: ClusterIP + NetworkPolicy（デフォルト拒否）。
+# IADR-0017 フォローアップ / IADR-0026: ClusterIP + NetworkPolicy（デフォルト拒否）。
 # mesh(mTLS) は第一防御だが、NetworkPolicy を多層防御（defense-in-depth）として維持する。
 # 既定でこの Namespace への ingress を拒否し、同 Namespace 内通信・DNS・Istio 制御面のみ許可する。
 {{- if .Values.networkPolicy.enabled }}

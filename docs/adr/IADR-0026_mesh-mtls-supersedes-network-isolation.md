@@ -1,5 +1,5 @@
 ---
-title: IADR-0024 Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017（ネットワーク分離）を解消する
+title: IADR-0026 Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017（ネットワーク分離）を解消する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -25,7 +25,7 @@ supersedes:
   - IADR-0017
 ---
 
-# IADR-0024: Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017 を解消する
+# IADR-0026: Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017 を解消する
 
 - 状態: Accepted
 - 日付: 2026-07-07

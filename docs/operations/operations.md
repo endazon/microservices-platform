@@ -29,7 +29,7 @@ plan_refs: []
 | 環境 | dev（docker-compose） / stg・prod（k3s + Istio + ArgoCD） |
 | 実行基盤 | k3s（ADR-0008）。Helm チャート `deploy/helm/knowledge-platform`。Namespace `knowledge-platform`（Istio 注入有効） |
 | 配備方式 | GitOps（ADR-0007）。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
-| サービス間通信 | Istio STRICT mTLS（ADR-0005 / IADR-0024）。手順 `deploy/istio/README.md` |
+| サービス間通信 | Istio STRICT mTLS（ADR-0005 / IADR-0026）。手順 `deploy/istio/README.md` |
 | 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
 | デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
 | ロールバック | `argocd app rollback knowledge-platform <revision>` もしくは Git revert（GitOps 原則） |
@@ -120,6 +120,57 @@ plan_refs: []
 - **注意**: API キーは Wiki.js の管理 GraphQL 全体に及ぶ強い権限を持つ。付与グループは最小権限とし、
   キーは wiki-service 以外へ配布しない（認可は本システムの ABAC ゲートウェイが単一真実源であり、
   キー漏えい時は Wiki.js 全ページの読み書きが可能になるため即時 Revoke する）。
+
+### 埋め込みプロバイダの設定・ゼロ保持・再索引（FR-02 / ADR-0016 / ADR-0017 / IADR-0025 / Issue #98）
+
+埋め込みは取り込み時に**全文書本文**を送信するため、LLM 呼び出しよりデータ露出が大きい。機密区分で
+送信先・モデル・コレクションが分かれる（`Embedding:Routing`）。
+
+| 機密区分 | 送信先ティア | モデル / 次元 | コレクション | 既定状態 |
+| --- | --- | --- | --- | --- |
+| public / internal | ティアB（Voyage・保護契約） | voyage-3.5 / 1024 | `knowledge_chunks_voyage_3_5` | 有効（要 API キー） |
+| confidential / restricted | ティアA（セルフホスト固定） | ruri-v3 / 768 | `knowledge_chunks_ruri_v3` | 無効＝**fail-closed** |
+
+- **Voyage AI（ティアB）のゼロ保持設定（必須・受け入れ基準）**: 本番データを流す前に、Voyage AI の
+  組織設定で**学習利用のオプトアウト（ゼロ保持 / zero-day retention）を有効化**する。08_data-egress-policy
+  のティアB要件（ゼロ保持・学習不使用・レジデンシー）を契約で確認し、確認できるまで本番文書を索引しない。
+  未認定の間は `Embedding__Routing__Endpoints__0__Enabled=false` で Voyage 経路を止められる。
+  - API キーは Secret 経由で投入する（コミットしない）。compose: `.env` の `VOYAGE_API_KEY`
+    （`Embedding__Voyage__ApiKey`）。k8s は Secret（例 `embedding-voyage`、key=`api-key`）。
+  - キー未設定でも起動する（fail-open しない）。Voyage 呼び出しが失敗した文書は索引されないだけで、
+    高機密文書の本文が外部へ出ることはない（ルーティングで候補にならないため）。
+- **セルフホスト（ティアA / Ruri v3）の有効化**: 基盤（TEI / vLLM 等の OpenAI 互換 `/v1/embeddings`）を
+  構築後、`SELFHOSTED_EMBEDDING_URL`（`Embedding__SelfHosted__BaseUrl`）と
+  `SELFHOSTED_EMBEDDING_ENABLED=true`（`Embedding__Routing__Endpoints__1__Enabled`）を設定して有効化する。
+  有効化まで confidential/restricted 文書は**索引されない**（fail-closed。設計どおり）。
+  - 有効化後、社内文書サンプルで検索精度（nDCG@10）を実測し、voyage-3.5 比で大幅劣化しないことを確認する
+    （ADR-0017 の事前 PoC 代替）。劣る場合は BGE-M3 へ切替（モデル別コレクション分離のため影響は局所）。
+  - **⚠️ 配列インデックス依存の環境変数に注意（Issue #98）**: 上記 `Endpoints__0__Enabled`（Voyage）/
+    `Endpoints__1__Enabled`（セルフホスト）は `appsettings.json` の `Embedding:Routing:Endpoints` 配列の
+    並び順に依存する。エンドポイントの追加・並び替え時はインデックスを必ず見直すこと。取り違え
+    （例 Voyage を誤って無効化し、セルフホストも無効のまま＝全 public 取り込み・検索クエリが黙って
+    fail-closed）は起動時バリデーション（`EmbeddingRoutingOptionsValidator` / `ValidateOnStart`）が
+    fail-fast で検知し、LlmGateway は起動に失敗する（ログに不整合内容を出力）。ティア↔プロバイダの
+    取り違え・必須項目欠落も同時に検証される。
+- **一時障害と fail-closed（意図的拒否）の区別（Issue #98）**: `/embed` は応答に `Retryable` を返す。
+  - **一時障害**（送信先の不調・タイムアウト・予期しない空応答など、`Retryable=true`）: 取り込み消費側
+    （`DocumentUpdatedConsumer`）は当該メッセージを**恒久スキップにせず例外を送出**し、MassTransit の
+    受信リトライ／(枯渇後) DLQ に回す。一括再索引中に Voyage が一時的に不調でもチャンクを取りこぼさない。
+    → 運用: DLQ（`*_error` キュー）を監視し、滞留があれば原因（Voyage 障害・URL 誤設定等）を解消して再投入する。
+    → 注意（削除後・再構築前の空白期間）: 取り込みは冒頭で当該文書の既存チャンクを全モデル別コレクションから
+    削除してから再索引する（機密区分変更時の残存防止）。一時障害でリトライ枯渇→DLQ 送りとなった文書は、
+    **削除済み・未索引（0 チャンク）の状態で一時的に検索不可**となる（恒久欠落ではなく DLQ 再投入で回復する）。
+    このため DLQ 滞留は検索網羅性に直結する運用指標として監視し、速やかに再投入すること。
+  - **fail-closed / 恒久的理由**（高機密でセルフホスト未有効・次元不整合・プロバイダ未登録、`Retryable=false`）:
+    設計どおり当該チャンクを**索引スキップ**し、`IngestionCompleted` は索引できた件数で発行する
+    （警告ログに機密区分を記録）。再試行では解消しないため DLQ には回さない。
+- **再索引手順（次元 1536→1024・モデル別コレクション移行）**:
+  1. 取り込みサービスは起動時に不足コレクション（`knowledge_chunks_voyage_3_5` / `_ruri_v3`）を
+     実次元で自動作成する（`QdrantBootstrapHostedService`）。旧 `knowledge_chunks`（1536 次元）は使用しない。
+  2. 全文書に対し `DocumentUpdated` を再発行する（原本→正規化→取り込みを再走）。取り込み冒頭で全モデル別
+     コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
+  3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。
+  - モデル差し替え（例 ruri-v3→BGE-M3）時も、当該コレクションを作り直し同手順で再索引する。
 
 ## 監視・アラート
 
