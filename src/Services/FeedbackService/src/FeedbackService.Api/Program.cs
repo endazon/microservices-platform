@@ -1,6 +1,6 @@
-using FeedbackService.Api.Endpoints;
-using FeedbackService.Api.Infrastructure;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using FeedbackService.Api.Foundation.Endpoints;
+using FeedbackService.Api.Foundation.Persistence;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 

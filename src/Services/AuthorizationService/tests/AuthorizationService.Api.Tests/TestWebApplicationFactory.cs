@@ -1,4 +1,4 @@
-using AuthorizationService.Api.Infrastructure;
+using AuthorizationService.Api.Foundation.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

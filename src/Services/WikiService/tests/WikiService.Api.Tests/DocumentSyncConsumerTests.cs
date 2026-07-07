@@ -5,9 +5,10 @@ using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Concurrent;
-using WikiService.Api.Consumers;
-using WikiService.Api.Infrastructure;
-using WikiService.Api.Services;
+using WikiService.Api.Composable.Steps;
+using WikiService.Api.Foundation.Persistence;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
 
 namespace WikiService.Api.Tests;
 
@@ -30,7 +31,7 @@ public class DocumentSyncConsumerTests
 
     // 同期は非同期に完了するため、期待状態になるまで短時間ポーリングする。
     private static async Task WaitForAsync(ServiceProvider provider,
-        Func<WikiService.Api.Domain.WikiPage?, bool> predicate)
+        Func<WikiService.Api.Foundation.Domain.WikiPage?, bool> predicate)
     {
         for (var i = 0; i < 50; i++)
         {

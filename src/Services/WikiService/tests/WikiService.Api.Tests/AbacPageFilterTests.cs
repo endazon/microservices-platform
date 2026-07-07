@@ -1,7 +1,8 @@
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using WikiService.Api.Domain;
-using WikiService.Api.Services;
+using WikiService.Api.Foundation.Domain;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
 
 namespace WikiService.Api.Tests;
 

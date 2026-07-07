@@ -1,5 +1,5 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
-using KnowledgePlatform.Bff.Endpoints;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Bff.Foundation.Endpoints;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.bff";

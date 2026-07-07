@@ -1,6 +1,6 @@
+using RetrievalService.Api.Composable.Adapters;
 using FluentAssertions;
 using Qdrant.Client.Grpc;
-using RetrievalService.Api.Infrastructure;
 
 namespace RetrievalService.Api.Tests;
 

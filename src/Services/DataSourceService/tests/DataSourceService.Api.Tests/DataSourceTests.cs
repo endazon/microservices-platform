@@ -1,4 +1,4 @@
-using DataSourceService.Api.Domain;
+using DataSourceService.Api.Foundation.Domain;
 using FluentAssertions;
 
 namespace DataSourceService.Api.Tests;

@@ -1,5 +1,8 @@
+using ConversionService.Worker.Composable.Adapters;
 using System.Diagnostics;
-using ConversionService.Worker.Services;
+using ConversionService.Worker.Foundation.Ports;
+using ConversionService.Worker.Foundation.Services;
+using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 

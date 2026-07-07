@@ -1,4 +1,4 @@
-using DocumentService.Api.Domain;
+using DocumentService.Api.Foundation.Domain;
 
 namespace DocumentService.Api.Tests;
 

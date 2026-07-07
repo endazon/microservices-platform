@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using DataSourceService.Api.Domain;
-using DataSourceService.Api.Infrastructure;
+using DataSourceService.Api.Foundation.Domain;
+using DataSourceService.Api.Foundation.Persistence;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit.Testing;

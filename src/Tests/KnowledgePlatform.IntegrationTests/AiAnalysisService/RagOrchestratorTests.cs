@@ -1,4 +1,4 @@
-using AiAnalysisService.Api.Services;
+using AiAnalysisService.Api.Foundation.Services;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;

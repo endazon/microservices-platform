@@ -19,7 +19,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
         _factory = new DocumentServiceFactory(postgres, rabbit);
         _client = _factory.CreateClient();
         await using var scope = _factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Api.Infrastructure.DocumentDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<global::DocumentService.Api.Foundation.Persistence.DocumentDbContext>();
         await db.Database.EnsureCreatedAsync();
     }
 

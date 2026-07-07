@@ -1,4 +1,4 @@
-using DocumentService.Api.Infrastructure;
+using DocumentService.Api.Foundation.Persistence;
 using MassTransit;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

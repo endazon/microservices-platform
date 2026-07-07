@@ -1,6 +1,6 @@
-using DataSourceService.Api.Endpoints;
-using DataSourceService.Api.Infrastructure;
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using DataSourceService.Api.Foundation.Endpoints;
+using DataSourceService.Api.Foundation.Persistence;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;

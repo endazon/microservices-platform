@@ -1,6 +1,8 @@
+using IngestionService.Worker.Composable.Adapters;
 using FluentAssertions;
-using IngestionService.Worker.Consumers;
-using IngestionService.Worker.Services;
+using IngestionService.Worker.Composable.Steps;
+using IngestionService.Worker.Foundation.Ports;
+using IngestionService.Worker.Foundation.Domain;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;

@@ -1,11 +1,14 @@
-using KnowledgePlatform.Shared.Infrastructure.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using WikiService.Api.Consumers;
-using WikiService.Api.Endpoints;
-using WikiService.Api.Infrastructure;
-using WikiService.Api.Services;
+using WikiService.Api.Composable.Steps;
+using WikiService.Api.Foundation.Endpoints;
+using WikiService.Api.Foundation.Persistence;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
+using WikiService.Api.Composable.Adapters;
 
 const string ServiceName = "knowledge-platform.wiki-service";
 

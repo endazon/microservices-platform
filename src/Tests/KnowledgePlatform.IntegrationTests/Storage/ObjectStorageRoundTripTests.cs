@@ -1,9 +1,10 @@
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
 using FluentAssertions;
 using KnowledgePlatform.IntegrationTests.Fixtures;
-using KnowledgePlatform.Shared.Infrastructure.Storage;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.Minio;
 

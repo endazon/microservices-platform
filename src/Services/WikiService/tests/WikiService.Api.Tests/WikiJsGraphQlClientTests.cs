@@ -1,9 +1,11 @@
+using WikiService.Api.Composable.Adapters;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using WikiService.Api.Services;
+using WikiService.Api.Foundation.Ports;
+using WikiService.Api.Foundation.Services;
 
 namespace WikiService.Api.Tests;
 

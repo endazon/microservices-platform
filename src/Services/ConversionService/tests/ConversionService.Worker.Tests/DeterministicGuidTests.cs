@@ -1,4 +1,6 @@
-using ConversionService.Worker.Services;
+using ConversionService.Worker.Foundation.Ports;
+using ConversionService.Worker.Foundation.Services;
+using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
 
 namespace ConversionService.Worker.Tests;

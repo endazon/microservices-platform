@@ -1,4 +1,4 @@
-using AiAnalysisService.Api.Services;
+using AiAnalysisService.Api.Foundation.Services;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

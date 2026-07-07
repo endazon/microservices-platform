@@ -1,5 +1,5 @@
 using FluentAssertions;
-using LlmGateway.Api.Routing;
+using LlmGateway.Api.Foundation.Routing;
 
 namespace LlmGateway.Api.Tests;
 

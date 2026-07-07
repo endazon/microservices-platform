@@ -2,7 +2,7 @@ using FluentAssertions;
 using System.Net;
 using System.Net.Http.Json;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using DocumentService.Api.Domain;
+using DocumentService.Api.Foundation.Domain;
 
 namespace DocumentService.Api.Tests;
 
