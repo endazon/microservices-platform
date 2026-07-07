@@ -7,8 +7,14 @@ public static class StorageUri
     public const string Scheme = "storage";
 
     // storage://<bucket>/<key> を組み立てる。key の先頭スラッシュは正規化する。
-    public static string Build(string bucket, string key) =>
-        $"{Scheme}://{bucket}/{key.TrimStart('/')}";
+    // key はスラッシュ区切りのパス。区切り '/' は保ちつつ各セグメントを %XX エスケープし、
+    // TryParse 側の Uri.UnescapeDataString と対称にする（日本語・記号を含むキーでも往復可能）。
+    public static string Build(string bucket, string key)
+    {
+        var escapedKey = string.Join('/',
+            key.TrimStart('/').Split('/').Select(Uri.EscapeDataString));
+        return $"{Scheme}://{bucket}/{escapedKey}";
+    }
 
     // storage:// URI を (bucket, key) に分解する。書式不正なら false。
     public static bool TryParse(string? uri, out string bucket, out string key)
