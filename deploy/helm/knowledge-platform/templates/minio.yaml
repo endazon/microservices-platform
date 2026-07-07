@@ -1,0 +1,105 @@
+# FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: 本文・資産の S3 互換オブジェクトストレージ（MinIO）。
+# Deployment/Service/PVC。資格情報は Secret（existingSecret）経由で注入する（コミットしない）。
+# IADR-0017/IADR-0024: API(9000) は ClusterIP のみで Ingress を張らず、直接公開しない。
+# 読み取りは ABAC を強制するサービス経由。コンソール(9001)も既定で Ingress を張らない。
+{{- if .Values.minio.enabled }}
+{{- $m := .Values.minio }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    app: minio
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: "{{ $m.registry }}/{{ $m.image }}:{{ $m.tag }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          args: ["server", "/data", "--console-address", ":{{ $m.consolePort }}"]
+          ports:
+            - name: api
+              containerPort: {{ $m.port }}
+            - name: console
+              containerPort: {{ $m.consolePort }}
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $m.existingSecret }}
+                  key: {{ $m.accessKeyKey }}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $m.existingSecret }}
+                  key: {{ $m.secretKeyKey }}
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          {{- if $m.persistence.enabled }}
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+          {{- end }}
+          resources:
+            {{- toYaml $m.resources | nindent 12 }}
+      {{- if $m.persistence.enabled }}
+      volumes:
+        - name: minio-data
+          persistentVolumeClaim:
+            claimName: minio-data
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  labels:
+    app: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: {{ $m.port }}
+      targetPort: api
+      protocol: TCP
+    - name: console
+      port: {{ $m.consolePort }}
+      targetPort: console
+      protocol: TCP
+{{- if $m.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $m.persistence.storageClass }}
+  storageClassName: {{ $m.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $m.persistence.size }}
+{{- end }}
+{{- end }}

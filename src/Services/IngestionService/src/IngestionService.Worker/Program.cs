@@ -25,7 +25,11 @@ builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>
 // FR-02: 起動時に検索インデックス（Qdrant コレクション）の存在を保証する
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 
-// FR-02 parse: 本文（Markdown）取得（http(s) は実取得、それ以外はプレースホルダー）
+// FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+
+// FR-02/FR-06 parse: 本文（Markdown）取得（storage:// はオブジェクトストレージ、http(s) は実取得、
+// それ以外はプレースホルダー）
 builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentReader>();
 
 // ADR-0013: 埋め込みサービス（LLM ゲートウェイ経由）

@@ -49,7 +49,11 @@ builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(c =>
         c.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 });
-// IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する。
+// FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+
+// IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する
+// （storage:// はオブジェクトストレージから実取得。IADR-0020 ゲートウェイ経由の ABAC 強制と整合）。
 builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
 // ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
