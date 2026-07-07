@@ -16,14 +16,17 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE wikijs;
 
     CREATE USER kp WITH PASSWORD 'kp';
+    -- PostgreSQL 15+ では GRANT ALL ON DATABASE だけではスキーマ public への CREATE 権限が
+    -- 付与されず、各サービスの EF Core Migration が 42501（permission denied for schema public）で
+    -- 失敗する（Issue #88 の稼働 PoC で実測）。所有権を kp へ移し（public スキーマは
+    -- pg_database_owner 所有のため DB 所有者に追随する）、自スキーマ管理を可能にする。
+    ALTER DATABASE document_svc OWNER TO kp;
+    ALTER DATABASE datasource_svc OWNER TO kp;
+    ALTER DATABASE retrieval_svc OWNER TO kp;
+    ALTER DATABASE aianalysis_svc OWNER TO kp;
+    ALTER DATABASE authz_svc OWNER TO kp;
+    ALTER DATABASE wiki_svc OWNER TO kp;
+    ALTER DATABASE feedback_svc OWNER TO kp;
+    ALTER DATABASE dashboard_svc OWNER TO kp;
     ALTER DATABASE wikijs OWNER TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE document_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE datasource_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE retrieval_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE aianalysis_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE authz_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE wiki_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE feedback_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE dashboard_svc TO kp;
-    GRANT ALL PRIVILEGES ON DATABASE wikijs TO kp;
 EOSQL

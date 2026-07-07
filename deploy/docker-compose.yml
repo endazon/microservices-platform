@@ -75,6 +75,10 @@ services:
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      # Issue #88 稼働 PoC: issuer をリクエストホストで揺らさず http://localhost:8080 に固定する。
+      # 固定しないと、ブラウザ経路（localhost）で発行されたトークンの iss と、コンテナ内経路
+      # （keycloak:8080）の userinfo/JWT 検証が食い違い、Wiki.js の OIDC ログインが失敗する。
+      KC_HOSTNAME_URL: http://localhost:8080
     volumes:
       - ./keycloak/knowledge-platform-realm.json:/opt/keycloak/data/import/knowledge-platform-realm.json:ro
     ports:
