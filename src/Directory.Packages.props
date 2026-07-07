@@ -34,7 +34,7 @@
     <!-- Vector store -->
     <PackageVersion Include="Qdrant.Client" Version="1.18.1" />
     <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント -->
-    <PackageVersion Include="AWSSDK.S3" Version="4.0.0" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.100.2" />
     <!-- Health checks (9.x is latest; net10 compatible via netstandard2.0) -->
     <!-- NU1510 (Issue #33/#63): Microsoft.Extensions.Diagnostics.HealthChecks は Microsoft.AspNetCore.App
          共有フレームワーク由来で、どの csproj も直接参照しないため中央バージョン定義も撤去した。 -->
