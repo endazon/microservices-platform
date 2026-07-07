@@ -52,3 +52,4 @@
 | IADR-0026 | Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017（ネットワーク分離）を解消する | Accepted |
 | IADR-0027 | 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable、ADR-0018 対応） | Accepted |
 | IADR-0028 | 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する（FR-14, ADR-0018） | Accepted |
+| IADR-0029 | 構成情報 API は BFF 配下の管理 API へ同居させ、自己申告集約＋宣言突合でドリフトを検出する（FR-15, ADR-0018） | Accepted |

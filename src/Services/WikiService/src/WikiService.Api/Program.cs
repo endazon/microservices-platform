@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
@@ -65,6 +66,11 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 builder.AddKnowledgePlatformPipelineConfig();
 var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
 
+// FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（wiki-sync / wiki-delete）の実効値を申告する。
+builder.Services.AddKnowledgePlatformIntrospection("wiki-service", pipeline, i => i
+    .AddStep<DocumentSyncConsumer>()
+    .AddStep<DocumentDeletedConsumer>());
+
 builder.Services.AddMassTransit(x =>
 {
     x.AddKnowledgePlatformPipelineStep<DocumentSyncConsumer>(pipeline);
@@ -95,6 +101,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapWikiEndpoints();

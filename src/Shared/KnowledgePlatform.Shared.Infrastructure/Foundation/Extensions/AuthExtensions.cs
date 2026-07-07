@@ -12,8 +12,14 @@ public static class KnowledgePlatformAuthPolicies
     // FR-09: 属性辞書・ABAC ポリシーの管理は管理者のみ許可する。
     public const string AdminOnly = "AdminOnly";
 
+    // FR-15: 構成情報の閲覧は管理者・運用者ロールに限定する。
+    public const string ConfigViewer = "ConfigViewer";
+
     // 管理者ロール（Keycloak のレルムロール想定）。
     public const string AdminRole = "platform-admin";
+
+    // FR-15: 運用者ロール（Keycloak のレルムロール想定）。
+    public const string OperatorRole = "platform-operator";
 }
 
 public static class AuthExtensions
@@ -47,6 +53,12 @@ public static class AuthExtensions
         {
             options.AddPolicy(KnowledgePlatformAuthPolicies.AdminOnly, policy =>
                 policy.RequireRole(KnowledgePlatformAuthPolicies.AdminRole));
+
+            // FR-15: 構成情報の閲覧は管理者・運用者のいずれかを要求する。
+            options.AddPolicy(KnowledgePlatformAuthPolicies.ConfigViewer, policy =>
+                policy.RequireRole(
+                    KnowledgePlatformAuthPolicies.AdminRole,
+                    KnowledgePlatformAuthPolicies.OperatorRole));
         });
         return services;
     }
