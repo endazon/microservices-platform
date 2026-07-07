@@ -124,6 +124,17 @@ CI ジョブでは `helm`/`dotnet` が未許可のため未実走だった検証
 
 > 実クラスタ上での mTLS 到達検証（`istioctl authn tls-check`）と k3s 稼働は、実行基盤を持つ運用者フェーズで実施する（本 Issue の到達目標は「Git 上に宣言的構成が存在し ArgoCD が同期する」こと）。
 
+### レビュー対応（2026-07-07・AI コードレビュー指摘反映）
+
+PR #109 の AI コードレビュー指摘（🟡推奨・🟢軽微）を以下のとおり反映した。いずれも宣言的マニフェスト／ドキュメントの是正で、mTLS・GitOps の受け入れ基準に影響しない。
+
+- **NetworkPolicy `allow-intra-namespace` の意図明確化**（`templates/networkpolicy.yaml`）: `ingress.from` を `namespaceSelector`（汎用 Helm ラベル一致）＋`podSelector: {}` の OR 併記から、`podSelector: {}` 単独へ変更。k8s 仕様上 `podSelector: {}` は「同 Namespace の全 Pod」を意味し意図を満たす。同ラベルを持つ別 Namespace からの ingress を意図せず許可し得る `namespaceSelector` エントリを削除（多層防御の過剰許可を排除）。
+- **ArgoCD README に段階順序の前提を明記**（`deploy/argocd/README.md`）: 既定 `mesh.enabled: true` では Istio CRD（`PeerAuthentication`/`DestinationRule`）を要するため、ArgoCD 同期前に段階2（Istio 導入）完了が前提であること、未導入時は `mesh.enabled: false` で無効化する旨を追記。
+- **AppProject の許可リソース種別を最小化**（`deploy/argocd/appproject.yaml`）: `namespaceResourceWhitelist` を `group: "*"/kind: "*"` の全許可から、チャートが実際にレンダリングする種別（Deployment/Service/PersistentVolumeClaim/Ingress/NetworkPolicy/PeerAuthentication/DestinationRule）へ限定（最小権限）。
+- **IADR 番号の整合**: 本文・コード（`docs/adr/README.md`・`docs/security/security.md`・テストコメント）は `develop` マージ後の採番衝突解消で **IADR-0026** に統一済み（旧 IADR-0024 は develop 側 MinIO ADR に採番済みのため）。PR #109 本文の記述は運用者側で `IADR-0026` へ読み替え。
+
+> 本レビュー対応コミット時点の CI/ヘッドレス実行環境では `helm`/`dotnet` がツール許可外のため再実走できていない。上記変更は既存の宣言的テンプレートの局所修正であり、ローカル環境（helm・dotnet 10.0.301）での `helm lint`/`helm template`/`dotnet test --filter Category=Deployment` 再実走で最終確認することを推奨する。
+
 ## リスク・注意事項
 
 - 実クラスタでの Istio 導入時は、STRICT mTLS を一括適用する前に `PERMISSIVE` で移行を確認する運用が安全。

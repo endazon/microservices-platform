@@ -29,10 +29,11 @@ spec:
     - Ingress
     - Egress
   ingress:
+    # 同 Namespace 内の全 Pod からの ingress のみ許可する。k8s 仕様上 `podSelector: {}` は
+    # 「この NetworkPolicy と同じ Namespace の全 Pod」を意味するため、これ単独で意図を満たす。
+    # 以前は `namespaceSelector`（汎用 Helm ラベル一致）を別エントリ(OR)で併記していたが、
+    # 同ラベルを持つ任意の別 Namespace からの ingress を意図せず許可し得るため削除した。
     - from:
-        - namespaceSelector:
-            matchLabels:
-              app.kubernetes.io/part-of: knowledge-platform
         - podSelector: {}
   egress:
     # 同 Namespace 内。

@@ -20,6 +20,22 @@ spec:
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
+  # 配備先 Namespace 内で許可するリソース種別を、本プラットフォームが実際に配備する
+  # 種別に限定する（最小権限）。恒久フェーズで新種別を追加する場合はここへ明示追加する。
   namespaceResourceWhitelist:
-    - group: "*"
-      kind: "*"
+    # Helm チャートが実際にレンダリングする種別（deployment/service/ingress/minio/wikijs/
+    # networkpolicy/istio-mtls テンプレート由来）。
+    - group: "apps"
+      kind: Deployment
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: "networking.k8s.io"
+      kind: Ingress
+    - group: "networking.k8s.io"
+      kind: NetworkPolicy
+    - group: "security.istio.io"
+      kind: PeerAuthentication
+    - group: "networking.istio.io"
+      kind: DestinationRule

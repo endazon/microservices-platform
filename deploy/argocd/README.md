@@ -13,6 +13,12 @@ Git を単一の真実源とし、ArgoCD が本リポジトリの Helm チャー
 | `appproject.yaml` | `AppProject` | 許可するソース Git・配備先 Namespace を制約 |
 | `application.yaml` | `Application` | Helm チャートを同期（`prune`/`selfHeal` 有効） |
 
+> **前提（段階順序）**: 本チャートは既定 `mesh.enabled: true` で `PeerAuthentication` /
+> `DestinationRule`（Istio CRD）をレンダリングする。ArgoCD で同期する前に**段階2（Istio 導入）を
+> 完了**しておくこと。Istio CRD 未導入のクラスタへ適用すると `PeerAuthentication` /
+> `DestinationRule` の適用が失敗する（導入手順は [`../istio/README.md`](../istio/README.md)）。
+> Istio 未導入で先に GitOps を回す場合のみ `mesh.enabled: false` で Istio リソースを無効化する。
+
 ## 1. ArgoCD 導入
 
 ```sh
