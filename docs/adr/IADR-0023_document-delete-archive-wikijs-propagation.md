@@ -72,7 +72,12 @@ Wiki.js 側ページが残り続けると、社内文書が外部システムに
 
 - 良い影響: 社内文書の Wiki.js 残存リスクを解消。アーカイブが可逆で、ゲートウェイの存在秘匿と整合。
 - 悪い影響・トレードオフ: イベント契約が 1 種増える。Wiki.js の `pages.delete`/`pages.update`
-  （unpublish）スキーマへの結合が増える（稼働 PoC で実測確認する — Issue #88 スコープ2）。
+  （unpublish）スキーマへの結合が増える（稼働 PoC で実測確認済み — Issue #88 スコープ2）。
+  実測上の制約: **Wiki.js 2.5 の `pages.update` は `isPrivate` の変更を無視する**（create 時のみ有効）
+  ため、アーカイブの非公開化の実効手段は unpublish（`isPublished=false`）である。isPrivate を事後に
+  追随させるには delete→create の再作成が必要（残課題）。一次防御は ABAC ゲートウェイ＋ネットワーク
+  分離であり影響は多層防御の一層に限定される。詳細:
+  [Wiki.js 稼働 PoC 実測記録](../tech/20260707_wikijs-poc-record.md)。
 - 検証: `DocumentDeleteArchiveSyncTests`（削除・アーカイブ・冪等・再公開）、`WikiEndpointsAbacTests`
   （Archived の一覧除外・404）、`DocumentLifecycleEventTests`（イベント発行）で担保。
 

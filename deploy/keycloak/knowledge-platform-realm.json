@@ -90,6 +90,28 @@
       ]
     },
     {
+      "name": "roles",
+      "description": "レルムロールを realm_access.roles として発行する（KeycloakRolesClaimsTransformation が ClaimTypes.Role へ展開し、FR-09 の AdminOnly=platform-admin 判定に用いる。組み込みスコープが生成されないため定義する）",
+      "protocol": "openid-connect",
+      "attributes": { "include.in.token.scope": "false", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "name": "abac-attributes",
       "description": "ABAC 属性（clearance / department）とグループを JWT に載せる。WikiService ゲートウェイと Wiki.js 表示制御が参照する。",
       "protocol": "openid-connect",
@@ -162,6 +184,7 @@
       "defaultClientScopes": [
         "profile",
         "email",
+        "roles",
         "abac-attributes"
       ]
     },
@@ -183,6 +206,7 @@
       "defaultClientScopes": [
         "profile",
         "email",
+        "roles",
         "abac-attributes"
       ]
     }
