@@ -9,16 +9,26 @@ public class EmbeddingRoutingOptionsValidatorTests
 {
     private static EmbeddingEndpointOptions Voyage(bool enabled = true) => new()
     {
-        Name = "voyage-managed", Tier = ProtectionTier.B, Provider = "voyage",
-        Model = "voyage-3.5", Dimensions = 1024, Collection = "knowledge_chunks_voyage_3_5",
-        Enabled = enabled, Priority = 10
+        Name = "voyage-managed",
+        Tier = ProtectionTier.B,
+        Provider = "voyage",
+        Model = "voyage-3.5",
+        Dimensions = 1024,
+        Collection = "knowledge_chunks_voyage_3_5",
+        Enabled = enabled,
+        Priority = 10
     };
 
     private static EmbeddingEndpointOptions SelfHosted(bool enabled = false) => new()
     {
-        Name = "selfhosted-ruri", Tier = ProtectionTier.A, Provider = "selfhosted-embedding",
-        Model = "ruri-v3", Dimensions = 768, Collection = "knowledge_chunks_ruri_v3",
-        Enabled = enabled, Priority = 20
+        Name = "selfhosted-ruri",
+        Tier = ProtectionTier.A,
+        Provider = "selfhosted-embedding",
+        Model = "ruri-v3",
+        Dimensions = 768,
+        Collection = "knowledge_chunks_ruri_v3",
+        Enabled = enabled,
+        Priority = 20
     };
 
     private static ValidateOptionsResultAssertion Validate(params EmbeddingEndpointOptions[] endpoints)
