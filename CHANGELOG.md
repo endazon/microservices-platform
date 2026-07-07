@@ -4,6 +4,8 @@
 
 ### 新機能
 
+- **ADR-0010,IADR-0022**: 既定を opus 化し fable-5(最難関)/Copilot 経路を追加 (#96) (51c565f)
+- 各サービスの launchSettings.json を追加し、開発環境の設定を整備 (280fa9b)
 - **FR-13,UC-07,ADR-0011**: WikiService を Wiki.js 同期・ABAC 認可プロキシへカットオーバー (IADR-0020 段2) (#66) (#86) (c51edad)
 - **FR-13,UC-07,ADR-0011**: Wiki.js 配備・WikiService を ABAC ゲートウェイへ縮退 (#66) (#84) (bebfb2b)
 - **FR-01,FR-05**: データソースが原本へ機密区分を付与しfail-closed除外を解消 (#82) (7b5abf7)
@@ -31,6 +33,7 @@
 
 ### 不具合修正
 
+- サブプロジェクトのコミットIDを更新 (fa7320e)
 - **NFR**: Microsoft.OpenApi のバージョンを2.7.5に引き上げ、脆弱性NU1903を解消 (200eaf3)
 - **NFR**: 推移依存の脆弱性スキャンに関するADRをIADR-0018に更新 (784c0be)
 - **NFR**: ビルド警告解消と軽微な構成不備の整理 (#63) (#78) (356b1dc)
@@ -43,6 +46,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (39cc8d5)
 - **FR-08,FR-10,FR-11**: openapi.yaml へ Feedback/Dashboard/LlmGateway の API を手書き追記 (#91) (2bb03c1)
 - **NFR**: CHANGELOG を自動更新 (#90) (ca64cc9)
 - **FR-13,UC-07,ADR-0011**: Wiki.js 段2実装完了に伴う陳腐化記述の整合 (#66) (#89) (789bef0)
@@ -72,6 +76,7 @@
 
 ### その他
 
+- Claude/issue 71 20260705 1545 (#95) (3d8852f)
 - traceability.md を更新 (01b5ebe)
 - claude-code-review.yml を更新 (eb444f8)
 - Update claude-coding.yml (b349c36)
