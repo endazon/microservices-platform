@@ -1,39 +1,38 @@
+using Microsoft.Extensions.Options;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 
 namespace IngestionService.Worker.Services;
 
-// ADR-0009: IngestionService から Qdrant へ直接書き込む
-public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration config)
+// ADR-0009, ADR-0016: IngestionService から Qdrant へ直接書き込む（モデル別コレクション対応）。
+public class QdrantIngestionVectorStore(
+    QdrantClient client, IOptions<EmbeddingCollectionsOptions> collections)
     : IIngestionVectorStore
 {
-    // FR-02: コレクション名は CollectionName を正とし、後方互換で Collection、
-    // 既定 knowledge_chunks の順に解決する（appsettings と RetrievalService に整合）。
-    private readonly string _collection =
-        config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
+    private readonly IReadOnlyList<EmbeddingCollectionOptions> _collections = collections.Value.Collections;
 
-    private readonly ulong _vectorSize =
-        ulong.TryParse(config["Qdrant:VectorSize"], out var v) ? v : 1536UL;
-
-    // FR-02: 索引（コレクション）の存在を保証する。未作成なら作成する。
-    public async Task EnsureCollectionAsync(CancellationToken ct = default)
+    // FR-02: 全モデル別コレクションの存在を保証する。未作成なら各コレクションの次元で作成する。
+    public async Task EnsureCollectionsAsync(CancellationToken ct = default)
     {
-        if (await client.CollectionExistsAsync(_collection, ct))
-            return;
+        foreach (var c in _collections)
+        {
+            if (await client.CollectionExistsAsync(c.Name, ct))
+                continue;
 
-        await client.CreateCollectionAsync(_collection,
-            new VectorParams { Size = _vectorSize, Distance = Distance.Cosine },
-            cancellationToken: ct);
+            await client.CreateCollectionAsync(c.Name,
+                new VectorParams { Size = (ulong)c.VectorSize, Distance = Distance.Cosine },
+                cancellationToken: ct);
+        }
     }
 
-    public async Task UpsertChunkAsync(Guid chunkId, Guid documentId, string title,
+    public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
         CancellationToken ct = default)
     {
         var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes, tags);
 
-        await client.UpsertAsync(_collection,
+        await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
             cancellationToken: ct);
     }
@@ -76,22 +75,25 @@ public class QdrantIngestionVectorStore(QdrantClient client, IConfiguration conf
         return payload;
     }
 
-    public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default)
+    // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する（機密区分変更時の残存防止）。
+    public async Task DeleteByDocumentFromAllAsync(Guid documentId, CancellationToken ct = default)
     {
-        await client.DeleteAsync(_collection,
-            new Filter
+        var filter = new Filter
+        {
+            Must =
             {
-                Must =
+                new Condition
                 {
-                    new Condition
+                    Field = new FieldCondition
                     {
-                        Field = new FieldCondition
-                        {
-                            Key = "document_id",
-                            Match = new Match { Keyword = documentId.ToString() }
-                        }
+                        Key = "document_id",
+                        Match = new Match { Keyword = documentId.ToString() }
                     }
                 }
-            }, cancellationToken: ct);
+            }
+        };
+
+        foreach (var c in _collections)
+            await client.DeleteAsync(c.Name, filter, cancellationToken: ct);
     }
 }

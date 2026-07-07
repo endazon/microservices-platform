@@ -123,6 +123,10 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 同一ネットワーク内からの内部 API 無認証到達（残余リスク） | ネットワーク内の侵害があれば内部 API へ到達可能 | ネットワーク分離で受容。k8s は NetworkPolicy、将来 mTLS（ADR-0005）で相互認証。フォローアップで追跡 |
 | NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与（IADR-0021）。稼働 Wiki.js での分離検証は PoC フォロー |
 | 削除・非公開化された文書が Wiki.js に残存 | 撤回済み社内文書が外部システム（Wiki.js）に残り続ける | 現状は削除/アーカイブ同期経路が未実装（フォロー課題。IADR-0021）。`isPrivate` により public 以外は非公開だが、実体撤去・メタデータ Archived 化は別途対応 |
+| 高機密文書本文の外部埋め込み API への送信（FR-02 / ADR-0016 / IADR-0025） | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保 |
+| 機密区分変更時の旧コレクション残存（ABAC バイパス） | 例 public→confidential 変更後、旧 voyage コレクションに本文が残り機密扱いの文書が低区分コレクションで検索ヒット | 取り込み冒頭で全モデル別コレクションから当該文書を削除してから再索引する（`DeleteByDocumentFromAllAsync`）。回帰は `DocumentUpdatedConsumerTests` で担保 |
+| Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる |
+| 検索クエリ文の外部埋め込み API への送信（FR-02 / FR-03 / ADR-0016 / IADR-0025） | 検索クエリの埋め込みは機密区分に依らず既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索は FR-03 の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
 
 ## 未決事項
 
@@ -139,3 +143,6 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   多層防御の `isPrivate`（public 以外は非公開）で緩和済みだが実体撤去は未対応（IADR-0021 フォロー）。
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
   ネットワーク分離の CI/E2E 検証）。IADR-0021 フォロー。
+- 検索クエリ側の機密区分ルーティング（FR-02 / FR-03 / IADR-0025）。現状クエリ埋め込みは既定外部
+  （Voyage/1024）へ固定。高機密（ruri/768）コレクションの横断検索を FR-03 で実装する際に、クエリ文の
+  機密区分に応じたセルフホスト経路への切り替え要否（クエリ文自体の越境抑止）を再評価する。
