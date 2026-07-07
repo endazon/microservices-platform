@@ -89,7 +89,7 @@ k3s → Istio mTLS → ArgoCD/Harbor。段階2（Istio STRICT mTLS）の適用�
 
 ## 実装 ID トレーサビリティ
 
-- ブランチ: `claude/issue-100-20260707-1319`
+- ブランチ: `claude/issue-100-20260707-1319`（初版・CI 生成）→ `feat/issue-100-production-runtime`（ローカル検証・PR 用）
 - コミット: `feat(ADR-0008): ...` / `feat(ADR-0005): ...` / `feat(ADR-0007): ...` 等、段階ごとに起点 ID を付す。
 - コード/マニフェスト: 各ファイル冒頭コメントに ADR-ID を残す。
 
@@ -106,6 +106,23 @@ k3s → Istio mTLS → ArgoCD/Harbor。段階2（Istio STRICT mTLS）の適用�
 - `helm template deploy/helm/knowledge-platform`（PeerAuthentication STRICT / DestinationRule ISTIO_MUTUAL がレンダリングされること）
 - `dotnet test`（`MeshMtlsTests` / `NetworkIsolationTests`）
 - 実クラスタ検証（運用者）: `istioctl authn tls-check` / `istioctl proxy-config` で平文フォールバックが無いことを確認。
+
+### ローカル検証結果（2026-07-07, ブランチ `feat/issue-100-production-runtime`）
+
+CI ジョブでは `helm`/`dotnet` が未許可のため未実走だった検証を、実装作業リポジトリのローカル環境（Windows / Rancher Desktop / helm・kubectl・dotnet 10.0.301）で実走し、いずれも合格した。
+
+- `helm lint deploy/helm/knowledge-platform` → **成功**（0 failed）。
+- `helm template kp deploy/helm/knowledge-platform` → **成功**。以下の宣言的構成のレンダリングを確認:
+  - `PeerAuthentication` に `mode: STRICT`（既定）／`--set mesh.mtlsMode=PERMISSIVE` で移行モードへ切替可能。
+  - `DestinationRule` に `mode: ISTIO_MUTUAL`。
+  - Namespace に `istio-injection: enabled`／`--set mesh.enabled=false` で Istio リソースが消えることを確認。
+  - `NetworkPolicy`（デフォルト拒否）2 件。
+  - `imagePullSecrets` は既定 `[]` で非出力、`--set imagePullSecrets[0].name=harbor-pull` で各 Deployment に出力されることを確認（Harbor Pull）。
+- `dotnet test --filter Category=Deployment` → **合格 6 / 6**（`MeshMtlsTests` 4・`NetworkIsolationTests` 2）。
+- ドキュメント整合: IADR-0017 が `status: Superseded` / `superseded_by: IADR-0024`、`docs/adr/README.md` の索引も更新済みであることを確認。
+- ArgoCD `Application.spec.source.targetRevision: main` は本プロジェクト規約の安定版ブランチ（`main` 実在を確認）を指し妥当。
+
+> 実クラスタ上での mTLS 到達検証（`istioctl authn tls-check`）と k3s 稼働は、実行基盤を持つ運用者フェーズで実施する（本 Issue の到達目標は「Git 上に宣言的構成が存在し ArgoCD が同期する」こと）。
 
 ## リスク・注意事項
 
