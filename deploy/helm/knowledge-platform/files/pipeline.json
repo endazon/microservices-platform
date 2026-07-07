@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "events": [
+    "RawDocumentFetched",
+    "DocumentNormalized",
+    "DocumentUpdated",
+    "DocumentDeleted",
+    "IngestionRequested",
+    "IngestionCompleted"
+  ],
+  "sources": [
+    { "event": "RawDocumentFetched", "service": "data-source-service" },
+    { "event": "DocumentUpdated", "service": "document-service" },
+    { "event": "DocumentDeleted", "service": "document-service" }
+  ],
+  "steps": [
+    {
+      "name": "convert",
+      "service": "conversion-service",
+      "consumer": "ConversionService.Worker.Composable.Steps.RawDocumentFetchedConsumer",
+      "input": "RawDocumentFetched",
+      "outputs": ["DocumentNormalized"],
+      "enabled": true
+    },
+    {
+      "name": "catalog",
+      "service": "document-service",
+      "consumer": "DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer",
+      "input": "DocumentNormalized",
+      "outputs": ["DocumentUpdated"],
+      "enabled": true
+    },
+    {
+      "name": "ingest",
+      "service": "ingestion-service",
+      "consumer": "IngestionService.Worker.Composable.Steps.DocumentUpdatedConsumer",
+      "input": "DocumentUpdated",
+      "outputs": ["IngestionCompleted"],
+      "enabled": true
+    },
+    {
+      "name": "wiki-sync",
+      "service": "wiki-service",
+      "consumer": "WikiService.Api.Composable.Steps.DocumentSyncConsumer",
+      "input": "DocumentUpdated",
+      "outputs": [],
+      "enabled": true
+    },
+    {
+      "name": "wiki-delete",
+      "service": "wiki-service",
+      "consumer": "WikiService.Api.Composable.Steps.DocumentDeletedConsumer",
+      "input": "DocumentDeleted",
+      "outputs": [],
+      "enabled": true
+    }
+  ]
+}

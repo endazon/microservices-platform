@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
@@ -60,11 +61,15 @@ builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
 builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
 // ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
+// FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
+builder.AddKnowledgePlatformPipelineConfig();
+var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
+
 builder.Services.AddMassTransit(x =>
 {
-    x.AddConsumer<DocumentSyncConsumer>();
+    x.AddKnowledgePlatformPipelineStep<DocumentSyncConsumer>(pipeline);
     // Issue #88: 文書削除の伝播（Wiki.js 実体撤去・メタデータ削除）。
-    x.AddConsumer<DocumentDeletedConsumer>();
+    x.AddKnowledgePlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]

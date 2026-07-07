@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -24,8 +25,11 @@ public class DocumentSyncConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,
     IWikiContentReader contentReader,
-    ILogger<DocumentSyncConsumer> logger) : IConsumer<DocumentUpdated>
+    ILogger<DocumentSyncConsumer> logger) : IConsumer<DocumentUpdated>, IPipelineStep
 {
+    // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
+    public static string StepName => "wiki-sync";
+
     public async Task Consume(ConsumeContext<DocumentUpdated> ctx)
     {
         var ev = ctx.Message;

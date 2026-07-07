@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Contracts.Events;
@@ -12,8 +13,11 @@ namespace DocumentService.Api.Composable.Steps;
 public class DocumentNormalizedConsumer(
     DocumentDbContext db,
     IPublishEndpoint bus,
-    ILogger<DocumentNormalizedConsumer> logger) : IConsumer<DocumentNormalized>
+    ILogger<DocumentNormalizedConsumer> logger) : IConsumer<DocumentNormalized>, IPipelineStep
 {
+    // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
+    public static string StepName => "catalog";
+
     public async Task Consume(ConsumeContext<DocumentNormalized> context)
     {
         var ev = context.Message;

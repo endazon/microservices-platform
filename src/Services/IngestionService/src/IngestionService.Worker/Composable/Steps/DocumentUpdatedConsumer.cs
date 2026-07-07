@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using IngestionService.Worker.Composable.Adapters;
@@ -15,8 +16,11 @@ public class DocumentUpdatedConsumer(
     IEmbeddingService embed,
     IIngestionVectorStore store,
     IPublishEndpoint bus,
-    ILogger<DocumentUpdatedConsumer> logger) : IConsumer<DocumentUpdated>
+    ILogger<DocumentUpdatedConsumer> logger) : IConsumer<DocumentUpdated>, IPipelineStep
 {
+    // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
+    public static string StepName => "ingest";
+
     public async Task Consume(ConsumeContext<DocumentUpdated> context)
     {
         var ev = context.Message;

@@ -51,3 +51,4 @@
 | IADR-0025 | 埋め込みを機密区分ルーティング（Voyage 既定＋高機密セルフホスト fail-closed）とモデル別コレクションで実装する | Accepted |
 | IADR-0026 | Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017（ネットワーク分離）を解消する | Accepted |
 | IADR-0027 | 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable、ADR-0018 対応） | Accepted |
+| IADR-0028 | 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する（FR-14, ADR-0018） | Accepted |

@@ -19,6 +19,11 @@ spec:
     metadata:
       labels:
         app: {{ $name }}-service
+      {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+      # FR-14, IADR-0028: 宣言的パイプライン構成の変更（Git → ArgoCD 同期）でロールアウトさせる。
+      annotations:
+        checksum/pipeline-config: {{ $.Files.Get "files/pipeline.json" | sha256sum | quote }}
+      {{- end }}
     spec:
       {{- with $.Values.imagePullSecrets }}
       # ADR-0007: Harbor レジストリからの Pull 認証（Secret は deploy/secrets で事前作成）。
@@ -38,6 +43,11 @@ spec:
               value: {{ $.Values.global.otel.endpoint }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
+          {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+            # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
+            - name: Pipeline__ConfigPath
+              value: /etc/knowledge-platform/pipeline/pipeline.appsettings.json
+          {{- end }}
           {{- if $svc.objectStorage }}
             # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO 接続。資格情報は Secret 経由。
             - name: ObjectStorage__Endpoint
@@ -82,5 +92,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
+          {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+          volumeMounts:
+            - name: pipeline-config
+              mountPath: /etc/knowledge-platform/pipeline
+              readOnly: true
+          {{- end }}
+      {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+      volumes:
+        - name: pipeline-config
+          configMap:
+            name: pipeline-config
+      {{- end }}
 {{- end }}
 {{- end }}

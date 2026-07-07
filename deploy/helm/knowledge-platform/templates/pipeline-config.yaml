@@ -1,0 +1,16 @@
+# FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成の GitOps 配送。
+# 正となる宣言（files/pipeline.json、CI スキーマ検証済み）を .NET 構成オーバレイ
+# （{"Pipeline": ...} 形）に包んで ConfigMap 化し、段をホストするサービスへマウントする。
+# 構成変更は Git → ArgoCD 同期 → checksum アノテーション（deployment.yaml）によるロールアウトで反映される。
+{{- if .Values.pipeline.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pipeline-config
+  labels:
+    app.kubernetes.io/part-of: knowledge-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+data:
+  pipeline.appsettings.json: |
+    { "Pipeline": {{ .Files.Get "files/pipeline.json" | nindent 6 }} }
+{{- end }}

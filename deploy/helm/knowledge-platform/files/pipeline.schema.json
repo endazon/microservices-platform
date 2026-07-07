@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/endazon/microservices-platform/deploy/helm/knowledge-platform/files/pipeline.schema.json",
+  "title": "KnowledgePlatform 宣言的パイプライン構成 (FR-14, ADR-0018, IADR-0028)",
+  "description": "パイプライン段（イベント購読→処理→発行）と発行元の宣言。CI（scripts/validate-pipeline-config.js）が本スキーマと同等の規則＋接続性・循環検証を行う。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "events", "steps"],
+  "properties": {
+    "version": { "const": 1 },
+    "events": {
+      "description": "既知のイベント契約型名（KnowledgePlatform.Shared.Contracts/Events/ の型名）",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" }
+    },
+    "sources": {
+      "description": "同期 API 起点のイベント発行（購読を持たないため段ではない）",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event", "service"],
+        "properties": {
+          "event": { "type": "string" },
+          "service": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+        }
+      }
+    },
+    "steps": {
+      "description": "パイプライン段。enabled=false で購読・キューを生成しない",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "service", "consumer", "input", "outputs"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "service": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "consumer": {
+            "description": ".NET 型完全名（起動時に実装と照合され、不一致は fail-fast）",
+            "type": "string",
+            "pattern": "^([A-Za-z_][A-Za-z0-9_]*\\.)+[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "input": { "type": "string" },
+          "outputs": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+          "queue": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "enabled": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}

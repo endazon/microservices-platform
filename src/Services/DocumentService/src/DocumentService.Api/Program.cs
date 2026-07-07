@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
@@ -31,10 +32,14 @@ var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
 
 // ADR-0003: MassTransit + RabbitMQ
+// FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
+builder.AddKnowledgePlatformPipelineConfig();
+var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
+
 builder.Services.AddMassTransit(x =>
 {
     // FR-01, UC-04: 正規化文書をカタログへ登録する Consumer
-    x.AddConsumer<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>();
+    x.AddKnowledgePlatformPipelineStep<DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
