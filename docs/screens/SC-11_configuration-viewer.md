@@ -9,7 +9,7 @@ related_ids:
   - NFR
 author: claude
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-07-08
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
@@ -18,7 +18,9 @@ plan_refs:
 related_specs:
   - "../specs/20260708_issue-111_declarative-pipeline-config.md"
   - "../specs/20260708_issue-102_composability-fixed-variable-separation.md"
+  - "../specs/20260708_issue-113_sc11-open-items-operator-role.md"
   - "../adr/IADR-0028_declarative-pipeline-config.md"
+  - "../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md"
 ---
 
 # 画面仕様書: 構成ビューア（SC-11）
@@ -176,10 +178,11 @@ flowchart LR
   （存在秘匿方針・FR-05 fail-closed と整合）。BFF/API は権限外に対し**応答自体を返さない**
   （200 で空を返さず、認可不足として遮断する。存在を推測させない）。
 - **監査ログ**: 本画面（構成情報 API）の閲覧操作は監査ログに記録する（計画 §設計要素 6・SC-11）。
-- **既存実装との整合（要注意点）**: 現行コードの認可ポリシーは `AdminOnly`（ロール `platform-admin`）
-  のみで、**「運用者（operator）」ロールは未定義**（`src/Shared/.../AuthExtensions.cs`
-  `KnowledgePlatformAuthPolicies`）。SC-11 は「管理者**または**運用者」を求めるため、#112/#113 実装時に
-  **運用者ロールと `AdminOrOperator` 相当のポリシー追加**が必要になる。詳細は「未決事項」参照。
+- **既存実装との整合（解決済み・2026-07-08）**: 運用者ロール **`platform-operator`** と
+  ポリシー **`AdminOrOperator`**（`platform-admin` または `platform-operator` で許可）を
+  `KnowledgePlatformAuthPolicies`（`src/Shared/.../AuthExtensions.cs`）に新設済み
+  （[IADR-0029](../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md)）。
+  #112/#113 の実装は本ポリシーを `RequireAuthorization` に指定する。詳細は「未決事項」1 を参照。
 - **BFF 経由**: 構成情報は内部構造そのものであり、収集（自己申告）はサービスメッシュ内部に限定する。
   外部公開は BFF 経由の読み取り専用集約エンドポイントに限る（既存の `/bff/dashboard/summary` と同様、
   `RequireAuthorization` ＋資格情報の後段伝播パターンを踏襲する）。
@@ -216,13 +219,22 @@ flowchart LR
 
 ## 未決事項
 
-1. **運用者ロールの新設**: 現状は `platform-admin` のみ。SC-11 の「管理者・運用者限定」を満たすため、
-   運用者ロール（例: `platform-operator`）と `AdminOrOperator` 相当のポリシー追加が必要。ロール名・
-   Keycloak レルムロール定義・既存 `AdminOnly` 画面（SC-10 等）への影響は #112/#113 実装時に確定する。
-   計画（05_screens・FR-15）との整合上の論点であり、必要なら `/plan-feedback` で計画側へ確認する。
-2. **構成情報 API の実装配置**: BFF 配下の管理 API か既存サービス同居か（独立サービス化はしない方針）。
-   #112 で決定する。本画面は BFF 経由の読み取り専用集約を前提とする。
-3. **バージョン履歴のデータ源・保持範囲**: GitOps/ArgoCD 適用履歴と API 側保持のいずれを正とするか。
-4. **グラフのレイアウト方針**: 段/イベント増大時の可読性（自動レイアウト・折りたたみ）。初期は小規模。
-5. **ワイヤーフレーム**: 計画側 `05_screens/wireframes/sc-11.drawio` の作成（計画リポジトリ）。
-6. **フロントエンド基盤**: 本リポジトリの SPA 実装方針が未確定。他 SC 画面群の実装方針に合わせる。
+各項目の決定先を明示する。**本リポジトリで先行決定できるのは 1 のみ**であり、2〜4 は #112、
+5 は計画リポジトリ、6 はフロントエンドフェーズで決定する。
+
+1. **運用者ロールの新設** — ✅ **解決済み（2026-07-08、issue #113）**: ステークホルダー判断により
+   運用者ロールを**必要とする**方針で確定。ロール `platform-operator`（Keycloak レルムロール）と
+   ポリシー `AdminOrOperator`（`platform-admin` または `platform-operator` で許可）を
+   `KnowledgePlatformAuthPolicies` に新設した。既存 `AdminOnly` 画面（SC-10 等）は計画上「管理者」
+   向けのため**変更しない**。決定の詳細は
+   [IADR-0029](../adr/IADR-0029_operator-role-and-admin-or-operator-policy.md) を参照。
+   #112/#113 の実装は `RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOrOperator)` を用いる。
+2. **構成情報 API の実装配置**（→ #112 で決定）: BFF 配下の管理 API か既存サービス同居か
+   （独立サービス化はしない方針）。本画面は BFF 経由の読み取り専用集約を前提とする。
+3. **バージョン履歴のデータ源・保持範囲**（→ #112 で決定）: GitOps/ArgoCD 適用履歴と API 側保持の
+   いずれを正とするか。
+4. **グラフのレイアウト方針**（→ #112 完了後の画面実装時に決定）: 段/イベント増大時の可読性
+   （自動レイアウト・折りたたみ）。初期は小規模。
+5. **ワイヤーフレーム**（→ 計画リポジトリ側の作業）: 計画側 `05_screens/wireframes/sc-11.drawio` の作成。
+6. **フロントエンド基盤**（→ フロントエンドフェーズで決定）: 本リポジトリの SPA 実装方針が未確定。
+   他 SC 画面群の実装方針に合わせる。
