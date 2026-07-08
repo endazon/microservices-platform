@@ -42,7 +42,7 @@ public static class AuthExtensions
                 // 実 Keycloak のレルムロールは realm_access.roles に格納され、標準ハンドラでは
                 // ClaimTypes.Role へ展開されないため、下記の IClaimsTransformation で補う。
                 options.TokenValidationParameters.RoleClaimType = ClaimTypes.Role;
-                // FR-08, FR-15, IADR-0010: Identity.Name が参照する名前クレームを Keycloak の
+                // FR-08, FR-15, IADR-0010, IADR-0031: Identity.Name が参照する名前クレームを Keycloak の
                 // preferred_username に合わせる。既定マップは unique_name のみ写像するため、実
                 // Keycloak トークンでは Name が null になり、送信者特定（FR-08 の userId・構成 API
                 // 監査ログの subject）が全員 anonymous/unknown へ潰れる（Issue #118 監査で実測）。

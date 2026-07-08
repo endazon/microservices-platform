@@ -125,6 +125,22 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 <!-- 鍵・トークンの保管・ローテーション・コミット禁止 -->
 
+### 開発専用（dev-only）の平文認証情報 — 本番流用禁止
+
+`deploy/keycloak/knowledge-platform-realm.json` の realm import には、開発・E2E 検証用の PoC ユーザーが
+平文パスワードで含まれる（`poc-user`／`poc-operator`、および OIDC クライアントシークレット
+`wiki-js-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+
+- **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
+  （`poc-operator`、`platform-operator` ロール保持。IADR-0030 の `ConfigViewer` を再現）を、
+  手動セットアップ無しで再現するためのシード。
+- **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
+  Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
+  シークレット（`wiki-js`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する（上記「Wiki.js 前段」
+  §秘密情報を参照）。
+- **リスク受容の根拠**: dev realm は host 公開されるが、格納データは合成のテスト属性のみで機密を含まず、
+  ネットワークもローカルに閉じる。平文値は「変更前提の既知シード」であり、秘密として扱わない。
+
 ## 監査ログ
 
 | 対象イベント | 記録項目 | 保管期間 |
