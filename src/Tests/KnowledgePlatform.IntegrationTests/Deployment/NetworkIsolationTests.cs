@@ -56,19 +56,74 @@ public sealed class NetworkIsolationTests
         blocks["bff"].Should().Contain("5000:8080");
     }
 
+    // IADR-0020 / IADR-0032 (#124): Wiki.js 直接到達は ABAC ゲートウェイ（WikiService）を迂回するため、
+    // 既定 compose では host 公開しない（expose のみ）。3001 の公開は opt-in override でのみ許可する。
+    // 回帰ガード: 既定の docker-compose.yml に wiki-js の host 公開（ports:）が混入していないこと。
+    [Fact]
+    public void WikiJs_IsNotPublishedByDefault()
+    {
+        var compose = ReadComposeFile();
+        var blocks = SplitServiceBlocks(compose);
+
+        blocks.Should().ContainKey("wiki-js", "'wiki-js' が docker-compose.yml に存在すること");
+        blocks["wiki-js"].Should().NotMatchRegex(@"(?m)^\s*ports:\s*$",
+            "IADR-0032: 既定では wiki-js を host 公開してはならない（ABAC ゲートウェイ迂回経路）。" +
+            "直接アクセスは docker-compose.wiki-direct.yml の opt-in override を用いる");
+        blocks["wiki-js"].Should().MatchRegex(@"(?m)^\s*expose:\s*$",
+            "wiki-js はコンテナネットワーク内のみ（expose）とする");
+    }
+
+    // IADR-0020 / IADR-0032 (#124): stg/prod（Helm）でも Wiki.js を Ingress で公開しない
+    // （既定 wikijs.ingress.enabled: false）。ゲートウェイ迂回の外部到達を既定で塞ぐ回帰ガード。
+    [Fact]
+    public void WikiJs_HelmIngressDisabledByDefault()
+    {
+        var wikijs = ReadHelmWikijsValues();
+
+        wikijs.Should().MatchRegex(@"(?m)^\s*ingress:\s*$",
+            "wikijs に ingress ブロックが存在すること");
+        // ingress: ブロック直下の enabled: が false であること（既定で Ingress を生やさない）。
+        wikijs.Should().MatchRegex(@"ingress:\s*\n\s*enabled:\s*false",
+            "IADR-0032: stg/prod で Wiki.js を Ingress 公開してはならない（既定 enabled: false）");
+    }
+
     // --- helpers ---------------------------------------------------------
 
-    private static string ReadComposeFile()
+    private static string ReadComposeFile() =>
+        File.ReadAllText(ResolveRepoFile(Path.Combine("deploy", "docker-compose.yml")));
+
+    // Helm values.yaml から wikijs トップレベルブロック（次のトップレベルキーまで）を抽出する。
+    private static string ReadHelmWikijsValues()
+    {
+        var values = File.ReadAllText(ResolveRepoFile(
+            Path.Combine("deploy", "helm", "knowledge-platform", "values.yaml")));
+        var lines = values.Replace("\r\n", "\n").Split('\n');
+        var start = Array.FindIndex(lines, l => Regex.IsMatch(l, @"^wikijs:\s*$"));
+        if (start < 0)
+            throw new InvalidOperationException("values.yaml に wikijs: ブロックが見つかりません。");
+
+        var buf = new List<string>();
+        for (var i = start + 1; i < lines.Length; i++)
+        {
+            // インデント無しの非空行（次のトップレベルキー）で終端。
+            if (Regex.IsMatch(lines[i], @"^[a-zA-Z]"))
+                break;
+            buf.Add(lines[i]);
+        }
+        return string.Join("\n", buf);
+    }
+
+    private static string ResolveRepoFile(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            var candidate = Path.Combine(dir.FullName, "deploy", "docker-compose.yml");
+            var candidate = Path.Combine(dir.FullName, relative);
             if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
+                return candidate;
             dir = dir.Parent;
         }
-        throw new FileNotFoundException("deploy/docker-compose.yml をリポジトリルートから解決できませんでした。");
+        throw new FileNotFoundException($"{relative} をリポジトリルートから解決できませんでした。");
     }
 
     // `services:` 配下の各サービス（2 スペースインデントの `name:`）を、次のサービスまでの本文へ分割する。

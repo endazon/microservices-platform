@@ -361,8 +361,11 @@ services:
       DB_USER: kp
       DB_PASS: kp
       DB_NAME: wikijs
-    ports:
-      - "3001:3000"
+    # IADR-0020/IADR-0032 (#124): Wiki.js 直接到達は ABAC ゲートウェイ（WikiService）を迂回するため、
+    # 既定では host 公開しない（コンテナネットワーク内のみ）。管理 UI へ直接アクセスする dev 作業時は
+    # opt-in override（deploy/docker-compose.wiki-direct.yml）を重ねて 3001 を公開する。
+    expose:
+      - "3000"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 15s

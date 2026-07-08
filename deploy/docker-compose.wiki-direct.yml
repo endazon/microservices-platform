@@ -1,0 +1,15 @@
+# IADR-0020 / IADR-0032 (#124): Wiki.js 直接アクセス用の opt-in override（dev 限定）。
+#
+# Wiki.js への直接到達は WikiService の ABAC ゲートウェイを迂回するため、既定の
+# docker-compose.yml では host 公開しない（expose のみ）。Wiki.js 管理 UI での初期セットアップ
+# （OIDC 構成・ja ロケール導入・同期 API キー発行 など。docs/operations/operations.md 参照）で
+# ブラウザから直接アクセスが必要な場合にのみ、本 override を重ねて 3001 を公開する。
+#
+# 使い方（dev のみ。stg/prod では使用しない）:
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.wiki-direct.yml up -d
+#
+# これで http://localhost:3001 で Wiki.js 管理 UI に到達できる。作業後は override 無しで再起動する。
+services:
+  wiki-js:
+    ports:
+      - "3001:3000"
