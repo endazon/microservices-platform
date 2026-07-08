@@ -54,10 +54,12 @@ const US = '\x1f'; // Unit Separator
 const RS = '\x1e'; // Record Separator
 
 function parseArgs(argv) {
-  const a = { range: null, verbose: false };
+  const a = { range: null, verbose: false, title: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--range') a.range = argv[++i];
     else if (argv[i].startsWith('--range=')) a.range = argv[i].slice('--range='.length);
+    else if (argv[i] === '--title') a.title = argv[++i];
+    else if (argv[i].startsWith('--title=')) a.title = argv[i].slice('--title='.length);
     else if (argv[i] === '--verbose' || argv[i] === '-v') a.verbose = true;
   }
   return a;
@@ -207,8 +209,49 @@ function validateSubject(subject) {
   return reasons;
 }
 
+/**
+ * 単一件名（PR タイトル = スカッシュ後件名の由来）を検査する（Issue #125・再発防止）。
+ * git を使わず、渡された 1 件名のみを規約に照合する。Revert / [skip ci] はスキップ扱い。
+ * 合格・スキップ時 0、違反時 1 を返す。
+ */
+function checkSingleTitle(title) {
+  const subject = String(title == null ? '' : title).trim();
+  process.stdout.write(`PR タイトル（スカッシュ後件名）チェック: "${subject}"\n`);
+
+  if (!subject) {
+    // タイトル未取得（イベント外実行等）。CI をブロックしない（fail-open）。
+    process.stderr.write('PR タイトルが空のため検査をスキップする。\n');
+    return 0;
+  }
+  if (isSkippable(subject)) {
+    process.stdout.write('  skip(auto)   Revert / [skip ci] は規約対象外\n');
+    return 0;
+  }
+
+  const reasons = validateSubject(subject);
+  if (reasons.length) {
+    process.stderr.write('\n✗ PR タイトルが規約違反:\n');
+    process.stderr.write(`  ${subject}\n`);
+    for (const r of reasons) process.stderr.write(`      - ${r}\n`);
+    process.stderr.write(
+      '\nスカッシュマージ既定件名は「PR タイトル + (#番号)」。PR タイトルを規約 ' +
+        '`種別(起点ID): 要約` に合わせること（詳細は .claude/rules/traceability.md）。\n'
+    );
+    return 1;
+  }
+  process.stdout.write('✓ PR タイトルが規約に適合\n');
+  return 0;
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
+
+  // 単一件名モード（PR タイトル検査）。git リポジトリ内外を問わず動作する（Issue #125）。
+  const title = args.title != null ? args.title : process.env.PR_TITLE;
+  if (title != null) {
+    process.exit(checkSingleTitle(title));
+  }
+
   if (tryGit('rev-parse --is-inside-work-tree') !== 'true') {
     process.stderr.write('git リポジトリではないため検査をスキップする。\n');
     process.exit(0);
@@ -279,6 +322,7 @@ if (require.main === module) {
 // テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
 module.exports = {
   validateSubject,
+  checkSingleTitle,
   isBot,
   isSkippable,
   hashMatches,
