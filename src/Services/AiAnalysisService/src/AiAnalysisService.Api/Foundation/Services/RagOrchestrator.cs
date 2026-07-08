@@ -1,5 +1,7 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace AiAnalysisService.Api.Foundation.Services;
 
@@ -49,6 +51,170 @@ public class RagOrchestrator(
         return await GenerateAsync(query, scope, topK,
             context => AnalysisPromptBuilder.Build(request, context), "analysis", ct);
     }
+
+    // IADR-0036, FR-04, UC-01: 自然文質問への回答をストリーミングする。
+    // フロー: ABAC スコープ解決 →（不許可なら空回答）→ 検索 → 出典イベント → LLM ストリーム（token）→ done。
+    // 出典は LLM 生成前に確定するため先に送り、フロントは本文表示中に出典を先行併記できる。
+    // 反復子内で yield を跨ぐ try/catch は使えないため、失敗は下位ヘルパが done(Sent=false) へ縮退させる。
+    public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
+        Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-4-8";
+
+        // FR-05: ABAC 権限スコープ解決。閲覧可能文書が無ければ空回答へ縮退（外部送信しない）。
+        var resolved = await ResolveScopeAsync(userId, userAttributes, ct);
+        if (!resolved.Granted)
+        {
+            yield return new AskCitationsEvent([]);
+            yield return new AskDoneEvent(Guid.NewGuid(), defaultModel, 0, 0);
+            yield break;
+        }
+
+        var scope = new AccessScope(resolved.AllowedFilters, resolved.Granted);
+
+        // 検索 → 出典（本文より先に送出）。
+        var results = await SearchAsync(question, scope, DefaultAskTopK, ct);
+        var citations = CitationMapper.ToCitations(results);
+        yield return new AskCitationsEvent(citations);
+
+        // FR-11: 文脈の最高機密区分と用途をゲートウェイへ渡し、越境判定を委ねる（送信可否はゲートウェイ側）。
+        var confidentiality = HighestConfidentiality(results);
+        var contextText = CitationMapper.BuildContext(citations);
+        var prompt = BuildAskPrompt(question, contextText);
+
+        var model = defaultModel;
+        var inputTokens = 0;
+        var outputTokens = 0;
+        var emittedAny = false;
+
+        await foreach (var ev in StreamCompletionAsync(prompt, confidentiality, "rag-answer", ct))
+        {
+            if (!string.IsNullOrEmpty(ev.Delta))
+            {
+                emittedAny = true;
+                yield return new AskTokenEvent(ev.Delta);
+            }
+            if (ev.Done)
+            {
+                // FR-11 縮退: ゲートウェイが送信拒否・不調なら理由本文を出典付きで表示（外部送信していない）。
+                if (!ev.Sent && !string.IsNullOrWhiteSpace(ev.Text))
+                    yield return new AskTokenEvent(ev.Text!);
+                model = string.IsNullOrEmpty(ev.Model) ? defaultModel : ev.Model;
+                inputTokens = ev.InputTokens;
+                outputTokens = ev.OutputTokens;
+            }
+        }
+
+        // 本文が全く出なかった場合の中立フォールバック（出典があればその旨）。
+        if (!emittedAny && citations.Count > 0)
+            yield return new AskTokenEvent("関連文書が見つかりました。");
+
+        yield return new AskDoneEvent(Guid.NewGuid(), model, inputTokens, outputTokens);
+    }
+
+    // FR-03: 実効スコープでハイブリッド検索を実行し、結果チャンクを返す（失敗時は空）。
+    private async Task<IReadOnlyList<SearchResultDto>> SearchAsync(
+        string query, AccessScope scope, int topK, CancellationToken ct)
+    {
+        var retrievalClient = httpFactory.CreateClient("RetrievalService");
+        try
+        {
+            var searchResp = await retrievalClient.PostAsJsonAsync("/search",
+                new SearchRequest(query, topK, null, scope), ct);
+            var searchResult = searchResp.IsSuccessStatusCode
+                ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
+                : new SearchResponse([], 0, 0);
+            return searchResult?.Results ?? [];
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            return [];
+        }
+    }
+
+    // IADR-0036: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
+    // 反復子内で yield を跨ぐ try/catch を避けるため、送信・読み取りの失敗は捕捉後に done(Sent=false) を
+    // yield して終了する（呼び出し側は縮退表示に切り替えられる）。egress 判定はゲートウェイ側で保持される。
+    private async IAsyncEnumerable<CompletionStreamEvent> StreamCompletionAsync(
+        string prompt, string confidentiality, string purpose, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var llmClient = httpFactory.CreateClient("LlmGateway");
+        var body = new CompletionApiRequest(prompt, MaxTokens: 1024, Model: null,
+            Confidentiality: confidentiality, Purpose: purpose);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/complete/stream")
+        {
+            Content = JsonContent.Create(body),
+        };
+
+        HttpResponseMessage? resp = null;
+        var sendFaulted = false;
+        try
+        {
+            resp = await llmClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            sendFaulted = true;
+        }
+
+        if (sendFaulted || resp is null || !resp.IsSuccessStatusCode)
+        {
+            resp?.Dispose();
+            yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
+                Text: "LLM が現在利用できません。");
+            yield break;
+        }
+
+        using (resp)
+        await using (var stream = await resp.Content.ReadAsStreamAsync(ct))
+        using (var reader = new StreamReader(stream))
+        {
+            while (true)
+            {
+                string? line = null;
+                var readFaulted = false;
+                try
+                {
+                    line = await reader.ReadLineAsync(ct);
+                }
+                catch (Exception ex) when (ex is IOException or HttpRequestException && !ct.IsCancellationRequested)
+                {
+                    readFaulted = true;
+                }
+
+                if (readFaulted)
+                {
+                    yield return new CompletionStreamEvent(string.Empty, Done: true, Sent: false,
+                        Text: "LLM 応答の受信に失敗しました。");
+                    yield break;
+                }
+
+                if (line is null)
+                    yield break; // ストリーム終端
+
+                if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                    continue; // SSE の空行・コメント行は読み飛ばす
+
+                CompletionStreamEvent? ev = null;
+                try
+                {
+                    ev = JsonSerializer.Deserialize<CompletionStreamEvent>(
+                        line["data: ".Length..], SseJson);
+                }
+                catch (JsonException)
+                {
+                    ev = null; // 壊れた行は無視
+                }
+
+                if (ev is not null)
+                    yield return ev;
+            }
+        }
+    }
+
+    // SSE data 行の JSON（camelCase）を CompletionStreamEvent へ復元する。
+    private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web);
 
     // FR-05: ABAC スコープ解決。解決失敗時も deny-by-default（Granted=false）へ縮退する。
     private async Task<AccessScopeResponse> ResolveScopeAsync(string userId,

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AiAnalysisService.Api.Foundation.Services;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
@@ -41,6 +42,18 @@ file class StubRagOrchestrator : IRagOrchestrator
     public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
         => Task.FromResult(Answer($"分析結果({request.TaskType}) [1]"));
+
+    // IADR-0036: ストリーミングのスタブ（citations → token* → done）。
+    public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
+        Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        yield return new AskCitationsEvent(
+            [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(), "s3://bucket/a.md", 0.9f, "抜粋")]);
+        yield return new AskTokenEvent("テスト");
+        yield return new AskTokenEvent("回答 [1]");
+        await Task.Yield();
+        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 10, 20);
+    }
 
     private static AiAnswerDto Answer(string text)
         => new(
