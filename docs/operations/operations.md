@@ -54,6 +54,27 @@ plan_refs: []
     後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
     [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
 
+### 構成バージョンの注入（FR-15 / IADR-0029 フォローアップ 3 / #144）
+
+BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定義の**構成バージョン**
+（`Version.GitCommit` / `AppliedAt` / `AppliedBy`）を返す。値は環境変数
+`Config__GitCommit` / `Config__AppliedAt` / `Config__AppliedBy`（`ConfigVersionOptions`）から取得する。
+
+- **k8s（stg/prod）**: Helm values `config.gitCommit` / `config.appliedAt` / `config.appliedBy` を
+  BFF Deployment へ注入する（`bff.configVersion: true`）。既定は `appliedBy: argocd`、gitCommit/appliedAt は空。
+  **実値の供給**は GitOps（ADR-0007）側で行う:
+  - ArgoCD Application（`deploy/argocd/application.yaml`）の `helm.parameters` が `config.appliedBy=argocd` を固定。
+  - **適用リビジョン（コミット ID）と適用日時**は、ArgoCD ネイティブ Helm がビルド変数をパラメータへ
+    自動展開しないため、CD が同期時に上書きする:
+    `argocd app set knowledge-platform --helm-set config.gitCommit=$(git rev-parse HEAD) --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+    （または release automation が `values-<env>.yaml` の `config.*` を更新して Git にコミットする）。
+  - 手動確認: `helm template deploy/helm/knowledge-platform --set config.gitCommit=deadbeef` で
+    BFF env に `Config__GitCommit=deadbeef` が反映される。
+- **dev（compose）**: 実 GitOps 値は存在しないため、**固定プレースホルダ**を設定する
+  （`Config__GitCommit=dev-local` / `Config__AppliedBy=compose`。`AppliedAt` は未設定＝null）。
+  これは「実適用リビジョンではない」ことを明示するためのダミー値であり、dev の構成ビューアでは
+  この固定値が表示される。
+
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で

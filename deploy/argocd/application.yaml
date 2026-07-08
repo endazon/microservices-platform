@@ -24,6 +24,15 @@ spec:
     path: deploy/helm/knowledge-platform
     helm:
       releaseName: knowledge-platform
+      # FR-15, IADR-0029 フォローアップ 3 (#144): 構成バージョンの GitOps 注入。
+      # appliedBy は argocd 固定。gitCommit / appliedAt は「実適用リビジョン」を CD パイプラインが
+      # 同期時に上書きする（`argocd app set knowledge-platform --helm-set config.gitCommit=<sha>
+      # --helm-set config.appliedAt=<iso8601>`、または release automation が values-<env>.yaml を更新）。
+      # ArgoCD ネイティブ Helm は build 変数をパラメータへ自動展開しないため、SHA 供給は CD 側で行う。
+      # 手順は docs/operations/operations.md「構成バージョンの注入」を参照。
+      parameters:
+        - name: config.appliedBy
+          value: argocd
       # 環境別の上書きは values-<env>.yaml を valueFiles に追加する。
       # valueFiles:
       #   - values-production.yaml
