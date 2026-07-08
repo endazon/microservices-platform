@@ -17,6 +17,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public EffectiveCollection StubEffective { get; set; } = EffectiveCollection.Empty;
     public List<(string Action, string Subject, string Outcome)> RecordedAudits { get; } = [];
 
+    // FR-15 (#145): 即時ドリフト検出のアラート発火（IDriftAlertSink）を捕捉する。
+    public List<DriftReportDto> AlertedReports { get; } = [];
+
     // FR-04 BFF テスト: 後段 AiAnalysisService への転送を捕捉・スタブ化する
     public string? LastForwardedAuthorization { get; private set; }
 
@@ -80,7 +83,19 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-15: 自己申告の収集と監査ログをスタブ化する（最後の登録が解決される）。
             services.AddSingleton<IEffectiveConfigCollector>(new StubEffectiveConfigCollector(this));
             services.AddSingleton<IAuditLogger>(new RecordingAuditLogger(this));
+            // FR-15 (#145): アラート発火を捕捉するシンクに差し替える（既定の LoggingDriftAlertSink を上書き）。
+            services.AddSingleton<IDriftAlertSink>(new RecordingDriftAlertSink(this));
         });
+    }
+
+    // FR-15 (#145): ドリフト警告（IDriftAlertSink.AlertAsync）の呼び出しを捕捉する。
+    private sealed class RecordingDriftAlertSink(BffTestFactory owner) : IDriftAlertSink
+    {
+        public Task AlertAsync(DriftReportDto report, CancellationToken ct = default)
+        {
+            owner.AlertedReports.Add(report);
+            return Task.CompletedTask;
+        }
     }
 
     // FR-15: 自己申告の収集をテスト制御の EffectiveCollection に差し替える。

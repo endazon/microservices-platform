@@ -126,4 +126,32 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         drift!.HasDrift.Should().BeTrue();
         drift.Findings.Should().Contain(f => f.Kind == DriftDetector.UndeclaredSubscription);
     }
+
+    // FR-15 (#145): 適用直後の即時ドリフト検出トリガ。メッシュ内部限定・無認証で 202 を返し、
+    // 構成情報は本文に含めない（存在秘匿）。ArgoCD PostSync フックが叩く経路。
+    [Fact]
+    public async Task PostDriftRun_ReturnsAcceptedWithoutBody()
+    {
+        factory.StubEffective = SampleEffective();
+
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await resp.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
+
+    // FR-15 (#145): 受け入れ基準「不一致があれば適用直後にアラートが発火する」。
+    // 不一致（宣言に無い購読）を含む実効構成でトリガを叩くと、IDriftAlertSink が発火することを検証する。
+    [Fact]
+    public async Task PostDriftRun_WhenDriftPresent_FiresAlert()
+    {
+        factory.AlertedReports.Clear();
+        factory.StubEffective = SampleEffective(); // 宣言に無い購読 → HasDrift
+
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        factory.AlertedReports.Should().ContainSingle()
+            .Which.HasDrift.Should().BeTrue();
+    }
 }
