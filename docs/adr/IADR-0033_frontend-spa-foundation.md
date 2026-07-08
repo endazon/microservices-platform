@@ -1,0 +1,76 @@
+---
+title: IADR-0033 フロントエンド SPA 基盤 — React + TS + Vite・foundation/features 分離・BFF 境界・OIDC(PKCE)
+type: impl-adr
+status: Accepted
+related_ids:
+  - SC-01
+  - SC-11
+  - FR-15
+  - ADR-0004
+  - IADR-0009
+author: claude
+created: 2026-07-08
+updated: 2026-07-08
+plan_refs:
+  - "../../planning/projects/microservices-platform/05_screens"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
+---
+
+# IADR-0033: フロントエンド SPA 基盤
+
+- 状態: Accepted
+- 日付: 2026-07-08
+- 決定者: claude（Issue #126。フレームワーク・認証・配置はユーザー判断）
+
+## 起点・関連
+
+- 画面: SC-01..SC-11（`05_screens`）。本基盤の上に各画面を feature として順次実装する（#127..#140）。
+- 関連 ADR: ADR-0004（Keycloak OIDC）・[IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md)（存在秘匿）・
+  FR-15/BFF（構成情報 API 等の後段集約）。
+
+## コンテキストと課題
+
+本リポジトリにフロントエンド基盤が存在せず、SC-11 未決事項 6 でも「他 SC 画面群の実装方針に合わせる」と
+先送りされていた。全画面実装の前提として、フレームワーク・認証・BFF 接続・配置・共通方針を確定する。
+
+## 決定
+
+1. **技術スタック（ユーザー判断）**: **React 18 + TypeScript(strict) + Vite**。テストは Vitest + Testing Library
+   （単体）と Playwright（スクリーンレベル e2e）。lint は ESLint(typescript-eslint)。
+2. **配置（ユーザー判断）**: リポジトリ直下 **`frontend/`**。Node/Vite ツールチェーンを .NET の `src/` と分離する。
+3. **基盤/可変の分離（バックエンドと同型）**: `src/foundation/`（安定・横断: 認証・ルーティング・API クライアント・
+   UI 共通部品・実行時 config）と `src/features/<画面>/`（可変: 画面ごとの feature モジュール）。各 feature は
+   `FeatureModule`（`routes`）を公開し、`src/features/index.ts` へ 1 行登録するだけで認証済みレイアウト配下に
+   マウントされる。SC-01..11 はこの骨組みに 1 つずつ載る。
+4. **認証（ユーザー判断）**: **Keycloak OIDC public client + Authorization Code + PKCE(S256)**（`oidc-client-ts`）。
+   realm に public client `spa-web`（redirect `http://localhost:3100/*`）を追加。取得した JWT を BFF へ **Bearer**
+   送信する（既存 BFF の JWT 検証にそのまま適合。バックエンド改修不要）。トークンは **localStorage へ永続化せず**
+   メモリ保持（XSS 時の持ち出し面を狭める）・silent renew。
+5. **BFF を境界に疎結合**: features は `apiFetch`（`/bff/*`）経由でのみバックエンドへアクセスする。BFF ＋ OpenAPI が
+   契約。接続先（BFF・Keycloak）は **実行時 config**（`window.__APP_CONFIG__`、`config.js`）で注入し、**同一ビルド
+   成果物を任意環境へデプロイ**できる（コンテナ起動時に `config.js.template` を envsubst で生成）。dev は Vite proxy
+   が `/bff` を BFF へ転送する。
+6. **存在秘匿・エラー方針（IADR-0009 と整合）**: `ApiError` が HTTP ステータスを種別へ写像し、**404 は notFound**
+   として扱い「不在」と「権限による秘匿」を画面で区別しない。401 は再ログイン、共通 `ErrorBoundary` が想定外例外を握る。
+7. **配信・CI**: 本番は multi-stage Docker（Vite build → nginx 静的配信＋`/bff` プロキシ）。CI（`frontend.yml`）は
+   typecheck / lint / unit test / build ＋ Playwright スモーク（バックエンド不要のログイン画面到達）を実行する。
+
+## 検討した代替
+
+- **認証を BFF ブローカー（httpOnly cookie）にする**案: 最も安全だが BFF に新規のログイン/セッション/トークン更新
+  エンドポイントが必要で、既存 BFF（JWT bearer 検証）への追加改修が大きい。public client + PKCE は既存 BFF に
+  そのまま適合するため採用（トークンのブラウザ保持は非永続＋短命＋silent renew で緩和）。
+- **配置を `src/Frontend/` や `apps/web` + `packages/`** にする案: 前者は .NET と Node のツールチェーン混在、後者は
+  現時点で過剰。`frontend/` 単一ワークスペースを採用。
+
+## 結果
+
+- 良い影響: SC-01..11 が feature として 1 つずつ着手可能な骨組みが確定。バックエンドと BFF/OpenAPI で疎結合し、
+  接続先は実行時 config で差し替え可能。認証・存在秘匿・CI が基盤として整う。
+- トレードオフ: public client のためトークンがブラウザに存在する（非永続・短命・silent renew で緩和）。将来、
+  機密度が上がれば BFF ブローカー方式へ移行可能（api クライアントの token provider 差し替えで局所化済み）。
+
+## 関連
+
+- Supersedes: なし
+- Superseded by: なし
