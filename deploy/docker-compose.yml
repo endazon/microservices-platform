@@ -233,6 +233,10 @@ services:
     build:
       context: ..
       dockerfile: src/Services/ConversionService/src/ConversionService.Worker/Dockerfile
+    # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # host へは公開せずメッシュ内部限定（ingress 非公開）。
+    expose:
+      - "8080"
     environment:
       # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
       <<: [*common-env, *rabbit-env, *objectstorage-env]
@@ -246,6 +250,10 @@ services:
     build:
       context: ..
       dockerfile: src/Services/IngestionService/src/IngestionService.Worker/Dockerfile
+    # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
+    # host へは公開せずメッシュ内部限定（ingress 非公開）。
+    expose:
+      - "8080"
     environment:
       # FR-06: storage:// 本文を MinIO から実取得する（読み取り側）。
       <<: [*common-env, *rabbit-env, *objectstorage-env]
@@ -440,6 +448,10 @@ services:
       # 上書きが無いと実効構成の集約が常に到達失敗し、ドリフト検出が Unverifiable に縮退する。
       Introspection__Services__document-service: http://document-service:8080
       Introspection__Services__wiki-service: http://wiki-service:8080
+      # FR-15, IADR-0029 フォローアップ 1 (#142): conversion/ingestion ワーカーも最小 HTTP サーフェスで
+      # 自己申告するようになったため収集先に追加。これで convert/ingest 段が Unverifiable でなくなる。
+      Introspection__Services__conversion-service: http://conversion-service:8080
+      Introspection__Services__ingestion-service: http://ingestion-service:8080
     depends_on:
       redis:
         condition: service_healthy

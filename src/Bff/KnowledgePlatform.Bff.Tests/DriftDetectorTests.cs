@@ -68,6 +68,35 @@ public class DriftDetectorTests
             .Which.Kind.Should().Be(DriftDetector.Unverifiable);
     }
 
+    // FR-15, IADR-0029 (#142): ワーカー段（ingest / ingestion-service）でも適用漏れを検出できる。
+    // ワーカーが自己申告するようになり到達可能（reachable）となったため、宣言にある ingest 段が
+    // 実効に無ければ Unverifiable ではなく MissingApply として検出される。
+    // 注: DriftDetector にワーカー固有の分岐は無い（到達可能な段は種別によらず同一経路で判定される）。
+    // 本ケースは Detect_WhenDeclaredStepMissingFromReachableService_ReportsMissingApply と同じ経路を
+    // ワーカー段のデータで検証し、受け入れ基準「ワーカー段でも MissingApply を検出できる」を明示的に記録する。
+    [Fact]
+    public void Detect_WhenWorkerStageMissingFromReachableWorker_ReportsMissingApply()
+    {
+        var declaration = new PipelineOptions
+        {
+            Steps =
+            [
+                new PipelineStepOptions
+                {
+                    Name = "ingest", Service = "ingestion-service",
+                    Consumer = "IngestionService.Worker.Composable.Steps.DocumentUpdatedConsumer",
+                    Input = "DocumentUpdated", Outputs = [], Enabled = true
+                }
+            ]
+        };
+
+        var findings = DriftDetector.Detect(
+            declaration, Effective([], service: "ingestion-service", reachable: true));
+
+        findings.Should().ContainSingle()
+            .Which.Kind.Should().Be(DriftDetector.MissingApply);
+    }
+
     // 宣言に無い購読: 実効で有効な段が宣言に存在しない。
     [Fact]
     public void Detect_WhenEffectiveHasUndeclaredSubscription_ReportsUndeclared()
