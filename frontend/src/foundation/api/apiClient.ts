@@ -65,7 +65,7 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
   return (text ? (JSON.parse(text) as T) : (undefined as T));
 }
 
-// IADR-0036, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
+// IADR-0037, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
 export interface SseEvent {
   event: string;
   data: string;
@@ -110,7 +110,11 @@ export async function apiStream(
   let res: Response;
   try {
     res = await fetch(cfg.bffBaseUrl + path, { ...rest, method: method ?? 'POST', headers, body, signal });
-  } catch {
+  } catch (err) {
+    // SC-01: ヘッダ受信前に AbortController.abort() された場合は AbortError（DOMException）を保持して
+    // 再スローする（連投質問などで前フェッチを中断した際、呼び出し側が意図的中断として無視できるように）。
+    // それ以外の fetch 失敗のみネットワークエラーへ丸める。
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
     throw new ApiError('network', 'サーバへ到達できませんでした。', null);
   }
 

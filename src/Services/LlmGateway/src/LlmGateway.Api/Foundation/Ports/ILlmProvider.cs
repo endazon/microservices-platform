@@ -8,7 +8,7 @@ public interface ILlmProvider
 {
     Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default);
 
-    // IADR-0036: トークンストリーミング。既定実装は CompleteAsync を 1 チャンクで返す（未対応プロバイダは
+    // IADR-0037: トークンストリーミング。既定実装は CompleteAsync を 1 チャンクで返す（未対応プロバイダは
     // 単一チャンクへ縮退＝壊れない）。真のストリーミングを行うプロバイダ（ClaudeProvider）が override する。
     // 呼び出し側（LlmGateway /complete/stream）は egress ルーティング判定を通した後にのみ本メソッドを呼ぶ。
     async IAsyncEnumerable<CompletionChunk> StreamAsync(
@@ -22,5 +22,5 @@ public interface ILlmProvider
 public record CompletionRequest(string Prompt, int MaxTokens = 1024, string? Model = null);
 public record CompletionResult(string Text, int InputTokens, int OutputTokens);
 
-// IADR-0036: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。
+// IADR-0037: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。
 public record CompletionChunk(string TextDelta, bool Done = false, int InputTokens = 0, int OutputTokens = 0);

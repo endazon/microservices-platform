@@ -5,7 +5,7 @@ import type { User } from 'oidc-client-ts';
 import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
 
-// SC-11 #140, IADR-0009/IADR-0030/IADR-0034: 構成ビューアのアクセス制御（管理者・運用者限定＋存在秘匿）。
+// SC-11 #140, IADR-0009/IADR-0030/IADR-0035: 構成ビューアのアクセス制御（管理者・運用者限定＋存在秘匿）。
 // 実際の feature ルート要素（RequireRole でラップ済み）をロール別に描画し、権限外は NotFound で
 // 画面の存在を示さないことを検証する。許可時のデータ取得はモックする。
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));

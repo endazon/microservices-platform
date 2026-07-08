@@ -1,7 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { parseSseBlock } from './apiClient';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { parseSseBlock, apiStream } from './apiClient';
 
-// IADR-0036, SC-01: SSE イベントブロックの解析（event 名・data 連結・非データ行の無視）。
+vi.mock('@foundation/config/runtimeConfig', () => ({
+  appConfig: () => ({ bffBaseUrl: 'http://test' }),
+}));
+
+// IADR-0037, SC-01: SSE イベントブロックの解析（event 名・data 連結・非データ行の無視）。
 describe('parseSseBlock', () => {
   it('parses event name and data', () => {
     expect(parseSseBlock('event: token\ndata: {"text":"hi"}')).toEqual({
@@ -21,5 +25,30 @@ describe('parseSseBlock', () => {
   it('returns null for blocks without a data field (comments/empty)', () => {
     expect(parseSseBlock(': keep-alive')).toBeNull();
     expect(parseSseBlock('')).toBeNull();
+  });
+});
+
+// SC-01: ヘッダ受信前に中断した場合、apiStream は AbortError を保持して再スローする
+// （ネットワークエラーへ丸めない）。呼び出し側が連投質問の意図的中断を無視できるようにするため。
+describe('apiStream abort handling', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rethrows AbortError from the initial fetch instead of wrapping it', async () => {
+    const abortErr = new DOMException('aborted', 'AbortError');
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr));
+
+    await expect(apiStream('/analysis/ask/stream', { json: {} }, () => {})).rejects.toBe(
+      abortErr,
+    );
+  });
+
+  it('wraps non-abort fetch failures into a network ApiError', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('failed to fetch')));
+
+    await expect(
+      apiStream('/analysis/ask/stream', { json: {} }, () => {}),
+    ).rejects.toMatchObject({ kind: 'network' });
   });
 });

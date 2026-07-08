@@ -14,7 +14,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
 related_specs:
-  - "../adr/IADR-0034_frontend-role-based-nav-and-existence-hiding.md"
+  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
   - "../adr/IADR-0033_frontend-spa-foundation.md"
   - "../adr/IADR-0011_dashboard-service-usage-aggregation.md"
   - "../screens/SC-11_configuration-viewer.md"
@@ -38,7 +38,7 @@ related_specs:
 
 - 主要利用シーン: 日次の利用状況確認、回答品質（満足率）の把握、詳細分析ツールへの導線、構成確認（SC-11）への遷移。
 - **参照専用**: 本画面から設定変更は行わない。
-- アクセスは管理者ロール（`platform-admin`）に限定する。データソース `/bff/dashboard/summary` は `AdminOnly`（[[IADR-0011]]）であり、UI もこれに揃える。権限外にはメニュー・画面を表示しない（存在秘匿、[[IADR-0034]]）。
+- アクセスは管理者ロール（`platform-admin`）に限定する。データソース `/bff/dashboard/summary` は `AdminOnly`（[[IADR-0011]]）であり、UI もこれに揃える。権限外にはメニュー・画面を表示しない（存在秘匿、[[IADR-0035]]）。
 
 ## データソース（BFF 境界）
 
@@ -105,7 +105,7 @@ flowchart LR
 
 ## 権限・表示条件
 
-- ルート `/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0034]]）。
+- ルート `/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0035]]）。
 - ナビの「運用」項目は `platform-admin` にのみ表示。
 - 「構成ビューア →」導線は ConfigViewer 相当（`platform-admin` または `platform-operator`）にのみ表示。
 - サーバが実効境界: `/bff/dashboard/summary` は `AdminOnly`。UI をすり抜けても 403。UI は 403/404 を中立メッセージで扱う（利用可否のみ、詳細を露出しない）。
@@ -122,7 +122,7 @@ flowchart LR
 
 ## 関連仕様
 
-- 実装 ADR: [[IADR-0034]]（ロールベース nav・存在秘匿）、[[IADR-0033]]（SPA 基盤）、[[IADR-0011]]（ダッシュボード集約）
+- 実装 ADR: [[IADR-0035]]（ロールベース nav・存在秘匿）、[[IADR-0033]]（SPA 基盤）、[[IADR-0011]]（ダッシュボード集約）
 - 画面仕様書: [[SC-11]] 構成ビューア（`docs/screens/SC-11_configuration-viewer.md`）
 - テスト仕様書: `docs/tests/SC-10_operations-dashboard.md`
 - 作業仕様書: `docs/specs/20260708_issue-136_sc10-operations-dashboard.md`

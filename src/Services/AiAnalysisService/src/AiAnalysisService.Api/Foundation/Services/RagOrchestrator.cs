@@ -52,7 +52,7 @@ public class RagOrchestrator(
             context => AnalysisPromptBuilder.Build(request, context), "analysis", ct);
     }
 
-    // IADR-0036, FR-04, UC-01: 自然文質問への回答をストリーミングする。
+    // IADR-0037, FR-04, UC-01: 自然文質問への回答をストリーミングする。
     // フロー: ABAC スコープ解決 →（不許可なら空回答）→ 検索 → 出典イベント → LLM ストリーム（token）→ done。
     // 出典は LLM 生成前に確定するため先に送り、フロントは本文表示中に出典を先行併記できる。
     // 反復子内で yield を跨ぐ try/catch は使えないため、失敗は下位ヘルパが done(Sent=false) へ縮退させる。
@@ -65,7 +65,10 @@ public class RagOrchestrator(
         var resolved = await ResolveScopeAsync(userId, userAttributes, ct);
         if (!resolved.Granted)
         {
+            // IADR-0009 存在秘匿を破らない中立文言。非ストリーミング版 AskAsync（EmptyAnswer）と挙動を揃え、
+            // 本文（token）が空のまま done になって理由不明の空白回答が表示されるのを防ぐ。
             yield return new AskCitationsEvent([]);
+            yield return new AskTokenEvent("閲覧権限のある文書が見つかりませんでした。");
             yield return new AskDoneEvent(Guid.NewGuid(), defaultModel, 0, 0);
             yield break;
         }
@@ -132,7 +135,7 @@ public class RagOrchestrator(
         }
     }
 
-    // IADR-0036: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
+    // IADR-0037: LlmGateway /complete/stream の SSE を消費し、CompletionStreamEvent を逐次返す。
     // 反復子内で yield を跨ぐ try/catch を避けるため、送信・読み取りの失敗は捕捉後に done(Sent=false) を
     // yield して終了する（呼び出し側は縮退表示に切り替えられる）。egress 判定はゲートウェイ側で保持される。
     private async IAsyncEnumerable<CompletionStreamEvent> StreamCompletionAsync(
@@ -246,14 +249,8 @@ public class RagOrchestrator(
         // 機密区分に応じて選択する（Llm:Routing:PurposeModels）。既定モデル名は縮退応答の表示用のみ。
         var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-4-8";
 
-        var retrievalClient = httpFactory.CreateClient("RetrievalService");
-        var searchResp = await retrievalClient.PostAsJsonAsync("/search",
-            new SearchRequest(query, topK, null, scope), ct);
-        var searchResult = searchResp.IsSuccessStatusCode
-            ? await searchResp.Content.ReadFromJsonAsync<SearchResponse>(ct)
-            : new SearchResponse([], 0, 0);
-
-        var results = searchResult?.Results ?? [];
+        // FR-03: 実効スコープでハイブリッド検索（ストリーミング版と同じ SearchAsync に集約。失敗時は空へ縮退）。
+        var results = await SearchAsync(query, scope, topK, ct);
 
         // FR-04: 検索結果を番号付き出典へ写像（回答本文の [1][2] と一致させる）
         var citations = CitationMapper.ToCitations(results);

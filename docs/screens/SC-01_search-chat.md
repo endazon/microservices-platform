@@ -15,7 +15,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
-  - "../adr/IADR-0036_llm-sse-streaming.md"
+  - "../adr/IADR-0037_llm-sse-streaming.md"
   - "../adr/IADR-0033_frontend-spa-foundation.md"
   - "../specs/20260708_issue-127_sc01-search-chat.md"
 ---
@@ -27,7 +27,7 @@ related_specs:
 - 画面（SC）: **SC-01 検索／チャット質問画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-01）
 - 関連ユースケース（UC）: **UC-01**（横断検索・AI 質問）
 - 関連機能要求（FR）: FR-03（検索）・FR-04（RAG 回答）・FR-08（フィードバック）・FR-05（ABAC）・FR-11（LLM 越境）
-- 関連 ADR: [[IADR-0036]]（SSE ストリーミング）・[[IADR-0033]]（SPA 基盤）・[[IADR-0009]]（存在秘匿）
+- 関連 ADR: [[IADR-0037]]（SSE ストリーミング）・[[IADR-0033]]（SPA 基盤）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
 
@@ -102,7 +102,7 @@ flowchart LR
 
 - 作業仕様書: `docs/specs/20260708_issue-127_sc01-search-chat.md`
 - テスト仕様書: `docs/tests/SC-01_search-chat.md`
-- 実装 ADR: [[IADR-0036]]
+- 実装 ADR: [[IADR-0037]]
 
 ## 未決事項
 

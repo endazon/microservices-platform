@@ -4,7 +4,7 @@ import { ApiError } from '@foundation/api/ApiError';
 
 // SC-11, FR-15, ADR-0018: 構成ビューア。実効構成（構成バージョン・パイプライン段・イベント接続・
 // ポート選択・コネクタ）を参照専用で可視化する。データソースは /bff/admin/config（ConfigViewer,
-// 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0035）。
+// 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0036）。
 // #137: 実効構成の表示。ドリフト（#138）・履歴（#139）は後続。
 
 interface ConfigVersion {
@@ -130,29 +130,25 @@ function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
   );
 }
 
-// #138: 深刻度 → 強調色。severity は自由文字列のため既知値を小文字で照合し、未知は中立色。
+// #138: 深刻度 → 強調色。severity は DriftDetector が返す Warning / Info の2値（IADR-0029）。
+// 大文字小文字を無視して照合し、未知の深刻度は中立色にフォールバックする（種別同様、値域が
+// 増えても UI 改修は不要）。実在しない深刻度への分岐は持たない（防御的実装を避ける）。
 function severityColor(severity: string): string {
   switch (severity.toLowerCase()) {
-    case 'high':
-    case 'critical':
-    case 'error':
-      return '#c0392b';
-    case 'medium':
     case 'warning':
-    case 'warn':
       return '#e67e22';
-    case 'low':
     case 'info':
-      return '#7f8c8d';
     default:
       return '#7f8c8d';
   }
 }
 
-// #138: ドリフト一覧・強調表示。0 件（または hasDrift=false）は「OK」を明示（検出済みを日時とともに示す）。
+// #138: ドリフト一覧・強調表示。0 件は「OK」を明示（検出済みを日時とともに示す）。
 function DriftView({ status, report }: { status: DriftStatus; report: DriftReport | null }) {
+  // API 側（ConfigInspectionService.GetDriftAsync）は HasDrift = findings.Count > 0 で構築するため、
+  // 件数から一意に決まる（両者が乖離するケースは無い）。
   const count = report?.findings.length ?? 0;
-  const hasDrift = (report?.hasDrift ?? false) && count > 0;
+  const hasDrift = count > 0;
   const badge = status !== 'ok' ? '—' : hasDrift ? `ドリフト ${count} 件` : 'OK';
 
   return (
@@ -202,7 +198,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// パイプライン段: consumer → [outputs] の縦チェーン（IADR-0035）。無効段はグレーアウト。
+// パイプライン段: consumer → [outputs] の縦チェーン（IADR-0036）。無効段はグレーアウト。
 function PipelineView({ stages }: { stages: PipelineStage[] }) {
   return (
     <Section title={`パイプライン段（${stages.length}）`}>

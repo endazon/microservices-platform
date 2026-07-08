@@ -31,7 +31,7 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
         return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens);
     }
 
-    // IADR-0036: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
+    // IADR-0037: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
     // 呼び出し側（LlmGateway /complete/stream）は egress ルーティングで送信可と判定した後にのみ本メソッドを呼ぶ。
     public async IAsyncEnumerable<CompletionChunk> StreamAsync(
         CompletionRequest request, [EnumeratorCancellation] CancellationToken ct = default)

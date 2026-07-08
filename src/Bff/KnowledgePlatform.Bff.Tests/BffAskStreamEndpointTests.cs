@@ -5,7 +5,7 @@ using System.Net.Http.Json;
 
 namespace KnowledgePlatform.Bff.Tests;
 
-// IADR-0036, FR-04, UC-01, SC-01: /bff/analysis/ask/stream が上流 SSE を中継し、Authorization を伝播することを検証する。
+// IADR-0037, FR-04, UC-01, SC-01: /bff/analysis/ask/stream が上流 SSE を中継し、Authorization を伝播することを検証する。
 public class BffAskStreamEndpointTests(BffTestFactory factory) : IClassFixture<BffTestFactory>
 {
     [Fact]

@@ -4,7 +4,7 @@ import { useRoles, hasAnyRole } from '@foundation/auth/roles';
 import { navItems } from '@foundation/routing/nav';
 
 // Issue #126: 認証済み領域の共通レイアウト（ナビ＋ユーザー＋サインアウト）。features は Outlet に載る。
-// Issue #136 / IADR-0034: ナビは features の登録から導出し、権限外の項目は描画しない（存在秘匿）。
+// Issue #136 / IADR-0035: ナビは features の登録から導出し、権限外の項目は描画しない（存在秘匿）。
 export function Layout() {
   const { user, logout } = useAuth();
   const roles = useRoles();

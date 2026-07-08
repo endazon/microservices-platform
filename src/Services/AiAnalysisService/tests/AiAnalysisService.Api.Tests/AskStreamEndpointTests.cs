@@ -4,7 +4,7 @@ using System.Net.Http.Json;
 
 namespace AiAnalysisService.Api.Tests;
 
-// IADR-0036, FR-04, UC-01: /analysis/ask/stream が SSE で citations → token* → done を送ることを検証する。
+// IADR-0037, FR-04, UC-01: /analysis/ask/stream が SSE で citations → token* → done を送ることを検証する。
 public class AskStreamEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

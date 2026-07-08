@@ -1,6 +1,6 @@
 import type { RouteObject } from 'react-router-dom';
 
-// Issue #136 / IADR-0034: 共通ナビへ出すメニュー項目。権限外には表示しない（存在秘匿の UI 表現）。
+// Issue #136 / IADR-0035: 共通ナビへ出すメニュー項目。権限外には表示しない（存在秘匿の UI 表現）。
 export interface FeatureNav {
   /** ナビ表示名（例: "運用"）。 */
   label: string;
@@ -17,6 +17,6 @@ export interface FeatureModule {
   id: string;
   /** Layout の Outlet 配下に載る子ルート群（path は "/" 起点の相対）。 */
   routes: RouteObject[];
-  /** 共通ナビへ出す項目（任意）。権限外には表示しない（Issue #136 / IADR-0034）。 */
+  /** 共通ナビへ出す項目（任意）。権限外には表示しない（Issue #136 / IADR-0035）。 */
   nav?: FeatureNav;
 }

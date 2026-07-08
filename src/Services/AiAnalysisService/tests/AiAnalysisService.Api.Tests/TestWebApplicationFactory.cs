@@ -43,7 +43,7 @@ file class StubRagOrchestrator : IRagOrchestrator
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
         => Task.FromResult(Answer($"分析結果({request.TaskType}) [1]"));
 
-    // IADR-0036: ストリーミングのスタブ（citations → token* → done）。
+    // IADR-0037: ストリーミングのスタブ（citations → token* → done）。
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
         Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
     {
