@@ -39,6 +39,13 @@ related_adrs:
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
   `KnowledgePlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
   は本ポリシーの対象外（認証のみ）。
+- **運用者ロール（FR-15, SC-11, IADR-0030）**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
+  構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
+  保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（IADR-0029・IADR-0009 の存在秘匿）。
+  運用者（`platform-operator`）は構成閲覧のみ可能で、管理系操作（`AdminOnly`）は不可。ロールは
+  Keycloak レルム（`deploy/keycloak/knowledge-platform-realm.json`）に定義し、実ユーザーへの割当は
+  運用作業とする。ポリシー判定は単体テスト（`ConfigViewerPolicyTests`）で検証（詳細:
+  [IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
 - **ロールクレームの取得経路**: Keycloak はレルムロールを JWT の `realm_access.roles`（ネストした JSON クレーム）に
   格納する。標準の `JwtBearerHandler` はこれを `ClaimTypes.Role` へ展開しないため、`KeycloakRolesClaimsTransformation`
   （`IClaimsTransformation`）でトークン検証後に展開し、`RequireRole("platform-admin")` を成立させる。展開ロジックは
