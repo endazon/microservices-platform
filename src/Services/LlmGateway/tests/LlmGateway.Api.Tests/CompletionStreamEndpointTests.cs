@@ -7,7 +7,7 @@ using System.Net.Http.Json;
 
 namespace LlmGateway.Api.Tests;
 
-// IADR-0036, FR-11: /complete/stream（SSE）が本文デルタと最終イベントを流し、egress 判定は /complete と同一に
+// IADR-0037, FR-11: /complete/stream（SSE）が本文デルタと最終イベントを流し、egress 判定は /complete と同一に
 // 通すこと（拒否時はプロバイダを呼ばず理由のみ返す）を検証する。egress ゲート保持が最重要の検証点。
 public class CompletionStreamEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>

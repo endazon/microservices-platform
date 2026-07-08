@@ -91,7 +91,7 @@ file class StubRagOrchestrator : IRagOrchestrator
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
         => Task.FromResult(Answer($"「{request.Instruction}」の{request.TaskType}結果（統合テストスタブ）"));
 
-    // IADR-0036, UC-01: SSE 用イベント列のスタブ。エンドポイント配線（citations→token→done）の確認までを対象とする。
+    // IADR-0037, UC-01: SSE 用イベント列のスタブ。エンドポイント配線（citations→token→done）の確認までを対象とする。
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
         Dictionary<string, string> userAttributes,
         [EnumeratorCancellation] CancellationToken ct = default)

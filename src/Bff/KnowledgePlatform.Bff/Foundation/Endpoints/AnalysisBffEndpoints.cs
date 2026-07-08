@@ -56,7 +56,7 @@ public static class AnalysisBffEndpoints
             return answer is null ? Results.StatusCode(StatusCodes.Status502BadGateway) : Results.Ok(answer);
         }).WithName("BffAnalysisAnalyze").Produces<AiAnswerDto>();
 
-        // IADR-0036, FR-04, UC-01, SC-01: RAG 回答の SSE ストリーミングを AiAnalysisService へパススルーする。
+        // IADR-0037, FR-04, UC-01, SC-01: RAG 回答の SSE ストリーミングを AiAnalysisService へパススルーする。
         // ABAC 権限解決のため Authorization を伝播し、上流 SSE をそのままクライアントへ中継する（逐次フラッシュ）。
         g.MapPost("/ask/stream", async (
             AnalysisRequest req,

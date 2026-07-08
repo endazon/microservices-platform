@@ -14,13 +14,13 @@ public interface IRagOrchestrator
     Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default);
 
-    // IADR-0036, FR-04, UC-01: 自然文質問への回答を SSE 用のイベント列としてストリーミングする。
+    // IADR-0037, FR-04, UC-01: 自然文質問への回答を SSE 用のイベント列としてストリーミングする。
     // 出典（citations）は LLM 生成前に確定するため先に送出し、続いて本文トークン、最後に done を送る。
     IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default);
 }
 
-// IADR-0036: ask ストリームのイベント（SSE の event 名 + data JSON へ写像する）。
+// IADR-0037: ask ストリームのイベント（SSE の event 名 + data JSON へ写像する）。
 public abstract record AskEvent;
 
 // 出典（本文ストリームより先に送出。フロントは本文表示中に出典を先行併記できる）。

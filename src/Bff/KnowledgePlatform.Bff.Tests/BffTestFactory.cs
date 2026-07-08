@@ -133,7 +133,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             owner.LastForwardedAuthorization = request.Headers.Authorization?.ToString();
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
 
-            // IADR-0036: /analysis/ask/stream は SSE を返す（BFF は逐次中継する）。
+            // IADR-0037: /analysis/ask/stream は SSE を返す（BFF は逐次中継する）。
             if (path.EndsWith("/ask/stream", StringComparison.Ordinal))
             {
                 const string sse =

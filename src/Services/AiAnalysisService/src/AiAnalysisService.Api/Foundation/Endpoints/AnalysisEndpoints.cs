@@ -8,7 +8,7 @@ namespace AiAnalysisService.Api.Foundation.Endpoints;
 // FR-04, FR-07, UC-01, UC-02: AI 分析・回答エンドポイント
 public static class AnalysisEndpoints
 {
-    // IADR-0036: SSE data 行の JSON。camelCase・日本語を過剰エスケープしない緩和エンコーダ。
+    // IADR-0037: SSE data 行の JSON。camelCase・日本語を過剰エスケープしない緩和エンコーダ。
     private static readonly JsonSerializerOptions SseJson = new(JsonSerializerDefaults.Web)
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -29,7 +29,7 @@ public static class AnalysisEndpoints
             return Results.Ok(answer);
         }).WithName("Ask").Produces<AiAnswerDto>();
 
-        // IADR-0036, FR-04, UC-01: RAG 質問回答の SSE ストリーミング。
+        // IADR-0037, FR-04, UC-01: RAG 質問回答の SSE ストリーミング。
         // event: citations（出典・先行）→ event: token（本文増分）* → event: done（回答ID/モデル/トークン）。
         g.MapPost("/ask/stream", async (AskRequest req, IRagOrchestrator rag,
             HttpContext http, CancellationToken ct) =>

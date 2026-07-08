@@ -75,7 +75,7 @@ public static class CompletionEndpoints
             }
         }).WithName("Complete").Produces<CompletionApiResponse>();
 
-        // IADR-0036: SSE ストリーミング版。AiAnalysisService が POST /complete/stream で呼び出す。
+        // IADR-0037: SSE ストリーミング版。AiAnalysisService が POST /complete/stream で呼び出す。
         // FR-11: egress ゲートは /complete と同一の router.Route(...) を通し、Allowed=false は
         // プロバイダを一切呼ばず理由イベントのみ返す（越境保証を弱めない）。
         g.MapPost("/complete/stream", async (

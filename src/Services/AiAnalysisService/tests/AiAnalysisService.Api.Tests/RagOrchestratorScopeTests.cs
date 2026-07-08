@@ -41,7 +41,7 @@ public class RagOrchestratorScopeTests
         answer!.Citations.Should().BeEmpty();
     }
 
-    // IADR-0036, IADR-0009, FR-05: ストリーミングでも権限が無い場合（deny-by-default）は非ストリーミング版と
+    // IADR-0037, IADR-0009, FR-05: ストリーミングでも権限が無い場合（deny-by-default）は非ストリーミング版と
     // 挙動を揃え、citations（空）→ 中立文言 token → done を送る（本文が空のまま done になり理由不明の
     // 空白回答が表示されるのを防ぐ）。存在秘匿を破らない中立文言であること。
     [Fact]
