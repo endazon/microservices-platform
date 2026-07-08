@@ -204,8 +204,8 @@ flowchart LR
 
 ## 関連仕様
 
-- 機能仕様書: （FR-15 構成情報 API — #112 実装時に `docs/functional/` を作成）
-- 通信仕様書: （構成情報 API — #112 実装時に `docs/api/` を作成、`openapi.yaml` へ反映）
+- 機能仕様書: [FR-15_config-info-api](../functional/FR-15_config-info-api.md)（Issue #118 監査で作成）
+- 通信仕様書: [openapi.yaml](../api/openapi.yaml)（`/bff/admin/config`・`/bff/admin/config/drift` — Issue #118 監査で反映）
 - 技術検討（計画）: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6
 - 宣言的構成（実装）: [20260708_issue-111_declarative-pipeline-config.md](../specs/20260708_issue-111_declarative-pipeline-config.md)
 

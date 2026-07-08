@@ -41,13 +41,21 @@ tags:
     description: "FR-10, UC-05: 利用状況・検索傾向・回答品質の可視化。IADR-0017: 内部 API（BFF 経由で到達）"
   - name: Completions
     description: "FR-04, FR-11, ADR-0010: LLM テキスト生成ゲートウェイ。機密区分・用途で呼び出し先を切替。IADR-0017: サービス間呼び出し専用"
+  - name: Embeddings
+    description: "FR-02, FR-05, ADR-0016, ADR-0017, IADR-0025: 埋め込み生成ゲートウェイ。機密区分でティア（セルフホスト/外部）を切替、高機密は fail-closed。IADR-0017: サービス間呼び出し専用"
+  - name: Config
+    description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
 
 paths:
   # ── BFF ──────────────────────────────────────────
-  /search:
+  /bff/search:
     post:
       tags: [Search]
-      summary: "FR-03: ベクトル検索"
+      summary: "FR-03: ベクトル検索（BFF 集約）"
+      description: |
+        Issue #118 監査: 実装パスは `/bff/search`（旧記載 `/search` は誤り）。
+        現状は空結果を返すスタブ（フロントエンド着手フェーズで AiAnalysisService/RetrievalService へ委譲予定）。
+        検索の実体は RetrievalService の `/search`（内部 API・IADR-0017）が担う。
       operationId: bff-search
       requestBody:
         required: true
@@ -63,10 +71,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
 
-  /analysis/ask:
+  /bff/analysis/ask:
     post:
       tags: [Analysis]
-      summary: "FR-04, UC-01: RAG 質問回答"
+      summary: "FR-04, UC-01: RAG 質問回答（BFF 集約）"
+      description: |
+        Issue #118 監査: 実装パスは `/bff/analysis/ask`（旧記載 `/analysis/ask` は誤り。
+        `/analysis/ask` は AiAnalysisService 直接の内部パス）。ABAC 権限解決のため
+        Authorization ヘッダを後段へ伝播する。
       operationId: analysis-ask
       requestBody:
         required: true
@@ -82,11 +94,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/AiAnswerDto"
 
-  /analysis/analyze:
+  /bff/analysis/analyze:
     post:
       tags: [Analysis]
-      summary: "FR-07, UC-02: 指定データ範囲での分析・比較・抽出"
+      summary: "FR-07, UC-02: 指定データ範囲での分析・比較・抽出（BFF 集約）"
       description: |
+        Issue #118 監査: 実装パスは `/bff/analysis/analyze`（旧記載 `/analysis/analyze` は誤り。
+        `/analysis/analyze` は AiAnalysisService 直接の内部パス）。
         指定データ範囲（attributeFilters / query）は ABAC 許可スコープと交差し、権限を一切広げない
         （narrowing-only, IADR-0005）。範囲が権限外を指す場合は空回答へ縮退する。
       operationId: analysis-analyze
@@ -185,6 +199,45 @@ paths:
           description: 未認証
         "403":
           description: 管理者ロール以外（AdminOnly）
+
+  /bff/admin/config:
+    get:
+      tags: [Config]
+      summary: "FR-15, SC-11: 現在有効な実効構成の取得"
+      description: |
+        現在有効なシステム構成（パイプライン段構成・イベント接続・ポート実装選択・コネクタ一覧）と
+        構成バージョン（Git コミット）を返す。IADR-0029: 独立サービス化せず BFF 配下の管理 API として同居。
+        IADR-0030: 閲覧は ConfigViewer ポリシー（platform-admin / platform-operator）に限定。
+        非権限（無認証を含む）には 404 で応答自体を秘匿する（IADR-0009 の存在秘匿と整合。401/403 は返さない）。
+        取得は許可・拒否ともに監査ログへ記録する。
+      operationId: bff-config-effective
+      responses:
+        "200":
+          description: 実効構成（段・接続・ポート選択・コネクタ・構成バージョン）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EffectiveConfigDto"
+        "404":
+          description: 非権限（存在秘匿。無認証・一般利用者を含む）
+
+  /bff/admin/config/drift:
+    get:
+      tags: [Config]
+      summary: "FR-15, SC-11: 宣言（Git）と実効構成のドリフト検出"
+      description: |
+        宣言的構成（pipeline.json）と実行時の実効構成の不一致（ドリフト）を検出して返す。
+        認可・秘匿の挙動は `/bff/admin/config` と同一（ConfigViewer / 非権限は 404）。
+      operationId: bff-config-drift
+      responses:
+        "200":
+          description: ドリフト検出結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriftReportDto"
+        "404":
+          description: 非権限（存在秘匿。無認証・一般利用者を含む）
 
   # ── DocumentService ───────────────────────────────
   /documents:
@@ -723,6 +776,33 @@ paths:
               schema:
                 $ref: "#/components/schemas/CompletionApiResponse"
 
+  /embed:
+    post:
+      tags: [Embeddings]
+      summary: "FR-02, FR-05, ADR-0016/0017, IADR-0025: 埋め込み生成"
+      description: |
+        IngestionService（purpose=index）/ RetrievalService（purpose=query）が呼び出す。
+        機密区分（confidentiality）で送信先ティアを切替: confidential/restricted はティアA
+        （セルフホスト Ruri v3/768 次元）固定で外部送信しない（未構成時は fail-closed で
+        embedded=false）。それ以外はティアB（Voyage voyage-3.5/1024 次元）。検索クエリ
+        （purpose=query）は検索対象コレクションと次元を一致させるため既定外部経路へ固定する。
+        送信拒否・不調時も 500 を伝播せず embedded=false の縮退応答を 200 で返す
+        （retryable=true は一時障害で呼び出し側が再試行、false は恒久理由でスキップ）。
+      operationId: embed
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmbedApiRequest"
+      responses:
+        "200":
+          description: 埋め込み結果（送信拒否・縮退時は embedded=false）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedApiResponse"
+
 components:
   schemas:
     SearchRequest:
@@ -1024,3 +1104,130 @@ components:
           type: string
           nullable: true
           description: "選択・拒否の理由（監査・縮退表示用）"
+
+    # ── FR-15, IADR-0029: 構成情報 API（/bff/admin/config）─────
+    EffectiveConfigDto:
+      type: object
+      description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）"
+      properties:
+        version:
+          $ref: "#/components/schemas/ConfigVersionDto"
+        pipeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStageDto"
+        eventBindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventBindingDto"
+        ports:
+          type: array
+          items:
+            $ref: "#/components/schemas/PortSelectionDto"
+        connectors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorDto"
+
+    ConfigVersionDto:
+      type: object
+      description: "構成バージョン（適用中の構成定義の Git コミット・適用日時・適用者。GitOps 注入。未注入時は空）"
+      properties:
+        gitCommit: { type: string, nullable: true }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        appliedBy: { type: string, nullable: true }
+
+    PipelineStageDto:
+      type: object
+      description: "有効なパイプライン段（宣言と照合された実効値）"
+      properties:
+        name: { type: string, example: "catalog" }
+        service: { type: string, example: "document-service" }
+        consumer: { type: string, description: "コンシューマ型完全名" }
+        input: { type: string, example: "DocumentNormalized" }
+        outputs:
+          type: array
+          items: { type: string }
+        enabled: { type: boolean }
+
+    EventBindingDto:
+      type: object
+      description: "イベント接続（イベント型ごとの発行者・購読者）"
+      properties:
+        event: { type: string, example: "DocumentUpdated" }
+        publishers:
+          type: array
+          items: { type: string }
+        subscribers:
+          type: array
+          items: { type: string }
+
+    PortSelectionDto:
+      type: object
+      description: "ポート（LLM・埋め込み・ベクトルDB・ストレージ・Wiki 同期等）で選択中の実装と接続先識別子"
+      properties:
+        port: { type: string }
+        implementation: { type: string }
+        target: { type: string, nullable: true }
+
+    ConnectorDto:
+      type: object
+      description: "データソースコネクタと有効・無効状態"
+      properties:
+        name: { type: string }
+        enabled: { type: boolean }
+
+    DriftReportDto:
+      type: object
+      description: "FR-15: 宣言（Git 上の pipeline.json）と実効構成のドリフト検出結果"
+      properties:
+        hasDrift: { type: boolean }
+        checkedAt: { type: string, format: date-time }
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriftFindingDto"
+
+    DriftFindingDto:
+      type: object
+      description: "個々の不一致（自己申告到達不能は Unverifiable として縮退報告）"
+      properties:
+        kind: { type: string, example: "UndeclaredSubscription" }
+        severity: { type: string, example: "Warning" }
+        target: { type: string }
+        detail: { type: string }
+
+    # ── IADR-0025: 埋め込みゲートウェイ（/embed）─────
+    EmbedApiRequest:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, description: "埋め込み対象テキスト（取り込みは本文全量を送るため機密区分で越境判定）" }
+        confidentiality:
+          type: string
+          nullable: true
+          enum: [public, internal, confidential, restricted]
+          description: "機密区分（大文字小文字は無視）。confidential/restricted はティアA固定・外部送信しない"
+        purpose:
+          type: string
+          enum: [index, query]
+          default: index
+          description: "用途。query は検索対象コレクションと次元を一致させるため既定外部経路へ固定"
+
+    EmbedApiResponse:
+      type: object
+      description: "embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す"
+      properties:
+        vector:
+          type: array
+          items: { type: number, format: float }
+        dimensions: { type: integer, example: 1024 }
+        model: { type: string, example: "voyage-3.5" }
+        collection: { type: string, example: "knowledge_chunks_voyage_3_5", description: "モデル別コレクション名" }
+        embedded: { type: boolean, default: true }
+        endpoint: { type: string, nullable: true, description: "選択・拒否した送信先（監査・縮退表示用）" }
+        routingReason: { type: string, nullable: true, description: "選択・拒否の理由（監査・縮退表示用）" }
+        retryable:
+          type: boolean
+          default: false
+          description: "true は一時障害（呼び出し側は再試行）。false は恒久理由（呼び出し側はスキップ）"
