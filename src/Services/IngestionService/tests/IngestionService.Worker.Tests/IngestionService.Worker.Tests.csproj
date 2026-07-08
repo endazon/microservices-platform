@@ -6,6 +6,8 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="MassTransit.RabbitMQ" />
+    <!-- FR-15 (#142): /internal/introspection の到達性を WebApplicationFactory で検証する。 -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <ProjectReference Include="..\..\src\IngestionService.Worker\IngestionService.Worker.csproj" />
   </ItemGroup>
 </Project>
