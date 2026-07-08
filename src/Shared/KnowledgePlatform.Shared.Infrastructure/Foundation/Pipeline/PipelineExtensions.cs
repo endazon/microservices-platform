@@ -1,3 +1,5 @@
+using System.Text;
+using System.Text.Json;
 using MassTransit;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -9,18 +11,51 @@ namespace KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 // 誤構成対策（10_composability-design.md §5 安全弁）として、宣言と実装の不整合は起動時に fail-fast する。
 public static class PipelineExtensions
 {
-    // `Pipeline:ConfigPath` が指す JSON（Helm ConfigMap が pipeline.json から生成する
-    // {"Pipeline": {...}} 形のオーバレイ）を構成へ追加する。未指定・不存在なら何もしない
+    // `Pipeline:ConfigPath` が指す JSON を構成へ追加する。未指定・不存在なら何もしない
     // （ローカル・テストは appsettings の Pipeline セクションまたは既定配線で動作する）。
+    //
+    // 供給形式は 2 種を許容する（FR-15 / #146）:
+    //   1) {"Pipeline": {...}} オーバレイ（Helm ConfigMap が pipeline.json から生成する形）→ そのまま読む。
+    //   2) 生の pipeline.json（トップレベル {"steps":..,"events":..}。compose は正の pipeline.json を
+    //      直接マウントする）→ "Pipeline" セクションへ包んで読む。正の pipeline.json を複製せず
+    //      単一の真実源のまま BFF/段ホストへ供給できる（compose でも宣言突合が正しく働く）。
     public static IHostApplicationBuilder AddKnowledgePlatformPipelineConfig(
         this IHostApplicationBuilder builder)
     {
         var path = builder.Configuration["Pipeline:ConfigPath"];
-        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return builder;
+        }
+
+        var json = File.ReadAllText(path);
+        if (HasPipelineSection(json))
         {
             builder.Configuration.AddJsonFile(path, optional: false, reloadOnChange: false);
         }
+        else
+        {
+            // 生の pipeline.json を "Pipeline" セクションへ包む。
+            var wrapped = $"{{\"{PipelineOptions.SectionName}\":{json}}}";
+            builder.Configuration.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(wrapped)));
+        }
         return builder;
+    }
+
+    // ファイルが {"Pipeline": {...}} 形（オーバレイ）か否かを判定する。解析不能は AddJsonFile 側の
+    // 明確なエラーに委ねるため true（従来動作）を返す。
+    private static bool HasPipelineSection(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(PipelineOptions.SectionName, out _);
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
     }
 
     public static PipelineOptions GetKnowledgePlatformPipeline(this IConfiguration configuration)

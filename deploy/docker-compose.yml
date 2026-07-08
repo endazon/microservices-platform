@@ -439,6 +439,9 @@ services:
     environment:
       <<: *common-env
       Redis__ConnectionString: redis:6379
+      # FR-15, IADR-0029, #146: 宣言（正の pipeline.json）を BFF にマウントし、ドリフト検出の突合基準にする。
+      # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される（#118 監査）。
+      Pipeline__ConfigPath: /etc/knowledge-platform/pipeline/pipeline.json
       # FR-15, IADR-0029 (#144): 構成バージョン。dev は compose 起動時に環境変数で実 Git コミット ID を渡す。
       #   GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d
       # 未設定時は dev-local にフォールバック（実適用リビジョンではないダミー）。
@@ -468,6 +471,10 @@ services:
       Introspection__Services__datasource-service: http://datasource-service:8080
       Introspection__Services__feedback-service: http://feedback-service:8080
       Introspection__Services__llm-gateway: http://llm-gateway:8080
+    # FR-15, #146: 正の pipeline.json をそのまま読み取り専用でマウントする（複製しない・単一の真実源）。
+    # ローダは生の pipeline.json を "Pipeline" セクションへ包んで読む（PipelineExtensions）。
+    volumes:
+      - ./helm/knowledge-platform/files/pipeline.json:/etc/knowledge-platform/pipeline/pipeline.json:ro
     depends_on:
       redis:
         condition: service_healthy

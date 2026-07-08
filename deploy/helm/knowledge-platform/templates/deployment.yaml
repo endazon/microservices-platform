@@ -2,6 +2,9 @@
 # ADR-0007: k8s Deployment skeleton for knowledge-platform services
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
+{{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
+       宣言突合のため宣言を必要とする BFF（pipelineDeclaration）も同じ ConfigMap をマウントする。 */}}
+{{- $pipelineMount := and (or $svc.pipelineSteps $svc.pipelineDeclaration) $.Values.pipeline.enabled }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -19,7 +22,7 @@ spec:
     metadata:
       labels:
         app: {{ $name }}-service
-      {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+      {{- if $pipelineMount }}
       # FR-14, IADR-0028: 宣言的パイプライン構成の変更（Git → ArgoCD 同期）でロールアウトさせる。
       annotations:
         checksum/pipeline-config: {{ $.Files.Get "files/pipeline.json" | sha256sum | quote }}
@@ -43,7 +46,7 @@ spec:
               value: {{ $.Values.global.otel.endpoint }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
-          {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+          {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
             - name: Pipeline__ConfigPath
               value: /etc/knowledge-platform/pipeline/pipeline.appsettings.json
@@ -104,13 +107,13 @@ spec:
           {{- end }}
           resources:
             {{- toYaml $svc.resources | nindent 12 }}
-          {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+          {{- if $pipelineMount }}
           volumeMounts:
             - name: pipeline-config
               mountPath: /etc/knowledge-platform/pipeline
               readOnly: true
           {{- end }}
-      {{- if and $svc.pipelineSteps $.Values.pipeline.enabled }}
+      {{- if $pipelineMount }}
       volumes:
         - name: pipeline-config
           configMap:
