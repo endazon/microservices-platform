@@ -241,7 +241,7 @@ flowchart LR
    導入せず、パイプライン段を CSS の縦チェーン（`consumer → outputs`・無効段はグレーアウト）で、
    イベント接続・ポート・コネクタを表で表現する。各領域は折りたたみ可能なセクションとし、件数増大は
    縦スクロールで追う。将来大規模化した場合に有向グラフライブラリを再検討する。詳細は
-   [IADR-0035](../adr/IADR-0035_sc11-config-viewer-visualization.md) を参照。基盤の依存最小方針
+   [IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md) を参照。基盤の依存最小方針
    （[IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)）と一貫する。
 5. **ワイヤーフレーム**（→ 計画リポジトリ側の作業）: 計画側 `05_screens/wireframes/sc-11.drawio` の作成。
 6. **フロントエンド基盤**（→ フロントエンドフェーズで決定）: 本リポジトリの SPA 実装方針が未確定。

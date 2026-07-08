@@ -4,7 +4,7 @@ import { ApiError } from '@foundation/api/ApiError';
 
 // SC-11, FR-15, ADR-0018: 構成ビューア。実効構成（構成バージョン・パイプライン段・イベント接続・
 // ポート選択・コネクタ）を参照専用で可視化する。データソースは /bff/admin/config（ConfigViewer,
-// 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0035）。
+// 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0036）。
 // #137: 実効構成の表示。ドリフト（#138）・履歴（#139）は後続。
 
 interface ConfigVersion {
@@ -198,7 +198,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-// パイプライン段: consumer → [outputs] の縦チェーン（IADR-0035）。無効段はグレーアウト。
+// パイプライン段: consumer → [outputs] の縦チェーン（IADR-0036）。無効段はグレーアウト。
 function PipelineView({ stages }: { stages: PipelineStage[] }) {
   return (
     <Section title={`パイプライン段（${stages.length}）`}>
