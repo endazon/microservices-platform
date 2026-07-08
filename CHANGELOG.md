@@ -4,6 +4,9 @@
 
 ### 新機能
 
+- **FR-15,SC-11,IADR-0030**: SC-11 未決事項対応 — 画面仕様書の取り込みと運用者ロール platform-operator の新設（ConfigViewer ポリシー統一） (#113) (#117) (0258327)
+- **FR-15,ADR-0018**: config info API, introspection, drift detection (#116) (7c02110)
+- **FR-14,ADR-0018**: 宣言的パイプライン構成 — 構成定義スキーマ・CI スキーマ検証・MassTransit トポロジ生成 (#111) (#114) (9209115)
 - **NFR,ADR-0005,ADR-0007,ADR-0008**: 本番実行基盤を配備する（k3s → Istio mTLS → ArgoCD/Harbor）— IADR-0017 解消 (#100) (#109) (f6ffd55)
 - **FR-02,UC-04**: 埋め込み生成の実体を実装（Voyage 既定＋高機密セルフホスト fail-closed / ADR-0016・0017） (#106) (4851501)
 - **FR-06,FR-12**: オブジェクトストレージ実体（MinIO）配備と IObjectStore 本実装（ADR-0015, IADR-0024） (#105) (b665785)
@@ -49,8 +52,13 @@
 - **FR-01**: 統合テストの MassTransit Bus 起動レースを解消 (#37) (f026ce9)
 - **#34**: EFCore.Relational を 10.0.9 に直接ピンし MSB3277 を解消 (#36) (1dda3f9)
 
+### リファクタ
+
+- **FR-14,ADR-0018**: 既存実装の固定/可変分離 — Foundation/Composable 構造再編とサービスユニット規約 (#102) (#110) (52a37d0)
+
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#107) (0dcbc5b)
 - **NFR**: CHANGELOG を自動更新 (#101) (a0adfb1)
 - **IADR-0018**: 本文の採番を IADR-0017 から IADR-0018 へ統一 (#103) (b921fd8)
 - **NFR**: CHANGELOG を自動更新 (#93) (263d75f)
