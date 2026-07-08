@@ -99,4 +99,37 @@ describe('AnalysisDashboardPage (SC-08)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('実行に失敗');
   });
+
+  // T-08: 403/404 は「拒否/不在」を区別せず空縮退と同じ中立表示にする（存在秘匿。IADR-0009）。
+  it.each([
+    ['forbidden', 403],
+    ['notFound', 404],
+  ] as const)('treats %s (%d) as a neutral empty state, not an alert', async (kind, status) => {
+    mocks.apiFetch.mockImplementationOnce(async () => {
+      throw new ApiError(kind, 'x', status);
+    });
+    render(<AnalysisDashboardPage />);
+
+    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '権限外');
+    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+
+    expect(await screen.findByText('該当する情報が見つかりませんでした。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // T-09: 明示的な topK=0 は既定 8 へ静かに戻さず下限 1 へクランプする。
+  it('clamps an explicit topK of 0 to the lower bound (1), not the default', async () => {
+    mocks.apiFetch.mockResolvedValue(ANSWER);
+    render(<AnalysisDashboardPage />);
+
+    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '範囲確認');
+    const topk = screen.getByLabelText('TopK（文脈上限 1〜50）');
+    await userEvent.clear(topk);
+    await userEvent.type(topk, '0');
+    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+
+    await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
+    const [, req] = mocks.apiFetch.mock.calls[0];
+    expect(req.json.range?.topK).toBe(1);
+  });
 });

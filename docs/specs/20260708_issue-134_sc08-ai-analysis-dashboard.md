@@ -50,7 +50,8 @@ SPA 基盤上に SC-08 を feature として実装する。BFF 集約 `POST /bff
 - `apiFetch<AiAnswerDto>('/analysis/analyze', { json: AnalysisTaskRequest, method:'POST' })`。
 - 要求: `{ instruction, taskType, range?: { query?, attributeFilters?, topK? } }`（camelCase、taskType は文字列 enum）。
 - 応答: `AiAnswerDto`（answer, citations[CitationDto], model, inputTokens, outputTokens, answerId）。
-- 空縮退（answer 空 or citations 空）→ 中立メッセージ。403/404/5xx/network → 中立/alert。
+- 空縮退（answer 空 or citations 空）および 403/404 → 中立メッセージ（存在秘匿。[[IADR-0009]]）。400/5xx/network → alert。
+- instruction は上限 2000 文字（バックエンド `AnalysisPromptBuilder.MaxInstructionLength` と整合）をクライアントで抑止し 400 を予防。topK は 1〜50 にクランプ（`0`・負値は下限 1）。
 
 ### 属性フィルタ UI
 - key＋カンマ区切り値の行を可変追加（最小構成）。空 key の行は送信時に除外し、空なら `range` から省略する。
