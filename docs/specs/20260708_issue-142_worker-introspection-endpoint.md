@@ -48,11 +48,11 @@ Issue: #142（親: #123 ／ IADR-0029 フォローアップ 1 ／ #118 監査論
 
 ## 受け入れ基準
 
-- [ ] 両ワーカーが `GET /internal/introspection` を提供し、メッシュ内部からのみ到達（ingress 非公開）。
-- [ ] `/bff/admin/config` の実効構成に両ワーカーの段（`convert` / `ingest`）が含まれ Unverifiable でなくなる
+- [x] 両ワーカーが `GET /internal/introspection` を提供し、メッシュ内部からのみ到達（ingress 非公開）。
+- [x] `/bff/admin/config` の実効構成に両ワーカーの段（`convert` / `ingest`）が含まれ Unverifiable でなくなる
       （compose/Helm の `Introspection:Services` へ追加）。
-- [ ] 適用漏れ（MissingApply）がワーカー段でも検出できるテストがある。
-- [ ] `dotnet build` / `dotnet test` が緑。
+- [x] 適用漏れ（MissingApply）がワーカー段でも検出できるテストがある。
+- [x] `dotnet build` / `dotnet test` が緑。
 
 ## テスト
 
