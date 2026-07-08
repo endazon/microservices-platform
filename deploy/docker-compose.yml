@@ -351,11 +351,12 @@ services:
   # FR-13, UC-07, ADR-0011, IADR-0020: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）で永続化する。
   # 認証は Keycloak(OIDC)。ローカルログインは Wiki.js 管理側で無効化し OIDC 単一経路にする（運用仕様参照）。
   # IADR-0020/IADR-0032 (#124): Wiki.js 直接到達は ABAC ゲートウェイ（WikiService）を迂回する経路。
-  #   - dev（この compose）: 管理 UI セットアップの便宜のため host 公開（3001）を残す。
+  #   - dev（この compose）: 管理 UI セットアップの便宜のため host 公開（3001）を残す（IADR-0032 が
+  #     IADR-0026 §2「compose は BFF のみ host 公開」を dev 便宜の範囲で改定）。
   #   - 本番系（Helm）: `wikijs.ingress.enabled: false` で公開しない（ClusterIP 限定）。
   # 「本番系構成では 3001 が公開されない」ことは NetworkIsolationTests が回帰ガードする。
-  # profiles: 直接到達を dev 限定へ分離する。既定 profile では wiki-js の host 公開（3001）を含む
-  # dev スタックが起動する（COMPOSE_PROFILES 未指定時は既定 profile 群が有効）。
+  # 注: docker compose の profiles はサービスの起動有無しか制御できず、常時稼働の wiki-js の個別ポート
+  # 公開だけを条件化できないため、dev/本番系の公開境界は「dev＝compose／本番系＝Helm」で表現する。
   wiki-js:
     image: ghcr.io/requarks/wiki:2
     environment:

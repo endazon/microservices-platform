@@ -71,8 +71,16 @@ IADR-0017 のネットワーク分離（ホスト非公開・ClusterIP）は**�
 
 - Kubernetes: `NetworkPolicy`（デフォルト拒否 + 同 Namespace 許可、`networkpolicy.yaml`）を実体化。
   IADR-0017 が「helm 追補はフォローアップ」としていた項目をここで達成する。
-- docker-compose（ローカル開発ランタイム）: BFF のみ host 公開の構成を維持する
-  （`NetworkIsolationTests` は多層防御の回帰として存続。位置づけを「第一防御」から「多層防御」へ更新）。
+- docker-compose（ローカル開発ランタイム）: 内部アプリサービスは host 非公開（`expose` のみ）を維持し、
+  BFF をアプリのエッジ入口として host 公開する（`NetworkIsolationTests` は多層防御の回帰として存続。
+  位置づけを「第一防御」から「多層防御」へ更新）。
+  - **改定（[IADR-0032](./IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）**: dev の compose に限り、Wiki.js
+    管理 UI セットアップ（OIDC 構成・ロケール導入・API キー発行）の便宜のため `wiki-js`(3001) の
+    host 公開を許容する（フロントエンド SPA エッジ `frontend`(3100) も同様。IADR-0033・別 PR #126）。
+    dev は単一開発者のローカルランタイムであり、ABAC の第一防御は本番系（mesh mTLS /
+    ネットワーク分離）が担う。**本番系（Helm）では Wiki.js を Ingress 公開しない**（`wikijs.ingress.enabled: false`）
+    ことを `NetworkIsolationTests` が回帰ガードし、迂回到達を機械的に塞ぐ。当初の「BFF のみ host 公開」制約は
+    この dev 便宜の範囲で IADR-0032 が改定する。
 
 ### 3. mTLS 前提の回帰テストを追加する
 

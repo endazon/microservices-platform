@@ -7,6 +7,7 @@ related_ids:
   - UC-07
   - IADR-0020
   - IADR-0017
+  - IADR-0026
 author: claude
 created: 2026-07-08
 updated: 2026-07-08
@@ -25,7 +26,8 @@ plan_refs:
 - 関連する計画書 ID: FR-13・UC-07・ADR-0011（Wiki 統合）
 - 関連する実装 ADR: [IADR-0020](./IADR-0020_wiki-js-deployment-abac-gateway.md)（Wiki.js 配備・ABAC ゲートウェイ）・
   [IADR-0017](./IADR-0017_internal-service-auth-network-isolation.md)（ネットワーク分離）・
-  [IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md)（存在秘匿）
+  [IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md)（存在秘匿）・
+  [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md)（mesh mTLS。§2「compose は BFF のみ host 公開」を本 IADR が dev 便宜の範囲で改定）
 
 ## コンテキストと課題
 
@@ -44,6 +46,12 @@ Wiki.js（閲覧・編集 UI の実体）の認可は、WikiService の **ABAC �
    dev は開発ランタイムであり、ABAC の第一防御は本番系（mesh mTLS / ネットワーク分離）が担う。
 2. **本番系（Helm）は公開しない。** `wikijs.ingress.enabled: false` を既定とし、Wiki.js は ClusterIP 限定
    （ゲートウェイ迂回の外部到達なし）。stg/prod では ABAC ゲートウェイ（WikiService）経由のみに限定する。
+   - **IADR-0026 §2 の改定**: [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md) §2 は
+     「docker-compose では **BFF のみ** host 公開」と定めていたが、本 IADR はこれを **dev 便宜の範囲で改定**し、
+     dev の compose に限り `wiki-js`(3001) の host 公開を許容する（フロントエンド SPA エッジ `frontend`(3100) も
+     同様。IADR-0033）。**本番系の「内部サービスは Ingress 非公開」制約は不変**であり、その回帰ガードを (3) で強化する。
+     根拠: dev は単一開発者のローカルランタイムで ABAC の第一防御は本番系が担うため、dev 便宜の host 公開は
+     多層防御を実害なく緩めない。IADR-0026 側にも本改定を明記した。
 3. **回帰ガードを追加する。** `NetworkIsolationTests` で
    (a) **本番系（Helm）の `wikijs.ingress.enabled` が `false`** であること（＝本番系構成では 3001 が公開されない）、
    (b) dev の 3001 公開は `wiki-js` に限定され他の内部アプリサービスへ波及していないこと
@@ -69,5 +77,6 @@ Wiki.js（閲覧・編集 UI の実体）の認可は、WikiService の **ABAC �
 
 ## 関連
 
-- Supersedes: なし（IADR-0020 の dev 公開方針を具体化）
+- Amends: [IADR-0026](./IADR-0026_mesh-mtls-supersedes-network-isolation.md) §2（compose の「BFF のみ host 公開」を
+  dev 便宜の範囲で改定。本番系制約は不変）。IADR-0020 の dev 公開方針を具体化。
 - Superseded by: なし

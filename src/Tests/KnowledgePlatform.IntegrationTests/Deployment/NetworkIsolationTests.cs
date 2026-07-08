@@ -6,8 +6,10 @@ namespace KnowledgePlatform.IntegrationTests.Deployment;
 // IADR-0017（Superseded by IADR-0026） / #62 / #100, FR-05, NFR(機密性), ADR-0005:
 // ネットワーク分離はもはや「第一防御」ではない（第一防御は Istio STRICT mTLS。MeshMtlsTests 参照）。
 // IADR-0026 により、docker-compose（ローカル開発ランタイム）の host 非公開は「多層防御
-// （defense-in-depth）」として維持する。外部からの入口は引き続き BFF に一本化する。
-// 本テストは compose のホスト公開ポートの回帰（内部サービスの再公開）を多層防御として防ぐ。
+// （defense-in-depth）」として維持する。アプリのエッジ入口は BFF（＋フロントエンド SPA。IADR-0033）。
+// dev 便宜として Wiki.js(3001) の host 公開を IADR-0032 が IADR-0026 §2 を dev 範囲で改定して許容するが、
+// **本番系（Helm）では Wiki.js を Ingress 公開しない**ことを本テストが回帰ガードする。
+// 本テストは compose の内部サービス再公開と、本番系での Wiki.js 迂回公開の回帰を多層防御として防ぐ。
 [Trait("Category", "Deployment")]
 public sealed class NetworkIsolationTests
 {
