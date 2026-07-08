@@ -1,6 +1,7 @@
 import type { FeatureModule } from '@foundation/routing/featureRegistry';
 import { homeFeature } from './home';
 import { sc01SearchFeature } from './sc01-search';
+import { sc04WikiFeature } from './sc04-wiki';
 import { sc08AnalysisFeature } from './sc08-analysis';
 import { sc10OperationsFeature } from './sc10-operations';
 import { sc11ConfigFeature } from './sc11-config';
@@ -10,6 +11,7 @@ import { sc11ConfigFeature } from './sc11-config';
 export const features: FeatureModule[] = [
   homeFeature,
   sc01SearchFeature, // SC-01 検索／チャット質問（#127）
+  sc04WikiFeature, // SC-04 Wiki 閲覧導線（#130）
   sc08AnalysisFeature, // SC-08 AI分析ダッシュボード（#134）
   sc10OperationsFeature, // SC-10 運用ダッシュボード（#136）
   sc11ConfigFeature, // SC-11 構成ビューア（#137/#138/#140）
