@@ -20,10 +20,14 @@ const CONFIG = {
   connectors: [{ name: 'sharepoint', enabled: true }],
 };
 const DRIFT_OK = { hasDrift: false, checkedAt: '2026-07-08T00:05:00Z', findings: [] };
+// 深刻度は実 API（DriftDetector）が返す Warning / Info を用いる（IADR-0029）。
 const DRIFT_FOUND = {
   hasDrift: true,
   checkedAt: '2026-07-08T00:05:00Z',
-  findings: [{ kind: 'StaleStage', severity: 'high', target: 'legacy', detail: '宣言に無い段が残留' }],
+  findings: [
+    { kind: 'StaleStage', severity: 'Warning', target: 'legacy', detail: '宣言に無い段が残留' },
+    { kind: 'Unverifiable', severity: 'Info', target: 'ingest', detail: '照合できない要素' },
+  ],
 };
 
 interface RouteOpts {
@@ -79,13 +83,15 @@ describe('ConfigViewerPage (SC-11 #137/#138)', () => {
     expect(await screen.findByText(/ドリフトなし（OK）/)).toBeInTheDocument();
   });
 
-  it('lists drift findings with kind/severity/target when drift exists', async () => {
+  it('lists drift findings with kind/severity/target and colors by real severity (Warning/Info)', async () => {
     route({ drift: DRIFT_FOUND });
     render(<ConfigViewerPage />);
     expect(await screen.findByText('StaleStage')).toBeInTheDocument();
-    expect(screen.getByText('high')).toBeInTheDocument();
     expect(screen.getByText('宣言に無い段が残留')).toBeInTheDocument();
-    expect(screen.getByText(/宣言との差分（ドリフト）: ドリフト 1 件/)).toBeInTheDocument();
+    // 実 API が返す深刻度（Warning=橙 / Info=灰）に着色されることを検証する。
+    expect(screen.getByText('Warning')).toHaveStyle({ color: '#e67e22' });
+    expect(screen.getByText('Info')).toHaveStyle({ color: '#7f8c8d' });
+    expect(screen.getByText(/宣言との差分（ドリフト）: ドリフト 2 件/)).toBeInTheDocument();
   });
 
   it('degrades the drift area only when drift fetch fails (config still shown)', async () => {
