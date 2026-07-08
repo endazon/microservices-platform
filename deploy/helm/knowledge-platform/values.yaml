@@ -50,6 +50,15 @@ imagePullSecrets: []
 pipeline:
   enabled: true
 
+# FR-15, IADR-0029 フォローアップ 3 (#144): 構成バージョン（適用中の構成定義の Git コミット ID・適用日時・
+# 適用者）。BFF が構成情報 API（/bff/admin/config）の Version として返す。実値は GitOps（ArgoCD Application
+# の helm.parameters / CD パイプラインの --set）から適用リビジョンで上書きする（deploy/argocd/application.yaml）。
+# 既定は空（未注入）＝ appliedBy のみ argocd。手順は docs/operations/operations.md を参照。
+config:
+  gitCommit: ""
+  appliedAt: ""
+  appliedBy: "argocd"
+
 services:
   document:
     enabled: true
@@ -206,6 +215,8 @@ services:
     # 必要とする。pipelineDeclaration=true で pipeline-config ConfigMap をマウントし Pipeline__ConfigPath を注入する。
     # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される。
     pipelineDeclaration: true
+    # FR-15, IADR-0029 (#144): BFF へ構成バージョン（config.*）を注入する（Config__GitCommit 等）。
+    configVersion: true
     # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
     # ローカル実行用ポート（5001/5006）のため、k8s Service の実ポート（8080）を上書き注入する。
     extraEnv:

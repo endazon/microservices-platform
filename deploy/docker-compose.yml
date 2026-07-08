@@ -442,6 +442,13 @@ services:
       # FR-15, IADR-0029, #146: 宣言（正の pipeline.json）を BFF にマウントし、ドリフト検出の突合基準にする。
       # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される（#118 監査）。
       Pipeline__ConfigPath: /etc/knowledge-platform/pipeline/pipeline.json
+      # FR-15, IADR-0029 (#144): 構成バージョン。dev は compose 起動時に環境変数で実 Git コミット ID を渡す。
+      #   GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d
+      # 未設定時は dev-local にフォールバック（実適用リビジョンではないダミー）。
+      # scripts/compose-up.sh が GIT_COMMIT / GIT_COMMIT_DATE を自動注入する。k8s は ArgoCD/CD が上書きする。
+      Config__GitCommit: ${GIT_COMMIT:-dev-local}
+      Config__AppliedAt: ${GIT_COMMIT_DATE:-}
+      Config__AppliedBy: ${GIT_COMMIT_BY:-compose}
       Services__RetrievalService: http://retrieval-service:8080
       Services__AiAnalysisService: http://aianalysis-service:8080
       Services__FeedbackService: http://feedback-service:8080
