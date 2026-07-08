@@ -36,8 +36,12 @@ ArgoCD PostSync フック等からの起動（`/bff/admin/config/drift` 取得 o
   宣言（pipeline.json）変更時にロールアウトするため、宣言の適用直後もこの起動時検出で捕捉される。
 - **PostSync 起動（任意の同期後）**: BFF に **メッシュ内部限定**の `POST /internal/config/drift-run` を追加。
   ArgoCD PostSync フック Job（`curl`）が各同期後に叩き、即時検出を起動する。応答は 202 のみ（構成情報は
-  返さない＝存在秘匿）。検出の一時失敗で同期を失敗させないため例外は握って 202 を返す。
+  返さない＝存在秘匿）。検出の一時失敗で同期を失敗させないためエンドポイント側は例外を握って 202 を返す。
+  - **STRICT mTLS 対応**: `mesh.enabled` のとき Job にサイドカーを注入し（`holdApplicationUntilProxyStarts`）、
+    curl 後に `/quitquitquit` で Envoy を終了させ Job を完了させる。これにより STRICT mTLS 下でも `bff-service`
+    へ到達でき、かつサイドカー残留による Job 未完了を回避する（`mesh.enabled=false` は注入しない）。
 - **アラート経路**: 不一致は `IDriftAlertSink`（既定 `LoggingDriftAlertSink`・構造化ログ `ConfigDrift=true`）へ。
+  即時検出トリガでのアラート発火は BFF テストで捕捉検証する。
 
 ## 対象範囲
 

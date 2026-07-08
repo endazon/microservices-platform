@@ -139,4 +139,19 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
         (await resp.Content.ReadAsStringAsync()).Should().BeEmpty();
     }
+
+    // FR-15 (#145): 受け入れ基準「不一致があれば適用直後にアラートが発火する」。
+    // 不一致（宣言に無い購読）を含む実効構成でトリガを叩くと、IDriftAlertSink が発火することを検証する。
+    [Fact]
+    public async Task PostDriftRun_WhenDriftPresent_FiresAlert()
+    {
+        factory.AlertedReports.Clear();
+        factory.StubEffective = SampleEffective(); // 宣言に無い購読 → HasDrift
+
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        factory.AlertedReports.Should().ContainSingle()
+            .Which.HasDrift.Should().BeTrue();
+    }
 }

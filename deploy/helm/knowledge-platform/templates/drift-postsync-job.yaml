@@ -24,10 +24,17 @@ spec:
       labels:
         app: config-drift-postsync
       annotations:
-        # Istio sidecar と Job の相性（サイドカーが残り Job が完了しない）を避けるため注入しない。
-        # 呼び出しはメッシュ内部の BFF への単純な HTTP POST で、mTLS 必須なら native sidecar 運用へ切替する
-        # （運用注記: docs/operations/operations.md「適用直後のドリフト即時検出」を参照）。
+        {{- if .Values.mesh.enabled }}
+        # STRICT mTLS 下（PeerAuthentication STRICT・IADR-0026）ではサイドカー未注入 Pod からの
+        # bff-service への到達が Envoy に拒否されるため、本 Job にはサイドカーを注入する。
+        # holdApplicationUntilProxyStarts で curl 前に Envoy 起動を待ち、処理後に /quitquitquit で
+        # サイドカーを終了させて Job を完了させる（native sidecar 非対応の Istio でも Job が完了する）。
+        sidecar.istio.io/inject: "true"
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+        {{- else }}
+        # mesh 無効時（mTLS 非適用）はサイドカー不要。
         sidecar.istio.io/inject: "false"
+        {{- end }}
     spec:
       restartPolicy: Never
       {{- with .Values.imagePullSecrets }}
@@ -37,21 +44,22 @@ spec:
       containers:
         - name: drift-trigger
           image: {{ .Values.drift.postSyncHook.image | quote }}
-          # BFF の起動待ちを見込んでリトライする。応答は 202（本文なし）。失敗しても同期は成功扱い
-          # （--fail は付けるが backoffLimit 消化後は PostSync が失敗扱いになるため運用で無効化可）。
+          # BFF 起動待ちのため接続単位でタイムアウト（--connect-timeout）しつつ全体上限（--max-time）を
+          # リトライ総時間より長く取る（10 回 × 6 秒 + 応答）。応答は 202（本文なし）。
+          # 処理後、注入されていれば Envoy サイドカーを /quitquitquit で終了させ Job を完了させる
+          # （未注入なら接続失敗を無視）。BFF へ到達できない場合は非ゼロ終了し、PostSync の失敗として顕在化する。
           command:
-            - curl
-            - -fsS
-            - -X
-            - POST
-            - --max-time
-            - "30"
-            - --retry
-            - "10"
-            - --retry-delay
-            - "6"
-            - --retry-connrefused
-            - http://bff-service:8080/internal/config/drift-run
+            - /bin/sh
+            - -c
+            - |
+              set -u
+              curl -fsS -X POST \
+                --connect-timeout 5 --max-time 120 \
+                --retry 10 --retry-delay 6 --retry-connrefused --retry-all-errors \
+                http://bff-service:8080/internal/config/drift-run
+              code=$?
+              curl -fsS -X POST http://127.0.0.1:15020/quitquitquit >/dev/null 2>&1 || true
+              exit $code
           resources:
             requests: { cpu: 10m, memory: 16Mi }
             limits: { cpu: 100m, memory: 64Mi }

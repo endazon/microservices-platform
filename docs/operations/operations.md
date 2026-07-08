@@ -64,13 +64,18 @@ plan_refs: []
 - **ArgoCD PostSync フック**: `templates/drift-postsync-job.yaml` が各同期の完了後に BFF の
   `POST /internal/config/drift-run`（メッシュ内部限定・応答 202）を叩き、任意の同期後にも即時検出を起動する。
   無効化は `--set drift.postSyncHook.enabled=false`。
-  - **Istio サイドカー × Job の注記**: STRICT mTLS 下で Job から `bff-service` を呼ぶ場合、サイドカーが
-    残って Job が完了しない既知事象がある。本 Job は `sidecar.istio.io/inject: "false"` で注入しない
-    （NetworkPolicy は同 Namespace 内通信を許可）。mesh 内で mTLS を必須にする運用では、native sidecar
-    （K8s 1.29+ / Istio ambient 等）へ切り替えるか、`/internal/config/drift-run` を許可する `PeerAuthentication`
-    の PERMISSIVE ポートを設ける。
+  - **Istio STRICT mTLS 下の到達性**: STRICT mTLS（PeerAuthentication STRICT・IADR-0026）では、サイドカー
+    未注入 Pod からの `bff-service` 到達が Envoy に拒否される。そこで本 Job は `mesh.enabled` のとき
+    **サイドカーを注入**し（`sidecar.istio.io/inject: "true"` ＋ `holdApplicationUntilProxyStarts`）、curl 実行前に
+    Envoy 起動を待つ。処理後は `POST http://127.0.0.1:15020/quitquitquit` で Envoy を終了させて **Job を完了**させる
+    （サイドカーが残って Job が完了しない既知事象を回避。native sidecar 非対応の Istio でも完了する）。`mesh.enabled=false`
+    の場合はサイドカーを注入しない。
+  - **失敗時の扱い**: BFF へ到達できない場合は Job が非ゼロ終了し、PostSync の失敗として顕在化する
+    （`hook-delete-policy: BeforeHookCreation,HookSucceeded` により**失敗 Job は次回同期前まで残置**し調査可能）。
+    ドリフト検出は起動時検出（BFF ロールアウト）でも行われるため、フック失敗＝「即時検出が一度実行できなかった」
+    ことを意味し、ドリフト自体の有無とは独立。
   - **手動起動**: `kubectl run drift-trigger --rm -it --image=curlimages/curl --restart=Never -- \
-    curl -fsS -X POST http://bff-service:8080/internal/config/drift-run`
+    curl -fsS -X POST http://bff-service:8080/internal/config/drift-run`（mesh 有効時はサイドカー注入に留意）
 - **手動確認（権限者）**: 運用者・管理者は `GET /bff/admin/config/drift` でドリフト結果を取得できる
   （`ConfigViewer` ポリシー。非権限者は 404 で秘匿）。
 
