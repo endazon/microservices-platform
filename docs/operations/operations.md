@@ -44,8 +44,11 @@ plan_refs: []
   Wiki.js 側のページ/グループ権限は補助的な表示制御に留める。
   （旧 [IADR-0013] の「Wiki.js 非配備・自前閲覧 API」は Issue #66 の (a) 選択により Superseded。）
   - **ネットワーク分離**: Wiki.js への ABAC は WikiService ゲートウェイに集約するため、共有/stg/prod では
-    Wiki.js を host 公開せず、到達を WikiService 経由に限定する（[IADR-0017]。compose の `expose`、k8s の
-    NetworkPolicy）。dev の compose は開発便宜で `3001:3000` を公開する。
+    Wiki.js を host 公開せず、到達を WikiService 経由に限定する（[IADR-0017]。k8s の Ingress 無効・NetworkPolicy）。
+    **dev の compose は管理 UI セットアップ便宜のため 3001 を公開する（[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）**が、
+    **本番系（Helm）は `wikijs.ingress.enabled: false` で公開しない**。
+    「本番系構成では 3001（ゲートウェイ迂回の外部到達）が公開されない」ことは `NetworkIsolationTests`
+    （Helm `wikijs.ingress.enabled: false` の検証＋dev 公開が wiki-js に限定され他内部サービスへ波及しないこと）が回帰ガードする。
   - **段階導入（現状）**: 段1（配備・OIDC 構成・意思決定記録）に続き、**段2（本 PR）で実コードを実装**した ──
     `DocumentSyncConsumer` を Wiki.js への **GraphQL push 同期**（[IADR-0021]）へ置換し、`/wiki/pages` 系を
     Wiki.js 前段の**認可プロキシ**へ改修（ABAC 通過時のみ Wiki.js 本文をプロキシ）。`wiki_svc` は同期メタデータに
@@ -54,10 +57,63 @@ plan_refs: []
     後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
     [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
 
+### 適用直後のドリフト即時検出（FR-15 / IADR-0029 フォローアップ 4 / #145）
+
+宣言（`pipeline.json`）と実効構成のドリフトは、BFF が **定期（既定 5 分・`Drift:IntervalSeconds`）** に加え
+**適用直後にも即時検出**する。不一致は構造化ログ `ConfigDrift=true`（`IDriftAlertSink`）で運用アラート経路へ流れる。
+
+- **起動時即時検出**: `DriftDetectionHostedService` は起動直後に 1 回検出する。宣言（`pipeline.json`）変更時は
+  BFF がロールアウト（#146 の checksum アノテーション）するため、宣言の適用直後はこの起動時検出で捕捉される。
+- **ArgoCD PostSync フック**: `templates/drift-postsync-job.yaml` が各同期の完了後に BFF の
+  `POST /internal/config/drift-run`（メッシュ内部限定・応答 202）を叩き、任意の同期後にも即時検出を起動する。
+  無効化は `--set drift.postSyncHook.enabled=false`。
+  - **Istio STRICT mTLS 下の到達性**: STRICT mTLS（PeerAuthentication STRICT・IADR-0026）では、サイドカー
+    未注入 Pod からの `bff-service` 到達が Envoy に拒否される。そこで本 Job は `mesh.enabled` のとき
+    **サイドカーを注入**し（`sidecar.istio.io/inject: "true"` ＋ `holdApplicationUntilProxyStarts`）、curl 実行前に
+    Envoy 起動を待つ。処理後は `POST http://127.0.0.1:15020/quitquitquit` で Envoy を終了させて **Job を完了**させる
+    （サイドカーが残って Job が完了しない既知事象を回避。native sidecar 非対応の Istio でも完了する）。`mesh.enabled=false`
+    の場合はサイドカーを注入しない。
+  - **失敗時の扱い**: BFF へ到達できない場合は Job が非ゼロ終了し、PostSync の失敗として顕在化する
+    （`hook-delete-policy: BeforeHookCreation,HookSucceeded` により**失敗 Job は次回同期前まで残置**し調査可能）。
+    ドリフト検出は起動時検出（BFF ロールアウト）でも行われるため、フック失敗＝「即時検出が一度実行できなかった」
+    ことを意味し、ドリフト自体の有無とは独立。
+  - **手動起動**: `kubectl run drift-trigger --rm -it --image=curlimages/curl --restart=Never -- \
+    curl -fsS -X POST http://bff-service:8080/internal/config/drift-run`（mesh 有効時はサイドカー注入に留意）
+- **手動確認（権限者）**: 運用者・管理者は `GET /bff/admin/config/drift` でドリフト結果を取得できる
+  （`ConfigViewer` ポリシー。非権限者は 404 で秘匿）。
+
+### 構成バージョンの注入（FR-15 / IADR-0029 フォローアップ 3 / #144）
+
+BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定義の**構成バージョン**
+（`Version.GitCommit` / `AppliedAt` / `AppliedBy`）を返す。値は環境変数
+`Config__GitCommit` / `Config__AppliedAt` / `Config__AppliedBy`（`ConfigVersionOptions`）から取得する。
+
+- **k8s（stg/prod）**: Helm values `config.gitCommit` / `config.appliedAt` / `config.appliedBy` を
+  BFF Deployment へ注入する（`bff.configVersion: true`）。既定は `appliedBy: argocd`、gitCommit/appliedAt は空。
+  **実値の供給**は GitOps（ADR-0007）側で行う:
+  - ArgoCD Application（`deploy/argocd/application.yaml`）の `helm.parameters` が `config.appliedBy=argocd` を固定。
+  - **適用リビジョン（コミット ID）と適用日時**は、ArgoCD ネイティブ Helm がビルド変数をパラメータへ
+    自動展開しないため、CD が同期時に上書きする:
+    `argocd app set knowledge-platform --helm-set config.gitCommit=$(git rev-parse HEAD) --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+    （または release automation が `values-<env>.yaml` の `config.*` を更新して Git にコミットする）。
+  - 手動確認: `helm template deploy/helm/knowledge-platform --set config.gitCommit=deadbeef` で
+    BFF env に `Config__GitCommit=deadbeef` が反映される。
+- **dev（compose）**: compose 起動時に**環境変数で実 Git コミット ID を渡す**。BFF は
+  `Config__GitCommit=${GIT_COMMIT:-dev-local}` / `Config__AppliedAt=${GIT_COMMIT_DATE:-}` /
+  `Config__AppliedBy=${GIT_COMMIT_BY:-compose}` を参照する。
+  - **ヘルパ**: `scripts/compose-up.sh up -d` が `GIT_COMMIT`（`git rev-parse --short HEAD`）・
+    `GIT_COMMIT_DATE`・`GIT_COMMIT_BY` を自動注入して起動する。これで dev の構成ビューアでも実コミット ID が返る。
+  - 手動指定も可: `GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d`。
+  - 環境変数未設定時は `dev-local`（実適用リビジョンではないダミー）へフォールバックする。
+
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
   realm `knowledge-platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
+- **管理 UI への直接アクセス（dev のみ）**: 下記の初期セットアップ（OIDC 構成・ja ロケール導入・API キー発行）は
+  ブラウザから Wiki.js 管理 UI（`http://localhost:3001`）へアクセスする。dev の compose は 3001 を公開している
+  （[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
+  管理 UI の直接操作は dev でのみ行う（本番系の到達は ABAC ゲートウェイ経由に限定）。
 - **ヘルスチェック**: Wiki.js は `GET /healthz`（コンテナ内 3000）を返す。compose の healthcheck は node で
   `/healthz` を叩く。dev では `http://localhost:3001/healthz`。
 - **管理者ブートストラップ**: 初回アクセス（`http://localhost:3001`）で管理者アカウントのセットアップ画面が出る。
