@@ -63,5 +63,11 @@ compose(dev) で BFF に宣言（pipeline.json）が供給されず、ドリフ�
 ## テスト
 
 - `PipelineConfigLoaderTests`: 生の pipeline.json / `{"Pipeline":...}` オーバレイの双方を読み込めることを検証。
+- `PipelineDeclarationMountTests`（回帰ガード）: BFF が宣言を受け取る配線が compose・Helm から失われて
+  いないことを YAML テキストの静的検査で固定する（helm/docker バイナリに非依存。`NetworkIsolationTests` と同方針）。
+  - compose: BFF が `Pipeline__ConfigPath` と正の pipeline.json の読み取り専用マウントを持つこと。
+  - Helm: `values.yaml` の BFF に `pipelineDeclaration: true` があること。
+  - Helm: `deployment.yaml` のマウント条件が `pipelineSteps` だけでなく `pipelineDeclaration` も含み、
+    `pipelineSteps` のみへ後退していないこと。
 - `helm template` で BFF・段ホスト 4 の計 5 サービスが `pipeline-config` をマウントすることを確認。
 - `docker compose config` で BFF に raw pipeline.json がマウントされ `Pipeline__ConfigPath` が設定されることを確認。
