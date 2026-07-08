@@ -130,29 +130,25 @@ function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
   );
 }
 
-// #138: 深刻度 → 強調色。severity は自由文字列のため既知値を小文字で照合し、未知は中立色。
+// #138: 深刻度 → 強調色。severity は DriftDetector が返す Warning / Info の2値（IADR-0029）。
+// 大文字小文字を無視して照合し、未知の深刻度は中立色にフォールバックする（種別同様、値域が
+// 増えても UI 改修は不要）。実在しない深刻度への分岐は持たない（防御的実装を避ける）。
 function severityColor(severity: string): string {
   switch (severity.toLowerCase()) {
-    case 'high':
-    case 'critical':
-    case 'error':
-      return '#c0392b';
-    case 'medium':
     case 'warning':
-    case 'warn':
       return '#e67e22';
-    case 'low':
     case 'info':
-      return '#7f8c8d';
     default:
       return '#7f8c8d';
   }
 }
 
-// #138: ドリフト一覧・強調表示。0 件（または hasDrift=false）は「OK」を明示（検出済みを日時とともに示す）。
+// #138: ドリフト一覧・強調表示。0 件は「OK」を明示（検出済みを日時とともに示す）。
 function DriftView({ status, report }: { status: DriftStatus; report: DriftReport | null }) {
+  // API 側（ConfigInspectionService.GetDriftAsync）は HasDrift = findings.Count > 0 で構築するため、
+  // 件数から一意に決まる（両者が乖離するケースは無い）。
   const count = report?.findings.length ?? 0;
-  const hasDrift = (report?.hasDrift ?? false) && count > 0;
+  const hasDrift = count > 0;
   const badge = status !== 'ok' ? '—' : hasDrift ? `ドリフト ${count} 件` : 'OK';
 
   return (
