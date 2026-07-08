@@ -210,6 +210,32 @@
         "roles",
         "abac-attributes"
       ]
+    },
+    {
+      "clientId": "spa-web",
+      "name": "SPA Web (SC-01..11 frontend, public client + PKCE)",
+      "description": "Issue #126 / IADR-0033: フロントエンド SPA。Authorization Code + PKCE(S256) の public client。取得した JWT を BFF へ Bearer 送信する。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3100/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3100"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3100/*"
+      },
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles",
+        "abac-attributes"
+      ]
     }
   ],
   "users": [

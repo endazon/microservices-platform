@@ -489,6 +489,26 @@ services:
       dashboard-service:
         condition: service_started
 
+  # Issue #126: フロントエンド SPA（SC-01..11 の基盤）。nginx が静的配信＋/bff を BFF へプロキシする。
+  # 実行時 config（config.js）を環境変数から生成し、接続先を注入する（環境非依存ビルド）。
+  # エッジ（ブラウザからの入口）として host 公開する（BFF と並ぶ dev のフロント入口）。
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "3100:8080"
+    environment:
+      # nginx の /bff プロキシ上流（compose の BFF）。
+      BFF_UPSTREAM: http://bff:8080
+      # 実行時 config（ブラウザ経路）。BFF は同一オリジンの /bff（nginx プロキシ）、Keycloak は host の 8080。
+      BFF_BASE_URL: /bff
+      OIDC_AUTHORITY: http://localhost:8080/realms/knowledge-platform
+      OIDC_CLIENT_ID: spa-web
+    depends_on:
+      bff:
+        condition: service_started
+
 volumes:
   postgres-data:
   rabbitmq-data:

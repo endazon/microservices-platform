@@ -1,0 +1,28 @@
+# Issue #126: フロントエンド配信 + BFF プロキシ。
+# - 静的成果物を配信し、クライアントルーティングのため未知パスは index.html へフォールバックする。
+# - /bff/* をエッジ BFF へプロキシする（接続先は BFF_UPSTREAM を envsubst で注入。既定は compose の bff）。
+# nginx 実行時変数（$uri 等）は ${...} 形ではないため envsubst の影響を受けない。
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # 実行時 config は常に最新を返す（キャッシュしない）。
+    location = /config.js {
+        add_header Cache-Control "no-store";
+        try_files /config.js =404;
+    }
+
+    location /bff/ {
+        proxy_pass ${BFF_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
