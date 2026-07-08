@@ -123,13 +123,32 @@
 
 ## 技術スタック別ルール
 
-<!-- ここに技術スタックに依存する規約を追記する。以下は C#/.NET の例。不要な言語は削除し、自プロジェクトに合わせて書き換えること。 -->
+本リポジトリはマイクロサービスのモノレポである。バックエンド（.NET）とフロントエンド（SPA）で
+規約が異なる。共通設定の単一情報源（`Directory.Build.props` / `Directory.Packages.props` /
+`vite.config.ts` 等）を尊重し、個別プロジェクトで上書きしない。
 
-<!--
-### C# / .NET（例）
-- ターゲット: .NET 8 / C# 12 を既定とする。
-- 命名規約: 公開メンバは PascalCase、ローカル変数・引数は camelCase、private フィールドは `_camelCase`。
-- ビルド/テスト: `dotnet build` / `dotnet test` が通ること。テストは xUnit を既定とする。
-- フォーマット: `dotnet format` で整形する。`nullable` を有効化し、警告ゼロを保つ。
-- 受け入れ基準は `[Fact]`/`[Theory]` のテストケースに写像する。
--->
+### C# / .NET（バックエンド `src/`）
+
+- **ターゲット**: `.NET 10` / `C# 13`（`LangVersion 13`）。設定の単一情報源は [`src/Directory.Build.props`](src/Directory.Build.props)。個別 `.csproj` で `TargetFramework` を上書きしない。`global.json` は SDK `8.0.0` + `rollForward: latestMajor`（新しい SDK でビルド可）。
+- **言語設定**: `Nullable` / `ImplicitUsings` は有効（props で既定 ON）。null 許容警告を握り潰さない。
+- **パッケージ**: Central Package Management。バージョンは [`src/Directory.Packages.props`](src/Directory.Packages.props) に集約し、`.csproj` の `PackageReference` にはバージョンを書かない。
+- **ソリューション**: 新形式 `.slnx`（[`src/KnowledgePlatform.slnx`](src/KnowledgePlatform.slnx)）。プロジェクト追加時は slnx に登録する。
+- **命名規約**: 公開メンバは PascalCase、ローカル変数・引数は camelCase、private フィールドは `_camelCase`。
+- **ビルド/テスト**: `dotnet build` / `dotnet test` が通ること。テストは **xUnit**。受け入れ基準は `[Fact]`/`[Theory]` に写像する。
+- **フォーマット**: `dotnet format` で整形（CI の `lint` ジョブが `--verify-no-changes` を強制）。
+- **サービス境界**: サービス間は直接参照せず、`Shared.Contracts` の契約と HTTP（Refit）/ メッセージング（MassTransit）で疎結合に保つ。
+
+### TypeScript / React（フロントエンド `frontend/`）
+
+- **スタック**: React 18 + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。
+- **構成**: `src/foundation/`（config/auth/api/routing/ui の基盤）と `src/features/`（画面 feature）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md)）。import はエイリアス `@foundation` / `@features` を使う。
+- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。接続先はビルドに焼き込まず実行時 config（`public/config.js`）で注入する。フロントから各サービスを直接叩かない。
+- **認証**: `oidc-client-ts`（Authorization Code + PKCE）で Keycloak public client `spa-web` を用いる。トークンやシークレットをコードに埋め込まない。
+- **Lint / 型**: ESLint flat config（[`frontend/eslint.config.js`](frontend/eslint.config.js)）+ typescript-eslint。`npm run lint` / `npm run typecheck` が通ること。
+- **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。テストは実装と同居し `*.{test,spec}.{ts,tsx}`。受け入れ基準をテストケースへ写像する。
+- **カバレッジ**: `npm run test:coverage`（v8 provider）。`vite.config.ts` の `coverage.thresholds` は**回帰防止のラチェット**（現状は SPA 基盤時点の実測床）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
+
+### CI（GitHub Actions）
+
+- バックエンドは [`ci.yml`](.github/workflows/ci.yml)、フロントは [`frontend.yml`](.github/workflows/frontend.yml)（typecheck/lint/build/e2e）と [`frontend-tests.yml`](.github/workflows/frontend-tests.yml)（単体テスト＋カバレッジ）に分離する。フロント用ジョブは `paths: ["frontend/**", ...]` で `frontend/` 変更時のみ起動し、両スタックの CI を独立させる。
+- `.github/workflows/` は GitHub App 権限では編集不可。ワークフロー変更はローカル（`workflow` スコープを持つ認証）でコミット/プッシュする。
