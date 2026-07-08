@@ -36,8 +36,9 @@ FR-15 は構成バージョン（Git コミット ID・適用日時・適用者�
 - **Helm/k8s（本番・stg）**: values に `config.gitCommit/appliedAt/appliedBy` を設け、BFF Deployment へ
   `Config__GitCommit/AppliedAt/AppliedBy` として注入する。実値は ArgoCD Application の `helm.parameters`
   および CD パイプラインが適用リビジョンから供給する（`appliedBy: argocd` を既定）。
-- **compose（dev）**: **固定プレースホルダ**（`Config__GitCommit=dev-local` / `Config__AppliedBy=compose`）を
-  BFF に設定する。実 GitOps 値ではないことを明記（AppliedAt は dev では未設定＝null）。
+- **compose（dev）**: compose 起動時に**環境変数で実 Git コミット ID を注入**する
+  （`Config__GitCommit=${GIT_COMMIT:-dev-local}` ほか）。ヘルパ `scripts/compose-up.sh` が
+  `GIT_COMMIT`/`GIT_COMMIT_DATE`/`GIT_COMMIT_BY` を自動注入。未設定時は `dev-local` へフォールバック。
 
 ## 対象範囲
 

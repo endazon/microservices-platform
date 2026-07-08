@@ -70,10 +70,13 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
     （または release automation が `values-<env>.yaml` の `config.*` を更新して Git にコミットする）。
   - 手動確認: `helm template deploy/helm/knowledge-platform --set config.gitCommit=deadbeef` で
     BFF env に `Config__GitCommit=deadbeef` が反映される。
-- **dev（compose）**: 実 GitOps 値は存在しないため、**固定プレースホルダ**を設定する
-  （`Config__GitCommit=dev-local` / `Config__AppliedBy=compose`。`AppliedAt` は未設定＝null）。
-  これは「実適用リビジョンではない」ことを明示するためのダミー値であり、dev の構成ビューアでは
-  この固定値が表示される。
+- **dev（compose）**: compose 起動時に**環境変数で実 Git コミット ID を渡す**。BFF は
+  `Config__GitCommit=${GIT_COMMIT:-dev-local}` / `Config__AppliedAt=${GIT_COMMIT_DATE:-}` /
+  `Config__AppliedBy=${GIT_COMMIT_BY:-compose}` を参照する。
+  - **ヘルパ**: `scripts/compose-up.sh up -d` が `GIT_COMMIT`（`git rev-parse --short HEAD`）・
+    `GIT_COMMIT_DATE`・`GIT_COMMIT_BY` を自動注入して起動する。これで dev の構成ビューアでも実コミット ID が返る。
+  - 手動指定も可: `GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d`。
+  - 環境変数未設定時は `dev-local`（実適用リビジョンではないダミー）へフォールバックする。
 
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
