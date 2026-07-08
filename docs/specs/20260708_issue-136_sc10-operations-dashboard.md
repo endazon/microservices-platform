@@ -61,11 +61,11 @@ SPA 基盤（#126）の上に SC-10 を最初の feature として実装する�
 
 計画（Issue #136）より転記:
 
-- [ ] 画面仕様書が作成され、計画の画面設計・対応 UC と整合している → `docs/screens/SC-10_operations-dashboard.md`
-- [ ] ダッシュボードサマリが表示され、Grafana/Kiali/Jaeger への導線がある
-- [ ] AdminOnly 制御が画面に適用されている（ナビ非表示＋直接遷移で存在秘匿＋サーバ 403 の中立表示）
-- [ ] 権限外の情報が表示されない（ABAC・存在秘匿の画面適用）
-- [ ] テスト観点が `docs/tests/` へ展開されている → `docs/tests/SC-10_operations-dashboard.md`
+- [x] 画面仕様書が作成され、計画の画面設計・対応 UC と整合している → `docs/screens/SC-10_operations-dashboard.md`
+- [x] ダッシュボードサマリが表示され、Grafana/Kiali/Jaeger への導線がある
+- [x] AdminOnly 制御が画面に適用されている（ナビ非表示＋直接遷移で存在秘匿＋サーバ 403 の中立表示）
+- [x] 権限外の情報が表示されない（ABAC・存在秘匿の画面適用）
+- [x] テスト観点が `docs/tests/` へ展開されている → `docs/tests/SC-10_operations-dashboard.md`
 
 ## テスト方針
 

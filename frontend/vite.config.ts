@@ -28,5 +28,30 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: false,
+    // IADR-0033: フロントエンド単体テストのカバレッジ計測。CI(frontend-tests.yml)で
+    // レポート生成＋しきい値ゲート（回帰防止のラチェット）に用いる。
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'text-summary', 'html', 'lcov'],
+      reportsDirectory: './coverage',
+      // 計測対象は src 配下の実装のみ。テスト・型定義・エントリ/自動生成は除外する。
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'src/test/**',
+        'src/**/*.d.ts',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+      // 回帰防止のラチェット。SPA 基盤(#126)時点の実測値を下限として据え、SC-01..11 の
+      // 各画面がテストを増やすたびに引き上げる。現状: 未テストの UI コンポーネントが多く
+      // 全体値は低いが、この床を割る変更（テスト削除・無検証コード追加）を CI で止める。
+      thresholds: {
+        lines: 25,
+        statements: 25,
+        functions: 40,
+        branches: 60,
+      },
+    },
   },
 });
