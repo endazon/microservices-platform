@@ -33,6 +33,9 @@ public static class ConfigInspectionExtensions
         builder.Services.AddSingleton<IDriftAlertSink, LoggingDriftAlertSink>();
         builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
 
+        // FR-15 (#145): 定期検出と適用直後の即時検出（PostSync 起動）が共有する単一実行経路。
+        builder.Services.AddSingleton<IDriftRunner, DriftRunner>();
+
         // 定期ドリフト検出（既定 5 分）。Drift:Enabled=false で無効化できる。
         builder.Services.AddHostedService<DriftDetectionHostedService>();
 

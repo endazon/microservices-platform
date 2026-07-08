@@ -3,6 +3,7 @@ using KnowledgePlatform.Shared.Infrastructure.Foundation.Audit;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
 
 namespace KnowledgePlatform.Bff.Foundation.Endpoints;
 
@@ -51,6 +52,28 @@ public static class ConfigBffEndpoints
             return Results.Ok(drift);
         }).WithName("BffConfigDrift")
           .Produces<DriftReportDto>();
+
+        // FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後の即時ドリフト検出のトリガ。
+        // メッシュ内部限定（ingress へ公開しない。ClusterIP + NetworkPolicy / mTLS が防御）。ArgoCD の
+        // PostSync フック Job が POST する。応答は 202 のみで構成情報は返さない（存在秘匿・IADR-0009）。
+        // 検出の一時失敗で同期を失敗させないため例外は握って 202 を返す（不一致は IDriftAlertSink がログ通知）。
+        app.MapPost("/internal/config/drift-run", async (
+            IDriftRunner runner,
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            try
+            {
+                await runner.RunOnceAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                loggerFactory.CreateLogger("ConfigBffEndpoints.DriftRun")
+                    .LogError(ex, "Immediate drift run (PostSync) failed");
+            }
+            return Results.Accepted();
+        }).WithName("BffConfigDriftRun")
+          .ExcludeFromDescription();
 
         return app;
     }
