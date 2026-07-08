@@ -6,7 +6,12 @@
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/scripts.test.js
  */
 const assert = require('assert');
-const { validateSubject, findAllowlisted, loadAllowlist } = require('./check-commit-messages.js');
+const {
+  validateSubject,
+  checkSingleTitle,
+  findAllowlisted,
+  loadAllowlist,
+} = require('./check-commit-messages.js');
 const { applyOverride, hashMatches } = require('./gen-changelog.js');
 
 let passed = 0;
@@ -43,6 +48,37 @@ ok('形式不一致は違反', () => assert.strictEqual(validateSubject('いき�
 ok('未知の種別は違反', () => assert.strictEqual(validateSubject('feet(FR-01): typo type').length >= 1, true));
 ok('不正な ID 書式は違反', () => assert.strictEqual(validateSubject('feat(FR08): ハイフン無し').length >= 1, true));
 ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat(): 空').length >= 1, true));
+
+// --- check-commit-messages: checkSingleTitle（PR タイトル＝スカッシュ後件名の検査・Issue #125） ---
+
+// stdout/stderr を抑止して戻り値（0=合格/1=違反）のみ検査する。
+function silent(fn) {
+  const so = process.stdout.write;
+  const se = process.stderr.write;
+  process.stdout.write = () => true;
+  process.stderr.write = () => true;
+  try {
+    return fn();
+  } finally {
+    process.stdout.write = so;
+    process.stderr.write = se;
+  }
+}
+
+ok('PR タイトル 正常件名は 0', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('feat(FR-08): ログイン実装')), 0));
+ok('PR タイトル 末尾(#123)は 0', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('fix(FR-01): 修正 (#123)')), 0));
+ok('PR タイトル 規約外は 1', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('update stuff')), 1));
+ok('PR タイトル 起点ID欠落の feat は 1', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('feat: 説明 (#42)')), 1));
+ok('PR タイトル 空は 0（fail-open）', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('   ')), 0));
+ok('PR タイトル Revert はスキップ扱いで 0', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('Revert "feat(FR-08): x"')), 0));
+ok('PR タイトル [skip ci] はスキップ扱いで 0', () =>
+  assert.strictEqual(silent(() => checkSingleTitle('なんでも [skip ci]')), 0));
 
 // --- check-commit-messages: findAllowlisted（規約導入前コミットの恒久除外） ---
 
