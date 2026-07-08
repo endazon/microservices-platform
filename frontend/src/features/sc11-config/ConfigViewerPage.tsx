@@ -42,11 +42,27 @@ export interface EffectiveConfig {
   connectors: Connector[];
 }
 
+// #138: ドリフト（宣言 Git との差分）。判定は API 側（DriftDetector）が行い、本画面は結果表示のみ。
+interface DriftFinding {
+  kind: string;
+  severity: string;
+  target: string;
+  detail: string;
+}
+interface DriftReport {
+  hasDrift: boolean;
+  checkedAt: string;
+  findings: DriftFinding[];
+}
+
 type Status = 'loading' | 'ok' | 'notFound' | 'error';
+type DriftStatus = 'loading' | 'ok' | 'unavailable';
 
 export function ConfigViewerPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [config, setConfig] = useState<EffectiveConfig | null>(null);
+  const [driftStatus, setDriftStatus] = useState<DriftStatus>('loading');
+  const [drift, setDrift] = useState<DriftReport | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,6 +76,17 @@ export function ConfigViewerPage() {
         if (!active) return;
         // 404 は不在/秘匿を区別しない（IADR-0009）。
         setStatus(e instanceof ApiError && e.kind === 'notFound' ? 'notFound' : 'error');
+      });
+    // #138: ドリフトは独立に取得する（構成表示と疎結合）。取得不能時はその領域のみ縮退。
+    apiFetch<DriftReport>('/admin/config/drift')
+      .then((data) => {
+        if (!active) return;
+        setDrift(data);
+        setDriftStatus('ok');
+      })
+      .catch(() => {
+        if (!active) return;
+        setDriftStatus('unavailable');
       });
     return () => {
       active = false;
@@ -78,6 +105,7 @@ export function ConfigViewerPage() {
       {status === 'ok' && config && (
         <>
           <ConfigVersionHeader version={config.version} />
+          <DriftView status={driftStatus} report={drift} />
           <PipelineView stages={config.pipeline} />
           <EventBindingsView bindings={config.eventBindings} />
           <PortsView ports={config.ports} />
@@ -99,6 +127,69 @@ function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
       <strong>構成バージョン:</strong> <code>{short}</code>{' '}
       <span>／ 適用日時: {appliedAt ?? '—'}</span> <span>／ 適用者: {appliedBy ?? '—'}</span>
     </div>
+  );
+}
+
+// #138: 深刻度 → 強調色。severity は自由文字列のため既知値を小文字で照合し、未知は中立色。
+function severityColor(severity: string): string {
+  switch (severity.toLowerCase()) {
+    case 'high':
+    case 'critical':
+    case 'error':
+      return '#c0392b';
+    case 'medium':
+    case 'warning':
+    case 'warn':
+      return '#e67e22';
+    case 'low':
+    case 'info':
+      return '#7f8c8d';
+    default:
+      return '#7f8c8d';
+  }
+}
+
+// #138: ドリフト一覧・強調表示。0 件（または hasDrift=false）は「OK」を明示（検出済みを日時とともに示す）。
+function DriftView({ status, report }: { status: DriftStatus; report: DriftReport | null }) {
+  const count = report?.findings.length ?? 0;
+  const hasDrift = (report?.hasDrift ?? false) && count > 0;
+  const badge = status !== 'ok' ? '—' : hasDrift ? `ドリフト ${count} 件` : 'OK';
+
+  return (
+    <Section title={`宣言との差分（ドリフト）: ${badge}`}>
+      {status === 'loading' && <p role="status">ドリフトを確認中…</p>}
+      {status === 'unavailable' && <p>ドリフト情報は利用できません。</p>}
+      {status === 'ok' && report && !hasDrift && (
+        <p>ドリフトなし（OK）。<small>確認時刻: {report.checkedAt}</small></p>
+      )}
+      {status === 'ok' && report && hasDrift && (
+        <>
+          <p>
+            <small>確認時刻: {report.checkedAt}</small>
+          </p>
+          <table aria-label="ドリフト明細">
+            <thead>
+              <tr>
+                <th>種別</th>
+                <th>深刻度</th>
+                <th>対象</th>
+                <th>説明</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.findings.map((f, i) => (
+                <tr key={`${f.kind}-${f.target}-${i}`}>
+                  <td>{f.kind}</td>
+                  <td style={{ color: severityColor(f.severity), fontWeight: 600 }}>{f.severity}</td>
+                  <td>{f.target}</td>
+                  <td>{f.detail}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </Section>
   );
 }
 
