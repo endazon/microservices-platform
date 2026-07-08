@@ -65,7 +65,10 @@ export function ConfigViewerPage() {
   const [driftStatus, setDriftStatus] = useState<DriftStatus>('loading');
   const [drift, setDrift] = useState<DriftReport | null>(null);
 
-  // #138: ドリフト対象（finding.target）の集合。実効構成側（段/イベント/ポート）の強調判定に用いる。
+  // #138: ドリフト対象（finding.target）の集合。実効構成側（段）の強調判定に用いる。
+  // DriftDetector（Shared.Infrastructure）は Target に常に段名（decl.Name/実効段名）のみを返し、
+  // イベント名・ポート名は返さない（CLAUDE.md「起こり得ないケースへの防御的実装を避ける」）ため、
+  // 強調表示はパイプライン段のみを対象とする。
   const driftTargets = useMemo(
     () => new Set((drift?.findings ?? []).map((f) => f.target)),
     [drift],
@@ -113,11 +116,12 @@ export function ConfigViewerPage() {
         <>
           <ConfigVersionHeader version={config.version} />
           <DriftView status={driftStatus} report={drift} />
-          {/* #138: §(1) 実効構成側にもドリフトを強調する。finding.target と一致する段/イベント/ポートに
-              警告色を付け、(2) のドリフト明細（#drift-section）へリンクする（IADR-0036・SC-11 §(1)）。 */}
+          {/* #138: §(1) 実効構成側にもドリフトを強調する。finding.target と一致する段に警告色を付け、
+              (2) のドリフト明細（#drift-section）へリンクする（IADR-0036・SC-11 §(1)）。イベント接続・
+              ポートは DriftDetector の対象外（Target は常に段名）のため強調表示の対象としない。 */}
           <PipelineView stages={config.pipeline} driftTargets={driftTargets} />
-          <EventBindingsView bindings={config.eventBindings} driftTargets={driftTargets} />
-          <PortsView ports={config.ports} driftTargets={driftTargets} />
+          <EventBindingsView bindings={config.eventBindings} />
+          <PortsView ports={config.ports} />
           <ConnectorsView connectors={config.connectors} />
         </>
       )}
@@ -274,8 +278,7 @@ function PipelineView({ stages, driftTargets }: { stages: PipelineStage[]; drift
   );
 }
 
-// #138: finding.target に一致するイベントは警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
-function EventBindingsView({ bindings, driftTargets }: { bindings: EventBinding[]; driftTargets: Set<string> }) {
+function EventBindingsView({ bindings }: { bindings: EventBinding[] }) {
   return (
     <Section title={`イベント接続（${bindings.length}）`}>
       {bindings.length === 0 ? (
@@ -290,19 +293,13 @@ function EventBindingsView({ bindings, driftTargets }: { bindings: EventBinding[
             </tr>
           </thead>
           <tbody>
-            {bindings.map((b) => {
-              const drifted = driftTargets.has(b.event);
-              return (
-                <tr key={b.event} style={driftStyle(drifted)}>
-                  <td>
-                    {b.event}
-                    {drifted && <DriftMark />}
-                  </td>
-                  <td>{b.publishers.join(', ') || '—'}</td>
-                  <td>{b.subscribers.join(', ') || '—'}</td>
-                </tr>
-              );
-            })}
+            {bindings.map((b) => (
+              <tr key={b.event}>
+                <td>{b.event}</td>
+                <td>{b.publishers.join(', ') || '—'}</td>
+                <td>{b.subscribers.join(', ') || '—'}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
@@ -310,8 +307,7 @@ function EventBindingsView({ bindings, driftTargets }: { bindings: EventBinding[
   );
 }
 
-// #138: finding.target に一致するポートは警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
-function PortsView({ ports, driftTargets }: { ports: PortSelection[]; driftTargets: Set<string> }) {
+function PortsView({ ports }: { ports: PortSelection[] }) {
   return (
     <Section title={`ポート実装選択（${ports.length}）`}>
       {ports.length === 0 ? (
@@ -326,19 +322,13 @@ function PortsView({ ports, driftTargets }: { ports: PortSelection[]; driftTarge
             </tr>
           </thead>
           <tbody>
-            {ports.map((p) => {
-              const drifted = driftTargets.has(p.port);
-              return (
-                <tr key={p.port} style={driftStyle(drifted)}>
-                  <td>
-                    {p.port}
-                    {drifted && <DriftMark />}
-                  </td>
-                  <td>{p.implementation}</td>
-                  <td>{p.target ?? '—'}</td>
-                </tr>
-              );
-            })}
+            {ports.map((p) => (
+              <tr key={p.port}>
+                <td>{p.port}</td>
+                <td>{p.implementation}</td>
+                <td>{p.target ?? '—'}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

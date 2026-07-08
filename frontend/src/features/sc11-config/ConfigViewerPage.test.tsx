@@ -102,7 +102,7 @@ describe('ConfigViewerPage (SC-11 #137/#138)', () => {
     const pipeline = await screen.findByRole('list', { name: 'パイプライン段' });
     // legacy・ingest の2段がドリフト対象なので、いずれもドリフトリンクが付く。
     const marks = within(pipeline).getAllByRole('link', { name: /ドリフト/ });
-    expect(marks.length).toBeGreaterThanOrEqual(1);
+    expect(marks).toHaveLength(2);
     marks.forEach((m) => expect(m).toHaveAttribute('href', '#drift-section'));
   });
 
