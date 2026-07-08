@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import type { User } from 'oidc-client-ts';
 import { useAuth } from './useAuth';
 
-// IADR-0034: SPA のロール判定は access_token(JWT) の realm_access.roles を一次情報とする
+// IADR-0035: SPA のロール判定は access_token(JWT) の realm_access.roles を一次情報とする
 // （バックエンドの KeycloakRolesClaimsTransformation と同一ソース）。表示制御・存在秘匿の
 // 出し分け専用であり、認可の実効境界はサーバ側（AdminOnly=403 / ConfigViewer=404 秘匿）に置く。
 // 復号不能・欠落時は空配列（＝権限なし）として扱う（フェイルクローズ）。

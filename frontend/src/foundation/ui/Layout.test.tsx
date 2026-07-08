@@ -6,7 +6,7 @@ import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
 import { Layout } from './Layout';
 
-// Issue #136 / IADR-0034: ナビは features の登録から導出し、権限外の項目は描画しない（存在秘匿）。
+// Issue #136 / IADR-0035: ナビは features の登録から導出し、権限外の項目は描画しない（存在秘匿）。
 
 function makeJwt(payload: unknown): string {
   const b64url = (obj: unknown) =>

@@ -66,7 +66,7 @@ related_specs:
 **タブは用いず**、上部にヘッダ（構成バージョン・全体ドリフト状態）を置き、以下 3 領域を
 **折りたたみ可能なセクション（`<details>`）の縦積み**で構成する。グラフ描画ライブラリは導入せず、
 パイプライン段は CSS の縦チェーン、イベント接続・ポート・コネクタは表で表現する
-（[IADR-0035](../adr/IADR-0035_sc11-config-viewer-visualization.md)。基盤の依存最小方針
+（[IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md)。基盤の依存最小方針
 [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md) と一貫）。
 
 ```
@@ -92,7 +92,7 @@ related_specs:
 ### (1) 実効構成の表示（グラフ・一覧）
 
 計画 §設計要素 6 の「構成取得 API 応答項目」を可視化する。有向グラフ描画ライブラリは用いず
-（[IADR-0035](../adr/IADR-0035_sc11-config-viewer-visualization.md)）、次で表現する。
+（[IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md)）、次で表現する。
 
 - **パイプライン段**: `service / consumer` を節点、`input → outputs` を明示した **CSS の縦チェーン**
   として描画する。`outputs` が空の段は終端（`（終端）`）として示す。無効化された段（`enabled: false`）は
@@ -106,7 +106,7 @@ related_specs:
 
 データ量が小さい（段は初期 5・イベント 6 程度）ため、依存を増やさず CSS チェーン＋表で受け入れ基準
 「グラフ・一覧として閲覧できる」を満たす。将来データ量が大きく可読性が損なわれた場合に限り、
-有向グラフライブラリ（mermaid/dagre/react-flow 系）の導入を再検討する（IADR-0035 を Superseded 化）。
+有向グラフライブラリ（mermaid/dagre/react-flow 系）の導入を再検討する（IADR-0036 を Superseded 化）。
 
 ### (2) 宣言との差分（ドリフト）表示
 
@@ -245,7 +245,7 @@ flowchart LR
    導入せず、パイプライン段を CSS の縦チェーン（`consumer → outputs`・無効段はグレーアウト）で、
    イベント接続・ポート・コネクタを表で表現する。各領域は折りたたみ可能なセクションとし、件数増大は
    縦スクロールで追う。将来大規模化した場合に有向グラフライブラリを再検討する。詳細は
-   [IADR-0035](../adr/IADR-0035_sc11-config-viewer-visualization.md) を参照。基盤の依存最小方針
+   [IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md) を参照。基盤の依存最小方針
    （[IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)）と一貫する。
 5. **ワイヤーフレーム**（→ 計画リポジトリ側の作業）: 計画側 `05_screens/wireframes/sc-11.drawio` の作成。
 6. **フロントエンド基盤**（→ フロントエンドフェーズで決定）: 本リポジトリの SPA 実装方針が未確定。
