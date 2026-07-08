@@ -17,7 +17,7 @@ export function WikiAccessPage() {
 
       {wikiBaseUrl ? (
         <p>
-          <a href={wikiBaseUrl} target="_blank" rel="noreferrer">
+          <a href={wikiBaseUrl} target="_blank" rel="noopener noreferrer">
             Wiki を開く
           </a>
         </p>

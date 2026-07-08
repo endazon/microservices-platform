@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 
 namespace KnowledgePlatform.IntegrationTests.AiAnalysisService;
 
@@ -89,6 +90,16 @@ file class StubRagOrchestrator : IRagOrchestrator
     public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
         => Task.FromResult(Answer($"「{request.Instruction}」の{request.TaskType}結果（統合テストスタブ）"));
+
+    // IADR-0036: ストリーミングのスタブ（citations → token* → done）。
+    public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
+        Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        yield return new AskCitationsEvent([]);
+        yield return new AskTokenEvent($"「{question}」への回答（統合テストスタブ）");
+        await Task.Yield();
+        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 50, 100);
+    }
 
     private static AiAnswerDto Answer(string text)
         => new(
