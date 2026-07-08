@@ -202,6 +202,10 @@ services:
     image: knowledge-platform/bff
     tag: latest
     port: 8080
+    # FR-15, IADR-0029, #146: BFF は段をホストしないが、ドリフト検出の突合基準として宣言（pipeline.json）を
+    # 必要とする。pipelineDeclaration=true で pipeline-config ConfigMap をマウントし Pipeline__ConfigPath を注入する。
+    # これが無いと BFF の宣言が空になり、実効の全購読が UndeclaredSubscription と誤判定される。
+    pipelineDeclaration: true
     # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
     # ローカル実行用ポート（5001/5006）のため、k8s Service の実ポート（8080）を上書き注入する。
     extraEnv:
