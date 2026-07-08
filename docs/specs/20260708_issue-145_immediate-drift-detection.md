@@ -62,4 +62,7 @@ ArgoCD PostSync フック等からの起動（`/bff/admin/config/drift` 取得 o
 ## テスト
 
 - `ConfigBffEndpointTests.PostDriftRun_ReturnsAcceptedWithoutBody`: 無認証 POST が 202・本文空を返す。
+- `ConfigBffEndpointTests.PostDriftRun_WhenDriftPresent_FiresAlert`: 不一致がある場合、即時検出トリガで
+  `IDriftAlertSink.AlertAsync` が発火することをスパイ（`RecordingDriftAlertSink`）で検証（受け入れ基準
+  「不一致があれば適用直後にアラートが発火する」を直接裏付け）。
 - `helm template` で PostSync フック Job（hook=PostSync・`/internal/config/drift-run`）が生成されることを確認。
