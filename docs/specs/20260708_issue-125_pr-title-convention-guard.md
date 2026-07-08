@@ -10,7 +10,7 @@ updated: 2026-07-08
 plan_refs:
   - "../../.claude/rules/traceability.md"
 related_specs:
-  - ../adr/IADR-0015_changelog-generation-time-correction.md
+  - ../adr/IADR-0015_ci-develop-alignment-and-changelog-overrides.md
 ---
 
 # 作業仕様書: PR タイトル（スカッシュ後件名）の規約チェック

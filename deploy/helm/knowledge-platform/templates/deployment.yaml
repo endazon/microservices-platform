@@ -76,7 +76,9 @@ spec:
                   key: {{ .secretKeyRef.key }}
               {{- end }}
           {{- end }}
-          {{- if $svc.port }}
+          {{- if and $svc.port (not $svc.worker) }}
+          # FR-15, IADR-0029 (#142): worker（conversion/ingestion）は /internal/introspection のみの
+          # 最小 HTTP サーフェスで /health/* を持たないため、HTTP ヘルスプローブを付与しない。
           livenessProbe:
             httpGet:
               path: /health/live

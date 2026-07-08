@@ -1,4 +1,5 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Ports;
@@ -11,7 +12,9 @@ using Serilog;
 
 const string ServiceName = "knowledge-platform.conversion-service";
 
-var builder = Host.CreateApplicationBuilder(args);
+// FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
+// MassTransit コンシューマ（変換ワーカー）は従来どおり IHostedService として稼働する。
+var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSerilog((sp, logConfig) =>
     logConfig.ConfigureKnowledgePlatformSerilog(builder.Configuration, ServiceName));
@@ -39,6 +42,11 @@ builder.Services.AddScoped<INormalizationService, NormalizationService>();
 builder.AddKnowledgePlatformPipelineConfig();
 var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
 
+// FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（convert）の実効値を申告する。
+// これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
+builder.Services.AddKnowledgePlatformIntrospection("conversion-service", pipeline,
+    i => i.AddStep<RawDocumentFetchedConsumer>());
+
 builder.Services.AddMassTransit(x =>
 {
     x.AddKnowledgePlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline);
@@ -55,5 +63,13 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
-var host = builder.Build();
-host.Run();
+var app = builder.Build();
+
+// FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
+// メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
+app.MapKnowledgePlatformIntrospection();
+
+app.Run();
+
+// 統合テスト（WebApplicationFactory）が参照するためのエントリポイント公開。
+public partial class Program { }
