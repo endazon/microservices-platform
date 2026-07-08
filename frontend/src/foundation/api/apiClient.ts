@@ -64,3 +64,90 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
   const text = await res.text();
   return (text ? (JSON.parse(text) as T) : (undefined as T));
 }
+
+// IADR-0037, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
+export interface SseEvent {
+  event: string;
+  data: string;
+}
+
+/** SSE のイベントブロック（空行区切りの塊）を解析する。data: 複数行は改行連結する。純関数（テスト可能）。 */
+export function parseSseBlock(block: string): SseEvent | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice('event:'.length).trim();
+    else if (line.startsWith('data:')) dataLines.push(line.slice('data:'.length).replace(/^ /, ''));
+    // ":" 始まりのコメント行・その他フィールドは無視する。
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join('\n') };
+}
+
+/**
+ * BFF の SSE エンドポイントを購読する（真のストリーミング）。EventSource は Authorization を付与できないため
+ * fetch + ReadableStream で実装する。Bearer を付与し、イベントごとに onEvent を呼ぶ。失敗時は ApiError。
+ */
+export async function apiStream(
+  path: string,
+  req: ApiRequest,
+  onEvent: (e: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const { json, headers: initHeaders, method, ...rest } = req;
+  const cfg = appConfig();
+  const token = await tokenProvider();
+
+  const headers = new Headers(initHeaders);
+  headers.set('Accept', 'text/event-stream');
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  let body: BodyInit | undefined;
+  if (json !== undefined) {
+    headers.set('Content-Type', 'application/json');
+    body = JSON.stringify(json);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(cfg.bffBaseUrl + path, { ...rest, method: method ?? 'POST', headers, body, signal });
+  } catch (err) {
+    // SC-01: ヘッダ受信前に AbortController.abort() された場合は AbortError（DOMException）を保持して
+    // 再スローする（連投質問などで前フェッチを中断した際、呼び出し側が意図的中断として無視できるように）。
+    // それ以外の fetch 失敗のみネットワークエラーへ丸める。
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
+    throw new ApiError('network', 'サーバへ到達できませんでした。', null);
+  }
+
+  if (!res.ok || !res.body) {
+    if (res.status === 401) unauthorizedHandler();
+    throw ApiError.fromStatus(res.status);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    // イベント境界は空行（\n\n）。CRLF も許容する。
+    while ((idx = indexOfBoundary(buffer)) >= 0) {
+      const raw = buffer.slice(0, idx).replace(/\r/g, '');
+      buffer = buffer.slice(idx + boundaryLen(buffer, idx));
+      const ev = parseSseBlock(raw);
+      if (ev) onEvent(ev);
+    }
+  }
+}
+
+function indexOfBoundary(s: string): number {
+  const lf = s.indexOf('\n\n');
+  const crlf = s.indexOf('\r\n\r\n');
+  if (lf < 0) return crlf;
+  if (crlf < 0) return lf;
+  return Math.min(lf, crlf);
+}
+function boundaryLen(s: string, idx: number): number {
+  return s.startsWith('\r\n\r\n', idx) ? 4 : 2;
+}

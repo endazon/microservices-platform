@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 
 namespace KnowledgePlatform.IntegrationTests.AiAnalysisService;
 
@@ -89,6 +90,17 @@ file class StubRagOrchestrator : IRagOrchestrator
     public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
         => Task.FromResult(Answer($"「{request.Instruction}」の{request.TaskType}結果（統合テストスタブ）"));
+
+    // IADR-0037, UC-01: SSE 用イベント列のスタブ。エンドポイント配線（citations→token→done）の確認までを対象とする。
+    public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
+        Dictionary<string, string> userAttributes,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.CompletedTask;
+        yield return new AskCitationsEvent([]);
+        yield return new AskTokenEvent($"「{question}」への回答（統合テストスタブ）");
+        yield return new AskDoneEvent(Guid.NewGuid(), "claude-sonnet-4-6", 50, 100);
+    }
 
     private static AiAnswerDto Answer(string text)
         => new(

@@ -43,6 +43,14 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public HttpStatusCode FeedbackStatsStubStatusCode { get; set; } = HttpStatusCode.OK;
     public bool DashboardReturnsNullBody { get; set; }
 
+    // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
+    public bool SearchScopeGranted { get; set; } = true;
+    public SearchResponse StubSearchResponse { get; set; } = new(
+        [new SearchResultDto(Guid.NewGuid(), Guid.NewGuid(), "経費規程 2025",
+            "第3条 …", 0.91f, "s3://bucket/expense.md",
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, ["hr"])],
+        1, 5);
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -74,6 +82,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-10: 名前付きクライアント "DashboardService" の通信をスタブハンドラに差し替える
             services.AddHttpClient("DashboardService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DashboardStubHandler(this));
+            // FR-03/FR-05 (SC-01 横断検索): AuthorizationService / RetrievalService をスタブ化する。
+            services.AddHttpClient("AuthorizationService")
+                .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
+            services.AddHttpClient("RetrievalService")
+                .ConfigurePrimaryHttpMessageHandler(() => new RetrievalStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -118,6 +131,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             owner.LastForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            // IADR-0037: /analysis/ask/stream は SSE を返す（BFF は逐次中継する）。
+            if (path.EndsWith("/ask/stream", StringComparison.Ordinal))
+            {
+                const string sse =
+                    "event: citations\ndata: {\"citations\":[{\"number\":1,\"documentTitle\":\"文書A\"}]}\n\n" +
+                    "event: token\ndata: {\"text\":\"回答\"}\n\n" +
+                    "event: done\ndata: {\"answerId\":\"11111111-1111-1111-1111-111111111111\",\"model\":\"m\",\"inputTokens\":1,\"outputTokens\":2}\n\n";
+                var sseResp = new HttpResponseMessage(owner.StubStatusCode)
+                {
+                    Content = new StringContent(sse, System.Text.Encoding.UTF8, "text/event-stream")
+                };
+                return Task.FromResult(sseResp);
+            }
+
             var response = new HttpResponseMessage(owner.StubStatusCode)
             {
                 Content = JsonContent.Create(owner.StubAnswer)
@@ -177,6 +206,33 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 Content = content
             };
             return Task.FromResult(response);
+        }
+    }
+
+    // FR-05 (SC-01): AuthorizationService /authz/scope をスタブ化する。Granted は SearchScopeGranted で制御。
+    private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var scope = new AccessScopeResponse("tester", [], owner.SearchScopeGranted);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(scope)
+            });
+        }
+    }
+
+    // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。
+    private sealed class RetrievalStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(owner.StubSearchResponse)
+            });
         }
     }
 }
