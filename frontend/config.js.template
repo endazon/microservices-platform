@@ -1,9 +1,15 @@
 // Issue #126: 実行時 config テンプレート。コンテナ起動時に envsubst で config.js を生成する。
 // 接続先（BFF・Keycloak）を環境変数で注入し、同一ビルド成果物を任意環境へデプロイできる（疎結合）。
+// Issue #136: SC-10 の外部ツール導線（未設定＝空文字は画面に導線を出さない。Kiali は未配備など）。
 window.__APP_CONFIG__ = {
   bffBaseUrl: "${BFF_BASE_URL}",
   oidc: {
     authority: "${OIDC_AUTHORITY}",
     clientId: "${OIDC_CLIENT_ID}"
+  },
+  opsLinks: {
+    grafanaUrl: "${GRAFANA_URL}",
+    jaegerUrl: "${JAEGER_URL}",
+    kialiUrl: "${KIALI_URL}"
   }
 };
