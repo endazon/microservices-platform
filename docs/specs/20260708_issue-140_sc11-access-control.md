@@ -20,7 +20,7 @@ plan_refs:
 
 - 機能要求（FR）: FR-15（管理者・運用者限定）
 - 画面（SC）: SC-11 構成ビューア
-- 関連 ADR: [[IADR-0009]]（存在秘匿）／ [[IADR-0030]]（ConfigViewer）／ [[IADR-0034]]（ロール別 nav・存在秘匿）
+- 関連 ADR: [[IADR-0009]]（存在秘匿）／ [[IADR-0030]]（ConfigViewer）／ [[IADR-0035]]（ロール別 nav・存在秘匿）
 - Issue: #140（親 #122）
 
 ## 目的・背景

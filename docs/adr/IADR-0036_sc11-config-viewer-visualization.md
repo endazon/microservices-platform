@@ -1,5 +1,5 @@
 ---
-title: IADR-0035 SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入）
+title: IADR-0036 SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -14,7 +14,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
 ---
 
-# IADR-0035: SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入）
+# IADR-0036: SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入）
 
 - 状態: Accepted
 - 日付: 2026-07-08
@@ -24,7 +24,7 @@ plan_refs:
 
 - 関連する計画書 ID: SC-11（構成ビューア）／ FR-15（構成情報の可視化）／ ADR-0018（Composable Architecture）
 - 関連する実装仕様書: `docs/screens/SC-11_configuration-viewer.md`（**未決事項 4: グラフレイアウト方針**の解決）
-- 関連 ADR: [[IADR-0029]]（構成情報 API 配置・ドリフト分類）／ [[IADR-0033]]（SPA 基盤・依存最小）／ [[IADR-0034]]（ロール別 nav・存在秘匿）
+- 関連 ADR: [[IADR-0029]]（構成情報 API 配置・ドリフト分類）／ [[IADR-0033]]（SPA 基盤・依存最小）／ [[IADR-0035]]（ロール別 nav・存在秘匿）
 
 ## コンテキストと課題
 

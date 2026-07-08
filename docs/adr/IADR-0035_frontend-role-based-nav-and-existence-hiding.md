@@ -1,5 +1,5 @@
 ---
-title: IADR-0034 フロントエンドのロールベース・ナビゲーションと存在秘匿
+title: IADR-0035 フロントエンドのロールベース・ナビゲーションと存在秘匿
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_abac-authorization-model.md"
 ---
 
-# IADR-0034: フロントエンドのロールベース・ナビゲーションと存在秘匿
+# IADR-0035: フロントエンドのロールベース・ナビゲーションと存在秘匿
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 

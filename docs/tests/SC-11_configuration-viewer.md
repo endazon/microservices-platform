@@ -14,8 +14,8 @@ related_specs:
   - "../screens/SC-11_configuration-viewer.md"
   - "../adr/IADR-0009_wiki-browsing-404-hides-existence.md"
   - "../adr/IADR-0030_operator-role-and-config-viewer-policy.md"
-  - "../adr/IADR-0034_frontend-role-based-nav-and-existence-hiding.md"
-  - "../adr/IADR-0035_sc11-config-viewer-visualization.md"
+  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
+  - "../adr/IADR-0036_sc11-config-viewer-visualization.md"
 ---
 
 # テスト仕様書: SC-11 構成ビューア
@@ -67,7 +67,7 @@ related_specs:
 
 - 画面仕様書: `docs/screens/SC-11_configuration-viewer.md`
 - 作業仕様書: `docs/specs/20260708_issue-137_sc11-config-graph.md` / `..._issue-138_sc11-drift.md` / `..._issue-140_sc11-access-control.md`
-- 実装 ADR: [[IADR-0034]]（ロール別 nav・存在秘匿）、[[IADR-0035]]（可視化方式）
+- 実装 ADR: [[IADR-0035]]（ロール別 nav・存在秘匿）、[[IADR-0036]]（可視化方式）
 
 ## 未決事項
 
