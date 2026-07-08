@@ -101,6 +101,10 @@ Issue #56 が検出した ADR-0011 逸脱（Wiki.js 不在のまま WikiService 
   ゲートウェイに集約するため、Wiki.js への**直接到達を塞ぐ**ネットワーク分離（[IADR-0017]）が前提となる
   （Wiki.js は host 非公開、到達は WikiService ゲートウェイ経由に限定）。段階導入のため、段1 時点では
   自前閲覧 API と Wiki.js が併存する。
+  - **改定注記（[IADR-0032](./IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）**: この「Wiki.js は host 非公開」は
+    **本番系（Helm）に限る制約**へ具体化された。**dev の compose は管理 UI セットアップ便宜のため 3001 を公開**する
+    （IADR-0032 が IADR-0026 §2 を dev 範囲で改定）。本番系の非公開（`wikijs.ingress.enabled: false`）は
+    `NetworkIsolationTests` が回帰ガードする。
 - フォローアップ:
   - ~~段2（同期コード置換・認可プロキシ化・`wiki_svc` 撤去・結合テスト）~~ → **本 PR で実装**。
     残: 稼働 Wiki.js での GraphQL PoC 実測（[IADR-0021]）・OIDC ローカルログイン無効化の稼働検証
