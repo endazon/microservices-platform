@@ -4,7 +4,7 @@ import type { User, UserManager } from 'oidc-client-ts';
 import { AuthContext } from './AuthContext';
 import type { AuthState } from './AuthContext';
 import { userManager as defaultUserManager } from './authConfig';
-import { setTokenProvider } from '@foundation/api/apiClient';
+import { setTokenProvider, setUnauthorizedHandler } from '@foundation/api/apiClient';
 
 // Issue #126: Keycloak OIDC のセッション管理。UserManager を購読し、現在ユーザーを state へ反映する。
 // api クライアントへ「現在のアクセストークン供給元」を注入し、api は auth 実装に直接依存しない（疎結合）。
@@ -25,6 +25,10 @@ export function AuthProvider({
     setTokenProvider(async () => {
       const u = await mgr.getUser();
       return u && !u.expired ? u.access_token : null;
+    });
+    // IADR-0033: 401 の再ログイン導線を注入する。元の場所を保持して Keycloak へリダイレクトする。
+    setUnauthorizedHandler(() => {
+      void mgr.signinRedirect({ state: { returnTo: window.location.pathname } });
     });
 
     let active = true;

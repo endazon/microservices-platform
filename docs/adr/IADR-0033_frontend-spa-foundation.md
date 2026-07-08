@@ -45,13 +45,16 @@ plan_refs:
 4. **認証（ユーザー判断）**: **Keycloak OIDC public client + Authorization Code + PKCE(S256)**（`oidc-client-ts`）。
    realm に public client `spa-web`（redirect `http://localhost:3100/*`）を追加。取得した JWT を BFF へ **Bearer**
    送信する（既存 BFF の JWT 検証にそのまま適合。バックエンド改修不要）。トークンは **localStorage へ永続化せず**
-   メモリ保持（XSS 時の持ち出し面を狭める）・silent renew。
+   メモリ保持（XSS 時の持ち出し面を狭める）。失効前の更新は **リフレッシュトークン**による silent renew で行う
+   （Authorization Code フローは refresh_token を発行するため iframe を用いない）。更新に失敗した場合は、
+   後述の 401 導線で再ログインへ誘導する。
 5. **BFF を境界に疎結合**: features は `apiFetch`（`/bff/*`）経由でのみバックエンドへアクセスする。BFF ＋ OpenAPI が
    契約。接続先（BFF・Keycloak）は **実行時 config**（`window.__APP_CONFIG__`、`config.js`）で注入し、**同一ビルド
    成果物を任意環境へデプロイ**できる（コンテナ起動時に `config.js.template` を envsubst で生成）。dev は Vite proxy
    が `/bff` を BFF へ転送する。
 6. **存在秘匿・エラー方針（IADR-0009 と整合）**: `ApiError` が HTTP ステータスを種別へ写像し、**404 は notFound**
-   として扱い「不在」と「権限による秘匿」を画面で区別しない。401 は再ログイン、共通 `ErrorBoundary` が想定外例外を握る。
+   として扱い「不在」と「権限による秘匿」を画面で区別しない。**401 は `apiClient` の共通導線（`setUnauthorizedHandler`）
+   で再ログインへ誘導**し（features 個別実装に依存しない骨組みレベルで担保）、共通 `ErrorBoundary` が想定外例外を握る。
 7. **配信・CI**: 本番は multi-stage Docker（Vite build → nginx 静的配信＋`/bff` プロキシ）。CI（`frontend.yml`）は
    typecheck / lint / unit test / build ＋ Playwright スモーク（バックエンド不要のログイン画面到達）を実行する。
 

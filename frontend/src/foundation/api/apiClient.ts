@@ -3,16 +3,25 @@
 // - 認証: 現在のアクセストークン（Keycloak JWT）を Bearer として付与する。トークンの取得は
 //   auth モジュールが setTokenProvider で注入し、api は auth 実装に直接依存しない。
 // - エラー: HTTP ステータスを ApiError へ写像する（404 は存在秘匿と整合。IADR-0009）。
+// - 401: IADR-0033 の「401 は再ログイン」を骨組みレベルで担保するため、setUnauthorizedHandler で
+//   注入された再ログイン導線を起動する（features 個別実装に依存しない）。
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { ApiError } from './ApiError';
 
 type TokenProvider = () => string | null | Promise<string | null>;
+type UnauthorizedHandler = () => void;
 
 let tokenProvider: TokenProvider = () => null;
+let unauthorizedHandler: UnauthorizedHandler = () => {};
 
 /** アクセストークンの供給元を注入する（AuthProvider が UserManager を渡す）。 */
 export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
+}
+
+/** 401 時の再ログイン導線を注入する（AuthProvider が login を渡す）。 */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
+  unauthorizedHandler = handler;
 }
 
 export interface ApiRequest extends Omit<RequestInit, 'body'> {
@@ -43,6 +52,10 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
   }
 
   if (!res.ok) {
+    // IADR-0033: 401（未認証/期限切れ）は再ログイン導線を起動する（silent renew 失敗時の安全網）。
+    if (res.status === 401) {
+      unauthorizedHandler();
+    }
     throw ApiError.fromStatus(res.status);
   }
   if (res.status === 204) {

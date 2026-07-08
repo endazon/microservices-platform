@@ -3,6 +3,7 @@ dist
 coverage
 *.local
 .vite
+*.tsbuildinfo
 
 # Playwright
 /test-results/

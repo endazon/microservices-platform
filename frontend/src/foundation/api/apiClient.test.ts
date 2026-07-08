@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { apiFetch, setTokenProvider } from './apiClient';
+import { apiFetch, setTokenProvider, setUnauthorizedHandler } from './apiClient';
 import { ApiError } from './ApiError';
 
 // Issue #126: apiFetch は Bearer を付与し、HTTP ステータスを ApiError へ写像する（IADR-0009: 404→notFound）。
@@ -7,6 +7,7 @@ describe('apiFetch', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     setTokenProvider(() => null);
+    setUnauthorizedHandler(() => {});
   });
 
   it('attaches the bearer token and returns parsed JSON', async () => {
@@ -41,6 +42,25 @@ describe('apiFetch', () => {
   it('maps 401 to unauthorized', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
     await expect(apiFetch('/x')).rejects.toMatchObject({ kind: 'unauthorized' });
+  });
+
+  it('invokes the unauthorized handler (re-login) on 401', async () => {
+    // IADR-0033: 401 は再ログイン導線を起動する。
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 401 })));
+
+    await expect(apiFetch('/x')).rejects.toBeInstanceOf(ApiError);
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invoke the unauthorized handler on 404', async () => {
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: 404 })));
+
+    await expect(apiFetch('/x')).rejects.toMatchObject({ kind: 'notFound' });
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it('maps fetch rejection to a network error', async () => {
