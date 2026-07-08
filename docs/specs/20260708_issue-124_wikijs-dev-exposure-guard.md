@@ -32,30 +32,33 @@ Issue: #124（関連: #118 監査論点 2 ／ IADR-0020 ／ IADR-0017）。
 
 ## 方針（要判断 → 決定）
 
-**profiles 分離＋回帰ガード**（ユーザー判断）を採用。詳細は [IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)。
+**dev 公開は残す＋本番系(Helm)非公開の回帰ガード**（ユーザー判断 A）を採用。詳細は [IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)。
 
-- 既定 compose では Wiki.js を host 公開しない（`expose: 3000`）。
-- 直接アクセスは opt-in override（`deploy/docker-compose.wiki-direct.yml`）でのみ公開する
-  （compose のサービスレベル profiles は常時稼働サービスの個別ポート公開を条件化できないため override で実現）。
-- 回帰ガードを `NetworkIsolationTests` に追加。
+- dev の compose は管理 UI セットアップ便宜のため `ports: 3001:3000` を維持（dev 公開は残す）。
+- 本番系（Helm）は `wikijs.ingress.enabled: false` で公開しない（ClusterIP 限定）。
+- 「本番系構成では 3001 が公開されない」ことを `NetworkIsolationTests` が機械的に回帰ガードする。
+- **compose profiles の補足**: docker compose のサービスレベル profiles は「サービスの起動有無」を制御するもので、
+  常時稼働サービスの個別ポート公開だけを条件化できない。Wiki.js は WikiService の後段として dev でも常時稼働が
+  必要なため、dev/本番系の公開境界は「dev＝compose（3001 公開）／本番系＝Helm（Ingress 無効・回帰ガード）」で表現する。
 
 ## 対象範囲
 
 - 対象:
-  1. `deploy/docker-compose.yml`: `wiki-js` を `ports: 3001:3000` → `expose: 3000`。
-  2. `deploy/docker-compose.wiki-direct.yml`: 3001 を公開する opt-in override（dev 限定）。
-  3. `NetworkIsolationTests`: (a) 既定 compose で `wiki-js` 非公開、(b) Helm `wikijs.ingress.enabled: false` を検証。
-  4. `IADR-0032` を起票、`operations.md` を更新。
+  1. `deploy/docker-compose.yml`: `wiki-js` の `ports: 3001:3000`（dev 公開）を維持し、方針を明記。
+  2. `NetworkIsolationTests`: (a) 本番系（Helm）`wikijs.ingress.enabled: false`、(b) dev 公開が wiki-js に限定され
+     他内部サービスへ波及しないことを検証。
+  3. `IADR-0032` を起票、`operations.md` を更新。
 - 非対象: Wiki.js 認可ロジック（既存 ABAC ゲートウェイ）・SPA。
 
 ## 受け入れ基準
 
-- [x] dev 公開の扱いが判断され、根拠が文書（IADR-0032・operations.md）に記録されている。
-- [x] stg/prod 相当の構成で Wiki.js がゲートウェイ迂回で到達できないことを検証する回帰ガードが存在する
-      （既定 compose 非公開・Helm Ingress 無効）。
-- [x] compose profiles 分離（＝override）を採用し、既定では 3001 が公開されない。
+- [x] dev 公開の扱いが判断され、根拠が文書（IADR-0032・operations.md）に記録されている（dev 公開は残す）。
+- [x] 本番系相当の構成で Wiki.js がゲートウェイ迂回で到達できないことを検証する回帰ガードが存在する
+      （Helm `wikijs.ingress.enabled: false`）。
+- [x] 本番系構成では 3001 が公開されない（NetworkIsolationTests で常時検証）。
 
 ## テスト
 
-- `NetworkIsolationTests.WikiJs_IsNotPublishedByDefault` / `WikiJs_HelmIngressDisabledByDefault`（計 4 件緑）。
-- `docker compose config`（既定＝公開 0 件、override＝3001 公開）を確認。
+- `NetworkIsolationTests.WikiJs_DevExposureIsRetainedOnComposeOnly` / `WikiJs_HelmIngressDisabledByDefault`
+  / `InternalServices_MustNotPublishHostPorts`（計 4 件緑）。
+- `docker compose config`（dev＝wiki-js 3001 公開を確認）。

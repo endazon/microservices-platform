@@ -56,25 +56,22 @@ public sealed class NetworkIsolationTests
         blocks["bff"].Should().Contain("5000:8080");
     }
 
-    // IADR-0020 / IADR-0032 (#124): Wiki.js 直接到達は ABAC ゲートウェイ（WikiService）を迂回するため、
-    // 既定 compose では host 公開しない（expose のみ）。3001 の公開は opt-in override でのみ許可する。
-    // 回帰ガード: 既定の docker-compose.yml に wiki-js の host 公開（ports:）が混入していないこと。
+    // IADR-0032 (#124): dev（compose）は Wiki.js 管理 UI への直接アクセス便宜のため 3001 を公開する
+    // （dev 公開は残す）。この dev 便宜の公開は wiki-js に限定され、他の内部アプリサービスへは波及しない
+    // ことを InternalServices_MustNotPublishHostPorts が引き続き保証する。
     [Fact]
-    public void WikiJs_IsNotPublishedByDefault()
+    public void WikiJs_DevExposureIsRetainedOnComposeOnly()
     {
         var compose = ReadComposeFile();
         var blocks = SplitServiceBlocks(compose);
 
         blocks.Should().ContainKey("wiki-js", "'wiki-js' が docker-compose.yml に存在すること");
-        blocks["wiki-js"].Should().NotMatchRegex(@"(?m)^\s*ports:\s*$",
-            "IADR-0032: 既定では wiki-js を host 公開してはならない（ABAC ゲートウェイ迂回経路）。" +
-            "直接アクセスは docker-compose.wiki-direct.yml の opt-in override を用いる");
-        blocks["wiki-js"].Should().MatchRegex(@"(?m)^\s*expose:\s*$",
-            "wiki-js はコンテナネットワーク内のみ（expose）とする");
+        blocks["wiki-js"].Should().Contain("3001:3000",
+            "dev 便宜のため wiki-js は 3001 を公開する（dev 公開は残す。本番系は Helm で非公開）");
     }
 
-    // IADR-0020 / IADR-0032 (#124): stg/prod（Helm）でも Wiki.js を Ingress で公開しない
-    // （既定 wikijs.ingress.enabled: false）。ゲートウェイ迂回の外部到達を既定で塞ぐ回帰ガード。
+    // IADR-0020 / IADR-0032 (#124): **本番系（Helm）では** Wiki.js を Ingress で公開しない
+    // （既定 wikijs.ingress.enabled: false）。ゲートウェイ迂回の外部到達を本番系で塞ぐ回帰ガード。
     [Fact]
     public void WikiJs_HelmIngressDisabledByDefault()
     {
