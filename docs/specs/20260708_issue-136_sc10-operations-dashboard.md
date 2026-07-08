@@ -23,12 +23,12 @@ plan_refs:
 - 機能要求（FR）: FR-10（利用状況・検索傾向・回答品質のダッシュボード）
 - ユースケース（UC）: UC-05（管理者・運用者による確認）
 - 画面（SC）: SC-10 運用ダッシュボード
-- 関連 ADR: [[IADR-0034]]（新規・ロールベース nav / 存在秘匿）、[[IADR-0033]]（SPA 基盤）、[[IADR-0011]]（ダッシュボード集約）、[[IADR-0009]]（存在秘匿）
+- 関連 ADR: [[IADR-0035]]（新規・ロールベース nav / 存在秘匿）、[[IADR-0033]]（SPA 基盤）、[[IADR-0011]]（ダッシュボード集約）、[[IADR-0009]]（存在秘匿）
 - Issue: #136（親 #121）
 
 ## 目的・背景
 
-SPA 基盤（#126）の上に SC-10 を最初の feature として実装する。BFF 集約 `/bff/dashboard/summary`（実装済・`AdminOnly`）を要約表示し、詳細分析ツール（Grafana/Jaeger/Kiali）と構成ビューア（SC-11）への導線を提供する。本画面の実装に伴い、後続画面（SC-09/SC-11）で再利用する**ロールベースのナビゲーション出し分けと存在秘匿**の共通部品を基盤へ導入する（[[IADR-0034]]）。
+SPA 基盤（#126）の上に SC-10 を最初の feature として実装する。BFF 集約 `/bff/dashboard/summary`（実装済・`AdminOnly`）を要約表示し、詳細分析ツール（Grafana/Jaeger/Kiali）と構成ビューア（SC-11）への導線を提供する。本画面の実装に伴い、後続画面（SC-09/SC-11）で再利用する**ロールベースのナビゲーション出し分けと存在秘匿**の共通部品を基盤へ導入する（[[IADR-0035]]）。
 
 ## 対象範囲
 
@@ -36,7 +36,7 @@ SPA 基盤（#126）の上に SC-10 を最初の feature として実装する�
   - 基盤拡張: `foundation/auth/roles.ts`（realm ロール読み取り・`useRoles`/`useHasAnyRole`）、`foundation/auth/RequireRole.tsx`（存在秘匿ガード）、`FeatureModule.nav` によるナビ出し分け、`Layout` のロール別ナビ、`runtimeConfig` へ `opsLinks`（Grafana/Jaeger/Kiali URL）追加。
   - feature: `features/sc10-operations`（`/ops` ルート、サマリ表示、外部ツール導線、SC-11 導線）。
   - テスト: Vitest（roles / RequireRole / OperationsDashboardPage / runtimeConfig opsLinks / nav 出し分け）、Playwright スモーク（未認証 `/ops` → `/login`）。
-  - ドキュメント: 本仕様書・画面仕様書・テスト仕様書・[[IADR-0034]]。
+  - ドキュメント: 本仕様書・画面仕様書・テスト仕様書・[[IADR-0035]]。
 - 対象外:
   - BFF/バックエンド変更（`/bff/dashboard/summary` は実装済のため不要）。
   - グラフ描画ライブラリ導入（数値・一覧・簡易バーで表現。高度可視化は Grafana に委譲）。
@@ -48,7 +48,7 @@ SPA 基盤（#126）の上に SC-10 を最初の feature として実装する�
 - `GET /bff/dashboard/summary?days&top` を `apiFetch<DashboardSummaryDto>` で取得。`ApiError` を `forbidden`(403)/`notFound`(404)/`error` に写像して中立表示。
 - 外部ツール URL は `appConfig().opsLinks`（実行時 config）。未設定は非表示。
 
-### 基盤拡張（[[IADR-0034]]）
+### 基盤拡張（[[IADR-0035]]）
 - `roles.ts`: `access_token`(JWT) のペイロードを復号し `realm_access.roles` を返す。復号失敗は空配列（フェイルクローズ）。
 - `RequireRole`: 権限外は `NotFound` を描画（リダイレクトしない＝存在秘匿）。
 - `FeatureModule.nav?: { label, to, requiresAnyRole? }`。`foundation/routing/nav.ts` が集約、`Layout` がロールで絞って描画。

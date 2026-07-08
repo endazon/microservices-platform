@@ -15,7 +15,7 @@ plan_refs:
 related_specs:
   - "../screens/SC-10_operations-dashboard.md"
   - "../specs/20260708_issue-136_sc10-operations-dashboard.md"
-  - "../adr/IADR-0034_frontend-role-based-nav-and-existence-hiding.md"
+  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
 ---
 
 # テスト仕様書: SC-10 運用ダッシュボード
@@ -68,7 +68,7 @@ related_specs:
 
 - 画面仕様書: `docs/screens/SC-10_operations-dashboard.md`
 - 作業仕様書: `docs/specs/20260708_issue-136_sc10-operations-dashboard.md`
-- 実装 ADR: [[IADR-0034]]
+- 実装 ADR: [[IADR-0035]]
 
 ## 未決事項
 
