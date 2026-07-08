@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { ApiError } from '@foundation/api/ApiError';
 
 // SC-11 #137/#138, FR-15: 実効構成の表示、ドリフト一覧・0件OK、秘匿(404)/異常系を検証する。
@@ -92,6 +92,18 @@ describe('ConfigViewerPage (SC-11 #137/#138)', () => {
     expect(screen.getByText('Warning')).toHaveStyle({ color: '#e67e22' });
     expect(screen.getByText('Info')).toHaveStyle({ color: '#7f8c8d' });
     expect(screen.getByText(/宣言との差分（ドリフト）: ドリフト 2 件/)).toBeInTheDocument();
+  });
+
+  // #138 §(1): ドリフト対象（finding.target）に一致する実効構成の段は、警告リンク付きで強調され、
+  // (2) のドリフト明細（#drift-section）へリンクする。
+  it('emphasizes effective-config stages matching a drift target with a link to the drift detail', async () => {
+    route({ drift: DRIFT_FOUND });
+    render(<ConfigViewerPage />);
+    const pipeline = await screen.findByRole('list', { name: 'パイプライン段' });
+    // legacy・ingest の2段がドリフト対象なので、いずれもドリフトリンクが付く。
+    const marks = within(pipeline).getAllByRole('link', { name: /ドリフト/ });
+    expect(marks.length).toBeGreaterThanOrEqual(1);
+    marks.forEach((m) => expect(m).toHaveAttribute('href', '#drift-section'));
   });
 
   it('degrades the drift area only when drift fetch fails (config still shown)', async () => {

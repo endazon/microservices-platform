@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
 
@@ -65,6 +65,12 @@ export function ConfigViewerPage() {
   const [driftStatus, setDriftStatus] = useState<DriftStatus>('loading');
   const [drift, setDrift] = useState<DriftReport | null>(null);
 
+  // #138: ドリフト対象（finding.target）の集合。実効構成側（段/イベント/ポート）の強調判定に用いる。
+  const driftTargets = useMemo(
+    () => new Set((drift?.findings ?? []).map((f) => f.target)),
+    [drift],
+  );
+
   useEffect(() => {
     let active = true;
     apiFetch<EffectiveConfig>('/admin/config')
@@ -107,9 +113,11 @@ export function ConfigViewerPage() {
         <>
           <ConfigVersionHeader version={config.version} />
           <DriftView status={driftStatus} report={drift} />
-          <PipelineView stages={config.pipeline} />
-          <EventBindingsView bindings={config.eventBindings} />
-          <PortsView ports={config.ports} />
+          {/* #138: §(1) 実効構成側にもドリフトを強調する。finding.target と一致する段/イベント/ポートに
+              警告色を付け、(2) のドリフト明細（#drift-section）へリンクする（IADR-0036・SC-11 §(1)）。 */}
+          <PipelineView stages={config.pipeline} driftTargets={driftTargets} />
+          <EventBindingsView bindings={config.eventBindings} driftTargets={driftTargets} />
+          <PortsView ports={config.ports} driftTargets={driftTargets} />
           <ConnectorsView connectors={config.connectors} />
         </>
       )}
@@ -160,16 +168,16 @@ function DriftView({ status, report }: { status: DriftStatus; report: DriftRepor
   const badge = status !== 'ok' ? '—' : hasDrift ? `ドリフト ${count} 件` : 'OK';
 
   return (
-    <Section title={`宣言との差分（ドリフト）: ${badge}`}>
+    <Section title={`宣言との差分（ドリフト）: ${badge}`} id="drift-section">
       {status === 'loading' && <p role="status">ドリフトを確認中…</p>}
       {status === 'unavailable' && <p>ドリフト情報は利用できません。</p>}
       {status === 'ok' && report && !hasDrift && (
-        <p>ドリフトなし（OK）。<small>確認時刻: {report.checkedAt}</small></p>
+        <p>ドリフトなし（OK）。<small>確認時刻: {formatAppliedAt(report.checkedAt)}</small></p>
       )}
       {status === 'ok' && report && hasDrift && (
         <>
           <p>
-            <small>確認時刻: {report.checkedAt}</small>
+            <small>確認時刻: {formatAppliedAt(report.checkedAt)}</small>
           </p>
           <table aria-label="ドリフト明細">
             <thead>
@@ -197,52 +205,77 @@ function DriftView({ status, report }: { status: DriftStatus; report: DriftRepor
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
   return (
-    <details open style={{ margin: '0.75rem 0' }}>
+    <details id={id} open style={{ margin: '0.75rem 0' }}>
       <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{title}</summary>
       <div style={{ marginTop: '0.5rem' }}>{children}</div>
     </details>
   );
 }
 
+// #138: ドリフト対象の項目に付ける警告マーク（(2) のドリフト明細 #drift-section へリンクする）。
+function DriftMark() {
+  return (
+    <a
+      href="#drift-section"
+      title="この項目は宣言とドリフトしています"
+      style={{ color: '#c0392b', marginLeft: '0.5rem', fontWeight: 600 }}
+    >
+      ⚠ ドリフト
+    </a>
+  );
+}
+
+// #138: ドリフト対象の行に付ける強調スタイル（警告色の枠・背景）。
+function driftStyle(drifted: boolean): React.CSSProperties {
+  return drifted ? { borderColor: '#e67e22', background: '#fdf2e6' } : {};
+}
+
 // パイプライン段: consumer → [outputs] の縦チェーン（IADR-0036）。無効段はグレーアウト。
-function PipelineView({ stages }: { stages: PipelineStage[] }) {
+// #138: finding.target に一致する段は警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
+function PipelineView({ stages, driftTargets }: { stages: PipelineStage[]; driftTargets: Set<string> }) {
   return (
     <Section title={`パイプライン段（${stages.length}）`}>
       {stages.length === 0 ? (
         <p>段は登録されていません。</p>
       ) : (
         <ol aria-label="パイプライン段" style={{ listStyle: 'none', padding: 0 }}>
-          {stages.map((s) => (
-            <li
-              key={s.name}
-              style={{
-                border: '1px solid #ccc',
-                borderRadius: 6,
-                padding: '0.5rem 0.75rem',
-                margin: '0.4rem 0',
-                opacity: s.enabled ? 1 : 0.5,
-              }}
-            >
-              <div>
-                <strong>{s.name}</strong> <small>（{s.service}）</small>
-                {!s.enabled && <span> — 無効</span>}
-              </div>
-              <div>
-                <small>
-                  consumer: {s.consumer}｜{s.input} → {s.outputs.length ? s.outputs.join(', ') : '（終端）'}
-                </small>
-              </div>
-            </li>
-          ))}
+          {stages.map((s) => {
+            const drifted = driftTargets.has(s.name);
+            return (
+              <li
+                key={s.name}
+                style={{
+                  border: '1px solid #ccc',
+                  borderRadius: 6,
+                  padding: '0.5rem 0.75rem',
+                  margin: '0.4rem 0',
+                  opacity: s.enabled ? 1 : 0.5,
+                  ...driftStyle(drifted),
+                }}
+              >
+                <div>
+                  <strong>{s.name}</strong> <small>（{s.service}）</small>
+                  {!s.enabled && <span> — 無効</span>}
+                  {drifted && <DriftMark />}
+                </div>
+                <div>
+                  <small>
+                    consumer: {s.consumer}｜{s.input} → {s.outputs.length ? s.outputs.join(', ') : '（終端）'}
+                  </small>
+                </div>
+              </li>
+            );
+          })}
         </ol>
       )}
     </Section>
   );
 }
 
-function EventBindingsView({ bindings }: { bindings: EventBinding[] }) {
+// #138: finding.target に一致するイベントは警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
+function EventBindingsView({ bindings, driftTargets }: { bindings: EventBinding[]; driftTargets: Set<string> }) {
   return (
     <Section title={`イベント接続（${bindings.length}）`}>
       {bindings.length === 0 ? (
@@ -257,13 +290,19 @@ function EventBindingsView({ bindings }: { bindings: EventBinding[] }) {
             </tr>
           </thead>
           <tbody>
-            {bindings.map((b) => (
-              <tr key={b.event}>
-                <td>{b.event}</td>
-                <td>{b.publishers.join(', ') || '—'}</td>
-                <td>{b.subscribers.join(', ') || '—'}</td>
-              </tr>
-            ))}
+            {bindings.map((b) => {
+              const drifted = driftTargets.has(b.event);
+              return (
+                <tr key={b.event} style={driftStyle(drifted)}>
+                  <td>
+                    {b.event}
+                    {drifted && <DriftMark />}
+                  </td>
+                  <td>{b.publishers.join(', ') || '—'}</td>
+                  <td>{b.subscribers.join(', ') || '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -271,7 +310,8 @@ function EventBindingsView({ bindings }: { bindings: EventBinding[] }) {
   );
 }
 
-function PortsView({ ports }: { ports: PortSelection[] }) {
+// #138: finding.target に一致するポートは警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
+function PortsView({ ports, driftTargets }: { ports: PortSelection[]; driftTargets: Set<string> }) {
   return (
     <Section title={`ポート実装選択（${ports.length}）`}>
       {ports.length === 0 ? (
@@ -286,13 +326,19 @@ function PortsView({ ports }: { ports: PortSelection[] }) {
             </tr>
           </thead>
           <tbody>
-            {ports.map((p) => (
-              <tr key={p.port}>
-                <td>{p.port}</td>
-                <td>{p.implementation}</td>
-                <td>{p.target ?? '—'}</td>
-              </tr>
-            ))}
+            {ports.map((p) => {
+              const drifted = driftTargets.has(p.port);
+              return (
+                <tr key={p.port} style={driftStyle(drifted)}>
+                  <td>
+                    {p.port}
+                    {drifted && <DriftMark />}
+                  </td>
+                  <td>{p.implementation}</td>
+                  <td>{p.target ?? '—'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
