@@ -49,6 +49,14 @@ builder.Services.AddHttpClient("DashboardService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DashboardService"]
         ?? "http://dashboard-service:5009"));
 
+// FR-03, UC-01, SC-01: 横断検索の集約用。ABAC スコープ解決（AuthorizationService）→ 検索（RetrievalService）。
+builder.Services.AddHttpClient("AuthorizationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:AuthorizationService"]
+        ?? "http://authorization-service:5005"));
+builder.Services.AddHttpClient("RetrievalService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
+        ?? "http://retrieval-service:5003"));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
