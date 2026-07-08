@@ -23,3 +23,18 @@ public record CompletionApiResponse(
     bool Sent = true,
     string? Endpoint = null,
     string? RoutingReason = null);
+
+// IADR-0036: /complete/stream（SSE）の 1 イベント（data: 行の JSON）。gateway ↔ AiAnalysisService の内部契約。
+//   Delta        — 本文の増分（Done=false のとき）。
+//   Done         — 最終イベント。Model/InputTokens/OutputTokens が確定する。
+//   Sent         — false は egress 拒否・呼び出し失敗の縮退（Text に理由）。プロバイダ未呼出も含む。
+//   Text         — 縮退時の理由（Sent=false のとき）。
+public record CompletionStreamEvent(
+    string Delta,
+    bool Done = false,
+    bool Sent = true,
+    string? Text = null,
+    string Model = "",
+    int InputTokens = 0,
+    int OutputTokens = 0,
+    string? RoutingReason = null);
