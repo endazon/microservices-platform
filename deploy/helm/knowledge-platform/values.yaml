@@ -50,6 +50,17 @@ imagePullSecrets: []
 pipeline:
   enabled: true
 
+# FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後のドリフト即時検出。
+# 定期検出（既定 5 分）に加え、ArgoCD PostSync フック Job が毎同期後に BFF の
+# POST /internal/config/drift-run を叩き、適用直後のドリフトを即時に検出・警告する。
+# （宣言=pipeline.json の変更時は BFF がロールアウトし起動時検出でも捕捉されるが、本フックは
+#  任意の同期後に一律で即時検出を起動する belt-and-suspenders。）
+drift:
+  postSyncHook:
+    enabled: true
+    # curl を含む軽量イメージ。BFF 起動待ちのため --retry でリトライする。
+    image: curlimages/curl:8.11.1
+
 services:
   document:
     enabled: true

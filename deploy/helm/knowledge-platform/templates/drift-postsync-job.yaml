@@ -1,0 +1,58 @@
+# FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後のドリフト即時検出（ArgoCD PostSync フック）。
+# 各同期の完了後に BFF の POST /internal/config/drift-run（メッシュ内部限定）を叩き、宣言と実効構成の
+# ドリフトを即時に検出・警告する（不一致は BFF ログ ConfigDrift=true → 運用アラート経路）。
+# 定期検出（既定 5 分）を補完し、適用直後の取りこぼしを無くす。
+{{- if and .Values.services.bff.enabled .Values.drift.postSyncHook.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: config-drift-postsync
+  labels:
+    app: config-drift-postsync
+    app.kubernetes.io/part-of: knowledge-platform
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+  annotations:
+    # ArgoCD PostSync: 同期完了後にフックとして実行する。前回のフックは作成前に削除し、成功後も削除する。
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
+spec:
+  backoffLimit: 3
+  # 完了後は自動削除（フックの delete-policy と二重の後始末）。
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: config-drift-postsync
+      annotations:
+        # Istio sidecar と Job の相性（サイドカーが残り Job が完了しない）を避けるため注入しない。
+        # 呼び出しはメッシュ内部の BFF への単純な HTTP POST で、mTLS 必須なら native sidecar 運用へ切替する
+        # （運用注記: docs/operations/operations.md「適用直後のドリフト即時検出」を参照）。
+        sidecar.istio.io/inject: "false"
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: drift-trigger
+          image: {{ .Values.drift.postSyncHook.image | quote }}
+          # BFF の起動待ちを見込んでリトライする。応答は 202（本文なし）。失敗しても同期は成功扱い
+          # （--fail は付けるが backoffLimit 消化後は PostSync が失敗扱いになるため運用で無効化可）。
+          command:
+            - curl
+            - -fsS
+            - -X
+            - POST
+            - --max-time
+            - "30"
+            - --retry
+            - "10"
+            - --retry-delay
+            - "6"
+            - --retry-connrefused
+            - http://bff-service:8080/internal/config/drift-run
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 100m, memory: 64Mi }
+{{- end }}

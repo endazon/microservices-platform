@@ -126,4 +126,17 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         drift!.HasDrift.Should().BeTrue();
         drift.Findings.Should().Contain(f => f.Kind == DriftDetector.UndeclaredSubscription);
     }
+
+    // FR-15 (#145): 適用直後の即時ドリフト検出トリガ。メッシュ内部限定・無認証で 202 を返し、
+    // 構成情報は本文に含めない（存在秘匿）。ArgoCD PostSync フックが叩く経路。
+    [Fact]
+    public async Task PostDriftRun_ReturnsAcceptedWithoutBody()
+    {
+        factory.StubEffective = SampleEffective();
+
+        var resp = await factory.CreateClient().PostAsync("/internal/config/drift-run", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await resp.Content.ReadAsStringAsync()).Should().BeEmpty();
+    }
 }

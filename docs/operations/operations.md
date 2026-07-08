@@ -54,6 +54,26 @@ plan_refs: []
     後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
     [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
 
+### 適用直後のドリフト即時検出（FR-15 / IADR-0029 フォローアップ 4 / #145）
+
+宣言（`pipeline.json`）と実効構成のドリフトは、BFF が **定期（既定 5 分・`Drift:IntervalSeconds`）** に加え
+**適用直後にも即時検出**する。不一致は構造化ログ `ConfigDrift=true`（`IDriftAlertSink`）で運用アラート経路へ流れる。
+
+- **起動時即時検出**: `DriftDetectionHostedService` は起動直後に 1 回検出する。宣言（`pipeline.json`）変更時は
+  BFF がロールアウト（#146 の checksum アノテーション）するため、宣言の適用直後はこの起動時検出で捕捉される。
+- **ArgoCD PostSync フック**: `templates/drift-postsync-job.yaml` が各同期の完了後に BFF の
+  `POST /internal/config/drift-run`（メッシュ内部限定・応答 202）を叩き、任意の同期後にも即時検出を起動する。
+  無効化は `--set drift.postSyncHook.enabled=false`。
+  - **Istio サイドカー × Job の注記**: STRICT mTLS 下で Job から `bff-service` を呼ぶ場合、サイドカーが
+    残って Job が完了しない既知事象がある。本 Job は `sidecar.istio.io/inject: "false"` で注入しない
+    （NetworkPolicy は同 Namespace 内通信を許可）。mesh 内で mTLS を必須にする運用では、native sidecar
+    （K8s 1.29+ / Istio ambient 等）へ切り替えるか、`/internal/config/drift-run` を許可する `PeerAuthentication`
+    の PERMISSIVE ポートを設ける。
+  - **手動起動**: `kubectl run drift-trigger --rm -it --image=curlimages/curl --restart=Never -- \
+    curl -fsS -X POST http://bff-service:8080/internal/config/drift-run`
+- **手動確認（権限者）**: 運用者・管理者は `GET /bff/admin/config/drift` でドリフト結果を取得できる
+  （`ConfigViewer` ポリシー。非権限者は 404 で秘匿）。
+
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で

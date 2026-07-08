@@ -5,10 +5,11 @@ using Microsoft.Extensions.Options;
 namespace KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 
 // FR-15, ADR-0018: 宣言と実効構成のドリフトを定期（既定 5 分）に検出し、不一致を運用アラートへ警告する。
-// 適用直後の検出はデプロイ側（ArgoCD 適用直後の呼び出し／構成情報 API の /drift 取得）で補完する。
+// 起動直後に 1 回即時検出する（do-while の初回）。#146 で BFF は宣言（pipeline.json）変更時にロールアウト
+// するため、宣言の適用直後もこの起動時検出で捕捉される。任意のタイミングの適用直後検出は ArgoCD PostSync
+// フックからの POST /internal/config/drift-run（IDriftRunner 共有）で補完する（#145）。
 public sealed class DriftDetectionHostedService(
-    IConfigInspectionService inspection,
-    IDriftAlertSink alertSink,
+    IDriftRunner runner,
     IOptions<DriftDetectionOptions> options,
     ILogger<DriftDetectionHostedService> logger) : BackgroundService
 {
@@ -28,25 +29,17 @@ public sealed class DriftDetectionHostedService(
         using var timer = new PeriodicTimer(interval);
         do
         {
-            await RunOnceAsync(stoppingToken);
+            await SafeRunOnceAsync(stoppingToken);
         }
         while (await SafeWaitAsync(timer, stoppingToken));
     }
 
-    // 1 回のドリフト検出を実行し、不一致があれば警告する。適用直後の即時検出にも再利用できる。
-    public async Task RunOnceAsync(CancellationToken ct)
+    // 定期ループでは 1 回の検出失敗でループを止めないよう例外を握る（即時検出の即応性を保つ）。
+    private async Task SafeRunOnceAsync(CancellationToken ct)
     {
         try
         {
-            var report = await inspection.GetDriftAsync(ct);
-            if (report.HasDrift)
-            {
-                await alertSink.AlertAsync(report, ct);
-            }
-            else
-            {
-                logger.LogDebug("Drift detection: no drift ({CheckedAt})", report.CheckedAt);
-            }
+            await runner.RunOnceAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
