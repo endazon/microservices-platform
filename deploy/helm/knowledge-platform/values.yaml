@@ -199,6 +199,22 @@ services:
         value: "http://document-service:8080"
       - name: Introspection__Services__wiki-service
         value: "http://wiki-service:8080"
+      # FR-15, IADR-0029 フォローアップ 2 (#143): 全 HTTP サービスへ introspection を横展開したため
+      # 収集先へ追加。値は k8s Service の DNS 名（llm-gateway の Service 名は llmgateway-service）。
+      - name: Introspection__Services__retrieval-service
+        value: "http://retrieval-service:8080"
+      - name: Introspection__Services__aianalysis-service
+        value: "http://aianalysis-service:8080"
+      - name: Introspection__Services__authorization-service
+        value: "http://authorization-service:8080"
+      - name: Introspection__Services__dashboard-service
+        value: "http://dashboard-service:8080"
+      - name: Introspection__Services__datasource-service
+        value: "http://datasource-service:8080"
+      - name: Introspection__Services__feedback-service
+        value: "http://feedback-service:8080"
+      - name: Introspection__Services__llm-gateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

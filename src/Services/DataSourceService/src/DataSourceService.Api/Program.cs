@@ -1,6 +1,8 @@
 using DataSourceService.Api.Foundation.Endpoints;
 using DataSourceService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -41,6 +43,10 @@ builder.Services.AddMassTransit(x =>
     });
 });
 
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストせず、
+// データソースコネクタは実行時データ（DB）のため静的申告の対象外。到達可能性とトポロジを与えるため存在申告する。
+builder.Services.AddKnowledgePlatformIntrospection("datasource-service", new PipelineOptions());
+
 var app = builder.Build();
 
 // FR-01: 起動時にスキーマを最新 Migration へ更新
@@ -53,6 +59,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDataSourceEndpoints();

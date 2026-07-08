@@ -1,6 +1,8 @@
 using AuthorizationService.Api.Foundation.Endpoints;
 using AuthorizationService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
@@ -25,6 +27,10 @@ var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=authz_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<AuthorizationDbContext>(opt => opt.UseNpgsql(connStr));
 
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段・合成可能ポートは
+// ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
+builder.Services.AddKnowledgePlatformIntrospection("authorization-service", new PipelineOptions());
+
 var app = builder.Build();
 
 // FR-05: 起動時にスキーマを最新 Migration へ更新
@@ -37,6 +43,7 @@ using (var scope = app.Services.CreateScope())
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAuthzEndpoints();

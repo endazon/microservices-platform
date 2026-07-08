@@ -440,6 +440,15 @@ services:
       # 上書きが無いと実効構成の集約が常に到達失敗し、ドリフト検出が Unverifiable に縮退する。
       Introspection__Services__document-service: http://document-service:8080
       Introspection__Services__wiki-service: http://wiki-service:8080
+      # FR-15, IADR-0029 フォローアップ 2 (#143): 全 HTTP サービスへ introspection を横展開したため
+      # 収集先へ追加。実効構成が全サービスの段・ポート選択を網羅する。
+      Introspection__Services__retrieval-service: http://retrieval-service:8080
+      Introspection__Services__aianalysis-service: http://aianalysis-service:8080
+      Introspection__Services__authorization-service: http://authorization-service:8080
+      Introspection__Services__dashboard-service: http://dashboard-service:8080
+      Introspection__Services__datasource-service: http://datasource-service:8080
+      Introspection__Services__feedback-service: http://feedback-service:8080
+      Introspection__Services__llm-gateway: http://llm-gateway:8080
     depends_on:
       redis:
         condition: service_healthy
