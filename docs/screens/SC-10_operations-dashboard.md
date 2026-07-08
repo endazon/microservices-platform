@@ -108,6 +108,7 @@ flowchart LR
 - ルート `/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0035]]）。
 - ナビの「運用」項目は `platform-admin` にのみ表示。
 - 「構成ビューア →」導線は ConfigViewer 相当（`platform-admin` または `platform-operator`）にのみ表示。
+  - **補足（到達性）**: 現状 `/ops` は `platform-admin` 限定のため、`platform-operator` は本画面に到達しない（`RequireRole` が門前で `NotFound`）。それでも導線判定を `useHasAnyRole(Admin, Operator)` としているのは、SC-11（ConfigViewer）の認可条件（管理者・運用者）を単一の述語で共有し、将来 SC-10 を運用者にも開放した場合に導線を自動で有効化するための**意図的な先取り**である。現時点で Operator 分岐は実運用上デッドだが、SC-11 の認可と整合させるための冗長性として許容する（誤って運用者向けサマリを露出するものではない。実効境界はサーバ側 `AdminOnly`）。
 - サーバが実効境界: `/bff/dashboard/summary` は `AdminOnly`。UI をすり抜けても 403。UI は 403/404 を中立メッセージで扱う（利用可否のみ、詳細を露出しない）。
 
 ## エラー・状態
