@@ -505,6 +505,10 @@ services:
       BFF_BASE_URL: /bff
       OIDC_AUTHORITY: http://localhost:8080/realms/knowledge-platform
       OIDC_CLIENT_ID: spa-web
+      # Issue #136 / SC-10: 運用ダッシュボードの外部ツール導線。dev は既に host 公開済みの Grafana(3000) を
+      # 注入し、compose 上で「詳細ツール」導線を目視確認できるようにする。Jaeger/Kiali は dev 未配備のため
+      # 未設定（空文字）＝画面に導線を出さない（config.js.template / 40-render-config.sh の既定に追随）。
+      GRAFANA_URL: http://localhost:3000
     depends_on:
       bff:
         condition: service_started

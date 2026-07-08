@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiFetch } from '@foundation/api/apiClient';
+import { ApiError } from '@foundation/api/ApiError';
 
 // SC-08, UC-02, FR-07: AI分析ダッシュボード。データ範囲を指定して分析・比較・抽出を依頼し、
 // 回答と番号付き出典を表示する。範囲は ABAC と narrowing-only で交差し権限を広げない（IADR-0005）。
@@ -44,6 +45,10 @@ interface FilterRow {
 type Status = 'idle' | 'loading' | 'ok' | 'empty' | 'error';
 
 const DEFAULT_TOPK = 8;
+// バックエンド AnalysisPromptBuilder.MaxInstructionLength と揃える。超過は 400 になるためクライアントで予防する。
+const MAX_INSTRUCTION_LENGTH = 2000;
+const MIN_TOPK = 1;
+const MAX_TOPK = 50;
 const TASK_LABELS: Record<TaskType, string> = {
   Analyze: '分析',
   Compare: '比較',
@@ -74,7 +79,12 @@ export function AnalysisDashboardPage() {
   const [status, setStatus] = useState<Status>('idle');
   const [result, setResult] = useState<AiAnswer | null>(null);
 
-  const canSubmit = instruction.trim().length > 0 && status !== 'loading';
+  const trimmedInstruction = instruction.trim();
+  // instruction は 1文字以上かつ上限内（400 をクライアントで予防）。
+  const canSubmit =
+    trimmedInstruction.length > 0 &&
+    trimmedInstruction.length <= MAX_INSTRUCTION_LENGTH &&
+    status !== 'loading';
 
   function buildRequest(): AnalysisTaskRequest {
     const range: AnalysisRange = {};
@@ -82,12 +92,16 @@ export function AnalysisDashboardPage() {
     if (q) range.query = q;
     const filters = rowsToFilters(rows);
     if (filters) range.attributeFilters = filters;
-    const clampedTopK = Math.min(Math.max(Math.trunc(topK) || DEFAULT_TOPK, 1), 50);
+    // 明示的な 0・負値は下限 1 へクランプ（既定 8 へ静かに戻さない）。非数値のみ既定へフォールバック。
+    const truncated = Math.trunc(topK);
+    const clampedTopK = Number.isNaN(truncated)
+      ? DEFAULT_TOPK
+      : Math.min(Math.max(truncated, MIN_TOPK), MAX_TOPK);
     // range に他の指定があるか、TopK を既定から変えた場合のみ TopK を含める。
     if (range.query !== undefined || range.attributeFilters !== undefined || clampedTopK !== DEFAULT_TOPK) {
       range.topK = clampedTopK;
     }
-    const req: AnalysisTaskRequest = { instruction: instruction.trim(), taskType };
+    const req: AnalysisTaskRequest = { instruction: trimmedInstruction, taskType };
     if (Object.keys(range).length > 0) req.range = range;
     return req;
   }
@@ -110,9 +124,14 @@ export function AnalysisDashboardPage() {
         setResult(answer);
         setStatus('ok');
       }
-    } catch {
-      // 権限・存在・障害は中立に扱う（詳細を露出しない。IADR-0009）。400/403/404/5xx/network を区別しない。
-      setStatus('error');
+    } catch (e) {
+      // 403/404 は「拒否/不在」を区別せず空縮退と同じ中立表示にする（存在秘匿。IADR-0009・UC-02 例外フロー）。
+      // 400/5xx/network は取得失敗として alert 表示にする。
+      if (e instanceof ApiError && (e.kind === 'forbidden' || e.kind === 'notFound')) {
+        setStatus('empty');
+      } else {
+        setStatus('error');
+      }
     }
   }
 
@@ -120,13 +139,16 @@ export function AnalysisDashboardPage() {
     <section>
       <h1>AI分析ダッシュボード</h1>
 
-      <form onSubmit={onSubmit}>
+      {/* 検証は JS 側（canSubmit・buildRequest のクランプ）を正とする。HTML5 制約（min/max）で
+          送信自体をブロックせず、範囲外値はクランプして扱う（TopK=0→1 等）。 */}
+      <form onSubmit={onSubmit} noValidate>
         <p>
           <label htmlFor="instruction">分析内容（指示）</label>
           <br />
           <textarea
             id="instruction"
             rows={3}
+            maxLength={MAX_INSTRUCTION_LENGTH}
             style={{ width: '100%', maxWidth: 640 }}
             value={instruction}
             onChange={(e) => setInstruction(e.target.value)}

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
@@ -116,6 +117,13 @@ export function ConfigViewerPage() {
   );
 }
 
+// ISO 8601（DateTimeOffset 由来）をロケール表記に整形する。解釈できない値はそのまま表示する。
+function formatAppliedAt(value: string | null | undefined): string {
+  if (!value) return '—';
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? value : new Date(t).toLocaleString();
+}
+
 function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
   const { gitCommit, appliedAt, appliedBy } = version;
   const short = gitCommit ? gitCommit.slice(0, 7) : '—';
@@ -125,7 +133,7 @@ function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
       style={{ border: '1px solid #ddd', borderRadius: 8, padding: '0.5rem 0.75rem', margin: '0.75rem 0' }}
     >
       <strong>構成バージョン:</strong> <code>{short}</code>{' '}
-      <span>／ 適用日時: {appliedAt ?? '—'}</span> <span>／ 適用者: {appliedBy ?? '—'}</span>
+      <span>／ 適用日時: {formatAppliedAt(appliedAt)}</span> <span>／ 適用者: {appliedBy ?? '—'}</span>
     </div>
   );
 }
@@ -189,7 +197,7 @@ function DriftView({ status, report }: { status: DriftStatus; report: DriftRepor
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <details open style={{ margin: '0.75rem 0' }}>
       <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{title}</summary>

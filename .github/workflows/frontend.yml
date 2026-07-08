@@ -1,5 +1,7 @@
-# Issue #126: フロントエンド SPA の CI（typecheck / lint / unit test / build / e2e スモーク）。
+# Issue #126: フロントエンド SPA の CI（typecheck / lint / build / e2e スモーク）。
 # frontend/ 配下の変更で起動する。バックエンド（.NET）CI とは独立。
+# 単体テスト＝品質ゲートは frontend-tests.yml（npm run test:coverage）が担うため、
+# 本ワークフローではテストを実行しない（同一スイートの二重実行を避ける。IADR-0034）。
 name: Frontend CI
 
 on:
@@ -29,8 +31,7 @@ jobs:
         run: npm run typecheck
       - name: Lint
         run: npm run lint
-      - name: Unit tests
-        run: npm run test
+      # 単体テストは frontend-tests.yml（npm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
         run: npm run build
 
