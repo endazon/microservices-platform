@@ -54,7 +54,7 @@ spec:
             - |
               set -u
               curl -fsS -X POST \
-                --connect-timeout 5 --max-time 120 \
+                --connect-timeout 5 --max-time 180 \
                 --retry 10 --retry-delay 6 --retry-connrefused --retry-all-errors \
                 http://bff-service:8080/internal/config/drift-run
               code=$?

@@ -79,6 +79,30 @@ plan_refs: []
 - **手動確認（権限者）**: 運用者・管理者は `GET /bff/admin/config/drift` でドリフト結果を取得できる
   （`ConfigViewer` ポリシー。非権限者は 404 で秘匿）。
 
+### 構成バージョンの注入（FR-15 / IADR-0029 フォローアップ 3 / #144）
+
+BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定義の**構成バージョン**
+（`Version.GitCommit` / `AppliedAt` / `AppliedBy`）を返す。値は環境変数
+`Config__GitCommit` / `Config__AppliedAt` / `Config__AppliedBy`（`ConfigVersionOptions`）から取得する。
+
+- **k8s（stg/prod）**: Helm values `config.gitCommit` / `config.appliedAt` / `config.appliedBy` を
+  BFF Deployment へ注入する（`bff.configVersion: true`）。既定は `appliedBy: argocd`、gitCommit/appliedAt は空。
+  **実値の供給**は GitOps（ADR-0007）側で行う:
+  - ArgoCD Application（`deploy/argocd/application.yaml`）の `helm.parameters` が `config.appliedBy=argocd` を固定。
+  - **適用リビジョン（コミット ID）と適用日時**は、ArgoCD ネイティブ Helm がビルド変数をパラメータへ
+    自動展開しないため、CD が同期時に上書きする:
+    `argocd app set knowledge-platform --helm-set config.gitCommit=$(git rev-parse HEAD) --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+    （または release automation が `values-<env>.yaml` の `config.*` を更新して Git にコミットする）。
+  - 手動確認: `helm template deploy/helm/knowledge-platform --set config.gitCommit=deadbeef` で
+    BFF env に `Config__GitCommit=deadbeef` が反映される。
+- **dev（compose）**: compose 起動時に**環境変数で実 Git コミット ID を渡す**。BFF は
+  `Config__GitCommit=${GIT_COMMIT:-dev-local}` / `Config__AppliedAt=${GIT_COMMIT_DATE:-}` /
+  `Config__AppliedBy=${GIT_COMMIT_BY:-compose}` を参照する。
+  - **ヘルパ**: `scripts/compose-up.sh up -d` が `GIT_COMMIT`（`git rev-parse --short HEAD`）・
+    `GIT_COMMIT_DATE`・`GIT_COMMIT_BY` を自動注入して起動する。これで dev の構成ビューアでも実コミット ID が返る。
+  - 手動指定も可: `GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d`。
+  - 環境変数未設定時は `dev-local`（実適用リビジョンではないダミー）へフォールバックする。
+
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
