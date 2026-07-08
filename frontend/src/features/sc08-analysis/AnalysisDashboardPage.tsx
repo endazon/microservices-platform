@@ -139,7 +139,9 @@ export function AnalysisDashboardPage() {
     <section>
       <h1>AI分析ダッシュボード</h1>
 
-      <form onSubmit={onSubmit}>
+      {/* 検証は JS 側（canSubmit・buildRequest のクランプ）を正とする。HTML5 制約（min/max）で
+          送信自体をブロックせず、範囲外値はクランプして扱う（TopK=0→1 等）。 */}
+      <form onSubmit={onSubmit} noValidate>
         <p>
           <label htmlFor="instruction">分析内容（指示）</label>
           <br />
