@@ -43,6 +43,9 @@ export function OperationsDashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
 
   // SC-11 導線は ConfigViewer 相当（管理者・運用者）にのみ出す（存在秘匿）。
+  // 現状 /ops は AdminOnly のため Operator はここへ到達しないが、SC-11 の認可（管理者・運用者）と
+  // 述語を共有する意図的な先取り。将来 SC-10 を運用者へ開放した際に導線を自動有効化するための冗長性
+  // （デッドではあるが誤露出はしない。実効境界はサーバ側 AdminOnly）。詳細は SC-10 画面仕様書 §権限・表示条件。
   const canViewConfig = useHasAnyRole(PlatformRole.Admin, PlatformRole.Operator);
   const { grafanaUrl, jaegerUrl, kialiUrl } = appConfig().opsLinks;
   const tools = [
