@@ -47,16 +47,18 @@ FR-15 は構成バージョン（Git コミット ID・適用日時・適用者�
   2. `templates/deployment.yaml` に `configVersion` 条件で `Config__*` を注入。
   3. `deploy/argocd/application.yaml` に `helm.parameters`（`config.appliedBy=argocd`）と、gitCommit/appliedAt を
      適用リビジョンから供給する運用手順の参照を追加。
-  4. `deploy/docker-compose.yml` の BFF に固定プレースホルダを設定。
+  4. `deploy/docker-compose.yml` の BFF に**環境変数で実 Git コミット ID を注入**（`Config__GitCommit=${GIT_COMMIT:-dev-local}`
+     ほか）。ヘルパ `scripts/compose-up.sh` が `GIT_COMMIT`/`GIT_COMMIT_DATE`/`GIT_COMMIT_BY` を自動注入。
   5. `docs/operations/operations.md` に注入方法（Helm/ArgoCD/compose）を記録。
 - 非対象: コード変更（消費は実装済み）・即時検出（#145）。
 
 ## 受け入れ基準
 
-- [ ] Helm デプロイで構成バージョンが実値（`--set config.*` / ArgoCD parameters）で返る配線がある。
-- [ ] dev（compose）での挙動が固定プレースホルダとして決定・文書化されている。
-- [ ] 注入方法が運用仕様書（operations.md）に記録されている。
-- [ ] `helm template` で BFF に `Config__*` が注入され、既存 BFF テストが緑。
+- [x] Helm デプロイで構成バージョンが実値（`--set config.*` / ArgoCD parameters）で返る配線がある。
+- [x] dev（compose）での挙動が決定・文書化されている（起動時に環境変数で実 Git コミット ID を注入。未設定は
+      `dev-local` フォールバック）。
+- [x] 注入方法が運用仕様書（operations.md）に記録されている。
+- [x] `helm template` で BFF に `Config__*` が注入され、既存 BFF テストが緑。
 
 ## テスト
 
