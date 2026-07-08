@@ -87,12 +87,16 @@ services:
       # 固定しないと、ブラウザ経路（localhost）で発行されたトークンの iss と、コンテナ内経路
       # （keycloak:8080）の userinfo/JWT 検証が食い違い、Wiki.js の OIDC ログインが失敗する。
       KC_HOSTNAME_URL: http://localhost:8080
+      # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照）。
+      KC_HEALTH_ENABLED: "true"
     volumes:
       - ./keycloak/knowledge-platform-realm.json:/opt/keycloak/data/import/knowledge-platform-realm.json:ro
     ports:
       - "8080:8080"
+    # Issue #118 監査: Keycloak 24 イメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
+    # （実測）。bash の /dev/tcp で /health/ready を検査する。
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -104,8 +108,10 @@ services:
       - "6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
+    # Issue #118 監査: qdrant イメージは curl 非搭載（/bin/sh は dash）で curl 検査は常に
+    # unhealthy になる（実測）。bash の /dev/tcp で /healthz を検査する。
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:6333/healthz || exit 1"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /healthz HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -428,6 +434,11 @@ services:
       Services__AiAnalysisService: http://aianalysis-service:8080
       Services__FeedbackService: http://feedback-service:8080
       Services__DashboardService: http://dashboard-service:8080
+      # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
+      # ローカル実行用ポート（5001/5006）のため、コンテナ実態（8080）をここで上書きする。
+      # 上書きが無いと実効構成の集約が常に到達失敗し、ドリフト検出が Unverifiable に縮退する。
+      Introspection__Services__document-service: http://document-service:8080
+      Introspection__Services__wiki-service: http://wiki-service:8080
     depends_on:
       redis:
         condition: service_healthy
