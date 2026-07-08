@@ -55,3 +55,9 @@
 | IADR-0029 | 構成情報 API は BFF 配下の管理 API へ同居させ、自己申告集約＋宣言突合でドリフトを検出する（FR-15, ADR-0018） | Accepted |
 | IADR-0030 | 運用者ロールは platform-operator を新設し ConfigViewer ポリシーで判定する（FR-15, SC-11） | Accepted |
 | IADR-0031 | 送信者名クレームは preferred_username を Identity.Name に解決する（FR-08, FR-15） | Accepted |
+| IADR-0032 | Wiki.js の dev ホスト公開は残し、本番系(Helm)の非公開を回帰ガードで保証する（IADR-0020 追補） | Accepted |
+| IADR-0033 | フロントエンド SPA 基盤（React+TS+Vite、foundation/features 分離、Keycloak OIDC、BFF 境界） | Accepted |
+| IADR-0034 | フロントエンド カバレッジゲート（単体テストのカバレッジ計測＋ラチェット型しきい値 CI） | Accepted |
+| IADR-0035 | フロントエンドのロールベース・ナビゲーションと存在秘匿（SC-09/10/11、realm ロール判定） | Accepted |
+| IADR-0036 | SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入、CSS チェーン＋表） | Accepted |
+| IADR-0037 | LLM 回答の SSE ストリーミング（egress ゲート保持、SC-01・FR-04/FR-11） | Accepted |
