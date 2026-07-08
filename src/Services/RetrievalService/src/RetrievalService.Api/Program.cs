@@ -1,4 +1,6 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
 using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Endpoints;
@@ -34,10 +36,18 @@ builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c 
 // FR-03, UC-01: ハイブリッド検索（ベクトル＋全文 RRF 統合）
 builder.Services.AddScoped<IHybridSearchService, HybridSearchService>();
 
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
+// 選択中の合成可能ポート（ベクトルDB・埋め込み）を申告する。メッシュ内部限定で公開する。
+builder.Services.AddKnowledgePlatformIntrospection("retrieval-service", new PipelineOptions(),
+    i => i
+        .AddPort("vector-store", nameof(QdrantVectorStore), $"qdrant:{qdrantPort}")
+        .AddPort("embedding", nameof(LlmGatewayEmbeddingService), "llm-gateway"));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapSearchEndpoints();

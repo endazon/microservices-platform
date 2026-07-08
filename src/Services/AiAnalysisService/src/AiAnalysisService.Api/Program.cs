@@ -1,6 +1,8 @@
 using AiAnalysisService.Api.Foundation.Endpoints;
 using AiAnalysisService.Api.Foundation.Services;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.aianalysis-service";
@@ -35,10 +37,15 @@ builder.Services.AddHttpClient("LlmGateway", c =>
 // FR-04: RAG オーケストレーター
 builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。RAG オーケストレータは
+// 他サービスを HTTP で束ねるため合成可能ポートを選択しない。到達可能性とトポロジを与えるため存在申告する。
+builder.Services.AddKnowledgePlatformIntrospection("aianalysis-service", new PipelineOptions());
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAnalysisEndpoints();

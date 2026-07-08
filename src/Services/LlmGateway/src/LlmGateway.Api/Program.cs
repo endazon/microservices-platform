@@ -1,5 +1,7 @@
 using Anthropic.SDK;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Api.Foundation.Endpoints;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Composable.Adapters;
@@ -49,10 +51,18 @@ builder.Services.AddSingleton<IEmbeddingRouter, EmbeddingRouter>();
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, VoyageEmbeddingProvider>("voyage");
 builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvider>("selfhosted-embedding");
 
+// FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
+// LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
+builder.Services.AddKnowledgePlatformIntrospection("llm-gateway", new PipelineOptions(),
+    i => i
+        .AddPort("llm", nameof(LlmRouter), "claude/selfhosted/copilot")
+        .AddPort("embedding", nameof(EmbeddingRouter), "voyage/selfhosted"));
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
 app.MapKnowledgePlatformHealthChecks();
+app.MapKnowledgePlatformIntrospection();
 app.MapOpenApi();
 
 app.MapCompletionEndpoints();
