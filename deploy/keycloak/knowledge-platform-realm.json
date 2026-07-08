@@ -223,6 +223,16 @@
       "attributes": { "clearance": ["internal"], "department": ["engineering"] },
       "groups": ["/clearance/internal", "/department/engineering"],
       "credentials": [{ "type": "password", "value": "poc-password", "temporary": false }]
+    },
+    {
+      "username": "poc-operator",
+      "email": "poc-operator@example.com",
+      "firstName": "PoC",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["platform-operator"],
+      "credentials": [{ "type": "password", "value": "poc-operator-password", "temporary": false }]
     }
   ]
 }
