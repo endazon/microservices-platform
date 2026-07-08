@@ -4,6 +4,11 @@
 
 ### 新機能
 
+- **IADR-0033**: フロントエンド SPA 基盤スケルトンと CI (#126) (#155) (5c4a7d8)
+- **FR-15**: 適用直後のドリフト即時検出（ArgoCD PostSync） (#145) (#153) (31a7869)
+- **FR-15**: GitOps 構成バージョン注入 (#144) (#151) (0d7121e)
+- **FR-15**: 全 HTTP サービスへ introspection を横展開 (#150) (3df91ac)
+- **FR-15**: ワーカーへ自己申告エンドポイント追加（Unverifiable 解消） (#142) (#149) (105113d)
 - **FR-15,SC-11,IADR-0030**: SC-11 未決事項対応 — 画面仕様書の取り込みと運用者ロール platform-operator の新設（ConfigViewer ポリシー統一） (#113) (#117) (0258327)
 - **FR-15,ADR-0018**: config info API, introspection, drift detection (#116) (7c02110)
 - **FR-14,ADR-0018**: 宣言的パイプライン構成 — 構成定義スキーマ・CI スキーマ検証・MassTransit トポロジ生成 (#111) (#114) (9209115)
@@ -40,6 +45,8 @@
 
 ### 不具合修正
 
+- **IADR-0020**: Wiki.js は dev公開を残し本番系(Helm)非公開を回帰ガードで保証 (#124) (#154) (da1e6a7)
+- **FR-15**: compose/Helm の BFF へ宣言(pipeline.json)を供給しドリフト突合を是正 (#146) (#152) (1ee5a07)
 - **FR-15,FR-08,NFR**: プラットフォーム監査 #118 の齟齬是正（構成集約の実効化・送信者特定・仕様書補完） (#119) (1bc9ecb)
 - サブプロジェクトのコミットIDを更新 (dc7e62a)
 - **IADR-0014**: Qdrant 属性ペイロードキーの検証・修正（実装・検証スクリプト・docs。元コミット件名 'Claude/issue 71 20260705 1545 (#95)' は規約外） (3d8852f)
@@ -60,6 +67,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#120) (8f3865c)
 - **NFR**: CHANGELOG を自動更新 (#115) (e0e6e62)
 - **NFR**: CHANGELOG を自動更新 (#107) (0dcbc5b)
 - **NFR**: CHANGELOG を自動更新 (#101) (a0adfb1)
@@ -91,10 +99,12 @@
 
 ### CI
 
+- **NFR**: スカッシュ後件名（PRタイトル）の規約チェックを追加 (#147) (73efe8f)
 - **NFR**: CI・補助成果物ワークフローの develop 運用整合 (#76) (eeb21fd)
 
 ### その他
 
+- 20260708_issue-125_pr-title-convention-guard.md を更新 (396b02b)
 - traceability.md を更新 (01b5ebe)
 - claude-code-review.yml を更新 (eb444f8)
 - Update claude-coding.yml (b349c36)
