@@ -1,5 +1,5 @@
 ---
-title: IADR-0036 LLM 回答の SSE ストリーミング（egress ゲート保持）
+title: IADR-0037 LLM 回答の SSE ストリーミング（egress ゲート保持）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 ---
 
-# IADR-0036: LLM 回答の SSE ストリーミング（egress ゲート保持）
+# IADR-0037: LLM 回答の SSE ストリーミング（egress ゲート保持）
 
 - 状態: Accepted
 - 日付: 2026-07-08

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { User } from 'oidc-client-ts';
 import { extractRealmRoles, hasAnyRole, PlatformRole } from './roles';
 
-// IADR-0034: access_token(JWT) の realm_access.roles を一次情報にする。復号不能はフェイルクローズ。
+// IADR-0035: access_token(JWT) の realm_access.roles を一次情報にする。復号不能はフェイルクローズ。
 
 /** テスト用の JWT を組み立てる（署名は検証しないためダミー）。payload は base64url。 */
 function makeJwt(payload: unknown): string {
@@ -15,7 +15,7 @@ function userWith(token: string | undefined): User {
   return { access_token: token } as unknown as User;
 }
 
-describe('extractRealmRoles (IADR-0034)', () => {
+describe('extractRealmRoles (IADR-0035)', () => {
   it('reads realm_access.roles from the access token', () => {
     const user = userWith(makeJwt({ realm_access: { roles: ['platform-admin', 'default-roles'] } }));
     expect(extractRealmRoles(user)).toEqual(['platform-admin', 'default-roles']);

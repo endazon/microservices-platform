@@ -5,7 +5,7 @@ import { AuthContext } from './AuthContext';
 import type { AuthState } from './AuthContext';
 import { RequireRole } from './RequireRole';
 
-// IADR-0034 / IADR-0009: 権限外は NotFound（存在秘匿）。読み込み中は中立表示。
+// IADR-0035 / IADR-0009: 権限外は NotFound（存在秘匿）。読み込み中は中立表示。
 
 function makeJwt(payload: unknown): string {
   const b64url = (obj: unknown) =>

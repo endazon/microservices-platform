@@ -18,7 +18,7 @@ plan_refs:
 related_specs:
   - "../screens/SC-01_search-chat.md"
   - "../specs/20260708_issue-127_sc01-search-chat.md"
-  - "../adr/IADR-0036_llm-sse-streaming.md"
+  - "../adr/IADR-0037_llm-sse-streaming.md"
 ---
 
 # テスト仕様書: SC-01 検索／チャット質問画面
@@ -55,7 +55,7 @@ related_specs:
 | T-05 | BFF | スコープ不許可 | 空（deny-by-default・存在秘匿） | FR-05 | 自動 |
 | T-06 | BFF | クライアントが Scope 偽装 | サーバ解決を優先し空（権限昇格防止） | FR-05 | 自動 |
 | T-07 | BFF | ask/stream＋Authorization | 上流 SSE 中継・Authorization 伝播 | FR-04 | 自動 |
-| T-08 | front | SSE parser | event/data 解析・複数 data 連結・非データは null | IADR-0036 | 自動 |
+| T-08 | front | SSE parser | event/data 解析・複数 data 連結・非データは null | IADR-0037 | 自動 |
 | T-09 | front | citations→token*→done | 本文連結表示・出典リンク・検索結果表示 | UC-01 | 自動 |
 | T-10 | front | done 後に 👍 | `/bff/feedback` に answerId＋rating='up' 送信・送信済表示 | FR-08 | 自動 |
 | T-11 | front | error イベント | `role="alert"` 回答生成失敗 | 異常系 | 自動 |

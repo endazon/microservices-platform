@@ -65,7 +65,7 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
   return (text ? (JSON.parse(text) as T) : (undefined as T));
 }
 
-// IADR-0036, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
+// IADR-0037, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
 export interface SseEvent {
   event: string;
   data: string;

@@ -5,7 +5,7 @@ vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ bffBaseUrl: 'http://test' }),
 }));
 
-// IADR-0036, SC-01: SSE イベントブロックの解析（event 名・data 連結・非データ行の無視）。
+// IADR-0037, SC-01: SSE イベントブロックの解析（event 名・data 連結・非データ行の無視）。
 describe('parseSseBlock', () => {
   it('parses event name and data', () => {
     expect(parseSseBlock('event: token\ndata: {"text":"hi"}')).toEqual({
