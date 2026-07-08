@@ -40,7 +40,9 @@
 
 ### 不具合修正
 
+- **FR-15,FR-08,NFR**: プラットフォーム監査 #118 の齟齬是正（構成集約の実効化・送信者特定・仕様書補完） (#119) (1bc9ecb)
 - サブプロジェクトのコミットIDを更新 (dc7e62a)
+- **IADR-0014**: Qdrant 属性ペイロードキーの検証・修正（実装・検証スクリプト・docs。元コミット件名 'Claude/issue 71 20260705 1545 (#95)' は規約外） (3d8852f)
 - サブプロジェクトのコミットIDを更新 (fa7320e)
 - **NFR**: Microsoft.OpenApi のバージョンを2.7.5に引き上げ、脆弱性NU1903を解消 (200eaf3)
 - **NFR**: 推移依存の脆弱性スキャンに関するADRをIADR-0018に更新 (784c0be)
@@ -58,6 +60,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#115) (e0e6e62)
 - **NFR**: CHANGELOG を自動更新 (#107) (0dcbc5b)
 - **NFR**: CHANGELOG を自動更新 (#101) (a0adfb1)
 - **IADR-0018**: 本文の採番を IADR-0017 から IADR-0018 へ統一 (#103) (b921fd8)
@@ -92,7 +95,6 @@
 
 ### その他
 
-- Claude/issue 71 20260705 1545 (#95) (3d8852f)
 - traceability.md を更新 (01b5ebe)
 - claude-code-review.yml を更新 (eb444f8)
 - Update claude-coding.yml (b349c36)
