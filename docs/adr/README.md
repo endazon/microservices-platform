@@ -54,3 +54,4 @@
 | IADR-0028 | 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する（FR-14, ADR-0018） | Accepted |
 | IADR-0029 | 構成情報 API は BFF 配下の管理 API へ同居させ、自己申告集約＋宣言突合でドリフトを検出する（FR-15, ADR-0018） | Accepted |
 | IADR-0030 | 運用者ロールは platform-operator を新設し ConfigViewer ポリシーで判定する（FR-15, SC-11） | Accepted |
+| IADR-0031 | 送信者名クレームは preferred_username を Identity.Name に解決する（FR-08, FR-15） | Accepted |
