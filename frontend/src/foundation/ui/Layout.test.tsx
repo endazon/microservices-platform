@@ -50,4 +50,17 @@ describe('Layout navigation (role-gated)', () => {
     renderLayout(['user']);
     expect(screen.queryByRole('link', { name: '運用' })).not.toBeInTheDocument();
   });
+
+  // SC-11 #140: 構成ビューアは ConfigViewer（管理者・運用者）のみメニュー表示（存在秘匿）。
+  it('shows the 構成ビューア (SC-11) link for platform-operator', () => {
+    renderLayout(['platform-operator']);
+    expect(screen.getByRole('link', { name: '構成ビューア' })).toBeInTheDocument();
+    // 運用者は AdminOnly の運用ダッシュボードは見えない。
+    expect(screen.queryByRole('link', { name: '運用' })).not.toBeInTheDocument();
+  });
+
+  it('hides the 構成ビューア link for non-privileged users (existence hidden)', () => {
+    renderLayout(['user']);
+    expect(screen.queryByRole('link', { name: '構成ビューア' })).not.toBeInTheDocument();
+  });
 });
