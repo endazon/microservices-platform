@@ -10,9 +10,11 @@ set -eu
 : "${GRAFANA_URL:=}"
 : "${JAEGER_URL:=}"
 : "${KIALI_URL:=}"
-export BFF_BASE_URL OIDC_AUTHORITY OIDC_CLIENT_ID GRAFANA_URL JAEGER_URL KIALI_URL
+# Issue #130 / SC-04: Wiki.js 基点 URL（未設定は空文字＝導線を出さない）。
+: "${WIKI_BASE_URL:=}"
+export BFF_BASE_URL OIDC_AUTHORITY OIDC_CLIENT_ID GRAFANA_URL JAEGER_URL KIALI_URL WIKI_BASE_URL
 
-envsubst '${BFF_BASE_URL} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${GRAFANA_URL} ${JAEGER_URL} ${KIALI_URL}' \
+envsubst '${BFF_BASE_URL} ${OIDC_AUTHORITY} ${OIDC_CLIENT_ID} ${GRAFANA_URL} ${JAEGER_URL} ${KIALI_URL} ${WIKI_BASE_URL}' \
   < /etc/knowledge-platform/config.js.template \
   > /usr/share/nginx/html/config.js
 

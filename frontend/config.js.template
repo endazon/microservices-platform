@@ -11,5 +11,7 @@ window.__APP_CONFIG__ = {
     grafanaUrl: "${GRAFANA_URL}",
     jaegerUrl: "${JAEGER_URL}",
     kialiUrl: "${KIALI_URL}"
-  }
+  },
+  // Issue #130: SC-04 Wiki.js（ABAC ゲートウェイ経由・SSO）の基点 URL（未設定＝導線非表示）。
+  wikiBaseUrl: "${WIKI_BASE_URL}"
 };

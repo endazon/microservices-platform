@@ -21,6 +21,8 @@ export interface AppConfig {
   oidc: OidcConfig;
   /** SC-10 の外部ツール導線（任意。未設定項目は非表示）。 */
   opsLinks: OpsLinks;
+  /** SC-04: Wiki.js（ABAC ゲートウェイ経由・Keycloak SSO）の基点 URL。未設定なら導線を出さない。 */
+  wikiBaseUrl?: string;
 }
 
 declare global {
@@ -48,6 +50,7 @@ function fromEnv(): AppConfig {
       jaegerUrl: orUndef(import.meta.env.VITE_JAEGER_URL),
       kialiUrl: orUndef(import.meta.env.VITE_KIALI_URL),
     },
+    wikiBaseUrl: orUndef(import.meta.env.VITE_WIKI_BASE_URL),
   };
 }
 
@@ -66,6 +69,7 @@ export function loadAppConfig(win: Window = window): AppConfig {
       jaegerUrl: orUndef(injected.opsLinks?.jaegerUrl) ?? env.opsLinks.jaegerUrl,
       kialiUrl: orUndef(injected.opsLinks?.kialiUrl) ?? env.opsLinks.kialiUrl,
     },
+    wikiBaseUrl: orUndef(injected.wikiBaseUrl) ?? env.wikiBaseUrl,
   };
 }
 

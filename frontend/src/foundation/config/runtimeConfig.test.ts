@@ -72,4 +72,17 @@ describe('loadAppConfig', () => {
       kialiUrl: undefined,
     });
   });
+
+  // Issue #130 / SC-04: Wiki.js の基点 URL は実行時 config から注入する（空文字は未設定）。
+  it('reads injected wikiBaseUrl and treats empty string as undefined', () => {
+    const set = loadAppConfig({
+      __APP_CONFIG__: { wikiBaseUrl: 'https://wiki.example' },
+    } as unknown as Window);
+    expect(set.wikiBaseUrl).toBe('https://wiki.example');
+
+    const empty = loadAppConfig({ __APP_CONFIG__: { wikiBaseUrl: '' } } as unknown as Window);
+    expect(empty.wikiBaseUrl).toBeUndefined();
+
+    expect(loadAppConfig({} as unknown as Window).wikiBaseUrl).toBeUndefined();
+  });
 });
