@@ -40,6 +40,10 @@ feature として順次追加していく過程で、テスト不足・テスト
 2. **専用ワークフロー `frontend-tests.yml` を新設**し、複合 CI `frontend.yml` とは分離する。テスト＝品質ゲート
    を独立させ、`npm run test:coverage`（`vitest run --coverage`）＋カバレッジ成果物（lcov/html/text-summary）の
    アップロードを担う。`paths: ["frontend/**", ...]` で `frontend/` 変更時のみ起動し、バックエンド CI と独立。
+   単体テストの実行は本ワークフローへ一本化し、**`frontend.yml` の重複ステップ（`npm run test`）は削除**する
+   （同一トリガー・同一スイートの二重実行を避ける。AI レビュー指摘への対応）。`frontend.yml` は typecheck /
+   lint / build / e2e を担う。`test:coverage` は `test` の上位互換（同じテストをカバレッジ付きで実行）のため、
+   一本化してもテストの網羅性は変わらない。
 3. **しきい値は「回帰防止のラチェット」**とする。SPA 基盤時点の実測値（Statements/Lines 約 28%・Functions 約 44%・
    Branches 約 65%）のわずかに下を床（lines/statements 25・functions 40・branches 60）に置き、床を割る変更を CI で
    止める。未テストの UI コンポーネントが多く現状の全体値は低いが、**画面テストを増やすたびに床を引き上げる**運用と
