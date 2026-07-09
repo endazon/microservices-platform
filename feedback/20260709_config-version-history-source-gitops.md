@@ -55,5 +55,6 @@ created: 2026-07-09
 
 ## 影響範囲
 
-- 計画の運用設計（observability-ops）追補と、必要なら計画 ADR の追加。実装（#139）は完了済みで整合。
-- 実装との整合: IADR-0046（PR #189・#139）が対応。GitOps 側の `Config:History` 注入配線は残作業（#123 で追跡）。
+- 計画の運用設計（observability-ops）追補と、必要なら計画 ADR の追加。実装（#139）は**完了済み・develop 未マージ**
+  （PR #189）で整合する見込み。
+- 実装との整合: IADR-0046（PR #189・#139。develop 未マージ）が対応。GitOps 側の `Config:History` 注入配線は残作業（#123 で追跡）。
