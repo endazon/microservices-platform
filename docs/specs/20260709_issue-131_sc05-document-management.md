@@ -32,8 +32,9 @@ SPA 上に SC-05 を実装する。読み取り側（`/bff/documents`）は SC-0
 
 - 対象:
   - BFF: `DocumentBffEndpoints` に書き込みサブグループ（`RequireRole(admin, operator)`）。作成・更新・公開・アーカイブ・削除を提供。既存文書操作は `FetchAuthorizedAsync` でスコープ内確認→404 秘匿、作成は scope 解決成功を要件（403 deny-by-default）。検証 400・楽観ロック 409 を透過。BFF ローカル request record。メタデータ専用 PATCH は SC-05 では未使用のため実装しない（過剰実装回避。レビュー #171 指摘対応）。
-  - フロント: `features/sc05-documents`（`/documents`・`RequireRole(admin, operator)`・ナビ）。一覧＋作成＋編集（楽観ロック）＋公開／アーカイブ／削除。詳細・版履歴は SC-03 へ遷移。409 通知＋再読込。
-  - テスト: BFF（xUnit：ロール 403/401・scope 外 404・作成 deny 403・検証 400 透過・競合 409 透過・公開・削除）、Vitest（一覧・作成必須属性・公開・編集 expectedVersion・409 通知・異常系）。
+  - フロント: `features/sc05-documents`（`/documents`・`RequireRole(admin, operator)`・ナビ）。一覧＋作成＋編集（楽観ロック）＋公開／アーカイブ／削除。詳細・版履歴は SC-03 へ遷移。409 通知＋再読込。公開ボタンは未公開状態（draft/normalized）のみ表示。
+  - DocumentService: 公開の状態遷移ガード（archived からの再公開を `Document.Publish()` のドメイン不変条件および `/documents/{id}/publish` の 409 で拒否＝多層防御。レビュー #171 指摘対応）。
+  - テスト: BFF（xUnit：ロール 403/401・scope 外 404・作成 deny 403・検証 400 透過・競合 409 透過・公開・削除）、DocumentService（状態遷移ガード：archived 公開の例外/409・normalized 公開許可）、Vitest（一覧・作成必須属性・公開・編集 expectedVersion・409 通知・異常系・archived/normalized の公開ボタン出し分け）。
   - ドキュメント: 本仕様書・画面仕様書・テスト仕様書・IADR-0041。
 - 対象外:
   - 文書本文（Markdown）の編集 UI（本文は変換パイプライン由来。本画面はメタデータ／状態管理に集中）。

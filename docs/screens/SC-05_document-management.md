@@ -40,11 +40,12 @@ related_specs:
 | 一覧 | `GET /bff/documents` | ABAC（読み取り・SC-03 と共通） | `DocumentDto[]` |
 | 作成 | `POST /bff/documents` | admin/operator＋scope 解決 | 201 / 400（タイトル必須） / 403 |
 | 更新 | `PUT /bff/documents/{id}` | admin/operator＋スコープ内 | 200 / 404 / 409（版競合） |
-| 公開 | `POST /bff/documents/{id}/publish` | 同上 | 200 / 404 |
+| 公開 | `POST /bff/documents/{id}/publish` | 同上 | 200 / 404 / 409（archived からの再公開は不正遷移） |
 | アーカイブ | `POST /bff/documents/{id}/archive` | 同上 | 200 / 404 |
 | 削除 | `DELETE /bff/documents/{id}` | 同上 | 204 / 404 |
 
 - 書き込みは対象文書がスコープ内のときのみ実行される（[[IADR-0041]]）。更新は楽観ロック（`expectedVersion`）。
+- 公開は未公開状態（draft / normalized）のみ許可する。archived からの再公開は状態遷移の意図に反するため、UI はボタンを出さず、サーバ（DocumentService）もドメイン不変条件として 409 で拒否する（多層防御・レビュー #171 指摘対応）。
 
 ## 入力 / バリデーション
 
@@ -59,7 +60,7 @@ related_specs:
 
 - 作成フォーム（タイトル・機密区分・タグ）。必須未設定は保存不可。
 - 一覧テーブル（タイトル→SC-03 リンク・状態・版・機密区分・更新・操作）。
-- 操作: 編集（楽観ロック PUT。版競合 409 は通知＋再読込）・公開（draft のみ）・アーカイブ（archived 以外）・削除。
+- 操作: 編集（楽観ロック PUT。版競合 409 は通知＋再読込）・公開（draft / normalized のみ）・アーカイブ（archived 以外）・削除。
 - 通知（`role="status"`）／エラー（`role="alert"`）。
 
 ## 実装

@@ -67,4 +67,28 @@ public class DocumentVersioningTests
         Assert.Equal(DocumentStatus.Published, doc.Status);
         Assert.Equal(DocumentStatus.Published, doc.Versions[^1].Status);
     }
+
+    // SC-05, UC-03: アーカイブ済み文書の再公開は不正遷移として拒否する（レビュー #171 指摘対応）。
+    [Fact]
+    public void Publish_FromArchived_Throws()
+    {
+        var doc = Document.Create("公開対象", null, null);
+        doc.Archive();
+
+        Assert.False(doc.CanPublish);
+        Assert.Throws<InvalidDocumentStateException>(() => doc.Publish());
+        Assert.Equal(DocumentStatus.Archived, doc.Status); // 状態は変わらない
+    }
+
+    // SC-05: 正規化済み（pipeline 由来）文書は公開可能である（draft のみに絞りすぎない）。
+    [Fact]
+    public void Publish_FromNormalized_IsAllowed()
+    {
+        var doc = Document.CreateNormalized(Guid.NewGuid(), "正規化文書", "storage://x.md");
+
+        Assert.True(doc.CanPublish);
+        doc.Publish();
+
+        Assert.Equal(DocumentStatus.Published, doc.Status);
+    }
 }

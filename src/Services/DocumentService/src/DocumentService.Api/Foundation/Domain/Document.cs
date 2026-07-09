@@ -97,12 +97,20 @@ public class Document
         Snapshot("markdown-set");
     }
 
+    // FR-06, UC-03, SC-05: 公開する。アーカイブ済み（非公開化済み）からの再公開は状態遷移の意図に反する
+    // ため認めない（UI だけでなくドメイン不変条件としても強制する。レビュー #171 指摘対応）。
     public void Publish()
     {
+        if (Status == DocumentStatus.Archived)
+            throw new InvalidDocumentStateException(
+                $"アーカイブ済みの文書は公開できません（id={Id}）。再公開する場合は再取り込みが必要です。");
         Status = DocumentStatus.Published;
         Touch();
         Snapshot("published");
     }
+
+    // SC-05: この文書が現在の状態から公開可能か（draft / normalized / published からのみ。archived は不可）。
+    public bool CanPublish => Status != DocumentStatus.Archived;
 
     // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流（Wiki.js 同期）は
     // status=archived の DocumentUpdated を受けてページを非公開化する。
@@ -132,3 +140,7 @@ public static class DocumentStatus
     // Issue #88: アーカイブ（非公開化）。削除と異なり実体は保持し、閲覧経路から不可視にする。
     public const string Archived = "archived";
 }
+
+// FR-06, UC-03, SC-05: 不正な状態遷移（例: archived → published）を表すドメイン例外。
+// エンドポイントは 409 Conflict へ写像する。
+public sealed class InvalidDocumentStateException(string message) : InvalidOperationException(message);
