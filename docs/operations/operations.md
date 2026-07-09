@@ -264,6 +264,12 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
 
 - **metrics-server** がクラスタに導入済みであること（HPA の CPU 指標に必須。k3s は既定同梱）。
 - 全対象サービスに `resources.requests.cpu` が定義済みであること（HPA の利用率計算の分母。定義済み）。
+- **Istio サイドカーの CPU 算入（既知の考慮事項）**: 本チャートは `mesh.enabled: true`（Envoy サイドカー自動注入）で、
+  HPA の `metrics` は `type: Resource`（Pod 内**全コンテナ横断**の平均使用率）である。そのため Envoy サイドカーの
+  CPU request/使用量も利用率計算の分母・分子に混入し、目標 70% の判定精度がアプリコンテナ実使用率からずれ得る
+  （過小/過大スケール）。必要に応じて `autoscaling/v2` の `ContainerResource` 型でアプリコンテナ（`<name>-service`）
+  のみを対象にする選択肢がある。この妥当性は負荷試験（#196）の確認項目とし、乖離が大きければ `ContainerResource`
+  への切替を検討する（[IADR-0050] フォローアップ）。
 - 実クラスタでの HPA スケール挙動・目標 CPU 値の妥当性は負荷試験（#196）で検証し、`scaling.hpa` を調整する。
 
 ## 監視・アラート

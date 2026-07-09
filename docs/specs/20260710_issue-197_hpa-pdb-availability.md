@@ -7,6 +7,7 @@ related_ids:
   - FR-14
   - ADR-0007
   - ADR-0008
+  - IADR-0050
 author: claude
 created: 2026-07-10
 updated: 2026-07-10
@@ -68,9 +69,15 @@ Helm チャートに HorizontalPodAutoscaler / PodDisruptionBudget が無く全�
 - `helm lint .` → 0 failed。
 - `helm template kp .` → HorizontalPodAutoscaler 10 件・PodDisruptionBudget 10 件。document 等は Deployment に
   `replicas` 無し、conversion / ingestion は `replicas: 1` を維持。
+- **回帰ガード（CI）**: `HpaPdbScalingTests`（`src/Tests/.../Deployment/`。helm 非依存の YAML 静的検査）で
+  対象リスト 10 件・ワーカー除外・`replicas` 抑止条件・テンプレート存在を固定（claude-review #213 指摘対応）。
 
 ## 実装判断・フォローアップ
 
+- HPA/PDB の適用対象を要求処理系に限定しワーカーを対象外とする判断は [[IADR-0050]] に記録
+  （claude-review #213 指摘対応。計画「ワーカーはワーカー数で水平スケール」と整合）。
 - 目標 CPU 値・min/max の妥当性は負荷試験（#196）で検証・調整する。
+- Istio サイドカーの CPU 算入による HPA 判定への影響（`ContainerResource` 型切替の要否）は #196 で検証
+  （operations.md「前提・確認事項」参照）。
 - ワーカーのキュー長ベース自動スケール（KEDA 等）は #196 後に検討。
 - 監視アラート・バックアップ・Runbook は #198 で整備する。
