@@ -131,6 +131,40 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(await screen.findByText(/競合しました/)).toBeInTheDocument();
   });
 
+  it('shows validation detail messages from ApiError.details on create (400)', async () => {
+    // #177: 400 検証エラーの詳細（Problem 本文由来）を SC-09 と統一して画面表示する。
+    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
+    mocks.apiFetch.mockRejectedValueOnce(
+      new ApiError('validation', '入力内容に誤りがあります。', 400, ['タイトルは必須です。']),
+    ); // create -> 400 with details
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('link', { name: '経費規程 2025' });
+
+    const form = screen.getByRole('form', { name: '文書作成' });
+    // 非空タイトルでクライアント必須ガードを通し、サーバ側検証（400 詳細）の表示を確認する。
+    await user.type(within(form).getByLabelText('タイトル（必須）'), '仮タイトル');
+    await user.click(within(form).getByRole('button', { name: '作成する' }));
+
+    expect(await within(form).findByText('タイトルは必須です。')).toBeInTheDocument();
+  });
+
+  it('shows conflict detail message from ApiError.details on 409', async () => {
+    // #177: 409 に detail 本文があれば平易な既定文言ではなくその詳細を表示する。
+    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
+    mocks.apiFetch.mockRejectedValueOnce(
+      new ApiError('conflict', '競合が発生しました。', 409, ['公開済みの文書はアーカイブできません。']),
+    ); // archive -> 409 with details
+    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole('link', { name: '経費規程 2025' });
+
+    await user.click(screen.getByRole('button', { name: 'アーカイブ' }));
+
+    expect(await screen.findByText('公開済みの文書はアーカイブできません。')).toBeInTheDocument();
+  });
+
   it('shows an alert when the list fails to load', async () => {
     mocks.apiFetch.mockRejectedValue(new Error('boom'));
     renderPage();

@@ -27,6 +27,25 @@ function formatDate(value: string | null | undefined): string {
   return Number.isNaN(t) ? value : new Date(t).toLocaleString();
 }
 
+// FR-09, SC-09 と統一（#177）: ApiError の検証・競合詳細（400/409 の Problem 本文由来）を優先して表示し、
+// 詳細が無ければ画面文脈に合わせた既定文言へフォールバックする。
+function toMessages(err: unknown, fallback: string): string[] {
+  if (err instanceof ApiError && err.details.length > 0) return err.details;
+  return [fallback];
+}
+
+// 検証・競合の詳細メッセージ群をリスト表示する（SC-09 の Errors と同一 UX）。
+function Errors({ errors }: { errors: string[] }) {
+  if (errors.length === 0) return null;
+  return (
+    <ul role="alert">
+      {errors.map((e, i) => (
+        <li key={i}>{e}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function DocumentManagementPage() {
   const [items, setItems] = useState<DocumentItem[]>([]);
   const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
@@ -49,11 +68,18 @@ export function DocumentManagementPage() {
 
   function reportError(err: unknown, fallback: string) {
     if (err instanceof ApiError && err.status === 409) {
-      setNotice('他の更新と競合しました（版が変わっています）。最新を再読み込みしました。');
+      // #177: 競合の詳細（Problem 本文の detail/title）があれば表示。版競合（version_conflict 本文で
+      // details 空）の場合は従来の平易な文言へフォールバックし、いずれも最新を再読み込みする。
+      setNotice(
+        err.details.length > 0
+          ? err.details.join(' ')
+          : '他の更新と競合しました（版が変わっています）。最新を再読み込みしました。',
+      );
       load();
       return;
     }
-    setNotice(fallback);
+    // #177: 検証（400）等の詳細メッセージを SC-09 と統一して優先表示する。
+    setNotice(toMessages(err, fallback).join(' '));
   }
 
   async function act(path: string, okMsg: string, errMsg: string) {
@@ -170,12 +196,13 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
   const [title, setTitle] = useState('');
   const [confidentiality, setConfidentiality] = useState<(typeof CONFIDENTIALITY)[number]>('internal');
   const [tags, setTags] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // #177: 検証エラー（400）の詳細を SC-09 と統一して一覧表示する。
+  const [errors, setErrors] = useState<string[]>([]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (title.trim().length === 0) return;
-    setError(null);
+    setErrors([]);
     try {
       await apiFetch('/documents', {
         method: 'POST',
@@ -188,8 +215,8 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
       setTitle('');
       setTags('');
       onCreated();
-    } catch {
-      setError('文書の作成に失敗しました。');
+    } catch (err) {
+      setErrors(toMessages(err, '文書の作成に失敗しました。'));
     }
   }
 
@@ -217,7 +244,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
         <br />
         <input id="doc-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
       </div>
-      {error && <p role="alert">{error}</p>}
+      <Errors errors={errors} />
       <button type="submit" disabled={title.trim().length === 0}>
         作成する
       </button>
