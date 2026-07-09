@@ -35,6 +35,15 @@ public sealed record EffectiveConfigDto(
 // 構成バージョン（適用中の構成定義の Git コミット ID・適用日時・適用者）。
 public sealed record ConfigVersionDto(string? GitCommit, DateTimeOffset? AppliedAt, string? AppliedBy);
 
+// FR-15 (#139), IADR-0046: 構成バージョン履歴の 1 エントリ。正データ源は GitOps 層（Git/ArgoCD の適用履歴）で、
+// API は永続化せず注入されたスライスを返す。HadDrift はその時点のドリフト有無（注入時に判明していれば設定、
+// 不明なら null＝「—」表示）。
+public sealed record ConfigVersionEntryDto(
+    string? GitCommit,
+    DateTimeOffset? AppliedAt,
+    string? AppliedBy,
+    bool? HadDrift);
+
 // 有効な段（順序・入出力イベント型・所属サービス）。
 public sealed record PipelineStageDto(
     string Name,

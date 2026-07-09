@@ -53,6 +53,24 @@ public static class ConfigBffEndpoints
         }).WithName("BffConfigDrift")
           .Produces<DriftReportDto>();
 
+        // FR-15 (#139), IADR-0046: 構成バージョン適用履歴（コミット ID・適用日時・適用者・その時点のドリフト有無）を
+        // 新しい順で返す。正データ源は GitOps 層で、API は永続化しない。閲覧制御・404 秘匿・監査は他の構成情報と同一。
+        g.MapGet("/history", async (
+            HttpContext http,
+            IConfigInspectionService inspection,
+            IAuthorizationService authz,
+            IAuditLogger audit,
+            CancellationToken ct) =>
+        {
+            var denied = await DenyAsync(http, authz, audit, "config.history.read");
+            if (denied is not null)
+                return denied;
+
+            var history = await inspection.GetVersionHistoryAsync(ct);
+            return Results.Ok(history);
+        }).WithName("BffConfigHistory")
+          .Produces<IReadOnlyList<ConfigVersionEntryDto>>();
+
         // FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後の即時ドリフト検出のトリガ。
         // メッシュ内部限定（ingress へ公開しない。ClusterIP + NetworkPolicy / mTLS が防御）。ArgoCD の
         // PostSync フック Job が POST する。応答は 202 のみで構成情報は返さない（存在秘匿・IADR-0009）。

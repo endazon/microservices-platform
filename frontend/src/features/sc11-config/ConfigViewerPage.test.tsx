@@ -30,11 +30,19 @@ const DRIFT_FOUND = {
   ],
 };
 
+// #139: 構成バージョン履歴（新しい順）。API（/admin/config/history）が並び順・データ源を担い、本画面は表示のみ。
+const HISTORY = [
+  { gitCommit: 'abcdef1234567', appliedAt: '2026-07-08T00:00:00Z', appliedBy: 'gitops', hadDrift: false },
+  { gitCommit: '9876543210fed', appliedAt: '2026-07-05T00:00:00Z', appliedBy: 'argocd', hadDrift: true },
+];
+
 interface RouteOpts {
   config?: typeof CONFIG;
   configError?: ApiError;
   drift?: typeof DRIFT_OK | typeof DRIFT_FOUND;
   driftError?: boolean;
+  history?: typeof HISTORY;
+  historyError?: boolean;
 }
 function route(opts: RouteOpts = {}) {
   mocks.apiFetch.mockImplementation(async (path: string) => {
@@ -45,6 +53,10 @@ function route(opts: RouteOpts = {}) {
     if (path === '/admin/config/drift') {
       if (opts.driftError) throw new ApiError('server', 'x', 500);
       return opts.drift ?? DRIFT_OK;
+    }
+    if (path === '/admin/config/history') {
+      if (opts.historyError) throw new ApiError('server', 'x', 500);
+      return opts.history ?? [];
     }
     throw new ApiError('unknown', 'x', 0);
   });
@@ -123,5 +135,33 @@ describe('ConfigViewerPage (SC-11 #137/#138)', () => {
     route({ configError: new ApiError('server', 'x', 500) });
     render(<ConfigViewerPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent('取得に失敗');
+  });
+
+  // #139: 構成バージョン履歴を新しい順・短縮コミット・ドリフト有無つきで一覧する。
+  it('lists config version history with short commit, applied info and drift状態', async () => {
+    route({ history: HISTORY });
+    render(<ConfigViewerPage />);
+
+    const table = await screen.findByRole('table', { name: '構成バージョン履歴' });
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config/history');
+    // 短縮コミット（7 桁）・適用者・ドリフト有無（false→なし / true→あり）が表示される。
+    expect(within(table).getByText('abcdef1')).toBeInTheDocument();
+    expect(within(table).getByText('9876543')).toBeInTheDocument();
+    expect(within(table).getByText('gitops')).toBeInTheDocument();
+    expect(within(table).getByText('あり')).toBeInTheDocument();
+    expect(within(table).getByText('なし')).toBeInTheDocument();
+  });
+
+  it('shows empty history message when there is no applied history', async () => {
+    route({ history: [] });
+    render(<ConfigViewerPage />);
+    expect(await screen.findByText('適用履歴はありません。')).toBeInTheDocument();
+  });
+
+  it('degrades the history area only when history fetch fails (config still shown)', async () => {
+    route({ historyError: true });
+    render(<ConfigViewerPage />);
+    expect(await screen.findByText('abcdef1')).toBeInTheDocument();
+    expect(screen.getByText('バージョン履歴は利用できません。')).toBeInTheDocument();
   });
 });

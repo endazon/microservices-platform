@@ -6,7 +6,7 @@ import { ApiError } from '@foundation/api/ApiError';
 // SC-11, FR-15, ADR-0018: 構成ビューア。実効構成（構成バージョン・パイプライン段・イベント接続・
 // ポート選択・コネクタ）を参照専用で可視化する。データソースは /bff/admin/config（ConfigViewer,
 // 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0036）。
-// #137: 実効構成の表示。ドリフト（#138）・履歴（#139）は後続。
+// #137: 実効構成の表示、#138: ドリフト表示、#139: 構成バージョン履歴表示（GitOps 由来・IADR-0046）。
 
 interface ConfigVersion {
   gitCommit?: string | null;
@@ -56,14 +56,26 @@ interface DriftReport {
   findings: DriftFinding[];
 }
 
+// #139, IADR-0046: 構成バージョン適用履歴の1エントリ。正データ源は GitOps 層で、API は /admin/config/history で
+// 新しい順に返す（永続化なし）。hadDrift はその時点のドリフト有無（不明なら null＝「—」）。
+interface ConfigVersionEntry {
+  gitCommit?: string | null;
+  appliedAt?: string | null;
+  appliedBy?: string | null;
+  hadDrift?: boolean | null;
+}
+
 type Status = 'loading' | 'ok' | 'notFound' | 'error';
 type DriftStatus = 'loading' | 'ok' | 'unavailable';
+type HistoryStatus = 'loading' | 'ok' | 'unavailable';
 
 export function ConfigViewerPage() {
   const [status, setStatus] = useState<Status>('loading');
   const [config, setConfig] = useState<EffectiveConfig | null>(null);
   const [driftStatus, setDriftStatus] = useState<DriftStatus>('loading');
   const [drift, setDrift] = useState<DriftReport | null>(null);
+  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('loading');
+  const [history, setHistory] = useState<ConfigVersionEntry[]>([]);
 
   // #138: ドリフト対象（finding.target）の集合。実効構成側（段）の強調判定に用いる。
   // DriftDetector（Shared.Infrastructure）は Target に常に段名（decl.Name/実効段名）のみを返し、
@@ -98,6 +110,17 @@ export function ConfigViewerPage() {
         if (!active) return;
         setDriftStatus('unavailable');
       });
+    // #139: 構成バージョン履歴も独立に取得する（構成表示と疎結合）。取得不能時はその領域のみ縮退。
+    apiFetch<ConfigVersionEntry[]>('/admin/config/history')
+      .then((data) => {
+        if (!active) return;
+        setHistory(data ?? []);
+        setHistoryStatus('ok');
+      })
+      .catch(() => {
+        if (!active) return;
+        setHistoryStatus('unavailable');
+      });
     return () => {
       active = false;
     };
@@ -123,6 +146,8 @@ export function ConfigViewerPage() {
           <EventBindingsView bindings={config.eventBindings} />
           <PortsView ports={config.ports} />
           <ConnectorsView connectors={config.connectors} />
+          {/* #139: §(3) 構成バージョン履歴。GitOps 由来の適用履歴を新しい順で一覧する（IADR-0046・SC-11 §(3)）。 */}
+          <HistoryView status={historyStatus} history={history} />
         </>
       )}
     </section>
@@ -147,6 +172,49 @@ function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
       <strong>構成バージョン:</strong> <code>{short}</code>{' '}
       <span>／ 適用日時: {formatAppliedAt(appliedAt)}</span> <span>／ 適用者: {appliedBy ?? '—'}</span>
     </div>
+  );
+}
+
+// #139: その時点のドリフト有無（hadDrift）を表示文言へ写像する。不明（null/undefined）は「—」。
+function driftLabel(hadDrift: boolean | null | undefined): string {
+  if (hadDrift === true) return 'あり';
+  if (hadDrift === false) return 'なし';
+  return '—';
+}
+
+// #139, IADR-0046: 構成バージョン適用履歴（新しい順）。API（/admin/config/history）が並び順・データ源を担い、
+// 本画面は表示のみ。取得不能・0 件はその旨を明示する。
+function HistoryView({ status, history }: { status: HistoryStatus; history: ConfigVersionEntry[] }) {
+  return (
+    <Section title={`構成バージョン履歴（${status === 'ok' ? history.length : '—'}）`}>
+      {status === 'loading' && <p role="status">履歴を確認中…</p>}
+      {status === 'unavailable' && <p>バージョン履歴は利用できません。</p>}
+      {status === 'ok' && history.length === 0 && <p>適用履歴はありません。</p>}
+      {status === 'ok' && history.length > 0 && (
+        <table aria-label="構成バージョン履歴">
+          <thead>
+            <tr>
+              <th>コミット ID</th>
+              <th>適用日時</th>
+              <th>適用者</th>
+              <th>ドリフト有無</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h, i) => (
+              <tr key={`${h.gitCommit ?? 'nocommit'}-${h.appliedAt ?? i}`}>
+                <td>
+                  <code>{h.gitCommit ? h.gitCommit.slice(0, 7) : '—'}</code>
+                </td>
+                <td>{formatAppliedAt(h.appliedAt)}</td>
+                <td>{h.appliedBy ?? '—'}</td>
+                <td>{driftLabel(h.hadDrift)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Section>
   );
 }
 

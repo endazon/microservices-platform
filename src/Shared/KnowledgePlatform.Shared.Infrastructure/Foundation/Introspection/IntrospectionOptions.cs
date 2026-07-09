@@ -25,6 +25,20 @@ public sealed class ConfigVersionOptions
     public string? GitCommit { get; set; }
     public string? AppliedAt { get; set; }
     public string? AppliedBy { get; set; }
+
+    // FR-15 (#139), IADR-0046: 適用履歴（新しい順）。正データ源は GitOps 層（Git/ArgoCD の適用履歴）で、
+    // 現在バージョンと同じ注入経路（GitOps→構成）で供給する。API 側は永続化しない（注入されたスライスを surfacing）。
+    // 未注入（dev/compose）時は現在バージョンの単一エントリへ縮退する（ConfigInspectionService 参照）。
+    public List<ConfigVersionHistoryEntryOptions> History { get; set; } = new();
+}
+
+// FR-15 (#139): 適用履歴 1 エントリの注入設定。HadDrift は注入時に判明していれば設定（不明なら未設定）。
+public sealed class ConfigVersionHistoryEntryOptions
+{
+    public string? GitCommit { get; set; }
+    public string? AppliedAt { get; set; }
+    public string? AppliedBy { get; set; }
+    public bool? HadDrift { get; set; }
 }
 
 // FR-15: ドリフト定期検出の設定。
