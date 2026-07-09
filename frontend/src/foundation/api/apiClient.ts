@@ -56,13 +56,39 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
     if (res.status === 401) {
       unauthorizedHandler();
     }
-    throw ApiError.fromStatus(res.status);
+    // FR-09, SC-09: 検証（400）・競合（409）は本文の詳細メッセージを抽出して伝える（矛盾・構文エラー表示用）。
+    const details = res.status === 400 || res.status === 409 ? await parseProblemDetails(res) : [];
+    throw ApiError.fromStatus(res.status, details);
   }
   if (res.status === 204) {
     return undefined as T;
   }
   const text = await res.text();
   return (text ? (JSON.parse(text) as T) : (undefined as T));
+}
+
+// FR-09, SC-09: RFC7807 ValidationProblem / Problem 応答から人間可読なメッセージ群を抽出する。
+// AuthorizationService の検証エラーは { errors: { errors: ["…"] } }、競合は { title, detail } 形式。
+async function parseProblemDetails(res: Response): Promise<string[]> {
+  try {
+    const body = (await res.clone().json()) as {
+      errors?: Record<string, unknown>;
+      detail?: unknown;
+      title?: unknown;
+    };
+    const out: string[] = [];
+    if (body.errors && typeof body.errors === 'object') {
+      for (const v of Object.values(body.errors)) {
+        if (Array.isArray(v)) out.push(...v.filter((x): x is string => typeof x === 'string'));
+        else if (typeof v === 'string') out.push(v);
+      }
+    }
+    if (out.length === 0 && typeof body.detail === 'string') out.push(body.detail);
+    if (out.length === 0 && typeof body.title === 'string') out.push(body.title);
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 // IADR-0037, SC-01: SSE（text/event-stream）の 1 イベント。event 名（既定 "message"）と data（連結済み）。
