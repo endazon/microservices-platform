@@ -43,14 +43,14 @@ export default defineConfig({
         'src/main.tsx',
         'src/vite-env.d.ts',
       ],
-      // 回帰防止のラチェット。SPA 基盤(#126)時点の実測値を下限として据え、SC-01..11 の
-      // 各画面がテストを増やすたびに引き上げる。現状: 未テストの UI コンポーネントが多く
-      // 全体値は低いが、この床を割る変更（テスト削除・無検証コード追加）を CI で止める。
+      // 回帰防止のラチェット。SC-01..11 の各画面 feature でテストが増えた実測（lines/statements≈83%,
+      // branches≈80%, functions≈77-80%）に合わせて床を引き上げる（レビュー #168 指摘対応）。
+      // Wave B の各 PR で同一値を設定し（マージ時の衝突回避）、床を割る変更を CI で止める。
       thresholds: {
-        lines: 25,
-        statements: 25,
-        functions: 40,
-        branches: 60,
+        lines: 78,
+        statements: 78,
+        functions: 68,
+        branches: 74,
       },
     },
   },
