@@ -39,7 +39,7 @@ DbContext にも存在するため、横断的に是正する（既存負債の�
 | ファイル | 対象コンパレータ | 現状 hash |
 | --- | --- | --- |
 | `AuthorizationService.Api/Foundation/Persistence/AuthorizationDbContext.cs` | `dictListComparer`（`Dictionary<string,List<string>>`） | `v => v.GetHashCode()` |
-| `DataSourceService.Api/Foundation/Persistence/DataSourceDbContext.cs` | `Attributes` / `Tags`（`Dictionary<string,string>` ×2） | `v => v.GetHashCode()` |
+| `DataSourceService.Api/Foundation/Persistence/DataSourceDbContext.cs` | `Config` / `DefaultAttributes`（`Dictionary<string,string>` ×2） | `v => v.GetHashCode()` |
 | `DocumentService.Api/Foundation/Persistence/DocumentDbContext.cs` | `DictionaryComparer()`（`Dictionary<string,string>`） | `v => v.GetHashCode()` |
 | `WikiService.Api/Foundation/Persistence/WikiDbContext.cs` | `Dictionary<string,string>` コンパレータ | `v => v.GetHashCode()` |
 
