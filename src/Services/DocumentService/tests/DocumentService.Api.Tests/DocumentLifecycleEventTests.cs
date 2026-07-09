@@ -19,7 +19,7 @@ public class DocumentLifecycleEventTests(TestWebApplicationFactory factory)
     private async Task<DocumentDto> CreateAsync(string title)
     {
         var resp = await Client().PostAsJsonAsync("/documents",
-            new { title, tags = new List<string>() });
+            new { title, attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" }, tags = new List<string>() });
         return (await resp.Content.ReadFromJsonAsync<DocumentDto>())!;
     }
 

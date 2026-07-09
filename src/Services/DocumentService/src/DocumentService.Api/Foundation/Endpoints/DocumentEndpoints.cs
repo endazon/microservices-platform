@@ -50,6 +50,11 @@ public static class DocumentEndpoints
                     ["title"] = ["タイトルは必須です。"]
                 });
 
+            // FR-05, UC-03, SC-05, IADR-0047: 機密区分（必須属性）のサーバー側検証（最終防衛線）。
+            // 欠落・未知値は保存拒否（400）。フロントの既定値に依存せず、BFF 迂回でも実効化する。
+            if (ValidateConfidentiality(req.Attributes) is { } createError)
+                return createError;
+
             var doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
                 req.Attributes, req.Tags);
             db.Documents.Add(doc);
@@ -66,6 +71,10 @@ public static class DocumentEndpoints
                 {
                     ["title"] = ["タイトルは必須です。"]
                 });
+
+            // FR-05, UC-03, SC-05, IADR-0047: 更新でも機密区分を必須検証する（属性は全置換のため）。
+            if (ValidateConfidentiality(req.Attributes) is { } updateError)
+                return updateError;
 
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
@@ -89,6 +98,10 @@ public static class DocumentEndpoints
         write.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
+            // FR-05, UC-03, SC-05, IADR-0047: メタデータ更新も属性を全置換するため機密区分を必須検証する。
+            if (ValidateConfidentiality(req.Attributes) is { } metaError)
+                return metaError;
+
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
 
@@ -174,6 +187,19 @@ public static class DocumentEndpoints
         });
 
         return app;
+    }
+
+    // FR-05, UC-03, SC-05, IADR-0047: 機密区分（必須属性）検証。NG のとき 400 の IResult を、
+    // 妥当なとき null を返す（呼び出し側は `is { } error` で早期リターンする）。
+    private static IResult? ValidateConfidentiality(Dictionary<string, string>? attributes)
+    {
+        var (ok, error) = DocumentAttributes.ValidateConfidentiality(attributes);
+        return ok
+            ? null
+            : Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [DocumentAttributes.ConfidentialityKey] = [error!]
+            });
     }
 
     private static DocumentDto ToDto(Document d) => new()

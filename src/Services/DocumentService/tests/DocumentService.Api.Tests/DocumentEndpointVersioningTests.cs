@@ -12,17 +12,20 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
 {
     private HttpClient Client() => factory.CreateClient();
 
+    // FR-05, IADR-0047: 機密区分はサーバー側で必須。作成/更新の既定フィクスチャ属性。
+    private static Dictionary<string, string> Conf() => new() { ["confidentiality"] = "internal" };
+
     [Fact]
     public async Task CreateThenUpdate_VersionHistoryGrows()
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "v1", attributes = new Dictionary<string, string>(), tags = new List<string>() });
+            new { title = "v1", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
         doc!.Version.Should().Be(1);
 
         var update = await client.PutAsJsonAsync($"/documents/{doc.Id}",
-            new { title = "v2", attributes = new Dictionary<string, string>(), tags = new List<string>() });
+            new { title = "v2", attributes = Conf(), tags = new List<string>() });
         update.StatusCode.Should().Be(HttpStatusCode.OK);
         var updated = await update.Content.ReadFromJsonAsync<DocumentDto>();
         updated!.Version.Should().Be(2);
@@ -41,11 +44,11 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "original", tags = new List<string>() });
+            new { title = "original", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
         await client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "changed", tags = new List<string>() });
+            new { title = "changed", attributes = Conf(), tags = new List<string>() });
 
         var v1Resp = await client.GetAsync($"/documents/{doc.Id}/versions/1");
         v1Resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -61,11 +64,11 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "keep-title", tags = new List<string>() });
+            new { title = "keep-title", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
         var patch = await client.PatchAsJsonAsync($"/documents/{doc!.Id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["dept"] = "sales" }, tags = new[] { "q3" } });
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { "q3" } });
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
         var patched = await patch.Content.ReadFromJsonAsync<DocumentDto>();
         patched!.Title.Should().Be("keep-title");
@@ -79,12 +82,12 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "doc", tags = new List<string>() });
+            new { title = "doc", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
         // 現在版は 1。期待版 5 は不一致 → 409
         var conflict = await client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "x", tags = new List<string>(), expectedVersion = 5 });
+            new { title = "x", attributes = Conf(), tags = new List<string>(), expectedVersion = 5 });
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
@@ -93,7 +96,7 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "to-publish", tags = new List<string>() });
+            new { title = "to-publish", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
         var publish = await client.PostAsync($"/documents/{doc!.Id}/publish", null);
@@ -108,7 +111,7 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
     {
         var client = Client();
         var create = await client.PostAsJsonAsync("/documents",
-            new { title = "to-archive", tags = new List<string>() });
+            new { title = "to-archive", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
         (await client.PostAsync($"/documents/{doc!.Id}/archive", null)).StatusCode.Should().Be(HttpStatusCode.OK);
