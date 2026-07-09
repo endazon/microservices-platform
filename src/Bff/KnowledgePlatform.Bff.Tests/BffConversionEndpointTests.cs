@@ -77,6 +77,16 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     }
 
     [Fact]
+    public async Task GetList_WhenBackendFails_SurfacesFailure_NotEmptyList()
+    {
+        // 運用画面では後段障害を空一覧へ縮退させない（「ジョブ無し」と障害を区別・レビュー #172 指摘対応）。
+        _factory.ConversionStatusCode = HttpStatusCode.ServiceUnavailable;
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    [Fact]
     public async Task Retry_AsAdmin_Returns202()
     {
         var resp = await _factory.CreateClient()

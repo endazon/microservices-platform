@@ -58,6 +58,7 @@ related_specs:
 | 4 | ロール制限 | 非特権 403 | `GetList_AsNonPrivilegedRole_IsForbidden` |
 | 5 | 無認証 | 401 | `GetList_WhenAnonymous_IsUnauthorized` |
 | 6 | 不在 | 404 透過 | `GetById_WhenMissing_Returns404` |
+| 6b | 後段障害の可視化 | 一覧は後段障害を空へ縮退せず伝播（運用画面の誤認防止・レビュー #172） | `GetList_WhenBackendFails_SurfacesFailure_NotEmptyList` |
 | 7 | 再変換 | 202 中継 | `Retry_AsAdmin_Returns202` |
 | 8 | 未知再変換 | 404 透過 | `Retry_WhenJobUnknown_Passes404Through` |
 

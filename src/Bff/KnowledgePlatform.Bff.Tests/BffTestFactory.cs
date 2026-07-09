@@ -326,6 +326,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
             if (path == "/jobs")
             {
+                // GET 一覧: 後段障害の伝播検証のため ConversionStatusCode を反映する。
+                if (owner.ConversionStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode));
                 var jobs = owner.StubJobs.AsEnumerable();
                 if (query.Contains("status=failed"))
                     jobs = jobs.Where(j => j.Status == ConversionJobStatus.Failed);
