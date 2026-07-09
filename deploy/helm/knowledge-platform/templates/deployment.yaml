@@ -14,7 +14,11 @@ metadata:
     app: {{ $name }}-service
     chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
 spec:
+  {{- /* NFR (#197): HPA 対象サービスは replicas を宣言しない（HPA が所有し値の綱引きを避ける）。
+         非対象サービスは従来どおり静的 replicas を用いる。 */}}
+  {{- if not (and $.Values.scaling.enabled (has $name $.Values.scaling.services)) }}
   replicas: {{ $svc.replicas | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       app: {{ $name }}-service
