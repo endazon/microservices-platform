@@ -1,7 +1,7 @@
 ---
 title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
-status: draft
+status: completed
 related_ids:
   - SC-03
   - UC-01
