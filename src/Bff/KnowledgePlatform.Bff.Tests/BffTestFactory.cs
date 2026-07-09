@@ -90,6 +90,18 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
     ];
 
+    // FR-12 BFF テスト（SC-07 変換ジョブ）: ConversionService の応答をスタブ制御する。
+    public static readonly Guid StubJobId = Guid.Parse("12121212-1212-1212-1212-121212121212");
+    public HttpStatusCode ConversionStatusCode { get; set; } = HttpStatusCode.OK;
+    public List<ConversionJobDto> StubJobs { get; set; } =
+    [
+        new(StubJobId, Guid.NewGuid(), "filesystem", "/docs/a.docx", ConversionJobStatus.Failed,
+            "pandoc がタイムアウトしました。", null, null, 2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+        new(Guid.Parse("34343434-3434-3434-3434-343434343434"), Guid.NewGuid(), "wiki", "/wiki/b.md",
+            ConversionJobStatus.Succeeded, null, Guid.NewGuid(), "storage://bucket/b.md", 1,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+    ];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -130,6 +142,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-06 (SC-03 文書閲覧): DocumentService をスタブ化する。
             services.AddHttpClient("DocumentService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DocumentStubHandler(this));
+            // FR-12 (SC-07 変換ジョブ): ConversionService をスタブ化する。
+            services.AddHttpClient("ConversionService")
+                .ConfigurePrimaryHttpMessageHandler(() => new ConversionStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -292,6 +307,39 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = JsonContent.Create(body)
             });
+    }
+
+    // FR-12 (SC-07): ConversionService /jobs をスタブ化する。一覧（?status 絞り込み）・個別（404 可変）・
+    // retry（202/404）をパス／メソッドで振り分ける。
+    private sealed class ConversionStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var query = request.RequestUri?.Query ?? string.Empty;
+            var method = request.Method;
+
+            if (path.EndsWith("/retry", StringComparison.Ordinal))
+                return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode == HttpStatusCode.OK
+                    ? HttpStatusCode.Accepted : owner.ConversionStatusCode));
+
+            if (path == "/jobs")
+            {
+                var jobs = owner.StubJobs.AsEnumerable();
+                if (query.Contains("status=failed"))
+                    jobs = jobs.Where(j => j.Status == ConversionJobStatus.Failed);
+                return Json(HttpStatusCode.OK, jobs.ToList());
+            }
+
+            // GET /jobs/{id}
+            if (owner.ConversionStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode));
+            return Json(HttpStatusCode.OK, owner.StubJobs[0]);
+        }
+
+        private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
     }
 
     // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。

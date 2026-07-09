@@ -2,6 +2,7 @@ using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
+using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Composable.Adapters;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit;
@@ -11,9 +12,11 @@ namespace ConversionService.Worker.Composable.Steps;
 
 // FR-12, UC-06: 原本取得イベントを受信し正規化変換を行う（pandoc で本文 Markdown 化、
 // 図は LLM で PlantUML/Mermaid 化、不可分は画像保持）。
+// SC-07: 変換状況の可視化（成功／失敗）と人手補正のため、ライフサイクルを IConversionJobStore に記録する。
 public class RawDocumentFetchedConsumer(
     INormalizationService normalizer,
     IPublishEndpoint bus,
+    IConversionJobStore jobs,
     ILogger<RawDocumentFetchedConsumer> logger) : IConsumer<RawDocumentFetched>, IPipelineStep
 {
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
@@ -28,25 +31,40 @@ public class RawDocumentFetchedConsumer(
             "Converting raw document: SourceId={SourceId} Path={Path} Type={Type}",
             ev.SourceId, ev.OriginalPath, ev.ContentType);
 
-        // FR-12: 本文 Markdown 化 ＋ 図のコード化/画像保持 ＋ オブジェクトストレージ保管。
-        // 変換失敗（pandoc/保存の恒久失敗）は例外を送出し、MassTransit の再試行→デッドレターへ委ねる。
-        var result = await normalizer.NormalizeAsync(ev, ct);
+        // SC-07: 変換開始を記録（受信・再試行の都度）。
+        jobs.Start(ev);
 
-        // FR-12: 正規化完了イベント発行 → DocumentService が文書を登録し取り込みへ連鎖する。
-        // DocumentId は冪等（再変換で同一）。文書管理側で重複登録を避けられる。
-        var title = Path.GetFileNameWithoutExtension(ev.OriginalPath);
-        await bus.Publish(new DocumentNormalized(
-            DocumentId: result.DocumentId,
-            SourceId: ev.SourceId,
-            Title: title,
-            MarkdownUri: result.MarkdownUri,
-            AssetUris: [.. result.AssetUris],
-            Attributes: ev.Attributes,
-            Tags: ev.Tags,
-            NormalizedAt: DateTimeOffset.UtcNow), ct);
+        try
+        {
+            // FR-12: 本文 Markdown 化 ＋ 図のコード化/画像保持 ＋ オブジェクトストレージ保管。
+            var result = await normalizer.NormalizeAsync(ev, ct);
 
-        logger.LogInformation(
-            "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",
-            ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained);
+            // FR-12: 正規化完了イベント発行 → DocumentService が文書を登録し取り込みへ連鎖する。
+            // DocumentId は冪等（再変換で同一）。文書管理側で重複登録を避けられる。
+            var title = Path.GetFileNameWithoutExtension(ev.OriginalPath);
+            await bus.Publish(new DocumentNormalized(
+                DocumentId: result.DocumentId,
+                SourceId: ev.SourceId,
+                Title: title,
+                MarkdownUri: result.MarkdownUri,
+                AssetUris: [.. result.AssetUris],
+                Attributes: ev.Attributes,
+                Tags: ev.Tags,
+                NormalizedAt: DateTimeOffset.UtcNow), ct);
+
+            // SC-07: 成功を記録。
+            jobs.Succeed(ev.FetchId, result.DocumentId, result.MarkdownUri);
+
+            logger.LogInformation(
+                "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",
+                ev.FetchId, result.DocumentId, result.MarkdownUri, result.DiagramsCoded, result.DiagramsRetained);
+        }
+        catch (Exception ex)
+        {
+            // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は MassTransit の
+            // 再試行→デッドレターへ委ねる（記録は状況可視化・人手補正のためで、リトライ挙動は変えない）。
+            jobs.Fail(ev.FetchId, ex.Message);
+            throw;
+        }
     }
 }

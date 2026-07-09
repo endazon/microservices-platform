@@ -2,6 +2,8 @@ using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Worker.Composable.Steps;
+using ConversionService.Worker.Foundation.Endpoints;
+using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
@@ -37,6 +39,10 @@ builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();
 
+// FR-12, UC-06, SC-07, IADR-0042: 変換ジョブの読み取りモデル（状況・失敗一覧・人手補正）。
+// MVP はインメモリのため singleton（プロセス内共有）。永続化は follow-up（IADR-0042）。
+builder.Services.AddSingleton<IConversionJobStore, InMemoryConversionJobStore>();
+
 // ADR-0003: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddKnowledgePlatformPipelineConfig();
@@ -68,6 +74,9 @@ var app = builder.Build();
 // FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
 app.MapKnowledgePlatformIntrospection();
+
+// FR-12, UC-06, SC-07: 変換ジョブの状況照会・人手補正（BFF 経由でのみ到達）。
+app.MapConversionJobEndpoints();
 
 app.Run();
 

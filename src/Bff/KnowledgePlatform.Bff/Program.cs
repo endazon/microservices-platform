@@ -63,6 +63,11 @@ builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
 
+// FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
+builder.Services.AddHttpClient("ConversionService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:ConversionService"]
+        ?? "http://conversion-service:8080"));
+
 // FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
@@ -79,6 +84,7 @@ app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
 app.MapConfigBffEndpoints();
+app.MapConversionBffEndpoints();
 
 app.Run();
 
