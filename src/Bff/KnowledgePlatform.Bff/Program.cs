@@ -84,6 +84,7 @@ app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
 app.MapConfigBffEndpoints();
+app.MapAuthzBffEndpoints();
 app.MapDataSourceBffEndpoints();
 
 app.Run();

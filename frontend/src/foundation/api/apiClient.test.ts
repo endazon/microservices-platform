@@ -63,6 +63,41 @@ describe('apiFetch', () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it('maps 400 to validation and extracts ValidationProblem detail messages (SC-09)', async () => {
+    // FR-09, SC-09: AuthorizationService の検証エラー本文 { errors: { errors: [...] } } を details へ抽出する。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ errors: { errors: ['action は read/analyze/manage のいずれか'] } }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      ),
+    );
+
+    await expect(apiFetch('/admin/authz/policies', { method: 'POST', json: {} })).rejects.toMatchObject({
+      kind: 'validation',
+      details: ['action は read/analyze/manage のいずれか'],
+    });
+  });
+
+  it('maps 409 to conflict and extracts the problem detail (SC-09)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(JSON.stringify({ title: '属性辞書が参照中です', detail: 'policy A が参照中' }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/problem+json' },
+        }),
+      ),
+    );
+
+    await expect(apiFetch('/admin/authz/attributes/x', { method: 'DELETE' })).rejects.toMatchObject({
+      kind: 'conflict',
+      details: ['policy A が参照中'],
+    });
+  });
+
   it('maps fetch rejection to a network error', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('boom'); }));
     await expect(apiFetch('/x')).rejects.toMatchObject({ kind: 'network' });

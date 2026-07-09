@@ -90,6 +90,27 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
     ];
 
+    // FR-09 BFF テスト（SC-09 管理者設定 ABAC）: AuthorizationService 管理 API の応答をスタブ制御する。
+    // AuthzManagementStatusCode を 400/409/404 に差し替えると、書き込みの検証エラー・競合・不在の透過を検証できる。
+    public static readonly Guid StubPolicyId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+    public static readonly Guid StubAttributeId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
+    public HttpStatusCode AuthzManagementStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（AuthorizationService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool AuthzManagementThrows { get; set; }
+    public List<AbacPolicyDto> StubPolicies { get; set; } =
+    [
+        new(StubPolicyId, "社員は社内文書を閲覧可", "read",
+            new Dictionary<string, List<string>> { ["clearance"] = ["internal", "confidential"] },
+            new Dictionary<string, List<string>> { ["confidentiality"] = ["public", "internal"] },
+            true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+    ];
+    public List<AttributeDefinitionDto> StubAttributes { get; set; } =
+    [
+        new(StubAttributeId, "confidentiality", "機密区分",
+            ["public", "internal", "confidential", "restricted"], true, "document",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+    ];
+
     // FR-01/FR-02 BFF テスト（SC-06 データソース管理）: DataSourceService の応答をスタブ制御する。
     public static readonly Guid StubDataSourceId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public HttpStatusCode DataSourceStatusCode { get; set; } = HttpStatusCode.OK;
@@ -270,17 +291,53 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-05 (SC-01/SC-03): AuthorizationService /authz/scope をスタブ化する。Granted は SearchScopeGranted、
     // 許可フィルタは ScopeFilters（既定は空＝全件許可）で制御する。
+    // FR-09 (SC-09): 管理 API（/authz/policies・/authz/attributes）もパスで振り分けてスタブ化する。
     private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var scope = new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var method = request.Method;
+
+            // FR-09 (SC-09): 後段不達を再現する（BFF が 502 へ縮退することの検証用）。scope 解決は対象外。
+            if (owner.AuthzManagementThrows && path.StartsWith("/authz/", StringComparison.Ordinal)
+                && !path.StartsWith("/authz/scope", StringComparison.Ordinal))
+                throw new HttpRequestException("authorization-service unreachable");
+
+            // FR-09 (SC-09): 管理系は AuthzManagementStatusCode で状態を差し替えられる（400/409/404 透過検証）。
+            if (path.StartsWith("/authz/policies", StringComparison.Ordinal))
             {
-                Content = JsonContent.Create(scope)
-            });
+                if (owner.AuthzManagementStatusCode != HttpStatusCode.OK)
+                    return Json(owner.AuthzManagementStatusCode, new { errors = new[] { "invalid" } });
+                if (method == HttpMethod.Delete)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+                if (method == HttpMethod.Post)
+                    return Json(HttpStatusCode.Created, owner.StubPolicies[0]);
+                if (path == "/authz/policies")
+                    return Json(HttpStatusCode.OK, owner.StubPolicies);
+                return Json(HttpStatusCode.OK, owner.StubPolicies[0]); // GET/PUT/PATCH by id
+            }
+            if (path.StartsWith("/authz/attributes", StringComparison.Ordinal))
+            {
+                if (owner.AuthzManagementStatusCode != HttpStatusCode.OK)
+                    return Json(owner.AuthzManagementStatusCode, new { errors = new[] { "invalid" } });
+                if (method == HttpMethod.Delete)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+                if (method == HttpMethod.Post)
+                    return Json(HttpStatusCode.Created, owner.StubAttributes[0]);
+                if (path == "/authz/attributes")
+                    return Json(HttpStatusCode.OK, owner.StubAttributes);
+                return Json(HttpStatusCode.OK, owner.StubAttributes[0]); // GET/PUT by id
+            }
+
+            // 既定（/authz/scope）: SC-01/SC-03 のスコープ解決。
+            var scope = new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
+            return Json(HttpStatusCode.OK, scope);
         }
+
+        private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
     }
 
     // FR-06 (SC-03): DocumentService をスタブ化する。/documents（一覧）・/documents/{id}（詳細・状態可変）・
