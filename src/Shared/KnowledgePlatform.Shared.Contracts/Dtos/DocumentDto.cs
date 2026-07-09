@@ -14,6 +14,10 @@ public class DocumentDto
     public DateTimeOffset UpdatedAt { get; init; }
 }
 
+// SC-03, FR-06: 文書本文（正規化 Markdown）の取得結果。BFF が ABAC 判定後にオブジェクト
+// ストレージ（storage://）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+public record DocumentContentDto(Guid Id, string Title, string Markdown, string? SourceUri);
+
 // FR-06, UC-03: 文書の版スナップショット
 public class DocumentVersionDto
 {
