@@ -4,12 +4,14 @@ using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Endpoints;
 using ConversionService.Worker.Foundation.Jobs;
+using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
 using ConversionService.Worker.Composable.Adapters;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.conversion-service";
@@ -22,6 +24,16 @@ builder.Services.AddSerilog((sp, logConfig) =>
     logConfig.ConfigureKnowledgePlatformSerilog(builder.Configuration, ServiceName));
 
 builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
+
+// FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。
+// ADR-0002: ConversionService 専用 DB（conversion_svc）。起動時に MigrateAsync でスキーマ最新化。
+var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? "Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp";
+builder.Services.AddDbContext<ConversionJobDbContext>(opt => opt.UseNpgsql(connStr));
+
+// DB 到達性の readiness ヘルスチェック（DataSourceService 準拠）。
+builder.Services.AddKnowledgePlatformHealthChecks()
+    .AddNpgSql(connStr, tags: ["ready"]);
 
 // FR-12, ADR-0012: 本文変換（pandoc ラッパー）。
 builder.Services.AddSingleton<IBodyConverter, PandocConversionService>();
@@ -39,9 +51,9 @@ builder.Services.AddHttpClient<IDiagramCoder, LlmGatewayDiagramCoder>(c =>
 // FR-12, UC-06: 正規化オーケストレータ（本文＋図＋保管を束ねる）。
 builder.Services.AddScoped<INormalizationService, NormalizationService>();
 
-// FR-12, UC-06, SC-07, IADR-0042: 変換ジョブの読み取りモデル（状況・失敗一覧・人手補正）。
-// MVP はインメモリのため singleton（プロセス内共有）。永続化は follow-up（IADR-0042）。
-builder.Services.AddSingleton<IConversionJobStore, InMemoryConversionJobStore>();
+// FR-12, UC-06, SC-07, IADR-0042/IADR-0043: 変換ジョブの読み取りモデル（状況・失敗一覧・人手補正）。
+// EF（Postgres）実装。DbContext が scoped のため本ストアも scoped（メッセージ消費ごとの DI スコープで解決）。
+builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 
 // ADR-0003: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -70,6 +82,17 @@ builder.Services.AddMassTransit(x =>
 });
 
 var app = builder.Build();
+
+// IADR-0043: 起動時にスキーマを最新 Migration へ更新（DataSourceService 準拠）。
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<ConversionJobDbContext>();
+    if (db.Database.IsRelational())
+        await db.Database.MigrateAsync();
+}
+
+// DB 到達性の readiness ヘルスチェック（/health/ready・/health/live）。
+app.MapKnowledgePlatformHealthChecks();
 
 // FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。

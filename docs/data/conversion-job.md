@@ -1,0 +1,141 @@
+---
+title: 変換ジョブ（ConversionJob） データ仕様書
+type: data-spec
+status: in-progress
+related_ids:
+  - FR-12
+  - UC-06
+  - SC-07
+  - ADR-0002
+  - IADR-0042
+  - IADR-0043
+author: claude
+created: 2026-07-09
+updated: 2026-07-09
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
+  - "../../planning/projects/microservices-platform/05_screens/01_screens.md (SC-07)"
+---
+
+# データ仕様書: 変換ジョブ（ConversionJob）
+
+> ConversionService が変換ライフサイクル（受信・成功・失敗・再変換）を記録する読み取りモデル。
+> SC-07（変換状況・失敗一覧・人手補正）と UC-06 の状況照会・再変換に用いる。
+
+## 起点となる計画書（トレーサビリティ）
+
+- **関連機能要求(FR)**: FR-12（文書正規化＝pandoc 本文変換・図のコード化・オブジェクトストレージ保管）
+- **関連ユースケース(UC)**: UC-06（変換・正規化の状況確認・人手補正）
+- **関連画面(SC)**: SC-07（変換ジョブ画面）
+- **ADR / 実装ADR**:
+  - [[IADR-0042]] 変換ジョブ読み取りモデル（MVP インメモリ）
+  - [[IADR-0043]] 変換ジョブ読み取りモデルの永続化（Postgres+EF）＋非同期ストア（本仕様書の対象）
+  - ADR-0002 DB per Service（ConversionService 専用 DB `conversion_svc`）
+  - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行）
+
+## 概要
+
+ConversionService はイベント駆動の fire-and-forget ワーカーで、`RawDocumentFetched` を受信して正規化変換
+（本文 Markdown 化・図のコード化・オブジェクトストレージ保管）を行い `DocumentNormalized` を発行する。
+変換状況を照会する手段が無かったため（[[IADR-0042]]）、変換コンシューマ（`RawDocumentFetchedConsumer`）が
+受信・成功・失敗の各ライフサイクルを **ConversionJob** に記録する。
+
+[[IADR-0043]] により、当初のインメモリ MVP を **Postgres + EF Core** へ永続化した。id は `RawDocumentFetched.FetchId`
+を主キーとし、再変換（人手補正）のため原本イベントを再構成できる列を保持する。
+
+## エンティティ定義
+
+### ConversionJob（テーブル `ConversionJobs`、ConversionService）
+
+| 属性 | 型 | 必須 | 制約（一意/既定値/範囲） | 説明 |
+| --- | --- | --- | --- | --- |
+| Id | Guid (uuid) | ○ | 主キー。`RawDocumentFetched.FetchId` と同値 | 変換ジョブ＝原本取得の一意識別子 |
+| SourceId | Guid (uuid) | ○ | | 由来データソース ID |
+| SourceType | string (varchar(50)) | ○ | 最大長 50。値例: `filesystem` / `wiki` / `saas` / `db` | ソース種別 |
+| OriginalPath | string (varchar(2048)) | ○ | 最大長 2048 | 原本のパス/識別 |
+| Status | string (varchar(20)) | ○ | 最大長 20。既定 `queued`。値: `queued` / `processing` / `succeeded` / `failed` | 変換状態 |
+| Error | string? (text) | - | NULL 可。失敗時のみ。1 行・最大 300 文字に要約済み | 失敗理由（UI 露出のため要約） |
+| DocumentId | Guid? (uuid) | - | NULL 可。成功時に設定 | 生成された文書 ID（冪等） |
+| MarkdownUri | string? (varchar(2048)) | - | NULL 可。成功時に設定 | 正規化本文（Markdown）の URI |
+| Attempts | int | ○ | 既定 0。受信・再試行の都度 +1 | 変換試行回数 |
+| CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 初回受信時刻 |
+| UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。状態遷移の都度更新 | 最終更新時刻 |
+| StorageUri | string (varchar(2048)) | ○ | 再変換のため保持（`RawDocumentFetched.StorageUri`） | 原本の保管 URI |
+| ContentType | string (varchar(255)) | ○ | 再変換のため保持 | 原本の MIME |
+| Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 原本 ABAC 属性（再変換時に再発行） |
+| Tags | List&lt;string&gt; (jsonb) | ○ | 既定 空配列。NULL 不可 | 原本タグ（再変換時に再発行） |
+| FetchedAt | DateTimeOffset (timestamptz) | ○ | 再変換のため保持 | 原本取得時刻 |
+
+> `ConversionJobDto`（BFF↔SPA 契約）には Id / SourceId / SourceType / OriginalPath / Status / Error /
+> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt を射影する。原本イベント再構成用の
+> StorageUri / ContentType / Attributes / Tags / FetchedAt は DTO に含めない（再変換にのみ用いる内部列）。
+
+## ER 図
+
+```mermaid
+erDiagram
+    CONVERSION_JOB {
+        uuid Id PK
+        uuid SourceId
+        varchar SourceType
+        varchar OriginalPath
+        varchar Status
+        text Error
+        uuid DocumentId
+        varchar MarkdownUri
+        int Attempts
+        timestamptz CreatedAt
+        timestamptz UpdatedAt
+        varchar StorageUri
+        varchar ContentType
+        jsonb Attributes
+        jsonb Tags
+        timestamptz FetchedAt
+    }
+```
+
+> ConversionJob は他サービスの DB エンティティと FK を持たない（ADR-0002 DB per Service）。
+> `DocumentId` は成功時に文書サービスの文書 ID を論理参照するのみ（DB 越境・FK なし）。
+
+## キー・インデックス・関連
+
+| 種別 | 対象 | 定義 |
+| --- | --- | --- |
+| 主キー | `ConversionJobs.Id` | `HasKey(j => j.Id)`。値は `RawDocumentFetched.FetchId`（イベント冪等キー） |
+| インデックス | （追加インデックスなし） | InitialCreate は主キーのみ。`Status` 絞り込みは件数小のため未インデックス |
+
+## 整合性・制約ルール
+
+- **状態遷移**: `queued` →（受信）→ `processing` →（成功）→ `succeeded` ／（失敗）→ `failed`。
+  失敗ジョブは人手補正（再変換）で `queued` に戻せる（[[IADR-0042]]）。
+- **人手補正は失敗ジョブ限定**: `PrepareRetryAsync` は `failed` 以外（`processing`/`succeeded`/`queued`）を
+  再変換不可（null 返却＝API 409）とし、処理中の二重発行・成功済みの不要な再処理を防ぐ。
+- **失敗理由の要約**: `Error` はコンシューマ側で 1 行・最大 300 文字に丸めた文言のみを保存する
+  （内部詳細・スタック様文言の UI 露出抑制）。
+- **属性・タグの NULL 非許容**: `Attributes` / `Tags` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）。
+- **並行性（既知の制約）**: `StartAsync` の attempts++ は read-modify-write で楽観的並行制御を持たない。
+  単一インスタンス（dev）前提。水平スケール時は行ロックまたは並行トークンを要する（[[IADR-0043]] follow-up）。
+
+## 永続化方針
+
+- PostgreSQL、EF Core（`ConversionJobDbContext`）。ADR-0002 に従い ConversionService 専用 DB `conversion_svc`。
+- `Attributes` / `Tags` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み。DataSourceService 準拠）。
+- 起動時に `MigrateAsync` でスキーマを最新化。`AddNpgSql` ヘルスチェック（tag `ready`）で DB 到達性を監視。
+
+## マイグレーション・初期データ
+
+- `InitialCreate` — `ConversionJobs` テーブル作成（主キーのみ）。シードなし。
+
+## 関連仕様
+
+- 実装ADR: `../adr/IADR-0042_conversion-job-read-model.md`、`../adr/IADR-0043_conversion-job-persistence.md`
+- 画面仕様書: `../screens/SC-07_conversion-jobs.md`
+- テスト仕様書: `../tests/SC-07_conversion-jobs.md`
+- 通信仕様書: `../api/openapi.yaml`
+
+## 未決事項
+
+- デッドレター（`<queue>_error`）との突合による失敗ジョブ網羅性（本 PR 対象外）。
+- ジョブ履歴の保持期間・アーカイブ（監査・長期保全）。
+- `Status` 絞り込みのインデックス要否（件数増加時）。

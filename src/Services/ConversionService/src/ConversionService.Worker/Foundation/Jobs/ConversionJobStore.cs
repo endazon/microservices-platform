@@ -1,127 +1,84 @@
-using System.Collections.Concurrent;
+using ConversionService.Worker.Foundation.Persistence;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using KnowledgePlatform.Shared.Contracts.Events;
+using Microsoft.EntityFrameworkCore;
 
 namespace ConversionService.Worker.Foundation.Jobs;
 
-// FR-12, UC-06, SC-07, IADR-0042: 変換ジョブの読み取りモデル。ConversionService はイベント駆動の
+// FR-12, UC-06, SC-07, IADR-0042/IADR-0043: 変換ジョブの読み取りモデル。ConversionService はイベント駆動の
 // fire-and-forget ワーカーで、これまで変換状況を問い合わせる手段が無かった（失敗はデッドレターのみ）。
-// SC-07（変換状況・失敗一覧・人手補正）のため、変換ライフサイクルを記録する軽量なストアを設ける。
-// MVP はインメモリ（プロセス内）。永続化・複数インスタンス共有は follow-up（IADR-0042 参照）。
+// SC-07（変換状況・失敗一覧・人手補正）のため、変換ライフサイクルを記録する。
+// IADR-0043: 永続化（Postgres+EF）に伴い非同期 API へ変更（EF I/O は非同期が正道）。
 public interface IConversionJobStore
 {
     // 変換開始（受信・再試行の都度）。原本イベントは人手補正（再変換）のため保持する。
-    void Start(RawDocumentFetched ev);
-    void Succeed(Guid id, Guid documentId, string markdownUri);
-    void Fail(Guid id, string error);
-    IReadOnlyList<ConversionJobDto> List(string? status);
-    ConversionJobDto? Get(Guid id);
+    Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default);
+    Task SucceedAsync(Guid id, Guid documentId, string markdownUri, CancellationToken ct = default);
+    Task FailAsync(Guid id, string error, CancellationToken ct = default);
+    Task<IReadOnlyList<ConversionJobDto>> ListAsync(string? status, CancellationToken ct = default);
+    Task<ConversionJobDto?> GetAsync(Guid id, CancellationToken ct = default);
     // 人手補正: 失敗ジョブを queued に戻し、再変換用の原本イベントを返す。
     // 未知の id・失敗以外の状態（processing/succeeded/queued）は null（＝再変換不可）。
-    RawDocumentFetched? PrepareRetry(Guid id);
+    Task<RawDocumentFetched?> PrepareRetryAsync(Guid id, CancellationToken ct = default);
 }
 
-public sealed class InMemoryConversionJobStore : IConversionJobStore
+// IADR-0043: EF Core（Postgres）実装。ConversionJobDbContext は scoped のため本ストアも scoped で登録する。
+// MassTransit はメッセージ消費ごとに DI スコープを張るため、コンシューマ・エンドポイント双方で解決できる。
+public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversionJobStore
 {
-    private sealed class Entry
+    public async Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default)
     {
-        public required RawDocumentFetched Event { get; set; }
-        public string Status { get; set; } = ConversionJobStatus.Queued;
-        public string? Error { get; set; }
-        public Guid? DocumentId { get; set; }
-        public string? MarkdownUri { get; set; }
-        public int Attempts { get; set; }
-        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+        // 単一インスタンス（dev）前提の read-modify-write。水平スケール時の並行性は IADR-0043 follow-up。
+        var job = await db.ConversionJobs.FindAsync([ev.FetchId], ct);
+        if (job is null)
+            db.ConversionJobs.Add(ConversionJob.StartNew(ev));
+        else
+            job.MarkProcessing(ev);
+        await db.SaveChangesAsync(ct);
     }
 
-    private readonly ConcurrentDictionary<Guid, Entry> _jobs = new();
-
-    public void Start(RawDocumentFetched ev)
+    public async Task SucceedAsync(Guid id, Guid documentId, string markdownUri, CancellationToken ct = default)
     {
-        _jobs.AddOrUpdate(
-            ev.FetchId,
-            _ => new Entry
-            {
-                Event = ev,
-                Status = ConversionJobStatus.Processing,
-                Attempts = 1,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-            },
-            (_, existing) =>
-            {
-                lock (existing)
-                {
-                    existing.Event = ev;
-                    existing.Status = ConversionJobStatus.Processing;
-                    existing.Error = null;
-                    existing.Attempts++;
-                    existing.UpdatedAt = DateTimeOffset.UtcNow;
-                }
-                return existing;
-            });
+        var job = await db.ConversionJobs.FindAsync([id], ct);
+        if (job is null) return;
+        job.MarkSucceeded(documentId, markdownUri);
+        await db.SaveChangesAsync(ct);
     }
 
-    public void Succeed(Guid id, Guid documentId, string markdownUri)
+    public async Task FailAsync(Guid id, string error, CancellationToken ct = default)
     {
-        if (!_jobs.TryGetValue(id, out var e)) return;
-        lock (e)
-        {
-            e.Status = ConversionJobStatus.Succeeded;
-            e.Error = null;
-            e.DocumentId = documentId;
-            e.MarkdownUri = markdownUri;
-            e.UpdatedAt = DateTimeOffset.UtcNow;
-        }
+        var job = await db.ConversionJobs.FindAsync([id], ct);
+        if (job is null) return;
+        job.MarkFailed(error);
+        await db.SaveChangesAsync(ct);
     }
 
-    public void Fail(Guid id, string error)
+    public async Task<IReadOnlyList<ConversionJobDto>> ListAsync(string? status, CancellationToken ct = default)
     {
-        if (!_jobs.TryGetValue(id, out var e)) return;
-        lock (e)
-        {
-            e.Status = ConversionJobStatus.Failed;
-            e.Error = error;
-            e.UpdatedAt = DateTimeOffset.UtcNow;
-        }
-    }
-
-    public IReadOnlyList<ConversionJobDto> List(string? status)
-    {
-        IEnumerable<Entry> jobs = _jobs.Values;
+        var query = db.ConversionJobs.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(status))
-            jobs = jobs.Where(e => string.Equals(e.Status, status, StringComparison.OrdinalIgnoreCase));
-        return jobs
-            .OrderByDescending(e => e.UpdatedAt)
-            .Select(ToDto)
-            .ToList();
+        {
+            // 保存値は ConversionJobStatus の正規化済み小文字。入力を小文字化して等価比較する。
+            var normalized = status.ToLowerInvariant();
+            query = query.Where(j => j.Status == normalized);
+        }
+        var jobs = await query.OrderByDescending(j => j.UpdatedAt).ToListAsync(ct);
+        return jobs.Select(j => j.ToDto()).ToList();
     }
 
-    public ConversionJobDto? Get(Guid id) =>
-        _jobs.TryGetValue(id, out var e) ? ToDto(e) : null;
-
-    public RawDocumentFetched? PrepareRetry(Guid id)
+    public async Task<ConversionJobDto?> GetAsync(Guid id, CancellationToken ct = default)
     {
-        if (!_jobs.TryGetValue(id, out var e)) return null;
-        lock (e)
-        {
-            // UC-06: 人手補正は失敗ジョブに限る。処理中の二重発行・成功済みの不要な再処理を防ぐ。
-            if (e.Status != ConversionJobStatus.Failed) return null;
-            e.Status = ConversionJobStatus.Queued;
-            e.Error = null;
-            e.UpdatedAt = DateTimeOffset.UtcNow;
-            return e.Event;
-        }
+        var job = await db.ConversionJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct);
+        return job?.ToDto();
     }
 
-    private static ConversionJobDto ToDto(Entry e)
+    public async Task<RawDocumentFetched?> PrepareRetryAsync(Guid id, CancellationToken ct = default)
     {
-        lock (e)
-        {
-            return new ConversionJobDto(
-                e.Event.FetchId, e.Event.SourceId, e.Event.SourceType, e.Event.OriginalPath,
-                e.Status, e.Error, e.DocumentId, e.MarkdownUri, e.Attempts, e.CreatedAt, e.UpdatedAt);
-        }
+        var job = await db.ConversionJobs.FindAsync([id], ct);
+        if (job is null) return null;
+        // UC-06: 失敗ジョブのみ再変換。処理中の二重発行・成功済みの不要な再処理を防ぐ。
+        if (!job.TryRequeue()) return null;
+        await db.SaveChangesAsync(ct);
+        return job.ToEvent();
     }
 }

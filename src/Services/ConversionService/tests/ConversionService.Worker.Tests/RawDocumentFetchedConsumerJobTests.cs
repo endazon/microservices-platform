@@ -1,11 +1,13 @@
 using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Domain;
 using ConversionService.Worker.Foundation.Jobs;
+using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ConversionService.Worker.Tests;
@@ -33,9 +35,14 @@ public class RawDocumentFetchedConsumerJobTests
 
     private static ServiceProvider BuildHarness(INormalizationService normalizer)
     {
+        // IADR-0043: EF ストア（scoped）＋ EF InMemory DbContext。InMemory DB は provider 内で共有され、
+        // コンシューマのスコープが書き込んだジョブを別スコープ（検証）から参照できる。
+        // DB 名はコンテキスト生成の都度ではなく一度だけ確定させる（ラムダ内で採番すると別スコープと共有されない）。
+        var dbName = Guid.NewGuid().ToString();
         return new ServiceCollection()
             .AddLogging()
-            .AddSingleton<IConversionJobStore, InMemoryConversionJobStore>()
+            .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(dbName))
+            .AddScoped<IConversionJobStore, EfConversionJobStore>()
             .AddSingleton(normalizer)
             .AddMassTransitTestHarness(x => x.AddConsumer<RawDocumentFetchedConsumer>())
             .BuildServiceProvider(true);
@@ -53,8 +60,9 @@ public class RawDocumentFetchedConsumerJobTests
             await harness.Bus.Publish(ev);
 
             (await harness.Consumed.Any<RawDocumentFetched>()).Should().BeTrue();
-            var store = provider.GetRequiredService<IConversionJobStore>();
-            store.Get(ev.FetchId)!.Status.Should().Be(ConversionJobStatus.Succeeded);
+            using var scope = provider.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            (await store.GetAsync(ev.FetchId))!.Status.Should().Be(ConversionJobStatus.Succeeded);
         }
         finally
         {
@@ -75,8 +83,9 @@ public class RawDocumentFetchedConsumerJobTests
 
             // 変換は消費されるが失敗（例外は再送出される）。ストアに失敗が記録される。
             (await harness.Consumed.Any<RawDocumentFetched>()).Should().BeTrue();
-            var store = provider.GetRequiredService<IConversionJobStore>();
-            var job = store.Get(ev.FetchId)!;
+            using var scope = provider.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            var job = (await store.GetAsync(ev.FetchId))!;
             job.Status.Should().Be(ConversionJobStatus.Failed);
             job.Error.Should().Contain("pandoc failed");
         }
