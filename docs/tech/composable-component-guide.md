@@ -147,11 +147,13 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 1. `frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は `src/foundation/`
    （config/auth/api/routing/ui）であり、feature から基盤へは import エイリアス
    `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
-2. バックエンド呼び出しは必ず `@foundation/api` の `apiFetch`（`/bff/*` 経由）を使う。
+2. feature は `FeatureModule`（`routes`）を公開し、`src/features/index.ts` へ 1 行登録する。
+   登録により認証済みレイアウト配下へマウントされる（**登録しないと画面へ到達できない**）。
+3. バックエンド呼び出しは必ず `@foundation/api` の `apiFetch`（`/bff/*` 経由）を使う。
    各サービスの直接呼び出し・接続先のビルド焼き込みは禁止（実行時 config `public/config.js`）。
-3. 認証・ロールは foundation の OIDC（Keycloak `spa-web`）とロールベースナビゲーション
+4. 認証・ロールは foundation の OIDC（Keycloak `spa-web`）とロールベースナビゲーション
    （IADR-0035）に従う。トークン・シークレットをコードに置かない。
-4. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
+5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
    （`vite.config.ts` の thresholds）を割らないこと（IADR-0034）。
 
 ## 3. 全部品共通のルール
@@ -185,6 +187,7 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 
 - 本書は**リポジトリ横断の技術文書**（`docs/tech/`）であり、原典（IADR・各 README）の変更時に
   追随して更新する。原典と本書が矛盾したら**原典が正**。
-- 計画側（`project-planning`）のプラグイン提供者向け共通仕様の有無・整合は
+- 計画側（`project-planning`）の `10_composability-design` §2〜§5（プラグイン規約・イベント契約の
+  標準化・差し替えポイント・安全弁）が本書 §1〜§2 の上流仕様に相当する。相互参照の追加と詳細照合は
   [feedback/20260709_composable-implementation-guide-upstream.md](../../feedback/20260709_composable-implementation-guide-upstream.md)
-  で環流中。計画側で上流仕様が確定したら本書の §1（接続仕様）を照合すること。
+  で環流中。上流が改版されたら本書 §1（接続仕様）を照合すること。
