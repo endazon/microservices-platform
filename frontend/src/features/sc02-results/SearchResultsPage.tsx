@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '@foundation/api/apiClient';
 
@@ -31,9 +31,13 @@ export function SearchResultsPage() {
   const [status, setStatus] = useState<Status>('idle');
   const [response, setResponse] = useState<SearchResponse | null>(null);
 
+  // 直近に実行した検索語。onSubmit の直接実行と ?q= 変化 useEffect の二重発火を防ぐ単一情報源。
+  const lastSearched = useRef<string | null>(null);
+
   // FR-03: 検索を実行する。ABAC は BFF で適用されるため、クライアントはスコープを送らない。
   const runSearch = useCallback((query: string) => {
     const q = query.trim();
+    lastSearched.current = q; // 実行済みの検索語を記録（effect 側の重複実行を抑止）
     if (!q) {
       setStatus('idle');
       setResponse(null);
@@ -49,9 +53,12 @@ export function SearchResultsPage() {
   }, []);
 
   // 初期表示・URL の ?q= 変化（SC-01 等からのディープリンク・戻る操作）で検索する。
+  // onSubmit 由来の setParams による ?q= 更新は既に runSearch 済み（lastSearched 一致）のため再実行しない
+  // （送信ごとの /bff/search 二重発火を防ぐ。単一の発火経路に統一）。
   const urlQuery = params.get('q') ?? '';
   useEffect(() => {
-    if (urlQuery.trim()) {
+    const q = urlQuery.trim();
+    if (q && q !== lastSearched.current) {
       setInput(urlQuery);
       runSearch(urlQuery);
     }
@@ -60,9 +67,9 @@ export function SearchResultsPage() {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     const q = input.trim();
-    // 検索条件を URL に反映し、共有・戻る操作で再現できるようにする。
-    setParams(q ? { q } : {});
+    // 単一経路で実行し、検索条件を URL に反映する（共有・戻る操作で再現可能に）。
     runSearch(q);
+    setParams(q ? { q } : {});
   }
 
   const results = response?.results ?? [];

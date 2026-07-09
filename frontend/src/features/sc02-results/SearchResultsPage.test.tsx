@@ -56,6 +56,21 @@ describe('SearchResultsPage (SC-02)', () => {
     expect(screen.getByText(/confidentiality: internal/)).toBeInTheDocument();
     // /bff/search を POST で呼ぶ（クライアントは ABAC スコープを送らない）。
     expect(mocks.apiFetch).toHaveBeenCalledWith('/search', { method: 'POST', json: { query: '経費', topK: 20 } });
+    // 送信 1 回につき検索は 1 回だけ（setParams による ?q= 更新で二重発火しない・レビュー #168 指摘対応）。
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not double-fire the search when submitting (single trigger path)', async () => {
+    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText('キーワード・意味検索'), '経費');
+    await user.click(screen.getByRole('button', { name: '検索する' }));
+    await screen.findByRole('link', { name: '経費規程 2025' });
+
+    // onSubmit の直接実行と ?q= 変化 useEffect が二重に走らないこと。
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
   });
 
   it('auto-searches from the ?q= deep link', async () => {

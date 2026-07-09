@@ -30,6 +30,7 @@ related_specs:
 | 2 | ディープリンク | FR-03 | `?q=` 付きで開くと自動検索し結果を表示 | `auto-searches from the ?q= deep link` |
 | 3 | 存在秘匿（空） | FR-05, IADR-0009 | 結果 0 件（deny-by-default 含む）で中立メッセージ。権限外と 0 件を区別しない | `shows a neutral empty message when access-scoped results are empty` |
 | 4 | 異常系 | FR-03 | 検索失敗時に `role="alert"` を表示 | `shows an alert when the search request fails` |
+| 5 | 二重発火防止 | FR-03 | 送信 1 回で `/bff/search` は 1 回だけ（?q= 更新で重複実行しない・レビュー #168） | `does not double-fire the search when submitting (single trigger path)` |
 
 ## ABAC・存在秘匿の担保
 
