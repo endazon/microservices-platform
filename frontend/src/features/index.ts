@@ -4,6 +4,7 @@ import { sc01SearchFeature } from './sc01-search';
 import { sc02ResultsFeature } from './sc02-results';
 import { sc03DocumentFeature } from './sc03-document';
 import { sc04WikiFeature } from './sc04-wiki';
+import { sc06DataSourcesFeature } from './sc06-datasources';
 import { sc08AnalysisFeature } from './sc08-analysis';
 import { sc10OperationsFeature } from './sc10-operations';
 import { sc11ConfigFeature } from './sc11-config';
@@ -16,6 +17,7 @@ export const features: FeatureModule[] = [
   sc02ResultsFeature, // SC-02 検索結果一覧（#128）
   sc03DocumentFeature, // SC-03 文書詳細／プレビュー（#129）
   sc04WikiFeature, // SC-04 Wiki 閲覧導線（#130）
+  sc06DataSourcesFeature, // SC-06 データソース管理（#132）
   sc08AnalysisFeature, // SC-08 AI分析ダッシュボード（#134）
   sc10OperationsFeature, // SC-10 運用ダッシュボード（#136）
   sc11ConfigFeature, // SC-11 構成ビューア（#137/#138/#140）

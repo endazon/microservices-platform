@@ -90,6 +90,19 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
     ];
 
+    // FR-01/FR-02 BFF テスト（SC-06 データソース管理）: DataSourceService の応答をスタブ制御する。
+    public static readonly Guid StubDataSourceId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
+    public HttpStatusCode DataSourceStatusCode { get; set; } = HttpStatusCode.OK;
+    public List<DataSourceDto> StubDataSources { get; set; } =
+    [
+        new(StubDataSourceId, "社内共有フォルダ", "filesystem", "smb://share/docs", "active",
+            DateTimeOffset.UtcNow, new Dictionary<string, string>(),
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow),
+        new(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"), "社内 Wiki", "wiki", "https://wiki.example",
+            "disabled", null, new Dictionary<string, string>(),
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow),
+    ];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -130,6 +143,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-06 (SC-03 文書閲覧): DocumentService をスタブ化する。
             services.AddHttpClient("DocumentService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DocumentStubHandler(this));
+            // FR-01/FR-02 (SC-06 データソース管理): DataSourceService をスタブ化する。
+            services.AddHttpClient("DataSourceService")
+                .ConfigurePrimaryHttpMessageHandler(() => new DataSourceStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -292,6 +308,44 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = JsonContent.Create(body)
             });
+    }
+
+    // FR-01/FR-02 (SC-06): DataSourceService をスタブ化する。/datasources（一覧・登録）・
+    // /datasources/{id}（取得・状態可変）・/{id}/sync（202）・DELETE（204）をメソッド／パスで振り分ける。
+    private sealed class DataSourceStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var method = request.Method;
+
+            if (path.EndsWith("/sync", StringComparison.Ordinal))
+                return Json(HttpStatusCode.Accepted,
+                    new { fetchId = Guid.NewGuid(), status = "queued" });
+
+            if (path == "/datasources")
+            {
+                if (method == HttpMethod.Post)
+                    return Json(HttpStatusCode.Created, owner.StubDataSources[0]);
+                // GET 一覧: 後段障害の伝播検証のため DataSourceStatusCode を反映する。
+                if (owner.DataSourceStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
+                return Json(HttpStatusCode.OK, owner.StubDataSources);
+            }
+
+            // /datasources/{id}
+            if (method == HttpMethod.Delete)
+                return Task.FromResult(new HttpResponseMessage(
+                    owner.DataSourceStatusCode == HttpStatusCode.OK ? HttpStatusCode.NoContent : owner.DataSourceStatusCode));
+
+            if (owner.DataSourceStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
+            return Json(HttpStatusCode.OK, owner.StubDataSources[0]);
+        }
+
+        private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
     }
 
     // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。
