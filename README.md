@@ -129,8 +129,9 @@ bash scripts/compose-up.sh up -d
 #   - Grafana:        http://localhost:3000
 ```
 
-内部サービス（DocumentService 等）は `expose` のみでホスト非公開（[IADR-0017](docs/adr/IADR-0017_internal-service-auth-network-isolation.md)）。
-外部からの入口は BFF とフロントエンドのみである。
+内部サービス（DocumentService 等）は `expose` のみでホスト非公開（[IADR-0017](docs/adr/IADR-0017_internal-service-auth-network-isolation.md)。
+サービス間認証の第一防御は [IADR-0026](docs/adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の Istio STRICT mTLS に移行済みで、
+ネットワーク分離は多層防御として存続している）。外部からの入口は BFF とフロントエンドのみである。
 
 ## 仕様書・ドキュメントの入口
 

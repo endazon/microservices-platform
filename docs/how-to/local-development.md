@@ -99,8 +99,9 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 ### 起動後のエンドポイント（dev の host 公開ポート）
 
 内部サービス（DocumentService・RetrievalService 等）は `expose` のみでホスト非公開
-（[IADR-0017](../adr/IADR-0017_internal-service-auth-network-isolation.md)）。外部から到達できるのは
-以下のみである。
+（[IADR-0017](../adr/IADR-0017_internal-service-auth-network-isolation.md)。サービス間認証の第一防御は
+[IADR-0026](../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の Istio STRICT mTLS に移行済みで、
+ネットワーク分離は多層防御として存続している）。外部から到達できるのは以下のみである。
 
 | サービス | URL | 備考 |
 | --- | --- | --- |

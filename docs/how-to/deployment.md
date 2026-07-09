@@ -119,8 +119,10 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
 
 ## サービス間通信（STRICT mTLS）
 
-サービス間通信は Istio STRICT mTLS で暗号化・相互認証する（`PeerAuthentication` / `DestinationRule` を
-Helm がレンダリングし ArgoCD が同期）。検証コマンド（`istioctl authn tls-check` 等）は
+サービス間認証の第一防御は Istio STRICT mTLS（[IADR-0026](../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md)）で、
+`PeerAuthentication` / `DestinationRule` を Helm がレンダリングし ArgoCD が同期する。旧来のネットワーク分離
+（[IADR-0017](../adr/IADR-0017_internal-service-auth-network-isolation.md)、compose の `expose` / k8s の NetworkPolicy）は
+IADR-0026 に Supersede され、多層防御として存続している。検証コマンド（`istioctl authn tls-check` 等）は
 [`deploy/istio/README.md`](../../deploy/istio/README.md) を参照。
 
 ## CI ゲート（マージ前の必須チェック）
