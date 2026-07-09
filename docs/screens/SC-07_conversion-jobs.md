@@ -14,7 +14,6 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
   - "../adr/IADR-0042_conversion-job-read-model.md"
-  - "../screens/SC-06_datasource-management.md"
   - "../specs/20260709_issue-133_sc07-conversion-jobs.md"
   - "../tests/SC-07_conversion-jobs.md"
 ---
@@ -31,7 +30,7 @@ related_specs:
 
 変換状況・失敗ジョブの一覧を表示し、失敗ジョブの人手補正（再変換）を行う運用画面。SC-06（データソース管理）からの遷移先（取り込み→変換の運用フロー）。
 
-- アクセス: **platform-admin/operator 限定**（[IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)・[IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md)）。権限外はルート・ナビとも非表示。サーバ側 `/bff/conversion/jobs` も同ロール。
+- アクセス: **platform-admin/operator 限定**（[IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)・管理系ロール方針は [[IADR-0039]]）。権限外はルート・ナビとも非表示。サーバ側 `/bff/conversion/jobs` も同ロール。
 
 ## データソース（BFF 境界）
 
