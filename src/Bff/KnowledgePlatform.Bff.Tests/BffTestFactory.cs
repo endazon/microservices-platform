@@ -45,11 +45,50 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
     public bool SearchScopeGranted { get; set; } = true;
+    // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
+    // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
+    public List<AttributeFilter> ScopeFilters { get; set; } = [];
     public SearchResponse StubSearchResponse { get; set; } = new(
         [new SearchResultDto(Guid.NewGuid(), Guid.NewGuid(), "経費規程 2025",
             "第3条 …", 0.91f, "s3://bucket/expense.md",
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, ["hr"])],
         1, 5);
+
+    // FR-06 BFF テスト（SC-03 文書閲覧）: DocumentService の応答をスタブ制御する。
+    public static readonly Guid StubDocumentId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    public HttpStatusCode DocumentStatusCode { get; set; } = HttpStatusCode.OK;
+    public DocumentDto StubDocument { get; set; } = new()
+    {
+        Id = StubDocumentId,
+        Title = "経費規程 2025",
+        Status = "published",
+        MarkdownUri = "storage://bucket/expense.md",
+        Version = 3,
+        Attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+        Tags = ["hr"],
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow,
+    };
+    public List<DocumentDto> StubDocumentList { get; set; } =
+    [
+        new()
+        {
+            Id = StubDocumentId, Title = "経費規程 2025", Status = "published",
+            Version = 3, Attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+            Tags = ["hr"],
+        },
+        new()
+        {
+            Id = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"), Title = "取締役会議事録",
+            Status = "published", Version = 1,
+            Attributes = new Dictionary<string, string> { ["confidentiality"] = "secret" }, Tags = ["board"],
+        },
+    ];
+    public List<DocumentVersionDto> StubVersions { get; set; } =
+    [
+        new() { DocumentId = StubDocumentId, Version = 3, Title = "経費規程 2025", Status = "published", ChangeNote = "第3条改定", CreatedAt = DateTimeOffset.UtcNow },
+        new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
+    ];
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -61,6 +100,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test",
                 ["Services:RetrievalService"] = "http://localhost:5003",
+                ["Services:DocumentService"] = "http://localhost:5001",
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
                 ["Services:FeedbackService"] = "http://localhost:5008",
                 ["Services:DashboardService"] = "http://localhost:5009",
@@ -87,6 +127,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("RetrievalService")
                 .ConfigurePrimaryHttpMessageHandler(() => new RetrievalStubHandler(this));
+            // FR-06 (SC-03 文書閲覧): DocumentService をスタブ化する。
+            services.AddHttpClient("DocumentService")
+                .ConfigurePrimaryHttpMessageHandler(() => new DocumentStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -209,18 +252,46 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
     }
 
-    // FR-05 (SC-01): AuthorizationService /authz/scope をスタブ化する。Granted は SearchScopeGranted で制御。
+    // FR-05 (SC-01/SC-03): AuthorizationService /authz/scope をスタブ化する。Granted は SearchScopeGranted、
+    // 許可フィルタは ScopeFilters（既定は空＝全件許可）で制御する。
     private sealed class AuthzStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            var scope = new AccessScopeResponse("tester", [], owner.SearchScopeGranted);
+            var scope = new AccessScopeResponse("tester", owner.ScopeFilters, owner.SearchScopeGranted);
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(scope)
             });
         }
+    }
+
+    // FR-06 (SC-03): DocumentService をスタブ化する。/documents（一覧）・/documents/{id}（詳細・状態可変）・
+    // /documents/{id}/versions（版履歴）をパスで振り分ける。
+    private sealed class DocumentStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            if (path.EndsWith("/versions", StringComparison.Ordinal))
+                return Ok(owner.StubVersions);
+            if (path == "/documents")
+                return Ok(owner.StubDocumentList);
+
+            // GET /documents/{id}
+            if (owner.DocumentStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.DocumentStatusCode));
+            return Ok(owner.StubDocument);
+        }
+
+        private static Task<HttpResponseMessage> Ok<T>(T body) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(body)
+            });
     }
 
     // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。

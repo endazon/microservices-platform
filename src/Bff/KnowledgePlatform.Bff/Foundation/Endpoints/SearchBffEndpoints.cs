@@ -1,3 +1,4 @@
+using KnowledgePlatform.Bff.Foundation.Authz;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 
@@ -29,31 +30,11 @@ public static class SearchBffEndpoints
 
             var topK = Math.Clamp(req.TopK <= 0 ? DefaultTopK : req.TopK, 1, MaxTopK);
 
-            // FR-05: 利用者の ABAC 許可スコープを解決する（deny-by-default）。JWT のクレームから利用者を特定する。
-            var userId = http.User.Identity?.Name ?? "anonymous";
-            var userAttrs = ExtractUserAttributes(http);
-
-            var authzClient = httpFactory.CreateClient("AuthorizationService");
-            AccessScopeResponse? resolved;
-            try
-            {
-                var scopeResp = await authzClient.PostAsJsonAsync("/authz/scope",
-                    new AccessScopeRequest(userId, userAttrs), ct);
-                resolved = scopeResp.IsSuccessStatusCode
-                    ? await scopeResp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
-                    : null;
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-            {
-                // 認可サービス不調は deny-by-default（空）へ縮退する。
-                resolved = null;
-            }
-
-            // FR-05 deny-by-default: 許可ポリシーが無い/解決不能 → 閲覧可能文書なし（空）。
-            if (resolved is not { Granted: true })
+            // FR-05: 利用者の ABAC 許可スコープをサーバ側で解決する（deny-by-default。クライアント指定
+            // Scope は信頼しない）。許可ポリシーが無い／認可サービス不調は空応答へ縮退する（存在秘匿）。
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            if (scope is null)
                 return Results.Ok(new SearchResponse([], 0, 0));
-
-            var scope = new AccessScope(resolved.AllowedFilters, resolved.Granted);
 
             // FR-03: 解決済みスコープでハイブリッド検索を実行する（クライアント指定 Scope は使わない）。
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
@@ -74,16 +55,5 @@ public static class SearchBffEndpoints
         }).WithName("BffSearch").Produces<SearchResponse>();
 
         return app;
-    }
-
-    // FR-05: JWT から ABAC 判定に用いる利用者属性を取り出す（AiAnalysisService と同一の属性キー）。
-    private static Dictionary<string, string> ExtractUserAttributes(HttpContext ctx)
-    {
-        var attrs = new Dictionary<string, string>();
-        var clearance = ctx.User.FindFirst("clearance")?.Value;
-        var department = ctx.User.FindFirst("department")?.Value;
-        if (clearance is not null) attrs["clearance"] = clearance;
-        if (department is not null) attrs["department"] = department;
-        return attrs;
     }
 }

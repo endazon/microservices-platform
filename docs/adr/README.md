@@ -61,3 +61,4 @@
 | IADR-0035 | フロントエンドのロールベース・ナビゲーションと存在秘匿（SC-09/10/11、realm ロール判定） | Accepted |
 | IADR-0036 | SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入、CSS チェーン＋表） | Accepted |
 | IADR-0037 | LLM 回答の SSE ストリーミング（egress ゲート保持、SC-01・FR-04/FR-11） | Accepted |
+| IADR-0038 | 文書閲覧の BFF 側 ABAC ゲーティングと本文サーバサイド取得（SC-03・FR-06/FR-12） | Accepted |

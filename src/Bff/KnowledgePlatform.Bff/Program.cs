@@ -1,3 +1,4 @@
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Bff.Foundation.Endpoints;
@@ -57,6 +58,15 @@ builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
 
+// FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
+builder.Services.AddHttpClient("DocumentService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
+        ?? "http://document-service:5001"));
+
+// FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
+// 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+
 var app = builder.Build();
 
 app.UseKnowledgePlatformMiddleware();
@@ -64,6 +74,7 @@ app.MapKnowledgePlatformHealthChecks();
 app.MapOpenApi();
 
 app.MapSearchBffEndpoints();
+app.MapDocumentBffEndpoints();
 app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
