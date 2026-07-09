@@ -112,4 +112,40 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('取得に失敗'));
   });
+
+  it('notifies when a sync trigger fails', async () => {
+    mocks.apiFetch.mockResolvedValueOnce(SOURCES); // load
+    mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // sync fails
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '同期' }));
+
+    expect(await screen.findByText('同期のトリガに失敗しました。')).toBeInTheDocument();
+  });
+
+  it('notifies when disabling fails', async () => {
+    mocks.apiFetch.mockResolvedValueOnce(SOURCES); // load
+    mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // delete fails
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '無効化' }));
+
+    expect(await screen.findByText('無効化に失敗しました。')).toBeInTheDocument();
+  });
+
+  it('shows an alert when registration fails', async () => {
+    mocks.apiFetch.mockResolvedValueOnce([]); // load
+    mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // create fails
+    const user = userEvent.setup();
+    renderPage();
+
+    const form = await screen.findByRole('form', { name: 'データソース登録' });
+    await user.type(within(form).getByLabelText('名前（必須）'), '新ソース');
+    await user.type(within(form).getByLabelText('接続先 URI（必須）'), 'smb://x/y');
+    await user.click(within(form).getByRole('button', { name: '登録する' }));
+
+    expect(await within(form).findByRole('alert')).toHaveTextContent('登録に失敗');
+  });
 });

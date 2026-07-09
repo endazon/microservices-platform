@@ -20,17 +20,23 @@ public static class DataSourceBffEndpoints
                 KnowledgePlatformAuthPolicies.OperatorRole));
 
         // 一覧
+        // SC-06 は運用者が「登録済みデータソースの有無」を判断する管理画面のため、後段障害を空一覧へ
+        // 縮退させない（「未登録」と誤認させ重複登録を誘発するのを防ぐ）。非 2xx はそのまま伝播し、
+        // 後段不達（HttpRequestException/TaskCanceledException）は 502 で可視化する（レビュー #169 指摘対応）。
         g.MapGet("/", async (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
             var client = CreateForwardingClient(httpFactory, http);
             try
             {
-                var list = await client.GetFromJsonAsync<List<DataSourceDto>>("/datasources", ct);
+                var resp = await client.GetAsync("/datasources", ct);
+                if (!resp.IsSuccessStatusCode)
+                    return Results.StatusCode((int)resp.StatusCode);
+                var list = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>(ct);
                 return Results.Ok(list ?? []);
             }
             catch (Exception ex) when (IsTransient(ex, ct))
             {
-                return Results.Ok(new List<DataSourceDto>());
+                return Results.StatusCode(StatusCodes.Status502BadGateway);
             }
         }).WithName("BffDataSourceList").Produces<List<DataSourceDto>>();
 

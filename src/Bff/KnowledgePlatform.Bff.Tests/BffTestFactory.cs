@@ -328,6 +328,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 if (method == HttpMethod.Post)
                     return Json(HttpStatusCode.Created, owner.StubDataSources[0]);
+                // GET 一覧: 後段障害の伝播検証のため DataSourceStatusCode を反映する。
+                if (owner.DataSourceStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
                 return Json(HttpStatusCode.OK, owner.StubDataSources);
             }
 

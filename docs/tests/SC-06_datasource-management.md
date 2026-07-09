@@ -31,6 +31,7 @@ related_specs:
 | 3 | ロール制限 | IADR-0039 | 非特権ロールは 403 | `GetList_AsNonPrivilegedRole_IsForbidden` |
 | 4 | 無認証 | IADR-0039 | 匿名は 401 | `GetList_WhenAnonymous_IsUnauthorized` |
 | 5 | 不在 | FR-01 | 後段 404 を透過 | `GetById_WhenMissing_Returns404` |
+| 5b | 後段障害の可視化 | FR-01 | 一覧は後段障害を空へ縮退せず伝播（管理画面の誤認防止・レビュー #169） | `GetList_WhenBackendFails_SurfacesFailure_NotEmptyList` |
 | 6 | 登録 | FR-01 | 201 で登録 | `Create_AsAdmin_Returns201` |
 | 7 | 同期 | FR-01/FR-02 | 202 で同期トリガ中継 | `Sync_AsAdmin_Returns202` |
 | 8 | 無効化 | FR-01 | 204 で論理削除 | `Delete_AsAdmin_Returns204` |
@@ -46,7 +47,10 @@ related_specs:
 | 2 | 登録 | FR-01/FR-05 | 既定機密区分を含むペイロードで POST | `creates a data source with the default confidentiality attribute` |
 | 3 | 同期 | FR-02 | `/{id}/sync` を POST | `triggers a manual sync` |
 | 4 | 無効化 | FR-01 | `/{id}` を DELETE | `disables a data source` |
-| 5 | 異常系 | FR-01 | 取得失敗で alert | `shows an alert when the list fails to load` |
+| 5 | 異常系（一覧） | FR-01 | 取得失敗で alert | `shows an alert when the list fails to load` |
+| 6 | 異常系（同期） | FR-02 | 同期失敗で通知 | `notifies when a sync trigger fails` |
+| 7 | 異常系（無効化） | FR-01 | 無効化失敗で通知 | `notifies when disabling fails` |
+| 8 | 異常系（登録） | FR-01 | 登録失敗で alert | `shows an alert when registration fails` |
 
 ## ロール・存在秘匿の担保
 

@@ -68,6 +68,16 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
     }
 
     [Fact]
+    public async Task GetList_WhenBackendFails_SurfacesFailure_NotEmptyList()
+    {
+        // 管理画面では後段障害を空一覧へ縮退させない（「未登録」との誤認・重複登録を防ぐ・レビュー #169 指摘対応）。
+        _factory.DataSourceStatusCode = HttpStatusCode.ServiceUnavailable;
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    [Fact]
     public async Task Create_AsAdmin_Returns201()
     {
         var resp = await _factory.CreateClient().PostAsJsonAsync("/bff/datasources",
