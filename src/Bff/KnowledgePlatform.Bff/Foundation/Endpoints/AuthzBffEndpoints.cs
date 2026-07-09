@@ -71,6 +71,9 @@ public static class AuthzBffEndpoints
 
     // AuthorizationService へ透過中継する。要求本文（書き込み時）と Authorization を後段へ引き継ぎ、
     // 応答は status・content-type・本文をそのまま返す（検証 400・競合 409・不在 404 を保つ）。
+    // 応答本文は ReadAsStringAsync で一括読み込みする。ABAC の属性辞書・ポリシーは管理系の小さな
+    // ペイロード（件数・サイズとも小規模）を前提とするため、ストリーミング転送は導入しない（YAGNI。
+    // 将来ペイロードが大きくなれば Results.Stream 等へ切替を検討する。レビュー #170 指摘対応）。
     private static async Task<IResult> Proxy(
         IHttpClientFactory httpFactory, HttpContext http, HttpMethod method, string path, CancellationToken ct)
     {
