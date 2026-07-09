@@ -121,8 +121,10 @@ related_specs:
 ### 2.4 データソースコネクタ（Connector）— 予約・未実装
 
 配置予約: `DataSourceService` の `Composable/Connectors/`。計画は
-`06_technical/09_datasource-connectors.md`。現状 DataSourceService は登録メタのみで、コネクタ実行
-基盤は未実装。**着手時は作業仕様書＋（共通コネクタ抽象を新設するなら）IADR を先に作成する**こと。
+`06_technical/09_datasource-connectors.md`。現状 DataSourceService は登録・カタログ管理・同期トリガ
+API までで、`/sync` はダミー文書を発行するスタブであり、実コネクタ・定期同期は未実装（追跡:
+issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and-nfr-verification-status.md)）。
+**着手時は作業仕様書＋（共通コネクタ抽象を新設するなら）IADR を先に作成する**こと。
 
 ### 2.5 新サービスユニットの追加
 
