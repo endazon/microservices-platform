@@ -39,7 +39,7 @@ SC-05 は文書の CRUD・属性／タグ・公開／アーカイブを行う。
 ## 決定
 
 1. **書き込みは platform-admin/operator に限定する**（[[IADR-0039]] の管理系ゲーティングに従う）。読み取り（SC-02/03 用）は従来どおり無制限（ABAC スコープのみ）。BFF は `/bff/documents` の**書き込みサブグループのみ** `RequireRole(admin, operator)` で保護し、既存の読み取りマッピングは変更しない。フロントは `RequireRole` で `/documents`（管理一覧）を出し分ける。
-2. **既存文書への操作はスコープ内限定**とする。更新・メタ更新・公開・アーカイブ・削除は、対象文書が利用者の ABAC スコープ内であることを先に確認し（[[IADR-0038]] の `FetchAuthorizedAsync` を再利用）、スコープ外・不在はいずれも 404 で秘匿する（**閲覧できない文書は変更もできない**）。新規作成は許可ポリシーがあること（`ResolveAsync` 成功）を要件とし、無ければ 403（deny-by-default）。
+2. **既存文書への操作はスコープ内限定**とする。更新・公開・アーカイブ・削除は、対象文書が利用者の ABAC スコープ内であることを先に確認し（[[IADR-0038]] の `FetchAuthorizedAsync` を再利用）、スコープ外・不在はいずれも 404 で秘匿する（**閲覧できない文書は変更もできない**）。新規作成は許可ポリシーがあること（`ResolveAsync` 成功）を要件とし、無ければ 403（deny-by-default）。
 3. **検証（400）・楽観ロック競合（409）は後段の応答を透過**する。BFF は status・content-type・本文をそのまま返し、SPA は 409 を検出して「競合（版が変わった）」を通知し最新を再読込する。タイトル必須（400）も透過する。
 
 ## 根拠 / 代替案
@@ -50,6 +50,6 @@ SC-05 は文書の CRUD・属性／タグ・公開／アーカイブを行う。
 
 ## 影響
 
-- BFF `DocumentBffEndpoints` に書き込みサブグループ（create/update/metadata/publish/archive/delete）を追加。BFF ローカル request record（`DocumentCreateRequest` 等）。
+- BFF `DocumentBffEndpoints` に書き込みサブグループ（create/update/publish/archive/delete）を追加。BFF ローカル request record（`DocumentCreateRequest` 等）。メタデータ専用 PATCH は SC-05 では未使用のため実装しない（過剰実装回避。レビュー #171 指摘対応）。
 - フロント `features/sc05-documents`（`/documents`・admin/operator 限定・作成/編集/公開/アーカイブ/削除・409 通知）。
 - 詳細・版履歴は SC-03（`/documents/:id`）へ委譲（本画面は管理操作に集中）。
