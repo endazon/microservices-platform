@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ルート README 整備と使い方/デプロイの how-to ドキュメント作成
 type: work-spec
-status: in-progress
+status: review
 related_ids:
   - NFR
 author: claude
