@@ -18,7 +18,6 @@ const RESPONSE = {
       documentTitle: '経費規程 2025',
       text: '第3条 出張旅費の上限を…',
       score: 0.91,
-      markdownUri: 'storage://bucket/expense.md',
       attributes: { confidentiality: 'internal' },
       tags: ['hr'],
     },

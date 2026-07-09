@@ -13,7 +13,6 @@ interface SearchResult {
   documentTitle: string;
   text: string;
   score: number;
-  markdownUri?: string | null;
   attributes?: Record<string, string>;
   tags?: string[];
 }
