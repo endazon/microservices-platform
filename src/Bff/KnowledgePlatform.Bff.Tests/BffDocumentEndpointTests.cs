@@ -64,6 +64,16 @@ public class BffDocumentEndpointTests : IClassFixture<BffTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // IADR-0038: 後段（DocumentService）不調はいずれも 404 へ縮退する（5xx も存在秘匿・区別しない）。
+    [Fact]
+    public async Task GetDetail_WhenDocumentServiceFails_Returns404()
+    {
+        _factory.DocumentStatusCode = HttpStatusCode.InternalServerError;
+        var resp = await _factory.CreateClient().GetAsync(DetailPath);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     [Fact]
     public async Task GetList_ReturnsOnlyInScopeDocuments()
     {

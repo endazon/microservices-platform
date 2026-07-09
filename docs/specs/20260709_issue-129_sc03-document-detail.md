@@ -68,12 +68,12 @@ SPA 基盤上に SC-03 を feature として実装する。検索結果一覧（
 
 ## 受け入れ基準
 
-Issue #129 より転記:
+Issue #129 より転記（本 PR で充足）:
 
-- [ ] 画面仕様書が作成され、計画の画面設計・対応 UC と整合している → `docs/screens/SC-03_document-detail.md`
-- [ ] 正規化文書（Markdown）が表示され、出典元リンクが機能する
-- [ ] 権限外の情報が表示されない（ABAC・存在秘匿の画面適用 → 404 中立表示・一覧絞り込み）
-- [ ] テスト観点が `docs/tests/` へ展開されている → `docs/tests/SC-03_document-detail.md`
+- [x] 画面仕様書が作成され、計画の画面設計・対応 UC と整合している → `docs/screens/SC-03_document-detail.md`
+- [x] 正規化文書（Markdown）が表示され、出典元リンクが機能する
+- [x] 権限外の情報が表示されない（ABAC・存在秘匿の画面適用 → 404 中立表示・一覧絞り込み）
+- [x] テスト観点が `docs/tests/` へ展開されている → `docs/tests/SC-03_document-detail.md`
 
 ## テスト方針
 
