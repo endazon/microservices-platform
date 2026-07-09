@@ -57,20 +57,23 @@ return [fallback];
 
 ## 対象範囲
 
-- 新設: `frontend/src/foundation/ui/ErrorList.tsx`（`toMessages` と `ErrorList` を export）。
-- 単体テスト: `frontend/src/foundation/ui/ErrorList.test.tsx`（優先順位・空配列 null・role）。
+- 新設: `frontend/src/foundation/ui/apiErrors.ts`（`toMessages`）と `frontend/src/foundation/ui/ErrorList.tsx`（`ErrorList`）。
+  ESLint の `react-refresh/only-export-components` を避けるため、関数（`toMessages`）とコンポーネント（`ErrorList`）を
+  別ファイルへ分離する。
+- 単体テスト: `frontend/src/foundation/ui/apiErrors.test.ts`（`toMessages` 優先順位）と
+  `frontend/src/foundation/ui/ErrorList.test.tsx`（空配列 null・role）。
 - 移行: `sc05-documents/DocumentManagementPage.tsx` / `sc09-admin-abac/AdminAbacSettingsPage.tsx` の
   ローカル `toMessages`/`Errors` を削除し foundation を import。
 - SC-06（`sc06-datasource`）は現状エラー詳細表示を持たないため本 issue では新規導入しない（将来使用時に共通部品を使う）。
 
 ## 受け入れ基準
 
-- [ ] `foundation/ui/ErrorList.tsx` に `toMessages` / `ErrorList` を集約。
-- [ ] SC-05 / SC-09 のローカル実装を削除し foundation import へ移行。
-- [ ] `foundation/ui/ErrorList.test.tsx` 追加（優先順位・null・role の検証）。
-- [ ] SC-05 / SC-09 の既存テストが回帰しない。
-- [ ] `npm run typecheck` / `npm run lint` / 単体テストが通る。
-- [ ] カバレッジ床（`vite.config.ts` thresholds）を割らない。
+- [x] `foundation/ui/apiErrors.ts`（`toMessages`）/ `foundation/ui/ErrorList.tsx`（`ErrorList`）に集約。
+- [x] SC-05 / SC-09 のローカル実装を削除し foundation import へ移行。
+- [x] `foundation/ui/apiErrors.test.ts` / `ErrorList.test.tsx` を追加（優先順位・null・role の検証）。
+- [x] SC-05 / SC-09 の既存テストが回帰しない。
+- [x] `npm run typecheck` / `npm run lint` / 単体テストが通る。
+- [x] カバレッジ床（`vite.config.ts` thresholds）を割らない。
 
 ## 影響・リスク
 
