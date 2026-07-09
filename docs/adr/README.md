@@ -62,3 +62,14 @@
 | IADR-0036 | SC-11 構成ビューアの可視化方式（グラフ描画ライブラリ非導入、CSS チェーン＋表） | Accepted |
 | IADR-0037 | LLM 回答の SSE ストリーミング（egress ゲート保持、SC-01・FR-04/FR-11） | Accepted |
 | IADR-0038 | 文書閲覧の BFF 側 ABAC ゲーティングと本文サーバサイド取得（SC-03・FR-06/FR-12） | Accepted |
+| IADR-0039 | データソース管理の BFF 集約と管理系画面のロールゲーティング | Accepted |
+| IADR-0040 | 管理者設定（ABAC）の BFF 透過中継と AdminOnly ゲーティング | Accepted |
+| IADR-0041 | 文書管理（書き込み）の BFF 集約とスコープ内限定・楽観ロック透過 | Accepted |
+| IADR-0042 | 変換ジョブ読み取りモデル（インメモリ）と状況照会・人手補正 API | Accepted |
+| IADR-0043 | 変換ジョブ読み取りモデルの永続化（Postgres+EF）と非同期ストア | Accepted |
+| IADR-0044 | バックエンドサービスの書き込み/管理APIへの認可強制（多層防御） | Accepted |
+| IADR-0045 | BFF 文書書き込みのスコープ確認往復は多層防御の要のため現時点で維持し最適化を保留する | Accepted |
+| IADR-0046 | 構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する | Accepted |
+| IADR-0047 | 文書の必須属性（機密区分）のサーバー側検証（PR #211 で追加） | Accepted |
+| IADR-0048 | バックエンドは .NET 10 / C# 13 を採用する（計画制約「.NET 8」からの乖離） | Accepted |
+| IADR-0049 | コンポーザビリティ標準（共通エンベロープ・CI契約テスト・ステージング適用順序）の段階適用と繰延条件 | Accepted |

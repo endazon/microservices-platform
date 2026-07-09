@@ -79,3 +79,9 @@ plan_refs:
 - 計画側の判断（制約更新 or 是正）の反映と、本 IADR の状態同期（`Accepted` 維持 or `Superseded`）。
 - `docs/tech/tech-requirements.md`（#200）への確定結果の記載。
 - INDEX 概要等の版数固定表現を単一情報源参照へ改める提案の追跡（plan-feedback）。
+
+## 関連
+
+- Supersedes: なし
+- Superseded by: なし（計画側が「.NET 8 へ是正」を決定した場合、実装を .NET 8 へ戻す新 IADR を起票し本 IADR を
+  `Superseded` とする。計画側が「制約を .NET 10／版数非固定表現へ更新」を決定した場合は `Accepted` を維持する。）
