@@ -18,7 +18,7 @@ created: 2026-07-02
 updated: 2026-07-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_auth-keycloak-oidc.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md"
 related_adrs:
   - ../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md
