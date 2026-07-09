@@ -102,6 +102,21 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
         published!.Status.Should().Be(DocumentStatus.Published);
     }
 
+    // SC-05, UC-03: アーカイブ済み文書の再公開は 409（不正遷移）。UI だけでなく API 側でも遷移を止める。
+    [Fact]
+    public async Task Publish_AfterArchive_Returns409()
+    {
+        var client = Client();
+        var create = await client.PostAsJsonAsync("/documents",
+            new { title = "to-archive", tags = new List<string>() });
+        var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
+
+        (await client.PostAsync($"/documents/{doc!.Id}/archive", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var republish = await client.PostAsync($"/documents/{doc.Id}/publish", null);
+        republish.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
     [Fact]
     public async Task CreateWithBlankTitle_Returns400()
     {

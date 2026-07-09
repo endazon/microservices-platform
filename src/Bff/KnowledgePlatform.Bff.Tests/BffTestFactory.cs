@@ -57,6 +57,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-06 BFF テスト（SC-03 文書閲覧）: DocumentService の応答をスタブ制御する。
     public static readonly Guid StubDocumentId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
     public HttpStatusCode DocumentStatusCode { get; set; } = HttpStatusCode.OK;
+    // FR-06 BFF テスト（SC-05 文書管理・書き込み）: 書き込み（POST/PUT/PATCH/DELETE）応答のステータス。
+    // GET（スコープ確認）とは独立に差し替えられる（検証 400・楽観ロック競合 409 の透過検証用）。
+    public HttpStatusCode DocumentWriteStatusCode { get; set; } = HttpStatusCode.OK;
     public DocumentDto StubDocument { get; set; } = new()
     {
         Id = StubDocumentId,
@@ -348,23 +351,45 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var method = request.Method;
 
             if (path.EndsWith("/versions", StringComparison.Ordinal))
                 return Ok(owner.StubVersions);
-            if (path == "/documents")
-                return Ok(owner.StubDocumentList);
 
-            // GET /documents/{id}
-            if (owner.DocumentStatusCode != HttpStatusCode.OK)
-                return Task.FromResult(new HttpResponseMessage(owner.DocumentStatusCode));
+            if (path == "/documents")
+            {
+                // FR-06 (SC-05): 新規作成。検証エラーは DocumentWriteStatusCode で再現し透過を確認する。
+                if (method == HttpMethod.Post)
+                    return owner.DocumentWriteStatusCode != HttpStatusCode.OK
+                        ? Status(owner.DocumentWriteStatusCode, new { errors = new { title = new[] { "タイトルは必須です。" } } })
+                        : Json(HttpStatusCode.Created, owner.StubDocument);
+                return Ok(owner.StubDocumentList);
+            }
+
+            // GET /documents/{id}（詳細・スコープ確認にも使われる）
+            if (method == HttpMethod.Get)
+            {
+                if (owner.DocumentStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DocumentStatusCode));
+                return Ok(owner.StubDocument);
+            }
+
+            // FR-06 (SC-05): 書き込み（PUT/PATCH/POST publish・archive/DELETE）。
+            if (owner.DocumentWriteStatusCode != HttpStatusCode.OK)
+                return Status(owner.DocumentWriteStatusCode,
+                    new { error = "version_conflict", expectedVersion = 1, currentVersion = 3 });
+            if (method == HttpMethod.Delete)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             return Ok(owner.StubDocument);
         }
 
-        private static Task<HttpResponseMessage> Ok<T>(T body) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = JsonContent.Create(body)
-            });
+        private static Task<HttpResponseMessage> Ok<T>(T body) => Json(HttpStatusCode.OK, body);
+
+        private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
+
+        private static Task<HttpResponseMessage> Status<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
     }
 
     // FR-01/FR-02 (SC-06): DataSourceService をスタブ化する。/datasources（一覧・登録）・
