@@ -1,0 +1,82 @@
+# ADR-0006, NFR (#198): Prometheus アラートルール（SLO ベース）。
+# 目標: 障害検出 5 分以内・MTTR 30 分以内。通知は Alertmanager（deploy/prometheus.yml の alerting 参照）。
+#
+# メトリクス経路: アプリ → OTLP → otel-collector → prometheusremotewrite → Prometheus（push モデル）。
+# 使用メトリクス名は既存 Grafana ダッシュボード（knowledge-platform-overview.json）と一致させている
+# （`http_server_duration_milliseconds_{count,bucket}`、ラベル service_name / http_status_code / http_route / le）。
+#
+# 注意（要検証）: RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラートは、それぞれ RabbitMQ Prometheus
+# プラグインの exporter メトリクスと、ドリフト検出のカスタムメトリクス（現状は監査ログ/警告ログで表出）が
+# 必要。exporter/メトリクスを配線後に下記コメントアウト例を有効化する（follow-up）。
+groups:
+  - name: platform-availability
+    rules:
+      # 可観測性パイプライン断（唯一の scrape ターゲット。push モデルのため他は絶対値検知が難しい）。
+      - alert: OtelCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "OTel Collector 到達不可（可観測性パイプライン断）"
+          description: "otel-collector の scrape が 2 分間失敗。メトリクス/トレース/ログの収集が停止している可能性。"
+
+      # サービスの応答断（push モデルでは絶対的な down 判定が困難なため、直近まで受信していた
+      # リクエストメトリクスが途絶したことを近似シグナルとする。アイドルサービスでは誤検知し得るため for を長めに。）
+      - alert: ServiceRequestMetricsAbsent
+        expr: |
+          sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) == 0
+          and on (service_name) (sum by (service_name) (http_server_duration_milliseconds_count offset 15m) > 0)
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "サービス {{ $labels.service_name }} のリクエストメトリクスが途絶"
+          description: "直近まで処理していたサービスの HTTP メトリクスが 5 分間ゼロ。ダウン/到達不可の可能性（要 blackbox 補完）。"
+
+  - name: platform-slo
+    rules:
+      # HTTP 5xx 率（サービス別）。NFR 可用性 99.9% の逸脱検知。
+      - alert: HighHttp5xxRate
+        expr: |
+          sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
+          / sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.service_name }} の 5xx 率が 5% 超"
+          description: "直近 5 分の 5xx 率が閾値超過。障害検出 5 分以内（NFR）。"
+
+      # 検索 p95 レイテンシ（NFR: 検索 p95 1.5s）。retrieval-service。
+      - alert: SearchLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="knowledge-platform.retrieval-service"}[5m]))) > 1500
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "検索 p95 が 1.5s 超"
+          description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+
+      # RAG 初回応答 p95（NFR: 5s）。aianalysis-service /analysis/ask。
+      - alert: RagLatencyP95High
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="knowledge-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5000
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "RAG 応答 p95 が 5s 超"
+          description: "AiAnalysisService /analysis/ask の p95 が NFR 目標(5s)を 10 分継続で超過。"
+
+  # --- follow-up: exporter/カスタムメトリクス配線後に有効化する（#198 注意参照） ---
+  # - name: platform-messaging
+  #   rules:
+  #     - alert: RabbitMqQueueBacklog       # 要 RabbitMQ prometheus plugin: rabbitmq_queue_messages_ready
+  #       expr: rabbitmq_queue_messages_ready > 1000
+  #       for: 10m
+  #       labels: { severity: warning }
+  #     - alert: RabbitMqDeadLetter          # 要 dead-letter queue メトリクス
+  #       expr: increase(rabbitmq_queue_messages_ready{queue=~".*_error|.*_dlq"}[15m]) > 0
+  #       for: 5m
+  #       labels: { severity: warning }
+  #     - alert: ConfigDriftDetected         # 要 ドリフト検出のカスタムメトリクス（現状は監査/警告ログ）
+  #       expr: knowledge_platform_config_drift_warnings > 0
+  #       for: 5m
+  #       labels: { severity: warning }
