@@ -37,7 +37,10 @@ export function SearchResultsPage() {
   // FR-03: 検索を実行する。ABAC は BFF で適用されるため、クライアントはスコープを送らない。
   const runSearch = useCallback((query: string) => {
     const q = query.trim();
-    lastSearched.current = q; // 実行済みの検索語を記録（effect 側の重複実行を抑止）
+    // 「直近に処理した検索語」を空文字も含め常に記録する（意図的）。effect 側の重複実行を抑止し、
+    // 空クリア後に ?q= を戻る操作で復元した際の重複判定も正しく保つ。空文字検索が将来有効化される
+    // 場合はこの値が '' になり得る点に留意（現状は送信ボタン disabled・effect の `q &&` ガードで実害なし）。
+    lastSearched.current = q;
     if (!q) {
       setStatus('idle');
       setResponse(null);
