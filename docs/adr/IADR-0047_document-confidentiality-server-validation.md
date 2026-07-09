@@ -70,6 +70,20 @@ admin/operator ロールを持つ API 直叩き・別クライアントからは
    属性欠落文書は正しい `confidentiality` を付与しない限り更新できない（次回編集時に補正を要求）。
    [[IADR-0019]] のフェイルセーフ既定（`internal`）に揃えた一括バックフィルは任意の ops follow-up とし、
    本 PR には含めない。
+   - **注意（欠落だけでなく非正準値も同じ「詰み」になる）**: 取り込み経路（`CreateNormalized`/`ApplyNormalized`）は
+     本 PR の検証対象外のため、データソース既定属性（[[IADR-0019]] `DataSource.WithConfidentialityFailsafe`）に
+     管理者が非正準値（誤字・別ケース、例 `"Confidential"`）を設定すると、取り込みでそのまま永続化され得る。
+     この文書はその後の手動 `PUT`/`PATCH` が 400 で通らなくなる（＝欠落文書と同じ「修正要求」の袋小路）。
+     取り込み側の値正準性チェックは follow-up（下記）で扱う。
+
+5. **正準値の比較は大文字小文字を区別する（`StringComparer.Ordinal`）。**
+   ABAC のスコープ照合・検索フィルタは正準の小文字値（`internal` 等）を前提とするため、DocumentService は
+   非正準ケース（`"Internal"` 等）を 400 で拒否し、格納値を正準小文字に強制する（`"Internal"` が保存されると
+   下流のフィルタ一致が壊れる）。
+   - **既知の不一致（follow-up）**: 属性辞書を管理する `AuthorizationService.AbacValidation` は
+     `AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase)` と**大文字小文字を無視**して比較しており、
+     同じ `confidentiality` 属性の正準性定義が両サービスで食い違う。DocumentService の方が厳格（Ordinal）で
+     漏えい方向には安全だが、比較ポリシーの整合は動的辞書照合の follow-up と合わせて解消する。
 
 ## 根拠 / 代替案
 
@@ -95,6 +109,10 @@ admin/operator ロールを持つ API 直叩き・別クライアントからは
 ## フォローアップ
 
 - DocumentService → AuthorizationService の動的属性辞書照合（必須性・許容値・付与属性のスコープ内検証。
-  [[IADR-0041]] 見送り分と統合）。
-- 取り込み経路のフェイルセーフ既定補完（[[IADR-0019]] 既定属性と整合）。
-- 既存属性欠落文書の一括バックフィル（ops、任意）。
+  [[IADR-0041]] 見送り分と統合）。あわせて**比較ポリシーの整合**（DocumentService=Ordinal /
+  AuthorizationService=OrdinalIgnoreCase の不一致解消。決定 5 参照）。
+- 取り込み経路のフェイルセーフ既定補完＋**値の正準性チェック**（[[IADR-0019]] 既定属性と整合。
+  非正準値の混入を取り込み段で弾く。決定 4 の注意参照）。
+- 既存属性欠落・非正準値文書の一括バックフィル（ops、任意）。
+- セキュリティ仕様書への反映（サーバー側の機密区分必須検証を防御層として記載）は #201（PR #214）の
+  `docs/security/security.md` データ保護表で実施済み（本 PR では security.md を変更しない）。

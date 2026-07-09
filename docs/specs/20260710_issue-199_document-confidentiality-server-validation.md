@@ -51,7 +51,9 @@ admin/operator ロールを持つ API 直叩き・別クライアントからは
   - BFF は後段 400 をそのまま透過するため（`RelayAsync`）コード変更不要。透過を回帰テストで担保。
   - テスト: DocumentService 単体/エンドポイントで欠落・未知値 400／正常値 201/200 を検証。既存フィクスチャに
     `confidentiality` を補う。BFF で 400 透過を確認。
-  - ドキュメント: 本仕様書・[[IADR-0047]]・`docs/tests/FR-06`・`docs/security/security.md`（#201 と重複しない範囲）。
+  - ドキュメント: 本仕様書・[[IADR-0047]]・`docs/tests/FR-06`。※ `docs/security/security.md` への反映
+    （サーバー側の機密区分必須検証を防御層として記載）は **#201（PR #214）** のデータ保護表で実施し、
+    本 PR では security.md を変更しない（同一ファイルの重複編集・PR 間コンフリクトを避ける）。
 - 対象外:
   - **取り込み（パイプライン）経路** `Document.CreateNormalized` / `ApplyNormalized`: データソース既定属性
     （[[IADR-0019]]）で `confidentiality` が付与される設計のため本 PR では変更しない（イベント駆動の取り込みを
