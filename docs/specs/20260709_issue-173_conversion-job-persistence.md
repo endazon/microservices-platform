@@ -1,7 +1,7 @@
 ---
 title: 変換ジョブ読み取りモデルの永続化（Issue #173）
 type: spec
-status: in-progress
+status: completed
 related_ids:
   - FR-12
   - UC-06
@@ -60,12 +60,12 @@ BFF・画面・DTO（`ConversionJobDto`）は不変とする。
 
 ## 受け入れ基準（Issue #173）との対応
 
-- [ ] `ConversionJob` を Postgres + EF Core で永続化（エンティティ・DbContext・マイグレーション・
+- [x] `ConversionJob` を Postgres + EF Core で永続化（エンティティ・DbContext・マイグレーション・
       起動時 `MigrateAsync`・Npgsql ヘルスチェック）。
-- [ ] `IConversionJobStore` の EF 実装差し替えで API・BFF・画面が不変（DTO 射影が従来同値）。
-- [ ] 保持項目に再変換用の原本イベント（StorageUri/ContentType/Attributes/Tags/FetchedAt）を含む。
-- [ ] 状態遷移（受信=processing/attempts++、成功、失敗、失敗のみ再変換=queued）が従来と同値。
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
+- [x] `IConversionJobStore` の EF 実装差し替えで API・BFF・画面が不変（DTO 射影が従来同値）。
+- [x] 保持項目に再変換用の原本イベント（StorageUri/ContentType/Attributes/Tags/FetchedAt）を含む。
+- [x] 状態遷移（受信=processing/attempts++、成功、失敗、失敗のみ再変換=queued）が従来と同値。
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
 
 ## 実装判断・計画フィードバック
 
