@@ -1,7 +1,7 @@
 ---
 title: SC-05 文書管理の検証エラー詳細表示（Issue #177）
 type: spec
-status: in-progress
+status: completed
 related_ids:
   - SC-05
   - FR-06
@@ -49,9 +49,9 @@ SC-09（#135 / PR #170）で foundation の `apiFetch`/`ApiError` に 400/409 �
 
 ## 受け入れ基準（Issue #177）との対応
 
-- [ ] 作成/編集フローで `ApiError.details` を用いて検証・競合の詳細を表示する（SC-09 と UX 統一）。
-- [ ] 版競合（details 空）は従来の平易な文言＋再読み込みを維持する（回帰なし）。
-- [ ] `npm run test` / `typecheck` / `lint` / `test:coverage`（ラチェット床）が通る。
+- [x] 作成/編集フローで `ApiError.details` を用いて検証・競合の詳細を表示する（SC-09 と UX 統一）。
+- [x] 版競合（details 空）は従来の平易な文言＋再読み込みを維持する（回帰なし）。
+- [x] `npm run test` / `typecheck` / `lint` / `test:coverage`（ラチェット床）が通る。
 
 ## テスト観点
 
