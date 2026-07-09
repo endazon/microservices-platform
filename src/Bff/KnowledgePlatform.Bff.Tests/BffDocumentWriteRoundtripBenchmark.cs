@@ -96,6 +96,9 @@ public sealed class MeasuringBffFactory : BffTestFactory
     }
 }
 
+// 命名について: 本クラスは同ディレクトリの `*Tests`（例 BffDocumentEndpointTests）命名規約から外し
+// `*Benchmark` としている。決定的な回帰ガード 1 件に加えレイテンシ計測ハーネスを主目的とするため、
+// 通常のエンドポイント単体テストと区別する意図。`*Tests` で検索するレビュワー向けの補足。
 public sealed class BffDocumentWriteRoundtripBenchmark(ITestOutputHelper output)
 {
     private static string DetailPath => $"/bff/documents/{BffTestFactory.StubDocumentId}";
