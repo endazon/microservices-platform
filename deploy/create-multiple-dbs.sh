@@ -6,6 +6,7 @@ set -e
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
     CREATE DATABASE document_svc;
     CREATE DATABASE datasource_svc;
+    CREATE DATABASE conversion_svc;
     CREATE DATABASE retrieval_svc;
     CREATE DATABASE aianalysis_svc;
     CREATE DATABASE authz_svc;
@@ -22,6 +23,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- pg_database_owner 所有のため DB 所有者に追随する）、自スキーマ管理を可能にする。
     ALTER DATABASE document_svc OWNER TO kp;
     ALTER DATABASE datasource_svc OWNER TO kp;
+    ALTER DATABASE conversion_svc OWNER TO kp;
     ALTER DATABASE retrieval_svc OWNER TO kp;
     ALTER DATABASE aianalysis_svc OWNER TO kp;
     ALTER DATABASE authz_svc OWNER TO kp;

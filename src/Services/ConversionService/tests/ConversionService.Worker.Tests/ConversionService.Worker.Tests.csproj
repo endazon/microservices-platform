@@ -8,6 +8,8 @@
     <PackageReference Include="MassTransit.RabbitMQ" />
     <!-- FR-15 (#142): /internal/introspection の到達性を WebApplicationFactory で検証する。 -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <!-- IADR-0043: 変換ジョブ EF ストアを InMemory provider で単体・結合検証する。 -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <ProjectReference Include="..\..\src\ConversionService.Worker\ConversionService.Worker.csproj" />
   </ItemGroup>
 </Project>

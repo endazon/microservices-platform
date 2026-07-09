@@ -14,14 +14,14 @@ public static class ConversionJobEndpoints
         var g = app.MapGroup("/jobs").WithTags("Conversion Jobs");
 
         // 一覧（?status=failed 等で絞り込み。新しい順）。
-        g.MapGet("/", (IConversionJobStore store, string? status) =>
-            Results.Ok(store.List(status)))
+        g.MapGet("/", async (IConversionJobStore store, string? status, CancellationToken ct) =>
+            Results.Ok(await store.ListAsync(status, ct)))
             .WithName("ConversionJobList").Produces<List<ConversionJobDto>>();
 
         // 個別取得。
-        g.MapGet("/{id:guid}", (Guid id, IConversionJobStore store) =>
+        g.MapGet("/{id:guid}", async (Guid id, IConversionJobStore store, CancellationToken ct) =>
         {
-            var job = store.Get(id);
+            var job = await store.GetAsync(id, ct);
             return job is null ? Results.NotFound() : Results.Ok(job);
         }).WithName("ConversionJobGet").Produces<ConversionJobDto>();
 
@@ -31,13 +31,13 @@ public static class ConversionJobEndpoints
         g.MapPost("/{id:guid}/retry", async (Guid id, IConversionJobStore store,
             IPublishEndpoint bus, CancellationToken ct) =>
         {
-            var job = store.Get(id);
+            var job = await store.GetAsync(id, ct);
             if (job is null)
                 return Results.NotFound();
             if (job.Status != ConversionJobStatus.Failed)
                 return Results.Conflict(new { error = "not_retryable", status = job.Status });
 
-            var ev = store.PrepareRetry(id);
+            var ev = await store.PrepareRetryAsync(id, ct);
             if (ev is null)
                 return Results.Conflict(new { error = "not_retryable", status = job.Status }); // 競合で状態が変わった等
             await bus.Publish(ev, ct);

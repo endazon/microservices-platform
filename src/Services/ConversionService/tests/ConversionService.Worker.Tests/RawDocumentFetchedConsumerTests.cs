@@ -1,11 +1,13 @@
 using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Jobs;
+using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Events;
 using MassTransit.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ConversionService.Worker.Tests;
@@ -26,8 +28,9 @@ public class RawDocumentFetchedConsumerTests
 
         await using var provider = new ServiceCollection()
             .AddSingleton<INormalizationService>(normalizer)
-            // SC-07: コンシューマは変換ジョブストアに依存する（状況記録）。
-            .AddSingleton<IConversionJobStore, InMemoryConversionJobStore>()
+            // SC-07, IADR-0043: コンシューマは変換ジョブストア（EF・状況記録）に依存する。
+            .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()))
+            .AddScoped<IConversionJobStore, EfConversionJobStore>()
             .AddMassTransitTestHarness(cfg => cfg.AddConsumer<RawDocumentFetchedConsumer>())
             .BuildServiceProvider(true);
 

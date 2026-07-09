@@ -239,8 +239,12 @@ services:
       - "8080"
     environment:
       # FR-12, ADR-0015: 正規化本文・資産を MinIO へ保管する（書き込み側）。
-      <<: [*common-env, *rabbit-env, *objectstorage-env]
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
+      # FR-12, UC-06, SC-07, IADR-0043: 変換ジョブ読み取りモデルの永続化（conversion_svc）。
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=conversion_svc;Username=kp;Password=kp
     depends_on:
+      postgres:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
       minio:

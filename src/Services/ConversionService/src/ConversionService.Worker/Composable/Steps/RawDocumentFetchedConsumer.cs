@@ -32,7 +32,7 @@ public class RawDocumentFetchedConsumer(
             ev.SourceId, ev.OriginalPath, ev.ContentType);
 
         // SC-07: 変換開始を記録（受信・再試行の都度）。
-        jobs.Start(ev);
+        await jobs.StartAsync(ev, ct);
 
         try
         {
@@ -53,7 +53,7 @@ public class RawDocumentFetchedConsumer(
                 NormalizedAt: DateTimeOffset.UtcNow), ct);
 
             // SC-07: 成功を記録。
-            jobs.Succeed(ev.FetchId, result.DocumentId, result.MarkdownUri);
+            await jobs.SucceedAsync(ev.FetchId, result.DocumentId, result.MarkdownUri, ct);
 
             logger.LogInformation(
                 "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",
@@ -64,7 +64,9 @@ public class RawDocumentFetchedConsumer(
             // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は MassTransit の
             // 再試行→デッドレターへ委ねる（記録は状況可視化・人手補正のためで、リトライ挙動は変えない）。
             // 例外メッセージは admin/operator UI に露出するため、単一行・長さ上限に要約する（内部詳細の露出抑制）。
-            jobs.Fail(ev.FetchId, SummarizeError(ex.Message));
+            // 失敗記録は best-effort（CancellationToken.None）で行い、元例外を消さずに再送出する
+            // （ct 失効時に SaveChanges がキャンセル例外を投げて元の変換失敗を隠さないため）。
+            await jobs.FailAsync(ev.FetchId, SummarizeError(ex.Message), CancellationToken.None);
             throw;
         }
     }
