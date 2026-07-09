@@ -58,11 +58,15 @@ v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializ
 
 ## 受け入れ基準
 
-- [ ] 4 ファイルの `Dictionary` 系コンパレータの hash が内容ベース（JSON serialize）に是正されている。
-- [ ] `List<string>` 系コンパレータは変更されていない（過剰変更の回避）。
-- [ ] `grep -rn "v => v.GetHashCode()" src/Services/*/src/*/Foundation/Persistence/` が 0 件。
-- [ ] `dotnet build` が通る。既存テストが回帰しない。
-- [ ] マイグレーション・スキーマへの影響なし（`ValueComparer` は変更検知のみに影響し DDL 非依存）。
+- [x] 4 ファイルの `Dictionary` 系コンパレータの hash が内容ベース（JSON serialize）に是正されている。
+- [x] `List<string>` 系コンパレータは変更されていない（過剰変更の回避）。
+- [x] `grep -rn "v => v.GetHashCode()" src/Services/*/src/*/Foundation/Persistence/` が 0 件。
+- [x] `dotnet build` が通る。既存テストが回帰しない。
+- [x] マイグレーション・スキーマへの影響なし（`ValueComparer` は変更検知のみに影響し DDL 非依存）。
+- [x] hash/equals 契約の回帰テストを 4 サービスに追加（`JsonbValueComparerContractTests`）。EF モデルメタデータから
+      jsonb Dictionary 列の `ValueComparer` を取得し、内容一致・参照相違の 2 インスタンスで
+      `equals==true` かつ `hash(a)==hash(b)` を検証する。参照ベース hash の再導入を機械的に検出する
+      （PR #180 claude-review 🟡「回帰テスト未追加」への対応）。
 
 ## 影響・リスク
 
