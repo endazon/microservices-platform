@@ -93,6 +93,20 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new() { DocumentId = StubDocumentId, Version = 2, Title = "経費規程 2025", Status = "published", CreatedAt = DateTimeOffset.UtcNow.AddDays(-30) },
     ];
 
+    // FR-12 BFF テスト（SC-07 変換ジョブ）: ConversionService の応答をスタブ制御する。
+    public static readonly Guid StubJobId = Guid.Parse("12121212-1212-1212-1212-121212121212");
+    public HttpStatusCode ConversionStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（ConversionService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool ConversionThrows { get; set; }
+    public List<ConversionJobDto> StubJobs { get; set; } =
+    [
+        new(StubJobId, Guid.NewGuid(), "filesystem", "/docs/a.docx", ConversionJobStatus.Failed,
+            "pandoc がタイムアウトしました。", null, null, 2, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+        new(Guid.Parse("34343434-3434-3434-3434-343434343434"), Guid.NewGuid(), "wiki", "/wiki/b.md",
+            ConversionJobStatus.Succeeded, null, Guid.NewGuid(), "storage://bucket/b.md", 1,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+    ];
+
     // FR-09 BFF テスト（SC-09 管理者設定 ABAC）: AuthorizationService 管理 API の応答をスタブ制御する。
     // AuthzManagementStatusCode を 400/409/404 に差し替えると、書き込みの検証エラー・競合・不在の透過を検証できる。
     public static readonly Guid StubPolicyId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
@@ -167,6 +181,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-06 (SC-03 文書閲覧): DocumentService をスタブ化する。
             services.AddHttpClient("DocumentService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DocumentStubHandler(this));
+            // FR-12 (SC-07 変換ジョブ): ConversionService をスタブ化する。
+            services.AddHttpClient("ConversionService")
+                .ConfigurePrimaryHttpMessageHandler(() => new ConversionStubHandler(this));
             // FR-01/FR-02 (SC-06 データソース管理): DataSourceService をスタブ化する。
             services.AddHttpClient("DataSourceService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DataSourceStubHandler(this));
@@ -424,6 +441,46 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (owner.DataSourceStatusCode != HttpStatusCode.OK)
                 return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
             return Json(HttpStatusCode.OK, owner.StubDataSources[0]);
+        }
+
+        private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>
+            Task.FromResult(new HttpResponseMessage(code) { Content = JsonContent.Create(body) });
+    }
+
+    // FR-12 (SC-07): ConversionService /jobs をスタブ化する。一覧（?status 絞り込み）・個別（404 可変）・
+    // retry（202/404）をパス／メソッドで振り分ける。
+    private sealed class ConversionStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var query = request.RequestUri?.Query ?? string.Empty;
+            var method = request.Method;
+
+            // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+            if (owner.ConversionThrows)
+                throw new HttpRequestException("conversion-service unreachable");
+
+            if (path.EndsWith("/retry", StringComparison.Ordinal))
+                return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode == HttpStatusCode.OK
+                    ? HttpStatusCode.Accepted : owner.ConversionStatusCode));
+
+            if (path == "/jobs")
+            {
+                // GET 一覧: 後段障害の伝播検証のため ConversionStatusCode を反映する。
+                if (owner.ConversionStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode));
+                var jobs = owner.StubJobs.AsEnumerable();
+                if (query.Contains("status=failed"))
+                    jobs = jobs.Where(j => j.Status == ConversionJobStatus.Failed);
+                return Json(HttpStatusCode.OK, jobs.ToList());
+            }
+
+            // GET /jobs/{id}
+            if (owner.ConversionStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode));
+            return Json(HttpStatusCode.OK, owner.StubJobs[0]);
         }
 
         private static Task<HttpResponseMessage> Json<T>(HttpStatusCode code, T body) =>

@@ -1,5 +1,6 @@
 using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Domain;
+using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Events;
@@ -42,6 +43,8 @@ public class PipelineStepRegistrationTests
         => new ServiceCollection()
             .AddLogging()
             .AddSingleton<INormalizationService>(new NoopNormalizer())
+            // SC-07: コンシューマは変換ジョブストアに依存する（状況記録）。
+            .AddSingleton<IConversionJobStore, InMemoryConversionJobStore>()
             .AddMassTransitTestHarness(cfg =>
                 cfg.AddKnowledgePlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline))
             .BuildServiceProvider(true);

@@ -6,6 +6,7 @@ import { sc03DocumentFeature } from './sc03-document';
 import { sc04WikiFeature } from './sc04-wiki';
 import { sc05DocumentsFeature } from './sc05-documents';
 import { sc06DataSourcesFeature } from './sc06-datasources';
+import { sc07ConversionsFeature } from './sc07-conversions';
 import { sc08AnalysisFeature } from './sc08-analysis';
 import { sc09AdminAbacFeature } from './sc09-admin-abac';
 import { sc10OperationsFeature } from './sc10-operations';
@@ -21,6 +22,7 @@ export const features: FeatureModule[] = [
   sc04WikiFeature, // SC-04 Wiki 閲覧導線（#130）
   sc05DocumentsFeature, // SC-05 文書管理（#131）
   sc06DataSourcesFeature, // SC-06 データソース管理（#132）
+  sc07ConversionsFeature, // SC-07 変換ジョブ（#133）
   sc08AnalysisFeature, // SC-08 AI分析ダッシュボード（#134）
   sc09AdminAbacFeature, // SC-09 管理者設定（ABAC）（#135）
   sc10OperationsFeature, // SC-10 運用ダッシュボード（#136）

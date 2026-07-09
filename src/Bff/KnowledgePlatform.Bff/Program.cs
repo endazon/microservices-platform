@@ -63,6 +63,11 @@ builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
 
+// FR-12, UC-06, SC-07: 変換ジョブ管理の集約用（管理者・運用者限定）。ワーカーの HTTP サーフェスは 8080。
+builder.Services.AddHttpClient("ConversionService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:ConversionService"]
+        ?? "http://conversion-service:8080"));
+
 // FR-01, FR-02, UC-04, SC-06: データソース管理の集約用（管理者・運用者限定）。
 builder.Services.AddHttpClient("DataSourceService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DataSourceService"]
@@ -84,6 +89,7 @@ app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
 app.MapConfigBffEndpoints();
+app.MapConversionBffEndpoints();
 app.MapAuthzBffEndpoints();
 app.MapDataSourceBffEndpoints();
 
