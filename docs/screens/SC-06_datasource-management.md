@@ -15,7 +15,6 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
   - "../adr/IADR-0039_datasource-management-bff-and-role-gating.md"
-  - "../screens/SC-07_conversion-jobs.md"
   - "../specs/20260709_issue-132_sc06-datasource-management.md"
   - "../tests/SC-06_datasource-management.md"
 ---
