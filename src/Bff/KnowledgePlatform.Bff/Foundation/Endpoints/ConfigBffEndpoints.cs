@@ -69,7 +69,7 @@ public static class ConfigBffEndpoints
             var history = await inspection.GetVersionHistoryAsync(ct);
             return Results.Ok(history);
         }).WithName("BffConfigHistory")
-          .Produces<IReadOnlyList<ConfigVersionEntryDto>>();
+          .Produces<List<ConfigVersionEntryDto>>();
 
         // FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後の即時ドリフト検出のトリガ。
         // メッシュ内部限定（ingress へ公開しない。ClusterIP + NetworkPolicy / mTLS が防御）。ArgoCD の

@@ -202,7 +202,8 @@ function HistoryView({ status, history }: { status: HistoryStatus; history: Conf
           </thead>
           <tbody>
             {history.map((h, i) => (
-              <tr key={`${h.gitCommit ?? 'nocommit'}-${h.appliedAt ?? i}`}>
+              // 注入元が同一 commit+appliedAt の重複を返しても衝突しないよう index を前置する。
+              <tr key={`${i}-${h.gitCommit ?? 'nocommit'}-${h.appliedAt ?? ''}`}>
                 <td>
                   <code>{h.gitCommit ? h.gitCommit.slice(0, 7) : '—'}</code>
                 </td>
