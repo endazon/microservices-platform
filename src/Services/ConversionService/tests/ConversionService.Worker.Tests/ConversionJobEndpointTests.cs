@@ -72,6 +72,23 @@ public class ConversionJobEndpointTests
     }
 
     [Fact]
+    public async Task Retry_NonFailedJob_Returns409()
+    {
+        // UC-06: 失敗以外（ここでは succeeded）は再変換不可＝409。UI 制御に頼らず API 側で状態を強制する。
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var store = factory.Services.GetRequiredService<IConversionJobStore>();
+        var id = Guid.NewGuid();
+        store.Start(Raw(id));
+        store.Succeed(id, Guid.NewGuid(), "storage://ok.md");
+
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        store.Get(id)!.Status.Should().Be(ConversionJobStatus.Succeeded); // 状態は変わらない
+    }
+
+    [Fact]
     public async Task Retry_UnknownJob_Returns404()
     {
         using var factory = new Factory();

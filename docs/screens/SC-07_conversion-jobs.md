@@ -38,7 +38,7 @@ related_specs:
 | --- | --- | --- | --- |
 | 一覧 | `GET /bff/conversion/jobs?status=` | admin/operator（403/401） | `ConversionJobDto[]` |
 | 個別取得 | `GET /bff/conversion/jobs/{id}` | 同上 | `ConversionJobDto` / 404 |
-| 人手補正（再変換） | `POST /bff/conversion/jobs/{id}/retry` | 同上 | 202 / 404 |
+| 人手補正（再変換） | `POST /bff/conversion/jobs/{id}/retry` | 同上 | 202 / 404 / 409（失敗以外は再変換不可） |
 
 - `ConversionJobDto = { id, sourceId, sourceType, originalPath, status, error?, documentId?, markdownUri?, attempts, createdAt, updatedAt }`
 - `status`: queued / processing / succeeded / failed。
@@ -49,6 +49,7 @@ related_specs:
 - 状況フィルタ（すべて／失敗／処理中／待機／成功）→ 選択で再取得。
 - 一覧テーブル（原本・種別・状況・試行回数・エラー・更新・操作）。
 - 操作: 失敗ジョブに「再変換」（人手補正。原本イベント再発行）。成功ジョブは生成文書（SC-03）へ遷移。
+- 再変換は**失敗ジョブのみ**（UI は失敗時のみボタン表示。API 側でも失敗以外は 409 で拒否し、処理中の二重発行・成功済みの再処理を防ぐ）。
 - 通知（`role="status"`）／エラー（`role="alert"`）。0 件は中立表示。
 
 ## 実装

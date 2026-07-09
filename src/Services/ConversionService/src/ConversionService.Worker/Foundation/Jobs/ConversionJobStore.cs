@@ -16,7 +16,8 @@ public interface IConversionJobStore
     void Fail(Guid id, string error);
     IReadOnlyList<ConversionJobDto> List(string? status);
     ConversionJobDto? Get(Guid id);
-    // 人手補正: ジョブを queued に戻し、再変換用の原本イベントを返す（未知の id は null）。
+    // 人手補正: 失敗ジョブを queued に戻し、再変換用の原本イベントを返す。
+    // 未知の id・失敗以外の状態（processing/succeeded/queued）は null（＝再変換不可）。
     RawDocumentFetched? PrepareRetry(Guid id);
 }
 
@@ -105,6 +106,8 @@ public sealed class InMemoryConversionJobStore : IConversionJobStore
         if (!_jobs.TryGetValue(id, out var e)) return null;
         lock (e)
         {
+            // UC-06: 人手補正は失敗ジョブに限る。処理中の二重発行・成功済みの不要な再処理を防ぐ。
+            if (e.Status != ConversionJobStatus.Failed) return null;
             e.Status = ConversionJobStatus.Queued;
             e.Error = null;
             e.UpdatedAt = DateTimeOffset.UtcNow;

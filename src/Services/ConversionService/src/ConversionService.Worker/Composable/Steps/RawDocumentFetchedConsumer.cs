@@ -63,8 +63,17 @@ public class RawDocumentFetchedConsumer(
         {
             // SC-07: 失敗を記録してから再送出する。変換失敗（pandoc/保存の恒久失敗）は MassTransit の
             // 再試行→デッドレターへ委ねる（記録は状況可視化・人手補正のためで、リトライ挙動は変えない）。
-            jobs.Fail(ev.FetchId, ex.Message);
+            // 例外メッセージは admin/operator UI に露出するため、単一行・長さ上限に要約する（内部詳細の露出抑制）。
+            jobs.Fail(ev.FetchId, SummarizeError(ex.Message));
             throw;
         }
+    }
+
+    // SC-07: 変換失敗メッセージを 1 行・最大 300 文字へ丸める（改行・冗長なスタック様文言の UI 露出を避ける）。
+    private static string SummarizeError(string message)
+    {
+        var firstLine = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        const int max = 300;
+        return firstLine.Length <= max ? firstLine : firstLine[..max] + "…";
     }
 }

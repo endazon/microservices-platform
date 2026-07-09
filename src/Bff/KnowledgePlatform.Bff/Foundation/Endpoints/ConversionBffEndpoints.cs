@@ -4,9 +4,10 @@ using System.Net.Http.Json;
 
 namespace KnowledgePlatform.Bff.Foundation.Endpoints;
 
-// FR-12, UC-06, SC-07, IADR-0039/IADR-0042: 変換ジョブ管理の BFF 集約。
+// FR-12, UC-06, SC-07, IADR-0042: 変換ジョブ管理の BFF 集約。
 // ConversionService（/jobs）へプロキシする。運用系のため管理者・運用者ロールに限定する
-// （画面側は RequireRole で存在秘匿）。利用者の資格情報は後段へ伝播する。
+// （IADR-0042 §決定3。管理系ロール方針は SC-06 の IADR-0039 と同一。画面側は RequireRole で存在秘匿）。
+// 利用者の資格情報は後段へ伝播する。
 public static class ConversionBffEndpoints
 {
     public static IEndpointRouteBuilder MapConversionBffEndpoints(this IEndpointRouteBuilder app)

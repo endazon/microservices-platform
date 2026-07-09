@@ -29,6 +29,7 @@ related_specs:
 | 4 | 絞り込み | status でフィルタ | `List_filters_by_status` |
 | 5 | 再変換 | queued に戻し原本返却 | `PrepareRetry_requeues_and_returns_original_event` |
 | 6 | 未知再変換 | null | `PrepareRetry_returns_null_for_unknown_job` |
+| 6b | 失敗以外は再変換不可 | 成功ジョブは null・状態不変 | `PrepareRetry_returns_null_for_non_failed_job` |
 | 7 | 再試行 | 試行回数加算 | `Start_again_increments_attempts` |
 
 エンドポイント: `ConversionJobEndpointTests.cs`
@@ -37,6 +38,7 @@ related_specs:
 | 1 | 一覧・絞り込み | 一覧＋?status=failed | `GetList_ReturnsSeededJobs_AndFiltersByStatus` |
 | 2 | 個別 | 取得／404 | `GetById_ReturnsJob_Or404` |
 | 3 | 再変換 | 202＋queued 化 | `Retry_KnownFailedJob_Returns202_AndRequeues` |
+| 3b | 失敗以外は 409 | 成功ジョブへの再変換は 409・状態不変 | `Retry_NonFailedJob_Returns409` |
 | 4 | 未知再変換 | 404 | `Retry_UnknownJob_Returns404` |
 
 コンシューマ記録: `RawDocumentFetchedConsumerJobTests.cs`

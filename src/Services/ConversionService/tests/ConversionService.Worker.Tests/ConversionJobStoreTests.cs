@@ -95,6 +95,19 @@ public class ConversionJobStoreTests
     }
 
     [Fact]
+    public void PrepareRetry_returns_null_for_non_failed_job()
+    {
+        // UC-06: 人手補正は失敗ジョブのみ。成功済みジョブは再変換せず状態も変えない。
+        var store = new InMemoryConversionJobStore();
+        var id = Guid.NewGuid();
+        store.Start(Raw(id));
+        store.Succeed(id, Guid.NewGuid(), "storage://ok.md");
+
+        store.PrepareRetry(id).Should().BeNull();
+        store.Get(id)!.Status.Should().Be(ConversionJobStatus.Succeeded);
+    }
+
+    [Fact]
     public void Start_again_increments_attempts()
     {
         var store = new InMemoryConversionJobStore();
