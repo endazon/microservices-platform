@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
+import { ErrorList } from '@foundation/ui/ErrorList';
+import { toMessages } from '@foundation/ui/apiErrors';
 
 // SC-05, UC-03, FR-06: 文書管理画面。文書の作成・更新・公開／アーカイブ・削除と属性／タグ設定を行う。
 // 管理系のため platform-admin/operator 限定（ルートは RequireRole、サーバ側 /bff/documents 書き込みも同ロール）。
@@ -25,25 +27,6 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const t = Date.parse(value);
   return Number.isNaN(t) ? value : new Date(t).toLocaleString();
-}
-
-// FR-09, SC-09 と統一（#177）: ApiError の検証・競合詳細（400/409 の Problem 本文由来）を優先して表示し、
-// 詳細が無ければ画面文脈に合わせた既定文言へフォールバックする。
-function toMessages(err: unknown, fallback: string): string[] {
-  if (err instanceof ApiError && err.details.length > 0) return err.details;
-  return [fallback];
-}
-
-// 検証・競合の詳細メッセージ群をリスト表示する（SC-09 の Errors と同一 UX）。
-function Errors({ errors }: { errors: string[] }) {
-  if (errors.length === 0) return null;
-  return (
-    <ul role="alert">
-      {errors.map((e, i) => (
-        <li key={i}>{e}</li>
-      ))}
-    </ul>
-  );
 }
 
 export function DocumentManagementPage() {
@@ -244,7 +227,7 @@ function CreateForm({ onCreated }: { onCreated: () => void }) {
         <br />
         <input id="doc-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
       </div>
-      <Errors errors={errors} />
+      <ErrorList errors={errors} />
       <button type="submit" disabled={title.trim().length === 0}>
         作成する
       </button>
