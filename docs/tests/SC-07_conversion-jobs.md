@@ -37,7 +37,7 @@ related_specs:
 | --- | --- | --- | --- |
 | 1 | 一覧・絞り込み | 一覧＋?status=failed | `GetList_ReturnsSeededJobs_AndFiltersByStatus` |
 | 2 | 個別 | 取得／404 | `GetById_ReturnsJob_Or404` |
-| 3 | 再変換 | 202＋queued 化 | `Retry_KnownFailedJob_Returns202_AndRequeues` |
+| 3 | 再変換 | 失敗ジョブは 202（queued 化は store 単体で担保） | `Retry_KnownFailedJob_Returns202` |
 | 3b | 失敗以外は 409 | 成功ジョブへの再変換は 409・状態不変 | `Retry_NonFailedJob_Returns409` |
 | 4 | 未知再変換 | 404 | `Retry_UnknownJob_Returns404` |
 

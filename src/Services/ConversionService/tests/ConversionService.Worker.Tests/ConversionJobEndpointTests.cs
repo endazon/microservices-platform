@@ -56,7 +56,7 @@ public class ConversionJobEndpointTests
     }
 
     [Fact]
-    public async Task Retry_KnownFailedJob_Returns202_AndRequeues()
+    public async Task Retry_KnownFailedJob_Returns202()
     {
         using var factory = new Factory();
         var client = factory.CreateClient();
@@ -67,8 +67,11 @@ public class ConversionJobEndpointTests
 
         var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
 
+        // HTTP 契約（失敗ジョブは受理＝202）のみを検証する。queued への遷移は、再発行イベントが
+        // テストハーネスのコンシューマに即時消費されて processing 等へ進み得るため、ここで status を
+        // 断定するとレース（フレーク）になる。queued 化は決定的な store 単体テスト
+        // （PrepareRetry_requeues_and_returns_original_event）で担保する。
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
-        store.Get(id)!.Status.Should().Be(ConversionJobStatus.Queued);
     }
 
     [Fact]
