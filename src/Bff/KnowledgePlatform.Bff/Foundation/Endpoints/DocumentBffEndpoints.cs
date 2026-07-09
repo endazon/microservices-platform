@@ -118,6 +118,10 @@ public static class DocumentBffEndpoints
 
     // SC-05: 対象文書が利用者スコープ内のときのみ後段へ書き込みを転送する。スコープ外・不在は 404 秘匿。
     // 検証（400）・楽観ロック競合（409）は後段の応答を透過する。
+    // NFR/#179・IADR-0045: このプリフライト GET（スコープ確認）を「後段に認可がある（IADR-0044）から冗長」
+    // として削除してはならない。IADR-0044 が後段に課したのはロール認可のみで、文書単位の ABAC スコープ
+    // 照合はこの BFF が唯一の実施点（IADR-0041）。削除するとスコープ外の admin/operator が閲覧不可の文書を
+    // 変更でき、存在秘匿（IADR-0009）も破れる。往復削減は実測で正当化された上で IADR-0045 の代替案に従う。
     private static async Task<IResult> ForwardIfInScope(
         Guid id, HttpMethod method, string path, object? body,
         IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
