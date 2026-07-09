@@ -47,6 +47,9 @@ related_specs:
 - **イベント契約型**（`Events/`）: 段の入出力。**後方互換の追加のみ許可**（破壊的変更は禁止。
   変更が必要なら新 ADR）。新イベント型の追加は契約追加として PR レビュー＋`pipeline.json` の
   `events` への列挙が必要。
+  - 注記: 上流仕様（`10_composability-design` §3）が定める共通エンベロープと CI 契約テストは
+    未実装であり、現状はイベントごとの個別 record ＋運用ルール（PR レビュー）で代替している
+    （繰延の経緯は IADR-0028、追跡は issue #206）。
 - **同期 DTO**: サービス間同期 API の契約。経路自体は固定（[区分表 §1](./composability-classification.md)）
   であり、契約は [docs/api/openapi.yaml](../api/openapi.yaml) でバージョン管理される。
 
@@ -87,6 +90,8 @@ related_specs:
 
 - 段が依存してよいのは `Shared.Contracts` のイベント型・自プロジェクトの `Foundation/Ports/`・
   `Foundation/Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
+- 段は**ステートレス**を原則とし、ジョブ状態は自サービスの専用 DB に閉じる
+  （Database per Service。上流 `10_composability-design` §2・ADR-0002）。
 - 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IConsumer<TIn>` の不一致）は
   **起動失敗**する。`enabled: false` は購読・キューを生成しない。
 - **入力イベント型の変更は構成のみでは行えない**。プラグイン改版（コード変更＋宣言更新）として扱う
