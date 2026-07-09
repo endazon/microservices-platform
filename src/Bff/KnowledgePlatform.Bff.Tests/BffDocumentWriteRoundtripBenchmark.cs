@@ -32,16 +32,21 @@ public sealed class MeasuringBffFactory : BffTestFactory
     // 後段 1 往復あたりに注入する疑似 RTT（ms）。0 で BFF 自身のオーバヘッドのみを計測。
     public int BackendRttMs { get; set; }
 
-    // 後段呼び出し回数（Interlocked で加算）。書き込み 1 回あたりの往復構造の検証に使う。
-    public int AuthzCalls;
-    public int DocGetCalls;
-    public int DocWriteCalls;
+    // 後段呼び出し回数。外部へは読み取り専用で公開し、加算/リセットは Interlocked で行う
+    // （Interlocked の ref にはフィールドが必要なため、backing は private フィールドで保持する）。
+    private int _authzCalls;
+    private int _docGetCalls;
+    private int _docWriteCalls;
+
+    public int AuthzCalls => Volatile.Read(ref _authzCalls);
+    public int DocGetCalls => Volatile.Read(ref _docGetCalls);
+    public int DocWriteCalls => Volatile.Read(ref _docWriteCalls);
 
     public void ResetCounters()
     {
-        Interlocked.Exchange(ref AuthzCalls, 0);
-        Interlocked.Exchange(ref DocGetCalls, 0);
-        Interlocked.Exchange(ref DocWriteCalls, 0);
+        Interlocked.Exchange(ref _authzCalls, 0);
+        Interlocked.Exchange(ref _docGetCalls, 0);
+        Interlocked.Exchange(ref _docWriteCalls, 0);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -69,7 +74,7 @@ public sealed class MeasuringBffFactory : BffTestFactory
 
             if (service == "authz")
             {
-                Interlocked.Increment(ref owner.AuthzCalls);
+                Interlocked.Increment(ref owner._authzCalls);
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = JsonContent.Create(
@@ -80,14 +85,14 @@ public sealed class MeasuringBffFactory : BffTestFactory
             // DocumentService: GET=スコープ確認のプリフライト、それ以外=実書き込み。
             if (request.Method == HttpMethod.Get)
             {
-                Interlocked.Increment(ref owner.DocGetCalls);
+                Interlocked.Increment(ref owner._docGetCalls);
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = JsonContent.Create(owner.StubDocument)
                 };
             }
 
-            Interlocked.Increment(ref owner.DocWriteCalls);
+            Interlocked.Increment(ref owner._docWriteCalls);
             var code = request.Method == HttpMethod.Post && path == "/documents"
                 ? HttpStatusCode.Created
                 : HttpStatusCode.OK;
@@ -139,15 +144,11 @@ public sealed class BffDocumentWriteRoundtripBenchmark(ITestOutputHelper output)
     }
 
     // レイテンシ・スイープ。RUN_BFF_BENCH=1 のときのみ実行。
-    [Fact]
+    // 未設定時は Skip.IfNot で真の Skipped 扱いにする（no-op の passed 表示を避ける）。
+    [SkippableFact]
     public async Task Benchmark_write_latency_by_backend_rtt()
     {
-        if (!BenchEnabled)
-        {
-            // xUnit 2.x は動的スキップ非対応のため、無効時は no-op で通す（CI では走らせない）。
-            output.WriteLine("skipped: set RUN_BFF_BENCH=1 to run the latency sweep.");
-            return;
-        }
+        Skip.IfNot(BenchEnabled, "set RUN_BFF_BENCH=1 to run the latency sweep.");
 
         var n = int.TryParse(Environment.GetEnvironmentVariable("BENCH_N"), out var envN) ? envN : 200;
         var rtts = (Environment.GetEnvironmentVariable("BENCH_RTTS") ?? "0,5,20")
