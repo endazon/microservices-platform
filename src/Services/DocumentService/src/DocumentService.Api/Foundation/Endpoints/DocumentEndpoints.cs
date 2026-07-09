@@ -2,6 +2,7 @@ using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Contracts.Dtos;
 using KnowledgePlatform.Shared.Contracts.Events;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,7 +13,17 @@ public static class DocumentEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentEndpoints(this IEndpointRouteBuilder app)
     {
+        // 読み取り（一覧・個別・版）は一般利用者の文書閲覧（SC-03）のためロールで塞がない。
+        // 読み取りの機密制御は取得段の ABAC（IADR-0012）が担う。
         var g = app.MapGroup("/documents").WithTags("Documents");
+
+        // FR-06, FR-09, UC-03, IADR-0044: 多層防御。文書の書き込み（作成・更新・メタデータ・公開・
+        // アーカイブ・削除）は管理者・運用者に限定する（[[IADR-0041]] の BFF write ゲートと同一要件）。
+        // BFF 迂回の直接呼び出しでも認可を実効化する（サービスが最終防衛線）。利用者トークンは BFF が伝播する。
+        var write = app.MapGroup("/documents").WithTags("Documents")
+            .RequireAuthorization(p => p.RequireRole(
+                KnowledgePlatformAuthPolicies.AdminRole,
+                KnowledgePlatformAuthPolicies.OperatorRole));
 
         g.MapGet("/", async (DocumentDbContext db) =>
         {
@@ -29,7 +40,7 @@ public static class DocumentEndpoints
             return doc is null ? Results.NotFound() : Results.Ok(ToDto(doc));
         });
 
-        g.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
+        write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
             // FR-06, UC-03: タイトルは必須
@@ -47,7 +58,7 @@ public static class DocumentEndpoints
             return Results.Created($"/documents/{doc.Id}", ToDto(doc));
         });
 
-        g.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
+        write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
             if (string.IsNullOrWhiteSpace(req.Title))
@@ -75,7 +86,7 @@ public static class DocumentEndpoints
         });
 
         // FR-06, UC-03: メタデータ（属性・タグ）のみ更新する。
-        g.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
+        write.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);
@@ -96,7 +107,7 @@ public static class DocumentEndpoints
         });
 
         // FR-06, UC-03, SC-05: 文書を公開する。アーカイブ済みからの再公開は不正遷移として 409 で拒否する。
-        g.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
+        write.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);
@@ -116,7 +127,7 @@ public static class DocumentEndpoints
 
         // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流の Wiki.js 同期が
         // status=archived を受けてページを非公開化・メタデータ Archived 化する。
-        g.MapPost("/{id:guid}/archive", async (Guid id, DocumentDbContext db,
+        write.MapPost("/{id:guid}/archive", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);
@@ -150,7 +161,7 @@ public static class DocumentEndpoints
             return snapshot is null ? Results.NotFound() : Results.Ok(ToVersionDto(snapshot));
         });
 
-        g.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
+        write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);

@@ -1,5 +1,6 @@
 using DocumentService.Api.Foundation.Persistence;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // EF Core プロバイダーを InMemory へ差し替え
             // IDbContextOptionsConfiguration<T> をすべて削除し再登録
             ReplaceDbContext<DocumentDbContext>(services, "DocumentTest");
+
+            // FR-09, IADR-0044: 書き込みは admin/operator を要求する。Keycloak/JWT に依存せず
+            // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
+            // 読み取りはロール不要のため、既定 admin でも非権限ロールでも到達できる。
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();

@@ -1,5 +1,6 @@
 using DataSourceService.Api.Foundation.Persistence;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             ReplaceDbContext<DataSourceDbContext>(services, "DataSourceTest");
+
+            // FR-09, IADR-0044: /datasources は admin/operator を要求する。Keycloak/JWT に依存せず
+            // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
+            services.AddAuthentication(TestAuthHandler.SchemeName)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
             services.RemoveAll<IBusControl>();
             services.AddMassTransitTestHarness();
