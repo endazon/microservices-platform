@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@foundation/api/apiClient';
-import { ApiError } from '@foundation/api/ApiError';
+import { ErrorList } from '@foundation/ui/ErrorList';
+import { toMessages } from '@foundation/ui/apiErrors';
 
 // SC-09, UC-05, FR-09: 管理者設定（ABAC）画面。属性辞書・アクセスポリシーを管理する（platform-admin 限定）。
 // データソースは BFF 集約（/bff/admin/authz/*）。保存前検証（矛盾・構文）は AuthorizationService が行い、
@@ -60,18 +61,6 @@ export function AdminAbacSettingsPage() {
         </>
       )}
     </section>
-  );
-}
-
-// FR-09: 検証エラー（400）・競合（409）の詳細を一覧表示する共通部品。
-function Errors({ errors }: { errors: string[] }) {
-  if (errors.length === 0) return null;
-  return (
-    <ul role="alert" style={{ color: '#b00' }}>
-      {errors.map((e, i) => (
-        <li key={i}>{e}</li>
-      ))}
-    </ul>
   );
 }
 
@@ -182,7 +171,7 @@ function AttributeSection({ attributes, onChanged }: { attributes: AttributeDef[
         <label>
           <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} /> 必須
         </label>
-        <Errors errors={errors} />
+        <ErrorList errors={errors} />
         <button type="submit" disabled={key.trim().length === 0}>
           追加する
         </button>
@@ -313,18 +302,11 @@ function PolicySection({ policies, onChanged }: { policies: Policy[]; onChanged:
           <br />
           <textarea id="pol-doc" value={documentConditions} onChange={(e) => setDocumentConditions(e.target.value)} rows={2} />
         </div>
-        <Errors errors={errors} />
+        <ErrorList errors={errors} />
         <button type="submit" disabled={name.trim().length === 0}>
           追加する
         </button>
       </form>
     </section>
   );
-}
-
-// FR-09: ApiError の検証詳細（矛盾・構文）を優先して表示。詳細が無ければ既定文言へフォールバック。
-function toMessages(err: unknown, fallback: string): string[] {
-  if (err instanceof ApiError && err.details.length > 0) return err.details;
-  if (err instanceof ApiError) return [err.message];
-  return [fallback];
 }
