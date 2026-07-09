@@ -95,12 +95,19 @@ public static class DocumentEndpoints
             return Results.Ok(ToDto(doc));
         });
 
-        // FR-06, UC-03: 文書を公開する。
+        // FR-06, UC-03, SC-05: 文書を公開する。アーカイブ済みからの再公開は不正遷移として 409 で拒否する。
         g.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
+            if (!doc.CanPublish)
+                return Results.Conflict(new
+                {
+                    error = "invalid_transition",
+                    from = doc.Status,
+                    to = DocumentStatus.Published
+                });
             doc.Publish();
             await db.SaveChangesAsync();
             await bus.Publish(ToEvent(doc));

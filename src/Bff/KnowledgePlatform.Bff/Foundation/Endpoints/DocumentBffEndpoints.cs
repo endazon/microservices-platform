@@ -1,5 +1,6 @@
 using KnowledgePlatform.Bff.Foundation.Authz;
 using KnowledgePlatform.Shared.Contracts.Dtos;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
 using System.Net.Http.Json;
 
@@ -65,7 +66,93 @@ public static class DocumentBffEndpoints
             return Results.Ok(new DocumentContentDto(doc.Id, doc.Title, markdown, doc.MarkdownUri));
         }).WithName("BffDocumentContent").Produces<DocumentContentDto>();
 
+        // ---- SC-05, FR-06, UC-03, IADR-0041: 文書管理（書き込み） ----
+        // 書き込みは管理系のため platform-admin/operator に限定する（読み取りは SC-02/03 用に無制限）。
+        // 既存文書への操作（更新・メタ更新・公開・アーカイブ・削除）は、対象が利用者スコープ内であることを
+        // 先に確認し、スコープ外・不在はいずれも 404 で秘匿する（閲覧できない文書は変更もできない）。
+        var write = app.MapGroup("/bff/documents")
+            .WithTags("Documents BFF")
+            .RequireAuthorization(p => p.RequireRole(
+                KnowledgePlatformAuthPolicies.AdminRole,
+                KnowledgePlatformAuthPolicies.OperatorRole));
+
+        // 新規作成: スコープ解決済み（権限あり）の管理者が作成する。検証（タイトル必須=400）は透過する。
+        write.MapPost("/", async (DocumentCreateRequest req, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            if (scope is null)
+                return Results.Forbid(); // 許可ポリシー無し＝作成不可（deny-by-default）
+
+            var client = Forwarding(httpFactory, http);
+            var resp = await client.PostAsJsonAsync("/documents", req, ct);
+            return await RelayAsync(resp, ct);
+        }).WithName("BffDocumentCreate").Produces<DocumentDto>(StatusCodes.Status201Created);
+
+        // 更新（楽観ロック。ExpectedVersion 不一致=409 透過）。
+        write.MapPut("/{id:guid}", (Guid id, DocumentUpdateRequest req, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardIfInScope(id, HttpMethod.Put, $"/documents/{id}", req, httpFactory, http, ct))
+            .WithName("BffDocumentUpdate");
+
+        // 公開（取り込み・Wiki 同期をトリガ）。
+        write.MapPost("/{id:guid}/publish", (Guid id, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardIfInScope(id, HttpMethod.Post, $"/documents/{id}/publish", null, httpFactory, http, ct))
+            .WithName("BffDocumentPublish");
+
+        // アーカイブ（非公開化）。
+        write.MapPost("/{id:guid}/archive", (Guid id, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardIfInScope(id, HttpMethod.Post, $"/documents/{id}/archive", null, httpFactory, http, ct))
+            .WithName("BffDocumentArchive");
+
+        // 削除（下流の Wiki 同期へ伝播）。
+        write.MapDelete("/{id:guid}", (Guid id, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+            ForwardIfInScope(id, HttpMethod.Delete, $"/documents/{id}", null, httpFactory, http, ct))
+            .WithName("BffDocumentDelete");
+
         return app;
+    }
+
+    // SC-05: 対象文書が利用者スコープ内のときのみ後段へ書き込みを転送する。スコープ外・不在は 404 秘匿。
+    // 検証（400）・楽観ロック競合（409）は後段の応答を透過する。
+    private static async Task<IResult> ForwardIfInScope(
+        Guid id, HttpMethod method, string path, object? body,
+        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+    {
+        var doc = await FetchAuthorizedAsync(id, httpFactory, http, ct);
+        if (doc is null)
+            return Results.NotFound(); // 閲覧できない文書は変更もできない（存在秘匿）
+
+        var client = Forwarding(httpFactory, http);
+        using var req = new HttpRequestMessage(method, path);
+        if (body is not null)
+            req.Content = JsonContent.Create(body, body.GetType());
+
+        var resp = await client.SendAsync(req, ct);
+        return await RelayAsync(resp, ct);
+    }
+
+    // 後段の応答（status・content-type・本文）をそのまま返す（検証 400・競合 409・不在 404 を保つ）。
+    private static async Task<IResult> RelayAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        if (resp.StatusCode == System.Net.HttpStatusCode.NoContent)
+            return Results.NoContent();
+        var content = await resp.Content.ReadAsStringAsync(ct);
+        var contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
+        return Results.Content(content, contentType, statusCode: (int)resp.StatusCode);
+    }
+
+    // FR-05: 利用者の資格情報を後段へ引き継ぐ DocumentService クライアントを生成する。
+    private static HttpClient Forwarding(IHttpClientFactory httpFactory, HttpContext http)
+    {
+        var client = httpFactory.CreateClient("DocumentService");
+        var auth = http.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrEmpty(auth))
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+        return client;
     }
 
     // 文書を取得し、利用者スコープに合致するときのみ返す（deny/不在/解決不能 → null＝404 秘匿）。
@@ -121,3 +208,18 @@ public static class DocumentBffEndpoints
         return $"# {title}\n\nコンテンツは {markdownUri ?? "(未設定)"} から取得します。";
     }
 }
+
+// SC-05, FR-06, UC-03: 文書管理の書き込みリクエスト（BFF→DocumentService。JSON 互換）。
+public record DocumentCreateRequest(
+    string Title,
+    string? OriginalUri,
+    string? ContentType,
+    Dictionary<string, string>? Attributes,
+    List<string>? Tags);
+
+public record DocumentUpdateRequest(
+    string Title,
+    Dictionary<string, string>? Attributes,
+    List<string>? Tags,
+    int? ExpectedVersion = null,
+    string? ChangeNote = null);
