@@ -34,6 +34,7 @@ related_specs:
 | 7 | 属性登録 | FR-09 | 201 で登録 | `CreateAttribute_AsAdmin_Returns201` |
 | 8 | 競合透過 | IADR-0006 | 参照中削除 409 を透過 | `DeleteAttribute_WhenReferenced_Passes409Through` |
 | 9 | 有効切替 | FR-09 | PATCH で有効／無効切替 | `SetPolicyActive_AsAdmin_Succeeds` |
+| 10 | 後段不達 | IADR-0040 | 後段ダウン時に 502 へ縮退（例外フロー・レビュー #170） | `ListPolicies_WhenBackendUnreachable_Returns502` |
 
 ## フロントエンド（Vitest + Testing Library）
 

@@ -16,6 +16,7 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory = factory;
         _factory.AuthzManagementStatusCode = HttpStatusCode.OK;
+        _factory.AuthzManagementThrows = false;
     }
 
     private static StringContent Json(string json) => new(json, Encoding.UTF8, "application/json");
@@ -99,6 +100,16 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
             .DeleteAsync($"/bff/admin/authz/attributes/{BffTestFactory.StubAttributeId}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task ListPolicies_WhenBackendUnreachable_Returns502()
+    {
+        // 後段（AuthorizationService）不達は 502 へ縮退する（例外フローの明示検証・レビュー #170 指摘対応）。
+        _factory.AuthzManagementThrows = true;
+        var resp = await _factory.CreateClient().GetAsync("/bff/admin/authz/policies");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
 
     [Fact]

@@ -95,6 +95,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public static readonly Guid StubPolicyId = Guid.Parse("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
     public static readonly Guid StubAttributeId = Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff");
     public HttpStatusCode AuthzManagementStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（AuthorizationService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool AuthzManagementThrows { get; set; }
     public List<AbacPolicyDto> StubPolicies { get; set; } =
     [
         new(StubPolicyId, "社員は社内文書を閲覧可", "read",
@@ -281,6 +283,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var method = request.Method;
+
+            // FR-09 (SC-09): 後段不達を再現する（BFF が 502 へ縮退することの検証用）。scope 解決は対象外。
+            if (owner.AuthzManagementThrows && path.StartsWith("/authz/", StringComparison.Ordinal)
+                && !path.StartsWith("/authz/scope", StringComparison.Ordinal))
+                throw new HttpRequestException("authorization-service unreachable");
 
             // FR-09 (SC-09): 管理系は AuthzManagementStatusCode で状態を差し替えられる（400/409/404 透過検証）。
             if (path.StartsWith("/authz/policies", StringComparison.Ordinal))

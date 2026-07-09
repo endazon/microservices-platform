@@ -112,8 +112,8 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     const user = userEvent.setup();
     render(<AdminAbacSettingsPage />);
 
-    const attrSection = within(await screen.findByRole('region', { name: '属性辞書' }));
-    await user.click(attrSection.getByRole('button', { name: '削除' }));
+    // 対象を含む aria-label（属性を削除: {key}）でボタンを一意に特定する。
+    await user.click(await screen.findByRole('button', { name: '属性を削除: confidentiality' }));
 
     expect(await screen.findByText(/参照中です/)).toBeInTheDocument();
   });

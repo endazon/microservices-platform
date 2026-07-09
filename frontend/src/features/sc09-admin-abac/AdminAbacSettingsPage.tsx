@@ -141,7 +141,8 @@ function AttributeSection({ attributes, onChanged }: { attributes: AttributeDef[
               <td>{a.allowedValues.join(' / ')}</td>
               <td>{a.required ? '必須' : '任意'}</td>
               <td>
-                <button type="button" onClick={() => void onDelete(a.id)}>
+                {/* 対象を含む aria-label で取り違え・アクセシビリティを堅牢にする。 */}
+                <button type="button" aria-label={`属性を削除: ${a.key}`} onClick={() => void onDelete(a.id)}>
                   削除
                 </button>
               </td>
@@ -272,10 +273,10 @@ function PolicySection({ policies, onChanged }: { policies: Policy[]; onChanged:
               </td>
               <td>{p.isActive ? '有効' : '無効'}</td>
               <td>
-                <button type="button" onClick={() => void onToggleActive(p)}>
+                <button type="button" aria-label={`ポリシーを${p.isActive ? '無効化' : '有効化'}: ${p.name}`} onClick={() => void onToggleActive(p)}>
                   {p.isActive ? '無効化' : '有効化'}
                 </button>{' '}
-                <button type="button" onClick={() => void onDelete(p.id)}>
+                <button type="button" aria-label={`ポリシーを削除: ${p.name}`} onClick={() => void onDelete(p.id)}>
                   削除
                 </button>
               </td>
