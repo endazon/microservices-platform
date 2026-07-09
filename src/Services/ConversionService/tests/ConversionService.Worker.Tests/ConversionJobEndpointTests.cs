@@ -136,27 +136,12 @@ public class ConversionJobEndpointTests
             builder.ConfigureServices(services =>
             {
                 // Npgsql DbContext を InMemory へ差し替える（起動時 MigrateAsync は IsRelational=false で回避）。
-                ReplaceDbContext<ConversionJobDbContext>(services, _dbName);
+                services.ReplaceDbContextWithInMemory<ConversionJobDbContext>(_dbName);
 
                 // 実 RabbitMQ 接続を避けるため MassTransit をテストハーネスへ差し替える（再変換の Publish 用）。
                 services.RemoveAll<MassTransit.IBusControl>();
                 services.AddMassTransitTestHarness();
             });
-        }
-
-        private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)
-            where TContext : DbContext
-        {
-            var toRemove = services
-                .Where(d => d.ServiceType == typeof(DbContextOptions<TContext>)
-                         || (d.ServiceType.IsGenericType
-                             && d.ServiceType.GetGenericTypeDefinition().FullName?.Contains("IDbContextOptionsConfiguration") == true
-                             && d.ServiceType.GenericTypeArguments.Length == 1
-                             && d.ServiceType.GenericTypeArguments[0] == typeof(TContext)))
-                .ToList();
-            foreach (var d in toRemove) services.Remove(d);
-
-            services.AddDbContext<TContext>(opt => opt.UseInMemoryDatabase(dbName));
         }
     }
 }

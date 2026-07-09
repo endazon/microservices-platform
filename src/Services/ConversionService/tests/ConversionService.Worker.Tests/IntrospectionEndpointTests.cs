@@ -51,15 +51,7 @@ public class IntrospectionEndpointTests : IClassFixture<IntrospectionEndpointTes
             {
                 // IADR-0043: 実 Postgres 接続（起動時 MigrateAsync）を避けるため DbContext を InMemory へ差し替える
                 // （InMemory は非リレーショナルのため MigrateAsync はスキップされる）。
-                var toRemove = services
-                    .Where(d => d.ServiceType == typeof(DbContextOptions<ConversionJobDbContext>)
-                             || (d.ServiceType.IsGenericType
-                                 && d.ServiceType.GetGenericTypeDefinition().FullName?.Contains("IDbContextOptionsConfiguration") == true
-                                 && d.ServiceType.GenericTypeArguments.Length == 1
-                                 && d.ServiceType.GenericTypeArguments[0] == typeof(ConversionJobDbContext)))
-                    .ToList();
-                foreach (var d in toRemove) services.Remove(d);
-                services.AddDbContext<ConversionJobDbContext>(opt => opt.UseInMemoryDatabase("IntrospectionTest"));
+                services.ReplaceDbContextWithInMemory<ConversionJobDbContext>("IntrospectionTest");
 
                 // 実 RabbitMQ 接続を避けるため MassTransit をテストハーネスへ差し替える。
                 services.RemoveAll<IBusControl>();
