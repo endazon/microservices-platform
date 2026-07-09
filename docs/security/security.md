@@ -50,8 +50,17 @@ related_adrs:
   格納する。標準の `JwtBearerHandler` はこれを `ClaimTypes.Role` へ展開しないため、`KeycloakRolesClaimsTransformation`
   （`IClaimsTransformation`）でトークン検証後に展開し、`RequireRole("platform-admin")` を成立させる。展開ロジックは
   単体テスト（`KeycloakRolesClaimsTransformationTests`）で検証。不正 JSON は fail-closed（ロール無し）で扱う。
+- **認可（後段サービスの多層防御、FR-09, IADR-0044）**: 管理系画面の認可は BFF 集約点でロールを強制する
+  （データソース／文書書き込み＝`platform-admin` または `platform-operator`。IADR-0039／IADR-0041）が、
+  BFF 迂回のメッシュ内部直呼びに備え、**後段サービスにも同一のロール要件を二重化**する（サービスが最終防衛線）。
+  - `DataSourceService` `/datasources`（一覧・登録・sync・無効化）: admin/operator 必須。
+  - `DocumentService` 書き込み（作成・更新・メタデータ・公開・アーカイブ・削除）: admin/operator 必須。
+    読み取り（GET）は一般利用者の文書閲覧のため据え置き（機密制御は取得段の ABAC が担う）。
+  - 利用者トークンは BFF が後段へ伝播する（各 *BffEndpoints の `CreateForwardingClient`）。非権限は 403。
+    否定テストは各サービスの `*AuthorizationTests` で検証。
 - **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う（FR-05, ADR-0004）。
-- 未対応: 全サービス横断のエンドポイント認可（P2 で拡充予定。ADR-0004）。
+- 未対応（フォローアップ, IADR-0044）: `ConversionService` `/jobs` の後段認可（認証基盤未導入・ingress 非公開で緩和。
+  IADR-0042 §決定3）、文書作成時の付与属性が呼び出し者 ABAC スコープ内かの厳密検証（IADR-0041 見送り分）。
 
 ### Wiki.js 前段の ABAC 強制点（FR-13 / UC-07 / IADR-0020）— ⚠️ 機密性の要点
 

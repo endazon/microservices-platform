@@ -85,6 +85,13 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
                 o.StopTimeout = TimeSpan.FromSeconds(10);
             });
 
+            // FR-09, IADR-0044: 多層防御で書き込み/管理エンドポイントに RequireAuthorization が
+            // 付与されたため、実 Keycloak が無い統合環境では TestAuthHandler で platform-admin として
+            // 認証し、既定認証スキームを差し替える。実 JWT → ロール展開の検証は単体テストが担う。
+            services.AddAuthentication(IntegrationTestAuthHandler.SchemeName)
+                .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, IntegrationTestAuthHandler>(
+                    IntegrationTestAuthHandler.SchemeName, _ => { });
+
             AdditionalServices(services);
         });
     }
@@ -152,14 +159,7 @@ public sealed class AuthorizationServiceFactory : IntegrationTestFactoryBase<
     public AuthorizationServiceFactory(PostgresFixture pg) : base(pg, null) { }
 
     // FR-09, ADR-0004: 管理系エンドポイント（/authz/policies 等）は AdminOnly を要求する。
-    // 実 Keycloak が無い統合環境では TestAuthHandler で platform-admin として認証し、
-    // DB 挙動（ポリシー登録→スコープ解決 等）を検証する。既定認証スキームを差し替える。
-    protected override void AdditionalServices(IServiceCollection services)
-    {
-        services.AddAuthentication(IntegrationTestAuthHandler.SchemeName)
-            .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, IntegrationTestAuthHandler>(
-                IntegrationTestAuthHandler.SchemeName, _ => { });
-    }
+    // 認証スキームの差し替え（platform-admin）は基底クラスが全サービス共通で行う。
 }
 
 public sealed class WikiServiceFactory : IntegrationTestFactoryBase<

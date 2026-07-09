@@ -1,6 +1,7 @@
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Contracts.Events;
+using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +12,13 @@ public static class DataSourceEndpoints
 {
     public static IEndpointRouteBuilder MapDataSourceEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/datasources").WithTags("DataSources");
+        // FR-09, IADR-0044: 多層防御。データソースは運用資産で、閲覧・操作は管理者・運用者に限定する
+        // （[[IADR-0039]] の BFF ゲートと同一要件）。BFF 迂回の直接呼び出しでも認可を実効化する
+        // （サービスが最終防衛線）。利用者トークンは BFF が後段へ伝播する。
+        var g = app.MapGroup("/datasources").WithTags("DataSources")
+            .RequireAuthorization(p => p.RequireRole(
+                KnowledgePlatformAuthPolicies.AdminRole,
+                KnowledgePlatformAuthPolicies.OperatorRole));
 
         g.MapGet("/", async (DataSourceDbContext db) =>
             Results.Ok(await db.DataSources.ToListAsync()));
