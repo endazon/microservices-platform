@@ -63,6 +63,11 @@ builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
         ?? "http://document-service:5001"));
 
+// FR-01, FR-02, UC-04, SC-06: データソース管理の集約用（管理者・運用者限定）。
+builder.Services.AddHttpClient("DataSourceService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:DataSourceService"]
+        ?? "http://datasource-service:5002"));
+
 // FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
@@ -79,6 +84,8 @@ app.MapAnalysisBffEndpoints();
 app.MapFeedbackBffEndpoints();
 app.MapDashboardBffEndpoints();
 app.MapConfigBffEndpoints();
+app.MapAuthzBffEndpoints();
+app.MapDataSourceBffEndpoints();
 
 app.Run();
 
