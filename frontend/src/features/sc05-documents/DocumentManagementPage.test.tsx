@@ -60,6 +60,16 @@ describe('DocumentManagementPage (SC-05)', () => {
     );
   });
 
+  it('shows the publish button only for draft documents (not archived)', async () => {
+    // SC-05 仕様: 公開は draft のみ。アーカイブ済みは再公開ボタンを出さない。
+    const archived = [{ ...DOCS[0], status: 'archived' }];
+    mocks.apiFetch.mockResolvedValue(archived);
+    renderPage();
+    await screen.findByRole('link', { name: '経費規程 2025' });
+
+    expect(screen.queryByRole('button', { name: '公開' })).not.toBeInTheDocument();
+  });
+
   it('publishes a draft document', async () => {
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
     mocks.apiFetch.mockResolvedValueOnce(undefined); // publish

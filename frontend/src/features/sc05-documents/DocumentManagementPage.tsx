@@ -140,7 +140,8 @@ export function DocumentManagementPage() {
                     <button type="button" onClick={() => setEditing(d)}>
                       編集
                     </button>{' '}
-                    {d.status !== 'published' && (
+                    {/* SC-05 仕様: 公開は draft のみ（アーカイブ済みの再公開はしない・状態遷移の意図を守る）。 */}
+                    {d.status === 'draft' && (
                       <button type="button" onClick={() => void act(`/documents/${d.id}/publish`, '公開しました。', '公開に失敗しました。')}>
                         公開
                       </button>

@@ -95,12 +95,6 @@ public static class DocumentBffEndpoints
             ForwardIfInScope(id, HttpMethod.Put, $"/documents/{id}", req, httpFactory, http, ct))
             .WithName("BffDocumentUpdate");
 
-        // メタデータ（属性・タグ）のみ更新。
-        write.MapPatch("/{id:guid}/metadata", (Guid id, DocumentMetadataRequest req, IHttpClientFactory httpFactory,
-            HttpContext http, CancellationToken ct) =>
-            ForwardIfInScope(id, HttpMethod.Patch, $"/documents/{id}/metadata", req, httpFactory, http, ct))
-            .WithName("BffDocumentUpdateMetadata");
-
         // 公開（取り込み・Wiki 同期をトリガ）。
         write.MapPost("/{id:guid}/publish", (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
@@ -225,12 +219,6 @@ public record DocumentCreateRequest(
 
 public record DocumentUpdateRequest(
     string Title,
-    Dictionary<string, string>? Attributes,
-    List<string>? Tags,
-    int? ExpectedVersion = null,
-    string? ChangeNote = null);
-
-public record DocumentMetadataRequest(
     Dictionary<string, string>? Attributes,
     List<string>? Tags,
     int? ExpectedVersion = null,

@@ -40,7 +40,6 @@ related_specs:
 | 一覧 | `GET /bff/documents` | ABAC（読み取り・SC-03 と共通） | `DocumentDto[]` |
 | 作成 | `POST /bff/documents` | admin/operator＋scope 解決 | 201 / 400（タイトル必須） / 403 |
 | 更新 | `PUT /bff/documents/{id}` | admin/operator＋スコープ内 | 200 / 404 / 409（版競合） |
-| メタ更新 | `PATCH /bff/documents/{id}/metadata` | 同上 | 200 / 404 / 409 |
 | 公開 | `POST /bff/documents/{id}/publish` | 同上 | 200 / 404 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | 同上 | 200 / 404 |
 | 削除 | `DELETE /bff/documents/{id}` | 同上 | 204 / 404 |
