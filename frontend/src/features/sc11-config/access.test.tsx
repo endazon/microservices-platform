@@ -47,10 +47,12 @@ function renderConfigRoute(roles: string[]) {
 
 beforeEach(() => {
   mocks.apiFetch.mockReset();
-  // 実 API と同様にパスで応答を振り分ける（/admin/config=構成, /drift=ドリフト）。
-  mocks.apiFetch.mockImplementation(async (path: string) =>
-    path === '/admin/config/drift' ? EMPTY_DRIFT : EMPTY_CONFIG,
-  );
+  // 実 API と同様にパスで応答を振り分ける（/admin/config=構成, /drift=ドリフト, /history=履歴）。
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path === '/admin/config/drift') return EMPTY_DRIFT;
+    if (path === '/admin/config/history') return [];
+    return EMPTY_CONFIG;
+  });
 });
 
 describe('SC-11 access control (#140)', () => {

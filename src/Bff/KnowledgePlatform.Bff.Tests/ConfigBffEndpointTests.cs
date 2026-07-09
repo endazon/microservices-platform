@@ -99,6 +99,42 @@ public class ConfigBffEndpointTests(BffTestFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // FR-15 (#139), IADR-0046: 構成バージョン履歴を返す。履歴未注入のテスト環境では現在バージョン
+    // （Config:GitCommit 等）へ縮退した単一エントリを返す。取得は許可を監査する。
+    [Fact]
+    public async Task GetHistory_AsAdmin_ReturnsCurrentVersionEntryAndAuditsGranted()
+    {
+        factory.StubEffective = SampleEffective();
+        factory.RecordedAudits.Clear();
+
+        var resp = await factory.CreateClient().GetAsync("/bff/admin/config/history");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var history = await resp.Content.ReadFromJsonAsync<List<ConfigVersionEntryDto>>();
+        history.Should().NotBeNull();
+        history!.Should().ContainSingle();
+        history[0].GitCommit.Should().Be("abc1234");
+        history[0].AppliedBy.Should().Be("argocd");
+        factory.RecordedAudits.Should().Contain(a =>
+            a.Action == "config.history.read" && a.Outcome == "granted");
+    }
+
+    // 履歴取得も無認証は 404 で秘匿し、拒否を監査する（存在秘匿・IADR-0009）。
+    [Fact]
+    public async Task GetHistory_AsAnonymous_Returns404AndAuditsDenied()
+    {
+        factory.RecordedAudits.Clear();
+
+        var req = new HttpRequestMessage(HttpMethod.Get, "/bff/admin/config/history");
+        req.Headers.Add(TestAuthHandler.AnonymousHeader, "true");
+
+        var resp = await factory.CreateClient().SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        factory.RecordedAudits.Should().Contain(a =>
+            a.Action == "config.history.read" && a.Outcome == "denied");
+    }
+
     // 取得操作（許可）が監査ログに残る。
     [Fact]
     public async Task GetConfig_AsAdmin_AuditsGranted()

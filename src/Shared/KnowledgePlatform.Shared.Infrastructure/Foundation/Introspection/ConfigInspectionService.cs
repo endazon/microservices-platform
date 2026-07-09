@@ -14,6 +14,9 @@ public interface IConfigInspectionService
 
     // 宣言（pipeline.json）と実効構成のドリフトを検出して返す。
     Task<DriftReportDto> GetDriftAsync(CancellationToken ct = default);
+
+    // FR-15 (#139): 構成バージョン適用履歴（新しい順）を返す。正データ源は GitOps 層（IADR-0046）。
+    Task<IReadOnlyList<ConfigVersionEntryDto>> GetVersionHistoryAsync(CancellationToken ct = default);
 }
 
 public sealed class ConfigInspectionService(
@@ -35,6 +38,34 @@ public sealed class ConfigInspectionService(
         var effective = await collector.CollectAsync(ct);
         var findings = DriftDetector.Detect(declaration, effective);
         return new DriftReportDto(findings.Count > 0, timeProvider.GetUtcNow(), findings);
+    }
+
+    // FR-15 (#139), IADR-0046: 構成バージョン履歴（新しい順）を返す。
+    // 正データ源は GitOps 層（Git/ArgoCD 適用履歴）で、現在バージョンと同じ注入経路で供給される
+    // ConfigVersionOptions.History をそのまま surfacing する（API 側は履歴を永続化しない）。
+    // 履歴未注入（dev/compose）時は現在バージョンの単一エントリへ縮退し、現在バージョンも空なら空一覧を返す。
+    public Task<IReadOnlyList<ConfigVersionEntryDto>> GetVersionHistoryAsync(CancellationToken ct = default) =>
+        Task.FromResult(BuildHistory());
+
+    private IReadOnlyList<ConfigVersionEntryDto> BuildHistory()
+    {
+        if (_version.History.Count > 0)
+        {
+            // 注入された履歴を新しい順（AppliedAt 降順、日時不明は末尾）に整える。OrderByDescending は安定
+            // ソートのため、AppliedAt が等しい／不明なエントリは注入順（＝GitOps が並べた順）を保つ。
+            return _version.History
+                .Select(h => new ConfigVersionEntryDto(
+                    h.GitCommit, ParseApplied(h.AppliedAt), h.AppliedBy, h.HadDrift))
+                .OrderByDescending(e => e.AppliedAt ?? DateTimeOffset.MinValue)
+                .ToList();
+        }
+
+        // 履歴未注入時の縮退: 現在バージョンを単一エントリとして返す（その時点のドリフト有無は不明＝null。
+        // 現在の実効ドリフトは /drift で別途取得できる）。現在バージョンも空なら履歴なし。
+        var current = BuildVersion();
+        if (current.GitCommit is null && current.AppliedAt is null && current.AppliedBy is null)
+            return Array.Empty<ConfigVersionEntryDto>();
+        return [new ConfigVersionEntryDto(current.GitCommit, current.AppliedAt, current.AppliedBy, null)];
     }
 
     // 宣言と自己申告から実効構成 DTO を組み立てる（純粋変換。テスト可能）。
@@ -122,15 +153,18 @@ public sealed class ConfigInspectionService(
         return bindings;
     }
 
-    private ConfigVersionDto BuildVersion()
+    private ConfigVersionDto BuildVersion() =>
+        new(_version.GitCommit, ParseApplied(_version.AppliedAt), _version.AppliedBy);
+
+    // 適用日時文字列（ISO 8601、UTC 前提）を解釈する。空・不正は null（不明）とする。
+    private static DateTimeOffset? ParseApplied(string? value)
     {
-        DateTimeOffset? appliedAt = null;
-        if (!string.IsNullOrWhiteSpace(_version.AppliedAt)
-            && DateTimeOffset.TryParse(_version.AppliedAt, CultureInfo.InvariantCulture,
+        if (!string.IsNullOrWhiteSpace(value)
+            && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal, out var parsed))
         {
-            appliedAt = parsed;
+            return parsed;
         }
-        return new ConfigVersionDto(_version.GitCommit, appliedAt, _version.AppliedBy);
+        return null;
     }
 }

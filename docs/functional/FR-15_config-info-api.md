@@ -41,7 +41,7 @@ FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に
 | --- | --- |
 | 入力 | 各サービスの自己申告（イントロスペクション）エンドポイント（メッシュ内部限定）。収集先は `Introspection:Services`（構成キー＝pipeline.json の service 名 → ベース URL）で注入 |
 | 処理 | BFF の `ConfigInspectionService` が自己申告を集約し、宣言（pipeline.json）と突合（`DriftDetector`） |
-| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]） |
+| 出力 | `GET /bff/admin/config` → `EffectiveConfigDto`（構成バージョン・段・イベント接続・ポート選択・コネクタ）、`GET /bff/admin/config/drift` → `DriftReportDto`（HasDrift・Findings[Kind/Severity/Target/Detail]）、`GET /bff/admin/config/history` → `ConfigVersionEntryDto[]`（コミット ID・適用日時・適用者・その時点のドリフト有無。新しい順） |
 | 業務ルール | 認可・秘匿・監査（下記） |
 
 ### 認可・存在秘匿・監査（IADR-0030 / IADR-0009）
@@ -57,10 +57,14 @@ FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に
   `Unverifiable` 縮退を Findings として返す。
 - 収集先が未設定・到達不能でも 500 にせず、検証不能を明示して返す（可用性優先の縮退）。
 
-### 構成バージョン
+### 構成バージョン・履歴（IADR-0046）
 
 - `Config__GitCommit / AppliedAt / AppliedBy` を GitOps（ArgoCD）適用時に環境変数で注入する
   （未注入時は空。注入配線は IADR-0029 フォローアップ）。
+- **適用履歴**（`GET /bff/admin/config/history`）の正データ源は **GitOps 層**（Git のコミット履歴 /
+  ArgoCD リビジョン履歴）。現在バージョンと同じ注入経路で供給する `Config__History__N__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
+  を、API は永続化せず新しい順で surfacing する（保持範囲は GitOps 側が決定）。履歴未注入（dev/compose）時は
+  現在バージョンの単一エントリへ縮退し、現在バージョンも空なら空一覧。GitOps 注入配線は #123 が担当。
 
 ## 例外・エラー処理
 
