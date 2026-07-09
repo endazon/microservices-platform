@@ -25,11 +25,24 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    [Fact]
-    public async Task Delete_NonPrivilegedRole_Returns403()
+    // FR-09, IADR-0044: 全書き込みルートが admin/operator を要求することを網羅検証する。
+    // 認可はモデルバインド前に働くため、非権限ロールではボディ・対象存在に関わらず 403。
+    // 将来いずれかのルートだけを誤って別グループへ移した際に回帰を検知できるようにする。
+    [Theory]
+    [InlineData("PUT", "/documents/{id}")]
+    [InlineData("PATCH", "/documents/{id}/metadata")]
+    [InlineData("POST", "/documents/{id}/publish")]
+    [InlineData("POST", "/documents/{id}/archive")]
+    [InlineData("DELETE", "/documents/{id}")]
+    public async Task Write_NonPrivilegedRole_Returns403(string method, string template)
     {
         var client = ClientAs("viewer");
-        var resp = await client.DeleteAsync($"/documents/{Guid.NewGuid()}");
+        var path = template.Replace("{id}", Guid.NewGuid().ToString());
+        using var req = new HttpRequestMessage(new HttpMethod(method), path)
+        {
+            Content = JsonContent.Create(new { title = "t" })
+        };
+        var resp = await client.SendAsync(req);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 

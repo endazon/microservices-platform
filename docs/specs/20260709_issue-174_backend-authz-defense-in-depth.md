@@ -1,7 +1,7 @@
 ---
 title: バックエンドサービスの書き込み/管理APIへの認可強制（Issue #174）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-01
   - FR-06
@@ -49,11 +49,11 @@ plan_refs:
 
 ## 受け入れ基準（Issue #174）との対応
 
-- [ ] DataSourceService `/datasources`（CRUD・sync）が admin/operator 以外に 403。
-- [ ] DocumentService 書き込み（POST/PUT/PATCH/publish/archive/DELETE）が admin/operator 以外に 403。
-- [ ] DocumentService 読み取り（GET）は一般利用者でも従来どおり可能（回帰なし）。
-- [ ] BFF→後段の正常系（トークン伝播）が壊れない。
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
+- [x] DataSourceService `/datasources`（CRUD・sync）が admin/operator 以外に 403。
+- [x] DocumentService 書き込み（POST/PUT/PATCH/publish/archive/DELETE）が admin/operator 以外に 403。
+- [x] DocumentService 読み取り（GET）は一般利用者でも従来どおり可能（回帰なし）。
+- [x] BFF→後段の正常系（トークン伝播）が壊れない。
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
 
 ## 実装判断・計画フィードバック
 

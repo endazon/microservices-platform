@@ -44,6 +44,21 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    // FR-09, IADR-0044: 残る書き込み/読み取りルート（個別取得・削除）も admin/operator を要求することを
+    // 網羅検証する。認可はモデルバインド前に働くため対象存在に関わらず 403。将来いずれかのルートだけを
+    // 誤って別グループへ移した際に回帰を検知できるようにする。
+    [Theory]
+    [InlineData("GET", "/datasources/{id}")]
+    [InlineData("DELETE", "/datasources/{id}")]
+    public async Task Route_NonPrivilegedRole_Returns403(string method, string template)
+    {
+        var client = ClientAs("viewer");
+        var path = template.Replace("{id}", Guid.NewGuid().ToString());
+        using var req = new HttpRequestMessage(new HttpMethod(method), path);
+        var resp = await client.SendAsync(req);
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task List_OperatorRole_IsAllowed()
     {
