@@ -16,8 +16,7 @@ author: claude
 created: 2026-07-09
 updated: 2026-07-09
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
-  - "../../planning/projects/microservices-platform/02_requirements/02_nfr.md (NFR 性能)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09 / NFR 性能)"
 ---
 
 # IADR-0045: BFF 文書書き込みのスコープ確認往復は多層防御の要のため維持し、最適化を測定まで保留する

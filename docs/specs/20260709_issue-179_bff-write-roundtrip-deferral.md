@@ -14,7 +14,7 @@ author: claude
 created: 2026-07-09
 updated: 2026-07-09
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/02_nfr.md (NFR 性能)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 性能)"
 ---
 
 # 仕様書: BFF 文書書き込みのスコープ確認往復の最適化検討（Issue #179）
@@ -50,10 +50,10 @@ plan_refs:
 
 ## 受け入れ基準
 
-- [ ] 後段の認可が ABAC スコープを含まないことをコードで確認・記録した。
-- [ ] IADR-0045 に決定・根拠・代替案・適用条件を記録した。
-- [ ] コード直近にガードコメントを追加した。
-- [ ] コード動作変更なし（BFF ビルドが通る）。
+- [x] 後段の認可が ABAC スコープを含まないことをコードで確認・記録した。
+- [x] IADR-0045 に決定・根拠・代替案・適用条件を記録した。
+- [x] コード直近にガードコメントを追加した。
+- [x] コード動作変更なし（BFF ビルドが通る）。
 
 ## 影響・リスク
 
