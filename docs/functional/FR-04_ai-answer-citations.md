@@ -71,10 +71,13 @@ flowchart TD
 
 ## 受け入れ基準
 
-- [ ] AI 回答に番号付き出典が付与され、各出典が元文書リンクを持つ。
-- [ ] 出典番号が回答本文・LLM 文脈と一致する。
-- [ ] 権限の無い文書は ABAC フィルタにより検索・回答のいずれにも現れない（後段で担保）。
-- [ ] `/bff/analysis/ask` から単一窓口で回答＋出典を取得できる。
+- [x] AI 回答に番号付き出典が付与され、各出典が元文書リンクを持つ。
+- [x] 出典番号が回答本文・LLM 文脈と一致する。
+- [x] 権限の無い文書は ABAC フィルタにより検索・回答のいずれにも現れない（後段で担保）。
+- [x] `/bff/analysis/ask` から単一窓口で回答＋出典を取得できる。
+
+> 検証（#201）: `CitationMapperTests`（出典番号↔本文整合）／`RagOrchestratorScopeTests`（ABAC スコープ適用）／
+> 統合 `RagOrchestratorTests` で担保。実装は `RagOrchestrator` ＋ BFF `/bff/analysis/ask`。
 
 ## 関連仕様
 
