@@ -16,6 +16,7 @@ docs/
 ├── data/         # データ仕様書      ├── observability/ # ログ・可観測性（任意）
 ├── tech/         # 技術要件書        ├── authz/         # 権限・認可（任意）
 ├── tests/        # テスト仕様書      ├── integration/   # 外部連携（任意）
+├── how-to/       # 使い方・デプロイの手順ガイド（任意）
 │                                     ├── batch/         # バッチ・ジョブ（任意）
 │                                     ├── migration/     # 移行（任意）
 │                                     ├── errors/        # エラー・メッセージ（任意）
@@ -52,6 +53,7 @@ docs/
 | `migration` | 移行仕様書 | `docs/migration/` |
 | `error` | エラー・メッセージ仕様書 | `docs/errors/` |
 | `infra` | インフラ・構成仕様書 | `docs/infra/` |
+| — | how-to（使い方・デプロイ手順ガイド） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)） |
 
 ## 補助成果物の自動生成
 
