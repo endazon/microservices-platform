@@ -93,6 +93,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-12 BFF テスト（SC-07 変換ジョブ）: ConversionService の応答をスタブ制御する。
     public static readonly Guid StubJobId = Guid.Parse("12121212-1212-1212-1212-121212121212");
     public HttpStatusCode ConversionStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（ConversionService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool ConversionThrows { get; set; }
     public List<ConversionJobDto> StubJobs { get; set; } =
     [
         new(StubJobId, Guid.NewGuid(), "filesystem", "/docs/a.docx", ConversionJobStatus.Failed,
@@ -319,6 +321,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var query = request.RequestUri?.Query ?? string.Empty;
             var method = request.Method;
+
+            // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+            if (owner.ConversionThrows)
+                throw new HttpRequestException("conversion-service unreachable");
 
             if (path.EndsWith("/retry", StringComparison.Ordinal))
                 return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode == HttpStatusCode.OK

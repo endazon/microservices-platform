@@ -15,6 +15,7 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
     {
         _factory = factory;
         _factory.ConversionStatusCode = HttpStatusCode.OK;
+        _factory.ConversionThrows = false;
     }
 
     [Fact]
@@ -84,6 +85,16 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
 
         resp.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    [Fact]
+    public async Task GetList_WhenBackendUnreachable_Returns502()
+    {
+        // 後段不達（HttpRequestException）は 502 へ縮退する（catch 分岐の直接検証・レビュー #172 指摘対応）。
+        _factory.ConversionThrows = true;
+        var resp = await _factory.CreateClient().GetAsync("/bff/conversion/jobs");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadGateway);
     }
 
     [Fact]
