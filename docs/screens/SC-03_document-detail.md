@@ -1,7 +1,7 @@
 ---
 title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
-status: draft
+status: completed
 related_ids:
   - SC-03
   - UC-01
