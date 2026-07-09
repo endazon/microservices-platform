@@ -3,7 +3,7 @@ title: 変換ジョブ照会/再変換 API と状態モデルを計画（UC-06 /
 type: plan-feedback
 status: open
 category: 要求の不足
-related_ids: [FR-12, UC-06, SC-07]
+related_ids: [FR-12, UC-06, SC-07, ADR-0002, ADR-0003, IADR-0042, IADR-0043]
 source_repo: microservices-platform
 source_ref: "PR #172 / IADR-0042 / IADR-0043 / docs/screens/SC-07_conversion-jobs.md"
 author: claude
