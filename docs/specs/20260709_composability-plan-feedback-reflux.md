@@ -1,7 +1,7 @@
 ---
 title: コンポーザビリティ実装状態の計画環流 — 未決事項の確定・安全弁の未整備分のフィードバック起票とガイド追随修正
 type: spec
-status: fixed
+status: completed
 related_ids:
   - FR-14
   - FR-15
