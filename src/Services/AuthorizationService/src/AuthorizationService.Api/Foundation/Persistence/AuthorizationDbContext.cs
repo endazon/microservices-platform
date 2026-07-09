@@ -19,7 +19,8 @@ public class AuthorizationDbContext(DbContextOptions<AuthorizationDbContext> opt
 
         var dictListComparer = new ValueComparer<Dictionary<string, List<string>>>(
             (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null) == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
-            v => v.GetHashCode(),
+            // ハッシュも等価判定と同じ内容ベースにする（参照 GetHashCode は equals と契約不整合になるため）。
+            v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
             v => v.ToDictionary(kv => kv.Key, kv => kv.Value.ToList()));
 
         mb.Entity<AttributeDefinition>(e =>
