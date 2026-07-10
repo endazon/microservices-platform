@@ -2,7 +2,7 @@
 
 > 起点: ADR-0005（サービスメッシュ / Istio / mTLS）
 > 関連: IADR-0017（暫定: ネットワーク分離を第一防御）→ **IADR-0026（本 mTLS で Supersede）**
-> 回帰テスト: `src/backend/knowledge/Tests/KnowledgePlatform.IntegrationTests/Deployment/MeshMtlsTests.cs`
+> 回帰テスト: `src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/Deployment/MeshMtlsTests.cs`
 
 サービス間通信を **STRICT mTLS**（平文フォールバック無し）で暗号化・相互認証する。
 mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm チャート

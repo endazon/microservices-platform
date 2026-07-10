@@ -7,14 +7,17 @@ set -u
 
 log() { printf '[setup] %s\n' "$1"; }
 
-# --- C# / .NET（例・既定） ---
+# --- C# / .NET ---
+# FR-14, IADR-0056: ルート集約ソリューションは置かず、ユニット別 slnx（src/<unit>/backend/backend.slnx）を復元する。
 if command -v dotnet >/dev/null 2>&1; then
-  if ls ./*.sln >/dev/null 2>&1 || find . -maxdepth 3 -name '*.csproj' -print -quit | grep -q .; then
-    log "dotnet restore を実行します"
-    dotnet restore || log "restore でエラー（継続）"
-  else
-    log ".sln/.csproj が無いため dotnet セットアップをスキップ"
-  fi
+  restored=0
+  for slnx in src/*/backend/*.slnx; do
+    [ -f "$slnx" ] || continue
+    log "dotnet restore $slnx を実行します"
+    dotnet restore "$slnx" || log "restore でエラー（継続）"
+    restored=1
+  done
+  [ "$restored" -eq 1 ] || log "slnx が無いため dotnet セットアップをスキップ"
 fi
 
 # --- Node.js（例。使う場合はコメント解除） ---

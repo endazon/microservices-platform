@@ -1,5 +1,5 @@
 ---
-title: IADR-0056 リポジトリ最上位のユニット構成（src/backend|frontend × platform/knowledge）
+title: IADR-0056 リポジトリ最上位のユニット構成（src/<unit>/{backend,frontend} = platform / knowledge）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md"
 ---
 
-# IADR-0056: リポジトリ最上位のユニット構成（src/backend|frontend × platform/knowledge）
+# IADR-0056: リポジトリ最上位のユニット構成（src/<unit>/{backend,frontend} = platform / knowledge）
 
 - 状態: Accepted
 - 日付: 2026-07-10
@@ -40,8 +40,9 @@ plan_refs:
 
 ## 検討した選択肢
 
-最上位構成（`src/{frontend,backend}/{platform,knowledge,...etc}`、ユニット直下に slnx / package.json、
-追加可変機能はユニット単位の git submodule）は issue #210 で確定済み・選択肢なし。実装詳細は以下を検討した。
+最上位構成（**ユニット第一**: `src/{platform,knowledge,...etc}/{frontend,backend}`、各ユニットに
+`backend.slnx` / `frontend/package.json`、追加可変機能は `src/<unit>` へのユニット単位 git submodule）は
+issue #210 で確定済み・選択肢なし。実装詳細は以下を検討した。
 
 1. **サービスのユニット振り分け**
    - a) 全 11 サービスを knowledge へ置き、platform は Shared のみ（最小 platform）
@@ -62,27 +63,28 @@ plan_refs:
 
 ## 決定
 
-1. **振り分け**: `backend/platform` = Shared.Contracts / Shared.Infrastructure / Bff /
-   AuthorizationService / LlmGateway。`backend/knowledge` = DocumentService / DataSourceService /
+1. **振り分け**: `platform/backend` = Shared.Contracts / Shared.Infrastructure / Bff /
+   AuthorizationService / LlmGateway。`knowledge/backend` = DocumentService / DataSourceService /
    ConversionService / IngestionService / RetrievalService / AiAnalysisService / WikiService /
    FeedbackService / DashboardService / IntegrationTests。
-   `frontend/platform` = foundation ＋アプリホスト（vite・e2e・nginx/config テンプレート）。
-   `frontend/knowledge` = features（home・sc01..sc11）。
-2. **ビルド**: ユニット直下の `platform.slnx` / `knowledge.slnx` のみ（ルート集約 slnx は廃止）。
-   共通 MSBuild 設定（`Directory.Build.props` / `Directory.Packages.props`）は `src/backend/` に置き、
+   `platform/frontend` = foundation ＋アプリホスト（vite・e2e・nginx/config テンプレート）。
+   `knowledge/frontend` = features（home・sc01..sc11）。
+2. **ビルド**: 各ユニット直下の `backend/backend.slnx` のみ（ルート集約 slnx は廃止）。
+   共通 MSBuild 設定（`Directory.Build.props` / `Directory.Packages.props`）は `src/` に置き、
    ディレクトリ継承で全ユニット（submodule ユニット含む）へ適用する。
-3. **依存方向**: knowledge → platform は `src/backend/platform/Shared/` の 2 プロジェクトのみ許可。
+3. **依存方向**: knowledge → platform は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可。
    platform → knowledge は禁止（フロントエンドも同様: platform の合成点以外は knowledge を参照しない。
    合成点＝アプリホストがユニットを束ねる 1 ファイルで、IADR-0027 の合成ルート概念の最上位版）。
-4. **フロントエンド合成**: `src/frontend/` を npm workspaces ルートとする（ルート package.json・
-   単一 lock）。platform 側 `src/features/index.ts` を合成点とし、可変ユニットの features を束ねる
-   （ユニット追加＝workspaces へのパッケージ追加＋ import 1 行）。単体テスト・カバレッジは
-   ワークスペースルートの vitest 設定で両パッケージを横断計測し、既存しきい値（ラチェット）を維持する。
+4. **フロントエンド合成**: `src/` を npm workspaces ルートとする（`workspaces: ["*/frontend"]`・
+   単一 lock）。platform 側 `platform/frontend/src/features/index.ts` を合成点とし、可変ユニットの
+   features を束ねる（ユニット追加＝submodule 配置のみで workspaces に自動認識＋合成点へ import 1 行）。
+   単体テスト・カバレッジはワークスペースルート（`src/vitest.config.ts`）で両パッケージを横断計測し、
+   既存しきい値（ラチェット）を維持する。
 5. **命名**: .NET 名前空間・アセンブリ名（`KnowledgePlatform.*`）と Helm チャート名
    （`knowledge-platform`）は本再編では変更しない。改名はフォローアップ issue で段階実施する。
-6. **submodule 境界**: 追加可変機能ユニットは `src/backend/<unit>/`・`src/frontend/<unit>/` に
-   git submodule でリンクする。IADR-0027 の「サービス単位のサブモジュール」規約は本決定で
-   **ユニット単位**へ変更する（サービスユニット規約はユニット内レイアウトとして存続）。
+6. **submodule 境界**: 追加可変機能ユニットは `src/<unit>/`（`backend/`・`frontend/` を含む
+   1 リポジトリ）として git submodule でリンクする。IADR-0027 の「サービス単位のサブモジュール」
+   規約は本決定で**ユニット単位**へ変更する（サービスユニット規約はユニット内レイアウトとして存続）。
 
 ## 理由
 
@@ -104,7 +106,7 @@ plan_refs:
   基盤の範囲（platform ユニット）が物理的に特定できる。
 - 悪い影響・トレードオフ: 巨大な（ただし機械的な）移動差分が一度発生する。名前空間
   `KnowledgePlatform.*` とフォルダ（`backend/platform` 等）の不一致が改名完了まで残る。
-  submodule ユニットは `src/backend/` の共通 props に依存するため、単独ビルドには自前の設定が必要。
+  submodule ユニットは `src/` の共通 props に依存するため、単独ビルドには自前の設定が必要。
 - フォローアップ（issue 起票）:
   1. .NET 名前空間・アセンブリ名・フロント package 名のユニット整合改名
   2. Helm チャート（`knowledge-platform`）・k8s リソース名の改名

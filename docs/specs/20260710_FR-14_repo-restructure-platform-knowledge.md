@@ -48,8 +48,8 @@ KnowledgePlatform（ナレッジ活用機能）は基盤に付随する**必須�
 ## 対象範囲
 
 - 対象:
-  - バックエンドの物理再編（`src/backend/{platform,knowledge}`、ユニット別 slnx、参照修正）
-  - フロントエンドの物理再編（`src/frontend/{platform,knowledge}`、npm workspaces 化）
+  - バックエンドの物理再編（`src/{platform,knowledge}/backend`（各 backend.slnx）、参照修正）
+  - フロントエンドの物理再編（`src/{platform,knowledge}/frontend`、npm workspaces 化（ルート = `src/`））
   - deploy（docker-compose・Dockerfile）、CI（.github/workflows）、scripts、.claude の追随
   - ドキュメントの位置づけ是正（#209）とパス参照の更新（リンク切れゼロ）
   - 重要判断の IADR 化（IADR-0056）と docs/adr/README 更新
@@ -61,74 +61,77 @@ KnowledgePlatform（ナレッジ活用機能）は基盤に付随する**必須�
 
 ## 設計
 
-### 最終フォルダ構成（issue #210 を正とする）
+### 最終フォルダ構成（issue #210 を正とする・ユニット第一）
 
 ```text
-src/
-├── frontend/                      # npm workspaces ルート（package.json / lock / eslint / vitest）
-│   ├── platform/                  # 基盤: アプリホスト + foundation（vite build・e2e・nginx/config テンプレート）
+src/                               # 直下: バックエンド共通 props ＋ フロント workspaces ルート
+│   Directory.Build.props / Directory.Packages.props
+│   package.json（workspaces: ["*/frontend"]）/ package-lock.json / vitest.config.ts / eslint.config.js
+├── platform/                      # 基盤ユニット（本リポジトリの主成果物）
+│   ├── frontend/                  # SPA 基盤: アプリホスト + foundation（vite build・e2e・nginx/config テンプレート）
 │   │   └── package.json
-│   ├── knowledge/                 # 可変: ナレッジ画面 features（home, sc01..sc11）
+│   └── backend/                   # プラットフォーム基盤
+│       ├── backend.slnx
+│       ├── Shared/                # KnowledgePlatform.Shared.Contracts / .Infrastructure
+│       ├── Bff/                   # KnowledgePlatform.Bff (+ .Tests)
+│       └── Services/              # AuthorizationService / LlmGateway
+├── knowledge/                     # ナレッジ機能ユニット（付随する必須の可変機能）
+│   ├── frontend/                  # ナレッジ画面 features（home, sc01..sc11）
 │   │   └── package.json
-│   └── ...etc                     # 追加可変機能ユニット（git submodule でリンク）
-└── backend/                       # Directory.Build.props / Directory.Packages.props（単一情報源）
-    ├── platform/
-    │   ├── platform.slnx
-    │   ├── Shared/                # KnowledgePlatform.Shared.Contracts / .Infrastructure
-    │   ├── Bff/                   # KnowledgePlatform.Bff (+ .Tests)
-    │   └── Services/              # AuthorizationService / LlmGateway
-    ├── knowledge/
-    │   ├── knowledge.slnx
-    │   ├── Services/              # Document / DataSource / Conversion / Ingestion /
-    │   │                          # Retrieval / AiAnalysis / Wiki / Feedback / Dashboard
-    │   └── Tests/                 # KnowledgePlatform.IntegrationTests
-    └── ...etc                     # 追加可変機能ユニット（git submodule でリンク）
+│   └── backend/
+│       ├── backend.slnx
+│       ├── Services/              # Document / DataSource / Conversion / Ingestion /
+│       │                          # Retrieval / AiAnalysis / Wiki / Feedback / Dashboard
+│       └── Tests/                 # KnowledgePlatform.IntegrationTests
+└── ...etc                         # 追加可変機能ユニット（git submodule で src/ 直下へリンク）
 ```
 
 ### ユニット振り分け（詳細は IADR-0056）
 
-- **backend/platform（基盤）**: Shared.Contracts・Shared.Infrastructure・Bff・AuthorizationService・LlmGateway。
+- **platform/backend（基盤）**: Shared.Contracts・Shared.Infrastructure・Bff・AuthorizationService・LlmGateway。
   根拠: 認証/認可（ABAC）・LLM エグレス統制・エッジ集約・契約/横断基盤は、
   `ai-stock-trading` ADR-0001 が再利用対象とする基盤能力そのものである。
-- **backend/knowledge（可変機能）**: DocumentService・DataSourceService・ConversionService・
+- **knowledge/backend（可変機能）**: DocumentService・DataSourceService・ConversionService・
   IngestionService・RetrievalService・AiAnalysisService・WikiService・FeedbackService・
   DashboardService・IntegrationTests。文書パイプライン〜検索〜AI 回答〜Wiki〜利用集計はナレッジ機能ドメイン。
-- **frontend/platform**: `foundation/`（config/auth/api/routing/ui）＋アプリホスト（`main.tsx`/`App.tsx`/
-  `index.html`/vite・tsconfig・playwright・nginx/config テンプレート・Dockerfile 入力）。
-- **frontend/knowledge**: `features/`（home・sc01..sc11）一式。
+- **platform/frontend**: `foundation/`（config/auth/api/routing/ui）＋アプリホスト（`main.tsx`/`App.tsx`/
+  `index.html`/vite・tsconfig・playwright・nginx/config テンプレート・Dockerfile）。
+- **knowledge/frontend**: `features/`（home・sc01..sc11）一式。
 
 ### ビルド・合成
 
-- **バックエンド**: ユニット直下の slnx（`platform.slnx` / `knowledge.slnx`）。ルート集約
+- **バックエンド**: 各ユニットの `backend/backend.slnx`。ルート集約
   `KnowledgePlatform.slnx`（ルート・src 直下の 2 つ）は廃止し、CI・スクリプトはユニット毎に
   restore/build/test/format を実行する。knowledge → platform の参照は
-  `src/backend/platform/Shared/` の 2 プロジェクトのみ許可（ProjectReference の相対パス）。
-- **フロントエンド**: `src/frontend/` を npm workspaces ルートとし、単一 lock で管理。
-  合成点は platform 側 `src/features/index.ts`（可変ユニットの features を束ねる。ユニット追加＝
-  import 1 行）。`@foundation` → platform、`@knowledge` → knowledge を alias で解決し、
-  feature 実装のソース import は変更しない。単体テスト＋カバレッジはワークスペースルートの
-  vitest 設定で両パッケージを横断計測し、既存しきい値（ラチェット）を維持する。
-- **submodule 境界**: 追加可変機能はユニット単位（`src/backend/<unit>/`・`src/frontend/<unit>/`）で
-  リンクする（IADR-0027 の「サービス単位のサブモジュール」から変更。サービスユニット規約自体は
-  ユニット内レイアウトとして存続）。
+  `src/platform/backend/Shared/` の 2 プロジェクトのみ許可（ProjectReference の相対パス）。
+  共通 MSBuild 設定（props）は `src/` 直下に置き、全ユニットへディレクトリ継承する。
+- **フロントエンド**: `src/` を npm workspaces ルート（`workspaces: ["*/frontend"]`）とし、単一 lock
+  で管理。合成点は platform 側 `platform/frontend/src/features/index.ts`（可変ユニットの features を
+  束ねる。ユニット追加＝import 1 行）。`@foundation` → platform/frontend、`@knowledge` →
+  knowledge/frontend を alias で解決し、feature 実装のソース import は変更しない。
+  単体テスト＋カバレッジはワークスペースルート（`src/vitest.config.ts`）で両パッケージを横断計測し、
+  既存しきい値（ラチェット）を維持する。
+- **submodule 境界**: 追加可変機能はユニット単位で `src/<unit>/`（`backend/`・`frontend/` を含む
+  1 リポジトリ）にリンクする（IADR-0027 の「サービス単位のサブモジュール」から変更。
+  サービスユニット規約自体はユニット内レイアウトとして存続）。
 
 ### 追随が必要な箇所（棚卸し結果）
 
 | 領域 | 変更 |
 | --- | --- |
-| csproj | knowledge 各サービスの Shared 参照を `..\..\..\..\..\platform\Shared\...` へ。IntegrationTests の Shared 参照更新（Services 参照は相対のまま不変） |
-| Dockerfile（13 個） | `COPY src/ .` → `COPY src/backend/ .`、restore/publish パスへ `platform/`・`knowledge/` を反映。frontend は workspaces 対応 |
+| csproj | knowledge 各サービスの Shared 参照を `..\..\..\..\..\..\platform\backend\Shared\...` へ。IntegrationTests の Shared・AuthorizationService 参照更新（ユニット内 Services 参照は相対のまま不変） |
+| Dockerfile（13 個） | `COPY src/ .` → props＋ユニット単位の明示 COPY、restore/publish パスへ `platform/backend/`・`knowledge/backend/` を反映。frontend は workspaces 対応（`src/platform/frontend/Dockerfile`） |
 | deploy/docker-compose.yml | 14 サービスの `dockerfile:` パス更新 |
-| .github/workflows | ci.yml（lint/build-test をユニット毎に）、security.yml（slnx×2）、frontend.yml / frontend-tests.yml（`src/frontend` へ）、copilot-setup-steps.yml |
-| scripts | setup.sh（restore をユニット毎に） |
+| .github/workflows | ci.yml（lint/build-test をユニット毎に）、security.yml（backend.slnx×2）、frontend.yml / frontend-tests.yml（workspaces ルート `src/` へ）、openapi.yml（`src/*/backend/**`）、copilot-setup-steps.yml |
+| scripts | setup.sh（restore を `src/*/backend/*.slnx` 毎に） |
 | .claude | commands/verify.md 等の検証コマンド記述（該当があれば） |
-| docs | README・CLAUDE.md・AGENTS.md・docs/README・tech/how-to・src/Services/README（→ src/backend/README へ）ほか、`check-doc-links.js` でリンク切れゼロを確認 |
+| docs | README・CLAUDE.md・AGENTS.md・docs/README・tech/how-to・src/Services/README（→ src/README へ）ほか、`check-doc-links.js` でリンク切れゼロを確認 |
 
 ## 受け入れ基準
 
-- [ ] フォルダ構成が issue #210 記載の形になっている（`src/frontend/{platform,knowledge}`・`src/backend/{platform,knowledge}`、ユニット直下に slnx / package.json）
+- [ ] フォルダ構成が issue #210 記載の形になっている（`src/{platform,knowledge}/{frontend,backend}`、各ユニットに `backend.slnx` / `frontend/package.json`、追加ユニットは `src/` 直下へ submodule）
 - [ ] platform ユニットが knowledge ユニットへ依存していない（一方向依存）
-- [ ] `dotnet build` / `dotnet test` が両 slnx で成功、`dotnet format --verify-no-changes` が両 slnx で成功
+- [ ] `dotnet build` / `dotnet test` が両 backend.slnx で成功、`dotnet format --verify-no-changes` が両 backend.slnx で成功
 - [ ] frontend の `typecheck` / `lint` / `test`（カバレッジしきい値維持）/ `build` / e2e スモークが成功
 - [ ] CI ワークフローが新パスで動作する定義になっている（paths フィルタ・working-directory・キャッシュパス）
 - [ ] docker-compose のビルド定義が新パスを指す（compose config で検証）
