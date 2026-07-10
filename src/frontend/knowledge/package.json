@@ -1,0 +1,16 @@
+{
+  "name": "@microservices-platform/frontend-knowledge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "ナレッジ活用機能の画面 features（home, sc01..sc11）。platform の合成点（src/features/index.ts）から束ねられる可変機能ユニット。",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "oidc-client-ts": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  }
+}

@@ -1,25 +1,22 @@
 {
-  "name": "knowledge-platform-frontend",
+  "name": "@microservices-platform/frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SC-01..SC-11 SPA foundation (foundation/features split, BFF boundary, Keycloak OIDC). Issue #126.",
+  "description": "フロントエンド npm workspaces ルート。platform=基盤アプリホスト、knowledge=付随する可変機能ユニット。追加ユニットは submodule 配置＋合成点 1 行で組み込む（FR-14 / IADR-0056）。",
+  "workspaces": [
+    "*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
+    "dev": "npm run dev --workspace platform",
+    "build": "npm run build --workspace platform",
+    "preview": "npm run preview --workspace platform",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
-  },
-  "dependencies": {
-    "oidc-client-ts": "^3.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "test:e2e": "npm run test:e2e --workspace platform"
   },
   "devDependencies": {
     "@eslint/js": "^9.11.1",

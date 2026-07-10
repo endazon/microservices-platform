@@ -21,7 +21,8 @@
     "baseUrl": ".",
     "paths": {
       "@foundation/*": ["src/foundation/*"],
-      "@features/*": ["src/features/*"]
+      "@features/*": ["src/features/*"],
+      "@knowledge/*": ["../knowledge/src/*"]
     }
   },
   "include": ["src"]
