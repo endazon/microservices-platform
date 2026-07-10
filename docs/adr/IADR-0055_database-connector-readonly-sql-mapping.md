@@ -36,7 +36,7 @@ plan_refs:
 
 1. **設定駆動 SQL（`id`/`updated`/`content` 別名）＋インメモリ増分＋参照専用ユーザー（本決定）**: 管理者が「行→文書」を
    SELECT で定義し、コネクタはそれを派生表として包んで列挙・取得する。プロバイダは PostgreSQL（Npgsql）を第一実装とし、
-   接続は `IDbConnectionFactory` で抽象化（テストは SQLite）。他プロバイダは後続アダプタ。
+   接続は `IDbConnectionFactory` で抽象化（テストはハンドロール ADO.NET フェイク）。他プロバイダは後続アダプタ。
 2. **ORM/スキーマ自動マッピング**: スキーマからテーブル→文書を自動生成。汎用性が低く、粒度・機微列除外の制御が難しい。
 3. **CDC（論理レプリケーション等）を最初から採用**: 低遅延だが DB 側設定・権限・運用が重く、優先4 の初期実装には過剰。
 
@@ -44,7 +44,7 @@ plan_refs:
 
 **選択肢 1 を採用する。** `DatabaseConnector`（`Composable/Adapters`・`SourceType="db"`）は以下の契約を用いる。
 
-- **マッピング（構成）**: `Config["query"]` に、列を `id`（テキスト）/`updated`（日時）/`content`（テキスト）・任意 `title` に
+- **マッピング（構成）**: `Config["query"]` に、列を `id`（テキスト）/`updated`（日時）/`content`（テキスト）に
   別名付けした SELECT を与える（例 `SELECT id::text AS id, updated_at AS updated, body AS content FROM public.articles`）。
 - **Discover**: `SELECT id, updated FROM ( {query} ) AS src` を実行し、`updated > since` を**インメモリ**で増分（初回=全件）。
   他コネクタと一貫（DB 側 WHERE 増分は効率化 follow-up）。プロバイダ差の少ない ANSI SELECT/派生表を用いる。
@@ -80,7 +80,7 @@ plan_refs:
 
 - `DataSourceService.Api`: `Foundation/Ports/IDbConnectionFactory.cs`、`Composable/Adapters/{NpgsqlConnectionFactory,DatabaseConnector}.cs`（新規）、
   `Program.cs`（DI 登録）。
-- テスト: `DatabaseConnectorTests`（SQLite・行→文書化/増分/取得/縮退/不正クエリ例外）。`Microsoft.Data.Sqlite`（テスト依存）を追加。
+- テスト: `DatabaseConnectorTests`（ハンドロール ADO.NET フェイク・行→文書化/増分/取得/縮退/不正クエリ例外/NULL updated スキップ/該当なし縮退）。外部依存の追加なし（上記「テストの選択」参照）。
 - ドキュメント: 本 IADR・作業仕様書・FR-01 機能/テスト仕様。
 
 ## フォローアップ

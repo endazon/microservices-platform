@@ -9,7 +9,7 @@ namespace DataSourceService.Api.Composable.Adapters;
 
 // FR-01, UC-04, 09_datasource-connectors（優先4: 業務DB）, IADR-0055:
 // 業務DB を「参照専用の設定駆動 SQL」で取り込むコネクタ。管理者が Config["query"] に列を
-// id(テキスト)/updated(日時)/content(テキスト)・任意 title に別名付けした SELECT を与え、
+// id(テキスト)/updated(日時)/content(テキスト) に別名付けした SELECT を与え、
 // 「行→文書」化する。コネクタは SELECT のみ発行し（書き込みしない）、参照専用 DB ユーザーを前提とする。
 //
 // 契約:
@@ -51,7 +51,16 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
             var id = reader["id"]?.ToString();
             if (string.IsNullOrWhiteSpace(id))
                 continue;
-            var updated = ToDateTimeOffset(reader["updated"]);
+            var updatedValue = reader["updated"];
+            if (updatedValue is null or DBNull)
+            {
+                // updated が NULL の行は増分判定できない。同期全体を失敗させず、当該行だけスキップし警告する
+                // （query 側で updated を非 NULL に保つ想定。claude-review #224）。
+                logger.LogWarning(
+                    "DatabaseConnector: updated が NULL の行をスキップします（id={RowId}, source {Id}）", id, source.Id);
+                continue;
+            }
+            var updated = ToDateTimeOffset(updatedValue);
             // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回全件。
             if (since is { } watermark && updated <= watermark)
                 continue;
@@ -78,7 +87,9 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
         command.Parameters.Add(param);
 
         var content = await command.ExecuteScalarAsync(ct);
-        var text = content?.ToString() ?? string.Empty;
+        // Discover と Fetch の間に行が消えた等で該当なし（null/DBNull）の場合は空本文へ縮退する
+        // （同期全体は止めない。空文書は下流で無害）。
+        var text = content is null or DBNull ? string.Empty : content.ToString() ?? string.Empty;
         var contentType = Config(source, "contentType", DefaultContentType);
         return new RawContent(Encoding.UTF8.GetBytes(text), contentType);
     }
@@ -94,10 +105,14 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
             return (null, null);
 
         var password = Config(source, "password", string.Empty);
-        var connectionString = string.IsNullOrWhiteSpace(password)
-            ? baseConn
-            : baseConn.TrimEnd(';') + $";Password={password}";
-        return (connectionString, query);
+        if (string.IsNullOrWhiteSpace(password))
+            return (baseConn, query);
+
+        // 単純連結だとパスワードの `;`/`'` 等でパースが崩れるため、DbConnectionStringBuilder で
+        // 適切にクオートして合成する（プロバイダ非依存。claude-review #224）。
+        var builder = new DbConnectionStringBuilder { ConnectionString = baseConn };
+        builder["Password"] = password;
+        return (builder.ConnectionString, query);
     }
 
     private static string Config(DataSource source, string key, string fallback)
@@ -106,12 +121,15 @@ public sealed class DatabaseConnector(IDbConnectionFactory connectionFactory, IL
             : fallback;
 
     // プロバイダ差（DateTime / DateTimeOffset / ISO8601 文字列）を吸収して DateTimeOffset(UTC) へ正規化する。
+    // DateTime の Kind: Local は UTC へ変換、Unspecified（例 timestamp without time zone）は UTC 格納を前提とする
+    // （IADR-0055。ローカル時刻格納の場合は timestamptz 化を推奨）。
     private static DateTimeOffset ToDateTimeOffset(object value) => value switch
     {
         DateTimeOffset dto => dto,
+        DateTime { Kind: DateTimeKind.Local } dt => new DateTimeOffset(dt).ToUniversalTime(),
         DateTime dt => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc), TimeSpan.Zero),
         string s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
-        _ => throw new FormatException($"updated 列を日時へ変換できません: {value?.GetType().Name ?? "null"}"),
+        _ => throw new FormatException($"updated 列を日時へ変換できません: {value.GetType().Name}"),
     };
 }

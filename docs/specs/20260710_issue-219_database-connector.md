@@ -1,7 +1,7 @@
 ---
 title: 業務DB データソースコネクタ（優先4）（Issue #219）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-01
   - UC-04
@@ -46,7 +46,7 @@ plan_refs:
     - 失敗: DB エラーは例外送出 → オーケストレータ（[[IADR-0051]] 決定3a）が watermark 非前進・継続失敗アラートに載せる。
     - 縮退: `ConnectionUri`／`query` 未設定は空列挙。
   - **IDbConnectionFactory**（`Foundation/Ports`）＋`NpgsqlConnectionFactory`（`Composable/Adapters`）: プロバイダ抽象
-    （本 PR は PostgreSQL＝Npgsql。テストは SQLite で差し替え）。
+    （本 PR は PostgreSQL＝Npgsql。テストはハンドロール ADO.NET フェイクで差し替え）。
   - DI 登録（`AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>` ＋ `AddSingleton<IDataSourceConnector, DatabaseConnector>`）。
   - 単体テスト（**ハンドロール ADO.NET フェイク**で行→文書化・更新列による増分・本文取得・縮退・DB エラー伝播）。
     ※ SQLite は SQLitePCLRaw の**未修正 CVE-2025-6965（NU1903 高）**を持ち込むため採用しない（依存追加を避ける）。
@@ -66,9 +66,9 @@ plan_refs:
 
 ## 受け入れ基準（Issue #219）との対応
 
-- [ ] `sourceType=db` の同期が参照専用で行を取得し、マッピング定義（`Config["query"]` の id/updated/content）に基づき `RawDocumentFetched` を発行する。
-- [ ] 更新列（`updated`）による増分同期（`updated > since`）。
-- [ ] 参照専用・最小権限を担保（コードは SELECT のみ・書き込みしない。DB ユーザーは参照専用前提）。
-- [ ] 継続失敗アラート経路（[[IADR-0051]]）に載る（DB エラーは例外送出）。
-- [ ] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
+- [x] `sourceType=db` の同期が参照専用で行を取得し、マッピング定義（`Config["query"]` の id/updated/content）に基づき `RawDocumentFetched` を発行する。
+- [x] 更新列（`updated`）による増分同期（`updated > since`）。
+- [x] 参照専用・最小権限を担保（コードは SELECT のみ・書き込みしない。DB ユーザーは参照専用前提）。
+- [x] 継続失敗アラート経路（[[IADR-0051]]）に載る（DB エラーは例外送出）。
+- [x] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。

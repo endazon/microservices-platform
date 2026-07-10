@@ -67,6 +67,32 @@ public sealed class DatabaseConnectorTests
     }
 
     [Fact]
+    public async Task Discover_SkipsRowsWithNullUpdated_WithoutFailingWholeSync()
+    {
+        var conn = FakeDbConnection.WithReaderRows(
+            [
+                new() { ["id"] = "bad", ["updated"] = DBNull.Value },
+                new() { ["id"] = "good", ["updated"] = new DateTime(2026, 7, 9, 0, 0, 0, DateTimeKind.Utc) },
+            ]);
+
+        var items = await Connector(conn).DiscoverAsync(DbSource(), null, CancellationToken.None);
+
+        // updated が NULL の行はスキップし、同期全体は成功する（good のみ列挙）。
+        items.Select(i => i.Path).Should().ContainSingle().Which.Should().Be("good");
+    }
+
+    [Fact]
+    public async Task Fetch_MissingRow_ReturnsEmptyContent()
+    {
+        var conn = FakeDbConnection.WithScalar(DBNull.Value); // Discover と Fetch の間に消えた等
+
+        var raw = await Connector(conn).FetchAsync(
+            DbSource(), new SourceItem("gone", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        raw.Bytes.Should().BeEmpty("該当なしは例外にせず空本文へ縮退する");
+    }
+
+    [Fact]
     public async Task Fetch_ReturnsScalarContentAsBytes_AndParameterizesId()
     {
         var conn = FakeDbConnection.WithScalar("# Body");
