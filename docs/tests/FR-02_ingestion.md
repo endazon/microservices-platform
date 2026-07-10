@@ -7,7 +7,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-07-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -37,4 +37,5 @@ related_specs:
 ## 補足
 
 - 外部依存（LLM Gateway / Qdrant）はスタブ/インメモリ実装で差し替える。
-- 実 Qdrant・実埋め込みに対する結合試験、負荷試験（p95）は別タスク（運用/性能）で扱う。
+- 実 Qdrant・実埋め込みに対する結合試験、負荷試験（取り込みスループット ≥ 1 万件/時・p95）は
+  負荷試験タスク（**#196**）で扱う。ハーネス `perf/k6/`、手順・テスト仕様 `NFR-01_performance-load-test.md`（実測は環境準備後）。
