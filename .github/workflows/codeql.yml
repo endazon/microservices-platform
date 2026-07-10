@@ -28,12 +28,23 @@ jobs:
         language: ["csharp"]
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v4
+      # FR-14, IADR-0056 / IADR-0060, Issue #230: autobuild はリポジトリ全体を走査し templates/（src/ 外・
+      # 共通 props 非継承のためビルド不可の雛形）まで拾って失敗する。ci.yml と同じく実ユニット
+      # （src/*/backend/backend.slnx）のみを明示ビルドして CodeQL のトレーサに載せる。ユニット追加時も編集不要。
+      - name: Build backend units (traced)
+        run: |
+          for slnx in src/*/backend/backend.slnx; do
+            echo "::group::$slnx"
+            dotnet build "$slnx" --configuration Release
+            echo "::endgroup::"
+          done
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
