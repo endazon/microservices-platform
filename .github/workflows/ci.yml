@@ -75,6 +75,21 @@ jobs:
       - name: Validate pipeline config
         run: node scripts/validate-pipeline-config.js deploy/helm/knowledge-platform/files/pipeline.json
 
+  # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
+  # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
+  # 外部依存ゼロの Node スクリプト。--self-test で検査器自体も毎回試験する。
+  unit-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+      - name: Self-test unit dependency checker
+        run: node scripts/check-unit-dependencies.js --self-test
+      - name: Check unit dependency direction
+        run: node scripts/check-unit-dependencies.js
+
   lint:
     runs-on: ubuntu-latest
     steps:
