@@ -50,7 +50,11 @@ plan_refs:
 | T-07 | 列挙済み対象 | `FetchAsync` | 原本バイト列と content-type を返す | 原本取得（#195） | 自動（単体） |
 | T-08 | ルート未存在／smb:// で rootPath 未指定 | `DiscoverAsync` | 例外にせず空列挙で縮退 | 縮退（#195） | 自動（単体） |
 | T-09 | filesystem データソース＋一時 dir に実ファイル | `POST /{id}/sync` | 202・実 `OriginalPath`/`ContentType`・既定属性（confidentiality）付き `RawDocumentFetched` 発行 | 実同期・属性 Map（#195/FR-05） | 自動（エンドポイント） |
-| T-10 | 未対応 SourceType（wiki） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未対応型の縮退（#195） | 自動（エンドポイント） |
+| T-10 | 未対応 SourceType（saas 等・コネクタ未実装） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未対応型の縮退（#195） | 自動（エンドポイント） |
+| T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分（#217/IADR-0053） | 自動（単体・fake HTTP） |
+| T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得（#217） | 自動（単体・fake HTTP） |
+| T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動（#217） | 自動（単体・fake HTTP） |
+| T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
 
 ## テストデータ
 
@@ -69,7 +73,8 @@ plan_refs:
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../adr/IADR-0001_document-service-owns-catalog.md`
 - テストコード: `src/Tests/KnowledgePlatform.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
-- コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）
+- コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
+- Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
 - 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項

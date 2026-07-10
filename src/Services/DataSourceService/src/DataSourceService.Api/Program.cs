@@ -54,8 +54,10 @@ builder.Services.AddKnowledgePlatformIntrospection("datasource-service", new Pip
 // FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
 builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
-// コネクタ（優先1: filesystem）。新規ソースは IDataSourceConnector を追加登録するだけで対応する。
-builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();
+// コネクタ。新規ソースは IDataSourceConnector を追加登録するだけで対応する（プラグイン方式）。
+builder.Services.AddHttpClient(); // WikiConnector 等が IHttpClientFactory を利用する。
+builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();  // 優先1: filesystem
+builder.Services.AddSingleton<IDataSourceConnector, WikiConnector>();        // 優先2: Wiki（IADR-0053）
 builder.Services.AddSingleton<ConnectorRegistry>();
 builder.Services.AddSingleton<SyncFailureTracker>();
 builder.Services.AddScoped<DataSourceSyncService>();

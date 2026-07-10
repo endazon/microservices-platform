@@ -104,6 +104,8 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     }
 
     // IADR-0051: 未対応 SourceType（wiki 等）はコネクタ未実装のため縮退する（5xx にせず、発行 0 件）。
+    // IADR-0051: 未対応 SourceType（saas/db 等・コネクタ未実装。#218/#219）は 5xx にせず縮退する。
+    // ※ wiki は #217/IADR-0053 でコネクタ追加済みのため「未対応」の例には使わない。
     [Fact]
     public async Task Sync_UnsupportedSourceType_DegradesWithoutPublishing()
     {
@@ -112,9 +114,9 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
 
         var id = await CreateDataSourceAsync(client, new
         {
-            name = "hr-wiki",
-            sourceType = "wiki",
-            connectionUri = "https://wiki/hr",
+            name = "crm-saas",
+            sourceType = "saas",
+            connectionUri = "https://saas.example.com",
         });
 
         var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
