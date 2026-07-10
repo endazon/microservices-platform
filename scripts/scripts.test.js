@@ -160,4 +160,84 @@ ok('--require-planning は未 populate で exit 1（fail-loud）', () => {
   fs.rmdirSync(base);
 });
 
+// --- check-unit-dependencies: ユニット依存方向の検査（Issue #231） -------------
+
+const {
+  pathUnit,
+  isSharedProject,
+  isTestsProject,
+  classifyProjectReference,
+  scanFoundationComposable,
+} = require('./check-unit-dependencies.js');
+
+const KNOWLEDGE_DOC =
+  'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj';
+const PLATFORM_BFF = 'src/platform/backend/Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj';
+const SHARED_CONTRACTS =
+  'src/platform/backend/Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj';
+const PLATFORM_AUTH =
+  'src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj';
+const INTEGRATION_TESTS =
+  'src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj';
+
+ok('pathUnit は src/<unit>/ を返す', () => {
+  assert.strictEqual(pathUnit(KNOWLEDGE_DOC), 'knowledge');
+  assert.strictEqual(pathUnit(PLATFORM_BFF), 'platform');
+  assert.strictEqual(pathUnit('docs/adr/README.md'), null);
+});
+
+ok('isSharedProject は platform/backend/Shared 配下のみ true', () => {
+  assert.strictEqual(isSharedProject(SHARED_CONTRACTS), true);
+  assert.strictEqual(isSharedProject(PLATFORM_AUTH), false);
+});
+
+ok('isTestsProject は *.Tests.csproj / tests/（大文字小文字問わず）を検出', () => {
+  assert.strictEqual(isTestsProject(INTEGRATION_TESTS), true);
+  assert.strictEqual(isTestsProject('src/knowledge/backend/Services/X/tests/X.Api.Tests/X.Api.Tests.csproj'), true);
+  assert.strictEqual(isTestsProject(KNOWLEDGE_DOC), false);
+});
+
+ok('可変ユニット → platform Shared は許可', () =>
+  assert.strictEqual(classifyProjectReference(KNOWLEDGE_DOC, SHARED_CONTRACTS).ok, true));
+
+ok('統合テスト → platform サービスは許可（例外）', () =>
+  assert.strictEqual(classifyProjectReference(INTEGRATION_TESTS, PLATFORM_AUTH).ok, true));
+
+ok('platform → 可変ユニットは違反', () =>
+  assert.strictEqual(classifyProjectReference(PLATFORM_BFF, KNOWLEDGE_DOC).ok, false));
+
+ok('可変ユニット（非テスト） → platform 非 Shared は違反', () =>
+  assert.strictEqual(classifyProjectReference(KNOWLEDGE_DOC, PLATFORM_AUTH).ok, false));
+
+ok('Foundation 配下の using .Composable を違反として検出', () => {
+  const v = scanFoundationComposable(
+    'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Foundation/X.cs',
+    'using DocumentService.Api.Composable.Steps;\n',
+  );
+  assert.strictEqual(v.length, 1);
+});
+
+ok('Foundation 外 / Composable を含まない using は無視', () => {
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Foundation/X.cs', 'using DocumentService.Api.Foundation.Domain;\n').length,
+    0,
+  );
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Program.cs', 'using DocumentService.Api.Composable.Steps;\n').length,
+    0,
+  );
+});
+
+ok('Foundation 配下のエイリアス / static using .Composable も検出', () => {
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Foundation/X.cs', 'using Step = DocumentService.Api.Composable.Steps.SomeStep;\n')
+      .length,
+    1,
+  );
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Foundation/X.cs', 'using static DocumentService.Api.Composable.Helpers;\n').length,
+    1,
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
