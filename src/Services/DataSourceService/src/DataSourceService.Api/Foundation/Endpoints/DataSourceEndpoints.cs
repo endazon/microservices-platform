@@ -1,8 +1,7 @@
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Events;
+using DataSourceService.Api.Foundation.Services;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
-using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace DataSourceService.Api.Foundation.Endpoints;
@@ -39,29 +38,27 @@ public static class DataSourceEndpoints
             return Results.Created($"/datasources/{ds.Id}", ds);
         });
 
-        // FR-01, UC-04: 手動同期トリガー（実際はポーリングジョブが行う）
+        // FR-01, UC-04: 手動同期トリガー（IADR-0051）。実コネクタ経由で原本を取得・格納し
+        // RawDocumentFetched を発行する。既定 ABAC 属性（機密区分・IADR-0019）は同期サービスが Map で付与する。
+        // 未対応 SourceType（wiki/saas/db）はコネクタ未実装のため縮退（連携件数 0・5xx にしない）。
         g.MapPost("/{id:guid}/sync", async (Guid id, DataSourceDbContext db,
-            IPublishEndpoint bus) =>
+            DataSourceSyncService sync) =>
         {
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
 
-            // シミュレート: 原本取得イベント発行（実装では実際にファイルを取得する）
-            var fetchId = Guid.NewGuid();
-            // FR-01, FR-05: データソースの既定 ABAC 属性（機密区分）を原本へ付与して発行する。
-            // GetEffectiveAttributes() で機密区分欠落をフェイルセーフ補完する。既存（マイグレーション前）
-            // の空属性データソースでも、空のまま流して下流の fail-closed 検索（IADR-0012）で文書が
-            // 検索結果から除外されるのを防ぐ（IADR-0019）。
-            await bus.Publish(new RawDocumentFetched(
-                fetchId, ds.Id, ds.SourceType,
-                "/sample/path/document.docx",
-                $"storage://{ds.Id}/{fetchId}/raw",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                ds.GetEffectiveAttributes(), [], DateTimeOffset.UtcNow));
-
+            var result = await sync.SyncAsync(ds);
+            // 増分同期の watermark を進める（次回はこの時刻以降の変更のみ取得）。
             ds.RecordSync();
             await db.SaveChangesAsync();
-            return Results.Accepted($"/datasources/{id}/sync/{fetchId}", new { fetchId, status = "queued" });
+
+            return Results.Accepted($"/datasources/{id}/sync", new
+            {
+                fetched = result.Fetched,
+                failed = result.Failed,
+                connectorAvailable = result.ConnectorAvailable,
+                message = result.Message,
+            });
         });
 
         g.MapDelete("/{id:guid}", async (Guid id, DataSourceDbContext db) =>
