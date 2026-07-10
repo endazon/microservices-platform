@@ -22,22 +22,22 @@
 
 ```mermaid
 flowchart LR
-  subgraph platform[platform ユニット（基盤）]
-    FE[frontend (SPA 基盤)]
-    BFF[BFF]
-    AUTHZ[AuthorizationService（ABAC）]
-    LLM[LlmGateway（LLM エグレス）]
+  subgraph platform["platform ユニット（基盤）"]
+    FE["frontend (SPA 基盤)"]
+    BFF["BFF"]
+    AUTHZ["AuthorizationService（ABAC）"]
+    LLM["LlmGateway（LLM エグレス）"]
   end
-  subgraph knowledge[knowledge ユニット（可変機能）]
-    DOC[DocumentService]
-    DS[DataSourceService]
-    CONV[ConversionService]
-    ING[IngestionService]
-    RET[RetrievalService]
-    AI[AiAnalysisService]
-    WIKI[WikiService]
-    FB[FeedbackService]
-    DASH[DashboardService]
+  subgraph knowledge["knowledge ユニット（可変機能）"]
+    DOC["DocumentService"]
+    DS["DataSourceService"]
+    CONV["ConversionService"]
+    ING["IngestionService"]
+    RET["RetrievalService"]
+    AI["AiAnalysisService"]
+    WIKI["WikiService"]
+    FB["FeedbackService"]
+    DASH["DashboardService"]
   end
   User[ブラウザ] --> FE
   FE -->|/bff| BFF
