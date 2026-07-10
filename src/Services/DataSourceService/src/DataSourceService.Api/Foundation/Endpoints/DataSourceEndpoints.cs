@@ -19,13 +19,15 @@ public static class DataSourceEndpoints
                 KnowledgePlatformAuthPolicies.AdminRole,
                 KnowledgePlatformAuthPolicies.OperatorRole));
 
+        // IADR-0053, claude-review #222: 応答では Config 内の秘密（apiToken 等）をマスクする。
+        // Vault 移行までの暫定措置。admin/operator であっても API 応答で平文の資格情報を露出させない。
         g.MapGet("/", async (DataSourceDbContext db) =>
-            Results.Ok(await db.DataSources.ToListAsync()));
+            Results.Ok((await db.DataSources.ToListAsync()).Select(ToResponse)));
 
         g.MapGet("/{id:guid}", async (Guid id, DataSourceDbContext db) =>
         {
             var ds = await db.DataSources.FindAsync(id);
-            return ds is null ? Results.NotFound() : Results.Ok(ds);
+            return ds is null ? Results.NotFound() : Results.Ok(ToResponse(ds));
         });
 
         g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db) =>
@@ -35,7 +37,7 @@ public static class DataSourceEndpoints
                 req.Config, req.DefaultAttributes);
             db.DataSources.Add(ds);
             await db.SaveChangesAsync();
-            return Results.Created($"/datasources/{ds.Id}", ds);
+            return Results.Created($"/datasources/{ds.Id}", ToResponse(ds));
         });
 
         // FR-01, UC-04: 手動同期トリガー（IADR-0051）。実コネクタ経由で原本を取得・格納し
@@ -72,6 +74,31 @@ public static class DataSourceEndpoints
 
         return app;
     }
+
+    // IADR-0053, claude-review #222: API 応答用の投影。エンティティをそのまま返すと Config 内の
+    // 秘密（apiToken 等）が平文露出するため、秘密キーの値をマスクして返す（Vault 移行までの暫定）。
+    private static object ToResponse(DataSource ds) => new
+    {
+        ds.Id,
+        ds.Name,
+        ds.SourceType,
+        ds.ConnectionUri,
+        ds.Status,
+        ds.LastSyncedAt,
+        Config = RedactSecrets(ds.Config),
+        ds.DefaultAttributes,
+        ds.CreatedAt,
+    };
+
+    // 秘密とみなすキー名の部分一致マーカー（大文字小文字無視）。spaceKey/listPath/rootPath 等は誤マスクしない。
+    private static readonly string[] SecretKeyMarkers = ["token", "password", "secret", "credential"];
+
+    private static Dictionary<string, string> RedactSecrets(IReadOnlyDictionary<string, string> config)
+        => config.ToDictionary(
+            kv => kv.Key,
+            kv => SecretKeyMarkers.Any(m => kv.Key.Contains(m, StringComparison.OrdinalIgnoreCase))
+                ? "***"
+                : kv.Value);
 }
 
 public record CreateDataSourceRequest(
