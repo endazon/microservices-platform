@@ -109,6 +109,29 @@ public sealed class DatabaseConnectorTests
     }
 
     [Fact]
+    public async Task Resolve_QuotesPasswordWithSpecialCharacters_IntoConnectionString()
+    {
+        // `;` や `'` を含むパスワードを単純連結すると接続文字列のパースが崩れる。
+        // DbConnectionStringBuilder によるクオート合成で正しく組み立てられることを検証（claude-review #224 リグレッション）。
+        var conn = FakeDbConnection.WithReaderRows([]);
+        var factory = new FakeFactory(conn);
+        var connector = new DatabaseConnector(factory, NullLogger<DatabaseConnector>.Instance);
+        var source = DataSource.Create("erp", "db", "Host=erp;Database=orders;Username=readonly",
+            new Dictionary<string, string>
+            {
+                ["query"] = "SELECT id AS id, updated AS updated, body AS content FROM articles",
+                ["password"] = "p@ss;w'ord",
+            });
+
+        await connector.DiscoverAsync(source, null, CancellationToken.None);
+
+        // 合成後の接続文字列を再パースして、特殊文字入りパスワードが欠落・破損なく往復すること。
+        var parsed = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = factory.LastConnectionString };
+        parsed["Password"].Should().Be("p@ss;w'ord");
+        parsed["Host"].Should().Be("erp");
+    }
+
+    [Fact]
     public async Task Discover_MissingQuery_ReturnsEmpty_WithoutOpeningConnection()
     {
         var conn = FakeDbConnection.WithReaderRows([]);
@@ -147,7 +170,13 @@ public sealed class DatabaseConnectorTests
 
     private sealed class FakeFactory(FakeDbConnection connection) : IDbConnectionFactory
     {
-        public DbConnection Create(string connectionString) => connection;
+        public string? LastConnectionString { get; private set; }
+
+        public DbConnection Create(string connectionString)
+        {
+            LastConnectionString = connectionString;
+            return connection;
+        }
     }
 
     private sealed class FakeDbException(string message) : DbException(message);

@@ -59,6 +59,9 @@ plan_refs:
 | T-20 | 業務DB 本文スカラを返す | `DatabaseConnector.FetchAsync` | 本文バイト＋content-type・id は `@id` パラメータで渡す | DB 取得・パラメータ化（#219） | 自動（単体・fake ADO.NET） |
 | T-21 | `Config.query`／`ConnectionUri` 未設定 | `DiscoverAsync` | 空列挙で縮退（接続しない） | DB 縮退（#219） | 自動（単体・fake ADO.NET） |
 | T-22 | 業務DB がエラーを返す | `DiscoverAsync` | 例外送出（watermark 非前進） | DB 失敗時挙動（#219/IADR-0051 決定3a） | 自動（単体・fake ADO.NET） |
+| T-23 | `updated` 列が NULL の行を含む | `DiscoverAsync` | 当該行のみスキップ＋警告・同期全体は成功 | DB 不正行の縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
+| T-24 | Fetch 対象 id が存在しない（消えた行） | `FetchAsync` | 例外にせず空本文へ縮退 | DB 該当なしの縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
+| T-25 | `Config.password` に `;`/`'` を含む | `DiscoverAsync` | 接続文字列がクオート合成され特殊文字が往復 | DB パスワードエスケープ（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 
 ## テストデータ
 
@@ -79,7 +82,7 @@ plan_refs:
 - テストコード: `src/Tests/KnowledgePlatform.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
 - コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
 - Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
-- 業務DB コネクタテスト（#219）: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-22・ハンドロール ADO.NET フェイク）
+- 業務DB コネクタテスト（#219）: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
 - 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項
