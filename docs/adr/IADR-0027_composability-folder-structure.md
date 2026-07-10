@@ -107,4 +107,6 @@ ADR-0018 はシステムを固定（土台: 同期 API 経路・ABAC・メッセ
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし
+- Superseded by: [IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md)（「サブモジュールとして追加する場合」の節のみ。
+  サブモジュール境界はサービス単位 → ユニット単位（`src/<unit>`）へ変更。Foundation/Composable 規約・
+  サービスユニット内レイアウトは本 ADR のまま存続）

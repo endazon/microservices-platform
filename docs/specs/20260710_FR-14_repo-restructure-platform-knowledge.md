@@ -1,7 +1,7 @@
 ---
 title: リポジトリ再編 — platform/knowledge ユニット分離と位置づけ是正（issue #209/#210）
 type: spec
-status: draft
+status: completed
 related_ids:
   - FR-14
   - ADR-0018

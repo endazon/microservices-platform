@@ -75,6 +75,9 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 3. **依存方向**: knowledge → platform は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可。
    platform → knowledge は禁止（フロントエンドも同様: platform の合成点以外は knowledge を参照しない。
    合成点＝アプリホストがユニットを束ねる 1 ファイルで、IADR-0027 の合成ルート概念の最上位版）。
+   - 例外: 統合テスト（`<unit>/backend/Tests/`）は検証対象サービスへの ProjectReference を許可する
+     （例: IntegrationTests → platform の AuthorizationService.Api。テストはユニット横断の振る舞い検証が
+     目的であり、プロダクションコードの依存には含めない。`src/README.md` 依存規則の例外 1 と同一）。
 4. **フロントエンド合成**: `src/` を npm workspaces ルートとする（`workspaces: ["*/frontend"]`・
    単一 lock）。platform 側 `platform/frontend/src/features/index.ts` を合成点とし、可変ユニットの
    features を束ねる（ユニット追加＝submodule 配置のみで workspaces に自動認識＋合成点へ import 1 行）。
