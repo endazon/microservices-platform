@@ -55,10 +55,12 @@ builder.Services.AddKnowledgePlatformIntrospection("datasource-service", new Pip
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
 builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
 // コネクタ。新規ソースは IDataSourceConnector を追加登録するだけで対応する（プラグイン方式）。
-// WikiConnector が使う名前付きクライアント（将来のタイムアウト/リトライ等の付与点を明示する）。
+// HTTP コネクタが使う名前付きクライアント（将来のタイムアウト/リトライ等の付与点を明示する）。
 builder.Services.AddHttpClient("WikiConnector");
+builder.Services.AddHttpClient("SaaSConnector");
 builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();  // 優先1: filesystem
 builder.Services.AddSingleton<IDataSourceConnector, WikiConnector>();        // 優先2: Wiki（IADR-0053）
+builder.Services.AddSingleton<IDataSourceConnector, SaaSConnector>();        // 優先3: SaaS（IADR-0054）
 builder.Services.AddSingleton<ConnectorRegistry>();
 builder.Services.AddSingleton<SyncFailureTracker>();
 builder.Services.AddScoped<DataSourceSyncService>();

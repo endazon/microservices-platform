@@ -55,6 +55,10 @@ plan_refs:
 | T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得（#217） | 自動（単体・fake HTTP） |
 | T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動（#217） | 自動（単体・fake HTTP） |
 | T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
+| T-15 | SaaS 一覧 API が nextCursor で複数ページを返す | `SaaSConnector.DiscoverAsync` | 全ページをカーソルで集約・`updatedAt>since` で増分 | SaaS ページング・増分（#218/IADR-0054） | 自動（単体・fake HTTP） |
+| T-16 | SaaS 一覧 API が 429（Retry-After:0）→200 | `DiscoverAsync` | Retry-After に従い再試行して成功（2 リクエスト） | SaaS レート制限バックオフ（#218） | 自動（単体・fake HTTP） |
+| T-17 | SaaS 一覧 API が 429 継続（maxRetries=1） | `DiscoverAsync` | 上限超過で例外送出（watermark 非前進） | SaaS 上限超過（#218/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
+| T-18 | SaaS 本文 API が Markdown／`Config.apiToken`／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／`Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退（#218） | 自動（単体・fake HTTP） |
 
 ## テストデータ
 
@@ -75,6 +79,7 @@ plan_refs:
 - テストコード: `src/Tests/KnowledgePlatform.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
 - コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
 - Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
+- SaaS コネクタテスト（#218）: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
 - 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項
