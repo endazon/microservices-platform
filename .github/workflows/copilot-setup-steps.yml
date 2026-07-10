@@ -48,8 +48,13 @@ jobs:
 
       - name: Restore dependencies
         run: |
-          if ls *.sln **/*.csproj >/dev/null 2>&1; then
-            dotnet restore
-          else
-            echo "復元対象（.sln/.csproj）が無いためスキップする。"
+          # FR-14, IADR-0056: ユニット別ソリューション（platform / knowledge）を復元する
+          found=0
+          for slnx in src/*/backend/*.slnx; do
+            [ -f "$slnx" ] || continue
+            dotnet restore "$slnx"
+            found=1
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "復元対象（.slnx）が無いためスキップする。"
           fi

@@ -17,7 +17,7 @@ related_specs:
   - ../../deploy/bootstrap/README.md
   - ../../deploy/istio/README.md
   - ../../scripts/README.md
-  - ../../frontend/README.md
+  - ../../src/platform/frontend/README.md
 issue: "N/A（ユーザー依頼によるドキュメント整備）"
 ---
 

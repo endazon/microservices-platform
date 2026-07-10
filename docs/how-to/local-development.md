@@ -6,14 +6,14 @@ related_ids:
   - NFR
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-07-10
 plan_refs: []
 related_specs:
   - ../operations/operations.md
   - ../tech/tech-requirements.md
   - ../../scripts/README.md
-  - ../../frontend/README.md
-  - ../../src/Services/README.md
+  - ../../src/platform/frontend/README.md
+  - ../../src/README.md
 ---
 
 # how-to: ローカル開発フロー
@@ -45,21 +45,22 @@ git submodule update --init --recursive
 ## 3. バックエンド（.NET）
 
 ```bash
-dotnet restore
-dotnet build --configuration Release
-dotnet test
+dotnet build src/platform/backend/backend.slnx --configuration Release
+dotnet build src/knowledge/backend/backend.slnx --configuration Release
+dotnet test src/platform/backend/backend.slnx
+dotnet test src/knowledge/backend/backend.slnx
 ```
 
-- ソリューションは新形式 `.slnx`（[`src/KnowledgePlatform.slnx`](../../src/KnowledgePlatform.slnx)）。
+- ソリューションは新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない。FR-14 / [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 - パッケージバージョンは Central Package Management で [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。
-- フォーマット確認（CI と同じ検査）: `dotnet format --verify-no-changes`。
+- フォーマット確認（CI と同じ検査）: `dotnet format <ユニットの backend.slnx> --verify-no-changes`。
 - devcontainer 経由（Codespaces 等）では `scripts/setup.sh` が `postCreateCommand` として自動実行され、
-  `dotnet restore` を行う（[`.devcontainer/devcontainer.json`](../../.devcontainer/devcontainer.json)）。
+  各ユニットの `dotnet restore` を行う（[`.devcontainer/devcontainer.json`](../../.devcontainer/devcontainer.json)）。
 
 ## 4. フロントエンド（React + TypeScript + Vite）
 
 ```bash
-cd frontend
+cd src   # npm workspaces ルート（src/<unit>/frontend を束ねる）
 npm install
 npm run dev         # http://localhost:3100（/bff は BFF(5000) へプロキシ）
 npm run typecheck
@@ -72,7 +73,7 @@ npm run test:e2e     # Playwright（要 npx playwright install chromium）
 
 Keycloak ログインを伴う開発には、dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）
 と realm の public client `spa-web`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
-詳細は [`frontend/README.md`](../../frontend/README.md)。
+詳細は [`src/platform/frontend/README.md`](../../src/platform/frontend/README.md)。
 
 ## 5. インフラ + 全サービスの起動（dev）
 

@@ -1,0 +1,20 @@
+{
+  "name": "@microservices-platform/frontend-platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SPA 基盤（アプリホスト + foundation: config/auth/api/routing/ui）。可変機能ユニットの features を src/features/index.ts（合成点）で束ねる。IADR-0033 / IADR-0056。",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "oidc-client-ts": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  }
+}

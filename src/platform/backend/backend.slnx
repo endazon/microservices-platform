@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/Bff/">
+    <Project Path="Bff/KnowledgePlatform.Bff.Tests/KnowledgePlatform.Bff.Tests.csproj" />
+    <Project Path="Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj" />
+  </Folder>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/AuthorizationService/" />
+  <Folder Name="/Services/AuthorizationService/src/">
+    <Project Path="Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/AuthorizationService/tests/">
+    <Project Path="Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/LlmGateway/" />
+  <Folder Name="/Services/LlmGateway/src/">
+    <Project Path="Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/LlmGateway/tests/">
+    <Project Path="Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Shared/">
+    <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
+    <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />
+  </Folder>
+</Solution>

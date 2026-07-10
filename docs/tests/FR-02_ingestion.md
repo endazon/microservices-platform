@@ -19,7 +19,7 @@ related_specs:
 
 ## 対象
 
-`src/Services/IngestionService/tests/IngestionService.Worker.Tests`
+`src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests`
 
 ## テストケース（受け入れ基準・フローの写像）
 

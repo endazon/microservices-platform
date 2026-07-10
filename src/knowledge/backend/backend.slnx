@@ -1,0 +1,69 @@
+<Solution>
+  <Folder Name="/Services/" />
+  <Folder Name="/Services/AiAnalysisService/" />
+  <Folder Name="/Services/AiAnalysisService/src/">
+    <Project Path="Services/AiAnalysisService/src/AiAnalysisService.Api/AiAnalysisService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/AiAnalysisService/tests/">
+    <Project Path="Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/ConversionService/" />
+  <Folder Name="/Services/ConversionService/src/">
+    <Project Path="Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj" />
+  </Folder>
+  <Folder Name="/Services/ConversionService/tests/">
+    <Project Path="Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DashboardService/" />
+  <Folder Name="/Services/DashboardService/src/">
+    <Project Path="Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DashboardService/tests/">
+    <Project Path="Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DataSourceService/" />
+  <Folder Name="/Services/DataSourceService/src/">
+    <Project Path="Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DataSourceService/tests/">
+    <Project Path="Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DocumentService/" />
+  <Folder Name="/Services/DocumentService/src/">
+    <Project Path="Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DocumentService/tests/">
+    <Project Path="Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/FeedbackService/" />
+  <Folder Name="/Services/FeedbackService/src/">
+    <Project Path="Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/FeedbackService/tests/">
+    <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/IngestionService/" />
+  <Folder Name="/Services/IngestionService/src/">
+    <Project Path="Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj" />
+  </Folder>
+  <Folder Name="/Services/IngestionService/tests/">
+    <Project Path="Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/RetrievalService/" />
+  <Folder Name="/Services/RetrievalService/src/">
+    <Project Path="Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/RetrievalService/tests/">
+    <Project Path="Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/WikiService/" />
+  <Folder Name="/Services/WikiService/src/">
+    <Project Path="Services/WikiService/src/WikiService.Api/WikiService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/WikiService/tests/">
+    <Project Path="Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj" />
+  </Folder>
+</Solution>

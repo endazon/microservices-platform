@@ -1,8 +1,14 @@
-# Knowledge Platform — microservices-platform
+# microservices-platform — マイクロサービスプラットフォーム基盤
 
-社内ナレッジ（文書・Wiki）を横断的に検索し、AI による回答・出典提示・データ分析を提供する
-社内向けナレッジプラットフォームの実装リポジトリ。ABAC（属性ベースアクセス制御）で機密区分に
-応じたアクセス制御を行う、.NET マイクロサービス構成のシステムである。
+**本リポジトリの主たる成果物は、マイクロサービスプラットフォームの基盤（platform ユニット）である。**
+認証・認可（ABAC）、LLM エグレス統制、メッセージング、可観測性、エッジ集約（BFF）、SPA 基盤といった
+横断能力を、機能ドメインから独立した再利用可能な土台として提供する（別プロジェクトからの再利用前提:
+`planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md`）。
+
+**KnowledgePlatform（knowledge ユニット）は、この基盤に付随する必須の可変機能セット**である。
+社内ナレッジ（文書・Wiki）の横断検索、AI による回答・出典提示・データ分析を提供するが、
+位置づけはあくまで「基盤の上で組み替え可能な一機能ユニット」であり、本リポジトリの主目的ではない
+（issue #209 / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
 このリポジトリは、上流の計画リポジトリ（`project-planning`、`planning/` に git submodule として
 参照）で確定した計画書（要求・ユースケース・画面・ADR）を実装する。**実装の進め方・トレーサビリティ
@@ -12,25 +18,36 @@
 
 フロントエンド（SPA）→ BFF → 各マイクロサービス、というエッジ集約構成。サービス間は同期 API
 （内部専用・ホスト非公開）またはイベント（RabbitMQ / MassTransit）で疎結合に連携する。
+**太枠＝基盤（platform ユニット）、それ以外＝可変機能（knowledge ユニット）**という区分で読む。
 
 ```mermaid
 flowchart LR
-  User[ブラウザ] --> FE[frontend (SPA)]
-  FE -->|/bff| BFF[BFF]
-  BFF --> DOC[DocumentService]
-  BFF --> RET[RetrievalService]
-  BFF --> AI[AiAnalysisService]
-  BFF --> FB[FeedbackService]
-  BFF --> DASH[DashboardService]
-  BFF --> DS[DataSourceService]
-  BFF --> WIKI[WikiService]
-  RET --> LLM[LlmGateway]
+  subgraph platform[platform ユニット（基盤）]
+    FE[frontend (SPA 基盤)]
+    BFF[BFF]
+    AUTHZ[AuthorizationService（ABAC）]
+    LLM[LlmGateway（LLM エグレス）]
+  end
+  subgraph knowledge[knowledge ユニット（可変機能）]
+    DOC[DocumentService]
+    DS[DataSourceService]
+    CONV[ConversionService]
+    ING[IngestionService]
+    RET[RetrievalService]
+    AI[AiAnalysisService]
+    WIKI[WikiService]
+    FB[FeedbackService]
+    DASH[DashboardService]
+  end
+  User[ブラウザ] --> FE
+  FE -->|/bff| BFF
+  BFF --> DOC & RET & AI & FB & DASH & DS & WIKI
+  RET --> LLM
   AI --> LLM
-  AI --> AUTHZ[AuthorizationService]
+  AI --> AUTHZ
   AI --> RET
   DOC -->|event| RMQ[(RabbitMQ)]
-  RMQ --> ING[IngestionService]
-  RMQ --> CONV[ConversionService]
+  RMQ --> ING & CONV
   ING --> QD[(Qdrant)]
   RET --> QD
   WIKI --> WJS[Wiki.js]
@@ -38,49 +55,49 @@ flowchart LR
   DOC --> MINIO[(MinIO)]
 ```
 
-- **フロントエンド** (`frontend/`): React 18 + TypeScript + Vite の SPA（SC-01..11）。Keycloak
-  OIDC（Authorization Code + PKCE）でログインし、バックエンドへは必ず BFF 経由（`/bff/*`）でアクセスする。
-- **BFF** (`src/Bff/KnowledgePlatform.Bff`): フロントエンドの唯一の入口（エッジ）。Keycloak JWT を検証し、
-  各サービスへリクエストを集約・転送する。構成情報 API（`/bff/admin/config`）や構成ドリフト検出もここが担う。
-- **バックエンドサービス** (`src/Services/`): サービスごとに独立した DB（DB per Service）を持つ .NET
-  マイクロサービス。サービス間のコード参照は禁止し、連携は同期 API またはイベントに限る
-  （[`src/Services/README.md`](src/Services/README.md)）。
-- **共有ライブラリ** (`src/Shared/`): `KnowledgePlatform.Shared.Contracts`（イベント/DTO 契約）・
-  `KnowledgePlatform.Shared.Infrastructure`（認証・ObjectStorage 等の横断基盤）。サービス外部から参照
-  してよいのはこの 2 プロジェクトのみ。
+- **platform ユニット** (`src/platform/`): 基盤。SPA 基盤（foundation + アプリホスト）、BFF（エッジ・
+  唯一の入口。Keycloak JWT 検証・集約・構成情報 API）、AuthorizationService（ABAC 属性ポリシー・
+  認可判定）、LlmGateway（LLM/埋め込みエグレス集約・機密区分別ルーティング）、共有ライブラリ
+  `KnowledgePlatform.Shared.Contracts`（イベント/DTO 契約）・`KnowledgePlatform.Shared.Infrastructure`
+  （認証・メッセージング・可観測性・ObjectStorage 等の横断基盤）。
+- **knowledge ユニット** (`src/knowledge/`): 付随する可変機能。文書パイプライン（取り込み・正規化・
+  索引）、ハイブリッド検索、AI 回答、Wiki 連携、フィードバック、利用ダッシュボードの各サービスと
+  ナレッジ画面（SC-01..11）。
+- **ユニット規約**: サービス間のコード参照は禁止し、ユニット外参照は `platform/backend/Shared` のみ
+  許可（[`src/README.md`](src/README.md)）。追加の可変機能ユニットは `src/<unit>/` へ git submodule
+  でリンクする。
 
-### サービス一覧（`src/Services/`）
+### サービス一覧
 
-| サービス | 役割 |
-| --- | --- |
-| `DocumentService` | 文書カタログ・バージョン管理（DB を所有する正） |
-| `DataSourceService` | データソース登録・同期管理 |
-| `ConversionService` | 文書の正規化・変換パイプライン（Worker） |
-| `IngestionService` | 埋め込み生成・Qdrant への索引投入（Worker） |
-| `RetrievalService` | ハイブリッド検索・AI 回答生成の編成 |
-| `AiAnalysisService` | データ範囲分析 |
-| `AuthorizationService` | ABAC 属性ポリシー管理・認可判定 |
-| `WikiService` | Wiki.js の同期・ABAC ゲートウェイ（実閲覧/編集 UI は Wiki.js に委譲） |
-| `LlmGateway` | LLM/埋め込みプロバイダへのエグレス集約・機密区分別ルーティング |
-| `FeedbackService` | AI 回答へのフィードバック収集 |
-| `DashboardService` | 利用状況・検索傾向ダッシュボード集計 |
+| ユニット | サービス | 役割 |
+| --- | --- | --- |
+| platform | `Bff` | エッジ集約（フロントエンドの唯一の入口）・構成情報 API・ドリフト検出 |
+| platform | `AuthorizationService` | ABAC 属性ポリシー管理・認可判定 |
+| platform | `LlmGateway` | LLM/埋め込みプロバイダへのエグレス集約・機密区分別ルーティング |
+| knowledge | `DocumentService` | 文書カタログ・バージョン管理（DB を所有する正） |
+| knowledge | `DataSourceService` | データソース登録・同期管理 |
+| knowledge | `ConversionService` | 文書の正規化・変換パイプライン（Worker） |
+| knowledge | `IngestionService` | 埋め込み生成・Qdrant への索引投入（Worker） |
+| knowledge | `RetrievalService` | ハイブリッド検索・AI 回答生成の編成 |
+| knowledge | `AiAnalysisService` | データ範囲分析 |
+| knowledge | `WikiService` | Wiki.js の同期・ABAC ゲートウェイ（実閲覧/編集 UI は Wiki.js に委譲） |
+| knowledge | `FeedbackService` | AI 回答へのフィードバック収集 |
+| knowledge | `DashboardService` | 利用状況・検索傾向ダッシュボード集計 |
 
 ## リポジトリ構成
 
 ```text
 .
-├── frontend/           # SPA（React + TypeScript + Vite）。詳細は frontend/README.md
-├── src/
-│   ├── Bff/             # BFF（フロントエンドの唯一の入口）
-│   ├── Services/        # マイクロサービス群（サービスごとに DB per Service）
-│   ├── Shared/          # 共有契約・共有基盤（Contracts / Infrastructure）
-│   └── Tests/           # 統合テスト（KnowledgePlatform.IntegrationTests）
+├── src/                 # ユニット構成（詳細は src/README.md）
+│   ├── platform/        #   基盤ユニット（主成果物）: backend/backend.slnx + frontend/
+│   ├── knowledge/       #   ナレッジ機能ユニット（付随可変機能）: backend/backend.slnx + frontend/
+│   ├── Directory.Build.props / Directory.Packages.props   # バックエンド共通設定（単一情報源）
+│   └── package.json     #   フロントエンド npm workspaces ルート（workspaces: ["*/frontend"]）
 ├── deploy/              # デプロイ定義: docker-compose（dev）、helm/argocd/istio/keycloak（stg/prod）
 ├── docs/                # 実装仕様書（機能/画面/API/データ/技術/テスト/運用/セキュリティ/ADR）と how-to
 ├── scripts/             # 補助スクリプト（CHANGELOG/OpenAPI 生成、doc リンク検査、環境セットアップ）
 ├── planning/            # 計画リポジトリ project-planning（git submodule）
-├── CLAUDE.md / AGENTS.md / AI_SETUP.md  # AI 実装エージェント向けの運用規約
-└── KnowledgePlatform.slnx  # .NET ソリューション（src/ 配下）
+└── CLAUDE.md / AGENTS.md / AI_SETUP.md  # AI 実装エージェント向けの運用規約
 ```
 
 ## 前提ツール
@@ -103,13 +120,14 @@ git clone --recurse-submodules <this-repo-url>
 # 既に clone 済みの場合:
 git submodule update --init --recursive
 
-# 2. バックエンド: ビルド・テスト（.NET 10 / src/KnowledgePlatform.slnx）
-dotnet restore
-dotnet build --configuration Release
-dotnet test
+# 2. バックエンド: ユニット別 slnx でビルド・テスト（.NET 10）
+dotnet build src/platform/backend/backend.slnx --configuration Release
+dotnet build src/knowledge/backend/backend.slnx --configuration Release
+dotnet test src/platform/backend/backend.slnx
+dotnet test src/knowledge/backend/backend.slnx
 
-# 3. フロントエンド: 依存関係・型チェック・lint・テスト・ビルド
-cd frontend
+# 3. フロントエンド: workspaces ルート（src/）で依存関係・型チェック・lint・テスト・ビルド
+cd src
 npm install
 npm run typecheck
 npm run lint
@@ -136,6 +154,7 @@ bash scripts/compose-up.sh up -d
 ## 仕様書・ドキュメントの入口
 
 - **仕様書の全体像**: [`docs/README.md`](docs/README.md)（作業仕様書・機能/画面/API/データ/技術/テスト/運用/セキュリティ仕様書・実装ADR の配置規約）
+- **ユニット規約（フォルダ構成・依存規則・submodule 追加手順）**: [`src/README.md`](src/README.md)
 - **作業仕様書**（作業/PR 単位）: [`docs/specs/`](docs/specs/)
 - **機能仕様書**（FR 単位）: [`docs/functional/`](docs/functional/)
 - **画面仕様書**（SC 単位）: [`docs/screens/`](docs/screens/)
@@ -153,6 +172,9 @@ bash scripts/compose-up.sh up -d
 バックエンドは .NET 10 / C# 13、フロントエンドは React 18 + TypeScript 5.6 + Vite 5。詳細な規約
 （命名規則・パッケージ管理・lint/format・サービス境界等）は [`CLAUDE.md`](CLAUDE.md) の
 「技術スタック別ルール」を参照。
+
+> 注: .NET 名前空間・アセンブリ名（`KnowledgePlatform.*`）と Helm チャート名（`knowledge-platform`）は
+> 歴史的経緯による命名であり、ユニット整合の改名はフォローアップ issue で段階実施する（IADR-0056）。
 
 ## Git 運用
 

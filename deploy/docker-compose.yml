@@ -202,7 +202,7 @@ services:
   document-service:
     build:
       context: ..
-      dockerfile: src/Services/DocumentService/src/DocumentService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -218,7 +218,7 @@ services:
   datasource-service:
     build:
       context: ..
-      dockerfile: src/Services/DataSourceService/src/DataSourceService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -235,7 +235,7 @@ services:
   conversion-service:
     build:
       context: ..
-      dockerfile: src/Services/ConversionService/src/ConversionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -256,7 +256,7 @@ services:
   ingestion-service:
     build:
       context: ..
-      dockerfile: src/Services/IngestionService/src/IngestionService.Worker/Dockerfile
+      dockerfile: src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/Dockerfile
     # FR-15, IADR-0029, IADR-0017: 自己申告（/internal/introspection）用の最小 HTTP サーフェス。
     # host へは公開せずメッシュ内部限定（ingress 非公開）。
     expose:
@@ -280,7 +280,7 @@ services:
   retrieval-service:
     build:
       context: ..
-      dockerfile: src/Services/RetrievalService/src/RetrievalService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/search の ABAC は #55 で別管理）
     expose:
       - "8080"
@@ -298,7 +298,7 @@ services:
   aianalysis-service:
     build:
       context: ..
-      dockerfile: src/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -315,7 +315,7 @@ services:
   authorization-service:
     build:
       context: ..
-      dockerfile: src/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/authz/scope 等はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -335,7 +335,7 @@ services:
   wiki-service:
     build:
       context: ..
-      dockerfile: src/Services/WikiService/src/WikiService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/WikiService/src/WikiService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（コンテナネットワーク内のみ）
     expose:
       - "8080"
@@ -390,7 +390,7 @@ services:
   llm-gateway:
     build:
       context: ..
-      dockerfile: src/Services/LlmGateway/src/LlmGateway.Api/Dockerfile
+      dockerfile: src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（/complete・/embed はサービス間呼び出し専用）
     expose:
       - "8080"
@@ -417,7 +417,7 @@ services:
   feedback-service:
     build:
       context: ..
-      dockerfile: src/Services/FeedbackService/src/FeedbackService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"
@@ -432,7 +432,7 @@ services:
   dashboard-service:
     build:
       context: ..
-      dockerfile: src/Services/DashboardService/src/DashboardService.Api/Dockerfile
+      dockerfile: src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile
     # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
     expose:
       - "8080"
@@ -446,7 +446,7 @@ services:
   bff:
     build:
       context: ..
-      dockerfile: src/Bff/KnowledgePlatform.Bff/Dockerfile
+      dockerfile: src/platform/backend/Bff/KnowledgePlatform.Bff/Dockerfile
     ports:
       - "5000:8080"
     environment:
@@ -502,7 +502,7 @@ services:
   frontend:
     build:
       context: ..
-      dockerfile: frontend/Dockerfile
+      dockerfile: src/platform/frontend/Dockerfile
     ports:
       - "3100:8080"
     environment:

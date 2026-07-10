@@ -17,7 +17,7 @@ created: 2026-07-09
 updated: 2026-07-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_auth-keycloak-oidc.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 ---
 
 # IADR-0044: バックエンドサービスの書き込み/管理APIへの認可強制（多層防御）

@@ -36,7 +36,7 @@ plan_refs:
 
 - [IADR-0027](../adr/IADR-0027_composability-folder-structure.md): フォルダ・名前空間・依存方向規約
 - [IADR-0028](../adr/IADR-0028_declarative-pipeline-config.md): 宣言的パイプライン構成・fail-fast 照合
-- [src/Services/README.md](../../src/Services/README.md): サービスユニット規約・サブモジュール追加手順
+- [src/Services/README.md](../../src/README.md): サービスユニット規約・サブモジュール追加手順
 - [deploy/helm/knowledge-platform/files/README.md](../../deploy/helm/knowledge-platform/files/README.md):
   段追加の 3 手順（構成変更運用の一部として記載）
 - [固定/可変区分表](../tech/composability-classification.md): 既存コードの棚卸し（現状の写像であり手順書ではない）

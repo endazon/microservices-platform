@@ -65,6 +65,6 @@ related_specs:
 
 ## 実装
 
-- BFF: `src/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DocumentBffEndpoints.cs`（書き込みサブグループ）
-- フロント: `frontend/src/features/sc05-documents/DocumentManagementPage.tsx` / `index.tsx`
+- BFF: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DocumentBffEndpoints.cs`（書き込みサブグループ）
+- フロント: `src/knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx` / `index.tsx`
 - テスト観点は [tests/SC-05_document-management.md](../tests/SC-05_document-management.md)。

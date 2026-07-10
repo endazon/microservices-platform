@@ -85,6 +85,6 @@ related_specs:
 
 ## 実装
 
-- `frontend/src/features/sc02-results/SearchResultsPage.tsx` / `index.tsx`
+- `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx` / `index.tsx`
 - ナビ: 「検索結果一覧」→ `/results`（認証済み全員）。
 - テスト観点は [tests/SC-02_search-results.md](../tests/SC-02_search-results.md)。

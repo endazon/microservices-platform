@@ -1,20 +1,33 @@
 # IADR-0033: フロントエンド単体テスト＋カバレッジの専用 CI。
 # frontend.yml（typecheck/lint/build/e2e を含む複合 CI）とは別に、
 # テスト＝品質ゲートを独立させ、カバレッジのレポート生成としきい値ゲートを担う。
-# frontend/ 配下の変更で起動する（バックエンド .NET CI とは独立）。
+# FR-14, IADR-0056: フロントエンドは src/<unit>/frontend（workspaces ルート = src/）。
+# 各ユニットの frontend 変更で起動する（バックエンド .NET CI とは独立）。
 name: Frontend Tests
 
 on:
   push:
     branches: [develop, main]
-    paths: ["frontend/**", ".github/workflows/frontend-tests.yml"]
+    paths:
+      - "src/*/frontend/**"
+      - "src/package.json"
+      - "src/package-lock.json"
+      - "src/vitest.config.ts"
+      - "src/eslint.config.js"
+      - ".github/workflows/frontend-tests.yml"
   pull_request:
     types: [opened, synchronize, reopened]
-    paths: ["frontend/**", ".github/workflows/frontend-tests.yml"]
+    paths:
+      - "src/*/frontend/**"
+      - "src/package.json"
+      - "src/package-lock.json"
+      - "src/vitest.config.ts"
+      - "src/eslint.config.js"
+      - ".github/workflows/frontend-tests.yml"
 
 defaults:
   run:
-    working-directory: frontend
+    working-directory: src
 
 jobs:
   test:
@@ -25,10 +38,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: src/package-lock.json
       - run: npm ci
       # 単体テスト（Vitest）をカバレッジ付きで実行する。
-      # vite.config.ts の coverage.thresholds を下回ると失敗する（回帰防止ゲート）。
+      # src/vitest.config.ts の coverage.thresholds を下回ると失敗する（回帰防止ゲート）。
       - name: Unit tests with coverage
         run: npm run test:coverage
       # カバレッジレポート（lcov / html / text-summary）を成果物として保存する。
@@ -38,6 +51,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
-          path: frontend/coverage
+          path: src/coverage
           if-no-files-found: warn
           retention-days: 14

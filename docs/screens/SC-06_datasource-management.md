@@ -64,7 +64,7 @@ related_specs:
 
 ## 実装
 
-- BFF: `src/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DataSourceBffEndpoints.cs`
-- フロント: `frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx` / `index.tsx`
+- BFF: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DataSourceBffEndpoints.cs`
+- フロント: `src/knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx` / `index.tsx`
 - 契約: `KnowledgePlatform.Shared.Contracts/Dtos/DataSourceDto.cs`
 - テスト観点は [tests/SC-06_datasource-management.md](../tests/SC-06_datasource-management.md)。

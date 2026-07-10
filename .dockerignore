@@ -1,0 +1,11 @@
+# FR-14: 全 Dockerfile がリポジトリルートを context にするため、ホストのビルド生成物・
+# 依存キャッシュを context から除外する（イメージ内で restore / npm ci を実走する）。
+.git
+**/node_modules
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+**/bin
+**/obj
+**/*.tsbuildinfo

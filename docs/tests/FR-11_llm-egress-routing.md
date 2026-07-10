@@ -26,9 +26,9 @@ related_adrs:
 
 ## 対象
 
-- `src/Services/LlmGateway/tests/LlmGateway.Api.Tests`
-- `src/Services/RetrievalService/tests/RetrievalService.Api.Tests`
-- `src/Services/ConversionService/tests/ConversionService.Worker.Tests`
+- `src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests`
+- `src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests`
+- `src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
 
 ## テストケース（受け入れ基準・実運用不具合の写像）
 

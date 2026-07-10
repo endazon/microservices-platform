@@ -21,7 +21,7 @@ related_specs:
 
 ## 対象
 
-`src/Services/ConversionService/tests/ConversionService.Worker.Tests`
+`src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
 
 ## テストケース（受け入れ基準・フローの写像）
 

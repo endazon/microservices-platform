@@ -56,7 +56,7 @@ plan_refs:
 
 ## エンドポイント
 
-`src/Services/WikiService/src/WikiService.Api/Endpoints/WikiEndpoints.cs`
+`src/knowledge/backend/Services/WikiService/src/WikiService.Api/Endpoints/WikiEndpoints.cs`
 
 | メソッド | パス | 説明 | 権限外の挙動 |
 | --- | --- | --- | --- |

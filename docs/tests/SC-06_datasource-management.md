@@ -21,8 +21,8 @@ related_specs:
 
 ## バックエンド（BFF・xUnit）
 
-対象: `src/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DataSourceBffEndpoints.cs`
-テスト: `src/Bff/KnowledgePlatform.Bff.Tests/BffDataSourceEndpointTests.cs`
+対象: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DataSourceBffEndpoints.cs`
+テスト: `src/platform/backend/Bff/KnowledgePlatform.Bff.Tests/BffDataSourceEndpointTests.cs`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
@@ -38,8 +38,8 @@ related_specs:
 
 ## フロントエンド（Vitest + Testing Library）
 
-対象: `frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx`
-テスト: `frontend/src/features/sc06-datasources/DataSourceManagementPage.test.tsx`
+対象: `src/knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx`
+テスト: `src/knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.test.tsx`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
@@ -59,5 +59,5 @@ related_specs:
 
 ## 実行
 
-- `dotnet test src/Bff/KnowledgePlatform.Bff.Tests --filter BffDataSourceEndpointTests`
+- `dotnet test src/platform/backend/Bff/KnowledgePlatform.Bff.Tests --filter BffDataSourceEndpointTests`
 - `npm run test -- src/features/sc06-datasources` / `npm run test:coverage`
