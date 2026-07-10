@@ -1,0 +1,10 @@
+{
+  "name": "@example/frontend-unit-template",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "テンプレート: 追加可変機能ユニットのフロントエンド（src/ の npm workspaces \"*/frontend\" で自動認識される）。",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
