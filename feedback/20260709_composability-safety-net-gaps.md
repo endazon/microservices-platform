@@ -1,16 +1,22 @@
 ---
 title: 上流 §3/§5 の契約標準・安全弁のうち実装未整備の 3 点（共通エンベロープ・CI 契約テスト・ステージング適用順序）の状態環流と方針確認
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids:
   - FR-14
   - ADR-0018
+  - IADR-0049
 source_repo: microservices-platform
-source_ref: "issue #206 / issue #207 / docs/adr/IADR-0028_declarative-pipeline-config.md / docs/specs/20260709_composability-plan-feedback-reflux.md"
+source_ref: "issue #206 / issue #207 / docs/adr/IADR-0028_declarative-pipeline-config.md / docs/adr/IADR-0049_composability-standards-phased-adoption.md / docs/specs/20260709_composability-plan-feedback-reflux.md"
 author: claude
 created: 2026-07-09
+updated: 2026-07-10
 ---
+
+> **triage 結果（2026-07-10, project-planning #16）**: 提案2「段階適用の注記」が accepted。計画側は
+> `10_composability-design` §3/§5 に段階適用注記を反映（PR #19）、実装側は移行の繰延条件を **IADR-0049**
+> に明文化（本 feedback を根拠）。エンベロープ項目確定時は上流 `07_abac-attribute-model.md` と整合させる。
 
 # フィードバック: 上流 §3/§5 の契約標準・安全弁のうち実装未整備 3 点の状態環流と方針確認
 

@@ -3,12 +3,17 @@ title: 実装は .NET 10 / C# 13 へ統一済み — 計画制約「ASP.NET Core
 type: plan-feedback
 status: open
 category: 要求の誤り
-related_ids: [NFR, ADR-0001]
+related_ids: [NFR, ADR-0001, IADR-0048]
 source_repo: microservices-platform
-source_ref: "src/Directory.Build.props（net10.0 / LangVersion 13）/ 実装リポ issue #202 / 2026-07-09 全体レビュー"
+source_ref: "src/Directory.Build.props（net10.0 / LangVersion 13）/ 実装リポ issue #202 / docs/adr/IADR-0048_dotnet10-target-framework.md / 2026-07-09 全体レビュー"
 author: claude
 created: 2026-07-09
+updated: 2026-07-10
 ---
+
+> **実装側の意思決定記録**: 2026-07-10 に **IADR-0048**（.NET 10 / C# 13 採用・単一情報源
+> `src/Directory.Build.props`・実態を正とし計画追随を推奨）を起票し、issue #202 の item 1 を完了。
+> 本 feedback（計画側の制約更新 or 是正の判断依頼）は引き続き open。
 
 # フィードバック: 実装は .NET 10 / C# 13 — 計画制約「ASP.NET Core + .NET 8」との乖離
 
