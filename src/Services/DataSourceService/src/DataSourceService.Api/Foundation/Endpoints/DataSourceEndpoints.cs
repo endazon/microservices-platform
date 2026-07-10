@@ -47,9 +47,9 @@ public static class DataSourceEndpoints
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
 
+            // 増分 watermark（LastSyncedAt）の前進は SyncAsync が完全成功時のみ実施する
+            // （失敗時は進めず次回再試行。UC-04 例外フロー）。ここでは永続化のみ行う。
             var result = await sync.SyncAsync(ds);
-            // 増分同期の watermark を進める（次回はこの時刻以降の変更のみ取得）。
-            ds.RecordSync();
             await db.SaveChangesAsync();
 
             return Results.Accepted($"/datasources/{id}/sync", new

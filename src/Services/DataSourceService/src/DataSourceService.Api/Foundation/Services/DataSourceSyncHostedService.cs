@@ -59,9 +59,8 @@ public sealed class DataSourceSyncHostedService(
         foreach (var ds in active)
         {
             ct.ThrowIfCancellationRequested();
-            var result = await sync.SyncAsync(ds, ct);
-            if (result.ConnectorAvailable)
-                ds.RecordSync();
+            // watermark（LastSyncedAt）前進は SyncAsync が完全成功時のみ実施する（失敗時は進めず次回再試行）。
+            await sync.SyncAsync(ds, ct);
         }
 
         await db.SaveChangesAsync(ct);

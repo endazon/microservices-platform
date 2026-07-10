@@ -61,6 +61,14 @@ plan_refs:
    `RawDocumentFetched` 発行を束ねる。** 原本は `IObjectStorageClient.PutBytesAsync` で格納
    （未構成時は `NullObjectStorageClient` が決定的 URI を返し縮退）。手動同期（/sync）と定期同期（HostedService）が共用する。
 
+3a. **増分 watermark（`LastSyncedAt`）は完全成功時のみ前進させる（UC-04 再試行の担保・claude-review #220）。**
+   `SyncResult.ShouldAdvanceWatermark`（`ConnectorAvailable && DiscoverSucceeded && Failed==0`）が真のときのみ
+   `RecordSync()` を**オーケストレータ内で**呼ぶ（手動/定期で共通・呼び出し側は分岐しない）。discover 失敗
+   （`DiscoverSucceeded=false`）・一部 fetch 失敗（`Failed>0`）時は watermark を進めない。進めると失敗/未取得
+   ファイル（更新日時 <= 失敗時刻）が次回増分から漏れて恒久欠落するため。再取得は決定的 DocumentId で下流が
+   冪等 upsert するため、成功済みファイルの再発行も安全。`FileSystemConnector` はフォルダ単位のアクセス
+   エラーを握りつぶして列挙を継続する（1 フォルダの権限エラーでサイクル全体を失敗させない）。
+
 4. **未対応 SourceType（wiki/saas/db）は 5xx にせず縮退**（`ConnectorAvailable=false`・発行 0 件）。子 issue で順次追加する。
 
 5. **定期同期 `DataSourceSyncHostedService` は既定無効**（`DataSourceSync:Enabled=false`）。有効時に一定間隔

@@ -21,6 +21,18 @@ public sealed class DataSourceSyncService(
 
     public async Task<SyncResult> SyncAsync(DataSource source, CancellationToken ct = default)
     {
+        var result = await RunAsync(source, ct);
+        // UC-04 例外フロー: 増分 watermark（LastSyncedAt）は**完全成功時のみ**前進させる（手動/定期で共通）。
+        // discover 失敗・一部 fetch 失敗時は進めない。進めてしまうと、失敗/未取得ファイル（更新日時 <= 失敗時刻）が
+        // 次回同期の増分から漏れて二度と再取得されず恒久欠落する（＝再試行の担保）。成功済みファイルの再発行は
+        // 決定的 DocumentId により下流が冪等 upsert するため安全。
+        if (result.ShouldAdvanceWatermark)
+            source.RecordSync();
+        return result;
+    }
+
+    private async Task<SyncResult> RunAsync(DataSource source, CancellationToken ct)
+    {
         var connector = registry.Resolve(source.SourceType);
         if (connector is null)
         {
@@ -28,7 +40,7 @@ public sealed class DataSourceSyncService(
             logger.LogInformation(
                 "SourceType '{Type}' のコネクタは未実装のため同期をスキップします（source {Id}）",
                 source.SourceType, source.Id);
-            return new SyncResult(0, 0, ConnectorAvailable: false,
+            return new SyncResult(0, 0, ConnectorAvailable: false, DiscoverSucceeded: false,
                 Message: $"connector for '{source.SourceType}' not implemented");
         }
 
@@ -41,7 +53,9 @@ public sealed class DataSourceSyncService(
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             AlertOnFailure(source, "discover", ex);
-            return new SyncResult(0, 0, ConnectorAvailable: true, Message: "discover failed: " + ex.Message);
+            // discover 失敗は「成功して 0 件」と区別する（DiscoverSucceeded=false）→ watermark を進めない。
+            return new SyncResult(0, 0, ConnectorAvailable: true, DiscoverSucceeded: false,
+                Message: "discover failed: " + ex.Message);
         }
 
         // Map: データソースの既定 ABAC 属性（機密区分フェイルセーフ含む・IADR-0019）を原本へ付与する。
@@ -82,7 +96,7 @@ public sealed class DataSourceSyncService(
         logger.LogInformation(
             "同期完了 source {Id}（{Type}）: fetched={Fetched} failed={Failed}",
             source.Id, source.SourceType, fetched, failed);
-        return new SyncResult(fetched, failed, ConnectorAvailable: true, Message: null);
+        return new SyncResult(fetched, failed, ConnectorAvailable: true, DiscoverSucceeded: true, Message: null);
     }
 
     // Map: フォルダ名をタグへ（ソースメタの粗マッピング）。機密区分等の ABAC 属性は Attributes 側で運搬する。
@@ -106,5 +120,12 @@ public sealed class DataSourceSyncService(
     }
 }
 
-// 同期結果。ConnectorAvailable=false は未対応 SourceType（縮退）。
-public sealed record SyncResult(int Fetched, int Failed, bool ConnectorAvailable, string? Message);
+// 同期結果。ConnectorAvailable=false は未対応 SourceType（縮退）。DiscoverSucceeded=false は
+// discover が失敗した（＝「成功して 0 件」と区別する）ことを表す。
+public sealed record SyncResult(
+    int Fetched, int Failed, bool ConnectorAvailable, bool DiscoverSucceeded, string? Message)
+{
+    // 増分 watermark（LastSyncedAt）を進めてよいのは、コネクタがあり discover が成功し、
+    // 全アイテムの取得に成功したとき。失敗があれば進めず、次回同期で再試行できるようにする（UC-04 再試行）。
+    public bool ShouldAdvanceWatermark => ConnectorAvailable && DiscoverSucceeded && Failed == 0;
+}

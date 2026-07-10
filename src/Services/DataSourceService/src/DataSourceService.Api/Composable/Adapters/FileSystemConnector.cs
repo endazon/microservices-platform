@@ -35,17 +35,52 @@ public sealed class FileSystemConnector(ILogger<FileSystemConnector> logger) : I
         }
 
         var items = new List<SourceItem>();
-        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        // フォルダ単位のアクセスエラー（UnauthorizedAccessException 等）でサイクル全体を失敗させないよう、
+        // ディレクトリを手動再帰し、アクセス不可のサブフォルダは握りつぶして列挙を継続する（IADR-0051 の縮退方針）。
+        var stack = new Stack<string>();
+        stack.Push(root);
+        while (stack.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
-            if (!ContentTypes.ContainsKey(Path.GetExtension(file)))
-                continue; // 非対応形式は列挙しない
-            var info = new FileInfo(file);
-            var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
-            // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回フルスキャン。
-            if (since is { } watermark && modifiedAt <= watermark)
+            var dir = stack.Pop();
+
+            List<string> subDirs;
+            List<string> files;
+            try
+            {
+                subDirs = Directory.EnumerateDirectories(dir).ToList();
+                files = Directory.EnumerateFiles(dir).ToList();
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                logger.LogWarning(ex,
+                    "FileSystemConnector: フォルダ '{Dir}' の列挙に失敗したためスキップします（source {Id}）", dir, source.Id);
                 continue;
-            items.Add(new SourceItem(file, modifiedAt, info.Length));
+            }
+
+            foreach (var sub in subDirs)
+                stack.Push(sub);
+
+            foreach (var file in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!ContentTypes.ContainsKey(Path.GetExtension(file)))
+                    continue; // 非対応形式は列挙しない
+                try
+                {
+                    var info = new FileInfo(file);
+                    var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+                    // 増分: 前回同期時刻（含む同時刻）以前は除外。since=null は初回フルスキャン。
+                    if (since is { } watermark && modifiedAt <= watermark)
+                        continue;
+                    items.Add(new SourceItem(file, modifiedAt, info.Length));
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    logger.LogWarning(ex,
+                        "FileSystemConnector: ファイル '{File}' の情報取得に失敗したためスキップします", file);
+                }
+            }
         }
 
         return Task.FromResult<IReadOnlyList<SourceItem>>(items);
