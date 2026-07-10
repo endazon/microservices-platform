@@ -1,8 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
-COPY src/ .
-RUN dotnet restore Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj
-RUN dotnet publish Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj \
+COPY src/backend/ .
+RUN dotnet restore knowledge/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj
+RUN dotnet publish knowledge/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj \
     -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

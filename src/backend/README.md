@@ -1,15 +1,38 @@
-# サービスユニット規約（FR-14, ADR-0018 / IADR-0027）
+# バックエンド ユニット規約（FR-14, ADR-0018 / IADR-0027 / IADR-0056）
 
-`src/Services/<ServiceName>/` は**サービスユニット**（自己完結した実装単位）である。
-将来のサービス追加は、本規約に従うことで Git サブモジュール（別リポジトリ）としても
-そのまま配置できる。区分の背景は
-[固定/可変区分表](../../docs/tech/composability-classification.md) と
-[IADR-0027](../../docs/adr/IADR-0027_composability-folder-structure.md) を参照。
+`src/backend/<unit>/` は**ユニット**（基盤または可変機能セットの自己完結した実装単位）である。
+本リポジトリの主たる成果物は **platform（プラットフォーム基盤）** であり、
+**knowledge（ナレッジ活用機能）** は基盤に付随する必須の可変機能ユニットである。
+追加の可変機能ユニットは、本規約に従うことで Git サブモジュール（別リポジトリ）として
+`src/backend/<unit>/` へそのまま配置できる（issue #210 / [IADR-0056](../../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
-## 標準レイアウト
+## ユニット構成
 
 ```
-src/Services/<ServiceName>/          ← サービスユニット（サブモジュール境界）
+src/backend/
+  Directory.Build.props        ← 共通 MSBuild 設定（単一情報源。ユニットで上書きしない）
+  Directory.Packages.props     ← パッケージ中央管理（CPM。csproj に Version= を書かない）
+  platform/                    ← 基盤ユニット（本リポジトリの主成果物）
+    platform.slnx
+    Shared/                    ←   契約（Shared.Contracts）・横断基盤（Shared.Infrastructure）
+    Bff/                       ←   エッジ集約（フロントエンドの唯一の入口）
+    Services/                  ←   基盤サービス（AuthorizationService = ABAC / LlmGateway = LLM エグレス統制）
+  knowledge/                   ← ナレッジ機能ユニット（付随する必須の可変機能）
+    knowledge.slnx
+    Services/                  ←   Document / DataSource / Conversion / Ingestion / Retrieval /
+                               ←   AiAnalysis / Wiki / Feedback / Dashboard
+    Tests/                     ←   KnowledgePlatform.IntegrationTests（ユニット横断の統合テスト）
+  <unit>/                      ← 追加の可変機能ユニット（git submodule でリンク）
+```
+
+## サービスユニットの標準レイアウト（ユニット内）
+
+`<unit>/Services/<ServiceName>/` は従来どおりの**サービスユニット**（自己完結した実装単位）である。
+区分の背景は [固定/可変区分表](../../docs/tech/composability-classification.md) と
+[IADR-0027](../../docs/adr/IADR-0027_composability-folder-structure.md) を参照。
+
+```
+<unit>/Services/<ServiceName>/
   src/<ServiceName>.<Api|Worker>/
     Program.cs                       ← 合成ルート（可変部分を構成で束ねる唯一の場所）
     appsettings*.json
@@ -25,7 +48,7 @@ src/Services/<ServiceName>/          ← サービスユニット（サブモジ
     Composable/                      ← 可変: 構成変更・プラグインで組み替える部分
       Steps/                         ←   パイプライン段（イベント購読→処理→発行）
       Adapters/                      ←   ポート実装（外部コンポーネント接続）
-      Connectors/                    ←   データソースコネクタ（予約）
+      Connectors/                    ←   データソースコネクタ
   tests/<ServiceName>.<Api|Worker>.Tests/
 ```
 
@@ -38,18 +61,27 @@ src/Services/<ServiceName>/          ← サービスユニット（サブモジ
    `Foundation/Ports/` の抽象を介し、実装の選択・束ねは `Program.cs`（合成ルート）で行う。
    （`Foundation/` 配下に `using *.Composable.*` が現れたら規約違反。）
 2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント
-   （`KnowledgePlatform.Shared.Contracts/Events/`）経由のみとする。
-3. **サービスユニット外への参照は `src/Shared/` のみ許可**する。サービス間のコード参照
-   （ProjectReference・型共有）を禁止する。サービス間の連携は同期 API（契約管理）または
-   イベントに限る。この規則がサブモジュール切り出し可能性を担保する。
+   （`platform/Shared/KnowledgePlatform.Shared.Contracts/Events/`）経由のみとする。
+3. **ユニット外への参照は `src/backend/platform/Shared/` の 2 プロジェクトのみ許可**する。
+   platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
+   （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
+   イベントに限る。この規則がユニットのサブモジュール切り出し可能性を担保する。
+   - 例外: 統合テスト（`Tests/`）は検証対象サービスへの ProjectReference を許可する
+     （例: IntegrationTests → AuthorizationService.Api）。
 
-## サブモジュールとして追加する場合
+## ビルド
 
-1. 新サービスのリポジトリを本規約のレイアウト（`src/` + `tests/`）で作成する。
-2. `git submodule add <repo-url> src/Services/<ServiceName>` で配置する。
-3. `src/KnowledgePlatform.slnx` に csproj を追記する。
-4. ビルド共通設定（`src/Directory.Build.props`・`src/Directory.Packages.props`）は
-   ディレクトリ階層で自動継承されるため追加設定は不要。パッケージバージョンは
-   中央管理（CPM）に従い、csproj に `Version=` を書かない。
-5. `KnowledgePlatform.Shared.*` への参照は相対パス
-   `../../../../Shared/<Project>/<Project>.csproj` とする（ユニットの配置場所が保証する）。
+- 各ユニットはユニット直下の slnx（`platform.slnx` / `knowledge.slnx`）でビルドする。
+  ルート集約ソリューションは置かない（CI はユニット毎に restore/build/test/format を実行する）。
+- 共通 MSBuild 設定（`Directory.Build.props` / `Directory.Packages.props`）は `src/backend/` に
+  置き、ディレクトリ階層でユニットへ自動継承される（submodule ユニットも配置により継承される。
+  ユニット単独リポジトリでのビルドには自前の同等設定が必要）。
+
+## ユニットをサブモジュールとして追加する場合
+
+1. 新ユニットのリポジトリを本規約のレイアウト（`<unit>.slnx` + `Services/<Name>/` 構成）で作成する。
+2. `git submodule add <repo-url> src/backend/<unit>` で配置する。
+3. `KnowledgePlatform.Shared.*` への参照は相対パス
+   `..\..\..\..\..\platform\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
+4. CI のビルド対象へユニットの slnx を追加する（`.github/workflows/ci.yml`）。
+5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。

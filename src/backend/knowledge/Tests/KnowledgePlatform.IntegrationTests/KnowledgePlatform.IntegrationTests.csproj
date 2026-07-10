@@ -29,11 +29,11 @@
     <!-- 各サービスにテスト用マーカークラスを追加したためエイリアス不要 -->
     <ProjectReference Include="..\..\Services\DocumentService\src\DocumentService.Api\DocumentService.Api.csproj" />
     <ProjectReference Include="..\..\Services\DataSourceService\src\DataSourceService.Api\DataSourceService.Api.csproj" />
-    <ProjectReference Include="..\..\Services\AuthorizationService\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
+    <ProjectReference Include="..\..\..\platform\Services\AuthorizationService\src\AuthorizationService.Api\AuthorizationService.Api.csproj" />
     <ProjectReference Include="..\..\Services\WikiService\src\WikiService.Api\WikiService.Api.csproj" />
     <ProjectReference Include="..\..\Services\RetrievalService\src\RetrievalService.Api\RetrievalService.Api.csproj" />
     <ProjectReference Include="..\..\Services\AiAnalysisService\src\AiAnalysisService.Api\AiAnalysisService.Api.csproj" />
-    <ProjectReference Include="..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\platform\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

@@ -1,8 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /repo
-COPY src/ .
-RUN dotnet restore Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj
-RUN dotnet publish Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj \
+COPY src/backend/ .
+RUN dotnet restore knowledge/Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj
+RUN dotnet publish knowledge/Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj \
     -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

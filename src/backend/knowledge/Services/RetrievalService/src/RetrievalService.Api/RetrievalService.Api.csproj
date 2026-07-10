@@ -3,8 +3,8 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="AspNetCore.HealthChecks.Uris" />
-    <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\..\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\platform\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\..\platform\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
     <InternalsVisibleTo Include="RetrievalService.Api.Tests" />
   </ItemGroup>
 </Project>
