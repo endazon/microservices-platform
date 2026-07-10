@@ -57,7 +57,7 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 4. **フロントエンドの分割・合成**
    - a) 単一パッケージのままフォルダだけ分ける（package.json はユニットに置けない）
    - b) npm workspaces（ルート lock・単一 node_modules）＋ platform をアプリホスト、
-     knowledge を features ソースパッケージとし、alias（`@foundation`/`@knowledge`）で
+     knowledge を features ソースパッケージとし、alias（`@foundation`/`@features`/`@knowledge`）で
      ソース参照・単一 vite ビルドに合成（採用）
    - c) knowledge を事前ビルドされたライブラリとして配布（ビルドパイプライン倍増・HMR 不可）
 
@@ -108,7 +108,7 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
   「submodule 追加＋合成点 1 行」に確定する。ai-stock-trading 等の別プロジェクトが再利用する
   基盤の範囲（platform ユニット）が物理的に特定できる。
 - 悪い影響・トレードオフ: 巨大な（ただし機械的な）移動差分が一度発生する。名前空間
-  `KnowledgePlatform.*` とフォルダ（`backend/platform` 等）の不一致が改名完了まで残る。
+  `KnowledgePlatform.*` とフォルダ（`platform/backend` 等）の不一致が改名完了まで残る。
   submodule ユニットは `src/` の共通 props に依存するため、単独ビルドには自前の設定が必要。
 - フォローアップ（issue 起票）:
   1. .NET 名前空間・アセンブリ名・フロント package 名のユニット整合改名
