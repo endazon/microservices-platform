@@ -18,6 +18,7 @@
 | k8s Namespace | `values.yaml` `namespace.name`、`templates/namespace.yaml` | **in-place 改名不可**（再作成） |
 | コンテナイメージ | `values.yaml` の各 `image: knowledge-platform/*`（12 サービス） | Harbor プロジェクト接頭辞。再タグ・再 push |
 | Ingress ホスト | `values.yaml` `*.knowledge-platform.local`（例 `wiki.knowledge-platform.local`） | DNS/hosts と整合 |
+| Deployment（コンテナ内パス） | `templates/deployment.yaml`(3): L2 コメント・L56 env `/etc/knowledge-platform/pipeline/...`・L117 `mountPath: /etc/knowledge-platform/pipeline` | **コンテナ内パス `/etc/knowledge-platform/`**（#209 明記の改名対象）。env と mountPath を対で改名 |
 | Istio / NetworkPolicy | `templates/istio-mtls.yaml`(4)・`templates/networkpolicy.yaml`(2) | Namespace セレクタ等 |
 | pipeline / drift ジョブ | `templates/pipeline-config.yaml`・`templates/drift-postsync-job.yaml`・`files/pipeline.schema.json`・`files/README.md` | ConfigMap 名・ラベル |
 | Keycloak realm | `deploy/keycloak/knowledge-platform-realm.json`（`realm` 値・**ファイル名**） | **新 realm を export/import で新名称構築**。issuer 変更 |
@@ -73,6 +74,16 @@
 2. 短時間の整合監視（エラーレート・レイテンシ）。
 3. 旧（Blue）Namespace/realm/Application を**一定期間保持**後に撤去（下記ロールバック猶予）。
 
+### 3.6 dev 環境（in-place を許容）
+
+dev（`docker-compose` 中心・データ消失許容）では Blue/Green は過剰なため、in-place を許容する（IADR-0061 決定②）。
+1. `git grep -l knowledge-platform | xargs sed -i 's/knowledge-platform/<new-name>/g'` で機械置換。
+2. ファイル名/ディレクトリ名（チャートディレクトリ・realm json・grafana dashboard json）と CI パス
+   （`.github/workflows/ci.yml` の `pipeline-config` 参照先）を個別に改名・整合。
+3. `docker compose down -v && docker compose up`（ボリューム破棄で作り直し。dev はデータ移行不要）。
+4. 回帰確認（下記 §5 のうち実環境非依存の項目：`helm lint`/`helm template`/`validate-pipeline-config`/`check-doc-links`/
+   dev での OIDC ログイン）。
+
 ## 4. ロールバック
 
 - Cutover 前: Green を破棄するだけ（Blue は無傷）。
@@ -86,6 +97,9 @@
 - [ ] 新 realm で OIDC ログイン成功・各サービスの authority が新 issuer。
 - [ ] データ移行後、主要フロー（検索/文書/管理）が新環境で正常。
 - [ ] 観測（ダッシュボード/アラート）が新ラベルで機能。
+      - 注: Prometheus/Grafana は現状 dev（`docker-compose`）のみ配線で、stg/prod（k3s）展開は別 follow-up
+        （`docs/operations/operations.md` の監視適用範囲）。実行時点で未展開なら本項目は該当環境で検証不能なため、
+        監視の stg/prod 展開の完了を前提条件とする。
 - [ ] `git grep knowledge-platform` の残存が意図的なもの（履歴/移行ドキュメント）のみ。
 - [ ] ロールバック手順を stg で予行。
 

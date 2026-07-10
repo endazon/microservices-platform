@@ -11,8 +11,8 @@ author: claude
 created: 2026-07-11
 updated: 2026-07-11
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0007 (ArgoCD + Helm + GitOps)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0008 (k3s 実行基盤)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md"
 ---
 
 # IADR-0061: デプロイ資産の改名は Blue/Green 移行で行う（移行手順の起草）

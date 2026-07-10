@@ -12,8 +12,8 @@ author: claude
 created: 2026-07-11
 updated: 2026-07-11
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0007 (ArgoCD + Helm)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0008 (k3s)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md"
 related_specs:
   - "../adr/IADR-0061_deploy-rename-migration.md"
   - "../migration/rename-knowledge-platform.md"
@@ -56,9 +56,9 @@ related_specs:
 
 - [~] デプロイ資産の命名がユニット構成（platform 主体）と整合する
   → **方式・対象・手順を確定（起草）**。実改名は stg 検証を伴うため未実施（#228 に残す）。
-- [x] 移行手順が docs/operations に記録され、stg で検証済み
-  → **移行手順を `docs/migration/` に記録（起草）**。**stg 検証は実環境が必要のため未実施**（#228 に残す）。
-  本 PR は `Refs #228`（Closes ではない）。
+- [~] 移行手順が docs/operations に記録され、stg で検証済み
+  → 移行手順は **`docs/migration/` に記録（起草）済み**。ただし **stg 検証は実環境が必要のため未実施**（#228 に残す）。
+  ＝ 記録は達成・stg 検証は未達の**部分達成**。本 PR は `Refs #228`（Closes ではない）。
 
 ## 検証
 
