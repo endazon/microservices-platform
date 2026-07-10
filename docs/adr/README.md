@@ -77,6 +77,7 @@
 | IADR-0051 | データソースコネクタのポート分離（Discover/Fetch）と filesystem コネクタ・同期基盤 | Accepted |
 | IADR-0052 | 性能負荷試験ツールに k6 を採用する | Accepted |
 | IADR-0053 | Wiki コネクタは設定駆動の汎用 REST 契約で実装し、製品固有アダプタは後続とする | Accepted |
+| IADR-0054 | SaaS コネクタは設定駆動の汎用 REST 契約＋カーソルページング＋429 バックオフで実装する | Accepted |
 | IADR-0055 | 業務DB コネクタは参照専用の設定駆動 SQL（id/updated/content 別名）で「行→文書」化する | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
