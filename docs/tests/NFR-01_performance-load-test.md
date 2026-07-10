@@ -6,6 +6,7 @@ related_ids:
   - NFR
   - FR-02
   - FR-03
+  - IADR-0052
 author: claude
 created: 2026-07-10
 updated: 2026-07-10

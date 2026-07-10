@@ -46,8 +46,8 @@ BASE_URL=http://localhost:5000 \
 
 k6 の HTTP 負荷では測りにくいため、**パイプライン投入 → 完了までのレート**で測る。
 
-1. filesystem データソース（#195）に N 件（例 1,000）の対応ファイルを配置し `POST /datasources/{id}/sync` を実行する
-   （もしくは `RawDocumentFetched` を N 件発行するドライバを用意）。
+1. filesystem データソース（#195）に N 件（例 1,000）の対応ファイルを配置し `POST /bff/datasources/{id}/sync` を実行する
+   （フロントは必ず `/bff/*` 経由。もしくは `RawDocumentFetched` を N 件発行するドライバを用意）。
 2. `IngestionCompleted` の到達数（もしくは Qdrant の points 数）が N に達するまでの経過時間 `T` を計測する。
 3. スループット = `N / T`（件/時に換算）。RabbitMQ 管理 UI（15672）・Grafana でキュー滞留・処理レートを併せて観察する。
 4. ワーカー（conversion/ingestion）のレプリカ数（IADR-0050: ワーカーはワーカー数で水平スケール）を増やして再測し、
