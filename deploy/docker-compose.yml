@@ -223,7 +223,8 @@ services:
     expose:
       - "8080"
     environment:
-      <<: [*common-env, *db-env, *rabbit-env]
+      # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
+      <<: [*common-env, *db-env, *rabbit-env, *objectstorage-env]
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp
     depends_on:
       postgres:
