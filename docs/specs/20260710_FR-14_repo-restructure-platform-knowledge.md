@@ -129,15 +129,15 @@ src/                               # 直下: バックエンド共通 props ＋ 
 
 ## 受け入れ基準
 
-- [ ] フォルダ構成が issue #210 記載の形になっている（`src/{platform,knowledge}/{frontend,backend}`、各ユニットに `backend.slnx` / `frontend/package.json`、追加ユニットは `src/` 直下へ submodule）
-- [ ] platform ユニットが knowledge ユニットへ依存していない（一方向依存）
-- [ ] `dotnet build` / `dotnet test` が両 backend.slnx で成功、`dotnet format --verify-no-changes` が両 backend.slnx で成功
-- [ ] frontend の `typecheck` / `lint` / `test`（カバレッジしきい値維持）/ `build` / e2e スモークが成功
-- [ ] CI ワークフローが新パスで動作する定義になっている（paths フィルタ・working-directory・キャッシュパス）
-- [ ] docker-compose のビルド定義が新パスを指す（compose config で検証）
-- [ ] `scripts/check-doc-links.js` がリンク切れゼロで通る
-- [ ] README 等の位置づけが「主=プラットフォーム基盤、KnowledgePlatform=付随する必須の可変機能」で統一されている（#209）
-- [ ] 重要判断が IADR-0056 に記録され、フォローアップが issue 化されている
+- [x] フォルダ構成が issue #210 記載の形になっている（`src/{platform,knowledge}/{frontend,backend}`、各ユニットに `backend.slnx` / `frontend/package.json`、追加ユニットは `src/` 直下へ submodule）
+- [x] platform ユニットが knowledge ユニットへ依存していない（一方向依存）
+- [x] `dotnet build` / `dotnet test` が両 backend.slnx で成功、`dotnet format --verify-no-changes` が両 backend.slnx で成功
+- [x] frontend の `typecheck` / `lint` / `test`（カバレッジしきい値維持）/ `build` / e2e スモークが成功
+- [x] CI ワークフローが新パスで動作する定義になっている（paths フィルタ・working-directory・キャッシュパス）
+- [x] docker-compose のビルド定義が新パスを指す（compose config で検証）
+- [x] `scripts/check-doc-links.js` がリンク切れゼロで通る
+- [x] README 等の位置づけが「主=プラットフォーム基盤、KnowledgePlatform=付随する必須の可変機能」で統一されている（#209）
+- [x] 重要判断が IADR-0056 に記録され、フォローアップが issue 化されている
 
 ## テスト方針
 
