@@ -57,8 +57,11 @@ builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
 // コネクタ。新規ソースは IDataSourceConnector を追加登録するだけで対応する（プラグイン方式）。
 // WikiConnector が使う名前付きクライアント（将来のタイムアウト/リトライ等の付与点を明示する）。
 builder.Services.AddHttpClient("WikiConnector");
+// 業務DB コネクタの接続生成（第一プロバイダ=PostgreSQL/Npgsql。IADR-0055）。
+builder.Services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
 builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();  // 優先1: filesystem
 builder.Services.AddSingleton<IDataSourceConnector, WikiConnector>();        // 優先2: Wiki（IADR-0053）
+builder.Services.AddSingleton<IDataSourceConnector, DatabaseConnector>();    // 優先4: 業務DB（IADR-0055）
 builder.Services.AddSingleton<ConnectorRegistry>();
 builder.Services.AddSingleton<SyncFailureTracker>();
 builder.Services.AddScoped<DataSourceSyncService>();

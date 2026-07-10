@@ -72,7 +72,7 @@ flowchart TB
 | 区間 | 状態 | 備考 |
 | --- | --- | --- |
 | データソース CRUD | ✅ 実装済 | DataSourceService |
-| 同期トリガ（`/sync`） | ✅ **実コネクタ経由（filesystem / wiki）** | IADR-0051・#195（filesystem）／IADR-0053・#217（Wiki＝汎用 REST 契約）。実データを列挙・取得しストレージ格納＋実メタ付き `RawDocumentFetched` を発行。SaaS/業務DB は子 issue（#218/#219）。 |
+| 同期トリガ（`/sync`） | ✅ **実コネクタ経由（filesystem / wiki / db）** | IADR-0051・#195（filesystem）／IADR-0053・#217（Wiki）／IADR-0055・#219（業務DB＝参照専用 SQL・行→文書化）。SaaS は #218。実データを列挙・取得しストレージ格納＋実メタ付き `RawDocumentFetched` を発行。 |
 | 定期同期（スケジューラ） | ✅ **HostedService（既定無効）** | `DataSourceSyncHostedService`（`DataSourceSync:Enabled`）。UC-04 基本フロー。 |
 | 接続失敗の継続アラート | ✅ **インメモリ追跡** | 連続失敗閾値超過で構造化アラートログ（UC-04 例外フロー）。DB 永続化は follow-up。 |
 | 変換（pandoc） | ⚠️ スタブ | 変換ロジックの実体は後続。 |
@@ -83,7 +83,9 @@ flowchart TB
 
 ## 未決事項 / 後続タスク
 
-- 優先 3〜4 の実コネクタ（SaaS #218 / 業務DB #219）。filesystem（#195）・Wiki（#217）は実装済み。
+- 優先 3 の実コネクタ（SaaS #218）。filesystem（#195）・Wiki（#217）・業務DB（#219）は実装済み。
+- 業務DB の実 SQL 正当性・参照専用ユーザー権限は実 PostgreSQL 統合テスト（DockerFact）で確認する follow-up（IADR-0055）。
+- 他 DB プロバイダ（SQL Server/MySQL 等）アダプタ・CDC は follow-up。
 - 製品固有 Wiki アダプタ（Confluence/MediaWiki/DokuWiki 等）と実 Wiki 製品の統合テスト（実コンテナ前提）は follow-up（IADR-0053）。
 - 実 filesystem 同期の対象ファイル共有（SMB/NFS）マウント手順（PVC）と、増分 watermark のスキャン開始時刻厳密化。
 - 接続失敗状態・最終エラーの DB 永続化（SC-06 データソース管理 UI での可視化）。
