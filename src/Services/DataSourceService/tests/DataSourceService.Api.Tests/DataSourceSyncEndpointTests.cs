@@ -103,9 +103,9 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         published.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
     }
 
-    // IADR-0051: 未対応 SourceType（wiki 等）はコネクタ未実装のため縮退する（5xx にせず、発行 0 件）。
-    // IADR-0051: 未対応 SourceType（saas/db 等・コネクタ未実装。#218/#219）は 5xx にせず縮退する。
-    // ※ wiki は #217/IADR-0053 でコネクタ追加済みのため「未対応」の例には使わない。
+    // IADR-0051: 未対応 SourceType はコネクタ未実装のため縮退する（5xx にせず、発行 0 件）。
+    // filesystem(#195)/wiki(#217)/saas(#218)/db(#219) は実装済みのため、恒久的に未対応の架空種別
+    // "unknown-source" を用いる（将来コネクタが増えても本テストが壊れないようにする）。
     [Fact]
     public async Task Sync_UnsupportedSourceType_DegradesWithoutPublishing()
     {
@@ -114,9 +114,9 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
 
         var id = await CreateDataSourceAsync(client, new
         {
-            name = "crm-saas",
-            sourceType = "saas",
-            connectionUri = "https://saas.example.com",
+            name = "unknown-src",
+            sourceType = "unknown-source",
+            connectionUri = "https://example.com",
         });
 
         var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
