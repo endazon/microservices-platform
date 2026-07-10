@@ -2,7 +2,7 @@ using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConversionService.Worker.Tests;

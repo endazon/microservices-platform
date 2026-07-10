@@ -1,6 +1,6 @@
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;

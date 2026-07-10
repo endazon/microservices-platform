@@ -2,7 +2,7 @@ using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using IngestionService.Worker.Composable.Adapters;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.Extensions.Logging;
 

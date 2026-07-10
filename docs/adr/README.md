@@ -82,6 +82,7 @@
 | IADR-0056 | リポジトリ最上位のユニット構成（src/&lt;unit&gt;/{backend,frontend} = platform / knowledge） | Accepted |
 | IADR-0057 | ユニット依存方向の機械検査は軽量スクリプト（csproj 走査）＋フロント ESLint で行う | Accepted |
 | IADR-0058 | planning submodule 配下の破損リンクはトークン付きの定期ジョブで検査する | Accepted |
+| IADR-0059 | 契約を階層化しナレッジ固有イベントを Knowledge.Contracts へ分離する（URN 固定で後方互換） | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
