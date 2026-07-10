@@ -118,6 +118,9 @@ services:
     image: knowledge-platform/datasource-service
     tag: latest
     port: 8080
+    # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
+    # 実 filesystem 同期は対象ファイル共有（SMB/NFS）を PVC 等でマウントする必要がある（ops 手順・operations.md）。
+    objectStorage: true
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

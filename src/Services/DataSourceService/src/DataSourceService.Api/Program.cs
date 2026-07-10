@@ -1,5 +1,9 @@
+using DataSourceService.Api.Composable.Adapters;
 using DataSourceService.Api.Foundation.Endpoints;
 using DataSourceService.Api.Foundation.Persistence;
+using DataSourceService.Api.Foundation.Ports;
+using DataSourceService.Api.Foundation.Services;
+using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
@@ -46,6 +50,19 @@ builder.Services.AddMassTransit(x =>
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストせず、
 // データソースコネクタは実行時データ（DB）のため静的申告の対象外。到達可能性とトポロジを与えるため存在申告する。
 builder.Services.AddKnowledgePlatformIntrospection("datasource-service", new PipelineOptions());
+
+// FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
+// オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
+builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+// コネクタ（優先1: filesystem）。新規ソースは IDataSourceConnector を追加登録するだけで対応する。
+builder.Services.AddSingleton<IDataSourceConnector, FileSystemConnector>();
+builder.Services.AddSingleton<ConnectorRegistry>();
+builder.Services.AddSingleton<SyncFailureTracker>();
+builder.Services.AddScoped<DataSourceSyncService>();
+// 定期同期（既定無効。DataSourceSync:Enabled=true で有効化）。
+builder.Services.Configure<DataSourceSyncOptions>(
+    builder.Configuration.GetSection(DataSourceSyncOptions.SectionName));
+builder.Services.AddHostedService<DataSourceSyncHostedService>();
 
 var app = builder.Build();
 

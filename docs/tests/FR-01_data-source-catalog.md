@@ -42,16 +42,25 @@ plan_refs:
 | ID | 前提条件 | 手順 | 期待結果 | 対応受け入れ基準 | 区分（自動/手動） |
 | --- | --- | --- | --- | --- | --- |
 | T-01 | PostgreSQL / RabbitMQ 稼働、DB 初期化済 | `POST /datasources`（name=社内 Confluence, sourceType=Confluence, config={spaceKey:PROJ}）→ `GET /datasources` | 登録が 201 Created、`Name` 一致、`Status` が active、一覧に当該 `Id` を含む | データソース登録・カタログ化 | 自動 |
-| T-02 | 同上 | `POST /datasources`（sourceType=SharePoint, config={}）で登録後、`POST /datasources/{id}/sync` | 同期が 202 Accepted（`RawDocumentFetched` 発行・`LastSyncedAt` 記録） | 同期トリガ | 自動 |
+| T-02 | 同上 | `POST /datasources`（sourceType=SharePoint, config={}）で登録後、`POST /datasources/{id}/sync` | 同期が 202 Accepted・`LastSyncedAt` 記録（未対応 SourceType は縮退。発行は行われない） | 同期トリガ（配線） | 自動 |
 | T-03 | サービス起動（実バックエンド不要、TestWebApplicationFactory） | `GET /datasources` | 200 OK（一覧取得の配線確認） | データソース一覧 | 自動 |
 | T-04 | 同上 | `GET /health/live` | 200 OK（稼働性・個別デプロイの前提） | 個別デプロイ・稼働性 | 自動 |
+| T-05 | 一時ディレクトリに対応ファイル（.md/.txt/.docx）＋非対応（.bin/.png） | `FileSystemConnector.DiscoverAsync`（since=null） | 対応形式のみ列挙・非対応は除外（フルスキャン） | 実コネクタ列挙（#195/IADR-0051） | 自動（単体） |
+| T-06 | 一時ディレクトリに新旧ファイル（更新日時差） | `DiscoverAsync(since=watermark)` | watermark 以前（含む同時刻）を除外し差分のみ返す | 増分同期（#195） | 自動（単体） |
+| T-07 | 列挙済み対象 | `FetchAsync` | 原本バイト列と content-type を返す | 原本取得（#195） | 自動（単体） |
+| T-08 | ルート未存在／smb:// で rootPath 未指定 | `DiscoverAsync` | 例外にせず空列挙で縮退 | 縮退（#195） | 自動（単体） |
+| T-09 | filesystem データソース＋一時 dir に実ファイル | `POST /{id}/sync` | 202・実 `OriginalPath`/`ContentType`・既定属性（confidentiality）付き `RawDocumentFetched` 発行 | 実同期・属性 Map（#195/FR-05） | 自動（エンドポイント） |
+| T-10 | 未対応 SourceType（wiki） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未対応型の縮退（#195） | 自動（エンドポイント） |
 
 ## テストデータ
 
 - 登録リクエスト: `{ name: "社内 Confluence", sourceType: "Confluence", connectionUri: "https://confluence.example.com", config: { spaceKey: "PROJ" } }`（T-01）。
 - 登録リクエスト: `{ name: "Sync テスト", sourceType: "SharePoint", connectionUri: "https://sp.example.com", config: {} }`（T-02）。
-- 同期時に発行される `RawDocumentFetched`（スタブ）: 固定パス `/sample/path/document.docx`、`storage://{dataSourceId}/{fetchId}/raw`、MIME=Word 文書。
-- レスポンス DTO: `DataSourceResponse(Id, Name, SourceType, ConnectionUri, Status)`。
+- 同期時に発行される `RawDocumentFetched`（実コネクタ・#195/IADR-0051）: 実 `OriginalPath`（列挙ファイルの絶対パス）、
+  `StorageUri`（`IObjectStorageClient` の格納 URI。未構成時は決定的 URI へ縮退）、拡張子由来の `ContentType`、
+  データソース既定 ABAC 属性（機密区分フェイルセーフ含む・IADR-0019）、フォルダ名タグ。
+- filesystem データソースのルート指定: `config.rootPath`（優先）または `connectionUri`（`file://`／素のパス）。
+- レスポンス DTO: `DataSourceResponse(Id, Name, SourceType, ConnectionUri, Status)`。`/sync` 応答: `{ fetched, failed, connectorAvailable, message }`。
 
 ## 関連仕様
 
@@ -60,6 +69,8 @@ plan_refs:
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../adr/IADR-0001_document-service-owns-catalog.md`
 - テストコード: `src/Tests/KnowledgePlatform.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
+- コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）
+- 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項
 
