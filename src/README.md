@@ -76,7 +76,7 @@ src/
    - 例外1: 統合テスト（`Tests/`）は検証対象サービスへの ProjectReference を許可する
      （例: IntegrationTests → AuthorizationService.Api）。
    - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）を参照してよい。
-     platform/frontend 側から可変ユニットを参照するのは合成点（`src/features/index.ts`）のみとする。
+     platform/frontend 側から可変ユニットを参照するのは合成点（`platform/frontend/src/features/index.ts`）のみとする。
 
 ## ビルド
 
