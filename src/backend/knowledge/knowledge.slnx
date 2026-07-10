@@ -1,8 +1,4 @@
 <Solution>
-  <Folder Name="/Bff/">
-    <Project Path="Bff/KnowledgePlatform.Bff.Tests/KnowledgePlatform.Bff.Tests.csproj" />
-    <Project Path="Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj" />
-  </Folder>
   <Folder Name="/Services/" />
   <Folder Name="/Services/AiAnalysisService/" />
   <Folder Name="/Services/AiAnalysisService/src/">
@@ -11,19 +7,19 @@
   <Folder Name="/Services/AiAnalysisService/tests/">
     <Project Path="Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/AuthorizationService/" />
-  <Folder Name="/Services/AuthorizationService/src/">
-    <Project Path="Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj" />
-  </Folder>
-  <Folder Name="/Services/AuthorizationService/tests/">
-    <Project Path="Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj" />
-  </Folder>
   <Folder Name="/Services/ConversionService/" />
   <Folder Name="/Services/ConversionService/src/">
     <Project Path="Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj" />
   </Folder>
   <Folder Name="/Services/ConversionService/tests/">
     <Project Path="Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj" />
+  </Folder>
+  <Folder Name="/Services/DashboardService/" />
+  <Folder Name="/Services/DashboardService/src/">
+    <Project Path="Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/DashboardService/tests/">
+    <Project Path="Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/DataSourceService/" />
   <Folder Name="/Services/DataSourceService/src/">
@@ -39,19 +35,19 @@
   <Folder Name="/Services/DocumentService/tests/">
     <Project Path="Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/Services/FeedbackService/" />
+  <Folder Name="/Services/FeedbackService/src/">
+    <Project Path="Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/FeedbackService/tests/">
+    <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
+  </Folder>
   <Folder Name="/Services/IngestionService/" />
   <Folder Name="/Services/IngestionService/src/">
     <Project Path="Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj" />
   </Folder>
   <Folder Name="/Services/IngestionService/tests/">
     <Project Path="Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/LlmGateway/" />
-  <Folder Name="/Services/LlmGateway/src/">
-    <Project Path="Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj" />
-  </Folder>
-  <Folder Name="/Services/LlmGateway/tests/">
-    <Project Path="Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj" />
   </Folder>
   <Folder Name="/Services/RetrievalService/" />
   <Folder Name="/Services/RetrievalService/src/">
@@ -66,24 +62,6 @@
   </Folder>
   <Folder Name="/Services/WikiService/tests/">
     <Project Path="Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/FeedbackService/" />
-  <Folder Name="/Services/FeedbackService/src/">
-    <Project Path="Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj" />
-  </Folder>
-  <Folder Name="/Services/FeedbackService/tests/">
-    <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Services/DashboardService/" />
-  <Folder Name="/Services/DashboardService/src/">
-    <Project Path="Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj" />
-  </Folder>
-  <Folder Name="/Services/DashboardService/tests/">
-    <Project Path="Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj" />
-  </Folder>
-  <Folder Name="/Shared/">
-    <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
-    <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Tests/">
     <Project Path="Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj" />
