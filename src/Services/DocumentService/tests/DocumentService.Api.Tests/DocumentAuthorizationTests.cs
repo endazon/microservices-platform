@@ -59,7 +59,8 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     {
         // 運用者は BFF write ゲート（IADR-0041）と同様に許可される。
         var client = ClientAs("platform-operator");
-        var resp = await client.PostAsJsonAsync("/documents", new { title = "operator-doc" });
+        var resp = await client.PostAsJsonAsync("/documents",
+            new { title = "operator-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 }

@@ -30,7 +30,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task PostDocument_Returns201()
     {
-        var req = new { Title = "テスト文書", OriginalUri = (string?)null, ContentType = (string?)null, Attributes = new Dictionary<string, string>(), Tags = new List<string>() };
+        var req = new { Title = "テスト文書", OriginalUri = (string?)null, ContentType = (string?)null, Attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" }, Tags = new List<string>() };
         var response = await factory.CreateClient().PostAsJsonAsync("/documents", req);
         response.StatusCode.Should().Be(HttpStatusCode.Created);
     }

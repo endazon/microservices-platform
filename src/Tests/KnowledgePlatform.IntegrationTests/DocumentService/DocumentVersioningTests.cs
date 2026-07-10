@@ -35,7 +35,7 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         var create = await _client.PostAsJsonAsync("/documents", new
         {
             title = "版管理テスト",
-            attributes = new { dept = "engineering" },
+            attributes = new { confidentiality = "internal", dept = "engineering" },
             tags = new[] { "v1" }
         });
         create.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -45,14 +45,14 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         // メタデータのみ更新（版 2）
         var patch = await _client.PatchAsJsonAsync($"/documents/{doc.Id}/metadata", new
         {
-            attributes = new { dept = "sales" },
+            attributes = new { confidentiality = "internal", dept = "sales" },
             tags = new[] { "v2" }
         });
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // タイトル更新（版 3）
         await _client.PutAsJsonAsync($"/documents/{doc.Id}",
-            new { title = "改題", tags = new[] { "v3" } });
+            new { title = "改題", attributes = new { confidentiality = "internal" }, tags = new[] { "v3" } });
 
         var versionsResp = await _client.GetAsync($"/documents/{doc.Id}/versions");
         versionsResp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -71,11 +71,11 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
     public async Task Update_WithStaleVersion_Returns409()
     {
         var create = await _client.PostAsJsonAsync("/documents",
-            new { title = "並行制御", tags = new string[] { } });
+            new { title = "並行制御", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
         var doc = await create.Content.ReadFromJsonAsync<DocResponse>();
 
         var conflict = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "x", tags = new string[] { }, expectedVersion = 99 });
+            new { title = "x", attributes = new { confidentiality = "internal" }, tags = new string[] { }, expectedVersion = 99 });
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
