@@ -138,6 +138,11 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化（ADR-0005 / IADR-0026）。NetworkPolicy を多層防御として併用 |
 | 個人情報 / 機微情報 | 文書本文・属性（機密区分）・利用者クレーム（clearance/department） | 文書の機密区分（`confidentiality`）は必須（サーバー側検証・[IADR-0047]）。ABAC で区分×利用者資格を deny-by-default 評価（[IADR-0012]）。高機密本文の外部 LLM への越境は egress ポリシーで遮断（confidential/restricted はセルフホスト固定・[IADR-0025]）。個人情報の専用マスキング/匿名化は現状スコープ外（本システムは社内文書が対象。取り込み対象データの PII 取り扱いは各データソース側の責務） |
 
+> **注（並行 PR 依存）**: 上表が参照する **[IADR-0047]（文書の機密区分のサーバー側検証）は PR #211（Issue #199）で新設**され、
+> 本ブランチ・develop には未取り込み。同様に本仕様書群は [IADR-0048/0049]（PR #212）を参照する箇所がある。
+> これらの ADR 参照はマージ順序に依存する（**#211・#212 → 本 PR #214** を推奨）。`[IADR-XXXX]` は wiki 形式の
+> ショートハンド参照でリンク切れ扱いにはならず、doc-links CI も緑。
+
 ## 秘密情報管理
 
 <!-- 鍵・トークンの保管・ローテーション・コミット禁止 -->
