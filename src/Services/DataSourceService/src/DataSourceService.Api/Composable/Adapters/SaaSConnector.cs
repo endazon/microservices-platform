@@ -70,6 +70,13 @@ public sealed class SaaSConnector(IHttpClientFactory httpFactory, ILogger<SaaSCo
             if (string.IsNullOrEmpty(cursor))
                 break; // 最終ページ
         }
+
+        // 安全上限（MaxPages）に達してもカーソルが尽きていない＝一部ページで打ち切った。サイレント欠落を避け警告する。
+        if (!string.IsNullOrEmpty(cursor))
+            logger.LogWarning(
+                "SaaSConnector: ページング安全上限 {MaxPages} に達したため打ち切りました。一部データが未取得の可能性があります（source {Id}）",
+                MaxPages, source.Id);
+
         return items;
     }
 

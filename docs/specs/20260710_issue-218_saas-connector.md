@@ -1,7 +1,7 @@
 ---
 title: SaaS データソースコネクタ（優先3）（Issue #218）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-01
   - UC-04
@@ -57,8 +57,8 @@ SaaS API は製品ごとに異なるため、**設定駆動の汎用 REST 契約
 
 ## 受け入れ基準（Issue #218）との対応
 
-- [ ] `sourceType=saas` の同期が対象 SaaS（汎用契約）から文書を取得し `RawDocumentFetched` を発行する。
-- [ ] ページング（カーソル）で全ページを集約し、`updatedAt > since` で増分同期する。
-- [ ] レート制限（429）を `Retry-After`／指数バックオフで再試行し、上限超過は継続失敗アラート経路（[[IADR-0051]]）に載る。
-- [ ] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
+- [x] `sourceType=saas` の同期が対象 SaaS（汎用契約）から文書を取得し `RawDocumentFetched` を発行する。
+- [x] ページング（カーソル）で全ページを集約し、`updatedAt > since` で増分同期する。
+- [x] レート制限（429）を `Retry-After`／指数バックオフで再試行し、上限超過は継続失敗アラート経路（[[IADR-0051]]）に載る。
+- [x] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。

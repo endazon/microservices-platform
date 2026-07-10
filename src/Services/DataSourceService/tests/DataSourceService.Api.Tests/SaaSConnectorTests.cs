@@ -87,6 +87,36 @@ public sealed class SaaSConnectorTests
     }
 
     [Fact]
+    public async Task Fetch_RetriesOn429_ThenSucceeds()
+    {
+        var handler = new StubHandler
+        {
+            Responder = (_, idx) => idx == 0
+                ? TooManyRequests()
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                { Content = new StringContent("# Doc", Encoding.UTF8, "text/markdown") },
+        };
+
+        var raw = await Connector(handler).FetchAsync(
+            SaasSource(), new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        Encoding.UTF8.GetString(raw.Bytes).Should().Be("# Doc");
+        handler.Requests.Should().HaveCount(2, "Fetch も 429 の後に再試行して成功する");
+    }
+
+    [Fact]
+    public async Task Fetch_429ExceedsMaxRetries_Throws()
+    {
+        var handler = new StubHandler { Responder = (_, _) => TooManyRequests() };
+        var source = SaasSource(new Dictionary<string, string> { ["maxRetries"] = "1" });
+
+        var act = () => Connector(handler).FetchAsync(
+            source, new SourceItem("x1", DateTimeOffset.UtcNow, 0), CancellationToken.None);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+
+    [Fact]
     public async Task Fetch_ReturnsBytesAndContentType()
     {
         var handler = new StubHandler
