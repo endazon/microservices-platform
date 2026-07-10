@@ -52,6 +52,8 @@ API が異なる（Confluence／MediaWiki／DokuWiki／独自 Wiki 等）。単�
 - **ページ本文（Fetch）**: `GET {ConnectionUri}{contentPath}`（既定 `/api/pages/{id}/content`、`{id}` を置換）。
   応答本文を原本バイトとし、content-type は**応答ヘッダ→既定 `text/markdown`**で決定する。
 - **認証**: `Authorization: Bearer {Config["apiToken"]}`（存在時）。トークンはログ出力しない（将来 Vault へ移行）。
+  かつ、`GET /datasources` 系の API 応答では `Config` 内の秘密キー（`token`/`password`/`secret`/`credential` を
+  含むキー名）の値を `***` にマスクして返す（admin/operator であっても平文露出させない。claude-review #222）。
 - **失敗時**: HTTP 失敗（ネットワーク/4xx/5xx）は Discover/Fetch が**例外を送出**する。オーケストレータ
   （[[IADR-0051]] 決定3a）が discover 失敗として watermark を進めず、継続失敗アラート経路に載せる（UC-04 再試行）。
 - Map（ソースメタ→ABAC 属性/タグ）は既存 `DataSourceSyncService` が担う（コネクタは Discover/Fetch に専念）。
@@ -76,8 +78,9 @@ API が異なる（Confluence／MediaWiki／DokuWiki／独自 Wiki 等）。単�
 
 - 製品固有 Wiki アダプタ（Confluence/MediaWiki/DokuWiki 等）。
 - Webhook（プッシュ更新通知）による低遅延な変更検知。
+- 一覧 API のページネーション対応（大規模 Wiki での一括取得回避）。本 PR は最小契約のため未対応。
 - 実 Wiki 製品に対する統合テスト（実コンテナ前提）。
-- Vault 連携（API トークンの集中管理）。
+- Vault 連携（API トークンの集中管理。現状は `Config` から取得＋GET 応答マスク）。
 
 ## 関連
 

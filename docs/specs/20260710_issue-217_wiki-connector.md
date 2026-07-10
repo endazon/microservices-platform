@@ -1,7 +1,7 @@
 ---
 title: Wiki データソースコネクタ（優先2）（Issue #217）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-01
   - UC-04
@@ -36,7 +36,7 @@ plan_refs:
 
 - 対象:
   - **WikiConnector**（`Composable/Adapters`）: 設定駆動の汎用 Wiki REST 契約（[[IADR-0053]]）でページを列挙・取得する。
-    - Discover: `GET {ConnectionUri}{listPath}` → JSON ページ一覧（`id`/`title`/`updatedAt`/任意 `contentType`）→ `updatedAt > since` で増分。
+    - Discover: `GET {ConnectionUri}{listPath}` → JSON ページ一覧（`id`/`title`/`updatedAt`。content-type は Fetch 応答ヘッダ→既定）→ `updatedAt > since` で増分。
     - Fetch: `GET {ConnectionUri}{contentPath}`（`{id}` を置換）→ 原本バイト＋content-type（Markdown/HTML）。
     - 認証: `Authorization: Bearer {Config["apiToken"]}`（秘密はログ出力しない・将来 Vault）。
   - DI 登録（`AddSingleton<IDataSourceConnector, WikiConnector>` ＋ `AddHttpClient`）。レジストリが `SourceType="wiki"` で解決。
@@ -55,9 +55,9 @@ plan_refs:
 
 ## 受け入れ基準（Issue #217）との対応
 
-- [ ] `sourceType=wiki` の同期が Wiki（汎用契約）から Markdown/HTML を取得し `RawDocumentFetched` を発行する
+- [x] `sourceType=wiki` の同期が Wiki（汎用契約）から Markdown/HTML を取得し `RawDocumentFetched` を発行する
       （既存オーケストレータ `DataSourceSyncService` の Map・発行経路を共用）。
-- [ ] 変更検知（一覧の `updatedAt` を `since` と比較）で増分同期する。
-- [ ] 接続失敗時は Discover が例外を投げ、既存の継続失敗アラート・watermark 非前進（[[IADR-0051]] 決定3a）に載る。
-- [ ] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
-- [ ] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
+- [x] 変更検知（一覧の `updatedAt` を `since` と比較）で増分同期する。
+- [x] 接続失敗時は Discover が例外を投げ、既存の継続失敗アラート・watermark 非前進（[[IADR-0051]] 決定3a）に載る。
+- [x] `IDataSourceConnector` 追加のみでコア改修不要（プラグイン方式）。
+- [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が通る。
