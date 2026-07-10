@@ -146,4 +146,18 @@ ok('planningPopulated は projects/ の実在で判定', () => {
   fs.rmdirSync(base);
 });
 
+// fail-loud の中核: --require-planning かつ未 populate なら main() は exit 1（子プロセスで終了コード検証）。
+ok('--require-planning は未 populate で exit 1（fail-loud）', () => {
+  const { spawnSync } = require('child_process');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'doclinks-noplanning-'));
+  const script = path.join(__dirname, 'check-doc-links.js');
+  const r = spawnSync(process.execPath, [script, '--require-planning'], {
+    env: { ...process.env, DOC_LINKS_ROOT: base }, // planning/projects が無い＝未 populate を再現
+    encoding: 'utf8',
+  });
+  assert.strictEqual(r.status, 1, `未 populate では exit 1 のはずが ${r.status}`);
+  assert.match(String(r.stderr), /require-planning/);
+  fs.rmdirSync(base);
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

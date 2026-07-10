@@ -20,7 +20,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const REPO_ROOT = path.resolve(__dirname, '..');
+// 既定はリポジトリルート。テストで未 populate 状態を再現するため DOC_LINKS_ROOT で上書き可能にする。
+const REPO_ROOT = process.env.DOC_LINKS_ROOT
+  ? path.resolve(process.env.DOC_LINKS_ROOT)
+  : path.resolve(__dirname, '..');
 
 // 参照として実在検査を行う拡張子（仕様書・図・スキーマ等）
 const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio)$/i;
