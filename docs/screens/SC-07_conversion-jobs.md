@@ -56,7 +56,7 @@ related_specs:
 
 - ConversionService: `Foundation/Jobs/ConversionJobStore.cs`、`Foundation/Endpoints/ConversionJobEndpoints.cs`、コンシューマの記録。
 - BFF: `Foundation/Endpoints/ConversionBffEndpoints.cs`。
-- フロント: `frontend/src/features/sc07-conversions/ConversionJobsPage.tsx` / `index.tsx`。
+- フロント: `src/knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx` / `index.tsx`。
 - 契約: `KnowledgePlatform.Shared.Contracts/Dtos/ConversionJobDto.cs`。
 - テスト観点は [tests/SC-07_conversion-jobs.md](../tests/SC-07_conversion-jobs.md)。
 

@@ -185,7 +185,7 @@ flowchart LR
 - **監査ログ**: 本画面（構成情報 API）の閲覧操作は監査ログに記録する（計画 §設計要素 6・SC-11）。
 - **既存実装との整合（解決済み・2026-07-08）**: 運用者ロール **`platform-operator`** と
   ポリシー **`ConfigViewer`**（`platform-admin` または `platform-operator` で許可）を
-  `KnowledgePlatformAuthPolicies`（`src/Shared/.../AuthExtensions.cs`）に新設済み
+  `KnowledgePlatformAuthPolicies`（`src/platform/backend/Shared/.../AuthExtensions.cs`）に新設済み
   （[IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
   構成情報 API（#112, PR #116）は本ポリシーで保護済みで、非権限には 404 で存在秘匿する
   （[IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)）。

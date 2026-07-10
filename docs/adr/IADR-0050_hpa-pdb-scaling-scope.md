@@ -11,7 +11,7 @@ created: 2026-07-10
 updated: 2026-07-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: スケーラビリティ/可用性)"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-otel-prom-loki.md (運用・スケール)"
+  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md (運用・スケール)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008 (k3s: HPA で水平スケール)"
 ---
 

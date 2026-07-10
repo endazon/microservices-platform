@@ -35,7 +35,7 @@ related_specs:
 
 - 含むもの:
   1. [`frontend/vite.config.ts`](../../frontend/vite.config.ts): `test.coverage`（provider=v8・reporter・include/exclude・thresholds）を追加。
-  2. [`frontend/package.json`](../../frontend/package.json): `test:coverage`（`vitest run --coverage`）スクリプトと `@vitest/coverage-v8` を追加。
+  2. [`frontend/package.json`](../../src/package.json): `test:coverage`（`vitest run --coverage`）スクリプトと `@vitest/coverage-v8` を追加。
   3. [`.github/workflows/frontend-tests.yml`](../../.github/workflows/frontend-tests.yml): 単体テスト＋カバレッジ専用ワークフロー（成果物アップロード）を新設。
   4. [`.github/workflows/frontend.yml`](../../.github/workflows/frontend.yml): 既存の「Unit tests」ステップ（`npm run test`）を削除。単体テストは本 PR の `frontend-tests.yml`（`npm run test:coverage`）へ集約し、同一トリガー・同一スイートの二重実行を避ける（AI レビュー指摘への対応）。frontend.yml は typecheck / lint / build / e2e スモークを担う。
   5. [`CLAUDE.md`](../../CLAUDE.md): 「技術スタック別ルール」に実スタック（.NET 10 / React+TS+Vite / CI）の規約を追記。

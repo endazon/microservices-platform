@@ -12,7 +12,7 @@ created: 2026-07-09
 updated: 2026-07-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_abac-authorization-model.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 ---
 
 # IADR-0040: 管理者設定（ABAC）の BFF 透過中継と AdminOnly ゲーティング

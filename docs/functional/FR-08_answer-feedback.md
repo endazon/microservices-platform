@@ -83,7 +83,7 @@ BFF 集約（UC-01 チャット画面向け）:
 
 ## トレーサビリティ
 
-- 実装: `src/Services/FeedbackService/`、`src/Bff/**/FeedbackBffEndpoints.cs`、
-  `src/Shared/**/Dtos/FeedbackDto.cs`、`AiAnswerDto.AnswerId`。
+- 実装: `src/knowledge/backend/Services/FeedbackService/`、`src/platform/backend/Bff/**/FeedbackBffEndpoints.cs`、
+  `src/platform/backend/Shared/**/Dtos/FeedbackDto.cs`、`AiAnswerDto.AnswerId`。
 - テスト: [test spec](../tests/FR-08_answer-feedback.md)。
 - 決定: [IADR-0010](../adr/IADR-0010_feedback-service-and-upsert.md)。

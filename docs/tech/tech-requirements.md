@@ -22,6 +22,11 @@ plan_refs:
 
 > 必須ドキュメント（リポジトリ単位）。本リポジトリの技術要件を定める。雛形は `docs/templates/tech_requirements_template.md`。
 > 確定判断は実装ADR（`docs/adr/`）に残す。単一情報源は各設定ファイル（`src/Directory.Build.props` 等）。
+>
+> **リポジトリの位置づけ**: 主たる成果物は**マイクロサービスプラットフォーム基盤（platform ユニット）**。
+> KnowledgePlatform（knowledge ユニット）は基盤に付随する必須の可変機能セットである
+> （issue #209 / [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)。
+> フォルダ構成・依存規則は [`src/README.md`](../../src/README.md)）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -40,8 +45,8 @@ plan_refs:
 | ランタイム（バックエンド） | .NET | 10（`net10.0`） | [[IADR-0048]]。`global.json` は SDK 8.0.0 + `rollForward: latestMajor`。計画 fixed（.NET 8）との乖離を記録済み |
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal APIs） | .NET 10 同梱 | メッセージング MassTransit（RabbitMQ）、サービス間 HTTP は Refit、ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
-| 言語（フロントエンド） | TypeScript | 5.6 | `frontend/`。Node は CI と揃え 22 |
-| フレームワーク（フロントエンド） | React + Vite | React 18 / Vite 5（ESM） | SPA。基盤(`foundation/`)/画面(`features/`)分離（[[IADR-0033]]）。BFF は `/bff/*` 経由 |
+| 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/`（npm workspaces ルート = `src/`）。Node は CI と揃え 22 |
+| フレームワーク（フロントエンド） | React + Vite | React 18 / Vite 5（ESM） | SPA。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0033]]・[[IADR-0056]]）。BFF は `/bff/*` 経由 |
 | 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | ADR-0004。SPA は public client `spa-web`（`oidc-client-ts`） |
 | データストア（業務） | PostgreSQL | — | DB per Service（ADR-0002）。jsonb 属性は EF Core の ValueComparer で content 比較（#184） |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
@@ -90,8 +95,9 @@ flowchart TB
 
 ## 開発・ビルド・テスト・デプロイ
 
-- **バックエンド**: `dotnet build` / `dotnet test`（xUnit）/ `dotnet format --verify-no-changes`（CI lint ゲート）。
-  ソリューションは [`src/KnowledgePlatform.slnx`](../../src/KnowledgePlatform.slnx)。
+- **バックエンド**: `dotnet build` / `dotnet test`（xUnit）/ `dotnet format --verify-no-changes`（CI lint ゲート）を
+  ユニット別ソリューション（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) /
+  [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)）毎に実行する。
 - **フロントエンド**: `npm run lint`（ESLint flat config）/ `npm run typecheck` / `npm run test`（Vitest）/
   `npm run test:coverage`（v8・しきい値ラチェット）/ E2E は Playwright。
 - **CI**: バックエンド [`ci.yml`](../../.github/workflows/ci.yml)、フロント [`frontend.yml`](../../.github/workflows/frontend.yml) /

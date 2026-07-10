@@ -19,8 +19,8 @@ related_specs:
 
 # テスト仕様書: 検索結果一覧（SC-02）
 
-対象: `frontend/src/features/sc02-results/SearchResultsPage.tsx`
-テスト: `frontend/src/features/sc02-results/SearchResultsPage.test.tsx`（Vitest + Testing Library）
+対象: `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx`
+テスト: `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.test.tsx`（Vitest + Testing Library）
 
 ## テスト観点と受け入れ基準の対応
 

@@ -20,8 +20,8 @@ related_specs:
 
 ## バックエンド（BFF・xUnit）
 
-対象: `src/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DocumentBffEndpoints.cs`（書き込み）
-テスト: `src/Bff/KnowledgePlatform.Bff.Tests/BffDocumentWriteEndpointTests.cs`
+対象: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DocumentBffEndpoints.cs`（書き込み）
+テスト: `src/platform/backend/Bff/KnowledgePlatform.Bff.Tests/BffDocumentWriteEndpointTests.cs`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
@@ -39,8 +39,8 @@ related_specs:
 
 ## フロントエンド（Vitest + Testing Library）
 
-対象: `frontend/src/features/sc05-documents/DocumentManagementPage.tsx`
-テスト: `frontend/src/features/sc05-documents/DocumentManagementPage.test.tsx`
+対象: `src/knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx`
+テスト: `src/knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.test.tsx`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
@@ -71,5 +71,5 @@ related_specs:
 
 ## 実行
 
-- `dotnet test src/Bff/KnowledgePlatform.Bff.Tests --filter BffDocumentWriteEndpointTests`
+- `dotnet test src/platform/backend/Bff/KnowledgePlatform.Bff.Tests --filter BffDocumentWriteEndpointTests`
 - `npm run test -- src/features/sc05-documents` / `npm run test:coverage`

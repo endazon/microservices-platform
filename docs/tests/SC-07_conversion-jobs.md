@@ -80,6 +80,6 @@ related_specs:
 
 ## 実行
 
-- `dotnet test src/Services/ConversionService/tests/ConversionService.Worker.Tests`
-- `dotnet test src/Bff/KnowledgePlatform.Bff.Tests --filter BffConversionEndpointTests`
+- `dotnet test src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
+- `dotnet test src/platform/backend/Bff/KnowledgePlatform.Bff.Tests --filter BffConversionEndpointTests`
 - `npm run test -- src/features/sc07-conversions` / `npm run test:coverage`

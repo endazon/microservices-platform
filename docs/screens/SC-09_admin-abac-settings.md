@@ -64,8 +64,8 @@ related_specs:
 
 ## 実装
 
-- BFF: `src/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/AuthzBffEndpoints.cs`
-- フロント: `frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx` / `index.tsx`
+- BFF: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/AuthzBffEndpoints.cs`
+- フロント: `src/knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx` / `index.tsx`
 - 契約: `KnowledgePlatform.Shared.Contracts/Dtos/AbacManagementDto.cs`
 - foundation: `ApiError.details`（400/409 の詳細抽出）
 - テスト観点は [tests/SC-09_admin-abac-settings.md](../tests/SC-09_admin-abac-settings.md)。

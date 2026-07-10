@@ -123,32 +123,34 @@
 
 ## 技術スタック別ルール
 
-本リポジトリはマイクロサービスのモノレポである。バックエンド（.NET）とフロントエンド（SPA）で
-規約が異なる。共通設定の単一情報源（`Directory.Build.props` / `Directory.Packages.props` /
-`vite.config.ts` 等）を尊重し、個別プロジェクトで上書きしない。
+本リポジトリはマイクロサービスのモノレポである。**主たる成果物は platform ユニット（基盤）であり、
+knowledge ユニット（ナレッジ機能）は付随する可変機能セット**である（issue #209 / IADR-0056）。
+`src/<unit>/{backend,frontend}` のユニット構成・依存規則・submodule 追加手順は
+[`src/README.md`](src/README.md) を参照。共通設定の単一情報源（`src/Directory.Build.props` /
+`src/Directory.Packages.props` / `src/vitest.config.ts` 等）を尊重し、個別プロジェクトで上書きしない。
 
-### C# / .NET（バックエンド `src/`）
+### C# / .NET（バックエンド `src/<unit>/backend/`）
 
 - **ターゲット**: `.NET 10` / `C# 13`（`LangVersion 13`）。設定の単一情報源は [`src/Directory.Build.props`](src/Directory.Build.props)。個別 `.csproj` で `TargetFramework` を上書きしない。`global.json` は SDK `8.0.0` + `rollForward: latestMajor`（新しい SDK でビルド可）。
 - **言語設定**: `Nullable` / `ImplicitUsings` は有効（props で既定 ON）。null 許容警告を握り潰さない。
 - **パッケージ**: Central Package Management。バージョンは [`src/Directory.Packages.props`](src/Directory.Packages.props) に集約し、`.csproj` の `PackageReference` にはバージョンを書かない。
-- **ソリューション**: 新形式 `.slnx`（[`src/KnowledgePlatform.slnx`](src/KnowledgePlatform.slnx)）。プロジェクト追加時は slnx に登録する。
+- **ソリューション**: 新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない）。プロジェクト追加時は所属ユニットの slnx に登録する。
 - **命名規約**: 公開メンバは PascalCase、ローカル変数・引数は camelCase、private フィールドは `_camelCase`。
-- **ビルド/テスト**: `dotnet build` / `dotnet test` が通ること。テストは **xUnit**。受け入れ基準は `[Fact]`/`[Theory]` に写像する。
-- **フォーマット**: `dotnet format` で整形（CI の `lint` ジョブが `--verify-no-changes` を強制）。
-- **サービス境界**: サービス間は直接参照せず、`Shared.Contracts` の契約と HTTP（Refit）/ メッセージング（MassTransit）で疎結合に保つ。
+- **ビルド/テスト**: `dotnet build <unit>/backend/backend.slnx` / `dotnet test <unit>/backend/backend.slnx` が両ユニットで通ること。テストは **xUnit**。受け入れ基準は `[Fact]`/`[Theory]` に写像する。
+- **フォーマット**: `dotnet format <slnx>` で整形（CI の `lint` ジョブが両ユニットに `--verify-no-changes` を強制）。
+- **サービス境界**: サービス間は直接参照せず、`Shared.Contracts` の契約と HTTP（Refit）/ メッセージング（MassTransit）で疎結合に保つ。ユニット外参照は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可（platform → 可変ユニットは禁止）。
 
-### TypeScript / React（フロントエンド `frontend/`）
+### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 
 - **スタック**: React 18 + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。
-- **構成**: `src/foundation/`（config/auth/api/routing/ui の基盤）と `src/features/`（画面 feature）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md)）。import はエイリアス `@foundation` / `@features` を使う。
-- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。接続先はビルドに焼き込まず実行時 config（`public/config.js`）で注入する。フロントから各サービスを直接叩かない。
+- **構成**: npm workspaces（ルート = `src/`、`workspaces: ["*/frontend"]`）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
+- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。フロントから各サービスを直接叩かない。
 - **認証**: `oidc-client-ts`（Authorization Code + PKCE）で Keycloak public client `spa-web` を用いる。トークンやシークレットをコードに埋め込まない。
-- **Lint / 型**: ESLint flat config（[`frontend/eslint.config.js`](frontend/eslint.config.js)）+ typescript-eslint。`npm run lint` / `npm run typecheck` が通ること。
+- **Lint / 型**: ESLint flat config（[`src/eslint.config.js`](src/eslint.config.js)）+ typescript-eslint。`src/` で `npm run lint` / `npm run typecheck` が通ること。
 - **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。テストは実装と同居し `*.{test,spec}.{ts,tsx}`。受け入れ基準をテストケースへ写像する。
-- **カバレッジ**: `npm run test:coverage`（v8 provider）。`vite.config.ts` の `coverage.thresholds` は**回帰防止のラチェット**（現状は SPA 基盤時点の実測床）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
+- **カバレッジ**: `npm run test:coverage`（v8 provider）。[`src/vitest.config.ts`](src/vitest.config.ts) の `coverage.thresholds` は**回帰防止のラチェット**（全ユニット横断で計測）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
 
 ### CI（GitHub Actions）
 
-- バックエンドは [`ci.yml`](.github/workflows/ci.yml)、フロントは [`frontend.yml`](.github/workflows/frontend.yml)（typecheck/lint/build/e2e）と [`frontend-tests.yml`](.github/workflows/frontend-tests.yml)（単体テスト＋カバレッジ）に分離する。フロント用ジョブは `paths: ["frontend/**", ...]` で `frontend/` 変更時のみ起動し、両スタックの CI を独立させる。
+- バックエンドは [`ci.yml`](.github/workflows/ci.yml)（ユニット毎に restore/build/test/format）、フロントは [`frontend.yml`](.github/workflows/frontend.yml)（typecheck/lint/build/e2e）と [`frontend-tests.yml`](.github/workflows/frontend-tests.yml)（単体テスト＋カバレッジ）に分離する。フロント用ジョブは `paths: ["src/*/frontend/**", ...]` で各ユニットの frontend 変更時のみ起動し、両スタックの CI を独立させる。
 - `.github/workflows/` は GitHub App 権限では編集不可。ワークフロー変更はローカル（`workflow` スコープを持つ認証）でコミット/プッシュする。

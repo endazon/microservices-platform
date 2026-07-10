@@ -42,7 +42,7 @@ related_specs:
 
 可変部品が依存してよい基盤側の資産は以下に限る。
 
-### 1.1 契約（`src/Shared/KnowledgePlatform.Shared.Contracts`）
+### 1.1 契約（`src/platform/backend/Shared/KnowledgePlatform.Shared.Contracts`）
 
 - **イベント契約型**（`Events/`）: 段の入出力。**後方互換の追加のみ許可**（破壊的変更は禁止。
   変更が必要なら新 ADR）。新イベント型の追加は契約追加として PR レビュー＋`pipeline.json` の
@@ -53,7 +53,7 @@ related_specs:
 - **同期 DTO**: サービス間同期 API の契約。経路自体は固定（[区分表 §1](./composability-classification.md)）
   であり、契約は [docs/api/openapi.yaml](../api/openapi.yaml) でバージョン管理される。
 
-### 1.2 横断基盤（`src/Shared/KnowledgePlatform.Shared.Infrastructure`）
+### 1.2 横断基盤（`src/platform/backend/Shared/KnowledgePlatform.Shared.Infrastructure`）
 
 | 提供物 | 内容 | 可変部品からの使い方 |
 | --- | --- | --- |
@@ -133,13 +133,13 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 
 ### 2.5 新サービスユニットの追加
 
-原典は [src/Services/README.md](../../src/Services/README.md)（レイアウト・依存規則・サブモジュール手順）。要点:
+原典は [src/knowledge/backend/Services/README.md](../../src/README.md)（レイアウト・依存規則・サブモジュール手順）。要点:
 
-1. `src/Services/<Name>/`（`src/` + `tests/`）を規約レイアウトで作成し、各プロジェクト内を
+1. `src/knowledge/backend/Services/<Name>/`（`src/` + `tests/`）を規約レイアウトで作成し、各プロジェクト内を
    `Foundation/` / `Composable/` に二分する（IADR-0027。空フォルダは作らない）。
 2. `src/KnowledgePlatform.slnx` に csproj を登録する。ビルド設定・パッケージ版は
    `Directory.Build.props` / `Directory.Packages.props` の中央管理に従う（csproj に `Version=` を書かない）。
-3. ユニット外参照は `src/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
+3. ユニット外参照は `src/platform/backend/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
    イベント（Shared.Contracts）に限る。
 4. デプロイ: Helm チャートへ Deployment を追加し、段をホストするなら `pipelineSteps: true` を設定する。
 5. 同期 API の**新経路**（どのサービスがどの API に依存するか）は固定部の変更であり、
@@ -149,7 +149,7 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 
 原典は [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)。要点:
 
-1. `frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は `src/foundation/`
+1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は `src/foundation/`
    （config/auth/api/routing/ui）であり、feature から基盤へは import エイリアス
    `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
 2. feature は `FeatureModule`（`routes`）を公開し、`src/features/index.ts` へ 1 行登録する。

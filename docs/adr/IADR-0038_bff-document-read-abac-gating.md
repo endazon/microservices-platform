@@ -15,7 +15,7 @@ created: 2026-07-09
 updated: 2026-07-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_abac-authorization-model.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 ---
 
 # IADR-0038: 文書閲覧の BFF 側 ABAC ゲーティングと本文サーバサイド取得

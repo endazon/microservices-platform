@@ -14,7 +14,7 @@ created: 2026-07-08
 updated: 2026-07-08
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_abac-authorization-model.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 ---
 
 # IADR-0035: フロントエンドのロールベース・ナビゲーションと存在秘匿
