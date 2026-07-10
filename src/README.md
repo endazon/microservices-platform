@@ -25,6 +25,7 @@ src/
   knowledge/                   ← ナレッジ機能ユニット（付随する必須の可変機能）
     backend/
       backend.slnx
+      Shared/                  ←   ユニット固有契約（Knowledge.Contracts = ドメインイベント。IADR-0059）
       Services/                ←   Document / DataSource / Conversion / Ingestion / Retrieval /
                                ←   AiAnalysis / Wiki / Feedback / Dashboard
       Tests/                   ←   KnowledgePlatform.IntegrationTests（ユニット横断の統合テスト）
@@ -67,8 +68,10 @@ src/
 1. **`Foundation/` は `Composable/` に依存しない**。可変実装へのアクセスは必ず
    `Foundation/Ports/` の抽象を介し、実装の選択・束ねは `Program.cs`（合成ルート）で行う。
    （`Foundation/` 配下に `using *.Composable.*` が現れたら規約違反。）
-2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント
-   （`platform/backend/Shared/KnowledgePlatform.Shared.Contracts/Events/`）経由のみとする。
+2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント経由のみとする。
+   イベント契約はそのユニットの契約プロジェクト `<unit>/backend/Shared/<Unit>.Contracts/Events/`
+   に置く（knowledge ユニットは `knowledge/backend/Shared/Knowledge.Contracts/Events/`。
+   platform 横断の共通契約は `platform/backend/Shared/KnowledgePlatform.Shared.Contracts/`。IADR-0059）。
 3. **ユニット外への参照は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可**する。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
