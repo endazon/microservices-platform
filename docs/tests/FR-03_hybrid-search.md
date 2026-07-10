@@ -69,5 +69,6 @@ plan_refs:
 ## 未決事項
 
 - 実 Qdrant を用いた全文 Match・full-text index 未作成時の graceful degradation は統合テスト（IADR-0014 で確認予定）で別途検証する。
-- E2E（実埋め込み・実ベクトルDB）での精度/p95 検証は負荷試験タスクで別途実施。
+- E2E（実埋め込み・実ベクトルDB）での精度/p95 検証は負荷試験タスク（**#196**）で別途実施。ハーネスは
+  `perf/k6/`（`search-load.js` p95<1500）、テスト仕様は `NFR-01_performance-load-test.md`。実測は環境準備後。
 </content>
