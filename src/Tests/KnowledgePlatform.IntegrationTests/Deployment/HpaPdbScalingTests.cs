@@ -36,6 +36,12 @@ public sealed class HpaPdbScalingTests
             Regex.IsMatch(scaling, $@"(?m)^\s*-\s*{Regex.Escape(worker)}\s*$").Should().BeFalse(
                 $"IADR-0050: ワーカー {worker} は CPU-HPA 対象外（scaling.services に含めない）");
 
+        // claude-review #213: 想定外の対象（11 件目）が紛れ込んでいないよう、対象リストの総数も固定する。
+        // scaling ブロック内の唯一のリストは services のため、`- <name>` 行数＝対象サービス数。
+        var listItemCount = Regex.Matches(scaling, @"(?m)^\s*-\s*[a-z]").Count;
+        listItemCount.Should().Be(ExpectedScalingServices.Length,
+            $"#197/IADR-0050: HPA/PDB 対象は正確に {ExpectedScalingServices.Length} 件（想定外の追加を検知する）");
+
         scaling.Should().MatchRegex(@"minReplicas:\s*2", "#197: 要求処理系は minReplicas>=2");
         scaling.Should().MatchRegex(@"minAvailable:\s*1", "#197: PDB は minAvailable>=1");
     }
