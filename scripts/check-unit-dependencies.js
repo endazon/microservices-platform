@@ -45,10 +45,11 @@ function isSharedProject(relPath) {
   return /^src\/platform\/backend\/Shared\//.test(toPosix(relPath));
 }
 
-// csproj がテストプロジェクトか（*.Tests.csproj もしくは Tests/ 配下）。統合テスト例外の判定に使う。
+// csproj がテストプロジェクトか（*.Tests.csproj もしくは tests/ 配下）。統合テスト例外の判定に使う。
+// 大文字小文字は問わない（Tests/ / tests/ / TESTS/ いずれも許容）。
 function isTestsProject(relPath) {
   const p = toPosix(relPath);
-  return /\.Tests\.csproj$/i.test(p) || /(^|\/)[Tt]ests\//.test(p);
+  return /\.Tests\.csproj$/i.test(p) || /(^|\/)tests\//i.test(p);
 }
 
 // ProjectReference 1 件を分類する。{ ok: boolean, reason: string }。
@@ -81,7 +82,10 @@ function classifyProjectReference(fromCsproj, toCsproj) {
 function scanFoundationComposable(relPath, content) {
   if (!/(^|\/)Foundation\//.test(toPosix(relPath))) return [];
   const violations = [];
-  const re = /^\s*(?:global\s+)?using\s+(?:static\s+)?([A-Za-z_][\w.]*\.Composable(?:\.[\w.]+)?)\s*;/gm;
+  // `using X.Composable...;` / `using static X.Composable...;` / `using Alias = X.Composable...;`
+  // （global 前置・static 修飾・エイリアス束縛のいずれの形でも Composable 名前空間参照を検出する）。
+  const re =
+    /^\s*(?:global\s+)?using\s+(?:static\s+)?(?:[A-Za-z_]\w*\s*=\s*)?([A-Za-z_][\w.]*\.Composable(?:\.[\w.]+)?)\s*;/gm;
   let m;
   while ((m = re.exec(content))) violations.push(m[0].trim());
   return violations;
@@ -196,6 +200,12 @@ function selfTest() {
     pass: scanFoundationComposable(
       'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Program.cs',
       'using DocumentService.Api.Composable.Steps;\n').length === 0,
+  });
+  cases.push({
+    name: 'Foundation 配下のエイリアス using .Composable も検出',
+    pass: scanFoundationComposable(
+      'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Foundation/X.cs',
+      'using Step = DocumentService.Api.Composable.Steps.SomeStep;\n').length === 1,
   });
 
   let failed = 0;

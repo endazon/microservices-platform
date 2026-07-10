@@ -43,6 +43,11 @@ related_specs:
 - 対象外:
   - 名前空間・アセンブリ名の改名（#227）。本検査は現行命名（`KnowledgePlatform.Shared.*`）のまま参照**方向**のみを見る。
   - 契約の階層化・BFF 合成（#229）。分離後は許可参照先の更新が要る（#229 側で対応）。
+  - **`src/README.md` §依存規則の「規則2」（`Composable/Steps/` の段どうしは直接参照せずイベント経由のみ）**。
+    Issue #231 の受け入れ基準（platform→可変ユニット／Foundation→Composable／合成点以外の `@knowledge` import の 3 点）に
+    規則2は含まれないため本検査の対象外とする。段（Step）は同一名前空間 `*.Composable.Steps` に属し、相互参照は
+    `using` を伴わない同一名前空間の型利用になり得るため、`using` 走査ベースの本方式では機械検出が難しい（NetArchTest 等の
+    型参照解析が必要）。必要になった時点で別途フォローアップ（[[IADR-0057]] のトレードオフの範囲）とする。
 
 ## 検査ルール（src/README.md §依存規則の写像）
 

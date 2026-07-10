@@ -150,8 +150,9 @@ ok('isSharedProject は platform/backend/Shared 配下のみ true', () => {
   assert.strictEqual(isSharedProject(PLATFORM_AUTH), false);
 });
 
-ok('isTestsProject は *.Tests.csproj / Tests/ を検出', () => {
+ok('isTestsProject は *.Tests.csproj / tests/（大文字小文字問わず）を検出', () => {
   assert.strictEqual(isTestsProject(INTEGRATION_TESTS), true);
+  assert.strictEqual(isTestsProject('src/knowledge/backend/Services/X/tests/X.Api.Tests/X.Api.Tests.csproj'), true);
   assert.strictEqual(isTestsProject(KNOWLEDGE_DOC), false);
 });
 
@@ -183,6 +184,18 @@ ok('Foundation 外 / Composable を含まない using は無視', () => {
   assert.strictEqual(
     scanFoundationComposable('src/.../Program.cs', 'using DocumentService.Api.Composable.Steps;\n').length,
     0,
+  );
+});
+
+ok('Foundation 配下のエイリアス / static using .Composable も検出', () => {
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Foundation/X.cs', 'using Step = DocumentService.Api.Composable.Steps.SomeStep;\n')
+      .length,
+    1,
+  );
+  assert.strictEqual(
+    scanFoundationComposable('src/.../Foundation/X.cs', 'using static DocumentService.Api.Composable.Helpers;\n').length,
+    1,
   );
 });
 
