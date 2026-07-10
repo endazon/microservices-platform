@@ -71,6 +71,34 @@ drift:
     # Envoy を終了させて Job を完了させる（drift-postsync-job.yaml 参照）。起動待ちは --retry で吸収する。
     image: curlimages/curl:8.11.1
 
+# NFR (#197): 水平スケール（HPA）と可用性（PDB）。計画 NFR「HPA で水平スケール」「可用性 99.9%」の実現手段。
+# metrics-server が必要（k3s は既定同梱）。対象はステートレスな要求処理サービス（下記 services リスト）。
+# 段階適用: まず要求処理系を minReplicas:2 + PDB とする。キュー駆動ワーカー（conversion/ingestion=worker:true）は
+# 競合コンシューマで水平化可能だが CPU HPA が不適なため対象外とし、負荷実測（#196）後に個別方針で順次追加する。
+# HPA 対象サービスは Deployment に静的 replicas を持たず HPA が所有する（deployment.yaml 参照）。
+scaling:
+  enabled: true
+  # HPA/PDB を適用するサービス（Deployment 名 = <key>-service）。ワーカー（conversion/ingestion）は含めない。
+  services:
+    - bff
+    - retrieval
+    - authorization
+    - aianalysis
+    - document
+    - datasource
+    - dashboard
+    - feedback
+    - wiki
+    - llmgateway
+  hpa:
+    minReplicas: 2
+    maxReplicas: 4
+    # requests.cpu に対する平均使用率の目標。超過でスケールアウトする。
+    targetCPUUtilizationPercentage: 70
+  pdb:
+    # 自発的中断時に維持する最小可用レプリカ数（minReplicas:2 なら 1 台までの同時退避を許容）。
+    minAvailable: 1
+
 services:
   document:
     enabled: true

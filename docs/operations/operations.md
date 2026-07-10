@@ -228,6 +228,50 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。
   - モデル差し替え（例 ruri-v3→BGE-M3）時も、当該コレクションを作り直し同手順で再索引する。
 
+## 可用性・水平スケール（HPA / PDB）（NFR / #197）
+
+計画 NFR「スケーラビリティ: HPA で水平スケール」「可用性: 99.9% 以上（月間ダウンタイム約 43 分以内）」の
+実現手段を Helm チャート（`deploy/helm/knowledge-platform/`）の構成で提供する。適用は GitOps（ArgoCD）
+経由で、構成変更のみで完結する。
+
+### 実現手段
+
+- **HorizontalPodAutoscaler（`templates/hpa.yaml`）**: CPU 使用率（`requests.cpu` に対する平均）で `minReplicas`〜
+  `maxReplicas` に自動スケールする。metrics-server が必要（k3s は既定同梱）。既定は min=2 / max=4 /
+  目標 CPU 70%（`values.yaml` の `scaling.hpa`）。
+- **PodDisruptionBudget（`templates/pdb.yaml`）**: 自発的中断（ノードドレイン・ローリング更新）時に
+  `minAvailable`（既定 1）レプリカを維持し、瞬断を防ぐ。
+- **レプリカ所有権**: HPA 対象サービスは Deployment に静的 `replicas` を持たず HPA が所有する
+  （`deployment.yaml` は `scaling.services` に含まれるサービスの `replicas` を出力しない。値の綱引きを避ける）。
+- **ヘルスプローブ / ロールアウト**: 各 HTTP サービスは `readinessProbe`（`/health/ready`）・`livenessProbe`
+  （`/health/live`）を持ち、Deployment 既定の RollingUpdate（maxUnavailable による無停止更新）と PDB で
+  更新時の可用性を担保する。
+
+### 適用対象（段階適用）
+
+| 区分 | サービス | HPA/PDB |
+| --- | --- | --- |
+| 要求処理（ステートレス） | bff / retrieval / authorization / aianalysis / document / datasource / dashboard / feedback / wiki / llmgateway | **有効**（min 2 / max 4 / PDB minAvailable 1） |
+| キュー駆動ワーカー | conversion / ingestion（`worker: true`） | 対象外（replicas 1 のまま） |
+| ステートフル | minio / wikijs / postgres / qdrant | 対象外（各自の可用性方針） |
+
+- ワーカー（conversion/ingestion）は RabbitMQ 競合コンシューマで水平化自体は可能だが、CPU ベース HPA が
+  不適（キュー滞留がスケール指標）なため本段では対象外とし、負荷実測（#196）後に KEDA 等のキュー長ベース
+  スケールを別途検討する。
+- 対象の増減は `values.yaml` の `scaling.services` リストの変更（＋ GitOps 適用）のみで行う。
+
+### 前提・確認事項
+
+- **metrics-server** がクラスタに導入済みであること（HPA の CPU 指標に必須。k3s は既定同梱）。
+- 全対象サービスに `resources.requests.cpu` が定義済みであること（HPA の利用率計算の分母。定義済み）。
+- **Istio サイドカーの CPU 算入（既知の考慮事項）**: 本チャートは `mesh.enabled: true`（Envoy サイドカー自動注入）で、
+  HPA の `metrics` は `type: Resource`（Pod 内**全コンテナ横断**の平均使用率）である。そのため Envoy サイドカーの
+  CPU request/使用量も利用率計算の分母・分子に混入し、目標 70% の判定精度がアプリコンテナ実使用率からずれ得る
+  （過小/過大スケール）。必要に応じて `autoscaling/v2` の `ContainerResource` 型でアプリコンテナ（`<name>-service`）
+  のみを対象にする選択肢がある。この妥当性は負荷試験（#196）の確認項目とし、乖離が大きければ `ContainerResource`
+  への切替を検討する（[IADR-0050] フォローアップ）。
+- 実クラスタでの HPA スケール挙動・目標 CPU 値の妥当性は負荷試験（#196）で検証し、`scaling.hpa` を調整する。
+
 ## 監視・アラート
 
 | 監視対象 | 指標 | 閾値 | 通知先 |
