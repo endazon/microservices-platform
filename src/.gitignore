@@ -5,8 +5,8 @@ coverage
 .vite
 *.tsbuildinfo
 
-# Playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
+# Playwright（各ユニットの frontend/ 配下で生成されるため非アンカーで指定）
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
