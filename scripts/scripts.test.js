@@ -119,4 +119,31 @@ ok('未一致コミットは素通し', () => {
   assert.deepStrictEqual(applyOverride(c), c);
 });
 
+// --- check-doc-links: planning submodule の扱い（Issue #232） -----------------
+
+const { parseArgs: parseDocLinkArgs, planningPopulated } = require('./check-doc-links.js');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+ok('parseArgs は --require-planning を解釈', () => {
+  assert.strictEqual(parseDocLinkArgs([]).requirePlanning, false);
+  assert.strictEqual(parseDocLinkArgs(['--require-planning']).requirePlanning, true);
+  assert.strictEqual(parseDocLinkArgs(['--dir', 'docs']).dir, 'docs');
+});
+
+ok('planningPopulated は projects/ の実在で判定', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'doclinks-'));
+  // 未 populate（空プレースホルダ）: false
+  fs.mkdirSync(path.join(base, 'planning'), { recursive: true });
+  assert.strictEqual(planningPopulated(base), false);
+  // populate 済み（projects/ あり）: true
+  fs.mkdirSync(path.join(base, 'planning', 'projects'), { recursive: true });
+  assert.strictEqual(planningPopulated(base), true);
+  // 後片付け（非再帰）
+  fs.rmdirSync(path.join(base, 'planning', 'projects'));
+  fs.rmdirSync(path.join(base, 'planning'));
+  fs.rmdirSync(base);
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

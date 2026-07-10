@@ -51,6 +51,8 @@ jobs:
 
   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
+  # 注: private な planning サブモジュール配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
+  #     planning 込みの検査は doc-links-planning.yml（夜間・トークン付き）が担う（Issue #232 / IADR-0058）。
   doc-links:
     runs-on: ubuntu-latest
     steps:
