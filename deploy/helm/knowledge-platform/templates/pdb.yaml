@@ -1,0 +1,22 @@
+# NFR (#197): PodDisruptionBudget — 自発的中断（ノードドレイン・ローリング更新）時に最小可用レプリカを維持し、
+# 可用性 99.9% の瞬断を防ぐ。対象は HPA 対象と同じ .Values.scaling.services（minReplicas>=2 前提）。
+# 単一レプリカのサービスには PDB を付与しない（minAvailable:1 が単一 Pod ではノードドレインを恒久ブロックするため）。
+{{- if .Values.scaling.enabled }}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.enabled (has $name $.Values.scaling.services) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}-service
+  labels:
+    app: {{ $name }}-service
+    chart: {{ $.Chart.Name }}-{{ $.Chart.Version }}
+spec:
+  minAvailable: {{ $.Values.scaling.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ $name }}-service
+{{- end }}
+{{- end }}
+{{- end }}

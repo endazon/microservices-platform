@@ -57,11 +57,16 @@ plan_refs:
 | T-16 | 実 PostgreSQL | `PUT` に `expectedVersion=99` | 409 Conflict | 並行制御 | 自動（統合） |
 | T-17 | 実 PostgreSQL / RabbitMQ | `DocumentNormalized` を発行 | カタログに `status=normalized`・タイトル/URI 一致で登録 | 正規化取込 | 自動（統合） |
 | T-18 | 実 PostgreSQL / RabbitMQ | 同一 `DocumentId` を 2 回発行 | 件数 1 件・タイトルが更新（冪等 upsert） | 正規化取込冪等 | 自動（統合） |
+| T-19 | 起動済み API（admin） | `POST /documents` に `attributes` 未指定／`confidentiality` 欠落 | 400 BadRequest | 機密区分必須（UC-03/SC-05, #199） | 自動（エンドポイント） |
+| T-20 | 起動済み API（admin） | `POST /documents` に未知の `confidentiality`（例 `secret`・空・大文字） | 400 BadRequest | 機密区分の正準値検証（#199） | 自動（エンドポイント） |
+| T-21 | 起動済み API（admin） | `POST /documents` に正準値 `public`/`internal`/`confidential`/`restricted` | 201・属性が保存される | 機密区分受理（#199） | 自動（エンドポイント） |
+| T-22 | 作成済み文書 | `PUT`／`PATCH metadata` に `confidentiality` 欠落 | 400／正準値なら 200 | 更新経路も必須検証（#199） | 自動（エンドポイント） |
+| T-23 | — | `DocumentAttributes.ValidateConfidentiality`（null／欠落／未知／正準値） | 欠落・未知は NG、正準値は OK | 検証ヘルパー単体（#199） | 自動（単体） |
 
 対応テスト実装:
 
-- 単体（ドメイン）: `src/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentVersioningTests.cs`（T-01〜T-05）
-- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11）
+- 単体（ドメイン）: `src/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
+- 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）
 - 統合（実 PostgreSQL）: `src/Tests/KnowledgePlatform.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
 

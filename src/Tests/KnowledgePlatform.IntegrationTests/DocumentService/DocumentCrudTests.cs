@@ -38,7 +38,7 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
             title = "統合テスト文書",
             originalUri = "https://example.com/doc.pdf",
             contentType = "application/pdf",
-            attributes = new { department = "engineering" },
+            attributes = new { confidentiality = "internal", department = "engineering" },
             tags = new[] { "test", "integration" }
         };
 
@@ -62,8 +62,8 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     [DockerFact]
     public async Task ListDocuments_ReturnsAll()
     {
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", tags = new string[] { } });
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", tags = new string[] { } });
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
 
         var resp = await _client.GetAsync("/documents");
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -77,11 +77,11 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
     public async Task UpdateDocument_ChangesTitle()
     {
         var createResp = await _client.PostAsJsonAsync("/documents",
-            new { title = "元タイトル", tags = new string[] { } });
+            new { title = "元タイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
         var doc = await createResp.Content.ReadFromJsonAsync<DocumentResponse>();
 
         var updateResp = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "新しいタイトル", attributes = new { }, tags = new string[] { } });
+            new { title = "新しいタイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
         updateResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var getResp = await _client.GetAsync($"/documents/{doc.Id}");
