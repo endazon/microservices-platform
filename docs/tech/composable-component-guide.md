@@ -8,7 +8,7 @@ related_ids:
   - ADR-0018
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-07-10
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -149,17 +149,18 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 
 原典は [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)。要点:
 
-1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は `src/foundation/`
-   （config/auth/api/routing/ui）であり、feature から基盤へは import エイリアス
-   `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
-2. feature は `FeatureModule`（`routes`）を公開し、`src/features/index.ts` へ 1 行登録する。
+1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は
+   `src/platform/frontend/src/foundation/`（config/auth/api/routing/ui）であり、feature から基盤へは
+   import エイリアス `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
+2. feature は `FeatureModule`（`routes`）を公開し、合成点 `src/platform/frontend/src/features/index.ts`
+   （IADR-0056）へ 1 行登録する。
    登録により認証済みレイアウト配下へマウントされる（**登録しないと画面へ到達できない**）。
 3. バックエンド呼び出しは必ず `@foundation/api` の `apiFetch`（`/bff/*` 経由）を使う。
    各サービスの直接呼び出し・接続先のビルド焼き込みは禁止（実行時 config `public/config.js`）。
 4. 認証・ロールは foundation の OIDC（Keycloak `spa-web`）とロールベースナビゲーション
    （IADR-0035）に従う。トークン・シークレットをコードに置かない。
 5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
-   （`vite.config.ts` の thresholds）を割らないこと（IADR-0034）。
+   （`src/vitest.config.ts` の thresholds。全ユニット横断で計測）を割らないこと（IADR-0034）。
 
 ## 3. 全部品共通のルール
 
