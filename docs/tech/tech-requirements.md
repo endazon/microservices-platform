@@ -1,55 +1,107 @@
 ---
 title: 技術要件書
 type: tech-requirements
-status: draft
-related_ids: []
-author: <作成者>
-created: <YYYY-MM-DD>
-updated: <YYYY-MM-DD>
-plan_refs: []
+status: in-progress
+related_ids:
+  - NFR
+  - FR-14
+  - ADR-0004
+  - ADR-0005
+  - ADR-0007
+  - ADR-0008
+  - IADR-0048
+author: claude
+created: 2026-07-04
+updated: 2026-07-10
+plan_refs:
+  - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR)"
 ---
 
 # 技術要件書
 
 > 必須ドキュメント（リポジトリ単位）。本リポジトリの技術要件を定める。雛形は `docs/templates/tech_requirements_template.md`。
-> **未記入のまま放置しない**。技術スタック・アーキテクチャ・非機能の実現方針を埋めること。確定判断は実装ADR（`docs/adr/`）に残す。
+> 確定判断は実装ADR（`docs/adr/`）に残す。単一情報源は各設定ファイル（`src/Directory.Build.props` 等）。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 技術検討（06_technical）:
-- 関連 ADR / 非機能要件（NFR）:
+- 技術検討（06_technical）: `03_tech-stack-selection.md`（実装フレームワーク・データストア・実行基盤）、
+  `10_composability-design.md`（コンポーザビリティ）
+- 関連 ADR / 非機能要件（NFR）: ADR-0004（Keycloak OIDC）／ADR-0005（Istio mTLS）／ADR-0007（ArgoCD+Helm）／
+  ADR-0008（k3s）／NFR（性能・可用性・セキュリティ・運用・拡張性）
+- 計画制約との差異: 実装は **.NET 10 / C# 13**（計画 fixed は .NET 8）。乖離は [[IADR-0048]] と
+  `feedback/20260709_dotnet10-target-framework-deviation.md` に記録（計画側の制約更新 or 是正を依頼中）。
 
 ## 技術スタック
 
 | 区分 | 採用 | バージョン | 備考 |
 | --- | --- | --- | --- |
-| 言語 |  |  |  |
-| フレームワーク |  |  |  |
-| データストア |  |  |  |
+| 言語（バックエンド） | C# | 13（`LangVersion 13`） | 単一情報源 [`src/Directory.Build.props`](../../src/Directory.Build.props)。Nullable/ImplicitUsings 有効 |
+| ランタイム（バックエンド） | .NET | 10（`net10.0`） | [[IADR-0048]]。`global.json` は SDK 8.0.0 + `rollForward: latestMajor`。計画 fixed（.NET 8）との乖離を記録済み |
+| フレームワーク（バックエンド） | ASP.NET Core（Minimal APIs） | .NET 10 同梱 | メッセージング MassTransit（RabbitMQ）、サービス間 HTTP は Refit、ORM は EF Core |
+| パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
+| 言語（フロントエンド） | TypeScript | 5.6 | `frontend/`。Node は CI と揃え 22 |
+| フレームワーク（フロントエンド） | React + Vite | React 18 / Vite 5（ESM） | SPA。基盤(`foundation/`)/画面(`features/`)分離（[[IADR-0033]]）。BFF は `/bff/*` 経由 |
+| 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | ADR-0004。SPA は public client `spa-web`（`oidc-client-ts`） |
+| データストア（業務） | PostgreSQL | — | DB per Service（ADR-0002）。jsonb 属性は EF Core の ValueComparer で content 比較（#184） |
+| データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
+| オブジェクトストレージ | MinIO（S3 互換） | RELEASE.2025-04-08 | 正規化本文・資産。ClusterIP のみ（[[IADR-0024]]）。資格情報は k8s Secret |
+| メッセージング | RabbitMQ（MassTransit） | — | イベント駆動パイプライン。契約は `Shared.Contracts` |
 | 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/knowledge-platform`、Namespace `knowledge-platform` |
-| サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / IADR-0026。STRICT mTLS（`PeerAuthentication`/`DestinationRule`）、可観測性は Kiali |
+| サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / [[IADR-0026]]。STRICT mTLS（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | ADR-0007。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
 | コンテナレジストリ | Harbor | — | ADR-0007。`global.image.registry: harbor.internal`、Pull は `imagePullSecrets` |
+| 可観測性 | OpenTelemetry（OTLP） | — | `Otlp__Endpoint` で collector へ送出。トレース相関に利用 |
 
 ## アーキテクチャ概要
 
+マイクロサービス（DB per Service）＋ BFF 集約＋イベント駆動パイプライン。フロント（SPA）は BFF のみを叩き、
+BFF が ABAC スコープ解決（AuthorizationService）と各サービス呼び出しを集約する。取り込みは
+DataSource→Conversion→Ingestion→（Document/Wiki）のイベントパイプラインで、段の有効/無効・購読は宣言的
+構成（`pipeline.json`・[[IADR-0028]]）で組み替える（FR-14）。
+
 ```mermaid
 flowchart TB
-  Client --> API --> DB[(Data Store)]
+  SPA[React SPA] -->|/bff/*| BFF
+  BFF --> AuthZ[AuthorizationService（ABAC）]
+  BFF --> Doc[DocumentService]
+  BFF --> Retr[RetrievalService]
+  BFF --> AI[AiAnalysisService]
+  subgraph Pipeline[イベント駆動パイプライン]
+    DS[DataSourceService] --> Conv[ConversionService] --> Ing[IngestionService]
+    Conv --> Doc
+    Doc --> Wiki[WikiService] --> WikiJs[(Wiki.js)]
+    Ing --> Qdrant[(Qdrant)]
+  end
+  Doc --> PG[(PostgreSQL / DB per Service)]
+  Conv --> MinIO[(MinIO)]
+  AI --> LLM[LlmGateway] -->|egress matrix| External[(外部/自ホスト LLM)]
 ```
 
 ## 非機能要件の実現方針
 
 | 区分 | 目標 | 実現方針 |
 | --- | --- | --- |
-| 性能 |  |  |
-| 可用性 |  |  |
-| セキュリティ |  |  |
-| 運用・保守 |  |  |
-| 拡張性 |  |  |
+| 性能 | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1万件・時 / 更新 15 分以内反映 | ハイブリッド検索＋ベクトル索引（Qdrant）、SSE ストリーミング（[[IADR-0037]]）。**負荷試験は未実施（#196）** で目標達成の実測が未追跡 |
+| 可用性 | 99.9%（月間ダウンタイム約 43 分以内） | HPA + PodDisruptionBudget（#197・`scaling`）、readiness/liveness プローブ、RollingUpdate、GitOps ロールバック（Git revert） |
+| セキュリティ | 認証・認可・データ越境統制・監査ログ | Keycloak OIDC（ADR-0004）＋ ABAC fail-closed（[[IADR-0012]]）、Istio STRICT mTLS（[[IADR-0026]]）＋ NetworkPolicy、deny-by-default／存在秘匿（[[IADR-0009]]）、LLM egress マトリクス（[[IADR-0025]]）。詳細は `docs/security/security.md` |
+| 運用・保守 | 検出 5 分以内 / MTTR 30 分以内 | OTel 可観測性、ArgoCD GitOps、構成ドリフト検出（[[IADR-0029]]）、起動時 fail-fast（[[IADR-0028]]）。**監視アラート・バックアップ・Runbook は整備中（#198）** |
+| 拡張性 | 段の挿抜・購入部品の差し替え（FR-14） | 宣言的パイプライン構成（`pipeline.json`・[[IADR-0028]]）＋ Foundation/Composable 構造（[[IADR-0027]]）。契約は `Shared.Contracts`。共通エンベロープ・契約テストは条件付き繰延（[[IADR-0049]]） |
 
 ## 開発・ビルド・テスト・デプロイ
 
-<!-- ビルド/テスト/フォーマットのコマンド、CI/CD -->
+- **バックエンド**: `dotnet build` / `dotnet test`（xUnit）/ `dotnet format --verify-no-changes`（CI lint ゲート）。
+  ソリューションは [`src/KnowledgePlatform.slnx`](../../src/KnowledgePlatform.slnx)。
+- **フロントエンド**: `npm run lint`（ESLint flat config）/ `npm run typecheck` / `npm run test`（Vitest）/
+  `npm run test:coverage`（v8・しきい値ラチェット）/ E2E は Playwright。
+- **CI**: バックエンド [`ci.yml`](../../.github/workflows/ci.yml)、フロント [`frontend.yml`](../../.github/workflows/frontend.yml) /
+  [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml)。セキュリティ（gitleaks/dependency-review）・CodeQL。
+  コミット/PR 件名はトレーサビリティ規約を機械検査（`check-commit-messages.js` / `pr-title.yml`）。
+- **デプロイ**: ArgoCD が `deploy/helm/knowledge-platform` を宣言的同期（ADR-0007）。構成変更のみで段の組み替え・
+  スケール調整が完結する（GitOps）。
 
 ## 未決事項
+
+- 性能目標の負荷試験・実測（#196）。達成状況に応じ HPA しきい値（#197 `scaling.hpa`）を調整する。
+- 監視アラート閾値・バックアップ/リストア・Runbook の整備（#198）。
+- 計画制約「.NET 8」の更新 or 是正の計画側判断（[[IADR-0048]] / plan-feedback）。

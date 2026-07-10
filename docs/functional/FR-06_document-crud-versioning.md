@@ -83,15 +83,19 @@ stateDiagram-v2
 
 ## 受け入れ基準
 
-- [ ] `POST /documents` で作成すると版 1 のスナップショットが記録される。
-- [ ] `PUT` / `PATCH /metadata` / `POST /publish` の各更新で `Version` が加算され、その時点のスナップショットが版履歴へ追記される。
-- [ ] `GET /documents/{id}/versions` が版履歴を新しい順で返し、各版のタイトル・状態・属性・タグを保持する。
-- [ ] `GET /documents/{id}/versions/{version}` が指定版を返し、存在しない版は 404。
-- [ ] 過去版スナップショットは後続更新で書き換わらない（append-only）。
-- [ ] `PUT` / `PATCH` に古い `expectedVersion` を付与すると 409 を返す。
-- [ ] `PATCH /metadata` はタイトルを変更せず属性・タグのみ更新する。
-- [ ] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
-- [ ] タイトル空白の作成は 400 を返す。
+- [x] `POST /documents` で作成すると版 1 のスナップショットが記録される。
+- [x] `PUT` / `PATCH /metadata` / `POST /publish` の各更新で `Version` が加算され、その時点のスナップショットが版履歴へ追記される。
+- [x] `GET /documents/{id}/versions` が版履歴を新しい順で返し、各版のタイトル・状態・属性・タグを保持する。
+- [x] `GET /documents/{id}/versions/{version}` が指定版を返し、存在しない版は 404。
+- [x] 過去版スナップショットは後続更新で書き換わらない（append-only）。
+- [x] `PUT` / `PATCH` に古い `expectedVersion` を付与すると 409 を返す。
+- [x] `PATCH /metadata` はタイトルを変更せず属性・タグのみ更新する。
+- [x] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
+- [x] タイトル空白の作成は 400 を返す。
+
+> 検証（#201）: `DocumentVersioningTests`（ドメイン版管理）／`DocumentEndpointVersioningTests`（版・メタ・公開・
+> 409・400）／`DocumentLifecycleEventTests`（`DocumentUpdated`/`DocumentDeleted` 発行）／統合
+> `DocumentVersioningTests`。テスト仕様は `../tests/FR-06_document-crud-versioning.md`。
 
 ## 関連仕様
 

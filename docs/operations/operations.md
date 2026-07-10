@@ -1,15 +1,21 @@
 ---
 title: 運用仕様書
 type: operations-spec
-status: draft
+status: in-progress
 related_ids:
+  - NFR
   - FR-13
+  - FR-15
   - UC-07
+  - ADR-0006
   - ADR-0011
-author: <作成者>
-created: <YYYY-MM-DD>
-updated: <YYYY-MM-DD>
-plan_refs: []
+author: claude
+created: 2026-07-04
+updated: 2026-07-10
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
+  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
 ---
 
 # 運用仕様書
@@ -19,8 +25,12 @@ plan_refs: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 非機能要件（NFR・運用/可用性）:
-- 関連 ADR / 技術検討:
+- 非機能要件（NFR・運用/可用性）: 運用・保守（障害検出 5 分以内・MTTR 30 分以内・アラート/Runbook 整備）、
+  可用性 99.9%、スケーラビリティ（HPA で水平スケール）、独立デプロイ。計画: `02_requirements/01_requirements.md`、
+  技術検討 `06_technical/05_observability-ops.md`。
+- 関連 ADR / 技術検討: ADR-0006（可観測性 OTel/Prometheus/Loki/Tempo）／ADR-0007（ArgoCD + Helm）／
+  ADR-0008（k3s）／ADR-0005・[IADR-0026]（mTLS）／ADR-0011・[IADR-0020]（Wiki）。実装 ADR: [IADR-0028]（fail-fast）／
+  [IADR-0029]（ドリフト検出）。
 
 ## デプロイ
 
@@ -272,20 +282,81 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   への切替を検討する（[IADR-0050] フォローアップ）。
 - 実クラスタでの HPA スケール挙動・目標 CPU 値の妥当性は負荷試験（#196）で検証し、`scaling.hpa` を調整する。
 
-## 監視・アラート
+## 監視・アラート（NFR / #198）
 
-| 監視対象 | 指標 | 閾値 | 通知先 |
-| --- | --- | --- | --- |
-|  |  |  |  |
+可観測性スタック（OTel Collector → Prometheus / Loki / Tempo → Grafana。ADR-0006）を配備済み。アプリは OTLP で
+メトリクス/ログ/トレースを送出し、Collector が Prometheus（remote write）/ Loki / Tempo へ振り分ける。NFR
+「障害検出 5 分以内・MTTR 30 分以内」に対し、SLO ベースのアラートルールを Prometheus に定義する。
 
-## バックアップ・リストア
+- **アラートルール**: [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml)（`prometheus.yml` の
+  `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`。受信先＝メール/チャットは
+  運用環境ごとに配備・設定）。未配備でもルール評価は行われ Prometheus UI / Grafana から発火を確認できる。
+- **ダッシュボード**: `deploy/grafana/provisioning/dashboards/knowledge-platform-overview.json`（サービス別
+  スループット・5xx 率・p99・RAG レイテンシ）。
+- **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
+  現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/knowledge-platform/` 配下に Prometheus/
+  Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
+  展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
-<!-- 対象・頻度・保管期間・リストア手順・RPO/RTO -->
+| 監視対象 | 指標（メトリクス） | 閾値 | 通知先 | 対応 NFR |
+| --- | --- | --- | --- | --- |
+| 可観測性パイプライン | `up{job="otel-collector"}`（唯一の scrape 対象） | ==0 が 2 分 | Alertmanager（critical） | 検出 5 分以内 |
+| サービス応答断（近似） | `rate(http_server_duration_milliseconds_count)` の途絶（直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
+| HTTP エラー率 | 5xx 率 = `http_server_duration_milliseconds_count{http_status_code=~"5.."}` 比率 | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
+| 検索レイテンシ | retrieval-service p95（`http_server_duration_milliseconds_bucket`） | > 1.5s が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
+| RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5s が 10 分 | Alertmanager（warning） | RAG 初回 5s |
 
-## 障害対応（Runbook）
+- **push モデルの制約**: メトリクスは remote write（push）のため、古典的な per-service `up` は無い。サービスダウンは
+  「直近まで受信していたリクエストメトリクスの途絶」で近似検知する（アイドル時の誤検知を避けるため `for` を長めに設定）。
+  厳密なダウン検知は blackbox exporter / k8s の liveness による補完を follow-up とする。
+- **follow-up（exporter/カスタムメトリクス配線後に有効化）**: RabbitMQ キュー滞留・デッドレター（RabbitMQ
+  Prometheus プラグイン）、構成ドリフト Warning（ドリフト検出のカスタムメトリクス化。現状は監査/警告ログで表出）。
+  `alerts.yml` 末尾にコメントで雛形を用意。
+
+## バックアップ・リストア（NFR / #198）
+
+状態を持つデータストアを対象にバックアップを取得し、復旧手順を定める。RPO/RTO は運用要件に応じて確定する
+（初期目安 RPO ≤ 24h・RTO ≤ MTTR 30 分。重要度に応じ日次〜時間次へ調整）。
+
+| 対象 | 内容 | 方式（例） | 頻度 | 保管 |
+| --- | --- | --- | --- | --- |
+| PostgreSQL（各サービス DB） | 業務データ（DB per Service。document / datasource / authorization / feedback / dashboard 等） | `pg_dump`／論理レプリケーション／ボリュームスナップショット | 日次（重要 DB は時間次） | 世代管理（例 7 日 + 週次 4） |
+| Qdrant | ベクトル索引 | Qdrant スナップショット API（コレクション単位）。※ 索引は再取り込みで再構築可能（決定的チャンク ID・IADR-0002）＝ RPO 緩め | 日次 or 再構築前提 | 直近数世代 |
+| MinIO | 正規化本文・資産（`knowledge-normalized` バケット） | バケットレプリケーション／`mc mirror`／ボリュームスナップショット | 日次 | 世代管理 |
+| Wiki.js DB（PostgreSQL `wikijs`） | Wiki 閲覧コンテンツ（同期の従。正本は本システム側） | `pg_dump`。※ DocumentUpdated 再同期で再構築可能 | 日次 | 直近数世代 |
+| Keycloak realm | 認証設定（クライアント・ロール・マッパー） | realm export（`deploy/keycloak/*-realm.json` を単一の真実源に、IaC で再適用） | 変更時（Git 管理） | Git 履歴 |
+
+- **リストア手順（概略）**: ①対象データストアを停止/隔離 → ②該当バックアップからリストア（Postgres は
+  `pg_restore`、MinIO は mirror 復元、Qdrant はスナップショット復元）→ ③依存サービスを再起動しヘルス確認 →
+  ④整合確認（Qdrant/Wiki は必要なら `DocumentUpdated` 再発行で再構築。埋め込み再索引は本書「埋め込みプロバイダ」節参照）。
+- **リストア演習**: ステージング整備（IADR-0049 / #207）後に定期実施し、RTO の実測と手順の妥当性を検証する（follow-up）。
+
+## 障害対応（Runbook）（NFR / #198）
 
 | 事象 | 検知 | 一次対応 | エスカレーション |
 | --- | --- | --- | --- |
-|  |  |  |  |
+| LLM ゲートウェイ/外部 LLM 不調 | RAG レイテンシ/5xx アラート、`LlmGateway` 縮退ログ | RAG は縮退応答（送信せず縮退・fail-closed）。検索（非 LLM）は継続。エンドポイント設定/疎通確認 | 外部プロバイダ障害なら egress 設定でセルフホスト/別ティアへ切替（IADR-0025） |
+| 埋め込みプロバイダ停止 | 取り込み失敗ログ、`EmbeddingEndpointTests` 相当の縮退 | 高機密はセルフホスト固定・未有効なら索引スキップ（fail-closed。IADR-0025）。プロバイダ復旧後に再索引（本書「埋め込み」節） | セルフホスト基盤の起動、モデル/次元整合の確認 |
+| RabbitMQ 停止 | サービス接続エラー、パイプライン滞留 | ブローカ再起動。MassTransit は再接続。未処理は再配信（冪等消費のため重複安全） | 永続化ボリューム/ディスク確認。デッドレター滞留は原因メッセージを調査 |
+| Qdrant 停止 | 検索 5xx/エラーログ | Qdrant 再起動。索引は再取り込みで再構築可能（決定的チャンク ID） | ボリューム障害時はスナップショットからリストア（バックアップ節） |
+| PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
+| サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し（#197） |
+| 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ。IADR-0029） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fast（IADR-0028）で不整合構成の反映は阻止済み。恒常化は宣言の是正 |
+
+- **エスカレーション/通知**: Alertmanager の受信先（メール/チャット）と担当・当番は運用体制に応じて定める（環境ごと）。
+- **MTTR 目標（30 分）**: アラート（検出 5 分以内）→ Runbook 一次対応 → 復旧、の各段を Grafana/Tempo/Loki で追跡する。
 
 ## 未決事項
+
+- **Alertmanager の受信先設定**: メール/チャット通知経路（`prometheus.yml` の `alerting.alertmanagers`）は
+  運用環境ごとに配備・設定する（現状はターゲット未設定でルール評価のみ）。
+- **監視の stg/prod（k3s）展開**: Prometheus/Alertmanager を Helm（Operator 等）で配備し、`alerts.yml` 相当の
+  ルールと通知を k3s にも展開する（現状は dev/compose のみ配線）。
+- **RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラート**: それぞれ RabbitMQ Prometheus プラグインの
+  exporter メトリクスと、ドリフト検出のカスタムメトリクス化が必要（`alerts.yml` 末尾に雛形をコメントで用意）。
+- **サービスダウンの厳密検知**: push（remote write）モデルのため per-service `up` が無く、メトリクス途絶での
+  近似検知に留まる。blackbox exporter / k8s liveness による補完を検討する。
+- **保存時暗号化**: PostgreSQL/MinIO/Qdrant のインフラ層暗号化の有効化・鍵管理（`docs/security/security.md`
+  データ保護表と連動）。
+- **監査ログの保管期間・改ざん防止・エクスポート**: 可観測性基盤側の保持設定で確定する（NFR「監査ログ保持」の具体化）。
+- **バックアップの RPO/RTO 確定とリストア演習**: ステージング整備（[IADR-0049] / #207）後に定期実施し実測する。
