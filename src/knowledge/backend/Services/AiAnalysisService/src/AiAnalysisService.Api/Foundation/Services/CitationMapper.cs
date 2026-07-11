@@ -1,4 +1,4 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using System.Text;
 
 namespace AiAnalysisService.Api.Foundation.Services;

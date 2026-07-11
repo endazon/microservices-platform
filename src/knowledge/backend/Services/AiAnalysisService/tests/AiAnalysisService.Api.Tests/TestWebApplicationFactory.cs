@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using AiAnalysisService.Api.Foundation.Services;
 using Knowledge.Contracts.Dtos;
-using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;

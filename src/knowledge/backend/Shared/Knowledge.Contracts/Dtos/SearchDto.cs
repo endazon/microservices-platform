@@ -1,4 +1,6 @@
-namespace Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
+
+namespace Knowledge.Contracts.Dtos;
 
 // FR-03, UC-01: ハイブリッド検索リクエスト/レスポンス DTO
 public record SearchRequest(

@@ -24,8 +24,9 @@ internal sealed class DelegateBffEndpointModule(Func<IEndpointRouteBuilder, IEnd
 public static class BffEndpointComposition
 {
     // 合成点（登録簿）: 有効な BFF エンドポイントモジュール。ユニット追加時はここへ 1 行追加する。
-    // platform 固有（Config/Authz）と、現時点では platform 同居のナレッジ集約（Search/Document/... = 後続
-    // スライスで knowledge ユニットへ移設予定）を列挙する。順序は既存 Program.cs の登録順を維持する。
+    // platform 固有（Config/Authz）は platform 同居、ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/
+    // Dashboard/Conversion/DataSource）は Knowledge.Bff.Endpoints へ移設済みで例外3 により参照する（#229 完了）。
+    // 順序は既存 Program.cs の登録順を維持する。
     public static IReadOnlyList<IBffEndpointModule> Modules { get; } =
     [
         new DelegateBffEndpointModule(a => a.MapSearchBffEndpoints()),
