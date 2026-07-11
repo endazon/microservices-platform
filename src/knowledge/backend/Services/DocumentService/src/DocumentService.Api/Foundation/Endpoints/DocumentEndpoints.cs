@@ -1,7 +1,7 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;

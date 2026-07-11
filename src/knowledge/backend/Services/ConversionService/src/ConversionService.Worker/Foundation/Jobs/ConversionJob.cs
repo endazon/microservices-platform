@@ -1,5 +1,5 @@
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 
 namespace ConversionService.Worker.Foundation.Jobs;
 

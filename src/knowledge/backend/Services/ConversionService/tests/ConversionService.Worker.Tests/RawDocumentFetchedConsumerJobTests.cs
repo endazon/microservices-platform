@@ -5,7 +5,7 @@ using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
