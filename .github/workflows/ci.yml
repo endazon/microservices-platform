@@ -100,11 +100,16 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
-      # FR-14, IADR-0056: ユニット別ソリューション（platform / knowledge）を両方検査する。
-      - name: Format check (platform)
-        run: dotnet format src/platform/backend/backend.slnx --verify-no-changes
-      - name: Format check (knowledge)
-        run: dotnet format src/knowledge/backend/backend.slnx --verify-no-changes
+      # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
+      # 自動発見して検査する。ユニット追加時に CI の編集は不要（チェックアウト済みなら自動的に対象になる）。
+      # 追加ユニットが submodule の場合は checkout の submodules 取得が必要（docs/how-to/adding-a-unit-submodule.md）。
+      - name: Format check (all backend units)
+        run: |
+          for slnx in src/*/backend/backend.slnx; do
+            echo "::group::dotnet format $slnx"
+            dotnet format "$slnx" --verify-no-changes
+            echo "::endgroup::"
+          done
 
   build-and-test:
     runs-on: ubuntu-latest
@@ -114,20 +119,19 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
-      # FR-14, IADR-0056: ルート集約ソリューションは置かず、ユニット別（platform / knowledge）に
-      # restore → build → test を実行する。ユニット（submodule）追加時はここへ slnx を追記する。
-      - name: Restore (platform)
-        run: dotnet restore src/platform/backend/backend.slnx
-      - name: Restore (knowledge)
-        run: dotnet restore src/knowledge/backend/backend.slnx
-      - name: Build (platform)
-        run: dotnet build src/platform/backend/backend.slnx --no-restore --configuration Release
-      - name: Build (knowledge)
-        run: dotnet build src/knowledge/backend/backend.slnx --no-restore --configuration Release
-      - name: Test (platform, with coverage)
-        run: dotnet test src/platform/backend/backend.slnx --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
-      - name: Test (knowledge, with coverage)
-        run: dotnet test src/knowledge/backend/backend.slnx --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
+      # FR-14, IADR-0056 / IADR-0060, Issue #230: ルート集約ソリューションは置かず、全バックエンドユニット
+      # （src/*/backend/backend.slnx）を自動発見して restore → build → test する。ユニット追加時に CI の
+      # 編集は不要。追加ユニットが submodule の場合は checkout の submodules 取得を有効化する
+      # （docs/how-to/adding-a-unit-submodule.md 参照）。bash -eo pipefail 既定によりいずれか失敗で job も失敗する。
+      - name: Restore, build and test (all backend units, with coverage)
+        run: |
+          for slnx in src/*/backend/backend.slnx; do
+            echo "::group::$slnx"
+            dotnet restore "$slnx"
+            dotnet build "$slnx" --no-restore --configuration Release
+            dotnet test "$slnx" --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
+            echo "::endgroup::"
+          done
       # カバレッジ閾値を強制する場合の例（ツールは任意）:
       #   - run: dotnet tool install --global dotnet-reportgenerator-globaltool
       #   - run: reportgenerator -reports:'**/coverage.cobertura.xml' -targetdir:coverage -reporttypes:TextSummary

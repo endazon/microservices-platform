@@ -94,12 +94,17 @@ src/
 
 ## ユニットをサブモジュールとして追加する場合
 
-1. 新ユニットのリポジトリを本規約のレイアウト（`backend/backend.slnx` + `backend/Services/<Name>/`、
-   `frontend/package.json` + `frontend/src/features/`）で作成する。
+詳細な運用手順（テンプレート・CI・トークン・バージョン固定）は
+[`docs/how-to/adding-a-unit-submodule.md`](../docs/how-to/adding-a-unit-submodule.md) を参照。要点は以下。
+
+1. 新ユニットのリポジトリを雛形 [`templates/unit-template/`](../templates/unit-template/README.md) から作成する
+   （`backend/backend.slnx` + `backend/Services/<Name>/`、`frontend/package.json` + `frontend/src/features/`）。
 2. `git submodule add <repo-url> src/<unit>` で配置する。
 3. バックエンド: `KnowledgePlatform.Shared.*` への参照は相対パス
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
-   CI のビルド対象へ `src/<unit>/backend/backend.slnx` を追記する（`.github/workflows/ci.yml`）。
+   **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
+   追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
 4. フロントエンド: workspaces は `"*/frontend"` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
-5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。
+5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
+   `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。
