@@ -166,6 +166,8 @@ const {
   pathUnit,
   isSharedProject,
   isTestsProject,
+  isBffCompositionHost,
+  isUnitBffEndpoints,
   classifyProjectReference,
   scanFoundationComposable,
 } = require('./check-unit-dependencies.js');
@@ -204,6 +206,22 @@ ok('統合テスト → platform サービスは許可（例外）', () =>
   assert.strictEqual(classifyProjectReference(INTEGRATION_TESTS, PLATFORM_AUTH).ok, true));
 
 ok('platform → 可変ユニットは違反', () =>
+  assert.strictEqual(classifyProjectReference(PLATFORM_BFF, KNOWLEDGE_DOC).ok, false));
+
+// 例外3（BFF 合成点）: Platform.Bff → 可変ユニットの <unit>/backend/Bff/ のみ許可（IADR-0063）。
+const KNOWLEDGE_BFF = 'src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj';
+ok('isBffCompositionHost / isUnitBffEndpoints', () => {
+  assert.strictEqual(isBffCompositionHost(PLATFORM_BFF), true);
+  assert.strictEqual(isBffCompositionHost(PLATFORM_AUTH), false);
+  assert.strictEqual(isUnitBffEndpoints(KNOWLEDGE_BFF), true);
+  assert.strictEqual(isUnitBffEndpoints(KNOWLEDGE_DOC), false); // Services 配下は BFF エンドポイントでない
+  assert.strictEqual(isUnitBffEndpoints('src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj'), false); // platform は対象外
+});
+ok('例外3: BFF 合成点 → knowledge BFF エンドポイントは許可', () =>
+  assert.strictEqual(classifyProjectReference(PLATFORM_BFF, KNOWLEDGE_BFF).ok, true));
+ok('例外3外: platform サービス → knowledge BFF は違反', () =>
+  assert.strictEqual(classifyProjectReference(PLATFORM_AUTH, KNOWLEDGE_BFF).ok, false));
+ok('例外3外: BFF 合成点 → knowledge サービスは違反', () =>
   assert.strictEqual(classifyProjectReference(PLATFORM_BFF, KNOWLEDGE_DOC).ok, false));
 
 ok('可変ユニット（非テスト） → platform 非 Shared は違反', () =>

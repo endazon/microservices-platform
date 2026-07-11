@@ -80,6 +80,10 @@ src/
      （例: IntegrationTests → AuthorizationService.Api）。
    - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）を参照してよい。
      platform/frontend 側から可変ユニットを参照するのは合成点（`platform/frontend/src/features/index.ts`）のみとする。
+   - 例外3: BFF の合成点（`platform/backend/Bff/Platform.Bff/`。合成点 `Composition/`）のみ、可変ユニットの BFF
+     エンドポイントプロジェクト（`<unit>/backend/Bff/`）を参照してよい（例外2 の backend 版。IADR-0063）。
+     可変ユニットは自分の BFF エンドポイントを合成点経由で BFF へ組み込む。合成点以外の platform → 可変ユニット
+     参照は引き続き禁止（BFF → 可変ユニットのサービス直接参照も不可。連携は同期 API/イベント）。
 
 ## ビルド
 
