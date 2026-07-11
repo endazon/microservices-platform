@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;

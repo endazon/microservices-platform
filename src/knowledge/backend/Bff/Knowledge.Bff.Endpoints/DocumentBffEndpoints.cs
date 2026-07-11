@@ -1,10 +1,14 @@
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Authz;
-using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-06, UC-01/UC-03/UC-07, SC-03: 文書の閲覧（読み取り）を集約する BFF エンドポイント。
 // 横断検索（/bff/search）と同じく「ABAC スコープ解決（AuthorizationService）→ 文書取得（DocumentService）」
