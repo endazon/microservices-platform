@@ -10,6 +10,8 @@
  *      第 1 セグメント）が異なる場合、
  *        - 参照先が platform/backend/Shared/（Contracts / Infrastructure）なら許可、
  *        - 参照元が Tests プロジェクトで参照先が platform サービス（統合テスト例外）なら許可、
+ *        - 参照元が BFF 合成点（platform/backend/Bff/Platform.Bff/）で参照先が可変ユニットの BFF
+ *          エンドポイント（<unit>/backend/Bff/）なら許可（例外3・IADR-0063）、
  *        - それ以外（特に platform → 可変ユニット）は違反。
  *   2) Foundation → Composable: Foundation/ 配下 .cs に `using <ns>.Composable(.|;)` が現れたら違反。
  *
@@ -52,6 +54,17 @@ function isTestsProject(relPath) {
   return /\.Tests\.csproj$/i.test(p) || /(^|\/)tests\//i.test(p);
 }
 
+// 参照元が BFF 合成点（platform の BFF アプリ）か。例外3（BFF 合成点例外）の判定に使う。
+function isBffCompositionHost(relPath) {
+  return /^src\/platform\/backend\/Bff\/Platform\.Bff\//.test(toPosix(relPath));
+}
+
+// 参照先が可変ユニットの BFF エンドポイントプロジェクト（<unit>/backend/Bff/ 配下・platform 以外）か。
+function isUnitBffEndpoints(relPath) {
+  const m = toPosix(relPath).match(/^src\/([^/]+)\/backend\/Bff\//);
+  return !!m && m[1] !== 'platform';
+}
+
 // ProjectReference 1 件を分類する。{ ok: boolean, reason: string }。
 // from / to はいずれもリポジトリ相対（posix）の csproj パス。
 function classifyProjectReference(fromCsproj, toCsproj) {
@@ -68,6 +81,12 @@ function classifyProjectReference(fromCsproj, toCsproj) {
   // 統合テスト例外: Tests プロジェクトが platform のサービスを検証対象として参照する場合のみ許可。
   if (toUnit === 'platform' && isTestsProject(fromCsproj)) {
     return { ok: true, reason: 'integration-test-exception' };
+  }
+  // 例外3: BFF 合成点（platform の BFF アプリ）→ 可変ユニットの BFF エンドポイント（<unit>/backend/Bff/）は許可。
+  // フロントの合成点（features/index.ts, 例外2）の backend 版（IADR-0063）。可変ユニットは自分の BFF
+  // エンドポイントを合成点経由で BFF へ組み込む。合成点以外の platform → 可変ユニット参照は引き続き禁止。
+  if (fromUnit === 'platform' && isBffCompositionHost(fromCsproj) && isUnitBffEndpoints(toCsproj)) {
+    return { ok: true, reason: 'bff-composition-exception' };
   }
   if (fromUnit === 'platform') {
     return { ok: false, reason: `platform → 可変ユニット(${toUnit}) の参照は禁止（一方向依存）` };
@@ -182,6 +201,18 @@ function selfTest() {
   expectViolation('可変ユニット間の参照は違反', classifyProjectReference(
     'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj',
     'src/analytics/backend/Services/ReportService/src/ReportService.Api/ReportService.Api.csproj'));
+  // 許可（例外3）: BFF 合成点（Platform.Bff）→ 可変ユニットの BFF エンドポイント。
+  expectOk('BFF 合成点 → knowledge の BFF エンドポイントは許可（例外3）', classifyProjectReference(
+    'src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj',
+    'src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj'));
+  // 違反: 例外3 は BFF 合成点かつ相手が <unit>/backend/Bff/ のときのみ。platform サービス → 可変ユニット BFF は不可。
+  expectViolation('platform サービス → knowledge の BFF エンドポイントは違反（例外3 対象外）', classifyProjectReference(
+    'src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj',
+    'src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj'));
+  // 違反: BFF 合成点でも相手が <unit>/backend/Bff/ 以外（サービス等）なら不可。
+  expectViolation('BFF 合成点 → knowledge のサービスは違反（Bff 配下でない）', classifyProjectReference(
+    'src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj',
+    'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj'));
   // Foundation → Composable の using 検出。
   cases.push({
     name: 'Foundation 配下の using .Composable を検出',
@@ -245,6 +276,8 @@ module.exports = {
   pathUnit,
   isSharedProject,
   isTestsProject,
+  isBffCompositionHost,
+  isUnitBffEndpoints,
   classifyProjectReference,
   scanFoundationComposable,
   projectReferencesOf,
