@@ -1,4 +1,4 @@
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace RetrievalService.Api.Foundation.Ports;
 

@@ -1,7 +1,7 @@
 using ConversionService.Worker.Foundation.Ports;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace ConversionService.Worker.Composable.Adapters;
 

@@ -161,18 +161,18 @@ function selfTest() {
   // 許可: 可変ユニット → platform Shared。
   expectOk('knowledge → platform Shared.Contracts は許可', classifyProjectReference(
     'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj',
-    'src/platform/backend/Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj'));
+    'src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj'));
   // 許可: 同一ユニット内（テスト → 実装）。
   expectOk('同一ユニット内参照は許可', classifyProjectReference(
     'src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj',
     'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj'));
   // 許可: 統合テスト例外（可変ユニットの Tests → platform サービス）。
   expectOk('統合テスト → platform サービスは許可', classifyProjectReference(
-    'src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj',
+    'src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj',
     'src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj'));
   // 違反: platform → 可変ユニット。
   expectViolation('platform → knowledge は違反', classifyProjectReference(
-    'src/platform/backend/Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj',
+    'src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj',
     'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj'));
   // 違反: 可変ユニット（非テスト） → platform の非 Shared サービス。
   expectViolation('knowledge サービス → platform サービス（非 Shared）は違反', classifyProjectReference(

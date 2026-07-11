@@ -3,7 +3,7 @@ using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Ports;
 using DataSourceService.Api.Foundation.Services;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using MassTransit;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;

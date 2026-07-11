@@ -1,6 +1,6 @@
 using RetrievalService.Api.Foundation.Ports;
 using System.Net.Http.Json;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace RetrievalService.Api.Composable.Adapters;
 

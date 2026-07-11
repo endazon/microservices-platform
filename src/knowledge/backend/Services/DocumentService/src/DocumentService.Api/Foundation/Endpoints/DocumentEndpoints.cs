@@ -1,8 +1,8 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using Knowledge.Contracts.Events;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,8 +22,8 @@ public static class DocumentEndpoints
         // BFF 迂回の直接呼び出しでも認可を実効化する（サービスが最終防衛線）。利用者トークンは BFF が伝播する。
         var write = app.MapGroup("/documents").WithTags("Documents")
             .RequireAuthorization(p => p.RequireRole(
-                KnowledgePlatformAuthPolicies.AdminRole,
-                KnowledgePlatformAuthPolicies.OperatorRole));
+                PlatformAuthPolicies.AdminRole,
+                PlatformAuthPolicies.OperatorRole));
 
         g.MapGet("/", async (DocumentDbContext db) =>
         {

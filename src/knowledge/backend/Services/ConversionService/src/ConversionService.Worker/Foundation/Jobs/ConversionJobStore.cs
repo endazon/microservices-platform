@@ -1,5 +1,5 @@
 using ConversionService.Worker.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.EntityFrameworkCore;
 

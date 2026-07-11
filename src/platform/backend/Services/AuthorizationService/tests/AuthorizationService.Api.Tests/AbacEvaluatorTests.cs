@@ -1,7 +1,7 @@
 using AuthorizationService.Api.Foundation.Domain;
 using AuthorizationService.Api.Foundation.Services;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace AuthorizationService.Api.Tests;
 

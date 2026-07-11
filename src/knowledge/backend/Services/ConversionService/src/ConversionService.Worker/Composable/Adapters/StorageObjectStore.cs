@@ -1,5 +1,5 @@
 using ConversionService.Worker.Foundation.Ports;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace ConversionService.Worker.Composable.Adapters;
 

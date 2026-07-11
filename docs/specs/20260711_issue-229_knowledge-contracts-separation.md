@@ -39,8 +39,8 @@ related_specs:
 
 - 対象（新規/変更）:
   - `src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj`（新規・MassTransit 参照）。
-  - 6 イベントを `Knowledge.Contracts/Events/*.cs`（namespace `Knowledge.Contracts.Events`）へ移設し、
-    各に `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]` を付与。
+  - 6 イベントを `Knowledge.Contracts/Events/*.cs`（namespace `Knowledge.Contracts.Events`）へ移設
+    （当初は `[MessageUrn(旧 URN)]` を付与したが、#227/IADR-0062 で撤廃＝下記「後方互換」注記参照）。
   - platform `Shared.Contracts/Events/*.cs`（6 ファイル）を削除。
   - `src/knowledge/backend/backend.slnx` に Knowledge.Contracts と Tests を登録。
   - 5 サービス src csproj（Conversion/DataSource/Document/Ingestion/Wiki）に Knowledge.Contracts 参照追加。
@@ -51,24 +51,28 @@ related_specs:
   - knowledge 固有 DTO の Knowledge.Contracts 移設（BFF の DTO 依存解消とセット）。
   - BFF のユニット別エンドポイント合成方式。
 
-## 後方互換（要）
+## URN（当初は後方互換固定 → #227/IADR-0062 で撤廃）
 
-- MassTransit は既定で URN を名前空間＋型名から導出する。名前空間変更で URN が変わるため、
-  `[MessageUrn]` で旧 URN（`urn:message:KnowledgePlatform.Shared.Contracts.Events:<Name>`）に固定する。
-- 実測確認済み: MassTransit 8.4.1 で新名前空間 + `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:DocumentUpdated")]`
-  → `urn:message:KnowledgePlatform.Shared.Contracts.Events:DocumentUpdated`（旧既定と一致）。
-- 回帰テストで 6 イベント全ての URN を固定する。
+> **更新（2026-07-11・#227/[[IADR-0062]]）**: 本スライス当初は `[MessageUrn]` で旧 URN
+> （`KnowledgePlatform.Shared.Contracts.Events:*`）に固定し wire 後方互換を維持したが、**後方互換は不要**の方針変更に
+> より `[MessageUrn]` を削除し、URN をイベントの現名前空間 `Knowledge.Contracts.Events` から導出する正準値
+> （`urn:message:Knowledge.Contracts.Events:*`）へ統一した（旧 URN 削除）。以下は当初実装の記録。
+
+- MassTransit は既定で URN を名前空間＋型名から導出する（現在は `Knowledge.Contracts.Events` から導出）。
+- 回帰テスト（`Knowledge.Contracts.Tests`）で 6 イベントの URN を正準値に固定する（現在は新体系の URN）。
 
 ## 実装方針
 
 1. イベント型は knowledge サービスのみが購読/発行（BFF はイベント**名**を pipeline.json 経由の文字列で扱い型参照しない）。
    よって移設は platform→knowledge 依存を生まず、依存方向検査（IADR-0057）を通る。
-2. サービスは DTO のため `KnowledgePlatform.Shared.Contracts` 参照を維持しつつ、イベントは `Knowledge.Contracts` を参照。
+2. サービスは DTO のため `Platform.Shared.Contracts` 参照を維持しつつ、イベントは `Knowledge.Contracts` を参照。
 3. TDD: 先に URN 一致テストを用意 → 移設 → 全テスト green。
 
 ## 受け入れ基準（Issue #229）との対応
 
-- [x] 既存 6 イベントの後方互換が維持される → `[MessageUrn]` 固定＋URN 回帰テスト（旧値一致）。
+- [~] 既存 6 イベントの後方互換 → **当初は `[MessageUrn]` 固定で維持したが、#227/[[IADR-0062]] で
+  後方互換方針を撤回**（`[MessageUrn]` 削除・URN を新体系 `urn:message:Knowledge.Contracts.Events:*` へ統一）。
+  現在は後方互換を持たせない（上記「URN」節・#227 参照）。
 - [~] 可変機能ユニット追加時に platform 側の契約・BFF を改修せず拡張できる → **イベント契約について達成**
   （ユニット固有イベントは `<unit>.Contracts` に置き、platform 契約に触れない）。DTO/BFF 合成は
   [[IADR-0059]] の後続スライス（#229 継続）。本 PR は `Refs #229`（Closes ではない）。
@@ -82,5 +86,5 @@ related_specs:
 
 ## 実装判断・フォローアップ
 
-- 方式・トレードオフ（URN 固定・DTO/BFF 繰延）は [[IADR-0059]] に記録。
-- DTO 移設・BFF 合成点は #229 の後続スライス。#227（改名）とは URN 固定済みのため独立。
+- 方式・トレードオフ（当初の URN 固定 → #227/IADR-0062 で撤回・DTO/BFF 繰延）は [[IADR-0059]] に記録。
+- DTO 移設・BFF 合成点は #229 の後続スライス。#227（改名）で URN は新体系へ統一済み（後方互換なし）。

@@ -1,7 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using AiAnalysisService.Api.Foundation.Services;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Foundation.Endpoints;
 

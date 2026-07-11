@@ -42,10 +42,10 @@ related_adrs:
 
 ## 認証・認可
 
-- **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証（ADR-0004）。各サービスは `AddKnowledgePlatformAuth` で JWT を検証する。
+- **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証（ADR-0004）。各サービスは `AddPlatformAuth` で JWT を検証する。
 - **認可（サービス内 RBAC）**: FR-09 の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
-  `KnowledgePlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
+  `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
   は本ポリシーの対象外（認証のみ）。
 - **運用者ロール（FR-15, SC-11, IADR-0030）**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で

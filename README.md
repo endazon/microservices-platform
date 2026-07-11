@@ -5,7 +5,7 @@
 横断能力を、機能ドメインから独立した再利用可能な土台として提供する（別プロジェクトからの再利用前提:
 `planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md`）。
 
-**KnowledgePlatform（knowledge ユニット）は、この基盤に付随する必須の可変機能セット**である。
+**ナレッジ活用機能（knowledge ユニット）は、この基盤に付随する必須の可変機能セット**である。
 社内ナレッジ（文書・Wiki）の横断検索、AI による回答・出典提示・データ分析を提供するが、
 位置づけはあくまで「基盤の上で組み替え可能な一機能ユニット」であり、本リポジトリの主目的ではない
 （issue #209 / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
@@ -58,7 +58,7 @@ flowchart LR
 - **platform ユニット** (`src/platform/`): 基盤。SPA 基盤（foundation + アプリホスト）、BFF（エッジ・
   唯一の入口。Keycloak JWT 検証・集約・構成情報 API）、AuthorizationService（ABAC 属性ポリシー・
   認可判定）、LlmGateway（LLM/埋め込みエグレス集約・機密区分別ルーティング）、共有ライブラリ
-  `KnowledgePlatform.Shared.Contracts`（イベント/DTO 契約）・`KnowledgePlatform.Shared.Infrastructure`
+  `Platform.Shared.Contracts`（イベント/DTO 契約）・`Platform.Shared.Infrastructure`
   （認証・メッセージング・可観測性・ObjectStorage 等の横断基盤）。
 - **knowledge ユニット** (`src/knowledge/`): 付随する可変機能。文書パイプライン（取り込み・正規化・
   索引）、ハイブリッド検索、AI 回答、Wiki 連携、フィードバック、利用ダッシュボードの各サービスと
@@ -173,8 +173,10 @@ bash scripts/compose-up.sh up -d
 （命名規則・パッケージ管理・lint/format・サービス境界等）は [`CLAUDE.md`](CLAUDE.md) の
 「技術スタック別ルール」を参照。
 
-> 注: .NET 名前空間・アセンブリ名（`KnowledgePlatform.*`）と Helm チャート名（`knowledge-platform`）は
-> 歴史的経緯による命名であり、ユニット整合の改名はフォローアップ issue で段階実施する（IADR-0056）。
+> 注: .NET 名前空間・アセンブリ名・フロント package 名は、ユニット構成に整合する新体系
+> （`Platform.*` / `Knowledge.*` / `@platform`・`@knowledge`）へ改名済み（#227 / IADR-0062）。
+> Helm チャート名・k8s Namespace・realm 名の小文字 `knowledge-platform` の改名は移行手順を起草済みで、
+> 実行は stg 検証を伴うため保留（#228 / IADR-0061）。
 
 ## Git 運用
 

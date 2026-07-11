@@ -1,6 +1,6 @@
 apiVersion: 1
 providers:
-  - name: KnowledgePlatform
+  - name: Platform
     type: file
     disableDeletion: false
     editable: true

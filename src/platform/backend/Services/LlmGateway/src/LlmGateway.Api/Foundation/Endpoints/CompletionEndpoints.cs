@@ -1,6 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Foundation.Routing;
 

@@ -1,5 +1,5 @@
 using ConversionService.Worker.Foundation.Jobs;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using MassTransit;
 
 namespace ConversionService.Worker.Foundation.Endpoints;

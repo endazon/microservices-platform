@@ -5,7 +5,7 @@ using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Events;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -49,7 +49,7 @@ public class PipelineStepRegistrationTests
             .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()))
             .AddScoped<IConversionJobStore, EfConversionJobStore>()
             .AddMassTransitTestHarness(cfg =>
-                cfg.AddKnowledgePlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline))
+                cfg.AddPlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline))
             .BuildServiceProvider(true);
 
     private static RawDocumentFetched SampleEvent() => new(
@@ -156,7 +156,7 @@ public class PipelineStepRegistrationTests
             })
             .Build();
 
-        var pipeline = configuration.GetKnowledgePlatformPipeline();
+        var pipeline = configuration.GetPlatformPipeline();
 
         pipeline.Version.Should().Be(1);
         var step = pipeline.FindStep("convert");

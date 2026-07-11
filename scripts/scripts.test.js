@@ -172,13 +172,13 @@ const {
 
 const KNOWLEDGE_DOC =
   'src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj';
-const PLATFORM_BFF = 'src/platform/backend/Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj';
+const PLATFORM_BFF = 'src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj';
 const SHARED_CONTRACTS =
-  'src/platform/backend/Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj';
+  'src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj';
 const PLATFORM_AUTH =
   'src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj';
 const INTEGRATION_TESTS =
-  'src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj';
+  'src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj';
 
 ok('pathUnit は src/<unit>/ を返す', () => {
   assert.strictEqual(pathUnit(KNOWLEDGE_DOC), 'knowledge');

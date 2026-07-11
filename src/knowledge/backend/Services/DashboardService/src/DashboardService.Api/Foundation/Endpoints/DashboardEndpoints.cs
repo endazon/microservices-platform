@@ -1,7 +1,7 @@
 using DashboardService.Api.Foundation.Domain;
 using DashboardService.Api.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DashboardService.Api.Foundation.Endpoints;
@@ -47,7 +47,7 @@ public static class DashboardEndpoints
             var since = SinceUtc(days);
             var points = await AggregateUsageAsync(db, since, ct);
             return Results.Ok(points);
-        }).WithName("DashboardUsage").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardUsage").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .Produces<List<UsagePointDto>>();
 
         // FR-10: 検索傾向（よく検索される語の上位）。
@@ -56,7 +56,7 @@ public static class DashboardEndpoints
             var since = SinceUtc(days);
             var trends = await AggregateTrendsAsync(db, since, ClampTop(top), ct);
             return Results.Ok(trends);
-        }).WithName("DashboardTrends").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardTrends").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .Produces<List<SearchTrendDto>>();
 
         // FR-10: 利用側サマリ（総件数・利用状況・検索傾向）を 1 応答で返す。
@@ -69,7 +69,7 @@ public static class DashboardEndpoints
             var totalSearches = usage.Where(p => p.EventType == UsageEventType.Search).Sum(p => p.Count);
             var totalAnswers = usage.Where(p => p.EventType == UsageEventType.Answer).Sum(p => p.Count);
             return Results.Ok(new DashboardUsageDto(totalSearches, totalAnswers, usage, trends));
-        }).WithName("DashboardSummary").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardSummary").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .Produces<DashboardUsageDto>();
 
         return app;

@@ -1,4 +1,4 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +20,7 @@ namespace WikiService.Api.Composable.Steps;
 //
 // 冪等性: DocumentId 由来の安定パス（WikiPage.WikiPath）で upsert するため、再配信に対して冪等。
 // 失敗時: Wiki.js push・本文取得の失敗は例外を送出し、MassTransit のリトライ／デッドレター
-//   （UseKnowledgePlatformRetry）へ委ねる。
+//   （UsePlatformRetry）へ委ねる。
 public class DocumentSyncConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,

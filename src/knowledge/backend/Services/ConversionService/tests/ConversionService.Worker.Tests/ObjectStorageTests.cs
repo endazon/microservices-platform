@@ -1,10 +1,10 @@
 using ConversionService.Worker.Composable.Adapters;
-using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ConversionService.Worker.Tests;

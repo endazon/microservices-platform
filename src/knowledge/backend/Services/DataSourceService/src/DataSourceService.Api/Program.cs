@@ -3,10 +3,10 @@ using DataSourceService.Api.Foundation.Endpoints;
 using DataSourceService.Api.Foundation.Persistence;
 using DataSourceService.Api.Foundation.Ports;
 using DataSourceService.Api.Foundation.Services;
-using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -16,11 +16,11 @@ const string ServiceName = "knowledge-platform.datasource-service";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(ctx.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
-builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
-builder.Services.AddKnowledgePlatformHealthChecks()
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformAuth(builder.Configuration);
+builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp",
@@ -49,11 +49,11 @@ builder.Services.AddMassTransit(x =>
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストせず、
 // データソースコネクタは実行時データ（DB）のため静的申告の対象外。到達可能性とトポロジを与えるため存在申告する。
-builder.Services.AddKnowledgePlatformIntrospection("datasource-service", new PipelineOptions());
+builder.Services.AddPlatformIntrospection("datasource-service", new PipelineOptions());
 
 // FR-01, UC-04, IADR-0051: 実データソースコネクタと同期基盤。
 // オブジェクトストレージ（原本格納。未設定時は Null クライアントで縮退）。
-builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // コネクタ。新規ソースは IDataSourceConnector を追加登録するだけで対応する（プラグイン方式）。
 // HTTP コネクタが使う名前付きクライアント（将来のタイムアウト/リトライ等の付与点を明示する）。
 builder.Services.AddHttpClient("WikiConnector");
@@ -82,9 +82,9 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
 }
 
-app.UseKnowledgePlatformMiddleware();
-app.MapKnowledgePlatformHealthChecks();
-app.MapKnowledgePlatformIntrospection();
+app.UsePlatformMiddleware();
+app.MapPlatformHealthChecks();
+app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDataSourceEndpoints();

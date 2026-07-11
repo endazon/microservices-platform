@@ -1,8 +1,8 @@
 using AuthorizationService.Api.Foundation.Domain;
 using AuthorizationService.Api.Foundation.Persistence;
 using AuthorizationService.Api.Foundation.Services;
-using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuthorizationService.Api.Foundation.Endpoints;
@@ -25,7 +25,7 @@ public static class AuthzEndpoints
         // ---- FR-09, UC-05: ABAC ポリシー・属性辞書管理（管理者のみ） ----
         // FR-09: 管理系 CRUD は管理者ロールを要求する。deny-by-default のポリシー削除・無効化を
         // 匿名で実行できないようにする。/scope・/attributes/validate はサービス間呼び出しのため対象外。
-        var admin = g.MapGroup("").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly);
+        var admin = g.MapGroup("").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // ポリシー一覧
         admin.MapGet("/policies", async (AuthorizationDbContext db) =>
