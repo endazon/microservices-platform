@@ -1,7 +1,8 @@
+using Microsoft.AspNetCore.Http;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Authz;
+namespace Platform.Shared.Infrastructure.Foundation.Authz;
 
 // FR-05, UC-01, IADR-0009: BFF 集約点での ABAC スコープ解決（横断検索・文書閲覧の共通前段）。
 // JWT からサーバ側で利用者を特定し、AuthorizationService でスコープを解決する。クライアントが
