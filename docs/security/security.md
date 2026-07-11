@@ -51,7 +51,7 @@ related_adrs:
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
   保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（IADR-0029・IADR-0009 の存在秘匿）。
   運用者（`platform-operator`）は構成閲覧のみ可能で、管理系操作（`AdminOnly`）は不可。ロールは
-  Keycloak レルム（`deploy/keycloak/knowledge-platform-realm.json`）に定義し、実ユーザーへの割当は
+  Keycloak レルム（`deploy/keycloak/microservices-platform-realm.json`）に定義し、実ユーザーへの割当は
   運用作業とする。ポリシー判定は単体テスト（`ConfigViewerPolicyTests`）で検証（詳細:
   [IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
 - **ロールクレームの取得経路**: Keycloak はレルムロールを JWT の `realm_access.roles`（ネストした JSON クレーム）に
@@ -111,7 +111,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 **方針（IADR-0026）**: サービス間認証の**第一防御は Istio STRICT mTLS**（ADR-0005）とする。
 
 - `PeerAuthentication`（`mtls.mode: STRICT`）と `DestinationRule`（`ISTIO_MUTUAL`）を Helm で宣言し、
-  ArgoCD が継続的に同期する（`deploy/helm/knowledge-platform/templates/istio-mtls.yaml`）。
+  ArgoCD が継続的に同期する（`deploy/helm/microservices-platform/templates/istio-mtls.yaml`）。
   STRICT により平文フォールバックが無く、サイドカー未注入クライアントからの平文到達を拒否する。
 - サイドカー自動注入は Namespace ラベル `istio-injection: enabled` で行う。
 - mTLS がワークロード ID を保証するため、トークン非保持ワーカーを含むサービス間呼び出しでも
@@ -121,7 +121,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 **多層防御（旧 IADR-0017、defense-in-depth へ格下げして維持）**:
 
 - Kubernetes では ClusterIP + NetworkPolicy（デフォルト拒否）を維持する
-  （`deploy/helm/knowledge-platform/templates/networkpolicy.yaml`）。
+  （`deploy/helm/microservices-platform/templates/networkpolicy.yaml`）。
 - `docker-compose.yml`（ローカル開発）は BFF=エッジのみ host 公開、他は `expose` を維持。
   回帰は `NetworkIsolationTests` で担保する。
 - 外部からの入口は **BFF（エッジ）に一本化**し、BFF が Keycloak JWT で認証する。
@@ -149,7 +149,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 ### 開発専用（dev-only）の平文認証情報 — 本番流用禁止
 
-`deploy/keycloak/knowledge-platform-realm.json` の realm import には、開発・E2E 検証用の PoC ユーザーが
+`deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の PoC ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`、および OIDC クライアントシークレット
 `wiki-js-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 

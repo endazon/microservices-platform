@@ -6,7 +6,7 @@
 // 認証（いずれか）:
 //   TOKEN      … 事前取得済みの Bearer アクセストークン（最優先）
 //   もしくは Keycloak パスワードグラント（dev realm の poc-user 等）:
-//     KC_TOKEN_URL  … 例 http://localhost:8080/realms/knowledge-platform/protocol/openid-connect/token
+//     KC_TOKEN_URL  … 例 http://localhost:8080/realms/microservices-platform/protocol/openid-connect/token
 //     KC_CLIENT_ID  … 既定 spa-web（public client。direct access grants 有効化が前提）
 //     KC_USERNAME / KC_PASSWORD … 例 poc-user / （dev シード）
 //

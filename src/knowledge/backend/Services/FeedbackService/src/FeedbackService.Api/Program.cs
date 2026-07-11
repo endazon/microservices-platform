@@ -6,7 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.feedback-service";
+const string ServiceName = "microservices-platform.feedback-service";
 
 var builder = WebApplication.CreateBuilder(args);
 

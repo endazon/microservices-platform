@@ -6,7 +6,7 @@
 
 サービス間通信を **STRICT mTLS**（平文フォールバック無し）で暗号化・相互認証する。
 mTLS を強制する宣言（`PeerAuthentication` / `DestinationRule`）は Helm チャート
-（`deploy/helm/knowledge-platform/templates/istio-mtls.yaml`）に含まれ、ArgoCD が同期する。
+（`deploy/helm/microservices-platform/templates/istio-mtls.yaml`）に含まれ、ArgoCD が同期する。
 
 ## 1. Istio 本体の導入
 
@@ -17,22 +17,22 @@ k3s クラスタへ Istio コントロールプレーンを導入する（istioc
 istioctl install --set profile=default -y
 
 # サイドカー自動注入は Namespace ラベルで行う（Helm namespace.yaml が付与）
-kubectl label namespace knowledge-platform istio-injection=enabled --overwrite
+kubectl label namespace microservices-platform istio-injection=enabled --overwrite
 ```
 
 既存 Pod にはサイドカーが後から入らないため、ラベル付与後に再起動する:
 
 ```sh
-kubectl rollout restart deployment -n knowledge-platform
+kubectl rollout restart deployment -n microservices-platform
 ```
 
 ## 2. STRICT mTLS の適用（Helm が宣言）
 
 `mesh.enabled=true` / `mesh.mtlsMode=STRICT`（既定）で、以下がレンダリング・適用される:
 
-- `PeerAuthentication knowledge-platform-mtls`（`mtls.mode: STRICT`）
+- `PeerAuthentication microservices-platform-mtls`（`mtls.mode: STRICT`）
   — Namespace 内ワークロードが受け付ける接続を mTLS のみに限定。
-- `DestinationRule knowledge-platform-mtls`（`trafficPolicy.tls.mode: ISTIO_MUTUAL`）
+- `DestinationRule microservices-platform-mtls`（`trafficPolicy.tls.mode: ISTIO_MUTUAL`）
   — 同 Namespace 宛の送信 TLS をメッシュ証明書での相互 TLS に固定。
 
 > 実クラスタへの初回導入時は、一時的に `mesh.mtlsMode=PERMISSIVE` で移行を確認してから
@@ -54,13 +54,13 @@ Kiali の Security バッジ（鍵アイコン）で、サービス間エッジ�
 
 ```sh
 # 各ワークロードの mTLS 状態（STRICT であること）
-istioctl authn tls-check <pod>.knowledge-platform
+istioctl authn tls-check <pod>.microservices-platform
 
 # サイドカーのリスナ設定に平文（PERMISSIVE/DISABLE）が無いこと
-istioctl proxy-config listener <pod> -n knowledge-platform
+istioctl proxy-config listener <pod> -n microservices-platform
 
 # PeerAuthentication が STRICT で適用されていること
-kubectl get peerauthentication -n knowledge-platform -o yaml
+kubectl get peerauthentication -n microservices-platform -o yaml
 ```
 
 受け入れ基準「平文の内部通信が存在しない」は、`istioctl authn tls-check` が全エッジで

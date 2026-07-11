@@ -32,7 +32,7 @@ plan_refs:
 
 - **k6**（`perf/k6/`）。`search-load.js`（p95<1500）・`rag-load.js`（p95<5000）は threshold 未達で非ゼロ終了する。
   取り込みスループット・反映時間は `perf/k6/README.md` の手順（パイプライン投入レート・検索ポーリング）で測る。
-- 観察は Grafana（`knowledge-platform-overview`）＋ Prometheus SLO アラート（`deploy/prometheus/alerts.yml`・#198）＋ Tempo。
+- 観察は Grafana（`microservices-platform-overview`）＋ Prometheus SLO アラート（`deploy/prometheus/alerts.yml`・#198）＋ Tempo。
 
 ## テストケース一覧
 

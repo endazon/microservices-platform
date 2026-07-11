@@ -65,8 +65,8 @@ related_specs:
 
 ### 1.3 実行時構成
 
-- パイプライン宣言: `deploy/helm/knowledge-platform/files/pipeline.json`（**構成の正**。
-  運用手順は [同ディレクトリの README](../../deploy/helm/knowledge-platform/files/README.md)）。
+- パイプライン宣言: `deploy/helm/microservices-platform/files/pipeline.json`（**構成の正**。
+  運用手順は [同ディレクトリの README](../../deploy/helm/microservices-platform/files/README.md)）。
 - 実装差し替えの選択は**構成**（接続文字列・エンドポイントの有無、ルーティング表）または
   **DI 登録**（合成ルート）で行う。ビルド分岐（`#if` 等）は用いない。
 
@@ -82,7 +82,7 @@ related_specs:
    1 行追加する。
 3. `pipeline.json` に段を宣言する（`name` / `service` / `consumer`＝型完全名 / `input` / `outputs` /
    `enabled`）。入力イベント型は `events` に列挙済みであること。
-   ローカル検証: `node scripts/validate-pipeline-config.js deploy/helm/knowledge-platform/files/pipeline.json`
+   ローカル検証: `node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json`
 4. 段をホストするサービスが新規なら Helm `values.yaml` で `pipelineSteps: true` を設定する
    （ConfigMap checksum によるロールアウト対象になる）。
 
@@ -174,7 +174,7 @@ issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and
 5. **テストと検証**: 受け入れ基準をテスト（xUnit / Vitest）へ写像し、PR 前に `/verify`
    （ビルド・テスト・lint）と `docs/DEFINITION_OF_DONE.md` を満たす。
 6. **構成変更の運用**: pipeline.json の変更は CI `pipeline-config` 検証＋GitOps（ArgoCD）適用。
-   ロールバックは Git revert（[Helm files README](../../deploy/helm/knowledge-platform/files/README.md)）。
+   ロールバックは Git revert（[Helm files README](../../deploy/helm/microservices-platform/files/README.md)）。
 
 ## 4. 受け入れチェックリスト（PR 前の自己点検）
 

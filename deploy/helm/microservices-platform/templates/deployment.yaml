@@ -1,5 +1,5 @@
 # Generic Deployment template — rendered once per enabled service
-# ADR-0007: k8s Deployment skeleton for knowledge-platform services
+# ADR-0007: k8s Deployment skeleton for microservices-platform services
 {{- range $name, $svc := .Values.services }}
 {{- if $svc.enabled }}
 {{- /* FR-14/FR-15 (#146): pipeline.json をマウントする条件。段ホスト（pipelineSteps）に加え、
@@ -53,7 +53,7 @@ spec:
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
             - name: Pipeline__ConfigPath
-              value: /etc/knowledge-platform/pipeline/pipeline.appsettings.json
+              value: /etc/microservices-platform/pipeline/pipeline.appsettings.json
           {{- end }}
           {{- if $svc.objectStorage }}
             # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO 接続。資格情報は Secret 経由。
@@ -114,7 +114,7 @@ spec:
           {{- if $pipelineMount }}
           volumeMounts:
             - name: pipeline-config
-              mountPath: /etc/knowledge-platform/pipeline
+              mountPath: /etc/microservices-platform/pipeline
               readOnly: true
           {{- end }}
       {{- if $pipelineMount }}

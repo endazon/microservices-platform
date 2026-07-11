@@ -30,7 +30,7 @@ public static class AuthExtensions
         IConfiguration config)
     {
         var authority = config["Auth:Authority"]
-            ?? "http://keycloak:8080/realms/knowledge-platform";
+            ?? "http://keycloak:8080/realms/microservices-platform";
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>

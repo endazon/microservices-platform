@@ -5,7 +5,7 @@ namespace Knowledge.IntegrationTests.Deployment;
 
 // IADR-0026 / #100, NFR(機密性), ADR-0005:
 // サービス間認証の第一防御は Istio STRICT mTLS。Helm の Istio マニフェスト
-// (deploy/helm/knowledge-platform/templates/istio-mtls.yaml) が STRICT mTLS を宣言し、
+// (deploy/helm/microservices-platform/templates/istio-mtls.yaml) が STRICT mTLS を宣言し、
 // 平文許容(PERMISSIVE/DISABLE)へ後退していないことを回帰として固定する
 // （IADR-0017 のネットワーク分離を第一防御とする暫定運用の解消を担保）。
 [Trait("Category", "Deployment")]
@@ -71,12 +71,12 @@ public sealed class MeshMtlsTests
         while (dir is not null)
         {
             var candidate = Path.Combine(
-                dir.FullName, "deploy", "helm", "knowledge-platform", relative);
+                dir.FullName, "deploy", "helm", "microservices-platform", relative);
             if (File.Exists(candidate))
                 return File.ReadAllText(candidate);
             dir = dir.Parent;
         }
         throw new FileNotFoundException(
-            $"deploy/helm/knowledge-platform/{relative} をリポジトリルートから解決できませんでした。");
+            $"deploy/helm/microservices-platform/{relative} をリポジトリルートから解決できませんでした。");
     }
 }

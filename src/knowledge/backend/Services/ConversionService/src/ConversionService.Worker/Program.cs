@@ -14,7 +14,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.conversion-service";
+const string ServiceName = "microservices-platform.conversion-service";
 
 // FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
 // MassTransit コンシューマ（変換ワーカー）は従来どおり IHostedService として稼働する。

@@ -84,7 +84,7 @@ public sealed class HpaPdbScalingTests
 
     private static string ReadChartFile(string relative)
     {
-        var rel = Path.Combine("deploy", "helm", "knowledge-platform", relative);
+        var rel = Path.Combine("deploy", "helm", "microservices-platform", relative);
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {

@@ -1,5 +1,5 @@
 {
-  "realm": "knowledge-platform",
+  "realm": "microservices-platform",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

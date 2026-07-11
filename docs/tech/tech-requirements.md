@@ -52,7 +52,7 @@ plan_refs:
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
 | オブジェクトストレージ | MinIO（S3 互換） | RELEASE.2025-04-08 | 正規化本文・資産。ClusterIP のみ（[[IADR-0024]]）。資格情報は k8s Secret |
 | メッセージング | RabbitMQ（MassTransit） | — | イベント駆動パイプライン。契約は `Shared.Contracts` |
-| 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/knowledge-platform`、Namespace `knowledge-platform` |
+| 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/microservices-platform`、Namespace `microservices-platform` |
 | サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / [[IADR-0026]]。STRICT mTLS（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | ADR-0007。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
 | コンテナレジストリ | Harbor | — | ADR-0007。`global.image.registry: harbor.internal`、Pull は `imagePullSecrets` |
@@ -103,7 +103,7 @@ flowchart TB
 - **CI**: バックエンド [`ci.yml`](../../.github/workflows/ci.yml)、フロント [`frontend.yml`](../../.github/workflows/frontend.yml) /
   [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml)。セキュリティ（gitleaks/dependency-review）・CodeQL。
   コミット/PR 件名はトレーサビリティ規約を機械検査（`check-commit-messages.js` / `pr-title.yml`）。
-- **デプロイ**: ArgoCD が `deploy/helm/knowledge-platform` を宣言的同期（ADR-0007）。構成変更のみで段の組み替え・
+- **デプロイ**: ArgoCD が `deploy/helm/microservices-platform` を宣言的同期（ADR-0007）。構成変更のみで段の組み替え・
   スケール調整が完結する（GitOps）。
 
 ## 未決事項

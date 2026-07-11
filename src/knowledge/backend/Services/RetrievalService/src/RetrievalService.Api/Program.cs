@@ -8,7 +8,7 @@ using RetrievalService.Api.Composable.Adapters;
 using RetrievalService.Api.Foundation.Services;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.retrieval-service";
+const string ServiceName = "microservices-platform.retrieval-service";
 
 var builder = WebApplication.CreateBuilder(args);
 

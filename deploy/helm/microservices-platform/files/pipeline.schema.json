@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/endazon/microservices-platform/deploy/helm/knowledge-platform/files/pipeline.schema.json",
+  "$id": "https://github.com/endazon/microservices-platform/deploy/helm/microservices-platform/files/pipeline.schema.json",
   "title": "Platform 宣言的パイプライン構成 (FR-14, ADR-0018, IADR-0028)",
   "description": "パイプライン段（イベント購読→処理→発行）と発行元の宣言。CI（scripts/validate-pipeline-config.js）が本スキーマと同等の規則＋接続性・循環検証を行う。",
   "type": "object",

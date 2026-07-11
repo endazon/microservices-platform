@@ -10,7 +10,7 @@ using MassTransit;
 using Qdrant.Client;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.ingestion-service";
+const string ServiceName = "microservices-platform.ingestion-service";
 
 // FR-15, IADR-0029: 自己申告エンドポイントの最小 HTTP サーフェスのため WebApplication を用いる。
 // MassTransit コンシューマ（取り込みワーカー）は従来どおり IHostedService として稼働する。

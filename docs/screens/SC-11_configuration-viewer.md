@@ -44,7 +44,7 @@ related_specs:
 | 項目 | 状態 | 備考 |
 | --- | --- | --- |
 | 構成情報 API（#112） | **完了（PR #116）** | 実効構成・ドリフトの**データソース**（`/bff/admin/config`・`/bff/admin/config/drift`、IADR-0029）。本画面は API の応答を表示するだけで、独自に構成を収集・判定しない |
-| 宣言的パイプライン構成（#111） | 完了（`develop`） | 宣言（Git）側の正データ。`deploy/helm/knowledge-platform/files/pipeline.json` ＋ `pipeline.schema.json` |
+| 宣言的パイプライン構成（#111） | 完了（`develop`） | 宣言（Git）側の正データ。`deploy/helm/microservices-platform/files/pipeline.json` ＋ `pipeline.schema.json` |
 | 固定/可変分離（#102） | 完了 | 段・ポート・コネクタの分類基盤 |
 | フロントエンド基盤 | 後続フェーズ | 本リポジトリに SPA 実装は未着手。他 SC 画面群と足並みを揃える |
 

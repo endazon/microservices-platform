@@ -4,7 +4,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Bff.Composition;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.bff";
+const string ServiceName = "microservices-platform.bff";
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -95,7 +95,7 @@ public sealed class NetworkIsolationTests
     private static string ReadHelmWikijsValues()
     {
         var values = File.ReadAllText(ResolveRepoFile(
-            Path.Combine("deploy", "helm", "knowledge-platform", "values.yaml")));
+            Path.Combine("deploy", "helm", "microservices-platform", "values.yaml")));
         var lines = values.Replace("\r\n", "\n").Split('\n');
         var start = Array.FindIndex(lines, l => Regex.IsMatch(l, @"^wikijs:\s*$"));
         if (start < 0)

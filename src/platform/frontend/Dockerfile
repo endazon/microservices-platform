@@ -15,7 +15,7 @@ RUN npm run build
 FROM nginx:1.27-alpine AS runtime
 # nginx テンプレート（BFF_UPSTREAM を envsubst で注入）と実行時 config テンプレート。
 COPY src/platform/frontend/nginx.default.conf.template /etc/nginx/templates/default.conf.template
-COPY src/platform/frontend/config.js.template /etc/knowledge-platform/config.js.template
+COPY src/platform/frontend/config.js.template /etc/microservices-platform/config.js.template
 COPY src/platform/frontend/docker-entrypoint.d/40-render-config.sh /docker-entrypoint.d/40-render-config.sh
 RUN chmod +x /docker-entrypoint.d/40-render-config.sh
 COPY --from=build /app/platform/frontend/dist /usr/share/nginx/html

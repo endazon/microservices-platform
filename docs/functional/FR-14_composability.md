@@ -30,7 +30,7 @@ plan_refs:
 ## 概要
 
 取り込み〜正規化〜索引〜Wiki 同期の処理パイプライン（段構成・イベント接続）を、コード改修なしに
-**宣言的構成定義（`deploy/helm/knowledge-platform/files/pipeline.json`）** の変更だけで組み替え可能にする。
+**宣言的構成定義（`deploy/helm/microservices-platform/files/pipeline.json`）** の変更だけで組み替え可能にする。
 
 - **固定部（Foundation）／可変部（Composable）の分離**（IADR-0027）: 各サービスは `Foundation/`
   （認証・永続化・可観測性等の固定基盤）と `Composable/`（差し替え・組み替え対象の段・ポート実装）に
