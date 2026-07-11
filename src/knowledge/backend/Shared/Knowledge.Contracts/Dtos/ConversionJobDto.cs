@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-12, UC-06, SC-07: 変換ジョブの状況 DTO（BFF ↔ SPA 契約）。ConversionService が保持する変換
 // 読み取りモデルを表す。Status は queued / processing / succeeded / failed。失敗ジョブは Error を持つ。

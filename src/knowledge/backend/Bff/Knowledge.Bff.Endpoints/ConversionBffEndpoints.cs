@@ -1,8 +1,12 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-12, UC-06, SC-07, IADR-0042: 変換ジョブ管理の BFF 集約。
 // ConversionService（/jobs）へプロキシする。運用系のため管理者・運用者ロールに限定する
