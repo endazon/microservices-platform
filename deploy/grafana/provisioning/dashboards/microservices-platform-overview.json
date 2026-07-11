@@ -1,6 +1,6 @@
 {
   "title": "Platform Overview",
-  "uid": "kp-overview",
+  "uid": "microservices-platform-overview",
   "schemaVersion": 38,
   "version": 1,
   "refresh": "30s",
