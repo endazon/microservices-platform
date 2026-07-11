@@ -1,4 +1,4 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -17,7 +17,7 @@ namespace WikiService.Api.Composable.Steps;
 //   1. Wiki.js の pages.delete による実体撤去（正準パス doc/<DocumentId>。未存在は成功扱い）。
 //   2. wiki_svc 同期メタデータ行の削除（ゲートウェイの一覧・個別から不可視 = 404 存在秘匿を維持）。
 // メタデータ未同期の ID でも Wiki.js 側の撤去は試みる（正準パスは DocumentId から導出可能）。
-// 失敗は例外を送出し、MassTransit のリトライ／デッドレター（UseKnowledgePlatformRetry）へ委ねる。
+// 失敗は例外を送出し、MassTransit のリトライ／デッドレター（UsePlatformRetry）へ委ねる。
 public class DocumentDeletedConsumer(
     WikiDbContext db,
     IWikiJsClient wikiJs,

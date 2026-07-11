@@ -1,11 +1,11 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using IngestionService.Worker.Composable.Steps;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using IngestionService.Worker.Composable.Adapters;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Qdrant.Client;
 using Serilog;
@@ -17,9 +17,9 @@ const string ServiceName = "knowledge-platform.ingestion-service";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSerilog((sp, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(builder.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(builder.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 
 // FR-02: チャンク化・埋め込み・ベクトルDB依存
 builder.Services.AddSingleton<IChunkingService, MarkdownChunkingService>();
@@ -37,7 +37,7 @@ builder.Services.AddSingleton<IIngestionVectorStore, QdrantIngestionVectorStore>
 builder.Services.AddHostedService<QdrantBootstrapHostedService>();
 
 // FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
-builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // FR-02/FR-06 parse: 本文（Markdown）取得（storage:// はオブジェクトストレージ、http(s) は実取得、
 // それ以外はプレースホルダー）
@@ -49,17 +49,17 @@ builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c 
 
 // ADR-0003: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
-builder.AddKnowledgePlatformPipelineConfig();
-var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
+builder.AddPlatformPipelineConfig();
+var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（ingest）の実効値を申告する。
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
-builder.Services.AddKnowledgePlatformIntrospection("ingestion-service", pipeline,
+builder.Services.AddPlatformIntrospection("ingestion-service", pipeline,
     i => i.AddStep<DocumentUpdatedConsumer>());
 
 builder.Services.AddMassTransit(x =>
 {
-    x.AddKnowledgePlatformPipelineStep<DocumentUpdatedConsumer>(pipeline);
+    x.AddPlatformPipelineStep<DocumentUpdatedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
@@ -67,7 +67,7 @@ builder.Services.AddMassTransit(x =>
 
         // ADR-0003: 取り込み（チャンク化・埋め込み・ベクトル登録）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
-        cfg.UseKnowledgePlatformRetry();
+        cfg.UsePlatformRetry();
 
         cfg.ConfigureEndpoints(ctx);
     });
@@ -77,7 +77,7 @@ var app = builder.Build();
 
 // FR-15, IADR-0029: 自己申告エンドポイント（GET /internal/introspection）。
 // メッシュ内部限定（ingress へ公開しない。IADR-0017 ネットワーク分離 / IADR-0026 mTLS が防御）。
-app.MapKnowledgePlatformIntrospection();
+app.MapPlatformIntrospection();
 
 app.Run();
 

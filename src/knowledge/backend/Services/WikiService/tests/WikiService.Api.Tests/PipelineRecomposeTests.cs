@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Knowledge.Contracts.Events;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -53,8 +53,8 @@ public class PipelineRecomposeTests
             .AddSingleton<IWikiContentReader, NoopContentReader>()
             .AddMassTransitTestHarness(cfg =>
             {
-                cfg.AddKnowledgePlatformPipelineStep<DocumentSyncConsumer>(pipeline);
-                cfg.AddKnowledgePlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
+                cfg.AddPlatformPipelineStep<DocumentSyncConsumer>(pipeline);
+                cfg.AddPlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
             })
             .BuildServiceProvider(true);
 

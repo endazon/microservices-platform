@@ -13,7 +13,7 @@ namespace WikiService.Api.Composable.Adapters;
 //   スキーマ整合・エラー時再送・レイテンシは稼働 Wiki.js での PoC 実測が必要。本実装は 2.x の
 //   documented スキーマ（pages.singleByPath / pages.create / pages.update）に忠実に構成し、
 //   スキーマ確定は PoC フォローで調整する。呼び出し側（DocumentSyncConsumer）は例外を送出させ、
-//   MassTransit のリトライ/デッドレター（UseKnowledgePlatformRetry）へ委ねる。
+//   MassTransit のリトライ/デッドレター（UsePlatformRetry）へ委ねる。
 public class WikiJsGraphQlClient(HttpClient http, ILogger<WikiJsGraphQlClient> logger) : IWikiJsClient
 {
     private const string Locale = "ja";

@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;

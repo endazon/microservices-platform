@@ -1,7 +1,7 @@
 using FeedbackService.Api.Foundation.Domain;
 using FeedbackService.Api.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Contracts.Dtos;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FeedbackService.Api.Foundation.Endpoints;
@@ -99,7 +99,7 @@ public static class FeedbackEndpoints
             var rows = await q.OrderByDescending(f => f.UpdatedAt)
                 .Skip(pageSkip).Take(pageTake).ToListAsync(ct);
             return Results.Ok(rows.Select(ToDto).ToList());
-        }).WithName("ListFeedback").RequireAuthorization(KnowledgePlatformAuthPolicies.AdminOnly)
+        }).WithName("ListFeedback").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
           .Produces<List<FeedbackDto>>();
 
         // FR-08: 集計（👍/👎 件数・満足率）。品質可視化（FR-10 ダッシュボード）の入力。

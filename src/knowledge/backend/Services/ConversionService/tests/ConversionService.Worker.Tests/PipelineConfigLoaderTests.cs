@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 
@@ -29,8 +29,8 @@ public class PipelineConfigLoaderTests
             {
                 ["Pipeline:ConfigPath"] = path
             });
-            builder.AddKnowledgePlatformPipelineConfig();
-            return builder.Configuration.GetKnowledgePlatformPipeline();
+            builder.AddPlatformPipelineConfig();
+            return builder.Configuration.GetPlatformPipeline();
         }
         finally
         {

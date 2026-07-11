@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using WikiService.Api.Foundation.Domain;
 using WikiService.Api.Foundation.Ports;
 using WikiService.Api.Foundation.Services;

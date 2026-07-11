@@ -1,4 +1,4 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
 using Knowledge.Contracts.Events;

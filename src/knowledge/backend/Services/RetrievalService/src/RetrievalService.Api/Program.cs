@@ -1,6 +1,6 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Qdrant.Client;
 using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Endpoints;
@@ -13,13 +13,13 @@ const string ServiceName = "knowledge-platform.retrieval-service";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(ctx.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
-builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformAuth(builder.Configuration);
 var qdrantHealthUri = new Uri(
     $"http://{builder.Configuration["Qdrant:Host"] ?? "qdrant"}:6333/healthz");
-builder.Services.AddKnowledgePlatformHealthChecks()
+builder.Services.AddPlatformHealthChecks()
     .AddUrlGroup(qdrantHealthUri, "qdrant", tags: ["ready"]);
 builder.Services.AddOpenApi();
 
@@ -38,16 +38,16 @@ builder.Services.AddScoped<IHybridSearchService, HybridSearchService>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // 選択中の合成可能ポート（ベクトルDB・埋め込み）を申告する。メッシュ内部限定で公開する。
-builder.Services.AddKnowledgePlatformIntrospection("retrieval-service", new PipelineOptions(),
+builder.Services.AddPlatformIntrospection("retrieval-service", new PipelineOptions(),
     i => i
         .AddPort("vector-store", nameof(QdrantVectorStore), $"qdrant:{qdrantPort}")
         .AddPort("embedding", nameof(LlmGatewayEmbeddingService), "llm-gateway"));
 
 var app = builder.Build();
 
-app.UseKnowledgePlatformMiddleware();
-app.MapKnowledgePlatformHealthChecks();
-app.MapKnowledgePlatformIntrospection();
+app.UsePlatformMiddleware();
+app.MapPlatformHealthChecks();
+app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapSearchEndpoints();

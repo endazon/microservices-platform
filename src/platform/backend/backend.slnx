@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/Bff/">
-    <Project Path="Bff/KnowledgePlatform.Bff.Tests/KnowledgePlatform.Bff.Tests.csproj" />
-    <Project Path="Bff/KnowledgePlatform.Bff/KnowledgePlatform.Bff.csproj" />
+    <Project Path="Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj" />
+    <Project Path="Bff/Platform.Bff/Platform.Bff.csproj" />
   </Folder>
   <Folder Name="/Services/" />
   <Folder Name="/Services/AuthorizationService/" />
@@ -19,7 +19,7 @@
     <Project Path="Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj" />
   </Folder>
   <Folder Name="/Shared/">
-    <Project Path="Shared/KnowledgePlatform.Shared.Contracts/KnowledgePlatform.Shared.Contracts.csproj" />
-    <Project Path="Shared/KnowledgePlatform.Shared.Infrastructure/KnowledgePlatform.Shared.Infrastructure.csproj" />
+    <Project Path="Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj" />
+    <Project Path="Shared/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj" />
   </Folder>
 </Solution>

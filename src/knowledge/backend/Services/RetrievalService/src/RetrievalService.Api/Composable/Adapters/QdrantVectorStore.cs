@@ -1,5 +1,5 @@
 using System.Globalization;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using Grpc.Core;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;

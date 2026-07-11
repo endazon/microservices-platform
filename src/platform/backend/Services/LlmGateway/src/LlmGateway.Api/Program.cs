@@ -1,7 +1,7 @@
 using Anthropic.SDK;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Api.Foundation.Endpoints;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Composable.Adapters;
@@ -14,11 +14,11 @@ const string ServiceName = "knowledge-platform.llm-gateway";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(ctx.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
-builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
-builder.Services.AddKnowledgePlatformHealthChecks();
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformAuth(builder.Configuration);
+builder.Services.AddPlatformHealthChecks();
 builder.Services.AddOpenApi();
 
 // ADR-0010: Claude SDK (Anthropic.SDK 4.0.0)
@@ -53,16 +53,16 @@ builder.Services.AddKeyedSingleton<IEmbeddingProvider, SelfHostedEmbeddingProvid
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。段はホストしないが、
 // LLM 生成・埋め込みの合成可能ポート（機密区分ルーティングで複数プロバイダを束ねるルータ）を申告する。
-builder.Services.AddKnowledgePlatformIntrospection("llm-gateway", new PipelineOptions(),
+builder.Services.AddPlatformIntrospection("llm-gateway", new PipelineOptions(),
     i => i
         .AddPort("llm", nameof(LlmRouter), "claude/selfhosted/copilot")
         .AddPort("embedding", nameof(EmbeddingRouter), "voyage/selfhosted"));
 
 var app = builder.Build();
 
-app.UseKnowledgePlatformMiddleware();
-app.MapKnowledgePlatformHealthChecks();
-app.MapKnowledgePlatformIntrospection();
+app.UsePlatformMiddleware();
+app.MapPlatformHealthChecks();
+app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapCompletionEndpoints();

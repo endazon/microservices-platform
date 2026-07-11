@@ -446,7 +446,7 @@ services:
   bff:
     build:
       context: ..
-      dockerfile: src/platform/backend/Bff/KnowledgePlatform.Bff/Dockerfile
+      dockerfile: src/platform/backend/Bff/Platform.Bff/Dockerfile
     ports:
       - "5000:8080"
     environment:

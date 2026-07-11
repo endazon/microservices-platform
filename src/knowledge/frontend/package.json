@@ -1,5 +1,5 @@
 {
-  "name": "@microservices-platform/frontend-knowledge",
+  "name": "@knowledge/frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",

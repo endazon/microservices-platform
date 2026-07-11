@@ -1,7 +1,7 @@
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Composable.Adapters.Storage;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -17,11 +17,11 @@ const string ServiceName = "knowledge-platform.wiki-service";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(ctx.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
-builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
-builder.Services.AddKnowledgePlatformHealthChecks()
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformAuth(builder.Configuration);
+builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp",
@@ -55,7 +55,7 @@ builder.Services.AddHttpClient<IWikiJsClient, WikiJsGraphQlClient>(c =>
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
 });
 // FR-06, ADR-0014/ADR-0015: オブジェクトストレージ（MinIO）クライアント（storage:// 本文の実取得用）。
-builder.Services.AddKnowledgePlatformObjectStorage(builder.Configuration);
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // IADR-0021: 正規化 Markdown 本文を MarkdownUri から取得して Wiki.js へ push する
 // （storage:// はオブジェクトストレージから実取得。IADR-0020 ゲートウェイ経由の ABAC 強制と整合）。
@@ -63,19 +63,19 @@ builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
 // ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
-builder.AddKnowledgePlatformPipelineConfig();
-var pipeline = builder.Configuration.GetKnowledgePlatformPipeline();
+builder.AddPlatformPipelineConfig();
+var pipeline = builder.Configuration.GetPlatformPipeline();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）— この段（wiki-sync / wiki-delete）の実効値を申告する。
-builder.Services.AddKnowledgePlatformIntrospection("wiki-service", pipeline, i => i
+builder.Services.AddPlatformIntrospection("wiki-service", pipeline, i => i
     .AddStep<DocumentSyncConsumer>()
     .AddStep<DocumentDeletedConsumer>());
 
 builder.Services.AddMassTransit(x =>
 {
-    x.AddKnowledgePlatformPipelineStep<DocumentSyncConsumer>(pipeline);
+    x.AddPlatformPipelineStep<DocumentSyncConsumer>(pipeline);
     // Issue #88: 文書削除の伝播（Wiki.js 実体撤去・メタデータ削除）。
-    x.AddKnowledgePlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
+    x.AddPlatformPipelineStep<DocumentDeletedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
@@ -83,7 +83,7 @@ builder.Services.AddMassTransit(x =>
 
         // ADR-0003: DocumentUpdated 購読による Wiki 同期（DocumentSyncConsumer）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
-        cfg.UseKnowledgePlatformRetry();
+        cfg.UsePlatformRetry();
 
         cfg.ConfigureEndpoints(ctx);
     });
@@ -99,9 +99,9 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
 }
 
-app.UseKnowledgePlatformMiddleware();
-app.MapKnowledgePlatformHealthChecks();
-app.MapKnowledgePlatformIntrospection();
+app.UsePlatformMiddleware();
+app.MapPlatformHealthChecks();
+app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapWikiEndpoints();

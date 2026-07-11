@@ -1,7 +1,7 @@
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Persistence;
 using DataSourceService.Api.Foundation.Services;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DataSourceService.Api.Foundation.Endpoints;
@@ -16,8 +16,8 @@ public static class DataSourceEndpoints
         // （サービスが最終防衛線）。利用者トークンは BFF が後段へ伝播する。
         var g = app.MapGroup("/datasources").WithTags("DataSources")
             .RequireAuthorization(p => p.RequireRole(
-                KnowledgePlatformAuthPolicies.AdminRole,
-                KnowledgePlatformAuthPolicies.OperatorRole));
+                PlatformAuthPolicies.AdminRole,
+                PlatformAuthPolicies.OperatorRole));
 
         // IADR-0053, claude-review #222: 応答では Config 内の秘密（apiToken 等）をマスクする。
         // Vault 移行までの暫定措置。admin/operator であっても API 応答で平文の資格情報を露出させない。

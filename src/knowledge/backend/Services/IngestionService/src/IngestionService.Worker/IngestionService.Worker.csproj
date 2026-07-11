@@ -7,8 +7,8 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <InternalsVisibleTo Include="IngestionService.Worker.Tests" />
   </ItemGroup>
 </Project>

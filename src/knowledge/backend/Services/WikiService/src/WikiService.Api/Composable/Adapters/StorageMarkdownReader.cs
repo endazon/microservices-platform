@@ -1,5 +1,5 @@
 using WikiService.Api.Foundation.Ports;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace WikiService.Api.Composable.Adapters;
 

@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace AuthorizationService.Api.Tests;
 

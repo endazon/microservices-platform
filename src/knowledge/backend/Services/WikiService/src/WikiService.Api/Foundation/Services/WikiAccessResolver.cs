@@ -1,5 +1,5 @@
 using WikiService.Api.Foundation.Ports;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 
 namespace WikiService.Api.Foundation.Services;

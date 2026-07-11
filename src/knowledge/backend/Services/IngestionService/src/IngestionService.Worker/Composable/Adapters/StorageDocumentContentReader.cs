@@ -1,6 +1,6 @@
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging;
 
 namespace IngestionService.Worker.Composable.Adapters;

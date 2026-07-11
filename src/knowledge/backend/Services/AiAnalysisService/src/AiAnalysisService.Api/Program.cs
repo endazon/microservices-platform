@@ -1,8 +1,8 @@
 using AiAnalysisService.Api.Foundation.Endpoints;
 using AiAnalysisService.Api.Foundation.Services;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Introspection;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Introspection;
+using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.aianalysis-service";
@@ -10,11 +10,11 @@ const string ServiceName = "knowledge-platform.aianalysis-service";
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigureKnowledgePlatformSerilog(ctx.Configuration, ServiceName));
+    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
-builder.Services.AddKnowledgePlatformObservability(builder.Configuration, ServiceName);
-builder.Services.AddKnowledgePlatformAuth(builder.Configuration);
-builder.Services.AddKnowledgePlatformHealthChecks()
+builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+builder.Services.AddPlatformAuth(builder.Configuration);
+builder.Services.AddPlatformHealthChecks()
     .AddUrlGroup(
         new Uri((builder.Configuration["Services:RetrievalService"] ?? "http://retrieval-service:5003") + "/health/live"),
         "retrieval-service", tags: ["ready"])
@@ -39,13 +39,13 @@ builder.Services.AddScoped<IRagOrchestrator, RagOrchestrator>();
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。RAG オーケストレータは
 // 他サービスを HTTP で束ねるため合成可能ポートを選択しない。到達可能性とトポロジを与えるため存在申告する。
-builder.Services.AddKnowledgePlatformIntrospection("aianalysis-service", new PipelineOptions());
+builder.Services.AddPlatformIntrospection("aianalysis-service", new PipelineOptions());
 
 var app = builder.Build();
 
-app.UseKnowledgePlatformMiddleware();
-app.MapKnowledgePlatformHealthChecks();
-app.MapKnowledgePlatformIntrospection();
+app.UsePlatformMiddleware();
+app.MapPlatformHealthChecks();
+app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapAnalysisEndpoints();

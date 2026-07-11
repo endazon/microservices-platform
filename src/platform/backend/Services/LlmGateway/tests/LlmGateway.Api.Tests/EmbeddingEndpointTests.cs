@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Foundation.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;

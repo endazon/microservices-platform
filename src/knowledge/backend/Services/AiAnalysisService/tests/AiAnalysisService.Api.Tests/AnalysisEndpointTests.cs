@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 
 namespace AiAnalysisService.Api.Tests;

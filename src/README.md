@@ -28,7 +28,7 @@ src/
       Shared/                  ←   ユニット固有契約（Knowledge.Contracts = ドメインイベント。IADR-0059）
       Services/                ←   Document / DataSource / Conversion / Ingestion / Retrieval /
                                ←   AiAnalysis / Wiki / Feedback / Dashboard
-      Tests/                   ←   KnowledgePlatform.IntegrationTests（ユニット横断の統合テスト）
+      Tests/                   ←   Knowledge.IntegrationTests（ユニット横断の統合テスト）
     frontend/                  ←   ナレッジ画面 features（home, sc01..sc11）
   <unit>/                      ← 追加の可変機能ユニット（git submodule でリンク。backend/・frontend/ を持つ）
 ```
@@ -71,7 +71,7 @@ src/
 2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント経由のみとする。
    イベント契約はそのユニットの契約プロジェクト `<unit>/backend/Shared/<Unit>.Contracts/Events/`
    に置く（knowledge ユニットは `knowledge/backend/Shared/Knowledge.Contracts/Events/`。
-   platform 横断の共通契約は `platform/backend/Shared/KnowledgePlatform.Shared.Contracts/`。IADR-0059）。
+   platform 横断の共通契約は `platform/backend/Shared/Platform.Shared.Contracts/`。IADR-0059）。
 3. **ユニット外への参照は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可**する。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
@@ -100,7 +100,7 @@ src/
 1. 新ユニットのリポジトリを雛形 [`templates/unit-template/`](../templates/unit-template/README.md) から作成する
    （`backend/backend.slnx` + `backend/Services/<Name>/`、`frontend/package.json` + `frontend/src/features/`）。
 2. `git submodule add <repo-url> src/<unit>` で配置する。
-3. バックエンド: `KnowledgePlatform.Shared.*` への参照は相対パス
+3. バックエンド: `Platform.Shared.*` への参照は相対パス
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
    **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。

@@ -68,6 +68,6 @@
     <Project Path="Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj" />
   </Folder>
   <Folder Name="/Tests/">
-    <Project Path="Tests/KnowledgePlatform.IntegrationTests/KnowledgePlatform.IntegrationTests.csproj" />
+    <Project Path="Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj" />
   </Folder>
 </Solution>

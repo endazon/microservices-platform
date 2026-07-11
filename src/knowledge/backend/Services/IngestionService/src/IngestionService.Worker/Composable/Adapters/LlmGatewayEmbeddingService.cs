@@ -1,7 +1,7 @@
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using System.Net.Http.Json;
-using KnowledgePlatform.Shared.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 
 namespace IngestionService.Worker.Composable.Adapters;
 

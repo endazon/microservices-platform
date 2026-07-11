@@ -1,6 +1,6 @@
 using System.Security.Claims;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,7 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AuthorizationService.Api.Tests;
 
 // FR-15, SC-11, IADR-0030: ConfigViewer ポリシーの単体テスト。
-// AddKnowledgePlatformAuth が登録する認可ポリシーを IAuthorizationService で直接評価し、
+// AddPlatformAuth が登録する認可ポリシーを IAuthorizationService で直接評価し、
 // 管理者・運用者のいずれか一方の保持で許可、どちらも無ければ拒否（fail-closed）を確認する。
 public class ConfigViewerPolicyTests
 {
@@ -16,7 +16,7 @@ public class ConfigViewerPolicyTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddKnowledgePlatformAuth(new ConfigurationBuilder().Build());
+        services.AddPlatformAuth(new ConfigurationBuilder().Build());
         return services.BuildServiceProvider().GetRequiredService<IAuthorizationService>();
     }
 
@@ -29,15 +29,15 @@ public class ConfigViewerPolicyTests
     }
 
     [Theory]
-    [InlineData(KnowledgePlatformAuthPolicies.AdminRole)]
-    [InlineData(KnowledgePlatformAuthPolicies.OperatorRole)]
-    [InlineData(KnowledgePlatformAuthPolicies.AdminRole, KnowledgePlatformAuthPolicies.OperatorRole)]
+    [InlineData(PlatformAuthPolicies.AdminRole)]
+    [InlineData(PlatformAuthPolicies.OperatorRole)]
+    [InlineData(PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole)]
     public async Task ConfigViewer_AllowsAdminOrOperatorRole(params string[] roles)
     {
         var authz = BuildAuthorizationService();
         var user = AuthenticatedUserWithRoles(roles);
 
-        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
+        var result = await authz.AuthorizeAsync(user, resource: null, PlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeTrue();
     }
@@ -48,7 +48,7 @@ public class ConfigViewerPolicyTests
         var authz = BuildAuthorizationService();
         var user = AuthenticatedUserWithRoles("viewer");
 
-        var result = await authz.AuthorizeAsync(user, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
+        var result = await authz.AuthorizeAsync(user, resource: null, PlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeFalse();
     }
@@ -59,7 +59,7 @@ public class ConfigViewerPolicyTests
         var authz = BuildAuthorizationService();
         var anonymous = new ClaimsPrincipal(new ClaimsIdentity()); // 未認証
 
-        var result = await authz.AuthorizeAsync(anonymous, resource: null, KnowledgePlatformAuthPolicies.ConfigViewer);
+        var result = await authz.AuthorizeAsync(anonymous, resource: null, PlatformAuthPolicies.ConfigViewer);
 
         result.Succeeded.Should().BeFalse();
     }
@@ -69,9 +69,9 @@ public class ConfigViewerPolicyTests
     public async Task AdminOnly_DeniesOperatorRole()
     {
         var authz = BuildAuthorizationService();
-        var operatorUser = AuthenticatedUserWithRoles(KnowledgePlatformAuthPolicies.OperatorRole);
+        var operatorUser = AuthenticatedUserWithRoles(PlatformAuthPolicies.OperatorRole);
 
-        var result = await authz.AuthorizeAsync(operatorUser, resource: null, KnowledgePlatformAuthPolicies.AdminOnly);
+        var result = await authz.AuthorizeAsync(operatorUser, resource: null, PlatformAuthPolicies.AdminOnly);
 
         result.Succeeded.Should().BeFalse();
     }
