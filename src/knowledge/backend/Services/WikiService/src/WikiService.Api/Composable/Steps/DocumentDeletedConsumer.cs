@@ -1,5 +1,5 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using WikiService.Api.Foundation.Domain;

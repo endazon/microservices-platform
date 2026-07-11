@@ -11,6 +11,7 @@
     </PackageReference>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" />
     <PackageReference Include="AspNetCore.HealthChecks.Rabbitmq" />
+    <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
   </ItemGroup>

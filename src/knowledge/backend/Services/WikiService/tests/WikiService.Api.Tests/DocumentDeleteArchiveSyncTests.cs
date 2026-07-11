@@ -1,5 +1,5 @@
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;

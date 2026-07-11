@@ -25,6 +25,7 @@ src/
   knowledge/                   ← ナレッジ機能ユニット（付随する必須の可変機能）
     backend/
       backend.slnx
+      Shared/                  ←   ユニット固有契約（Knowledge.Contracts = ドメインイベント。IADR-0059）
       Services/                ←   Document / DataSource / Conversion / Ingestion / Retrieval /
                                ←   AiAnalysis / Wiki / Feedback / Dashboard
       Tests/                   ←   KnowledgePlatform.IntegrationTests（ユニット横断の統合テスト）
@@ -67,8 +68,10 @@ src/
 1. **`Foundation/` は `Composable/` に依存しない**。可変実装へのアクセスは必ず
    `Foundation/Ports/` の抽象を介し、実装の選択・束ねは `Program.cs`（合成ルート）で行う。
    （`Foundation/` 配下に `using *.Composable.*` が現れたら規約違反。）
-2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント
-   （`platform/backend/Shared/KnowledgePlatform.Shared.Contracts/Events/`）経由のみとする。
+2. **`Composable/Steps/` の段どうしは直接参照しない**。段間の連携はイベント経由のみとする。
+   イベント契約はそのユニットの契約プロジェクト `<unit>/backend/Shared/<Unit>.Contracts/Events/`
+   に置く（knowledge ユニットは `knowledge/backend/Shared/Knowledge.Contracts/Events/`。
+   platform 横断の共通契約は `platform/backend/Shared/KnowledgePlatform.Shared.Contracts/`。IADR-0059）。
 3. **ユニット外への参照は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可**する。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
@@ -91,12 +94,17 @@ src/
 
 ## ユニットをサブモジュールとして追加する場合
 
-1. 新ユニットのリポジトリを本規約のレイアウト（`backend/backend.slnx` + `backend/Services/<Name>/`、
-   `frontend/package.json` + `frontend/src/features/`）で作成する。
+詳細な運用手順（テンプレート・CI・トークン・バージョン固定）は
+[`docs/how-to/adding-a-unit-submodule.md`](../docs/how-to/adding-a-unit-submodule.md) を参照。要点は以下。
+
+1. 新ユニットのリポジトリを雛形 [`templates/unit-template/`](../templates/unit-template/README.md) から作成する
+   （`backend/backend.slnx` + `backend/Services/<Name>/`、`frontend/package.json` + `frontend/src/features/`）。
 2. `git submodule add <repo-url> src/<unit>` で配置する。
 3. バックエンド: `KnowledgePlatform.Shared.*` への参照は相対パス
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
-   CI のビルド対象へ `src/<unit>/backend/backend.slnx` を追記する（`.github/workflows/ci.yml`）。
+   **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
+   追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
 4. フロントエンド: workspaces は `"*/frontend"` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
-5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。
+5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
+   `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。

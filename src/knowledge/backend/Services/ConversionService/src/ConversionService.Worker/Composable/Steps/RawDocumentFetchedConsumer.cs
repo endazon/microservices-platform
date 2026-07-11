@@ -4,7 +4,7 @@ using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Composable.Adapters;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.Extensions.Logging;
 

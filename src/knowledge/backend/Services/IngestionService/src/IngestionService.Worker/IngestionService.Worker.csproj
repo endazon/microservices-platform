@@ -6,6 +6,7 @@
     <PackageReference Include="Qdrant.Client" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
     <InternalsVisibleTo Include="IngestionService.Worker.Tests" />

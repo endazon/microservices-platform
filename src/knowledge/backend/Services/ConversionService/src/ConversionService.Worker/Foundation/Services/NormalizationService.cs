@@ -1,7 +1,7 @@
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Domain;
 using System.Text;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 
 namespace ConversionService.Worker.Foundation.Services;
 

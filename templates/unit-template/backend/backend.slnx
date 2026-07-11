@@ -1,0 +1,8 @@
+<Solution>
+  <!-- 追加可変機能ユニットの集約ソリューション（配置時は src/<unit>/backend/backend.slnx）。
+       CI（ci.yml）は src/*/backend/backend.slnx を自動発見して restore/build/test/format する（IADR-0060）。 -->
+  <Folder Name="/Services/SampleService/" />
+  <Folder Name="/Services/SampleService/src/">
+    <Project Path="Services/SampleService/src/SampleService.Api/SampleService.Api.csproj" />
+  </Folder>
+</Solution>

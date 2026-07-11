@@ -1,7 +1,7 @@
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.Extensions.Logging;
 
