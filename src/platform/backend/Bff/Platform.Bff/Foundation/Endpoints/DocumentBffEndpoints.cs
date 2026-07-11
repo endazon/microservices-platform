@@ -1,4 +1,4 @@
-using Platform.Bff.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Authz;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;

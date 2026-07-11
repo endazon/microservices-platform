@@ -133,6 +133,11 @@ plan_refs:
   非自明なロジック（特に `BffScopeResolver` の Shared 切り出しを伴う **Document / Search** の ABAC 集約）は、移設時に
   **knowledge 側の BFF エンドポイント単体テスト**（当該ロジックを直接検証）を併設することを検討する。切り出す共通
   ヘルパ（BffScopeResolver 等）は Shared へ置き、knowledge から参照可能にする。
+- **`BffScopeResolver` の配置決定**（Document/Search 移設の基盤・spec `20260712_issue-229_extract-bff-scope-resolver`）:
+  `IHttpClientFactory`・`HttpContext`・`AccessScope*`（Contracts）に依存するため、契約専用の `Platform.Shared.Contracts`
+  ではなく ASP.NET Core と Contracts の双方を参照する **`Platform.Shared.Infrastructure.Foundation.Authz`** へ切り出す。
+  純ロジック（`Matches`/`ExtractUserAttributes`）は `Platform.Bff.Tests` に単体テストを新設し、`ResolveAsync`（HTTP）は
+  Document/Search の BFF エンドポイントテストが回帰保証する。
 - 追加ユニットの通し確認は #230（submodule 運用）のサンプルユニットと連携する。
 
 ## 関連
