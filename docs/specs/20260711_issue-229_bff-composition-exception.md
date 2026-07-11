@@ -1,5 +1,5 @@
 ---
-title: 依存規則 例外3（BFF 合成点）の準備 — 規則追記と機械検査（Issue #229 スライス2）
+title: 依存規則 例外3（BFF 合成点）の準備 — 規則追記と機械検査（Issue #229・IADR-0063 段階実装 step2 = 例外3 準備）
 type: spec
 status: done
 related_ids:
@@ -19,13 +19,18 @@ related_specs:
   - "../../src/README.md"
 ---
 
-# 仕様書: 依存規則 例外3（BFF 合成点）の準備（Issue #229 スライス2）
+# 仕様書: 依存規則 例外3（BFF 合成点）の準備（Issue #229・IADR-0063 段階実装 step2）
+
+> スライス採番の注記: PR #244（器）が「slice1」。本書は IADR-0063 の段階実装 **step2「例外3 準備」**。
+> #243 の設計仕様書（`..._slice2_bff-composition-design.md`）とファイル名の「slice2」が重複していたため、
+> 本書は slice 番号を外した命名（`..._bff-composition-exception.md`）とした（claude-review 指摘対応）。
+> 以降のドメイン単位移設は step3 系として起票する。
 
 ## 起点となる計画書（トレーサビリティ）
 
 - 機能要求(FR): FR-14／IADR-0027・IADR-0056（依存方向）・IADR-0057（機械検査）
 - 実装判断: [[IADR-0063]]（BFF 合成点。段階実装の「例外3 準備」ステップ）
-- Issue: #229（フォローアップ 3・段階実装スライス2）
+- Issue: #229（フォローアップ 3・IADR-0063 段階実装 step2 = 例外3 準備）
 
 ## 目的・背景
 
