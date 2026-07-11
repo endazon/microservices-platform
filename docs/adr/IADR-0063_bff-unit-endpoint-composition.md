@@ -126,7 +126,7 @@ plan_refs:
 ## フォローアップ（段階実装）
 
 - **段階実装 完了（2026-07-12）**: 器（#244）→ 例外3 準備（#246）→ ドメイン単位移設（DataSource #247・Analysis #248・
-  Conversion #249・Dashboard+Feedback #250・BffScopeResolver 切り出し #251・Document #252・Search #NNN）を完了。
+  Conversion #249・Dashboard+Feedback #250・BffScopeResolver 切り出し #251・Document #252・Search #253）を完了。
   ナレッジ 7 ドメインの BFF エンドポイント＋DTO は `Knowledge.Bff.Endpoints`／`Knowledge.Contracts/Dtos` へ移設し、
   合成点は例外3 で参照。`Platform.Shared.Contracts/Dtos` は platform 横断 5 型（`AbacManagementDto`/`AccessScopeDto`/
   `CompletionDto`/`ConfigInfoDto`/`EmbedDto`）のみ残置。`Platform.Bff/Foundation/Endpoints/` は platform 固有 2
