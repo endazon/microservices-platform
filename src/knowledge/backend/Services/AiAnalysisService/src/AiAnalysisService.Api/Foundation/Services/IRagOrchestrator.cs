@@ -1,3 +1,4 @@
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Foundation.Services;

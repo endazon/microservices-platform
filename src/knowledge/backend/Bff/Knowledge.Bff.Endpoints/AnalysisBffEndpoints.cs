@@ -1,7 +1,12 @@
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Contracts.Dtos;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-04, FR-07, UC-01, UC-02: BFF AI 分析集約エンドポイント
 public static class AnalysisBffEndpoints

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-07, UC-02: 指定データ範囲での分析・比較・抽出を依頼するための DTO 群。
 // 利用者は「データ範囲（range）」で分析対象を絞り込み、タスク種別で AI の作業を指定する。

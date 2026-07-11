@@ -1,3 +1,4 @@
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
