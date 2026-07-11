@@ -1,5 +1,5 @@
 using System.Text.RegularExpressions;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Foundation.Services;
 

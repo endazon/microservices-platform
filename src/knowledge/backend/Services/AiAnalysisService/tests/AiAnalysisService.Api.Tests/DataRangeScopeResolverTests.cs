@@ -1,5 +1,6 @@
 using AiAnalysisService.Api.Foundation.Services;
 using FluentAssertions;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Tests;
