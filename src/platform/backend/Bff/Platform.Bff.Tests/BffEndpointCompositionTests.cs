@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Knowledge.Bff.Endpoints;
 using Platform.Bff.Composition;
 using Platform.Bff.Foundation.Endpoints;
 
