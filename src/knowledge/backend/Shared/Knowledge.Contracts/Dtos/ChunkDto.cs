@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 public class ChunkDto
 {

@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Services;
 
 namespace RetrievalService.Api.Tests;

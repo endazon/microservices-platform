@@ -1,8 +1,12 @@
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Authz;
-using Platform.Shared.Contracts.Dtos;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-03, FR-05, UC-01, SC-01: BFF 検索集約エンドポイント。
 // 横断検索は「ABAC スコープ解決（AuthorizationService）→ ハイブリッド検索（RetrievalService）」を集約する。

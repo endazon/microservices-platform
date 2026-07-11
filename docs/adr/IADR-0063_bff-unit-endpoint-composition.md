@@ -125,6 +125,13 @@ plan_refs:
 
 ## フォローアップ（段階実装）
 
+- **段階実装 完了（2026-07-12）**: 器（#244）→ 例外3 準備（#246）→ ドメイン単位移設（DataSource #247・Analysis #248・
+  Conversion #249・Dashboard+Feedback #250・BffScopeResolver 切り出し #251・Document #252・Search #NNN）を完了。
+  ナレッジ 7 ドメインの BFF エンドポイント＋DTO は `Knowledge.Bff.Endpoints`／`Knowledge.Contracts/Dtos` へ移設し、
+  合成点は例外3 で参照。`Platform.Shared.Contracts/Dtos` は platform 横断 5 型（`AbacManagementDto`/`AccessScopeDto`/
+  `CompletionDto`/`ConfigInfoDto`/`EmbedDto`）のみ残置。`Platform.Bff/Foundation/Endpoints/` は platform 固有 2
+  （`Config`/`Authz`）のみ。`SearchRequest.Scope` が `AccessScope`（platform 横断 authz 契約）を内包するため
+  `Knowledge.Contracts` → `Platform.Shared.Contracts`（knowledge→Shared・許可）を追加した。
 - 合成方式（選択肢 A＝ビルド時合成点）は 2026-07-11 に承認済み。器（slice-1）を実施済み。以降は上記「段階実装」
   3（ドメイン単位移設）を**レビュー可能な粒度の別 PR スライス**で反復する（一度に全 9 エンドポイント・DTO を移設しない）。
 - 依存規則の例外3 追加は [[IADR-0056]] / [[IADR-0057]] の追補となる（例外3 準備スライスで `check-unit-dependencies.js` に反映）。

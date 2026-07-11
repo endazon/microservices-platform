@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-03, FR-04: 検索結果の1件（チャンク単位）
 public record SearchResultDto(

@@ -1,4 +1,4 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Ports;
 using System.Diagnostics;
 

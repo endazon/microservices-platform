@@ -49,8 +49,9 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 全 9 モジュール（うち DataSource は knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照、
-        // 残 8 は platform 同居）。ドメイン移設が進んでも合成点の登録簿件数は不変（IADR-0063 step3・#229）。
+        // 全 9 モジュール。ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）は
+        // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照、platform 固有 2（Config/Authz）は同居。
+        // 移設完了後も合成点の登録簿件数は不変（IADR-0063 step3・#229）。
         BffEndpointComposition.Modules.Should().HaveCount(9);
     }
 

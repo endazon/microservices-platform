@@ -2,7 +2,6 @@ using Knowledge.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
-using Platform.Shared.Contracts.Dtos;
 using System.Net.Http;
 using System.Net.Http.Json;
 
