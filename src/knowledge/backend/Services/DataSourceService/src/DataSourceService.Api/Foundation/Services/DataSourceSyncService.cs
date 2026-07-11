@@ -1,6 +1,6 @@
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Ports;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Ports.Storage;
 using MassTransit;
 

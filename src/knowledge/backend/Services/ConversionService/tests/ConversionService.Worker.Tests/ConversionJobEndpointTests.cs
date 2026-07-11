@@ -4,7 +4,7 @@ using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
 using FluentAssertions;
 using KnowledgePlatform.Shared.Contracts.Dtos;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;

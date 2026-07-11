@@ -1,6 +1,6 @@
 using FluentAssertions;
 using KnowledgePlatform.IntegrationTests.Fixtures;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit;
 using System.Net;
 using System.Net.Http.Json;

@@ -3,7 +3,7 @@ using FluentAssertions;
 using IngestionService.Worker.Composable.Steps;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;
 

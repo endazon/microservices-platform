@@ -4,7 +4,7 @@ using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
-using KnowledgePlatform.Shared.Contracts.Events;
+using Knowledge.Contracts.Events;
 using KnowledgePlatform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
