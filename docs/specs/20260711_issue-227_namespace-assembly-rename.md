@@ -40,7 +40,8 @@ related_specs:
   - `KnowledgePlatform.Bff` / `.Bff.Tests` → `Platform.Bff` / `.Bff.Tests`
   - `KnowledgePlatform.IntegrationTests` → `Knowledge.IntegrationTests`
   - 拡張メソッド `Add/Use/MapKnowledgePlatform*`・`KnowledgePlatformAuthPolicies` 等 → `*Platform*`
-  - フロント package `@microservices-platform/frontend-{platform,knowledge}` → `@platform/frontend` / `@knowledge/frontend`
+  - フロント package `@microservices-platform/frontend-{platform,knowledge}` → `@platform/frontend` / `@knowledge/frontend`、
+    workspaces ルート `@microservices-platform/frontend` → `@platform/frontend-workspace`（`@microservices-platform/*` 全廃・`package-lock.json` クリーン再生成）
   - 帰結: 5 プロジェクトのディレクトリ/csproj/ProjectReference/slnx、Bff の DLL 名（Dockerfile ENTRYPOINT・
     docker-compose の dockerfile パス）。
 - URN（後方互換なし・新体系へ統一）:

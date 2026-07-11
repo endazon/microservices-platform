@@ -56,6 +56,7 @@ plan_refs:
 | 拡張 `Add/Use/MapKnowledgePlatform*`・`KnowledgePlatformAuthPolicies` 等 | `Add/Use/MapPlatform*`・`PlatformAuthPolicies` | platform 提供の共通ヘルパ識別子 |
 | `@microservices-platform/frontend-platform` | `@platform/frontend` | フロント package 名 |
 | `@microservices-platform/frontend-knowledge` | `@knowledge/frontend` | フロント package 名 |
+| `@microservices-platform/frontend`（workspaces ルート） | `@platform/frontend-workspace` | フロント workspaces ルート package 名（主=プラットフォーム基盤に合わせ `@platform` スコープ。ユニット package `@platform/frontend` とは非衝突） |
 
 追随（アセンブリ/DLL 名の帰結）:
 - Bff の DLL 名 `KnowledgePlatform.Bff.dll` → `Platform.Bff.dll`（Dockerfile ENTRYPOINT・restore/publish パス・
@@ -87,7 +88,8 @@ plan_refs:
   `Knowledge.Contracts.Events` から導出する正準値へ統一（後方互換なし）。回帰テストを新 URN 検証へ更新・改称。
 - 5 プロジェクトのディレクトリ・csproj を改名し、`ProjectReference` / `backend.slnx` を追随。
 - Bff Dockerfile・docker-compose のパス/DLL 名を追随。
-- フロント package 名 `@platform/frontend` / `@knowledge/frontend`（lock 再生成）。
+- フロント package 名 `@platform/frontend` / `@knowledge/frontend`、workspaces ルート `@platform/frontend-workspace`
+  （`@microservices-platform/*` を全廃。`package-lock.json` はクリーン再生成し旧スコープ・stale 幻エントリを除去）。
 - `src/README.md` を新名称へ更新。[[IADR-0059]] の URN 固定記述を撤廃へ更新。
 - 検証: platform / knowledge のビルド・全テスト緑、URN が新体系で一貫（`urn:message:Knowledge.Contracts.Events:*`・
   回帰テスト）、`dotnet format` 差分なし、依存方向検査・doc-links 緑。
