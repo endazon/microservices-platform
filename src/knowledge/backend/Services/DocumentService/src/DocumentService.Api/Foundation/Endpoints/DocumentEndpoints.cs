@@ -1,6 +1,6 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;

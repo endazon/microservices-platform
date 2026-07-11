@@ -1,7 +1,7 @@
 using FluentAssertions;
 using System.Net;
 using System.Net.Http.Json;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 
 namespace DocumentService.Api.Tests;
 
