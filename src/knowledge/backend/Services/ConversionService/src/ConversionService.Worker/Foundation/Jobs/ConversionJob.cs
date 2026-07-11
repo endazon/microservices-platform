@@ -1,4 +1,4 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 
 namespace ConversionService.Worker.Foundation.Jobs;
