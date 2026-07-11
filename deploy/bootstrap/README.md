@@ -25,10 +25,10 @@ kubectl label namespace microservices-platform istio-injection=enabled
 
 ```sh
 # 例: テンプレートをコピーし、CHANGE_ME を実値へ置換してから適用
-cp deploy/bootstrap/secret-templates.example.yaml /tmp/kp-secrets.yaml
-# /tmp/kp-secrets.yaml を編集（CHANGE_ME を実値へ）…
-kubectl apply -n microservices-platform -f /tmp/kp-secrets.yaml
-rm -f /tmp/kp-secrets.yaml
+cp deploy/bootstrap/secret-templates.example.yaml /tmp/microservices-platform-secrets.yaml
+# /tmp/microservices-platform-secrets.yaml を編集（CHANGE_ME を実値へ）…
+kubectl apply -n microservices-platform -f /tmp/microservices-platform-secrets.yaml
+rm -f /tmp/microservices-platform-secrets.yaml
 ```
 
 作成される Secret（Helm values が参照）:
