@@ -39,14 +39,22 @@ plan_refs:
   `Config` / `Authz`＝platform 固有）。`Program.cs` が `app.MapXxxBffEndpoints()` を**ハードコードで 9 回**呼ぶ。
   各モジュールは名前付き `HttpClient`（下流サービス URL）＋共有 DTO でナレッジ集約（ABAC スコープ解決→下流呼び出し）
   を実装する。
-- **DTO**: `Platform.Shared.Contracts/Dtos/` に 14 DTO。うち `DocumentDto` / `SearchDto` / `ConversionJobDto` /
-  `DataSourceDto` / `DashboardDto` / `FeedbackDto` / `AnalysisDto` / `ChunkDto` / `SearchResultDto` はナレッジ固有。
-  `AbacManagementDto` / `AccessScopeDto` / `ConfigInfoDto` / `CompletionDto` / `EmbedDto` は platform 横断寄り。
+- **DTO**: `Platform.Shared.Contracts/Dtos/` は 14 **ファイル**（1 ファイルに複数 `record` 型が同居する場合がある。
+  例: `AbacManagementDto.cs` は `AbacPolicyDto` / `AttributeDefinitionDto` 等を格納）。ファイル分類ではナレッジ固有が
+  `DocumentDto` / `SearchDto` / `ConversionJobDto` / `DataSourceDto` / `DashboardDto` / `FeedbackDto` / `AnalysisDto` /
+  `ChunkDto` / `SearchResultDto`、platform 横断寄りが `AbacManagementDto` / `AccessScopeDto` / `ConfigInfoDto` /
+  `CompletionDto` / `EmbedDto`。**実装スライスでの移設時は型単位での再精査が必要**（ファイル単位分類は現状精査の目安）。
 
 **問題**: 可変機能ユニットを追加すると、そのユニットの BFF エンドポイントを **platform の `Program.cs` と
-`Foundation/Endpoints/` に手で追加**する必要があり、FR-14 の「構成変更のみで完結」に反する。DTO を
+`Foundation/Endpoints/` に手で追加**する必要があり、ユニット追加のみでの拡張ができない。DTO を
 `Knowledge.Contracts` へ移すにも、BFF（platform）がそれらを参照しているため **platform→可変ユニットの依存禁止**
 （[[IADR-0056]]）に抵触する（鶏卵）。BFF の合成手段（[[IADR-0027]] の合成ルート概念の BFF 版）が未整備。
+
+> **ADR-0018 との関係**: ADR-0018 は「同期 API 依存（BFF→各サービス）は契約でバージョン管理し、**実行時の
+> 構成による繋ぎかえの対象外**とする」と定める。本 IADR が扱うのは**コンパイル時の拡張点**（合成点への 1 行
+> 追加でユニットの BFF エンドポイントを組み込む）であり、ADR-0018 が除外する「ランタイム構成による sync パスの
+> 繋ぎかえ」ではない（＝ADR-0018 違反ではない）。フロントの合成点（[[IADR-0056]] 例外2）が同種の解釈で
+> 「ユニット追加のみで拡張」を実現している前例と一致する。
 
 ## 検討した選択肢
 
@@ -90,8 +98,8 @@ plan_refs:
 
 1. **合成点の器**（非破壊）: `IBffEndpointModule`（Shared 抽象）を定義し、platform BFF の既存 9 モジュールを
    これに適合させて `Program.cs` の 9 ハードコードを列挙ループへ置換（挙動不変・回帰テストで固定）。
-2. **DTO 分離**: ナレッジ固有 DTO を `Knowledge.Contracts/Dtos/` へ移設（BFF はまだ参照するため、この時点では
-   合成点の例外を先に用意）。
+2. **DTO 分離**: ナレッジ固有 DTO を `Knowledge.Contracts/Dtos/` へ移設（**型単位で再精査**。1 ファイル複数型の
+   同居を分解する。BFF はまだ参照するため、この時点では合成点の例外を先に用意）。
 3. **BFF エンドポイント移設**: ナレッジ集約モジュールを knowledge ユニット（`knowledge/backend/Bff/`）へ移し、
    platform BFF の合成点から列挙。依存規則の例外3＋`check-unit-dependencies.js` 更新。
 4. **検証**: BFF テスト・契約テスト・依存検査・OpenAPI 再生成が緑。追加ユニットのサンプルで「合成点 1 行」拡張を確認（#230 と連携）。

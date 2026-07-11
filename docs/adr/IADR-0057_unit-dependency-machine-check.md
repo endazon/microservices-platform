@@ -32,7 +32,7 @@ plan_refs:
 
 ユニット間の依存方向規則（[`src/README.md`](../../src/README.md) §依存規則）は現状レビュー頼みで機械検査がない。規約は次の 3 点：
 
-1. **ユニット外参照**: 可変ユニット → platform は `platform/backend/Shared/` の 2 プロジェクト（`KnowledgePlatform.Shared.Contracts` / `KnowledgePlatform.Shared.Infrastructure`）のみ許可。**platform → 可変ユニットは禁止**（一方向依存）。例外は統合テスト（`Tests/`）が検証対象サービスを ProjectReference する場合。
+1. **ユニット外参照**: 可変ユニット → platform は `platform/backend/Shared/` の 2 プロジェクト（`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure`。#227/IADR-0062 で `KnowledgePlatform.*` から改名）のみ許可。**platform → 可変ユニットは禁止**（一方向依存）。例外は統合テスト（`Tests/`）が検証対象サービスを ProjectReference する場合。
 2. **Foundation → Composable 禁止**（IADR-0027）: `Foundation/` 配下から `Composable/` の実装へ `using` してはならない。
 3. **フロント**: 可変ユニット（`@knowledge`）は `@foundation` のみ参照可。platform/frontend 側から `@knowledge` を参照するのは合成点（`src/features/index.ts`）1 箇所のみ。
 

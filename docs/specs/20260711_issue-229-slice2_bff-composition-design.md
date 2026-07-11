@@ -38,8 +38,9 @@ related_specs:
 
 - BFF（`Platform.Bff`）は `Program.cs` で `app.MapXxxBffEndpoints()` を 9 モジュール分ハードコードで呼ぶ。
   ナレッジ固有 7（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）＋ platform 固有 2（Config/Authz）。
-- 各モジュールは名前付き `HttpClient`＋共有 DTO（`Platform.Shared.Contracts/Dtos/`）でナレッジ集約（ABAC
-  スコープ解決→下流→フィルタ・存在秘匿 404）を実装。DTO は platform サービスからは未使用（knowledge＋BFF が使用）。
+- 各モジュールは名前付き `HttpClient`＋共有 DTO（`Platform.Shared.Contracts/Dtos/`＝14 ファイル。1 ファイルに
+  複数 `record` 型が同居する場合あり）でナレッジ集約（ABAC スコープ解決→下流→フィルタ・存在秘匿 404）を実装。
+  DTO は platform サービスからは未使用（knowledge＋BFF が使用）。移設は**型単位での再精査**が要る（ファイル分類は目安）。
 - DTO を `Knowledge.Contracts` へ移すと BFF（platform）が参照＝platform→可変ユニット依存禁止に抵触（鶏卵）。
 
 ## 対象範囲
