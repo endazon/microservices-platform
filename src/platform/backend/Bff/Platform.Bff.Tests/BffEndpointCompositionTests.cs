@@ -51,4 +51,51 @@ public class BffEndpointCompositionTests
         // 現時点は platform 同居の 9 モジュール。ユニット移設・追加は合成点の登録簿で行う（IADR-0063）。
         BffEndpointComposition.Modules.Should().HaveCount(9);
     }
+
+    // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
+    // 期待する /bff/* ルートグループ集合と過不足なく一致することを固定する。件数だけでなく各グループの存在・
+    // 不在（モジュールのドロップ/入替/重複）を検出する。
+    [Fact]
+    public void Composition_maps_exactly_the_expected_bff_route_groups()
+    {
+        // 期待する 9 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        string[] expectedGroups =
+        [
+            "/bff/admin/authz",
+            "/bff/admin/config",
+            "/bff/analysis",
+            "/bff/conversion/jobs",
+            "/bff/dashboard",
+            "/bff/datasources",
+            "/bff/documents",
+            "/bff/feedback",
+            "/bff/search",
+        ];
+
+        using var factory = new BffTestFactory();
+        _ = factory.Services; // 合成点経由（Program.cs の MapComposedBffEndpoints）でホストをビルドさせる。
+        var dataSource = factory.Services.GetRequiredService<EndpointDataSource>();
+
+        var routePatterns = dataSource.Endpoints
+            .OfType<RouteEndpoint>()
+            .Select(e => "/" + (e.RoutePattern.RawText ?? string.Empty).TrimStart('/'))
+            .ToList();
+
+        // /bff/ 配下の各ルートを、どの期待グループにも属さないもの＝想定外として検出する。
+        var bffRoutes = routePatterns.Where(p => p.StartsWith("/bff/", StringComparison.Ordinal)).ToList();
+        bffRoutes.Should().NotBeEmpty();
+
+        // 各期待グループに 1 つ以上のルートが存在する（モジュールのドロップ/入替を検出）。
+        foreach (var group in expectedGroups)
+        {
+            bffRoutes.Should().Contain(
+                p => p == group || p.StartsWith(group + "/", StringComparison.Ordinal),
+                $"ルートグループ {group} が合成点経由で登録されているべき");
+        }
+
+        // 期待グループ以外の /bff/* トップレベルグループが存在しない（想定外モジュールの混入を検出）。
+        bffRoutes.Should().OnlyContain(
+            p => expectedGroups.Any(g => p == g || p.StartsWith(g + "/", StringComparison.Ordinal)),
+            "期待外の /bff/* ルートグループが登録されていないべき");
+    }
 }
