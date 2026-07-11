@@ -1,6 +1,6 @@
 using FeedbackService.Api.Foundation.Domain;
 using FeedbackService.Api.Foundation.Persistence;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 

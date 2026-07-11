@@ -1,6 +1,6 @@
 using DashboardService.Api.Foundation.Domain;
 using DashboardService.Api.Foundation.Persistence;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.EntityFrameworkCore;
 

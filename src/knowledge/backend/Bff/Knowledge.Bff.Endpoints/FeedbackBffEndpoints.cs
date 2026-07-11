@@ -1,7 +1,11 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-08, UC-01: BFF フィードバック集約エンドポイント。
 // チャット画面からの 👍/👎・コメント送信と満足率取得を FeedbackService へ委譲する。

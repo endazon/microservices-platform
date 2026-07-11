@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集用の DTO 群。
 

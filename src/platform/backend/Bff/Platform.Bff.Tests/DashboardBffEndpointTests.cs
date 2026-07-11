@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;

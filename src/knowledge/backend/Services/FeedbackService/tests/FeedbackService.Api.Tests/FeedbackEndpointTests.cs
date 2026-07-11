@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 
 namespace FeedbackService.Api.Tests;
 

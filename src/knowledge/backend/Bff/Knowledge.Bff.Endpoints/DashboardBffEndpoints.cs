@@ -1,8 +1,12 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-10, UC-05: BFF ダッシュボード集約エンドポイント。
 // DashboardService（利用状況・検索傾向）と FeedbackService（回答品質）を 1 応答に集約する。

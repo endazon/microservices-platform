@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-10, UC-05: 利用状況・検索傾向・回答品質を可視化するダッシュボード用の DTO 群。
 
