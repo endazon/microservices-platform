@@ -1,7 +1,7 @@
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
-using Platform.Bff.Foundation.Endpoints;
+using Platform.Bff.Composition;
 using Serilog;
 
 const string ServiceName = "knowledge-platform.bff";
@@ -83,15 +83,9 @@ app.UsePlatformMiddleware();
 app.MapPlatformHealthChecks();
 app.MapOpenApi();
 
-app.MapSearchBffEndpoints();
-app.MapDocumentBffEndpoints();
-app.MapAnalysisBffEndpoints();
-app.MapFeedbackBffEndpoints();
-app.MapDashboardBffEndpoints();
-app.MapConfigBffEndpoints();
-app.MapConversionBffEndpoints();
-app.MapAuthzBffEndpoints();
-app.MapDataSourceBffEndpoints();
+// FR-14, IADR-0063: BFF エンドポイントは合成点（BffEndpointComposition）経由で一括登録する。
+// ユニット追加時は合成点の登録簿へ 1 行追加するだけで組み込める（Program.cs は不変）。
+app.MapComposedBffEndpoints();
 
 app.Run();
 

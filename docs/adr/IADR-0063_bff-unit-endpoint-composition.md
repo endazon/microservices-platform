@@ -1,7 +1,7 @@
 ---
 title: IADR-0063 BFF のユニット別エンドポイント合成方式とナレッジ DTO の分離（設計・実装は段階適用）
 type: impl-adr
-status: Proposed
+status: Accepted
 related_ids:
   - FR-14
   - ADR-0018
@@ -18,7 +18,7 @@ plan_refs:
 
 # IADR-0063: BFF のユニット別エンドポイント合成方式とナレッジ DTO の分離
 
-- 状態: Proposed（合成方式の承認と段階実装をもって Accepted 化する）
+- 状態: Accepted（2026-07-11 合成方式 A＝ビルド時合成点で承認。段階実装は本 IADR の計画に沿って別 PR スライスで実施）
 - 日付: 2026-07-11
 - 決定者: claude（実装・提案）
 
@@ -96,13 +96,23 @@ plan_refs:
 
 ## 段階実装（本 IADR 承認後）
 
-1. **合成点の器**（非破壊）: `IBffEndpointModule`（Shared 抽象）を定義し、platform BFF の既存 9 モジュールを
-   これに適合させて `Program.cs` の 9 ハードコードを列挙ループへ置換（挙動不変・回帰テストで固定）。
-2. **DTO 分離**: ナレッジ固有 DTO を `Knowledge.Contracts/Dtos/` へ移設（**型単位で再精査**。1 ファイル複数型の
-   同居を分解する。BFF はまだ参照するため、この時点では合成点の例外を先に用意）。
-3. **BFF エンドポイント移設**: ナレッジ集約モジュールを knowledge ユニット（`knowledge/backend/Bff/`）へ移し、
-   platform BFF の合成点から列挙。依存規則の例外3＋`check-unit-dependencies.js` 更新。
-4. **検証**: BFF テスト・契約テスト・依存検査・OpenAPI 再生成が緑。追加ユニットのサンプルで「合成点 1 行」拡張を確認（#230 と連携）。
+> **型単位再精査の知見（slice-1 実施時に判明）**: DTO を型単位で精査した結果、**ナレッジ固有 DTO は事実上すべて
+> BFF の集約エンドポイントから参照されている**（例: `SearchRequest`/`SearchResponse`・`AnalysisTaskRequest`・
+> `DashboardUsageDto` 等が BFF から参照。`ChunkDto` は全域未参照）。したがって **DTO 分離を BFF エンドポイント
+> 移設と独立に行うことはできない**（DTO を先に knowledge へ移すと BFF＝platform が可変ユニットを参照し依存禁止に
+> 抵触する。鶏卵が型レベルで確定）。よって当初の「DTO 分離→エンドポイント移設」の二段を、**ドメイン単位で
+> エンドポイント＋その DTO を同時移設**する形へ改める。
+
+1. **合成点の器**（非破壊・slice-1 で実施済み）: `IBffEndpointModule`＋合成点 `Bff/Composition/BffEndpointComposition`
+   を導入し、`Program.cs` の 9 ハードコードを `MapComposedBffEndpoints()` の 1 行へ置換（挙動不変・回帰テストで固定）。
+2. **依存規則の例外3 準備**: `src/README.md` に BFF 合成点の例外3 を追記し、`check-unit-dependencies.js` に実装。
+3. **ドメイン単位移設（反復）**: ナレッジ 1 ドメインずつ、BFF エンドポイントモジュール＋当該ドメインの DTO を
+   knowledge ユニット（`knowledge/backend/Bff/`・`Knowledge.Contracts/Dtos/`）へ**同時**移設し、platform BFF の
+   合成点の登録簿を当該ユニットのモジュール参照へ差し替える。各ドメインで BFF テスト・依存検査が緑を確認する
+   （レビュー可能な粒度＝ドメイン単位）。platform 横断 DTO（`AbacManagementDto`/`AccessScopeDto`/`ConfigInfoDto`/
+   `CompletionDto`/`EmbedDto`）は `Platform.Shared.Contracts` に残す。
+4. **検証**: 全ドメイン移設後、BFF テスト・契約テスト・依存検査・OpenAPI 再生成が緑。追加ユニットのサンプルで
+   「合成点 1 行」拡張を確認（#230 と連携）。
 
 ## 理由
 
@@ -110,13 +120,14 @@ plan_refs:
   「ユニット追加＝合成点 1 行」を backend/frontend で揃える。
 - **ドメインロジック保持**: ナレッジ固有の ABAC 集約（存在秘匿・スコープ交差）は knowledge の認可判断であり、
   型付きエンドポイントとして knowledge に置くのが正しい所在。汎用プロキシ（C）では失われる。
-- **段階・低リスク**: BFF は全フロントの唯一の入口のため、器（1）→DTO（2）→移設（3）と段階適用し各段で緑を確認する。
+- **段階・低リスク**: BFF は全フロントの唯一の入口のため、器（1）→例外3 準備（2）→ドメイン単位移設（3・反復）と
+  段階適用し各段で緑を確認する。
 
-## 状態が Proposed の理由・フォローアップ
+## フォローアップ（段階実装）
 
-- BFF は可用性上のクリティカルパスであり、エンドポイント移設は大きな変更のため、**合成方式（選択肢 A）の承認**を
-  もって段階実装に入る。実装は本 IADR の「段階実装」に沿って別 PR（スライス）で行う。
-- 依存規則の例外3 追加は [[IADR-0056]] / [[IADR-0057]] の追補となる。
+- 合成方式（選択肢 A＝ビルド時合成点）は 2026-07-11 に承認済み。器（slice-1）を実施済み。以降は上記「段階実装」
+  3（ドメイン単位移設）を**レビュー可能な粒度の別 PR スライス**で反復する（一度に全 9 エンドポイント・DTO を移設しない）。
+- 依存規則の例外3 追加は [[IADR-0056]] / [[IADR-0057]] の追補となる（例外3 準備スライスで `check-unit-dependencies.js` に反映）。
 - 追加ユニットの通し確認は #230（submodule 運用）のサンプルユニットと連携する。
 
 ## 関連
