@@ -43,8 +43,10 @@ related_specs:
   - フロント package `@microservices-platform/frontend-{platform,knowledge}` → `@platform/frontend` / `@knowledge/frontend`
   - 帰結: 5 プロジェクトのディレクトリ/csproj/ProjectReference/slnx、Bff の DLL 名（Dockerfile ENTRYPOINT・
     docker-compose の dockerfile パス）。
-- 改名しない（保護/スコープ外）:
-  - `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]` の URN 文字列（wire 契約・7 ファイル）。
+- URN（後方互換なし・新体系へ統一）:
+  - 6 イベントの `[MessageUrn]`（旧 URN 固定）・`using MassTransit;`・互換コメントを**削除**し、URN を現名前空間
+    `Knowledge.Contracts.Events` から導出する正準値（`urn:message:Knowledge.Contracts.Events:<Name>`）へ統一。旧 URN 削除。
+- 改名しない（スコープ外）:
   - サービス名前空間（`DocumentService.*` 等・`KnowledgePlatform` ブランド外）。
   - helm/k8s/realm の小文字 `knowledge-platform`（#228 / IADR-0061）。
   - Grafana/pipeline スキーマの表示ブランド文字列（表示名。据え置き）。
@@ -68,7 +70,7 @@ related_specs:
 ## 検証
 
 - `dotnet build`（platform / knowledge）→ 0 エラー。
-- **URN 後方互換**: `Knowledge.Contracts.Tests` 6/6 pass（`urn:message:KnowledgePlatform.Shared.Contracts.Events:*` が不変）。
+- **URN 新体系で一貫**: `Knowledge.Contracts.Tests` 6/6 pass（`urn:message:Knowledge.Contracts.Events:*` を正準値として固定。旧 URN 削除・後方互換なし）。
 - テスト（サンプル）: Platform.Bff.Tests 93+1skip / AuthorizationService 51 / LlmGateway 58 / Conversion 52 /
   Document 53 / Wiki 38 いずれも緑。
 - `dotnet format --verify-no-changes`（両 slnx）→ 差分なし。

@@ -24,7 +24,7 @@ plan_refs:
 ## 起点・関連
 
 - 関連する計画書 ID: FR-14（構成変更で完結する疎結合ユニット）
-- 関連 ADR: [[IADR-0027]]（名前空間＝フォルダ階層一致）／[[IADR-0056]]（ユニット第一構成）／[[IADR-0059]]（契約階層化・URN 固定）
+- 関連 ADR: [[IADR-0027]]（名前空間＝フォルダ階層一致）／[[IADR-0056]]（ユニット第一構成）／[[IADR-0059]]（契約階層化。本 IADR で URN 固定を撤廃）
 - 関連仕様書: `docs/specs/20260711_issue-227_namespace-assembly-rename.md`
 - Issue: #227（IADR-0056 フォローアップ 1）
 
@@ -36,8 +36,11 @@ plan_refs:
 フロントの package 名 `@microservices-platform/frontend-*` は暫定命名。これらが「主=プラットフォーム基盤」の
 位置づけ（#209）およびユニット構成と不整合。
 
-**制約（後方互換）**: [[IADR-0059]] で 6 イベントの MassTransit URN を `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]`
-に固定した。この **URN 文字列は wire 契約であり改名してはならない**（改名すると RabbitMQ ルーティングが破綻）。
+**方針: 後方互換は持たせない（旧名・旧 URN は削除）**。[[IADR-0059]] は当初 6 イベントの URN を
+`[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]` に固定して wire 後方互換を維持していたが、
+本改名に合わせて**この固定を撤廃**し、`[MessageUrn]` 属性を削除して **URN をイベントの現名前空間
+`Knowledge.Contracts.Events` から導出する正準値**（`urn:message:Knowledge.Contracts.Events:<Name>`）へ統一する。
+旧 URN は非互換・削除。送受信は同一の型定義を共有するため URN は自ずと一致する。
 
 ## 決定（命名体系）
 
@@ -60,8 +63,6 @@ plan_refs:
 - 各サービスの csproj `ProjectReference` パス・`backend.slnx` のプロジェクトパス。
 
 **改名しないもの**:
-- `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]` の URN 文字列（wire 契約。7 ファイル＝
-  `Knowledge.Contracts/Events/*.cs` 6 件と `Knowledge.Contracts.Tests/EventMessageUrnBackwardCompatibilityTests.cs`）。
 - サービスの名前空間（`DocumentService.*` / `AuthorizationService.*` 等）— `KnowledgePlatform` ブランドを持たず、
   本 issue のスコープ（`KnowledgePlatform.*` / `@microservices-platform/*`）外。
 - helm/k8s/realm の小文字 `knowledge-platform`（デプロイ資産の命名＝#228 / IADR-0061 の領域）。
@@ -72,21 +73,24 @@ plan_refs:
 
 - **ブランド整合**: platform 基盤コードから `KnowledgePlatform` ブランドを外し、`Platform.*`（基盤）/ `Knowledge.*`
   （可変ユニット）へ揃えることで IADR-0056 のユニット第一構成・IADR-0027 の名前空間＝フォルダ一致に適合。
-- **後方互換の厳守**: URN 文字列を保護対象として機械改名から除外し、[[IADR-0059]] の wire 契約を不変に保つ。
-  回帰は `Knowledge.Contracts.Tests`（URN が旧値のままであることを固定）で検証する。
+- **後方互換は持たせない（旧 URN 削除）**: `[MessageUrn]` の旧 URN 固定を撤廃し、URN をイベントの現名前空間
+  `Knowledge.Contracts.Events` から導出する正準値へ統一する。回帰は `Knowledge.Contracts.Tests`（URN が
+  `urn:message:Knowledge.Contracts.Events:*` であることを固定）で検証する。
 - **スコープの明確化**: サービス名前空間やデプロイ小文字名は別 issue の領域として除外し、単一クリーン PR の
   レビュー可能性を保つ。
 
 ## 結果
 
-- `KnowledgePlatform` トークンを（保護 7 ファイルを除く）コードから機械置換：`KnowledgePlatform.IntegrationTests`→
+- `KnowledgePlatform` トークンをコードから機械置換：`KnowledgePlatform.IntegrationTests`→
   `Knowledge.IntegrationTests` を先に、残りを `Platform` へ。
+- 6 イベントの `[MessageUrn]`（旧 URN 固定）と `using MassTransit;`・互換コメントを**削除**し、URN を
+  `Knowledge.Contracts.Events` から導出する正準値へ統一（後方互換なし）。回帰テストを新 URN 検証へ更新・改称。
 - 5 プロジェクトのディレクトリ・csproj を改名し、`ProjectReference` / `backend.slnx` を追随。
 - Bff Dockerfile・docker-compose のパス/DLL 名を追随。
 - フロント package 名 `@platform/frontend` / `@knowledge/frontend`（lock 再生成）。
-- `src/README.md` を新名称へ更新。
-- 検証: platform / knowledge のビルド・全テスト緑、URN 不変（回帰テスト）、`dotnet format` 差分なし、
-  依存方向検査・doc-links 緑。
+- `src/README.md` を新名称へ更新。[[IADR-0059]] の URN 固定記述を撤廃へ更新。
+- 検証: platform / knowledge のビルド・全テスト緑、URN が新体系で一貫（`urn:message:Knowledge.Contracts.Events:*`・
+  回帰テスト）、`dotnet format` 差分なし、依存方向検査・doc-links 緑。
 
 ## フォローアップ
 

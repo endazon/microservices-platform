@@ -39,8 +39,8 @@ related_specs:
 
 - 対象（新規/変更）:
   - `src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj`（新規・MassTransit 参照）。
-  - 6 イベントを `Knowledge.Contracts/Events/*.cs`（namespace `Knowledge.Contracts.Events`）へ移設し、
-    各に `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:<Name>")]` を付与。
+  - 6 イベントを `Knowledge.Contracts/Events/*.cs`（namespace `Knowledge.Contracts.Events`）へ移設
+    （当初は `[MessageUrn(旧 URN)]` を付与したが、#227/IADR-0062 で撤廃＝下記「後方互換」注記参照）。
   - platform `Shared.Contracts/Events/*.cs`（6 ファイル）を削除。
   - `src/knowledge/backend/backend.slnx` に Knowledge.Contracts と Tests を登録。
   - 5 サービス src csproj（Conversion/DataSource/Document/Ingestion/Wiki）に Knowledge.Contracts 参照追加。
@@ -51,13 +51,15 @@ related_specs:
   - knowledge 固有 DTO の Knowledge.Contracts 移設（BFF の DTO 依存解消とセット）。
   - BFF のユニット別エンドポイント合成方式。
 
-## 後方互換（要）
+## URN（当初は後方互換固定 → #227/IADR-0062 で撤廃）
 
-- MassTransit は既定で URN を名前空間＋型名から導出する。名前空間変更で URN が変わるため、
-  `[MessageUrn]` で旧 URN（`urn:message:KnowledgePlatform.Shared.Contracts.Events:<Name>`）に固定する。
-- 実測確認済み: MassTransit 8.4.1 で新名前空間 + `[MessageUrn("KnowledgePlatform.Shared.Contracts.Events:DocumentUpdated")]`
-  → `urn:message:KnowledgePlatform.Shared.Contracts.Events:DocumentUpdated`（旧既定と一致）。
-- 回帰テストで 6 イベント全ての URN を固定する。
+> **更新（2026-07-11・#227/[[IADR-0062]]）**: 本スライス当初は `[MessageUrn]` で旧 URN
+> （`KnowledgePlatform.Shared.Contracts.Events:*`）に固定し wire 後方互換を維持したが、**後方互換は不要**の方針変更に
+> より `[MessageUrn]` を削除し、URN をイベントの現名前空間 `Knowledge.Contracts.Events` から導出する正準値
+> （`urn:message:Knowledge.Contracts.Events:*`）へ統一した（旧 URN 削除）。以下は当初実装の記録。
+
+- MassTransit は既定で URN を名前空間＋型名から導出する（現在は `Knowledge.Contracts.Events` から導出）。
+- 回帰テスト（`Knowledge.Contracts.Tests`）で 6 イベントの URN を正準値に固定する（現在は新体系の URN）。
 
 ## 実装方針
 
