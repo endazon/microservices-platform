@@ -16,7 +16,6 @@ plan_refs:
 related_specs:
   - "../adr/IADR-0063_bff-unit-endpoint-composition.md"
   - "./20260711_issue-229_migrate-datasource-bff.md"
-  - "./20260711_issue-229_migrate-analysis-bff.md"
   - "../../src/README.md"
 ---
 
