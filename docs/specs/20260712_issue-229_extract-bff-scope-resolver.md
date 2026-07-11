@@ -61,7 +61,7 @@ knowledge→Shared（許可）で参照できる。
 ## 受け入れ基準（Issue #229）との対応
 
 - [~] 可変ユニット追加時に platform 契約・BFF を改修せず拡張できる → 本 PR は Document/Search 移設の前提となる
-  共通 ABAC ヘルパを Shared へ切り出す基盤。`Refs #229`。
+  共通 ABAC ヘルパを Shared へ切り出す基盤（**Document/Search 本体の移設は後続 PR で完了予定・下記フォローアップ節参照**）。`Refs #229`。
 
 ## 検証
 
