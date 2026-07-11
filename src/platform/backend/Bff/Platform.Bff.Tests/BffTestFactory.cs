@@ -1,4 +1,5 @@
 using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Microsoft.AspNetCore.Authentication;

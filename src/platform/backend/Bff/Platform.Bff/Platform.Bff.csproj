@@ -6,5 +6,7 @@
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+    <!-- FR-14, IADR-0063: BFF 合成点（例外3）。可変ユニットの BFF エンドポイントを合成点で束ねる。 -->
+    <ProjectReference Include="..\..\..\..\knowledge\backend\Bff\Knowledge.Bff.Endpoints\Knowledge.Bff.Endpoints.csproj" />
   </ItemGroup>
 </Project>

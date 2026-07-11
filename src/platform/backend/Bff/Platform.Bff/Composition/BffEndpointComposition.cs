@@ -1,3 +1,4 @@
+using Knowledge.Bff.Endpoints;
 using Platform.Bff.Foundation.Endpoints;
 
 namespace Platform.Bff.Composition;

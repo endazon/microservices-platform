@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Knowledge.Bff.Endpoints;
 using Platform.Bff.Composition;
 using Platform.Bff.Foundation.Endpoints;
 
@@ -48,7 +49,8 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 現時点は platform 同居の 9 モジュール。ユニット移設・追加は合成点の登録簿で行う（IADR-0063）。
+        // 全 9 モジュール（うち DataSource は knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照、
+        // 残 8 は platform 同居）。ドメイン移設が進んでも合成点の登録簿件数は不変（IADR-0063 step3・#229）。
         BffEndpointComposition.Modules.Should().HaveCount(9);
     }
 

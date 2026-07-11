@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- FR-14, IADR-0063: knowledge ユニットの BFF エンドポイント（集約）ライブラリ。platform BFF の合成点
+       （Platform.Bff/Composition）から exception3 で参照され、合成点の登録簿へ組み込まれる。 -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Minimal API（IEndpointRouteBuilder / Results / MapGroup 等）を使うため ASP.NET Core を参照。 -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- 横断基盤（フォワーディングクライアント・認可ポリシー定数）。ユニット外は Shared の 2 プロジェクトのみ許可。 -->
+    <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+    <!-- ナレッジ固有契約（移設した DTO）。 -->
+    <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,8 +1,12 @@
-using Platform.Shared.Contracts.Dtos;
+using Knowledge.Contracts.Dtos;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using System.Net.Http;
 using System.Net.Http.Json;
 
-namespace Platform.Bff.Foundation.Endpoints;
+namespace Knowledge.Bff.Endpoints;
 
 // FR-01, FR-02, UC-04, SC-06, IADR-0039: データソース管理の BFF 集約。
 // DataSourceService（/datasources）へプロキシする。データソースは文書 ABAC のスコープ対象ではなく

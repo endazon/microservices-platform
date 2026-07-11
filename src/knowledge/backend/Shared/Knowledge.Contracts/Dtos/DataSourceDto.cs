@@ -1,4 +1,4 @@
-namespace Platform.Shared.Contracts.Dtos;
+namespace Knowledge.Contracts.Dtos;
 
 // FR-01, FR-02, UC-04, SC-06: データソースの参照用 DTO（BFF ↔ SPA 契約）。
 // DataSourceService のドメインエンティティ（/datasources）と JSON 互換。BFF は本 DTO で型付けして
