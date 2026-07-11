@@ -84,6 +84,7 @@
 | IADR-0058 | planning submodule 配下の破損リンクはトークン付きの定期ジョブで検査する | Accepted |
 | IADR-0059 | 契約を階層化しナレッジ固有イベントを Knowledge.Contracts へ分離する（URN 固定で後方互換） | Accepted |
 | IADR-0060 | 追加可変機能ユニットの submodule 運用（CI 自動発見・トークン付き取得・バージョン固定） | Accepted |
+| IADR-0061 | デプロイ資産（Helm/k8s/realm/イメージ）の改名は Blue/Green 移行で行う（起草・実行は stg 検証後） | Proposed |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
