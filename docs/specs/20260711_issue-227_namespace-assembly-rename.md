@@ -23,15 +23,15 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求(FR): FR-14／関連 IADR-0027（名前空間＝フォルダ一致）・IADR-0056（ユニット第一構成）・IADR-0059（URN 固定）
-- 実装判断: [[IADR-0062]]（命名体系・URN 保護）
+- 機能要求(FR): FR-14／関連 IADR-0027（名前空間＝フォルダ一致）・IADR-0056（ユニット第一構成）・IADR-0059（契約階層化。URN 固定は本 issue で撤回）
+- 実装判断: [[IADR-0062]]（命名体系・URN の新体系統一）
 - Issue: #227（フォローアップ 1）
 
 ## 目的・背景
 
 基盤（platform）コードが `KnowledgePlatform` ブランド下にある不整合（#209 / IADR-0056）を解消し、`Platform.*`（基盤）
-/ `Knowledge.*`（可変ユニット）へ機械改名する。**IADR-0059 で固定した MassTransit URN 文字列は wire 契約のため
-改名しない**（保護）。
+/ `Knowledge.*`（可変ユニット）へ機械改名する。**後方互換は持たせない方針**とし、IADR-0059 の `[MessageUrn]` による
+旧 URN 固定を撤回して MassTransit の URN もイベント現名前空間 `Knowledge.Contracts.Events` から導出する正準値へ統一する。
 
 ## 対象範囲
 
@@ -50,16 +50,21 @@ related_specs:
 - 改名しない（スコープ外）:
   - サービス名前空間（`DocumentService.*` 等・`KnowledgePlatform` ブランド外）。
   - helm/k8s/realm の小文字 `knowledge-platform`（#228 / IADR-0061）。
-  - Grafana/pipeline スキーマの表示ブランド文字列（表示名。据え置き）。
-  - 過去 spec/IADR の時点記録（living doc `src/README.md` のみ更新）。
+  - 過去 spec/IADR の時点記録（執筆時点の名称のまま据え置き）。
+- 追加で新名へ是正（claude-review 指摘対応）:
+  - living docs（`README.md`・`docs/security/`・`docs/tech/`・`docs/tech/composability-classification.md`）の旧識別子/旧ブランド。
+  - 表示ブランド文字列（openapi `title`・Grafana ダッシュボード/プロバイダ名・pipeline スキーマ `title`）を `Platform` へ。
+    （`.env.example` の見出しコメントは秘密ファイル保護ガードで編集不可のため据え置き。）
+  - `launchSettings.json` の起動プロファイル名、`scripts/` の自己テスト fixture パス。
 
 ## 実装方針
 
-- 機械置換（保護 7 ファイル・`obj`/`bin` を除外）: `KnowledgePlatform.IntegrationTests`→`Knowledge.IntegrationTests`
+- 機械置換（`obj`/`bin` を除外）: `KnowledgePlatform.IntegrationTests`→`Knowledge.IntegrationTests`
   を先に、残り `KnowledgePlatform`→`Platform`。csproj/slnx は `.Shared`/`.Bff`/`.IntegrationTests` を個別置換し、
   ディレクトリ・csproj を `git mv`。
-- フロント package 名を更新し `package-lock.json` を再生成。
-- **URN 不変を回帰テスト（`Knowledge.Contracts.Tests`）で保証**。
+- 6 イベントの `[MessageUrn]`（旧 URN 固定）・`using MassTransit;`・互換コメントを削除し、URN を新体系へ統一（後方互換なし）。
+- フロント package 名・workspaces ルート名を更新し `package-lock.json` をクリーン再生成。
+- **URN が新体系（`urn:message:Knowledge.Contracts.Events:*`）で一貫することを回帰テスト（`Knowledge.Contracts.Tests`）で固定**。
 
 ## 受け入れ基準（Issue #227）との対応
 
@@ -81,6 +86,6 @@ related_specs:
 
 ## 実装判断・フォローアップ
 
-- 命名体系・URN 保護は [[IADR-0062]] に記録。
-- 表示ブランド文字列（Grafana/schema title）は表示名のため据え置き（必要なら別途）。
+- 命名体系・URN の新体系統一（後方互換なし）は [[IADR-0062]]（および [[IADR-0059]] の更新）に記録。
+- 表示ブランド文字列（openapi/Grafana/schema title）は `Platform` へ統一済み（claude-review 指摘対応）。
 - デプロイ小文字 `knowledge-platform` は #228 / IADR-0061。
