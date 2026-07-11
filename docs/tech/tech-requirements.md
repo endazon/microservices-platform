@@ -24,7 +24,7 @@ plan_refs:
 > 確定判断は実装ADR（`docs/adr/`）に残す。単一情報源は各設定ファイル（`src/Directory.Build.props` 等）。
 >
 > **リポジトリの位置づけ**: 主たる成果物は**マイクロサービスプラットフォーム基盤（platform ユニット）**。
-> KnowledgePlatform（knowledge ユニット）は基盤に付随する必須の可変機能セットである
+> ナレッジ活用機能（knowledge ユニット）は基盤に付随する必須の可変機能セットである
 > （issue #209 / [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)。
 > フォルダ構成・依存規則は [`src/README.md`](../../src/README.md)）。
 

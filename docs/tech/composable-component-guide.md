@@ -42,7 +42,7 @@ related_specs:
 
 可変部品が依存してよい基盤側の資産は以下に限る。
 
-### 1.1 契約（`src/platform/backend/Shared/KnowledgePlatform.Shared.Contracts`）
+### 1.1 契約（`src/platform/backend/Shared/Platform.Shared.Contracts`）
 
 - **イベント契約型**（`Events/`）: 段の入出力。**後方互換の追加のみ許可**（破壊的変更は禁止。
   変更が必要なら新 ADR）。新イベント型の追加は契約追加として PR レビュー＋`pipeline.json` の
@@ -53,12 +53,12 @@ related_specs:
 - **同期 DTO**: サービス間同期 API の契約。経路自体は固定（[区分表 §1](./composability-classification.md)）
   であり、契約は [docs/api/openapi.yaml](../api/openapi.yaml) でバージョン管理される。
 
-### 1.2 横断基盤（`src/platform/backend/Shared/KnowledgePlatform.Shared.Infrastructure`）
+### 1.2 横断基盤（`src/platform/backend/Shared/Platform.Shared.Infrastructure`）
 
 | 提供物 | 内容 | 可変部品からの使い方 |
 | --- | --- | --- |
 | メッセージ基盤 | MassTransit + RabbitMQ 配線（`AddPlatformMassTransit`） | 直接触らない。段の登録は §2.1 の拡張メソッド経由 |
-| 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep`・`AddKnowledgePlatformPipelineConfig`・`AddKnowledgePlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
+| 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep`・`AddPlatformPipelineConfig`・`AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
 | 認証 | JWT/Keycloak・ロール変換 | 自動適用（サービス側 Program.cs の基盤登録で有効） |
 | 可観測性 | OTel・相関 ID・ヘルスチェック | 自動適用。独自計装を追加する場合も OTel API に統一 |
 | ストレージポート | `IObjectStorageClient`（S3/Null 実装, IADR-0024） | アダプタから委譲先として利用可 |
@@ -78,7 +78,7 @@ related_specs:
 
 1. `IConsumer<TIn>`（MassTransit）と `IPipelineStep`（`Shared.Infrastructure.Foundation.Pipeline`）を
    実装する。`static abstract string StepName` は `pipeline.json` の `steps[].name` と一致させる。
-2. 対象サービスの `Program.cs`（合成ルート）に `AddKnowledgePlatformPipelineStep<T>(pipeline)` を
+2. 対象サービスの `Program.cs`（合成ルート）に `AddPlatformPipelineStep<T>(pipeline)` を
    1 行追加する。
 3. `pipeline.json` に段を宣言する（`name` / `service` / `consumer`＝型完全名 / `input` / `outputs` /
    `enabled`）。入力イベント型は `events` に列挙済みであること。

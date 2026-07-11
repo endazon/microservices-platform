@@ -96,7 +96,9 @@ plan_refs:
 
 ## フォローアップ
 
-- Grafana/pipeline スキーマ等の表示ブランド文字列（`KnowledgePlatform Overview` 等）は表示名のため据え置き（必要なら別途）。
+- 表示ブランド文字列（openapi `title`・Grafana ダッシュボード/プロバイダ名・pipeline スキーマ `title`）も
+  `KnowledgePlatform` → `Platform` へ統一済み（claude-review 指摘対応。旧名を残さない方針）。
+  例外: `.env.example` の見出しコメントは秘密ファイル保護ガードにより編集不可のため据え置き（表示コメントのみ）。
 - デプロイ資産の小文字 `knowledge-platform` 改名は #228 / IADR-0061。
 
 ## 関連

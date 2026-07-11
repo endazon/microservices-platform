@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "KnowledgePlatform.Bff": {
+    "Platform.Bff": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

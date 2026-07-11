@@ -1,5 +1,5 @@
 ---
-title: IADR-0059 契約を階層化し、ナレッジ固有のイベント契約を Knowledge.Contracts へ分離する（URN 固定で後方互換）
+title: IADR-0059 契約を階層化し、ナレッジ固有のイベント契約を Knowledge.Contracts へ分離する（URN は新名前空間から導出・後方互換なし。#227/IADR-0062 で URN 固定を撤回）
 type: impl-adr
 status: Accepted
 related_ids:

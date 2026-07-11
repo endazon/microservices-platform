@@ -82,7 +82,7 @@
 | IADR-0056 | リポジトリ最上位のユニット構成（src/&lt;unit&gt;/{backend,frontend} = platform / knowledge） | Accepted |
 | IADR-0057 | ユニット依存方向の機械検査は軽量スクリプト（csproj 走査）＋フロント ESLint で行う | Accepted |
 | IADR-0058 | planning submodule 配下の破損リンクはトークン付きの定期ジョブで検査する | Accepted |
-| IADR-0059 | 契約を階層化しナレッジ固有イベントを Knowledge.Contracts へ分離する（URN 固定で後方互換） | Accepted |
+| IADR-0059 | 契約を階層化しナレッジ固有イベントを Knowledge.Contracts へ分離する（URN は新名前空間から導出・後方互換なし。#227 で URN 固定を撤回） | Accepted |
 | IADR-0060 | 追加可変機能ユニットの submodule 運用（CI 自動発見・トークン付き取得・バージョン固定） | Accepted |
 | IADR-0061 | デプロイ資産（Helm/k8s/realm/イメージ）の改名は Blue/Green 移行で行う（起草・実行は stg 検証後） | Proposed |
 | IADR-0062 | KnowledgePlatform ブランドの .NET 名前空間・アセンブリとフロント package をユニット構成へ改名する | Accepted |
