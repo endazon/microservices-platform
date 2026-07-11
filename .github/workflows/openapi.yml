@@ -24,7 +24,7 @@ on:
     paths:
       - "docs/api/**"
       - "scripts/generate-openapi.sh"
-      # FR-14: API 契約はバックエンド由来のため src/backend のみ対象（frontend は対象外）
+      # FR-14: API 契約はバックエンド由来のため src/*/backend（各ユニットの backend）のみ対象（frontend は対象外）
       - "src/*/backend/**"
   workflow_dispatch: {}
 
