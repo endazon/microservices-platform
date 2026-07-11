@@ -37,12 +37,12 @@ plan_refs:
 | 項目 | 内容 |
 | --- | --- |
 | 環境 | dev（docker-compose） / stg・prod（k3s + Istio + ArgoCD） |
-| 実行基盤 | k3s（ADR-0008）。Helm チャート `deploy/helm/knowledge-platform`。Namespace `knowledge-platform`（Istio 注入有効） |
+| 実行基盤 | k3s（ADR-0008）。Helm チャート `deploy/helm/microservices-platform`。Namespace `microservices-platform`（Istio 注入有効） |
 | 配備方式 | GitOps（ADR-0007）。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
 | サービス間通信 | Istio STRICT mTLS（ADR-0005 / IADR-0026）。手順 `deploy/istio/README.md` |
 | 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
 | デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
-| ロールバック | `argocd app rollback knowledge-platform <revision>` もしくは Git revert（GitOps 原則） |
+| ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
 
 ### サービス構成に関する運用注記
 
@@ -104,9 +104,9 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   - ArgoCD Application（`deploy/argocd/application.yaml`）の `helm.parameters` が `config.appliedBy=argocd` を固定。
   - **適用リビジョン（コミット ID）と適用日時**は、ArgoCD ネイティブ Helm がビルド変数をパラメータへ
     自動展開しないため、CD が同期時に上書きする:
-    `argocd app set knowledge-platform --helm-set config.gitCommit=$(git rev-parse HEAD) --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
+    `argocd app set microservices-platform --helm-set config.gitCommit=$(git rev-parse HEAD) --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
     （または release automation が `values-<env>.yaml` の `config.*` を更新して Git にコミットする）。
-  - 手動確認: `helm template deploy/helm/knowledge-platform --set config.gitCommit=deadbeef` で
+  - 手動確認: `helm template deploy/helm/microservices-platform --set config.gitCommit=deadbeef` で
     BFF env に `Config__GitCommit=deadbeef` が反映される。
 - **dev（compose）**: compose 起動時に**環境変数で実 Git コミット ID を渡す**。BFF は
   `Config__GitCommit=${GIT_COMMIT:-dev-local}` / `Config__AppliedAt=${GIT_COMMIT_DATE:-}` /
@@ -119,7 +119,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
-  realm `knowledge-platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
+  realm `microservices-platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
 - **管理 UI への直接アクセス（dev のみ）**: 下記の初期セットアップ（OIDC 構成・ja ロケール導入・API キー発行）は
   ブラウザから Wiki.js 管理 UI（`http://localhost:3001`）へアクセスする。dev の compose は 3001 を公開している
   （[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
@@ -137,10 +137,10 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   追加し、以下を設定する。Keycloak 側クライアントは realm import 済み（`wiki-js`、confidential、
   redirect `http://localhost:3001/*`）。
   - Client ID: `wiki-js` / Client Secret: realm import の値（dev は `wiki-js-dev-secret-change-me`。**本番は必ず変更**）。
-  - Authorization Endpoint URL: `http://localhost:8080/realms/knowledge-platform/protocol/openid-connect/auth`
-  - Token Endpoint URL: `http://keycloak:8080/realms/knowledge-platform/protocol/openid-connect/token`
+  - Authorization Endpoint URL: `http://localhost:8080/realms/microservices-platform/protocol/openid-connect/auth`
+  - Token Endpoint URL: `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/token`
     （サーバ間はコンテナ名 `keycloak`、ブラウザ経路は `localhost:8080`）。
-  - **Issuer: `http://localhost:8080/realms/knowledge-platform`**。issuer はブラウザ経路のホストに
+  - **Issuer: `http://localhost:8080/realms/microservices-platform`**。issuer はブラウザ経路のホストに
     固定される（compose の `KC_HOSTNAME_URL` で固定済み）。`keycloak:8080` を設定すると ID トークン
     検証と userinfo が失敗する（「Failed to fetch user profile」。Issue #88 実測）。
   - User Info / Logout: 同 realm の対応エンドポイント（User Info はコンテナ内経路 `keycloak:8080`）。
@@ -241,7 +241,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
 ## 可用性・水平スケール（HPA / PDB）（NFR / #197）
 
 計画 NFR「スケーラビリティ: HPA で水平スケール」「可用性: 99.9% 以上（月間ダウンタイム約 43 分以内）」の
-実現手段を Helm チャート（`deploy/helm/knowledge-platform/`）の構成で提供する。適用は GitOps（ArgoCD）
+実現手段を Helm チャート（`deploy/helm/microservices-platform/`）の構成で提供する。適用は GitOps（ArgoCD）
 経由で、構成変更のみで完結する。
 
 ### 実現手段
@@ -291,10 +291,10 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
 - **アラートルール**: [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml)（`prometheus.yml` の
   `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`。受信先＝メール/チャットは
   運用環境ごとに配備・設定）。未配備でもルール評価は行われ Prometheus UI / Grafana から発火を確認できる。
-- **ダッシュボード**: `deploy/grafana/provisioning/dashboards/knowledge-platform-overview.json`（サービス別
+- **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
   スループット・5xx 率・p99・RAG レイテンシ）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
-  現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/knowledge-platform/` 配下に Prometheus/
+  現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/microservices-platform/` 配下に Prometheus/
   Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 

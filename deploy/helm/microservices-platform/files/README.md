@@ -13,7 +13,7 @@
    段をホストするサービス（`values.yaml` の `pipelineSteps: true`）がロールアウトされる
 4. ロールバックは Git revert → ArgoCD 同期（直前構成へ即時復帰）
 
-ローカル検証: `node scripts/validate-pipeline-config.js deploy/helm/knowledge-platform/files/pipeline.json`
+ローカル検証: `node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json`
 
 ## ファイル
 

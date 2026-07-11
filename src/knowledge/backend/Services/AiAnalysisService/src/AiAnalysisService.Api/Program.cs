@@ -5,7 +5,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.aianalysis-service";
+const string ServiceName = "microservices-platform.aianalysis-service";
 
 var builder = WebApplication.CreateBuilder(args);
 

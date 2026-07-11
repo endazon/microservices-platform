@@ -8,7 +8,7 @@ metadata:
   name: default-deny-ingress
   namespace: {{ .Values.namespace.name }}
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
 spec:
   podSelector: {}
   policyTypes:
@@ -21,7 +21,7 @@ metadata:
   name: allow-intra-namespace
   namespace: {{ .Values.namespace.name }}
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
 spec:
   # 同 Namespace 内のワークロード間通信を許可（サービス間 RAG/取り込みフロー）。
   podSelector: {}

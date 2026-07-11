@@ -4,7 +4,7 @@
 > 受け入れ基準: ArgoCD 経由のデプロイが Git の状態と同期し、手動 kubectl 依存がない
 
 Git を単一の真実源とし、ArgoCD が本リポジトリの Helm チャート
-（`deploy/helm/knowledge-platform`）を `knowledge-platform` Namespace へ宣言的に同期する。
+（`deploy/helm/microservices-platform`）を `microservices-platform` Namespace へ宣言的に同期する。
 
 ## 構成
 
@@ -44,17 +44,17 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## 4. 独立デプロイ・ロールバック（NFR）
 
-- **デプロイ（サービス単位）**: `deploy/helm/knowledge-platform/values.yaml` の
+- **デプロイ（サービス単位）**: `deploy/helm/microservices-platform/values.yaml` の
   `services.<name>.tag` を Git で更新 → ArgoCD が自動同期（`automated.selfHeal`）。
 - **ロールバック**:
   ```sh
-  argocd app rollback knowledge-platform <revision>
+  argocd app rollback microservices-platform <revision>
   # もしくは Git 上で当該コミットを revert（GitOps の原則）
   ```
 - **同期状態の確認**:
   ```sh
-  argocd app get knowledge-platform      # Sync/Health ステータス
-  argocd app diff knowledge-platform     # Git と実クラスタの差分（0 であること）
+  argocd app get microservices-platform      # Sync/Health ステータス
+  argocd app diff microservices-platform     # Git と実クラスタの差分（0 であること）
   ```
 
 `selfHeal: true` により、手動 `kubectl edit` 等の out-of-band 変更は Git 状態へ自動復元される

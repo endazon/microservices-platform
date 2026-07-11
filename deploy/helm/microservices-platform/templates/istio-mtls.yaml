@@ -9,10 +9,10 @@
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
-  name: knowledge-platform-mtls
+  name: microservices-platform-mtls
   namespace: {{ .Values.namespace.name }}
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
 spec:
   # namespace 全体（selector 無し）に適用。
   mtls:
@@ -21,10 +21,10 @@ spec:
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: knowledge-platform-mtls
+  name: microservices-platform-mtls
   namespace: {{ .Values.namespace.name }}
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
 spec:
   # 同 Namespace 内の全ホスト宛の送信を ISTIO_MUTUAL に固定する。
   host: "*.{{ .Values.namespace.name }}.svc.cluster.local"

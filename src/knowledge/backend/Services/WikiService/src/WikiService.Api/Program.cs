@@ -12,7 +12,7 @@ using WikiService.Api.Foundation.Ports;
 using WikiService.Api.Foundation.Services;
 using WikiService.Api.Composable.Adapters;
 
-const string ServiceName = "knowledge-platform.wiki-service";
+const string ServiceName = "microservices-platform.wiki-service";
 
 var builder = WebApplication.CreateBuilder(args);
 

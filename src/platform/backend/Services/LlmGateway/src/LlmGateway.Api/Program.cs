@@ -9,7 +9,7 @@ using LlmGateway.Api.Foundation.Routing;
 using Microsoft.Extensions.Options;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.llm-gateway";
+const string ServiceName = "microservices-platform.llm-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
 

@@ -19,7 +19,7 @@ public sealed class PipelineDeclarationMountTests
 
         bff.Should().Contain("Pipeline__ConfigPath",
             "#146: BFF は宣言（pipeline.json）の読み込み先を Pipeline__ConfigPath で指定する");
-        bff.Should().MatchRegex(@"pipeline\.json:/etc/knowledge-platform/pipeline/pipeline\.json",
+        bff.Should().MatchRegex(@"pipeline\.json:/etc/microservices-platform/pipeline/pipeline\.json",
             "#146: 正の pipeline.json を BFF へ読み取り専用でマウントする");
     }
 
@@ -27,7 +27,7 @@ public sealed class PipelineDeclarationMountTests
     [Fact]
     public void Helm_Bff_HasPipelineDeclarationFlag()
     {
-        var values = ReadRepoFile(Path.Combine("deploy", "helm", "knowledge-platform", "values.yaml"));
+        var values = ReadRepoFile(Path.Combine("deploy", "helm", "microservices-platform", "values.yaml"));
 
         BffValuesBlock(values).Should().MatchRegex(@"(?m)^\s*pipelineDeclaration:\s*true",
             "#146: BFF は pipelineDeclaration: true で宣言 ConfigMap をマウントする");
@@ -39,7 +39,7 @@ public sealed class PipelineDeclarationMountTests
     public void Helm_PipelineMountGate_IncludesDeclarationFlag()
     {
         var deployment = ReadRepoFile(
-            Path.Combine("deploy", "helm", "knowledge-platform", "templates", "deployment.yaml"));
+            Path.Combine("deploy", "helm", "microservices-platform", "templates", "deployment.yaml"));
 
         deployment.Should().MatchRegex(@"or\s+\$svc\.pipelineSteps\s+\$svc\.pipelineDeclaration",
             "#146: pipeline-config のマウント条件は pipelineSteps か pipelineDeclaration のいずれかで成立する");

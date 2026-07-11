@@ -8,7 +8,7 @@ kind: ConfigMap
 metadata:
   name: pipeline-config
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 data:
   pipeline.appsettings.json: |

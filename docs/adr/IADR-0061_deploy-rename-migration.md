@@ -1,7 +1,7 @@
 ---
-title: IADR-0061 デプロイ資産（Helm/k8s/realm/イメージ）の改名は Blue/Green 移行で行う（新名称は要確認・実行は stg 検証後）
+title: IADR-0061 デプロイ資産（Helm/k8s/realm/イメージ/OIDC）を microservices-platform へ改名する（stg 未構築のため移行なし・初回構築を新名称で行う）
 type: impl-adr
-status: Proposed
+status: Accepted
 related_ids:
   - FR-14
   - ADR-0007
@@ -9,89 +9,77 @@ related_ids:
   - IADR-0056
 author: claude
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-12
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md"
 ---
 
-# IADR-0061: デプロイ資産の改名は Blue/Green 移行で行う（移行手順の起草）
+# IADR-0061: デプロイ資産を microservices-platform へ改名する（移行なし・新名称で初回構築）
 
-- 状態: Proposed（新名称の確定と stg 検証をもって Accepted 化する）
-- 日付: 2026-07-11
-- 決定者: claude（実装・提案）
+- 状態: Accepted（2026-07-12。新名称 `microservices-platform` を確定し、改名を実施）
+- 日付: 2026-07-11（初版 Proposed・Blue/Green 起草）／2026-07-12（Accepted・移行なし方針へ改定）
+- 決定者: ユーザー（プロダクト判断）＋ claude（実装）
 
 ## 起点・関連
 
 - 関連する計画書 ID: FR-14／ADR-0007（ArgoCD+Helm）／ADR-0008（k3s）／[[IADR-0056]]（ユニット第一構成）
-- 関連仕様書: `docs/specs/20260711_issue-228_rename-migration.md`、`docs/migration/rename-knowledge-platform.md`（Runbook）
 - Issue: #228（IADR-0056 フォローアップ 2）
 
 ## コンテキストと課題
 
 Helm チャート名 `knowledge-platform`・k8s Namespace `knowledge-platform`・Keycloak realm `knowledge-platform`・
 コンテナイメージのプロジェクト接頭辞 `knowledge-platform/*`・Ingress ホスト `*.knowledge-platform.local`・
-ArgoCD Application/releaseName・観測資産（Grafana/Prometheus）・アプリ設定（OIDC realm/authority）が、
-「主=プラットフォーム基盤」の位置づけ（#209 / [[IADR-0056]]）と不整合のまま `knowledge-platform` を名乗る。
+ArgoCD Application/releaseName・観測資産（Grafana/Prometheus の service_name 接頭辞・ダッシュボード名）・
+アプリ設定（OIDC realm/authority）・OTEL サービス名接頭辞（`knowledge-platform.<service>`）が、
+「主=プラットフォーム基盤」の位置づけ（#209 / [[IADR-0056]]）と不整合のまま `knowledge-platform` を名乗っていた。
 
-改名は**デプロイ済み環境への影響が大きい**（Namespace は in-place 改名不可＝再作成、PVC のデータ移行、
-Keycloak realm 変更に伴う issuer/authority の総入替、イメージ再タグ、ArgoCD の付け替え）。受け入れ基準は
-「stg で検証済み」であり、**実行には実環境が要る**。本 IADR は移行方式を定め、Runbook を起草する（実改名は行わない）。
+## 決定（改定後・2026-07-12）
 
-## 検討した選択肢
+初版（Proposed）は「デプロイ済み環境がある」前提で Blue/Green 移行を起草していた。しかし **stg/prod は未構築**で
+あり、移行対象の稼働資産は存在しない。したがって移行（Blue/Green・データ移行・ロールバック）は不要であり、
+**ソース／デプロイ資産の純粋な改名**として実施し、初回構築を新名称で行う。
 
-### 新名称
-- **候補A: `microservices-platform`（リポジトリ名に一致・本 IADR の推奨）** — 製品全体＝プラットフォーム基盤である
-  ことを明示。曖昧さがなく、k8s Namespace/realm 名（63 文字制限）にも収まる。
-- 候補B: `platform` — 短いが汎用的すぎ、他システムと衝突しやすい。
-- 候補C: 現状維持 — #209 の位置づけと不整合が残る。
-
-> **新名称はプロダクト/ブランドの決定事項**のため、Runbook は `<new-name>` でパラメータ化し、実行前に確定する
-> （推奨は `microservices-platform`）。
-
-### 移行方式
-- **選択肢1: in-place（同一 Namespace 内で値だけ差し替え）** — Namespace/realm 名は in-place 改名できず、
-  ダウンタイムとデータ移行リスクが高い。低リスク環境（dev）向け。
-- **選択肢2: Blue/Green（新 Namespace＋新 realm＋新イメージを並行構築し、ingress/DNS で切替。旧を保持しロール
-  バック可能に）（本推奨）** — ステートフル（postgres/qdrant/minio/wikijs）のデータ移行を計画的に行え、
-  無停止・即時ロールバックが可能。stg→prod の段階適用に適する。
-
-### Keycloak realm 改名
-- realm は Keycloak 管理 API で改名可能だが **issuer URL（`/realms/<name>`）が変わり、既存トークンは失効**、
-  全クライアント（`spa-web` public client・各サービスの authority）の設定更新が必要。
-- 本推奨: **新 realm を export/import で新名称にて構築**（Blue/Green と整合。旧 realm は切替まで保持）。
-
-## 決定（提案）
-
-1. **新名称は `<new-name>`（推奨 `microservices-platform`）でパラメータ化**し、実行前に確定する。
-2. **移行方式は Blue/Green を基本**とする（stg/prod）。dev は in-place を許容する。
-3. **Keycloak は新 realm を新名称で構築**（export/import）し、OIDC authority（Helm `values.yaml` の
-   `oidc.authority`・各サービス `appsettings.json`・SPA `config.js`）を新 issuer へ更新する。
-4. **ArgoCD は新 Application**（新 releaseName・新 destination namespace・改名後チャートパス）を作成し、
-   ingress 切替後に旧 Application を削除する。
-5. **イメージは新プロジェクト接頭辞 `<new-name>/*`** で再タグ・再 push し、`values.yaml` の `image` を更新する。
-6. 上記の全対象・手順・ロールバック・検証チェックリストを Runbook（`docs/migration/rename-knowledge-platform.md`）に
-   起草する。**本 PR では実ファイルの改名は行わない**（stg 検証を伴う実行は別途）。
+1. **新名称は `microservices-platform`（リポジトリ名に一致）で確定**する。製品全体＝プラットフォーム基盤である
+   ことを明示し、k8s Namespace/realm（63 文字制限）にも収まる。
+2. **移行は行わない**。stg/prod 未構築のため稼働データ・トークン失効・ingress 切替の考慮は不要。旧 `knowledge-platform`
+   資産（チャートディレクトリ・realm ファイル・ダッシュボード等）は**すべて撤去**し、新名称で作り直す。
+3. 改名対象（本 PR で機械置換・ファイル/ディレクトリ改名を実施）:
+   - Helm チャート: ディレクトリ `deploy/helm/knowledge-platform/` → `deploy/helm/microservices-platform/`、
+     `Chart.yaml` `name`、全テンプレート（Namespace・ラベル `app.kubernetes.io/part-of`・PeerAuthentication/
+     DestinationRule `*-mtls`・NetworkPolicy・pipeline-config・drift job）、`values.yaml`（`namespace.name`・
+     `image` 接頭辞・Ingress ホスト）。
+   - Keycloak realm: `deploy/keycloak/knowledge-platform-realm.json` → `microservices-platform-realm.json`、
+     realm 名 `knowledge-platform` → `microservices-platform`。
+   - ArgoCD: `deploy/argocd/{application,appproject}.yaml`（name・project・destination namespace・part-of ラベル）。
+   - 観測: Grafana ダッシュボード `knowledge-platform-overview.json` → `microservices-platform-overview.json`
+     （uid/tags/service_name 参照）、Prometheus `alerts.yml`（service_name 接頭辞）。
+   - Compose/bootstrap/istio: `deploy/docker-compose.yml`・`deploy/bootstrap/*`・`deploy/istio/README.md`。
+   - アプリ設定・コード: 全サービス `appsettings*.json` の OIDC authority（`/realms/microservices-platform`）、
+     各 `Program.cs` の OTEL `ServiceName`（`microservices-platform.<service>`）、`Platform.Shared.Infrastructure`
+     の authority 既定値、フロント `config.js`/`runtimeConfig.ts`/`Dockerfile`/`docker-entrypoint`（authority・
+     コンテナ内パス `/etc/microservices-platform/`）。
+   - CI: `.github/workflows/ci.yml`（Helm パス）。デプロイ検証統合テスト（`Knowledge.IntegrationTests/Deployment/*`）の
+     Namespace/realm 期待値。
 
 ## 理由
 
-- **影響の大きさに見合う安全性**: Namespace 再作成・realm 変更・データ移行を伴うため、無停止・ロールバック可能な
-  Blue/Green が妥当（in-place はダウンタイムと不可逆リスク）。
-- **受け入れ基準との整合**: 「stg で検証済み」が条件のため、起草（本 PR）と実行（stg での適用・検証）を分離する。
-- **名称のパラメータ化**: 新名称は製品判断のため、方式・手順を先に固め、名称確定後に機械置換で実行できるようにする。
+- **移行対象が存在しない**: stg/prod 未構築のため、無停止・ロールバックの考慮は不要。純粋な改名として最小コストで
+  一貫適用できる。
+- **一貫性**: OTEL service_name 接頭辞・Grafana/Prometheus クエリ・OIDC issuer を同時に改名し、観測と認証の整合を保つ。
+- **#209 / IADR-0056 との整合**: 「主=プラットフォーム基盤」の位置づけにデプロイ資産の命名を合わせる。
 
-## 結果（本 PR の範囲）
+## 結果
 
-- `docs/adr/IADR-0061`（本書・Proposed）。
-- `docs/migration/rename-knowledge-platform.md`: 改名対象の全インベントリ・Blue/Green 手順・ロールバック・
-  stg 検証チェックリスト。
-- 実ファイル（Helm/realm/argocd/compose/appsettings 等）の改名は**未実施**（#228 に残す）。
+- 旧 `knowledge-platform` のデプロイ資産・realm・ダッシュボード・OTEL 名・OIDC issuer をすべて `microservices-platform`
+  へ改名し、旧名称の資産は撤去した（本 PR）。Blue/Green 移行 Runbook（`docs/migration/rename-knowledge-platform.md`）は
+  移行を行わない方針により不要となったため、完了記録へ差し替えた。
+- 受け入れ基準「デプロイ資産の命名がユニット構成（platform 主体）と整合する」を満たす。「stg で検証済み」は stg 未構築の
+  ため対象外（初回構築を新名称で行う運用に変更）。
 
-## フォローアップ（#228・実環境が必要）
+## フォローアップ
 
-- 新名称の確定（プロダクト判断）。
-- stg での Blue/Green 適用・データ移行・OIDC 疎通・ingress 切替・検証、続いて prod。
-- 実行後に本 IADR を Accepted 化し、旧名称資産の撤去を記録。
+- 実際の stg/prod 構築時に、新名称で ArgoCD 同期・OIDC 疎通・観測ダッシュボードの表示を確認する（環境構築 issue で扱う）。
 
 ## 関連
 

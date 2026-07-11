@@ -1,4 +1,4 @@
-# Secret ブートストラップ（k3s / knowledge-platform）
+# Secret ブートストラップ（k3s / microservices-platform）
 
 > 起点: ADR-0008（k3s）/ ADR-0007（Harbor）/ IADR-0017・IADR-0026（シークレット管理）
 > 関連仕様: [`docs/security/security.md`](../../docs/security/security.md)
@@ -15,8 +15,8 @@ Helm/ArgoCD が `namespace.create=true`（または ArgoCD `CreateNamespace=true
 手動で先に作る場合:
 
 ```sh
-kubectl create namespace knowledge-platform
-kubectl label namespace knowledge-platform istio-injection=enabled
+kubectl create namespace microservices-platform
+kubectl label namespace microservices-platform istio-injection=enabled
 ```
 
 ## 2. アプリ Secret（LLM API キー・DB 資格情報・Wiki.js）
@@ -25,10 +25,10 @@ kubectl label namespace knowledge-platform istio-injection=enabled
 
 ```sh
 # 例: テンプレートをコピーし、CHANGE_ME を実値へ置換してから適用
-cp deploy/bootstrap/secret-templates.example.yaml /tmp/kp-secrets.yaml
-# /tmp/kp-secrets.yaml を編集（CHANGE_ME を実値へ）…
-kubectl apply -n knowledge-platform -f /tmp/kp-secrets.yaml
-rm -f /tmp/kp-secrets.yaml
+cp deploy/bootstrap/secret-templates.example.yaml /tmp/microservices-platform-secrets.yaml
+# /tmp/microservices-platform-secrets.yaml を編集（CHANGE_ME を実値へ）…
+kubectl apply -n microservices-platform -f /tmp/microservices-platform-secrets.yaml
+rm -f /tmp/microservices-platform-secrets.yaml
 ```
 
 作成される Secret（Helm values が参照）:
@@ -45,7 +45,7 @@ rm -f /tmp/kp-secrets.yaml
 
 ```sh
 kubectl create secret docker-registry harbor-pull \
-  --namespace knowledge-platform \
+  --namespace microservices-platform \
   --docker-server harbor.internal \
   --docker-username '<robot-account>' \
   --docker-password '<robot-token>'
@@ -61,5 +61,5 @@ imagePullSecrets:
 ## 検証
 
 ```sh
-kubectl get secret -n knowledge-platform
+kubectl get secret -n microservices-platform
 ```

@@ -175,8 +175,8 @@ bash scripts/compose-up.sh up -d
 
 > 注: .NET 名前空間・アセンブリ名・フロント package 名は、ユニット構成に整合する新体系
 > （`Platform.*` / `Knowledge.*` / `@platform`・`@knowledge`）へ改名済み（#227 / IADR-0062）。
-> Helm チャート名・k8s Namespace・realm 名の小文字 `knowledge-platform` の改名は移行手順を起草済みで、
-> 実行は stg 検証を伴うため保留（#228 / IADR-0061）。
+> Helm チャート名・k8s Namespace・realm 名・イメージ接頭辞・OIDC issuer も `microservices-platform` へ
+> 改名済み（#228 / IADR-0061）。stg/prod 未構築のため移行は行わず、初回構築を新名称で行う（旧 `knowledge-platform` 資産は撤去）。
 
 ## Git 運用
 

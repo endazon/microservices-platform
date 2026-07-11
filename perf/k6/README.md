@@ -35,7 +35,7 @@ BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/rag-load.js
 
 # Keycloak パスワードグラント例
 BASE_URL=http://localhost:5000 \
-  KC_TOKEN_URL=http://localhost:8080/realms/knowledge-platform/protocol/openid-connect/token \
+  KC_TOKEN_URL=http://localhost:8080/realms/microservices-platform/protocol/openid-connect/token \
   KC_USERNAME=poc-user KC_PASSWORD=*** \
   k6 run perf/k6/search-load.js
 ```
@@ -63,7 +63,7 @@ k6 の HTTP 負荷では測りにくいため、**パイプライン投入 → �
 
 ## 観察・判定
 
-- **ダッシュボード**: Grafana `knowledge-platform-overview`（サービス別スループット・5xx・p95/p99・RAG レイテンシ）。
+- **ダッシュボード**: Grafana `microservices-platform-overview`（サービス別スループット・5xx・p95/p99・RAG レイテンシ）。
 - **アラート**: Prometheus SLO ルール（`deploy/prometheus/alerts.yml`・#198）。`SearchLatencyP95High` / `RagLatencyP95High` /
   `HighHttp5xxRate` の発火有無で SLO 逸脱を判定できる。
 - **トレース**: Tempo で遅い経路を段階分解（検索＝ベクトル検索/ABAC、RAG＝検索+LLM）する。

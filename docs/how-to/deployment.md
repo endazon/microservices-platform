@@ -33,7 +33,7 @@ related_specs:
 | dev | ローカル Docker Compose | `docker compose -f deploy/docker-compose.yml up -d`（[local-development.md](local-development.md)参照） |
 | 共有 / stg / prod | k3s（Kubernetes） | GitOps（ArgoCD + Helm）。Git を単一の真実源として同期 |
 
-k3s 系（共有/stg/prod）は、`deploy/helm/knowledge-platform` の単一 Helm チャートを環境別の
+k3s 系（共有/stg/prod）は、`deploy/helm/microservices-platform` の単一 Helm チャートを環境別の
 `values.yaml`（または `--set`）で環境分岐させる構成である。
 
 ## GitOps 全体像（共有/stg/prod）
@@ -42,14 +42,14 @@ k3s 系（共有/stg/prod）は、`deploy/helm/knowledge-platform` の単一 Hel
 flowchart LR
   Dev[開発者/CI] -->|git push| Git[(Git: このリポジトリ)]
   Git -->|watch/sync| ArgoCD[ArgoCD]
-  ArgoCD -->|apply| Helm[Helm: deploy/helm/knowledge-platform]
-  Helm --> K3s[(k3s Namespace: knowledge-platform)]
+  ArgoCD -->|apply| Helm[Helm: deploy/helm/microservices-platform]
+  Helm --> K3s[(k3s Namespace: microservices-platform)]
   CI[CI] -->|push image| Harbor[(Harbor レジストリ)]
   Harbor -->|pull| K3s
 ```
 
-Git を単一の真実源とし、ArgoCD が Helm チャート（[`deploy/helm/knowledge-platform`](../../deploy/helm/knowledge-platform)）を
-`knowledge-platform` Namespace へ宣言的に同期する（`automated.selfHeal` 有効。out-of-band な手動変更は
+Git を単一の真実源とし、ArgoCD が Helm チャート（[`deploy/helm/microservices-platform`](../../deploy/helm/microservices-platform)）を
+`microservices-platform` Namespace へ宣言的に同期する（`automated.selfHeal` 有効。out-of-band な手動変更は
 Git 状態へ自動復元される）。
 
 ## 初回セットアップ（順序が重要）
@@ -77,17 +77,17 @@ kubectl apply -f deploy/argocd/application.yaml
 
 ## サービス単位のデプロイとロールバック
 
-- **デプロイ**: `deploy/helm/knowledge-platform/values.yaml` の `services.<name>.tag` を Git 上で更新し
+- **デプロイ**: `deploy/helm/microservices-platform/values.yaml` の `services.<name>.tag` を Git 上で更新し
   push する → ArgoCD が自動同期する（NFR: サービス単位の独立デプロイ）。
 - **ロールバック**:
   ```bash
-  argocd app rollback knowledge-platform <revision>
+  argocd app rollback microservices-platform <revision>
   # もしくは Git 上で当該コミットを revert（GitOps の原則）
   ```
 - **同期状態の確認**:
   ```bash
-  argocd app get knowledge-platform      # Sync/Health ステータス
-  argocd app diff knowledge-platform     # Git と実クラスタの差分（0 であること）
+  argocd app get microservices-platform      # Sync/Health ステータス
+  argocd app diff microservices-platform     # Git と実クラスタの差分（0 であること）
   ```
 
 ## 構成バージョン履歴（FR-15 / IADR-0046）
@@ -99,7 +99,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
 
 - **k8s（共有/stg/prod）**: 実際の適用リビジョン・日時は CD 側が同期時に上書きする。
   ```bash
-  argocd app set knowledge-platform \
+  argocd app set microservices-platform \
     --helm-set config.gitCommit=$(git rev-parse HEAD) \
     --helm-set config.appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   ```
@@ -112,7 +112,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
 
 ## 構成ドリフトの検出
 
-宣言（`deploy/helm/knowledge-platform/files/pipeline.json`）と実効構成のドリフトは、BFF が定期
+宣言（`deploy/helm/microservices-platform/files/pipeline.json`）と実効構成のドリフトは、BFF が定期
 （既定5分）に加え、ArgoCD の PostSync フック（`templates/drift-postsync-job.yaml`）により各同期完了後にも
 即時検出する。詳細・手動確認手順（`GET /bff/admin/config/drift`）・失敗時の扱いは
 [`docs/operations/operations.md`](../operations/operations.md)「適用直後のドリフト即時検出」を参照。

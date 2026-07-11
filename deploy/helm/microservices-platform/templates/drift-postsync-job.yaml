@@ -9,7 +9,7 @@ metadata:
   name: config-drift-postsync
   labels:
     app: config-drift-postsync
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
   annotations:
     # ArgoCD PostSync: 同期完了後にフックとして実行する。前回のフックは作成前に削除し、成功後も削除する。

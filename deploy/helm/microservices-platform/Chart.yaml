@@ -1,0 +1,7 @@
+apiVersion: v2
+name: microservices-platform
+description: マイクロサービス基盤プラットフォーム（platform 基盤 ＋ knowledge 可変機能）— Helm chart umbrella
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+# ADR-0007: ArgoCD + Helm によるデプロイ

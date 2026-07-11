@@ -75,7 +75,7 @@ jobs:
       - name: Validate pipeline config (self-test)
         run: node scripts/validate-pipeline-config.js --self-test
       - name: Validate pipeline config
-        run: node scripts/validate-pipeline-config.js deploy/helm/knowledge-platform/files/pipeline.json
+        run: node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json
 
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
   # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。

@@ -11,7 +11,7 @@ using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.datasource-service";
+const string ServiceName = "microservices-platform.datasource-service";
 
 var builder = WebApplication.CreateBuilder(args);
 

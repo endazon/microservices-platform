@@ -24,7 +24,7 @@ plan_refs:
 - 関連する計画書 ID（FR/UC/SC/ADR）: FR-14・ADR-0018
 - 関連する実装仕様書: [作業仕様書](../specs/20260708_issue-111_declarative-pipeline-config.md)・
   [IADR-0027](./IADR-0027_composability-folder-structure.md)・
-  [運用手順](../../deploy/helm/knowledge-platform/files/README.md)
+  [運用手順](../../deploy/helm/microservices-platform/files/README.md)
 
 ## コンテキストと課題
 

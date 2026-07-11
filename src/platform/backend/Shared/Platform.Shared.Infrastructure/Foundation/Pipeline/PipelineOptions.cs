@@ -1,7 +1,7 @@
 namespace Platform.Shared.Infrastructure.Foundation.Pipeline;
 
 // FR-14, ADR-0018: 宣言的パイプライン構成（構成セクション `Pipeline`）のバインドモデル。
-// 正となる宣言は deploy/helm/knowledge-platform/files/pipeline.json（Git 管理・CI スキーマ検証）。
+// 正となる宣言は deploy/helm/microservices-platform/files/pipeline.json（Git 管理・CI スキーマ検証）。
 public sealed class PipelineOptions
 {
     public const string SectionName = "Pipeline";

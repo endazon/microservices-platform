@@ -1,32 +1,32 @@
 # ADR-0007: CI/CD・GitOps（ArgoCD + Helm + Harbor）
-# Application — 本リポジトリの Helm チャート（deploy/helm/knowledge-platform）を
-# knowledge-platform Namespace へ宣言的に同期する。Git の状態が単一の真実源であり、
+# Application — 本リポジトリの Helm チャート（deploy/helm/microservices-platform）を
+# microservices-platform Namespace へ宣言的に同期する。Git の状態が単一の真実源であり、
 # 手動 kubectl 適用に依存しない（受け入れ基準: ArgoCD 経由のデプロイが Git と同期）。
 #
 # 独立デプロイ・ロールバック（NFR）:
 #   - サービス単位のデプロイは values の services.<name>.tag（イメージタグ）を Git で更新して行う。
-#   - ロールバックは `argocd app rollback knowledge-platform <revision>` もしくは Git revert で行う。
+#   - ロールバックは `argocd app rollback microservices-platform <revision>` もしくは Git revert で行う。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: knowledge-platform
+  name: microservices-platform
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: knowledge-platform
+  project: microservices-platform
   source:
     repoURL: https://github.com/endazon/microservices-platform.git
     # GitOps の配備対象リビジョン（安定版）。運用ポリシーに応じて変更する。
     targetRevision: main
-    path: deploy/helm/knowledge-platform
+    path: deploy/helm/microservices-platform
     helm:
-      releaseName: knowledge-platform
+      releaseName: microservices-platform
       # FR-15, IADR-0029 フォローアップ 3 (#144): 構成バージョンの GitOps 注入。
       # appliedBy は argocd 固定。gitCommit / appliedAt は「実適用リビジョン」を CD パイプラインが
-      # 同期時に上書きする（`argocd app set knowledge-platform --helm-set config.gitCommit=<sha>
+      # 同期時に上書きする（`argocd app set microservices-platform --helm-set config.gitCommit=<sha>
       # --helm-set config.appliedAt=<iso8601>`、または release automation が values-<env>.yaml を更新）。
       # ArgoCD ネイティブ Helm は build 変数をパラメータへ自動展開しないため、SHA 供給は CD 側で行う。
       # 手順は docs/operations/operations.md「構成バージョンの注入」を参照。
@@ -38,7 +38,7 @@ spec:
       #   - values-production.yaml
   destination:
     server: https://kubernetes.default.svc
-    namespace: knowledge-platform
+    namespace: microservices-platform
   syncPolicy:
     automated:
       prune: true

@@ -1,10 +1,10 @@
 {
   "title": "Platform Overview",
-  "uid": "kp-overview",
+  "uid": "microservices-platform-overview",
   "schemaVersion": 38,
   "version": 1,
   "refresh": "30s",
-  "tags": ["knowledge-platform"],
+  "tags": ["microservices-platform"],
   "panels": [
     {
       "id": 1,
@@ -46,7 +46,7 @@
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "targets": [{
         "datasource": "Prometheus",
-        "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name='knowledge-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
+        "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name='microservices-platform.aianalysis-service', http_route='/analysis/ask'}[5m])))",
         "legendFormat": "p99 /analysis/ask"
       }]
     }

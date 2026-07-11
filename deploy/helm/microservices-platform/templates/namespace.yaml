@@ -6,7 +6,7 @@ kind: Namespace
 metadata:
   name: {{ .Values.namespace.name }}
   labels:
-    app.kubernetes.io/part-of: knowledge-platform
+    app.kubernetes.io/part-of: microservices-platform
     {{- if and .Values.mesh.enabled .Values.namespace.istioInjection }}
     # Istio: この Namespace の Pod へ Envoy サイドカーを自動注入する。
     istio-injection: enabled

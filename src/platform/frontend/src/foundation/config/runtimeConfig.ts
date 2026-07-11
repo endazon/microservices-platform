@@ -42,7 +42,7 @@ function fromEnv(): AppConfig {
     oidc: {
       authority:
         import.meta.env.VITE_OIDC_AUTHORITY ??
-        'http://localhost:8080/realms/knowledge-platform',
+        'http://localhost:8080/realms/microservices-platform',
       clientId: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'spa-web',
     },
     opsLinks: {

@@ -6,7 +6,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
-const string ServiceName = "knowledge-platform.authorization-service";
+const string ServiceName = "microservices-platform.authorization-service";
 
 var builder = WebApplication.CreateBuilder(args);
 
