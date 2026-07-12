@@ -1,4 +1,4 @@
-# unit-template — 追加可変機能ユニットの雛形（FR-14 / IADR-0056 / IADR-0060）
+# unit-template — 追加可変機能ユニットの雛形（FR-14 / IADR-0056 / IADR-0060 / IADR-0064）
 
 本ディレクトリは、本体リポジトリ（microservices-platform）へ **git submodule** として組み込む
 **追加可変機能ユニット**の最小雛形である。新ユニットのリポジトリを作成する際の出発点として複製する。
@@ -14,6 +14,8 @@
 <unit>/                                     ← 新ユニットのリポジトリルート（= 配置時の src/<unit>/）
   backend/
     backend.slnx                            ← ユニットの集約ソリューション
+    Directory.Build.props.sample            ← 単独ビルド用フォールバック（配置時は使わない。IADR-0064）
+    Directory.Packages.props.sample         ← 単独ビルド用 CPM フォールバック（同上）
     Services/SampleService/
       src/SampleService.Api/
         SampleService.Api.csproj            ← platform Shared を相対参照（配置後に解決）
@@ -43,16 +45,31 @@
 ディレクトリ階層で継承されるため、**ユニットに常設の `Directory.Build.props` を置いてはならない**
 （置くと配置時に単一情報源より近い階層で発見され上書きしてしまう）。
 
-ユニットを**単独**でビルドする必要がある場合のみ、リポジトリルートに次のフォールバックを置く。親（本体の
-`src/Directory.Build.props`）が存在すればそれを継承し、無ければ単独用の設定を効かせる（配置時に上書きしない）。
+ユニットを**単独**でビルドする必要がある場合のみ、同梱の実ファイル
+[`backend/Directory.Build.props.sample`](backend/Directory.Build.props.sample) と
+[`backend/Directory.Packages.props.sample`](backend/Directory.Packages.props.sample) を、**拡張子 `.sample` を外して**
+バックエンドのリポジトリルート（配置時の `src/<unit>/backend/` 相当）に置く。親（本体の
+`src/Directory.Build.props` / `src/Directory.Packages.props`）が存在すればそれを継承し、無ければ単独用の設定を
+効かせる（配置時に上書きしない）。**スニペットをコピペするのではなく実ファイルを複製する**（コピペ時の引用符
+取りこぼしで MSB4092 を招かないため。IADR-0064）。
+
+```bash
+# 単独ビルドする場合のみ（submodule 配置時は置かない）
+cd backend
+cp Directory.Build.props.sample    Directory.Build.props
+cp Directory.Packages.props.sample Directory.Packages.props
+dotnet build backend.slnx
+```
+
+フォールバックの要点（詳細は各 `.sample` のヘッダコメントと [IADR-0064](../../docs/adr/IADR-0064_standalone-build-props-fallback.md)）:
 
 ```xml
-<!-- Directory.Build.props（単独ビルド用フォールバック。submodule 配置時は親が優先されるよう import-chain する） -->
+<!-- Directory.Build.props.sample（抜粋）。パスをプロパティへ束ね、Condition は単純参照にして MSB4092 を避ける。 -->
 <Project>
-  <!-- 上位に本体の Directory.Build.props があれば継承（submodule 配置時）。 -->
-  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))"
-          Condition="'$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))' != ''" />
-  <!-- 単独時のみ効かせる既定（本体継承時は親が既に定義済みのため上書きしない）。 -->
+  <PropertyGroup>
+    <ParentDirectoryBuildProps>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</ParentDirectoryBuildProps>
+  </PropertyGroup>
+  <Import Project="$(ParentDirectoryBuildProps)" Condition="'$(ParentDirectoryBuildProps)' != ''" />
   <PropertyGroup Condition="'$(TargetFramework)' == ''">
     <TargetFramework>net10.0</TargetFramework>
     <LangVersion>13</LangVersion>
@@ -62,7 +79,11 @@
 </Project>
 ```
 
-（同様に `Directory.Packages.props` も単独時のみ必要。中央管理のバージョンは本体の値と揃える。）
+> **なぜプロパティへ束ねるか**: `Condition` 属性に `GetPathOfFileAbove('Directory.Build.props', '...')` を直接
+> 書くと、条件の外側クォートと関数引数の内側クォートが衝突し MSBuild が **MSB4092** で失敗する。パスを一旦
+> プロパティに入れ、`Condition="'$(ParentDirectoryBuildProps)' != ''"` の単純参照にすると衝突しない（IADR-0064）。
+
+（`Directory.Packages.props.sample` も同じ import-chain。中央管理のバージョンは本体の値と揃える。）
 
 ## 組み込みチェックリスト
 

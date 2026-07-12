@@ -1,4 +1,4 @@
-# 追加可変機能ユニットを submodule として組み込む手順（FR-14 / IADR-0056 / IADR-0060）
+# 追加可変機能ユニットを submodule として組み込む手順（FR-14 / IADR-0056 / IADR-0060 / IADR-0064）
 
 本リポジトリは **platform（基盤）** を主成果物とし、**可変機能ユニット**（knowledge 等）を
 `src/<unit>/`（`backend/` + `frontend/`）として持つ（[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
@@ -87,8 +87,14 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 - 共通 MSBuild 設定（`src/Directory.Build.props` / `Directory.Packages.props`）は `src/` 直下の**単一情報源**で、
   ディレクトリ階層により全ユニットへ継承される。**ユニットは常設の `Directory.Build.props` を持たない**
   （持つと submodule 配置時に `src/` の単一情報源より近い階層で発見され上書きするため。MSBuild は最も近い 1 つで停止）。
-- ユニットを**単独リポジトリでビルド**する必要がある場合のみ、親を import-chain するフォールバックを使う
-  （詳細は [`templates/unit-template/README.md`](../../templates/unit-template/README.md)）。
+- ユニットを**単独リポジトリでビルド**する必要がある場合のみ、テンプレート同梱の実ファイル
+  [`Directory.Build.props.sample`](../../templates/unit-template/backend/Directory.Build.props.sample) /
+  [`Directory.Packages.props.sample`](../../templates/unit-template/backend/Directory.Packages.props.sample) を
+  拡張子 `.sample` を外して `backend/` 直下に置く（親を import-chain するフォールバック。submodule 配置時は置かない）。
+  スニペットのコピペではなく実ファイル複製を使う（コピペ時の引用符取りこぼしで **MSB4092** を招かないため。
+  Condition に `GetPathOfFileAbove` を直接書かず、パスをプロパティへ束ねて単純参照にするのが要点。詳細は
+  [`templates/unit-template/README.md`](../../templates/unit-template/README.md) と
+  [IADR-0064](../adr/IADR-0064_standalone-build-props-fallback.md)）。
 
 ## 6. バージョン固定・更新
 
@@ -112,4 +118,5 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 - [IADR-0057](../adr/IADR-0057_unit-dependency-machine-check.md) 依存方向の機械検査
 - IADR-0059 契約階層化（ユニット固有イベント契約） — #229 で導入予定
 - [IADR-0060](../adr/IADR-0060_submodule-unit-operations.md) submodule 運用（本書の決定）
+- [IADR-0064](../adr/IADR-0064_standalone-build-props-fallback.md) 単独ビルド用フォールバック props の MSB4092 回避・実ファイル同梱
 - [`src/README.md`](../../src/README.md) ユニット規約・依存規則
