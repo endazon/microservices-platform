@@ -100,6 +100,16 @@ updates:
 `planning` を除外する `ignore` は入れない（当初方針どおり、`planning` pin も自動更新対象に含める。
 `docs/specs/20260712_issue-260_dependabot-gitsubmodule.md` の「当初案からの変更点と理由」を踏襲）。
 
+#### リスクとフォールバック（registries × gitsubmodule）
+
+`registries`（`type: git`）は GitHub 公式ドキュメントに定義された private アクセス機構だが、`gitsubmodule`
+エコシステムがこの認証を実際に消費するかは、マージ後の Dependabot 実行で確認する（本 PR 時点では未実証・
+外部検証不可）。**マージ後、Dependabot Insights/ログで `planning` の pin 更新 PR 生成が成功するか実地確認する。**
+万一 `gitsubmodule` が `registries` を消費せず `git_dependencies_not_reachable` が再発する場合のフォールバックは、
+`gitsubmodule` update に `ignore` で `dependency-name: "planning"` を追加して **`planning` を Dependabot 対象外**に
+する（`planning` pin は従来どおり手動更新に戻す）。この場合も `src/ai-stock-trading`（public）の自動更新は
+そのまま機能する。fail-safe（失敗しても CI・他 PR のマージ可否には影響しない）である点は変わらない。
+
 ### 2. `.github/workflows/claude-code-review.yml`
 
 1. トークン参照の統一: `env.SUBMODULE_PAT` の値を `${{ secrets.SUBMODULE_ACCESS_PAT }}` から
