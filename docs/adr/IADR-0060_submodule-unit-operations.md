@@ -76,3 +76,6 @@ plan_refs:
 
 - Supersedes: なし
 - Superseded by: なし
+- フォローアップ改定: 決定②（追加ユニットの CI submodule 取得方式）は [[IADR-0065]] で改定した。
+  private な `planning`（[[IADR-0058]]）を巻き込む `submodules: recursive` を避け、`src/*` のユニット
+  submodule のみ非再帰取得する方式に変更（public ユニットはトークン不要）。本 ADR の他の決定は有効。
