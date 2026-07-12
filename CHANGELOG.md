@@ -68,6 +68,7 @@
 
 ### 不具合修正
 
+- **NFR**: private planningへのDependabot/CI PATをPLANNING_REPO_TOKENに統一 (#263) (f44f99f)
 - **FR-14,IADR-0064**: unit-template 単独ビルド用 props の MSB4092（入れ子クォート）を修正する (#257) (148534d)
 - 更新されたサブプロジェクトのコミットを反映 (c784172)
 - **IADR-0020**: Wiki.js は dev公開を残し本番系(Helm)非公開を回帰ガードで保証 (#124) (#154) (da1e6a7)
@@ -106,6 +107,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#234) (3961127)
 - **FR-14**: openapi.yml のコメントの旧レイヤ第一表記をユニット第一へ是正する (#254) (4a3e281)
 - **FR-14,IADR-0063**: BFF ユニット別エンドポイント合成方式とナレッジ DTO 分離を設計する (#229) (#243) (73d989b)
 - **FR-14,IADR-0061**: デプロイ資産改名の移行手順を起草する (#228) (#241) (dd37a13)
@@ -154,6 +156,8 @@
 
 ### ビルド
 
+- **deps**: bump planning from `07db93f` to `da20fc4` (#264) (127735e)
+- **deps**: bump src/ai-stock-trading from `bebf9f9` to `8f965d1` (#265) (d069607)
 - **deps**: bump actions/upload-artifact from 4 to 7 (#226) (5a19731)
 - **deps**: bump peter-evans/create-pull-request from 7 to 8 (#225) (fc4f676)
 - **deps**: Bump github/codeql-action from 3 to 4 (#51) (a2e0587)
@@ -175,6 +179,8 @@
 
 ### その他
 
+- **NFR**: dependabot に submodule pin 自動更新（gitsubmodule）を追加 (#261) (4323e82)
+- **FR-14**: サンプルユニット ai-stock-trading を submodule 結合し通し検証する (#258) (1cf952a)
 - planning サブプロジェクトのコミットを更新する (8affeaf)
 - **FR-14,IADR-0060**: 追加可変機能ユニットの submodule 運用を整備する (#230) (#240) (e1e208e)
 - Update mermaid diagram syntax in README.md (6503e0b)
