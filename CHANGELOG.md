@@ -68,6 +68,7 @@
 
 ### 不具合修正
 
+- **FR-14,IADR-0064**: unit-template 単独ビルド用 props の MSB4092（入れ子クォート）を修正する (#257) (148534d)
 - 更新されたサブプロジェクトのコミットを反映 (c784172)
 - **IADR-0020**: Wiki.js は dev公開を残し本番系(Helm)非公開を回帰ガードで保証 (#124) (#154) (da1e6a7)
 - **FR-15**: compose/Helm の BFF へ宣言(pipeline.json)を供給しドリフト突合を是正 (#146) (#152) (1ee5a07)
@@ -87,12 +88,29 @@
 
 ### リファクタ
 
+- **FR-14,IADR-0061**: デプロイ資産・realm・OTEL・OIDC を microservices-platform へ改名する (#255) (1848f7c)
+- **FR-14,IADR-0063**: Search ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#253) (f55ea85)
+- **FR-14,IADR-0063**: Document ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#252) (e21b4ec)
+- **FR-14,IADR-0063**: BffScopeResolver を Shared.Infrastructure へ切り出す (#229) (#251) (ca27fb2)
+- **FR-14,IADR-0063**: Dashboard＋Feedback ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#229) (#250) (d2eda70)
+- **FR-14,IADR-0063**: Conversion ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#229) (#249) (121d8a2)
+- **FR-14,IADR-0063**: Analysis ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#229) (#248) (c052400)
+- **FR-14,IADR-0063**: DataSource ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#229) (#247) (9dfe0d4)
+- **FR-14,IADR-0063**: BFF エンドポイント合成点（器）を導入し合成方式を Accepted 化する (#229) (#244) (7f8e084)
+- **FR-14,IADR-0062**: KnowledgePlatform ブランドをユニット構成へ改名する (#227) (#242) (3a6e909)
+- **FR-14,IADR-0059**: ナレッジ固有イベント契約を Knowledge.Contracts へ分離する (#229) (#239) (6b14a29)
+- **FR-14,IADR-0056**: リポジトリをユニット第一構成へ再編し位置づけを是正する（#209/#210） (#233) (7665e91)
 - **SC-05,SC-09**: 検証/競合エラー表示ヘルパを foundation/ui へ集約 (#183) (#187) (392a11d)
 - **FR-12,SC-07**: 全 DbContext の jsonb ValueComparer を内容ベースハッシュへ是正 (#184) (#186) (3b67fae)
 - **FR-14,ADR-0018**: 既存実装の固定/可変分離 — Foundation/Composable 構造再編とサービスユニット規約 (#102) (#110) (52a37d0)
 
 ### ドキュメント
 
+- **FR-14**: openapi.yml のコメントの旧レイヤ第一表記をユニット第一へ是正する (#254) (4a3e281)
+- **FR-14,IADR-0063**: BFF ユニット別エンドポイント合成方式とナレッジ DTO 分離を設計する (#229) (#243) (73d989b)
+- **FR-14,IADR-0061**: デプロイ資産改名の移行手順を起草する (#228) (#241) (dd37a13)
+- **FR-14,IADR-0056**: 再編前の旧構成表記の残骸をユニット第一構成へ是正する (#237) (d995a34)
+- **NFR**: CHANGELOG を自動更新 (#215) (07e95d2)
 - **NFR**: 必須ドキュメント整備 — 技術要件・セキュリティ・運用 (#200,#201,#198) (#214) (8fc20d2)
 - **NFR,FR-14**: .NET10乖離とコンポーザビリティ標準繰延を IADR 化 (#202,#206,#207) (#212) (6d38927)
 - **NFR**: CHANGELOG を自動更新 (#204) (87677e2)
@@ -148,12 +166,18 @@
 
 ### CI
 
+- **FR-14,IADR-0063**: 依存規則の BFF 合成点例外（例外3）を機械検査へ追加する (#229) (#246) (6d868b3)
+- **NFR,IADR-0058**: planning submodule 込みの doc-links 検査を定期ジョブで追加する (#232) (#236) (8079e50)
+- **FR-14,IADR-0057**: ユニット依存方向の機械検査を追加する (#231) (#235) (9182a27)
 - **IADR-0034**: フロントエンド単体テスト＋カバレッジ専用 CI を追加 (#163) (a967f59)
 - **NFR**: スカッシュ後件名（PRタイトル）の規約チェックを追加 (#147) (73efe8f)
 - **NFR**: CI・補助成果物ワークフローの develop 運用整合 (#76) (eeb21fd)
 
 ### その他
 
+- planning サブプロジェクトのコミットを更新する (8affeaf)
+- **FR-14,IADR-0060**: 追加可変機能ユニットの submodule 運用を整備する (#230) (#240) (e1e208e)
+- Update mermaid diagram syntax in README.md (6503e0b)
 - 20260708_issue-125_pr-title-convention-guard.md を更新 (396b02b)
 - traceability.md を更新 (01b5ebe)
 - claude-code-review.yml を更新 (eb444f8)
