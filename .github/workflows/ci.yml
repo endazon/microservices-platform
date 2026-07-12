@@ -96,18 +96,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        # FR-14, IADR-0060 / IADR-0065, Issue #245: 追加ユニット（submodule）を取得しないと
-        # 下の src/*/backend/backend.slnx 自動発見に現れず整形検査の対象外になる。public ユニットは
-        # トークン不要で recursive 取得できる（private ユニットは IADR-0058 型のトークンを token: に与える）。
-        with:
-          submodules: recursive
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
+      # 検査対象外になる。checkout の submodules: recursive/true は private な planning（IADR-0058）まで
+      # 取得しようとして失敗するため使わない。public ユニットはトークン不要（private ユニットは別途
+      # IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
       # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
       # 自動発見して検査する。ユニット追加時に CI の編集は不要（チェックアウト済みなら自動的に対象になる）。
-      # 追加ユニットが submodule の場合は checkout の submodules 取得が必要（docs/how-to/adding-a-unit-submodule.md）。
       - name: Format check (all backend units)
         run: |
           for slnx in src/*/backend/backend.slnx; do
@@ -120,19 +124,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        # FR-14, IADR-0060 / IADR-0065, Issue #245: 追加ユニット（submodule）を取得しないと
-        # 下の src/*/backend/backend.slnx 自動発見に現れず restore/build/test の対象外になる。public
-        # ユニットはトークン不要（private ユニットは IADR-0058 型のトークンを token: に与える）。
-        with:
-          submodules: recursive
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
+      # restore/build/test の対象外になる。checkout の submodules: recursive/true は private な planning
+      # （IADR-0058）まで取得しようとして失敗するため使わない。public ユニットはトークン不要（private
+      # ユニットは別途 IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
       # FR-14, IADR-0056 / IADR-0060, Issue #230: ルート集約ソリューションは置かず、全バックエンドユニット
       # （src/*/backend/backend.slnx）を自動発見して restore → build → test する。ユニット追加時に CI の
-      # 編集は不要。追加ユニットが submodule の場合は checkout の submodules 取得を有効化する
-      # （docs/how-to/adding-a-unit-submodule.md 参照）。bash -eo pipefail 既定によりいずれか失敗で job も失敗する。
+      # 編集は不要。bash -eo pipefail 既定によりいずれか失敗で job も失敗する。
       - name: Restore, build and test (all backend units, with coverage)
         run: |
           for slnx in src/*/backend/backend.slnx; do

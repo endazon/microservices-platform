@@ -56,29 +56,28 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   `src/*/backend/backend.slnx` を**自動発見**して検査・ビルド・テストする。チェックアウト済みのユニットは
   自動的に対象になる。
   - ただし submodule は既定の `actions/checkout` では取得されない。**追加ユニットを CI で取得する**には
-    ビルド系ジョブ（`lint` / `build-and-test`）の checkout に submodule 取得を有効化する。取得方法は
-    ユニットリポジトリの公開範囲で分岐する（IADR-0065）:
-
-    - **public ユニット（トークン不要）**: `submodules: recursive` のみ。既定 `GITHUB_TOKEN` で read できる。
-
-      ```yaml
-      - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-      ```
-
-    - **private ユニット**: 上記に加え read 権限を持つ PAT を与える（IADR-0058 の `doc-links-planning.yml` と同型）:
+    ビルド系ジョブ（`lint` / `build-and-test`）に、checkout 直後の取得ステップを足す。
+    - **注意（planning を巻き込まない）**: 本体リポと各ユニットは private な `planning`
+      （`endazon/project-planning`）を submodule として持つため、checkout の `submodules: recursive`/`true` は
+      使わない（planning まで取得しようとして `Repository not found` で失敗する。IADR-0058 / IADR-0065）。
+      代わりに **`src/*` のユニット submodule のみを非再帰で init** する。
+    - **public ユニット（トークン不要）**: 既定 `GITHUB_TOKEN` で read できる。
 
       ```yaml
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-          token: ${{ secrets.UNIT_REPO_TOKEN }}   # 本体リポと各ユニットへ read 権限を持つ PAT
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       ```
+
+    - **private ユニット**: 上記の init に read 権限を持つ PAT を与える（IADR-0058 の `doc-links-planning.yml`
+      と同型。`git -c http.https://github.com/.extraheader=...` またはトークン付き clone で取得する）。
 
     未取得の間はユニットのディレクトリが空となり、自動発見の glob に現れず**ビルド対象外**になる
     （＝取りこぼしに注意。取得の有効化が組み込みの前提）。実例: `ai-stock-trading`（public）は
-    `submodules: recursive` のみで `lint` / `build-and-test` に取り込まれる（Issue #245 / IADR-0065）。
+    上記 `src/*` 非再帰 init で `lint` / `build-and-test` に取り込まれる（Issue #245 / IADR-0065）。
 
 ## 4. フロントエンドを組み込む（合成点 1 行）
 

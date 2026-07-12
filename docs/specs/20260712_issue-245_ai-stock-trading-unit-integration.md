@@ -46,8 +46,10 @@ ai-stock-trading 側の後続 issue（compose 整備 = ai-stock-trading#107、�
 
 **含む（本 PR）**
 - `src/ai-stock-trading` への git submodule 追加（gitlink 固定・`.gitmodules` 追記）。
-- `ci.yml` の `lint` / `build-and-test` の `actions/checkout` に `submodules: recursive` を付与し、
+- `ci.yml` の `lint` / `build-and-test` に「`src/*` のユニット submodule のみ非再帰 init」ステップを追加し、
   CI が自動発見 glob `src/*/backend/backend.slnx` で AST を実際にビルド・テスト・整形検査できるようにする。
+  checkout の `submodules: recursive`/`true` は private な `planning`（IADR-0058）を巻き込み失敗するため使わない
+  （[[IADR-0065]]）。
 - 作業仕様書（本書）と [[IADR-0065]] の記録。
 
 **含まない（後続へ分離）**

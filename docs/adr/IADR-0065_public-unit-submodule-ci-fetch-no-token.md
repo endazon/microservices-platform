@@ -40,25 +40,48 @@ plan_refs:
 しかし最初のサンプルユニット `endazon/ai-stock-trading` は **public** であり、read にトークンを要しない。
 private を前提にトークン配線・secret 登録を課すと、public ユニットに不要な運用負荷と secret 露出面を増やす。
 
+**重要な制約（実測で判明）**: 本体リポと各ユニットは計画リポ `endazon/project-planning`（**private**）を
+`planning` submodule として持つ。`actions/checkout` の `submodules: recursive`（または `true`）は
+**この private な `planning` まで取得しようとし、`GITHUB_TOKEN` の既定権限では `Repository not found` で
+失敗する**（PR #258 初回 CI で再現。ゆえに既存 `ci.yml` は checkout で submodule を取得せず、planning の
+検査は夜間トークン付き `doc-links-planning.yml` に分離していた = [[IADR-0058]]）。したがって「public ユニット
+だから recursive で足りる」とはならず、**planning を巻き込まない取得方法**が要る。
+
 ## 検討した選択肢
 
 1. **private 前提を踏襲し、public ユニットにも PAT（`UNIT_REPO_TOKEN`）を要求する**: [[IADR-0058]] と一様に
    なるが、public では不要なトークンを登録・維持することになり、secret 面と運用が無駄に増える。
-2. **public ユニットは `submodules: recursive` のみで取得する（本決定）**: `GITHUB_TOKEN` 既定権限で public
-   submodule は取得できる。ユニット追加時の CI 変更は checkout への 1 行付与のみ。private ユニットを足す
-   時点で [[IADR-0058]] 型のトークン配線へ拡張する。
+2. **checkout の `submodules: recursive`/`true` を使う**: private な `planning` まで取得しようとして失敗する
+   ため不可（上記制約）。
+3. **checkout は submodule 取得せず、ビルド系ジョブで `src/*` のユニット submodule のみ非再帰に init する
+   （本決定）**: `.gitmodules` から `path` が `src/` で始まる submodule だけを選び
+   `git submodule update --init`（非再帰）で取得する。private な `planning`（トップレベル）と、ユニットが
+   内包する入れ子 `planning` の双方を巻き込まない。public ユニットは `GITHUB_TOKEN` 既定権限で read できる。
 
 ## 決定
 
-1. **ビルド系ジョブのみ有効化**: `ci.yml` の **`lint`** と **`build-and-test`** の `actions/checkout@v7` に
-   `submodules: recursive` を付与する（ユニットのビルド・テスト・整形検査に submodule 実体が要るのはこの 2 ジョブ）。
-   public ユニットにつき**トークンは付与しない**（既定 `GITHUB_TOKEN` で read 可能）。
-2. **他ジョブは現状維持**: `doc-links` は planning と同様に submodule 未取得のまま（リンク検査は各リポ CI と
-   夜間ジョブが担う）、`unit-dependencies` は AST が platform を直接参照せず PlatformShim で自己完結する
+1. **ビルド系ジョブでユニットのみ取得**: `ci.yml` の **`lint`** と **`build-and-test`** に、checkout 直後の
+   ステップとして次を追加する（submodule 実体が要るのはこの 2 ジョブ）。checkout の `submodules:` オプションは
+   **使わない**（private `planning` を巻き込むため）。
+
+   ```yaml
+   - name: Fetch unit submodules (src/*, public, non-recursive)
+     run: |
+       git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+         | awk '$2 ~ /^src\// { print $2 }' \
+         | xargs -r -n1 git submodule update --init
+   ```
+
+   - **非再帰**（`--recursive` を付けない）: ユニットが内包する `planning` 等の入れ子 submodule を取得しない。
+   - **`src/*` 限定**: トップレベルの private `planning` を対象外にする。
+   - public ユニットにつき**トークンは付与しない**（checkout が設定する github.com 用 auth header を継承し、
+     public リポの read として成立する）。ユニット追加時の CI 変更は不要（`src/*` を自動列挙）。
+2. **他ジョブは現状維持**: `doc-links` は従来どおり submodule 未取得（planning のリンク検査は
+   `doc-links-planning.yml`）、`unit-dependencies` は AST が platform を直接参照せず PlatformShim で自己完結する
    （ユニット外参照ゼロ）ため、本 PR では submodule 取得を付与しない。必要が生じた時点で拡張する。
 3. **private ユニットへの拡張点**: 将来 private な追加ユニットを組み込む場合は、[[IADR-0058]] 型の
-   read 権限 PAT（例 `secrets.UNIT_REPO_TOKEN`）を当該 checkout の `token:` に与える。how-to はこの
-   public/private 分岐を明記する。
+   read 権限 PAT（例 `secrets.UNIT_REPO_TOKEN`）を当該取得ステップ（`git -c http.extraheader=...` もしくは
+   トークン付き clone）に与える。how-to はこの public/private 分岐を明記する。
 
 ## 理由
 
@@ -70,9 +93,10 @@ private を前提にトークン配線・secret 登録を課すと、public ユ�
 
 ## 結果
 
-- `.github/workflows/ci.yml`: `lint` / `build-and-test` の checkout に `submodules: recursive` を付与。
-- `docs/how-to/adding-a-unit-submodule.md`: public ユニットはトークン不要（`submodules: recursive` のみ）、
-  private ユニットは [[IADR-0058]] 型トークンを与える、の分岐を追記。
+- `.github/workflows/ci.yml`: `lint` / `build-and-test` に「`src/*` のユニット submodule のみ非再帰 init」
+  ステップを追加（checkout の `submodules:` は使わない）。
+- `docs/how-to/adding-a-unit-submodule.md`: public ユニットはトークン不要（`src/*` を非再帰 init）、
+  private ユニットは [[IADR-0058]] 型トークンを与える、の分岐と planning を巻き込まない理由を追記。
 - 検証: サンプルユニット `ai-stock-trading` を `src/ai-stock-trading` に追加し、submodule 配置状態で
   ビルド 0 警告 / テスト 675 合格 / `dotnet format --verify-no-changes` クリーンをローカル実測
   （spec #245 参照）。
