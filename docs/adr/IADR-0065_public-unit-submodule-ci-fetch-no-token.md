@@ -1,5 +1,5 @@
 ---
-title: IADR-0065 public な追加ユニットの CI submodule 取得はトークン不要（submodules: recursive のみ）で有効化する
+title: IADR-0065 public な追加ユニットの CI submodule 取得はトークン不要（src/* のみ非再帰 init）で有効化する
 type: impl-adr
 status: Accepted
 related_ids:
