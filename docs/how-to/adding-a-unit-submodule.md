@@ -52,20 +52,33 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
   ```
 
-- **CI は編集不要**（IADR-0060）。`ci.yml` の `lint` / `build-and-test` は `src/*/backend/backend.slnx` を
-  **自動発見**して検査・ビルド・テストする。チェックアウト済みのユニットは自動的に対象になる。
+- **サービス CI 発見は編集不要**（IADR-0060）。`ci.yml` の `lint` / `build-and-test` は
+  `src/*/backend/backend.slnx` を**自動発見**して検査・ビルド・テストする。チェックアウト済みのユニットは
+  自動的に対象になる。
   - ただし submodule は既定の `actions/checkout` では取得されない。**追加ユニットを CI で取得する**には
-    checkout に submodule 取得とトークンを与える（private リポの場合。IADR-0058 の `doc-links-planning.yml` と同型）:
+    ビルド系ジョブ（`lint` / `build-and-test`）の checkout に submodule 取得を有効化する。取得方法は
+    ユニットリポジトリの公開範囲で分岐する（IADR-0065）:
 
-    ```yaml
-    - uses: actions/checkout@v7
-      with:
-        submodules: recursive
-        token: ${{ secrets.UNIT_REPO_TOKEN }}   # 本体リポと各ユニットへ read 権限を持つ PAT
-    ```
+    - **public ユニット（トークン不要）**: `submodules: recursive` のみ。既定 `GITHUB_TOKEN` で read できる。
+
+      ```yaml
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      ```
+
+    - **private ユニット**: 上記に加え read 権限を持つ PAT を与える（IADR-0058 の `doc-links-planning.yml` と同型）:
+
+      ```yaml
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.UNIT_REPO_TOKEN }}   # 本体リポと各ユニットへ read 権限を持つ PAT
+      ```
 
     未取得の間はユニットのディレクトリが空となり、自動発見の glob に現れず**ビルド対象外**になる
-    （＝取りこぼしに注意。取得の有効化が組み込みの前提）。
+    （＝取りこぼしに注意。取得の有効化が組み込みの前提）。実例: `ai-stock-trading`（public）は
+    `submodules: recursive` のみで `lint` / `build-and-test` に取り込まれる（Issue #245 / IADR-0065）。
 
 ## 4. フロントエンドを組み込む（合成点 1 行）
 
