@@ -1,0 +1,31 @@
+<!--
+  単独ビルド用フォールバック Directory.Packages.props（テンプレート同梱の実ファイル。FR-14 / IADR-0060 / IADR-0064）。
+
+  使い方: ユニットを「単独リポジトリ」でビルドする場合のみ、拡張子 .sample を外して
+          `Directory.Packages.props` としてリポジトリルートに置く（Directory.Build.props.sample と対で使う）。
+
+  重要:
+    - submodule 配置時は本体 src/Directory.Packages.props（中央管理の単一情報源）を継承するため、
+      このファイルを **配置しない**（Directory.Build.props と同じ上書き問題を避ける。IADR-0060 決定4）。
+    - 下は Directory.Build.props.sample と同じ import-chain（プロパティ束ね）で MSB4092 を回避する。
+    - PackageVersion は単独ビルドに必要な最小限のみ。**本体 src/Directory.Packages.props の値と必ず揃える**
+      （バージョン差異を作らない）。サービスが依存を増やしたら本体の値に合わせて追記する。
+-->
+<Project>
+  <PropertyGroup>
+    <ParentDirectoryPackagesProps>$([MSBuild]::GetPathOfFileAbove('Directory.Packages.props', '$(MSBuildThisFileDirectory)../'))</ParentDirectoryPackagesProps>
+  </PropertyGroup>
+  <Import Project="$(ParentDirectoryPackagesProps)" Condition="'$(ParentDirectoryPackagesProps)' != ''" />
+  <!-- 単独時のみ効かせる中央管理の既定（本体継承時は親が定義済みのため上書きしない）。 -->
+  <PropertyGroup Condition="'$(ManagePackageVersionsCentrally)' == ''">
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <!-- SampleService.Api が参照する最小パッケージ（本体の値と一致させる）。 -->
+  <ItemGroup Condition="'$(ParentDirectoryPackagesProps)' == ''">
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
+    <!-- NFR(セキュリティ): AspNetCore.OpenApi 10.0.9 が引き込む脆弱な推移依存 Microsoft.OpenApi 2.0.0
+         (NU1903, GHSA-v5pm-xwqc-g5wc, High) をパッチ版へ推移ピンする（本体 IADR-0016 と同値）。 -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
+  </ItemGroup>
+</Project>

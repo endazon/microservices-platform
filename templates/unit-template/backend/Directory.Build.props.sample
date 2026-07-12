@@ -1,0 +1,30 @@
+<!--
+  単独ビルド用フォールバック Directory.Build.props（テンプレート同梱の実ファイル。FR-14 / IADR-0060 / IADR-0064）。
+
+  使い方: ユニットを「単独リポジトリ」でビルドする必要がある場合のみ、拡張子 .sample を外して
+          リポジトリルート（= 配置時の src/<unit>/ 相当）に `Directory.Build.props` として置く。
+
+  重要:
+    - submodule として本体（microservices-platform）へ配置するときは、このファイルを **配置しない**
+      （置くと src/Directory.Build.props（単一情報源）より近い階層で発見され上書きしてしまう。IADR-0060 決定4）。
+    - 下は「親（本体 src/Directory.Build.props）があれば継承し、無ければ単独用の既定を効かせる」import-chain。
+      パスを ParentDirectoryBuildProps プロパティへ束ね、Condition は単純なプロパティ参照にすることで
+      MSBuild の Condition 属性における入れ子シングルクォート（MSB4092）を避ける（IADR-0064）。
+-->
+<Project>
+  <!-- 上位に本体の Directory.Build.props があればそのパスを束ねる（submodule 配置時）。 -->
+  <PropertyGroup>
+    <ParentDirectoryBuildProps>$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))</ParentDirectoryBuildProps>
+  </PropertyGroup>
+  <!-- Condition は単純なプロパティ参照（入れ子クォートを避け MSB4092 を防ぐ）。 -->
+  <Import Project="$(ParentDirectoryBuildProps)" Condition="'$(ParentDirectoryBuildProps)' != ''" />
+  <!-- 単独時のみ効かせる既定（本体継承時は親が既に定義済みのため上書きしない）。値は本体 src/Directory.Build.props と揃える。 -->
+  <PropertyGroup Condition="'$(TargetFramework)' == ''">
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>13</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+</Project>
