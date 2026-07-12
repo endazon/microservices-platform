@@ -103,5 +103,8 @@ private を前提にトークン配線・secret 登録を課すと、public ユ�
 
 ## 関連
 
-- Supersedes: なし
+- Supersedes: [[IADR-0060]] の**決定②（追加ユニットの CI submodule 取得方式）のみを改定**する
+  （`actions/checkout` の `submodules: recursive` + トークン → checkout オプションは使わず `src/*` の
+  ユニット submodule のみ非再帰 `git submodule update --init`。public はトークン不要）。IADR-0060 の
+  他の決定（CI 自動発見・テンプレート・単独ビルド規約・バージョン固定）は有効のまま。
 - Superseded by: なし

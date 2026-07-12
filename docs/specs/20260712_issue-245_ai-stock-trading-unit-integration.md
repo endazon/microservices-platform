@@ -1,7 +1,7 @@
 ---
 title: サンプルユニット（ai-stock-trading）の submodule 結合・通し検証（Issue #245）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-14
   - IADR-0056
@@ -90,9 +90,11 @@ ai-stock-trading 側の後続 issue（compose 整備 = ai-stock-trading#107、�
 
 - [x] `src/ai-stock-trading` を submodule として追加（gitlink 固定・`.gitmodules` 追記）。
 - [x] submodule 配置状態でユニットのビルド・単体テスト・`dotnet format --verify-no-changes` がローカルで成立。
-- [ ] `ci.yml` の `lint` / `build-and-test` が submodule を取得し、CI 上で AST を含めて緑になる（PR の CI で確認）。
+- [x] `ci.yml` の `lint` / `build-and-test` が submodule を取得し、CI 上で AST を含めて緑（PR #258 の CI で確認済み。
+  `build-and-test` 3m18s / `lint` 1m30s pass、取得ステップが `src/ai-stock-trading` のみ clone）。加えて
+  `unit-dependencies` でも AST を取得し依存方向を継続検査する。
 - [x] 実行環境（compose）整備を ai-stock-trading#107 に前提 issue として分離、#82 と相互参照。
-- [ ] claude-review の指摘（🔴🟡🟢）をすべて解消。
+- [x] claude-review の指摘（🔴 なし / 🟡🟢）をすべて解消（PR にマッピングをコメント）。
 
 ## リスク・未確定
 

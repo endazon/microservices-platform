@@ -84,6 +84,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule を非再帰で取得し、
+      # 追加ユニット（AST 等）の csproj 依存方向も継続的に機械検査する（未取得だと空の gitlink となり
+      # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため）。private planning は巻き込まない。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v6
         with:
           node-version: "20"

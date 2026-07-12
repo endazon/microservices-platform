@@ -111,6 +111,10 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 ## 6. バージョン固定・更新
 
 - submodule は gitlink で固定。更新はユニット側で進めた後、本体リポの PR で pin を更新する。
+- `.gitmodules` の `branch = <name>`（`git submodule add -b` 由来）は **`git submodule update --remote` の
+  追跡先**を示すだけで、通常のビルド/CI 取得（`git submodule update --init`・`--remote` 無し）や既定
+  checkout では参照されず、**常に gitlink で pin されたコミット**が取得される。pin の前進は上記の PR で
+  明示的に行う（`--remote` を使う場合のみ `branch` が効く）。
 - **Renovate/Dependabot**: `git-submodules` マネージャで submodule の更新 PR を自動化できる（有効化はメンテナ判断）。
   例（Renovate `renovate.json`）:
 
