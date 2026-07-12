@@ -115,12 +115,13 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   追跡先**を示すだけで、通常のビルド/CI 取得（`git submodule update --init`・`--remote` 無し）や既定
   checkout では参照されず、**常に gitlink で pin されたコミット**が取得される。pin の前進は上記の PR で
   明示的に行う（`--remote` を使う場合のみ `branch` が効く）。
-- **Renovate/Dependabot**: `git-submodules` マネージャで submodule の更新 PR を自動化できる（有効化はメンテナ判断）。
-  例（Renovate `renovate.json`）:
-
-  ```json
-  { "git-submodules": { "enabled": true } }
-  ```
+- **Dependabot**: `gitsubmodule` エコシステムで submodule の pin 更新 PR を自動化する。本リポジトリは
+  [`.github/dependabot.yml`](../../.github/dependabot.yml) で有効化済み（Issue #260）。
+  `directory: "/"` は root の `.gitmodules` に列挙された **全 submodule**（`planning` と `src/*` の
+  各ユニット）を対象にする。ユニットを追加しても `dependabot.yml` の追記は不要（`.gitmodules` への
+  submodule 追加だけで自動的に対象になる）。既定は週次スケジュール・**自動マージなし**（pin 更新は
+  必ず PR 経由・人手レビュー必須）。private submodule（`planning`）の更新には Dependabot が当該リポを
+  read できる権限が要る（詳細は `docs/specs/20260712_issue-260_dependabot-gitsubmodule.md`）。
 
 ## 7. 通し検証（サンプルユニット）
 
