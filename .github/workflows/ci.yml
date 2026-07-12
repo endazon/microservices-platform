@@ -96,6 +96,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        # FR-14, IADR-0060 / IADR-0065, Issue #245: 追加ユニット（submodule）を取得しないと
+        # 下の src/*/backend/backend.slnx 自動発見に現れず整形検査の対象外になる。public ユニットは
+        # トークン不要で recursive 取得できる（private ユニットは IADR-0058 型のトークンを token: に与える）。
+        with:
+          submodules: recursive
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v5
         with:
@@ -115,6 +120,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        # FR-14, IADR-0060 / IADR-0065, Issue #245: 追加ユニット（submodule）を取得しないと
+        # 下の src/*/backend/backend.slnx 自動発見に現れず restore/build/test の対象外になる。public
+        # ユニットはトークン不要（private ユニットは IADR-0058 型のトークンを token: に与える）。
+        with:
+          submodules: recursive
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v5
         with:
