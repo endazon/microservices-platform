@@ -3,6 +3,7 @@ title: Dependabot gitsubmodule による submodule pin 自動更新の有効化�
 type: work
 status: done
 related_ids:
+  - FR-14
   - NFR
   - IADR-0058
   - IADR-0060
@@ -11,7 +12,7 @@ author: claude
 created: 2026-07-12
 updated: 2026-07-12
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr (IADR-0060 決定⑤: バージョン固定・Renovate/Dependabot 言及)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14: 構成変更で完結する疎結合ユニット。ユニット submodule の pin 鮮度維持が関連)"
 related_specs:
   - "../adr/IADR-0060_submodule-unit-operations.md"
   - "../adr/IADR-0065_public-unit-submodule-ci-fetch-no-token.md"
@@ -51,12 +52,13 @@ issue #260 の本文（スコープ節）には「対象を `src/*` のユニッ
    計画リポの前進に追従させることが望ましいと判断された（ai-stock-trading#109 の主目的そのものが
    `planning` pin の自動追従であり、MSP だけ `planning` を除外すると 3 リポで方針が割れる）。
 2. Dependabot の `gitsubmodule` エコシステムは `directory: "/"` を指定すると、その配下の `.gitmodules` に
-   列挙された **全 submodule** を対象にする。`src/*` のみに限定する設定項目は `gitsubmodule` エコシステムに
-   存在しない（ディレクトリ単位の対象指定はできるが、同一ディレクトリ配下の submodule を個別に除外する
-   ホワイトリスト/ブロックリスト機構はない）。`planning` を確実に除外するには `directory` を
-   `src/ai-stock-trading` のように個別指定する必要があり、将来 `src/*` ユニットが増えるたびに
-   `dependabot.yml` を追記する運用になり、IADR-0060 が目指す「ユニット追加は構成変更のみで完結する」
-   （FR-14）という設計方針と相性が悪い。
+   列挙された **全 submodule** を対象にする。特定 submodule（`planning`）だけを除外することは技術的には
+   可能で、`ignore` に `dependency-name`（submodule のパス、例 `planning`）を指定すれば除外できる。
+   したがって「除外できないから含める」のではなく、**あえて除外せず含める**（理由 1 の統一方針。
+   `planning` pin も追従させたい）。除外を選ぶと、`ignore` の保守が要るうえ 3 リポで方針が割れ、
+   また `directory` を `src/ai-stock-trading` 等へ個別指定する代替案は `src/*` ユニット追加のたびに
+   `dependabot.yml` 追記を招き、IADR-0060 が目指す「ユニット追加は構成変更のみで完結する」（FR-14）
+   という設計方針とも相性が悪い。以上より `directory: "/"` で全 submodule 対象＋除外なしを採る。
 3. `planning` は private リポだが、Dependabot 側で該当 PR が生成できない場合でも（下記「private planning
    への Dependabot アクセス」参照）、Dependabot のログにエラーが残るのみで CI 自体は壊れない
    （`gitsubmodule` updater は取得可能な submodule のみ PR を作成する）。設定 PR 自体をブロックする要因には
@@ -72,10 +74,11 @@ MSP 独自の新たな設計トレードオフの導入ではないため、新�
 言語別エコシステム例の前に、以下を追加する。
 
 ```yaml
-  # submodule の pin 自動更新（gitlink を追跡先の先端へ前進させる更新 PR を生成する）。
+  # NFR: submodule の pin 自動更新（gitlink を追跡先の先端へ前進させる更新 PR を生成する）。
   # 既定は自動マージしない（人手レビュー必須）。
   # planning（private の project-planning）を含む root .gitmodules の全 submodule が対象。
-  # private submodule の更新には Dependabot が当該リポを read できる権限が必要（下記「注意」参照）。
+  # private submodule の更新には Dependabot が当該 private リポを read できる権限が要る
+  # （詳細・マージ後の確認事項は docs/specs/20260712_issue-260_dependabot-gitsubmodule.md「private planning への Dependabot アクセス」節を参照）。
   - package-ecosystem: "gitsubmodule"
     directory: "/"
     schedule:
