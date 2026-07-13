@@ -1,0 +1,48 @@
+# IADR-0066 / ADR-0009: ベクトルストア（Qdrant, dev）。retrieval/aianalysis が host `qdrant` で参照。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: platform-infra
+  labels: { app: qdrant }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: qdrant }
+  template:
+    metadata:
+      labels: { app: qdrant }
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.9.2
+          ports:
+            - { containerPort: 6333, name: http }
+            - { containerPort: 6334, name: grpc }
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: storage
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: platform-infra
+  labels: { app: qdrant }
+spec:
+  selector: { app: qdrant }
+  ports:
+    - { name: http, port: 6333, targetPort: 6333 }
+    - { name: grpc, port: 6334, targetPort: 6334 }

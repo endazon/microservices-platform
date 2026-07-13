@@ -1,0 +1,49 @@
+# IADR-0066: MSP chart は DB/MQ/認証/otel を「素のサービス名」（appsettings.json 既定）で参照する
+# （chart は接続文字列を注入しない）。infra は platform-infra namespace にあるため、microservices-platform
+# namespace 内に同名の ExternalName エイリアスを置き、素の名前を FQDN へ解決させる。
+# 適用: kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
+#      （microservices-platform namespace は helm/ArgoCD が作成済みであること）
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: postgres.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: rabbitmq.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: keycloak.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: qdrant.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: otel-collector.platform-infra.svc.cluster.local

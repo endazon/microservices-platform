@@ -1,0 +1,17 @@
+# IADR-0066: dev 専用 in-cluster インフラ（platform-infra namespace）。
+# 適用: kubectl apply -k deploy/local/infra
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - 00-namespace.yaml
+  - postgres.yaml
+  - rabbitmq.yaml
+  - keycloak.yaml
+  - qdrant.yaml
+  - otel-collector.yaml
+
+# NOTE: Keycloak realm import 用 ConfigMap `keycloak-realms` は kustomize の外
+# （scripts/k8s-local-up.sh）で実 realm ファイル（単一情報源）から生成する。
+# kustomize の configMapGenerator は root 外ファイル（deploy/keycloak/…, submodule 側 AST realm）を
+# セキュリティ上参照できないため。手動適用時は README「手動でステップ実行」の手順で先に作成する。

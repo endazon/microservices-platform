@@ -1,0 +1,27 @@
+# IADR-0066: ローカル k8s(k3d) dev 用 Helm values 上書き。
+# 適用: helm upgrade --install msp deploy/helm/microservices-platform \
+#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+#
+# 本番像（deploy/helm/microservices-platform/values.yaml）は不変。ここでは dev 差分のみ上書きする。
+
+global:
+  image:
+    # k3d へ import するローカルイメージの接頭辞（実レジストリではない。IfNotPresent で pull しない）。
+    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞・タグで行う。
+    registry: k3d-local
+    pullPolicy: IfNotPresent
+
+# Istio 未導入のローカルでは mTLS/サイドカー注入を無効化する（本番像 STRICT は不変）。
+namespace:
+  istioInjection: false
+mesh:
+  enabled: false
+
+# metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
+networkPolicy:
+  enabled: false
+scaling:
+  enabled: false
+
+# imagePullSecrets はローカル import のため不要（空のまま）。
+imagePullSecrets: []
