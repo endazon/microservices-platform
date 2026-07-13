@@ -43,14 +43,17 @@ plan_refs:
 
 ## 決定
 
-1. **ランタイム = k3d**（k3s in Docker）。ADR-0008（k3s）・AST ADR-0006（Hetzner k3s）に最も忠実で、
-   `k3d image import` によるローカルイメージ取込・metrics-server 同梱・Windows/Docker Desktop(WSL2) 対応が
-   利点。Docker Desktop 内蔵 k8s / kind も可能だが k3s 準拠を優先する。
+1. **ランタイム = k3s**（ローカル実体）。ADR-0008（k3s）・AST ADR-0006（Hetzner k3s）に忠実。導線は
+   **2 経路をサポート**し、スクリプトが自動判定する（`K8S_LOCAL_RUNTIME` で明示可）:
+   (a) **Rancher Desktop（推奨）**: 内蔵 k3s をそのまま使う（containerd + `nerdctl`）。Docker Desktop も
+   k3d も不要で、最も k3s に忠実。(b) **Docker Desktop + k3d**: k3d が k3s-in-docker を作成。
+   いずれも metrics-server 同梱・Windows 対応。kind は k3s 非準拠のため採らない。
 2. **dev 専用 in-cluster インフラ資産を新設**する（`deploy/local/`）。`deploy/docker-compose.yml` の設定を
    k8s（Deployment/StatefulSet + Service + ConfigMap/Secret）へ写像し、`platform-infra` namespace に配備する。
    本番の恒久像（マネージド/専用構成）を規定するものではなく、**dev のための最小構成**である。
-3. **イメージ配布は `k3d image import`** を既定とする（Harbor 不使用）。`global.image.registry` は
-   values-local で上書きする。
+3. **イメージ配布はランタイム別**（Harbor 不使用）。Rancher 経路は `nerdctl --namespace k8s.io build` で
+   k3s の containerd へ直接ビルド（import 不要）、k3d 経路は `docker build` → `k3d image import`。
+   `global.image.registry` は values-local でローカル接頭辞へ上書きする（`pullPolicy=IfNotPresent`）。
 4. **ローカルでは `mesh.enabled=false` / `networkPolicy.enabled=false` / `scaling.enabled=false`**
    （`deploy/local/values-local.yaml`）。Istio・metrics-server 依存を外す。**本番像（STRICT mTLS・NP・HPA）は
    不変**で、これは dev のみの上書き。

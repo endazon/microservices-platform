@@ -22,12 +22,22 @@ MSP chart はインフラを**デプロイせず**素のサービス名（`postg
 
 ## 必要ツール（Windows）
 
+k8s ランタイムは **2 択**。スクリプトは `nerdctl`/`k3d` の有無で自動判定する（`K8S_LOCAL_RUNTIME=rancher|k3d` で明示指定可）。
+
+**A. Rancher Desktop（推奨・内蔵 k3s）** — Docker Desktop も k3d も不要。
+- Preferences → **Container Engine = containerd**、**Kubernetes = 有効**。
+- 同梱の `kubectl` / `nerdctl` / `helm` を使う（`nerdctl --namespace k8s.io build` で k3s に直接供給）。
+- kubectl context を `rancher-desktop` にしておく。
+
+**B. Docker Desktop + k3d**
 ```powershell
 winget install Docker.DockerDesktop   # WSL2 backend・メモリ 8GB+ 推奨
 winget install Kubernetes.kubectl
 winget install k3d                    # 無ければ choco install k3d
 winget install Helm.Helm
 ```
+
+> どちらも実体は k3s（ADR-0008）。A は内蔵 k3s をそのまま、B は k3d が k3s-in-docker を作る。
 
 ## 起動（Git Bash 推奨。1 コマンド）
 

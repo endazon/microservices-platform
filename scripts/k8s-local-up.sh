@@ -23,11 +23,30 @@ apply_secret() { # ns name key=val [key=val...]
 }
 
 echo "==> [1/7] cluster"
-if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
-  k3d cluster create "$CLUSTER" --agents 1 \
-    -p "8080:80@loadbalancer" -p "8443:443@loadbalancer"
+# ランタイム自動判定: Rancher Desktop（内蔵 k3s・nerdctl）か、docker+k3d か。
+RUNTIME="${K8S_LOCAL_RUNTIME:-auto}"
+if [ "$RUNTIME" = "auto" ]; then
+  if command -v nerdctl >/dev/null 2>&1; then RUNTIME="rancher";
+  elif command -v k3d >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then RUNTIME="k3d";
+  else echo "ERROR: Rancher Desktop(containerd) か docker+k3d が必要です。" >&2; exit 1; fi
+fi
+export K8S_LOCAL_RUNTIME="$RUNTIME"
+echo "    runtime: $RUNTIME"
+if [ "$RUNTIME" = "k3d" ]; then
+  if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
+    k3d cluster create "$CLUSTER" --agents 1 \
+      -p "8080:80@loadbalancer" -p "8443:443@loadbalancer"
+  else
+    echo "    cluster '$CLUSTER' exists — reuse"
+  fi
 else
-  echo "    cluster '$CLUSTER' exists — reuse"
+  # Rancher Desktop: 内蔵 k3s を使う（Preferences → Kubernetes を有効化しておくこと）。
+  if ! kubectl cluster-info >/dev/null 2>&1; then
+    echo "ERROR: k8s に到達できません。Rancher Desktop の Kubernetes を有効化し、" >&2
+    echo "       kubectl の context を rancher-desktop にしてください。" >&2
+    exit 1
+  fi
+  echo "    Rancher Desktop 内蔵 k3s を使用（context: $(kubectl config current-context))"
 fi
 
 echo "==> [2/7] build & import images"
