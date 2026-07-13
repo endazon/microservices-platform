@@ -49,9 +49,11 @@ spec:
             - name: realms
               mountPath: /opt/keycloak/data/import
               readOnly: true
+          # Keycloak(Quarkus) の初回 augmentation ビルドはメモリを食う。1Gi では OOMKilled(137) に
+          # なるため 2Gi へ引き上げる（起動後は 1Gi 未満で安定するので requests は据え置き）。
           resources:
             requests: { cpu: 200m, memory: 512Mi }
-            limits: { cpu: "1", memory: 1Gi }
+            limits: { cpu: "1", memory: 2Gi }
       volumes:
         - name: realms
           configMap:
