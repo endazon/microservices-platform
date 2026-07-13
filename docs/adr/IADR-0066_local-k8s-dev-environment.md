@@ -1,0 +1,77 @@
+---
+title: IADR-0066 ローカル k8s dev 環境は k3d ＋ dev 専用 in-cluster インフラ資産で構成し、mesh/NP/HPA を無効化する
+type: impl-adr
+status: Accepted
+related_ids:
+  - ADR-0007
+  - ADR-0008
+  - ADR-0005
+  - IADR-0056
+author: claude
+created: 2026-07-13
+updated: 2026-07-13
+plan_refs:
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (k3s)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (GitOps/Helm/Harbor)"
+---
+
+# IADR-0066: ローカル k8s dev 環境は k3d ＋ dev 専用 in-cluster インフラ資産で構成する
+
+- 状態: Accepted
+- 日付: 2026-07-13
+- 決定者: claude（実装）
+
+## 起点・関連
+
+- 関連する計画書 ID: ADR-0008（実行基盤 = k3s）／ADR-0007（GitOps・Helm・Harbor）／ADR-0005（Istio mTLS）
+- 関連仕様書: `docs/specs/20260713_issue-266_local-k8s-dev-env.md`
+- Issue: MSP #266（本 issue）／ AST #122（AST chart）／ AST #121（K8s CronJob）
+
+## コンテキストと課題
+
+残りの AST issue（特に #121 = 取引サイクルを **K8s CronJob** で駆動）を実機で閉じるには、MSP+AST を
+連結した **ローカル k8s dev 環境**が要る。現状の資産は次の制約を持つ:
+
+1. Helm chart `deploy/helm/microservices-platform` は **app サービス + MinIO + Wiki.js のみ**をデプロイし、
+   Postgres / RabbitMQ / Keycloak / Qdrant / otel-collector を **DNS 参照するだけで自身では起動しない**
+   （in-cluster に事前存在する前提）。だが in-cluster インフラの k8s マニフェストは存在せず、実体は
+   `deploy/docker-compose.yml` のみ。
+2. レジストリは `harbor.internal` 固定（ADR-0007）。ローカルに Harbor は無い。
+3. `mesh.enabled`（Istio・ADR-0005）/`networkPolicy`/`scaling`（HPA・metrics-server 依存）は本番前提で、
+   素の k3d には Istio が無く、ローカルでは阻害要因になる。
+4. AST には k8s 資産が無い（別途 AST #122 で chart 化）。
+
+## 決定
+
+1. **ランタイム = k3d**（k3s in Docker）。ADR-0008（k3s）・AST ADR-0006（Hetzner k3s）に最も忠実で、
+   `k3d image import` によるローカルイメージ取込・metrics-server 同梱・Windows/Docker Desktop(WSL2) 対応が
+   利点。Docker Desktop 内蔵 k8s / kind も可能だが k3s 準拠を優先する。
+2. **dev 専用 in-cluster インフラ資産を新設**する（`deploy/local/`）。`deploy/docker-compose.yml` の設定を
+   k8s（Deployment/StatefulSet + Service + ConfigMap/Secret）へ写像し、`platform-infra` namespace に配備する。
+   本番の恒久像（マネージド/専用構成）を規定するものではなく、**dev のための最小構成**である。
+3. **イメージ配布は `k3d image import`** を既定とする（Harbor 不使用）。`global.image.registry` は
+   values-local で上書きする。
+4. **ローカルでは `mesh.enabled=false` / `networkPolicy.enabled=false` / `scaling.enabled=false`**
+   （`deploy/local/values-local.yaml`）。Istio・metrics-server 依存を外す。**本番像（STRICT mTLS・NP・HPA）は
+   不変**で、これは dev のみの上書き。
+5. 生成物は既存資産を**破壊せず追加**する（`deploy/helm` 本体・`deploy/docker-compose.yml` は変更しない）。
+
+## 根拠・トレードオフ
+
+- k3d は k3s と同一ディストリで本番差分が小さく、学習・#121 検証の再現性が高い。Docker Desktop k8s より
+  軽量で、kind より k3s 忠実。
+- in-cluster インフラを compose と別に持つのは二重管理コストがあるが、compose は k8s を代替できない
+  （CronJob/Deployment/Service 疎通が #121 の検証対象そのもの）。dev 専用と明示し肥大化を抑える。
+- mesh/NP/HPA 無効化は本番のセキュリティ姿勢を弱めない（dev スコープ限定・values 分離）。
+
+## 影響
+
+- 追加: `deploy/local/`（infra マニフェスト・values-local・secret テンプレ）、`scripts/`（build+import）。
+- 変更なし: `deploy/helm/microservices-platform/**`、`deploy/docker-compose.yml`、`deploy/argocd/**`。
+- ドキュメント: `docs/operations` / `docs/infra` に手順を追記。
+
+## 代替案
+
+- **Docker Desktop 内蔵 k8s**: 追加ツール不要だが k3s 非準拠でリソース消費が大きい。→ 不採用（k3s 忠実性優先）。
+- **compose のまま #121 を検証**: CronJob/Service 疎通が k8s 固有で代替不能。→ 不採用。
+- **infra も本番相当の Helm（Operator 等）で導入**: dev には過剰。→ 不採用（dev は最小構成）。

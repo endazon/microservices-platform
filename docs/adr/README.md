@@ -88,6 +88,8 @@
 | IADR-0062 | KnowledgePlatform ブランドの .NET 名前空間・アセンブリとフロント package をユニット構成へ改名する | Accepted |
 | IADR-0063 | BFF のユニット別エンドポイント合成方式とナレッジ DTO の分離（ビルド時合成点・段階実装） | Accepted |
 | IADR-0064 | 単独ビルド用フォールバック props はパスをプロパティへ束ねて MSB4092 を回避し、実ファイル同梱でコピペ事故を防ぐ | Accepted |
+| IADR-0065 | public な追加ユニットの CI submodule 取得はトークン不要（src/* のみ非再帰 init）で有効化する | Accepted |
+| IADR-0066 | ローカル k8s dev 環境は k3d ＋ dev 専用 in-cluster インフラ資産で構成し、mesh/NP/HPA を無効化する | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
