@@ -13,6 +13,9 @@ global:
 
 # Istio 未導入のローカルでは mTLS/サイドカー注入を無効化する（本番像 STRICT は不変）。
 namespace:
+  # namespace は up-script が先に作成し（Secret 投入のため）、Helm には所有させない。
+  # chart が Namespace を template すると、既存 ns に Helm 所有メタデータが無く install が衝突するため。
+  create: false
   istioInjection: false
 mesh:
   enabled: false
