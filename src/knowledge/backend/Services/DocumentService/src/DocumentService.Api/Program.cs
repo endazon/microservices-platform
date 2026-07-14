@@ -20,11 +20,9 @@ builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp",
-        tags: ["ready"])
-    .AddRabbitMQ(
-        rabbitConnectionString: builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672",
         tags: ["ready"]);
+// #269: ブローカ疎通の readiness は MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
+// 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();
 
 // FR-06: Document DbContext (ADR-0002 Database per Service)
