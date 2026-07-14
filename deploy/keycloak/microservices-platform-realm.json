@@ -259,6 +259,18 @@
       "emailVerified": true,
       "realmRoles": ["platform-operator"],
       "credentials": [{ "type": "password", "value": "poc-operator-password", "temporary": false }]
+    },
+    {
+      "username": "developer",
+      "email": "developer@example.com",
+      "firstName": "Dev",
+      "lastName": "Developer",
+      "enabled": true,
+      "emailVerified": true,
+      "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
+      "groups": ["/clearance/restricted", "/department/engineering"],
+      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor"],
+      "credentials": [{ "type": "password", "value": "developer", "temporary": false }]
     }
   ]
 }
