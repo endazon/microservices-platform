@@ -24,6 +24,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: redis
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: redis.platform-infra.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: keycloak
   namespace: microservices-platform
 spec:

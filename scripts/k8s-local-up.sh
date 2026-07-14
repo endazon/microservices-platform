@@ -74,6 +74,7 @@ kubectl apply -k deploy/local/infra
 echo "    waiting for infra to become Ready..."
 kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/rabbitmq --timeout=180s
+kubectl -n "$INFRA_NS" rollout status deploy/redis --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/keycloak --timeout=300s
 kubectl -n "$INFRA_NS" rollout status deploy/qdrant --timeout=120s
 kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
