@@ -28,3 +28,15 @@ scaling:
 
 # imagePullSecrets はローカル import のため不要（空のまま）。
 imagePullSecrets: []
+
+services:
+  llmgateway:
+    # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の
+    # Llm__ApiKey（Anthropic）へ配線する。fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない
+    # （compose の `Llm__ApiKey: ${ANTHROPIC_API_KEY:-}` と同じ挙動）。
+    # 本番 chart（values.yaml）は本 Secret を未参照のまま（既存ギャップ・別課題）。
+    extraEnv:
+      - name: Llm__ApiKey
+        secretKeyRef:
+          name: llm-provider-credentials
+          key: anthropic-api-key
