@@ -9,7 +9,7 @@ related_ids:
   - IADR-0066
 author: claude
 created: 2026-07-13
-updated: 2026-07-13
+updated: 2026-07-15
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (実行基盤 k3s)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (GitOps/Helm)"
@@ -53,7 +53,9 @@ related_specs:
 ## 対象範囲
 
 **対象（MSP 側 / 本 PR 群）**
-- `deploy/local/` に dev 専用 **in-cluster インフラ**（PG / RabbitMQ / Keycloak / Qdrant / otel-collector）マニフェスト。
+- `deploy/local/` に dev 専用 **in-cluster インフラ**（PG / RabbitMQ / Redis / Keycloak / Qdrant /
+  otel-collector）マニフェスト。Redis は BFF の health check・キャッシュ依存（`Redis:ConnectionString`
+  既定 `redis:6379`）を満たすために compose の redis を写像したもの。
 - `deploy/local/values-local.yaml`（`mesh.enabled=false` / `networkPolicy.enabled=false` /
   `scaling.enabled=false` / `global.image.registry=<local>` 上書き）。
 - イメージ build ＋ `k3d image import` スクリプト（`scripts/`）。
@@ -77,7 +79,7 @@ related_specs:
 
 ```
 [k3d cluster: msp-ast-dev]  (Docker Desktop/WSL2)
-  ns platform-infra          → postgres, rabbitmq, keycloak, qdrant, otel-collector (+任意 観測系)
+  ns platform-infra          → postgres, rabbitmq, redis, keycloak, qdrant, otel-collector (+任意 観測系)
   ns microservices-platform  → 既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
   ns ai-stock-trading        → AST chart（10 Worker + DB-per-service + CronJob 骨子）
   ingress: Traefik(k3d 同梱)  → bff / keycloak / grafana を port 公開

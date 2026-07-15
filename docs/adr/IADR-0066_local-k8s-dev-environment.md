@@ -9,7 +9,7 @@ related_ids:
   - IADR-0056
 author: claude
 created: 2026-07-13
-updated: 2026-07-13
+updated: 2026-07-15
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (k3s)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (GitOps/Helm/Harbor)"
@@ -50,14 +50,19 @@ plan_refs:
    いずれも metrics-server 同梱・Windows 対応。kind は k3s 非準拠のため採らない。
 2. **dev 専用 in-cluster インフラ資産を新設**する（`deploy/local/`）。`deploy/docker-compose.yml` の設定を
    k8s（Deployment/StatefulSet + Service + ConfigMap/Secret）へ写像し、`platform-infra` namespace に配備する。
-   本番の恒久像（マネージド/専用構成）を規定するものではなく、**dev のための最小構成**である。
+   構成要素は Postgres / RabbitMQ / **Redis（BFF の health check・キャッシュ依存。compose の redis を写像）** /
+   Keycloak / Qdrant / otel-collector。本番の恒久像（マネージド/専用構成）を規定するものではなく、
+   **dev のための最小構成**である。
 3. **イメージ配布はランタイム別**（Harbor 不使用）。Rancher 経路は `nerdctl --namespace k8s.io build` で
    k3s の containerd へ直接ビルド（import 不要）、k3d 経路は `docker build` → `k3d image import`。
    `global.image.registry` は values-local でローカル接頭辞へ上書きする（`pullPolicy=IfNotPresent`）。
 4. **ローカルでは `mesh.enabled=false` / `networkPolicy.enabled=false` / `scaling.enabled=false`**
    （`deploy/local/values-local.yaml`）。Istio・metrics-server 依存を外す。**本番像（STRICT mTLS・NP・HPA）は
    不変**で、これは dev のみの上書き。
-5. 生成物は既存資産を**破壊せず追加**する（`deploy/helm` 本体・`deploy/docker-compose.yml` は変更しない）。
+5. 生成物は既存資産を**破壊せず追加**する。`deploy/docker-compose.yml`・chart の templates は変更しない。
+   例外として chart の `values.yaml` には下流サービス接続先（`Services__*` の extraEnv）を追記した — これは
+   appsettings 既定がローカル用ポート（5001-5009）のままで **k8s 一般で欠落していた接続設定の補完**であり、
+   dev 専用値ではない（値は k8s Service の正準 DNS）。dev 専用の上書きは values-local に隔離する。
 
 ## 根拠・トレードオフ
 
@@ -69,8 +74,11 @@ plan_refs:
 
 ## 影響
 
-- 追加: `deploy/local/`（infra マニフェスト・values-local・secret テンプレ）、`scripts/`（build+import）。
-- 変更なし: `deploy/helm/microservices-platform/**`、`deploy/docker-compose.yml`、`deploy/argocd/**`。
+- 追加: `deploy/local/`（infra マニフェスト（PG/RabbitMQ/Redis/Keycloak/Qdrant/otel）・values-local・
+  ExternalName エイリアス）、`scripts/`（up/images/down）。
+- 変更: `deploy/helm/microservices-platform/values.yaml`（`Services__*` extraEnv の追記のみ。決定 5 参照）、
+  `deploy/keycloak/microservices-platform-realm.json`（dev ユーザー `developer` 追加。dev 専用導線のみが参照）。
+- 変更なし: chart の `templates/**`、`deploy/docker-compose.yml`、`deploy/argocd/**`。
 - ドキュメント: `docs/operations` / `docs/infra` に手順を追記。
 
 ## 代替案

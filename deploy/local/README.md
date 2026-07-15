@@ -11,7 +11,7 @@
 
 ```
 [k3d cluster: msp-ast-dev]
-  ns platform-infra          postgres / rabbitmq / keycloak / qdrant / otel-collector   ← deploy/local/infra
+  ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector   ← deploy/local/infra
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
                              + ExternalName エイリアス（素のサービス名 → platform-infra）
   ns ai-stock-trading        AST chart（ai-stock-trading#122 で追加）
@@ -42,7 +42,7 @@ winget install Helm.Helm
 ## 起動（Git Bash 推奨。1 コマンド）
 
 ```bash
-scripts/k8s-local-up.sh               # クラスタ作成→build/import→secret→infra→MSP chart→alias
+bash scripts/k8s-local-up.sh          # クラスタ作成→build/import→secret→infra→MSP chart→alias
 kubectl get pods -A
 kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/health
@@ -51,7 +51,7 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 破棄:
 
 ```bash
-scripts/k8s-local-down.sh
+bash scripts/k8s-local-down.sh
 ```
 
 ## 機密情報（fail-safe 既定）
@@ -67,10 +67,28 @@ scripts/k8s-local-down.sh
 | `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` | `microservices-platform/minio-credentials` | `minioadmin` | MinIO（chart 参照） |
 | `WIKIJS_DB_PASSWORD` | `microservices-platform/wikijs-db.password` | `kp` | Wiki.js DB |
 | `WIKIJS_SYNC_APIKEY` | `microservices-platform/wikijs-sync.apiKey` | 空 | WikiService→Wiki.js 同期 |
-| `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway |
+| `ANTHROPIC_API_KEY` | `microservices-platform/llm-provider-credentials` | 空=呼ばない | MSP LLM Gateway（values-local が `Llm__ApiKey` へ配線） |
+
+> `llm-provider-credentials` は values-local の `services.llmgateway.extraEnv` で LlmGateway の
+> `Llm__ApiKey` に注入される（本ローカル環境のみ）。本番 chart（`deploy/helm` の `values.yaml`）は
+> この Secret（`deploy/bootstrap/secret-templates.example.yaml` 由来）を未参照であり、本番側の配線は別課題。
 
 AST 側の機密（`ANTHROPIC_API_KEY` / Finnhub / Discord / `Broker__Provider=paper`）は
 ai-stock-trading#122 の chart で同様に fail-safe 既定で注入する。
+
+## dev ログインユーザー（realm import・本番流用禁止）
+
+realm import（`deploy/keycloak/microservices-platform-realm.json`）に含まれる開発専用ユーザーで
+ログインできる（詳細は [`docs/security/security.md`](../../docs/security/security.md) の
+「開発専用（dev-only）の平文認証情報」を参照）。
+
+| ユーザー / パスワード | ロール・属性 | 用途 |
+| --- | --- | --- |
+| `developer` / `developer` | `platform-admin`+`platform-operator`+`wiki-editor`、clearance=`restricted` | 全機能を 1 アカウントで疎通確認する dev 用スーパーユーザー |
+| `poc-user` / `poc-password` | ロール無し・ABAC 属性のみ（clearance=`internal`） | ABAC 属性ユーザーの検証 |
+| `poc-operator` / `poc-operator-password` | `platform-operator` のみ | 運用者ロールの検証 |
+
+> ロール別の挙動差分（権限分離）を確認したい場合は `developer` ではなく `poc-*` を使うこと。
 
 ## 既知の制約
 
