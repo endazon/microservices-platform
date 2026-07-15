@@ -107,6 +107,7 @@
 
 ### ドキュメント
 
+- **NFR**: CHANGELOG を自動更新 (#259) (98633fd)
 - **NFR**: CHANGELOG を自動更新 (#234) (3961127)
 - **FR-14**: openapi.yml のコメントの旧レイヤ第一表記をユニット第一へ是正する (#254) (4a3e281)
 - **FR-14,IADR-0063**: BFF ユニット別エンドポイント合成方式とナレッジ DTO 分離を設計する (#229) (#243) (73d989b)
@@ -179,6 +180,7 @@
 
 ### その他
 
+- **IADR-0066**: ローカル k8s(k3d) dev 環境の MSP 側資産（in-cluster インフラ/values-local/導線） (#267) (36d81a9)
 - **NFR**: dependabot に submodule pin 自動更新（gitsubmodule）を追加 (#261) (4323e82)
 - **FR-14**: サンプルユニット ai-stock-trading を submodule 結合し通し検証する (#258) (1cf952a)
 - planning サブプロジェクトのコミットを更新する (8affeaf)
