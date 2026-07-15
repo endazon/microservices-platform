@@ -1,0 +1,41 @@
+# IADR-0066: 共有 Redis（dev）。BFF が Redis:ConnectionString 既定 `redis:6379` で参照する
+# （health check・キャッシュ）。compose の redis を k8s へ写像。認証なし（dev）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: platform-infra
+  labels: { app: redis }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: platform-infra
+  labels: { app: redis }
+spec:
+  selector: { app: redis }
+  ports:
+    - port: 6379
+      targetPort: 6379

@@ -1,0 +1,42 @@
+# IADR-0066: ローカル k8s(k3d) dev 用 Helm values 上書き。
+# 適用: helm upgrade --install msp deploy/helm/microservices-platform \
+#         -n microservices-platform --create-namespace -f deploy/local/values-local.yaml
+#
+# 本番像（deploy/helm/microservices-platform/values.yaml）は不変。ここでは dev 差分のみ上書きする。
+
+global:
+  image:
+    # k3d へ import するローカルイメージの接頭辞（実レジストリではない。IfNotPresent で pull しない）。
+    # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞・タグで行う。
+    registry: k3d-local
+    pullPolicy: IfNotPresent
+
+# Istio 未導入のローカルでは mTLS/サイドカー注入を無効化する（本番像 STRICT は不変）。
+namespace:
+  # namespace は up-script が先に作成し（Secret 投入のため）、Helm には所有させない。
+  # chart が Namespace を template すると、既存 ns に Helm 所有メタデータが無く install が衝突するため。
+  create: false
+  istioInjection: false
+mesh:
+  enabled: false
+
+# metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
+networkPolicy:
+  enabled: false
+scaling:
+  enabled: false
+
+# imagePullSecrets はローカル import のため不要（空のまま）。
+imagePullSecrets: []
+
+services:
+  llmgateway:
+    # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の
+    # Llm__ApiKey（Anthropic）へ配線する。fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない
+    # （compose の `Llm__ApiKey: ${ANTHROPIC_API_KEY:-}` と同じ挙動）。
+    # 本番 chart（values.yaml）は本 Secret を未参照のまま（既存ギャップ・別課題）。
+    extraEnv:
+      - name: Llm__ApiKey
+        secretKeyRef:
+          name: llm-provider-credentials
+          key: anthropic-api-key

@@ -7,8 +7,6 @@ WORKDIR /src
 COPY src/Directory.Build.props src/Directory.Packages.props ./
 COPY src/platform/backend/ platform/backend/
 RUN dotnet restore platform/backend/Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj
-RUN dotnet build Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj \
-    -c Release -o /app/build
 
 FROM build AS publish
 RUN dotnet publish platform/backend/Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj \

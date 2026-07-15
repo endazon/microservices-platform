@@ -177,6 +177,14 @@ services:
     image: microservices-platform/aianalysis-service
     tag: latest
     port: 8080
+    # FR-04, UC-01: 下流サービスの接続先（HTTP クライアント・readiness の UriHealthCheck）。
+    # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
+    # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
+    extraEnv:
+      - name: Services__RetrievalService
+        value: "http://retrieval-service:8080"
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 200m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
@@ -289,6 +297,22 @@ services:
         value: "http://feedback-service:8080"
       - name: Introspection__Services__llm-gateway
         value: "http://llmgateway-service:8080"
+      # FR-04/FR-08/FR-10, UC-01: BFF の下流集約先（Refit クライアント・readiness の UriHealthCheck）。
+      # appsettings 既定はローカル用ポート（5001-5009）のため、k8s Service の実 DNS（:8080）へ上書きする。
+      - name: Services__RetrievalService
+        value: "http://retrieval-service:8080"
+      - name: Services__AiAnalysisService
+        value: "http://aianalysis-service:8080"
+      - name: Services__DocumentService
+        value: "http://document-service:8080"
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
+      - name: Services__WikiService
+        value: "http://wiki-service:8080"
+      - name: Services__FeedbackService
+        value: "http://feedback-service:8080"
+      - name: Services__DashboardService
+        value: "http://dashboard-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

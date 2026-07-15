@@ -149,13 +149,17 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 ### 開発専用（dev-only）の平文認証情報 — 本番流用禁止
 
-`deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の PoC ユーザーが
-平文パスワードで含まれる（`poc-user`／`poc-operator`、および OIDC クライアントシークレット
+`deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
+平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
 `wiki-js-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 - **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
   （`poc-operator`、`platform-operator` ロール保持。IADR-0030 の `ConfigViewer` を再現）を、
   手動セットアップ無しで再現するためのシード。
+- **`developer`（IADR-0066・ローカル k8s dev 用）**: `platform-admin`＋`platform-operator`＋`wiki-editor` の
+  全ロールと clearance=`restricted` を束ねた dev 用スーパーユーザー。1 アカウントで全機能の疎通確認を行う
+  ための便宜であり、**権限分離（ロール別挙動）の検証には使わない**（それは `poc-*` の役割）。
+  他の dev ユーザーと同様、共有／ステージング／本番の realm には含めない。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
   シークレット（`wiki-js`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する（上記「Wiki.js 前段」

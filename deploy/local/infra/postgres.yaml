@@ -1,0 +1,109 @@
+# IADR-0066 / ADR-0002(DB per service): 共有 Postgres（dev）。
+# MSP（user kp）と AST（user ai）双方の専有 DB を初回起動時に作成する（compose の
+# deploy/create-multiple-dbs.sh と src/ai-stock-trading/infra/postgres/init を k8s へ写像）。
+# dev のため emptyDir（Pod 再起動で再 init）。恒久化が要るなら PVC(local-path) へ差し替える。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: platform-infra
+data:
+  01-create-databases.sh: |
+    #!/bin/bash
+    set -e
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+      -- MSP（knowledge/platform）専有 DB。owner=kp（appsettings.json 既定と一致）。
+      CREATE DATABASE document_svc;
+      CREATE DATABASE datasource_svc;
+      CREATE DATABASE conversion_svc;
+      CREATE DATABASE retrieval_svc;
+      CREATE DATABASE aianalysis_svc;
+      CREATE DATABASE authz_svc;
+      CREATE DATABASE wiki_svc;
+      CREATE DATABASE feedback_svc;
+      CREATE DATABASE dashboard_svc;
+      CREATE DATABASE wikijs;
+      CREATE USER kp WITH PASSWORD 'kp';
+      ALTER DATABASE document_svc OWNER TO kp;
+      ALTER DATABASE datasource_svc OWNER TO kp;
+      ALTER DATABASE conversion_svc OWNER TO kp;
+      ALTER DATABASE retrieval_svc OWNER TO kp;
+      ALTER DATABASE aianalysis_svc OWNER TO kp;
+      ALTER DATABASE authz_svc OWNER TO kp;
+      ALTER DATABASE wiki_svc OWNER TO kp;
+      ALTER DATABASE feedback_svc OWNER TO kp;
+      ALTER DATABASE dashboard_svc OWNER TO kp;
+      ALTER DATABASE wikijs OWNER TO kp;
+
+      -- AST（ai-stock-trading）専有 DB。owner=ai（AST compose 既定 POSTGRES_USER と一致）。
+      CREATE USER ai WITH PASSWORD 'ai';
+      CREATE DATABASE audit_svc OWNER ai;
+      CREATE DATABASE configuration_svc OWNER ai;
+      CREATE DATABASE cost_control_svc OWNER ai;
+      CREATE DATABASE market_monitor_svc OWNER ai;
+      CREATE DATABASE order_execution_svc OWNER ai;
+      CREATE DATABASE report_svc OWNER ai;
+      CREATE DATABASE risk_management_svc OWNER ai;
+    EOSQL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: password
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: data
+          emptyDir: {}
+        - name: init
+          configMap:
+            name: postgres-init
+            defaultMode: 0755
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  selector: { app: postgres }
+  ports:
+    - port: 5432
+      targetPort: 5432

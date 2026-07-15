@@ -1,0 +1,72 @@
+# IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `microservices-platform` を import。
+# realm JSON は kustomization.yaml の configMapGenerator が実ファイル（deploy/keycloak/…）から生成し、
+# /opt/keycloak/data/import へマウントする（単一情報源＝既存 realm ファイル）。
+# 発行者(issuer)は in-cluster 正準名に固定する: MSP chart の Auth__Authority=
+# http://keycloak:8080/realms/microservices-platform（values.yaml global.auth.authority）と一致させ、
+# サービス間 JWT 検証を成立させる。ブラウザ OIDC（Wiki.js 等）は別途 hostname 設定が要る（README 参照）。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: platform-infra
+  labels: { app: keycloak }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: keycloak }
+  template:
+    metadata:
+      labels: { app: keycloak }
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:24.0
+          args: ["start-dev", "--import-realm"]
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            # in-cluster 正準 issuer。サービス間検証と一致（README にブラウザ経路の注記あり）。
+            - name: KC_HOSTNAME_URL
+              value: http://keycloak:8080
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          volumeMounts:
+            - name: realms
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+          # Keycloak(Quarkus) の初回 augmentation ビルドはメモリを食う。1Gi では OOMKilled(137) に
+          # なるため 2Gi へ引き上げる（起動後は 1Gi 未満で安定するので requests は据え置き）。
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 2Gi }
+      volumes:
+        - name: realms
+          configMap:
+            name: keycloak-realms
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: platform-infra
+  labels: { app: keycloak }
+spec:
+  selector: { app: keycloak }
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,0 +1,9 @@
+# IADR-0066: ローカル k8s(k3d) dev 環境 — dev 専用 in-cluster インフラ namespace。
+# 本番像を規定しない dev 専用資産（deploy/helm 本体・deploy/docker-compose.yml は不変）。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-infra
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    environment: local-dev
