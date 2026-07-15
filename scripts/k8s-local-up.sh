@@ -2,7 +2,7 @@
 # IADR-0066: MSP+AST 連結ローカル k8s(k3d) dev 環境の起動オーケストレーション。
 # 冪等（再実行可）。fail-safe: 機密は未設定なら dev 既定/空（no-op）で作成する。
 #
-#   scripts/k8s-local-up.sh [cluster-name]
+#   bash scripts/k8s-local-up.sh [cluster-name]
 #
 # 前提ツール: docker / k3d / kubectl / helm（scripts/README や docs/operations 参照）。
 # 機密の上書きは環境変数で: PG_PASSWORD / RABBITMQ_PASSWORD / KEYCLOAK_ADMIN_PASSWORD /
@@ -50,7 +50,7 @@ else
 fi
 
 echo "==> [2/7] build & import images"
-"$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
+bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
 echo "==> [3/7] infra namespace, secrets & realm ConfigMap (dev 既定; env で上書き可)"
 kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f -

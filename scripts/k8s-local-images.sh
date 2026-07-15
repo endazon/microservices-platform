@@ -5,7 +5,7 @@
 #   - Docker Desktop 等 / docker + k3d: docker build → k3d image import。
 # タグ規則は values-local.yaml と一致: k3d-local/<chart-image>:latest（IfNotPresent で pull しない）。
 #
-#   scripts/k8s-local-images.sh [cluster-name]      # cluster-name は k3d 経路でのみ使用
+#   bash scripts/k8s-local-images.sh [cluster-name]      # cluster-name は k3d 経路でのみ使用
 #   K8S_LOCAL_RUNTIME=rancher|k3d で明示指定も可（既定 auto）。
 set -euo pipefail
 

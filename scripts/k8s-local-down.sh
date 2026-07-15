@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # IADR-0066: ローカル k8s dev 環境の破棄。
-#   scripts/k8s-local-down.sh [cluster-name]     # 既定 msp-ast-dev
+#   bash scripts/k8s-local-down.sh [cluster-name]     # 既定 msp-ast-dev
 # k3d 経路はクラスタごと削除。Rancher Desktop（内蔵 k3s）経路は release/namespace のみ撤去
 # （内蔵クラスタ自体は消さない）。
 set -euo pipefail
