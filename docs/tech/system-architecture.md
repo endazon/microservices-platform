@@ -2,7 +2,7 @@
 title: システム構成図（microservices-platform 基盤 + knowledge ユニット）
 type: tech-architecture
 status: draft
-related_ids: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, IADR-0017, IADR-0056]
+related_ids: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, IADR-0026, IADR-0056]
 author: endazon (with Claude Code)
 created: 2026-07-16
 updated: 2026-07-16
@@ -24,7 +24,7 @@ plan_refs:
 
 - 技術検討: `06_technical/01_architecture-overview.md`、`02_service-decomposition.md`、`10_composability-design.md`
 - ADR: ADR-0001（マイクロサービス採用）、ADR-0002（サービス境界・Database per Service。実装で 11 サービス確定）、ADR-0003（MassTransit/RabbitMQ）、ADR-0004（ABAC 認可）、ADR-0009（ベクトル DB=Qdrant）、ADR-0010（LLM ゲートウェイ）、ADR-0011（Wiki エンジン）、ADR-0018（コンポーザブル）、ADR-0019（ユニット第一構成）
-- 実装 ADR: IADR-0017（内部サービス認証・ネットワーク隔離）、IADR-0056（ユニット構成）
+- 実装 ADR: IADR-0026（Istio STRICT mTLS をサービス間認証の第一防御とする。IADR-0017「内部サービス認証・ネットワーク隔離」を Superseded し、ネットワーク隔離は多層防御へ格下げ）、IADR-0056（ユニット構成）
 - 補足: 計画は `.NET 8` を制約とするが実装は `.NET 10 / C# 13` に統一済み（[draft/feedback/20260709_dotnet10-target-framework-deviation](../../planning/draft/feedback/20260709_dotnet10-target-framework-deviation.md)）。
 
 ## 読み方（凡例）
@@ -115,7 +115,7 @@ flowchart TB
   DOC -. Markdown 同期 .-> WIKI
 
   %% 認可（ABAC・横断）
-  AUTHZ -. 認可判定 .-> DOC & RET & WIKI
+  AUTHZ -. 認可判定 .-> DOC & RET & AI & WIKI
 
   %% インフラ結線（ユニット単位に集約。DB は Database per Service）
   platform === PG
@@ -213,7 +213,7 @@ sequenceDiagram
   `expose` のみでホスト非公開（IADR-0017）。公開は frontend(:3100) / BFF(:5000) / Keycloak(:8080) /
   Wiki.js(:3001) / Grafana(:3000)。
 - **stg / prod**: Kubernetes（k3s・ADR-0008）＋ Helm / ArgoCD（GitOps・ADR-0007）、Istio サービスメッシュ
-  （mTLS・ADR-0005）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
+  （STRICT mTLS をサービス間認証の第一防御とする・ADR-0005 / IADR-0026）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
 - **ビルド**: ユニット別 slnx（`dotnet build src/platform/backend/backend.slnx` /
   `src/knowledge/backend/backend.slnx`・.NET 10）、フロントは npm workspaces（`src/`・Node 22）。
 
