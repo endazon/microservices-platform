@@ -72,6 +72,10 @@ jobs:
           fi
       - name: Discover build targets from compose
         id: discover
+        # ビルドしない PR では導出も行わない。compose 側の一時的な問題（当該 PR と無関係な原因）で
+        # image-build を赤くし、docs だけの PR を巻き込むことを避ける（PR #274 レビュー指摘）。
+        # compose 自体の変更はパス判定に含まれるため、compose が壊れれば build=true 側で必ず捕まる。
+        if: steps.filter.outputs.build == 'true'
         run: |
           # compose の build 定義（= ビルドコンテキストと dockerfile の単一情報源）を対象とする。
           matrix="$(docker compose -f deploy/docker-compose.yml config --format json \
