@@ -1,7 +1,7 @@
 ---
 title: サービス Dockerfile のイメージビルドを CI で検証する（Issue #268）
 type: spec
-status: draft
+status: review
 related_ids:
   - NFR
   - ADR-0007
