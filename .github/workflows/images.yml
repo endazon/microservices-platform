@@ -1,0 +1,135 @@
+# Issue #268, IADR-0067: サービス Dockerfile のイメージビルドを CI で検証する（push はしない）。
+#
+# 背景: ci.yml はユニット単位（src/*/backend/backend.slnx）の restore/build/test/format しか行わず、
+# 配布物であるコンテナイメージ（ADR-0007）のビルドは未検証だった。このため #266 のローカル k8s 起動で
+# 初めて LlmGateway（MSB1009）・BFF（CS0246・IADR-0063 の合成点参照）のビルド不能が露見した。
+# 本ワークフローは同種の破綻をマージ前に落とす。
+#
+# 設計（詳細は docs/adr/IADR-0067_service-image-build-ci-gate.md）:
+#   - 対象は deploy/docker-compose.yml の build 定義から動的に導出する（単一情報源。サービス追加時に
+#     本ファイルの編集は不要）。compose 自身をパーサに使うため、補間・既定値の解釈が実ビルドと一致する。
+#   - サービスごとに 1 ジョブのマトリクス（fail-fast: false）。赤の所在がサービス単位で分かる。
+#   - パスフィルタは「トリガ」ではなく「ジョブ内判定」で行う。トリガ側 paths でワークフローごと
+#     スキップすると、必須チェックが永久 pending となり対象外 PR がマージ不能になるため（GitHub 仕様）。
+#     安定名の集約ジョブ image-build が常に結果を報告し、これをブランチ保護の必須チェックにする。
+name: Images
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# 連続 push 時は古い実行をキャンセルする（イメージビルドは重い）。
+concurrency:
+  group: images-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # 変更パス判定（重いビルドを走らせるか）と、ビルド対象サービスの導出をまとめて行う。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.filter.outputs.build }}
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      # fetch-depth: 0 は origin/<base>...HEAD の差分解決に必須（ci.yml の commit-messages と同方針）。
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect relevant changes
+        id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # push（develop/main）は常にビルドする。マージ後の破綻を早期に検出するため。
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "push イベントのため全サービスをビルドする。"
+            exit 0
+          fi
+          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+            # 差分を確定できない場合は安全側に倒してビルドする（検査漏れを作らない）。
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "origin/$BASE_REF を解決できないため安全側でビルドする。"
+            exit 0
+          fi
+          changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+          echo "::group::changed files"
+          echo "$changed"
+          echo "::endgroup::"
+          # src/**（サービス実装・Dockerfile）／compose の build 定義／.dockerignore（コンテキスト）／
+          # 本ワークフロー自身のいずれかが変われば、イメージのビルド成立に影響し得る。
+          if printf '%s\n' "$changed" | grep -Eq '^src/|^deploy/docker-compose\.yml$|^\.dockerignore$|Dockerfile|^\.github/workflows/images\.yml$'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "イメージのビルドに影響する変更が無いため、ビルドジョブはスキップする。"
+          fi
+      - name: Discover build targets from compose
+        id: discover
+        run: |
+          # compose の build 定義（= ビルドコンテキストと dockerfile の単一情報源）を対象とする。
+          matrix="$(docker compose -f deploy/docker-compose.yml config --format json \
+            | jq -c '[.services | to_entries[] | select(.value.build) | .key] | sort')"
+          count="$(printf '%s' "$matrix" | jq 'length')"
+          # 導出が壊れて空マトリクスになると「何も検査せず緑」になる。それを失敗として顕在化させる。
+          if [ "$count" -eq 0 ]; then
+            echo "::error::deploy/docker-compose.yml から build 定義を導出できなかった（導出ロジックまたは compose の破綻）。"
+            exit 1
+          fi
+          echo "ビルド対象 $count 件: $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    name: build (${{ matrix.service }})
+    strategy:
+      # 1 サービスの失敗で他を巻き込まない（壊れているサービスを一度に洗い出す）。
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      # ビルド成立の検証のみを行い、レジストリへ push はしない（配布は ADR-0007 のリリース経路）。
+      - name: Build image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: docker compose -f deploy/docker-compose.yml build --progress plain "$SERVICE"
+
+  # ブランチ保護の必須チェックに指定する安定名のジョブ。マトリクスのジョブ名は対象が増減すると
+  # 変わるため必須チェックに使えない。スキップ時も含めて常に結果を報告する。
+  image-build:
+    runs-on: ubuntu-latest
+    needs: [changes, build]
+    if: always()
+    steps:
+      - name: Report result
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          SHOULD_BUILD: ${{ needs.changes.outputs.build }}
+        run: |
+          echo "changes=$CHANGES_RESULT / build=$BUILD_RESULT / should-build=$SHOULD_BUILD"
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "::error::ビルド対象の導出に失敗した。"
+            exit 1
+          fi
+          case "$BUILD_RESULT" in
+            success)
+              echo "✓ 全サービスのイメージビルドが成立した。"
+              ;;
+            skipped)
+              echo "✓ イメージのビルドに影響する変更が無いためスキップした。"
+              ;;
+            *)
+              echo "::error::イメージのビルドに失敗したサービスがある（build (<service>) ジョブのログを参照）。"
+              exit 1
+              ;;
+          esac
