@@ -109,4 +109,4 @@ plan_refs:
 
 - `scripts/k8s-local-images.sh` の `MAPPING` は compose とは別のビルド対象リストであり（#266 由来・
   `frontend` を含まない）、compose との**ドリフト検査は未整備**。本ゲートは compose 側のみを担保する。
-  MAPPING の腐敗は本ゲートでは検出できないため、突き合わせ検査は別 issue とする。
+  MAPPING の腐敗は本ゲートでは検出できないため、突き合わせ検査は **Issue #275** に切り出した。
