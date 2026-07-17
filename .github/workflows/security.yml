@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
       # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
