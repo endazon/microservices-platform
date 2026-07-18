@@ -288,7 +288,8 @@ const IMG_COMPOSE = [
 ok('parseComposeBuildTargets は build を持つサービスのみ抽出（infra/ブロック外を除く）', () => {
   const t = parseComposeBuildTargets(IMG_COMPOSE);
   assert.strictEqual(t.length, 2);
-  assert.deepStrictEqual(t[0], { service: 'document-service', dockerfile: 'src/a/Dockerfile' });
+  // Issue #283: context/args も抽出する（既定 args は空・context は compose 記載どおり）。
+  assert.deepStrictEqual(t[0], { service: 'document-service', context: '..', dockerfile: 'src/a/Dockerfile', args: {} });
   assert.strictEqual(t[1].service, 'frontend');
 });
 
@@ -304,7 +305,7 @@ ok('parseComposeBuildTargets は build:/dockerfile: の行末コメントを無�
   ].join('\n');
   const t = parseComposeBuildTargets(yaml);
   assert.strictEqual(t.length, 1);
-  assert.deepStrictEqual(t[0], { service: 'document-service', dockerfile: 'src/a/Dockerfile' });
+  assert.deepStrictEqual(t[0], { service: 'document-service', context: '..', dockerfile: 'src/a/Dockerfile', args: {} });
 });
 
 ok('parseMappingEntries は MAPPING=( ... ) 内の "image|dockerfile" のみ抽出', () => {
@@ -318,7 +319,8 @@ ok('parseMappingEntries は MAPPING=( ... ) 内の "image|dockerfile" のみ抽�
   ].join('\n');
   const e = parseMappingEntries(bash);
   assert.strictEqual(e.length, 2);
-  assert.deepStrictEqual(e[0], { image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' });
+  // Issue #283: 2 フィールドエントリは context='.'（リポルート）・args={} 既定へ分解する。
+  assert.deepStrictEqual(e[0], { image: 'microservices-platform/document-service', context: '.', dockerfile: 'src/a/Dockerfile', args: {} });
 });
 
 const IMG_OK_COMPOSE = [

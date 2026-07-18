@@ -52,6 +52,41 @@ function planningPopulated(root = REPO_ROOT) {
   }
 }
 
+// Issue #283: .gitmodules の submodule path 一覧（リポルート相対・posix）。読めなければ空配列。
+function submodulePaths(root = REPO_ROOT) {
+  try {
+    const txt = fs.readFileSync(path.join(root, '.gitmodules'), 'utf8');
+    const out = [];
+    const re = /^\s*path\s*=\s*(.+?)\s*$/gm;
+    let m;
+    while ((m = re.exec(txt))) out.push(m[1].replace(/\\/g, '/'));
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+// Issue #283: 解決済み絶対パスが、未 populate（空プレースホルダ）な submodule 配下にあるか。
+// トークン不要の PR CI は submodule を populate しないため、planning / src/* いずれの submodule 内リンクも
+// 未 populate 時は検査対象外にする（populate 済みなら通常どおり実在検査する）。planning 固有の特別扱いを
+// .gitmodules 由来の一般則へ拡張したもの（AST 等 src/* ユニットの docs へのリンク切れ誤検知を防ぐ）。
+function underUnpopulatedSubmodule(resolvedAbs, root = REPO_ROOT) {
+  const rel = path.relative(root, resolvedAbs).replace(/\\/g, '/');
+  for (const sub of submodulePaths(root)) {
+    if (rel === sub || rel.startsWith(sub + '/')) {
+      const subAbs = path.join(root, sub);
+      let populated = false;
+      try {
+        populated = fs.existsSync(subAbs) && fs.readdirSync(subAbs).length > 0;
+      } catch (e) {
+        populated = false;
+      }
+      if (!populated) return true;
+    }
+  }
+  return false;
+}
+
 function mdFiles(dir) {
   let out = [];
   let ents;
@@ -76,18 +111,11 @@ function isBrokenRef(ref, baseDir) {
   const looksRelative = t.startsWith('./') || t.startsWith('../') || (t.includes('/') && !t.startsWith('/'));
   if (!looksRelative) return false;
   if (!LINK_EXT.test(t)) return false;
-  // planning/ サブモジュール未チェックアウト時は planning 配下リンクを検査しない。
-  // CI の actions/checkout（サブモジュール取得なし）は planning/ を「空のプレースホルダ
-  // ディレクトリ」として作るため、存在チェックだけでは未チェックアウトを判別できない。
-  // 中身が空（＝未 populate）の場合も検査対象外とする。
-  if (/(^|\/)planning\//.test(t)) {
-    const idx = t.indexOf('planning/') + 'planning'.length;
-    const subRoot = path.resolve(baseDir, t.slice(0, idx));
-    let populated = false;
-    try { populated = fs.existsSync(subRoot) && fs.readdirSync(subRoot).length > 0; } catch (e) { populated = false; }
-    if (!populated) return false;
-  }
   const resolved = path.resolve(baseDir, t);
+  // Issue #232/#283: submodule（planning / src/* 等）未チェックアウト時は、その配下リンクを検査しない。
+  // トークン不要の PR CI（actions/checkout の submodule 取得なし）は submodule を空プレースホルダにするため、
+  // 存在チェックだけでは未チェックアウトを破損と誤検知してしまう。populate 済みなら通常どおり実在検査する。
+  if (underUnpopulatedSubmodule(resolved)) return false;
   try { return !fs.existsSync(resolved); } catch (e) { return false; }
 }
 
