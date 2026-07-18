@@ -107,8 +107,8 @@ follow-up #286 として約束していた。AST の BFF は現状 3 モジュ�
 
 ### 4. 順序依存: AST PR を先行し、MSP は AST コミットへ pin する
 
-MSP PR は `src/ai-stock-trading` を、`AiStockTrading.Bff.Endpoints` を含む AST コミット（PR #202 の先端 `3e5e575`）へ
-再pinする。AST PR が develop へマージされた後、develop 追従の再pin（dependabot もしくは手動）で最終化する。
+MSP PR は `src/ai-stock-trading` を、`AiStockTrading.Bff.Endpoints`（＋その単体テスト）を含む AST コミット
+（PR #202 の先端 `9c8a56b`）へ再pinする。AST PR が develop へマージされた後、develop 追従の再pin（dependabot もしくは手動）で最終化する。
 squash merge の場合は先端コミットが dangling になり得るため、**この最終化を追従する follow-up issue #296
 （priority:could）をマージと同時に起票済み**（放置防止）。マージ判断はユーザー。本 PR はリポ内検証
 （`dotnet build/test`・`check-unit-dependencies.js`・helm template・#275 ドリフト・image ビルド成立）まで（live #284 分離）。
