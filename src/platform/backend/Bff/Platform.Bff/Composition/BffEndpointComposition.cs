@@ -38,6 +38,8 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapDataSourceBffEndpoints()),
+        // Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 集約（ConfigurationService へ pass-through）。
+        new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
     ];
 
     // 合成点の全モジュールを Map する（Program.cs はこの 1 行を呼ぶ）。

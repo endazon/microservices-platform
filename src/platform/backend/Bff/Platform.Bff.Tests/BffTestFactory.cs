@@ -142,6 +142,15 @@ public class BffTestFactory : WebApplicationFactory<Program>
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow),
     ];
 
+    // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
+    // AssumptionsStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
+    public HttpStatusCode AssumptionsStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（ConfigurationService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool AssumptionsThrows { get; set; }
+    // 伝播したトークン・転送された PUT 本文を捕捉して検証可能にする。
+    public string? LastAssumptionsForwardedAuthorization { get; private set; }
+    public string? LastAssumptionsPutBody { get; private set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -156,6 +165,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
                 ["Services:FeedbackService"] = "http://localhost:5008",
                 ["Services:DashboardService"] = "http://localhost:5009",
+                // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
+                ["Services:ConfigurationService"] = "http://localhost:5011",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -188,6 +199,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-01/FR-02 (SC-06 データソース管理): DataSourceService をスタブ化する。
             services.AddHttpClient("DataSourceService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DataSourceStubHandler(this));
+            // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
+            services.AddHttpClient("ConfigurationService")
+                .ConfigurePrimaryHttpMessageHandler(() => new AssumptionsStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -498,6 +512,50 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = JsonContent.Create(owner.StubSearchResponse)
             });
+        }
+    }
+
+    // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。BFF の pass-through
+    // （ステータス・本文・Content-Type 透過、トークン伝播、PUT 本文転送、502 縮退）を検証するための最小スタブ。
+    private sealed class AssumptionsStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+            if (owner.AssumptionsThrows)
+                throw new HttpRequestException("configuration-service unreachable");
+
+            owner.LastAssumptionsForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            if (request.Content is not null)
+                owner.LastAssumptionsPutBody = await request.Content.ReadAsStringAsync(cancellationToken);
+
+            // 後段の非 2xx（非 owner 403・検証 400・競合 409 等）を透過する検証のため、状態を差し替え可能にする。
+            if (owner.AssumptionsStatusCode != HttpStatusCode.OK)
+                return new HttpResponseMessage(owner.AssumptionsStatusCode)
+                {
+                    Content = new StringContent(
+                        "{\"error\":\"stub\"}", System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 履歴（新しい順）。
+            if (path.EndsWith("/assumptions/history", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "[{\"actor\":\"owner\",\"reason\":\"初期値\",\"version\":1}]",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 現在値（GET）／変更（PUT）はいずれも前提条件オブジェクトを返す（型は BFF で結合しないため素の JSON）。
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"assumptions\":{\"capitalGainsTaxRate\":0.20315},\"version\":1,\"isResolved\":true}",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
         }
     }
 }
