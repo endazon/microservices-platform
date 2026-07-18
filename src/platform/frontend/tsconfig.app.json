@@ -22,7 +22,8 @@
     "paths": {
       "@foundation/*": ["src/foundation/*"],
       "@features/*": ["src/features/*"],
-      "@knowledge/*": ["../../knowledge/frontend/src/*"]
+      "@knowledge/*": ["../../knowledge/frontend/src/*"],
+      "@ai-stock-trading/*": ["../../ai-stock-trading/frontend/src/*"]
     }
   },
   "include": ["src"]
