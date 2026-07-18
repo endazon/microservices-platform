@@ -34,6 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。横断 vitest は AST の feature
+      # テストも収集するため、未取得だと npm ci / test:coverage が解決不能になる（ci.yml と同型・トークン不要）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
