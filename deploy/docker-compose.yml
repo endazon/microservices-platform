@@ -443,6 +443,28 @@ services:
       postgres:
         condition: service_healthy
 
+  # Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
+  # AST は 10 Worker で共有する単一のパラメータ化 Dockerfile（backend/Dockerfile＋build args）を持ち、
+  # ビルド context は AST ユニットルート（../src/ai-stock-trading）である（AST IADR-0048 決定3）。
+  # k8s-local-images.sh の MAPPING と #275 ドリフト検査は context/args も突合する（IADR-0070）。
+  # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）。
+  configuration-service:
+    build:
+      context: ../src/ai-stock-trading
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE_PROJECT: backend/Services/ConfigurationService/src/ConfigurationService.Worker/ConfigurationService.Worker.csproj
+        SERVICE_DLL: ConfigurationService.Worker.dll
+    expose:
+      - "8080"
+    environment:
+      # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義する（2e）。
+      <<: [*common-env, *db-env]
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=configuration_svc;Username=kp;Password=kp
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   bff:
     build:
       context: ..

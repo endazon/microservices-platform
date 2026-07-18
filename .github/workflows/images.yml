@@ -101,6 +101,14 @@ jobs:
         service: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
+      # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得してからビルドする。frontend は
+      # @ai-stock-trading を合成し、configuration-service は AST バックエンドを build context にするため、
+      # 未取得だとビルドできない（ci.yml と同型。public ユニットはトークン不要・private planning は巻き込まない）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       # ビルド成立の検証のみを行い、レジストリへ push はしない（配布は ADR-0007 のリリース経路）。
       - name: Build image
         env:

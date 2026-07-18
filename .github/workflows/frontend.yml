@@ -34,6 +34,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。SPA は @ai-stock-trading を
+      # 合成し npm workspace メンバでもあるため、未取得だと npm ci / build / typecheck が解決不能になる。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -52,6 +60,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する（@ai-stock-trading 合成のため）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        working-directory: ${{ github.workspace }}
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v7
         with:
           node-version: "22"

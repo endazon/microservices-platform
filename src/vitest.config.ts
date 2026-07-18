@@ -12,6 +12,8 @@ export default defineConfig({
       '@foundation': fileURLToPath(new URL('./platform/frontend/src/foundation', import.meta.url)),
       '@features': fileURLToPath(new URL('./platform/frontend/src/features', import.meta.url)),
       '@knowledge': fileURLToPath(new URL('./knowledge/frontend/src', import.meta.url)),
+      // Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの feature テストも横断収集する。
+      '@ai-stock-trading': fileURLToPath(new URL('./ai-stock-trading/frontend/src', import.meta.url)),
     },
   },
   test: {
@@ -21,6 +23,7 @@ export default defineConfig({
     include: [
       'platform/frontend/src/**/*.{test,spec}.{ts,tsx}',
       'knowledge/frontend/src/**/*.{test,spec}.{ts,tsx}',
+      'ai-stock-trading/frontend/src/**/*.{test,spec}.{ts,tsx}',
     ],
     css: false,
     // IADR-0033/0034: カバレッジはしきい値ゲート（回帰防止のラチェット）。CI(frontend-tests.yml)
@@ -30,7 +33,11 @@ export default defineConfig({
       reporter: ['text', 'text-summary', 'html', 'lcov'],
       reportsDirectory: './coverage',
       // 計測対象は各ユニット frontend/src 配下の実装のみ。テスト・型定義・エントリ/自動生成は除外する。
-      include: ['platform/frontend/src/**/*.{ts,tsx}', 'knowledge/frontend/src/**/*.{ts,tsx}'],
+      include: [
+        'platform/frontend/src/**/*.{ts,tsx}',
+        'knowledge/frontend/src/**/*.{ts,tsx}',
+        'ai-stock-trading/frontend/src/**/*.{ts,tsx}',
+      ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
         'platform/frontend/src/test/**',

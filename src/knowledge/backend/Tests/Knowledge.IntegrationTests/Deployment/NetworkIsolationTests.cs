@@ -26,6 +26,7 @@ public sealed class NetworkIsolationTests
         "llm-gateway",
         "feedback-service",
         "dashboard-service",
+        "configuration-service", // Issue #283, IADR-0070: AST 設定画面の後段。内部 API（expose のみ）を回帰ガード。
     ];
 
     [Fact]

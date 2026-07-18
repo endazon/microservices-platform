@@ -7,9 +7,13 @@ WORKDIR /app
 COPY src/package.json src/package-lock.json ./
 COPY src/platform/frontend/package.json platform/frontend/
 COPY src/knowledge/frontend/package.json knowledge/frontend/
+# Issue #283, IADR-0070: 可変ユニット AST の frontend も workspace メンバ（npm ci が package-lock と
+# 突合するため manifest を先に投入する）。ソースは合成点（features/index.ts）から取り込まれる。
+COPY src/ai-stock-trading/frontend/package.json ai-stock-trading/frontend/
 RUN npm ci
 COPY src/platform/frontend/ platform/frontend/
 COPY src/knowledge/frontend/ knowledge/frontend/
+COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime

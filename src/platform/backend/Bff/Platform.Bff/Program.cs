@@ -73,6 +73,13 @@ builder.Services.AddHttpClient("DataSourceService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DataSourceService"]
         ?? "http://datasource-service:5002"));
 
+// Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の集約用。ConfigurationService(/assumptions)
+// へ pass-through する。AST 未デプロイ時は不達（BFF が 502 へ縮退）で足を引かないよう、readiness の
+// UriHealthCheck には含めない（可変ユニットの導入有無で BFF の可用性を左右させない・fail-safe）。
+builder.Services.AddHttpClient("ConfigurationService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:ConfigurationService"]
+        ?? "http://configuration-service:8080"));
+
 // FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
