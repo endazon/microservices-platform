@@ -78,6 +78,12 @@ follow-up #286 として約束していた。AST の BFF は現状 3 モジュ�
 - MSP CI は submodule checkout（public unit・IADR-0065 でトークン不要）で csproj が実在するため成立する。
 - AST 単独 CI は `AiStockTrading.Bff.Endpoints` を AST の `backend.slnx` でビルドする（Platform.Bff は AST リポに
   無いので参照は現れない＝一方向）。
+- **BFF イメージビルド（Dockerfile）**: `Platform.Bff/Dockerfile` は build context（リポ root）から
+  `platform/` + `knowledge/` のみを COPY していたため、submodule の AST Bff を COPY する 1 行を追加する
+  （knowledge と同型）。`images.yml` は既に src/* submodule を fetch 済み（IADR-0070）なので runner 上に実体があり、
+  AST Bff は上位 `Directory.Build.props`（net10.0）を継承してビルドできる。**将来 別 submodule ユニットの BFF を
+  例外3 参照する際も、当該ユニットの Bff を Dockerfile へ同梱する必要がある**（in-tree の knowledge と異なり
+  submodule 越境ゆえの追加手順）。
 
 ### 3. 挙動不変: モジュール本体は 1 文字も変えず、名前空間とプロジェクト所在のみ移す
 
