@@ -83,13 +83,16 @@ MarketMonitorService の OwnerOnly 契約 `/monitor/watchlist` を BFF 経由で
 
 ## 受け入れ基準（Definition of Done）
 
-- [ ] `/bff/monitor/*` の 4 経路が pass-through 登録され、BFF 単体テスト（正常中継・DELETE 本文転送・匿名 401・
+- [x] `/bff/monitor/*` の 4 経路が pass-through 登録され、BFF 単体テスト（正常中継・DELETE 本文転送・匿名 401・
       非owner403/検証400/競合409 透過・後段不達 502・トークン/POST・DELETE本文 伝播）が緑。
-- [ ] MarketMonitorService が compose/helm/MAPPING/NetworkIsolationTests に登録され、drift 検査 0・`helm template`/
-      `helm lint`/`docker compose config` が妥当。
-- [ ] 横断 `vitest`（AST monitor/sc02 feature）が緑。
-- [ ] `dotnet format --verify-no-changes`（platform/knowledge 両 slnx）が 0。
-- [ ] 設計判断が [[IADR-0072]] に記録され、live 依存が #284 へ分離されている。
+      → `Platform.Bff.Tests` 139 passed（新規 monitor 10）／CI `build-and-test` 緑。
+- [x] MarketMonitorService が compose/helm/MAPPING/NetworkIsolationTests に登録され、drift 検査 0・`helm template`/
+      `helm lint`/`docker compose config` が妥当。→ `NetworkIsolationTests` 4 passed／drift 0／CI `image-mapping`・
+      `build (market-monitor-service)` 緑。
+- [~] 横断 `vitest`（AST monitor/sc02 feature）: 本 PR は frontend 無改変（submodule 再pinなし・frontend ファイル 0）の
+      ため develop から不変であり、本 PR では再実行しない（`frontend-tests.yml` の `paths` フィルタにも非該当で非トリガ）。
+- [x] `dotnet format --verify-no-changes`（platform/knowledge 両 slnx）が 0。
+- [x] 設計判断が [[IADR-0072]] に記録され、live 依存が #284 へ分離されている。
 
 ## 例外・fail-safe
 
