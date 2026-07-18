@@ -116,6 +116,26 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
   - 手動指定も可: `GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose.yml up -d`。
   - 環境変数未設定時は `dev-local`（実適用リビジョンではないダミー）へフォールバックする。
 
+#### 構成バージョン**履歴**の注入（`GET /bff/admin/config/history`。FR-15 / IADR-0046 / IADR-0069・#192）
+
+適用履歴（新しい順の複数エントリ）の**正データ源は GitOps 層**（Git のコミット履歴 / ArgoCD リビジョン履歴）で、
+BFF は永続化せず注入スライスを surfacing する（履歴ストアを新設しない・IADR-0046）。現在バージョンと**同じ注入経路**
+（Helm values → env）で供給し、env 命名は ASP.NET の構成配列規約に従う。
+
+- **k8s（stg/prod）**: Helm values `config.history`（リスト、既定 `[]`）を BFF Deployment へ
+  `Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift}` として注入する（`bff.configVersion: true`）。
+  実値の供給は CD が同期時に上書きする（現在バージョン注入と同じ役割分担）:
+  - `argocd app set microservices-platform --helm-set config.history[0].gitCommit=$(git rev-parse HEAD) --helm-set config.history[0].appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) --helm-set config.history[0].appliedBy=argocd`
+    のように、ArgoCD リビジョン／Git ログの各適用を新しい順の要素として供給する
+    （または release automation が `values-<env>.yaml` の `config.history` を更新して Git にコミットする）。
+  - `hadDrift` はその時点のドリフト有無が判明していれば `true`/`false` を供給する（不明なら省略＝画面「—」）。
+  - 手動確認: `helm template deploy/helm/microservices-platform --set config.history[0].gitCommit=deadbeef --set config.history[0].appliedBy=argocd`
+    で BFF env に `Config__History__0__GitCommit=deadbeef` 等が反映される。
+- **縮退（後方互換）**: `config.history` が空（dev/compose・既定）なら履歴 env を一切出さず、
+  API は**現在バージョン単一エントリへ縮退**する（現在バージョンも空なら空一覧）。dev/compose に追加設定は不要。
+- **残作業**: 実 ArgoCD リビジョン／Git ログからの**自動**履歴生成（ライブ CD 供給）は稼働 CD・環境に依存する。
+  上記は配線（Helm→env→Options→API）と手動／自動供給手順であり、CD 自動化の実装は環境整備後に行う（#192）。
+
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
