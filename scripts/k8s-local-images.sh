@@ -45,6 +45,8 @@ MAPPING=(
   "microservices-platform/bff|src/platform/backend/Bff/Platform.Bff/Dockerfile"
   # Issue #283, IADR-0070: AST 設定画面の ConfigurationService。単一 Dockerfile＋build args＋ユニットルート context。
   "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/ConfigurationService/src/ConfigurationService.Worker/ConfigurationService.Worker.csproj,SERVICE_DLL=ConfigurationService.Worker.dll"
+  # Issue #287, IADR-0071: AST リスク設定/統制状態の RiskManagementService。同型（単一 Dockerfile＋build args＋context）。
+  "microservices-platform/risk-management-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/RiskManagementService/src/RiskManagementService.Worker/RiskManagementService.Worker.csproj,SERVICE_DLL=RiskManagementService.Worker.dll"
 )
 
 k3d_images=()

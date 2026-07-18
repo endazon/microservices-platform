@@ -80,6 +80,13 @@ builder.Services.AddHttpClient("ConfigurationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:ConfigurationService"]
         ?? "http://configuration-service:8080"));
 
+// Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の集約用。RiskManagementService
+// (/risk-controls/*) へ pass-through する。ConfigurationService と同じく、AST 未デプロイ時の不達で BFF の可用性を
+// 左右させないよう readiness の UriHealthCheck には含めない（fail-safe）。
+builder.Services.AddHttpClient("RiskManagementService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:RiskManagementService"]
+        ?? "http://risk-management-service:8080"));
+
 // FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);

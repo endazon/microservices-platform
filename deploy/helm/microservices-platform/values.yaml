@@ -281,6 +281,23 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 先＝RiskManagementService。
+  # 既定 disabled（fail-safe）— 実行時依存（専用 DB risk_management_svc・RabbitMQ・trading-owner realm・実イメージ）は
+  # 稼働クラスタ前提のため、稼働導入（enabled: true＋DB/RabbitMQ プロビジョニング＋Secret）は後続 live issue #284 で行う。
+  # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
+  # 有効化時: helm template/CD で services.risk-management.enabled=true を渡すと Deployment/Service が描画される。
+  # キーは risk-management（テンプレートが {name}-service を付す）＝Service 名 risk-management-service を
+  # compose のサービス名・BFF 既定（http://risk-management-service:8080）と一致させる。
+  risk-management:
+    enabled: false
+    replicas: 1
+    image: microservices-platform/risk-management-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   bff:
     enabled: true
     replicas: 1

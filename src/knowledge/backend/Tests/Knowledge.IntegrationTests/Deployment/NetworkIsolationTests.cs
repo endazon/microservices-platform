@@ -27,6 +27,7 @@ public sealed class NetworkIsolationTests
         "feedback-service",
         "dashboard-service",
         "configuration-service", // Issue #283, IADR-0070: AST 設定画面の後段。内部 API（expose のみ）を回帰ガード。
+        "risk-management-service", // Issue #287, IADR-0071: AST リスク設定/統制状態の後段。内部 API（expose のみ）を回帰ガード。
     ];
 
     [Fact]
