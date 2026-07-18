@@ -8,5 +8,8 @@
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <!-- FR-14, IADR-0063: BFF 合成点（例外3）。可変ユニットの BFF エンドポイントを合成点で束ねる。 -->
     <ProjectReference Include="..\..\..\..\knowledge\backend\Bff\Knowledge.Bff.Endpoints\Knowledge.Bff.Endpoints.csproj" />
+    <!-- FR-14, IADR-0063, IADR-0073: AST（submodule）ユニットの BFF エンドポイント（例外3）。#286 で interim の
+         platform 同居から unit-owned Bff（AiStockTrading.Bff.Endpoints）へ移行。submodule checkout 前提（IADR-0065）。 -->
+    <ProjectReference Include="..\..\..\..\ai-stock-trading\backend\Bff\AiStockTrading.Bff.Endpoints\AiStockTrading.Bff.Endpoints.csproj" />
   </ItemGroup>
 </Project>

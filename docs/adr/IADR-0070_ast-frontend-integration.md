@@ -93,6 +93,10 @@ GET `/bff/assumptions/history`・PUT `/bff/assumptions` は、後段 Configurati
 
 ### 4. 本スライスの `/bff/assumptions` は Platform.Bff 同居（interim）とし、例外3 の unit-owned Bff 化は後続へ分離する
 
+> **更新（2026-07-19・#286 / [[IADR-0073]]）**: 本 interim は #286 で解消済み。`AssumptionsBffEndpoints` は
+> AST 側 unit-owned Bff プロジェクト `AiStockTrading.Bff.Endpoints`（AST PR）へ挙動不変で移設され、合成点は
+> 例外3 で参照する。以下は当時（interim 採用時）の記録として残す。
+
 `src/README.md`「依存規則 例外3」（IADR-0063）は、可変ユニットのドメイン固有 BFF エンドポイントを
 **当該ユニットの `<unit>/backend/Bff/` プロジェクト**に置き、合成点から参照する形を規範とする（knowledge は
 `Knowledge.Bff.Endpoints` として実施済み）。本 PR はこの規範に対し、`AssumptionsBffEndpoints` を
