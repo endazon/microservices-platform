@@ -8,6 +8,7 @@
 | `gen-openapi-skeleton.js` | 通信仕様書（`docs/api/`）から OpenAPI 雛形を生成 | `docs/api/openapi.yaml` |
 | `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 2 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
+| `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
 | `setup.sh` | 開発環境セットアップ（SessionStart hook / devcontainer から実行） | — |
 | `apply-profile.sh` | `AI_SETUP.md` で宣言したプロファイルに応じてキットを構成（`.example` 有効化等） | `.ai-profile` |
@@ -30,11 +31,14 @@ node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml
 node scripts/check-doc-links.js                    # 仕様書の相対リンク切れを検査（再発防止）
 node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
+node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
+node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
 ```
 
 ## 自動生成（CI）
 
 - `.github/workflows/doc-links-planning.yml`: private な planning サブモジュール込みのリンク検査（#232 / IADR-0058）。夜間 + `workflow_dispatch` でトークン付き（Secret `PLANNING_REPO_TOKEN`。本リポジトリと planning 双方へ read 権限を持つ fine-grained PAT 推奨）に submodule を取得し、`check-doc-links.js --require-planning` を実行する。本体 `ci.yml` の `doc-links` は高速・トークン不要のまま非 planning リンクを毎 PR 検査する。
+- `.github/workflows/image-mapping.yml`: `check-image-mapping.js`（`--self-test` ＋実チェック）を毎 PR/push で実行し、`MAPPING` と compose の `build` 定義のドリフトをマージ前に落とす（#275 / IADR-0068）。`ci.yml` には足さない（独立ワークフロー方針）。Node のみで docker 不要のため paths フィルタなしで常に結果を報告する。
 - `.github/workflows/changelog.yml`: `main` への push で CHANGELOG を再生成しコミットする。タグ push でリリースノートも生成する。
 - `.github/workflows/openapi.yml`: OpenAPI を生成する。コードからの生成コマンド（`scripts/generate-openapi.sh` または変数 `OPENAPI_GENERATE_CMD`）が設定されていればそれを実行し、無ければ通信仕様書からの雛形生成にフォールバックする（「生成可能なら必ず生成」）。
 

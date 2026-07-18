@@ -1,0 +1,34 @@
+# Issue #275, IADR-0068: k8s-local-images.sh の MAPPING と deploy/docker-compose.yml の build 定義の
+# ドリフトを機械検査する（外部依存ゼロの Node スクリプト）。
+#
+# 背景: images.yml（#268 / IADR-0067）は compose を単一情報源にイメージ「ビルド可否」を担保するが、
+# k8s-local-images.sh の MAPPING は別のビルド対象リストで、両者のドリフトは未検査だった。本ワークフローは
+# 対応表の整合をマージ前に落とす。設計は docs/adr/IADR-0068_image-mapping-drift-check.md を参照。
+#
+# ci.yml には足さない（共有ファイルの競合回避。images.yml / frontend*.yml と同じ独立ワークフロー方針）。
+# 検査は軽量（Node のみ・docker 不要）なため paths フィルタを使わず全 PR/push で常に結果を報告する
+# （必須チェックにしても永久 pending にならない。IADR-0067 の教訓）。
+name: Image Mapping
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  image-mapping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      # --self-test で検査器自体を毎回試験する（check-unit-dependencies.js / validate-pipeline-config.js と同型）。
+      - name: Self-test image-mapping checker
+        run: node scripts/check-image-mapping.js --self-test
+      - name: Check MAPPING ↔ compose drift
+        run: node scripts/check-image-mapping.js
