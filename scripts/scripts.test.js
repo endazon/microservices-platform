@@ -258,4 +258,116 @@ ok('Foundation 配下のエイリアス / static using .Composable も検出', (
   );
 });
 
+// --- check-image-mapping: MAPPING ↔ compose build ドリフト検査（Issue #275 / IADR-0068） ---
+
+const {
+  parseComposeBuildTargets,
+  parseMappingEntries,
+  computeDrift,
+} = require('./check-image-mapping.js');
+
+const IMG_COMPOSE = [
+  'services:',
+  '  document-service:',
+  '    build:',
+  '      context: ..',
+  '      dockerfile: src/a/Dockerfile',
+  '    expose:',
+  '      - "8080"',
+  '  postgres:',
+  '    image: postgres:16-alpine',
+  '  frontend:',
+  '    build:',
+  '      context: ..',
+  '      dockerfile: src/platform/frontend/Dockerfile',
+  'volumes:',
+  '  document-data:',
+  '',
+].join('\n');
+
+ok('parseComposeBuildTargets は build を持つサービスのみ抽出（infra/ブロック外を除く）', () => {
+  const t = parseComposeBuildTargets(IMG_COMPOSE);
+  assert.strictEqual(t.length, 2);
+  assert.deepStrictEqual(t[0], { service: 'document-service', dockerfile: 'src/a/Dockerfile' });
+  assert.strictEqual(t[1].service, 'frontend');
+});
+
+ok('parseMappingEntries は MAPPING=( ... ) 内の "image|dockerfile" のみ抽出', () => {
+  const bash = [
+    '# comment',
+    'MAPPING=(',
+    '  "microservices-platform/document-service|src/a/Dockerfile"',
+    '  "microservices-platform/bff|src/b/Dockerfile"',
+    ')',
+    'echo "microservices-platform/outside|ignored"',
+  ].join('\n');
+  const e = parseMappingEntries(bash);
+  assert.strictEqual(e.length, 2);
+  assert.deepStrictEqual(e[0], { image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' });
+});
+
+const IMG_OK_COMPOSE = [
+  { service: 'document-service', dockerfile: 'src/a/Dockerfile' },
+  { service: 'frontend', dockerfile: 'src/platform/frontend/Dockerfile' },
+];
+const IMG_OK_MAPPING = [{ image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' }];
+
+ok('computeDrift: 整合（frontend は compose 専用除外）は違反 0', () => {
+  assert.strictEqual(computeDrift({ mappingEntries: IMG_OK_MAPPING, composeTargets: IMG_OK_COMPOSE }).length, 0);
+});
+
+ok('computeDrift: 新サービスの MAPPING 欠落を検出', () => {
+  const v = computeDrift({
+    mappingEntries: IMG_OK_MAPPING,
+    composeTargets: [...IMG_OK_COMPOSE, { service: 'new-service', dockerfile: 'src/n/Dockerfile' }],
+  });
+  assert.ok(v.some((x) => x.kind === 'missing-mapping'));
+});
+
+ok('computeDrift: Dockerfile 不一致を検出', () => {
+  const v = computeDrift({
+    mappingEntries: [{ image: 'microservices-platform/document-service', dockerfile: 'src/OLD/Dockerfile' }],
+    composeTargets: IMG_OK_COMPOSE,
+  });
+  assert.ok(v.some((x) => x.kind === 'dockerfile-mismatch'));
+});
+
+ok('computeDrift: stale な MAPPING エントリを検出', () => {
+  const v = computeDrift({
+    mappingEntries: [
+      ...IMG_OK_MAPPING,
+      { image: 'microservices-platform/removed-service', dockerfile: 'src/x/Dockerfile' },
+    ],
+    composeTargets: IMG_OK_COMPOSE,
+  });
+  assert.ok(v.some((x) => x.kind === 'stale-mapping'));
+});
+
+ok('computeDrift: chart-image の接頭辞違い（命名不整合）を検出', () => {
+  const v = computeDrift({
+    mappingEntries: [{ image: 'wrong-prefix/document-service', dockerfile: 'src/a/Dockerfile' }],
+    composeTargets: IMG_OK_COMPOSE,
+  });
+  assert.ok(v.some((x) => x.kind === 'naming'));
+});
+
+ok('computeDrift: compose 専用除外（frontend）の MAPPING 二重掲載を検出', () => {
+  const v = computeDrift({
+    mappingEntries: [
+      ...IMG_OK_MAPPING,
+      { image: 'microservices-platform/frontend', dockerfile: 'src/platform/frontend/Dockerfile' },
+    ],
+    composeTargets: IMG_OK_COMPOSE,
+  });
+  assert.ok(v.some((x) => x.kind === 'compose-only-in-mapping'));
+});
+
+ok('computeDrift: 除外リストの腐り（除外対象が compose から消失）を検出', () => {
+  const v = computeDrift({
+    mappingEntries: IMG_OK_MAPPING,
+    composeTargets: [{ service: 'document-service', dockerfile: 'src/a/Dockerfile' }],
+  });
+  assert.ok(v.some((x) => x.kind === 'compose-only-stale'));
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
