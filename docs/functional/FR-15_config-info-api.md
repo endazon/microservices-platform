@@ -64,7 +64,8 @@ FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に
 - **適用履歴**（`GET /bff/admin/config/history`）の正データ源は **GitOps 層**（Git のコミット履歴 /
   ArgoCD リビジョン履歴）。現在バージョンと同じ注入経路で供給する `Config__History__N__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
   を、API は永続化せず新しい順で surfacing する（保持範囲は GitOps 側が決定）。履歴未注入（dev/compose）時は
-  現在バージョンの単一エントリへ縮退し、現在バージョンも空なら空一覧。GitOps 注入配線は #123 が担当。
+  現在バージョンの単一エントリへ縮退し、現在バージョンも空なら空一覧。GitOps 注入配線（Helm `config.history`→env）は
+  #192（IADR-0069）で実装。実 ArgoCD/Git ログからの自動履歴生成（ライブ CD 供給）は環境依存で後続。
 
 ## 例外・エラー処理
 

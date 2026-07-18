@@ -109,6 +109,13 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
   自動注入する（[local-development.md](local-development.md) 参照）。
 - **保持範囲**は GitOps 側（Git 履歴 / ArgoCD の保持リビジョン数）が決定し、API 側は二重に保持しない。
   履歴が未注入の環境では現在バージョンの単一エントリへ縮退する。
+- **履歴（複数エントリ）の注入配線**（[IADR-0069](../adr/IADR-0069_config-history-gitops-injection-wiring.md)・#192）:
+  現在バージョンと同じ経路で Helm values `config.history`（既定 `[]`）を
+  `Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift}` として BFF へ注入する。CD が各適用を
+  新しい順の要素として供給する（例: `--helm-set config.history[0].gitCommit=$(git rev-parse HEAD)
+  --helm-set config.history[0].appliedAt=$(date -u +%Y-%m-%dT%H:%M:%SZ) --helm-set config.history[0].appliedBy=argocd`、
+  または `values-<env>.yaml` の `config.history` を更新）。既定空は履歴 env を出さず現在バージョン単一へ縮退する。
+  実 ArgoCD リビジョン／Git ログからの自動履歴生成は稼働 CD・環境に依存するため後続とする。
 
 ## 構成ドリフトの検出
 
