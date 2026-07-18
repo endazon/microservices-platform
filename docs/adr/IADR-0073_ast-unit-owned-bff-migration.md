@@ -81,9 +81,16 @@ follow-up #286 として約束していた。AST の BFF は現状 3 モジュ�
 - **BFF イメージビルド（Dockerfile）**: `Platform.Bff/Dockerfile` は build context（リポ root）から
   `platform/` + `knowledge/` のみを COPY していたため、submodule の AST Bff を COPY する 1 行を追加する
   （knowledge と同型）。`images.yml` は既に src/* submodule を fetch 済み（IADR-0070）なので runner 上に実体があり、
-  AST Bff は上位 `Directory.Build.props`（net10.0）を継承してビルドできる。**将来 別 submodule ユニットの BFF を
-  例外3 参照する際も、当該ユニットの Bff を Dockerfile へ同梱する必要がある**（in-tree の knowledge と異なり
-  submodule 越境ゆえの追加手順）。
+  AST Bff は上位 `Directory.Build.props`（net10.0）を継承してビルドできる。
+- **backend をビルド/リストアする全ワークフロー**: `Platform.Bff` を含む platform slnx を扱う各ワークフローは
+  submodule fetch が要る。`ci.yml`/`images.yml` は既に fetch 済みだが、**`codeql.yml`（`dotnet build src/*/backend/backend.slnx` のトレースビルド）と `security.yml`（`dotnet restore` の脆弱性スキャン）は fetch 未実施**だったため、
+  `ci.yml` と同型の `Fetch unit submodules` ステップを両者へ追加する。特に `security.yml` は `dotnet restore` が
+  不在 ProjectReference を**エラーにせず黙ってスキップ**する（CI は green のまま AST Bff が脆弱性スキャンから漏れる）
+  ため、fetch を追加して AST unit を確実に走査対象へ含める（現状は FrameworkReference のみで実害ゼロだが、将来 AST Bff が
+  依存を持つと検出漏れになる）。
+- **一般化**: **将来 別 submodule ユニットの BFF を例外3 参照する際も、当該ユニットの Bff を Dockerfile へ同梱し、
+  backend をビルド/リストアする全ワークフロー（ci/images/codeql/security）で submodule を fetch する必要がある**
+  （in-tree の knowledge と異なり submodule 越境ゆえの追加手順）。
 
 ### 3. 挙動不変: モジュール本体は 1 文字も変えず、名前空間とプロジェクト所在のみ移す
 
@@ -100,9 +107,11 @@ follow-up #286 として約束していた。AST の BFF は現状 3 モジュ�
 
 ### 4. 順序依存: AST PR を先行し、MSP は AST コミットへ pin する
 
-MSP PR は `src/ai-stock-trading` を、`AiStockTrading.Bff.Endpoints` を含む AST コミットへ再pinする。AST PR が
-develop へマージされた後、develop 追従の再pin（dependabot もしくは手動）で最終化する。マージ判断はユーザー。
-本 PR はリポ内検証（`dotnet build/test`・`check-unit-dependencies.js`・helm template・#275 ドリフト）まで（live #284 分離）。
+MSP PR は `src/ai-stock-trading` を、`AiStockTrading.Bff.Endpoints` を含む AST コミット（PR #202 の先端 `3e5e575`）へ
+再pinする。AST PR が develop へマージされた後、develop 追従の再pin（dependabot もしくは手動）で最終化する。
+squash merge の場合は先端コミットが dangling になり得るため、**この最終化を追従する follow-up issue #296
+（priority:could）をマージと同時に起票済み**（放置防止）。マージ判断はユーザー。本 PR はリポ内検証
+（`dotnet build/test`・`check-unit-dependencies.js`・helm template・#275 ドリフト・image ビルド成立）まで（live #284 分離）。
 
 ## 影響・トレードオフ
 

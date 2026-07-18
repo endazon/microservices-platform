@@ -90,11 +90,17 @@ FrameworkReference のみに依存＝MSP 内部プロジェクト参照ゼロ・
    （Config/Authz 用の `Platform.Bff.Foundation.Endpoints` は残す）。件数（12 モジュール／12 ルートグループ）は不変。
    移行を固定する契約テスト（AST 3 モジュールが AST assembly 由来であること）を追加。
 6. **IADR 更新**: IADR-0070/0071/0072 の各決定4 に「#286 で 例外3 へ移行済み」を追記。IADR-0073 を新設。
+7. **ビルド配線（submodule 越境の追従）**: `Platform.Bff` が例外3 で submodule の AST Bff を参照するため、
+   backend をビルド/リストアする経路すべてに submodule 実体を行き渡らせる（IADR-0073 決定2）。
+   - `Platform.Bff/Dockerfile` に AST Bff の `COPY` を追加（image ビルド成立。**COPY 漏れの是正**であり
+     live 疎通確認ではない）。
+   - `codeql.yml`（トレースビルド）と `security.yml`（脆弱性リストア）に `ci.yml` 同型の submodule fetch を追加
+     （`security.yml` は `dotnet restore` が不在参照を黙ってスキップし AST が脆弱性スキャンから漏れる gap の是正）。
 
 ### 本 PR に含めない（分離）
 
-- 実疎通（Istio/OIDC/E2E・AST デプロイ）は #284(live)。本 PR はリポ内検証（`dotnet build/test`・
-  `check-unit-dependencies.js`・helm template・#275 ドリフト）まで。
+- 実疎通（Istio/OIDC/E2E・AST デプロイ・実イメージの稼働）は #284(live)。本 PR はリポ内検証（`dotnet build/test`・
+  `check-unit-dependencies.js`・helm template・#275 ドリフト・**image ビルドの成立**）まで（実行時疎通は含まない）。
 - AST 契約（DTO）の BFF 側型付けは行わない（pass-through のまま。契約検証は後段と AST 側テスト）。
 
 ## 受け入れ基準（DoD 写像）
