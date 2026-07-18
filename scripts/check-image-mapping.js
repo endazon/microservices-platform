@@ -39,6 +39,9 @@ const COMPOSE_ONLY = ['frontend'];
 // 行末の YAML インラインコメント（` # ...`）は除去してからキー判定する（`build:  # foo` 等で
 // build ブロックを取り逃さないため）。build 定義を YAML マージキー（`<<: *anchor`）で継承する形は
 // 非対応（現 compose では `<<:` は environment 内のみ。将来 build を anchor 化する場合は要拡張）。
+// #283 / IADR-0070: build 定義から dockerfile に加え context・build args も抽出する。
+// AST のような「単一パラメータ化 Dockerfile＋ユニットルート context」を突合できるようにするため。
+// context 省略時は '.'（compose の既定＝compose ファイルのあるディレクトリ。実運用では全サービスが明示）。
 function parseComposeBuildTargets(yamlText) {
   const targets = [];
   const KEY = /^[A-Za-z0-9._-]+:\s*$/; // 値を持たないブロックマッピングのキー行。
@@ -46,6 +49,16 @@ function parseComposeBuildTargets(yamlText) {
   let serviceIndent = null; // サービスキー（services 直下）のインデント幅。
   let currentService = null; // 直近のサービスキー。
   let buildIndent = null; // 直近サービスの `build:` のインデント幅（null = build ブロック外）。
+  let argsIndent = null; // build 内 `args:` のインデント幅（null = args ブロック外）。
+  let current = null; // 構築中の build 定義（{ service, context, dockerfile, args }）。
+
+  // build 定義（dockerfile を持つもののみ）を確定して push する。
+  const flush = () => {
+    if (current && current.dockerfile) targets.push(current);
+    current = null;
+    argsIndent = null;
+  };
+
   for (const raw of String(yamlText).split('\n')) {
     const line = raw.replace(/\r$/, '');
     if (line.trim() === '' || /^\s*#/.test(line)) continue; // コメント・空行は状態を変えない。
@@ -54,6 +67,7 @@ function parseComposeBuildTargets(yamlText) {
     const body = line.trim().replace(/\s+#.*$/, '');
     if (indent === 0) {
       // 列 0 のキー（services / volumes / x-*）。services ブロックの開始/終了を切り替える。
+      flush();
       inServices = /^services:\s*$/.test(line);
       currentService = null;
       buildIndent = null;
@@ -64,26 +78,55 @@ function parseComposeBuildTargets(yamlText) {
     // services 直下（最も浅い 2 段目）のインデントを最初のキーで確定する。
     if (serviceIndent === null && KEY.test(body)) serviceIndent = indent;
     if (indent === serviceIndent && KEY.test(body)) {
+      flush();
       currentService = body.replace(/:\s*$/, '');
       buildIndent = null;
       continue;
     }
     if (!currentService) continue;
-    // build より浅い/同じインデントのキーが来たら build ブロックを抜ける。
-    if (buildIndent !== null && indent <= buildIndent) buildIndent = null;
+    // build より浅い/同じインデントのキーが来たら build ブロックを抜ける（確定）。
+    if (buildIndent !== null && indent <= buildIndent) {
+      flush();
+      buildIndent = null;
+    }
     if (indent > serviceIndent && /^build:\s*$/.test(body)) {
       buildIndent = indent;
+      current = { service: currentService, context: '.', dockerfile: null, args: {} };
+      argsIndent = null;
       continue;
     }
-    if (buildIndent !== null && indent > buildIndent) {
-      const m = body.match(/^dockerfile:\s*(\S+)\s*$/);
-      if (m) targets.push({ service: currentService, dockerfile: m[1] });
+    if (buildIndent !== null && indent > buildIndent && current) {
+      // args サブブロックを抜けたか。
+      if (argsIndent !== null && indent <= argsIndent) argsIndent = null;
+      if (argsIndent === null && /^args:\s*$/.test(body)) {
+        argsIndent = indent;
+        continue;
+      }
+      if (argsIndent !== null && indent > argsIndent) {
+        // build args（マップ形式 KEY: VALUE のみ対応。シーケンス形式 "- K=V" は非対応）。
+        const am = body.match(/^([A-Za-z0-9._-]+):\s*(\S.*?)\s*$/);
+        if (am) current.args[am[1]] = am[2];
+        continue;
+      }
+      const dm = body.match(/^dockerfile:\s*(\S+)\s*$/);
+      if (dm) {
+        current.dockerfile = dm[1];
+        continue;
+      }
+      const cm = body.match(/^context:\s*(\S+)\s*$/);
+      if (cm) {
+        current.context = cm[1];
+        continue;
+      }
     }
   }
+  flush();
   return targets;
 }
 
-// scripts/k8s-local-images.sh のテキストから MAPPING=( ... ) の { image, dockerfile } を返す。
+// scripts/k8s-local-images.sh のテキストから MAPPING=( ... ) の { image, context, dockerfile, args } を返す。
+// エントリは 2 フィールド "image|dockerfile"（context='.'・args なし・従来）または
+// 4 フィールド "image|context|dockerfile|k=v,k=v"（context 指定・dockerfile は context 相対・args 付き）。
 function parseMappingEntries(bashText) {
   const text = String(bashText);
   const start = text.indexOf('MAPPING=(');
@@ -92,12 +135,48 @@ function parseMappingEntries(bashText) {
   const endRel = rest.search(/\n\)/); // 行頭の閉じ括弧。
   const block = endRel >= 0 ? rest.slice(0, endRel) : rest;
   const out = [];
-  const re = /"([^"|]+)\|([^"]+)"/g;
+  // 少なくとも 1 つの `|` を含む引用文字列（＝エントリ）のみを対象にする。
+  const re = /"([^"]*\|[^"]*)"/g;
   let m;
   while ((m = re.exec(block))) {
-    out.push({ image: m[1].trim(), dockerfile: m[2].trim() });
+    const parts = m[1].split('|').map((s) => s.trim());
+    const image = parts[0];
+    if (parts.length >= 3) {
+      out.push({ image, context: parts[1], dockerfile: parts[2], args: parseArgsCsv(parts[3] || '') });
+    } else {
+      out.push({ image, context: '.', dockerfile: parts[1], args: {} });
+    }
   }
   return out;
+}
+
+// "k=v,k2=v2" 形式の build args を { k: v } へ分解する（値にカンマは含めない前提。値中の = は最初のみで分割）。
+function parseArgsCsv(csv) {
+  const args = {};
+  for (const pair of String(csv).split(',')) {
+    const s = pair.trim();
+    if (!s) continue;
+    const eq = s.indexOf('=');
+    if (eq < 0) continue;
+    args[s.slice(0, eq).trim()] = s.slice(eq + 1).trim();
+  }
+  return args;
+}
+
+// compose の build.context は compose ファイル（deploy/）相対、MAPPING の context はリポルート相対。
+// deploy/ はリポルート直下のため、compose 側の先頭 '../' を 1 段だけ剥がしてリポルート相対へ正規化する。
+function normalizeComposeContext(ctx) {
+  if (!ctx || ctx === '.' || ctx === '..') return '.';
+  if (ctx.startsWith('../')) return ctx.slice(3).replace(/\/$/, '') || '.';
+  return ctx.replace(/\/$/, '');
+}
+
+// build args マップの同値判定（キー集合と各値が一致するか）。
+function argsEqual(a = {}, b = {}) {
+  const ak = Object.keys(a).sort();
+  const bk = Object.keys(b).sort();
+  if (ak.length !== bk.length) return false;
+  return ak.every((k, i) => bk[i] === k && String(a[k]) === String(b[k]));
 }
 
 // MAPPING と compose build 定義のドリフトを検査し、違反 { kind, detail } の配列を返す。
@@ -110,8 +189,8 @@ function computeDrift({
   const violations = [];
   const onlySet = new Set(composeOnly);
   const prefix = `${imagePrefix}/`;
-  const composeByService = new Map(composeTargets.map((t) => [t.service, t.dockerfile]));
-  const mappingByImage = new Map(mappingEntries.map((e) => [e.image, e.dockerfile]));
+  const composeByService = new Map(composeTargets.map((t) => [t.service, t]));
+  const mappingByImage = new Map(mappingEntries.map((e) => [e.image, e]));
 
   // 5. 除外リストの腐り: COMPOSE_ONLY が compose の build 定義に実在するか。
   for (const svc of composeOnly) {
@@ -123,7 +202,7 @@ function computeDrift({
     }
   }
 
-  // 1,3: compose 側から見た MAPPING 欠落・Dockerfile 不一致（除外サービスはスキップ）。
+  // 1,3: compose 側から見た MAPPING 欠落・Dockerfile/context/args 不一致（除外サービスはスキップ）。
   for (const t of composeTargets) {
     if (onlySet.has(t.service)) continue;
     const expectedImage = `${prefix}${t.service}`;
@@ -134,11 +213,29 @@ function computeDrift({
       });
       continue;
     }
-    const mdf = mappingByImage.get(expectedImage);
-    if (mdf !== t.dockerfile) {
+    const me = mappingByImage.get(expectedImage);
+    if (me.dockerfile !== t.dockerfile) {
       violations.push({
         kind: 'dockerfile-mismatch',
-        detail: `'${t.service}' の Dockerfile 不一致: MAPPING='${mdf}' / compose='${t.dockerfile}'`,
+        detail: `'${t.service}' の Dockerfile 不一致: MAPPING='${me.dockerfile}' / compose='${t.dockerfile}'`,
+      });
+    }
+    // #283 / IADR-0070: build context の不一致（compose は deploy 相対、MAPPING はルート相対で正規化して比較）。
+    const composeCtx = normalizeComposeContext(t.context);
+    const mappingCtx = me.context || '.';
+    if (composeCtx !== mappingCtx) {
+      violations.push({
+        kind: 'context-mismatch',
+        detail: `'${t.service}' の build context 不一致: MAPPING='${mappingCtx}' / compose(正規化)='${composeCtx}'`,
+      });
+    }
+    // #283 / IADR-0070: build args の不一致（単一 Dockerfile を args で切替える AST 型で別イメージ化を防ぐ）。
+    if (!argsEqual(t.args, me.args)) {
+      violations.push({
+        kind: 'args-mismatch',
+        detail:
+          `'${t.service}' の build args 不一致: ` +
+          `MAPPING='${JSON.stringify(me.args || {})}' / compose='${JSON.stringify(t.args || {})}'`,
       });
     }
   }
@@ -332,6 +429,97 @@ function selfTest() {
     composeTargets: [{ service: 'document-service', dockerfile: 'src/a/Dockerfile' }], // frontend 無し
   });
   cases.push({ name: 'drift: 除外リストの腐り（対象消失）を検出', pass: rotV.some((v) => v.kind === 'compose-only-stale'), actual: rotV });
+
+  // --- #283 / IADR-0070: context/args 対応の追加試験 -----------------------------
+
+  // パーサ: build.context と build.args を抽出する（AST 型の単一 Dockerfile＋args）。
+  const composeAst = [
+    'services:',
+    '  configuration-service:',
+    '    build:',
+    '      context: ../src/ai-stock-trading',
+    '      dockerfile: backend/Dockerfile',
+    '      args:',
+    '        SERVICE_PROJECT: backend/Services/ConfigurationService/src/ConfigurationService.Worker/ConfigurationService.Worker.csproj',
+    '        SERVICE_DLL: ConfigurationService.Worker.dll',
+    '    expose:',
+    '      - "8080"',
+    '',
+  ].join('\n');
+  const parsedAst = parseComposeBuildTargets(composeAst);
+  cases.push({
+    name: 'compose: context/args を持つ AST 型を抽出',
+    pass:
+      parsedAst.length === 1 &&
+      parsedAst[0].context === '../src/ai-stock-trading' &&
+      parsedAst[0].dockerfile === 'backend/Dockerfile' &&
+      parsedAst[0].args.SERVICE_DLL === 'ConfigurationService.Worker.dll' &&
+      parsedAst[0].args.SERVICE_PROJECT.endsWith('ConfigurationService.Worker.csproj'),
+    actual: parsedAst[0],
+  });
+
+  // パーサ: MAPPING の 4 フィールド（context/dockerfile/args）と 2 フィールド（既定）を分解する。
+  const bashAst = [
+    'MAPPING=(',
+    '  "microservices-platform/document-service|src/a/Dockerfile"',
+    '  "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/x.csproj,SERVICE_DLL=x.dll"',
+    ')',
+  ].join('\n');
+  const parsedBashAst = parseMappingEntries(bashAst);
+  cases.push({
+    name: 'MAPPING: 2 フィールドは context=. 既定・4 フィールドは context/args を分解',
+    pass:
+      parsedBashAst.length === 2 &&
+      parsedBashAst[0].context === '.' &&
+      parsedBashAst[0].dockerfile === 'src/a/Dockerfile' &&
+      parsedBashAst[1].context === 'src/ai-stock-trading' &&
+      parsedBashAst[1].dockerfile === 'backend/Dockerfile' &&
+      parsedBashAst[1].args.SERVICE_DLL === 'x.dll',
+    actual: parsedBashAst,
+  });
+
+  // computeDrift: AST 型（context/args 一致）は違反 0。compose の '../src/..' は正規化して MAPPING の 'src/..' と一致。
+  const astCompose = [
+    {
+      service: 'configuration-service',
+      context: '../src/ai-stock-trading',
+      dockerfile: 'backend/Dockerfile',
+      args: { SERVICE_PROJECT: 'p.csproj', SERVICE_DLL: 'x.dll' },
+    },
+  ];
+  const astMapping = [
+    {
+      image: 'microservices-platform/configuration-service',
+      context: 'src/ai-stock-trading',
+      dockerfile: 'backend/Dockerfile',
+      args: { SERVICE_DLL: 'x.dll', SERVICE_PROJECT: 'p.csproj' },
+    },
+  ];
+  expectCount(
+    'drift: AST 型（context/args 一致）は違反 0',
+    computeDrift({ mappingEntries: astMapping, composeTargets: astCompose, composeOnly: [] }).length,
+    0,
+  );
+
+  // computeDrift: build context 不一致を検出。
+  const ctxV = computeDrift({
+    mappingEntries: [
+      { image: 'microservices-platform/configuration-service', context: 'src/other', dockerfile: 'backend/Dockerfile', args: { SERVICE_DLL: 'x.dll', SERVICE_PROJECT: 'p.csproj' } },
+    ],
+    composeTargets: astCompose,
+    composeOnly: [],
+  });
+  cases.push({ name: 'drift: build context 不一致を検出', pass: ctxV.some((v) => v.kind === 'context-mismatch'), actual: ctxV });
+
+  // computeDrift: build args 不一致を検出（単一 Dockerfile を args で切替える型の別イメージ化防止）。
+  const argsV = computeDrift({
+    mappingEntries: [
+      { image: 'microservices-platform/configuration-service', context: 'src/ai-stock-trading', dockerfile: 'backend/Dockerfile', args: { SERVICE_DLL: 'WRONG.dll', SERVICE_PROJECT: 'p.csproj' } },
+    ],
+    composeTargets: astCompose,
+    composeOnly: [],
+  });
+  cases.push({ name: 'drift: build args 不一致を検出', pass: argsV.some((v) => v.kind === 'args-mismatch'), actual: argsV });
 
   let failed = 0;
   for (const c of cases) {

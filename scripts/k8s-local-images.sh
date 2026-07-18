@@ -24,6 +24,12 @@ fi
 echo "==> runtime: $RUNTIME"
 
 # chart-image(=values.yaml services.<name>.image) : Dockerfile パス（compose の build と一致）
+#
+# エントリ書式（IADR-0070・#283 で拡張・後方互換）:
+#   2 フィールド: "image|dockerfile"                      … context=リポルート(.)・dockerfile はルート相対・args なし（従来）
+#   4 フィールド: "image|context|dockerfile|k=v,k=v"      … context 指定・dockerfile は context 相対・build args 付き
+# 4 フィールドは AST のような「単一パラメータ化 Dockerfile＋ユニットルート context」を載せるためのもの。
+# compose の build.context/dockerfile/args と #275 ドリフト検査（check-image-mapping.js）が突合する。
 MAPPING=(
   "microservices-platform/document-service|src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Dockerfile"
   "microservices-platform/datasource-service|src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Dockerfile"
@@ -37,18 +43,32 @@ MAPPING=(
   "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile"
   "microservices-platform/dashboard-service|src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile"
   "microservices-platform/bff|src/platform/backend/Bff/Platform.Bff/Dockerfile"
+  # Issue #283, IADR-0070: AST 設定画面の ConfigurationService。単一 Dockerfile＋build args＋ユニットルート context。
+  "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/ConfigurationService/src/ConfigurationService.Worker/ConfigurationService.Worker.csproj,SERVICE_DLL=ConfigurationService.Worker.dll"
 )
 
 k3d_images=()
 for entry in "${MAPPING[@]}"; do
-  image="${entry%%|*}"; dockerfile="${entry##*|}"
+  # エントリを最大 4 フィールドへ分解する（2 フィールド時は f3/f4 が空文字）。
+  IFS='|' read -r image f2 f3 f4 <<< "$entry" || true
+  if [ -n "$f3" ]; then
+    context="$f2"; dockerfile="${f2%/}/${f3}"; args_csv="$f4"
+  else
+    context="."; dockerfile="$f2"; args_csv=""
+  fi
+  # build args（カンマ区切りの k=v）を --build-arg 群へ展開する。値にカンマは含めない前提。
+  build_args=()
+  if [ -n "$args_csv" ]; then
+    IFS=',' read -ra _pairs <<< "$args_csv"
+    for p in "${_pairs[@]}"; do build_args+=(--build-arg "$p"); done
+  fi
   ref="${PREFIX}/${image}:${TAG}"
-  echo "==> build ${ref}  (${dockerfile})"
+  echo "==> build ${ref}  (-f ${dockerfile}  context=${context}${args_csv:+  args=${args_csv}})"
   if [ "$RUNTIME" = "rancher" ]; then
     # containerd の k8s.io namespace へ直接ビルド → k3s が即参照可能（import 不要）。
-    nerdctl --namespace k8s.io build -f "${dockerfile}" -t "${ref}" .
+    nerdctl --namespace k8s.io build -f "${dockerfile}" "${build_args[@]}" -t "${ref}" "${context}"
   else
-    docker build -f "${dockerfile}" -t "${ref}" .
+    docker build -f "${dockerfile}" "${build_args[@]}" -t "${ref}" "${context}"
     k3d_images+=("${ref}")
   fi
 done

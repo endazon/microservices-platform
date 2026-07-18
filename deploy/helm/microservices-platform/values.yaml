@@ -266,6 +266,21 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
+  # 既定 disabled（fail-safe）— 実行時依存（専用 DB configuration_svc・trading-owner realm・実イメージ）は稼働
+  # クラスタ前提のため、稼働導入（enabled: true＋DB プロビジョニング＋Secret）は後続 issue で行う。
+  # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
+  # 有効化時: helm template/CD で services.configuration.enabled=true を渡すと Deployment/Service が描画される。
+  configuration:
+    enabled: false
+    replicas: 1
+    image: microservices-platform/configuration-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   bff:
     enabled: true
     replicas: 1
