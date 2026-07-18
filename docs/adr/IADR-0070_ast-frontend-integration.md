@@ -106,8 +106,9 @@ GET `/bff/assumptions/history`・PUT `/bff/assumptions` は、後段 Configurati
   （`check-unit-dependencies.js` 上も違反なし）。よって platform 同居は「規範逸脱」ではなく「合成点の器を
   platform 側に置いた薄い interim」に留まる。
 - **境界の明示**: 恒久像は 例外3（AST 側の `AiStockTrading.Bff.Endpoints` を合成点から 1 行参照）。本スライスは
-  interim とし、AST 側プロジェクト化＋合成点参照への移行を後続 issue（AST PR 前提）へ分離する。ユニット追加の
-  たびに Platform.Bff を直接肥大させないため、AST の BFF エンドポイントが増える前に移行する。
+  interim とし、AST 側プロジェクト化＋合成点参照への移行を **follow-up issue #286（AST PR 前提・priority:could）**
+  へ分離する。ユニット追加のたびに Platform.Bff を直接肥大させないため、AST の BFF エンドポイントが増える前
+  （現状 1 本のうち）に #286 で移行する。
 
 ## 影響・トレードオフ
 
