@@ -298,6 +298,23 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
+  # Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の BFF 先＝MarketMonitorService。
+  # 既定 disabled（fail-safe）— 実行時依存（専用 DB market_monitor_svc・RabbitMQ・trading-owner realm・実イメージ）は
+  # 稼働クラスタ前提のため、稼働導入（enabled: true＋DB/RabbitMQ プロビジョニング＋Secret）は後続 live issue #284 で行う。
+  # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
+  # 有効化時: helm template/CD で services.market-monitor.enabled=true を渡すと Deployment/Service が描画される。
+  # キーは market-monitor（テンプレートが {name}-service を付す）＝Service 名 market-monitor-service を
+  # compose のサービス名・BFF 既定（http://market-monitor-service:8080）と一致させる。
+  market-monitor:
+    enabled: false
+    replicas: 1
+    image: microservices-platform/market-monitor-service
+    tag: latest
+    port: 8080
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 512Mi }
+
   bff:
     enabled: true
     replicas: 1
