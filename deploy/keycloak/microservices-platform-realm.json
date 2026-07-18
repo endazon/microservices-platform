@@ -12,7 +12,8 @@
     "realm": [
       { "name": "platform-admin", "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）" },
       { "name": "platform-operator", "description": "FR-15, IADR-0030: 運用者。構成情報の閲覧（ConfigViewer ポリシー）のみ可。管理系操作（AdminOnly）は不可" },
-      { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" }
+      { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" },
+      { "name": "trading-owner", "description": "Issue #283, AST FR-17/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" }
     ]
   },
   "groups": [
@@ -269,7 +270,7 @@
       "emailVerified": true,
       "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
       "groups": ["/clearance/restricted", "/department/engineering"],
-      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor"],
+      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "trading-owner"],
       "credentials": [{ "type": "password", "value": "developer", "temporary": false }]
     }
   ]
