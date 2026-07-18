@@ -69,15 +69,14 @@ public static class AssumptionsBffEndpoints
 
         try
         {
-            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var resp = await client.SendAsync(req, ct);
 
-            http.Response.StatusCode = (int)resp.StatusCode;
-            var respContentType = resp.Content.Headers.ContentType?.ToString();
-            if (!string.IsNullOrEmpty(respContentType))
-                http.Response.ContentType = respContentType;
-
-            await resp.Content.CopyToAsync(http.Response.Body, ct);
-            return Results.Empty;
+            // 応答本文は ReadAsStringAsync で一括読み込みし Results.Content で透過する（AuthzBffEndpoints と同方式）。
+            // 全体前提条件は小さな管理系ペイロードのためバッファ方式で足りる。ストリーミング（SSE）が要る
+            // エンドポイント（AnalysisBff）とは異なり低レベルの Response.Body 直書きは用いない。
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            var respContentType = resp.Content.Headers.ContentType?.ToString() ?? "application/json";
+            return Results.Content(body, respContentType, statusCode: (int)resp.StatusCode);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
