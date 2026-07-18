@@ -88,9 +88,11 @@ RiskManagementService 固有の実行時依存を compose に反映する。
   接続文字列は専用 DB `risk_management_svc`（`Host=postgres;...;Username=kp;Password=kp`）。
 - `deploy/create-multiple-dbs.sh`: compose 用に `risk_management_svc` DB を作成（未作成だと DB 不在で
   クラッシュループ）。k3d 用 `deploy/local/infra/postgres.yaml` には既に `risk_management_svc` が存在するため変更不要。
-- `deploy/helm/microservices-platform/values.yaml`: `services.risk`（ConfigurationService と同型）を
-  **既定 `enabled: false`（fail-safe）** で追加。稼働導入（`enabled: true`＋DB/RabbitMQ プロビジョニング＋Secret）は
-  稼働クラスタ前提のため live #284 へ分離する。
+- `deploy/helm/microservices-platform/values.yaml`: `services.risk-management`（ConfigurationService と同型）を
+  **既定 `enabled: false`（fail-safe）** で追加。キー名は `risk-management`（テンプレートが `{name}-service` を
+  付す）とし、Service 名 `risk-management-service` を compose のサービス名・BFF 既定
+  （`http://risk-management-service:8080`）と一致させる。稼働導入（`enabled: true`＋DB/RabbitMQ プロビジョニング＋
+  Secret）は稼働クラスタ前提のため live #284 へ分離する。
 - `scripts/k8s-local-images.sh`: MAPPING に `risk-management-service` エントリ（context/args）を追加。
   compose の build ターゲットと 1:1 で対応させ、#275 ドリフト検査（`check-image-mapping.js`）を緑に保つ。
   `images.yml` は compose config から build 対象を自動導出するため追加変更不要。
@@ -118,7 +120,8 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 
 - フロント: `npm run typecheck` / `npm run lint` / `npm run build` / 横断 `vitest`（AST SC-02/03 feature を実
   foundation 上で収集）が緑。
-- deploy: `node scripts/check-image-mapping.js --self-test` と実突合が緑、`helm template`（`services.risk.enabled=true`
-  で Deployment/Service 描画・既定は非描画）、`helm lint`、`docker compose config` が妥当。
+- deploy: `node scripts/check-image-mapping.js --self-test` と実突合が緑、`helm template`
+  （`services.risk-management.enabled=true` で Deployment/Service 描画・既定は非描画）、`helm lint`、
+  `docker compose config` が妥当。
 - BFF: `dotnet test Platform.Bff.Tests`（downstream モック）が緑。
 - live（実イメージビルド・OIDC ログイン・Istio 疎通・E2E・RiskManagementService 稼働導入）は #284 へ分離。

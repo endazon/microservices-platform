@@ -68,7 +68,8 @@ SC-03（統制状態参照）が追加された。これらは RiskManagementSer
    - `deploy/docker-compose.yml`: `risk-management-service`（context/args・専用 DB `risk_management_svc`・
      `*rabbit-env`・`depends_on` postgres+rabbitmq healthy）を追加。
    - `deploy/create-multiple-dbs.sh`: `risk_management_svc` DB を作成（k3d 用 `local/infra/postgres.yaml` は既存）。
-   - `deploy/helm/microservices-platform/values.yaml`: `services.risk`（既定 `enabled: false`・fail-safe）を追加。
+   - `deploy/helm/microservices-platform/values.yaml`: `services.risk-management`（既定 `enabled: false`・fail-safe）を追加。
+     キー名は `risk-management`（テンプレートが `{name}-service` を付す）で Service 名を `risk-management-service` に一致させる。
    - `scripts/k8s-local-images.sh`: MAPPING に `risk-management-service`（context/args）を追加。
    - 受け入れ: `check-image-mapping.js --self-test`＋実突合 0、`helm template`（enabled 時のみ描画）、`helm lint`、
      `docker compose config` が妥当。#275 ドリフト検査・images.yml を緑に保つ。
@@ -92,5 +93,5 @@ SC-03（統制状態参照）が追加された。これらは RiskManagementSer
 
 - 匿名アクセスは 401（グループ `RequireAuthorization()`）。owner 判定は後段 OwnerOnly（非 owner は 403 透過）。
 - 後段（RiskManagementService）不達・タイムアウトは 502 へ縮退（利用者キャンセルは除外）。
-- helm `services.risk` は既定 disabled（実行時依存未充足でのクラッシュループを防ぐ）。
+- helm `services.risk-management` は既定 disabled（実行時依存未充足でのクラッシュループを防ぐ）。
 - BFF は AST 契約 DTO に結合しない（素の JSON を透過・IADR-0057 遵守）。
