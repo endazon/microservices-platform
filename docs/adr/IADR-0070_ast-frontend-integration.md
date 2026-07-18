@@ -88,6 +88,26 @@ GET `/bff/assumptions/history`・PUT `/bff/assumptions` は、後段 Configurati
 委ねる（非 owner の PUT は後段 403、非 owner GET も後段 403、いずれも透過）。利用者トークンは
 `Authorization` ヘッダをそのまま後段へ伝播する（既存 BFF プロキシと同方式）。後段不達は 502 へ縮退する
 （fail-safe）。フロント側の存在秘匿（`RequireRole`→NotFound）はサーバ 401/403 の**表示側バックストップ**。
+応答転送は小さな管理系ペイロードのため `AuthzBffEndpoints` と同型のバッファ方式（`ReadAsStringAsync`→
+`Results.Content`）を採る（SSE 用の低レベル `Response.Body` 直書きは用いない）。
+
+### 4. 本スライスの `/bff/assumptions` は Platform.Bff 同居（interim）とし、例外3 の unit-owned Bff 化は後続へ分離する
+
+`src/README.md`「依存規則 例外3」（IADR-0063）は、可変ユニットのドメイン固有 BFF エンドポイントを
+**当該ユニットの `<unit>/backend/Bff/` プロジェクト**に置き、合成点から参照する形を規範とする（knowledge は
+`Knowledge.Bff.Endpoints` として実施済み）。本 PR はこの規範に対し、`AssumptionsBffEndpoints` を
+`Platform.Bff/Foundation/Endpoints/`（platform 同居）へ置いた。理由は以下。
+
+- **AST は submodule（読み取り専用）**: knowledge は本リポ内ユニットのため 例外3 のプロジェクトを追加できるが、
+  `src/ai-stock-trading` は別リポの submodule で、`AiStockTrading.Bff.Endpoints` を新設するには **AST 側の PR＋
+  ピン更新**が要る（本 MSP PR からは AST へコミットできない）。これは本 IADR が却下案 (b)（submodule 越境変更）
+  として退けたのと同じ制約である。
+- **pass-through で薄い**: 決定3 のとおり DTO 非結合の素通しであり、Platform.Bff から AST への依存は生じない
+  （`check-unit-dependencies.js` 上も違反なし）。よって platform 同居は「規範逸脱」ではなく「合成点の器を
+  platform 側に置いた薄い interim」に留まる。
+- **境界の明示**: 恒久像は 例外3（AST 側の `AiStockTrading.Bff.Endpoints` を合成点から 1 行参照）。本スライスは
+  interim とし、AST 側プロジェクト化＋合成点参照への移行を後続 issue（AST PR 前提）へ分離する。ユニット追加の
+  たびに Platform.Bff を直接肥大させないため、AST の BFF エンドポイントが増える前に移行する。
 
 ## 影響・トレードオフ
 

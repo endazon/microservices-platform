@@ -51,8 +51,9 @@ public class BffEndpointCompositionTests
     public void Composition_registry_holds_all_endpoint_modules()
     {
         // 全 10 モジュール。ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）は
-        // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照、platform 同居 3（Config/Authz/Assumptions）。
-        // Assumptions は AST 設定画面（#283・IADR-0070）の pass-through 集約として platform 同居で追加。
+        // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
+        // platform 同居。Assumptions（AST 設定画面・#283・IADR-0070 決定4）は AST が submodule のため例外3 化を
+        // 後続へ分離し、本スライスでは interim で platform 同居（恒久像は AST 側 Bff プロジェクト＋合成点参照）。
         BffEndpointComposition.Modules.Should().HaveCount(10);
     }
 
