@@ -30,6 +30,9 @@ spec:
       # --helm-set config.appliedAt=<iso8601>`、または release automation が values-<env>.yaml を更新）。
       # ArgoCD ネイティブ Helm は build 変数をパラメータへ自動展開しないため、SHA 供給は CD 側で行う。
       # 手順は docs/operations/operations.md「構成バージョンの注入」を参照。
+      # FR-15, IADR-0046, IADR-0069 (#192): 構成バージョン**履歴**（config.history[i].*）も同じ経路で供給する。
+      # 各適用リビジョンを新しい順の要素として CD が --helm-set config.history[i].{gitCommit,appliedAt,appliedBy,hadDrift}
+      # で上書きする（または values-<env>.yaml の config.history を更新）。既定 config.history: [] は現在バージョン単一へ縮退。
       parameters:
         - name: config.appliedBy
           value: argocd

@@ -58,6 +58,16 @@ config:
   gitCommit: ""
   appliedAt: ""
   appliedBy: "argocd"
+  # FR-15, IADR-0046, IADR-0069 (#192): 構成バージョン履歴（新しい順）の GitOps 注入スライス。
+  # 現在バージョンと同じ注入経路で BFF へ Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift} として
+  # 供給する。正データ源は GitOps 層（Git ログ／ArgoCD リビジョン）で API は永続化しない（IADR-0046）。
+  # 実値は CD 自動化が --helm-set config.history[i].* もしくは values-<env>.yaml で供給する（手順は
+  # docs/operations/operations.md「構成バージョンの注入」）。既定は空＝未注入で、現在バージョン単一へ縮退する。
+  history: []
+  #   - gitCommit: ""       # 適用リビジョンの Git コミット SHA
+  #     appliedAt: ""       # ISO 8601（UTC）
+  #     appliedBy: "argocd"
+  #     hadDrift: false     # その時点のドリフト有無（判明時のみ。省略=不明）
 
 # FR-15, IADR-0029 フォローアップ 4 (#145): 適用直後のドリフト即時検出。
 # 定期検出（既定 5 分）に加え、ArgoCD PostSync フック Job が毎同期後に BFF の

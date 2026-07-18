@@ -92,6 +92,24 @@ spec:
               value: {{ $.Values.config.appliedAt | quote }}
             - name: Config__AppliedBy
               value: {{ $.Values.config.appliedBy | quote }}
+            {{- /* FR-15, IADR-0046, IADR-0069 (#192): 構成バージョン履歴（複数エントリ）の GitOps 注入。
+                   現在バージョン注入（#144）の拡張として同一経路で供給する。ASP.NET の構成配列規約
+                   Config__History__<i>__<Prop> に合わせて描画し ConfigVersionOptions.History へバインドする。
+                   実値の並びは供給側（--helm-set config.history[i].* / values-<env>.yaml）が決める。
+                   既定 config.history: [] は env を出さず、現在バージョン単一へ縮退する（後方互換）。 */}}
+            {{- range $i, $entry := $.Values.config.history }}
+            - name: Config__History__{{ $i }}__GitCommit
+              value: {{ $entry.gitCommit | quote }}
+            - name: Config__History__{{ $i }}__AppliedAt
+              value: {{ $entry.appliedAt | quote }}
+            - name: Config__History__{{ $i }}__AppliedBy
+              value: {{ $entry.appliedBy | quote }}
+            {{- /* hadDrift は bool?。注入時に判明した場合のみ出し、未設定は null（不明）を保つ。 */}}
+            {{- if not (kindIs "invalid" $entry.hadDrift) }}
+            - name: Config__History__{{ $i }}__HadDrift
+              value: {{ $entry.hadDrift | quote }}
+            {{- end }}
+            {{- end }}
           {{- end }}
           {{- if and $svc.port (not $svc.worker) }}
           # FR-15, IADR-0029 (#142): worker（conversion/ingestion）は /internal/introspection のみの
