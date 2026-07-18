@@ -36,6 +36,9 @@ const COMPOSE_ONLY = ['frontend'];
 // build.dockerfile の「リテラル値」のみを抽出する（補間・アンカーは dockerfile リテラルに影響しない。
 // 実ビルドはせず対応表の突合に用いるため、限定テキスト解析で足りる。IADR-0068 参照）。
 // ネスト判定はインデント「幅」を固定値に決め打ちせず相対比較で行う（再フォーマット耐性）。
+// 行末の YAML インラインコメント（` # ...`）は除去してからキー判定する（`build:  # foo` 等で
+// build ブロックを取り逃さないため）。build 定義を YAML マージキー（`<<: *anchor`）で継承する形は
+// 非対応（現 compose では `<<:` は environment 内のみ。将来 build を anchor 化する場合は要拡張）。
 function parseComposeBuildTargets(yamlText) {
   const targets = [];
   const KEY = /^[A-Za-z0-9._-]+:\s*$/; // 値を持たないブロックマッピングのキー行。
@@ -47,7 +50,8 @@ function parseComposeBuildTargets(yamlText) {
     const line = raw.replace(/\r$/, '');
     if (line.trim() === '' || /^\s*#/.test(line)) continue; // コメント・空行は状態を変えない。
     const indent = line.length - line.trimStart().length;
-    const body = line.trim();
+    // インラインコメント（空白 + #）を除去（YAML はインライン # の前に空白が要る）。
+    const body = line.trim().replace(/\s+#.*$/, '');
     if (indent === 0) {
       // 列 0 のキー（services / volumes / x-*）。services ブロックの開始/終了を切り替える。
       inServices = /^services:\s*$/.test(line);
@@ -240,6 +244,24 @@ function selfTest() {
     name: 'compose: インデント幅が変わっても dockerfile を抽出（相対比較）',
     pass: parsedReindented.length === 1 && parsedReindented[0].dockerfile === 'src/a/Dockerfile',
     actual: parsedReindented,
+  });
+
+  // パーサ: 行末インラインコメントが付いても build/dockerfile を取り逃さない（false negative 回帰）。
+  const composeCommented = [
+    'services:',
+    '  document-service:',
+    '    build:  # ローカル k8s と共通',
+    '      context: ..',
+    '      dockerfile: src/a/Dockerfile  # マルチステージ',
+    '    expose:',
+    '      - "8080"',
+    '',
+  ].join('\n');
+  const parsedCommented = parseComposeBuildTargets(composeCommented);
+  cases.push({
+    name: 'compose: build:/dockerfile: の行末コメントを無視して抽出',
+    pass: parsedCommented.length === 1 && parsedCommented[0].dockerfile === 'src/a/Dockerfile',
+    actual: parsedCommented,
   });
 
   // パーサ: MAPPING 抽出（コメント行・閉じ括弧を無視）。

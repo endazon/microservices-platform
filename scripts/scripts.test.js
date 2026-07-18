@@ -292,6 +292,21 @@ ok('parseComposeBuildTargets は build を持つサービスのみ抽出（infra
   assert.strictEqual(t[1].service, 'frontend');
 });
 
+ok('parseComposeBuildTargets は build:/dockerfile: の行末コメントを無視する', () => {
+  const yaml = [
+    'services:',
+    '  document-service:',
+    '    build:  # comment',
+    '      context: ..',
+    '      dockerfile: src/a/Dockerfile  # comment',
+    '    expose:',
+    '      - "8080"',
+  ].join('\n');
+  const t = parseComposeBuildTargets(yaml);
+  assert.strictEqual(t.length, 1);
+  assert.deepStrictEqual(t[0], { service: 'document-service', dockerfile: 'src/a/Dockerfile' });
+});
+
 ok('parseMappingEntries は MAPPING=( ... ) 内の "image|dockerfile" のみ抽出', () => {
   const bash = [
     '# comment',
