@@ -62,6 +62,10 @@ pin 済みのため、**再pinは不要**（`sc02-risk-settings` の watchlist �
 Content-Type を透過、`Authorization` 伝播、後段不達 502）とする。`MonitorBffEndpoints` は interim で
 `Platform.Bff/Foundation/Endpoints/` 同居（恒久像＝AST 側 unit-owned Bff への移行は follow-up #286）。
 
+> **更新（2026-07-19・#286 / [[IADR-0073]]）**: 本 interim は #286 で解消済み。`MonitorBffEndpoints` は
+> AST 側 unit-owned Bff プロジェクト `AiStockTrading.Bff.Endpoints`（AST PR）へ挙動不変で移設され、合成点は
+> 例外3 で参照する。
+
 ### 2. BFF は SC-02 watchlist UI が実消費する 4 経路のみを登録する（未使用経路は登録しない）
 
 AST フロント（`sc02-risk-settings/WatchlistForm.tsx`）が `apiFetch` で叩くのは以下 4 経路のみ（後段は
