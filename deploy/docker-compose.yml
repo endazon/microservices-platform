@@ -465,6 +465,29 @@ services:
       postgres:
         condition: service_healthy
 
+  # Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 先＝RiskManagementService。
+  # ConfigurationService と同型（単一 Dockerfile＋build args＋AST ユニットルート context）だが、RiskManagementService は
+  # 専用 DB（risk_management_svc）に加え RabbitMQ（MassTransit）を使うため *rabbit-env と rabbitmq 依存を併用する。
+  # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）。
+  risk-management-service:
+    build:
+      context: ../src/ai-stock-trading
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE_PROJECT: backend/Services/RiskManagementService/src/RiskManagementService.Worker/RiskManagementService.Worker.csproj
+        SERVICE_DLL: RiskManagementService.Worker.dll
+    expose:
+      - "8080"
+    environment:
+      # Auth__Authority は共通（MSP realm）。trading-owner ロールは MSP realm 側で定義済み（#283 2e）。
+      <<: [*common-env, *db-env, *rabbit-env]
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=risk_management_svc;Username=kp;Password=kp
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
   bff:
     build:
       context: ..

@@ -42,6 +42,10 @@ public static class BffEndpointComposition
         // （ConfigurationService へ pass-through）。**interim** で platform 同居（AST は submodule のため
         // 例外3 の unit-owned Bff プロジェクト化＝恒久像は AST PR＋合成点参照へ移行する。follow-up: #286）。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
+        // Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 集約
+        // （RiskManagementService /risk-controls/* へ pass-through）。Assumptions と同じ interim 同居
+        // （unit-owned Bff 化は follow-up #286 で一括移行）。
+        new DelegateBffEndpointModule(a => a.MapRiskControlsBffEndpoints()),
     ];
 
     // 合成点の全モジュールを Map する（Program.cs はこの 1 行を呼ぶ）。

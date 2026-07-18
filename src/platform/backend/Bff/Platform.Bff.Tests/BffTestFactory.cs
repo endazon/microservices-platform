@@ -151,6 +151,15 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastAssumptionsForwardedAuthorization { get; private set; }
     public string? LastAssumptionsPutBody { get; private set; }
 
+    // Issue #287 (SC-02/SC-03): RiskManagementService(/risk-controls/*) への pass-through をスタブ制御する。
+    // RiskControlsStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
+    public HttpStatusCode RiskControlsStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（RiskManagementService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool RiskControlsThrows { get; set; }
+    // 伝播したトークン・転送された PUT 本文を捕捉して検証可能にする。
+    public string? LastRiskControlsForwardedAuthorization { get; private set; }
+    public string? LastRiskControlsPutBody { get; private set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -167,6 +176,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:DashboardService"] = "http://localhost:5009",
                 // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
                 ["Services:ConfigurationService"] = "http://localhost:5011",
+                // Issue #287 (SC-02/03): AST RiskManagementService の集約先（テスト用）。
+                ["Services:RiskManagementService"] = "http://localhost:5012",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -202,6 +213,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
             services.AddHttpClient("ConfigurationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AssumptionsStubHandler(this));
+            // Issue #287 (SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。
+            services.AddHttpClient("RiskManagementService")
+                .ConfigurePrimaryHttpMessageHandler(() => new RiskControlsStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -554,6 +568,69 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = new StringContent(
                     "{\"assumptions\":{\"capitalGainsTaxRate\":0.20315},\"version\":1,\"isResolved\":true}",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    // Issue #287 (SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。BFF の pass-through
+    // （ステータス・本文・Content-Type 透過、トークン伝播、PUT 本文転送、502 縮退）を検証するための最小スタブ。
+    private sealed class RiskControlsStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+            if (owner.RiskControlsThrows)
+                throw new HttpRequestException("risk-management-service unreachable");
+
+            owner.LastRiskControlsForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            if (request.Content is not null)
+                owner.LastRiskControlsPutBody = await request.Content.ReadAsStringAsync(cancellationToken);
+
+            // 後段の非 2xx（非 owner 403・検証 400・競合 409 等）を透過する検証のため、状態を差し替え可能にする。
+            if (owner.RiskControlsStatusCode != HttpStatusCode.OK)
+                return new HttpResponseMessage(owner.RiskControlsStatusCode)
+                {
+                    Content = new StringContent(
+                        "{\"error\":\"stub\"}", System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 変更履歴（新しい順）。
+            if (path.EndsWith("/settings/history", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "[{\"actor\":\"owner\",\"changeType\":1,\"reason\":\"上限見直し\",\"changedAt\":\"2026-07-18T00:00:00Z\"}]",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 統制状態（GET /status）。
+            if (path.EndsWith("/risk-controls/status", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"killSwitchEngaged\":false,\"tradingPaused\":false,\"stage\":1,\"capital\":1000000}",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 段階ゲート（GET /stage-gate）。
+            if (path.EndsWith("/risk-controls/stage-gate", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "{\"currentStage\":1,\"promotion\":{\"eligible\":false},\"withdrawal\":{\"triggered\":false}}",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 設定の現在値（GET /settings）／変更（PUT /settings/limits・/settings/guard）は設定オブジェクトを返す
+            // （型は BFF で結合しないため素の JSON）。
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"limits\":{\"maxOpenPositions\":5},\"stage\":{\"stage\":1,\"mode\":0},\"guard\":{\"preventSameDayReentry\":true}}",
                     System.Text.Encoding.UTF8, "application/json"),
             };
         }
