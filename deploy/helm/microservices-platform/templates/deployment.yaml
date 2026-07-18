@@ -104,8 +104,10 @@ spec:
               value: {{ $entry.appliedAt | quote }}
             - name: Config__History__{{ $i }}__AppliedBy
               value: {{ $entry.appliedBy | quote }}
-            {{- /* hadDrift は bool?。注入時に判明した場合のみ出し、未設定は null（不明）を保つ。 */}}
-            {{- if not (kindIs "invalid" $entry.hadDrift) }}
+            {{- /* hadDrift は bool?。真偽値が注入された場合のみ出し、未設定・null・非 bool（誤入力の
+                   空文字等）は出さず null（不明）を保つ。非 bool を env 化すると bool? バインドで実行時
+                   例外になり得るため、kindIs "bool" で厳密に判定する。 */}}
+            {{- if kindIs "bool" $entry.hadDrift }}
             - name: Config__History__{{ $i }}__HadDrift
               value: {{ $entry.hadDrift | quote }}
             {{- end }}

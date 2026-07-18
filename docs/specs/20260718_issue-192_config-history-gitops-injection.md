@@ -1,7 +1,7 @@
 ---
 title: 構成バージョン履歴の GitOps 注入配線（Config:History の Helm 供給）（Issue #192）
 type: spec
-status: in-progress
+status: completed
 related_ids:
   - FR-15
   - SC-11
@@ -75,15 +75,16 @@ plan_refs:
 
 ## 受け入れ基準
 
-- [ ] `config.history` に複数エントリを与えると Helm が `Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
-  を BFF Deployment env へ描画する（`helm template` で検証）。
-- [ ] その env 契約が `ConfigVersionOptions.History` に複数エントリとしてバインドされ、`GetVersionHistoryAsync` が
-  実値の履歴を返す（縮退ではない）ことを Options 単体テストで検証。
-- [ ] 注入方式が #144（現在バージョン注入）と整合し、その拡張として実装されている。
-- [ ] 未注入環境（dev/compose・`config.history: []`）では現在バージョン単一へ縮退する既存挙動が維持（回帰なし）。
-- [ ] [[IADR-0046]]（正データ源＝GitOps 層・非永続 surfacing）に違反しない（履歴ストア新設をしない）。
-- [ ] tech/infra いずれか該当の仕様と、必要な IADR を更新（本仕様書＋[[IADR-0069]]）。
-- [ ] `helm template`／`dotnet build`／BFF テスト全合格、`dotnet format --verify-no-changes` 緑。
+- [x] `config.history` に複数エントリを与えると Helm が `Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
+  を BFF Deployment env へ描画する（`helm template` で検証。`hadDrift` は `kindIs "bool"` の時のみ出力）。
+- [x] その env 契約が `ConfigVersionOptions.History` に複数エントリとしてバインドされ、`GetVersionHistoryAsync` が
+  実値の履歴を返す（縮退ではない）ことを Options 単体テスト（`ConfigVersionHistoryBindingTests`）で検証。
+- [x] 注入方式が #144（現在バージョン注入）と整合し、その拡張として実装されている。
+- [x] 未注入環境（dev/compose・`config.history: []`）では現在バージョン単一へ縮退する既存挙動が維持（回帰なし）。
+- [x] [[IADR-0046]]（正データ源＝GitOps 層・非永続 surfacing）に違反しない（履歴ストア新設をしない）。
+- [x] tech/infra いずれか該当の仕様と、必要な IADR を更新（本仕様書＋[[IADR-0069]]＋operations/deployment/argocd/FR-15）。
+- [x] `helm template`／`dotnet build`／BFF テスト全合格、`dotnet format --verify-no-changes` 緑。
+- [ ] 実値 end-to-end 履歴（実 ArgoCD リビジョン／Git ログからの**自動**供給）— ライブ CD 依存のため後続（下記「残作業」）。
 
 ## 残作業（受け入れに残す・PR で明記）
 
