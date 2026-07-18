@@ -160,6 +160,17 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastRiskControlsForwardedAuthorization { get; private set; }
     public string? LastRiskControlsPutBody { get; private set; }
 
+    // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) への pass-through をスタブ制御する。
+    // MonitorStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
+    public HttpStatusCode MonitorStatusCode { get; set; } = HttpStatusCode.OK;
+    // 後段（MarketMonitorService）不達を再現する（BFF が 502 へ縮退することの検証用）。
+    public bool MonitorThrows { get; set; }
+    // 伝播したトークン・転送された本文（POST/DELETE）を捕捉して検証可能にする。
+    public string? LastMonitorForwardedAuthorization { get; private set; }
+    public string? LastMonitorForwardedBody { get; private set; }
+    // DELETE でも本文が後段へ届いたことを個別に検証するため、最後の DELETE 本文を保持する。
+    public string? LastMonitorDeleteBody { get; private set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -178,6 +189,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:ConfigurationService"] = "http://localhost:5011",
                 // Issue #287 (SC-02/03): AST RiskManagementService の集約先（テスト用）。
                 ["Services:RiskManagementService"] = "http://localhost:5012",
+                // Issue #288 (SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
+                ["Services:MarketMonitorService"] = "http://localhost:5013",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
                 ["Config:GitCommit"] = "abc1234",
@@ -216,6 +229,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #287 (SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。
             services.AddHttpClient("RiskManagementService")
                 .ConfigurePrimaryHttpMessageHandler(() => new RiskControlsStubHandler(this));
+            // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
+            services.AddHttpClient("MarketMonitorService")
+                .ConfigurePrimaryHttpMessageHandler(() => new MonitorStubHandler(this));
 
             // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
@@ -631,6 +647,56 @@ public class BffTestFactory : WebApplicationFactory<Program>
             {
                 Content = new StringContent(
                     "{\"limits\":{\"maxOpenPositions\":5},\"stage\":{\"stage\":1,\"mode\":0},\"guard\":{\"preventSameDayReentry\":true}}",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。BFF の pass-through
+    // （ステータス・本文・Content-Type 透過、トークン伝播、POST/DELETE 本文転送、502 縮退）を検証するための最小スタブ。
+    private sealed class MonitorStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
+            if (owner.MonitorThrows)
+                throw new HttpRequestException("market-monitor-service unreachable");
+
+            owner.LastMonitorForwardedAuthorization = request.Headers.Authorization?.ToString();
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+
+            if (request.Content is not null)
+            {
+                owner.LastMonitorForwardedBody = await request.Content.ReadAsStringAsync(cancellationToken);
+                // DELETE も本文（銘柄・理由）を後段へ届けることを個別検証できるよう保持する。
+                if (request.Method == HttpMethod.Delete)
+                    owner.LastMonitorDeleteBody = owner.LastMonitorForwardedBody;
+            }
+
+            // 後段の非 2xx（非 owner 403・検証 400・競合 409 等）を透過する検証のため、状態を差し替え可能にする。
+            if (owner.MonitorStatusCode != HttpStatusCode.OK)
+                return new HttpResponseMessage(owner.MonitorStatusCode)
+                {
+                    Content = new StringContent(
+                        "{\"error\":\"stub\"}", System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 変更履歴（新しい順・GET /monitor/watchlist/history）。
+            if (path.EndsWith("/monitor/watchlist/history", StringComparison.Ordinal))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "[{\"actor\":\"owner\",\"changeType\":0,\"symbol\":\"7203\",\"reason\":\"監視追加\",\"changedAt\":\"2026-07-18T00:00:00Z\"}]",
+                        System.Text.Encoding.UTF8, "application/json"),
+                };
+
+            // 監視銘柄一覧（GET /monitor/watchlist）／追加（POST）／削除（DELETE）は銘柄配列を返す
+            // （型は BFF で結合しないため素の JSON）。
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "[{\"symbol\":\"7203\",\"market\":\"TSE\",\"addedAt\":\"2026-07-18T00:00:00Z\"}]",
                     System.Text.Encoding.UTF8, "application/json"),
             };
         }

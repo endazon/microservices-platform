@@ -46,6 +46,10 @@ public static class BffEndpointComposition
         // （RiskManagementService /risk-controls/* へ pass-through）。Assumptions と同じ interim 同居
         // （unit-owned Bff 化は follow-up #286 で一括移行）。
         new DelegateBffEndpointModule(a => a.MapRiskControlsBffEndpoints()),
+        // Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の BFF 集約
+        // （MarketMonitorService /monitor/* へ pass-through）。Assumptions/RiskControls と同じ interim 同居
+        // （unit-owned Bff 化は follow-up #286 で一括移行）。
+        new DelegateBffEndpointModule(a => a.MapMonitorBffEndpoints()),
     ];
 
     // 合成点の全モジュールを Map する（Program.cs はこの 1 行を呼ぶ）。

@@ -28,6 +28,7 @@ public sealed class NetworkIsolationTests
         "dashboard-service",
         "configuration-service", // Issue #283, IADR-0070: AST 設定画面の後段。内部 API（expose のみ）を回帰ガード。
         "risk-management-service", // Issue #287, IADR-0071: AST リスク設定/統制状態の後段。内部 API（expose のみ）を回帰ガード。
+        "market-monitor-service", // Issue #288, IADR-0072: AST 監視銘柄（watchlist）の後段。内部 API（expose のみ）を回帰ガード。
     ];
 
     [Fact]
