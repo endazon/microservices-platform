@@ -4,6 +4,10 @@
 
 ### 新機能
 
+- **IADR-0072**: AST 監視銘柄（SC-02 watchlist）の /bff/monitor/* プロキシ登録と MarketMonitorService 登録 (#294) (10d79e0)
+- **IADR-0071**: AST SC-02/03 の /bff/risk-controls/* プロキシ登録と submodule 再pin (#289) (a6333cc)
+- **IADR-0070**: AST フロント/設定画面を MSP SPA へ組み込む (#285) (2cda808)
+- **FR-15,IADR-0069**: 構成バージョン履歴の GitOps 注入配線（Config:History を Helm から供給） (#280) (beecd60)
 - **FR-01,UC-04**: 業務DB データソースコネクタ（優先4）を実装する (#219) (#224) (e4f17f8)
 - **FR-01,UC-04**: SaaS データソースコネクタ（優先3）を実装する (#218) (#223) (5f63f00)
 - **FR-01,UC-04**: Wiki データソースコネクタ（優先2）を実装する (#217) (#222) (656b9ed)
@@ -89,6 +93,7 @@
 
 ### リファクタ
 
+- **IADR-0073**: AST 向け BFF pass-through を例外3 の unit-owned Bff へ移行 (Closes #286) (#295) (6c8465e)
 - **FR-14,IADR-0061**: デプロイ資産・realm・OTEL・OIDC を microservices-platform へ改名する (#255) (1848f7c)
 - **FR-14,IADR-0063**: Search ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#253) (f55ea85)
 - **FR-14,IADR-0063**: Document ドメインの BFF エンドポイント＋DTO を knowledge へ移設する (#252) (e21b4ec)
@@ -107,6 +112,8 @@
 
 ### ドキュメント
 
+- **ADR-0019**: platform + knowledge のシステム構成図を追加 (#272) (96999d5)
+- **NFR**: CHANGELOG を自動更新 (#270) (a8fa28c)
 - **NFR**: CHANGELOG を自動更新 (#259) (98633fd)
 - **NFR**: CHANGELOG を自動更新 (#234) (3961127)
 - **FR-14**: openapi.yml のコメントの旧レイヤ第一表記をユニット第一へ是正する (#254) (4a3e281)
@@ -157,6 +164,15 @@
 
 ### ビルド
 
+- **deps**: bump src/ai-stock-trading from `9c8a56b` to `4a9a8d1` (#298) (34c46ea)
+- **deps**: bump planning from `98c45d0` to `8fcc468` (#297) (94b47c5)
+- **deps**: bump src/ai-stock-trading from `36570d6` to `a48835a` (#292) (373e8f1)
+- **deps**: bump src/ai-stock-trading from `c367f60` to `36570d6` (#291) (2a7605d)
+- **deps**: bump planning from `18981e6` to `98c45d0` (#290) (d9fa9a2)
+- **deps**: bump src/ai-stock-trading from `8f965d1` to `7a8c151` (#278) (b8dedc5)
+- **deps**: bump actions/setup-node from 6 to 7 (#279) (f846a05)
+- **deps**: bump planning from `da20fc4` to `18981e6` (#277) (bf19a42)
+- **deps**: bump actions/setup-dotnet from 5 to 6 (#276) (ee56921)
 - **deps**: bump planning from `07db93f` to `da20fc4` (#264) (127735e)
 - **deps**: bump src/ai-stock-trading from `bebf9f9` to `8f965d1` (#265) (d069607)
 - **deps**: bump actions/upload-artifact from 4 to 7 (#226) (5a19731)
@@ -171,6 +187,8 @@
 
 ### CI
 
+- **NFR**: MAPPING↔compose の build 定義ドリフトを機械検査する (Closes #275) (#281) (367195f)
+- **NFR**: サービス Dockerfile のイメージビルドを CI で検証する（IADR-0067） (#274) (64768dd)
 - **FR-14,IADR-0063**: 依存規則の BFF 合成点例外（例外3）を機械検査へ追加する (#229) (#246) (6d868b3)
 - **NFR,IADR-0058**: planning submodule 込みの doc-links 検査を定期ジョブで追加する (#232) (#236) (8079e50)
 - **FR-14,IADR-0057**: ユニット依存方向の機械検査を追加する (#231) (#235) (9182a27)
