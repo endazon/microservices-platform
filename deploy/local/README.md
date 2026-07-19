@@ -203,6 +203,28 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
 > `frontend-service` へ流し、`allow-edge-ingress-to-frontend` NetworkPolicy が default-deny 下の到達を許可する。
 > 実ブラウザでの `/settings` 実表示・OIDC 実ログインは稼働 k3d 依存（本 issue の live 分・#284 手順）。
 
+### Wiki 閲覧の到達（SC-04・Issue #344）
+
+SPA の「Wiki 閲覧」画面（SC-04）は、ブラウザ向け実行時 config `wikiBaseUrl`（config.js の `WIKI_BASE_URL`）から
+社内 Wiki（Wiki.js）を**新規タブで直接開く**導線である（BFF 経由ではない）。`WIKI_BASE_URL` が未設定（空文字）だと
+画面は「**Wiki の接続先が未設定です**」と表示してリンクを出さない。経路B は `values-local.yaml` の
+`frontend.extraEnv` で `WIKI_BASE_URL=http://localhost:3300` を供給する。到達は他コンポーネントと同じく
+`wiki-js` の port-forward に整合させる（`edge.enabled=false`＝Istio 未導入のため直 port-forward が既定手順）:
+
+```bash
+kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
+#   → http://localhost:3300/     （Wiki.js。SPA「Wiki 閲覧」の「Wiki を開く」リンク先）
+```
+
+- SPA を `frontend-service`（`3100:8080`）で開き、「Wiki 閲覧」→「Wiki を開く」で上記 `http://localhost:3300` が開く。
+  ポートを変える場合は `values-local.yaml` の `WIKI_BASE_URL` と port-forward を揃えること（不一致だと到達しない）。
+- **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
+  上記 **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。
+  ただし **Wiki.js 側の OIDC 設定（Keycloak の Wiki.js 用 client の `redirectUris` に `http://localhost:3300/*` を
+  含める等）と実ブラウザでの SSO ログイン疎通は稼働 k3d・realm 設定依存＝live**（本 issue の live 分・realm.json は別課題）。
+- 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
+  （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
+
 ### ブラウザ OIDC の issuer 統一（原則と 2 手順）
 
 **原則**: ブラウザが受け取る token の `iss` と、サービス側の検証基準（`Auth__Authority`）が **同一 URL** で

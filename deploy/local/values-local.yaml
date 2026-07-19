@@ -96,5 +96,18 @@ services:
 # Auth__Authority と iss を一致させる。localhost へ上書きすると iss 不一致でトークン検証が失敗するため上書きしない）。
 # bffUpstream も base の bff-service:8080（nginx が /bff を in-cluster BFF へプロキシ）で正しく上書き不要。
 # base は既定 enabled だが経路B での有効化を明示する。実 Pod 起動/ヘルス緑・実ログインは live（#284 手順）。
+#
+# Issue #344, SC-04/UC-07/FR-13, IADR-0020/IADR-0078: 「Wiki 閲覧」(SC-04) はブラウザ向け実行時 config
+# `wikiBaseUrl`（config.js の WIKI_BASE_URL）から Wiki.js を直接開く導線。base の frontend.extraEnv は空で
+# WIKI_BASE_URL が空文字→「Wiki の接続先が未設定です」になるため、経路B では extraEnv で公開 URL を供給する。
+# 到達は他コンポーネント（keycloak/bff/frontend）と同じく wiki-js の port-forward に整合させる
+# （edge.enabled=false＝Istio 未導入のため直 port-forward が既定手順。deploy/local/README.md「Wiki 閲覧の到達」）:
+#   kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000  → http://localhost:3300
+# ※ Wiki.js→Keycloak の SSO issuer 整合は #284 手順A（browser も keycloak:8080 を issuer 共有）に従う。
+#   Wiki.js 側の realm redirectUris 追記・実ブラウザ SSO ログイン疎通は live（realm.json/稼働 k3d 依存・分離）。
+# 本番像 values.yaml の frontend.extraEnv は空のまま不変（実 Wiki URL は per-env で extraEnv 供給・opt-in・後方互換）。
 frontend:
   enabled: true
+  extraEnv:
+    - name: WIKI_BASE_URL
+      value: "http://localhost:3300"
