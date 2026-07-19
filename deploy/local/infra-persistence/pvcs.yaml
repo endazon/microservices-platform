@@ -1,0 +1,30 @@
+# IADR-0082 / Issue #324: 経路B（ローカル k8s dev）基盤インフラの永続化 PVC。
+# クラスタの local-path provisioner（k3s/Rancher Desktop 同梱・RWO）で動的プロビジョニングする。
+# 適用は opt-in（scripts/k8s-local-up.sh の PERSIST=1）。既定は base の emptyDir のまま（後方互換・fail-safe）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: platform-infra
+  labels: { app: postgres }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Keycloak の file H2（start-dev の既定 DB＝/opt/keycloak/data/h2）を永続化し、realm + runtime state
+# （追加ユーザー・シークレット・セッション）を Pod 再起動でも保持する（IADR-0082 §2）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-data
+  namespace: platform-infra
+  labels: { app: keycloak }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

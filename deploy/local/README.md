@@ -62,12 +62,65 @@ bash scripts/k8s-local-down.sh
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
 VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
+PERSIST=1       bash scripts/k8s-local-up.sh   # Keycloak(realm+runtime state)/Postgres を PVC 永続化（下記「永続化」節）
 ```
 
 - [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
 - [`deploy/local/vault/README.md`](vault/README.md) — Vault dev + External Secrets（**dev 専用・平文秘密なし**）
 - [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
+
+### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082）
+
+> 起点: [IADR-0082](../../docs/adr/IADR-0082_local-k8s-infra-persistence.md) /
+> 作業仕様書 [`docs/specs/20260719_issue-324_infra-persistence-k8s.md`](../../docs/specs/20260719_issue-324_infra-persistence-k8s.md)
+
+既定の経路B infra は [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) の割り切りで `emptyDir`
+（Pod 再起動で再 init）である。このため **Keycloak Pod が再起動するたびに realm が再 import され、管理コンソールで
+加えた runtime state（追加ユーザー・シークレット・セッション等）が失われる**。`PERSIST=1` を付けると
+[`deploy/local/infra-persistence`](infra-persistence/) オーバーレイが適用され、**Keycloak / Postgres を
+`local-path` PVC で永続化**する（Pod 再起動でも状態を保持）。
+
+```bash
+PERSIST=1 bash scripts/k8s-local-up.sh
+# → deploy/local/infra-persistence を適用（base infra + PVC 2 本 + volume パッチ）。
+#   PVC: keycloak-data(1Gi, /opt/keycloak/data=file H2) / postgres-data(2Gi, /var/lib/postgresql/data)。
+```
+
+| サービス | PVC | マウント | 保持されるもの |
+| --- | --- | --- | --- |
+| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） |
+| Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） |
+
+- **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh` は k3d 経路ではクラスタごと、
+  Rancher Desktop 経路では `platform-infra` namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
+  （`keycloak-data`/`postgres-data`）も消える**（= realm/DB は再生成）。PVC を残したまま作り直したいときは `down` を
+  使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
+- **既定（`PERSIST` 未設定）は従来どおり `emptyDir`**（挙動不変・後方互換・fail-safe）。`local-path` 等の
+  provisioner が無いクラスタでも既定経路は Pod Pending 化しない。qdrant / rabbitmq / redis / otel は emptyDir 継続
+  （embeddings は再生成可・queue/cache は揮発前提・stateless。詳細は IADR-0082）。
+- **⚠️ 既存環境の移行**: 途中から `PERSIST=1` に切り替えると Deployment の volume が差し替わりローリング更新が走る。
+  **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
+  データで、失う恒久データは無い）。以後の再起動では PVC のデータが保持される。リセットしたいときは PVC を消す:
+  ```bash
+  kubectl -n platform-infra delete pvc keycloak-data postgres-data   # 次回 PERSIST=1 起動で空から再生成
+  ```
+
+#### ⚠️ realm（`microservices-platform-realm.json`）を更新したときの反映手順
+
+永続化後は `--import-realm` が **既存 realm をスキップ**（既存を上書きしない）するため、`realm.json` を編集しても
+**そのままでは反映されない**（compose 側 [IADR-0079] と同じ運用差分）。runtime state 保持と realm 定義の再現性の
+トレードオフを次で担保する:
+
+1. **破壊的（推奨・realm を作り直してよい）**: `keycloak-data` PVC を消して Pod を再作成 → 空 PVC に `--import-realm`
+   が最新 realm.json を再投入する。realm ConfigMap（単一情報源）は `k8s-local-up.sh` が実 realm ファイルから毎回生成する。
+   ```bash
+   kubectl -n platform-infra delete pvc keycloak-data
+   kubectl -n platform-infra rollout restart deploy/keycloak   # 空 PVC 再作成 → realm 再 import
+   ```
+   実行時変更（管理コンソールで追加したユーザー等）は失われる。
+2. **非破壊（runtime state 保持・部分反映）**: 管理コンソール（port-forward 後 `http://keycloak:8080`・admin/admin）
+   または `kcadm` の partial import で当該変更のみ適用する。
 
 ## 機密情報（fail-safe 既定）
 
@@ -224,7 +277,8 @@ ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）�
 
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
-- **永続化なし**: infra は emptyDir（Pod 再起動で再 init）。dev 用途の割り切り。
+- **永続化は opt-in**: 既定の infra は emptyDir（Pod 再起動で再 init。dev 用途の割り切り）。`PERSIST=1` で
+  Keycloak/Postgres を PVC 永続化できる（上記「永続化」節・IADR-0082）。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
 

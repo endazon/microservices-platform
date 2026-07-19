@@ -86,3 +86,10 @@ plan_refs:
 - **Docker Desktop 内蔵 k8s**: 追加ツール不要だが k3s 非準拠でリソース消費が大きい。→ 不採用（k3s 忠実性優先）。
 - **compose のまま #121 を検証**: CronJob/Service 疎通が k8s 固有で代替不能。→ 不採用。
 - **infra も本番相当の Helm（Operator 等）で導入**: dev には過剰。→ 不採用（dev は最小構成）。
+
+## 補足（後続の部分的見直し）
+
+- **経路B infra の永続化（#324 / [[IADR-0082]]）**: 本 ADR は経路B の infra を `emptyDir`（Pod 再起動で再 init）と
+  割り切った。[[IADR-0082]] はこの割り切りを **opt-in（`PERSIST=1`）で部分的に見直し**、Keycloak（realm+runtime state）/
+  Postgres を `local-path` PVC で永続化できる選択肢を追加した。**既定は本 ADR どおり `emptyDir` のまま不変**であり、
+  本 ADR を Supersede するものではない（全面的な決定の覆しではなく、opt-in の追加）。
