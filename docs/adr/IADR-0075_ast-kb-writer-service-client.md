@@ -1,5 +1,5 @@
 ---
-title: IADR-0072 AST の KB 書き込みは microservices-platform レルムの専用 confidential client（service-account に platform-operator）で受ける
+title: IADR-0075 AST の KB 書き込みは microservices-platform レルムの専用 confidential client（service-account に platform-operator）で受ける
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
 ---
 
-# IADR-0072: AST の KB 書き込み用サービスクライアント（platform-operator）を realm に追加する
+# IADR-0075: AST の KB 書き込み用サービスクライアント（platform-operator）を realm に追加する
 
 - 状態: Accepted
 - 日付: 2026-07-19

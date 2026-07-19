@@ -18,7 +18,7 @@ plan_refs:
 # 作業仕様書: AST KB 書き込み用サービスクライアントの realm 追加
 
 > AST endazon/ai-stock-trading#18（FR-08 ナレッジベース保存）の実 s2s 配線に必要な、基盤（本レルム）側の変更。
-> 設計判断は [[IADR-0072]]。AST 側は AST リポの `IADR-0093` / PR `feat/FR-08-kb-writer-cross-realm-s2s`。
+> 設計判断は [[IADR-0075]]。AST 側は AST リポの `IADR-0093` / PR `feat/FR-08-kb-writer-cross-realm-s2s`。
 
 ## 背景（着手前確認）
 
