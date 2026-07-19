@@ -1,7 +1,7 @@
 ---
 title: AST の KB 書き込み用サービスクライアント（platform-operator）を microservices-platform レルムに追加する（AST #18）
 type: spec
-status: draft
+status: review
 related_ids:
   - FR-06
   - IADR-0030
@@ -37,9 +37,9 @@ plan_refs:
 
 ## 受け入れ基準
 
-- [ ] realm import が有効な JSON で、`ai-stock-trading-kb-writer`（confidential・service-account 有効）が存在する。
-- [ ] service-account に `platform-operator` が付与されている（＝client_credentials トークンで `POST /documents` を通過可能）。
-- [ ] 既存の client/role/user に差分がない（追加のみ）。
+- [x] realm import が有効な JSON で、`ai-stock-trading-kb-writer`（confidential・service-account 有効）が存在する。
+- [x] service-account に `platform-operator` が付与されている（＝client_credentials トークンで `POST /documents` を通過可能）。
+- [x] 既存の client/role/user に差分がない（追加のみ）。
 
 ## ローカル経路B（AST と合わせた通し確認・分離）
 
