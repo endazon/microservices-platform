@@ -67,6 +67,34 @@ plan_refs:
     後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
     [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
 
+### データソース定期同期の有効化と監視（FR-01 / UC-04 / NFR / [IADR-0051] / [IADR-0074] / #299）
+
+DataSourceService の定期同期ワーカー `DataSourceSyncHostedService`（[IADR-0051]）は **既定無効**で、有効化は
+config（Helm values）で行う。UC-04 基本フロー「システムが定期的に原本を取得」と NFR「文書更新後 15 分以内に
+検索結果へ反映」の実現手段。
+
+- **有効化（本番）**: `deploy/helm/microservices-platform/values.yaml` の `services.datasource.dataSourceSync` で
+  既定有効（`enabled: true` / `intervalSeconds: 300`）。`deployment.yaml` が env `DataSourceSync__Enabled` /
+  `DataSourceSync__IntervalSeconds` を描画する（ASP.NET の `__`→`:` 規約で `DataSourceSyncOptions` へバインド）。
+- **間隔の根拠（300 秒＝5 分）**: 反映総遅延 = 検出遅延（≤ 間隔）＋ 下流パイプライン遅延（fetch→convert→ingest→
+  index）。間隔 300 秒で検出 ≤5 分・下流に ≥10 分の予算を残し NFR 15 分を余裕充足する。実効間隔はワーカーが
+  最短 30 秒へ丸める（過負荷防止）。下流実測（#196）後に調整可。
+- **経路B（ローカル k8s / k3d）**: `deploy/local/values-local.yaml` で明示有効化＋間隔 60 秒（反映確認を高速化。
+  本番像は不変）。`scaling.enabled=false`＝replicas 1 で多重実行なし。active データソース／実ファイル共有が無い
+  環境では sync 対象ゼロで安全に空回りする（fail-safe。実データ疎通の live 部分は別手順・実コネクタと SMB/NFS
+  マウント前提）。**compose（dev）は既定無効のまま**（挙動不変。手動 `POST /datasources/{id}/sync` のみ）。
+- **ロールバック**: `--set services.datasource.dataSourceSync.enabled=false`（もしくは values 差戻し）で即無効化。
+  手動同期エンドポイントは常に有効で影響しない。
+- **fail-safe（挙動保証。[IADR-0051]）**: 増分 watermark（`LastSyncedAt`）は**完全成功時のみ**前進し、discover
+  失敗・一部 fetch 失敗では進めず次回再試行する（欠落防止）。1 サイクルの例外で停止しない。未対応 SourceType・
+  未構成ストレージは縮退する。重複発行（多重実行時）は決定的 DocumentId により下流が冪等 upsert する。
+- **監視（継続失敗アラート。UC-04 例外フロー）**: 同じデータソースが連続 3 回以上同期に失敗すると、構造化ログに
+  **継続失敗アラート（`Alert=true`）**を出す（`DataSourceSyncService.AlertThreshold`）。監視スタック（本書
+  「監視・アラート」）の Loki クエリ／ログベースアラートで `Alert=true` を拾って通知経路へ接続する。
+- **多重実行の注記**: 本番 HPA（`scaling`）で datasource は minReplicas 2 のため 2 pod が同時に sync ループを
+  回すが、上記の下流冪等性により**不整合は生じない**（原本 fetch は冗長になる）。冗長排除（単一書き手化）は
+  フォローアップ issue で対応する。
+
 ### 適用直後のドリフト即時検出（FR-15 / IADR-0029 フォローアップ 4 / #145）
 
 宣言（`pipeline.json`）と実効構成のドリフトは、BFF が **定期（既定 5 分・`Drift:IntervalSeconds`）** に加え
