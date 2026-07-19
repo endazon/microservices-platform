@@ -61,6 +61,19 @@ plan_refs:
 - **Loki/Tempo を root 実行にする理由**: 空の名前付きボリュームは root 所有で生成されるため、非 root イメージ
   （uid 10001）でも storage 配下に書き込めるよう `user: "0:0"` を付与している（dev/staging compose 限定・[IADR-0079] §3）。
 
+> **⚠️ 既存 dev 環境の移行注記**: `create-multiple-dbs.sh` は `/docker-entrypoint-initdb.d/` で **Postgres データ
+> ディレクトリが空の初回起動時のみ** 実行される。**既に `postgres-data` ボリュームが存在する環境**では本 PR を
+> pull しても `keycloak` DB が自動作成されず、Keycloak が接続先 DB 不在で起動失敗する。次のいずれかで移行する:
+> - **A（dev データを作り直してよい・簡単）**: `docker compose -f deploy/docker-compose.yml down -v && up -d`
+>   （全ボリューム削除・init 再実行。全 dev データが消える）。
+> - **B（既存データを保持・非破壊）**: 稼働中の Postgres に `keycloak` DB だけ手動作成してから Keycloak を再作成:
+>   ```bash
+>   docker compose -f deploy/docker-compose.yml exec -T postgres \
+>     psql -U postgres -c 'CREATE DATABASE keycloak OWNER kp;'
+>   docker compose -f deploy/docker-compose.yml up -d keycloak
+>   ```
+> 新規（クリーン）環境では init が走るため追加操作は不要。
+
 #### ⚠️ Keycloak realm（`microservices-platform-realm.json`）を更新したときの反映手順
 
 外部 DB 永続化により、`--import-realm` は **既存 realm をスキップ**する（default: 上書きしない）。H2 時代は毎回
