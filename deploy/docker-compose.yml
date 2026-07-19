@@ -573,6 +573,13 @@ services:
       Services__AiAnalysisService: http://aianalysis-service:8080
       Services__FeedbackService: http://feedback-service:8080
       Services__DashboardService: http://dashboard-service:8080
+      # FR-01/FR-02/FR-06, UC-04, SC-03/SC-06, IADR-0089 (#342): BFF の下流集約先のうち、コード既定が
+      # ローカル用ポート（5002/5001/5005）のままで compose の実コンテナポート（:8080）へ未上書きだったもの。
+      # 上書きが無いと BFF は :5002/:5001/:5005 を叩き、コンテナは :8080 のみ listen のため到達失敗
+      # （datasource は live k8s でも同型の欠落で 502 化＝#342 の主因。document/authorization は compose のみ欠落）。
+      Services__DataSourceService: http://datasource-service:8080
+      Services__DocumentService: http://document-service:8080
+      Services__AuthorizationService: http://authorization-service:8080
       # FR-15, IADR-0029, Issue #118 監査: 構成情報 API の自己申告収集先。appsettings 既定は
       # ローカル実行用ポート（5001/5006）のため、コンテナ実態（8080）をここで上書きする。
       # 上書きが無いと実効構成の集約が常に到達失敗し、ドリフト検出が Unverifiable に縮退する。

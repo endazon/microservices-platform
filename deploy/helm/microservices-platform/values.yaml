@@ -432,6 +432,12 @@ services:
         value: "http://feedback-service:8080"
       - name: Services__DashboardService
         value: "http://dashboard-service:8080"
+      # FR-01/FR-02, UC-04, SC-06, IADR-0089 (#342): データソース管理の下流集約先。appsettings/コード既定は
+      # ローカル用ポート（5002）のため k8s Service の実 DNS（:8080）へ上書きする。この上書きが無いと BFF は
+      # datasource-service:5002 を叩き、ClusterIP に該当ポートが無く SYN がブラックホール化して ≈21 秒で
+      # タイムアウト → /bff/datasources が 502 になる（他 7 downstream と同型の上書き漏れが live で顕在化）。
+      - name: Services__DataSourceService
+        value: "http://datasource-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
