@@ -89,7 +89,7 @@ FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定
 | Bff | 集約エンドポイント（同期経路） | — |
 | AuthorizationService | ABAC 評価・属性/ポリシー管理・DB | — |
 | DocumentService | 文書カタログ・版管理・API・DB | DocumentNormalizedConsumer（段） |
-| DataSourceService | データソース登録 API・DB | （将来: コネクタ） |
+| DataSourceService | データソース登録 API・DB | コネクタ（filesystem/wiki/saas/db）・同期オーケストレータ |
 | ConversionService | 正規化サービス（正規化形式＝固定）・冪等 ID・ポート | 変換段・Pandoc/LLM図/ストレージ各アダプタ |
 | IngestionService | チャンク ID 規約・ポート | 取り込み段・埋め込み/Qdrant/ストレージ/チャンク各アダプタ |
 | RetrievalService | ハイブリッド検索・検索 API・ポート | Qdrant/InMemory/埋め込み各アダプタ |
