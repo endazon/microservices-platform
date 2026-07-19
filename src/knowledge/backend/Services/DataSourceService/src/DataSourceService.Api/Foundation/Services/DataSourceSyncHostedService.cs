@@ -8,8 +8,11 @@ namespace DataSourceService.Api.Foundation.Services;
 // FR-01, UC-04（基本フロー: システムが定期的に原本を取得）, IADR-0051: 定期同期ワーカー。
 // 既定は無効（DataSourceSync:Enabled=false）。有効時は一定間隔で active データソースをコネクタ経由で同期する。
 // scoped な DataSourceSyncService/DbContext を各サイクルでスコープ解決する（singleton→scoped の橋渡し）。
+// IADR-0083 (#305): 本番マルチレプリカでの冗長 fetch を排除するため、各サイクルは排他リース（advisory lock）を
+// 取得したレプリカのみが実行する（単一書き手化）。単一レプリカ（経路B）は常に取得でき従来どおり動く。
 public sealed class DataSourceSyncHostedService(
     IServiceScopeFactory scopeFactory,
+    ISyncLeaseCoordinator leaseCoordinator,
     IOptions<DataSourceSyncOptions> options,
     ILogger<DataSourceSyncHostedService> logger) : BackgroundService
 {
@@ -31,7 +34,7 @@ public sealed class DataSourceSyncHostedService(
         {
             try
             {
-                await SyncAllActiveAsync(stoppingToken);
+                await TryRunCycleAsync(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -44,6 +47,22 @@ public sealed class DataSourceSyncHostedService(
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    // IADR-0083 (#305): 単一書き手化のゲート。排他リースを取得できたレプリカのみが同期を実行する。
+    // 取得できない（他レプリカが実行中／一時障害）場合は本サイクルをスキップし次周期へ（fail-safe）。
+    // 戻り値は同期を実行したか（true=実行・false=スキップ）。テストからの検証に用いる。
+    internal async Task<bool> TryRunCycleAsync(CancellationToken ct)
+    {
+        await using var lease = await leaseCoordinator.TryAcquireAsync(ct);
+        if (lease is null)
+        {
+            logger.LogDebug("定期同期リースを取得できませんでした（他レプリカが実行中）。本サイクルをスキップします。");
+            return false;
+        }
+
+        await SyncAllActiveAsync(ct);
+        return true;
     }
 
     private async Task SyncAllActiveAsync(CancellationToken ct)
