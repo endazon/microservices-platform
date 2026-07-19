@@ -185,6 +185,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:AiAnalysisService"] = "http://localhost:5004",
                 ["Services:FeedbackService"] = "http://localhost:5008",
                 ["Services:DashboardService"] = "http://localhost:5009",
+                // FR-01/FR-02 (SC-06), IADR-0089 (#342): DataSourceService の集約先（テスト用）。実デプロイの
+                // メッシュポート（:8080）を明示注入し、named client の BaseAddress が Services 設定駆動である
+                // ことを固定する（コード既定 5002 の直書き退行を検出する。BffDownstreamResolutionTests 参照）。
+                ["Services:DataSourceService"] = "http://datasource-service:8080",
                 // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
                 ["Services:ConfigurationService"] = "http://localhost:5011",
                 // Issue #287 (AST/SC-02/AST/SC-03): AST RiskManagementService の集約先（テスト用）。
