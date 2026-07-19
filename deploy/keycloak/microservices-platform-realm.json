@@ -237,6 +237,23 @@
         "roles",
         "abac-attributes"
       ]
+    },
+    {
+      "clientId": "ai-stock-trading-kb-writer",
+      "name": "AST KB writer (cross-unit s2s, client_credentials)",
+      "description": "AST #18 / FR-08, IADR-0072: ai-stock-trading ユニットが確定報告書・収集情報を DocumentService へ書き込む（POST /documents は platform-admin/operator 必須）ための機密クライアント。service-account に platform-operator を付与し client_credentials のみ許可する。AST レルムのトークンは issuer 不一致で本レルムの検証を通らないため、KB 書き込みは本レルムのクライアントで行う。本番シークレットは config（Vault/Secrets）から供給し、この dev export の値は使わない。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "secret": "ai-stock-trading-kb-writer-dev-secret-change-me",
+      "redirectUris": [],
+      "webOrigins": [],
+      "defaultClientScopes": [
+        "roles"
+      ]
     }
   ],
   "users": [
@@ -272,6 +289,12 @@
       "groups": ["/clearance/restricted", "/department/engineering"],
       "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "trading-owner"],
       "credentials": [{ "type": "password", "value": "developer", "temporary": false }]
+    },
+    {
+      "username": "service-account-ai-stock-trading-kb-writer",
+      "enabled": true,
+      "serviceAccountClientId": "ai-stock-trading-kb-writer",
+      "realmRoles": ["platform-operator"]
     }
   ]
 }
