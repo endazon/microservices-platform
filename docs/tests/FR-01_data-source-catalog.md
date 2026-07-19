@@ -1,13 +1,13 @@
 ---
 title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
-status: in-progress
+status: implemented
 related_ids:
   - FR-01
   - UC-04
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-07-19
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -27,7 +27,8 @@ plan_refs:
 
 - 対象: `DataSourceService` のデータソース CRUD（`/datasources`）、手動同期トリガ（`POST /datasources/{id}/sync`）、同期時の `RawDocumentFetched` 発行。
 - 対象: 登録エンティティのライフサイクル（`DataSource.Create` / `RecordSync` / 既定 `Status=active`）。
-- 対象外: 実コネクタ（FTP/Confluence/DB/SaaS API）による原本取得、pandoc 実変換、Markdown 実取得（現状スタブ）。
+- 対象: filesystem/wiki/saas/db 各コネクタの列挙・取得・増分・縮退（単体・fake HTTP／ADO.NET。T-05〜T-25。#195/#217/#218/#219）。
+- 対象外: 製品固有アダプタ（Confluence/Salesforce/Notion 等）と実 API/コンテナ統合、実オブジェクトストレージ（ADR-0014 製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end。
 - 対象外: 正規化文書→カタログ登録の連鎖（`DocumentService` の `DocumentNormalizedConsumer` 側で検証）、ABAC による権限外文書の非表示（AuthorizationService 側）、負荷/p95。
 
 ## テスト観点
@@ -50,7 +51,7 @@ plan_refs:
 | T-07 | 列挙済み対象 | `FetchAsync` | 原本バイト列と content-type を返す | 原本取得（#195） | 自動（単体） |
 | T-08 | ルート未存在／smb:// で rootPath 未指定 | `DiscoverAsync` | 例外にせず空列挙で縮退 | 縮退（#195） | 自動（単体） |
 | T-09 | filesystem データソース＋一時 dir に実ファイル | `POST /{id}/sync` | 202・実 `OriginalPath`/`ContentType`・既定属性（confidentiality）付き `RawDocumentFetched` 発行 | 実同期・属性 Map（#195/FR-05） | 自動（エンドポイント） |
-| T-10 | 未対応 SourceType（saas 等・コネクタ未実装） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未対応型の縮退（#195） | 自動（エンドポイント） |
+| T-10 | 未登録 SourceType（架空種別 `unknown-source`。filesystem/wiki/saas/db は登録済みのため恒久的に未登録の値を用いる） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未登録型の縮退（#195） | 自動（エンドポイント） |
 | T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分（#217/IADR-0053） | 自動（単体・fake HTTP） |
 | T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得（#217） | 自動（単体・fake HTTP） |
 | T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動（#217） | 自動（単体・fake HTTP） |
@@ -94,4 +95,4 @@ plan_refs:
 
 - 存在しないデータソースへの同期（404）・無効化（`DELETE /datasources/{id}` → `disabled`）のケースは実装済みだが統合テスト未整備。
 - 正規化文書→カタログ登録の end-to-end 検証は `DocumentService` の統合テスト（`DocumentNormalizedSyncTests`）で担保。
-- 実コネクタ・実変換・同期ジョブ進捗管理、負荷試験による p95 レイテンシは後続タスク。
+- 実オブジェクトストレージ（ADR-0014 製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end 検証、製品固有アダプタの実 API 統合、同期ジョブ進捗管理、負荷試験による p95 レイテンシは後続タスク。
