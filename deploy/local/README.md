@@ -90,15 +90,56 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 
 > ロール別の挙動差分（権限分離）を確認したい場合は `developer` ではなく `poc-*` を使うこと。
 
+## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）
+
+> 起点: [IADR-0076](../../docs/adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) /
+> 作業仕様書 [`docs/specs/20260719_issue-284-live-integration-wiring.md`](../../docs/specs/20260719_issue-284-live-integration-wiring.md)
+
+### AST 3 サービスの有効化（自動）
+
+`values-local.yaml` は AST の 3 画面系サービス（`configuration` / `risk-management` / `market-monitor`）を
+**経路B で自動有効化**する（本番像 `values.yaml` は fail-safe の disabled のまま不変）。接続情報は
+`values-local` の `extraEnv` が注入する（DB は経路B postgres の owner=ai に合わせ `ai/ai`、RabbitMQ は `guest/guest`）。
+イメージは `k8s-local-images.sh` が MAPPING から 3 サービスとも build/import する。BFF の `/bff/assumptions`・
+`/bff/risk-controls/*`・`/bff/monitor/*` はこれらへプロキシする（#283/#287/#288）。
+
+### エッジ /bff/* ルーティング
+
+本番像は Istio `Gateway`/`VirtualService`（`edge.*`、`templates/edge.yaml`）で外部の `/bff/*` を `bff-service` へ
+通す。経路B は Istio を導入しないため `values-local` で `edge.enabled=false`。経路B で `/bff/*` に到達するには
+BFF を直接 port-forward する:
+
+```bash
+kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
+#   → http://localhost:5080/bff/...   （認証必須。匿名は 401）
+```
+
+### ブラウザ OIDC の issuer 統一（原則と 2 手順）
+
+**原則**: ブラウザが受け取る token の `iss` と、サービス側の検証基準（`Auth__Authority`）が **同一 URL** で
+なければならない。issuer は in-cluster 正準名 `http://keycloak:8080` に固定している（サービス間 JWT 用）。
+
+- **手順A（推奨・realm/manifest 無改変）**: ブラウザに同じ in-cluster 名を解決させる。
+  1. hosts に `127.0.0.1 keycloak` を追記（Windows: `C:\Windows\System32\drivers\etc\hosts`）。
+  2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
+  3. これで browser も cluster も `http://keycloak:8080` を issuer として共有する。SPA は compose の frontend
+     （`http://localhost:3100`・既存 `spa-web` origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
+     （`http://localhost:5080`）へ、`OIDC_AUTHORITY` を `http://keycloak:8080/realms/microservices-platform` へ向ける。
+  4. token 検証: 取得した access_token を base64url デコードし `iss` と `realm_access.roles`（`trading-owner`）を確認する。
+- **手順B（単一エッジ host に集約する場合・任意）**: chart の `edge.oidc.enabled=true` で SPA/`/bff`/`/realms` を
+  同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
+  `spa-web` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
+  同 host を解決させる（CoreDNS 追記 or backend の metadata/issuer 分離）。(iii) は稼働環境依存＝live。
+
+> 実ブラウザログイン end-to-end・Playwright E2E・Pod 実起動ヘルス緑は稼働 k3d 依存（本 issue の live 分・#284）。
+
 ## 既知の制約
 
-- **サービス間 JWT は成立、ブラウザ OIDC は要追加設定**: Keycloak issuer を in-cluster 正準名
-  `http://keycloak:8080`（chart の `Auth__Authority` と一致）に固定している。ブラウザからの OIDC ログイン
-  （Wiki.js 等）を使う場合は hostname/ingress を別途調整する（#121 の検証には不要）。
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化なし**: infra は emptyDir（Pod 再起動で再 init）。dev 用途の割り切り。
-- **Istio/mTLS/NetworkPolicy/HPA は無効**（values-local）。本番像（STRICT mTLS 等）は不変。
+- **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
+  エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
 
 ## 手動でステップ実行する場合
 
