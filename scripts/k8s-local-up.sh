@@ -96,6 +96,39 @@ helm upgrade --install msp deploy/helm/microservices-platform \
 echo "==> [7/7] ExternalName aliases (素のサービス名 -> platform-infra FQDN)"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 
+# ADR-0006, IADR-0077 (AST #24): opt-in オーバーレイ（既定オフ・fail-safe）。
+# 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
+if [ "${OBSERVABILITY:-}" = "1" ]; then
+  echo "==> [opt-in] observability stack (Prometheus/Loki/Tempo/Grafana)"
+  kubectl apply -k deploy/local/observability
+  # otel-collector を forwarding 構成（debug-only から切替）へ反映。
+  kubectl -n "$INFRA_NS" rollout restart deploy/otel-collector
+  echo "    Grafana: kubectl -n $INFRA_NS port-forward svc/grafana 3000:3000  # http://localhost:3000"
+fi
+
+if [ "${VAULT:-}" = "1" ]; then
+  echo "==> [opt-in] Vault dev + ClusterSecretStore (要 External Secrets Operator CRD)"
+  # dev root トークン（dev 既定 or env 上書き・平文は Git に載せない）。
+  apply_secret "$INFRA_NS" vault-dev-token "token=${VAULT_DEV_ROOT_TOKEN:-devroot}"
+  if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
+    kubectl apply -k deploy/local/vault
+  else
+    echo "    WARN: external-secrets.io CRD 未導入のため ClusterSecretStore/Vault は skip。" >&2
+    echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用:" >&2
+    kubectl apply -f deploy/local/vault/vault-dev.yaml
+  fi
+fi
+
+if [ "${ARGOCD:-}" = "1" ]; then
+  echo "==> [opt-in] ArgoCD bootstrap (手順は deploy/local/argocd/README.md)"
+  kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
+  if [ -d src/ai-stock-trading/deploy/argocd ]; then
+    kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
+  fi
+fi
+
 echo ""
 echo "done. 状態確認:"
 echo "  kubectl get pods -A"

@@ -1,0 +1,15 @@
+# ADR-0006, IADR-0077 (AST #24): 経路B の可観測性バックエンド（opt-in オーバーレイ）。
+# ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（fail-safe）。
+# 適用（opt-in）: kubectl apply -k deploy/local/observability
+#   → その後 otel-collector を forwarding 構成へ更新するため rollout restart:
+#     kubectl -n platform-infra rollout restart deploy/otel-collector
+# （k8s-local-up.sh の OBSERVABILITY=1 が上記を実施する）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - prometheus.yaml
+  - loki.yaml
+  - tempo.yaml
+  - grafana.yaml
+  - otel-collector-forward.yaml

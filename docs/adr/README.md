@@ -96,6 +96,7 @@
 | IADR-0074 | データソース定期同期は Helm の専用 dataSourceSync ブロックで配線し、本番有効・経路B(ローカル k8s)で検証する | Accepted |
 | IADR-0075 | AST の KB 書き込みは microservices-platform レルムの専用 confidential client（service-account に platform-operator）で受ける（AST #18・基盤無改修・最小権限・追加のみ） | Accepted |
 | IADR-0076 | エッジ /bff/* は Helm の edge ブロック（Istio Gateway/VirtualService・rewrite 無し）で templating し、経路B は values-local で無効化。ブラウザ OIDC issuer は browser/cluster の URL 一致原則（手順A 主・edge.oidc 機構）で統一する | Accepted |
+| IADR-0077 | 経路B の可観測性スタック（Prometheus/Loki/Tempo/Grafana）・Vault dev・GitOps(ArgoCD) は deploy/local の opt-in オーバーレイ＋k8s-local-up.sh の env ゲートで追加のみ配線し、既定は現状不変（外部送信なし・平文秘密なし・fail-safe）。Hetzner 実 stand-up は Tier 3（AST #24） | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
