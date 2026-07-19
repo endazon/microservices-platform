@@ -32,12 +32,35 @@ public static class AuthExtensions
         var authority = config["Auth:Authority"]
             ?? "http://keycloak:8080/realms/microservices-platform";
 
+        // NFR(運用性/セキュリティ), ADR-0004, IADR-0076 手順B, IADR-0086: OIDC metadata の取得先と issuer 検証値を
+        // 分離できるようにする（単一エッジ host OIDC を CoreDNS/hosts 改変なしに成立させる）。既定（両キー未設定）は
+        // Authority 一本の現行挙動に縮退＝後方互換・fail-safe。issuer 検証は弱めない（下記参照）。
+        var metadataAddress = config["Auth:MetadataAddress"];
+        var validIssuers = ParseValidIssuers(config["Auth:ValidIssuers"]);
+
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                options.Authority = authority;
+                // IADR-0086 決定1: MetadataAddress 設定時は in-cluster から到達できる well-known を metadata 取得先に
+                // 用い、Authority とは排他にする（両設定時の暗黙優先順位に依存しない）。未設定時は現行どおり Authority。
+                if (!string.IsNullOrWhiteSpace(metadataAddress))
+                {
+                    options.MetadataAddress = metadataAddress;
+                }
+                else
+                {
+                    options.Authority = authority;
+                }
                 options.RequireHttpsMetadata = false;
                 options.TokenValidationParameters.ValidateAudience = false;
+                // IADR-0086 決定3: issuer 検証は弱めない（ValidateIssuer=true のまま）。ValidIssuers は「token の iss として
+                // 追加で受理する発行元 URL の許可リスト」で、エッジ host issuer（手順B）を足す。JwtBearer ハンドラは
+                // metadata 由来の issuer を常に受理集合へ併合するため、in-cluster issuer（手順A）と併存＝後方互換。
+                // 署名鍵(JWKS)は信頼できる in-cluster metadata から取得するため、許可リスト追加で攻撃面は広がらない。
+                if (validIssuers.Length > 0)
+                {
+                    options.TokenValidationParameters.ValidIssuers = validIssuers;
+                }
                 // FR-09: RequireRole/IsInRole が参照するロールクレーム型を明示する。
                 // 実 Keycloak のレルムロールは realm_access.roles に格納され、標準ハンドラでは
                 // ClaimTypes.Role へ展開されないため、下記の IClaimsTransformation で補う。
@@ -67,5 +90,18 @@ public static class AuthExtensions
                     PlatformAuthPolicies.OperatorRole));
         });
         return services;
+    }
+
+    // IADR-0086 決定1: Auth:ValidIssuers を単一 env 文字列（chart から注入）としてカンマ/空白区切りでパースする。
+    // 空要素は落とし、各要素を trim する。未設定/空なら空配列（＝ValidIssuers を設定しない＝現行挙動）。
+    private static string[] ParseValidIssuers(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return [];
+        }
+        return raw
+            .Split([',', ' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToArray();
     }
 }
