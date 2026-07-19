@@ -87,7 +87,7 @@ plan_refs:
 
 - 他 DB プロバイダ（SQL Server/MySQL/Oracle 等）アダプタ・CDC・DB 側 WHERE による増分（効率化）。
 - 機微列のマスキング/除外方針、行→文書の粒度（複数行結合等）の高度化。
-- 実 PostgreSQL に対する統合テスト（参照専用ユーザー権限の実機確認・DockerFact）／Vault 連携。
+- 実 PostgreSQL に対する統合テスト（参照専用ユーザー権限の実機確認・DockerFact）／Vault 連携（参照専用資格情報の集中管理。**一元追跡: #310** — `docs/security/security.md` §データソースのコネクタ資格情報）。
 
 ## 関連
 
