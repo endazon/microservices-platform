@@ -1,0 +1,47 @@
+# ADR-0006, IADR-0077 (AST #24): Vault **dev モード**（opt-in・platform-infra）。
+# ⚠️ dev 専用（インメモリ・単一 Pod・unseal 不要）。**本番の Vault 化充足ではない**（本番は unseal/監査/HA/ローテーション）。
+# root トークンは平文で置かない: Secret `vault-dev-token`（k8s-local-up.sh が dev 既定 or env で作成）から注入する。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: platform-infra
+  labels: { app: vault }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: vault }
+  template:
+    metadata:
+      labels: { app: vault }
+    spec:
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.16
+          args: ["server", "-dev", "-dev-listen-address=0.0.0.0:8200"]
+          env:
+            # dev root トークン（平文コミットしない・Secret 経由）。
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              valueFrom:
+                secretKeyRef: { name: vault-dev-token, key: token }
+          ports:
+            - { containerPort: 8200, name: http }
+          # dev モードは IPC_LOCK なしでも起動する（インメモリ）。
+          securityContext:
+            capabilities:
+              add: ["IPC_LOCK"]
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: platform-infra
+  labels: { app: vault }
+spec:
+  selector: { app: vault }
+  ports:
+    - { name: http, port: 8200, targetPort: 8200 }

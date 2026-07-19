@@ -1,0 +1,76 @@
+# ADR-0006, IADR-0077 (AST #24): 経路B の Loki（opt-in・platform-infra）。config は compose（loki-config.yaml）と同内容を inline。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: platform-infra
+data:
+  config.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    common:
+      ring:
+        instance_addr: 127.0.0.1
+        kvstore:
+          store: inmemory
+      replication_factor: 1
+      path_prefix: /tmp/loki
+    schema_config:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /tmp/loki/index
+        cache_location: /tmp/loki/index_cache
+      filesystem:
+        directory: /tmp/loki/chunks
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: platform-infra
+  labels: { app: loki }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: loki }
+  template:
+    metadata:
+      labels: { app: loki }
+    spec:
+      containers:
+        - name: loki
+          image: grafana/loki:3.0.0
+          args: ["-config.file=/etc/loki/config.yaml"]
+          ports:
+            - { containerPort: 3100, name: http }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+              readOnly: true
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: platform-infra
+  labels: { app: loki }
+spec:
+  selector: { app: loki }
+  ports:
+    - { name: http, port: 3100, targetPort: 3100 }

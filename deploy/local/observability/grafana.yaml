@@ -1,0 +1,78 @@
+# ADR-0006, IADR-0077 (AST #24): 経路B の Grafana（opt-in・platform-infra）。
+# datasource は compose（deploy/grafana/provisioning/datasources/datasources.yaml）と同内容を inline。
+# ダッシュボードは UI から import する（MSP overview・AST overview=ai-stock-trading deploy/observability/dashboards）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: platform-infra
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        jsonData:
+          timeInterval: "15s"
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://tempo:3200
+        jsonData:
+          serviceMap:
+            datasourceUid: prometheus
+          nodeGraph:
+            enabled: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: platform-infra
+  labels: { app: grafana }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: grafana }
+  template:
+    metadata:
+      labels: { app: grafana }
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.0.0
+          # dev の匿名 Admin（compose と同じ）。**dev 専用**（本番は認証を有効化する）。
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Admin" }
+          ports:
+            - { containerPort: 3000, name: http }
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: platform-infra
+  labels: { app: grafana }
+spec:
+  selector: { app: grafana }
+  ports:
+    - { name: http, port: 3000, targetPort: 3000 }

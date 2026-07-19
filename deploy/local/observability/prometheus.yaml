@@ -1,0 +1,89 @@
+# ADR-0006, IADR-0077 (AST #24): 経路B（k8s）の Prometheus（opt-in・platform-infra）。
+# ⚠️ config は compose（deploy/prometheus.yml + deploy/prometheus/alerts.yml）と同内容を inline する
+#    （kustomize の root 外参照制約に従う。経路B の otel-collector.yaml と同じ方針＝二重管理を許容）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: platform-infra
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: []
+    scrape_configs:
+      - job_name: otel-collector
+        static_configs:
+          - targets: ['otel-collector:8888']
+  alerts.yml: |
+    groups:
+      - name: platform-availability
+        rules:
+          - alert: OtelCollectorDown
+            expr: up{job="otel-collector"} == 0
+            for: 2m
+            labels: { severity: critical }
+            annotations:
+              summary: "OTel Collector 到達不可（可観測性パイプライン断）"
+              description: "otel-collector の scrape が 2 分間失敗。収集が停止している可能性。"
+          - alert: HighHttp5xxRate
+            expr: |
+              sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
+              / sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) > 0.05
+            for: 5m
+            labels: { severity: critical }
+            annotations:
+              summary: "{{ $labels.service_name }} の 5xx 率が 5% 超"
+              description: "直近 5 分の 5xx 率が閾値超過（NFR 障害検出 5 分以内）。"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: prometheus }
+  template:
+    metadata:
+      labels: { app: prometheus }
+    spec:
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.52.0
+          # push（remote-write）モデル。collector が /api/v1/write へ送るため receiver を有効化する。
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--web.enable-remote-write-receiver"
+          ports:
+            - { containerPort: 9090, name: http }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  selector: { app: prometheus }
+  ports:
+    - { name: http, port: 9090, targetPort: 9090 }

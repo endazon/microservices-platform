@@ -1,0 +1,50 @@
+# ADR-0006, IADR-0077 (AST #24): opt-in 時のみ otel-collector を **forwarding 構成**へ差し替える。
+# 既定（deploy/local/infra のみ適用）は otel-collector.yaml の **debug exporter のみ**＝外部送信なし（fail-safe）。
+# 本 ConfigMap は同名（otel-collector-config・platform-infra）で、apply で上書きする。適用後は collector を
+# rollout restart すること（k8s-local-up.sh の OBSERVABILITY ゲートが実施）。config は compose の
+# deploy/otel-collector-config.yaml と同経路（prometheusremotewrite / otlp tempo / loki push）。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: platform-infra
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+    processors:
+      batch:
+        timeout: 5s
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+    exporters:
+      prometheusremotewrite:
+        endpoint: http://prometheus:9090/api/v1/write
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+      loki:
+        endpoint: http://loki:3100/loki/api/v1/push
+      debug:
+        verbosity: normal
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/tempo, debug]
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [prometheusremotewrite, debug]
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [loki, debug]
