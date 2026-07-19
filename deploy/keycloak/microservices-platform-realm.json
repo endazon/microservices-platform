@@ -222,14 +222,16 @@
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "http://localhost:3100/*"
+        "http://localhost:3100/*",
+        "http://localhost:8081/*"
       ],
       "webOrigins": [
-        "http://localhost:3100"
+        "http://localhost:3100",
+        "http://localhost:8081"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3100/*"
+        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*"
       },
       "defaultClientScopes": [
         "profile",
