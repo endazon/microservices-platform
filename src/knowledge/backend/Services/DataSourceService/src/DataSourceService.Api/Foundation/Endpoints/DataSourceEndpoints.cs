@@ -42,7 +42,8 @@ public static class DataSourceEndpoints
 
         // FR-01, UC-04: 手動同期トリガー（IADR-0051）。実コネクタ経由で原本を取得・格納し
         // RawDocumentFetched を発行する。既定 ABAC 属性（機密区分・IADR-0019）は同期サービスが Map で付与する。
-        // 未対応 SourceType（wiki/saas/db）はコネクタ未実装のため縮退（連携件数 0・5xx にしない）。
+        // filesystem/wiki/saas/db コネクタは実装・DI 登録済み（#195/#217/#218/#219）。未登録の SourceType は
+        // 縮退（連携件数 0・5xx にしない）。新規コネクタはプラグイン（DI 登録）追加のみで対応する（IADR-0051）。
         g.MapPost("/{id:guid}/sync", async (Guid id, DataSourceDbContext db,
             DataSourceSyncService sync) =>
         {

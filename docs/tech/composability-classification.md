@@ -75,7 +75,7 @@ FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定
 | `IDiagramCoder` | Conversion | LlmGatewayDiagramCoder | LlmGateway 経由 | DI 登録 |
 | `IWikiJsClient` | Wiki | WikiJsGraphQlClient | Wiki.js（GraphQL, IADR-0021） | DI 登録 |
 | `IChunkingService` | Ingestion | MarkdownChunkingService | —（内部戦略） | DI 登録 |
-| データソースコネクタ | — | **未実装**（DataSourceService は登録メタのみ） | ファイルサーバー等 | 後続（09_datasource-connectors） |
+| `IDataSourceConnector` | DataSource | FileSystemConnector / WikiConnector / SaaSConnector / DatabaseConnector（`ConnectorRegistry` が SourceType で解決） | ファイルサーバー / Wiki / SaaS / 業務DB | DI 登録（#195/#217/#218/#219・IADR-0051/0053/0054/0055。未登録型は縮退） |
 
 - ポートを迂回した外部コンポーネント直接依存: **なし**（Qdrant SDK・S3 SDK・Wiki.js GraphQL・Anthropic SDK・pandoc の
   使用箇所は全て上記ポート実装内に閉じている。棚卸しで確認）。
@@ -89,7 +89,7 @@ FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定
 | Bff | 集約エンドポイント（同期経路） | — |
 | AuthorizationService | ABAC 評価・属性/ポリシー管理・DB | — |
 | DocumentService | 文書カタログ・版管理・API・DB | DocumentNormalizedConsumer（段） |
-| DataSourceService | データソース登録 API・DB | （将来: コネクタ） |
+| DataSourceService | データソース登録 API・DB | コネクタ（filesystem/wiki/saas/db）・同期オーケストレータ |
 | ConversionService | 正規化サービス（正規化形式＝固定）・冪等 ID・ポート | 変換段・Pandoc/LLM図/ストレージ各アダプタ |
 | IngestionService | チャンク ID 規約・ポート | 取り込み段・埋め込み/Qdrant/ストレージ/チャンク各アダプタ |
 | RetrievalService | ハイブリッド検索・検索 API・ポート | Qdrant/InMemory/埋め込み各アダプタ |

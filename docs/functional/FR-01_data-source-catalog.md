@@ -1,13 +1,13 @@
 ---
 title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
-status: in-progress
+status: implemented
 related_ids:
   - FR-01
   - UC-04
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-07-19
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01)"
   - "../../planning/projects/microservices-platform/03_usecases/ (UC-04)"
@@ -67,7 +67,7 @@ flowchart TB
 6. `WikiService` が `DocumentUpdated` を購読し Wiki ページへ同期。
 7. `RetrievalService` の `POST /search` がベクトル検索＋ABAC 属性フィルタで横断検索結果を返す。
 
-## 実装状況（2026-06-27 時点）
+## 実装状況（2026-07-19 時点）
 
 | 区間 | 状態 | 備考 |
 | --- | --- | --- |
@@ -75,10 +75,10 @@ flowchart TB
 | 同期トリガ（`/sync`） | ✅ **実コネクタ経由（filesystem / wiki / saas / db）** | IADR-0051・#195（filesystem）／IADR-0053・#217（Wiki＝汎用 REST 契約）／IADR-0054・#218（SaaS＝汎用契約＋カーソルページング＋429 バックオフ）／IADR-0055・#219（業務DB＝参照専用 SQL・行→文書化）。実データを列挙・取得しストレージ格納＋実メタ付き `RawDocumentFetched` を発行。 |
 | 定期同期（スケジューラ） | ✅ **HostedService（既定無効）** | `DataSourceSyncHostedService`（`DataSourceSync:Enabled`）。UC-04 基本フロー。 |
 | 接続失敗の継続アラート | ✅ **インメモリ追跡** | 連続失敗閾値超過で構造化アラートログ（UC-04 例外フロー）。DB 永続化は follow-up。 |
-| 変換（pandoc） | ⚠️ スタブ | 変換ロジックの実体は後続。 |
-| **正規化文書→カタログ登録** | ✅ **本 PR で実装** | `DocumentNormalizedConsumer` を新設。 |
+| 変換（pandoc） | ✅ **実装済（pandoc 実変換・`--extract-media` 図抽出）** | `PandocConversionService`。pandoc 未導入／原本がローカル解決不能（実オブジェクトストレージ未接続・ADR-0014）の dev 環境ではプレースホルダ本文へグレースフルデグレード。 |
+| **正規化文書→カタログ登録** | ✅ 実装済 | `DocumentNormalizedConsumer`。 |
 | カタログ CRUD | ✅ 実装済 | DocumentService |
-| チャンク化・埋め込み・Qdrant | ✅ 実装済 | IngestionService（Markdown 取得はスタブ） |
+| チャンク化・埋め込み・Qdrant | ✅ 実装済 | IngestionService（Markdown 本文は `StorageDocumentContentReader` が取得。実オブジェクトストレージ未接続時はプレースホルダへデグレード） |
 | 検索＋ABAC フィルタ | ✅ 実装済 | RetrievalService（結果の属性復元に既知欠陥） |
 
 ## 未決事項 / 後続タスク
@@ -90,8 +90,9 @@ flowchart TB
   実 API/コンテナ統合テストは follow-up。
 - 実 filesystem 同期の対象ファイル共有（SMB/NFS）マウント手順（PVC）と、増分 watermark のスキャン開始時刻厳密化。
 - 接続失敗状態・最終エラーの DB 永続化（SC-06 データソース管理 UI での可視化）。
-- Vault 連携（接続情報の集中管理）。現状は `Config` からの取得に留める。
-- pandoc 実変換・Markdown 実取得。
+- Vault 連携（接続情報の集中管理）。現状は `Config` からの取得（DB 平文保存・API 応答はマスク）に留める。Vault / External Secrets 移行は **#310** で一元追跡する。
+- 実オブジェクトストレージ（ADR-0014・製品未確定）クライアントの接続。pandoc 実変換（`PandocConversionService`）・
+  Markdown 本文取得（`StorageDocumentContentReader`）は実装済みだが、実ストレージ未接続時（`file://` 以外）はプレースホルダへデグレードする。
 - 同期ジョブの進捗・状態管理。
 - 検索結果への属性・タグ復元（`QdrantVectorStore`）。
 - 出典（出自データソース）の永続化と検索結果への整形表示。

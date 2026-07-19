@@ -36,7 +36,8 @@ public sealed class DataSourceSyncService(
         var connector = registry.Resolve(source.SourceType);
         if (connector is null)
         {
-            // 未対応 SourceType（wiki/saas/db 等）は 5xx にせず縮退。子 issue で順次コネクタを追加する。
+            // filesystem/wiki/saas/db は実装・DI 登録済み（#195/#217/#218/#219）。未登録の SourceType は
+            // 5xx にせず縮退する。新規コネクタはプラグイン（DI 登録）追加のみで対応する（IADR-0051）。
             logger.LogInformation(
                 "SourceType '{Type}' のコネクタは未実装のため同期をスキップします（source {Id}）",
                 source.SourceType, source.Id);

@@ -54,8 +54,10 @@ paths:
       summary: "FR-03: ベクトル検索（BFF 集約）"
       description: |
         Issue #118 監査: 実装パスは `/bff/search`（旧記載 `/search` は誤り）。
-        現状は空結果を返すスタブ（フロントエンド着手フェーズで AiAnalysisService/RetrievalService へ委譲予定）。
-        検索の実体は RetrievalService の `/search`（内部 API・IADR-0017）が担う。
+        ABAC 許可スコープをサーバ側で解決（AuthorizationService・FR-05）し、解決済みスコープで
+        RetrievalService の `/search`（内部 API・IADR-0017）へ委譲する本実装（`SearchBffEndpoints`）。
+        クライアント指定の Scope は信頼しない（権限昇格の防止）。deny-by-default: 許可ポリシーが無い／
+        認可サービス不調／検索サービス不調は空応答へ縮退し、権限外の存在を示さない（IADR-0009 と整合）。
       operationId: bff-search
       requestBody:
         required: true

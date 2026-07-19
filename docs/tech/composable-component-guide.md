@@ -123,13 +123,16 @@ related_specs:
 3. 呼び出し側サービスは変更しない（各サービスは `IEmbeddingService` / `IDiagramCoder` 等の
    ポート経由で LlmGateway を利用しており、プロバイダ追加の影響は LlmGateway 内に閉じる）。
 
-### 2.4 データソースコネクタ（Connector）— 予約・未実装
+### 2.4 データソースコネクタ（Connector）— 実装済み（プラグイン拡張点）
 
-配置予約: `DataSourceService` の `Composable/Connectors/`。計画は
-`06_technical/09_datasource-connectors.md`。現状 DataSourceService は登録・カタログ管理・同期トリガ
-API までで、`/sync` はダミー文書を発行するスタブであり、実コネクタ・定期同期は未実装（追跡:
-issue #195、[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and-nfr-verification-status.md)）。
-**着手時は作業仕様書＋（共通コネクタ抽象を新設するなら）IADR を先に作成する**こと。
+配置: `DataSourceService` の `Composable/Adapters/`（ポートは `Foundation/Ports/IDataSourceConnector`）。計画は
+`06_technical/09_datasource-connectors.md`。`/sync` は実コネクタ経由で原本を取得・格納し `RawDocumentFetched`
+を発行する（IADR-0051）。`filesystem`（#195/IADR-0051）・`wiki`（#217/IADR-0053）・`saas`（#218/IADR-0054）・
+`db`（#219/IADR-0055）の 4 コネクタが実装済みで、`DataSourceService.Api/Program.cs` に DI 登録される
+（`ConnectorRegistry` が `SourceType` で解決。未登録の SourceType は縮退）。定期同期は `DataSourceSyncHostedService`
+（既定無効）。**新規コネクタは `IDataSourceConnector` を実装して DI 登録するだけ**でコア改修なく追加できる
+（[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and-nfr-verification-status.md) の当時状況から進捗）。
+**着手時は作業仕様書＋（設計判断があれば）IADR を先に作成する**こと。
 
 ### 2.5 新サービスユニットの追加
 
