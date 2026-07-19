@@ -89,6 +89,14 @@ services:
       KC_HOSTNAME_URL: http://localhost:8080
       # Issue #118 監査: /health/ready は既定で無効のため有効化する（下記 healthcheck が参照）。
       KC_HEALTH_ENABLED: "true"
+      # Issue #282, IADR-0079: 共有 Postgres を外部 DB として利用し、runtime state（ユーザー・
+      # シークレット・セッション等）を永続化する。start-dev を維持したまま KC_DB で H2 を上書きする。
+      # DB は create-multiple-dbs.sh が作成する `keycloak`（所有者 kp）。wiki-js と同じ kp/kp を流用。
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres
+      KC_DB_URL_DATABASE: keycloak
+      KC_DB_USERNAME: kp
+      KC_DB_PASSWORD: kp
     volumes:
       - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/microservices-platform-realm.json:ro
     ports:
@@ -101,6 +109,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    # Issue #282, IADR-0079: 外部 DB 化に伴い、Postgres 準備完了後に起動する（wiki-js と同型）。
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   qdrant:
     image: qdrant/qdrant:v1.9.2
@@ -167,16 +179,25 @@ services:
   loki:
     image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/config.yaml"]
+    # Issue #282, IADR-0079: 空の名前付きボリュームは root 所有で生成されるため、非 root イメージ
+    # （uid 10001）でも storage パス配下に index/chunks を作成できるよう root 実行にする（image-user 非依存）。
+    user: "0:0"
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml:ro
+      # Issue #282, IADR-0079: loki-config.yaml の path_prefix(/tmp/loki) と整合させて永続化する。
+      - loki-data:/tmp/loki
     ports:
       - "3100:3100"
 
   tempo:
     image: grafana/tempo:2.5.0
     command: ["-config.file=/etc/tempo/config.yaml"]
+    # Issue #282, IADR-0079: loki と同理由。空の名前付きボリューム（root 所有）へ blocks/wal を書けるよう root 実行。
+    user: "0:0"
     volumes:
       - ./tempo.yaml:/etc/tempo/config.yaml:ro
+      # Issue #282, IADR-0079: tempo.yaml の storage local.path(/tmp/tempo/blocks)・wal.path(/tmp/tempo/wal) の親と整合。
+      - tempo-data:/tmp/tempo
     ports:
       - "3200:3200"
       - "4327:4317"
@@ -596,3 +617,6 @@ volumes:
   minio-data:
   prometheus-data:
   grafana-data:
+  # Issue #282, IADR-0079: 可観測性スタックの永続化（prometheus/grafana と対称化）。
+  loki-data:
+  tempo-data:

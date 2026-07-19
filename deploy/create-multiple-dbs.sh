@@ -24,6 +24,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE market_monitor_svc;
     -- FR-13, UC-07, IADR-0020: Wiki.js 専用 DB。Wiki.js が自スキーマを作成するため所有権を kp に付与する。
     CREATE DATABASE wikijs;
+    -- Issue #282, IADR-0079: Keycloak を共有 Postgres 外部 DB 化して runtime state を永続化する。compose の
+    -- keycloak が KC_DB_URL_DATABASE=keycloak / kp で接続し、自スキーマ（約90テーブル）を作成する。
+    CREATE DATABASE keycloak;
 
     CREATE USER kp WITH PASSWORD 'kp';
     -- PostgreSQL 15+ では GRANT ALL ON DATABASE だけではスキーマ public への CREATE 権限が
@@ -43,4 +46,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ALTER DATABASE risk_management_svc OWNER TO kp;
     ALTER DATABASE market_monitor_svc OWNER TO kp;
     ALTER DATABASE wikijs OWNER TO kp;
+    -- Issue #282, IADR-0079: keycloak DB 所有権を kp へ（Keycloak が public スキーマにテーブルを作成できるように）。
+    ALTER DATABASE keycloak OWNER TO kp;
 EOSQL
