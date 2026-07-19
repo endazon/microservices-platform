@@ -75,7 +75,7 @@ FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定
 | `IDiagramCoder` | Conversion | LlmGatewayDiagramCoder | LlmGateway 経由 | DI 登録 |
 | `IWikiJsClient` | Wiki | WikiJsGraphQlClient | Wiki.js（GraphQL, IADR-0021） | DI 登録 |
 | `IChunkingService` | Ingestion | MarkdownChunkingService | —（内部戦略） | DI 登録 |
-| データソースコネクタ | — | **未実装**（DataSourceService は登録メタのみ） | ファイルサーバー等 | 後続（09_datasource-connectors） |
+| `IDataSourceConnector` | DataSource | FileSystemConnector / WikiConnector / SaaSConnector / DatabaseConnector（`ConnectorRegistry` が SourceType で解決） | ファイルサーバー / Wiki / SaaS / 業務DB | DI 登録（#195/#217/#218/#219・IADR-0051/0053/0054/0055。未登録型は縮退） |
 
 - ポートを迂回した外部コンポーネント直接依存: **なし**（Qdrant SDK・S3 SDK・Wiki.js GraphQL・Anthropic SDK・pandoc の
   使用箇所は全て上記ポート実装内に閉じている。棚卸しで確認）。

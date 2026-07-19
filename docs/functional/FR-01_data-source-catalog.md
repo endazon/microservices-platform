@@ -90,7 +90,7 @@ flowchart TB
   実 API/コンテナ統合テストは follow-up。
 - 実 filesystem 同期の対象ファイル共有（SMB/NFS）マウント手順（PVC）と、増分 watermark のスキャン開始時刻厳密化。
 - 接続失敗状態・最終エラーの DB 永続化（SC-06 データソース管理 UI での可視化）。
-- Vault 連携（接続情報の集中管理）。現状は `Config` からの取得（DB 平文保存・API 応答はマスク）に留める（#301 で一元追跡）。
+- Vault 連携（接続情報の集中管理）。現状は `Config` からの取得（DB 平文保存・API 応答はマスク）に留める。**一元追跡: #310**（`docs/security/security.md` §データソースのコネクタ資格情報）。
 - 実オブジェクトストレージ（ADR-0014・製品未確定）クライアントの接続。pandoc 実変換（`PandocConversionService`）・
   Markdown 本文取得（`StorageDocumentContentReader`）は実装済みだが、実ストレージ未接続時（`file://` 以外）はプレースホルダへデグレードする。
 - 同期ジョブの進捗・状態管理。
