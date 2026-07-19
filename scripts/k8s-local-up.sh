@@ -33,11 +33,32 @@ fi
 export K8S_LOCAL_RUNTIME="$RUNTIME"
 echo "    runtime: $RUNTIME"
 if [ "$RUNTIME" = "k3d" ]; then
+  # IADR-0084 (#328): Headlamp/ブラウザ OIDC の実ログインには apiserver の OIDC 検証フラグが
+  # クラスタ作成時に必要（後付け不可）。opt-in（既定オフ・fail-safe）: HEADLAMP_OIDC_APISERVER は
+  # 未設定なら HEADLAMP の値に追従する（HEADLAMP=1 で live 経路一括有効化）。既定オフ時は下の
+  # cluster create 引数は現行とバイト等価（後方互換）。issuer は in-cluster 正準名（IADR-0076 手順A）、
+  # claim は #271 の ClusterRoleBinding（User=oidc:developer）に一致（username-claim/prefix）。
+  CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
+  if [ "${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}" = "1" ]; then
+    OIDC_ISSUER="${HEADLAMP_OIDC_ISSUER_URL:-http://keycloak:8080/realms/microservices-platform}"
+    OIDC_CLIENT="${HEADLAMP_OIDC_CLIENT_ID:-headlamp}"
+    echo "    [HEADLAMP OIDC] apiserver OIDC 検証フラグを付与（issuer=$OIDC_ISSUER client=$OIDC_CLIENT）"
+    CREATE_ARGS+=(
+      --k3s-arg "--kube-apiserver-arg=oidc-issuer-url=${OIDC_ISSUER}@server:0"
+      --k3s-arg "--kube-apiserver-arg=oidc-client-id=${OIDC_CLIENT}@server:0"
+      --k3s-arg "--kube-apiserver-arg=oidc-username-claim=preferred_username@server:0"
+      --k3s-arg "--kube-apiserver-arg=oidc-username-prefix=oidc:@server:0"
+    )
+  fi
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
-    k3d cluster create "$CLUSTER" --agents 1 \
-      -p "8080:80@loadbalancer" -p "8443:443@loadbalancer"
+    k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
   else
     echo "    cluster '$CLUSTER' exists — reuse"
+    if [ "${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}" = "1" ]; then
+      # apiserver 引数は作成時のみ有効＝既存クラスタには後付け不可。fail-safe: 破壊はせず再作成を促す。
+      echo "    WARN: 既存クラスタには apiserver OIDC フラグを後付けできません。Headlamp 実ログインには" >&2
+      echo "          'k3d cluster delete $CLUSTER' で削除→再実行し、OIDC フラグ付きで再作成してください。" >&2
+    fi
   fi
 else
   # Rancher Desktop: 内蔵 k3s を使う（Preferences → Kubernetes を有効化しておくこと）。
@@ -144,7 +165,9 @@ if [ "${HEADLAMP:-}" = "1" ]; then
     "client-secret=${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}"
   kubectl apply -k deploy/local/headlamp
   echo "    Headlamp: kubectl -n $INFRA_NS port-forward svc/headlamp 4466:80  # http://localhost:4466"
-  echo "    ブラウザ OIDC ログイン疎通は deploy/local/README.md の「Headlamp」手順（手順A＋apiserver OIDC フラグ）参照。"
+  # IADR-0084 (#328): apiserver OIDC 検証フラグは上の [1/7] で新規クラスタ作成時に自動付与される
+  # （HEADLAMP=1 追従）。既存クラスタ reuse 時は付かない（[1/7] の再作成 WARN 参照）。
+  echo "    ブラウザ OIDC ログイン疎通は deploy/local/README.md の「Headlamp」手順（手順A）参照。"
 fi
 
 echo ""
