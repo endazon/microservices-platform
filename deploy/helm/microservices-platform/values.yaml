@@ -44,7 +44,8 @@ edge:
   gateway:
     selector:
       istio: ingressgateway
-  # エッジで受ける外部ホスト（Host ヘッダ）と待受ポート。実運用は "*" を FQDN に絞る。
+  # エッジで受ける外部ホスト（Host ヘッダ）と待受ポート。実運用は "*" を FQDN に絞り、外部 TLS 終端
+  # （HTTPS: Gateway の tls server or 前段 LB/ingressgateway 証明書）を別途追加する（本 chart のスコープ外）。
   hosts:
     - "*"
   port: 80

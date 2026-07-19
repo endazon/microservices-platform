@@ -116,13 +116,15 @@ related_specs:
 
 ## 受け入れ基準（in-repo で検証）
 
-- [ ] `helm template`（既定）で `edge.enabled: true` の本番既定が Gateway/VirtualService を描画し、`/bff` を
+> 実施記録: 全項目を 2026-07-19 に `helm`（Rancher Desktop 同梱）・Node で実行確認済み（下記 `[x]`）。
+
+- [x] `helm template`（既定）で `edge.enabled: true` の本番既定が Gateway/VirtualService を描画し、`/bff` を
       `bff-service:8080` へ rewrite 無しでルーティングする。`edge.oidc.enabled=false` 既定では OIDC route を出さない。
-- [ ] `helm template -f values-local.yaml` で edge が描画されず（`edge.enabled: false`）、3 サービスの Deployment/Service が
+- [x] `helm template -f values-local.yaml` で edge が描画されず（`edge.enabled: false`）、3 サービスの Deployment/Service が
       描画され、各 env に正しい `ConnectionStrings`（ai/ai・正 DB 名）と RabbitMq（risk/market のみ）が載る。
-- [ ] `helm template` 既定（3 サービス disabled）で 3 サービスの Deployment/Service が **描画されない**（fail-safe 維持）。
-- [ ] `edge.oidc.enabled=true` 指定時のみ OIDC route（`/realms`・`/resources` → keycloak）が描画される。
-- [ ] 既存 Node 検査（`scripts.test.js`・`check-doc-links.js`・`check-image-mapping.js`）が緑（realm/compose/MAPPING 無変更）。
+- [x] `helm template` 既定（3 サービス disabled）で 3 サービスの Deployment/Service が **描画されない**（fail-safe 維持）。
+- [x] `edge.oidc.enabled=true` 指定時のみ OIDC route（`/realms`・`/resources` → keycloak）が描画される。
+- [x] 既存 Node 検査（`scripts.test.js`＝53 pass・`check-doc-links.js`＝破損 0・`check-image-mapping.js`＝drift 0）が緑（realm/compose/MAPPING 無変更）。`helm lint`（両 values）緑。
 
 ## live（稼働 k3d 依存・本 PR 対象外＝分離）
 

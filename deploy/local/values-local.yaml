@@ -49,7 +49,8 @@ services:
   # Issue #284, IADR-0076 (#283/#287/#288): AST の 3 画面系サービスを経路B で有効化する（本番像は fail-safe の
   # disabled のまま不変）。接続情報は AST の appsettings.json が持たず env 注入が必須で、deployment.yaml は
   # Auth__Authority/Otlp のみ自動注入するため、ConnectionStrings（全 3）と RabbitMq（risk/market）を extraEnv で
-  # 補う。資格情報は経路B postgres.yaml の owner=ai に合わせ ai/ai（postgres.yaml は無改変）。RabbitMQ は guest/guest。
+  # 補う。資格情報は経路B postgres.yaml の owner=ai に合わせ ai/ai（postgres.yaml は無改変）。RabbitMQ は guest/guest
+  # （k8s-local-up.sh 既定）。※ `RABBITMQ_PASSWORD` を上書きして up した場合は下記 amqp URL のパスワードも追随させること。
   # DB（configuration_svc/risk_management_svc/market_monitor_svc）・イメージ（MAPPING）・trading-owner realm・
   # trading-owner 付与済み developer は既存で充足。実 Pod 起動/ヘルス緑・OIDC 実ログイン・E2E は live（#284 手順）。
   configuration:

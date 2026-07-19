@@ -29,7 +29,9 @@ plan_refs:
 ## 起点・関連
 
 - 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点）／**FR-17**（AST 連携）／**UC-06**（全体前提条件の閲覧/変更）／**NFR**（エッジ集約・サービスメッシュ）
-- 関連 ADR: [[IADR-0017]]（外部入口は BFF に一本化・内部 API は無公開）／[[IADR-0066]]（ローカル k8s dev＝経路B）／
+- 関連 ADR: [[IADR-0017]]（外部入口は BFF に一本化・内部 API は無公開。※本文書は「ネットワーク分離を第一防御」の
+  暫定運用部分のみ [[IADR-0026]] に Superseded。**「外部入口を BFF へ一本化」の原則は現行でも有効**で、本 IADR はこの原則を
+  エッジ実装に落とす）／[[IADR-0026]]（mTLS で暫定運用を解消）／[[IADR-0066]]（ローカル k8s dev＝経路B）／
   [[IADR-0070]]・[[IADR-0071]]・[[IADR-0072]]（AST 3 サービスの deploy 登録・`/bff/*` pass-through の先行決定）
 - Issue: MSP #284（live 疎通トラッカ）／先行 #283(PR #285)・#287(PR #289)・#288(PR #294)
 - 作業仕様書: [`docs/specs/20260719_issue-284-live-integration-wiring.md`](../specs/20260719_issue-284-live-integration-wiring.md)
