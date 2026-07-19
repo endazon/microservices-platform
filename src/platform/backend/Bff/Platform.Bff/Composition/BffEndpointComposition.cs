@@ -40,7 +40,7 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapDataSourceBffEndpoints()),
-        // Issue #283/#286, FR-17, UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
+        // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
         // Issue #287/#286, FR-14, IADR-0071/0073: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 集約
