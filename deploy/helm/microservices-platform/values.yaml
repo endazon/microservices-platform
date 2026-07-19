@@ -35,6 +35,30 @@ mesh:
   # 実クラスタへの初回導入時は PERMISSIVE で移行を確認してから STRICT へ切り替える運用を推奨。
   mtlsMode: STRICT
 
+# Issue #284, IADR-0076 / ADR-0005 / IADR-0017: エッジ /bff/* ルーティング（Istio Gateway/VirtualService）。
+# 外部からの入口を BFF に一本化し、エッジ host の /bff/* を bff-service へ通す（rewrite 無し＝BFF は /bff プレフィックス前提）。
+# mesh(Istio) 前提のため本番は enabled。ローカル（経路B, Istio 未導入）は values-local が false で無効化する。
+edge:
+  enabled: true
+  # istioctl install 既定の ingressgateway。実運用のラベルに合わせて上書きする。
+  gateway:
+    selector:
+      istio: ingressgateway
+  # エッジで受ける外部ホスト（Host ヘッダ）と待受ポート。実運用は "*" を FQDN に絞る。
+  hosts:
+    - "*"
+  port: 80
+  # /bff/* の転送先（Service 名とポート）。既定は本チャートの bff-service:8080。
+  bff:
+    service: bff-service
+    port: 8080
+  # ブラウザ OIDC issuer 統一の任意機構（既定 off）。有効化すると同一エッジ host の /realms・/resources を
+  # Keycloak へ通し、ブラウザとサービス間で同一 issuer URL を共有できる（別ホスト運用時は不要。IADR-0076 決定3）。
+  oidc:
+    enabled: false
+    host: keycloak
+    port: 8080
+
 # IADR-0017 フォローアップ: ClusterIP + NetworkPolicy（デフォルト拒否）を実体化。
 # mesh(mTLS) 配下でも多層防御（defense-in-depth）として維持する（IADR-0026）。
 networkPolicy:

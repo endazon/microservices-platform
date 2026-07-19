@@ -20,6 +20,12 @@ namespace:
 mesh:
   enabled: false
 
+# Issue #284, IADR-0076: エッジ /bff/* ルーティングは Istio Gateway/VirtualService 前提。ローカル（経路B）は
+# Istio を導入しないため無効化する（本番像 values.yaml は enabled のまま不変）。経路B のエッジ疎通は
+# deploy/local/README.md「エッジ経路（/bff・ブラウザ OIDC）」の手順（port-forward / Traefik）に委ねる。
+edge:
+  enabled: false
+
 # metrics-server 依存の HPA と NetworkPolicy を dev では無効化（本番像は不変）。
 networkPolicy:
   enabled: false
@@ -39,6 +45,36 @@ services:
     dataSourceSync:
       enabled: true
       intervalSeconds: 60
+
+  # Issue #284, IADR-0076 (#283/#287/#288): AST の 3 画面系サービスを経路B で有効化する（本番像は fail-safe の
+  # disabled のまま不変）。接続情報は AST の appsettings.json が持たず env 注入が必須で、deployment.yaml は
+  # Auth__Authority/Otlp のみ自動注入するため、ConnectionStrings（全 3）と RabbitMq（risk/market）を extraEnv で
+  # 補う。資格情報は経路B postgres.yaml の owner=ai に合わせ ai/ai（postgres.yaml は無改変）。RabbitMQ は guest/guest。
+  # DB（configuration_svc/risk_management_svc/market_monitor_svc）・イメージ（MAPPING）・trading-owner realm・
+  # trading-owner 付与済み developer は既存で充足。実 Pod 起動/ヘルス緑・OIDC 実ログイン・E2E は live（#284 手順）。
+  configuration:
+    enabled: true
+    extraEnv:
+      - name: ConnectionStrings__DefaultConnection
+        value: "Host=postgres;Port=5432;Database=configuration_svc;Username=ai;Password=ai"
+
+  risk-management:
+    enabled: true
+    extraEnv:
+      - name: ConnectionStrings__DefaultConnection
+        value: "Host=postgres;Port=5432;Database=risk_management_svc;Username=ai;Password=ai"
+      # RiskManagementService は MassTransit（RabbitMQ）を使う（compose の *rabbit-env と同値）。
+      - name: RabbitMq__ConnectionString
+        value: "amqp://guest:guest@rabbitmq:5672"
+
+  market-monitor:
+    enabled: true
+    extraEnv:
+      - name: ConnectionStrings__DefaultConnection
+        value: "Host=postgres;Port=5432;Database=market_monitor_svc;Username=ai;Password=ai"
+      # MarketMonitorService も MassTransit（RabbitMQ）を使う。
+      - name: RabbitMq__ConnectionString
+        value: "amqp://guest:guest@rabbitmq:5672"
 
   llmgateway:
     # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の

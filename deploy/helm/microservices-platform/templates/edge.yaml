@@ -1,0 +1,67 @@
+# Issue #284, IADR-0076 / ADR-0005 / IADR-0017: エッジ /bff/* ルーティング。
+# 外部からの入口を BFF に一本化する（IADR-0017）ため、Istio Gateway/VirtualService で
+# エッジ host の /bff/* を bff-service へ通す。BFF は /bff プレフィックスを剥がさず受ける契約のため
+# rewrite は張らない（フロント nginx の proxy_pass と同契約＝compose 経路とバイト等価）。
+#
+# mesh(Istio) 前提。ローカル（経路B, Istio 未導入）は values-local が edge.enabled=false で無効化し、
+# 別経路（README「エッジ経路」手順）へ委ねる。edge.enabled=false では何も描画しない（後方互換）。
+{{- if .Values.edge.enabled }}
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: microservices-platform-edge
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # istioctl install 既定の ingressgateway を選択（実運用のラベルに合わせて上書き可）。
+  selector:
+    {{- toYaml .Values.edge.gateway.selector | nindent 4 }}
+  servers:
+    - port:
+        number: {{ .Values.edge.port }}
+        name: http
+        protocol: HTTP
+      hosts:
+        {{- range .Values.edge.hosts }}
+        - {{ . | quote }}
+        {{- end }}
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: microservices-platform-edge
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  hosts:
+    {{- range .Values.edge.hosts }}
+    - {{ . | quote }}
+    {{- end }}
+  gateways:
+    - microservices-platform-edge
+  http:
+    {{- if .Values.edge.oidc.enabled }}
+    # ブラウザ OIDC issuer 統一（任意）: SPA と同一エッジ host から Keycloak の OIDC パスへ到達させ、
+    # ブラウザが受け取る iss とサービス間検証（Auth__Authority）を同一 URL にそろえる（IADR-0076 決定3）。
+    # /bff より先に評価させる（プレフィックスの取り違えを避ける）。
+    - match:
+        - uri: { prefix: /realms/ }
+        - uri: { prefix: /resources/ }
+      route:
+        - destination:
+            host: {{ .Values.edge.oidc.host | quote }}
+            port:
+              number: {{ .Values.edge.oidc.port }}
+    {{- end }}
+    # 外部からの /bff/* を BFF へ（rewrite 無し。BFF は /bff プレフィックス前提）。
+    - match:
+        - uri: { exact: /bff }
+        - uri: { prefix: /bff/ }
+      route:
+        - destination:
+            host: {{ .Values.edge.bff.service | quote }}
+            port:
+              number: {{ .Values.edge.bff.port }}
+{{- end }}
