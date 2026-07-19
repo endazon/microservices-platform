@@ -27,10 +27,7 @@ spec:
                 secretKeyRef: { name: vault-dev-token, key: token }
           ports:
             - { containerPort: 8200, name: http }
-          # dev モードは IPC_LOCK なしでも起動する（インメモリ）。
-          securityContext:
-            capabilities:
-              add: ["IPC_LOCK"]
+          # dev モードは mlock を無効化するため IPC_LOCK capability は不要（付与しない）。
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }

@@ -21,6 +21,8 @@ data:
       - job_name: otel-collector
         static_configs:
           - targets: ['otel-collector:8888']
+  # compose（deploy/prometheus/alerts.yml）と同一の全 5 ルールを inline する（follow-up の
+  # コメントアウト例＝exporter 依存は compose 同様に除く）。
   alerts.yml: |
     groups:
       - name: platform-availability
@@ -32,6 +34,17 @@ data:
             annotations:
               summary: "OTel Collector 到達不可（可観測性パイプライン断）"
               description: "otel-collector の scrape が 2 分間失敗。収集が停止している可能性。"
+          - alert: ServiceRequestMetricsAbsent
+            expr: |
+              sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) == 0
+              and on (service_name) (sum by (service_name) (http_server_duration_milliseconds_count offset 15m) > 0)
+            for: 5m
+            labels: { severity: warning }
+            annotations:
+              summary: "サービス {{ $labels.service_name }} のリクエストメトリクスが途絶"
+              description: "直近まで処理していたサービスの HTTP メトリクスが 5 分間ゼロ。ダウン/到達不可の可能性。"
+      - name: platform-slo
+        rules:
           - alert: HighHttp5xxRate
             expr: |
               sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
@@ -41,6 +54,22 @@ data:
             annotations:
               summary: "{{ $labels.service_name }} の 5xx 率が 5% 超"
               description: "直近 5 分の 5xx 率が閾値超過（NFR 障害検出 5 分以内）。"
+          - alert: SearchLatencyP95High
+            expr: |
+              histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.retrieval-service"}[5m]))) > 1500
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "検索 p95 が 1.5s 超"
+              description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+          - alert: RagLatencyP95High
+            expr: |
+              histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m]))) > 5000
+            for: 10m
+            labels: { severity: warning }
+            annotations:
+              summary: "RAG 応答 p95 が 5s 超"
+              description: "AiAnalysisService /analysis/ask の p95 が NFR 目標(5s)を 10 分継続で超過。"
 ---
 apiVersion: apps/v1
 kind: Deployment
