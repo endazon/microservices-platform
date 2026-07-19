@@ -41,6 +41,8 @@ spec:
             - name: http
               containerPort: {{ $e.containerPort }}
           # TEI の health エンドポイント（/health）。実イメージ差し替え時はここも合わせる。
+          # ⚠️ initialDelaySeconds は CPU 版プレースホルダ想定の値。GPU 版・大きめモデルではロード時間が伸びるため
+          # 実配備時にプローブ値を見直す（#336）。
           livenessProbe:
             httpGet:
               path: /health

@@ -72,13 +72,13 @@ frontend/edge・infra 永続化・realm。`values.yaml` は埋め込み該当ブ
 
 ## 受け入れ基準（#303 対応）
 
-- [ ] 案 A/B の判断が [[IADR-0085]] に記録される（**案 A インフラを opt-in 提供・既定は fail-closed 維持**）。
-- [ ] 案 A の配備物（Helm template＋compose service＋配線）が追加され、`helm template` が既定/有効化の双方で描画される。
-      **実モデル取得・有効化・nDCG@10 実測は稼働環境依存＝分離**（フォローアップ）。
-- [ ] Voyage ゼロ保持契約の認定状況が operations.md に記録枠として明記される。
-- [ ] 既定 `embedding.enabled:false` で `helm template` の llmgateway env が現状と byte 等価（後方互換）。
-- [ ] `node scripts/check-image-mapping.js`（#275）が緑（TEI は第三者 pull・build 無しで検査対象外）。
-- [ ] `helm lint` / `helm template`（default・`--set embedding.enabled=true`）が成功。
+- [x] 案 A/B の判断が [[IADR-0085]] に記録される（**案 A インフラを opt-in 提供・既定は fail-closed 維持**）。
+- [x] 案 A の配備物（Helm template＋compose service＋配線）が追加され、`helm template` が既定/有効化の双方で描画される。
+      **実モデル取得・有効化・nDCG@10 実測は稼働環境依存＝分離**（フォローアップ #336）。
+- [x] Voyage ゼロ保持契約の認定状況が operations.md に記録枠として明記される（現状=未認定・実認定は #336 で分離）。
+- [x] 既定 `embedding.enabled:false` で `helm template` の llmgateway env が現状と byte 等価（後方互換。`Embedding__SelfHosted__BaseUrl` 出現数 0 を確認）。
+- [x] `node scripts/check-image-mapping.js`（#275）が緑（TEI は第三者 pull・build 無しで検査対象外。ドリフト 0・自己試験 17 件 OK）。
+- [x] `helm lint` / `helm template`（default・`--set embedding.enabled=true`）が成功。
 
 ## 検証手順
 
