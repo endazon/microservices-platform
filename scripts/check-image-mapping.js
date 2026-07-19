@@ -10,8 +10,9 @@
  * k8s-local-images.sh の MAPPING は別のビルド対象リストで、両者のドリフトは検査されていなかった。
  * 本スクリプトは「対応表の整合」のみを見る（ビルド可否は images.yml が担う。IADR-0068 参照）。
  *
- * frontend は k8s チャート非デプロイの compose 専用ビルド対象のため COMPOSE_ONLY で明示除外し、
- * 除外リスト自体の腐り（対象消失・MAPPING への二重掲載）も検査する（IADR-0068）。
+ * compose 専用（k8s 非デプロイ）のビルド対象は COMPOSE_ONLY で明示除外でき、除外リスト自体の腐り
+ * （対象消失・MAPPING への二重掲載）も検査する（IADR-0068）。#313/IADR-0078 で frontend を k8s 化した
+ * ため現在 COMPOSE_ONLY は空。除外機構は将来の compose 専用対象に備えて残す。
  *
  * 使い方:
  *   node scripts/check-image-mapping.js             # 実ファイルを突合。ドリフトがあれば終了コード 1。
@@ -27,8 +28,11 @@ const SCRIPT_PATH = 'scripts/k8s-local-images.sh';
 // chart-image の接頭辞（deploy/helm/.../values.yaml・deploy/local/values-local.yaml と一致）。
 const IMAGE_PREFIX = 'microservices-platform';
 // k8s チャート非デプロイの compose 専用ビルド対象（IADR-0068）。値は compose のサービス名。
-// 将来 k8s に載せる場合はここから外し、MAPPING＋Helm values.services＋deployment を追加する。
-const COMPOSE_ONLY = ['frontend'];
+// 将来 k8s に載せる場合はここから外し、MAPPING＋Helm values＋deployment を追加する。
+// #313 / IADR-0078: frontend を k8s chart 配信（templates/frontend.yaml＋values の frontend ブロック＋
+// MAPPING）へ移行したため除外を解消した。現在 compose 専用の対象は無い（空）。除外機構自体は残す
+// （将来の compose 専用ツール等に備える）。自己試験は composeOnly を明示引数化して機構を検証する。
+const COMPOSE_ONLY = [];
 
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
@@ -379,7 +383,8 @@ function selfTest() {
     { service: 'frontend', dockerfile: 'src/platform/frontend/Dockerfile' },
   ];
   const okMapping = [{ image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' }];
-  expectCount('drift: 整合（frontend 除外）は違反 0', computeDrift({ mappingEntries: okMapping, composeTargets: okCompose }).length, 0);
+  // #313 / IADR-0078: 除外機構は production 既定（空の COMPOSE_ONLY）に依存せず composeOnly を明示して検証する。
+  expectCount('drift: 整合（compose 専用除外）は違反 0', computeDrift({ mappingEntries: okMapping, composeTargets: okCompose, composeOnly: ['frontend'] }).length, 0);
 
   // computeDrift: MAPPING 欠落。
   const missCompose = [
@@ -413,20 +418,22 @@ function selfTest() {
   });
   cases.push({ name: 'drift: chart-image の接頭辞違いを検出', pass: nameV.some((v) => v.kind === 'naming'), actual: nameV });
 
-  // computeDrift: 除外の二重掲載（frontend を MAPPING に載せた）。
+  // computeDrift: 除外の二重掲載（compose 専用サービスを MAPPING に載せた）。#313: composeOnly を明示。
   const dupV = computeDrift({
     mappingEntries: [
       { image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' },
       { image: 'microservices-platform/frontend', dockerfile: 'src/platform/frontend/Dockerfile' },
     ],
     composeTargets: okCompose,
+    composeOnly: ['frontend'],
   });
   cases.push({ name: 'drift: compose 専用除外の二重掲載を検出', pass: dupV.some((v) => v.kind === 'compose-only-in-mapping'), actual: dupV });
 
-  // computeDrift: 除外リストの腐り（除外対象が compose から消えた）。
+  // computeDrift: 除外リストの腐り（除外対象が compose から消えた）。#313: composeOnly を明示。
   const rotV = computeDrift({
     mappingEntries: okMapping,
     composeTargets: [{ service: 'document-service', dockerfile: 'src/a/Dockerfile' }], // frontend 無し
+    composeOnly: ['frontend'],
   });
   cases.push({ name: 'drift: 除外リストの腐り（対象消失）を検出', pass: rotV.some((v) => v.kind === 'compose-only-stale'), actual: rotV });
 

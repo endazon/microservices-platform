@@ -75,5 +75,34 @@ spec:
       ports:
         - protocol: TCP
           port: {{ .Values.edge.bff.port }}
+{{- /* Issue #313, IADR-0078: エッジ SPA ルート（edge.yaml の catch-all → frontend-service）も default-deny 下では
+       gateway→frontend-service の ingress が L3/L4 で塞がれる。allow-edge-ingress-to-bff と同型で、frontend
+       有効時のみ istio-system → frontend-service:port への ingress を明示許可する（必要最小の穴・多層防御は維持）。 */}}
+{{- if .Values.frontend.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-ingress-to-frontend
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # frontend Pod 宛のみに限定する。frontend.yaml の Pod ラベル app も edge.frontend.service を単一情報源に
+  # 描画するため、この podSelector と必ず一致する（knob 変更時のドリフト無し）。
+  podSelector:
+    matchLabels:
+      app: {{ .Values.edge.frontend.service }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.edge.gateway.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.edge.frontend.port }}
+{{- end }}
 {{- end }}
 {{- end }}

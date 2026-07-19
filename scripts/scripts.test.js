@@ -329,8 +329,9 @@ const IMG_OK_COMPOSE = [
 ];
 const IMG_OK_MAPPING = [{ image: 'microservices-platform/document-service', dockerfile: 'src/a/Dockerfile' }];
 
-ok('computeDrift: 整合（frontend は compose 専用除外）は違反 0', () => {
-  assert.strictEqual(computeDrift({ mappingEntries: IMG_OK_MAPPING, composeTargets: IMG_OK_COMPOSE }).length, 0);
+ok('computeDrift: 整合（compose 専用除外）は違反 0', () => {
+  // #313 / IADR-0078: 除外機構は production 既定（空の COMPOSE_ONLY）に依存せず composeOnly を明示して検証する。
+  assert.strictEqual(computeDrift({ mappingEntries: IMG_OK_MAPPING, composeTargets: IMG_OK_COMPOSE, composeOnly: ['frontend'] }).length, 0);
 });
 
 ok('computeDrift: 新サービスの MAPPING 欠落を検出', () => {
@@ -368,21 +369,25 @@ ok('computeDrift: chart-image の接頭辞違い（命名不整合）を検出',
   assert.ok(v.some((x) => x.kind === 'naming'));
 });
 
-ok('computeDrift: compose 専用除外（frontend）の MAPPING 二重掲載を検出', () => {
+ok('computeDrift: compose 専用除外の MAPPING 二重掲載を検出', () => {
+  // #313 / IADR-0078: composeOnly を明示して除外機構を検証（frontend は現在 k8s 化済み・MAPPING 掲載が正）。
   const v = computeDrift({
     mappingEntries: [
       ...IMG_OK_MAPPING,
       { image: 'microservices-platform/frontend', dockerfile: 'src/platform/frontend/Dockerfile' },
     ],
     composeTargets: IMG_OK_COMPOSE,
+    composeOnly: ['frontend'],
   });
   assert.ok(v.some((x) => x.kind === 'compose-only-in-mapping'));
 });
 
 ok('computeDrift: 除外リストの腐り（除外対象が compose から消失）を検出', () => {
+  // #313 / IADR-0078: composeOnly を明示して除外機構を検証する。
   const v = computeDrift({
     mappingEntries: IMG_OK_MAPPING,
     composeTargets: [{ service: 'document-service', dockerfile: 'src/a/Dockerfile' }],
+    composeOnly: ['frontend'],
   });
   assert.ok(v.some((x) => x.kind === 'compose-only-stale'));
 });

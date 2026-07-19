@@ -64,4 +64,18 @@ spec:
             host: {{ .Values.edge.bff.service | quote }}
             port:
               number: {{ .Values.edge.bff.port }}
+    {{- if .Values.frontend.enabled }}
+    # Issue #313, IADR-0078: SPA(frontend) の catch-all。/bff（と任意の /realms・/resources）を先に評価した後、
+    # 残る全パス（/・/settings・/assets/*・/config.js 等）を frontend の Service（edge.frontend.service）へ流す。
+    # Istio は先勝ちのため本ルートを末尾に置くことで API/OIDC パスと衝突しない。SPA の history fallback は
+    # frontend pod の nginx (try_files … /index.html) が担うため、エッジは非 /bff を frontend へ委譲するだけでよい。
+    # frontend.enabled=false では描画しない（後方互換。行き先の Service が無い状態でルートを張らない）。
+    - match:
+        - uri: { prefix: / }
+      route:
+        - destination:
+            host: {{ .Values.edge.frontend.service | quote }}
+            port:
+              number: {{ .Values.edge.frontend.port }}
+    {{- end }}
 {{- end }}

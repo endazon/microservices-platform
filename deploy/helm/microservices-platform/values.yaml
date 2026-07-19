@@ -56,6 +56,11 @@ edge:
   bff:
     service: bff-service
     port: 8080
+  # Issue #313, IADR-0078: SPA(frontend) の転送先。VirtualService の catch-all（/bff・/realms の後）で
+  # 非 /bff の全パスを frontend-service へ流す。ルートは frontend.enabled のときのみ描画する（下記 frontend ブロック）。
+  frontend:
+    service: frontend-service
+    port: 8080
   # ブラウザ OIDC issuer 統一の任意機構（既定 off）。有効化すると同一エッジ host の /realms・/resources を
   # Keycloak へ通し、ブラウザとサービス間で同一 issuer URL を共有できる（別ホスト運用時は不要。IADR-0076 決定3）。
   oidc:
@@ -467,3 +472,34 @@ wikijs:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 1Gi }
+
+# FR-14, IADR-0056, IADR-0078 (#313): SPA(frontend)。platform/frontend の nginx イメージ（静的配信＋/bff
+# プロキシ＋実行時 config.js 注入）を k8s で配信する。汎用 services ループに載せず専用 template
+# (templates/frontend.yaml) で描画する（wikijs/minio と同じ非 .NET パターン）。イメージは
+# global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。#275 MAPPING に登録済み。
+# 外部からの入口はエッジ（edge ブロックの VirtualService catch-all → frontend-service）。
+frontend:
+  enabled: true
+  replicas: 1
+  image: microservices-platform/frontend
+  tag: latest
+  # nginx 待受ポート（src/platform/frontend/Dockerfile の EXPOSE 8080）。
+  port: 8080
+  # nginx /bff プロキシの上流（in-cluster BFF）。edge.frontend/edge.bff と同じ bff-service を指す。
+  bffUpstream: http://bff-service:8080
+  # ブラウザから見た BFF ベース URL（同一オリジンの nginx プロキシ）。compose と同値。
+  bffBaseUrl: /bff
+  oidc:
+    # ブラウザが到達する OIDC issuer。本番は外部公開する Keycloak の URL（エッジ host 経由なら IADR-0076
+    # 決定3 の /realms パススルー）を per-env で上書きする。既定はサービス間と同じ in-cluster 値だが、
+    # ブラウザ到達性のため実運用では必ず外部到達可能な URL へ上書きすること（config.gitCommit 等と同じ placeholder）。
+    authority: http://keycloak:8080/realms/microservices-platform
+    clientId: spa-web
+  # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL / WIKI_BASE_URL 等）。既定は空で、
+  # 40-render-config.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
+  # dev の Grafana(3000) を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（ADR-0006・
+  # IADR-0077）に委ねる方針のため既定で未配線とする（配線したい環境は extraEnv で URL を供給する。IADR-0078）。
+  extraEnv: []
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 200m, memory: 128Mi }

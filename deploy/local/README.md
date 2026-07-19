@@ -129,6 +129,27 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 #   → http://localhost:5080/bff/...   （認証必須。匿名は 401）
 ```
 
+### SPA(/settings) 到達（Issue #313 / IADR-0078）
+
+`values-local` は `frontend.enabled=true` で SPA(frontend) を k8s に配信する（`k8s-local-images.sh` が
+`k3d-local/microservices-platform/frontend` を build/import・#275 MAPPING 登録済み）。経路B は `edge.enabled=false`
+（Istio 未導入）のため、SPA へはエッジではなく `frontend-service` を直接 port-forward して到達する:
+
+```bash
+kubectl -n microservices-platform port-forward svc/frontend-service 3100:8080
+#   → http://localhost:3100/            （SPA。/settings=SC-01/02/03）
+#   → http://localhost:3100/bff/...     （nginx が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
+```
+
+frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
+（5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順A**に
+従う（browser も cluster も `http://keycloak:8080` を issuer として共有する。`values-local` は OIDC を上書きせず
+base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝backend の `Auth__Authority` と一致）。
+
+> 本番像は `edge.enabled=true` で Istio VirtualService の catch-all（`/bff`・`/realms` の後）が SPA を
+> `frontend-service` へ流し、`allow-edge-ingress-to-frontend` NetworkPolicy が default-deny 下の到達を許可する。
+> 実ブラウザでの `/settings` 実表示・OIDC 実ログインは稼働 k3d 依存（本 issue の live 分・#284 手順）。
+
 ### ブラウザ OIDC の issuer 統一（原則と 2 手順）
 
 **原則**: ブラウザが受け取る token の `iss` と、サービス側の検証基準（`Auth__Authority`）が **同一 URL** で
