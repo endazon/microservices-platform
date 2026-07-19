@@ -66,6 +66,9 @@ in-repo 登録した（deploy 既定 disabled・`/bff/*` pass-through 済み）�
   VirtualService を描画しても実到達しない。`edge.enabled` かつ `networkPolicy.enabled` のとき、`edge.gateway.namespace`
   （既定 `istio-system`）から `bff-service:edge.bff.port` への ingress のみを許可する `NetworkPolicy`
   （`allow-edge-ingress-to-bff`）を追加し、多層防御を保ったまま必要最小の穴を開ける。
+  許可粒度は **namespace 単位**（`kubernetes.io/metadata.name` で `istio-system` 全体）とする。ingressgateway の Pod
+  ラベルは Istio インストールプロファイルにより異なり `edge.gateway.selector` と一致する保証が無いためで、より厳密に
+  絞りたい場合は将来 `podSelector`（ingressgateway ラベル）を併記して gateway Pod のみへ限定できる（本 PR は既定を優先）。
 
 ### 決定2: 経路B の 3 サービス有効化は values-local の extraEnv 注入（本番 values 不変・postgres.yaml 不変）
 
