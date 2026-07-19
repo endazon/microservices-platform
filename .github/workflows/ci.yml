@@ -115,6 +115,21 @@ jobs:
       - name: Check realm field lengths
         run: node scripts/check-realm-constraints.js
 
+  # NFR（運用性/信頼性）, IADR-0087, Issue #334: scripts/k8s-local-up.sh の opt-in ゲート
+  # （HEADLAMP_OIDC_APISERVER / PERSIST / OBSERVABILITY / VAULT / ARGOCD / HEADLAMP）を横断で固定する
+  # smoke test。外部バイナリ（k3d/kubectl/helm/docker）を PATH 上の記録スタブへ差し替え、副作用ゼロで
+  # スクリプトを実行し発行コマンド列へアサートする（実クラスタは作らない）。外部依存ゼロ（Node + bash のみ）。
+  # submodule は取得しない（AST 分岐が決定的に skip され、テストの前提と一致する。IADR-0087 参照）。
+  k8s-local-up-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Smoke-test k8s-local-up opt-in gates (stub-on-PATH, no cluster)
+        run: node scripts/k8s-local-up.test.js
+
   lint:
     runs-on: ubuntu-latest
     steps:

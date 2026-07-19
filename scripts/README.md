@@ -33,12 +33,14 @@ node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
 node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
 node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
+node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in ゲート横断 smoke test（#334・要 bash）
 ```
 
 ## 自動生成（CI）
 
 - `.github/workflows/doc-links-planning.yml`: private な planning サブモジュール込みのリンク検査（#232 / IADR-0058）。夜間 + `workflow_dispatch` でトークン付き（Secret `PLANNING_REPO_TOKEN`。本リポジトリと planning 双方へ read 権限を持つ fine-grained PAT 推奨）に submodule を取得し、`check-doc-links.js --require-planning` を実行する。本体 `ci.yml` の `doc-links` は高速・トークン不要のまま非 planning リンクを毎 PR 検査する。
 - `.github/workflows/image-mapping.yml`: `check-image-mapping.js`（`--self-test` ＋実チェック）を毎 PR/push で実行し、`MAPPING` と compose の `build` 定義のドリフトをマージ前に落とす（#275 / IADR-0068）。`ci.yml` には足さない（独立ワークフロー方針）。Node のみで docker 不要のため paths フィルタなしで常に結果を報告する。
+- `.github/workflows/ci.yml` の `k8s-local-up-smoke` ジョブ: `k8s-local-up.test.js` を実行し、`k8s-local-up.sh` の opt-in ゲート（`HEADLAMP_OIDC_APISERVER`/`PERSIST`/`OBSERVABILITY`/`VAULT`/`ARGOCD`/`HEADLAMP`）を横断で固定する（#334 / IADR-0087）。外部バイナリを PATH 上の記録スタブへ差し替え、副作用ゼロでスクリプトを実行し発行コマンド列を検証する（実クラスタは作らない・Node + bash のみ）。
 - `.github/workflows/changelog.yml`: `main` への push で CHANGELOG を再生成しコミットする。タグ push でリリースノートも生成する。
 - `.github/workflows/openapi.yml`: OpenAPI を生成する。コードからの生成コマンド（`scripts/generate-openapi.sh` または変数 `OPENAPI_GENERATE_CMD`）が設定されていればそれを実行し、無ければ通信仕様書からの雛形生成にフォールバックする（「生成可能なら必ず生成」）。
 
