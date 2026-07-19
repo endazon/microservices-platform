@@ -64,7 +64,9 @@ Helm values の全サービス（自製 `services.*`＋`frontend`）と一部 th
 ### 2. Third-party イメージ — 具体版タグへ固定（evidence があるもの）
 
 - `requarks/wiki:2` → `2.5`（compose＋values wikijs）。repo の実運用版が Wiki.js 2.5 であることが
-  判明済みで、**挙動等価**の再現性向上。
+  判明済みで、**挙動等価**の再現性向上。粒度は **minor 固定・patch は許容**（`2.5` は `2.5.x` 系列内の
+  自動セキュリティパッチを受ける。実測 PoC は `2.5.314`＝`docs/tech/20260707_wikijs-poc-record.md`）。
+  完全固定が必要なら CD 層で digest ピンする（下記 3）。
 - 既に具体版で固定済みの third-party（minio/qdrant/otel/prometheus/loki/tempo/grafana/keycloak/curl）は
   現状維持。
 

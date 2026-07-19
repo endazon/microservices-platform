@@ -86,7 +86,9 @@ plan_refs:
 
 - 依存イメージ（keycloak/postgres/redis/rabbitmq/qdrant/minio/otel/prometheus/loki/tempo/grafana/
   wiki 等）は**具体バージョンタグ**で固定する（`values.yaml`・`docker-compose.yml`）。浮動 major タグは
-  避ける（例: Wiki.js は `2` ではなく `2.5`。IADR-0088/#320 で固定）。
+  避ける（例: Wiki.js は `2` ではなく `2.5`。IADR-0088/#320 で固定）。粒度は **minor 固定・patch は許容**
+  （`2.5` は `2.5.x` 系列内の自動パッチを受ける。実測 PoC は `2.5.314`＝`docs/tech/20260707_wikijs-poc-record.md`）。
+  完全固定が要るなら CD 層で digest ピンする。
 - 最上位の再現性は **digest ピン**（`image: <repo>@sha256:...`）である。per-arch・per-registry の digest 解決と
   ミラー（`mirror.gcr.io`・[IADR-0081](../adr/IADR-0081_frontend-base-registry-mirror.md)/#325）整合の検証が要るため、
   稼働環境の CD 自動化（ArgoCD image updater / kustomize digest 運用）で段階導入するのが望ましい。
@@ -205,7 +207,7 @@ fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**�
 
 - **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)、
   [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)）:
-  閲覧・編集 UI の実体は **Wiki.js**（`ghcr.io/requarks/wiki:2`、専用 DB `wikijs`）が担う。`WikiService` は
+  閲覧・編集 UI の実体は **Wiki.js**（`ghcr.io/requarks/wiki:2.5`、専用 DB `wikijs`）が担う。`WikiService` は
   「**同期・統合・ABAC ゲートウェイ**」に責務を縮退する。認可（ABAC）は本システムが単一の真実源であり、
   WikiService が Wiki.js の**前段**で deny-by-default の属性フィルタと 404 存在秘匿（[IADR-0009]）を強制する。
   Wiki.js 側のページ/グループ権限は補助的な表示制御に留める。
