@@ -3,8 +3,8 @@ title: frontend base イメージの非 docker.io 化（Rancher/nerdctl での�
 type: spec
 status: done
 related_ids:
-  - FR-14
   - NFR
+  - ADR-0007
   - IADR-0067
   - IADR-0068
   - IADR-0078
@@ -13,8 +13,8 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14 疎結合ユニット・SPA 配信入口 / NFR 再現可能なビルド環境)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_container-image-distribution.md (コンテナイメージ配布)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守: 再現可能なビルド環境)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 related_specs:
   - "../adr/IADR-0080_frontend-base-registry-mirror.md"
   - "../adr/IADR-0078_frontend-k8s-serving.md"

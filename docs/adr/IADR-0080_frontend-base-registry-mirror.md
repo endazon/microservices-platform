@@ -3,8 +3,8 @@ title: IADR-0080 frontend の base イメージを docker.io 直参照から Goo
 type: impl-adr
 status: Accepted
 related_ids:
-  - FR-14
   - NFR
+  - ADR-0007
   - IADR-0056
   - IADR-0067
   - IADR-0068
@@ -13,8 +13,8 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_container-image-distribution.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守: 再現可能なビルド環境)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 ---
 
 # IADR-0080: frontend base イメージの非 docker.io 化（mirror.gcr.io 既定 + ARG 上書き）
@@ -25,8 +25,8 @@ plan_refs:
 
 ## 起点・関連
 
-- 関連する計画書 ID（MSP・機械追跡）: **FR-14**（構成変更で完結する疎結合ユニット・SPA 配信入口）／**NFR**（運用・再現可能なビルド環境）
-- 関連 ADR: [[IADR-0056]]（frontend の unit 構成・platform=アプリホスト）／[[IADR-0067]]（サービスイメージのビルド CI ゲート `images.yml`）／[[IADR-0068]]（#275 image-mapping ドリフト検査）／[[IADR-0078]]（frontend の k8s chart 配信・ローカルビルド常用化）
+- 関連する計画書 ID（MSP・機械追跡）: **NFR**（運用・保守: 再現可能なビルド環境）／**ADR-0007**（CI/CD・GitOps。コンテナイメージが配布単位＝[[IADR-0067]] と同じ起点付け）。本件は純粋なビルドインフラ改善のため、機能要求（FR）は起点にしない。
+- 関連 ADR: [[IADR-0056]]（frontend の unit 構成・platform=アプリホスト）／[[IADR-0067]]（サービスイメージのビルド CI ゲート `images.yml`。NFR/ADR-0007 起点の先例）／[[IADR-0068]]（#275 image-mapping ドリフト検査）／[[IADR-0078]]（frontend の k8s chart 配信・ローカルビルド常用化）
 - Issue: MSP #325（本 issue・bug/infrastructure・priority:should）／派生元 #313（[[IADR-0078]]）・親トラッカ #284
 
 ## 背景・課題
@@ -120,6 +120,11 @@ compose の frontend build も args 無しのままで、#275 ドリフト検査
     ドリフト 0 を確認）。
 - **ローカル（経路B / Rancher Desktop）**: `bash scripts/k8s-local-up.sh` の frontend ビルドが docker.io に
   依存しなくなり成立する（本 issue の解消）。
+- **外部依存リスク**: `mirror.gcr.io` は Google が無償提供する外部ミラーであり、提供継続性・レート制限
+  変更などの外部要因リスクを新たに負う（従来の docker.io も同種の外部依存であり、依存先の置換に相当）。
+  緩和策として `BASE_REGISTRY` ARG を残しており、将来 mirror.gcr.io に問題が生じた場合は `docker.io/library`
+  や社内 Harbor 等へ `--build-arg` で即時に切替できる（Dockerfile の再設計は不要）。実レジストリへ push する
+  本番リリース経路（ADR-0007）そのものには影響しない（本件はビルド時の base pull 元のみ）。
 
 ## 代替案
 
