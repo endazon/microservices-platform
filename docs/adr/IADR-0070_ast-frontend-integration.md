@@ -32,8 +32,10 @@ plan_refs:
 
 ## 背景・課題
 
-AST の設定画面（SC-01・FR-17）を MSP の単一 SPA に載せ、BFF 経由で AST ConfigurationService へ
-到達させる。実装にあたり 3 つの設計上の論点があった。
+AST の設定画面（AST/SC-01・AST/FR-17）を MSP の単一 SPA に載せ、BFF 経由で AST ConfigurationService へ
+到達させる（他プロジェクト計画書の ID はプロジェクト修飾を付ける。`.claude/rules/traceability.md`
+「ユニット横断・クロスリポジトリの ID 修飾」。MSP の SC-01＝検索/チャットと衝突するため）。
+実装にあたり 3 つの設計上の論点があった。
 
 1. **フロント合成の形**: 既存の可変ユニットは `@knowledge`（vite alias＋`features/index.ts` 1 行＋
    root vitest 横断＋ESLint 依存方向）で合成される。AST も同形にするか。

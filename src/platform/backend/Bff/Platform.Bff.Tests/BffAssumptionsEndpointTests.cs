@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Platform.Bff.Tests;
 
-// Issue #283, FR-17, UC-06, IADR-0070: /bff/assumptions が ConfigurationService へ pass-through すること、
+// Issue #283, AST/FR-17, AST/UC-06, IADR-0070: /bff/assumptions が ConfigurationService へ pass-through すること、
 // 認可を後段へ委ね（匿名 401・非 owner の後段 403 を透過）、GET/PUT/history を中継し、後段不達を 502 へ縮退し、
 // 利用者トークンと PUT 本文を後段へ伝播することを検証する。BFF は DTO に結合しない（素の JSON を透過）。
 public class BffAssumptionsEndpointTests : IClassFixture<BffTestFactory>

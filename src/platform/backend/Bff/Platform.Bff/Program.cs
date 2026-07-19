@@ -73,7 +73,7 @@ builder.Services.AddHttpClient("DataSourceService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DataSourceService"]
         ?? "http://datasource-service:5002"));
 
-// Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の集約用。ConfigurationService(/assumptions)
+// Issue #283, AST/FR-17, AST/UC-06, IADR-0070: AST 設定画面（全体前提条件）の集約用。ConfigurationService(/assumptions)
 // へ pass-through する。AST 未デプロイ時は不達（BFF が 502 へ縮退）で足を引かないよう、readiness の
 // UriHealthCheck には含めない（可変ユニットの導入有無で BFF の可用性を左右させない・fail-safe）。
 builder.Services.AddHttpClient("ConfigurationService", c =>

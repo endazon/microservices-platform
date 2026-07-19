@@ -34,11 +34,12 @@ related_specs:
   [[IADR-0063]]（BFF 合成点・例外3）／[[IADR-0068]]（image-mapping ドリフト検査）／
   **[[IADR-0070]]（本統合の設計判断・AST 共有 Dockerfile を context/args 対応で載せる）**
 - Issue: MSP #283（本 issue）／ AST endodazon/ai-stock-trading#106（T2）
-- 上流: AST PR #185（AST フロント第1スライス・設定画面 SC-01・[[IADR-0080]]）
+- 上流: AST PR #185（AST フロント第1スライス・設定画面 AST/SC-01・[[IADR-0080]]）
 
 ## 目的・背景
 
-AST の設定画面（FR-17 全体前提条件の閲覧/変更・SC-01）を、MSP の**単一 SPA** へ
+AST の設定画面（AST/FR-17 全体前提条件の閲覧/変更・AST/SC-01。他プロジェクト ID はプロジェクト修飾。
+`.claude/rules/traceability.md` 参照）を、MSP の**単一 SPA** へ
 **ビルド時ソース合成**（`@knowledge` と同形の `@ai-stock-trading`）で載せ、BFF `/bff/assumptions`
 経由で AST の ConfigurationService へ到達させる。AST フロントは独立デプロイ物ではなく、
 platform SPA の feature として載る（二重定義を避ける・IADR-0056）。
