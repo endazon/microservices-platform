@@ -109,8 +109,24 @@ docker compose -f deploy/docker-compose.yml up -d
 ```
 
 > ローカル k8s dev 環境（`deploy/local/`＝経路B）は [IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md) の
-> 割り切りで infra が `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
-> 恒久化（Keycloak realm/runtime state の保持）は別途フォローアップ issue で扱う。
+> 割り切りで infra が既定 `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
+> 恒久化（Keycloak realm/runtime state の保持）は #324 / [IADR-0081](../adr/IADR-0081_local-k8s-infra-persistence.md)
+> で **opt-in（`PERSIST=1`）** を追加した（下記「経路B の永続化」節）。
+
+#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0081](../adr/IADR-0081_local-k8s-infra-persistence.md) / #324）
+
+`PERSIST=1 bash scripts/k8s-local-up.sh` で [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
+オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）と Postgres
+（`/var/lib/postgresql/data`）を `local-path` PVC で永続化**する。realm + runtime state（追加ユーザー・シークレット・
+セッション）と全アプリ DB が Pod 再起動でも保持される。**既定（`PERSIST` 未設定）は従来どおり emptyDir（挙動不変・
+fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**。qdrant/rabbitmq/redis/otel は emptyDir 継続。
+
+- **realm 更新の反映**（compose 側と同じ運用差分）: 永続化後は `--import-realm` が既存 realm をスキップするため、
+  `realm.json` の編集は自動反映されない。反映するには **(A 破壊的)** `keycloak-data` PVC を消して Pod 再作成で再 import
+  （`kubectl -n platform-infra delete pvc keycloak-data && kubectl -n platform-infra rollout restart deploy/keycloak`）、
+  または **(B 非破壊)** 管理コンソール / `kcadm` の partial import で当該変更のみ適用する。
+- **移行**: 途中から `PERSIST=1` に切り替えると初回は空 PVC のため realm/DB は再生成される（既存 emptyDir データは
+  元々揮発）。手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「永続化」節を参照。
 
 ### Headlamp（k8s 管理 UI・dev opt-in）（NFR 運用性 / [IADR-0080](../adr/IADR-0080_headlamp-k8s-management-ui.md) / #271）
 
@@ -123,7 +139,8 @@ docker compose -f deploy/docker-compose.yml up -d
   OIDC client secret を Secret `headlamp-oidc`（`platform-infra`・dev 既定＝realm import の dev 値・`HEADLAMP_OIDC_CLIENT_SECRET`
   で上書き可）へ作成する。UI 到達は `kubectl -n platform-infra port-forward svc/headlamp 4466:80`（http://localhost:4466）。
 - **realm client**: `deploy/keycloak/microservices-platform-realm.json` の client `headlamp`（confidential）が単一情報源。
-  経路B の Keycloak は `emptyDir`（Pod 再起動で realm を再 import・上記注記）のため、ConfigMap 経由で自動反映される。
+  経路B の Keycloak は既定 `emptyDir`（Pod 再起動で realm を再 import・上記注記）のため、ConfigMap 経由で自動反映される
+  （`PERSIST=1` で永続化した場合は上記「経路B の永続化」の realm 更新反映手順に従う）。
 - **認証モデル / RBAC**: OIDC token passthrough（Headlamp が利用者 id_token を API server へ委譲）。fail-safe として
   Headlamp の ServiceAccount には広域権限を与えず、OIDC ログイン無しではクラスタ可視化不可。`developer` の OIDC
   アイデンティティ `oidc:developer` に `cluster-admin` を bind する（`headlamp-developer-cluster-admin`）。

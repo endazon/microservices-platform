@@ -70,7 +70,14 @@ kubectl create configmap keycloak-realms -n "$INFRA_NS" "${realm_args[@]}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> [4/7] apply in-cluster infra"
-kubectl apply -k deploy/local/infra
+# IADR-0081 (#324): PERSIST=1 で永続化オーバーレイ（Keycloak/Postgres を local-path PVC 化）を選ぶ。
+# 既定（未設定）は base（emptyDir）＝従来挙動不変・fail-safe（provisioner 不在クラスタで Pod Pending 化させない）。
+INFRA_KUSTOMIZE="deploy/local/infra"
+if [ "${PERSIST:-}" = "1" ]; then
+  INFRA_KUSTOMIZE="deploy/local/infra-persistence"
+  echo "    [PERSIST=1] Keycloak(realm+runtime state)/Postgres を PVC 永続化（local-path）"
+fi
+kubectl apply -k "$INFRA_KUSTOMIZE"
 echo "    waiting for infra to become Ready..."
 kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/rabbitmq --timeout=180s

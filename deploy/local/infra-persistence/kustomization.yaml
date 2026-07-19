@@ -1,0 +1,45 @@
+# IADR-0081 / Issue #324: 経路B 基盤インフラの永続化オーバーレイ（opt-in）。
+# base（deploy/local/infra）に PVC を足し、postgres/keycloak の Deployment の volume を PVC 参照へ差し替える。
+# 適用: kubectl apply -k deploy/local/infra-persistence （scripts/k8s-local-up.sh は PERSIST=1 で本ディレクトリを選ぶ）
+# 既定（PERSIST 未設定）は base（emptyDir）が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。
+#
+# realm import 用 ConfigMap `keycloak-realms` は base と同様 kustomize の外（scripts/k8s-local-up.sh）で
+# 実 realm ファイル（単一情報源）から生成する（base の NOTE 参照）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../infra
+  - pvcs.yaml
+
+patches:
+  # postgres: data ボリューム（base volumes[0]・emptyDir）を PVC 参照へ置換。init ConfigMap（volumes[1]）は不変。
+  - target:
+      kind: Deployment
+      name: postgres
+      namespace: platform-infra
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: postgres-data
+  # keycloak: base は /opt/keycloak/data を未マウント（H2 はコンテナ層）。PVC volume と volumeMount を追加する。
+  # realm import ConfigMap は /opt/keycloak/data/import（readOnly）に入れ子で重なり、import は不変で機能する。
+  - target:
+      kind: Deployment
+      name: keycloak
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: keycloak-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /opt/keycloak/data
