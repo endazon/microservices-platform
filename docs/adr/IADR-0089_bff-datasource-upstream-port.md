@@ -39,9 +39,12 @@ throwaway pod から `http://datasource-service:8080/health/ready` は Healthy�
 `Program.cs` の `Configuration["Services:DataSourceService"] ?? "http://datasource-service:5002"` で決めるが、
 `Services:DataSourceService` は appsettings にも manifest にも設定が無いため **コード既定 5002** が使われる。
 
-実 Service ポートは **8080**。到達している他 downstream 7 件（Retrieval/AiAnalysis/Document/Authorization/
-Wiki/Feedback/Dashboard）は BFF の `extraEnv`（Helm）/env（compose）で `Services__…: http://…:8080` に
-上書きされているが、**`Services__DataSourceService` だけが上書きリストから欠落**していた。k8s ClusterIP は
+実 Service ポートは **8080**。到達している他 downstream 6 件（Retrieval/AiAnalysis/Document/Authorization/
+Feedback/Dashboard）は BFF の `extraEnv`（Helm）/env（compose）で `Services__…: http://…:8080` に
+上書きされているが、**`Services__DataSourceService` だけが上書きリストから欠落**していた（k8s の場合。
+compose では Document/Authorization も欠落。後述）。なお `values.yaml` の `Services__WikiService` は Program.cs に
+対応する named client が無い宙ぶらりんの項目で、BFF の downstream 集約先ではない（WikiService への到達は
+DocumentBffEndpoints 経由ではなく Wiki 同期系の別責務。本 6 件には数えない）。k8s ClusterIP は
 8080 のみ公開のため 5002 への接続は SYN ブラックホール化し、OS の SYN 再送が尽きる ≈21 秒で
 タイムアウトする（症状と一致）。
 
@@ -52,7 +55,7 @@ manifest が実 Service ポート `:8080` へ上書きする**」である。Dat
 
 ## 決定
 
-**欠落した `Services__DataSourceService: http://datasource-service:8080` の上書きを、他 7 downstream と同型で
+**欠落した `Services__DataSourceService: http://datasource-service:8080` の上書きを、他 6 downstream と同型で
 デプロイ manifest（Helm `values.yaml` の `bff.extraEnv` と `docker-compose.yml` の BFF env）に追加する。
 コード既定 `http://datasource-service:5002` は変更しない。**
 
@@ -69,7 +72,8 @@ manifest が実 Service ポート `:8080` へ上書きする**」である。Dat
 
 ## 影響・互換性
 
-- 挙動等価: 追加するのは欠落していた上書き 1 件のみ。他 7 downstream・コード既定・readiness 判定は不変。
+- 挙動等価: k8s は欠落していた上書き 1 件（datasource）のみ追加。他 6 downstream・コード既定・readiness 判定は不変。
+  compose は同型欠落の Document/Authorization も併せて追加（いずれも不達→到達の是正。動いている downstream は不変）。
 - 後方互換: `Services:DataSourceService` を明示設定していない既存環境の実効挙動は「5002（不達）→ 8080（到達）」
   へ**是正**され、破壊的変更は無い。#275 ドリフト対象外（image 参照は不変）。
 - 回帰防止: BFF 契約テストで `Services:DataSourceService` 設定時に named client の `BaseAddress` が

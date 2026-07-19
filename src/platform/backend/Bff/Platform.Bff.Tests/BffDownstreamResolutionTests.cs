@@ -24,18 +24,7 @@ public class BffDownstreamResolutionTests
             "（コード既定 :5002 の直書きは live 502 の原因＝#342）");
     }
 
-    // /bff/datasources の一覧が、解決された上流（DataSourceService client）へ実際にプロキシされ、
-    // 後段のデータソースを返すことを合わせて確認する（上流解決 → 実プロキシの結線の健全性）。
-    [Fact]
-    public async Task Bff_datasources_list_proxies_through_the_resolved_upstream()
-    {
-        using var factory = new BffTestFactory();
-        var client = factory.CreateClient();
-
-        var resp = await client.GetAsync("/bff/datasources");
-
-        resp.EnsureSuccessStatusCode();
-        var body = await resp.Content.ReadAsStringAsync();
-        body.Should().Contain("社内共有フォルダ", "解決された上流（スタブ）のデータソースが返るべき");
-    }
+    // 注: 上流解決 → 実プロキシの結線（/bff/datasources が解決上流へ中継し後段データソースを返す）の
+    // エンドツーエンドは既存の BffDataSourceEndpointTests.GetList_AsAdmin_ReturnsDataSources が担保するため、
+    // ここでは重複させず BaseAddress 解決（上記）のみを固定する。
 }

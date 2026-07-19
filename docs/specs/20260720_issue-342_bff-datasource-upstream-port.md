@@ -53,8 +53,9 @@ Configuration["Services:DataSourceService"] ?? "http://datasource-service:5002"
 **コード既定のポート 5002** が使われる。
 
 一方 datasource-service の実 Service ポートは **8080**（`values.yaml` の `services.datasource.port: 8080`・
-`docker-compose.yml` は `expose: 8080`）。到達している他 downstream 7 件（Retrieval/AiAnalysis/Document/
-Authorization/Wiki/Feedback/Dashboard）は BFF の `extraEnv`/compose env で `Services__…: http://…:8080` に
+`docker-compose.yml` は `expose: 8080`）。到達している他 downstream 6 件（Retrieval/AiAnalysis/Document/
+Authorization/Feedback/Dashboard。`Services__WikiService` は named client 不在の宙ぶらりん項目のため数えない）は
+BFF の `extraEnv`/compose env で `Services__…: http://…:8080` に
 上書きされているのに、**`Services__DataSourceService` だけがこの上書きリストから欠落**している。
 
 k8s ClusterIP `datasource-service` はポート 8080 のみ公開のため、5002 への接続は SYN がブラックホール化し
@@ -88,7 +89,7 @@ DataSource だけが漏れている。パターンを踏襲し、欠落した上
   が描画される。
 - [x] compose の BFF service env に同値が存在する。
 - [x] `dotnet build`/`dotnet test`（platform backend）緑。既存 BFF テスト・#275 ドリフト・CI 緑。
-- [x] 他 downstream の上書き（7 件）・コード既定・readiness 判定は不変（挙動等価）。
+- [x] 他 downstream の上書き（6 件）・コード既定・readiness 判定は不変（挙動等価）。
 
 ## テスト方針
 
