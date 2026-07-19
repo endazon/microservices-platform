@@ -71,7 +71,10 @@ related_specs:
 - [x] **issuer/client override**: `HEADLAMP_OIDC_ISSUER_URL`/`HEADLAMP_OIDC_CLIENT_ID` が引数に反映される。
 - [x] **PERSIST=1**: `deploy/local/infra-persistence` を apply（`deploy/local/infra` 単体ではない）。
 - [x] **OBSERVABILITY=1**: `deploy/local/observability` apply。
-- [x] **VAULT=1**: `deploy/local/vault`（CRD 有）apply ＋ vault-dev-token secret。
+- [x] **VAULT=1（CRD 有）**: `deploy/local/vault` apply ＋ vault-dev-token secret。
+- [x] **VAULT=1（CRD 無・ESO 未導入フォールバック）**: `vault-dev.yaml` のみ apply し、kustomize 経路
+  （`apply -k deploy/local/vault`）は通らない（例外フローの横断固定）。`kubectl` スタブの `get crd` 応答を
+  `STUB_CRD_ABSENT` で切替えて検証する。
 - [x] **ARGOCD=1**: argocd namespace ＋ argocd application manifest apply。
 - [x] **HEADLAMP=1**: `deploy/local/headlamp` apply ＋ headlamp-oidc secret。
 

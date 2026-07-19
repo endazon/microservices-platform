@@ -54,6 +54,17 @@ const K3D_STUB = [
 const PLAIN_STUB = (name) =>
   ['#!/usr/bin/env bash', `echo "${name} $*" >> "$STUB_LOG"`, 'exit 0', ''].join('\n');
 
+// kubectl スタブは CRD 有無を env で切替可能にする。既定は有（exit 0）＝VAULT は deploy/local/vault を
+// apply。STUB_CRD_ABSENT=1 で `kubectl get crd clustersecretstores.*` を非0（未導入）に返させ、
+// ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
+const KUBECTL_STUB = [
+  '#!/usr/bin/env bash',
+  'echo "kubectl $*" >> "$STUB_LOG"',
+  'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
+  'exit 0',
+  '',
+].join('\n');
+
 /**
  * 与えた env で k8s-local-up.sh を stub 下で実行し、採取したコマンド列を返す。
  * @param {Record<string,string>} extraEnv opt-in などの追加環境変数
@@ -72,7 +83,8 @@ function runUp(extraEnv) {
     fs.chmodSync(p, 0o755);
   };
   write('k3d', K3D_STUB);
-  for (const n of ['kubectl', 'helm', 'docker']) write(n, PLAIN_STUB(n));
+  write('kubectl', KUBECTL_STUB);
+  for (const n of ['helm', 'docker']) write(n, PLAIN_STUB(n));
 
   const origPath = process.env.PATH || process.env.Path || '';
   // 実行環境に opt-in ゲート/override が漏れていても既定＝全 OFF を再現できるよう、
@@ -202,11 +214,20 @@ ok('OBSERVABILITY=1: observability を apply', () => {
   assert.ok(anyLineHas(runUp({ OBSERVABILITY: '1' }).lines, 'apply -k deploy/local/observability'));
 });
 
-// VAULT=1: vault-dev-token secret ＋ deploy/local/vault（CRD 有時）を apply。
-ok('VAULT=1: vault-dev-token secret と deploy/local/vault を apply', () => {
+// VAULT=1（CRD 有）: vault-dev-token secret ＋ deploy/local/vault を apply。
+ok('VAULT=1 (CRD 有): vault-dev-token secret と deploy/local/vault を apply', () => {
   const res = runUp({ VAULT: '1' });
   assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'deploy/local/vault が apply されない');
+});
+
+// VAULT=1（CRD 無・ESO 未導入フォールバック）: kustomize（apply -k deploy/local/vault）ではなく
+// vault-dev.yaml のみを apply する例外フローを固定する（Issue #334 の「例外フロー横断」趣旨）。
+ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通らない', () => {
+  const res = runUp({ VAULT: '1', STUB_CRD_ABSENT: '1' });
+  assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
+  assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/vault/vault-dev.yaml'), 'vault-dev.yaml フォールバックが apply されない');
+  assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'CRD 無なのに kustomize 経路が通った');
 });
 
 // ARGOCD=1: argocd namespace ＋ argocd application manifest を apply。
