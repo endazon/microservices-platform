@@ -82,8 +82,11 @@ dev/staging compose の可観測性コンテナに限った措置で、本番系
 
 ### 4. 対象は compose のみ。経路B（`deploy/local/`）は本 ADR の対象外
 
-[[IADR-0066]] の `emptyDir` 割り切り（dev 専用・揮発許容）を尊重し、経路B の PVC 化は扱わない。経路B の恒久化は
-別 issue（フォローアップ）で、IADR-0066 見直し＋#271（Headlamp）との infra/values 調整とともに判断する。
+経路B（ローカル k8s dev）を統べる決定は [[IADR-0066]]（k3d ＋ dev 専用 in-cluster インフラ資産）であり、その infra が
+**永続化なし＝`emptyDir`（Pod 再起動で再 init）** である旨は `deploy/local/README.md`（「永続化なし: infra は
+emptyDir（Pod 再起動で再 init）。dev 用途の割り切り。」）に明記されている（＝直接の根拠。IADR-0066 本文自体は
+emptyDir に言及しない）。この dev 専用・揮発許容の割り切りを尊重し、本 ADR は経路B の PVC 化を扱わない。経路B の
+恒久化は別 issue（フォローアップ #324）で、IADR-0066 の割り切り見直し＋#271（Headlamp）との infra/values 調整とともに判断する。
 
 ## 影響
 

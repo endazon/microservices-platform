@@ -44,8 +44,10 @@ Prometheus / Grafana はボリュームがあるのに Loki / Tempo だけ非対
 ### スコープ確認（compose のみ / 経路B は対象外）
 
 本 issue の受け入れ条件は **compose 側（`deploy/docker-compose.yml`）に閉じる**。ローカル k8s dev 環境
-（`deploy/local/`＝経路B）は [[IADR-0066]] の割り切りで `emptyDir`（Pod 再起動で再 init）を **意図的に採用** しており、
-issue 本文「含まない（意図的に除外）」で明示除外されている。経路B の PVC 化は別 issue（フォローアップ）で扱う。
+（`deploy/local/`＝経路B）は [[IADR-0066]] が統べる環境で、その infra が `emptyDir`（Pod 再起動で再 init）である旨は
+`deploy/local/README.md`（「永続化なし: infra は emptyDir（Pod 再起動で再 init）。dev 用途の割り切り。」）に明記され、
+**意図的に採用** されている。issue 本文「含まない（意図的に除外）」で明示除外されており、経路B の PVC 化は別 issue
+（フォローアップ #324）で扱う。
 Helm chart（`deploy/helm`）も外部プロビジョニング前提で対象外。
 
 ## 対応方針（To-Be）
