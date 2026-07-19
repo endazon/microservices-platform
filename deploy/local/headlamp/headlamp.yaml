@@ -8,6 +8,9 @@ metadata:
   name: headlamp
   namespace: platform-infra
   labels: { app: headlamp }
+# SA トークンは既定どおりマウントする（automountServiceAccountToken を false にしない）。理由: `-in-cluster` は
+# InClusterConfig で API server の CA/host を SA マウント（token/ca.crt）から取得するため、外すと初期化に失敗する。
+# fail-safe は「トークン除去」ではなく「この SA に RBAC を一切 bind しない」ことで担保する（トークンは無権限＝可視化不可）。
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -26,11 +29,10 @@ spec:
       serviceAccountName: headlamp
       containers:
         - name: headlamp
-          # dev 用に tag を固定。更新は本ファイルの image tag を手動更新する（dev ツール／本番導入は別 issue）。
-          image: ghcr.io/headlamp-k8s/headlamp:v0.25.0
+          # dev 用に tag を固定（v0.43.0＝2026-06 時点の latest stable）。更新は本ファイルの image tag を手動更新する。
+          image: ghcr.io/headlamp-k8s/headlamp:v0.43.0
           args:
             - "-in-cluster"
-            - "-plugins-dir=/headlamp/plugins"
           # OIDC 設定（Keycloak）。flag 相当を HEADLAMP_CONFIG_* env で与える。
           # issuer は in-cluster 正準名に固定（IADR-0066）。ブラウザからの到達性は IADR-0076 手順A で解く（README）。
           env:
