@@ -1,7 +1,19 @@
 # FR-14, IADR-0056: フロントエンド（npm workspaces: src/<unit>/frontend。platform=基盤アプリホスト、
 # knowledge=可変機能）build → nginx 配信。実行時 config で接続先を注入する（環境非依存ビルド）。
 # ビルドコンテキストはリポジトリルート（compose の context: ..）を想定。
-FROM node:22-alpine AS build
+#
+# Issue #325, IADR-0080: base イメージは docker.io を直参照せず、Google の Docker Hub プルスルー
+# ミラー（mirror.gcr.io/library・匿名 pull 可）を既定にする。
+#   根本原因: Rancher Desktop(containerd/nerdctl) 環境では、レジストリが匿名アクセスに 401 Bearer
+#   チャレンジを返すと nerdctl が資格情報ヘルパを呼び、それが errorCode 255 で失敗して pull 不能になる。
+#   docker.io・public.ecr.aws・ghcr.io は 401 を返すため全滅する（実測）。mcr.microsoft.com（.NET が
+#   成立）・mirror.gcr.io はチャレンジ無し（200）で応答するためヘルパを呼ばず成立する（実測 pull 成功）。
+#   frontend だけが唯一の docker.io 依存だったため本 issue が顕在化した。
+# mirror.gcr.io は Docker Hub 公式イメージのプルスルーキャッシュで、同一 digest（byte 等価）を返す。
+# BASE_REGISTRY は上書き可（docker.io/library や社内 Harbor 等）。既定を渡さないため compose/MAPPING に
+# build args は不要＝#275 ドリフト検査は 2 フィールドのまま緑。詳細は docs/adr/IADR-0080。
+ARG BASE_REGISTRY=mirror.gcr.io/library
+FROM ${BASE_REGISTRY}/node:22-alpine AS build
 WORKDIR /app
 # 依存解決に必要な manifest 群を先にコピーしてレイヤキャッシュを効かせる
 COPY src/package.json src/package-lock.json ./
@@ -16,7 +28,9 @@ COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+# IADR-0080: runtime も同じミラーから引く（docker.io 非依存）。BASE_REGISTRY は上の build ステージと
+# 同じ ARG を FROM で再利用するため、複数ステージで有効な「最初の FROM より前で宣言した global ARG」。
+FROM ${BASE_REGISTRY}/nginx:1.27-alpine AS runtime
 # nginx テンプレート（BFF_UPSTREAM を envsubst で注入）と実行時 config テンプレート。
 COPY src/platform/frontend/nginx.default.conf.template /etc/nginx/templates/default.conf.template
 COPY src/platform/frontend/config.js.template /etc/microservices-platform/config.js.template
