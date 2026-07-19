@@ -9,6 +9,18 @@ global:
     endpoint: http://otel-collector:4317
   auth:
     authority: http://keycloak:8080/realms/microservices-platform
+    # Issue #314, IADR-0076 手順B, IADR-0086: 単一エッジ host OIDC を CoreDNS/hosts 改変なしに成立させる任意配線。
+    # 既定は空（未描画）＝手順A のまま authority 一本で metadata 取得＋issuer 検証を兼ねる（現行バイト等価・fail-safe）。
+    # 手順B（edge.oidc.enabled=true で SPA/`/bff`/`/realms` を同一エッジ host に集約）では token の iss がエッジ host に
+    # なるため、以下を設定して backend の metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する:
+    #   metadataAddress: in-cluster から到達できる OIDC well-known（JWKS 取得先）。例:
+    #     http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+    #   validIssuers: token の iss として追加で受理する issuer（エッジ host）。カンマ/空白区切りで複数可。例:
+    #     https://edge.example/realms/microservices-platform
+    # issuer 検証は弱めない（ValidateIssuer=true・JWKS は in-cluster metadata 由来）。metadata 由来 issuer は常に受理
+    # されるため、in-cluster issuer（手順A token）と併存する。
+    metadataAddress: ""
+    validIssuers: ""
   # FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: S3 互換オブジェクトストレージ（MinIO）接続。
   # 資格情報は Secret（existingSecret）経由で注入する（コミットしない。docs/security）。
   objectStorage:
@@ -63,6 +75,9 @@ edge:
     port: 8080
   # ブラウザ OIDC issuer 統一の任意機構（既定 off）。有効化すると同一エッジ host の /realms・/resources を
   # Keycloak へ通し、ブラウザとサービス間で同一 issuer URL を共有できる（別ホスト運用時は不要。IADR-0076 決定3）。
+  # Issue #314, IADR-0086: これを有効化して単一エッジ host に集約する場合、in-cluster のサービスは同エッジ host を
+  # 解決できないため、CoreDNS 追記に代えて global.auth.metadataAddress / global.auth.validIssuers を設定すると
+  # backend の metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離でき、CoreDNS 無しで成立する。
   oidc:
     enabled: false
     host: keycloak

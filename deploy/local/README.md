@@ -218,9 +218,24 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
 - **手順B（単一エッジ host に集約する場合・任意）**: chart の `edge.oidc.enabled=true` で SPA/`/bff`/`/realms` を
   同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
   `spa-web` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
-  同 host を解決させる（CoreDNS 追記 or backend の metadata/issuer 分離）。(iii) は稼働環境依存＝live。
+  同 host を解決させる。(iii) は稼働環境依存＝live。(iii) には次の 2 択がある。
+  - **(iii-a) backend の metadata/issuer 分離（推奨・Issue #314 / [IADR-0086](../../docs/adr/IADR-0086_oidc-issuer-metadata-split.md)）**:
+    CoreDNS を触らず、backend の OIDC 検証で metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する。
+    `global.auth.authority` は上書きせず（in-cluster 名のまま）、代わりに次を設定する:
+    ```yaml
+    global:
+      auth:
+        metadataAddress: http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+        validIssuers: https://<edge-host>/realms/microservices-platform
+    ```
+    サービスは in-cluster の `metadataAddress` から署名鍵(JWKS)を取得し、エッジ host の `iss` を `validIssuers` で
+    受理する。issuer 検証は弱めない（`ValidateIssuer=true` のまま・metadata 由来 issuer と併存＝手順A token も通る）。
+    この場合 (ii) の `global.auth.authority` 上書きは不要（`metadataAddress` が metadata 取得を担う）。
+  - **(iii-b) CoreDNS 追記**: 稼働クラスタの CoreDNS に「エッジ host → in-cluster サービス」の解決を追記する。
+    環境ごとに壊れやすいため、(iii-a) が使えない構成向けの代替とする。
 
 > 実ブラウザログイン end-to-end・Playwright E2E・Pod 実起動ヘルス緑は稼働 k3d 依存（本 issue の live 分・#284）。
+> 手順B の単一エッジ host OIDC 実ログインも稼働環境（エッジ host 到達・`spa-web` redirectUris 追記）依存＝live（#314）。
 
 ## Headlamp（k8s 管理 UI・Keycloak OIDC・Issue #271）
 

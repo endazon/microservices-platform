@@ -50,6 +50,18 @@ spec:
               value: {{ $.Values.global.otel.endpoint }}
             - name: Auth__Authority
               value: {{ $.Values.global.auth.authority }}
+          {{- if $.Values.global.auth.metadataAddress }}
+            # Issue #314, IADR-0076 手順B, IADR-0086: OIDC metadata 取得先（in-cluster）を issuer 検証値と分離する。
+            # 設定時のみ描画＝既定（空）は現行 manifest とバイト等価。分離時 backend は Authority に代えてこれを使う。
+            - name: Auth__MetadataAddress
+              value: {{ $.Values.global.auth.metadataAddress | quote }}
+          {{- end }}
+          {{- if $.Values.global.auth.validIssuers }}
+            # Issue #314, IADR-0086: token の iss として追加で受理する issuer（エッジ host）。カンマ/空白区切り。
+            # issuer 検証は弱めない（許可リストを足すのみ・metadata 由来 issuer と併存）。設定時のみ描画。
+            - name: Auth__ValidIssuers
+              value: {{ $.Values.global.auth.validIssuers | quote }}
+          {{- end }}
           {{- if $pipelineMount }}
             # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成（ConfigMap マウント）の読み込み先。
             - name: Pipeline__ConfigPath
