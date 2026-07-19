@@ -189,10 +189,21 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 （Istio 未導入）のため、SPA へはエッジではなく `frontend-service` を直接 port-forward して到達する:
 
 ```bash
-kubectl -n microservices-platform port-forward svc/frontend-service 3100:8080
-#   → http://localhost:3100/            （SPA。/settings=SC-01/02/03）
-#   → http://localhost:3100/bff/...     （nginx が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
+kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
+#   → http://localhost:8081/            （SPA。/settings=SC-01/02/03）
+#   → http://localhost:8081/bff/...     （nginx が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
 ```
+
+> **ローカル port-forward のポートは realm の `spa-web` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
+> `http://localhost:{8081,3100}/*`・`webOrigins` 同左。ログアウト後リダイレクト `post.logout.redirect.uris` も両ポートを
+> 登録済みで、値は Keycloak の複数値区切り `##` で連結する〔`http://localhost:3100/*##http://localhost:8081/*`〕・Issue #340）。
+> SPA は `redirect_uri=<origin>/callback` を送るため、
+> ブラウザで開く origin（＝上の port-forward のローカルポート）が `spa-web` に登録されている必要がある。両ポートとも
+> 登録済みのため、**ブラウザ OIDC で Keycloak 管理コンソールへの redirect URI 手動追加は不要**。別のローカルポートを
+> 使いたい場合は、そのポートを `deploy/keycloak/microservices-platform-realm.json` の `spa-web` に追記する（realm.json の
+> 変更は**新規クラスタ作成時の realm import で反映**される。**既存のローカル環境**では管理コンソールで一度追加するか、
+> `k3d cluster delete msp-ast-dev` → 再作成で realm を再 import して反映する。永続化 `PERSIST=1` 時の反映手順は上記
+> 「realm を更新したときの反映手順」を参照）。
 
 frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
 （5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順A**に
@@ -214,6 +225,9 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
   3. これで browser も cluster も `http://keycloak:8080` を issuer として共有する。SPA は compose の frontend
      （`http://localhost:3100`・既存 `spa-web` origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
      （`http://localhost:5080`）へ、`OIDC_AUTHORITY` を `http://keycloak:8080/realms/microservices-platform` へ向ける。
+     k8s 配信（#313）で確認する場合は上記「SPA(/settings) 到達」の `frontend-service` port-forward（`8081` または
+     `3100`）を使う。**いずれのポートも `spa-web` に恒久登録済み**（`http://localhost:{8081,3100}/*`・#340）のため、
+     ブラウザ OIDC で管理コンソールへの redirect URI 手動追加は不要（手順A は per-session の realm 改変なしで成立する）。
   4. token 検証: 取得した access_token を base64url デコードし `iss` と `realm_access.roles`（`trading-owner`）を確認する。
 - **手順B（単一エッジ host に集約する場合・任意）**: chart の `edge.oidc.enabled=true` で SPA/`/bff`/`/realms` を
   同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
