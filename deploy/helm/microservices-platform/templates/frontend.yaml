@@ -1,0 +1,81 @@
+# FR-14, IADR-0056, IADR-0078 (#313): SPA(frontend) の Deployment/Service。
+# platform/frontend の nginx イメージ（静的配信＋/bff プロキシ＋実行時 config.js 注入）を k8s で配信する。
+# 汎用 services ループ（deployment.yaml）は .NET 前提（/health/live プローブ・Otlp/Auth env）のため、
+# 非 .NET の nginx SPA は wikijs.yaml/minio.yaml と同じ「専用 template＋トップレベル frontend ブロック」に倣う。
+# frontend.enabled=false では何も描画しない（後方互換・fail-safe）。
+{{- if .Values.frontend.enabled }}
+{{- $f := .Values.frontend }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-service
+  labels:
+    app: frontend-service
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: {{ $f.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: frontend-service
+  template:
+    metadata:
+      labels:
+        app: frontend-service
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: frontend-service
+          # 生成イメージのため global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。
+          image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ $f.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $f.port }}
+          # 実行時 config（config.js）と nginx /bff プロキシ上流を env で注入する（compose の frontend と同契約）。
+          # 40-render-config.sh が envsubst で config.js を生成し、nginx が ${BFF_UPSTREAM} を proxy_pass に埋める。
+          env:
+            - name: BFF_UPSTREAM
+              value: {{ $f.bffUpstream | quote }}
+            - name: BFF_BASE_URL
+              value: {{ $f.bffBaseUrl | quote }}
+            - name: OIDC_AUTHORITY
+              value: {{ $f.oidc.authority | quote }}
+            - name: OIDC_CLIENT_ID
+              value: {{ $f.oidc.clientId | quote }}
+            {{- range $f.extraEnv }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+          # 静的配信のためヘルスは HTTP サーフェスに合わせる: liveness=/（index.html を 200 で返す＝nginx 稼働）、
+          # readiness=/config.js（location = /config.js は try_files /config.js =404＝実行時 config 生成完了を確認）。
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ $f.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /config.js
+              port: {{ $f.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml $f.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-service
+  labels:
+    app: frontend-service
+spec:
+  selector:
+    app: frontend-service
+  ports:
+    - port: {{ $f.port }}
+      targetPort: {{ $f.port }}
+      protocol: TCP
+{{- end }}

@@ -87,3 +87,14 @@ services:
         secretKeyRef:
           name: llm-provider-credentials
           key: anthropic-api-key
+
+# Issue #313, IADR-0078: SPA(frontend) を経路B(ローカル k8s / k3d) で配信する。image は
+# global.image.registry=k3d-local を接頭辞に使う（k8s-local-images.sh が同接頭辞・タグで build/import）。
+# 経路B は edge.enabled=false（Istio 未導入）のため SPA へのブラウザ到達は frontend-service の port-forward
+# で行う（deploy/local/README.md「SPA(/settings) 到達」）。OIDC issuer は base 既定 http://keycloak:8080/... の
+# ままにする（#284 手順A: hosts+port-forward で browser にも in-cluster 名 keycloak:8080 を解決させ、backend の
+# Auth__Authority と iss を一致させる。localhost へ上書きすると iss 不一致でトークン検証が失敗するため上書きしない）。
+# bffUpstream も base の bff-service:8080（nginx が /bff を in-cluster BFF へプロキシ）で正しく上書き不要。
+# base は既定 enabled だが経路B での有効化を明示する。実 Pod 起動/ヘルス緑・実ログインは live（#284 手順）。
+frontend:
+  enabled: true

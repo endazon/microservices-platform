@@ -49,6 +49,9 @@ MAPPING=(
   "microservices-platform/risk-management-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/RiskManagementService/src/RiskManagementService.Worker/RiskManagementService.Worker.csproj,SERVICE_DLL=RiskManagementService.Worker.dll"
   # Issue #288, IADR-0072: AST 監視銘柄（watchlist）の MarketMonitorService。同型（単一 Dockerfile＋build args＋context）。
   "microservices-platform/market-monitor-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/MarketMonitorService/src/MarketMonitorService.Worker/MarketMonitorService.Worker.csproj,SERVICE_DLL=MarketMonitorService.Worker.dll"
+  # Issue #313, IADR-0078: SPA(frontend) を k8s chart 配信（templates/frontend.yaml）へ移行。compose の
+  # frontend build（context ルート・args 無し）と整合。従来は check-image-mapping.js の COMPOSE_ONLY で除外。
+  "microservices-platform/frontend|src/platform/frontend/Dockerfile"
 )
 
 k3d_images=()
