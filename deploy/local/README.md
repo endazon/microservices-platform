@@ -54,6 +54,21 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 bash scripts/k8s-local-down.sh
 ```
 
+### opt-in オーバーレイ（可観測性 / Vault / GitOps・AST #24 / IADR-0077）
+
+既定は**無効**（env 未設定で従来どおり）。env ゲートで追加のみ有効化する（既存ステップは不変）。
+
+```bash
+OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
+VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
+ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
+```
+
+- [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
+- [`deploy/local/vault/README.md`](vault/README.md) — Vault dev + External Secrets（**dev 専用・平文秘密なし**）
+- [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
+- Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
+
 ## 機密情報（fail-safe 既定）
 
 `k8s-local-up.sh` は未設定なら **dev 既定 / 空（no-op）** で Secret を作成する。実接続を有効化する場合のみ

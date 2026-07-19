@@ -165,6 +165,11 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
   コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
+- **Vault dev root トークン（IADR-0077・AST #24 の経路B opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
+  Vault **dev モード**の root トークンを Secret `vault-dev-token`（`platform-infra`）へ入れる。既定は dev 値 `devroot`
+  （`VAULT_DEV_ROOT_TOKEN` 環境変数で上書き可）で、**manifest に平文で置かず** `k8s-local-up.sh` の `VAULT=1` が
+  `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。Vault dev はインメモリで再起動で揮発する
+  **dev 専用**であり、本番の Vault 化（unseal/監査/HA/ローテーション）充足ではない（Tier 3）。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
   シークレット（`wiki-js` / `ai-stock-trading-kb-writer`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
