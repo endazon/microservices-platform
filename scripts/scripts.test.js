@@ -418,6 +418,15 @@ ok('collectFields は client/role/group/realm を横断走査する', () => {
   assert.strictEqual(v.length, 4);
 });
 
+ok('collectFields は clientScopes / protocolMappers も走査する', () => {
+  const long = 'a'.repeat(256);
+  const v = findViolations(collectFields({
+    clients: [{ clientId: 'x', protocolMappers: [{ name: long }] }],
+    clientScopes: [{ name: 'ok', description: long, protocolMappers: [{ name: long }] }],
+  }));
+  assert.strictEqual(v.length, 3);
+});
+
 ok('checkRealmText: 欠損フィールドは例外を投げず無視', () => {
   assert.strictEqual(
     checkRealmText(JSON.stringify({ clients: [{ clientId: 'x' }], roles: {}, groups: null })).length,

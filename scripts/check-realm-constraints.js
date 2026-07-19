@@ -12,12 +12,17 @@
  *
  * 検査対象（いずれも Keycloak の JPA エンティティで varchar(255) のカラムに対応する自由記述/名称）:
  *   - clients[].clientId / name / description
+ *   - clients[].protocolMappers[].name
+ *   - clientScopes[].name / description
+ *   - clientScopes[].protocolMappers[].name
  *   - roles.realm[].name / description
  *   - roles.client[*][].name / description
  *   - groups（再帰）.name
  *   - realm / displayName / displayNameHtml
  * 長さは「文字数（コードポイント）」で数える（Postgres の varchar(N) は文字数上限。マルチバイトでも
- * 1 文字 = 1）。網羅的なスキーマ検証ではなく、オーバーフローしやすい自由記述/名称に絞った軽い lint。
+ * 1 文字 = 1）。網羅的なスキーマ検証ではなく、オーバーフローしやすい自由記述/名称に絞った軽い lint
+ * （PR #317 レビュー指摘）。対象外の varchar 系フィールド（attributes 値・authenticationFlows.alias 等）で
+ * 同種の import 失敗が起きた場合は、この collectFields に対象を足して範囲を広げる。
  *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
@@ -50,6 +55,17 @@ function collectFields(realm) {
   for (const c of (realm && realm.clients) || []) {
     const id = (c && c.clientId) || '(no clientId)';
     for (const f of ['clientId', 'name', 'description']) push(`clients[${id}].${f}`, c && c[f]);
+    for (const pm of (c && c.protocolMappers) || []) {
+      push(`clients[${id}].protocolMappers[${(pm && pm.name) || '?'}].name`, pm && pm.name);
+    }
+  }
+
+  for (const cs of (realm && realm.clientScopes) || []) {
+    const nm = (cs && cs.name) || '(no name)';
+    for (const f of ['name', 'description']) push(`clientScopes[${nm}].${f}`, cs && cs[f]);
+    for (const pm of (cs && cs.protocolMappers) || []) {
+      push(`clientScopes[${nm}].protocolMappers[${(pm && pm.name) || '?'}].name`, pm && pm.name);
+    }
   }
 
   const roles = (realm && realm.roles) || {};
@@ -142,6 +158,13 @@ function selfTest() {
       roles: { realm: [{ name: 'a', description: long }], client: { c: [{ name: 'b', description: long }] } },
       groups: [{ name: 'g', subGroups: [{ name: long }] }],
     })).length === 4,
+  });
+  cases.push({
+    name: 'clientScopes / protocolMappers（client・scope 双方）も走査する',
+    pass: findViolations(collectFields({
+      clients: [{ clientId: 'x', protocolMappers: [{ name: long }] }],
+      clientScopes: [{ name: 'ok', description: long, protocolMappers: [{ name: long }] }],
+    })).length === 3,
   });
   cases.push({
     name: '欠損フィールドは無視（例外を投げない）',
