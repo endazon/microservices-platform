@@ -88,7 +88,7 @@ plan_refs:
   wiki 等）は**具体バージョンタグ**で固定する（`values.yaml`・`docker-compose.yml`）。浮動 major タグは
   避ける（例: Wiki.js は `2` ではなく `2.5`。IADR-0088/#320 で固定）。
 - 最上位の再現性は **digest ピン**（`image: <repo>@sha256:...`）である。per-arch・per-registry の digest 解決と
-  ミラー（`mirror.gcr.io`・[IADR-0081](../adr/IADR-0081_frontend-base-registry.md)/#325）整合の検証が要るため、
+  ミラー（`mirror.gcr.io`・[IADR-0081](../adr/IADR-0081_frontend-base-registry-mirror.md)/#325）整合の検証が要るため、
   稼働環境の CD 自動化（ArgoCD image updater / kustomize digest 運用）で段階導入するのが望ましい。
   infra の `-alpine` major タグはセキュリティ自動パッチの利点があり、固定と自動パッチはトレードオフで評価する。
 

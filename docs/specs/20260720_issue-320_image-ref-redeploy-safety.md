@@ -13,7 +13,7 @@ created: 2026-07-20
 updated: 2026-07-20
 related_specs:
   - "../adr/IADR-0088_image-reference-redeploy-safety.md"
-  - "../adr/IADR-0081_frontend-base-registry.md"
+  - "../adr/IADR-0081_frontend-base-registry-mirror.md"
   - "../adr/IADR-0078_frontend-k8s-serving.md"
   - "../operations/operations.md"
   - "../../deploy/helm/microservices-platform/values.yaml"
