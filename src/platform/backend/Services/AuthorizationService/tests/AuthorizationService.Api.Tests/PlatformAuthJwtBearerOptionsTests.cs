@@ -72,6 +72,19 @@ public class PlatformAuthJwtBearerOptionsTests
         options.Authority.Should().BeNull();
     }
 
+    // IADR-0086 決定1: MetadataAddress と Authority が両設定でも MetadataAddress が優先し、Authority は
+    // 使わない（排他）。両設定時の暗黙優先順位に依存しない挙動を回帰固定する。
+    [Fact]
+    public void MetadataAddress_TakesPrecedence_OverAuthority_WhenBothSet()
+    {
+        var options = BuildOptions(
+            ("Auth:Authority", "http://kc/realms/x"),
+            ("Auth:MetadataAddress", WellKnown));
+
+        options.MetadataAddress.Should().Be(WellKnown);
+        options.Authority.Should().BeNull();
+    }
+
     // IADR-0086 決定1, AC#3: ValidIssuers はカンマ区切りでパースし、複数 issuer を受理集合に足す。
     [Fact]
     public void ValidIssuers_AreParsed_FromCommaSeparatedValue()
