@@ -44,6 +44,56 @@ plan_refs:
 | デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
 | ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
 
+### イメージ参照と再デプロイ安全性（NFR 運用性/信頼性/再現性 / [IADR-0088](../adr/IADR-0088_image-reference-redeploy-safety.md) / #320）
+
+配布物であるコンテナイメージ（ADR-0007）は、**浮動タグ（`:latest` 等）＋ `imagePullPolicy: IfNotPresent`**
+の組合せだと、同名タグで再ビルド・再 push しても既存 Pod/Node のキャッシュにより再 pull されず
+**古いイメージが配信され続ける**。区分ごとに次の方針で再デプロイの確実性を担保する。
+
+#### 自製イメージ（`services.*`・`frontend`）— CD が一意タグ/digest を渡す
+
+- chart 既定の `services.<name>.tag: latest` は **CD 上書き用のプレースホルダ**である。本番デプロイでは
+  **一意タグ（git SHA 等）または digest（`@sha256:...`）** を渡すこと。一意タグ/digest なら pod template が
+  毎回変わって自動 rollout され、`IfNotPresent` でも新イメージが pull される（stale を掴まない）。
+
+  ```bash
+  # 例: BFF を現在の HEAD の短縮 SHA で独立デプロイする（他サービスは据え置き）
+  argocd app set microservices-platform \
+    --helm-set services.bff.tag=$(git rev-parse --short HEAD)
+  # values-<env>.yaml の services.bff.tag を更新して Git commit でも可（GitOps 原則）
+  ```
+
+- `imagePullPolicy` は `global.image.pullPolicy` で **per-env に `Always` へ上書き可能**。ただし
+  **既定は `IfNotPresent` のまま**にする（既定を `Always` にしない）:
+  - 経路B（ローカル k3d）は `registry: k3d-local` の**擬似レジストリ**で、`Always` にすると存在しない
+    レジストリへ pull しにいき **Pod が起動不能**になる（local import ＋ `IfNotPresent` が前提。
+    `scripts/k8s-local-images.sh`）。
+  - 本番も毎回 registry へ問い合わせる pull 負荷が増える。**一意タグ運用なら `Always` は不要**。
+
+- **同名タグを再利用せざるを得ない場合**（ローカル再ビルド・緊急ホットフィックス等）は、キャッシュ済み
+  Pod を明示的に入れ替える:
+
+  ```bash
+  # ローカル: イメージ再ビルド/import 後に Pod を作り直して新イメージを反映
+  bash scripts/k8s-local-images.sh && kubectl -n microservices-platform rollout restart deployment/frontend-service
+  ```
+
+  宣言（`pipeline.json`）変更時は pod template の `checksum/pipeline-config` アノテーション
+  （`templates/deployment.yaml`）が変わり自動 rollout されるが、これは**イメージ更新は捕捉しない**。
+  イメージ更新は上記の一意タグ運用（推奨）か `rollout restart` で行う。
+
+#### Third-party イメージ — 具体版タグ（可能なら digest）で固定
+
+- 依存イメージ（keycloak/postgres/redis/rabbitmq/qdrant/minio/otel/prometheus/loki/tempo/grafana/
+  wiki 等）は**具体バージョンタグ**で固定する（`values.yaml`・`docker-compose.yml`）。浮動 major タグは
+  避ける（例: Wiki.js は `2` ではなく `2.5`。IADR-0088/#320 で固定）。粒度は **minor 固定・patch は許容**
+  （`2.5` は `2.5.x` 系列内の自動パッチを受ける。実測 PoC は `2.5.314`＝`docs/tech/20260707_wikijs-poc-record.md`）。
+  完全固定が要るなら CD 層で digest ピンする。
+- 最上位の再現性は **digest ピン**（`image: <repo>@sha256:...`）である。per-arch・per-registry の digest 解決と
+  ミラー（`mirror.gcr.io`・[IADR-0081](../adr/IADR-0081_frontend-base-registry-mirror.md)/#325）整合の検証が要るため、
+  稼働環境の CD 自動化（ArgoCD image updater / kustomize digest 運用）で段階導入するのが望ましい。
+  infra の `-alpine` major タグはセキュリティ自動パッチの利点があり、固定と自動パッチはトレードオフで評価する。
+
 ### 基盤インフラの永続化（compose・NFR 運用性/可観測性/信頼性 / [IADR-0079](../adr/IADR-0079_infra-persistence-compose.md) / #282）
 
 `deploy/docker-compose.yml` のステートフル infra はすべて名前付きボリューム等で永続化し、`docker compose down`
@@ -157,7 +207,7 @@ fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**�
 
 - **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)、
   [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)）:
-  閲覧・編集 UI の実体は **Wiki.js**（`ghcr.io/requarks/wiki:2`、専用 DB `wikijs`）が担う。`WikiService` は
+  閲覧・編集 UI の実体は **Wiki.js**（`ghcr.io/requarks/wiki:2.5`、専用 DB `wikijs`）が担う。`WikiService` は
   「**同期・統合・ABAC ゲートウェイ**」に責務を縮退する。認可（ABAC）は本システムが単一の真実源であり、
   WikiService が Wiki.js の**前段**で deny-by-default の属性フィルタと 404 存在秘匿（[IADR-0009]）を強制する。
   Wiki.js 側のページ/グループ権限は補助的な表示制御に留める。

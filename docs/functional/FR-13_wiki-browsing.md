@@ -30,7 +30,7 @@ plan_refs:
 ## 概要
 
 管理している**正規化済み Markdown 文書**を、利用者が Wiki 形式で**閲覧**する機能。閲覧・編集 UI の実体は
-**Wiki.js**（`ghcr.io/requarks/wiki:2`、専用 DB `wikijs`）が担い、`WikiService` は「**同期・統合・ABAC
+**Wiki.js**（`ghcr.io/requarks/wiki:2.5`、専用 DB `wikijs`）が担い、`WikiService` は「**同期・統合・ABAC
 ゲートウェイ**」に責務を縮退する（ADR-0011 に追従）。
 
 > **実装方式に関する注記**: 計画 ADR-0011 は「閲覧基盤に Wiki.js（既存 OSS Wiki）を採用」と決定している。
@@ -66,7 +66,7 @@ plan_refs:
 
 ## 主要コンポーネント
 
-- **Wiki.js**（`ghcr.io/requarks/wiki:2`）: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）。認証は
+- **Wiki.js**（`ghcr.io/requarks/wiki:2.5`）: 閲覧・編集 UI の実体。専用 DB `wikijs`（Postgres）。認証は
   Keycloak(OIDC)。ローカルログインは無効化し OIDC 単一経路（運用仕様参照）。
 - `DocumentSyncConsumer`（Consumers）: `DocumentUpdated`（`Attributes` / `Tags` 含む）を購読し、`IWikiContentReader`
   で正規化 Markdown を取得して `IWikiJsClient` 経由で Wiki.js へ **GraphQL push**（[IADR-0021]）で冪等同期する
