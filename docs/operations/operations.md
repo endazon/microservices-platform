@@ -127,6 +127,8 @@ fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**�
   または **(B 非破壊)** 管理コンソール / `kcadm` の partial import で当該変更のみ適用する。
 - **移行**: 途中から `PERSIST=1` に切り替えると初回は空 PVC のため realm/DB は再生成される（既存 emptyDir データは
   元々揮発）。手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「永続化」節を参照。
+- **保持範囲**: 保持されるのは Pod の再起動/再作成まで。`scripts/k8s-local-down.sh` はクラスタ／`platform-infra`
+  namespace を削除するため PVC も消える（`down`→`up` では realm/DB は再生成）。PVC を残すなら `down` を使わず Pod のみ再作成する。
 
 ### Headlamp（k8s 管理 UI・dev opt-in）（NFR 運用性 / [IADR-0080](../adr/IADR-0080_headlamp-k8s-management-ui.md) / #271）
 
