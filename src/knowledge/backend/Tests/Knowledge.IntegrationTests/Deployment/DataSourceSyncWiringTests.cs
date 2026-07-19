@@ -15,13 +15,16 @@ public sealed class DataSourceSyncWiringTests
     [Fact]
     public void ProdValues_Datasource_EnablesPeriodicSync()
     {
-        var block = ServiceBlock(ReadChartFile("values.yaml"), "datasource");
-
-        block.Should().MatchRegex(@"(?m)^\s*dataSourceSync:\s*$",
+        var svc = ServiceBlock(ReadChartFile("values.yaml"), "datasource");
+        svc.Should().MatchRegex(@"(?m)^\s*dataSourceSync:\s*$",
             "#299: datasource に dataSourceSync ブロックが存在する");
-        block.Should().MatchRegex(@"(?m)^\s*enabled:\s*true",
-            "#299: 本番は定期同期を有効化する（既定無効ワーカーの config 有効化）");
-        block.Should().MatchRegex(@"(?m)^\s*intervalSeconds:\s*300",
+
+        // enabled の検証は dataSourceSync サブブロックに限定する。サービスレベルの `enabled: true`
+        // （サービス自体の有効化）に吸われて、dataSourceSync.enabled=false への回帰を見逃さないため。
+        var sync = NestedBlock(svc, "dataSourceSync");
+        sync.Should().MatchRegex(@"(?m)^\s*enabled:\s*true",
+            "#299: 本番は定期同期を有効化する（dataSourceSync.enabled=true。既定無効ワーカーの config 有効化）");
+        sync.Should().MatchRegex(@"(?m)^\s*intervalSeconds:\s*300",
             "#299/IADR-0074: 本番間隔は 300 秒（検出 ≤5 分 + 下流予算 ≥10 分 < NFR 15 分）");
     }
 
@@ -44,13 +47,14 @@ public sealed class DataSourceSyncWiringTests
     [Fact]
     public void LocalValues_Datasource_EnablesSync_WithShortInterval()
     {
-        var block = ServiceBlock(ReadRepoFile(Path.Combine("deploy", "local", "values-local.yaml")), "datasource");
-
-        block.Should().MatchRegex(@"(?m)^\s*dataSourceSync:\s*$",
+        var svc = ServiceBlock(ReadRepoFile(Path.Combine("deploy", "local", "values-local.yaml")), "datasource");
+        svc.Should().MatchRegex(@"(?m)^\s*dataSourceSync:\s*$",
             "#299: 経路B でも datasource.dataSourceSync を明示する");
-        block.Should().MatchRegex(@"(?m)^\s*enabled:\s*true",
-            "#299/IADR-0074: 経路B は監査検証のため定期同期を有効化する");
-        block.Should().MatchRegex(@"(?m)^\s*intervalSeconds:\s*60",
+
+        var sync = NestedBlock(svc, "dataSourceSync");
+        sync.Should().MatchRegex(@"(?m)^\s*enabled:\s*true",
+            "#299/IADR-0074: 経路B は監査検証のため定期同期を有効化する（dataSourceSync.enabled=true）");
+        sync.Should().MatchRegex(@"(?m)^\s*intervalSeconds:\s*60",
             "#299/IADR-0074: 経路B は反映確認を高速化するため間隔 60 秒（本番 300 秒は不変）");
     }
 
@@ -70,6 +74,26 @@ public sealed class DataSourceSyncWiringTests
             dir = dir.Parent;
         }
         throw new FileNotFoundException($"{relative} をリポジトリルートから解決できませんでした。");
+    }
+
+    // 与えられたブロック本文から `<key>:` のネストしたサブブロック（より深いインデントの行）を返す。
+    // サービスレベルの兄弟キー（例: サービス自体の enabled）を混ぜず、サブブロックにスコープして検証するため。
+    private static string NestedBlock(string block, string key)
+    {
+        var lines = block.Replace("\r\n", "\n").Split('\n');
+        var start = Array.FindIndex(lines, l => Regex.IsMatch(l, $@"^(\s*){Regex.Escape(key)}:\s*$"));
+        if (start < 0) return string.Empty;
+
+        var keyIndent = lines[start].Length - lines[start].TrimStart().Length;
+        var buf = new List<string>();
+        for (var i = start + 1; i < lines.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i])) { buf.Add(lines[i]); continue; }
+            var indent = lines[i].Length - lines[i].TrimStart().Length;
+            if (indent <= keyIndent) break; // 同段以浅で終端＝サブブロックの外
+            buf.Add(lines[i]);
+        }
+        return string.Join("\n", buf);
     }
 
     // `services:` 配下の 2 スペースインデントのサービス（`  <name>:`）本文を、次の同段キーまで返す。
