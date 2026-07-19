@@ -495,7 +495,8 @@ wikijs:
   replicas: 1
   registry: ghcr.io
   image: requarks/wiki
-  tag: "2"
+  # IADR-0088 (#320): 再現性のため浮動 major タグ `2` を実運用版 `2.5` へ固定する（再デプロイ安全性）。
+  tag: "2.5"
   port: 3000
   db:
     type: postgres

@@ -386,7 +386,8 @@ services:
   # 注: docker compose の profiles はサービスの起動有無しか制御できず、常時稼働の wiki-js の個別ポート
   # 公開だけを条件化できないため、dev/本番系の公開境界は「dev＝compose／本番系＝Helm」で表現する。
   wiki-js:
-    image: ghcr.io/requarks/wiki:2
+    # IADR-0088 (#320): 再現性のため浮動 major タグ `2` を実運用版 `2.5` へ固定する（再デプロイ安全性）。
+    image: ghcr.io/requarks/wiki:2.5
     environment:
       DB_TYPE: postgres
       DB_HOST: postgres
