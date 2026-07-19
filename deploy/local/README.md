@@ -195,7 +195,9 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 ```
 
 > **ローカル port-forward のポートは realm の `spa-web` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
-> `http://localhost:{8081,3100}/*`・`webOrigins` 同左・Issue #340）。SPA は `redirect_uri=<origin>/callback` を送るため、
+> `http://localhost:{8081,3100}/*`・`webOrigins` 同左。ログアウト後リダイレクト `post.logout.redirect.uris` も両ポートを
+> 登録済みで、値は Keycloak の複数値区切り `##` で連結する〔`http://localhost:3100/*##http://localhost:8081/*`〕・Issue #340）。
+> SPA は `redirect_uri=<origin>/callback` を送るため、
 > ブラウザで開く origin（＝上の port-forward のローカルポート）が `spa-web` に登録されている必要がある。両ポートとも
 > 登録済みのため、**ブラウザ OIDC で Keycloak 管理コンソールへの redirect URI 手動追加は不要**。別のローカルポートを
 > 使いたい場合は、そのポートを `deploy/keycloak/microservices-platform-realm.json` の `spa-web` に追記する（realm.json の
