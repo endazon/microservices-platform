@@ -14,7 +14,7 @@ created: 2026-07-20
 updated: 2026-07-20
 related_specs:
   - "../adr/IADR-0089_bff-datasource-upstream-port.md"
-  - "../adr/IADR-0039_datasource-bff-admin-scope.md"
+  - "../adr/IADR-0039_datasource-management-bff-and-role-gating.md"
   - "../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs"
   - "../../src/platform/backend/Bff/Platform.Bff/Program.cs"
   - "../../deploy/helm/microservices-platform/values.yaml"
