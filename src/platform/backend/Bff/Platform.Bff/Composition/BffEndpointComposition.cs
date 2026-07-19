@@ -43,10 +43,10 @@ public static class BffEndpointComposition
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
-        // Issue #287/#286, FR-14, IADR-0071/0073: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 集約
+        // Issue #287/#286, FR-14, IADR-0071/0073: AST リスク設定（AST/SC-02）・統制状態参照（AST/SC-03）の BFF 集約
         // （RiskManagementService /risk-controls/* へ pass-through）。AiStockTrading.Bff.Endpoints（例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapRiskControlsBffEndpoints()),
-        // Issue #288/#286, FR-14, IADR-0072/0073: AST 監視銘柄（SC-02 watchlist）の BFF 集約
+        // Issue #288/#286, FR-14, IADR-0072/0073: AST 監視銘柄（AST/SC-02 watchlist）の BFF 集約
         // （MarketMonitorService /monitor/* へ pass-through）。AiStockTrading.Bff.Endpoints（例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapMonitorBffEndpoints()),
     ];

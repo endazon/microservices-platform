@@ -151,7 +151,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastAssumptionsForwardedAuthorization { get; private set; }
     public string? LastAssumptionsPutBody { get; private set; }
 
-    // Issue #287 (SC-02/SC-03): RiskManagementService(/risk-controls/*) への pass-through をスタブ制御する。
+    // Issue #287 (AST/SC-02/AST/SC-03): RiskManagementService(/risk-controls/*) への pass-through をスタブ制御する。
     // RiskControlsStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
     public HttpStatusCode RiskControlsStatusCode { get; set; } = HttpStatusCode.OK;
     // 後段（RiskManagementService）不達を再現する（BFF が 502 へ縮退することの検証用）。
@@ -160,7 +160,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastRiskControlsForwardedAuthorization { get; private set; }
     public string? LastRiskControlsPutBody { get; private set; }
 
-    // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) への pass-through をスタブ制御する。
+    // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) への pass-through をスタブ制御する。
     // MonitorStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
     public HttpStatusCode MonitorStatusCode { get; set; } = HttpStatusCode.OK;
     // 後段（MarketMonitorService）不達を再現する（BFF が 502 へ縮退することの検証用）。
@@ -187,9 +187,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:DashboardService"] = "http://localhost:5009",
                 // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
                 ["Services:ConfigurationService"] = "http://localhost:5011",
-                // Issue #287 (SC-02/03): AST RiskManagementService の集約先（テスト用）。
+                // Issue #287 (AST/SC-02/03): AST RiskManagementService の集約先（テスト用）。
                 ["Services:RiskManagementService"] = "http://localhost:5012",
-                // Issue #288 (SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
+                // Issue #288 (AST/SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
                 ["Services:MarketMonitorService"] = "http://localhost:5013",
                 // FR-15: 構成情報 API テスト。定期ドリフト検出は無効化し、構成バージョンを固定する。
                 ["Drift:Enabled"] = "false",
@@ -226,10 +226,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
             services.AddHttpClient("ConfigurationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AssumptionsStubHandler(this));
-            // Issue #287 (SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。
+            // Issue #287 (AST/SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。
             services.AddHttpClient("RiskManagementService")
                 .ConfigurePrimaryHttpMessageHandler(() => new RiskControlsStubHandler(this));
-            // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
+            // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
             services.AddHttpClient("MarketMonitorService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MonitorStubHandler(this));
 
@@ -589,7 +589,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
     }
 
-    // Issue #287 (SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。BFF の pass-through
+    // Issue #287 (AST/SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。BFF の pass-through
     // （ステータス・本文・Content-Type 透過、トークン伝播、PUT 本文転送、502 縮退）を検証するための最小スタブ。
     private sealed class RiskControlsStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
@@ -652,7 +652,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
     }
 
-    // Issue #288 (SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。BFF の pass-through
+    // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。BFF の pass-through
     // （ステータス・本文・Content-Type 透過、トークン伝播、POST/DELETE 本文転送、502 縮退）を検証するための最小スタブ。
     private sealed class MonitorStubHandler(BffTestFactory owner) : HttpMessageHandler
     {

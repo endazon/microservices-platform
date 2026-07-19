@@ -80,14 +80,14 @@ builder.Services.AddHttpClient("ConfigurationService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:ConfigurationService"]
         ?? "http://configuration-service:8080"));
 
-// Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の集約用。RiskManagementService
+// Issue #287, FR-14, IADR-0071: AST リスク設定（AST/SC-02）・統制状態参照（AST/SC-03）の集約用。RiskManagementService
 // (/risk-controls/*) へ pass-through する。ConfigurationService と同じく、AST 未デプロイ時の不達で BFF の可用性を
 // 左右させないよう readiness の UriHealthCheck には含めない（fail-safe）。
 builder.Services.AddHttpClient("RiskManagementService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RiskManagementService"]
         ?? "http://risk-management-service:8080"));
 
-// Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の集約用。MarketMonitorService
+// Issue #288, FR-14, IADR-0072: AST 監視銘柄（AST/SC-02 watchlist）の集約用。MarketMonitorService
 // (/monitor/*) へ pass-through する。ConfigurationService/RiskManagementService と同じく、AST 未デプロイ時の
 // 不達で BFF の可用性を左右させないよう readiness の UriHealthCheck には含めない（fail-safe）。
 builder.Services.AddHttpClient("MarketMonitorService", c =>
