@@ -92,6 +92,18 @@ spec:
                   key: {{ .secretKeyRef.key }}
               {{- end }}
           {{- end }}
+          {{- if and $svc.selfHostedEmbedding $.Values.embedding.enabled }}
+            # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線。
+            # embedding.enabled=true のときのみ描画し、llmgateway を templates/embedding.yaml（TEI・OpenAI 互換
+            # /v1/embeddings）へ向ける。BaseUrl は base のみ（SelfHostedEmbeddingProvider が /v1/embeddings を後置）。
+            # ⚠️ Issue #98: Endpoints__1 は appsettings.json の Embedding:Routing:Endpoints 配列で selfhosted が
+            # index 1（voyage=index 0）である前提。取り違えは起動時 EmbeddingRoutingOptionsValidator が fail-fast 検知。
+            # 既定 embedding.enabled=false では本ブロック非描画＝現状維持（後方互換・高機密は fail-closed）。
+            - name: Embedding__SelfHosted__BaseUrl
+              value: "http://embedding-service:{{ $.Values.embedding.port }}"
+            - name: Embedding__Routing__Endpoints__1__Enabled
+              value: "true"
+          {{- end }}
           {{- if $svc.configVersion }}
             # FR-15, IADR-0029 (#144): 構成バージョン（GitOps 注入）。ArgoCD Application の
             # helm.parameters / CD の --set が config.* を適用リビジョンで上書きする。

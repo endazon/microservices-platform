@@ -1,0 +1,75 @@
+# FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+# 高機密区分（confidential/restricted）はティアA=セルフホスト固定であり、この基盤が未配備の間は fail-closed
+# （高機密は索引されない）。本テンプレートは案 A のインフラを opt-in で用意する（既定 embedding.enabled=false）。
+# 第三者 pull イメージ（TEI）のため generic services レンジ（registry 前置）には載せず、minio/wikijs と同型の
+# 専用テンプレートにする。#275（check-image-mapping.js）は build を持つ microservices-platform/* のみ検査する
+# ため、本サービスは検査対象外＝ドリフト検査は緑。
+# ⚠️ 実モデル取得・GPU/CPU リソース・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
+# 既定 image tag / モデル ID はプレースホルダであり、実運用前に稼働環境で固定する。
+{{- if .Values.embedding.enabled }}
+{{- $e := .Values.embedding }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: embedding-service
+  labels:
+    app: embedding-service
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
+spec:
+  replicas: {{ $e.replicas | default 1 }}
+  selector:
+    matchLabels:
+      app: embedding-service
+  template:
+    metadata:
+      labels:
+        app: embedding-service
+    spec:
+      containers:
+        - name: embedding-service
+          # TEI（OpenAI 互換 /v1/embeddings）。vLLM 等へ差し替える場合は registry/image/tag/args を values で上書きする。
+          image: "{{ $e.registry }}/{{ $e.image }}:{{ $e.tag }}"
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          # ADR-0017: モデルは Ruri v3（768 次元）。実モデル取得は稼働環境依存（IADR-0085）。
+          args:
+            - "--model-id"
+            - {{ $e.modelId | quote }}
+            {{- range $e.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $e.containerPort }}
+          # TEI の health エンドポイント（/health）。実イメージ差し替え時はここも合わせる。
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            {{- toYaml $e.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: embedding-service
+  labels:
+    app: embedding-service
+spec:
+  selector:
+    app: embedding-service
+  ports:
+    - name: http
+      # llmgateway は Embedding__SelfHosted__BaseUrl=http://embedding-service:{{ $e.port }} を宛先に /v1/embeddings を叩く
+      # （deployment.yaml の selfHostedEmbedding 条件ブロック。IADR-0085）。
+      port: {{ $e.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}
