@@ -15,7 +15,7 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-07-10
+updated: 2026-07-19
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -172,6 +172,24 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 - **リスク受容の根拠**: dev realm は host 公開されるが、格納データは合成のテスト属性のみで機密を含まず、
   ネットワークもローカルに閉じる。平文値は「変更前提の既知シード」であり、秘密として扱わない。
 
+### データソースのコネクタ資格情報 — DB 平文保存（Vault 移行までの暫定・FR-01 / IADR-0051/0053）
+
+データソースのコネクタ接続設定（`apiToken` / `password` 等）は、`datasource_svc` DB の `DataSources.Config`
+に**平文で保存**されている（realm の dev シードとは別系統。実運用データを含み得る）。これは Vault / External Secrets
+導入までの**暫定状態**であり、現状の緩和策と残余リスク・移行条件を以下に明記する。
+
+- **暫定状態（As-Is）**:
+  - **保存**: `Config` は平文（DB per Service・ADR-0002 に閉じるが、暗号化は未適用）。
+  - **緩和（実装済み）**: API 応答は秘密キーの値を**マスク**して返す（`DataSourceEndpoints.cs:23,79` の `ToResponse`。
+    IADR-0053 / claude-review #222）。admin/operator であっても API 応答で平文の資格情報を露出させない。
+- **残余リスク**: DB 直接アクセス・バックアップ流出・DB 侵害時に平文資格情報が露出し得る。鍵ローテーション・
+  アクセス監査も未整備。API 応答マスクは「アプリ層の露出」を塞ぐのみで、保存時の平文そのものは残る。
+- **移行条件（To-Be）**: 実環境のシークレット設計（k8s Secret → External Secrets Operator / Vault）確定後、
+  `Config` を平文値から**秘密ストア参照キー**へ移行する。保存時暗号化（データ保護表）の有効化と、鍵ローテーション・
+  監査運用（`docs/operations/`）を併せて整備する。
+- **一元追跡**: Vault 移行は分散していた IADR フォローアップ（IADR-0051/0053/0054/0055・FR-01 未決事項）を
+  **#310 に集約**して追跡する。実環境構築前の着手を推奨（go-live はブロックしない `priority:should`）。
+
 ## 監査ログ
 
 機微な取得・管理操作を構造化ログ（`Audit=true` プロパティ付与）として記録し、可観測性基盤（Serilog→OTLP）で
@@ -214,6 +232,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
   ネットワーク分離の CI/E2E 検証）。[IADR-0021] フォロー。
 - 保存時暗号化（PostgreSQL/MinIO/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
+- コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋API 応答マスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #310**。
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
 - 検索クエリ側の機密区分ルーティング（FR-02 / FR-03 / IADR-0025）。現状クエリ埋め込みは既定外部
   （Voyage/1024）へ固定。高機密（ruri/768）コレクションの横断検索を FR-03 で実装する際に、クエリ文の

@@ -80,7 +80,7 @@ API が異なる（Confluence／MediaWiki／DokuWiki／独自 Wiki 等）。単�
 - Webhook（プッシュ更新通知）による低遅延な変更検知。
 - 一覧 API のページネーション対応（大規模 Wiki での一括取得回避）。本 PR は最小契約のため未対応。
 - 実 Wiki 製品に対する統合テスト（実コンテナ前提）。
-- Vault 連携（API トークンの集中管理。現状は `Config` から取得＋GET 応答マスク）。
+- Vault 連携（API トークンの集中管理。現状は `Config` から取得＋GET 応答マスク）。**一元追跡: #310**（`docs/security/security.md` §データソースのコネクタ資格情報）。
 
 ## 関連
 

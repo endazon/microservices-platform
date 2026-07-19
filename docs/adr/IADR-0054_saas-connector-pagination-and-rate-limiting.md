@@ -78,7 +78,7 @@ SaaS は製品ごとに API が異なり単一標準が無い。計画は「レ�
 - 製品固有 SaaS アダプタ・OAuth トークン更新（refresh）・Webhook（プッシュ更新通知）。
 - HTTP コネクタ共通処理（認証ヘッダ・BaseUrl・Config 解決）の Wiki/SaaS 間での共通化（重複整理）。
 - Polly 等による宣言的リトライ/サーキットブレーカへの置換。
-- 実 SaaS API に対する統合テスト（実 API/コンテナ前提）／Vault 連携。
+- 実 SaaS API に対する統合テスト（実 API/コンテナ前提）／Vault 連携（`apiToken` の集中管理。**一元追跡: #310** — `docs/security/security.md` §データソースのコネクタ資格情報）。
 
 ## 関連
 
