@@ -8,7 +8,7 @@ related_ids:
   - IADR-0067
   - IADR-0068
   - IADR-0078
-  - IADR-0080
+  - IADR-0081
 author: claude
 created: 2026-07-19
 updated: 2026-07-19
@@ -16,7 +16,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守。「再現可能なビルド環境」は同区分からの類推)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 related_specs:
-  - "../adr/IADR-0080_frontend-base-registry-mirror.md"
+  - "../adr/IADR-0081_frontend-base-registry-mirror.md"
   - "../adr/IADR-0078_frontend-k8s-serving.md"
   - "../adr/IADR-0068_image-mapping-drift-check.md"
 ---
@@ -32,7 +32,7 @@ Rancher Desktop（containerd / nerdctl）環境で `bash scripts/k8s-local-up.sh
 
 真因は「レジストリの 401 Bearer チャレンジ → 破損した資格情報ヘルパ（errorCode 255）呼び出し」で、
 docker.io を public.ecr.aws / ghcr.io へ差し替えても解決しない（いずれも 401）。詳細と実測は
-[[IADR-0080]] を参照。
+[[IADR-0081]] を参照。
 
 ## 変更内容
 
@@ -41,7 +41,7 @@ docker.io を public.ecr.aws / ghcr.io へ差し替えても解決しない（�
    パラメータ化する。`node:22-alpine` / `nginx:1.27-alpine` のタグは不変。
 2. build args は増やさない（scripts / compose は無改変）。frontend の `MAPPING` エントリは 2 フィールドの
    まま＝#275 ドリフト検査の検査面を増やさない。
-3. `docs/adr/IADR-0080` に設計判断を記録。
+3. `docs/adr/IADR-0081` に設計判断を記録。
 
 ## 対象外
 
@@ -57,7 +57,7 @@ docker.io を public.ecr.aws / ghcr.io へ差し替えても解決しない（�
 | AC-2 | #275 ドリフト検査が緑 | `node scripts/check-image-mapping.js` / `--self-test` | ✅ 実ツリー ドリフト 0・自己試験 17 件 OK |
 | AC-3 | doc リンクが緑 | `node scripts/check-doc-links.js` | ✅ 破損 0 |
 | AC-4 | scripts 単体テストが緑 | `node scripts/scripts.test.js` | ✅ 58 件 pass |
-| AC-5 | CI（本番）のビルドを壊さない・挙動不変 | mirror.gcr.io は Docker Hub 同一 digest（byte 等価）。CI は base pull 先が変わるのみ | ✅ 影響分析は [[IADR-0080]] 「影響」節 |
+| AC-5 | CI（本番）のビルドを壊さない・挙動不変 | mirror.gcr.io は Docker Hub 同一 digest（byte 等価）。CI は base pull 先が変わるのみ | ✅ 影響分析は [[IADR-0081]] 「影響」節 |
 
 ## 検証コマンド
 

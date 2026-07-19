@@ -1,5 +1,5 @@
 ---
-title: IADR-0080 frontend の base イメージを docker.io 直参照から Google の Docker Hub プルスルーミラー（mirror.gcr.io/library）へ既定差し替えし、BASE_REGISTRY ARG で上書き可能にする
+title: IADR-0081 frontend の base イメージを docker.io 直参照から Google の Docker Hub プルスルーミラー（mirror.gcr.io/library）へ既定差し替えし、BASE_REGISTRY ARG で上書き可能にする
 type: impl-adr
 status: Accepted
 related_ids:
@@ -17,7 +17,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 ---
 
-# IADR-0080: frontend base イメージの非 docker.io 化（mirror.gcr.io 既定 + ARG 上書き）
+# IADR-0081: frontend base イメージの非 docker.io 化（mirror.gcr.io 既定 + ARG 上書き）
 
 - 状態: Accepted
 - 日付: 2026-07-19
