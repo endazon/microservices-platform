@@ -44,6 +44,61 @@ plan_refs:
 | デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
 | ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
 
+### 基盤インフラの永続化（compose・NFR 運用性/可観測性/信頼性 / [IADR-0079](../adr/IADR-0079_infra-persistence-compose.md) / #282）
+
+`deploy/docker-compose.yml` のステートフル infra はすべて名前付きボリューム等で永続化し、`docker compose down`
+（`-v` なし）→ `up -d` を跨いで状態を保持する。#282 で欠落していた 3 サービスを補完した。
+
+| サービス | 永続化先 | 保持される状態 |
+| --- | --- | --- |
+| Keycloak | 共有 Postgres の `keycloak` DB（`postgres-data` 上・所有者 `kp`） | realm 実行時変更（ユーザー・パスワード・クライアントシークレット・セッション・同意 等） |
+| Loki | `loki-data`（`/tmp/loki`＝config `path_prefix` と一致） | 蓄積ログ（index/chunks） |
+| Tempo | `tempo-data`（`/tmp/tempo`＝config `local.path`/`wal.path` の親） | 蓄積トレース（blocks/wal） |
+
+- **Keycloak の外部 DB 化**: `start-dev` を維持したまま `KC_DB=postgres`（`KC_DB_URL_HOST=postgres` /
+  `KC_DB_URL_DATABASE=keycloak` / `KC_DB_USERNAME=KC_DB_PASSWORD=kp`）で H2 を置換する。`keycloak` DB は
+  `create-multiple-dbs.sh` が作成（所有者 `kp`）。`KC_HOSTNAME_URL`（issuer 固定・#88）・healthcheck・`--import-realm` は不変。
+- **Loki/Tempo を root 実行にする理由**: 空の名前付きボリュームは root 所有で生成されるため、非 root イメージ
+  （uid 10001）でも storage 配下に書き込めるよう `user: "0:0"` を付与している（dev/staging compose 限定・[IADR-0079] §3）。
+
+#### ⚠️ Keycloak realm（`microservices-platform-realm.json`）を更新したときの反映手順
+
+外部 DB 永続化により、`--import-realm` は **既存 realm をスキップ**する（default: 上書きしない）。H2 時代は毎回
+`up` で realm が再 import されていたが、**永続化後は `realm.json` を編集しても自動反映されない**。これは
+runtime state 保持（本 issue の目的）と realm 定義の再現性のトレードオフで、後者は次の手順で担保する。
+
+1. **開発中に realm 定義を作り直してよい場合（推奨・破壊的）**: keycloak DB を落として再 import させる。
+   ```bash
+   docker compose -f deploy/docker-compose.yml rm -sf keycloak
+   docker compose -f deploy/docker-compose.yml exec -T postgres \
+     psql -U postgres -c 'DROP DATABASE IF EXISTS keycloak WITH (FORCE);' -c 'CREATE DATABASE keycloak OWNER kp;'
+   docker compose -f deploy/docker-compose.yml up -d keycloak   # --import-realm が最新 realm.json を再投入
+   ```
+   実行時変更（ユーザー等）は失われる。realm 定義（クライアント・ロール・マッパー）は `realm.json` が単一の真実源
+   （バックアップ・リストア節と整合）。
+2. **runtime state を保持したまま部分反映したい場合（非破壊）**: 管理コンソール（`http://localhost:8080`・admin/admin）
+   または `kcadm` の partial-import で当該変更のみ適用する。
+   ```bash
+   docker compose -f deploy/docker-compose.yml exec keycloak \
+     /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080 \
+       --realm master --user admin --password admin
+   # 例: 追加/変更したクライアントのみ partial import（realmPartialImport エンドポイント / 管理 UI「Partial import」）
+   ```
+
+#### 永続化の確認（要 docker daemon）
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+# 管理コンソールで検証用ユーザーを追加し、Grafana で Loki/Tempo にデータが出ることを確認
+docker compose -f deploy/docker-compose.yml down          # -v は付けない（付けるとボリュームも削除）
+docker compose -f deploy/docker-compose.yml up -d
+# 追加ユーザーが残存し、Loki/Tempo の過去データが参照できることを確認
+```
+
+> ローカル k8s dev 環境（`deploy/local/`＝経路B）は [IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md) の
+> 割り切りで infra が `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
+> 恒久化（Keycloak realm/runtime state の保持）は別途フォローアップ issue で扱う。
+
 ### サービス構成に関する運用注記
 
 - **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)、
