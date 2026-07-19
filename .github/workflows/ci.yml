@@ -100,6 +100,21 @@ jobs:
       - name: Check unit dependency direction
         run: node scripts/check-unit-dependencies.js
 
+  # Issue #18 再発防止: Keycloak realm export の文字列フィールド長が import 先 RDB の
+  # varchar(255) を超えていないかを機械検査する（#307 で description が 364 文字となり import が
+  # SQLSTATE 22001 で失敗し pod がクラッシュした）。外部依存ゼロ。--self-test で検査器も毎回試験する。
+  realm-constraints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test realm constraint checker
+        run: node scripts/check-realm-constraints.js --self-test
+      - name: Check realm field lengths
+        run: node scripts/check-realm-constraints.js
+
   lint:
     runs-on: ubuntu-latest
     steps:

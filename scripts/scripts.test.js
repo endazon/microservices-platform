@@ -387,4 +387,42 @@ ok('computeDrift: 除外リストの腐り（除外対象が compose から消�
   assert.ok(v.some((x) => x.kind === 'compose-only-stale'));
 });
 
+// --- check-realm-constraints: realm フィールド長検査（Issue #18 再発防止） ---
+
+const {
+  charLen,
+  collectFields,
+  findViolations,
+  checkRealmText,
+} = require('./check-realm-constraints.js');
+
+ok('charLen はコードポイント数（マルチバイトも 1 文字 = 1）', () => {
+  assert.strictEqual(charLen('あ'.repeat(300)), 300);
+  assert.strictEqual(charLen(null), 0);
+});
+
+ok('findViolations: 255 文字は合格・256 文字は違反', () => {
+  const ok255 = collectFields({ clients: [{ clientId: 'x', description: 'a'.repeat(255) }] });
+  const over = collectFields({ clients: [{ clientId: 'x', description: 'a'.repeat(256) }] });
+  assert.strictEqual(findViolations(ok255).length, 0);
+  assert.strictEqual(findViolations(over).length, 1);
+});
+
+ok('collectFields は client/role/group/realm を横断走査する', () => {
+  const long = 'a'.repeat(256);
+  const v = findViolations(collectFields({
+    realm: 'r', displayName: long,
+    roles: { realm: [{ name: 'a', description: long }], client: { c: [{ name: 'b', description: long }] } },
+    groups: [{ name: 'g', subGroups: [{ name: long }] }],
+  }));
+  assert.strictEqual(v.length, 4);
+});
+
+ok('checkRealmText: 欠損フィールドは例外を投げず無視', () => {
+  assert.strictEqual(
+    checkRealmText(JSON.stringify({ clients: [{ clientId: 'x' }], roles: {}, groups: null })).length,
+    0,
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
