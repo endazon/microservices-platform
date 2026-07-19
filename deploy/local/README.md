@@ -169,6 +169,57 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
 
 > 実ブラウザログイン end-to-end・Playwright E2E・Pod 実起動ヘルス緑は稼働 k3d 依存（本 issue の live 分・#284）。
 
+## Headlamp（k8s 管理 UI・Keycloak OIDC・Issue #271）
+
+> 起点: [IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md) /
+> 作業仕様書 [`docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md`](../../docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md)
+
+[Headlamp](https://headlamp.dev/)（CNCF Sandbox の k8s UI）を **opt-in** で導入し、Pod / Deployment / Service /
+ログ等をブラウザから閲覧・操作できる。ログインは既存 Keycloak（OIDC）で行い、`developer` / `developer` を流用する
+（新たな認証情報を作らない＝アカウントは Keycloak が一元管理）。
+
+### 有効化（opt-in・既定オフ）
+
+```bash
+HEADLAMP=1 bash scripts/k8s-local-up.sh
+# → deploy/local/headlamp（ServiceAccount/Deployment/Service/ClusterRoleBinding）を適用。
+#   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
+```
+
+Headlamp UI へは port-forward で到達する:
+
+```bash
+kubectl -n platform-infra port-forward svc/headlamp 4466:80   # http://localhost:4466
+```
+
+### ブラウザ OIDC ログイン（手順A ＋ apiserver OIDC フラグ）
+
+Headlamp はブラウザから OIDC を行うため、issuer 到達性を上記 **手順A** と同じ方法で解く（realm/manifest 無改変）:
+
+1. hosts に `127.0.0.1 keycloak` を追記（既に手順A で追記済みならそのまま）。
+2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
+3. これで browser（Headlamp のリダイレクト先）も cluster も issuer `http://keycloak:8080` を共有する。
+   realm client `headlamp` の redirectUris は `http://localhost:4466/*`（callback = `/oidc-callback`）。
+
+さらに、**Headlamp が委譲する id_token を k8s API server が検証**するには、クラスタを OIDC 用 apiserver フラグ付きで
+(再)作成する必要がある（稼働 k3d 依存＝live。既存クラスタには後付けできず再作成）。k3d の例:
+
+```bash
+k3d cluster create msp-ast-dev --agents 1 \
+  -p "8080:80@loadbalancer" -p "8443:443@loadbalancer" \
+  --k3s-arg "--kube-apiserver-arg=oidc-issuer-url=http://keycloak:8080/realms/microservices-platform@server:0" \
+  --k3s-arg "--kube-apiserver-arg=oidc-client-id=headlamp@server:0" \
+  --k3s-arg "--kube-apiserver-arg=oidc-username-claim=preferred_username@server:0" \
+  --k3s-arg "--kube-apiserver-arg=oidc-username-prefix=oidc:@server:0"
+```
+
+これにより Keycloak の `preferred_username=developer` は k8s ユーザー `oidc:developer` にマップされ、同梱の
+ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）でリソースの閲覧・操作ができる。
+`developer` は dev スーパーユーザー（IADR-0066）で、ロール別の権限分離検証には使わない（`poc-*` の役割）。
+
+> 実ブラウザでの OIDC 実ログイン・リソース閲覧疎通は稼働 k3d 依存（本 issue #271 の live 分）。
+> fail-safe: Headlamp の ServiceAccount には広域権限を bind していないため、OIDC ログイン無しではクラスタを可視化できない。
+
 ## 既知の制約
 
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は

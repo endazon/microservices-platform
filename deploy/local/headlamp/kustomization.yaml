@@ -1,0 +1,10 @@
+# IADR-0080 (#271): Headlamp（k8s 管理 UI・Keycloak OIDC）を dev クラスタへ導入する opt-in オーバーレイ。
+# ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（fail-safe）。
+# 適用（opt-in）: kubectl apply -k deploy/local/headlamp
+#   → 事前に OIDC client secret を Secret headlamp-oidc（platform-infra）へ入れる（k8s-local-up.sh の HEADLAMP=1 が実施）。
+# 実ブラウザ OIDC ログイン・リソース閲覧は稼働 k3d 依存（README の「Headlamp」手順＝IADR-0076 手順A＋apiserver OIDC フラグ）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - headlamp.yaml
