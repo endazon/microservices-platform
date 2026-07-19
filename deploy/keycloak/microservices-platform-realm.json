@@ -241,7 +241,7 @@
     {
       "clientId": "ai-stock-trading-kb-writer",
       "name": "AST KB writer (cross-unit s2s, client_credentials)",
-      "description": "AST #18（AST FR-08＝ナレッジベース保存）/ 本レルム FR-06（文書 CRUD）, IADR-0075: ai-stock-trading ユニットが確定報告書・収集情報を DocumentService へ書き込む（POST /documents は platform-admin/operator 必須）ための機密クライアント。service-account に platform-operator を付与し client_credentials のみ許可する。AST レルムのトークンは issuer 不一致で本レルムの検証を通らないため、KB 書き込みは本レルムのクライアントで行う。本番シークレットは config（Vault/Secrets）から供給し、この dev export の値は使わない。",
+      "description": "AST #18/IADR-0075（AST FR-08＝KB保存, 本レルム FR-06＝文書CRUD）: ai-stock-trading が確定報告書・収集情報を DocumentService へ書き込む機密クライアント（client_credentials, service-account に platform-operator）。AST レルムのトークンは issuer 不一致で通らないため本レルムで発行。本番シークレットは config から供給し dev export 値は使わない。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,

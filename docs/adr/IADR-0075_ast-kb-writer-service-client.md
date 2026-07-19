@@ -80,3 +80,13 @@ DocumentService は **`microservices-platform` レルム**の Authority で JWT 
 - **B: AST レルムに platform-operator 相当を作る** — 却下。issuer が AST レルムのままで本レルムの Authority 検証を通らない。
 - **C: 専用ロールを新設して write グループへ足す** — 却下（過剰）。既存の `platform-operator` が write 要件を満たすため、
   ロールを増やさず最小の追加（サービスクライアント1つ）で足りる。
+
+## 事後対応（PR #317 / Issue #18）
+
+- 本クライアント追加時（[#307](https://github.com/endazon/microservices-platform/pull/307)）の `description` が 364 文字あり、
+  Keycloak の `CLIENT.DESCRIPTION`（`varchar(255)`）を超過して realm import が **SQLSTATE 22001** で失敗し pod がクラッシュした。
+  意味を保ったまま 251 文字へ短縮して是正した（権限・ロール・フロー等の挙動は不変・description の長さのみ）。
+- 再発防止として `scripts/check-realm-constraints.js` を追加し、CI（`ci.yml` の `realm-constraints` ジョブ）で realm export の
+  文字列フィールド長を `varchar(255)` に対して機械検査する。対象は clients/clientScopes/protocolMappers/roles/groups の name・
+  description 等（オーバーフローしやすい自由記述/名称に絞った軽い lint）。対象外フィールドで同種の失敗が起きた場合は
+  `collectFields` に対象を足して範囲を広げる方針とする。
