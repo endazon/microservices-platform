@@ -70,9 +70,9 @@ PERSIST=1       bash scripts/k8s-local-up.sh   # Keycloak(realm+runtime state)/P
 - [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
-### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0081）
+### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082）
 
-> 起点: [IADR-0081](../../docs/adr/IADR-0081_local-k8s-infra-persistence.md) /
+> 起点: [IADR-0082](../../docs/adr/IADR-0082_local-k8s-infra-persistence.md) /
 > 作業仕様書 [`docs/specs/20260719_issue-324_infra-persistence-k8s.md`](../../docs/specs/20260719_issue-324_infra-persistence-k8s.md)
 
 既定の経路B infra は [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) の割り切りで `emptyDir`
@@ -98,7 +98,7 @@ PERSIST=1 bash scripts/k8s-local-up.sh
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
 - **既定（`PERSIST` 未設定）は従来どおり `emptyDir`**（挙動不変・後方互換・fail-safe）。`local-path` 等の
   provisioner が無いクラスタでも既定経路は Pod Pending 化しない。qdrant / rabbitmq / redis / otel は emptyDir 継続
-  （embeddings は再生成可・queue/cache は揮発前提・stateless。詳細は IADR-0081）。
+  （embeddings は再生成可・queue/cache は揮発前提・stateless。詳細は IADR-0082）。
 - **⚠️ 既存環境の移行**: 途中から `PERSIST=1` に切り替えると Deployment の volume が差し替わりローリング更新が走る。
   **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
   データで、失う恒久データは無い）。以後の再起動では PVC のデータが保持される。リセットしたいときは PVC を消す:
@@ -278,7 +278,7 @@ ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）�
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は opt-in**: 既定の infra は emptyDir（Pod 再起動で再 init。dev 用途の割り切り）。`PERSIST=1` で
-  Keycloak/Postgres を PVC 永続化できる（上記「永続化」節・IADR-0081）。
+  Keycloak/Postgres を PVC 永続化できる（上記「永続化」節・IADR-0082）。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
 

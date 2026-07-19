@@ -110,10 +110,10 @@ docker compose -f deploy/docker-compose.yml up -d
 
 > ローカル k8s dev 環境（`deploy/local/`＝経路B）は [IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md) の
 > 割り切りで infra が既定 `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
-> 恒久化（Keycloak realm/runtime state の保持）は #324 / [IADR-0081](../adr/IADR-0081_local-k8s-infra-persistence.md)
+> 恒久化（Keycloak realm/runtime state の保持）は #324 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md)
 > で **opt-in（`PERSIST=1`）** を追加した（下記「経路B の永続化」節）。
 
-#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0081](../adr/IADR-0081_local-k8s-infra-persistence.md) / #324）
+#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md) / #324）
 
 `PERSIST=1 bash scripts/k8s-local-up.sh` で [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
 オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）と Postgres

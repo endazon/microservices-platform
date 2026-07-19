@@ -1,4 +1,4 @@
-# IADR-0081 / Issue #324: 経路B 基盤インフラの永続化オーバーレイ（opt-in）。
+# IADR-0082 / Issue #324: 経路B 基盤インフラの永続化オーバーレイ（opt-in）。
 # base（deploy/local/infra）に PVC を足し、postgres/keycloak の Deployment の volume を PVC 参照へ差し替える。
 # 適用: kubectl apply -k deploy/local/infra-persistence （scripts/k8s-local-up.sh は PERSIST=1 で本ディレクトリを選ぶ）
 # 既定（PERSIST 未設定）は base（emptyDir）が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。

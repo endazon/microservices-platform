@@ -7,12 +7,12 @@ related_ids:
   - ADR-0004
   - IADR-0066
   - IADR-0079
-  - IADR-0081
+  - IADR-0082
 author: claude
 created: 2026-07-19
 updated: 2026-07-19
 related_specs:
-  - "../adr/IADR-0081_local-k8s-infra-persistence.md"
+  - "../adr/IADR-0082_local-k8s-infra-persistence.md"
   - "../adr/IADR-0066_local-k8s-dev-environment.md"
   - "../adr/IADR-0079_infra-persistence-compose.md"
   - "../operations/operations.md"
@@ -25,7 +25,7 @@ related_specs:
 
 - 機能要求(FR): なし（運用・基盤インフラの永続化。プロダクト機能ではない）
 - 非機能要件(NFR): 運用性・信頼性（**Pod 再起動/再作成でインフラ状態を失わないこと**）
-- 関連 ADR: ADR-0004（認証＝Keycloak）。方式判断は [[IADR-0081]]。既存 [[IADR-0066]]（経路B の
+- 関連 ADR: ADR-0004（認証＝Keycloak）。方式判断は [[IADR-0082]]。既存 [[IADR-0066]]（経路B の
   `emptyDir` 割り切り＝本 issue が見直す対象）／[[IADR-0079]]（compose 側の永続化・別レイヤの先例）。
 - Issue: #324（本 issue・運用/dev・priority:should）。#282（PR #323）実装時のスコープ確認で経路B が
   明示除外されたため分離した派生タスク。ユーザーが経路B で Keycloak realm 消失に実際に遭遇している。
@@ -59,7 +59,7 @@ compose 側（#282 / [IADR-0079]）は既に永続化済みだが、**#282 は�
 ### 対象外（emptyDir 継続・意図的）
 
 - **qdrant**: embeddings は Postgres/元ドキュメントから再生成可能な派生データで、dev では再 ingest がまれ。損失影響が
-  低く、issue でも「必要に応じて qdrant 等」＝任意。同型の PVC を追加すれば拡張可能（[IADR-0081] に明記）。
+  低く、issue でも「必要に応じて qdrant 等」＝任意。同型の PVC を追加すれば拡張可能（[IADR-0082] に明記）。
 - **rabbitmq / redis**: それぞれ queue / cache で揮発前提。**otel-collector**: stateless。
 
 ### 有効化（opt-in・既定オフ・後方互換）
@@ -77,7 +77,7 @@ compose 側（#282 / [IADR-0079]）は既に永続化済みだが、**#282 は�
 4. realm import 冪等性: 永続後は `--import-realm` が既存 realm をスキップ → **realm 更新反映手順**（PVC 削除で再生成
    ／partial import）を `deploy/local/README.md` と `docs/operations/operations.md` に明記。
 5. **移行手順**（emptyDir→PVC 切替時、初回は PVC 空→import で再生成。既存 emptyDir データは元々揮発）を docs に明記。
-6. 設計判断（opt-in / H2-on-PVC / compose との差異）を [IADR-0081] に記録。README（ADR 索引）は自分の 1 行のみ追記。
+6. 設計判断（opt-in / H2-on-PVC / compose との差異）を [IADR-0082] に記録。README（ADR 索引）は自分の 1 行のみ追記。
 7. 検証: `kubectl kustomize deploy/local/infra` / `deploy/local/infra-persistence` が両方ビルド成功。既存 CI
    （#275 image-mapping ドリフト・realm-constraints・ci.yml self-test）を非回帰で緑。realm.json は無改変。
 

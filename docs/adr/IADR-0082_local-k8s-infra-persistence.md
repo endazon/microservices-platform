@@ -1,5 +1,5 @@
 ---
-title: IADR-0081 経路B（ローカル k8s dev）の基盤インフラは opt-in kustomize オーバーレイで Keycloak=H2-file-on-PVC／Postgres=data-on-PVC として local-path 永続化する
+title: IADR-0082 経路B（ローカル k8s dev）の基盤インフラは opt-in kustomize オーバーレイで Keycloak=H2-file-on-PVC／Postgres=data-on-PVC として local-path 永続化する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性)"
 ---
 
-# IADR-0081: 経路B 基盤インフラの永続化（opt-in オーバーレイ・Keycloak/Postgres を local-path PVC 化）
+# IADR-0082: 経路B 基盤インフラの永続化（opt-in オーバーレイ・Keycloak/Postgres を local-path PVC 化）
 
 - 状態: Accepted
 - 日付: 2026-07-19
