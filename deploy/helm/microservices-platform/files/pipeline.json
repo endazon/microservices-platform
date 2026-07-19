@@ -9,7 +9,7 @@
     "IngestionCompleted"
   ],
   "sources": [
-    { "event": "RawDocumentFetched", "service": "data-source-service" },
+    { "event": "RawDocumentFetched", "service": "datasource-service" },
     { "event": "DocumentUpdated", "service": "document-service" },
     { "event": "DocumentDeleted", "service": "document-service" }
   ],

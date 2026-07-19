@@ -27,7 +27,7 @@ public sealed class PipelineSourceOptions
     // 発行されるイベント型名（events に列挙済み）。
     public string Event { get; set; } = "";
 
-    // 発行するサービス名（例: data-source-service）。
+    // 発行するサービス名（例: datasource-service）。
     public string Service { get; set; } = "";
 }
 
