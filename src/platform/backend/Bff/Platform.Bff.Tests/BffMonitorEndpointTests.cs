@@ -5,7 +5,7 @@ using System.Text;
 namespace Platform.Bff.Tests;
 
 // Issue #288, FR-14, IADR-0072: /bff/monitor/* が MarketMonitorService へ pass-through すること、
-// 認可を後段（OwnerOnly）へ委ね（匿名 401・非 owner の後段 403 を透過）、SC-02 watchlist UI の 4 経路
+// 認可を後段（OwnerOnly）へ委ね（匿名 401・非 owner の後段 403 を透過）、AST/SC-02 watchlist UI の 4 経路
 // （watchlist GET/POST/DELETE・watchlist/history GET）を中継し、後段不達を 502 へ縮退し、利用者トークンと
 // POST/DELETE 本文を後段へ伝播することを検証する。BFF は DTO に結合しない（素の JSON を透過）。
 public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>

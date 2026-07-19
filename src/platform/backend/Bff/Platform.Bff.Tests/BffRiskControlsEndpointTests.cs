@@ -6,7 +6,7 @@ using System.Text;
 namespace Platform.Bff.Tests;
 
 // Issue #287, FR-14, IADR-0071: /bff/risk-controls/* が RiskManagementService へ pass-through すること、
-// 認可を後段（OwnerOnly）へ委ね（匿名 401・非 owner の後段 403 を透過）、SC-02/03 の 6 経路（settings・
+// 認可を後段（OwnerOnly）へ委ね（匿名 401・非 owner の後段 403 を透過）、AST/SC-02/AST/SC-03 の 6 経路（settings・
 // settings/history・settings/limits・settings/guard・status・stage-gate）を中継し、後段不達を 502 へ縮退し、
 // 利用者トークンと PUT 本文を後段へ伝播することを検証する。BFF は DTO に結合しない（素の JSON を透過）。
 public class BffRiskControlsEndpointTests : IClassFixture<BffTestFactory>
