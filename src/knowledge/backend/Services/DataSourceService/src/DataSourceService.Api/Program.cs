@@ -68,6 +68,18 @@ builder.Services.AddScoped<DataSourceSyncService>();
 // 定期同期（既定無効。DataSourceSync:Enabled=true で有効化）。
 builder.Services.Configure<DataSourceSyncOptions>(
     builder.Configuration.GetSection(DataSourceSyncOptions.SectionName));
+// IADR-0083 (#305): 定期同期の単一書き手化（本番マルチレプリカでの冗長 fetch 排除）。リレーショナル（Npgsql）は
+// advisory lock で排他し、非リレーショナル（InMemory 等）は NoOp で従来どおり毎サイクル実行する（後方互換）。
+// IsRelational はプロバイダ判定のみで DB 接続しないため、起動時にスコープを張って安全に評価できる。
+builder.Services.AddSingleton<ISyncLeaseCoordinator>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<DataSourceDbContext>();
+    if (!db.Database.IsRelational())
+        return new NoOpSyncLeaseCoordinator();
+    return new PostgresAdvisoryLockLeaseCoordinator(
+        connStr, sp.GetRequiredService<ILogger<PostgresAdvisoryLockLeaseCoordinator>>());
+});
 builder.Services.AddHostedService<DataSourceSyncHostedService>();
 
 var app = builder.Build();

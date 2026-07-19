@@ -13,5 +13,7 @@
     <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+    <!-- IADR-0083 (#305): 単一書き手化ゲート TryRunCycleAsync 等の internal をテストへ公開する。 -->
+    <InternalsVisibleTo Include="DataSourceService.Api.Tests" />
   </ItemGroup>
 </Project>
