@@ -77,10 +77,14 @@ datasource API（`/bff/datasources` 後段）の可用性（minReplicas 2 / PDB�
 ## テスト計画（TDD）
 
 - `NoOpSyncLeaseCoordinatorTests`: 常に非 null のリースを返し、Dispose が安全であること。
-- `PostgresAdvisoryLockLeaseCoordinatorTests`: 接続不能（到達不可なホスト）時に **null を返し例外を投げない**（fail-safe）こと。
+- `SyncLeaseCoordinatorTests`（`PostgresAdvisoryLockLeaseCoordinator`）: 接続不能（到達不可なホスト）時に
+  **null を返し例外を投げない**（fail-safe）こと。
 - `DataSourceSyncHostedServiceTests`（既存 InMemory factory を活用）:
   - リース取得成功 → 1 サイクルで active データソースが同期され watermark 前進・リースが解放される。
   - リース取得失敗（deny）→ 同期が実行されず（fetch/watermark 前進なし）本サイクルは false を返す。
+- `DataSourceSyncSingleWriterTests`（`Knowledge.IntegrationTests`・実 PostgreSQL/Testcontainers・`[DockerFact]`）:
+  単一書き手化の核心＝2 レプリカ（別セッション）が競合しても同時刻に **1 つのみ取得成功**し、保持中は他方が取得不可、
+  **解放後は別レプリカが取得できる**（liveness）ことを実コンテナで自動回帰ガードする（Docker 不在時はスキップ・CI で実行）。
 - 既存回帰（`DataSourceSyncServiceTests` / `DataSourceSyncEndpointTests` / 配線テスト）は不変で通過。
 
 ## 検証（完了前）

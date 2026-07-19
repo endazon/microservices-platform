@@ -1,15 +1,17 @@
-using DataSourceService.Api.Foundation.Services;
 using FluentAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.PostgreSql;
+// 名前空間 Knowledge.IntegrationTests.DataSourceService の末尾セグメントと衝突するため global:: で明示する。
+using global::DataSourceService.Api.Foundation.Services;
 
-namespace Knowledge.IntegrationTests.Deployment;
+namespace Knowledge.IntegrationTests.DataSourceService;
 
 // FR-01, UC-04, IADR-0083 (#305): 定期同期の単一書き手化の核心を実 PostgreSQL で回帰ガードする。
 // PostgresAdvisoryLockLeaseCoordinator が pg_try_advisory_lock により「同時刻に 1 レプリカのみ取得成功」
 // （＝本番マルチレプリカでも 1 サイクル 1 fetch）になること、および解放後は別レプリカが取得できる（liveness）ことを
 // 実コンテナで検証する。Docker 不在時は [DockerFact] がスキップする（CI は Docker あり）。
+[Trait("Category", "Integration")]
 public sealed class DataSourceSyncSingleWriterTests
 {
     [DockerFact]

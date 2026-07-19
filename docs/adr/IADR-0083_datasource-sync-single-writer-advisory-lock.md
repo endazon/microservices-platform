@@ -113,4 +113,7 @@ CI（#275 ドリフト・images.yml）を壊さない。`scaling.services`（min
 - 後方互換: 単一レプリカ・非リレーショナル・既定無効・手動 /sync・watermark・継続失敗アラートは不変。
   Helm/infra 無改修（#328 と非干渉）。
 - 検証: C# 単体テストで（a）NoOp コーディネータ常時取得、（b）advisory lock コーディネータの接続不能時 fail-safe、
-  （c）ワーカーがリース取得時のみ同期・取得不可時はスキップ、を回帰ガードする。実マルチレプリカ疎通は live 手順。
+  （c）ワーカーがリース取得時のみ同期・取得不可時はスキップ、を回帰ガードする。さらに（d）実 PostgreSQL コンテナ
+  （Testcontainers・`DataSourceSyncSingleWriterTests`）で単一書き手化の核心＝「2 レプリカが競合しても同時刻に 1 つのみ
+  取得成功し、解放後は別レプリカが取得できる（liveness）」を統合テストで自動検証する（Docker 不在時はスキップ・CI で実行）。
+  実マルチレプリカでのエンドツーエンド疎通のみ live 手順に残す。
