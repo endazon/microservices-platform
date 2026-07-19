@@ -151,7 +151,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
-`wiki-js-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 - **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
   （`poc-operator`、`platform-operator` ロール保持。IADR-0030 の `ConfigViewer` を再現）を、
@@ -160,10 +160,15 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   全ロールと clearance=`restricted` を束ねた dev 用スーパーユーザー。1 アカウントで全機能の疎通確認を行う
   ための便宜であり、**権限分離（ロール別挙動）の検証には使わない**（それは `poc-*` の役割）。
   他の dev ユーザーと同様、共有／ステージング／本番の realm には含めない。
+- **`ai-stock-trading-kb-writer`（IADR-0075・AST #18 のクロスユニット s2s 用）**: AST ユニットが本レルムの
+  DocumentService へ KB 書き込み（`POST /documents`）を行うための機密クライアント（service-account に
+  `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
+  は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
+  コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
 - **本番流用の禁止**: 共有／ステージング／本番の realm には **PoC ユーザーを含めない**。運用ユーザーは
   Keycloak 管理画面／IaC で個別に作成し、パスワードは realm import にコミットしない。クライアント
-  シークレット（`wiki-js`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する（上記「Wiki.js 前段」
-  §秘密情報を参照）。
+  シークレット（`wiki-js` / `ai-stock-trading-kb-writer`）は環境ごとに必ず変更し、環境変数／Secret 経由で注入する
+  （上記「Wiki.js 前段」§秘密情報を参照）。
 - **リスク受容の根拠**: dev realm は host 公開されるが、格納データは合成のテスト属性のみで機密を含まず、
   ネットワークもローカルに閉じる。平文値は「変更前提の既知シード」であり、秘密として扱わない。
 
