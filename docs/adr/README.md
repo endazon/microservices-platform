@@ -99,7 +99,8 @@
 | IADR-0077 | 経路B の可観測性スタック（Prometheus/Loki/Tempo/Grafana）・Vault dev・GitOps(ArgoCD) は deploy/local の opt-in オーバーレイ＋k8s-local-up.sh の env ゲートで追加のみ配線し、既定は現状不変（外部送信なし・平文秘密なし・fail-safe）。Hetzner 実 stand-up は Tier 3（AST #24） | Accepted |
 | IADR-0078 | SPA(frontend) は専用 template（templates/frontend.yaml）＋トップレベル frontend values ブロックで k8s 配信し（wikijs/minio と同じ非 .NET パターン）、エッジ VirtualService に SPA catch-all（/bff 等の後・先勝ち）と allow-edge-ingress-to-frontend を追加。#275 ドリフト検査は COMPOSE_ONLY 除外を解消し MAPPING へ載せる（#313） | Accepted |
 | IADR-0079 | compose 基盤インフラの永続化: Keycloak は start-dev を維持したまま共有 Postgres（keycloak DB・所有者 kp・kp/kp）へ外部 DB 化して runtime state を永続化、Loki/Tempo は既存 config の storage パス（/tmp/loki・/tmp/tempo）へ名前付きボリューム＋user:0:0（空ボリューム root 所有の書込回帰を回避）。realm 更新は永続後スキップされるため再投入手順を operations に明記。経路B は対象外（#282） | Accepted |
-| IADR-0080 | frontend base イメージを docker.io 直参照から mirror.gcr.io/library（Google の Docker Hub プルスルーミラー・匿名/チャレンジ無し）へ ARG BASE_REGISTRY で既定差し替え。真因は 401 Bearer チャレンジが Rancher Desktop の破損した資格情報ヘルパ（errorCode 255）を呼ぶことで、public.ecr.aws/ghcr.io も 401 で同様に失敗（実測）。build args を増やさず #275 ドリフト検査は緑・byte 等価（#325） | Accepted |
+| IADR-0080 | Headlamp（k8s 管理 UI）を dev 専用 raw manifest の opt-in オーバーレイ（`deploy/local/headlamp/`・`HEADLAMP=1` ゲート）で導入し、認証は Keycloak OIDC の token passthrough、RBAC は fail-safe（SA 無権限・`developer` に cluster-admin bind）とする（#271） | Accepted |
+| IADR-0081 | frontend base イメージを docker.io 直参照から mirror.gcr.io/library（Google の Docker Hub プルスルーミラー・匿名/チャレンジ無し）へ ARG BASE_REGISTRY で既定差し替え。真因は 401 Bearer チャレンジが Rancher Desktop の破損した資格情報ヘルパ（errorCode 255）を呼ぶことで、public.ecr.aws/ghcr.io も 401 で同様に失敗（実測）。build args を増やさず #275 ドリフト検査は緑・byte 等価（#325） | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
