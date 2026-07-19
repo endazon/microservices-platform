@@ -10,7 +10,9 @@ related_ids:
 author: endazon (with Claude Code)
 created: 2026-07-19
 updated: 2026-07-19
-plan_refs: []
+plan_refs:
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
 # 作業仕様書: ローカル（経路B）可観測性・Vault・GitOps の opt-in オーバーレイ（AST #24 の MSP 分）
