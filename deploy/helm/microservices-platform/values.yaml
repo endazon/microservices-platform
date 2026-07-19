@@ -281,6 +281,10 @@ services:
     image: microservices-platform/llm-gateway
     tag: latest
     port: 8080
+    # FR-02, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み（Ruri v3）の配線対象。
+    # embedding.enabled=true のとき deployment.yaml が Embedding__SelfHosted__BaseUrl と
+    # Embedding__Routing__Endpoints__1__Enabled=true を注入する。既定は embedding.enabled=false で非描画＝現状維持。
+    selfHostedEmbedding: true
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -439,6 +443,33 @@ minio:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { cpu: 1000m, memory: 1Gi }
+
+# FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+# 高機密（confidential/restricted）はティアA=セルフホスト固定。本ブロックは案 A のインフラを opt-in で用意する。
+# 既定 enabled=false ＝現行 fail-closed 維持（後方互換）。有効化すると templates/embedding.yaml が TEI（OpenAI 互換
+# /v1/embeddings）を配備し、deployment.yaml が llmgateway へ BaseUrl と selfhosted エンドポイント有効化を注入する。
+# 第三者 pull イメージ（build 無し）＝#275 ドリフト検査の対象外。
+# ⚠️ 実モデル取得・GPU/CPU リソース・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
+# 既定 tag / modelId はプレースホルダ。実運用前に稼働環境で固定する。
+embedding:
+  enabled: false
+  replicas: 1
+  registry: ghcr.io
+  image: huggingface/text-embeddings-inference
+  # 実運用前に固定するプレースホルダ（CPU 版の例。GPU 版は cuda-* タグへ差し替える）。
+  tag: "cpu-1.5"
+  # ADR-0017: Ruri v3（768 次元）。実モデル取得は稼働環境依存。
+  modelId: "cl-nagoya/ruri-v3-310m"
+  # TEI 追加起動引数（例: ["--dtype", "float16"]）。既定なし。
+  extraArgs: []
+  # コンテナ待受ポート（TEI 既定は 80）。Service port と分離し targetPort で束ねる。
+  containerPort: 80
+  # llmgateway が参照する Service ポート（Embedding__SelfHosted__BaseUrl=http://embedding-service:<port>）。
+  # 8080 は本プラットフォームの Service ポート慣習（各アプリサービスの Service と同値・DNS 名で分離）に合わせた意図的な採番。
+  port: 8080
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { cpu: 2000m, memory: 4Gi }
 
 # FR-13, UC-07, ADR-0011, IADR-0020: Wiki.js（閲覧・編集 UI の実体）。専用 DB `wikijs`（Postgres）。
 # 認証は Keycloak(OIDC)。ABAC は WikiService ゲートウェイが前段で強制するため、Wiki.js への直接到達は

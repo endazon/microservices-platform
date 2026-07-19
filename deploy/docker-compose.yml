@@ -434,6 +434,23 @@ services:
     depends_on:
       - otel-collector
 
+  # FR-02, FR-03, ADR-0017, IADR-0025, IADR-0085 (#303): セルフホスト埋め込み推論基盤（Ruri v3 / 768 次元）。
+  # 高機密（confidential/restricted）はティアA=セルフホスト固定。この基盤が未起動の間は fail-closed（高機密は
+  # 索引されない）。案 A のインフラを opt-in で用意する。profiles: ["embedding"] のため既定オフ（`docker compose
+  # --profile embedding up` でのみ起動）。build を持たない pull イメージ＝#275／images.yml いずれの検査対象外。
+  # 有効化手順: プロファイルを有効化し、llm-gateway へ SELFHOSTED_EMBEDDING_URL=http://embedding:80 と
+  #   SELFHOSTED_EMBEDDING_ENABLED=true を .env で与える。
+  # ⚠️ 実モデル取得・実埋め込み疎通・nDCG@10 実測は稼働環境依存＝分離（IADR-0085 / #303）。
+  # 既定 image tag / モデル ID はプレースホルダ。実運用前に固定する。
+  embedding:
+    profiles: ["embedding"]
+    # TEI（OpenAI 互換 /v1/embeddings）。vLLM 等へ差し替える場合は image/command を上書きする。
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.5
+    command: ["--model-id", "cl-nagoya/ruri-v3-310m"]
+    # 内部 API のため host 公開しない（llm-gateway からサービス間呼び出し）。
+    expose:
+      - "80"
+
   # FR-08, UC-01: 回答へのフィードバック（👍/👎・コメント）収集サービス
   feedback-service:
     build:
