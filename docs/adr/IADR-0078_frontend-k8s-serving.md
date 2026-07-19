@@ -42,6 +42,8 @@ plan_refs:
 
 - 帰結: 汎用 `services:` ループ・`scaling.services`（HPA/PDB）・`service.yaml` を一切変更しない（他サービスへの副作用ゼロ）。frontend を `.Values.services` に置くと二重描画（名前衝突）か汎用 template の分岐汚染が必要になるため回避する。
 - Issue 本文の「`services.frontend`」表現は「frontend サービス項目を values に追加する」の意で、実体は上記の非 .NET パターンに従いトップレベル `frontend:` とする（本 IADR で明文化）。
+- **Service 名/Pod ラベルの単一情報源**: frontend の Service 名・Pod ラベル `app` は `edge.frontend.service`（既定 `frontend-service`）を単一情報源として描画する。エッジ VS の転送先 host（決定3）と NetworkPolicy の podSelector（決定4）も同じ値を参照するため、knob 変更時に netpol/ルートが実体と食い違って default-deny 下でサイレント無到達になるドリフトを防ぐ（既存の `edge.bff.service` は汎用 deployment の `{{ $name }}-service` と手動同期でこの保証が無い＝frontend はより堅牢な形に揃える）。
+- **外部ツール導線（opsLinks）は既定で未配線**: `config.js` の `GRAFANA_URL`/`JAEGER_URL`/`KIALI_URL`/`WIKI_BASE_URL`（SC-10 の外部ツール導線）は `frontend.extraEnv` で供給できるが**既定は空**とする。compose は dev の Grafana を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（[[IADR-0077]]・ADR-0006）に委ねる方針のため、既定で導線を出さない（`40-render-config.sh` が未設定を空文字にフォールバック）。配線が要る環境は `extraEnv` で URL を供給する。
 
 ### 決定2: ヘルスプローブは静的配信の実体に合わせる
 

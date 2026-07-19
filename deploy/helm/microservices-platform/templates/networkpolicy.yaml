@@ -88,7 +88,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: microservices-platform
 spec:
-  # frontend-service Pod（frontend.yaml のラベル app: frontend-service）宛のみに限定する。
+  # frontend Pod 宛のみに限定する。frontend.yaml の Pod ラベル app も edge.frontend.service を単一情報源に
+  # 描画するため、この podSelector と必ず一致する（knob 変更時のドリフト無し）。
   podSelector:
     matchLabels:
       app: {{ .Values.edge.frontend.service }}

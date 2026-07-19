@@ -5,29 +5,34 @@
 # frontend.enabled=false では何も描画しない（後方互換・fail-safe）。
 {{- if .Values.frontend.enabled }}
 {{- $f := .Values.frontend }}
+{{- /* サービス名/Pod ラベルは edge.frontend.service を単一情報源にする（既定 frontend-service）。
+       edge.yaml（VS 転送先 host）・networkpolicy.yaml（allow-edge-ingress-to-frontend の podSelector）も
+       同じ値を参照するため、ここを固定文字列にすると knob 変更時に netpol/ルートが実体と食い違い、
+       default-deny 下でエッジ→frontend がサイレント無到達になり得る。単一値へ揃えてドリフトを防ぐ。 */}}
+{{- $svcName := .Values.edge.frontend.service }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: frontend-service
+  name: {{ $svcName }}
   labels:
-    app: frontend-service
+    app: {{ $svcName }}
     chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 spec:
   replicas: {{ $f.replicas | default 1 }}
   selector:
     matchLabels:
-      app: frontend-service
+      app: {{ $svcName }}
   template:
     metadata:
       labels:
-        app: frontend-service
+        app: {{ $svcName }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: frontend-service
+        - name: {{ $svcName }}
           # 生成イメージのため global.image.registry を接頭辞に使う（本番=harbor、経路B=k3d-local）。
           image: "{{ .Values.global.image.registry }}/{{ $f.image }}:{{ $f.tag | default "latest" }}"
           imagePullPolicy: {{ .Values.global.image.pullPolicy }}
@@ -68,12 +73,12 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: frontend-service
+  name: {{ $svcName }}
   labels:
-    app: frontend-service
+    app: {{ $svcName }}
 spec:
   selector:
-    app: frontend-service
+    app: {{ $svcName }}
   ports:
     - port: {{ $f.port }}
       targetPort: {{ $f.port }}
