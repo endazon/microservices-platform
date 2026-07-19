@@ -1,0 +1,82 @@
+# IADR-0080 (#271): Headlamp（k8s 管理 UI）を dev の platform-infra に配備する（opt-in）。
+# 認証は Keycloak OIDC の token passthrough。ログイン後は利用者の id_token を API server の Bearer として委譲する。
+# fail-safe: この ServiceAccount には広域権限を bind しない（OIDC ログイン無しではクラスタ可視化不可）。
+# authz は利用者トークンが担う。`developer`（dev スーパーユーザー）の RBAC は下部の ClusterRoleBinding で付与する。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp
+  namespace: platform-infra
+  labels: { app: headlamp }
+# SA トークンは既定どおりマウントする（automountServiceAccountToken を false にしない）。理由: `-in-cluster` は
+# InClusterConfig で API server の CA/host を SA マウント（token/ca.crt）から取得するため、外すと初期化に失敗する。
+# fail-safe は「トークン除去」ではなく「この SA に RBAC を一切 bind しない」ことで担保する（トークンは無権限＝可視化不可）。
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp
+  namespace: platform-infra
+  labels: { app: headlamp }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: headlamp }
+  template:
+    metadata:
+      labels: { app: headlamp }
+    spec:
+      serviceAccountName: headlamp
+      containers:
+        - name: headlamp
+          # dev 用に tag を固定（v0.43.0＝2026-06 時点の latest stable）。更新は本ファイルの image tag を手動更新する。
+          image: ghcr.io/headlamp-k8s/headlamp:v0.43.0
+          args:
+            - "-in-cluster"
+          # OIDC 設定（Keycloak）。flag 相当を HEADLAMP_CONFIG_* env で与える。
+          # issuer は in-cluster 正準名に固定（IADR-0066）。ブラウザからの到達性は IADR-0076 手順A で解く（README）。
+          env:
+            - { name: HEADLAMP_CONFIG_OIDC_CLIENT_ID, value: "headlamp" }
+            - { name: HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL, value: "http://keycloak:8080/realms/microservices-platform" }
+            - { name: HEADLAMP_CONFIG_OIDC_SCOPES, value: "openid,profile,email" }
+            # client secret は manifest に平文で置かず Secret から注入（dev 既定は k8s-local-up.sh の HEADLAMP=1 が作成）。
+            - name: HEADLAMP_CONFIG_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: headlamp-oidc
+                  key: client-secret
+          ports:
+            - { containerPort: 4466, name: http }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp
+  namespace: platform-infra
+  labels: { app: headlamp }
+spec:
+  selector: { app: headlamp }
+  ports:
+    # port-forward: kubectl -n platform-infra port-forward svc/headlamp 4466:80  # http://localhost:4466
+    - { name: http, port: 80, targetPort: 4466 }
+---
+# fail-safe RBAC: `developer`（=platform-admin dev スーパーユーザー・IADR-0066）の OIDC アイデンティティに
+# cluster-admin を bind する。subject は apiserver フラグ `--oidc-username-claim=preferred_username`＋
+# `--oidc-username-prefix=oidc:` を前提に `oidc:developer`（README の apiserver OIDC 手順＝live）。
+# 権限分離（ロール別）検証は非スコープ＝`poc-*` の役割（IADR-0080 決定2）。dev 限定・opt-in・ローカル閉域。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-developer-cluster-admin
+  labels: { app: headlamp }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: "oidc:developer"

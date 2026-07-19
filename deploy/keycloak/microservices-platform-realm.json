@@ -254,6 +254,30 @@
       "defaultClientScopes": [
         "roles"
       ]
+    },
+    {
+      "clientId": "headlamp",
+      "name": "Headlamp (k8s management UI, dev-only OIDC)",
+      "description": "IADR-0080/#271: dev の Headlamp（k8s 管理 UI）の Keycloak OIDC ログイン用 confidential client。id_token を API server へ委譲（token passthrough）。dev 専用・本番流用禁止・secret は環境ごとに変更。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "headlamp-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4466/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4466"
+      ],
+      "defaultClientScopes": [
+        "profile",
+        "email",
+        "roles"
+      ]
     }
   ],
   "users": [

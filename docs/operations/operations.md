@@ -112,6 +112,28 @@ docker compose -f deploy/docker-compose.yml up -d
 > 割り切りで infra が `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
 > 恒久化（Keycloak realm/runtime state の保持）は別途フォローアップ issue で扱う。
 
+### Headlamp（k8s 管理 UI・dev opt-in）（NFR 運用性 / [IADR-0080](../adr/IADR-0080_headlamp-k8s-management-ui.md) / #271）
+
+ローカル k8s dev（経路B・[IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md)）に [Headlamp](https://headlamp.dev/)
+（CNCF Sandbox の k8s 管理 UI）を **opt-in** で導入し、Pod / Deployment / Service / ログ等をブラウザから閲覧・
+操作できる。認証は既存 Keycloak（OIDC）に一元化し、`developer` / `developer` を流用する（新規資格情報を作らない）。
+本番像（`deploy/helm` / `deploy/argocd` / compose）は不変で、資産は `deploy/local/headlamp/`（dev 専用）に閉じる。
+
+- **有効化**: `HEADLAMP=1 bash scripts/k8s-local-up.sh`（既定オフ・fail-safe）。`deploy/local/headlamp` を適用し、
+  OIDC client secret を Secret `headlamp-oidc`（`platform-infra`・dev 既定＝realm import の dev 値・`HEADLAMP_OIDC_CLIENT_SECRET`
+  で上書き可）へ作成する。UI 到達は `kubectl -n platform-infra port-forward svc/headlamp 4466:80`（http://localhost:4466）。
+- **realm client**: `deploy/keycloak/microservices-platform-realm.json` の client `headlamp`（confidential）が単一情報源。
+  経路B の Keycloak は `emptyDir`（Pod 再起動で realm を再 import・上記注記）のため、ConfigMap 経由で自動反映される。
+- **認証モデル / RBAC**: OIDC token passthrough（Headlamp が利用者 id_token を API server へ委譲）。fail-safe として
+  Headlamp の ServiceAccount には広域権限を与えず、OIDC ログイン無しではクラスタ可視化不可。`developer` の OIDC
+  アイデンティティ `oidc:developer` に `cluster-admin` を bind する（`headlamp-developer-cluster-admin`）。
+- **ブラウザ OIDC 到達性 / live 前提**: issuer 到達性は [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md)
+  手順A（hosts＋port-forward で `http://keycloak:8080` を共有）で解く。加えて **k8s API server の OIDC 検証フラグ**
+  （`--oidc-issuer-url` 等をクラスタ (再)作成時に付与）が実ログイン・リソース閲覧の前提（稼働 k3d 依存＝live）。
+  手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「Headlamp」節を参照。
+- **本番導入は非スコープ**: 公開範囲・アクセス制御・RBAC 設計が別問題のため、まず dev で確立し本番導入は別 issue／
+  計画フィードバック（`feedback/20260719_headlamp-k8s-management-ui.md`）で論点化する。
+
 ### サービス構成に関する運用注記
 
 - **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)、

@@ -151,7 +151,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 `deploy/keycloak/microservices-platform-realm.json` の realm import には、開発・E2E 検証用の dev ユーザーが
 平文パスワードで含まれる（`poc-user`／`poc-operator`／`developer`、および OIDC クライアントシークレット
-`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
+`wiki-js-dev-secret-change-me` / `ai-stock-trading-kb-writer-dev-secret-change-me` / `headlamp-dev-secret-change-me`）。これらは **dev 環境限定**の便宜であり、以下を守る。
 
 - **用途**: ローカル compose / dev の初回起動から、ABAC 属性ユーザー（`poc-user`）と運用者ロール検証
   （`poc-operator`、`platform-operator` ロール保持。IADR-0030 の `ConfigViewer` を再現）を、
@@ -165,6 +165,13 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
   コミットしない。AST 側は空既定なら no-op（トークンを付けない）。
+- **`headlamp`（IADR-0080・#271・dev の k8s 管理 UI 用）**: Headlamp（[headlamp.dev](https://headlamp.dev/)）を
+  Keycloak OIDC でログインさせる confidential クライアント。Headlamp backend が authorization code を server-side で
+  交換するため client secret を要する。realm import 内の `headlamp-dev-secret-change-me` は **dev 専用**で、`k8s-local-up.sh`
+  の `HEADLAMP=1` が Secret `headlamp-oidc`（`platform-infra`）へ dev 既定値として投入する（`HEADLAMP_OIDC_CLIENT_SECRET`
+  で上書き可・manifest に平文で置かない）。Headlamp 資産は `deploy/local/`（dev 専用・opt-in・既定オフ）に閉じ、
+  本番像へは同梱しない。ログインは `developer` を流用し新規資格情報を増やさず、認可は OIDC token passthrough で
+  API server の RBAC が担う（Headlamp SA には広域権限を bind しない＝fail-safe）。
 - **Vault dev root トークン（IADR-0077・AST #24 の経路B opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
   Vault **dev モード**の root トークンを Secret `vault-dev-token`（`platform-infra`）へ入れる。既定は dev 値 `devroot`
   （`VAULT_DEV_ROOT_TOKEN` 環境変数で上書き可）で、**manifest に平文で置かず** `k8s-local-up.sh` の `VAULT=1` が

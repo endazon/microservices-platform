@@ -129,6 +129,17 @@ if [ "${ARGOCD:-}" = "1" ]; then
   fi
 fi
 
+# IADR-0080 (#271): Headlamp（k8s 管理 UI・Keycloak OIDC）。opt-in（既定オフ・fail-safe）。
+if [ "${HEADLAMP:-}" = "1" ]; then
+  echo "==> [opt-in] Headlamp (k8s management UI, Keycloak OIDC)"
+  # OIDC client secret（dev 既定 = realm import の dev 値・env で上書き可・manifest に平文で置かない）。
+  apply_secret "$INFRA_NS" headlamp-oidc \
+    "client-secret=${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}"
+  kubectl apply -k deploy/local/headlamp
+  echo "    Headlamp: kubectl -n $INFRA_NS port-forward svc/headlamp 4466:80  # http://localhost:4466"
+  echo "    ブラウザ OIDC ログイン疎通は deploy/local/README.md の「Headlamp」手順（手順A＋apiserver OIDC フラグ）参照。"
+fi
+
 echo ""
 echo "done. 状態確認:"
 echo "  kubectl get pods -A"
