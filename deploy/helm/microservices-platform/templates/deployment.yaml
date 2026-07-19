@@ -72,6 +72,15 @@ spec:
                   name: {{ $.Values.global.objectStorage.existingSecret }}
                   key: {{ $.Values.global.objectStorage.secretKeyKey }}
           {{- end }}
+          {{- if $svc.dataSourceSync }}
+            # FR-01, UC-04, IADR-0051, IADR-0074 (#299): 定期同期ワーカーの配線。既定無効のワーカーを
+            # 本番/経路B で有効化する（env は ASP.NET の __→: 規約で DataSourceSyncOptions へバインドする）。
+            # 未設定サービスは本ブロックを描画せず従来どおり（後方互換）。実効間隔はワーカーが最短 30 秒へ丸める。
+            - name: DataSourceSync__Enabled
+              value: {{ $svc.dataSourceSync.enabled | default false | quote }}
+            - name: DataSourceSync__IntervalSeconds
+              value: {{ $svc.dataSourceSync.intervalSeconds | default 300 | quote }}
+          {{- end }}
           {{- range $svc.extraEnv }}
             - name: {{ .name }}
               {{- if .value }}

@@ -58,6 +58,10 @@ interim 同居＝決定4）だが、本スライス固有の 2 点を判断す�
 Content-Type を透過、`Authorization` 伝播、後段不達 502）とする。`RiskControlsBffEndpoints` は interim で
 `Platform.Bff/Foundation/Endpoints/` 同居（決定4・恒久像＝AST 側 unit-owned Bff への移行は follow-up #286）。
 
+> **更新（2026-07-19・#286 / [[IADR-0073]]）**: 本 interim は #286 で解消済み。`RiskControlsBffEndpoints` は
+> AST 側 unit-owned Bff プロジェクト `AiStockTrading.Bff.Endpoints`（AST PR）へ挙動不変で移設され、合成点は
+> 例外3 で参照する。
+
 ### 2. BFF は SC-02/03 が実消費する 6 経路のみを登録する（未使用経路は登録しない）
 
 AST フロント（`sc02-risk-settings`/`sc03-controls`）が `apiFetch` で叩くのは以下 6 経路のみ（バックエンドは

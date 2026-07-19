@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using AiStockTrading.Bff.Endpoints;
 using Knowledge.Bff.Endpoints;
 using Platform.Bff.Composition;
 using Platform.Bff.Foundation.Endpoints;
@@ -42,6 +43,7 @@ public class BffEndpointCompositionTests
             app.MapDataSourceBffEndpoints();
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
+            app.MapMonitorBffEndpoints();
         });
 
         viaComposition.Should().BeGreaterThan(0);
@@ -51,11 +53,11 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 全 11 モジュール。ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）は
+        // 全 12 モジュール。ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）は
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
-        // platform 同居。AST の Assumptions（#283・SC-01）／RiskControls（#287・SC-02/03）は AST が submodule のため
-        // 例外3 化を後続（#286）へ分離し、本スライスでは interim で platform 同居（恒久像は AST 側 Bff プロジェクト＋合成点参照）。
-        BffEndpointComposition.Modules.Should().HaveCount(11);
+        // platform 同居。AST の Assumptions（#283・SC-01）／RiskControls（#287・SC-02/03）／Monitor（#288・SC-02 watchlist）は
+        // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
+        BffEndpointComposition.Modules.Should().HaveCount(12);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -64,7 +66,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 11 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 12 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             "/bff/admin/authz",
@@ -76,6 +78,7 @@ public class BffEndpointCompositionTests
             "/bff/datasources",
             "/bff/documents",
             "/bff/feedback",
+            "/bff/monitor",
             "/bff/risk-controls",
             "/bff/search",
         ];
@@ -105,5 +108,21 @@ public class BffEndpointCompositionTests
         bffRoutes.Should().OnlyContain(
             p => expectedGroups.Any(g => p == g || p.StartsWith(g + "/", StringComparison.Ordinal)),
             "期待外の /bff/* ルートグループが登録されていないべき");
+    }
+
+    // #286, IADR-0073: AST 3 モジュール（Assumptions/RiskControls/Monitor）が interim の platform 同居から
+    // AST の unit-owned Bff（AiStockTrading.Bff.Endpoints・例外3）へ移設されたことを固定する（所在移行の回帰防止）。
+    // 拡張メソッドを提供する静的クラスの所属アセンブリ・名前空間が AST unit-owned Bff であることを検証する
+    // （platform 同居へ戻す退行を検出）。ルートの振る舞いは既存の Bff*EndpointTests と本クラスの合成テストが担保する。
+    [Theory]
+    [InlineData(typeof(AssumptionsBffEndpoints))]
+    [InlineData(typeof(RiskControlsBffEndpoints))]
+    [InlineData(typeof(MonitorBffEndpoints))]
+    public void Ast_bff_modules_live_in_the_ast_unit_owned_assembly(Type moduleType)
+    {
+        moduleType.Assembly.GetName().Name.Should().Be(
+            "AiStockTrading.Bff.Endpoints",
+            "AST の BFF モジュールは例外3 の unit-owned Bff（AST submodule）に所属すべき（#286・IADR-0073）");
+        moduleType.Namespace.Should().Be("AiStockTrading.Bff.Endpoints");
     }
 }

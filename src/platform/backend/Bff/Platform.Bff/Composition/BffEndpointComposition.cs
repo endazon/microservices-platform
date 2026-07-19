@@ -1,3 +1,4 @@
+using AiStockTrading.Bff.Endpoints;
 using Knowledge.Bff.Endpoints;
 using Platform.Bff.Foundation.Endpoints;
 
@@ -26,7 +27,8 @@ public static class BffEndpointComposition
     // 合成点（登録簿）: 有効な BFF エンドポイントモジュール。ユニット追加時はここへ 1 行追加する。
     // platform 固有（Config/Authz）は platform 同居、ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/
     // Dashboard/Conversion/DataSource）は Knowledge.Bff.Endpoints へ移設済みで例外3 により参照する（#229 完了）。
-    // 順序は既存 Program.cs の登録順を維持する。
+    // AST 3 モジュール（Assumptions/RiskControls/Monitor）も AiStockTrading.Bff.Endpoints（submodule）へ移設済みで
+    // 例外3 により参照する（#286 完了・IADR-0073）。順序は既存 Program.cs の登録順を維持する。
     public static IReadOnlyList<IBffEndpointModule> Modules { get; } =
     [
         new DelegateBffEndpointModule(a => a.MapSearchBffEndpoints()),
@@ -38,14 +40,15 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapDataSourceBffEndpoints()),
-        // Issue #283, FR-17, UC-06, IADR-0070 決定4: AST 設定画面（全体前提条件）の BFF 集約
-        // （ConfigurationService へ pass-through）。**interim** で platform 同居（AST は submodule のため
-        // 例外3 の unit-owned Bff プロジェクト化＝恒久像は AST PR＋合成点参照へ移行する。follow-up: #286）。
+        // Issue #283/#286, FR-17, UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
+        // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),
-        // Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 集約
-        // （RiskManagementService /risk-controls/* へ pass-through）。Assumptions と同じ interim 同居
-        // （unit-owned Bff 化は follow-up #286 で一括移行）。
+        // Issue #287/#286, FR-14, IADR-0071/0073: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 集約
+        // （RiskManagementService /risk-controls/* へ pass-through）。AiStockTrading.Bff.Endpoints（例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapRiskControlsBffEndpoints()),
+        // Issue #288/#286, FR-14, IADR-0072/0073: AST 監視銘柄（SC-02 watchlist）の BFF 集約
+        // （MarketMonitorService /monitor/* へ pass-through）。AiStockTrading.Bff.Endpoints（例外3）を参照。
+        new DelegateBffEndpointModule(a => a.MapMonitorBffEndpoints()),
     ];
 
     // 合成点の全モジュールを Map する（Program.cs はこの 1 行を呼ぶ）。

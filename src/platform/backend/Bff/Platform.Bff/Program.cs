@@ -87,6 +87,13 @@ builder.Services.AddHttpClient("RiskManagementService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RiskManagementService"]
         ?? "http://risk-management-service:8080"));
 
+// Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の集約用。MarketMonitorService
+// (/monitor/*) へ pass-through する。ConfigurationService/RiskManagementService と同じく、AST 未デプロイ時の
+// 不達で BFF の可用性を左右させないよう readiness の UriHealthCheck には含めない（fail-safe）。
+builder.Services.AddHttpClient("MarketMonitorService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:MarketMonitorService"]
+        ?? "http://market-monitor-service:8080"));
+
 // FR-06, ADR-0014/ADR-0015: 正規化 Markdown 本文の読み取り用オブジェクトストレージ（storage://）。
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);

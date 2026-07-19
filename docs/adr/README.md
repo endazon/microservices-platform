@@ -94,6 +94,7 @@
 | IADR-0068 | k8s-local-images.sh の MAPPING と compose build 定義のドリフトは機械突合スクリプト＋独立ワークフローで検査する | Accepted |
 | IADR-0069 | 構成バージョン履歴は現在バージョンと同一注入経路で Helm から env 配列供給する（GitOps 配線・既定空で縮退） | Accepted |
 | IADR-0072 | AST の KB 書き込みは microservices-platform レルムの専用 confidential client（service-account に platform-operator）で受ける（AST #18・基盤無改修・最小権限・追加のみ） | Accepted |
+| IADR-0074 | データソース定期同期は Helm の専用 dataSourceSync ブロックで配線し、本番有効・経路B(ローカル k8s)で検証する | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

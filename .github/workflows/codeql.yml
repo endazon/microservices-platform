@@ -28,6 +28,15 @@ jobs:
         language: ["csharp"]
     steps:
       - uses: actions/checkout@v7
+      # FR-14, IADR-0063 / IADR-0073, Issue #286: platform の Bff は例外3 で AST（submodule）ユニットの
+      # BFF エンドポイント（ai-stock-trading/backend/Bff/AiStockTrading.Bff.Endpoints）を参照する。未取得だと
+      # platform/backend/backend.slnx のトレースビルドが CS0246 で失敗する。ci.yml / images.yml と同型
+      # （public ユニットはトークン不要・private planning は巻き込まない）。ユニット追加時も編集不要。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"

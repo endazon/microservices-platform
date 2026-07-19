@@ -19,6 +19,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- Issue #287, IADR-0071: AST リスク設定/統制状態の RiskManagementService 専用 DB。compose の
     -- risk-management-service が Host=postgres;Database=risk_management_svc へ接続するため作成する。
     CREATE DATABASE risk_management_svc;
+    -- Issue #288, IADR-0072: AST 監視銘柄（watchlist）の MarketMonitorService 専用 DB。compose の
+    -- market-monitor-service が Host=postgres;Database=market_monitor_svc へ接続するため作成する。
+    CREATE DATABASE market_monitor_svc;
     -- FR-13, UC-07, IADR-0020: Wiki.js 専用 DB。Wiki.js が自スキーマを作成するため所有権を kp に付与する。
     CREATE DATABASE wikijs;
 
@@ -38,5 +41,6 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ALTER DATABASE dashboard_svc OWNER TO kp;
     ALTER DATABASE configuration_svc OWNER TO kp;
     ALTER DATABASE risk_management_svc OWNER TO kp;
+    ALTER DATABASE market_monitor_svc OWNER TO kp;
     ALTER DATABASE wikijs OWNER TO kp;
 EOSQL
