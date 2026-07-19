@@ -187,7 +187,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ["Services:DashboardService"] = "http://localhost:5009",
                 // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
                 ["Services:ConfigurationService"] = "http://localhost:5011",
-                // Issue #287 (AST/SC-02/03): AST RiskManagementService の集約先（テスト用）。
+                // Issue #287 (AST/SC-02/AST/SC-03): AST RiskManagementService の集約先（テスト用）。
                 ["Services:RiskManagementService"] = "http://localhost:5012",
                 // Issue #288 (AST/SC-02 watchlist): AST MarketMonitorService の集約先（テスト用）。
                 ["Services:MarketMonitorService"] = "http://localhost:5013",
@@ -226,7 +226,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
             services.AddHttpClient("ConfigurationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AssumptionsStubHandler(this));
-            // Issue #287 (AST/SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。
+            // Issue #287 (AST/SC-02/AST/SC-03): RiskManagementService(/risk-controls/*) をスタブ化する。
             services.AddHttpClient("RiskManagementService")
                 .ConfigurePrimaryHttpMessageHandler(() => new RiskControlsStubHandler(this));
             // Issue #288 (AST/SC-02 watchlist): MarketMonitorService(/monitor/*) をスタブ化する。
@@ -589,7 +589,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
     }
 
-    // Issue #287 (AST/SC-02/03): RiskManagementService(/risk-controls/*) をスタブ化する。BFF の pass-through
+    // Issue #287 (AST/SC-02/AST/SC-03): RiskManagementService(/risk-controls/*) をスタブ化する。BFF の pass-through
     // （ステータス・本文・Content-Type 透過、トークン伝播、PUT 本文転送、502 縮退）を検証するための最小スタブ。
     private sealed class RiskControlsStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
