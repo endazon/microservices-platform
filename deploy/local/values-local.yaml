@@ -30,6 +30,16 @@ scaling:
 imagePullSecrets: []
 
 services:
+  # FR-01, UC-04, NFR, IADR-0074 (#299): 経路B(ローカル k8s / k3d) は監査の検証環境。定期同期を明示的に
+  # 有効化し「15 分以内反映」が成立する形にする。反映を素早く確認できるよう間隔を 60 秒へ短縮する
+  # （本番像 values.yaml は 300 秒のまま不変）。scaling.enabled=false ＝ replicas 1 で多重実行は起きない。
+  # active データソース／実ファイル共有が無い環境では sync 対象ゼロで安全に空回りする（fail-safe。実データ
+  # 疎通の live 部分は別手順）。base の datasource ブロック（image/objectStorage 等）へ deep-merge される。
+  datasource:
+    dataSourceSync:
+      enabled: true
+      intervalSeconds: 60
+
   llmgateway:
     # k8s-local-up.sh が作成する Secret llm-provider-credentials を LlmGateway の
     # Llm__ApiKey（Anthropic）へ配線する。fail-safe: 未設定なら空文字 = 外部 LLM を呼ばない
