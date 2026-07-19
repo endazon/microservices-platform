@@ -6,6 +6,14 @@
 # 独立デプロイ・ロールバック（NFR）:
 #   - サービス単位のデプロイは values の services.<name>.tag（イメージタグ）を Git で更新して行う。
 #   - ロールバックは `argocd app rollback microservices-platform <revision>` もしくは Git revert で行う。
+#
+# IADR-0088 (#320): 再デプロイ安全性 — services.<name>.tag には **一意タグ（git SHA 等）または
+#   digest（`@sha256:...`）** を渡すこと。chart 既定の `latest` は placeholder であり、同名タグの
+#   再ビルドは `global.image.pullPolicy: IfNotPresent` と併せて既存 Pod/Node のキャッシュで stale image を
+#   掴む。一意タグ/digest なら pod template が毎回変わり自動 rollout され、`IfNotPresent` でも新イメージが
+#   pull される（`Always` は不要・local k3d では擬似レジストリを壊すため既定にしない）。
+#   例: `argocd app set microservices-platform --helm-set services.bff.tag=$(git rev-parse --short HEAD)`。
+#   詳細・rollout 強制手順は docs/operations/operations.md「イメージ参照と再デプロイ安全性」を参照。
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
