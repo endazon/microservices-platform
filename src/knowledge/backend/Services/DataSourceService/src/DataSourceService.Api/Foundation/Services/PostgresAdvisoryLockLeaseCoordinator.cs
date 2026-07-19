@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 
 namespace DataSourceService.Api.Foundation.Services;
 
@@ -23,7 +24,8 @@ public sealed class PostgresAdvisoryLockLeaseCoordinator(
             await conn.OpenAsync(ct);
 
             await using var cmd = new NpgsqlCommand("SELECT pg_try_advisory_lock(@key)", conn);
-            cmd.Parameters.AddWithValue("key", AdvisoryLockKey);
+            // pg_try_advisory_lock は bigint オーバーロードを用いる。型を明示して意図を固定する。
+            cmd.Parameters.AddWithValue("key", NpgsqlDbType.Bigint, AdvisoryLockKey);
             var acquired = (bool)(await cmd.ExecuteScalarAsync(ct))!;
 
             if (!acquired)
@@ -53,7 +55,7 @@ public sealed class PostgresAdvisoryLockLeaseCoordinator(
             try
             {
                 await using var cmd = new NpgsqlCommand("SELECT pg_advisory_unlock(@key)", conn);
-                cmd.Parameters.AddWithValue("key", AdvisoryLockKey);
+                cmd.Parameters.AddWithValue("key", NpgsqlDbType.Bigint, AdvisoryLockKey);
                 await cmd.ExecuteScalarAsync();
             }
             catch (Exception ex)
