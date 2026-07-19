@@ -465,6 +465,7 @@ embedding:
   # コンテナ待受ポート（TEI 既定は 80）。Service port と分離し targetPort で束ねる。
   containerPort: 80
   # llmgateway が参照する Service ポート（Embedding__SelfHosted__BaseUrl=http://embedding-service:<port>）。
+  # 8080 は本プラットフォームの Service ポート慣習（各アプリサービスの Service と同値・DNS 名で分離）に合わせた意図的な採番。
   port: 8080
   resources:
     requests: { cpu: 500m, memory: 1Gi }
