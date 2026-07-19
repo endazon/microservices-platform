@@ -130,6 +130,24 @@ jobs:
       - name: Smoke-test k8s-local-up opt-in gates (stub-on-PATH, no cluster)
         run: node scripts/k8s-local-up.test.js
 
+  # FR-01/FR-02 ほか, IADR-0089, Issue #342 再発防止: BFF が集約する各 downstream の「実効の上流 URL」
+  # （Program.cs のコード既定 ?? デプロイ manifest の Services__<Name> 上書き）が、メッシュ規約のポート
+  # （:8080）に解決されることを機械検査する。DataSourceService の :8080 上書き漏れがコード既定 5002 のまま
+  # live へ出て 21 秒タイムアウト→502 を起こした（#342）。同種の上書き漏れ・ポート違いを止める。
+  # in-repo ファイル（Program.cs / values.yaml / docker-compose.yml）のみ参照＝submodule 取得不要。
+  # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
+  bff-downstreams:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test BFF downstream port checker
+        run: node scripts/check-bff-downstreams.js --self-test
+      - name: Check BFF downstream upstream ports
+        run: node scripts/check-bff-downstreams.js
+
   lint:
     runs-on: ubuntu-latest
     steps:
