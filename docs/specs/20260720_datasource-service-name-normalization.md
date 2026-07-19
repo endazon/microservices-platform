@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 構成ビューア発行者名の表記ゆれ是正（data-source-service → datasource-service）
 type: work
-status: draft
+status: done
 related_ids:
   - FR-14
   - FR-15
@@ -67,8 +67,8 @@ plan_refs:
 
 ## 受け入れ基準
 
-- [ ] `data-source-service` の実データ・生きたコードコメントが `datasource-service` へ統一されている。
-- [ ] `node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json` が OK。
-- [ ] 構成ビューア関連テスト（ConfigInspectionService / DriftDetector）が緑。
-- [ ] #275 相当のドリフト／`helm template` が緑（挙動不変）。
-- [ ] 挙動不変（`sources[].service` が識別子として使われないことを確認済み）。
+- [x] `data-source-service` の実データ・生きたコードコメントが `datasource-service` へ統一されている。
+- [x] `node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json` が OK（self-test も OK）。
+- [x] 構成ビューア関連テスト（ConfigInspectionService / DriftDetector）が緑（publisher 名を assert するテストは存在せず、CI `build-and-test` で確認）。
+- [x] #275 `check-image-mapping.js` = ドリフト 0・`pipeline-config` CI 緑（本変更は画像マッピング・helm テンプレートロジック非関与）。
+- [x] 挙動不変（`sources[].service` が識別子として使われないことを確認済み）。
