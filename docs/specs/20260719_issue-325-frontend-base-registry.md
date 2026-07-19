@@ -13,7 +13,7 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守: 再現可能なビルド環境)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守。「再現可能なビルド環境」は同区分からの類推)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 related_specs:
   - "../adr/IADR-0080_frontend-base-registry-mirror.md"

@@ -13,7 +13,7 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守: 再現可能なビルド環境)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR 運用・保守。「再現可能なビルド環境」は同区分からの類推)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (CI/CD・GitOps。コンテナイメージが配布単位)"
 ---
 
@@ -25,7 +25,7 @@ plan_refs:
 
 ## 起点・関連
 
-- 関連する計画書 ID（MSP・機械追跡）: **NFR**（運用・保守: 再現可能なビルド環境）／**ADR-0007**（CI/CD・GitOps。コンテナイメージが配布単位＝[[IADR-0067]] と同じ起点付け）。本件は純粋なビルドインフラ改善のため、機能要求（FR）は起点にしない。
+- 関連する計画書 ID（MSP・機械追跡）: **NFR**（運用・保守。「再現可能なビルド環境」は同区分からの類推であり、計画書 NFR 表に逐語の項目はない）／**ADR-0007**（CI/CD・GitOps。コンテナイメージが配布単位＝[[IADR-0067]] と同じ起点付け）。本件は純粋なビルドインフラ改善のため、機能要求（FR）は起点にしない。
 - 関連 ADR: [[IADR-0056]]（frontend の unit 構成・platform=アプリホスト）／[[IADR-0067]]（サービスイメージのビルド CI ゲート `images.yml`。NFR/ADR-0007 起点の先例）／[[IADR-0068]]（#275 image-mapping ドリフト検査）／[[IADR-0078]]（frontend の k8s chart 配信・ローカルビルド常用化）
 - Issue: MSP #325（本 issue・bug/infrastructure・priority:should）／派生元 #313（[[IADR-0078]]）・親トラッカ #284
 
