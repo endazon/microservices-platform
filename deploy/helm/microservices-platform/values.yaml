@@ -44,6 +44,9 @@ edge:
   gateway:
     selector:
       istio: ingressgateway
+    # ingressgateway が居る Namespace（既定 istio-system）。networkPolicy 有効時、この Namespace から
+    # bff-service への ingress を許可するため参照する（別 Namespace の gateway→bff が既定拒否で塞がれるのを防ぐ）。
+    namespace: istio-system
   # エッジで受ける外部ホスト（Host ヘッダ）と待受ポート。実運用は "*" を FQDN に絞り、外部 TLS 終端
   # （HTTPS: Gateway の tls server or 前段 LB/ingressgateway 証明書）を別途追加する（本 chart のスコープ外）。
   hosts:

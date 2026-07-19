@@ -4,10 +4,9 @@ type: impl-adr
 status: Accepted
 related_ids:
   - FR-14
-  - FR-17
-  - UC-06
   - NFR
   - IADR-0017
+  - IADR-0026
   - IADR-0066
   - IADR-0070
   - IADR-0071
@@ -28,7 +27,8 @@ plan_refs:
 
 ## 起点・関連
 
-- 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点）／**FR-17**（AST 連携）／**UC-06**（全体前提条件の閲覧/変更）／**NFR**（エッジ集約・サービスメッシュ）
+- 関連する計画書 ID（MSP・機械追跡）: **FR-14**（構成変更で完結する疎結合ユニット・合成点）／**NFR**（エッジ集約・サービスメッシュ）
+- 関連する計画書 ID（AST・プロジェクト修飾。本 PR は到達性の担保のみ）: **AST/FR-17**（全体前提条件の一元管理）／**AST/UC-06**（設定の閲覧/変更）※ MSP の同番号（FR-17 は不在・UC-06=文書正規化変換）とは別物のため修飾する（cf. #302）
 - 関連 ADR: [[IADR-0017]]（外部入口は BFF に一本化・内部 API は無公開。※本文書は「ネットワーク分離を第一防御」の
   暫定運用部分のみ [[IADR-0026]] に Superseded。**「外部入口を BFF へ一本化」の原則は現行でも有効**で、本 IADR はこの原則を
   エッジ実装に落とす）／[[IADR-0026]]（mTLS で暫定運用を解消）／[[IADR-0066]]（ローカル k8s dev＝経路B）／
@@ -61,6 +61,11 @@ in-repo 登録した（deploy 既定 disabled・`/bff/*` pass-through 済み）�
   （`/bff/...` をそのまま）に統一し、compose とバイト等価な到達経路にする。
 - **`mesh.enabled` と同方針**: 本番 values は `edge.enabled: true`（Istio 前提）、経路B（`values-local.yaml`）は
   Istio 未導入のため `edge.enabled: false`。これで `helm template` 既定は本番像を描画し、経路B は別経路（手順）に委ねる。
+- **NetworkPolicy との相互作用も配線する**: `networkpolicy.yaml` の default-deny は同 Namespace 内 ingress のみ許可する。
+  ingressgateway は通常別 Namespace（`istio-system`）に居るため、素のままでは gateway→`bff-service` が L3/L4 で塞がれ、
+  VirtualService を描画しても実到達しない。`edge.enabled` かつ `networkPolicy.enabled` のとき、`edge.gateway.namespace`
+  （既定 `istio-system`）から `bff-service:edge.bff.port` への ingress のみを許可する `NetworkPolicy`
+  （`allow-edge-ingress-to-bff`）を追加し、多層防御を保ったまま必要最小の穴を開ける。
 
 ### 決定2: 経路B の 3 サービス有効化は values-local の extraEnv 注入（本番 values 不変・postgres.yaml 不変）
 

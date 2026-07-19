@@ -4,8 +4,6 @@ type: spec
 status: done
 related_ids:
   - FR-14
-  - FR-17
-  - UC-06
   - NFR
   - IADR-0066
   - IADR-0070
@@ -16,9 +14,9 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14 構成変更で完結する疎結合ユニット / FR-17 AST 連携)"
-  - "../../planning/projects/microservices-platform/03_usecases/ (UC-06 全体前提条件の閲覧/変更)"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14 構成変更で完結する疎結合ユニット / NFR エッジ集約・メッシュ)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md (エッジ/メッシュ)"
+  - "AST 側計画（別リポ endazon/ai-stock-trading の planning）: AST/FR-17 全体前提条件の一元管理 / AST/UC-06 設定の閲覧・変更（本 PR は到達性の担保のみ・機械追跡外）"
 related_specs:
   - "../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md"
   - "../adr/IADR-0066_local-k8s-dev-environment.md"
@@ -32,8 +30,9 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求(FR): FR-14（構成変更で完結する疎結合ユニット・合成点）／FR-17（AST 連携。設定画面 SC-01）
-- ユースケース(UC): UC-06（全体前提条件の閲覧/変更）
+- 機能要求(FR・MSP): FR-14（構成変更で完結する疎結合ユニット・合成点）
+- 機能要求／ユースケース(AST・プロジェクト修飾): AST/FR-17（全体前提条件の一元管理）／AST/UC-06（設定の閲覧・変更）
+  ※ MSP の同番号（FR-17 は不在・UC-06=文書正規化変換）とは別物のため `AST/` で修飾する（本 PR は到達性の担保のみ。cf. #302）
 - 非機能要件(NFR): エッジ集約（外部入口を BFF に一本化・IADR-0017）／サービスメッシュ（ADR-0005）
 - 実装判断: [[IADR-0076]]（本 PR: エッジ /bff/* ルーティングの chart templating・経路B 有効化・OIDC issuer 統一の機構と手順）／
   [[IADR-0070]]・[[IADR-0071]]・[[IADR-0072]]（3 サービスの deploy 登録・BFF pass-through の先行決定）／[[IADR-0066]]（経路B）

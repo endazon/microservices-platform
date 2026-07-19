@@ -47,4 +47,33 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+{{- /* Issue #284, IADR-0076: エッジ（Istio ingressgateway）は通常別 Namespace（istio-system）に居るため、
+       default-deny 下では gateway→bff-service の ingress が L3/L4 で塞がれる（VirtualService が描画されても
+       実到達しない）。edge 有効時のみ、その Namespace から bff-service への ingress を明示許可する
+       （多層防御は維持したまま必要最小の穴を開ける）。 */}}
+{{- if .Values.edge.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-edge-ingress-to-bff
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+spec:
+  # bff-service Pod（deployment.yaml のラベル app: <name>-service）宛のみに限定する。
+  podSelector:
+    matchLabels:
+      app: {{ .Values.edge.bff.service }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.edge.gateway.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.edge.bff.port }}
+{{- end }}
 {{- end }}
