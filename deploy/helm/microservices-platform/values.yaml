@@ -131,6 +131,14 @@ services:
     # FR-01, IADR-0051: 実コネクタが取得した原本を MinIO へ格納する（書き込み側）。未設定時は縮退。
     # 実 filesystem 同期は対象ファイル共有（SMB/NFS）を PVC 等でマウントする必要がある（ops 手順・operations.md）。
     objectStorage: true
+    # FR-01, UC-04, NFR(15分以内反映), IADR-0051, IADR-0074 (#299): 定期同期ワーカーの本番有効化。
+    # 反映総遅延 = 検出遅延(≤間隔) + 下流パイプライン遅延。間隔 300 秒(5 分)で検出 ≤5 分・下流に ≥10 分の
+    # 予算を残し NFR「15 分以内反映」を余裕充足する（下流実測 #196 後に調整可）。実効間隔はワーカーが最短
+    # 30 秒へ丸める（過負荷防止）。fail-safe: watermark は完全成功時のみ前進・失敗は縮退・継続失敗は Alert=true。
+    # 無効化(ロールバック)は services.datasource.dataSourceSync.enabled=false（手動 /sync は不変）。
+    dataSourceSync:
+      enabled: true
+      intervalSeconds: 300
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
