@@ -226,6 +226,8 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
 
 > 起点: [IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md) /
 > 作業仕様書 [`docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md`](../../docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md)
+> ／apiserver OIDC 配線: [IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md) /
+> [`docs/specs/20260719_issue-328_headlamp-oidc-apiserver-wiring.md`](../../docs/specs/20260719_issue-328_headlamp-oidc-apiserver-wiring.md)（#328）
 
 [Headlamp](https://headlamp.dev/)（CNCF Sandbox の k8s UI）を **opt-in** で導入し、Pod / Deployment / Service /
 ログ等をブラウザから閲覧・操作できる。ログインは既存 Keycloak（OIDC）で行い、`developer` / `developer` を流用する
@@ -255,7 +257,13 @@ Headlamp はブラウザから OIDC を行うため、issuer 到達性を上記 
    realm client `headlamp` の redirectUris は `http://localhost:4466/*`（callback = `/oidc-callback`）。
 
 さらに、**Headlamp が委譲する id_token を k8s API server が検証**するには、クラスタを OIDC 用 apiserver フラグ付きで
-(再)作成する必要がある（稼働 k3d 依存＝live。既存クラスタには後付けできず再作成）。k3d の例:
+(再)作成する必要がある（apiserver 引数は**作成時のみ有効＝既存クラスタには後付けできず再作成**）。
+
+#### k3d（`k8s-local-up.sh` が自動配線・#328 / IADR-0084）
+
+`HEADLAMP=1 bash scripts/k8s-local-up.sh` で**新規**クラスタを作成すると、`k3d cluster create` に以下の apiserver OIDC
+フラグが自動付与される（`HEADLAMP_OIDC_APISERVER` は既定で `HEADLAMP` に追従。既定オフ時の cluster create は現行と
+バイト等価）。手動で組む場合の等価コマンドは:
 
 ```bash
 k3d cluster create msp-ast-dev --agents 1 \
@@ -266,11 +274,39 @@ k3d cluster create msp-ast-dev --agents 1 \
   --k3s-arg "--kube-apiserver-arg=oidc-username-prefix=oidc:@server:0"
 ```
 
-これにより Keycloak の `preferred_username=developer` は k8s ユーザー `oidc:developer` にマップされ、同梱の
-ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）でリソースの閲覧・操作ができる。
+- **既存クラスタを OIDC 付きに切り替える**には、`k3d cluster delete msp-ast-dev` してから `HEADLAMP=1 bash
+  scripts/k8s-local-up.sh` で作り直す（フラグは後付け不可。スクリプトは reuse 時に再作成を促す WARN を出す）。
+- 上書き env: `HEADLAMP_OIDC_ISSUER_URL` / `HEADLAMP_OIDC_CLIENT_ID`（既定は上記）。`HEADLAMP_OIDC_APISERVER=0` で
+  `HEADLAMP=1` でもフラグを付けない（既存クラスタ再利用時の escape-hatch）。
+
+#### Rancher Desktop（内蔵 k3s）
+
+`k8s-local-up.sh` は Rancher の k8s を**作成しない**（既存 context を使う）ため、apiserver フラグはスクリプトからは
+付与できない。内蔵 k3s へ同じ 4 引数を与えるには、Rancher Desktop の **override 設定**（`~/.config/rancher-desktop/`
+配下の `k8s.override.yaml`。UI では Preferences → Kubernetes の追加引数）に k3s の `kube-apiserver-arg` として設定して
+から Kubernetes を再起動する。値は上記 k3d の 4 フラグと同一（`@server:0` は不要）:
+
+```yaml
+# Rancher Desktop override（例）: k3s に apiserver OIDC 引数を与える
+k3s:
+  additionalArgs:
+    - --kube-apiserver-arg=oidc-issuer-url=http://keycloak:8080/realms/microservices-platform
+    - --kube-apiserver-arg=oidc-client-id=headlamp
+    - --kube-apiserver-arg=oidc-username-claim=preferred_username
+    - --kube-apiserver-arg=oidc-username-prefix=oidc:
+```
+
+> Rancher の override キー名は版により差があるため、`rdctl` / Preferences の「追加の k3s 引数」欄も参照する。要点は
+> apiserver へ上記 4 引数を渡すこと。
+
+いずれの経路でも、これにより Keycloak の `preferred_username=developer` は k8s ユーザー `oidc:developer` にマップされ、
+同梱の ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）でリソースの閲覧・操作ができる。
 `developer` は dev スーパーユーザー（IADR-0066）で、ロール別の権限分離検証には使わない（`poc-*` の役割）。
 
-> 実ブラウザでの OIDC 実ログイン・リソース閲覧疎通は稼働 k3d 依存（本 issue #271 の live 分）。
+> **実ブラウザでの OIDC 実ログイン・リソース閲覧疎通は稼働 k3d/k3s 依存＝live**（#271 の live 受け入れ・#328）。
+> 手順: (1) 上記のとおり OIDC フラグ付きでクラスタを (再)作成 → (2) `HEADLAMP=1 bash scripts/k8s-local-up.sh` →
+> (3) 手順A（hosts＋`port-forward svc/keycloak 8080:8080`）＋`port-forward svc/headlamp 4466:80` → (4) ブラウザで
+> `http://localhost:4466` を開き `developer` / `developer` でログイン → Pod/Deployment/Service/ログが閲覧できること。
 > fail-safe: Headlamp の ServiceAccount には広域権限を bind していないため、OIDC ログイン無しではクラスタを可視化できない。
 
 ## 既知の制約
