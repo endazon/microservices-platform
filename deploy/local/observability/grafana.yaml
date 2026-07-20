@@ -48,10 +48,35 @@ spec:
       containers:
         - name: grafana
           image: grafana/grafana:11.0.0
-          # dev の匿名 Admin（compose と同じ）。**dev 専用**（本番は認証を有効化する）。
+          # IADR-0090 (#353): Keycloak OIDC(generic OAuth) 認証。匿名 Admin は廃止（fail-safe: 認証未設定/失敗時は
+          # 匿名フルアクセスへ倒さず、Grafana 組み込み local admin=admin/admin へフォールバックする）。issuer は
+          # http://keycloak:8080/realms/microservices-platform（headlamp 先例・#284 手順A で browser も keycloak:8080 解決）。
           env:
-            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "true" }
-            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE, value: "Admin" }
+            # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（dev 既定 admin/admin）。
+            - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
+            # redirect_uri 構築の基準。port-forward svc/grafana 3000:3000 に整合。
+            - { name: GF_SERVER_ROOT_URL, value: "http://localhost:3000/" }
+            - { name: GF_AUTH_GENERIC_OAUTH_ENABLED, value: "true" }
+            - { name: GF_AUTH_GENERIC_OAUTH_NAME, value: "Keycloak" }
+            - { name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID, value: "grafana" }
+            # client secret は Secret 経由（平文コミットしない）。optional=true: 未設定でも Pod は起動し local admin へ落ちる。
+            - name: GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-oidc
+                  key: client-secret
+                  optional: true
+            - { name: GF_AUTH_GENERIC_OAUTH_SCOPES, value: "openid profile email" }
+            - { name: GF_AUTH_GENERIC_OAUTH_AUTH_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/auth" }
+            - { name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/token" }
+            - { name: GF_AUTH_GENERIC_OAUTH_API_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/userinfo" }
+            - { name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH, value: "preferred_username" }
+            - { name: GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH, value: "email" }
+            # role マッピング: platform-admin→Admin / platform-operator→Editor / それ以外→Viewer（最小権限・未知は Viewer）。
+            # roles クレームは grafana client の protocolMapper が id_token/userinfo へ発行する（realm.json）。
+            - { name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH, value: "contains(roles[*], 'platform-admin') && 'Admin' || contains(roles[*], 'platform-operator') && 'Editor' || 'Viewer'" }
+            # strict=false: role_attribute_path が空でも既定 org ロール（Viewer）で受け入れる（Admin へ昇格させない）。
+            - { name: GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_STRICT, value: "false" }
           ports:
             - { containerPort: 3000, name: http }
           volumeMounts:

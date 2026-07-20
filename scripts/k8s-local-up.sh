@@ -128,6 +128,11 @@ kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
 if [ "${OBSERVABILITY:-}" = "1" ]; then
   echo "==> [opt-in] observability stack (Prometheus/Loki/Tempo/Grafana)"
+  # IADR-0090 (#353): Grafana は Keycloak OIDC(generic OAuth) で認証する（匿名 Admin は廃止）。
+  # client secret は平文で manifest に置かず Secret 経由（dev 既定 or env 上書き・headlamp-oidc と同型）。
+  # grafana.yaml は optional 参照のため Secret 不在でも Pod は起動し local admin へフォールバックする（fail-safe）。
+  apply_secret "$INFRA_NS" grafana-oidc \
+    "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
   kubectl apply -k deploy/local/observability
   # otel-collector を forwarding 構成（debug-only から切替）へ反映。
   kubectl -n "$INFRA_NS" rollout restart deploy/otel-collector
