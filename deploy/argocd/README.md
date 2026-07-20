@@ -23,8 +23,14 @@ Git を単一の真実源とし、ArgoCD が本リポジトリの Helm チャー
 
 ```sh
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
+
+> **`--server-side` が必須（Issue #348）**: ArgoCD 公式 install manifest は巨大な CRD
+> （`applicationsets.argoproj.io` 等）を含む。client-side `kubectl apply` は manifest 全体を
+> `last-applied-configuration` annotation に格納するため、その CRD で annotation の 262144 バイト上限を
+> 超過し `metadata.annotations: Too long` で失敗する。server-side apply は annotation を作らず managed
+> fields で差分管理するため大 CRD が通る（`--force-conflicts` は再適用時の field 所有権競合を解消し冪等化）。
 
 ## 2. Harbor（レジストリ）連携
 
