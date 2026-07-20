@@ -300,6 +300,15 @@ services:
     # embedding.enabled=true のとき deployment.yaml が Embedding__SelfHosted__BaseUrl と
     # Embedding__Routing__Endpoints__1__Enabled=true を注入する。既定は embedding.enabled=false で非描画＝現状維持。
     selfHostedEmbedding: true
+    # FR-11, ADR-0010 (#308): 外部マネージド LLM（Anthropic）の API キーを LlmGateway へ配線する。
+    # 鍵は MSP 側で集中管理する（ADR-0010）。API キーは Secret 経由で注入し、リポジトリにコミットしない
+    # （wiki の WikiJs__ApiKey と同型）。本 Secret は秘匿管理（Vault / External Secrets）で本番環境へ供給する
+    # （事前に kubectl/ArgoCD/ESO で作成。docs/security・#310 の一元追跡）。実キー投入・実 LLM 疎通は go-live 側。
+    extraEnv:
+      - name: Llm__ApiKey
+        secretKeyRef:
+          name: llm-provider-credentials
+          key: anthropic-api-key
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
