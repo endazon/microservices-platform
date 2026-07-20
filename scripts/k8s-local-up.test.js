@@ -35,6 +35,8 @@ const OPTIN_TOKENS = [
   'headlamp-oidc', //                  HEADLAMP (secret)
   'deploy/argocd', //                  ARGOCD
   'namespace argocd', //               ARGOCD (namespace)
+  'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
+  'oidc.keycloak.clientSecret', //     ARGOCD OIDC (secret patch, IADR-0092)
   'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
