@@ -38,7 +38,16 @@ if [ "$RUNTIME" = "k3d" ]; then
   # 未設定なら HEADLAMP の値に追従する（HEADLAMP=1 で live 経路一括有効化）。既定オフ時は下の
   # cluster create 引数は現行とバイト等価（後方互換）。issuer は in-cluster 正準名（IADR-0076 手順A）、
   # claim は #271 の ClusterRoleBinding（User=oidc:developer）に一致（username-claim/prefix）。
-  CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
+  # IADR-0091 (#356): LOCALEDGE=1 でローカルエッジ集約用のポートへ切替える。platform フロント=80/443
+  # (Traefik web/websecure)、管理ツール=50000(Traefik 追加 entrypoint admin)。既定(未設定)は現行 8080/8443 で
+  # バイト等価(後方互換・fail-safe)。ポートは cluster 作成時固定のため既存クラスタは delete→再作成が必要
+  # (deploy/local/README.md のユーザー手順・破壊操作はユーザーが実行)。Rancher Desktop 経路は本 -p を使わず
+  # (内蔵 k3s の LB がポート公開)、overlay 適用のみ(下の LOCALEDGE ブロック参照)。
+  if [ "${LOCALEDGE:-}" = "1" ]; then
+    CREATE_ARGS=(--agents 1 -p "80:80@loadbalancer" -p "443:443@loadbalancer" -p "50000:50000@loadbalancer")
+  else
+    CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
+  fi
   if [ "${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}" = "1" ]; then
     OIDC_ISSUER="${HEADLAMP_OIDC_ISSUER_URL:-http://keycloak:8080/realms/microservices-platform}"
     OIDC_CLIENT="${HEADLAMP_OIDC_CLIENT_ID:-headlamp}"
@@ -174,6 +183,24 @@ if [ "${HEADLAMP:-}" = "1" ]; then
   # IADR-0084 (#328): apiserver OIDC 検証フラグは上の [1/7] で新規クラスタ作成時に自動付与される
   # （HEADLAMP=1 追従）。既存クラスタ reuse 時は付かない（[1/7] の再作成 WARN 参照）。
   echo "    ブラウザ OIDC ログイン疎通は deploy/local/README.md の「Headlamp」手順（手順A）参照。"
+fi
+
+# IADR-0091 (#356): ローカルエッジ集約（opt-in・既定オフ・fail-safe）。Traefik 追加 entrypoint admin:50000 ＋
+# platform フロント(80/443)/管理ツール(50000・ホスト名ベース)の Ingress を適用する。既定(env 未設定)では何も
+# 実行されず挙動不変。k3d は上の cluster create(LOCALEDGE=1)で 80/443/50000 を公開済みが前提。Rancher Desktop は
+# 内蔵 k3s の LB がポート公開するため cluster 再作成は不要（overlay 適用のみ）。#355 と競合する grafana.yaml/
+# realm.json は触らない（redirect 追記・root_url は #355 マージ後の PR-2）。
+if [ "${LOCALEDGE:-}" = "1" ]; then
+  echo "==> [opt-in] local edge aggregation (Traefik admin:50000 + Ingress, IADR-0091)"
+  kubectl apply -k deploy/local/edge
+  # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
+  # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
+  if kubectl get namespace argocd >/dev/null 2>&1; then
+    kubectl apply -f deploy/local/edge/argocd-ingress.yaml
+  fi
+  echo "    platform フロント: http://localhost/ (80) ・ https://localhost/ (443・Traefik 既定自己署名)"
+  echo "    管理ツール(50000): http://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 fi
 
 echo ""

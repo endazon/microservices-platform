@@ -35,6 +35,8 @@ const OPTIN_TOKENS = [
   'deploy/argocd', //                  ARGOCD
   'namespace argocd', //               ARGOCD (namespace)
   'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
+  'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
+  '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -97,6 +99,7 @@ function runUp(extraEnv) {
     'OBSERVABILITY',
     'VAULT',
     'ARGOCD',
+    'LOCALEDGE',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
   ]) {
@@ -212,6 +215,23 @@ ok('PERSIST=1: infra-persistence を apply', () => {
 // OBSERVABILITY=1: observability スタックを apply（IADR-0077）。
 ok('OBSERVABILITY=1: observability を apply', () => {
   assert.ok(anyLineHas(runUp({ OBSERVABILITY: '1' }).lines, 'apply -k deploy/local/observability'));
+});
+
+// LOCALEDGE=1: k3d cluster create のポートを 80/443/50000 へ切替え、エッジ overlay を apply（IADR-0091・#356）。
+// 既定オフ時のバイト等価は上の「既定: k3d cluster create 引数がバイト等価」で固定済み（本ゲートで壊れないこと）。
+ok('LOCALEDGE=1: cluster create ポートが 80/443/50000・8080/8443 は不在', () => {
+  const line = clusterCreateLine(runUp({ LOCALEDGE: '1' }).lines);
+  assert.ok(line, 'cluster create 行が無い');
+  for (const p of ['-p 80:80@loadbalancer', '-p 443:443@loadbalancer', '-p 50000:50000@loadbalancer']) {
+    assert.ok(line.includes(p), `LOCALEDGE ポート欠落: ${p}`);
+  }
+  // 既定ポート（8080/8443）は LOCALEDGE=1 では現れない（置換であって併存でない）。
+  assert.ok(!line.includes('8080:80@loadbalancer'), 'LOCALEDGE=1 なのに 8080 が残っている');
+  assert.ok(!line.includes('8443:443@loadbalancer'), 'LOCALEDGE=1 なのに 8443 が残っている');
+});
+
+ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
+  assert.ok(anyLineHas(runUp({ LOCALEDGE: '1' }).lines, 'apply -k deploy/local/edge'), 'deploy/local/edge が apply されない');
 });
 
 // VAULT=1（CRD 有）: vault-dev-token secret ＋ deploy/local/vault を apply。

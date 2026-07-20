@@ -1,0 +1,9 @@
+# IADR-0091 (#356): 経路B ローカルエッジ集約（opt-in）。k8s-local-up.sh の LOCALEDGE=1 が適用する。
+# 常在 namespace（kube-system / microservices-platform / platform-infra）のリソースのみを集約する。
+# argocd-ingress.yaml は argocd namespace 依存のため本 kustomization に含めず、スクリプトが条件付きで apply する。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - traefik-entrypoint.yaml
+  - platform-frontend-ingress.yaml
+  - admin-ingress-infra.yaml

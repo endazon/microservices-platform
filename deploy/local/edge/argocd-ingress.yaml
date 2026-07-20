@@ -1,0 +1,25 @@
+# IADR-0091 (#356): ArgoCD UI を 50000（Traefik entrypoint admin）へホスト名ベースで集約する。
+# argocd namespace は ARGOCD=1 の別 opt-in でのみ作成されるため、本ファイルは kustomization.yaml に含めず、
+# k8s-local-up.sh の LOCALEDGE ブロックが「argocd ns 存在時のみ」条件付きで apply する（ns 不在で失敗させない）。
+# ⚠️ argocd-server は既定で http→https へリダイレクトする。プレーン http でプロキシ配信するには ArgoCD 側で
+# `server.insecure: true`（argocd-cmd-params-cm）が必要。これは ArgoCD の OIDC 実装（#353）でまとめて設定する。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-admin-edge
+  namespace: argocd
+  labels: { app: argocd-server, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: argocd.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
