@@ -3,7 +3,7 @@ title: 本番 chart で LlmGateway の Llm__ApiKey を Secret 経由で配線す
 type: spec
 status: done
 related_ids:
-  - FR-02
+  - FR-11
   - ADR-0010
   - IADR-0025
   - IADR-0066
@@ -22,7 +22,8 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求(FR): FR-02（LLM 連携／RAG 回答生成の基盤）。
+- 機能要求(FR): FR-11（LLM の呼び出し先を用途・機密度に応じて切り替えられる＝LLM ゲートウェイ。
+  計画書トレーサビリティ表で ADR-0010 に対応。関連 FR-04/FR-07 も LLM ゲートウェイ経由）。
 - 関連 ADR: [ADR-0010]（外部マネージド API 主体の LLM ゲートウェイ＝呼び出し・鍵を MSP 側の
   LlmGateway で集中管理する）。egress/セルフホスト埋め込みの実装配線は [[IADR-0025]]。
 - Issue: #308（監査で発見・priority:should）。関連: #310（平文資格情報→Vault / External Secrets 移行の一元追跡）。
