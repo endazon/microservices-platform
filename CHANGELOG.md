@@ -4,6 +4,17 @@
 
 ### 新機能
 
+- **IADR-0086**: backend OIDC の metadata 取得先と issuer 検証値を分離し単一エッジ host OIDC を CoreDNS 無しに配線 (#338) (f9d281c)
+- **IADR-0085**: セルフホスト埋め込み（Ruri v3）推論基盤を opt-in 配備物として追加し retrieval/ingestion を配線 (#335) (7d8edc2)
+- **IADR-0083**: データソース定期同期を advisory lock で単一書き手化（本番マルチレプリカの冗長 fetch 排除） (#332) (e1d48b8)
+- **IADR-0084**: k3d クラスタ作成に apiserver OIDC 検証フラグを opt-in で配線（Headlamp live 疎通の恒久化・Refs #328） (#331) (d345022)
+- **IADR-0082**: 経路B(deploy/local) の Keycloak/Postgres を opt-in PVC で永続化する (#330) (37f6132)
+- **IADR-0080**: Headlamp を dev k8s 管理 UI として Keycloak OIDC で導入する（opt-in・Refs #271） (#327) (3485f4f)
+- **IADR-0079**: compose 基盤インフラ（Keycloak/Loki/Tempo）を永続化する (#323) (60b213c)
+- **IADR-0078**: SPA(frontend) を k8s chart で配信しエッジ SPA catch-all を追加する (#319) (7ee13c9)
+- **ADR-0006**: 経路B の可観測性/Vault/GitOps を opt-in オーバーレイで整備する (#318) (3736c72)
+- **IADR-0076**: #284 統合スタック疎通の in-repo 配線（エッジ /bff/* templating・経路B AST 3サービス有効化・OIDC 手順） (#312) (2e2f1e6)
+- **IADR-0075**: AST KB 書き込み用の confidential client を realm に追加（platform-operator） (#307) (d195bc6)
 - **IADR-0072**: AST 監視銘柄（SC-02 watchlist）の /bff/monitor/* プロキシ登録と MarketMonitorService 登録 (#294) (10d79e0)
 - **IADR-0071**: AST SC-02/03 の /bff/risk-controls/* プロキシ登録と submodule 再pin (#289) (a6333cc)
 - **IADR-0070**: AST フロント/設定画面を MSP SPA へ組み込む (#285) (2cda808)
@@ -72,6 +83,16 @@
 
 ### 不具合修正
 
+- **ADR-0010**: 本番 chart で LlmGateway の Llm__ApiKey を Secret 経由で配線する (#350) (79c77bf)
+- **IADR-0077**: ArgoCD install を server-side apply に是正し大 CRD の annotation 上限超過を回避する (#349) (2a346a1)
+- **SC-04**: 経路B で Wiki 閲覧の公開 URL(WIKI_BASE_URL) を frontend config へ配線 (#347) (7d5d4e6)
+- **FR-15**: 構成ビューア発行者名の表記ゆれ data-source-service を datasource-service へ統一 (#345) (2bf43f7)
+- **IADR-0089**: BFF datasource 上流の :8080 上書き欠落を是正し 502 を解消する (#343) (da847b3)
+- **NFR**: ローカル経路B のブラウザ OIDC 用に spa-web へローカル dev redirect URI(localhost:8081) を恒久追加 (#341) (de26a55)
+- **IADR-0081**: 重複採番した IADR-0080 を解消し frontend base registry を IADR-0081 へ改番 (#329) (283ee80)
+- **IADR-0080**: frontend base イメージを docker.io 非依存化（mirror.gcr.io ミラー） (#326) (19e53ad)
+- **IADR-0075**: Keycloak realm の client description を 255 文字以内へ短縮（import 失敗を修正） (#317) (2fc3f77)
+- **FR-01,UC-04**: データソース定期同期を本番/経路B の Helm に配線する (#304) (2aa0282)
 - **NFR**: private planningへのDependabot/CI PATをPLANNING_REPO_TOKENに統一 (#263) (f44f99f)
 - **FR-14,IADR-0064**: unit-template 単独ビルド用 props の MSB4092（入れ子クォート）を修正する (#257) (148534d)
 - 更新されたサブプロジェクトのコミットを反映 (c784172)
@@ -112,6 +133,11 @@
 
 ### ドキュメント
 
+- **NFR**: AST 由来の SC-02/SC-03 参照(risk-controls/monitor)をコメントで修飾する (#333) (c91c67a)
+- **NFR**: ユニット横断 ID のプロジェクト修飾規約を traceability.md に追加 (#316) (e61a467)
+- **NFR**: コネクタ資格情報の平文保存（Vault 移行までの暫定）を security.md に明記・Vault 移行を一元追跡 (#311) (597852d)
+- **FR-01,FR-03**: 陳腐化した「未実装/スタブ」記載の一掃 (#309) (2cad893)
+- **NFR**: CHANGELOG を自動更新 (#273) (7f23b1d)
 - **ADR-0019**: platform + knowledge のシステム構成図を追加 (#272) (96999d5)
 - **NFR**: CHANGELOG を自動更新 (#270) (a8fa28c)
 - **NFR**: CHANGELOG を自動更新 (#259) (98633fd)
@@ -158,12 +184,17 @@
 
 ### テスト
 
+- **IADR-0087**: k8s-local-up.sh の opt-in ゲートを横断 smoke test で固定する (#337) (bc7d3d7)
 - **NFR**: 負荷試験ハーネス（k6）と性能テスト仕様を整備する (#196) (#221) (4219a0e)
 - **NFR**: scaling.services の総数アサーションを追加 (#197) (#216) (9d669a0)
 - **NFR**: BFF 文書書き込みの後段2往復を実測するベンチマークを追加 (#179) (#193) (9504b2f)
 
 ### ビルド
 
+- **deps**: bump planning from `f128c20` to `f099322` (#352) (fc4ef16)
+- **deps**: bump src/ai-stock-trading from `451cd7d` to `c3ffbdd` (#351) (40c523e)
+- **deps**: bump planning from `8fcc468` to `f128c20` (#322) (16ab204)
+- **deps**: bump src/ai-stock-trading from `4a9a8d1` to `451cd7d` (#321) (cc792f2)
 - **deps**: bump src/ai-stock-trading from `9c8a56b` to `4a9a8d1` (#298) (34c46ea)
 - **deps**: bump planning from `98c45d0` to `8fcc468` (#297) (94b47c5)
 - **deps**: bump src/ai-stock-trading from `36570d6` to `a48835a` (#292) (373e8f1)
@@ -198,6 +229,7 @@
 
 ### その他
 
+- **IADR-0088**: 浮動タグ latest+IfNotPresent の再デプロイ安全性を是正・明文化する (#339) (a584fc3)
 - **IADR-0066**: ローカル k8s(k3d) dev 環境の MSP 側資産（in-cluster インフラ/values-local/導線） (#267) (36d81a9)
 - **NFR**: dependabot に submodule pin 自動更新（gitsubmodule）を追加 (#261) (4323e82)
 - **FR-14**: サンプルユニット ai-stock-trading を submodule 結合し通し検証する (#258) (1cf952a)
