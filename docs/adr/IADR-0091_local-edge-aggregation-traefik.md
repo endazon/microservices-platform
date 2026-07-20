@@ -67,6 +67,10 @@ Traefik `HelmChartConfig`（kube-system/traefik）で `admin:50000` entrypoint �
 ルート配信で成立し、ツール側追加設定は「外部 URL の通知」に限られる。CLI（argocd/vault）は `*.localhost` を解決しない
 ことがあるため hosts 追記または `*.nip.io`/`*.sslip.io` を代替として案内する。
 
+**公開範囲（bind）**: k3d の `-p` は **loopback 固定**（`127.0.0.1:80:80@loadbalancer` 等）とする。50000 には
+**認証なしの Qdrant** も集約されるため、既定で同一 LAN の第三者へ露出させない（「閉域前提」をコード側で担保）。
+既定 8080/8443 経路（LOCALEDGE 未使用）は本 PR のスコープ外として不変に保つ。
+
 ### 5. OIDC issuer は最小案（keycloak:8080 維持）・redirect は集約後 URL を追加
 
 issuer は現行 `http://keycloak:8080`（手順A）を維持し、ツール UI のみ 50000 集約する。集約後 URL への

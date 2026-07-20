@@ -25,6 +25,11 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh          # 必要に応じ OBSERVABILIT
 `scripts/k8s-local-up.sh` は `LOCALEDGE=1` のとき、(1) k3d cluster を **80/443/50000 公開で作成**し、(2) 本オーバーレイを
 適用する。**既定（未設定）は現行の 8080/8443・overlay 不適用でバイト等価**（後方互換・fail-safe）。
 
+> **公開範囲（bind）**: k3d の公開は **loopback 固定**（`-p 127.0.0.1:80:80@loadbalancer` 等）とする。50000 には
+> **認証なしの Qdrant** も集約されるため、既定で同一 LAN の第三者へ露出させない（閉域前提をコード側で担保）。
+> LAN からアクセスさせたい場合のみ、利用者が明示的に bind host を広げる（自己責任）。Rancher Desktop は内蔵 LB の
+> 公開設定に従う。
+
 ### k3d はポートが cluster 作成時固定 → 既存クラスタは再作成が必要（ユーザー実行）
 
 ポート公開は k3d の cluster **作成時**にしか設定できない（後付け不可）。既存クラスタに `LOCALEDGE` を効かせるには
