@@ -1,0 +1,90 @@
+# IADR-0091 (#356): platform-infra の管理ツールを 50000（Traefik 追加 entrypoint admin）へ
+# ホスト名ベースで集約する。各ツールはサブドメインのルートで配信する（パスベースは Vault UI / Qdrant
+# dashboard がサブパス非対応のため採らない）。これらのツールは各 opt-in（OBSERVABILITY / VAULT / HEADLAMP）
+# で作成されるため、未作成でも Ingress は無害（バックエンド不在時は 503・ツール有効化で解決）。
+# ホスト名解決・OIDC redirect の追記（#355 マージ後の PR-2）は deploy/local/edge/README.md 参照。
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-admin-edge
+  namespace: platform-infra
+  labels: { app: grafana, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headlamp-admin-edge
+  namespace: platform-infra
+  labels: { app: headlamp, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: headlamp.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: headlamp
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: vault-admin-edge
+  namespace: platform-infra
+  labels: { app: vault, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: vault.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: vault
+                port:
+                  number: 8200
+---
+# Qdrant は認証/OIDC 非対応（SSO 非適用）。素通し公開＝ネットワーク閉域前提の便宜（dashboard は /dashboard）。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qdrant-admin-edge
+  namespace: platform-infra
+  labels: { app: qdrant, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: qdrant.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: qdrant
+                port:
+                  number: 6333

@@ -63,11 +63,13 @@ OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana +
 VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
 PERSIST=1       bash scripts/k8s-local-up.sh   # Keycloak(realm+runtime state)/Postgres を PVC 永続化（下記「永続化」節）
+LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
 ```
 
 - [`deploy/local/observability/README.md`](observability/README.md) — 可観測性スタック（既定 debug-only を維持）
 - [`deploy/local/vault/README.md`](vault/README.md) — Vault dev + External Secrets（**dev 専用・平文秘密なし**）
 - [`deploy/local/argocd/README.md`](argocd/README.md) — GitOps ブートストラップ
+- [`deploy/local/edge/README.md`](edge/README.md) — **ローカルエッジ集約**（platform 80/443 ＋ 管理ツール 50000・ホスト名ベース・IADR-0091）。**k3d はポート再作成が必要**（同 README のユーザー手順）
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
 ### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082）

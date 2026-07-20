@@ -1,0 +1,36 @@
+# IADR-0091 (#356): platform フロント（SPA/BFF）を 80/443（Traefik web/websecure entrypoint）で配信する。
+# ルーティングは prod の Istio エッジ（templates/edge.yaml）と同契約: /bff は rewrite せず bff-service へ、
+# 残り全パス（catch-all /）は frontend-service へ。SPA の history fallback は frontend pod の nginx が担う。
+# host 指定なし＝任意 host にマッチ（管理ツールは別 entrypoint admin:50000 のため 80/443 では衝突しない）。
+# 443 は Traefik 既定の自己署名証明書（ブラウザ警告・実 TLS は別途）。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: platform-frontend-edge
+  namespace: microservices-platform
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+  annotations:
+    # web(80)/websecure(443) の標準 entrypoint に載せる（admin:50000 には載せない）。
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+spec:
+  rules:
+    - http:
+        paths:
+          # /bff, /bff/* → BFF（rewrite 無し。BFF は /bff プレフィックス前提）。より長いパスが先に評価される。
+          - path: /bff
+            pathType: Prefix
+            backend:
+              service:
+                name: bff-service
+                port:
+                  number: 8080
+          # catch-all → SPA(frontend)。
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend-service
+                port:
+                  number: 8080

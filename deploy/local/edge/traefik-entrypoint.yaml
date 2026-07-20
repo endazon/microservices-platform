@@ -1,0 +1,23 @@
+# IADR-0091 (#356): k3s 内蔵 Traefik に管理ツール集約用の追加エントリポイント admin:50000 を定義する。
+# k3s は Traefik を HelmChart(helm-controller) で導入するため、HelmChartConfig で values をマージして
+# ポートを追加する（Traefik Deployment/Service にポート 50000 が生える）。ホスト到達は:
+#   - k3d: `-p 50000:50000@loadbalancer`（k8s-local-up.sh の LOCALEDGE=1 が cluster 作成時に公開）。
+#   - Rancher Desktop: 内蔵 k3s の LoadBalancer が localhost へ自動公開（cluster 再作成不要）。
+#
+# ⚠️ `expose` の values スキーマは Traefik Helm chart バージョンで異なる。新しめ(chart v25+/Traefik v3)は
+# 下記のマップ形 `expose: { default: true }`。古い chart では真偽値 `expose: true` を使う。k3s の Traefik 版に
+# 追随して切替えること（`kubectl -n kube-system get helmchart traefik -o yaml` で版を確認できる）。
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      admin:
+        port: 50000
+        exposedPort: 50000
+        expose:
+          default: true
+        protocol: TCP

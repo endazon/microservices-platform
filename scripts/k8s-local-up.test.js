@@ -36,6 +36,8 @@ const OPTIN_TOKENS = [
   'deploy/argocd', //                  ARGOCD
   'namespace argocd', //               ARGOCD (namespace)
   'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
+  'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
+  '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -58,10 +60,13 @@ const PLAIN_STUB = (name) =>
 // kubectl スタブは CRD 有無を env で切替可能にする。既定は有（exit 0）＝VAULT は deploy/local/vault を
 // apply。STUB_CRD_ABSENT=1 で `kubectl get crd clustersecretstores.*` を非0（未導入）に返させ、
 // ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
+// STUB_NS_ABSENT=1 で `kubectl get namespace argocd` を非0（未作成）に返させ、LOCALEDGE の argocd-ingress
+// 条件付き apply の「ns 不在＝skip」フローを検証できるようにする（IADR-0091）。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
+  'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -98,6 +103,7 @@ function runUp(extraEnv) {
     'OBSERVABILITY',
     'VAULT',
     'ARGOCD',
+    'LOCALEDGE',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
   ]) {
@@ -216,6 +222,41 @@ ok('OBSERVABILITY=1: observability を apply・grafana-oidc secret を作成', (
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability'), 'observability が apply されない');
   // IADR-0090: Grafana generic OAuth の client secret は k8s Secret grafana-oidc 経由（平文コミットなし）。
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
+});
+
+// LOCALEDGE=1: k3d cluster create のポートを 80/443/50000 へ切替え、エッジ overlay を apply（IADR-0091・#356）。
+// 既定オフ時のバイト等価は上の「既定: k3d cluster create 引数がバイト等価」で固定済み（本ゲートで壊れないこと）。
+ok('LOCALEDGE=1: cluster create ポートが loopback 80/443/50000・8080/8443 は不在', () => {
+  const line = clusterCreateLine(runUp({ LOCALEDGE: '1' }).lines);
+  assert.ok(line, 'cluster create 行が無い');
+  // bind は loopback(127.0.0.1) 固定（認証なし Qdrant を LAN へ露出させない）。
+  for (const p of [
+    '-p 127.0.0.1:80:80@loadbalancer',
+    '-p 127.0.0.1:443:443@loadbalancer',
+    '-p 127.0.0.1:50000:50000@loadbalancer',
+  ]) {
+    assert.ok(line.includes(p), `LOCALEDGE ポート欠落: ${p}`);
+  }
+  // 既定ポート（8080/8443）は LOCALEDGE=1 では現れない（置換であって併存でない）。
+  assert.ok(!line.includes('8080:80@loadbalancer'), 'LOCALEDGE=1 なのに 8080 が残っている');
+  assert.ok(!line.includes('8443:443@loadbalancer'), 'LOCALEDGE=1 なのに 8443 が残っている');
+});
+
+ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
+  assert.ok(anyLineHas(runUp({ LOCALEDGE: '1' }).lines, 'apply -k deploy/local/edge'), 'deploy/local/edge が apply されない');
+});
+
+// LOCALEDGE の argocd-ingress は「argocd namespace 存在時のみ」条件付き apply（fail-safe・ns 不在で失敗させない）。
+// 両分岐を固定する（肯定側=apply / 否定側=skip）。
+ok('LOCALEDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
+  const res = runUp({ LOCALEDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
+  assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
+});
+
+ok('LOCALEDGE=1 (argocd ns 無): argocd-ingress.yaml は apply しない（skip）', () => {
+  const res = runUp({ LOCALEDGE: '1', STUB_NS_ABSENT: '1' }); // get namespace argocd → exit 1（不在）
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/edge'), 'edge overlay 自体は apply される');
+  assert.ok(!anyLineHas(res.lines, 'argocd-ingress.yaml'), 'ns 不在なのに argocd-ingress が apply された');
 });
 
 // VAULT=1（CRD 有）: vault-dev-token secret ＋ deploy/local/vault を apply。
