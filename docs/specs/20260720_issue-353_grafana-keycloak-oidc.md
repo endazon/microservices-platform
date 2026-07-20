@@ -1,7 +1,7 @@
 ---
 title: 経路B Grafana を Keycloak OIDC(generic OAuth) 連携し匿名 Admin を廃する（Issue #353・SSO 一括連携 その1）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - ADR-0006
   - IADR-0066

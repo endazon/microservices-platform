@@ -14,7 +14,7 @@ config は compose（`deploy/prometheus.yml`・`loki-config.yaml`・`tempo.yaml`
 | `prometheus.yaml` | Prometheus（remote-write receiver 有効・alerts inline） |
 | `loki.yaml` | Loki（ログ集約） |
 | `tempo.yaml` | Tempo（トレース・OTLP 4317 受信） |
-| `grafana.yaml` | Grafana（datasource=Prometheus/Loki/Tempo・dev 匿名 Admin） |
+| `grafana.yaml` | Grafana（datasource=Prometheus/Loki/Tempo・Keycloak OIDC 認証／local admin フォールバック・IADR-0090） |
 | `otel-collector-forward.yaml` | otel-collector を forwarding 構成へ差し替える ConfigMap（同名上書き） |
 
 メトリクス経路: アプリ → OTLP → otel-collector → prometheusremotewrite / otlp tempo / loki push（push モデル）。
