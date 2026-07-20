@@ -30,6 +30,27 @@ kubectl -n platform-infra rollout restart deploy/otel-collector
 `scripts/k8s-local-up.sh` は `OBSERVABILITY=1` で上記を実施する。ダッシュボードは Grafana UI から import する
 （MSP overview=`deploy/grafana/provisioning/dashboards`、AST overview=`src/ai-stock-trading/deploy/observability/dashboards`）。
 
+## Grafana ログイン（Keycloak OIDC・IADR-0090・#353）
+
+Grafana は **Keycloak OIDC(generic OAuth)** で認証する（匿名 Admin は廃止）。`OBSERVABILITY=1` の起動で
+`scripts/k8s-local-up.sh` が client secret 用 Secret `grafana-oidc` を作成する（dev 既定 `grafana-dev-secret-change-me`・
+`GRAFANA_OIDC_CLIENT_SECRET` env で上書き可・平文コミットなし）。
+
+```sh
+kubectl -n platform-infra port-forward svc/grafana 3000:3000   # http://localhost:3000
+```
+
+- **SSO ログイン**: ログイン画面の「Sign in with Keycloak」→ realm ユーザー（例 `developer`/`developer`）。
+  role マッピングは realm ロール由来: `platform-admin`→Admin / `platform-operator`→Editor / それ以外→Viewer。
+- **issuer 整合（#284 手順A）**: Grafana は auth/token/userinfo を `http://keycloak:8080/realms/microservices-platform`
+  で解決する。browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080` を行う
+  （`deploy/local/README.md`「エッジ経路（/bff・ブラウザ OIDC）」手順A と同一の理由：iss 一致）。
+- **フォールバック（fail-safe）**: OIDC 未設定/失敗時も匿名フルアクセスへは倒れない。Grafana 組み込みの
+  **local admin**（dev 既定 `admin`/`admin`）でログインできる（`grafana-oidc` Secret は optional 参照のため
+  未作成でも Pod は起動する）。
+- **realm 反映**: `grafana` クライアントは `deploy/keycloak/microservices-platform-realm.json` に定義。realm を
+  再インポート（`PERSIST=1` で永続化済みなら管理コンソールで追加 or 再作成）すると有効になる。
+
 ## 切り戻し
 
 `kubectl delete -k deploy/local/observability` で撤去し、`kubectl apply -k deploy/local/infra` ＋ collector
