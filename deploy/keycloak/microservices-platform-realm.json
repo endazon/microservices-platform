@@ -319,6 +319,47 @@
         "profile",
         "email"
       ]
+    },
+    {
+      "clientId": "argocd",
+      "name": "ArgoCD (GitOps, dev-only OIDC)",
+      "description": "IADR-0092/#353: dev ArgoCD の Keycloak OIDC ログイン用 confidential client。dex 不使用(oidc.config 直)。集約後 URL argocd.localhost:50000(#357)。dev 専用・secret は環境ごとに変更。groups クレーム(mapper)で RBAC 判定。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "argocd-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://argocd.localhost:50000/auth/callback",
+        "http://localhost:8083/auth/callback"
+      ],
+      "webOrigins": [
+        "http://argocd.localhost:50000",
+        "http://localhost:8083"
+      ],
+      "protocolMappers": [
+        {
+          "name": "argocd-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "groups",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "profile",
+        "email"
+      ]
     }
   ],
   "users": [

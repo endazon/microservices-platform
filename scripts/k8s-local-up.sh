@@ -177,6 +177,19 @@ if [ "${ARGOCD:-}" = "1" ]; then
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
   fi
+  # IADR-0092 (#353): ArgoCD を Keycloak OIDC(SSO) へ配線する。dex は使わず oidc.config を直接指定。
+  # 集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）で登録し、edge の平文 http のため
+  # server.insecure=true にする。fail-safe: local admin は残す（OIDC は追加・未マッピングは policy.default='' で
+  # no-access）。install が作成した ConfigMap/Secret へ merge patch で「追加のみ」適用し既存キー（server.secretkey 等）
+  # を保持する（apply による全置換はしない）。client secret は平文で置かず argocd-secret に merge patch。
+  kubectl -n argocd patch configmap argocd-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cm-patch.yaml
+  kubectl -n argocd patch configmap argocd-rbac-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-rbac-cm-patch.yaml
+  kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cmdparams-patch.yaml
+  kubectl -n argocd patch secret argocd-secret --type merge \
+    -p "{\"stringData\":{\"oidc.keycloak.clientSecret\":\"${ARGOCD_OIDC_CLIENT_SECRET:-argocd-dev-secret-change-me}\"}}"
+  # server.insecure（cmd-params）と oidc の反映のため argocd-server を再起動する（CM は live 反映だが params は要再起動）。
+  kubectl -n argocd rollout restart deploy/argocd-server >/dev/null 2>&1 || true
+  echo "    ArgoCD OIDC: http://argocd.localhost:50000 (LOCALEDGE=1) — Keycloak でログイン（local admin は break-glass）。"
 fi
 
 # IADR-0080 (#271): Headlamp（k8s 管理 UI・Keycloak OIDC）。opt-in（既定オフ・fail-safe）。

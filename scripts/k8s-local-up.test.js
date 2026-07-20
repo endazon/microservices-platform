@@ -298,6 +298,25 @@ ok('ARGOCD=1: install は server-side・Application/AppProject は client-side�
   assert.ok(!appLine.includes('--server-side'), `Application/AppProject に --server-side が波及した: ${appLine}`);
 });
 
+// ARGOCD=1 (#353 / IADR-0092): install 後に Keycloak OIDC を配線する。argocd-cm/rbac-cm/cmd-params-cm を
+// merge patch（既存キー保持）、argocd-secret に oidc.keycloak.clientSecret を merge patch（平文コミットなし）、
+// argocd-server を rollout restart（server.insecure/oidc の反映）。
+ok('ARGOCD=1: Keycloak OIDC 配線（CM patch＋secret patch＋rollout restart）', () => {
+  const res = runUp({ ARGOCD: '1' });
+  for (const f of ['argocd-cm-patch.yaml', 'argocd-rbac-cm-patch.yaml', 'argocd-cmdparams-patch.yaml']) {
+    const line = res.lines.find((l) => l.includes(f));
+    assert.ok(line, `${f} の patch 行が無い`);
+    assert.ok(line.includes('patch') && line.includes('--type merge'), `${f} が merge patch でない: ${line}`);
+  }
+  // client secret は argocd-secret への merge patch（apply による全置換ではない＝server.secretkey を保持）。
+  const secLine = res.lines.find((l) => l.includes('oidc.keycloak.clientSecret'));
+  assert.ok(secLine, 'argocd-secret への clientSecret patch 行が無い');
+  assert.ok(secLine.includes('patch secret argocd-secret') && secLine.includes('--type merge'), `secret が merge patch でない: ${secLine}`);
+  assert.ok(!secLine.includes('create secret'), 'argocd-secret を create（全置換）している');
+  // server.insecure/oidc の反映のため argocd-server を rollout restart する。
+  assert.ok(anyLineHas(res.lines, 'rollout restart deploy/argocd-server'), 'argocd-server の rollout restart が無い');
+});
+
 // HEADLAMP=1: headlamp-oidc secret ＋ deploy/local/headlamp を apply（IADR-0080）。
 ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () => {
   const res = runUp({ HEADLAMP: '1' });

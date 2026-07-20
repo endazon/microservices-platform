@@ -32,6 +32,25 @@ kubectl apply -f src/ai-stock-trading/deploy/argocd/application.yaml
 
 以降のデプロイは Git 上の各チャート values を更新すると ArgoCD が同期する。
 
+## Keycloak OIDC(SSO) ログイン（IADR-0092・#353）
+
+`ARGOCD=1` の起動で、`scripts/k8s-local-up.sh` が install 後に ArgoCD を Keycloak OIDC へ配線する（**dex は使わず
+`oidc.config` を直接指定**）。`deploy/local/argocd/oidc/` の 3 つの ConfigMap を **merge patch**（既存キー保持）で適用し、
+`argocd-secret` に client secret を merge patch、`argocd-server` を rollout restart する。
+
+- **client secret**: `argocd-secret` の `oidc.keycloak.clientSecret`（dev 既定 `argocd-dev-secret-change-me`・
+  `ARGOCD_OIDC_CLIENT_SECRET` env で上書き可・平文コミットなし）。
+- **公開 URL（集約後・ホスト名ベース・#357/IADR-0091）**: `argocd-cm.url = http://argocd.localhost:50000`、redirect
+  `http://argocd.localhost:50000/auth/callback`（realm には port-forward 用 `http://localhost:8083/auth/callback` も併記）。
+  edge の平文 http のため `server.insecure=true`（`argocd-cmd-params-cm`）。`server.rootpath`（サブパス）は使わない。
+- **アクセス**: `LOCALEDGE=1` で edge を有効化し `http://argocd.localhost:50000` を開く（[edge README](../edge/README.md)）。
+  port-forward で開く場合は `kubectl -n argocd port-forward svc/argocd-server 8083:80` → `http://localhost:8083`。
+- **RBAC**: `platform-admin`→`role:admin`、`platform-operator`→`role:readonly`、未マッピングは `policy.default=''`＝
+  無権限（fail-safe・Admin へ昇格しない）。レルムロールは `argocd` client の protocolMapper が `groups` クレームへ発行。
+- **フォールバック（fail-safe）**: ArgoCD 組み込み **local admin**（`argocd-initial-admin-secret`）は break-glass として残す。
+- **issuer 整合（#284 手順A）**: browser も `http://keycloak:8080` を解決させる（hosts＋`port-forward svc/keycloak 8080:8080`）。
+- **realm 反映**: `argocd` client は `deploy/keycloak/microservices-platform-realm.json` に定義。realm 再インポートで有効化。
+
 ## 妥当性の事前確認（クラスタ非依存）
 
 `Application`/`AppProject` は `argoproj.io` CRD のため、CRD 未導入では `kubectl --dry-run=client` は
