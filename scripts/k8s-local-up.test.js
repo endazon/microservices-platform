@@ -237,6 +237,22 @@ ok('ARGOCD=1: argocd namespace と application manifest を apply', () => {
   assert.ok(anyLineHas(res.lines, 'deploy/argocd/application.yaml'), 'argocd application が apply されない');
 });
 
+// ARGOCD=1 (#348 / IADR-0077): 公式 install manifest は巨大 CRD を含み client-side apply では annotation
+// 上限（262144 バイト）を超過するため、install 行は server-side apply（--server-side --force-conflicts）で
+// 適用されなければならない。URL/バージョンは不変。一方、小さい Application/AppProject は変更最小の原則で
+// client-side のまま（--server-side が波及していないことも固定＝回帰ガード）。
+ok('ARGOCD=1: install は server-side・Application/AppProject は client-side（--server-side 非波及）', () => {
+  const res = runUp({ ARGOCD: '1' });
+  const installLine = res.lines.find((l) => l.includes('argo-cd/stable/manifests/install.yaml'));
+  assert.ok(installLine, 'ArgoCD install manifest の apply 行が無い');
+  assert.ok(installLine.includes('apply --server-side'), `install が server-side apply でない: ${installLine}`);
+  assert.ok(installLine.includes('--force-conflicts'), `install に --force-conflicts が無い: ${installLine}`);
+  // Application/AppProject の apply 行は client-side のまま（server-side が誤って波及していないこと）。
+  const appLine = res.lines.find((l) => l.includes('deploy/argocd/application.yaml'));
+  assert.ok(appLine, 'Application/AppProject の apply 行が無い');
+  assert.ok(!appLine.includes('--server-side'), `Application/AppProject に --server-side が波及した: ${appLine}`);
+});
+
 // HEADLAMP=1: headlamp-oidc secret ＋ deploy/local/headlamp を apply（IADR-0080）。
 ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () => {
   const res = runUp({ HEADLAMP: '1' });

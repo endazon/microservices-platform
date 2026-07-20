@@ -9,9 +9,9 @@ ArgoCD 本体は大きな公式 install manifest を URL 適用するため、�
 ## ブートストラップ
 
 ```sh
-# 1) ArgoCD 本体（一度だけ・URL 適用）
+# 1) ArgoCD 本体（一度だけ・URL 適用・server-side apply）
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # 2) MSP の Application/AppProject
 kubectl apply -f deploy/argocd/appproject.yaml
@@ -21,6 +21,14 @@ kubectl apply -f deploy/argocd/application.yaml
 kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml
 kubectl apply -f src/ai-stock-trading/deploy/argocd/application.yaml
 ```
+
+> **なぜ `--server-side`（Issue #348）**: ArgoCD 公式 install manifest は巨大な CRD
+> （`applicationsets.argoproj.io` 等）を含む。client-side apply は manifest 全体を
+> `kubectl.kubernetes.io/last-applied-configuration` annotation に格納するため、その CRD で annotation の
+> 262144 バイト上限を超過し `metadata.annotations: Too long` で失敗する。server-side apply は annotation を
+> 作らず managed fields で差分管理するため大 CRD が通る。`--force-conflicts` は旧 client-side 実行済み
+> クラスタの再適用時に field 所有権を server-side manager が奪取して冪等・再実行安全にする。手順 2)/3) の
+> 小さい `Application`/`AppProject` は client-side のままでよい。
 
 以降のデプロイは Git 上の各チャート values を更新すると ArgoCD が同期する。
 

@@ -150,7 +150,13 @@ fi
 if [ "${ARGOCD:-}" = "1" ]; then
   echo "==> [opt-in] ArgoCD bootstrap (手順は deploy/local/argocd/README.md)"
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
-  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  # IADR-0077 (#348): ArgoCD 公式 install manifest は巨大な CRD（applicationsets.argoproj.io 等）を含み、
+  # client-side apply では manifest 全体が last-applied-configuration annotation に載って 262144 バイト
+  # 上限を超過し失敗する（既知問題）。server-side apply は annotation を作らず managed fields で差分管理する
+  # ため大 CRD が通る。--force-conflicts は旧 client-side 実行済みクラスタ再実行時の field 所有権競合を
+  # server-side manager が奪取して冪等・再実行安全にする（本ブートストラップは install manifest の再適用を
+  # 前提とし、ArgoCD 自身が同 CRD を自己管理下に置いた後の再実行は想定しない）。URL/バージョンは不変。
+  kubectl apply --server-side --force-conflicts -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   kubectl apply -f deploy/argocd/appproject.yaml -f deploy/argocd/application.yaml
   if [ -d src/ai-stock-trading/deploy/argocd ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
