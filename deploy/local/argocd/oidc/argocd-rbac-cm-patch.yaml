@@ -1,0 +1,10 @@
+# IADR-0092 (#353): argocd-rbac-cm への RBAC merge patch（既存キーは保持）。
+# fail-safe: policy.default='' ＝未マッピングの OIDC ユーザーは無権限（Admin へ昇格しない）。local admin は break-glass。
+# レルムロールは argocd client の protocolMapper が groups クレーム(id_token)へ発行する（realm.json）。ArgoCD は
+# 既定 scopes:[groups] で groups クレームを主体グループとして解決するため、`g, <role>, <argocd-role>` で対応づける。
+data:
+  policy.default: ""
+  scopes: "[groups]"
+  policy.csv: |
+    g, platform-admin, role:admin
+    g, platform-operator, role:readonly

@@ -1,0 +1,16 @@
+# IADR-0092 (#353): argocd-cm への OIDC(Keycloak) 設定 merge patch（既存キーは保持）。
+# k8s-local-up.sh の ARGOCD=1 ブロックが `kubectl -n argocd patch configmap argocd-cm --type merge --patch-file` で適用。
+# dex は使わず oidc.config を直接指定（dex.config を置かない＝dex 経路は無効）。
+# url は集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）。issuer は手順A の in-cluster 正準名。
+# client secret は本ファイルに書かず argocd-secret の key を $ 参照する（平文コミットなし）。
+data:
+  url: http://argocd.localhost:50000
+  oidc.config: |
+    name: Keycloak
+    issuer: http://keycloak:8080/realms/microservices-platform
+    clientID: argocd
+    clientSecret: $oidc.keycloak.clientSecret
+    requestedScopes:
+      - openid
+      - profile
+      - email
