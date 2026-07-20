@@ -28,6 +28,7 @@ const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-d
 const OPTIN_TOKENS = [
   'deploy/local/infra-persistence', // PERSIST
   'deploy/local/observability', //     OBSERVABILITY
+  'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
   'deploy/local/headlamp', //          HEADLAMP
@@ -215,9 +216,12 @@ ok('PERSIST=1: infra-persistence を apply', () => {
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/infra-persistence'), 'infra-persistence が apply されない');
 });
 
-// OBSERVABILITY=1: observability スタックを apply（IADR-0077）。
-ok('OBSERVABILITY=1: observability を apply', () => {
-  assert.ok(anyLineHas(runUp({ OBSERVABILITY: '1' }).lines, 'apply -k deploy/local/observability'));
+// OBSERVABILITY=1: observability スタックを apply（IADR-0077）＋ Grafana OIDC secret を作成（IADR-0090）。
+ok('OBSERVABILITY=1: observability を apply・grafana-oidc secret を作成', () => {
+  const res = runUp({ OBSERVABILITY: '1' });
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability'), 'observability が apply されない');
+  // IADR-0090: Grafana generic OAuth の client secret は k8s Secret grafana-oidc 経由（平文コミットなし）。
+  assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
 });
 
 // LOCALEDGE=1: k3d cluster create のポートを 80/443/50000 へ切替え、エッジ overlay を apply（IADR-0091・#356）。
