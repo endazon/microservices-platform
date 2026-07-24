@@ -208,7 +208,7 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
-  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials"
+  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync"
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then

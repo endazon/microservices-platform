@@ -37,5 +37,6 @@ vexec "vault kv put secret/msp/wikijs-db password='${WIKIJS_DB_PASSWORD:-kp}'"
 vexec "vault kv put secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
 
 echo ""
-echo "done. ExternalSecret(llm-provider-credentials) が Vault→k8s Secret を同期する（refresh 1h）。"
-echo "  確認: kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials"
+echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h）:"
+echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
+echo "  確認: kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync"
