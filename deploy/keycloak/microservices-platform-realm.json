@@ -362,6 +362,47 @@
         "profile",
         "email"
       ]
+    },
+    {
+      "clientId": "minio",
+      "name": "MinIO Console (object storage, dev-only OIDC)",
+      "description": "IADR-0093/#353: dev MinIO Console の Keycloak OIDC ログイン用 confidential client。集約後 URL minio.localhost:50000(#357)。dev 専用・secret は環境ごとに変更。policy クレーム(mapper)で MinIO ポリシーを判定(未一致は deny)。",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "minio-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://minio.localhost:50000/oauth_callback",
+        "http://localhost:9001/oauth_callback"
+      ],
+      "webOrigins": [
+        "http://minio.localhost:50000",
+        "http://localhost:9001"
+      ],
+      "protocolMappers": [
+        {
+          "name": "minio-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "policy",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "profile",
+        "email"
+      ]
     }
   ],
   "users": [

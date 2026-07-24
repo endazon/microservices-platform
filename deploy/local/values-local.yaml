@@ -111,3 +111,14 @@ frontend:
   extraEnv:
     - name: WIKI_BASE_URL
       value: "http://localhost:3300"
+
+# Issue #353, IADR-0093: 経路B の MinIO Console を Keycloak OIDC(SSO) 連携する（本番像 values.yaml は
+# oidc.enabled=false のまま不変・byte 等価）。config_url は MSP ns の ExternalName alias `keycloak` 経由で
+# in-cluster の Keycloak well-known を指す（browser は #284 手順A）。集約後 URL（minio.localhost:50000・#357/edge）を
+# Console 公開 URL に。client secret は Secret `minio-oidc`（k8s-local-up.sh 作成）。root は break-glass として残る。
+# ※ 実ログインには MinIO ポリシー（platform-admin/operator）の適用が必要（deploy/local/minio-oidc/README.md の mc 手順）。
+minio:
+  oidc:
+    enabled: true
+    configUrl: "http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration"
+    browserRedirectUrl: "http://minio.localhost:50000"

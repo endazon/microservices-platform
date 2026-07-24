@@ -169,6 +169,12 @@ ok('既定: opt-in 由来リソースが一切現れない', () => {
   }
 });
 
+// IADR-0093 (#353): MinIO OIDC の client secret 用 app-secret `minio-oidc` は既定実行で作成される
+// （opt-in ではなく MSP app-secrets の一部・平文コミットなし・minio.yaml は optional 参照）。
+ok('既定: minio-oidc app-secret が作られる', () => {
+  assert.ok(anyLineHas(DEFAULT.lines, 'minio-oidc'), 'minio-oidc secret が作られない');
+});
+
 // HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグが cluster create に付与される（IADR-0084）。
 ok('HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグ付与', () => {
   const line = clusterCreateLine(runUp({ HEADLAMP_OIDC_APISERVER: '1' }).lines);
