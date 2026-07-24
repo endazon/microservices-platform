@@ -17,7 +17,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Llm:ApiKey"] = "test-key",
-                ["Llm:Model"] = "claude-opus-4-8",
+                ["Llm:Model"] = "claude-opus-5",
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test"
             }));

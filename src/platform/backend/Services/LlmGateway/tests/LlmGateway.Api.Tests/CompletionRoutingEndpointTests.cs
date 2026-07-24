@@ -63,7 +63,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
-        body.Model.Should().Be("claude-opus-4-8");
+        body.Model.Should().Be("claude-opus-5");
         body.Model.Should().NotBe("claude-fable-5");
     }
 

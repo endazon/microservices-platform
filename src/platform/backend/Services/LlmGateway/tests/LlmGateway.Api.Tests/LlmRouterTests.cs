@@ -15,8 +15,8 @@ public class LlmRouterTests
         Provider = "claude",
         Enabled = enabled,
         Priority = priority,
-        DefaultModel = "claude-opus-4-8",
-        Models = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        DefaultModel = "claude-opus-5",
+        Models = ["claude-fable-5", "claude-opus-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
         // IADR-0022 / 08_data-egress-policy: fable-5 は ZDR 非対応。confidential/restricted では除外される。
         NonZdrModels = ["claude-fable-5"]
     };
@@ -68,7 +68,7 @@ public class LlmRouterTests
             ["rag-answer"] = "claude-sonnet-4-6",
             ["analysis"] = "claude-fable-5",
             ["diagram-coding"] = "claude-haiku-4-5",
-            ["default"] = "claude-opus-4-8"
+            ["default"] = "claude-opus-5"
         }
     };
 
@@ -100,7 +100,7 @@ public class LlmRouterTests
         decision.Provider.Should().Be("claude");
         // IADR-0022 / 08_data-egress-policy: confidential は ZDR 要件のため ZDR 非対応の fable-5 は除外され、
         // ZDR 対応の既定モデル（opus）へフォールバックする。
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-opus-5");
     }
 
     // IADR-0022 / 08_data-egress-policy: public は ZDR 非要件のため analysis→fable-5（最難関）を選択できる。
@@ -125,7 +125,7 @@ public class LlmRouterTests
 
         decision.Allowed.Should().BeTrue();
         decision.Tier.Should().Be(ProtectionTier.B);
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-opus-5");
     }
 
     // IADR-0022: confidential でも明示要求モデルが ZDR 非対応（fable-5）なら採用せず ZDR 対応へフォールバックする。
@@ -203,7 +203,7 @@ public class LlmRouterTests
 
         // 未知 purpose のため既定モデル（opus）へフォールバックし、送信は許可される。
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-opus-5");
         // IADR-0022: Reason へ埋め込む purpose も sanitize 済みで、改行・制御文字を含まない
         //（将来 Reason を監査ログへ出力しても偽造経路が再発しない）。
         decision.Reason.Should().NotContain("\n").And.NotContain("\r");
@@ -295,7 +295,7 @@ public class LlmRouterTests
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "default"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-opus-5");
     }
 
     // ADR-0010 / IADR-0022: Copilot（ティアC）は confidential では候補にならない（越境マトリクスで C 不可）。

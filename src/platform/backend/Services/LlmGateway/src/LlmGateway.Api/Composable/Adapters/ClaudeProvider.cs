@@ -5,11 +5,16 @@ using Anthropic.SDK.Messaging;
 
 namespace LlmGateway.Api.Composable.Adapters;
 
-// ADR-0010: Claude SDK デフォルト実装。既定モデルは claude-opus-4-8（(b) 実装追従・IADR-0022）。
+// ADR-0010: Claude SDK デフォルト実装。既定モデルは claude-opus-5（ADR-0025 追従・IADR-0100。
+// 既定 Opus 経路そのものの決定は IADR-0022）。
 // 定型用途は claude-sonnet-4-6 / claude-haiku-4-5、最難関用途は claude-fable-5 をルーター（用途別）で選択する。
+// ⚠️ Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、MaxTokens は思考トークンと本文の
+// 合算上限になる。切り詰めると本文が途中で切れるため、既定値は思考分の余裕を含める（IADR-0100）。
+// なお本実装は thinking / temperature / top_p / top_k / assistant prefill を送らない（Opus 5 で 400 になる
+// パラメータを持ち込まないため。変更する場合は IADR-0100 の選択肢 2 の検討結果を参照）。
 public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILlmProvider
 {
-    private readonly string _model = config["Llm:Model"] ?? "claude-opus-4-8";
+    private readonly string _model = config["Llm:Model"] ?? "claude-opus-5";
 
     public async Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
     {

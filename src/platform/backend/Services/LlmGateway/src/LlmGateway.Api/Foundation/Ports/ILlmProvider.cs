@@ -19,7 +19,10 @@ public interface ILlmProvider
     }
 }
 
-public record CompletionRequest(string Prompt, int MaxTokens = 1024, string? Model = null);
+// IADR-0100: MaxTokens の既定は 4096。Opus 5 / Sonnet 5 は thinking が既定で有効であり、MaxTokens は
+// 思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）を見込む。
+// 1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず短い回答へ静かに縮退する）。
+public record CompletionRequest(string Prompt, int MaxTokens = 4096, string? Model = null);
 public record CompletionResult(string Text, int InputTokens, int OutputTokens);
 
 // IADR-0037: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。
