@@ -25,8 +25,13 @@ fi
 ISSUER="${VAULT_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/microservices-platform}"
 REDIRECTS="http://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback"
 
-echo "==> auth/oidc を有効化（既に有効なら無視）"
-vault auth enable oidc 2>/dev/null || echo "    oidc は既に有効"
+echo "==> auth/oidc を有効化（未有効時のみ・冪等）"
+# 既有効かを先に判定し、未有効のときだけ enable する（enable 失敗＝権限不足等は握りつぶさず set -e で止める）。
+if vault auth list -format=json | jq -e '."oidc/"' >/dev/null 2>&1; then
+  echo "    oidc は既に有効"
+else
+  vault auth enable oidc
+fi
 ACCESSOR="$(vault auth list -format=json | jq -r '."oidc/".accessor')"
 
 echo "==> auth/oidc/config"

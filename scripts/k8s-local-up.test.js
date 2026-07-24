@@ -31,6 +31,7 @@ const OPTIN_TOKENS = [
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
+  'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
   'headlamp-oidc', //                  HEADLAMP (secret)
   'deploy/argocd', //                  ARGOCD
