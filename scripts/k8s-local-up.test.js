@@ -338,6 +338,37 @@ ok('既定 (PR-2): minio-credentials/wikijs-db/wikijs-sync を手動 apply す�
   }
 });
 
+// IADR-0098 (#310) PR-3: ESO=1 で OIDC client secret 群（minio/grafana/vault/headlamp-oidc）も ExternalSecret 供給し、
+// 各機能ゲート内の手動 apply はスキップする（二重所有回避）。ゲートを全て有効化して skip を確認する。
+ok('ESO=1 (PR-3): OIDC 4 ExternalSecret apply・4 OIDC secret の手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', OBSERVABILITY: '1', HEADLAMP: '1' });
+  for (const f of [
+    'externalsecret-minio-oidc.yaml',
+    'externalsecret-grafana-oidc.yaml',
+    'externalsecret-vault-oidc.yaml',
+    'externalsecret-headlamp-oidc.yaml',
+  ]) {
+    assert.ok(anyLineHas(res.lines, `deploy/local/vault/eso/${f}`), `${f} が apply されない`);
+  }
+  for (const name of ['minio-oidc', 'grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
+    assert.ok(
+      !anyLineHas(res.lines, `create secret generic ${name}`),
+      `ESO=1 なのに ${name} を手動 apply している（二重所有）`,
+    );
+  }
+});
+
+// IADR-0098 (#310) PR-3 回帰: 既定（ESO 未設定）は 4 OIDC secret を手動 apply する（バイト等価）。minio-oidc は
+// 常時（step 5）、grafana/vault/headlamp-oidc は各ゲート有効時。ゲートを全て有効化して手動 apply の存置を確認する。
+ok('既定 (PR-3): 4 OIDC secret を手動 apply する（ESO 未設定・各ゲート有効）', () => {
+  const res = runUp({ OBSERVABILITY: '1', VAULT: '1', HEADLAMP: '1' });
+  for (const name of ['minio-oidc', 'grafana-oidc', 'vault-oidc', 'headlamp-oidc']) {
+    assert.ok(anyLineHas(res.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
+  }
+  // ESO 未設定なので OIDC の ExternalSecret は apply されない（byte 等価・fail-safe）。
+  assert.ok(!anyLineHas(res.lines, 'externalsecret-grafana-oidc.yaml'), 'ESO 未設定なのに OIDC ExternalSecret を apply した');
+});
+
 // IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
 // ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
 ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {

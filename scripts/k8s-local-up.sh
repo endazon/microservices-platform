@@ -122,8 +122,11 @@ echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
 # IADR-0093 (#353): MinIO Console の Keycloak OIDC client secret（平文コミットしない・dev 既定 or env 上書き）。
 # minio.yaml は minio.oidc.enabled 時に optional 参照で注入する（未作成でも Pod 起動＝root ログインへフォールバック）。
-# ※ minio-oidc(OIDC secret)は ESO 移行対象外（PR-3 予定）＝常に手動 apply する。
-apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
+# IADR-0098 (#310) PR-3: minio-oidc は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し手動 apply をスキップ（二重所有回避）。
+# 既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
+fi
 # IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
 # 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
 if [ "${ESO:-}" != "1" ]; then
@@ -154,8 +157,11 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
   # IADR-0090 (#353): Grafana は Keycloak OIDC(generic OAuth) で認証する（匿名 Admin は廃止）。
   # client secret は平文で manifest に置かず Secret 経由（dev 既定 or env 上書き・headlamp-oidc と同型）。
   # grafana.yaml は optional 参照のため Secret 不在でも Pod は起動し local admin へフォールバックする（fail-safe）。
-  apply_secret "$INFRA_NS" grafana-oidc \
-    "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
+  # IADR-0098 (#310) PR-3: ESO=1 のときは grafana-oidc も Vault→ExternalSecret 供給へ委譲し手動 apply をスキップ（二重所有回避）。
+  if [ "${ESO:-}" != "1" ]; then
+    apply_secret "$INFRA_NS" grafana-oidc \
+      "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
+  fi
   kubectl apply -k deploy/local/observability
   # otel-collector を forwarding 構成（debug-only から切替）へ反映。
   kubectl -n "$INFRA_NS" rollout restart deploy/otel-collector
@@ -169,7 +175,10 @@ if [ "${VAULT:-}" = "1" ]; then
   # IADR-0094 (#353): Keycloak OIDC の client secret（平文コミットしない・dev 既定 or env 上書き）。
   # Vault OIDC は runtime 設定のため vault-dev.yaml へは注入せず、bootstrap（deploy/local/vault/oidc/bootstrap.sh）が
   # 本 Secret を読んで `vault write auth/oidc/config` へ渡す。
-  apply_secret "$INFRA_NS" vault-oidc "client-secret=${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}"
+  # IADR-0098 (#310) PR-3: ESO=1 のときは vault-oidc も Vault→ExternalSecret 供給へ委譲し手動 apply をスキップ（二重所有回避）。
+  if [ "${ESO:-}" != "1" ]; then
+    apply_secret "$INFRA_NS" vault-oidc "client-secret=${VAULT_OIDC_CLIENT_SECRET:-vault-dev-secret-change-me}"
+  fi
   if kubectl get crd clustersecretstores.external-secrets.io >/dev/null 2>&1; then
     kubectl apply -k deploy/local/vault
   else
@@ -202,13 +211,22 @@ if [ "${ESO:-}" = "1" ]; then
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。
   # 既定（VAULT=1 単独）は token 認証の store（deploy/local/vault/clustersecretstore.yaml）のままで既存フロー不変。
   kubectl apply -f deploy/local/vault/eso/clustersecretstore-k8s.yaml
-  # ExternalSecret で secret を Vault→Secret 供給する（PR-1: llm、PR-2: minio-credentials/wikijs-db/wikijs-sync）。
+  # ExternalSecret で secret を Vault→Secret 供給する（PR-1: llm、PR-2: minio-credentials/wikijs-db/wikijs-sync、
+  # PR-3: OIDC client secret 群）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-minio.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
-  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
-  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync"
+  # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
+  # ExternalSecret は namespaced だが ClusterSecretStore は cluster-scoped のため両 ns から同名 store を参照できる。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-minio-oidc.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
+  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc/grafana-oidc/vault-oidc/headlamp-oidc は"
+  echo "         Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
+  echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
+  echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret grafana-oidc vault-oidc headlamp-oidc"
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then
@@ -244,8 +262,11 @@ fi
 if [ "${HEADLAMP:-}" = "1" ]; then
   echo "==> [opt-in] Headlamp (k8s management UI, Keycloak OIDC)"
   # OIDC client secret（dev 既定 = realm import の dev 値・env で上書き可・manifest に平文で置かない）。
-  apply_secret "$INFRA_NS" headlamp-oidc \
-    "client-secret=${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}"
+  # IADR-0098 (#310) PR-3: ESO=1 のときは headlamp-oidc も Vault→ExternalSecret 供給へ委譲し手動 apply をスキップ（二重所有回避）。
+  if [ "${ESO:-}" != "1" ]; then
+    apply_secret "$INFRA_NS" headlamp-oidc \
+      "client-secret=${HEADLAMP_OIDC_CLIENT_SECRET:-headlamp-dev-secret-change-me}"
+  fi
   kubectl apply -k deploy/local/headlamp
   echo "    Headlamp: kubectl -n $INFRA_NS port-forward svc/headlamp 4466:80  # http://localhost:4466"
   # IADR-0084 (#328): apiserver OIDC 検証フラグは上の [1/7] で新規クラスタ作成時に自動付与される
