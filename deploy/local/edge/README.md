@@ -71,14 +71,20 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
   - hosts（`C:\Windows\System32\drivers\etc\hosts` / `/etc/hosts`）: `127.0.0.1 grafana.localhost argocd.localhost vault.localhost headlamp.localhost qdrant.localhost`
   - もしくは `grafana.127.0.0.1.nip.io:50000` 等の `*.nip.io` / `*.sslip.io`（hosts 編集不要・ワイルドカード解決）。
 
-## OIDC（redirect の追記は #355 マージ後）
+## OIDC（集約後 URL）
 
 issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）を維持し、ツール UI のみ 50000 に集約する。
-集約後 URL への **redirectUris 追加**（grafana `…/grafana.localhost:50000/login/generic_oauth`、headlamp
-`…headlamp.localhost:50000/*`）と Grafana の `GF_SERVER_ROOT_URL` 設定は、`realm.json`・`grafana.yaml` を触るため
-**#355（Grafana OIDC）マージ後の追従 PR（PR-2）**で行う（既存 port-forward 用 URL を残す＝後方互換）。それまでは
-新ホストからの OIDC ログインは未成立で、従来の port-forward + 既存 redirect でログインできる（フォールバック維持）。
-これから足す ArgoCD/Vault の OIDC client は最初から 50000 URL で登録する。
+
+- **Grafana（PR-2 適用済み）**: realm `grafana` client の `redirectUris`/`webOrigins` に集約後 URL
+  （`http://grafana.localhost:50000/login/generic_oauth` 等）を追加し、`GF_SERVER_ROOT_URL` を
+  `http://grafana.localhost:50000/` に設定済み。**Grafana は `root_url` から一意に `redirect_uri` を生成する**ため、
+  OIDC ログインの実効経路は **edge（`grafana.localhost:50000`・`LOCALEDGE=1` 前提）**。
+  - ⚠️ **`LOCALEDGE` を使わず `port-forward svc/grafana 3000:3000` 単独で開いた場合、Keycloak 認証後の redirect は
+    `grafana.localhost:50000` を指すため edge 未起動だと到達できず、OIDC ログインは完了しない**（realm には旧
+    port-forward 用 redirect も残しているが、実際に使う redirect は `root_url` 側で一意に決まる）。この場合は
+    **fail-safe の local admin（`admin`/`admin`）でログインする**（機密露出等のリスクは無い）。port-forward で OIDC を
+    使いたい場合は `GF_SERVER_ROOT_URL` を `http://localhost:3000/` に戻す（realm の port-forward redirect は登録済み）。
+- **ArgoCD（#359 適用済み）** / これから足す **Vault** 等の OIDC client は最初から 50000 URL で登録する。
 
 ## 切り戻し
 

@@ -294,9 +294,11 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "http://grafana.localhost:50000/login/generic_oauth",
         "http://localhost:3000/login/generic_oauth"
       ],
       "webOrigins": [
+        "http://grafana.localhost:50000",
         "http://localhost:3000"
       ],
       "protocolMappers": [
