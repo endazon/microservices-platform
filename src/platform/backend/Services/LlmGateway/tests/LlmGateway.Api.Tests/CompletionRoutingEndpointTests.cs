@@ -16,7 +16,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         string Text, string Model, int InputTokens, int OutputTokens,
         bool Sent, string? Endpoint, string? RoutingReason);
 
-    // IADR-0100, FR-11: maxTokens を省略した JSON では、共有契約 CompletionApiRequest の既定値
+    // IADR-0101, FR-11: maxTokens を省略した JSON では、共有契約 CompletionApiRequest の既定値
     // （4096）がプロバイダまで渡ることを固定する。HTTP 経路で実際に効く既定は ILlmProvider 側の
     // CompletionRequest ではなく DTO 側であり（エンドポイントは req.MaxTokens を常に明示的に渡す）、
     // ここが 1024 に戻ると thinking 既定有効モデルで本文が空になる回帰が起きる。

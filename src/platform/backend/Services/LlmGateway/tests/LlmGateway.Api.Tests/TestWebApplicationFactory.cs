@@ -40,7 +40,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 }
 
 // テスト用スタブ LLM プロバイダー
-// IADR-0100: 受け取った MaxTokens を本文へ反映し、既定値がプロバイダまで到達することを
+// IADR-0101: 受け取った MaxTokens を本文へ反映し、既定値がプロバイダまで到達することを
 // テストから検証できるようにする（既存アサーションは "テスト回答" の部分一致のため影響しない）。
 file class StubLlmProvider : ILlmProvider
 {

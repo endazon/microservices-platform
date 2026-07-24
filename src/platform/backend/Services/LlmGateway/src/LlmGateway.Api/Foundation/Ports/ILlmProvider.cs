@@ -19,7 +19,7 @@ public interface ILlmProvider
     }
 }
 
-// IADR-0100: MaxTokens の既定は 4096（HTTP 経路の既定は CompletionApiRequest 側。エンドポイントが
+// IADR-0101: MaxTokens の既定は 4096（HTTP 経路の既定は CompletionApiRequest 側。エンドポイントが
 // req.MaxTokens を常に明示的に渡すため、本既定値はプロバイダを直接呼ぶ内部経路にのみ効く）。
 // thinking（拡張思考）が既定で有効なモデル（Opus 5・Sonnet 5。現行の既定 claude-opus-5 が該当）では
 // MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）

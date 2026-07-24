@@ -7,12 +7,12 @@ related_ids:
   - ADR-0010
   - ADR-0025
   - IADR-0022
-  - IADR-0100
+  - IADR-0101
 author: claude
 created: 2026-07-24
 updated: 2026-07-24
 related_specs:
-  - "../adr/IADR-0100_default-model-opus-5.md"
+  - "../adr/IADR-0101_default-model-opus-5.md"
   - "../adr/IADR-0022_default-opus-and-fable5-copilot-routes.md"
   - "../functional/FR-11_llm-egress-routing.md"
   - "../tests/FR-11_llm-egress-routing.md"
@@ -29,7 +29,7 @@ related_specs:
   用途別モデル表は `06_technical/04_ai-rag-stack.md`。
 - 要求: FR-11（LLM 送信可否の統制・用途別ルーティング）。
 - 既存の実装決定: [[IADR-0022]]（既定 Opus・fable-5／Copilot 経路）。本作業はその**モデル版数のみ**を更新する。
-- 本作業の実装判断は [[IADR-0100]]（既定 `max_tokens` の引き上げ根拠を含む）。
+- 本作業の実装判断は [[IADR-0101]]（既定 `max_tokens` の引き上げ根拠を含む）。
 
 ## 背景と問題
 
@@ -89,16 +89,16 @@ ADR-0025 により計画側のグローバル既定が Opus 5 へ改定された
 
 ## リスクと自己チェック
 
-- **思考の既定有効化（最重要）**: `max_tokens` 据え置きは回答途中切れに直結する。引き上げ根拠は [[IADR-0100]]。
+- **思考の既定有効化（最重要）**: `max_tokens` 据え置きは回答途中切れに直結する。引き上げ根拠は [[IADR-0101]]。
 - **既定値の引き上げでは救済されない呼び出し元がある**: `max_tokens` を明示指定している呼び出しは既定値の
   影響を受けない。ゲートウェイ利用者を洗い出した結果、`src/ai-stock-trading`（submodule）の 2 箇所
   （`HttpLlmCompletionClient` / `HttpReportNarrativeDrafter`）が `MaxTokens: 1024` をハードコードし、
   いずれも `purpose` 未登録で `default` へ着地する。本リポジトリからは修正できないため、
-  ai-stock-trading 側の対応を先行または同時にマージする必要がある（[[IADR-0100]] フォローアップ 5）。
+  ai-stock-trading 側の対応を先行または同時にマージする必要がある（[[IADR-0101]] フォローアップ 5）。
 - **レート制限**: Opus 5 は Opus 4.x 系の共通プールとは**別枠**。既定層のトラフィック移行前に枠を確認する（運用フォローアップ）。
 - **`stop_reason: "refusal"`**: Opus 5 はサイバー系の安全性分類器を持ち HTTP 200 + `refusal` を返し得る。
   現行 `ClaudeProvider` は本文先頭テキストを取り出すのみで例外にはならない（空応答へ縮退）。
-  ハンドリング追加は本作業のスコープ外とし、[[IADR-0100]] にフォローアップとして記録する。
+  ハンドリング追加は本作業のスコープ外とし、[[IADR-0101]] にフォローアップとして記録する。
 - **ZDR**: Opus 5 に 30 日保持要件は無く、`NonZdrModels` は `claude-fable-5` のみで不変。T-13 の意味は保たれる。
 
 ## 非対象・除外
@@ -106,7 +106,7 @@ ADR-0025 により計画側のグローバル既定が Opus 5 へ改定された
 - `rag-answer` / `diagram-coding` / `analysis` の割当モデル変更（ADR-0022 の範囲・本作業では不変更）。
 - `thinking` / `effort` / `fallbacks` パラメータの新規送信（計画に無い機能追加のため行わない）。
 - マージ済みの point-in-time 記録（`docs/specs/20260706_*`・`feedback/*`・[[IADR-0022]] 本文）の追随改変。
-  履歴不変の原則に従い、最新の roster は本仕様書と [[IADR-0100]] を正とする。
+  履歴不変の原則に従い、最新の roster は本仕様書と [[IADR-0101]] を正とする。
 
 ## 検証
 

@@ -1078,7 +1078,7 @@ components:
           description: >-
             出力トークン上限。thinking（拡張思考）が既定で有効なモデル（Opus 5 / Sonnet 5 等）では
             思考トークンと本文の合算上限になるため、既定は本文想定長＋思考の作業領域を見込んだ
-            4096 とする（IADR-0100）。小さすぎると本文が空または途中で切れる。
+            4096 とする（IADR-0101）。小さすぎると本文が空または途中で切れる。
         model:
           type: string
           nullable: true

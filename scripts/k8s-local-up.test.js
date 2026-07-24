@@ -471,4 +471,84 @@ ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () =>
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/headlamp'), 'deploy/local/headlamp が apply されない');
 });
 
+// IADR-0100 (#354 障害2): ノード inotify 上限を引き上げる sysctl DaemonSet を既定 infra へ追加し、アプリ Pod より
+// 前（[4/7]）に rollout を待つ。inotify 枯渇による FileSystemWatcher クラッシュ（広範 CrashLoopBackOff）の恒久修正。
+ok('既定: inotify-sysctl DaemonSet の rollout を待つ（アプリ起動前）', () => {
+  assert.ok(
+    DEFAULT.lines.some((l) => l.includes('rollout status ds/inotify-sysctl')),
+    'up-script が ds/inotify-sysctl の rollout を待っていない',
+  );
+});
+
+ok('inotify-sysctl: infra kustomize に収録され両 sysctl キーを特権で設定する', () => {
+  const kustomize = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/kustomization.yaml'), 'utf8');
+  assert.ok(/inotify-sysctl\.yaml/.test(kustomize), 'infra kustomization に inotify-sysctl.yaml が無い');
+
+  const dsPath = path.join(REPO_ROOT, 'deploy/local/infra/inotify-sysctl.yaml');
+  assert.ok(fs.existsSync(dsPath), 'deploy/local/infra/inotify-sysctl.yaml が無い');
+  const ds = fs.readFileSync(dsPath, 'utf8');
+  assert.ok(/kind:\s*DaemonSet/.test(ds), 'DaemonSet でない');
+  // /proc/sys/fs/inotify/<key> への書き込み（＞リダイレクト）を確認する（コメント中の記述に一致させない）。
+  assert.ok(/>\s*\/proc\/sys\/fs\/inotify\/max_user_instances/.test(ds), 'max_user_instances を書き込んでいない');
+  assert.ok(/>\s*\/proc\/sys\/fs\/inotify\/max_user_watches/.test(ds), 'max_user_watches を書き込んでいない');
+  // sysctl 直書きは特権 initContainer で行う（safe-sysctl allowlist 非経由）。
+  assert.ok(/initContainers:/.test(ds), 'initContainer が無い');
+  assert.ok(/privileged:\s*true/.test(ds), '特権 initContainer（privileged: true）が無い');
+  // 待機コンテナは BusyBox 非対応の `sleep infinity`（GNU 拡張）をコマンドに使わない（Crash→DaemonSet
+  // CrashLoop 防止・PR #375 指摘）。コマンド引数（クォート内）でのみ判定し、説明コメントには一致させない。
+  assert.ok(!/["']sleep infinity["']/.test(ds), 'command に `sleep infinity`（BusyBox 非対応）を使っている');
+  assert.ok(/tail -f \/dev\/null/.test(ds), '待機コマンドが tail -f /dev/null でない（BusyBox 安全な無限待機）');
+});
+
+// #310 フォローアップ（apiVersion 移行 fix）: ESO の SecretStore/ClusterSecretStore/ExternalSecret は、インストール
+// 済み ESO（v1 GA・v1beta1 は served=false）と整合するよう **external-secrets.io/v1** を使う。v1beta1 が 1 本でも
+// 残ると `no matches for kind ... in version "external-secrets.io/v1beta1"` で apply が失敗する（本 fix の回帰ガード）。
+ok('ESO manifests: external-secrets.io の apiVersion は v1（v1beta1 残存ゼロ）', () => {
+  // deploy/local/vault 配下を **再帰** 走査する（eso/・oidc/ や将来のサブディレクトリに ESO マニフェストが
+  // 追加されても v1beta1 再混入を検知できるようにする・PR #374 レビュー指摘）。
+  const walkYaml = (dir, acc) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walkYaml(full, acc);
+      else if (ent.name.endsWith('.yaml')) acc.add(full);
+    }
+    return acc;
+  };
+  const yamls = walkYaml(path.join(REPO_ROOT, 'deploy/local/vault'), new Set());
+  let checked = 0;
+  for (const file of yamls) {
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(
+      !/external-secrets\.io\/v1beta1/.test(text),
+      `${path.relative(REPO_ROOT, file)} に external-secrets.io/v1beta1 が残存（v1 へ移行漏れ）`,
+    );
+    // ESO の kind を含むファイルは v1 apiVersion を持つこと。
+    if (/kind:\s*(ExternalSecret|ClusterSecretStore|SecretStore)\b/.test(text)) {
+      assert.ok(
+        /apiVersion:\s*external-secrets\.io\/v1\b/.test(text),
+        `${path.relative(REPO_ROOT, file)} の ESO apiVersion が external-secrets.io/v1 でない`,
+      );
+      checked += 1;
+    }
+  }
+  assert.ok(checked >= 13, `ESO マニフェストの検査数が想定未満（${checked} < 13）＝ファイル移動/欠落の疑い`);
+});
+
+// #310 フォローアップ（apiVersion 移行 fix）: ESO chart 版を pin する（latest 追従禁止）。無指定だと v1beta1 提供を
+// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。--version 引数の存在を固定する（再現性の回帰ガード）。
+ok('up-script: ESO chart 版が pin されている（helm install に --version）', () => {
+  const text = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
+  // helm install は行継続（\）で複数行に跨るため、install 開始位置からブロックを見て --version を確認する。
+  const idx = text.indexOf('helm upgrade --install external-secrets external-secrets/external-secrets');
+  assert.ok(idx >= 0, 'ESO の helm upgrade --install 行が見つからない');
+  const block = text.slice(idx, idx + 240); // 継続行を含む同一コマンドの範囲
+  assert.ok(/--version\s/.test(block), 'ESO の helm install に --version（版 pin）が無い＝latest 追従');
+  // 既定 pin（固定版）が存在すること（ESO_CHART_VERSION の既定値 or 直書きの固定版）。
+  assert.ok(
+    /ESO_CHART_VERSION="\$\{ESO_CHART_VERSION:-\d+\.\d+\.\d+\}"/.test(text) ||
+      /--version\s+"?\d+\.\d+\.\d+/.test(block),
+    'ESO chart の固定版（ESO_CHART_VERSION 既定 or 直書き）が無い',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

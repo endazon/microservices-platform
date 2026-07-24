@@ -115,6 +115,11 @@ if [ "${PERSIST:-}" = "1" ]; then
 fi
 kubectl apply -k "$INFRA_KUSTOMIZE"
 echo "    waiting for infra to become Ready..."
+# IADR-0100 (#354 障害2): アプリ Pod（[6/7] MSP・後続 AST）が起動する前にノードの inotify 上限を引き上げておく
+# （inotify 枯渇による FileSystemWatcher クラッシュ＝広範 CrashLoopBackOff を防ぐ）。best-effort: busybox pull 等の
+# 一時失敗で up 全体を止めない（pipefail 下でも `|| echo WARN` で握る。DaemonSet 自体は infra kustomize で適用済み）。
+kubectl -n "$INFRA_NS" rollout status ds/inotify-sysctl --timeout=120s \
+  || echo "    WARN: inotify-sysctl DaemonSet が未 Ready（best-effort・後追いで適用される）" >&2
 kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/rabbitmq --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/redis --timeout=120s
@@ -204,9 +209,15 @@ if [ "${ESO:-}" = "1" ]; then
     exit 1
   fi
   # ESO 本体（idempotent・CRD 同梱）。webhook 準備を待つ。
+  # #310 フォローアップ（本 fix）: chart 版を **pin** する。latest 追従だと、v1beta1 の提供を停止し v1 を GA と
+  # する版（例 2.x）を掴んだ瞬間、deploy/local/vault/eso/*.yaml（本 fix で external-secrets.io/v1 へ移行済み）が
+  # 参照する API と CRD の served バージョンが乖離し、"no matches for kind ... in version" で apply が失敗する。
+  # 既定は v1 を GA 提供する安定版（動作実証済み）。上書きは ESO_CHART_VERSION で可能（同じく v1 提供版を選ぶこと）。
+  ESO_CHART_VERSION="${ESO_CHART_VERSION:-2.8.0}"
   helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
   helm repo update external-secrets >/dev/null 2>&1 || true
   helm upgrade --install external-secrets external-secrets/external-secrets \
+    --version "$ESO_CHART_VERSION" \
     -n external-secrets --create-namespace --set installCRDs=true --wait
   # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
   kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml

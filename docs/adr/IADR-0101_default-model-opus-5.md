@@ -1,5 +1,5 @@
 ---
-title: IADR-0100 既定モデルを Claude Opus 5 へ追従し、思考の既定有効化に伴い既定 max_tokens を 1024 → 4096 へ引き上げる
+title: IADR-0101 既定モデルを Claude Opus 5 へ追従し、思考の既定有効化に伴い既定 max_tokens を 1024 → 4096 へ引き上げる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/04_ai-rag-stack.md (用途別モデル表)"
 ---
 
-# IADR-0100: 既定モデル Claude Opus 5 追従と既定 max_tokens の引き上げ
+# IADR-0101: 既定モデル Claude Opus 5 追従と既定 max_tokens の引き上げ
 
 - 状態: Accepted
 - 日付: 2026-07-24
