@@ -54,8 +54,9 @@ dev Vault はインメモリ（Recreate）＝Pod 再起動後は `bash deploy/lo
 # PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync / PR-3: minio-oidc
 kubectl -n microservices-platform get externalsecret,secret \
   llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc
-# PR-3: grafana-oidc / vault-oidc / headlamp-oidc は platform-infra ns（grafana/vault/headlamp と同居）
-kubectl -n platform-infra get externalsecret,secret grafana-oidc vault-oidc headlamp-oidc
+# PR-3: platform-infra ns。vault-oidc は常時、grafana-oidc は OBSERVABILITY=1、headlamp-oidc は HEADLAMP=1 の
+# ときだけ供給される（無効ゲートの secret は未作成＝NotFound で正常）。
+kubectl -n platform-infra get externalsecret,secret vault-oidc grafana-oidc headlamp-oidc
 ```
 
 - ESO 同期は helm install（各 Pod 起動）後に走るため、対象 Secret は一時的に未作成で消費側 Pod が数秒

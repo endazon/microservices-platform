@@ -231,10 +231,15 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
   fi
-  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc/grafana-oidc/vault-oidc/headlamp-oidc は"
-  echo "         Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
+  # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
+  # 誤解させない）。MSP ns は常時 5 本。infra ns は vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  infra_es="vault-oidc"
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="grafana-oidc $infra_es"
+  [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
+  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ vault-oidc および有効ゲートの"
+  echo "         grafana-oidc/headlamp-oidc（infra ns）を Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
-  echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret grafana-oidc vault-oidc headlamp-oidc"
+  echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then
