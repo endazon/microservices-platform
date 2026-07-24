@@ -17,7 +17,10 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `vault-auth-rbac.yaml` | vault の**専用 SA `vault`**（vault-dev.yaml で作成）に `system:auth-delegator`（TokenReview）。default SA には付与しない（blast radius 限定） |
 | `policy-eso-read.hcl` | Vault policy `eso-read`（**MSP `secret/data/msp/*`＋AST `secret/data/ai-stock-trading/*`** の read・最小権限。store 共有のため両 path を許可） |
 | `bootstrap.sh` | k8s auth の enable/config＋policy＋role `eso`＋seed（`kubectl exec`・runtime・再実行可） |
-| `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー） |
+| `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー・PR-1） |
+| `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
+| `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
+| `externalsecret-wikijs-sync.yaml` | ExternalSecret（`secret/msp/wikijs-sync` → `wikijs-sync` apiKey・PR-2/IADR-0097） |
 
 ## 有効化（opt-in・`ESO=1`・`VAULT=1` 併用）
 
@@ -73,5 +76,7 @@ kubectl -n microservices-platform delete externalsecret llm-provider-credentials
 
 ## 段階移行（後続 PR）
 
-PR-2 以降で `minio-credentials`／`wikijs-db`／`wikijs-sync` → OIDC client secret 群 → 基盤（postgres 等）を同パターンで
-移行する。除外: `vault-dev-token`（Vault root・chicken-egg）／`argocd-secret`（argocd 所有・merge patch）。
+- **PR-1（IADR-0096）**: `llm-provider-credentials`（疎通・ESO 基盤）。
+- **PR-2（IADR-0097）**: `minio-credentials`／`wikijs-db`／`wikijs-sync`（本 PR）。
+- **PR-3 以降**: OIDC client secret 群（grafana-oidc/minio-oidc/headlamp-oidc/vault-oidc）→ 基盤（postgres/rabbitmq/keycloak-admin）。
+- 除外: `vault-dev-token`（Vault root・chicken-egg）／`argocd-secret`（argocd 所有・merge patch）／AST secrets（AST リポ管轄）。
