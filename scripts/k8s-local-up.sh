@@ -188,8 +188,10 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
   # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
   bash deploy/local/vault/eso/bootstrap.sh
-  # k8s auth の ClusterSecretStore を（再）適用し、ExternalSecret で llm-provider-credentials を Vault→Secret 供給する。
-  kubectl apply -f deploy/local/vault/clustersecretstore.yaml
+  # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。
+  # 既定（VAULT=1 単独）は token 認証の store（deploy/local/vault/clustersecretstore.yaml）のままで既存フロー不変。
+  kubectl apply -f deploy/local/vault/eso/clustersecretstore-k8s.yaml
+  # ExternalSecret で llm-provider-credentials を Vault→Secret 供給する。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
   echo "    ESO: llm-provider-credentials は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
   echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials"

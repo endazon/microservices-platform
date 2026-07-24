@@ -300,16 +300,26 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
 
 // ESO=1 (#310 / IADR-0096): ESO 本体 install＋ExternalSecret apply、かつ llm-provider-credentials の手動 apply は
 // スキップ（ExternalSecret に委譲＝二重所有回避）。VAULT=1 併用を前提とする。
-ok('ESO=1: external-secrets install＋ExternalSecret apply・llm 手動 apply はスキップ', () => {
+ok('ESO=1: external-secrets install＋k8s auth store＋ExternalSecret apply・llm 手動 apply はスキップ', () => {
   const res = runUp({ VAULT: '1', ESO: '1' });
   assert.ok(anyLineHas(res.lines, 'external-secrets'), 'external-secrets(ESO) の install が無い');
-  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-llm.yaml'), 'ExternalSecret(llm) が apply されない');
   assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/vault-auth-rbac.yaml'), 'vault auth-delegator RBAC が apply されない');
+  // bootstrap 後に store を kubernetes 認証版へ上書きする（同名 vault-backend）。
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/clustersecretstore-k8s.yaml'), 'k8s auth の ClusterSecretStore が apply されない');
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-llm.yaml'), 'ExternalSecret(llm) が apply されない');
   // 二重所有回避: ESO=1 では llm-provider-credentials の手動 apply_secret を出さない。
   assert.ok(
     !anyLineHas(res.lines, 'create secret generic llm-provider-credentials'),
     'ESO=1 なのに llm-provider-credentials を手動 apply している（二重所有）',
   );
+});
+
+// IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
+// ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
+ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {
+  const res = runUp({ VAULT: '1' });
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'token 認証 store（deploy/local/vault）が apply されない');
+  assert.ok(!anyLineHas(res.lines, 'clustersecretstore-k8s.yaml'), 'ESO 未設定なのに k8s auth store へ上書きした');
 });
 
 // ARGOCD=1: argocd namespace ＋ argocd application manifest を apply。

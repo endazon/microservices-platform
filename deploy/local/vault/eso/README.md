@@ -12,7 +12,8 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 
 | ファイル | 役割 |
 | --- | --- |
-| `../clustersecretstore.yaml` | `ClusterSecretStore vault-backend`（既存流用・**kubernetes auth**・role=`eso`） |
+| `../clustersecretstore.yaml` | `ClusterSecretStore vault-backend`（**token 認証**＝`VAULT=1` 既定・不変。既存フロー保護） |
+| `clustersecretstore-k8s.yaml` | 同名 `vault-backend` の **kubernetes 認証版**（`ESO=1` で bootstrap 後に上書き適用） |
 | `vault-auth-rbac.yaml` | vault の SA(`platform-infra/default`) に `system:auth-delegator`（TokenReview） |
 | `policy-msp-read.hcl` | Vault policy `msp-read`（`secret/data/msp/*` read・最小権限） |
 | `bootstrap.sh` | k8s auth の enable/config＋policy＋role `eso`＋seed（`kubectl exec`・runtime・再実行可） |
@@ -25,7 +26,7 @@ VAULT=1 ESO=1 bash scripts/k8s-local-up.sh
 ```
 
 `scripts/k8s-local-up.sh` は `ESO=1` のとき: (1) `helm upgrade --install external-secrets`（ESO 本体・CRD 同梱）、
-(2) `vault-auth-rbac.yaml` 適用、(3) `bootstrap.sh`（k8s auth＋policy＋role＋seed）、(4) `clustersecretstore.yaml`（再）適用、
+(2) `vault-auth-rbac.yaml` 適用、(3) `bootstrap.sh`（k8s auth＋policy＋role＋seed）、(4) `eso/clustersecretstore-k8s.yaml`（store を kubernetes 認証へ上書き）適用、
 (5) `externalsecret-llm.yaml` 適用 を行い、**`llm-provider-credentials` の手動 `apply_secret` はスキップ**する
 （ExternalSecret が Secret を所有＝二重所有回避）。
 

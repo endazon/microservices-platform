@@ -16,7 +16,7 @@
 | ファイル | 役割 |
 | --- | --- |
 | `vault-dev.yaml` | Vault dev サーバ（Deployment/Service・`platform-infra`） |
-| `clustersecretstore.yaml` | ESO `ClusterSecretStore` `vault-backend`（KV v2 `secret/`・**kubernetes 認証**・IADR-0096） |
+| `clustersecretstore.yaml` | ESO `ClusterSecretStore` `vault-backend`（KV v2 `secret/`・**token 認証**＝`VAULT=1` 既定・不変。`ESO=1` で `eso/clustersecretstore-k8s.yaml` が kubernetes 認証へ上書き・IADR-0096） |
 | `oidc/` | **Keycloak OIDC(SSO) 連携**（IADR-0094・#353）: `bootstrap.sh`＋policy HCL＋手順。UI/CLI を Keycloak でログイン（`vault.localhost:50000`）。[oidc/README](oidc/README.md) |
 | `eso/` | **Vault＋ESO で secret を Pod へ自動供給**（IADR-0096・#310）: `ESO=1` で ESO 導入＋k8s auth＋ExternalSecret。[eso/README](eso/README.md) |
 

@@ -55,7 +55,9 @@ Vault は未 seed で MSP secret の ExternalSecret も未整備。**PR-1 は 1 
 
 ## 対応方針（変更範囲・PR-1）
 
-- **`deploy/local/vault/clustersecretstore.yaml`**: token 認証 → **kubernetes 認証**（role=eso・serviceAccountRef）。
+- **`deploy/local/vault/clustersecretstore.yaml`**: **token 認証のまま不変**（`VAULT=1` 単独＝既存フロー保護・byte 等価）。
+  **`deploy/local/vault/eso/clustersecretstore-k8s.yaml`（新）**: 同名 `vault-backend` の kubernetes 認証版を `ESO=1` で
+  bootstrap 後に上書き適用（k8s auth backend 未設定なのに store が k8s auth という不整合＝VAULT=1 単独破壊を回避）。
 - **`deploy/local/vault/eso/`（新）**: `externalsecret-llm.yaml`（ExternalSecret）・`vault-auth-rbac.yaml`（vault SA→auth-delegator）・
   `bootstrap.sh`（k8s auth enable/config＋policy＋role＋seed・`kubectl exec` 経由・再実行可・平文非コミット）・`README.md`。
 - **`scripts/k8s-local-up.sh`**: `ESO=1` ブロック（helm install ESO＋RBAC＋bootstrap＋ExternalSecret apply）＋
