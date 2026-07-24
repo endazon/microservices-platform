@@ -44,7 +44,7 @@ Vault は未 seed で MSP secret の ExternalSecret も未整備。**PR-1 は 1 
 2. `ESO=1` で ESO 本体を install（`helm upgrade --install external-secrets`）し、`ClusterSecretStore vault-backend` を
    **k8s auth**（既存 token 認証から移行）で適用、`llm-provider-credentials` の **ExternalSecret** で Vault
    `secret/msp/llm-provider-credentials` → 既存 Secret 名・**同一キー**（anthropic-api-key/openai-api-key）へ供給する。
-3. **Vault k8s auth bootstrap（runtime）**: kubernetes 認証を有効化・config、policy `msp-read`（`secret/data/msp/*` read）、
+3. **Vault k8s auth bootstrap（runtime）**: kubernetes 認証を有効化・config、policy `eso-read`（MSP `secret/data/msp/*`＋AST `secret/data/ai-stock-trading/*` read・store 共有のため両 path）、
    role `eso`（ESO の SA `external-secrets`/ns `external-secrets` に束縛）。Vault SA に TokenReview 権限（auth-delegator）。
    [[IADR-0094]] と同型の runtime（再実行可）。
 4. **seed（平文非コミット）**: dev 値は env 由来 or **空既定**（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`）で Vault へ投入

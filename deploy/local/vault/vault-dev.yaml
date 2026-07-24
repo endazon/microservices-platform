@@ -1,6 +1,16 @@
 # ADR-0006, IADR-0077 (AST #24): Vault **dev モード**（opt-in・platform-infra）。
 # ⚠️ dev 専用（インメモリ・単一 Pod・unseal 不要）。**本番の Vault 化充足ではない**（本番は unseal/監査/HA/ローテーション）。
 # root トークンは平文で置かない: Secret `vault-dev-token`（k8s-local-up.sh が dev 既定 or env で作成）から注入する。
+# IADR-0096 (#310): Vault 専用 ServiceAccount。k8s auth の TokenReview 権限（system:auth-delegator）は
+# 共有の default SA ではなく本 SA にのみ bind する（blast radius を Vault に限定）。権限付与自体は ESO=1 の
+# vault-auth-rbac.yaml で行い、VAULT=1 単独（未 bind）では通常の SA として動作する。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: platform-infra
+  labels: { app: vault }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -16,6 +26,7 @@ spec:
     metadata:
       labels: { app: vault }
     spec:
+      serviceAccountName: vault
       containers:
         - name: vault
           image: hashicorp/vault:1.16

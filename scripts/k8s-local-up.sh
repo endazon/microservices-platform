@@ -179,6 +179,12 @@ fi
 # （dev Vault が起動済みであること）。PR-1 は llm-provider-credentials 1本で end-to-end 疎通する。
 if [ "${ESO:-}" = "1" ]; then
   echo "==> [opt-in] External Secrets Operator + Vault k8s auth (secret 自動供給・#310)"
+  # 早期ガード: ESO=1 は dev Vault（VAULT=1）を前提とする。bootstrap は `kubectl exec deploy/vault` を使うため、
+  # Vault Deployment が無いと分かりにくいエラーで中断する。明示的に案内して止める（fail-fast）。
+  if ! kubectl -n "$INFRA_NS" get deploy vault >/dev/null 2>&1; then
+    echo "ERROR: ESO=1 は VAULT=1 と併用してください（dev Vault が必要）。例: VAULT=1 ESO=1 bash scripts/k8s-local-up.sh" >&2
+    exit 1
+  fi
   # ESO 本体（idempotent・CRD 同梱）。webhook 準備を待つ。
   helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
   helm repo update external-secrets >/dev/null 2>&1 || true

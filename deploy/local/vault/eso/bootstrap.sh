@@ -22,11 +22,11 @@ vexec 'vault auth list -format=json 2>/dev/null | grep -q "\"kubernetes/\"" || v
 echo "==> auth/kubernetes/config（in-cluster local mode: Vault 自身の SA を reviewer に使う）"
 vexec 'vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc'
 
-echo "==> policy: msp-read（secret/data/msp/* read）"
-vexec 'vault policy write msp-read -' < "$ROOT/deploy/local/vault/eso/policy-msp-read.hcl"
+echo "==> policy: eso-read（MSP＋AST の read・store は両者共有のため両 path を許可）"
+vexec 'vault policy write eso-read -' < "$ROOT/deploy/local/vault/eso/policy-eso-read.hcl"
 
 echo "==> role: eso（ESO の SA external-secrets/external-secrets に束縛）"
-vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=msp-read ttl=1h'
+vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read ttl=1h'
 
 echo "==> seed: secret/msp/llm-provider-credentials（env 由来 or 空既定・平文非コミット）"
 vexec "vault kv put secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"

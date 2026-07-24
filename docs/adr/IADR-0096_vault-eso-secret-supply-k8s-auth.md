@@ -39,8 +39,11 @@ MSP secret は手動 `apply_secret` 供給。手動 patch を廃し Vault＋ESO 
 
 ESO の `ClusterSecretStore vault-backend`（既存）を本番同等の **kubernetes 認証**にする（静的 root トークンを store に
 持たない）。Vault の kubernetes auth を有効化し、**Vault 自身の in-cluster SA を reviewer** に使う
-（`kubernetes_host=https://kubernetes.default.svc`・local CA/JWT）。Vault SA に `system:auth-delegator`（TokenReview）を bind。
-role `eso` を ESO の SA（`external-secrets`/ns `external-secrets`）に束縛し policy `msp-read`（`secret/data/msp/*` read）を付与。
+（`kubernetes_host=https://kubernetes.default.svc`・local CA/JWT）。TokenReview 用の `system:auth-delegator` は
+**Vault 専用 SA `vault`**（`vault-dev.yaml` で作成）にのみ bind する（共有 default SA には付与せず blast radius を限定）。
+role `eso` を ESO の SA（`external-secrets`/ns `external-secrets`）に束縛し policy `eso-read` を付与。**store `vault-backend` は
+MSP と AST（`externalSecrets.secretStoreRef.name=vault-backend`）で共有する**ため、`eso-read` は **MSP＋AST 両 path**
+（`secret/data/{msp,ai-stock-trading}/*` read）を許可し、`ESO=1` 有効化で AST の ExternalSecret 同期を壊さない（read のみ・最小権限）。
 
 **重要（byte 等価・既存フロー保護）**: 既定の `deploy/local/vault/clustersecretstore.yaml` は **token 認証のまま不変**とし、
 `VAULT=1` 単独（既存の opt-in）では従来どおり token 認証で store が立つ（AST の ExternalSecret 等の既存 consumer を壊さない）。
@@ -73,7 +76,10 @@ opt-in オーバーレイに限定）。回帰は smoke test で固定。
 - ESO 同期は helm install 後に走るため、`llm-provider-credentials` は一時的に未作成→llmgateway Pod が数秒
   `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側は無改変（`secretKeyRef` を optional にしない）。
 - dev Vault はインメモリ（Recreate）＝再起動後は bootstrap＋seed を再実行（README 明記）。
-- store を k8s auth へ移行するため AST ExternalSecret も k8s auth になる（role/policy は MSP path を対象・AST は別 path）。
+- `ESO=1` で store（共有 `vault-backend`）が k8s auth になると AST ExternalSecret も同 role `eso` で認証する。policy
+  `eso-read` が AST path も read 許可するため AST 同期は壊れない（未許可だと 403）。`ESO=1` は `VAULT=1` 併用が前提
+  （スクリプトが早期ガードで fail-fast）。ESO 無効化時は store が token 認証へ戻るが `externalsecret-llm.yaml`（Owner）は
+  残存するため、手動 apply へ完全復帰するには ExternalSecret 削除が必要（README「切り戻し」）。
 
 ## 代替案
 
