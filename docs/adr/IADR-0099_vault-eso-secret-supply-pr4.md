@@ -3,7 +3,6 @@ title: IADR-0099 Vault＋ESO secret 供給 PR-4 — 基盤 secret（postgres/rab
 type: impl-adr
 status: Accepted
 related_ids:
-  - ADR-0006
   - IADR-0077
   - IADR-0096
   - IADR-0097
@@ -12,7 +11,7 @@ author: claude
 created: 2026-07-24
 updated: 2026-07-24
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ (ADR-0006 運用基盤)"
+  - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md (秘匿管理=HashiCorp Vault・L42/L54。Vault 専用の計画 ADR は無し)"
 ---
 
 # IADR-0099: Vault＋ESO secret 供給 PR-4（基盤 secret）
@@ -23,8 +22,11 @@ plan_refs:
 
 ## 起点・関連
 
-- 関連 ADR: ADR-0006。ESO 基盤（k8s auth・store 上書き・policy `eso-read`・seed/skip・専用 SA・VAULT 併用ガード）は
-  [[IADR-0096]]（PR-1）。同パターンの継続は [[IADR-0097]]（PR-2）／[[IADR-0098]]（PR-3）。opt-in オーバーレイは [[IADR-0077]]。
+- 計画根拠: Vault（秘匿管理）の採用は `planning/.../06_technical/03_tech-stack-selection.md`（L42「秘匿管理｜HashiCorp Vault」・
+  L54）。**Vault 専用の計画 ADR は存在しない**（配備は実装リポジトリへ引き継ぎ）。ESO 基盤（k8s auth・store 上書き・
+  policy `eso-read`・seed/skip・専用 SA・VAULT 併用ガード）は [[IADR-0096]]（PR-1）。同パターンの継続は [[IADR-0097]]（PR-2）／
+  [[IADR-0098]]（PR-3）。opt-in オーバーレイは [[IADR-0077]]。（注: PR-1〜3 は誤って ADR-0006（可観測性）を参照していたが、
+  ADR-0006 は Vault と無関係のため本 PR で是正。マージ済みの point-in-time 記録は追随改変しない。）
 - 仕様書: `docs/specs/20260724_issue-310_vault-eso-pr4-infra-secrets.md`。
 - Issue: #310（Vault/ESO 本番同等化）。develop 最新（PR-1〜3 反映済み）ベース。番号採番: PR-3=0098 の次の **0099**
   （AST の 0099 は別リポジトリの名前空間で無関係）。**本 PR で #310 の secret 移行は一巡（PR-1〜4）**。

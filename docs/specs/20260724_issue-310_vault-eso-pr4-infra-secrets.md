@@ -3,7 +3,6 @@ title: Vault＋ESO secret 供給 PR-4: 基盤 secret（postgres/rabbitmq/keycloa
 type: spec
 status: done
 related_ids:
-  - ADR-0006
   - IADR-0077
   - IADR-0096
   - IADR-0097
@@ -24,7 +23,8 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- ADR: ADR-0006（運用基盤）。ESO 基盤・k8s auth・段階移行は [[IADR-0096]]（PR-1）〜[[IADR-0098]]（PR-3）。opt-in 統括は [[IADR-0077]]。
+- 計画根拠: Vault（秘匿管理）の採用は `planning/.../06_technical/03_tech-stack-selection.md`（L42/L54）。Vault 専用の計画 ADR は無し。
+  ESO 基盤・k8s auth・段階移行は [[IADR-0096]]（PR-1）〜[[IADR-0098]]（PR-3）。opt-in 統括は [[IADR-0077]]。
 - 決定: 本作業の設計判断は [[IADR-0099]]（基盤 secret 特有の bootstrap 順序・パスワード整合・`creationPolicy: Merge`）。
 - Issue: #310（Vault/ESO 本番同等化）。develop 最新（PR-1〜3 反映済み）ベース。**本 PR で secret 移行は一巡**。
 
