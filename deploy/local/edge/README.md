@@ -15,6 +15,7 @@
 | `platform-frontend-ingress.yaml` | 80/443（web/websecure）: `/bff`→bff-service、catch-all→frontend-service |
 | `admin-ingress-infra.yaml` | 50000（admin）: grafana/headlamp/vault/qdrant をホスト名ベースで公開（platform-infra） |
 | `admin-ingress-minio.yaml` | 50000（admin）: MinIO Console `minio.localhost`→9001（microservices-platform ns・IADR-0093。OIDC は [minio-oidc/README](../minio-oidc/README.md)） |
+| `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)） |
 | `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時のみスクリプトが条件付き apply） |
 
 ## 有効化（opt-in・既定オフ）
@@ -64,6 +65,7 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
   - `http://qdrant.localhost:50000`（dashboard は `/dashboard`。**SSO 非対応＝認証なし**・閉域前提）
   - `http://argocd.localhost:50000`（ARGOCD=1。argocd-server の `server.insecure` は ArgoCD OIDC 実装 #353 で設定）
   - `http://minio.localhost:50000`（MinIO Console。Keycloak OIDC＝IADR-0093。ポリシー適用は [minio-oidc/README](../minio-oidc/README.md)）
+  - `http://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
 
 ### ホスト名解決の注意（`*.localhost` / CLI）
 

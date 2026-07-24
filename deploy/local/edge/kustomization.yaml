@@ -9,3 +9,5 @@ resources:
   - admin-ingress-infra.yaml
   # IADR-0093 (#353): MinIO Console（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
   - admin-ingress-minio.yaml
+  # IADR-0095 (#353): Wiki.js（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
+  - admin-ingress-wiki.yaml

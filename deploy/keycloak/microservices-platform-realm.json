@@ -177,10 +177,12 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
+        "http://wiki.localhost:50000/*",
         "http://localhost:3001/*",
         "http://wiki-js:3000/*"
       ],
       "webOrigins": [
+        "http://wiki.localhost:50000",
         "http://localhost:3001"
       ],
       "defaultClientScopes": [
