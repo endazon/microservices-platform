@@ -41,6 +41,8 @@ const OPTIN_TOKENS = [
   'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
+  'external-secrets', //               ESO (helm install / ns, IADR-0096)
+  'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -107,6 +109,7 @@ function runUp(extraEnv) {
     'VAULT',
     'ARGOCD',
     'LOCALEDGE',
+    'ESO',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
   ]) {
@@ -174,6 +177,15 @@ ok('既定: opt-in 由来リソースが一切現れない', () => {
 // （opt-in ではなく MSP app-secrets の一部・平文コミットなし・minio.yaml は optional 参照）。
 ok('既定: minio-oidc app-secret が作られる', () => {
   assert.ok(anyLineHas(DEFAULT.lines, 'minio-oidc'), 'minio-oidc secret が作られない');
+});
+
+// IADR-0096 (#310): ESO 未設定（既定）では llm-provider-credentials は手動 apply_secret で作成される
+// （バイト等価・ExternalSecret へは委譲しない）。
+ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic llm-provider-credentials'),
+    'llm-provider-credentials の手動 apply_secret が無い',
+  );
 });
 
 // HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグが cluster create に付与される（IADR-0084）。
@@ -284,6 +296,20 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/vault/vault-dev.yaml'), 'vault-dev.yaml フォールバックが apply されない');
   assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'CRD 無なのに kustomize 経路が通った');
+});
+
+// ESO=1 (#310 / IADR-0096): ESO 本体 install＋ExternalSecret apply、かつ llm-provider-credentials の手動 apply は
+// スキップ（ExternalSecret に委譲＝二重所有回避）。VAULT=1 併用を前提とする。
+ok('ESO=1: external-secrets install＋ExternalSecret apply・llm 手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(anyLineHas(res.lines, 'external-secrets'), 'external-secrets(ESO) の install が無い');
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-llm.yaml'), 'ExternalSecret(llm) が apply されない');
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/vault-auth-rbac.yaml'), 'vault auth-delegator RBAC が apply されない');
+  // 二重所有回避: ESO=1 では llm-provider-credentials の手動 apply_secret を出さない。
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic llm-provider-credentials'),
+    'ESO=1 なのに llm-provider-credentials を手動 apply している（二重所有）',
+  );
 });
 
 // ARGOCD=1: argocd namespace ＋ argocd application manifest を apply。

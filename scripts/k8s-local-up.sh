@@ -128,8 +128,12 @@ apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-min
 apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
 apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
 # fail-safe: 空=外部 LLM を呼ばない（ADR-0010 ルーティングは明示設定時のみ有効）。
-apply_secret "$MSP_NS" llm-provider-credentials \
-  "anthropic-api-key=${ANTHROPIC_API_KEY:-}" "openai-api-key=${OPENAI_API_KEY:-}"
+# IADR-0096 (#310): ESO=1 のときは llm-provider-credentials を Vault→ExternalSecret 供給に委譲し、手動 apply は
+# スキップする（ExternalSecret が Secret を所有＝二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" llm-provider-credentials \
+    "anthropic-api-key=${ANTHROPIC_API_KEY:-}" "openai-api-key=${OPENAI_API_KEY:-}"
+fi
 
 echo "==> [6/7] helm upgrade --install (values-local)"
 helm upgrade --install msp deploy/helm/microservices-platform \
@@ -168,6 +172,27 @@ if [ "${VAULT:-}" = "1" ]; then
     echo "          先に ESO を導入する（deploy/local/vault/README.md）。Vault dev のみ適用:" >&2
     kubectl apply -f deploy/local/vault/vault-dev.yaml
   fi
+fi
+
+# IADR-0096 (#310): Vault＋ESO で secret を Pod へ自動供給する（本番同等・k8s auth）。opt-in（既定オフ・fail-safe）。
+# 既定（ESO 未設定）では本ブロックは実行されず、手動 apply_secret のままバイト等価。VAULT=1 併用が前提
+# （dev Vault が起動済みであること）。PR-1 は llm-provider-credentials 1本で end-to-end 疎通する。
+if [ "${ESO:-}" = "1" ]; then
+  echo "==> [opt-in] External Secrets Operator + Vault k8s auth (secret 自動供給・#310)"
+  # ESO 本体（idempotent・CRD 同梱）。webhook 準備を待つ。
+  helm repo add external-secrets https://charts.external-secrets.io >/dev/null 2>&1 || true
+  helm repo update external-secrets >/dev/null 2>&1 || true
+  helm upgrade --install external-secrets external-secrets/external-secrets \
+    -n external-secrets --create-namespace --set installCRDs=true --wait
+  # Vault の SA に TokenReview 権限（k8s auth の reviewer）。
+  kubectl apply -f deploy/local/vault/eso/vault-auth-rbac.yaml
+  # Vault k8s auth の enable/config＋policy＋role `eso`＋seed（runtime・kubectl exec 経由・平文非コミット・再実行可）。
+  bash deploy/local/vault/eso/bootstrap.sh
+  # k8s auth の ClusterSecretStore を（再）適用し、ExternalSecret で llm-provider-credentials を Vault→Secret 供給する。
+  kubectl apply -f deploy/local/vault/clustersecretstore.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
+  echo "    ESO: llm-provider-credentials は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
+  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials"
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then
