@@ -471,4 +471,55 @@ ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () =>
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/headlamp'), 'deploy/local/headlamp が apply されない');
 });
 
+// #310 フォローアップ（apiVersion 移行 fix）: ESO の SecretStore/ClusterSecretStore/ExternalSecret は、インストール
+// 済み ESO（v1 GA・v1beta1 は served=false）と整合するよう **external-secrets.io/v1** を使う。v1beta1 が 1 本でも
+// 残ると `no matches for kind ... in version "external-secrets.io/v1beta1"` で apply が失敗する（本 fix の回帰ガード）。
+ok('ESO manifests: external-secrets.io の apiVersion は v1（v1beta1 残存ゼロ）', () => {
+  // deploy/local/vault 配下を **再帰** 走査する（eso/・oidc/ や将来のサブディレクトリに ESO マニフェストが
+  // 追加されても v1beta1 再混入を検知できるようにする・PR #374 レビュー指摘）。
+  const walkYaml = (dir, acc) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walkYaml(full, acc);
+      else if (ent.name.endsWith('.yaml')) acc.add(full);
+    }
+    return acc;
+  };
+  const yamls = walkYaml(path.join(REPO_ROOT, 'deploy/local/vault'), new Set());
+  let checked = 0;
+  for (const file of yamls) {
+    const text = fs.readFileSync(file, 'utf8');
+    assert.ok(
+      !/external-secrets\.io\/v1beta1/.test(text),
+      `${path.relative(REPO_ROOT, file)} に external-secrets.io/v1beta1 が残存（v1 へ移行漏れ）`,
+    );
+    // ESO の kind を含むファイルは v1 apiVersion を持つこと。
+    if (/kind:\s*(ExternalSecret|ClusterSecretStore|SecretStore)\b/.test(text)) {
+      assert.ok(
+        /apiVersion:\s*external-secrets\.io\/v1\b/.test(text),
+        `${path.relative(REPO_ROOT, file)} の ESO apiVersion が external-secrets.io/v1 でない`,
+      );
+      checked += 1;
+    }
+  }
+  assert.ok(checked >= 13, `ESO マニフェストの検査数が想定未満（${checked} < 13）＝ファイル移動/欠落の疑い`);
+});
+
+// #310 フォローアップ（apiVersion 移行 fix）: ESO chart 版を pin する（latest 追従禁止）。無指定だと v1beta1 提供を
+// 停止した版を掴んだ瞬間、v1 マニフェストと乖離して壊れる。--version 引数の存在を固定する（再現性の回帰ガード）。
+ok('up-script: ESO chart 版が pin されている（helm install に --version）', () => {
+  const text = fs.readFileSync(path.join(REPO_ROOT, UP_SCRIPT), 'utf8');
+  // helm install は行継続（\）で複数行に跨るため、install 開始位置からブロックを見て --version を確認する。
+  const idx = text.indexOf('helm upgrade --install external-secrets external-secrets/external-secrets');
+  assert.ok(idx >= 0, 'ESO の helm upgrade --install 行が見つからない');
+  const block = text.slice(idx, idx + 240); // 継続行を含む同一コマンドの範囲
+  assert.ok(/--version\s/.test(block), 'ESO の helm install に --version（版 pin）が無い＝latest 追従');
+  // 既定 pin（固定版）が存在すること（ESO_CHART_VERSION の既定値 or 直書きの固定版）。
+  assert.ok(
+    /ESO_CHART_VERSION="\$\{ESO_CHART_VERSION:-\d+\.\d+\.\d+\}"/.test(text) ||
+      /--version\s+"?\d+\.\d+\.\d+/.test(block),
+    'ESO chart の固定版（ESO_CHART_VERSION 既定 or 直書き）が無い',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
