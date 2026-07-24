@@ -69,7 +69,10 @@ ADR-0025 により計画側のグローバル既定が Opus 5 へ改定された
   claude エンドポイントの `DefaultModel`・`Models`。
 - `src/platform/.../Composable/Adapters/ClaudeProvider.cs`: フォールバック既定値とヘッダコメント。
 - `src/platform/.../Foundation/Routing/LlmRoutingOptions.cs`: 用途別既定の説明コメント。
-- `src/platform/.../Foundation/Ports/ILlmProvider.cs`: `CompletionRequest.MaxTokens` 既定値。
+- `src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs`:
+  `CompletionApiRequest.MaxTokens` 既定値。**HTTP 経路（`/complete`・`/complete/stream`）で実際に効く既定はここ**
+  （エンドポイントは `req.MaxTokens` を常に明示的にプロバイダへ渡すため）。
+- `src/platform/.../Foundation/Ports/ILlmProvider.cs`: `CompletionRequest.MaxTokens` 既定値（内部経路用）。
 - `src/knowledge/.../AiAnalysisService.Api/Foundation/Services/RagOrchestrator.cs`:
   `Llm:DefaultModel` フォールバック（3 箇所）と `CompletionApiRequest` の `MaxTokens`（2 箇所）。
 - `deploy/docker-compose.yml`: `Llm__Model` と併記コメント。
@@ -87,6 +90,11 @@ ADR-0025 により計画側のグローバル既定が Opus 5 へ改定された
 ## リスクと自己チェック
 
 - **思考の既定有効化（最重要）**: `max_tokens` 据え置きは回答途中切れに直結する。引き上げ根拠は [[IADR-0100]]。
+- **既定値の引き上げでは救済されない呼び出し元がある**: `max_tokens` を明示指定している呼び出しは既定値の
+  影響を受けない。ゲートウェイ利用者を洗い出した結果、`src/ai-stock-trading`（submodule）の 2 箇所
+  （`HttpLlmCompletionClient` / `HttpReportNarrativeDrafter`）が `MaxTokens: 1024` をハードコードし、
+  いずれも `purpose` 未登録で `default` へ着地する。本リポジトリからは修正できないため、
+  ai-stock-trading 側の対応を先行または同時にマージする必要がある（[[IADR-0100]] フォローアップ 5）。
 - **レート制限**: Opus 5 は Opus 4.x 系の共通プールとは**別枠**。既定層のトラフィック移行前に枠を確認する（運用フォローアップ）。
 - **`stop_reason: "refusal"`**: Opus 5 はサイバー系の安全性分類器を持ち HTTP 200 + `refusal` を返し得る。
   現行 `ClaudeProvider` は本文先頭テキストを取り出すのみで例外にはならない（空応答へ縮退）。

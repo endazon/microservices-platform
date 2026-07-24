@@ -19,9 +19,11 @@ public interface ILlmProvider
     }
 }
 
-// IADR-0100: MaxTokens の既定は 4096。Opus 5 / Sonnet 5 は thinking が既定で有効であり、MaxTokens は
-// 思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）を見込む。
-// 1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず短い回答へ静かに縮退する）。
+// IADR-0100: MaxTokens の既定は 4096（HTTP 経路の既定は CompletionApiRequest 側。エンドポイントが
+// req.MaxTokens を常に明示的に渡すため、本既定値はプロバイダを直接呼ぶ内部経路にのみ効く）。
+// thinking（拡張思考）が既定で有効なモデル（Opus 5・Sonnet 5。現行の既定 claude-opus-5 が該当）では
+// MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）
+// を見込む。1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず静かに縮退する）。
 public record CompletionRequest(string Prompt, int MaxTokens = 4096, string? Model = null);
 public record CompletionResult(string Text, int InputTokens, int OutputTokens);
 

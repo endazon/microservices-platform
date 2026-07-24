@@ -65,8 +65,16 @@ plan_refs:
 - 既定モデル文字列を `claude-opus-4-8` → **`claude-opus-5`** に更新する
   （`Llm:Model` / `Llm:Routing:PurposeModels.default` / claude エンドポイントの `DefaultModel`・`Models`、
   および `ClaudeProvider` / `RagOrchestrator` のフォールバック値）。
-- 既定 `max_tokens` を **1024 → 4096** へ引き上げる
-  （`CompletionRequest.MaxTokens` の既定値、および `RagOrchestrator` が渡す `CompletionApiRequest.MaxTokens`）。
+- 既定 `max_tokens` を **1024 → 4096** へ引き上げる。対象は次の 3 箇所である。
+  1. **`CompletionApiRequest.MaxTokens`（共有契約 `Platform.Shared.Contracts`）** — `/complete`・`/complete/stream`
+     のエンドポイントは `req.MaxTokens` を**常に明示的に**プロバイダへ渡すため、`max_tokens` を省略した
+     クライアントに実際に効く既定値はこれである。**HTTP 経路の既定はここでしか変えられない。**
+  2. `CompletionRequest.MaxTokens`（`ILlmProvider`）— プロバイダを直接呼ぶ内部経路の既定。
+  3. `RagOrchestrator` が明示的に渡す値（2 箇所）。
+- ⚠️ **`max_tokens` を明示指定している既存の呼び出し元は、上記の既定値引き上げでは救済されない。**
+  ゲートウェイの利用者を洗い出したところ、`src/ai-stock-trading`（submodule）の 2 箇所が
+  `MaxTokens: 1024` をハードコードしており、いずれも `purpose` が `PurposeModels` 未登録のため
+  `default`（＝本 IADR で Opus 5 化）へ着地する。別途 ai-stock-trading 側での対応が必須である（下記フォローアップ 5）。
 - `thinking` パラメータは**送信しない**（選択肢 2 を採らない）。
 
 ## 理由
@@ -93,8 +101,18 @@ plan_refs:
   3. **`stop_reason: "refusal"` のハンドリング検討**。Opus 5 はサイバー系の安全性分類器を持ち
      HTTP 200 + `refusal` を返し得る。現行は空応答へ縮退し例外にならないため即時の不具合には
      ならないが、監査ログ上「送信したが空応答」と区別できない。必要なら別 IADR で起票する。
-  4. `rag-answer` に割り当てた Sonnet 5（[ADR-0022] 追従）も **thinking が既定有効**である。
-     本 IADR の `max_tokens` 引き上げは同経路にも効くが、Sonnet 5 側の最適値は別途実測する。
+  4. `rag-answer` は [ADR-0022] が Sonnet 5 への改定を決めたが、実装の `PurposeModels` は現在も
+     `claude-sonnet-4-6` であり**同 ADR のフォローアップが未消化**である（本 IADR のスコープ外）。
+     Sonnet 5 へ追随する際は、同モデルも thinking が既定有効であるため `max_tokens` の実測が必要になる。
+  5. **ai-stock-trading 側の `MaxTokens: 1024` ハードコード 2 箇所の引き上げ（必須・本リポジトリでは修正不可）**。
+     - `TradeDecisionService.Worker/Composable/Adapters/HttpLlmCompletionClient.cs`（`purpose = trade-decision`）
+     - `ReportService.Worker/Foundation/Adapters/HttpReportNarrativeDrafter.cs`（`purpose = report-narrative`）
+
+     いずれも `default` へ着地するため、Opus 5 化後は思考が 1024 を食い切り `TextContent` が返らず
+     本文が空になり得る。取引判断は `HoldFallback` へ縮退して**全判断が Hold に固定**され（例外も
+     エラーも出ない）、報告書生成は途中で切れた文章が成果物になる。`report-narrative` は
+     `AST/ADR-0011` §決定「報告書生成の LLM は別扱い。基盤の既定モデルを用いてよい」により
+     **仕様上 `default` 追随が正しい**ため、取引用途をピン留めしても本件は解消しない。
 
 ## 関連
 
