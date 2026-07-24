@@ -5,6 +5,7 @@ kind: Kustomization
 
 resources:
   - 00-namespace.yaml
+  - inotify-sysctl.yaml
   - postgres.yaml
   - rabbitmq.yaml
   - redis.yaml

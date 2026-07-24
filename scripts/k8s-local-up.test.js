@@ -471,6 +471,35 @@ ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () =>
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/headlamp'), 'deploy/local/headlamp が apply されない');
 });
 
+// IADR-0100 (#354 障害2): ノード inotify 上限を引き上げる sysctl DaemonSet を既定 infra へ追加し、アプリ Pod より
+// 前（[4/7]）に rollout を待つ。inotify 枯渇による FileSystemWatcher クラッシュ（広範 CrashLoopBackOff）の恒久修正。
+ok('既定: inotify-sysctl DaemonSet の rollout を待つ（アプリ起動前）', () => {
+  assert.ok(
+    DEFAULT.lines.some((l) => l.includes('rollout status ds/inotify-sysctl')),
+    'up-script が ds/inotify-sysctl の rollout を待っていない',
+  );
+});
+
+ok('inotify-sysctl: infra kustomize に収録され両 sysctl キーを特権で設定する', () => {
+  const kustomize = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/infra/kustomization.yaml'), 'utf8');
+  assert.ok(/inotify-sysctl\.yaml/.test(kustomize), 'infra kustomization に inotify-sysctl.yaml が無い');
+
+  const dsPath = path.join(REPO_ROOT, 'deploy/local/infra/inotify-sysctl.yaml');
+  assert.ok(fs.existsSync(dsPath), 'deploy/local/infra/inotify-sysctl.yaml が無い');
+  const ds = fs.readFileSync(dsPath, 'utf8');
+  assert.ok(/kind:\s*DaemonSet/.test(ds), 'DaemonSet でない');
+  // /proc/sys/fs/inotify/<key> への書き込み（＞リダイレクト）を確認する（コメント中の記述に一致させない）。
+  assert.ok(/>\s*\/proc\/sys\/fs\/inotify\/max_user_instances/.test(ds), 'max_user_instances を書き込んでいない');
+  assert.ok(/>\s*\/proc\/sys\/fs\/inotify\/max_user_watches/.test(ds), 'max_user_watches を書き込んでいない');
+  // sysctl 直書きは特権 initContainer で行う（safe-sysctl allowlist 非経由）。
+  assert.ok(/initContainers:/.test(ds), 'initContainer が無い');
+  assert.ok(/privileged:\s*true/.test(ds), '特権 initContainer（privileged: true）が無い');
+  // 待機コンテナは BusyBox 非対応の `sleep infinity`（GNU 拡張）をコマンドに使わない（Crash→DaemonSet
+  // CrashLoop 防止・PR #375 指摘）。コマンド引数（クォート内）でのみ判定し、説明コメントには一致させない。
+  assert.ok(!/["']sleep infinity["']/.test(ds), 'command に `sleep infinity`（BusyBox 非対応）を使っている');
+  assert.ok(/tail -f \/dev\/null/.test(ds), '待機コマンドが tail -f /dev/null でない（BusyBox 安全な無限待機）');
+});
+
 // #310 フォローアップ（apiVersion 移行 fix）: ESO の SecretStore/ClusterSecretStore/ExternalSecret は、インストール
 // 済み ESO（v1 GA・v1beta1 は served=false）と整合するよう **external-secrets.io/v1** を使う。v1beta1 が 1 本でも
 // 残ると `no matches for kind ... in version "external-secrets.io/v1beta1"` で apply が失敗する（本 fix の回帰ガード）。

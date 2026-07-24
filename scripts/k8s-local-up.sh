@@ -115,6 +115,11 @@ if [ "${PERSIST:-}" = "1" ]; then
 fi
 kubectl apply -k "$INFRA_KUSTOMIZE"
 echo "    waiting for infra to become Ready..."
+# IADR-0100 (#354 障害2): アプリ Pod（[6/7] MSP・後続 AST）が起動する前にノードの inotify 上限を引き上げておく
+# （inotify 枯渇による FileSystemWatcher クラッシュ＝広範 CrashLoopBackOff を防ぐ）。best-effort: busybox pull 等の
+# 一時失敗で up 全体を止めない（pipefail 下でも `|| echo WARN` で握る。DaemonSet 自体は infra kustomize で適用済み）。
+kubectl -n "$INFRA_NS" rollout status ds/inotify-sysctl --timeout=120s \
+  || echo "    WARN: inotify-sysctl DaemonSet が未 Ready（best-effort・後追いで適用される）" >&2
 kubectl -n "$INFRA_NS" rollout status deploy/postgres --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/rabbitmq --timeout=180s
 kubectl -n "$INFRA_NS" rollout status deploy/redis --timeout=120s
