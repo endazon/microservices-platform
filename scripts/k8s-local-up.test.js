@@ -494,6 +494,10 @@ ok('inotify-sysctl: infra kustomize に収録され両 sysctl キーを特権で
   // sysctl 直書きは特権 initContainer で行う（safe-sysctl allowlist 非経由）。
   assert.ok(/initContainers:/.test(ds), 'initContainer が無い');
   assert.ok(/privileged:\s*true/.test(ds), '特権 initContainer（privileged: true）が無い');
+  // 待機コンテナは BusyBox 非対応の `sleep infinity`（GNU 拡張）をコマンドに使わない（Crash→DaemonSet
+  // CrashLoop 防止・PR #375 指摘）。コマンド引数（クォート内）でのみ判定し、説明コメントには一致させない。
+  assert.ok(!/["']sleep infinity["']/.test(ds), 'command に `sleep infinity`（BusyBox 非対応）を使っている');
+  assert.ok(/tail -f \/dev\/null/.test(ds), '待機コマンドが tail -f /dev/null でない（BusyBox 安全な無限待機）');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

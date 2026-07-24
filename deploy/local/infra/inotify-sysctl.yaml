@@ -48,9 +48,12 @@ spec:
               echo "inotify raised: max_user_instances=$(cat /proc/sys/fs/inotify/max_user_instances) max_user_watches=$(cat /proc/sys/fs/inotify/max_user_watches)"
       containers:
         # DaemonSet 常駐用の最小待機コンテナ（特権なし）。sysctl は initContainer が適用済みで node に残る。
+        # 待機は `tail -f /dev/null`（BusyBox で確実に無限待機）。`sleep infinity` は GNU coreutils 拡張で
+        # BusyBox の sleep は非対応（`invalid number 'infinity'`）＝pause が Crash し DaemonSet が CrashLoop、
+        # up-script の rollout 待ちが毎回 timeout→WARN 化するため使わない（PR #375 レビュー指摘）。
         - name: pause
           image: busybox:1.37
-          command: ["sh", "-c", "sleep infinity"]
+          command: ["sh", "-c", "tail -f /dev/null"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
