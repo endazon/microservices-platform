@@ -86,6 +86,10 @@ bash "$ROOT/scripts/k8s-local-images.sh" "$CLUSTER"
 
 echo "==> [3/7] infra namespace, secrets & realm ConfigMap (dev 既定; env で上書き可)"
 kubectl create namespace "$INFRA_NS" --dry-run=client -o yaml | kubectl apply -f -
+# IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）は下の [4/7] infra rollout（ブロッキング）で
+# **非 optional** に消費されるため、Vault/ESO がまだ存在しないこの時点で手動作成が必須（bootstrap）。よって PR-1〜3 と
+# 異なり **ESO=1 でも手動 apply をスキップしない**。ESO はこの後の ESO ブロックで `creationPolicy: Merge` の
+# ExternalSecret を適用し、既存 Secret に **同一値を上書きするだけ**（所有・再作成しない）で本番同等の供給経路を配線する。
 apply_secret "$INFRA_NS" postgres        "password=${PG_PASSWORD:-postgres}"
 apply_secret "$INFRA_NS" rabbitmq        "password=${RABBITMQ_PASSWORD:-guest}"
 apply_secret "$INFRA_NS" keycloak-admin  "password=${KEYCLOAK_ADMIN_PASSWORD:-admin}"
@@ -231,13 +235,20 @@ if [ "${ESO:-}" = "1" ]; then
   if [ "${HEADLAMP:-}" = "1" ]; then
     kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
   fi
+  # IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）。手動 apply は step 3 で保持済み（bootstrap
+  # 必須）。ここでは creationPolicy: Merge の ExternalSecret を適用し、既存 Secret へ Vault の同一値をマージするのみ
+  # （所有・再作成しない）。値は seed=step3 と完全一致のため Pod 再起動や PVC 初期化済み DB の不整合は起きない。常時供給。
+  kubectl apply -f deploy/local/vault/eso/externalsecret-postgres.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-rabbitmq.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-keycloak-admin.yaml
   # 確認コマンドは実際に apply した ExternalSecret のみ列挙する（無効ゲートの secret を挙げて NotFound で
-  # 誤解させない）。MSP ns は常時 5 本。infra ns は vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
-  infra_es="vault-oidc"
-  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="grafana-oidc $infra_es"
+  # 誤解させない）。MSP ns は常時 5 本。infra ns は基盤 3 本＋vault-oidc 常時＋有効ゲートの grafana/headlamp-oidc。
+  infra_es="postgres rabbitmq keycloak-admin vault-oidc"
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_es="$infra_es grafana-oidc"
   [ "${HEADLAMP:-}" = "1" ] && infra_es="$infra_es headlamp-oidc"
-  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ vault-oidc および有効ゲートの"
-  echo "         grafana-oidc/headlamp-oidc（infra ns）を Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
+  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc（MSP ns 常時）＋ 基盤 postgres/rabbitmq/keycloak-admin"
+  echo "         （infra ns・Merge・手動 apply 保持）＋ vault-oidc および有効ゲートの grafana/headlamp-oidc を"
+  echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
 fi

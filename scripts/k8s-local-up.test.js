@@ -380,6 +380,31 @@ ok('ESO=1 (PR-3): OBSERVABILITY/HEADLAMP 無効なら grafana/headlamp-oidc ES �
   assert.ok(!anyLineHas(res.lines, 'externalsecret-headlamp-oidc.yaml'), 'HEADLAMP 無効なのに headlamp-oidc ES を apply した');
 });
 
+// IADR-0099 (#310) PR-4: 基盤 secret（postgres/rabbitmq/keycloak-admin）は step 4 infra rollout で **非 optional** に
+// 消費されるため、ESO=1 でも手動 apply を **スキップしない**（bootstrap 必須）。ESO は creationPolicy: Merge の
+// ExternalSecret で既存 Secret に同一値を上書きするのみ（PR-1〜3 の Owner+skip とは扱いが異なる）。
+ok('ESO=1 (PR-4): 基盤 3 ExternalSecret(Merge) apply・手動 apply は保持（スキップしない）', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  for (const f of ['externalsecret-postgres.yaml', 'externalsecret-rabbitmq.yaml', 'externalsecret-keycloak-admin.yaml']) {
+    assert.ok(anyLineHas(res.lines, `deploy/local/vault/eso/${f}`), `${f} が apply されない`);
+  }
+  // 基盤 secret は ESO=1 でも手動 apply を保持する（infra rollout の bootstrap 必須・非 optional 消費）。
+  for (const name of ['postgres', 'rabbitmq', 'keycloak-admin']) {
+    assert.ok(
+      anyLineHas(res.lines, `create secret generic ${name}`),
+      `ESO=1 で基盤 ${name} の手動 apply が消えた（bootstrap 破壊）`,
+    );
+  }
+});
+
+// IADR-0099 (#310) PR-4 回帰: 既定（ESO 未設定）は基盤 3 secret を手動 apply し、基盤 ExternalSecret は apply しない（byte 等価）。
+ok('既定 (PR-4): 基盤 3 secret を手動 apply・ExternalSecret は無し（ESO 未設定）', () => {
+  for (const name of ['postgres', 'rabbitmq', 'keycloak-admin']) {
+    assert.ok(anyLineHas(DEFAULT.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
+  }
+  assert.ok(!anyLineHas(DEFAULT.lines, 'externalsecret-postgres.yaml'), 'ESO 未設定なのに基盤 ExternalSecret を apply した');
+});
+
 // IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
 // ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
 ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {
