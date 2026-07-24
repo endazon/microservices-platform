@@ -54,8 +54,12 @@ spec:
           env:
             # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（dev 既定 admin/admin）。
             - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
-            # redirect_uri 構築の基準。port-forward svc/grafana 3000:3000 に整合。
-            - { name: GF_SERVER_ROOT_URL, value: "http://localhost:3000/" }
+            # IADR-0091 (#356) PR-2: redirect_uri 構築の基準を集約後 URL（ホスト名ベース・edge admin:50000）へ。
+            # Grafana は root_url から redirect_uri=<root_url>login/generic_oauth を生成するため、edge 経由の
+            # http://grafana.localhost:50000 でログインするにはこれを edge URL にする（realm に同 redirect を登録済み）。
+            # ホスト名ベース＝ルート配信のため serve_from_sub_path は使わない。port-forward(3000) 用 redirect も realm に
+            # 併記して残す（後方互換）。集約 Ingress は deploy/local/edge（#357・LOCALEDGE=1）。
+            - { name: GF_SERVER_ROOT_URL, value: "http://grafana.localhost:50000/" }
             - { name: GF_AUTH_GENERIC_OAUTH_ENABLED, value: "true" }
             - { name: GF_AUTH_GENERIC_OAUTH_NAME, value: "Keycloak" }
             - { name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID, value: "grafana" }
