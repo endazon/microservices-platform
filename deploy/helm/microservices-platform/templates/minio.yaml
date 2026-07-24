@@ -42,6 +42,30 @@ spec:
                 secretKeyRef:
                   name: {{ $m.existingSecret }}
                   key: {{ $m.secretKeyKey }}
+            {{- if $m.oidc.enabled }}
+            # IADR-0093 (#353): Keycloak OIDC(SSO) 連携（opt-in）。root は break-glass として残る。
+            # config_url は in-cluster の Keycloak well-known（browser は #284 手順A）。policy クレームで RBAC 判定、
+            # 未マッピングは MinIO が deny（fail-safe）。client secret は Secret 経由（平文コミットなし・optional）。
+            - name: MINIO_IDENTITY_OPENID_CONFIG_URL
+              value: {{ $m.oidc.configUrl | quote }}
+            - name: MINIO_IDENTITY_OPENID_CLIENT_ID
+              value: {{ $m.oidc.clientId | quote }}
+            - name: MINIO_IDENTITY_OPENID_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $m.oidc.existingSecret }}
+                  key: {{ $m.oidc.clientSecretKey }}
+                  optional: true
+            - name: MINIO_IDENTITY_OPENID_SCOPES
+              value: {{ $m.oidc.scopes | quote }}
+            - name: MINIO_IDENTITY_OPENID_CLAIM_NAME
+              value: {{ $m.oidc.claimName | quote }}
+            {{- if $m.oidc.browserRedirectUrl }}
+            # Console 公開 URL（集約後・ホスト名ベース）。OIDC redirect=<url>/oauth_callback の基準になる。
+            - name: MINIO_BROWSER_REDIRECT_URL
+              value: {{ $m.oidc.browserRedirectUrl | quote }}
+            {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /minio/health/live
