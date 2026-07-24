@@ -47,12 +47,14 @@ dev Vault はインメモリ（Recreate）＝Pod 再起動後は `bash deploy/lo
 ## 確認 / 挙動
 
 ```sh
-kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials
+# PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync
+kubectl -n microservices-platform get externalsecret,secret \
+  llm-provider-credentials minio-credentials wikijs-db wikijs-sync
 ```
 
-- ESO 同期は helm install（llmgateway 起動）後に走るため、`llm-provider-credentials` は一時的に未作成で
-  llmgateway Pod が数秒 `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側 `secretKeyRef`（ADR-0010）は
-  無改変。
+- ESO 同期は helm install（各 Pod 起動）後に走るため、対象 Secret は一時的に未作成で消費側 Pod が数秒
+  `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側 `secretKeyRef`（llmgateway=ADR-0010・
+  minio/wiki-js も同様）は無改変。
 - role/policy 未作成・未 seed のうちは ESO は同期しない（fail-safe＝secret は供給されず外部 LLM 不使用）。
 - **本番 `values.yaml`/chart は無改変**。ESO は経路B opt-in オーバーレイに限定（SIMULATE/実弾 OFF 不変）。
 
@@ -66,11 +68,12 @@ Vault へ seed する（本 policy は read のみ・write は付与しない）
 ## 切り戻し（ESO を無効化する場合）
 
 `ESO` 未設定で再実行すると `deploy/local/vault/clustersecretstore.yaml`（token 認証）が再適用され store は token 認証へ戻る。
-ただし **`externalsecret-llm.yaml`（`creationPolicy: Owner`）は残存**し、`llm-provider-credentials` を所有し続けるため、
-手動 `apply_secret` 経路へ完全に戻すには先に ExternalSecret を削除する（二重所有回避）:
+ただし **各 ExternalSecret（`creationPolicy: Owner`）は残存**し対象 Secret を所有し続けるため、手動 `apply_secret` 経路へ
+完全に戻すには先に **全 ExternalSecret** を削除する（二重所有回避）:
 
 ```sh
-kubectl -n microservices-platform delete externalsecret llm-provider-credentials
+kubectl -n microservices-platform delete externalsecret \
+  llm-provider-credentials minio-credentials wikijs-db wikijs-sync
 # 以降 ESO 未設定で再実行すると手動 apply_secret が Secret を作成する。
 ```
 
