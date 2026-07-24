@@ -31,6 +31,10 @@ mc admin policy create local platform-operator deploy/local/minio-oidc/policies/
 ```
 
 - `platform-admin.json` = 管理者（`admin:*`/`kms:*`/`s3:*`＝consoleAdmin 相当）、`platform-operator.json` = 読み取り専用。
+- ⚠️ **共有ロール注意**: `platform-admin` は本レルムで FR-09 の ABAC「AdminOnly」判定にも使う共有ロール
+  （`microservices-platform-realm.json`）。このポリシーで **MinIO の管理 API/KMS/全 S3 操作**まで付与されるため、
+  `platform-admin` を広く配布する運用にする場合は MinIO 側の権限波及を意識する（必要なら MinIO 専用の細粒度ロール/
+  ポリシーへ分離する）。
 - 未作成のうちは全 OIDC ユーザーが deny（安全側）。適用後、`developer`（realm ロール `platform-admin`/`platform-operator`
   を保持）はこれらポリシーの合算権限になる。root は常に break-glass として利用可。
 
