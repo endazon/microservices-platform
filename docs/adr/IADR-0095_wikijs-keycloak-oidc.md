@@ -6,6 +6,7 @@ related_ids:
   - FR-13
   - UC-07
   - IADR-0020
+  - IADR-0032
   - IADR-0091
   - IADR-0093
 author: claude
@@ -57,11 +58,16 @@ Authorization/Token/UserInfo endpoints（Keycloak）・`client_id=wiki-js`・cli
 リポジトリに平文コミットしない**）・**Site URL=`http://wiki.localhost:50000`**（コールバック基準）・**group/claim マッピング**。
 realm import や MinIO の `mc` と同様の runtime 手順。
 
-### 4. fail-safe・byte 等価
+### 4. fail-safe・byte 等価・ABAC ゲートウェイ方針との関係
 
 OIDC の group マッピングで**未マッピングユーザーは Wiki.js の最小権限グループ（Guests 相当）**へ割当（deny-by-default 寄り）。
 ローカルログインは既定無効で OIDC 単一経路（[[IADR-0020]]）。変更は edge route 追加＋realm redirect 追加＋docs に限定し、
 helm chart・`values.yaml`・Wiki.js Deployment は無改変（Ingress 既定 disabled の非公開運用は不変）。edge は経路B opt-in。
+
+**ABAC ゲートウェイ方針との関係**: [[IADR-0020]] は Wiki.js への直接到達を塞ぎ WikiService の ABAC ゲートウェイを前段に
+置く方針だが、その**非公開制約は本番系（Helm）限定**であり、[[IADR-0032]]（IADR-0020 追補）が **dev ホストでの直接公開を
+既に許容**している（realm の既存 `http://localhost:3001/*` も同種の dev 直接到達）。本 edge route は **local 専用 opt-in
+（`LOCALEDGE=1`）** で本番非公開の回帰ガード（IADR-0032）を壊さない。ゆえに ABAC ゲートウェイ方針からの逸脱ではない。
 
 ## 影響・トレードオフ
 
