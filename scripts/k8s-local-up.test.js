@@ -475,14 +475,17 @@ ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () =>
 // 済み ESO（v1 GA・v1beta1 は served=false）と整合するよう **external-secrets.io/v1** を使う。v1beta1 が 1 本でも
 // 残ると `no matches for kind ... in version "external-secrets.io/v1beta1"` で apply が失敗する（本 fix の回帰ガード）。
 ok('ESO manifests: external-secrets.io の apiVersion は v1（v1beta1 残存ゼロ）', () => {
-  const dirs = ['deploy/local/vault/eso', 'deploy/local/vault'];
-  const yamls = new Set();
-  for (const d of dirs) {
-    const abs = path.join(REPO_ROOT, d);
-    for (const name of fs.readdirSync(abs)) {
-      if (name.endsWith('.yaml')) yamls.add(path.join(abs, name));
+  // deploy/local/vault 配下を **再帰** 走査する（eso/・oidc/ や将来のサブディレクトリに ESO マニフェストが
+  // 追加されても v1beta1 再混入を検知できるようにする・PR #374 レビュー指摘）。
+  const walkYaml = (dir, acc) => {
+    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, ent.name);
+      if (ent.isDirectory()) walkYaml(full, acc);
+      else if (ent.name.endsWith('.yaml')) acc.add(full);
     }
-  }
+    return acc;
+  };
+  const yamls = walkYaml(path.join(REPO_ROOT, 'deploy/local/vault'), new Set());
   let checked = 0;
   for (const file of yamls) {
     const text = fs.readFileSync(file, 'utf8');
