@@ -1,0 +1,67 @@
+# IADR-0100 (#354 障害2): dev 経路B のノード inotify 上限を引き上げる sysctl DaemonSet。
+#
+# 症状: 経路B で全機能 ON（MSP 多数＋AST 多数＋OBSERVABILITY の Loki/Promtail 等）を単一ノードに積むと、.NET の
+#   ConfigurationManager（appsettings を reloadOnChange 監視）や Promtail などが起動時に inotify インスタンスを
+#   消費し、ノード既定 `fs.inotify.max_user_instances=128` を超過 → FileSystemWatcher が
+#   `IOException: The configured user limit (128) on the number of inotify instances has been reached` で失敗し
+#   広範な CrashLoopBackOff になる（#354 障害2）。
+#
+# 対処: ノードの kernel パラメータはアプリ側ではなくノード側で引き上げるのが適切（.NET だけでなく Promtail 等
+#   全 Pod に効く）。特権 initContainer で `/proc/sys/fs/inotify/*` を直接引き上げ（kubelet の safe-sysctl
+#   allowlist を経由しない node チューニングの定石）、main は待機のみ（DaemonSet 常駐の最小コンテナ）。
+#   ノード再起動時は Pod 再作成で initContainer が再適用する（永続化）。
+#
+# スコープ: **dev 専用**（deploy/local）。本番 chart（deploy/helm）は無改変。特権は本 DaemonSet のみに限定
+#   （blast radius をノードチューニングに限定・dev クラスタ前提）。値は経路B の全機能 ON を賄う余裕値。
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: inotify-sysctl
+  namespace: platform-infra
+  labels:
+    app: inotify-sysctl
+    app.kubernetes.io/part-of: platform-infra
+spec:
+  selector:
+    matchLabels:
+      app: inotify-sysctl
+  template:
+    metadata:
+      labels:
+        app: inotify-sysctl
+    spec:
+      # 全ノード（taint 付き control-plane 含む）へ配置する（単一ノードでも汎用に）。
+      tolerations:
+        - operator: Exists
+      initContainers:
+        # 特権で node の inotify 上限を引き上げる（/proc/sys 直書き＝safe-sysctl allowlist 非経由）。冪等・再実行安全。
+        - name: set-inotify
+          image: busybox:1.37
+          securityContext:
+            privileged: true
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              echo 1024 > /proc/sys/fs/inotify/max_user_instances
+              echo 1048576 > /proc/sys/fs/inotify/max_user_watches
+              echo "inotify raised: max_user_instances=$(cat /proc/sys/fs/inotify/max_user_instances) max_user_watches=$(cat /proc/sys/fs/inotify/max_user_watches)"
+      containers:
+        # DaemonSet 常駐用の最小待機コンテナ（特権なし）。sysctl は initContainer が適用済みで node に残る。
+        - name: pause
+          image: busybox:1.37
+          command: ["sh", "-c", "sleep infinity"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
