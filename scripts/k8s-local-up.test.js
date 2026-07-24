@@ -41,6 +41,8 @@ const OPTIN_TOKENS = [
   'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
+  'external-secrets', //               ESO (helm install / ns, IADR-0096)
+  'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -65,11 +67,14 @@ const PLAIN_STUB = (name) =>
 // ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
 // STUB_NS_ABSENT=1 で `kubectl get namespace argocd` を非0（未作成）に返させ、LOCALEDGE の argocd-ingress
 // 条件付き apply の「ns 不在＝skip」フローを検証できるようにする（IADR-0091）。
+// STUB_VAULT_DEPLOY_ABSENT=1 で `kubectl -n ... get deploy vault` を非0（未作成）に返させ、ESO=1 の
+// 「VAULT=1 なしなら fail-fast」ガード（IADR-0096）を検証できるようにする。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
+  'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -107,6 +112,7 @@ function runUp(extraEnv) {
     'VAULT',
     'ARGOCD',
     'LOCALEDGE',
+    'ESO',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
   ]) {
@@ -174,6 +180,15 @@ ok('既定: opt-in 由来リソースが一切現れない', () => {
 // （opt-in ではなく MSP app-secrets の一部・平文コミットなし・minio.yaml は optional 参照）。
 ok('既定: minio-oidc app-secret が作られる', () => {
   assert.ok(anyLineHas(DEFAULT.lines, 'minio-oidc'), 'minio-oidc secret が作られない');
+});
+
+// IADR-0096 (#310): ESO 未設定（既定）では llm-provider-credentials は手動 apply_secret で作成される
+// （バイト等価・ExternalSecret へは委譲しない）。
+ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定）', () => {
+  assert.ok(
+    anyLineHas(DEFAULT.lines, 'create secret generic llm-provider-credentials'),
+    'llm-provider-credentials の手動 apply_secret が無い',
+  );
 });
 
 // HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグが cluster create に付与される（IADR-0084）。
@@ -284,6 +299,39 @@ ok('VAULT=1 (CRD 無): vault-dev.yaml のみ apply・kustomize 経路は通ら�
   assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/vault/vault-dev.yaml'), 'vault-dev.yaml フォールバックが apply されない');
   assert.ok(!anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'CRD 無なのに kustomize 経路が通った');
+});
+
+// ESO=1 (#310 / IADR-0096): ESO 本体 install＋ExternalSecret apply、かつ llm-provider-credentials の手動 apply は
+// スキップ（ExternalSecret に委譲＝二重所有回避）。VAULT=1 併用を前提とする。
+ok('ESO=1: external-secrets install＋k8s auth store＋ExternalSecret apply・llm 手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  assert.ok(anyLineHas(res.lines, 'external-secrets'), 'external-secrets(ESO) の install が無い');
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/vault-auth-rbac.yaml'), 'vault auth-delegator RBAC が apply されない');
+  // bootstrap 後に store を kubernetes 認証版へ上書きする（同名 vault-backend）。
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/clustersecretstore-k8s.yaml'), 'k8s auth の ClusterSecretStore が apply されない');
+  assert.ok(anyLineHas(res.lines, 'deploy/local/vault/eso/externalsecret-llm.yaml'), 'ExternalSecret(llm) が apply されない');
+  // 二重所有回避: ESO=1 では llm-provider-credentials の手動 apply_secret を出さない。
+  assert.ok(
+    !anyLineHas(res.lines, 'create secret generic llm-provider-credentials'),
+    'ESO=1 なのに llm-provider-credentials を手動 apply している（二重所有）',
+  );
+});
+
+// IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
+// ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
+ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {
+  const res = runUp({ VAULT: '1' });
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'token 認証 store（deploy/local/vault）が apply されない');
+  assert.ok(!anyLineHas(res.lines, 'clustersecretstore-k8s.yaml'), 'ESO 未設定なのに k8s auth store へ上書きした');
+});
+
+// IADR-0096 (#310) ガード: ESO=1 は VAULT=1（dev Vault）併用が前提。vault Deployment が無ければ fail-fast する。
+ok('ESO=1 単独（vault Deployment 不在）: fail-fast で exit != 0・案内メッセージ', () => {
+  const res = runUp({ ESO: '1', STUB_VAULT_DEPLOY_ABSENT: '1' });
+  assert.notStrictEqual(res.status, 0, 'ESO=1 単独（vault 不在）なのに正常終了した');
+  assert.ok(/VAULT=1/.test(res.stderr), 'ガードの案内（VAULT=1 併用）が stderr に無い');
+  // fail-fast のため ExternalSecret などの後続は出さない。
+  assert.ok(!anyLineHas(res.lines, 'externalsecret-llm.yaml'), 'ガード後なのに ExternalSecret を apply した');
 });
 
 // ARGOCD=1: argocd namespace ＋ argocd application manifest を apply。

@@ -16,8 +16,9 @@
 | ファイル | 役割 |
 | --- | --- |
 | `vault-dev.yaml` | Vault dev サーバ（Deployment/Service・`platform-infra`） |
-| `clustersecretstore.yaml` | ESO `ClusterSecretStore` `vault-backend`（KV v2 `secret/`・token 認証） |
+| `clustersecretstore.yaml` | ESO `ClusterSecretStore` `vault-backend`（KV v2 `secret/`・**token 認証**＝`VAULT=1` 既定・不変。`ESO=1` で `eso/clustersecretstore-k8s.yaml` が kubernetes 認証へ上書き・IADR-0096） |
 | `oidc/` | **Keycloak OIDC(SSO) 連携**（IADR-0094・#353）: `bootstrap.sh`＋policy HCL＋手順。UI/CLI を Keycloak でログイン（`vault.localhost:50000`）。[oidc/README](oidc/README.md) |
+| `eso/` | **Vault＋ESO で secret を Pod へ自動供給**（IADR-0096・#310）: `ESO=1` で ESO 導入＋k8s auth＋ExternalSecret。[eso/README](eso/README.md) |
 
 ## 適用（opt-in）
 
@@ -38,7 +39,8 @@ kubectl -n platform-infra exec deploy/vault -- sh -lc \
   'VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$VAULT_DEV_ROOT_TOKEN_ID vault kv put secret/ai-stock-trading/app-secrets finnhub-api-key=...'
 ```
 
-`scripts/k8s-local-up.sh` は `VAULT=1` で 2〜3 を実施する（ESO install と鍵投入は手動 or 別手順）。
+`scripts/k8s-local-up.sh` は `VAULT=1` で 2〜3 を実施する。**IADR-0096 (#310)**: `VAULT=1 ESO=1` で ESO 本体 install＋
+Vault k8s auth＋ExternalSecret 供給まで自動化する（[eso/README](eso/README.md)）。
 
 ## AST 側の有効化
 
