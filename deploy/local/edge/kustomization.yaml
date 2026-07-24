@@ -7,3 +7,5 @@ resources:
   - traefik-entrypoint.yaml
   - platform-frontend-ingress.yaml
   - admin-ingress-infra.yaml
+  # IADR-0093 (#353): MinIO Console（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
+  - admin-ingress-minio.yaml

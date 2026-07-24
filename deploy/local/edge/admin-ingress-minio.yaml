@@ -1,0 +1,25 @@
+# IADR-0093 (#353): MinIO Console を 50000（Traefik 追加 entrypoint admin）へホスト名ベースで集約する。
+# MinIO は microservices-platform namespace（他管理ツールの platform-infra とは別）にあるため、
+# admin-ingress-infra.yaml（platform-infra）とは別ファイルにする。既存 grafana/argocd 等の route は無改変。
+# Console は 9001。MinIO は #357 の集約対象に未登録だったため本ファイルで route を追加する。
+# 本番 chart の Console 非公開運用（IADR-0024）は不変（本 Ingress は local 専用の edge overlay に閉じる）。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-admin-edge
+  namespace: microservices-platform
+  labels: { app: minio, tier: local-edge }
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: admin
+spec:
+  rules:
+    - host: minio.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9001

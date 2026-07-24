@@ -466,6 +466,17 @@ minio:
   existingSecret: minio-credentials
   accessKeyKey: accessKey
   secretKeyKey: secretKey
+  # IADR-0093 (#353): MinIO Console の Keycloak OIDC(SSO)。既定 disabled ＝本番 values は byte 等価（env 未描画）。
+  # 経路B は values-local で enabled にする。root(minio-credentials) は break-glass として残る（fail-safe）。
+  oidc:
+    enabled: false
+    configUrl: ""            # 例: http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+    clientId: minio
+    existingSecret: minio-oidc
+    clientSecretKey: client-secret
+    scopes: "openid,profile,email"
+    claimName: policy        # MinIO はこのクレーム値に一致する MinIO ポリシーを適用（未一致は deny＝fail-safe）
+    browserRedirectUrl: ""   # 例: http://minio.localhost:50000（Console 公開 URL・OIDC redirect の基準）
   persistence:
     enabled: true
     size: 20Gi
