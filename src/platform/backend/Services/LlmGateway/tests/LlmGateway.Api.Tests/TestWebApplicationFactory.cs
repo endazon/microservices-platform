@@ -40,10 +40,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 }
 
 // テスト用スタブ LLM プロバイダー
+// IADR-0100: 受け取った MaxTokens を本文へ反映し、既定値がプロバイダまで到達することを
+// テストから検証できるようにする（既存アサーションは "テスト回答" の部分一致のため影響しない）。
 file class StubLlmProvider : ILlmProvider
 {
     public Task<CompletionResult> CompleteAsync(CompletionRequest req, CancellationToken ct = default)
-        => Task.FromResult(new CompletionResult("テスト回答", 10, 20));
+        => Task.FromResult(new CompletionResult($"テスト回答 maxTokens={req.MaxTokens}", 10, 20));
 }
 
 // テスト用スタブ埋め込みプロバイダー（要求次元どおりのゼロベクトルを返す）。
