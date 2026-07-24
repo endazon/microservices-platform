@@ -17,6 +17,7 @@
 | --- | --- |
 | `vault-dev.yaml` | Vault dev サーバ（Deployment/Service・`platform-infra`） |
 | `clustersecretstore.yaml` | ESO `ClusterSecretStore` `vault-backend`（KV v2 `secret/`・token 認証） |
+| `oidc/` | **Keycloak OIDC(SSO) 連携**（IADR-0094・#353）: `bootstrap.sh`＋policy HCL＋手順。UI/CLI を Keycloak でログイン（`vault.localhost:50000`）。[oidc/README](oidc/README.md) |
 
 ## 適用（opt-in）
 

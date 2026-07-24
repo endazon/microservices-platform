@@ -31,6 +31,7 @@ const OPTIN_TOKENS = [
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
+  'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
   'headlamp-oidc', //                  HEADLAMP (secret)
   'deploy/argocd', //                  ARGOCD
@@ -272,6 +273,8 @@ ok('VAULT=1 (CRD 有): vault-dev-token secret と deploy/local/vault を apply',
   const res = runUp({ VAULT: '1' });
   assert.ok(anyLineHas(res.lines, 'vault-dev-token'), 'vault-dev-token secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'deploy/local/vault が apply されない');
+  // IADR-0094 (#353): OIDC client secret 用の vault-oidc secret も VAULT=1 で作られる（bootstrap が読む・平文なし）。
+  assert.ok(anyLineHas(res.lines, 'vault-oidc'), 'vault-oidc secret が作られない');
 });
 
 // VAULT=1（CRD 無・ESO 未導入フォールバック）: kustomize（apply -k deploy/local/vault）ではなく
