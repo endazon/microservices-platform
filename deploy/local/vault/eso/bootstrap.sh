@@ -28,9 +28,15 @@ vexec 'vault policy write eso-read -' < "$ROOT/deploy/local/vault/eso/policy-eso
 echo "==> role: eso（ESO の SA external-secrets/external-secrets に束縛）"
 vexec 'vault write auth/kubernetes/role/eso bound_service_account_names=external-secrets bound_service_account_namespaces=external-secrets policies=eso-read ttl=1h'
 
-echo "==> seed: secret/msp/llm-provider-credentials（env 由来 or 空既定・平文非コミット）"
+echo "==> seed: secret/msp/*（env 由来 or dev 既定・平文の実 secret は非コミット）"
+# 値は現行 apply_secret の既定と同一（minioadmin/kp/空）。env で上書き可。
 vexec "vault kv put secret/msp/llm-provider-credentials anthropic-api-key='${ANTHROPIC_API_KEY:-}' openai-api-key='${OPENAI_API_KEY:-}'"
+# IADR-0097 (#310) PR-2: minio-credentials / wikijs-db / wikijs-sync。
+vexec "vault kv put secret/msp/minio-credentials accessKey='${MINIO_ACCESS_KEY:-minioadmin}' secretKey='${MINIO_SECRET_KEY:-minioadmin}'"
+vexec "vault kv put secret/msp/wikijs-db password='${WIKIJS_DB_PASSWORD:-kp}'"
+vexec "vault kv put secret/msp/wikijs-sync apiKey='${WIKIJS_SYNC_APIKEY:-}'"
 
 echo ""
-echo "done. ExternalSecret(llm-provider-credentials) が Vault→k8s Secret を同期する（refresh 1h）。"
-echo "  確認: kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials"
+echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h）:"
+echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
+echo "  確認: kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync"

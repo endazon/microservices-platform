@@ -317,6 +317,27 @@ ok('ESO=1: external-secrets install＋k8s auth store＋ExternalSecret apply・ll
   );
 });
 
+// IADR-0097 (#310) PR-2: ESO=1 で minio-credentials/wikijs-db/wikijs-sync も ExternalSecret 供給し、手動 apply はスキップ。
+ok('ESO=1 (PR-2): minio/wikijs 系 3 ExternalSecret apply・手動 apply はスキップ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  for (const f of ['externalsecret-minio.yaml', 'externalsecret-wikijs-db.yaml', 'externalsecret-wikijs-sync.yaml']) {
+    assert.ok(anyLineHas(res.lines, `deploy/local/vault/eso/${f}`), `${f} が apply されない`);
+  }
+  for (const name of ['minio-credentials', 'wikijs-db', 'wikijs-sync']) {
+    assert.ok(
+      !anyLineHas(res.lines, `create secret generic ${name}`),
+      `ESO=1 なのに ${name} を手動 apply している（二重所有）`,
+    );
+  }
+});
+
+// IADR-0097 (#310) PR-2 回帰: 既定（ESO 未設定）は 3 secret を手動 apply する（バイト等価）。
+ok('既定 (PR-2): minio-credentials/wikijs-db/wikijs-sync を手動 apply する（ESO 未設定）', () => {
+  for (const name of ['minio-credentials', 'wikijs-db', 'wikijs-sync']) {
+    assert.ok(anyLineHas(DEFAULT.lines, `create secret generic ${name}`), `${name} の手動 apply が無い`);
+  }
+});
+
 // IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
 // ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
 ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {

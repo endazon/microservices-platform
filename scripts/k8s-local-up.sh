@@ -120,13 +120,18 @@ kubectl -n "$INFRA_NS" rollout status deploy/otel-collector --timeout=120s
 
 echo "==> [5/7] MSP namespace & app secrets (dev 既定; fail-safe 空 = no-op)"
 kubectl create namespace "$MSP_NS" --dry-run=client -o yaml | kubectl apply -f -
-apply_secret "$MSP_NS" minio-credentials \
-  "accessKey=${MINIO_ACCESS_KEY:-minioadmin}" "secretKey=${MINIO_SECRET_KEY:-minioadmin}"
 # IADR-0093 (#353): MinIO Console の Keycloak OIDC client secret（平文コミットしない・dev 既定 or env 上書き）。
 # minio.yaml は minio.oidc.enabled 時に optional 参照で注入する（未作成でも Pod 起動＝root ログインへフォールバック）。
+# ※ minio-oidc(OIDC secret)は ESO 移行対象外（PR-3 予定）＝常に手動 apply する。
 apply_secret "$MSP_NS" minio-oidc "client-secret=${MINIO_OIDC_CLIENT_SECRET:-minio-dev-secret-change-me}"
-apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
-apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
+# IADR-0097 (#310) PR-2: minio-credentials/wikijs-db/wikijs-sync は ESO=1 のとき Vault→ExternalSecret 供給へ委譲し
+# 手動 apply をスキップする（二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
+if [ "${ESO:-}" != "1" ]; then
+  apply_secret "$MSP_NS" minio-credentials \
+    "accessKey=${MINIO_ACCESS_KEY:-minioadmin}" "secretKey=${MINIO_SECRET_KEY:-minioadmin}"
+  apply_secret "$MSP_NS" wikijs-db "password=${WIKIJS_DB_PASSWORD:-kp}"
+  apply_secret "$MSP_NS" wikijs-sync "apiKey=${WIKIJS_SYNC_APIKEY:-}"
+fi
 # fail-safe: 空=外部 LLM を呼ばない（ADR-0010 ルーティングは明示設定時のみ有効）。
 # IADR-0096 (#310): ESO=1 のときは llm-provider-credentials を Vault→ExternalSecret 供給に委譲し、手動 apply は
 # スキップする（ExternalSecret が Secret を所有＝二重所有回避）。既定（ESO 未設定）は従来どおり手動 apply（バイト等価）。
@@ -197,10 +202,13 @@ if [ "${ESO:-}" = "1" ]; then
   # 上で k8s auth backend/role を設定した「後に」store を kubernetes 認証へ上書きする（同名 vault-backend）。
   # 既定（VAULT=1 単独）は token 認証の store（deploy/local/vault/clustersecretstore.yaml）のままで既存フロー不変。
   kubectl apply -f deploy/local/vault/eso/clustersecretstore-k8s.yaml
-  # ExternalSecret で llm-provider-credentials を Vault→Secret 供給する。
+  # ExternalSecret で secret を Vault→Secret 供給する（PR-1: llm、PR-2: minio-credentials/wikijs-db/wikijs-sync）。
   kubectl apply -f deploy/local/vault/eso/externalsecret-llm.yaml
-  echo "    ESO: llm-provider-credentials は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
-  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials"
+  kubectl apply -f deploy/local/vault/eso/externalsecret-minio.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-db.yaml
+  kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
+  echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync は Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
+  echo "         確認: kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync"
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then

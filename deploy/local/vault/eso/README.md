@@ -17,7 +17,10 @@ end-to-end 疎通**する。認証は **kubernetes auth**（静的 root トー�
 | `vault-auth-rbac.yaml` | vault の**専用 SA `vault`**（vault-dev.yaml で作成）に `system:auth-delegator`（TokenReview）。default SA には付与しない（blast radius 限定） |
 | `policy-eso-read.hcl` | Vault policy `eso-read`（**MSP `secret/data/msp/*`＋AST `secret/data/ai-stock-trading/*`** の read・最小権限。store 共有のため両 path を許可） |
 | `bootstrap.sh` | k8s auth の enable/config＋policy＋role `eso`＋seed（`kubectl exec`・runtime・再実行可） |
-| `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー） |
+| `externalsecret-llm.yaml` | ExternalSecret（Vault `secret/msp/llm-provider-credentials` → 既存 Secret・同一キー・PR-1） |
+| `externalsecret-minio.yaml` | ExternalSecret（`secret/msp/minio-credentials` → `minio-credentials` accessKey/secretKey・PR-2/IADR-0097） |
+| `externalsecret-wikijs-db.yaml` | ExternalSecret（`secret/msp/wikijs-db` → `wikijs-db` password・PR-2/IADR-0097） |
+| `externalsecret-wikijs-sync.yaml` | ExternalSecret（`secret/msp/wikijs-sync` → `wikijs-sync` apiKey・PR-2/IADR-0097） |
 
 ## 有効化（opt-in・`ESO=1`・`VAULT=1` 併用）
 
@@ -44,12 +47,14 @@ dev Vault はインメモリ（Recreate）＝Pod 再起動後は `bash deploy/lo
 ## 確認 / 挙動
 
 ```sh
-kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials
+# PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync
+kubectl -n microservices-platform get externalsecret,secret \
+  llm-provider-credentials minio-credentials wikijs-db wikijs-sync
 ```
 
-- ESO 同期は helm install（llmgateway 起動）後に走るため、`llm-provider-credentials` は一時的に未作成で
-  llmgateway Pod が数秒 `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側 `secretKeyRef`（ADR-0010）は
-  無改変。
+- ESO 同期は helm install（各 Pod 起動）後に走るため、対象 Secret は一時的に未作成で消費側 Pod が数秒
+  `CreateContainerConfigError` になりうる（ESO 同期で自己回復）。消費側 `secretKeyRef`（llmgateway=ADR-0010・
+  minio/wiki-js も同様）は無改変。
 - role/policy 未作成・未 seed のうちは ESO は同期しない（fail-safe＝secret は供給されず外部 LLM 不使用）。
 - **本番 `values.yaml`/chart は無改変**。ESO は経路B opt-in オーバーレイに限定（SIMULATE/実弾 OFF 不変）。
 
@@ -63,15 +68,18 @@ Vault へ seed する（本 policy は read のみ・write は付与しない）
 ## 切り戻し（ESO を無効化する場合）
 
 `ESO` 未設定で再実行すると `deploy/local/vault/clustersecretstore.yaml`（token 認証）が再適用され store は token 認証へ戻る。
-ただし **`externalsecret-llm.yaml`（`creationPolicy: Owner`）は残存**し、`llm-provider-credentials` を所有し続けるため、
-手動 `apply_secret` 経路へ完全に戻すには先に ExternalSecret を削除する（二重所有回避）:
+ただし **各 ExternalSecret（`creationPolicy: Owner`）は残存**し対象 Secret を所有し続けるため、手動 `apply_secret` 経路へ
+完全に戻すには先に **全 ExternalSecret** を削除する（二重所有回避）:
 
 ```sh
-kubectl -n microservices-platform delete externalsecret llm-provider-credentials
+kubectl -n microservices-platform delete externalsecret \
+  llm-provider-credentials minio-credentials wikijs-db wikijs-sync
 # 以降 ESO 未設定で再実行すると手動 apply_secret が Secret を作成する。
 ```
 
 ## 段階移行（後続 PR）
 
-PR-2 以降で `minio-credentials`／`wikijs-db`／`wikijs-sync` → OIDC client secret 群 → 基盤（postgres 等）を同パターンで
-移行する。除外: `vault-dev-token`（Vault root・chicken-egg）／`argocd-secret`（argocd 所有・merge patch）。
+- **PR-1（IADR-0096）**: `llm-provider-credentials`（疎通・ESO 基盤）。
+- **PR-2（IADR-0097）**: `minio-credentials`／`wikijs-db`／`wikijs-sync`（本 PR）。
+- **PR-3 以降**: OIDC client secret 群（grafana-oidc/minio-oidc/headlamp-oidc/vault-oidc）→ 基盤（postgres/rabbitmq/keycloak-admin）。
+- 除外: `vault-dev-token`（Vault root・chicken-egg）／`argocd-secret`（argocd 所有・merge patch）／AST secrets（AST リポ管轄）。
