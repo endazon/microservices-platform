@@ -67,11 +67,14 @@ const PLAIN_STUB = (name) =>
 // ESO 未導入フォールバック（WARN ＋ vault-dev.yaml のみ apply）経路を検証できるようにする。
 // STUB_NS_ABSENT=1 で `kubectl get namespace argocd` を非0（未作成）に返させ、LOCALEDGE の argocd-ingress
 // 条件付き apply の「ns 不在＝skip」フローを検証できるようにする（IADR-0091）。
+// STUB_VAULT_DEPLOY_ABSENT=1 で `kubectl -n ... get deploy vault` を非0（未作成）に返させ、ESO=1 の
+// 「VAULT=1 なしなら fail-fast」ガード（IADR-0096）を検証できるようにする。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
+  'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -320,6 +323,15 @@ ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま
   const res = runUp({ VAULT: '1' });
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/vault'), 'token 認証 store（deploy/local/vault）が apply されない');
   assert.ok(!anyLineHas(res.lines, 'clustersecretstore-k8s.yaml'), 'ESO 未設定なのに k8s auth store へ上書きした');
+});
+
+// IADR-0096 (#310) ガード: ESO=1 は VAULT=1（dev Vault）併用が前提。vault Deployment が無ければ fail-fast する。
+ok('ESO=1 単独（vault Deployment 不在）: fail-fast で exit != 0・案内メッセージ', () => {
+  const res = runUp({ ESO: '1', STUB_VAULT_DEPLOY_ABSENT: '1' });
+  assert.notStrictEqual(res.status, 0, 'ESO=1 単独（vault 不在）なのに正常終了した');
+  assert.ok(/VAULT=1/.test(res.stderr), 'ガードの案内（VAULT=1 併用）が stderr に無い');
+  // fail-fast のため ExternalSecret などの後続は出さない。
+  assert.ok(!anyLineHas(res.lines, 'externalsecret-llm.yaml'), 'ガード後なのに ExternalSecret を apply した');
 });
 
 // ARGOCD=1: argocd namespace ＋ argocd application manifest を apply。
