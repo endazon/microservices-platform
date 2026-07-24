@@ -42,9 +42,11 @@ edge 経由でも OIDC ログインできるよう、集約後 URL を realm red
 
 ## 変更範囲
 
-`deploy/keycloak/microservices-platform-realm.json`（grafana client の redirectUris/webOrigins 追加）と
-`deploy/local/observability/grafana.yaml`（`GF_SERVER_ROOT_URL`）の 2 ファイルのみ。純粋な宣言的 config で
+実装（config）は `deploy/keycloak/microservices-platform-realm.json`（grafana client の redirectUris/webOrigins 追加）と
+`deploy/local/observability/grafana.yaml`（`GF_SERVER_ROOT_URL`）の 2 ファイル。純粋な宣言的 config で
 スクリプトロジックは不変（新規テストは不要・既存 smoke test の grafana-oidc 配線は無影響）。
+あわせて claude-review 反映として、実効ログイン経路（edge 前提・port-forward 単独では OIDC 未成立→local admin）を
+`deploy/local/edge/README.md` と `deploy/local/observability/README.md` に正確化する（docs のみ・挙動不変）。
 
 ## 非対象
 
