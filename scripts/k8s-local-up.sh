@@ -219,10 +219,18 @@ if [ "${ESO:-}" = "1" ]; then
   kubectl apply -f deploy/local/vault/eso/externalsecret-wikijs-sync.yaml
   # IADR-0098 (#310) PR-3: OIDC client secret 群。minio-oidc は MSP ns、grafana/vault/headlamp-oidc は platform-infra ns。
   # ExternalSecret は namespaced だが ClusterSecretStore は cluster-scoped のため両 ns から同名 store を参照できる。
+  # 元の手動 apply のゲート意味論に合わせて供給する（機能オフ時に未使用 Secret を残さない＝元の条件付き apply と対称）:
+  #  - minio-oidc: 常時（step 5 相当・元も無条件）
+  #  - vault-oidc: VAULT 前提（ESO=1 は VAULT 併用ガード下＝ここでは常に真）で常時
+  #  - grafana-oidc / headlamp-oidc: 各機能（OBSERVABILITY / HEADLAMP）が有効なときだけ供給
   kubectl apply -f deploy/local/vault/eso/externalsecret-minio-oidc.yaml
-  kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
   kubectl apply -f deploy/local/vault/eso/externalsecret-vault-oidc.yaml
-  kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
+  if [ "${OBSERVABILITY:-}" = "1" ]; then
+    kubectl apply -f deploy/local/vault/eso/externalsecret-grafana-oidc.yaml
+  fi
+  if [ "${HEADLAMP:-}" = "1" ]; then
+    kubectl apply -f deploy/local/vault/eso/externalsecret-headlamp-oidc.yaml
+  fi
   echo "    ESO: llm/minio-credentials/wikijs-db/wikijs-sync/minio-oidc/grafana-oidc/vault-oidc/headlamp-oidc は"
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"

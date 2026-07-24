@@ -52,8 +52,11 @@ PR-1/PR-2 の破壊系（`VAULT=1` 単独破壊・policy path 不足）を再発
 
 対象 4 secret は各機能ゲートで手動 apply される（`minio-oidc` は step 5 で常時・`grafana-oidc`=`OBSERVABILITY`・
 `vault-oidc`=`VAULT`・`headlamp-oidc`=`HEADLAMP`）。それぞれを `if [ "${ESO:-}" != "1" ]` でくくり、`ESO=1` の
-ときは ExternalSecret（ESO ブロックで一括 apply）に委譲する。ESO ブロックは既存の VAULT 併用ガード配下にある
-ため、`ESO=1` の実行は常に dev Vault 起動を前提とする（PR-1 のまま）。ESO 同期は Pod 起動後に走るため、対象 Secret は
+ときは ExternalSecret に委譲する。**ESO ブロック側の ExternalSecret apply も元の手動 apply のゲート意味論に整合させる**:
+`minio-oidc` は常時（元も無条件）、`vault-oidc` は `VAULT` 前提（`ESO=1` は VAULT 併用ガード配下＝常に真）で常時、
+`grafana-oidc`／`headlamp-oidc` は `OBSERVABILITY`／`HEADLAMP` が有効なときだけ apply する。これにより機能オフ時に
+未使用 Secret を残さず、元の条件付き apply と対称になる。ESO ブロックは既存の VAULT 併用ガード配下にあるため、
+`ESO=1` の実行は常に dev Vault 起動を前提とする（PR-1 のまま）。ESO 同期は Pod 起動後に走るため、対象 Secret は
 一時的に未作成になりうるが、消費側はいずれも optional 参照（grafana=local admin フォールバック・minio=root
 フォールバック・vault=runtime bootstrap が読む・headlamp=optional）で自己回復する（無改変）。
 
@@ -85,5 +88,6 @@ seed 値は env 由来 or dev プレースホルダ（`{MINIO,GRAFANA,VAULT,HEAD
 
 - **secret 別ファイル**: レビュー容易性のため secret 別 ExternalSecret ファイルにする（PR-1/PR-2 と同じ粒度）。
 - **手動 apply と ExternalSecret を併存**: 二重所有で競合するため `ESO=1` 時は手動をスキップ（PR-1/PR-2 と同じ）。
-- **grafana/headlamp-oidc を ESO ブロックで条件付き apply（ゲート連動）**: ExternalSecret は namespaced で副作用が無く
-  optional 参照のため、ESO ブロックで一括 apply する方が単純で PR-1/PR-2 と対称。未使用 Secret の残存は許容する。
+- **grafana/headlamp-oidc を ESO ブロックで無条件 apply（一括）**: ExternalSecret は namespaced で副作用が無く optional
+  参照のため実害はないが、機能オフ時に未使用 Secret が残る。**採用しない**：元の手動 apply が各機能ゲートで条件付き
+  である以上、ESO 供給もゲート連動させる方が元の意味論と対称で、未使用 Secret を残さない（本 PR の決定 §3）。

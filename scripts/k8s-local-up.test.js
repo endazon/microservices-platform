@@ -369,6 +369,17 @@ ok('既定 (PR-3): 4 OIDC secret を手動 apply する（ESO 未設定・各ゲ
   assert.ok(!anyLineHas(res.lines, 'externalsecret-grafana-oidc.yaml'), 'ESO 未設定なのに OIDC ExternalSecret を apply した');
 });
 
+// IADR-0098 (#310) PR-3: OIDC ExternalSecret はゲート意味論に整合させる。ESO=1 かつ OBSERVABILITY/HEADLAMP が
+// 無効なら grafana-oidc/headlamp-oidc ExternalSecret は apply しない（機能オフ時に未使用 Secret を残さない）。
+// minio-oidc（常時）と vault-oidc（VAULT 前提＝ESO ガード下で常に真）は供給する。
+ok('ESO=1 (PR-3): OBSERVABILITY/HEADLAMP 無効なら grafana/headlamp-oidc ES は apply しない', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' }); // OBSERVABILITY/HEADLAMP は未設定
+  assert.ok(anyLineHas(res.lines, 'externalsecret-minio-oidc.yaml'), 'minio-oidc ES が apply されない（常時のはず）');
+  assert.ok(anyLineHas(res.lines, 'externalsecret-vault-oidc.yaml'), 'vault-oidc ES が apply されない（VAULT 前提で常時のはず）');
+  assert.ok(!anyLineHas(res.lines, 'externalsecret-grafana-oidc.yaml'), 'OBSERVABILITY 無効なのに grafana-oidc ES を apply した');
+  assert.ok(!anyLineHas(res.lines, 'externalsecret-headlamp-oidc.yaml'), 'HEADLAMP 無効なのに headlamp-oidc ES を apply した');
+});
+
 // IADR-0096 (#310) 回帰: VAULT=1 単独（ESO 未設定）は store を kubernetes 認証へ上書きしない
 // ＝既存の token 認証 store（deploy/local/vault）のままで既存フロー（AST ExternalSecret 等）を壊さない（byte 等価）。
 ok('VAULT=1 単独: k8s auth store へ上書きしない（token 認証のまま・既存フロー不変）', () => {

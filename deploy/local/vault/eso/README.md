@@ -63,7 +63,9 @@ kubectl -n platform-infra get externalsecret,secret grafana-oidc vault-oidc head
   minio/wiki-js/OIDC secret 群も同様に optional 参照）は無改変。
 - PR-3 の OIDC client secret 群（`minio-oidc`／`grafana-oidc`／`vault-oidc`／`headlamp-oidc`）は各機能ゲート
   （`OBSERVABILITY`/`VAULT`/`HEADLAMP`・minio-oidc は常時）で使うが、`ESO=1` のときは ExternalSecret が供給する
-  ため各ゲート内の手動 apply はスキップする（二重所有回避）。ExternalSecret は namespaced だが
+  ため各ゲート内の手動 apply はスキップする（二重所有回避）。ExternalSecret の apply も**元のゲート意味論に整合**させる:
+  `minio-oidc` は常時、`vault-oidc` は VAULT 前提（`ESO=1` のガード下で常に真）で常時、`grafana-oidc`／`headlamp-oidc`
+  は `OBSERVABILITY`／`HEADLAMP` 有効時のみ（機能オフ時に未使用 Secret を残さない）。ExternalSecret は namespaced だが
   `ClusterSecretStore` は cluster-scoped のため MSP／platform-infra 両 ns から同名 store を参照できる。
 - role/policy 未作成・未 seed のうちは ESO は同期しない（fail-safe＝secret は供給されず外部 LLM 不使用）。
 - **本番 `values.yaml`/chart は無改変**。ESO は経路B opt-in オーバーレイに限定（SIMULATE/実弾 OFF 不変）。
