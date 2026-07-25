@@ -105,12 +105,15 @@ public class RagOrchestrator(
                     yield return new AskTokenEvent(ev.Text!);
 
                 // FR-11, IADR-0104 (#379): 送信は成立したがモデルが拒否した場合（stopReason="refusal"）。
-                // 拒否は末尾の done で確定するため既出デルタは撤回できない。拒否である旨を追記して、
+                // 拒否は末尾の done で確定するため既出デルタは撤回できない。拒否である旨を末尾へ追記して、
                 // 「空応答」や「途中で切れた回答」と取り違えられないようにする。
+                // 部分本文が既に流れているときは空行で区切る（フロントは token を 1 つの文字列へ連結し
+                // white-space: pre-wrap で表示するため、区切らないと注記が地の文へ溶け込む）。
                 else if (CompletionStopReasons.IsRefusal(ev.StopReason))
                 {
+                    var separator = emittedAny ? "\n\n" : string.Empty;
                     emittedAny = true;
-                    yield return new AskTokenEvent("（AI が回答の生成を拒否しました。）");
+                    yield return new AskTokenEvent($"{separator}（AI が回答の生成を拒否しました。）");
                 }
 
                 model = string.IsNullOrEmpty(ev.Model) ? defaultModel : ev.Model;

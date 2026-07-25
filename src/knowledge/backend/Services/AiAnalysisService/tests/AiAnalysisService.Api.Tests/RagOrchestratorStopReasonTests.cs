@@ -59,6 +59,51 @@ public class RagOrchestratorStopReasonTests
         events.Last().Should().BeOfType<AskDoneEvent>();
     }
 
+    // 本文デルタが出ていない拒否（典型例）では、注記の前に空行を入れない。
+    // フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap` で表示するため、
+    // 先頭に改行を入れると回答冒頭が空行になる。
+    [Fact]
+    public async Task AskStreamAsync_WhenRefusedWithoutDeltas_EmitsNoticeWithoutLeadingBlankLine()
+    {
+        const string sse =
+            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
+            "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
+        var orchestrator = new RagOrchestrator(
+            new RoutingHttpClientFactory(sse, "text/event-stream"), BuildConfig());
+
+        var events = new List<AskEvent>();
+        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
+            events.Add(ev);
+
+        var notice = events.OfType<AskTokenEvent>().Should().ContainSingle().Subject;
+        notice.Text.Should().StartWith("（");
+        notice.Text.Should().NotStartWith("\n");
+    }
+
+    // 部分本文が既に流れた後の拒否では、注記を空行で区切る。連結表示のため区切らないと
+    // 「書きかけの本文（AI が回答の生成を拒否しました。）」と地の文へ溶け込んで読めなくなる。
+    // 拒否は末尾の done で確定するため既出デルタは撤回できない（IADR-0104 §結果のトレードオフ）。
+    [Fact]
+    public async Task AskStreamAsync_WhenRefusedAfterDeltas_SeparatesNoticeFromBody()
+    {
+        const string sse =
+            "data: {\"delta\":\"書きかけの本文\"}\n\n" +
+            "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
+            "\"inputTokens\":11,\"outputTokens\":5,\"stopReason\":\"refusal\"}\n\n";
+        var orchestrator = new RagOrchestrator(
+            new RoutingHttpClientFactory(sse, "text/event-stream"), BuildConfig());
+
+        var events = new List<AskEvent>();
+        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
+            events.Add(ev);
+
+        var tokens = events.OfType<AskTokenEvent>().ToList();
+        tokens.Should().HaveCount(2);
+        tokens[0].Text.Should().Be("書きかけの本文");
+        tokens[1].Text.Should().StartWith("\n\n");        // 地の文と分離して表示される
+        tokens[1].Text.Should().Contain("拒否");
+    }
+
     private static string CompletionJson(string stopReason, string text) =>
         $$"""
         {"text":"{{text}}","model":"claude-opus-5","inputTokens":11,"outputTokens":0,
