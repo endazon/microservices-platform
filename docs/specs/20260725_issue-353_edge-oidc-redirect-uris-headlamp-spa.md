@@ -43,7 +43,10 @@ related_specs:
 
 1. `headlamp` の `redirectUris`/`webOrigins` に `http://headlamp.localhost:50000/*` / `http://headlamp.localhost:50000` を追加。
 2. `spa-web` の `redirectUris`/`webOrigins` に `http://localhost/*` / `http://localhost` を追加し、
-   `attributes.post.logout.redirect.uris` にも `http://localhost/*` を追加（`##` 区切り）。
+   `attributes.post.logout.redirect.uris` に `http://localhost/*` と**厳密値 `http://localhost`** を追加（`##` 区切り）。
+   後者は必須: SPA は `post_logout_redirect_uri = <origin>`（=`http://localhost`・末尾スラッシュなし）を送るが、
+   Keycloak の wildcard 照合は `http://localhost/*` を prefix `http://localhost/`（スラッシュ込み）の `startsWith` で
+   判定するため bare origin にマッチしない（Issue #340 spec で既知の挙動）。厳密値の完全一致でログアウトを成立させる。
 3. 既存の port-forward 用 URL は残す（後方互換）。他 client・他フィールドは無改変。
 4. realm JSON が妥当で、`scripts/check-realm-constraints.js`（varchar(255) ガード・Issue #18）が green。
 5. 本番 chart・アプリコードは無改変。gitleaks green。
