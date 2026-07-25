@@ -13,14 +13,8 @@
       { "name": "platform-admin", "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）" },
       { "name": "platform-operator", "description": "FR-15, IADR-0030: 運用者。構成情報の閲覧（ConfigViewer ポリシー）のみ可。管理系操作（AdminOnly）は不可" },
       { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" },
-      { "name": "trading-owner", "description": "Issue #283, AST FR-17/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" },
-      { "name": "Administrators", "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。" }
-    ],
-    "client": {
-      "minio": [
-        { "name": "consoleAdmin", "description": "IADR-0103: MinIO 組込ポリシー名。minio client の policy claim を client ロール由来の単一値に保つための dev ロール（realm ロールを流すと多値になり MinIO がポリシー解決に失敗する）。" }
-      ]
-    }
+      { "name": "trading-owner", "description": "Issue #283, AST FR-17/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" }
+    ]
   },
   "groups": [
     {
@@ -191,22 +185,6 @@
         "http://wiki.localhost:50000",
         "http://localhost:3001"
       ],
-      "protocolMappers": [
-        {
-          "name": "wikijs-realm-roles",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "groups",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        }
-      ],
       "defaultClientScopes": [
         "profile",
         "email",
@@ -302,22 +280,6 @@
       "webOrigins": [
         "http://localhost:4466",
         "http://headlamp.localhost:50000"
-      ],
-      "protocolMappers": [
-        {
-          "name": "headlamp-realm-roles",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-realm-role-mapper",
-          "consentRequired": false,
-          "config": {
-            "claim.name": "groups",
-            "jsonType.label": "String",
-            "multivalued": "true",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true"
-          }
-        }
       ],
       "defaultClientScopes": [
         "profile",
@@ -429,15 +391,14 @@
       ],
       "protocolMappers": [
         {
-          "name": "minio-client-roles",
+          "name": "minio-realm-roles",
           "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
           "consentRequired": false,
           "config": {
             "claim.name": "policy",
             "jsonType.label": "String",
             "multivalued": "true",
-            "usermodel.clientRoleMapping.clientId": "minio",
             "id.token.claim": "true",
             "access.token.claim": "true",
             "userinfo.token.claim": "true"
@@ -493,30 +454,6 @@
     }
   ],
   "users": [
-    {
-      "username": "admin",
-      "email": "admin@example.com",
-      "firstName": "Platform",
-      "lastName": "Admin",
-      "enabled": true,
-      "emailVerified": true,
-      "attributes": {
-        "clearance": ["restricted"],
-        "department": ["engineering"]
-      },
-      "groups": ["/clearance/restricted", "/department/engineering"],
-      "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "Administrators"],
-      "clientRoles": {
-        "minio": ["consoleAdmin"]
-      },
-      "credentials": [
-        {
-          "type": "password",
-          "value": "admin",
-          "temporary": false
-        }
-      ]
-    },
     {
       "username": "poc-user",
       "email": "poc-user@example.com",

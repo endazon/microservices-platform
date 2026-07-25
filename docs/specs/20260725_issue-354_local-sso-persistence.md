@@ -41,6 +41,11 @@ related_specs:
 
 ## 変更内容
 
+> **注記（PR 分離）**: `deploy/keycloak/microservices-platform-realm.json` への焼き込み（admin ユーザー・
+> `Administrators` ロール・ツール別 claim mapper）は、レビュー単位を絞るため本 PR（#389）から分離し
+> **[[IADR-0104]] / PR #390** で実施する。本 PR は realm 外の live 操作（ESO 後 rollout・argocd DNS・
+> Vault listing-visibility）とドキュメントを担う。下表の realm.json 行は設計の記録として残す。
+
 ### コード / 自動化
 
 | ファイル | 変更 |

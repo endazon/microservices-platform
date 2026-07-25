@@ -110,6 +110,10 @@ issuer は in-cluster 正準名（`http://keycloak:8080/...`＝token の `iss` �
 
 ## 影響・非対象
 
+- **realm.json への焼き込み（決定 1・2 の実装）は別 PR に分離**: `deploy/keycloak/microservices-platform-realm.json`
+  への admin ユーザー／`Administrators` ロール／ツール別 claim mapper の追加そのものは、レビュー単位を絞るため
+  [[IADR-0104]]（PR #390）で実施する。本 ADR は claim 設計の根拠と、realm 外の live 操作（決定 3・4・5＝ESO 後
+  rollout・argocd DNS・Vault listing-visibility）を担う。両 PR で重なるファイルは無い。
 - **dev 専用**（`deploy/local` ＋ dev realm）。本番 chart（`deploy/helm`）・ArgoCD 描画・compose は無改変。
 - `ESO`/`ARGOCD` ゲート未設定時の挙動は不変（rollout もエイリアス適用も opt-in ブロック内）。
 - **実弾・取引には無関係**（`Broker__Provider=paper`・opend 不在は本 ADR の変更対象外で不変）。
