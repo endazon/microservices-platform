@@ -67,6 +67,12 @@ echo "==> external groups（realm ロール→policy）"
 create_group platform-admin    admin
 create_group platform-operator operator
 
+# IADR-0103 (#354): auth mount の listing_visibility は既定 hidden で、未認証の
+# `sys/internal/ui/mounts` が `auth: {}` を返す。その状態では **Vault UI のログイン画面に OIDC が現れず**
+# Token 入力しか見えないため「ログインできない」ように見える。unauth にして選択肢として提示する。
+echo "==> auth/oidc を UI のログイン候補に表示（listing_visibility=unauth）"
+vault auth tune -listing-visibility=unauth -description="Keycloak SSO (OIDC)" oidc/
+
 echo ""
 echo "done. Vault OIDC ログイン:"
 echo "  UI : http://vault.localhost:50000 （LOCALEDGE=1・Method=OIDC・role=default）"

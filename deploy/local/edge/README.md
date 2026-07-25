@@ -67,6 +67,15 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
   - `http://minio.localhost:50000`（MinIO Console。Keycloak OIDC＝IADR-0093。ポリシー適用は [minio-oidc/README](../minio-oidc/README.md)）
   - `http://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
 
+### ⚠️ admin entrypoint (50000) は **平文 http のみ**（IADR-0103）
+
+`traefik-entrypoint.yaml` が足す `admin:50000` には **TLS 終端を設定していない**。したがって
+**`https://<tool>.localhost:50000` は 404 になる**（Traefik に https ルートが無いため）。管理ツールは必ず
+**`http://`** で開くこと。「到達不可」に見える事象の典型原因である（実際に Vault で発生）。
+
+platform フロントの 443（`https://localhost/`）は Traefik 既定の**自己署名証明書**で終端されるため別扱い
+（ブラウザ警告が出る）。実 TLS 証明書・admin entrypoint の TLS 化は本オーバーレイのスコープ外（Tier 3）。
+
 ### ホスト名解決の注意（`*.localhost` / CLI）
 
 - **ブラウザ**（Chrome/Edge/Firefox/Safari）は `*.localhost` を 127.0.0.1 に自動解決するため、UI アクセスは追加設定不要。

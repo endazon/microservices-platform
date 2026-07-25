@@ -262,11 +262,35 @@ if [ "${ESO:-}" = "1" ]; then
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
+
+  # IADR-0103 (#354): ESO が Secret を作るのは **Pod 起動より後**になるため、`optional: true` の secretKeyRef で
+  # 参照している Pod は env が空のまま起動し続ける（Secret 更新は既存 Pod の env へ反映されない）。実害として
+  # MinIO=`unauthorized_client / Invalid client credentials`（client_secret 空）、Grafana=OIDC client_secret 空、
+  # LlmGateway=`API key is invalid`（旧鍵保持）が発生した。ESO 供給後に対象 Deployment を rollout し直して
+  # env を作り直す。best-effort（未デプロイ・未有効ゲートで止めない）。
+  echo "    ESO 供給後の rollout（optional secretKeyRef の env を作り直す）"
+  for d in minio llmgateway-service; do
+    kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
+      && echo "      restarted $MSP_NS/$d" || echo "      skip $MSP_NS/$d（未デプロイ）"
+  done
+  if [ "${OBSERVABILITY:-}" = "1" ]; then
+    kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"
+  fi
+  if [ "${HEADLAMP:-}" = "1" ]; then
+    kubectl -n "$INFRA_NS" rollout restart deploy/headlamp >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/headlamp" || echo "      skip $INFRA_NS/headlamp（未デプロイ）"
+  fi
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then
   echo "==> [opt-in] ArgoCD bootstrap (手順は deploy/local/argocd/README.md)"
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  # IADR-0103 (#354): argocd namespace に keycloak の ExternalName エイリアスを張る。無いと DNS がノードの
+  # リゾルバへフォールスルーし、手順A の hosts エントリ `127.0.0.1 keycloak` を拾って argocd-server が
+  # **自分自身の :8080** へ discovery を投げ 404 になる（OIDC ログイン不能）。issuer は in-cluster 正準名の
+  # ままにしたいので、エイリアスで名前解決だけを正す（issuer/metadata の分離は不要）。
+  kubectl apply -f deploy/local/aliases/argocd-externalnames.yaml
   # IADR-0077 (#348): ArgoCD 公式 install manifest は巨大な CRD（applicationsets.argoproj.io 等）を含み、
   # client-side apply では manifest 全体が last-applied-configuration annotation に載って 262144 バイト
   # 上限を超過し失敗する（既知問題）。server-side apply は annotation を作らず managed fields で差分管理する
