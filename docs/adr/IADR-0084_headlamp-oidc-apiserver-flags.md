@@ -1,13 +1,14 @@
 ---
 title: IADR-0084 k3d クラスタ作成に apiserver OIDC 検証フラグを opt-in（HEADLAMP 連動）で配線し、issuer は in-cluster 正準名・claim は #271 の username bind に一致させる
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - NFR
   - ADR-0004
   - IADR-0066
   - IADR-0076
   - IADR-0080
+  - IADR-0104
 author: claude
 created: 2026-07-19
 updated: 2026-07-19
@@ -18,9 +19,24 @@ plan_refs:
 
 # IADR-0084: k3d クラスタ作成への apiserver OIDC 検証フラグの opt-in 配線
 
-- 状態: Accepted（**ただし k8s 1.30+ では本 ADR の手順は成立しない。下記「⚠️ 2026-07-25 追記」を必ず読むこと**）
+- 状態: **Superseded**（後継 [[IADR-0104]]・2026-07-26。**k8s 1.30+ では本 ADR の手順は成立しない。下記
+  「⚠️ 2026-07-25 追記」を必ず読むこと**）
 - 日付: 2026-07-19
 - 決定者: claude（実装）
+
+## ⚠️ 2026-07-26 追記: 本 ADR は [[IADR-0104]] により Superseded
+
+[[IADR-0104]]（#328）が次を決定した。本 ADR の決定は、その範囲で置き換えられている。
+
+- **決定1（`HEADLAMP` 追従で apiserver OIDC を付与）を廃止**。`HEADLAMP=1` だけではフラグを付けない
+  （`HEADLAMP_OIDC_APISERVER=1` の明示 opt-in のみ）。追従を残すと k8s 1.30+ の k3d 利用者が
+  `HEADLAMP=1` と書いただけでクラスタ作成に失敗するため。
+- **Rancher Desktop 経路の配線（本 ADR 決定4 の残件）は実装しない**。再開は **#388**（全経路 HTTPS 化）。
+- Headlamp の正規ログイン手順（SA トークン方式）が依存する `headlamp-viewer` SA と ClusterRoleBinding を
+  `deploy/local/headlamp/` の overlay へ恒久化した（従来は live クラスタへの手作りに依存し、新規クラスタでは
+  下記の `kubectl create token` が NotFound で失敗していた）。
+
+以下の追記（2026-07-25）は、その根拠となった実測記録としてそのまま残す。
 
 ## ⚠️ 2026-07-25 追記: k8s 1.30+ では http issuer を拒否するため本手順は適用不能（IADR-0103 / #354 / #388）
 
