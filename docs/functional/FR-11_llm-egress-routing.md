@@ -97,6 +97,22 @@ flowchart TD
 | 選択プロバイダが keyed DI 未登録 | 送信せず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`（`Text` に未登録メッセージ） |
 | 呼び出し先が不調（例外, `OperationCanceledException` 以外） | 500 を伝播させず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`（`Text` に利用不可メッセージ） |
 | セルフホスト `BaseUrl` 未設定 | `SelfHostedProvider` が `InvalidOperationException`。上記「呼び出し先不調」に集約し縮退 | `Sent=false` |
+| 送信は成立したがモデルが拒否（`stop_reason="refusal"`。ADR-0025 / IADR-0104） | 縮退させず送信成立として扱い、**本文（断片を含む）を破棄**。監査ログ warn | `Sent=true`, `StopReason="refusal"`, `Text=""` |
+| 送信は成立したが出力上限に到達（`stop_reason="max_tokens"`。IADR-0101 / IADR-0104） | 途中結果は破棄せず返す。監査ログ warn | `Sent=true`, `StopReason="max_tokens"`, `Text=途中結果` |
+
+### 送信可否（`Sent`）と終了理由（`StopReason`）は独立した軸である
+
+`Sent` は**越境が成立したか**（FR-11 の統制対象）を、`StopReason` は**送信後にモデルがどう終えたか**を表す。
+拒否は「外部へ送信し、モデルが応答した」事象であるため `Sent=true` を保つ（`Sent=false` にすると
+越境監査・課金集計の意味が壊れる）。両者を混同しないことが本節の要点である（[IADR-0104](../adr/IADR-0104_llm-stop-reason-refusal.md)）。
+
+`refusal` のみ本文を破棄するのは、安全性分類器が本文の途中で停止し得るためである。断片が非空のまま
+下流へ渡ると、本文の非空を根拠に処理を進める呼び出し側（AST 取引判断など）で fail-safe が破れる。
+`max_tokens` の途中結果は正当な観測対象であり破棄しない。
+
+ストリーミング（`/complete/stream`）では終了理由が末尾の `message_delta` で確定するため、
+既に送出したデルタは撤回できない。`done` イベントの `stopReason` を見て表示を破棄・注記するのは
+呼び出し側の責務である（`RagOrchestrator` は拒否である旨のトークンを追記する）。
 
 ## 受け入れ基準
 
@@ -109,18 +125,23 @@ flowchart TD
 - [x] `Internal × ティアC` は既定（未承認）では選択されない。
 - [x] 送信判定（機密区分・用途・ティア・エンドポイント・モデル・許否・理由）が監査ログに記録される。
 - [x] 呼び出し先不調・プロバイダ未登録時も 500 を伝播させず縮退応答を返す。
+- [x] 送信成立後の終了理由（`refusal` / `max_tokens` / 正常終了）が監査ログと応答契約（`StopReason`）で区別できる（#379 / IADR-0104）。
+- [x] `refusal` では本文（断片を含む）を返さず、`StopReason` を見ない呼び出し側も安全側へ倒れる（#379 / IADR-0104）。
 
 > 検証（#201）: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。
 > 送信判定の記録は `LlmRouter` の構造化ログ（"LLM routing decision"）。
+> 終了理由（#379）: `ClaudeProviderStopReasonTests`（`stop_reason` の判別と本文破棄）／
+> `CompletionStopReasonEndpointTests`（応答契約への伝達・`Sent` 不変）／
+> `RagOrchestratorStopReasonTests`（呼び出し側の判別）。記録は `CompletionEndpoints.LogStopReason` の warn ログ。
 
 ## 関連仕様
 
 - テスト仕様書: `../tests/FR-11_llm-egress-routing.md`
-- 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`
-- 通信仕様書: `../api/openapi.yaml`（`/complete`）
+- 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../specs/20260725_issue-379_llm-stop-reason-refusal.md`
+- 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
-- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）
+- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
 
 ## 未決事項
