@@ -77,6 +77,10 @@ ArgoCD=role:admin / Vault=admin policy / Wiki.js=Administrators / MinIO=consoleA
 - MinIO は `oidc-usermodel-client-role-mapper`（`usermodel.clientRoleMapping.clientId=minio`）に差し替え、
   旧 `minio-realm-roles`（realm ロール多値）は**削除**する。副作用として、client ロール未付与のユーザー
   （`developer` 等）は `policy` claim が付かず MinIO にログインできない＝**deny-by-default** になる。
+- **単一値は運用制約に依存する**（claude-review 🟡 反映）: mapper 自体は `"multivalued": "true"` で複数付与時に
+  多値配列を返すため、`policy` claim が単一値である保証は「**1 ユーザーに `minio` client ロールを 1 つだけ付与する**」
+  という運用前提に依存する。複数付与すると `policy` claim が多値化し、対策したはずの callback 500 が再発する。
+  この逸脱は `scripts/k8s-local-up.test.js` の `admin.clientRoles.minio` 要素数 === 1 アサーションで機械検知する。
 - Wiki.js/Headlamp の `wiki-js`/`headlamp` client には `groups` claim mapper を追加する（他ツールと同型）。
   Headlamp 分は現行 k8s では inert だが、HTTPS 化（#388）でそのまま使えるため同時に入れる。
 

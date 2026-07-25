@@ -626,6 +626,14 @@ ok('realm.json: admin ユーザーとツール別 claim 設計が恒久化され
     ((admin.clientRoles || {}).minio || []).includes('consoleAdmin'),
     'admin に minio client ロール consoleAdmin が無い',
   );
+  // IADR-0103 (#354, claude-review 🟡): policy claim を単一値に保つのは「admin に minio client ロールを 1 つだけ
+  // 付与する」運用制約に依存する（mapper は multivalued=true で複数付与時に多値配列を返す）。逸脱すると対策した
+  // はずの callback 500 が再発するため、要素数 1 を機械検知して運用逸脱をブロックする。
+  assert.strictEqual(
+    ((admin.clientRoles || {}).minio || []).length,
+    1,
+    'admin の minio client ロールは 1 つだけ（複数付与で policy claim が多値化し callback 500 が再発する）',
+  );
   // MinIO の policy claim は client ロール由来（多値だと MinIO がポリシー解決に失敗し 500）。
   const minio = realm.clients.find((c) => c.clientId === 'minio');
   const mm = (minio.protocolMappers || []).find((m) => m.config['claim.name'] === 'policy');
