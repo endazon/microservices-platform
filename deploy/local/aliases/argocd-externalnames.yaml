@@ -1,0 +1,20 @@
+# IADR-0103 (#354): ArgoCD の OIDC は issuer を in-cluster 正準名 `http://keycloak:8080/...`（token の iss と
+# 一致させる必要がある）で引くため、argocd namespace 内でも素の名前 `keycloak` が解決できなければならない。
+#
+# エイリアスが無いと DNS はクラスタ内で解決できず**ノードのリゾルバへフォールスルー**し、手順A のために
+# hosts へ入れた `127.0.0.1 keycloak` を拾ってしまう。結果 argocd-server は **自分自身の :8080** へ
+# discovery を投げ、`failed to query provider "http://keycloak:8080/realms/...": 404` で OIDC が壊れる。
+# （microservices-platform / ai-stock-trading namespace は既にエイリアスがあるため正しく解決していた）
+#
+# 適用: kubectl apply -f deploy/local/aliases/argocd-externalnames.yaml
+#      （scripts/k8s-local-up.sh の ARGOCD=1 ブロックが自動適用する。argocd namespace 作成後）
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: platform-infra-alias
+spec:
+  type: ExternalName
+  externalName: keycloak.platform-infra.svc.cluster.local

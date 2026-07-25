@@ -41,6 +41,66 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 - **issuer 整合（#284 手順A）**: Wiki.js server（microservices-platform ns）は ExternalName alias `keycloak` で in-cluster の
   endpoint に到達する。browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
 
+## DB seed で入れる（管理UI を使わない手順・IADR-0103）
+
+管理UI を開けない/自動化したい場合は、Wiki.js の `authentication` テーブルへ直接投入する（設定は DB 保持）。
+**前提として次の 2 つが realm 側に必要**（`realm.json` に恒久化済み）:
+
+- `wiki-js` client の **`groups` claim mapper**（`wikijs-realm-roles`）— 無いと Map Groups が効かない
+- realm ロール **`Administrators`**（Wiki.js のグループ名と**文字列一致**させるため。Wiki.js は自前グループ管理なので
+  名前一致が唯一の接点）。`admin` ユーザーに付与済み。
+
+```sh
+# client secret は realm から取得し、リポジトリにもログにも平文を残さない
+KCADM=http://localhost:8080; R=microservices-platform
+T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=password \
+  -d client_id=admin-cli -d username=admin \
+  -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" | jq -r .access_token)
+WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
+
+KC=http://keycloak:8080/realms/microservices-platform
+CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{
+  clientId:"wiki-js", clientSecret:$s,
+  authorizationURL:($kc+"/protocol/openid-connect/auth"),
+  tokenURL:($kc+"/protocol/openid-connect/token"),
+  userInfoURL:($kc+"/protocol/openid-connect/userinfo"),
+  skipUserProfile:false, issuer:$kc,
+  emailClaim:"email", displayNameClaim:"preferred_username", pictureClaim:"picture",
+  mapGroups:true, groupsClaim:"groups",
+  logoutURL:($kc+"/protocol/openid-connect/logout"), acrValues:""}')
+
+cat > /tmp/wiki_oidc.sql <<SQL
+BEGIN;
+UPDATE settings SET value='{"v":"http://wiki.localhost:50000"}' WHERE key='host';
+DELETE FROM authentication WHERE "strategyKey"='oidc';
+INSERT INTO authentication (key,"isEnabled",config,"selfRegistration","domainWhitelist","autoEnrollGroups","order","strategyKey","displayName")
+VALUES ('7c1f6f2e-9d3a-4b5c-8e10-000000000001', true, \$json\$$CFG\$json\$, true, '{"v":[]}', '{"v":[2]}', 1, 'oidc', 'Keycloak');
+COMMIT;
+SQL
+kubectl -n platform-infra exec -i deploy/postgres -- psql -U postgres -d wikijs -q -f - < /tmp/wiki_oidc.sql
+rm -f /tmp/wiki_oidc.sql
+kubectl -n microservices-platform rollout restart deploy/wiki-js
+```
+
+- **`settings.host`（Site URL）は必ず edge 集約 URL** にする。Wiki.js は callback を `{Site URL}/login/{key}/callback`
+  で組むため、ここが不一致だと realm 側に登録があっても redirect が合わない。
+  なお `values-local.yaml` の `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃える。
+- `autoEnrollGroups: {"v":[2]}` は Guests（id=2）＝**最小権限の床**（deny-by-default 寄り）。Guests は既定で
+  `read:pages`/`read:assets`/`read:comments` と全パスの pageRule を持つため**追加付与は不要**。
+- `selfRegistration: true` が無いと、Wiki.js に未登録の OIDC ユーザー（`admin` 等）がログインできない。
+
+成功確認:
+
+```sh
+kubectl -n microservices-platform logs deploy/wiki-js --tail=40 | grep "Authentication Strategy Keycloak"
+#   → Authentication Strategy Keycloak: [ OK ]
+curl -s --resolve wiki.localhost:50000:127.0.0.1 -X POST http://wiki.localhost:50000/graphql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{authentication{activeStrategies(enabledOnly:true){key strategy{key} displayName}}}"}' | jq -c '.data'
+curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.1 \
+  http://wiki.localhost:50000/login/7c1f6f2e-9d3a-4b5c-8e10-000000000001   # → 302（Keycloak へ）
+```
+
 ## 注意
 
 - **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL にしていると、コールバックが `wiki.localhost:50000` を

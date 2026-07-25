@@ -262,11 +262,64 @@ if [ "${ESO:-}" = "1" ]; then
   echo "         Vault(secret/msp/...)→ExternalSecret 供給（基盤以外の手動 apply はスキップ済み）。"
   echo "         確認(MSP):   kubectl -n $MSP_NS get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
   echo "         確認(infra): kubectl -n $INFRA_NS get externalsecret,secret $infra_es"
+
+  # IADR-0103 (#354): env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、その後の Secret 更新は
+  # 既存 Pod の env へ反映されない**。ESO が Secret を作る/上書きするのは Pod 起動より後になるため、対象 Pod は
+  # 「空」または「旧値」の env を保持し続ける。実害として MinIO=`unauthorized_client / Invalid client credentials`
+  # （client_secret 空）、Grafana=OIDC client_secret 空、LlmGateway=`API key is invalid`（旧鍵保持）が発生した。
+  # ESO 供給後に対象 Deployment を rollout し直して env を作り直す。
+  # best-effort（未デプロイ・未有効ゲート・同期遅延で `up` を止めない）。
+  echo "    ESO 供給後の rollout（secretKeyRef の env を供給後の値で作り直す）"
+
+  # 1) 先に **SecretSynced を待つ**。待たずに restart すると新 Pod もまだ供給前の Secret を掴んで同じ状態で
+  #    固定され、rollout が無駄打ちになる（ESO の初回同期は helm/apply 直後には完了していない）。
+  #    ExternalSecret の `condition=Ready` が ESO の SecretSynced（status=True・reason=SecretSynced）に対応する。
+  eso_wait() { # ns externalsecret-name [name...]
+    local ns="$1"; shift
+    for es in "$@"; do
+      kubectl -n "$ns" wait --for=condition=Ready "externalsecret/$es" \
+        --timeout="${ESO_SYNC_TIMEOUT:-90s}" >/dev/null 2>&1 \
+        && echo "      synced $ns/$es" \
+        || echo "      warn: $ns/$es が SecretSynced になりません（rollout は継続）"
+    done
+  }
+  eso_wait "$MSP_NS" llm-provider-credentials minio-credentials minio-oidc wikijs-db wikijs-sync
+  infra_sync=""
+  [ "${OBSERVABILITY:-}" = "1" ] && infra_sync="$infra_sync grafana-oidc"
+  [ "${HEADLAMP:-}" = "1" ] && infra_sync="$infra_sync headlamp-oidc"
+  # shellcheck disable=SC2086
+  [ -n "$infra_sync" ] && eso_wait "$INFRA_NS" $infra_sync
+
+  # 2) 供給後の値で env を作り直す。対象＝**ESO 管理 Secret を env(secretKeyRef) で参照する Deployment**。
+  #      minio             : minio-credentials（root）/ minio-oidc（client secret）
+  #      llmgateway-service: llm-provider-credentials（Llm__ApiKey）
+  #      wiki-service      : wikijs-sync（WikiJs__ApiKey）
+  #      wiki-js           : wikijs-db（DB_PASS）
+  #    対象外: postgres / rabbitmq / keycloak-admin は creationPolicy: Merge で seed（step 3）と**同一値**のため
+  #    env は変化せず、再起動は DB/broker を無用に落とすだけ（IADR-0099）。vault-oidc は env 参照が無く
+  #    bootstrap が CLI で読むため rollout 不要。
+  for d in minio llmgateway-service wiki-service wiki-js; do
+    kubectl -n "$MSP_NS" rollout restart "deploy/$d" >/dev/null 2>&1 \
+      && echo "      restarted $MSP_NS/$d" || echo "      skip $MSP_NS/$d（未デプロイ）"
+  done
+  if [ "${OBSERVABILITY:-}" = "1" ]; then
+    kubectl -n "$INFRA_NS" rollout restart deploy/grafana >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/grafana" || echo "      skip $INFRA_NS/grafana（未デプロイ）"
+  fi
+  if [ "${HEADLAMP:-}" = "1" ]; then
+    kubectl -n "$INFRA_NS" rollout restart deploy/headlamp >/dev/null 2>&1 \
+      && echo "      restarted $INFRA_NS/headlamp" || echo "      skip $INFRA_NS/headlamp（未デプロイ）"
+  fi
 fi
 
 if [ "${ARGOCD:-}" = "1" ]; then
   echo "==> [opt-in] ArgoCD bootstrap (手順は deploy/local/argocd/README.md)"
   kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+  # IADR-0103 (#354): argocd namespace に keycloak の ExternalName エイリアスを張る。無いと DNS がノードの
+  # リゾルバへフォールスルーし、手順A の hosts エントリ `127.0.0.1 keycloak` を拾って argocd-server が
+  # **自分自身の :8080** へ discovery を投げ 404 になる（OIDC ログイン不能）。issuer は in-cluster 正準名の
+  # ままにしたいので、エイリアスで名前解決だけを正す（issuer/metadata の分離は不要）。
+  kubectl apply -f deploy/local/aliases/argocd-externalnames.yaml
   # IADR-0077 (#348): ArgoCD 公式 install manifest は巨大な CRD（applicationsets.argoproj.io 等）を含み、
   # client-side apply では manifest 全体が last-applied-configuration annotation に載って 262144 バイト
   # 上限を超過し失敗する（既知問題）。server-side apply は annotation を作らず managed fields で差分管理する

@@ -14,8 +14,8 @@ created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-02 取り込み・埋め込み／FR-03 検索)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0016_embedding-voyage.md (ティアB=Voyage voyage-3.5)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0017_embedding-selfhosted-ruri.md (ティアA=セルフホスト Ruri v3)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0016_embedding-provider-voyage.md (ティアB=Voyage voyage-3.5)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0017_selfhosted-embedding-ruri.md (ティアA=セルフホスト Ruri v3)"
 related_specs:
   - "../adr/IADR-0085_selfhosted-embedding-optin-deploy.md"
   - "../adr/IADR-0025_embedding-provider-routing-and-model-collections.md"

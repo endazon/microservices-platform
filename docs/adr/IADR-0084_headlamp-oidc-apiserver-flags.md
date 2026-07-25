@@ -12,15 +12,65 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_auth-keycloak.md (認証＝Keycloak)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)"
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・セキュリティ)"
 ---
 
 # IADR-0084: k3d クラスタ作成への apiserver OIDC 検証フラグの opt-in 配線
 
-- 状態: Accepted
+- 状態: Accepted（**ただし k8s 1.30+ では本 ADR の手順は成立しない。下記「⚠️ 2026-07-25 追記」を必ず読むこと**）
 - 日付: 2026-07-19
 - 決定者: claude（実装）
+
+## ⚠️ 2026-07-25 追記: k8s 1.30+ では http issuer を拒否するため本手順は適用不能（IADR-0103 / #354 / #388）
+
+本 ADR の 4 フラグをそのまま渡すと、**Kubernetes 1.30 以降では apiserver が起動できず、クラスタが停止する**。
+実測（`k3s v1.35.4+k3s1`・Rancher Desktop 内蔵 k3s）で確認した事実:
+
+```
+invalid authentication configuration:
+  jwt[0].issuer.url: Invalid value: "http://keycloak:8080/realms/microservices-platform":
+  URL scheme must be https
+```
+
+k8s 1.30+ はレガシーな `--oidc-*` フラグを内部で**構造化認証設定（`jwt[0]`）へ変換**し、`issuer.url` に
+**https を強制**する。経路B の issuer は in-cluster 正準名の **http**（`http://keycloak:8080/realms/...`。token の
+`iss` と一致必須）なので、この検証を通せない。scheme の例外や insecure 用の逃げ道は無い。
+
+**したがって現行 k8s では:**
+
+- **Headlamp の正規ログイン手順は SA トークン方式**とする（`headlamp-viewer` SA が cluster-admin に bind 済み）:
+  ```sh
+  kubectl -n platform-infra create token headlamp-viewer --duration=24h
+  ```
+  → `http://headlamp.localhost:50000` を開き Token 方式で貼付。
+- **apiserver への OIDC フラグ付与は行わない**（`HEADLAMP_OIDC_APISERVER` を 1 にしても、k8s 1.30+ では
+  クラスタが起動しなくなる）。
+- OIDC 化は **全経路 HTTPS 化と同時**に行う。追跡は **#388**（issuer を https へ統一し、apiserver に
+  `oidc-ca-file` を含めて再配線する）。
+
+### 併せて判明した実務上の注意（再発防止）
+
+1. **`config.yaml.d` の YAML で末尾コロンを含む値はクォート必須**。未クォートだと YAML が map と解釈し、
+   apiserver が `Error: unknown flag: --[{oidc-groups-prefix` で起動不能になる（＝クラスタ停止）。
+   ```yaml
+   kube-apiserver-arg:
+     - "oidc-username-prefix=oidc:"   # ← クォート必須
+     - "oidc-groups-prefix=oidc:"
+   ```
+2. **apiserver → Keycloak の到達性検証は k3s の netns から行う**。Rancher Desktop では k3s が独自の
+   network namespace で動くため、distro の既定 netns から測ると ClusterIP/Pod IP が到達不可に見え**誤判定する**。
+   ```sh
+   nsenter -t <k3s pid> -n -m -- wget -q -O - http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+   ```
+   到達性そのものは（ノード `/etc/hosts` に `<keycloak ClusterIP> keycloak` を追記すれば）**discovery/JWKS ともに 200**
+   で問題ない。ブロッカーは到達性ではなく上記の https 強制である。
+3. **Rancher Desktop では up-script から apiserver 引数を付与できない**（k3s を作らないため）。付与するには
+   `/etc/rancher/k3s/config.yaml.d/*.yaml` のドロップイン＋k3s 再起動が必要。また `/etc/hosts` は WSL が
+   再生成するため、`[network] generateHosts = false`（`/etc/wsl.conf`）なしでは揮発する。
+
+> 以下の本文は **2026-07-19 時点の決定（k8s 1.29 以前を前提）** としてそのまま残す。現行環境へ適用する際は
+> 上記の制約が優先する。
 
 ## 起点・関連
 

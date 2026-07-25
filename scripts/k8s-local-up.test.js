@@ -551,4 +551,157 @@ ok('up-script: ESO chart 版が pin されている（helm install に --version
   );
 });
 
+// IADR-0103 (#354): ARGOCD=1 は argocd ns へ keycloak の ExternalName エイリアスを apply する。
+// 無いと DNS がノードへフォールスルーし手順A の hosts(127.0.0.1 keycloak) を拾って argocd-server が
+// 自分自身へ discovery を投げ 404 になる（OIDC ログイン不能）。
+ok('ARGOCD=1: argocd ns の keycloak ExternalName エイリアスを apply', () => {
+  const res = runUp({ ARGOCD: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'deploy/local/aliases/argocd-externalnames.yaml'),
+    'argocd 用 keycloak エイリアスが apply されない',
+  );
+  // 既定（ARGOCD 未設定）では出さない（opt-in・byte 等価）。
+  assert.ok(
+    !anyLineHas(DEFAULT.lines, 'argocd-externalnames.yaml'),
+    'ARGOCD 未設定なのに argocd エイリアスを apply した',
+  );
+  // マニフェスト実体も検査（ns=argocd / ExternalName / infra FQDN）。
+  const y = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/aliases/argocd-externalnames.yaml'), 'utf8');
+  assert.ok(/namespace:\s*argocd/.test(y), 'エイリアスの namespace が argocd でない');
+  assert.ok(/type:\s*ExternalName/.test(y), 'ExternalName ではない');
+  assert.ok(/externalName:\s*keycloak\.platform-infra\.svc\.cluster\.local/.test(y), 'infra の FQDN を指していない');
+});
+
+// IADR-0103 (#354): env の secretKeyRef は Pod 起動時に一度だけ解決され、その後の Secret 更新は既存 Pod へ
+// 反映されない。ESO 供給後に **ESO 管理 Secret を env 参照する全 Deployment** を rollout し直して env を
+// 作り直す（MinIO の unauthorized_client / LlmGateway の旧鍵保持 等の実障害対策）。
+ok('ESO=1: 供給後に ESO 管理 secret を参照する Deployment を網羅的に rollout restart する', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  // minio=minio-credentials/minio-oidc, llmgateway-service=llm-provider-credentials,
+  // wiki-service=wikijs-sync, wiki-js=wikijs-db。1 つでも漏れると当該ツールだけ旧値のまま残る。
+  for (const d of ['minio', 'llmgateway-service', 'wiki-service', 'wiki-js']) {
+    assert.ok(
+      res.lines.some((l) => l.includes('rollout restart') && l.includes(`deploy/${d}`)),
+      `ESO=1 なのに ${d} の rollout restart が無い`,
+    );
+  }
+  // 対象外: postgres/rabbitmq/keycloak-admin は creationPolicy: Merge で seed と同一値のため env が変化せず、
+  // 再起動は DB/broker を無用に落とすだけ（IADR-0099）。誤って対象へ加える回帰を止める。
+  for (const d of ['postgres', 'rabbitmq', 'keycloak']) {
+    assert.ok(
+      !res.lines.some((l) => l.includes('rollout restart') && l.includes(`deploy/${d}`)),
+      `Merge 供給の ${d} を rollout してはいけない（DB/broker の無用な再起動）`,
+    );
+  }
+  // ゲート連動: OBSERVABILITY/HEADLAMP 無効なら grafana/headlamp は rollout しない。
+  assert.ok(
+    !res.lines.some((l) => l.includes('rollout restart') && l.includes('deploy/grafana')),
+    'OBSERVABILITY 無効なのに grafana を rollout した',
+  );
+  // 既定（ESO 未設定）では rollout を出さない（byte 等価）。
+  assert.ok(
+    !DEFAULT.lines.some((l) => l.includes('rollout restart') && l.includes('deploy/minio')),
+    'ESO 未設定なのに minio を rollout した',
+  );
+});
+
+// IADR-0103 (#354): rollout の前に SecretSynced（ExternalSecret の condition=Ready）を待つ。待たずに restart
+// すると新 Pod もまだ供給前の Secret を掴んで同じ状態で固定され、rollout が無駄打ちになる。
+ok('ESO=1: rollout の前に ExternalSecret の SecretSynced を待つ', () => {
+  const res = runUp({ VAULT: '1', ESO: '1' });
+  const isWait = (l) => l.includes('wait --for=condition=Ready') && l.includes('externalsecret/');
+  const isRollout = (l) => l.includes('rollout restart') && l.includes('deploy/');
+  for (const es of ['llm-provider-credentials', 'minio-credentials', 'minio-oidc', 'wikijs-db', 'wikijs-sync']) {
+    assert.ok(
+      res.lines.some((l) => isWait(l) && l.includes(`externalsecret/${es}`)),
+      `${es} の SecretSynced 待ちが無い`,
+    );
+  }
+  // 順序: 最後の wait は最初の rollout より前（待ってから作り直す）。
+  const lastWait = res.lines.findLastIndex(isWait);
+  const firstRollout = res.lines.findIndex(isRollout);
+  assert.ok(lastWait >= 0 && firstRollout >= 0, 'wait / rollout のどちらかが出ていない');
+  assert.ok(
+    lastWait < firstRollout,
+    'SecretSynced を待つ前に rollout している（新 Pod も供給前の Secret を掴む）',
+  );
+  // 既定（ESO 未設定）では wait を出さない（byte 等価）。
+  assert.ok(!DEFAULT.lines.some(isWait), 'ESO 未設定なのに externalsecret を wait した');
+});
+
+ok('ESO=1 + OBSERVABILITY/HEADLAMP: grafana/headlamp も同期待ち＋rollout する', () => {
+  const res = runUp({ VAULT: '1', ESO: '1', OBSERVABILITY: '1', HEADLAMP: '1' });
+  for (const d of ['grafana', 'headlamp']) {
+    assert.ok(
+      res.lines.some((l) => l.includes('rollout restart') && l.includes(`deploy/${d}`)),
+      `${d} の rollout restart が無い`,
+    );
+    assert.ok(
+      res.lines.some(
+        (l) => l.includes('wait --for=condition=Ready') && l.includes(`externalsecret/${d}-oidc`),
+      ),
+      `${d}-oidc の SecretSynced 待ちが無い`,
+    );
+  }
+});
+
+// IADR-0103 (#354): Vault OIDC は listing_visibility=unauth が無いと UI のログイン画面に OIDC が現れない
+// （未認証の sys/internal/ui/mounts が auth:{} を返す）。bootstrap に含まれることを固定する。
+ok('vault oidc bootstrap: listing-visibility=unauth を設定する', () => {
+  const sh = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/vault/oidc/bootstrap.sh'), 'utf8');
+  assert.ok(/auth tune[^\n]*-listing-visibility=unauth/.test(sh), 'listing-visibility=unauth の tune が無い');
+  assert.ok(/oidc\//.test(sh), 'tune 対象が oidc/ でない');
+});
+
+// IADR-0103 (#354): realm 側の恒久化（admin ユーザー・ツール別 claim 設計）を固定する。
+ok('realm.json: admin ユーザーとツール別 claim 設計が恒久化されている', () => {
+  const realm = JSON.parse(
+    fs.readFileSync(path.join(REPO_ROOT, 'deploy/keycloak/microservices-platform-realm.json'), 'utf8'),
+  );
+  const admin = (realm.users || []).find((u) => u.username === 'admin');
+  assert.ok(admin, 'realm に admin ユーザーが無い');
+  for (const r of ['platform-admin', 'platform-operator', 'wiki-editor', 'Administrators']) {
+    assert.ok((admin.realmRoles || []).includes(r), `admin に realm ロール ${r} が無い`);
+  }
+  assert.ok(
+    ((admin.clientRoles || {}).minio || []).includes('consoleAdmin'),
+    'admin に minio client ロール consoleAdmin が無い',
+  );
+  // IADR-0103 (#354, claude-review 🟡): policy claim を単一値に保つのは「admin に minio client ロールを 1 つだけ
+  // 付与する」運用制約に依存する（mapper は multivalued=true で複数付与時に多値配列を返す）。逸脱すると対策した
+  // はずの callback 500 が再発するため、要素数 1 を機械検知して運用逸脱をブロックする。
+  assert.strictEqual(
+    ((admin.clientRoles || {}).minio || []).length,
+    1,
+    'admin の minio client ロールは 1 つだけ（複数付与で policy claim が多値化し callback 500 が再発する）',
+  );
+  // MinIO の policy claim は client ロール由来（多値だと MinIO がポリシー解決に失敗し 500）。
+  const minio = realm.clients.find((c) => c.clientId === 'minio');
+  const mm = (minio.protocolMappers || []).find((m) => m.config['claim.name'] === 'policy');
+  assert.ok(mm, 'minio に policy claim の mapper が無い');
+  assert.strictEqual(mm.protocolMapper, 'oidc-usermodel-client-role-mapper', 'minio の policy mapper が client ロール由来でない');
+  assert.strictEqual(mm.config['usermodel.clientRoleMapping.clientId'], 'minio', 'clientRoleMapping が minio でない');
+  assert.ok(
+    !(minio.protocolMappers || []).some((m) => m.protocolMapper === 'oidc-usermodel-realm-role-mapper'),
+    'minio に realm ロール mapper が残っている（policy claim が多値化して 500 になる）',
+  );
+  // Wiki.js / Headlamp は groups claim（Wiki.js は Administrators と名前一致でマップ）。
+  for (const cid of ['wiki-js', 'headlamp']) {
+    const c = realm.clients.find((x) => x.clientId === cid);
+    assert.ok(
+      (c.protocolMappers || []).some((m) => m.config['claim.name'] === 'groups'),
+      `${cid} に groups claim の mapper が無い`,
+    );
+  }
+  // Wiki.js のグループ名に一致させる realm ロール。
+  assert.ok(
+    (realm.roles.realm || []).some((r) => r.name === 'Administrators'),
+    'realm ロール Administrators が無い',
+  );
+  assert.ok(
+    ((realm.roles.client || {}).minio || []).some((r) => r.name === 'consoleAdmin'),
+    'client ロール minio:consoleAdmin が無い',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
