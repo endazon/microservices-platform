@@ -30,6 +30,10 @@ plan_refs:
 
 ## コンテキストと課題
 
+> **［2026-07-26 追記］`HEADLAMP_OIDC_APISERVER` ゲートは [[IADR-0105]]（#399）で除去された。** 本 ADR のテスト方式
+> （bash stub-on-PATH）と他ゲートのカバレッジは有効なまま。当該ゲートを検証していたテストは「どの env でも
+> apiserver 引数・ドロップインを書かない」ことを固定する**回帰テストへ置換**した。
+
 `scripts/k8s-local-up.sh` は複数の opt-in 環境変数ゲート（`HEADLAMP_OIDC_APISERVER`／`PERSIST`／
 `OBSERVABILITY`／`VAULT`／`ARGOCD`／`HEADLAMP`）を持つ。#331 の claude-review は、`HEADLAMP_OIDC_APISERVER`
 の `CREATE_ARGS` 構築ロジックに自動テストが無い点を 🟡 とし、同時に「これは #331 固有の後退ではなく既存の
