@@ -286,88 +286,102 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 > 起点: [IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md) /
 > 作業仕様書 [`docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md`](../../docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md)
-> ／apiserver OIDC 配線: [IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md) /
-> [`docs/specs/20260719_issue-328_headlamp-oidc-apiserver-wiring.md`](../../docs/specs/20260719_issue-328_headlamp-oidc-apiserver-wiring.md)（#328）
+> ／apiserver OIDC 配線の結論（**適用不能**）: [IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md)
+> の「⚠️ 2026-07-25 追記」／本節の根拠: [`docs/specs/20260726_issue-328_headlamp-token-login-docs.md`](../../docs/specs/20260726_issue-328_headlamp-token-login-docs.md)（#328・#388）
 
 [Headlamp](https://headlamp.dev/)（CNCF Sandbox の k8s UI）を **opt-in** で導入し、Pod / Deployment / Service /
-ログ等をブラウザから閲覧・操作できる。ログインは既存 Keycloak（OIDC）で行い、`developer` / `developer` を流用する
-（新たな認証情報を作らない＝アカウントは Keycloak が一元管理）。
+ログ等をブラウザから閲覧・操作できる。
+
+> **ローカル（経路B）のログインは token 方式が正式手順である。**
+> Keycloak OIDC ログインは **k8s の https-issuer 制約により現行では成立しない**。OIDC 化は
+> **#388（全経路 HTTPS 化）と同時にのみ可能**であり、それまでは下記の
+> `kubectl -n platform-infra create token headlamp-viewer` で発行した SA トークンを UI の **Token** 方式に貼る。
+
+### 根本原因（なぜ OIDC ログインができないか）
+
+Kubernetes 1.30 以降は、レガシーな `--oidc-*` フラグを内部で**構造化認証設定（`jwt[0]`）へ変換**し、
+`issuer.url` に **https スキームを強制**する（`URL scheme must be https`。scheme の例外も insecure 用の逃げ道も無い）。
+一方、経路B の Keycloak は [`deploy/local/infra/keycloak.yaml`](infra/keycloak.yaml) の
+`KC_HOSTNAME_URL=http://keycloak:8080` により、realm が発行する token の `iss` が **http に固定**されている
+（サービス間 JWT 検証と一致させるため）。apiserver が受理できる issuer（https）と realm が発行する issuer（http）は
+**両立し得ない**ため、apiserver 側にフラグを足しても OIDC ログインは成立しない。issuer を https へ移すと
+backend（`Auth__Authority`）・ArgoCD・Grafana・MinIO・Vault・Wiki.js の `iss` 検証すべてに波及する＝**#388 の範囲**。
+
+### 🚫 やってはいけないこと（クラスタが起動不能になる）
+
+**`/etc/rancher/k3s/config.yaml.d/99-headlamp-oidc.yaml` のような apiserver OIDC ドロップインを置いて k3s を
+再起動してはならない。** 実測（`k3s v1.35.4+k3s1`・Rancher Desktop 内蔵 k3s）では、kube-apiserver が
+
+```
+Error: invalid authentication configuration: jwt[0].issuer.url:
+  Invalid value: "http://keycloak:8080/realms/microservices-platform": URL scheme must be https
+```
+
+で **19:46:33〜19:47:53 の間に 10 回連続で起動失敗し、クラスタが停止した**（ドロップインを外して再起動するまで
+復旧しない）。過去に検証で作成したファイルが `/root/99-headlamp-oidc.yaml.disabled` として**無効化された状態で
+退避**されている場合、**そのまま無効のまま置いておくこと**（`config.yaml.d/` へ戻さない・リネームしない）。
+
+- **k3d 経路の注意**: `scripts/k8s-local-up.sh` は `HEADLAMP_OIDC_APISERVER` 未設定時に `HEADLAMP` の値へ追従して
+  同じ 4 フラグを `k3d cluster create` へ付与する（[IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md) 決定1）。
+  k8s 1.30+ の k3d では**これがそのまま cluster create の失敗**になるため、**`HEADLAMP_OIDC_APISERVER=0` を必ず併記**する:
+
+  ```bash
+  HEADLAMP=1 HEADLAMP_OIDC_APISERVER=0 bash scripts/k8s-local-up.sh
+  ```
+
+  Rancher Desktop 経路（内蔵 k3s）はスクリプトがクラスタを作らないため、この追従は発生しない（`HEADLAMP=1` のみで可）。
 
 ### 有効化（opt-in・既定オフ）
 
 ```bash
-HEADLAMP=1 bash scripts/k8s-local-up.sh
+HEADLAMP=1 bash scripts/k8s-local-up.sh                        # Rancher Desktop（内蔵 k3s）
+HEADLAMP=1 HEADLAMP_OIDC_APISERVER=0 bash scripts/k8s-local-up.sh   # k3d（上記の注意を参照）
 # → deploy/local/headlamp（ServiceAccount/Deployment/Service/ClusterRoleBinding）を適用。
 #   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
 ```
 
-Headlamp UI へは port-forward で到達する:
+Headlamp UI へは `LOCALEDGE=1` なら `http://headlamp.localhost:50000`、単独なら port-forward で到達する:
 
 ```bash
 kubectl -n platform-infra port-forward svc/headlamp 4466:80   # http://localhost:4466
 ```
 
-### ブラウザ OIDC ログイン（手順A ＋ apiserver OIDC フラグ）
+### ログイン（正式手順・token 方式）
 
-Headlamp はブラウザから OIDC を行うため、issuer 到達性を上記 **手順A** と同じ方法で解く（realm/manifest 無改変）:
-
-1. hosts に `127.0.0.1 keycloak` を追記（既に手順A で追記済みならそのまま）。
-2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
-3. これで browser（Headlamp のリダイレクト先）も cluster も issuer `http://keycloak:8080` を共有する。
-   realm client `headlamp` の redirectUris は `http://localhost:4466/*`（callback = `/oidc-callback`）。
-
-さらに、**Headlamp が委譲する id_token を k8s API server が検証**するには、クラスタを OIDC 用 apiserver フラグ付きで
-(再)作成する必要がある（apiserver 引数は**作成時のみ有効＝既存クラスタには後付けできず再作成**）。
-
-#### k3d（`k8s-local-up.sh` が自動配線・#328 / IADR-0084）
-
-`HEADLAMP=1 bash scripts/k8s-local-up.sh` で**新規**クラスタを作成すると、`k3d cluster create` に以下の apiserver OIDC
-フラグが自動付与される（`HEADLAMP_OIDC_APISERVER` は既定で `HEADLAMP` に追従。既定オフ時の cluster create は現行と
-バイト等価）。手動で組む場合の等価コマンドは:
+UI の認証方式で **Token** を選び、`headlamp-viewer` ServiceAccount の短命トークンを貼る:
 
 ```bash
-k3d cluster create msp-ast-dev --agents 1 \
-  -p "8080:80@loadbalancer" -p "8443:443@loadbalancer" \
-  --k3s-arg "--kube-apiserver-arg=oidc-issuer-url=http://keycloak:8080/realms/microservices-platform@server:0" \
-  --k3s-arg "--kube-apiserver-arg=oidc-client-id=headlamp@server:0" \
-  --k3s-arg "--kube-apiserver-arg=oidc-username-claim=preferred_username@server:0" \
-  --k3s-arg "--kube-apiserver-arg=oidc-username-prefix=oidc:@server:0"
+kubectl -n platform-infra create token headlamp-viewer --duration=24h
 ```
 
-- **既存クラスタを OIDC 付きに切り替える**には、`k3d cluster delete msp-ast-dev` してから `HEADLAMP=1 bash
-  scripts/k8s-local-up.sh` で作り直す（フラグは後付け不可。スクリプトは reuse 時に再作成を促す WARN を出す）。
-- 上書き env: `HEADLAMP_OIDC_ISSUER_URL` / `HEADLAMP_OIDC_CLIENT_ID`（既定は上記）。`HEADLAMP_OIDC_APISERVER=0` で
-  `HEADLAMP=1` でもフラグを付けない（既存クラスタ再利用時の escape-hatch）。
+`headlamp-viewer` は**現時点で overlay に含まれていない**（従来 live クラスタへ手作りしてきた）。`NotFound` になる
+場合は先に作る:
 
-#### Rancher Desktop（内蔵 k3s）
-
-`k8s-local-up.sh` は Rancher の k8s を**作成しない**（既存 context を使う）ため、apiserver フラグはスクリプトからは
-付与できない。内蔵 k3s へ同じ 4 引数を与えるには、Rancher Desktop の **override 設定**（`~/.config/rancher-desktop/`
-配下の `k8s.override.yaml`。UI では Preferences → Kubernetes の追加引数）に k3s の `kube-apiserver-arg` として設定して
-から Kubernetes を再起動する。値は上記 k3d の 4 フラグと同一（`@server:0` は不要）:
-
-```yaml
-# Rancher Desktop override（例）: k3s に apiserver OIDC 引数を与える
-k3s:
-  additionalArgs:
-    - --kube-apiserver-arg=oidc-issuer-url=http://keycloak:8080/realms/microservices-platform
-    - --kube-apiserver-arg=oidc-client-id=headlamp
-    - --kube-apiserver-arg=oidc-username-claim=preferred_username
-    - --kube-apiserver-arg=oidc-username-prefix=oidc:
+```bash
+kubectl -n platform-infra create serviceaccount headlamp-viewer
+kubectl create clusterrolebinding headlamp-viewer \
+  --clusterrole=cluster-admin --serviceaccount=platform-infra:headlamp-viewer
 ```
 
-> Rancher の override キー名は版により差があるため、`rdctl` / Preferences の「追加の k3s 引数」欄も参照する。要点は
-> apiserver へ上記 4 引数を渡すこと。
+fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域権限を bind していないため、トークンを
+貼らない限りクラスタは可視化できない（[IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md)）。
+`headlamp-viewer` は Pod に割り当てず、トークンは Secret として常駐しない都度発行の短命トークンである。
 
-いずれの経路でも、これにより Keycloak の `preferred_username=developer` は k8s ユーザー `oidc:developer` にマップされ、
-同梱の ClusterRoleBinding（`headlamp-developer-cluster-admin` → `cluster-admin`）でリソースの閲覧・操作ができる。
-`developer` は dev スーパーユーザー（IADR-0066）で、ロール別の権限分離検証には使わない（`poc-*` の役割）。
+### #388 で OIDC 化するときにそのまま効く資産（現状は inert・無害）
 
-> **実ブラウザでの OIDC 実ログイン・リソース閲覧疎通は稼働 k3d/k3s 依存＝live**（#271 の live 受け入れ・#328）。
-> 手順: (1) 上記のとおり OIDC フラグ付きでクラスタを (再)作成 → (2) `HEADLAMP=1 bash scripts/k8s-local-up.sh` →
-> (3) 手順A（hosts＋`port-forward svc/keycloak 8080:8080`）＋`port-forward svc/headlamp 4466:80` → (4) ブラウザで
-> `http://localhost:4466` を開き `developer` / `developer` でログイン → Pod/Deployment/Service/ログが閲覧できること。
-> fail-safe: Headlamp の ServiceAccount には広域権限を bind していないため、OIDC ログイン無しではクラスタを可視化できない。
+以下は**すでに恒久化済み**で、#388 で apiserver が OIDC を受理できるようになった時点で**そのまま機能する**。
+現行では `oidc:` 接頭辞の identity が生成されないため単に無効（inert）であり、放置して害はない。
+
+- realm client `headlamp` の claim mapper **`headlamp-realm-roles`**（realm ロールを `groups` クレームへ発行）＝
+  [`deploy/keycloak/microservices-platform-realm.json`](../keycloak/microservices-platform-realm.json)（#389 /
+  [IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md)）。
+- ClusterRoleBinding **`headlamp-developer-cluster-admin`**（User `oidc:developer` → `cluster-admin`）＝
+  [`deploy/local/headlamp/headlamp.yaml`](headlamp/headlamp.yaml)（#271 / IADR-0080）。
+- realm client `headlamp` の redirectUris（`http://localhost:4466/*` ＋ 集約後 `http://headlamp.localhost:50000/*`・#377）。
+
+> **#388 完了後の live 受け入れ**（#271 / #328 の当初要求）: issuer を https へ統一し、apiserver に `oidc-ca-file` を
+> 含めて再配線したうえで、ブラウザから `admin` でログインし Pod/Deployment/Service/ログが閲覧できること。
+> `developer` は dev スーパーユーザー（IADR-0066）で、ロール別の権限分離検証には使わない（`poc-*` の役割）。
 
 ## 既知の制約
 
