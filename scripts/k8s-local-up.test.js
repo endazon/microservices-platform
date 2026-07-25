@@ -38,7 +38,7 @@ const OPTIN_TOKENS = [
   'namespace argocd', //               ARGOCD (namespace)
   'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
   'oidc.keycloak.clientSecret', //     ARGOCD OIDC (secret patch, IADR-0092)
-  'kube-apiserver-arg=oidc', //        HEADLAMP_OIDC_APISERVER
+  'kube-apiserver-arg', //             apiserver 引数（IADR-0105 で除去済み・どのゲートでも書かない）
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
@@ -49,12 +49,13 @@ const OPTIN_TOKENS = [
 
 // 記録スタブ本体。全呼び出しの argv を STUB_LOG へ 1 行追記し exit 0 を返す。ただし:
 //   - `k3d cluster list ...`               → exit 1（クラスタ未作成 ＝ cluster create 経路へ）。
+//     STUB_CLUSTER_EXISTS=1 で exit 0（既存クラスタ ＝ reuse 経路へ・IADR-0105 の回帰固定で使う）。
 //   - `kubectl get crd clustersecretstores.*` → exit 0（CRD 有 ＝ VAULT は deploy/local/vault を apply）。
 // いずれも副作用は持たない（apply/build/import は記録のみ）。
 const K3D_STUB = [
   '#!/usr/bin/env bash',
   'echo "k3d $*" >> "$STUB_LOG"',
-  'if [ "${1:-}" = "cluster" ] && [ "${2:-}" = "list" ]; then exit 1; fi',
+  'if [ "${1:-}" = "cluster" ] && [ "${2:-}" = "list" ] && [ "${STUB_CLUSTER_EXISTS:-}" != "1" ]; then exit 1; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -191,47 +192,67 @@ ok('既定: llm-provider-credentials が手動 apply される（ESO 未設定�
   );
 });
 
-// HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグが cluster create に付与される（IADR-0084）。
-ok('HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグ付与', () => {
-  const line = clusterCreateLine(runUp({ HEADLAMP_OIDC_APISERVER: '1' }).lines);
-  assert.ok(line, 'cluster create 行が無い');
-  for (const flag of [
-    'kube-apiserver-arg=oidc-issuer-url=http://keycloak:8080/realms/microservices-platform@server:0',
-    'kube-apiserver-arg=oidc-client-id=headlamp@server:0',
-    'kube-apiserver-arg=oidc-username-claim=preferred_username@server:0',
-    'kube-apiserver-arg=oidc-username-prefix=oidc:@server:0',
-  ]) {
-    assert.ok(line.includes(flag), `OIDC フラグ欠落: ${flag}`);
+// --- apiserver OIDC フラグ不付与の回帰固定（IADR-0105 / #399） -----------------
+// k8s 1.30+ は --oidc-* を jwt[0] へ変換し issuer.url に https を強制するため、経路B の http issuer
+// （KC_HOSTNAME_URL=http://keycloak:8080）でフラグを付けると apiserver が起動できずクラスタが停止する。
+// #328 由来の HEADLAMP_OIDC_APISERVER 分岐（HEADLAMP 追従）は除去済み。以下はその再発防止で、
+// **どの env の組み合わせでも apiserver 引数を書かない**ことを固定する。
+const APISERVER_OIDC_TOKENS = [
+  'kube-apiserver-arg', // apiserver 引数そのもの（oidc 以外も含めて書かない）
+  '--k3s-arg', // k3s へのパススルー引数（現状 cluster create では一切使わない）
+  'oidc-issuer-url',
+  'oidc-client-id',
+  'oidc-username-claim',
+  'oidc-username-prefix',
+  '99-headlamp-oidc', // config.yaml.d ドロップイン（スクリプトは生成も配置もしない）
+];
+const assertNoApiserverOidc = (lines, ctx) => {
+  for (const tok of APISERVER_OIDC_TOKENS) {
+    assert.ok(!anyLineHas(lines, tok), `${ctx}: apiserver OIDC の痕跡 "${tok}" が現れた`);
   }
-  // 各フラグは --k3s-arg とペアで渡る（4 ペア）。
-  assert.strictEqual((line.match(/--k3s-arg /g) || []).length, 4, '--k3s-arg が 4 個でない');
-});
+};
 
-// HEADLAMP=1 追従: HEADLAMP_OIDC_APISERVER 未設定でも HEADLAMP=1 で 4 フラグが付く。
-ok('HEADLAMP=1 追従: apiserver OIDC フラグ付与', () => {
-  const line = clusterCreateLine(runUp({ HEADLAMP: '1' }).lines);
-  assert.ok(line && line.includes('kube-apiserver-arg=oidc-issuer-url='), 'HEADLAMP 追従で OIDC 付与されず');
-});
-
-// escape-hatch: HEADLAMP=1 でも HEADLAMP_OIDC_APISERVER=0 なら OIDC フラグは付かない
-// （cluster create はバイト等価）。一方 HEADLAMP overlay は適用される（両ゲートは独立）。
-ok('escape-hatch: HEADLAMP=1 & HEADLAMP_OIDC_APISERVER=0 は OIDC 不付与・overlay は適用', () => {
-  const res = runUp({ HEADLAMP: '1', HEADLAMP_OIDC_APISERVER: '0' });
-  assert.strictEqual(clusterCreateLine(res.lines), EXPECTED_DEFAULT_CREATE, 'OIDC=0 で create がバイト等価でない');
+// HEADLAMP=1（通常の立ち上げ）: Headlamp overlay は適用するが apiserver には一切触れない。
+// cluster create 引数は既定とバイト等価（＝クラスタ起動不能のトラップが無い）。
+ok('HEADLAMP=1: apiserver OIDC フラグを付けず cluster create は既定とバイト等価', () => {
+  const res = runUp({ HEADLAMP: '1' });
+  assert.strictEqual(res.status, 0, `HEADLAMP=1 が非0終了: ${res.stderr}`);
+  assert.strictEqual(clusterCreateLine(res.lines), EXPECTED_DEFAULT_CREATE, 'HEADLAMP=1 で create がバイト等価でない');
+  assertNoApiserverOidc(res.lines, 'HEADLAMP=1');
   assert.ok(anyLineHas(res.lines, 'deploy/local/headlamp'), 'HEADLAMP overlay が適用されていない');
+  assert.ok(anyLineHas(res.lines, 'headlamp-oidc'), 'headlamp-oidc secret が作られない（Headlamp 自身の OIDC は不変）');
 });
 
-// issuer/client override: env で issuer/client を差し替えると引数に反映される。
-ok('override: HEADLAMP_OIDC_ISSUER_URL / CLIENT_ID が引数へ反映', () => {
-  const line = clusterCreateLine(
-    runUp({
-      HEADLAMP_OIDC_APISERVER: '1',
-      HEADLAMP_OIDC_ISSUER_URL: 'https://kc.example.test/realms/foo',
-      HEADLAMP_OIDC_CLIENT_ID: 'myclient',
-    }).lines,
-  );
-  assert.ok(line.includes('oidc-issuer-url=https://kc.example.test/realms/foo@server:0'), 'issuer override 未反映');
-  assert.ok(line.includes('oidc-client-id=myclient@server:0'), 'client override 未反映');
+// 除去済み env の no-op 化: 旧 HEADLAMP_OIDC_APISERVER=1 を明示しても何も起きない
+// （知らずに残った実行環境の env / 古い手順書をなぞっても壊れない）。
+ok('除去済み: HEADLAMP_OIDC_APISERVER=1 を明示しても no-op', () => {
+  const res = runUp({ HEADLAMP_OIDC_APISERVER: '1' });
+  assert.strictEqual(res.status, 0, `HEADLAMP_OIDC_APISERVER=1 が非0終了: ${res.stderr}`);
+  assert.strictEqual(clusterCreateLine(res.lines), EXPECTED_DEFAULT_CREATE, '除去済み env で create が変化した');
+  assertNoApiserverOidc(res.lines, 'HEADLAMP_OIDC_APISERVER=1');
+});
+
+// 旧 override env（issuer/client）も同様に no-op（値が引数へ漏れない）。
+ok('除去済み: HEADLAMP_OIDC_ISSUER_URL / CLIENT_ID は引数へ影響しない', () => {
+  const res = runUp({
+    HEADLAMP: '1',
+    HEADLAMP_OIDC_APISERVER: '1',
+    HEADLAMP_OIDC_ISSUER_URL: 'https://kc.example.test/realms/foo',
+    HEADLAMP_OIDC_CLIENT_ID: 'myclient',
+  });
+  assert.strictEqual(clusterCreateLine(res.lines), EXPECTED_DEFAULT_CREATE, 'override env で create が変化した');
+  assert.ok(!anyLineHas(res.lines, 'kc.example.test'), 'issuer override が引数へ漏れた');
+  assert.ok(!anyLineHas(res.lines, 'myclient'), 'client override が引数へ漏れた');
+});
+
+// 既存クラスタ reuse 時（k3d cluster list ヒット）も同様: 後付け不可の WARN ごと除去済みで、
+// reuse メッセージ以外に apiserver 由来の出力・引数が出ない。
+ok('HEADLAMP=1 × 既存クラスタ reuse: 再作成 WARN も apiserver 引数も出ない', () => {
+  const res = runUp({ HEADLAMP: '1', STUB_CLUSTER_EXISTS: '1' });
+  assert.strictEqual(res.status, 0, `reuse 経路が非0終了: ${res.stderr}`);
+  assert.strictEqual(clusterCreateLine(res.lines), null, 'reuse なのに cluster create が呼ばれた');
+  assertNoApiserverOidc(res.lines, 'reuse');
+  assert.ok(!/OIDC/.test(res.stderr), `reuse で OIDC の WARN が出た: ${res.stderr}`);
 });
 
 // PERSIST=1: 永続化オーバーレイ（deploy/local/infra-persistence）へ切替（IADR-0082）。

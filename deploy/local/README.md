@@ -321,21 +321,16 @@ Error: invalid authentication configuration: jwt[0].issuer.url:
 復旧しない）。過去に検証で作成したファイルが `/root/99-headlamp-oidc.yaml.disabled` として**無効化された状態で
 退避**されている場合、**そのまま無効のまま置いておくこと**（`config.yaml.d/` へ戻さない・リネームしない）。
 
-- **k3d 経路の注意**: `scripts/k8s-local-up.sh` は `HEADLAMP_OIDC_APISERVER` 未設定時に `HEADLAMP` の値へ追従して
-  同じ 4 フラグを `k3d cluster create` へ付与する（[IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md) 決定1）。
-  k8s 1.30+ の k3d では**これがそのまま cluster create の失敗**になるため、**`HEADLAMP_OIDC_APISERVER=0` を必ず併記**する:
-
-  ```bash
-  HEADLAMP=1 HEADLAMP_OIDC_APISERVER=0 bash scripts/k8s-local-up.sh
-  ```
-
-  Rancher Desktop 経路（内蔵 k3s）はスクリプトがクラスタを作らないため、この追従は発生しない（`HEADLAMP=1` のみで可）。
+- **k3d 経路（対処済み）**: かつて `scripts/k8s-local-up.sh` は `HEADLAMP_OIDC_APISERVER` 未設定時に `HEADLAMP` の値へ
+  追従して同じ 4 フラグを `k3d cluster create` へ付与しており、`HEADLAMP=1` だけで上記の起動失敗を踏んだ。
+  この経路は [IADR-0105](../../docs/adr/IADR-0105_remove-apiserver-oidc-flag-wiring.md)（#399）で**除去済み**で、
+  現在は `HEADLAMP=1` のみで安全に実行できる（回避用の `HEADLAMP_OIDC_APISERVER=0` の併記は**不要**。
+  指定しても no-op）。Rancher Desktop 経路（内蔵 k3s）はスクリプトがクラスタを作らないため元々対象外。
 
 ### 有効化（opt-in・既定オフ）
 
 ```bash
-HEADLAMP=1 bash scripts/k8s-local-up.sh                        # Rancher Desktop（内蔵 k3s）
-HEADLAMP=1 HEADLAMP_OIDC_APISERVER=0 bash scripts/k8s-local-up.sh   # k3d（上記の注意を参照）
+HEADLAMP=1 bash scripts/k8s-local-up.sh   # Rancher Desktop（内蔵 k3s）・k3d 共通
 # → deploy/local/headlamp（ServiceAccount/Deployment/Service/ClusterRoleBinding）を適用。
 #   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
 ```
