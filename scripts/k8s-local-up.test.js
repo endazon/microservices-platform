@@ -227,9 +227,9 @@ ok('IADR-0104: HEADLAMP_OIDC_APISERVER=1 は https 強制の警告を stderr へ
   assert.ok(res.stderr.includes('headlamp-viewer'), '代替手順（SA トークン）の案内が stderr に無い');
 });
 
-// escape-hatch: HEADLAMP=1 でも HEADLAMP_OIDC_APISERVER=0 なら OIDC フラグは付かない
-// （cluster create はバイト等価）。一方 HEADLAMP overlay は適用される（両ゲートは独立）。
-ok('escape-hatch: HEADLAMP=1 & HEADLAMP_OIDC_APISERVER=0 は OIDC 不付与・overlay は適用', () => {
+// IADR-0104 で追従を廃止したため「0 を書く」escape-hatch は既定動作に含まれるが、明示的に 0 を書いた
+// 場合も（=`1` 以外の値で誤って有効化されないことも）固定しておく。overlay は独立に適用される。
+ok('HEADLAMP=1 & HEADLAMP_OIDC_APISERVER=0: OIDC 不付与（create はバイト等価）・overlay は適用', () => {
   const res = runUp({ HEADLAMP: '1', HEADLAMP_OIDC_APISERVER: '0' });
   assert.strictEqual(clusterCreateLine(res.lines), EXPECTED_DEFAULT_CREATE, 'OIDC=0 で create がバイト等価でない');
   assert.ok(anyLineHas(res.lines, 'deploy/local/headlamp'), 'HEADLAMP overlay が適用されていない');

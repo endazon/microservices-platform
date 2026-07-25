@@ -1,7 +1,7 @@
 ---
 title: k8s-local-up.sh の k3d クラスタ作成に apiserver OIDC 検証フラグを opt-in で配線（Headlamp live 疎通の恒久化）（Issue #328）
 type: spec
-status: done
+status: superseded
 related_ids:
   - NFR
   - ADR-0004
@@ -9,10 +9,13 @@ related_ids:
   - IADR-0076
   - IADR-0080
   - IADR-0084
+  - IADR-0104
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-26
 related_specs:
+  - "../adr/IADR-0104_headlamp-apiserver-oidc-blocked-on-http-issuer.md"
+  - "../specs/20260726_issue-328_headlamp-apiserver-oidc-blocked.md"
   - "../adr/IADR-0084_headlamp-oidc-apiserver-flags.md"
   - "../adr/IADR-0080_headlamp-k8s-management-ui.md"
   - "../adr/IADR-0066_local-k8s-dev-environment.md"
@@ -22,6 +25,15 @@ related_specs:
 ---
 
 # 仕様書: k3d クラスタ作成への apiserver OIDC 検証フラグ opt-in 配線（Issue #328）
+
+> **⚠️ 2026-07-26: 本仕様書は superseded。ここに書かれた手順を適用してはならない。**
+> k8s 1.30+ は OIDC issuer に **https を強制**する一方、経路B の issuer は `KC_HOSTNAME_URL` により
+> **http 固定**であり、両立し得ない。apiserver に OIDC フラグを付けると **apiserver が起動できず
+> クラスタが停止する**（実測: `k3s v1.35.4`）。決定は
+> [IADR-0104](../adr/IADR-0104_headlamp-apiserver-oidc-blocked-on-http-issuer.md)、後継の作業仕様書は
+> [`20260726_issue-328_headlamp-apiserver-oidc-blocked.md`](20260726_issue-328_headlamp-apiserver-oidc-blocked.md)。
+> 現行の正規ログイン手順は **SA トークン方式**、OIDC 化の再開は **#388**（全経路 HTTPS 化）。
+> 以下の本文は 2026-07-19 時点の記録としてそのまま残す。
 
 ## 起点となる計画書（トレーサビリティ）
 
