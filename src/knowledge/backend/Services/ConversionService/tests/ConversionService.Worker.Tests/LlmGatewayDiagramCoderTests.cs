@@ -54,6 +54,24 @@ public class LlmGatewayDiagramCoderTests
         result.Reason.Should().Contain("egress-denied");
     }
 
+    // T-16, IADR-0104 (#379): モデルが拒否（stopReason="refusal"）した場合も画像として保持するが、
+    // 理由は「コード化不能」ではなく拒否として記録する。拒否は sent=true・本文空で返るため、
+    // sent とフェンスの有無だけを見ると「図をコード化できなかった」と誤って記録される。
+    [Fact]
+    public async Task Retains_with_refusal_reason_when_model_refuses()
+    {
+        var coder = Coder(new CompletionApiResponse(
+            Text: "", Model: "claude-haiku-4-5", InputTokens: 1, OutputTokens: 0,
+            Sent: true, Endpoint: "claude-managed", RoutingReason: "ok",
+            StopReason: CompletionStopReasons.Refusal));
+
+        var result = await coder.CodeAsync(Figure(), "internal");
+
+        result.Coded.Should().BeFalse();          // 画像保持（fail-safe は不変）
+        result.Reason.Should().Be("llm-refused");
+        result.Reason.Should().NotBe("not-codeable");
+    }
+
     // コード化不能（「不可」等、フェンスなし）なら画像として保持する。
     [Fact]
     public async Task Retains_when_not_codeable()

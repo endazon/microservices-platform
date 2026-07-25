@@ -56,6 +56,16 @@ public partial class LlmGatewayDiagramCoder(
             return DiagramCodingResult.Retain($"egress-denied:{result.RoutingReason}");
         }
 
+        // FR-11, IADR-0104 (#379): 送信は成立したがモデルが拒否した場合（stopReason="refusal"）。
+        // 本文は空で返るためフェンス無しとなり、区別しないと「コード化不能」として記録され原因を見失う。
+        // 画像保持へ収束させる点（deny-by-default）は不変で、理由だけを正しく残す。
+        if (CompletionStopReasons.IsRefusal(result.StopReason))
+        {
+            logger.LogWarning("Diagram {FigureId} was refused by the model (stop_reason=refusal); retaining as image",
+                figure.FigureId);
+            return DiagramCodingResult.Retain("llm-refused");
+        }
+
         var match = FencedCodeBlock().Match(result.Text ?? string.Empty);
         if (!match.Success)
         {
