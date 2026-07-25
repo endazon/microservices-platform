@@ -42,9 +42,10 @@ live 操作**だった。原因は個別の設定漏れではなく、次の 4 �
 2. **MinIO の `policy` claim が多値**: realm ロールをそのまま流していたため
    `["consoleAdmin","wiki-editor","offline_access",...]` となり、MinIO が存在しないポリシー名を解決できず
    **callback で 500**。
-3. **ESO が Secret を作るのは Pod 起動より後**: `optional: true` の `secretKeyRef` は env が空のまま固定される
-   （Secret 更新は既存 Pod へ反映されない）。MinIO=`unauthorized_client`、Grafana=client_secret 空、
-   LlmGateway=`API key is invalid` が同時発生した。
+3. **ESO が Secret を作るのは Pod 起動より後**: env の `secretKeyRef` は **Pod 起動時に一度だけ解決され、
+   その後の Secret 更新は既存 Pod へ反映されない**。そのため対象 Pod は「空」（`optional: true` 参照＝MinIO /
+   Grafana）または「旧値」（既存 Secret を ESO が上書き＝LlmGateway）の env を保持し続ける。実害として
+   MinIO=`unauthorized_client`、Grafana=client_secret 空、LlmGateway=`API key is invalid` が同時発生した。
 4. **`argocd` namespace に `keycloak` エイリアスが無い**: DNS がクラスタ内で解決できずノードのリゾルバへ
    フォールスルーし、手順A のために hosts へ入れた `127.0.0.1 keycloak` を拾って **argocd-server が自分自身の
    :8080 へ discovery を投げ 404**（`failed to query provider ...: 404`）。
@@ -88,10 +89,32 @@ ArgoCD=role:admin / Vault=admin policy / Wiki.js=Administrators / MinIO=consoleA
 空間が「権限の抽象」ではなく「ツールの実装語彙」に寄る。dev 環境の SSO 疎通を最小手数で成立させることを優先し、
 ツール側設定（MinIO のポリシー作成・Wiki.js のグループ追加）を触らない方を選んだ。
 
-### 3. ESO 供給後に対象 Deployment を rollout する
+### 3. ESO 供給後に SecretSynced を待ってから対象 Deployment を rollout する
 
-`ESO=1` ブロックの末尾で `minio` / `llmgateway-service`（＋ゲート有効時に `grafana` / `headlamp`）を
-`rollout restart` する。**best-effort**（未デプロイ・未有効ゲートで `up` を止めない）。
+`ESO=1` ブロックの末尾で、**ESO 管理 Secret を env(`secretKeyRef`) で参照する Deployment を網羅的に**
+`rollout restart` する。対象と参照する Secret は次の通り。
+
+| ns | Deployment | 参照する ESO 管理 Secret |
+| --- | --- | --- |
+| `microservices-platform` | `minio` | `minio-credentials`（root）/ `minio-oidc`（client secret） |
+| `microservices-platform` | `llmgateway-service` | `llm-provider-credentials`（`Llm__ApiKey`） |
+| `microservices-platform` | `wiki-service` | `wikijs-sync`（`WikiJs__ApiKey`） |
+| `microservices-platform` | `wiki-js` | `wikijs-db`（`DB_PASS`） |
+| `platform-infra` | `grafana`（`OBSERVABILITY=1` 時） | `grafana-oidc` |
+| `platform-infra` | `headlamp`（`HEADLAMP=1` 時） | `headlamp-oidc` |
+
+**対象外**: `postgres` / `rabbitmq` / `keycloak-admin` は `creationPolicy: Merge` で seed（step 3）と**同一値**を
+マージするだけなので env は変化せず、再起動は DB/broker を無用に落とすだけである（[[IADR-0099]]）。
+`vault-oidc` は env 参照が無く、`bootstrap.sh` が CLI で読むため rollout 不要。
+
+**rollout の前に `SecretSynced` を待つ**: ExternalSecret の `condition=Ready`（ESO の
+`status=True` / `reason=SecretSynced`）を `kubectl wait` で待機してから restart する。待たずに restart すると
+**新 Pod もまだ供給前の Secret を掴んで同じ状態で固定され、rollout が無駄打ちになる**（ESO の初回同期は
+`kubectl apply` 直後には完了していない）。待機時間は `ESO_SYNC_TIMEOUT`（既定 `90s`）で上書きできる。
+
+待機・rollout とも **best-effort**（未デプロイ・未有効ゲート・同期遅延で `up` を止めない）。同期しなかった
+場合は `warn:` を出して rollout へ進む（`up` 全体を落とすより、残りの手順を進めて runbook で復旧する方が
+dev の再構築では速い）。
 
 secret を Pod 起動前に作る順序へ組み替える案は、Vault 自体が後段で起動する（chicken-and-egg）ため採らない。
 「供給後に env を作り直す」方が構造が単純で、ESO の refresh でも同じ問題が起きうるため rollout が本質的な解になる。

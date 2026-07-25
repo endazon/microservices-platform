@@ -35,7 +35,7 @@ related_specs:
 | --- | --- | --- |
 | 1 | 各ツールで管理者ログインできない | realm に**管理者ユーザーが不在**（`developer`/`poc-*` のみ） |
 | 2 | MinIO の callback が **500** | `policy` claim が realm ロール多値 → 存在しないポリシー名を解決できない |
-| 3 | MinIO `unauthorized_client` / Grafana client_secret 空 / LlmGateway `API key is invalid` | **ESO が Secret を作るのは Pod 起動より後**。`optional` secretKeyRef の env は空のまま固定 |
+| 3 | MinIO `unauthorized_client` / Grafana client_secret 空 / LlmGateway `API key is invalid` | **ESO が Secret を作るのは Pod 起動より後**。env の `secretKeyRef` は起動時に一度だけ解決されるため、env が「空」（`optional` 参照）または「旧値」（ESO が既存 Secret を上書き）のまま固定 |
 | 4 | ArgoCD `failed to query provider ...: 404` | `argocd` ns に `keycloak` エイリアスが無く、DNS がノードへフォールスルーして手順A の hosts `127.0.0.1 keycloak` を拾い、**自分自身へ discovery** |
 | 5 | Vault UI に OIDC が出ない | `auth/oidc` の `listing_visibility` が既定 hidden |
 
@@ -47,9 +47,9 @@ related_specs:
 | --- | --- |
 | `deploy/keycloak/microservices-platform-realm.json` | `admin` ユーザー追加（roles: `platform-admin`/`platform-operator`/`wiki-editor`/`Administrators`、clientRoles: `minio:consoleAdmin`、groups: `/clearance/restricted`・`/department/engineering`、dev パスワード）／realm ロール `Administrators` 追加／**client ロール `minio:consoleAdmin`** 追加／`minio` の mapper を `minio-realm-roles`（realm ロール多値）→ **`minio-client-roles`**（`oidc-usermodel-client-role-mapper`）へ差し替え／`wiki-js`・`headlamp` に `groups` claim mapper 追加 |
 | `deploy/local/aliases/argocd-externalnames.yaml`（新規） | `argocd` ns の `keycloak` ExternalName |
-| `scripts/k8s-local-up.sh` | `ARGOCD=1`: 上記エイリアスを apply／`ESO=1` 末尾: `minio`・`llmgateway-service`（＋ゲート有効時 `grafana`・`headlamp`）を **best-effort rollout** |
+| `scripts/k8s-local-up.sh` | `ARGOCD=1`: 上記エイリアスを apply（＋既存の `argocd-server` rollout で反映）／`ESO=1` 末尾: 対象 ExternalSecret の **`SecretSynced`（`condition=Ready`）を待ってから**、ESO 管理 Secret を env 参照する `minio`・`llmgateway-service`・`wiki-service`・`wiki-js`（＋ゲート有効時 `grafana`・`headlamp`）を **best-effort rollout**。`postgres`/`rabbitmq`/`keycloak-admin` は Merge で同一値のため**対象外** |
 | `deploy/local/vault/oidc/bootstrap.sh` | `vault auth tune -listing-visibility=unauth -description="Keycloak SSO (OIDC)" oidc/` を追加 |
-| `scripts/k8s-local-up.test.js` | 回帰 3 件（下記） |
+| `scripts/k8s-local-up.test.js` | 回帰 6 件（下記） |
 
 ### ドキュメント
 
@@ -76,7 +76,9 @@ related_specs:
 - [x] `minio` の mapper が `oidc-usermodel-client-role-mapper`（claim `policy`）で、旧 realm ロール mapper が無い
 - [x] `wiki-js`・`headlamp` に claim `groups` の mapper がある
 - [x] `ARGOCD=1` で `argocd-externalnames.yaml` が apply される（回帰テスト）
-- [x] `ESO=1` で `minio`/`llmgateway-service` の rollout が発行される。**既定（ESO 未設定）では発行されない**（回帰テスト）
+- [x] `ESO=1` で `minio`/`llmgateway-service`/`wiki-service`/`wiki-js` の rollout が発行される。**既定（ESO 未設定）では発行されない**（回帰テスト）
+- [x] `ESO=1` で `postgres`/`rabbitmq`/`keycloak` は rollout されない（Merge 供給＝同一値。DB/broker の無用な再起動を防ぐ・回帰テスト）
+- [x] `ESO=1` で rollout の**前に** ExternalSecret の `SecretSynced`（`condition=Ready`）待ちが発行される（順序を回帰テストで固定）
 - [x] `oidc/bootstrap.sh` に `listing-visibility=unauth` がある（回帰テスト）
 - [x] `node scripts/k8s-local-up.test.js` / `scripts/scripts.test.js` / `check-doc-links.js` が green
 - [x] 本番 chart・compose・realm の既存ユーザー定義は無改変（`git diff` で確認）
