@@ -207,10 +207,24 @@ ok('HEADLAMP_OIDC_APISERVER=1: apiserver OIDC 4 フラグ付与', () => {
   assert.strictEqual((line.match(/--k3s-arg /g) || []).length, 4, '--k3s-arg が 4 個でない');
 });
 
-// HEADLAMP=1 追従: HEADLAMP_OIDC_APISERVER 未設定でも HEADLAMP=1 で 4 フラグが付く。
-ok('HEADLAMP=1 追従: apiserver OIDC フラグ付与', () => {
-  const line = clusterCreateLine(runUp({ HEADLAMP: '1' }).lines);
-  assert.ok(line && line.includes('kube-apiserver-arg=oidc-issuer-url='), 'HEADLAMP 追従で OIDC 付与されず');
+// IADR-0104 (#328): HEADLAMP 追従の**廃止**を固定する。k8s 1.30+ は OIDC issuer に https を強制するため、
+// 経路B の http issuer でフラグを付けると apiserver が起動できず cluster create ごと失敗する。
+// `HEADLAMP=1` だけでは付与せず（create はバイト等価）、overlay の適用だけを行う。
+ok('IADR-0104: HEADLAMP=1 単独では apiserver OIDC を付与しない（create はバイト等価）', () => {
+  const res = runUp({ HEADLAMP: '1' });
+  assert.strictEqual(
+    clusterCreateLine(res.lines),
+    EXPECTED_DEFAULT_CREATE,
+    'HEADLAMP=1 で cluster create がバイト等価でない（OIDC 追従が残っている）',
+  );
+  assert.ok(anyLineHas(res.lines, 'deploy/local/headlamp'), 'HEADLAMP overlay が適用されていない');
+});
+
+// IADR-0104: 明示 opt-in（HEADLAMP_OIDC_APISERVER=1）時は、現行 k8s で起動不能になる旨を stderr で警告する。
+ok('IADR-0104: HEADLAMP_OIDC_APISERVER=1 は https 強制の警告を stderr へ出す', () => {
+  const res = runUp({ HEADLAMP_OIDC_APISERVER: '1' });
+  assert.ok(res.stderr.includes('https'), 'https 強制の警告が stderr に無い');
+  assert.ok(res.stderr.includes('headlamp-viewer'), '代替手順（SA トークン）の案内が stderr に無い');
 });
 
 // escape-hatch: HEADLAMP=1 でも HEADLAMP_OIDC_APISERVER=0 なら OIDC フラグは付かない
@@ -469,6 +483,29 @@ ok('HEADLAMP=1: headlamp-oidc secret と deploy/local/headlamp を apply', () =>
   const res = runUp({ HEADLAMP: '1' });
   assert.ok(anyLineHas(res.lines, 'headlamp-oidc'), 'headlamp-oidc secret が作られない');
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/headlamp'), 'deploy/local/headlamp が apply されない');
+});
+
+// IADR-0104 (#328): 現行 k8s の**正規ログイン手順**（SA トークン方式）が overlay だけで再現できること。
+// runbook が案内する `kubectl -n platform-infra create token headlamp-viewer` は、この SA と CRB が
+// overlay に無いと NotFound で失敗する（従来は live クラスタへの手作りに依存していた）。
+ok('IADR-0104: headlamp overlay が headlamp-viewer SA と cluster-admin bind を含む', () => {
+  const manifest = fs.readFileSync(path.join(REPO_ROOT, 'deploy/local/headlamp/headlamp.yaml'), 'utf8');
+  const docs = manifest.split(/^---$/m);
+  const sa = docs.find((d) => /kind:\s*ServiceAccount/.test(d) && /name:\s*headlamp-viewer/.test(d));
+  assert.ok(sa, 'headlamp-viewer ServiceAccount が overlay に無い');
+  // Pod へは配らない（トークンは kubectl create token で都度発行する短命トークン）。
+  assert.ok(/automountServiceAccountToken:\s*false/.test(sa), 'headlamp-viewer に automount 無効化が無い');
+
+  const crb = docs.find((d) => /kind:\s*ClusterRoleBinding/.test(d) && /name:\s*headlamp-viewer/.test(d));
+  assert.ok(crb, 'headlamp-viewer の ClusterRoleBinding が無い');
+  assert.ok(/name:\s*cluster-admin/.test(crb), 'headlamp-viewer が cluster-admin に bind されていない');
+  assert.ok(/kind:\s*ServiceAccount/.test(crb), 'bind の subject が ServiceAccount でない');
+
+  // fail-safe（IADR-0080）: Headlamp Pod が使う SA `headlamp` には広域権限を bind しない。
+  const podSaBind = docs.some(
+    (d) => /kind:\s*ClusterRoleBinding/.test(d) && /kind:\s*ServiceAccount/.test(d) && /name:\s*headlamp\s*$/m.test(d),
+  );
+  assert.ok(!podSaBind, 'Pod 用 SA(headlamp) に ClusterRoleBinding が付いている（無認証で可視化できてしまう）');
 });
 
 // IADR-0100 (#354 障害2): ノード inotify 上限を引き上げる sysctl DaemonSet を既定 infra へ追加し、アプリ Pod より
