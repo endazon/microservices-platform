@@ -122,7 +122,9 @@ return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens)
 
 - `RagOrchestrator`（AiAnalysisService・FR-04）
   - 非ストリーミング経路: `refusal` なら本文の代わりに拒否である旨を返す（出典は従来どおり付ける）。
-  - ストリーミング経路: `done` の `stopReason` が `refusal` なら、拒否である旨のトークンを 1 つ流す。
+  - ストリーミング経路: `done` の `stopReason` が `refusal` なら、末尾へ拒否である旨のトークンを 1 つ流す。
+    部分本文が既に流れている場合は空行（`\n\n`）で区切る。フロント（`SearchChatPage`）は token を
+    1 つの文字列へ連結し `white-space: pre-wrap` で表示するため、区切らないと注記が地の文へ溶け込む。
 - `LlmGatewayDiagramCoder`（ConversionService・FR-12）
   - 拒否時も「画像として保持」へ収束させる点（deny-by-default）は不変だが、保持理由を
     `not-codeable`（コード化不能）ではなく **`llm-refused`** として記録する。本文が空になる結果
