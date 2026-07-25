@@ -16,7 +16,7 @@ public class LlmRouterTests
         Enabled = enabled,
         Priority = priority,
         DefaultModel = "claude-opus-5",
-        Models = ["claude-fable-5", "claude-opus-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        Models = ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
         // IADR-0022 / 08_data-egress-policy: fable-5 は ZDR 非対応。confidential/restricted では除外される。
         NonZdrModels = ["claude-fable-5"]
     };
@@ -68,6 +68,8 @@ public class LlmRouterTests
             ["rag-answer"] = "claude-sonnet-4-6",
             ["analysis"] = "claude-fable-5",
             ["diagram-coding"] = "claude-haiku-4-5",
+            // AST/ADR-0011 / IADR-0102: 取引判断は基盤の既定モデル改定に自動追随させず版数を固定する。
+            ["trade-decision"] = "claude-opus-4-8",
             ["default"] = "claude-opus-5"
         }
     };
@@ -293,6 +295,49 @@ public class LlmRouterTests
         var router = Build(Opts(Claude()));
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "default"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-opus-5");
+    }
+
+    // AST/ADR-0011, IADR-0102: 取引判断は基盤の既定モデル改定に自動追随しない。用途 trade-decision は
+    // ピン留めした claude-opus-4-8 を選択し、既定（claude-opus-5）へ落ちてはならない。
+    // ピン留め対象が Models 許可一覧に無いと ResolveModel が黙って DefaultModel へフォールバックするため、
+    // 「default と異なる値が返る」ことまで確認して無効化を検知する。
+    [Fact]
+    public void Route_TradeDecision_PinsOpus48AndDoesNotFollowDefault()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "trade-decision"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().NotBe("claude-opus-5");
+    }
+
+    // AST/ADR-0011, IADR-0102 / IADR-0022: ZDR 要件区分（confidential）でもピン留めは維持される。
+    // Opus 4.8 は NonZdrModels に含まれないため ZDR 除外の対象外（fable-5 とは異なる）。
+    [Fact]
+    public void Route_Confidential_TradeDecision_KeepsPinnedOpus48()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "trade-decision"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Tier.Should().Be(ProtectionTier.B);
+        decision.Model.Should().Be("claude-opus-4-8");
+    }
+
+    // AST/ADR-0011 §決定: 報告書生成（report-narrative）は「別扱い。基盤の既定モデルを用いてよい」ため
+    // ピン留めせず default へ着地する。取引判断と扱いが異なることを固定する。
+    [Fact]
+    public void Route_ReportNarrative_FollowsDefaultModel()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Internal, "report-narrative"));
 
         decision.Allowed.Should().BeTrue();
         decision.Model.Should().Be("claude-opus-5");

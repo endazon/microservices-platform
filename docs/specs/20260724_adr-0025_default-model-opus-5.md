@@ -55,7 +55,11 @@ ADR-0025 により計画側のグローバル既定が Opus 5 へ改定された
 2. 用途別ルーティングの `default` が `claude-opus-5` を返す。他用途は不変。
    - `default→claude-opus-5`, `rag-answer→claude-sonnet-4-6`, `diagram-coding→claude-haiku-4-5`,
      `analysis→claude-fable-5`
-3. claude エンドポイントの `Models` 許可一覧に `claude-opus-5` が含まれ、`claude-opus-4-8` は含まれない。
+3. claude エンドポイントの `Models` 許可一覧に `claude-opus-5` が含まれる。
+   > **改定（IADR-0102）**: 当初は「`claude-opus-4-8` は含まれない」としていたが、`AST/ADR-0011` 追従で
+   > `trade-decision` を `claude-opus-4-8` にピン留めするため**差し戻した**。`PurposeModels` の値は
+   > `Models` に含まれないと `ResolveModel` が `DefaultModel` へフォールバックし、ピン留めが無効化される。
+   > `Models` は「利用を許可するモデル集合」であり、グローバル既定が何かとは独立の概念である。
 4. ZDR 要件区分（confidential/restricted）の `analysis` は ZDR 非対応の `claude-fable-5` を除外し、
    **ZDR 対応の `claude-opus-5`** へフォールバックする（従来 opus-4-8 が担っていた役割を版数だけ引き継ぐ）。
 5. 既定 `max_tokens` が思考分の余裕を含む値へ引き上げられ、既定モデルでの回答が途中で切れない。
