@@ -19,7 +19,12 @@ public interface ILlmProvider
     }
 }
 
-public record CompletionRequest(string Prompt, int MaxTokens = 1024, string? Model = null);
+// IADR-0101: MaxTokens の既定は 4096（HTTP 経路の既定は CompletionApiRequest 側。エンドポイントが
+// req.MaxTokens を常に明示的に渡すため、本既定値はプロバイダを直接呼ぶ内部経路にのみ効く）。
+// thinking（拡張思考）が既定で有効なモデル（Opus 5・Sonnet 5。現行の既定 claude-opus-5 が該当）では
+// MaxTokens は思考トークンと本文の合算上限になるため、本文想定長（〜1024）＋思考の作業領域（〜3000）
+// を見込む。1024 のままだと思考が上限を食い、本文が途中で切れる（例外にならず静かに縮退する）。
+public record CompletionRequest(string Prompt, int MaxTokens = 4096, string? Model = null);
 public record CompletionResult(string Text, int InputTokens, int OutputTokens);
 
 // IADR-0037: ストリーミングの 1 チャンク。TextDelta は増分本文。Done=true は最終チャンク（トークン数を伴う）。

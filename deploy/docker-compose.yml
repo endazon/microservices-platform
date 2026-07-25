@@ -419,8 +419,9 @@ services:
     environment:
       <<: *common-env
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
-      # ADR-0010 / IADR-0022: 既定は claude-opus-4-8（定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
-      Llm__Model: claude-opus-4-8
+      # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5
+      # （定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
+      Llm__Model: claude-opus-5
       # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
       # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。
       Embedding__Voyage__ApiKey: ${VOYAGE_API_KEY:-}

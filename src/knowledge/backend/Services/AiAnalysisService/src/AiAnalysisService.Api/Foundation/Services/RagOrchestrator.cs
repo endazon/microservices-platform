@@ -60,7 +60,7 @@ public class RagOrchestrator(
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
         Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
     {
-        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-4-8";
+        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-5";
 
         // FR-05: ABAC 権限スコープ解決。閲覧可能文書が無ければ空回答へ縮退（外部送信しない）。
         var resolved = await ResolveScopeAsync(userId, userAttributes, ct);
@@ -143,7 +143,9 @@ public class RagOrchestrator(
         string prompt, string confidentiality, string purpose, [EnumeratorCancellation] CancellationToken ct)
     {
         var llmClient = httpFactory.CreateClient("LlmGateway");
-        var body = new CompletionApiRequest(prompt, MaxTokens: 1024, Model: null,
+        // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
+        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-4-6（ADR-0022 の Sonnet 5 追随は未消化）。
+        var body = new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
             Confidentiality: confidentiality, Purpose: purpose);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/complete/stream")
@@ -248,7 +250,7 @@ public class RagOrchestrator(
     {
         // FR-11: 明示モデルは指定しない。実際の呼び出しモデルは LlmGateway が用途（purpose）と
         // 機密区分に応じて選択する（Llm:Routing:PurposeModels）。既定モデル名は縮退応答の表示用のみ。
-        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-4-8";
+        var defaultModel = config["Llm:DefaultModel"] ?? "claude-opus-5";
 
         // FR-03: 実効スコープでハイブリッド検索（ストリーミング版と同じ SearchAsync に集約。失敗時は空へ縮退）。
         var results = await SearchAsync(query, scope, topK, ct);
@@ -265,8 +267,10 @@ public class RagOrchestrator(
 
         var llmClient = httpFactory.CreateClient("LlmGateway");
         // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
+        // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
+        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-4-6（ADR-0022 の Sonnet 5 追随は未消化）。
         var completionResp = await llmClient.PostAsJsonAsync("/complete",
-            new CompletionApiRequest(prompt, MaxTokens: 1024, Model: null,
+            new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
                 Confidentiality: confidentiality, Purpose: purpose), ct);
 
         if (completionResp.IsSuccessStatusCode)
@@ -339,7 +343,7 @@ public class RagOrchestrator(
         => new(
             "閲覧権限のある文書が見つかりませんでした。",
             [],
-            config["Llm:DefaultModel"] ?? "claude-opus-4-8",
+            config["Llm:DefaultModel"] ?? "claude-opus-5",
             0, 0);
 
     private static string BuildAskPrompt(string question, string context)

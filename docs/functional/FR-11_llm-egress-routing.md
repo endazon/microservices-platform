@@ -57,7 +57,9 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 
 - 優先順位: ① 明示 `Model` 要求が**適格モデル**なら採用 → ② `PurposeModels[purpose]` が適格なら採用 → ③ エンドポイントの `DefaultModel`（適格なら）→ ④ 適格モデル先頭。適格モデルが無ければ空文字を返し送信拒否へ縮退。
 - **ZDR（ゼロデータ保持）によるモデル除外（IADR-0022 / 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデル（既定で `claude-fable-5`）を候補から除外する。除外により fable-5 は ZDR 非要件の `public`/`internal` の analysis に限定され、`confidential`/`restricted` の analysis は ZDR 対応の既定モデル（opus）へフォールバックする。
-- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / IADR-0022）: 既定 `claude-opus-4-8`、定型 `rag-answer→claude-sonnet-4-6` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`（ZDR 非要件区分のみ）、`default→claude-opus-4-8`。
+- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / ADR-0025 / IADR-0022 / IADR-0101）: 既定 `claude-opus-5`、定型 `rag-answer→claude-sonnet-4-6` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`（ZDR 非要件区分のみ）、`default→claude-opus-5`、**取引判断 `trade-decision→claude-opus-4-8`（版数固定）**。
+- **取引判断のモデルピン留め（`AST/ADR-0011` / IADR-0102）**: 取引判断は再現性・監査可能性のため基盤の既定モデル改定に**自動追随させない**。`PurposeModels` に `trade-decision` を固定指定する。ピン留め対象はエンドポイントの `Models` 許可一覧にも含める必要がある（含めないと `ResolveModel` が黙って `DefaultModel` へフォールバックし、ピン留めが無効化される）。本エントリの更新には Stage 0 再検証を要する（設定値の書き換えだけで更新しない）。報告書生成 `report-narrative` は `AST/ADR-0011` §決定により `default` 追随が正しく、ピン留めしない。
+- **既定 `max_tokens`（IADR-0101）**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正、#58 #1 / IADR-0007）。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
@@ -123,8 +125,9 @@ flowchart TD
 
 ## 未決事項
 
-- ADR-0010 は `Accepted`（既定 `claude-opus-4-8` / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
+- ADR-0010 は `Accepted`（既定 Opus / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。既定 Opus の版数は ADR-0010 本文凍結後に ADR-0025 が `claude-opus-5` へ改定し、IADR-0101 で追従済み（利用モデルの最新 roster は ADR-0025 を正とする）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
 - GitHub Copilot（`copilot-managed`）の送信先ティアは 08_data-egress-policy の契約条件（ZDR/学習不使用/レジデンシー）確定待ち。確定まで安全側でティアC・既定無効とし、確定後に設定で有効化・ティア再判定する（IADR-0022 フォローアップ）。
+- **`ADR-0022`（Accepted）の追随が未消化**: 同 ADR は `rag-answer` を `claude-sonnet-5` へ改定したが、実装（`appsettings.json`）は `claude-sonnet-4-6` のままである。計画側の確定値は Sonnet 5 であり、上表の「既定設定」は**実装の現状**を示す。追随は別作業（IADR-0101 フォローアップ 4）。
 - `Restricted × ティアB` の「追加統制下」（承認フラグ・特別監査マーカー・匿名化/最小化要件）は未具体化で、現状 `Confidential × B` と同等（送信可）に扱う。
 - 例外送信（機密区分の一時ダウングレード）の申請・承認ワークフローは未実装。本仕様は要承認ゲート（`AllowUnapprovedTierC`）のみ。
 - 実セルフホスト LLM 基盤（GPU）は未構築で、`selfhosted-oss` エンドポイントは既定無効（定義のみ）。
