@@ -39,15 +39,28 @@ k8s 1.30+ はレガシーな `--oidc-*` フラグを内部で**構造化認証�
 
 **したがって現行 k8s では:**
 
-- **Headlamp の正規ログイン手順は SA トークン方式**とする（`headlamp-viewer` SA が cluster-admin に bind 済み）:
+- **Headlamp の正規ログイン手順は SA トークン方式**とする:
   ```sh
   kubectl -n platform-infra create token headlamp-viewer --duration=24h
   ```
   → `http://headlamp.localhost:50000` を開き Token 方式で貼付。
+  なお **`headlamp-viewer` SA と cluster-admin bind は overlay に含まれておらず**、クラスタ側へ手作りしたものに
+  依存している（`NotFound` の場合は作成が要る）。作成コマンドを含む手順は `deploy/local/README.md` の「Headlamp」参照。
 - **apiserver への OIDC フラグ付与は行わない**（`HEADLAMP_OIDC_APISERVER` を 1 にしても、k8s 1.30+ では
-  クラスタが起動しなくなる）。
+  クラスタが起動しなくなる）。**退避済みのドロップイン（`/root/99-headlamp-oidc.yaml.disabled` 等）は無効のまま
+  置いておく**こと（`/etc/rancher/k3s/config.yaml.d/` へ戻さない）。
 - OIDC 化は **全経路 HTTPS 化と同時**に行う。追跡は **#388**（issuer を https へ統一し、apiserver に
   `oidc-ca-file` を含めて再配線する）。
+
+### #328 の処遇（2026-07-26）
+
+**#328（apiserver OIDC フラグの opt-in 配線）は wontfix とし、OIDC 化の追跡は #388 へ統合する。** 本 ADR の決定は
+k8s 1.29 以前を前提としており、現行環境では実装しても機能しないうえ、適用するとクラスタを停止させる。新たな
+実装 ADR は起こさず（決定は本 ADR の本追記が単一情報源）、**token 方式の正式手順化**を `deploy/local/README.md` へ
+明記する docs 変更のみを #328 の成果とする（作業仕様書
+`docs/specs/20260726_issue-328_headlamp-token-login-docs.md`）。realm の `headlamp-realm-roles` mapper（#389 /
+[[IADR-0103]]）と ClusterRoleBinding `headlamp-developer-cluster-admin`（#271 / [[IADR-0080]]）は恒久化済みで、
+現行では inert（`oidc:` の identity が生成されない）だが無害であり、#388 成立時にそのまま機能する。
 
 ### 併せて判明した実務上の注意（再発防止）
 

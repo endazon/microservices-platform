@@ -1,7 +1,7 @@
 ---
 title: k8s-local-up.sh の k3d クラスタ作成に apiserver OIDC 検証フラグを opt-in で配線（Headlamp live 疎通の恒久化）（Issue #328）
 type: spec
-status: done
+status: superseded
 related_ids:
   - NFR
   - ADR-0004
@@ -11,8 +11,9 @@ related_ids:
   - IADR-0084
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-26
 related_specs:
+  - "../specs/20260726_issue-328_headlamp-token-login-docs.md"
   - "../adr/IADR-0084_headlamp-oidc-apiserver-flags.md"
   - "../adr/IADR-0080_headlamp-k8s-management-ui.md"
   - "../adr/IADR-0066_local-k8s-dev-environment.md"
@@ -22,6 +23,14 @@ related_specs:
 ---
 
 # 仕様書: k3d クラスタ作成への apiserver OIDC 検証フラグ opt-in 配線（Issue #328）
+
+> **⚠️ 2026-07-26: 本仕様書は superseded。ここに書かれた apiserver フラグ手順を適用してはならない。**
+> k8s 1.30+ は OIDC issuer に **https を強制**する一方、経路B の issuer は `KC_HOSTNAME_URL` により **http 固定**で
+> 両立し得ない。フラグを与えると **apiserver が起動できずクラスタが停止する**（実測: `k3s v1.35.4`。10 回連続で
+> 起動失敗）。**#328 は wontfix** とし、OIDC 化は **#388（全経路 HTTPS 化）へ統合**した。結論は
+> [IADR-0084](../adr/IADR-0084_headlamp-oidc-apiserver-flags.md) の「⚠️ 2026-07-25 追記」、現行の正式手順（token 方式）は
+> [`20260726_issue-328_headlamp-token-login-docs.md`](20260726_issue-328_headlamp-token-login-docs.md) と
+> `deploy/local/README.md`「Headlamp」を参照。以下の本文は 2026-07-19 時点の記録としてそのまま残す。
 
 ## 起点となる計画書（トレーサビリティ）
 
