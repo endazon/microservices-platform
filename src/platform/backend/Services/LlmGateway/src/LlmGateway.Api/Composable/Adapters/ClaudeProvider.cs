@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using LlmGateway.Api.Foundation.Ports;
+using Platform.Shared.Contracts.Dtos;
 using Anthropic.SDK;
 using Anthropic.SDK.Messaging;
 
@@ -32,8 +33,18 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
             ]
         }, ct);
 
-        var text = msg.Content.OfType<TextContent>().FirstOrDefault()?.Text ?? "";
-        return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens);
+        // IADR-0104 (#379), ADR-0025: content を読む前に stop_reason を確認する。refusal は HTTP 200・
+        // 例外なしで到着するため、判別しないと空文字へ静かに縮退し「送信したが空応答」と区別できない。
+        var stopReason = msg.StopReason;
+
+        // 拒否時は本文を返さない。安全性分類器は本文の途中で停止し得るため、断片が非空のまま
+        // 下流へ流れると（AST 取引判断は Text の非空を根拠に売買判断へ進む）fail-safe が破れる。
+        // max_tokens の途中結果は正当な観測対象であり破棄しない（IADR-0101 / IADR-0104 §決定）。
+        var text = CompletionStopReasons.IsRefusal(stopReason)
+            ? string.Empty
+            : msg.Content.OfType<TextContent>().FirstOrDefault()?.Text ?? "";
+
+        return new CompletionResult(text, msg.Usage.InputTokens, msg.Usage.OutputTokens, stopReason);
     }
 
     // IADR-0037: Anthropic SDK の SSE ストリーミングで本文デルタを逐次返す（真のストリーミング・主経路）。
@@ -57,6 +68,7 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
         };
 
         int inputTokens = 0, outputTokens = 0;
+        string? stopReason = null;
         await foreach (var res in client.Messages.StreamClaudeMessageAsync(parameters, ct))
         {
             // message_start で入力トークン、message_delta で出力トークンが逐次確定する。
@@ -65,12 +77,19 @@ public class ClaudeProvider(AnthropicClient client, IConfiguration config) : ILl
             if (res.Usage is { } usage && usage.OutputTokens > 0)
                 outputTokens = usage.OutputTokens;
 
+            // IADR-0104: 終了理由は message_delta（末尾）で確定する。既に送出したデルタは撤回できないため、
+            // 最終チャンクへ載せて呼び出し側が破棄判断できるようにする（トレードオフは IADR-0104 §結果）。
+            if (res.Delta?.StopReason is { Length: > 0 } deltaStop)
+                stopReason = deltaStop;
+            else if (res.StopReason is { Length: > 0 } msgStop)
+                stopReason = msgStop;
+
             var delta = res.Delta?.Text;
             if (!string.IsNullOrEmpty(delta))
                 yield return new CompletionChunk(delta);
         }
 
-        // 最終チャンク: 本文増分なし・トークン数を伴う（呼び出し側が集計を確定できる）。
-        yield return new CompletionChunk(string.Empty, Done: true, inputTokens, outputTokens);
+        // 最終チャンク: 本文増分なし・トークン数と終了理由を伴う（呼び出し側が集計と縮退判断を確定できる）。
+        yield return new CompletionChunk(string.Empty, Done: true, inputTokens, outputTokens, stopReason);
     }
 }

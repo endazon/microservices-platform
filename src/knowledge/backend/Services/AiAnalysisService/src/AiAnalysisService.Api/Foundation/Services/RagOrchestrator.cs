@@ -103,6 +103,19 @@ public class RagOrchestrator(
                 // FR-11 縮退: ゲートウェイが送信拒否・不調なら理由本文を出典付きで表示（外部送信していない）。
                 if (!ev.Sent && !string.IsNullOrWhiteSpace(ev.Text))
                     yield return new AskTokenEvent(ev.Text!);
+
+                // FR-11, IADR-0104 (#379): 送信は成立したがモデルが拒否した場合（stopReason="refusal"）。
+                // 拒否は末尾の done で確定するため既出デルタは撤回できない。拒否である旨を末尾へ追記して、
+                // 「空応答」や「途中で切れた回答」と取り違えられないようにする。
+                // 部分本文が既に流れているときは空行で区切る（フロントは token を 1 つの文字列へ連結し
+                // white-space: pre-wrap で表示するため、区切らないと注記が地の文へ溶け込む）。
+                else if (CompletionStopReasons.IsRefusal(ev.StopReason))
+                {
+                    var separator = emittedAny ? "\n\n" : string.Empty;
+                    emittedAny = true;
+                    yield return new AskTokenEvent($"{separator}（AI が回答の生成を拒否しました。）");
+                }
+
                 model = string.IsNullOrEmpty(ev.Model) ? defaultModel : ev.Model;
                 inputTokens = ev.InputTokens;
                 outputTokens = ev.OutputTokens;
@@ -286,6 +299,18 @@ public class RagOrchestrator(
                     ? "機密区分により AI 送信を行わなかったため、関連文書の一覧を返します。"
                     : "機密区分により AI 送信を行いませんでした。";
                 return new AiAnswerDto(reason, citations, defaultModel, 0, 0);
+            }
+
+            // FR-11, IADR-0104 (#379): 送信は成立したがモデルが拒否した場合（stopReason="refusal"）。
+            // sent=true・本文は空で返るため、sent だけを見ると「空応答」と区別できず理由不明の
+            // 空白回答になる。拒否である旨を明示し、出典は通常どおり併記する。
+            if (CompletionStopReasons.IsRefusal(completion?.StopReason))
+            {
+                var refused = citations.Count > 0
+                    ? "AI が回答の生成を拒否したため、関連文書の一覧を返します。"
+                    : "AI が回答の生成を拒否しました。";
+                return new AiAnswerDto(refused, citations, completion?.Model ?? defaultModel,
+                    completion?.InputTokens ?? 0, completion?.OutputTokens ?? 0);
             }
 
             return new AiAnswerDto(

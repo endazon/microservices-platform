@@ -38,6 +38,7 @@ related_specs:
 | T-09 | pandoc 変換 | pandoc 導入環境でローカル Markdown 原本を実変換し本文を返す | 本文に原本タイトルが出現、図0件 | FR-12 本文変換 / `PandocConversionServiceTests` |
 | T-10 | pandoc デグレード | pandoc 未導入／原本がローカル解決不能ならプレースホルダ本文（図0件） | 本文にファイル名が出現、`Figures` 空 | FR-12 例外 E1 |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | FR-12 連鎖 / `RawDocumentFetchedConsumerTests` |
+| T-12 | **画像保持（モデル拒否）（IADR-0104 / #379）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | FR-11・FR-12 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 
 ## 補足
 
