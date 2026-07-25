@@ -57,7 +57,9 @@ issuer を https へ移すと backend/ArgoCD/Grafana/MinIO/Vault/Wiki.js の `is
 - `scripts/k8s-local-up.sh`（`HEADLAMP_OIDC_APISERVER` の追従含む）・`deploy/local/headlamp/` の manifest・realm.json・
   Helm chart・compose・edge・ESO/Vault は**無改変**。
 - apiserver への `oidc-*` 付与は**実装しない**。退避済みドロップインの再有効化も行わない。
-- OIDC 用 ClusterRoleBinding（Group `oidc:platform-admin` / User `oidc:admin`）の追加は #388 の範囲。
+- RBAC の追加・変更は行わない。現行 bind の subject は User `oidc:developer` のみ（#271 / [[IADR-0080]]）で、
+  `admin` を含む他の identity へ広げるかどうかは **#388 で決める未決の設計事項**であり、本仕様書では決めない
+  （根拠となる ADR はまだ無い）。
 
 ## 受け入れ基準と検証
 

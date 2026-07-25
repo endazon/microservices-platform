@@ -379,9 +379,15 @@ fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域
   [`deploy/local/headlamp/headlamp.yaml`](headlamp/headlamp.yaml)（#271 / IADR-0080）。
 - realm client `headlamp` の redirectUris（`http://localhost:4466/*` ＋ 集約後 `http://headlamp.localhost:50000/*`・#377）。
 
+**cluster-admin を得られるのは `developer` だけ**である点に注意する。上記 bind の subject は User `oidc:developer`
+のみで、`admin`（[IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md) で realm に追加した
+管理者ユーザー）に対応する bind は**存在しない**。`admin` でも入れるようにするか（`groups` クレーム由来の Group
+subject を bind する等）は #388 で決める設計事項であり、本 PR 時点では未決である。
+
 > **#388 完了後の live 受け入れ**（#271 / #328 の当初要求）: issuer を https へ統一し、apiserver に `oidc-ca-file` を
-> 含めて再配線したうえで、ブラウザから `admin` でログインし Pod/Deployment/Service/ログが閲覧できること。
-> `developer` は dev スーパーユーザー（IADR-0066）で、ロール別の権限分離検証には使わない（`poc-*` の役割）。
+> 含めて再配線したうえで、ブラウザから **`developer`**（既存 bind に一致するユーザー）でログインし
+> Pod/Deployment/Service/ログが閲覧できること。`developer` は dev スーパーユーザー（IADR-0066）で、ロール別の
+> 権限分離検証には使わない（`poc-*` の役割）。
 
 ## 既知の制約
 

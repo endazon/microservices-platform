@@ -10,7 +10,7 @@ related_ids:
   - IADR-0080
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-07-26
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)"
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・セキュリティ)"
