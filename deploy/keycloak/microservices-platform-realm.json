@@ -225,15 +225,17 @@
       "directAccessGrantsEnabled": false,
       "redirectUris": [
         "http://localhost:3100/*",
-        "http://localhost:8081/*"
+        "http://localhost:8081/*",
+        "http://localhost/*"
       ],
       "webOrigins": [
         "http://localhost:3100",
-        "http://localhost:8081"
+        "http://localhost:8081",
+        "http://localhost"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*"
+        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*##http://localhost/*##http://localhost"
       },
       "defaultClientScopes": [
         "profile",
@@ -272,10 +274,12 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://localhost:4466/*"
+        "http://localhost:4466/*",
+        "http://headlamp.localhost:50000/*"
       ],
       "webOrigins": [
-        "http://localhost:4466"
+        "http://localhost:4466",
+        "http://headlamp.localhost:50000"
       ],
       "defaultClientScopes": [
         "profile",
