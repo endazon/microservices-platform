@@ -222,20 +222,26 @@ base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝bac
 SPA の「Wiki 閲覧」画面（SC-04）は、ブラウザ向け実行時 config `wikiBaseUrl`（config.js の `WIKI_BASE_URL`）から
 社内 Wiki（Wiki.js）を**新規タブで直接開く**導線である（BFF 経由ではない）。`WIKI_BASE_URL` が未設定（空文字）だと
 画面は「**Wiki の接続先が未設定です**」と表示してリンクを出さない。経路B は `values-local.yaml` の
-`frontend.extraEnv` で `WIKI_BASE_URL=http://localhost:3300` を供給する。到達は他コンポーネントと同じく
-`wiki-js` の port-forward に整合させる（`edge.enabled=false`＝Istio 未導入のため直 port-forward が既定手順）:
+`frontend.extraEnv` で `WIKI_BASE_URL` を供給する。到達は他の管理ツール（grafana/minio/vault 等）と同じく
+**edge 集約後の正規 URL** に整合させる（[IADR-0091](../../docs/adr/IADR-0091_local-edge-aggregation-traefik.md) の
+edge overlay `deploy/local/edge`・`LOCALEDGE=1` で Wiki.js を `wiki.localhost:50000` に公開。realm `wiki-js` client も
+同 URL 登録済み。[edge/README](edge/README.md)「アクセス／OIDC（集約後 URL）」）:
+
+- **既定（`LOCALEDGE=1`）**: `values-local.yaml` は `WIKI_BASE_URL=http://wiki.localhost:50000` を供給する。SPA を
+  `http://localhost/`（edge のフロント）で開き、「Wiki 閲覧」→「Wiki を開く」で `http://wiki.localhost:50000` が開く。
+- **非 edge（`LOCALEDGE` 未使用・port-forward）で使う場合**: `values-local.yaml` の `WIKI_BASE_URL` を
+  `http://localhost:3300` へ **override** し、`wiki-js` を port-forward する（値と port-forward を揃えること。
+  不一致だと到達しない）:
 
 ```bash
 kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
-#   → http://localhost:3300/     （Wiki.js。SPA「Wiki 閲覧」の「Wiki を開く」リンク先）
+#   → http://localhost:3300/     （非 edge 利用時の override 先。WIKI_BASE_URL も同値へ）
 ```
 
-- SPA を `frontend-service`（`3100:8080`）で開き、「Wiki 閲覧」→「Wiki を開く」で上記 `http://localhost:3300` が開く。
-  ポートを変える場合は `values-local.yaml` の `WIKI_BASE_URL` と port-forward を揃えること（不一致だと到達しない）。
 - **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
-  上記 **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。
-  ただし **Wiki.js 側の OIDC 設定（Keycloak の Wiki.js 用 client の `redirectUris` に `http://localhost:3300/*` を
-  含める等）と実ブラウザでの SSO ログイン疎通は稼働 k3d・realm 設定依存＝live**（本 issue の live 分・realm.json は別課題）。
+  **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。realm `wiki-js`
+  client は `http://wiki.localhost:50000/*`（および port-forward 用 `http://localhost:3001/*`）を登録済みで、
+  実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
 - 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
   （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
 

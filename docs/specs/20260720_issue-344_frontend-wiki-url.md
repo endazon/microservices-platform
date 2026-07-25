@@ -11,14 +11,17 @@ related_ids:
   - IADR-0066
   - IADR-0076
   - IADR-0078
+  - IADR-0091
 author: claude
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-07-25
 related_specs:
   - "../screens/SC-04_wiki-access.md"
   - "../adr/IADR-0078_frontend-k8s-serving.md"
   - "../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md"
   - "../adr/IADR-0066_local-k8s-dev-environment.md"
+  - "../adr/IADR-0091_local-edge-aggregation-traefik.md"
+  - "./20260725_issue-344_wiki-base-url-edge-alignment.md"
   - "../../deploy/local/README.md"
   - "../../deploy/local/values-local.yaml"
 ---
@@ -92,11 +95,18 @@ nginx テンプレ・config.js.template・realm.json・BFF の `Services__*`・d
 
 ## 受け入れ基準
 
-- [x] `values-local.yaml` の frontend に `WIKI_BASE_URL`（`http://localhost:3300`）が配線される。
+> **更新（2026-07-25・IADR-0091 edge 集約に伴う edge URL 整合）**: 下記 `WIKI_BASE_URL` の値は当初
+> `http://localhost:3300`（port-forward 前提）だったが、その後の [[IADR-0091]] edge 集約で Wiki.js が
+> `wiki.localhost:50000` に公開され、edge をローカルの正規アクセスとする運用へ移行した。これに合わせ
+> `WIKI_BASE_URL` を `http://wiki.localhost:50000` へ整合した（[[20260725_issue-344_wiki-base-url-edge-alignment]]）。
+> 非 edge（port-forward）で使う場合は `values-local.yaml` の本値を `http://localhost:3300` へ override する。
+
+- [x] `values-local.yaml` の frontend に `WIKI_BASE_URL`（LOCALEDGE 正規＝`http://wiki.localhost:50000`。
+      非 edge 利用時は `http://localhost:3300` へ override）が配線される。
 - [x] `helm template -f deploy/local/values-local.yaml` で frontend Deployment の env に
-      `WIKI_BASE_URL=http://localhost:3300` が現れる。
+      `WIKI_BASE_URL=http://wiki.localhost:50000` が現れる。
 - [x] 本番 `values.yaml` は無改変（`frontend.extraEnv: []`・後方互換）。
-- [x] `deploy/local/README.md` に Wiki 閲覧の到達手順（port-forward）と SSO＝live 分離が追記される。
+- [x] `deploy/local/README.md` に Wiki 閲覧の到達手順（LOCALEDGE 正規＋port-forward override）と SSO＝live 分離が追記される。
 - [x] `check-image-mapping.js`（#275 ドリフト）/ `check-doc-links.js` が緑（イメージ・docs リンク不変）。
 - [x] frontend 単体テスト（`WikiAccessPage.test.tsx` / `runtimeConfig.test.ts`）は挙動不変で緑。
 - [ ] 実ブラウザでの Wiki 閲覧（Wiki.js→Keycloak SSO 実ログイン）疎通は **live**（realm redirectUris・

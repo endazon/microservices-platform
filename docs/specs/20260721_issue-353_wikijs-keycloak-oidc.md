@@ -69,6 +69,9 @@ strategyKey は作成時に生成）。また **Wiki.js は #357 のエッジ集
 - Wiki.js OIDC 設定の manifest 自動化（DB/管理UI 保持のため不可・手順化で対応）。
 - 本番での Wiki.js 公開（[[IADR-0020]] の非公開運用は不変・edge は local 専用）。frontend SC-04 の `WIKI_BASE_URL`
   （#344）は本 PR では変更しない（edge 併用時は `wiki.localhost:50000` を指すと一貫・任意）。
+  → **解消済み（2026-07-25）**: この「任意」の先送り分は [[20260725_issue-344_wiki-base-url-edge-alignment]] で対応し、
+  `values-local.yaml` の `WIKI_BASE_URL` を edge 正規 URL `http://wiki.localhost:50000` へ整合した（#344 spec の
+  受け入れ基準・`deploy/local/README.md` も併せて edge 前提へ改訂）。
 - 実ブラウザ SSO ログイン疎通（稼働 k3d/edge/手順A・管理UI 設定済み前提＝live）。
 
 ## 検証
