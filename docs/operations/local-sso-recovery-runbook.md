@@ -142,8 +142,12 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 `hosts` に `127.0.0.1 keycloak` ＋ `kubectl -n platform-infra port-forward svc/keycloak 8080:8080` が必要（手順A）。
 `https://<tool>.localhost:50000` は **404**（admin entrypoint は平文 http のみ・IADR-0103）。
 
-**Headlamp**（現行 k8s では OIDC 不可・[[IADR-0084]] 追記／#388）:
+**Headlamp**（現行 k8s では OIDC 不可・[[IADR-0084]] 追記／[[IADR-0104]]／#388）:
 
 ```sh
 kubectl -n platform-infra create token headlamp-viewer --duration=24h
 ```
+
+`headlamp-viewer` SA と `cluster-admin` bind は `deploy/local/headlamp` overlay に恒久化済みのため
+（[[IADR-0104]]）、`HEADLAMP=1 bash scripts/k8s-local-up.sh` を通したクラスタなら**手動 apply は不要**。
+発行したトークンは Headlamp UI の **Token** 方式に貼る。

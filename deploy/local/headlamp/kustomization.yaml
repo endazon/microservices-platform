@@ -2,7 +2,8 @@
 # ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（fail-safe）。
 # 適用（opt-in）: kubectl apply -k deploy/local/headlamp
 #   → 事前に OIDC client secret を Secret headlamp-oidc（platform-infra）へ入れる（k8s-local-up.sh の HEADLAMP=1 が実施）。
-# 実ブラウザ OIDC ログイン・リソース閲覧は稼働 k3d 依存（README の「Headlamp」手順＝IADR-0076 手順A＋apiserver OIDC フラグ）。
+# ログインは **SA トークン方式**（`kubectl -n platform-infra create token headlamp-viewer`）。ブラウザ OIDC ログインは
+# 現行 k8s では成立しない（issuer に https 必須／経路B は http 固定・IADR-0104・再開は #388）。README の「Headlamp」参照。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
