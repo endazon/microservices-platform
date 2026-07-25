@@ -34,10 +34,14 @@ export K8S_LOCAL_RUNTIME="$RUNTIME"
 echo "    runtime: $RUNTIME"
 if [ "$RUNTIME" = "k3d" ]; then
   # IADR-0084 (#328): Headlamp/ブラウザ OIDC の実ログインには apiserver の OIDC 検証フラグが
-  # クラスタ作成時に必要（後付け不可）。opt-in（既定オフ・fail-safe）: HEADLAMP_OIDC_APISERVER は
-  # 未設定なら HEADLAMP の値に追従する（HEADLAMP=1 で live 経路一括有効化）。既定オフ時は下の
-  # cluster create 引数は現行とバイト等価（後方互換）。issuer は in-cluster 正準名（IADR-0076 手順A）、
-  # claim は #271 の ClusterRoleBinding（User=oidc:developer）に一致（username-claim/prefix）。
+  # クラスタ作成時に必要（後付け不可）。opt-in（既定オフ・fail-safe）。issuer は in-cluster 正準名
+  # （IADR-0076 手順A）、claim は #271 の ClusterRoleBinding（User=oidc:developer）に一致（username-claim/prefix）。
+  # IADR-0104 (#328/#388): **HEADLAMP への追従を廃止**した（旧: ${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}）。
+  # k8s 1.30+ はレガシー --oidc-* を構造化認証設定へ変換し issuer.url に **https を強制**するため、経路B の
+  # http issuer では apiserver が起動できず **クラスタ作成そのものが失敗する**（実測: k3s v1.35.4）。
+  # 「Headlamp を有効にする」意図が「クラスタが作れない」に化けるのは fail-safe ではないので、明示的に
+  # HEADLAMP_OIDC_APISERVER=1 と書いた利用者（k8s 1.29 以前・自己責任）だけが従来動作になる。既定は不変。
+  # Headlamp の正規ログインは SA トークン方式（deploy/local/headlamp の headlamp-viewer）。OIDC 化は #388。
   # IADR-0091 (#356): LOCALEDGE=1 でローカルエッジ集約用のポートへ切替える。platform フロント=80/443
   # (Traefik web/websecure)、管理ツール=50000(Traefik 追加 entrypoint admin)。既定(未設定)は現行 8080/8443 で
   # バイト等価(後方互換・fail-safe)。ポートは cluster 作成時固定のため既存クラスタは delete→再作成が必要
@@ -50,10 +54,14 @@ if [ "$RUNTIME" = "k3d" ]; then
   else
     CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
   fi
-  if [ "${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}" = "1" ]; then
+  if [ "${HEADLAMP_OIDC_APISERVER:-}" = "1" ]; then
     OIDC_ISSUER="${HEADLAMP_OIDC_ISSUER_URL:-http://keycloak:8080/realms/microservices-platform}"
     OIDC_CLIENT="${HEADLAMP_OIDC_CLIENT_ID:-headlamp}"
     echo "    [HEADLAMP OIDC] apiserver OIDC 検証フラグを付与（issuer=$OIDC_ISSUER client=$OIDC_CLIENT）"
+    echo "    WARN: k8s 1.30+ は OIDC issuer に https を強制します。上記 issuer が http の場合、apiserver が" >&2
+    echo "          'jwt[0].issuer.url: URL scheme must be https' で起動できずクラスタ作成に失敗します" >&2
+    echo "          （IADR-0104）。現行 k8s では HEADLAMP_OIDC_APISERVER を外し、Headlamp は SA トークン方式" >&2
+    echo "          （kubectl -n $INFRA_NS create token headlamp-viewer）で使ってください。OIDC 化は #388。" >&2
     CREATE_ARGS+=(
       --k3s-arg "--kube-apiserver-arg=oidc-issuer-url=${OIDC_ISSUER}@server:0"
       --k3s-arg "--kube-apiserver-arg=oidc-client-id=${OIDC_CLIENT}@server:0"
@@ -65,7 +73,7 @@ if [ "$RUNTIME" = "k3d" ]; then
     k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
   else
     echo "    cluster '$CLUSTER' exists — reuse"
-    if [ "${HEADLAMP_OIDC_APISERVER:-${HEADLAMP:-}}" = "1" ]; then
+    if [ "${HEADLAMP_OIDC_APISERVER:-}" = "1" ]; then
       # apiserver 引数は作成時のみ有効＝既存クラスタには後付け不可。fail-safe: 破壊はせず再作成を促す。
       echo "    WARN: 既存クラスタには apiserver OIDC フラグを後付けできません。Headlamp 実ログインには" >&2
       echo "          'k3d cluster delete $CLUSTER' で削除→再実行し、OIDC フラグ付きで再作成してください。" >&2
@@ -357,9 +365,11 @@ if [ "${HEADLAMP:-}" = "1" ]; then
   fi
   kubectl apply -k deploy/local/headlamp
   echo "    Headlamp: kubectl -n $INFRA_NS port-forward svc/headlamp 4466:80  # http://localhost:4466"
-  # IADR-0084 (#328): apiserver OIDC 検証フラグは上の [1/7] で新規クラスタ作成時に自動付与される
-  # （HEADLAMP=1 追従）。既存クラスタ reuse 時は付かない（[1/7] の再作成 WARN 参照）。
-  echo "    ブラウザ OIDC ログイン疎通は deploy/local/README.md の「Headlamp」手順（手順A）参照。"
+  # IADR-0104 (#328): 現行 k8s（1.30+）はブラウザ OIDC ログインを成立させられない（issuer に https 必須／経路B は
+  # http 固定）。正規手順は overlay に恒久化した headlamp-viewer SA の短命トークンを UI の Token 方式で貼る。
+  # OIDC 化（apiserver 配線＋oidc: の RBAC）は #388 で全経路 HTTPS 化と同時に行う。
+  echo "    ログイン(正規): kubectl -n $INFRA_NS create token headlamp-viewer --duration=24h  # UI の Token 方式に貼る"
+  echo "    ブラウザ OIDC ログインは現行 k8s では不可（IADR-0104・#388）。詳細は deploy/local/README.md の「Headlamp」。"
 fi
 
 # IADR-0091 (#356): ローカルエッジ集約（opt-in・既定オフ・fail-safe）。Traefik 追加 entrypoint admin:50000 ＋
