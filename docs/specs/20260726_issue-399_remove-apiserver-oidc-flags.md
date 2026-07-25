@@ -51,7 +51,9 @@ k8s 1.30+ はレガシー `--oidc-*` を構造化認証設定（`jwt[0]`）へ�
     `HEADLAMP=1` 完了メッセージを token 方式の案内へ更新。
   - `scripts/k8s-local-up.test.js`: 旧挙動を固定していた 4 テストを、**不付与を固定する回帰テスト**へ置換。
   - ドキュメント追随: `deploy/local/README.md`（`HEADLAMP_OIDC_APISERVER=0` 併記の回避策が不要になった旨）／
-    `scripts/README.md`（ゲート一覧）／`docs/adr/README.md`（IADR-0105 索引・IADR-0084 の状態）。
+    `scripts/README.md`（ゲート一覧）／`docs/adr/README.md`（IADR-0105 索引・IADR-0084 の状態）／
+    `.github/workflows/ci.yml`（`k8s-local-up-smoke` ジョブの**説明コメントのみ**。claude-review 🟢 指摘の追随で、
+    ジョブ挙動は不変。`workflow` スコープを持つローカル認証でコミットする＝CLAUDE.md の制約に従う）。
 - 対象外（無改変）:
   - `deploy/local/headlamp/` の manifest・`headlamp-oidc` Secret・realm.json・ClusterRoleBinding。
     現行では inert だが無害で、#388 成立時にそのまま機能する（IADR-0084 追記 / IADR-0103）。
