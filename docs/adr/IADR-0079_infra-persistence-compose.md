@@ -11,7 +11,7 @@ author: claude
 created: 2026-07-19
 updated: 2026-07-19
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_auth-keycloak.md (認証＝Keycloak)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)"
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・可観測性・信頼性)"
 ---
 
