@@ -111,5 +111,6 @@ Issue #385 の (a)「**3300 に統一**」を採る。(b)（3001 を正とする
 - `node --test scripts/scripts.test.js` → 63 tests passed（58 → 63・欠落検出の単体テスト 5 件追加）。
 - `node -e "JSON.parse(...)"` で realm JSON の妥当性を確認。
 - `node scripts/check-doc-links.js` でドキュメントリンク切れなしを確認。
-- realm の URL セットを固定する回帰テストは存在しない（`scripts/scripts.test.js` は制約長ロジックのみ検査）ため、
+- realm の URL セットを固定する回帰テストは**本 PR で追加した**（受け入れ基準 8。着手時点では存在せず、
+  `scripts/scripts.test.js` は制約長ロジックのみ検査していた）。ただしこれは**静的な登録内容の検査**であり、
   実ブラウザでの SSO 疎通は稼働 k3d 依存＝**live**（Issue #385 も `priority:could` / live-tier と整理）。
