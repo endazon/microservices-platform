@@ -4,6 +4,7 @@ type: functional-spec
 status: in-progress
 related_ids:
   - FR-11
+  - UC-01
   - UC-02
 author: claude
 created: 2026-07-04
@@ -18,7 +19,7 @@ plan_refs:
 ## 起点となる計画書（トレーサビリティ）
 
 - 機能要求（FR）: FR-11「LLM の呼び出し先（外部マネージドAPI／セルフホスト）を**用途・機密度に応じて切り替えられる**」
-- ユースケース（UC）: UC-02
+- ユースケース（UC）: UC-01（検索・質問する＝用途 `rag-answer`）／UC-02（AI分析を依頼する＝用途 `analysis`）。本仕様書は両用途の用途別ルーティングを扱う（IADR-0106）。
 - 非機能要件（NFR）: 「データ越境統制」（機密区分の高いデータを社外へ送信しない）
 - 計画書リンク: `02_requirements/01_requirements.md`、`07_adr/ADR-0010`（外部マネージドAPI主体のLLMゲートウェイ）、`06_technical/08_data-egress-policy.md`（機密区分×送信先ティア越境マトリクス）
 
