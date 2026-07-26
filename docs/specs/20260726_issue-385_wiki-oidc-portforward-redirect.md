@@ -78,16 +78,37 @@ Issue #385 の (a)「**3300 に統一**」を採る。(b)（3001 を正とする
    description は 255 文字以内。
 6. アプリコード・本番 chart・`values-local.yaml` は無改変。CI / gitleaks green。
 
+### 追加（PR #401 の claude-review 🟡 反映）
+
+7. **誤りの発生源である [[IADR-0095]] §2 を是正する**。§2 は `3001` を「port-forward 用」と記しており、
+   両 README はここから転記された。README だけ直しても ADR を参照した実装者/AI が同じ誤解を再導入するため、
+   **履歴不変の原則に従い本文は書き換えず「追記」節で是正**する（[[IADR-0032]] が [[IADR-0026]] §2 を Amends した前例と同型）。
+8. **経路別 URL の欠落を CI で機械検出する**。`redirectUris`/`webOrigins` の値そのものを固定する回帰テストが
+   無いため、`3300` が将来消えても検出できなかった。`scripts/check-realm-constraints.js`（既に `ci.yml` の
+   `realm-constraints` ジョブで実行）に**必須 URL の欠落検査**を追加する（新規スクリプト＋ワークフロー編集を避ける）。
+   対象 client が realm に無い場合は検査しない（誤検出しない）。
+
 ## 実装
 
 - [`deploy/keycloak/microservices-platform-realm.json`](../../deploy/keycloak/microservices-platform-realm.json):
   `wiki-js` client の `redirectUris` / `webOrigins` に `3300` を追加（追加のみ）。
 - [`deploy/local/wiki-oidc/README.md`](../../deploy/local/wiki-oidc/README.md): 「注意」節の port-forward 記述を是正。
 - [`deploy/local/README.md`](../../deploy/local/README.md): Wiki SSO 節の redirect 登録済み URL の記述を是正。
+- [`docs/adr/IADR-0095_wikijs-keycloak-oidc.md`](../adr/IADR-0095_wikijs-keycloak-oidc.md): 「追記（2026-07-26・Issue #385）」
+  節を追加し、§2 の「port-forward 用」という呼称を是正して経路別の対応表を置く（本文は不変）。
+- [`scripts/check-realm-constraints.js`](../../scripts/check-realm-constraints.js): 検査2 として
+  `REQUIRED_CLIENT_URLS`（経路別の必須 URL 表・IADR-0095 追記の表を単一情報源とする）と `collectMissingUrls` /
+  `checkRealmUrlsText` を追加。自己試験も 7 → 12 件へ拡張。
+- [`scripts/scripts.test.js`](../../scripts/scripts.test.js): 欠落検出・非対象 client の無視・実 realm との突合を単体テスト化。
 
 ## 検証
 
-- `node scripts/check-realm-constraints.js deploy/keycloak/microservices-platform-realm.json` → OK。
+- `node scripts/check-realm-constraints.js --self-test` → 自己試験 12 件 OK。
+- `node scripts/check-realm-constraints.js deploy/keycloak/microservices-platform-realm.json` → OK
+  （255 文字超のフィールド・必須 URL の欠落なし）。
+- **変異試験（ガードが実際に落ちることの確認）**: realm の複製から `3300` の 2 エントリを除去して同スクリプトを
+  実行 → 欠落 2 件を検出し exit 1。ガードが機能することを実測で確認した。
+- `node --test scripts/scripts.test.js` → 63 tests passed（58 → 63・欠落検出の単体テスト 5 件追加）。
 - `node -e "JSON.parse(...)"` で realm JSON の妥当性を確認。
 - `node scripts/check-doc-links.js` でドキュメントリンク切れなしを確認。
 - realm の URL セットを固定する回帰テストは存在しない（`scripts/scripts.test.js` は制約長ロジックのみ検査）ため、

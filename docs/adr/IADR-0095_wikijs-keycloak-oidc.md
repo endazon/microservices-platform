@@ -83,3 +83,27 @@ helm chart・`values.yaml`・Wiki.js Deployment は無改変（Ingress 既定 di
 - **固定コールバックパスを realm に登録**: Wiki.js の strategyKey が不定のため不可。既存同様ワイルドカードで受ける。
 - **OIDC 設定を manifest/env 自動化**: Wiki.js 2.x は DB 保持で env 化不可のため手順化。
 - **client secret を k8s Secret 注入**: Wiki.js が env から読まないため無効。realm プレースホルダ＋管理UI 入力に一元化。
+
+## 追記（2026-07-26・Issue #385）— §2 の「port-forward 用」の対応付けを是正する
+
+本 IADR の決定は不変（redirect 追加のみ・ワイルドカード）だが、**§2 の呼称に誤りがある**ため追記で是正する
+（履歴不変の原則により本文は書き換えない。[[IADR-0032]] が [[IADR-0026]] §2 を Amends した前例と同型）。
+
+§2 は既存 URL を「**port-forward 用**（`http://localhost:3001/*`・`http://wiki-js:3000/*`）」と記したが、
+`3001` は **compose(dev) の host 公開ポート**（[[IADR-0032]] の `ports: 3001:3000`）であり、**k8s（k3d）の
+port-forward は `svc/wiki-js 3300:3000`＝`http://localhost:3300`** で別経路である（§4 本文の「realm の既存
+`http://localhost:3001/*` も同種の dev 直接到達」という記述の方が正しい）。この呼称の取り違えが
+`deploy/local/wiki-oidc/README.md` / `deploy/local/README.md` へ転記され、非 edge・port-forward 単独時の
+Site URL（`http://localhost:3300`）に対応する redirect が realm 未登録のまま「登録済み」と案内される不整合
+（`invalid_redirect_uri`）を生んだ（#385）。
+
+**是正後の対応付け**（`wiki-js` client の登録済み URL は経路ごとに別物）:
+
+| 経路 | URL | 根拠 |
+| --- | --- | --- |
+| edge 集約（`LOCALEDGE=1`） | `http://wiki.localhost:50000/*` | 本 IADR §1・[[IADR-0091]] |
+| k8s の port-forward（非 edge） | `http://localhost:3300/*` | #385。`port-forward svc/wiki-js 3300:3000` と同値 |
+| compose(dev) の host 公開 | `http://localhost:3001/*` | [[IADR-0032]]（`ports: 3001:3000`） |
+| in-cluster | `http://wiki-js:3000/*` | 本 IADR §2（既存） |
+
+再発防止として `scripts/check-realm-constraints.js` が上表の URL 欠落を CI で機械検出する（#385）。
