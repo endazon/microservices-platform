@@ -2,6 +2,7 @@ using FluentAssertions;
 using LlmGateway.Api.Foundation.Routing;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Net;
 using System.Net.Http.Json;
 
@@ -54,7 +55,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // ZDR 非対応の fable-5 は confidential/restricted では除外されるため、用途別モデルの発火は public で検証する。
     [Theory]
     [InlineData("analysis", "claude-fable-5")]
-    [InlineData("rag-answer", "claude-sonnet-4-6")]
+    [InlineData("rag-answer", "claude-sonnet-5")]
     [InlineData("diagram-coding", "claude-haiku-4-5")]
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)
     {
@@ -145,5 +146,38 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
         body!.Sent.Should().BeFalse();          // 外部送信していない（縮退）
         body.RoutingReason.Should().Contain("拒否");
+    }
+
+    // T-19, FR-11, ADR-0022 / IADR-0106: 用途別モデルは claude エンドポイントの Models（利用許可集合）に
+    // 登録されていなければならない。ResolveModel は eligible.Contains(purposeModel) を条件とするため、
+    // Models 未登録の用途別モデルは例外もログも出さずに DefaultModel へフォールバックし、
+    // 「追随したつもりで追随していない」状態が無音で成立する（#376 / IADR-0102 で実際に踏んだ罠）。
+    // rag-answer 単体ではなく PurposeModels 全体を集合として守り、用途追加のたびの再発を防ぐ。
+    [Fact]
+    public void PurposeModels_AreAllRegisteredInClaudeEndpointModels()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+        var claude = options.Endpoints.Single(e => e.Name == "claude-managed");
+
+        foreach (var (purpose, model) in options.PurposeModels)
+        {
+            claude.Models.Should().Contain(model,
+                $"用途 {purpose} の割当モデル {model} が Models 未登録だと DefaultModel へ黙って落ちる");
+        }
+    }
+
+    // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、既定（DefaultModel=claude-opus-5）へ
+    // 落ちない。ADR-0022（Accepted）の確定値であり、ADR-0025 §決定も他層は Sonnet 5 と明記している。
+    [Fact]
+    public async Task PostComplete_RagAnswer_SelectsSonnet5AndDoesNotFallBackToDefault()
+    {
+        var req = new { Prompt = "文書を要約して", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        body!.Sent.Should().BeTrue();
+        body.Model.Should().Be("claude-sonnet-5");
+        body.Model.Should().NotBe("claude-opus-5");  // DefaultModel への無音フォールバックでないこと
     }
 }

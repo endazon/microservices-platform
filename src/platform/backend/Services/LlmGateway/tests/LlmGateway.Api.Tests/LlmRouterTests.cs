@@ -16,7 +16,9 @@ public class LlmRouterTests
         Enabled = enabled,
         Priority = priority,
         DefaultModel = "claude-opus-5",
-        Models = ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"],
+        // ADR-0022 / IADR-0106: rag-answer は claude-sonnet-5。sonnet-4-6 は明示要求の呼び出し側を
+        // 壊さないため許可集合に残す（Models は「割当」ではなく「利用を許可するモデル集合」）。
+        Models = ["claude-fable-5", "claude-opus-5", "claude-opus-4-8", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"],
         // IADR-0022 / 08_data-egress-policy: fable-5 は ZDR 非対応。confidential/restricted では除外される。
         NonZdrModels = ["claude-fable-5"]
     };
@@ -65,7 +67,8 @@ public class LlmRouterTests
         PurposeModels = new(StringComparer.OrdinalIgnoreCase)
         {
             // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku / 最難関 analysis→fable-5。
-            ["rag-answer"] = "claude-sonnet-4-6",
+            // ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5（計画側 Accepted の確定値）。
+            ["rag-answer"] = "claude-sonnet-5",
             ["analysis"] = "claude-fable-5",
             ["diagram-coding"] = "claude-haiku-4-5",
             // AST/ADR-0011 / IADR-0102: 取引判断は基盤の既定モデル改定に自動追随させず版数を固定する。
@@ -141,7 +144,35 @@ public class LlmRouterTests
         decision.Allowed.Should().BeTrue();
         decision.Model.Should().NotBe("claude-fable-5");
         // 用途 rag-answer（ZDR 対応の sonnet）が適格モデルとして選択される。
-        decision.Model.Should().Be("claude-sonnet-4-6");
+        // IADR-0106: Sonnet 5 も ZDR 対応（30 日保持要件は fable-5 / mythos-5 のみ）のため除外されない。
+        decision.Model.Should().Be("claude-sonnet-5");
+    }
+
+    // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、DefaultModel（claude-opus-5）へ
+    // 落ちない。Models 未登録だと ResolveModel が黙って DefaultModel へフォールバックするため、
+    // 「用途別モデルが選ばれたこと」と「既定へ落ちていないこと」を両方固定する（#376 / IADR-0102 の罠）。
+    [Fact]
+    public void Route_RagAnswer_PinsSonnet5AndDoesNotFallBackToDefault()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Model.Should().NotBe("claude-opus-5");
+    }
+
+    // T-19, IADR-0106: ZDR 要件区分（restricted）でも Sonnet 5 は除外されず維持される。
+    [Fact]
+    public void Route_Restricted_RagAnswer_KeepsSonnet5()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Restricted, "rag-answer"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be("claude-sonnet-5");
     }
 
     // IADR-0022: ZDR 要件区分で当該エンドポイントに ZDR 対応モデルが 1 つも無ければ送信を拒否する（安全側）。
