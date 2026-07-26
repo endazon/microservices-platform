@@ -399,6 +399,8 @@ const {
   collectFields,
   findViolations,
   checkRealmText,
+  collectMissingUrls,
+  REQUIRED_CLIENT_URLS,
 } = require('./check-realm-constraints.js');
 
 ok('charLen はコードポイント数（マルチバイトも 1 文字 = 1）', () => {
@@ -437,6 +439,44 @@ ok('checkRealmText: 欠損フィールドは例外を投げず無視', () => {
     checkRealmText(JSON.stringify({ clients: [{ clientId: 'x' }], roles: {}, groups: null })).length,
     0,
   );
+});
+
+// --- check-realm-constraints: 経路ごとに必須の URL の欠落検査（Issue #385 再発防止） ---
+
+const REQ_FIXTURE = {
+  'wiki-js': { redirectUris: ['http://localhost:3300/*', 'http://localhost:3001/*'] },
+};
+
+ok('collectMissingUrls: 必須 URL が揃っていれば欠落なし', () => {
+  const realm = {
+    clients: [{ clientId: 'wiki-js', redirectUris: ['http://localhost:3001/*', 'http://localhost:3300/*'] }],
+  };
+  assert.strictEqual(collectMissingUrls(realm, REQ_FIXTURE).length, 0);
+});
+
+ok('collectMissingUrls: k8s port-forward 用 3300 の欠落を検出する（#385 の回帰）', () => {
+  const realm = { clients: [{ clientId: 'wiki-js', redirectUris: ['http://localhost:3001/*'] }] };
+  const missing = collectMissingUrls(realm, REQ_FIXTURE);
+  assert.strictEqual(missing.length, 1);
+  assert.strictEqual(missing[0].url, 'http://localhost:3300/*');
+  assert.strictEqual(missing[0].path, 'clients[wiki-js].redirectUris');
+});
+
+ok('collectMissingUrls: 対象 client が無い realm では検査しない', () => {
+  assert.strictEqual(collectMissingUrls({ clients: [{ clientId: 'other' }] }, REQ_FIXTURE).length, 0);
+  assert.strictEqual(collectMissingUrls({}, REQ_FIXTURE).length, 0);
+});
+
+ok('collectMissingUrls: フィールド欠損は必須 URL 全件を欠落として返す', () => {
+  assert.strictEqual(collectMissingUrls({ clients: [{ clientId: 'wiki-js' }] }, REQ_FIXTURE).length, 2);
+});
+
+ok('実 realm の wiki-js は経路別の必須 URL（50000/3300/3001/wiki-js:3000）を満たす', () => {
+  const realmPath = path.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json');
+  const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+  assert.deepStrictEqual(collectMissingUrls(realm), []);
+  // 経路の取り違え（#385）防止: 4 経路すべてが表に載っていること
+  assert.strictEqual(REQUIRED_CLIENT_URLS['wiki-js'].redirectUris.length, 4);
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

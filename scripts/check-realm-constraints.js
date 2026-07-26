@@ -24,6 +24,14 @@
  * （PR #317 レビュー指摘）。対象外の varchar 系フィールド（attributes 値・authenticationFlows.alias 等）で
  * 同種の import 失敗が起きた場合は、この collectFields に対象を足して範囲を広げる。
  *
+ *
+ * 検査2: 経路ごとに必須の redirect URI / web origin の欠落（Issue #385 再発防止）。
+ * 背景: `wiki-js` client の登録 URL は経路ごとに別物（edge 集約 50000 / k8s port-forward 3300 /
+ * compose(dev) host 公開 3001 / in-cluster 3000）。#385 では 3001 を「port-forward 用」と取り違えた結果、
+ * 非 edge の port-forward 経路（3300）が realm 未登録のまま docs だけが案内し、OIDC が
+ * invalid_redirect_uri で完了しなかった。長さと違い URL 欠落は静的に列挙できるため import 前に止める。
+ * 対象 client が realm に存在しない場合は検査しない（realm 分割・将来の client 削除で誤検出しない）。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -36,6 +44,25 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM_DIR = 'deploy/keycloak';
 // Keycloak の該当カラムはいずれも varchar(255)。閾値は 1 箇所に集約する。
 const MAX_LEN = 255;
+
+// 経路ごとに必須の redirect URI / web origin（Issue #385 再発防止）。落とすとその経路の OIDC が
+// invalid_redirect_uri で完了しなくなるため、宣言的に列挙して CI で欠落を検出する。
+// 経路の対応は IADR-0095 の追記（2026-07-26・#385）の表を単一情報源とする。
+const REQUIRED_CLIENT_URLS = {
+  'wiki-js': {
+    redirectUris: [
+      'http://wiki.localhost:50000/*', // edge 集約（IADR-0091・LOCALEDGE=1）
+      'http://localhost:3300/*',       // k8s の port-forward（非 edge・svc/wiki-js 3300:3000）
+      'http://localhost:3001/*',       // compose(dev) の host 公開（IADR-0032・ports 3001:3000）
+      'http://wiki-js:3000/*',         // in-cluster
+    ],
+    webOrigins: [
+      'http://wiki.localhost:50000',
+      'http://localhost:3300',
+      'http://localhost:3001',
+    ],
+  },
+};
 
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
@@ -109,6 +136,29 @@ function checkRealmText(text, maxLen = MAX_LEN) {
   return findViolations(collectFields(realm), maxLen);
 }
 
+// realm から「必須 URL の欠落」を { path, url } で列挙する（純粋関数）。
+// 対象 client が realm に存在しなければ、その client の必須 URL は検査しない。
+function collectMissingUrls(realm, required = REQUIRED_CLIENT_URLS) {
+  const out = [];
+  const clients = (realm && realm.clients) || [];
+  for (const clientId of Object.keys(required)) {
+    const client = clients.find((c) => c && c.clientId === clientId);
+    if (!client) continue;
+    for (const field of Object.keys(required[clientId])) {
+      const present = new Set(((client[field] || []).filter((u) => u != null)).map(String));
+      for (const url of required[clientId][field]) {
+        if (!present.has(url)) out.push({ path: `clients[${clientId}].${field}`, url });
+      }
+    }
+  }
+  return out;
+}
+
+// realm JSON テキストから必須 URL の欠落を返す（パース失敗は throw）。
+function checkRealmUrlsText(text, required = REQUIRED_CLIENT_URLS) {
+  return collectMissingUrls(JSON.parse(text), required);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -125,7 +175,7 @@ function checkFiles(relPaths) {
   for (const rel of relPaths) {
     const abs = path.isAbsolute(rel) ? rel : path.join(REPO_ROOT, rel);
     const text = fs.readFileSync(abs, 'utf8');
-    results.push({ file: rel, violations: checkRealmText(text) });
+    results.push({ file: rel, violations: checkRealmText(text), missing: checkRealmUrlsText(text) });
   }
   return results;
 }
@@ -175,6 +225,41 @@ function selfTest() {
     pass: checkRealmText(JSON.stringify({ clients: [{ clientId: 'x', description: long }] })).length === 1,
   });
 
+  // --- 必須 URL の欠落検査（Issue #385）---
+  const req = { 'wiki-js': { redirectUris: ['http://localhost:3300/*', 'http://localhost:3001/*'] } };
+  cases.push({
+    name: '必須 URL が揃っていれば欠落なし',
+    pass: collectMissingUrls(
+      { clients: [{ clientId: 'wiki-js', redirectUris: ['http://localhost:3001/*', 'http://localhost:3300/*'] }] },
+      req,
+    ).length === 0,
+  });
+  cases.push({
+    name: '必須 URL（3300）が欠けていれば検出する',
+    pass: (() => {
+      const m = collectMissingUrls({ clients: [{ clientId: 'wiki-js', redirectUris: ['http://localhost:3001/*'] }] }, req);
+      return m.length === 1 && m[0].url === 'http://localhost:3300/*';
+    })(),
+  });
+  cases.push({
+    name: '対象 client が realm に無ければ検査しない（誤検出しない）',
+    pass: collectMissingUrls({ clients: [{ clientId: 'other' }] }, req).length === 0,
+  });
+  cases.push({
+    name: 'redirectUris 欠損（undefined）は全件欠落として検出する',
+    pass: collectMissingUrls({ clients: [{ clientId: 'wiki-js' }] }, req).length === 2,
+  });
+  cases.push({
+    name: '既定表（REQUIRED_CLIENT_URLS）で実 realm 形と突合できる',
+    pass: checkRealmUrlsText(JSON.stringify({
+      clients: [{
+        clientId: 'wiki-js',
+        redirectUris: REQUIRED_CLIENT_URLS['wiki-js'].redirectUris,
+        webOrigins: REQUIRED_CLIENT_URLS['wiki-js'].webOrigins,
+      }],
+    })).length === 0,
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -200,17 +285,31 @@ function main() {
 
   const results = checkFiles(files);
   const total = results.reduce((n, r) => n + r.violations.length, 0);
-  if (total === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールドはありません。`);
+  const totalMissing = results.reduce((n, r) => n + r.missing.length, 0);
+  if (total === 0 && totalMissing === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落はありません。`);
     process.exit(0);
   }
-  console.error(`[check-realm-constraints] ${MAX_LEN} 文字（varchar(${MAX_LEN})）超のフィールド ${total} 件を検出しました:`);
-  for (const r of results) {
-    for (const v of r.violations) {
-      console.error(`\n  ${r.file}\n    ${v.path}: ${v.len} 文字（上限 ${v.maxLen}）`);
+
+  if (total > 0) {
+    console.error(`[check-realm-constraints] ${MAX_LEN} 文字（varchar(${MAX_LEN})）超のフィールド ${total} 件を検出しました:`);
+    for (const r of results) {
+      for (const v of r.violations) {
+        console.error(`\n  ${r.file}\n    ${v.path}: ${v.len} 文字（上限 ${v.maxLen}）`);
+      }
     }
+    console.error('\nrealm import は SQLSTATE 22001 で失敗します。該当フィールドを 255 文字以内へ短縮してください（Issue #18）。');
   }
-  console.error('\nrealm import は SQLSTATE 22001 で失敗します。該当フィールドを 255 文字以内へ短縮してください（Issue #18）。');
+
+  if (totalMissing > 0) {
+    console.error(`[check-realm-constraints] 経路ごとに必須の URL の欠落 ${totalMissing} 件を検出しました:`);
+    for (const r of results) {
+      for (const m of r.missing) {
+        console.error(`\n  ${r.file}\n    ${m.path}: ${m.url} が未登録`);
+      }
+    }
+    console.error('\n当該経路の OIDC が invalid_redirect_uri で完了しなくなります。経路の対応は IADR-0095 の追記（#385）を参照してください。');
+  }
   process.exit(1);
 }
 
@@ -221,5 +320,8 @@ module.exports = {
   collectFields,
   findViolations,
   checkRealmText,
+  collectMissingUrls,
+  checkRealmUrlsText,
   MAX_LEN,
+  REQUIRED_CLIENT_URLS,
 };
