@@ -240,7 +240,10 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 - **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
   **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。realm `wiki-js`
-  client は `http://wiki.localhost:50000/*`（および port-forward 用 `http://localhost:3001/*`）を登録済みで、
+  client は `http://wiki.localhost:50000/*`（edge 集約）と `http://localhost:3300/*`（**上記 k8s の port-forward 用**・#385）を
+  登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
+  であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
+  揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
   実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
 - 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
   （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。

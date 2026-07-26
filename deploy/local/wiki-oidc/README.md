@@ -105,7 +105,12 @@ curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.
 
 - **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL にしていると、コールバックが `wiki.localhost:50000` を
   指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090・MinIO/IADR-0093 と同性質）。port-forward で OIDC を
-  使う場合は Site URL を `http://localhost:3300` にする（realm には旧 redirect も登録済み）。
+  使う場合は Site URL を `http://localhost:3300`（＝`port-forward svc/wiki-js 3300:3000` と同値）にする。realm の
+  `wiki-js` client には `http://localhost:3300/*` を登録済み（#385）。
+- **redirect の port topology（取り違え注意・#385）**: `wiki-js` client に登録済みの redirect は経路ごとに別物。
+  **edge 集約＝`http://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
+  **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
+  の `ports: 3001:3000`）/ in-cluster＝`http://wiki-js:3000/*`。k8s の port-forward に `3001` は使わない。
 - **realm 反映**: `wiki-js` client の redirect 追加は realm 再インポートで反映（永続化時は管理コンソール追加 or 再作成）。
 - **dev の Wiki.js DB**: OIDC ストラテジは DB 保持。DB を作り直すと再設定が必要（realm import と同様の runtime 手順）。
 - CLI/一部 OS で `*.localhost` 未解決なら hosts 追記 or `*.nip.io`。
