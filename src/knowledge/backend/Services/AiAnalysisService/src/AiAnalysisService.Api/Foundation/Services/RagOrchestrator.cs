@@ -157,7 +157,9 @@ public class RagOrchestrator(
     {
         var llmClient = httpFactory.CreateClient("LlmGateway");
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
-        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-4-6（ADR-0022 の Sonnet 5 追随は未消化）。
+        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
+        // Sonnet 5 も thinking が既定有効で、かつ新トークナイザ（同一テキストで約 +30% トークン）のため、
+        // 4096 は実測前の出発値である（再調整は #380）。
         var body = new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
             Confidentiality: confidentiality, Purpose: purpose);
 
@@ -281,7 +283,9 @@ public class RagOrchestrator(
         var llmClient = httpFactory.CreateClient("LlmGateway");
         // FR-11: Model は明示せず（null）、用途（purpose）と機密区分をゲートウェイへ渡して呼び出し先・モデル選択を委ねる。
         // IADR-0101: MaxTokens は思考トークンと本文の合算上限（thinking が既定有効な Opus 5 / Sonnet 5 の場合）。
-        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-4-6（ADR-0022 の Sonnet 5 追随は未消化）。
+        // 本経路の purpose は rag-answer で、現行設定の割当は claude-sonnet-5（ADR-0022 追随済み・IADR-0106）。
+        // Sonnet 5 も thinking が既定有効で、かつ新トークナイザ（同一テキストで約 +30% トークン）のため、
+        // 4096 は実測前の出発値である（再調整は #380）。
         var completionResp = await llmClient.PostAsJsonAsync("/complete",
             new CompletionApiRequest(prompt, MaxTokens: 4096, Model: null,
                 Confidentiality: confidentiality, Purpose: purpose), ct);

@@ -11,8 +11,11 @@ public sealed class LlmRoutingOptions
 
     // 用途（purpose）→ 既定モデル。用途別にコスト・品質を最適化する（ADR-0010 / IADR-0022）。
     // キーは呼び出し側が送る purpose 値と一致させる（例: rag-answer, analysis, diagram-coding）。
-    // 既定 claude-opus-5（ADR-0025 追従・IADR-0101）/ 定型 rag-answer→claude-sonnet-4-6・
+    // 既定 claude-opus-5（ADR-0025 追従・IADR-0101）/ 定型 rag-answer→claude-sonnet-5（ADR-0022 追従・IADR-0106）・
     // diagram-coding→claude-haiku-4-5 / 最難関 analysis→claude-fable-5。
+    // ⚠️ ここへ用途を追加・変更したら、対象モデルを当該エンドポイントの Models（利用許可集合）にも登録すること。
+    // ResolveModel は eligible.Contains(purposeModel) を条件とするため、未登録だと例外もログも出さずに
+    // DefaultModel へフォールバックし、割当が無音で失効する（IADR-0102 / IADR-0106）。
     public Dictionary<string, string> PurposeModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // internal × ティアC（要承認）を自動許可するか。既定は安全側で false（承認が無ければ C を使わない）。
