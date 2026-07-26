@@ -1,13 +1,14 @@
 ---
 title: IADR-0084 k3d クラスタ作成に apiserver OIDC 検証フラグを opt-in（HEADLAMP 連動）で配線し、issuer は in-cluster 正準名・claim は #271 の username bind に一致させる
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - NFR
   - ADR-0004
   - IADR-0066
   - IADR-0076
   - IADR-0080
+  - IADR-0105
 author: claude
 created: 2026-07-19
 updated: 2026-07-26
@@ -18,7 +19,7 @@ plan_refs:
 
 # IADR-0084: k3d クラスタ作成への apiserver OIDC 検証フラグの opt-in 配線
 
-- 状態: Accepted（**ただし k8s 1.30+ では本 ADR の手順は成立しない。下記「⚠️ 2026-07-25 追記」を必ず読むこと**）
+- 状態: **Superseded by [[IADR-0105]]**（k8s 1.30+ では本 ADR の手順は成立しない。下記「⚠️ 2026-07-25 追記」を必ず読むこと）
 - 日付: 2026-07-19
 - 決定者: claude（実装）
 
@@ -46,9 +47,12 @@ k8s 1.30+ はレガシーな `--oidc-*` フラグを内部で**構造化認証�
   → `http://headlamp.localhost:50000` を開き Token 方式で貼付。
   なお **`headlamp-viewer` SA と cluster-admin bind は overlay に含まれておらず**、クラスタ側へ手作りしたものに
   依存している（`NotFound` の場合は作成が要る）。作成コマンドを含む手順は `deploy/local/README.md` の「Headlamp」参照。
-- **apiserver への OIDC フラグ付与は行わない**（`HEADLAMP_OIDC_APISERVER` を 1 にしても、k8s 1.30+ では
-  クラスタが起動しなくなる）。**退避済みのドロップイン（`/root/99-headlamp-oidc.yaml.disabled` 等）は無効のまま
-  置いておく**こと（`/etc/rancher/k3s/config.yaml.d/` へ戻さない）。
+- **apiserver への OIDC フラグ付与は行わない**。**［2026-07-26 更新］この方針は
+  [[IADR-0105]]（#399）でコードに反映済み**で、`scripts/k8s-local-up.sh` の付与経路（下記「決定」§1・§4）は
+  **除去された**。旧 env `HEADLAMP_OIDC_APISERVER` を 1 にしても no-op であり、`HEADLAMP=1` は Headlamp の
+  デプロイのみを行う。**退避済みのドロップイン（`/root/99-headlamp-oidc.yaml.disabled` 等）は無効のまま
+  置いておく**こと（`/etc/rancher/k3s/config.yaml.d/` へ戻さない。これはクラスタ側の状態であり、スクリプトは
+  生成も配置もしない）。
 - OIDC 化は **全経路 HTTPS 化と同時**に行う。追跡は **#388**（issuer を https へ統一し、apiserver に
   `oidc-ca-file` を含めて再配線する）。
 
@@ -105,6 +109,10 @@ k8s 1.29 以前を前提としており、現行環境では実装しても機�
 (2) issuer の値（到達性）、(3) claim マッピング（#271 の RBAC への対応）、(4) 既存クラスタ再利用時の扱い。
 
 ## 決定
+
+> **［2026-07-26］以下の決定 1・4 の実装は [[IADR-0105]]（#399）で除去された。** `HEADLAMP=1` 追従により
+> 通常の立ち上げでクラスタが起動不能になるため、`scripts/k8s-local-up.sh` は apiserver 引数を一切書かない。
+> 本節は当時の決定内容の記録として残す（再導入は #388 で issuer/CA 前提とともに設計し直す）。
 
 ### 1. `HEADLAMP_OIDC_APISERVER`（既定＝`HEADLAMP` 追従）で opt-in 付与し、既定は現行の cluster create を不変に保つ
 
