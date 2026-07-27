@@ -56,3 +56,41 @@ metadata:
 spec:
   type: ExternalName
   externalName: otel-collector.platform-infra.svc.cluster.local
+---
+# Issue #407, IADR-0107: AST 所有サービス（configuration / risk-management / market-monitor）は
+# AST chart（ai-stock-trading namespace）が単一の所有者であり、MSP namespace には実体を置かない。
+# BFF（Platform.Bff）は named HttpClient のコード既定 `http://<svc>-service:8080` で下流を引くため、
+# その素の名前を AST namespace の実体へ解決させる ExternalName を置く（BFF・本番像 values ともに無改修）。
+#
+# 以前は values-local.yaml が同じ 3 サービスを MSP namespace にも重複デプロイしており、両者が
+# ExternalName 経由で同一の platform-infra RabbitMQ / postgres を共有した結果、同名キュー
+# `TradeDecisionMade` を consumers=4 で奪い合って取引判断を無言で取りこぼした（#407 原因A）。
+#
+# fail-safe: AST chart 未適用時、解決先に Service が無いため BFF は不達→502 へ縮退する
+# （IADR-0071 / IADR-0072 の既存設計どおり。readiness の UriHealthCheck には含めない）。
+apiVersion: v1
+kind: Service
+metadata:
+  name: configuration-service
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: configuration-service.ai-stock-trading.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: risk-management-service
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: risk-management-service.ai-stock-trading.svc.cluster.local
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: market-monitor-service
+  namespace: microservices-platform
+spec:
+  type: ExternalName
+  externalName: market-monitor-service.ai-stock-trading.svc.cluster.local

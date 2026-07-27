@@ -166,13 +166,36 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 > 起点: [IADR-0076](../../docs/adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) /
 > 作業仕様書 [`docs/specs/20260719_issue-284-live-integration-wiring.md`](../../docs/specs/20260719_issue-284-live-integration-wiring.md)
 
-### AST 3 サービスの有効化（自動）
+### AST 3 画面系（AST/SC-01・AST/SC-02・AST/SC-03）の到達
 
-`values-local.yaml` は AST の 3 画面系サービス（`configuration` / `risk-management` / `market-monitor`）を
-**経路B で自動有効化**する（本番像 `values.yaml` は fail-safe の disabled のまま不変）。接続情報は
-`values-local` の `extraEnv` が注入する（DB は経路B postgres の owner=ai に合わせ `ai/ai`、RabbitMQ は `guest/guest`）。
-イメージは `k8s-local-images.sh` が MAPPING から 3 サービスとも build/import する。BFF の `/bff/assumptions`・
-`/bff/risk-controls/*`・`/bff/monitor/*` はこれらへプロキシする（#283/#287/#288）。
+> **AST chart の適用が前提**（Issue #407 / [IADR-0107](../../docs/adr/IADR-0107_ast-owned-service-single-deployment.md)）
+
+AST の 3 画面系サービス（`configuration` / `risk-management` / `market-monitor`）は
+**AST chart（`ai-stock-trading` namespace）が単一の所有者**であり、MSP namespace には実体を置かない。
+`values-local.yaml` はこれらを有効化しない（本番像 `values.yaml` の fail-safe 既定 `enabled: false` と一致）。
+
+BFF の `/bff/assumptions`・`/bff/risk-controls/*`・`/bff/monitor/*`（#283/#287/#288）は、
+`deploy/local/aliases/microservices-platform-externalnames.yaml` の **ExternalName alias** が
+`<svc>-service` を `<svc>-service.ai-stock-trading.svc.cluster.local` へ解決させることで、
+AST namespace の単一実体へ届く（BFF・本番像 values ともに無改修）。alias は `k8s-local-up.sh` の `[7/7]` が適用する。
+
+```bash
+# 到達確認（AST chart 適用後）
+kubectl -n microservices-platform get svc risk-management-service -o jsonpath='{.spec.externalName}'
+#   → risk-management-service.ai-stock-trading.svc.cluster.local
+kubectl -n ai-stock-trading get pods -l app=risk-management-service
+```
+
+**AST chart 未適用時**: alias の解決先に Service が無いため、BFF は不達→**502 へ縮退**する（fail-safe。
+[IADR-0071](../../docs/adr/IADR-0071_ast-risk-controls-bff-integration.md) /
+[IADR-0072](../../docs/adr/IADR-0072_ast-monitor-bff-integration.md) の既存設計どおり、readiness の
+`UriHealthCheck` には含めないため BFF 自体の可用性は落ちない）。3 画面を使うには AST chart を適用すること。
+
+> **なぜ MSP 側に置かないか**: 以前は `values-local.yaml` が同 3 サービスを MSP namespace にも重複デプロイして
+> いた。両 namespace の `rabbitmq` / `postgres` は ExternalName で**同一の `platform-infra` 実体**を指すため、
+> `risk-management` / `market-monitor` の計 4 Pod が同一キュー `TradeDecisionMade` を **consumers=4** で
+> 奪い合い、取引判断（`OrderApproved` / `OrderRejected`）を**無言で取りこぼした**（Issue #407 原因A）。
+> 再発は `scripts/check-unit-service-ownership.js`（CI 必須チェック）が止める。
 
 ### エッジ /bff/* ルーティング
 
