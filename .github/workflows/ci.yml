@@ -150,6 +150,31 @@ jobs:
       - name: Check BFF downstream upstream ports
         run: node scripts/check-bff-downstreams.js
 
+  # FR-14, IADR-0107, Issue #407 再発防止: 可変ユニット（AST）が所有するサービスを MSP 側の values でも
+  # 有効化する「重複デプロイ」を機械検査する。経路B で risk-management / market-monitor が 2 namespace に
+  # 並び、ExternalName 経由で同一の platform-infra RabbitMQ を共有した結果、同名キュー TradeDecisionMade を
+  # consumers=4 で奪い合い、取引判断（OrderApproved/OrderRejected）を無言で取りこぼした。
+  # AST 所有サービス一覧は submodule の chart values から読み、未取得なら既知の一覧へ縮退する（fail-safe）。
+  # ここでは submodule を取得して実 chart で突合する（pin 更新で AST にサービスが増えても追随できる）。
+  # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
+  unit-service-ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # public な src/* ユニットのみ非再帰で取得する（private planning を巻き込まない。lint ジョブと同型）。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test unit service ownership checker
+        run: node scripts/check-unit-service-ownership.js --self-test
+      - name: Check unit service ownership (no duplicate deployment)
+        run: node scripts/check-unit-service-ownership.js
+
   lint:
     runs-on: ubuntu-latest
     steps:
