@@ -68,6 +68,10 @@ spec:
 #
 # fail-safe: AST chart 未適用時、解決先に Service が無いため BFF は不達→502 へ縮退する
 # （IADR-0071 / IADR-0072 の既存設計どおり。readiness の UriHealthCheck には含めない）。
+#
+# ※ 下記 externalName の namespace 部（ai-stock-trading）は AST chart の `namespace.name`
+#   （src/ai-stock-trading/deploy/helm/ai-stock-trading/values.yaml。現在は固定値 ai-stock-trading）と
+#   一致させること。AST 側で namespace 名を変えた場合はここも追随しないと解決先を失い、BFF が 502 のままになる。
 apiVersion: v1
 kind: Service
 metadata:

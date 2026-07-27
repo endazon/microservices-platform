@@ -1,7 +1,7 @@
 ---
 title: 経路B の AST 3 サービス重複デプロイを除去し、取引判断の取りこぼしを止める（Issue #407・IADR-0107）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-14
   - IADR-0107
