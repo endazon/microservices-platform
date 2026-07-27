@@ -479,4 +479,96 @@ ok('実 realm の wiki-js は経路別の必須 URL（50000/3300/3001/wiki-js:30
   assert.strictEqual(REQUIRED_CLIENT_URLS['wiki-js'].redirectUris.length, 4);
 });
 
+// --- check-unit-service-ownership: AST 所有サービスの重複デプロイ検査（Issue #407 再発防止） ---
+
+const {
+  parseServiceKeys,
+  parseEnabledFlags,
+  effectiveEnabled,
+  findDuplicateOwnership,
+  AST_OWNED_FALLBACK,
+} = require('./check-unit-service-ownership.js');
+
+const MSP_BASE_FIXTURE = [
+  'services:',
+  '  document:',
+  '    enabled: true',
+  '  risk-management:',
+  '    enabled: false',
+  '    image: microservices-platform/risk-management-service',
+  '  market-monitor:',
+  '    enabled: false',
+  'networkPolicy:',
+  '  enabled: true',
+].join('\n');
+
+const AST_CHART_FIXTURE = [
+  'services:',
+  '  risk-management:',
+  '    image: ai-stock-trading/risk-management-service',
+  '  market-monitor:',
+  '    image: ai-stock-trading/market-monitor-service',
+  '  trade-decision:',
+  '    image: ai-stock-trading/trade-decision-service',
+].join('\n');
+
+ok('parseServiceKeys は top-level services 直下のキーのみを返す（深い階層・後続 top-level を拾わない）', () => {
+  assert.deepStrictEqual(parseServiceKeys(MSP_BASE_FIXTURE), ['document', 'risk-management', 'market-monitor']);
+  assert.deepStrictEqual(parseServiceKeys(AST_CHART_FIXTURE), ['risk-management', 'market-monitor', 'trade-decision']);
+});
+
+ok('parseServiceKeys: services ブロックが無ければ空', () => {
+  assert.deepStrictEqual(parseServiceKeys('global:\n  image:\n    registry: k3d-local\n'), []);
+});
+
+ok('parseEnabledFlags は enabled の明示値のみを拾う（未指定は欠落＝undefined）', () => {
+  const flags = parseEnabledFlags(MSP_BASE_FIXTURE);
+  assert.strictEqual(flags.get('document'), true);
+  assert.strictEqual(flags.get('risk-management'), false);
+  assert.strictEqual(flags.get('market-monitor'), false);
+  assert.strictEqual(parseEnabledFlags(AST_CHART_FIXTURE).has('risk-management'), false);
+});
+
+ok('effectiveEnabled: values-local の enabled: true が本番像の false を上書きする（Helm のマップ deep-merge）', () => {
+  const override = 'services:\n  risk-management:\n    enabled: true\n';
+  const eff = effectiveEnabled(MSP_BASE_FIXTURE, override);
+  assert.strictEqual(eff.has('risk-management'), true);
+  assert.strictEqual(eff.has('market-monitor'), false, '上書きの無い false は無効のまま');
+  assert.strictEqual(eff.has('document'), true, '本番像の true は維持される');
+});
+
+ok('effectiveEnabled: 上書きが enabled を書かなければ本番像の値が残る', () => {
+  const override = 'services:\n  risk-management:\n    extraEnv:\n      - { name: X, value: "1" }\n';
+  assert.strictEqual(effectiveEnabled(MSP_BASE_FIXTURE, override).has('risk-management'), false);
+});
+
+ok('effectiveEnabled: 上書き側にしか無いサービスも評価対象になる', () => {
+  const override = 'services:\n  newcomer:\n    enabled: true\n';
+  assert.strictEqual(effectiveEnabled(MSP_BASE_FIXTURE, override).has('newcomer'), true);
+});
+
+ok('findDuplicateOwnership: AST 所有サービスが MSP で有効なら違反（#407 の回帰）', () => {
+  const v = findDuplicateOwnership(new Set(['document', 'risk-management', 'market-monitor']), ['risk-management', 'market-monitor', 'trade-decision']);
+  assert.deepStrictEqual(v, ['market-monitor', 'risk-management']);
+});
+
+ok('findDuplicateOwnership: MSP 固有サービスは AST と同名でなければ違反にならない', () => {
+  assert.deepStrictEqual(findDuplicateOwnership(new Set(['document', 'wiki', 'bff']), AST_OWNED_FALLBACK), []);
+});
+
+ok('findDuplicateOwnership: MSP 側で無効なら AST 所有でも違反にならない（本番像 fail-safe 既定）', () => {
+  assert.deepStrictEqual(findDuplicateOwnership(effectiveEnabled(MSP_BASE_FIXTURE, ''), parseServiceKeys(AST_CHART_FIXTURE)), []);
+});
+
+ok('AST_OWNED_FALLBACK は submodule 未取得時のフォールバックとして 3 画面系を含む', () => {
+  for (const s of ['configuration', 'risk-management', 'market-monitor']) {
+    assert.ok(AST_OWNED_FALLBACK.includes(s), `${s} が欠けている`);
+  }
+});
+
+ok('実ファイル: 経路B(values-local) で AST 所有サービスが有効化されていない（#407 の回帰）', () => {
+  const { checkTree } = require('./check-unit-service-ownership.js');
+  assert.deepStrictEqual(checkTree(), []);
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
