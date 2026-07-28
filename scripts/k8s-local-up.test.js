@@ -777,8 +777,13 @@ ok('#398: 閲覧専用＝verbs は get/list/watch のみ・cluster-admin を bin
 
 ok('#398: Headlamp Pod の SA（headlamp）には権限を bind しない fail-safe が維持されている', () => {
   const podYaml = fs.readFileSync(path.join(HEADLAMP_DIR, 'headlamp.yaml'), 'utf8');
+  // subjects: が 1 つも無ければ「bind されていない」＝合格。存在する場合のみ中身を検査する
+  // （claude-review 🟡: indexOf の -1 を slice に渡すと末尾 1 文字だけが対象になり、
+  //   fail-safe が壊れてもアサートが常に成功する静かな縮退になるため、位置で分岐する）。
+  const subjectsAt = podYaml.indexOf('subjects:');
   assert.ok(
-    !/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp\s*\n/.test(podYaml.slice(podYaml.indexOf('subjects:'))),
+    subjectsAt === -1 ||
+      !/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp\s*\n/.test(podYaml.slice(subjectsAt)),
     'Pod の SA headlamp が RoleBinding の subject になっている（IADR-0080 の fail-safe が壊れる）',
   );
   assert.ok(
