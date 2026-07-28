@@ -34,7 +34,7 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 | Logout URL（任意） | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/logout` |
 
 - **Site URL（重要・Administration → General）**: **利用する経路の到達 URL と一致させる**。値は下の
-  「[Site URL は経路と一致させる](#site-url-は経路と一致させる385)」を参照（edge=`http://wiki.localhost:50000` /
+  **次節「Site URL は経路と一致させる」**を参照（edge=`http://wiki.localhost:50000` /
   port-forward 単独=`http://localhost:3300`）。
 - **claim / group マッピング（fail-safe）**: strategy の **Map Groups** を有効化し、`groups`（realm の abac-attributes /
   roles スコープ由来）を Wiki.js グループへ対応づける。**未マッピングのユーザーは最小権限グループ（Guests 相当）に割当**
@@ -126,7 +126,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.
 - **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL のままにしていると、コールバックが
   `wiki.localhost:50000` を指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090・MinIO/IADR-0093 と
   同性質）。この場合は Site URL を `http://localhost:3300`（＝`port-forward svc/wiki-js 3300:3000` と同値）へ切り替える
-  ＝上の「[Site URL は経路と一致させる](#site-url-は経路と一致させる385)」の表のとおり。realm の `wiki-js` client には
+  ＝上の**「Site URL は経路と一致させる」節**の表のとおり。realm の `wiki-js` client には
   `http://localhost:3300/*` を登録済み（#385）。
 - **redirect の port topology（取り違え注意・#385）**: `wiki-js` client に登録済みの redirect は経路ごとに別物。
   **edge 集約＝`http://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
