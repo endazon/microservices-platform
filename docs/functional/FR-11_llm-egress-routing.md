@@ -168,6 +168,8 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 - 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
 - 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+- 可観測性仕様書: `../observability/llm-completion-metrics.md`（終了理由・拒否率のメトリクス）
+- 運用仕様書: `../operations/operations.md`（監視・アラート）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
 
 ## 未決事項
