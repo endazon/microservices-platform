@@ -1,4 +1,5 @@
 using LlmGateway.Api.Foundation.Ports;
+using Platform.Shared.Contracts.Dtos;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
@@ -12,7 +13,12 @@ namespace LlmGateway.Api.Composable.Adapters;
 // 安全側の既定: 送信先ティア（08_data-egress-policy の契約条件＝ZDR/学習不使用/レジデンシー）が未確定のため、
 // エンドポイント定義は「ティアC・既定 Enabled=false」で登録する（selfhosted と同じ後付けパターン）。
 // BaseUrl/Token 未設定時は呼び出さず、確定後に設定で有効化する（IADR-0022 のフォローアップ）。
-public sealed class CopilotProvider(IHttpClientFactory httpFactory, IConfiguration config) : ILlmProvider
+// IADR-0109 (#394): 応答の finish_reason を契約の正準語彙（CompletionStopReasons）へ正規化する
+// （SelfHostedProvider と同じ写像。プロバイダによって契約の意味が変わらないようにする）。
+public sealed class CopilotProvider(
+    IHttpClientFactory httpFactory,
+    IConfiguration config,
+    ILogger<CopilotProvider> logger) : ILlmProvider
 {
     private readonly string _baseUrl = config["Llm:Copilot:BaseUrl"] ?? string.Empty;
     private readonly string _token = config["Llm:Copilot:Token"] ?? string.Empty;
@@ -39,12 +45,29 @@ public sealed class CopilotProvider(IHttpClientFactory httpFactory, IConfigurati
         resp.EnsureSuccessStatusCode();
         var payload = await resp.Content.ReadFromJsonAsync<OpenAiCompletionResponse>(ct);
 
-        var text = payload?.Choices?.FirstOrDefault()?.Message?.Content ?? string.Empty;
-        return new CompletionResult(text, payload?.Usage?.PromptTokens ?? 0, payload?.Usage?.CompletionTokens ?? 0);
+        var choice = payload?.Choices?.FirstOrDefault();
+
+        // IADR-0109 (#394), IADR-0104: content を読む前に終了理由を確定させる。
+        var (stopReason, unmapped) = OpenAiFinishReasons.Map(choice?.FinishReason);
+        if (unmapped)
+            logger.LogWarning(
+                "Unmapped OpenAI finish_reason \"{FinishReason}\" from Copilot endpoint (model {Model}). " +
+                "Passing it through verbatim; callers only branch on the canonical vocabulary.",
+                choice!.FinishReason, request.Model ?? _defaultModel);
+
+        // IADR-0104: 拒否（content_filter → refusal）のときだけ本文を破棄する（SelfHostedProvider と同じ扱い）。
+        var text = CompletionStopReasons.IsRefusal(stopReason)
+            ? string.Empty
+            : choice?.Message?.Content ?? string.Empty;
+
+        return new CompletionResult(
+            text, payload?.Usage?.PromptTokens ?? 0, payload?.Usage?.CompletionTokens ?? 0, stopReason);
     }
 
     private sealed record OpenAiCompletionResponse(List<OpenAiChoice>? Choices, OpenAiUsage? Usage);
-    private sealed record OpenAiChoice(OpenAiMessage? Message);
+    private sealed record OpenAiChoice(
+        OpenAiMessage? Message,
+        [property: JsonPropertyName("finish_reason")] string? FinishReason);
     private sealed record OpenAiMessage(string? Content);
     private sealed record OpenAiUsage(
         [property: JsonPropertyName("prompt_tokens")] int PromptTokens,
