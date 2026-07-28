@@ -357,7 +357,8 @@ Error: invalid authentication configuration: jwt[0].issuer.url:
 
 ```bash
 HEADLAMP=1 bash scripts/k8s-local-up.sh   # Rancher Desktop（内蔵 k3s）・k3d 共通
-# → deploy/local/headlamp（ServiceAccount/Deployment/Service/ClusterRoleBinding）を適用。
+# → deploy/local/headlamp（Deployment/Service ＋ Pod 用 SA `headlamp` ＋ token ログイン用 SA `headlamp-viewer`
+#   と閲覧専用 RBAC・#398/IADR-0108）を適用。
 #   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
 ```
 
@@ -375,14 +376,19 @@ UI の認証方式で **Token** を選び、`headlamp-viewer` ServiceAccount の
 kubectl -n platform-infra create token headlamp-viewer --duration=24h
 ```
 
-`headlamp-viewer` は**現時点で overlay に含まれていない**（従来 live クラスタへ手作りしてきた）。`NotFound` になる
-場合は先に作る:
+`headlamp-viewer` は overlay に収録済みのため（[`headlamp-viewer-rbac.yaml`](headlamp/headlamp-viewer-rbac.yaml)・
+#398 / [IADR-0108](../../docs/adr/IADR-0108_headlamp-viewer-readonly-rbac.md)）、`HEADLAMP=1` で up した直後から
+**手動作成なしに**トークンを発行できる。
 
-```bash
-kubectl -n platform-infra create serviceaccount headlamp-viewer
-kubectl create clusterrolebinding headlamp-viewer \
-  --clusterrole=cluster-admin --serviceaccount=platform-infra:headlamp-viewer
-```
+**権限は閲覧専用**（`get`/`list`/`watch` のみ）である。内訳は組み込み ClusterRole `view`（全 namespace の
+リソース読み取り。**`secrets` は含まない**）＋ `headlamp-viewer-cluster-read`（Node / PV / StorageClass / CRD /
+RBAC 等のクラスタスコープ資源の読み取り）。UI からの scale・delete・exec・YAML 編集は **403** になる（意図どおり）。
+書き込みが必要な操作は各自の kubeconfig で `kubectl` を使う。
+
+> 従来この SA を手作りしていたクラスタには、`cluster-admin` を束ねた CRB `headlamp-viewer` が残っている場合が
+> ある。名前が異なる（overlay 側は `headlamp-viewer-view` / `headlamp-viewer-cluster-read`）ため衝突はしないが、
+> 残存すると実効権限は cluster-admin のままである。閲覧専用に揃えるなら手作り分を消す:
+> `kubectl delete clusterrolebinding headlamp-viewer --ignore-not-found`
 
 fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域権限を bind していないため、トークンを
 貼らない限りクラスタは可視化できない（[IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md)）。

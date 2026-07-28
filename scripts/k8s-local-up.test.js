@@ -725,4 +725,71 @@ ok('realm.json: admin ユーザーとツール別 claim 設計が恒久化され
   );
 });
 
+// --- IADR-0108 (#398): headlamp overlay の token ログイン用 SA と閲覧専用 RBAC ------------------
+// `HEADLAMP=1` だけで token ログインが成立する（＝手動 kubectl create が要らない）ことは、overlay が
+// `headlamp-viewer` の SA/RBAC を収録し続けることに依存する。ここを外すと README の手順が静かに壊れるため、
+// 収録と「閲覧専用（get/list/watch のみ）」を静的検査で固定する。YAML パーサは持ち込まない（外部依存ゼロ）。
+const HEADLAMP_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'headlamp');
+const VIEWER_YAML = fs.readFileSync(path.join(HEADLAMP_DIR, 'headlamp-viewer-rbac.yaml'), 'utf8');
+
+ok('#398: kustomization が headlamp-viewer-rbac.yaml を resources に含む', () => {
+  const kust = fs.readFileSync(path.join(HEADLAMP_DIR, 'kustomization.yaml'), 'utf8');
+  assert.ok(
+    /^\s*-\s*headlamp-viewer-rbac\.yaml\s*$/m.test(kust),
+    'headlamp overlay の resources に headlamp-viewer-rbac.yaml が無い（HEADLAMP=1 で SA が作られない）',
+  );
+});
+
+ok('#398: SA headlamp-viewer が platform-infra に定義されている', () => {
+  assert.ok(
+    /kind:\s*ServiceAccount[\s\S]*?name:\s*headlamp-viewer[\s\S]*?namespace:\s*platform-infra/.test(VIEWER_YAML),
+    'ServiceAccount headlamp-viewer（platform-infra）が定義されていない',
+  );
+});
+
+ok('#398: 組み込み view と cluster-read の 2 本を headlamp-viewer へ bind している', () => {
+  for (const role of ['view', 'headlamp-viewer-cluster-read']) {
+    assert.ok(
+      new RegExp(`roleRef:[\\s\\S]*?name:\\s*${role}\\s*\\n`).test(VIEWER_YAML),
+      `ClusterRole ${role} への bind が無い`,
+    );
+  }
+  const subjects = VIEWER_YAML.match(/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp-viewer/g) || [];
+  assert.strictEqual(subjects.length, 2, `bind の subject 数が 2 でない（実際: ${subjects.length}）`);
+});
+
+ok('#398: 閲覧専用＝verbs は get/list/watch のみ・cluster-admin を bind しない', () => {
+  const allowed = new Set(['get', 'list', 'watch']);
+  const verbLines = VIEWER_YAML.match(/^\s*verbs:\s*\[[^\]]*\]/gm) || [];
+  assert.ok(verbLines.length > 0, 'verbs 定義が読み取れない（書式変更なら本テストも更新すること）');
+  for (const line of verbLines) {
+    for (const raw of line.slice(line.indexOf('[') + 1, line.lastIndexOf(']')).split(',')) {
+      const verb = raw.trim().replace(/^["']|["']$/g, '');
+      if (!verb) continue;
+      assert.ok(allowed.has(verb), `閲覧用途外の verb "${verb}" が含まれる（最小権限を維持すること）`);
+    }
+  }
+  assert.ok(
+    !/cluster-admin/.test(VIEWER_YAML),
+    'headlamp-viewer に cluster-admin が bind されている（IADR-0108 決定2 に反する）',
+  );
+});
+
+ok('#398: Headlamp Pod の SA（headlamp）には権限を bind しない fail-safe が維持されている', () => {
+  const podYaml = fs.readFileSync(path.join(HEADLAMP_DIR, 'headlamp.yaml'), 'utf8');
+  // subjects: が 1 つも無ければ「bind されていない」＝合格。存在する場合のみ中身を検査する
+  // （claude-review 🟡: indexOf の -1 を slice に渡すと末尾 1 文字だけが対象になり、
+  //   fail-safe が壊れてもアサートが常に成功する静かな縮退になるため、位置で分岐する）。
+  const subjectsAt = podYaml.indexOf('subjects:');
+  assert.ok(
+    subjectsAt === -1 ||
+      !/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp\s*\n/.test(podYaml.slice(subjectsAt)),
+    'Pod の SA headlamp が RoleBinding の subject になっている（IADR-0080 の fail-safe が壊れる）',
+  );
+  assert.ok(
+    !/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp\s*\n/.test(VIEWER_YAML),
+    'headlamp-viewer-rbac.yaml が Pod の SA headlamp を subject にしている',
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
