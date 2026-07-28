@@ -3,7 +3,6 @@ using System.Text;
 using AiAnalysisService.Api.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Dtos;
-using Microsoft.Extensions.Configuration;
 using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Tests;
@@ -18,8 +17,7 @@ public class RagOrchestratorStopReasonTests
     public async Task AskAsync_WhenGatewayReportsRefusal_ReturnsRefusalMessage()
     {
         var orchestrator = new RagOrchestrator(
-            new RoutingHttpClientFactory(CompletionJson(stopReason: "refusal", text: "")),
-            BuildConfig());
+            new RoutingHttpClientFactory(CompletionJson(stopReason: "refusal", text: "")));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
 
@@ -32,8 +30,7 @@ public class RagOrchestratorStopReasonTests
     public async Task AskAsync_WhenEndTurn_ReturnsBodyUnchanged()
     {
         var orchestrator = new RagOrchestrator(
-            new RoutingHttpClientFactory(CompletionJson(stopReason: "end_turn", text: "回答本文")),
-            BuildConfig());
+            new RoutingHttpClientFactory(CompletionJson(stopReason: "end_turn", text: "回答本文")));
 
         var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
 
@@ -49,7 +46,7 @@ public class RagOrchestratorStopReasonTests
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
-            new RoutingHttpClientFactory(sse, "text/event-stream"), BuildConfig());
+            new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
@@ -69,7 +66,7 @@ public class RagOrchestratorStopReasonTests
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
             "\"inputTokens\":11,\"outputTokens\":0,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
-            new RoutingHttpClientFactory(sse, "text/event-stream"), BuildConfig());
+            new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
@@ -91,7 +88,7 @@ public class RagOrchestratorStopReasonTests
             "data: {\"delta\":\"\",\"done\":true,\"sent\":true,\"model\":\"claude-opus-5\"," +
             "\"inputTokens\":11,\"outputTokens\":5,\"stopReason\":\"refusal\"}\n\n";
         var orchestrator = new RagOrchestrator(
-            new RoutingHttpClientFactory(sse, "text/event-stream"), BuildConfig());
+            new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
@@ -109,14 +106,6 @@ public class RagOrchestratorStopReasonTests
         {"text":"{{text}}","model":"claude-opus-5","inputTokens":11,"outputTokens":0,
          "sent":true,"endpoint":"claude-managed","routingReason":"ok","stopReason":"{{stopReason}}"}
         """;
-
-    private static IConfiguration BuildConfig()
-        => new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Llm:DefaultModel"] = "claude-opus-5"
-            })
-            .Build();
 
     // 認可（許可）・検索（0 件）は固定応答を返し、LlmGateway だけテストごとの本文を返すスタブ。
     private sealed class RoutingHttpClientFactory(string llmBody, string llmMediaType = "application/json")
