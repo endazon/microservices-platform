@@ -1,0 +1,100 @@
+# IADR-0108 (#398): Headlamp の **token ログイン用** ServiceAccount と、その閲覧専用 RBAC。
+#
+# 経路B（ローカル k8s dev）の Headlamp ログインは token 方式が正式手順である（IADR-0084「⚠️ 2026-07-25 追記」・#393）。
+# apiserver の OIDC 検証フラグは k8s 1.30+ の https-issuer 強制と両立せずクラスタを停止させるため配線しない
+# （IADR-0105 / #399 で除去済み・**復活させない**）。OIDC 化は #388（全経路 HTTPS 化）と同時にのみ成立する。
+#
+# 使い方（overlay 適用後）:
+#   kubectl -n platform-infra create token headlamp-viewer --duration=24h
+#   → Headlamp UI の認証方式「Token」に貼る。
+#
+# ⚠️ ローカル dev 限定。この SA のトークンは `kubectl create token` で誰でも再発行できるため、権限は
+#    **閲覧専用（get/list/watch のみ）** に絞る（IADR-0108 決定2）。本番クラスタへ持ち込まないこと。
+#    書き込み（scale/delete/exec/YAML 編集）は UI からは 403 になる＝意図どおり。必要なら各自の kubeconfig を使う。
+#
+# ⚠️ Headlamp **Pod** が使う SA（`headlamp`・headlamp.yaml）とは別物である。あちらは「広域権限を一切 bind しない」
+#    ことが fail-safe の要（IADR-0080）。性質が正反対のため意図的にファイルを分けている。
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-viewer
+  namespace: platform-infra
+  labels: { app: headlamp }
+---
+# 名前空間リソースの読み取りは k8s 組み込みの `view` を使う（ClusterRoleBinding なので全 namespace 横断）。
+# `view` は設計上 **`secrets` を含まない**（keycloak-admin / postgres 等の認証情報が読めない）。この性質を
+# 享受するために自前のワイルドカード ClusterRole を書かない（IADR-0108 の却下案参照）。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-viewer-view
+  labels: { app: headlamp }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-viewer
+    namespace: platform-infra
+---
+# 組み込み `view` が持たないクラスタスコープ資源の読み取り。Headlamp のクラスタ概要・ノード一覧・
+# ストレージ/CRD/RBAC ビューが空にならないために必要。verbs は get/list/watch のみ（書き込みを与えない）。
+# 新種のクラスタスコープ資源を UI で一覧したくなった場合はここへ追記する（IADR-0108 の影響・トレードオフ参照）。
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: headlamp-viewer-cluster-read
+  labels: { app: headlamp }
+rules:
+  # ノード・PersistentVolume（`view` は namespace 資源のみのため未包含）
+  - apiGroups: [""]
+    resources: ["nodes", "persistentvolumes"]
+    verbs: ["get", "list", "watch"]
+  # ストレージ（StorageClass / CSI）
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses", "volumeattachments", "csidrivers", "csinodes", "csistoragecapacities"]
+    verbs: ["get", "list", "watch"]
+  # CRD・集約 API（Headlamp の「Custom Resources」表示に必要）
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apiregistration.k8s.io"]
+    resources: ["apiservices"]
+    verbs: ["get", "list", "watch"]
+  # ネットワーク・スケジューリング・ランタイムのクラスタスコープ資源
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingressclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["scheduling.k8s.io"]
+    resources: ["priorityclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["node.k8s.io"]
+    resources: ["runtimeclasses"]
+    verbs: ["get", "list", "watch"]
+  # RBAC の可視化（読み取りのみ＝権限昇格には繋がらない。誰が何を持つかの確認用）
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings", "roles", "rolebindings"]
+    verbs: ["get", "list", "watch"]
+  # アドミッション Webhook 設定
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["mutatingwebhookconfigurations", "validatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch"]
+  # metrics-server（k3s 同梱）由来の CPU/メモリ表示。未導入でも RBAC 側は無害。
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-viewer-cluster-read
+  labels: { app: headlamp }
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: headlamp-viewer-cluster-read
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-viewer
+    namespace: platform-infra

@@ -344,8 +344,10 @@ if [ "${HEADLAMP:-}" = "1" ]; then
   echo "    Headlamp: kubectl -n $INFRA_NS port-forward svc/headlamp 4466:80  # http://localhost:4466"
   # IADR-0105 (#399): 本 opt-in は Headlamp のデプロイのみを行い、apiserver には一切触れない（[1/7] 参照）。
   # ローカルのログインは token 方式が正式手順（OIDC は #388 の HTTPS 化と同時にのみ成立・IADR-0084 追記）。
+  # IADR-0108 (#398): token ログイン用 SA `headlamp-viewer` と閲覧専用 RBAC は overlay に収録済みのため、
+  # 上の apply -k で作成される（手動の kubectl create serviceaccount/clusterrolebinding は不要）。
   echo "    ログインは token 方式: kubectl -n $INFRA_NS create token headlamp-viewer --duration=24h"
-  echo "    手順の詳細（SA が NotFound の場合の作成含む）は deploy/local/README.md の「Headlamp」参照。"
+  echo "    権限は閲覧専用（get/list/watch）。手順の詳細は deploy/local/README.md の「Headlamp」参照。"
 fi
 
 # IADR-0091 (#356): ローカルエッジ集約（opt-in・既定オフ・fail-safe）。Traefik 追加 entrypoint admin:50000 ＋
