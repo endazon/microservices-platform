@@ -109,7 +109,9 @@ plan_refs:
 - SC-08（`AnalysisDashboardPage`）は `model` が空のとき「モデル: 未使用（AI へ送信なし）」と表示する
   （`モデル: ` の後ろが空白のまま残る表示崩れを防ぎ、「未送信」を利用者に伝える）。
   SC-01（`SearchChatPage`）は `done` の `model` を**画面に表示していない**ため追随不要。
-- 回帰は T-10〜T-15（`RagOrchestratorDegradedModelTests`）と T-15f（SC-08）で固定する。
+- 回帰は T-10〜T-16（`RagOrchestratorDegradedModelTests`）と T-15f（SC-08）で固定する。T-16 は
+  ゲートウェイが 2xx で本文 JSON `null` を返した場合（逆シリアル化結果が null）に、`ModelOrNone` が
+  `null` を応答契約へ載せず空文字へ倒すことの固定である。
 
 ## 理由
 
