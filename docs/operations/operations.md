@@ -11,7 +11,7 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-04
-updated: 2026-07-10
+updated: 2026-07-28
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -527,6 +527,22 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | HTTP エラー率 | 5xx 率 = `http_server_duration_milliseconds_count{http_status_code=~"5.."}` 比率 | > 5% が 5 分 | Alertmanager（critical） | 可用性 99.9% |
 | 検索レイテンシ | retrieval-service p95（`http_server_duration_milliseconds_bucket`） | > 1.5s が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
 | RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5s が 10 分 | Alertmanager（warning） | RAG 初回 5s |
+
+### LLM 拒否率の監視（FR-11 / NFR / [IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) / #395）
+
+LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `llm_completion_total`）を計上する。
+**送信可否（`llm.result`）とモデル側の終了理由（`llm.stop_reason`）は独立した属性**であり、
+「機密区分により送信しなかった（`egress_denied`）」と「送ったがモデルが拒否した（`refusal`）」を
+取り違えずに集計できる（[IADR-0104](../adr/IADR-0104_llm-stop-reason-refusal.md)）。
+
+- **拒否率** = `sum(rate(llm_completion_total{llm_stop_reason="refusal"}[30m])) / sum(rate(llm_completion_total{llm_result="sent"}[30m]))`
+- 属性・値域・クエリ例・しきい値の方針は
+  [`docs/observability/llm-completion-metrics.md`](../observability/llm-completion-metrics.md) を参照する。
+- 監視観点の目安（初期値・実測前）: 全体の拒否率 > 5%（30 分・warning）／用途別の拒否率 > 20%（30 分・warning）／
+  `upstream_error` 率 > 10%（10 分・critical）／`llm.purpose="other"` の出現（1 時間・warning。
+  未定義 purpose＝ルーティングが既定へ無音で落ちている疑い）。
+- **アラートルールの実配線は未了**（`deploy/prometheus/alerts.yml` への追加と Alertmanager 通知先の設定）。
+  本節はしきい値の方針までを定める（[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §フォローアップ 1）。
 
 - **push モデルの制約**: メトリクスは remote write（push）のため、古典的な per-service `up` は無い。サービスダウンは
   「直近まで受信していたリクエストメトリクスの途絶」で近似検知する（アイドル時の誤検知を避けるため `for` を長めに設定）。

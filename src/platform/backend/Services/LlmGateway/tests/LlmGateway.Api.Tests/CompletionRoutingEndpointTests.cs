@@ -10,6 +10,8 @@ namespace LlmGateway.Api.Tests;
 
 // FR-11, ADR-0010: /complete が機密区分・用途に応じて呼び出し先を切り替え、
 // 許容ティアが無い場合は送信を拒否（縮退）することを検証する。
+// IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
+[Collection(CompletionEndpointCollection.Name)]
 public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

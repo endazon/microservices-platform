@@ -13,6 +13,8 @@ namespace LlmGateway.Api.Tests;
 // 応答契約に載せ、呼び出し側が「モデルが拒否した」と「送信したが空応答」を区別できることを固定する。
 // 拒否は外部送信が成立したうえでの応答であるため sent=true のままとし（越境監査・課金の意味を守る）、
 // 区別は stopReason で行う。
+// IADR-0110 (#395): メトリクス購読テスト（CompletionMetricsTests）と直列化する。
+[Collection(CompletionEndpointCollection.Name)]
 public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {

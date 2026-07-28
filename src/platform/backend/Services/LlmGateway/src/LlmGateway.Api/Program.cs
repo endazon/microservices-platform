@@ -3,10 +3,12 @@ using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Api.Foundation.Endpoints;
+using LlmGateway.Api.Foundation.Observability;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Routing;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Metrics;
 using Serilog;
 
 const string ServiceName = "microservices-platform.llm-gateway";
@@ -17,6 +19,14 @@ builder.Host.UseSerilog((ctx, logConfig) =>
     logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+
+// FR-11, NFR, ADR-0006, IADR-0110 (#395): 補完の終了理由（拒否率）を計上する独自 Meter を
+// 既存の OTLP パイプラインへ載せる。OpenTelemetry の builder は加算的なので、全サービス共通の
+// AddPlatformObservability を変更せずにサービス固有の Meter を追加できる。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<LlmCompletionMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(LlmCompletionMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks();
 builder.Services.AddOpenApi();
