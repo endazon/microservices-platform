@@ -110,7 +110,8 @@ sum(rate(llm_completion_total{llm_purpose="other"}[1h]))
 
 - 実装 ADR: `../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（本メトリクスの決定）、
   `../adr/IADR-0104_llm-stop-reason-refusal.md`（`Sent` と `StopReason` の軸の分離）、
-  `../adr/IADR-0109_openai-finish-reason-normalization.md`（正準語彙への正規化）
+  `../adr/IADR-0109_openai-finish-reason-normalization.md`（正準語彙への正規化。**#394 / PR #415 で追加**。
+  本 PR が先に develop へ入る場合、当該ファイルが揃うまでこのリンクは一時的に未解決になる）
 - 機能仕様書: `../functional/FR-11_llm-egress-routing.md`
 - テスト仕様書: `../tests/FR-11_llm-egress-routing.md`（T-21）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
