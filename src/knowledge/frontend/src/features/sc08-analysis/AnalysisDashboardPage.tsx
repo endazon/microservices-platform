@@ -270,9 +270,13 @@ export function AnalysisDashboardPage() {
             </>
           )}
 
+          {/* SC-08, FR-11, IADR-0108 (#403): model が空なのは「AI へ送信していない縮退」（ABAC 不許可・
+              機密区分による送信拒否・ゲートウェイ不達）を意味する。空のままだと「モデル: 」がぶら下がって
+              読めないため、未送信であることを明示する。 */}
           <p>
             <small>
-              モデル: {result.model} / 入力 {result.inputTokens} ・出力 {result.outputTokens} トークン
+              モデル: {result.model || '未使用（AI へ送信なし）'} / 入力 {result.inputTokens} ・出力{' '}
+              {result.outputTokens} トークン
             </small>
           </p>
         </article>
