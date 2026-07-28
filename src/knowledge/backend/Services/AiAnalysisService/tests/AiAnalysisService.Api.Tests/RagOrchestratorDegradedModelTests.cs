@@ -141,6 +141,19 @@ public class RagOrchestratorDegradedModelTests
         done.Model.Should().Be(ResolvedModel);
     }
 
+    // T-16: 2xx だが本文が JSON の null（＝逆シリアル化結果が null）。モデルは解決されていないため空。
+    // ModelOrNone が null を応答契約へ載せないことの回帰固定でもある。
+    [Fact]
+    public async Task AskAsync_WhenGatewayBodyIsNull_ReportsNoModel()
+    {
+        var orchestrator = Create(new StubHttpClientFactory(llmBody: "null"));
+
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+
+        answer.Model.Should().BeEmpty();
+        answer.Answer.Should().Be("回答を生成できませんでした。");
+    }
+
     private static RagOrchestrator Create(IHttpClientFactory factory) => new(factory);
 
     private static async Task<AskDoneEvent> LastDoneAsync(IRagOrchestrator orchestrator)

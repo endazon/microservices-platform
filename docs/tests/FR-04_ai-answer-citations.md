@@ -59,9 +59,10 @@ plan_refs:
 | T-13 | ゲートウェイ HTTP 失敗（非 2xx・未到達） | `AskAsync` / `AskStreamAsync` | `Model` が空 | 使用モデルの正確性 | 自動 |
 | T-14 | 送信成立（`sent=true`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | 実 route 結果をそのまま返す（回帰防止） | 使用モデルの正確性 | 自動 |
 | T-15 | 呼び出し先不調（`sent=false`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | route 結果を透過（空へ潰さない） | 使用モデルの正確性 | 自動 |
+| T-16 | ゲートウェイが 2xx で本文 JSON `null`（逆シリアル化結果が null） | `AskAsync` | `Model` が空（`null` を応答契約へ載せない） | 使用モデルの正確性 | 自動 |
 | T-15f | 分析結果の補足表示（SC-08） | `AnalysisDashboardPage` | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空ならモデル名 | 使用モデルの正確性 | 自動 |
 
-> T-10〜T-15 は `RagOrchestratorDegradedModelTests`（[[IADR-0108]] / #403）。T-15f は
+> T-10〜T-16 は `RagOrchestratorDegradedModelTests`（[[IADR-0108]] / #403）。T-15f は
 > `AnalysisDashboardPage.test.tsx`。**LLM を呼んでいない縮退応答がモデル名を名乗らない**ことを固定する
 > （以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に `claude-opus-5` を返していた）。
 

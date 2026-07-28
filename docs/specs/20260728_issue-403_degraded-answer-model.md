@@ -103,12 +103,12 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 | --- | --- |
 | `RagOrchestrator.cs` | `IConfiguration` 依存と `Llm:DefaultModel` 参照 3 箇所を除去。縮退応答の Model は「ゲートウェイ報告値の透過」、ゲートウェイを呼んでいない経路は空文字（`NoModel` 定数）。報告値は `ModelOrNone` で正規化する（JSON の `model` 欠落・`null` を応答契約へ載せない） |
 | `RagOrchestratorScopeTests.cs` / `RagOrchestratorStopReasonTests.cs` | コンストラクタ変更に追随（`BuildConfig()` 廃止） |
-| `RagOrchestratorDegradedModelTests.cs`（新規） | T-10〜T-15。3 縮退経路＋正常経路の Model を固定 |
+| `RagOrchestratorDegradedModelTests.cs`（新規） | T-10〜T-16。3 縮退経路＋正常経路＋逆シリアル化 null の Model を固定 |
 | `AnalysisDashboardPage.tsx`（SC-08） | `model` が空のとき「モデル: 未使用（AI へ送信なし）」を表示（空ラベルのぶら下がりを防ぐ） |
 | `AnalysisDashboardPage.test.tsx` | 上記の表示を固定（T-15f） |
 | `docs/adr/IADR-0108_*`（新規）・`docs/adr/README.md` | 決定の記録と索引 |
 | `docs/functional/FR-04` / `FR-11` | 縮退時の `Model` の意味を明記 |
-| `docs/tests/FR-04` | T-10〜T-15 を追加 |
+| `docs/tests/FR-04` | T-10〜T-16 を追加 |
 | `docs/screens/SC-08` | モデル補足の表示規則（空＝未送信）を明記 |
 
 ### 変更しない（意図的に対象外）
@@ -156,6 +156,7 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 | T-13 | `AskAsync` ゲートウェイ HTTP 失敗（非 2xx） | `Model == ""` |
 | T-14 | `AskAsync` / `AskStreamAsync` 正常（`sent=true`・`model=claude-sonnet-5`） | 実モデル名を透過（回帰防止） |
 | T-15 | `AskAsync` / `AskStreamAsync` 呼び出し先不調（`sent=false`・`model=claude-sonnet-5`） | route 結果を透過（空へ潰さない） |
+| T-16 | `AskAsync` ゲートウェイ 2xx・本文 JSON `null` | `Model == ""`（`ModelOrNone` が null を契約へ載せない） |
 | T-15f | SC-08 表示 | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空なら従来どおりモデル名 |
 
 ## 受け入れ基準（issue #403 §受け入れ基準に対応）
