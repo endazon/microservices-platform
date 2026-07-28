@@ -9,7 +9,7 @@ related_ids:
   - UC-01
   - UC-02
   - SC-08
-  - IADR-0108
+  - IADR-0111
 author: claude
 created: 2026-06-27
 updated: 2026-07-28
@@ -29,7 +29,7 @@ plan_refs:
 ## テスト対象・範囲
 
 - 対象: 出典写像ロジック（`CitationMapper`）、`/analysis/ask` 応答、`/bff/analysis/ask` 集約と Authorization 伝播、
-  応答が名乗る使用モデル（`AiAnswerDto.Model` / `AskDoneEvent.Model`。[[IADR-0108]]）。
+  応答が名乗る使用モデル（`AiAnswerDto.Model` / `AskDoneEvent.Model`。[[IADR-0111]]）。
 - 対象外: 横断検索の権限制御の網羅（AuthorizationService 側で検証）、反映時間、負荷/p95。
   用途→モデルの解決そのもの（`LlmRouter` 側。FR-11 の T-02 / T-19）。
 
@@ -62,7 +62,7 @@ plan_refs:
 | T-16 | ゲートウェイが 2xx で本文 JSON `null`（逆シリアル化結果が null） | `AskAsync` | `Model` が空（`null` を応答契約へ載せない） | 使用モデルの正確性 | 自動 |
 | T-15f | 分析結果の補足表示（SC-08） | `AnalysisDashboardPage` | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空ならモデル名 | 使用モデルの正確性 | 自動 |
 
-> T-10〜T-16 は `RagOrchestratorDegradedModelTests`（[[IADR-0108]] / #403）。T-15f は
+> T-10〜T-16 は `RagOrchestratorDegradedModelTests`（[[IADR-0111]] / #403）。T-15f は
 > `AnalysisDashboardPage.test.tsx`。**LLM を呼んでいない縮退応答がモデル名を名乗らない**ことを固定する
 > （以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に `claude-opus-5` を返していた）。
 
@@ -75,7 +75,7 @@ plan_refs:
 
 - 機能仕様書: `../functional/FR-04_ai-answer-citations.md` / `../functional/FR-11_llm-egress-routing.md`
 - 作業仕様書: `../specs/20260627_FR-04_ai-answer-citations.md` / `../specs/20260728_issue-403_degraded-answer-model.md`
-- 実装 ADR: `../adr/IADR-0108_degraded-answer-model-label.md`
+- 実装 ADR: `../adr/IADR-0111_degraded-answer-model-label.md`
 - 画面仕様書: `../screens/SC-08_ai-analysis-dashboard.md`
 - 通信仕様書: `../api/openapi.yaml`
 

@@ -9,7 +9,7 @@ related_ids:
   - UC-01
   - UC-02
   - SC-08
-  - IADR-0108
+  - IADR-0111
 author: claude
 created: 2026-06-27
 updated: 2026-07-28
@@ -39,7 +39,7 @@ plan_refs:
 | 入力 | `question`（必須）, `scope`（任意） / 利用者の資格情報（JWT クレーム: clearance, department） |
 | 処理 | ABAC スコープ解決 → ABAC フィルタ付きハイブリッド検索（TopK=5）→ 検索結果を番号付き出典へ写像 → 出典文脈で LLM 回答生成 |
 | 出力 | `AiAnswerDto`（`Answer`, `Citations[]`, `Model`, `InputTokens`, `OutputTokens`）。ストリーミング（IADR-0037）は `AskDoneEvent`（`AnswerId`, `Model`, `InputTokens`, `OutputTokens`） |
-| 業務ルール | **`Model` は実際に使用したモデルのみを名乗る**（IADR-0108）。値の出所は LLM ゲートウェイの報告値だけで、呼び出し側は決めない。LLM を呼んでいない縮退（ABAC 不許可・機密区分による送信拒否・ゲートウェイ不達）では**空文字＝モデル未使用**を返す。出典番号は 1 始まり連番。回答本文の `[n]` と出典 `Number` を一致させる。元文書リンクは正規化 Markdown URI を優先し、無ければ `/documents/{id}`。根拠の無い情報は回答に含めない。 |
+| 業務ルール | **`Model` は実際に使用したモデルのみを名乗る**（IADR-0111）。値の出所は LLM ゲートウェイの報告値だけで、呼び出し側は決めない。LLM を呼んでいない縮退（ABAC 不許可・機密区分による送信拒否・ゲートウェイ不達）では**空文字＝モデル未使用**を返す。出典番号は 1 始まり連番。回答本文の `[n]` と出典 `Number` を一致させる。元文書リンクは正規化 Markdown URI を優先し、無ければ `/documents/{id}`。根拠の無い情報は回答に含めない。 |
 
 ### CitationDto（出典）
 
@@ -81,7 +81,7 @@ flowchart TD
 - [x] 出典番号が回答本文・LLM 文脈と一致する。
 - [x] 権限の無い文書は ABAC フィルタにより検索・回答のいずれにも現れない（後段で担保）。
 - [x] `/bff/analysis/ask` から単一窓口で回答＋出典を取得できる。
-- [x] 応答の `Model` が実際に使用したモデルと一致する。LLM を呼んでいない縮退応答はモデル名を名乗らない（空）。（#403 / IADR-0108。T-10〜T-15・T-15f）
+- [x] 応答の `Model` が実際に使用したモデルと一致する。LLM を呼んでいない縮退応答はモデル名を名乗らない（空）。（#403 / IADR-0111。T-10〜T-15・T-15f）
 
 > 検証（#201）: `CitationMapperTests`（出典番号↔本文整合）／`RagOrchestratorScopeTests`（ABAC スコープ適用）／
 > 統合 `RagOrchestratorTests` で担保。実装は `RagOrchestrator` ＋ BFF `/bff/analysis/ask`。
@@ -93,7 +93,7 @@ flowchart TD
 - データ仕様書: 検索結果は `SearchResultDto`、出典は `CitationDto`
 - テスト仕様書: `../tests/FR-04_ai-answer-citations.md`
 - 作業仕様書: `../specs/20260627_FR-04_ai-answer-citations.md` / `../specs/20260728_issue-403_degraded-answer-model.md`
-- 実装 ADR: `../adr/IADR-0108_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+- 実装 ADR: `../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
 
 ## 未決事項
 

@@ -8,7 +8,7 @@ related_ids:
   - FR-04
   - FR-07
   - FR-11
-  - IADR-0108
+  - IADR-0111
 author: claude
 created: 2026-07-08
 updated: 2026-07-28
@@ -20,7 +20,7 @@ related_specs:
   - "../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md"
   - "../specs/20260708_issue-134_sc08-ai-analysis-dashboard.md"
   - "../specs/20260728_issue-403_degraded-answer-model.md"
-  - "../adr/IADR-0108_degraded-answer-model-label.md"
+  - "../adr/IADR-0111_degraded-answer-model-label.md"
 ---
 
 # 画面仕様書: AI分析ダッシュボード（SC-08）
@@ -80,7 +80,7 @@ related_specs:
 | 属性フィルタ range.attributeFilters | key/値の行 | 任意 | なし | key + カンマ区切り値 | 例: department=sales |
 | 回答 answer | 表示 | - | - | テキスト | `[n]` は出典番号 |
 | 出典 citations | 表示 | - | - | 番号・タイトル・スニペット・link | `sourceUri` があればリンク |
-| 使用モデル model | 表示 | - | - | モデル名／空 | 空は「AI へ送信していない縮退」を意味し **「未使用（AI へ送信なし）」** と表示する（FR-11 / IADR-0108・#403） |
+| 使用モデル model | 表示 | - | - | モデル名／空 | 空は「AI へ送信していない縮退」を意味し **「未使用（AI へ送信なし）」** と表示する（FR-11 / IADR-0111・#403） |
 
 ## バリデーション
 

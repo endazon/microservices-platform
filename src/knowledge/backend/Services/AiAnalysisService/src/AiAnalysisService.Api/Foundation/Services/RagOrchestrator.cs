@@ -13,14 +13,14 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     // FR-04: 質問回答で文脈に取り込む既定チャンク数。
     private const int DefaultAskTopK = 5;
 
-    // FR-11, IADR-0108 (#403): 「モデル未使用（AI へ送信していない）」を表す応答契約上の値。
+    // FR-11, IADR-0111 (#403): 「モデル未使用（AI へ送信していない）」を表す応答契約上の値。
     // モデル名を決めてよいのは実際に route を行った LlmGateway だけであり、呼び出し側は運び手に徹する。
     // ゲートウェイ自身も未送信の縮退（越境拒否・プロバイダ未登録）で Model に空文字を載せるため、
     // レイヤ間で「未使用」の表現を一致させる。以前はここで存在しない設定キー
     // `Llm:DefaultModel` を引き、常にハードコードの "claude-opus-5" を名乗っていた（LLM 未呼出でも）。
     private const string NoModel = "";
 
-    // IADR-0108: ゲートウェイが報告したモデル名を応答契約の値へ正規化する。契約上は非 null だが、
+    // IADR-0111: ゲートウェイが報告したモデル名を応答契約の値へ正規化する。契約上は非 null だが、
     // JSON 側で model が欠落・null の場合は逆シリアル化で null になり得るため NoModel へ倒す
     // （応答契約に null を載せない）。空文字はそのまま「モデル未使用」の意味で通す。
     private static string ModelOrNone(string? reported)
@@ -77,7 +77,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
         {
             // IADR-0009 存在秘匿を破らない中立文言。非ストリーミング版 AskAsync（EmptyAnswer）と挙動を揃え、
             // 本文（token）が空のまま done になって理由不明の空白回答が表示されるのを防ぐ。
-            // IADR-0108: ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
+            // IADR-0111: ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
             yield return new AskCitationsEvent([]);
             yield return new AskTokenEvent("閲覧権限のある文書が見つかりませんでした。");
             yield return new AskDoneEvent(Guid.NewGuid(), NoModel, 0, 0);
@@ -96,7 +96,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
         var contextText = CitationMapper.BuildContext(citations);
         var prompt = BuildAskPrompt(question, contextText);
 
-        // IADR-0108: done が来ないまま終端した場合（ストリーム断）も「使用モデルなし」を保つ。
+        // IADR-0111: done が来ないまま終端した場合（ストリーム断）も「使用モデルなし」を保つ。
         var model = NoModel;
         var inputTokens = 0;
         var outputTokens = 0;
@@ -127,7 +127,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
                     yield return new AskTokenEvent($"{separator}（AI が回答の生成を拒否しました。）");
                 }
 
-                // IADR-0108 (#403): ゲートウェイの報告値をそのまま透過する（呼び出し側で捏造しない）。
+                // IADR-0111 (#403): ゲートウェイの報告値をそのまま透過する（呼び出し側で捏造しない）。
                 // 未送信の縮退では空（NoModel）、呼び出しを試みた縮退・送信成立では実 route 結果が載る。
                 model = ModelOrNone(ev.Model);
                 inputTokens = ev.InputTokens;
@@ -274,7 +274,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     // FR-04, FR-07: 実効スコープで検索 → 番号付き出典へ写像 → LLM で本文生成、の共通パイプライン。
     // FR-11: 文脈文書の最高機密区分と用途を LLM ゲートウェイへ渡し、呼び出し先の切替を委ねる。
     // FR-11: 明示モデルは指定しない。実際の呼び出しモデルは LlmGateway が用途（purpose）と機密区分に
-    // 応じて選択する（Llm:Routing:PurposeModels）。IADR-0108 (#403): 応答が名乗るモデル名はゲートウェイの
+    // 応じて選択する（Llm:Routing:PurposeModels）。IADR-0111 (#403): 応答が名乗るモデル名はゲートウェイの
     // 報告値のみを根拠とし、呼び出し側では決めない（未送信・未到達は NoModel）。
     private async Task<AiAnswerDto> GenerateAsync(string query, AccessScope scope, int topK,
         Func<string, string> buildPrompt, string purpose, CancellationToken ct)
@@ -309,7 +309,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
 
             // FR-11 縮退: ゲートウェイが送信を拒否（許容ティアに送信可能な呼び出し先が無い）した場合は、
             // 外部送信せず検索結果（出典）のみ返す。
-            // IADR-0108 (#403): モデル名はゲートウェイの報告値を透過する。越境拒否・プロバイダ未登録
+            // IADR-0111 (#403): モデル名はゲートウェイの報告値を透過する。越境拒否・プロバイダ未登録
             // （＝一度も呼んでいない）では空が載り、呼び出しを試みて失敗した場合は実 route 結果が載る。
             if (completion is { Sent: false })
             {
@@ -340,7 +340,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
         }
 
         // FR-04/FR-07 縮退: LLM 不調時は検索結果（出典）のみ返す
-        // IADR-0108: ゲートウェイへ到達できておらずモデルは解決されていない（NoModel）。
+        // IADR-0111: ゲートウェイへ到達できておらずモデルは解決されていない（NoModel）。
         var fallback = citations.Count > 0
             ? "LLM が現在利用できないため、関連文書の一覧を返します。"
             : "関連する情報が見つかりませんでした。";
@@ -383,7 +383,7 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     }
 
     // FR-05: 閲覧可能文書が無い場合の空回答（検索・LLM を呼ばずコストを抑える縮退）。
-    // IADR-0108 (#403): ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
+    // IADR-0111 (#403): ゲートウェイを一度も呼んでいないため使用モデルは無い（NoModel）。
     private static AiAnswerDto EmptyAnswer()
         => new("閲覧権限のある文書が見つかりませんでした。", [], NoModel, 0, 0);
 

@@ -109,7 +109,7 @@ flowchart TD
 route 結果（どのモデルへ向けた試行かが監査・障害解析の情報になる）である。
 
 呼び出し側（`RagOrchestrator`）は**この値をそのまま透過し、モデル名を自分で決めない**
-（[IADR-0108](../adr/IADR-0108_degraded-answer-model-label.md) / #403）。ゲートウェイに到達できない場合や
+（[IADR-0111](../adr/IADR-0111_degraded-answer-model-label.md) / #403）。ゲートウェイに到達できない場合や
 ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデル未使用）を返す。以前は呼び出し側が存在しない
 設定キー `Llm:DefaultModel` を引き、**LLM を呼んでいない応答が常に `claude-opus-5` を名乗っていた**。
 
@@ -142,7 +142,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 - [x] 呼び出し先不調・プロバイダ未登録時も 500 を伝播させず縮退応答を返す。
 - [x] 送信成立後の終了理由（`refusal` / `max_tokens` / 正常終了）が監査ログと応答契約（`StopReason`）で区別できる（#379 / IADR-0104）。
 - [x] `refusal` では本文（断片を含む）を返さず、`StopReason` を見ない呼び出し側も安全側へ倒れる（#379 / IADR-0104）。
-- [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない（#403 / IADR-0108）。
+- [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない（#403 / IADR-0111）。
 
 > 検証（#201）: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。
@@ -157,7 +157,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 - 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../specs/20260725_issue-379_llm-stop-reason-refusal.md`、`../specs/20260728_issue-403_degraded-answer-model.md`
 - 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
-- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0108_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
 
 ## 未決事項

@@ -117,7 +117,7 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  // T-15f, IADR-0108 (#403): 縮退応答（AI へ送信していない）は model が空で届く。
+  // T-15f, IADR-0111 (#403): 縮退応答（AI へ送信していない）は model が空で届く。
   // 「モデル: 」の後ろが空白のまま残らず、未送信であることが読み取れる表示にする。
   it('labels an empty model as not sent, and shows the model name otherwise', async () => {
     mocks.apiFetch.mockResolvedValue({

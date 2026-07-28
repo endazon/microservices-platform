@@ -5,7 +5,7 @@ using FluentAssertions;
 
 namespace AiAnalysisService.Api.Tests;
 
-// FR-04, FR-05, FR-11, IADR-0108 (#403): 応答が名乗る「使用モデル」が実際に使われたモデルと一致することを固定する。
+// FR-04, FR-05, FR-11, IADR-0111 (#403): 応答が名乗る「使用モデル」が実際に使われたモデルと一致することを固定する。
 // 縮退経路（ABAC 不許可・越境拒否・呼び出し失敗）は LLM を呼んでいないため、モデル名を捏造してはならない。
 // 以前は存在しない設定キー `Llm:DefaultModel` のフォールバックで常に "claude-opus-5" を名乗っていた。
 public class RagOrchestratorDegradedModelTests

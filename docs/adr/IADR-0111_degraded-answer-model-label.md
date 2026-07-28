@@ -1,5 +1,5 @@
 ---
-title: IADR-0108 縮退応答の「使用モデル」はゲートウェイ報告値を透過し、未送信は空文字で表す
+title: IADR-0111 縮退応答の「使用モデル」はゲートウェイ報告値を透過し、未送信は空文字で表す
 type: impl-adr
 status: Accepted
 related_ids:
@@ -25,7 +25,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定=Opus 5・Accepted)"
 ---
 
-# IADR-0108: 縮退応答の「使用モデル」ラベル
+# IADR-0111: 縮退応答の「使用モデル」ラベル
 
 - 状態: Accepted
 - 日付: 2026-07-28
@@ -36,6 +36,11 @@ plan_refs:
 - 起点 issue: [#403](https://github.com/endazon/microservices-platform/issues/403)（`bug` / size S）。
   [[IADR-0106]] §フォローアップ 3 の消化（#381 / PR #402 の副次発見）。[[IADR-0101]] レビューの 🟢1 も同一箇所を指摘。
 - 仕様書: `docs/specs/20260728_issue-403_degraded-answer-model.md`。
+- **採番の経緯**: 本 ADR は当初 `IADR-0108` として起票したが、作業中に
+  [PR #413](https://github.com/endazon/microservices-platform/pull/413)（headlamp-viewer の閲覧専用 RBAC）が
+  同番号で先に develop へマージされたため **`IADR-0111` へ改番**した（`IADR-0109` / `IADR-0110` は
+  同時進行の #394 / #395 が使用）。改番前のコミット件名には `IADR-0108` が残る（force-push 禁止のため
+  書き換えない）。PR 件名・本文・仕様書・コード内コメントは `IADR-0111` に揃えている。
 - 本 IADR は**呼び出し側（`RagOrchestrator`）が応答契約へ載せるモデル名の決め方**のみを扱う。
   ゲートウェイのルーティング（[[IADR-0022]]）・用途別割当（[[IADR-0106]]）・拒否判別（[[IADR-0104]]）は変更しない。
 

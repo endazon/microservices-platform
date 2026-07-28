@@ -16,12 +16,12 @@ related_ids:
   - IADR-0101
   - IADR-0104
   - IADR-0106
-  - IADR-0108
+  - IADR-0111
 author: claude
 created: 2026-07-28
 updated: 2026-07-28
 related_specs:
-  - "../adr/IADR-0108_degraded-answer-model-label.md"
+  - "../adr/IADR-0111_degraded-answer-model-label.md"
   - "../adr/IADR-0106_rag-answer-sonnet-5.md"
   - "../adr/IADR-0101_default-model-opus-5.md"
   - "../adr/IADR-0104_llm-stop-reason-refusal.md"
@@ -45,7 +45,7 @@ related_specs:
   [ADR-0022](../../planning/projects/microservices-platform/07_adr/ADR-0022_llm-model-sonnet-5.md)（定型 RAG 回答＝Sonnet 5）、
   [ADR-0025](../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md)（既定＝Opus 5）、
   [[IADR-0022]]（用途別ルーティング）、[[IADR-0104]]（`stopReason` による拒否判別）。
-- 本作業の実装判断は [[IADR-0108]]。
+- 本作業の実装判断は [[IADR-0111]]。
 - **#381 とは別の欠陥**である（版数追随では解消しない）。#381 の追随は PR #402 で完了済み。
 
 ## 背景と問題（原因の確定）
@@ -106,7 +106,7 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 | `RagOrchestratorDegradedModelTests.cs`（新規） | T-10〜T-16。3 縮退経路＋正常経路＋逆シリアル化 null の Model を固定 |
 | `AnalysisDashboardPage.tsx`（SC-08） | `model` が空のとき「モデル: 未使用（AI へ送信なし）」を表示（空ラベルのぶら下がりを防ぐ） |
 | `AnalysisDashboardPage.test.tsx` | 上記の表示を固定（T-15f） |
-| `docs/adr/IADR-0108_*`（新規）・`docs/adr/README.md` | 決定の記録と索引 |
+| `docs/adr/IADR-0111_*`（新規）・`docs/adr/README.md` | 決定の記録と索引 |
 | `docs/functional/FR-04` / `FR-11` | 縮退時の `Model` の意味を明記 |
 | `docs/tests/FR-04` | T-10〜T-16 を追加 |
 | `docs/screens/SC-08` | モデル補足の表示規則（空＝未送信）を明記 |
@@ -114,7 +114,7 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 ### 変更しない（意図的に対象外）
 
 - **`AiAnswerDto.Model` / `AskDoneEvent.Model` の型**（`string` のまま。`null` 許容へ変えない）。
-  理由は [[IADR-0108]] §検討した選択肢。フロントの TS 型（`model: string`）も無変更。
+  理由は [[IADR-0111]] §検討した選択肢。フロントの TS 型（`model: string`）も無変更。
 - **`Llm:DefaultModel` の新設**（実在キーへの是正案）。存在しないキーを定義して延命しない。
 - **`LlmGateway` 側の挙動**（`CompletionEndpoints` の `Model` の埋め方・ルーティング・`PurposeModels`）。
   本件は呼び出し側の欠陥であり、ゲートウェイは既に正しい値を返している。
@@ -123,7 +123,7 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 - 同一サービスの #394 / #395 / #379 の論点（別 issue・ファイル競合回避のため）。
 - SIMULATE / 実弾スイッチに類する設定（本作業は触れない）。
 
-## 決定（要約。詳細は [[IADR-0108]]）
+## 決定（要約。詳細は [[IADR-0111]]）
 
 **縮退応答は「使用モデル」を捏造せず、ゲートウェイが報告した値をそのまま透過する。ゲートウェイを
 呼んでいない／ゲートウェイに到達できない経路は空文字（＝モデル未使用）を返す。**
@@ -162,7 +162,7 @@ config["Llm:DefaultModel"] ?? "claude-opus-5"
 ## 受け入れ基準（issue #403 §受け入れ基準に対応）
 
 - [x] 存在しない設定キー `Llm:DefaultModel` への参照が `RagOrchestrator` から除去されている
-- [x] LLM を呼び出していない縮退応答が返す「使用モデル」の方針が決定され、実装 ADR（[[IADR-0108]]）に記録されている
+- [x] LLM を呼び出していない縮退応答が返す「使用モデル」の方針が決定され、実装 ADR（[[IADR-0111]]）に記録されている
 - [x] 3 経路（ABAC 不許可 / 送信拒否 / 呼び出し失敗）それぞれについて、決定した値が返ることをテストで固定した
 - [x] 実際に LLM を呼び出した場合は、従来どおり実モデル名が返ることが回帰していない
 - [x] 応答契約（`AiAnswerDto` / `AskDoneEvent`）の変更有無と、フロント表示・既存テスト固定値への影響が確認・追随されている
