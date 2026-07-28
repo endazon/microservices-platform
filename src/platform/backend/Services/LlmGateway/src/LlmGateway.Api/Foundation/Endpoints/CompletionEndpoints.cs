@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Platform.Shared.Contracts.Dtos;
+using LlmGateway.Api.Foundation.Observability;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Foundation.Routing;
 
@@ -27,6 +28,7 @@ public static class CompletionEndpoints
             ILlmRouter router,
             IServiceProvider services,
             ILoggerFactory loggerFactory,
+            LlmCompletionMetrics metrics,
             CancellationToken ct) =>
         {
             var logger = loggerFactory.CreateLogger("LlmGateway.Complete");
@@ -39,6 +41,9 @@ public static class CompletionEndpoints
             if (!decision.Allowed)
             {
                 // 送信拒否（縮退）。呼び出し側が出典のみ返す等の縮退へ切り替えられるよう Sent=false を返す。
+                // IADR-0110: 未送信も計上する（分母が欠けると拒否率が過大に見える）。
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultEgressDenied, null, decision, purpose, sensitivity);
                 return Results.Ok(new CompletionApiResponse(
                     Text: decision.Reason, Model: string.Empty, InputTokens: 0, OutputTokens: 0,
                     Sent: false, Endpoint: null, RoutingReason: decision.Reason));
@@ -49,6 +54,8 @@ public static class CompletionEndpoints
             {
                 logger.LogError("Provider not registered: {Provider} (endpoint {Endpoint})",
                     decision.Provider, decision.EndpointName);
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultProviderMissing, null, decision, purpose, sensitivity);
                 return Results.Ok(new CompletionApiResponse(
                     Text: $"呼び出し先プロバイダ {decision.Provider} が未登録のため送信できません。",
                     Model: string.Empty, InputTokens: 0, OutputTokens: 0,
@@ -60,6 +67,9 @@ public static class CompletionEndpoints
                 var result = await provider.CompleteAsync(
                     new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model), ct);
                 LogStopReason(logger, result.StopReason, decision);
+                // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultSent, result.StopReason, decision, purpose, sensitivity);
                 return Results.Ok(new CompletionApiResponse(
                     result.Text, decision.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
                     Sent: true, Endpoint: decision.EndpointName, RoutingReason: decision.Reason,
@@ -70,6 +80,8 @@ public static class CompletionEndpoints
                 // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
                 logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model})",
                     decision.EndpointName, decision.Model);
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity);
                 return Results.Ok(new CompletionApiResponse(
                     Text: $"呼び出し先 {decision.EndpointName} が現在利用できません。",
                     Model: decision.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
@@ -85,6 +97,7 @@ public static class CompletionEndpoints
             ILlmRouter router,
             IServiceProvider services,
             ILoggerFactory loggerFactory,
+            LlmCompletionMetrics metrics,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -107,6 +120,9 @@ public static class CompletionEndpoints
             if (!decision.Allowed)
             {
                 // egress 拒否: プロバイダ未呼出（越境保証保持）。理由のみ返す。
+                // IADR-0110: 非ストリーミングと同じ属性で計上する（経路によって観測が欠けないようにする）。
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultEgressDenied, null, decision, purpose, sensitivity);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: false, Text: decision.Reason, RoutingReason: decision.Reason));
                 return;
@@ -117,6 +133,8 @@ public static class CompletionEndpoints
             {
                 logger.LogError("Provider not registered: {Provider} (endpoint {Endpoint})",
                     decision.Provider, decision.EndpointName);
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultProviderMissing, null, decision, purpose, sensitivity);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: false,
                     Text: $"呼び出し先プロバイダ {decision.Provider} が未登録のため送信できません。",
@@ -149,6 +167,8 @@ public static class CompletionEndpoints
                 // 呼び出し先不調でも 500 を伝播させず、SSE で縮退イベントを返す。
                 logger.LogError(ex, "LLM stream failed at endpoint {Endpoint} ({Model})",
                     decision.EndpointName, decision.Model);
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity);
                 faulted = true;
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: false,
@@ -157,10 +177,14 @@ public static class CompletionEndpoints
             }
 
             if (!faulted)
+            {
+                metrics.RecordCompletion(
+                    LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                     InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,
                     StopReason: stopReason));
+            }
         }).WithName("CompleteStream");
 
         return app;

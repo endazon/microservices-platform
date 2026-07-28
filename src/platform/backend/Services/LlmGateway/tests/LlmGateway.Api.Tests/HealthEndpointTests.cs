@@ -5,6 +5,8 @@ using System.Net.Http.Json;
 namespace LlmGateway.Api.Tests;
 
 // FR-04, ADR-0010: LlmGateway エンドポイントテスト
+// IADR-0110 (#395): 本クラスも /complete を叩くため、メトリクス購読テストと直列化する。
+[Collection(CompletionEndpointCollection.Name)]
 public class HealthEndpointTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
