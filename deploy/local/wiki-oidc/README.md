@@ -4,7 +4,8 @@
 > 作業仕様書 [`docs/specs/20260721_issue-353_wikijs-keycloak-oidc.md`](../../../docs/specs/20260721_issue-353_wikijs-keycloak-oidc.md)
 
 realm には `wiki-js` client が既存（[IADR-0020](../../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）。
-本 PR で **集約後 URL `wiki.localhost:50000`（#357/edge）への redirect を realm に追加**し、edge に wiki route を足した。
+**集約後 URL `wiki.localhost:50000`（#357/edge）への redirect は realm に登録済み**で、edge にも wiki route がある
+（#353。非 edge の port-forward 用 `http://localhost:3300/*` も登録済み＝#385/PR #401）。
 **Wiki.js の OIDC 設定は DB/管理UI 保持**（"Generic OpenID Connect" ストラテジ）で manifest 自動化できないため、下記の
 **管理UI 手順**（realm import と同型の runtime 設定）で入れる。ローカルログインは既定無効の OIDC 単一経路（IADR-0020）。
 
@@ -32,14 +33,30 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 | Issuer | `http://keycloak:8080/realms/microservices-platform` |
 | Logout URL（任意） | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/logout` |
 
-- **Site URL（重要・Administration → General）**: `http://wiki.localhost:50000` に設定する。Wiki.js は
-  **コールバックを `{Site URL}/login/{strategyKey}/callback`** で組み立てるため、これが集約 URL でないと redirect が
-  一致しない（strategyKey はストラテジ作成時に生成。realm 側は `http://wiki.localhost:50000/*` の**ワイルドカード**で受ける）。
+- **Site URL（重要・Administration → General）**: **利用する経路の到達 URL と一致させる**。値は下の
+  **次節「Site URL は経路と一致させる」**を参照（edge=`http://wiki.localhost:50000` /
+  port-forward 単独=`http://localhost:3300`）。
 - **claim / group マッピング（fail-safe）**: strategy の **Map Groups** を有効化し、`groups`（realm の abac-attributes /
   roles スコープ由来）を Wiki.js グループへ対応づける。**未マッピングのユーザーは最小権限グループ（Guests 相当）に割当**
   （deny-by-default 寄り。管理権限は `platform-admin` 等のグループにのみ付与）。
 - **issuer 整合（#284 手順A）**: Wiki.js server（microservices-platform ns）は ExternalName alias `keycloak` で in-cluster の
   endpoint に到達する。browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
+
+### Site URL は経路と一致させる（#385）
+
+Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** で組み立てる（strategyKey はストラテジ作成時に
+生成）。したがって **Site URL が、実際にブラウザで開いている URL と一致していないと `invalid_redirect_uri` になる**
+（realm に登録があっても合わない）。realm 側はいずれもワイルドカードで受けるので、**経路ごとに次の値を選ぶ**:
+
+| 経路 | Site URL に設定する値 | realm `wiki-js` の対応 redirect |
+| --- | --- | --- |
+| **edge 集約（`LOCALEDGE=1`・既定の正規経路）** | `http://wiki.localhost:50000` | `http://wiki.localhost:50000/*` |
+| **k8s の port-forward 単独（非 edge）** | `http://localhost:3300` | `http://localhost:3300/*`（#385） |
+
+以降の手順は **edge 経路を既定**として記述する。port-forward 単独で使う場合は Site URL を `http://localhost:3300` に
+読み替える（他の項目＝endpoint / issuer は in-cluster 名のままで変わらない）。`values-local.yaml` の
+`WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃えること。経路別の port topology は
+[IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../docs/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
 
 ## DB seed で入れる（管理UI を使わない手順・IADR-0103）
 
@@ -59,6 +76,8 @@ T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=pas
 WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
 
 KC=http://keycloak:8080/realms/microservices-platform
+# Site URL は経路と一致させる（#385）。既定＝edge 集約。port-forward 単独なら SITE_URL=http://localhost:3300
+SITE_URL="${SITE_URL:-http://wiki.localhost:50000}"
 CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{
   clientId:"wiki-js", clientSecret:$s,
   authorizationURL:($kc+"/protocol/openid-connect/auth"),
@@ -71,7 +90,7 @@ CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{
 
 cat > /tmp/wiki_oidc.sql <<SQL
 BEGIN;
-UPDATE settings SET value='{"v":"http://wiki.localhost:50000"}' WHERE key='host';
+UPDATE settings SET value='{"v":"$SITE_URL"}' WHERE key='host';
 DELETE FROM authentication WHERE "strategyKey"='oidc';
 INSERT INTO authentication (key,"isEnabled",config,"selfRegistration","domainWhitelist","autoEnrollGroups","order","strategyKey","displayName")
 VALUES ('7c1f6f2e-9d3a-4b5c-8e10-000000000001', true, \$json\$$CFG\$json\$, true, '{"v":[]}', '{"v":[2]}', 1, 'oidc', 'Keycloak');
@@ -82,8 +101,9 @@ rm -f /tmp/wiki_oidc.sql
 kubectl -n microservices-platform rollout restart deploy/wiki-js
 ```
 
-- **`settings.host`（Site URL）は必ず edge 集約 URL** にする。Wiki.js は callback を `{Site URL}/login/{key}/callback`
-  で組むため、ここが不一致だと realm 側に登録があっても redirect が合わない。
+- **`settings.host`（Site URL）は上表の経路別の値**にする（`SITE_URL` 変数。既定＝edge 集約 `wiki.localhost:50000`、
+  port-forward 単独なら `SITE_URL=http://localhost:3300` を付けて実行する）。Wiki.js は callback を
+  `{Site URL}/login/{key}/callback` で組むため、ここが経路と不一致だと realm 側に登録があっても redirect が合わない。
   なお `values-local.yaml` の `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃える。
 - `autoEnrollGroups: {"v":[2]}` は Guests（id=2）＝**最小権限の床**（deny-by-default 寄り）。Guests は既定で
   `read:pages`/`read:assets`/`read:comments` と全パスの pageRule を持つため**追加付与は不要**。
@@ -103,10 +123,11 @@ curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.
 
 ## 注意
 
-- **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL にしていると、コールバックが `wiki.localhost:50000` を
-  指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090・MinIO/IADR-0093 と同性質）。port-forward で OIDC を
-  使う場合は Site URL を `http://localhost:3300`（＝`port-forward svc/wiki-js 3300:3000` と同値）にする。realm の
-  `wiki-js` client には `http://localhost:3300/*` を登録済み（#385）。
+- **port-forward 単独（`LOCALEDGE` 未使用）**: Site URL を集約 URL のままにしていると、コールバックが
+  `wiki.localhost:50000` を指すため edge 未起動だと OIDC が完了しない（Grafana PR-2/IADR-0090・MinIO/IADR-0093 と
+  同性質）。この場合は Site URL を `http://localhost:3300`（＝`port-forward svc/wiki-js 3300:3000` と同値）へ切り替える
+  ＝上の**「Site URL は経路と一致させる」節**の表のとおり。realm の `wiki-js` client には
+  `http://localhost:3300/*` を登録済み（#385）。
 - **redirect の port topology（取り違え注意・#385）**: `wiki-js` client に登録済みの redirect は経路ごとに別物。
   **edge 集約＝`http://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
   **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
