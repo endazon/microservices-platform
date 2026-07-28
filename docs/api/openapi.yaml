@@ -1122,12 +1122,18 @@ components:
           nullable: true
           example: "refusal"
           description: |
-            ADR-0025, IADR-0104: 送信が成立した場合のモデル側の終了理由（Anthropic の stop_reason）。
-            未送信（sent=false）・未対応プロバイダでは null。既知の語彙は `end_turn` / `max_tokens` /
-            `refusal` / `stop_sequence` / `tool_use` だが、**閉じた enum にはしない**。
+            ADR-0025, IADR-0104: 送信が成立した場合のモデル側の終了理由。
+            未送信（sent=false）・`finish_reason` を返さないプロバイダでは null。既知の語彙は
+            `end_turn` / `max_tokens` / `refusal` / `stop_sequence` / `tool_use` だが、**閉じた enum にはしない**。
             語彙が増えたときに未知の値を弾かず、そのまま透過してログ・監査に残すためである。
-            - `refusal`: モデルが拒否した（安全性分類器による停止）。**text は空**で返す
-              （拒否直前の断片を下流の判断材料にしないため、ゲートウェイが破棄する）。
+            IADR-0109 (#394): この語彙は**プロバイダ横断の正準語彙**（Anthropic の stop_reason 由来）である。
+            OpenAI 互換 API を呼ぶプロバイダ（セルフホスト＝ティアA / Copilot＝ティアC）は
+            `choices[].finish_reason` をゲートウェイ側で正規化して返す
+            （`stop`→`end_turn` / `length`→`max_tokens` / `content_filter`→`refusal` /
+            `tool_calls`・`function_call`→`tool_use`。未知値は原文のまま透過し warn ログに残る）。
+            呼び出し側がプロバイダごとに語彙を出し分ける必要はない。
+            - `refusal`: モデルが拒否した（安全性分類器による停止。OpenAI 互換の `content_filter` を含む）。
+              **text は空**で返す（拒否直前の断片を下流の判断材料にしないため、ゲートウェイが破棄する）。
               「送信したが空応答」と混同してはならない。
             - `max_tokens`: 出力上限に到達した。thinking が既定で有効なモデルでは本文が空または
               途中で切れる（IADR-0101）。断片は破棄せずそのまま返す。

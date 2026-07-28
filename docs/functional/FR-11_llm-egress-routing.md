@@ -102,6 +102,26 @@ flowchart TD
 | 送信は成立したがモデルが拒否（`stop_reason="refusal"`。ADR-0025 / IADR-0104） | 縮退させず送信成立として扱い、**本文（断片を含む）を破棄**。監査ログ warn | `Sent=true`, `StopReason="refusal"`, `Text=""` |
 | 送信は成立したが出力上限に到達（`stop_reason="max_tokens"`。IADR-0101 / IADR-0104） | 途中結果は破棄せず返す。監査ログ warn | `Sent=true`, `StopReason="max_tokens"`, `Text=途中結果` |
 
+### プロバイダ横断の終了理由（正準語彙への正規化）
+
+`StopReason` の語彙は **Anthropic の `stop_reason` 由来（`CompletionStopReasons`）を正準**とする。
+OpenAI 互換 API を呼ぶプロバイダ（`SelfHostedProvider`＝ティアA / `CopilotProvider`＝ティアC）は
+応答の `choices[].finish_reason` を**プロバイダ境界で正準語彙へ写像**する
+（[IADR-0109](../adr/IADR-0109_openai-finish-reason-normalization.md) / #394）。呼び出し側が
+プロバイダごとに語彙を覚える必要はない。
+
+| OpenAI `finish_reason` | 正準語彙 | 本文の扱い |
+| --- | --- | --- |
+| `stop` | `end_turn` | そのまま返す |
+| `length` | `max_tokens` | **破棄しない**（途中結果は正当な観測対象。IADR-0101） |
+| `content_filter` | `refusal` | **破棄する**（IADR-0104 と一貫。断片を下流の判断材料にしない） |
+| `tool_calls` / `function_call` | `tool_use` | そのまま返す |
+| 上記以外・将来の追加値 | **原文のまま透過** | そのまま返す（warn ログに記録） |
+
+`finish_reason` の欠落・`null` は `StopReason=null`（未対応プロバイダと同じ状態）であり、
+未知語彙ではないため warn ログの対象にしない。両プロバイダは `ILlmProvider` の既定 `StreamAsync`
+（単一チャンクへ縮退。IADR-0037）を使うため、SSE の `done` にも正規化後の値が載る。
+
 ### 可観測性（終了理由のメトリクス）
 
 補完 1 回ごとにカウンタ `llm.completion.total` を計上する（[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) / #395）。
@@ -151,6 +171,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 - [x] 呼び出し先不調・プロバイダ未登録時も 500 を伝播させず縮退応答を返す。
 - [x] 送信成立後の終了理由（`refusal` / `max_tokens` / 正常終了）が監査ログと応答契約（`StopReason`）で区別できる（#379 / IADR-0104）。
 - [x] `refusal` では本文（断片を含む）を返さず、`StopReason` を見ない呼び出し側も安全側へ倒れる（#379 / IADR-0104）。
+- [x] OpenAI 互換プロバイダ（セルフホスト / Copilot）の `finish_reason` が正準語彙へ正規化され、`content_filter` は `refusal` として本文破棄まで一貫する。未知値は既定値へ潰さず透過し warn ログに残る（#394 / IADR-0109）。
 - [x] 終了理由がメトリクス（`llm.completion.total`）として継続的に観測でき、拒否・上限到達・正常終了・送信拒否・呼び出し失敗が相互に区別できる。属性のカーディナリティは有限（#395 / IADR-0110）。
 - [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない（#403 / IADR-0111）。
 
@@ -164,10 +185,10 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 ## 関連仕様
 
 - テスト仕様書: `../tests/FR-11_llm-egress-routing.md`
-- 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../specs/20260725_issue-379_llm-stop-reason-refusal.md`、`../specs/20260728_issue-395_refusal-metrics.md`、`../specs/20260728_issue-403_degraded-answer-model.md`
+- 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../specs/20260725_issue-379_llm-stop-reason-refusal.md`、`../specs/20260728_issue-394_openai-finish-reason.md`、`../specs/20260728_issue-403_degraded-answer-model.md`、`../specs/20260728_issue-395_refusal-metrics.md`
 - 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
-- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
 - 可観測性仕様書: `../observability/llm-completion-metrics.md`（終了理由・拒否率のメトリクス）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
