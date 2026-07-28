@@ -1,7 +1,6 @@
 using AiAnalysisService.Api.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Dtos;
-using Microsoft.Extensions.Configuration;
 
 namespace AiAnalysisService.Api.Tests;
 
@@ -14,8 +13,7 @@ public class RagOrchestratorScopeTests
     public async Task AskAsync_AuthzHttpFailure_DegradesToEmptyAnswer()
     {
         var orchestrator = new RagOrchestrator(
-            new ThrowingHttpClientFactory(new HttpRequestException("connection refused")),
-            BuildConfig());
+            new ThrowingHttpClientFactory(new HttpRequestException("connection refused")));
 
         AiAnswerDto? answer = null;
         var act = async () => answer = await orchestrator.AskAsync(
@@ -30,8 +28,7 @@ public class RagOrchestratorScopeTests
     public async Task AskAsync_AuthzTimeout_DegradesToEmptyAnswer()
     {
         var orchestrator = new RagOrchestrator(
-            new ThrowingHttpClientFactory(new TaskCanceledException("timeout")),
-            BuildConfig());
+            new ThrowingHttpClientFactory(new TaskCanceledException("timeout")));
 
         AiAnswerDto? answer = null;
         var act = async () => answer = await orchestrator.AskAsync(
@@ -48,8 +45,7 @@ public class RagOrchestratorScopeTests
     public async Task AskStreamAsync_Denied_EmitsNeutralMessageBeforeDone()
     {
         var orchestrator = new RagOrchestrator(
-            new ThrowingHttpClientFactory(new HttpRequestException("connection refused")),
-            BuildConfig());
+            new ThrowingHttpClientFactory(new HttpRequestException("connection refused")));
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync(
@@ -65,14 +61,6 @@ public class RagOrchestratorScopeTests
             .Which.Text.Should().Be("閲覧権限のある文書が見つかりませんでした。");
         events.Last().Should().BeOfType<AskDoneEvent>();
     }
-
-    private static IConfiguration BuildConfig()
-        => new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Llm:DefaultModel"] = "claude-sonnet-4-6"
-            })
-            .Build();
 
     // 生成する HttpClient がすべて指定の例外を投げるスタブファクトリ。
     private sealed class ThrowingHttpClientFactory(Exception toThrow) : IHttpClientFactory

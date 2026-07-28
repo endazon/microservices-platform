@@ -117,6 +117,35 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  // T-15f, IADR-0111 (#403): 縮退応答（AI へ送信していない）は model が空で届く。
+  // 「モデル: 」の後ろが空白のまま残らず、未送信であることが読み取れる表示にする。
+  it('labels an empty model as not sent, and shows the model name otherwise', async () => {
+    mocks.apiFetch.mockResolvedValue({
+      ...ANSWER,
+      answer: '機密区分により AI 送信を行いませんでした。',
+      model: '',
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+    render(<AnalysisDashboardPage />);
+
+    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '機密文書の分析');
+    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+
+    expect(await screen.findByText(/モデル: 未使用（AI へ送信なし）/)).toBeInTheDocument();
+    expect(screen.queryByText(/claude-opus-5/)).not.toBeInTheDocument();
+  });
+
+  it('shows the reported model name when the answer was generated', async () => {
+    mocks.apiFetch.mockResolvedValue({ ...ANSWER, model: 'claude-sonnet-5' });
+    render(<AnalysisDashboardPage />);
+
+    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '経費規程の変更点');
+    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+
+    expect(await screen.findByText(/モデル: claude-sonnet-5/)).toBeInTheDocument();
+  });
+
   // T-09: 明示的な topK=0 は既定 8 へ静かに戻さず下限 1 へクランプする。
   it('clamps an explicit topK of 0 to the lower bound (1), not the default', async () => {
     mocks.apiFetch.mockResolvedValue(ANSWER);
