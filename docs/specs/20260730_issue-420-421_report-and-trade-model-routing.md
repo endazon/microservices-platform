@@ -167,7 +167,7 @@ report-service の既定 `LlmGateway:Confidentiality` は `internal`（ZDR 要�
   `LlmGateway:Purpose` を明示設定した既存デプロイのために、未知 purpose として `default` へ
   落ちる従来挙動を維持する（非破壊）。
 - **AST 側の実装**（種別ごとの purpose 送出・上位方針の feed-forward）。別リポ・別 PR（#291 / #293）。
-- **Stage 0 再検証そのもの**。実行不能（AST#208）であり、実弾解禁の必須ゲートとして追跡へ回す。
+- **Stage 0 再検証そのもの**。実行不能（AST#208）であり、実弾解禁の必須ゲートとして追跡へ回す（AST#296）。
 
 ## 受け入れ基準
 
@@ -179,6 +179,7 @@ report-service の既定 `LlmGateway:Confidentiality` は `internal`（ZDR 要�
 - [x] `confidential` × `report-monthly` が `claude-fable-5` を除外し `DefaultModel` へ落ちることを
       テストで固定した（無音失効の明示化）
 - [x] AST/ADR-0011 の手続き（計画への環流・Stage 0 再検証の要否判断）を [[IADR-0112]] に記録した
+- [x] Stage 0 再検証のゲートを追跡可能なブロッカー（AST#296）として実体化し、AST#217 / #208 から参照させた
 - [x] 取引判断のバージョン固定原則（`default` に自動追随しない）が維持されている
 
 ## 判断: AST/ADR-0011 の手続きをどう踏むか
@@ -195,8 +196,10 @@ Stage 0 再検証を要求している。両立の手順を次のとおり定め
      実資金の取引が存在しない。したがって現時点の設定変更で毀損する検証妥当性は存在しない。
    - Stage 0 再検証は**現時点で実行不能**である（バックテストの実過去データ源が未接続。AST#208）。
      先行条件とすると利用者の仕様指定が無期限に凍結される。
-   - よって設定は改定し、`claude-sonnet-5` での Stage 0 再検証を**実弾解禁の必須ゲート**として
-     AST#208 / #217 と束ねて追跡する。
+   - よって設定は改定し、`claude-sonnet-5` での Stage 0 再検証を**実弾解禁の必須ゲート**として課す。
+     このゲートは IADR の記述だけでは運用を強制しないため、[ai-stock-trading#296](https://github.com/endazon/ai-stock-trading/issues/296)
+     を「実弾解禁ブロッカー」として起票し、実弾解禁の設計 issue（AST#217）と前提 issue（AST#208）の
+     双方から参照させた。
 3. **バージョン固定の原則は維持する。** 改定するのはピンの値であって、ピンする仕組みではない。
    `trade-decision` は引き続き明示エントリを持ち、`default` の改定に自動追随しない。
 
