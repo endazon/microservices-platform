@@ -222,7 +222,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
   - **計画側 ADR（project-planning#50）が Accepted になるまで、本改定は「起案済み・未承認」である。**
     承認されなければ設定を `claude-opus-4-8` へ戻す。ロールバックのため `Models` に旧モデルを残してある（決定3-(4)）
     ため、差し戻しは `PurposeModels` の 1 値とテストの期待値の変更で完結する。
-    この条件も IADR 本文では運用を強制しないため、**#423 として追跡可能な形にした**（Stage 0 ゲートと同じ理由）。
+    この条件も IADR 本文では運用を強制しないため、**[#423](https://github.com/endazon/microservices-platform/issues/423) として追跡可能な形にした**（Stage 0 ゲートと同じ理由）。
   - **`claude-sonnet-5` での Stage 0 再検証が未実施のまま設定が先行する。** 実弾 OFF の現在は
     害が無いが、この負債を実弾解禁前に必ず解消する必要がある（§フォローアップ 2）。忘れると
     ADR-0008 の段階ゲートが空洞化する。
@@ -248,7 +248,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
      +30% トークンの差引、および月報 `claude-fable-5` の月 1 回ぶんを実測する。
   4. **#382 の見直し**。`claude-opus-4-8` の提供終了監視は本改定でピン対象から外れたため、
      追跡内容を `claude-sonnet-5` へ改める必要がある。
-  5. **計画側 ADR の承認可否の確認と、非承認時のロールバック**（#423）。project-planning#50 が
+  5. **計画側 ADR の承認可否の確認と、非承認時のロールバック**（[#423](https://github.com/endazon/microservices-platform/issues/423)）。project-planning#50 が
      Accepted になれば新 ADR の番号を本 IADR へ追記し、ならなければ `claude-opus-4-8` へ戻す。
   6. **AST#285 の解消**。取引判断の実効モデルに関する AST 側ドキュメントの記述が本改定で再び
      陳腐化するため、AST 側で追随する。
