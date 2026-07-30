@@ -13,9 +13,15 @@ public sealed class LlmRoutingOptions
     // キーは呼び出し側が送る purpose 値と一致させる（例: rag-answer, analysis, diagram-coding）。
     // 既定 claude-opus-5（ADR-0025 追従・IADR-0101）/ 定型 rag-answer→claude-sonnet-5（ADR-0022 追従・IADR-0106）・
     // diagram-coding→claude-haiku-4-5 / 最難関 analysis→claude-fable-5。
+    // IADR-0112: 報告書は方針階層（月報→週報→日報→取引。AST/04_workflows/03_reporting-cycle）をなす方針書であり、
+    // 上位ほど難度が高い。種別ごとに用途を分ける（report-monthly→claude-fable-5 / report-weekly→claude-opus-5 /
+    // report-daily→claude-sonnet-5）。report-weekly は既定と同値だが、明示エントリが無いと既定の改定で無音に失効する。
+    // 取引判断 trade-decision→claude-sonnet-5（AST/ADR-0011 のバージョン固定は維持。改定したのはピンの値）。
     // ⚠️ ここへ用途を追加・変更したら、対象モデルを当該エンドポイントの Models（利用許可集合）にも登録すること。
     // ResolveModel は eligible.Contains(purposeModel) を条件とするため、未登録だと例外もログも出さずに
     // DefaultModel へフォールバックし、割当が無音で失効する（IADR-0102 / IADR-0106）。
+    // ⚠️ NonZdrModels に載るモデル（claude-fable-5）を割り当てた用途は、機密区分 confidential/restricted で
+    // 除外され DefaultModel へ落ちる。report-monthly / analysis が該当する（IADR-0112 決定2）。
     public Dictionary<string, string> PurposeModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // internal × ティアC（要承認）を自動許可するか。既定は安全側で false（承認が無ければ C を使わない）。

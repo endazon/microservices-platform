@@ -182,4 +182,63 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().Be("claude-sonnet-5");
         body.Model.Should().NotBe("claude-opus-5");  // DefaultModel への無音フォールバックでないこと
     }
+
+    // T-22, FR-11, IADR-0112, AST/04_workflows/03_reporting-cycle: 報告書は方針階層（月報→週報→日報→取引）を
+    // なす方針書であり、上位ほど難度が高い。種別ごとに purpose を分けてモデルを割り当てる。
+    //
+    // 週報は現行の DefaultModel と同値だが、それは default 追随による偶然であり割当として固定されていない。
+    // 明示エントリを置かないと default の改定（IADR-0101 が実際に行った操作）で無音に失効する。
+    // よって「同値だからテスト不要」ではなく、同値であることを固定する意味がある。
+    //
+    // 月報の claude-fable-5 は ZDR 非対応（NonZdrModels）のため、用途別モデルの発火は public で検証する
+    // （confidential 側の挙動は PostComplete_ConfidentialReportMonthly_FallsBackToZdrModel が固定する）。
+    [Theory]
+    [InlineData("report-monthly", "claude-fable-5")]
+    [InlineData("report-weekly", "claude-opus-5")]
+    [InlineData("report-daily", "claude-sonnet-5")]
+    public async Task PostComplete_ReportKindPurpose_SelectsKindSpecificModel(string purpose, string expectedModel)
+    {
+        var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "public", Purpose = purpose };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        body!.Sent.Should().BeTrue();
+        body.Model.Should().Be(expectedModel);
+    }
+
+    // T-22, FR-11, IADR-0112, AST/ADR-0011: 取引判断は claude-sonnet-5（利用者の仕様指定）。
+    // ADR-0011 の「バージョン固定」原則は維持されており、改定したのはピンの値であってピンする仕組みではない。
+    // DefaultModel（claude-opus-5）と異なる値を返すことが、固定が生きている（default に追随していない）証拠になる。
+    [Fact]
+    public async Task PostComplete_TradeDecision_SelectsSonnet5AndDoesNotFallBackToDefault()
+    {
+        var req = new { Prompt = "銘柄の売買判断", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision" };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        body!.Sent.Should().BeTrue();
+        body.Model.Should().Be("claude-sonnet-5");
+        body.Model.Should().NotBe("claude-opus-5");   // DefaultModel への無音フォールバックでないこと
+        body.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
+    }
+
+    // T-22, IADR-0112 決定2, IADR-0022 / 08_data-egress-policy: 月報の claude-fable-5 は ZDR 非対応であり、
+    // 機密区分を confidential 以上に上げると EligibleModels から除外され DefaultModel へ**黙って**落ちる。
+    // report-service の既定 LlmGateway:Confidentiality は internal（ZDR 要件なし）のため通常は成立するが、
+    // 設定次第でモデルが無音に変わることは運用上の重要事実であり、挙動をテストで固定して明示する。
+    [Fact]
+    public async Task PostComplete_ConfidentialReportMonthly_FallsBackToZdrModel()
+    {
+        var req = new { Prompt = "月報の散文", MaxTokens = 100, Confidentiality = "confidential", Purpose = "report-monthly" };
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        body!.Sent.Should().BeTrue();
+        body.Endpoint.Should().Be("claude-managed");
+        body.Model.Should().Be("claude-opus-5");
+        body.Model.Should().NotBe("claude-fable-5");
+    }
 }
