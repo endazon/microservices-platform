@@ -71,8 +71,15 @@ public class LlmRouterTests
             ["rag-answer"] = "claude-sonnet-5",
             ["analysis"] = "claude-fable-5",
             ["diagram-coding"] = "claude-haiku-4-5",
+            // IADR-0112 決定1 / AST/04_workflows/03_reporting-cycle: 報告書は方針階層（月報→週報→日報→取引）を
+            // なす方針書であり、上位ほど難度が高い。種別ごとに purpose を分けて割り当てる。
+            // report-weekly は default と同値だが、明示エントリが無いと default 改定で無音に失効する。
+            ["report-monthly"] = "claude-fable-5",
+            ["report-weekly"] = "claude-opus-5",
+            ["report-daily"] = "claude-sonnet-5",
             // AST/ADR-0011 / IADR-0102: 取引判断は基盤の既定モデル改定に自動追随させず版数を固定する。
-            ["trade-decision"] = "claude-opus-4-8",
+            // IADR-0112 決定3: ピンの値を claude-sonnet-5 へ改定した（固定する仕組みは維持）。
+            ["trade-decision"] = "claude-sonnet-5",
             ["default"] = "claude-opus-5"
         }
     };
@@ -173,6 +180,37 @@ public class LlmRouterTests
 
         decision.Allowed.Should().BeTrue();
         decision.Model.Should().Be("claude-sonnet-5");
+    }
+
+    // T-22, IADR-0112 決定1: 報告書は種別ごとに別モデルへ解決される（月報=最難関 / 日報=定型）。
+    // 3 種別が同一モデルへ潰れていないこと自体が方針階層の反映であるため、まとめて固定する。
+    [Theory]
+    [InlineData("report-monthly", "claude-fable-5")]
+    [InlineData("report-weekly", "claude-opus-5")]
+    [InlineData("report-daily", "claude-sonnet-5")]
+    public void Route_ReportKindPurpose_ResolvesKindSpecificModel(string purpose, string expected)
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, purpose));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().Be(expected);
+    }
+
+    // T-22, IADR-0112 決定2: 月報の claude-fable-5 は ZDR 非対応であり、confidential 以上では除外され
+    // DefaultModel へ黙って落ちる。report-service の既定機密区分は internal のため通常は成立するが、
+    // 設定次第でモデルが無音に変わることを明示する。
+    [Fact]
+    public void Route_Confidential_ReportMonthly_FallsBackToZdrModel()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "report-monthly"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Model.Should().NotBe("claude-fable-5");
+        decision.Model.Should().Be("claude-opus-5");
     }
 
     // IADR-0022: ZDR 要件区分で当該エンドポイントに ZDR 対応モデルが 1 つも無ければ送信を拒否する（安全側）。
@@ -331,26 +369,28 @@ public class LlmRouterTests
         decision.Model.Should().Be("claude-opus-5");
     }
 
-    // AST/ADR-0011, IADR-0102: 取引判断は基盤の既定モデル改定に自動追随しない。用途 trade-decision は
-    // ピン留めした claude-opus-4-8 を選択し、既定（claude-opus-5）へ落ちてはならない。
+    // AST/ADR-0011, IADR-0102 / IADR-0112 決定3: 取引判断は基盤の既定モデル改定に自動追随しない。用途
+    // trade-decision はピン留めした claude-sonnet-5 を選択し、既定（claude-opus-5）へ落ちてはならない。
     // ピン留め対象が Models 許可一覧に無いと ResolveModel が黙って DefaultModel へフォールバックするため、
     // 「default と異なる値が返る」ことまで確認して無効化を検知する。
+    // IADR-0112: ピンの値を claude-opus-4-8 から改定した。固定する仕組み（明示エントリ）は維持されている。
     [Fact]
-    public void Route_TradeDecision_PinsOpus48AndDoesNotFollowDefault()
+    public void Route_TradeDecision_PinsSonnet5AndDoesNotFollowDefault()
     {
         var router = Build(Opts(Claude()));
 
         var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "trade-decision"));
 
         decision.Allowed.Should().BeTrue();
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-sonnet-5");
         decision.Model.Should().NotBe("claude-opus-5");
+        decision.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
     }
 
     // AST/ADR-0011, IADR-0102 / IADR-0022: ZDR 要件区分（confidential）でもピン留めは維持される。
-    // Opus 4.8 は NonZdrModels に含まれないため ZDR 除外の対象外（fable-5 とは異なる）。
+    // Sonnet 5 は NonZdrModels に含まれないため ZDR 除外の対象外（fable-5 とは異なる）。
     [Fact]
-    public void Route_Confidential_TradeDecision_KeepsPinnedOpus48()
+    public void Route_Confidential_TradeDecision_KeepsPinnedSonnet5()
     {
         var router = Build(Opts(Claude()));
 
@@ -358,11 +398,12 @@ public class LlmRouterTests
 
         decision.Allowed.Should().BeTrue();
         decision.Tier.Should().Be(ProtectionTier.B);
-        decision.Model.Should().Be("claude-opus-4-8");
+        decision.Model.Should().Be("claude-sonnet-5");
     }
 
-    // AST/ADR-0011 §決定: 報告書生成（report-narrative）は「別扱い。基盤の既定モデルを用いてよい」ため
-    // ピン留めせず default へ着地する。取引判断と扱いが異なることを固定する。
+    // IADR-0112 決定1: 旧来の単一用途 report-narrative はエントリを持たず default へ着地する（従来どおり）。
+    // AST が種別ごとの purpose（report-daily/weekly/monthly）へ移行するまでの非破壊性、および
+    // LlmGateway:Purpose を明示設定した既存デプロイのために、未知 purpose のフォールバックを維持する。
     [Fact]
     public void Route_ReportNarrative_FollowsDefaultModel()
     {
