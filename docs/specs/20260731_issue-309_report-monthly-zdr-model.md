@@ -168,7 +168,10 @@ AST の `HttpReportNarrativeDrafter` は `Sent=false` のすべてに対して
   Accepted 済み ADR は本文凍結のため、ADR-0011 → ADR-0014 と同じ手順（新 ADR ＋ 旧 ADR への改訂節追記）を踏む。**別 PR**。
 - **AST のログ文言**: `HttpReportNarrativeDrafter` が `Sent=false` の 3 分岐すべてに
   「機密区分による縮退」と出すため、今回の誤診が生じた。応答の `RoutingReason` / `Endpoint` を
-  ログへ載せて分岐を区別できるようにする是正が要る（AST リポ・別 issue）。
+  ログへ載せて分岐を区別できるようにする是正が要る。
+  → [ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315)
+- **`claude-fable-5` の ZDR 提供有無の契約確認**
+  → [#428](https://github.com/endazon/microservices-platform/issues/428)
 - **live の実原因の確定**: 稼働環境に触れないため未確認。改定後も月報がプレースホルダのままなら、
   分岐 2/3 を疑い `RoutingReason` を確認する。
 - **週報のタイムアウト**（30 秒）は別原因・別 issue。

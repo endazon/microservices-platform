@@ -165,10 +165,13 @@ T-19（全 `PurposeModels` 値 ⊆ `Models`）と同じ発想の設定ガード�
   - 計画 ADR の改定（AST/ADR-0014 §決定1 の月報行）。Accepted 済み ADR は本文凍結のため、
     ADR-0011 → ADR-0014 と同じ手順（新 ADR ＋ 旧 ADR への改訂節追記）を踏む。**別 PR**。
   - AST `HttpReportNarrativeDrafter` のログ文言是正（`Sent=false` の 3 分岐を区別せず
-    「機密区分による縮退」と断定するため、今回の誤診の直接原因になった）。AST リポの別 issue。
+    「機密区分による縮退」と断定するため、今回の誤診の直接原因になった）。
+    **[ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315) で追跡**。
   - `claude-fable-5` の ZDR 提供有無を契約で確認する。ZDR 提供があると確認できれば
     `NonZdrModels` からの除外（案 C）と月報の再割当を検討できる。
-  - より上位の ZDR 対応モデルが提供された場合の月報の再割当。
+    **[#428](https://github.com/endazon/microservices-platform/issues/428) で追跡**（確認できないうちに
+    `NonZdrModels` から外さない＝案 C を棄却した理由そのもの）。
+  - より上位の ZDR 対応モデルが提供された場合の月報の再割当（同じく #428 で扱う）。
   - 費用実測（[#380](https://github.com/endazon/microservices-platform/issues/380) /
     [ai-stock-trading#243](https://github.com/endazon/ai-stock-trading/issues/243)）。月報が fable-5 から
     opus-5 へ変わるため、[[IADR-0112]] 時点の試算は再ベースラインが要る。
