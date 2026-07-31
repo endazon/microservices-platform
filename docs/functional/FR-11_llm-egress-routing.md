@@ -161,6 +161,27 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 既に流れている場合は空行で区切る（フロントは token を 1 つの文字列へ連結し `white-space: pre-wrap`
 で表示するため、区切らないと注記が地の文へ溶け込む）。
 
+### 応答 content ブロックの未知型は解析前に除去する（SDK の fail-closed を止める）
+
+Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロックの判別子を列挙で分岐し、
+**`text` / `image` / `tool_use` / `tool_result` 以外**を受け取ると `JsonException: Unknown type <型>` を
+投げる。未知型が 1 個混ざるだけで配列全体＝**応答全体**が失われるため、拡張思考（`thinking`）が
+既定で有効な現行の割当モデル（`claude-opus-5` / `claude-sonnet-5` / `claude-fable-5`）では
+非ストリーミング `/complete` が全件失敗する。
+
+そこで `AnthropicClient` へ渡す `HttpClient` に委譲ハンドラを挟み、**既知型の許可リスト**で
+未知ブロックを解析前に除去する（[IADR-0114](../adr/IADR-0114_anthropic-unknown-content-block-sanitizing.md)）。
+拒否リストで型名を列挙しないため、将来 API が追加するブロック型にも更新なしで耐える。
+
+- 対象は **2xx かつ `application/json`** のみ。非 2xx は SDK の例外整形へ委ね、SSE
+  （`text/event-stream`）は触らない（ストリーム経路は未知型を素通しでき壊れていない）。
+- **既知型だけの応答は 1 バイトも触らない**（サニタイズ自体が本文を変える経路を既定で持たない）。
+- 全ブロックが未知なら例外にせず `content` 空へ縮退し、既存の空応答分岐（呼び出し側の安全既定）へ合流する。
+- 除去したブロック型は warn ログに残す（**型名のみ**。本文は載せない）。
+
+本節は content の解釈に関する規定であり、送信可否（`Sent`）・終了理由（`StopReason`）の
+軸（前節）とは独立である。`refusal` の本文破棄は thinking の有無に関わらず維持される。
+
 ## 受け入れ基準
 
 - [x] 機密区分→許容ティアが 08_data-egress-policy の越境マトリクスと一致する（`EgressMatrix.AllowedTiers`）。
@@ -177,6 +198,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 - [x] OpenAI 互換プロバイダ（セルフホスト / Copilot）の `finish_reason` が正準語彙へ正規化され、`content_filter` は `refusal` として本文破棄まで一貫する。未知値は既定値へ潰さず透過し warn ログに残る（#394 / IADR-0109）。
 - [x] 終了理由がメトリクス（`llm.completion.total`）として継続的に観測でき、拒否・上限到達・正常終了・送信拒否・呼び出し失敗が相互に区別できる。属性のカーディナリティは有限（#395 / IADR-0110）。
 - [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない（#403 / IADR-0111）。
+- [x] SDK が解釈できない content ブロック型（`thinking` 等）が含まれても応答全体を失わず、本文テキストと既知ブロックを取得できる。未知の将来型でも同様（AST#290 / IADR-0114）。
 
 > 検証（#201）: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。

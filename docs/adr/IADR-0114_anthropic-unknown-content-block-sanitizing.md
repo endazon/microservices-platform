@@ -150,6 +150,7 @@ plan_refs:
 ## 関連
 
 - 仕様書: `docs/specs/20260801_issue-290_thinking-content-block.md`
+- 機能仕様: `docs/functional/FR-11_llm-egress-routing.md`（応答 content ブロックの未知型除去）
 - テスト仕様: `docs/tests/FR-11_llm-egress-routing.md`（T-24）
 - 残: #290 本体（AST 側）、AST の縮退ログ文言是正
   （[ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315)）、

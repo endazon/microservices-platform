@@ -142,7 +142,7 @@ related_specs:
 ## 完了条件（DoD）
 
 - `dotnet build` / `dotnet test`（LlmGateway: 145 件）green・`dotnet format` 適用済み。
-- 仕様書・IADR-0114・ADR 索引・テスト仕様（T-24）を更新済み。
+- 仕様書・IADR-0114・ADR 索引・機能仕様（FR-11）・テスト仕様（T-24）を更新済み。
 - 稼働中環境への操作なし（設定・割当・実弾に関わる既定は不変）。
 
 ## 残（本 PR スコープ外）
