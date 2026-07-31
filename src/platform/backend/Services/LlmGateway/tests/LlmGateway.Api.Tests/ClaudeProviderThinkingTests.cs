@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LlmGateway.Api.Tests;
 
-// FR-04, FR-11, ADR-0010, IADR-0114 (#290): thinking（拡張思考）ブロックを含む応答でも
+// FR-04, FR-11, ADR-0010, IADR-0114 (AST#290): thinking（拡張思考）ブロックを含む応答でも
 // ClaudeProvider が本文を取り出せることの回帰テスト。
 //
 // 背景: 用途別の割当モデル（trade-decision / report-daily = claude-sonnet-5、report-weekly /

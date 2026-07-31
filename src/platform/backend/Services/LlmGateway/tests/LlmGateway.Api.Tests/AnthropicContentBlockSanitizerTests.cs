@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LlmGateway.Api.Tests;
 
-// FR-04, FR-11, ADR-0010, IADR-0114 (#290): Anthropic Messages API の応答から、SDK が解釈できない
+// FR-04, FR-11, ADR-0010, IADR-0114 (AST#290): Anthropic Messages API の応答から、SDK が解釈できない
 // content ブロック型（thinking / redacted_thinking / server_tool_use / 将来型）を落として
 // 「未知型 1 個で応答全体が解析不能になる」ことを防ぐサニタイザの検証。
 //

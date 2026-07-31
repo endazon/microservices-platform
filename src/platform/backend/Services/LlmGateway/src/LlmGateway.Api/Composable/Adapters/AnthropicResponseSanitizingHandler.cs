@@ -3,7 +3,7 @@ using System.Text;
 
 namespace LlmGateway.Api.Composable.Adapters;
 
-// FR-04, ADR-0010, IADR-0114 (#290): Anthropic Messages API の JSON 応答から、SDK が解釈できない
+// FR-04, ADR-0010, IADR-0114 (AST#290): Anthropic Messages API の JSON 応答から、SDK が解釈できない
 // content ブロック型を取り除いてから SDK のデシリアライズへ渡す委譲ハンドラ。
 //
 // ここ（HttpClient の層）で行う理由: Anthropic.SDK 4.0.0 は content の多態デシリアライズを

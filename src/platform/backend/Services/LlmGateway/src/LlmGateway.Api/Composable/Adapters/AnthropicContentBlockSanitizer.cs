@@ -3,7 +3,7 @@ using System.Text.Json;
 
 namespace LlmGateway.Api.Composable.Adapters;
 
-// FR-04, ADR-0010, IADR-0114 (#290): Anthropic Messages API 応答の content ブロックのうち、
+// FR-04, ADR-0010, IADR-0114 (AST#290): Anthropic Messages API 応答の content ブロックのうち、
 // Anthropic.SDK 4.0.0 が解釈できない型を取り除く純関数。
 //
 // 課題: SDK の content 判別子は text / image / tool_use / tool_result の 4 種しか知らず、
@@ -19,6 +19,9 @@ public static class AnthropicContentBlockSanitizer
 {
     // SDK 4.0.0 の ContentConverter が解釈できる型。実測で確定させている
     // （AnthropicContentBlockSanitizerTests / ClaudeProviderThinkingTests）。
+    // 基準は「**SDK のデシリアライザが認識する型の全体**」であって「アシスタント応答に現れる型」ではない。
+    // image / tool_result は主にリクエスト側の型で応答には通常現れないが、判定基準を SDK 側に揃えておく
+    // ほうが、応答での出現有無という別の推測を持ち込まずに済む（現れなければ使われないだけで実害はない）。
     private static readonly HashSet<string> KnownContentTypes =
         new(StringComparer.Ordinal) { "text", "image", "tool_use", "tool_result" };
 
