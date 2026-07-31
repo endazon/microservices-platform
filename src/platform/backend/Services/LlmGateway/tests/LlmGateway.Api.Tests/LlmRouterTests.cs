@@ -74,7 +74,8 @@ public class LlmRouterTests
             // IADR-0112 決定1 / AST/04_workflows/03_reporting-cycle: 報告書は方針階層（月報→週報→日報→取引）を
             // なす方針書であり、上位ほど難度が高い。種別ごとに purpose を分けて割り当てる。
             // report-weekly は default と同値だが、明示エントリが無いと default 改定で無音に失効する。
-            ["report-monthly"] = "claude-fable-5",
+            // IADR-0113 (#309): 月報は ZDR 対応の最上位 claude-opus-5（旧 claude-fable-5 は ZDR 非対応）。
+            ["report-monthly"] = "claude-opus-5",
             ["report-weekly"] = "claude-opus-5",
             ["report-daily"] = "claude-sonnet-5",
             // AST/ADR-0011 / IADR-0102: 取引判断は基盤の既定モデル改定に自動追随させず版数を固定する。
@@ -182,10 +183,12 @@ public class LlmRouterTests
         decision.Model.Should().Be("claude-sonnet-5");
     }
 
-    // T-22, IADR-0112 決定1: 報告書は種別ごとに別モデルへ解決される（月報=最難関 / 日報=定型）。
-    // 3 種別が同一モデルへ潰れていないこと自体が方針階層の反映であるため、まとめて固定する。
+    // T-22, IADR-0112 決定1: 報告書は種別ごとに別モデルへ解決される（月報/週報=最上位 / 日報=定型）。
+    // IADR-0113 (#309): 月報は ZDR 対応の最上位 claude-opus-5 へ改定した。週報と同値になるが、
+    // 非 ZDR の claude-fable-5 を除いた集合の最上位が opus-5 である以上これが上位方針書に対する最善である。
+    // 日報が別モデルへ解決されること（3 種別が 1 モデルへ潰れていないこと）は引き続き固定する。
     [Theory]
-    [InlineData("report-monthly", "claude-fable-5")]
+    [InlineData("report-monthly", "claude-opus-5")]
     [InlineData("report-weekly", "claude-opus-5")]
     [InlineData("report-daily", "claude-sonnet-5")]
     public void Route_ReportKindPurpose_ResolvesKindSpecificModel(string purpose, string expected)
@@ -198,19 +201,31 @@ public class LlmRouterTests
         decision.Model.Should().Be(expected);
     }
 
-    // T-22, IADR-0112 決定2: 月報の claude-fable-5 は ZDR 非対応であり、confidential 以上では除外され
-    // DefaultModel へ黙って落ちる。report-service の既定機密区分は internal のため通常は成立するが、
-    // 設定次第でモデルが無音に変わることを明示する。
-    [Fact]
-    public void Route_Confidential_ReportMonthly_FallsBackToZdrModel()
+    // T-23, IADR-0113 (#309): 報告書用途は機密区分によらず同一モデルへ解決する。
+    // 旧割当 claude-fable-5 は ZDR 非対応（NonZdrModels）であり confidential 以上で EligibleModels から
+    // 除外され DefaultModel へ黙って落ちていた（IADR-0112 決定2 が既知事実として固定していた挙動）。
+    // ZDR 対応モデルへ改定したことで、呼び出し側の機密区分設定に割当が左右されないことを固定する。
+    [Theory]
+    [InlineData("report-monthly")]
+    [InlineData("report-weekly")]
+    [InlineData("report-daily")]
+    public void Route_ReportKindPurpose_ResolvesSameModelAcrossSensitivities(string purpose)
     {
         var router = Build(Opts(Claude()));
 
-        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "report-monthly"));
+        var baseline = router.Route(new RoutingRequest(SensitivityClass.Internal, purpose));
 
-        decision.Allowed.Should().BeTrue();
-        decision.Model.Should().NotBe("claude-fable-5");
-        decision.Model.Should().Be("claude-opus-5");
+        baseline.Allowed.Should().BeTrue();
+        baseline.Model.Should().NotBe("claude-fable-5");
+
+        foreach (var sensitivity in new[] { SensitivityClass.Public, SensitivityClass.Confidential, SensitivityClass.Restricted })
+        {
+            var decision = router.Route(new RoutingRequest(sensitivity, purpose));
+
+            decision.Allowed.Should().BeTrue();
+            decision.Model.Should().Be(baseline.Model,
+                $"用途 {purpose} の割当モデルが機密区分 {sensitivity} で無音に変わってはならない");
+        }
     }
 
     // IADR-0022: ZDR 要件区分で当該エンドポイントに ZDR 対応モデルが 1 つも無ければ送信を拒否する（安全側）。
