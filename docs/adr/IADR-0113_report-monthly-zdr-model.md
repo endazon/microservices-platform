@@ -32,7 +32,11 @@ plan_refs:
 - 起点 issue: [ai-stock-trading#309](https://github.com/endazon/ai-stock-trading/issues/309)
   「月報の割当 `claude-fable-5` が非 ZDR のため既定機密区分では構造的に到達不能」。
 - 直前の実装判断: [[IADR-0112]]（報告書の種別別 purpose 割当・[#422](https://github.com/endazon/microservices-platform/pull/422)）。
-  本 IADR は同 IADR の**決定1 の月報行と決定2 の帰結**のみを改定する。
+  本 IADR は同 IADR の**決定1 の月報行と決定2 の帰結**のみを改定する。IADR-0112 本文と ADR 索引の
+  同 IADR 行には、改定済みである旨の日付付き追記を入れた（`docs/adr/README.md` の運用規約と
+  [[IADR-0084]] / [[IADR-0087]] の前例に倣う。旧 IADR だけを読んだ担当者が古い値を現行と誤認しないため）。
+  AST 側の `IADR-0120` の割当表も同様に陳腐化するが、別リポのため
+  [ai-stock-trading#285](https://github.com/endazon/ai-stock-trading/issues/285)（実効モデル記述の陳腐化）へ追記して引き渡した。
 - 仕様書: `docs/specs/20260731_issue-309_report-monthly-zdr-model.md`。
 - 計画への環流: AST/ADR-0014 §決定1 の月報割当を改定する新 ADR を計画リポへ起案する（**別 PR**）。
 - ルーティング設計・ティア判定・ZDR 除外ロジック（[[IADR-0022]]）は変更しない。
