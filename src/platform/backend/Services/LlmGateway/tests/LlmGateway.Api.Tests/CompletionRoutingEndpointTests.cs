@@ -190,15 +190,16 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // 明示エントリを置かないと default の改定（IADR-0101 が実際に行った操作）で無音に失効する。
     // よって「同値だからテスト不要」ではなく、同値であることを固定する意味がある。
     //
-    // 月報の claude-fable-5 は ZDR 非対応（NonZdrModels）のため、用途別モデルの発火は public で検証する
-    // （confidential 側の挙動は PostComplete_ConfidentialReportMonthly_FallsBackToZdrModel が固定する）。
+    // IADR-0113 (#309): 月報は claude-fable-5（ZDR 非対応）から claude-opus-5（ZDR 対応の最上位）へ改定した。
+    // 機密区分は report-service の既定値（internal）で検証する（従来は fable-5 が ZDR 非対応であることを避けて
+    // public で検証していたが、その制約は無くなった）。
     [Theory]
-    [InlineData("report-monthly", "claude-fable-5")]
+    [InlineData("report-monthly", "claude-opus-5")]
     [InlineData("report-weekly", "claude-opus-5")]
     [InlineData("report-daily", "claude-sonnet-5")]
     public async Task PostComplete_ReportKindPurpose_SelectsKindSpecificModel(string purpose, string expectedModel)
     {
-        var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "public", Purpose = purpose };
+        var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "internal", Purpose = purpose };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -224,14 +225,17 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().NotBe("claude-opus-4-8"); // 旧ピン（IADR-0102）が残っていないこと
     }
 
-    // T-22, IADR-0112 決定2, IADR-0022 / 08_data-egress-policy: 月報の claude-fable-5 は ZDR 非対応であり、
-    // 機密区分を confidential 以上に上げると EligibleModels から除外され DefaultModel へ**黙って**落ちる。
-    // report-service の既定 LlmGateway:Confidentiality は internal（ZDR 要件なし）のため通常は成立するが、
-    // 設定次第でモデルが無音に変わることは運用上の重要事実であり、挙動をテストで固定して明示する。
-    [Fact]
-    public async Task PostComplete_ConfidentialReportMonthly_FallsBackToZdrModel()
+    // T-23, IADR-0113 (#309), IADR-0022 / 08_data-egress-policy: 報告書の割当モデルは機密区分によって
+    // 変わらない（どの区分でも同一モデルへ解決し、送信も成立する）。旧割当 claude-fable-5 は ZDR 非対応で
+    // あり confidential 以上で DefaultModel へ**黙って**落ちていた。ZDR 対応モデルへ改定したことで、
+    // 呼び出し側が機密区分を上げても割当が無音で変わらないことを固定する。
+    [Theory]
+    [InlineData("internal")]
+    [InlineData("confidential")]
+    [InlineData("restricted")]
+    public async Task PostComplete_ReportMonthly_KeepsAssignedModelAcrossSensitivities(string confidentiality)
     {
-        var req = new { Prompt = "月報の散文", MaxTokens = 100, Confidentiality = "confidential", Purpose = "report-monthly" };
+        var req = new { Prompt = "月報の散文", MaxTokens = 100, Confidentiality = confidentiality, Purpose = "report-monthly" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -240,5 +244,26 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Endpoint.Should().Be("claude-managed");
         body.Model.Should().Be("claude-opus-5");
         body.Model.Should().NotBe("claude-fable-5");
+    }
+
+    // T-23, IADR-0113 (#309): 報告書用途の割当モデルが NonZdrModels に載っていないことを**集合として**固定する。
+    // T-19（全 PurposeModels 値 ⊆ Models）と同じ発想の設定ガードで、種別が増えたときの再発を防ぐ。
+    // analysis は ZDR 非要件区分に限って fable-5 を使う意図的な例外（IADR-0022）のため対象に含めない。
+    [Fact]
+    public void ReportPurposeModels_AreNotListedAsNonZdr()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+        var claude = options.Endpoints.Single(e => e.Name == "claude-managed");
+
+        var reportPurposes = options.PurposeModels
+            .Where(kv => kv.Key.StartsWith("report-", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        reportPurposes.Should().NotBeEmpty("報告書用途のエントリが消えるとガード自体が空振りする");
+        foreach (var (purpose, model) in reportPurposes)
+        {
+            claude.NonZdrModels.Should().NotContain(model,
+                $"用途 {purpose} の割当モデル {model} が ZDR 非対応だと、機密区分を上げた時点で DefaultModel へ黙って落ちる");
+        }
     }
 }
