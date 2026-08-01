@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -281,6 +281,50 @@ planning#116 で反映され、提案より良い実装になった——受け�
 より起きやすいこちらは無言）。[planning#117](https://github.com/endazon/project-planning/issues/117)
 として起票した。
 
+### 第 7 ラウンド（planning#119 反映後の再同期）
+
+pin を `30a4b78` → `cff9b6c` へ進めた。第 6 ラウンドで環流した
+[planning#117](https://github.com/endazon/project-planning/issues/117)（opt-in 忘れが無言）が反映され、
+あわせて planning#118 / #120 由来の変更（Bash 許可の**前方一致**の落とし穴、
+`Bash(git -C planning …:*)` 4 件の追加）が入った。
+
+**適用内容**
+
+- `scripts/scripts.test.js` — キットとバイト一致を維持（notice の追加・新旧 companion 同居の警告）
+- `.github/workflows/claude-coding.yml` / `claude-code-review.yml` — キットの内容をそのまま反映
+- `scripts/README.md` — 状態表を含む該当節を差し替え
+
+`REQUIRE_REPO_TESTS` 未設定時に notice が出て、設定済み（本リポジトリ）では出ないことを実測で確認した。
+
+**この再同期で見つかったキットの不具合（指摘 13・重要）**
+
+`Bash(git -C planning …:*)` は **PR CI では機能しないどころか、誤った履歴を静かに返す**。
+AI レビューの checkout は submodule を取得しないため `planning/` は空ディレクトリになり、
+git は親ディレクトリを遡って**実装リポの履歴**を返す（エラーにならない）。本リポジトリで再現した。
+
+```
+$ mkdir ./__fake_sub__ && git -C ./__fake_sub__ log -1 --format='%h %s'
+dafabc3 fix(NFR,IADR-0115): companion を scripts.repo.test.js へ改名し…   ← 実装リポの HEAD
+```
+
+pin の遷移は superproject が記録しているため、`git diff <base>..HEAD -- planning` で
+submodule 未取得のまま検証できる（`-Subproject commit` / `+Subproject commit` の遷移）。これは
+既に許可済みの `Bash(git diff:*)` / `Bash(git log:*)` で実行でき、`git -C` は不要である。
+[planning#123](https://github.com/endazon/project-planning/issues/123) として起票した。
+
+あわせて、同 4 件が `.claude/settings.json` に追随しておらず 3 系統同期が崩れている点を
+[planning#121](https://github.com/endazon/project-planning/issues/121) として起票した
+（#123 で 4 件を外す判断になれば不要になるため cross-link 済み）。本リポジトリは `settings.json` を
+キットとバイト一致に保つ方針（分類 A）のため、`check-ai-workflow-config.js` の warn は
+出たまま同期している（exit 0・CI は落ちない）。
+
+**判断: `src/ai-stock-trading` への同形の追加は見送る**
+
+Issue #434 の追記は「2 段目の submodule も参照したい場合は同じ形で個別に追加する」と述べているが、
+上記のとおり `git -C <未取得 submodule>` は誤答経路であり、パスを増やすことは誤答経路を増やすことに
+等しい。親リポ側から見る方式（`git diff <base>..HEAD -- src/ai-stock-trading`）で同じ検証ができるため、
+追加しない。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -309,7 +353,7 @@ planning#116 で反映され、提案より良い実装になった——受け�
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`30a4b78`）を指す
+- [x] `planning` submodule が `origin/main`（`cff9b6c`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

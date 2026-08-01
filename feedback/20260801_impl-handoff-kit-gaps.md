@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 11 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 13 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 11 件（初回 6 件 ＋ 追加 5 件）
+# フィードバック: impl-handoff-kit の不足 13 件（初回 6 件 ＋ 追加 7 件）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 5 件（下記「残課題」7〜11）を検出し、いずれも起票済み。
+その後の再同期で追加 7 件（下記「残課題」7〜13）を検出し、いずれも起票済み。
 
 ## 起点となる計画書
 
@@ -184,6 +184,37 @@ planning#116 の消失検出は `REQUIRE_REPO_TESTS=1` の opt-in であり、`c
 → [planning#117](https://github.com/endazon/project-planning/issues/117) として起票
 （companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。`PLAN_PROJECT` の
 fail-open 可視化と同じ形）。本リポジトリは `ci.yml` で `REQUIRE_REPO_TESTS: "1"` を有効化済み。
+**planning#119（`cff9b6c`）で反映済み**（新旧 companion 同居の警告も併せて追加された）。
+
+### 12. `git -C planning` の許可が `settings.json` に未追随（第 7 ラウンドで判明）
+
+planning#119 は `Bash(git -C planning …:*)` 4 件を `claude-coding` / `claude-code-review` の
+**2 系統にだけ**追加し、3 つ目の `.claude/settings.json` が追随していない。キット自身の検証器が
+キット自身の設定に warn を出す状態である（実測）。`settings.json` の `//` 注記が
+「3 系統を手作業で同期する構造であり、実際に乖離した実績がある」と警告しているのと同じ失敗モード。
+
+→ [planning#121](https://github.com/endazon/project-planning/issues/121) として起票。
+ただし下記 13 の判断次第で不要になるため、cross-link 済み。
+
+### 13. `git -C planning` は CI で submodule ではなく実装リポの履歴を静かに返す（第 7 ラウンドで判明・不具合）
+
+planning#120 が追加した `git -C planning …` は、**PR CI では機能しないどころか誤った履歴を返す**。
+AI レビューの checkout は submodule を取得しないため `planning/` は空ディレクトリになり、
+git は親ディレクトリを遡って**実装リポの履歴**を返す（エラーにならない）。本リポジトリで再現済み。
+
+```
+$ mkdir ./__fake_sub__ && git -C ./__fake_sub__ log -1 --format='%h %s'
+dafabc3 fix(NFR,IADR-0115): companion を scripts.repo.test.js へ改名し…   ← 実装リポの HEAD
+```
+
+pin の遷移は **superproject が記録している**ため、`git diff <base>..HEAD -- planning`
+（`-Subproject commit` / `+Subproject commit` の遷移）で submodule 未取得のまま検証できる。
+これは既に許可済みの `Bash(git diff:*)` / `Bash(git log:*)` で実行でき、`git -C` は不要である。
+
+→ [planning#123](https://github.com/endazon/project-planning/issues/123) として起票
+（(1) プロンプトを親リポ側の手順へ訂正、(2) `git -C planning` 4 件の削除）。
+実装リポ側の Issue #434 にも同内容を報告し、追記された受け入れ基準 3 点目は
+「満たすのではなく取り下げるべき」と申し送りした。
 
 ## 実装で判明した経緯
 
@@ -216,14 +247,16 @@ fail-open 可視化と同じ形）。本リポジトリは `ci.yml` で `REQUIRE
     拾って失敗する旨の注意書きを置く（`find` の除外では直せないため対処法も示す）。
   - 10: companion があるのに 1 件も登録しなければ失敗させ、必須化の opt-in（環境変数等）を設ける。
   - 11: companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。
+  - 12: `settings.json` にも `git -C planning` 4 件を追加する（13 の判断次第で不要）。
+  - 13: プロンプトを親リポ側（`git log -p -- planning`）の手順へ訂正し、`git -C planning` 4 件を外す。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜11 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜13 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `30a4b78`）
+### 反映状況（2026-08-01 時点・planning `cff9b6c`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -237,7 +270,9 @@ fail-open 可視化と同じ形）。本リポジトリは `ci.yml` で `REQUIRE
 | 8 `scripts.test.js` の CI 未結線 | planning#110 | キットと一致（`ci.yml` の `scripts-tests`・`scripts/README.md`） |
 | 9 `codeql.example.yml` の雛形トラップ | planning#113 | 注記が示す置き換えを実施済み（明示ビルドを維持） |
 | 10 companion 消失が検出されない | planning#116 | `scripts.repo.test.js`（改名）＋ `REQUIRE_REPO_TESTS=1` 有効化 |
-| 11 opt-in 忘れが無言 | **未反映**（planning#117） | 本リポは opt-in 済みのため実害なし |
+| 11 opt-in 忘れが無言 | planning#119 | キットと一致（notice を確認） |
+| 12 `git -C planning` が settings.json に未追随 | **未反映**（planning#121） | `settings.json` はキットと一致のまま（warn が出る） |
+| 13 `git -C planning` が CI で誤答 | **未反映**（planning#123・不具合） | キット準拠のまま反映。判断待ちで再同期する |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
