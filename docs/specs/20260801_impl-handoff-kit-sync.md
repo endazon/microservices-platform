@@ -17,6 +17,8 @@ plan_refs: []
 ## 起点となる計画書（トレーサビリティ）
 
 - 機能要求（FR）: なし（NFR: 保守性・運用性。開発基盤の整備）
+- 起点 Issue: **#434**（`claude_args` の記法誤りで @claude 実装と AI レビューがビルド・テストを実行できない・最優先）。
+  本作業のキット同期がその是正を運ぶ（後述「Issue #434 の受け入れ基準」）。
 - ユースケース（UC）: なし
 - 画面（SC）: なし
 - 関連 ADR: [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（本作業で新規作成。キットを正とする同期規約）
@@ -35,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -253,9 +255,61 @@ companion の受け口は「あれば読む」だけであり、**ファイル�
 一度も実効しない**。planning#108 や PLAN_PROJECT の fail-open と同じ「ジョブは成功するのに検査が
 効いていない」型である。[planning#114](https://github.com/endazon/project-planning/issues/114) として起票した。
 
+### 第 6 ラウンド（planning#116 反映後の再同期）
+
+pin を `c72dbf2` → `30a4b78` へ進めた。第 5 ラウンドで環流した
+[planning#114](https://github.com/endazon/project-planning/issues/114)（companion の消失が検出されない）が
+planning#116 で反映され、提案より良い実装になった——受け口の回帰テストを一時ディレクトリ上で行うことで
+**実 companion がある環境でも常に実効する**（旧実装は companion があると skip され、この仕組みを
+使っているリポジトリでだけ検証されないという逆転が起きていた）。
+
+**適用内容**
+
+- companion を `scripts/scripts.local.test.js` → **`scripts/scripts.repo.test.js`** へ改名
+  （planning#115 由来。`.local` は多くのプロジェクトで「コミットしない」の目印であり、
+  `.gitignore` に除外されると固有テストが黙って消えるため）。本リポジトリの `.gitignore` には
+  `*.local` があるが `scripts.local.test.js` には一致しなかった（実害は無かったが改名する）。
+- `.github/workflows/ci.yml` の `scripts-tests` ジョブで **`REQUIRE_REPO_TESTS: "1"` を有効化**。
+  消失時 exit 1・正常時 exit 0 を実測で確認した。
+- `scripts/scripts.test.js` はキットとバイト一致を維持（分類 A）。`scripts/README.md` の該当節も差し替え。
+
+**この再同期で新たに見つかったキットの不足（指摘 11）**
+
+`REQUIRE_REPO_TESTS` は opt-in で、`ci.example.yml` では既定でコメントアウトされている。つまり
+指摘 10 の防御は「companion を作る」「env を有効化する」の 2 ステップを両方こなしたリポジトリにだけ
+効くが、**2 つ目を忘れた状態に対する注意喚起が一切出ない**（未追跡のときは警告が出るのに、
+より起きやすいこちらは無言）。[planning#117](https://github.com/endazon/project-planning/issues/117)
+として起票した。
+
+## Issue #434 の受け入れ基準
+
+本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
+
+| 受け入れ基準 | 結果 |
+| --- | --- |
+| `check-ai-workflow-config.js` が両ファイルについて不備 0 件 | ✅ ローカル・CI（`ai-workflow-config` ジョブ）とも合格 |
+| ジョブログの `SDK options:` で `allowedTools` が割れていない | ✅ run `30688146948` で確認（下記） |
+| AI レビューが検証を実走し「承認待ちでブロック」の報告が消える | ✅ 実走を確認（`dotnet test` は本 PR に `src/` 変更が無く対象外） |
+| 1 PR に対するレビュー起動が 1 本に収まる | ✅ 8 回の push に対しレビュー実行は 8 本・並走なし |
+
+`SDK options:` の実測（run `30688146948`）。空白を含む指定が 1 要素として保たれている。
+
+```
+"Bash(gh issue create:*)",
+"Bash(gh pr view:*)",
+"Bash(dotnet test:*)",
+"Bash(dotnet format:*)"
+```
+
+是正前は `"Bash(gh", "issue", "create:*)"` のように割れていた（Issue #434 の根本原因）。
+
+なお #434 が挙げる是正 5 点（記法・レビュー側の検証系ツール・`concurrency`/`timeout-minutes`・
+プロンプトの計画書探索順・`automation/` 除外と `.claude-pr/` の説明）はいずれも反映済みである。
+同 issue の「関連」が指摘する `ai-stock-trading` 側の同一是正は本リポジトリの範囲外。
+
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`c72dbf2`）を指す
+- [x] `planning` submodule が `origin/main`（`30a4b78`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

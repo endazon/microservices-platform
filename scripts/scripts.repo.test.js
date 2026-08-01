@@ -1,13 +1,17 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * scripts.local.test.js
+ * scripts.repo.test.js
  * 本リポジトリ固有スクリプトの単体テスト。scripts.test.js（impl-handoff-kit の配布物）から
- * 自動で読み込まれる companion ファイルである（IADR-0115 / planning#112）。
+ * 自動で読み込まれる companion ファイルである（IADR-0115 / planning#112 / planning#116）。
  *
  * ここへ書く理由: scripts.test.js はキットの更新のたびに差し替わるため、固有テストを直接
  * 追記すると同期のたびに手動マージが要り、キットが同じテストを取り込んだ際に重複も生じる。
  * 本ファイルへ分離することで scripts.test.js をキットとバイト一致に保てる。
+ *
+ * **必ずコミットすること。** 未追跡だと CI（clean checkout）に存在せず、固有テストが黙って
+ * 走らなくなる（scripts.test.js が未追跡を検出して警告する）。消失そのものは ci.yml の
+ * scripts-tests ジョブに REQUIRE_REPO_TESTS=1 を設定して検出する。
  *
  * 実行: node scripts/scripts.test.js（本ファイル単体では実行しない）
  */

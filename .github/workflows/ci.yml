@@ -69,6 +69,11 @@ jobs:
         with:
           node-version: "20"
       - name: Run scripts unit tests
+        # 【固有テストを持つリポジトリ向け】scripts/scripts.repo.test.js を置いているため有効化する。
+        # companion が消失（誤削除・リネーム・キット同期での上書き）したときに失敗するようになる。
+        # 未設定だとテスト件数が静かに減るだけで CI は green のまま（planning#114 の実測: 101 → 53 件）。
+        env:
+          REQUIRE_REPO_TESTS: "1"
         run: node scripts/scripts.test.js
 
   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。

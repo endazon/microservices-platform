@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 10 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 11 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 10 件（初回 6 件 ＋ 追加 4 件）
+# フィードバック: impl-handoff-kit の不足 11 件（初回 6 件 ＋ 追加 5 件）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 4 件（下記「残課題」7〜10）を検出し、いずれも起票済み。
+その後の再同期で追加 5 件（下記「残課題」7〜11）を検出し、いずれも起票済み。
 
 ## 起点となる計画書
 
@@ -169,6 +169,21 @@ planning#112 で導入された固有テストの受け口（companion ファイ
 
 → [planning#114](https://github.com/endazon/project-planning/issues/114) として起票
 （(1) companion があるのに 1 件も登録しなければ失敗させる、(2) 必須化の opt-in を設ける）。
+**planning#116（`30a4b78`）で反映済み**。提案より良い実装になっており、受け口の回帰テストを
+一時ディレクトリ上で行うことで**実 companion がある環境でも常に実効する**ようになった
+（旧実装は companion があると skip され、この仕組みを使っているリポジトリでだけ検証されなかった）。
+あわせて未追跡検出と、`.local` からの改名（planning#115 由来）が入った。
+
+### 11. companion があるのに `REQUIRE_REPO_TESTS` 未設定だと無言（第 6 ラウンドで判明）
+
+planning#116 の消失検出は `REQUIRE_REPO_TESTS=1` の opt-in であり、`ci.example.yml` では既定で
+コメントアウトされている。つまり指摘 10 の防御は「companion を作る」「env を有効化する」の
+**2 ステップを両方こなしたリポジトリにだけ**効く。2 つ目を忘れると指摘 10 の挙動がそのまま残るが、
+**その状態に対する注意喚起が一切出ない**（未追跡のときは警告が出るのに、より起きやすいこちらは無言）。
+
+→ [planning#117](https://github.com/endazon/project-planning/issues/117) として起票
+（companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。`PLAN_PROJECT` の
+fail-open 可視化と同じ形）。本リポジトリは `ci.yml` で `REQUIRE_REPO_TESTS: "1"` を有効化済み。
 
 ## 実装で判明した経緯
 
@@ -200,14 +215,15 @@ planning#112 で導入された固有テストの受け口（companion ファイ
   - 9: `repo-template/.github/workflows/codeql.example.yml` の `autobuild` に、雛形ソリューションを
     拾って失敗する旨の注意書きを置く（`find` の除外では直せないため対処法も示す）。
   - 10: companion があるのに 1 件も登録しなければ失敗させ、必須化の opt-in（環境変数等）を設ける。
+  - 11: companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜10 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜11 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `c72dbf2`）
+### 反映状況（2026-08-01 時点・planning `30a4b78`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -220,7 +236,8 @@ planning#112 で導入された固有テストの受け口（companion ファイ
 | 7 Copilot だけ除外漏れ | planning#105 | キットと一致 |
 | 8 `scripts.test.js` の CI 未結線 | planning#110 | キットと一致（`ci.yml` の `scripts-tests`・`scripts/README.md`） |
 | 9 `codeql.example.yml` の雛形トラップ | planning#113 | 注記が示す置き換えを実施済み（明示ビルドを維持） |
-| 10 companion 消失が検出されない | **未反映**（planning#114） | `scripts.local.test.js` に固有テスト 48 件を配置 |
+| 10 companion 消失が検出されない | planning#116 | `scripts.repo.test.js`（改名）＋ `REQUIRE_REPO_TESTS=1` 有効化 |
+| 11 opt-in 忘れが無言 | **未反映**（planning#117） | 本リポは opt-in 済みのため実害なし |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
