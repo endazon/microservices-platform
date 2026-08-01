@@ -41,6 +41,21 @@ AST の `SC-01`（MSP の SC-01＝検索/チャットと衝突）で発生した
 - **既存履歴は不変**: 過去コミット件名の裸 ID は書き換えない（force-push 禁止）。CHANGELOG 生成時の
   `changelog-overrides.json`（`remap`・後述）または今後の編集で生成物/本文のみ是正する。
 
+### クロスリポジトリの issue / PR 番号の修飾（issue #430 系・PR #431 の実例）
+
+計画 ID と同様に、**issue / PR 番号にも名前空間衝突**がある。裸の `#NNN` は GitHub 上で
+**本リポジトリの** issue / PR へ自動リンクされるため、他リポジトリの番号を裸で書くと無関係な
+MSP の issue / PR へ誤リンクする（実例: PR #431 のコミット footer `Refs #290` が、AST の
+issue #290 のつもりで MSP の無関係な PR #290 を指した）。
+
+**規約**: 他リポジトリの issue / PR 番号は必ず修飾する。
+
+- **書式**: `AST#NNN`（ai-stock-trading）・`planning#NNN`（project-planning）。
+- **適用箇所**: コード内コメント・IADR / 仕様書の本文・コミット件名 / footer・PR 本文。
+- GitHub の自動リンクを効かせたい箇所では、フルパス形式
+  `endazon/ai-stock-trading#NNN` を用いてもよい（短縮修飾は人間 / AI 向けの規約表記）。
+- 裸の `#NNN` は常に**本リポジトリ（MSP）**の issue / PR を意味する。
+
 ## 残す箇所と書式
 
 - **ブランチ名**: `<種別>/<起点ID>-<概要のケバブケース>`。例 `feat/FR-012-login-validation`。
