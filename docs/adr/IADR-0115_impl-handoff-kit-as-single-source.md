@@ -66,7 +66,12 @@ plan_refs: []
    4. Dependabot が更新した **GitHub Actions のバージョン**（キットより新しい側を常に採る）
 3. **汎用的な改善は本リポジトリに留めず、`/plan-feedback` でキットへ環流する。** 固有デルタを
    増やせない制約が、環流を怠らせないための強制力として働く。
-4. 同期は `/sync-plan` で planning submodule を最新化した直後に行い、作業仕様書と本 IADR を起点とする。
+4. **参照は「文書 → 設定」の向きに置く。** 分類 A のファイルへ「背景は `docs/specs/...` を参照」の
+   ようなポインタコメントを書かない。同期のたびに消えるためである。背景へ辿れるようにするのは
+   **仕様書側の責務**とし、仕様書の `related_specs` / 本文から対象の設定ファイルへリンクする
+   （例: `docs/specs/20260712_issue-260_dependabot-submodule-token-fix.md` →
+   `.github/dependabot.yml`）。この向きなら同期で失われない。
+5. 同期は `/sync-plan` で planning submodule を最新化した直後に行い、作業仕様書と本 IADR を起点とする。
 
 ## 理由
 
