@@ -21,16 +21,17 @@ plan_refs: []
 - 関連 ADR: [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
   （impl-handoff-kit を正とする同期規約。本作業はその規約の適用であり、新規の実装判断は生じない）
 - 計画書リンク: `planning/tools/impl-handoff-kit/`（`HOWTO.md` / `repo-template/`）
-- 上流の起点: planning#145 / planning#146 / planning#148 / planning#149
-  （AI ワークフローが「緑のまま実質未実施」「成果物は正しいのに赤」になる 3 系統の欠陥と、その検出器）
+- 上流の起点: planning#145 / planning#146 / planning#148 / planning#149 / planning#152 / planning#153
+  （AI ワークフローが「緑のまま実質未実施」「成果物は正しいのに赤」になる欠陥と、
+  キット同期そのものが Actions のバージョンを巻き戻す欠陥、およびそれらの検出器）
 
 ## 目的・背景
 
 前回の全面同期（[20260801_impl-handoff-kit-sync.md](20260801_impl-handoff-kit-sync.md) / PR #433）以降、
-計画リポジトリに 3 コミット（`9cd3499` → `0847687` → `26402cb` → `3b0deb2`）が積まれ、キットに
+計画リポジトリに 5 コミット（`9cd3499` → … → `e448f33`）が積まれ、キットに
 **AI ワークフローの失敗を可視化・予防する 2 つの検査器**と、それに伴うワークフローの是正が入った。
 
-取り込む是正は次の 4 点である。いずれもジョブの成否が実態と食い違う欠陥である。
+取り込む是正は次の 5 点である。いずれもジョブの成否が実態と食い違う欠陥である。
 
 1. **緑のまま実質未実施（planning#145）**: `claude-code-action` は、AI がツールを 1 つも実行できなくても
    `"subtype": "success", "is_error": false` で終了する。実測ではレビューが 21 ターン中 17 件の権限拒否で
@@ -49,10 +50,16 @@ plan_refs: []
    **リポジトリ直下の `.github/workflows/` しか走査しない**ため、キットのテンプレート配下は自動追随しない
    （`dependabot.yml` に `directory:` を足しても no-op で、失敗せず単に走らないため対処済みに見える）。
    前回同期のフィードバック 2 番目に挙げた問題であり、キット側が検査器で塞いだ。
+5. **同期そのものが Actions を巻き戻す（planning#152 / planning#153）**: キットの下限表は
+   「これ以上古くしない」線であって常に最新とは限らない。**本リポジトリが Dependabot で下限より先へ
+   進んだあとにキットのファイルをコピーすると、本リポジトリにとっては退行なのに下限検査では合格する**。
+   実測でキットが `upload-artifact@v4` のとき本リポジトリは既に `@v7` であり、素直に上書きしていれば
+   3 メジャー分の退行を持ち込んでいた（本作業で回避できたのは手作業の走査によるものだった）。
+   キットは検査を **実装リポの `ci.yml` 側へ**置き、統合ブランチ時点との比較で捉える方式に改めた。
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`9cd3499` → `3b0deb2`）と、`repo-template` 配下の差分の反映。
+- 対象: `planning` submodule の pin 更新（`9cd3499` → `e448f33`）と、`repo-template` 配下の差分の反映。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin、
   `CHANGELOG.md`（`changelog.yml` の生成物）。
 
@@ -82,7 +89,7 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
 | --- | --- |
 | `.github/workflows/claude-coding.yml` | `permissions:` に `actions: read`／`Run Claude Code` に `id: claude`／`claude_args` に `--append-system-prompt`（サブエージェント禁止）／末尾に `Check permission denials`（`if: always()`）ステップ |
 | `.github/workflows/claude-code-review.yml` | 同上（`id: claude`・`actions: read`・拒否検査ステップ）に加え、`--allowedTools` へ **`Bash(git status:*)`** を追加 |
-| `.github/workflows/ci.yml` | コメント例の `actions/setup-python@v5` → `@v7`（キット本文。実体は無効化されたコメントで挙動に影響しない） |
+| `.github/workflows/ci.yml` | `ai-workflow-config` ジョブに **`Check action versions` ステップ**（`--compare-with-ref`）と checkout の `fetch-depth: 0` を追加。コメント例の `actions/setup-python@v5` → `@v7`（キット本文。実体は無効化されたコメントで挙動に影響しない） |
 | `scripts/README.md` | `check-action-versions.js` の一覧行・実行例、`check-permission-denials.js` の説明更新（本リポ固有の行はすべて保持） |
 
 `actions: read` はツール許可の前提でもある。`claude-code-action` は `mcp__github_ci__*` サーバーを注入
@@ -95,26 +102,31 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
 
 上記以外の全ファイル。判断が要ったものを挙げる。
 
-- **`ci.yml` に `check-permission-denials` / `check-action-versions` のジョブを足さない**。前者は
-  実行ログを持つ AI ワークフローにしか検査対象が無い（両ワークフローに同梱済み）。後者はキット自身が
-  `repo-template/.github/workflows/ci.example.yml` に載せておらず、配布元の CI で
-  テンプレートを検査する設計である（planning#148）。**本リポジトリ直下の `.github/workflows/` は
-  Dependabot の管理下**にあり、退行の発生源はキット側にしか無い。なお `scripts-tests` ジョブが
-  `scripts.test.js` 経由で両検査器の `--self-test` を実行するため、検査器自体の回帰は CI で止まる。
+- **`ci.yml` に `check-permission-denials` のジョブは足さない**。実行ログを持つ AI ワークフローにしか
+  検査対象が無いためである（両ワークフローに同梱済み）。
+- **`scripts/action-versions.repo.json`（固有の下限表）は作成しない**。本リポジトリが使う 10 アクションは
+  すべてキットの下限表に載っており（`github/codeql-action` は `$exempt`）、`check-action-versions.js` の
+  実行で警告ゼロを確認した。**空の companion を置くと「書き忘れ」として `warning:` が出る**ため、
+  固有アクションを導入するまで作らない（キットの状態表に従う）。置き場所と書式は `scripts/README.md`
+  「リポジトリ固有の Actions を足す場所」に記載した。
 - `.github/workflows/frontend-tests.yml` の `actions/upload-artifact` は既に `@v7` で、キットが今回
-  引き上げた水準（v4 → v7）を満たす。本リポジトリの全 Actions が `action-versions.json` の下限以上で
-  あることを `check-action-versions.js` の実行で確認した。
+  引き上げた水準（v4 → v7）を満たす。**キットのファイルをコピーする際の原則は「バージョンは高い方を
+  残す」**であり、本作業でもキット側が低いものは採らなかった。この判断を人の注意力に委ねないための
+  機械検査が上記の `Check action versions` ステップである。
+- `--compare-with-ref` の値は **`origin/develop`**（キット既定の `origin/main` からの置換点）。
+  本リポジトリの統合ブランチが `develop` であるため。
 
 ## 受け入れ基準
 
-1. `git submodule status planning` が `3b0deb2` を指す。
+1. `git submodule status planning` が `e448f33` を指す。
 2. `repo-template` と本リポジトリの突合で、**キット側が進んでいるファイルが 0 件**になる
    （残差分はすべて分類 B/C の固有デルタであること）。
 3. `node scripts/check-permission-denials.js --self-test` が成功する。
-4. `node scripts/scripts.test.js` が全件成功する（新規 11 ケースを含む 136 件）。
+4. `node scripts/scripts.test.js` が全件成功する（新規 16 ケースを含む 141 件）。
 5. `node scripts/check-ai-workflow-config.js` が成功する（`claude_args` 記法・ツール許可のドリフト・
    実装用の `--append-system-prompt` 欠落が無い）。
-6. `node scripts/check-action-versions.js`（および `--self-test`）が成功する。
+6. `node scripts/check-action-versions.js --dir .github/workflows --compare-with-ref origin/develop`
+   （および `--self-test`）が **警告ゼロ**で成功する。
 8. `node scripts/check-doc-links.js` が破損リンク 0 で成功する。
 9. 両 AI ワークフローが `actions: read` を持ち、`Check permission denials` ステップを `if: always()` で
    実行する（`actionlint` 相当の構文検査として `check-ai-workflow-config.js` の通過をもって代える）。
