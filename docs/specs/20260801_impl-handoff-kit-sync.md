@@ -296,34 +296,33 @@ pin を `30a4b78` → `cff9b6c` へ進めた。第 6 ラウンドで環流した
 
 `REQUIRE_REPO_TESTS` 未設定時に notice が出て、設定済み（本リポジトリ）では出ないことを実測で確認した。
 
-**この再同期で見つかったキットの不具合（指摘 13・重要）**
+**（取り下げ）`git -C planning` の誤答報告は誤りだった**
 
-`Bash(git -C planning …:*)` は **PR CI では機能しないどころか、誤った履歴を静かに返す**。
-AI レビューの checkout は submodule を取得しないため `planning/` は空ディレクトリになり、
-git は親ディレクトリを遡って**実装リポの履歴**を返す（エラーにならない）。本リポジトリで再現した。
+当初「`Bash(git -C planning …)` は PR CI では submodule 未取得のため実装リポの履歴を静かに返す」と
+判断し planning#123 として起票したが、**前提が誤っており取り下げた**。
 
-```
-$ mkdir ./__fake_sub__ && git -C ./__fake_sub__ log -1 --format='%h %s'
-dafabc3 fix(NFR,IADR-0115): companion を scripts.repo.test.js へ改名し…   ← 実装リポの HEAD
-```
+`claude-code-review.yml` には `actions/checkout` の後に submodule 取得の専用ステップ
+（`Fetch planning submodule (read-only PAT)`）があり、`git submodule update --init --recursive` を
+実行している。`actions/checkout` の引数だけを見て後続ステップを確認しなかったのが原因である。
+実ジョブのログ（run `30690625906`）で `Submodule path 'planning': checked out 'cff9b6c…'` を確認し、
+AI レビューが同ジョブ内で `git -C planning log` を実行して正しい submodule の HEAD を得ている。
+PAT 未登録等で取得に失敗した場合も当該ステップが失敗してジョブが落ちるため、空ディレクトリのまま
+先へ進む経路は無い。
 
-pin の遷移は superproject が記録しているため、`git diff <base>..HEAD -- planning` で
-submodule 未取得のまま検証できる（`-Subproject commit` / `+Subproject commit` の遷移）。これは
-既に許可済みの `Bash(git diff:*)` / `Bash(git log:*)` で実行でき、`git -C` は不要である。
-[planning#123](https://github.com/endazon/project-planning/issues/123) として起票した。
+`Bash(git -C planning …:*)` 4 件は意図どおり機能するため、
+[planning#121](https://github.com/endazon/project-planning/issues/121)（`settings.json` への追随）は
+**単独で有効**であり、むしろ必要性が上がった。本リポジトリは `settings.json` をキットとバイト一致に
+保つ方針（分類 A）のため、`check-ai-workflow-config.js` の warn は出たまま同期している
+（exit 0・CI は落ちない）。
 
-あわせて、同 4 件が `.claude/settings.json` に追随しておらず 3 系統同期が崩れている点を
-[planning#121](https://github.com/endazon/project-planning/issues/121) として起票した
-（#123 で 4 件を外す判断になれば不要になるため cross-link 済み）。本リポジトリは `settings.json` を
-キットとバイト一致に保つ方針（分類 A）のため、`check-ai-workflow-config.js` の warn は
-出たまま同期している（exit 0・CI は落ちない）。
+**判断: `src/ai-stock-trading` への同形の追加は当面見送る**
 
-**判断: `src/ai-stock-trading` への同形の追加は見送る**
-
-Issue #434 の追記は「2 段目の submodule も参照したい場合は同じ形で個別に追加する」と述べているが、
-上記のとおり `git -C <未取得 submodule>` は誤答経路であり、パスを増やすことは誤答経路を増やすことに
-等しい。親リポ側から見る方式（`git diff <base>..HEAD -- src/ai-stock-trading`）で同じ検証ができるため、
-追加しない。
+Issue #434 の追記は「2 段目の submodule も参照したい場合は同じ形で個別に追加する」と述べている。
+上記の取り下げにより `git -C` 方式そのものは有効であり、追加すれば AST の pin 履歴も検証できる
+（レビュー用ワークフローの submodule 取得は `--recursive` のため `src/ai-stock-trading` も populate される）。
+ただしキットの【置換点】が想定するのは `planning` 1 か所であり、追加は分類 B の固有デルタになる。
+`settings.json` への追随（planning#121）がキット側で決着してから、同じ形で 3 系統に足すほうが
+乖離を作らないため、本 PR では追加しない。
 
 ## Issue #434 の受け入れ基準
 

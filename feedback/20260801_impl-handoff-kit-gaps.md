@@ -196,25 +196,28 @@ planning#119 は `Bash(git -C planning …:*)` 4 件を `claude-coding` / `claud
 → [planning#121](https://github.com/endazon/project-planning/issues/121) として起票。
 ただし下記 13 の判断次第で不要になるため、cross-link 済み。
 
-### 13. `git -C planning` は CI で submodule ではなく実装リポの履歴を静かに返す（第 7 ラウンドで判明・不具合）
+### 13.（取り下げ）`git -C planning` が CI で誤答するという報告は誤りだった
 
-planning#120 が追加した `git -C planning …` は、**PR CI では機能しないどころか誤った履歴を返す**。
-AI レビューの checkout は submodule を取得しないため `planning/` は空ディレクトリになり、
-git は親ディレクトリを遡って**実装リポの履歴**を返す（エラーにならない）。本リポジトリで再現済み。
+第 7 ラウンドで「`Bash(git -C planning …)` は PR CI では submodule 未取得のため実装リポの履歴を
+静かに返す」と報告し planning#123 として起票したが、**前提が誤っており取り下げた**。
 
-```
-$ mkdir ./__fake_sub__ && git -C ./__fake_sub__ log -1 --format='%h %s'
-dafabc3 fix(NFR,IADR-0115): companion を scripts.repo.test.js へ改名し…   ← 実装リポの HEAD
-```
+`claude-code-review.yml` には `actions/checkout` の後に submodule 取得の専用ステップ
+（`Fetch planning submodule (read-only PAT)`）があり、`git submodule update --init --recursive` を
+実行している。`actions/checkout` に `submodules:` が無いことだけを見て後続ステップを確認しなかった
+のが誤りの原因である。実ジョブのログで `Submodule path 'planning': checked out 'cff9b6c…'` を確認し、
+AI レビューが同ジョブ内で `git -C planning log` を実行して正しい submodule の HEAD を得ている。
 
-pin の遷移は **superproject が記録している**ため、`git diff <base>..HEAD -- planning`
-（`-Subproject commit` / `+Subproject commit` の遷移）で submodule 未取得のまま検証できる。
-これは既に許可済みの `Bash(git diff:*)` / `Bash(git log:*)` で実行でき、`git -C` は不要である。
+再現手順として示した「空ディレクトリでの `git -C`」は一般的な git の挙動としては正しいが、
+実際の `planning/` は populate 済みであり、この構成の検証になっていなかった。
+PAT 未登録等で取得に失敗した場合も当該ステップが**失敗してジョブが落ちる**ため、
+空ディレクトリのまま先へ進む経路は無い。
 
-→ [planning#123](https://github.com/endazon/project-planning/issues/123) として起票
-（(1) プロンプトを親リポ側の手順へ訂正、(2) `git -C planning` 4 件の削除）。
-実装リポ側の Issue #434 にも同内容を報告し、追記された受け入れ基準 3 点目は
-「満たすのではなく取り下げるべき」と申し送りした。
+→ [planning#123](https://github.com/endazon/project-planning/issues/123) は取り下げ・クローズ済み。
+`Bash(git -C planning …:*)` 4 件は意図どおり機能するため、指摘 12（`settings.json` への追随）は
+**単独で有効**であり、むしろ必要性が上がった。
+
+**教訓**: 「動かないはず」の主張は、動く経路（実ジョブのログ）を確認してから出す。
+ワークフローの一部（checkout の引数）だけを見て全体の挙動を推論したのが誤りだった。
 
 ## 実装で判明した経緯
 
@@ -247,8 +250,8 @@ pin の遷移は **superproject が記録している**ため、`git diff <base>
     拾って失敗する旨の注意書きを置く（`find` の除外では直せないため対処法も示す）。
   - 10: companion があるのに 1 件も登録しなければ失敗させ、必須化の opt-in（環境変数等）を設ける。
   - 11: companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。
-  - 12: `settings.json` にも `git -C planning` 4 件を追加する（13 の判断次第で不要）。
-  - 13: プロンプトを親リポ側（`git log -p -- planning`）の手順へ訂正し、`git -C planning` 4 件を外す。
+  - 12: `settings.json` にも `git -C planning` 4 件を追加する（13 の取り下げにより単独で有効）。
+  - 13: （取り下げ）誤報告のため対応不要。
 
 ## 影響範囲
 
@@ -272,7 +275,7 @@ pin の遷移は **superproject が記録している**ため、`git diff <base>
 | 10 companion 消失が検出されない | planning#116 | `scripts.repo.test.js`（改名）＋ `REQUIRE_REPO_TESTS=1` 有効化 |
 | 11 opt-in 忘れが無言 | planning#119 | キットと一致（notice を確認） |
 | 12 `git -C planning` が settings.json に未追随 | **未反映**（planning#121） | `settings.json` はキットと一致のまま（warn が出る） |
-| 13 `git -C planning` が CI で誤答 | **未反映**（planning#123・不具合） | キット準拠のまま反映。判断待ちで再同期する |
+| 13 `git -C planning` が CI で誤答 | **取り下げ**（planning#123・前提誤り） | キット準拠のまま。誤報告を訂正済み |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
