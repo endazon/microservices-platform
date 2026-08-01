@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 8 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 9 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 8 件（初回 6 件 ＋ 追加 2 件）
+# フィードバック: impl-handoff-kit の不足 9 件（初回 6 件 ＋ 追加 3 件）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 2 件（下記「残課題」7・8）を検出し、いずれも起票済み。
+その後の再同期で追加 3 件（下記「残課題」7〜9）を検出し、いずれも起票済み。
 
 ## 起点となる計画書
 
@@ -135,8 +135,23 @@ Copilot coding agent の環境だけ雛形ソリューションを拾って rest
 マージ後まで検出されない**状態だった。planning#105 が同時に追加した「実行して確かめる」
 E2E テストも、そのままでは CI で走らない。
 
-→ [planning#108](https://github.com/endazon/project-planning/issues/108) として起票。
-本リポジトリは先行して `ci.yml` に `scripts-tests` ジョブを追加した。
+→ [planning#108](https://github.com/endazon/project-planning/issues/108) として起票し、
+**planning#110（`7701d25`）で反映済み**。本リポジトリは先行追加したジョブをキットの版へ揃え、
+`scripts/README.md` にもキットの「検査（CI）」節を取り込んだ。
+
+### 9. 雛形ソリューションのトラップが `codeql.example.yml` だけ未対応（第 4 ラウンドで判明）
+
+指摘 6 は `setup.sh` / `security.yml` / `copilot-setup-steps.example.yml` の 3 ファイルに反映されたが、
+**同じトラップを踏む `codeql.example.yml` が対象外**のままである（`7701d25` 時点で
+`grep -rln "templates/\*" repo-template/` の結果は 3 ファイルのみ）。
+
+`autobuild` は明示的な `find` を書かない代わりにリポジトリ全体を走査してビルド対象を推定するため、
+ビルド不可の雛形ソリューションを拾うとそこで失敗する。原因は同一だが `find` の除外では直せず、
+**対処法が異なる**（実ユニットの明示ビルドへ置き換える）。しかもエラーは「ビルド失敗」としか出ず、
+原因が雛形であることは出力から読み取れない。本リポジトリは Issue #230 で実際にこれを踏み、
+`codeql.yml` の `autobuild` を `src/*/backend/backend.slnx` の明示ビルドへ置き換えている。
+
+→ [planning#111](https://github.com/endazon/project-planning/issues/111) として起票。
 
 ## 実装で判明した経緯
 
@@ -165,14 +180,16 @@ E2E テストも、そのままでは CI で走らない。
   - 7: 同じ除外を `repo-template/.github/workflows/copilot-setup-steps.example.yml` にも入れる。
   - 8: `repo-template/.github/workflows/ci.example.yml` に `scripts.test.js` を実行するジョブを追加し、
     `scripts/README.md` の「自動生成（CI）」節にも記載する。
+  - 9: `repo-template/.github/workflows/codeql.example.yml` の `autobuild` に、雛形ソリューションを
+    拾って失敗する旨の注意書きを置く（`find` の除外では直せないため対処法も示す）。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜8 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜9 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `35b830a`）
+### 反映状況（2026-08-01 時点・planning `7701d25`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -183,6 +200,7 @@ E2E テストも、そのままでは CI で走らない。
 | 5 Copilot の .NET 版数 | planning#98 → 105 | キットと一致 |
 | 6 雛形ソリューション除外 | planning#98 → 105 | キットと一致 |
 | 7 Copilot だけ除外漏れ | planning#105 | キットと一致 |
-| 8 `scripts.test.js` の CI 未結線 | **未反映**（planning#108） | 先行して `ci.yml` に `scripts-tests` を追加 |
+| 8 `scripts.test.js` の CI 未結線 | planning#110 | キットと一致（`ci.yml` の `scripts-tests`・`scripts/README.md`） |
+| 9 `codeql.example.yml` の雛形トラップ | **未反映**（planning#111） | `autobuild` を実ユニットの明示ビルドへ置換（維持） |
 
-8 が取り込まれるまで、当該ジョブは本リポジトリの固有デルタとして維持する。
+9 が取り込まれるまで、`codeql.yml` の明示ビルドは固有デルタ（構成起因）として維持する。

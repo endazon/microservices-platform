@@ -110,6 +110,14 @@ plan_refs: []
     [planning#108](https://github.com/endazon/project-planning/issues/108) として環流し、
     本リポジトリは先行して `ci.yml` に `scripts-tests` ジョブを追加した。
     分類 A の「バイト一致」だけでは**呼び出し側の形**までは守れないという、本決定の限界の実例でもある。
+  - 第 4 ラウンド（pin `7701d25`）で planning#108 が反映され、先行追加していた `scripts-tests` ジョブと
+    `scripts/README.md` の「検査（CI）」節もキット準拠へ戻した。あわせて、雛形ソリューションのトラップが
+    `codeql.example.yml` だけ未対応であることを
+    [planning#111](https://github.com/endazon/project-planning/issues/111) として環流した
+    （`autobuild` は `find` の除外で直せないため、本リポジトリの明示ビルドは固有デルタとして維持する）。
+  - 4 ラウンドの実績として、**環流した指摘 9 件のうち 8 件がキットへ反映され、固有デルタは
+    リポジトリ構成・技術スタックに起因するものへ収束した**。本決定の「固有デルタを増やせない制約が
+    環流の強制力になる」という狙いは機能している。
   - 次回以降の同期でも、本 IADR の 3 分類と固有デルタ 4 種を基準として用いる。
 
 ## 関連

@@ -49,6 +49,28 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-commit-messages.js
 
+  # スタック非依存: scripts/ 配下の単体テスト（外部依存ゼロ・Node 標準 assert のみ）。
+  #
+  # 個別の検証器（validate-pipeline-config / check-ai-workflow-config）は下のジョブで
+  # --self-test を走らせるが、それらは検証器**単体**の試験である。scripts.test.js は
+  # 横断的なテストであり、両者は重複しない。
+  # 【重要】このジョブが無いと、scripts.test.js は「誰かが手で叩いたときだけ走るテスト」になる。
+  # 実際に、CHANGELOG 生成が全面的に壊れる回帰が、PR の CI をすべて green のまま通り抜けた
+  # ことがある（changelog.yml は push でしか起動しないため、壊れるのはマージ後）。
+  # fetch-depth: 0 は allowlist の到達可能性検査と gen-changelog の実行に必要
+  # （浅いクローンでは当該テストが best-effort で skip されるため、検査が実効しない）。
+  scripts-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Run scripts unit tests
+        run: node scripts/scripts.test.js
+
   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
   # 注: private な planning サブモジュール配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
@@ -96,24 +118,6 @@ jobs:
         run: node scripts/check-ai-workflow-config.js --self-test
       - name: Check AI workflow config
         run: node scripts/check-ai-workflow-config.js
-
-  # NFR, IADR-0115: scripts/ 配下の単体テスト。キットの ci.example.yml には対応ジョブが無く、
-  # scripts.test.js は「ローカルで手で叩く」前提のまま CI に載っていなかった（planning#108 で環流）。
-  # 実害の実例: gen-changelog.js の `.map(applyOverride)` 回帰は、map が渡す index が第 2 引数を
-  # 上書きして 1 件目から TypeError になり CHANGELOG 生成が全面的に壊れたが、changelog.yml は
-  # develop/main への push でしか走らないため**マージ後**まで検出されなかった。
-  # fetch-depth: 0 は allowlist の到達可能性検査と gen-changelog の実行に必要（浅いクローンでは skip）。
-  scripts-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Run scripts unit tests
-        run: node scripts/scripts.test.js
 
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
   # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。

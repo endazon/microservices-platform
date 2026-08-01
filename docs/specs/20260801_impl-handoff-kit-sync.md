@@ -35,7 +35,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -201,9 +201,32 @@ pin を `12cc9b8` → `35b830a` へ進めた。キット側では planning#105�
 [planning#108](https://github.com/endazon/project-planning/issues/108) として起票し、本リポジトリは
 先行して `ci.yml` に `scripts-tests` ジョブ（`fetch-depth: 0`）を追加した。
 
+### 第 4 ラウンド（planning#110 反映後の再同期）
+
+pin を `35b830a` → `7701d25` へ進めた。第 3 ラウンドで環流した
+[planning#108](https://github.com/endazon/project-planning/issues/108)（`scripts.test.js` の CI 未結線）が
+**キットへ反映された**（planning#110。ai-stock-trading からの planning#109 と併せて是正）。
+
+**固有デルタが解消したファイル**
+
+- `.github/workflows/ci.yml` の `scripts-tests` ジョブ — 先行追加していたものをキットの版
+  （コメント・配置とも `commit-messages` の直後）へ揃えた
+- `scripts/README.md` — キットの「検査（CI）」節を取り込み、本リポジトリ固有のジョブ 5 行を追記
+- `scripts/check-commit-messages.js` — `PLAN_PROJECT` の fail-open を警告で可視化する変更を取り込み
+  （置換点の値 `microservices-platform` のみが依然キットとの唯一の差分）
+
+**この再同期で新たに見つかったキットの不足（指摘 9）**
+
+指摘 6 の雛形ソリューション対策は `setup.sh` / `security.yml` / `copilot-setup-steps.example.yml` の
+3 ファイルに入ったが、**同じトラップを踏む `codeql.example.yml` が対象外**のままである。
+`autobuild` はリポジトリ全体を走査してビルド対象を推定するため雛形を拾って失敗するが、`find` の
+除外では直せず対処法が異なり、しかもエラーは「ビルド失敗」としか出ない。本リポジトリは Issue #230 で
+実際にこれを踏み、`codeql.yml` の `autobuild` を実ユニットの明示ビルドへ置き換えている。
+[planning#111](https://github.com/endazon/project-planning/issues/111) として起票した。
+
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`35b830a`）を指す
+- [x] `planning` submodule が `origin/main`（`7701d25`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

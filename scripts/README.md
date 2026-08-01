@@ -43,6 +43,27 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 > 状態に陥る設定不備を機械的に止める。失敗モードの一覧は `impl-handoff-kit/HOWTO.md` の
 > 付録3（トラブルシューティング）を参照。
 
+## 検査（CI）
+
+`ci.yml` が PR ごとに以下を実行する。**`scripts.test.js` は `scripts-tests` ジョブで走る**。
+
+| ジョブ | 実行内容 |
+| --- | --- |
+| `scripts-tests` | `node scripts/scripts.test.js`（本 README のスクリプト群の横断テスト。`fetch-depth: 0` が必要） |
+| `commit-messages` | `check-commit-messages.js`（コミット件名の規約と ADR/IADR 実在性） |
+| `doc-links` | `check-doc-links.js`（相対リンクの実在） |
+| `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査 |
+| `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
+| `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
+| `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
+| `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
+| `unit-service-ownership` | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107） |
+| `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
+
+> `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
+> 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある
+> （`changelog.yml` は push でしか起動しないため、壊れるのはマージ後）。
+
 ## 自動生成（CI）
 
 - `.github/workflows/doc-links-planning.yml`: private な planning サブモジュール込みのリンク検査（#232 / IADR-0058）。夜間 + `workflow_dispatch` でトークン付き（Secret `PLANNING_REPO_TOKEN`。本リポジトリと planning 双方へ read 権限を持つ fine-grained PAT 推奨）に submodule を取得し、`check-doc-links.js --require-planning` を実行する。本体 `ci.yml` の `doc-links` は高速・トークン不要のまま非 planning リンクを毎 PR 検査する。
