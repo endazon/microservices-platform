@@ -15,9 +15,9 @@ related_ids:
   - IADR-0104
 author: claude
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-08-01
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability.md (OTel/Prometheus/Loki/Tempo への統一計装・Accepted)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md (OTel/Prometheus/Loki/Tempo への統一計装・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (既定 Opus 5・安全性分類器による refusal)"
 ---
