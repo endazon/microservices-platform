@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -349,6 +349,32 @@ planning#125 が `ci.example.yml` のヘッダへ追記した「記法誤り・�
 「レビュー側の実行系が全滅した」場合だけである。
 [planning#126](https://github.com/endazon/project-planning/issues/126) として起票した。
 
+### 第 9 ラウンド（planning#127 反映後の再同期）
+
+pin を `25b4291` → `3325903` へ進めた。第 8 ラウンドで環流した
+[planning#126](https://github.com/endazon/project-planning/issues/126)（部分的な複製漏れを検出しない）が
+反映され、`check-ai-workflow-config.js` に `toolchainDrift` が新設された。提案より正確な実装で、
+比較をコマンド名ではなく**ツール指定そのもの**（`Bash(dotnet build:*)`）の粒度で行う。
+
+**適用内容**
+
+- `scripts/check-ai-workflow-config.js` — キットとバイト一致（分類 A）
+- `.github/workflows/ci.yml` — ヘッダのコメントブロックをキットへ揃えた
+
+**動作確認（陽性対照）**
+
+レビュー側から `Bash(dotnet format:*)` を人為的に落とすと ERROR（exit 1）で検出され、
+復元すると合格することを確認した。「検出できるはず」ではなく**実際に検出することを確かめた**。
+
+**この再同期で見つかったキットの不具合（指摘 15）**
+
+`toolchainCommandsOf(text, tools)` は比較対象を各ファイル自身の `uses: setup-*` から決めるため、
+2 ファイルの `--allowedTools` が完全に同一でも `setup-*` の構成が片方だけ異なると差分として
+報告される（ERROR・exit 1）。実測で「レビュー側に `Bash(npm run:*)` が入っているのに『欠けている』」
+という誤検知を再現した。[planning#130](https://github.com/endazon/project-planning/issues/130) として
+起票し、比較基準を 2 ファイルの `setup-*` の**和集合**にする案を示した。
+本リポジトリは両ワークフローとも `setup-dotnet` のみで対称なため、現時点の実害は無い。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -377,7 +403,7 @@ planning#125 が `ci.example.yml` のヘッダへ追記した「記法誤り・�
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`25b4291`）を指す
+- [x] `planning` submodule が `origin/main`（`3325903`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

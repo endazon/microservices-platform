@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 14 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 15 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 14 件（初回 6 件 ＋ 追加 8 件・うち 1 件は取り下げ）
+# フィードバック: impl-handoff-kit の不足 15 件（初回 6 件 ＋ 追加 9 件・うち 1 件は取り下げ）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 8 件（下記「残課題」7〜14）を検出し、いずれも起票済み（13 は前提誤りで取り下げ）。
+その後の再同期で追加 9 件（下記「残課題」7〜15）を検出し、いずれも起票済み（13 は前提誤りで取り下げ）。
 
 ## 起点となる計画書
 
@@ -212,9 +212,33 @@ planning#125 は `ci.example.yml` のヘッダに「記法誤り・複製漏れ�
 「機械検出する」と書くと読み手は手作業の突き合わせをやめるため、部分的なドリフトが
 「一部のコマンドだけ承認待ち」という**全滅より気付きにくい**劣化を生む。
 
-→ [planning#126](https://github.com/endazon/project-planning/issues/126) として起票
-（(1) `TOOLCHAINS` 由来の実行ツール集合を 2 ファイル間で突き合わせる、または (2) ヘッダの記述を
-実装に合わせる）。
+→ [planning#126](https://github.com/endazon/project-planning/issues/126) として起票し、
+**planning#127（`3325903`）で反映済み**（`toolchainDrift` が新設された）。提案より正確な実装で、
+比較をコマンド名（`dotnet`）ではなく**ツール指定そのもの**（`Bash(dotnet build:*)`）の粒度で行う。
+本リポジトリで実際にドリフトを作って検出（exit 1）・復元して合格を確認した。
+
+### 15. `toolchainDrift` が `setup-*` 非対称時に誤検知する（第 9 ラウンドで判明・不具合）
+
+planning#127 の `toolchainCommandsOf(text, tools)` は比較対象を**各ファイル自身の `uses: setup-*`**
+から決めるため、2 ファイルの `--allowedTools` が**完全に同一**でも `setup-*` の構成が片方だけ
+異なると差分として報告される。実測（キットの実装をそのまま使用）:
+
+```
+実装側 setup-dotnet + setup-node / レビュー側 setup-dotnet のみ、ツールは両方とも
+'Read,Bash(dotnet test:*),Bash(npm run:*)' で同一
+
+→ "claude-code-review.example.yml: 実装用にあるスタック別の実行ツールが欠けている:
+   Bash(npm run:*)"
+```
+
+レビュー側に `Bash(npm run:*)` は**入っている**。WARN ではなく ERROR（exit 1）であり、
+メッセージも実態と食い違う。「両ファイルを同じ内容に保つ」という規約を守っている利用者ほど混乱する。
+
+副次的に、`toolchainDrift` はファイル名を `claude-coding` / `claude-code-review` の部分一致で
+解決し、見つからなければ黙って空を返す（別名・統合構成では検査が無効になる）。
+
+→ [planning#130](https://github.com/endazon/project-planning/issues/130) として起票
+（比較の基準を 2 ファイルの `setup-*` の**和集合**にする）。
 
 ### 13.（取り下げ）`git -C planning` が CI で誤答するという報告は誤りだった
 
@@ -272,15 +296,16 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
   - 11: companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。
   - 12: `settings.json` にも `git -C planning` 4 件を追加する（13 の取り下げにより単独で有効）。
   - 14: `TOOLCHAINS` 由来の実行ツール集合を 2 ワークフロー間で突き合わせる（またはヘッダ記述を実装に合わせる）。
+  - 15: `toolchainDrift` の比較基準を 2 ファイルの `setup-*` の和集合にする。
   - 13: （取り下げ）誤報告のため対応不要。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜14 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜15 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `25b4291`）
+### 反映状況（2026-08-01 時点・planning `3325903`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -297,7 +322,8 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
 | 11 opt-in 忘れが無言 | planning#119 | キットと一致（notice を確認） |
 | 12 `git -C planning` が settings.json に未追随 | planning#125 | キットと一致（warn 解消を確認） |
 | 13 `git -C planning` が CI で誤答 | **取り下げ**（planning#123・前提誤り） | キット準拠のまま。誤報告を訂正済み |
-| 14 部分的な複製漏れを検出しない | **未反映**（planning#126） | 3 系統は揃っており現時点の実害なし |
+| 14 部分的な複製漏れを検出しない | planning#127 | キットと一致（検出・復元を実測） |
+| 15 `toolchainDrift` の誤検知 | **未反映**（planning#130・不具合） | 両ワークフローが対称のため現時点の実害なし |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
