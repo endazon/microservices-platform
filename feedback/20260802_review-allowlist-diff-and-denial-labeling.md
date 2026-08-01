@@ -1,7 +1,7 @@
 ---
 title: レビュー用 allowedTools に diff が無く、拒否報告が許可済みツール名を指してしまう
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: endazon/microservices-platform
@@ -119,3 +119,22 @@ const tokens = head.split(/\s+/).filter(Boolean).slice(0, 2);
   あり、実装リポで先に足すと次の同期で毎回手動マージが要る。上流の修正を待って同期する。
 - 関連: planning#146（読み取り系 git の欠落）・planning#147（拒否報告をコマンド名まで出す）・
   planning#155 / #157（検証の誠実性・残り 2 系統の拒否）。本件はその系列の続きである。
+
+## 計画側の対応（2026-08-02・受理）
+
+計画リポジトリ planning#160 として起票し、planning#159（`65adb87`）で**提案 1〜3 がすべて反映された**。
+本リポジトリへは同日の同期で取り込み済み。
+
+- **提案 1（複合コマンド対応）**: `labelOf()` が `|` `;` `&&` `\n` で分割した**全セグメント**を
+  ラベル化し、`Bash(git show | diff)` の形で出すようになった。リダイレクト以降はファイル名として
+  除外し、`for` / `while` 等のシェルキーワードは読み飛ばす。表示は 4 セグメントで打ち切り（`…`）。
+- **提案 2（`git -C <dir>` の粒度）**: `tokens[0] === 'git' && tokens[1] === '-C'` の場合に
+  4 トークンまで採り、`Bash(git -C planning log)` と許可リストのエントリと同じ粒度になった。
+  あわせて 2 トークン目がフラグ（`-` 始まり）のときは採らない（`head -5` → `Bash(head)`）。
+- **提案 3（`Bash(diff:*)` 追加）**: レビュー用に `cmp` / `diff` を追加。さらに**実装用にも
+  `head` / `tail` / `cmp` / `diff` / `git ls-tree` / `git submodule status` / `git fetch` を揃え**、
+  提案 3 で指摘した「ドリフト検査が読み取り専用ツールの非対称を検出しない」点にコメントで注記された。
+- **提案 4（リダイレクトの扱い）**: プロンプト側で対応。「出力をファイルへリダイレクトしない」
+  「2 ファイルの比較は一時ファイルを作らず `git show <ref>:<path> | diff - <path>` で行う」
+  「シェルのループ・複合形は先頭トークンが `for` 等になるため許可リストで表現できず必ず拒否される」
+  を明記。
