@@ -8,7 +8,9 @@ set -u
 log() { printf '[setup] %s\n' "$1"; }
 
 # --- C# / .NET ---
-# FR-14, IADR-0056: ルート集約ソリューションは置かず、ユニット別 slnx（src/<unit>/backend/backend.slnx）を復元する。
+# FR-14, IADR-0056: ルート集約ソリューションは置かず、ユニット別 slnx（src/<unit>/backend/*.slnx）を復元する。
+# キット既定の「maxdepth 4 で .sln/.slnx を自動発見」は使わない。本リポジトリの
+# templates/unit-template/backend/backend.slnx（src/ 外・共通 props 非継承）を拾って restore が失敗するため。
 if command -v dotnet >/dev/null 2>&1; then
   restored=0
   for slnx in src/*/backend/*.slnx; do

@@ -30,6 +30,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      # 誤検知の扱い（実運用の知見）:
+      #   - 単発・履歴上の誤検知（例示鍵・ダミー ID 等）は `.gitleaksignore` に fingerprint を
+      #     追記して無効化する（履歴は書き換えない＝force-push しない方針）。
+      #   - **同型の誤検知が繰り返し出る**場合（アプリが生成する自然キー等、値の形が決まっている
+      #     もの）は fingerprint 追記では再発を止められない。新しいコミットは別 fingerprint に
+      #     なるためである。この場合は `.gitleaks.toml` を置き、`[extend] useDefault = true` で
+      #     既定ルールを維持したまま、その値形だけを `[allowlist]` の正規表現で狙い撃ちする。
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v3
         env:
@@ -69,6 +76,9 @@ jobs:
           dotnet-version: "10.0.x"
       # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
       # 自動発見して走査する。ユニット追加時に CI の編集は不要（submodule は取得の有効化が前提）。
+      # キット既定の「maxdepth 4 で .sln/.slnx を自動発見」は使わない。本リポジトリの
+      # templates/unit-template/backend/backend.slnx（src/ 外・共通 props 非継承）を拾ってしまい、
+      # dotnet restore が「無効なフレームワーク識別子」で失敗するため（codeql.yml の autobuild と同じ理由）。
       - name: Restore (all backend units)
         run: |
           for slnx in src/*/backend/backend.slnx; do

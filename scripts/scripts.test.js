@@ -49,6 +49,80 @@ ok('未知の種別は違反', () => assert.strictEqual(validateSubject('feet(FR
 ok('不正な ID 書式は違反', () => assert.strictEqual(validateSubject('feat(FR08): ハイフン無し').length >= 1, true));
 ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat(): 空').length >= 1, true));
 
+// --- check-ai-workflow-config: claude_args の記法・ツール許可の整合 ---
+
+{
+  const { checkWorkflow, parseAllowedTools, bashCommandsOf } = require('./check-ai-workflow-config.js');
+  const wf = (body, extra = '') =>
+    `jobs:\n  x:\n    steps:\n${extra}      - with:\n          claude_args: |\n${body}`;
+
+  ok('引用符なしで空白を含む --allowedTools は違反（実運用で全 dotnet 系が無効化された形）', () =>
+    assert.match(
+      checkWorkflow('t', wf('            --allowedTools Bash(dotnet test:*)\n')).errors.join(' '),
+      /引用符で囲まれておらず/
+    ));
+  ok('引用符ありカンマ区切りは合格（公式記法）', () =>
+    assert.deepStrictEqual(
+      checkWorkflow('t', wf('            --allowedTools "Read,Bash(dotnet test:*)"\n')).errors,
+      []
+    ));
+  ok('claude_args ブロック内のコメント行は違反', () =>
+    assert.match(
+      checkWorkflow('t', wf('            # c\n            --allowedTools Read\n')).errors.join(' '),
+      /コメント行/
+    ));
+  ok('SDK を用意して実行ツールを許可しないのは違反', () =>
+    assert.match(
+      checkWorkflow('t', wf('            --allowedTools "Read"\n', '      - uses: actions/setup-dotnet@v5\n')).errors.join(' '),
+      /setup-dotnet/
+    ));
+  ok('parseAllowedTools はカンマ区切りを展開する', () =>
+    assert.deepStrictEqual(parseAllowedTools(['--allowedTools "A,B"'])[0].tools, ['A', 'B']));
+  ok('bashCommandsOf は Bash(cmd ...) のコマンド名を取り出す', () =>
+    assert.deepStrictEqual(
+      [...bashCommandsOf(['Bash(dotnet test:*)', 'Read', 'Bash(gh issue view:*)'])].sort(),
+      ['dotnet', 'gh']
+    ));
+  ok('実ツリー: ワークフローのツール許可設定に不備が無い', () => {
+    const dir = require('path').join(__dirname, '..', '.github', 'workflows');
+    const fsx = require('fs');
+    const errs = [];
+    for (const f of fsx.readdirSync(dir)) {
+      const r = checkWorkflow(f, fsx.readFileSync(require('path').join(dir, f), 'utf8'));
+      if (r.applicable) errs.push(...r.errors.map((e) => `${f}: ${e}`));
+    }
+    assert.deepStrictEqual(errs, []);
+  });
+}
+
+// --- check-commit-messages: validateIdExistence（ADR/IADR の実在性・採番衝突の再発防止） ---
+
+{
+  const { validateIdExistence, loadExistingIadrIds, loadExistingPlanAdrIds } = require('./check-commit-messages.js');
+  const iadrIds = loadExistingIadrIds();
+  if (iadrIds && iadrIds.size > 0) {
+    const existing = iadrIds.values().next().value; // 実ツリーの任意の実在 IADR
+    ok('実在する IADR は合格', () =>
+      assert.deepStrictEqual(validateIdExistence(`fix(${existing}): 是正`, iadrIds, null), []));
+    ok('実在しない IADR-9999 は違反', () =>
+      assert.match(validateIdExistence('feat(NFR,IADR-9999): x', iadrIds, null).join(' '), /実在しない/));
+    ok('末尾 PR 番号付きでも実在しない IADR を検出する', () =>
+      assert.match(validateIdExistence('feat(IADR-9999): x (#123)', iadrIds, null).join(' '), /実在しない/));
+    ok('IADR 以外の ID（FR/NFR）は実在性検査の対象外', () =>
+      assert.deepStrictEqual(validateIdExistence('feat(FR-04,NFR): x', iadrIds, null), []));
+  }
+  ok('集合が null（未チェックアウト環境）なら skip して合格', () =>
+    assert.deepStrictEqual(validateIdExistence('feat(IADR-9999,ADR-9999): x', null, null), []));
+  const planIds = loadExistingPlanAdrIds();
+  if (planIds && planIds.size > 0) {
+    ok('実在しない計画 ADR-9999 は違反', () =>
+      assert.match(validateIdExistence('feat(ADR-9999): x', null, planIds).join(' '), /実在しない/));
+  } else {
+    ok('planning 未 populate では計画 ADR 検査が skip される', () =>
+      assert.strictEqual(planIds, null));
+  }
+}
+
 // --- check-commit-messages: checkSingleTitle（PR タイトル＝スカッシュ後件名の検査・Issue #125） ---
 
 // stdout/stderr を抑止して戻り値（0=合格/1=違反）のみ検査する。

@@ -77,6 +77,21 @@ jobs:
       - name: Validate pipeline config
         run: node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json
 
+  # Claude 系ワークフローのツール許可設定を検査する（安全弁）。
+  # claude_args の記法誤りは CI を失敗させずに「AI が検証できない」状態を作るため、
+  # 人間にもジョブ結果にも現れない。ここで機械的に止める。
+  ai-workflow-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Check AI workflow config (self-test)
+        run: node scripts/check-ai-workflow-config.js --self-test
+      - name: Check AI workflow config
+        run: node scripts/check-ai-workflow-config.js
+
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
   # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
   # 外部依存ゼロの Node スクリプト。--self-test で検査器自体も毎回試験する。

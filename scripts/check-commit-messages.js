@@ -167,6 +167,79 @@ function isSkippable(subject) {
   return false;
 }
 
+/**
+ * 指定ディレクトリのファイル名から実在する ADR/IADR 番号の集合を返す。ディレクトリを
+ * 読めない環境（チェックアウト無しの単独実行・planning submodule 未 populate 等）では
+ * null を返し、実在性検査をスキップする（fail-open。check-doc-links.js と同じ扱い）。
+ *
+ * 背景: 並行実装では ADR 番号の採番衝突が起こり、後発が改番を強いられる。改番はファイル名・
+ * 本文・索引・仕様書に及ぶ一方、**PR タイトル（= スカッシュ後のコミット件名）だけが人手の
+ * 追随に依存する**ため、実体と別内容の ADR を名乗る件名が統合ブランチへ混入しやすい。
+ * 書式チェック（ID_PATTERN）だけではこれを検知できない。
+ */
+function loadExistingAdrIds(prefix, dir) {
+  try {
+    const ids = new Set();
+    const re = new RegExp(`^${prefix}-(\\d{3,4})[._-]`);
+    for (const f of fs.readdirSync(dir)) {
+      const m = f.match(re);
+      if (m) ids.add(`${prefix}-${m[1]}`);
+    }
+    return ids;
+  } catch (e) {
+    return null;
+  }
+}
+
+/** 実装 ADR（本リポ `docs/adr/`）の実在番号集合。読めなければ null。 */
+function loadExistingIadrIds(dir = path.join(__dirname, '..', 'docs', 'adr')) {
+  return loadExistingAdrIds('IADR', dir);
+}
+
+/**
+ * 計画 ADR（planning submodule の `projects/<name>/07_adr/`）の実在番号集合。
+ * プロジェクト名は可変のため `projects/` 配下を走査して全プロジェクトの ADR を集める。
+ * submodule 未 populate なら null（skip）。
+ */
+function loadExistingPlanAdrIds(projectsDir = path.join(__dirname, '..', 'planning', 'projects')) {
+  let entries;
+  try {
+    entries = fs.readdirSync(projectsDir);
+  } catch (e) {
+    return null;
+  }
+  const ids = new Set();
+  let found = false;
+  for (const name of entries) {
+    const got = loadExistingAdrIds('ADR', path.join(projectsDir, name, '07_adr'));
+    if (got) {
+      found = true;
+      for (const id of got) ids.add(id);
+    }
+  }
+  return found ? ids : null;
+}
+
+/**
+ * 件名スコープ中の `IADR-xxxx` / `ADR-xxxx` が実在するか検証し、違反理由の配列を返す。
+ * 各集合が null（読めない環境）の場合は該当種別の検査をスキップする。
+ * 書式違反の検出は validateSubject が担う（本関数は書式適合を前提に実在のみ見る）。
+ */
+function validateIdExistence(subject, iadrIds, planAdrIds) {
+  const s = String(subject == null ? '' : subject).replace(/\s*\(#\d+\)\s*$/, '').trim();
+  const m = s.match(/^(\w+)(?:\(([^)]*)\))?(!)?:\s+(.+)$/);
+  if (!m || m[2] === undefined) return [];
+  const reasons = [];
+  for (const id of m[2].split(',').map((x) => x.trim()).filter(Boolean)) {
+    if (iadrIds && /^IADR-\d{3,4}$/.test(id) && !iadrIds.has(id)) {
+      reasons.push(`起点 ID "${id}" が docs/adr/ に実在しない（採番衝突・改番後のタイトル未追随の可能性）`);
+    } else if (planAdrIds && /^ADR-\d{3,4}$/.test(id) && !planAdrIds.has(id)) {
+      reasons.push(`起点 ID "${id}" が planning の 07_adr/ に実在しない（誤記・廃止の可能性）`);
+    }
+  }
+  return reasons;
+}
+
 /** 件名を検証し、違反理由の配列を返す（空なら合格）。 */
 function validateSubject(subject) {
   const reasons = [];
@@ -228,7 +301,9 @@ function checkSingleTitle(title) {
     return 0;
   }
 
-  const reasons = validateSubject(subject);
+  const reasons = validateSubject(subject).concat(
+    validateIdExistence(subject, loadExistingIadrIds(), loadExistingPlanAdrIds())
+  );
   if (reasons.length) {
     process.stderr.write('\n✗ PR タイトルが規約違反:\n');
     process.stderr.write(`  ${subject}\n`);
@@ -266,6 +341,14 @@ function main() {
   }
 
   const allowlist = loadAllowlist();
+  const iadrIds = loadExistingIadrIds();
+  const planAdrIds = loadExistingPlanAdrIds();
+  if (!iadrIds) {
+    process.stderr.write('docs/adr/ を読めないため IADR 実在性チェックをスキップする。\n');
+  }
+  if (!planAdrIds) {
+    process.stderr.write('planning submodule が未 populate のため計画 ADR 実在性チェックをスキップする。\n');
+  }
 
   process.stdout.write(`コミット規約チェック: 範囲 ${range}（${commits.length} 件）\n`);
 
@@ -291,7 +374,7 @@ function main() {
       skipped++;
       continue;
     }
-    const reasons = validateSubject(c.subject);
+    const reasons = validateSubject(c.subject).concat(validateIdExistence(c.subject, iadrIds, planAdrIds));
     if (reasons.length) {
       violations.push({ short, subject: c.subject, reasons });
     } else if (args.verbose) {
@@ -322,6 +405,9 @@ if (require.main === module) {
 // テスト用途に一部関数を公開する（本体実行時の副作用は上記ガードで抑止）。
 module.exports = {
   validateSubject,
+  validateIdExistence,
+  loadExistingIadrIds,
+  loadExistingPlanAdrIds,
   checkSingleTitle,
   isBot,
   isSkippable,
