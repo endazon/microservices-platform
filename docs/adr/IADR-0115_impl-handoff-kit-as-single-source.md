@@ -149,7 +149,15 @@ plan_refs: []
     1 文字変える）で新しい warn が効くことを確認した。その warn が **exit 0 かつ GitHub Actions の
     annotation を出さない**ため CI のどこにも現れない点を
     [planning#136](https://github.com/endazon/project-planning/issues/136) として環流した。
-  - 11 ラウンドの実績として、**固有デルタはリポジトリ構成・技術スタックに起因するものへ収束した**。
+  - 第 12 ラウンド（pin `cd6c4f4`）で planning#136 が反映された一方、同じ変更で
+    **`scripts.test.js` が GitHub Actions 上で失敗する**不具合を検出した
+    （[planning#140](https://github.com/endazon/project-planning/issues/140)）。ローカルでは通り CI で
+    落ちるため、**取り込み後に自リポの CI 条件（`GITHUB_ACTIONS=true`）で実際に走らせて確かめる**
+    ことが要る。分類 A は正しさを保証しない、という限界のもう 1 つの実例である。
+    CI を赤にできないため `captureStderr` のみ**暫定デルタ**として先行修正した——
+    分類 A のファイルへ一時的にデルタを持つ場合は、コメントで環流先の issue を必ず参照し、
+    是正後に撤去してバイト一致へ戻す。
+  - 12 ラウンドの実績として、**固有デルタはリポジトリ構成・技術スタックに起因するものへ収束した**。
     本決定の「固有デルタを増やせない制約が環流の強制力になる」という狙いは機能している。
     とくに `scripts.test.js` は、キット側に companion の受け口ができたことで分類 B → 分類 A へ
     引き上げられた——**環流はデルタを減らすだけでなく、分類そのものを引き上げる**。

@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 16 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 17 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: accepted
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 16 件（初回 6 件 ＋ 追加 10 件・うち 1 件は取り下げ）
+# フィードバック: impl-handoff-kit の不足 17 件（初回 6 件 ＋ 追加 11 件・うち 1 件は取り下げ）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 10 件（下記「残課題」7〜16）を検出し、いずれも起票済み（13 は前提誤りで取り下げ）。
+その後の再同期で追加 11 件（下記「残課題」7〜17）を検出し、いずれも起票済み（13 は前提誤りで取り下げ）。
 
 ## 起点となる計画書
 
@@ -259,12 +259,34 @@ planning#135 は「既定名のファイルはあるが `claude_args` を解析�
 （(1) GitHub Actions では `::warning::` で annotation として出す、
 (2) `REQUIRE_REPO_TESTS` と同じ形の厳格モード opt-in を設ける。どちらも fail-open の既定は変えない）。
 
+### 17. #138 の反映で `scripts.test.js` が GitHub Actions 上で失敗する（第 12 ラウンドで判明・不具合）
+
+指摘 16（planning#136）は planning#138 で反映され、`scripts/lib/ci-annotate.js` による
+アノテーション化と `STRICT_AI_WORKFLOW_CONFIG` の opt-in が両方入った。動作は実ツリーで確認済み
+（既定 exit 0 / 厳格モード exit 1 / `GITHUB_ACTIONS=true` で `::warning::`）。
+
+**ただし同じ変更で `scripts.test.js` が Actions 上で失敗する。** `ci-annotate` は Actions 上では
+必ず **stdout** へ書くのに対し、テストの `captureStderr` は **stderr しか捕捉していない**。
+その結果、
+
+1. 「複数プロジェクト構成で退避したときは警告を出す」が空文字と突き合わせて失敗し、
+   **`scripts-tests` ジョブが exit 1**（`GITHUB_ACTIONS=true node scripts/scripts.test.js` で再現）
+2. テストのフィクスチャが**実 PR へ `::warning::` を 2 件漏らす**
+   （`PLAN_PROJECT="no-such-project"` / `"<project-name>"` ——どちらも実設定ではない）
+
+ローカルでは stderr のままなので**通る**＝「ローカルで緑・CI で赤」という最も気付きにくい形。
+
+→ [planning#140](https://github.com/endazon/project-planning/issues/140) として起票
+（`captureStderr` が stdout も捕捉する。あわせて自己試験を `GITHUB_ACTIONS=true` でも回す案を添えた）。
+本リポジトリは CI を赤にできないため、**`scripts/scripts.test.js` の `captureStderr` のみ暫定デルタ**
+として先行修正した（キット是正後に撤去してバイト一致へ戻す）。
+
 ## 結び（2026-08-01 時点）
 
-**環流した 16 件のうち 15 件が決着した**（14 件がキットへ反映、1 件＝指摘 13 は前提誤りで取り下げ、
-1 件＝指摘 16 は起票済み・反映待ち）。
+**環流した 17 件のうち 15 件が決着した**（14 件がキットへ反映、1 件＝指摘 13 は前提誤りで取り下げ、
+2 件＝指摘 16・17 は起票済み・反映待ち）。
 起票した planning issue のうち #96 / #104 / #108 / #111 / #114 / #117 / #121 / #126 / #130 は
-クローズ済みで、#136 のみ未決である。
+クローズ済みで、#136 / #140 が未決である。
 
 以後キット側に新たな不足を見つけた場合は、本記録に追記せず**別の記録として起こす**
 （計画側の `/sync-impl` は「記録 1 件 ↔ 環流 1 件」で到達を判定するため、
@@ -328,15 +350,16 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
   - 14: `TOOLCHAINS` 由来の実行ツール集合を 2 ワークフロー間で突き合わせる（またはヘッダ記述を実装に合わせる）。
   - 15: `toolchainDrift` の比較基準を 2 ファイルの `setup-*` の和集合にする。
   - 16: warn を GitHub Actions の `::warning::` で出し、厳格モードの opt-in を設ける。
+  - 17: `captureStderr` が stdout も捕捉するようにする（自己試験を `GITHUB_ACTIONS=true` でも回す）。
   - 13: （取り下げ）誤報告のため対応不要。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜16 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜17 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `168f53d`）
+### 反映状況（2026-08-01 時点・planning `cd6c4f4`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -355,7 +378,8 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
 | 13 `git -C planning` が CI で誤答 | **取り下げ**（planning#123・前提誤り） | キット準拠のまま。誤報告を訂正済み |
 | 14 部分的な複製漏れを検出しない | planning#127 | キットと一致（検出・復元を実測） |
 | 15 `toolchainDrift` の誤検知 | planning#132 | キットと一致（誤検知の解消を独立に再現確認） |
-| 16 検査不成立の warn が CI に現れない | **未反映**（planning#136） | 現在 warn ゼロのため実害なし |
+| 16 検査不成立の warn が CI に現れない | planning#138 | キットと一致＋`STRICT_AI_WORKFLOW_CONFIG=1` を有効化 |
+| 17 `scripts.test.js` が Actions 上で失敗 | **未反映**（planning#140・不具合） | `captureStderr` のみ暫定デルタで先行修正 |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。

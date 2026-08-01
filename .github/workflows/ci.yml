@@ -130,7 +130,16 @@ jobs:
           node-version: "20"
       - name: Check AI workflow config (self-test)
         run: node scripts/check-ai-workflow-config.js --self-test
+      # 警告（検査そのものが成立していない状態）は GitHub のアノテーションとして出るため、
+      # ジョブログを開かなくても PR の Checks 画面で気付ける。
+      #
+      # 本リポジトリはファイル名・ワークフロー構成が固まっており（claude-coding.yml /
+      # claude-code-review.yml の 2 本・現在 warn ゼロ）、厳格モードを有効化する。
+      # claude_args のキー名やインデントが崩れて検査が丸ごと無効になる状態を失敗として止める
+      # （scripts-tests の REQUIRE_REPO_TESTS と同じ opt-in 方式。planning#136）。
       - name: Check AI workflow config
+        env:
+          STRICT_AI_WORKFLOW_CONFIG: "1"
         run: node scripts/check-ai-workflow-config.js
 
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。

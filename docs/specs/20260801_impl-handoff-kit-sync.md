@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b` → `168f53d`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b` → `168f53d` → `cd6c4f4`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -438,6 +438,43 @@ PR の Checks 画面にも現れず、ログを開いた人にだけ見える。
 （`::warning::` での annotation 化と、`REQUIRE_REPO_TESTS` と同形の厳格モード opt-in。
 どちらも fail-open の既定は変えない）。
 
+### 第 12 ラウンド（planning#138 反映後の再同期）
+
+pin を `168f53d` → `cd6c4f4` へ進めた。第 11 ラウンドで環流した
+[planning#136](https://github.com/endazon/project-planning/issues/136) が planning#138 で反映され、
+提示した 2 案が**両方**入った——`scripts/lib/ci-annotate.js` によるアノテーション化と、
+`STRICT_AI_WORKFLOW_CONFIG` の opt-in である。
+
+**適用内容**
+
+- `scripts/lib/ci-annotate.js`（新規）/ `scripts/check-ai-workflow-config.js` /
+  `scripts/check-commit-messages.js` — キットとバイト一致（後者は `PLAN_PROJECT` の置換点のみ差分）
+- `scripts/README.md` — `lib/ci-annotate.js` の行と注記を取り込み
+- `.github/workflows/ci.yml` — **`STRICT_AI_WORKFLOW_CONFIG: "1"` を有効化**。本リポジトリは
+  ファイル名・構成が固まっており（canonical 2 本・warn ゼロ）、キットの注記が想定する条件を満たす
+
+**陽性対照**（`claude_args` のキー名を 1 文字変えて実測）
+
+| 条件 | 結果 |
+| --- | --- |
+| 既定（fail-open） | warn を出して exit 0 |
+| `STRICT_AI_WORKFLOW_CONFIG=1` | exit 1 で停止 |
+| `GITHUB_ACTIONS=true` | `::warning::` の workflow コマンドを出力 |
+
+**この再同期で見つかったキットの不具合（指摘 17・CI 破壊）**
+
+同じ変更で **`scripts.test.js` が GitHub Actions 上で失敗する**。`ci-annotate` は Actions 上では
+必ず stdout へ書くのに対し、テストの `captureStderr` は stderr しか捕捉していない。結果、
+「複数プロジェクト構成で退避したときは警告を出す」が空文字と突き合わせて失敗し、
+`scripts-tests` ジョブが exit 1 になる。あわせてテストのフィクスチャが実 PR へ
+`::warning::` を 2 件漏らす（`PLAN_PROJECT="no-such-project"` / `"<project-name>"` ——
+どちらも実設定ではない）。ローカルでは stderr のままなので通る＝「ローカルで緑・CI で赤」。
+
+[planning#140](https://github.com/endazon/project-planning/issues/140) として起票し、本リポジトリは
+CI を赤にできないため **`scripts/scripts.test.js` の `captureStderr` のみ暫定デルタ**として
+先行修正した（`GITHUB_ACTIONS=true` でも `✓ 111 tests passed`・漏れる `::warning::` は 0 件）。
+キット是正後に撤去してバイト一致（分類 A）へ戻す。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -466,7 +503,7 @@ PR の Checks 画面にも現れず、ログを開いた人にだけ見える。
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`168f53d`）を指す
+- [x] `planning` submodule が `origin/main`（`cd6c4f4`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する
