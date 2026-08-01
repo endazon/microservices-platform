@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b` → `168f53d`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -412,6 +412,32 @@ planning#132 で反映され、**環流した 15 件がすべて決着した**�
 無し。前ラウンドまでの指摘はすべて反映され、新規に投入されたコードを独立に検証しても
 不具合は見つからなかった。
 
+### 第 11 ラウンド（planning#135 反映後の再同期）
+
+pin を `4d3eb6b` → `168f53d` へ進めた。planning#135 は「既定名のファイルはあるが `claude_args` を
+解析できない」状態を warn で可視化する（AST 由来の planning#134）。
+
+**適用内容**
+
+- `scripts/check-ai-workflow-config.js` — キットとバイト一致（分類 A）
+- `scripts/README.md` — 「警告（`warn`）も読むこと」の注記を取り込み
+
+**陽性対照**
+
+`claude_args` のキー名を 1 文字変えると、期待どおり
+「`claude-coding.yml` は存在するが `claude_args` を解析できず、検査対象から外れている」と
+警告されることを実ツリーで確認した。復元すると警告は消える。
+
+**この再同期で新たに見つかったキットの不足（指摘 16）**
+
+上記 warn は **exit 0** であり、かつ検証器は GitHub Actions の annotation
+（`::warning::` / `::error::`）を一切出していない。したがって warn はジョブの結果にも
+PR の Checks 画面にも現れず、ログを開いた人にだけ見える。その 1 行が出ている間、
+指摘 14・15 で 4 ラウンドかけて作ったドリフト検査を含む**全検査が無効**になる。
+[planning#136](https://github.com/endazon/project-planning/issues/136) として起票した
+（`::warning::` での annotation 化と、`REQUIRE_REPO_TESTS` と同形の厳格モード opt-in。
+どちらも fail-open の既定は変えない）。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -440,7 +466,7 @@ planning#132 で反映され、**環流した 15 件がすべて決着した**�
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`4d3eb6b`）を指す
+- [x] `planning` submodule が `origin/main`（`168f53d`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

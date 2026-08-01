@@ -145,7 +145,11 @@ plan_refs: []
     [planning#130](https://github.com/endazon/project-planning/issues/130) として環流した。
   - 第 10 ラウンド（pin `4d3eb6b`）で planning#130 が反映され、**環流した 15 件がすべて決着した**
     （14 件が反映、1 件は前提誤りで取り下げ）。起票した planning issue は全件クローズ済み。
-  - 10 ラウンドの実績として、**固有デルタはリポジトリ構成・技術スタックに起因するものへ収束した**。
+  - 第 11 ラウンド（pin `168f53d`）で planning#135 を反映し、陽性対照（`claude_args` のキー名を
+    1 文字変える）で新しい warn が効くことを確認した。その warn が **exit 0 かつ GitHub Actions の
+    annotation を出さない**ため CI のどこにも現れない点を
+    [planning#136](https://github.com/endazon/project-planning/issues/136) として環流した。
+  - 11 ラウンドの実績として、**固有デルタはリポジトリ構成・技術スタックに起因するものへ収束した**。
     本決定の「固有デルタを増やせない制約が環流の強制力になる」という狙いは機能している。
     とくに `scripts.test.js` は、キット側に companion の受け口ができたことで分類 B → 分類 A へ
     引き上げられた——**環流はデルタを減らすだけでなく、分類そのものを引き上げる**。
