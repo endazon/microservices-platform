@@ -99,7 +99,9 @@ plan_refs: []
   - 再同期の副産物として、`scripts/commit-allowlist.json` の 5 件がすべて**本リポジトリの履歴に
     存在しない SHA**（他リポジトリからの引き継ぎ）であることをキットの新テストが検出した。
     全履歴に非準拠コミットが 0 件であることを確認のうえ、allowlist を空へ戻した。
-  - 残る固有デルタは `copilot-setup-steps.yml` の雛形除外のみで、planning#96 へ追報済み。
+  - 残る固有デルタは `copilot-setup-steps.yml` の雛形除外のみ。planning#96 は追報の 10 分前に
+    CLOSED 済みだったため、独立した issue [planning#104](https://github.com/endazon/project-planning/issues/104)
+    として起票し直した（planning `bf94477` 時点でも未反映であることを確認済み）。
   - 次回以降の同期でも、本 IADR の 3 分類と固有デルタ 4 種を基準として用いる。
 
 ## 関連

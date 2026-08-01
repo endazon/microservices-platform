@@ -115,7 +115,11 @@ created: 2026-08-01
 **同じ自動発見コードを持つ `copilot-setup-steps.example.yml` には入っていない**（planning#98 時点）。
 Copilot coding agent の環境だけ雛形ソリューションを拾って restore が失敗する。
 本リポジトリは当該ファイルで `src/*/backend/*.slnx` の明示ループを維持して回避している。
-→ planning#96 へコメントで追報する。
+
+→ planning#96 へコメントで追報したが、**同 issue は追報の 10 分前に CLOSED 済み**であったため、
+見落とし防止に独立した issue として起票し直した:
+[planning#104](https://github.com/endazon/project-planning/issues/104)。
+`bf94477`（2026-08-01 時点の planning `main`）でも未反映であることを確認済み。
 
 ## 実装で判明した経緯
 

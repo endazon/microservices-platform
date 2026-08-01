@@ -153,7 +153,8 @@ allowlist をそのまま引き継いだものと考えられる。実害とし�
 
 - `.github/workflows/copilot-setup-steps.yml` — 雛形除外がキット側に未反映のため、
   `src/*/backend/*.slnx` の明示ループを維持する。`.NET` は `8.0.x` → `10.0.x` へ揃えた（指摘 5）。
-  キットへは planning#96 のコメントで追報する。
+  キットへは [planning#104](https://github.com/endazon/project-planning/issues/104) として追報済み
+  （planning#96 は追報の 10 分前に CLOSED 済みだったため独立起票した。planning `bf94477` 時点でも未反映）。
 - `.github/workflows/doc-links-planning.yml` — `.example` 由来の「本ファイルをリネームする」手順を
   除去（有効化済みの実ファイルのため。PR #433 の AI レビュー指摘）。
 - `.github/workflows/frontend.yml` / `frontend-tests.yml` — キットは IADR 参照を汎用化のため
