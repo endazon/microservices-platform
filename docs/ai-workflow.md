@@ -51,7 +51,7 @@ git mv .github/workflows/codeql.example.yml .github/workflows/codeql.yml
 
 | プロファイル | 有効化するファイル | シークレット |
 | --- | --- | --- |
-| `claude-code`（サブスク） | `claude.example.yml` / `claude-code-review.example.yml` | `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`） |
+| `claude-code`（サブスク） | `claude-coding.example.yml` / `claude-code-review.example.yml` | `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`） |
 | `api` | 同上 | `ANTHROPIC_API_KEY` |
 | `copilot` | `copilot-setup-steps.example.yml` | （リポジトリで Copilot を有効化） |
 
@@ -70,14 +70,16 @@ bash scripts/apply-profile.sh copilot
 
 ### 2. AI に着手させる（プロファイル別）
 
-- **Claude（サブスク / API）**: Issue / PR で `@claude このタスクを実装してください` とコメントする（`claude.yml` が応答）。
+- **Claude（サブスク / API）**: Issue / PR で `@claude このタスクを実装してください` とコメントする（`claude-coding.yml` が応答）。
 - **GitHub Copilot**: Issue を Copilot にアサインする（coding agent が `copilot-setup-steps.yml` の環境で起動）。
 - いずれも AI は次を行う: 計画書を読む → 作業仕様書を作成 → 必須仕様書・実装ADR を整備 → 実装 → テスト → 検証（Claude は `/verify`、Copilot は CI / DoD）。
 
 ### 3. レビューとゲート
 
 - PR を開くと AI 自動レビュー（`claude-code-review.yml`）が走る。
-- CI（`ci.yml`）・イメージビルド（`images.yml`）・セキュリティ（`security.yml` / `codeql.yml`）が green であることを必須にする。
+- CI（`ci.yml`）・イメージビルド（`images.yml`）・PR タイトル（`pr-title.yml`）・セキュリティ（`security.yml` / `codeql.yml`）が green であることを必須にする。
+  `pr-title.yml` はスカッシュ後件名の唯一の予防線であり（中間コミットは force push 禁止で事後修正できない）、
+  全 PR で起動するため必須チェックに指定してよい（後述「必須チェックに指定する際の注意」）。
 - 人間は PR テンプレートの「レビュアー向け（AI実装の確認観点）」で最終確認する。
 
 ### 4. マージ後
@@ -88,7 +90,7 @@ bash scripts/apply-profile.sh copilot
 
 | 目的 | ツール / 設定 | 備考 |
 | --- | --- | --- |
-| AI 実装の起動（Claude） | `anthropics/claude-code-action@v1`（`claude.yml` / `claude-code-review.yml`） | サブスク=`CLAUDE_CODE_OAUTH_TOKEN` / API=`ANTHROPIC_API_KEY` のいずれか |
+| AI 実装の起動（Claude） | `anthropics/claude-code-action@v1`（`claude-coding.yml` / `claude-code-review.yml`） | サブスク=`CLAUDE_CODE_OAUTH_TOKEN` / API=`ANTHROPIC_API_KEY` のいずれか |
 | AI 実装の起動（Copilot） | Copilot coding agent（Issue 割当）＋ `copilot-setup-steps.yml` | リポジトリで Copilot を有効化 |
 | 対話的に AI 実装 | Claude Code（CLI / Web / IDE）/ Copilot（IDE） | Web は SessionStart hook（`scripts/setup.sh`）で環境準備 |
 | 再現可能な環境 | devcontainer / GitHub Codespaces（`.devcontainer/`） | AI がビルド・テストを実走できる |
@@ -105,7 +107,7 @@ bash scripts/apply-profile.sh copilot
 GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule）で以下を推奨設定する。
 
 - Require a pull request before merging（直接 push 禁止）
-- Require status checks to pass before merging → `CI`・`image-build`（`images.yml`）・`Security`・`CodeQL` を必須に
+- Require status checks to pass before merging → `CI`・`image-build`（`images.yml`）・`pr-title`・`Security`・`CodeQL` を必須に
   - `image-build` は **Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md)** の集約ジョブ。
     サービスの Dockerfile（＝ ADR-0007 の配布物）がビルドできることを担保する。イメージのビルドに
     影響しない PR ではビルドをスキップして即座に green を報告するため、必須に指定しても無関係な PR を
@@ -115,6 +117,17 @@ GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule�
 
 これにより、AI が作成した PR も「機械チェック green ＋ 必要なレビュー承認」を満たさない限りマージされない。
 
+#### 必須チェックに指定する際の注意
+
+- **`paths:` フィルタを持つワークフローを必須チェックにしてはならない。** GitHub は必須チェックが
+  report されるまでマージを許さないが、対象パスに触れない PR ではそのチェックが**起動しない**ため、
+  **永久に pending のままマージ不能**になる。デプロイ用・フロントエンド用など特定ディレクトリだけを
+  対象にするワークフローが該当する。必須にするのは全 PR で起動するものに限る。
+- **`pr-title.yml` は必須チェックに指定してよい。** 全 PR で起動し、かつスカッシュ後件名の唯一の
+  予防線である（中間コミットは force push 禁止で事後修正できない）。
+- **bot 作成 PR で `if:` によりジョブごとスキップされたチェックは、必須チェック上「合格」として扱われる**
+  ためマージは止まらない。bot を除外する条件を書いてもブランチ保護と矛盾しない。
+
 ## よくある詰まり（FAQ）
 
 | 症状 | 対処 |
@@ -122,7 +135,7 @@ GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule�
 | スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
 | 計画書（`projects/<name>`）を参照できない | git submodule か隣接クローンを設定する（既定パス `../project-planning`）。`/sync-plan` で `.ai-context/` に再生成して確認する。 |
 | CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
-| `@claude` が反応しない | `claude.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
+| `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
 | ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
 
 ## 安全に任せるための原則

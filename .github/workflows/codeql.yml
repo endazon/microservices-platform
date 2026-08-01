@@ -47,6 +47,9 @@ jobs:
       # FR-14, IADR-0056 / IADR-0060, Issue #230: autobuild はリポジトリ全体を走査し templates/（src/ 外・
       # 共通 props 非継承のためビルド不可の雛形）まで拾って失敗する。ci.yml と同じく実ユニット
       # （src/*/backend/backend.slnx）のみを明示ビルドして CodeQL のトレーサに載せる。ユニット追加時も編集不要。
+      # キット既定（codeql.example.yml の Autobuild）を、同ファイルの【落とし穴】注記が示す置き換え例の
+      # とおり差し替えたものである（planning#111）。同種のトラップは scripts/setup.sh・security.yml（2 か所）・
+      # copilot-setup-steps.yml にもあるが、あちらは find の除外で対処している（autobuild は find を使わない）。
       - name: Build backend units (traced)
         run: |
           for slnx in src/*/backend/backend.slnx; do

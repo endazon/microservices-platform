@@ -4,10 +4,19 @@
 # 自プロジェクトのスタックに合わせて各ステップを書き換え、ci.yml にリネームして使うこと。
 # build / test / coverage / lint ステップは C#/.NET を例示している。
 #
-# ── スタック別 --allowedTools（claude-coding.example.yml の claude_args 末尾を書き換える） ──
-# このファイルの build/test ステップを変更したら、claude-coding.example.yml の claude_args 末尾
-# 4 行（スタック別ツール）を使用スタックに合わせて書き換えること。
-# .claude/settings.json の permissions.allow にも同じコマンドを追記すること。
+# ── スタック別 --allowedTools（claude-coding / claude-code-review の claude_args を書き換える） ──
+# このファイルの build/test ステップを変更したら、claude-coding.example.yml と
+# claude-code-review.example.yml の claude_args（スタック別ツール）を使用スタックに合わせて
+# 書き換えること。**両方**を同じ内容に保つ（レビュー側から実行系を落とすと、AI レビューは
+# 検証できず静的読解へ退行し、毎回「Bash が承認待ちでブロックされた」と報告するだけになる）。
+# .claude/settings.json の permissions.allow にも同じコマンドを追記すること（3 系統を揃える）。
+# 記法誤りと複製漏れ（レビュー側に一部/全部の実行ツールが無い）は ai-workflow-config ジョブが
+# 機械検出する。比較対象はスタック別の実行ツール（dotnet / node・npm / python・pytest / go /
+# mvn・gradle）であり、setup-* を書いていないもの（node のようにランナー既定で入るランタイム）も
+# 含む。設計上の差（Edit / Write / 書き込み系 git がレビュー側に無いこと）は対象外である。
+#
+# 注: claude_args の --allowedTools は「二重引用符でくくった 1 引数・カンマ区切り」で書く。
+# 1 ツール 1 行に戻すと空白で割れて全指定が無効になる（各ワークフローの記法コメントを参照）。
 #
 # スタック別の対応コマンド例:
 #   C#/.NET : Bash(dotnet build:*), Bash(dotnet test:*), Bash(dotnet format:*), Bash(dotnet restore:*)
@@ -49,6 +58,33 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-commit-messages.js
 
+  # スタック非依存: scripts/ 配下の単体テスト（外部依存ゼロ・Node 標準 assert のみ）。
+  #
+  # 個別の検証器（validate-pipeline-config / check-ai-workflow-config）は下のジョブで
+  # --self-test を走らせるが、それらは検証器**単体**の試験である。scripts.test.js は
+  # 横断的なテストであり、両者は重複しない。
+  # 【重要】このジョブが無いと、scripts.test.js は「誰かが手で叩いたときだけ走るテスト」になる。
+  # 実際に、CHANGELOG 生成が全面的に壊れる回帰が、PR の CI をすべて green のまま通り抜けた
+  # ことがある（changelog.yml は push でしか起動しないため、壊れるのはマージ後）。
+  # fetch-depth: 0 は allowlist の到達可能性検査と gen-changelog の実行に必要
+  # （浅いクローンでは当該テストが best-effort で skip されるため、検査が実効しない）。
+  scripts-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Run scripts unit tests
+        # 【固有テストを持つリポジトリ向け】scripts/scripts.repo.test.js を置いているため有効化する。
+        # companion が消失（誤削除・リネーム・キット同期での上書き）したときに失敗するようになる。
+        # 未設定だとテスト件数が静かに減るだけで CI は green のまま（planning#114 の実測: 101 → 53 件）。
+        env:
+          REQUIRE_REPO_TESTS: "1"
+        run: node scripts/scripts.test.js
+
   # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
   # 注: private な planning サブモジュール配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
@@ -64,18 +100,47 @@ jobs:
         run: node scripts/check-doc-links.js
 
   # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
+  # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
   # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
   pipeline-config:
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_CONFIG: "deploy/helm/microservices-platform/files/pipeline.json"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      # 検証器自体の試験。構成ファイルの有無に関わらず毎回走らせ、検証ロジックの退行を防ぐ。
+      - name: Validate pipeline config (self-test)
+        run: node scripts/validate-pipeline-config.js --self-test
+      - name: Validate pipeline config
+        if: env.PIPELINE_CONFIG != ''
+        run: node scripts/validate-pipeline-config.js "$PIPELINE_CONFIG"
+
+  # Claude 系ワークフローのツール許可設定を検査する（安全弁）。
+  # claude_args の記法誤りは CI を失敗させずに「AI が検証できない」状態を作るため、
+  # 人間にもジョブ結果にも現れない。ここで機械的に止める。
+  ai-workflow-config:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      - name: Validate pipeline config (self-test)
-        run: node scripts/validate-pipeline-config.js --self-test
-      - name: Validate pipeline config
-        run: node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json
+      - name: Check AI workflow config (self-test)
+        run: node scripts/check-ai-workflow-config.js --self-test
+      # 警告（検査そのものが成立していない状態）は GitHub のアノテーションとして出るため、
+      # ジョブログを開かなくても PR の Checks 画面で気付ける。
+      #
+      # 本リポジトリはファイル名・ワークフロー構成が固まっており（claude-coding.yml /
+      # claude-code-review.yml の 2 本・現在 warn ゼロ）、厳格モードを有効化する。
+      # claude_args のキー名やインデントが崩れて検査が丸ごと無効になる状態を失敗として止める
+      # （scripts-tests の REQUIRE_REPO_TESTS と同じ opt-in 方式。planning#136）。
+      - name: Check AI workflow config
+        env:
+          STRICT_AI_WORKFLOW_CONFIG: "1"
+        run: node scripts/check-ai-workflow-config.js
 
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
   # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。

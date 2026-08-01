@@ -24,7 +24,11 @@ on:
     paths:
       - "docs/api/**"
       - "scripts/generate-openapi.sh"
-      # FR-14: API 契約はバックエンド由来のため src/*/backend（各ユニットの backend）のみ対象（frontend は対象外）
+      # 【置換点】ソースディレクトリはリポジトリレイアウトに合わせて書き換えること。
+      # 既定は `src/`。`backend/` 等の別レイアウトのまま放置すると、コードを変更しても
+      # 本ワークフローが起動しなくなる。**失敗せず単に走らないため気付きにくい**。
+      # 差し替え箇所の一覧は impl-handoff-kit/HOWTO.md Part B-5 を参照。
+      # FR-14: API 契約はバックエンド由来のため src/*/backend（各ユニットの backend）のみ対象（frontend は対象外）。
       - "src/*/backend/**"
   workflow_dispatch: {}
 
@@ -61,7 +65,7 @@ jobs:
             echo "生成コマンド未設定かつ手書き仕様を尊重。雛形上書きはスキップする。"
             # docs/api/openapi.yaml は手書きの OpenAPI 3.1.0 リッチ仕様であり、生成元の
             # 通信仕様書が存在しない。--force を付けると空雛形で上書き破壊されるため付けない
-            # （既存があれば上書きしない。Issue #60）。
+            # （既存があれば上書きしない）。
             node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml || true
           fi
 

@@ -6,10 +6,12 @@
 | --- | --- | --- |
 | `gen-changelog.js` | コミット履歴（`種別(起点ID): 要約`）から変更履歴を生成 | `CHANGELOG.md` |
 | `gen-openapi-skeleton.js` | 通信仕様書（`docs/api/`）から OpenAPI 雛形を生成 | `docs/api/openapi.yaml` |
-| `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
+| `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。**未 populate な submodule 配下は対象外にし、その件数を submodule 別に `notice` で報告する**（黙って飛ばすと「破損リンクはありません」が検査していない範囲まで含んだ断定になる） 。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
+| `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 2 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
+| `lib/ci-annotate.js` | 検査器共通。警告を GitHub Actions のアノテーション（`::warning::` / `::notice::`）として出す。素の出力は緑ジョブのログに埋もれて読まれないため。ローカル実行時の見た目は従来どおり | — |
 | `setup.sh` | 開発環境セットアップ（SessionStart hook / devcontainer から実行） | — |
 | `apply-profile.sh` | `AI_SETUP.md` で宣言したプロファイルに応じてキットを構成（`.example` 有効化等） | `.ai-profile` |
 
@@ -29,12 +31,100 @@ bash scripts/apply-profile.sh --prune copilot      # Copilot のみ（Claude 系
 node scripts/gen-changelog.js --out CHANGELOG.md
 node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml
 node scripts/check-doc-links.js                    # 仕様書の相対リンク切れを検査（再発防止）
+node scripts/check-ai-workflow-config.js           # AI ワークフローのツール許可設定を検査
+node scripts/scripts.test.js                       # 上記スクリプト群の単体テスト
 node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
 node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
 node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
 node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in ゲート横断 smoke test（#334・要 bash）
 ```
+
+> `check-ai-workflow-config.js` は、AI レビュー / 実装が「ジョブは成功するのに検証を実行できない」
+> 状態に陥る設定不備を機械的に止める。失敗モードの一覧は `impl-handoff-kit/HOWTO.md` の
+> 付録3（トラブルシューティング）を参照。
+>
+> **警告（`warn`）も読むこと。** 本検証器は「検査そのものが効いていない」状態を warn で報告する
+> （既定名のファイルがあるのに `claude_args` を解析できない／既定名で 2 ファイルを引き当てられず
+> ドリフト検査が動かない）。exit 0 のままなので CI は緑になるが、その間は記法検査もドリフト検査も
+> 実行されていない。ERROR にしないのは、アクションの入力名変更で全リポジトリの CI が一斉に
+> 落ちるのを避けるため（fail-open）である。
+>
+> GitHub Actions 上では警告は **アノテーション**（`::warning::`）として出るため、ジョブログを
+> 開かなくても PR の Checks 画面と実行サマリで気付ける。ファイル名・構成が固まったリポジトリは
+> `STRICT_AI_WORKFLOW_CONFIG=1` で警告を失敗として扱える（既定はオフ）。
+>
+> **`check-doc-links.js` の「対象外」表示に注意する。** PR CI は submodule を populate しないため、
+> `planning/` 配下などへのリンクは**検査されない**。出力の `（未 populate の submodule 配下 N 件は
+> 対象外 …）` はその範囲を示す。実際に ai-stock-trading では PR CI が planning 配下 753 件を毎回
+> 飛ばし、その隙間に破損 20 件が蓄積した。PR 段階で検査したい場合は checkout に submodules と
+> トークンを付けるか、定期ジョブ（`doc-links-planning`）の結果を確認すること。
+
+## 検査（CI）
+
+`ci.yml` が PR ごとに以下を実行する。**`scripts.test.js` は `scripts-tests` ジョブで走る**。
+
+| ジョブ | 実行内容 |
+| --- | --- |
+| `scripts-tests` | `node scripts/scripts.test.js`（本 README のスクリプト群の横断テスト。`fetch-depth: 0` が必要） |
+| `commit-messages` | `check-commit-messages.js`（コミット件名の規約と ADR/IADR 実在性） |
+| `doc-links` | `check-doc-links.js`（相対リンクの実在） |
+| `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査 |
+| `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
+| `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
+| `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
+| `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
+| `unit-service-ownership` | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107） |
+| `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
+
+> `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
+> 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある
+> （`changelog.yml` は push でしか起動しないため、壊れるのはマージ後）。
+
+### リポジトリ固有のテストを足す場所
+
+`scripts.test.js` は**キットが配布する共通テスト**であり、キットの更新のたびに差し替わる。
+自前スクリプトの検査を同ファイルへ直接追記すると、同期のたびに手動マージが要り、
+キットが同じテストを取り込んだ際に重複も生じる（重複はテストが落ちないため気付きにくい）。
+
+固有テストは **`scripts/scripts.repo.test.js`** に置く。`scripts.test.js` が存在すれば自動で
+読み込む（無ければ何もしない）。これにより `scripts.test.js` をキットとバイト一致に保て、
+同期は上書きコピー 1 回で済む。
+
+```js
+// scripts/scripts.repo.test.js
+module.exports = ({ ok, assert }) => {
+  ok('本リポ固有の検査', () => {
+    assert.ok(true);
+  });
+};
+```
+
+`ok` をそのまま受け取るため、件数の集計は自動で正しくなる（カウンタが分かれない）。
+
+> **このファイルは必ずコミットする。** 追跡されていないと CI（clean checkout）に存在せず、
+> 固有テストが黙って走らなくなる。`scripts.test.js` は未追跡を検出して警告するが、
+> `.gitignore` を確認しておくこと。
+> `.local` を名前に使わないのは、多くのプロジェクトで「コミットしない」の目印だからである
+> （キット自身も `CLAUDE.local.md` をその意味で使っている）。旧名 `scripts.local.test.js` は
+> 移行のあいだ読み込むが、改名を促す警告を出す。
+
+**消失を検出したい場合**（固有テストを持つリポジトリ向け）: `ci.yml` の `scripts-tests` ジョブで
+`REQUIRE_REPO_TESTS=1` を設定すると、companion が見つからないときに失敗する。未設定だと
+誤削除やマージ事故でテスト件数が静かに減るだけで CI は green のままになる。
+**companion があるのに未設定の場合は `notice:` で促す**（失敗はさせない）。
+
+`scripts.test.js` が検出して知らせる状態は以下のとおり。
+
+| 状態 | 挙動 |
+| --- | --- |
+| companion なし | 何もしない（キット既定） |
+| companion なし ＋ `REQUIRE_REPO_TESTS=1` | **失敗**（消失の検出） |
+| companion あり・登録 0 件 | **失敗**（export 忘れ・空実装・全件 skip） |
+| companion あり ＋ `REQUIRE_REPO_TESTS` 未設定 | `notice:` で設定を促す |
+| companion が git 未追跡 | `warning:`（CI に存在せず固有テストが走らないため） |
+| 旧名 `scripts.local.test.js` のみ | 読み込む ＋ `warning:` で改名を促す |
+| 新旧が**両方**ある | 新名を優先して読み込み、`warning:` で旧名の残存を知らせる（移行漏れならテストを移し、不要なら削除する） |
 
 ## 自動生成（CI）
 
