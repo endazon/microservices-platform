@@ -35,7 +35,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -162,9 +162,48 @@ allowlist をそのまま引き継いだものと考えられる。実害とし�
 - `scripts/verify-qdrant-attribute-payload.sh` — キットからは削除された（MSP 固有のため妥当）。
   本リポジトリの成果物として保持する（IADR-0014 / #71）。
 
+### 第 3 ラウンド（planning#105 / #107 反映後の再同期）
+
+pin を `12cc9b8` → `35b830a` へ進めた。キット側では planning#105（`7546777`。#98 の反映漏れ・回帰 3 件の是正）
+と planning#107（`35b830a`。配布物から他プロジェクトの痕跡を除去）が入っている。
+
+**本リポジトリに存在した実害の是正**
+
+`scripts/gen-changelog.js` が `TypeError: overrides.find is not a function` で**完全に壊れていた**。
+第 2 ラウンドで `applyOverride(c, overrides = OVERRIDES)`（テスト注入可能な第 2 引数）を取り込んだ一方、
+呼び出し側が `.map(applyOverride)` の point-free のままだったため、`map` が渡す `index`（数値）が
+`overrides` を上書きし、1 件目から例外になっていた。planning#105 の修正
+（`.map((c) => applyOverride(c))`）を取り込んで解消した。
+
+この回帰が PR CI をすり抜けたのは、`changelog.yml` が develop/main への push でしか起動しないうえ、
+`scripts.test.js` がどの CI ジョブからも実行されていなかったためである（後述の指摘 8）。
+
+**固有デルタが解消したファイル**
+
+- `.github/workflows/copilot-setup-steps.yml` — 雛形除外が入り（planning#105・指摘 7）、明示ループを撤去
+- `scripts/check-doc-links.js` / `scripts/gen-changelog.js` / `scripts/validate-pipeline-config.js`
+
+**キットの置換点へ寄せたファイル**
+
+- `scripts/check-commit-messages.js` — 計画 ADR の実在集合が**自プロジェクトの名前空間に限定**された
+  （従来は `projects/` 全走査で、他プロジェクトにしか無い ADR 番号まで実在として受理していた）。
+  【置換点】`PLAN_PROJECT` に `microservices-platform` を設定。これがキットとの唯一の差分。
+- `.github/workflows/ci.yml` の `pipeline-config` ジョブ — キットが `PIPELINE_CONFIG` 環境変数による
+  置換点に変わったため同形へ寄せ、値に `deploy/helm/microservices-platform/files/pipeline.json` を設定。
+- `.github/workflows/openapi.yml` — キットの【置換点】コメントを保ったまま `src/*/backend/**` を指定。
+
+**この再同期で新たに見つかったキットの不足（指摘 8）**
+
+`scripts.test.js` を実行する CI ジョブがキットに無い。キット全体で同ファイルへの言及は
+`pr-title.yml` のコメント 1 行のみで、`ci.example.yml` には対応ジョブが無い。上記の
+`gen-changelog` 回帰がマージ後まで検出されなかった直接の原因であり、planning#105 が同時に追加した
+「実行して確かめる」E2E テストも、そのままでは CI で走らない。
+[planning#108](https://github.com/endazon/project-planning/issues/108) として起票し、本リポジトリは
+先行して `ci.yml` に `scripts-tests` ジョブ（`fetch-depth: 0`）を追加した。
+
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`12cc9b8`）を指す
+- [x] `planning` submodule が `origin/main`（`35b830a`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

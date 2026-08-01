@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 6 件（submodule リンク判定の一般化・Actions 版数・自己不整合ほか）
+title: impl-handoff-kit の不足 8 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 6 件
+# フィードバック: impl-handoff-kit の不足 8 件（初回 6 件 ＋ 追加 2 件）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-残る指摘は下記「残課題」の 1 件のみ。
+その後の再同期で追加 2 件（下記「残課題」7・8）を検出し、いずれも起票済み。
 
 ## 起点となる計画書
 
@@ -107,7 +107,7 @@ created: 2026-08-01
   「雛形ソリューションを同梱するリポジトリでは探索範囲を絞ること」を既定のコメントに明記する。
   自動発見は「編集不要」を謳っている分、この落とし穴が見えにくい。
 
-## 残課題（planning#98 反映後に判明・追加指摘）
+## 残課題（第 2・第 3 ラウンドで判明した追加指摘）
 
 ### 7. `copilot-setup-steps.example.yml` だけ雛形ディレクトリ除外が入っていない
 
@@ -119,7 +119,24 @@ Copilot coding agent の環境だけ雛形ソリューションを拾って rest
 → planning#96 へコメントで追報したが、**同 issue は追報の 10 分前に CLOSED 済み**であったため、
 見落とし防止に独立した issue として起票し直した:
 [planning#104](https://github.com/endazon/project-planning/issues/104)。
-`bf94477`（2026-08-01 時点の planning `main`）でも未反映であることを確認済み。
+**planning#105（`7546777`）で反映済み**であり、本リポジトリの固有デルタも解消した
+（`copilot-setup-steps.yml` はキットとバイト一致に戻った）。
+
+### 8. `scripts.test.js` を実行する CI ジョブがキットに無い（第 3 ラウンドで判明）
+
+キットの `ci.example.yml` は個別スクリプトの `--self-test` は走らせるが、`scripts.test.js`
+そのものを実行するジョブが無い（キット全体で `scripts.test.js` への言及は `pr-title.yml` の
+コメント 1 行のみ）。結果として、キット由来のリポジトリでは同ファイルが
+「誰かが手で叩いたときだけ走るテスト」になる。
+
+実害の実例: planning#98 の反映で入った `gen-changelog.js` の `.map(applyOverride)` 回帰
+（`TypeError: overrides.find is not a function`）は、`changelog.yml` が develop/main への push
+でしか起動せず、`scripts.test.js` も CI に載っていないため、**PR の CI が全部 green のまま
+マージ後まで検出されない**状態だった。planning#105 が同時に追加した「実行して確かめる」
+E2E テストも、そのままでは CI で走らない。
+
+→ [planning#108](https://github.com/endazon/project-planning/issues/108) として起票。
+本リポジトリは先行して `ci.yml` に `scripts-tests` ジョブを追加した。
 
 ## 実装で判明した経緯
 
@@ -145,13 +162,27 @@ Copilot coding agent の環境だけ雛形ソリューションを拾って rest
     `10.0.x` へ揃える。
   - 6: `repo-template/scripts/setup.sh` と `security.example.yml` の自動発見から雛形ディレクトリを
     除外する（または既定コメントで注意喚起する）。
+  - 7: 同じ除外を `repo-template/.github/workflows/copilot-setup-steps.example.yml` にも入れる。
+  - 8: `repo-template/.github/workflows/ci.example.yml` に `scripts.test.js` を実行するジョブを追加し、
+    `scripts/README.md` の「自動生成（CI）」節にも記載する。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜6 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜8 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
-- 1 が取り込まれるまで、本リポジトリの `scripts/check-doc-links.js` はキットより進んだ状態
-  （分類 C 相当）として維持する。2 が取り込まれるまで、同期のたびに Actions 版数の再適用が必要。
-- 6 が取り込まれるまで、本リポジトリの `scripts/setup.sh` と `security.yml` は
-  `src/*/backend/backend.slnx` の明示ループを固有デルタ（構成起因）として維持する。
+
+### 反映状況（2026-08-01 時点・planning `35b830a`）
+
+| 指摘 | 反映 | 本リポジトリの状態 |
+| --- | --- | --- |
+| 1 `check-doc-links.js` の一般化 | planning#98 | キットと一致 |
+| 2 Actions 版数 | planning#98 | キットと一致（以後も新しい側を採る） |
+| 3 `traceability-auditor.md` | planning#98 | キットと一致 |
+| 4 `how-to` 種別 | planning#98 | キットと一致（`docs/how-to/.gitkeep` 追加） |
+| 5 Copilot の .NET 版数 | planning#98 → 105 | キットと一致 |
+| 6 雛形ソリューション除外 | planning#98 → 105 | キットと一致 |
+| 7 Copilot だけ除外漏れ | planning#105 | キットと一致 |
+| 8 `scripts.test.js` の CI 未結線 | **未反映**（planning#108） | 先行して `ci.yml` に `scripts-tests` を追加 |
+
+8 が取り込まれるまで、当該ジョブは本リポジトリの固有デルタとして維持する。

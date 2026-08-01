@@ -64,18 +64,23 @@ jobs:
         run: node scripts/check-doc-links.js
 
   # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
+  # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
   # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
   pipeline-config:
     runs-on: ubuntu-latest
+    env:
+      PIPELINE_CONFIG: "deploy/helm/microservices-platform/files/pipeline.json"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
+      # 検証器自体の試験。構成ファイルの有無に関わらず毎回走らせ、検証ロジックの退行を防ぐ。
       - name: Validate pipeline config (self-test)
         run: node scripts/validate-pipeline-config.js --self-test
       - name: Validate pipeline config
-        run: node scripts/validate-pipeline-config.js deploy/helm/microservices-platform/files/pipeline.json
+        if: env.PIPELINE_CONFIG != ''
+        run: node scripts/validate-pipeline-config.js "$PIPELINE_CONFIG"
 
   # Claude 系ワークフローのツール許可設定を検査する（安全弁）。
   # claude_args の記法誤りは CI を失敗させずに「AI が検証できない」状態を作るため、
@@ -91,6 +96,24 @@ jobs:
         run: node scripts/check-ai-workflow-config.js --self-test
       - name: Check AI workflow config
         run: node scripts/check-ai-workflow-config.js
+
+  # NFR, IADR-0115: scripts/ 配下の単体テスト。キットの ci.example.yml には対応ジョブが無く、
+  # scripts.test.js は「ローカルで手で叩く」前提のまま CI に載っていなかった（planning#108 で環流）。
+  # 実害の実例: gen-changelog.js の `.map(applyOverride)` 回帰は、map が渡す index が第 2 引数を
+  # 上書きして 1 件目から TypeError になり CHANGELOG 生成が全面的に壊れたが、changelog.yml は
+  # develop/main への push でしか走らないため**マージ後**まで検出されなかった。
+  # fetch-depth: 0 は allowlist の到達可能性検査と gen-changelog の実行に必要（浅いクローンでは skip）。
+  scripts-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Run scripts unit tests
+        run: node scripts/scripts.test.js
 
   # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
   # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
