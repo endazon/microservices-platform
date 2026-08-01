@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -324,6 +324,31 @@ Issue #434 の追記は「2 段目の submodule も参照したい場合は同�
 `settings.json` への追随（planning#121）がキット側で決着してから、同じ形で 3 系統に足すほうが
 乖離を作らないため、本 PR では追加しない。
 
+### 第 8 ラウンド（planning#125 反映後の再同期）
+
+pin を `cff9b6c` → `25b4291` へ進めた。第 7 ラウンドで環流した
+[planning#121](https://github.com/endazon/project-planning/issues/121)（`git -C planning` 4 件が
+`settings.json` に未追随）が反映され、3 系統が揃った。
+
+**適用内容**
+
+- `.claude/settings.json` — キットとバイト一致に戻し、`check-ai-workflow-config.js` の
+  warn が消えたことを確認（分類 A を回復）
+- `.github/workflows/ci.yml` — ヘッダのコメントブロックをキットへ揃えた
+  （両ワークフローを同内容に保つ旨・記法の注記）
+- `docs/ai-workflow.md` — キット本文（`pr-title.yml` を必須チェックに含める推奨）＋
+  `images.yml` / `image-build` の固有デルタ
+
+**この再同期で新たに見つかったキットの不足（指摘 14）**
+
+planning#125 が `ci.example.yml` のヘッダへ追記した「記法誤り・複製漏れは ai-workflow-config
+ジョブが機械検出する」のうち、**複製漏れは部分的なものが検出されない**。`check-ai-workflow-config.js`
+の検査は 1 ファイル単位で、`claude-coding` と `claude-code-review` のツール集合を突き合わせる処理は
+無い。実測でレビュー側から `build` / `format` / `restore` を落として `test` だけ残しても、エラーも
+警告も出なかった（`setup-dotnet` に対して実行ツールが 1 つ残っているため）。検出されるのは
+「レビュー側の実行系が全滅した」場合だけである。
+[planning#126](https://github.com/endazon/project-planning/issues/126) として起票した。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -352,7 +377,7 @@ Issue #434 の追記は「2 段目の submodule も参照したい場合は同�
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`cff9b6c`）を指す
+- [x] `planning` submodule が `origin/main`（`25b4291`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

@@ -77,7 +77,9 @@ bash scripts/apply-profile.sh copilot
 ### 3. レビューとゲート
 
 - PR を開くと AI 自動レビュー（`claude-code-review.yml`）が走る。
-- CI（`ci.yml`）・イメージビルド（`images.yml`）・セキュリティ（`security.yml` / `codeql.yml`）が green であることを必須にする。
+- CI（`ci.yml`）・イメージビルド（`images.yml`）・PR タイトル（`pr-title.yml`）・セキュリティ（`security.yml` / `codeql.yml`）が green であることを必須にする。
+  `pr-title.yml` はスカッシュ後件名の唯一の予防線であり（中間コミットは force push 禁止で事後修正できない）、
+  全 PR で起動するため必須チェックに指定してよい（後述「必須チェックに指定する際の注意」）。
 - 人間は PR テンプレートの「レビュアー向け（AI実装の確認観点）」で最終確認する。
 
 ### 4. マージ後
@@ -105,7 +107,7 @@ bash scripts/apply-profile.sh copilot
 GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule）で以下を推奨設定する。
 
 - Require a pull request before merging（直接 push 禁止）
-- Require status checks to pass before merging → `CI`・`image-build`（`images.yml`）・`Security`・`CodeQL` を必須に
+- Require status checks to pass before merging → `CI`・`image-build`（`images.yml`）・`pr-title`・`Security`・`CodeQL` を必須に
   - `image-build` は **Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md)** の集約ジョブ。
     サービスの Dockerfile（＝ ADR-0007 の配布物）がビルドできることを担保する。イメージのビルドに
     影響しない PR ではビルドをスキップして即座に green を報告するため、必須に指定しても無関係な PR を

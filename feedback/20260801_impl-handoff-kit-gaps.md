@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 13 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 14 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 13 件（初回 6 件 ＋ 追加 7 件）
+# フィードバック: impl-handoff-kit の不足 14 件（初回 6 件 ＋ 追加 8 件・うち 1 件は取り下げ）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 7 件（下記「残課題」7〜13）を検出し、いずれも起票済み。
+その後の再同期で追加 8 件（下記「残課題」7〜14）を検出し、いずれも起票済み（13 は前提誤りで取り下げ）。
 
 ## 起点となる計画書
 
@@ -193,8 +193,28 @@ planning#119 は `Bash(git -C planning …:*)` 4 件を `claude-coding` / `claud
 キット自身の設定に warn を出す状態である（実測）。`settings.json` の `//` 注記が
 「3 系統を手作業で同期する構造であり、実際に乖離した実績がある」と警告しているのと同じ失敗モード。
 
-→ [planning#121](https://github.com/endazon/project-planning/issues/121) として起票。
-ただし下記 13 の判断次第で不要になるため、cross-link 済み。
+→ [planning#121](https://github.com/endazon/project-planning/issues/121) として起票し、
+**planning#125（`25b4291`）で反映済み**（`settings.json` に 4 件が追加され、3 系統が揃った）。
+本リポジトリは `settings.json` をキットとバイト一致に戻し、`check-ai-workflow-config.js` の
+warn が消えたことを確認した。
+
+### 14. 「複製漏れは機械検出する」は部分的なドリフトを検出しない（第 8 ラウンドで判明）
+
+planning#125 は `ci.example.yml` のヘッダに「記法誤り・複製漏れは ai-workflow-config ジョブが
+機械検出する」と追記したが、**部分的な複製漏れは検出されない**。`check-ai-workflow-config.js` の
+検査は 1 ファイル単位であり、`claude-coding` と `claude-code-review` のツール集合を突き合わせる
+処理は無い（`parityWarnings` は各ファイルを `settings.json` と比べるだけ）。
+
+実測: レビュー側から `build` / `format` / `restore` を落として `test` だけ残しても、
+エラーも警告も出ない（`setup-dotnet` に対して実行ツールが 1 つ残っているため 3 番目の検査を通る）。
+検出されるのは「レビュー側の実行系が**全滅**した」場合だけである。
+
+「機械検出する」と書くと読み手は手作業の突き合わせをやめるため、部分的なドリフトが
+「一部のコマンドだけ承認待ち」という**全滅より気付きにくい**劣化を生む。
+
+→ [planning#126](https://github.com/endazon/project-planning/issues/126) として起票
+（(1) `TOOLCHAINS` 由来の実行ツール集合を 2 ファイル間で突き合わせる、または (2) ヘッダの記述を
+実装に合わせる）。
 
 ### 13.（取り下げ）`git -C planning` が CI で誤答するという報告は誤りだった
 
@@ -251,15 +271,16 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
   - 10: companion があるのに 1 件も登録しなければ失敗させ、必須化の opt-in（環境変数等）を設ける。
   - 11: companion を検出したのに `REQUIRE_REPO_TESTS` 未設定なら 1 行 notice を出す。
   - 12: `settings.json` にも `git -C planning` 4 件を追加する（13 の取り下げにより単独で有効）。
+  - 14: `TOOLCHAINS` 由来の実行ツール集合を 2 ワークフロー間で突き合わせる（またはヘッダ記述を実装に合わせる）。
   - 13: （取り下げ）誤報告のため対応不要。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜13 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜14 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `cff9b6c`）
+### 反映状況（2026-08-01 時点・planning `25b4291`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -274,8 +295,9 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
 | 9 `codeql.example.yml` の雛形トラップ | planning#113 | 注記が示す置き換えを実施済み（明示ビルドを維持） |
 | 10 companion 消失が検出されない | planning#116 | `scripts.repo.test.js`（改名）＋ `REQUIRE_REPO_TESTS=1` 有効化 |
 | 11 opt-in 忘れが無言 | planning#119 | キットと一致（notice を確認） |
-| 12 `git -C planning` が settings.json に未追随 | **未反映**（planning#121） | `settings.json` はキットと一致のまま（warn が出る） |
+| 12 `git -C planning` が settings.json に未追随 | planning#125 | キットと一致（warn 解消を確認） |
 | 13 `git -C planning` が CI で誤答 | **取り下げ**（planning#123・前提誤り） | キット準拠のまま。誤報告を訂正済み |
+| 14 部分的な複製漏れを検出しない | **未反映**（planning#126） | 3 系統は揃っており現時点の実害なし |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
