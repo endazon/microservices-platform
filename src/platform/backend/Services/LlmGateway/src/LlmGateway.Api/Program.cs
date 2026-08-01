@@ -32,8 +32,21 @@ builder.Services.AddPlatformHealthChecks();
 builder.Services.AddOpenApi();
 
 // ADR-0010: Claude SDK (Anthropic.SDK 4.0.0)
-builder.Services.AddSingleton(_ => new AnthropicClient(
-    builder.Configuration["Llm:ApiKey"] ?? "placeholder"));
+// IADR-0114 (AST#290): SDK が解釈できない content ブロック型（thinking 等）で応答全体を失わないよう、
+// 応答サニタイズ用の委譲ハンドラを噛ませた HttpClient を渡す。割当モデル（Opus 5 / Sonnet 5 /
+// Fable 5）はいずれも thinking が既定で有効なため、これが無いと非ストリーミング /complete が全件失敗する。
+// 一次ハンドラは既定の HttpClientHandler（システムプロキシ設定は既定で引き継がれる）を使い、
+// 応答圧縮だけは SDK 既定の内部クライアントに依存しないよう明示的に有効化する。
+builder.Services.AddSingleton(sp => new AnthropicClient(
+    new APIAuthentication(builder.Configuration["Llm:ApiKey"] ?? "placeholder"),
+    new HttpClient(new AnthropicResponseSanitizingHandler(
+        sp.GetRequiredService<ILogger<AnthropicResponseSanitizingHandler>>())
+    {
+        InnerHandler = new HttpClientHandler
+        {
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+        },
+    })));
 builder.Services.AddHttpClient();
 
 // FR-11, ADR-0010: 呼び出し先の切り替え（機密区分×ティアの越境マトリクス + 用途別モデル）。
