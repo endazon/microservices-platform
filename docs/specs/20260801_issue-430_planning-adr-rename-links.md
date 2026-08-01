@@ -49,6 +49,6 @@ related_specs:
 
 ## 受け入れ基準
 
-- [ ] リポ内に `ADR-0006_observability.md`（旧名）への参照が残っていない。
-- [ ] 修正後の参照先が planning に実在する（`ADR-0006_observability-otel-prom-loki.md`）。
-- [ ] `.claude/rules/traceability.md` にクロスリポ issue 修飾の規約が明文化されている。
+- [x] リポ内に `ADR-0006_observability.md`（旧名）への参照が残っていない。
+- [x] 修正後の参照先が planning に実在する（`ADR-0006_observability-otel-prom-loki.md`）。
+- [x] `.claude/rules/traceability.md` にクロスリポ issue 修飾の規約が明文化されている。
