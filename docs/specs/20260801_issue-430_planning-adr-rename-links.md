@@ -13,7 +13,7 @@ updated: 2026-08-01
 related_specs:
   - "../adr/IADR-0110_llm-completion-stop-reason-metrics.md"
   - "./20260728_issue-395_refusal-metrics.md"
-  - "../adr/IADR-0114_anthropic-unknown-content-block.md"
+  - "../adr/IADR-0114_anthropic-unknown-content-block-sanitizing.md"
 ---
 
 # 仕様書: 計画 ADR 改名への参照追随とクロスリポ issue 修飾規約（issue #430）
