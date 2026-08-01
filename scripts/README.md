@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | `gen-changelog.js` | コミット履歴（`種別(起点ID): 要約`）から変更履歴を生成 | `CHANGELOG.md` |
 | `gen-openapi-skeleton.js` | 通信仕様書（`docs/api/`）から OpenAPI 雛形を生成 | `docs/api/openapi.yaml` |
-| `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
+| `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。**未 populate な submodule 配下は対象外にし、その件数を submodule 別に `notice` で報告する**（黙って飛ばすと「破損リンクはありません」が検査していない範囲まで含んだ断定になる） 。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 2 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
@@ -53,6 +53,12 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 > GitHub Actions 上では警告は **アノテーション**（`::warning::`）として出るため、ジョブログを
 > 開かなくても PR の Checks 画面と実行サマリで気付ける。ファイル名・構成が固まったリポジトリは
 > `STRICT_AI_WORKFLOW_CONFIG=1` で警告を失敗として扱える（既定はオフ）。
+>
+> **`check-doc-links.js` の「対象外」表示に注意する。** PR CI は submodule を populate しないため、
+> `planning/` 配下などへのリンクは**検査されない**。出力の `（未 populate の submodule 配下 N 件は
+> 対象外 …）` はその範囲を示す。実際に ai-stock-trading では PR CI が planning 配下 753 件を毎回
+> 飛ばし、その隙間に破損 20 件が蓄積した。PR 段階で検査したい場合は checkout に submodules と
+> トークンを付けるか、定期ジョブ（`doc-links-planning`）の結果を確認すること。
 
 ## 検査（CI）
 

@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b` → `168f53d` → `cd6c4f4`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b` → `168f53d` → `cd6c4f4` → `9cd3499`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -475,6 +475,38 @@ CI を赤にできないため **`scripts/scripts.test.js` の `captureStderr` �
 先行修正した（`GITHUB_ACTIONS=true` でも `✓ 111 tests passed`・漏れる `::warning::` は 0 件）。
 キット是正後に撤去してバイト一致（分類 A）へ戻す。
 
+### 第 13 ラウンド（planning#141 / #143 反映後の再同期・暫定デルタの撤去）
+
+pin を `cd6c4f4` → `9cd3499` へ進めた。第 12 ラウンドで環流した
+[planning#140](https://github.com/endazon/project-planning/issues/140)（Actions 上でのテスト失敗）が
+planning#141 で反映され、**暫定デルタを撤去して `scripts/scripts.test.js` をキットとバイト一致へ戻した**。
+CI と同条件（`GITHUB_ACTIONS=true` ＋ `REQUIRE_REPO_TESTS=1`）で exit 0・漏れる annotation 0 件を確認済み。
+
+あわせて planning#143（AST 由来の planning#139）で `check-doc-links.js` が
+**検査対象外にした範囲を報告する**ようになった。「破損リンクはありません」という断定を、
+検査していない範囲を含めた断定にしないための変更である。
+
+**本リポジトリで判明したこと**
+
+新しい報告により、`src/ai-stock-trading` 配下への**リンク 2 件が PR CI では検査されていない**ことが
+可視化された。
+
+```
+[check-doc-links] OK: 378 件の Markdown に破損した相対リンクはありません
+（未 populate の submodule 配下 2 件は対象外 — src/ai-stock-trading: 2 件）。
+```
+
+該当は `docs/specs/20260718_issue-283_ast-frontend-integration.md` の `related_specs` 2 件である。
+submodule を取得して実在を確認したところ**いずれも破損していない**。また本リポジトリの
+`doc-links-planning.yml`（夜間・トークン付き）は `submodules: recursive` で取得するため、
+`src/ai-stock-trading` 配下も含めて夜間に検査されている＝キットが警告する「隙間に破損が蓄積する」
+状態にはない。
+
+**この再同期で新たに見つかったキットの不足**
+
+無し。新規投入されたコードを CI 同条件で実行し、報告内容も実データで確認したが、不具合は
+見つからなかった。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -503,7 +535,7 @@ CI を赤にできないため **`scripts/scripts.test.js` の `captureStderr` �
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`cd6c4f4`）を指す
+- [x] `planning` submodule が `origin/main`（`9cd3499`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する
