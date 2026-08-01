@@ -6,6 +6,7 @@
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/scripts.test.js
  */
 const assert = require('assert');
+const { execSync } = require('child_process');
 const {
   validateSubject,
   checkSingleTitle,
@@ -20,6 +21,22 @@ function ok(name, fn) {
   passed++;
   process.stdout.write(`  ok  ${name}\n`);
 }
+
+// git を best-effort で実行する。失敗時は null（テストはスキップ判断に使い、落とさない）。
+function gitTry(args) {
+  try {
+    return execSync(`git ${args}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch (e) {
+    return null;
+  }
+}
+const inGitWorkTree = gitTry('rev-parse --is-inside-work-tree') === 'true';
+const isShallowClone = gitTry('rev-parse --is-shallow-repository') === 'true';
+// 到達可能性の基準となる統合ブランチ。origin/develop → develop → origin/main → main → HEAD の順で解決する。
+const REACH_BASE =
+  ['origin/develop', 'develop', 'origin/main', 'main', 'HEAD'].find(
+    (r) => gitTry(`rev-parse --verify --quiet ${r}`) !== null
+  ) || 'HEAD';
 
 // --- validateSubject ---------------------------------------------------------
 
@@ -162,12 +179,38 @@ ok('allowlist は短縮 SHA を前方一致で照合', () => {
   assert.strictEqual(findAllowlisted('deadbeefdeadbeef', al), null, '無関係な SHA は除外されない');
 });
 
-// 規約導入前の非準拠 5 コミットが commit-allowlist.json で除外されること（本 PR の CI 失敗の回帰）。
-ok('規約導入前の非準拠5コミットは allowlist 対象', () => {
+// commit-allowlist.json は「そのリポジトリで実際に必要になった分だけ」を持つため、
+// 特定 SHA をハードコードして検査しない（他リポジトリへコピーすると必ず落ちる）。
+// 代わりに、実際に載っているエントリ自体が運用ルールを満たすかを検証する。
+
+ok('allowlist の各エントリは完全 SHA と reason を持つ', () => {
+  for (const e of loadAllowlist()) {
+    assert.match(e.hash, /^[0-9a-f]{40}$/i, `hash は完全 SHA（40 桁）であること: ${e.hash}`);
+    assert.ok(e.reason && e.reason.trim(), `reason が空: ${e.hash}`);
+  }
+});
+
+ok('allowlist の各エントリは git 履歴に実在し統合ブランチから到達可能（幻 SHA の検出）', () => {
   const al = loadAllowlist();
-  const known = ['d1652dcf', '394fa1fd', '079490d1', '153810a4', 'd4835097'];
-  for (const h of known) {
-    assert.ok(findAllowlisted(h, al), `${h} が commit-allowlist.json に無い`);
+  if (!inGitWorkTree || isShallowClone || al.length === 0) return; // best-effort
+  for (const e of al) {
+    const type = gitTry(`cat-file -t ${e.hash}`);
+    assert.strictEqual(type, 'commit', `履歴に実在しない SHA（rebase 後の幻 SHA の可能性）: ${e.hash}`);
+    const reachable = gitTry(`merge-base --is-ancestor ${e.hash} ${REACH_BASE} && echo yes`);
+    assert.ok(reachable !== null, `${REACH_BASE} から到達できない SHA: ${e.hash}`);
+  }
+});
+
+ok('allowlist は規約に準拠した件名を無意味に除外していない', () => {
+  const al = loadAllowlist();
+  if (!inGitWorkTree || isShallowClone || al.length === 0) return; // best-effort
+  for (const e of al) {
+    const subject = gitTry(`log -1 --pretty=format:%s ${e.hash}`);
+    if (subject === null) continue;
+    assert.ok(
+      validateSubject(subject).length >= 1,
+      `規約に準拠している件名が除外されている（不要なエントリ）: ${e.hash} "${subject}"`
+    );
   }
 });
 
@@ -179,19 +222,63 @@ ok('hashMatches は短縮 SHA を前方一致', () => {
   assert.strictEqual(hashMatches('deadbeef', 'b421761'), false);
 });
 
-// 実在の override（b421761）が feat/P0 に補正されること（🔴 指摘の回帰: docs へ誤 remap しない）。
-ok('b421761 は feat/P0 へ remap', () => {
-  const c = applyOverride({ hash: 'b421761abc', type: 'feat', scope: 'FR-10', desc: '元件名' });
+// override は第 2 引数で注入する（実データ＝特定プロジェクトの実コミットに依存しない）。
+// overrides が空の正常なリポジトリでも remap / exclude の挙動を検証できる。
+ok('remap は指定項目だけを差し替え、省略項目は元の値を保つ', () => {
+  const ovs = [{ hash: 'aaaaaaa', action: 'remap', scope: 'P0' }];
+  const c = applyOverride({ hash: 'aaaaaaabbb', type: 'feat', scope: 'FR-10', desc: '元件名' }, ovs);
   assert.notStrictEqual(c, null, 'exclude されるべきではない');
-  assert.strictEqual(c.type, 'feat', 'docs へ誤 remap してはならない');
-  assert.strictEqual(c.scope, 'P0');
+  assert.strictEqual(c.type, 'feat', '省略した type は元のまま（docs へ誤 remap しない）');
+  assert.strictEqual(c.scope, 'P0', '指定した scope は差し替わる');
+  assert.strictEqual(c.desc, '元件名');
+});
+
+ok('exclude は null を返す（生成物から除外）', () => {
+  const ovs = [{ hash: 'bbbbbbb', action: 'exclude' }];
+  assert.strictEqual(applyOverride({ hash: 'bbbbbbbccc', type: 'feat', scope: 'P0', desc: 'x' }, ovs), null);
+});
+
+ok('未知の action は補正を無視する（黙って remap 扱いにしない）', () => {
+  const ovs = [{ hash: 'ccccccc', action: 'romap', scope: 'P0' }];
+  const c = { hash: 'cccccccddd', type: 'feat', scope: 'FR-01', desc: 'x' };
+  const silenced = process.stderr.write;
+  process.stderr.write = () => true;
+  try {
+    assert.deepStrictEqual(applyOverride(c, ovs), c);
+  } finally {
+    process.stderr.write = silenced;
+  }
 });
 
 // override に一致しないコミットは素通しする。
 ok('未一致コミットは素通し', () => {
   const c = { hash: 'ffffffff', type: 'fix', scope: 'FR-01', desc: 'x' };
-  assert.deepStrictEqual(applyOverride(c), c);
+  assert.deepStrictEqual(applyOverride(c, []), c);
 });
+
+// --- check-doc-links: submodule 判定の一般化 ---------------------------------
+
+{
+  const path = require('path');
+  const { submodulePaths, underUnpopulatedSubmodule } = require('./check-doc-links.js');
+
+  ok('submodulePaths は .gitmodules が無ければ空配列（誤検知しない）', () =>
+    assert.deepStrictEqual(submodulePaths(path.join(__dirname, '..', 'docs')), []));
+
+  ok('submodule 配下でないパスは対象外（通常どおり実在検査する）', () =>
+    assert.strictEqual(underUnpopulatedSubmodule(path.join(__dirname, 'check-doc-links.js')), false));
+
+  // planning 固定だった判定が .gitmodules 由来へ一般化されたこと（planning 以外の submodule も対象）。
+  ok('planning 以外の submodule も判定対象になっている', () => {
+    const src = require('fs').readFileSync(path.join(__dirname, 'check-doc-links.js'), 'utf8');
+    assert.match(src, /\.gitmodules/, '.gitmodules を読んで判定すること');
+    assert.doesNotMatch(
+      src,
+      /\(\^\|\\\/\)planning\\\//,
+      'planning 固定の正規表現判定が残っていないこと'
+    );
+  });
+}
 
 // --- check-doc-links: planning submodule の扱い（Issue #232） -----------------
 

@@ -44,6 +44,7 @@ function parseArgs(argv) {
 
 // planning サブモジュールが populate 済みか（projects/ の実在で判定）。CI が submodule なしで
 // checkout した場合は planning/ が空プレースホルダになるため、存在チェックだけでは判別できない。
+// `--require-planning` 用の判定であり、リンク検査の対象外判定は下の一般則を使う。
 function planningPopulated(root = REPO_ROOT) {
   try {
     return fs.existsSync(path.join(root, 'planning', 'projects'));
@@ -52,7 +53,7 @@ function planningPopulated(root = REPO_ROOT) {
   }
 }
 
-// Issue #283: .gitmodules の submodule path 一覧（リポルート相対・posix）。読めなければ空配列。
+// .gitmodules から submodule の path 一覧を得る。
 function submodulePaths(root = REPO_ROOT) {
   try {
     const txt = fs.readFileSync(path.join(root, '.gitmodules'), 'utf8');
@@ -66,10 +67,12 @@ function submodulePaths(root = REPO_ROOT) {
   }
 }
 
-// Issue #283: 解決済み絶対パスが、未 populate（空プレースホルダ）な submodule 配下にあるか。
-// トークン不要の PR CI は submodule を populate しないため、planning / src/* いずれの submodule 内リンクも
-// 未 populate 時は検査対象外にする（populate 済みなら通常どおり実在検査する）。planning 固有の特別扱いを
-// .gitmodules 由来の一般則へ拡張したもの（AST 等 src/* ユニットの docs へのリンク切れ誤検知を防ぐ）。
+// 解決済み絶対パスが、未 populate（空プレースホルダ）な submodule 配下にあるか。
+// トークン不要の PR CI は submodule を populate しないため、その配下のリンクは検査対象外にする
+// （populate 済みなら通常どおり実在検査する）。
+// かつては `planning/` 固定で判定していたが、それでは planning 以外の submodule
+// （ユニットを submodule で取り込む構成等）配下のリンクが PR CI で破損と誤検知された。
+// .gitmodules 由来の一般則へ拡張してある。
 function underUnpopulatedSubmodule(resolvedAbs, root = REPO_ROOT) {
   const rel = path.relative(root, resolvedAbs).replace(/\\/g, '/');
   for (const sub of submodulePaths(root)) {
@@ -112,9 +115,9 @@ function isBrokenRef(ref, baseDir) {
   if (!looksRelative) return false;
   if (!LINK_EXT.test(t)) return false;
   const resolved = path.resolve(baseDir, t);
-  // Issue #232/#283: submodule（planning / src/* 等）未チェックアウト時は、その配下リンクを検査しない。
-  // トークン不要の PR CI（actions/checkout の submodule 取得なし）は submodule を空プレースホルダにするため、
-  // 存在チェックだけでは未チェックアウトを破損と誤検知してしまう。populate 済みなら通常どおり実在検査する。
+  // 未チェックアウトの submodule 配下は検査しない。CI の actions/checkout（サブモジュール
+  // 取得なし）は submodule を「空のプレースホルダディレクトリ」として作るため、存在チェック
+  // だけでは未チェックアウトを判別できない。中身が空（＝未 populate）なら対象外とする。
   if (underUnpopulatedSubmodule(resolved)) return false;
   try { return !fs.existsSync(resolved); } catch (e) { return false; }
 }
@@ -188,4 +191,11 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseArgs, planningPopulated, isBrokenRef, collectBroken };
+module.exports = {
+  parseArgs,
+  planningPopulated,
+  submodulePaths,
+  underUnpopulatedSubmodule,
+  isBrokenRef,
+  collectBroken,
+};

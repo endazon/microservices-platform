@@ -20,6 +20,11 @@ created: 2026-08-01
 計画リポジトリへ起票済み: [planning#96](https://github.com/endazon/project-planning/issues/96)
 （`plan-feedback` ラベル。計画側 `/triage-feedback` の取り込み対象）。
 
+**反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
+からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
+（`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
+残る指摘は下記「残課題」の 1 件のみ。
+
 ## 起点となる計画書
 
 - 機能要求（FR）: なし（NFR: 保守性・運用性）
@@ -101,6 +106,16 @@ created: 2026-08-01
   （例: `-not -path './templates/*' -not -path './repo-template/*'`）。少なくとも
   「雛形ソリューションを同梱するリポジトリでは探索範囲を絞ること」を既定のコメントに明記する。
   自動発見は「編集不要」を謳っている分、この落とし穴が見えにくい。
+
+## 残課題（planning#98 反映後に判明・追加指摘）
+
+### 7. `copilot-setup-steps.example.yml` だけ雛形ディレクトリ除外が入っていない
+
+指摘 6 は `scripts/setup.sh` と `security.yml` には `-not -path './templates/*'` として反映されたが、
+**同じ自動発見コードを持つ `copilot-setup-steps.example.yml` には入っていない**（planning#98 時点）。
+Copilot coding agent の環境だけ雛形ソリューションを拾って restore が失敗する。
+本リポジトリは当該ファイルで `src/*/backend/*.slnx` の明示ループを維持して回避している。
+→ planning#96 へコメントで追報する。
 
 ## 実装で判明した経緯
 

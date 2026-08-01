@@ -35,7 +35,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -120,9 +120,50 @@ plan_refs: []
 6. `setup.sh` / `security.example.yml` のソリューション自動発見（`find . -maxdepth 4`）が、
    ビルド不可の雛形ソリューション（本リポの `templates/unit-template/`）を拾って失敗する。
 
+### 第 2 ラウンド（planning#98 反映後の再同期）
+
+初回同期（pin `6a1cc9f`）で起票した [planning#96](https://github.com/endazon/project-planning/issues/96) の
+6 件が planning#98（`12cc9b8`）で**すべてキットへ反映された**（ai-stock-trading からの planning#97 と
+併せて計 12 件）。同 pin へ再同期し、固有デルタを次のとおり**縮小**した。
+
+**固有デルタが解消した（キットとバイト一致に戻った）ファイル**
+
+- `scripts/check-doc-links.js` — キットが `.gitmodules` 由来の判定へ一般化（指摘 1）
+- `scripts/setup.sh` / `.github/workflows/security.yml` — キットの自動発見が `./templates/*` を
+  除外するようになった（指摘 6）。明示ループの固有デルタを撤去した
+- `.claude/agents/traceability-auditor.md` — キットが修飾付き ID の除外規則を同梱（指摘 3）
+- `.claude/commands/new-spec.md` / `docs/README.md` / `CLAUDE.md` — `runbook` / `how-to` 種別が
+  正式化（指摘 4）。`docs/how-to/.gitkeep` を追加
+- `scripts/gen-changelog.js` / `scripts/commit-allowlist.json` — テスト注入可能な `applyOverride` と、
+  実データ非依存の allowlist テンプレートを取り込み
+
+**この再同期で見つかった本リポジトリ側の欠陥（キットの新テストが検出）**
+
+`scripts/commit-allowlist.json` に載っていた 5 件の SHA は、**本リポジトリの git 履歴に 1 件も
+存在しなかった**（`git cat-file -t` が全件失敗＝キットが言う「幻 SHA」）。他リポジトリの
+allowlist をそのまま引き継いだものと考えられる。実害としては、規約チェックの除外リストが
+**何も除外していないのに『除外実績がある』ように見え**、以後の追加を正当化しかねない状態だった。
+
+`origin/develop` の全履歴（bot / merge / `[skip ci]` を除く）を `validateSubject` で走査したところ
+**非準拠コミットは 0 件**であったため、allowlist はキットのテンプレート（空）へ戻した。
+以後は `scripts.test.js` の 3 テスト（完全 SHA と reason の存在 / 履歴実在と到達可能性 /
+準拠件名を無意味に除外していないこと）が同型の混入を機械的に止める。
+
+**残した固有デルタ**
+
+- `.github/workflows/copilot-setup-steps.yml` — 雛形除外がキット側に未反映のため、
+  `src/*/backend/*.slnx` の明示ループを維持する。`.NET` は `8.0.x` → `10.0.x` へ揃えた（指摘 5）。
+  キットへは planning#96 のコメントで追報する。
+- `.github/workflows/doc-links-planning.yml` — `.example` 由来の「本ファイルをリネームする」手順を
+  除去（有効化済みの実ファイルのため。PR #433 の AI レビュー指摘）。
+- `.github/workflows/frontend.yml` / `frontend-tests.yml` — キットは IADR 参照を汎用化のため
+  削除したが、本リポジトリでは IADR-0033 / IADR-0034 / IADR-0056 が実在するため残す。
+- `scripts/verify-qdrant-attribute-payload.sh` — キットからは削除された（MSP 固有のため妥当）。
+  本リポジトリの成果物として保持する（IADR-0014 / #71）。
+
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`6a1cc9f`）を指す
+- [x] `planning` submodule が `origin/main`（`12cc9b8`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する
