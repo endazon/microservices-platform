@@ -35,7 +35,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -224,9 +224,38 @@ pin を `35b830a` → `7701d25` へ進めた。第 3 ラウンドで環流した
 実際にこれを踏み、`codeql.yml` の `autobuild` を実ユニットの明示ビルドへ置き換えている。
 [planning#111](https://github.com/endazon/project-planning/issues/111) として起票した。
 
+### 第 5 ラウンド（planning#113 反映後の再同期）
+
+pin を `7701d25` → `c72dbf2` へ進めた。第 4 ラウンドで環流した
+[planning#111](https://github.com/endazon/project-planning/issues/111)（`codeql.example.yml` の雛形トラップ）が
+反映され、あわせて planning#112 由来の**固有テストの受け口**（companion ファイル）が入った。
+
+**最大の成果: `scripts/scripts.test.js` がキットとバイト一致になった**
+
+キットが `scripts/scripts.local.test.js` を自動読み込みする受け口を設けたため、本リポジトリ固有の
+テスト 48 件（`check-doc-links` / `check-unit-dependencies` / `check-image-mapping` /
+`check-realm-constraints` / `check-unit-service-ownership`）を companion へ移した。
+これまで同期のたびに手作業でスプライスしていた `scripts.test.js` が、以後は**上書きコピー 1 回**で済む。
+分類 A（バイト一致）へ移行した。
+
+**その他の変更**
+
+- `.github/workflows/copilot-setup-steps.yml` — キットのコメント追記を取り込み（キットと一致）
+- `.github/workflows/codeql.yml` — キットの【落とし穴】注記が示す置き換えを実施済みである旨と、
+  同種トラップの他 3 か所への相互参照をコメントへ追記
+- `scripts/README.md` — キットの「リポジトリ固有のテストを足す場所」節を取り込み
+
+**この再同期で新たに見つかったキットの不足（指摘 10）**
+
+companion の受け口は「あれば読む」だけであり、**ファイルが消えても exit 0 のまま件数だけが静かに減る**。
+実測で削除前 101 件 → 削除後 53 件、いずれも exit 0 で CI は green のままだった。さらに受け口自体の
+回帰テストは「companion が既に存在すると skip」するため、**この仕組みを使っているリポジトリでは
+一度も実効しない**。planning#108 や PLAN_PROJECT の fail-open と同じ「ジョブは成功するのに検査が
+効いていない」型である。[planning#114](https://github.com/endazon/project-planning/issues/114) として起票した。
+
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`7701d25`）を指す
+- [x] `planning` submodule が `origin/main`（`c72dbf2`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

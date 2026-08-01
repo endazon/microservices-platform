@@ -1,5 +1,5 @@
 ---
-title: impl-handoff-kit の不足 9 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
+title: impl-handoff-kit の不足 10 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
 status: open
 category: その他
@@ -10,7 +10,7 @@ author: Claude
 created: 2026-08-01
 ---
 
-# フィードバック: impl-handoff-kit の不足 9 件（初回 6 件 ＋ 追加 3 件）
+# フィードバック: impl-handoff-kit の不足 10 件（初回 6 件 ＋ 追加 4 件）
 
 ## 種別
 
@@ -23,7 +23,7 @@ created: 2026-08-01
 **反映結果（2026-08-01）**: planning#98（`12cc9b8`）で **6 件すべてが反映された**（ai-stock-trading
 からの planning#97 と併せて計 12 件）。本リポジトリは同 pin へ再同期済みで、1・6 の固有デルタ
 （`check-doc-links.js` / `setup.sh` / `security.yml`）は**解消してキットと一致**した。
-その後の再同期で追加 3 件（下記「残課題」7〜9）を検出し、いずれも起票済み。
+その後の再同期で追加 4 件（下記「残課題」7〜10）を検出し、いずれも起票済み。
 
 ## 起点となる計画書
 
@@ -151,7 +151,24 @@ E2E テストも、そのままでは CI で走らない。
 原因が雛形であることは出力から読み取れない。本リポジトリは Issue #230 で実際にこれを踏み、
 `codeql.yml` の `autobuild` を `src/*/backend/backend.slnx` の明示ビルドへ置き換えている。
 
-→ [planning#111](https://github.com/endazon/project-planning/issues/111) として起票。
+→ [planning#111](https://github.com/endazon/project-planning/issues/111) として起票し、
+**planning#113（`c72dbf2`）で反映済み**（`autobuild` に【落とし穴】注記と置き換え例が入った）。
+本リポジトリの明示ビルドは、その注記が示す置き換えそのものであるため固有デルタとして維持する。
+
+### 10. `scripts.local.test.js` が消えてもテストは緑のまま（第 5 ラウンドで判明）
+
+planning#112 で導入された固有テストの受け口（companion ファイル）は非常に有効で、本リポジトリは
+これにより `scripts/scripts.test.js` を**キットとバイト一致に戻せた**（それまで同期のたびに手作業で
+スプライスしていた）。一方で受け口の実装は「あれば読む」だけであり、companion が消えても
+**exit 0 のまま件数だけが静かに減る**。実測: 削除前 101 件 → 削除後 53 件、いずれも exit 0。
+受け口自体の回帰テストも「companion が既に存在すると skip」するため、**この仕組みを実際に
+使っているリポジトリでは一度も実効しない**。
+
+#108（`scripts.test.js` が CI に載っていない）や PLAN_PROJECT の fail-open 可視化（#110）と
+同じ「ジョブは成功するのに検査が効いていない」型である。
+
+→ [planning#114](https://github.com/endazon/project-planning/issues/114) として起票
+（(1) companion があるのに 1 件も登録しなければ失敗させる、(2) 必須化の opt-in を設ける）。
 
 ## 実装で判明した経緯
 
@@ -182,14 +199,15 @@ E2E テストも、そのままでは CI で走らない。
     `scripts/README.md` の「自動生成（CI）」節にも記載する。
   - 9: `repo-template/.github/workflows/codeql.example.yml` の `autobuild` に、雛形ソリューションを
     拾って失敗する旨の注意書きを置く（`find` の除外では直せないため対処法も示す）。
+  - 10: companion があるのに 1 件も登録しなければ失敗させ、必須化の opt-in（環境変数等）を設ける。
 
 ## 影響範囲
 
 - キットから生成済み・生成予定の**すべての実装リポジトリ**に及ぶ（本リポジトリと
-  `ai-stock-trading` を含む）。ただし 1〜9 のいずれも足場の改善であり、計画書の要求・UC・画面・
+  `ai-stock-trading` を含む）。ただし 1〜10 のいずれも足場の改善であり、計画書の要求・UC・画面・
   計画 ADR の内容には影響しない。
 
-### 反映状況（2026-08-01 時点・planning `7701d25`）
+### 反映状況（2026-08-01 時点・planning `c72dbf2`）
 
 | 指摘 | 反映 | 本リポジトリの状態 |
 | --- | --- | --- |
@@ -201,6 +219,8 @@ E2E テストも、そのままでは CI で走らない。
 | 6 雛形ソリューション除外 | planning#98 → 105 | キットと一致 |
 | 7 Copilot だけ除外漏れ | planning#105 | キットと一致 |
 | 8 `scripts.test.js` の CI 未結線 | planning#110 | キットと一致（`ci.yml` の `scripts-tests`・`scripts/README.md`） |
-| 9 `codeql.example.yml` の雛形トラップ | **未反映**（planning#111） | `autobuild` を実ユニットの明示ビルドへ置換（維持） |
+| 9 `codeql.example.yml` の雛形トラップ | planning#113 | 注記が示す置き換えを実施済み（明示ビルドを維持） |
+| 10 companion 消失が検出されない | **未反映**（planning#114） | `scripts.local.test.js` に固有テスト 48 件を配置 |
 
-9 が取り込まれるまで、`codeql.yml` の明示ビルドは固有デルタ（構成起因）として維持する。
+9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
+明示ビルドは今後も固有デルタ（構成起因）として維持する。
