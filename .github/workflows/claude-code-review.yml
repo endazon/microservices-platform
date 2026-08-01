@@ -57,6 +57,14 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      # CI の状態・ログを参照するために必要。2 か所が同時にこれへ依存する:
+      #   1. アクションが注入する mcp__github_ci__* サーバー。導入前にワークフロートークンが
+      #      actions: read を持つか実際に検証し、無ければ「Skipping CI server installation」と
+      #      警告して導入を取り止める（許可済みのはずのツールが存在しない状態になる）。
+      #   2. --allowedTools の `Bash(gh run list:*)`。gh CLI 側が actions: read を要求するため、
+      #      権限が無いと許可されていても実行時に失敗する。
+      # 注: ツール許可に additional_permissions は使わない（あれはアプリトークンのスコープ用）。
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -112,6 +120,7 @@ jobs:
           echo "Selected model: $MODEL"
 
       - name: Run Claude Code Review
+        id: claude
         uses: anthropics/claude-code-action@v1
         # gh CLI（Issue 発行等）を既定トークンで認証する。gh は GH_TOKEN/GITHUB_TOKEN を参照する。
         env:
@@ -146,6 +155,11 @@ jobs:
           # pull_request_target を使わない構成を維持すること。
           # 書き込み系の git（commit / push / reset 等）はレビューには不要なので入れない。
           #
+          # 【読み取り系 git は必須】アクション自身の組み込みプロンプトが差分の取得手段を
+          # 指示している（`git diff origin/main...HEAD` / `git log origin/main..HEAD` /
+          # `git status`）。許可しないと差分の内容と無関係に**毎回必ず拒否が出る**
+          # （planning 側で同じ欠落により全 PR の CI が赤くなった。issue #146）。
+          #
           # 【前方一致の落とし穴】Bash の許可は**コマンド文字列の前方一致**である。したがって
           # `Bash(git log:*)` を許可しても `git -C planning log` には当たらない。planning を
           # submodule 参照する構成では、pin の進み方・差分・「変更が無いこと」といった
@@ -169,7 +183,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
@@ -248,3 +262,20 @@ jobs:
             そのため作業ツリーに「直近コミットを打ち消す未コミット差分」が見えるのは**正常**であり、
             異常として報告しないこと。これらのファイルをレビューするときは `.claude-pr/` または
             `git show HEAD:<path>` を参照すること。
+
+      # 権限拒否の可視化（安全弁）。
+      #
+      # claude-code-action は、AI がツールを 1 つも実行できなくても
+      # `"subtype": "success", "is_error": false` で終わる。ジョブは緑になり、PR には
+      # 進行中コメントだけが残る。「CI が緑 ＝ レビューが通った」ではなく
+      # 「エラー無く終了した」に過ぎない状態であり、レビュー未実施が誰にも見えない。
+      # CI には承認する人間が居ないため、権限拒否は「待たされた」ではなく
+      # **「その作業は永久に実行されない」**を意味する。ここで止める。
+      #
+      # if: always() が必須である（上の step が失敗した場合こそ内訳を知りたい）。
+      # 実行ログを読めない構成では warn を出して exit 0（fail-open）。
+      - name: Check permission denials
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: node scripts/check-permission-denials.js "$EXECUTION_FILE"

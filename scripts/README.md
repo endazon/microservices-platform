@@ -7,6 +7,8 @@
 | `gen-changelog.js` | コミット履歴（`種別(起点ID): 要約`）から変更履歴を生成 | `CHANGELOG.md` |
 | `gen-openapi-skeleton.js` | 通信仕様書（`docs/api/`）から OpenAPI 雛形を生成 | `docs/api/openapi.yaml` |
 | `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。**未 populate な submodule 配下は対象外にし、その件数を submodule 別に `notice` で報告する**（黙って飛ばすと「破損リンクはありません」が検査していない範囲まで含んだ断定になる） 。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
+| `check-permission-denials.js` | claude-code-action の実行ログ（`outputs.execution_file`）を読み、**権限拒否で実行できなかったツール**を名前と件数で報告（Bash は `Bash(git diff)` のように**コマンド名まで**出す。許可リストの粒度がコマンド単位のため、ツール名だけでは何を足せばよいか決められない。引数は出さない）。1 件でもあれば終了コード 1。CI には承認する人間が居ないため、拒否は「待たされた」ではなく「その作業は永久に実行されない」を意味する（実測: レビューが 17 件の拒否で潰れ、本文を書けないまま `success` で終了）。実行ログを読めない場合は `warn` を出して終了コード 0（fail-open）。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
+| `check-action-versions.js` | ワークフローの `uses: <action>@vN` を集め、**メジャーバージョンの退行**を検出。`action-versions.json` の下限を下回る、または `--compare-with` で指定したディレクトリ（Dependabot 管理下のリポジトリ直下）より古ければ終了コード 1。Dependabot は github-actions エコシステムでは**リポジトリ直下しか走査しない**ため、配布テンプレートは自動追随しない（planning#148）。表に無いアクション・使われていない表エントリは `warn`。`--check-latest` で GitHub API から新しいメジャーを確認（warn のみ・fail-open）。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 2 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
@@ -32,6 +34,10 @@ node scripts/gen-changelog.js --out CHANGELOG.md
 node scripts/gen-openapi-skeleton.js --src docs/api --out docs/api/openapi.yaml
 node scripts/check-doc-links.js                    # 仕様書の相対リンク切れを検査（再発防止）
 node scripts/check-ai-workflow-config.js           # AI ワークフローのツール許可設定を検査
+node scripts/check-action-versions.js              # Actions のバージョン退行を検査
+node scripts/check-action-versions.js --compare-with-ref origin/develop  # 同期による巻き戻りを検査
+node scripts/check-action-versions.js --check-latest  # 新しいメジャーが出ていないか確認
+node scripts/check-permission-denials.js <log>     # 実行ログの権限拒否を検査（CI では自動実行）
 node scripts/scripts.test.js                       # 上記スクリプト群の単体テスト
 node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
@@ -69,7 +75,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `scripts-tests` | `node scripts/scripts.test.js`（本 README のスクリプト群の横断テスト。`fetch-depth: 0` が必要） |
 | `commit-messages` | `check-commit-messages.js`（コミット件名の規約と ADR/IADR 実在性） |
 | `doc-links` | `check-doc-links.js`（相対リンクの実在） |
-| `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査 |
+| `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。`fetch-depth: 0` が必要） |
 | `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
 | `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
 | `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
@@ -80,6 +86,41 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
 > 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある
 > （`changelog.yml` は push でしか起動しないため、壊れるのはマージ後）。
+
+### リポジトリ固有の Actions を足す場所
+
+`action-versions.json` は**キットが配布する下限表**であり、キットの更新のたびに差し替わる。
+本リポジトリだけが使うアクション（デプロイ系・クラウド系など）を同ファイルへ直接追記すると、
+`scripts.test.js` と同じく**バイト一致が崩れ、以後の同期で毎回手動マージが要る**。
+
+固有の下限は **`scripts/action-versions.repo.json`** に置く。存在すれば `expected` / `$exempt`
+をマージして読む（無ければ何もしない）。
+
+```json
+{
+  "$comment": "本リポジトリ固有のアクション。キットの action-versions.json は編集しない。",
+  "expected": { "azure/setup-helm": 5 },
+  "$exempt": { "some/action": "タグ形式がメジャーを持たないため" }
+}
+```
+
+追記しないと `… は action-versions.json に無いため下限を検査していない` の警告が
+**アノテーションとして毎回出続ける**。常時出る警告は「読まなくてよいもの」として学習され、
+`ci-annotate` を入れた目的（緑ジョブに埋もれる警告の可視化）そのものを損なう。
+
+> **現状、本リポジトリに companion は不要である。** 使用中の 10 アクションはすべてキットの
+> 下限表に載っており（`github/codeql-action` は `$exempt`）、警告はゼロである。空の companion を
+> 置くと「書き忘れ」として `warning:` が出るため、固有アクションを導入するまで作成しない。
+
+| 状態 | 挙動 |
+| --- | --- |
+| companion なし | 何もしない（キット既定） |
+| `expected` / `$exempt` が両方とも空 | `warning:`（書き忘れの検出） |
+| JSON として壊れている | **失敗**（黙って無視すると「置いたのに効かない」状態になる） |
+| キットの下限を**下げて**いる | `warning:`（退行を検出できなくなる方向の変更のため） |
+| git 未追跡 | `warning:`（CI に存在せず、追記した下限が効かない） |
+
+> **このファイルも必ずコミットする。** 理由は `scripts.repo.test.js` と同じである。
 
 ### リポジトリ固有のテストを足す場所
 
