@@ -37,7 +37,7 @@ plan_refs: []
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903`）と、
+- 対象: `planning` submodule の pin 更新（`10d8ce2` → `6a1cc9f` → `12cc9b8` → `35b830a` → `7701d25` → `c72dbf2` → `30a4b78` → `cff9b6c` → `25b4291` → `3325903` → `4d3eb6b`）と、
   `impl-handoff-kit/repo-template` 配下の全ファイルの本リポジトリへの反映。
   キットに不足していた点の計画リポジトリへのフィードバック起票（`feedback/`）。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin。
@@ -375,6 +375,43 @@ pin を `25b4291` → `3325903` へ進めた。第 8 ラウンドで環流した
 起票し、比較基準を 2 ファイルの `setup-*` の**和集合**にする案を示した。
 本リポジトリは両ワークフローとも `setup-dotnet` のみで対称なため、現時点の実害は無い。
 
+### 第 10 ラウンド（planning#132 / #133 反映後の再同期・環流の決着）
+
+pin を `3325903` → `4d3eb6b` へ進めた。第 9 ラウンドで環流した
+[planning#130](https://github.com/endazon/project-planning/issues/130)（`toolchainDrift` の誤検知）が
+planning#132 で反映され、**環流した 15 件がすべて決着した**。
+
+**適用内容**
+
+- `scripts/check-ai-workflow-config.js` — キットとバイト一致（分類 A）。比較基準が `TOOLCHAINS`
+  全体（`requireUses: false`）へ変わり、誤検知と偽陰性（`setup-*` を書かない `node` の複製漏れ）を
+  同時に解消。既定名で引き当てられない構成への `driftScopeWarnings` も新設された
+- `.github/workflows/ci.yml` / `scripts/README.md` — 該当箇所をキットへ揃えた
+
+**独立に再現確認した 3 ケース**（キットの自己試験とは別に、本リポジトリで実行）
+
+| ケース | 結果 |
+| --- | --- |
+| `setup-*` 非対称でツール指定が同一（旧・誤検知） | 検出されない（解消） |
+| `Bash(node:*)` の複製漏れ（旧・偽陰性） | 検出される |
+| 既定名でない 2 ファイル構成 | `warn` で「検査が実行されていない」ことを可視化 |
+
+**planning#133（`/sync-impl`）との互換性**
+
+計画側に実装 → 計画の逆方向同期（`tools/impl-sync/`）が新設された。本リポジトリの
+`docs/adr` / `feedback` を GitHub API 経由で読み、IADR と計画 ADR の対応表を生成する。
+本リポジトリの IADR 116 件はすべて frontmatter を持ち、うち 90 件が計画 ADR を参照しているため
+そのまま解釈できる（不足なし）。
+
+なお同ツールは「記録 1 件 ↔ 環流 1 件」で到達を判定するため、本作業のように 1 ファイルへ
+多数の指摘を集約すると個々の未決着が見えなくなる。今回は全件決着したため実害は無いが、
+以後キット側の不足は**記録を分けて起こす**方針とし、`feedback/` の記録へ明記した。
+
+**この再同期で新たに見つかったキットの不足**
+
+無し。前ラウンドまでの指摘はすべて反映され、新規に投入されたコードを独立に検証しても
+不具合は見つからなかった。
+
 ## Issue #434 の受け入れ基準
 
 本作業のキット同期が Issue #434（最優先バグ）の是正を運ぶ。同 issue の受け入れ基準に対する実測結果。
@@ -403,7 +440,7 @@ pin を `25b4291` → `3325903` へ進めた。第 8 ラウンドで環流した
 
 ## 受け入れ基準
 
-- [x] `planning` submodule が `origin/main`（`3325903`）を指す
+- [x] `planning` submodule が `origin/main`（`4d3eb6b`）を指す
 - [x] 分類 A のファイルが `repo-template` と **バイト一致**する
 - [x] 分類 B のファイルが、キット由来の記述をすべて含み、固有デルタが上記 4 種に限られる
 - [x] `node scripts/check-ai-workflow-config.js --self-test` と実チェックが成功する

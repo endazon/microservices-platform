@@ -1,7 +1,7 @@
 ---
 title: impl-handoff-kit の不足 15 件（submodule リンク判定の一般化・Actions 版数・自己不整合・CI 未結線ほか）
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: microservices-platform
@@ -237,8 +237,21 @@ planning#127 の `toolchainCommandsOf(text, tools)` は比較対象を**各フ�
 副次的に、`toolchainDrift` はファイル名を `claude-coding` / `claude-code-review` の部分一致で
 解決し、見つからなければ黙って空を返す（別名・統合構成では検査が無効になる）。
 
-→ [planning#130](https://github.com/endazon/project-planning/issues/130) として起票
-（比較の基準を 2 ファイルの `setup-*` の**和集合**にする）。
+→ [planning#130](https://github.com/endazon/project-planning/issues/130) として起票し、
+**planning#132（`7149fc6`）で反映済み**。比較基準を `TOOLCHAINS` 全体（`requireUses: false`）へ変え、
+誤検知（指摘 15）と偽陰性（`setup-*` を書かない `node` の複製漏れ＝planning#131）を同時に解消した。
+副次指摘（既定名で引き当てられないと無言で無効）にも `driftScopeWarnings` が新設された。
+本リポジトリで 3 ケースとも独立に再現確認済み。
+
+## 結び（2026-08-01 時点）
+
+**環流した 15 件はすべて決着した**（14 件がキットへ反映、1 件＝指摘 13 は前提誤りで取り下げ）。
+起票した planning issue（#96 / #104 / #108 / #111 / #114 / #117 / #121 / #126 / #130）は
+**全件クローズ済み**。よって本記録の `status` を `open` → `accepted` とする。
+
+以後キット側に新たな不足を見つけた場合は、本記録に追記せず**別の記録として起こす**
+（計画側の `/sync-impl` は「記録 1 件 ↔ 環流 1 件」で到達を判定するため、
+1 ファイルに多数の指摘を集約すると個々の未決着が見えなくなる）。
 
 ### 13.（取り下げ）`git -C planning` が CI で誤答するという報告は誤りだった
 
@@ -323,7 +336,7 @@ PAT 未登録等で取得に失敗した場合も当該ステップが**失敗�
 | 12 `git -C planning` が settings.json に未追随 | planning#125 | キットと一致（warn 解消を確認） |
 | 13 `git -C planning` が CI で誤答 | **取り下げ**（planning#123・前提誤り） | キット準拠のまま。誤報告を訂正済み |
 | 14 部分的な複製漏れを検出しない | planning#127 | キットと一致（検出・復元を実測） |
-| 15 `toolchainDrift` の誤検知 | **未反映**（planning#130・不具合） | 両ワークフローが対称のため現時点の実害なし |
+| 15 `toolchainDrift` の誤検知 | planning#132 | キットと一致（誤検知の解消を独立に再現確認） |
 
 9 の注記が示す「実ビルド対象の明示指定」は `find` の除外では代替できないため、`codeql.yml` の
 明示ビルドは今後も固有デルタ（構成起因）として維持する。
