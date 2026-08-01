@@ -4,6 +4,23 @@
 
 ### 新機能
 
+- **FR-11,IADR-0112**: 報告書を種別ごとの用途へ分離し取引判断の割当モデルを改定する (#422) (15d6f7f)
+- **IADR-0110**: 補完の終了理由を計上して拒否率を可観測にする (#417) (3f3931c)
+- **IADR-0109**: OpenAI 互換 finish_reason を正準語彙の StopReason へ正規化する (#415) (76ab7ca)
+- **IADR-0108**: headlamp-viewer の SA＋閲覧専用 RBAC を manifest 化する (#413) (f6662a9)
+- **IADR-0106**: rag-answer の割当モデルを claude-sonnet-5 へ追随する (#402) (82cff5e)
+- **ADR-0025,IADR-0101,IADR-0102**: LLM 既定モデルを claude-opus-5 へ追従し取引判断は claude-opus-4-8 へピン留め (#376) (d1b9f1c)
+- **IADR-0099**: Vault＋ESO secret 供給 PR-4 — 基盤 secret を ExternalSecret 化（#310・最終） (#371) (da5ea86)
+- **IADR-0098**: Vault＋ESO secret 供給 PR-3 — OIDC client secret 群を ExternalSecret 化（#310） (#370) (17e7ee9)
+- **IADR-0097**: Vault＋ESO secret 供給 PR-2 — minio-credentials/wikijs-db/wikijs-sync（#310） (#369) (bee3d87)
+- **IADR-0096**: Vault＋ESO(k8s auth) で secret 自動供給へ段階移行 PR-1（llm 疎通・#310） (#368) (a435132)
+- **IADR-0095**: 経路B Wiki.js を Keycloak OIDC 集約 URL 対応＋50000 集約（#353 子タスク5・最終） (#367) (e56c426)
+- **IADR-0094**: 経路B dev Vault を Keycloak OIDC(auth/oidc) 連携（#353 子タスク4） (#366) (305e987)
+- **IADR-0093**: 経路B MinIO Console を Keycloak OIDC(SSO) 連携＋50000 集約（#353 子タスク3） (#365) (47bc091)
+- **IADR-0090,IADR-0091**: Grafana OIDC をエッジ集約後 URL に整合（#353 PR-2） (#361) (64730cd)
+- **IADR-0092**: 経路B ArgoCD を Keycloak OIDC(SSO) 連携（#353 子タスク2） (#359) (95f8ffc)
+- **IADR-0091**: 経路B ローカルエッジ集約 — platform 80/443 ＋ 管理ツール 50000（PR-1） (#357) (1bf0e51)
+- **IADR-0090**: 経路B Grafana を Keycloak OIDC 連携し匿名 Admin を廃止 (#355) (f3a9b52)
 - **IADR-0086**: backend OIDC の metadata 取得先と issuer 検証値を分離し単一エッジ host OIDC を CoreDNS 無しに配線 (#338) (f9d281c)
 - **IADR-0085**: セルフホスト埋め込み（Ruri v3）推論基盤を opt-in 配備物として追加し retrieval/ingestion を配線 (#335) (7d8edc2)
 - **IADR-0083**: データソース定期同期を advisory lock で単一書き手化（本番マルチレプリカの冗長 fetch 排除） (#332) (e1d48b8)
@@ -83,6 +100,18 @@
 
 ### 不具合修正
 
+- **FR-04,FR-11,IADR-0114**: Anthropic 応答の未知 content ブロックで LLM 応答全体を失う欠陥を是正する (#431) (987dc86)
+- **FR-11,IADR-0113**: 月報の割当モデルを ZDR 対応の claude-opus-5 へ改定する (#429) (404b1c3)
+- **IADR-0111**: 縮退応答が名乗る使用モデルをゲートウェイ報告値へ是正する（存在しない Llm:DefaultModel を除去） (#411) (374f7ea)
+- **IADR-0107**: 経路B の AST 3 サービス重複デプロイを除去する（原因A・consumers 4→2） (#408) (6ed3667)
+- **IADR-0095**: 非 edge port-forward の Wiki.js OIDC redirect 不整合を解消する (#401) (b9a1229)
+- **IADR-0105**: HEADLAMP=1 が apiserver OIDC フラグを付与しクラスタ起動不能になる分岐を除去する (#400) (619782f)
+- **IADR-0104**: LlmGateway が stop_reason:"refusal" を判別できず空応答へ縮退する不具合を修正する (#391) (e9baf41)
+- **IADR-0103**: 経路B の SSO を再構築後も自動復旧させる（admin 恒久化・ツール別 claim・ESO 後 rollout・argocd DNS） (#389) (90aa67f)
+- **IADR-0091**: 経路B の WIKI_BASE_URL を edge 集約 URL へ揃え SC-04 の到達を整合する (#378) (047145e)
+- **IADR-0091**: 経路B headlamp/spa-web の集約後 redirect URI を realm に追加 (#377) (7fc6e92)
+- **IADR-0100**: 経路B ノード inotify 上限を特権 sysctl DaemonSet で引き上げる (#375) (4ec1688)
+- **IADR-0096**: ESO マニフェストを external-secrets.io/v1 へ移行し chart 版を pin する (#374) (59e4e6a)
 - **ADR-0010**: 本番 chart で LlmGateway の Llm__ApiKey を Secret 経由で配線する (#350) (79c77bf)
 - **IADR-0077**: ArgoCD install を server-side apply に是正し大 CRD の annotation 上限超過を回避する (#349) (2a346a1)
 - **SC-04**: 経路B で Wiki 閲覧の公開 URL(WIKI_BASE_URL) を frontend config へ配線 (#347) (7d5d4e6)
@@ -133,6 +162,11 @@
 
 ### ドキュメント
 
+- **IADR-0110,IADR-0114**: 計画 ADR-0006 改名への参照追随（夜間 doc-links 復旧）とクロスリポ issue 修飾規約の明文化 (#432) (0a70796)
+- **IADR-0095**: wiki-oidc README の Site URL 記述を経路別に整合させる (#414) (9e2ea85)
+- **IADR-0084**: Headlamp のローカルログインを token 方式へ正式化し #328 を wontfix・#388 統合として記録する (#393) (f344f97)
+- **IADR-0070,IADR-0071,IADR-0072,IADR-0073,IADR-0089**: 実装ADR 索引の欠落 5 件を backfill (#360) (97de766)
+- **NFR**: CHANGELOG を自動更新 (#306) (f4bc7bd)
 - **NFR**: AST 由来の SC-02/SC-03 参照(risk-controls/monitor)をコメントで修飾する (#333) (c91c67a)
 - **NFR**: ユニット横断 ID のプロジェクト修飾規約を traceability.md に追加 (#316) (e61a467)
 - **NFR**: コネクタ資格情報の平文保存（Vault 移行までの暫定）を security.md に明記・Vault 移行を一元追跡 (#311) (597852d)
@@ -191,6 +225,21 @@
 
 ### ビルド
 
+- **deps**: bump github/codeql-action from 4 to 4.37.3 (#426) (c39ff22)
+- **deps**: bump src/ai-stock-trading from `b66fcae` to `655e2ed` (#425) (0a6b2a9)
+- **deps**: bump planning from `0578ec6` to `10d8ce2` (#424) (33db411)
+- **deps**: bump src/ai-stock-trading from `3c7e20c` to `b66fcae` (#419) (527786b)
+- **deps**: bump src/ai-stock-trading from `cc93e3a` to `3c7e20c` (#416) (e173bc4)
+- **deps**: bump src/ai-stock-trading from `3447a7d` to `cc93e3a` (#409) (ecbef49)
+- **deps**: bump src/ai-stock-trading from `905baed` to `3447a7d` (#406) (d5ac38a)
+- **deps**: bump planning from `d02fa17` to `0578ec6` (#404) (b0816ac)
+- **deps**: bump src/ai-stock-trading from `0f09ffd` to `905baed` (#405) (3d504df)
+- **deps**: bump src/ai-stock-trading from `23b4521` to `0f09ffd` (#386) (06f4503)
+- **deps**: bump planning from `67f2185` to `d02fa17` (#387) (489cfe8)
+- **deps**: bump src/ai-stock-trading from `3b55732` to `d1aabb0` (#373) (4a2aa22)
+- **deps**: bump src/ai-stock-trading from `8cce9e2` to `3b55732` (#372) (d2d14ac)
+- **deps**: bump src/ai-stock-trading from `c3ffbdd` to `8cce9e2` (#363) (e01766d)
+- **deps**: bump planning from `f099322` to `94a7b78` (#364) (753e209)
 - **deps**: bump planning from `f128c20` to `f099322` (#352) (fc4ef16)
 - **deps**: bump src/ai-stock-trading from `451cd7d` to `c3ffbdd` (#351) (40c523e)
 - **deps**: bump planning from `8fcc468` to `f128c20` (#322) (16ab204)
@@ -229,6 +278,7 @@
 
 ### その他
 
+- Add LICENSE file (1a98939)
 - **IADR-0088**: 浮動タグ latest+IfNotPresent の再デプロイ安全性を是正・明文化する (#339) (a584fc3)
 - **IADR-0066**: ローカル k8s(k3d) dev 環境の MSP 側資産（in-cluster インフラ/values-local/導線） (#267) (36d81a9)
 - **NFR**: dependabot に submodule pin 自動更新（gitsubmodule）を追加 (#261) (4323e82)
