@@ -27,16 +27,16 @@ plan_refs:
   [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) /
   [ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md) が土台）
 - 関連する実装仕様書: [20260802_issue-454_reimplementation-kickoff.md](../specs/20260802_issue-454_reimplementation-kickoff.md)
-- 関連 issue: #454（親トラッキング）と配下の 18 件（#438〜#453 / #455〜#458）
+- 関連 issue: #454（親トラッキング）と配下の 20 件（#438〜#453 ＝ 16 件 ＋ #455〜#458 ＝ 4 件）
 - 上流の起点: project-planning PR #144（2026-08-02 マージ）
 
 ## コンテキストと課題
 
 計画リポジトリの大幅更新（オープン issue 40 件の反映・ADR 11 件の起案・モックアップ全 24 画面の同期）を
-受け、本リポジトリの実装をほぼ全面的に作り直す。作業量は**子 issue 18 件・4 フェーズ**にわたり、
+受け、本リポジトリの実装をほぼ全面的に作り直す。作業量は**子 issue 20 件・4 フェーズ**にわたり、
 数週間〜数ヶ月の期間、旧実装と新実装が同一リポジトリに同居する。
 
-決めるべきは「この 18 件をどの単位でブランチ / PR に切り、どこへ統合するか」である。本リポジトリには
+決めるべきは「この 20 件をどの単位でブランチ / PR に切り、どこへ統合するか」である。本リポジトリには
 既に **develop を前提に動く自動化とゲート**があり、統合方式の選択がそれらの有効性を直接左右する。
 
 - [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) のカバレッジ ratchet

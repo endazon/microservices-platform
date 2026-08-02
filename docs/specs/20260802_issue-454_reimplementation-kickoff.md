@@ -29,11 +29,11 @@ plan_refs:
 ## 目的・背景
 
 計画リポジトリの大幅更新（オープン issue 40 件の反映・ADR 11 件の起案・モックアップ全 24 画面の同期）を
-受け、本リポジトリの実装をほぼ全面的に作り直す（#454）。子 issue は 18 件・4 フェーズに及ぶ。
+受け、本リポジトリの実装をほぼ全面的に作り直す（#454）。子 issue は 20 件・4 フェーズに及ぶ（#438〜#453 ＝ 16 件 ＋ #455〜#458 ＝ 4 件）。
 
 **本作業は #454 のうち「着手準備」だけを対象とする**。すなわち、各子 issue が同じ前提の上で並行して
 走り出せるように、(1) 新しい計画書を本リポジトリから参照可能にし、(2) 計画 ID レンジの拡大に
-機械的検査を追随させ、(3) 18 件を回す進行規約を確定する。各子 issue の実装そのものは行わない。
+機械的検査を追随させ、(3) 20 件を回す進行規約を確定する。各子 issue の実装そのものは行わない。
 
 準備を独立させる理由は、**このまま着手すると全子 issue が同じ誤りを踏む**ためである。
 
@@ -176,7 +176,7 @@ plan_refs:
       `check-commit-messages.js` の ADR 実在性検査が新 ADR スコープを解決できる
 - [x] `.claude/rules/traceability.md` の ID レンジが計画書の実測値（`FR-01..21` / `UC-01..11` / `SC-01..21`）と一致する
 - [x] 進行規約が IADR として記録され、`docs/adr/README.md` の索引に登録されている
-- [x] 子 issue 18 件すべてに起点 ID とブランチ名が対応づけられている（上表）
+- [x] 子 issue 20 件すべてに起点 ID とブランチ名が対応づけられている（上表）
 - [x] `node scripts/check-doc-links.js` が破損リンク 0 で成功する
 - [x] `node scripts/check-commit-messages.js` が本 PR のコミット件名を通す
 
@@ -194,6 +194,13 @@ plan_refs:
 | IADR 索引の整合 | `docs/adr/README.md` に `IADR-0116` の行が在ること（連番・欠番なし） |
 
 受け入れ基準 → テスト写像を各 PR で必須化する仕組み自体は **#453 の対象**であり、本作業では扱わない。
+
+**CI の起動条件（実測・後続 20 件の前提）**: [`ci.yml`](../../.github/workflows/ci.yml) の `on:` に `paths:` は
+**無く**、`pull_request: types: [opened, synchronize, reopened]` のみである。すなわち `lint`
+（`dotnet format --verify-no-changes`）と `build-and-test`（`dotnet restore/build/test`）を含むバックエンド CI は
+**変更内容に関わらず全 PR で走る**。`paths` フィルタを持つのは [`frontend.yml`](../../.github/workflows/frontend.yml) /
+[`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) の 2 本のみで、こちらは `src/*/frontend/**` 等の
+変更時のみ起動する。文書のみの PR でもバックエンド CI が緑である必要がある点に注意する。
 
 ## 計画書との差異
 
