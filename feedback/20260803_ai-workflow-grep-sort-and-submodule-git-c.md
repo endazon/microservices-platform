@@ -174,3 +174,14 @@ Bash の許可はコマンド文字列の**前方一致**であるため、`Bash
 計画リポジトリへ [planning#163](https://github.com/endazon/project-planning/issues/163) として起票済み
 （`plan-feedback` ラベル。上記の提案 1〜4 をそのまま記載）。反映されたら本リポジトリの暫定デルタ
 （両ワークフローと `.claude/settings.json` の 3 系統）を撤去し、キットとバイト一致へ戻す。
+
+追記コメント 2 件:
+
+1. [追加提案 5・6](https://github.com/endazon/project-planning/issues/163#issuecomment-5159486402)
+   — MCP ツール名の版依存（新旧併記）と `Bash(git show:*)` の非対称。
+2. [提案 5 の補足](https://github.com/endazon/project-planning/issues/163#issuecomment-5159537243)
+   — **誤った前提の発生源はキットの `.claude/settings.json` の `//` 注記**であること。
+   許可リストを直しても、直し方を教える注記が「`get_issue` 系は廃止名」のままなら、
+   後日「廃止名だから」と削られて**当たらないエントリの状態へ静かに戻る**（削っても拒否は
+   出ない）。同ファイルは AI による編集が deny されており人手でしか直せないため、
+   キットが正しい文言を配布する価値が他のファイルより高い、という点も添えた。
