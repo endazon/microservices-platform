@@ -120,7 +120,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
 // 件数はログに出ていたが誰も見ておらず、CI は緑・PR には進行中コメントだけが残った。
 
 {
-  const { parseEvents, collectDenials, formatDenials, looksLikeDenial, labelOf } = require('./check-permission-denials.js');
+  const { parseEvents, collectDenials, formatDenials, looksLikeDenial, labelOf, isCritical } = require('./check-permission-denials.js');
 
   ok('拒否ゼロは count 0（正常な実行を落とさない）', () =>
     assert.strictEqual(collectDenials([{ type: 'result', permission_denials_count: 0 }]).count, 0));
@@ -175,6 +175,89 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
 
   ok('Bash 以外はツール名のまま', () => assert.strictEqual(labelOf('Task', {}), 'Task'));
 
+  // issue #158: 旧実装は先頭セグメントだけを見て、許可済みの git show を名指しし、
+  // 実際の原因（未許可の cmp）を隠していた。報告が原因を指さないと塞ぎようがない。
+  ok('パイプの全セグメントを列挙する（実障害 git show | cmp の形）', () =>
+    assert.strictEqual(
+      labelOf('Bash', { command: 'git show origin/main:a.yml | cmp - a.yml' }),
+      'Bash(git show | cmp)'
+    ));
+
+  ok('フラグは 2 トークン目に採らない（head -5 は head）', () =>
+    assert.strictEqual(labelOf('Bash', { command: 'git log | head -5' }), 'Bash(git log | head)'));
+
+  // issue #160: 2 トークン固定だと Bash(git -C) になり、対処に必要なサブコマンドが消える。
+  ok('git -C <dir> <sub> は許可リストと同じ粒度で出す', () =>
+    assert.strictEqual(
+      labelOf('Bash', { command: 'git -C planning rev-parse HEAD' }),
+      'Bash(git -C planning rev-parse)'
+    ));
+
+  // 実測: `2>&1` が `&` で分割され、存在しないコマンド `1` が報告に出た。
+  ok('2>&1 を分割してコマンド `1` を作らない', () =>
+    assert.strictEqual(labelOf('Bash', { command: 'ls -la 2>&1 | head -5' }), 'Bash(ls | head)'));
+
+  ok('fd 複製だけならリダイレクト注記の対象にしない', () =>
+    assert.notStrictEqual(
+      collectDenials([
+        { type: 'result', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'node x.js 2>&1' } }] },
+      ]).redirect,
+      true
+    ));
+
+  // 実測: `echo "exit:$?"` の引用符付き引数がそのままラベルに出ていた。
+  ok('引用符付き引数はラベルに出さない', () =>
+    assert.strictEqual(
+      labelOf('Bash', { command: 'git show a | diff - b | head -20 | echo "exit:$?"' }),
+      'Bash(git show | diff | head | echo)'
+    ));
+
+  ok('リダイレクトが原因の拒否は注記で示す（許可済みに見えるため）', () => {
+    const r = collectDenials([
+      { type: 'result', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'git show a:b > /tmp/x' } }] },
+    ]);
+    assert.strictEqual(r.redirect, true);
+    assert.match(formatDenials(r), /リダイレクト/);
+  });
+
+  ok('パイプがあれば「後段を疑え」の注記を出す', () =>
+    assert.match(
+      formatDenials(collectDenials([
+        { type: 'result', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'git show a | cmp - b' } }] },
+      ])),
+      /後段のコマンドかもしれない/
+    ));
+
+  ok('パイプが無ければ注記を出さない', () =>
+    assert.doesNotMatch(
+      formatDenials(collectDenials([
+        { type: 'result', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'git diff' } }] },
+      ])),
+      /後段のコマンドかもしれない/
+    ));
+
+  // issue #155: 内訳がジョブログにしか無いと、レビュー本文の「✅ 実測」との突き合わせができない。
+  ok('拒否の内訳を実行サマリ（人が読む場所）へ書く', () => {
+    const { writeStepSummary } = require('./check-permission-denials.js');
+    const fsw = require('fs');
+    const patw = require('path');
+    const osw = require('os');
+    const tmp = patw.join(fsw.mkdtempSync(patw.join(osw.tmpdir(), 'pdsum-')), 'summary.md');
+    const prev = process.env.GITHUB_STEP_SUMMARY;
+    process.env.GITHUB_STEP_SUMMARY = tmp;
+    try {
+      assert.strictEqual(writeStepSummary(collectDenials([
+        { type: 'result', permission_denials: [{ tool_name: 'Bash', tool_input: { command: 'git ls-tree HEAD' } }] },
+      ])), true);
+      const body = fsw.readFileSync(tmp, 'utf8');
+      assert.match(body, /Bash\(git ls-tree\)/);
+      assert.match(body, /実測/); // 「実測したという主張を疑え」の注意書き
+    } finally {
+      if (prev === undefined) delete process.env.GITHUB_STEP_SUMMARY;
+      else process.env.GITHUB_STEP_SUMMARY = prev;
+    }
+  });
+
   ok('ツール名が判らなくても件数は必ず報告する（実運用の 17 件の形）', () => {
     const r = collectDenials([{ type: 'result', permission_denials_count: 17 }]);
     assert.strictEqual(r.count, 17);
@@ -184,6 +267,27 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
 
   ok('NDJSON・壊れた行があっても読めた分で判断する', () =>
     assert.strictEqual(parseEvents('{"type":"result","permission_denials_count":3}\n{壊れ').length, 1));
+
+  // 6 巡目の実測（issue #158 の続報）: プロセス置換が壊れたラベルになっていた。
+  ok('プロセス置換 <(…) の中のコマンドを露出させる', () =>
+    assert.strictEqual(
+      labelOf('Bash', { command: 'diff <(git show a:f) <(git show b:f)' }),
+      'Bash(diff | git show)'
+    ));
+
+  ok('サブコマンドを持たないコマンドの引数はラベルへ出さない（echo done → echo）', () =>
+    assert.strictEqual(labelOf('Bash', { command: 'git -C planning show x | echo done' }), 'Bash(git -C planning show | echo)'));
+
+  // 段階ポリシー: 「拒否 1 件でも赤」をやめ、「実行を実質潰した拒否だけ赤」にする。
+  // 根拠は実運用 6 巡の実測（17 → 12 → 8 → 5 → 3 → 2 件）。5 件以上はすべて実害を伴い、
+  // 4 件以下はすべてレビュー本文が正常だった。境界はその間に置く。
+  ok('段階ポリシー: 元障害（17/21）は失敗・探索的な 2/43 は失敗させない', () => {
+    assert.strictEqual(isCritical({ count: 17, numTurns: 21 }, 4), true);
+    assert.strictEqual(isCritical({ count: 12, numTurns: 30 }, 4), true);
+    assert.strictEqual(isCritical({ count: 2, numTurns: 43 }, 4), false);
+    assert.strictEqual(isCritical({ count: 3, numTurns: 6 }, 4), true); // 半数以上は件数が少なくても失敗
+    assert.strictEqual(isCritical({ count: 1, numTurns: 43 }, 0), true); // STRICT は従来どおり
+  });
 
   // 検証器自身の自己試験が通ること（check-ai-workflow-config と同じ扱い）。
   ok('check-permission-denials の自己試験が通る', () => {
