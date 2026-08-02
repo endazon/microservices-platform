@@ -21,7 +21,7 @@ plan_refs: []
 - 関連 ADR: [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
   （impl-handoff-kit を正とする同期規約。本作業はその規約の適用であり、新規の実装判断は生じない）
 - 計画書リンク: `planning/tools/impl-handoff-kit/`（`HOWTO.md` / `repo-template/`）
-- 上流の起点: planning#145 / #146 / #148 / #149 / #152 / #153 / #155 / #157 / #158 / #160 / #161
+- 上流の起点: planning#145 / #146 / #148 / #149 / #152 / #153 / #155 / #157 / #158 / #160 / #161 / #162
   （AI ワークフローが「緑のまま実質未実施」「成果物は正しいのに赤」になる欠陥と、
   キット同期そのものが Actions のバージョンを巻き戻す欠陥、レビューが未実施の検証を
   「実測」と偽る欠陥、およびそれらの検出器）
@@ -29,10 +29,10 @@ plan_refs: []
 ## 目的・背景
 
 前回の全面同期（[20260801_impl-handoff-kit-sync.md](20260801_impl-handoff-kit-sync.md) / PR #433）以降、
-計画リポジトリに 9 コミット（`9cd3499` → … → `3bdc8f8`）が積まれ、キットに
+計画リポジトリに 10 コミット（`9cd3499` → … → `aeb97c4`）が積まれ、キットに
 **AI ワークフローの失敗を可視化・予防する 2 つの検査器**と、それに伴うワークフローの是正が入った。
 
-取り込む是正は次の 8 点である。いずれもジョブの成否・報告が実態と食い違う欠陥である。
+取り込む是正は次の 9 点である。いずれもジョブの成否・報告が実態と食い違う欠陥である。
 
 1. **緑のまま実質未実施（planning#145）**: `claude-code-action` は、AI がツールを 1 つも実行できなくても
    `"subtype": "success", "is_error": false` で終了する。実測ではレビューが 21 ターン中 17 件の権限拒否で
@@ -84,10 +84,20 @@ plan_refs: []
    プロンプトに「長い連鎖のワンライナーを作らない（鎖のどこかに未許可コマンドが混ざると
    **鎖全体が実行されず前段の結果も得られない**）」「`$?` はパイプの後では直前 1 コマンドの
    結果しか表さないため判定に使えない」を追記した。
+9. **「1 件でも失敗」が常態化して目的を壊す（planning#162）**: 6〜8 の是正を重ねてもなお、
+   レビューが数件の拒否で赤くなり続けた。**「成果物は正しいのに赤」の常態化は、拒否の赤を
+   無視する学習を生み、検査そのものの目的を壊す**（planning#145 が可視化しようとしたのは
+   「レビューが実質未実施」であり、「数件のコマンドが通らなかった」ではない）。
+   キットは失敗判定を**段階ポリシー**へ変えた。件数が許容値（既定 4・`PERMISSION_DENIALS_TOLERANCE`
+   で変更可）を超えるか、**拒否がターン数の半分以上**なら exit 1。それ未満は警告
+   （アノテーション + 実行サマリ）のみで exit 0。`STRICT_PERMISSION_DENIALS=1` で旧挙動に戻せる。
+   あわせて、許可リストで解決できない構文（`> /dev/null` を含むリダイレクト全般・
+   プロセス置換 `<(…)`・コマンド置換 `$(…)`）をプロンプトで明示した。**これらは中のコマンドが
+   許可済みでも拒否される**ため、許可を足しても解決しない。
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`9cd3499` → `3bdc8f8`）と、`repo-template` 配下の差分の反映。
+- 対象: `planning` submodule の pin 更新（`9cd3499` → `aeb97c4`）と、`repo-template` 配下の差分の反映。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin、
   `CHANGELOG.md`（`changelog.yml` の生成物）。
 
@@ -110,7 +120,7 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
 | `scripts/check-action-versions.js` | 新規。ワークフローの `uses: <action>@vN` を集め、`action-versions.json` の下限または `--compare-with` 先より古ければ **exit 1**。表に無いアクション・未使用エントリは `warn`。`--check-latest` は GitHub API 参照で warn のみ（fail-open）。`--self-test` を持つ |
 | `scripts/action-versions.json` | 新規。上記の下限表（単一情報源）。`github/codeql-action` はタグ形式上メジャーを引けないため `$exempt` |
 | `scripts/check-ai-workflow-config.js` | 実装用の `--append-system-prompt`（サブエージェント禁止）欠落の検査を追加 |
-| `scripts/scripts.test.js` | 上記 2 検査器のテストブロックを追加（+26 ケース。125 → 151） |
+| `scripts/scripts.test.js` | 上記 2 検査器のテストブロックを追加（+29 ケース。125 → 154） |
 
 ### B: キット＋固有デルタ（キットの追加分のみ取り込む）
 
@@ -144,14 +154,19 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
   機械検査が上記の `Check action versions` ステップである。
 - `--compare-with-ref` の値は **`origin/develop`**（キット既定の `origin/main` からの置換点）。
   本リポジトリの統合ブランチが `develop` であるため。
+- **`STRICT_PERMISSION_DENIALS` は設定しない**（キット既定の段階ポリシーに従う）。許容値
+  （既定 4 件、またはターン数の半分）を超えたときだけ赤くなる。旧挙動（1 件でも赤）に戻すと
+  planning#162 が問題にした「成果物は正しいのに赤」の常態化を本リポジトリで再発させるため。
+  許容値の調整が要る状況になったら `PERMISSION_DENIALS_TOLERANCE` で行い、閾値を上げた根拠を
+  本仕様書に残す。
 
 ## 受け入れ基準
 
-1. `git submodule status planning` が `3bdc8f8` を指す。
+1. `git submodule status planning` が `aeb97c4` を指す。
 2. `repo-template` と本リポジトリの突合で、**キット側が進んでいるファイルが 0 件**になる
    （残差分はすべて分類 B/C の固有デルタであること）。
 3. `node scripts/check-permission-denials.js --self-test` が成功する。
-4. `node scripts/scripts.test.js` が全件成功する（新規 26 ケースを含む 151 件）。
+4. `node scripts/scripts.test.js` が全件成功する（新規 29 ケースを含む 154 件）。
 5. `node scripts/check-ai-workflow-config.js` が成功する（`claude_args` 記法・ツール許可のドリフト・
    実装用の `--append-system-prompt` 欠落が無い）。
 6. `node scripts/check-action-versions.js --dir .github/workflows --compare-with-ref origin/develop`
