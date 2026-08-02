@@ -134,6 +134,41 @@ Bash の許可はコマンド文字列の**前方一致**であるため、`Bash
   #155 / #157 / #158（整形パイプ・検証の誠実性）・#160（`git -C` の報告ラベル・`cmp` / `diff` 追加）・
   #161 / #162（段階ポリシーと「成果物は正しいのに赤」の常態化）。本件はその系列の続きである。
 
+## 追加の判明事項（2026-08-03・PR #461 のレビュー指摘から実測）
+
+**キットが 3 系統に埋め込んでいる GitHub MCP のツール名が、CI が実際に実行するサーバの版と
+食い違っている。** 当初は `mcp__github__list_sub_issues` の拒否を「許可済みの
+`mcp__github__issue_read`（`method: get_sub_issues`）へ誘導すれば足りる」と扱ったが、
+本 PR のレビューが 🔴 で反証し、次を実測で確認した。
+
+- claude-code-action v1 は `ghcr.io/github/github-mcp-server:sha-23fa0dd` = **v0.17.1** を pin する
+  （`src/mcp/install-mcp-server.ts`）。
+- v0.17.1 に在るのは `get_issue` / `list_sub_issues` / `get_pull_request` /
+  `create_pending_pull_request_review` / `submit_pending_pull_request_review` /
+  `add_comment_to_pending_review` / `add_issue_comment` / `get_file_contents` / `push_files`。
+  統合名 **`issue_read` / `pull_request_read` / `pull_request_review_write` は存在しない**
+  （統合名は v1.x 系で入る。最新 v1.8.0 には `issue_read` がある）。
+- キットの `.claude/settings.json` の `//` 注記と両ワークフローのプロンプトは
+  「`issue_read` / `pull_request_read` / `pull_request_review_write` が現行。
+  `get_issue` / `get_pull_request` / `create_*_review` は廃止名」と書いているが、
+  **CI が実行する版では逆**である。
+
+この不一致は**拒否として現れない**ため気付けない（存在しないツールは AI へ提示されず、AI は
+`gh` CLI 等へ迂回する）。すなわち「許可したつもりのエントリが 3 件とも当たっていない」状態が
+静かに続く。プロンプトが誤った名前を「現行」と教えている分、AI は正しい名前を試さない。
+
+**追加提案 5**: キットの 3 系統で GitHub MCP のツール名を**新旧併記**にする
+（`issue_read` と `get_issue` の両方を許可する）。アクションがサーバを更新しても壊れず、
+現在の版でも当たる。あわせて `.claude/settings.json` の `//` 注記とプロンプトの
+「廃止名」という説明を「**サーバの版に依存する。アクションが pin する版を確認すること**」へ
+改める。参考手順: `anthropics/claude-code-action` の `src/mcp/install-mcp-server.ts` で pin されている
+イメージ tag を読み、`github/github-mcp-server` の該当 tag の `pkg/github/*.go` の
+`mcp.NewTool("…")` を確認する。
+
+**追加提案 6**: レビュー用の `Bash(git show:*)` が実装用に無い（`.claude/settings.json` には在る）。
+読み取り専用であり、意図的な差の一覧（`Edit` / `Write` / 書き込み系 git 等）にも該当しない。
+提案 3（`toolchainDrift` を読み取り専用ツールへ広げる）が入れば機械的に検出される類である。
+
 ## 計画側への起票（2026-08-03）
 
 計画リポジトリへ [planning#163](https://github.com/endazon/project-planning/issues/163) として起票済み

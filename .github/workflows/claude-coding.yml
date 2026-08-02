@@ -159,6 +159,16 @@ jobs:
           # 読み取り専用であり、実装用にも同じ作業があるためレビュー用と同じ内容を入れてある。
           # 環流が反映された同期でキットの内容へ戻し、本デルタは撤去する（IADR-0115 の運用）。
           # `Bash(git -C:*)` の一括許可は採らない（前方一致で書き込み系サブコマンドまで通る）。
+          # あわせて、レビュー用にはあった `Bash(git show:*)`（本体リポジトリのコミットを見る手段）を
+          # 実装用へも足した（PR #461 のレビュー指摘。宣言した意図的な差＝Edit / Write / 書き込み系
+          # git / find / mkdir に該当しない、純粋な非対称だった）。
+          #
+          # 【GitHub MCP のツール名はサーバの版に依存する（PR #461・実測）】claude-code-action v1 は
+          # github-mcp-server を **v0.17.1** に pin しており、この版に在るのは `get_issue` /
+          # `get_pull_request` / `list_sub_issues`、統合名 `issue_read` / `pull_request_read` /
+          # `pull_request_review_write` は**存在しない**（統合名は v1.x 系）。存在しないツールは
+          # AI へ提示されないため拒否も出ず、当たらないエントリのまま気付けない。よって**新旧の
+          # 両方を列挙**する。詳細は claude-code-review.yml の同名コメントを参照。
           #
           # 【--append-system-prompt: サブエージェント禁止】レビュー用は同じ制約を prompt:
           # 入力に書いているが、本ファイルは `@claude` メンション本文で駆動する構造のため
@@ -173,8 +183,8 @@ jobs:
           # （改行して書くと後続行が別の引数になり、指示が壊れる）。
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --append-system-prompt "この実行は単一セッション内で完結させること。サブエージェント（Task ツールによる spawn。.claude/agents/ 定義の起動を含む）は使用しない。CI では Task が許可されておらず、呼び出しは必ず拒否されるうえ、拒否が 1 件でも記録されるとジョブは失敗する。作業の分割は自分の作業順序として扱い、Read / Grep / Glob / Bash / GitHub MCP ツールで自分自身が順に実施すること。子 issue の一覧は mcp__github__issue_read の method: get_sub_issues で取ること（mcp__github__list_sub_issues は許可されておらず必ず拒否される）。"
-            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git switch:*),Bash(git checkout:*),Bash(git branch:*),Bash(ls:*),Bash(find:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(mkdir:*),Bash(gh issue create:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
+            --append-system-prompt "この実行は単一セッション内で完結させること。サブエージェント（Task ツールによる spawn。.claude/agents/ 定義の起動を含む）は使用しない。CI では Task が許可されておらず、呼び出しは必ず拒否されるうえ、拒否が 1 件でも記録されるとジョブは失敗する。作業の分割は自分の作業順序として扱い、Read / Grep / Glob / Bash / GitHub MCP ツールで自分自身が順に実施すること。子 issue の一覧は mcp__github__list_sub_issues で取ること（CI が固定する github-mcp-server v0.17.1 に統合名 mcp__github__issue_read は存在しない。統合名は将来の版のために併記して許可してある）。"
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git switch:*),Bash(git checkout:*),Bash(git branch:*),Bash(ls:*),Bash(find:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(mkdir:*),Bash(gh issue create:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_sub_issues,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
 
       # 権限拒否の可視化（安全弁）。claude-code-review.example.yml と同じ内容に保つこと。
       #

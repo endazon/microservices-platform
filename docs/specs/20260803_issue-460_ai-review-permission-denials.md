@@ -69,14 +69,39 @@ related_specs:
 という既存設計（キットのコメントが明記）を崩すため採らない。サブコマンドは `planning` に既にある
 4 種（`log` / `show` / `diff` / `ls-tree`）へ揃える。
 
-### 2. `mcp__github__list_sub_issues`（拒否 1 件）
+### 2. `mcp__github__list_sub_issues`（拒否 1 件）— **当初案は誤りだったため是正**
 
-**許可は追加しない。** 許可済みの `mcp__github__issue_read` が `method: get_sub_issues` を持ち、
-同じ情報を取得できるためである。ツールを増やすより、既に許可済みの経路へ誘導するほうが
-攻撃面を広げない。両ワークフローの指示文（レビュー用は `prompt:`、実装用は
-`--append-system-prompt`）に「子 issue の一覧は `mcp__github__issue_read` の
-`method: get_sub_issues` を使う（`list_sub_issues` は許可されていない）」を明記する。
-#454 は子 issue 20 件のトラッキング issue であり、以後の PR で確実に踏む経路である。
+当初は「許可を追加せず、許可済みの `mcp__github__issue_read`（`method: get_sub_issues`）へ
+プロンプトで誘導する」方針を採った。**本 PR のレビュー（#461）がこれを 🔴 で指摘し、実測で
+覆った。**
+
+- claude-code-action v1 は GitHub MCP サーバを **v0.17.1** に pin している
+  （`src/mcp/install-mcp-server.ts` の `ghcr.io/github/github-mcp-server:sha-23fa0dd`）。
+- v0.17.1 の tool 名（`pkg/github/issues.go` / `pullrequests.go` を tag 指定で実測）:
+  `get_issue` / `list_sub_issues` / `get_pull_request` / `add_issue_comment` /
+  `get_file_contents` / `push_files` / `add_comment_to_pending_review` は**在る**。
+  統合名 `issue_read` / `pull_request_read` / `pull_request_review_write` は**無い**
+  （統合名が入るのは v1.x 系。最新 v1.8.0 には `issue_read` がある）。
+- したがって「`issue_read` が現行・`get_issue` は廃止名」という 3 系統に埋め込まれた前提は、
+  **最新サーバでは正しいが CI が実行する版では逆**であった。統合名 3 件は CI で**当たらない
+  エントリ**であり、拒否も出ないため気付けない（存在しないツールは AI へ提示されず、AI は
+  `gh` CLI 等へ迂回する。PR #459 で `list_sub_issues` の**拒否**が出たこと自体が、
+  その名前が実在する側の証拠でもあった）。
+
+**是正**: 両ワークフローへ **`mcp__github__get_issue` / `mcp__github__get_pull_request` /
+`mcp__github__list_sub_issues` を追加**し、統合名と**新旧の両方を列挙**する（アクションが
+サーバを更新しても壊れない）。プロンプトの誘導先も `list_sub_issues` へ改める。
+`pull_request_review_write` の v0.17.1 側の対応物（`create_pending_pull_request_review` /
+`submit_pending_pull_request_review`）は**追加しない**——レビュー本文はアクション自身の
+スティッキーコメントとインラインコメント機構が投稿しており、書き込み系 MCP を広げる必要が
+ないためである（この不整合はキットへ環流する）。
+
+### 2-b. `Bash(git show:*)` の非対称（レビュー #461 の 🟡）
+
+レビュー用にはあった `Bash(git show:*)`（本体リポジトリのコミットを見る手段）が実装用に無く、
+`.claude/settings.json` には在るという 3 系統の乖離が残っていた。宣言した意図的な差
+（`Edit` / `Write` / 書き込み系 git / `find` / `mkdir` / `gh pr view`）に該当しない純粋な非対称
+であるため、実装用へ追加する。
 
 ### 3. 対称性の維持
 
