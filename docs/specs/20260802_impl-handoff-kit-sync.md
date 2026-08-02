@@ -21,7 +21,7 @@ plan_refs: []
 - 関連 ADR: [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
   （impl-handoff-kit を正とする同期規約。本作業はその規約の適用であり、新規の実装判断は生じない）
 - 計画書リンク: `planning/tools/impl-handoff-kit/`（`HOWTO.md` / `repo-template/`）
-- 上流の起点: planning#145 / #146 / #148 / #149 / #152 / #153 / #155 / #157 / #158 / #160
+- 上流の起点: planning#145 / #146 / #148 / #149 / #152 / #153 / #155 / #157 / #158 / #160 / #161
   （AI ワークフローが「緑のまま実質未実施」「成果物は正しいのに赤」になる欠陥と、
   キット同期そのものが Actions のバージョンを巻き戻す欠陥、レビューが未実施の検証を
   「実測」と偽る欠陥、およびそれらの検出器）
@@ -29,10 +29,10 @@ plan_refs: []
 ## 目的・背景
 
 前回の全面同期（[20260801_impl-handoff-kit-sync.md](20260801_impl-handoff-kit-sync.md) / PR #433）以降、
-計画リポジトリに 8 コミット（`9cd3499` → … → `65adb87`）が積まれ、キットに
+計画リポジトリに 9 コミット（`9cd3499` → … → `3bdc8f8`）が積まれ、キットに
 **AI ワークフローの失敗を可視化・予防する 2 つの検査器**と、それに伴うワークフローの是正が入った。
 
-取り込む是正は次の 7 点である。いずれもジョブの成否・報告が実態と食い違う欠陥である。
+取り込む是正は次の 8 点である。いずれもジョブの成否・報告が実態と食い違う欠陥である。
 
 1. **緑のまま実質未実施（planning#145）**: `claude-code-action` は、AI がツールを 1 つも実行できなくても
    `"subtype": "success", "is_error": false` で終了する。実測ではレビューが 21 ターン中 17 件の権限拒否で
@@ -74,10 +74,20 @@ plan_refs: []
    `Bash(git -C)` になり**対処に必要なサブコマンドが消える**ことであった。
    本リポジトリから planning#160 として起票し、planning#159 で提案どおり是正された
    （[feedback/20260802_review-allowlist-diff-and-denial-labeling.md](../../feedback/20260802_review-allowlist-diff-and-denial-labeling.md)）。
+8. **ラベルが読めても拒否は残る（planning#161）**: 7 の是正を入れた PR #437 のレビューで拒否が
+   4 件出た。**新しいラベルが原因をそのまま見せた**ため、内訳は次と判った。
+   - `Bash(A=$(git | B=$(git show | if [ | echo BYTE_IDENTICAL | …)` — 変数代入と `if` を含む
+     長い連鎖のワンライナー。`echo` も未許可だった。
+   - `Bash(git -C planning show | diff | 1 | true)` — `2>&1` の fd 複製が `&` で分割され、
+     `1` という実在しないセグメントがラベルを汚していた。
+   キット側は `echo` を許可し、fd 複製と引用符付き引数がラベルを汚す不具合を直したうえで、
+   プロンプトに「長い連鎖のワンライナーを作らない（鎖のどこかに未許可コマンドが混ざると
+   **鎖全体が実行されず前段の結果も得られない**）」「`$?` はパイプの後では直前 1 コマンドの
+   結果しか表さないため判定に使えない」を追記した。
 
 ## 対象範囲
 
-- 対象: `planning` submodule の pin 更新（`9cd3499` → `65adb87`）と、`repo-template` 配下の差分の反映。
+- 対象: `planning` submodule の pin 更新（`9cd3499` → `3bdc8f8`）と、`repo-template` 配下の差分の反映。
 - 対象外: `src/` 配下のアプリケーション実装、`deploy/`、`src/ai-stock-trading` submodule の pin、
   `CHANGELOG.md`（`changelog.yml` の生成物）。
 
@@ -96,18 +106,18 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
 | ファイル | 内容 |
 | --- | --- |
 | `scripts/check-permission-denials.js` | 新規。実行ログ（`outputs.execution_file`）を読み、権限拒否されたツールを **コマンド名まで**報告し **exit 1**。複合コマンドは全セグメントを `Bash(git show | diff)` の形で出し、`git -C <dir> <sub>` は 4 トークンまで採る（planning#160）（許可リストの粒度がコマンド単位のため、ツール名だけでは何を足せばよいか決められない。引数は出さない）。内訳は `$GITHUB_STEP_SUMMARY`（PR の Checks 画面から 1 クリック）にも書く。ログを読めない構成では `warn` を出して exit 0（fail-open）。`--self-test` を持つ |
-| `.claude/settings.json` | ローカル実行の許可に `git ls-tree` / `git submodule status` / `git fetch` / `head` / `tail` / `cmp` / `diff` を追加（いずれも読み取り専用。`git submodule` を丸ごと許可すると前方一致で `update` / `add` まで通るため、`git submodule status` に限定する） |
+| `.claude/settings.json` | ローカル実行の許可に `git ls-tree` / `git submodule status` / `git fetch` / `head` / `tail` / `echo` / `cmp` / `diff` を追加（いずれも読み取り専用。`git submodule` を丸ごと許可すると前方一致で `update` / `add` まで通るため、`git submodule status` に限定する） |
 | `scripts/check-action-versions.js` | 新規。ワークフローの `uses: <action>@vN` を集め、`action-versions.json` の下限または `--compare-with` 先より古ければ **exit 1**。表に無いアクション・未使用エントリは `warn`。`--check-latest` は GitHub API 参照で warn のみ（fail-open）。`--self-test` を持つ |
 | `scripts/action-versions.json` | 新規。上記の下限表（単一情報源）。`github/codeql-action` はタグ形式上メジャーを引けないため `$exempt` |
 | `scripts/check-ai-workflow-config.js` | 実装用の `--append-system-prompt`（サブエージェント禁止）欠落の検査を追加 |
-| `scripts/scripts.test.js` | 上記 2 検査器のテストブロックを追加（+23 ケース。125 → 148） |
+| `scripts/scripts.test.js` | 上記 2 検査器のテストブロックを追加（+26 ケース。125 → 151） |
 
 ### B: キット＋固有デルタ（キットの追加分のみ取り込む）
 
 | ファイル | 取り込む差分 |
 | --- | --- |
-| `.github/workflows/claude-coding.yml` | `permissions:` に `actions: read`／`Run Claude Code` に `id: claude`／`claude_args` に `--append-system-prompt`（サブエージェント禁止）／末尾に `Check permission denials`（`if: always()`）ステップ／読み取り専用ツールをレビュー用と対称に揃える（`head` / `tail` / `cmp` / `diff` / `git ls-tree` / `git submodule status` / `git fetch`。ドリフト検査はスタック別実行ツールしか見ないため、この種の非対称は機械的に検出されない） |
-| `.github/workflows/claude-code-review.yml` | 同上（`id: claude`・`actions: read`・拒否検査ステップ）に加え、`--allowedTools` へ **`Bash(git status:*)` / `Bash(git ls-tree:*)` / `Bash(git submodule status:*)` / `Bash(git fetch:*)` / `Bash(cat:*)` / `Bash(head:*)` / `Bash(tail:*)` / `Bash(cmp:*)` / `Bash(diff:*)`** を追加。プロンプトに **「検証の誠実性」節**（実行した項目だけを ✅ と書く・`VAR=1 cmd` 形と書き込みを伴う検証は原理的に不可なので未検証と明記する）と、出力形式へ **「🔍 実行できなかったこと」節**（該当なしでも省略しない）を追加 |
+| `.github/workflows/claude-coding.yml` | `permissions:` に `actions: read`／`Run Claude Code` に `id: claude`／`claude_args` に `--append-system-prompt`（サブエージェント禁止）／末尾に `Check permission denials`（`if: always()`）ステップ／読み取り専用ツールをレビュー用と対称に揃える（`head` / `tail` / `echo` / `cmp` / `diff` / `git ls-tree` / `git submodule status` / `git fetch`。ドリフト検査はスタック別実行ツールしか見ないため、この種の非対称は機械的に検出されない） |
+| `.github/workflows/claude-code-review.yml` | 同上（`id: claude`・`actions: read`・拒否検査ステップ）に加え、`--allowedTools` へ **`Bash(git status:*)` / `Bash(git ls-tree:*)` / `Bash(git submodule status:*)` / `Bash(git fetch:*)` / `Bash(cat:*)` / `Bash(head:*)` / `Bash(tail:*)` / `Bash(cmp:*)` / `Bash(diff:*)` / `Bash(echo:*)`** を追加。プロンプトに **「検証の誠実性」節**（実行した項目だけを ✅ と書く・`VAR=1 cmd` 形と書き込みを伴う検証は原理的に不可なので未検証と明記する）と、出力形式へ **「🔍 実行できなかったこと」節**（該当なしでも省略しない）を追加 |
 | `.github/workflows/ci.yml` | `ai-workflow-config` ジョブに **`Check action versions` ステップ**（`--compare-with-ref`）と checkout の `fetch-depth: 0` を追加。コメント例の `actions/setup-python@v5` → `@v7`（キット本文。実体は無効化されたコメントで挙動に影響しない） |
 | `scripts/README.md` | `check-action-versions.js` の一覧行・実行例、`check-permission-denials.js` の説明更新（本リポ固有の行はすべて保持） |
 
@@ -137,11 +147,11 @@ IADR-0115 の 3 分類（A: キット完全一致 / B: キット＋固有デル�
 
 ## 受け入れ基準
 
-1. `git submodule status planning` が `65adb87` を指す。
+1. `git submodule status planning` が `3bdc8f8` を指す。
 2. `repo-template` と本リポジトリの突合で、**キット側が進んでいるファイルが 0 件**になる
    （残差分はすべて分類 B/C の固有デルタであること）。
 3. `node scripts/check-permission-denials.js --self-test` が成功する。
-4. `node scripts/scripts.test.js` が全件成功する（新規 23 ケースを含む 148 件）。
+4. `node scripts/scripts.test.js` が全件成功する（新規 26 ケースを含む 151 件）。
 5. `node scripts/check-ai-workflow-config.js` が成功する（`claude_args` 記法・ツール許可のドリフト・
    実装用の `--append-system-prompt` 欠落が無い）。
 6. `node scripts/check-action-versions.js --dir .github/workflows --compare-with-ref origin/develop`
