@@ -182,6 +182,28 @@ jobs:
           # `commit` / `reset` まで通り、書き込み系を外した設計が崩れる）。
           # 【置換点】submodule のパスが `planning` でない場合は 4 か所とも書き換える。
           #
+          # 【暫定デルタ・issue #460 / planning#163】次の 2 系統はキット由来の欠落である。
+          # 環流が反映された同期でキットの内容へ戻し、本デルタは撤去する（IADR-0115 の運用）。
+          #   - `grep` / `sort` が無かった。`cat` / `head` / `tail` / `cmp` / `diff` / `echo` /
+          #     `rg` は在るのにこの 2 つだけが欠け、`grep | sort` や `git show | grep` が拒否された。
+          #     パイプは各コマンドが個別に判定されるため、前段が許可済みでも後段の `grep` で落ちる。
+          #   - submodule が入れ子で 3 つある構成（`planning` / `src/ai-stock-trading` / その配下の
+          #     `planning`）で、`git -C` のエントリが `planning` の 4 サブコマンドしか無かった。
+          #     前方一致であるため `git -C src/ai-stock-trading log` にも
+          #     `git -C src/ai-stock-trading/planning log` にも当たらず、パス × サブコマンドで
+          #     列挙する必要がある（`Bash(git -C:*)` の一括許可は上記のとおり採らない）。
+          #   いずれも読み取り専用である。発現は間欠的で、その回に何回使おうとしたかで拒否件数が
+          #   変わり、段階ポリシーの許容値を超えた回だけ赤くなる（PR #459 は 3 回中 2 回が赤）。
+          #
+          # 【GitHub MCP のツール名は**サーバの版に依存する**（PR #461 のレビュー指摘・実測）】
+          # claude-code-action v1 は github-mcp-server を **v0.17.1**（`ghcr.io/github/github-mcp-server:sha-23fa0dd`）
+          # に pin している。この版に在るのは `get_issue` / `get_pull_request` / `list_sub_issues` で、
+          # 統合名 `issue_read` / `pull_request_read` / `pull_request_review_write` は**存在しない**
+          # （統合名は v1.x 系で入る。最新は v1.8.0）。統合名だけを列挙していた従来の設定は、
+          # CI では**当たらないエントリ**だった（拒否も出ないため気付けない。存在しないツールは
+          # そもそも AI に提示されず、AI は gh CLI 等へ迂回する）。
+          # そのため**新旧の両方を列挙**し、アクションがサーバを更新しても壊れないようにする。
+          #
           # 【記法・最重要】claude_args は**空白区切りで argv へトークン化**される。
           # したがって `--allowedTools Bash(dotnet test:*)` のように 1 ツール 1 行で書くと、
           # 空白を含む指定が `Bash(dotnet` と `test:*)` に割れて**すべて無効**になる。
@@ -196,7 +218,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_sub_issues,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
@@ -295,9 +317,16 @@ jobs:
             両方とも存在しない場合に限り、その旨を明記したうえで PR 内の情報のみでレビューする。
 
             【他リポジトリ・issue 参照の扱い】
-            - GitHub の issue / PR を読む MCP ツール名は `mcp__github__issue_read` /
-              `mcp__github__pull_request_read` である（`get_issue` / `get_pull_request` は廃止名。
-              廃止名を試して「権限がない」と結論しないこと）。
+            - GitHub の issue / PR を読む MCP ツール名は**サーバの版に依存する**。CI が固定する
+              github-mcp-server v0.17.1 では `mcp__github__get_issue` /
+              `mcp__github__get_pull_request` であり、統合名 `mcp__github__issue_read` /
+              `mcp__github__pull_request_read`（v1.x 系で導入）は**この版には存在しない**。
+              両方を許可してあるので、提示されている側を使うこと。提示されていない名前を試して
+              「権限がない」と結論しないこと（存在しないツールは権限の問題ではない）。
+            - **子 issue の一覧は `mcp__github__list_sub_issues` で取る。**CI が固定する
+              github-mcp-server は v0.17.1（アクションが `ghcr.io/github/github-mcp-server:sha-23fa0dd`
+              を pin）であり、この版に統合名 `issue_read` は**存在しない**。統合名は将来の版で
+              有効になるため両方を許可してあるが、**現時点で実在するのは旧名の側**である。
             - `github_token` は本リポジトリにスコープされるため、**他リポジトリの issue / PR は
               参照できない**。これは設定不備ではないので「未検証」と書かず、「他リポジトリの
               参照は本セッションの対象外」と明記して先へ進むこと。

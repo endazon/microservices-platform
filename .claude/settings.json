@@ -14,6 +14,14 @@
       "Bash(git -C planning show:*)",
       "Bash(git -C planning diff:*)",
       "Bash(git -C planning ls-tree:*)",
+      "Bash(git -C src/ai-stock-trading log:*)",
+      "Bash(git -C src/ai-stock-trading show:*)",
+      "Bash(git -C src/ai-stock-trading diff:*)",
+      "Bash(git -C src/ai-stock-trading ls-tree:*)",
+      "Bash(git -C src/ai-stock-trading/planning log:*)",
+      "Bash(git -C src/ai-stock-trading/planning show:*)",
+      "Bash(git -C src/ai-stock-trading/planning diff:*)",
+      "Bash(git -C src/ai-stock-trading/planning ls-tree:*)",
       "Bash(git ls-tree:*)",
       "Bash(git submodule status:*)",
       "Bash(git fetch:*)",
@@ -25,6 +33,8 @@
       "Bash(ls:*)",
       "Bash(find:*)",
       "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(sort:*)",
       "Bash(cat:*)",
       "Bash(head:*)",
       "Bash(tail:*)",
@@ -46,6 +56,9 @@
       "Bash(gh run list:*)",
       "mcp__github__get_file_contents",
       "mcp__github__issue_read",
+      "mcp__github__get_issue",
+      "mcp__github__get_pull_request",
+      "mcp__github__list_sub_issues",
       "mcp__github__list_issues",
       "mcp__github__add_issue_comment",
       "mcp__github__pull_request_read",
@@ -129,5 +142,5 @@
       }
     ]
   },
-  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude-coding.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する。【重要】許可リストは「本ファイル / claude-coding / claude-code-review」の3系統を手作業で同期する構造であり、実際に乖離した実績がある（レビュー側にビルド/テスト系が無く、AI レビューが検証できず静的読解へ退行した状態が2週間継続）。ビルド/テスト/フォーマットのコマンドを増減したときは必ず3系統すべてを更新すること。とくにレビュー側から実行系を落とすと、レビューは毎回「実行できませんでした」という無価値な指摘を返すようになる。GitHub MCP のツール名は現行サーバ準拠（issue_read / pull_request_read / pull_request_review_write 等。旧 get_issue / get_pull_request / create_*_review は廃止名）。deny は機密（.env / secrets.* / CLAUDE.local.md）の Read に加え Bash 読み取り・Edit/Write・本設定自体の書き換えも塞ぎ、すり抜け形は hooks/guard-bash.js が第 2 層でブロックする。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
+  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude-coding.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する。【重要】許可リストは「本ファイル / claude-coding / claude-code-review」の3系統を手作業で同期する構造であり、実際に乖離した実績がある（レビュー側にビルド/テスト系が無く、AI レビューが検証できず静的読解へ退行した状態が2週間継続）。ビルド/テスト/フォーマットのコマンドを増減したときは必ず3系統すべてを更新すること。とくにレビュー側から実行系を落とすと、レビューは毎回「実行できませんでした」という無価値な指摘を返すようになる。GitHub MCP のツール名はサーバの版に依存する（claude-code-action v1 が pin する github-mcp-server v0.17.1 には get_issue / get_pull_request / list_sub_issues が在り、統合名 issue_read / pull_request_read / pull_request_review_write は無い。統合名は v1.x 系で導入）。新旧を併記して許可しているのでどちらも削らないこと（issue #460 / planning#163）。deny は機密（.env / secrets.* / CLAUDE.local.md）の Read に加え Bash 読み取り・Edit/Write・本設定自体の書き換えも塞ぎ、すり抜け形は hooks/guard-bash.js が第 2 層でブロックする。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。"
 }
