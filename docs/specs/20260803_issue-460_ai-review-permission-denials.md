@@ -1,7 +1,7 @@
 ---
 title: AI ワークフローの権限拒否を塞ぐ（grep / sort / git -C <submodule>）とキットへの環流
 type: spec
-status: in-progress
+status: done
 related_ids:
   - NFR
   - IADR-0115
@@ -138,8 +138,9 @@ related_specs:
 - [x] `node scripts/check-ai-workflow-config.js` が成功する（`STRICT_AI_WORKFLOW_CONFIG=1` でも成功する）
 - [x] `node scripts/check-ai-workflow-config.js --self-test`（23 件）/ `node scripts/scripts.test.js`
       （154 件）が成功する
-- [ ] 本 PR 自身の `claude-review` ジョブが**権限拒否 0 件**で green になる
+- [x] 本 PR 自身の `claude-review` ジョブが**権限拒否 0 件**で green になる
       （緑になっただけでは不十分。実行サマリで拒否 0 件を確認する）
+      → **3 ラウンドすべてで `permission_denials_count: 0`**（下記「実地検証の記録」）
 - [x] キットへの環流を `feedback/` に記録し、planning 側へ起票した
       （[planning#163](https://github.com/endazon/project-planning/issues/163)）
 
@@ -151,6 +152,23 @@ related_specs:
   **緑であることではなく「拒否 0 件」であること**を判定基準とする。
 - 陰性確認: 追加したエントリが書き込み系を通さないこと（`git -C <dir> push` 等が前方一致しない
   こと）は、エントリがサブコマンド固定である事実で保証される（`Bash(git -C:*)` を入れない）。
+
+## 実地検証の記録（PR #461）
+
+間欠発現のため「緑になった」では不十分であり、**実行サマリの拒否件数**で判定した。
+
+| ラウンド | コミット | `permission_denials_count` | レビュー指摘 |
+| --- | --- | --- | --- |
+| 1（run `30758102081`） | `63a4c9e` | **0** | 🔴 1（MCP ツール名が CI 実行版に存在しない）/ 🟡 1（`Bash(git show:*)` の非対称） |
+| 2（run `30758763847`） | `34dda90` | **0** | 🔴 0 / 🟡 1（`settings.json` の `//` 注記が未追随） |
+| 3（run `30759270609`） | `4d18cf1` | **0** | 🔴 0 / 🟡 0 / 🟢 0 |
+
+是正前（PR #459・同一の検査器）は 3 ラウンド中 2 ラウンドが**拒否 6 件**で exit 1 だった。
+PR #461 は全 22 チェック green（`build (matrix)` の 1 件は placeholder のため skipping）。
+
+レビュー指摘への対応はいずれも実測を根拠に行った（設計 2・2-b・2-c を参照）。とくに 🔴 は
+**キットが 3 系統に配布していた前提そのものが誤っていた**という発見であり、本 PR のスコープを
+超えてキットへ環流した（planning#163 の追加提案 5）。
 
 ## 計画書との差異
 
