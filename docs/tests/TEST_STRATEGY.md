@@ -176,7 +176,7 @@ PR ではなく issue を分割する）。
 
 1. **実装する FR/UC/SC のテスト仕様書 `docs/tests/<ID>_<概要>.md` を作成する**（`/new-spec test <ID>`）。
    写像検査は仕様書のある ID を突合の起点にするため、**仕様書が無い ID は順方向の検査対象にならない**。
-   仕様書を作らずにテストだけ書くと「実装先行」として **fail** する（下の 4 番）。
+   仕様書を作らずにテストだけ書くと「実装先行」として **fail** する（下の allowlist の項を参照）。
 2. 実装する FR/UC/SC の**受け入れ基準をテストへ写像**し、テストの直前コメントに起点 ID を書く。
 3. カバレッジ床を下回らない。テストを増やしたら**床を引き上げる**（`src/coverage-floor.json` /
    `src/vitest.config.ts`）。
@@ -186,7 +186,7 @@ PR ではなく issue を分割する）。
    削除する。未写像（仕様書はあるがテストが無い）は `pending`、実装先行（テストはあるが仕様書が無い）は
    `specMissing` に書く。
 
-> **未着手の FR/SC が仕様書を持たないのは正当**であり、fail にはしない。計画レンジ
+> **未着手の FR/UC/SC が仕様書を持たないのは正当**であり、fail にはしない。計画レンジ
 > （[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）にあって
 > 仕様書が無い ID は **warn** として実行サマリに列挙されるだけである（[#472](https://github.com/endazon/microservices-platform/issues/472)）。
 > 着手した issue が 1 番を守ることで、この warn が 1 件ずつ減っていく。

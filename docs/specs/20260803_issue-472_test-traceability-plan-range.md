@@ -129,7 +129,7 @@ issue の対応方針 2 は「`.claude/rules/traceability.md` を単一情報源
 
 ### 3. 「仕様書が無い計画 ID」は warn（fail にしない）
 
-未着手の FR/SC が仕様書を持たないのは正当であり、fail にすると
+未着手の FR/UC/SC が仕様書を持たないのは正当であり、fail にすると
 [TEST_STRATEGY](../tests/TEST_STRATEGY.md#共通する設計原則-ratchet) が禁じる
 「**成果物は正しいのに赤**」の常態化を招く。とくに `FR-17..21` は IADR-0119 で着手保留であり、
 仕様書が無いことは正しい状態である。warn によりレンジ拡大時・着手時の取りこぼしを可視化する。

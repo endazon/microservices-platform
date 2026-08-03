@@ -41,7 +41,7 @@
  *
  *   逆方向（#472）も同じ形を採る。着手時点の実測が **実装先行 7 件（UC-01〜UC-07）** で 0 ではない
  *   ため素の fail は初回から赤くなる。よって allowlist の specMissing へ既知の 7 件を明示し、
- *   **新規の悪化だけを fail** させる（未着手の FR/SC が仕様書を持たないのは正当なので warn のまま）。
+ *   **新規の悪化だけを fail** させる（未着手の FR/UC/SC が仕様書を持たないのは正当なので warn のまま）。
  *
  * 使い方:
  *   node scripts/check-test-traceability.js
@@ -460,7 +460,7 @@ function main() {
       '対応するテストを書いたら scripts/test-traceability-allowlist.json から削除すること。');
   }
 
-  // 未着手 FR/SC が仕様書を持たないのは正当なので fail にしない（warn で取りこぼしを可視化する）。
+  // 未着手 FR/UC/SC が仕様書を持たないのは正当なので fail にしない（warn で取りこぼしを可視化する）。
   if (missingSpec.length) {
     warn(`計画レンジ ${planIds.length} 件のうち ${missingSpec.length} 件に docs/tests/ のテスト仕様書がありません: ` +
       `${missingSpec.join(' / ')}。着手する issue は docs/tests/<ID>_*.md を作成すること` +
