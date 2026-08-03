@@ -2,10 +2,10 @@
 title: IADR-0116 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115]
+related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-02
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 ---
@@ -79,6 +79,37 @@ plan_refs:
 7. **ADR-0035（GraphRAG 検索戦略）は未起案**であり、RAG へのグラフ組み込み部分には着手しない
    （#448 / #450 の該当スコープのみ保留し、他の部分は進める）。
 
+> **［2026-08-03 追記］規約 6 の具体（#453 完了に伴うフォローアップの消化・#474）。**
+> 規約 6 が予告した「退行防止テスト基盤（#453）のゲート」が PR #464 のマージで確定したため、各 PR の
+> 受け入れ条件となる**コマンドとしきい値**を次のとおり具体化する。本追記は規約 6 の内容を変えるもの
+> ではなく、予告部分を実値で埋めるものである。
+>
+> | ゲート | コマンド | しきい値 / 判定 |
+> | --- | --- | --- |
+> | 受け入れ基準 → テストの写像 | `node scripts/check-test-traceability.js` | `docs/tests/` に仕様書がある FR/SC にテストが 1 件も無ければ **fail**。`scripts/test-traceability-allowlist.json` にある未写像は warn、写像済みなのに allowlist へ残置は **fail** |
+> | バックエンド カバレッジ床 | `node scripts/check-coverage-floor.js`（`ci.yml` の `build-and-test`） | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床 **`line 34` / `branch 17`** 未満は **fail**（[IADR-0118](IADR-0118_backend-coverage-floor.md)。ratchet のため引き上げ後は本表も追随させる。値の正は同 JSON） |
+> | ライブラリ標準（ADR-0030） | `node scripts/check-backend-libraries.js` | `scripts/backend-library-baseline.json` の **ratchet**。不採用ライブラリの新規混入・baseline の減らし忘れは **fail**（#455） |
+> | フロント カバレッジ ratchet | `npm run test:coverage`（`frontend-tests.yml`） | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満は **fail**（[IADR-0034](IADR-0034_frontend-coverage-gate.md)） |
+>
+> ゲートの全体像・検査対象ユニットの切り分け（`ai-stock-trading` は対象外）・各ドメイン issue が守ることは
+> [テスト戦略](../tests/TEST_STRATEGY.md)を参照する。`/verify` 通過と
+> [`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) の充足という規約 6 本文の条件は変わらない。
+
+> **［2026-08-03 追記］規約 7 の適用範囲と規約 3 の明確化（#474）。**
+>
+> - **規約 7 の適用範囲は [IADR-0119](IADR-0119_fr17-21-hold-until-adr-fixed.md) で拡張した。** 規約 7 は
+>   ADR-0035（GraphRAG 検索戦略）の未起案を理由に #448 / #450 の該当スコープを保留すると定めたが、計画側は
+>   **FR-17〜21 を起案段階の要求**としており、保留すべき範囲はより広い。**FR-17〜21 の着手保留とその着手条件
+>   （前提 ADR-0033〜0037 の確定への連動）は IADR-0119 が決定する**（適用範囲を変える新しい決定であるため、
+>   本 IADR への追記ではなく新 IADR で行った。先例は
+>   [IADR-0117](IADR-0117_platform-shared-kernel-placement.md)）。規約 7 の本文と #448 / #450 に関する記述は
+>   変わらない。
+> - **規約 3 の「具体 ID」には `IADR-xxxx` を含む**（記述の明確化であり、規約 3 の決定内容を変えるもの
+>   ではない）。規約 3 の列挙は `FR` / `UC` / `SC` / `ADR` だが、
+>   [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md) は起点 ID の種別に `IADR-xxxx`
+>   （実装 ADR）を含めており、実運用でも起点が実装 ADR の子 issue は `IADR-xxxx` を具体 ID として採っている。
+>   `NFR` を読み飛ばす扱いは従来どおりである。
+
 ## 理由
 
 - **案B が壊すもの**が具体的である。カバレッジ ratchet は「develop 到達点を床とする」設計であり、
@@ -105,7 +136,10 @@ plan_refs:
     既存のゲート（`ci.yml` / `frontend*.yml`）の水準にとどまる。
   - 依存関係のある issue（例 #439 → #438、#450 → #456）で待ちが発生する。フェーズ順を守ることで対処する。
 - フォローアップ:
-  - #453 完了時に、本 IADR の規約 6（受け入れゲート）へ具体的なコマンド / しきい値を追記する。
+  - ~~#453 完了時に、本 IADR の規約 6（受け入れゲート）へ具体的なコマンド / しきい値を追記する。~~
+    → **消化済み（2026-08-03・#474）**。#453 は PR #464 でマージされ、規約 6 の具体（4 ゲートのコマンドと
+    しきい値の表）を上記［2026-08-03 追記］として記載した。バックエンド床の決定そのものは
+    [IADR-0118](IADR-0118_backend-coverage-floor.md) に起票した。
   - ADR-0035 起案（#456 の実測が前提）後に、保留したスコープを #448 / #450 で再開する。
   - #457 で旧実装の廃止を実施する際、本 IADR の規約 5 を根拠として破棄範囲を確定する。
 

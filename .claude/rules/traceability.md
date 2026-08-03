@@ -65,6 +65,8 @@ submodule で取り込む等）、**計画 ID はプロジェクトごとに独�
 - **issue / PR 番号の修飾**: **短縮形に寄せる**（フルパス形式と混在させない）。
   `AST#NNN`（ai-stock-trading）・`planning#NNN`（project-planning）。GitHub の自動リンクを効かせたい
   箇所に限りフルパス形式（`endazon/ai-stock-trading#NNN`）を用いてよい。
+  **列挙形でも各番号を修飾する**（先頭だけの修飾は後続の番号を本リポジトリへ誤リンクさせる）。
+  誤: `planning#146 / #149 / #160`。正: `planning#146 / planning#149 / planning#160`。
 
 ## 残す箇所と書式
 
