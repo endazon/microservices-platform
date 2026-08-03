@@ -43,10 +43,13 @@
       "Bash(diff:*)",
       "Bash(mkdir:*)",
       "Bash(node:*)",
+      "Bash(which:*)",
       "Bash(dotnet build:*)",
       "Bash(dotnet test:*)",
       "Bash(dotnet format:*)",
       "Bash(dotnet restore:*)",
+      "Bash(dotnet --version)",
+      "Bash(dotnet --info)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(gh issue create:*)",
@@ -65,7 +68,9 @@
       "mcp__github__list_pull_requests",
       "mcp__github__pull_request_review_write",
       "mcp__github__add_comment_to_pending_review",
-      "mcp__github__push_files"
+      "mcp__github__push_files",
+      "mcp__github__list_workflow_runs",
+      "mcp__github__actions_list"
     ],
     "ask": [
       "Bash(git merge:*)",
