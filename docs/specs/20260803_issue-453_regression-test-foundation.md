@@ -34,12 +34,32 @@ plan_refs:
 | 対象 | 実測 |
 | --- | --- |
 | フロントのカバレッジ | **ゲートあり**。[`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds`（lines 78 / statements 78 / functions 68 / branches 74）を [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) が強制（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
-| **バックエンドのカバレッジ** | **ゲートなし**。[`ci.yml`](../../.github/workflows/ci.yml) の `build-and-test` は `--collect:"XPlat Code Coverage"` で**収集はするが閾値を強制していない**（閾値強制はコメントアウトされた例として置かれたまま） |
+| **バックエンドのカバレッジ** | **そもそも計測されていなかった**。[`ci.yml`](../../.github/workflows/ci.yml) の `build-and-test` は `--collect:"XPlat Code Coverage"` を渡すが、**MSP の 14 テストプロジェクトはどれも `coverlet.collector` を参照しておらず**、Cobertura が 1 件も出ていなかった（後述「実測で判明した事実」）。閾値強制もコメントアウトされた例のまま |
 | ユニット依存規則 | 機械検査あり（[`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js)） |
 | BFF 境界 | 機械検査あり（[`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js)） |
 | CPM（バージョン直書き禁止） | **検査なし**。CLAUDE.md は「`.csproj` の `PackageReference` にはバージョンを書かない」と定めるが機械強制されていない |
 | 受け入れ基準 → テストの写像 | **規約なし・検査なし**。`docs/tests/` に FR/SC 別のテスト仕様書はあるが、コード側のテストと機械的に突合できない |
 | 契約テスト（`Shared.Contracts` の後方互換） | **なし**。[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) で条件付き繰延 |
+
+### 実測で判明した事実（本 PR の CI 実行で確定）
+
+床を武装する直前に、**MSP のバックエンドはカバレッジを 1 行も計測していなかった**ことが判明した。
+
+| | テストプロジェクト数 | `coverlet.collector` 参照 |
+| --- | --- | --- |
+| MSP（platform + knowledge） | 14 | **0** |
+| AST（`src/ai-stock-trading`・別プロジェクト） | 38 | 38 |
+
+`dotnet test --collect:"XPlat Code Coverage"` は **テストプロジェクトが `coverlet.collector` を参照して
+いないと何も出力しない**。CPM には `coverlet.collector` 6.0.4 が定義されているが、どの MSP テスト
+プロジェクトも参照していなかったため、中央定義が未使用のまま気付かれずにいた。
+
+その結果、CI が拾っていた 38 件の Cobertura は**すべて AST のもの**であり、初回に観測した
+`line 47.22% / branch 41.45%` は **AST のカバレッジ**だった。AST 除外（レビュー指摘の対応）を入れた
+とたんに 0 件になったことで、この事実が表に出た。**あのまま床を設定していれば、別プロジェクトの
+数字を platform / knowledge の基準として固定していた。**
+
+対処として 14 テストプロジェクトすべてに `coverlet.collector` の `PackageReference` を追加する。
 
 **バックエンドのカバレッジ床が無いことが最大の穴である。** 再実装で 11 サービスを作り直す間、テストが薄い
 まま置き換わっても CI は緑のままになる。#453 の受け入れ観点「カバレッジ floor が再実装前の水準を下回った
@@ -168,8 +188,9 @@ it('0 件のとき空状態を表示する', () => { ... })
 
 ## 未決事項
 
-1. **バックエンドカバレッジ床の初期値**。本 PR の CI 実行で実測値を得てから確定する。実測前に推測値を
-   置くと、低すぎればゲートが無意味になり、高すぎれば初回から赤くなる。
+1. **バックエンドカバレッジ床の初期値**。`coverlet.collector` 追加後の CI 実行で **MSP のみの**実測値を
+   得てから確定する。実測前に推測値を置くと、低すぎればゲートが無意味になり、高すぎれば初回から
+   赤くなる。**初回に観測した 47.22% は AST の数字であり、床の根拠にしてはならない。**
 2. **CPM バージョン直書き検査**（後続 issue）。本 PR では起票のみ行う。
 3. **契約テストの方式**（後続 issue）。[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) の
    繰延判断を見直すか否かを含め、独立した ADR が要る。
