@@ -2,8 +2,9 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <!-- ADR-0030: xUnit v3 + AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）+ NSubstitute。 -->
-  <!-- ADR-0030 の標準は **xUnit v3** だが、雛形は現時点で **v2** を使う。
+  <!-- ADR-0030 のテスト標準: AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）・
+       NSubstitute・Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）・Respawn。
+       **xUnit だけは標準が v3 だが、雛形は現時点で v2 を使う。**
        CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 2.8.2（v2 用）に固定されており、
        v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存 30 の
        テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
