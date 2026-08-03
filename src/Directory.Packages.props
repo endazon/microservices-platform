@@ -54,8 +54,50 @@
     <PackageVersion Include="FluentAssertions" Version="7.2.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!-- ============================================================================
+         ADR-0030 バックエンドアプリケーション層標準（Issue #455）。
+         計画 06_technical/12_backend-application-stack.md の棚卸し表が正。実装側の要点は
+         docs/tech/tech-requirements.md「バックエンドアプリケーション層標準」を参照。
+         以下は各サービスの再実装 issue（#438〜#451）が参照するための中央定義であり、
+         この時点ではまだどの .csproj からも参照されていない（CPM の未参照エントリは無害）。
+         不採用ライブラリ（MediatR / AutoMapper / Mapster / MassTransit / FluentAssertions /
+         Serilog 等）は scripts/check-backend-libraries.js が新規混入を止める。既存の参照は
+         scripts/backend-library-baseline.json で ratchet 管理し、空になった時点で
+         上の MassTransit / Serilog / FluentAssertions の PackageVersion を削除する。
+         ============================================================================ -->
+    <!-- Application 層: ローカル/リモートハンドラ・Outbox（ADR-0027）・検証・マッピング・DI -->
+    <PackageVersion Include="WolverineFx" Version="6.24.4" />
+    <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.24.4" />
+    <PackageVersion Include="WolverineFx.Kafka" Version="6.24.4" />
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
+    <PackageVersion Include="Scrutor" Version="7.0.0" />
+    <!-- API 層: ドキュメント UI・バージョニング -->
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.16.17" />
+    <PackageVersion Include="Asp.Versioning.Http" Version="10.0.1" />
+    <!-- Infrastructure 層: キャッシュ（L1+L2）・レジリエンス・命名規約・gRPC・鍵保護 -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.Hybrid" Version="10.8.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.8.0" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.83.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.83.0" />
+    <PackageVersion Include="Grpc.Tools" Version="2.83.0" />
+    <PackageVersion Include="Google.Protobuf" Version="3.35.1" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.10" />
+    <!-- その他 -->
+    <PackageVersion Include="Humanizer" Version="3.0.10" />
+    <PackageVersion Include="Ardalis.GuardClauses" Version="5.0.0" />
+    <!-- テスト: xUnit v3 + AwesomeAssertions（FluentAssertions v8 商用化のため v7 互換フォーク） -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+    <PackageVersion Include="Respawn" Version="7.0.0" />
+    <!-- ============================================================================ -->
     <!-- TestContainers -->
     <PackageVersion Include="Testcontainers" Version="4.12.0" />
+    <!-- 既存の Testcontainers 一族と版を揃える（family 間で版が割れると解決衝突を起こす）。 -->
+    <PackageVersion Include="Testcontainers.Redis" Version="4.12.0" />
+    <PackageVersion Include="Testcontainers.Qdrant" Version="4.12.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
     <PackageVersion Include="Testcontainers.RabbitMq" Version="4.12.0" />
     <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->

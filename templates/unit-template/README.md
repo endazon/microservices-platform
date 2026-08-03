@@ -16,10 +16,16 @@
     backend.slnx                            ← ユニットの集約ソリューション
     Directory.Build.props.sample            ← 単独ビルド用フォールバック（配置時は使わない。IADR-0064）
     Directory.Packages.props.sample         ← 単独ビルド用 CPM フォールバック（同上）
-    Services/SampleService/
-      src/SampleService.Api/
+    Services/SampleService/                  ← ADR-0030 の標準プロジェクト構成
+      src/SampleService.Api/                 ← エンドポイント・DI 構成・ProblemDetails 変換
         SampleService.Api.csproj            ← platform Shared を相対参照（配置後に解決）
-        Program.cs                          ← 合成ルート（最小 API + ヘルスチェック）
+        Program.cs                          ← 合成ルート（Minimal API + ヘルスチェック）
+      src/SampleService.Application/         ← ユースケース（Wolverine ハンドラ）・検証・マッピング
+      src/SampleService.Domain/              ← エンティティ・値オブジェクト（**外部依存ゼロ**）
+      src/SampleService.Infrastructure/      ← EF Core・Redis 等の実装
+      src/SampleService.Contracts/           ← 公開契約（proto・イベント・DTO）
+      tests/SampleService.UnitTests/         ← xUnit v3 + AwesomeAssertions + NSubstitute
+      tests/SampleService.IntegrationTests/  ← Testcontainers + Respawn + Mvc.Testing
   frontend/
     package.json                            ← name: @<scope>/frontend-<unit>（workspaces で自動認識）
     src/features/
@@ -27,6 +33,11 @@
       sample/index.ts                       ← サンプル feature
 ```
 
+- **アプリケーション層の標準は ADR-0030**（Vertical Slice / Minimal API / ローカルディスパッチも
+  Wolverine ハンドラ / Domain は外部依存ゼロ / 採用・不採用ライブラリ）。実装側の要点は
+  [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
+  不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
+  `scripts/check-backend-libraries.js` が CI で止める。
 - 実サービスの標準レイアウト（`Foundation/` / `Composable/` の区分）は
   [`src/README.md`](../../src/README.md) の「サービスユニットの標準レイアウト」に従う。
 - ユニット固有のイベント契約は `backend/Shared/<Unit>.Contracts/Events/` に置く（段間連携イベント。

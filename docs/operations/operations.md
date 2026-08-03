@@ -584,6 +584,28 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 - **エスカレーション/通知**: Alertmanager の受信先（メール/チャット）と担当・当番は運用体制に応じて定める（環境ごと）。
 - **MTTR 目標（30 分）**: アラート（検出 5 分以内）→ Runbook 一次対応 → 復旧、の各段を Grafana/Tempo/Loki で追跡する。
 
+## 定期点検（年次）
+
+### 採用ライブラリのライセンス・保守状況の点検（ADR-0030 フォローアップ / #455）
+
+計画 [ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md) は
+**年 1 回、採用ライブラリのライセンス・保守状況を点検し、同 ADR の選定基準で再評価する**ことを求めている。
+2025〜2026 年に MediatR / AutoMapper / MassTransit / FluentAssertions が相次いで商用化し、Mapster が保守停滞に
+陥った経緯があり、**ライセンス変更は予告なく起こる**という前提で点検する。
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施時期 | 毎年 7 月（ADR-0030 の起票月に合わせる） |
+| 重点対象 | **AwesomeAssertions**（FluentAssertions v7 のコミュニティフォーク。上流分裂のリスクが残る）、**Wolverine**（比較的新しい選択） |
+| 併せて見る | Riok.Mapperly・FluentValidation・Scrutor・Scalar・Testcontainers・Respawn（いずれも棚卸し表の採用分） |
+| 点検内容 | ①ライセンスの変更有無 ②直近 12 か月のリリース有無 ③未解決の重大 issue ④.NET の次期メジャーへの追随状況 |
+| 判定 | ADR-0030 の選定基準（ライセンス持続性 / 標準機能優先 / 層の依存規律 / ソースジェネレータ親和）で再評価する |
+| 逸脱時 | 置き換えが必要なら実装 ADR（IADR）を起こし、計画側へ `/plan-feedback` で環流する（棚卸し表は計画が正） |
+
+不採用ライブラリの混入は `scripts/check-backend-libraries.js` が CI で継続的に止めるため、本点検は
+**「採用したものが採用に値し続けているか」**だけを見る。残件（`scripts/backend-library-baseline.json`）の
+消化状況もあわせて確認する。
+
 ## 未決事項
 
 - **Alertmanager の受信先設定**: メール/チャット通知経路（`prometheus.yml` の `alerting.alertmanagers`）は
