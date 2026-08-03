@@ -143,8 +143,18 @@ function walk(dir, predicate, acc = []) {
   return acc;
 }
 
+/**
+ * Cobertura レポートを探す。除外前後の内訳も返す——0 件のときに「探索そのものが空振りしたのか、
+ * 除外で全部落ちたのか」を切り分けられないと、fail-open の warn が原因不明のまま素通りする。
+ */
+function findReportsDetailed() {
+  const all = walk(SEARCH_ROOT, (p) => /coverage\.cobertura\.xml$/i.test(p));
+  const included = all.filter((p) => !isExcludedPath(p));
+  return { all, included, excluded: all.filter((p) => isExcludedPath(p)) };
+}
+
 function findReports() {
-  return walk(SEARCH_ROOT, (p) => /coverage\.cobertura\.xml$/i.test(p) && !isExcludedPath(p));
+  return findReportsDetailed().included;
 }
 
 function readFloor() {
@@ -230,11 +240,20 @@ function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
   const reportOnly = process.argv.includes('--report-only');
 
-  const reports = findReports();
+  const { all, included: reports, excluded } = findReportsDetailed();
   if (reports.length === 0) {
     // fail-open: レポートが無い＝テストを走らせていない文脈（ローカル実行等）。
     // ここで fail にすると「カバレッジと無関係な PR が赤くなる」ため警告に留める。
-    warn('[check-coverage-floor] Cobertura レポートが見つかりません（dotnet test --collect:"XPlat Code Coverage" 未実行）。床の検査を行いませんでした。');
+    //
+    // **ただし黙って素通りさせない。** 「探索が空振りした」のか「除外で全部落ちた」のかを
+    // 切り分けられる情報を必ず出す（原因不明の warn は、この検査が無いのと同じである）。
+    const sample = all.slice(0, 5).map((p) => `    ${p}`).join('\n');
+    warn(`[check-coverage-floor] 集計対象の Cobertura レポートが 0 件でした（探索起点 ${SEARCH_ROOT}/）。`
+      + ` 検出 ${all.length} 件 / 除外 ${excluded.length} 件（除外ユニット: ${[...EXCLUDED_UNITS].join(', ')}）。`
+      + (all.length === 0
+        ? ' 1 件も見つかっていないため、dotnet test --collect:"XPlat Code Coverage" が未実行か、出力先が探索起点の外である可能性が高い。'
+        : ' 検出はしているため、すべて除外ユニット配下だったことになる。'));
+    if (all.length) console.error(`検出したレポート（先頭 5 件）:\n${sample}`);
     process.exit(0);
   }
 
@@ -281,4 +300,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { EXCLUDED_UNITS, isExcludedPath, parseCobertura, mergeTotals, rate, compareToFloor, findReports, readFloor };
+module.exports = { EXCLUDED_UNITS, isExcludedPath, findReportsDetailed, parseCobertura, mergeTotals, rate, compareToFloor, findReports, readFloor };

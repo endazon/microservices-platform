@@ -532,6 +532,14 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(cov.rate(0, 0), null);
   });
 
+  ok('findReportsDetailed: 検出/除外の内訳を返す（0 件の原因を切り分けられること）', () => {
+    const d = cov.findReportsDetailed();
+    // 実リポジトリでは dotnet test 未実行なら 0 件。内訳の整合だけを検証する。
+    assert.strictEqual(d.included.length + d.excluded.length, d.all.length);
+    assert.ok(d.excluded.every((p) => cov.isExcludedPath(p)));
+    assert.ok(d.included.every((p) => !cov.isExcludedPath(p)));
+  });
+
   ok('isExcludedPath（カバレッジ）: AST を合算しない（PR #464 レビュー指摘）', () => {
     assert.strictEqual(cov.isExcludedPath('src/ai-stock-trading/backend/x/TestResults/g/coverage.cobertura.xml'), true);
     assert.strictEqual(cov.isExcludedPath('src/platform/backend/x/TestResults/g/coverage.cobertura.xml'), false);
