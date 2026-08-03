@@ -163,7 +163,7 @@ jobs:
           # 実装用へも足した（PR #461 のレビュー指摘。宣言した意図的な差＝Edit / Write / 書き込み系
           # git / find / mkdir に該当しない、純粋な非対称だった）。
           #
-          # 【暫定デルタ・issue #469】`Bash(which:*)` / `Bash(dotnet --version)` /
+          # 【暫定デルタ・issue #469 / 環流先 planning#168】`Bash(which:*)` / `Bash(dotnet --version)` /
           # `Bash(dotnet --info)` / `mcp__github__list_workflow_runs` /
           # `mcp__github__actions_list` は、**実走を求めながら実走に伴う周辺操作を許可していない**
           # 非対称を塞ぐ追加である（レビュー用で実測した拒否 5 件のうち 3 件がこの系統）。

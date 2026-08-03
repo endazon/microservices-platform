@@ -49,7 +49,13 @@ related_specs:
 | `mcp__github__list_workflow_runs` | 1 | 未許可。CI 結果を参照できず、レビューはローカル再現の遠回りをした |
 
 #454 の再実装は子 issue 20 件＝ PR 20 本であり、#460 を塞いだ直後の別ルート再発を放置すると
-「拒否の赤を無視する学習」（IADR-0115 が planning#162 を引いて警告した常態化）が定着する。
+「拒否の赤を無視する学習」（[`scripts/README.md`](../../scripts/README.md) の
+`check-permission-denials.js` 節が整理した常態化。上流の起票は
+[planning#162](https://github.com/endazon/project-planning/issues/162)）が定着する。
+
+**この常態化の典拠は `scripts/README.md` の `check-permission-denials.js` 節（段階ポリシーの設計）と
+上流の planning#162 である。IADR-0115 を典拠にしない**（同 IADR に該当記述は無い。IADR-0115 は
+`impl-handoff-kit` の**同期規約**として、分類 B・対称性・暫定デルタの文脈でのみ言及する）。
 
 ## 対象範囲
 
@@ -194,7 +200,7 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
 - 差異: あり（キット側の不足）。`--allowedTools` とプロンプトは [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
   でキットを単一情報源とした**分類 B** のファイルである。「実走を求めるプロンプト」と
   「実走の周辺操作を許可しない `--allowedTools`」の非対称は**キット由来**であり、
-  キットを使う他の実装リポジトリでも同じ拒否が出る。本 PR の変更は planning#140 / #163 と同じ
+  キットを使う他の実装リポジトリでも同じ拒否が出る。本 PR の変更は planning#140 / planning#163 と同じ
   **暫定デルタ**（コメントで環流先を参照し、キット反映後の同期で撤去してバイト一致へ戻す）として扱い、
   `feedback/20260803_ai-review-execution-permissions.md` に記録した。
 
@@ -216,5 +222,9 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
   "mcp__github__actions_list",
   ```
 
-- planning リポジトリ（`impl-handoff-kit`）への起票は `feedback/20260803_ai-review-execution-permissions.md`
-  の内容で行う（PR 作成と同じタイミング。planning#163 の続きとして追記する案もある）。
+- planning リポジトリ（`impl-handoff-kit`）への起票は
+  `feedback/20260803_ai-review-execution-permissions.md` の内容で
+  [planning#168](https://github.com/endazon/project-planning/issues/168)
+  として**起票済み**である（IADR-0115 の「記録 1 件 ↔ 環流 1 件」規約に従い、planning#163 への
+  追記ではなく新規 issue とした）。反映されたら本リポジトリの暫定デルタを撤去し、
+  キットとバイト一致へ戻す。
