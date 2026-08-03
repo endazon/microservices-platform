@@ -79,6 +79,22 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 
+#### 既知の限界: 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468)）
+
+除外は **Cobertura レポートファイルのパス**が `src/ai-stock-trading/` 配下かどうかで判定する。ところが
+`Platform.Bff` は BFF の合成点として
+[`AiStockTrading.Bff.Endpoints`](../../src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj) を
+`ProjectReference` しており、`Platform.Bff.Tests` はそれをプロセス内で読み込んで実行する。その結果
+**`src/platform/` 配下にあるレポートの中身に AST のクラス・行が含まれる**。
+
+実測（PR #464 のレビューが Release 構成で再現）では **AST 由来 266 行（すべて被覆済み）**。除いた場合の
+推定は `line 34.14%`（18628/54560）で、**現在の床 34 は除去後も有効**である（差 0.32pp）。
+
+したがって上表の対象欄「`src/platform/backend/**` ・ `src/knowledge/backend/**`」は、**レポートの
+ファイルパスとしては正確だが、中身は他ユニットのコードを含みうる**。塞ぐには Cobertura の
+`<class>` の `filename` で行を帰属させる必要があり、パーサを class 単位に作り替える設計判断を伴うため
+[#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出した。
+
 ### 共通する設計原則: ratchet
 
 上記のうち写像検査・カバレッジ床・ライブラリ標準はいずれも **ratchet**（床は下げられるが上げっぱなしに

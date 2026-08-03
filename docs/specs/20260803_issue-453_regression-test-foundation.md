@@ -174,6 +174,12 @@ it('0 件のとき空状態を表示する', () => { ... })
 
 判定経路は実値で確認済み。実測（34.46 / 17.62）で違反 0、床を割る値（33.99 / 16.99）で違反 2 件。
 
+**既知の限界（[#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出し）**: 除外は
+レポート**ファイルのパス**で判定するため、`Platform.Bff` が合成点として `ProjectReference` する
+`AiStockTrading.Bff.Endpoints` の行が、`src/platform/` 配下のレポートの**中身**に混入する（実測 266 行・
+すべて被覆済み）。除いた推定は `line 34.14%`（18628/54560）で、**床 34 は除去後も有効**（差 0.32pp）。
+塞ぐには Cobertura の `<class filename>` で行を帰属させるパーサ改修が要るため分割した。
+
 ### 4. DoD の更新
 
 `docs/DEFINITION_OF_DONE.md` に再実装期間の条件を追加する。
@@ -214,5 +220,8 @@ it('0 件のとき空状態を表示する', () => { ... })
    `line 34` / `branch 17` に確定した（上記「実測値と床の確定」）。**初回に観測した 47.22% は AST の
    数字であり、床の根拠にしていない。**
 2. **CPM バージョン直書き検査**（後続 issue #467）。本 PR では起票のみ行う。
-3. **契約テストの方式**（後続 issue）。[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) の
+3. **契約テストの方式**（後続 issue #465）。[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) の
    繰延判断を見直すか否かを含め、独立した ADR が要る。
+4. **合成点テスト経由で混入する AST 行の除外**（後続 issue #468）。実レポートを見てから設計する。
+   レポートを見ずに Cobertura の属性の形を仮定して書くと、フィルタが何にもマッチせず「除外したつもりで
+   素通り」になる——本 PR で一度踏んだ「AST の数字を MSP の実測値と取り違える」のと同型の失敗になる。
