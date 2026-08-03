@@ -66,7 +66,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
-| **ライブラリ標準（ADR-0030）** | `PackageReference` / `using` ・Domain 層の依存 | `scripts/check-backend-libraries.js` | 新規混入・baseline 減らし忘れ → **fail**（#455） |
+| **ライブラリ標準（ADR-0030）** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)） |
 
 ※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
 未マージ成果物への前方参照は live link ではなくバッククォート表記で書く

@@ -756,6 +756,66 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, null).length, 0);
   });
 
+  // --- check-backend-libraries: 検出漏れの是正（Issue #471） ---
+
+  ok('BANNED: Kiota は実在 ID（Microsoft.Kiota.*）で登録され、旧 "Kiota" の死にエントリが残っていない', () => {
+    // 'Kiota' は完全一致にも 'Kiota.' 前方一致にも当たらず 1 件も検出できなかった（#471）。
+    assert.strictEqual(backendLibs.BANNED.includes('Kiota'), false);
+    assert.strictEqual(backendLibs.bannedNameOf('Microsoft.Kiota.Abstractions'), 'Microsoft.Kiota');
+    assert.deepStrictEqual(
+      backendLibs.bannedInCsproj('<PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.0.0" />'),
+      ['Microsoft.Kiota']);
+  });
+
+  ok('BANNED: ADR-0030 棚卸し表の不採用・置換対象（Kafka / RabbitMQ 素クライアント・Key Vault・Argon2）を含む', () => {
+    for (const id of ['Confluent.Kafka', 'RabbitMQ.Client', 'Azure.Security.KeyVault.Secrets',
+      'Azure.Extensions.AspNetCore.Configuration.Secrets', 'Konscious.Security.Cryptography.Argon2',
+      'Isopoh.Cryptography.Argon2']) {
+      assert.notStrictEqual(backendLibs.bannedNameOf(id), null, `${id} が BANNED に無い`);
+    }
+    // 採用側・無関係を巻き込まない（前方一致の境界）。
+    for (const id of ['WolverineFx.Kafka', 'WolverineFx.RabbitMQ', 'Azure.Identity',
+      'Konscious.Security.Cryptography.Blake2', 'Isopoh.Cryptography.Blake2b']) {
+      assert.strictEqual(backendLibs.bannedNameOf(id), null, `${id} を誤検出している`);
+    }
+  });
+
+  ok('isScannedBuildFile: props / targets（雛形の .sample 含む）も走査対象', () => {
+    for (const p of ['src/x/X.csproj', 'src/Directory.Build.props', 'src/Directory.Build.targets',
+      'src/x/Custom.props', 'templates/unit-template/backend/Directory.Packages.props.sample']) {
+      assert.strictEqual(backendLibs.isScannedBuildFile(p), true, `${p} が対象外`);
+    }
+    for (const p of ['src/x/X.cs', 'src/x/backend.slnx', 'src/x/README.md']) {
+      assert.strictEqual(backendLibs.isScannedBuildFile(p), false, `${p} が対象になっている`);
+    }
+  });
+
+  ok('PackageVersion は違反にせず GlobalPackageReference は違反にする（CPM 走査追加の偽陽性防止）', () => {
+    // Directory.Packages.props は baseline 消化まで不採用パッケージの**版定義**を正当に持つ。
+    // ここを違反にすると走査対象への追加だけで 42 件の偽陽性が出る（#471）。
+    assert.deepStrictEqual(
+      backendLibs.bannedInCsproj('<PackageVersion Include="MassTransit" Version="8.4.1" />'
+        + '<PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />'), []);
+    // 一方 GlobalPackageReference は全プロジェクトへ参照を注入するため違反。
+    assert.deepStrictEqual(
+      backendLibs.bannedInCsproj('<GlobalPackageReference Include="Serilog" Version="4.0.0" />'), ['Serilog']);
+  });
+
+  ok('実ファイル: CPM の props（本体・雛形）は不採用パッケージの版定義を持つが違反 0', () => {
+    for (const rel of ['src/Directory.Packages.props', 'src/Directory.Build.props',
+      'templates/unit-template/backend/Directory.Packages.props.sample',
+      'templates/unit-template/backend/Directory.Build.props.sample']) {
+      const xml = fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+      assert.deepStrictEqual(backendLibs.bannedInCsproj(xml), [], `${rel} で偽陽性`);
+    }
+  });
+
+  ok('--self-test は exit 0（検出漏れ 3 種の実地確認を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-backend-libraries.js'), '--self-test'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
+
   ok('実ファイル: 新規混入 0 件・Domain 依存規律 OK（baseline との突合）', () => {
     const { current, domain } = backendLibs.scanTree();
     const baseline = JSON.parse(fs.readFileSync(path.join(__dirname, 'backend-library-baseline.json'), 'utf8')).projects;
