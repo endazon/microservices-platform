@@ -192,6 +192,23 @@ jobs:
       - name: Check unit dependency direction
         run: node scripts/check-unit-dependencies.js
 
+  # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
+  # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
+  # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。
+  # 「仕様書が先・テストは次の PR」という段取りは scripts/test-traceability-allowlist.json で明示する
+  # （ratchet: allowlist に無い未写像と、写像済みなのに allowlist に残る行の双方を fail にする）。
+  test-traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test traceability checker
+        run: node scripts/check-test-traceability.js --self-test
+      - name: Check acceptance-criteria to test mapping
+        run: node scripts/check-test-traceability.js
+
   # Issue #18 再発防止: Keycloak realm export の文字列フィールド長が import 先 RDB の
   # varchar(255) を超えていないかを機械検査する（#307 で description が 364 文字となり import が
   # SQLSTATE 22001 で失敗し pod がクラッシュした）。外部依存ゼロ。--self-test で検査器も毎回試験する。
@@ -325,10 +342,17 @@ jobs:
             dotnet test "$slnx" --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
             echo "::endgroup::"
           done
-      # カバレッジ閾値を強制する場合の例（ツールは任意）:
-      #   - run: dotnet tool install --global dotnet-reportgenerator-globaltool
-      #   - run: reportgenerator -reports:'**/coverage.cobertura.xml' -targetdir:coverage -reporttypes:TextSummary
-      #   - run: cat coverage/Summary.txt
+      # NFR, Issue #453: カバレッジ床の強制。上のステップが出力する Cobertura を直接集計するため
+      # reportgenerator のインストールを要さない（CI が速く、オフラインでも動く）。
+      # 床は src/coverage-floor.json。未設定（null）の間は集計と報告のみ行う。
+      # フロント側の同等ゲートは frontend-tests.yml（vitest thresholds・IADR-0034）。
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test coverage floor checker
+        run: node scripts/check-coverage-floor.js --self-test
+      - name: Check backend coverage floor
+        run: node scripts/check-coverage-floor.js
 
       # 参考: 他スタックの例
       # Node.js:

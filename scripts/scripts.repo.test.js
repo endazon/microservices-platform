@@ -467,4 +467,77 @@ module.exports = ({ ok, assert }) => {
     const { checkTree } = require('./check-unit-service-ownership.js');
     assert.deepStrictEqual(checkTree(), []);
   });
+
+  // --- check-test-traceability: 受け入れ基準 → テストの写像（Issue #453） ---------
+
+  const trace = require('./check-test-traceability.js');
+
+  ok('specIdOf: 仕様書ファイル名から起点 ID を取り出す（NFR は連番を丸める）', () => {
+    assert.strictEqual(trace.specIdOf('FR-01_data-source-catalog.md'), 'FR-01');
+    assert.strictEqual(trace.specIdOf('SC-11_configuration-viewer.md'), 'SC-11');
+    assert.strictEqual(trace.specIdOf('NFR-01_performance-load-test.md'), 'NFR');
+    assert.strictEqual(trace.specIdOf('TEST_STRATEGY.md'), null);
+  });
+
+  ok('idsInText: 修飾付き（AST/FR-17）を除外し裸の ID だけ拾う', () => {
+    assert.deepStrictEqual([...trace.idsInText('// FR-03, UC-01: 検索')].sort(), ['FR-03', 'UC-01']);
+    assert.strictEqual(trace.idsInText('// AST/FR-17: 別プロジェクト').has('FR-17'), false);
+    assert.deepStrictEqual([...trace.idsInText('// AST/FR-17 と FR-03')], ['FR-03']);
+    assert.strictEqual(trace.idsInText('XFR-01').size, 0); // 単語の一部は拾わない
+    assert.strictEqual(trace.idsInText('// FR-3').has('FR-03'), true); // ゼロ埋め正規化
+  });
+
+  ok('classifyAgainstAllowlist: 未写像は blocked、allowlist 内は pending、写像済み残置は stale', () => {
+    assert.deepStrictEqual(trace.classifyAgainstAllowlist(['FR-17'], []).blocked, ['FR-17']);
+    assert.deepStrictEqual(trace.classifyAgainstAllowlist(['FR-17'], ['FR-17']).pending, ['FR-17']);
+    assert.deepStrictEqual(trace.classifyAgainstAllowlist([], ['FR-17']).stale, ['FR-17']);
+    const mixed = trace.classifyAgainstAllowlist(['FR-17', 'SC-18'], ['FR-17']);
+    assert.deepStrictEqual(mixed.blocked, ['SC-18']);
+    assert.deepStrictEqual(mixed.pending, ['FR-17']);
+  });
+
+  ok('実ファイル: 仕様書のある起点 ID がすべて写像済み（allowlist の残置も無い）', () => {
+    const unmapped = trace.unmappedIds(trace.collectSpecIds(), trace.collectTestIds());
+    const { blocked, stale } = trace.classifyAgainstAllowlist(unmapped, trace.readAllowlist());
+    assert.deepStrictEqual(blocked, [], `未写像（allowlist 外）: ${blocked.join(' / ')}`);
+    assert.deepStrictEqual(stale, [], `allowlist の減らし忘れ: ${stale.join(' / ')}`);
+  });
+
+  // --- check-coverage-floor: バックエンドのカバレッジ床（Issue #453） -------------
+
+  const cov = require('./check-coverage-floor.js');
+
+  const COBERTURA_FIXTURE = [
+    '<coverage><packages><package><classes><class><lines>',
+    '<line number="1" hits="1" />',
+    '<line number="2" hits="0" />',
+    '<line number="3" hits="5" branch="true" condition-coverage="50% (1/2)" />',
+    '<line number="4" hits="2" branch="true" condition-coverage="100% (2/2)" />',
+    '</lines></class></classes></package></packages></coverage>',
+  ].join('\n');
+
+  ok('parseCobertura: 行・分岐を数える（属性順・hits 欠落・空入力に耐える）', () => {
+    const t = cov.parseCobertura(COBERTURA_FIXTURE);
+    assert.strictEqual(t.lines, 4);
+    assert.strictEqual(t.covered, 3);
+    assert.strictEqual(t.branches, 4);
+    assert.strictEqual(t.coveredBranches, 3);
+    assert.strictEqual(cov.parseCobertura('<line hits="1" number="9" />').lines, 1);
+    assert.strictEqual(cov.parseCobertura('<line number="1" />').lines, 0);
+    assert.strictEqual(cov.parseCobertura('').lines, 0);
+  });
+
+  ok('rate: 分母 0 は null（未計測を 100% と誤らせない）', () => {
+    assert.strictEqual(cov.rate(3, 4), 75);
+    assert.strictEqual(cov.rate(0, 0), null);
+  });
+
+  ok('compareToFloor: 床未満は違反・床ちょうどは違反にしない・未計測は判定しない', () => {
+    const t = cov.parseCobertura(COBERTURA_FIXTURE); // line 75% / branch 75%
+    assert.strictEqual(cov.compareToFloor(t, { line: 80, branch: 70 }).violations.length, 1);
+    assert.strictEqual(cov.compareToFloor(t, { line: 75, branch: 75 }).violations.length, 0);
+    assert.strictEqual(cov.compareToFloor(t, { line: 90, branch: 90 }).violations.length, 2);
+    const empty = { lines: 0, covered: 0, branches: 0, coveredBranches: 0 };
+    assert.strictEqual(cov.compareToFloor(empty, { line: 80, branch: 70 }).violations.length, 0);
+  });
 };
