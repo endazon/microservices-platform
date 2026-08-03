@@ -574,4 +574,48 @@ module.exports = ({ ok, assert }) => {
       assert.ok(floor[metric] > 0, `backend.${metric} は正の値であること: ${floor[metric]}`);
     }
   });
+
+  // NFR: 床が武装されていても、テストプロジェクトが coverlet.collector を参照していなければ
+  // `dotnet test --collect:"XPlat Code Coverage"` は Cobertura を 1 件も出さない。レポート 0 件は
+  // fail-open（warn で素通り）のため、床は緑のまま静かに無効化される——#453 の実測でまさに
+  // これが起きていた（MSP 14 プロジェクト中 0 件が参照。CI が拾っていた 38 件はすべて AST）。
+  // 床の null 化と同じ性質の穴であり、参照が外れる退行をここで固定する。
+  ok('テストプロジェクトはすべて coverlet.collector を参照する（カバレッジの無音失効を止める）', () => {
+    const repoRoot = path.join(__dirname, '..');
+    // ai-stock-trading は別プロジェクト（submodule）であり床の対象外。
+    // check-coverage-floor.js / check-test-traceability.js の EXCLUDED_UNITS と同じ切り分け。
+    const units = ['platform', 'knowledge'];
+    const skipDirs = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'coverage']);
+    const found = [];
+    const walk = (dir) => {
+      let entries = [];
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (e) { return; }
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (!skipDirs.has(e.name)) walk(full);
+        } else if (/Tests\.csproj$/.test(e.name)) {
+          found.push(full);
+        }
+      }
+    };
+    for (const u of units) walk(path.join(repoRoot, 'src', u));
+
+    // ratchet: テストプロジェクトを増やしたらこの実数を更新する。「N 件以上」にすると
+    // 走査が壊れて 0 件になったときにテストが空振りで green になる（穴を塞ぐのが本テストの目的）。
+    assert.strictEqual(
+      found.length, 14,
+      `テストプロジェクトの検出数が想定と異なる（走査の破損 or 増減。増えたなら本数を更新する）: ${found.length} 件\n` +
+        found.map((f) => path.relative(repoRoot, f)).join('\n'),
+    );
+
+    const missing = found.filter((f) => {
+      const xml = fs.readFileSync(f, 'utf8');
+      return !/<PackageReference\s+Include="coverlet\.collector"/.test(xml);
+    });
+    assert.deepStrictEqual(
+      missing.map((f) => path.relative(repoRoot, f)), [],
+      'coverlet.collector を参照しないテストプロジェクトがある（XPlat Code Coverage が何も出力せず床が無効化される）',
+    );
+  });
 };
