@@ -297,8 +297,13 @@ jobs:
             - **`gh auth status` は不要であり、許可もされていない。** 認証は環境側で構成済みである。
               GitHub の情報は GitHub MCP ツール（`mcp__github__pull_request_read` /
               `mcp__github__get_file_contents` / `mcp__github__list_workflow_runs` 等）で取ること。
-            - `curl` / `wget` / `python3` / `pip` / `jq` / `sed` / `awk` / `xargs` / `env` /
+            - `curl` / `wget` / `python3` / `pip` / `jq` / `sed` / `awk` / `wc` / `xargs` / `env` /
               `chmod` / `rm` / `mv` / `cp` / `touch` / `tee` も**一覧に無いので拒否される**。
+            - **件数を数えるときは `grep -c` / `rg -c`（総マッチ数なら `rg --count-matches`）を
+              単体で使う。** `… | wc -l` や `… | awk` によるパイプ集計は `wc` / `awk` が
+              一覧に無いため**必ず拒否され、鎖全体が実行されない**（前段の結果も得られない）。
+              実測（run 30833943957 / PR #480 の再々実走）: 拒否は 1 件のみで、それが
+              `Bash(grep | wc | awk)` の件数集計だった。
             実測（run 30832367628 / PR #480 の再実走）: この節を書く前のレビューは、拒否 3 件を
             すべて**一覧に無いコマンドの試行**で出した（`gh auth` 系 2 件・`python3 -c` での
             YAML パース 1 件）。「拒否される形」の列挙だけでは、この型は塞げない。
