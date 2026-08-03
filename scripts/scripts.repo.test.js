@@ -57,6 +57,69 @@ module.exports = ({ ok, assert }) => {
     fs.rmdirSync(base);
   });
 
+  // --- check-doc-links: コードファイルへのリンクも検査対象（Issue #470） ----------
+  //
+  // LINK_EXT にコード拡張子が無かったため、仕様書からコードへの live link は一切検査されず、
+  // 破損したまま「OK: 384 件」と報告された（検査器を作る PR が、検査器の穴で自分の参照切れを
+  // 見逃した）。正例（実在 → OK）と負例（不在 → 検出）を対で固定する。
+
+  const {
+    LINK_EXT: DOC_LINK_EXT,
+    isBrokenRef: isBrokenDocRef,
+    collectBroken: collectBrokenDocLinks,
+  } = require('./check-doc-links.js');
+
+  const CODE_EXTS = ['js', 'mjs', 'cjs', 'ts', 'tsx', 'cs', 'csproj', 'props', 'targets', 'slnx', 'sh'];
+
+  ok('LINK_EXT はコードファイルの拡張子を含む（#470）', () => {
+    for (const ext of CODE_EXTS) {
+      assert.ok(DOC_LINK_EXT.test(`a.${ext}`), `.${ext} が検査対象に入っていない`);
+    }
+    // 既存の対象（仕様書・図・スキーマ）を落としていないこと。
+    for (const ext of ['md', 'yaml', 'yml', 'json', 'puml', 'mmd', 'png', 'jpeg', 'svg', 'drawio']) {
+      assert.ok(DOC_LINK_EXT.test(`a.${ext}`), `.${ext} の検査が落ちている`);
+    }
+    // 無関係な拡張子まで広げていないこと（誤検知の芽）。
+    for (const ext of ['txt', 'tsv', 'log', 'lock']) {
+      assert.ok(!DOC_LINK_EXT.test(`a.${ext}`), `.${ext} は検査対象にしない`);
+    }
+  });
+
+  ok('.js リンクは正例で OK・負例で検出（#470）', () => {
+    const here = __dirname;
+    assert.strictEqual(isBrokenDocRef('./check-doc-links.js', here), false, '実在する .js を破損としない');
+    assert.strictEqual(isBrokenDocRef('./__no_such_script__.js', here), true, '不在の .js を検出する');
+    // 対象外の拡張子は従来どおり素通し（実在しなくても検出しない）。
+    assert.strictEqual(isBrokenDocRef('./__no_such__.txt', here), false);
+  });
+
+  ok('collectBroken は本文・フロントマター・インラインコードの .js を拾う（#470）', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclinks-code-'));
+    fs.writeFileSync(path.join(dir, 'real.js'), '// fixture\n');
+    const md = path.join(dir, 'a.md');
+    fs.writeFileSync(
+      md,
+      '---\nrelated_specs:\n  - ./real.js\n  - ./fm-missing.js\n---\n\n' +
+        '# A\n\n[ok](./real.js) と [ng](./missing.js)。\n\nインラインの `./inline-missing.js`。\n'
+    );
+    const broken = collectBrokenDocLinks(md);
+    assert.ok(!broken.includes('./real.js'), '実在する .js を報告しない');
+    for (const x of ['./missing.js', './fm-missing.js', './inline-missing.js']) {
+      assert.ok(broken.includes(x), `${x} を検出していない: ${JSON.stringify(broken)}`);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // 自己試験そのものが緑であること（子プロセスで終了コードを実測する）。
+  ok('check-doc-links --self-test は exit 0（#470）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-doc-links.js'), '--self-test'], {
+      encoding: 'utf8',
+    });
+    assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}${r.stderr}`);
+    assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+  });
+
   // --- check-unit-dependencies: ユニット依存方向の検査（Issue #231） -------------
 
   const {

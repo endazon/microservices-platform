@@ -34,7 +34,9 @@ related_specs:
 ## 対象範囲
 
 - 含むもの:
-  1. [`frontend/vite.config.ts`](../../frontend/vite.config.ts): `test.coverage`（provider=v8・reporter・include/exclude・thresholds）を追加。
+  1. [`frontend/vite.config.ts`](../../src/vitest.config.ts): `test.coverage`（provider=v8・reporter・include/exclude・thresholds）を追加。<br>
+     ※ 本作業当時のパスは `frontend/vite.config.ts`。FR-14 のユニット再構成（[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）で
+     カバレッジ設定はワークスペースルートの `src/vitest.config.ts` へ移った（リンク先は現在位置。項目 2 と同じ扱い）。
   2. [`frontend/package.json`](../../src/package.json): `test:coverage`（`vitest run --coverage`）スクリプトと `@vitest/coverage-v8` を追加。
   3. [`.github/workflows/frontend-tests.yml`](../../.github/workflows/frontend-tests.yml): 単体テスト＋カバレッジ専用ワークフロー（成果物アップロード）を新設。
   4. [`.github/workflows/frontend.yml`](../../.github/workflows/frontend.yml): 既存の「Unit tests」ステップ（`npm run test`）を削除。単体テストは本 PR の `frontend-tests.yml`（`npm run test:coverage`）へ集約し、同一トリガー・同一スイートの二重実行を避ける（AI レビュー指摘への対応）。frontend.yml は typecheck / lint / build / e2e スモークを担う。

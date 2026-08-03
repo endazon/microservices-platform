@@ -68,10 +68,12 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
 | **ライブラリ標準（ADR-0030）** | `PackageReference` / `using` ・Domain 層の依存 | `scripts/check-backend-libraries.js` | 新規混入・baseline 減らし忘れ → **fail**（#455） |
 
-※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入される**
-（本行は #455 マージ後に有効）。導入されるまでは実在しないため、前方参照は live link ではなく
-バッククォート表記で書く（[`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) の同項と同じ作法。
-`check-doc-links.js` は `.js` を検査対象の拡張子に持たないため、壊れた前方参照を機械では検出できない）。
+※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
+未マージ成果物への前方参照は live link ではなくバッククォート表記で書く
+（[`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) の同項と同じ作法）。
+なお [#470](https://github.com/endazon/microservices-platform/issues/470) で
+[`check-doc-links.js`](../../scripts/check-doc-links.js) の検査対象拡張子に `.js` などコードファイルを
+追加したため、**コードへの live link の破損は機械で検出される**（前方参照を live link で書くと CI が落ちる）。
 
 ### 検査対象ユニットの切り分け
 
