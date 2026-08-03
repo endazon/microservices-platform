@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- ADR-0030 選定基準 3（層の依存規律）: Domain 層は外部ライブラリへ依存しない（.NET 標準のみ）。
+       PackageReference をここへ追加してはならない。ProjectReference は共有カーネル
+       （Platform.Shared.Kernel）だけが許される。scripts/check-backend-libraries.js が機械検査する。 -->
+</Project>

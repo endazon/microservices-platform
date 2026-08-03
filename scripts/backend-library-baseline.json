@@ -1,0 +1,110 @@
+{
+  "$comment": [
+    "ADR-0030 の不採用ライブラリに対する既知違反の baseline（Issue #455）。",
+    "ratchet: 新規混入は fail、ここに載る残件は warn、消えたのに残っていれば fail。",
+    "各サービスの再実装 issue（#438〜#451）は移行と同時に自プロジェクトの行を削除すること。",
+    "baseline が空になったら Directory.Packages.props から不採用パッケージを削除する。"
+  ],
+  "projects": {
+    "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/knowledge/backend/Services/WikiService/src/WikiService.Api/WikiService.Api.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj": [
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj": [
+      "FluentAssertions",
+      "MassTransit"
+    ],
+    "src/platform/backend/Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": [
+      "FluentAssertions"
+    ],
+    "src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj": [
+      "MassTransit"
+    ],
+    "src/platform/backend/Shared/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj": [
+      "MassTransit",
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/AiAnalysisService.Api.csproj": [
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj": [
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj": [
+      "Serilog"
+    ],
+    "src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj": [
+      "Serilog"
+    ],
+    "src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj": [
+      "Serilog"
+    ],
+    "src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj": [
+      "Serilog"
+    ],
+    "src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj": [
+      "Serilog"
+    ]
+  }
+}

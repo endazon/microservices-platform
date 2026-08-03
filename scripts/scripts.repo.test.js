@@ -467,4 +467,87 @@ module.exports = ({ ok, assert }) => {
     const { checkTree } = require('./check-unit-service-ownership.js');
     assert.deepStrictEqual(checkTree(), []);
   });
+
+  // --- check-backend-libraries: ADR-0030 ライブラリ標準の機械強制（Issue #455） ---
+
+  const backendLibs = require('./check-backend-libraries.js');
+
+  ok('bannedInCsproj: 不採用パッケージを検出し採用パッケージは無視する', () => {
+    assert.deepStrictEqual(
+      backendLibs.bannedInCsproj('<PackageReference Include="MassTransit.RabbitMQ" /><PackageReference Include="FluentValidation" />'),
+      ['MassTransit']);
+    assert.deepStrictEqual(backendLibs.bannedInCsproj('<PackageReference Include="Riok.Mapperly" />'), []);
+  });
+
+  ok('bannedInSource: using の各形（global / static / エイリアス）を拾い、ブロック構文は拾わない', () => {
+    assert.deepStrictEqual(
+      backendLibs.bannedInSource('global using Serilog;\nusing static FluentAssertions.AssertionExtensions;\nusing M = MassTransit.IBus;\n'),
+      ['FluentAssertions', 'MassTransit', 'Serilog']);
+    assert.deepStrictEqual(backendLibs.bannedInSource('using (var x = new MassTransitThing()) { }\n'), []);
+  });
+
+  ok('matchesBanned: 前方一致はドット区切りのときだけ効く（Serilog vs SerilogExtras）', () => {
+    assert.strictEqual(backendLibs.matchesBanned('Serilog.AspNetCore', 'Serilog'), true);
+    assert.strictEqual(backendLibs.matchesBanned('SerilogExtras', 'Serilog'), false);
+  });
+
+  ok('classifyAgainstBaseline: 新規混入は added（fail 対象）', () => {
+    const r = backendLibs.classifyAgainstBaseline({ 'a.csproj': ['MassTransit'] }, {});
+    assert.strictEqual(r.added.length, 1);
+    assert.strictEqual(r.known.length, 0);
+    assert.strictEqual(r.stale.length, 0);
+  });
+
+  ok('classifyAgainstBaseline: baseline どおりは known（warn のみ）', () => {
+    const r = backendLibs.classifyAgainstBaseline({ 'a.csproj': ['MassTransit'] }, { 'a.csproj': ['MassTransit'] });
+    assert.strictEqual(r.known.length, 1);
+    assert.strictEqual(r.added.length, 0);
+    assert.strictEqual(r.stale.length, 0);
+  });
+
+  ok('classifyAgainstBaseline: 解消済みなのに baseline に残るのは stale（減らし忘れ検出）', () => {
+    const r = backendLibs.classifyAgainstBaseline({}, { 'a.csproj': ['MassTransit'] });
+    assert.strictEqual(r.stale.length, 1);
+    assert.strictEqual(r.added.length, 0);
+  });
+
+  ok('domainViolations: Domain は外部依存ゼロ・共有カーネル参照のみ許可', () => {
+    const p = 'src/platform/backend/X.Domain.csproj';
+    assert.strictEqual(backendLibs.domainViolations(p, '<PackageReference Include="FluentValidation" />').length, 1);
+    assert.strictEqual(
+      backendLibs.domainViolations(p, '<ProjectReference Include="../Shared/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj" />').length, 0);
+    assert.strictEqual(
+      backendLibs.domainViolations(p, '<ProjectReference Include="../X.Infrastructure/X.Infrastructure.csproj" />').length, 1);
+    // Domain 以外は対象外
+    assert.strictEqual(backendLibs.domainViolations('src/platform/backend/X.Api.csproj', '<PackageReference Include="MediatR" />').length, 0);
+  });
+
+  ok('isExcludedPath: ADR-0030 は MSP の決定であり ai-stock-trading（別プロジェクト）は対象外', () => {
+    assert.strictEqual(backendLibs.isExcludedPath('src/ai-stock-trading/backend/Services/X/src/X.Api/X.Api.csproj'), true);
+    assert.strictEqual(backendLibs.isExcludedPath('src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj'), false);
+    assert.strictEqual(backendLibs.isExcludedPath('src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj'), false);
+  });
+
+  ok('xunitRunnerMismatch: xunit.v3 と CPM の runner 2.x の同居を検出（PR #463 レビュー指摘の回帰）', () => {
+    const v3 = '<PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio" />';
+    assert.strictEqual(backendLibs.centralVersionOf('<PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />', 'xunit.runner.visualstudio'), '2.8.2');
+    assert.strictEqual(backendLibs.majorOf('2.8.2'), 2);
+    assert.strictEqual(backendLibs.majorOf('3.1.5'), 3);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, '2.8.2').length, 1);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, '3.1.5').length, 0);
+    // v2 の組み合わせ・runner 非参照・CPM 未定義はいずれも判定しない
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj',
+      '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />', '2.8.2').length, 0);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', '<PackageReference Include="xunit.v3" />', '2.8.2').length, 0);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, null).length, 0);
+  });
+
+  ok('実ファイル: 新規混入 0 件・Domain 依存規律 OK（baseline との突合）', () => {
+    const { current, domain } = backendLibs.scanTree();
+    const baseline = JSON.parse(fs.readFileSync(path.join(__dirname, 'backend-library-baseline.json'), 'utf8')).projects;
+    const { added, stale } = backendLibs.classifyAgainstBaseline(current, baseline);
+    assert.deepStrictEqual(added, [], `baseline に無い新規混入: ${JSON.stringify(added)}`);
+    assert.deepStrictEqual(stale, [], `解消済みなのに baseline に残る行: ${JSON.stringify(stale)}`);
+    assert.deepStrictEqual(domain, [], `Domain 依存規律違反: ${JSON.stringify(domain)}`);
+  });
 };

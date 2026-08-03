@@ -29,7 +29,9 @@
 - **命名**: 名前空間はフォルダ階層に一致させる（IADR-0027）。ユニット固有イベント契約は
   `Shared/<Unit>.Contracts/Events/` に置き、wire URN は移設時に `[MessageUrn]` で固定する（IADR-0059）。
 - **依存規則**（[`src/README.md`](../../src/README.md) §依存規則、機械検査は IADR-0057）:
-  - ユニット外参照は `platform/backend/Shared/` の 2 プロジェクト（Contracts / Infrastructure）のみ。
+  - ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure /
+    Kernel）のみ（[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を
+    2 → 3 へ部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
   - platform → 可変ユニットの参照は禁止（一方向依存）。
   - `Foundation/` は `Composable/` に依存しない。
 

@@ -16,10 +16,16 @@
     backend.slnx                            ← ユニットの集約ソリューション
     Directory.Build.props.sample            ← 単独ビルド用フォールバック（配置時は使わない。IADR-0064）
     Directory.Packages.props.sample         ← 単独ビルド用 CPM フォールバック（同上）
-    Services/SampleService/
-      src/SampleService.Api/
+    Services/SampleService/                  ← ADR-0030 の標準プロジェクト構成
+      src/SampleService.Api/                 ← エンドポイント・DI 構成・ProblemDetails 変換
         SampleService.Api.csproj            ← platform Shared を相対参照（配置後に解決）
-        Program.cs                          ← 合成ルート（最小 API + ヘルスチェック）
+        Program.cs                          ← 合成ルート（Minimal API + ヘルスチェック）
+      src/SampleService.Application/         ← ユースケース（Wolverine ハンドラ）・検証・マッピング
+      src/SampleService.Domain/              ← エンティティ・値オブジェクト（**外部依存ゼロ**）
+      src/SampleService.Infrastructure/      ← EF Core・Redis 等の実装
+      src/SampleService.Contracts/           ← 公開契約（proto・イベント・DTO）
+      tests/SampleService.UnitTests/         ← xUnit v2 + AwesomeAssertions + NSubstitute
+      tests/SampleService.IntegrationTests/  ← Testcontainers + Respawn + Mvc.Testing
   frontend/
     package.json                            ← name: @<scope>/frontend-<unit>（workspaces で自動認識）
     src/features/
@@ -27,6 +33,18 @@
       sample/index.ts                       ← サンプル feature
 ```
 
+- **アプリケーション層の標準は ADR-0030**（Vertical Slice / Minimal API / ローカルディスパッチも
+  Wolverine ハンドラ / Domain は外部依存ゼロ / 採用・不採用ライブラリ）。実装側の要点は
+  [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
+  不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
+  `scripts/check-backend-libraries.js` が CI で止める。
+- **テストは xUnit v2 で書く**（ADR-0030 の標準は **v3** だが、本リポジトリの現行は v2 である）。
+  `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ 1 バージョン
+  しか持てない**ため、v3 へ移るには既存の全テストプロジェクトが同時に移る必要がある。この切替は
+  **独立した issue** で行う。それまで **`xunit.v3` を参照するプロジェクトを作ってはならない**
+  （非互換の runner と組み合わさる）。`scripts/check-backend-libraries.js` が本テンプレートを含めて検査し
+  混入を止める。経緯と切替方針は
+  [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」を参照。
 - 実サービスの標準レイアウト（`Foundation/` / `Composable/` の区分）は
   [`src/README.md`](../../src/README.md) の「サービスユニットの標準レイアウト」に従う。
 - ユニット固有のイベント契約は `backend/Shared/<Unit>.Contracts/Events/` に置く（段間連携イベント。
@@ -34,7 +52,9 @@
 
 ## 依存規則（機械検査は IADR-0057）
 
-- ユニット外参照は `platform/backend/Shared/` の 2 プロジェクト（Contracts / Infrastructure）のみ。
+- ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure / Kernel）のみ
+  （[IADR-0117](../../docs/adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を 2 → 3 へ
+  部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
 - platform → 可変ユニットの参照は禁止（一方向依存）。
 - `Foundation/` は `Composable/` に依存しない。
 - フロントは `@foundation` のみ参照可。合成点以外からの `@<unit>` import は ESLint で禁止。
