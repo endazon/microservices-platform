@@ -13,6 +13,7 @@
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 2 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
+| `lib/excluded-units.js` | 検査器共通。`.gitmodules` の `src/<unit>` submodule から**検査対象外ユニット**を導出する単一情報源（#473）。`check-backend-libraries.js` / `check-test-traceability.js` / `check-coverage-floor.js` が使う。リポジトリ直下の `planning` は `src/` 配下でないためユニットにならない。`.gitmodules` が読めない場合は既定値へフォールバックせず**例外で停止**（除外 0 件で別プロジェクトを検査する fail-open を避ける）。`--self-test` でヘルパ自体も試験 | — |
 | `lib/ci-annotate.js` | 検査器共通。警告を GitHub Actions のアノテーション（`::warning::` / `::notice::`）として出す。素の出力は緑ジョブのログに埋もれて読まれないため。ローカル実行時の見た目は従来どおり | — |
 | `setup.sh` | 開発環境セットアップ（SessionStart hook / devcontainer から実行） | — |
 | `apply-profile.sh` | `AI_SETUP.md` で宣言したプロファイルに応じてキットを構成（`.example` 有効化等） | `.ai-profile` |

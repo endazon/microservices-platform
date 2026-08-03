@@ -33,6 +33,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { warn, notice } = require('./lib/ci-annotate');
+const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SRC_DIR = 'src';
@@ -44,14 +45,17 @@ const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'covera
  * src/ai-stock-trading は独自の計画リポジトリと ADR を持つ**別プロジェクト**（submodule）である。
  * 他プロジェクトへ MSP の標準を適用するのは誤りであり、submodule のため本リポジトリからは
  * 是正もできない（.claude/rules/traceability.md「複数プロジェクトを跨ぐ場合」と同じ切り分け）。
+ *
+ * 値は .gitmodules（src/<unit> の submodule）から導出する。かつては本ファイル・
+ * check-test-traceability.js・check-coverage-floor.js が同じ集合を独立にハードコードしており、
+ * IADR-0056 決定 6（追加の可変機能ユニットは submodule でリンク）で次のユニットが増えた瞬間に
+ * 3 箇所が同時に狭すぎになる形だった（issue #473）。導出規則と fail-closed の根拠は
+ * scripts/lib/excluded-units.js を参照。
  */
-const EXCLUDED_UNITS = new Set(['ai-stock-trading']);
+const EXCLUDED_UNITS = excludedUnits({ root: REPO_ROOT });
 
 /** リポジトリ相対パスが検査対象外ユニット配下か。 */
-function isExcludedPath(relPath) {
-  const m = toPosix(relPath).match(/^src\/([^/]+)\//);
-  return m ? EXCLUDED_UNITS.has(m[1]) : false;
-}
+const isExcludedPath = makeIsExcludedPath(EXCLUDED_UNITS);
 
 /**
  * 不採用ライブラリ（計画 12_backend-application-stack の棚卸し表で ★不採用 / 置換対象）。
