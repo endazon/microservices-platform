@@ -3,7 +3,14 @@
        platform の共通契約・基盤を参照する。バージョンは中央管理（CPM）に従い csproj に Version= を書かない。 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Contracts\KnowledgePlatform.Shared.Contracts.csproj" />
-    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\KnowledgePlatform.Shared.Infrastructure\KnowledgePlatform.Shared.Infrastructure.csproj" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Asp.Versioning.Http" />
+    <PackageReference Include="WolverineFx" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SampleService.Application\SampleService.Application.csproj" />
+    <ProjectReference Include="..\SampleService.Infrastructure\SampleService.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

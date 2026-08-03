@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <!-- ADR-0030 のテスト標準: AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）・
+       NSubstitute・Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）・Respawn。
+       **xUnit だけは標準が v3 だが、雛形は現時点で v2 を使う。**
+       CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 2.8.2（v2 用）に固定されており、
+       v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存 30 の
+       テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
+       （docs/specs/20260803_issue-455_backend-application-standard.md 未決事項 2）。
+       **雛形はコピーしてそのまま動くことを優先する。** ここで v3 を先取りすると、非互換の
+       runner と組み合わさった雛形が配置されるまで誰も気付けない（templates/ は CI のビルド対象外）。
+       切替 issue の完了時に本ファイルの xunit → xunit.v3 を併せて更新すること。 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Respawn" />
+    <PackageReference Include="coverlet.collector" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SampleService.Api\SampleService.Api.csproj" />
+  </ItemGroup>
+</Project>

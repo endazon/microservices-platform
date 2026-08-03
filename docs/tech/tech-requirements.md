@@ -9,12 +9,20 @@ related_ids:
   - ADR-0005
   - ADR-0007
   - ADR-0008
+  - ADR-0020
+  - ADR-0027
+  - ADR-0029
+  - ADR-0030
   - IADR-0048
+  - IADR-0117
 author: claude
 created: 2026-07-04
-updated: 2026-07-10
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
+  - "../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR)"
 ---
 
@@ -34,16 +42,18 @@ plan_refs:
   `10_composability-design.md`（コンポーザビリティ）
 - 関連 ADR / 非機能要件（NFR）: ADR-0004（Keycloak OIDC）／ADR-0005（Istio mTLS）／ADR-0007（ArgoCD+Helm）／
   ADR-0008（k3s）／NFR（性能・可用性・セキュリティ・運用・拡張性）
-- 計画制約との差異: 実装は **.NET 10 / C# 13**（計画 fixed は .NET 8）。乖離は [[IADR-0048]] と
-  `feedback/20260709_dotnet10-target-framework-deviation.md` に記録（計画側の制約更新 or 是正を依頼中）。
+- 計画制約との差異: **なし（解消済み）**。実装は **.NET 10 / C# 13** で、計画側も
+  [ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md)（Accepted・2026-07-23）で
+  実装フレームワークを **.NET 10（LTS）** に確定した。実装が先行していた経緯は [[IADR-0048]] と
+  `feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は ADR-0020 で解消）。
 
 ## 技術スタック
 
 | 区分 | 採用 | バージョン | 備考 |
 | --- | --- | --- | --- |
 | 言語（バックエンド） | C# | 13（`LangVersion 13`） | 単一情報源 [`src/Directory.Build.props`](../../src/Directory.Build.props)。Nullable/ImplicitUsings 有効 |
-| ランタイム（バックエンド） | .NET | 10（`net10.0`） | [[IADR-0048]]。`global.json` は SDK 8.0.0 + `rollForward: latestMajor`。計画 fixed（.NET 8）との乖離を記録済み |
-| フレームワーク（バックエンド） | ASP.NET Core（Minimal APIs） | .NET 10 同梱 | メッセージング MassTransit（RabbitMQ）、サービス間 HTTP は Refit、ORM は EF Core |
+| ランタイム（バックエンド） | .NET | 10（`net10.0`） | ADR-0020（計画側も .NET 10 で確定）／[[IADR-0048]]（実装の先行採用）。`global.json` は SDK 8.0.0 + `rollForward: latestMajor` |
+| フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準は ADR-0030（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
 | 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/`（npm workspaces ルート = `src/`）。Node は CI と揃え 22 |
 | フレームワーク（フロントエンド） | React + Vite | React 18 / Vite 5（ESM） | SPA。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0033]]・[[IADR-0056]]）。BFF は `/bff/*` 経由 |
@@ -51,7 +61,7 @@ plan_refs:
 | データストア（業務） | PostgreSQL | — | DB per Service（ADR-0002）。jsonb 属性は EF Core の ValueComparer で content 比較（#184） |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
 | オブジェクトストレージ | MinIO（S3 互換） | RELEASE.2025-04-08 | 正規化本文・資産。ClusterIP のみ（[[IADR-0024]]）。資格情報は k8s Secret |
-| メッセージング | RabbitMQ（MassTransit） | — | イベント駆動パイプライン。契約は `Shared.Contracts` |
+| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | ADR-0027 / ADR-0028。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は MassTransit で、Wolverine への置き換えは各サービスの再実装 issue（#438〜#451）で行う**（#455 / #441） |
 | 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/microservices-platform`、Namespace `microservices-platform` |
 | サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / [[IADR-0026]]。STRICT mTLS（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | ADR-0007。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
@@ -83,6 +93,88 @@ flowchart TB
   AI --> LLM[LlmGateway] -->|egress matrix| External[(外部/自ホスト LLM)]
 ```
 
+## バックエンドアプリケーション層標準（ADR-0030）
+
+計画側が [ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md)（Accepted）と
+[12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)（`fixed`）で
+アプリケーション層のライブラリ標準と設計様式を確定した。棚卸し表の**全量は計画書が正**であり、本節は
+実装リポジトリで守る要点と本リポ固有の具体化のみを記す（作業仕様書:
+[20260803_issue-455_backend-application-standard.md](../specs/20260803_issue-455_backend-application-standard.md)）。
+
+### 設計様式
+
+- Pragmatic Clean Architecture ＋ **Vertical Slice**（Feature 単位。不要な Repository / Service 抽象を作らない）
+- API は **ASP.NET Core Minimal API**（.NET 10）
+- CQRS のローカルディスパッチも **Wolverine ハンドラに統一**する。独自 Dispatcher・**MediatR は使わない**
+- **Domain 層は外部ライブラリへ依存しない**（.NET 標準のみ）。Result 型は共有カーネルに自前実装する
+
+### プロジェクト構成（サービス単位）
+
+```text
+src/<unit>/backend/Services/<Name>Service/
+ ├── src/{<Name>.Api, <Name>.Application, <Name>.Domain, <Name>.Infrastructure, <Name>.Contracts}
+ └── tests/{<Name>.UnitTests, <Name>.IntegrationTests}
+```
+
+**共有カーネルはサービス単位に置かない**（[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md)）。
+本リポジトリはユニット第一構成（[[IADR-0056]]・ADR-0019）を採り、ユニット外から参照できるのは
+`src/platform/backend/Shared/` のプロジェクトのみである（[`src/README.md`](../../src/README.md) の依存規則）。
+Result / Error はサービスをまたいで同一の型である必要があるため、**`Platform.Shared.Kernel` として 1 つに集約**する。
+計画書の構成図はサービス内の論理レイヤを示したものであり、物理配置の具体化として扱う。
+
+この配置は [[IADR-0056]] §決定 3 の**部分改定**にあたる。同決定はユニット外参照を
+`src/platform/backend/Shared/` の **2 プロジェクト**（`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure`）
+のみに限っていたが、[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が
+`Platform.Shared.Kernel` を加えて **3 プロジェクトへ改定**した（2026-08-03 / #455）。改定はこの 1 点に限り、
+「platform → 可変ユニットは禁止」「統合テストの例外」は引き続き有効である。
+`Platform.Shared.Kernel` は **.NET 標準以外の `PackageReference` を持たない**（ADR-0030 選定基準 3 を成立させる
+ための置き場であり、`scripts/check-backend-libraries.js` が `*.Domain.csproj` の許容 `ProjectReference` を
+同プロジェクトのみとして機械強制する）。**実体プロジェクトは未作成**で、最初にそれを必要とする
+サービス再実装 issue（#438〜#451）が作成する。
+
+### ライブラリ標準（要点）
+
+| 用途 | 採用 | 使わない |
+| --- | --- | --- |
+| ローカル/リモートハンドラ・Outbox | Wolverine | MediatR・独自 Dispatcher・MassTransit |
+| マッピング | Riok.Mapperly（ソースジェネレータ） | AutoMapper・Mapster |
+| 検証 | FluentValidation | — |
+| Result 表現 | `Platform.Shared.Kernel` の自前 Result / Error | OneOf・CSharpFunctionalExtensions |
+| エラー応答 | 標準 `AddProblemDetails()` + `IExceptionHandler` | Hellang.Middleware.ProblemDetails |
+| ロギング | 標準 `ILogger` + OpenTelemetry Logs | Serilog 系（Seq 含む） |
+| キャッシュ | HybridCache（L1）+ Redis（L2） | — |
+| レジリエンス | Polly（`Microsoft.Extensions.Http.Resilience` 経由） | — |
+| テスト | xUnit **v3**（※現行は v2。後述）・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化） |
+| API ドキュメント / バージョニング | Microsoft.AspNetCore.OpenApi + Scalar / Asp.Versioning.Http | Kiota・NSwag |
+
+バージョンの単一情報源は [`src/Directory.Packages.props`](../../src/Directory.Packages.props)（CPM）である。
+
+### 機械的強制と移行の進め方
+
+不採用ライブラリの混入は `scripts/check-backend-libraries.js` が `.csproj` の `PackageReference` と `.cs` の
+`using` の両方を走査して検出し、CI で止める。ただし**現行実装は MassTransit / FluentAssertions / Serilog を
+広範に使用中**（実測: `.csproj` 15 / 14 / 3、`.cs` 59 / 129 / 15）であるため、即時禁止では
+「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
+`check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
+壊すため、許容値までは警告に留める。planning#146 / #149 / #160）。よって **ratchet 方式**を採る。
+
+- 既知の違反は `scripts/backend-library-baseline.json` にプロジェクト単位で記録する
+- baseline に無いプロジェクトでの違反は **fail**（新規混入を止める）
+- baseline 内の違反は warn（残件として実行サマリに出す）
+- baseline にあるのに違反が消えた場合も **fail**（baseline の減らし忘れを検出する）
+
+各サービスの再実装 issue（#438〜#451）は、移行と同時に baseline から自プロジェクトを削除する。baseline が
+空になった時点で不採用パッケージを `Directory.Packages.props` から削除する。
+
+**xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
+別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 30 のテスト
+プロジェクトが同時に移らざるを得ない。この切替は独立した issue で行う。それまで **`xunit.v3` を参照する
+プロジェクトを作ってはならない**（非互換の runner と組み合わさる）。`check-backend-libraries.js` が
+`templates/` を含めて検査し、混入を止める。
+
+**年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（ADR-0030 フォローアップ）。
+手順は[運用仕様書](../operations/)に記載する。
+
 ## 非機能要件の実現方針
 
 | 区分 | 目標 | 実現方針 |
@@ -95,7 +187,8 @@ flowchart TB
 
 ## 開発・ビルド・テスト・デプロイ
 
-- **バックエンド**: `dotnet build` / `dotnet test`（xUnit）/ `dotnet format --verify-no-changes`（CI lint ゲート）を
+- **バックエンド**: `dotnet build` / `dotnet test`（xUnit。標準は v3・現行は v2 で各サービス再実装時に切替）/
+  `dotnet format --verify-no-changes`（CI lint ゲート）を
   ユニット別ソリューション（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) /
   [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)）毎に実行する。
 - **フロントエンド**: `npm run lint`（ESLint flat config）/ `npm run typecheck` / `npm run test`（Vitest）/
@@ -110,4 +203,11 @@ flowchart TB
 
 - 性能目標の負荷試験・実測（#196）。達成状況に応じ HPA しきい値（#197 `scaling.hpa`）を調整する。
 - 監視アラート閾値・バックアップ/リストア・Runbook の整備（#198）。
-- 計画制約「.NET 8」の更新 or 是正の計画側判断（[[IADR-0048]] / plan-feedback）。
+- ~~計画制約「.NET 8」の更新 or 是正の計画側判断（[[IADR-0048]] / plan-feedback）。~~
+  **決着済み（2026-07-23）**: 計画側が [ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md)（Accepted）で
+  .NET 10（LTS）に確定し、乖離は解消した。残る作業は同 ADR のフォローアップ
+  （個別プロセス文書に残る「.NET 8」表記の順次追随）で、計画側の担当である。
+- ADR-0030 標準への移行残件（#455）: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
+  空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。xUnit v2 → v3 の切替時期と
+  `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は各サービス側で確定する。
+- サービス間 HTTP の `Refit` は棚卸し表に記載が無い。ADR-0029（内部同期は gRPC）との関係は #441 で決着する。

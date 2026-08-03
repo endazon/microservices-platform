@@ -72,7 +72,11 @@ src/
    イベント契約はそのユニットの契約プロジェクト `<unit>/backend/Shared/<Unit>.Contracts/Events/`
    に置く（knowledge ユニットは `knowledge/backend/Shared/Knowledge.Contracts/Events/`。
    platform 横断の共通契約は `platform/backend/Shared/Platform.Shared.Contracts/`。IADR-0059）。
-3. **ユニット外への参照は `src/platform/backend/Shared/` の 2 プロジェクトのみ許可**する。
+3. **ユニット外への参照は `src/platform/backend/Shared/` の 3 プロジェクトのみ許可**する
+   （`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure` / `Platform.Shared.Kernel`。
+   IADR-0056 決定 3 の「2 プロジェクト」を
+   [IADR-0117](../docs/adr/IADR-0117_platform-shared-kernel-placement.md) が 3 へ部分改定した。
+   `Platform.Shared.Kernel` は ADR-0030 の共有カーネル（Result / Error）で、実体は未作成）。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
    イベントに限る。この規則がユニットのサブモジュール切り出し可能性を担保する。

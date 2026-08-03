@@ -192,6 +192,24 @@ jobs:
       - name: Check unit dependency direction
         run: node scripts/check-unit-dependencies.js
 
+  # NFR / ADR-0030, Issue #455: バックエンドアプリケーション層のライブラリ標準を機械強制する。
+  # 不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の
+  # PackageReference・using の新規混入を止め、Domain 層の外部依存ゼロを検査する。
+  # 既知の残件は scripts/backend-library-baseline.json で ratchet 管理（新規混入と減らし忘れは fail、
+  # baseline 内は warn）。ai-stock-trading は別プロジェクトのため検査対象外。
+  # submodule は取得しない（対象は platform / knowledge のみで、いずれも本リポジトリの実体）。
+  backend-libraries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test backend library checker
+        run: node scripts/check-backend-libraries.js --self-test
+      - name: Check backend application library standard
+        run: node scripts/check-backend-libraries.js
+
   # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
   # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
   # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。

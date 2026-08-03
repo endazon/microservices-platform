@@ -1,8 +1,18 @@
 <Solution>
   <!-- 追加可変機能ユニットの集約ソリューション（配置時は src/<unit>/backend/backend.slnx）。
-       CI（ci.yml）は src/*/backend/backend.slnx を自動発見して restore/build/test/format する（IADR-0060）。 -->
+       CI（ci.yml）は src/*/backend/backend.slnx を自動発見して restore/build/test/format する（IADR-0060）。
+       プロジェクト構成は ADR-0030 の標準（Api / Application / Domain / Infrastructure / Contracts ＋ Tests）。
+       詳細は docs/tech/tech-requirements.md「バックエンドアプリケーション層標準」を参照。 -->
   <Folder Name="/Services/SampleService/" />
   <Folder Name="/Services/SampleService/src/">
     <Project Path="Services/SampleService/src/SampleService.Api/SampleService.Api.csproj" />
+    <Project Path="Services/SampleService/src/SampleService.Application/SampleService.Application.csproj" />
+    <Project Path="Services/SampleService/src/SampleService.Domain/SampleService.Domain.csproj" />
+    <Project Path="Services/SampleService/src/SampleService.Infrastructure/SampleService.Infrastructure.csproj" />
+    <Project Path="Services/SampleService/src/SampleService.Contracts/SampleService.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Services/SampleService/tests/">
+    <Project Path="Services/SampleService/tests/SampleService.UnitTests/SampleService.UnitTests.csproj" />
+    <Project Path="Services/SampleService/tests/SampleService.IntegrationTests/SampleService.IntegrationTests.csproj" />
   </Folder>
 </Solution>

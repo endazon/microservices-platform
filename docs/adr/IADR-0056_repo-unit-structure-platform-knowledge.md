@@ -7,9 +7,10 @@ related_ids:
   - ADR-0018
   - IADR-0027
   - IADR-0033
+  - IADR-0117
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md"
@@ -78,6 +79,19 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
    - 例外: 統合テスト（`<unit>/backend/Tests/`）は検証対象サービスへの ProjectReference を許可する
      （例: IntegrationTests → platform の AuthorizationService.Api。テストはユニット横断の振る舞い検証が
      目的であり、プロダクションコードの依存には含めない。`src/README.md` 依存規則の例外 1 と同一）。
+
+> **［2026-08-03 追記］決定 3 の「2 プロジェクト」は [[IADR-0117]] で 3 プロジェクトへ部分改定された（#455）。**
+> 計画 [ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md)
+> が定める SharedKernel（Result / Error を自前実装。Domain 層は外部依存ゼロ）を、ユニット第一構成のまま
+> 置ける場所が現行の 2 プロジェクトに存在しないためである。**ユニット外から参照できる
+> `src/platform/backend/Shared/` のプロジェクトは、現行値では
+> `Platform.Shared.Contracts` / `Platform.Shared.Infrastructure` / `Platform.Shared.Kernel` の 3 つである**
+> （現行値は [IADR-0117](IADR-0117_platform-shared-kernel-placement.md) を正とする。
+> `Platform.Shared.Kernel` の実体は未作成で、最初にそれを必要とするサービス再実装 issue が作成する）。
+> 改定はこの 1 点に限り、決定 3 のうち「platform → 可変ユニットは禁止」「統合テストの例外」および
+> 決定 1・2・4・5・6 は本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
+> 上記本文は 2026-07-10 時点の決定としてそのまま残す。
+
 4. **フロントエンド合成**: `src/` を npm workspaces ルートとする（`workspaces: ["*/frontend"]`・
    単一 lock）。platform 側 `platform/frontend/src/features/index.ts` を合成点とし、可変ユニットの
    features を束ねる（ユニット追加＝submodule 配置のみで workspaces に自動認識＋合成点へ import 1 行）。
@@ -121,4 +135,6 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 
 - Supersedes: IADR-0027 の「サブモジュールとして追加する場合」の節（サービス単位 → ユニット単位。
   Foundation/Composable 規約・サービスユニット内レイアウトは存続）
-- Superseded by: なし
+- Superseded by: なし（[IADR-0117](IADR-0117_platform-shared-kernel-placement.md) が §決定 3 の
+  「ユニット外参照を許す `platform/backend/Shared/` のプロジェクト数」のみを 2 → 3 へ部分改定した。
+  依存の一方向性と他の決定は本 IADR が有効なため `Accepted` を維持する。2026-08-03 / #455）

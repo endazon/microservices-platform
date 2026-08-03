@@ -21,11 +21,38 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
-  <!-- SampleService.Api が参照する最小パッケージ（本体の値と一致させる）。 -->
+  <!-- 雛形の 7 プロジェクトが PackageReference する全パッケージ（本体 src/Directory.Packages.props と同値）。
+       CPM では PackageReference に対応する PackageVersion が無いと NU1010 で復元が失敗するため、
+       1 つでも欠けると単独ビルド経路が壊れる。プロジェクトが依存を増やしたらここへも追記すること。 -->
   <ItemGroup Condition="'$(ParentDirectoryPackagesProps)' == ''">
+    <!-- API 層（SampleService.Api） -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <!-- NFR(セキュリティ): AspNetCore.OpenApi 10.0.9 が引き込む脆弱な推移依存 Microsoft.OpenApi 2.0.0
          (NU1903, GHSA-v5pm-xwqc-g5wc, High) をパッチ版へ推移ピンする（本体 IADR-0016 と同値）。 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
+    <PackageVersion Include="Scalar.AspNetCore" Version="2.16.17" />
+    <PackageVersion Include="Asp.Versioning.Http" Version="10.0.1" />
+    <!-- Application 層（SampleService.Application / .Api のハンドラ登録） -->
+    <PackageVersion Include="WolverineFx" Version="6.24.4" />
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
+    <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
+    <!-- Infrastructure 層（SampleService.Infrastructure） -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <!-- Relational を直接ピン: Npgsql(→10.0.4) との推移依存衝突(MSB3277)を解消（本体 IADR-0003 と同値）。 -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <!-- テスト（SampleService.UnitTests / .IntegrationTests）。
+         xUnit は **v2**（ADR-0030 の標準は v3 だが CPM は runner を 1 バージョンしか持てず、
+         切替は独立 issue。詳細は docs/tech/tech-requirements.md）。 -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="AwesomeAssertions" Version="9.5.0" />
+    <PackageVersion Include="NSubstitute" Version="6.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.12.0" />
+    <PackageVersion Include="Respawn" Version="7.0.0" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
   </ItemGroup>
 </Project>
