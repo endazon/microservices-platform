@@ -167,8 +167,12 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      「測れていない」を 100% と誤解させないため `null` とし、判定対象から外す。
 
 6. **「成果物は正しいのに赤」を常態化させない段階ポリシー**を本床の設計原則とする。典拠は
-   [`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節（段階ポリシーの設計）と
-   planning#146 / #149 / #160 である。既知の残件を明示（allowlist / baseline / floor）したうえで
+   [`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節（段階ポリシーの設計）と、
+   その前段の失敗モード **planning#146**（読み取り系 git の拒否で差分の内容と無関係に毎回赤くなる）・
+   **planning#160**（拒否報告が原因を隠し、許可済みのコマンドを「拒否された」と報告する）、および
+   段階ポリシーを導入した **planning#161**（ラベルが読めてもなお拒否が残る実測）・
+   **planning#162**（「1 件でも失敗」の常態化が拒否の赤を無視する学習を生み、検査の目的を壊す。
+   許容件数とターン数比による段階判定へ改めた）である。既知の残件を明示（allowlist / baseline / floor）したうえで
    **新規の悪化だけを止める**、という本リポジトリ共通の作法に揃える。なお impl-handoff-kit の
    **同期規約そのもの**は [IADR-0115](IADR-0115_impl-handoff-kit-as-single-source.md) であり、本節の
    段階ポリシーの典拠とは別である。
