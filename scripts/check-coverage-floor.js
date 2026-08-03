@@ -34,6 +34,26 @@ const FLOOR_FILE = path.join(REPO_ROOT, 'src', 'coverage-floor.json');
 const SEARCH_ROOT = 'src';
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist']);
 
+/**
+ * 集計対象外のユニット。ci.yml の build-and-test は全ユニットの backend.slnx を自動発見して
+ * test するため（AST を含む）、除外しないと AST のカバレッジが合算される。
+ *
+ * AST は独自の計画・ADR を持つ別プロジェクト（submodule）であり、本床の目的は
+ * 「#454 で platform / knowledge を作り直す間の退行を止める」ことである。合算すると双方向に濁る:
+ *   - AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠す
+ *   - AST の pin 更新だけで、無関係な PR の床判定が動く
+ * PR 本文が「単純平均は実態より高く出る」として単一プロジェクト内で加重平均を採ったのと同じ問題が、
+ * プロジェクト間でも起きる（PR #464 のレビュー指摘）。check-test-traceability.js /
+ * check-backend-libraries.js の EXCLUDED_UNITS と同じ切り分けに揃える。
+ */
+const EXCLUDED_UNITS = new Set(['ai-stock-trading']);
+
+/** リポジトリ相対パスが集計対象外ユニット配下か。 */
+function isExcludedPath(relPath) {
+  const m = String(relPath).replace(/\\/g, '/').match(/^src\/([^/]+)\//);
+  return m ? EXCLUDED_UNITS.has(m[1]) : false;
+}
+
 // --- 純粋ロジック ---------------------------------------------------------------
 
 function toPosix(p) {
@@ -124,7 +144,7 @@ function walk(dir, predicate, acc = []) {
 }
 
 function findReports() {
-  return walk(SEARCH_ROOT, (p) => /coverage\.cobertura\.xml$/i.test(p));
+  return walk(SEARCH_ROOT, (p) => /coverage\.cobertura\.xml$/i.test(p) && !isExcludedPath(p));
 }
 
 function readFloor() {
@@ -184,6 +204,13 @@ function selfTest() {
     const r = compareToFloor({ lines: 0, covered: 0, branches: 0, coveredBranches: 0 }, { line: 80, branch: 70 });
     t('compareToFloor: 未計測（分母 0）は判定しない', r.violations.length === 0 && r.line === null, r);
   }
+
+  // 集計対象ユニットの切り分け（別プロジェクトの submodule は合算しない。PR #464 レビュー指摘）。
+  t('isExcludedPath: ai-stock-trading 配下は集計対象外',
+    isExcludedPath('src/ai-stock-trading/backend/Services/X/tests/X.Tests/TestResults/g/coverage.cobertura.xml'));
+  t('isExcludedPath: platform / knowledge は集計対象',
+    !isExcludedPath('src/platform/backend/Bff/Platform.Bff.Tests/TestResults/g/coverage.cobertura.xml')
+      && !isExcludedPath('src/knowledge/backend/Tests/X/TestResults/g/coverage.cobertura.xml'));
 
   let failed = 0;
   for (const c of cases) {
@@ -254,4 +281,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { parseCobertura, mergeTotals, rate, compareToFloor, findReports, readFloor };
+module.exports = { EXCLUDED_UNITS, isExcludedPath, parseCobertura, mergeTotals, rate, compareToFloor, findReports, readFloor };

@@ -12,8 +12,8 @@
  *   .claude/rules/traceability.md「テスト名またはコメントに起点 ID を残す」にそのまま乗るためである。
  *
  * 検査内容:
- *   docs/tests/ に仕様書が在る起点 ID（FR-xx / SC-xx）のうち、src/ のテストから 1 件も参照されて
- *   いないものを「未写像」として報告する。
+ *   docs/tests/ に仕様書が在る起点 ID（FR-xx / UC-xx / SC-xx / NFR）のうち、src/ のテストから
+ *   1 件も参照されていないものを「未写像」として報告する。
  *
  * 判定方針（ratchet）:
  *   着手時点の実測が **27/27 写像済み（未写像 0）** であったため、warn 開始ではなく最初から fail で
@@ -76,10 +76,12 @@ function specIdOf(fileName) {
  */
 function idsInText(text) {
   const out = new Set();
-  const re = /(^|[^\w/])((?:FR|UC|SC)-\d+|NFR)\b/g;
+  // 直前が単語文字なら別語（XFR-01）。直前が「単語文字 + /」なら修飾付き（AST/FR-17）で他プロジェクト。
+  // `//FR-03`（スペース無しのコメント）は修飾ではないので拾う——`/` の前が単語文字でないため。
+  const re = /(?<!\w)(?<!\w\/)((?:FR|UC|SC)-\d+|NFR)\b/g;
   let m;
   while ((m = re.exec(String(text))) !== null) {
-    const id = m[2];
+    const id = m[1];
     out.add(id === 'NFR' ? 'NFR' : id.replace(/^(\w+)-(\d+)$/, (_, k, n) => `${k}-${n.padStart(2, '0')}`));
   }
   return out;
@@ -176,6 +178,8 @@ function selfTest() {
   t('idsInText: ゼロ埋めして正規化する', idsInText('// FR-3').has('FR-03'));
   t('idsInText: NFR を拾う', idsInText('// NFR: 性能').has('NFR'));
   t('idsInText: 単語の一部（XFR-01）は拾わない', idsInText('XFR-01').size === 0);
+  t('idsInText: スペース無しの //FR-03 も拾う（修飾ではないため）', idsInText('//FR-03: x').has('FR-03'));
+  t('idsInText: 行頭の ID も拾う', idsInText('FR-05 のテスト').has('FR-05'));
 
   t('unmappedIds: テストに無い仕様 ID を返す',
     JSON.stringify(unmappedIds(new Set(['FR-01', 'FR-02']), new Set(['FR-02']))) === '["FR-01"]');

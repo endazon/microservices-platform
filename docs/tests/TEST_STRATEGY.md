@@ -62,11 +62,22 @@ it('0 件のとき空状態を表示する', () => { ... })
 | ゲート | 対象 | 実行 | 判定 |
 | --- | --- | --- | --- |
 | **写像検査** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
-| **バックエンド カバレッジ床** | `src/*/backend/**` | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | `src/coverage-floor.json` の床未満 → **fail** |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | `src/coverage-floor.json` の床未満 → **fail** |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
 | **ライブラリ標準（ADR-0030）** | `PackageReference` / `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455） |
+
+### 検査対象ユニットの切り分け
+
+写像検査・カバレッジ床・ライブラリ標準はいずれも **`ai-stock-trading` を対象外**とする。AST は独自の
+計画リポジトリ・ADR・ID 体系を持つ**別プロジェクト**（submodule）であり、本リポジトリの計画 ID や
+ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合」）。
+
+カバレッジ床でとくに重要なのは、`ci.yml` の `build-and-test` が**全ユニットの `backend.slnx` を自動発見
+して test する**ため、除外しないと AST のカバレッジが合算されることである。合算すると双方向に濁る
+——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
+無関係な PR の床判定が動く。
 
 ### 共通する設計原則: ratchet
 

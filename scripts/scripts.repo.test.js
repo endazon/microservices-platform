@@ -532,6 +532,18 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(cov.rate(0, 0), null);
   });
 
+  ok('isExcludedPath（カバレッジ）: AST を合算しない（PR #464 レビュー指摘）', () => {
+    assert.strictEqual(cov.isExcludedPath('src/ai-stock-trading/backend/x/TestResults/g/coverage.cobertura.xml'), true);
+    assert.strictEqual(cov.isExcludedPath('src/platform/backend/x/TestResults/g/coverage.cobertura.xml'), false);
+    assert.strictEqual(cov.isExcludedPath('src/knowledge/backend/x/TestResults/g/coverage.cobertura.xml'), false);
+  });
+
+  ok('idsInText: //FR-03（スペース無し）は拾い、AST/FR-17（修飾付き）は拾わない', () => {
+    assert.strictEqual(trace.idsInText('//FR-03: x').has('FR-03'), true);
+    assert.strictEqual(trace.idsInText('// AST/FR-17').has('FR-17'), false);
+    assert.strictEqual(trace.idsInText('XFR-01').size, 0);
+  });
+
   ok('compareToFloor: 床未満は違反・床ちょうどは違反にしない・未計測は判定しない', () => {
     const t = cov.parseCobertura(COBERTURA_FIXTURE); // line 75% / branch 75%
     assert.strictEqual(cov.compareToFloor(t, { line: 80, branch: 70 }).violations.length, 1);
