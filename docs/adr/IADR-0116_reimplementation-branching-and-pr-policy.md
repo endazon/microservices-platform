@@ -2,10 +2,10 @@
 title: IADR-0116 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115]
+related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-02
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 ---
@@ -79,6 +79,42 @@ plan_refs:
 7. **ADR-0035（GraphRAG 検索戦略）は未起案**であり、RAG へのグラフ組み込み部分には着手しない
    （#448 / #450 の該当スコープのみ保留し、他の部分は進める）。
 
+> **［2026-08-03 追記］規約 6 の具体（#453 完了に伴うフォローアップの消化・#474）。**
+> 規約 6 が予告した「退行防止テスト基盤（#453）のゲート」が PR #464 のマージで確定したため、各 PR の
+> 受け入れ条件となる**コマンドとしきい値**を次のとおり具体化する。本追記は規約 6 の内容を変えるもの
+> ではなく、予告部分を実値で埋めるものである。
+>
+> | ゲート | コマンド | しきい値 / 判定 |
+> | --- | --- | --- |
+> | 受け入れ基準 → テストの写像 | `node scripts/check-test-traceability.js` | `docs/tests/` に仕様書がある FR/SC にテストが 1 件も無ければ **fail**。`scripts/test-traceability-allowlist.json` にある未写像は warn、写像済みなのに allowlist へ残置は **fail** |
+> | バックエンド カバレッジ床 | `node scripts/check-coverage-floor.js`（`ci.yml` の `build-and-test`） | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床 **`line 34` / `branch 17`** 未満は **fail**（[IADR-0118](IADR-0118_backend-coverage-floor.md)。ratchet のため引き上げ後は本表も追随させる。値の正は同 JSON） |
+> | ライブラリ標準（ADR-0030） | `node scripts/check-backend-libraries.js` | `scripts/backend-library-baseline.json` の **ratchet**。不採用ライブラリの新規混入・baseline の減らし忘れは **fail**（#455） |
+> | フロント カバレッジ ratchet | `npm run test:coverage`（`frontend-tests.yml`） | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満は **fail**（[IADR-0034](IADR-0034_frontend-coverage-gate.md)） |
+>
+> ゲートの全体像・検査対象ユニットの切り分け（`ai-stock-trading` は対象外）・各ドメイン issue が守ることは
+> [テスト戦略](../tests/TEST_STRATEGY.md)を参照する。`/verify` 通過と
+> [`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) の充足という規約 6 本文の条件は変わらない。
+
+> **［2026-08-03 追記］規約 7 の補足: FR-17〜21 は計画側で起案段階である（#474）。**
+> 規約 7 は ADR-0035（GraphRAG 検索戦略）の未起案を理由に該当スコープを保留すると定めたが、保留の
+> 範囲は要求そのものにも及ぶ。計画側の
+> [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md)
+> は、**FR-17・FR-18（文書間リンクとグラフ探索・AI によるリンク / タグ提案）を起案段階の要求**とし、実現方式
+> （辺のデータモデル・格納先・ABAC 強制方式・GraphRAG の検索戦略）は **ADR-0033〜0035 で確定する**と注記
+> している。**FR-19・FR-20・FR-21（個人資料・Obsidian 連携・文書本文の受け入れ経路）も起案段階（`draft` 相当）**
+> であり確定（`fixed`）として扱わない。とくに **FR-19・FR-20 は前提が未確定**である——(1) 個人資料の所有者 /
+> 共有先判定に要る ABAC の動的束縛は ADR-0036 で確定する、(2) 編集手段（Wiki.js の個人スコープ可視性）の
+> 前提検証が未了で**裁定が覆り得る**、(3) 同期方式は ADR-0037 で確定し (2) の結果に依存する。ADR-0033・0034・
+> 0036・0037 は 2026-08-02 に起案されたが状態は `Proposed` であり、**ADR-0035 はコミュニティ要約の粒度が実測
+> 待ちのため引き続き未起案**（番号予約のみ）である。
+>
+> したがって **FR-17〜21 の実装には着手しない。** 着手は、前提 ADR の**確定**（FR-17・FR-18 は
+> ADR-0033〜0035 の確定に連動。FR-19・FR-20 は加えて ADR-0036・ADR-0037 の確定と Wiki.js の前提検証の完了）を
+> 待つ。これは規約 7 の「ADR-0035 未起案ゆえ #448 / #450 の該当スコープを保留する」と同じ理由の一般化であり、
+> 起案段階の要求を先に実装すると、確定時に手戻りが出るか、確定した計画に反する実装が develop に残る。
+> なお計画側の本書全体の状態は `fixed` のまま維持され、確定済みの要求（FR-01〜16）と起案段階の要求は
+> 注記で区別される運用である（質問票 第8回 Q8-2 の裁定）。
+
 ## 理由
 
 - **案B が壊すもの**が具体的である。カバレッジ ratchet は「develop 到達点を床とする」設計であり、
@@ -105,7 +141,10 @@ plan_refs:
     既存のゲート（`ci.yml` / `frontend*.yml`）の水準にとどまる。
   - 依存関係のある issue（例 #439 → #438、#450 → #456）で待ちが発生する。フェーズ順を守ることで対処する。
 - フォローアップ:
-  - #453 完了時に、本 IADR の規約 6（受け入れゲート）へ具体的なコマンド / しきい値を追記する。
+  - ~~#453 完了時に、本 IADR の規約 6（受け入れゲート）へ具体的なコマンド / しきい値を追記する。~~
+    → **消化済み（2026-08-03・#474）**。#453 は PR #464 でマージされ、規約 6 の具体（4 ゲートのコマンドと
+    しきい値の表）を上記［2026-08-03 追記］として記載した。バックエンド床の決定そのものは
+    [IADR-0118](IADR-0118_backend-coverage-floor.md) に起票した。
   - ADR-0035 起案（#456 の実測が前提）後に、保留したスコープを #448 / #450 で再開する。
   - #457 で旧実装の廃止を実施する際、本 IADR の規約 5 を根拠として破棄範囲を確定する。
 

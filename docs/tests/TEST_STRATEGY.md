@@ -62,7 +62,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | ゲート | 対象 | 実行 | 判定 |
 | --- | --- | --- | --- |
 | **写像検査** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。ただし**合成点経由の微小な混入あり**——後述「既知の限界: 合成点テスト経由の混入」参照・[#468](https://github.com/endazon/microservices-platform/issues/468)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail** |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。ただし**合成点経由の微小な混入あり**——後述「既知の限界: 合成点テスト経由の混入」参照・[#468](https://github.com/endazon/microservices-platform/issues/468)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -132,6 +132,10 @@ skip、被覆済みの死コード削除など）だけで「成果物は正し�
 バックエンドの初期値は #453 の CI 実行（`8bfe639`）で得た **line 34.46%（18894/54826） /
 branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロジェクト全件）を切り下げた
 `line 34` / `branch 17`。
+
+> バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
+> [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（フロントは
+> [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)）。
 
 ## テスト種別と責務
 

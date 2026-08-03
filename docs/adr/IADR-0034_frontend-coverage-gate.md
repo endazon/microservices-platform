@@ -5,9 +5,10 @@ status: Accepted
 related_ids:
   - NFR
   - IADR-0033
+  - IADR-0118
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens"
 related_specs:
@@ -65,7 +66,14 @@ feature として順次追加していく過程で、テスト不足・テスト
 - トレードオフ: 初期しきい値は低く、品質の絶対水準を保証しない（あくまで床＝回帰防止）。各画面（SC-01..11）実装で
   テストとしきい値を段階的に引き上げる前提。
 
+> **［2026-08-03 追記］バックエンドに同等のカバレッジ床が揃った（[IADR-0118](IADR-0118_backend-coverage-floor.md)・#453 / #474）。**
+> 本 IADR の設計（実測に近い整数値を床に置き、テストを増やすたび引き上げる ratchet）をバックエンドの計測系
+> （Cobertura / coverlet）へ写したものである。単一情報源は [`src/coverage-floor.json`](../../src/coverage-floor.json)、
+> 検査器は [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js)。**本文（フロント側の決定）は
+> 変更していない。** 両ゲートの一覧は [テスト戦略](../tests/TEST_STRATEGY.md)「ゲート一覧」を参照。
+
 ## 関連
 
 - Supersedes: なし
 - Superseded by: なし
+- 対をなす決定: [IADR-0118](IADR-0118_backend-coverage-floor.md)（バックエンドのカバレッジ床。2026-08-03 追加）
