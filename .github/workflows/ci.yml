@@ -96,6 +96,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
+      - name: Self-test doc links checker
+        run: node scripts/check-doc-links.js --self-test
       - name: Check doc links
         run: node scripts/check-doc-links.js
 
