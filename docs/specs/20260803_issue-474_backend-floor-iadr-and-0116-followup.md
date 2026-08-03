@@ -1,7 +1,7 @@
 ---
 title: バックエンドカバレッジ床の IADR 起票（IADR-0118）・FR-17〜21 の着手保留（IADR-0119）と IADR-0116 のフォローアップ消化
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, IADR-0034, IADR-0116, IADR-0117, IADR-0118, IADR-0119]
 author: Claude
 created: 2026-08-03
@@ -162,29 +162,29 @@ IADR-0116 規約 7 は Accepted であり、その**適用範囲**（保留対�
 
 ## 受け入れ基準
 
-- [ ] `docs/adr/IADR-0118_backend-coverage-floor.md` があり、上表 6 点の決定と検討した選択肢が
+- [x] `docs/adr/IADR-0118_backend-coverage-floor.md` があり、上表 6 点の決定と検討した選択肢が
       IADR-0034 / IADR-0117 の書式（frontmatter・節構成・`status: Accepted`）で記録されている
-- [ ] `docs/adr/README.md` の索引に IADR-0118 の行がある（`IADR-0117` の直後・状態 `Accepted`）
-- [ ] `docs/adr/IADR-0034_frontend-coverage-gate.md` に日付付きの相互リンク追記があり、**本文（決定・理由）は
+- [x] `docs/adr/README.md` の索引に IADR-0118 の行がある（`IADR-0117` の直後・状態 `Accepted`）
+- [x] `docs/adr/IADR-0034_frontend-coverage-gate.md` に日付付きの相互リンク追記があり、**本文（決定・理由）は
       変更されていない**
-- [ ] `src/coverage-floor.json` の `$comment` と `docs/tests/TEST_STRATEGY.md` の床関連節に IADR-0118 への
+- [x] `src/coverage-floor.json` の `$comment` と `docs/tests/TEST_STRATEGY.md` の床関連節に IADR-0118 への
       参照がある（内容の重複なし）
-- [ ] `docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md` の規約 6 に 4 ゲートの具体
+- [x] `docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md` の規約 6 に 4 ゲートの具体
       （コマンド / しきい値）が追記形式で入り、§フォローアップの該当項目が消化済みに更新されている
-- [ ] `docs/adr/IADR-0119_fr17-21-hold-until-adr-fixed.md` があり、FR-17〜21 の着手保留と着手条件
+- [x] `docs/adr/IADR-0119_fr17-21-hold-until-adr-fixed.md` があり、FR-17〜21 の着手保留と着手条件
       （前提 ADR の確定への連動）が IADR-0117 / IADR-0118 の書式（`status: Accepted`）で決定されている
-- [ ] `docs/adr/README.md` の索引に IADR-0119 の行がある（`IADR-0118` の直後・状態 `Accepted`）。
+- [x] `docs/adr/README.md` の索引に IADR-0119 の行がある（`IADR-0118` の直後・状態 `Accepted`）。
       索引の行数と `docs/adr/IADR-*.md` のファイル数が一致する
-- [ ] 同 規約 7 への追記が**相互リンク中心の短い形**であり、保留の決定そのものは IADR-0119 にある
+- [x] 同 規約 7 への追記が**相互リンク中心の短い形**であり、保留の決定そのものは IADR-0119 にある
       （追記側に実質的な新決定を書かない）。規約 3 の具体 ID に `IADR-xxxx` を含む明確化が 1 行入っている
-- [ ] 段階ポリシーの典拠が planning#146・planning#160（前段の失敗モード）／planning#161・planning#162
+- [x] 段階ポリシーの典拠が planning#146・planning#160（前段の失敗モード）／planning#161・planning#162
       （段階ポリシーの導入）として記載され、**planning#149 を典拠に含めない**。列挙形の issue 番号は
       1 件ずつ `planning#NNN` と修飾されている（裸の `#NNN` を残さない）
-- [ ] `docs/specs/20260803_issue-474_backend-floor-iadr-and-0116-followup.md`（本書）がある
-- [ ] `node scripts/check-doc-links.js` が破損リンク 0
-- [ ] `node scripts/scripts.test.js` が全件成功（176 件）
-- [ ] `node scripts/check-commit-messages.js` が成功（件名スコープ `IADR-0118` / `IADR-0119` は実在検査を通る）
-- [ ] `node scripts/check-test-traceability.js` が成功
+- [x] `docs/specs/20260803_issue-474_backend-floor-iadr-and-0116-followup.md`（本書）がある
+- [x] `node scripts/check-doc-links.js` が破損リンク 0
+- [x] `node scripts/scripts.test.js` が全件成功（176 件）
+- [x] `node scripts/check-commit-messages.js` が成功（件名スコープ `IADR-0118` / `IADR-0119` は実在検査を通る）
+- [x] `node scripts/check-test-traceability.js` が成功
 
 ## テスト方針
 
