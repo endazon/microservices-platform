@@ -260,6 +260,40 @@ jobs:
             - レビューの最後に、下記フォーマットのサマリコメントを必ず自分で投稿してから終了する
               こと。サブエージェントの結果待ちで停止したり、監査を委譲したまま終了してはならない。
 
+            【使える Bash コマンドの一覧（正の一覧）・最重要】
+            このレビューで実行できる Bash コマンドは**次で全部**である。**一覧に無いコマンドは
+            必ず拒否される**ので、試さずに「未検証（許可されていない）」と書くこと。
+            以下は本ワークフローの `--allowedTools` の写しであり、実装用ワークフロー
+            （claude-coding.yml）とは中身が違う。**実装用の記憶で判断しないこと。**
+            - **git（読み取りのみ）**: `git diff` / `git log` / `git show` / `git status` /
+              `git ls-tree` / `git submodule status` / `git fetch`。submodule 変種として
+              `git -C planning` と `git -C src/ai-stock-trading`（および同 `/planning`）の
+              `log` / `show` / `diff` / `ls-tree` も使える。
+              **書き込み系の git（`add` / `commit` / `push` / `switch` / `checkout` / `branch`）は
+              許可されていない**（レビューは読むだけである）。
+            - **閲覧・検索**: `ls` / `rg` / `grep` / `sort` / `cat` / `head` / `tail` / `cmp` /
+              `diff` / `echo` / `which`。**`find` は許可されていない**（ファイル探索は Glob か
+              `rg --files` か `ls` で行う）。
+            - **gh**: `gh issue create` / `gh issue view` / `gh pr view` / `gh run list` の
+              **この 4 形だけ**である。他の `gh`（`gh auth status` / `gh api` / `gh run view` 等）は
+              すべて拒否される。
+            - **実行系**: `node` / `dotnet restore` / `dotnet build` / `dotnet test` /
+              `dotnet format` / `dotnet --version` / `dotnet --info`。
+            - Bash 以外では Read / Grep / Glob と GitHub MCP ツールが使える。
+            よくある誤りと正しい手順:
+            - **`python3` は許可されていない。** YAML / JSON の構文確認を `python3 -c` で
+              やろうとしないこと。**構文を見るだけなら Read で読む**のが最短であり、機械的な
+              確認が要るなら許可済みの `node` で行う（`node -e "…require('fs').readFileSync(…)…"`
+              の範囲で足りる。YAML パーサはこのワークスペースに用意されていない前提で考える）。
+            - **`gh auth status` は不要であり、許可もされていない。** 認証は環境側で構成済みである。
+              GitHub の情報は GitHub MCP ツール（`mcp__github__pull_request_read` /
+              `mcp__github__get_file_contents` / `mcp__github__list_workflow_runs` 等）で取ること。
+            - `curl` / `wget` / `python3` / `pip` / `jq` / `sed` / `awk` / `xargs` / `env` /
+              `chmod` / `rm` / `mv` / `cp` / `touch` / `tee` も**一覧に無いので拒否される**。
+            実測（run 30832367628 / PR #480 の再実走）: この節を書く前のレビューは、拒否 3 件を
+            すべて**一覧に無いコマンドの試行**で出した（`gh auth` 系 2 件・`python3 -c` での
+            YAML パース 1 件）。「拒否される形」の列挙だけでは、この型は塞げない。
+
             【検証の誠実性・最重要】
             実運用で、レビューが**自分が実行できなかった検証を「実測した」として ✅ で報告した**
             事例がある（権限拒否 12 件が発生していたが、本文に言及が 1 行も無かった）。

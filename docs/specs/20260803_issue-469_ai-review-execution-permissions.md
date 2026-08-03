@@ -171,6 +171,10 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
       → **なお未達**。その追補を載せた PR #480 の `claude-review` 実走
       （run `30830151995` / HEAD `734da26`）で**拒否 7 件**（許容値 4 超過）となり、
       ジョブは fail した。詳細は下記「追補 2（2026-08-03）」
+      → **改善したが、なお未達**。追補 2 を載せた PR #480 の再実走（run `30832367628`）で
+      **拒否 3 件**（7 → 3）となり、許容値 4 以下のため**ジョブは success** した。
+      ただし基準は「拒否 0 件」であり満たしていない。残り 3 件は**すべて一覧に無いコマンドの
+      試行**（`gh auth` 系 2 件・`python3 -c` 1 件）だった。詳細は下記「追補 3（2026-08-03）」
 - [x] キットへの環流を `feedback/` に記録した（planning 側への起票は下記「未決事項」）
 
 ## テスト方針
@@ -324,6 +328,81 @@ run `30829121373`）で `permission_denials_count: 1` を実測した。
 | `node scripts/check-commit-messages.js` | ✓ 成功 |
 | 両 workflow の YAML パース | ✓ 両方パース可能 |
 | `--append-system-prompt` の引用符 | ✓ 値を囲む二重引用符は 1 対のみ（追記でトークン化を壊していない） |
+
+## 追補 3（2026-08-03）: 拒否 3 件へ改善 — 負の列挙から正の列挙へ
+
+追補 2 とクロス監査の是正を載せた PR #480 の**再実走**（run `30832367628`）で
+**`permission_denials_count: 3`** となり、7 件から改善して**ジョブは success**（許容値 4 以下）した。
+ただし受け入れ基準は「拒否 0 件」であり、**未達のまま**である（`status` は `in-progress` を維持）。
+
+| 拒否 | 件数 | 型 |
+| --- | --- | --- |
+| `Bash(gh \| head \| gh auth)` | 1 | 一覧に無いコマンド（`gh auth`） |
+| `Bash(gh auth)` | 1 | 一覧に無いコマンド（`gh auth`） |
+| `Bash(python3 \| yaml.safe_load \| open \| '.github/workflows/claude-code-review.yml' \| …)` | 1 | 一覧に無いコマンド（`python3 -c` での YAML パース試行） |
+
+**追補 2 で塞いだ型（3 段パイプ・単独の変数代入・許可外の Actions 系 MCP・`gh run view`）由来の
+拒否は 0 件**であり、型ごとの制約という方針自体は効いた。残った 3 件は質が違い、構文でも粒度でもなく
+**`--allowedTools` に存在しないコマンドを試した**ものである。
+
+### 追補 3 の設計: 負の列挙から正の列挙へ
+
+これまでの追記はすべて「拒否される形」の**負の列挙**だった。負の列挙は**書いた型しか塞げない**。
+AI が知らないのは「何が拒否されるか」ではなく「**何なら使えるか**」であり、未知の作業では
+手持ちの一般常識（`python3` / `gh auth` / `curl` / `jq`）へ手が伸びる。そこで両プロンプトの
+先頭近くへ **「使える Bash コマンドの正の一覧」** を置いた。
+
+- 一覧は**各ファイル自身の `--allowedTools` から書き起こした**（クロス監査の 🔴 と同じ誤りを
+  繰り返さないため。レビュー用と実装用で中身は異なる）。
+  - レビュー用にのみ: `gh issue view` / `gh pr view` / `gh run list`
+  - 実装用にのみ: 書き込み系 git（`add` / `commit` / `push` / `switch` / `checkout` / `branch`）・
+    `find` / `mkdir`・`Edit` / `Write`。実装用の `gh` は `gh issue create` **だけ**である。
+- **要約表現は実際の許可より広く読めてはならない**という制約を守った。「`git` 系」ではなく
+  「`git`（読み取りのみ）」と書き、レビュー用には**書き込み系 git が無い**ことを明記した。
+- 一覧に無い代表例（`python3` / `gh auth` / `curl` / `wget` / `pip` / `jq` / `sed` / `awk` /
+  `xargs` / `env` / `chmod` / `rm` / `mv` / `cp` / `touch` / `tee`）と**代替手順**を併記した。
+  - YAML / JSON の構文確認は **Read で読む**。機械的な確認が要るなら許可済みの `node` で行う。
+  - `gh auth status` は**不要**である（認証は環境が構成済み。GitHub の情報は GitHub MCP ツールで取る）。
+- 出典として run `30832367628` の拒否 3 件の内訳をプロンプト本文に明記した。
+
+### 追補 3 で判明した落とし穴: `claude_args` の中に `--allowedTools` と書けない
+
+実装用の正の一覧を書く際、当初「これは本ファイルの `--allowedTools` の写しである」という
+一文を `--append-system-prompt` の値に入れたところ、`check-ai-workflow-config.js` が
+**ERROR 1 件で fail した**（実測）。同スクリプトは `claude_args` ブロック内から
+`--allowedTools` トークンを探して以降を値とみなすため、**プロンプト本文に書いた
+フラグ名を本物のフラグとして拾い**、「値が引用符で囲まれておらず空白を含む」と誤検出する。
+
+- 対処: 実装用の文面を「この `claude_args` が指定している許可ツール一覧の写し」と言い換えた
+  （フラグ名そのものを書かない）。
+- レビュー用は `prompt:` が `claude_args` とは別のキーであり、同スクリプトの走査対象外なので
+  `--allowedTools` と書いても検出されない（実際に成功する）。**この非対称は覚えておく必要がある。**
+- 検査器が先に気付いた形であり、`check-ai-workflow-config.js` が機能した好例でもある。
+
+### 追補 3 の変更内容
+
+| ファイル | 変更 |
+| --- | --- |
+| `.github/workflows/claude-code-review.yml` | `prompt:` へ【使える Bash コマンドの一覧（正の一覧）・最重要】節を新設（`--allowedTools` の写し・`find` と書き込み系 git が無い旨・`gh` は 4 形のみ・一覧外の代表例と代替手順・run 30832367628 の実測）。`--allowedTools` は不変 |
+| `.github/workflows/claude-coding.yml` | `--append-system-prompt` へ同趣旨を追記。ただし一覧は**同ファイルの `--allowedTools` から書き起こし**、実装用にのみ在るもの（書き込み系 git / `find` / `mkdir` / `Edit` / `Write`）と、実装用の `gh` が `gh issue create` だけである点を反映。`--allowedTools` は不変 |
+| `feedback/20260803_ai-review-execution-permissions.md` | 「追記 3」節を追加（run 30832367628 の実測、「負の列挙では新型を塞げない」という知見、planning#168 へ追記する内容） |
+| `docs/specs/20260803_issue-469_ai-review-execution-permissions.md` | 本節 |
+
+`--allowedTools` / `.claude/settings.json` / `PERMISSION_DENIALS_TOLERANCE` はいずれも変更していない。
+よって 3 系統のパリティは追補 3 の前後で不変である。
+
+### 追補 3 の検証結果（ローカル・worktree 内で実測）
+
+| 検査 | 結果 |
+| --- | --- |
+| `node scripts/check-ai-workflow-config.js` | ✓ 成功（2 件を検査 / ERROR 0 / exit 0） |
+| `node scripts/check-ai-workflow-config.js --self-test` | ✓ 23 件すべて合格 |
+| 正の一覧と `--allowedTools` の突き合わせ（`node` で機械的に照合） | ✓ 両ファイルとも、`--allowedTools` の Bash エントリで**プロンプトに現れないものは 0 件** |
+| 両 workflow の構造検査（`check-ai-workflow-config.js` が 2 ファイルとも `claude_args` を抽出できること。`python3` は使わない） | ✓ 「2 件を検査」＝両ファイルとも構造を読み取れている |
+| YAML パーサの在否（`node -e` で `require('js-yaml')`） | **MODULE_NOT_FOUND**。ワークスペースに YAML パーサは無い（プロンプトへ書いた「YAML パーサは用意されていない前提で考える」の裏付け） |
+| `--append-system-prompt` の引用符 | ✓ 値を囲む二重引用符は 1 対のみ |
+| `node scripts/check-doc-links.js` | ✓ 成功 |
+| `node scripts/check-commit-messages.js` | ✓ 成功 |
 
 ## 計画書との差異
 
