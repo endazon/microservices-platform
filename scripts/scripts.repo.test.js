@@ -528,6 +528,20 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(backendLibs.isExcludedPath('src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj'), false);
   });
 
+  ok('xunitRunnerMismatch: xunit.v3 と CPM の runner 2.x の同居を検出（PR #463 レビュー指摘の回帰）', () => {
+    const v3 = '<PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio" />';
+    assert.strictEqual(backendLibs.centralVersionOf('<PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />', 'xunit.runner.visualstudio'), '2.8.2');
+    assert.strictEqual(backendLibs.majorOf('2.8.2'), 2);
+    assert.strictEqual(backendLibs.majorOf('3.1.5'), 3);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, '2.8.2').length, 1);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, '3.1.5').length, 0);
+    // v2 の組み合わせ・runner 非参照・CPM 未定義はいずれも判定しない
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj',
+      '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />', '2.8.2').length, 0);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', '<PackageReference Include="xunit.v3" />', '2.8.2').length, 0);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, null).length, 0);
+  });
+
   ok('実ファイル: 新規混入 0 件・Domain 依存規律 OK（baseline との突合）', () => {
     const { current, domain } = backendLibs.scanTree();
     const baseline = JSON.parse(fs.readFileSync(path.join(__dirname, 'backend-library-baseline.json'), 'utf8')).projects;

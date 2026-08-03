@@ -4,9 +4,17 @@
   </PropertyGroup>
   <!-- ADR-0030: 統合テストは Testcontainers（PostgreSQL・RabbitMQ・Redis・Qdrant）＋ Respawn で
        実体に近い依存を立てる。API は Microsoft.AspNetCore.Mvc.Testing 経由で叩く。 -->
+  <!-- ADR-0030 の標準は **xUnit v3** だが、雛形は現時点で **v2** を使う。
+       CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 2.8.2（v2 用）に固定されており、
+       v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存 30 の
+       テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
+       （docs/specs/20260803_issue-455_backend-application-standard.md 未決事項 2）。
+       **雛形はコピーしてそのまま動くことを優先する。** ここで v3 を先取りすると、非互換の
+       runner と組み合わさった雛形が配置されるまで誰も気付けない（templates/ は CI のビルド対象外）。
+       切替 issue の完了時に本ファイルの xunit → xunit.v3 を併せて更新すること。 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />

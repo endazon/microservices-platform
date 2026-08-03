@@ -75,6 +75,21 @@ const BANNED = [
 /** 共有カーネル（Domain が唯一 ProjectReference を許される先）。 */
 const SHARED_KERNEL = 'Platform.Shared.Kernel';
 
+/**
+ * xUnit v3 と runner の版整合を検査する対象。
+ *
+ * xunit.runner.visualstudio は v2 用（2.x）と v3 用（3.x）で別系列である。**CPM は 1 パッケージに
+ * 1 バージョンしか持てない**ため、CPM の runner が 2.x に固定されている状態で xunit.v3 を参照する
+ * プロジェクトを作ると、非互換の runner と組み合わさる。
+ *
+ * この誤りは通常の CI では捕まらない。ci.yml のビルド対象は src/<unit>/backend/backend.slnx のみで
+ * **templates/ は対象外**であり、雛形をコピーして最初のサービスを作った人が dotnet test を走らせて
+ * 初めて表面化する（PR #463 のレビューで実際に指摘された）。よって templates/ も走査する。
+ */
+const XUNIT_V3 = 'xunit.v3';
+const XUNIT_RUNNER = 'xunit.runner.visualstudio';
+const TEMPLATE_DIR = 'templates';
+
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
 /** posix 区切りへ正規化する。 */
@@ -149,6 +164,36 @@ function bannedInSource(content, bannedList = BANNED) {
     if (b) hits.add(b);
   }
   return [...hits].sort();
+}
+
+/** Directory.Packages.props 本文から指定パッケージの中央バージョンを返す（無ければ null）。 */
+function centralVersionOf(propsContent, packageId) {
+  const re = new RegExp(`<PackageVersion\\b[^>]*\\bInclude\\s*=\\s*"${packageId.replace(/\./g, '\\.')}"[^>]*\\bVersion\\s*=\\s*"([^"]+)"`, 'i');
+  const m = re.exec(String(propsContent));
+  return m ? m[1] : null;
+}
+
+/** バージョン文字列のメジャー番号（数値）。取れなければ null。 */
+function majorOf(version) {
+  const m = /^(\d+)\./.exec(String(version || ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * xunit.v3 を参照しているのに CPM の xunit.runner.visualstudio が v3 系（3.x）でない場合を違反として返す。
+ * runnerVersion が null（CPM に定義が無い＝各 csproj が版を持つ）のときは判定しない。
+ */
+function xunitRunnerMismatch(relPath, csprojContent, runnerVersion) {
+  const refs = packageReferencesOf(csprojContent);
+  if (!refs.includes(XUNIT_V3)) return [];
+  if (!refs.includes(XUNIT_RUNNER)) return [];
+  const major = majorOf(runnerVersion);
+  if (major === null || major >= 3) return [];
+  return [{
+    kind: 'xunit-runner-mismatch',
+    project: toPosix(relPath),
+    detail: `${XUNIT_V3} を参照していますが CPM の ${XUNIT_RUNNER} は ${runnerVersion}（v2 系）です`,
+  }];
 }
 
 /** リポジトリ相対パスが Domain プロジェクトの .csproj か。 */
@@ -248,10 +293,28 @@ function scanTree() {
     current[project] = [...set].sort();
   };
 
+  // CPM の runner 版（xunit.v3 との整合判定に使う）。
+  let runnerVersion = null;
+  try {
+    runnerVersion = centralVersionOf(fs.readFileSync(path.join(REPO_ROOT, 'src', 'Directory.Packages.props'), 'utf8'), XUNIT_RUNNER);
+  } catch { /* CPM を読めない構成では版整合の判定を行わない */ }
+
   for (const proj of csprojPaths) {
     const content = fs.readFileSync(path.join(REPO_ROOT, proj), 'utf8');
     add(proj, bannedInCsproj(content));
     domain.push(...domainViolations(proj, content));
+    domain.push(...xunitRunnerMismatch(proj, content, runnerVersion));
+  }
+  // templates/ は ci.yml のビルド対象外のため、ここで走査しないと雛形の版不整合が誰にも捕まらない。
+  // 不採用ライブラリの baseline 対象にはしない（雛形は src/ の残件ではないため）。
+  for (const proj of walk(TEMPLATE_DIR, (p) => /\.csproj$/i.test(p))) {
+    const content = fs.readFileSync(path.join(REPO_ROOT, proj), 'utf8');
+    domain.push(...domainViolations(proj, content));
+    domain.push(...xunitRunnerMismatch(proj, content, runnerVersion));
+    const banned = bannedInCsproj(content);
+    if (banned.length) {
+      domain.push({ kind: 'template-banned', project: toPosix(proj), detail: banned.join(' / ') });
+    }
   }
   for (const cs of walk(SRC_DIR, (p) => /\.cs$/i.test(p) && !isExcludedPath(p))) {
     const proj = owningProject(cs, csprojPaths);
@@ -338,6 +401,25 @@ function selfTest() {
   t('owningProject は配下に無ければ null',
     owningProject('src/z/X.cs', ['src/a/A.csproj']) === null);
 
+  // xUnit v3 と CPM の runner 版の整合（PR #463 レビュー指摘の回帰防止）。
+  const V3_PROJ = '<PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio" />';
+  t('centralVersionOf: CPM から版を取り出す',
+    centralVersionOf('<PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />', 'xunit.runner.visualstudio') === '2.8.2');
+  t('centralVersionOf: 未定義は null',
+    centralVersionOf('<PackageVersion Include="xunit" Version="2.9.3" />', 'xunit.runner.visualstudio') === null);
+  t('majorOf: メジャー番号', majorOf('2.8.2') === 2 && majorOf('3.1.5') === 3 && majorOf('') === null);
+  t('xunit.v3 ＋ runner 2.x は違反（雛形で実際に作り込んだ不整合）',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V3_PROJ, '2.8.2').length === 1);
+  t('xunit.v3 ＋ runner 3.x は適合',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V3_PROJ, '3.1.5').length === 0);
+  t('xunit（v2）＋ runner 2.x は適合',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj',
+      '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />', '2.8.2').length === 0);
+  t('runner を参照しなければ判定しない（v3 単体は自己実行できる）',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', '<PackageReference Include="xunit.v3" />', '2.8.2').length === 0);
+  t('CPM に runner 定義が無ければ判定しない',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V3_PROJ, null).length === 0);
+
   // 検査対象ユニットの切り分け（別プロジェクトの submodule は対象外）。
   t('ai-stock-trading 配下は検査対象外',
     isExcludedPath('src/ai-stock-trading/backend/Services/X/src/X.Api/X.Api.csproj'));
@@ -402,6 +484,17 @@ function main() {
     failures.push(`[baseline 減らし忘れ] ${s.project}\n    「${s.lib}」の参照は既に解消済みです。baseline の該当行を削除してください。`);
   }
   for (const d of domain) {
+    if (d.kind === 'xunit-runner-mismatch') {
+      failures.push(`[xUnit 版不整合] ${d.project}\n    ${d.detail}。` +
+        'v3 へ移るには CPM の runner も 3.x にする必要があり、CPM は 1 パッケージ 1 バージョンのため' +
+        '全テストプロジェクトが同時に移る。切替は独立した issue で行うこと。');
+      continue;
+    }
+    if (d.kind === 'template-banned') {
+      failures.push(`[雛形に不採用ライブラリ] ${d.project}\n    「${d.detail}」。` +
+        '雛形は新サービスの出発点であり、不採用ライブラリを持ち込ませてはならない（ADR-0030）。');
+      continue;
+    }
     const what = d.kind === 'domain-package' ? 'PackageReference' : `ProjectReference（${SHARED_KERNEL} 以外）`;
     failures.push(`[Domain 依存規律] ${d.project}\n    ${what}「${d.detail}」。Domain 層は外部依存ゼロ（ADR-0030 選定基準 3）。`);
   }
@@ -422,6 +515,9 @@ module.exports = {
   BANNED,
   EXCLUDED_UNITS,
   isExcludedPath,
+  centralVersionOf,
+  majorOf,
+  xunitRunnerMismatch,
   matchesBanned,
   bannedNameOf,
   packageReferencesOf,

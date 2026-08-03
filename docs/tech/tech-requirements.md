@@ -129,7 +129,7 @@ src/<unit>/backend/Services/<Name>Service/
 | ロギング | 標準 `ILogger` + OpenTelemetry Logs | Serilog 系（Seq 含む） |
 | キャッシュ | HybridCache（L1）+ Redis（L2） | — |
 | レジリエンス | Polly（`Microsoft.Extensions.Http.Resilience` 経由） | — |
-| テスト | xUnit **v3** ・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化） |
+| テスト | xUnit **v3**（※現行は v2。後述）・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化） |
 | API ドキュメント / バージョニング | Microsoft.AspNetCore.OpenApi + Scalar / Asp.Versioning.Http | Kiota・NSwag |
 
 バージョンの単一情報源は [`src/Directory.Packages.props`](../../src/Directory.Packages.props)（CPM）である。
@@ -148,6 +148,12 @@ src/<unit>/backend/Services/<Name>Service/
 
 各サービスの再実装 issue（#438〜#451）は、移行と同時に baseline から自プロジェクトを削除する。baseline が
 空になった時点で不採用パッケージを `Directory.Packages.props` から削除する。
+
+**xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
+別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 30 のテスト
+プロジェクトが同時に移らざるを得ない。この切替は独立した issue で行う。それまで **`xunit.v3` を参照する
+プロジェクトを作ってはならない**（非互換の runner と組み合わさる）。`check-backend-libraries.js` が
+`templates/` を含めて検査し、混入を止める。
 
 **年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（ADR-0030 フォローアップ）。
 手順は[運用仕様書](../operations/)に記載する。
