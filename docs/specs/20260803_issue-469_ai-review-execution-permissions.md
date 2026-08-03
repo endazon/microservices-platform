@@ -167,8 +167,10 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
       → **未達**。PR #475 マージ後の初回実走（PR #479 の `claude-review` / run `30829121373`）で
       **拒否 1 件**（環境変数の前置き形 `Bash(REQUIRE_REPO_TESTS=1 node | tail)`）を実測した。
       追加した 5 エントリ由来の拒否は 0 件であり、残ったのは「プロンプトで手順を狭める」型の
-      最後の 1 片だった。下記「追補（2026-08-03）」でプロンプトへ代替形を明示したので、
-      **本追補後の次回実走で 0 件を確認する**
+      最後の 1 片だった。下記「追補（2026-08-03）」でプロンプトへ代替形を明示した。
+      → **なお未達**。その追補を載せた PR #480 の `claude-review` 実走
+      （run `30830151995` / HEAD `734da26`）で**拒否 7 件**（許容値 4 超過）となり、
+      ジョブは fail した。詳細は下記「追補 2（2026-08-03）」
 - [x] キットへの環流を `feedback/` に記録した（planning 側への起票は下記「未決事項」）
 
 ## テスト方針
@@ -236,6 +238,64 @@ run `30829121373`）で `permission_denials_count: 1` を実測した。
 | `node scripts/check-doc-links.js` | ✓ 成功 |
 | `node scripts/check-commit-messages.js` | ✓ 成功 |
 | 両 workflow の YAML パース | ✓ 両方パース可能 |
+
+## 追補 2（2026-08-03）: 実走で拒否 7 件 — 許可の粒度と回避形の落とし穴
+
+上記「追補」を載せた PR [#480](https://github.com/endazon/microservices-platform/pull/480) の
+`claude-review` 実走（run `30830151995` / HEAD `734da26`）で **`permission_denials_count: 7`**
+（許容値 4 超過）となり、ジョブは fail した。`scripts/check-permission-denials.js` の出力による内訳:
+
+| 拒否 | 件数 | 型 |
+| --- | --- | --- |
+| `Bash(git show \| grep \| diff)` | 2 | 3 段パイプ連鎖 |
+| `Bash(git show \| grep \| echo)` | 1 | 3 段パイプ連鎖 |
+| `Bash(gh run)` | 1 | 前方一致の粒度（許可は `gh run list` のみ） |
+| `Bash(PR_TITLE="fix \| IADR-0115)` | 1 | 単独の変数代入（`PR_TITLE="fix(IADR-0115): …"` を含むコマンド） |
+| `mcp__github__get_workflow_run` | 1 | MCP はツール名単位の許可 |
+| `mcp__github__list_workflow_jobs` | 1 | MCP はツール名単位の許可 |
+
+チェッカーは同時に「リダイレクト（`>`）を含むコマンドがある」とも出力した。3 段パイプの各コマンド
+（`git show` / `grep` / `diff` / `echo`）はいずれも `--allowedTools` に個別に存在するため、
+**3 件の拒否の根本原因は実測出力からは特定できていない**（長い連鎖を判定が扱えないのか、鎖の
+どこかにリダイレクトが混ざったのかを切り分けられない）。**原因は断定せず**、運用側で
+「3 段以上の連鎖を組ませない」形に狭める。
+
+受け入れ基準「拒否 0 件」は**未達のまま**であり、本仕様書の `status` は `in-progress` を維持する。
+
+### 同レビューの 🟡 指摘と本追補の対応
+
+- 🟡 指摘: 「追補」でプロンプトに書いた回避形 `node -e "process.env.X='1'; require('./…');"` は、
+  `require.main === module` ガードを持つスクリプト（`scripts/check-ai-workflow-config.js`）では
+  `main` が呼ばれず**無出力のまま exit 0** になる（＝検査していないのに成功に見える）。
+  → 本追補で、**子プロセス（`spawnSync`）形を標準**とし `require` 形はガードの無いスクリプト
+  （現状 `scripts/scripts.test.js` のみ）限定である旨を両プロンプトへ明記した。
+  ローカル実測で両形の挙動を確認済み（下記「検証結果」）。
+
+### 追補 2 の変更内容
+
+| ファイル | 変更 |
+| --- | --- |
+| `.github/workflows/claude-code-review.yml` | `prompt:` の「検証の誠実性」節へ、(a) `node -e` の 2 形（`require` 形の適用条件と子プロセス形の標準形・無出力なら実測と書かない判定則）、(b) 単独の変数代入・`gh run list` 以外の `gh run`・許可外の Actions 系 MCP ツール・3 段以上のパイプ連鎖の各制約、(c) 拒否件数は `Check permission denials` ステップが権威である旨を追記。`--allowedTools` は不変 |
+| `.github/workflows/claude-coding.yml` | `--append-system-prompt` へ同趣旨を対称に追記。`--allowedTools` は不変 |
+| `feedback/20260803_ai-review-execution-permissions.md` | 「追記 2」節を追加（型リストへ「単独の変数代入」「3 段以上のパイプ連鎖」を追加、環境変数の代替形を子プロセス形へ改める提案、許可の粒度の明示。環流先 planning#168 は既存のまま） |
+| `docs/specs/20260803_issue-469_ai-review-execution-permissions.md` | 本節 |
+
+`--allowedTools` / `.claude/settings.json` / `PERMISSION_DENIALS_TOLERANCE` はいずれも変更していない
+（issue #469 の方針「許容値を上げず、プロンプト側で作業手順を狭める」に従う）。よって 3 系統の
+パリティは追補 2 の前後で不変である。
+
+### 追補 2 の検証結果（ローカル・worktree 内で実測）
+
+| 検査 | 結果 |
+| --- | --- |
+| `node scripts/check-ai-workflow-config.js` | ✓ 成功（2 件を検査 / ERROR 0 / exit 0） |
+| 子プロセス形（`spawnSync` ＋ `STRICT_AI_WORKFLOW_CONFIG=1`） | ✓ 「2 件を検査 / ✓ 問題なし」を出力し exit 0（検査が走る） |
+| `require` 形（`node -e "process.env.STRICT_AI_WORKFLOW_CONFIG='1'; require('./scripts/check-ai-workflow-config.js');"`） | ⚠ **出力なしで exit 0**（`require.main` ガードにより `main` が呼ばれない＝🟡 指摘を再現） |
+| `node scripts/scripts.test.js` | ✓ 全件合格 |
+| `node scripts/check-doc-links.js` | ✓ 成功 |
+| `node scripts/check-commit-messages.js` | ✓ 成功 |
+| 両 workflow の YAML パース | ✓ 両方パース可能 |
+| `--append-system-prompt` の引用符 | ✓ 値を囲む二重引用符は 1 対のみ（追記でトークン化を壊していない） |
 
 ## 計画書との差異
 
