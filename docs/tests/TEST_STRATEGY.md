@@ -62,7 +62,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | ゲート | 対象 | 実行 | 判定 |
 | --- | --- | --- | --- |
 | **写像検査** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | `src/coverage-floor.json` の床未満 → **fail** |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail** |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -86,6 +86,17 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 planning#162 を引いて警告した「**成果物は正しいのに赤**」の常態化を避けるためである。既知の残件を
 明示（allowlist / baseline / floor）したうえで、**新規の悪化だけを止める**。あわせて「残件が消えたのに
 明示が残っている」ことも fail にする。これが無いと残件表が減らないまま形骸化する。
+
+### 床の置き方（実測からの切り下げ）
+
+カバレッジ床は**実測値を整数へ切り下げて**置く。実測そのままを床にすると、計測ゆらぎ（統合テストの
+skip、被覆済みの死コード削除など）だけで「成果物は正しいのに赤」になる。切り上げは初回から fail する
+ため行わない。フロントの [`src/vitest.config.ts`](../../src/vitest.config.ts) が実測 lines≈83% に対して
+整数の床 78 を置いているのと同じ作法である。
+
+バックエンドの初期値は #453 の CI 実行（`8bfe639`）で得た **line 34.46%（18894/54826） /
+branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロジェクト全件）を切り下げた
+`line 34` / `branch 17`。
 
 ## テスト種別と責務
 

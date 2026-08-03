@@ -560,4 +560,18 @@ module.exports = ({ ok, assert }) => {
     const empty = { lines: 0, covered: 0, branches: 0, coveredBranches: 0 };
     assert.strictEqual(cov.compareToFloor(empty, { line: 80, branch: 70 }).violations.length, 0);
   });
+
+  // NFR: 床が null へ戻ると check-coverage-floor は集計するだけで判定しなくなる（fail-open）。
+  // 「配線済み・未武装」は緑のまま穴が開いた状態であり、退行として検知できない。ここで固定する。
+  ok('coverage-floor.json: 床が武装されている（null へ戻る退行を止める）', () => {
+    const floorPath = path.join(__dirname, '..', 'src', 'coverage-floor.json');
+    const floor = JSON.parse(fs.readFileSync(floorPath, 'utf8')).backend;
+    for (const metric of ['line', 'branch']) {
+      assert.strictEqual(
+        typeof floor[metric], 'number',
+        `backend.${metric} が数値でない（null は未武装＝fail-open）: ${JSON.stringify(floor[metric])}`,
+      );
+      assert.ok(floor[metric] > 0, `backend.${metric} は正の値であること: ${floor[metric]}`);
+    }
+  });
 };

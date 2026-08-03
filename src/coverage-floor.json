@@ -2,11 +2,16 @@
   "$comment": [
     "バックエンドのカバレッジ床（Issue #453）。フロントは src/vitest.config.ts の thresholds が担う（IADR-0034）。",
     "ratchet: テストを増やしたら床を引き上げる。下回る変更は ci.yml の coverage-floor ステップで止まる。",
-    "初期値は本 PR の CI 実行で得た実測値を入れる（着手環境に .NET SDK が無く事前に測れなかったため）。",
-    "null の間は集計と報告のみ行い判定しない。実測が出たら必ず設定すること（未設定のままではゲートとして働かない）。"
+    "初期値は PR #464 の CI 実行（commit 8bfe639）で得た実測値に基づく。",
+    "実測: レポート 14 件（platform + knowledge のテストプロジェクト全件。ai-stock-trading は対象外）",
+    "      line 34.46%（18894/54826） / branch 17.62%（3154/17896）。",
+    "床は実測を整数へ切り下げた値とする。src/vitest.config.ts の thresholds が実測（lines≈83%）に対して",
+    "整数の床（78）を置いているのと同じ作法で、計測ゆらぎで「成果物は正しいのに赤」にならない余裕だけを",
+    "残す（IADR-0115）。切り上げは初回から fail するため行わない。",
+    "null の間は集計と報告のみ行い判定しない。"
   ],
   "backend": {
-    "line": null,
-    "branch": null
+    "line": 34,
+    "branch": 17
   }
 }
