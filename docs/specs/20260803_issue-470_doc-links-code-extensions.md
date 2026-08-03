@@ -1,8 +1,8 @@
 ---
 title: 作業仕様書 — check-doc-links の検査対象にコードファイルの拡張子を加える
-type: work-spec
+type: spec
 status: in-progress
-related_ids: [NFR]
+related_ids: [NFR, IADR-0115]
 author: Claude
 created: 2026-08-03
 updated: 2026-08-03
@@ -11,6 +11,7 @@ plan_refs:
 related_specs:
   - ./20260704_chore_ci-doc-links-check.md
   - ./20260803_issue-453_regression-test-foundation.md
+  - "../adr/IADR-0115_impl-handoff-kit-as-single-source.md"
 ---
 
 # 作業仕様書: check-doc-links の検査対象にコードファイルの拡張子を加える
@@ -22,9 +23,15 @@ related_specs:
 
 - 機能要求（FR）: なし（NFR: 保守性 — 仕様書とコードの参照整合を機械で担保する）
 - ユースケース（UC）/ 画面（SC）: なし
-- 関連 ADR: なし（既存検査器の検査範囲の拡張であり、新たな技術選定を伴わない）
+- 関連 ADR: [`IADR-0115`](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
+  （impl-handoff-kit を足場の単一情報源とする同期規約）。新たな技術選定は伴わないが、
+  対象の [`scripts/check-doc-links.js`](../../scripts/check-doc-links.js) は `develop` 時点で
+  **キット原本とバイト一致の分類 A**（実測済み）であるため、本作業の変更は**暫定デルタ**として
+  扱う——ソースコメントに環流先 issue を明記し、キット反映後の同期で撤去してバイト一致へ戻す。
 - 先行作業: [`20260704_chore_ci-doc-links-check.md`](./20260704_chore_ci-doc-links-check.md)（検査器の導入）
 - 本リポジトリの起点: [#470](https://github.com/endazon/microservices-platform/issues/470)
+- 計画側への環流: [planning#167](https://github.com/endazon/project-planning/issues/167)
+  （記録: [`feedback/20260803_doc-links-code-extensions.md`](../../feedback/20260803_doc-links-code-extensions.md)）
 
 ## 目的・背景
 
@@ -57,6 +64,11 @@ const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio)$/i;
   3. [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js): 回帰テストを追加
      （`LINK_EXT` の内容・`isBrokenRef` の正例／負例・`collectBroken` の 3 経路・`--self-test` の exit 0）。
   4. 拡張により新たに検出された既存の破損リンクの是正（下記「全走査の結果」）。
+  5. [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) の `doc-links` ジョブへ
+     自己試験ステップを追加（本走査の前段。他の検査器のジョブと作法を揃える）。
+  6. 計画側への環流記録
+     [`feedback/20260803_doc-links-code-extensions.md`](../../feedback/20260803_doc-links-code-extensions.md)
+     の作成（IADR-0115 の「記録 1 件 ↔ 環流 1 件」規約に従い単独の記録とする）。
 - 含まないもの:
   - 検査経路（フロントマター / Markdown リンク / インラインコード）の変更。
   - 未 populate な submodule のスキップ・`DOC_LINKS_ROOT`・アンカー無視といった既存挙動の変更。
@@ -73,6 +85,18 @@ const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio)$/i;
   緑のまま件数が増えることを非破壊の基準とする。
 - **自己試験を対で置く**: 「検査しているつもりで何も見ていない」状態が #470 の本質であるため、
   拡張子を広げるたびに正例と負例を対で足す規約を自己試験のコメントに明記する。
+- **分類 A の暫定デルタとして扱う**（[IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)）:
+  [`scripts/check-doc-links.js`](../../scripts/check-doc-links.js) は `develop` 時点でキット原本
+  （`planning/tools/impl-handoff-kit/repo-template/scripts/check-doc-links.js`）と**バイト一致**である。
+  本作業の変更（`LINK_EXT` 拡張・`--self-test` 新設）と `ci.yml` の自己試験ステップは、
+  キット反映を待たずに先行適用する**暫定デルタ**であり、次の 3 点を守る。
+  1. ソースコメントと `ci.yml` のステップコメントに**環流先 issue**
+     [planning#167](https://github.com/endazon/project-planning/issues/167) を明記する。
+  2. 環流記録を [`feedback/20260803_doc-links-code-extensions.md`](../../feedback/20260803_doc-links-code-extensions.md)
+     に単独で残す（既存記録へ相乗りしない）。
+  3. キット側へ反映されたら、次のキット同期でデルタを撤去しバイト一致へ戻す。
+  先行適用の理由は、本リポジトリが仕様書からコードへの live link を多用しており（下記「全走査の結果」で
+  34 件）、キット反映を待つ間ずっと未検査の状態が続くためである。
 
 ## 全走査の結果（拡張子追加によって新たに検出された破損）
 
@@ -103,6 +127,12 @@ CI が落ちるようになるため、作法の根拠が強まる）。
 - [x] 既存挙動（未 populate submodule のスキップ件数報告・`--require-planning` の fail-loud・
       `DOC_LINKS_ROOT`・アンカー無視）が変わらない。
 - [x] `node scripts/check-commit-messages.js` が緑。
+- [x] IADR-0115 の分類 A 運用: `scripts/check-doc-links.js` と `.github/workflows/ci.yml` の
+      暫定デルタに**環流先 issue**（[planning#167](https://github.com/endazon/project-planning/issues/167)）を
+      参照するコメントがあり、環流記録
+      [`feedback/20260803_doc-links-code-extensions.md`](../../feedback/20260803_doc-links-code-extensions.md)
+      が単独の記録として存在する。
+- [x] `node scripts/check-doc-links.js --dir feedback` が exit 0（環流記録の相対リンクが解決する）。
 
 ## 影響・リスク
 
@@ -112,3 +142,6 @@ CI が落ちるようになるため、作法の根拠が強まる）。
   締め付けであり、DoD の「前方参照はバッククォート表記」の作法で回避する。
 - **planning submodule**: 未 populate 時は従来どおりスキップされる。planning 側のコード参照は
   定期ジョブ `doc-links-planning.yml`（`--require-planning`）で検査される。
+- **キットとの乖離**: 分類 A のファイルに暫定デルタを持つ間、`diff` によるバイト一致判定は当然に失敗する。
+  次のキット同期で planning#167 の反映を確認し、デルタを撤去してバイト一致へ戻すまでが本作業の
+  未完部分である（IADR-0115 の第 12・13 ラウンドと同じ 1 往復の運用）。

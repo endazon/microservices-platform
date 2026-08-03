@@ -32,6 +32,9 @@ const REPO_ROOT = process.env.DOC_LINKS_ROOT
 // live link は一切検査されず、破損したまま「OK: 384 件」と報告された（issue #470）。
 // 実害: docs/tests/TEST_STRATEGY.md が当時未マージの check-backend-libraries.js を live link
 // しており、検査器を作る PR が検査器の穴で自分の参照切れを見逃した。
+// 本ファイルは impl-handoff-kit とバイト一致の分類 A であり、この拡張子追加と下の --self-test は
+// **暫定デルタ**である。環流先は planning#167（https://github.com/endazon/project-planning/issues/167）。
+// キット反映後の同期で撤去しバイト一致へ戻す（IADR-0115。記録: feedback/20260803_doc-links-code-extensions.md）。
 const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio|js|mjs|cjs|ts|tsx|cs|csproj|props|targets|slnx|sh)$/i;
 
 function parseArgs(argv) {

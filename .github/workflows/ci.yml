@@ -96,6 +96,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
+      # 分類 A（キットとバイト一致）への暫定デルタ。環流先 planning#167。キット反映後の同期で撤去する（IADR-0115）。
       - name: Self-test doc links checker
         run: node scripts/check-doc-links.js --self-test
       - name: Check doc links
