@@ -62,11 +62,16 @@ it('0 件のとき空状態を表示する', () => { ... })
 | ゲート | 対象 | 実行 | 判定 |
 | --- | --- | --- | --- |
 | **写像検査** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail** |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。ただし**合成点経由の微小な混入あり**——後述「既知の限界: 合成点テスト経由の混入」参照・[#468](https://github.com/endazon/microservices-platform/issues/468)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail** |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
-| **ライブラリ標準（ADR-0030）** | `PackageReference` / `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455） |
+| **ライブラリ標準（ADR-0030）** | `PackageReference` / `using` ・Domain 層の依存 | `scripts/check-backend-libraries.js` | 新規混入・baseline 減らし忘れ → **fail**（#455） |
+
+※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入される**
+（本行は #455 マージ後に有効）。導入されるまでは実在しないため、前方参照は live link ではなく
+バッククォート表記で書く（[`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) の同項と同じ作法。
+`check-doc-links.js` は `.js` を検査対象の拡張子に持たないため、壊れた前方参照を機械では検出できない）。
 
 ### 検査対象ユニットの切り分け
 
@@ -109,8 +114,11 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ### 共通する設計原則: ratchet
 
 上記のうち写像検査・カバレッジ床・ライブラリ標準はいずれも **ratchet**（床は下げられるが上げっぱなしに
-できない）で設計している。これは [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md) が
-planning#162 を引いて警告した「**成果物は正しいのに赤**」の常態化を避けるためである。既知の残件を
+できない）で設計している。これは impl-handoff-kit の段階ポリシー設計
+（[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146 / #149 / #160）が
+示した「**成果物は正しいのに赤**」の常態化——拒否の赤を無視する学習を生み、検査の目的を逆から壊す
+——を避けるためである（キットの同期規約そのものは
+[IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)）。既知の残件を
 明示（allowlist / baseline / floor）したうえで、**新規の悪化だけを止める**。あわせて「残件が消えたのに
 明示が残っている」ことも fail にする。これが無いと残件表が減らないまま形骸化する。
 
@@ -129,12 +137,20 @@ branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロ�
 
 | 種別 | 置き場所 | 使うもの | 責務 |
 | --- | --- | --- | --- |
-| 単体（バックエンド） | `Services/<Name>/tests/<Name>.UnitTests` | xUnit v3 ＋ AwesomeAssertions ＋ NSubstitute（ADR-0030） | ドメイン規則・ハンドラの分岐 |
+| 単体（バックエンド） | `Services/<Name>/tests/<Name>.UnitTests` | **xUnit v2**（ADR-0030 の標準は v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute（ADR-0030） | ドメイン規則・ハンドラの分岐 |
 | 統合（バックエンド） | `Services/<Name>/tests/<Name>.IntegrationTests` | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
 | 契約 | — | **未整備（後続 issue）** | `Shared.Contracts` の後方互換 |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
+
+### xUnit のバージョンは v2 のまま書く（v3 へ先走らない）
+
+ADR-0030 の標準は xUnit v3 だが、**CPM（[`src/Directory.Packages.props`](../../src/Directory.Packages.props)）の
+`xunit.runner.visualstudio` は v2 用の 2.8.2 に固定**されている。#455（PR #463）で入る
+`check-backend-libraries.js` の `xunitRunnerMismatch` 検査は「`xunit.v3` を参照しているのに runner が 2.x」を
+**CI で fail** させるため、各ドメイン issue が v3 で新規テストを書くと赤くなる。v3 への切替は runner の
+更新を伴う独立 issue とし、本基盤の期間中は **v2（`xunit` 2.9.3）で書く**。
 
 ## 本基盤の未整備部分（後続 issue へ切り出し）
 

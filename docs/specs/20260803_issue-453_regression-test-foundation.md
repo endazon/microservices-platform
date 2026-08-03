@@ -20,8 +20,10 @@ plan_refs:
 - 機能要求（FR）: なし（NFR: 保守性・性能。**再実装全体の受け入れゲート**）
 - ユースケース（UC）/ 画面（SC）: なし（写像の**対象**は `FR-01..21` / `UC-01..11` / `SC-01..21` 全域）
 - 関連 ADR: [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)（フロントのカバレッジ ratchet）／
-  [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（「成果物は正しいのに赤」を作らない）／
+  [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（impl-handoff-kit を足場の単一情報源とする同期規約）／
   [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md)（進行規約・規約 4 と規約 6）
+- 設計上の下敷き: 「**成果物は正しいのに赤**」を常態化させない段階ポリシー
+  （[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146 / #149 / #160）
 - 本リポジトリの起点: #453（親 #454 フェーズ 0）
 
 ## 目的・背景
@@ -168,7 +170,8 @@ it('0 件のとき空状態を表示する', () => { ... })
 
 床は**実測を整数へ切り下げた `line 34` / `branch 17`** とする。実測そのもの（34.46 / 17.62）を置くと
 計測ゆらぎ——統合テストが 1 件 skip される、被覆済みの死コードを消す等——で「成果物は正しいのに赤」に
-なる（[IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)）。フロントの
+なる（この失敗モードの整理は [`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js`
+節＝impl-handoff-kit の段階ポリシー設計、planning#146 / #149 / #160）。フロントの
 [`src/vitest.config.ts`](../../src/vitest.config.ts) も実測 lines≈83% に対して整数の床 78 を置いており、
 **同じ作法に揃える**。切り上げ（34.46 → 35）は初回から fail するため行わない。
 
