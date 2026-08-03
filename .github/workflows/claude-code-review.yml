@@ -281,7 +281,8 @@ jobs:
                 - `require` 形
                   `node -e "process.env.REQUIRE_REPO_TESTS='1'; require('./scripts/scripts.test.js');"`
                   が通用するのは、**`require.main === module` ガードを持たないスクリプトだけ**である
-                  （本リポジトリでは現状 `scripts/scripts.test.js` のみ）。
+                  （例: `scripts/scripts.test.js`）。ガードの有無はスクリプトごとに異なるため、
+                  **使う前に対象スクリプトの末尾を Read してガードの有無を自分で確認すること**。
                 - **ガード付きスクリプトへ `require` 形を使ってはならない。** 例えば
                   `scripts/check-ai-workflow-config.js` は末尾に
                   `if (require.main === module) { main(process.argv); }` があるため、`require` 形では

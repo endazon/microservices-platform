@@ -268,21 +268,49 @@ run `30829121373`）で `permission_denials_count: 1` を実測した。
   `require.main === module` ガードを持つスクリプト（`scripts/check-ai-workflow-config.js`）では
   `main` が呼ばれず**無出力のまま exit 0** になる（＝検査していないのに成功に見える）。
   → 本追補で、**子プロセス（`spawnSync`）形を標準**とし `require` 形はガードの無いスクリプト
-  （現状 `scripts/scripts.test.js` のみ）限定である旨を両プロンプトへ明記した。
-  ローカル実測で両形の挙動を確認済み（下記「検証結果」）。
+  （例: `scripts/scripts.test.js`）限定である旨と、**使う前に対象スクリプト末尾のガード有無を
+  自分で確認する**手順を両プロンプトへ明記した。ローカル実測で両形の挙動を確認済み
+  （下記「検証結果」）。なおガードの有無はスクリプトごとに異なり、`scripts/` 内でガードを
+  持たないものは `scripts.test.js` だけではない（実測: `gen-openapi-skeleton.js` /
+  `k8s-local-up.test.js` / `scripts.repo.test.js` / `validate-pipeline-config.js` も該当）。
+  **「`scripts.test.js` のみ」と断定しない**こと。
 
 ### 追補 2 の変更内容
 
 | ファイル | 変更 |
 | --- | --- |
 | `.github/workflows/claude-code-review.yml` | `prompt:` の「検証の誠実性」節へ、(a) `node -e` の 2 形（`require` 形の適用条件と子プロセス形の標準形・無出力なら実測と書かない判定則）、(b) 単独の変数代入・`gh run list` 以外の `gh run`・許可外の Actions 系 MCP ツール・3 段以上のパイプ連鎖の各制約、(c) 拒否件数は `Check permission denials` ステップが権威である旨を追記。`--allowedTools` は不変 |
-| `.github/workflows/claude-coding.yml` | `--append-system-prompt` へ同趣旨を対称に追記。`--allowedTools` は不変 |
+| `.github/workflows/claude-coding.yml` | `--append-system-prompt` へ同趣旨を追記。ただし `gh` の記述は**同ファイルの `--allowedTools` に合わせる**（下記「クロス監査による是正」）。`--allowedTools` は不変 |
 | `feedback/20260803_ai-review-execution-permissions.md` | 「追記 2」節を追加（型リストへ「単独の変数代入」「3 段以上のパイプ連鎖」を追加、環境変数の代替形を子プロセス形へ改める提案、許可の粒度の明示。環流先 planning#168 は既存のまま） |
 | `docs/specs/20260803_issue-469_ai-review-execution-permissions.md` | 本節 |
 
 `--allowedTools` / `.claude/settings.json` / `PERMISSION_DENIALS_TOLERANCE` はいずれも変更していない
 （issue #469 の方針「許容値を上げず、プロンプト側で作業手順を狭める」に従う）。よって 3 系統の
 パリティは追補 2 の前後で不変である。
+
+### クロス監査による是正（2026-08-03）
+
+追補 2 のクロス監査で 2 件の指摘を受け、是正した。
+
+1. 🔴 **`claude-coding.yml` の `gh` の記述が同ファイルの `--allowedTools` と不一致だった。**
+   レビュー用の文面（「`gh run` で許可されているのは `gh run list` のみ」）をそのまま写したが、
+   実装用の `--allowedTools` に `Bash(gh run list:*)` は**無い**（実装用の `gh` は
+   `Bash(gh issue create:*)` のみ。`Bash(gh run list:*)` を持つのはレビュー用だけである）。
+   指示に従った実装エージェントが `gh run list` を実行すると**新たな拒否を 1 件生む**。
+   → 実装用の記述を「`gh run` 系は一切許可されていない。CI 結果の参照は
+   `mcp__github__list_workflow_runs` / `mcp__github__actions_list` のみで行う」へ修正した。
+   `--allowedTools` へは追加していない（不変方針を維持）。
+   **教訓**: 両ファイルのプロンプトは*趣旨*を対称にするが、**「何が許可されているか」の記述は
+   機械的に対称化せず、各ファイルの実際の `--allowedTools` に一致させる**こと。
+2. 🟡 **「`require.main` ガードが無いのは `scripts/scripts.test.js` のみ」という断定が不正確だった。**
+   実測では `scripts/` にガード無しが少なくとも 5 本ある（`scripts.test.js` /
+   `gen-openapi-skeleton.js` / `k8s-local-up.test.js` / `scripts.repo.test.js` /
+   `validate-pipeline-config.js`）。この断定は 4 ファイルへ展開されており、planning#168 へ
+   環流するとキットに誤情報が転写される。
+   → 「のみ」の断定をやめ、「例: `scripts/scripts.test.js`。使う前に対象スクリプト末尾の
+   `require.main` ガードの有無を自分で確認すること」の形へ弱めた（両ワークフロー・本仕様書・
+   `feedback/` の 4 箇所）。`feedback/` には「キットは固定のファイル名リストを書かず、
+   確認手順として書くこと」を環流内容として明記した。
 
 ### 追補 2 の検証結果（ローカル・worktree 内で実測）
 
