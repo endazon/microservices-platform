@@ -566,6 +566,65 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(stale, [], `allowlist の減らし忘れ: ${stale.join(' / ')}`);
   });
 
+  // --- check-test-traceability: 逆方向検査（計画レンジ・Issue #472） --------------
+
+  // 実ファイルの構造を模したフィクスチャ。**後段に AST（別プロジェクト）の採番レンジを置く**のが要点。
+  // 節スコープを外した実装はここで AST のレンジを拾い、計画レンジを取り違える。
+  const RULES_FIXTURE = [
+    '---', 'paths:', '  - "**/*"', '---', '',
+    '## 起点 ID の種別', '',
+    '本リポジトリではそれが **MSP** であり、ID レンジは',
+    '`FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0039`（`ADR-0035` は番号予約のみ）',
+    'である。', '',
+    '## 複数プロジェクトを跨ぐ場合の ID 修飾', '',
+    '**AST 側が自前で採番しているレンジは `FR-01..20` / `UC-01..07` / `SC-01..03`**',
+  ].join('\n');
+
+  ok('planRangeSection / parsePlanRanges: 「起点 ID の種別」節だけを見る（AST レンジを拾わない）', () => {
+    const section = trace.planRangeSection(RULES_FIXTURE);
+    assert.ok(section !== null && !section.includes('AST 側'), '節スコープが後段まで伸びている');
+    assert.deepStrictEqual(trace.parsePlanRanges(section), {
+      FR: { from: 1, to: 21 }, UC: { from: 1, to: 11 }, SC: { from: 1, to: 21 },
+    });
+    // ADR-xxxx はテスト仕様書の対象外なので拾わない。
+    assert.strictEqual(trace.parsePlanRanges(section).ADR, undefined);
+    // 節が無ければ null（fail-loud の入口）。
+    assert.strictEqual(trace.planRangeSection('# 見出しのみ\n\n本文'), null);
+  });
+
+  // NFR: レンジが読めなくなると逆方向検査は「計画 0 件・不足 0 件」という最も安全に見える出力で
+  // 素通りする（#472 が塞ごうとしている fail-open そのもの）。壊れた入力は例外にすることで固定する。
+  ok('expandPlanIds / readPlanIds: 壊れた入力は例外（黙って 0 件検査に戻さない）', () => {
+    assert.throws(() => trace.expandPlanIds({ FR: { from: 1, to: 3 } }), /UC/);
+    assert.throws(() => trace.expandPlanIds({ FR: { from: 5, to: 1 }, UC: { from: 1, to: 1 }, SC: { from: 1, to: 1 } }), /範囲/);
+    assert.throws(() => trace.readPlanIds(path.join(__dirname, '..', 'no-such-rules-file.md')), /読めません/);
+  });
+
+  ok('missingSpecIds / implementedWithoutSpec: 未着手と実装先行を切り分ける', () => {
+    const missing = trace.missingSpecIds(['FR-01', 'FR-16', 'UC-01'], new Set(['FR-01', 'NFR']));
+    assert.deepStrictEqual(missing, ['FR-16', 'UC-01']);
+    // テストが参照済みのものだけが fail 対象（実装先行）。未着手は warn のまま。
+    assert.deepStrictEqual(trace.implementedWithoutSpec(missing, new Set(['UC-01'])), ['UC-01']);
+    assert.deepStrictEqual(trace.implementedWithoutSpec(missing, new Set(['FR-01'])), []);
+  });
+
+  ok('実ファイル: 計画レンジ 53 件を読み、実装先行はすべて allowlist 済み（specMissing の残置も無い）', () => {
+    const planIds = trace.readPlanIds();
+    assert.strictEqual(planIds.length, 53, `計画レンジの件数が変わった: ${planIds.length}`);
+    for (const id of ['FR-21', 'UC-11', 'SC-21']) assert.ok(planIds.includes(id), `${id} が欠けている`);
+    const missing = trace.missingSpecIds(planIds, trace.collectSpecIds());
+    const implFirst = trace.implementedWithoutSpec(missing, trace.collectTestIds());
+    const { blocked, stale } = trace.classifyAgainstAllowlist(implFirst, trace.readSpecMissingAllowlist());
+    assert.deepStrictEqual(blocked, [], `仕様書なしで実装が先行（allowlist 外）: ${blocked.join(' / ')}`);
+    assert.deepStrictEqual(stale, [], `specMissing の減らし忘れ: ${stale.join(' / ')}`);
+  });
+
+  ok('check-test-traceability --self-test は exit 0（逆方向検査の正例・負例を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js'), '--self-test'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
+
   // --- check-coverage-floor: バックエンドのカバレッジ床（Issue #453） -------------
 
   const cov = require('./check-coverage-floor.js');
