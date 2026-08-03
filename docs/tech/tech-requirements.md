@@ -151,8 +151,12 @@ Result / Error はサービスをまたいで同一の型である必要があ�
 
 ### 機械的強制と移行の進め方
 
-不採用ライブラリの混入は `scripts/check-backend-libraries.js` が `.csproj` の `PackageReference` と `.cs` の
-`using` の両方を走査して検出し、CI で止める。ただし**現行実装は MassTransit / FluentAssertions / Serilog を
+不採用ライブラリの混入は [`scripts/check-backend-libraries.js`](../../scripts/check-backend-libraries.js) が
+`.csproj` と MSBuild の `.props` / `.targets`（`Directory.Build.props` は配下の全プロジェクトへ
+`PackageReference` を一括注入できるため。[#471](https://github.com/endazon/microservices-platform/issues/471)）の
+`PackageReference`・`GlobalPackageReference` と `.cs` の `using` を走査して検出し、CI で止める。
+**CPM の `PackageVersion`（版の中央定義）は違反にしない** — 下記 ratchet の消化が終わるまで、
+[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit / FluentAssertions / Serilog を
 広範に使用中**（実測: `.csproj` 15 / 14 / 3、`.cs` 59 / 129 / 15）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを

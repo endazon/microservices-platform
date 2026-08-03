@@ -6,7 +6,11 @@
  * 機械強制（NFR, Issue #455）。外部依存ゼロ（Node 標準モジュールのみ）。
  *
  * 検査するルール:
- *   1) 不採用ライブラリの参照禁止: .csproj の PackageReference と .cs の using の双方を走査する。
+ *   1) 不採用ライブラリの参照禁止: .csproj / MSBuild の props・targets の PackageReference と
+ *      .cs の using の双方を走査する（props・targets は ADR-0030 / #471 で追加。Directory.Build.props に
+ *      <PackageReference> を書くと全プロジェクトへ一括注入されるため、csproj だけを見る検査は素通りになる）。
+ *      **PackageVersion（CPM のバージョン定義）は違反にしない**。baseline を消化するまで不採用パッケージの
+ *      版定義は src/Directory.Packages.props に正当に残る設計であり、違反にすると 42 件の偽陽性が出る。
  *      現行実装は MassTransit / FluentAssertions / Serilog を広範に使用中のため、即時に全件 fail
  *      させると「成果物は正しいのに赤」が常態化する。同じ判断の先例は scripts/README.md の
  *      check-permission-denials.js の段階ポリシーである（赤の常態化は「赤を無視する学習」を生み、
@@ -26,6 +30,7 @@
  *   node scripts/check-backend-libraries.js --write-baseline # 現状を baseline へ書き出す（初回のみ）。
  */
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { warn, notice } = require('./lib/ci-annotate');
 
@@ -70,8 +75,29 @@ const BANNED = [
   'BCrypt.Net-Next',
   'DotNetEnv',
   'BouncyCastle.Cryptography',
-  'Kiota',
+  // ADR-0030 / #471: 実在するパッケージ ID は Microsoft.Kiota.Abstractions 等であり、
+  // 'Kiota' は完全一致にも 'Kiota.' 前方一致にも当たらない**死にエントリ**だった。
+  'Microsoft.Kiota',
   'NSwag',
+  // --- 以下は 12_backend-application-stack の棚卸し表にあるのに BANNED から漏れていた分（#471） ---
+  // L77「WolverineFx.Kafka ★採用 … Confluent.Kafka 直接利用はしない」。
+  // Wolverine トランスポート（WolverineFx.Kafka）経由が標準であり、素クライアントの直接参照を止める。
+  'Confluent.Kafka',
+  // L76「WolverineFx.RabbitMQ ★採用 … MassTransit / 素の RabbitMQ.Client を置換」。
+  'RabbitMQ.Client',
+  // L85「Azure Key Vault Provider（Secret 管理）★不採用 … HashiCorp Vault（暫定は k8s Secret）」。
+  // ADR が不採用としたのは「Azure Key Vault から secret を取る経路」そのものであるため、
+  // 構成プロバイダ（Azure.Extensions.AspNetCore.Configuration.Secrets）と
+  // Key Vault クライアント SDK（Azure.Security.KeyVault.Secrets / .Keys / .Certificates）の双方を対象にする。
+  // Azure.Identity や他の Azure SDK は不採用ではないため、前方一致は Azure.Security.KeyVault までに留める。
+  'Azure.Extensions.AspNetCore.Configuration.Secrets',
+  'Azure.Security.KeyVault',
+  // L79「OpenIddict / BCrypt.Net-Next / Argon2（パスワードハッシュ）★不採用 … Keycloak が担う」。
+  // Argon2 は .NET に単一の標準実装が無く複数パッケージが流通するため、実在 ID を列挙する。
+  // Konscious は Argon2 と Blake2 を別パッケージで出しており、Blake2 は ADR の不採用対象ではない。
+  // よって前方一致の起点は .Argon2 までとし、同一作者の別用途パッケージを巻き込まない。
+  'Konscious.Security.Cryptography.Argon2',
+  'Isopoh.Cryptography.Argon2',
 ];
 
 /** 共有カーネル（Domain が唯一 ProjectReference を許される先）。 */
@@ -117,10 +143,17 @@ function bannedNameOf(name, bannedList = BANNED) {
   return best;
 }
 
-/** .csproj 本文から PackageReference の Include 値を列挙する。 */
+/**
+ * .csproj / props / targets 本文から PackageReference の Include 値を列挙する。
+ *
+ * ADR-0030 / #471: CPM の `GlobalPackageReference`（Directory.Packages.props に書くと全プロジェクトへ
+ * 参照が注入される）も同じ経路であるため併せて拾う。一方 **`PackageVersion` は拾わない** —
+ * こちらは「参照」ではなく版の中央定義であり、baseline 消化まで不採用パッケージの版を正当に持つ
+ * （src/Directory.Packages.props / templates の .sample）。要素名を厳密に見分けるのが要点である。
+ */
 function packageReferencesOf(content) {
   const out = [];
-  const re = /<PackageReference\b[^>]*\bInclude\s*=\s*"([^"]+)"/g;
+  const re = /<(?:Global)?PackageReference\b[^>]*\bInclude\s*=\s*"([^"]+)"/g;
   let m;
   while ((m = re.exec(String(content))) !== null) out.push(m[1]);
   return out;
@@ -198,6 +231,20 @@ function xunitRunnerMismatch(relPath, csprojContent, runnerVersion) {
   }];
 }
 
+/**
+ * 不採用ライブラリ検査の対象となるビルドファイルか（ADR-0030 / #471）。
+ *
+ * .csproj に加えて MSBuild の props / targets を対象にする。`Directory.Build.props` の
+ * `<ItemGroup><PackageReference>` は配下の全プロジェクトへ一括注入されるため、そこに書けば
+ * csproj のみの検査は素通りする（`.cs` の using 検査は二次防衛にしかならない。DI 拡張だけを使い
+ * `global using` を書かなければ抜ける）。`Directory.Build.targets` も同じ注入経路を持ち、
+ * 任意名の `*.props` / `*.targets` は csproj から `<Import>` して同じことができる。
+ * templates/ の雛形は実ビルドを避けるため `.sample` 付きで配布されるので末尾の `.sample` も許す。
+ */
+function isScannedBuildFile(relPath) {
+  return /\.(csproj|props|targets)(\.sample)?$/i.test(toPosix(relPath));
+}
+
 /** リポジトリ相対パスが Domain プロジェクトの .csproj か。 */
 function isDomainProject(relPath) {
   return /\.Domain\.csproj$/i.test(toPosix(relPath));
@@ -249,9 +296,12 @@ function classifyAgainstBaseline(current, baseline) {
 
 // --- ファイル走査 ---------------------------------------------------------------
 
-/** dir 配下を再帰的に走査し、条件に合うファイルの相対パスを返す。 */
-function walk(dir, predicate, acc = []) {
-  const abs = path.join(REPO_ROOT, dir);
+/**
+ * dir 配下を再帰的に走査し、条件に合うファイルの相対パスを返す。
+ * root は走査の起点（既定はリポジトリルート）。自己試験が一時ツリーを走査するために外から与える（#471）。
+ */
+function walk(dir, predicate, acc = [], root = REPO_ROOT) {
+  const abs = path.join(root, dir);
   let entries;
   try {
     entries = fs.readdirSync(abs, { withFileTypes: true });
@@ -261,7 +311,7 @@ function walk(dir, predicate, acc = []) {
   for (const e of entries) {
     if (SKIP_DIRS.has(e.name)) continue;
     const rel = toPosix(path.join(dir, e.name));
-    if (e.isDirectory()) walk(rel, predicate, acc);
+    if (e.isDirectory()) walk(rel, predicate, acc, root);
     else if (predicate(rel)) acc.push(rel);
   }
   return acc;
@@ -283,9 +333,15 @@ function owningProject(relCsPath, csprojPaths) {
   return best ? best.proj : null;
 }
 
-/** src/ を走査し、プロジェクト → 禁止ライブラリ名配列 と Domain 違反を返す。 */
-function scanTree() {
-  const csprojPaths = walk(SRC_DIR, (p) => /\.csproj$/i.test(p) && !isExcludedPath(p));
+/**
+ * src/ を走査し、プロジェクト → 禁止ライブラリ名配列 と Domain 違反を返す。
+ * root は走査の起点（既定はリポジトリルート。自己試験が一時ツリーを与える。#471）。
+ */
+function scanTree(root = REPO_ROOT) {
+  // #471: csproj だけでなく props / targets も走査する（Directory.Build.props 経由の一括注入対策）。
+  const buildFiles = walk(SRC_DIR, (p) => isScannedBuildFile(p) && !isExcludedPath(p), [], root);
+  // .cs の所属プロジェクト解決に使うのは .csproj のみ（props は「プロジェクト」ではない）。
+  const csprojPaths = buildFiles.filter((p) => /\.csproj$/i.test(p));
   const current = {};
   const domain = [];
   const add = (project, libs) => {
@@ -298,19 +354,20 @@ function scanTree() {
   // CPM の runner 版（xunit.v3 との整合判定に使う）。
   let runnerVersion = null;
   try {
-    runnerVersion = centralVersionOf(fs.readFileSync(path.join(REPO_ROOT, 'src', 'Directory.Packages.props'), 'utf8'), XUNIT_RUNNER);
+    runnerVersion = centralVersionOf(fs.readFileSync(path.join(root, 'src', 'Directory.Packages.props'), 'utf8'), XUNIT_RUNNER);
   } catch { /* CPM を読めない構成では版整合の判定を行わない */ }
 
-  for (const proj of csprojPaths) {
-    const content = fs.readFileSync(path.join(REPO_ROOT, proj), 'utf8');
+  for (const proj of buildFiles) {
+    const content = fs.readFileSync(path.join(root, proj), 'utf8');
     add(proj, bannedInCsproj(content));
     domain.push(...domainViolations(proj, content));
     domain.push(...xunitRunnerMismatch(proj, content, runnerVersion));
   }
   // templates/ は ci.yml のビルド対象外のため、ここで走査しないと雛形の版不整合が誰にも捕まらない。
   // 不採用ライブラリの baseline 対象にはしない（雛形は src/ の残件ではないため）。
-  for (const proj of walk(TEMPLATE_DIR, (p) => /\.csproj$/i.test(p))) {
-    const content = fs.readFileSync(path.join(REPO_ROOT, proj), 'utf8');
+  // #471: 雛形も props / targets（.sample 付きで配布される）まで走査する。
+  for (const proj of walk(TEMPLATE_DIR, isScannedBuildFile, [], root)) {
+    const content = fs.readFileSync(path.join(root, proj), 'utf8');
     domain.push(...domainViolations(proj, content));
     domain.push(...xunitRunnerMismatch(proj, content, runnerVersion));
     const banned = bannedInCsproj(content);
@@ -318,10 +375,10 @@ function scanTree() {
       domain.push({ kind: 'template-banned', project: toPosix(proj), detail: banned.join(' / ') });
     }
   }
-  for (const cs of walk(SRC_DIR, (p) => /\.cs$/i.test(p) && !isExcludedPath(p))) {
+  for (const cs of walk(SRC_DIR, (p) => /\.cs$/i.test(p) && !isExcludedPath(p), [], root)) {
     const proj = owningProject(cs, csprojPaths);
     if (!proj) continue;
-    const content = fs.readFileSync(path.join(REPO_ROOT, cs), 'utf8');
+    const content = fs.readFileSync(path.join(root, cs), 'utf8');
     add(proj, bannedInSource(content));
   }
   return { current, domain };
@@ -355,6 +412,53 @@ function selfTest() {
     JSON.stringify(bannedInCsproj('<PackageReference Version="1.0" Include="FluentAssertions" />')) === '["FluentAssertions"]');
   t('採用ライブラリのみなら空',
     bannedInCsproj('<PackageReference Include="FluentValidation" />').length === 0);
+
+  // BANNED の網羅（ADR-0030 / #471）。棚卸し表の ★不採用・置換対象と 1 件ずつ突き合わせた分。
+  t('Kiota: 実在 ID は Microsoft.Kiota.* — 旧 "Kiota" は 1 件も当たらない死にエントリだった',
+    bannedNameOf('Microsoft.Kiota.Abstractions') === 'Microsoft.Kiota'
+      && bannedNameOf('Microsoft.Kiota.Serialization.Json') === 'Microsoft.Kiota'
+      && !BANNED.includes('Kiota'));
+  t('Confluent.Kafka は不採用（Wolverine トランスポート経由が標準）だが WolverineFx.Kafka は採用',
+    bannedNameOf('Confluent.Kafka') === 'Confluent.Kafka'
+      && bannedNameOf('WolverineFx.Kafka') === null);
+  t('素の RabbitMQ.Client は不採用（WolverineFx.RabbitMQ が置換）',
+    bannedNameOf('RabbitMQ.Client') === 'RabbitMQ.Client'
+      && bannedNameOf('WolverineFx.RabbitMQ') === null);
+  t('Azure Key Vault の構成プロバイダ / クライアント SDK は不採用（HashiCorp Vault を使う）',
+    bannedNameOf('Azure.Extensions.AspNetCore.Configuration.Secrets') === 'Azure.Extensions.AspNetCore.Configuration.Secrets'
+      && bannedNameOf('Azure.Security.KeyVault.Secrets') === 'Azure.Security.KeyVault'
+      && bannedNameOf('Azure.Security.KeyVault.Keys') === 'Azure.Security.KeyVault');
+  t('Azure Key Vault 以外の Azure SDK（Azure.Identity 等）は不採用ではない',
+    bannedNameOf('Azure.Identity') === null && bannedNameOf('Azure.Core') === null);
+  t('Argon2 実装は不採用（認証は Keycloak が担う）',
+    bannedNameOf('Konscious.Security.Cryptography.Argon2') === 'Konscious.Security.Cryptography.Argon2'
+      && bannedNameOf('Isopoh.Cryptography.Argon2') === 'Isopoh.Cryptography.Argon2');
+  t('Argon2 と同一作者の別用途パッケージ（Blake2）は巻き込まない',
+    bannedNameOf('Konscious.Security.Cryptography.Blake2') === null
+      && bannedNameOf('Isopoh.Cryptography.Blake2b') === null);
+
+  // #471 の最重要の罠: CPM の PackageVersion を違反にしてはならない。
+  // Directory.Packages.props は baseline 消化まで不採用パッケージの版定義を正当に持つ。
+  t('PackageVersion（CPM の版定義）は違反にしない',
+    bannedInCsproj('<PackageVersion Include="MassTransit" Version="8.4.1" />'
+      + '<PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />'
+      + '<PackageVersion Include="FluentAssertions" Version="7.2.0" />').length === 0);
+  t('GlobalPackageReference（CPM の全プロジェクト注入）は違反にする',
+    JSON.stringify(bannedInCsproj('<GlobalPackageReference Include="Serilog" Version="4.0.0" />')) === '["Serilog"]');
+  t('実リポの src/Directory.Packages.props は不採用の PackageVersion を持つが違反 0',
+    bannedInCsproj(fs.readFileSync(path.join(REPO_ROOT, 'src', 'Directory.Packages.props'), 'utf8')).length === 0);
+  t('雛形の Directory.Packages.props.sample も同様に違反 0',
+    bannedInCsproj(fs.readFileSync(
+      path.join(REPO_ROOT, 'templates', 'unit-template', 'backend', 'Directory.Packages.props.sample'), 'utf8')).length === 0);
+
+  // 走査対象のファイル種別（#471）。
+  t('isScannedBuildFile: csproj / props / targets と雛形の .sample を対象にする',
+    isScannedBuildFile('src/x/X.csproj') && isScannedBuildFile('src/Directory.Build.props')
+      && isScannedBuildFile('src/Directory.Build.targets') && isScannedBuildFile('src/x/Custom.props')
+      && isScannedBuildFile('templates/unit-template/backend/Directory.Packages.props.sample'));
+  t('isScannedBuildFile: .cs や無関係なファイルは対象外',
+    !isScannedBuildFile('src/x/X.cs') && !isScannedBuildFile('src/x/backend.slnx')
+      && !isScannedBuildFile('src/x/README.md'));
 
   // using の抽出。
   t('using MassTransit; を検出',
@@ -428,6 +532,41 @@ function selfTest() {
   t('platform は検査対象', !isExcludedPath('src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj'));
   t('knowledge は検査対象', !isExcludedPath('src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj'));
   t('src 直下のファイルは対象外扱いにしない', !isExcludedPath('src/Directory.Packages.props'));
+
+  // --- 実地確認（#471）: 一時ツリーを実際に走査し、3 種の検出漏れ / 偽陽性を固定する ---
+  // 関数単位の試験だけでは「走査対象に入っているか」を確かめられない（BANNED に足しても
+  // scanTree が当該ファイルを開かなければ検出されない）。よって scanTree ごと通す。
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-libs-selftest-'));
+    const write = (rel, body) => {
+      const abs = path.join(tmp, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body);
+    };
+    // (a) 実在する Kiota のパッケージ ID。旧 BANNED の 'Kiota' では検出できなかった。
+    write('src/platform/backend/Sample/Sample.Api.csproj',
+      '<Project><ItemGroup><PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.0.0" /></ItemGroup></Project>');
+    // (b) Directory.Build.props 経由の一括注入。csproj には一切現れない混入経路。
+    write('src/Directory.Build.props',
+      '<Project><ItemGroup><PackageReference Include="MassTransit" /></ItemGroup></Project>');
+    // (c) CPM の版定義。走査対象に加えても違反にしてはならない（baseline 消化まで正当に残る）。
+    write('src/Directory.Packages.props',
+      '<Project><ItemGroup>'
+      + '<PackageVersion Include="MassTransit" Version="8.4.1" />'
+      + '<PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />'
+      + '<PackageVersion Include="FluentAssertions" Version="7.2.0" />'
+      + '</ItemGroup></Project>');
+    const { current } = scanTree(tmp);
+    t('実地(a): csproj の Microsoft.Kiota.Abstractions を検出',
+      JSON.stringify(current['src/platform/backend/Sample/Sample.Api.csproj']) === '["Microsoft.Kiota"]',
+      current['src/platform/backend/Sample/Sample.Api.csproj']);
+    t('実地(b): Directory.Build.props 経由の一括注入を検出',
+      JSON.stringify(current['src/Directory.Build.props']) === '["MassTransit"]',
+      current['src/Directory.Build.props']);
+    t('実地(c): CPM の PackageVersion は違反にならない（走査追加で偽陽性を出さない）',
+      current['src/Directory.Packages.props'] === undefined, current['src/Directory.Packages.props']);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 
   let failed = 0;
   for (const c of cases) {
@@ -527,6 +666,7 @@ module.exports = {
   usingNamespacesOf,
   bannedInCsproj,
   bannedInSource,
+  isScannedBuildFile,
   isDomainProject,
   domainViolations,
   classifyAgainstBaseline,
