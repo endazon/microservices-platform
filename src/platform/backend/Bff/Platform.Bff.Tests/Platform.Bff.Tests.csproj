@@ -2,6 +2,14 @@
   <PropertyGroup><IsPackable>false</IsPackable></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!-- NFR / Issue #453: カバレッジ床（scripts/check-coverage-floor.js）が集計する Cobertura を
+         出力するために必須。`dotnet test` の「XPlat Code Coverage」データコレクタは **テストプロジェクトが
+         coverlet.collector を参照していないと何も出力しない**（実測: 参照が無かったため MSP 側の
+         レポートは 0 件で、CI が拾えていたのは AST submodule の 38 件だけだった）。 -->
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Xunit.SkippableFact" />

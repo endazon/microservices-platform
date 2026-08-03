@@ -14,9 +14,25 @@
 
 - [ ] ビルドが成功する
 - [ ] 受け入れ基準・ユースケースのフロー（基本/代替/例外）をテストに写像し、テストが green
+- [ ] **テストの直前コメントに起点 ID を書いた**（`// FR-03, UC-01: ...`。写像規約は
+      [`docs/tests/TEST_STRATEGY.md`](tests/TEST_STRATEGY.md)。`check-test-traceability.js` が検査する）
 - [ ] フォーマット/lint が通る
 - [ ] `/verify` を実行し合格した
 - [ ] 計画外の機能追加・過剰な抽象化・不要な防御的実装がない
+
+### 全面再実装（#454）期間の追加条件
+
+再実装では既存実装を破棄し得るため、退行の検知手段をテストへ移す（#453）。各ドメイン issue
+（#438〜#452）の PR は次も満たす。
+
+- [ ] **カバレッジ床を下回っていない**。バックエンドは [`src/coverage-floor.json`](../src/coverage-floor.json)、
+      フロントは [`src/vitest.config.ts`](../src/vitest.config.ts) の `thresholds`（[[IADR-0034]]）。
+      **テストを増やしたら床を引き上げる**（ratchet。床の据え置きは事実上の緩和である）
+- [ ] **ADR-0030 の不採用ライブラリを増やしていない**。移行したら `scripts/backend-library-baseline.json`
+      から自プロジェクトを削除する（残件が減らないと標準への移行が終わらない）。
+      ※ この baseline は #455 で導入される（本項は #455 マージ後に有効）
+- [ ] 写像を後回しにした場合、[`scripts/test-traceability-allowlist.json`](../scripts/test-traceability-allowlist.json)
+      へ**理由とともに**追加し、テストを書いた PR で削除する
 
 ## 安全
 

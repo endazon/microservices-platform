@@ -175,6 +175,10 @@ _TeamCity*
 coverage*.json
 coverage*.xml
 coverage*.info
+# NFR / Issue #453: カバレッジ床の設定ファイルは Coverlet の**出力**ではなく管理対象の設定である。
+# 上の coverage*.json に飲み込まれると、ローカルでは存在するのにコミットされず CI だけが壊れる
+# （実際に PR #464 の doc-links が「リンク先が無い」として検出した）。明示的に除外を解く。
+!src/coverage-floor.json
 
 # Visual Studio code coverage results
 *.coverage
