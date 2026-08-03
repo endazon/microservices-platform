@@ -1,0 +1,12 @@
+{
+  "$comment": [
+    "バックエンドのカバレッジ床（Issue #453）。フロントは src/vitest.config.ts の thresholds が担う（IADR-0034）。",
+    "ratchet: テストを増やしたら床を引き上げる。下回る変更は ci.yml の coverage-floor ステップで止まる。",
+    "初期値は本 PR の CI 実行で得た実測値を入れる（着手環境に .NET SDK が無く事前に測れなかったため）。",
+    "null の間は集計と報告のみ行い判定しない。実測が出たら必ず設定すること（未設定のままではゲートとして働かない）。"
+  ],
+  "backend": {
+    "line": null,
+    "branch": null
+  }
+}
