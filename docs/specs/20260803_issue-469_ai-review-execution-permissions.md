@@ -1,7 +1,7 @@
 ---
 title: 実走に伴う周辺操作の権限拒否を塞ぐ（which / dotnet --version / list_workflow_runs）とプロンプトによる rm・シェル構文の抑止
 type: spec
-status: done
+status: in-progress
 related_ids:
   - NFR
   - IADR-0115
@@ -162,9 +162,13 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
 - [x] `node scripts/check-ai-workflow-config.js --self-test`（23 件）/ `node scripts/scripts.test.js` /
       `node scripts/check-doc-links.js` / `node scripts/check-commit-messages.js` が成功する
 - [x] 両 workflow が YAML としてパースできる
-- [ ] 本 PR 自身の `claude-review` が**権限拒否 0 件**で green になる
+- [ ] 本件の変更が入った状態の `claude-review` が**権限拒否 0 件**で green になる
       （間欠発現のため「緑になった」だけでは不十分。実行サマリで 0 件を確認する）
-      → PR 作成後に確認する
+      → **未達**。PR #475 マージ後の初回実走（PR #479 の `claude-review` / run `30829121373`）で
+      **拒否 1 件**（環境変数の前置き形 `Bash(REQUIRE_REPO_TESTS=1 node | tail)`）を実測した。
+      追加した 5 エントリ由来の拒否は 0 件であり、残ったのは「プロンプトで手順を狭める」型の
+      最後の 1 片だった。下記「追補（2026-08-03）」でプロンプトへ代替形を明示したので、
+      **本追補後の次回実走で 0 件を確認する**
 - [x] キットへの環流を `feedback/` に記録した（planning 側への起票は下記「未決事項」）
 
 ## テスト方針
@@ -195,6 +199,44 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
   `Bash(git switch:*)` / `Bash(git checkout:*)` / `Bash(git branch:*)` / `Bash(find:*)` / `Bash(mkdir:*)`
 - レビュー用にのみ: `Bash(gh issue view:*)` / `Bash(gh pr view:*)` / `Bash(gh run list:*)`
 
+## 実走結果と追補（2026-08-03）: 環境変数の前置き形で拒否 1 件
+
+PR #475（上記の変更）をマージした**直後の初回実走**（PR #479 の `claude-review` /
+run `30829121373`）で `permission_denials_count: 1` を実測した。
+
+| 拒否 | 件数 | 原因 |
+| --- | --- | --- |
+| `Bash(REQUIRE_REPO_TESTS=1 node \| tail)` | 1 | 環境変数の前置き形。先頭トークンが `REQUIRE_REPO_TESTS=1` になり、どの許可エントリにも前方一致しない |
+
+- 追加した 5 エントリ（`which` / `dotnet --version` / `dotnet --info` / MCP 2 件）由来の拒否は
+  **0 件**であり、「設計 1」の効果は実走で確認できた。
+- 残った 1 件は「設計 3」と**同型**（許可リストで原理的に表現できず、プロンプトで手順を狭めるしかない型）である。
+  `Bash(env:*)` を許すと任意コマンドが通るため、許可の追加では塞げない。
+- 当のレビュー自身が回避形を**自力で発見して使っていた**
+  （`node -e "process.env.REQUIRE_REPO_TESTS='1'; require('./scripts/scripts.test.js');"`）。
+  代替手順は存在するのにプロンプトが書いていないため、AI は拒否を 1 件消費してから発見し直す。
+
+### 追補の変更内容
+
+| ファイル | 変更 |
+| --- | --- |
+| `.github/workflows/claude-code-review.yml` | `prompt:` の「原理的に実行できない」節の環境変数の項へ、代替形（`node -e` で `process.env` を設定してから `require` する `node` 1 コマンド形）と実測（PR #479）を追記。`--allowedTools` は不変 |
+| `.github/workflows/claude-coding.yml` | `--append-system-prompt` へ同趣旨を追記（対称）。`--allowedTools` は不変 |
+| `feedback/20260803_ai-review-execution-permissions.md` | 「追記」節を追加（planning#168 への追加事例。「許可リストで表現できないシェル構文の型のリスト」に環境変数の前置き形を加える提案） |
+
+`--allowedTools` を変更していないため、3 系統（両ワークフロー ＋ `.claude/settings.json`）の
+パリティは追補の前後で不変である。
+
+### 追補の検証結果（ローカル）
+
+| 検査 | 結果 |
+| --- | --- |
+| `node scripts/check-ai-workflow-config.js` | ✓ 成功（ERROR 0） |
+| `node scripts/scripts.test.js` | ✓ 全件合格 |
+| `node scripts/check-doc-links.js` | ✓ 成功 |
+| `node scripts/check-commit-messages.js` | ✓ 成功 |
+| 両 workflow の YAML パース | ✓ 両方パース可能 |
+
 ## 計画書との差異
 
 - 差異: あり（キット側の不足）。`--allowedTools` とプロンプトは [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
@@ -206,7 +248,10 @@ CI 結果の参照）があるため、**5 エントリすべてを両ファイ�
 
 ## 未決事項
 
-- **`.claude/settings.json`（3 系統目）への同内容の追加はオーナーが適用する必要がある。**
+- ~~**`.claude/settings.json`（3 系統目）への同内容の追加はオーナーが適用する必要がある。**~~
+  → **適用済み**（2026-08-03 時点の `develop` で 5 行が存在し、
+  `STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js` が成功することを実測）。
+  以下は経緯として残す。
   同ファイルは AI による編集が deny されている（`permissions.deny` の
   `Edit(./.claude/settings.json)` / `Write(...)` と `hooks/guard-bash.js`。AI が自分の許可リストを
   広げられないようにする設計）。#460（PR #461）でも同じ手順でオーナーが適用した。
