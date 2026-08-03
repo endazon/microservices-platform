@@ -195,6 +195,24 @@ jobs:
           #   いずれも読み取り専用である。発現は間欠的で、その回に何回使おうとしたかで拒否件数が
           #   変わり、段階ポリシーの許容値を超えた回だけ赤くなる（PR #459 は 3 回中 2 回が赤）。
           #
+          # 【暫定デルタ・issue #469】**実走を求めながら、実走に伴う周辺操作を許可していない**
+          # 非対称を塞ぐ追加である（PR #464 の拒否 5 件の実測）。プロンプトが「PR の主張は可能な
+          # 限り自分で実走して確認せよ」と指示している以上、SDK の在否確認は必然的に発生する。
+          #   - `Bash(which:*)` — 読み取りのみ。`which dotnet` で SDK の在否を確認する。
+          #   - `Bash(dotnet --version)` / `Bash(dotnet --info)` — **引数を固定した形**で足す。
+          #     許可済みなのは `restore` / `build` / `test` / `format` のサブコマンド固定形だけで、
+          #     裸の `dotnet --version` はどれにも前方一致しない。ここで `Bash(dotnet:*)` と
+          #     一括許可してはならない（`dotnet nuget push` 等まで通る）。
+          #   - `mcp__github__list_workflow_runs` / `mcp__github__actions_list` — CI 結果の参照は
+          #     レビューの主業務である。許可が無いと、レビューは CI を見られずローカル再現の
+          #     遠回りをする。名前は下記のとおりサーバの版に依存するため**新旧を併記**する
+          #     （v0.17.1 = `list_workflow_runs` / 最新 = `actions_list` の `list_workflow_runs` メソッド）。
+          # `rm` は**足さない**。`dotnet test` の生成物（TestResults / Cobertura）の後片付けは
+          # レビューの責務ではなく（ワークスペースはジョブ終了で破棄される）、プロンプト側で
+          # 「消さなくてよい」と明示して使わせない方向で塞ぐ。
+          # シェル構文（`for` / リダイレクト / `$(…)`）は許可リストでは原理的に表現できないため、
+          # 同じくプロンプト側で作業手順を狭める（slnx 単位の 1 コマンドで実行させる）。
+          #
           # 【GitHub MCP のツール名は**サーバの版に依存する**（PR #461 のレビュー指摘・実測）】
           # claude-code-action v1 は github-mcp-server を **v0.17.1**（`ghcr.io/github/github-mcp-server:sha-23fa0dd`）
           # に pin している。この版に在るのは `get_issue` / `get_pull_request` / `list_sub_issues` で、
@@ -218,7 +236,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_sub_issues,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
@@ -253,7 +271,10 @@ jobs:
                 主張していても、**追試はできない**ので「未検証（書き込み不可）」と書く。
               - **シェルのループ・複合形**（`for` / `while` / `if … then … fi`）。先頭トークンが
                 `for` 等になるため許可リストで表現できず、必ず拒否される。複数ファイルを調べる
-                ときは**1 ファイルずつ個別のコマンドで**実行すること。
+                ときは**1 ファイルずつ個別のコマンドで**実行すること。ビルド・テストを複数
+                プロジェクトへ回すときも `for` を組まず、**`src/<unit>/backend/backend.slnx`
+                単位の 1 コマンド**（例: `dotnet test src/platform/backend/backend.slnx`）で
+                実行すること。フロントエンドも同様に `src` のワークスペース単位で 1 コマンドにする。
             - **パイプは各コマンドが個別に許可判定される。** `git show X | cmp - Y` は `cmp` が
               未許可なら拒否される（前段が許可済みでも通らない）。バイト一致の確認には
               `cmp` / `diff` を許可してあるので、そのまま使ってよい。
@@ -334,6 +355,15 @@ jobs:
             【検証の実行】
             ビルド・テスト・フォーマットの実行は許可されている。PR 本文が「テストが通る」と
             主張している場合は、可能な限り**自分で実走して確認**し、結果を報告に含めること。
+            SDK の在否は `dotnet --version` / `dotnet --info` / `which dotnet` で確認できる
+            （いずれも許可済み。`dotnet` の他のサブコマンドは `restore` / `build` / `test` /
+            `format` のみ許可されている）。
+            **実走で生成された成果物（`dotnet test` の `TestResults/` やカバレッジ XML）は
+            削除しないこと。** ワークスペースはジョブ終了で破棄される使い捨てであり、後片付けは
+            レビューの責務ではない（`rm` は許可されておらず、試みれば拒否として記録されるだけである）。
+            PR の CI ジョブの結果は `mcp__github__list_workflow_runs`（新しいサーバ版では
+            `mcp__github__actions_list` の `list_workflow_runs` メソッド）と `Bash(gh run list:*)` で
+            参照できる。**ローカル再現を始める前に、まず CI の結果を見ること。**
             計画書 submodule の**履歴**（pin の進み方・その差分・「変更が無いこと」）についても
             `git -C planning log / show / diff / ls-tree` で検証できる。PR が submodule の pin に
             言及している場合は、その主張を実際に確かめること。
