@@ -8,7 +8,9 @@
  * 検査するルール:
  *   1) 不採用ライブラリの参照禁止: .csproj の PackageReference と .cs の using の双方を走査する。
  *      現行実装は MassTransit / FluentAssertions / Serilog を広範に使用中のため、即時に全件 fail
- *      させると「成果物は正しいのに赤」が常態化する（IADR-0115）。よって **ratchet 方式**を採る。
+ *      させると「成果物は正しいのに赤」が常態化する。同じ判断の先例は scripts/README.md の
+ *      check-permission-denials.js の段階ポリシーである（赤の常態化は「赤を無視する学習」を生み、
+ *      検査の目的そのものを壊す。planning#146 / #149 / #160）。よって **ratchet 方式**を採る。
  *        - baseline に無いプロジェクトでの違反 → fail（新規混入を止める）
  *        - baseline にあるプロジェクトの違反   → warn（残件として実行サマリに出す）
  *        - baseline にあるのに違反が消えた     → fail（baseline の減らし忘れを検出する）

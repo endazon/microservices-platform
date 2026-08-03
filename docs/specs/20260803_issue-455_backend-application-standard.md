@@ -2,7 +2,7 @@
 title: バックエンドアプリケーション層標準（ADR-0030）の確立と機械的強制
 type: spec
 status: in-progress
-related_ids: [NFR, ADR-0020, ADR-0027, ADR-0029, ADR-0030, IADR-0116]
+related_ids: [NFR, ADR-0020, ADR-0027, ADR-0029, ADR-0030, IADR-0116, IADR-0117]
 author: Claude
 created: 2026-08-03
 updated: 2026-08-03
@@ -102,7 +102,8 @@ src/<unit>/backend/Services/<Name>Service/
 許可されているため、**`Platform.Shared.Kernel` として platform/backend/Shared 配下に 1 つ置く**。
 計画書の構成図はサービス単位の論理レイヤを示したものであり、本リポジトリの
 ユニット第一構成（[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）と両立させるための
-読み替えである。この判断は IADR に残す（後述「未決事項」1）。
+読み替えである。**この判断は [IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) で確定した**
+（IADR-0056 決定 3 の部分改定。ユニット外参照の許容を 2 → 3 プロジェクトへ改定し、`Platform.Shared.Kernel` を加える）。
 
 ### 2. CPM への標準ライブラリ集約
 
@@ -190,20 +191,42 @@ baseline が空になった時点で不採用パッケージを `Directory.Packa
 
 ## 計画書との差異
 
-- **差異: あり（1 件・構成の読み替え）**。計画書 12_backend-application-stack の構成図は `SharedKernel` を
-  サービス単位に置く形で示されているが、本リポジトリはユニット第一構成
-  （[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)・ADR-0019）を採り、ユニット外から
-  参照できるのは `src/platform/backend/Shared/` の 2 プロジェクトのみと定めている。サービスごとに
-  `SharedKernel` を作ると Result 型が 11 個に分裂し、サービス間で型が異なるため契約に載せられない。
-  **`Platform.Shared.Kernel` として 1 つに集約する**。計画の意図（Result を外部ライブラリに頼らず自前で持つ・
-  Domain を外部依存ゼロにする）は満たすため、ADR に反する逸脱ではなく配置の具体化と判断する。
-  IADR に記録し、`/plan-feedback` で計画側へ「構成図はサービス内の論理レイヤであり物理配置は実装裁量」と
-  明記するよう提案する。
+**差異: あり（2 件）。**
+
+1. **`SharedKernel` の配置（構成の読み替え）**。計画書 12_backend-application-stack の構成図は `SharedKernel` を
+   サービス単位に置く形で示されているが、本リポジトリはユニット第一構成
+   （[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)・ADR-0019）を採り、ユニット外から
+   参照できるのは `src/platform/backend/Shared/` の 2 プロジェクトのみと定めていた。サービスごとに
+   `SharedKernel` を作ると Result 型が 11 個に分裂し、サービス間で型が異なるため契約に載せられない。
+   **`Platform.Shared.Kernel` として 1 つに集約する**。計画の意図（Result を外部ライブラリに頼らず自前で持つ・
+   Domain を外部依存ゼロにする）は満たすため、ADR に反する逸脱ではなく配置の具体化と判断する。
+   → **[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) で確定済み**（IADR-0056 決定 3 を
+   2 → 3 プロジェクトへ部分改定）。`/plan-feedback` で計画側へ「構成図はサービス内の論理レイヤであり
+   物理配置は実装裁量」と明記するよう提案する（同 IADR フォローアップ 2）。
+
+2. **テストフレームワークを xUnit v2 で出荷する（一時的逸脱）**。ADR-0030 §決定と棚卸し表は
+   テストを **xUnit v3** と明記しているが、本作業が出荷する雛形（`templates/unit-template/`）と既存 30 の
+   テストプロジェクトは **v2（`xunit 2.9.3`）** のままである。理由は `xunit.runner.visualstudio` が
+   v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ためで、
+   v3 へ移るには全テストプロジェクトが同時に移らざるを得ない。#455 の範囲（標準の確立と強制）で
+   30 プロジェクトの一斉移行まで抱えると [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md)
+   規約 4（レビュー可能な変更単位）を破る。
+   - **`/plan-feedback` は不要と判断する。** これは計画の決定そのものへの反対ではなく、**解消計画のある
+     一時的逸脱**である（runner 3.x への CPM 一斉切替 issue で解消する。下記「未決事項」2）。計画書の
+     記述を変える必要がないため、計画側へ返すべき情報が無い。
+   - 逸脱が固定化しないよう、**`xunit.v3` を参照するプロジェクトを作ってはならない**という制約を
+     `scripts/check-backend-libraries.js` の `xunitRunnerMismatch` 検査で機械的に固定した（`templates/` も検査対象）。
+     CPM に `xunit.v3` の `PackageVersion` は先行して置くが、参照は runner を 3.x へ揃える切替 issue まで禁じる。
 
 ## 未決事項
 
-1. **`Platform.Shared.Kernel` の新設**（上記差異）。IADR を起こして確定する。
-2. **xUnit v2 → v3 の切替時期**。v3 はプロジェクト形式（`Microsoft.NET.Test.Sdk` の扱い・`xunit.v3` パッケージ）が
+1. ~~**`Platform.Shared.Kernel` の新設**（上記差異）。IADR を起こして確定する。~~
+   **確定済み（2026-08-03）**: [IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が
+   [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 3 を部分改定し、
+   `src/platform/backend/Shared/` のユニット外参照可能プロジェクトを **2 → 3**（`Platform.Shared.Kernel` を追加）とした。
+   同プロジェクトは .NET 標準以外の `PackageReference` を持たない。**実体は本作業では作成せず**、
+   最初にそれを必要とするサービス再実装 issue（#438〜#451）が作成する。
+2. **xUnit v2 → v3 の切替時期**（上記「計画書との差異」2 の解消計画）。v3 はプロジェクト形式（`Microsoft.NET.Test.Sdk` の扱い・`xunit.v3` パッケージ）が
    変わるため、既存 30 プロジェクトを一斉に切り替えると本作業が肥大する。**CPM に `xunit.v3` を追加するのみとし、
    実際の切替は各サービスの再実装 issue で行う**。ただし次の 2 点が未決である。
    - **`xunit.runner.visualstudio` は CPM 上 1 バージョンしか持てない**。現行 `2.8.2`（v2 用）に対し v3 は

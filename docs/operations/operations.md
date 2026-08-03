@@ -9,13 +9,15 @@ related_ids:
   - UC-07
   - ADR-0006
   - ADR-0011
+  - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-07-28
+updated: 2026-08-03
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (採用ライブラリの年次点検 / #455)"
 ---
 
 # 運用仕様書
