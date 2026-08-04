@@ -2,14 +2,15 @@
 title: 作業仕様書 — 検査器 3 つの EXCLUDED_UNITS を .gitmodules 由来の共通ヘルパへ寄せる
 type: spec
 status: done
-related_ids: [NFR, IADR-0056, IADR-0115, IADR-0118]
+related_ids: [NFR, IADR-0056, IADR-0115, IADR-0118, IADR-0120]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
 related_specs:
+  - "../adr/IADR-0120_excluded-units-from-gitmodules.md"
   - ./20260803_issue-453_regression-test-foundation.md
   - ./20260803_issue-455_backend-application-standard.md
   - ./20260803_issue-474_backend-floor-iadr-and-0116-followup.md
@@ -35,7 +36,12 @@ related_specs:
   - [`IADR-0118`](../adr/IADR-0118_backend-coverage-floor.md) 決定 4
     （`ai-stock-trading` は床の集計対象外＝`EXCLUDED_UNITS`）。
   - [`IADR-0115`](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（キット同期規約）。
-    対象 3 検査器の分類確認に用いる（下記「IADR-0115 の分類確認」）。
+    対象 3 検査器の位置づけ確認に用いる（下記「IADR-0115 の位置づけ確認」）。
+  - [`IADR-0120`](../adr/IADR-0120_excluded-units-from-gitmodules.md)（**本作業で起票**）。
+    本書が定める導出規則・fail-closed・環境変数の口を作らない方針、および
+    「submodule だが本プロジェクト所属のユニット」が現れた場合の**再判断の条件**を恒久記録する。
+    導出規則は将来のユニット追加すべてに自動適用される恒久ポリシーであり、作業仕様書だけでは
+    記録先として弱いため（`CLAUDE.md`「重要な実装判断は実装 ADR に必ず残す」）。
 - 本リポジトリの起点: [#473](https://github.com/endazon/microservices-platform/issues/473)
 - 先行作業: [#455](https://github.com/endazon/microservices-platform/issues/455)（`check-backend-libraries.js`）/
   [#453](https://github.com/endazon/microservices-platform/issues/453)（`check-test-traceability.js` /
@@ -79,6 +85,8 @@ related_specs:
   3. [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) にヘルパの回帰テストを追加
      （ハードコードへの逆戻り検出・3 検査器の集合一致・`--self-test` の exit 0）。
   4. [`scripts/README.md`](../../scripts/README.md) の表へヘルパの行を 1 行追加。
+  5. [`docs/adr/IADR-0120`](../adr/IADR-0120_excluded-units-from-gitmodules.md) の起票（導出規則・
+     fail-closed・再判断の条件の恒久記録）と [`docs/adr/README.md`](../adr/README.md) の索引更新。
 - 含まないもの:
   - **`check-doc-links.js` への適用**。同ファイルは IADR-0115 の分類 A（キット原本と同一系）であり、
     かつ既に `.gitmodules` 由来の判定を自前で持つ。ここへヘルパを持ち込むと、キットに存在しない
@@ -88,7 +96,7 @@ related_specs:
     変わらないことを受け入れ基準に置く。
   - `.github/workflows/` の変更（下記「CI での実行経路」）。
 
-## IADR-0115 の分類確認（実測）
+## IADR-0115 の位置づけ確認（実測）
 
 キット雛形 `planning/tools/impl-handoff-kit/repo-template/scripts/` を実際に列挙した結果:
 
@@ -100,21 +108,24 @@ gen-changelog.js  gen-openapi-skeleton.js  lib/  scripts.test.js  setup.sh
 validate-pipeline-config.js
 ```
 
-| ファイル | キット原本 | 分類 | 本作業での扱い |
+| ファイル | キット原本 | 位置づけ | 本作業での扱い |
 | --- | --- | --- | --- |
-| `check-backend-libraries.js` | 無し | **B（リポジトリ固有）** | 自由に改変してよい |
-| `check-test-traceability.js` | 無し | **B（リポジトリ固有）** | 自由に改変してよい |
-| `check-coverage-floor.js` | 無し | **B（リポジトリ固有）** | 自由に改変してよい |
-| `lib/excluded-units.js`（新設） | 無し | **B（リポジトリ固有）** | 新規追加。キットへの環流はしない |
-| `lib/ci-annotate.js` | 有り・**バイト一致** | A | 触らない |
-| `scripts.test.js` | 有り・**バイト一致** | A | 触らない（固有テストは `scripts.repo.test.js` へ） |
-| `check-doc-links.js` | 有り・差分あり（#470 の暫定デルタ） | A + 暫定デルタ | **触らない**（先例として読むのみ） |
-| `scripts/README.md` | 有り・差分あり（リポ固有スクリプトの行を既に追記済み） | A + 既存デルタ | 同じ作法で 1 行追記 |
+| `check-backend-libraries.js` | 無し | **固有デルタ種 3**（本リポにしか存在しない成果物・スクリプト） | 自由に改変してよい |
+| `check-test-traceability.js` | 無し | **固有デルタ種 3** | 自由に改変してよい |
+| `check-coverage-floor.js` | 無し | **固有デルタ種 3** | 自由に改変してよい |
+| `lib/excluded-units.js`（新設） | 無し | **固有デルタ種 3** | 新規追加。キットへの環流はしない |
+| `lib/ci-annotate.js` | 有り・**バイト一致** | 分類 A | 触らない |
+| `scripts.test.js` | 有り・**バイト一致** | 分類 A | 触らない（固有テストは `scripts.repo.test.js` へ） |
+| `check-doc-links.js` | 有り・差分あり（#470 の暫定デルタ） | 分類 A + 暫定デルタ | **触らない**（先例として読むのみ） |
+| `scripts/README.md` | 有り・差分あり（リポ固有スクリプトの行を既に追記済み） | 分類 B（固有デルタ種 3 を含む） | 同じ作法で 1 行追記 |
 
-対象 3 検査器はいずれもキットに存在しない**リポジトリ固有ファイル**であり、デルタ規約
-（環流先 issue の明記・`feedback/` への記録）は不要である。新設するヘルパも同様に本リポジトリ固有
-（`src/<unit>` というユニット第一構成は IADR-0056 の本リポジトリ固有の決定であり、キットの前提ではない）
-であるため、キットへは環流しない。
+**分類（A / B / C）と固有デルタ種（1〜4）は別軸である**（IADR-0115 決定 1・決定 2）。分類 B は
+「キット本文を土台に固有部分を再適用する」——すなわち**キットに原本があるファイル**の扱いであり、
+キットに存在しないファイルへ当てるラベルではない。対象 3 検査器と新設ヘルパはキットに原本を持たない
+**固有デルタ種 3（本リポにしか存在しない成果物・スクリプト。`check-unit-dependencies.js` と同じ位置づけ）**
+であり、分類 A/B のデルタ規約（環流先 issue の明記・`feedback/` への記録）の対象ではない。
+`src/<unit>` というユニット第一構成は IADR-0056 の本リポジトリ固有の決定でキットの前提ではないため、
+ヘルパもキットへは環流しない。
 
 ## 方針
 
@@ -184,7 +195,7 @@ excludedUnits({ gitmodules: text })     // .gitmodules の内容を直接注入�
 
 | ファイル | 変更 |
 | --- | --- |
-| [`scripts/lib/excluded-units.js`](../../scripts/lib/excluded-units.js) | 新設。`submodulePaths` / `unitOfSubmodulePath` / `excludedUnitsFromText` / `excludedUnits` / `makeIsExcludedPath` / `selfTest` |
+| [`scripts/lib/excluded-units.js`](../../scripts/lib/excluded-units.js) | 新設。公開 API は `submodulePaths` / `unitOfSubmodulePath` / `excludedUnitsFromText` / `excludedUnits` / `makeIsExcludedPath`（＋`toPosix` / `REPO_ROOT`）。自己試験は `module.exports` に載せず **CLI の `--self-test`** からのみ実行する（他の検査器と同じ作法） |
 | [`scripts/check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | `EXCLUDED_UNITS` / `isExcludedPath` をヘルパ由来へ。既存の自己試験 4 件は維持 |
 | [`scripts/check-test-traceability.js`](../../scripts/check-test-traceability.js) | 同上（自己試験 1 件を維持） |
 | [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js) | 同上（自己試験 2 件を維持）。レポート 0 件時の warn に出す除外ユニット名も導出値になる |
@@ -194,7 +205,9 @@ excludedUnits({ gitmodules: text })     // .gitmodules の内容を直接注入�
 ## 受け入れ基準
 
 - [x] 3 検査器の `EXCLUDED_UNITS` が `scripts/lib/excluded-units.js` からの導出になり、
-      `new Set(['ai-stock-trading'])` 相当のハードコードがどのファイルにも残っていない。
+      **3 検査器に** `new Set(['ai-stock-trading'])` 相当のハードコードが残っていない
+      （ヘルパの自己試験・回帰テストは同じ文字列をフィクスチャとして正当に使うため、検査範囲は
+      3 検査器のソースに限る。逆戻り検出はシングル / ダブル両方のクォート形を対象にする）。
 - [x] `.gitmodules` に仮の submodule（例: `src/foo-unit`）を足したフィクスチャで、除外集合が
       自動的に追随する（ヘルパの `--self-test` で固定）。
 - [x] リポジトリ直下の `planning` は除外ユニットにならない。`src/` 配下の深い submodule も
@@ -209,7 +222,7 @@ excludedUnits({ gitmodules: text })     // .gitmodules の内容を直接注入�
 - [x] `node scripts/lib/excluded-units.js --self-test` が exit 0。
 - [x] `node scripts/scripts.test.js` が緑で、テスト件数が 191 件から減っていない。
       `REQUIRE_REPO_TESTS=1` でも緑。
-- [x] `node scripts/check-doc-links.js` が exit 0（本仕様書の相対リンクを含む）。
+- [x] `node scripts/check-doc-links.js` が exit 0（本仕様書と IADR-0120 の相対リンクを含む）。
 - [x] `node scripts/check-commit-messages.js --base origin/develop` が緑。
 
 ## 検証（実測）
@@ -229,7 +242,16 @@ excludedUnits({ gitmodules: text })     // .gitmodules の内容を直接注入�
 | `node scripts/check-coverage-floor.js --self-test` | 自己試験 **14 件 OK** / exit 0 |
 | `node scripts/scripts.test.js` | **197 tests passed** / exit 0（変更前 191 件 → +6 件） |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **197 tests passed** / exit 0 |
-| `node scripts/check-doc-links.js` | OK: **394 件**の Markdown に破損リンクなし / exit 0（変更前 393 件。増分は本仕様書 1 件） |
+| `node scripts/check-doc-links.js` | OK: **395 件**の Markdown に破損リンクなし / exit 0（変更前 393 件。増分は本仕様書と IADR-0120 の 2 件） |
+
+### 逆戻り検出テストの実効性（クロス監査の指摘を受けた実測）
+
+ハードコードへの逆戻りを検出する正規表現は、当初シングルクォート形のみを見ており
+`new Set("ai-stock-trading")` 相当のダブルクォート形を素通りした（「逆戻りを検出するテスト」自体が
+逆戻りを見逃す形）。`["']` へ拡大したうえで実効性を実測した——`check-coverage-floor.js` の宣言を
+一時的に `new Set(["ai-stock-trading"])` へ戻すと `node scripts/scripts.test.js` が
+`AssertionError: check-coverage-floor.js にハードコードが残っている` で **exit 1**。復元後は
+再び 197 件緑で、`git status` はクリーンであることを確認した。
 
 ### 走査結果の不変（変更前後の機械比較）
 
