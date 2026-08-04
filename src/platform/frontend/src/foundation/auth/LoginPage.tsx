@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { Navigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@platform/ui';
 import { useAuth } from './useAuth';
@@ -18,10 +20,14 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto mt-24 max-w-md text-center">
-      <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>
-      <p className="mt-2 text-sm text-[--color-fg-muted]">社内ナレッジ検索・AI 回答プラットフォーム</p>
+      <h1 className="text-2xl font-semibold text-[--color-fg]">
+        {i18n._(msg`汎用プラットフォーム`)}
+      </h1>
+      <p className="mt-2 text-sm text-[--color-fg-muted]">
+        {i18n._(msg`社内ナレッジ検索・AI 回答プラットフォーム`)}
+      </p>
       <Button variant="primary" className="mt-6" onClick={() => void login()}>
-        Keycloak でサインイン
+        {i18n._(msg`Keycloak でサインイン`)}
       </Button>
     </main>
   );

@@ -1,0 +1,103 @@
+msgid ""
+msgstr ""
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: platform/frontend/src/foundation/auth/LoginPage.tsx
+msgid "Keycloak でサインイン"
+msgstr "Sign in with Keycloak"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "アカウント設定（{name}）"
+msgstr "Account settings ({name})"
+
+#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "エラー"
+msgstr "Error"
+
+#: platform/frontend/src/foundation/ui/NotFound.tsx
+msgid "お探しのページは存在しないか、アクセスできません。"
+msgstr "The page does not exist, or you do not have access to it."
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "サインアウト"
+msgstr "Sign out"
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインインに失敗しました。"
+msgstr "Sign-in failed."
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインインに失敗しました。時間をおいて再度お試しください。"
+msgstr "Sign-in failed. Please wait a moment and try again."
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインイン処理中…"
+msgstr "Signing in…"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "その他"
+msgstr "Other"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "ユーザー"
+msgstr "User"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "主要ナビゲーション"
+msgstr "Main navigation"
+
+#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
+msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
+msgstr "An unexpected error occurred. Please wait a moment and try again."
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "個人"
+msgstr "Personal"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "利用者"
+msgstr "General"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "情報"
+msgstr "Info"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "成功"
+msgstr "Success"
+
+#: platform/frontend/src/foundation/auth/LoginPage.tsx
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "汎用プラットフォーム"
+msgstr "General Platform"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "注意"
+msgstr "Warning"
+
+#: platform/frontend/src/foundation/auth/LoginPage.tsx
+msgid "社内ナレッジ検索・AI 回答プラットフォーム"
+msgstr "Internal knowledge search and AI answering platform"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "管理"
+msgstr "Administration"
+
+#: platform/frontend/src/foundation/ui/NotFound.tsx
+msgid "見つかりませんでした"
+msgstr "Not found"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "運用"
+msgstr "Operations"

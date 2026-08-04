@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { userManager as defaultUserManager } from './authConfig';
@@ -27,7 +29,7 @@ export function CallbackPage({ manager }: { manager?: UserManager }) {
         void navigate({ to: returnTo as typeof ENTRY_ROUTE_PATH, replace: true });
       })
       .catch((e: unknown) => {
-        if (active) setError(e instanceof Error ? e.message : 'サインインに失敗しました。');
+        if (active) setError(e instanceof Error ? e.message : i18n._(msg`サインインに失敗しました。`));
       });
     return () => {
       active = false;
@@ -35,7 +37,15 @@ export function CallbackPage({ manager }: { manager?: UserManager }) {
   }, [manager, navigate]);
 
   if (error) {
-    return <p role="alert">サインインに失敗しました。時間をおいて再度お試しください。</p>;
+    return (
+      <p role="alert">
+        {i18n._(msg`サインインに失敗しました。時間をおいて再度お試しください。`)}
+      </p>
+    );
   }
-  return <p role="status">サインイン処理中…</p>;
+  return (
+    <p role="status">
+      {i18n._(msg`サインイン処理中…`)}
+    </p>
+  );
 }

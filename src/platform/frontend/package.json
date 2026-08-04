@@ -12,6 +12,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@lingui/core": "^6.6.0",
+    "@lingui/react": "^6.6.0",
     "@platform/ui": "workspace:*",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-router": "^1.170.18",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@faker-js/faker": "^9.2.0",
+    "@lingui/babel-plugin-lingui-macro": "^6.6.0",
     "@playwright/test": "^1.47.2",
     "@tailwindcss/vite": "^4.0.0",
     "@tanstack/router-core": "^1.171.15",

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
-import { Notifications, notify, NOTIFICATION_LABELS } from './notifications';
+import { Notifications, notify, notificationLabel } from './notifications';
 
 // INDEX 決定 21 / IADR-0124 決定 7: 通知は「色だけで意味を持たせない」。
 // severity ごとにテキストのラベルが必ず描画されることを固定する（色を除いても意味が成り立つこと）。
@@ -13,13 +13,15 @@ describe('notifications (INDEX 決定 21: 色だけで意味を持たせない)'
     async (severity) => {
       render(<Notifications />);
       notify[severity](`${severity} のメッセージ`);
-      expect(await screen.findByText(NOTIFICATION_LABELS[severity])).toBeInTheDocument();
+      expect(await screen.findByText(notificationLabel(severity))).toBeInTheDocument();
       expect(screen.getByText(`${severity} のメッセージ`)).toBeInTheDocument();
     },
   );
 
   it('exposes exactly the four severities (no colour-only variant can be added by callers)', () => {
     expect(Object.keys(notify).sort()).toEqual(['error', 'info', 'success', 'warning']);
-    expect(Object.values(NOTIFICATION_LABELS).every((l) => l.length > 0)).toBe(true);
+    expect(
+      (['success', 'info', 'warning', 'error'] as const).every((s) => notificationLabel(s).length > 0),
+    ).toBe(true);
   });
 });

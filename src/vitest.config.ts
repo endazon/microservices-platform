@@ -6,7 +6,12 @@ import { fileURLToPath, URL } from 'node:url';
 // （platform / knowledge の各 frontend）を横断計測する。ビルド・dev サーバは
 // platform/frontend/vite.config.ts。
 export default defineConfig({
-  plugins: [react()],
+  // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3:
+  // マクロ（@lingui/react/macro の <Trans> 等）を babel で展開する。
+  // **同じ設定を platform/frontend/vite.config.ts にも置く**——片方だけに入れると
+  // 「テストは通るのにビルドが壊れる（あるいはその逆）」という静かな破綻になる。
+  // その一致は platform/frontend/src/foundation/i18n/i18n.test.tsx が固定する。
+  plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } })],
   resolve: {
     // IADR-0121 決定 2（pnpm workspace）: pnpm は node_modules を isolated に置くため、ユニットごとに
     // 別々の React 実体が解決され得る（同一プロセスで 2 つの React が動くと「Invalid hook call」になる）。

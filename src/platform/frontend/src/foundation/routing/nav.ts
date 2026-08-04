@@ -1,3 +1,6 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+import type { MessageDescriptor } from '@lingui/core';
 import type { NavGroup, NavItem } from './featureRegistry';
 
 // Issue #136 / IADR-0035: 共通シェルの左ナビ（05_screens §共通シェル の 4 グループ）。
@@ -13,13 +16,19 @@ const OTHER = 'other' as const;
 /** 左ナビのグループ ID と表示順（05_screens §共通シェル の 4 グループ ＋ その他）。 */
 export const NAV_GROUP_ORDER = ['user', 'personal', 'admin', 'ops', OTHER] as const;
 
-/** グループの見出し（05_screens §共通シェル）。 */
-export const NAV_GROUP_LABELS: Record<(typeof NAV_GROUP_ORDER)[number], string> = {
-  user: '利用者',
-  personal: '個人',
-  admin: '管理',
-  ops: '運用',
-  other: 'その他',
+/**
+ * グループの見出し（05_screens §共通シェル）。
+ *
+ * ADR-0031 / IADR-0125 決定 6: 文言は Lingui のマクロで抽出する。ここはモジュール初期化時に
+ * 評価されるため、翻訳済みの**文字列**ではなく `MessageDescriptor` を持ち、描画時に
+ * `i18n._()` で解決する（モジュール読み込み時に文字列へ確定させると、ロケール切替に追随しない）。
+ */
+export const NAV_GROUP_MESSAGES: Record<(typeof NAV_GROUP_ORDER)[number], MessageDescriptor> = {
+  user: msg`利用者`,
+  personal: msg`個人`,
+  admin: msg`管理`,
+  ops: msg`運用`,
+  other: msg`その他`,
 };
 
 export interface NavGroupView {
@@ -48,7 +57,7 @@ export function navItems(): readonly NavItem[] {
 export function navGroups(items: readonly NavItem[] = navItems()): NavGroupView[] {
   return NAV_GROUP_ORDER.map((id) => ({
     id,
-    label: NAV_GROUP_LABELS[id],
+    label: i18n._(NAV_GROUP_MESSAGES[id]),
     items: items.filter((i) => (i.group ?? OTHER) === id),
   })).filter((g) => g.items.length > 0);
 }
