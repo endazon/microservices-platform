@@ -25,7 +25,11 @@ const config: StorybookConfig = {
     // クラッシュレポートの外部送信も行わない（同ポリシー: 外部エラー報告 SaaS を使用しない）。
     enableCrashReports: false,
   },
-  docs: { defaultName: 'Docs' },
+  // **Autodocs は使わない。** Storybook 10 の docs エントリ生成は `@storybook/addon-docs` に
+  // 依存しており、アドオンを入れない方針（上記）のままでは `docs` を設定しても
+  // `index.json` に docs エントリが 1 件も生まれない（実測: entries は story 型 7 件のみ）。
+  // 「設定はあるが効いていない」状態を残さないため設定ごと落とす。
+  // 必要になったら 08_data-egress-policy に照らしてアドオンの追加を判断する。
   viteFinal: async (viteConfig) => {
     const { default: tailwindcss } = await import('@tailwindcss/vite');
     viteConfig.plugins = [...(viteConfig.plugins ?? []), tailwindcss()];
