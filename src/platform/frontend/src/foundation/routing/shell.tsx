@@ -4,6 +4,9 @@ import { NotFound } from '@foundation/ui/NotFound';
 import { RequireAuth } from '@foundation/auth/RequireAuth';
 import { LoginPage } from '@foundation/auth/LoginPage';
 import { CallbackPage } from '@foundation/auth/CallbackPage';
+import { toInternalPath } from '@foundation/auth/safeRedirect';
+// `/` の遷移先。CallbackPage も使うため、循環 import を避けて単独モジュールに置く（IADR-0124 決定 6）。
+import { ENTRY_ROUTE_PATH } from './entryPath';
 
 // ADR-0031 / IADR-0124: ルート木の「骨格」。可変機能ユニットのルートはここには現れない
 // （合成点 platform/frontend/src/features/index.ts が束ね、router.tsx が接ぎ木する）。
@@ -21,12 +24,12 @@ export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   // IADR-0124 決定 3: 遷移元を型付き検索パラメータで受ける（RequireAuth が付ける）。
-  // 外部由来の値なので、SPA 内部の絶対パスでなければ捨てる（オープンリダイレクト対策）。
+  // IADR-0124 決定 9: `from` は URL に載る＝利用者が書き換えられる外部由来の値なので、
+  // この SPA 内部のパスとして解決できるものだけを通す（オープンリダイレクト対策）。
+  // 判定は toInternalPath に集約する（同じ条件を 2 か所へ書かない）。
   validateSearch: (raw: Record<string, unknown>): { from?: string } => {
-    const from = raw.from;
-    return typeof from === 'string' && from.startsWith('/') && !from.startsWith('//')
-      ? { from }
-      : {};
+    const from = toInternalPath(raw.from);
+    return from === null ? {} : { from };
   },
   component: LoginPage,
 });
@@ -52,17 +55,6 @@ export const shellRoute = createRoute({
     );
   },
 });
-
-/**
- * アプリのルート直下（`/`）の遷移先（IADR-0124 決定 6）。
- *
- * 計画の画面一覧（SC-01〜21）に home に相当する画面は無く、SC-01 が「本システムの主入口」と
- * 定義されている（05_screens §SC-01）。`/` の存在はアプリホスト（platform）の責務であり、
- * 可変ユニットを外しても `/` が消えてはならないため、ここに置く。
- * 値は**パス文字列**であってユニットへの参照ではない（IADR-0056 決定 3 に抵触しない）。
- * 実在することは `router.test.ts` が実行時に固定する。
- */
-export const ENTRY_ROUTE_PATH = '/ask';
 
 // IADR-0124 決定 6: `/` は主入口へ送る。beforeLoad で投げるため、描画前にリダイレクトされる。
 export const homeRedirectRoute = createRoute({

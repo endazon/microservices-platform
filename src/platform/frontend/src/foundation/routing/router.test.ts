@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { router } from './router';
 import { navItems } from './nav';
-import { ENTRY_ROUTE_PATH, rootRoute, shellRoute, catchAllRoute } from './shell';
+import { rootRoute, shellRoute, catchAllRoute } from './shell';
+import { ENTRY_ROUTE_PATH } from './entryPath';
 import { NotFound } from '@foundation/ui/NotFound';
 
 // ADR-0031 / IADR-0124: ルート木の配線を固定する。

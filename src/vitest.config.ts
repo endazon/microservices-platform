@@ -85,22 +85,22 @@ export default defineConfig({
       //
       // ［2026-08-04 / #490］移行第 2 段（ADR-0031 / IADR-0124）に伴う引き上げ。
       //   実測（測定条件は上と同じ。worktree `feat/ADR-0031-spa-router-shell` / `pnpm run test:coverage`）:
-      //     全ユニット横断        lines/statements 93.16% / branches 83.28% / functions 85.17%
-      //     MSP 所有分のみ        lines/statements 90.80% / branches 81.60% / functions 83.89%
+      //     全ユニット横断        lines/statements 93.79% / branches 83.54% / functions 85.53%
+      //     MSP 所有分のみ        lines/statements 91.73% / branches 82.04% / functions 84.43%
       //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
-      //   lines/statements 83 → 85 / functions 75 → 78 / branches 74 → 76 へ引き上げる。
-      //   上げた分は「ルータ移行で新設した配線（ルート木・共通シェル・通知・存在秘匿）に
-      //   テストを付けた」ことによる。
+      //   lines/statements 83 → 86 / functions 75 → 79 / branches 74 → 77 へ引き上げる。
+      //   上げた分は「ルータ移行で新設した配線（ルート木・共通シェル・通知・存在秘匿）と、
+      //   オープンリダイレクト対策（IADR-0124 決定 9）にテストを付けた」ことによる。
       //
       //   下の exclude に足した `foundation/testing/**`（テスト用ハーネス）が床を甘くしていないことを
       //   実測で確認した——除外**しない**場合の MSP 所有分は
-      //   lines 90.93% / branches 81.76% / functions 83.49% であり、同じ導出規則から出る床は
-      //   **3 指標とも同値（85 / 76 / 78）**。すなわちこの除外は床の水準を動かしていない。
+      //   lines 91.84% / branches 82.19% / functions 84.02% であり、同じ導出規則から出る床は
+      //   **3 指標とも同値（86 / 77 / 79）**。すなわちこの除外は床の水準を動かしていない。
       thresholds: {
-        lines: 85,
-        statements: 85,
-        functions: 78,
-        branches: 76,
+        lines: 86,
+        statements: 86,
+        functions: 79,
+        branches: 77,
       },
     },
   },

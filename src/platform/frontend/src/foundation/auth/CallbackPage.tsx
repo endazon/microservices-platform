@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { userManager as defaultUserManager } from './authConfig';
+import { toInternalPath } from './safeRedirect';
+import { ENTRY_ROUTE_PATH } from '@foundation/routing/entryPath';
 import type { UserManager } from 'oidc-client-ts';
 
 // Issue #126: OIDC リダイレクト後の認可コード交換。完了後は元の場所（returnTo）へ戻す。
@@ -17,11 +19,12 @@ export function CallbackPage({ manager }: { manager?: UserManager }) {
       .signinRedirectCallback()
       .then((user) => {
         if (!active) return;
-        const raw = (user.state as { returnTo?: string } | undefined)?.returnTo;
-        const returnTo =
-          typeof raw === 'string' && raw.startsWith('/') && !raw.startsWith('//') ? raw : '/ask';
+        // IADR-0124 決定 9: returnTo は認可サーバを往復して戻る外部由来の値である。
+        // この SPA 内部のパスとして解決できないものは主入口へ倒す（オープンリダイレクト対策）。
+        const raw = (user.state as { returnTo?: unknown } | undefined)?.returnTo;
+        const returnTo = toInternalPath(raw) ?? ENTRY_ROUTE_PATH;
         // IADR-0124 決定 5: 実行時に決まる遷移先は Link/navigate の union で検査できない。
-        void navigate({ to: returnTo as '/ask', replace: true });
+        void navigate({ to: returnTo as typeof ENTRY_ROUTE_PATH, replace: true });
       })
       .catch((e: unknown) => {
         if (active) setError(e instanceof Error ? e.message : 'サインインに失敗しました。');

@@ -240,7 +240,7 @@ issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開す
 - [x] **E2E スモークが新ルータで通る**（もしくは実走不能の理由と CI へ委ねる根拠を本書に記録する）
 - [x] **カバレッジ床の引き下げなし**: `src/vitest.config.ts` の `thresholds`（移行前は lines/statements 83 /
       functions 75 / branches 74）を下げない。実測値を測定条件つきで本書に記録する
-      （結果: ratchet として **85 / 78 / 76** へ引き上げた）
+      （結果: ratchet として **86 / 79 / 77** へ引き上げた）
 - [x] 共通シェルが 4 グループナビ・ブランド表示名・ユーザーアイコン → SC-16・通知を備える
 - [x] AST（submodule）の typecheck / lint / テストが**無改修で**通る
 - [x] `pnpm run lint` / `typecheck` / `test:coverage` / `build` が green
@@ -257,6 +257,15 @@ issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開す
   (2) は `<Link to>` の静的検査がナビ（データ駆動）には効かない穴を埋めるためである（IADR-0124 決定 5）。
 - **存在秘匿の描画一致（新規）**: `Layout.test.tsx` で「未知パス」と「権限外パス（SC-11）」の
   `NotFound` の markup が**一致する**ことを固定する（IADR-0124 決定 8）。
+- **オープンリダイレクト（新規）**: 認証導線の遷移先は 2 経路とも外部由来である
+  （`/login?from=` は URL に載る・OIDC の `state.returnTo` は認可サーバを往復する）。
+  判定は `foundation/auth/safeRedirect.ts` の `toInternalPath()` へ集約し、**3 層で固定する**。
+  1. `safeRedirect.test.ts`: 純関数の判定（内部パス保持・スキーム相対・絶対 URL・`javascript:`・
+     **バックスラッシュ**・非文字列・欠落）
+  2. `loginRouteSearch.test.ts`: **実装のルート定義**（`loginRoute.options.validateSearch`）を直接呼ぶ
+  3. `CallbackPage.test.tsx`: OIDC の `state.returnTo` を与えて `navigate` の宛先を検査する
+  **テスト内に判定条件を書き写さない**——写すとテストが自分の写しを検査し、実装が緩んでも気付けない。
+  検証条件を外すとテストが落ちることを変異試験で確認する（§検証）。
 - **共通シェル**: ロール別のナビ表示（存在秘匿）の既存観点を維持しつつ、グループ見出し・
   ユーザーアイコンの遷移先（SC-16）を追加で固定する。
 - **通知**: 4 種すべてが**テキストのラベルを伴う**ことを固定する（色だけに依存していないことの機械検査）。
@@ -277,9 +286,9 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（0 errors / 5 warnings。warning は `react-refresh/only-export-components` のみ） |
-| 単体テスト | `pnpm run test` | **37 files / 275 tests** 全 green（移行前は 35 files / 227 tests） |
+| 単体テスト | `pnpm run test` | **40 files / 337 tests** 全 green（移行前は 35 files / 227 tests） |
 | カバレッジ | `pnpm run test:coverage` | 後述 |
-| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 537.53 kB / gzip 158.03 kB） |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 537.65 kB / gzip 158.08 kB） |
 | E2E | `playwright test`（後述の条件） | **6 tests 全 green** |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（408 件） |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green（違反なし） |
@@ -340,16 +349,35 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.
 一時的に置いて実走し、確認後に削除した。**CI（`frontend.yml`）は `playwright install --with-deps chromium`
 を実行するため、リポジトリの `playwright.config.ts` はそのままで動く**（設定に手を入れていない）。
 
+### オープンリダイレクト対策（実測）
+
+**初版の実装には実際に穴があった。** 前方一致（`startsWith('/') && !startsWith('//')`）は
+`/\evil.com` を通すが、WHATWG URL 仕様（＝ブラウザの解釈）ではバックスラッシュがスラッシュと
+同一視され `https://evil.com` へ解決される。実測表と判定方式の変更は
+[IADR-0124 決定 9・§実測](../adr/IADR-0124_tanstack-router-unit-composition.md) を正とする。
+
+判定を `toInternalPath()`（自 origin を基準に `new URL()` で解決し origin を照合）へ改め、
+`/login?from=` と OIDC `state.returnTo` の両方をそこへ集約した。
+
+**検証の実効性（変異試験）**:
+
+| 変異 | 落ちたテスト |
+| --- | --- |
+| `origin` 照合を外し前方一致だけに戻す（＝初版と同じ） | **5 件**（ヘルパ 3 / `loginRoute` 1 / `CallbackPage` 1） |
+| 検証を完全に外す | **10 件**（ヘルパ 6 / `loginRoute` 2 / `CallbackPage` 2） |
+
+いずれも復元で全件 green。**3 層すべてで落ちる**ため、どこか 1 層だけを緩めても検知できる。
+
 ### カバレッジ（受け入れ観点 4）
 
 | | 移行前（`be3c71c`） | 本 PR | 床（本 PR で引き上げ） |
 | --- | --- | --- | --- |
-| 全ユニット横断 lines/statements | 91.46% | **93.16%** | 83 → **85** |
-| 全ユニット横断 branches | 82.33% | **83.28%** | 74 → **76** |
-| 全ユニット横断 functions | 83.58% | **85.17%** | 75 → **78** |
-| MSP 所有分 lines/statements | 88.07% | **90.80%** | （床の導出基準） |
-| MSP 所有分 branches | 80.00% | **81.60%** | 同上 |
-| MSP 所有分 functions | 80.76% | **83.89%** | 同上 |
+| 全ユニット横断 lines/statements | 91.46% | **93.79%** | 83 → **86** |
+| 全ユニット横断 branches | 82.33% | **83.54%** | 74 → **77** |
+| 全ユニット横断 functions | 83.58% | **85.53%** | 75 → **79** |
+| MSP 所有分 lines/statements | 88.07% | **91.73%** | （床の導出基準） |
+| MSP 所有分 branches | 80.00% | **82.04%** | 同上 |
+| MSP 所有分 functions | 80.76% | **84.43%** | 同上 |
 
 **引き下げはしていない。** `src/vitest.config.ts` の既存の導出規則（MSP 所有分の実測から 5pt 下・
 切り捨て）をそのまま適用して引き上げた（ratchet。IADR-0034 / IADR-0118）。
@@ -358,8 +386,8 @@ MSP 所有分は lcov から AST のファイルを除いて再集計した値�
 計測対象から `platform/frontend/src/foundation/testing/**`（画面テスト用ハーネス）を除外した。
 `src/test/**` と同じ理由——足場を母数に入れると「テストを足すほど床が上がる」見かけの改善が起きる。
 **この除外が床を甘くしていないことを実測で確認した。** 除外**しない**場合の MSP 所有分は
-lines 90.93% / branches 81.76% / functions 83.49% であり、同じ導出規則（−5pt・切り捨て）から出る床は
-**3 指標とも同値（85 / 76 / 78）**である。すなわちこの除外は床の水準を動かしていない。
+lines 91.84% / branches 82.19% / functions 84.02% であり、同じ導出規則（−5pt・切り捨て）から出る床は
+**3 指標とも同値（86 / 77 / 79）**である。すなわちこの除外は床の水準を動かしていない。
 
 **記録**: `notify`（通知 API）は共通シェルの基盤として先行整備したものであり、**本番の呼び出し元は
 現時点で 0 件**（参照は `notifications.test.tsx` のみ）。画面から通知を出すのは #452 以降である。
