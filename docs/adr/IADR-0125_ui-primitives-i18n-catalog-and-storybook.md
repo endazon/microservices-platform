@@ -2,7 +2,7 @@
 title: IADR-0125 共有 UI プリミティブの移植範囲・Lingui カタログの検査方式・Storybook の egress 遮断
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, SC-02, SC-05, SC-06, SC-07, SC-08, SC-09, IADR-0034, IADR-0116, IADR-0118, IADR-0119, IADR-0120, IADR-0121, IADR-0124]
+related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-13, IADR-0033, IADR-0034, IADR-0116, IADR-0118, IADR-0119, IADR-0120, IADR-0121, IADR-0124]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -189,6 +189,15 @@ B2 単独を採らないのは、`--strict` が守ってくれる範囲が Lingu
   統制対象に挙げているのは「SPA フロントエンド」そのものであり、カタログだけを見ても片手落ちである。
 - Storybook 側では併せて **`core.disableTelemetry: true`** を設定する（同ポリシー
   §非LLM外部送信の統制 の「既定テレメトリをオプトアウトする」）。
+- **検出できないものを明記する（この検査は網羅ではない）**: 本検査が見るのは
+  「HTML のリソースタグ」「CSS の `@import` / `url()`」「既知の禁止ホスト表」の 3 つだけである。
+  したがって**禁止ホスト表に載っていないホストへの `fetch()` / `XMLHttpRequest` / `WebSocket` /
+  動的 `import()` は検出しない**（実行時に組み立てられる URL も同様である）。
+  この穴を塞いでいるのは本検査ではなく、**ESLint の `no-restricted-globals`**
+  （`foundation/api` 以外での `fetch` / `XMLHttpRequest` / `EventSource` の禁止。IADR-0121 決定 8）と
+  **BFF 境界の生成器制限**（IADR-0121 決定 3）である。本決定は「アセットの取得経路」を、
+  IADR-0121 決定 3・8 は「API 呼び出しの経路」を担当し、両者で 08_data-egress-policy を覆う。
+  禁止ホスト表は網羅表ではなく**代表例の表**であり、新しい SaaS を使い始めたら追記が要る。
 
 ### 決定 6: i18n の適用範囲は platform の foundation に限り、既存 11 画面は #452 へ繰り延べる
 
@@ -206,6 +215,26 @@ B2 単独を採らないのは、`--strict` が守ってくれる範囲が Lingu
 §共通シェル の要素に言語切替は無い。無い UI を先回りで作らない（CLAUDE.md 禁止事項）。
 実行時は `navigator.language` から判定し、切替そのものは `activate(locale)` の公開 API で行う。
 UI が必要になったら #452 が共通シェルへ足す。
+
+### 決定 8: ブランド表示名（「汎用プラットフォーム」）は en カタログでも訳さない
+
+`01_screens` §共通シェル は「ブランド表示名は『汎用プラットフォーム』で統一する」「別ホストで配信する
+画面や可変機能ユニットの画面も…**ブランド名は差し替えない**」と定めるが、**言語による差し替えの可否**
+には触れていない。実装が独断で英語名（例: "General Platform"）を作ると、計画が定めた「統一」に反する
+既成事実が生まれる。**安全側に倒し、en カタログにも同じ文字列（「汎用プラットフォーム」）を入れる。**
+
+- カタログの `msgstr` は**空にしない**（決定 4 の検査を通す）。同じ文字列を明示的に入れる。
+- 訳さない理由はカタログ（再生成される生成物）ではなく**ソースのコメント**に残す
+  （`foundation/ui/Layout.tsx` / `foundation/auth/LoginPage.tsx`）。
+- **これは実装の暫定判断であり、計画側の裁定で覆り得る**。作業仕様書 §未決事項 1 に
+  `/plan-feedback` の候補として挙げる。
+- 副作用として、E2E のブランド名アサーションは**ロケールに依存しなくなる**。
+  そのため「表示言語がロケールで決まる」ことの検査は、訳される別の文言
+  （「社内ナレッジ検索・AI 回答プラットフォーム」）で行う（§実測 の変異試験）。
+
+この判断を決定として立てるのは、**決定 7（ロケール切替 UI を持たない）とは別の論点**だからである。
+決定 7 は「切替の手段」の話であり、ブランド名を訳すかどうかには触れていない。
+番号だけを借りて参照すると、参照先に書かれていない主張の根拠になってしまう。
 
 ## 理由
 
@@ -243,12 +272,108 @@ UI が必要になったら #452 が共通シェルへ足す。
   - **Dialog の移植**（決定 2）: FR-19 / FR-20 の保留解除後、#452 が当該画面と同時に行う。
   - **既存 11 画面の i18n 化**（決定 6）: #452。
   - **ロケール切替 UI**（決定 7）: 計画が要求した時点で #452。
-  - **`check-static-egress.js` の CI 結線**: `.github/workflows/` は GitHub App 権限では編集できない。
-    必要な差分案は作業仕様書 §ワークフロー変更の要否 に置き、親（ローカル権限）が適用する。
+  - **［消化済み・2026-08-04］検査の CI 結線**: `check-i18n-catalogs.js` と `check-static-egress.js`（＋
+    `pnpm run i18n` の再生成差分・Storybook ビルド）を `frontend.yml` の `build-test` ジョブへ結線した。
+    `.github/workflows/` は GitHub App 権限で編集できないため、人間（親）がローカル権限でコミットしている。
+    あわせて `paths` へ `src/lingui.config.ts` を追加した（走らない経路を残さない）。
 
 ## 実測
 
-（実装後に記入する）
+**測定条件**: worktree `feat/ADR-0031-ui-i18n-storybook`（`origin/develop` `4147899` 基点）／
+Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.9.3 ／
+Lingui 6.6.0（`@lingui/cli` / `@lingui/format-po` / `@lingui/babel-plugin-lingui-macro`）／
+Storybook 10.5.6（`@storybook/react-vite`）／ Vite 6.4.3 ／
+**submodule `src/ai-stock-trading` と `planning` は populate 済み**。
+
+### 未翻訳キーの検出（決定 4 の根拠）
+
+3 つのシナリオを**実際に作って**各検査を走らせた。`✗` = 検出（exit 1）、`—` = 素通り（exit 0）。
+
+| シナリオ | 検査 1<br>`pnpm run i18n` ＋ `git diff` | 検査 2<br>`check-i18n-catalogs.js` | 検査 3<br>`lingui compile --strict` |
+| --- | --- | --- | --- |
+| **A**: ソースへ `msg` を足したが**カタログを更新していない** | **✗ 検出** | — | — |
+| **B**: カタログは更新済みだが **`en` の `msgstr` が空** | — | **✗ 検出** | **✗ 検出** |
+| **C**: カタログは更新済みだが **`ja`（sourceLocale）の `msgstr` が空** | — | **✗ 検出** | — |
+
+**3 者はいずれも他を置き換えない。**
+
+- **A で検査 2・3 が素通りするのはなぜか**: メッセージがカタログに**そもそも存在しない**ため、
+  「空の訳文」も「欠落」も観測できない。差分検査だけがソースとカタログの対応を見ている。
+- **B で検査 1 が素通りするのはなぜか**: `lingui extract` が未訳を `msgstr ""` の空エントリとして
+  生成するのは**正常動作**であり、再実行しても差分が出ない（実測: `git diff --quiet` が exit 0）。
+  **「未翻訳キーを CI で検出する」に差分検査だけでは届かない**という、本決定の中心的な根拠である。
+- **C で検査 3 が素通りするのはなぜか**: `--strict` は `sourceLocale` を検査しない。
+  `lingui extract` の統計表でも ja の Missing は `-` と表示される（実測）。
+
+### `lingui extract` の非決定性（決定 3 の付随的な発見）
+
+`@lingui/format-po@6.6.0` は **実行時刻を `POT-Creation-Date` ヘッダへ毎回書き込む**。
+連続 2 回の `lingui extract --clean` で `.po` の md5 が変化することを実測した
+（`d90fb72…` → `118b3c7…`）。これがあると検査 1（再生成差分）が**常に赤**になる。
+当該ヘッダを無効化するオプションは存在しない（`PoFormatterOptions` の型定義で確認）ため、
+`src/lingui.config.ts` で `serialize` をラップして**当該行を落とす**。
+固定の日時を書かない（嘘の値を残さない）——抽出日時は git のコミット日時が正確に答える。
+ラップ後は連続実行で md5 が一致することを実測した。
+
+### `<Trans>` と `msg` の選択（決定 3 の実装上の帰結）
+
+`@lingui/react/macro` の `<Trans>` は `I18nProvider` を**必須**とする（無いと実行時に例外）。
+foundation のコンポーネント（Layout・NotFound・LoginPage・RequireAuth ほか）は
+**多数の単体テストが素で描画する**ため、`<Trans>` を使うと 3 ファイル 31 件のテストが
+「本質でない wrapper の有無」で落ちた（実測）。foundation が出すのは素の文字列だけであり、
+リッチテキスト（要素の埋め込み）や複数形を使わないため、**`i18n._(msg`…`)` に統一**した
+（プロバイダに依存しない）。`I18nProvider` は `App.tsx` に置いたままにする——
+画面側（#452）が `<Trans>` を使えるようにするためである。
+
+### 表示言語とテストの決定性（決定 7 の帰結）
+
+ロケールをブラウザ設定から決めると、**テスト環境の既定ロケールが描画言語を決めてしまう**。
+
+| 層 | 既定 | 対処 |
+| --- | --- | --- |
+| Vitest（jsdom） | `navigator.language` = `en-US` | `src/test/setup.ts` で `activate('ja')` |
+| Playwright | `en-US` | `playwright.config.ts` の `use.locale = 'ja-JP'` |
+
+Playwright 側は**実際に落ちて見つかった**（ブランド表示名を en へ訳していた時点で、
+日本語の見出しを待つスモークが失敗した）。固定を入れたうえで、
+**固定が load-bearing であること**を変異試験で確かめた——`locale: 'ja-JP'` を外すと
+`login.smoke.spec.ts` が失敗し、戻すと通る（実測）。
+
+### Storybook の外部 egress（決定 5 の根拠）
+
+`storybook build` の成果物（**20 ファイル**）を走査した実測。
+
+| 種別 | 実測 |
+| --- | --- |
+| `<link>` / `<script>` / `<img>` などのリソースタグの外部参照 | **0 件** |
+| CSS の `@import` / `url()` の外部参照 | **0 件**（`.css` は 1 ファイル・外部 url なし） |
+| 既知の禁止ホスト（フォント CDN・汎用 CDN・analytics・エラー報告 SaaS） | **0 件** |
+| 外部オリジンの `<a href>`（＝**違反ではない**） | 4 件。すべて `https://storybook.js.org/docs/…` の説明リンク |
+| Web フォント | **自己ホスト**（`nunito-sans-*.woff2` を成果物に同梱） |
+
+SPA 本体（`platform/frontend/dist`・**4 ファイル**）も同様に 0 件である。
+
+**検査が効いていることの変異試験**: `.storybook/preview-head.html` に
+`<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">` を仕込んで再ビルドすると、
+`check-static-egress.js` が **2 件**（リソースタグとしての検出 ＋ 既知の禁止ホストとしての検出）を
+報告して exit 1 になった。除去して再ビルドすると exit 0 に戻る。
+
+### カバレッジ（stories を母数から外すことの影響）
+
+| 集計 | lines/statements | branches | functions |
+| --- | --- | --- | --- |
+| 全ユニット横断（除外あり） | **93.86%** | **84.11%** | **86.58%**（厳密 86.5889%） |
+| MSP 所有分（除外あり） | **92.04%** | **82.93%** | **86.08%** |
+| MSP 所有分（**除外なし**） | 87.96% | 82.95% | 86.13% |
+
+同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）から出る床は、
+除外ありで **87 / 77 / 81**、除外なしで **82 / 77 / 81** である。
+**`**/*.stories.*` の除外は lines の床を 5pt 動かす**（`foundation/testing/**` を足した #490 とは違い、
+「動かしていない」とは言えない）。差は stories 1 ファイル（145 行・テストから実行されない）に由来する。
+除外を採るのは、**カタログの行数が被覆率を左右する状態そのものが誤り**だからである
+（stories を消すと床が上がるという、成果物の品質と無関係な動き方をする）。
+なお**除外なしの実測でも移行前の床 86 は満たしている**（87.96% > 86）ため、
+この除外は「床を割るのを避けるための除外」ではない。
 
 ## 関連
 

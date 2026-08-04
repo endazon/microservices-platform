@@ -2,7 +2,7 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0120, IADR-0124]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0119, IADR-0120, IADR-0124, IADR-0125]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -201,6 +201,22 @@ related_specs:
 - **アクセシビリティ規約の実装上の型**: 「色だけで意味を持たせない」（INDEX 決定 21）は口約束では守れないため、
   状態表示のプリミティブ `StatusBadge` を**アイコン ＋ テキストラベル必須**の API にして型で強制する。
 
+> **［2026-08-04 追記］本決定の「以後 Input / Dialog / Table 等を第 2 段で追加する」という予告部分は
+> [[IADR-0125]]（#496）が実値で埋めた（部分改定）。** 本決定は入れる／入れないの**判定規則**と
+> 公開面 1 ファイル・依存規則の改定を定めたが、**どの部品を実際に移植するかは書いていなかった**。
+> IADR-0125 決定 1 は「計画の明示・hi-fi モックアップの語彙・既存 11 画面の DOM 要素数の 3 情報源の
+> 突き合わせで要求が示せるもの」に限るという基準を置き、**Input / Textarea / Select / Label /
+> Table 一式 / Card / Alert / Tabs の 8 件**を移植した。
+> **本決定が例示していた `Dialog` は移植していない**（IADR-0125 決定 2）——計画が確認ダイアログを
+> 要求するのは SC-19 / SC-20 だけで、これは FR-19 / FR-20 に属し [[IADR-0119]] 決定 1 が
+> 「その受け入れを担う画面」ごと着手を保留しているためである（繰り延べであって放棄ではない。
+> 引き受け先は #452）。
+> また IADR-0125 決定 1 は本決定の「入れないもの」へ **表示文言**を加えた——プリミティブが既定文言を
+> 持つと i18n の入口が 2 つに割れ、カタログの網羅検査（IADR-0125 決定 4）が抜けるためである。
+> 本決定の骨格（判定規則・公開面 1 ファイル・依存規則 例外 2 の改定）は有効なため `Accepted` を維持する。
+> **`@platform/ui` の収録物の現行値は [IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) と
+> [`src/packages/ui/README.md`](../../src/packages/ui/README.md) を正とする。**
+
 ### 決定 5: 右レール AI チャット（SSE）は「自前フック ＋ TanStack Query は確定済み履歴のみ」とする（論点 D = D2。計画の申し送りへの回答）
 
 - ストリーミング中の途中状態（受信中のトークン列・中断・エラー）は、既存の
@@ -283,4 +299,10 @@ Redux 系 import の禁止・`axios` 等の HTTP クライアント import の�
 ## 関連
 
 - Supersedes: [IADR-0033](IADR-0033_frontend-spa-foundation.md)（決定 1・2・4 を置換。決定 5・6 は思想を継承）
-- Superseded by: なし
+- Superseded by: なし。ただし**部分改定が 2 件ある**（いずれも骨格は有効なため本 IADR は `Accepted` を維持し、
+  該当決定の直後へ日付付き［追記］を入れた）。
+  1. [IADR-0124](IADR-0124_tanstack-router-unit-composition.md): §決定 1 の「第 2 段」を
+     ルータ／シェル／旧画面（#490）と残り（shadcn/ui 本移植・Lingui・Storybook）へ分割（#490）
+  2. [IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md): §決定 4 の「以後 Input /
+     Dialog / Table 等を第 2 段で追加する」を実値（移植 8 件・Dialog は繰り延べ）で確定し、
+     「入れないもの」へ表示文言を追加（#496）

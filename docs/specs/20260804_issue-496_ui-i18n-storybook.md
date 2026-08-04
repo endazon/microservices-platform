@@ -106,7 +106,8 @@ Storybook**」である。前 3 者は #490（PR #495）で消化され、**後 
 計測条件: 実装の DOM 要素数は
 `grep -rhoE '<(input|select|textarea|table|thead|tbody|th|td|dialog|form|label|button)\b' src/knowledge/frontend/src src/platform/frontend/src --include='*.tsx'`
 （`*.test.tsx` を含む全 tsx）を対象コミット `4147899` の worktree で実測した値。
-モックアップの語彙は `mockups/hi-fi/sc-*.html` の `class="…"` を全抽出して数えた値。
+モックアップの語彙は `mockups/hi-fi/sc-*.html`（**画面モックのみ。一覧ページの `index.html` は除く**）の
+`class="…"` と要素名を全抽出して数えた値。
 
 | 部品 | (a) 計画の明示 | (b) hi-fi モックの語彙 | (c) 既存実装 | 採否 |
 | --- | --- | --- | --- | --- |
@@ -114,7 +115,7 @@ Storybook**」である。前 3 者は #490（PR #495）で消化され、**後 
 | **Textarea** | SC-08「分析内容の入力（**テキストエリア**）」 | 同上（複数行入力） | `<textarea>` 3 | **移植** |
 | **Select** | SC-01 対象範囲フィルタ（選択）／SC-05 機密区分（**選択**・必須）／SC-09 対象属性（**選択**・必須）／SC-02 検索モード・並び順の切替 | — | `<select>` 9 | **移植** |
 | **Label** | 各画面の「入力 / バリデーション」表の項目名 | `olabel`（27）・`<label>`（29） | `<label>` 28 | **移植** |
-| **Table** 一式 | SC-02「結果テーブル」／SC-06「ソース一覧テーブル」／SC-07「ジョブ一覧テーブル」／SC-05 文書一覧 | `<table>` 20・`table`（19） | `<table>` 10（`<th>` 50 / `<td>` 50） | **移植** |
+| **Table** 一式 | SC-02「結果テーブル」／SC-06「ソース一覧テーブル」／SC-07「ジョブ一覧テーブル」／SC-05 文書一覧 | `<table>` **19**（`sc-*.html`。`index.html` を含めると 20）・`table`（19） | `<table>` 10（`<th>` 50 / `<td>` 50） | **移植** |
 | **Card**（＝モックの `panel`） | 各画面の区画（SC-03 属性・タグパネル／バージョン履歴パネル、SC-08 結果パネル、SC-10 統計） | `panel`（48）・`stat`（8） | 素の `<section>` | **移植** |
 | **Alert**（＝モックの `note`） | SC-05「必須属性未設定は保存拒否」・SC-06「認証情報は Vault 管理」の注記／SC-06 同期異常の**警告（琥珀）** | `note`（45）・`err`（16）・`warn`（10）・`ok`（18） | `notice` state ＋ `ErrorList` | **移植** |
 | **Tabs**（＝モックの `seg`） | **明示なし**（SC-09 §主要素 は「属性体系エディタ、タグ辞書、辺の型辞書、ポリシー定義」の 4 区画を挙げるだけで、**「タブ」とは書いていない**。SC-02 §主要素 の「検索モード切替（キーワード｜意味）」も同型の切替である） | `seg`（4: SC-09 ×2・SC-18・SC-21）・`seg-opt`（14）。**hi-fi の SC-09 が 4 区画を `seg`／`seg-opt` の切替として描いており、注記本文で「『辺の型』タブ」と呼ぶ**（＝タブという呼称の出所は本文ではなくモックアップである） | — | **移植**（根拠は (b) 一本） |
@@ -157,7 +158,8 @@ ADR-0037〔Obsidian 同期方式〕が 2 件。**他の SC 節にはヒットが
 
 #### 2.2 カタログの置き場と形式
 
-`13_frontend-stack` §ディレクトリ構成 の `locales/ # ja / en（Lingui）` に従う。
+`13_frontend-stack` §ディレクトリ構成 の `locales/ # ja / en（Lingui）` に従う
+（**ただし配置は平坦ではなく `foundation/` の下である**。後述 §計画書との差異）。
 
 ```text
 src/platform/frontend/src/foundation/i18n/
@@ -231,8 +233,11 @@ src/platform/frontend/src/foundation/i18n/
 
 - `main.ts` で **`core.disableTelemetry: true`** を設定する（Storybook は既定でテレメトリを送る。
   08_data-egress-policy §非LLM外部送信の統制 の「既定テレメトリをオプトアウトする」に該当）。
-- `docs`（Autodocs）は使うが、**外部フォント・外部 CDN を読む設定は入れない**。
-  スタイルは `@platform/ui/styles.css`（Tailwind v4 ＋ システムフォント）のみを読む。
+- **Autodocs（`docs`）は使わない。** docs エントリの生成は `@storybook/addon-docs` に依存し、
+  アドオンを入れない方針のままでは設定を置いても 1 件も生まれない（実測: `index.json` の
+  entries は story 型 7 件のみ）。「設定はあるが効いていない」状態を残さないため設定ごと落とす。
+  スタイルは `@platform/ui/styles.css`（Tailwind v4 ＋ システムフォント）のみを読み、
+  **外部フォント・外部 CDN を読む設定は入れない**。
 - **「設定した」で終わらせない**——ビルド成果物を走査して外部ホストへの参照が無いことを実測し、
   それを機械検査（`scripts/check-static-egress.js`）として恒久化する。
 
@@ -268,7 +273,9 @@ foundation のファイルに限る**——#452 が作り直す 11 画面へ及�
 
 Storybook の設定ファイル（`.storybook/**`）と stories（`**/*.stories.tsx`）は
 **計測母数から除外する**（`src/test/**` / `foundation/testing/**` と同じ理由——カタログの足場を
-母数へ入れると「stories を足すほど床が上がる」見かけの改善が起きる）。
+母数へ入れると被覆率が**カタログの行数で動く**。stories は実行されないので、
+**足すほど被覆率が下がり、消すほど上がる**——成果物の品質と無関係な動き方である
+（`src/test/**` の「足場を数えると床が上がる」とは向きが逆であり、理由文を流用しない））。
 **除外が床を甘くしていないことを、除外あり／なしの両方で実測して確認する**（#490 の先例）。
 
 ## 受け入れ基準
@@ -325,7 +332,7 @@ Lingui 6.6.0 ／ Storybook 10.5.6 ／ `@radix-ui/react-tabs` 1.1.21 ／
 | 単体テスト | `pnpm run test` | **44 files / 382 tests** 全 green（本作業前は 43 files / 364 tests） |
 | カバレッジ | `pnpm run test:coverage` | 後述（床を 86/79/77 → **87/81/77** へ引き上げ） |
 | ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 544.74 kB / gzip 161.17 kB） |
-| Storybook ビルド | `pnpm --filter @platform/ui run build-storybook` | green（成果物 20 ファイル） |
+| Storybook ビルド | `pnpm --filter @platform/ui run build-storybook` | green（成果物 **28 ファイル**。うち走査対象のテキスト系が 20、非走査の woff2 等が 8） |
 | E2E | `playwright test`（後述の条件） | **6 tests 全 green** |
 | codegen 乖離 | `pnpm run codegen` ＋ `git diff --exit-code` | green（差分なし） |
 | i18n 乖離 | `pnpm run i18n` ＋ `git diff --exit-code` | green（差分なし） |
@@ -372,7 +379,8 @@ Storybook の stories も**公開面だけを通して**部品を参照する（
 
 **本番でも実際に働いた**: 作業中に `RequireAuth` / `RequireRole` の「読み込み中…」を i18n 化して
 カタログを更新し忘れたところ、検査 1（`pnpm run i18n` ＋ `git diff`）が差分を出して止めた
-（コミット `4960a0c` の 1 つ前で是正）。
+（是正はコミット `6a2f820`「RequireAuth / RequireRole の『読み込み中…』をカタログへ反映し ja/en を埋める」。
+検出経路は同コミットの本文にも残した——スカッシュ後も追える形にするためである）。
 
 付随的な実測として、`@lingui/format-po@6.6.0` は `POT-Creation-Date` に**実行時刻を毎回書く**ため、
 そのままでは検査 1 が常に赤になる（連続 2 回の extract で `.po` の md5 が変化）。
@@ -381,7 +389,8 @@ Storybook の stories も**公開面だけを通して**部品を参照する（
 ### 受け入れ基準 3: Storybook がビルドでき、外部 CDN を読まない
 
 `pnpm --filter @platform/ui run build-storybook` が成功する。
-成果物（**20 ファイル**）の走査結果:
+成果物は **28 ファイル**で、うち走査対象（テキスト系の拡張子）が **20 ファイル**である
+（残り 8 は自己ホストの woff2 等のバイナリ）。走査結果:
 
 | 種別 | 実測 |
 | --- | --- |
@@ -408,7 +417,7 @@ exit 1 になった。除去して再ビルドすると exit 0 に戻る。
 
 | 集計 | lines/statements | branches | functions |
 | --- | --- | --- | --- |
-| 全ユニット横断（本 PR・除外あり） | **93.86%** | **84.11%** | **86.59%** |
+| 全ユニット横断（本 PR・除外あり） | **93.86%** | **84.11%** | **86.58%**（厳密 86.5889%） |
 | MSP 所有分（本 PR・除外あり） | **92.04%** | **82.93%** | **86.08%** |
 | MSP 所有分（本 PR・**除外なし**） | 87.96% | 82.95% | 86.13% |
 | （参考）移行前 `4147899` の全ユニット横断 | 93.79% | 83.54% | 85.53% |
@@ -470,18 +479,20 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 | --- | --- | --- | --- |
 | **Dialog の移植** | issue #496 §スコープ が「Input・Select・**Dialog**・Table・Tabs 等」と例示 | **移植しない** | 計画（`01_screens`）で確認ダイアログを要求しているのは **SC-19 / SC-20 のみ**（実測: `grep -rn "モーダル\|ダイアログ" planning/projects/microservices-platform --include='*.md'` は **9 件**——01_screens が 7 件〔**SC-19 節 5 件・SC-20 節 1 件・§変更履歴 1 件（SC-19 の記述）**〕、ADR-0037〔Obsidian 同期方式〕が 2 件。**他の SC 節にはヒットが無い**）。両画面は FR-19 / FR-20 に属し、[IADR-0119](../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md) 決定 1 が「保留の対象は当該 FR を実現するプロダクトコードと、**その受け入れを担う画面**」と定めて着手を保留している。issue の記載は「等」を伴う**例示**であり、計画本文が要求していない部品を先回りで作ることは CLAUDE.md の禁止事項に当たる。**繰り延べであって放棄ではない**——引き受け先は #452（保留解除後） |
 | **Select の実装方式** | ADR-0031「UI コンポーネント = shadcn/ui」 | shadcn/ui 標準の `@radix-ui/react-select` ではなく**ネイティブ `<select>`** を cva で装う | 計画が要求しているのは「定義済み区分のみ」「権限内のタグ／フォルダのみ」という**値の選択**であり、ネイティブで満たせる。ネイティブはモバイル・スクリーンリーダ・キーボードの既定挙動をそのまま得られる。`Tabs` は逆に a11y を自前で書くと誤りやすいため Radix を採った（IADR-0125 決定 1） |
+| **Label の実装方式** | ADR-0031「UI コンポーネント = shadcn/ui」 | shadcn/ui 標準の `@radix-ui/react-label` ではなく**素の `<label>`** | `Select` と同じ理由である。shadcn/ui の `Label` が Radix を使うのは「ラベル押下時のテキスト選択を抑止する」等の細部のためで、計画が要求しているのは「入力 / バリデーション」表の項目名の表示と入力との関連付けである。素の `<label>` ＋ `htmlFor` で満たせ、実行時依存を増やさない。**`Select` の逸脱だけを記録して `Label` を書かないのは非対称**であるため併記する（監査指摘） |
+| **カタログの置き場** | `13_frontend-stack` §ディレクトリ構成 は `src/locales/`（平坦） | `platform/frontend/src/foundation/i18n/locales/` | 計画の §ディレクトリ構成 は「ユニット内 SPA」の**素朴な例示**であり、本リポジトリの実装は基盤を `foundation/` の下へ束ねる構成を既に採っている（[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) が Superseded にした [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md) 以来の配置。`api` / `auth` / `routing` / `ui` / `config` がすべて `foundation/` 配下）。**平坦構成へ読み替えるのではなく、既存の構成規則に合わせて `foundation/i18n/locales/` とした。** `locales/` に ja / en を並べるという計画の要点は満たしている |
 | **i18n の適用範囲** | issue #496「既存文言の抽出とカタログ整備」 | **platform の foundation に限る**（既存 11 画面は触らない） | #452 が SC-01〜11 の Page を作り直す（[#490 仕様書 §親への申し送り](./20260804_issue-490_spa-router-shell.md)）。いま `<Trans>` を入れると**同じ画面を 2 回書く**——[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 1 が第 2 段の分割で守っている原則そのものに反する。**繰り延べであって放棄ではない**（引き受け先 #452。IADR-0125 決定 6） |
 | **ロケール切替の UI** | 受け入れ基準「ja / en の切替が動作し」 | **UI は作らない**。`navigator.language` から判定し、切替は `activate(locale)` の公開 API | `01_screens` で言語切替を要求しているのは **SC-13（Keycloak のログインテーマ）だけ**であり、§共通シェル の要素に言語切替は無い。無い UI を先回りで作らない（IADR-0125 決定 7）。切替が動くことは単体テストが固定する |
 | **ブランド表示名の翻訳** | `01_screens` §共通シェル「ブランド表示名は『汎用プラットフォーム』で統一する」「**ブランド名は差し替えない**」 | en カタログでも**訳さない**（同じ文字列を入れる） | 「差し替えない」は別ホスト・可変ユニット間の統一を述べた文脈だが、**言語による差し替えの可否は計画側が判断していない**。実装が独断で英語名を作ると、計画の「統一」に反する既成事実になる。安全側に倒し、§未決事項 として計画へ問う |
 | **マクロの使い方** | Lingui の標準は `<Trans>` | foundation では `i18n._(msg`…`)` に統一（`<Trans>` は使わない） | `<Trans>` は `I18nProvider` を必須とし、素で描画する単体テスト 31 件が wrapper の有無で落ちる（実測）。foundation が出すのは素の文字列だけでリッチテキスト・複数形を使わない。`I18nProvider` は `App.tsx` に残し、画面側（#452）が `<Trans>` を使えるようにしてある |
 
-## ワークフロー変更の要否（親への依頼）
+## ワークフロー変更（本 PR に含まれる）
 
-`.github/workflows/` は GitHub App 権限で編集できないため、**本 PR には含めていない**。
-下記 3 点はワークフロー変更が要る。**入れなくても既存 CI は green のまま**だが、
-新設した検査は CI で働かない（＝退行を止められない）。
+`.github/workflows/` は GitHub App 権限で編集できないため、**下記は人間（親）がローカル権限で
+コミットした**。内容は本 PR に含まれる。新設した検査を CI に結線しないと、
+「検査器は作ったが誰も走らせない」状態になり退行を止められないためである。
 
-1. **`frontend.yml`（`build-test` ジョブ）へ i18n の乖離検査を足す**（codegen の直後）。
+1. **`frontend.yml`（`build-test` ジョブ）へ i18n の乖離検査を足した**（codegen の直後）。
    ```yaml
    # ADR-0031 / IADR-0125 決定 4: Lingui のカタログはコミットしている。
    # 再抽出・再コンパイルして差分が出るなら、ソースとカタログが乖離している。
@@ -493,7 +504,7 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
      working-directory: ${{ github.workspace }}
      run: node scripts/check-i18n-catalogs.js
    ```
-2. **`frontend.yml`（`build-test` ジョブ）の Build の後へ Storybook ビルドと egress 検査を足す。**
+2. **`frontend.yml`（`build-test` ジョブ）の Build の後へ Storybook ビルドと egress 検査を足した。**
    ```yaml
    - name: Build Storybook (catalog)
      run: pnpm --filter @platform/ui run build-storybook
@@ -507,11 +518,14 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
    ```
 3. **`ci.yml` の `scripts-tests` ジョブは変更不要**（`scripts.repo.test.js` が新スクリプトの
    `--self-test` と実データ検査を呼ぶ。`REQUIRE_REPO_TESTS=1` は既設）。
+4. **`frontend.yml` の `paths` へ `src/lingui.config.ts` を追加した**（push / pull_request の両方）。
+   追加ファイルの大半は `src/*/frontend/**` か `src/packages/**` に当たるが、
+   `src/lingui.config.ts` だけは `src/` 直下で既存フィルタに当たらない。
+   「単独で変わることは稀だから実害は無い」で済ませず厳密にした——
+   **走らない経路を残すこと自体が「検査したつもり」を作る**ためである。
 
-`paths` フィルタは変更不要である——追加ファイルはすべて `src/*/frontend/**` または
-`src/packages/**` 配下であり、両ワークフローの既存フィルタに当たる（`src/lingui.config.ts` だけは
-`src/` 直下だが、これを変えるときは必ず `src/packages/**` か `src/*/frontend/**` の
-カタログも一緒に動くため、実害は無い。厳密にしたい場合は `paths` へ `"src/lingui.config.ts"` を追加する）。
+`frontend-tests.yml`（単体テスト＋カバレッジ）は変更不要である（`src/vitest.config.ts` と
+`src/packages/**` が既存フィルタに入っている）。
 
 ## 親への申し送り
 
@@ -543,7 +557,8 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 
 1. **第 2 段の残り 3 項目（shadcn/ui 本移植・Lingui・Storybook）は本 PR で完了**。
 2. **第 2 段の完了は依然 #452 待ち**（旧 13 画面の削除・再実装）。
-3. ワークフロー変更（上記 §ワークフロー変更の要否）は**親がローカル権限で適用する**。
+3. ワークフロー変更（上記 §ワークフロー変更）は**本 PR に含まれる**（`.github/workflows/` は
+   GitHub App 権限で編集できないため、人間がローカル権限でコミットした）。
 
 ## 未決事項
 
@@ -555,7 +570,12 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
    画面側（#452）が `<Trans>` を使い始めると、素で描画する単体テストは wrapper が要る。
    テスト用の共通 wrapper（`foundation/testing/` のハーネス）に `I18nProvider` を組み込むのが自然だが、
    画面の作り方が決まる #452 で判断するのが適切である。
-3. **`check-static-egress.js` / `check-i18n-catalogs.js` の CI 結線**（上記 §ワークフロー変更の要否）。
+3. **shadcn/ui の「派生」をどこまで許すか**（計画への問い）。本 PR は `Select`（Radix Select →
+   ネイティブ `<select>`）と `Label`（Radix Label → 素の `<label>`）で shadcn/ui の実装基盤から
+   離れている。ADR-0031 は「UI コンポーネント = shadcn/ui」としか書かず、**部品ごとの実装基盤
+   （Radix への依存）まで確定しているのかが読み取れない**。1（ブランド名の翻訳可否）と並べて
+   計画側の判断を仰ぐ（`/plan-feedback` の候補）。**新 ADR は起こさない**——
+   計画が部品単位を定めていない以上、実装 ADR（IADR-0125 決定 1）の記録で足りると判断した。
 4. **バンドルサイズ**。`index.js` が 544 kB（gzip 161 kB）で Vite の 500 kB 警告に触れる
    （#490 から +7 kB。Lingui ランタイム分）。コード分割は画面が確定する #452 の後が適切である
    （#490 の未決事項 5 を引き継ぐ）。

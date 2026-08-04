@@ -112,7 +112,7 @@ export default defineConfig({
       // ［2026-08-04 / #496］移行第 2 段の残り（ADR-0031 / IADR-0125: shadcn/ui 本移植・Lingui・
       //   Storybook）に伴う引き上げ。
       //   実測（測定条件は上と同じ。worktree `feat/ADR-0031-ui-i18n-storybook` / `pnpm run test:coverage`）:
-      //     全ユニット横断        lines/statements 93.86% / branches 84.11% / functions 86.59%
+      //     全ユニット横断        lines/statements 93.86% / branches 84.11% / functions 86.58%
       //     MSP 所有分のみ        lines/statements 92.04% / branches 82.93% / functions 86.08%
       //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用し、床を
       //   lines/statements 86 → 87 / functions 79 → 81 へ引き上げる（branches は 77 のまま

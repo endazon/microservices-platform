@@ -10,7 +10,7 @@ test('unauthenticated visit redirects to /login with a Keycloak sign-in button',
   await expect(page).toHaveURL(/\/login(\?|$)/);
   await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
   // 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」。
-  // これは **en カタログでも訳していない**ため、ロケールに依存しない（IADR-0125 決定 7 の注記）。
+  // これは **en カタログでも訳していない**ため、ロケールに依存しない（IADR-0125 決定 8）。
   await expect(page.getByRole('heading', { name: '汎用プラットフォーム' })).toBeVisible();
   // ADR-0031 / IADR-0125 決定 7: 表示言語はブラウザの言語設定で決まる。
   // playwright.config.ts の `locale: 'ja-JP'` が効いていることを、**翻訳される文言**で確かめる

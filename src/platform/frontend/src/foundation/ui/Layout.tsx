@@ -57,8 +57,9 @@ export function Layout() {
     <div className="min-h-screen bg-[--color-surface] text-[--color-fg]">
       <header className="flex items-center justify-between border-b border-[--color-border] px-4 py-2">
         {/* 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」で統一する。
-            **en カタログでも訳さない**（同じ文字列を入れる）——計画は「ブランド名は差し替えない」と
-            定めており、言語による差し替えの可否は計画側の判断である（#496 作業仕様書 §未決事項）。 */}
+            **en カタログでも訳さない**（同じ文字列を入れる。IADR-0125 決定 8）——計画は
+            「ブランド名は差し替えない」と定めており、言語による差し替えの可否は計画側の判断である
+            （暫定判断であり裁定で覆り得る。#496 作業仕様書 §未決事項 1）。 */}
         <span className="text-sm font-semibold text-[--color-fg]">
           {i18n._(msg`汎用プラットフォーム`)}
         </span>

@@ -17,7 +17,7 @@ src/
   vitest.config.ts             ← フロント単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   eslint.config.js             ← フロント lint（全ユニット横断）
   packages/                    ← ユニットに属さない共有ワークスペースパッケージ（IADR-0121 決定 4）
-    ui/                        ←   @platform/ui: デザイントークン(Tailwind v4)・cn()・shadcn/ui 派生プリミティブ
+    ui/                        ←   @platform/ui: デザイントークン(Tailwind v4)・cn()・shadcn/ui 派生プリミティブ・Storybook
                                ←   注: `.gitignore` の NuGet 用 `**/[Pp]ackages/*` と名前が衝突するため
                                ←   `!src/packages/**` で除外解除している。ここへパッケージを足すときは
                                ←   `git status` に現れることを必ず確認する（無視されてもビルドは通る）
