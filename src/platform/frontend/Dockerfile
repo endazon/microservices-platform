@@ -27,6 +27,11 @@ COPY src/ai-stock-trading/frontend/package.json ai-stock-trading/frontend/
 # IADR-0121 決定 2: pnpm は package.json の packageManager フィールドから corepack が版を解決する。
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY src/packages/ui/ packages/ui/
+# ADR-0031 / IADR-0125: Lingui のマクロ（@lingui/babel-plugin-lingui-macro）はビルド時に
+# workspace ルートの lingui.config.ts を読む。これが無いと Babel 変換が失敗し、
+# 「gensync のスタックトレースだけが出て原因が読めない」形で pnpm run build が落ちる
+# （PR #499 の CI で実測。ローカルでも本ファイルを退避すると同一のトレースを再現する）。
+COPY src/lingui.config.ts ./
 COPY src/platform/frontend/ platform/frontend/
 COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
