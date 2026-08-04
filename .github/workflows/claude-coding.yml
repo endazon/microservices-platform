@@ -147,55 +147,35 @@ jobs:
           # 末尾のビルド/テスト系（node / dotnet）がスタック別の可変部分である。
           # claude-code-review.example.yml の対応箇所と**同じ内容**に保つこと。
           #
-          # 【読み取り専用ツールの対称性（issue #160）】head / tail / cmp / diff /
-          # git ls-tree / git submodule status / git fetch はレビュー用に先に入ったが、
-          # 実装用にも同じ作業（キット同期時のバイト一致確認・submodule pin の確認）が
-          # あるため揃えてある。**ドリフト検査（check-ai-workflow-config）はスタック別の
-          # 実行ツールしか見ないため、この種の非対称は機械的に検出されない。**手で揃えること。
+          # 【読み取り専用ツールの対称性（issue #160 / #163）】head / tail / cmp / diff /
+          # git ls-tree / git submodule status / git fetch / git show / grep / sort / which は
+          # レビュー用と揃えてある（実装用にも同じ作業＝キット同期時のバイト一致確認・
+          # submodule pin の確認・実走前の SDK 在否確認がある）。#155 → #160 → #163 と同型の
+          # 片落ちが 3 度続いたため、この種の非対称は check-ai-workflow-config.js が
+          # **ERROR で機械検出する**（意図的な非対称＝実装専用の Edit / Write / 書き込み系 git /
+          # find / mkdir と、レビュー専用の gh issue view / gh pr view / gh run list は
+          # 同スクリプトの除外リストに宣言してある。増減するときは除外リストも更新すること）。
           #
-          # 【暫定デルタ・issue #460 / planning#163】`grep` / `sort`、および
-          # `git -C src/ai-stock-trading[/planning] {log,show,diff,ls-tree}` はキット由来の欠落を
-          # 塞ぐ追加である（レビュー用で実測した拒否 6 件のうち 5 件がこの 2 系統だった）。
-          # 読み取り専用であり、実装用にも同じ作業があるためレビュー用と同じ内容を入れてある。
-          # 環流が反映された同期でキットの内容へ戻し、本デルタは撤去する（IADR-0115 の運用）。
-          # `Bash(git -C:*)` の一括許可は採らない（前方一致で書き込み系サブコマンドまで通る）。
-          # あわせて、レビュー用にはあった `Bash(git show:*)`（本体リポジトリのコミットを見る手段）を
-          # 実装用へも足した（PR #461 のレビュー指摘。宣言した意図的な差＝Edit / Write / 書き込み系
-          # git / find / mkdir に該当しない、純粋な非対称だった）。
+          # 【git -C の列挙（issue #163）】`.gitmodules` にあるパスごとに 4 サブコマンド
+          # （log / show / diff / ls-tree）を列挙する。入れ子の submodule も別パスとして列挙が
+          # 要る（前方一致のため親パスの許可は入れ子パスに当たらない）。`Bash(git -C:*)` の
+          # 一括許可は採らない（前方一致で書き込み系サブコマンドまで通る）。
           #
-          # 【暫定デルタ・issue #469 / 環流先 planning#168】`Bash(which:*)` / `Bash(dotnet --version)` /
-          # `Bash(dotnet --info)` / `mcp__github__list_workflow_runs` /
-          # `mcp__github__actions_list` は、**実走を求めながら実走に伴う周辺操作を許可していない**
-          # 非対称を塞ぐ追加である（レビュー用で実測した拒否 5 件のうち 3 件がこの系統）。
-          # `dotnet` は**引数を固定した形**で足す（裸の `Bash(dotnet:*)` は `dotnet nuget push`
-          # 等まで通るため採らない）。CI 結果参照の MCP 名はサーバの版に依存するので新旧を併記する。
-          # `rm` は足さない（生成物の後片付けは責務ではない）。`for` 等のシェル構文と環境変数の
-          # 前置き形（`VAR=1 cmd`。PR #479 の実走 run 30829121373 で拒否 1 件を実測）は許可リストで
-          # 表現できないため、いずれも --append-system-prompt 側で作業手順を狭めて塞ぐ
-          # （環境変数は `node` の 1 コマンドに閉じる代替形を明示した）。
-          # さらに run 30830151995（PR #480 のレビュー実走・拒否 7 件）の実測に基づき、
-          # 単独の変数代入（`PR_TITLE=…`）・`gh run list` 以外の `gh run`・許可外の Actions 系
-          # MCP ツール・3 段以上のパイプ連鎖を避けさせる制約と、`require.main` ガード付き
-          # スクリプトでは `node -e` + `require` が**何も検査せず exit 0 になる**ため
-          # 子プロセス（spawnSync）形を使う旨を追記した。
-          # さらに run 30832367628（同 PR の再実走・拒否 3 件。残りはすべて**許可リストに全く無い
-          # コマンドの試行**（`gh auth` 2 件・`python3 -c` 1 件）だった）の実測に基づき、
-          # 「使える Bash コマンドの正の一覧」と一覧外の代替手順を --append-system-prompt へ追記した。
-          # 一覧は**このファイル自身の許可ツール指定から書き起こす**こと（レビュー用とは中身が違い、
-          # 機械的に対称化すると存在しない許可を宣言して新たな拒否を生む。PR #480 のクロス監査で実際に
-          # `gh run list` を誤って宣言し是正した）。なお本文へ **`--allowedTools` という文字列を
-          # 書いてはならない**（`check-ai-workflow-config.js` が claude_args 内のフラグ名として拾い、
-          # 誤検出で fail する。実測）。レビュー用の prompt: にはこの制約が無い（走査対象外）。
-          # 以上のプロンプト追記はいずれも**撤去対象のデルタ**であり、許可リスト自体は
-          # run 30830151995 / run 30832367628 のどちらの追補でも変更していない。
-          # 詳細は claude-code-review.yml の同名コメントを参照。
+          # 【実走の周辺権限（issue #168）】`Bash(which:*)` / `Bash(dotnet --version)` /
+          # `Bash(dotnet --info)` / `mcp__github__list_workflow_runs` / `mcp__github__actions_list`
+          # は、実走（ビルド・テスト・自分が出した PR の CI 失敗の読解）に必然的に伴う周辺操作で
+          # ある。`dotnet` は**引数を固定した形**で足す（裸の `Bash(dotnet:*)` は
+          # `dotnet nuget push` 等まで通すため採らない）。CI 結果参照の MCP 名はサーバの版に
+          # 依存するので新旧を併記する。`rm` は足さない（生成物の後片付けは責務ではない）。
+          # `for` 等のシェル構文と環境変数の前置き形（`VAR=1 cmd`）は許可リストで表現できない
+          # ため、いずれも --append-system-prompt 側で作業手順を狭めて塞ぐ。
           #
-          # 【GitHub MCP のツール名はサーバの版に依存する（PR #461・実測）】claude-code-action v1 は
+          # 【GitHub MCP のツール名はサーバの版に依存する（issue #163）】claude-code-action v1 は
           # github-mcp-server を **v0.17.1** に pin しており、この版に在るのは `get_issue` /
           # `get_pull_request` / `list_sub_issues`、統合名 `issue_read` / `pull_request_read` /
           # `pull_request_review_write` は**存在しない**（統合名は v1.x 系）。存在しないツールは
           # AI へ提示されないため拒否も出ず、当たらないエントリのまま気付けない。よって**新旧の
-          # 両方を列挙**する。詳細は claude-code-review.yml の同名コメントを参照。
+          # 両方を列挙**する。詳細は claude-code-review.example.yml の同名コメントを参照。
           #
           # 【--append-system-prompt: サブエージェント禁止】レビュー用は同じ制約を prompt:
           # 入力に書いているが、本ファイルは `@claude` メンション本文で駆動する構造のため
@@ -206,11 +186,19 @@ jobs:
           #   → 末尾の Check permission denials が拒否 1 件を検出して exit 1
           # Task を許可する選択もあるが採らない。CI ではサブエージェントの起動が完了せず
           # 停止する不具合が出ており（HOWTO 付録3）、レビュー用と同じ (b) に揃える。
+          # 【--append-system-prompt: 使える Bash コマンドの正の一覧（issue #168）】拒否の実測は
+          # 「拒否される形」の負の列挙では塞げない型（一覧に全く無いコマンドの試行）を示した。
+          # そのため**許可済みコマンドの正の一覧**と一覧外の代替手順を先に示す。一覧は
+          # **このファイル自身の許可ツール指定から書き起こす**こと（レビュー用とは中身が違い、
+          # 機械的に対称化すると存在しない許可を宣言して新たな拒否を生む）。なお prompt 本文へ
+          # 「--allowedTools」という文字列を書いてはならない（この値は claude_args ブロック内に
+          # あるため、check-ai-workflow-config.js がフラグ名として拾い誤検出で fail する。MSP 実測。
+          # 「許可ツール一覧」等と言い換える。claude_args の外にあるコメントは対象外）。
           # 【記法】この値も空白区切りでトークン化される。**1 行・二重引用符でくくる**こと
           # （改行して書くと後続行が別の引数になり、指示が壊れる）。
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --append-system-prompt "この実行は単一セッション内で完結させること。サブエージェント（Task ツールによる spawn。.claude/agents/ 定義の起動を含む）は使用しない。CI では Task が許可されておらず、呼び出しは必ず拒否されるうえ、拒否が 1 件でも記録されるとジョブは失敗する。作業の分割は自分の作業順序として扱い、Read / Grep / Glob / Bash / GitHub MCP ツールで自分自身が順に実施すること。子 issue の一覧は mcp__github__list_sub_issues で取ること（CI が固定する github-mcp-server v0.17.1 に統合名 mcp__github__issue_read は存在しない。統合名は将来の版のために併記して許可してある）。使える Bash コマンドは次で全部であり、一覧に無いコマンドは必ず拒否されるので試さないこと。これは本ワークフローの許可リスト（この claude_args が指定している許可ツール一覧）の写しであって、レビュー用ワークフロー（claude-code-review.yml）とは中身が違うため、レビュー用の記憶で判断しないこと。git は読み取り系（git diff / git log / git show / git status / git ls-tree / git submodule status / git fetch、および submodule 変種として git -C planning と git -C src/ai-stock-trading（同 /planning も）の log / show / diff / ls-tree）に加え、実装用にのみ書き込み系の git add / git commit / git push / git switch / git checkout / git branch が使える。閲覧・検索・ファイル操作は ls / find / rg / grep / sort / cat / head / tail / cmp / diff / echo / which / mkdir。gh は gh issue create だけである（gh auth status / gh api / gh run list / gh pr view などは一切許可されていない）。実行系は node / dotnet restore / dotnet build / dotnet test / dotnet format / dotnet --version / dotnet --info。Bash 以外では Read / Grep / Glob / Edit / Write と GitHub MCP ツールが使える。python3 は許可されていないので、YAML や JSON の構文確認を python3 -c でやろうとしないこと。構文を見るだけなら Read で読み、機械的な確認が要るなら許可済みの node で行う（YAML パーサはこのワークスペースに用意されていない前提で考えること）。gh auth status は不要であり許可もされていない。認証は環境側で構成済みであり、GitHub の情報は GitHub MCP ツールで取ること。curl / wget / pip / jq / sed / awk / wc / xargs / env / chmod / rm / mv / cp / touch / tee も一覧に無いので拒否される。件数を数えるときは grep -c / rg -c（総マッチ数なら rg --count-matches）を単体で使うこと。… | wc -l や … | awk によるパイプ集計は wc / awk が一覧に無いため必ず拒否され、鎖全体が実行されない（前段の結果も得られない）。実測: run 30833943957（PR #480 の再々実走）の拒否 1 件は Bash(grep | wc | awk) の件数集計だった。実測: run 30832367628（PR #480 の再実走）でレビューが出した拒否 3 件は、すべて一覧に無いコマンドの試行だった（gh auth 系 2 件・python3 -c での YAML パース 1 件）。拒否される形の列挙だけではこの型を塞げないため、この正の一覧を先に読むこと。CI の結果は mcp__github__list_workflow_runs（新しいサーバ版では mcp__github__actions_list の list_workflow_runs メソッド）で参照し、ローカル再現を始める前にまず CI を見ること。ただし CI の結果を読む手段には粒度の制限がある。このワークフローで許可されている gh は gh issue create だけであり、gh run 系（gh run list / gh run view など）は一切許可されていない。CI 結果の参照は mcp__github__list_workflow_runs / mcp__github__actions_list のみで行うこと。GitHub MCP の Actions 系もこの 2 つだけが許可されており、get_workflow_run / list_workflow_jobs / get_job_logs は拒否される（実測: レビュー用ワークフローの run 30830151995 で Bash(gh run) 1 件・mcp__github__get_workflow_run 1 件・mcp__github__list_workflow_jobs 1 件が拒否された。gh run list を持つのはレビュー用だけで、実装用にはそれも無い）。ジョブ単位のログを取得する手段は無いので、それ以上の裏付けが要る主張は未検証（ジョブログの取得手段が無い）と書くこと。なお permission_denials_count はジョブ末尾の Check permission denials ステップが権威であり、自分で実行ログを取り直して再検証する必要は無い。SDK の在否は dotnet --version / dotnet --info / which で確認できる（dotnet はこの 2 つと restore / build / test / format のみ許可されている）。ビルド・テストを複数プロジェクトへ回すときは for ループを組まず、src/<unit>/backend/backend.slnx 単位の 1 コマンドで実行すること（シェルの for / while / リダイレクト / コマンド置換は許可リストで表現できず必ず拒否される）。環境変数の前置き形（VAR=1 cmd）も同じ理由で必ず拒否される（実測: PR #479 のレビューが REQUIRE_REPO_TESTS=1 node … で拒否 1 件を出した。run 30829121373）。Node のスクリプトに環境変数が要るときは node の 1 コマンドに閉じた形を使うが、形は 2 つあり対象スクリプトの作りで使い分けること。node -e で process.env.REQUIRE_REPO_TESTS='1' を設定してから require する形が通用するのは require.main === module ガードを持たないスクリプトだけである（例: scripts/scripts.test.js）。ガードの有無はスクリプトごとに異なるため、使う前に対象スクリプトの末尾を Read してガードの有無を自分で確認すること。ガード付きのスクリプト（例: scripts/check-ai-workflow-config.js は末尾に if (require.main === module) の分岐で main を呼ぶ）へ require 形を使うと main が呼ばれず、出力ゼロのまま exit 0 になる（何も検査していないのに成功に見える）ため使ってはならない。その場合は node -e の中で require('child_process').spawnSync('node',['scripts/check-ai-workflow-config.js'],{env:Object.assign({},process.env,{STRICT_AI_WORKFLOW_CONFIG:'1'}),stdio:'inherit'}) を呼び、その status を process.exit へ伝播する子プロセス形を使うこと。どちらの形でも、出力が 1 行も出なかったときは実行できたと見なさず、子プロセス形で取り直すこと。単独の変数代入（PR_TITLE=… のように値を変数へ置くだけのコマンド）も先頭トークンが PR_TITLE=… になるため同じ前方一致判定で必ず拒否される。値を変数へ置いて後段で使い回す作法は採らず、必要な文字列は node -e の中へ直接埋め込むこと（実測: run 30830151995 で Bash(PR_TITLE=…) の形の拒否 1 件）。3 段以上のパイプ連鎖も組まないこと。実測（run 30830151995）で git show | grep | diff（2 件）と git show | grep | echo（1 件）の 3 段形が、各コマンドが個別には許可済みであるにもかかわらず拒否された。根本原因は特定できていない（同 run はリダイレクトを含むコマンドの存在も報告しており切り分けられていない）ため、比較は git show <ref>:<path> | diff - <path> の 2 段に収め、絞り込みが要るときは段を増やさずコマンドを分けて 2 回実行すること。dotnet test が生成した成果物（TestResults やカバレッジ XML）は削除しないこと。ワークスペースはジョブ終了で破棄される使い捨てであり、後片付けは責務ではない（rm は許可されておらず、試みれば拒否として記録されるだけである）。"
+            --append-system-prompt "この実行は単一セッション内で完結させること。サブエージェント（Task ツールによる spawn。.claude/agents/ 定義の起動を含む）は使用しない。CI では Task が許可されておらず、呼び出しは必ず拒否されるうえ、拒否が 1 件でも記録されるとジョブは失敗する。作業の分割は自分の作業順序として扱い、Read / Grep / Glob / Bash / GitHub MCP ツールで自分自身が順に実施すること。子 issue の一覧は mcp__github__list_sub_issues で取ること（CI が固定する github-mcp-server v0.17.1 に統合名 mcp__github__issue_read は存在しない。統合名は将来の版のために併記して許可してある）。使える Bash コマンドは次で全部であり、一覧に無いコマンドは必ず拒否されるので試さないこと。これは本ワークフローの許可ツール一覧の写しであって、レビュー用ワークフロー（claude-code-review.yml）とは中身が違うため、レビュー用の記憶で判断しないこと。git は読み取り系（git diff / git log / git show / git status / git ls-tree / git submodule status / git fetch、および submodule 変種として git -C planning と git -C src/ai-stock-trading（同 /planning も）の log / show / diff / ls-tree）に加え、実装用にのみ書き込み系の git add / git commit / git push / git switch / git checkout / git branch が使える。閲覧・検索・ファイル操作は ls / find / rg / grep / sort / cat / head / tail / cmp / diff / echo / which / mkdir。gh は gh issue create だけである（gh auth status / gh api / gh run list / gh pr view などは一切許可されていない）。実行系は node / dotnet restore / dotnet build / dotnet test / dotnet format / dotnet --version / dotnet --info。Bash 以外では Read / Grep / Glob / Edit / Write と GitHub MCP ツールが使える。python3 は許可されていないので、YAML や JSON の構文確認を python3 -c でやろうとしないこと。構文を見るだけなら Read で読み、機械的な確認が要るなら許可済みの node で行う（YAML パーサはこのワークスペースに用意されていない前提で考えること）。gh auth status は不要であり許可もされていない。認証は環境側で構成済みであり、GitHub の情報は GitHub MCP ツールで取ること。curl / wget / pip / jq / sed / awk / wc / xargs / env / chmod / rm / mv / cp / touch / tee も一覧に無いので拒否される。件数を数えるときは grep -c / rg -c（総マッチ数なら rg --count-matches）を単体で使うこと。… | wc -l や … | awk によるパイプ集計は wc / awk が一覧に無いため必ず拒否され、鎖全体が実行されない（前段の結果も得られない）。CI の結果は mcp__github__list_workflow_runs（新しいサーバ版では mcp__github__actions_list の list_workflow_runs メソッド）で参照し、ローカル再現を始める前にまず CI を見ること。ただし CI の結果を読む手段には粒度の制限がある。GitHub MCP の Actions 系はこの 2 つだけが許可されており、get_workflow_run / list_workflow_jobs / get_job_logs は拒否される。gh run 系（gh run list / gh run view など）も一切許可されていない。ジョブ単位のログを取得する手段は無いので、それ以上の裏付けが要る主張は未検証（ジョブログの取得手段が無い）と書くこと。SDK の在否は dotnet --version / dotnet --info / which で確認できる（dotnet はこの 2 つと restore / build / test / format のみ許可されている）。ビルド・テストを複数プロジェクトへ回すときは for ループを組まず、src/<unit>/backend/backend.slnx 単位の 1 コマンドで実行すること（シェルの for / while / リダイレクト / コマンド置換は許可リストで表現できず必ず拒否される）。環境変数の前置き形（VAR=1 cmd）も同じ理由で必ず拒否される。Node のスクリプトに環境変数が要るときは node の 1 コマンドに閉じた形を使うが、形は 2 つあり対象スクリプトの作りで使い分けること。node -e で process.env を設定してから require する形が通用するのは require.main === module ガードを持たないスクリプトだけであり、使う前に対象スクリプトの末尾を Read してガードの有無を自分で確認すること。ガード付きのスクリプトへ require 形を使うと main が呼ばれず、出力ゼロのまま exit 0 になる（何も検査していないのに成功に見える）ため使ってはならない。その場合は node -e の中で require('child_process').spawnSync を呼び、その status を process.exit へ伝播する子プロセス形を使うこと。どちらの形でも、出力が 1 行も出なかったときは実行できたと見なさず、子プロセス形で取り直すこと。単独の変数代入（VAR=… のように値を変数へ置くだけのコマンド）も先頭トークンの前方一致判定で必ず拒否されるため、必要な文字列は各コマンドへ直接書くこと。3 段以上のパイプ連鎖も組まないこと（各コマンドが個別には許可済みでも拒否された実測がある）。比較は git show <ref>:<path> | diff - <path> の 2 段に収め、絞り込みが要るときは段を増やさずコマンドを分けて 2 回実行すること。テスト実行が生成した成果物（TestResults やカバレッジ XML）は削除しないこと。ワークスペースはジョブ終了で破棄される使い捨てであり、後片付けは責務ではない（rm は許可されておらず、試みれば拒否として記録されるだけである）。"
             --allowedTools "Read,Grep,Glob,Edit,Write,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git switch:*),Bash(git checkout:*),Bash(git branch:*),Bash(ls:*),Bash(find:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(mkdir:*),Bash(gh issue create:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
 
       # 権限拒否の可視化（安全弁）。claude-code-review.example.yml と同じ内容に保つこと。
