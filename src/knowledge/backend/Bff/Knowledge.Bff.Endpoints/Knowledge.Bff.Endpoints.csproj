@@ -9,7 +9,9 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
-    <!-- 横断基盤（フォワーディングクライアント・認可ポリシー定数）。ユニット外は Shared の 2 プロジェクトのみ許可。 -->
+    <!-- 横断基盤（フォワーディングクライアント・認可ポリシー定数）。ユニット外は Shared の 3 プロジェクト
+         （Platform.Shared.Contracts / Platform.Shared.Infrastructure / Platform.Shared.Kernel）のみ許可。
+         2 → 3 の改定は IADR-0117（Platform.Shared.Kernel は配置のみ確定で実体は未作成）。 -->
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <!-- ナレッジ固有契約（移設した DTO）。 -->
     <ProjectReference Include="..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
