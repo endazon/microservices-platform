@@ -56,8 +56,8 @@ related_specs:
   （親: [#453](https://github.com/endazon/microservices-platform/issues/453) /
   [#454](https://github.com/endazon/microservices-platform/issues/454)）
 - 本作業で起票した実装 ADR: [IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)（Accepted）
-  - **採番の注記**: `IADR-0121` は並行ブランチ（#446 系・`feat/ADR-0031-spa-foundation-migration`）が
-    使用中のため本件は `0122` を採った。マージ順が逆転した場合は
+  - **採番の注記**: `IADR-0121` は並行 in-flight の PR [#489](https://github.com/endazon/microservices-platform/pull/489)
+    （SPA スタック移行・`feat/ADR-0031-spa-foundation-migration`）が使用中のため本件は `0122` を採った。マージ順が逆転した場合は
     [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「採番衝突時の改番手順」の
     **先着尊重**に従って改番する（ファイル名・本文の自番号・`docs/adr/README.md` の索引・本書の
     `related_ids` と本文・PR タイトルの 5 箇所を追随させる）。
@@ -373,6 +373,11 @@ submodule は取得しない（対象は platform / knowledge の `Shared.Contra
 - **baseline は 1865 行**あり、人が通読する場面は少ない。読むのは**差分**である。
 - **構文解析の限界**は上記「限界」のとおり。現時点で顕在化する要素は 0 件だが、`partial` や
   ソースジェネレータが入れば盲点になる。IADR-0122 のフォローアップで監視する。
+
+## 教訓
+
+- **docs 先行コミットから後続コミットの成果物へ張る前方リンクは、バッククォート表記が安全である**（squash マージ前提なら統合ブランチ上では解決するが、中間コミット単体では破損する。未マージ成果物への前方参照の扱いは [`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) と
+  [テスト戦略](../tests/TEST_STRATEGY.md) の同項と同じ作法）。
 
 ## フォローアップ（本作業では行わない）
 

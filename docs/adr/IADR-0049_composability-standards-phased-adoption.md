@@ -123,7 +123,7 @@ plan_refs:
 ## 関連
 
 - Supersedes: なし（[[IADR-0028]] が繰延した #102 残項目の追跡を復活させ、繰延条件を明文化する位置づけ）
-- Superseded by: なし（[IADR-0122](IADR-0122_contract-schema-source-and-compat-gate.md) が §決定 1 のうち
+- Superseded by: なし（[IADR-0122](IADR-0122_contract-schema-source-and-compat-gate.md) が 決定 1 のうち
   「CI 契約テスト」の部分だけを繰延解除した。共通エンベロープの繰延・決定 2（ステージング適用順序）・
   決定 3（起動時 fail-fast の維持）は本 IADR が引き続き有効なため `Accepted` を維持する。2026-08-04 / #465。
   残る §3 エンベロープと §5 の繰延解除条件が充足し標準へ移行する時点で、実装 IADR を新設し本 IADR を
