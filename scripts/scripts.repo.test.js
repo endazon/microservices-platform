@@ -741,6 +741,214 @@ module.exports = ({ ok, assert }) => {
     );
   });
 
+  // --- check-coverage-floor: 合成点テスト経由の混入を filename 帰属で除く（#468 / IADR-0123） ---
+  //
+  // NFR（#468）: Platform.Bff は BFF の合成点として AST の Bff エンドポイントを ProjectReference するため、
+  // src/platform/ 配下に出るレポートの**中身**に AST のクラスが入る。レポートファイルのパスによる除外
+  // （isExcludedPath）はこれに届かない。ここで固定するのは次の 3 点である。
+  //   1. <class filename> でユニットへ帰属させ、除外ユニットの行が集計から落ちること
+  //   2. filename の形（相対 / 絶対 / <sources> 結合）に依らず帰属できること
+  //      ——coverlet は base path で始まらないファイルを**絶対パスのまま**書くため、片方に決め打つと
+  //        フィルタが何にもマッチせず「除外したつもりで素通り」になる（黙って混入が残る）
+  //   3. 二重記載（<methods> 配下 と class 直下）を class 直下だけで数えること
+
+  const AST_UNIT = [...cov.EXCLUDED_UNITS][0];
+
+  /** class 1 件ぶんの XML（<methods> 配下と class 直下に同じ行を書く coverlet の形）。 */
+  const coberturaClass = (name, filename, lines) => {
+    const body = lines.map(([n, h]) => `<line number="${n}" hits="${h}" />`).join('');
+    return `<class name="${name}" filename="${filename}">` +
+      `<methods><method name="M"><lines>${body}</lines></method></methods>` +
+      `<lines>${body}</lines></class>`;
+  };
+  const coberturaReport = (classes, { sources = [], attrs = '' } = {}) =>
+    `<?xml version="1.0"?><coverage ${attrs}>` +
+    (sources.length ? `<sources>${sources.map((s) => `<source>${s}</source>`).join('')}</sources>` : '') +
+    `<packages><package name="Platform.Bff"><classes>${classes.join('')}</classes></package></packages></coverage>`;
+
+  ok('parseCobertura: 二重記載は class 直下の <lines> だけを数える（<methods> 配下は内訳）', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Bff.X', 'src/platform/backend/Bff/X.cs', [[1, 1], [2, 0], [3, 4]]),
+    ]);
+    const p = cov.parseCobertura(xml);
+    // 素朴に全 <line> を数えると 6 行になる（PR #464 のレビューで 266/230 と実測が割れた原因）。
+    assert.strictEqual(p.lines, 3);
+    assert.strictEqual(p.covered, 2);
+  });
+
+  ok('parseCobertura: 除外ユニットへ帰属した行を集計から落とす（相対 filename）', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Bff.X', 'src/platform/backend/Bff/X.cs', [[1, 1], [2, 0]]),
+      coberturaClass('AiStockTrading.Bff.Endpoints.MonitorBffEndpoints',
+        `src/${AST_UNIT}/backend/Bff/MonitorBffEndpoints.cs`, [[1, 3], [2, 3], [3, 3]]),
+    ]);
+    const p = cov.parseCobertura(xml);
+    assert.strictEqual(p.lines, 2, '集計は platform の 2 行だけ');
+    assert.strictEqual(p.excluded.lines, 3);
+    assert.strictEqual(p.excluded.covered, 3, '混入行はすべて被覆済み＝実測値を押し上げる方向にしか働かない');
+    assert.strictEqual(p.excluded.classes.length, 1);
+    assert.match(p.excluded.classes[0].name, /MonitorBffEndpoints/);
+  });
+
+  ok('parseCobertura: 絶対 filename でも帰属する（base path で始まらないファイルは絶対のまま書かれる）', () => {
+    const xml = coberturaReport([
+      coberturaClass('X', `/home/runner/work/msp/msp/src/${AST_UNIT}/backend/Bff/X.cs`, [[1, 1]]),
+    ], { sources: ['/home/runner/work/msp/msp/src/platform/backend/Bff/Platform.Bff/'] });
+    const p = cov.parseCobertura(xml);
+    assert.strictEqual(p.excluded.lines, 1);
+    assert.strictEqual(p.diagnostics.how.absolute, 1);
+  });
+
+  ok('parseCobertura: <sources> と結合して帰属する（base path が src/ より深い場合）', () => {
+    const xml = coberturaReport([
+      coberturaClass('X', `${AST_UNIT}/backend/Bff/X.cs`, [[1, 1]]),
+      coberturaClass('Y', 'platform/backend/Bff/Y.cs', [[1, 0]]),
+    ], { sources: ['/home/runner/work/msp/msp/src/'] });
+    const p = cov.parseCobertura(xml);
+    assert.strictEqual(p.excluded.lines, 1);
+    assert.strictEqual(p.lines, 1);
+    assert.strictEqual(p.diagnostics.how['source-joined'], 2);
+  });
+
+  ok('parseCobertura: 帰属できない行は集計に残す（黙って落とさない）', () => {
+    const xml = coberturaReport([coberturaClass('X', 'Foo/Bar.cs', [[1, 1], [2, 1]])]);
+    const p = cov.parseCobertura(xml);
+    assert.strictEqual(p.lines, 2);
+    assert.strictEqual(p.excluded.lines, 0);
+    assert.strictEqual(p.diagnostics.how.unattributed, 1);
+  });
+
+  ok('attributionMessages: 帰属 0 件は warn（フィルタが何にもマッチしない＝素通りの検出）', () => {
+    const agg = cov.aggregateReports([cov.parseCobertura(
+      coberturaReport([coberturaClass('X', 'Foo/Bar.cs', [[1, 1]])]))]);
+    const msgs = cov.attributionMessages(agg);
+    assert.ok(msgs.some((m) => m.level === 'warn' && /帰属できませんでした/.test(m.text)),
+      `帰属 0 件で warn が出ていない: ${JSON.stringify(msgs)}`);
+  });
+
+  ok('attributionMessages: 除外 0 行は notice に留める（恒常的な警告にしない）', () => {
+    const agg = cov.aggregateReports([cov.parseCobertura(
+      coberturaReport([coberturaClass('X', 'src/platform/backend/X.cs', [[1, 1]])]))]);
+    const msgs = cov.attributionMessages(agg);
+    assert.ok(msgs.some((m) => m.level === 'notice' && /0 行でした/.test(m.text)));
+    assert.deepStrictEqual(msgs.filter((m) => m.level === 'warn'), []);
+  });
+
+  ok('attributionMessages: class の外にある <line> は warn（除外できない行の可視化）', () => {
+    const agg = cov.aggregateReports([cov.parseCobertura('<coverage><line number="1" hits="1" /></coverage>')]);
+    assert.ok(cov.attributionMessages(agg).some((m) => m.level === 'warn' && /<class> にも属さない/.test(m.text)));
+  });
+
+  ok('aggregateReports: 除外前の値は coverlet 自身の lines-valid と照合できる（IADR-0123 決定 4）', () => {
+    const xml = coberturaReport([
+      coberturaClass('X', 'src/platform/backend/X.cs', [[1, 1], [2, 0]]),
+      coberturaClass('Y', `src/${AST_UNIT}/backend/Y.cs`, [[1, 1]]),
+    ], { attrs: 'lines-valid="3" lines-covered="2"' });
+    const agg = cov.aggregateReports([cov.parseCobertura(xml)]);
+    assert.strictEqual(agg.totals.lines, 2);
+    assert.strictEqual(agg.excluded.lines, 1);
+    assert.strictEqual(agg.beforeExclusion.lines, 3);
+    assert.strictEqual(agg.diagnostics.reported.lines, 3, 'coverlet の lines-valid と一致する（前提の裏づけ）');
+    assert.strictEqual(agg.diagnostics.reported.covered, 2);
+  });
+
+  // NFR（#468）: 混入行数の確定と床の置き直しは CI ログの診断出力から読み取る。
+  // 出力が壊れると「測り直す手段」が黙って失われるため、鍵となる文言と数値をここで固定する。
+  ok('formatDiagnostics: 除外行数・除外前の実測・解釈の内訳・除外クラス一覧が出る', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Bff.X', 'src/platform/backend/X.cs', [[1, 1], [2, 0]]),
+      coberturaClass('AiStockTrading.Bff.Endpoints.MonitorBffEndpoints',
+        `src/${AST_UNIT}/backend/Bff/MonitorBffEndpoints.cs`, [[1, 1]]),
+    ]);
+    const text = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(xml)])).join('\n');
+    assert.match(text, /除外（filename 帰属・#468）/);
+    assert.match(text, /1 行（被覆 1）/);          // 混入行数（確定値の読み取り口）
+    assert.match(text, /除外前: line 66\.67%（2\/3）/); // 除外前の実測（床の置き直しの突き合わせ）
+    assert.match(text, /そのまま\(相対\) 2/);       // filename の解釈
+    assert.match(text, /MonitorBffEndpoints/);      // 除外したクラス
+  });
+
+  // NFR（#468）: CI 初回実走（run 1144 / commit 594117a）で **行は完全一致・分岐だけ乖離**した。
+  // 本実装の「分岐」は <line> の condition-coverage の分母/分子、coverlet の branches-valid は別定義
+  // であり、一致を期待しない（IADR-0123 決定 4 の［2026-08-04 追記］）。同列に「乖離」と出すと
+  // 期待される差が異常に見えるため、書き分けをここで固定する。
+  ok('formatDiagnostics: 行の乖離は要調査・分岐の差は定義差として書き分ける', () => {
+    const report = (attrs) => coberturaReport([
+      `<class name="X" filename="src/platform/backend/X.cs"><lines>` +
+      '<line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" /></lines></class>',
+    ], { attrs });
+    const same = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))])).join('\n');
+    assert.ok(same.includes('lines-valid 1（本実装 1・一致）'), same);
+    assert.ok(same.includes('差 -2（定義差・期待される乖離）'), same);
+    assert.ok(!same.includes('**乖離'), `分岐の差を行と同列の「乖離」で出している:\n${same}`);
+
+    const drift = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="9" lines-covered="9" branches-valid="2" branches-covered="1"'))])).join('\n');
+    assert.ok(drift.includes('**乖離 -8・要調査**'), drift);
+
+    // branches-covered も出す（coverlet 側の実際の値が CI ログから読めること）。
+    assert.ok(same.includes('branches-covered 1（本実装 1・一致）'), same);
+
+    // 床の値は src/coverage-floor.json が単一情報源（IADR-0118 決定 1）。診断へ数値を焼き込むと
+    // ratchet で床を上げた瞬間に同じログの中で自己矛盾する。引数の floor を反映すること。
+    const withFloor = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))]), { branch: 18 }).join('\n');
+    assert.ok(withFloor.includes('床 18 はこの方式'), withFloor);
+    assert.ok(!withFloor.includes('床 17'), `床の値をハードコードしている:\n${withFloor}`);
+
+    // 分岐が一致していれば注記は出さない（恒常的なノイズにしない）。
+    const branchSame = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="2" branches-covered="1"'))])).join('\n');
+    assert.ok(!branchSame.includes('※ 分岐は'), branchSame);
+  });
+
+  // NFR（#468 / IADR-0123 決定 5）: 分岐は定義差のため coverlet 値との照合が反証力を持たない。
+  // 分岐側の二重記載排除が壊れても値が増えるだけで CI ログには何も現れない（無音の失敗）。
+  // 「全 <line>（<methods> 重複込み）」と「class 直下のみ」の比を観測点として出すことを固定する。
+  ok('formatDiagnostics: 二重記載の観測（全 <line> と class 直下の比）を出す', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Bff.X', 'src/platform/backend/X.cs', [[1, 1], [2, 0]]),
+    ]);
+    const text = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(xml)])).join('\n');
+    assert.ok(text.includes('全 <line>（<methods> 重複込み）= 行 4'), text);
+    assert.ok(text.includes('class 直下のみ（除外前の集計）= 行 2'), text);
+    assert.ok(text.includes('比 行 2.00'), text);
+  });
+
+  ok('check-coverage-floor --self-test は exit 0（帰属・二重記載・warn 経路を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js'), '--self-test'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
+
+  // 実ツリーへレポートを 1 件だけ置いて素実行する。関数単位の試験では「走査 → 除外 → 出力」の
+  // 配線（レポートが実際に読まれ、診断が CI ログへ出ること）を確かめられないため。
+  // coverage*.xml は .gitignore 済みだが、異常終了時に残さないよう finally で必ず撤去する。
+  ok('素実行: 実ツリーのレポートから AST 由来の行を落とし、診断を出して exit 0', () => {
+    const { spawnSync } = require('child_process');
+    const repoRoot = path.join(__dirname, '..');
+    const dir = path.join(repoRoot, 'src', 'platform', 'backend', '.coverage-floor-probe', 'TestResults', 'probe');
+    const file = path.join(dir, 'coverage.cobertura.xml');
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(file, coberturaReport([
+        coberturaClass('Platform.Bff.X', 'platform/backend/Bff/X.cs', [[1, 1], [2, 0], [3, 1]]),
+        coberturaClass('AiStockTrading.Bff.Endpoints.MonitorBffEndpoints',
+          `${AST_UNIT}/backend/Bff/MonitorBffEndpoints.cs`, [[1, 1], [2, 1]]),
+      ], { sources: ['/home/runner/work/msp/msp/src/'], attrs: 'lines-valid="5" lines-covered="4"' }));
+
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js')], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `素実行が失敗:\n${r.stdout}\n${r.stderr}`);
+      assert.match(r.stdout, /レポート 1 件を集計: line 66\.67%（2\/3）/);
+      assert.match(r.stdout, /由来 1 クラス \/ 2 行（被覆 2）/);
+      assert.match(r.stdout, /除外前: line 80%（4\/5）/);
+      assert.match(r.stdout, /lines-valid 5（本実装 5・一致）/);
+    } finally {
+      fs.rmSync(path.join(repoRoot, 'src', 'platform', 'backend', '.coverage-floor-probe'), { recursive: true, force: true });
+    }
+  });
+
   // --- check-backend-libraries: ADR-0030 ライブラリ標準の機械強制（Issue #455） ---
 
   const backendLibs = require('./check-backend-libraries.js');

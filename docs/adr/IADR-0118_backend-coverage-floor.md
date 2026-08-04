@@ -2,15 +2,16 @@
 title: IADR-0118 バックエンドのカバレッジ床 — 単一情報源・実測からの切り下げ・ratchet
 type: impl-adr
 status: Accepted
-related_ids: [NFR, IADR-0034, IADR-0115, IADR-0116]
+related_ids: [NFR, IADR-0034, IADR-0115, IADR-0116, IADR-0123]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
   - ../specs/20260803_issue-453_regression-test-foundation.md
   - ../specs/20260803_issue-474_backend-floor-iadr-and-0116-followup.md
+  - ../specs/20260804_issue-468_coverage-ast-exclusion.md
   - ../tests/TEST_STRATEGY.md
 ---
 
@@ -133,6 +134,28 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      いるのと**同じ作法**である。
    - 判定経路は実値で確認済み。実測（34.46 / 17.62）で違反 0、床を割る値（33.99 / 16.99）で違反 2 件。
 
+   > **［2026-08-04 追記］床の値は据え置き（`line 34` / `branch 17`）。ただし根拠は差し替わった（#468）。**
+   > 上記の初期値の根拠（`8bfe639` の `line 34.46%（18894/54826）` / `branch 17.62%（3154/17896）`）は、
+   > **AST の混入込み・二重記載込み**の値である
+   > （[IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 3 で計数方式が変わった。
+   > **旧値は新方式の厳密に 2 倍**——`18894 = 9447 × 2` / `54826 = 27413 × 2` / `3154 = 1577 × 2` /
+   > `17896 = 8948 × 2`。すべての項が 2 倍で揃うことは、二重記載が一律に効いていた＝決定 3 の
+   > 強い裏づけである）。新方式での実測は
+   > **line 34.14%（9314/27280） / branch 17.26%（1536/8898）**、除外前は
+   > `line 34.46%（9447/27413）` / `branch 17.62%（1577/8948）`、混入は **6 クラス / 133 行（全て被覆済み） /
+   > 分岐 50（被覆 41）**である。
+   > 測定条件: CI run 30886437108（run_number **1144**）/ job `build-and-test` / commit `594117a` /
+   > Release 構成 / レポート **14 件** / submodule populate 済み。
+   > 整数切り下げは `line 34` / `branch 17` で**現在値と同値**のため
+   > [`src/coverage-floor.json`](../../src/coverage-floor.json) は変更していない（値の正は同ファイル）。
+   > **余裕は薄い——line +0.14pt / branch +0.26pt しかない。** ratchet で引き上げる際はこの薄さを踏まえること。
+   > なお**分岐の分母は `condition-coverage` の合算**であり coverlet の `branches-valid`（除外前 9356）とは
+   > 定義が異なる。**被覆数を据え置いたまま分母だけ coverlet 基準に置き換える試算**では
+   > 除外前 `1577 ÷ 9356 = 16.86%`、床が判定に使う除外後の対でも `1536 ÷ (9356 − 50) = 16.51%` となり、
+   > いずれも床 17 を下回る（**定義を変えれば分子も変わるため、これは「coverlet 定義での実際の分岐率」では
+   > なく分母差の影響を測る試算である**）。したがって**分岐の定義変更は床の置き直しとセットでしか
+   > 行えない**（[IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4 の追記）。
+
 3. **運用は ratchet とする**（床は上げるが下げない）。テストを増やしたら床を引き上げ、床を割る変更を
    CI で止める。床の引き下げは**退行**であり、行う場合は正当な理由を作業仕様書に記す（検査器の失敗
    メッセージにもそう出す）。各ドメイン issue の遵守事項は
@@ -152,6 +175,34 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      上回る**。したがって**床の値は混入の確定を待たずに有効**である。塞ぐには Cobertura の
      `<class filename>` で行を帰属させるパーサ改修が要り、独立した設計判断を伴うため
      [#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出した。
+
+   > **［2026-08-04 追記］決定 4 の「既知の限界」（合成点経由の混入）は
+   > [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) で対処した（#468）。**
+   > `check-coverage-floor.js` を class 単位走査へ作り替え、各 `<class filename>` を `src/<unit>/` へ
+   > 帰属させて集計対象外ユニットの行を落とす（除外集合は [IADR-0120](IADR-0120_excluded-units-from-gitmodules.md)
+   > の単一情報源から導出。レポートファイルのパスによる除外は併用する）。
+   > **CI 初回実走で成立を確認した。** 診断出力（run 30886437108 / run_number **1144** /
+   > job `build-and-test` / commit `594117a` / Release / レポート 14 件 / submodule populate 済み）は
+   > **未帰属 0 件**（クラス 2036 件すべて帰属）・**混入 6 クラス / 133 行（すべて被覆済み） / 分岐 50（被覆 41）**・
+   > 除外前後で **27413 → 27280 行**。除外された 6 クラスは
+   > `AssumptionsBffEndpoints` / `MonitorBffEndpoints` / `RiskControlsBffEndpoints` と各 `<ProxyAsync>d__2` で、
+   > いずれも `<sources>` 結合で `ai-stock-trading` へ帰属した。
+   > **上記の「AST 由来 230〜266 行」は旧計数方式による値である**——文書全体の `<line>` を正規表現で
+   > 数える方式であり、`<methods>` 配下と class 直下の二重記載を含む。**2 つの値の関係は次のとおり
+   > 分解できる**（旧記述は「割れた原因は二重記載」と読めたが、それは正しくない）。
+   > - **二重記載は 266 も 230 も一律に 2 倍にした要因**である。
+   > - **266 と 230 の差そのものはスコープ差**——全プロジェクト実行と `Platform.Bff.Tests` 単体実行の
+   >   違いである（出典: [`docs/specs/20260803_issue-453_regression-test-foundation.md`](../specs/20260803_issue-453_regression-test-foundation.md)
+   >   の「既知の限界」節。「レビューの 2 度の計測（全プロジェクト実行 266 行 / `Platform.Bff.Tests`
+   >   単体実行 230 行）」と記録されている）。
+   > - 実測が分解を支持する: **266 = 133 × 2**（全プロジェクト実行の新方式値 133 行）、
+   >   **230 = 115 × 2**（単体実行の新方式値 115 行）。
+   >   115 行は本 PR のレビューによる独立実測である——測定条件は **.NET SDK 10.0.302 /
+   >   `Platform.Bff.Tests` 単体実行 / 本 PR の commit `594117a` 時点**。**ビルド構成はレビュー
+   >   コメントに記載が無いため断定しない**（本追記の他の数値は CI の Release 構成）。
+   > - したがって **230 行と CI の全体集計（133 行）はスコープが異なり直接比較できない**が、
+   >   旧値としては 115 × 2 で説明がつく（宙吊りではない）。
+   > 床の値 `line 34` / `branch 17` は据え置き（根拠の差し替えは決定 2 の追記を参照）。
 
 5. **レポートが 1 件も無い場合は warn で素通りする（fail-open）。ただしその代償はテストで塞ぐ。**
    - fail-open にするのは、カバレッジと無関係な PR やローカル実行を赤くしないためである。
@@ -209,17 +260,25 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
 - 悪い影響・トレードオフ:
   - **床の絶対水準は低い**（line 34 / branch 17）。品質の水準を保証するものではなく、あくまで**回帰
     防止の床**である。各ドメイン issue でテストと床を段階的に引き上げる前提に立つ。
-  - 合成点経由で AST の行が混入する（230〜266 行）。現在の床 34 の有効性には影響しないが、床を
-    引き上げていくと影響が相対的に増す。[#468](https://github.com/endazon/microservices-platform/issues/468) で塞ぐ。
+  - ~~合成点経由で AST の行が混入する（旧計数方式で 230〜266 行）。~~
+    [#468](https://github.com/endazon/microservices-platform/issues/468) /
+    [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) で**解消**（CI run 1144 /
+    commit `594117a` で成立を確認。混入は新方式で 6 クラス・133 行。上記の［2026-08-04 追記］を参照）。
+  - **分岐（branch）の分母は `condition-coverage` の合算**であり、coverlet の `branches-valid` とは
+    定義が異なる（CI 実測: 8948 対 9356）。床 17 はこの方式での実測に基づくため、**分岐の定義を変える
+    場合は床の置き直しとセットでしか行えない**。他ツールの分岐率と本床の値は直接比較できない。
   - fail-open のため、想定外の経路でレポートが出なくなれば床は緑のまま失効しうる。既知の 2 経路は
     テストで固定したが、網羅ではない。warn の本文を読む運用が要る。
   - 床の値を書いた箇所が複数ある（`src/coverage-floor.json` / `docs/tests/TEST_STRATEGY.md` /
     `docs/DEFINITION_OF_DONE.md` / 本 IADR）。**値の正は `src/coverage-floor.json`**（機械が読む単一
     情報源）であり、文書側は引き上げのたびに追随が要る。
 - フォローアップ:
-  1. [#468](https://github.com/endazon/microservices-platform/issues/468) で合成点経由の混入を除去し、
-     実レポートで確定値を測り直す。除去後の実測が現在の床を上回ることは確認済みのため、床の値の
-     見直しは #468 の結果を見てから行う。
+  1. ~~[#468](https://github.com/endazon/microservices-platform/issues/468) で合成点経由の混入を除去し、
+     実レポートで確定値を測り直す。床を置き直す。~~ **完了**（#468 /
+     [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md)。CI run 1144 の実測
+     `line 34.14%` / `branch 17.26%` の切り下げが現在値と同値のため、床は据え置きで根拠のみ差し替えた。
+     決定 2 の［2026-08-04 追記］を参照）。**次に床を引き上げる際は余裕の薄さ（line +0.14pt /
+     branch +0.26pt）を踏まえること。**
   2. 各ドメイン issue（#438〜#451）がテストを追加したら **床を引き上げる**（ratchet）。
   3. [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 の受け入れゲートに
      本床の具体値を記載した（#474 で追記済み）。床を引き上げた際は同規約の記載も追随させる。

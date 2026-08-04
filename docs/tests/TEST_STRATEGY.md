@@ -63,7 +63,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | --- | --- | --- | --- |
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。ただし**合成点経由の微小な混入あり**——後述「既知の限界: 合成点テスト経由の混入」参照・[#468](https://github.com/endazon/microservices-platform/issues/468)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -89,32 +89,77 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 
-#### 既知の限界: 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468)）
+#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で解消。CI 実測で成立確認済み）
 
-除外は **Cobertura レポートファイルのパス**が `src/ai-stock-trading/` 配下かどうかで判定する。ところが
 `Platform.Bff` は BFF の合成点として
 [`AiStockTrading.Bff.Endpoints`](../../src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj) を
 `ProjectReference` しており、`Platform.Bff.Tests` はそれをプロセス内で読み込んで実行する。その結果
-**`src/platform/` 配下にあるレポートの中身に AST のクラス・行が含まれる**。
+**`src/platform/` 配下にあるレポートの中身に AST のクラス・行が含まれる**。レポートの**ファイルパス**に
+よる除外はここに届かず、AST の submodule pin を更新するだけで床の実測値が動く状態だった
+（混入行はすべて被覆済みのため、実測値を押し上げる方向にしか働かない）。
 
-混入量は **AST 由来 230〜266 行**（いずれもすべて被覆済み）。PR #464 のレビューが Release 構成で 2 度
-計測し、**全プロジェクト実行時は 266 行・`Platform.Bff.Tests` 単体実行時は 230 行**と結果が割れた。
-どちらかを確定値として採らず範囲で記録する（`<method><lines>` と class 直下の `<lines>` に同じ行が
-二重記載される Cobertura の構造上、素朴な `<line>` カウントは計測条件で振れる）。
+[#468](https://github.com/endazon/microservices-platform/issues/468) /
+[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) で
+[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替え、次の 2 点の
+機構を導入した。
 
-除いた場合の推定はいずれの値でも**現在の床 34 を上回る**。
+1. **行の帰属**: 各 `<class filename>` を `src/<unit>/` へ帰属させ、集計対象外ユニット（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)
+   の単一情報源から導出）の行を集計から落とす。`filename` は相対・絶対・`<sources>` との結合の順に
+   多段で解釈する（coverlet は base path で始まらないファイルを絶対パスのまま書くとみられ、片方に決め打つと
+   フィルタが何にもマッチせず「除外したつもりで素通り」になる）。**帰属が 1 件も成立しなければ warn**、
+   帰属できなかったクラス・`<class>` の外にある行は集計に残して可視化する。
+2. **二重記載の排除**: coverlet は同じ行を `<methods>` 配下と class 直下の `<lines>` に二重に書く。集計は
+   **行・分岐とも class 直下の `<lines>` を正**とする（`<methods>` 配下は内訳として数えない）。素朴な
+   `<line>` カウントは**実際の 2 倍を報告する**——PR #464 のレビューが記録した混入量 266 行 / 230 行は、
+   いずれも 2 倍が効いた値である（**266 と 230 の差そのものはスコープ差**＝全プロジェクト実行と
+   `Platform.Bff.Tests` 単体実行の違いであり、二重記載とは別の要因。出典:
+   [`docs/specs/20260803_issue-453_regression-test-foundation.md`](../specs/20260803_issue-453_regression-test-foundation.md)
+   の「既知の限界」節）。
 
-| 混入量 | 除去後の推定 | 床 34 との関係 |
-| --- | --- | --- |
-| 230 行 | `line 34.19%`（18664/54596） | 上回る |
-| 266 行 | `line 34.14%`（18628/54560） | 上回る |
+除外した行数・除外前後の実測値・`filename` の解釈の内訳・除外したクラス名は、**CI ログと実行サマリへ
+毎回出力**する（`COVERAGE_FLOOR_DEBUG=1` でレポート単位の内訳も出る）。あわせて `<coverage>` の
+`lines-valid` / `lines-covered` / `branches-valid` / `branches-covered`（coverlet 自身の集計値）と本実装の
+集計値を並べ、二重記載の扱いが実レポートで妥当かを毎回照合できるようにしている。
+**分岐は定義差のため照合が反証力を持たない**ので、別の観測点として
+**「全 `<line>`（`<methods>` 重複込み）」と「class 直下のみ」の比**（実測は厳密に 2.00）も毎回出す
+——これが崩れれば分岐側の二重記載排除が壊れたことに気付ける（無音の失敗を塞ぐ）。
 
-したがって**床の値は混入の確定を待たずに有効**である。確定値は [#468](https://github.com/endazon/microservices-platform/issues/468) の着手時に実レポートで測り直す。
+##### CI 実測（成立確認）
 
-したがって上表の対象欄「`src/platform/backend/**` ・ `src/knowledge/backend/**`」は、**レポートの
-ファイルパスとしては正確だが、中身は他ユニットのコードを含みうる**。塞ぐには Cobertura の
-`<class>` の `filename` で行を帰属させる必要があり、パーサを class 単位に作り替える設計判断を伴うため
-[#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出した。
+測定条件: CI run 30886437108（run_number **1144**）/ job `build-and-test` / commit `594117a` /
+Release 構成 / レポート **14 件** / submodule populate 済み。**測定条件のない実測値は再現できない**ため、
+本節の数値を引用する際は必ず条件も併記すること。
+
+| 観測点 | 実測 |
+| --- | --- |
+| 帰属 | クラス **2036 件**（そのまま(相対) 645 / そのまま(絶対) 0 / `<sources>` 結合 1391 / **未帰属 0**） |
+| 混入（除外した行） | **6 クラス / 133 行**（すべて被覆済み） / 分岐 50（被覆 41） |
+| 除外したクラス | `AssumptionsBffEndpoints` / `MonitorBffEndpoints` / `RiskControlsBffEndpoints` と各 `<ProxyAsync>d__2` |
+| 除外前 → 除外後 | `line 34.46%（9447/27413）` → **`line 34.14%（9314/27280）`** / `branch 17.62%（1577/8948）` → **`17.26%（1536/8898）`** |
+| coverlet 値との照合（行） | `lines-valid 27413`・`lines-covered 9447` と**完全一致**（＝ class 直下を正とする前提の裏づけ） |
+| coverlet 値との照合（分岐） | `branches-valid 9356` に対し本実装 8948 で**一致しない**（下記「分岐の定義差」） |
+
+旧計数方式で記録していた 2 値はいずれも二重記載の 2 倍で説明がつく——**266 = 133 × 2**（全プロジェクト実行）、
+**230 = 115 × 2**（`Platform.Bff.Tests` 単体実行）。115 行は本 PR のレビューによる独立実測で、測定条件は
+**.NET SDK 10.0.302 / `Platform.Bff.Tests` 単体実行 / commit `594117a` 時点 / ビルド構成はレビューコメントに
+記載が無いため断定しない**。したがって **230 行と CI の全体集計（133 行）はスコープが異なり直接比較できない**
+（旧値としては説明がついている）。
+
+> **分岐の定義差（既知事項・異常ではない）**: 本実装が数える「分岐」は `<line>` の `condition-coverage` の
+> 分母・分子の合算であり、coverlet の `branches-valid` とは**定義が異なる**（後者の算出経路は
+> 一次出典未検証）。**行の乖離だけが「class 直下を正とする」前提の反証になる**ため、診断出力は
+> 行を「**乖離・要調査**」、分岐を「差 n（定義差・期待される乖離）」と書き分ける。
+> なお床 17 は `condition-coverage` 合算方式での実測に基づく——**被覆数を据え置いたまま分母だけ coverlet
+> 基準へ置き換える試算**では除外前 `1577 ÷ 9356 = 16.86%`、床が判定に使う除外後の対でも
+> `1536 ÷ (9356 − 50) = 16.51%` で、いずれも床 17 を下回る（定義を変えれば分子も変わるため、これは
+> 「coverlet 定義での実際の分岐率」ではなく分母差の影響を測る試算である）。よって
+> **分岐の定義変更は床の置き直しとセットでしか行えない**
+> （[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4 の［2026-08-04 追記］）。
+
+> **注**: 上記 2 により集計の**絶対数**（`covered/lines`）の意味が変わった。旧値は新方式の**厳密に 2 倍**
+> だった——`18894 = 9447 × 2` / `54826 = 27413 × 2` / `3154 = 1577 × 2` / `17896 = 8948 × 2`。
+> 全項が 2 倍で揃うことは、二重記載が一律に効いていたこと（＝ class 直下を正とする扱い）の強い裏づけである。
+> 比率はほぼ不変だが、PR #464 の実測値（`18894/54826`）と #468 以降の表示は直接比較できない。
 
 ### 共通する設計原則: ratchet
 
@@ -139,7 +184,17 @@ skip、被覆済みの死コード削除など）だけで「成果物は正し�
 
 バックエンドの初期値は #453 の CI 実行（`8bfe639`）で得た **line 34.46%（18894/54826） /
 branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロジェクト全件）を切り下げた
-`line 34` / `branch 17`。
+`line 34` / `branch 17`。**この実測は [#468](https://github.com/endazon/microservices-platform/issues/468)
+以前のもの**であり、AST の混入を含み、かつ行を二重に数えていた（上記「合成点テスト経由の混入」）。
+
+**現行の根拠は #468 後の CI 実測**（run_number **1144** / commit `594117a` / Release / レポート 14 件 /
+submodule populate 済み）である——**line 34.14%（9314/27280） / branch 17.26%（1536/8898）**。整数への
+切り下げは `line 34` / `branch 17` で**従前と同値**のため、[`src/coverage-floor.json`](../../src/coverage-floor.json)
+の値は据え置き、根拠のみ差し替えた（同ファイルの `$comment` に測定条件つきで記録。値の正は同ファイル）。
+
+> **余裕は薄い**: line は **+0.14pt**、branch は **+0.26pt** しかない。テスト 1 件の skip や被覆済みコードの
+> 削除で床を割りうる幅である。ratchet で床を引き上げる際は、この薄さを踏まえて「成果物は正しいのに赤」に
+> ならない幅を確認してから上げること。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
 > [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（フロントは
