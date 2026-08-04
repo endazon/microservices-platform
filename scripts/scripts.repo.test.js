@@ -886,6 +886,34 @@ module.exports = ({ ok, assert }) => {
     const drift = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
       report('lines-valid="9" lines-covered="9" branches-valid="2" branches-covered="1"'))])).join('\n');
     assert.ok(drift.includes('**乖離 -8・要調査**'), drift);
+
+    // branches-covered も出す（coverlet 側の実際の値が CI ログから読めること）。
+    assert.ok(same.includes('branches-covered 1（本実装 1・一致）'), same);
+
+    // 床の値は src/coverage-floor.json が単一情報源（IADR-0118 決定 1）。診断へ数値を焼き込むと
+    // ratchet で床を上げた瞬間に同じログの中で自己矛盾する。引数の floor を反映すること。
+    const withFloor = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))]), { branch: 18 }).join('\n');
+    assert.ok(withFloor.includes('床 18 はこの方式'), withFloor);
+    assert.ok(!withFloor.includes('床 17'), `床の値をハードコードしている:\n${withFloor}`);
+
+    // 分岐が一致していれば注記は出さない（恒常的なノイズにしない）。
+    const branchSame = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="2" branches-covered="1"'))])).join('\n');
+    assert.ok(!branchSame.includes('※ 分岐は'), branchSame);
+  });
+
+  // NFR（#468 / IADR-0123 決定 5）: 分岐は定義差のため coverlet 値との照合が反証力を持たない。
+  // 分岐側の二重記載排除が壊れても値が増えるだけで CI ログには何も現れない（無音の失敗）。
+  // 「全 <line>（<methods> 重複込み）」と「class 直下のみ」の比を観測点として出すことを固定する。
+  ok('formatDiagnostics: 二重記載の観測（全 <line> と class 直下の比）を出す', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Bff.X', 'src/platform/backend/X.cs', [[1, 1], [2, 0]]),
+    ]);
+    const text = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(xml)])).join('\n');
+    assert.ok(text.includes('全 <line>（<methods> 重複込み）= 行 4'), text);
+    assert.ok(text.includes('class 直下のみ（除外前の集計）= 行 2'), text);
+    assert.ok(text.includes('比 行 2.00'), text);
   });
 
   ok('check-coverage-floor --self-test は exit 0（帰属・二重記載・warn 経路を含む）', () => {

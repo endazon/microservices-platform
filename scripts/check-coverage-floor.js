@@ -26,11 +26,14 @@
  *   入り込む他ユニットの行に届かない。
  *
  *   **二重記載の扱い**（IADR-0123 決定 3）: coverlet の Cobertura は同じ行を <methods> 配下と
- *   class 直下の <lines> の両方に書く。集計は **class 直下の <lines> を正**とし、<methods> 配下は
- *   内訳として数えない。両方数えるとメソッドを持つ行だけが 2 票を持ち、メソッド外の行との重みが崩れる
- *   （素朴な <line> カウントが計測条件で振れる原因でもある。PR #464 のレビューで 266 行 / 230 行と
- *   実測が割れた）。前提が実レポートで正しいかは、<coverage> の lines-valid / lines-covered
- *   （coverlet 自身の集計値）との照合として毎回診断へ出す（IADR-0123 決定 4）。
+ *   class 直下の <lines> の両方に書く。集計は **行・分岐とも class 直下の <lines> を正**とし、
+ *   <methods> 配下は内訳として数えない。両方数えるとメソッドを持つ行だけが 2 票を持ち、メソッド外の
+ *   行との重みが崩れる（旧方式が混入量を一律 2 倍に見せていた原因でもある。PR #464 のレビューが
+ *   記録した 266 行 / 230 行は、いずれも二重記載で 2 倍になった値であり、266 と 230 の差は
+ *   スコープ差〔全プロジェクト実行 / Platform.Bff.Tests 単体実行〕である）。前提が実レポートで
+ *   正しいかは、<coverage> の lines-valid / lines-covered（coverlet 自身の集計値）との照合として
+ *   毎回診断へ出す（IADR-0123 決定 4）。分岐は定義が異なり照合が反証力を持たないため、
+ *   「全 <line> と class 直下の比」を別の観測点として出す（同 決定 5）。
  *
  * 使い方:
  *   node scripts/check-coverage-floor.js                 # 既定の探索パスから集計し床と比較
@@ -385,6 +388,8 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
       fallbackClasses,
       emptyClasses,
       orphan,
+      // 全 <line>（<methods> 配下の重複込み）。二重記載の排除が効いているかの観測点（決定 5）。
+      raw: countLines(text),
       reported: parseReportedTotals(text),
       filenameSamples,
       unattributedSamples,
@@ -416,6 +421,7 @@ function aggregateReports(parsedList) {
   const how = { relative: 0, absolute: 0, 'source-joined': 0, unattributed: 0 };
   const unitTotals = {};
   const orphan = zeroTotals();
+  const raw = zeroTotals();
   const reported = zeroTotals();
   const sources = new Set();
   const filenameSamples = [];
@@ -435,6 +441,7 @@ function aggregateReports(parsedList) {
       addTotals(unitTotals[unit], t);
     }
     addTotals(orphan, d.orphan);
+    addTotals(raw, d.raw);
     if (d.reported) {
       reportsWithReported++;
       addTotals(reported, {
@@ -465,6 +472,7 @@ function aggregateReports(parsedList) {
       how,
       unitTotals,
       orphan,
+      raw,
       reported: reportsWithReported ? reported : null,
       reportsWithReported,
       reportCount: parsedList.length,
@@ -571,8 +579,9 @@ const MAX_LISTED_CLASSES = 20;
 /**
  * 既定で出す診断（数行）。CI ログから「混入行数」「除外前後の実測値」「filename の解釈」を
  * そのまま読み取れることを狙う（ci.yml にフラグを足さずに済ませるため。IADR-0123 決定 6）。
+ * floor は表示にのみ使う（床の値の単一情報源は src/coverage-floor.json。ここへ数値を書かない）。
  */
-function formatDiagnostics(agg) {
+function formatDiagnostics(agg, floor = {}) {
   const d = agg.diagnostics;
   const out = [];
   const units = [...EXCLUDED_UNITS].join(', ') || '（なし）';
@@ -607,13 +616,38 @@ function formatDiagnostics(agg) {
     //            **一致を期待しない**。同列に「乖離」と出すと、期待される差が異常に見える。
     const agreeLine = (a, b) => (a === b ? '一致' : `**乖離 ${b - a}・要調査**`);
     const agreeBranch = (a, b) => (a === b ? '一致' : `差 ${b - a}（定義差・期待される乖離）`);
+    const branchDiffers = d.reported.branches !== mine.branches || d.reported.coveredBranches !== mine.coveredBranches;
+    // 床の値は src/coverage-floor.json が単一情報源（IADR-0118 決定 1）。ここに数値を書くと
+    // ratchet で床を上げた瞬間に同じログの中で自己矛盾する。
+    const branchFloor = floor && floor.branch != null ? `床 ${floor.branch}` : '床（src/coverage-floor.json の branch）';
     out.push(
       `coverlet 自身の集計値との照合（IADR-0123 決定 4。除外前で比較・${d.reportsWithReported}/${d.reportCount} レポート）: ` +
         `lines-valid ${d.reported.lines}（本実装 ${mine.lines}・${agreeLine(d.reported.lines, mine.lines)}） / ` +
         `lines-covered ${d.reported.covered}（本実装 ${mine.covered}・${agreeLine(d.reported.covered, mine.covered)}） / ` +
-        `branches-valid ${d.reported.branches}（本実装 ${mine.branches}・${agreeBranch(d.reported.branches, mine.branches)}）` +
-        '。※ 分岐は定義が異なるため一致を期待しない（本実装は condition-coverage の合算。床 17 はこの方式での' +
-        '実測に基づくため、定義の変更は床の置き直しとセットでしか行えない）。行の乖離のみ決定 3 の反証になる。',
+        `branches-valid ${d.reported.branches}（本実装 ${mine.branches}・${agreeBranch(d.reported.branches, mine.branches)}） / ` +
+        `branches-covered ${d.reported.coveredBranches}（本実装 ${mine.coveredBranches}・${agreeBranch(d.reported.coveredBranches, mine.coveredBranches)}）` +
+        (branchDiffers
+          ? '。※ 分岐は定義が異なるため一致を期待しない（本実装は condition-coverage の合算。' +
+            `${branchFloor} はこの方式での実測に基づくため、定義の変更は床の置き直しとセットでしか行えない）。` +
+            '行の乖離のみ決定 3 の反証になる。'
+          : ''),
+    );
+  }
+
+  // NFR（#468 / IADR-0123 決定 5）: 分岐側の観測点。行は lines-valid との一致が決定 3 の裏づけになるが、
+  // 分岐は定義差のため照合が反証力を持たない。二重記載の排除が分岐で壊れても値が増えるだけで
+  // CI ログには何も現れない（無音の失敗）。そこで「全 <line>（<methods> 重複込み）」と
+  // 「class 直下のみ（＝集計値）」の比を出し、実測の 2 倍関係が崩れたら目視で分かるようにする。
+  // 注: raw は class 外の <line> も含む（正常な coverlet 出力では 0 行。上の「ユニット別の行数」で可視化）。
+  {
+    const mine = agg.beforeExclusion;
+    const ratio = (raw, direct) => (direct ? (raw / direct).toFixed(2) : '—');
+    out.push(
+      '二重記載の観測（IADR-0123 決定 3・決定 5）: 全 <line>（<methods> 重複込み）= ' +
+        `行 ${d.raw.lines} / 分岐分母 ${d.raw.branches}（被覆 ${d.raw.coveredBranches}）。` +
+        `class 直下のみ（除外前の集計）= 行 ${mine.lines} / 分岐分母 ${mine.branches}（被覆 ${mine.coveredBranches}）。` +
+        `比 行 ${ratio(d.raw.lines, mine.lines)} / 分岐 ${ratio(d.raw.branches, mine.branches)}` +
+        '（実測は厳密に 2.0。崩れたら二重記載の扱いが壊れた可能性がある）',
     );
   }
 
@@ -858,10 +892,41 @@ function selfTest() {
       same.includes('lines-valid 1（本実装 1・一致）')
         && same.includes('branches-valid 4（本実装 2・差 -2（定義差・期待される乖離）')
         && !same.includes('**乖離'), same);
+    t('formatDiagnostics: branches-covered も照合に出す（coverlet 側の値をログから読めること）',
+      same.includes('branches-covered 1（本実装 1・一致）'), same);
+    // 床の値は src/coverage-floor.json が単一情報源。診断は渡された床を表示し、数値を持たない。
+    t('formatDiagnostics: 注記の床は引数の floor を反映する（ハードコードしない）',
+      formatDiagnostics(aggregateReports([parseCobertura(
+        cls('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))]), { branch: 18 })
+        .join('\n').includes('床 18 はこの方式')
+        && same.includes('床（src/coverage-floor.json の branch） はこの方式'), same);
+    // 分岐が一致する（＝注記が不要な）ときはノイズを出さない。
+    const branchSame = formatDiagnostics(aggregateReports([parseCobertura(
+      cls('lines-valid="1" lines-covered="1" branches-valid="2" branches-covered="1"'))])).join('\n');
+    t('formatDiagnostics: 分岐が一致していれば「※ 分岐は…」の注記を出さない',
+      branchSame.includes('branches-valid 2（本実装 2・一致）') && !branchSame.includes('※ 分岐は'), branchSame);
     const drift = formatDiagnostics(aggregateReports([parseCobertura(
       cls('lines-valid="9" lines-covered="9" branches-valid="2" branches-covered="1"'))])).join('\n');
     t('formatDiagnostics: 行の乖離は要調査として目立たせる（決定 3 の前提の破れ）',
       drift.includes('**乖離 -8・要調査**'), drift);
+  }
+
+  {
+    // 分岐側の観測点（決定 5）: 全 <line>（<methods> 重複込み）と class 直下のみの比。
+    // 分岐の二重記載排除が壊れても照合（定義差）では気付けないため、比を出して目視できるようにする。
+    const xml = '<coverage><packages><package><classes>' +
+      '<class name="X" filename="src/platform/backend/X.cs">' +
+      '<methods><method name="M"><lines>' +
+      '<line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" />' +
+      '<line number="2" hits="1" /></lines></method></methods>' +
+      '<lines><line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" />' +
+      '<line number="2" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const text = formatDiagnostics(aggregateReports([parseCobertura(xml)])).join('\n');
+    t('formatDiagnostics: 二重記載の観測（全 <line> と class 直下の比）を出す',
+      text.includes('全 <line>（<methods> 重複込み）= 行 4 / 分岐分母 4（被覆 2）')
+        && text.includes('class 直下のみ（除外前の集計）= 行 2 / 分岐分母 2（被覆 1）')
+        && text.includes('比 行 2.00 / 分岐 2.00'), text);
   }
 
   t('parseSources: <source> を読み、空要素は落とす',
@@ -927,7 +992,7 @@ function main() {
 
   // NFR（#468 / IADR-0123 決定 6）: 診断は既定で出す。ci.yml にフラグを足さずに、CI ログから
   // 「混入行数」「除外前後の実測値」「filename の解釈」を読み取れるようにするためである。
-  for (const d of formatDiagnostics(agg)) console.log(`[check-coverage-floor] ${d}`);
+  for (const d of formatDiagnostics(agg, floor)) console.log(`[check-coverage-floor] ${d}`);
   if (debug) {
     console.log('[check-coverage-floor] レポート単位の内訳（COVERAGE_FLOOR_DEBUG=1）:');
     reports.forEach((r, i) => console.log(formatReportDiagnostics(r, parsed[i])));
