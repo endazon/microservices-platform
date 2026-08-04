@@ -32,10 +32,18 @@ related_specs:
 - 機能要求（FR）: なし（NFR: 保守性 — 依存バージョンの単一情報源を機械で守る）
 - ユースケース（UC）/ 画面（SC）: なし
 - **本作業が機械化する規約の典拠は [`CLAUDE.md`](../../CLAUDE.md)**（「技術スタック別ルール / C# / .NET」の
-  「パッケージ」項）**であり、計画 ADR ではない**。計画リポジトリには CPM（Central Package Management）/
+  「パッケージ」項）**であり、計画 ADR ではない**。本プロジェクト（MSP）の計画コーパス
+  `planning/projects/microservices-platform/` には CPM（Central Package Management）/
   `Directory.Packages.props` に関する決定が**存在しない**（`CPM` / `Central Package` /
-  `Directory.Packages` の言及が全体で 0 件であることをクロス監査が grep で実証した）。
-  検査器の失敗メッセージ・本書のいずれも、典拠として計画 ADR を挙げない。
+  `Directory.Packages` の言及が **0 件**）。検査器の失敗メッセージ・本書のいずれも、典拠として
+  計画 ADR を挙げない。
+  - **測定条件**: planning submodule を **populate した環境**での grep 実測（PR #488 の AI レビュー）。
+    未 populate の環境では planning 配下を 1 件も読めないため、この確認は再現できない
+    （submodule の populate 状態で結果が変わる検査の扱いは #484 / #486 で確立した教訓）。
+  - `planning/` **配下全体**では 2 件ヒットする——`projects/ai-stock-trading/06_technical/01_architecture-overview.md`
+    と `tools/impl-handoff-kit/repo-template/.github/workflows/security.yml` である。前者は
+    **別プロジェクト（AST）の計画書**、後者は**キットの雛形の文言**であり、いずれも MSP の計画制約では
+    ないため、「MSP の計画 ADR は CPM を決めていない」という本筋は変わらない。
 - 関連 ADR:
   - `ADR-0030`（バックエンドアプリケーション層のライブラリ標準。Accepted）と棚卸し表
     `06_technical/12_backend-application-stack.md` は**隣接する制約**である。同 ADR が決めるのは
@@ -314,7 +322,7 @@ submodule は取得しない（対象は `platform` / `knowledge` / `templates` 
 
 - **CPM 規約を計画側の制約へ昇格させるか**。現在、CPM の採用と「版は
   `src/Directory.Packages.props` に集約する」は [`CLAUDE.md`](../../CLAUDE.md) だけが典拠であり、
-  計画リポジトリには対応する決定が無い（上記「起点となる計画書」の実証を参照）。本検査器は
+  **MSP の計画コーパス**には対応する決定が無い（上記「起点となる計画書」の実測と測定条件を参照）。本検査器は
   実装側の規約を機械化したものであり、この非対称は現時点で不整合ではない。
   ただし、CPM は「1 パッケージ 1 バージョン」という**サービス横断の制約**（xUnit v3 への移行が
   全テストプロジェクト同時になる、といった形で現に効いている）であるため、計画 ADR へ昇格させる
