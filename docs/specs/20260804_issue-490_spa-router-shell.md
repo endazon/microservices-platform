@@ -294,7 +294,7 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.
 | コマンド | 結果 | 意味 |
 | --- | --- | --- |
 | `grep -rnE "from '(react-router\|react-router-dom)'" src/platform src/knowledge` | **0 件** | 旧ルータの import が無い（**これが判定**） |
-| `grep -rn "react-router-dom" src/platform src/knowledge` | **2 件** | いずれも `featureRegistry.ts` の**説明コメント**（旧契約の由来） |
+| `grep -rn "react-router-dom" src/platform src/knowledge` | **3 件** | いずれも**説明コメント**（`App.tsx` の移行注記 1 件・`featureRegistry.ts` の旧契約の由来 2 件） |
 | `grep -rn "react-router" src/platform src/knowledge` | 38 件 | **判定に使えない**。`@tanstack/react-router`（新ルータ）の import と説明コメントに当たる |
 
 `package.json` の依存からも削除した（platform / knowledge の両方）。
