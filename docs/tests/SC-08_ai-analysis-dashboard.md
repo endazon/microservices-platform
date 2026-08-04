@@ -23,6 +23,9 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
+> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+
+
 - 機能要求（FR）: FR-07 / FR-05
 - ユースケース（UC）: UC-02
 - 受け入れ基準の所在: Issue #134 ／ `docs/specs/20260708_issue-134_sc08-ai-analysis-dashboard.md`
@@ -51,7 +54,7 @@ related_specs:
 | T-04 | 権限外→空回答 | 200(answer=''，citations=[]) | 「該当する情報が見つかりませんでした。」中立表示 | 存在秘匿 | 自動(単体) |
 | T-05 | instruction 空 | 実行ボタン | 無効（送信されない） | 入力規則 | 自動(単体) |
 | T-06 | サーバエラー | 実行で 500 | `role="alert"` 実行失敗表示 | 異常系 | 自動(単体) |
-| T-07 | 未認証 | `/analysis` を開く | `/login` へ誘導 | ルート登録・認証ガード | 自動(E2E) |
+| T-07 | 未認証 | `/analyze` を開く | `/login` へ誘導 | ルート登録・認証ガード | 自動(E2E) |
 | T-08 | 権限外（403/404） | 実行で 403 or 404 | 中立「該当する情報が見つかりませんでした。」（alert にしない） | 存在秘匿 | 自動(単体) |
 | T-09 | topK に `0` | `0` 入力→実行 | 送信 body の `range.topK` が `1`（既定 8 へ戻さない） | 入力規則 | 自動(単体) |
 

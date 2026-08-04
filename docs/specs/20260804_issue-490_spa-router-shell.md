@@ -14,6 +14,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 related_specs:
   - ./20260804_issue-446_spa-foundation-stack-migration.md
+  - "../../feedback/20260804_frontend-migration-staging-interpretation.md"
   - ./20260802_issue-454_reimplementation-kickoff.md
   - ../adr/IADR-0124_tanstack-router-unit-composition.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
@@ -66,8 +67,15 @@ PR #489 でマージ済みである。第 1 段は**ルーティングと画面�
 
 1. **ルータの差し替え**: `react-router-dom` 6 → **TanStack Router**。`platform/frontend` と
    `knowledge/frontend` の双方から `react-router-dom` を依存ごと撤去する。
-2. **ユニット合成点の契約変更**: 実行時 `RouteObject[]` 連結をやめ、**型付きルート木**へ移す
+2. **ユニット合成点の契約変更**: **本リポジトリが所有するユニット（`@knowledge`）については**
+   実行時 `RouteObject[]` 連結をやめ、**型付きルート木（タプル）**へ移す
    （設計は [IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md)）。
+   **ただし実行時連結が完全に無くなるわけではない**——本リポジトリから変更できない
+   `src/ai-stock-trading`（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）のために、
+   旧契約を TanStack のルートへ実行時変換して接ぎ木する**互換ブリッジが 1 経路だけ残る**
+   （[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md) 決定 2。
+   AST が新契約へ移れば削除できる）。issue #490 の「実行時 `RouteObject[]` 連結の合成点は廃止」は、
+   **MSP 所有ユニットについては達成し、AST 互換ブリッジのみ残る**という状態である。
 3. **共通シェル**: 左ナビの 4 グループ化・ブランド表示名・**ユーザーアイコン → SC-16**・**通知**。
 4. **旧画面のルート載せ替え**: SC-01〜SC-11 のルート定義・検索パラメータ・遷移・ガードを新方式で書き直し、
    ルートパスを [01_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)
@@ -91,7 +99,8 @@ PR #489 でマージ済みである。第 1 段は**ルーティングと画面�
 
 - `knowledge/frontend/src/features/home/`（`HomePage`）は**削除する**。計画の画面一覧（SC-01〜21）に
   home に相当する画面は存在せず、SC-01 が「本システムの主入口」と定義されている。ルート `/` は
-  **SC-01（`/ask`）へリダイレクト**する。
+  **SC-01（`/ask`）へリダイレクト**し、その定義は **platform 側**（`foundation/routing/shell.tsx`）が持つ
+  ——可変ユニットに置くと、そのユニットを外したときに `/` そのものが消えるためである。
 - SC-01〜SC-11 の Page コンポーネント（実装 2792 行）は**残す**。ルーティングに関わる部分
   （`Link` / `useSearchParams` / `useParams`）のみ新方式へ書き換える。
 
@@ -137,12 +146,15 @@ platform/frontend/src/
 └── foundation/
     ├── routing/
     │   ├── shell.tsx               rootRoute / loginRoute / callbackRoute / shellRoute（認証済みシェル）
+    │   │                            ＋ homeRedirectRoute（`/` → SC-01）／catchAllRoute（未知パス）
     │   ├── featureRegistry.ts      ユニット契約（型付き factory ＋ ナビ宣言 ＋ 旧契約ブリッジ）
     │   ├── router.tsx              ルート木の組み立て・createRouter・Register 型登録
     │   └── nav.ts                  ナビ項目の集約（グループ順・ロール絞り込みは Layout）
-    └── ui/
-        ├── Layout.tsx              共通シェル（ブランド・4 グループナビ・ユーザーアイコン→SC-16・通知領域）
-        └── notifications.tsx       通知（sonner。アイコン＋テキストラベルを型で強制）
+    ├── ui/
+    │   ├── Layout.tsx              共通シェル（ブランド・4 グループナビ・ユーザーアイコン→SC-16・通知領域）
+    │   └── notifications.tsx       通知（sonner。アイコン＋テキストラベルを型で強制）
+    └── testing/
+        └── renderUnitRoute.tsx     ユニット画面テスト用ハーネス（カバレッジ母数から除外）
 
 knowledge/frontend/src/features/
 ├── index.ts                        createKnowledgeRoutes(shell)（タプル）＋ knowledgeNavItems
@@ -160,6 +172,12 @@ knowledge/frontend/src/features/
 - 型登録は `declare module '@tanstack/router-core'`（`@tanstack/react-router` ではない。IADR-0124 決定 4）。
 - 画面側は `useSearch({ from: '/_shell/search' })` / `useParams({ from: '/_shell/docs/$id' })` を使う
   （`Route.useSearch()` は循環参照のため `any` になる。IADR-0124 決定 3）。
+- **`/`（ルート直下）と未知パスの受け皿は platform が持つ**（可変ユニットではない。IADR-0124 決定 6・8）。
+  - `homeRedirectRoute`: `/` → `ENTRY_ROUTE_PATH`（`/ask` = SC-01。計画が「本システムの主入口」と定義）。
+    ユニット側に置くと、そのユニットを外したときに `/` そのものが消える。
+  - `catchAllRoute`: `path: '$'` を**共通シェル配下**に置く。`rootRoute` の `notFoundComponent` だけでは
+    未知パスがシェルの外に出て、権限による秘匿（シェルの中）と描画が割れる——「シェルが出るかどうか」で
+    資源の存在を推測できてしまい存在秘匿（IADR-0009）に反する。移行前の catch-all と同じ配置である。
 
 ### 2. ルートパス（計画書 §共通シェル に合わせる）
 
@@ -209,15 +227,20 @@ platform 側で TanStack のルートへ**実行時に変換して**木へ足す
 issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開する。
 
 - [x] **`react-router-dom` が依存から消える**: `src/platform/frontend/package.json` と
-      `src/knowledge/frontend/package.json` から削除され、`grep -rn "react-router" src/platform src/knowledge`
-      が 0 件（AST は対象外＝本リポから変更できない別プロジェクト）
+      `src/knowledge/frontend/package.json` から削除され、
+      `grep -rnE "from '(react-router\|react-router-dom)'" src/platform src/knowledge` が 0 件
+      （AST は対象外＝本リポから変更できない別プロジェクト）。
+      **`grep -rn "react-router" …` は判定に使えない**——`@tanstack/react-router` の import と
+      説明コメントに当たるため 0 件にならない（実測 38 件。同じ罠を lint 規則でも踏んだ。
+      [IADR-0124 §実測](../adr/IADR-0124_tanstack-router-unit-composition.md#no-restricted-imports-の照合方式機械強制の落とし穴)）
 - [x] **ルート定義が型安全**: 存在しないルート ID・存在しないパスへの `Link`・検索パラメータの
       型不一致が `tsc` で落ちることを、違反サンプルで実測して本書に記録する
 - [x] **11 画面が新ルータで動作する**: 既存の画面テスト（SC-01〜SC-11）が新ルータで green、
       ルートパスが計画書 §共通シェル の値へ是正されている
 - [x] **E2E スモークが新ルータで通る**（もしくは実走不能の理由と CI へ委ねる根拠を本書に記録する）
-- [x] **カバレッジ床の引き下げなし**: `src/vitest.config.ts` の `thresholds`（lines/statements 83 /
+- [x] **カバレッジ床の引き下げなし**: `src/vitest.config.ts` の `thresholds`（移行前は lines/statements 83 /
       functions 75 / branches 74）を下げない。実測値を測定条件つきで本書に記録する
+      （結果: ratchet として **85 / 78 / 76** へ引き上げた）
 - [x] 共通シェルが 4 グループナビ・ブランド表示名・ユーザーアイコン → SC-16・通知を備える
 - [x] AST（submodule）の typecheck / lint / テストが**無改修で**通る
 - [x] `pnpm run lint` / `typecheck` / `test:coverage` / `build` が green
@@ -227,8 +250,13 @@ issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開す
 ## テスト方針
 
 - **ルート木（新規）**: `router.test.ts` で (1) 計画書のルートパスが全て木に存在すること、
-  (2) 全ナビ項目の `to` が木に解決すること、(3) 旧契約ブリッジ経由の AST ルートが木に載ること を固定する。
+  (2) 全ナビ項目の `to` が木に解決すること、(3) 旧契約ブリッジ経由の AST ルートが木に載ること、
+  (4) `/` が実際に SC-01 へリダイレクトすること（**ナビゲートさせて `beforeLoad` を通す**。
+  `buildLocation` では通らず「redirect が壊れても緑」になる）、(5) catch-all が実在ルートを
+  横取りしないこと を固定する。
   (2) は `<Link to>` の静的検査がナビ（データ駆動）には効かない穴を埋めるためである（IADR-0124 決定 5）。
+- **存在秘匿の描画一致（新規）**: `Layout.test.tsx` で「未知パス」と「権限外パス（SC-11）」の
+  `NotFound` の markup が**一致する**ことを固定する（IADR-0124 決定 8）。
 - **共通シェル**: ロール別のナビ表示（存在秘匿）の既存観点を維持しつつ、グループ見出し・
   ユーザーアイコンの遷移先（SC-16）を追加で固定する。
 - **通知**: 4 種すべてが**テキストのラベルを伴う**ことを固定する（色だけに依存していないことの機械検査）。
@@ -249,18 +277,30 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（0 errors / 5 warnings。warning は `react-refresh/only-export-components` のみ） |
-| 単体テスト | `pnpm run test` | **37 files / 265 tests** 全 green（移行前は 35 files / 227 tests） |
+| 単体テスト | `pnpm run test` | **37 files / 275 tests** 全 green（移行前は 35 files / 227 tests） |
 | カバレッジ | `pnpm run test:coverage` | 後述 |
-| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 537.45 kB / gzip 157.99 kB） |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 537.53 kB / gzip 158.03 kB） |
 | E2E | `playwright test`（後述の条件） | **6 tests 全 green** |
-| ドキュメントリンク | `node scripts/check-doc-links.js` | green（407 件） |
+| ドキュメントリンク | `node scripts/check-doc-links.js` | green（408 件） |
+| ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green（違反なし） |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件が全て写像済み） |
 | コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green |
 | スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green |
 
 ### `react-router-dom` の撤去（受け入れ観点 1）
 
-`grep -rn "react-router" src/platform src/knowledge` = **0 件**。
+判定コマンドと実測（本 PR の HEAD で実走）:
+
+| コマンド | 結果 | 意味 |
+| --- | --- | --- |
+| `grep -rnE "from '(react-router\|react-router-dom)'" src/platform src/knowledge` | **0 件** | 旧ルータの import が無い（**これが判定**） |
+| `grep -rn "react-router-dom" src/platform src/knowledge` | **2 件** | いずれも `featureRegistry.ts` の**説明コメント**（旧契約の由来） |
+| `grep -rn "react-router" src/platform src/knowledge` | 38 件 | **判定に使えない**。`@tanstack/react-router`（新ルータ）の import と説明コメントに当たる |
+
 `package.json` の依存からも削除した（platform / knowledge の両方）。
+3 行目の罠は lint 規則でも踏んでおり（`patterns` の matchBase が `@tanstack/react-router` に当たる）、
+[IADR-0124 §実測](../adr/IADR-0124_tanstack-router-unit-composition.md#no-restricted-imports-の照合方式機械強制の落とし穴)
+に記録した。
 
 **AST（`src/ai-stock-trading`）には残る**——別プロジェクトの submodule であり本リポジトリから
 変更できない（IADR-0120）。AST は自分の `package.json` で `react-router-dom` を宣言しており、
@@ -304,12 +344,12 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.
 
 | | 移行前（`be3c71c`） | 本 PR | 床（本 PR で引き上げ） |
 | --- | --- | --- | --- |
-| 全ユニット横断 lines/statements | 91.46% | **93.00%** | 83 → **85** |
-| 全ユニット横断 branches | 82.33% | **83.50%** | 74 → **76** |
-| 全ユニット横断 functions | 83.58% | **84.54%** | 75 → **77** |
-| MSP 所有分 lines/statements | 88.07% | **90.56%** | （床の導出基準） |
-| MSP 所有分 branches | 80.00% | **81.91%** | 同上 |
-| MSP 所有分 functions | 80.76% | **82.94%** | 同上 |
+| 全ユニット横断 lines/statements | 91.46% | **93.16%** | 83 → **85** |
+| 全ユニット横断 branches | 82.33% | **83.28%** | 74 → **76** |
+| 全ユニット横断 functions | 83.58% | **85.17%** | 75 → **78** |
+| MSP 所有分 lines/statements | 88.07% | **90.80%** | （床の導出基準） |
+| MSP 所有分 branches | 80.00% | **81.60%** | 同上 |
+| MSP 所有分 functions | 80.76% | **83.89%** | 同上 |
 
 **引き下げはしていない。** `src/vitest.config.ts` の既存の導出規則（MSP 所有分の実測から 5pt 下・
 切り捨て）をそのまま適用して引き上げた（ratchet。IADR-0034 / IADR-0118）。
@@ -317,6 +357,15 @@ MSP 所有分は lcov から AST のファイルを除いて再集計した値�
 
 計測対象から `platform/frontend/src/foundation/testing/**`（画面テスト用ハーネス）を除外した。
 `src/test/**` と同じ理由——足場を母数に入れると「テストを足すほど床が上がる」見かけの改善が起きる。
+**この除外が床を甘くしていないことを実測で確認した。** 除外**しない**場合の MSP 所有分は
+lines 90.93% / branches 81.76% / functions 83.49% であり、同じ導出規則（−5pt・切り捨て）から出る床は
+**3 指標とも同値（85 / 76 / 78）**である。すなわちこの除外は床の水準を動かしていない。
+
+**記録**: `notify`（通知 API）は共通シェルの基盤として先行整備したものであり、**本番の呼び出し元は
+現時点で 0 件**（参照は `notifications.test.tsx` のみ）。画面から通知を出すのは #452 以降である。
+したがって床の引き上げ分の一部は「まだ利用者のいないモジュールの専用テスト」に由来する。
+先行整備自体は #490 のスコープ（共通シェルの通知）に含まれるが、被覆率の読み方としては
+この点を差し引いて読む必要がある。
 
 ### AST（別プロジェクト）への影響（実測）
 
@@ -334,16 +383,61 @@ MSP 所有分は lcov から AST のファイルを除いて再集計した値�
 | 事項 | 計画・issue の記載 | 実装 | 根拠 |
 | --- | --- | --- | --- |
 | ルート定義の方式 | issue #490「**ファイルベース定義**で確立」 | **コードベースの型付きルート木** | ADR-0031 §理由 が挙げる採用根拠は「ルート・検索パラメータまで型安全にできる」ことであり、ファイルベースはその手段の例示である。ファイルベースは IADR-0056 決定 3・4（platform → 可変ユニット禁止／合成点 1 ファイル）を壊す。型安全は実測で同等（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md) 論点 A） |
-| 旧 13 画面 | 13_frontend-stack「旧画面は**完全に削除する**」 | `home` を削除し、SC-01〜11 は**ルート定義を書き直して Page は残した** | 計画の画面一覧（SC-01〜21）に home に相当する画面が無いため home は削除。SC-01〜11 は計画に存在する画面であり、その**内容**の計画準拠は #452 の担当（§#452 との分担）。「完全に削除する」は旧**スタック**の残置を禁じるものと読み、react-router-dom の完全撤去で満たす |
+| 旧 13 画面 | 13_frontend-stack「旧画面は**完全に削除する**」（主語は**画面**である） | `home` のみ削除。SC-01〜11 は**ルート定義を書き直し、Page は残した**（＝本 PR 単独では未達） | **削除・再実装は同一段内の #452 に割り当てられている**。[feedback/20260804](../../feedback/20260804_frontend-migration-staging-interpretation.md) §完了条件（status: accepted）は「`react-router-dom` がワークスペースから消えている（第 2 段）」と「旧 13 画面が削除され再実装されている（第 2 段 / **#452**）」を**別条件として並置**しており、[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 1 も第 2 段を #452 と同一段に置いている。したがって本 PR での Page 残置は**放棄ではなく繰り延べ**であり、#452 が SC-01〜11 の Page を作り直した時点で条件が満たされる。`home` は計画の画面一覧（SC-01〜21）に対応画面が無いため本 PR で削除した |
 | 第 2 段の範囲 | #446 仕様書の第 2 段表は Lingui・Storybook・shadcn/ui 本移植も含む | 含めない | issue #490 §スコープ が 4 項目（ルータ・共通シェル・旧画面・カバレッジ床）に限定している。同一 PR に入れると IADR-0116 規約 4 に反する（**残りは要起票**。§未決事項） |
 | 共通シェル | 05_screens §共通シェル はパンくず・権限バッジ・右レール AI チャットも含む | ナビ・ブランド名・ユーザーアイコン → SC-16・通知のみ | issue #490 §スコープ の明示。パンくず・権限バッジは #452、AI チャットは第 4 段（IADR-0121 決定 5） |
+| 左ナビのグループ数 | 05_screens §共通シェル は **4 グループ**（利用者／個人／管理／運用） | **5 番目のグループ「その他」を追加**した | 計画の 4 グループは MSP の画面（SC-01〜21）に対する割り当てであり、**本リポジトリの計画に属さない可変ユニット**（`src/ai-stock-trading`。独自の計画と画面 ID を持つ別プロジェクト。IADR-0120）の項目に置き場が無い。既存 4 グループのいずれかへ混ぜると計画の割り当てを歪めるため、`group` 未宣言の項目を集める受け皿として末尾に置いた。MSP の画面は 4 グループのいずれかを必ず宣言する。項目が 0 件なら見出しごと描画しない |
+| ルート `/` の扱い | 05_screens §共通シェル のルート表に `/` は無い | `/` を SC-01（`/ask`）へリダイレクトする | 計画の画面一覧に home に相当する画面が無い一方、SPA のルート直下に何も無いのは成立しない。SC-01 が「本システムの主入口」と定義されているため、そこへ送る（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md) 決定 6） |
+
+## 親への申し送り
+
+本作業は **#452 と同一段**であり、第 2 段の完了には次が残る。**分担であって切り捨てではない**ことを、
+#490 の完了報告と #454 のチェックリストへ明記する。
+
+### #452 が引き受ける項目（#490 で意図的に触れなかったもの）
+
+| 項目 | 内容 |
+| --- | --- |
+| **旧 13 画面の削除・再実装** | SC-01〜11 の Page（実装 2792 行）は本 PR ではルーティング部分のみ書き換え、内部は現行挙動を維持した。**#452 が Page を作り直すまで、13_frontend-stack「旧画面は完全に削除する」は未達である**（[feedback/20260804](../../feedback/20260804_frontend-migration-staging-interpretation.md) §完了条件 が「旧 13 画面の削除・再実装」を #452 に割り当てている） |
+| 画面内容の計画準拠 再設計 | [05_screens](../../planning/projects/microservices-platform/05_screens/01_screens.md) と `05_screens/mockups/`（hi-fi 正）への準拠。レイアウト・項目・文言・警告色（琥珀）等 |
+| 未実装画面の新規実装 | SC-12（MCP クライアント管理）・SC-17（ユーザーアカウント管理）・SC-18（ナレッジグラフ）・SC-19（個人資料）・SC-20（Obsidian 連携）・SC-21（AI 提案一覧） |
+| 共通シェルの残り | **パンくず**・**権限バッジ**（管理／システム管理／運用）。issue #490 の共通シェル範囲は「ナビ・ユーザーアイコン → SC-16・通知」に限定されている |
+| 左ナビ「個人」グループ | SC-19 / SC-20 の実装により初めて項目が入る（現状は項目 0 件のため見出しごと非表示） |
+| SC-04 の左ナビ差し替え | 「閲覧時は左レールを Wiki ページツリーへ置換する」（05_screens モック間相違の確定 ①） |
+
+### #454 チェックリストへの追記内容
+
+1. **第 2 段は 2 つに分かれた**: #490（TanStack Router ＋ 共通シェル ＋ 旧画面のルート載せ替え）＝本 PR で完了。
+   残り（**shadcn/ui コンポーネント本移植・Lingui(ja/en)・Storybook**）は**要起票**
+   （[IADR-0121 決定 1 の 2026-08-04 追記](../adr/IADR-0121_spa-stack-migration-staging.md) 参照）。
+2. **旧 13 画面の削除・再実装は #452 で完了する**（本 PR では未達。上表）。
+3. AST（`src/ai-stock-trading`）の新契約移行は**別リポジトリの issue**。本リポからは変更できない
+   （[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）。移行すれば旧契約ブリッジを削除できる。
+
+### 残件起票に必要な情報（shadcn/ui 本移植・Lingui・Storybook）
+
+- **起点 ID**: ADR-0031（計画 ADR。[13_frontend-stack](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md) §採用技術一覧が正）
+- **スコープ**: (a) shadcn/ui 派生プリミティブを `@platform/ui` へ本移植（現状は Button / StatusBadge の 2 つ。
+  Input・Select・Dialog・Table・Tabs 等、画面が要求する範囲）、(b) Lingui（ja / en。コンパイル時抽出）の導入と
+  既存文言の抽出、(c) Storybook のセットアップと `@platform/ui` のカタログ化
+- **受け入れ基準の骨子**: `@platform/ui` の公開面が 1 ファイル（`index.ts`）のままであること
+  （[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 の切り出し規則を守る）／
+  ja / en の切替が動き未翻訳キーが CI で検出できること／Storybook がビルドでき外部 CDN を読まないこと
+  （[08_data-egress-policy](../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md)）／
+  カバレッジ床を割らないこと
+- **依存**: #490（本 PR）のマージ後。#452 とは並行可能だが、shadcn/ui 本移植は #452 の画面実装が
+  必要とする部品を先に入れる形が望ましい
 
 ## 未決事項
 
 1. **第 2 段の残り（Lingui / Storybook / shadcn/ui コンポーネントの本移植）の起票。**
-   #446 仕様書の第 2 段表には載っているが issue #490 のスコープには無い。#454 のチェックリストへ追加が要る。
-2. **AST の新契約への移行**（別リポジトリの issue）。旧契約ブリッジの削除条件。
-3. **`/login` `/callback` の扱い。** 計画のルート表に無い SPA 内部の導線であり、第 3 段（#439 /
+   起票に必要なスコープ・受け入れ基準は §親への申し送り に列挙した。
+   [IADR-0121 決定 1 の 2026-08-04 追記](../adr/IADR-0121_spa-stack-migration-staging.md) と
+   [#446 仕様書 の段階分割表](./20260804_issue-446_spa-foundation-stack-migration.md#段階分割全体設計)にも反映済み。
+2. **旧 13 画面の削除・再実装（#452）。** 本 PR は SC-01〜11 の Page を残しており、
+   13_frontend-stack「旧画面は完全に削除する」は**本 PR 単独では未達**である（§計画書との差異・§親への申し送り）。
+3. **AST の新契約への移行**（別リポジトリの issue）。旧契約ブリッジの削除条件。
+4. **`/login` `/callback` の扱い。** 計画のルート表に無い SPA 内部の導線であり、第 3 段（#439 /
    ADR-0032 の BFF セッション方式）で見直す。
-4. **バンドルサイズ。** `index.js` が 537 kB（gzip 158 kB）で Vite の 500 kB 警告に触れる。
+5. **バンドルサイズ。** `index.js` が 537 kB（gzip 158 kB）で Vite の 500 kB 警告に触れる。
    コード分割（ルート単位の `lazy`）は TanStack Router の機能で行えるが、画面が確定する #452 の後が適切である。

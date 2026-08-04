@@ -123,11 +123,20 @@ src/
    **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
 4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
-   （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
-   ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル ＋ ナビ項目**
-   （[IADR-0124](../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1）。合成点では
-   `createUnitRoutes` にタプルのスプレッドを 1 行足す。**戻り値へ型注釈を書かない**——`readonly AnyRoute[]`
-   を注釈するとルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる。
+   （`platform/frontend/src/features/index.ts`）へ **import 1 行 ＋ 2 か所へのスプレッド 1 行ずつ**を追加する
+   （[IADR-0124](../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
+   [IADR-0056](../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
+   「import 1 行」はこれに部分改定された）。
+   ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル**と
+   **ナビ項目（`NavItem[]`）**の 2 つである。
+   - `import { createXxxRoutes, xxxNavItems } from '@xxx/features';`
+   - `createUnitRoutes` へ `...createXxxRoutes(shell)` を 1 行
+   - `unitNavItems` へ `...xxxNavItems` を 1 行
+     — **これを忘れるとルートは載るが左ナビに項目が出ない**（ルートとナビは別経路である）。
+   `createUnitRoutes` の**戻り値へ型注釈を書かない**——`readonly AnyRoute[]` を注釈すると
+   ルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる。
+   ナビ項目の `group` は 05_screens §共通シェル の 4 グループ（`user` / `personal` / `admin` / `ops`）。
+   本リポジトリの計画に属さないユニットは省略してよい（末尾の「その他」へ入る）。
    旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は本リポジトリから変更できないユニット
    （`src/ai-stock-trading`。[IADR-0120](../docs/adr/IADR-0120_excluded-units-from-gitmodules.md)）のための
    互換ブリッジであり、新規ユニットでは使わない。
