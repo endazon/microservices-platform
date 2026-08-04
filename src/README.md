@@ -16,6 +16,8 @@ src/
   pnpm-workspace.yaml          ← workspace メンバ（'*/frontend' と 'packages/*'。IADR-0121）
   vitest.config.ts             ← フロント単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   eslint.config.js             ← フロント lint（全ユニット横断）
+  packages/                    ← ユニットに属さない共有ワークスペースパッケージ（IADR-0121 決定 4）
+    ui/                        ←   @platform/ui: デザイントークン(Tailwind v4)・cn()・shadcn/ui 派生プリミティブ
   platform/                    ← 基盤ユニット（本リポジトリの主成果物）
     backend/
       backend.slnx
@@ -83,7 +85,10 @@ src/
    イベントに限る。この規則がユニットのサブモジュール切り出し可能性を担保する。
    - 例外1: 統合テスト（`Tests/`）は検証対象サービスへの ProjectReference を許可する
      （例: IntegrationTests → AuthorizationService.Api）。
-   - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）を参照してよい。
+   - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）と
+     `@platform/ui`（共有 UI パッケージ）を参照してよい（[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md)
+     決定 4 が本例外の許可先を 1 → 2 へ部分改定した。`@platform/ui` はドメイン・通信・ルーティング・認証を
+     持たないため、ユニットの切り出し可能性を損なわない。逆向き（`@platform/ui` → ユニット）の参照は禁止）。
      platform/frontend 側から可変ユニットを参照するのは合成点（`platform/frontend/src/features/index.ts`）のみとする。
    - 例外3: BFF の合成点（`platform/backend/Bff/Platform.Bff/`。合成点 `Composition/`）のみ、可変ユニットの BFF
      エンドポイントプロジェクト（`<unit>/backend/Bff/`）を参照してよい（例外2 の backend 版。IADR-0063）。

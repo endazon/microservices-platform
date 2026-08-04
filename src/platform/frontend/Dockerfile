@@ -19,11 +19,14 @@ WORKDIR /app
 COPY src/package.json src/pnpm-lock.yaml src/pnpm-workspace.yaml ./
 COPY src/platform/frontend/package.json platform/frontend/
 COPY src/knowledge/frontend/package.json knowledge/frontend/
+# IADR-0121 決定 4: 共有 UI パッケージ（@platform/ui）も workspace メンバ。
+COPY src/packages/ui/package.json packages/ui/
 # Issue #283, IADR-0070: 可変ユニット AST の frontend も workspace メンバ（--frozen-lockfile が
 # pnpm-lock.yaml と突合するため manifest を先に投入する）。ソースは合成点（features/index.ts）から取り込まれる。
 COPY src/ai-stock-trading/frontend/package.json ai-stock-trading/frontend/
 # IADR-0121 決定 2: pnpm は package.json の packageManager フィールドから corepack が版を解決する。
 RUN corepack enable && pnpm install --frozen-lockfile
+COPY src/packages/ui/ packages/ui/
 COPY src/platform/frontend/ platform/frontend/
 COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/

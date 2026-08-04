@@ -10,6 +10,7 @@ on:
     branches: [develop, main]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
@@ -20,6 +21,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"

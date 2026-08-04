@@ -28,6 +28,8 @@ export default defineConfig({
       'platform/frontend/src/**/*.{test,spec}.{ts,tsx}',
       'knowledge/frontend/src/**/*.{test,spec}.{ts,tsx}',
       'ai-stock-trading/frontend/src/**/*.{test,spec}.{ts,tsx}',
+      // IADR-0121 決定 4: 共有 UI パッケージ（@platform/ui）も横断計測の対象にする。
+      'packages/*/src/**/*.{test,spec}.{ts,tsx}',
     ],
     css: false,
     // IADR-0033/0034: カバレッジはしきい値ゲート（回帰防止のラチェット）。CI(frontend-tests.yml)
@@ -41,6 +43,7 @@ export default defineConfig({
         'platform/frontend/src/**/*.{ts,tsx}',
         'knowledge/frontend/src/**/*.{ts,tsx}',
         'ai-stock-trading/frontend/src/**/*.{ts,tsx}',
+        'packages/*/src/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
@@ -48,6 +51,9 @@ export default defineConfig({
         '**/*.d.ts',
         'platform/frontend/src/main.tsx',
         '**/vite-env.d.ts',
+        // IADR-0121 決定 3: orval の生成物は計測対象外（自動生成物の品質は生成器の責務であり、
+        // 母数へ入れると床が「生成量」で動いて意味を失う）。
+        'platform/frontend/src/foundation/api/generated/**',
       ],
       // 回帰防止のラチェット。実測（lines/statements≈83%, branches≈80%, functions≈77-80%）
       // に合わせて床を引き上げ、床を割る変更を CI で止める（レビュー #168 指摘対応）。
