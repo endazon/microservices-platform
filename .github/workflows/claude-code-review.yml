@@ -158,9 +158,9 @@ jobs:
           # 【読み取り系 git は必須】アクション自身の組み込みプロンプトが差分の取得手段を
           # 指示している（`git diff origin/main...HEAD` / `git log origin/main..HEAD` /
           # `git status`）。許可しないと差分の内容と無関係に**毎回必ず拒否が出る**
-          # （planning 側で同じ欠落により全 PR の CI が赤くなった。issue #146）。
+          # （planning 側で同じ欠落により全 PR の CI が赤くなった。planning#146）。
           #
-          # 【整形パイプと submodule 確認（issue #155）】拒否の実測から 2 つの穴が判った。
+          # 【整形パイプと submodule 確認（planning#155）】拒否の実測から 2 つの穴が判った。
           #   - `cat` / `head` / `tail` が 1 つも無かった。パイプは**各コマンドが個別に判定される**
           #     ため、`node scripts/x.js | tail -5` は先頭が許可済みでも tail で拒否される。
           #     報告に出るのは先頭コマンド名なので、原因が判りにくい形で毎回落ちる。
@@ -180,21 +180,27 @@ jobs:
           # そのため読み取り専用サブコマンドを個別に列挙してある。
           # `Bash(git -C:*)` と一括で許可してはならない（前方一致で `git -C planning push` /
           # `commit` / `reset` まで通り、書き込み系を外した設計が崩れる）。
+          # 【暫定デルタ・issue 番号の修飾】以下のコメント中の計画リポ issue 参照は、キットでは
+          # 裸の `#NNN` で書かれているが本リポでは `planning#NNN` へ修飾してある。#146 / #149 /
+          # #155 / #160 / #163 / #168 は**いずれも本リポジトリに無関係な PR として実在**し、裸で
+          # 書くとそちらへ自動リンクするためである（`.claude/rules/traceability.md`「クロス
+          # リポジトリの issue / PR 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。
+          #
           # 【置換点】`git -C` は **`.gitmodules` にあるパスごと**に 4 サブコマンド
-          # （log / show / diff / ls-tree）を列挙する（issue #163）。submodule が 1 つなら
+          # （log / show / diff / ls-tree）を列挙する（planning#163）。submodule が 1 つなら
           # `planning` の 4 エントリを書き換えるだけでよいが、複数ある構成では**書き換えではなく
           # パスごとの追加**が要る。入れ子の submodule も別パスとして列挙が要る
           # （ワークフローは `git submodule update --init --recursive` で入れ子まで populate する
           # ため、読める範囲と許可の範囲が食い違う。前方一致のため
           # `Bash(git -C src/foo log:*)` は `git -C src/foo/planning log` には**当たらない**）。
           #
-          # 【grep / sort は rg があっても必須（issue #163）】AI は `git show <ref>:<path> | grep -n …`
+          # 【grep / sort は rg があっても必須（planning#163）】AI は `git show <ref>:<path> | grep -n …`
           # のように**前段が git のときは自然に `grep` を選ぶ**。件数の集約に `sort` を使うのも同様。
           # パイプは各コマンドが個別判定されるため、後段の `grep` が未許可だと鎖全体が実行されず
-          # 前段の結果も得られない。#155 の cat/head/tail、#160 の cmp/diff に続く 3 度目の同型で
+          # 前段の結果も得られない。planning#155 の cat/head/tail、planning#160 の cmp/diff に続く 3 度目の同型で
           # あり、以後この種の非対称は check-ai-workflow-config.js が ERROR で検出する。
           #
-          # 【実走の周辺権限（issue #168）】プロンプトが「PR の主張は自分で実走して確認せよ」と
+          # 【実走の周辺権限（planning#168）】プロンプトが「PR の主張は自分で実走して確認せよ」と
           # 求める以上、実走に必然的に伴う周辺操作も許可する（許可しないと個別ツール名の後追い
           # 追加では追いつかない設計上の非対称になる）。
           #   - `Bash(which:*)` — 読み取りのみ。`which dotnet` で SDK の在否を確認する。
@@ -208,7 +214,7 @@ jobs:
           # （`for` / リダイレクト / `$(…)` / 環境変数の前置き）も許可リストで表現できないため、
           # 同じくプロンプト側で作業手順を狭める。
           #
-          # 【GitHub MCP のツール名は**サーバの版に依存する**（issue #163・MSP 実測）】
+          # 【GitHub MCP のツール名は**サーバの版に依存する**（planning#163・MSP 実測）】
           # claude-code-action v1 は github-mcp-server を **v0.17.1** に pin しており、この版に
           # 在るのは `get_issue` / `get_pull_request` / `list_sub_issues`。統合名 `issue_read` /
           # `pull_request_read` / `pull_request_review_write` は**この版には存在しない**

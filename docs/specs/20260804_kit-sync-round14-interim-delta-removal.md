@@ -62,7 +62,23 @@ submodule pin を `df8bce5` → `abb6a75` へ進める。
 | 両ワークフローのプロンプト | 上記 submodule を「正の一覧」に明記 | 1 |
 | 両ワークフローのプロンプト | `src/<unit>/backend/backend.slnx` 単位の 1 コマンドで実行させる | 1 ＋ 2（ユニット第一構成・.NET） |
 | `ci.yml` doc-links ジョブ | planning submodule 未取得の注記と `doc-links-planning.yml` への案内 | 1 ＋ 3（本リポにしかないワークフロー） |
-| `check-commit-messages.js` | `PLAN_PROJECT` 既定値 `microservices-platform` | 1（置換点） |
+
+**本 PR では変更していないが、同期時に妥当性を確認した既存デルタ**: `scripts/check-commit-messages.js`
+の `PLAN_PROJECT` 既定値 `microservices-platform`（種別 1・置換点）。キットとの差分はこの 1 行のみで、
+正当な固有デルタであるため手を入れていない。
+
+### 新たに持ち込んだ暫定デルタ — 計画リポ issue 番号の修飾
+
+キットのコメントは計画リポの issue を**裸の `#NNN`** で書いている。同期でそれを取り込んだ結果、
+`.claude/rules/traceability.md`「クロスリポジトリの issue / PR 番号の修飾」に**反する状態**になった
+（AI レビューの指摘）。実測したところ **`#146` / `#149` / `#155` / `#160` / `#163` / `#168` の 6 件すべてが
+本リポジトリに無関係な PR として実在**し、GitHub が裸の `#NNN` をそちらへ自動リンクする。
+
+- **分類 B の 3 ファイル**（`settings.json` / 両ワークフロー）は `planning#NNN` へ修飾した（計 21 箇所）。
+  バイト一致の制約が無いため局所修正できる。各ファイルへ**環流先を明記した注記**を置いた。
+- **分類 A の `check-ai-workflow-config.js`**（5 箇所）は**修正しない**。局所修正はバイト一致を崩す。
+  §未決事項 の環流候補 3 として残す。
+- 本デルタは**キット側の是正を環流したら撤去する**。
 
 ### 撤去した独自記述（4 種のいずれにも当たらない）
 
@@ -123,6 +139,11 @@ C# / TypeScript の変更を含まないため、バックエンド・フロン�
      そのまま教材になる）。
   2. `permission_denials_count` はジョブ末尾のステップが権威であり、AI が実行ログを取り直して
      再検証する必要は無い旨（キットの両ワークフローにも同ステップが在る）。
+  3. **キットのコメントが計画リポの issue を裸の `#NNN` で書いている**（`planning#NNN` と修飾すべき）。
+     裸の番号は同期先リポジトリで**無関係な issue / PR へ自動リンク**する。本リポジトリでは 6 件すべてが
+     実在の PR に当たった。キット自身の `.claude/rules/traceability.md` が「他リポジトリの issue / PR
+     番号は必ず修飾する」と定めており、**キットがその規約に反している**。分類 A の
+     `check-ai-workflow-config.js` は局所修正できないため、これは環流でしか直せない。
 - **AST 側は未対応**である。planning#176 が新設した `genericBashDrift` は ai-stock-trading の
   `claude-coding.yml` に `Bash(git show:*)` の欠落（真陽性 1 件）を検出する。AST でキットを同期する
   際は、**同期 PR の中で先に当該エントリを足す**こと（そうしないと `ai-workflow-config` ジョブが

@@ -147,21 +147,27 @@ jobs:
           # 末尾のビルド/テスト系（node / dotnet）がスタック別の可変部分である。
           # claude-code-review.example.yml の対応箇所と**同じ内容**に保つこと。
           #
-          # 【読み取り専用ツールの対称性（issue #160 / #163）】head / tail / cmp / diff /
+          # 【暫定デルタ・issue 番号の修飾】以下のコメント中の計画リポ issue 参照は、キットでは
+          # 裸の `#NNN` で書かれているが本リポでは `planning#NNN` へ修飾してある。#146 / #149 /
+          # #155 / #160 / #163 / #168 は**いずれも本リポジトリに無関係な PR として実在**し、裸で
+          # 書くとそちらへ自動リンクするためである（`.claude/rules/traceability.md`「クロス
+          # リポジトリの issue / PR 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。
+          #
+          # 【読み取り専用ツールの対称性（planning#160 / planning#163）】head / tail / cmp / diff /
           # git ls-tree / git submodule status / git fetch / git show / grep / sort / which は
           # レビュー用と揃えてある（実装用にも同じ作業＝キット同期時のバイト一致確認・
-          # submodule pin の確認・実走前の SDK 在否確認がある）。#155 → #160 → #163 と同型の
+          # submodule pin の確認・実走前の SDK 在否確認がある）。planning#155 → planning#160 → planning#163 と同型の
           # 片落ちが 3 度続いたため、この種の非対称は check-ai-workflow-config.js が
           # **ERROR で機械検出する**（意図的な非対称＝実装専用の Edit / Write / 書き込み系 git /
           # find / mkdir と、レビュー専用の gh issue view / gh pr view / gh run list は
           # 同スクリプトの除外リストに宣言してある。増減するときは除外リストも更新すること）。
           #
-          # 【git -C の列挙（issue #163）】`.gitmodules` にあるパスごとに 4 サブコマンド
+          # 【git -C の列挙（planning#163）】`.gitmodules` にあるパスごとに 4 サブコマンド
           # （log / show / diff / ls-tree）を列挙する。入れ子の submodule も別パスとして列挙が
           # 要る（前方一致のため親パスの許可は入れ子パスに当たらない）。`Bash(git -C:*)` の
           # 一括許可は採らない（前方一致で書き込み系サブコマンドまで通る）。
           #
-          # 【実走の周辺権限（issue #168）】`Bash(which:*)` / `Bash(dotnet --version)` /
+          # 【実走の周辺権限（planning#168）】`Bash(which:*)` / `Bash(dotnet --version)` /
           # `Bash(dotnet --info)` / `mcp__github__list_workflow_runs` / `mcp__github__actions_list`
           # は、実走（ビルド・テスト・自分が出した PR の CI 失敗の読解）に必然的に伴う周辺操作で
           # ある。`dotnet` は**引数を固定した形**で足す（裸の `Bash(dotnet:*)` は
@@ -170,7 +176,7 @@ jobs:
           # `for` 等のシェル構文と環境変数の前置き形（`VAR=1 cmd`）は許可リストで表現できない
           # ため、いずれも --append-system-prompt 側で作業手順を狭めて塞ぐ。
           #
-          # 【GitHub MCP のツール名はサーバの版に依存する（issue #163）】claude-code-action v1 は
+          # 【GitHub MCP のツール名はサーバの版に依存する（planning#163）】claude-code-action v1 は
           # github-mcp-server を **v0.17.1** に pin しており、この版に在るのは `get_issue` /
           # `get_pull_request` / `list_sub_issues`、統合名 `issue_read` / `pull_request_read` /
           # `pull_request_review_write` は**存在しない**（統合名は v1.x 系）。存在しないツールは
@@ -179,14 +185,14 @@ jobs:
           #
           # 【--append-system-prompt: サブエージェント禁止】レビュー用は同じ制約を prompt:
           # 入力に書いているが、本ファイルは `@claude` メンション本文で駆動する構造のため
-          # prompt: を持たず、置き場所がここしか無い（issue #149）。
+          # prompt: を持たず、置き場所がここしか無い（planning#149）。
           # 制約が無いと次の形で**成果物が正しくてもジョブが赤くなる**:
           #   AI が Task（サブエージェント）を試みる → 許可リストにも既定にも無いので拒否
           #   → Task 抜きで実装を完遂しコミット・PR も正しく出せる
           #   → 末尾の Check permission denials が拒否 1 件を検出して exit 1
           # Task を許可する選択もあるが採らない。CI ではサブエージェントの起動が完了せず
           # 停止する不具合が出ており（HOWTO 付録3）、レビュー用と同じ (b) に揃える。
-          # 【--append-system-prompt: 使える Bash コマンドの正の一覧（issue #168）】拒否の実測は
+          # 【--append-system-prompt: 使える Bash コマンドの正の一覧（planning#168）】拒否の実測は
           # 「拒否される形」の負の列挙では塞げない型（一覧に全く無いコマンドの試行）を示した。
           # そのため**許可済みコマンドの正の一覧**と一覧外の代替手順を先に示す。一覧は
           # **このファイル自身の許可ツール指定から書き起こす**こと（レビュー用とは中身が違い、
