@@ -318,7 +318,7 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 ## 検証（実測）
 
 **測定条件**（これを書かない実測値は再現不能）: worktree `feat/ADR-0031-spa-foundation-migration`
-（起点 `origin/develop` = `5031483`）／Node **22.22.2**／pnpm **10.33.0**／submodule は
+（起点 `origin/develop` = `5031483`）／Node **22.22.2**／pnpm **10.33.0**／**Vitest 3.2.7 ＋ Vite 6.4.3**／submodule は
 `src/ai-stock-trading` を **populate 済み**（`655e2ed`。CI の `frontend*.yml` も `src/*` の submodule を
 取得するため CI と同条件）・`planning` は未 populate。コマンドはすべて `src/` で実行。
 
@@ -327,9 +327,9 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 | 依存解決 | `pnpm install` | 成功（workspace 5 プロジェクト: root / platform/frontend / knowledge/frontend / ai-stock-trading/frontend / packages/ui） |
 | 型検査 | `pnpm run typecheck` | **OK**（platform / knowledge / packages/ui / ai-stock-trading の 4 パッケージ） |
 | lint | `pnpm run lint` | **0 error**（warning 2 件＝ `react-refresh/only-export-components`。AST の E2E ハーネスと `@platform/ui` の Button。既存の運用と同じく warn 止まり） |
-| 単体テスト | `pnpm run test` | **35 files / 213 tests 全 green**（移行前は 31 files / 193 tests。退行 0・純増 20） |
-| カバレッジ | `pnpm run test:coverage` | lines/statements **91.69%** / branches **82.04%** / functions **83.14%**（しきい値 83 / 83 / 74 / 75 を上回る） |
-| ビルド | `pnpm run build` | 成功。`dist/assets/index-*.css` **5.91 kB**（gzip 2.08 kB）＝ Tailwind のパイプラインが疎通している |
+| 単体テスト | `pnpm run test` | **35 files / 227 tests 全 green**（移行前は 31 files / 193 tests。退行 0・純増 34） |
+| カバレッジ | `pnpm run test:coverage` | lines/statements **91.46%** / branches **82.33%** / functions **83.58%**（しきい値 83 / 83 / 74 / 75 を上回る） |
+| ビルド | `pnpm run build` | 成功。`dist/assets/index-*.css` **5.90 kB**（gzip 2.07 kB）＝ Tailwind のパイプラインが疎通している |
 | API 契約生成 | `pnpm run codegen` | 成功。BFF の 5 タグ（analysis / config / dashboard / feedback / search）から 16 ファイル生成。**再実行しても差分なし** |
 | E2E スモーク | `playwright test`（Chromium は既設 `/opt/pw-browsers/chromium` を実行パス指定。install はしない） | **6 passed**（`login` / `sc01-search` / `sc04-wiki` / `sc08-analysis` / `sc10-operations` / `sc11-config`。いずれも未認証時の `/login` 誘導） |
 | バックエンド非破壊 | `node scripts/scripts.test.js` | **197 tests passed** |
@@ -342,12 +342,13 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 
 | 基準 | lines / statements | branches | functions |
 | --- | --- | --- | --- |
-| 実測（全ユニット横断＝ゲートが見る値） | 91.69% | 82.04% | 83.14% |
-| 実測（MSP 所有分のみ。AST の実装を母数から除外して測り直した値） | 88.36% | 79.53% | 80.00% |
+| 実測（全ユニット横断＝ゲートが見る値） | 91.46% | 82.33% | 83.58% |
+| 実測（MSP 所有分のみ。AST の実装を母数から除外して測り直した値） | 88.07% | 80.00% | 80.76% |
 | **新しい床**（MSP 所有分の実測から約 5pt 下） | **83**（← 78） | **74**（据置） | **75**（← 68） |
 
 引き上げであり、**下げた項目は無い**（回復計画は不要）。branches のみ据え置きなのは、MSP 所有分の実測
-79.53% に同じ 5pt の余裕を取ると 74 になり、現行値と一致するためである。床を横断値ではなく MSP 所有分に
+80.00% に同じ 5pt の余裕を取ると 75 となり、現行値 74 とほぼ一致するためである（1pt の差は
+計測ゆらぎの範囲として据え置いた）。床を横断値ではなく MSP 所有分に
 合わせた理由は「§設計 8」に記した。
 
 ### BFF 境界・データ egress の実測
@@ -408,17 +409,47 @@ vite 5.4.8 が lockfile に残るため advisory は消えなかった**（実�
 
 | 項目 | Vitest 2.1.9 / Vite 5.4.21 | **Vitest 3.2.7 / Vite 6.4.3** |
 | --- | --- | --- |
-| 単体テスト | 35 files / 213 tests green | **35 files / 213 tests green**（変化なし） |
+| 単体テスト | 35 files / 213 tests green | **35 files / 213 tests green**（ツールチェーン更新による増減なし） |
 | カバレッジ（横断） | 91.69 / 82.04 / 83.14 | **91.44 / 82.15 / 83.52** |
 | カバレッジ（MSP 所有分） | 88.36 / 79.53 / 80.00 | **88.03 / 79.70 / 80.64** |
 | しきい値 83 / 74 / 75 | 充足 | **充足**（床の導出値は変更なし） |
 | ビルド | CSS 5.91 kB / JS 464.43 kB | CSS 5.90 kB / JS 475.88 kB |
-| E2E スモーク | 6 passed | **6 passed** |
 | `pnpm audit` で high 以上 | 2 件 | **0 件** |
+| E2E スモーク | 6 passed | **6 passed** |
 
-カバレッジが ±0.4pt 未満動いたのは v8 provider の計上差（母数が 3831 → 3940 行）であり、テストの増減は
-無い。**床（83 / 74 / 75）は据え置いた**——MSP 所有分の実測 88.03 / 79.70 / 80.64 に対して従来と同じ
-約 5pt の余裕が残っており、導出をやり直しても同じ値になるためである。
+カバレッジが ±0.4pt 未満動いたのは v8 provider の計上差（母数が 3831 → 3940 行）であり、この時点では
+テストの増減は無い。**床（83 / 74 / 75）は据え置いた**——MSP 所有分の実測に対して従来と同じ約 5pt の
+余裕が残っており、導出をやり直しても同じ値になるためである。
+
+> 本表は**ツールチェーン更新だけを切り出した**比較である。この後の再試行述語の是正（§再試行の既定値）で
+> テストが 14 件増えたため、本書の他所に載る最終値（227 tests / 横断 91.46 / 82.33 / 83.58）とは
+> 一致しない。
+
+### 再試行の既定値（AI レビュー 🟡 の是正）
+
+`DEFAULT_QUERY_OPTIONS.retry` は当初 `1`（数値）で、コメントには「4xx（権限・検証）は再試行しても
+無駄なため深追いしない」と書いていた。**この記述は実装と一致していなかった**——TanStack Query の数値
+`retry` はエラー種別を区別せず、全ての失敗を同じ回数だけ再試行する。
+
+**コメントに合わせて実装を直す**方を採った（コメントを実態へ書き換える選択肢もあったが採らない）。
+理由は、このシステムでは **4xx が異常ではなく通常の応答**だからである。
+[IADR-0009](../adr/IADR-0009_wiki-browsing-404-hides-existence.md) の存在秘匿により、権限外の資源への
+アクセスは 404 として返り、画面は「不在」と「権限による秘匿」を区別しない。つまり **404 は日常的に
+発生する**。数値の `retry: 1` のままだと、その 404 が毎回 2 往復になり、確実に失敗する 2 回目のぶんだけ
+エラー表示が遅れ、BFF と後段サービスへ無駄な負荷がかかる。しかも**画面は正しく動いて見える**ため、
+気付ける類の問題ではない。「起こり得ないケースへの防御」ではなく、既に文書化された頻出経路の是正である。
+
+実装は述語 `shouldRetryQuery(failureCount, error)` に置き換えた（`queryClient.ts`）。
+
+- 4xx は再試行しない。ただし **408（要求タイムアウト）と 429（要求過多）は時間で解消し得るため再試行**する。
+- 状態コードを持たない失敗（ネットワーク断 = `ApiError('network', …, null)`）と 5xx は 1 度だけ再試行する。
+- 上限は `MAX_QUERY_RETRIES = 1`。TanStack Query は `failureCount` を **0 起点で渡し判定後に加算**する
+  （`@tanstack/query-core` の `retryer.js` を実読して確認）ため、`failureCount < 1` が数値指定の
+  `retry: 1` と同じ回数になる。
+
+テストは**述語そのもの（純関数）を対象**にした 14 件を追加した。TanStack Query の内部再試行機構を
+再現するテストは、ライブラリの実装詳細に依存して脆くなるため書かない。結果、単体テストは
+213 → **227 件**、横断カバレッジは 91.44 → **91.46%**（branches 82.15 → **82.33%**）。しきい値は据え置き。
 
 ### 機械強制の発火確認（違反サンプル。確認後に削除済み）
 
@@ -441,7 +472,7 @@ vite 5.4.8 が lockfile に残るため advisory は消えなかった**（実�
 作業ツリーにはファイルがあるため typecheck・lint・テスト・ビルドはすべて green で、`git status` にも
 現れず、**クリーンな checkout の CI で初めて壊れる**類の失敗である。`!src/packages/**` で除外を解除し、
 `src/README.md` にも注意書きを残した。是正後に**クリーンな worktree を切り直して全コマンドを再実行し**、
-typecheck 4 パッケージ OK / lint 0 error / カバレッジ 91.69% / build 成功 / codegen 差分なし を確認した。
+typecheck 4 パッケージ OK / lint 0 error / カバレッジ 91%台 / build 成功 / codegen 差分なし を確認した。
 
 ### React 19 移行で判明した非自明な事実（実測）
 

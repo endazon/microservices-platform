@@ -60,8 +60,8 @@ export default defineConfig({
       // ［2026-08-04 / #446］移行第 1 段（ADR-0031 / IADR-0121）に伴う引き上げ。
       //   実測（Node 22.22.2 / pnpm 10.33.0 / Vitest 3.2.7 + v8 provider /
       //         submodule `src/ai-stock-trading` populate 済み）:
-      //     全ユニット横断        lines/statements 91.44% / branches 82.15% / functions 83.52%
-      //     MSP 所有分のみ        lines/statements 88.03% / branches 79.70% / functions 80.64%
+      //     全ユニット横断        lines/statements 91.46% / branches 82.33% / functions 83.58%
+      //     MSP 所有分のみ        lines/statements 88.07% / branches 80.00% / functions 80.76%
       //     （MSP 所有分 = platform/frontend + knowledge/frontend + packages/*。AST の実装を
       //       母数から外して測り直した値）
       //   Vitest 2.1.9 時点の実測は横断 91.69 / 82.04 / 83.14、MSP 所有分 88.36 / 79.53 / 80.00 だった。
