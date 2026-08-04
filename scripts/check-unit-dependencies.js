@@ -2,13 +2,15 @@
 'use strict';
 /*
  * check-unit-dependencies.js
- * ユニット依存方向の機械検査（FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231）。
+ * ユニット依存方向の機械検査（FR-14, IADR-0027 / IADR-0056 / IADR-0057 / IADR-0117, Issue #231）。
  * src/README.md「依存規則」を CI で機械強制する。外部依存ゼロ（Node 標準モジュールのみ）。
  *
  * 検査するルール（backend）:
  *   1) ユニット外参照: 各 .csproj の ProjectReference を解決し、参照元/先ユニット（src/<unit>/ の
  *      第 1 セグメント）が異なる場合、
- *        - 参照先が platform/backend/Shared/（Contracts / Infrastructure）なら許可、
+ *        - 参照先が platform/backend/Shared/ の 3 プロジェクト（Platform.Shared.Contracts /
+ *          Platform.Shared.Infrastructure / Platform.Shared.Kernel）なら許可。2 → 3 の改定は
+ *          IADR-0117（Platform.Shared.Kernel は配置のみ確定で実体は未作成）、
  *        - 参照元が Tests プロジェクトで参照先が platform サービス（統合テスト例外）なら許可、
  *        - 参照元が BFF 合成点（platform/backend/Bff/Platform.Bff/）で参照先が可変ユニットの BFF
  *          エンドポイント（<unit>/backend/Bff/）なら許可（例外3・IADR-0063）、
@@ -42,7 +44,8 @@ function pathUnit(relPath) {
   return m ? m[1] : null;
 }
 
-// 参照先が platform/backend/Shared/ 配下（ユニット外から参照を許可する 2 プロジェクト）か。
+// 参照先が platform/backend/Shared/ 配下（ユニット外から参照を許可する 3 プロジェクト）か。
+// 判定はパス接頭辞で行うため、許可プロジェクトの増減でこの関数を変える必要はない（IADR-0117 の 2 → 3 改定も無変更で追随）。
 function isSharedProject(relPath) {
   return /^src\/platform\/backend\/Shared\//.test(toPosix(relPath));
 }
@@ -93,7 +96,7 @@ function classifyProjectReference(fromCsproj, toCsproj) {
   }
   return {
     ok: false,
-    reason: `ユニット外参照は platform/backend/Shared/ の 2 プロジェクトのみ許可（${fromUnit} → ${toUnit}）`,
+    reason: `ユニット外参照は platform/backend/Shared/ の 3 プロジェクトのみ許可（${fromUnit} → ${toUnit}）`,
   };
 }
 
