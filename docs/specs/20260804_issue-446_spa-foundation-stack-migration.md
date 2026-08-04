@@ -367,6 +367,15 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 | `new XMLHttpRequest()` | `no-restricted-globals` |
 | `new EventSource('/bff/stream')` | `no-restricted-globals` |
 
+### `src/packages/` が `.gitignore` に飲まれていた（実測・是正済み）
+
+`.gitignore` の `**/[Pp]ackages/*`（NuGet の packages フォルダ用）が、新設した `src/packages/` と
+名前で衝突しており、`git add -A` しても `@platform/ui` の全ファイルが**静かに無視されていた**。
+作業ツリーにはファイルがあるため typecheck・lint・テスト・ビルドはすべて green で、`git status` にも
+現れず、**クリーンな checkout の CI で初めて壊れる**類の失敗である。`!src/packages/**` で除外を解除し、
+`src/README.md` にも注意書きを残した。是正後に**クリーンな worktree を切り直して全コマンドを再実行し**、
+typecheck 4 パッケージ OK / lint 0 error / カバレッジ 91.69% / build 成功 / codegen 差分なし を確認した。
+
 ### React 19 移行で判明した非自明な事実（実測）
 
 pnpm は npm と違い各パッケージの宣言を厳密に守るため、submodule ユニット（AST）が React 18 を
