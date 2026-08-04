@@ -233,6 +233,26 @@ jobs:
       - name: Check CPM version pinning
         run: node scripts/check-cpm-versions.js
 
+  # NFR, Issue #465: サービス間契約（Shared.Contracts のイベント/API スキーマ）の後方互換を検査する。
+  # 全面再実装（#454）で 11 サービスを作り直す間、契約は両側同時更新で気付かれずに壊れ得る
+  # （発行側と購読側を同じ PR で直せばコンパイルもテストも通る）。C# ソースを構文解析して
+  # 正規化スナップショット（scripts/contract-schema-baseline.json）と突き合わせ、後方互換を壊す
+  # 変更を止める。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・
+  # proto（.proto 0 件）を採らない理由は IADR-0122。破壊的変更は
+  # scripts/contract-breaking-allowlist.json の承認エントリで通す（手順は scripts/README.md）。
+  # submodule は取得しない（対象は platform / knowledge の Shared.Contracts で本リポジトリの実体）。
+  contract-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test contract schema checker
+        run: node scripts/check-contract-schema.js --self-test
+      - name: Check contract backward compatibility
+        run: node scripts/check-contract-schema.js
+
   # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
   # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
   # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。

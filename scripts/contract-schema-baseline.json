@@ -1,0 +1,1865 @@
+{
+  "$comment": [
+    "Shared.Contracts のイベント/API スキーマの正規化スナップショット（Issue #465 / IADR-0122）。",
+    "C# ソースの構文解析で生成する（scripts/check-contract-schema.js）。手で編集しない。",
+    "更新: node scripts/check-contract-schema.js --update",
+    "破壊的変更は scripts/contract-breaking-allowlist.json へ承認エントリを書いてから --update する。",
+    "承認の記録は $acceptedBreakingChanges へ追記され、以後も残る（削除しない）。"
+  ],
+  "$acceptedBreakingChanges": [],
+  "projects": {
+    "src/knowledge/backend/Shared/Knowledge.Contracts": {
+      "Knowledge.Contracts.Dtos.AiAnswerDto": {
+        "kind": "record",
+        "members": {
+          "Answer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "AnswerId": {
+            "source": "property",
+            "type": "Guid",
+            "required": false
+          },
+          "Citations": {
+            "source": "positional",
+            "type": "List<CitationDto>",
+            "required": true,
+            "position": 1
+          },
+          "InputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
+          },
+          "Model": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "OutputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.AnalysisDataRange": {
+        "kind": "record",
+        "members": {
+          "AttributeFilters": {
+            "source": "positional",
+            "type": "Dictionary<string,List<string>>?",
+            "required": false,
+            "position": 1
+          },
+          "Query": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 0
+          },
+          "TopK": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.AnalysisTaskRequest": {
+        "kind": "record",
+        "members": {
+          "Instruction": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Range": {
+            "source": "positional",
+            "type": "AnalysisDataRange?",
+            "required": false,
+            "position": 2
+          },
+          "TaskType": {
+            "source": "positional",
+            "type": "AnalysisTaskType",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.AnalysisTaskType": {
+        "kind": "enum",
+        "members": {
+          "Analyze": {
+            "source": "enum",
+            "value": 0
+          },
+          "Compare": {
+            "source": "enum",
+            "value": 1
+          },
+          "Extract": {
+            "source": "enum",
+            "value": 2
+          }
+        },
+        "attributes": [
+          "JsonConverter(typeof(JsonStringEnumConverter<AnalysisTaskType>))"
+        ]
+      },
+      "Knowledge.Contracts.Dtos.ChunkDto": {
+        "kind": "class",
+        "members": {
+          "ChunkId": {
+            "source": "property",
+            "type": "Guid",
+            "required": false
+          },
+          "ChunkIndex": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          },
+          "Content": {
+            "source": "property",
+            "type": "string",
+            "required": false
+          },
+          "DocumentId": {
+            "source": "property",
+            "type": "Guid",
+            "required": false
+          },
+          "Score": {
+            "source": "property",
+            "type": "float",
+            "required": false
+          },
+          "SourceUri": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.CitationDto": {
+        "kind": "record",
+        "members": {
+          "ChunkId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 3
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "DocumentTitle": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Number": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 0
+          },
+          "Score": {
+            "source": "positional",
+            "type": "float",
+            "required": true,
+            "position": 5
+          },
+          "Snippet": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 6
+          },
+          "SourceUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ConversionJobDto": {
+        "kind": "record",
+        "members": {
+          "Attempts": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 8
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 9
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid?",
+            "required": true,
+            "position": 6
+          },
+          "Error": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 5
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "MarkdownUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 7
+          },
+          "OriginalPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "SourceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Status": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 10
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ConversionJobStatus": {
+        "kind": "class",
+        "members": {
+          "Failed": {
+            "source": "const",
+            "type": "string",
+            "value": "\"failed\""
+          },
+          "Processing": {
+            "source": "const",
+            "type": "string",
+            "value": "\"processing\""
+          },
+          "Queued": {
+            "source": "const",
+            "type": "string",
+            "value": "\"queued\""
+          },
+          "Succeeded": {
+            "source": "const",
+            "type": "string",
+            "value": "\"succeeded\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.CreateDataSourceRequest": {
+        "kind": "record",
+        "members": {
+          "Config": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 3
+          },
+          "ConnectionUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "DefaultAttributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 4
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DashboardSummaryDto": {
+        "kind": "record",
+        "members": {
+          "Quality": {
+            "source": "positional",
+            "type": "FeedbackStatsDto",
+            "required": true,
+            "position": 4
+          },
+          "TopSearchTerms": {
+            "source": "positional",
+            "type": "IReadOnlyList<SearchTrendDto>",
+            "required": true,
+            "position": 3
+          },
+          "TotalAnswers": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "TotalSearches": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 0
+          },
+          "UsageTrend": {
+            "source": "positional",
+            "type": "IReadOnlyList<UsagePointDto>",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DashboardUsageDto": {
+        "kind": "record",
+        "members": {
+          "TopSearchTerms": {
+            "source": "positional",
+            "type": "IReadOnlyList<SearchTrendDto>",
+            "required": true,
+            "position": 3
+          },
+          "TotalAnswers": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "TotalSearches": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 0
+          },
+          "UsageTrend": {
+            "source": "positional",
+            "type": "IReadOnlyList<UsagePointDto>",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DataSourceDto": {
+        "kind": "record",
+        "members": {
+          "Config": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 6
+          },
+          "ConnectionUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 8
+          },
+          "DefaultAttributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 7
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "LastSyncedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 5
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Status": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentContentDto": {
+        "kind": "record",
+        "members": {
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Markdown": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "SourceUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 3
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentDto": {
+        "kind": "class",
+        "members": {
+          "Attributes": {
+            "source": "property",
+            "type": "Dictionary<string,string>",
+            "required": false
+          },
+          "CreatedAt": {
+            "source": "property",
+            "type": "DateTimeOffset",
+            "required": false
+          },
+          "Id": {
+            "source": "property",
+            "type": "Guid",
+            "required": false
+          },
+          "MarkdownUri": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
+          "Status": {
+            "source": "property",
+            "type": "string",
+            "required": false
+          },
+          "Tags": {
+            "source": "property",
+            "type": "List<string>",
+            "required": false
+          },
+          "Title": {
+            "source": "property",
+            "type": "string",
+            "required": false
+          },
+          "UpdatedAt": {
+            "source": "property",
+            "type": "DateTimeOffset",
+            "required": false
+          },
+          "Version": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DocumentVersionDto": {
+        "kind": "class",
+        "members": {
+          "Attributes": {
+            "source": "property",
+            "type": "Dictionary<string,string>",
+            "required": false
+          },
+          "ChangeNote": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
+          "CreatedAt": {
+            "source": "property",
+            "type": "DateTimeOffset",
+            "required": false
+          },
+          "DocumentId": {
+            "source": "property",
+            "type": "Guid",
+            "required": false
+          },
+          "MarkdownUri": {
+            "source": "property",
+            "type": "string?",
+            "required": false
+          },
+          "Status": {
+            "source": "property",
+            "type": "string",
+            "required": false
+          },
+          "Tags": {
+            "source": "property",
+            "type": "List<string>",
+            "required": false
+          },
+          "Title": {
+            "source": "property",
+            "type": "string",
+            "required": false
+          },
+          "Version": {
+            "source": "property",
+            "type": "int",
+            "required": false
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FeedbackDto": {
+        "kind": "record",
+        "members": {
+          "AnswerId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "Comment": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 3
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 6
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Question": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 4
+          },
+          "Rating": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 7
+          },
+          "UserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 5
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FeedbackRating": {
+        "kind": "class",
+        "members": {
+          "Down": {
+            "source": "const",
+            "type": "string",
+            "value": "\"down\""
+          },
+          "Up": {
+            "source": "const",
+            "type": "string",
+            "value": "\"up\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FeedbackRequest": {
+        "kind": "record",
+        "members": {
+          "AnswerId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Comment": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 2
+          },
+          "Question": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 3
+          },
+          "Rating": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FeedbackStatsDto": {
+        "kind": "record",
+        "members": {
+          "Down": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "SatisfactionRate": {
+            "source": "positional",
+            "type": "double",
+            "required": true,
+            "position": 3
+          },
+          "Total": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          },
+          "Up": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SearchRequest": {
+        "kind": "record",
+        "members": {
+          "AttributeFilters": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 2
+          },
+          "Query": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Scope": {
+            "source": "positional",
+            "type": "AccessScope?",
+            "required": false,
+            "position": 3
+          },
+          "TopK": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SearchResponse": {
+        "kind": "record",
+        "members": {
+          "ElapsedMs": {
+            "source": "positional",
+            "type": "long",
+            "required": true,
+            "position": 2
+          },
+          "Results": {
+            "source": "positional",
+            "type": "List<SearchResultDto>",
+            "required": true,
+            "position": 0
+          },
+          "TotalHits": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SearchResultDto": {
+        "kind": "record",
+        "members": {
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 6
+          },
+          "ChunkId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "DocumentTitle": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "MarkdownUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 5
+          },
+          "Score": {
+            "source": "positional",
+            "type": "float",
+            "required": true,
+            "position": 4
+          },
+          "Tags": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 7
+          },
+          "Text": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SearchTrendDto": {
+        "kind": "record",
+        "members": {
+          "Count": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "Term": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UsageEventRequest": {
+        "kind": "record",
+        "members": {
+          "EventType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Query": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UsageEventType": {
+        "kind": "class",
+        "members": {
+          "Answer": {
+            "source": "const",
+            "type": "string",
+            "value": "\"answer\""
+          },
+          "Search": {
+            "source": "const",
+            "type": "string",
+            "value": "\"search\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UsagePointDto": {
+        "kind": "record",
+        "members": {
+          "Count": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          },
+          "Date": {
+            "source": "positional",
+            "type": "DateOnly",
+            "required": true,
+            "position": 0
+          },
+          "EventType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.DocumentDeleted": {
+        "kind": "record",
+        "members": {
+          "DeletedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 1
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.DocumentNormalized": {
+        "kind": "record",
+        "members": {
+          "AssetUris": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 4
+          },
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 5
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "MarkdownUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "NormalizedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 7
+          },
+          "SourceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "Tags": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 6
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.DocumentUpdated": {
+        "kind": "record",
+        "members": {
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 4
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "MarkdownUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 3
+          },
+          "Status": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Tags": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 5
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 6
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.IngestionCompleted": {
+        "kind": "record",
+        "members": {
+          "ChunkCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "CompletedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 2
+          },
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.IngestionRequested": {
+        "kind": "record",
+        "members": {
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "JobId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "RequestedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Events.RawDocumentFetched": {
+        "kind": "record",
+        "members": {
+          "Attributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 6
+          },
+          "ContentType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 5
+          },
+          "FetchId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "FetchedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 8
+          },
+          "OriginalPath": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "SourceId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "StorageUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          },
+          "Tags": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 7
+          }
+        }
+      }
+    },
+    "src/platform/backend/Shared/Platform.Shared.Contracts": {
+      "Platform.Shared.Contracts.Dtos.AbacPolicyDto": {
+        "kind": "record",
+        "members": {
+          "Action": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 6
+          },
+          "DocumentConditions": {
+            "source": "positional",
+            "type": "Dictionary<string,List<string>>",
+            "required": true,
+            "position": 4
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "IsActive": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 5
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 7
+          },
+          "UserConditions": {
+            "source": "positional",
+            "type": "Dictionary<string,List<string>>",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.AccessScope": {
+        "kind": "record",
+        "members": {
+          "Filters": {
+            "source": "positional",
+            "type": "List<AttributeFilter>",
+            "required": true,
+            "position": 0
+          },
+          "GrantsAccess": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.AccessScopeRequest": {
+        "kind": "record",
+        "members": {
+          "UserAttributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>",
+            "required": true,
+            "position": 1
+          },
+          "UserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.AccessScopeResponse": {
+        "kind": "record",
+        "members": {
+          "AllowedFilters": {
+            "source": "positional",
+            "type": "List<AttributeFilter>",
+            "required": true,
+            "position": 1
+          },
+          "Granted": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 2
+          },
+          "UserId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.AttributeDefinitionDto": {
+        "kind": "record",
+        "members": {
+          "AllowedValues": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 3
+          },
+          "CreatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 6
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Key": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Label": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Required": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 4
+          },
+          "Scope": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 5
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 7
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.AttributeFilter": {
+        "kind": "record",
+        "members": {
+          "AllowedValues": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 1
+          },
+          "Key": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.CompletionApiRequest": {
+        "kind": "record",
+        "members": {
+          "Confidentiality": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 3
+          },
+          "MaxTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 1
+          },
+          "Model": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 2
+          },
+          "Prompt": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Purpose": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 4
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.CompletionApiResponse": {
+        "kind": "record",
+        "members": {
+          "Endpoint": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 5
+          },
+          "InputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          },
+          "Model": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "OutputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 3
+          },
+          "RoutingReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 6
+          },
+          "Sent": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 4
+          },
+          "StopReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 7
+          },
+          "Text": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.CompletionStopReasons": {
+        "kind": "class",
+        "members": {
+          "EndTurn": {
+            "source": "const",
+            "type": "string",
+            "value": "\"end_turn\""
+          },
+          "MaxTokens": {
+            "source": "const",
+            "type": "string",
+            "value": "\"max_tokens\""
+          },
+          "Refusal": {
+            "source": "const",
+            "type": "string",
+            "value": "\"refusal\""
+          },
+          "StopSequence": {
+            "source": "const",
+            "type": "string",
+            "value": "\"stop_sequence\""
+          },
+          "ToolUse": {
+            "source": "const",
+            "type": "string",
+            "value": "\"tool_use\""
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.CompletionStreamEvent": {
+        "kind": "record",
+        "members": {
+          "Delta": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Done": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 1
+          },
+          "InputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 5
+          },
+          "Model": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 4
+          },
+          "OutputTokens": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 6
+          },
+          "RoutingReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 7
+          },
+          "Sent": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 2
+          },
+          "StopReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 8
+          },
+          "Text": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 3
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ConfigVersionDto": {
+        "kind": "record",
+        "members": {
+          "AppliedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 1
+          },
+          "AppliedBy": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 2
+          },
+          "GitCommit": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ConfigVersionEntryDto": {
+        "kind": "record",
+        "members": {
+          "AppliedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": true,
+            "position": 1
+          },
+          "AppliedBy": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 2
+          },
+          "GitCommit": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 0
+          },
+          "HadDrift": {
+            "source": "positional",
+            "type": "bool?",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ConnectorDto": {
+        "kind": "record",
+        "members": {
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 1
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.DriftFindingDto": {
+        "kind": "record",
+        "members": {
+          "Detail": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "Kind": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Severity": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Target": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.DriftReportDto": {
+        "kind": "record",
+        "members": {
+          "CheckedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset",
+            "required": true,
+            "position": 1
+          },
+          "Findings": {
+            "source": "positional",
+            "type": "IReadOnlyList<DriftFindingDto>",
+            "required": true,
+            "position": 2
+          },
+          "HasDrift": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.EffectiveConfigDto": {
+        "kind": "record",
+        "members": {
+          "Connectors": {
+            "source": "positional",
+            "type": "IReadOnlyList<ConnectorDto>",
+            "required": true,
+            "position": 4
+          },
+          "EventBindings": {
+            "source": "positional",
+            "type": "IReadOnlyList<EventBindingDto>",
+            "required": true,
+            "position": 2
+          },
+          "Pipeline": {
+            "source": "positional",
+            "type": "IReadOnlyList<PipelineStageDto>",
+            "required": true,
+            "position": 1
+          },
+          "Ports": {
+            "source": "positional",
+            "type": "IReadOnlyList<PortSelectionDto>",
+            "required": true,
+            "position": 3
+          },
+          "Version": {
+            "source": "positional",
+            "type": "ConfigVersionDto",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.EmbedApiRequest": {
+        "kind": "record",
+        "members": {
+          "Confidentiality": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 1
+          },
+          "Purpose": {
+            "source": "positional",
+            "type": "EmbedPurpose",
+            "required": false,
+            "position": 2
+          },
+          "Text": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.EmbedApiResponse": {
+        "kind": "record",
+        "members": {
+          "Collection": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "Dimensions": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "Embedded": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 4
+          },
+          "Endpoint": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 5
+          },
+          "Model": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Retryable": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 7
+          },
+          "RoutingReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 6
+          },
+          "Vector": {
+            "source": "positional",
+            "type": "float[]",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.EmbedPurpose": {
+        "kind": "enum",
+        "members": {
+          "Index": {
+            "source": "enum",
+            "value": 0
+          },
+          "Query": {
+            "source": "enum",
+            "value": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.EventBindingDto": {
+        "kind": "record",
+        "members": {
+          "Event": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Publishers": {
+            "source": "positional",
+            "type": "IReadOnlyList<string>",
+            "required": true,
+            "position": 1
+          },
+          "Subscribers": {
+            "source": "positional",
+            "type": "IReadOnlyList<string>",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.PipelineStageDto": {
+        "kind": "record",
+        "members": {
+          "Consumer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 5
+          },
+          "Input": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 3
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Outputs": {
+            "source": "positional",
+            "type": "IReadOnlyList<string>",
+            "required": true,
+            "position": 4
+          },
+          "Service": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.PortSelectionDto": {
+        "kind": "record",
+        "members": {
+          "Implementation": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Port": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Target": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.ServiceIntrospectionDto": {
+        "kind": "record",
+        "members": {
+          "Connectors": {
+            "source": "positional",
+            "type": "IReadOnlyList<ConnectorDto>",
+            "required": true,
+            "position": 3
+          },
+          "Ports": {
+            "source": "positional",
+            "type": "IReadOnlyList<PortSelectionDto>",
+            "required": true,
+            "position": 2
+          },
+          "Service": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Steps": {
+            "source": "positional",
+            "type": "IReadOnlyList<StepIntrospectionDto>",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Platform.Shared.Contracts.Dtos.StepIntrospectionDto": {
+        "kind": "record",
+        "members": {
+          "Consumer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Enabled": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 4
+          },
+          "Input": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Outputs": {
+            "source": "positional",
+            "type": "IReadOnlyList<string>",
+            "required": true,
+            "position": 3
+          }
+        }
+      }
+    }
+  }
+}
