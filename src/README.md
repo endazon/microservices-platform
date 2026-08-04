@@ -135,8 +135,15 @@ src/
      — **これを忘れるとルートは載るが左ナビに項目が出ない**（ルートとナビは別経路である）。
    `createUnitRoutes` の**戻り値へ型注釈を書かない**——`readonly AnyRoute[]` を注釈すると
    ルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる。
-   ナビ項目の `group` は 05_screens §共通シェル の 4 グループ（`user` / `personal` / `admin` / `ops`）。
-   本リポジトリの計画に属さないユニットは省略してよい（末尾の「その他」へ入る）。
+   ナビ項目の `group` は 05_screens §共通シェル の 4 グループ（`user` / `personal` / `admin` / `ops`）で、
+   **本リポジトリの計画に属するユニットは必ず宣言する**（型 `PlanNavItem` が `tsc` で強制する。
+   総称のフォールバックが無いため、宣言漏れは「どのグループにも属さず静かに消える」ことを意味する）。
+   **本リポジトリの計画に属さないユニット**（AST 等）は `group` を宣言せず、代わりに合成点
+   `platform/frontend/src/features/index.ts` の `unitNavGroups` へ**ユニットの機能名**を見出しとする
+   グループを 1 要素足す（例: `ai-stock-trading` → 「株式自動売買」）。
+   **総称としての「その他」は使わない**（05_screens §共通シェル ［2026-08-04 確定］。
+   左ナビのグループ名は利用者が機能を探す唯一の手掛かりであり、何が入っているか分からない名前を
+   置くと導線が失われる。[IADR-0125](../docs/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) 決定 9）。
    旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は本リポジトリから変更できないユニット
    （`src/ai-stock-trading`。[IADR-0120](../docs/adr/IADR-0120_excluded-units-from-gitmodules.md)）のための
    互換ブリッジであり、新規ユニットでは使わない。

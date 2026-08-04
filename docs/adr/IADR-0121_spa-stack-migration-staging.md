@@ -130,9 +130,13 @@ related_specs:
 > 計画と整合する。ただし「最終的に一括」は**完了条件**を伴う——第 2〜5 段をすべて消化し、
 > 13_frontend-stack §採用技術一覧と実装が完全に一致した時点で「一括移行の完了」とみなす
 > （`react-router-dom` と `oidc-client-ts` がワークスペースから消えていることを含む）。
-> 提起の経緯・確定解釈・完了条件・計画側への追補案は
+> 提起の経緯・確定解釈は
 > [feedback/20260804_frontend-migration-staging-interpretation.md](../../feedback/20260804_frontend-migration-staging-interpretation.md)
-> を正とする（計画リポジトリへの反映操作のみ残タスク）。
+> に記録した。
+> **［2026-08-04 追記・反映済み］裁定は計画本文へ入った**——
+> [13_frontend-stack §実装への移行方針](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+> の追補（planning `d980a01` / planning#186）が「**この追補により移行完了の定義は確定した**」と明記した。
+> **以後、移行完了の定義（完了条件）の正は計画本文であり、feedback 文書は経緯の記録である。**
 
 > **［2026-08-04 追記］決定 1 の「第 2 段」は [[IADR-0124]]（#490）で 2 つへ分割された。**
 > 本決定は段の内容・境界を
@@ -151,6 +155,14 @@ related_specs:
 > **「最終的に結果が同じになるなら進め方はそれでもいいです」**）。**条件付き承認**であり、
 > 条件（最終結果の同一性）が満たされるのは **#452 が旧 13 画面の削除・再実装を完了した時点**である
 > （[feedback/20260804 §追加裁定](../../feedback/20260804_frontend-migration-staging-interpretation.md)）。
+> **［2026-08-04 追記］これは計画本文でも確定した**——
+> [13_frontend-stack §実装への移行方針](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+> の追補が「**旧画面（13 画面）の完全削除は移行の完了条件の一部であり、段階分割によって省略されるものではない**」
+> と明記している（planning#186）。
+> **［2026-08-04 追記］残件（shadcn/ui 本移植・Lingui・Storybook）は #496 として起票・消化された**
+> （[IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) /
+> [#496 作業仕様書](../specs/20260804_issue-496_ui-i18n-storybook.md)）。
+> **第 2 段の項目はこれで全て消化されたが、完了条件は #452 待ちのままである。**
 > 段の順序・第 1 段／第 3〜5 段の内容・「各系統は 1 度だけ切り替える」という並行運用の禁止は
 > 本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
 

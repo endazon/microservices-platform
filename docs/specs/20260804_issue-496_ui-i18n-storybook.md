@@ -118,7 +118,7 @@ Storybook**」である。前 3 者は #490（PR #495）で消化され、**後 
 | **Table** 一式 | SC-02「結果テーブル」／SC-06「ソース一覧テーブル」／SC-07「ジョブ一覧テーブル」／SC-05 文書一覧 | `<table>` **19**（`sc-*.html`。`index.html` を含めると 20）・`table`（19） | `<table>` 10（`<th>` 50 / `<td>` 50） | **移植** |
 | **Card**（＝モックの `panel`） | 各画面の区画（SC-03 属性・タグパネル／バージョン履歴パネル、SC-08 結果パネル、SC-10 統計） | `panel`（48）・`stat`（8） | 素の `<section>` | **移植** |
 | **Alert**（＝モックの `note`） | SC-05「必須属性未設定は保存拒否」・SC-06「認証情報は Vault 管理」の注記／SC-06 同期異常の**警告（琥珀）** | `note`（45）・`err`（16）・`warn`（10）・`ok`（18） | `notice` state ＋ `ErrorList` | **移植** |
-| **Tabs**（＝モックの `seg`） | **明示なし**（SC-09 §主要素 は「属性体系エディタ、タグ辞書、辺の型辞書、ポリシー定義」の 4 区画を挙げるだけで、**「タブ」とは書いていない**。SC-02 §主要素 の「検索モード切替（キーワード｜意味）」も同型の切替である） | `seg`（4: SC-09 ×2・SC-18・SC-21）・`seg-opt`（14）。**hi-fi の SC-09 が 4 区画を `seg`／`seg-opt` の切替として描いており、注記本文で「『辺の型』タブ」と呼ぶ**（＝タブという呼称の出所は本文ではなくモックアップである） | — | **移植**（根拠は (b) 一本） |
+| **Tabs**（＝モックの `seg`） | **明示なし**（SC-09 §主要素 は「属性体系エディタ、タグ辞書、辺の型辞書、ポリシー定義」の 4 区画を挙げるだけで、**「タブ」とは書いていない**。SC-02 §主要素 の「検索モード切替（キーワード｜意味）」も同型の切替である） | `seg`（4: SC-09 ×2・SC-18・SC-21）・`seg-opt`（14）。**hi-fi の SC-09 が 4 区画を `seg`／`seg-opt` の切替として描いており、注記本文で「『辺の型』タブ」と呼ぶ**（＝タブという呼称の出所は本文ではなくモックアップである） | — | **移植**。**［2026-08-04 追記］計画の [§shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md) が `Tabs` を「基準 2（ロービングタブインデックス等の複合キーボード操作）に該当 → Radix」と判定した**ため、(a) 側にも一次根拠ができた（起案時は (b) 一本だった） |
 | Dialog | **SC-19 / SC-20 のみ**（公開範囲変更・完全削除確認・緊急アクセス・一括失効） | SC-19 / SC-20 のみ | — | **見送り**（下記） |
 | Badge | 状態表示（SC-06 同期状態・SC-07 ジョブ状態） | `tag`（120） | `StatusBadge` | 既存 |
 | Button | 全画面 | `btn`（72） | `Button` | 既存 |
@@ -200,7 +200,8 @@ src/platform/frontend/src/foundation/i18n/
 | 対象 | 文言 |
 | --- | --- |
 | `foundation/ui/Layout.tsx` | ブランド表示名・サインアウト・アカウント設定のラベル・主要ナビゲーション（`aria-label`）・利用者名の既定 |
-| `foundation/routing/nav.ts` | 左ナビのグループ見出し（利用者 / 個人 / 管理 / 運用 / その他） |
+| `foundation/routing/nav.ts` | 左ナビの**計画 4 グループ**の見出し（利用者 / 個人 / 管理 / 運用） |
+| `features/index.ts`（合成点） | 本計画に属さないユニットのグループ見出し＝**機能名**（`ai-stock-trading` → 「株式自動売買」）。05_screens §共通シェル ［2026-08-04 確定］／IADR-0125 決定 9 |
 | `foundation/ui/NotFound.tsx` | 見出し・本文 |
 | `foundation/ui/ErrorBoundary.tsx` | 見出し・既定メッセージ |
 | `foundation/ui/notifications.tsx` | 4 種のラベル（成功 / 情報 / 注意 / エラー） |
@@ -494,12 +495,11 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 | 事項 | 計画・issue の記載 | 実装 | 根拠 |
 | --- | --- | --- | --- |
 | **Dialog の移植** | issue #496 §スコープ が「Input・Select・**Dialog**・Table・Tabs 等」と例示 | **移植しない** | 計画（`01_screens`）で確認ダイアログを要求しているのは **SC-19 / SC-20 のみ**（実測: `grep -rn "モーダル\|ダイアログ" planning/projects/microservices-platform --include='*.md'` は **9 件**——01_screens が 7 件〔**SC-19 節 5 件・SC-20 節 1 件・§変更履歴 1 件（SC-19 の記述）**〕、ADR-0037〔Obsidian 同期方式〕が 2 件。**他の SC 節にはヒットが無い**）。両画面は FR-19 / FR-20 に属し、[IADR-0119](../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md) 決定 1 が「保留の対象は当該 FR を実現するプロダクトコードと、**その受け入れを担う画面**」と定めて着手を保留している。issue の記載は「等」を伴う**例示**であり、計画本文が要求していない部品を先回りで作ることは CLAUDE.md の禁止事項に当たる。**繰り延べであって放棄ではない**——引き受け先は #452（保留解除後） |
-| **Select の実装方式** | ADR-0031「UI コンポーネント = shadcn/ui」 | shadcn/ui 標準の `@radix-ui/react-select` ではなく**ネイティブ `<select>`** を cva で装う | 計画が要求しているのは「定義済み区分のみ」「権限内のタグ／フォルダのみ」という**値の選択**であり、ネイティブで満たせる。ネイティブはモバイル・スクリーンリーダ・キーボードの既定挙動をそのまま得られる。`Tabs` は逆に a11y を自前で書くと誤りやすいため Radix を採った（IADR-0125 決定 1） |
-| **Label の実装方式** | ADR-0031「UI コンポーネント = shadcn/ui」 | shadcn/ui 標準の `@radix-ui/react-label` ではなく**素の `<label>`** | `Select` と同じ理由である。shadcn/ui の `Label` が Radix を使うのは「ラベル押下時のテキスト選択を抑止する」等の細部のためで、計画が要求しているのは「入力 / バリデーション」表の項目名の表示と入力との関連付けである。素の `<label>` ＋ `htmlFor` で満たせ、実行時依存を増やさない。**`Select` の逸脱だけを記録して `Label` を書かないのは非対称**であるため併記する（監査指摘） |
+| ~~**Select / Label の実装方式**~~（**差異ではなくなった**） | 起案時: ADR-0031 は「UI コンポーネント = shadcn/ui」としか書かず、Radix への追随の要否が読み取れなかった | `Select` = ネイティブ `<select>`／`Label` = 素の `<label>` | **［2026-08-04］計画が [13_frontend-stack §shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md) で Radix 使用の 4 基準と部品ごとの判定表を確定した**（planning#182）。判定表は `Tabs`=Radix ／ `Select`=ネイティブ `<select>` ／ `Label`=素の `<label>` ／ 他 5 件=`cva`+`cn()` であり、**本 PR の 8 部品と完全に一致する**。計画は「本家が Radix を使っていても追随しないこと自体は**逸脱として記録しなくてよい**」と明記しているため、本行は差異の記録ではなく**一致の記録**として残す |
 | **カタログの置き場** | `13_frontend-stack` §ディレクトリ構成 は `src/locales/`（平坦） | `platform/frontend/src/foundation/i18n/locales/` | 計画の §ディレクトリ構成 は「ユニット内 SPA」の**素朴な例示**であり、本リポジトリの実装は基盤を `foundation/` の下へ束ねる構成を既に採っている（[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) が Superseded にした [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md) 以来の配置。`api` / `auth` / `routing` / `ui` / `config` がすべて `foundation/` 配下）。**平坦構成へ読み替えるのではなく、既存の構成規則に合わせて `foundation/i18n/locales/` とした。** `locales/` に ja / en を並べるという計画の要点は満たしている |
 | **i18n の適用範囲** | issue #496「既存文言の抽出とカタログ整備」 | **platform の foundation に限る**（既存 11 画面は触らない） | #452 が SC-01〜11 の Page を作り直す（[#490 仕様書 §親への申し送り](./20260804_issue-490_spa-router-shell.md)）。いま `<Trans>` を入れると**同じ画面を 2 回書く**——[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 1 が第 2 段の分割で守っている原則そのものに反する。**繰り延べであって放棄ではない**（引き受け先 #452。IADR-0125 決定 6） |
 | **ロケール切替の UI** | 受け入れ基準「ja / en の切替が動作し」 | **UI は作らない**。`navigator.language` から判定し、切替は `activate(locale)` の公開 API | `01_screens` で言語切替を要求しているのは **SC-13（Keycloak のログインテーマ）だけ**であり、§共通シェル の要素に言語切替は無い。無い UI を先回りで作らない（IADR-0125 決定 7）。切替が動くことは単体テストが固定する |
-| **ブランド表示名の翻訳** | `01_screens` §共通シェル「ブランド表示名は『汎用プラットフォーム』で統一する」「**ブランド名は差し替えない**」 | en カタログでも**訳さない**（同じ文字列を入れる） | 「差し替えない」は別ホスト・可変ユニット間の統一を述べた文脈だが、**言語による差し替えの可否は計画側が判断していない**。実装が独断で英語名を作ると、計画の「統一」に反する既成事実になる。安全側に倒し、§未決事項 として計画へ問う |
+| ~~**ブランド表示名の翻訳**~~（**差異ではなくなった**） | 起案時: 計画は「ブランド名は差し替えない」と述べるだけで**言語による差し替えの可否**に触れていなかった | ロケールによらず「汎用プラットフォーム」。**カタログを経由しないリテラル**で描画する | **［2026-08-04］計画が同内容を確定した**（[01_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「**ロケールによっても差し替えない**（固有名詞として扱う。en ロケールでも「汎用プラットフォーム」を表示し、**翻訳カタログの対象としない**）」planning#184）。実装は計画の字義（カタログの対象としない）に従いリテラル化した——カタログ経由だと en の `msgstr` を書き換えるだけで差し替えられ、`check-i18n-catalogs.js` は非空しか見ないため止まらない（IADR-0125 決定 8） |
 | **マクロの使い方** | Lingui の標準は `<Trans>` | foundation では `i18n._(msg`…`)` に統一（`<Trans>` は使わない） | `<Trans>` は `I18nProvider` を必須とし、素で描画する単体テスト 31 件が wrapper の有無で落ちる（実測）。foundation が出すのは素の文字列だけでリッチテキスト・複数形を使わない。`I18nProvider` は `App.tsx` に残し、画面側（#452）が `<Trans>` を使えるようにしてある |
 
 ## ワークフロー変更（本 PR に含まれる）
@@ -555,8 +555,14 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 | shadcn/ui コンポーネント本移植 / Lingui(ja/en) / Storybook | **本 issue #496** |
 
 ただし **#490 が #452 へ渡した「旧 13 画面の削除・再実装」は依然として未達**であり、
-第 2 段の完了条件（`feedback/20260804_frontend-migration-staging-interpretation.md` §完了条件）は
-**#452 の消化まで満たされない**。
+第 2 段の完了条件は **#452 の消化まで満たされない**。
+
+**［2026-08-04］完了条件の「正」は計画本文へ移った。** 段階分割の裁定 2 件は計画
+[13_frontend-stack §実装への移行方針](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+の追補（planning#186）へ反映され、「**この追補により移行完了の定義は確定した**」と明記された。
+とくに「**旧画面（13 画面）の完全削除**は移行の完了条件の一部であり、段階分割によって省略されるものではない」。
+`feedback/20260804_frontend-migration-staging-interpretation.md` は**経緯の記録**として残り、
+完了条件の一次情報源は計画本文である。
 
 ### #452 が引き受ける項目（本 PR で意図的に触れなかったもの）
 
@@ -578,22 +584,26 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 
 ## 未決事項
 
-1. **ブランド表示名を英語ロケールで訳すか**（計画への問い）。`01_screens` §共通シェル は
-   「ブランド表示名は『汎用プラットフォーム』で統一する」「ブランド名は差し替えない」と定めるが、
-   **言語による差し替えの可否**には触れていない。本 PR は安全側に倒して**訳さない**（en でも
-   「汎用プラットフォーム」）。計画側の判断が要る（`/plan-feedback` の候補）。
-2. **`I18nProvider` と `<Trans>` の使い分けの明文化**。本 PR は foundation で `msg` に統一したが、
+1. ~~**ブランド表示名を英語ロケールで訳すか**~~ → **解消（2026-08-04）**。計画が
+   「**ロケールによっても差し替えない**（固有名詞として扱う。**翻訳カタログの対象としない**）」を確定した
+   （[01_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)。planning#184）。
+   実装をカタログ非経由のリテラルへ改めた（IADR-0125 決定 8）。
+   **計画は「正式なブランド名を定める場合は本裁定を再検討する」とも述べている**ため、その時点で見直す。
+2. ~~**shadcn/ui の「派生」をどこまで許すか**~~ → **解消（2026-08-04）**。計画が
+   [13_frontend-stack §shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+   で Radix 使用の 4 基準と部品ごとの判定表を確定した（planning#182）。本 PR の 8 部品は判定表と完全に一致する。
+3. **ユニットの機能名（左ナビのグループ見出し）の訳語方針**（計画への問い）。
+   計画は**ブランド表示名**について「ロケールによっても差し替えない」と裁定したが、
+   **ユニットの機能名については定めていない**。本 PR は訳す判断を採り
+   （`株式自動売買` → `Automated stock trading`）、根拠を IADR-0125 決定 9 に記録した。
+   AST の計画（`projects/ai-stock-trading/`）にも英語名の定めが無いため、訳語自体も実装の判断である。
+   計画が方針を定めた場合はそれに従う（`/plan-feedback` の候補）。
+4. **`I18nProvider` と `<Trans>` の使い分けの明文化**。本 PR は foundation で `msg` に統一したが、
    画面側（#452）が `<Trans>` を使い始めると、素で描画する単体テストは wrapper が要る。
    テスト用の共通 wrapper（`foundation/testing/` のハーネス）に `I18nProvider` を組み込むのが自然だが、
    画面の作り方が決まる #452 で判断するのが適切である。
-3. **shadcn/ui の「派生」をどこまで許すか**（計画への問い）。本 PR は `Select`（Radix Select →
-   ネイティブ `<select>`）と `Label`（Radix Label → 素の `<label>`）で shadcn/ui の実装基盤から
-   離れている。ADR-0031 は「UI コンポーネント = shadcn/ui」としか書かず、**部品ごとの実装基盤
-   （Radix への依存）まで確定しているのかが読み取れない**。1（ブランド名の翻訳可否）と並べて
-   計画側の判断を仰ぐ（`/plan-feedback` の候補）。**新 ADR は起こさない**——
-   計画が部品単位を定めていない以上、実装 ADR（IADR-0125 決定 1）の記録で足りると判断した。
-4. **バンドルサイズ**。`index.js` が 544 kB（gzip 161 kB）で Vite の 500 kB 警告に触れる
+5. **バンドルサイズ**。`index.js` が 544 kB（gzip 161 kB）で Vite の 500 kB 警告に触れる
    （#490 から +7 kB。Lingui ランタイム分）。コード分割は画面が確定する #452 の後が適切である
    （#490 の未決事項 5 を引き継ぐ）。
-5. **Storybook のアドオン**。現状 0 個である。a11y チェック（`@storybook/addon-a11y`）等を入れる場合は
+6. **Storybook のアドオン**。現状 0 個である。a11y チェック（`@storybook/addon-a11y`）等を入れる場合は
    08_data-egress-policy に照らして判断する（判断の材料は `check-static-egress.js` の走査結果が与える）。
