@@ -234,6 +234,11 @@ PublishScripts/
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.
 !**/[Pp]ackages/build/
+# ADR-0031 / IADR-0121 決定 4: フロントエンドの共有ワークスペースパッケージ（pnpm workspace の
+# `packages/*`）は上の NuGet 用 `**/[Pp]ackages/*` と名前が衝突し、そのままだと **git に追加しても
+# 静かに無視される**（ビルドもテストも作業ツリー上のファイルで通るため気付けない）。除外を解除する。
+!src/packages/
+!src/packages/**
 # Uncomment if necessary however generally it will be regenerated when needed
 #!**/[Pp]ackages/repositories.config
 # NuGet v3's project.json files produces more ignorable files
