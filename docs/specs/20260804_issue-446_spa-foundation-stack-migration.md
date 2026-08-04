@@ -1,7 +1,7 @@
 ---
 title: SPA 基盤（platform/frontend）の React 19 + Vite + TanStack 移行 — 段階分割と第 1 段（新スタックの土台）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0121]
 author: Claude
 created: 2026-08-04
@@ -192,14 +192,15 @@ flowchart TB
   SPA が触れてよいのは `/bff/*` だけである（BFF 境界。IADR-0033 決定 5 を新スタックへ引き継ぐ）。
   orval の `input.filters` はタグ／スキーマ単位でしか効かず、`/feedback` と `/bff/feedback` のように
   **同一タグに BFF と非 BFF が混在する**ため使えない（実測）。よって
-  `input.override.transformer`（`src/scripts/orval-bff-only.cjs`）で `paths` を前処理して落とす。
+  `input.override.transformer`（`src/orval-bff-only.cjs`）で `paths` を前処理して落とす。
 - 出力: `platform/frontend/src/foundation/api/generated/`（`mode: 'tags-split'`・`client: 'react-query'`・
   `httpClient: 'fetch'`・`mock: true`）。**生成物はコミットする**（CI・IDE・レビューが codegen 実行順に
   依存しないため）。`pnpm run codegen` で再生成し、CI で `git diff --exit-code` により乖離を検出する。
 - **mutator で `foundation/api` 経由に固定する**。orval 既定の生成コードは素の `fetch('/bff/...')` を呼び、
   実行時 config（`bffBaseUrl`）も 401 導線も無視する。`foundation/api/orvalMutator.ts` の `bffFetch` を
   mutator に指定し、生成コードの HTTP 出口を `apiClient` 1 箇所へ収束させる。
-- 生成物は lint / typecheck / カバレッジの対象から除外する（自動生成物の品質は生成器の責務）。
+- 生成物は lint とカバレッジの対象から除外する（自動生成物の品質は生成器の責務）。typecheck は行う
+  （生成物と mutator・スキーマの不整合は型で気付きたい）。
 
 ### 5. Tailwind CSS v4 ＋ `@platform/ui`
 
@@ -243,30 +244,40 @@ flowchart TB
 
 [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md) の ratchet は「下げたままにしない」。第 1 段は
 **画面を削除しない**ため母数の急減が起きず、追加コード（`queryClient` / `orvalMutator` / `@platform/ui`）
-には同 PR でテストを付ける。**しきい値は下げない**ことを原則とし、実測が床を割る場合に限り、
-下げた値・理由・回復計画（回復させる段と条件）を「§検証（実測）」へ記録する。
+には同 PR でテストを付ける。**しきい値は下げず、実測に合わせて引き上げる。**
 orval 生成物はカバレッジ対象から除外する（自動生成物を母数へ入れると床が意味を失う）。
+
+床の置き方には 1 つ判断が要る。横断計測には `ai-stock-trading`（AST）の実装が含まれ、AST の実測は
+高いため横断値を押し上げる。しかし AST は独自の計画と ADR を持つ**別プロジェクト**（submodule）であり、
+横断値に床を合わせると **AST の pin 更新だけで本リポのゲートが動く**。これは
+[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) 決定 4 がバックエンドの床で名指しした
+「他プロジェクトのカバレッジを合算した濁り」と同じ失敗である。したがって
+**床は MSP 所有分（platform/frontend + knowledge/frontend + packages/*）の実測を基準に置く**。
+実測値と新しい床は「§検証（実測）」に記す。
+
+なお「フロントの計測**範囲**から AST を外すか」は IADR-0118 決定 4 との整合の問題であり、本作業の
+対象外とする（別 issue で判断する。§未決事項）。
 
 ## 受け入れ基準
 
-- [ ] 移行全体が段へ分割され、各段の内容・順序・起票先・#452 / #439 との境界が本書に記録されている
-- [ ] 第 1 段の内部設計判断が [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) に記録され、
+- [x] 移行全体が段へ分割され、各段の内容・順序・起票先・#452 / #439 との境界が本書に記録されている
+- [x] 第 1 段の内部設計判断が [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) に記録され、
       [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md) が Superseded になっている
-- [ ] `src/` が pnpm workspace で解決でき、`pnpm install --frozen-lockfile` が成功する
-- [ ] React 19 で `typecheck` / `lint` / 単体テスト / `build` が全て成功する（既存テストの退行ゼロ）
-- [ ] `pnpm run codegen` が `/bff/*` のみから型・TanStack Query フック・MSW モックを生成し、
+- [x] `src/` が pnpm workspace で解決でき、`pnpm install --frozen-lockfile` が成功する
+- [x] React 19 で `typecheck` / `lint` / 単体テスト / `build` が全て成功する（既存テストの退行ゼロ）
+- [x] `pnpm run codegen` が `/bff/*` のみから型・TanStack Query フック・MSW モックを生成し、
       再実行しても差分が出ない
-- [ ] 生成されたクライアントの HTTP 出口が `foundation/api` の mutator 1 箇所である（生成物に素の `fetch(` が無い）
-- [ ] `@platform/ui` が Tailwind v4 のトークンとプリミティブを公開し、`platform/frontend` のビルド成果物に
+- [x] 生成されたクライアントの HTTP 出口が `foundation/api` の mutator 1 箇所である（生成物に素の `fetch(` が無い）
+- [x] `@platform/ui` が Tailwind v4 のトークンとプリミティブを公開し、`platform/frontend` のビルド成果物に
       Tailwind の CSS が含まれる（＝パイプラインが疎通している）
-- [ ] 外部ホストへの参照がビルド成果物に無い（Web フォント・CDN・analytics の 0 件を確認する）
-- [ ] Redux・手書き HTTP クライアント・BFF 境界外アクセスが lint で機械的に落ちる（違反サンプルで確認）
-- [ ] CI（`frontend.yml` / `frontend-tests.yml`）が pnpm で動作する定義になっている
-- [ ] カバレッジしきい値を下げていない。下げた場合は値・理由・回復計画が本書にある
-- [ ] Playwright E2E スモークが 1 本以上 green
-- [ ] バックエンド非破壊: `node scripts/scripts.test.js` / `node scripts/check-doc-links.js` /
+- [x] 外部ホストへの参照がビルド成果物に無い（Web フォント・CDN・analytics の 0 件を確認する）
+- [x] Redux・手書き HTTP クライアント・BFF 境界外アクセスが lint で機械的に落ちる（違反サンプルで確認）
+- [x] CI（`frontend.yml` / `frontend-tests.yml`）が pnpm で動作する定義になっている
+- [x] カバレッジしきい値を下げていない。下げた場合は値・理由・回復計画が本書にある
+- [x] Playwright E2E スモークが 1 本以上 green
+- [x] バックエンド非破壊: `node scripts/scripts.test.js` / `node scripts/check-doc-links.js` /
       `node scripts/check-commit-messages.js --base origin/develop` が green
-- [ ] AST（submodule・別プロジェクト）の typecheck / lint / テストが壊れていない
+- [x] AST（submodule・別プロジェクト）の typecheck / lint / テストが壊れていない
 
 ## テスト方針
 
@@ -302,7 +313,68 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 
 ## 検証（実測）
 
-<!-- 実装後に実測値で埋める -->
+**測定条件**（これを書かない実測値は再現不能）: worktree `feat/ADR-0031-spa-foundation-migration`
+（起点 `origin/develop` = `5031483`）／Node **22.22.2**／pnpm **10.33.0**／submodule は
+`src/ai-stock-trading` を **populate 済み**（`655e2ed`。CI の `frontend*.yml` も `src/*` の submodule を
+取得するため CI と同条件）・`planning` は未 populate。コマンドはすべて `src/` で実行。
+
+| 検証項目 | コマンド | 結果 |
+| --- | --- | --- |
+| 依存解決 | `pnpm install` | 成功（workspace 5 プロジェクト: root / platform/frontend / knowledge/frontend / ai-stock-trading/frontend / packages/ui） |
+| 型検査 | `pnpm run typecheck` | **OK**（platform / knowledge / packages/ui / ai-stock-trading の 4 パッケージ） |
+| lint | `pnpm run lint` | **0 error**（warning 2 件＝ `react-refresh/only-export-components`。AST の E2E ハーネスと `@platform/ui` の Button。既存の運用と同じく warn 止まり） |
+| 単体テスト | `pnpm run test` | **35 files / 213 tests 全 green**（移行前は 31 files / 193 tests。退行 0・純増 20） |
+| カバレッジ | `pnpm run test:coverage` | lines/statements **91.69%** / branches **82.04%** / functions **83.14%**（しきい値 83 / 83 / 74 / 75 を上回る） |
+| ビルド | `pnpm run build` | 成功。`dist/assets/index-*.css` **5.91 kB**（gzip 2.08 kB）＝ Tailwind のパイプラインが疎通している |
+| API 契約生成 | `pnpm run codegen` | 成功。BFF の 5 タグ（analysis / config / dashboard / feedback / search）から 16 ファイル生成。**再実行しても差分なし** |
+| E2E スモーク | `playwright test`（Chromium は既設 `/opt/pw-browsers/chromium` を実行パス指定。install はしない） | **6 passed**（`login` / `sc01-search` / `sc04-wiki` / `sc08-analysis` / `sc10-operations` / `sc11-config`。いずれも未認証時の `/login` 誘導） |
+| バックエンド非破壊 | `node scripts/scripts.test.js` | **197 tests passed** |
+| ドキュメント | `node scripts/check-doc-links.js` | **OK**（399 Markdown。planning 配下 687 件は未 populate のため対象外） |
+| コミット規約 | `node scripts/check-commit-messages.js --base origin/develop` | **✓ すべて適合** |
+| Actions 版数 | `node scripts/check-action-versions.js` | **退行なし**（`pnpm/action-setup` の下限は `scripts/action-versions.repo.json` に追加） |
+| 受け入れ基準 → テスト | `node scripts/check-test-traceability.js` | **OK**（仕様書のある起点 ID 27 件中 27 件が写像済み） |
+
+### カバレッジ ratchet の更新（下げていない）
+
+| 基準 | lines / statements | branches | functions |
+| --- | --- | --- | --- |
+| 実測（全ユニット横断＝ゲートが見る値） | 91.69% | 82.04% | 83.14% |
+| 実測（MSP 所有分のみ。AST の実装を母数から除外して測り直した値） | 88.36% | 79.53% | 80.00% |
+| **新しい床**（MSP 所有分の実測から約 5pt 下） | **83**（← 78） | **74**（据置） | **75**（← 68） |
+
+引き上げであり、**下げた項目は無い**（回復計画は不要）。branches のみ据え置きなのは、MSP 所有分の実測
+79.53% に同じ 5pt の余裕を取ると 74 になり、現行値と一致するためである。床を横断値ではなく MSP 所有分に
+合わせた理由は「§設計 8」に記した。
+
+### BFF 境界・データ egress の実測
+
+- 生成物 16 ファイル中、素の `fetch(` は **0 件**（全て `bffFetch` = `foundation/api` の mutator 経由）。
+- ビルド成果物の外部参照: CSS の `url()` **0 件**、CSS 中の外部 URL は Tailwind のコメント 1 件のみ、
+  JS 中の `http(s)://` は XML 名前空間・`localhost` 既定・React のエラーページ URL（文字列）のみ。
+  **Web フォント・CDN・analytics への参照は 0 件**（08_data-egress-policy 準拠）。
+
+### 機械強制の発火確認（違反サンプル。確認後に削除済み）
+
+`knowledge/frontend/src` と `packages/ui/src` に故意の違反ファイルを置いて `eslint` を実行した結果、
+**8 件すべてが error として検出**された。
+
+| 違反 | 検出ルール |
+| --- | --- |
+| `import { createStore } from 'redux'` | `no-restricted-imports`（Redux 不採用） |
+| `import axios from 'axios'`（2 箇所） | `no-restricted-imports`（手書きクライアント禁止） |
+| `import { cn } from '@platform/ui/src/lib/cn'` | `no-restricted-imports`（共有 UI の公開面） |
+| `fetch('/bff/search')`（2 箇所） | `no-restricted-globals`（BFF 境界） |
+| `new XMLHttpRequest()` | `no-restricted-globals` |
+| `new EventSource('/bff/stream')` | `no-restricted-globals` |
+
+### React 19 移行で判明した非自明な事実（実測）
+
+pnpm は npm と違い各パッケージの宣言を厳密に守るため、submodule ユニット（AST）が React 18 を
+宣言したままだと **React 19 の要素を React 18 の DOM で描画する**状態になる。override を入れる前の実測は
+**横断 Vitest 59 件が失敗**（`Objects are not valid as a React child`）、**AST の typecheck が TS2786**
+（`@types/react` の二重解決）だった。`pnpm.overrides` で React の実体をワークスペースで 1 つに固定して解消した。
+この事象は npm workspaces のホイスティングでは表面化しないため、pnpm 移行と React 19 を同じ段で行った
+本作業でのみ観測できた。
 
 ## 計画書との差異
 
@@ -323,5 +395,10 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 
 - 第 2 段の起票（TanStack Router ＋ アプリシェル ＋ 旧画面削除）を #452 に含めるか独立 issue にするかは、
   #454 のチェックリスト運用者（利用者）が決める。本書は**独立 issue を推奨**する（#452 は画面 13 枚で
-  それ自体が大きいため）。
+  それ自体が大きいため）。[IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 4
+  に従い、第 2 段以降は **issue を分割**して #454 のチェックリストへ追加する（#446 に複数 PR をぶら下げない）。
+- フロントのカバレッジ計測範囲から `ai-stock-trading` を外すか否か（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)
+  決定 4 との整合）。本作業では床の**基準**を MSP 所有分に寄せるに留めた。
 - Vite のメジャー更新（5 → 7/8）と Vitest 4 / TypeScript 7 系への追随は本作業の対象外。別途 issue 化する。
+- `@platform/ui` に置いた 2 プリミティブ以外（Input / Dialog / Table / Form …）の shadcn/ui 移植は
+  第 2 段。ダークテーマのトークンも画面確定後に追加する。

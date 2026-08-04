@@ -145,10 +145,11 @@ related_specs:
 3. **`/bff/*` 以外は生成しない。** `docs/api/openapi.yaml` は BFF とサービス直接 API を 1 ファイルに束ねており、
    SPA が触れてよいのは `/bff/*` だけである。orval の `input.filters` はタグ／スキーマ単位でしか効かず、
    `/feedback` と `/bff/feedback` のように**同一タグに BFF と非 BFF が混在する**ため使えない（実測）。
-   `input.override.transformer`（`src/scripts/orval-bff-only.cjs`）で `paths` を前処理して落とす。
+   `input.override.transformer`（`src/orval-bff-only.cjs`）で `paths` を前処理して落とす。
    これにより **BFF 境界が生成器の段階で機械的に保証される**（「呼べる API が存在しない」）。
-4. 生成物は lint・typecheck の厳格規則・カバレッジ計測から除外する（自動生成物の品質は生成器の責務。
-   母数へ入れるとカバレッジ床が意味を失う）。
+4. 生成物は **lint とカバレッジ計測から除外**する（自動生成物の品質は生成器の責務。母数へ入れると
+   カバレッジ床が「生成量」で動いて意味を失う）。**typecheck は行う**——生成物と mutator・スキーマの
+   不整合は型で気付きたいためである。
 
 ### 決定 4: `@platform/ui` の切り出し単位は「デザイントークン ＋ `cn()` ＋ shadcn/ui 派生プリミティブ」に限る（論点 B = B2。計画の申し送りへの回答）
 

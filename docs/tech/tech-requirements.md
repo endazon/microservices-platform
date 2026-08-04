@@ -13,11 +13,14 @@ related_ids:
   - ADR-0027
   - ADR-0029
   - ADR-0030
+  - ADR-0031
+  - ADR-0032
   - IADR-0048
   - IADR-0117
+  - IADR-0121
 author: claude
 created: 2026-07-04
-updated: 2026-08-03
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
@@ -55,9 +58,13 @@ plan_refs:
 | ランタイム（バックエンド） | .NET | 10（`net10.0`） | ADR-0020（計画側も .NET 10 で確定）／[[IADR-0048]]（実装の先行採用）。`global.json` は SDK 8.0.0 + `rollForward: latestMajor` |
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準は ADR-0030（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
-| 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/`（npm workspaces ルート = `src/`）。Node は CI と揃え 22 |
-| フレームワーク（フロントエンド） | React + Vite | React 18 / Vite 5（ESM） | SPA。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0033]]・[[IADR-0056]]）。BFF は `/bff/*` 経由 |
-| 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | ADR-0004。SPA は public client `spa-web`（`oidc-client-ts`） |
+| 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/` と `src/packages/*`（**pnpm workspace** ルート = `src/`。[[IADR-0121]] 決定 2）。Node は CI と揃え 22 |
+| フレームワーク（フロントエンド） | React + Vite | **React 19** / Vite 5（ESM） | SPA。ADR-0031 が確定したスタックへ移行中（[[IADR-0121]] が 5 段に分割。**第 1 段まで完了**）。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0056]]）。BFF は `/bff/*` 経由 |
+| 状態管理（フロントエンド） | TanStack Query | 5 | ADR-0031。サーバー状態の唯一の入口（`foundation/api/queryClient.ts`）。**グローバルストア（Redux）は持たない**（ESLint で機械強制）。クライアント状態の Zustand は使う画面が出る段で導入 |
+| ルーティング（フロントエンド） | react-router-dom 6（**移行中**） | 6.30 | ADR-0031 の確定値は **TanStack Router**。差し替えは画面再実装（#452）と同一段で行う（[[IADR-0121]] 決定 1）。React 19 とは peer `react>=16.8` で共存 |
+| API 契約（フロントエンド） | orval（OpenAPI → 型・TanStack Query フック・MSW モック） | 8 | ADR-0031。**手書きクライアント禁止**（ESLint で機械強制）。入力は `docs/api/openapi.yaml` の `/bff/` 配下のみ。生成物はコミットし CI で再生成差分を検査（[[IADR-0121]] 決定 3） |
+| CSS / UI（フロントエンド） | Tailwind CSS v4 + shadcn/ui + lucide-react | 4 | 共有 UI パッケージ `@platform/ui`（`src/packages/ui`。[[IADR-0121]] 決定 4）。**外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy）。色だけで意味を持たせない（INDEX 決定 21） |
+| 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | ADR-0004。SPA は public client `spa-web`（`oidc-client-ts`）。**ADR-0032 の BFF セッション方式へ移行予定**（#439・[[IADR-0121]] 決定 6。それまで現行方式を維持する） |
 | データストア（業務） | PostgreSQL | — | DB per Service（ADR-0002）。jsonb 属性は EF Core の ValueComparer で content 比較（#184） |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
 | オブジェクトストレージ | MinIO（S3 互換） | RELEASE.2025-04-08 | 正規化本文・資産。ClusterIP のみ（[[IADR-0024]]）。資格情報は k8s Secret |
@@ -196,8 +203,10 @@ planning#161・planning#162（段階ポリシーの導入））。よって **ra
   `dotnet format --verify-no-changes`（CI lint ゲート）を
   ユニット別ソリューション（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) /
   [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)）毎に実行する。
-- **フロントエンド**: `npm run lint`（ESLint flat config）/ `npm run typecheck` / `npm run test`（Vitest）/
-  `npm run test:coverage`（v8・しきい値ラチェット）/ E2E は Playwright。
+- **フロントエンド**（`src/` で実行。パッケージ管理は **pnpm**）: `pnpm run lint`（ESLint flat config。
+  Redux 不使用・手書き HTTP クライアント禁止・BFF 境界を機械強制する。[[IADR-0121]] 決定 8）/
+  `pnpm run typecheck` / `pnpm run test`（Vitest）/ `pnpm run test:coverage`（v8・しきい値ラチェット）/
+  `pnpm run codegen`（orval。BFF OpenAPI から生成。再生成差分は CI が検査する）/ E2E は Playwright。
 - **CI**: バックエンド [`ci.yml`](../../.github/workflows/ci.yml)、フロント [`frontend.yml`](../../.github/workflows/frontend.yml) /
   [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml)。セキュリティ（gitleaks/dependency-review）・CodeQL。
   コミット/PR 件名はトレーサビリティ規約を機械検査（`check-commit-messages.js` / `pr-title.yml`）。

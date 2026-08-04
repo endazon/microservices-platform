@@ -55,12 +55,29 @@ export default defineConfig({
         // 母数へ入れると床が「生成量」で動いて意味を失う）。
         'platform/frontend/src/foundation/api/generated/**',
       ],
-      // 回帰防止のラチェット。実測（lines/statements≈83%, branches≈80%, functions≈77-80%）
-      // に合わせて床を引き上げ、床を割る変更を CI で止める（レビュー #168 指摘対応）。
+      // 回帰防止のラチェット。床を割る変更を CI で止める（レビュー #168 指摘対応・IADR-0034）。
+      //
+      // ［2026-08-04 / #446］移行第 1 段（ADR-0031 / IADR-0121）に伴う引き上げ。
+      //   実測（Node 22.22.2 / pnpm 10.33.0 / submodule `src/ai-stock-trading` populate 済み）:
+      //     全ユニット横断        lines/statements 91.61% / branches 82.10% / functions 82.62%
+      //     MSP 所有分のみ        lines/statements 88.36% / branches 79.53% / functions 80.00%
+      //     （MSP 所有分 = platform/frontend + knowledge/frontend + packages/*。AST の実装を
+      //       母数から外して測り直した値）
+      //
+      //   床は **MSP 所有分の実測から 5pt 下** に置く（実測 83% に対し床 78 を置いていた従来と同じ作法。
+      //   計測ゆらぎで「成果物は正しいのに赤」にならない余裕だけを残す）。AST 側の実測が高いため
+      //   横断値はこれより高く出るが、**床を横断値に合わせない**——AST は独自の計画と ADR を持つ
+      //   別プロジェクト（submodule）であり、そこに床を依存させると AST の pin 更新だけで本リポの
+      //   ゲートが動く（[IADR-0118](../docs/adr/IADR-0118_backend-coverage-floor.md) 決定 4 が
+      //   バックエンドの床で名指しした「他プロジェクトのカバレッジを合算した濁り」と同じ失敗）。
+      //   MSP 所有分を基準にすれば、AST が抜けても床は満たされる。
+      //
+      //   フォローアップ（#446 の申し送り）: フロントの計測範囲そのものから AST を外すか否かは
+      //   IADR-0118 決定 4 との整合の問題であり、別 issue で判断する。
       thresholds: {
-        lines: 78,
-        statements: 78,
-        functions: 68,
+        lines: 83,
+        statements: 83,
+        functions: 75,
         branches: 74,
       },
     },
