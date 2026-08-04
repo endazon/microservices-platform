@@ -89,7 +89,7 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 
-#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で解消済み）
+#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で対処。実レポートでの成立確認は CI 実走）
 
 `Platform.Bff` は BFF の合成点として
 [`AiStockTrading.Bff.Endpoints`](../../src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj) を
@@ -100,15 +100,15 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 
 [#468](https://github.com/endazon/microservices-platform/issues/468) /
 [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) で
-[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替え、次の 2 点で
-解消した。
+[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替え、次の 2 点の
+機構を導入した。
 
 1. **行の帰属**: 各 `<class filename>` を `src/<unit>/` へ帰属させ、集計対象外ユニット（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)
    の単一情報源から導出）の行を集計から落とす。`filename` は相対・絶対・`<sources>` との結合の順に
-   多段で解釈する（coverlet は base path で始まらないファイルを絶対パスのまま書くため、片方に決め打つと
+   多段で解釈する（coverlet は base path で始まらないファイルを絶対パスのまま書くとみられ、片方に決め打つと
    フィルタが何にもマッチせず「除外したつもりで素通り」になる）。**帰属が 1 件も成立しなければ warn**、
    帰属できなかったクラス・`<class>` の外にある行は集計に残して可視化する。
-2. **二重記載の解消**: coverlet は同じ行を `<methods>` 配下と class 直下の `<lines>` に二重に書く。集計は
+2. **二重記載の排除**: coverlet は同じ行を `<methods>` 配下と class 直下の `<lines>` に二重に書く。集計は
    **class 直下の `<lines>` を正**とする（`<methods>` 配下は内訳として数えない）。素朴な `<line>` カウントが
    計測条件で振れていた——PR #464 のレビューは Release 構成で 2 度計測し、全プロジェクト実行時と
    `Platform.Bff.Tests` 単体実行時で結果が割れた——原因はこれである。
@@ -117,6 +117,12 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 毎回出力**する（`COVERAGE_FLOOR_DEBUG=1` でレポート単位の内訳も出る）。あわせて `<coverage>` の
 `lines-valid` / `lines-covered`（coverlet 自身の集計値）と本実装の集計値を並べ、二重記載の扱いが実レポートで
 妥当かを毎回照合できるようにしている。
+
+> **状態**: 上記は**機構の導入まで**である。実レポート（coverlet の実出力）に対して帰属と除外が
+> 成立していることの確認・混入行数の確定・除去後の実測に基づく床の置き直しは、**CI 初回実走の診断出力**
+> （帰属の内訳・除外クラス一覧・coverlet 値との照合）**を読んでから**行う。#468 の作業環境には .NET SDK が
+> 無く、実レポートを取得できなかったためである（[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4・5、
+> [作業仕様書](../specs/20260804_issue-468_coverage-ast-exclusion.md) の受け入れ基準）。
 
 > **注**: 上記 2 により集計の**絶対数**（`covered/lines`）の意味が変わった（分母・分子とも約半分になる）。
 > 比率はほぼ不変だが、PR #464 の実測値（`18894/54826`）と #468 以降の表示は直接比較できない。

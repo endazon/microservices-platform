@@ -2,10 +2,10 @@
 title: IADR-0118 バックエンドのカバレッジ床 — 単一情報源・実測からの切り下げ・ratchet
 type: impl-adr
 status: Accepted
-related_ids: [NFR, IADR-0034, IADR-0115, IADR-0116]
+related_ids: [NFR, IADR-0034, IADR-0115, IADR-0116, IADR-0123]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -153,6 +153,19 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      `<class filename>` で行を帰属させるパーサ改修が要り、独立した設計判断を伴うため
      [#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出した。
 
+   > **［2026-08-04 追記］決定 4 の「既知の限界」（合成点経由の混入）は [[IADR-0123]] で対処した（#468）。**
+   > `check-coverage-floor.js` を class 単位走査へ作り替え、各 `<class filename>` を `src/<unit>/` へ
+   > 帰属させて集計対象外ユニットの行を落とす（除外集合は [IADR-0120](IADR-0120_excluded-units-from-gitmodules.md)
+   > の単一情報源から導出。レポートファイルのパスによる除外は併用する）。
+   > **機構は導入済みだが、実レポートでの成立確認は CI 初回実走の診断出力**（帰属の内訳・除外クラス一覧・
+   > coverlet 自身の `lines-valid` との照合）**による**。本作業環境に .NET SDK が無く実レポートを
+   > 取得できなかったためである（[IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4・5）。
+   > **上記の「AST 由来 230〜266 行」は旧計数方式による値である**——文書全体の `<line>` を正規表現で
+   > 数える方式であり、`<methods>` 配下と class 直下の二重記載を含む（範囲で割れた原因でもある）。
+   > IADR-0123 決定 3 で class 直下の `<lines>` を正としたため、**混入行数も除去後の実測値も
+   > 新方式で測り直す**（確定は CI 実走の診断出力を見てから）。床の値 `line 34` / `branch 17` は
+   > 本追記時点で変更していない（置き直しは IADR-0123 決定 7）。
+
 5. **レポートが 1 件も無い場合は warn で素通りする（fail-open）。ただしその代償はテストで塞ぐ。**
    - fail-open にするのは、カバレッジと無関係な PR やローカル実行を赤くしないためである。
    - 代償は「**床が静かに無効化される**」こと——#453 の実測で現に踏んだ失敗である（collector 参照が
@@ -209,17 +222,21 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
 - 悪い影響・トレードオフ:
   - **床の絶対水準は低い**（line 34 / branch 17）。品質の水準を保証するものではなく、あくまで**回帰
     防止の床**である。各ドメイン issue でテストと床を段階的に引き上げる前提に立つ。
-  - 合成点経由で AST の行が混入する（230〜266 行）。現在の床 34 の有効性には影響しないが、床を
-    引き上げていくと影響が相対的に増す。[#468](https://github.com/endazon/microservices-platform/issues/468) で塞ぐ。
+  - 合成点経由で AST の行が混入する（旧計数方式で 230〜266 行）。現在の床 34 の有効性には影響しないが、
+    床を引き上げていくと影響が相対的に増す。[#468](https://github.com/endazon/microservices-platform/issues/468) /
+    [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) で対処済み（実レポートでの成立確認は
+    CI 実走の診断出力による。上記の［2026-08-04 追記］を参照）。
   - fail-open のため、想定外の経路でレポートが出なくなれば床は緑のまま失効しうる。既知の 2 経路は
     テストで固定したが、網羅ではない。warn の本文を読む運用が要る。
   - 床の値を書いた箇所が複数ある（`src/coverage-floor.json` / `docs/tests/TEST_STRATEGY.md` /
     `docs/DEFINITION_OF_DONE.md` / 本 IADR）。**値の正は `src/coverage-floor.json`**（機械が読む単一
     情報源）であり、文書側は引き上げのたびに追随が要る。
 - フォローアップ:
-  1. [#468](https://github.com/endazon/microservices-platform/issues/468) で合成点経由の混入を除去し、
-     実レポートで確定値を測り直す。除去後の実測が現在の床を上回ることは確認済みのため、床の値の
-     見直しは #468 の結果を見てから行う。
+  1. ~~[#468](https://github.com/endazon/microservices-platform/issues/468) で合成点経由の混入を除去し、
+     実レポートで確定値を測り直す。~~ **除去の機構は #468 /
+     [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) で導入済み**。残るのは
+     **CI 実走の診断出力から確定値（混入行数・除去後の実測）を読み取り、床を置き直す**ことである
+     （[`src/coverage-floor.json`](../../src/coverage-floor.json) の 2 値のみ。IADR-0123 決定 7）。
   2. 各ドメイン issue（#438〜#451）がテストを追加したら **床を引き上げる**（ratchet）。
   3. [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 の受け入れゲートに
      本床の具体値を記載した（#474 で追記済み）。床を引き上げた際は同規約の記載も追随させる。

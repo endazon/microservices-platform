@@ -132,6 +132,11 @@ coverlet（`XPlat Code Coverage`）の Cobertura は概ね次の形である。
 `filename` に書く（`GetBasePaths` / `GetRelativePathFromBase`）。deterministic build 指定時は
 `<source>` が空で `filename` が `/_/src/...` の形になる。すなわち**同一レポート内に相対と絶対が混在し得る**。
 
+> **この内部挙動の記述は着手時点の理解であり、coverlet のソース（一次出典）で確認していない。**
+> 前提として採らず「決め打ちしない理由」としてのみ用いる。実レポートに対する真偽は、下記の帰属内訳
+> （どの解釈で当たったか・未帰属件数）と coverlet 自身の集計値との照合として診断出力に現れる
+> （[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4・5）。
+
 よって帰属判定は次の順で行い、**どの解釈で当たったかを診断に出す**（当たり方が想定と違えば読み取れる）。
 
 | 順 | 解釈 | 判定 |

@@ -99,7 +99,10 @@ function attrOf(attrs, name) {
 /**
  * <sources><source>…</source></sources> の値を返す。
  * coverlet は「全ソースファイルのうち最も浅いディレクトリ」を base path として出し、base path で
- * 始まらないファイルは filename に**絶対パスのまま**書く（GetBasePaths / GetRelativePathFromBase）。
+ * 始まらないファイルは filename に**絶対パスのまま**書く（GetBasePaths / GetRelativePathFromBase）
+ * ——**実装時点の理解であり coverlet のソースで確認していない**（IADR-0123「filename の解釈」）。
+ * この理解は前提として採らず「決め打ちしない理由」としてのみ使う。実レポートでの真偽は
+ * 診断出力（帰属の内訳・lines-valid との照合）に現れる。
  * deterministic build 指定時は空の <source> になる（filename が /_/src/… の形になる）。
  * 空文字は結合に使えないため落とす。
  */
