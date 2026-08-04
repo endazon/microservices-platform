@@ -50,6 +50,7 @@
 const fs = require('fs');
 const path = require('path');
 const { warn, notice } = require('./lib/ci-annotate');
+const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SPEC_DIR = 'docs/tests';
@@ -59,8 +60,12 @@ const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'covera
 /**
  * 検査対象外のユニット。他プロジェクト（AST）は独自の計画 ID 体系を持ち、本リポジトリの
  * docs/tests/ の FR/SC とは名前空間が異なる（.claude/rules/traceability.md）。
+ *
+ * 値は .gitmodules（src/<unit> の submodule）から導出する。3 検査器が同じ集合を独立に
+ * ハードコードしていた形は、submodule ユニットの追加（IADR-0056 決定 6）で 3 箇所同時に
+ * 狭すぎになるため単一情報源へ寄せた（issue #473。規則は scripts/lib/excluded-units.js）。
  */
-const EXCLUDED_UNITS = new Set(['ai-stock-trading']);
+const EXCLUDED_UNITS = excludedUnits({ root: REPO_ROOT });
 
 /** テストファイルとみなす拡張子パターン。 */
 const TEST_FILE = /(Tests?\.cs|\.(test|spec)\.(ts|tsx|js|jsx))$/i;
@@ -82,10 +87,7 @@ function toPosix(p) {
   return String(p).replace(/\\/g, '/');
 }
 
-function isExcludedPath(relPath) {
-  const m = toPosix(relPath).match(/^src\/([^/]+)\//);
-  return m ? EXCLUDED_UNITS.has(m[1]) : false;
-}
+const isExcludedPath = makeIsExcludedPath(EXCLUDED_UNITS);
 
 /**
  * テスト仕様書のファイル名から起点 ID を取り出す。

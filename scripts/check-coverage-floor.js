@@ -28,6 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const { notice, warn } = require('./lib/ci-annotate');
+const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const FLOOR_FILE = path.join(REPO_ROOT, 'src', 'coverage-floor.json');
@@ -45,14 +46,15 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'dist']);
  * PR 本文が「単純平均は実態より高く出る」として単一プロジェクト内で加重平均を採ったのと同じ問題が、
  * プロジェクト間でも起きる（PR #464 のレビュー指摘）。check-test-traceability.js /
  * check-backend-libraries.js の EXCLUDED_UNITS と同じ切り分けに揃える。
+ *
+ * 値は .gitmodules（src/<unit> の submodule）から導出する。3 検査器が同じ集合を独立に
+ * ハードコードしていた形は、submodule ユニットの追加（IADR-0056 決定 6）で 3 箇所同時に
+ * 狭すぎになるため単一情報源へ寄せた（issue #473。規則は scripts/lib/excluded-units.js）。
  */
-const EXCLUDED_UNITS = new Set(['ai-stock-trading']);
+const EXCLUDED_UNITS = excludedUnits({ root: REPO_ROOT });
 
 /** リポジトリ相対パスが集計対象外ユニット配下か。 */
-function isExcludedPath(relPath) {
-  const m = String(relPath).replace(/\\/g, '/').match(/^src\/([^/]+)\//);
-  return m ? EXCLUDED_UNITS.has(m[1]) : false;
-}
+const isExcludedPath = makeIsExcludedPath(EXCLUDED_UNITS);
 
 // --- 純粋ロジック ---------------------------------------------------------------
 

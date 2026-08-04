@@ -883,4 +883,77 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(stale, [], `解消済みなのに baseline に残る行: ${JSON.stringify(stale)}`);
     assert.deepStrictEqual(domain, [], `Domain 依存規律違反: ${JSON.stringify(domain)}`);
   });
+
+  // --- lib/excluded-units: 除外ユニットの単一情報源（Issue #473） -----------------
+
+  const excl = require('./lib/excluded-units.js');
+  const testTrace = require('./check-test-traceability.js');
+  const coverageFloor = require('./check-coverage-floor.js');
+
+  const sortedUnits = (s) => [...s].sort();
+
+  ok('除外ユニットは .gitmodules の src/<unit> から導出される（planning は含まない）', () => {
+    const gitmodules = fs.readFileSync(path.join(__dirname, '..', '.gitmodules'), 'utf8');
+    const derived = sortedUnits(excl.excludedUnitsFromText(gitmodules));
+    assert.deepStrictEqual(derived, ['ai-stock-trading'], `導出結果: ${JSON.stringify(derived)}`);
+    // planning はリポジトリ直下の submodule でユニットではない（issue #473 の注意点）。
+    assert.strictEqual(derived.includes('planning'), false);
+    // 実リポジトリのルートから読んでも同じ結果になること。
+    assert.deepStrictEqual(sortedUnits(excl.excludedUnits()), derived);
+  });
+
+  // 単一情報源であることの核: 3 検査器が同じ集合を持つ。ハードコード時代は 3 箇所を人手で
+  // 揃える運用であり、submodule ユニットが増えると 3 箇所同時に狭すぎになった（#473）。
+  ok('3 検査器の EXCLUDED_UNITS が単一情報源から導出され一致する', () => {
+    const derived = sortedUnits(excl.excludedUnits());
+    for (const [name, mod] of [
+      ['check-backend-libraries', backendLibs],
+      ['check-test-traceability', testTrace],
+      ['check-coverage-floor', coverageFloor],
+    ]) {
+      assert.deepStrictEqual(sortedUnits(mod.EXCLUDED_UNITS), derived, `${name} の除外集合が導出値と異なる`);
+      assert.strictEqual(mod.isExcludedPath('src/ai-stock-trading/backend/x/XTests.cs'), true, `${name}: AST が対象内`);
+      assert.strictEqual(mod.isExcludedPath('src/platform/backend/x/XTests.cs'), false, `${name}: platform が対象外`);
+      assert.strictEqual(mod.isExcludedPath('src/Directory.Packages.props'), false, `${name}: src 直下を除外している`);
+    }
+  });
+
+  // 逆戻り防止: ハードコードへ戻すと .gitmodules への自動追随が黙って失われる
+  // （check-doc-links の `planning/` 固定判定を .gitmodules 由来へ一般化した #139 と同じ作法）。
+  ok('3 検査器に除外ユニットのハードコードが残っていない', () => {
+    for (const f of ['check-backend-libraries.js', 'check-test-traceability.js', 'check-coverage-floor.js']) {
+      const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
+      // クォート形は両対応にする。片方だけだと `new Set(["ai-stock-trading"])` が素通りし、
+      // 「逆戻りを検出するテスト」自体が逆戻りを見逃す（監査指摘）。
+      assert.doesNotMatch(src, /new Set\(\[\s*["']ai-stock-trading["']/, `${f} にハードコードが残っている`);
+      assert.match(src, /require\('\.\/lib\/excluded-units\.js'\)/, `${f} がヘルパを参照していない`);
+    }
+  });
+
+  ok('仮の submodule を .gitmodules に足すと除外が自動追随する（フィクスチャ）', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'excluded-units-repo-'));
+    fs.writeFileSync(path.join(base, '.gitmodules'),
+      '[submodule "planning"]\n\tpath = planning\n\turl = x\n'
+      + '[submodule "src/ai-stock-trading"]\n\tpath = src/ai-stock-trading\n\turl = x\n'
+      + '[submodule "src/next-unit"]\n\tpath = src/next-unit\n\turl = x\n');
+    assert.deepStrictEqual(sortedUnits(excl.excludedUnits({ root: base })), ['ai-stock-trading', 'next-unit']);
+    const isExcluded = excl.makeIsExcludedPath(excl.excludedUnits({ root: base }));
+    assert.strictEqual(isExcluded('src/next-unit/backend/x/X.csproj'), true);
+    assert.strictEqual(isExcluded('src/knowledge/backend/x/X.csproj'), false);
+    fs.rmSync(path.join(base, '.gitmodules'));
+    fs.rmdirSync(base);
+  });
+
+  // fail-closed: 読めないときに空集合を返すと、別プロジェクトを自リポジトリの規約で検査してしまう。
+  ok('.gitmodules が読めなければ例外（空集合＝fail-open にしない）', () => {
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'excluded-units-missing-'));
+    assert.throws(() => excl.excludedUnits({ root: base }), /\.gitmodules を読めませんでした/);
+    fs.rmdirSync(base);
+  });
+
+  ok('lib/excluded-units.js --self-test は exit 0', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'lib', 'excluded-units.js'), '--self-test'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
 };
