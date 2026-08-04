@@ -118,7 +118,8 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 
 上記のうち写像検査・カバレッジ床・ライブラリ標準はいずれも **ratchet**（床は下げられるが上げっぱなしに
 できない）で設計している。これは impl-handoff-kit の段階ポリシー設計
-（[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146 / #149 / #160）が
+（[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146・planning#160
+（前段の失敗モード）／planning#161・planning#162（段階ポリシーの導入））が
 示した「**成果物は正しいのに赤**」の常態化——拒否の赤を無視する学習を生み、検査の目的を逆から壊す
 ——を避けるためである（キットの同期規約そのものは
 [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)）。既知の残件を
