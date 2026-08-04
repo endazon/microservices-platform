@@ -213,6 +213,26 @@ jobs:
       - name: Check backend application library standard
         run: node scripts/check-backend-libraries.js
 
+  # NFR, Issue #467: CPM（Central Package Management）のバージョン直書き禁止を機械強制する。
+  # CLAUDE.md の「バージョンは src/Directory.Packages.props に集約し、.csproj の PackageReference には
+  # バージョンを書かない」を検査する。着手時点の実測が違反 0 件のため ratchet / baseline を持たず
+  # 最初から fail で強制する。VersionOverride は CPM 公式の回避口のため許可し、使用箇所のみ
+  # 実行サマリへ警告として出す（終了コードは変えない）。templates/ も走査する（雛形の直書きは
+  # 全新規サービスへ伝播し、templates/ は上の build-and-test のビルド対象外のため他で捕まらない）。
+  # backend-libraries（#455）とは関心が異なるため別スクリプト（どのライブラリか / 版をどこに書くか）。
+  # submodule は取得しない（対象は platform / knowledge / templates で、いずれも本リポジトリの実体）。
+  cpm-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test CPM version checker
+        run: node scripts/check-cpm-versions.js --self-test
+      - name: Check CPM version pinning
+        run: node scripts/check-cpm-versions.js
+
   # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
   # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
   # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。

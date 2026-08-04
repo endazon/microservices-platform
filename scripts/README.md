@@ -11,6 +11,7 @@
 | `check-action-versions.js` | ワークフローの `uses: <action>@vN` を集め、**メジャーバージョンの退行**を検出。`action-versions.json` の下限を下回る、または `--compare-with` で指定したディレクトリ（Dependabot 管理下のリポジトリ直下）より古ければ終了コード 1。Dependabot は github-actions エコシステムでは**リポジトリ直下しか走査しない**ため、配布テンプレートは自動追随しない（planning#148）。表に無いアクション・使われていない表エントリは `warn`。`--check-latest` で GitHub API から新しいメジャーを確認（warn のみ・fail-open）。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 3 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外。2 → 3 の改定は IADR-0117）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
+| `check-cpm-versions.js` | CPM（Central Package Management）のバージョン直書き禁止の機械強制（#467）。`src/`（`ai-stock-trading` を除く）と `templates/` の `.csproj` を走査し、`PackageReference` の `Version` **属性**と `<Version>` **子要素**（MSBuild では属性形と等価）を違反として検出。違反があれば終了コード 1（着手時点の実測が違反 0 件のため ratchet / baseline を持たず最初から fail）。`VersionOverride` は CPM 公式の回避口のため**許可**し、使用箇所のみ `warn` ＋ 実行サマリの表で可視化する（終了コードは変えない）。走査対象は `.csproj`（雛形の `.csproj.sample` 含む）のみ——`.props` / `.targets` には正当な版記述（`PackageVersion` / `GlobalPackageReference`）があるため。XML コメントは除去してから走査する（説明コメント内の例示を赤にしない）。`check-backend-libraries.js` とは関心が異なる（**どの**ライブラリか / 版を**どこに**書くか）。`--self-test` で検証器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
 | `lib/excluded-units.js` | 検査器共通。`.gitmodules` の `src/<unit>` submodule から**検査対象外ユニット**を導出する単一情報源（#473）。`check-backend-libraries.js` / `check-test-traceability.js` / `check-coverage-floor.js` が使う。リポジトリ直下の `planning` は `src/` 配下でないためユニットにならない。`.gitmodules` が読めない場合は既定値へフォールバックせず**例外で停止**（除外 0 件で別プロジェクトを検査する fail-open を避ける）。`--self-test` でヘルパ自体も試験 | — |
@@ -42,6 +43,8 @@ node scripts/check-permission-denials.js <log>     # 実行ログの権限拒否
 node scripts/scripts.test.js                       # 上記スクリプト群の単体テスト
 node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
+node scripts/check-cpm-versions.js --self-test     # 検査器の自己試験
+node scripts/check-cpm-versions.js                 # CPM のバージョン直書き検査（#467）
 node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
 node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
 node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in ゲート横断 smoke test（#334・要 bash）
@@ -82,6 +85,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
 | `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
 | `unit-service-ownership` | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107） |
+| `cpm-versions` | `check-cpm-versions.js --self-test` と本検査（#467。CPM のバージョン直書き禁止） |
 | `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
