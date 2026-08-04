@@ -177,6 +177,18 @@ importers:
 
   knowledge/frontend:
     dependencies:
+      '@lingui/core':
+        specifier: ^6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)
+      '@lingui/react':
+        specifier: ^6.6.0
+        version: 6.6.0(@babel/core@7.29.7)(@babel/types@7.29.8)(react@19.2.8)
+      '@platform/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@tanstack/react-query':
+        specifier: ^5.101.0
+        version: 5.101.4(react@19.2.8)
       '@tanstack/react-router':
         specifier: ^1.170.18
         version: 1.170.18(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

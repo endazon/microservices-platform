@@ -1,3 +1,4 @@
+import { msg } from '@lingui/core/macro';
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
 import type { PlanNavItem } from '@foundation/routing/featureRegistry';
@@ -13,15 +14,18 @@ export const createSc02ResultsRoute = (shell: ShellRoute) =>
     path: '/search',
     // SC-02, IADR-0124: `?q=` を型付きの検索パラメータとして受ける（ADR-0031 が TanStack Router を
     // 採った理由そのもの）。URL は外部由来なので、文字列でない・欠落した値は空文字へ正規化する。
+    // IADR-0126 決定 3: この値が検索語の**単一情報源**である。
     validateSearch: (raw: Record<string, unknown>): { q: string } => ({
       q: typeof raw.q === 'string' ? raw.q : '',
     }),
     component: SearchResultsPage,
   });
 
+// 05_screens §共通シェル: 左ナビ「利用者」グループの「結果一覧」（hi-fi モックの左レール準拠）。
+// 表示名を MessageDescriptor で持つ理由は sc01-search/index.tsx のコメントを参照。
 export const sc02ResultsNav: PlanNavItem = {
   id: 'sc02-results',
-  label: '検索結果一覧',
+  label: msg`結果一覧`,
   to: '/search',
   group: 'user',
 };

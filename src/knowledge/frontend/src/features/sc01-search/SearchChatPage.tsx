@@ -1,216 +1,196 @@
-import { useRef, useState } from 'react';
-import { apiFetch, apiStream } from '@foundation/api/apiClient';
-import { ApiError } from '@foundation/api/ApiError';
+import { useState } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { Link } from '@tanstack/react-router';
+import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Tag } from '@platform/ui';
+import { appConfig } from '@foundation/config/runtimeConfig';
+import { citationKind } from './citations';
+import type { AskCitation } from './citations';
+import { useAskStream, useFeedback } from './useAskStream';
 
-// SC-01, UC-01, FR-03/FR-04: 検索／チャット質問画面（本システムの主入口）。
-// 1 つの入力から (1) 横断検索（/bff/search）と (2) 根拠付き AI 回答（/bff/analysis/ask/stream の
-// 真の SSE ストリーミング・出典併記）を行い、👍/👎（/bff/feedback）を送る。出典クリックで出典元へ遷移。
+// SC-01, UC-01, FR-03/FR-04/FR-05/FR-08: 検索／チャット質問画面（本システムの主入口。ルート /ask）。
+// 1 つの入力から根拠付き AI 回答（真の SSE ストリーミング・出典併記）を得る。
+// キーワード検索のみが欲しい場合は同じ語を SC-02 へ渡す（UC-01 代替フロー）。
+//
+// 実装しない要素（画面仕様書 docs/screens/SC-01_search-chat.md §hi-fi モックアップとの対応）:
+//   - 対象範囲フィルタ（タグ／フォルダ）: BFF に載せる先が無く、権限内候補を得る API も無い
+//     （feedback/20260804_sc01-03-bff-contract-gaps.md で計画へ環流済み）。
+//   - 個人資料まわり（「個人資料を含める」トグル・出典行の 👤）: FR-19 / FR-21 であり
+//     IADR-0119 決定 1 が着手を保留している（**繰り延べであって放棄ではない**）。
 
-interface Citation {
-  number: number;
-  documentId: string;
-  documentTitle: string;
-  chunkId: string;
-  sourceUri?: string | null;
-  score: number;
-  snippet: string;
-}
-interface SearchResult {
-  chunkId: string;
-  documentId: string;
-  documentTitle: string;
-  text: string;
-  score: number;
-  markdownUri?: string | null;
-}
-interface SearchResponse {
-  results: SearchResult[];
-  totalHits: number;
-  elapsedMs: number;
-}
-interface DonePayload {
-  answerId: string;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-}
-
-type AnswerStatus = 'idle' | 'streaming' | 'done' | 'error';
+/** 質問の最大長。計画（05_screens §SC-01）は「最大長制限」とだけ書き値を定めていない（画面仕様書 §未決事項 3）。 */
+const MAX_QUESTION_LENGTH = 1000;
 
 export function SearchChatPage() {
+  const { t } = useLingui();
   const [question, setQuestion] = useState('');
-  const [answer, setAnswer] = useState('');
-  const [citations, setCitations] = useState<Citation[]>([]);
-  const [answerStatus, setAnswerStatus] = useState<AnswerStatus>('idle');
-  const [answerId, setAnswerId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const answer = useAskStream();
+  const feedback = useFeedback();
 
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [searchStatus, setSearchStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
+  const trimmed = question.trim();
+  const canSubmit = trimmed.length > 0 && answer.status !== 'streaming';
 
-  const abortRef = useRef<AbortController | null>(null);
-  const canSubmit = question.trim().length > 0 && answerStatus !== 'streaming';
-
-  async function onSubmit(e: React.FormEvent) {
+  function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const q = question.trim();
-    if (!q || answerStatus === 'streaming') return;
-
-    // 前のストリームを中断してリセットする。
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setAnswer('');
-    setCitations([]);
-    setAnswerId(null);
-    setFeedback(null);
-    setAnswerStatus('streaming');
-    setResults([]);
-    setSearchStatus('loading');
-
-    // (1) 横断検索（AI 回答と独立に取得）。
-    apiFetch<SearchResponse>('/search', { method: 'POST', json: { query: q, topK: 10 } })
-      .then((data) => {
-        setResults(data?.results ?? []);
-        setSearchStatus('ok');
-      })
-      .catch(() => setSearchStatus('error'));
-
-    // (2) AI 回答の SSE ストリーミング（出典先行 → 本文トークン → done）。
-    try {
-      await apiStream(
-        '/analysis/ask/stream',
-        { json: { question: q } },
-        (ev) => {
-          if (ev.event === 'citations') {
-            const parsed = JSON.parse(ev.data) as { citations: Citation[] };
-            setCitations(parsed.citations ?? []);
-          } else if (ev.event === 'token') {
-            const parsed = JSON.parse(ev.data) as { text: string };
-            setAnswer((a) => a + parsed.text);
-          } else if (ev.event === 'done') {
-            const parsed = JSON.parse(ev.data) as DonePayload;
-            setAnswerId(parsed.answerId);
-            setAnswerStatus('done');
-          } else if (ev.event === 'error') {
-            setAnswerStatus('error');
-          }
-        },
-        controller.signal,
-      );
-      // done イベントが来なかった場合も終了状態にする。
-      setAnswerStatus((s) => (s === 'streaming' ? 'done' : s));
-    } catch (err) {
-      // 中断（新しい質問・アンマウント）は無視。それ以外は失敗表示。
-      if (!(err instanceof DOMException && err.name === 'AbortError')) {
-        setAnswerStatus('error');
-      }
-    }
-  }
-
-  async function sendFeedback(rating: 'up' | 'down') {
-    if (!answerId) return;
-    setFeedback(rating); // 楽観的に反映
-    try {
-      await apiFetch('/feedback', { method: 'POST', json: { answerId, rating, question } });
-    } catch (e) {
-      if (e instanceof ApiError) setFeedback(null); // 失敗時は取り消す
-    }
+    if (!canSubmit) return;
+    // 新しい回答が始まるため、前の回答に対する押下状態を捨てる（FR-08）。
+    feedback.reset();
+    answer.submit(trimmed);
   }
 
   return (
     <section>
-      <h1>検索 / AI質問</h1>
+      <h1 className="text-lg font-semibold text-[--color-fg]">
+        <Trans>ナレッジ検索・AI質問</Trans>
+      </h1>
+      <p className="mb-4 text-sm text-[--color-fg-muted]">
+        <Trans>横断検索と根拠付きAI回答（ストリーミング・出典表示）</Trans>
+      </p>
 
-      <form onSubmit={onSubmit}>
-        <label htmlFor="q">質問・キーワード</label>
-        <br />
-        <input
-          id="q"
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="例: 2025 年度の経費規程の変更点は？"
-          style={{ width: '100%', maxWidth: 640 }}
-        />
-        <div>
-          <button type="submit" disabled={!canSubmit}>
-            質問する
-          </button>
+      <form onSubmit={onSubmit} className="mb-2 flex items-end gap-2">
+        <div className="grow">
+          {/* 入力の意味は見出しとプレースホルダで示す（モック準拠）。ラベルは支援技術のために必ず置く。 */}
+          <Label htmlFor="ask-question" className="sr-only">
+            <Trans>質問・キーワード</Trans>
+          </Label>
+          <Input
+            id="ask-question"
+            value={question}
+            maxLength={MAX_QUESTION_LENGTH}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder={t`質問またはキーワードを入力…（例: 経費精算の締め日は？）`}
+          />
         </div>
+        <Button type="submit" variant="primary" disabled={!canSubmit}>
+          <Trans>送信</Trans>
+        </Button>
       </form>
 
-      {/* AI 回答（ストリーミング） */}
-      {answerStatus !== 'idle' && (
-        <article aria-label="AI回答" style={{ marginTop: '1rem' }}>
-          <h2>回答</h2>
-          {answerStatus === 'streaming' && <span role="status">回答を生成中…</span>}
-          <p style={{ whiteSpace: 'pre-wrap' }}>{answer}</p>
+      {/* UC-01 代替フロー: キーワード検索のみで結果一覧を返し、AI 回答を省略する。 */}
+      <p className="mb-4 text-sm">
+        <Link to="/search" search={{ q: trimmed }} className="text-[--color-brand] hover:underline">
+          <Trans>キーワード検索のみ →</Trans>
+        </Link>
+      </p>
 
-          {answerStatus === 'error' && <p role="alert">回答の生成に失敗しました。</p>}
+      {answer.status !== 'idle' && (
+        <Card className="mb-3">
+          <CardHeader>
+            <CardTitle>
+              <Trans>AI回答（ストリーミング）</Trans>
+            </CardTitle>
+            {answer.status === 'streaming' && (
+              <span role="status" className="text-xs text-[--color-fg-muted]">
+                <Trans>回答を生成中…</Trans>
+              </span>
+            )}
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap">{answer.answer}</p>
 
-          {citations.length > 0 && (
-            <>
-              <h3>出典</h3>
-              <ol>
-                {citations.map((c) => (
-                  <li key={c.chunkId}>
-                    {c.sourceUri ? (
-                      // 出典クリックで出典元（Wiki=SC-04 等）へ遷移する。SC-03 文書詳細は #129 実装後に内部遷移へ。
-                      <a href={c.sourceUri} target="_blank" rel="noreferrer">
-                        {c.documentTitle}
-                      </a>
-                    ) : (
-                      <span>{c.documentTitle}</span>
-                    )}{' '}
-                    <small>（{c.snippet}）</small>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
+            {/* UC-01 例外フロー: LLM が不調な場合は検索結果のみを返す（縮退運転）。
+                本画面は AI 回答だけを担うため、縮退は「検索結果一覧へ 1 クリックで到達させる」形で満たす。 */}
+            {answer.status === 'error' && (
+              <Alert tone="warning" role="alert" className="mt-3" label={t`注意`}>
+                <Trans>AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。</Trans>{' '}
+                <Link to="/search" search={{ q: trimmed }} className="text-[--color-brand] underline">
+                  <Trans>検索結果一覧を開く →</Trans>
+                </Link>
+              </Alert>
+            )}
 
-          {answerStatus === 'done' && answerId && (
-            <div aria-label="フィードバック">
-              <button type="button" aria-pressed={feedback === 'up'} onClick={() => void sendFeedback('up')}>
-                👍
-              </button>{' '}
-              <button type="button" aria-pressed={feedback === 'down'} onClick={() => void sendFeedback('down')}>
-                👎
-              </button>
-              {feedback && <span> フィードバックを送信しました。</span>}
-            </div>
-          )}
-        </article>
+            {answer.status === 'done' && answer.answerId && (
+              <div className="mt-3 flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-pressed={feedback.rating === 'up'}
+                  aria-label={t`役に立った`}
+                  onClick={() => feedback.send(answer.answerId!, 'up', trimmed)}
+                >
+                  👍
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  aria-pressed={feedback.rating === 'down'}
+                  aria-label={t`役に立たなかった`}
+                  onClick={() => feedback.send(answer.answerId!, 'down', trimmed)}
+                >
+                  👎
+                </Button>
+                <span className="text-xs text-[--color-fg-muted]">
+                  {feedback.rating ? (
+                    <Trans>フィードバックを送信しました。</Trans>
+                  ) : (
+                    <Trans>フィードバック</Trans>
+                  )}
+                </span>
+              </div>
+            )}
+            {feedback.failed && (
+              <Alert tone="danger" role="alert" className="mt-2" label={t`エラー`}>
+                <Trans>フィードバックを送信できませんでした。</Trans>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
       )}
 
-      {/* 横断検索結果 */}
-      {searchStatus !== 'idle' && (
-        <section aria-label="検索結果" style={{ marginTop: '1.5rem' }}>
-          <h2>検索結果</h2>
-          {searchStatus === 'loading' && <p role="status">検索中…</p>}
-          {searchStatus === 'error' && <p role="alert">検索に失敗しました。</p>}
-          {searchStatus === 'ok' &&
-            (results.length === 0 ? (
-              <p>該当する文書が見つかりませんでした。</p>
-            ) : (
-              <ul>
-                {results.map((r) => (
-                  <li key={r.chunkId}>
-                    {r.markdownUri ? (
-                      <a href={r.markdownUri} target="_blank" rel="noreferrer">
-                        {r.documentTitle}
-                      </a>
-                    ) : (
-                      <span>{r.documentTitle}</span>
-                    )}{' '}
-                    <small>{r.text}</small>
-                  </li>
-                ))}
-              </ul>
-            ))}
-        </section>
+      {answer.citations.length > 0 && (
+        <Card className="mb-3">
+          <CardHeader>
+            <CardTitle>
+              <Trans>出典（クリックで文書詳細／Wikiへ）</Trans>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="flex flex-col gap-1.5">
+              {answer.citations.map((c) => (
+                <CitationRow key={c.chunkId} citation={c} />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
       )}
+
+      <p className="text-sm">
+        <Link to="/analyze" className="text-[--color-brand] hover:underline">
+          <Trans>範囲を指定してAI分析を依頼 →</Trans>
+        </Link>
+      </p>
     </section>
+  );
+}
+
+/**
+ * 出典 1 行。
+ *
+ * 05_screens §SC-01「区別の表示方法」: **アイコンとラベルを併用し、色だけで意味を持たせない**
+ * （INDEX 決定 21）。記号は装飾（`aria-hidden`）とし、意味はタグの文字が担う。
+ * 計画が glyph（📄 / 📖 / 👤）を字義どおり指定しているため、ここは lucide-react ではなく計画の記号を使う。
+ * **👤（個人資料）の行は本 issue では作らない**——FR-19 / FR-21 は IADR-0119 決定 1 の着手保留対象である。
+ */
+function CitationRow({ citation }: { citation: AskCitation }) {
+  const { t } = useLingui();
+  const kind = citationKind(citation.sourceUri, appConfig().wikiBaseUrl);
+  return (
+    <li className="flex flex-wrap items-center gap-2 text-sm">
+      <span aria-hidden>{kind === 'wiki' ? '📖' : '📄'}</span>
+      {kind === 'wiki' ? (
+        <Link to="/wiki" className="text-[--color-brand] hover:underline">
+          {citation.documentTitle}
+        </Link>
+      ) : (
+        <Link
+          to="/docs/$id"
+          params={{ id: citation.documentId }}
+          className="text-[--color-brand] hover:underline"
+        >
+          {citation.documentTitle}
+        </Link>
+      )}
+      <Tag tone="outline">{t`組織文書`}</Tag>
+      <span className="text-xs text-[--color-fg-muted]">{citation.snippet}</span>
+    </li>
   );
 }

@@ -20,9 +20,9 @@ import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
 // （IADR-0124 §実測）。画面を足すときはタプルへ 1 行足す。
 export const createKnowledgeRoutes = (shell: ShellRoute) =>
   [
-    createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127）
-    createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128）
-    createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129）
+    createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127 → 新スタックで再実装 #502）
+    createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128 → 新スタックで再実装 #502）
+    createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129 → 新スタックで再実装 #502）
     createSc04WikiRoute(shell), // SC-04 Wiki 閲覧導線（#130）
     createSc05DocumentsRoute(shell), // SC-05 文書管理（#131）
     createSc06DataSourcesRoute(shell), // SC-06 データソース管理（#132）
