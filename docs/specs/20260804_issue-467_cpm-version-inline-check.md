@@ -2,7 +2,7 @@
 title: 作業仕様書 — CPM のバージョン直書き禁止を機械検査する（check-cpm-versions.js）
 type: spec
 status: done
-related_ids: [NFR, ADR-0030, IADR-0115, IADR-0116]
+related_ids: [NFR, ADR-0030, IADR-0115, IADR-0116, IADR-0120]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -31,10 +31,17 @@ related_specs:
 
 - 機能要求（FR）: なし（NFR: 保守性 — 依存バージョンの単一情報源を機械で守る）
 - ユースケース（UC）/ 画面（SC）: なし
+- **本作業が機械化する規約の典拠は [`CLAUDE.md`](../../CLAUDE.md)**（「技術スタック別ルール / C# / .NET」の
+  「パッケージ」項）**であり、計画 ADR ではない**。計画リポジトリには CPM（Central Package Management）/
+  `Directory.Packages.props` に関する決定が**存在しない**（`CPM` / `Central Package` /
+  `Directory.Packages` の言及が全体で 0 件であることをクロス監査が grep で実証した）。
+  検査器の失敗メッセージ・本書のいずれも、典拠として計画 ADR を挙げない。
 - 関連 ADR:
   - `ADR-0030`（バックエンドアプリケーション層のライブラリ標準。Accepted）と棚卸し表
-    `06_technical/12_backend-application-stack.md`。CPM（Central Package Management）の
-    単一情報源そのものを扱う。
+    `06_technical/12_backend-application-stack.md` は**隣接する制約**である。同 ADR が決めるのは
+    「**どの**ライブラリを使うか」であり、「版を**どこに**書くか」には触れていない。本作業とは
+    対象ファイル（`.csproj`）と `PackageReference` という走査面を共有するだけで、規約の典拠ではない
+    （`check-backend-libraries.js` との関心の違いと同じ線引きである）。
   - [`IADR-0116`](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 4
     （1 PR が大きくなる場合は issue を分割する）。本作業は #453 から分割された #467 である。
   - [`IADR-0115`](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（キット同期規約）。
@@ -75,7 +82,8 @@ related_specs:
   3. [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) に単体テストを追加。
   4. [`scripts/README.md`](../../scripts/README.md) の表・使い方・CI ジョブ表に行を追加。
   5. [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) のゲート一覧へ 1 行追加し、
-     「後続 issue へ切り出す項目」の表から本項目を外す（実装済みのため）。
+     「後続 issue へ切り出す項目」の表の本項目を**取り消し線で消し込み**、#467 として実装済みである
+     ことと参照先（ゲート一覧）を残す（行ごと削除すると「なぜ切り出したか」の経緯が消えるため）。
 - 含まないもの:
   - **`Directory.Build.props` / `Directory.Packages.props` 側の検査**（`PackageVersion` の重複・
     未使用・並び順など）。#467 のスコープは「`.csproj` の `PackageReference` にバージョンを書かない」
@@ -176,7 +184,7 @@ CPM は .NET 固有であり、キット（技術スタック非依存）の前�
 | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | ジョブ `cpm-versions` を追加（`backend-libraries` と同形式: self-test → 素実行）。既存ジョブの本文は触らない |
 | [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) | 単体テストを追加（判定の境界・エッジケース・実リポジトリ走査・`--self-test` の exit 0） |
 | [`scripts/README.md`](../../scripts/README.md) | 表・ローカル実行例・CI ジョブ表へ追記 |
-| [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | ゲート一覧へ 1 行追加。「後続 issue へ切り出す項目」から本項目を削除 |
+| [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | ゲート一覧へ 1 行追加。「後続 issue へ切り出す項目」の本項目を取り消し線で消し込み（行は残す） |
 
 ### CI ジョブ
 
@@ -204,7 +212,9 @@ submodule は取得しない（対象は `platform` / `knowledge` / `templates` 
       （`--self-test` の**負例**が一時ツリーを実走査して固定する。属性形・子要素形・`Update` 形・
       条件付き `ItemGroup`・`templates/` 配下の 5 系統）。
 - [x] `VersionOverride` の使用箇所が実行サマリ（`$GITHUB_STEP_SUMMARY`）とアノテーションに出る。
-      終了コードは変わらない（`--self-test` の正例で固定）。
+      終了コードは変わらない。**検出**（どの要素を `VersionOverride` と見なすか）は `--self-test` の
+      正例が、**出力経路**（サマリの表と `::warning::` の実体）は `scripts.repo.test.js` の子プロセス
+      テストが固定する。検出だけを試験すると `reportOverrides()` が壊れても緑のままになる。
 - [x] 現状のリポジトリで違反 0 件・exit 0（実測は下記。見込みではなく実測値）。
 - [x] `src/ai-stock-trading` 配下は走査対象外（`lib/excluded-units.js` から導出。ハードコードしない）。
 - [x] `templates/` 配下も走査対象に含まれる。
@@ -242,8 +252,8 @@ submodule は取得しない（対象は `platform` / `knowledge` / `templates` 
 | --- | --- |
 | `node scripts/check-cpm-versions.js` | `OK: 37 プロジェクト / 195 件の PackageReference にバージョン直書き 0 件（VersionOverride 0 件）` / exit 0 |
 | `node scripts/check-cpm-versions.js --self-test` | 自己試験 **49 件 OK** / exit 0 |
-| `node scripts/scripts.test.js` | **208 tests passed** / exit 0（着手前 **197 件** → +11 件。着手前の値は `origin/develop` 版の `scripts.repo.test.js` へ一時的に戻して実測） |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **208 tests passed** / exit 0 |
+| `node scripts/scripts.test.js` | **209 tests passed** / exit 0（着手前 **197 件** → +12 件。着手前の値は `origin/develop` 版の `scripts.repo.test.js` へ一時的に戻して実測） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **209 tests passed** / exit 0 |
 | `node scripts/check-doc-links.js` | OK: **398 件**の Markdown に破損リンクなし / exit 0（着手前 397 件。増分は本仕様書 1 件。未 populate の submodule 配下 673 件は対象外） |
 | `python3 -c "import yaml; yaml.safe_load(...)"`（`ci.yml`） | パース成功。ジョブ **14 → 15**（増分は `cpm-versions` のみ。既存 14 ジョブ名は不変、`git diff` は **20 行の挿入のみ・削除 0 行**） |
 | `node scripts/check-commit-messages.js --base origin/develop` | 緑（1 コミット） |
@@ -265,17 +275,24 @@ submodule は取得しない（対象は `platform` / `knowledge` / `templates` 
 適合ファイルに置いた分）で、いずれも実測どおり固定されている。CPM の中央定義（`src/Directory.Packages.props`）
 を同じ一時ツリーへ置き、**走査対象に含まれないこと**も併せて固定した。
 
-### `VersionOverride` の可視化（実測）
+### `VersionOverride` の可視化（自動テストで固定）
 
-現状 0 件のため、実ツリーへ `VersionOverride="9.9.9"` を持つ `.csproj` を一時的に置いて実測した
-（測定後に撤去し `git status` がクリーンであることを確認）。
+実リポジトリの使用は現状 0 件のため、`VersionOverride="9.9.9"` を持つ `.csproj` を実ツリーへ一時的に
+設置して観測する。**この観測は手測定で終わらせず `scripts.repo.test.js` の子プロセステストにした**——
+検出（`inlineVersionFindings()`）だけを試験すると、出力側の `reportOverrides()` が壊れても
+「警告が出ない」ことは終了コードに現れず、CI は緑のまま通ってしまう。テストが固定するのは次のとおり。
 
-- `GITHUB_ACTIONS=true` で `::warning::CPM の VersionOverride を 1 件使用しています…（ファイル名と
-  `パッケージ=版`）` がアノテーションとして stdout へ出た。**終了コードは 0 のまま**。
-- `GITHUB_STEP_SUMMARY` に `### CPM: VersionOverride の使用箇所` の表（プロジェクト / パッケージ /
-  版 / 記法）が追記された。
-- 同じツリーへ直書き 2 件（属性形・子要素形）を足すと **exit 1** になり、`VersionOverride` の警告は
-  引き続き出たうえで違反 2 件が記法別（`Version 属性` / `<Version> 子要素`）に報告された。
+- 終了コードは **0 のまま**（違反ではなく許可であること）。
+- `GITHUB_ACTIONS=true` のとき stdout に
+  `::warning::CPM の VersionOverride を 1 件使用しています…` と `パッケージ=版` が出る。
+- `GITHUB_STEP_SUMMARY` の指すファイルへ `### CPM: VersionOverride の使用箇所` の表
+  （プロジェクト / パッケージ / 版 / 記法）が追記される。
+- プローブ撤去後は警告が出ない（残置して恒常的な警告になっていないこと）。
+
+一時ファイル（プローブの `.csproj` とサマリ）は `finally` で必ず撤去し、`git status` がクリーンで
+あることを確認している。あわせて手動でも、同じツリーへ直書き 2 件（属性形・子要素形）を足すと
+**exit 1** になり、`VersionOverride` の警告は引き続き出たうえで違反 2 件が記法別
+（`Version 属性` / `<Version> 子要素`）に報告されることを確認した。
 
 あわせて `scripts.repo.test.js` の子プロセステストで、直書きを持つ `.csproj` を実ツリーへ一時的に置くと
 素実行が **exit 1**（`バージョン直書き 1 件`）になり、撤去後は再び exit 0 に戻ることを固定した。
@@ -292,3 +309,16 @@ submodule は取得しない（対象は `platform` / `knowledge` / `templates` 
 - **`.props` 経由の一括注入は見ない**: 上記「走査対象ファイル種」のとおり現状 0 件であり、
   必要になれば別 issue とする。`check-backend-libraries.js` は既に props / targets を走査しており
   （#471）、「どのライブラリか」の側からは覆えている。
+
+## フォローアップ（本作業では行わない）
+
+- **CPM 規約を計画側の制約へ昇格させるか**。現在、CPM の採用と「版は
+  `src/Directory.Packages.props` に集約する」は [`CLAUDE.md`](../../CLAUDE.md) だけが典拠であり、
+  計画リポジトリには対応する決定が無い（上記「起点となる計画書」の実証を参照）。本検査器は
+  実装側の規約を機械化したものであり、この非対称は現時点で不整合ではない。
+  ただし、CPM は「1 パッケージ 1 バージョン」という**サービス横断の制約**（xUnit v3 への移行が
+  全テストプロジェクト同時になる、といった形で現に効いている）であるため、計画 ADR へ昇格させる
+  価値はある。昇格させる場合は `/plan-feedback` で計画リポジトリへ ADR 起票を提案する。
+  **本作業では環流しない**——#467 のスコープは既存規約の機械化であり、計画側の意思決定を
+  実装 PR に混ぜない（[IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 4）。
+  昇格した場合は、本検査器の失敗メッセージと本書の典拠記述を新 ADR へ追随させること。

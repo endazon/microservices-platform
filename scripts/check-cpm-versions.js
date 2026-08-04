@@ -442,8 +442,13 @@ function main() {
     const how = x.source === 'attribute' ? 'Version 属性' : '<Version> 子要素';
     console.error(`\n  ${x.project}\n    ${x.package} に ${how}（${x.value || '空'}）が書かれています。`);
   }
-  console.error('\nバージョンは src/Directory.Packages.props の <PackageVersion> に集約します（CLAUDE.md /'
-    + ' 計画 ADR-0030）。.csproj からは Version を削除し、中央に定義が無ければ中央へ追加してください。'
+  // 典拠は CLAUDE.md（＋ issue #467）である。**計画 ADR-0030 を典拠として挙げない**——同 ADR は
+  // 「どのライブラリを使うか」の決定であり、版をどこに書くかには触れていない（計画リポジトリ全体に
+  // CPM / Central Package / Directory.Packages の言及は 0 件。クロス監査が grep で実証した）。
+  // 存在しない出典を失敗メッセージに書くと、直された人が典拠を確かめに行って迷子になる。
+  console.error('\nバージョンは src/Directory.Packages.props の <PackageVersion> に集約します'
+    + '（CLAUDE.md「技術スタック別ルール / C# / .NET」の「パッケージ」項・issue #467）。'
+    + '.csproj からは Version を削除し、中央に定義が無ければ中央へ追加してください。'
     + '\n特定プロジェクトだけ別の版が必要な場合に限り VersionOverride を使えます（許可されますが、'
     + '使用箇所は実行サマリに警告として出ます）。');
   process.exit(1);
