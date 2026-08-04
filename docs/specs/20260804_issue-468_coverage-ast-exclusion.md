@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — カバレッジ床の集計から合成点テスト経由で混入する AST の行を除く（filename 帰属除外）
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0123]
 author: Claude
 created: 2026-08-04
@@ -85,8 +85,11 @@ MSP 自身の実力より高い床を置いてしまう。これは IADR-0118 �
   6. [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) の起票。
 - 含まないもの:
   - **床の値の変更**（[`src/coverage-floor.json`](../../src/coverage-floor.json) の `line 34` / `branch 17`）。
-    本作業の環境に .NET SDK が無く（後述「測定条件」）、除去後の実測は **CI 実走のログでしか得られない**。
-    値の置き直しは CI 実測を見てから、**同ファイルの 2 定数のみ**の変更で行う（本作業はその構造を保つ）。
+    実装セッションの環境に .NET SDK が無く（後述「測定条件」）、除去後の実測は **CI 実走のログでしか
+    得られなかった**。値の置き直しは CI 実測を見てから、**同ファイルの 2 定数のみ**の変更で行う。
+    - **［CI 実測後の結論］置き直しの結果は据え置き**——実測 `line 34.14%` / `branch 17.26%` の整数切り下げが
+      現在値と同値だったため、2 定数は変更していない。**根拠のみ**（混入込み → 混入抜き）差し替え、
+      測定条件とともに `$comment` へ記録した（後述「CI 実測（成立確認）」）。
   - `Platform.Bff` から AST への `ProjectReference` の解消。合成点の設計（IADR-0063 例外 3）そのものであり、
     カバレッジ集計の都合で変えるものではない。
   - 除外ユニット集合の導出規則（IADR-0120）。本作業は同ヘルパを**利用するだけ**で変更しない。
@@ -107,9 +110,12 @@ MSP 自身の実力より高い床を置いてしまう。これは IADR-0118 �
 
 ## 実レポートの構造（設計の前提と、その検証手段）
 
-**本作業の環境では実レポートを取得できない**（.NET SDK 無し・導入経路も遮断。後述「測定条件」）。
-したがって「属性の形を仮定して書いたらフィルタが何にもマッチせず素通りした」という失敗（issue #468 の
-着手時注意）を、**仮定を置かない実装**と**診断出力**の二段で防ぐ。
+**実装セッションの環境では実レポートを取得できなかった**（.NET SDK 無し・導入経路も遮断。後述「測定条件」。
+**当該セッション時点の観測であり、他の環境の性質ではない**——本 PR のレビューは SDK のある環境で
+`Platform.Bff.Tests` を実走している）。したがって「属性の形を仮定して書いたらフィルタが何にもマッチせず
+素通りした」という失敗（issue #468 の着手時注意）を、**仮定を置かない実装**と**診断出力**の二段で防ぐ。
+なお「実レポートでの成立確認は CI 実走を正とする」運用そのものは手元の SDK の在否に依存しない——床が
+判定に使うのは CI（Release・全ユニット）の実測だからである。
 
 coverlet（`XPlat Code Coverage`）の Cobertura は概ね次の形である。
 
@@ -214,19 +220,24 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 | [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | 「既知の限界: 合成点テスト経由の混入」を解消済みへ書き換え、ゲート一覧の対象欄を更新 |
 | [`docs/adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md`](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) | 新規起票 |
 | [`docs/adr/README.md`](../adr/README.md) | 索引へ 1 行追加 |
-| [`src/coverage-floor.json`](../../src/coverage-floor.json) | **本作業では値を変更しない**。`$comment` に「絶対数の意味が変わったこと」「置き直しは CI 実測後」を追記 |
+| [`src/coverage-floor.json`](../../src/coverage-floor.json) | **値は変更しない**（CI 実測の切り下げが現在値と同値）。`$comment` に「絶対数の意味が変わったこと」と**現行の根拠（測定条件つきの CI 実測・余裕の薄さ・分岐の定義差）**を記録 |
 
 ## 受け入れ基準（issue #468）
 
-- [ ] 混入行数を実レポートで測り直し、確定させる → **CI 実測待ち**（本環境では .NET SDK が無く測れない。
-      診断出力が CI ログへ確定値を出す）
-- [ ] 実レポートに対して AST 由来の行が集計から落ちることを実測で確認する → **CI 実測待ち**
-      （除外サマリの「除外クラス一覧」「除外前後の実測値」で確認できる）
+- [x] 混入行数を実レポートで測り直し、確定させる → **確定: 6 クラス / 133 行（すべて被覆済み） /
+      分岐 50（被覆 41）**（測定条件は下記「CI 実測（成立確認）」）。旧値の **266 行は 133 × 2** であり
+      二重記載で説明がつく。**230 行**は `Platform.Bff.Tests` 単体実行という別条件の値で、新方式の全体集計
+      とは直接比較できない（SDK のある環境でのレビュー単体実走では 115 行）
+- [x] 実レポートに対して AST 由来の行が集計から落ちることを実測で確認する → **確認済み**（未帰属 0 件・
+      6 クラスすべて `<sources>` 結合で `ai-stock-trading` へ帰属・除外前後で 27413 → 27280 行）
 - [x] フィルタが何にもマッチしなかった場合に気付ける（帰属 0 件で warn／class 外の行で warn／
       除外 0 行で notice）。**warn 経路は単体テストで固定**する
-- [ ] 除去後の実測値で床を置き直す → **CI 実測後に `src/coverage-floor.json` の 2 定数のみで実施**
+- [x] 除去後の実測値で床を置き直す → **実施（結果は据え置き）**。実測 `line 34.14%` / `branch 17.26%` の
+      整数切り下げが現在値（`line 34` / `branch 17`）と同値のため 2 定数は変更せず、**根拠のみ**
+      （混入込み・二重記載込み → 混入抜き・class 直下計数）を測定条件つきで `$comment` へ差し替えた。
+      **余裕は薄い（line +0.14pt / branch +0.26pt）**
 - [x] [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) の「既知の限界」節を解消済みに更新する
-      （**数値は書かない**——確定値は CI 実測後に定まるため、機構の説明に留める）
+      （機構の説明に加え、CI 実測後に**測定条件つきの実測表**と「分岐の定義差」を追記した）
 - [x] `node scripts/check-coverage-floor.js --self-test` が exit 0
 - [x] `node scripts/scripts.test.js`（`REQUIRE_REPO_TESTS=1` でも）が緑で、テスト件数が着手前から減らない
 - [x] `node scripts/check-doc-links.js` が exit 0
@@ -238,22 +249,51 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 - 対象コミット: `origin/develop` = `0c2cd83` から作成した worktree。
 - **submodule は未 populate**（`git submodule status` が `planning` / `src/ai-stock-trading` に `-` を付ける）。
   したがって `src/ai-stock-trading` は空であり、レポートも 0 件である。
-- **.NET SDK は無く、導入もできない**（`builds.dotnet.microsoft.com` への接続がネットワークポリシーで
-  遮断されることを実測確認済み）。`dotnet test --collect:"XPlat Code Coverage"` をローカルで実走できない。
-  よって実レポートに対する検証は **CI 実走のログ経由**で行う（この条件を書かない実測値は再現不能である。
-  #484 / #486 の教訓）。
+- **実装セッションの環境に .NET SDK は無く、導入もできなかった**（`builds.dotnet.microsoft.com` への接続が
+  ネットワークポリシーで遮断されることを当該セッションで実測）。`dotnet test --collect:"XPlat Code Coverage"`
+  をローカルで実走できないため、実レポートに対する検証は **CI 実走のログ経由**で行った（この条件を書かない
+  実測値は再現不能である。#484 / #486 の教訓）。**これは当該セッション・当該環境に限った観測**であり、
+  本 PR のレビューは .NET SDK 10.0.302 のある環境で `Platform.Bff.Tests` を実走して独立検証している。
 - Node: 実行環境の Node（CI は 20）。本スクリプトは Node 標準モジュールのみを使う。
 
 ## 検証（実測）
 
 | コマンド | 結果 |
 | --- | --- |
-| `node scripts/check-coverage-floor.js --self-test` | 自己試験 **35 件 OK** / exit 0（着手前 14 件） |
-| `node scripts/scripts.test.js` | **237 tests passed** / exit 0（着手前 **225 件** → +12。着手前の値は改修 2 ファイルを一時退避して実測） |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 237 tests passed / exit 0 |
-| `REQUIRE_REPO_TESTS=1 GITHUB_ACTIONS=true node scripts/scripts.test.js` | 237 tests passed / exit 0。フィクスチャ由来のアノテーション漏れ 0 件 |
+| `node scripts/check-coverage-floor.js --self-test` | 自己試験 **37 件 OK** / exit 0（着手前 14 件） |
+| `node scripts/scripts.test.js` | **238 tests passed** / exit 0（着手前 **225 件** → +13。着手前の値は改修 2 ファイルを一時退避して実測） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 238 tests passed / exit 0 |
+| `REQUIRE_REPO_TESTS=1 GITHUB_ACTIONS=true node scripts/scripts.test.js` | 238 tests passed / exit 0。フィクスチャ由来のアノテーション漏れ 0 件 |
 | `node scripts/check-doc-links.js` | OK: **405 件**の Markdown に破損リンクなし / exit 0 |
 | `node scripts/check-coverage-floor.js`（レポート 0 件のローカル） | 従来どおり切り分け可能な warn ＋ exit 0（fail-open の挙動は不変） |
+
+### CI 実測（成立確認・受け入れ基準 1/2/4 の根拠）
+
+測定条件: CI run 30886437108（run_number **1144**）/ job `build-and-test`（91918575452）/
+commit `594117a` / Release 構成 / レポート **14 件** / submodule populate 済み / 結果 **success**。
+**測定条件のない実測値は再現できない**ため、本表を引用する際は必ず条件も併記すること。
+
+| 観測点 | 実測 |
+| --- | --- |
+| 集計（除外後） | **line 34.14%（9314/27280） / branch 17.26%（1536/8898）**。床 `line 34` / `branch 17` を上回る |
+| 除外（混入） | **ai-stock-trading 由来 6 クラス / 133 行（被覆 133） / 分岐 50（被覆 41）** |
+| 除外前 | `line 34.46%（9447/27413）` / `branch 17.62%（1577/8948）` |
+| 帰属 | クラス 2036 件（そのまま(相対) 645 / そのまま(絶対) 0 / `<sources>` 結合 1391 / **未帰属 0**） |
+| `<sources>` | 複数（例: `…/src/` と `…/src/platform/backend/`）→ **多段解釈が必須だったことの裏づけ** |
+| 除外クラス | `AssumptionsBffEndpoints` / `MonitorBffEndpoints` / `RiskControlsBffEndpoints` と各 `<ProxyAsync>d__2` |
+| coverlet 照合（行） | `lines-valid 27413`（本実装 27413・**一致**） / `lines-covered 9447`（本実装 9447・**一致**） |
+| coverlet 照合（分岐） | `branches-valid 9356`（本実装 8948・**差 -408**）→ **定義差。期待される乖離** |
+
+独立検証（AI レビューが .NET SDK 10.0.302 のある環境で `Platform.Bff.Tests` を単体実走）でも同傾向で、
+`lines-valid` / `lines-covered` は 1950/1950・1274/1274 と完全一致、`branches-valid` のみ 700 対 600 と乖離。
+レビューは「全 `<line>`（`<methods>` 重複込み）の `condition-coverage` 分母合算 1200 のちょうど半分が
+600 ＝本実装値」であることを生データで確認しており、**本実装の集計は一貫している**。
+coverlet 側の算出経路（IL 分岐点ベース等）は**推定であり一次出典未検証**——確定しているのは
+「定義が異なり一致しない」という観測事実のみである。
+
+この定義差は床に影響する: 同じ被覆数を coverlet の分母で割ると branch は **17.62% → 16.86%** で床 17 を
+下回る。**分岐の定義変更は床の置き直しとセットでしか行えない**
+（[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4 の［2026-08-04 追記］）。
 
 ### 実物に近いレポートでの実挙動（`src/` へ一時設置して素実行）
 
@@ -285,12 +325,16 @@ AST のクラスと非同期ステートマシン `<Map>d__2` を含む）を `s
   想定外の構造は「未帰属」として診断に出るため、黙って壊れることはない。
 - **診断出力の量**: 既定出力は数行に抑え、レポート単位の詳細は `COVERAGE_FLOOR_DEBUG=1` に置く。
 
-## フォローアップ（本作業では行わない）
+## フォローアップ
 
-1. **床の置き直し**（CI 実測後・`src/coverage-floor.json` の 2 定数）。あわせて
-   [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) の記載値・
-   [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md)・
-   [`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md)・
-   [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 の値を追随させる
-   （値の正は `src/coverage-floor.json`）。
+1. ~~**床の置き直し**（CI 実測後・`src/coverage-floor.json` の 2 定数）。~~ **完了**（run 1144）。
+   切り下げが現在値と同値のため値は据え置き、根拠のみ差し替えた。追随先の確認結果:
+   [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) 決定 2 = 日付付き追記で更新／
+   [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md)「床の置き方」= 現行の根拠を追記／
+   [`docs/DEFINITION_OF_DONE.md`](../DEFINITION_OF_DONE.md) = **床の値を書いておらず JSON を参照するのみ
+   のため変更不要**／[IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 =
+   記載値 `line 34` / `branch 17` が据え置きのため**変更不要**（値の正は `src/coverage-floor.json`）。
 2. 各ドメイン issue がテストを追加したら床を引き上げる（ratchet。IADR-0118 決定 3）。
+   **余裕は薄い**（line +0.14pt / branch +0.26pt）ため、引き上げ幅は実測を見て決める。
+3. **分岐の定義**（`condition-coverage` 合算）を変える場合は、**床の置き直しとセット**でしか行わない
+   （新 IADR ＋ `src/coverage-floor.json` を同一 PR で。IADR-0123 決定 4 の［2026-08-04 追記］）。

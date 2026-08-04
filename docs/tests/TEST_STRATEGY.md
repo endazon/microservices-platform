@@ -89,7 +89,7 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 
-#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で対処。実レポートでの成立確認は CI 実走）
+#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で解消。CI 実測で成立確認済み）
 
 `Platform.Bff` は BFF の合成点として
 [`AiStockTrading.Bff.Endpoints`](../../src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj) を
@@ -118,15 +118,34 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 `lines-valid` / `lines-covered`（coverlet 自身の集計値）と本実装の集計値を並べ、二重記載の扱いが実レポートで
 妥当かを毎回照合できるようにしている。
 
-> **状態**: 上記は**機構の導入まで**である。実レポート（coverlet の実出力）に対して帰属と除外が
-> 成立していることの確認・混入行数の確定・除去後の実測に基づく床の置き直しは、**CI 初回実走の診断出力**
-> （帰属の内訳・除外クラス一覧・coverlet 値との照合）**を読んでから**行う。#468 の作業環境には .NET SDK が
-> 無く、実レポートを取得できなかったためである（[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4・5、
-> [作業仕様書](../specs/20260804_issue-468_coverage-ast-exclusion.md) の受け入れ基準）。
+##### CI 実測（成立確認）
+
+測定条件: CI run 30886437108（run_number **1144**）/ job `build-and-test` / commit `594117a` /
+Release 構成 / レポート **14 件** / submodule populate 済み。**測定条件のない実測値は再現できない**ため、
+本節の数値を引用する際は必ず条件も併記すること。
+
+| 観測点 | 実測 |
+| --- | --- |
+| 帰属 | クラス **2036 件**（そのまま(相対) 645 / そのまま(絶対) 0 / `<sources>` 結合 1391 / **未帰属 0**） |
+| 混入（除外した行） | **6 クラス / 133 行**（すべて被覆済み） / 分岐 50（被覆 41） |
+| 除外したクラス | `AssumptionsBffEndpoints` / `MonitorBffEndpoints` / `RiskControlsBffEndpoints` と各 `<ProxyAsync>d__2` |
+| 除外前 → 除外後 | `line 34.46%（9447/27413）` → **`line 34.14%（9314/27280）`** / `branch 17.62%` → **`17.26%（1536/8898）`** |
+| coverlet 値との照合（行） | `lines-valid 27413`・`lines-covered 9447` と**完全一致**（＝ class 直下を正とする前提の裏づけ） |
+| coverlet 値との照合（分岐） | `branches-valid 9356` に対し本実装 8948 で**一致しない**（下記「分岐の定義差」） |
+
+旧計数方式で記録していた「266 行」は **133 × 2** であり、二重記載でちょうど説明がつく。もう一方の
+「230 行」は `Platform.Bff.Tests` **単体実行**という別条件の値で、新方式の全体集計とは直接比較できない。
+
+> **分岐の定義差（既知事項・異常ではない）**: 本実装が数える「分岐」は `<line>` の `condition-coverage` の
+> 分母・分子の合算であり、coverlet の `branches-valid` とは**定義が異なる**（後者の算出経路は
+> 一次出典未検証）。**行の乖離だけが「class 直下を正とする」前提の反証になる**ため、診断出力は
+> 行を「**乖離・要調査**」、分岐を「差 n（定義差・期待される乖離）」と書き分ける。
+> なお床 17 は `condition-coverage` 合算方式での実測に基づく——coverlet の分母で割ると 16.86% で床を
+> 下回るため、**分岐の定義変更は床の置き直しとセットでしか行えない**
+> （[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4 の［2026-08-04 追記］）。
 
 > **注**: 上記 2 により集計の**絶対数**（`covered/lines`）の意味が変わった（分母・分子とも約半分になる）。
 > 比率はほぼ不変だが、PR #464 の実測値（`18894/54826`）と #468 以降の表示は直接比較できない。
-> 床（比率）の置き直しは CI 実測に基づき [`src/coverage-floor.json`](../../src/coverage-floor.json) で行う。
 
 ### 共通する設計原則: ratchet
 
@@ -153,8 +172,15 @@ skip、被覆済みの死コード削除など）だけで「成果物は正し�
 branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロジェクト全件）を切り下げた
 `line 34` / `branch 17`。**この実測は [#468](https://github.com/endazon/microservices-platform/issues/468)
 以前のもの**であり、AST の混入を含み、かつ行を二重に数えていた（上記「合成点テスト経由の混入」）。
-床は比率であり判定の意味は保たれるが、**除去後の実測に基づく置き直し**は #468 の CI 実測を見てから
-[`src/coverage-floor.json`](../../src/coverage-floor.json) で行う。
+
+**現行の根拠は #468 後の CI 実測**（run_number **1144** / commit `594117a` / Release / レポート 14 件 /
+submodule populate 済み）である——**line 34.14%（9314/27280） / branch 17.26%（1536/8898）**。整数への
+切り下げは `line 34` / `branch 17` で**従前と同値**のため、[`src/coverage-floor.json`](../../src/coverage-floor.json)
+の値は据え置き、根拠のみ差し替えた（同ファイルの `$comment` に測定条件つきで記録。値の正は同ファイル）。
+
+> **余裕は薄い**: line は **+0.14pt**、branch は **+0.26pt** しかない。テスト 1 件の skip や被覆済みコードの
+> 削除で床を割りうる幅である。ratchet で床を引き上げる際は、この薄さを踏まえて「成果物は正しいのに赤」に
+> ならない幅を確認してから上げること。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
 > [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（フロントは
