@@ -15,6 +15,9 @@ on:
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
+      - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
   pull_request:
@@ -26,6 +29,9 @@ on:
       - "src/pnpm-lock.yaml"
       - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
+      - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
 
@@ -59,6 +65,12 @@ jobs:
         run: pnpm run typecheck
       - name: Lint
         run: pnpm run lint
+      # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
+      # 再生成して差分が出るなら、OpenAPI と生成物が乖離している（＝手で触ったか、更新し忘れた）。
+      - name: Codegen is up to date (orval)
+        run: |
+          pnpm run codegen
+          git diff --exit-code -- platform/frontend/src/foundation/api/generated
       # 単体テストは frontend-tests.yml（pnpm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
         run: pnpm run build

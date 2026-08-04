@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:e2e": "pnpm --filter @platform/frontend run test:e2e"
+    "test:e2e": "pnpm --filter @platform/frontend run test:e2e",
+    "codegen": "orval --config ./orval.config.ts"
   },
   "pnpm": {
     "//": "IADR-0121 決定 2: pnpm は既定でパッケージの postinstall を実行しない（サプライチェーン対策）。ビルドが必要な依存だけを明示的に許可する。esbuild は Vite/Vitest が使うネイティブバイナリの取得に postinstall を要する。",
@@ -48,6 +49,8 @@
     "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^15.9.0",
     "jsdom": "^25.0.1",
+    "orval": "^8.23.0",
+    "prettier": "^3.3.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "typescript": "^5.6.2",

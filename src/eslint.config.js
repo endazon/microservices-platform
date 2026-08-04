@@ -15,6 +15,9 @@ export default tseslint.config(
       // platform 合成時には使われない（合成は実 foundation を解決する）。横断 lint/coverage の対象は
       // 各ユニットの frontend/src のみとし、AST の frontend/test 配下は除外する（vitest の include とも整合）。
       'ai-stock-trading/frontend/test',
+      // ADR-0031 / IADR-0121 決定 3: orval の生成物は lint 対象外（品質は生成器の責務）。
+      // 乖離は `pnpm run codegen` の再実行差分（CI の codegen ステップ）で検出する。
+      'platform/frontend/src/foundation/api/generated',
     ],
   },
   {
