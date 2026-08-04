@@ -63,7 +63,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | --- | --- | --- | --- |
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。ただし**合成点経由の微小な混入あり**——後述「既知の限界: 合成点テスト経由の混入」参照・[#468](https://github.com/endazon/microservices-platform/issues/468)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -89,32 +89,38 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 ——AST 側のテストが厚ければ platform / knowledge の実際の退行を薄めて隠し、逆に AST の pin 更新だけで
 無関係な PR の床判定が動く。
 
-#### 既知の限界: 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468)）
+#### 合成点テスト経由の混入（[#468](https://github.com/endazon/microservices-platform/issues/468) で解消済み）
 
-除外は **Cobertura レポートファイルのパス**が `src/ai-stock-trading/` 配下かどうかで判定する。ところが
 `Platform.Bff` は BFF の合成点として
 [`AiStockTrading.Bff.Endpoints`](../../src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj) を
 `ProjectReference` しており、`Platform.Bff.Tests` はそれをプロセス内で読み込んで実行する。その結果
-**`src/platform/` 配下にあるレポートの中身に AST のクラス・行が含まれる**。
+**`src/platform/` 配下にあるレポートの中身に AST のクラス・行が含まれる**。レポートの**ファイルパス**に
+よる除外はここに届かず、AST の submodule pin を更新するだけで床の実測値が動く状態だった
+（混入行はすべて被覆済みのため、実測値を押し上げる方向にしか働かない）。
 
-混入量は **AST 由来 230〜266 行**（いずれもすべて被覆済み）。PR #464 のレビューが Release 構成で 2 度
-計測し、**全プロジェクト実行時は 266 行・`Platform.Bff.Tests` 単体実行時は 230 行**と結果が割れた。
-どちらかを確定値として採らず範囲で記録する（`<method><lines>` と class 直下の `<lines>` に同じ行が
-二重記載される Cobertura の構造上、素朴な `<line>` カウントは計測条件で振れる）。
+[#468](https://github.com/endazon/microservices-platform/issues/468) /
+[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) で
+[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替え、次の 2 点で
+解消した。
 
-除いた場合の推定はいずれの値でも**現在の床 34 を上回る**。
+1. **行の帰属**: 各 `<class filename>` を `src/<unit>/` へ帰属させ、集計対象外ユニット（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)
+   の単一情報源から導出）の行を集計から落とす。`filename` は相対・絶対・`<sources>` との結合の順に
+   多段で解釈する（coverlet は base path で始まらないファイルを絶対パスのまま書くため、片方に決め打つと
+   フィルタが何にもマッチせず「除外したつもりで素通り」になる）。**帰属が 1 件も成立しなければ warn**、
+   帰属できなかったクラス・`<class>` の外にある行は集計に残して可視化する。
+2. **二重記載の解消**: coverlet は同じ行を `<methods>` 配下と class 直下の `<lines>` に二重に書く。集計は
+   **class 直下の `<lines>` を正**とする（`<methods>` 配下は内訳として数えない）。素朴な `<line>` カウントが
+   計測条件で振れていた——PR #464 のレビューは Release 構成で 2 度計測し、全プロジェクト実行時と
+   `Platform.Bff.Tests` 単体実行時で結果が割れた——原因はこれである。
 
-| 混入量 | 除去後の推定 | 床 34 との関係 |
-| --- | --- | --- |
-| 230 行 | `line 34.19%`（18664/54596） | 上回る |
-| 266 行 | `line 34.14%`（18628/54560） | 上回る |
+除外した行数・除外前後の実測値・`filename` の解釈の内訳・除外したクラス名は、**CI ログと実行サマリへ
+毎回出力**する（`COVERAGE_FLOOR_DEBUG=1` でレポート単位の内訳も出る）。あわせて `<coverage>` の
+`lines-valid` / `lines-covered`（coverlet 自身の集計値）と本実装の集計値を並べ、二重記載の扱いが実レポートで
+妥当かを毎回照合できるようにしている。
 
-したがって**床の値は混入の確定を待たずに有効**である。確定値は [#468](https://github.com/endazon/microservices-platform/issues/468) の着手時に実レポートで測り直す。
-
-したがって上表の対象欄「`src/platform/backend/**` ・ `src/knowledge/backend/**`」は、**レポートの
-ファイルパスとしては正確だが、中身は他ユニットのコードを含みうる**。塞ぐには Cobertura の
-`<class>` の `filename` で行を帰属させる必要があり、パーサを class 単位に作り替える設計判断を伴うため
-[#468](https://github.com/endazon/microservices-platform/issues/468) へ切り出した。
+> **注**: 上記 2 により集計の**絶対数**（`covered/lines`）の意味が変わった（分母・分子とも約半分になる）。
+> 比率はほぼ不変だが、PR #464 の実測値（`18894/54826`）と #468 以降の表示は直接比較できない。
+> 床（比率）の置き直しは CI 実測に基づき [`src/coverage-floor.json`](../../src/coverage-floor.json) で行う。
 
 ### 共通する設計原則: ratchet
 
@@ -139,7 +145,10 @@ skip、被覆済みの死コード削除など）だけで「成果物は正し�
 
 バックエンドの初期値は #453 の CI 実行（`8bfe639`）で得た **line 34.46%（18894/54826） /
 branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロジェクト全件）を切り下げた
-`line 34` / `branch 17`。
+`line 34` / `branch 17`。**この実測は [#468](https://github.com/endazon/microservices-platform/issues/468)
+以前のもの**であり、AST の混入を含み、かつ行を二重に数えていた（上記「合成点テスト経由の混入」）。
+床は比率であり判定の意味は保たれるが、**除去後の実測に基づく置き直し**は #468 の CI 実測を見てから
+[`src/coverage-floor.json`](../../src/coverage-floor.json) で行う。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
 > [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（フロントは

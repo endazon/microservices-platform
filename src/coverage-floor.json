@@ -11,7 +11,13 @@
     "残す（これを常態化させない段階ポリシーの典拠は scripts/README.md の check-permission-denials.js 節 /",
     "planning#146・planning#160（前段の失敗モード）／planning#161・planning#162（段階ポリシーの導入）。",
     "キットの同期規約そのものは IADR-0115）。切り上げは初回から fail するため行わない。",
-    "null の間は集計と報告のみ行い判定しない。"
+    "null の間は集計と報告のみ行い判定しない。",
+    "#468 / IADR-0123: 集計は <class filename> で行をユニットへ帰属させ、合成点（Platform.Bff →",
+    "AiStockTrading.Bff.Endpoints）経由で混入する AST の行を落とすようになった。あわせて二重記載",
+    "（<methods> 配下と class 直下の <lines>）を class 直下だけで数える。このため実測の**絶対数**は",
+    "上記 18894/54826 と直接比較できない（比率はほぼ不変）。除去後の実測に基づく床の置き直しは",
+    "CI 実走のログ（check-coverage-floor の診断出力）を見てから、この backend.line / backend.branch の",
+    "2 値のみを更新して行う。"
   ],
   "backend": {
     "line": 34,

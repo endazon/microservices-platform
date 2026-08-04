@@ -140,6 +140,14 @@ coverlet（`XPlat Code Coverage`）の Cobertura は概ね次の形である。
 | 2 | `<source>` の各値と結合して見る | base path が `…/src/` より深い場合（`filename` が `ai-stock-trading/backend/…` や `Endpoints/Foo.cs` になる場合）に当たる |
 | 3 | どちらでも当たらない | **未帰属**として集計に残し（＝黙って落とさない）、件数とサンプルを診断に出す |
 
+### 開始タグの走査（属性値の `>`）
+
+`<class>` の開始タグは**引用符を跨がない**走査にする。除外したい 6 クラスのうち 3 つは非同期
+ステートマシン（`…MonitorBffEndpoints/<Map>d__2`）であり、`name` 属性に `>` が現れうる
+（XML では属性値の `>` の実体参照化は必須ではない）。素朴な `[^>]*` はここでタグを途中で切り、
+後続の `filename` を読めないまま**そのクラスだけ静かに未帰属**になる——未帰属は集計に残るため、
+**除外対象がちょうど抜ける**形で壊れる。`--self-test` の負例で固定する。
+
 ## 二重記載（`<methods>` 配下と class 直下の `<lines>`）の扱い
 
 **決定: class 直下の `<lines>` を正とし、`<methods>` 配下の `<line>` は内訳として数えない。**
@@ -196,7 +204,7 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 
 | ファイル | 変更 |
 | --- | --- |
-| [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js) | `parseCobertura` を class 単位走査へ作り替え。新規の公開 API: `parseSources` / `classBlocks` / `unitOfFilename` / `classLineStats` / `aggregateReports` / `attributionMessages` / `isExcludedUnitFilename`。`--self-test` を拡張 |
+| [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js) | `parseCobertura` を class 単位走査へ作り替え。新規の公開 API: `attrOf` / `parseSources` / `parseReportedTotals` / `classBlocks` / `stripMethods` / `methodsOf` / `countLines` / `countLinesUnique` / `classLineStats` / `unitOfFilename` / `aggregateReports` / `attributionMessages` / `formatDiagnostics`。`--self-test` を拡張 |
 | [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) | Cobertura フィクスチャによる単体テストを追加（既存の coverage-floor 節へ） |
 | [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | 「既知の限界: 合成点テスト経由の混入」を解消済みへ書き換え、ゲート一覧の対象欄を更新 |
 | [`docs/adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md`](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) | 新規起票 |
@@ -230,6 +238,35 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
   よって実レポートに対する検証は **CI 実走のログ経由**で行う（この条件を書かない実測値は再現不能である。
   #484 / #486 の教訓）。
 - Node: 実行環境の Node（CI は 20）。本スクリプトは Node 標準モジュールのみを使う。
+
+## 検証（実測）
+
+| コマンド | 結果 |
+| --- | --- |
+| `node scripts/check-coverage-floor.js --self-test` | 自己試験 **35 件 OK** / exit 0（着手前 14 件） |
+| `node scripts/scripts.test.js` | **237 tests passed** / exit 0（着手前 **225 件** → +12。着手前の値は改修 2 ファイルを一時退避して実測） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 237 tests passed / exit 0 |
+| `REQUIRE_REPO_TESTS=1 GITHUB_ACTIONS=true node scripts/scripts.test.js` | 237 tests passed / exit 0。フィクスチャ由来のアノテーション漏れ 0 件 |
+| `node scripts/check-doc-links.js` | OK: **405 件**の Markdown に破損リンクなし / exit 0 |
+| `node scripts/check-coverage-floor.js`（レポート 0 件のローカル） | 従来どおり切り分け可能な warn ＋ exit 0（fail-open の挙動は不変） |
+
+### 実物に近いレポートでの実挙動（`src/` へ一時設置して素実行）
+
+coverlet の出力を模したレポート（`<sources>` あり・`filename` が相対と絶対の混在・二重記載あり・
+AST のクラスと非同期ステートマシン `<Map>d__2` を含む）を `src/platform/…/TestResults/` へ置いて実行した。
+
+| 観測点 | 実測 |
+| --- | --- |
+| 集計 | `line 50%（3/6）`（platform の 2 クラス・class 直下の行のみ） |
+| 除外 | `ai-stock-trading 由来 2 クラス / 4 行（被覆 4）` |
+| 除外前 | `line 70%（7/10）` |
+| 解釈の内訳 | `そのまま(絶対) 1 / <sources> 結合 3 / 未帰属 0` |
+| coverlet 値との照合 | `lines-valid 10（本実装 10・一致）` |
+| 除外クラス一覧 | `MonitorBffEndpoints` と `MonitorBffEndpoints/<Map>d__2` を filename 付きで列挙 |
+
+二重記載を素朴に数えた場合（改修前の方式＝文書全体の `<line>` を数える）は同レポートで **16 行**になる。
+**class 直下のみを数えることで 10 行**になり、coverlet 自身の `lines-valid`（10）と一致した。撤去後は `git status` がクリーンであることを
+確認している（同経路は `scripts.repo.test.js` の子プロセステストとして自動化済み）。
 
 ## 影響・リスク
 
