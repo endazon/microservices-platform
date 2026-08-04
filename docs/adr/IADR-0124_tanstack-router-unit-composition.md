@@ -253,6 +253,24 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 | 型付き配列へ `...legacyRoutes`（`AnyRoute[]`）をスプレッド | **失われる** | **失われる** | **失われる** |
 | 型付き `addChildren` の後に `children` へ実行時追加（**採用**） | 保たれる | 保たれる | 保たれる |
 
+### 実装後の再測定（本 PR のコードに対して）
+
+負のプローブを**本 PR の実コード**（`platform/frontend/tsconfig.app.json`）に対して走らせ、
+5 件すべてが `tsc` で落ちること・正しい 3 件が通ることを確認した（確認後にプローブは削除）。
+このとき `<Link to>` が受け付けるパスの union は次のとおりで、
+[05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md) の
+ルートパス表と一致する（`.` / `/` / `..` は TanStack の相対指定）。
+
+```text
+"." | "/" | ".." | "/ask" | "/login" | "/callback" | "/search" | "/docs/$id" | "/wiki"
+  | "/admin/documents" | "/admin/sources" | "/admin/conversions" | "/analyze"
+  | "/admin/abac" | "/admin/ops" | "/admin/config-viewer"
+```
+
+**AST の 3 画面（`/settings` / `/settings/risk` / `/controls`）はこの union に現れない**——
+決定 2 のとおり実行時にだけ木へ載るためである。実行時に載っていること自体は
+`router.test.ts` が固定する。
+
 ### `no-restricted-imports` の照合方式（機械強制の落とし穴）
 
 `react-router` の再混入を lint で止めるにあたり、`patterns` の `group` に `'react-router'` を置くと
