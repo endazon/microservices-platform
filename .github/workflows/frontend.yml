@@ -54,7 +54,13 @@ jobs:
             | xargs -r -n1 git submodule update --init
       # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
       # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      # package_json_file を明示するのは、action の既定がリポジトリ直下の package.json であり、
+      # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
+      # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
+      # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -88,7 +94,13 @@ jobs:
             | xargs -r -n1 git submodule update --init
       # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
       # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      # package_json_file を明示するのは、action の既定がリポジトリ直下の package.json であり、
+      # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
+      # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
+      # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
       - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
