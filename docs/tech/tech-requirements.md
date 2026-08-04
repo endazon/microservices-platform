@@ -160,7 +160,8 @@ Result / Error はサービスをまたいで同一の型である必要があ�
 広範に使用中**（実測: `.csproj` 15 / 14 / 3、`.cs` 59 / 129 / 15）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
-壊すため、許容値までは警告に留める。planning#146 / #149 / #160）。よって **ratchet 方式**を採る。
+壊すため、許容値までは警告に留める。planning#146・planning#160（前段の失敗モード）／
+planning#161・planning#162（段階ポリシーの導入））。よって **ratchet 方式**を採る。
 
 - 既知の違反は `scripts/backend-library-baseline.json` にプロジェクト単位で記録する
 - baseline に無いプロジェクトでの違反は **fail**（新規混入を止める）

@@ -23,7 +23,8 @@ plan_refs:
   [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)（impl-handoff-kit を足場の単一情報源とする同期規約）／
   [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md)（進行規約・規約 4 と規約 6）
 - 設計上の下敷き: 「**成果物は正しいのに赤**」を常態化させない段階ポリシー
-  （[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146 / #149 / #160）
+  （[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146・planning#160
+  （前段の失敗モード）／planning#161・planning#162（段階ポリシーの導入））
 - 本リポジトリの起点: #453（親 #454 フェーズ 0）
 
 ## 目的・背景
@@ -171,7 +172,8 @@ it('0 件のとき空状態を表示する', () => { ... })
 床は**実測を整数へ切り下げた `line 34` / `branch 17`** とする。実測そのもの（34.46 / 17.62）を置くと
 計測ゆらぎ——統合テストが 1 件 skip される、被覆済みの死コードを消す等——で「成果物は正しいのに赤」に
 なる（この失敗モードの整理は [`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js`
-節＝impl-handoff-kit の段階ポリシー設計、planning#146 / #149 / #160）。フロントの
+節＝impl-handoff-kit の段階ポリシー設計、planning#146・planning#160（前段の失敗モード）／
+planning#161・planning#162（段階ポリシーの導入））。フロントの
 [`src/vitest.config.ts`](../../src/vitest.config.ts) も実測 lines≈83% に対して整数の床 78 を置いており、
 **同じ作法に揃える**。切り上げ（34.46 → 35）は初回から fail するため行わない。
 
