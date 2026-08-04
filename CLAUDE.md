@@ -146,7 +146,7 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 
 ### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 
-- **スタック**: **React 19** + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。ADR-0031 が確定したスタック（React 19 + Vite + TanStack）への移行は [IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が **5 段**に分割し、第 1 段まで完了している。ルーティングは **react-router-dom 6 のまま**で、TanStack Router への差し替えは画面再実装（#452）と同一段で行う。
+- **スタック**: **React 19** + TypeScript 5.6 + **Vite 6**（ESM, `"type": "module"`）。テストは **Vitest 3**。Node は CI と揃え **22** を使う。ADR-0031 が確定したスタック（React 19 + Vite + TanStack）への移行は [IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が **5 段**に分割し、第 1 段まで完了している。ルーティングは **react-router-dom 6 のまま**で、TanStack Router への差し替えは画面再実装（#452）と同一段で行う。
 - **構成**: pnpm workspace（ルート = `src/`、`pnpm-workspace.yaml` = `'*/frontend'` + `'packages/*'`。IADR-0121）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が [IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) を Superseded / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
 - **サーバー状態**: **TanStack Query** に一元化する（`foundation/api/queryClient.ts` が唯一の生成点）。**グローバルストア（Redux）は持たない**——`redux` / `@reduxjs/*` の import は ESLint が error にする（IADR-0121 決定 8）。
 - **UI / CSS**: **Tailwind CSS v4** ＋ 共有 UI パッケージ **`@platform/ui`**（[`src/packages/ui`](src/packages/ui/README.md)。IADR-0121 決定 4）。入れてよいのはデザイントークン・`cn()`・shadcn/ui 派生プリミティブのみで、ドメイン・通信・ルーティング・認証は入れない。**外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy。フォントはシステムフォント、アイコンは npm 同梱の lucide-react）。状態表示は**色だけで意味を持たせない**（色 ＋ アイコン ＋ テキスト。INDEX 決定 21）。

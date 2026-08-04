@@ -59,7 +59,7 @@ plan_refs:
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準は ADR-0030（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
 | 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/` と `src/packages/*`（**pnpm workspace** ルート = `src/`。[[IADR-0121]] 決定 2）。Node は CI と揃え 22 |
-| フレームワーク（フロントエンド） | React + Vite | **React 19** / Vite 5（ESM） | SPA。ADR-0031 が確定したスタックへ移行中（[[IADR-0121]] が 5 段に分割。**第 1 段まで完了**）。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0056]]）。BFF は `/bff/*` 経由 |
+| フレームワーク（フロントエンド） | React + Vite | **React 19** / **Vite 6**（ESM） | SPA。ADR-0031 が確定したスタックへ移行中（[[IADR-0121]] が 5 段に分割。**第 1 段まで完了**）。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0056]]）。BFF は `/bff/*` 経由 |
 | 状態管理（フロントエンド） | TanStack Query | 5 | ADR-0031。サーバー状態の唯一の入口（`foundation/api/queryClient.ts`）。**グローバルストア（Redux）は持たない**（ESLint で機械強制）。クライアント状態の Zustand は使う画面が出る段で導入 |
 | ルーティング（フロントエンド） | react-router-dom 6（**移行中**） | 6.30 | ADR-0031 の確定値は **TanStack Router**。差し替えは画面再実装（#452）と同一段で行う（[[IADR-0121]] 決定 1）。React 19 とは peer `react>=16.8` で共存 |
 | API 契約（フロントエンド） | orval（OpenAPI → 型・TanStack Query フック・MSW モック） | 8 | ADR-0031。**手書きクライアント禁止**（ESLint で機械強制）。入力は `docs/api/openapi.yaml` の `/bff/` 配下のみ。生成物はコミットし CI で再生成差分を検査（[[IADR-0121]] 決定 3） |

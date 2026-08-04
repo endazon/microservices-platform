@@ -257,7 +257,8 @@ Redux 系 import の禁止・`axios` 等の HTTP クライアント import の�
   - 第 2 段（TanStack Router ＋ アプリシェル ＋ 旧画面削除）の issue 起票と #454 チェックリストへの追加。
   - 第 3 段で本決定 6 の撤去を実行する（#439 のマージが条件）。
   - 第 4 段の着手時に決定 5 の再評価条件を確認する。
-  - Vite 5 → 7/8・Vitest 2 → 4・TypeScript 5.6 → 7 系の追随は別 issue。
+  - Vite 6 → 7/8・Vitest 3 → 4・TypeScript 5.6 → 7 系の追随は別 issue（第 1 段では依存レビューの
+    high/critical advisory を外すのに必要な最小限だけ上げた。Vite 6.4.3 / Vitest 3.2.7）。
 
 ## 関連
 

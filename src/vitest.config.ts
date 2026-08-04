@@ -58,11 +58,15 @@ export default defineConfig({
       // 回帰防止のラチェット。床を割る変更を CI で止める（レビュー #168 指摘対応・IADR-0034）。
       //
       // ［2026-08-04 / #446］移行第 1 段（ADR-0031 / IADR-0121）に伴う引き上げ。
-      //   実測（Node 22.22.2 / pnpm 10.33.0 / submodule `src/ai-stock-trading` populate 済み）:
-      //     全ユニット横断        lines/statements 91.69% / branches 82.04% / functions 83.14%
-      //     MSP 所有分のみ        lines/statements 88.36% / branches 79.53% / functions 80.00%
+      //   実測（Node 22.22.2 / pnpm 10.33.0 / Vitest 3.2.7 + v8 provider /
+      //         submodule `src/ai-stock-trading` populate 済み）:
+      //     全ユニット横断        lines/statements 91.44% / branches 82.15% / functions 83.52%
+      //     MSP 所有分のみ        lines/statements 88.03% / branches 79.70% / functions 80.64%
       //     （MSP 所有分 = platform/frontend + knowledge/frontend + packages/*。AST の実装を
       //       母数から外して測り直した値）
+      //   Vitest 2.1.9 時点の実測は横断 91.69 / 82.04 / 83.14、MSP 所有分 88.36 / 79.53 / 80.00 だった。
+      //   GHSA-5xrq-8626-4rwp（critical）対応で 3.2.7 へ上げた際に v8 provider の計上差で ±0.4pt 未満
+      //   動いたが、床の導出値は変わらない。
       //
       //   床は **MSP 所有分の実測から 5pt 下** に置く（実測 83% に対し床 78 を置いていた従来と同じ作法。
       //   計測ゆらぎで「成果物は正しいのに赤」にならない余裕だけを残す）。AST 側の実測が高いため

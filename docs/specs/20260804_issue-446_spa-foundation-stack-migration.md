@@ -173,8 +173,9 @@ flowchart TB
 ### 2. React 19
 
 - `react` / `react-dom` を `^19`、`@types/react` / `@types/react-dom` を `^19` へ。
-- `@vitejs/plugin-react` は **4.x を維持**する（最新 6.x は peer `vite ^8`。Vite は CLAUDE.md の
-  「Vite 5」を維持し、Vite のメジャー更新は本作業の対象外とする）。
+- `@vitejs/plugin-react` は **4.x を維持**する（最新 6.x は peer `vite ^8`）。Vite は当初 5 を維持する
+  方針だったが、依存レビューの high advisory（GHSA-fx2h-pf6j-xcff）に Vite 5 系の修正版が無く、
+  **6.4.3 へ上げた**（経緯と根拠は §依存レビューの指摘と対応）。
 - `react-helmet-async` は元々未使用のため作業なし（React 19 ネイティブメタデータで代替される）。
 - `react-router-dom` は 6.30 系のまま据え置く（peer `react >= 16.8`。§実測で共存を確認）。
 
@@ -209,7 +210,7 @@ flowchart TB
   （要旨: デザイントークン ＋ `cn()` ＋ shadcn/ui 派生プリミティブのみ。ドメイン・通信・ルーティング・認証を含めない）。
 - Tailwind v4 は設定ファイル不要（CSS-first）。`@platform/ui` が `styles.css`（`@import "tailwindcss"` ＋
   `@theme` トークン）を公開し、各ユニットの SPA がそれを import する。
-- ビルドは `@tailwindcss/vite`（peer `vite ^5.2 || ^6 || ^7 || ^8` のため Vite 5 で動く）。
+- ビルドは `@tailwindcss/vite`（peer `vite ^5.2 || ^6 || ^7 || ^8`）。
 - **アセットは全て自己ホスト**する（08_data-egress-policy）。Web フォントは読み込まず OS のシステム
   フォントスタックを用いる。アイコンは `lucide-react`（npm パッケージ＝自己ホストバンドル）。
 - shadcn/ui は「コピーして所有する」方式のため、第 1 段では `components.json`（初期化）と、規約の実例と
@@ -355,6 +356,69 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 - ビルド成果物の外部参照: CSS の `url()` **0 件**、CSS 中の外部 URL は Tailwind のコメント 1 件のみ、
   JS 中の `http(s)://` は XML 名前空間・`localhost` 既定・React のエラーページ URL（文字列）のみ。
   **Web フォント・CDN・analytics への参照は 0 件**（08_data-egress-policy 準拠）。
+
+### 依存レビュー（`security.yml` / `dependency-review-action`）の指摘と対応
+
+PR #489 の CI で `Dependency review` ジョブが fail した。**pnpm-lock 化で全依存が「新規追加」扱いになり、
+移行前から使っていた版も含めて全量がレビューされた**結果の顕在化である（`fail-on-severity: high`）。
+
+CI ログに出ていたのは 1 件だが、`pnpm audit` で**全量を測り直したところ、しきい値（high 以上）で
+落ちる advisory は 2 件あった**。1 件だけ直しても次の実走でまた止まるため、両方まとめて解消した。
+
+| 重大度 | パッケージ | GHSA | 該当版 | patched | 対応 |
+| --- | --- | --- | --- | --- | --- |
+| **critical** | vitest | [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp)（UI サーバ稼働時に任意ファイルの読み取り・実行） | `<3.2.6` | `>=3.2.6` | **3.2.7** へ更新（`@vitest/coverage-v8` も同版に揃える） |
+| **high** | vite | [GHSA-fx2h-pf6j-xcff](https://github.com/advisories/GHSA-fx2h-pf6j-xcff)（Windows の代替パスによる `server.fs.deny` バイパス） | `<=6.4.2` | `>=6.4.3` | **6.4.3** へ更新（**Vite 5 系に修正版が存在しない**ため、5 の維持と両立しない） |
+
+#### 版の選定根拠
+
+- **vitest 3.2.7**: advisory の `patched_versions` は `>=3.2.6`。3.2 系の最新である 3.2.7 を採る
+  （4.x は Vite 8 を要求し、TypeScript・ESLint 周辺まで巻き込むため本作業の範囲を超える）。
+- **vite 6.4.3**: advisory の `patched_versions` は `>=6.4.3` で、**6.4.3 が該当条件を満たす最小の版**である。
+  7.x / 8.x を選ばないのは `@vitejs/plugin-react` 4.x の peer が `^4.2 || ^5 || ^6 || ^7` であり、
+  8 系へ行くとプラグインのメジャー更新を巻き込むためである。6.4.3 は peer 互換を全て満たす
+  （`@vitejs/plugin-react` 4.7.0 / `@tailwindcss/vite` 4（peer `^5.2 || ^6 || ^7 || ^8`）/
+  vitest 3.2.7 の vite 依存 `^5 || ^6 || ^7`）。副次的に esbuild の moderate advisory
+  （GHSA-67mh-4wv8-2f99・`<=0.24.2`）も解消した。
+- **TypeScript 5.6 は維持**した（advisory 対象外であり、動かす理由がない）。
+
+> **計画・指示との差異（Vite 5 の維持を諦めた点）**: 当初の方針は「Vite 5 / TS 5.6 は維持」だったが、
+> GHSA-fx2h-pf6j-xcff は **high** かつ **Vite 5 系に修正版が存在しない**（`patched: >=6.4.3`）。
+> Vite 5 を維持すると `fail-on-severity: high` の依存レビューが恒久的に fail し、PR をマージできない。
+> 「上げない」ことに実行可能な選択肢がないため、影響が最小の 6.4.3 を採った。
+> CLAUDE.md と技術要件書の「Vite 5」表記も追随させた。
+
+#### 可変ユニット（submodule）側の同一 advisory
+
+上記を root の `devDependencies` で上げても、**`ai-stock-trading` が自前で宣言する vitest 2.1.1 /
+vite 5.4.8 が lockfile に残るため advisory は消えなかった**（実測）。AST は別プロジェクトで本リポジトリ
+からは是正できない（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）。横断 Vitest は
+ルートの vitest で全ユニットのテストを走らせるので**これらは実際には使われない版**だが、lockfile に
+載る以上は依存レビューの対象になる。React と同じく `pnpm.overrides` でワークスペース 1 本に揃えて解消した
+（override は本リポジトリでの合成時のみ効き、AST 単独リポジトリのビルドには影響しない）。
+
+#### 残存 advisory（しきい値未満・対応不要）
+
+`react-router` / `react-router-dom` の **moderate 3 件**（`GHSA-jjmj-jmhj-qwj2` は
+`patched: <0.0.0` ＝ **修正版なし**、他 2 件は `>=7.18.0` で修正）。`fail-on-severity: high` の下では
+ブロックしない。**移行第 2 段で `react-router-dom` 自体を撤去する**ため、v7 への移行や override は
+行わない（撤去する依存に手を入れるのは二重作業になる）。
+
+#### 更新後の実測（差分のみ）
+
+| 項目 | Vitest 2.1.9 / Vite 5.4.21 | **Vitest 3.2.7 / Vite 6.4.3** |
+| --- | --- | --- |
+| 単体テスト | 35 files / 213 tests green | **35 files / 213 tests green**（変化なし） |
+| カバレッジ（横断） | 91.69 / 82.04 / 83.14 | **91.44 / 82.15 / 83.52** |
+| カバレッジ（MSP 所有分） | 88.36 / 79.53 / 80.00 | **88.03 / 79.70 / 80.64** |
+| しきい値 83 / 74 / 75 | 充足 | **充足**（床の導出値は変更なし） |
+| ビルド | CSS 5.91 kB / JS 464.43 kB | CSS 5.90 kB / JS 475.88 kB |
+| E2E スモーク | 6 passed | **6 passed** |
+| `pnpm audit` で high 以上 | 2 件 | **0 件** |
+
+カバレッジが ±0.4pt 未満動いたのは v8 provider の計上差（母数が 3831 → 3940 行）であり、テストの増減は
+無い。**床（83 / 74 / 75）は据え置いた**——MSP 所有分の実測 88.03 / 79.70 / 80.64 に対して従来と同じ
+約 5pt の余裕が残っており、導出をやり直しても同じ値になるためである。
 
 ### 機械強制の発火確認（違反サンプル。確認後に削除済み）
 
