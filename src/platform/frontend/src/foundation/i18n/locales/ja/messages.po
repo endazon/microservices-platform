@@ -98,6 +98,11 @@ msgstr "管理"
 msgid "見つかりませんでした"
 msgstr "見つかりませんでした"
 
+#: platform/frontend/src/foundation/auth/RequireAuth.tsx
+#: platform/frontend/src/foundation/auth/RequireRole.tsx
+msgid "読み込み中…"
+msgstr "読み込み中…"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "運用"
 msgstr "運用"
