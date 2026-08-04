@@ -231,7 +231,12 @@ export default tseslint.config(
         {
           // 文言ではないもの（クラス名・ロール・ルート ID・属性値）まで拾うと実質使えない。
           // 判定は「JSX のテキストと、翻訳 API へ渡す文字列」に絞る。
-          ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9 _./:#$?&=@%+-]*$'],
+          //
+          // **空白を含む ASCII 文字列は除外しない**（2 つ目のパターンに空白を入れない）。
+          // 空白を許すと `Untranslated english text` のような**英語の文章がそのまま素通り**し、
+          // 「未国際化リテラルの検出」が日本語にしか効かなくなる（実測で確認した穴）。
+          // 空白を含むクラス名（`text-sm font-medium` 等）は下の ignoreNames（属性名）が拾う。
+          ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$'],
           ignoreNames: [
             { regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' } },
           ],
