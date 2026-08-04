@@ -956,4 +956,144 @@ module.exports = ({ ok, assert }) => {
     const r = spawnSync(process.execPath, [path.join(__dirname, 'lib', 'excluded-units.js'), '--self-test'], { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
   });
+
+  // --- check-cpm-versions: CPM のバージョン直書き禁止（Issue #467） ---------------
+
+  const cpm = require('./check-cpm-versions.js');
+  const cpmViolations = (xml) => cpm.inlineVersionFindings('src/x/X.csproj', xml).violations;
+  const cpmOverrides = (xml) => cpm.inlineVersionFindings('src/x/X.csproj', xml).overrides;
+
+  ok('CPM: Version 属性の直書きを違反として検出する', () => {
+    assert.deepStrictEqual(cpmViolations('<PackageReference Include="X" Version="1.0.0" />'),
+      [{ project: 'src/x/X.csproj', package: 'X', source: 'attribute', value: '1.0.0' }]);
+    // 属性の順序に依存しない。
+    assert.strictEqual(cpmViolations('<PackageReference Version="1.0.0" Include="X" />').length, 1);
+  });
+
+  ok('CPM: 子要素形（MSBuild メタデータ記法）の直書きも違反', () => {
+    // 属性だけを見る実装だと素通りする経路。MSBuild では属性形と等価である。
+    const found = cpmViolations('<PackageReference Include="X"><Version>2.0.0</Version></PackageReference>');
+    assert.strictEqual(found.length, 1);
+    assert.strictEqual(found[0].source, 'element');
+    assert.strictEqual(found[0].value, '2.0.0');
+  });
+
+  ok('CPM: Update 形・プロパティ参照・空文字・単一引用符・条件付き ItemGroup も違反', () => {
+    assert.strictEqual(cpmViolations('<PackageReference Update="X" Version="1.0.0" />')[0].package, 'X');
+    assert.strictEqual(cpmViolations('<PackageReference Include="X" Version="$(XVersion)" />').length, 1);
+    assert.strictEqual(cpmViolations('<PackageReference Include="X" Version="" />').length, 1);
+    assert.strictEqual(cpmViolations("<PackageReference Include='X' Version='1.0.0' />").length, 1);
+    assert.strictEqual(cpmViolations(
+      '<ItemGroup Condition="\'$(TargetFramework)\'==\'net10.0\'">'
+      + '<PackageReference Include="X" Version="1.0.0" /></ItemGroup>').length, 1);
+  });
+
+  ok('CPM: PackageVersion / GlobalPackageReference（中央定義）は違反にしない', () => {
+    // 走査対象は .csproj のみだが、要素名の見分け自体を境界として固定しておく。
+    assert.deepStrictEqual(cpmViolations('<PackageVersion Include="X" Version="1.0.0" />'), []);
+    assert.deepStrictEqual(cpmViolations('<GlobalPackageReference Include="X" Version="1.0.0" />'), []);
+    assert.deepStrictEqual(cpmViolations('<PackageReferenceFoo Include="X" Version="1.0.0" />'), []);
+  });
+
+  ok('CPM: コメントアウトされた例示と属性値の中の Version= は違反にしない', () => {
+    assert.deepStrictEqual(cpmViolations('<!-- <PackageReference Include="X" Version="1.0.0" /> -->'), []);
+    assert.deepStrictEqual(cpmViolations('<PackageReference Include="X" Condition="\'$(C)\'==\'Version=1\'" />'), []);
+  });
+
+  ok('CPM: VersionOverride は許可（違反 0）しつつ使用箇所を警告として拾う', () => {
+    assert.deepStrictEqual(cpmViolations('<PackageReference Include="X" VersionOverride="1.0.0" />'), []);
+    assert.strictEqual(cpmOverrides('<PackageReference Include="X" VersionOverride="1.0.0" />').length, 1);
+    assert.strictEqual(
+      cpmOverrides('<PackageReference Include="X"><VersionOverride>1.0.0</VersionOverride></PackageReference>').length, 1);
+  });
+
+  ok('CPM: 走査対象は .csproj（雛形の .sample 含む）のみ', () => {
+    for (const p of ['src/x/X.csproj', 'templates/unit-template/backend/x/X.csproj.sample']) {
+      assert.strictEqual(cpm.isScannedProjectFile(p), true, `${p} が対象外`);
+    }
+    // props / targets には正当な版記述（PackageVersion / GlobalPackageReference）があるため対象外。
+    for (const p of ['src/Directory.Packages.props', 'src/Directory.Build.props',
+      'src/Directory.Build.targets', 'src/x/X.cs', 'src/x/backend.slnx']) {
+      assert.strictEqual(cpm.isScannedProjectFile(p), false, `${p} が対象になっている`);
+    }
+  });
+
+  ok('CPM: 除外ユニットはハードコードせず lib/excluded-units.js から導出する', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'check-cpm-versions.js'), 'utf8');
+    assert.doesNotMatch(src, /new Set\(\[\s*["']ai-stock-trading["']/);
+    assert.match(src, /require\('\.\/lib\/excluded-units\.js'\)/);
+    assert.strictEqual(cpm.isExcludedPath('src/ai-stock-trading/backend/x/X.csproj'), true);
+    assert.strictEqual(cpm.isExcludedPath('src/platform/backend/x/X.csproj'), false);
+  });
+
+  ok('CPM: 実リポジトリは違反 0 件で templates/ も走査対象に入っている', () => {
+    const r = cpm.scanTree();
+    assert.deepStrictEqual(r.violations, [], `バージョン直書き: ${JSON.stringify(r.violations)}`);
+    assert.ok(r.projects.length > 0, '走査対象が 0 件（0 件検査への退行）');
+    assert.ok(r.projects.some((p) => p.startsWith('templates/')), 'templates/ が走査対象に入っていない');
+  });
+
+  ok('CPM: --self-test は exit 0（負例の実地走査を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js'), '--self-test'], { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
+
+  // 受け入れ基準（#467）「.csproj にバージョン直書きが入った PR が CI で止まる」の実測。
+  // 純関数の試験だけでは「走査経路に乗っているか」「素実行が exit 1 になるか」を確かめられないため、
+  // 直書きを持つ .csproj を実ツリーへ一時的に置き、子プロセスの終了コードを見る。
+  // 追跡ファイルは書き換えない（テストが異常終了しても既存ファイルを壊さないよう、新規ファイルを
+  // 置いて finally で消す方式にする）。
+  ok('CPM: 直書きのある .csproj を置くと素実行が exit 1（負例の実効性）', () => {
+    const { spawnSync } = require('child_process');
+    const probe = path.join(__dirname, '..', 'src', 'platform', 'backend', 'cpm-check-probe.csproj');
+    const run = () => spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js')], { encoding: 'utf8' });
+    assert.strictEqual(run().status, 0, '設置前は exit 0 のはず');
+    fs.writeFileSync(probe,
+      '<Project><ItemGroup><PackageReference Include="Probe" Version="9.9.9" /></ItemGroup></Project>\n');
+    try {
+      const r = run();
+      assert.strictEqual(r.status, 1, `直書きを置いたのに exit ${r.status}`);
+      assert.match(String(r.stderr), /バージョン直書き 1 件/);
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
+    assert.strictEqual(run().status, 0, '撤去後に exit 0 へ戻らない');
+  });
+
+  // 受け入れ基準（#467）「VersionOverride の使用箇所が実行サマリに出る」の実測。
+  // inlineVersionFindings() の検出だけを試験すると、出力側 reportOverrides() が壊れても緑のままになる
+  // （警告が出ないことは終了コードに現れないため、CI も緑で通る）。よって出力経路ごと子プロセスで見る。
+  ok('CPM: VersionOverride は exit 0 のまま実行サマリとアノテーションへ出る（出力経路）', () => {
+    const { spawnSync } = require('child_process');
+    const probe = path.join(__dirname, '..', 'src', 'platform', 'backend', 'cpm-override-probe.csproj');
+    const summary = path.join(os.tmpdir(), `cpm-summary-${process.pid}-${Date.now()}.md`);
+    fs.writeFileSync(probe,
+      '<Project><ItemGroup><PackageReference Include="OverrideProbe" VersionOverride="9.9.9" />'
+      + '</ItemGroup></Project>\n');
+    try {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js')], {
+        encoding: 'utf8',
+        // GITHUB_ACTIONS=true で ci-annotate が workflow コマンド（::warning::）を stdout へ出す。
+        env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary },
+      });
+      // 許可であって違反ではない: 終了コードは 0 のまま。
+      assert.strictEqual(r.status, 0, `VersionOverride で exit ${r.status}（許可のはず）`);
+      assert.match(String(r.stdout), /::warning::CPM の VersionOverride を 1 件使用しています/);
+      assert.match(String(r.stdout), /OverrideProbe=9\.9\.9/);
+      const written = fs.readFileSync(summary, 'utf8');
+      assert.match(written, /### CPM: VersionOverride の使用箇所/);
+      assert.match(written, /OverrideProbe/);
+      assert.match(written, /9\.9\.9/);
+    } finally {
+      fs.rmSync(probe, { force: true });
+      fs.rmSync(summary, { force: true });
+    }
+    // 撤去後はサマリへも警告へも出ない（プローブが残って恒常的に警告が出る状態にしない）。
+    const after = spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js')], {
+      encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' },
+    });
+    assert.strictEqual(after.status, 0);
+    assert.doesNotMatch(String(after.stdout), /VersionOverride を [1-9]/);
+  });
 };

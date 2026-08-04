@@ -68,6 +68,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
 | **ライブラリ標準（ADR-0030）** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)） |
+| **CPM バージョン直書き禁止** | `src/`（AST を除く）と `templates/` の `.csproj` の `PackageReference`（`.props` / `.targets` は正当な版記述があるため対象外） | [`check-cpm-versions.js`](../../scripts/check-cpm-versions.js) | `Version` 属性 / `<Version>` 子要素 → **fail**（着手時点の違反 0 件を実測したため ratchet 無しで最初から fail）。`VersionOverride` は**許可**し使用箇所を warn ＋実行サマリへ（[#467](https://github.com/endazon/microservices-platform/issues/467)） |
 
 ※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
 未マージ成果物への前方参照は live link ではなくバッククォート表記で書く
@@ -171,7 +172,7 @@ PR ではなく issue を分割する）。
 | 契約テスト基盤（`Shared.Contracts` のスキーマ後方互換） | 抽出方式（リフレクション / OpenAPI / proto）の選定から要り、[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) の繰延判断の見直しを伴う |
 | E2E スモークセット（Istio・Keycloak・BFF の統合スタック） | 実行環境の CI 上での起こし方が主題であり #442（エッジ・実行基盤）と密結合する |
 | NFR 性能試験の枠組み | [#196](https://github.com/endazon/microservices-platform/issues/196) が担当。再実装後の受け入れゲートとして接続するのは各サービス完成後 |
-| CPM バージョン直書き禁止の機械検査 | `.csproj` の `PackageReference` に `Version` を書かない規約（CLAUDE.md）の機械化。単独で小さく、他の検査器と関心が異なる |
+| ~~CPM バージョン直書き禁止の機械検査~~ | [#467](https://github.com/endazon/microservices-platform/issues/467) として切り出し、**実装済み**（上の「ゲート一覧」を参照） |
 
 ## 各ドメイン issue が守ること
 
