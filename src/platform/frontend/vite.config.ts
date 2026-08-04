@@ -11,7 +11,9 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   // ADR-0031 / IADR-0121 決定 4: Tailwind CSS v4 は Vite プラグインで取り込む（設定ファイルは持たない。
   // トークンは @platform/ui の styles.css の @theme が正）。
-  plugins: [react(), tailwindcss()],
+  // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3: マクロを babel で展開する。
+  // 同じ設定を src/vitest.config.ts にも置く（片方だけだとビルドとテストのどちらかが静かに壊れる）。
+  plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } }), tailwindcss()],
   resolve: {
     alias: {
       '@foundation': fileURLToPath(new URL('./src/foundation', import.meta.url)),

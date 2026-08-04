@@ -8,9 +8,14 @@ import {
   homeRedirectRoute,
   catchAllRoute,
 } from './shell';
-import { createLegacyRoutes, legacyNavItems } from './featureRegistry';
-import { registerNavItems } from './nav';
-import { createUnitRoutes, unitNavItems, legacyUnitFeatures } from '@features/index';
+import { createLegacyRoutes } from './featureRegistry';
+import { registerNavItems, registerUnitNavGroups } from './nav';
+import {
+  createUnitRoutes,
+  planNavItems,
+  legacyUnitFeatures,
+  unitNavGroups,
+} from '@features/index';
 
 // ADR-0031 / IADR-0124: ルート木の組み立て。
 //
@@ -40,7 +45,10 @@ appendLegacyRoutes(createLegacyRoutes(shellRoute, legacyUnitFeatures));
 
 // IADR-0124 決定 1: 合成点を知るのはこのモジュールだけ。共通シェル（foundation/ui/Layout）は
 // 登録済みのナビを読むだけで、可変ユニットを参照しない。
-registerNavItems([...unitNavItems, ...legacyNavItems(legacyUnitFeatures)]);
+registerNavItems(planNavItems);
+// 05_screens §共通シェル ［2026-08-04 確定］: 本計画に属さないユニットは**機能名**のグループへ束ねる
+// （総称の「その他」は使わない）。並びは計画の 4 グループの後（nav.ts の navGroups）。
+registerUnitNavGroups(unitNavGroups);
 
 export const routeTree = rootRoute.addChildren([loginRoute, callbackRoute, shellWithUnits]);
 

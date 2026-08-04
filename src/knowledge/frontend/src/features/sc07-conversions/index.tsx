@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { ConversionJobsPage } from './ConversionJobsPage';
@@ -24,7 +24,7 @@ export const createSc07ConversionsRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc07ConversionsNav: NavItem = {
+export const sc07ConversionsNav: PlanNavItem = {
   id: 'sc07-conversions',
   label: '変換ジョブ',
   to: '/admin/conversions',

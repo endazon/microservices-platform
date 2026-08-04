@@ -328,6 +328,12 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 **SPA 内部の認証導線 `/login` `/callback`** と **SC-04（Wiki.js は別ホスト）への導線 `/wiki`** が加わる
 （この 3 本は計画のルート表には無い。`.` / `/` / `..` は TanStack の相対指定）。
 
+> **［2026-08-04 追記］`/login` `/callback` は計画が「本表の対象外」と確定した**
+> （[01_screens §共通シェル ［2026-08-04 確定］](../../planning/projects/microservices-platform/05_screens/01_screens.md)。
+> planning#185）。したがって「計画のルート表には無い」は**欠落ではなく計画どおり**である。
+> ADR-0032（BFF セッション方式）への移行時に見直す。**`/wiki` は今回の裁定の対象外**であり、
+> 「計画のルート表には無い」という記述はそのまま有効である。
+
 ```text
 "." | "/" | ".." | "/ask" | "/login" | "/callback" | "/search" | "/docs/$id" | "/wiki"
   | "/admin/documents" | "/admin/sources" | "/admin/conversions" | "/analyze"

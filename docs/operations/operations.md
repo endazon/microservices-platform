@@ -202,8 +202,15 @@ fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**�
   手順A（hosts＋port-forward で `http://keycloak:8080` を共有）で解く。加えて **k8s API server の OIDC 検証フラグ**
   （`--oidc-issuer-url` 等をクラスタ (再)作成時に付与）が実ログイン・リソース閲覧の前提（稼働 k3d 依存＝live）。
   手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「Headlamp」節を参照。
-- **本番導入は非スコープ**: 公開範囲・アクセス制御・RBAC 設計が別問題のため、まず dev で確立し本番導入は別 issue／
+- **本番導入は非スコープ**（本書の範囲では dev のみ）: 公開範囲・アクセス制御・RBAC 設計が別問題のため、まず dev で確立し本番導入は別 issue／
   計画フィードバック（`feedback/20260719_headlamp-k8s-management-ui.md`）で論点化する。
+  - **［2026-08-04 追記］計画側で方針が起案された**——
+    [ADR-0042](../../planning/projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md)
+    「Kubernetes 管理 UI を本番へ導入し、**内部限定（VPN／踏み台経由）・閲覧専用**で公開する」
+    （planning `d980a01` / planning#196。状態 `Proposed`）。
+    ADR-0040（k8s 管理 UI の選定。`Proposed`）と対で読む。
+    **本書の記述は dev の手順として有効**であり、本番導入の作業は当該 ADR が `Accepted` になってから
+    別 issue で行う（本 PR の範囲外）。
 
 ### サービス構成に関する運用注記
 

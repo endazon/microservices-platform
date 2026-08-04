@@ -1,5 +1,5 @@
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { createSc01SearchRoute, sc01SearchNav } from './sc01-search';
 import { createSc02ResultsRoute, sc02ResultsNav } from './sc02-results';
 import { createSc03DocumentRoute } from './sc03-document';
@@ -35,7 +35,10 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
 
 // 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。
 // SC-03 はナビに出さない（一覧・検索からの遷移で到達する）。
-export const knowledgeNavItems: readonly NavItem[] = [
+// 05_screens §共通シェル ［2026-08-04 確定］: 総称グループ（「その他」）を持たないため、
+// グループの宣言漏れは「どのグループにも属さず静かに消える」ことを意味する。
+// `PlanNavItem` で受けて tsc に落とさせる。
+export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc01SearchNav,
   sc02ResultsNav,
   sc04WikiNav,

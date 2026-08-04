@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import type { ReactNode } from 'react';
 import { useAuth } from './useAuth';
 import { useHasAnyRole } from './roles';
@@ -11,7 +13,7 @@ export function RequireRole({ anyOf, children }: { anyOf: string[]; children: Re
   const allowed = useHasAnyRole(...anyOf);
 
   if (isLoading) {
-    return <p role="status">読み込み中…</p>;
+    return <p role="status">{i18n._(msg`読み込み中…`)}</p>;
   }
   return allowed ? <>{children}</> : <NotFound />;
 }

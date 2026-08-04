@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { OperationsDashboardPage } from './OperationsDashboardPage';
@@ -24,7 +24,7 @@ export const createSc10OperationsRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc10OperationsNav: NavItem = {
+export const sc10OperationsNav: PlanNavItem = {
   id: 'sc10-operations',
   label: '運用ダッシュボード',
   to: '/admin/ops',

@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { DocumentManagementPage } from './DocumentManagementPage';
@@ -24,7 +24,7 @@ export const createSc05DocumentsRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc05DocumentsNav: NavItem = {
+export const sc05DocumentsNav: PlanNavItem = {
   id: 'sc05-documents',
   label: '文書管理',
   to: '/admin/documents',

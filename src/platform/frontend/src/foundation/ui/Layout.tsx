@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { Link, Outlet } from '@tanstack/react-router';
 import { CircleUserRound } from 'lucide-react';
 import { Button } from '@platform/ui';
@@ -38,7 +40,9 @@ export function Layout() {
   const { user, logout } = useAuth();
   const roles = useRoles();
   const name =
-    (user?.profile.preferred_username as string | undefined) ?? user?.profile.name ?? 'ユーザー';
+    (user?.profile.preferred_username as string | undefined) ??
+    user?.profile.name ??
+    i18n._(msg`ユーザー`);
 
   // 権限のある項目のみ表示する（requiresAnyRole 未指定は全員に表示）。
   // 絞り込みの結果 0 件になったグループは見出しごと落とす（存在秘匿。IADR-0035）。
@@ -52,7 +56,14 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-[--color-surface] text-[--color-fg]">
       <header className="flex items-center justify-between border-b border-[--color-border] px-4 py-2">
-        {/* 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」で統一する。 */}
+        {/* 05_screens §共通シェル ［2026-08-04 確定］: ブランド表示名は「汎用プラットフォーム」で統一し、
+            **ロケールによっても差し替えない**（固有名詞として扱う。en ロケールでも同じ文字列を表示し、
+            **翻訳カタログの対象としない**。利用者裁定・質問票 第 1 回 Q13 / planning#184）。
+            したがってここは**カタログを経由しないリテラル**である——カタログ経由にすると
+            en の msgstr を書き換えるだけで差し替えられてしまい、check-i18n-catalogs.js は
+            非空しか見ないため止まらない（IADR-0125 決定 8）。 */}
+        {/* eslint-disable-next-line lingui/no-unlocalized-strings --
+            05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
         <span className="text-sm font-semibold text-[--color-fg]">汎用プラットフォーム</span>
         <div className="flex items-center gap-3">
           {/* 05_screens §共通シェル: ユーザーアイコンから SC-16（アカウント設定）へ遷移する。
@@ -60,20 +71,20 @@ export function Layout() {
           <a
             href={accountConsoleUrl(appConfig().oidc.authority)}
             className="flex items-center gap-1.5 text-sm text-[--color-fg-muted] hover:underline"
-            aria-label={`アカウント設定（${name}）`}
+            aria-label={i18n._(msg`アカウント設定（${name}）`)}
           >
             <CircleUserRound className="size-5" aria-hidden />
             <span>{name}</span>
           </a>
           <Button size="sm" onClick={() => void logout()}>
-            サインアウト
+            {i18n._(msg`サインアウト`)}
           </Button>
         </div>
       </header>
       <div className="flex">
         <nav
           className="w-56 shrink-0 border-r border-[--color-border] p-3"
-          aria-label="主要ナビゲーション"
+          aria-label={i18n._(msg`主要ナビゲーション`)}
         >
           {groups.map((g) => (
             <div key={g.id} className="mb-4">

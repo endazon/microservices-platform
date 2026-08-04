@@ -1,7 +1,7 @@
 ---
 title: フロントエンド SC-01〜11 全画面の実装完了 — 05_screens／INDEX の「未着手」注記と draft 状態の更新提案
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-15, ADR-0018, IADR-0033]
 source_repo: microservices-platform
@@ -10,6 +10,11 @@ author: claude
 created: 2026-07-09
 ---
 
+> **［2026-08-04］反映済み。** 計画側が planning#189 / planning#191 のトリアージで本記録を受理し、
+> [05_screens/01_screens.md](../planning/projects/microservices-platform/05_screens/01_screens.md) の
+> §変更履歴 が本記録を名指しして「SC-01〜11 の実装状況」に関する注記を是正した
+> （planning `d980a01` / planning PR #194。同 PR のレビュー指摘により、環流記録を `accepted` としながら
+> 本文の注記が審議中のままだった食い違いも併せて解消された）。**実装側に残作業は無い。**
 # フィードバック: フロントエンド SC-01〜11 全画面の実装完了 — 計画書の「未着手」注記と draft 状態の更新提案
 
 ## 種別

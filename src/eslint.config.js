@@ -1,7 +1,9 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import lingui from 'eslint-plugin-lingui';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
+import storybook from 'eslint-plugin-storybook';
 import tseslint from 'typescript-eslint';
 
 // ADR-0031 / IADR-0121 決定 8: 新スタックの禁止事項を機械強制する。専用の検査スクリプトを作らないのは、
@@ -58,6 +60,12 @@ export default tseslint.config(
       // ADR-0031 / IADR-0121 決定 3: orval の生成物は lint 対象外（品質は生成器の責務）。
       // 乖離は `pnpm run codegen` の再実行差分（CI の codegen ステップ）で検出する。
       'platform/frontend/src/foundation/api/generated',
+      // ADR-0031 / IADR-0125 決定 3: lingui compile の生成物（カタログ）。同じ理由で対象外にする。
+      // 乖離は `pnpm run i18n` の再実行差分と check-i18n-catalogs.js が検出する。
+      '**/foundation/i18n/locales',
+      // ADR-0031 / IADR-0125 決定 5: Storybook の静的ビルド（生成物。gitignore 済みだが
+      // ローカルにビルドが残っていると lint が数万行を走査して落ちる）。
+      '**/storybook-static',
     ],
   },
   {
@@ -201,4 +209,52 @@ export default tseslint.config(
       ],
     },
   },
+  // ADR-0031 / IADR-0125 決定 6: 13_frontend-stack §採用技術一覧 の Linter 欄
+  // 「Storybook / Lingui のプラグインを併用」に従う。
+  //
+  // **Lingui 規則の適用先は i18n 化済みのファイルに限る。** 既存 11 画面（SC-01〜11）は
+  // #452 が作り直すため文言を触っておらず（IADR-0125 決定 6）、いま規則を及ぼすと
+  // 「本 issue では直さないと決めた箇所」の error が数百件出る。適用範囲を広げるのは #452 の作業である。
+  {
+    files: [
+      'platform/frontend/src/foundation/i18n/**/*.{ts,tsx}',
+      'platform/frontend/src/foundation/ui/**/*.{ts,tsx}',
+      'platform/frontend/src/foundation/auth/**/*.{ts,tsx}',
+      'platform/frontend/src/foundation/routing/nav.ts',
+    ],
+    ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
+    plugins: { lingui },
+    rules: {
+      // 画面に出る文字列リテラルの直書きを禁じる（= 抽出されない文言を作らせない）。
+      'lingui/no-unlocalized-strings': [
+        'error',
+        {
+          // 文言ではないもの（クラス名・ロール・ルート ID・属性値）まで拾うと実質使えない。
+          // 判定は「JSX のテキストと、翻訳 API へ渡す文字列」に絞る。
+          //
+          // **空白を含む ASCII 文字列は除外しない**（2 つ目のパターンに空白を入れない）。
+          // 空白を許すと `Untranslated english text` のような**英語の文章がそのまま素通り**し、
+          // 「未国際化リテラルの検出」が日本語にしか効かなくなる（実測で確認した穴）。
+          // 空白を含むクラス名（`text-sm font-medium` 等）は下の ignoreNames（属性名）が拾う。
+          //
+          // **残る限界**: 空白を含まない ASCII トークン（`Docs` 等）は素通りする。識別子・列挙値・
+          // ルート ID・クラス名の断片と区別できないためで、これは意図的に残す
+          // （厳しくすると誤検出が実用の域を超え、規則ごと無効化される方が高くつく）。
+          ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$'],
+          ignoreNames: [
+            { regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' } },
+          ],
+          // 開発者向けの例外メッセージは UI ではない（利用者の目に触れない）。
+          // 翻訳すると、障害時のログと検索性を落とす。
+          ignoreFunctions: ['Error', 'TypeError', 'console.*'],
+        },
+      ],
+      // マクロの誤用（式の埋め込み・翻訳単位の分割）はカタログを壊す。
+      'lingui/no-expression-in-message': 'error',
+      'lingui/no-single-variables-to-translate': 'error',
+      'lingui/t-call-in-function': 'error',
+    },
+  },
+  // Storybook の stories に対する規約（既定の recommended）。
+  ...storybook.configs['flat/recommended'],
 );

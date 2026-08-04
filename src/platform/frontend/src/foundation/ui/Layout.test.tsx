@@ -102,6 +102,39 @@ describe('Layout navigation groups (05_screens §共通シェル)', () => {
     // 「個人」グループの画面（個人資料・Obsidian 連携）は未実装のため、どのロールでも見出しは出ない。
     expect(within(nav()).queryByRole('heading', { name: '個人' })).not.toBeInTheDocument();
   });
+
+  // 05_screens §共通シェル ［2026-08-04 確定］:
+  //   「本計画に属さない可変機能ユニットの画面は、実装側でグループを設けて分類してよい。
+  //     **ただしグループ名は『ユニットの機能名』とする**（例: ai-stock-trading → 「株式自動売買」）。
+  //     並び順は計画の 4 グループの後とする。**総称としての『その他』は使わない**」
+  // 計画は理由も述べている——左ナビのグループ名は利用者が機能を探す唯一の手掛かりであり、
+  // 何が入っているか分からない名前を置くと導線が失われる。ここを固定しないと、
+  // 「グループ名を総称へ戻す」という退行がテストを緑のまま通り抜ける。
+  it('puts non-plan unit screens under the unit feature name, never a generic heading', async () => {
+    // AST（ai-stock-trading）の 3 画面は trading-owner ロールでのみ表示される。
+    await renderLayout(['trading-owner']);
+    const unitHeading = await within(nav()).findByRole('heading', { name: '株式自動売買' });
+    expect(unitHeading).toBeInTheDocument();
+
+    // 見出しの配下（同じグループの <div>）に AST の画面リンクが載っていること。
+    const group = unitHeading.parentElement as HTMLElement;
+    expect(within(group).getByRole('link', { name: '設定' })).toBeInTheDocument();
+    expect(within(group).getByRole('link', { name: 'リスク設定' })).toBeInTheDocument();
+    expect(within(group).getByRole('link', { name: '統制状態' })).toBeInTheDocument();
+
+    // 総称の見出しが存在しないこと（計画が名指しで禁じた文言）。
+    expect(within(nav()).queryByRole('heading', { name: 'その他' })).not.toBeInTheDocument();
+  });
+
+  it('orders the unit feature group after the four plan groups', async () => {
+    await renderLayout(['platform-admin', 'trading-owner']);
+    await within(nav()).findByRole('heading', { name: '株式自動売買' });
+    const headings = within(nav())
+      .getAllByRole('heading')
+      .map((h) => h.textContent);
+    // 計画の 4 グループ（表示されるもの）→ ユニットの機能名、の順。
+    expect(headings).toEqual(['利用者', '管理', '運用', '株式自動売買']);
+  });
 });
 
 // 05_screens §共通シェル: ブランド表示名とユーザーアイコン（→ SC-16 アカウント設定）。

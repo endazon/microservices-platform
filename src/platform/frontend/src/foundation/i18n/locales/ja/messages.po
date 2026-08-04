@@ -1,0 +1,103 @@
+msgid ""
+msgstr ""
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: ja\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: platform/frontend/src/foundation/auth/LoginPage.tsx
+msgid "Keycloak でサインイン"
+msgstr "Keycloak でサインイン"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "アカウント設定（{name}）"
+msgstr "アカウント設定（{name}）"
+
+#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "エラー"
+msgstr "エラー"
+
+#: platform/frontend/src/foundation/ui/NotFound.tsx
+msgid "お探しのページは存在しないか、アクセスできません。"
+msgstr "お探しのページは存在しないか、アクセスできません。"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "サインアウト"
+msgstr "サインアウト"
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインインに失敗しました。"
+msgstr "サインインに失敗しました。"
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインインに失敗しました。時間をおいて再度お試しください。"
+msgstr "サインインに失敗しました。時間をおいて再度お試しください。"
+
+#: platform/frontend/src/foundation/auth/CallbackPage.tsx
+msgid "サインイン処理中…"
+msgstr "サインイン処理中…"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "ユーザー"
+msgstr "ユーザー"
+
+#: platform/frontend/src/foundation/ui/Layout.tsx
+msgid "主要ナビゲーション"
+msgstr "主要ナビゲーション"
+
+#: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
+msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
+msgstr "予期しないエラーが発生しました。時間をおいて再度お試しください。"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "個人"
+msgstr "個人"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "利用者"
+msgstr "利用者"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "情報"
+msgstr "情報"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "成功"
+msgstr "成功"
+
+#: platform/frontend/src/features/index.ts
+msgid "株式自動売買"
+msgstr "株式自動売買"
+
+#: platform/frontend/src/foundation/ui/notifications.tsx
+msgid "注意"
+msgstr "注意"
+
+#: platform/frontend/src/foundation/auth/LoginPage.tsx
+msgid "社内ナレッジ検索・AI 回答プラットフォーム"
+msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "管理"
+msgstr "管理"
+
+#: platform/frontend/src/foundation/ui/NotFound.tsx
+msgid "見つかりませんでした"
+msgstr "見つかりませんでした"
+
+#: platform/frontend/src/foundation/auth/RequireAuth.tsx
+#: platform/frontend/src/foundation/auth/RequireRole.tsx
+msgid "読み込み中…"
+msgstr "読み込み中…"
+
+#: platform/frontend/src/foundation/routing/nav.ts
+msgid "運用"
+msgstr "運用"

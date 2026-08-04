@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Navigate, useRouterState } from '@tanstack/react-router';
@@ -15,7 +17,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const from = useRef(pathname).current;
 
   if (isLoading) {
-    return <p role="status">読み込み中…</p>;
+    return <p role="status">{i18n._(msg`読み込み中…`)}</p>;
   }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace search={{ from }} />;

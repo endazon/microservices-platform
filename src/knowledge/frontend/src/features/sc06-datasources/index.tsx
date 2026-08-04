@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { DataSourceManagementPage } from './DataSourceManagementPage';
@@ -24,7 +24,7 @@ export const createSc06DataSourcesRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc06DataSourcesNav: NavItem = {
+export const sc06DataSourcesNav: PlanNavItem = {
   id: 'sc06-datasources',
   label: 'データソース管理',
   to: '/admin/sources',
