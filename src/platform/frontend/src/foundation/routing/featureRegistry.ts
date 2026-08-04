@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from '@lingui/core';
 import type { ReactNode } from 'react';
 import { createRoute } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
@@ -6,7 +7,13 @@ import type { ShellRoute } from './shell';
 // ADR-0031 / IADR-0124: 可変機能ユニット（knowledge / AST ほか）が platform の共通シェルへ
 // 画面を差し込むための契約。ユニットは platform を import せず、shell を引数で受け取る。
 
-/** 左ナビのグループ（05_screens §共通シェル の 4 グループ。未宣言は「その他」へ落ちる）。 */
+/**
+ * 左ナビのグループ（05_screens §共通シェル の **4 グループ**）。
+ *
+ * 本計画に属さない可変機能ユニット（AST 等）の画面はここへ入れない。合成点が
+ * **ユニットの機能名**を見出しにしたグループ（`UnitNavGroup`）へ束ねる
+ * （05_screens §共通シェル ［2026-08-04 確定］。**総称としての「その他」は使わない**）。
+ */
 export type NavGroup = 'user' | 'personal' | 'admin' | 'ops';
 
 // Issue #136 / IADR-0035: 共通ナビへ出すメニュー項目。権限外には表示しない（存在秘匿の UI 表現）。
@@ -18,8 +25,12 @@ export interface FeatureNav {
   /** 表示に必要なロール（いずれか一致で表示）。省略時は認証済み全員に表示する。 */
   requiresAnyRole?: string[];
   /**
-   * 左ナビのグループ（05_screens §共通シェル）。省略した項目は「その他」へ置く
-   * （本リポジトリの計画に属さないユニット＝AST 等が該当する）。
+   * 左ナビのグループ（05_screens §共通シェル の 4 グループ）。
+   *
+   * **本計画に属するユニットは必ず宣言する**（型で強制する。`PlanNavItem`）。
+   * 省略できるのは本リポジトリから変更できない旧契約ユニット（AST。IADR-0120）のためだけで、
+   * その項目は合成点が **ユニットの機能名**のグループへ束ねる（`UnitNavGroup`）。
+   * **総称としてのフォールバック（「その他」）は持たない**（05_screens §共通シェル ［2026-08-04 確定］）。
    */
   group?: NavGroup;
 }
@@ -27,6 +38,32 @@ export interface FeatureNav {
 /** ナビ項目に由来 feature の識別子を添えたもの（描画の key と診断に使う）。 */
 export interface NavItem extends FeatureNav {
   id: string;
+}
+
+/**
+ * 計画の 4 グループのいずれかを**必ず宣言した**ナビ項目。
+ *
+ * 本計画に属するユニット（`@knowledge` ほか）が公開する項目はこの型で受ける。
+ * `group` を省略できる `NavItem` のまま受けると、宣言し忘れた項目が
+ * **どのグループにも属さず静かに消える**（総称フォールバックを廃止したため）。型で塞ぐ。
+ */
+export type PlanNavItem = NavItem & { group: NavGroup };
+
+/**
+ * 本計画に属さない可変機能ユニットのナビグループ（05_screens §共通シェル ［2026-08-04 確定］）。
+ *
+ * 計画は「実装側でグループを設けて分類してよい。**ただしグループ名は『ユニットの機能名』とする**
+ * （例: `ai-stock-trading` → 「株式自動売買」）。並び順は計画の 4 グループの後とする。
+ * **総称としての『その他』は使わない**」と定めた。ユニット自身（AST）は本リポジトリから
+ * 変更できない（IADR-0120）ため、**機能名は合成点が与える**（IADR-0125 決定 9）。
+ */
+export interface UnitNavGroup {
+  /** グループ ID（ユニット名。描画の key と診断に使う）。 */
+  id: string;
+  /** 見出し＝**ユニットの機能名**。ロケール切替に追随させるため描画時に解決する。 */
+  label: MessageDescriptor;
+  /** このユニットの画面のナビ項目。 */
+  items: readonly NavItem[];
 }
 
 /**

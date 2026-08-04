@@ -56,13 +56,15 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-[--color-surface] text-[--color-fg]">
       <header className="flex items-center justify-between border-b border-[--color-border] px-4 py-2">
-        {/* 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」で統一する。
-            **en カタログでも訳さない**（同じ文字列を入れる。IADR-0125 決定 8）——計画は
-            「ブランド名は差し替えない」と定めており、言語による差し替えの可否は計画側の判断である
-            （暫定判断であり裁定で覆り得る。#496 作業仕様書 §未決事項 1）。 */}
-        <span className="text-sm font-semibold text-[--color-fg]">
-          {i18n._(msg`汎用プラットフォーム`)}
-        </span>
+        {/* 05_screens §共通シェル ［2026-08-04 確定］: ブランド表示名は「汎用プラットフォーム」で統一し、
+            **ロケールによっても差し替えない**（固有名詞として扱う。en ロケールでも同じ文字列を表示し、
+            **翻訳カタログの対象としない**。利用者裁定・質問票 第 1 回 Q13 / planning#184）。
+            したがってここは**カタログを経由しないリテラル**である——カタログ経由にすると
+            en の msgstr を書き換えるだけで差し替えられてしまい、check-i18n-catalogs.js は
+            非空しか見ないため止まらない（IADR-0125 決定 8）。 */}
+        {/* eslint-disable-next-line lingui/no-unlocalized-strings --
+            05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
+        <span className="text-sm font-semibold text-[--color-fg]">汎用プラットフォーム</span>
         <div className="flex items-center gap-3">
           {/* 05_screens §共通シェル: ユーザーアイコンから SC-16（アカウント設定）へ遷移する。
               SC-16 は Keycloak テーマ＝別ホスト配信のため、SPA のルータではなく外部遷移で開く。 */}

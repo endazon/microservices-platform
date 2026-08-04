@@ -45,10 +45,6 @@ msgstr "Sign-in failed. Please wait a moment and try again."
 msgid "サインイン処理中…"
 msgstr "Signing in…"
 
-#: platform/frontend/src/foundation/routing/nav.ts
-msgid "その他"
-msgstr "Other"
-
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "ユーザー"
 msgstr "User"
@@ -77,10 +73,9 @@ msgstr "Info"
 msgid "成功"
 msgstr "Success"
 
-#: platform/frontend/src/foundation/auth/LoginPage.tsx
-#: platform/frontend/src/foundation/ui/Layout.tsx
-msgid "汎用プラットフォーム"
-msgstr "汎用プラットフォーム"
+#: platform/frontend/src/features/index.ts
+msgid "株式自動売買"
+msgstr "Automated stock trading"
 
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"

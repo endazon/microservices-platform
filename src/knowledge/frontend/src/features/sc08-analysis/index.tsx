@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { AnalysisDashboardPage } from './AnalysisDashboardPage';
 
 // SC-08, UC-02, FR-07: AI分析ダッシュボード（05_screens: ルート /analyze）。一般社員向けのため
@@ -14,7 +14,7 @@ export const createSc08AnalysisRoute = (shell: ShellRoute) =>
     component: AnalysisDashboardPage,
   });
 
-export const sc08AnalysisNav: NavItem = {
+export const sc08AnalysisNav: PlanNavItem = {
   id: 'sc08-analysis',
   label: 'AI分析',
   to: '/analyze',

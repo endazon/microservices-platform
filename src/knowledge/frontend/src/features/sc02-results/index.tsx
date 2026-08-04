@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { SearchResultsPage } from './SearchResultsPage';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。認証済みユーザー向け。
@@ -19,7 +19,7 @@ export const createSc02ResultsRoute = (shell: ShellRoute) =>
     component: SearchResultsPage,
   });
 
-export const sc02ResultsNav: NavItem = {
+export const sc02ResultsNav: PlanNavItem = {
   id: 'sc02-results',
   label: '検索結果一覧',
   to: '/search',

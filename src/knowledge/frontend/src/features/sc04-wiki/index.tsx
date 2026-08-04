@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { WikiAccessPage } from './WikiAccessPage';
 
 // SC-04, UC-07, FR-13: Wiki 閲覧導線。実体は Wiki.js（別ホスト・ABAC ゲートウェイ経由・SSO）であり、
@@ -14,7 +14,7 @@ export const createSc04WikiRoute = (shell: ShellRoute) =>
     component: WikiAccessPage,
   });
 
-export const sc04WikiNav: NavItem = {
+export const sc04WikiNav: PlanNavItem = {
   id: 'sc04-wiki',
   label: 'Wiki',
   to: '/wiki',

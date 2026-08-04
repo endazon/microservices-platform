@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { router } from './router';
-import { navItems } from './nav';
+import { navGroups, navItems, unitNavGroups } from './nav';
 import { rootRoute, shellRoute, catchAllRoute } from './shell';
 import { ENTRY_ROUTE_PATH } from './entryPath';
 import { NotFound } from '@foundation/ui/NotFound';
@@ -56,12 +56,23 @@ describe('route tree (05_screens §共通シェル のルートパス)', () => {
   });
 });
 
+// 05_screens §共通シェル ［2026-08-04 確定］: 左ナビは「計画の 4 グループ ＋ ユニットの機能名グループ」で
+// 構成される。到達性の検査は**両方**を対象にする——片方（計画グループのみ）にすると、
+// 総称グループの廃止に伴って AST 3 画面の到達性検査が静かに外れる（実際に一度外れた）。
+const allNavItems = [...navItems(), ...unitNavGroups().flatMap((g) => g.items)];
+
 describe('navigation targets resolve (IADR-0124 決定 5)', () => {
-  it('publishes at least one nav item per unit group', () => {
+  it('publishes nav items for both the plan groups and the unit groups', () => {
     expect(navItems().length).toBeGreaterThan(0);
+    expect(unitNavGroups().flatMap((g) => g.items).length).toBeGreaterThan(0);
   });
 
-  it.each(navItems().map((i) => [i.id, i.to] as const))(
+  it('covers every rendered nav item (the reachability check has no blind spot)', () => {
+    const rendered = navGroups().flatMap((g) => g.items.map((i) => i.id));
+    expect([...rendered].sort()).toEqual([...allNavItems.map((i) => i.id)].sort());
+  });
+
+  it.each(allNavItems.map((i) => [i.id, i.to] as const))(
     'nav item %s points at an existing route (%s)',
     (_id, to) => {
       expect(fullPaths()).toContain(to);

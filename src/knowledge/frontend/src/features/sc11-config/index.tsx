@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { ConfigViewerPage } from './ConfigViewerPage';
@@ -24,7 +24,7 @@ export const createSc11ConfigRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc11ConfigNav: NavItem = {
+export const sc11ConfigNav: PlanNavItem = {
   id: 'sc11-config',
   label: '構成ビューア',
   to: '/admin/config-viewer',

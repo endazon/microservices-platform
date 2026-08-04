@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { RequireRole } from '@foundation/auth/RequireRole';
 import { PlatformRole } from '@foundation/auth/roles';
 import { AdminAbacSettingsPage } from './AdminAbacSettingsPage';
@@ -24,7 +24,7 @@ export const createSc09AdminAbacRoute = (shell: ShellRoute) =>
     },
   });
 
-export const sc09AdminAbacNav: NavItem = {
+export const sc09AdminAbacNav: PlanNavItem = {
   id: 'sc09-admin-abac',
   label: '管理者設定',
   to: '/admin/abac',

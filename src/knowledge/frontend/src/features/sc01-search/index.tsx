@@ -1,6 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { SearchChatPage } from './SearchChatPage';
 
 // SC-01, UC-01, FR-03/FR-04: 検索／チャット質問画面（本システムの主入口。05_screens: ルート /ask）。
@@ -18,7 +18,7 @@ export const createSc01SearchRoute = (shell: ShellRoute) =>
     component: SearchChatPage,
   });
 
-export const sc01SearchNav: NavItem = {
+export const sc01SearchNav: PlanNavItem = {
   id: 'sc01-search',
   label: '検索 / AI質問',
   to: '/ask',

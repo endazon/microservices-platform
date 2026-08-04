@@ -20,10 +20,11 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto mt-24 max-w-md text-center">
-      {/* 05_screens §共通シェル: ブランド表示名。en カタログでも訳さない（IADR-0125 決定 8。Layout.tsx の注記も参照）。 */}
-      <h1 className="text-2xl font-semibold text-[--color-fg]">
-        {i18n._(msg`汎用プラットフォーム`)}
-      </h1>
+      {/* 05_screens §共通シェル ［2026-08-04 確定］: ブランド表示名は固有名詞として扱い、
+          **翻訳カタログの対象としない**（Layout.tsx の注記と IADR-0125 決定 8 を参照）。 */}
+      {/* eslint-disable-next-line lingui/no-unlocalized-strings --
+          05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
+      <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>
       <p className="mt-2 text-sm text-[--color-fg-muted]">
         {i18n._(msg`社内ナレッジ検索・AI 回答プラットフォーム`)}
       </p>
