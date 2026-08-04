@@ -8,6 +8,10 @@ import { fileURLToPath, URL } from 'node:url';
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    // IADR-0121 決定 2（pnpm workspace）: pnpm は node_modules を isolated に置くため、ユニットごとに
+    // 別々の React 実体が解決され得る（同一プロセスで 2 つの React が動くと「Invalid hook call」になる）。
+    // 横断テストは 1 プロセスで全ユニットのコンポーネントを描画するので、React を明示的に重複排除する。
+    dedupe: ['react', 'react-dom'],
     alias: {
       '@foundation': fileURLToPath(new URL('./platform/frontend/src/foundation', import.meta.url)),
       '@features': fileURLToPath(new URL('./platform/frontend/src/features', import.meta.url)),

@@ -1,7 +1,7 @@
 # Issue #126: フロントエンド SPA の CI（typecheck / lint / build / e2e スモーク）。
 # FR-14, IADR-0056: フロントエンドは src/<unit>/frontend（workspaces ルート = src/）。
 # 各ユニットの frontend 変更で起動する。バックエンド（.NET）CI とは独立。
-# 単体テスト＝品質ゲートは frontend-tests.yml（npm run test:coverage）が担うため、
+# 単体テスト＝品質ゲートは frontend-tests.yml（pnpm run test:coverage）が担うため、
 # 本ワークフローではテストを実行しない（同一スイートの二重実行を避ける。IADR-0034）。
 name: Frontend CI
 
@@ -11,7 +11,8 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
@@ -20,7 +21,8 @@ on:
     paths:
       - "src/*/frontend/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
@@ -35,26 +37,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。SPA は @ai-stock-trading を
-      # 合成し npm workspace メンバでもあるため、未取得だと npm ci / build / typecheck が解決不能になる。
+      # 合成し pnpm workspace メンバでもあるため、未取得だと pnpm install / build / typecheck が解決不能になる。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         working-directory: ${{ github.workspace }}
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
+      # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: src/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
       - name: Lint
-        run: npm run lint
-      # 単体テストは frontend-tests.yml（npm run test:coverage）へ集約（二重実行回避・IADR-0034）。
+        run: pnpm run lint
+      # 単体テストは frontend-tests.yml（pnpm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
   e2e:
     runs-on: ubuntu-latest
@@ -67,16 +72,19 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
+      # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: src/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # スクリーンレベル・スモーク（バックエンド不要。ログイン画面到達を検証）。
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       - name: Build
-        run: npm run build
+        run: pnpm run build
       - name: E2E smoke
-        run: npm run test:e2e
+        run: pnpm run test:e2e

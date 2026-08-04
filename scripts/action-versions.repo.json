@@ -1,0 +1,12 @@
+{
+  "$comment": [
+    "本リポジトリ固有の GitHub Actions メジャーバージョン下限（check-action-versions.js が",
+    "scripts/action-versions.json とマージして読む）。キット配布ファイルを直接編集すると",
+    "バイト一致が崩れ、以後の同期で毎回手動マージが要るため、固有分はこちらへ置く（IADR-0115）。",
+    "pnpm/action-setup: ADR-0031 / IADR-0121 決定 2 で pnpm workspace へ移行した際に追加。",
+    "計画（13_frontend-stack §リスク・未決事項）は「CI では Volta を使わず pnpm/action-setup を用いる」と定める。"
+  ],
+  "expected": {
+    "pnpm/action-setup": 4
+  }
+}

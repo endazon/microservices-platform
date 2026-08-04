@@ -1,4 +1,4 @@
-# FR-14, IADR-0056: フロントエンド（npm workspaces: src/<unit>/frontend。platform=基盤アプリホスト、
+# FR-14, IADR-0056 / IADR-0121: フロントエンド（pnpm workspace: src/<unit>/frontend。platform=基盤アプリホスト、
 # knowledge=可変機能）build → nginx 配信。実行時 config で接続先を注入する（環境非依存ビルド）。
 # ビルドコンテキストはリポジトリルート（compose の context: ..）を想定。
 #
@@ -16,17 +16,18 @@ ARG BASE_REGISTRY=mirror.gcr.io/library
 FROM ${BASE_REGISTRY}/node:22-alpine AS build
 WORKDIR /app
 # 依存解決に必要な manifest 群を先にコピーしてレイヤキャッシュを効かせる
-COPY src/package.json src/package-lock.json ./
+COPY src/package.json src/pnpm-lock.yaml src/pnpm-workspace.yaml ./
 COPY src/platform/frontend/package.json platform/frontend/
 COPY src/knowledge/frontend/package.json knowledge/frontend/
-# Issue #283, IADR-0070: 可変ユニット AST の frontend も workspace メンバ（npm ci が package-lock と
-# 突合するため manifest を先に投入する）。ソースは合成点（features/index.ts）から取り込まれる。
+# Issue #283, IADR-0070: 可変ユニット AST の frontend も workspace メンバ（--frozen-lockfile が
+# pnpm-lock.yaml と突合するため manifest を先に投入する）。ソースは合成点（features/index.ts）から取り込まれる。
 COPY src/ai-stock-trading/frontend/package.json ai-stock-trading/frontend/
-RUN npm ci
+# IADR-0121 決定 2: pnpm は package.json の packageManager フィールドから corepack が版を解決する。
+RUN corepack enable && pnpm install --frozen-lockfile
 COPY src/platform/frontend/ platform/frontend/
 COPY src/knowledge/frontend/ knowledge/frontend/
 COPY src/ai-stock-trading/frontend/ ai-stock-trading/frontend/
-RUN npm run build
+RUN pnpm run build
 
 # IADR-0081: runtime も同じミラーから引く（docker.io 非依存）。BASE_REGISTRY は上の build ステージと
 # 同じ ARG を FROM で再利用するため、複数ステージで有効な「最初の FROM より前で宣言した global ARG」。

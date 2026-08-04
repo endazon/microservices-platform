@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SPA 基盤（アプリホスト + foundation: config/auth/api/routing/ui）。可変機能ユニットの features を src/features/index.ts（合成点）で束ねる。IADR-0033 / IADR-0056。",
+  "description": "SPA 基盤（アプリホスト + foundation: config/auth/api/routing/ui）。可変機能ユニットの features を src/features/index.ts（合成点）で束ねる。IADR-0121（IADR-0033 を Superseded）/ IADR-0056。",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -16,5 +16,14 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
   }
 }

@@ -12,7 +12,8 @@
 src/
   Directory.Build.props        ← バックエンド共通 MSBuild 設定（単一情報源。ユニットで上書きしない）
   Directory.Packages.props     ← パッケージ中央管理（CPM。csproj に Version= を書かない）
-  package.json                 ← フロントエンド npm workspaces ルート（workspaces: ["*/frontend"]）
+  package.json                 ← フロントエンド pnpm workspace ルート（pnpm-workspace.yaml が正）
+  pnpm-workspace.yaml          ← workspace メンバ（'*/frontend' と 'packages/*'。IADR-0121）
   vitest.config.ts             ← フロント単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   eslint.config.js             ← フロント lint（全ユニット横断）
   platform/                    ← 基盤ユニット（本リポジトリの主成果物）
@@ -96,8 +97,9 @@ src/
   （`Directory.Build.props` / `Directory.Packages.props`）は `src/` に置き、ディレクトリ階層で
   全ユニット（submodule ユニット含む）へ自動継承される（ユニット単独リポジトリでのビルドには
   自前の同等設定が必要）。
-- **フロントエンド**: `src/` を npm workspaces ルート（`workspaces: ["*/frontend"]`）とし、
-  単一 lock で管理する。開発コマンドは `src/` で実行する（詳細は
+- **フロントエンド**: `src/` を pnpm workspace ルート（`pnpm-workspace.yaml` の `'*/frontend'` と
+  `'packages/*'`。[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
+  単一 lock（`pnpm-lock.yaml`）で管理する。開発コマンドは `src/` で実行する（詳細は
   [platform/frontend/README.md](platform/frontend/README.md)）。
 
 ## ユニットをサブモジュールとして追加する場合
@@ -112,7 +114,7 @@ src/
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
    **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
-4. フロントエンド: workspaces は `"*/frontend"` のため自動認識される。platform の合成点
+4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
 5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
    `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。

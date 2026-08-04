@@ -147,12 +147,12 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 ### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 
 - **スタック**: React 18 + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。
-- **構成**: npm workspaces（ルート = `src/`、`workspaces: ["*/frontend"]`）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
+- **構成**: pnpm workspace（ルート = `src/`、`pnpm-workspace.yaml` = `'*/frontend'` + `'packages/*'`。IADR-0121）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
 - **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。フロントから各サービスを直接叩かない。
 - **認証**: `oidc-client-ts`（Authorization Code + PKCE）で Keycloak public client `spa-web` を用いる。トークンやシークレットをコードに埋め込まない。
-- **Lint / 型**: ESLint flat config（[`src/eslint.config.js`](src/eslint.config.js)）+ typescript-eslint。`src/` で `npm run lint` / `npm run typecheck` が通ること。
+- **Lint / 型**: ESLint flat config（[`src/eslint.config.js`](src/eslint.config.js)）+ typescript-eslint。`src/` で `pnpm run lint` / `pnpm run typecheck` が通ること。
 - **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。テストは実装と同居し `*.{test,spec}.{ts,tsx}`。受け入れ基準をテストケースへ写像する。
-- **カバレッジ**: `npm run test:coverage`（v8 provider）。[`src/vitest.config.ts`](src/vitest.config.ts) の `coverage.thresholds` は**回帰防止のラチェット**（全ユニット横断で計測）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
+- **カバレッジ**: `pnpm run test:coverage`（v8 provider）。[`src/vitest.config.ts`](src/vitest.config.ts) の `coverage.thresholds` は**回帰防止のラチェット**（全ユニット横断で計測）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
 
 ### CI（GitHub Actions）
 
