@@ -19,6 +19,9 @@ on:
       - "src/orval-bff-only.cjs"
       - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
+      # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
+      # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
+      - "src/lingui.config.ts"
       - ".github/workflows/frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -33,6 +36,9 @@ on:
       - "src/orval-bff-only.cjs"
       - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
+      # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
+      # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
+      - "src/lingui.config.ts"
       - ".github/workflows/frontend.yml"
 
 defaults:
@@ -77,9 +83,35 @@ jobs:
         run: |
           pnpm run codegen
           git diff --exit-code -- platform/frontend/src/foundation/api/generated
+      # ADR-0031 / IADR-0125 決定 4: Lingui のカタログもコミットしている。検出は 3 段で、
+      # 互いを置換しない（同決定の実測表）。ここは 1 段目——ソースに msg を足してカタログを
+      # 更新し忘れた場合を止める。extract は未訳を msgstr "" として書き出す正常動作のため、
+      # 差分検査だけでは「訳が空」を検出できない（それは次のステップが担う）。
+      - name: i18n catalogs are up to date (lingui)
+        run: |
+          pnpm run i18n
+          git diff --exit-code -- platform/frontend/src/foundation/i18n/locales
+      # 2 段目——カタログは最新だが msgstr が空（＝未翻訳）のキーを止める。sourceLocale も見る
+      # （lingui compile --strict は sourceLocale を見ないため、これが無いと ja の未訳が素通りする）。
+      - name: i18n catalogs have no untranslated keys
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-i18n-catalogs.js
       # 単体テストは frontend-tests.yml（pnpm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
         run: pnpm run build
+      # ADR-0031 / IADR-0125: 共有 UI パッケージのカタログ。ビルドが通ることの確認と、
+      # 次のステップの走査対象を作ることを兼ねる。
+      - name: Build Storybook (catalog)
+        run: pnpm --filter @platform/ui run build-storybook
+      # 08_data-egress-policy / IADR-0125 決定 5: 外部 CDN・Web フォント・analytics を使わない。
+      # 設定（disableTelemetry 等）だけでは「設定したつもり」を検出できないため、**成果物を走査**する。
+      # --require は対象が存在しなければ fail する（走査 0 件を成功と誤らせない）。
+      - name: No external egress in build artifacts
+        working-directory: ${{ github.workspace }}
+        run: >
+          node scripts/check-static-egress.js
+          --require src/packages/ui/storybook-static
+          --require src/platform/frontend/dist
 
   e2e:
     runs-on: ubuntu-latest
