@@ -96,7 +96,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      # 分類 A（キットとバイト一致）への暫定デルタ。環流先 planning#167。キット反映後の同期で撤去する（IADR-0115）。
+      # 検査器自体の自己試験を先に走らせる（planning#167）。拡張子の追加漏れ・検出経路の退行を
+      # 「OK: n 件」の陰に隠さないための歯止め（他の check-*.js の --self-test と同じ運用）。
       - name: Self-test doc links checker
         run: node scripts/check-doc-links.js --self-test
       - name: Check doc links
