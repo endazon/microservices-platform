@@ -6,7 +6,9 @@ import { test, expect } from '@playwright/test';
 test('unauthenticated visit redirects to /login with a Keycloak sign-in button', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page).toHaveURL(/\/login$/);
+  // RequireAuth は遷移元を ?from= で保持する（IADR-0124 決定 3）。
+  await expect(page).toHaveURL(/\/login(\?|$)/);
   await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Knowledge Platform' })).toBeVisible();
+  // 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」。
+  await expect(page.getByRole('heading', { name: '汎用プラットフォーム' })).toBeVisible();
 });

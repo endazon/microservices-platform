@@ -3,15 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "ナレッジ活用機能の画面 features（home, sc01..sc11）。platform の合成点（src/features/index.ts）から束ねられる可変機能ユニット。",
+  "description": "ナレッジ活用機能の画面 features（SC-01..SC-11）。platform の合成点（src/features/index.ts）から束ねられる可変機能ユニット。",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tanstack/react-router": "^1.170.18",
     "oidc-client-ts": "^3.1.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-router-dom": "^6.26.2"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.0",

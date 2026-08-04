@@ -28,6 +28,8 @@ related_specs:
 - 関連機能要求（FR）: **FR-01**（データソースカタログ）、**FR-02**（取り込み）、FR-05（ABAC 属性）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/admin/sources` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 データソース（コネクタ）の登録・一覧・同期状態確認・無効化を行う運用画面。取り込み→変換の運用フローとして SC-07（変換ジョブ）への導線を持つ。
 

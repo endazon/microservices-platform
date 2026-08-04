@@ -6,6 +6,7 @@ import { test, expect } from '@playwright/test';
 test('unauthenticated visit to /wiki redirects to /login', async ({ page }) => {
   await page.goto('/wiki');
 
-  await expect(page).toHaveURL(/\/login$/);
+  // RequireAuth は遷移元を ?from= で保持する（IADR-0124 決定 3）。
+  await expect(page).toHaveURL(/\/login(\?|$)/);
   await expect(page.getByRole('button', { name: /Keycloak/ })).toBeVisible();
 });

@@ -124,5 +124,12 @@ src/
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
 4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
+   ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル ＋ ナビ項目**
+   （[IADR-0124](../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1）。合成点では
+   `createUnitRoutes` にタプルのスプレッドを 1 行足す。**戻り値へ型注釈を書かない**——`readonly AnyRoute[]`
+   を注釈するとルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる。
+   旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は本リポジトリから変更できないユニット
+   （`src/ai-stock-trading`。[IADR-0120](../docs/adr/IADR-0120_excluded-units-from-gitmodules.md)）のための
+   互換ブリッジであり、新規ユニットでは使わない。
 5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
    `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。

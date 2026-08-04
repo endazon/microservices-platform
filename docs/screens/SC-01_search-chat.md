@@ -30,6 +30,8 @@ related_specs:
 - 関連 ADR: [[IADR-0037]]（SSE ストリーミング）・[[IADR-0033]]（SPA 基盤）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/ask` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 本システムの主入口。1 つの入力から横断検索と根拠付き AI 回答（**真の SSE ストリーミング**表示・出典併記）を行う。
 認証済みユーザー向け（ロール限定なし）。ABAC は後段（BFF/検索/AI）が narrowing・deny-by-default で適用する。

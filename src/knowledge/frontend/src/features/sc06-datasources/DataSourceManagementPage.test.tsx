@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 
 // SC-06, FR-01/FR-02: データソース管理が一覧・登録・同期・無効化を BFF 経由で行うこと、
 // 登録ペイロードに既定機密区分（ABAC 属性）を含むこと、異常系を検証する。
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
 
-import { DataSourceManagementPage } from './DataSourceManagementPage';
+import { createSc06DataSourcesRoute } from './index';
+import { createSc07ConversionsRoute } from '../sc07-conversions';
 
 const SOURCES = [
   {
@@ -23,11 +24,12 @@ const SOURCES = [
   },
 ];
 
-function renderPage() {
-  return render(
-    <MemoryRouter>
-      <DataSourceManagementPage />
-    </MemoryRouter>,
+// ADR-0031 / IADR-0124: 実ルート定義（RequireRole 込み）の上で描画する。SC-07 への導線を解決するため
+// 変換ジョブのルートも同居させる。
+async function renderPage() {
+  return renderUnitRoute(
+    (shell) => [createSc06DataSourcesRoute(shell), createSc07ConversionsRoute(shell)],
+    { initialEntry: '/admin/sources', roles: ['platform-admin'] },
   );
 }
 
@@ -38,7 +40,7 @@ beforeEach(() => {
 describe('DataSourceManagementPage (SC-06)', () => {
   it('lists registered data sources', async () => {
     mocks.apiFetch.mockResolvedValue(SOURCES);
-    renderPage();
+    await renderPage();
 
     expect(await screen.findByText('社内共有フォルダ')).toBeInTheDocument();
     expect(screen.getByText('smb://share/docs')).toBeInTheDocument();
@@ -52,7 +54,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce({ id: 'x' }); // create
     mocks.apiFetch.mockResolvedValueOnce(SOURCES); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     const form = await screen.findByRole('form', { name: 'データソース登録' });
     await user.type(within(form).getByLabelText('名前（必須）'), '新ソース');
@@ -77,7 +79,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce(undefined); // sync
     mocks.apiFetch.mockResolvedValueOnce(SOURCES); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '同期' }));
 
@@ -94,7 +96,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce(undefined); // delete
     mocks.apiFetch.mockResolvedValueOnce([]); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '無効化' }));
 
@@ -108,7 +110,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   it('shows an alert when the list fails to load', async () => {
     mocks.apiFetch.mockRejectedValue(new Error('boom'));
-    renderPage();
+    await renderPage();
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('取得に失敗'));
   });
@@ -117,7 +119,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce(SOURCES); // load
     mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // sync fails
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '同期' }));
 
@@ -128,7 +130,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce(SOURCES); // load
     mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // delete fails
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '無効化' }));
 
@@ -139,7 +141,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiFetch.mockResolvedValueOnce([]); // load
     mocks.apiFetch.mockRejectedValueOnce(new Error('boom')); // create fails
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
 
     const form = await screen.findByRole('form', { name: 'データソース登録' });
     await user.type(within(form).getByLabelText('名前（必須）'), '新ソース');

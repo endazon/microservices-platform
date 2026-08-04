@@ -119,6 +119,13 @@ TanStack の公式手順は `declare module '@tanstack/react-router'` だが、�
   戻り値へ `readonly AnyRoute[]` の型注釈を付けると、**ルート ID とパスの union が失われる**
   （検索パラメータの型は残る）。実測は §実測 の表を正とする。
   したがって束ね役・合成点に**型注釈を書かない**（`satisfies` も使わない）。
+- **合成点を知るのは `foundation/routing/router.tsx` だけにする。** 従来は
+  `foundation/routing/nav.ts` が `@features`（合成点）を直接 import しており、
+  `foundation/ui/Layout` → `nav` → 合成点 → 可変ユニット という**逆依存が共通シェルの経路に
+  埋まっていた**。本決定でユニットが `@foundation` の型（`ShellRoute`）を参照するようになり、
+  この逆依存は「可変ユニットの型検査が他の可変ユニット（AST）の存在に依存する」という
+  具体的な破綻として現れる。`nav.ts` を登録簿（`registerNavItems` / `navItems`）に変え、
+  router.tsx が起動時に 1 度だけ登録する。共通シェルは可変ユニットを知らない。
 
 ### 決定 2: 旧契約 `FeatureModule` は「実行時だけの橋」として残し、型付き木を汚染させない（論点 B = B2）
 
@@ -245,6 +252,14 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 | `createRoutes` の戻り値へ `readonly AnyRoute[]` を注釈 | **失われる** | **失われる** | **失われる** |
 | 型付き配列へ `...legacyRoutes`（`AnyRoute[]`）をスプレッド | **失われる** | **失われる** | **失われる** |
 | 型付き `addChildren` の後に `children` へ実行時追加（**採用**） | 保たれる | 保たれる | 保たれる |
+
+### `no-restricted-imports` の照合方式（機械強制の落とし穴）
+
+`react-router` の再混入を lint で止めるにあたり、`patterns` の `group` に `'react-router'` を置くと
+**`@tanstack/react-router` も禁止される**（`patterns` は matchBase で照合するため、
+`@tanstack/react-router` の basename が `react-router` に一致する）。実測で 32 件の誤検出が出た。
+完全一致の `paths` で指定する。適用先は platform / knowledge のみとし、
+`ai-stock-trading`（別プロジェクトの submodule。旧契約ブリッジで動く）には及ぼさない。
 
 ### ルートオブジェクト経由のフック
 

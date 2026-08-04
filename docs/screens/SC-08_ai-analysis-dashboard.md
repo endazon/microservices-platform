@@ -35,6 +35,8 @@ related_specs:
 - 計画書リンク: 上記 03_usecases §UC-02
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/analyze` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 利用者が「データ範囲」を指定して AI に分析・比較・抽出を依頼し、結果を出典付きで受け取る画面。BFF 集約 `POST /bff/analysis/analyze` を唯一のデータソースとする。指定範囲（query / 属性フィルタ）は ABAC 許可スコープと **AND で交差し権限を広げない**（narrowing-only、[[IADR-0005]]）。範囲が権限外を指す場合は空回答へ縮退し、権限の有無は開示しない（存在秘匿、UC-02 例外フロー）。
 

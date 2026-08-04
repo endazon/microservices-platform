@@ -1,7 +1,7 @@
 ---
 title: SPA 移行 第 2 段 — TanStack Router へのルータ差し替え・共通シェル・旧画面のルート載せ替え
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, ADR-0031, ADR-0032, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, SC-16, IADR-0056, IADR-0116, IADR-0118, IADR-0120, IADR-0121, IADR-0124]
 author: Claude
 created: 2026-08-04
@@ -208,20 +208,20 @@ platform 側で TanStack のルートへ**実行時に変換して**木へ足す
 
 issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開する。
 
-- [ ] **`react-router-dom` が依存から消える**: `src/platform/frontend/package.json` と
+- [x] **`react-router-dom` が依存から消える**: `src/platform/frontend/package.json` と
       `src/knowledge/frontend/package.json` から削除され、`grep -rn "react-router" src/platform src/knowledge`
       が 0 件（AST は対象外＝本リポから変更できない別プロジェクト）
-- [ ] **ルート定義が型安全**: 存在しないルート ID・存在しないパスへの `Link`・検索パラメータの
+- [x] **ルート定義が型安全**: 存在しないルート ID・存在しないパスへの `Link`・検索パラメータの
       型不一致が `tsc` で落ちることを、違反サンプルで実測して本書に記録する
-- [ ] **11 画面が新ルータで動作する**: 既存の画面テスト（SC-01〜SC-11）が新ルータで green、
+- [x] **11 画面が新ルータで動作する**: 既存の画面テスト（SC-01〜SC-11）が新ルータで green、
       ルートパスが計画書 §共通シェル の値へ是正されている
-- [ ] **E2E スモークが新ルータで通る**（もしくは実走不能の理由と CI へ委ねる根拠を本書に記録する）
-- [ ] **カバレッジ床の引き下げなし**: `src/vitest.config.ts` の `thresholds`（lines/statements 83 /
+- [x] **E2E スモークが新ルータで通る**（もしくは実走不能の理由と CI へ委ねる根拠を本書に記録する）
+- [x] **カバレッジ床の引き下げなし**: `src/vitest.config.ts` の `thresholds`（lines/statements 83 /
       functions 75 / branches 74）を下げない。実測値を測定条件つきで本書に記録する
-- [ ] 共通シェルが 4 グループナビ・ブランド表示名・ユーザーアイコン → SC-16・通知を備える
-- [ ] AST（submodule）の typecheck / lint / テストが**無改修で**通る
-- [ ] `pnpm run lint` / `typecheck` / `test:coverage` / `build` が green
-- [ ] `node scripts/check-doc-links.js` / `node scripts/check-commit-messages.js --base origin/develop` /
+- [x] 共通シェルが 4 グループナビ・ブランド表示名・ユーザーアイコン → SC-16・通知を備える
+- [x] AST（submodule）の typecheck / lint / テストが**無改修で**通る
+- [x] `pnpm run lint` / `typecheck` / `test:coverage` / `build` が green
+- [x] `node scripts/check-doc-links.js` / `node scripts/check-commit-messages.js --base origin/develop` /
       `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が green
 
 ## テスト方針
@@ -240,12 +240,110 @@ issue #490 §受け入れの観点 の 4 件を、検証可能な形へ展開す
 
 ## 検証（実測）
 
-（実装後に記入する）
+**測定条件**: worktree `feat/ADR-0031-spa-router-shell`（`origin/develop` `be3c71c` 基点）／
+Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ TypeScript 5.9.3 ／
+`@tanstack/react-router` 1.170.18（`@tanstack/router-core` 1.171.15 を解決）／
+**submodule `src/ai-stock-trading` と `planning` は populate 済み**。
+
+| 検査 | コマンド | 結果 |
+| --- | --- | --- |
+| 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
+| lint | `pnpm run lint` | green（0 errors / 5 warnings。warning は `react-refresh/only-export-components` のみ） |
+| 単体テスト | `pnpm run test` | **37 files / 265 tests** 全 green（移行前は 35 files / 227 tests） |
+| カバレッジ | `pnpm run test:coverage` | 後述 |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 537.45 kB / gzip 157.99 kB） |
+| E2E | `playwright test`（後述の条件） | **6 tests 全 green** |
+| ドキュメントリンク | `node scripts/check-doc-links.js` | green（407 件） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green |
+| スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green |
+
+### `react-router-dom` の撤去（受け入れ観点 1）
+
+`grep -rn "react-router" src/platform src/knowledge` = **0 件**。
+`package.json` の依存からも削除した（platform / knowledge の両方）。
+
+**AST（`src/ai-stock-trading`）には残る**——別プロジェクトの submodule であり本リポジトリから
+変更できない（IADR-0120）。AST は自分の `package.json` で `react-router-dom` を宣言しており、
+その解決は AST パッケージに閉じる。本リポジトリの SPA が動かすルータは TanStack Router の 1 本だけである
+（旧契約ユニットの画面も TanStack のルートへ変換して載せる。IADR-0124 決定 2）。
+
+再混入は lint で機械的に止める（`no-restricted-imports` の `paths`。platform / knowledge のみ適用）。
+**発火確認（実測）**: `react-router-dom` / `react-router` を import する違反ファイルを一時的に置き、
+`npx eslint` が 2 件の error を出すことを確認して削除した。
+
+### ルート定義の型安全（受け入れ観点 2）
+
+負のプローブ（**落ちるべきコード**）を `tsc` にかけた実測は
+[IADR-0124 §実測](../adr/IADR-0124_tanstack-router-unit-composition.md#実測) の 3 表を正とする。要点:
+
+- 存在しないルート ID を `useSearch({ from })` へ渡す → **落ちる**
+- 検索パラメータの型不一致（`{ q: string }` を number へ）→ **落ちる**
+- 存在しないパスへの `<Link to>` → **落ちる**
+- パスパラメータの欠落（`<Link to="/docs/$id">` に `params` なし）→ **落ちる**
+
+型登録の宛先（`@tanstack/router-core`）とタプル保持を誤ると、**型エラーを出さずに**これら 4 つが
+すべて素通りになる。両方の失敗モードを実測して IADR へ記録した。
+
+### 画面とルート（受け入れ観点 3）
+
+11 画面（SC-01〜SC-11）が新ルータで動作し、ルートパスが計画書 §共通シェル の値へ是正されている。
+`router.test.ts` が (1) 計画のルートが木に存在すること、(2) 全ナビ項目の遷移先が解決すること、
+(3) 旧経路（`/results` `/documents` `/datasources` `/conversions` `/analysis` `/ops` `/config`）が
+**消えていること**、(4) 旧契約ブリッジ経由の AST 3 画面が載ることを固定する（28 ケース）。
+
+### E2E（受け入れ観点 4）
+
+`platform/frontend/e2e/` の 6 本を新ルートへ更新し、**6 tests 全 green**。
+
+**この環境では `playwright install` がブラウザをダウンロードできない**（`Download failure, code=1`）。
+インストール済みの `chromium-1194` を `launchOptions.executablePath` で指すローカル専用 config を
+一時的に置いて実走し、確認後に削除した。**CI（`frontend.yml`）は `playwright install --with-deps chromium`
+を実行するため、リポジトリの `playwright.config.ts` はそのままで動く**（設定に手を入れていない）。
+
+### カバレッジ（受け入れ観点 4）
+
+| | 移行前（`be3c71c`） | 本 PR | 床（本 PR で引き上げ） |
+| --- | --- | --- | --- |
+| 全ユニット横断 lines/statements | 91.46% | **93.00%** | 83 → **85** |
+| 全ユニット横断 branches | 82.33% | **83.50%** | 74 → **76** |
+| 全ユニット横断 functions | 83.58% | **84.54%** | 75 → **77** |
+| MSP 所有分 lines/statements | 88.07% | **90.56%** | （床の導出基準） |
+| MSP 所有分 branches | 80.00% | **81.91%** | 同上 |
+| MSP 所有分 functions | 80.76% | **82.94%** | 同上 |
+
+**引き下げはしていない。** `src/vitest.config.ts` の既存の導出規則（MSP 所有分の実測から 5pt 下・
+切り捨て）をそのまま適用して引き上げた（ratchet。IADR-0034 / IADR-0118）。
+MSP 所有分は lcov から AST のファイルを除いて再集計した値である。
+
+計測対象から `platform/frontend/src/foundation/testing/**`（画面テスト用ハーネス）を除外した。
+`src/test/**` と同じ理由——足場を母数に入れると「テストを足すほど床が上がる」見かけの改善が起きる。
+
+### AST（別プロジェクト）への影響（実測）
+
+- **無改修で green**: typecheck（`tsconfig.standalone.json`）/ lint / テスト 40 件がすべて通る。
+- 理由は旧契約 `FeatureModule` の**形を変えなかった**こと（`routes: { path, element }[]`）。
+  AST の `test/foundation-stub/routing/featureRegistry.ts` は `RouteObject` を `react-router-dom` から
+  import しているが、これは AST の standalone 型検査専用であり、合成時は platform の実体が解決される。
+  実体側の要素型が自前の `LegacyFeatureRoute` に変わっても、AST の object literal は構造的に適合する。
+- **将来の申し送り**: AST が型付きルート factory（新契約）へ移れば、AST の 3 画面も型安全の中に入り、
+  旧契約ブリッジを削除できる。本リポジトリからは変更できないため **AST リポジトリでの issue 起票が要る**
+  （優先度は低い——現状で機能欠損は無く、失うのは AST 画面の `Link` 型検査のみ）。
 
 ## 計画書との差異
 
-（実装後に記入する）
+| 事項 | 計画・issue の記載 | 実装 | 根拠 |
+| --- | --- | --- | --- |
+| ルート定義の方式 | issue #490「**ファイルベース定義**で確立」 | **コードベースの型付きルート木** | ADR-0031 §理由 が挙げる採用根拠は「ルート・検索パラメータまで型安全にできる」ことであり、ファイルベースはその手段の例示である。ファイルベースは IADR-0056 決定 3・4（platform → 可変ユニット禁止／合成点 1 ファイル）を壊す。型安全は実測で同等（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md) 論点 A） |
+| 旧 13 画面 | 13_frontend-stack「旧画面は**完全に削除する**」 | `home` を削除し、SC-01〜11 は**ルート定義を書き直して Page は残した** | 計画の画面一覧（SC-01〜21）に home に相当する画面が無いため home は削除。SC-01〜11 は計画に存在する画面であり、その**内容**の計画準拠は #452 の担当（§#452 との分担）。「完全に削除する」は旧**スタック**の残置を禁じるものと読み、react-router-dom の完全撤去で満たす |
+| 第 2 段の範囲 | #446 仕様書の第 2 段表は Lingui・Storybook・shadcn/ui 本移植も含む | 含めない | issue #490 §スコープ が 4 項目（ルータ・共通シェル・旧画面・カバレッジ床）に限定している。同一 PR に入れると IADR-0116 規約 4 に反する（**残りは要起票**。§未決事項） |
+| 共通シェル | 05_screens §共通シェル はパンくず・権限バッジ・右レール AI チャットも含む | ナビ・ブランド名・ユーザーアイコン → SC-16・通知のみ | issue #490 §スコープ の明示。パンくず・権限バッジは #452、AI チャットは第 4 段（IADR-0121 決定 5） |
 
 ## 未決事項
 
-（実装後に記入する）
+1. **第 2 段の残り（Lingui / Storybook / shadcn/ui コンポーネントの本移植）の起票。**
+   #446 仕様書の第 2 段表には載っているが issue #490 のスコープには無い。#454 のチェックリストへ追加が要る。
+2. **AST の新契約への移行**（別リポジトリの issue）。旧契約ブリッジの削除条件。
+3. **`/login` `/callback` の扱い。** 計画のルート表に無い SPA 内部の導線であり、第 3 段（#439 /
+   ADR-0032 の BFF セッション方式）で見直す。
+4. **バンドルサイズ。** `index.js` が 537 kB（gzip 158 kB）で Vite の 500 kB 警告に触れる。
+   コード分割（ルート単位の `lazy`）は TanStack Router の機能で行えるが、画面が確定する #452 の後が適切である。

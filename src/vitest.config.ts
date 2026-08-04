@@ -48,6 +48,10 @@ export default defineConfig({
       exclude: [
         '**/*.{test,spec}.{ts,tsx}',
         'platform/frontend/src/test/**',
+        // ADR-0031 / IADR-0124: 可変ユニットの画面テスト用ハーネス（テスト専用の足場）。
+        // `src/test/**` と同じ理由で母数から外す——足場を数えると「テストを足すほど床が上がる」
+        // 見かけの改善が起き、成果物の被覆率が読めなくなる。
+        'platform/frontend/src/foundation/testing/**',
         '**/*.d.ts',
         'platform/frontend/src/main.tsx',
         '**/vite-env.d.ts',
@@ -78,11 +82,19 @@ export default defineConfig({
       //
       //   フォローアップ（#446 の申し送り）: フロントの計測範囲そのものから AST を外すか否かは
       //   IADR-0118 決定 4 との整合の問題であり、別 issue で判断する。
+      //
+      // ［2026-08-04 / #490］移行第 2 段（ADR-0031 / IADR-0124）に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/ADR-0031-spa-router-shell` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 93.00% / branches 83.50% / functions 84.54%
+      //     MSP 所有分のみ        lines/statements 90.56% / branches 81.91% / functions 82.94%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 83 → 85 / functions 75 → 77 / branches 74 → 76 へ引き上げる。
+      //   上げた分は「ルータ移行で新設した配線（ルート木・共通シェル・通知）にテストを付けた」ことによる。
       thresholds: {
-        lines: 83,
-        statements: 83,
-        functions: 75,
-        branches: 74,
+        lines: 85,
+        statements: 85,
+        functions: 77,
+        branches: 76,
       },
     },
   },

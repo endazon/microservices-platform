@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面。ソースの登録・一覧・同期状態・無効化を行う。
@@ -76,7 +76,7 @@ export function DataSourceManagementPage() {
     <section>
       <h1>データソース管理</h1>
       <p>
-        <Link to="/conversions">変換ジョブを見る（SC-07）</Link>
+        <Link to="/admin/conversions">変換ジョブを見る（SC-07）</Link>
       </p>
 
       <CreateForm

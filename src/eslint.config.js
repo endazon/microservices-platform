@@ -32,6 +32,18 @@ const BANNED_IMPORT_PATTERNS = [
   },
 ];
 
+// ADR-0031 / IADR-0124: ルーティングは TanStack Router に一本化する（移行第 2 段 / #490）。
+// 「各系統は 1 度だけ切り替え、2 つのルータが同時に存在する状態を作らない」（IADR-0121 決定 1）を
+// 機械で守る。本リポジトリが所有する platform / knowledge にのみ適用する——`ai-stock-trading` は
+// 別プロジェクトの submodule（IADR-0120）であり、本リポの規約を及ぼさない（旧契約ブリッジで動く）。
+// `patterns` ではなく `paths`（完全一致）で指定する——`patterns` は matchBase で照合するため、
+// `react-router` は `@tanstack/react-router` にも当たってしまう（実測）。
+const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((name) => ({
+  name,
+  message:
+    'react-router は不採用（ADR-0031）。ルーティングは @tanstack/react-router を使う（IADR-0124）。',
+}));
+
 export default tseslint.config(
   {
     ignores: [
@@ -79,6 +91,7 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
+          paths: NO_LEGACY_ROUTER_PATHS,
           patterns: [
             ...BANNED_IMPORT_PATTERNS,
             {
@@ -103,6 +116,7 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
+          paths: NO_LEGACY_ROUTER_PATHS,
           patterns: [
             ...BANNED_IMPORT_PATTERNS,
             {

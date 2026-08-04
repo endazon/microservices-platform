@@ -14,15 +14,18 @@
   "dependencies": {
     "@platform/ui": "workspace:*",
     "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-router": "^1.170.18",
+    "lucide-react": "^0.577.0",
     "oidc-client-ts": "^3.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^6.26.2"
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@faker-js/faker": "^9.2.0",
     "@playwright/test": "^1.47.2",
     "@tailwindcss/vite": "^4.0.0",
+    "@tanstack/router-core": "^1.171.15",
     "@types/node": "^22.7.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

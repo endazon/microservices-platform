@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 
 // SC-07, UC-06, FR-12: 変換ジョブ画面。変換状況・失敗ジョブの一覧を表示し、失敗ジョブの人手補正（再変換）を
@@ -72,7 +72,7 @@ export function ConversionJobsPage() {
     <section>
       <h1>変換ジョブ</h1>
       <p>
-        <Link to="/datasources">データソース管理へ戻る（SC-06）</Link>
+        <Link to="/admin/sources">データソース管理へ戻る（SC-06）</Link>
       </p>
 
       <div>
@@ -122,7 +122,9 @@ export function ConversionJobsPage() {
                       </button>
                     ) : j.status === 'succeeded' && j.documentId ? (
                       // 成功した変換は生成文書（SC-03）へ遷移できる。
-                      <Link to={`/documents/${j.documentId}`}>文書を見る</Link>
+                      <Link to="/docs/$id" params={{ id: j.documentId }}>
+                        文書を見る
+                      </Link>
                     ) : (
                       '—'
                     )}

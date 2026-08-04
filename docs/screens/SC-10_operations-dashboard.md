@@ -33,6 +33,8 @@ related_specs:
 - 計画技術検討: [05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)（Grafana/Kiali/Jaeger は専用ツールで提供し、SC-10 はその入口）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/admin/ops` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 運用・分析向けに、システムの利用状況・検索傾向・回答品質のサマリを 1 画面で提示する。SLO・リソース・コスト・トレース・メッシュなどの詳細は専用ツール（Grafana / Jaeger・Tempo / Kiali）へ委譲し、本画面はそれらへの**入口（リンク集）**と、既存 BFF 集約（`/bff/dashboard/summary`）の要約表示を担う。構成ビューア（SC-11）への遷移導線も提供する。
 
@@ -90,7 +92,7 @@ related_specs:
 | --- | --- | --- |
 | 画面表示 | `GET /bff/dashboard/summary` を取得しサマリ描画 | - |
 | 期間変更 | days を変えて再取得 | - |
-| 「構成ビューア →」 | SC-11 へ遷移（ConfigViewer 権限時のみ表示） | `/config`（SC-11、#137 で実装） |
+| 「構成ビューア →」 | SC-11 へ遷移（ConfigViewer 権限時のみ表示） | `/admin/config-viewer`（SC-11、#137 で実装） |
 | 外部ツール押下 | 別タブで Grafana/Jaeger/Kiali を開く | 外部 URL |
 
 ## 画面遷移
@@ -105,10 +107,10 @@ flowchart LR
 
 ## 権限・表示条件
 
-- ルート `/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0035]]）。
+- ルート `/admin/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0035]]）。
 - ナビの「運用」項目は `platform-admin` にのみ表示。
 - 「構成ビューア →」導線は ConfigViewer 相当（`platform-admin` または `platform-operator`）にのみ表示。
-  - **補足（到達性）**: 現状 `/ops` は `platform-admin` 限定のため、`platform-operator` は本画面に到達しない（`RequireRole` が門前で `NotFound`）。それでも導線判定を `useHasAnyRole(Admin, Operator)` としているのは、SC-11（ConfigViewer）の認可条件（管理者・運用者）を単一の述語で共有し、将来 SC-10 を運用者にも開放した場合に導線を自動で有効化するための**意図的な先取り**である。現時点で Operator 分岐は実運用上デッドだが、SC-11 の認可と整合させるための冗長性として許容する（誤って運用者向けサマリを露出するものではない。実効境界はサーバ側 `AdminOnly`）。
+  - **補足（到達性）**: 現状 `/admin/ops` は `platform-admin` 限定のため、`platform-operator` は本画面に到達しない（`RequireRole` が門前で `NotFound`）。それでも導線判定を `useHasAnyRole(Admin, Operator)` としているのは、SC-11（ConfigViewer）の認可条件（管理者・運用者）を単一の述語で共有し、将来 SC-10 を運用者にも開放した場合に導線を自動で有効化するための**意図的な先取り**である。現時点で Operator 分岐は実運用上デッドだが、SC-11 の認可と整合させるための冗長性として許容する（誤って運用者向けサマリを露出するものではない。実効境界はサーバ側 `AdminOnly`）。
 - サーバが実効境界: `/bff/dashboard/summary` は `AdminOnly`。UI をすり抜けても 403。UI は 403/404 を中立メッセージで扱う（利用可否のみ、詳細を露出しない）。
 
 ## エラー・状態
