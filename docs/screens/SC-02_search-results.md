@@ -30,12 +30,14 @@ related_specs:
 - 関連機能要求（FR）: **FR-03**（ハイブリッド検索）、**FR-05**（ABAC アクセス制御）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/search` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 キーワード／意味（ハイブリッド）検索の結果を一覧表示し、各件から SC-03（文書詳細）へ内部遷移する画面。SC-01（検索／AI質問）が AI 回答と出典（外部 URI）を主とするのに対し、本画面は**権限内の文書一覧と文書詳細への内部導線**を担う。
 
 - 主要利用シーン: キーワードで文書を探し、詳細（本文・属性・版）を確認する。
 - アクセス: 認証済みユーザー（一般社員）。ロール限定なし（`RequireAuth` のみ）。ABAC はサーバ側（BFF）で適用。
-- 遷移: 各結果 → `GET /documents/:id`（SC-03）。`?q=` パラメータでディープリンク（SC-01 等からの連携・共有・ブラウザ戻る操作）に対応する。
+- 遷移: 各結果 → `/docs/:id`（SC-03）。`?q=` パラメータでディープリンク（SC-01 等からの連携・共有・ブラウザ戻る操作）に対応する。
 
 ## データソース（BFF 境界）
 
@@ -86,5 +88,5 @@ related_specs:
 ## 実装
 
 - `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx` / `index.tsx`
-- ナビ: 「検索結果一覧」→ `/results`（認証済み全員）。
+- ナビ: 「検索結果一覧」→ `/search`（認証済み全員。左ナビ「利用者」グループ）。
 - テスト観点は [tests/SC-02_search-results.md](../tests/SC-02_search-results.md)。

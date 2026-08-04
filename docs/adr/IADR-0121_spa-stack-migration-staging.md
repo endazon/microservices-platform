@@ -2,7 +2,7 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0120]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0120, IADR-0124]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -133,6 +133,26 @@ related_specs:
 > 提起の経緯・確定解釈・完了条件・計画側への追補案は
 > [feedback/20260804_frontend-migration-staging-interpretation.md](../../feedback/20260804_frontend-migration-staging-interpretation.md)
 > を正とする（計画リポジトリへの反映操作のみ残タスク）。
+
+> **［2026-08-04 追記］決定 1 の「第 2 段」は [[IADR-0124]]（#490）で 2 つへ分割された。**
+> 本決定は段の内容・境界を
+> [#446 作業仕様書 §段階分割](../specs/20260804_issue-446_spa-foundation-stack-migration.md#段階分割全体設計)
+> を正とすると定め、その表は第 2 段を「TanStack Router 移行・共通シェル・旧 13 画面の削除・
+> **shadcn/ui コンポーネント本移植・Lingui(ja/en)・Storybook**」としていた。
+> **実際の起票（#490）は前 3 者に限定され、後 3 者（shadcn/ui 本移植・Lingui・Storybook）は
+> 未起票の残件として繰り延べられた。** 理由は [[IADR-0116]] 規約 4——ルータ差し替え（合成点＝
+> アーキテクチャの変更）と UI ライブラリ・i18n・カタログの導入を 1 PR に入れるとレビューが成立しない——である。
+> 本決定 1 自体が起票先を「#452 と同一 PR **群**、または直前の独立 issue」と複数形で書いており、
+> この分割は本決定の枠内にある。**第 2 段のうち #490 が消化した範囲の現行値は
+> [IADR-0124](IADR-0124_tanstack-router-unit-composition.md) と
+> [#490 作業仕様書](../specs/20260804_issue-490_spa-router-shell.md) を正とする。**
+> 残件（shadcn/ui 本移植・Lingui・Storybook）は要起票であり、#454 のチェックリストへ追加する。
+> **［2026-08-04・裁定］この #490 / #452 の分割は利用者の明示的裁定で承認された**（原文:
+> **「最終的に結果が同じになるなら進め方はそれでもいいです」**）。**条件付き承認**であり、
+> 条件（最終結果の同一性）が満たされるのは **#452 が旧 13 画面の削除・再実装を完了した時点**である
+> （[feedback/20260804 §追加裁定](../../feedback/20260804_frontend-migration-staging-interpretation.md)）。
+> 段の順序・第 1 段／第 3〜5 段の内容・「各系統は 1 度だけ切り替える」という並行運用の禁止は
+> 本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
 
 ### 決定 2: パッケージマネージャは pnpm workspace とし、単一情報源を `src/` に置く
 

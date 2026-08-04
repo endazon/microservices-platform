@@ -20,6 +20,9 @@ related_specs:
 
 ## バックエンド（ConversionService・xUnit）
 
+> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+
+
 読み取りモデル: `ConversionJobStoreTests.cs`
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
@@ -75,7 +78,7 @@ related_specs:
 
 ## ロール・存在秘匿の担保
 
-- BFF は admin/operator 限定（4/5 で 403/401）。フロントは `RequireRole` で `/conversions` を出し分け。
+- BFF は admin/operator 限定（4/5 で 403/401）。フロントは `RequireRole` で `/admin/conversions` を出し分け。
 - 失敗記録後に例外再送出で MassTransit の再試行→デッドレターを保持（コンシューマ 2）。
 
 ## 実行

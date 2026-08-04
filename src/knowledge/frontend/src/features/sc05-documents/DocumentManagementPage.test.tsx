@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { ApiError } from '@foundation/api/ApiError';
 
 // SC-05, FR-06: 文書管理が一覧・作成・編集（楽観ロック）・公開・削除を BFF 経由で行うこと、
@@ -9,18 +9,20 @@ import { ApiError } from '@foundation/api/ApiError';
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
 
-import { DocumentManagementPage } from './DocumentManagementPage';
+import { createSc05DocumentsRoute } from './index';
+import { createSc03DocumentRoute } from '../sc03-document';
 
 const ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const DOCS = [
   { id: ID, title: '経費規程 2025', status: 'draft', version: 3, attributes: { confidentiality: 'internal' }, tags: ['hr'], updatedAt: '2026-07-01T00:00:00Z' },
 ];
 
-function renderPage() {
-  return render(
-    <MemoryRouter>
-      <DocumentManagementPage />
-    </MemoryRouter>,
+// ADR-0031 / IADR-0124: 実ルート定義（RequireRole 込み）の上で描画する。
+// SC-03 のルートも同居させ、一覧からの遷移先 href が実定義どおりに解決されることを見る。
+async function renderPage() {
+  return renderUnitRoute(
+    (shell) => [createSc05DocumentsRoute(shell), createSc03DocumentRoute(shell)],
+    { initialEntry: '/admin/documents', roles: ['platform-admin'] },
   );
 }
 
@@ -31,10 +33,10 @@ beforeEach(() => {
 describe('DocumentManagementPage (SC-05)', () => {
   it('lists documents linking to SC-03 detail', async () => {
     mocks.apiFetch.mockResolvedValue(DOCS);
-    renderPage();
+    await renderPage();
 
     const link = await screen.findByRole('link', { name: '経費規程 2025' });
-    expect(link).toHaveAttribute('href', `/documents/${ID}`);
+    expect(link).toHaveAttribute('href', `/docs/${ID}`);
     expect(screen.getByText('v3')).toBeInTheDocument();
   });
 
@@ -43,7 +45,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiFetch.mockResolvedValueOnce({ id: 'new' }); // create
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     const form = screen.getByRole('form', { name: '文書作成' });
@@ -64,7 +66,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     // SC-05 仕様: アーカイブ済みは再公開ボタンを出さない（状態遷移の意図を守る）。
     const archived = [{ ...DOCS[0], status: 'archived' }];
     mocks.apiFetch.mockResolvedValue(archived);
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     expect(screen.queryByRole('button', { name: '公開' })).not.toBeInTheDocument();
@@ -74,7 +76,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     // SC-05 仕様: 公開は draft だけでなく normalized（変換パイプライン由来）でも可能。
     const normalized = [{ ...DOCS[0], status: 'normalized' }];
     mocks.apiFetch.mockResolvedValue(normalized);
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     expect(screen.getByRole('button', { name: '公開' })).toBeInTheDocument();
@@ -85,7 +87,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiFetch.mockResolvedValueOnce(undefined); // publish
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     await user.click(screen.getByRole('button', { name: '公開' }));
@@ -100,7 +102,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiFetch.mockResolvedValueOnce({ id: ID }); // put
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     await user.click(screen.getByRole('button', { name: '編集' }));
@@ -122,7 +124,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     mocks.apiFetch.mockRejectedValueOnce(new ApiError('unknown', '要求が失敗しました（409）。', 409)); // put -> conflict
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     await user.click(screen.getByRole('button', { name: '編集' }));
@@ -138,7 +140,7 @@ describe('DocumentManagementPage (SC-05)', () => {
       new ApiError('validation', '入力内容に誤りがあります。', 400, ['タイトルは必須です。']),
     ); // create -> 400 with details
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     const form = screen.getByRole('form', { name: '文書作成' });
@@ -157,7 +159,7 @@ describe('DocumentManagementPage (SC-05)', () => {
     ); // archive -> 409 with details
     mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
     const user = userEvent.setup();
-    renderPage();
+    await renderPage();
     await screen.findByRole('link', { name: '経費規程 2025' });
 
     await user.click(screen.getByRole('button', { name: 'アーカイブ' }));
@@ -167,7 +169,7 @@ describe('DocumentManagementPage (SC-05)', () => {
 
   it('shows an alert when the list fails to load', async () => {
     mocks.apiFetch.mockRejectedValue(new Error('boom'));
-    renderPage();
+    await renderPage();
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('取得に失敗'));
   });

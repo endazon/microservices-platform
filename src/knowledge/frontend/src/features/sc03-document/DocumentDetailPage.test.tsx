@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { screen } from '@testing-library/react';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { ApiError } from '@foundation/api/ApiError';
 
 // SC-03, FR-06/FR-12: 文書詳細（メタデータ＋本文＋版履歴）の表示、本文領域の独立縮退、
@@ -13,7 +13,7 @@ vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ bffBaseUrl: '/bff', oidc: { authority: 'x', clientId: 'y' }, opsLinks: {}, wikiBaseUrl: 'https://wiki.example' }),
 }));
 
-import { DocumentDetailPage } from './DocumentDetailPage';
+import { createSc03DocumentRoute } from './index';
 
 const ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const DOC = {
@@ -52,14 +52,11 @@ function route(opts: RouteOpts = {}) {
   });
 }
 
-function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={[`/documents/${ID}`]}>
-      <Routes>
-        <Route path="documents/:id" element={<DocumentDetailPage />} />
-      </Routes>
-    </MemoryRouter>,
-  );
+// ADR-0031 / IADR-0124: 実ルート定義（/docs/$id）の上で描画する。
+async function renderPage() {
+  return renderUnitRoute((shell) => [createSc03DocumentRoute(shell)], {
+    initialEntry: `/docs/${ID}`,
+  });
 }
 
 // 注意: ブロック本体で undefined を返す（mockReset の戻り値を暗黙 return しない）。
@@ -70,7 +67,7 @@ beforeEach(() => {
 describe('DocumentDetailPage (SC-03)', () => {
   it('renders metadata, markdown body, source link and version history', async () => {
     route();
-    renderPage();
+    await renderPage();
 
     expect(await screen.findByRole('heading', { name: '経費規程 2025' })).toBeInTheDocument();
     expect(screen.getByText(/状態: published/)).toBeInTheDocument();
@@ -85,26 +82,26 @@ describe('DocumentDetailPage (SC-03)', () => {
 
   it('shows the SC-04 Wiki navigation link when wikiBaseUrl is configured', async () => {
     route();
-    renderPage();
+    await renderPage();
     const link = await screen.findByRole('link', { name: 'Wiki で開く' });
     expect(link).toHaveAttribute('href', '/wiki');
   });
 
   it('shows a neutral message on 404 (existence hidden)', async () => {
     route({ detailError: new ApiError('notFound', 'x', 404) });
-    renderPage();
+    await renderPage();
     expect(await screen.findByText('文書が見つかりませんでした。')).toBeInTheDocument();
   });
 
   it('shows an alert on server error', async () => {
     route({ detailError: new ApiError('server', 'x', 500) });
-    renderPage();
+    await renderPage();
     expect(await screen.findByRole('alert')).toHaveTextContent('取得に失敗');
   });
 
   it('degrades only the content area when content fetch fails (metadata still shown)', async () => {
     route({ contentError: true });
-    renderPage();
+    await renderPage();
     expect(await screen.findByRole('heading', { name: '経費規程 2025' })).toBeInTheDocument();
     expect(await screen.findByText('本文は利用できません。')).toBeInTheDocument();
   });

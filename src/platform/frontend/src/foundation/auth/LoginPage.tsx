@@ -1,22 +1,28 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearch } from '@tanstack/react-router';
+import { Button } from '@platform/ui';
 import { useAuth } from './useAuth';
 
 // Issue #126: 明示ログイン画面。ボタン押下で Keycloak の認可コードフロー（PKCE）を開始する。
-// 既に認証済みならホームへ誘導する（ログイン画面に留まらない）。
+// 既に認証済みなら遷移元（RequireAuth が付ける ?from=）へ戻す。無ければ SC-01（主入口）へ。
+// 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」で統一する。
 export function LoginPage() {
   const { login, isAuthenticated } = useAuth();
+  // IADR-0124 決定 3: ルート ID のリテラルを渡す形だけが厳密に型付く。
+  const { from } = useSearch({ from: '/login' });
 
   if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+    // 遷移元は loginRoute の validateSearch が検証済み（SPA 内部の絶対パスのみ）。
+    // IADR-0124 決定 5: 実行時に決まる遷移先は Link/Navigate の union で検査できない。
+    return <Navigate to={(from ?? '/ask') as '/ask'} replace />;
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: '4rem auto', textAlign: 'center' }}>
-      <h1>Knowledge Platform</h1>
-      <p>社内ナレッジ検索・AI 回答プラットフォーム</p>
-      <button type="button" onClick={() => void login()}>
+    <main className="mx-auto mt-24 max-w-md text-center">
+      <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>
+      <p className="mt-2 text-sm text-[--color-fg-muted]">社内ナレッジ検索・AI 回答プラットフォーム</p>
+      <Button variant="primary" className="mt-6" onClick={() => void login()}>
         Keycloak でサインイン
-      </button>
+      </Button>
     </main>
   );
 }

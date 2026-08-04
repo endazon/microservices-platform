@@ -9,9 +9,10 @@ related_ids:
   - FR-09
   - FR-10
   - ADR-0004
+  - IADR-0124
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -55,6 +56,27 @@ SC-09/SC-10/SC-11 は管理者（`platform-admin`）または運用者（`platfo
 2. **メニューの存在秘匿**: `FeatureModule.nav` に `requiresAnyRole?` を持たせ、`Layout` は権限のある項目のみを描画する。権限外にはメニューを **表示しない**（[[IADR-0009]] の存在秘匿の UI 表現）。
 3. **直接遷移時の存在秘匿**: `RequireRole` は権限外の場合 `NotFound`（404 相当）を描画し、画面の存在を示さない・`/login` へも誘導しない。
 4. **信頼境界はサーバ**: UI 判定は利便性・存在秘匿のためであり、認可の実効境界は BFF/サービス側（`AdminOnly` は 403、`ConfigViewer` は 404 秘匿）に置く。UI をすり抜けても API が拒否する。
+
+> **［2026-08-04 追記］決定 2 の「`FeatureModule.nav` に `requiresAnyRole?` を持たせ」は
+> [[IADR-0124]]（#490）で部分改定された。**
+> 移行第 2 段でユニットの合成契約が型付きルート factory へ変わり、ナビがルート宣言から分離したためである。
+> **現行値では、本リポジトリが所有するユニット（`@knowledge`）は `NavItem`
+> （`{ id, label, to, requiresAnyRole?, group? }`）を独立して公開し、合成点を知る唯一の場所
+> （`foundation/routing/router.tsx`）が `registerNavItems()` で登録簿へ登録する。**
+> `Layout` は登録簿を読むだけで可変ユニットを参照しない。
+> 旧契約（`FeatureModule.nav`）は本リポジトリから変更できないユニット（`@ai-stock-trading`。[[IADR-0120]]）の
+> ための互換ブリッジとして残り、`legacyNavItems()` が同じ `NavItem` へ写像する。
+> あわせて `group?`（05_screens §共通シェル の 4 グループ）が加わった。
+> **決定 2 の趣旨——「権限のある項目のみを描画し、権限外にはメニューを表示しない」——は
+> そのまま維持されている**（絞り込みは従来どおり `Layout` が `requiresAnyRole` で行う）。
+> 変わったのは nav の**出所と登録経路**だけであり、決定 1・3・4 は本 IADR が引き続き有効である
+> （したがって状態は `Accepted` のまま）。現行値は
+> [IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 1・5 を正とする。
+>
+> なお **決定 3（直接遷移時の存在秘匿）については、#490 で「未知パス」側の描画も揃えた**——
+> 未知パスの受け皿（catch-all）を共通シェル配下へ置き、`RequireRole` → `NotFound` と
+> 同じ画面になるようにした（[IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 8）。
+> これは決定 3 の趣旨の補強であり改定ではない。
 
 ## 理由
 

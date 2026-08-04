@@ -27,6 +27,9 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
+> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+
+
 - 機能要求（FR）: FR-03 / FR-04 / FR-08 / FR-11 / FR-05
 - ユースケース（UC）: UC-01
 - 受け入れ基準の所在: Issue #127 ／ `docs/specs/20260708_issue-127_sc01-search-chat.md`
@@ -59,7 +62,7 @@ related_specs:
 | T-09 | front | citations→token*→done | 本文連結表示・出典リンク・検索結果表示 | UC-01 | 自動 |
 | T-10 | front | done 後に 👍 | `/bff/feedback` に answerId＋rating='up' 送信・送信済表示 | FR-08 | 自動 |
 | T-11 | front | error イベント | `role="alert"` 回答生成失敗 | 異常系 | 自動 |
-| T-12 | front | 未認証 `/search` | `/login` へ誘導 | 認証ガード | 自動(E2E) |
+| T-12 | front | 未認証 `/ask` | `/login` へ誘導 | 認証ガード | 自動(E2E) |
 
 ## 未決事項
 

@@ -2,7 +2,7 @@
 title: SPA 基盤（platform/frontend）の React 19 + Vite + TanStack 移行 — 段階分割と第 1 段（新スタックの土台）
 type: spec
 status: done
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0121]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0121, IADR-0124]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -13,6 +13,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md"
 related_specs:
   - "../../feedback/20260804_frontend-migration-staging-interpretation.md"
+  - ./20260804_issue-490_spa-router-shell.md
   - ./20260708_issue-126_frontend-spa-foundation.md
   - ./20260802_issue-454_reimplementation-kickoff.md
   - "../adr/IADR-0121_spa-stack-migration-staging.md"
@@ -65,12 +66,22 @@ issue を分割する）に反し、レビュー可能性（CLAUDE.md「人間�
 | --- | --- | --- | --- |
 | **第 1 段** | **新スタックの土台**: pnpm workspace / React 19 / TanStack Query / Tailwind v4 ＋ `packages/ui` / orval（BFF OpenAPI → 型・フック・MSW モック）/ 機械強制 lint / CI の pnpm 化 | #446（本 issue） | **○** |
 | 第 2 段 | **ルーティングとアプリシェル**: TanStack Router 移行・共通シェル（ナビ／ユーザーアイコン→SC-16／通知）・旧 13 画面の削除・shadcn/ui コンポーネント本移植・Lingui(ja/en)・Storybook | 要起票（#452 と同一 PR 群 or 直前） | × |
+| ↳ **第 2 段は 2 つに分かれた**［2026-08-04 追記］ | **#490 で消化**: TanStack Router 移行・共通シェル（ナビ／ユーザーアイコン→SC-16／通知）・旧画面のルート載せ替え。**未起票の残件**: shadcn/ui コンポーネント本移植・Lingui(ja/en)・Storybook。**旧 13 画面の削除・再実装は #452**（feedback §完了条件 の割り当て）。現行値は [IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md) と [#490 仕様書](./20260804_issue-490_spa-router-shell.md) を正とする | #490 ＋ 要起票 | × |
 | 第 3 段 | **認証**: BFF セッション方式（ADR-0032）へ移行し `oidc-client-ts` を撤去 | #439 と協調 | × |
 | 第 4 段 | **画面機能の土台**: 右レール AI チャット（SSE）の状態管理・Zustand・TanStack Table・ECharts・RHF/Zod | #452 に随伴 | × |
 | 第 5 段 | **運用系**: Knip / Plop.js / Renovate / Husky + lint-staged / Commitlint | 要起票 | × |
 
 段の順序は依存関係である。第 1 段はどの段からも参照される土台であり、**第 2 段以降を単独では進められない**
 （pnpm と `packages/ui` と orval が無いと、画面実装は手書きクライアントと個別 CSS に逆戻りする）。
+
+> **［2026-08-04 追記 / #490］第 2 段の分割について。** 本表は
+> [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 1 が「段の内容・境界の正」と
+> 指定する表であるため、実際の起票と食い違ったまま放置しない。#490 はルータ・共通シェル・
+> 旧画面のルート載せ替えに限定して起票された（理由: [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md)
+> 規約 4。ルータ差し替えと UI ライブラリ・i18n・カタログの導入を 1 PR に入れるとレビューが成立しない）。
+> 本決定 1 自身が起票先を「#452 と同一 PR **群**、または直前の独立 issue」と複数形で書いており、
+> この分割は決定の枠内にある。残件の起票内容は
+> [#490 仕様書 §親への申し送り](./20260804_issue-490_spa-router-shell.md#親への申し送り) を参照。
 
 #### なぜ TanStack Router を第 1 段に入れないか（判断と根拠）
 

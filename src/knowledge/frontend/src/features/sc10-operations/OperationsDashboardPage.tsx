@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
 import { appConfig } from '@foundation/config/runtimeConfig';
@@ -79,7 +79,7 @@ export function OperationsDashboardPage() {
     <section>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>運用ダッシュボード</h1>
-        {canViewConfig && <Link to="/config">構成ビューア →</Link>}
+        {canViewConfig && <Link to="/admin/config-viewer">構成ビューア →</Link>}
       </div>
 
       <label>

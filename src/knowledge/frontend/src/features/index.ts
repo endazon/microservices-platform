@@ -1,31 +1,49 @@
-import type { FeatureModule } from '@foundation/routing/featureRegistry';
-import { homeFeature } from './home';
-import { sc01SearchFeature } from './sc01-search';
-import { sc02ResultsFeature } from './sc02-results';
-import { sc03DocumentFeature } from './sc03-document';
-import { sc04WikiFeature } from './sc04-wiki';
-import { sc05DocumentsFeature } from './sc05-documents';
-import { sc06DataSourcesFeature } from './sc06-datasources';
-import { sc07ConversionsFeature } from './sc07-conversions';
-import { sc08AnalysisFeature } from './sc08-analysis';
-import { sc09AdminAbacFeature } from './sc09-admin-abac';
-import { sc10OperationsFeature } from './sc10-operations';
-import { sc11ConfigFeature } from './sc11-config';
+import type { ShellRoute } from '@foundation/routing/shell';
+import type { NavItem } from '@foundation/routing/featureRegistry';
+import { createSc01SearchRoute, sc01SearchNav } from './sc01-search';
+import { createSc02ResultsRoute, sc02ResultsNav } from './sc02-results';
+import { createSc03DocumentRoute } from './sc03-document';
+import { createSc04WikiRoute, sc04WikiNav } from './sc04-wiki';
+import { createSc05DocumentsRoute, sc05DocumentsNav } from './sc05-documents';
+import { createSc06DataSourcesRoute, sc06DataSourcesNav } from './sc06-datasources';
+import { createSc07ConversionsRoute, sc07ConversionsNav } from './sc07-conversions';
+import { createSc08AnalysisRoute, sc08AnalysisNav } from './sc08-analysis';
+import { createSc09AdminAbacRoute, sc09AdminAbacNav } from './sc09-admin-abac';
+import { createSc10OperationsRoute, sc10OperationsNav } from './sc10-operations';
+import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
 
-// Issue #126: 有効な feature の登録簿。SC-01..11 の sub-issue はここへ 1 行追加するだけで
-// 認証済みレイアウト配下にマウントされる（骨組みへの追加が疎結合）。
-export const features: FeatureModule[] = [
-  homeFeature,
-  sc01SearchFeature, // SC-01 検索／チャット質問（#127）
-  sc02ResultsFeature, // SC-02 検索結果一覧（#128）
-  sc03DocumentFeature, // SC-03 文書詳細／プレビュー（#129）
-  sc04WikiFeature, // SC-04 Wiki 閲覧導線（#130）
-  sc05DocumentsFeature, // SC-05 文書管理（#131）
-  sc06DataSourcesFeature, // SC-06 データソース管理（#132）
-  sc07ConversionsFeature, // SC-07 変換ジョブ（#133）
-  sc08AnalysisFeature, // SC-08 AI分析ダッシュボード（#134）
-  sc09AdminAbacFeature, // SC-09 管理者設定（ABAC）（#135）
-  sc10OperationsFeature, // SC-10 運用ダッシュボード（#136）
-  sc11ConfigFeature, // SC-11 構成ビューア（#137/#138/#140）
-  // 例: sc02ResultsFeature, sc03DocumentFeature, ...（各 sub-issue で追加）
+// ADR-0031 / IADR-0124 決定 1: 本ユニットの画面を 1 本のタプルにして公開する。
+// platform の合成点は、このタプルをスプレッドして型付きルート木へ組み込む。
+//
+// **戻り値へ型注釈を書いてはならない。** `readonly AnyRoute[]` などを付けた瞬間に
+// ルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる
+// （IADR-0124 §実測）。画面を足すときはタプルへ 1 行足す。
+export const createKnowledgeRoutes = (shell: ShellRoute) =>
+  [
+    createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127）
+    createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128）
+    createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129）
+    createSc04WikiRoute(shell), // SC-04 Wiki 閲覧導線（#130）
+    createSc05DocumentsRoute(shell), // SC-05 文書管理（#131）
+    createSc06DataSourcesRoute(shell), // SC-06 データソース管理（#132）
+    createSc07ConversionsRoute(shell), // SC-07 変換ジョブ（#133）
+    createSc08AnalysisRoute(shell), // SC-08 AI分析ダッシュボード（#134）
+    createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135）
+    createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136）
+    createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140）
+  ] as const;
+
+// 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。
+// SC-03 はナビに出さない（一覧・検索からの遷移で到達する）。
+export const knowledgeNavItems: readonly NavItem[] = [
+  sc01SearchNav,
+  sc02ResultsNav,
+  sc04WikiNav,
+  sc08AnalysisNav,
+  sc05DocumentsNav,
+  sc06DataSourcesNav,
+  sc07ConversionsNav,
+  sc09AdminAbacNav,
+  sc10OperationsNav,
+  sc11ConfigNav,
 ];

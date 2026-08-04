@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
 import { ErrorList } from '@foundation/ui/ErrorList';
@@ -139,7 +139,9 @@ export function DocumentManagementPage() {
                 <tr key={d.id}>
                   <td>
                     {/* SC-03: 詳細・版履歴へ内部遷移 */}
-                    <Link to={`/documents/${d.id}`}>{d.title}</Link>
+                    <Link to="/docs/$id" params={{ id: d.id }}>
+                      {d.title}
+                    </Link>
                   </td>
                   <td>{d.status}</td>
                   <td>v{d.version}</td>

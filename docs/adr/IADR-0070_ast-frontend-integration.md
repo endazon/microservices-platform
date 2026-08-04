@@ -8,9 +8,10 @@ related_ids:
   - IADR-0057
   - IADR-0063
   - IADR-0068
+  - IADR-0124
 author: claude
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -59,6 +60,22 @@ platform `tsconfig.app.json`（型検査）へ追加し、`platform/frontend/src
 ESLint 依存方向ルールも `@knowledge` と同形にする（platform は合成点以外で `@ai-stock-trading` を
 参照禁止／AST frontend は `@features` を参照禁止）。AST feature テストは root vitest が
 **実 foundation** 上で収集・実行する（AST の `@foundation` スタブは合成時に使われない）。
+
+> **［2026-08-04 追記］決定 1 の「厳密同形」は [[IADR-0124]]（#490）で部分改定された。**
+> 計画 [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) が
+> ルーティングを TanStack Router と確定し、移行第 2 段でユニットの合成契約が
+> **型付きルート factory のタプル ＋ ナビ項目**（[IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 1）へ
+> 変わったためである。**現行値では `@knowledge` と `@ai-stock-trading` は同形ではない**——
+> `@knowledge` は新契約、**`@ai-stock-trading` は旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）の
+> 互換ブリッジ**（同 決定 2）で束ねられる。ブリッジのルートは型付きルート木の外側にあり、
+> 実行時にのみ共通シェルへ接ぎ木される（`<Link to>` の型 union には現れない）。
+> **この非同形は本リポジトリから AST を変更できないこと（[[IADR-0120]]）の写像であり、意図的である。**
+> AST が新契約へ移れば同形へ戻り、ブリッジは削除できる。
+> 改定はこの 1 点に限り、決定 1 のうち「独自機構を持ち込まない」「エイリアスを vite / root vitest /
+> `tsconfig.app.json` へ追加する」「ESLint 依存方向ルールを同形にする」「AST feature テストを
+> root vitest が実 foundation 上で実行する」および決定 2・3 は本 IADR が引き続き有効である
+> （したがって状態は `Accepted` のまま）。現行値は
+> [IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 1・2 を正とする。
 
 ### 2. AST 共有 Dockerfile を「context/args 対応」で deploy 面へ載せる（ツールを後方互換拡張）
 

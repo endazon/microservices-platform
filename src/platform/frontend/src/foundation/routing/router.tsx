@@ -1,28 +1,56 @@
-import { createBrowserRouter } from 'react-router-dom';
-import type { RouteObject } from 'react-router-dom';
-import { Layout } from '@foundation/ui/Layout';
-import { NotFound } from '@foundation/ui/NotFound';
-import { RequireAuth } from '@foundation/auth/RequireAuth';
-import { LoginPage } from '@foundation/auth/LoginPage';
-import { CallbackPage } from '@foundation/auth/CallbackPage';
-import { features } from '@features/index';
+import { createRouter } from '@tanstack/react-router';
+import type { AnyRoute } from '@tanstack/react-router';
+import {
+  rootRoute,
+  loginRoute,
+  callbackRoute,
+  shellRoute,
+  homeRedirectRoute,
+  catchAllRoute,
+} from './shell';
+import { createLegacyRoutes, legacyNavItems } from './featureRegistry';
+import { registerNavItems } from './nav';
+import { createUnitRoutes, unitNavItems, legacyUnitFeatures } from '@features/index';
 
-// Issue #126: ルーティング組み立て。features の子ルートを認証ガード + 共通レイアウト配下へ束ねる。
-export function buildRoutes(): RouteObject[] {
-  const featureChildren = features.flatMap((f) => f.routes);
-  return [
-    { path: '/login', element: <LoginPage /> },
-    { path: '/callback', element: <CallbackPage /> },
-    {
-      path: '/',
-      element: (
-        <RequireAuth>
-          <Layout />
-        </RequireAuth>
-      ),
-      children: [...featureChildren, { path: '*', element: <NotFound /> }],
-    },
-  ];
+// ADR-0031 / IADR-0124: ルート木の組み立て。
+//
+// 型安全の要は「型付きルートだけで addChildren を済ませる」こと。ここへ AnyRoute を 1 つでも
+// 混ぜると、ルート ID・パスの union も検索パラメータの型も**静かに**失われる（IADR-0124 §実測）。
+// 旧契約（AST）のルートは型付けを済ませた後で children へ足す。
+// `/`（アプリホストの責務。IADR-0124 決定 6）と未知パスの受け皿（同 決定 8）は
+// ユニットではなく shell.tsx が持つ。catchAllRoute はスプラットのため最後に置く。
+const shellWithUnits = shellRoute.addChildren([
+  homeRedirectRoute,
+  ...createUnitRoutes(shellRoute),
+  catchAllRoute,
+] as const);
+
+/**
+ * 旧契約ユニットのルートを実行時にだけ接ぎ木する（IADR-0124 決定 2）。
+ * 型には現れないため、これらの画面は `<Link to>` の union に入らない（受け入れ済みの制約）。
+ */
+function appendLegacyRoutes(routes: AnyRoute[]): void {
+  if (routes.length === 0) return;
+  // 型付きの children（タプル）へ「型を持たないルート」を足す操作であり、型の上では表現できない。
+  // ここが本ファイルで唯一の型消去であり、これを型付きの配列側へ持ち込むと union が壊れる。
+  const parent = shellWithUnits as unknown as { children?: AnyRoute[] };
+  parent.children = [...(parent.children ?? []), ...routes];
 }
+appendLegacyRoutes(createLegacyRoutes(shellRoute, legacyUnitFeatures));
 
-export const router = createBrowserRouter(buildRoutes());
+// IADR-0124 決定 1: 合成点を知るのはこのモジュールだけ。共通シェル（foundation/ui/Layout）は
+// 登録済みのナビを読むだけで、可変ユニットを参照しない。
+registerNavItems([...unitNavItems, ...legacyNavItems(legacyUnitFeatures)]);
+
+export const routeTree = rootRoute.addChildren([loginRoute, callbackRoute, shellWithUnits]);
+
+export const router = createRouter({ routeTree });
+
+// IADR-0124 決定 4: 型登録は `@tanstack/react-router`（再エクスポート側）ではなく、
+// Register インターフェースの**宣言元**である `@tanstack/router-core` へ行う。
+// 宛先を誤ると型エラーは出ないまま useSearch / useParams / Link の型が全て緩む。
+declare module '@tanstack/router-core' {
+  interface Register {
+    router: typeof router;
+  }
+}

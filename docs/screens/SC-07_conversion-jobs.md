@@ -27,6 +27,8 @@ related_specs:
 - 関連機能要求（FR）: **FR-12**（文書正規化）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/admin/conversions` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 変換状況・失敗ジョブの一覧を表示し、失敗ジョブの人手補正（再変換）を行う運用画面。SC-06（データソース管理）からの遷移先（取り込み→変換の運用フロー）。
 

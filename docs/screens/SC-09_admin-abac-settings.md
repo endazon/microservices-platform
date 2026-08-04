@@ -27,6 +27,8 @@ related_specs:
 - 関連機能要求（FR）: **FR-09**（ABAC 属性・ポリシー管理）、FR-05（ABAC）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/admin/abac` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
+
 
 利用者属性・文書属性／タグ（属性辞書）とアクセスポリシー（利用者属性 × 文書属性 → 許可アクション）を管理する画面。保存前にポリシーを検証し、矛盾・構文エラーを表示する。
 

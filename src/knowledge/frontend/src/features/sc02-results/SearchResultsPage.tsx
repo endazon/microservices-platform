@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧画面。キーワード／意味検索の結果を一覧表示し、各件から
@@ -25,9 +25,11 @@ interface SearchResponse {
 type Status = 'idle' | 'loading' | 'ok' | 'error';
 
 export function SearchResultsPage() {
-  const [params, setParams] = useSearchParams();
-  const initialQuery = params.get('q') ?? '';
-  const [input, setInput] = useState(initialQuery);
+  // SC-02, ADR-0031 / IADR-0124 決定 3: 検索パラメータ `?q=` は型付きで受け取る。
+  // ルート ID のリテラルを渡す形だけが厳密に型付く（Route.useSearch() は any になる）。
+  const { q: urlQuery } = useSearch({ from: '/_shell/search' });
+  const navigate = useNavigate();
+  const [input, setInput] = useState(urlQuery);
   const [status, setStatus] = useState<Status>('idle');
   const [response, setResponse] = useState<SearchResponse | null>(null);
 
@@ -56,9 +58,8 @@ export function SearchResultsPage() {
   }, []);
 
   // 初期表示・URL の ?q= 変化（SC-01 等からのディープリンク・戻る操作）で検索する。
-  // onSubmit 由来の setParams による ?q= 更新は既に runSearch 済み（lastSearched 一致）のため再実行しない
+  // onSubmit 由来の navigate による ?q= 更新は既に runSearch 済み（lastSearched 一致）のため再実行しない
   // （送信ごとの /bff/search 二重発火を防ぐ。単一の発火経路に統一）。
-  const urlQuery = params.get('q') ?? '';
   useEffect(() => {
     const q = urlQuery.trim();
     if (q && q !== lastSearched.current) {
@@ -72,7 +73,7 @@ export function SearchResultsPage() {
     const q = input.trim();
     // 単一経路で実行し、検索条件を URL に反映する（共有・戻る操作で再現可能に）。
     runSearch(q);
-    setParams(q ? { q } : {});
+    void navigate({ to: '/search', search: { q } });
   }
 
   const results = response?.results ?? [];
@@ -132,7 +133,7 @@ function ResultItem({ result }: { result: SearchResult }) {
   return (
     <li style={{ border: '1px solid #eee', borderRadius: 6, padding: '0.5rem 0.75rem', margin: '0.5rem 0' }}>
       {/* SC-02 → SC-03: 文書詳細へ内部遷移する（ABAC はサーバ側で再適用）。 */}
-      <Link to={`/documents/${result.documentId}`} style={{ fontWeight: 600 }}>
+      <Link to="/docs/$id" params={{ id: result.documentId }} style={{ fontWeight: 600 }}>
         {result.documentTitle}
       </Link>{' '}
       <small aria-label="スコア">score {result.score.toFixed(2)}</small>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from '@tanstack/react-router';
 import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
 import { appConfig } from '@foundation/config/runtimeConfig';
@@ -39,7 +39,8 @@ type Status = 'loading' | 'ok' | 'notFound' | 'error';
 type ContentStatus = 'loading' | 'ok' | 'unavailable';
 
 export function DocumentDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  // SC-03, IADR-0124 決定 3: パスパラメータはルート ID のリテラルを渡す形だけが厳密に型付く。
+  const { id } = useParams({ from: '/_shell/docs/$id' });
   const [status, setStatus] = useState<Status>('loading');
   const [doc, setDoc] = useState<DocumentDetail | null>(null);
   const [contentStatus, setContentStatus] = useState<ContentStatus>('loading');

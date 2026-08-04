@@ -24,9 +24,12 @@ related_specs:
 
 ## テスト観点と受け入れ基準の対応
 
+> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+
+
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
-| 1 | 検索・一覧・内部遷移 | FR-03, UC-01 | 送信で `POST /bff/search` を呼び、結果を一覧表示、タイトルが SC-03（`/documents/:id`）へリンク。属性・スニペットも表示 | `searches on submit and lists results linking to SC-03 document detail` |
+| 1 | 検索・一覧・内部遷移 | FR-03, UC-01 | 送信で `POST /bff/search` を呼び、結果を一覧表示、タイトルが SC-03（`/docs/:id`）へリンク。属性・スニペットも表示 | `searches on submit and lists results linking to SC-03 document detail` |
 | 2 | ディープリンク | FR-03 | `?q=` 付きで開くと自動検索し結果を表示 | `auto-searches from the ?q= deep link` |
 | 3 | 存在秘匿（空） | FR-05, IADR-0009 | 結果 0 件（deny-by-default 含む）で中立メッセージ。権限外と 0 件を区別しない | `shows a neutral empty message when access-scoped results are empty` |
 | 4 | 異常系 | FR-03 | 検索失敗時に `role="alert"` を表示 | `shows an alert when the search request fails` |

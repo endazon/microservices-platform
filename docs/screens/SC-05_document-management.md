@@ -28,8 +28,10 @@ related_specs:
 - 関連機能要求（FR）: **FR-06**（文書管理）、FR-05（ABAC 属性）、FR-09（属性整合）
 
 ## 画面概要・目的
+> **［2026-08-04 / #490］ルートは `/admin/documents` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
 
-正規化文書の CRUD・属性／タグ設定・公開／アーカイブを行う管理画面。詳細・本文・版履歴は SC-03（`/documents/:id`）へ委譲する。保存（公開）で取り込み・Wiki 同期がトリガされる。
+
+正規化文書の CRUD・属性／タグ設定・公開／アーカイブを行う管理画面。詳細・本文・版履歴は SC-03（`/docs/:id`）へ委譲する。保存（公開）で取り込み・Wiki 同期がトリガされる。
 
 - アクセス: **platform-admin/operator 限定**（[IADR-0041](../adr/IADR-0041_document-write-bff-abac-scoped.md)）。権限外はルート・ナビとも非表示。既存文書への操作はさらに ABAC スコープ内に限定（閲覧できない文書は変更不可・404 秘匿）。
 

@@ -20,6 +20,9 @@ related_specs:
 
 ## バックエンド（BFF・xUnit）
 
+> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+
+
 対象: `src/platform/backend/Bff/KnowledgePlatform.Bff/Foundation/Endpoints/DocumentBffEndpoints.cs`（書き込み）
 テスト: `src/platform/backend/Bff/KnowledgePlatform.Bff.Tests/BffDocumentWriteEndpointTests.cs`
 
@@ -67,7 +70,7 @@ related_specs:
 ## ロール・存在秘匿の担保
 
 - 書き込みは BFF で admin/operator 限定（2/3/4 で 403/401 検証）。既存文書操作はスコープ外を 404 秘匿（7/11）。
-- フロントは `RequireRole` で `/documents` を出し分け（page テストは機能検証、ルートガードは `RequireRole` 既存テストで担保）。
+- フロントは `RequireRole` で `/admin/documents` を出し分け（page テストは機能検証、ルートガードは `RequireRole` 既存テストで担保）。
 
 ## 実行
 
