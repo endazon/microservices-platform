@@ -12,6 +12,7 @@
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 3 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外。2 → 3 の改定は IADR-0117）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
 | `check-cpm-versions.js` | CPM（Central Package Management）のバージョン直書き禁止の機械強制（#467）。`src/`（`ai-stock-trading` を除く）と `templates/` の `.csproj` を走査し、`PackageReference` の `Version` **属性**と `<Version>` **子要素**（MSBuild では属性形と等価）を違反として検出。違反があれば終了コード 1（着手時点の実測が違反 0 件のため ratchet / baseline を持たず最初から fail）。`VersionOverride` は CPM 公式の回避口のため**許可**し、使用箇所のみ `warn` ＋ 実行サマリの表で可視化する（終了コードは変えない）。走査対象は `.csproj`（雛形の `.csproj.sample` 含む）のみ——`.props` / `.targets` には正当な版記述（`PackageVersion` / `GlobalPackageReference`）があるため。XML コメントは除去してから走査する（説明コメント内の例示を赤にしない）。`check-backend-libraries.js` とは関心が異なる（**どの**ライブラリか / 版を**どこに**書くか）。`--self-test` で検証器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
+| `check-contract-schema.js` | サービス間契約（`Shared.Contracts` のイベント/API スキーマ）の後方互換検査（#465 / IADR-0122）。`src/<unit>/backend/Shared/*.Contracts`（`ai-stock-trading` を除く）の `.cs` を**構文解析**し、public 型・メンバー・enum 値・`const` 値・属性を正規化 JSON スナップショット `contract-schema-baseline.json` へ落として比較する。削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・**既定値の無いメンバーの追加**は**破壊的**として終了コード 1。非破壊の追加でも baseline と差分がある限り fail する（＝スナップショットテスト。`--update` で baseline を更新し、差分＝契約変更そのものを PR の diff に載せる）。破壊的変更は `contract-breaking-allowlist.json` の承認エントリ（`key`/`reason`/`approvedBy`/`issue`/`date` すべて必須）で通す（下記「契約の破壊的変更」）。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・proto（`.proto` 0 件）を採らない理由は IADR-0122。`--self-test` で検査器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
 | `lib/excluded-units.js` | 検査器共通。`.gitmodules` の `src/<unit>` submodule から**検査対象外ユニット**を導出する単一情報源（#473）。`check-backend-libraries.js` / `check-test-traceability.js` / `check-coverage-floor.js` が使う。リポジトリ直下の `planning` は `src/` 配下でないためユニットにならない。`.gitmodules` が読めない場合は既定値へフォールバックせず**例外で停止**（除外 0 件で別プロジェクトを検査する fail-open を避ける）。`--self-test` でヘルパ自体も試験 | — |
@@ -45,6 +46,9 @@ node scripts/check-unit-dependencies.js --self-test # 検査器の自己試験
 node scripts/check-unit-dependencies.js            # ユニット依存方向の検査（#231）
 node scripts/check-cpm-versions.js --self-test     # 検査器の自己試験
 node scripts/check-cpm-versions.js                 # CPM のバージョン直書き検査（#467）
+node scripts/check-contract-schema.js --self-test  # 検査器の自己試験
+node scripts/check-contract-schema.js              # Shared.Contracts の後方互換検査（#465）
+node scripts/check-contract-schema.js --update     # baseline を現状で更新（承認済みの破壊的変更を消費）
 node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
 node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
 node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in ゲート横断 smoke test（#334・要 bash）
@@ -86,6 +90,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
 | `unit-service-ownership` | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107） |
 | `cpm-versions` | `check-cpm-versions.js --self-test` と本検査（#467。CPM のバージョン直書き禁止） |
+| `contract-schema` | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
 | `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
@@ -171,6 +176,50 @@ module.exports = ({ ok, assert }) => {
 | companion が git 未追跡 | `warning:`（CI に存在せず固有テストが走らないため） |
 | 旧名 `scripts.local.test.js` のみ | 読み込む ＋ `warning:` で改名を促す |
 | 新旧が**両方**ある | 新名を優先して読み込み、`warning:` で旧名の残存を知らせる（移行漏れならテストを移し、不要なら削除する） |
+
+## 契約の破壊的変更（`Shared.Contracts`）
+
+サービス間契約の後方互換は `check-contract-schema.js` が CI（`contract-schema` ジョブ）で機械検査する。
+方式と分類の決定は [IADR-0122](../docs/adr/IADR-0122_contract-schema-source-and-compat-gate.md)。
+
+### 非破壊の変更（フィールド追加など）
+
+1. 契約を変更する（**新しいフィールドには既定値を付ける**。既定値が無い追加は破壊的として扱われる）。
+2. `node scripts/check-contract-schema.js --update` を実行する。
+3. 更新された `contract-schema-baseline.json` を同じ PR にコミットする。
+
+非破壊でも一度 CI が赤くなるのは意図的である。契約の変更を**必ず PR の diff に載せる**ことが本ゲートの
+主眼であり（「両側同時更新で気付かれない」失敗を止める）、baseline の差分がレビューの対象になる。
+
+### 破壊的な変更（削除・型変更・必須化・並べ替え・enum/const 値の変更・属性の変更）
+
+**まず互換を保つ道を検討する**（新フィールドは既定値付きで足す／削除ではなく非推奨のまま残す／
+新しいイベント型・API バージョンを足して移行期間を設ける。計画 `06_technical/10_composability-design` §3
+「後方互換の追加のみ許可、削除・意味変更は新バージョン＋移行期間」）。
+
+そのうえで破壊が必要なら、次の手順で**承認の記録を残して**通す。
+
+1. `node scripts/check-contract-schema.js` の失敗出力から `key:` の行をコピーする。
+2. `contract-breaking-allowlist.json` の `approvals` へ書く（**5 項目すべて必須**）。
+
+   ```json
+   {
+     "key": "memberRemoved:Knowledge.Contracts.Events.IngestionCompleted.ChunkCount",
+     "reason": "なぜ壊すか（互換を保てない理由・移行の段取り）",
+     "approvedBy": "承認者",
+     "issue": "#123",
+     "date": "2026-08-04"
+   }
+   ```
+
+3. `node scripts/check-contract-schema.js --update` を実行する。承認エントリは
+   `contract-schema-baseline.json` の `$acceptedBreakingChanges` へ**移され**、allowlist は空へ戻る。
+4. 更新された 2 ファイルを同じ PR にコミットする（承認の記録は baseline 側に残り、git 履歴で追える）。
+
+`--update` は**未承認の破壊的変更があると baseline を更新しない**。承認を書かずに通す道は無い。
+逆に、対応する変更が無い承認が allowlist に残っていれば検査は fail する（承認だけが残ると次の破壊的
+変更を黙って通すため）。既存 ratchet 群（`backend-library-baseline.json` /
+`test-traceability-allowlist.json` / `coverage-floor.json`）と同じ 3 判定である。
 
 ## 自動生成（CI）
 
