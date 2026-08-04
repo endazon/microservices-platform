@@ -1060,4 +1060,40 @@ module.exports = ({ ok, assert }) => {
     }
     assert.strictEqual(run().status, 0, '撤去後に exit 0 へ戻らない');
   });
+
+  // 受け入れ基準（#467）「VersionOverride の使用箇所が実行サマリに出る」の実測。
+  // inlineVersionFindings() の検出だけを試験すると、出力側 reportOverrides() が壊れても緑のままになる
+  // （警告が出ないことは終了コードに現れないため、CI も緑で通る）。よって出力経路ごと子プロセスで見る。
+  ok('CPM: VersionOverride は exit 0 のまま実行サマリとアノテーションへ出る（出力経路）', () => {
+    const { spawnSync } = require('child_process');
+    const probe = path.join(__dirname, '..', 'src', 'platform', 'backend', 'cpm-override-probe.csproj');
+    const summary = path.join(os.tmpdir(), `cpm-summary-${process.pid}-${Date.now()}.md`);
+    fs.writeFileSync(probe,
+      '<Project><ItemGroup><PackageReference Include="OverrideProbe" VersionOverride="9.9.9" />'
+      + '</ItemGroup></Project>\n');
+    try {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js')], {
+        encoding: 'utf8',
+        // GITHUB_ACTIONS=true で ci-annotate が workflow コマンド（::warning::）を stdout へ出す。
+        env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary },
+      });
+      // 許可であって違反ではない: 終了コードは 0 のまま。
+      assert.strictEqual(r.status, 0, `VersionOverride で exit ${r.status}（許可のはず）`);
+      assert.match(String(r.stdout), /::warning::CPM の VersionOverride を 1 件使用しています/);
+      assert.match(String(r.stdout), /OverrideProbe=9\.9\.9/);
+      const written = fs.readFileSync(summary, 'utf8');
+      assert.match(written, /### CPM: VersionOverride の使用箇所/);
+      assert.match(written, /OverrideProbe/);
+      assert.match(written, /9\.9\.9/);
+    } finally {
+      fs.rmSync(probe, { force: true });
+      fs.rmSync(summary, { force: true });
+    }
+    // 撤去後はサマリへも警告へも出ない（プローブが残って恒常的に警告が出る状態にしない）。
+    const after = spawnSync(process.execPath, [path.join(__dirname, 'check-cpm-versions.js')], {
+      encoding: 'utf8', env: { ...process.env, GITHUB_ACTIONS: 'true' },
+    });
+    assert.strictEqual(after.status, 0);
+    assert.doesNotMatch(String(after.stdout), /VersionOverride を [1-9]/);
+  });
 };
