@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SPA 基盤（アプリホスト + foundation: config/auth/api/routing/ui）。可変機能ユニットの features を src/features/index.ts（合成点）で束ねる。IADR-0033 / IADR-0056。",
+  "description": "SPA 基盤（アプリホスト + foundation: config/auth/api/routing/ui）。可変機能ユニットの features を src/features/index.ts（合成点）で束ねる。IADR-0121（IADR-0033 を Superseded）/ IADR-0056。",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,9 +12,24 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@platform/ui": "workspace:*",
+    "@tanstack/react-query": "^5.101.0",
     "oidc-client-ts": "^3.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^9.2.0",
+    "@playwright/test": "^1.47.2",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "msw": "^2.6.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.6.2",
+    "vite": "^6.4.3"
   }
 }

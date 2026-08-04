@@ -12,9 +12,15 @@
 src/
   Directory.Build.props        ← バックエンド共通 MSBuild 設定（単一情報源。ユニットで上書きしない）
   Directory.Packages.props     ← パッケージ中央管理（CPM。csproj に Version= を書かない）
-  package.json                 ← フロントエンド npm workspaces ルート（workspaces: ["*/frontend"]）
+  package.json                 ← フロントエンド pnpm workspace ルート（pnpm-workspace.yaml が正）
+  pnpm-workspace.yaml          ← workspace メンバ（'*/frontend' と 'packages/*'。IADR-0121）
   vitest.config.ts             ← フロント単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   eslint.config.js             ← フロント lint（全ユニット横断）
+  packages/                    ← ユニットに属さない共有ワークスペースパッケージ（IADR-0121 決定 4）
+    ui/                        ←   @platform/ui: デザイントークン(Tailwind v4)・cn()・shadcn/ui 派生プリミティブ
+                               ←   注: `.gitignore` の NuGet 用 `**/[Pp]ackages/*` と名前が衝突するため
+                               ←   `!src/packages/**` で除外解除している。ここへパッケージを足すときは
+                               ←   `git status` に現れることを必ず確認する（無視されてもビルドは通る）
   platform/                    ← 基盤ユニット（本リポジトリの主成果物）
     backend/
       backend.slnx
@@ -82,7 +88,10 @@ src/
    イベントに限る。この規則がユニットのサブモジュール切り出し可能性を担保する。
    - 例外1: 統合テスト（`Tests/`）は検証対象サービスへの ProjectReference を許可する
      （例: IntegrationTests → AuthorizationService.Api）。
-   - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）を参照してよい。
+   - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）と
+     `@platform/ui`（共有 UI パッケージ）を参照してよい（[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md)
+     決定 4 が本例外の許可先を 1 → 2 へ部分改定した。`@platform/ui` はドメイン・通信・ルーティング・認証を
+     持たないため、ユニットの切り出し可能性を損なわない。逆向き（`@platform/ui` → ユニット）の参照は禁止）。
      platform/frontend 側から可変ユニットを参照するのは合成点（`platform/frontend/src/features/index.ts`）のみとする。
    - 例外3: BFF の合成点（`platform/backend/Bff/Platform.Bff/`。合成点 `Composition/`）のみ、可変ユニットの BFF
      エンドポイントプロジェクト（`<unit>/backend/Bff/`）を参照してよい（例外2 の backend 版。IADR-0063）。
@@ -96,8 +105,9 @@ src/
   （`Directory.Build.props` / `Directory.Packages.props`）は `src/` に置き、ディレクトリ階層で
   全ユニット（submodule ユニット含む）へ自動継承される（ユニット単独リポジトリでのビルドには
   自前の同等設定が必要）。
-- **フロントエンド**: `src/` を npm workspaces ルート（`workspaces: ["*/frontend"]`）とし、
-  単一 lock で管理する。開発コマンドは `src/` で実行する（詳細は
+- **フロントエンド**: `src/` を pnpm workspace ルート（`pnpm-workspace.yaml` の `'*/frontend'` と
+  `'packages/*'`。[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
+  単一 lock（`pnpm-lock.yaml`）で管理する。開発コマンドは `src/` で実行する（詳細は
   [platform/frontend/README.md](platform/frontend/README.md)）。
 
 ## ユニットをサブモジュールとして追加する場合
@@ -112,7 +122,7 @@ src/
    `..\..\..\..\..\..\platform\backend\Shared\<Project>\<Project>.csproj`（サービス csproj から）とする。
    **CI は編集不要**（`.github/workflows/ci.yml` は `src/*/backend/backend.slnx` を自動発見する。IADR-0060）。
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
-4. フロントエンド: workspaces は `"*/frontend"` のため自動認識される。platform の合成点
+4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ import を 1 行追加する。
 5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
    `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。

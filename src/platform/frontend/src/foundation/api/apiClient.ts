@@ -29,25 +29,28 @@ export interface ApiRequest extends Omit<RequestInit, 'body'> {
   json?: unknown;
 }
 
-/** BFF へ JSON リクエストを送り、応答を型 T として返す。失敗時は ApiError を投げる。 */
-export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T> {
-  const { json, headers: initHeaders, ...rest } = req;
+/**
+ * BFF へリクエストを送り、成功応答（Response）をそのまま返す。失敗時は ApiError を投げる。
+ *
+ * IADR-0121 決定 3: SPA から出る HTTP はこの関数 1 箇所に収束させる。orval の生成クライアントも
+ * mutator（orvalMutator.ts）経由でここを通る——生成コードが素の fetch を呼ぶと、実行時 config
+ * （bffBaseUrl）も 401 再ログイン導線も効かないためである。本文の解釈だけを呼び出し側に委ねる
+ * （JSON を返す apiFetch / 生成コードの応答形へ包む bffFetch）。
+ */
+export async function apiRequest(path: string, init: RequestInit = {}): Promise<Response> {
   const cfg = appConfig();
   const token = await tokenProvider();
 
-  const headers = new Headers(initHeaders);
-  headers.set('Accept', 'application/json');
+  const headers = new Headers(init.headers);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  let body: BodyInit | undefined;
-  if (json !== undefined) {
-    headers.set('Content-Type', 'application/json');
-    body = JSON.stringify(json);
-  }
 
   let res: Response;
   try {
-    res = await fetch(cfg.bffBaseUrl + path, { ...rest, headers, body });
-  } catch {
+    res = await fetch(cfg.bffBaseUrl + path, { ...init, headers });
+  } catch (err) {
+    // 呼び出し側の意図的な中断（AbortController）はネットワーク障害へ丸めない。
+    if (err instanceof DOMException && err.name === 'AbortError') throw err;
     throw new ApiError('network', 'サーバへ到達できませんでした。', null);
   }
 
@@ -60,6 +63,22 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
     const details = res.status === 400 || res.status === 409 ? await parseProblemDetails(res) : [];
     throw ApiError.fromStatus(res.status, details);
   }
+  return res;
+}
+
+/** BFF へ JSON リクエストを送り、応答を型 T として返す。失敗時は ApiError を投げる。 */
+export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T> {
+  const { json, headers: initHeaders, ...rest } = req;
+
+  const headers = new Headers(initHeaders);
+  headers.set('Accept', 'application/json');
+  let body: BodyInit | undefined;
+  if (json !== undefined) {
+    headers.set('Content-Type', 'application/json');
+    body = JSON.stringify(json);
+  }
+
+  const res = await apiRequest(path, { ...rest, headers, body });
   if (res.status === 204) {
     return undefined as T;
   }

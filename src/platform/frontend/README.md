@@ -1,6 +1,6 @@
 # フロントエンド（SPA）— platform / knowledge ユニット構成
 
-マイクロサービスプラットフォーム基盤の SPA フロントエンド。npm workspaces（ルート = `src/`）で
+マイクロサービスプラットフォーム基盤の SPA フロントエンド。pnpm workspace（ルート = `src/`）で
 **platform/frontend（基盤: アプリホスト + foundation）** と
 **knowledge/frontend（付随する可変機能: ナレッジ画面群）** を分離する
 （FR-14 / [IADR-0033](../../../docs/adr/IADR-0033_frontend-spa-foundation.md) /
@@ -14,7 +14,7 @@ Vitest + Testing Library（単体）/ Playwright（e2e スモーク）/ ESLint�
 ## 構成（ユニット分離）
 
 ```
-src/                             # npm workspaces ルート（lock・eslint・vitest はここ）
+src/                             # pnpm workspace ルート（lock・eslint・vitest はここ）
   package.json                   # ルートスクリプト（dev/build/typecheck/lint/test/test:e2e）
   vitest.config.ts               # 単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   platform/frontend/             # 基盤ユニット（アプリホスト）
@@ -45,14 +45,14 @@ import を 1 行追加する（workspaces は `"*/frontend"` のため自動認�
 ## 開発（ワークスペースルート = `src/` で実行）
 
 ```bash
-npm install
-npm run dev        # http://localhost:3100 （/bff は BFF(5000) へプロキシ。VITE_BFF_TARGET で上書き可）
-npm run typecheck  # 各ユニットの tsc
-npm run lint
-npm run test       # Vitest 単体（全ユニット横断）
-npm run test:coverage  # カバレッジ（しきい値=回帰防止ラチェット）
-npm run build      # 型チェック + 本番ビルド（platform/frontend/dist）
-npm run test:e2e   # Playwright スモーク（要 `npx playwright install chromium`）
+pnpm install
+pnpm run dev        # http://localhost:3100 （/bff は BFF(5000) へプロキシ。VITE_BFF_TARGET で上書き可）
+pnpm run typecheck  # 各ユニットの tsc
+pnpm run lint
+pnpm run test       # Vitest 単体（全ユニット横断）
+pnpm run test:coverage  # カバレッジ（しきい値=回帰防止ラチェット）
+pnpm run build      # 型チェック + 本番ビルド（platform/frontend/dist）
+pnpm run test:e2e   # Playwright スモーク（ブラウザ未取得なら `pnpm exec playwright install chromium`）
 ```
 
 Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）と、
