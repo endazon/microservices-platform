@@ -1,16 +1,18 @@
 ---
 title: IADR-0033 フロントエンド SPA 基盤 — React + TS + Vite・foundation/features 分離・BFF 境界・OIDC(PKCE)
 type: impl-adr
-status: Accepted
+status: Superseded
 related_ids:
   - SC-01
   - SC-11
   - FR-15
   - ADR-0004
   - IADR-0009
+  - ADR-0031
+  - IADR-0121
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -18,7 +20,7 @@ plan_refs:
 
 # IADR-0033: フロントエンド SPA 基盤
 
-- 状態: Accepted
+- 状態: **Superseded**（by [IADR-0121](./IADR-0121_spa-stack-migration-staging.md)・2026-08-04）
 - 日付: 2026-07-08
 - 決定者: claude（Issue #126。フレームワーク・認証・配置はユーザー判断）
 
@@ -27,6 +29,23 @@ plan_refs:
 - 画面: SC-01..SC-11（`05_screens`）。本基盤の上に各画面を feature として順次実装する（#127..#140）。
 - 関連 ADR: ADR-0004（Keycloak OIDC）・[IADR-0009](./IADR-0009_wiki-browsing-404-hides-existence.md)（存在秘匿）・
   FR-15/BFF（構成情報 API 等の後段集約）。
+
+## 追補（2026-08-04）— 本 IADR は IADR-0121 により Superseded である
+
+計画 [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md)（Accepted）が
+フロントエンドスタックを **React 19 + Vite + TanStack** に確定し、その追補（2026-07-30 の利用者裁定・planning#78）が
+「実装リポジトリ側で `IADR-0033` の Superseded 化と後継 IADR の起票が必要である」と申し送った。これを受け、
+後継は [IADR-0121](./IADR-0121_spa-stack-migration-staging.md) である。以下の本文は**記録として残置**する。
+
+| 本 IADR の決定 | 後継での扱い |
+| --- | --- |
+| 決定 1（React 18 + TS + Vite） | **置換**（React 19 + TanStack。IADR-0121 決定 1・移行第 1／第 2 段） |
+| 決定 2（配置 `frontend/`） | **置換済み**（FR-14 / [IADR-0056](./IADR-0056_repo-unit-structure-platform-knowledge.md) が `src/<unit>/frontend` へ移動済み。さらに `src/packages/ui` を追加。IADR-0121 決定 4） |
+| 決定 3（foundation / features 分離） | **継承**（Bulletproof React の Feature First と両立する。合成点の契約は第 2 段で見直す） |
+| 決定 4（OIDC public client + PKCE・`oidc-client-ts`） | **置換予定**（[ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md) の BFF セッション方式へ。IADR-0121 決定 6・移行第 3 段／#439） |
+| 決定 5（BFF を境界に疎結合・実行時 config） | **継承・強化**（orval 生成物の HTTP 出口を `foundation/api` の mutator へ集約。IADR-0121 決定 3） |
+| 決定 6（存在秘匿・401 導線・ErrorBoundary） | **継承**（`ApiError` / 404 の扱いは新スタックでも変えない） |
+| 決定 7（配信・CI） | **更新**（CI は pnpm 化。IADR-0121 決定 2） |
 
 ## コンテキストと課題
 
@@ -76,4 +95,4 @@ plan_refs:
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし
+- Superseded by: [IADR-0121](./IADR-0121_spa-stack-migration-staging.md)（2026-08-04・#446）
