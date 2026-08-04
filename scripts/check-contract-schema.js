@@ -23,6 +23,13 @@
  *   非破壊であっても baseline との差分がある限り exit 1 にする（= スナップショットテスト）。
  *   `--update` で baseline を更新し、**その差分を PR のレビュー対象にする**のが本検査の主眼である。
  *
+ * 追えない範囲（構文解析の限界。詳細と実測は作業仕様書「限界」を参照）:
+ *   partial 型 / 入れ子の public 型 / ソースジェネレータ生成型 / #if 条件付きコンパイル /
+ *   **式形（expression-bodied）プロパティ**（`public string Foo => "x";`。下の parseBodyMembers が
+ *   `{ get;` を要求するため捕捉できない）/ JsonSerializerOptions・Wolverine のメッセージ型解決規約など
+ *   契約ソースに現れない設定 / 属性の意味論（記述の有無のみ見る）/ baseline の hand-edit。
+ *   着手時点でいずれも 0 件だが、増えれば盲点になる。
+ *
  * 逃げ道（IADR-0122 決定 3。逃げ道の無いゲートは無視される: IADR-0115 の知見）:
  *   破壊的変更は scripts/contract-breaking-allowlist.json に承認エントリ
  *   （key / reason / approvedBy / issue / date すべて必須）を書き、`--update` を実行する。
@@ -271,6 +278,11 @@ function parsePositionalParams(paramText) {
  * 型の本文から public プロパティ・public const を抽出する。
  * メソッド（`IsValid` / `Normalize` 等）は**契約のスキーマではない**ため対象外にする
  * （削除すればコンパイルが落ちるので、スナップショットで守る意味が薄い）。
+ *
+ * 限界: プロパティ判定が `{ get;` を要求するため、**式形プロパティ**（`public string Foo => "x";`）は
+ * 捕捉できない。計算プロパティは JSON へ出力されるので、書かれれば契約に載るのにスナップショットへ
+ * 現れない（＝削除・型変更が素通りする）。着手時点の実測は 0 件（`public .*=>` の 4 件はいずれも
+ * static メソッド）。必要になったら `=>` 形を加え、引数リスト `(` の有無でメソッドと弁別すること。
  */
 function parseBodyMembers(body) {
   const out = [];
