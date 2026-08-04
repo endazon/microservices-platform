@@ -161,18 +161,24 @@ coverlet（`XPlat Code Coverage`）の Cobertura は概ね次の形である。
 
 ## 二重記載（`<methods>` 配下と class 直下の `<lines>`）の扱い
 
-**決定: class 直下の `<lines>` を正とし、`<methods>` 配下の `<line>` は内訳として数えない。**
+**決定: 行・分岐とも class 直下の `<lines>` を正とし、`<methods>` 配下の `<line>` は内訳として数えない。**
 
 - 根拠: coverlet の Cobertura では、class 直下の `<lines>` は当該クラスの全行の一覧であり、
   `<methods>` 配下はその**メソッド別の内訳**である（同じ行が両方に現れる）。両方数えると、メソッドを
   持つクラスの行だけが 2 票を持ち、**メソッド外の行（初期化子・属性行など）との重みが崩れる**。
   IADR-0118 が「ファイル単位の単純平均は実態より高く出る」として行数加重を選んだのと同じ理屈である。
-- 副作用: 集計の**分母と分子がともに約半分になる**（比率はほぼ不変）。PR #464 の実測
+- 副作用: 集計の**分母と分子がともに半分になる**（比率はほぼ不変）。PR #464 の実測
   `line 34.46%（18894/54826）` の絶対数は本改修後の表示と直接比較できない。**床は比率であり、
   比率の変化は小さい**見込みだが、確定は CI 実測で行う（本作業では床を触らない）。
-- **仮定であることを診断で検証可能にする**: `<coverage>` 要素の `lines-valid` / `lines-covered`
-  （coverlet 自身の集計値）をレポート単位で読み出し、本実装の集計値と並べて出す。両者が一致すれば
-  「class 直下が正」という前提が実レポートで裏づけられる。乖離すれば数値として現れる。
+  - **［CI 実測後］旧値は新方式の厳密に 2 倍だった**——`18894 = 9447 × 2` / `54826 = 27413 × 2` /
+    `3154 = 1577 × 2` / `17896 = 8948 × 2`。全項が 2 倍で揃うことは、二重記載が一律に効いていた
+    （＝この決定が正しい）ことの強い裏づけである。
+- **仮定であることを診断で検証可能にする**: `<coverage>` 要素の `lines-valid` / `lines-covered` /
+  `branches-valid` / `branches-covered`（coverlet 自身の集計値）をレポート単位で読み出し、本実装の
+  集計値と並べて出す。**行**が一致すれば「class 直下が正」という前提が実レポートで裏づけられる。
+  **分岐は定義が異なるため一致を期待しない**（CI 実測で確認。後述）ので、分岐側は別の観測点として
+  **「全 `<line>`（`<methods>` 重複込み）」と「class 直下のみ」の比**（実測は厳密に 2.00）を出す
+  ——分岐の二重記載排除が壊れても値が増えるだけで照合には現れないため（無音の失敗）。
 - フォールバック: class 直下に `<lines>` が無く `<methods>` にだけ行があるクラスは、**行番号で重複排除
   した**メソッド行を採用し、その発生件数を診断に出す（黙って 0 行にしない）。
 - class の外（どの `<class>` にも属さない位置）にある `<line>` は、**帰属できないため除外できない**。
@@ -215,7 +221,7 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 
 | ファイル | 変更 |
 | --- | --- |
-| [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js) | `parseCobertura` を class 単位走査へ作り替え。新規の公開 API: `attrOf` / `parseSources` / `parseReportedTotals` / `classBlocks` / `stripMethods` / `methodsOf` / `countLines` / `countLinesUnique` / `classLineStats` / `unitOfFilename` / `aggregateReports` / `attributionMessages` / `formatDiagnostics`。`--self-test` を拡張 |
+| [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js) | `parseCobertura` を class 単位走査へ作り替え。新規の公開 API: `attrOf` / `parseSources` / `parseReportedTotals` / `classBlocks` / `stripMethods` / `methodsOf` / `countLines` / `countLinesUnique` / `classLineStats` / `unitOfFilename` / `aggregateReports` / `attributionMessages` / `formatDiagnostics(agg, floor)`。`--self-test` を拡張。**床の値は診断へ焼き込まず引数の `floor` を表示する**（単一情報源は `src/coverage-floor.json`。IADR-0118 決定 1） |
 | [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) | Cobertura フィクスチャによる単体テストを追加（既存の coverage-floor 節へ） |
 | [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | 「既知の限界: 合成点テスト経由の混入」を解消済みへ書き換え、ゲート一覧の対象欄を更新 |
 | [`docs/adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md`](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) | 新規起票 |
@@ -225,9 +231,12 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 ## 受け入れ基準（issue #468）
 
 - [x] 混入行数を実レポートで測り直し、確定させる → **確定: 6 クラス / 133 行（すべて被覆済み） /
-      分岐 50（被覆 41）**（測定条件は下記「CI 実測（成立確認）」）。旧値の **266 行は 133 × 2** であり
-      二重記載で説明がつく。**230 行**は `Platform.Bff.Tests` 単体実行という別条件の値で、新方式の全体集計
-      とは直接比較できない（SDK のある環境でのレビュー単体実走では 115 行）
+      分岐 50（被覆 41）**（測定条件は下記「CI 実測（成立確認）」）。旧値の 2 つはいずれも二重記載の
+      2 倍で説明がつく——**266 = 133 × 2**（全プロジェクト実行）、**230 = 115 × 2**
+      （`Platform.Bff.Tests` 単体実行。115 はレビューの独立実測）。**266 と 230 の差そのものはスコープ差**
+      であり二重記載とは別の要因である（出典:
+      [`20260803_issue-453`](./20260803_issue-453_regression-test-foundation.md) の「既知の限界」節）。
+      230 行と CI の全体集計（133 行）はスコープが異なり直接比較できない
 - [x] 実レポートに対して AST 由来の行が集計から落ちることを実測で確認する → **確認済み**（未帰属 0 件・
       6 クラスすべて `<sources>` 結合で `ai-stock-trading` へ帰属・除外前後で 27413 → 27280 行）
 - [x] フィルタが何にもマッチしなかった場合に気付ける（帰属 0 件で warn／class 外の行で warn／
@@ -237,7 +246,9 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
       （混入込み・二重記載込み → 混入抜き・class 直下計数）を測定条件つきで `$comment` へ差し替えた。
       **余裕は薄い（line +0.14pt / branch +0.26pt）**
 - [x] [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) の「既知の限界」節を解消済みに更新する
-      （機構の説明に加え、CI 実測後に**測定条件つきの実測表**と「分岐の定義差」を追記した）
+      （~~**数値は書かない**——確定値は CI 実測後に定まるため、機構の説明に留める~~ →
+      **［CI 実測後に改訂］**機構の説明に加え、**測定条件つきの実測表**と「分岐の定義差」を追記した。
+      当初は確定値が無いため数値を避けたが、実測が出たため測定条件とともに記載する方針へ変えた）
 - [x] `node scripts/check-coverage-floor.js --self-test` が exit 0
 - [x] `node scripts/scripts.test.js`（`REQUIRE_REPO_TESTS=1` でも）が緑で、テスト件数が着手前から減らない
 - [x] `node scripts/check-doc-links.js` が exit 0
@@ -260,10 +271,10 @@ warn / notice は [`scripts/lib/ci-annotate.js`](../../scripts/lib/ci-annotate.j
 
 | コマンド | 結果 |
 | --- | --- |
-| `node scripts/check-coverage-floor.js --self-test` | 自己試験 **37 件 OK** / exit 0（着手前 14 件） |
-| `node scripts/scripts.test.js` | **238 tests passed** / exit 0（着手前 **225 件** → +13。着手前の値は改修 2 ファイルを一時退避して実測） |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 238 tests passed / exit 0 |
-| `REQUIRE_REPO_TESTS=1 GITHUB_ACTIONS=true node scripts/scripts.test.js` | 238 tests passed / exit 0。フィクスチャ由来のアノテーション漏れ 0 件 |
+| `node scripts/check-coverage-floor.js --self-test` | 自己試験 **41 件 OK** / exit 0（着手前 14 件） |
+| `node scripts/scripts.test.js` | **239 tests passed** / exit 0（着手前 **225 件** → +14。着手前の値は改修 2 ファイルを一時退避して実測） |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 239 tests passed / exit 0 |
+| `REQUIRE_REPO_TESTS=1 GITHUB_ACTIONS=true node scripts/scripts.test.js` | 239 tests passed / exit 0。フィクスチャ由来のアノテーション漏れ 0 件 |
 | `node scripts/check-doc-links.js` | OK: **405 件**の Markdown に破損リンクなし / exit 0 |
 | `node scripts/check-coverage-floor.js`（レポート 0 件のローカル） | 従来どおり切り分け可能な warn ＋ exit 0（fail-open の挙動は不変） |
 
@@ -284,15 +295,20 @@ commit `594117a` / Release 構成 / レポート **14 件** / submodule populate
 | coverlet 照合（行） | `lines-valid 27413`（本実装 27413・**一致**） / `lines-covered 9447`（本実装 9447・**一致**） |
 | coverlet 照合（分岐） | `branches-valid 9356`（本実装 8948・**差 -408**）→ **定義差。期待される乖離** |
 
-独立検証（AI レビューが .NET SDK 10.0.302 のある環境で `Platform.Bff.Tests` を単体実走）でも同傾向で、
-`lines-valid` / `lines-covered` は 1950/1950・1274/1274 と完全一致、`branches-valid` のみ 700 対 600 と乖離。
+独立検証（本 PR の AI レビュー）でも同傾向。**測定条件: .NET SDK 10.0.302 / `Platform.Bff.Tests` 単体実行 /
+commit `594117a` 時点 / ビルド構成はレビューコメントに記載が無いため断定しない**（CI 側は Release 構成であり、
+スコープも構成の記録も異なる）。`lines-valid` / `lines-covered` は 1950/1950・1274/1274 と完全一致、
+`branches-valid` のみ 700 対 600 と乖離。
 レビューは「全 `<line>`（`<methods>` 重複込み）の `condition-coverage` 分母合算 1200 のちょうど半分が
 600 ＝本実装値」であることを生データで確認しており、**本実装の集計は一貫している**。
 coverlet 側の算出経路（IL 分岐点ベース等）は**推定であり一次出典未検証**——確定しているのは
 「定義が異なり一致しない」という観測事実のみである。
 
-この定義差は床に影響する: 同じ被覆数を coverlet の分母で割ると branch は **17.62% → 16.86%** で床 17 を
-下回る。**分岐の定義変更は床の置き直しとセットでしか行えない**
+この定義差は床に影響する: **被覆数を据え置いたまま分母だけ coverlet 基準へ置き換える試算**では、除外前が
+`1577 ÷ 9356 = 16.86%`（17.62% から低下）、床が判定に使う除外後の対でも `1536 ÷ (9356 − 50) = 16.51%` で、
+いずれも床 17 を下回る。**これは分母差の影響を測る試算であって「coverlet 定義での実際の分岐率」ではない**
+（定義を変えれば分子も同じ定義で数え直すことになる）。いずれにせよ
+**分岐の定義変更は床の置き直しとセットでしか行えない**
 （[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 4 の［2026-08-04 追記］）。
 
 ### 実物に近いレポートでの実挙動（`src/` へ一時設置して素実行）
