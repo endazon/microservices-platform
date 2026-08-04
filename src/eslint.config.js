@@ -236,6 +236,10 @@ export default tseslint.config(
           // 空白を許すと `Untranslated english text` のような**英語の文章がそのまま素通り**し、
           // 「未国際化リテラルの検出」が日本語にしか効かなくなる（実測で確認した穴）。
           // 空白を含むクラス名（`text-sm font-medium` 等）は下の ignoreNames（属性名）が拾う。
+          //
+          // **残る限界**: 空白を含まない ASCII トークン（`Docs` 等）は素通りする。識別子・列挙値・
+          // ルート ID・クラス名の断片と区別できないためで、これは意図的に残す
+          // （厳しくすると誤検出が実用の域を超え、規則ごと無効化される方が高くつく）。
           ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$'],
           ignoreNames: [
             { regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' } },

@@ -266,6 +266,22 @@ src/platform/frontend/src/foundation/i18n/
 foundation のファイルに限る**——#452 が作り直す 11 画面へ及ぼすと、いま直せない大量の error が出る
 （適用範囲を広げるのは #452 の作業）。
 
+**`no-unlocalized-strings` の `ignore` の効き方（実測）**: 除外パターンに**空白を入れない**。
+空白を許すと `Untranslated english text` のような**英語の文章がそのまま素通り**し、検出が
+日本語にしか効かなくなる（初版はこの穴を持っていた。監査指摘）。
+
+| 入力（JSX テキスト） | 空白を許す初版 | 是正後（採用） |
+| --- | --- | --- |
+| `未国際化の日本語` | error | error |
+| `Untranslated english text` | **無警告** | **error** |
+| `Docs`（空白なしの ASCII 1 語） | 無警告 | 無警告（**意図的**） |
+
+最後の行は**残る限界**である。空白を含まない ASCII トークンは、識別子・列挙値・ルート ID・
+クラス名の断片と区別できないため除外したままにする。ここを厳しくすると誤検出が
+実用の域を超え、規則ごと無効化される方が高くつく。空白を含むクラス名（`text-sm font-medium` 等）は
+`ignoreNames`（属性名）が拾うため、既存の正当なリテラルの誤検出は増えていない
+（是正後も `pnpm run lint` は 0 errors）。
+
 ### 4. カバレッジ床
 
 [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) / [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)
