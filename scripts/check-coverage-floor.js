@@ -599,12 +599,21 @@ function formatDiagnostics(agg) {
 
   if (d.reported) {
     const mine = agg.beforeExclusion;
-    const agree = (a, b) => (a === b ? '一致' : `**乖離 ${b - a}**`);
+    // NFR（#468 / IADR-0123 決定 4・2026-08-04 追記）: line と branch で照合の意味が違う。
+    //   line   … 同じものを数えている。**一致を期待する**。乖離は決定 3（class 直下の <lines> を正とする）
+    //            の前提が破れた信号であり、要調査として目立たせる。
+    //   branch … 定義が異なる。本実装が数えるのは <line> の condition-coverage の分母/分子であり、
+    //            coverlet の branches-valid は別経路で算出されているとみられる（一次出典未検証）。
+    //            **一致を期待しない**。同列に「乖離」と出すと、期待される差が異常に見える。
+    const agreeLine = (a, b) => (a === b ? '一致' : `**乖離 ${b - a}・要調査**`);
+    const agreeBranch = (a, b) => (a === b ? '一致' : `差 ${b - a}（定義差・期待される乖離）`);
     out.push(
       `coverlet 自身の集計値との照合（IADR-0123 決定 4。除外前で比較・${d.reportsWithReported}/${d.reportCount} レポート）: ` +
-        `lines-valid ${d.reported.lines}（本実装 ${mine.lines}・${agree(d.reported.lines, mine.lines)}） / ` +
-        `lines-covered ${d.reported.covered}（本実装 ${mine.covered}・${agree(d.reported.covered, mine.covered)}） / ` +
-        `branches-valid ${d.reported.branches}（本実装 ${mine.branches}・${agree(d.reported.branches, mine.branches)}）`,
+        `lines-valid ${d.reported.lines}（本実装 ${mine.lines}・${agreeLine(d.reported.lines, mine.lines)}） / ` +
+        `lines-covered ${d.reported.covered}（本実装 ${mine.covered}・${agreeLine(d.reported.covered, mine.covered)}） / ` +
+        `branches-valid ${d.reported.branches}（本実装 ${mine.branches}・${agreeBranch(d.reported.branches, mine.branches)}）` +
+        '。※ 分岐は定義が異なるため一致を期待しない（本実装は condition-coverage の合算。床 17 はこの方式での' +
+        '実測に基づくため、定義の変更は床の置き直しとセットでしか行えない）。行の乖離のみ決定 3 の反証になる。',
     );
   }
 
@@ -834,6 +843,25 @@ function selfTest() {
     const p = parseCobertura(methodsOnly);
     t('parseCobertura: class 直下に <lines> が無ければ <methods> を行番号で重複排除して採る',
       p.lines === 2 && p.covered === 2 && p.diagnostics.fallbackClasses === 1, p);
+  }
+
+  {
+    // 照合の書き分け（IADR-0123 決定 4・［2026-08-04 追記］）。CI 実測で branches-valid だけが乖離した
+    // （行は完全一致）。分岐は定義が異なり一致を期待しないため、行の乖離と同列に出さない。
+    const cls = (attrs) => `<coverage ${attrs}><packages><package><classes>` +
+      '<class name="X" filename="src/platform/backend/X.cs"><lines>' +
+      '<line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" />' +
+      '</lines></class></classes></package></packages></coverage>';
+    const same = formatDiagnostics(aggregateReports([parseCobertura(
+      cls('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))])).join('\n');
+    t('formatDiagnostics: 行は一致・分岐の差は「定義差・期待される乖離」と書き分ける',
+      same.includes('lines-valid 1（本実装 1・一致）')
+        && same.includes('branches-valid 4（本実装 2・差 -2（定義差・期待される乖離）')
+        && !same.includes('**乖離'), same);
+    const drift = formatDiagnostics(aggregateReports([parseCobertura(
+      cls('lines-valid="9" lines-covered="9" branches-valid="2" branches-covered="1"'))])).join('\n');
+    t('formatDiagnostics: 行の乖離は要調査として目立たせる（決定 3 の前提の破れ）',
+      drift.includes('**乖離 -8・要調査**'), drift);
   }
 
   t('parseSources: <source> を読み、空要素は落とす',

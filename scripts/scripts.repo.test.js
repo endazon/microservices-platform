@@ -868,6 +868,26 @@ module.exports = ({ ok, assert }) => {
     assert.match(text, /MonitorBffEndpoints/);      // 除外したクラス
   });
 
+  // NFR（#468）: CI 初回実走（run 1144 / commit 594117a）で **行は完全一致・分岐だけ乖離**した。
+  // 本実装の「分岐」は <line> の condition-coverage の分母/分子、coverlet の branches-valid は別定義
+  // であり、一致を期待しない（IADR-0123 決定 4 の［2026-08-04 追記］）。同列に「乖離」と出すと
+  // 期待される差が異常に見えるため、書き分けをここで固定する。
+  ok('formatDiagnostics: 行の乖離は要調査・分岐の差は定義差として書き分ける', () => {
+    const report = (attrs) => coberturaReport([
+      `<class name="X" filename="src/platform/backend/X.cs"><lines>` +
+      '<line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" /></lines></class>',
+    ], { attrs });
+    const same = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="1" lines-covered="1" branches-valid="4" branches-covered="1"'))])).join('\n');
+    assert.ok(same.includes('lines-valid 1（本実装 1・一致）'), same);
+    assert.ok(same.includes('差 -2（定義差・期待される乖離）'), same);
+    assert.ok(!same.includes('**乖離'), `分岐の差を行と同列の「乖離」で出している:\n${same}`);
+
+    const drift = cov.formatDiagnostics(cov.aggregateReports([cov.parseCobertura(
+      report('lines-valid="9" lines-covered="9" branches-valid="2" branches-covered="1"'))])).join('\n');
+    assert.ok(drift.includes('**乖離 -8・要調査**'), drift);
+  });
+
   ok('check-coverage-floor --self-test は exit 0（帰属・二重記載・warn 経路を含む）', () => {
     const { spawnSync } = require('child_process');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js'), '--self-test'], { encoding: 'utf8' });
