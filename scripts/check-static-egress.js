@@ -176,7 +176,7 @@ function inspectFile(relPath, content) {
   // 同じ (kind, url) の重複は 1 件へ畳む（バンドルの繰り返しでノイズになるため）。
   const seen = new Set();
   return hits.filter((h) => {
-    const key = `${h.kind} ${h.detail} ${h.url}`;
+    const key = `${h.kind}\0${h.detail}\0${h.url}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
