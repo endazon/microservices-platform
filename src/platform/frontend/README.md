@@ -52,7 +52,7 @@ pnpm run lint
 pnpm run test       # Vitest 単体（全ユニット横断）
 pnpm run test:coverage  # カバレッジ（しきい値=回帰防止ラチェット）
 pnpm run build      # 型チェック + 本番ビルド（platform/frontend/dist）
-pnpm run test:e2e   # Playwright スモーク（要 `npx playwright install chromium`）
+pnpm run test:e2e   # Playwright スモーク（ブラウザ未取得なら `pnpm exec playwright install chromium`）
 ```
 
 Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）と、

@@ -59,7 +59,7 @@ export default defineConfig({
       //
       // ［2026-08-04 / #446］移行第 1 段（ADR-0031 / IADR-0121）に伴う引き上げ。
       //   実測（Node 22.22.2 / pnpm 10.33.0 / submodule `src/ai-stock-trading` populate 済み）:
-      //     全ユニット横断        lines/statements 91.61% / branches 82.10% / functions 82.62%
+      //     全ユニット横断        lines/statements 91.69% / branches 82.04% / functions 83.14%
       //     MSP 所有分のみ        lines/statements 88.36% / branches 79.53% / functions 80.00%
       //     （MSP 所有分 = platform/frontend + knowledge/frontend + packages/*。AST の実装を
       //       母数から外して測り直した値）

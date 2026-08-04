@@ -146,10 +146,12 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 
 ### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 
-- **スタック**: React 18 + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。
-- **構成**: pnpm workspace（ルート = `src/`、`pnpm-workspace.yaml` = `'*/frontend'` + `'packages/*'`。IADR-0121）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
-- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由（`foundation/api` の `apiFetch`）。接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。フロントから各サービスを直接叩かない。
-- **認証**: `oidc-client-ts`（Authorization Code + PKCE）で Keycloak public client `spa-web` を用いる。トークンやシークレットをコードに埋め込まない。
+- **スタック**: **React 19** + TypeScript 5.6 + Vite 5（ESM, `"type": "module"`）。Node は CI と揃え **22** を使う。ADR-0031 が確定したスタック（React 19 + Vite + TanStack）への移行は [IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が **5 段**に分割し、第 1 段まで完了している。ルーティングは **react-router-dom 6 のまま**で、TanStack Router への差し替えは画面再実装（#452）と同一段で行う。
+- **構成**: pnpm workspace（ルート = `src/`、`pnpm-workspace.yaml` = `'*/frontend'` + `'packages/*'`。IADR-0121）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が [IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) を Superseded / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
+- **サーバー状態**: **TanStack Query** に一元化する（`foundation/api/queryClient.ts` が唯一の生成点）。**グローバルストア（Redux）は持たない**——`redux` / `@reduxjs/*` の import は ESLint が error にする（IADR-0121 決定 8）。
+- **UI / CSS**: **Tailwind CSS v4** ＋ 共有 UI パッケージ **`@platform/ui`**（[`src/packages/ui`](src/packages/ui/README.md)。IADR-0121 決定 4）。入れてよいのはデザイントークン・`cn()`・shadcn/ui 派生プリミティブのみで、ドメイン・通信・ルーティング・認証は入れない。**外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy。フォントはシステムフォント、アイコンは npm 同梱の lucide-react）。状態表示は**色だけで意味を持たせない**（色 ＋ アイコン ＋ テキスト。INDEX 決定 21）。
+- **BFF 境界**: バックエンドへは必ず `/bff/*` 経由。呼び出しは **orval 生成フック**（`pnpm run codegen`。入力は `docs/api/openapi.yaml` の `/bff/` 配下のみ・**生成物はコミット**し CI が再生成差分を検査）か `foundation/api` の `apiFetch` / `apiStream` を使う。**手書き HTTP クライアントは禁止**で、`foundation/api` 以外での `fetch` / `XMLHttpRequest` / `EventSource` と `axios` 等の import は ESLint が error にする。接続先はビルドに焼き込まず実行時 config（`platform/frontend/public/config.js`）で注入する。フロントから各サービスを直接叩かない。
+- **認証**: `oidc-client-ts`（Authorization Code + PKCE）で Keycloak public client `spa-web` を用いる。トークンやシークレットをコードに埋め込まない。**ADR-0032 の BFF セッション方式へ移行予定**（移行第 3 段 / #439。BFF 側が未実装のため、それまでは現行方式を維持する。IADR-0121 決定 6）。
 - **Lint / 型**: ESLint flat config（[`src/eslint.config.js`](src/eslint.config.js)）+ typescript-eslint。`src/` で `pnpm run lint` / `pnpm run typecheck` が通ること。
 - **テスト**: 単体は **Vitest**（jsdom）+ Testing Library、E2E は **Playwright**。テストは実装と同居し `*.{test,spec}.{ts,tsx}`。受け入れ基準をテストケースへ写像する。
 - **カバレッジ**: `pnpm run test:coverage`（v8 provider）。[`src/vitest.config.ts`](src/vitest.config.ts) の `coverage.thresholds` は**回帰防止のラチェット**（全ユニット横断で計測）。テストを増やしたらしきい値を引き上げ、床を割る変更は CI（[`frontend-tests.yml`](.github/workflows/frontend-tests.yml)）で止める。
