@@ -923,7 +923,9 @@ module.exports = ({ ok, assert }) => {
   ok('3 検査器に除外ユニットのハードコードが残っていない', () => {
     for (const f of ['check-backend-libraries.js', 'check-test-traceability.js', 'check-coverage-floor.js']) {
       const src = fs.readFileSync(path.join(__dirname, f), 'utf8');
-      assert.doesNotMatch(src, /new Set\(\[\s*'ai-stock-trading'/, `${f} にハードコードが残っている`);
+      // クォート形は両対応にする。片方だけだと `new Set(["ai-stock-trading"])` が素通りし、
+      // 「逆戻りを検出するテスト」自体が逆戻りを見逃す（監査指摘）。
+      assert.doesNotMatch(src, /new Set\(\[\s*["']ai-stock-trading["']/, `${f} にハードコードが残っている`);
       assert.match(src, /require\('\.\/lib\/excluded-units\.js'\)/, `${f} がヘルパを参照していない`);
     }
   });
