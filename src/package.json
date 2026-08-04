@@ -23,7 +23,14 @@
     "//": "IADR-0121 決定 2: pnpm は既定でパッケージの postinstall を実行しない（サプライチェーン対策）。ビルドが必要な依存だけを明示的に許可する。esbuild は Vite/Vitest が使うネイティブバイナリの取得に postinstall を要する。",
     "onlyBuiltDependencies": [
       "esbuild"
-    ]
+    ],
+    "//overrides": "ADR-0031 / IADR-0121 決定 2: SPA は 1 プロセスで全ユニットの React コンポーネントを描画する（合成点・横断 Vitest）。pnpm は npm と違いユニットごとの宣言を厳密に守るため、可変ユニット（submodule）が React 18 を宣言していると React 19 の要素を React 18 の DOM で描画することになり実行時に壊れる。React の実体はワークスペースで 1 つに固定する。submodule は単独リポジトリでは自分の lock で解決するため、この override はこのリポジトリでの合成時にのみ効く。",
+    "overrides": {
+      "react": "^19.2.0",
+      "react-dom": "^19.2.0",
+      "@types/react": "^19.2.0",
+      "@types/react-dom": "^19.2.0"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.11.1",
@@ -32,8 +39,8 @@
     "@testing-library/react": "^16.0.1",
     "@testing-library/user-event": "^14.5.2",
     "@types/node": "^22.7.4",
-    "@types/react": "^18.3.10",
-    "@types/react-dom": "^18.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.3.2",
     "@vitest/coverage-v8": "^2.1.1",
     "eslint": "^9.11.1",
@@ -41,8 +48,8 @@
     "eslint-plugin-react-refresh": "^0.4.12",
     "globals": "^15.9.0",
     "jsdom": "^25.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "typescript": "^5.6.2",
     "typescript-eslint": "^8.7.0",
     "vite": "^5.4.8",
