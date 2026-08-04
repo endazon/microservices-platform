@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { router } from './router';
 import { navItems } from './nav';
+import { ENTRY_ROUTE_PATH, rootRoute, shellRoute, catchAllRoute } from './shell';
+import { NotFound } from '@foundation/ui/NotFound';
 
 // ADR-0031 / IADR-0124: ルート木の配線を固定する。
 // - 決定 6: 計画（05_screens §共通シェル「ルートパス」）のルートが木に存在すること
@@ -39,10 +41,17 @@ describe('route tree (05_screens §共通シェル のルートパス)', () => {
   });
 
   // IADR-0124 決定 6: 計画に home 画面は無い。`/` は SC-01（主入口）へ送る。
-  it('redirects the root path to SC-01', async () => {
+  // `buildLocation` では検証にならない——リダイレクトは `beforeLoad` で起きるため、
+  // 実際に読み込ませないと「redirect が壊れても緑」になる。
+  it('redirects the root path to the entry screen (SC-01)', async () => {
     expect(fullPaths()).toContain('/');
-    const resolved = router.buildLocation({ to: '/' });
-    expect(resolved.pathname).toBe('/');
+    // 遷移先が木に実在すること（platform が持つ定数がユニットの実装と食い違っていないこと）。
+    expect(fullPaths()).toContain(ENTRY_ROUTE_PATH);
+
+    await router.navigate({ to: '/' });
+    await router.load();
+
+    expect(router.state.location.pathname).toBe(ENTRY_ROUTE_PATH);
   });
 });
 
@@ -57,6 +66,39 @@ describe('navigation targets resolve (IADR-0124 決定 5)', () => {
       expect(fullPaths()).toContain(to);
     },
   );
+});
+
+// IADR-0009 / IADR-0124 決定 8: 存在秘匿。未知パスの受け皿を**共通シェル配下**に置き、
+// 権限による秘匿（RequireRole → NotFound）と描画を揃える（描画の一致は Layout.test.tsx が固定する）。
+// ここでは配線——catch-all が木にあり、かつ実在ルートを横取りしないこと——を固定する。
+describe('existence hiding: catch-all wiring (IADR-0009)', () => {
+  it('mounts the catch-all under the authenticated shell (not at the root)', () => {
+    expect(catchAllRoute.parentRoute).toBe(shellRoute);
+    expect(catchAllRoute.options.component).toBe(NotFound);
+    // シェル配下から notFound() が投げられた場合も同じ画面にする。
+    expect(shellRoute.options.notFoundComponent).toBe(NotFound);
+    expect(rootRoute.options.notFoundComponent).toBe(NotFound);
+  });
+
+  it.each([
+    ['/login', '認証導線'],
+    ['/callback', '認証導線'],
+    ['/ask', 'ユニットの画面（SC-01）'],
+    ['/admin/config-viewer', 'ユニットの画面（SC-11）'],
+    ['/settings', '旧契約ブリッジ（AST）'],
+  ])('does not hijack %s (%s)', async (path) => {
+    await router.navigate({ to: path as '/ask' });
+    await router.load();
+    const matchedIds = router.state.matches.map((m) => m.routeId);
+    expect(matchedIds).not.toContain(catchAllRoute.id);
+    expect(router.state.location.pathname).toBe(path);
+  });
+
+  it('matches the catch-all for an unknown path', async () => {
+    await router.navigate({ to: '/no-such-screen' as '/ask' });
+    await router.load();
+    expect(router.state.matches.map((m) => m.routeId)).toContain(catchAllRoute.id);
+  });
 });
 
 describe('legacy unit bridge (IADR-0124 決定 2)', () => {

@@ -1,6 +1,6 @@
 import type { ShellRoute } from '@foundation/routing/shell';
 import type { NavItem } from '@foundation/routing/featureRegistry';
-import { createHomeRedirectRoute, createSc01SearchRoute, sc01SearchNav } from './sc01-search';
+import { createSc01SearchRoute, sc01SearchNav } from './sc01-search';
 import { createSc02ResultsRoute, sc02ResultsNav } from './sc02-results';
 import { createSc03DocumentRoute } from './sc03-document';
 import { createSc04WikiRoute, sc04WikiNav } from './sc04-wiki';
@@ -20,7 +20,6 @@ import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
 // （IADR-0124 §実測）。画面を足すときはタプルへ 1 行足す。
 export const createKnowledgeRoutes = (shell: ShellRoute) =>
   [
-    createHomeRedirectRoute(shell), // "/" → SC-01（計画に home 画面は存在しない）
     createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127）
     createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128）
     createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129）

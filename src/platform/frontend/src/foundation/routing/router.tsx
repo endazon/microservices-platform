@@ -1,6 +1,13 @@
 import { createRouter } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
-import { rootRoute, loginRoute, callbackRoute, shellRoute } from './shell';
+import {
+  rootRoute,
+  loginRoute,
+  callbackRoute,
+  shellRoute,
+  homeRedirectRoute,
+  catchAllRoute,
+} from './shell';
 import { createLegacyRoutes, legacyNavItems } from './featureRegistry';
 import { registerNavItems } from './nav';
 import { createUnitRoutes, unitNavItems, legacyUnitFeatures } from '@features/index';
@@ -10,7 +17,13 @@ import { createUnitRoutes, unitNavItems, legacyUnitFeatures } from '@features/in
 // 型安全の要は「型付きルートだけで addChildren を済ませる」こと。ここへ AnyRoute を 1 つでも
 // 混ぜると、ルート ID・パスの union も検索パラメータの型も**静かに**失われる（IADR-0124 §実測）。
 // 旧契約（AST）のルートは型付けを済ませた後で children へ足す。
-const shellWithUnits = shellRoute.addChildren(createUnitRoutes(shellRoute));
+// `/`（アプリホストの責務。IADR-0124 決定 6）と未知パスの受け皿（同 決定 8）は
+// ユニットではなく shell.tsx が持つ。catchAllRoute はスプラットのため最後に置く。
+const shellWithUnits = shellRoute.addChildren([
+  homeRedirectRoute,
+  ...createUnitRoutes(shellRoute),
+  catchAllRoute,
+] as const);
 
 /**
  * 旧契約ユニットのルートを実行時にだけ接ぎ木する（IADR-0124 決定 2）。

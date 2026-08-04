@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, Outlet } from '@tanstack/react-router';
+import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router';
 import { Layout } from '@foundation/ui/Layout';
 import { NotFound } from '@foundation/ui/NotFound';
 import { RequireAuth } from '@foundation/auth/RequireAuth';
@@ -42,6 +42,8 @@ export const callbackRoute = createRoute({
 export const shellRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: '_shell',
+  // シェル配下から notFound() が投げられた場合の描画（下の catchAllRoute とは別経路）。
+  notFoundComponent: NotFound,
   component: function ShellRouteComponent() {
     return (
       <RequireAuth>
@@ -49,6 +51,45 @@ export const shellRoute = createRoute({
       </RequireAuth>
     );
   },
+});
+
+/**
+ * アプリのルート直下（`/`）の遷移先（IADR-0124 決定 6）。
+ *
+ * 計画の画面一覧（SC-01〜21）に home に相当する画面は無く、SC-01 が「本システムの主入口」と
+ * 定義されている（05_screens §SC-01）。`/` の存在はアプリホスト（platform）の責務であり、
+ * 可変ユニットを外しても `/` が消えてはならないため、ここに置く。
+ * 値は**パス文字列**であってユニットへの参照ではない（IADR-0056 決定 3 に抵触しない）。
+ * 実在することは `router.test.ts` が実行時に固定する。
+ */
+export const ENTRY_ROUTE_PATH = '/ask';
+
+// IADR-0124 決定 6: `/` は主入口へ送る。beforeLoad で投げるため、描画前にリダイレクトされる。
+export const homeRedirectRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/',
+  beforeLoad: () => {
+    throw redirect({ to: ENTRY_ROUTE_PATH, replace: true });
+  },
+});
+
+/**
+ * 未知パスの受け皿（IADR-0009 / IADR-0124 決定 8）。**共通シェルの配下**に置くことが要点である。
+ *
+ * `notFoundComponent` を rootRoute に置くだけでは、未知パスはどのルートにもマッチせず
+ * ルート木の**最上位**で解決されるため、共通シェル（ナビ・ヘッダ）の**外側**に素の NotFound が出る。
+ * 一方で権限による秘匿（`RequireRole` → `NotFound`）はシェルの**内側**に出る。
+ * この差は「シェルが出るかどうか」で資源の存在を推測させ、存在秘匿（IADR-0009）の趣旨に反する。
+ * 移行前の実装が catch-all（`{ path: '*' }`）を `RequireAuth` ＋ `Layout` 配下に置いていたのと同じ配置であり、
+ * 未認証時に `/login` へ誘導される挙動も維持される。
+ *
+ * 静的パスの方がスプラットより優先されるため、実在するルートを横取りしない
+ * （`/login` `/callback` `/` および全ユニットのルートが先にマッチする。`router.test.ts` が固定する）。
+ */
+export const catchAllRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '$',
+  component: NotFound,
 });
 
 /**
