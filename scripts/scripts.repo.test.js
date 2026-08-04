@@ -1536,4 +1536,68 @@ module.exports = ({ ok, assert }) => {
     }
     assert.strictEqual(run().status, 0, '復元後に exit 0 へ戻らない');
   });
+  // --- Issue #496 / ADR-0031 / IADR-0125: i18n カタログ検査と静的 egress 検査 -------
+
+  // 各スクリプトの --self-test（正例・負例を含む）を子プロセスで走らせる。
+  // 本体の純粋ロジックはそこで網羅しているので、ここでは「自己試験が通ること」と
+  // 「本リポの実データに対して現に green であること」を固定する。
+  for (const script of ['check-i18n-catalogs.js', 'check-static-egress.js']) {
+    ok(`${script} --self-test が通る`, () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(__dirname, script), '--self-test'], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `${script} の自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+      assert.match(String(r.stdout), /all passed/);
+    });
+  }
+
+  ok('check-i18n-catalogs: 本リポのカタログに未翻訳が無い（実データ）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-i18n-catalogs.js')],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(r.status, 0, `未翻訳・fuzzy・obsolete が残っている:\n${r.stderr}`);
+  });
+
+  // 退行防止: Lingui のカタログ検査が見ているロケール集合が、i18n の実装が対応すると
+  // 宣言しているロケール集合と一致していること。片方だけ増えると「宣言はしたが訳が無い」
+  // あるいは「訳はあるが読み込まれない」状態が静かに生まれる。
+  ok('lingui.config.ts の locales と foundation/i18n の SUPPORTED_LOCALES が一致する', () => {
+    const { parseLinguiConfig } = require('./check-i18n-catalogs.js');
+    const root = path.resolve(__dirname, '..');
+    const cfg = parseLinguiConfig(fs.readFileSync(path.join(root, 'src/lingui.config.ts'), 'utf8'));
+    const i18nSrc = fs.readFileSync(
+      path.join(root, 'src/platform/frontend/src/foundation/i18n/index.ts'),
+      'utf8',
+    );
+    const m = /SUPPORTED_LOCALES\s*=\s*\[([^\]]*)\]/.exec(i18nSrc);
+    assert.ok(m, 'foundation/i18n から SUPPORTED_LOCALES を読み取れない');
+    const supported = m[1]
+      .split(',')
+      .map((x) => x.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    assert.deepStrictEqual(
+      [...supported].sort(),
+      [...cfg.locales].sort(),
+      'lingui.config.ts の locales と SUPPORTED_LOCALES が食い違っている',
+    );
+  });
+
+  // 退行防止: 08_data-egress-policy が禁じる代表的なホストが、検査器の禁止リストから
+  // 抜け落ちていないこと（リストを空にしても自己試験の大半は通ってしまうため）。
+  ok('check-static-egress: 計画が名指しする禁止先が検査対象に入っている', () => {
+    const { FORBIDDEN_HOSTS, inspectFile } = require('./check-static-egress.js');
+    // 08_data-egress-policy §SPA フロントエンド: 外部CDN・Webフォント（Google Fonts等）・
+    // 解析（analytics）・エラー報告SaaS。
+    for (const host of ['fonts.googleapis.com', 'www.google-analytics.com', 'cdn.jsdelivr.net']) {
+      assert.ok(FORBIDDEN_HOSTS.includes(host), `${host} が禁止リストに無い`);
+      assert.ok(
+        inspectFile('bundle.js', `x="https://${host}/a"`).some((h) => h.kind === 'forbidden-host'),
+        `${host} を検出できない`,
+      );
+    }
+  });
 };

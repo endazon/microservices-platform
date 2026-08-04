@@ -57,6 +57,13 @@ export default defineConfig({
         // `src/test/**` と同じ理由で母数から外す——足場を数えると「テストを足すほど床が上がる」
         // 見かけの改善が起き、成果物の被覆率が読めなくなる。
         'platform/frontend/src/foundation/testing/**',
+        // ADR-0031 / IADR-0125 決定 5: Storybook のカタログ（stories と設定）。
+        // `src/test/**`・`foundation/testing/**` と同じ理由で母数から外す——カタログは
+        // **部品の見本であって成果物ではない**。母数へ入れると「stories を足すほど床が下がり、
+        // 消すほど上がる」という、被覆率とは無関係な動き方をする。
+        // **この除外は床の水準を実際に動かす**（除外あり／なしの実測は下の注記を参照）。
+        '**/*.stories.{ts,tsx}',
+        '**/.storybook/**',
         '**/*.d.ts',
         'platform/frontend/src/main.tsx',
         '**/vite-env.d.ts',
@@ -101,10 +108,28 @@ export default defineConfig({
       //   実測で確認した——除外**しない**場合の MSP 所有分は
       //   lines 91.84% / branches 82.19% / functions 84.02% であり、同じ導出規則から出る床は
       //   **3 指標とも同値（86 / 77 / 79）**。すなわちこの除外は床の水準を動かしていない。
+      //
+      // ［2026-08-04 / #496］移行第 2 段の残り（ADR-0031 / IADR-0125: shadcn/ui 本移植・Lingui・
+      //   Storybook）に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/ADR-0031-ui-i18n-storybook` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 93.86% / branches 84.11% / functions 86.59%
+      //     MSP 所有分のみ        lines/statements 92.04% / branches 82.93% / functions 86.08%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用し、床を
+      //   lines/statements 86 → 87 / functions 79 → 81 へ引き上げる（branches は 77 のまま
+      //   ＝ 82.93 − 5 = 77.93 の切り捨て）。
+      //
+      //   **上に足した `**\/*.stories.*` の除外は床の水準を動かす**（`foundation/testing/**` を
+      //   足したときと違い、ここは「動かしていない」と言えない）。除外**しない**場合の
+      //   MSP 所有分は lines 87.96% / branches 82.95% / functions 86.13% であり、同じ導出規則から
+      //   出る床は **lines 82 / branches 77 / functions 81**。すなわち lines だけが 87 → 82 と
+      //   5pt 甘くなる。差は stories 1 ファイル（145 行・テストから実行されない）に由来する。
+      //   除外を採るのは、カタログの行数が被覆率を左右する状態そのものが誤りだからである
+      //   （stories を消すと床が上がる）。**除外なしの実測でも現行床 86 は満たしている**
+      //   （87.96% > 86）ため、この除外は「床を割るのを避けるための除外」ではない。
       thresholds: {
-        lines: 86,
-        statements: 86,
-        functions: 79,
+        lines: 87,
+        statements: 87,
+        functions: 81,
         branches: 77,
       },
     },

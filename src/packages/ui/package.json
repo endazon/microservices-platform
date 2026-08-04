@@ -9,7 +9,9 @@
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@radix-ui/react-tabs": "^1.1.21",
@@ -22,9 +24,14 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@storybook/react-vite": "^10.5.6",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.2.0",
+    "@vitejs/plugin-react": "^4.7.0",
     "react": "^19.2.0",
+    "storybook": "^10.5.6",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vite": "^6.4.3"
   }
 }
