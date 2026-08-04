@@ -8,9 +8,10 @@ related_ids:
   - IADR-0027
   - IADR-0033
   - IADR-0117
+  - IADR-0121
 author: claude
 created: 2026-07-10
-updated: 2026-08-03
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md"
@@ -92,11 +93,38 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 > 決定 1・2・4・5・6 は本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
 > 上記本文は 2026-07-10 時点の決定としてそのまま残す。
 
+> **［2026-08-04 追記］決定 3 のうち「フロントエンドの可変ユニットが参照してよい共有物」は
+> [[IADR-0121]] 決定 4 で 1 → 2 へ部分改定された（#446）。**
+> 計画 [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) が
+> shadcn/ui ベースの共有 UI パッケージを 2 ユニットで共用すると確定し、その切り出し単位を実装側で
+> 決めた結果である。**フロントエンドの可変ユニットが参照してよい共有物は、現行値では
+> `@foundation`（`platform/frontend` の基盤）と `@platform/ui`（`src/packages/ui`）の 2 つである**
+> （現行値は [IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 4 と
+> [`src/README.md`](../../src/README.md) 依存規則 例外 2 を正とする）。`@platform/ui` は
+> デザイントークンとプリミティブのみを持ち、ドメイン・BFF 通信・ルーティング・認証を持たないため、
+> ユニットの切り出し可能性は損なわれない。逆向き（`@platform/ui` → ユニット）の参照は禁止である。
+> 改定はこの 1 点に限り、決定 3 の「platform → 可変ユニットは禁止」「合成点以外から可変ユニットを
+> 参照しない」は本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
+
 4. **フロントエンド合成**: `src/` を npm workspaces ルートとする（`workspaces: ["*/frontend"]`・
    単一 lock）。platform 側 `platform/frontend/src/features/index.ts` を合成点とし、可変ユニットの
    features を束ねる（ユニット追加＝submodule 配置のみで workspaces に自動認識＋合成点へ import 1 行）。
    単体テスト・カバレッジはワークスペースルート（`src/vitest.config.ts`）で両パッケージを横断計測し、
    既存しきい値（ラチェット）を維持する。
+
+> **［2026-08-04 追記］決定 4 の「npm workspaces ルート（`workspaces: ["*/frontend"]`・単一 lock）」は
+> [[IADR-0121]] 決定 2 で pnpm workspace へ置換された（#446）。**
+> 計画 [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) が
+> パッケージ管理を pnpm と確定したためである。**現行値は
+> [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml)（`'*/frontend'` ＋ `'packages/*'`）と
+> 単一 lock `src/pnpm-lock.yaml`** である。決定 4 の趣旨——(1) 合成点は
+> `platform/frontend/src/features/index.ts` の 1 ファイル、(2) ユニット追加は submodule 配置のみで
+> workspace に自動認識され合成点へ import 1 行、(3) 単体テストとカバレッジは
+> [`src/vitest.config.ts`](../../src/vitest.config.ts) で横断計測しラチェットを維持——は**すべて
+> そのまま維持されている**（`'*/frontend'` のパターンが (2) を、`'packages/*'` が共有パッケージを
+> 受け持つ）。したがって置換されたのはパッケージマネージャの名前と lock ファイルの形式だけであり、
+> 状態は `Accepted` のままとする。
+
 5. **命名**: .NET 名前空間・アセンブリ名（`KnowledgePlatform.*`）と Helm チャート名
    （`knowledge-platform`）は本再編では変更しない。改名はフォローアップ issue で段階実施する。
 6. **submodule 境界**: 追加可変機能ユニットは `src/<unit>/`（`backend/`・`frontend/` を含む
@@ -135,6 +163,10 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 
 - Supersedes: IADR-0027 の「サブモジュールとして追加する場合」の節（サービス単位 → ユニット単位。
   Foundation/Composable 規約・サービスユニット内レイアウトは存続）
-- Superseded by: なし（[IADR-0117](IADR-0117_platform-shared-kernel-placement.md) が §決定 3 の
-  「ユニット外参照を許す `platform/backend/Shared/` のプロジェクト数」のみを 2 → 3 へ部分改定した。
-  依存の一方向性と他の決定は本 IADR が有効なため `Accepted` を維持する。2026-08-03 / #455）
+- Superseded by: なし（部分改定が 2 件ある。いずれも改定範囲が限定的で、依存の一方向性・合成点の
+  一意性・横断カバレッジのラチェットといった本 IADR の骨格は有効なため `Accepted` を維持する）
+  1. [IADR-0117](IADR-0117_platform-shared-kernel-placement.md): §決定 3 の「ユニット外参照を許す
+     `platform/backend/Shared/` のプロジェクト数」のみを 2 → 3 へ（2026-08-03 / #455）
+  2. [IADR-0121](IADR-0121_spa-stack-migration-staging.md): §決定 3 の「フロントエンドの可変ユニットが
+     参照してよい共有物」を 1 → 2（`@foundation` ＋ `@platform/ui`）へ、§決定 4 の「npm workspaces」を
+     pnpm workspace へ（2026-08-04 / #446）

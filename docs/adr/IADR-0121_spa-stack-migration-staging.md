@@ -2,7 +2,7 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0120]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0120]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -13,6 +13,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md"
 related_specs:
   - ../specs/20260804_issue-446_spa-foundation-stack-migration.md
+  - "../../feedback/20260804_frontend-migration-staging-interpretation.md"
 ---
 
 # IADR-0121: SPA 新スタック移行の内部設計（段階分割・pnpm・orval・`@platform/ui`・SSE 状態管理）
@@ -124,6 +125,15 @@ related_specs:
 各系統は 1 度だけ切り替え、2 つのルータ・2 つの HTTP クライアント・2 つの CSS 体系が同時に存在する
 状態を作らない。PR の分割は IADR-0116 規約 4 が要求する別事項である。
 
+> **［2026-08-04］この解釈は利用者裁定により確定した。** 裁定原文:
+> **「段階分けは認めます。最終的に一括になっていれば問題なし」**。したがって本決定の 5 段分割は
+> 計画と整合する。ただし「最終的に一括」は**完了条件**を伴う——第 2〜5 段をすべて消化し、
+> 13_frontend-stack §採用技術一覧と実装が完全に一致した時点で「一括移行の完了」とみなす
+> （`react-router-dom` と `oidc-client-ts` がワークスペースから消えていることを含む）。
+> 提起の経緯・確定解釈・完了条件・計画側への追補案は
+> [feedback/20260804_frontend-migration-staging-interpretation.md](../../feedback/20260804_frontend-migration-staging-interpretation.md)
+> を正とする（計画リポジトリへの反映操作のみ残タスク）。
+
 ### 決定 2: パッケージマネージャは pnpm workspace とし、単一情報源を `src/` に置く
 
 - `src/pnpm-workspace.yaml` に `'*/frontend'` と `'packages/*'` を列挙する。ユニットを submodule で
@@ -162,9 +172,10 @@ related_specs:
   ルーティング／認証・ロール判定／実行時 config。これらに触れた時点でそれは共有 UI ではなく feature である。
 - **判定規則**（迷ったときの一本の線）: *「この部品は、このリポジトリの外の SPA へそのまま持って行っても
   意味が通るか」*。通るならプリミティブ（`@platform/ui`）、通らないなら feature 側に置く。
-- **依存規則の改定**: [IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md) 例外 2 は
+- **依存規則の改定**: [`src/README.md`](../../src/README.md) 依存規則 **例外 2**
+  （[IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 3 の系）は
   「フロントエンドの可変ユニットは `@foundation` を参照してよい」と定めるが、本決定はこれを
-  **`@foundation` と `@platform/ui` の 2 つ**へ広げる（`src/README.md` へ反映）。`@platform/ui` は
+  **`@foundation` と `@platform/ui` の 2 つ**へ広げる（`src/README.md` と IADR-0056 決定 3 の追記へ反映）。`@platform/ui` は
   ドメインも通信も持たないため、この拡張はユニットの切り出し可能性を損なわない。
   逆向き（`@platform/ui` → ユニット）の参照は禁止する。
 - **アクセシビリティ規約の実装上の型**: 「色だけで意味を持たせない」（INDEX 決定 21）は口約束では守れないため、
@@ -238,6 +249,11 @@ Redux 系 import の禁止・`axios` 等の HTTP クライアント import の�
   - `@platform/ui` を薄く保つため、第 2 段までは複合コンポーネントがユニット側に重複し得る。
   - `src/packages/` はユニットでないディレクトリを `src/` 直下に増やす（IADR-0056 の構成図に追記が要る）。
 - フォローアップ:
+  - **［消化済み・2026-08-04］[IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md) への相互追記。**
+    本決定は IADR-0056 の決定 3（フロントの参照可能な共有物 1 → 2）と決定 4（npm workspaces → pnpm
+    workspace）を部分改定する。先例 [IADR-0117](IADR-0117_platform-shared-kernel-placement.md) と
+    同形式で、IADR-0056 の該当決定の直後へ日付付き［追記］を入れ、§関連 の「Superseded by」欄にも
+    部分改定 2 件として記載した（被改定側から改定側を辿れる状態を保つため）。
   - 第 2 段（TanStack Router ＋ アプリシェル ＋ 旧画面削除）の issue 起票と #454 チェックリストへの追加。
   - 第 3 段で本決定 6 の撤去を実行する（#439 のマージが条件）。
   - 第 4 段の着手時に決定 5 の再評価条件を確認する。

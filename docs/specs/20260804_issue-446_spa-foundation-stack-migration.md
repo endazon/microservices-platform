@@ -12,6 +12,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md"
 related_specs:
+  - "../../feedback/20260804_frontend-migration-staging-interpretation.md"
   - ./20260708_issue-126_frontend-spa-foundation.md
   - ./20260802_issue-454_reimplementation-kickoff.md
   - "../adr/IADR-0121_spa-stack-migration-staging.md"
@@ -224,7 +225,7 @@ flowchart TB
 | `no-restricted-imports`: `axios` / `superagent` / `ky` 等の HTTP クライアント | 同上 | 手書きクライアント禁止・BFF 境界 |
 | `no-restricted-globals` / `no-restricted-properties`: `fetch` / `XMLHttpRequest` / `EventSource` | `foundation/api/**` と生成物**以外** | HTTP 出口を `foundation/api` の 1 箇所へ収束させる |
 | `no-restricted-imports`: `@platform/ui/src/*`（深い参照） | 全ユニットの frontend | 共有 UI の公開面を `@platform/ui` のエントリに固定する |
-| 既存のユニット依存方向規則 | 現状維持 ＋ `packages/ui` を許可先に追加 | IADR-0056 例外 2 の拡張（IADR-0121 決定 4） |
+| 既存のユニット依存方向規則 | 現状維持 ＋ `packages/ui` を許可先に追加 | `src/README.md` 依存規則 例外 2（IADR-0056 決定 3 の系）の拡張（IADR-0121 決定 4） |
 
 `foundation/api` 自身と `foundation/api/generated/**` は当然に除外する（そこが唯一の出口だから）。
 テストファイルは `fetch` のモック定義のため除外する。
@@ -286,7 +287,9 @@ orval 生成物はカバレッジ対象から除外する（自動生成物を�
 - **`orvalMutator`**: 生成コードが渡す `/bff/...` 形式の URL を `apiClient` の経路へ正しく写像すること、
   401 で再ログイン導線が起動すること、`{ data, status, headers }` 形状を返すことをテストで固定する。
 - **`queryClient`**: 既定オプション（retry / refetchOnWindowFocus / staleTime）を回帰として固定する。
-- **既存テスト**: React 19 化・pnpm 化での退行ゼロを、既存 117 テストの全 green で確認する。
+- **既存テスト**: React 19 化・pnpm 化での退行ゼロを、**移行前の既存 193 テスト**（31 files）の全 green で
+  確認する。この 193 は `src/ai-stock-trading` を populate した横断計測の値であり、submodule 未 populate だと
+  1 スイートが解決不能で失敗する（§実測: 移行の結合度）。MSP 所有分（platform / knowledge）のみでは 122 テストである。
 - **E2E**: 既存のログイン画面スモーク（未認証 → `/login` 誘導）を新ツールチェーンで green にする。
 - **機械強制**: lint 規則は「違反コードを書いて落ちること」を手で 1 度確認し、結果を本書へ実測記録する
   （規則そのものの単体テストは ESLint 側の責務であり、ここでは配線の確認に留める）。
@@ -396,9 +399,19 @@ pnpm は npm と違い各パッケージの宣言を厳密に守るため、subm
      SPA が長期間「画面ゼロ」になり、IADR-0116 規約 5 に反する。
   3. `oidc-client-ts` は 13_frontend-stack で「不採用」だが、ADR-0032 のサーバ側（#439）未着手のため
      第 1 段では温存する。第 3 段で撤去する。
-- いずれも計画の**決定内容そのものは変更していない**ため、`/plan-feedback` は起こさない。ただし
-  13_frontend-stack §実装への移行方針が「移行完了の定義・テストの作り直し・カバレッジしきい値の扱いは
-  未確定であり、実装引き継ぎ時に確定する」としている点について、本書と IADR-0121 が実装側の確定値を与える。
+- **計画への環流（1 について）**: 差異 1 は計画の決定内容を変えないが、**裁定の 1 行の解釈**に依存する
+  判断であり、解釈が揺れると第 2 段以降の PR 構成が根本から変わる。したがって記録を残さない選択は取らず、
+  [feedback/20260804_frontend-migration-staging-interpretation.md](../../feedback/20260804_frontend-migration-staging-interpretation.md)
+  を起票した（当初「`/plan-feedback` は起こさない」としていた判断は撤回した）。
+  **本件は利用者裁定により確定済みである**——裁定原文「**段階分けは認めます。最終的に一括になっていれば
+  問題なし**」（2026-08-04）。すなわち禁止対象は旧新スタックの並行運用であり、PR / issue の分割は
+  認められる。ただし「最終的に一括」は完了条件を伴う（第 2〜5 段の全消化＝13_frontend-stack §採用技術一覧と
+  実装の完全一致。`react-router-dom` と `oidc-client-ts` の消滅を含む）。**残タスクは計画リポジトリへの
+  1 行追補の反映操作のみ**で、実装側の判断待ちはない。
+- 差異 2・3 は計画の決定内容を変えず、実行する段が違うだけであるため追加の環流は行わない。
+- 13_frontend-stack §実装への移行方針が「移行完了の定義・テストの作り直し・カバレッジしきい値の扱いは
+  未確定であり、実装引き継ぎ時に確定する」としている点については、本書と IADR-0121 が実装側の確定値を与える
+  （移行完了の定義は上記 feedback の「§完了条件」）。
 
 ## 未決事項
 
@@ -411,3 +424,7 @@ pnpm は npm と違い各パッケージの宣言を厳密に守るため、subm
 - Vite のメジャー更新（5 → 7/8）と Vitest 4 / TypeScript 7 系への追随は本作業の対象外。別途 issue 化する。
 - `@platform/ui` に置いた 2 プリミティブ以外（Input / Dialog / Table / Form …）の shadcn/ui 移植は
   第 2 段。ダークテーマのトークンも画面確定後に追加する。
+- **`knowledge/frontend` はまだ `@platform/ui` を依存として宣言していない**（第 2 段メモ）。第 1 段では
+  knowledge 側の画面に手を入れないため、宣言だけ先に足しても未使用の依存が増えるだけである
+  （pnpm は宣言のない依存の解決を許さないので、**使い始める段で必ず気付く**——気付けない失敗にはならない）。
+  第 2 段で画面を再実装する際に `@platform/ui: workspace:*` を `knowledge/frontend/package.json` へ追加する。
