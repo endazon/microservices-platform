@@ -7,6 +7,9 @@
 export { cn } from './lib/cn';
 export { Button, buttonVariants, type ButtonProps } from './components/Button';
 export { StatusBadge, type StatusBadgeProps } from './components/StatusBadge';
+// SC-01/SC-02/SC-03（#502）: 分類の名前を表すチップ。状態を表す StatusBadge とは別の部品である
+// （Tag.tsx の冒頭コメント参照）。
+export { Tag, tagVariants, type TagProps } from './components/Tag';
 export { Input, inputVariants, type InputProps } from './components/Input';
 export { Textarea, textareaVariants, type TextareaProps } from './components/Textarea';
 export { Select, selectVariants, type SelectProps } from './components/Select';

@@ -16,10 +16,23 @@ import type { ShellRoute } from './shell';
  */
 export type NavGroup = 'user' | 'personal' | 'admin' | 'ops';
 
+/**
+ * ナビ表示名。
+ *
+ * ADR-0031 / IADR-0125 決定 6（#502 で拡張）: 文言は Lingui のカタログへ載せる。ナビ項目は
+ * **モジュール初期化時に評価される**ため、翻訳済みの文字列で持つとロケール切替に追随しない
+ * （`nav.ts` の `PLAN_NAV_GROUP_MESSAGES` が既に同じ理由で `MessageDescriptor` を持っている）。
+ * よって `MessageDescriptor` を受け付け、解決は描画時（`navGroups()`）に行う。
+ *
+ * `string` も残すのは、まだ i18n 化していない画面（SC-04〜11。#452 の残り分割が引き受ける）と、
+ * 本リポジトリから変更できない旧契約ユニット（AST。IADR-0120）のためである。
+ */
+export type NavLabel = string | MessageDescriptor;
+
 // Issue #136 / IADR-0035: 共通ナビへ出すメニュー項目。権限外には表示しない（存在秘匿の UI 表現）。
 export interface FeatureNav {
   /** ナビ表示名（例: "運用ダッシュボード"）。 */
-  label: string;
+  label: NavLabel;
   /** 遷移先パス（例: "/admin/ops"）。 */
   to: string;
   /** 表示に必要なロール（いずれか一致で表示）。省略時は認証済み全員に表示する。 */

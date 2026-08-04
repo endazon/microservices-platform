@@ -21,6 +21,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tag,
   Textarea,
 } from '../index';
 
@@ -202,5 +203,18 @@ export const TabsStory: Story = {
       <TabsContent value="edges">辺の型（値集合）の一覧</TabsContent>
       <TabsContent value="policy">ポリシーの条件式</TabsContent>
     </Tabs>
+  ),
+};
+
+export const TagStory: Story = {
+  name: 'タグ（分類の名前）',
+  render: () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <Tag tone="accent">経理</Tag>
+      <Tag tone="neutral">規程</Tag>
+      <Tag tone="outline">組織文書</Tag>
+      {/* 状態は Tag ではなく StatusBadge で表す（色 ＋ アイコン ＋ テキスト。INDEX 決定 21）。 */}
+      <StatusBadge tone="success">同期済み</StatusBadge>
+    </div>
   ),
 };
