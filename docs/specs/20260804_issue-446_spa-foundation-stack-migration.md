@@ -451,6 +451,46 @@ vite 5.4.8 が lockfile に残るため advisory は消えなかった**（実�
 再現するテストは、ライブラリの実装詳細に依存して脆くなるため書かない。結果、単体テストは
 213 → **227 件**、横断カバレッジは 91.44 → **91.46%**（branches 82.15 → **82.33%**）。しきい値は据え置き。
 
+### pnpm のビルドスクリプト許可（`onlyBuiltDependencies`）と msw
+
+pnpm 10 は既定でパッケージの `postinstall` を実行しない（サプライチェーン対策）。install ログには
+`Ignored build scripts: msw@2.15.0` が出るが、**msw は許可リストへ入れない**。実測の根拠は次のとおり。
+
+- msw の `postinstall` は `config/scripts/postinstall.js` を呼ぶだけで、その中身は
+  **親プロジェクトの `package.json` に `msw.workerDirectory` フィールドが無ければ即 return する**
+  （実装を読んで確認）。本リポジトリにそのフィールドは無いため、実行しても何も起こらない。
+- `workerDirectory` が要るのは **ブラウザの Service Worker（`mockServiceWorker.js`）を配る場合**である。
+  本作業で入れた MSW は orval が生成する `*.msw.ts`（Node 側の `setupServer` 用ハンドラ）であり、
+  Service Worker は使わない。
+- 現時点で `msw` を import しているのは生成物 5 ファイルのみで、**テストからはまだ使われていない**
+  （画面実装 #452 で使う）。単体テスト 227 件は許可なしで全て green である。
+
+許可リストは「実行させる必要が実証できたものだけ」に保つ。効果のない `postinstall` に install 時の
+コード実行権限を与えるのは、得るものが無いまま攻撃面を広げるだけである。現在の許可は
+`esbuild`（Vite / Vitest のネイティブバイナリ取得に必要）1 件のみ。
+
+### CI 固有の失敗と、ローカル検証がそれを見逃した理由（実測）
+
+第 1 段の CI（PR #489）は 3 回失敗した。いずれも**ローカルでは緑のまま再現しない**種類であり、
+記録に残す価値がある。
+
+| # | 失敗 | 原因 | 対応 |
+| --- | --- | --- | --- |
+| 1 | 全ジョブが起動直後に `Error: No pnpm version is specified.` | `pnpm/action-setup` の既定はリポジトリ直下の `package.json` を読む。本リポジトリの workspace ルートは `src/` | 全 3 ステップへ `package_json_file: src/package.json`。ローカルの pnpm は `packageManager` を直接読むため差が出ない |
+| 2 | `Dependency review` が critical で fail | pnpm-lock 化で全依存が「新規追加」扱いになり全量レビューされた | vitest 3.2.7 / vite 6.4.3 へ（§依存レビューの指摘と対応） |
+| 3 | e2e の `pnpm exec playwright install` が `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "playwright" not found` | `@playwright/test` は workspace ルートではなく `platform/frontend` の devDependency。pnpm は各パッケージの `.bin` しか見せない | `pnpm --filter @platform/frontend exec …` へ |
+
+**3 はローカル検証が「成功」と誤答していた。** 検証環境には `/opt/node22/bin/playwright`（**1.56.1**）が
+グローバル導入されており、`src/` での `pnpm exec playwright` がそこへフォールバックして通っていた。
+CI ランナーにグローバル導入は無いため落ちる。`--filter` を付けた場合の解決先は
+`./node_modules/.bin/playwright`（**1.62.1** ＝ `platform/frontend` が宣言した版）であり、
+**版番号がそのまま「どちらを引いたか」の判別子になる**。
+
+同種の見落としが他に無いか、CI が呼ぶ全バイナリの解決先を機械的に確認した（グローバルには
+`eslint` / `prettier` / `tsc` / `chromedriver` 等も存在する）。結果、`eslint` / `vitest` / `orval` /
+`prettier` / `tsc` / `vite` はいずれも `./node_modules/.bin/` を引いており、**フォールバックしていたのは
+`playwright` のみ**だった。
+
 ### 機械強制の発火確認（違反サンプル。確認後に削除済み）
 
 `knowledge/frontend/src` と `packages/ui/src` に故意の違反ファイルを置いて `eslint` を実行した結果、

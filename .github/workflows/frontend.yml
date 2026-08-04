@@ -108,8 +108,14 @@ jobs:
           cache-dependency-path: src/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       # スクリーンレベル・スモーク（バックエンド不要。ログイン画面到達を検証）。
+      # --filter で platform/frontend の文脈を指定する。@playwright/test は workspace ルート（src/）では
+      # なく platform/frontend の devDependency であり、pnpm は npm と違って各パッケージの .bin しか
+      # 見せないため、src/ での素の `pnpm exec playwright` はバイナリを解決できず
+      # 「ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "playwright" not found」で落ちる（PR #489 の CI で実測）。
+      # 後続の Build / E2E も同じく src/ から --filter でパッケージへ委譲する（ルートの package.json の
+      # スクリプト経由）ため、working-directory は src/ のまま揃える。
       - name: Install Playwright browser
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm --filter @platform/frontend exec playwright install --with-deps chromium
       - name: Build
         run: pnpm run build
       - name: E2E smoke
