@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — check-doc-links の検査対象にコードファイルの拡張子を加える
 type: spec
-status: in-progress
+status: done
 related_ids: [NFR, IADR-0115]
 author: Claude
 created: 2026-08-03
