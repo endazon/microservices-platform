@@ -1,0 +1,13 @@
+{
+  "$comment": [
+    "契約の破壊的変更に対する承認エントリ（Issue #465 / IADR-0122）。",
+    "逃げ道の無いゲートは無視される（IADR-0115 の知見）ため、明示的な承認で通す道を用意する。",
+    "手順: (1) 破壊的変更の key を check-contract-schema.js の失敗出力からコピーし、",
+    "      (2) 下の approvals へ { key, reason, approvedBy, issue, date } を書き、",
+    "      (3) node scripts/check-contract-schema.js --update を実行する。",
+    "--update は承認エントリを contract-schema-baseline.json の $acceptedBreakingChanges へ移し、",
+    "ここを空へ戻す（承認の記録は baseline 側に残り、git 履歴で追跡できる）。",
+    "定常状態では空である。変更に対応しない承認が残っていれば fail する。"
+  ],
+  "approvals": []
+}

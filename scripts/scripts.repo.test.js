@@ -1096,4 +1096,236 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(after.status, 0);
     assert.doesNotMatch(String(after.stdout), /VersionOverride を [1-9]/);
   });
+
+  // --- check-contract-schema: Shared.Contracts の後方互換（Issue #465 / IADR-0122） -----
+
+  const contracts = require('./check-contract-schema.js');
+  const cTypes = (src) => contracts.extractTypes(src);
+  const cOne = (src) => { const r = cTypes(src); return r[Object.keys(r)[0]]; };
+  const cSnap = (types) => ({ 'src/x/backend/Shared/X.Contracts': types });
+  const cDiff = (a, b) => contracts.diffSnapshots(cSnap(a), cSnap(b));
+  const cRec = (members) => ({ kind: 'record', members });
+  const cReq = (type, position) => ({ source: 'positional', type, required: true, position });
+  const cOpt = (type, position) => ({ source: 'positional', type, required: false, position });
+
+  ok('契約: 位置引数 record の型・必須・位置を抽出する', () => {
+    const e = cTypes('namespace N;\npublic record E(Guid Id, string? Note = null);')['N.E'];
+    assert.strictEqual(e.kind, 'record');
+    assert.strictEqual(e.members.Id.required, true);
+    assert.strictEqual(e.members.Id.position, 0);
+    assert.strictEqual(e.members.Note.required, false);
+    assert.strictEqual(e.members.Note.type, 'string?');
+  });
+
+  ok('契約: ジェネリクス内のカンマで位置引数を割らない（配列型も読む）', () => {
+    // 素朴な split(',') だと Dictionary<string, List<string>> が 2 引数に割れて契約が壊れて記録される。
+    assert.strictEqual(
+      cOne('namespace N;\npublic record E(Dictionary<string, List<string>>? A = null);').members.A.type,
+      'Dictionary<string,List<string>>?');
+    assert.strictEqual(cOne('namespace N;\npublic record E(float[] V);').members.V.type, 'float[]');
+  });
+
+  ok('契約: enum の暗黙序数を計算する（並べ替えを値の変更として捕まえるため）', () => {
+    const e = cOne('namespace N;\npublic enum E { A, B, C }');
+    assert.deepStrictEqual([e.members.A.value, e.members.B.value, e.members.C.value], [0, 1, 2]);
+    const f = cOne('namespace N;\npublic enum F { A = 5, B }');
+    assert.deepStrictEqual([f.members.A.value, f.members.B.value], [5, 6]);
+  });
+
+  ok('契約: const の値と型・メンバーの属性まで固定する', () => {
+    // "queued" 等のリテラルは配線そのもの。属性はシリアライズ表現（enum の文字列化・JSON 名）を変える。
+    assert.strictEqual(
+      cOne('namespace N;\npublic static class C { public const string A = "queued"; }').members.A.value,
+      '"queued"');
+    assert.deepStrictEqual(
+      cOne('namespace N;\n[JsonConverter(typeof(JsonStringEnumConverter<E>))]\npublic enum E { A }').attributes,
+      ['JsonConverter(typeof(JsonStringEnumConverter<E>))']);
+    assert.deepStrictEqual(
+      cOne('namespace N;\npublic class D { [JsonPropertyName("t")]\n public string T { get; init; } = ""; }')
+        .members.T.attributes, ['JsonPropertyName("t")']);
+  });
+
+  ok('契約: internal 型・public メソッド・コメント中の宣言はスキーマに含めない', () => {
+    assert.strictEqual(Object.keys(cTypes('namespace N;\ninternal record E(string A);')).length, 0);
+    assert.strictEqual(
+      cOne('namespace N;\npublic static class C { public const string A = "a";\n'
+        + ' public static bool IsValid(string? x) => true; }').members.IsValid, undefined);
+    assert.strictEqual(
+      Object.keys(cTypes('namespace N;\n// public record Ghost(string A);\npublic record E(string A);')).length, 1);
+  });
+
+  ok('契約: 文字列リテラル中の // をコメントと誤認しない', () => {
+    // storage:// のようなリテラルを持つ const を壊さないための境界。
+    assert.match(contracts.stripComments('var x = "storage://a"; // c'), /storage:\/\/a/);
+  });
+
+  ok('契約: 削除・型変更・必須化・並べ替えは破壊的', () => {
+    assert.strictEqual(cDiff({ 'N.A': cRec({ X: cReq('int', 0) }) }, { 'N.A': cRec({}) })[0].severity, 'breaking');
+    assert.strictEqual(
+      cDiff({ 'N.A': cRec({ X: cReq('int', 0) }) }, { 'N.A': cRec({ X: cReq('long', 0) }) })[0].kind,
+      'memberTypeChanged');
+    assert.strictEqual(
+      cDiff({ 'N.A': cRec({ X: cOpt('int', 0) }) }, { 'N.A': cRec({ X: cReq('int', 0) }) })[0].kind,
+      'memberRequired');
+    assert.strictEqual(
+      cDiff({ 'N.A': cRec({ X: cReq('int', 0), Y: cReq('int', 1) }) },
+        { 'N.A': cRec({ X: cReq('int', 1), Y: cReq('int', 0) }) })
+        .filter((c) => c.kind === 'memberReordered').length, 2);
+  });
+
+  ok('契約: 既定値付きの追加は非破壊・既定値の無い追加は破壊的', () => {
+    // 既定値が無ければ旧発行者のメッセージが必須項目を欠く（＝後方互換ではない）。逃げ道は既定値を付けること。
+    assert.strictEqual(cDiff({ 'N.A': cRec({}) }, { 'N.A': cRec({ X: cOpt('int', 0) }) })[0].severity, 'additive');
+    assert.strictEqual(cDiff({ 'N.A': cRec({}) }, { 'N.A': cRec({ X: cReq('int', 0) }) })[0].kind,
+      'memberAddedRequired');
+  });
+
+  ok('契約: 承認エントリは 5 項目すべてを必須にする', () => {
+    const good = { key: 'typeRemoved:N.A', reason: 'r', approvedBy: 'a', issue: '#1', date: '2026-08-04' };
+    assert.deepStrictEqual(contracts.validateApprovals([good]), []);
+    for (const f of ['key', 'reason', 'approvedBy', 'issue', 'date']) {
+      assert.ok(contracts.validateApprovals([{ ...good, [f]: '' }]).some((e) => e.includes(f)),
+        `${f} が空でも通ってしまう（理由・承認者の残らない承認は記録にならない）`);
+    }
+    assert.ok(contracts.validateApprovals([{ ...good, date: '2026/08/04' }]).length > 0);
+    assert.ok(contracts.validateApprovals([{ ...good, issue: '123' }]).length > 0);
+  });
+
+  ok('契約: 承認は破壊的変更を通し、対応する変更が無ければ stale として検出する', () => {
+    const baseline = { projects: cSnap({ 'N.A': cRec({ X: cReq('int', 0) }) }) };
+    const removed = { projects: cSnap({ 'N.A': cRec({}) }) };
+    const key = 'memberRemoved:N.A.X';
+    const approval = { key, reason: 'r', approvedBy: 'a', issue: '#465', date: '2026-08-04' };
+    const e0 = contracts.evaluate({ snapshot: removed, baseline, allowlist: { approvals: [] } });
+    assert.strictEqual(e0.unapproved.length, 1);
+    assert.strictEqual(e0.unapproved[0].key, key);
+    const e1 = contracts.evaluate({ snapshot: removed, baseline, allowlist: { approvals: [approval] } });
+    assert.strictEqual(e1.unapproved.length, 0);
+    assert.strictEqual(e1.approved.length, 1);
+    const e2 = contracts.evaluate({
+      snapshot: { projects: baseline.projects }, baseline, allowlist: { approvals: [approval] },
+    });
+    assert.strictEqual(e2.stale.length, 1, '承認だけが残ると次の破壊的変更を黙って通す');
+  });
+
+  ok('契約: 承認の記録は baseline の $acceptedBreakingChanges へ追記され消えない', () => {
+    const nb = contracts.nextBaseline({
+      snapshot: { projects: { p: {} } },
+      baseline: { $acceptedBreakingChanges: [{ key: 'old' }], projects: {} },
+      approved: [{ key: 'typeRemoved:N.A', reason: 'r', approvedBy: 'a', issue: '#1', date: '2026-08-04' }],
+    });
+    assert.strictEqual(nb.$acceptedBreakingChanges.length, 2);
+    assert.strictEqual(contracts.emptyAllowlist().approvals.length, 0);
+  });
+
+  ok('契約: 除外ユニットはハードコードせず lib/excluded-units.js から導出する', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'check-contract-schema.js'), 'utf8');
+    assert.doesNotMatch(src, /new Set\(\[\s*["']ai-stock-trading["']/);
+    assert.match(src, /require\('\.\/lib\/excluded-units\.js'\)/);
+    assert.strictEqual(contracts.isExcludedPath('src/ai-stock-trading/backend/Shared/X.Contracts'), true);
+    assert.strictEqual(contracts.isExcludedPath('src/platform/backend/Shared/Platform.Shared.Contracts'), false);
+  });
+
+  ok('契約: 実リポジトリは baseline と一致し、契約プロジェクトを 2 件検出する', () => {
+    const found = contracts.findContractProjects();
+    assert.deepStrictEqual(found, [
+      'src/knowledge/backend/Shared/Knowledge.Contracts',
+      'src/platform/backend/Shared/Platform.Shared.Contracts',
+    ], '走査経路の退行（0 件検査・対象取りこぼし）');
+    const r = contracts.evaluate({
+      snapshot: contracts.buildSnapshot(),
+      baseline: JSON.parse(fs.readFileSync(contracts.BASELINE_FILE, 'utf8')),
+      allowlist: JSON.parse(fs.readFileSync(contracts.ALLOWLIST_FILE, 'utf8')),
+    });
+    assert.deepStrictEqual(r.changes, [], `baseline との差分: ${JSON.stringify(r.changes)}`);
+    assert.deepStrictEqual(r.stale, []);
+    assert.deepStrictEqual(r.approvalErrors, []);
+  });
+
+  ok('契約: --self-test は exit 0（負例の実地走査を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-contract-schema.js'), '--self-test'],
+      { encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+  });
+
+  // 受け入れ基準（#465）「後方互換を壊す契約変更が CI で止まる」の実測。
+  // 純関数の試験だけでは「走査経路に乗っているか」「素実行が exit 1 になるか」を確かめられないため、
+  // 破壊的変更を持つ .cs を実ツリーへ一時的に置き、子プロセスの終了コードを見る。
+  // 追跡ファイルは書き換えない（テストが異常終了しても既存の契約を壊さないよう、新規ファイルを
+  // 置いて finally で消す方式にする）。
+  ok('契約: 契約に型を足すと素実行が exit 1（走査経路が実ツリーに効いていること）', () => {
+    const { spawnSync } = require('child_process');
+    const probe = path.join(__dirname, '..', 'src', 'knowledge', 'backend', 'Shared',
+      'Knowledge.Contracts', 'Events', 'ContractCheckProbe.cs');
+    const run = () => spawnSync(process.execPath,
+      [path.join(__dirname, 'check-contract-schema.js')], { encoding: 'utf8' });
+    assert.strictEqual(run().status, 0, '設置前は exit 0 のはず');
+    // 非破壊（型の追加）でも baseline と差分がある限り止める＝契約変更を必ず PR の diff に載せる設計。
+    fs.writeFileSync(probe,
+      'namespace Knowledge.Contracts.Events;\npublic record ContractCheckProbe(Guid Id);\n');
+    try {
+      const r = run();
+      assert.strictEqual(r.status, 1, `型を足したのに exit ${r.status}`);
+      assert.match(String(r.stderr), /typeAdded:Knowledge\.Contracts\.Events\.ContractCheckProbe/);
+      assert.match(String(r.stderr), /--update/);
+    } finally {
+      fs.rmSync(probe, { force: true });
+    }
+    assert.strictEqual(run().status, 0, '撤去後に exit 0 へ戻らない');
+  });
+
+  // 受け入れ基準（#465）「破壊的変更が CI で止まり、承認で通る」の出力経路まで含めた実測。
+  // 判定関数だけを試験すると、承認済みの可視化（reportApproved）が壊れても終了コードに現れない。
+  ok('契約: 破壊的変更は素実行で exit 1・承認済みは実行サマリとアノテーションへ出る（出力経路）', () => {
+    const { spawnSync } = require('child_process');
+    const baselinePath = contracts.BASELINE_FILE;
+    const allowPath = contracts.ALLOWLIST_FILE;
+    const baselineOrig = fs.readFileSync(baselinePath, 'utf8');
+    const allowOrig = fs.readFileSync(allowPath, 'utf8');
+    const summary = path.join(os.tmpdir(), `contract-summary-${process.pid}-${Date.now()}.md`);
+    const run = (env = {}) => spawnSync(process.execPath,
+      [path.join(__dirname, 'check-contract-schema.js')],
+      { encoding: 'utf8', env: { ...process.env, ...env } });
+    // baseline 側へ「実在しないメンバー」を足すと、実ツリーとの差分は削除（＝破壊的）として現れる。
+    // 実ファイル（契約そのもの）は一切書き換えない。
+    const key = 'memberRemoved:Knowledge.Contracts.Events.IngestionCompleted.__Probe';
+    try {
+      const b = JSON.parse(baselineOrig);
+      b.projects['src/knowledge/backend/Shared/Knowledge.Contracts']
+        ['Knowledge.Contracts.Events.IngestionCompleted'].members.__Probe =
+          { source: 'positional', type: 'int', required: true, position: 9 };
+      fs.writeFileSync(baselinePath, JSON.stringify(b, null, 2) + '\n');
+
+      const unapproved = run();
+      assert.strictEqual(unapproved.status, 1, '未承認の破壊的変更で exit 1 にならない');
+      assert.match(String(unapproved.stderr), /後方互換を壊す契約変更が 1 件あります/);
+      assert.match(String(unapproved.stderr), new RegExp(key.replace(/\./g, '\\.')));
+      assert.match(String(unapproved.stderr), /contract-breaking-allowlist\.json/);
+
+      const a = JSON.parse(allowOrig);
+      a.approvals = [{ key, reason: '受け入れ基準の実測', approvedBy: 'test', issue: '#465', date: '2026-08-04' }];
+      fs.writeFileSync(allowPath, JSON.stringify(a, null, 2) + '\n');
+
+      const approved = run({ GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary });
+      // 承認しても baseline が古いままなら止める（--update で差分を PR に載せさせるため）。
+      assert.strictEqual(approved.status, 1, '承認済みでも baseline 未更新なら止めるはず');
+      assert.match(String(approved.stdout), /::warning::承認済みの破壊的な契約変更が 1 件あります/);
+      assert.match(String(approved.stderr), /--update/);
+      const written = fs.readFileSync(summary, 'utf8');
+      assert.match(written, /### 契約: 承認済みの破壊的変更/);
+      assert.match(written, /受け入れ基準の実測/);
+
+      // 対応する変更が無い承認（stale）は fail する。
+      fs.writeFileSync(baselinePath, baselineOrig);
+      const stale = run();
+      assert.strictEqual(stale.status, 1, 'stale な承認で exit 1 にならない');
+      assert.match(String(stale.stderr), /対応する変更が無い承認が 1 件残っています/);
+    } finally {
+      fs.writeFileSync(baselinePath, baselineOrig);
+      fs.writeFileSync(allowPath, allowOrig);
+      fs.rmSync(summary, { force: true });
+    }
+    assert.strictEqual(run().status, 0, '復元後に exit 0 へ戻らない');
+  });
 };

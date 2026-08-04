@@ -69,6 +69,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
 | **ライブラリ標準（ADR-0030）** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)） |
 | **CPM バージョン直書き禁止** | `src/`（AST を除く）と `templates/` の `.csproj` の `PackageReference`（`.props` / `.targets` は正当な版記述があるため対象外） | [`check-cpm-versions.js`](../../scripts/check-cpm-versions.js) | `Version` 属性 / `<Version>` 子要素 → **fail**（着手時点の違反 0 件を実測したため ratchet 無しで最初から fail）。`VersionOverride` は**許可**し使用箇所を warn ＋実行サマリへ（[#467](https://github.com/endazon/microservices-platform/issues/467)） |
+| **契約の後方互換（`Shared.Contracts`）** | `src/<unit>/backend/Shared/*.Contracts`（AST を除く）の public 型・メンバー・enum 値・`const` 値・属性 | [`check-contract-schema.js`](../../scripts/check-contract-schema.js) | 削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・既定値の無いメンバーの追加 → **破壊的・fail**。非破壊の追加でも [`contract-schema-baseline.json`](../../scripts/contract-schema-baseline.json) と差分があれば **fail**（`--update` で更新し差分を PR の diff に載せる）。破壊的変更は [`contract-breaking-allowlist.json`](../../scripts/contract-breaking-allowlist.json) の承認エントリで通す（[#465](https://github.com/endazon/microservices-platform/issues/465) / [IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)） |
 
 ※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
 未マージ成果物への前方参照は live link ではなくバッククォート表記で書く
@@ -117,15 +118,17 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 
 ### 共通する設計原則: ratchet
 
-上記のうち写像検査・カバレッジ床・ライブラリ標準はいずれも **ratchet**（床は下げられるが上げっぱなしに
-できない）で設計している。これは impl-handoff-kit の段階ポリシー設計
+上記のうち写像検査・カバレッジ床・ライブラリ標準・契約の後方互換はいずれも **ratchet**（床は下げられるが
+上げっぱなしにできない）で設計している。これは impl-handoff-kit の段階ポリシー設計
 （[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146・planning#160
 （前段の失敗モード）／planning#161・planning#162（段階ポリシーの導入））が
 示した「**成果物は正しいのに赤**」の常態化——拒否の赤を無視する学習を生み、検査の目的を逆から壊す
 ——を避けるためである（キットの同期規約そのものは
 [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)）。既知の残件を
 明示（allowlist / baseline / floor）したうえで、**新規の悪化だけを止める**。あわせて「残件が消えたのに
-明示が残っている」ことも fail にする。これが無いと残件表が減らないまま形骸化する。
+明示が残っている」ことも fail にする。契約の後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465)）だけは
+「既知の残件」ではなく「**意図した破壊的変更の承認**」を明示の対象にするが、3 判定（新規は fail /
+明示済みは通す / 対応が消えたのに残っていれば fail）は同じである。これが無いと残件表が減らないまま形骸化する。
 
 ### 床の置き方（実測からの切り下げ）
 
@@ -150,7 +153,7 @@ branch 17.62%（3154/17896）**（レポート 14 件 = MSP のテストプロ�
 | 統合（バックエンド） | `Services/<Name>/tests/<Name>.IntegrationTests` | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
-| 契約 | — | **未整備（後続 issue）** | `Shared.Contracts` の後方互換 |
+| 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / [IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)） |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
 
 ### xUnit のバージョンは v2 のまま書く（v3 へ先走らない）
@@ -169,7 +172,7 @@ PR ではなく issue を分割する）。
 
 | 項目 | 切り出す理由 |
 | --- | --- |
-| 契約テスト基盤（`Shared.Contracts` のスキーマ後方互換） | 抽出方式（リフレクション / OpenAPI / proto）の選定から要り、[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) の繰延判断の見直しを伴う |
+| ~~契約テスト基盤（`Shared.Contracts` のスキーマ後方互換）~~ | [#465](https://github.com/endazon/microservices-platform/issues/465) として切り出し、**実装済み**（上の「ゲート一覧」を参照）。抽出方式は C# ソース構文解析を採り、[IADR-0049](../adr/IADR-0049_composability-standards-phased-adoption.md) 決定 1 のうち「CI 契約テスト」だけを繰延解除した（[IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)。共通エンベロープの繰延は継続） |
 | E2E スモークセット（Istio・Keycloak・BFF の統合スタック） | 実行環境の CI 上での起こし方が主題であり #442（エッジ・実行基盤）と密結合する |
 | NFR 性能試験の枠組み | [#196](https://github.com/endazon/microservices-platform/issues/196) が担当。再実装後の受け入れゲートとして接続するのは各サービス完成後 |
 | ~~CPM バージョン直書き禁止の機械検査~~ | [#467](https://github.com/endazon/microservices-platform/issues/467) として切り出し、**実装済み**（上の「ゲート一覧」を参照） |
