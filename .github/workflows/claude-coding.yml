@@ -148,10 +148,10 @@ jobs:
           # claude-code-review.example.yml の対応箇所と**同じ内容**に保つこと。
           #
           # 【暫定デルタ・issue 番号の修飾】以下のコメント中の計画リポ issue 参照は、キットでは
-          # 裸の `#NNN` で書かれているが本リポでは `planning#NNN` へ修飾してある。#146 / #149 /
-          # #155 / #160 / #163 / #168 は**いずれも本リポジトリに無関係な PR として実在**し、裸で
-          # 書くとそちらへ自動リンクするためである（`.claude/rules/traceability.md`「クロス
-          # リポジトリの issue / PR 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。
+          # 裸の `#NNN` で書かれているが本リポでは `planning#NNN` へ修飾してある。planning#146 / planning#149 / planning#155 / planning#160 / planning#163 / planning#168
+          # は**同じ番号の無関係な PR / issue が本リポジトリにも実在する**ため、裸で書くとそちらへ
+          # 自動リンクしてしまう（`.claude/rules/traceability.md`「クロスリポジトリの issue / PR
+          # 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。
           #
           # 【読み取り専用ツールの対称性（planning#160 / planning#163）】head / tail / cmp / diff /
           # git ls-tree / git submodule status / git fetch / git show / grep / sort / which は

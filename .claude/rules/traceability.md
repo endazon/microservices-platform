@@ -19,8 +19,8 @@ paths:
 上記の裸（無修飾）の ID は、**本リポジトリが主に実装するプロジェクトの計画書の名前空間**を指す。
 本リポジトリではそれが **MSP（microservices-platform）** であり、ID レンジは
 `FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0040`（`ADR-0035` は番号予約のみで未起案・欠番）
-である（planning `abb6a75` = project-planning PR #176 時点。`ADR-0040`＝k8s 管理 UI の選定は
-planning PR #193 で追加された `Proposed`）。計画側で ID が増減したら本節を追随させる
+である（planning `abb6a75` = planning#176 時点。`ADR-0040`＝k8s 管理 UI の選定は
+planning#193 で追加された `Proposed`）。計画側で ID が増減したら本節を追随させる
 （レンジは監査 / `trace-check` の突合基準であり、古いままだと新 ID の参照を「存在しない ID」と誤検出する）。
 
 ## 複数プロジェクトを跨ぐ場合の ID 修飾
