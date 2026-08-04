@@ -2,8 +2,10 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
 import type { ComponentProps } from 'react';
 import { cn } from '../lib/cn';
 
-// ADR-0031 / IADR-0125 決定 1: 移植の根拠は SC-09（属性体系 / タグ辞書 / 辺の型 / ポリシー定義。
-// 01_screens 本文が「『辺の型』**タブ**」と呼ぶ）と hi-fi モックアップの `seg` / `seg-opt`。
+// ADR-0031 / IADR-0125 決定 1: 移植の根拠は **hi-fi モックアップ**（`mockups/hi-fi/sc-09.html` が
+// 「属性体系 / タグ辞書 / 辺の型 / ポリシー定義」の 4 区画を `seg` / `seg-opt` の切替として描き、
+// 注記で「『辺の型』タブ」と呼ぶ）。**01_screens.md の SC-09 節に「タブ」の語は無い**——
+// §主要素 は 4 区画を列挙するだけである（呼称の出所はモックアップであり本文ではない）。
 //
 // **ここだけ Radix を使う**（`Select` はネイティブ）。タブはロービングタブインデックス
 // （矢印キーでの移動）と `role="tab"` / `aria-selected` / `aria-controls` の整合を自前で書くと
