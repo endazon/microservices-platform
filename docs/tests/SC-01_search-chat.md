@@ -1,7 +1,7 @@
 ---
 title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
-status: in-progress
+status: completed
 related_ids:
   - SC-01
   - UC-01

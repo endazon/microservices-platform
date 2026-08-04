@@ -1,7 +1,7 @@
 ---
 title: SC-02 検索結果一覧 テスト仕様書
 type: test-spec
-status: in-progress
+status: completed
 related_ids:
   - SC-02
   - UC-01

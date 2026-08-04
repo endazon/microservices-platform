@@ -182,6 +182,9 @@ describe('DocumentDetailPage (SC-03)', () => {
   // IADR-0119 決定 1: FR-17（ナレッジグラフ）/ FR-18（AI 提案）は着手保留である。
   // **「無いこと」を固定する**——保留対象を後から不用意に足すとこのテストが落ちる。
   it('does not render the AI suggestion panel or the knowledge-graph link (FR-17/FR-18 on hold)', async () => {
+    // **導線の並びを全部描かせた状態で見る。** wikiBaseUrl 未設定だと「Wikiで閲覧」を含む行ごと
+    // 描画されず、そこへ SC-18 導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
+    mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
     respond();
     await renderPage();
     await screen.findByRole('heading', { name: '経費精算規程 v3.2' });

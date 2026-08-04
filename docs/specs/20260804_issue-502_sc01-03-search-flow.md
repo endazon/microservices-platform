@@ -1,7 +1,7 @@
 ---
 title: SC-01〜03（検索・結果一覧・文書詳細）の新スタックでの再実装 — 利用者の主導線
 type: spec
-status: in-progress
+status: done
 related_ids: [SC-01, SC-02, SC-03, UC-01, UC-02, FR-03, FR-04, FR-05, FR-08, FR-12, ADR-0031, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126]
 author: Claude
 created: 2026-08-04
@@ -254,15 +254,155 @@ issue #502 §受け入れ基準 を検証可能な形へ展開する。
 
 ## 検証（実測）
 
-> 実装後に埋める。**測定条件（対象コミット・Node / pnpm / Vitest 版・submodule の populate 状態・スコープ）を必ず併記する。**
+**測定条件**: worktree `feat/SC-01-03-search-flow`（`origin/develop` `83ff0fd` 基点。実測時の HEAD は
+実装コミット `3717fc2`）／ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／
+TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
+**submodule `src/ai-stock-trading`（pin `655e2ed`）と `planning`（pin `d980a01`）は populate 済み**。
+スコープは断りがない限り**ワークスペース全体**（`src/` の 4 パッケージ＋ AST）である。
+
+| 検査 | コマンド | 結果 |
+| --- | --- | --- |
+| 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
+| lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components`。移行前は 0 errors / 8 warnings で、増えた 1 件は `Tag` が cva のバリアントを併せて export するため） |
+| 単体テスト | `pnpm run test` | **48 files / 421 tests** 全 green（本作業前は 44 files / 385 tests） |
+| カバレッジ | `pnpm run test:coverage` | 後述（床を 87/81/77 → **88/82/81** へ引き上げ） |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 571.88 kB / gzip 170.19 kB） |
+| E2E | `playwright test`（後述の条件） | **8 tests 全 green**（本作業で 2 本追加） |
+| i18n 乖離 | `pnpm run i18n` ＋ `git diff --exit-code` | green（差分なし） |
+| i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。ja / en とも 72 件） |
+| ドキュメントリンク | `node scripts/check-doc-links.js` | green（413 件） |
+| ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**FR-17 / FR-18 を allowlist へ追加**。後述） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（3 件） |
+| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
+| スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**244 tests**。本作業で増減なし） |
+
+### 受け入れ基準 1: hi-fi モックアップとの対応
+
+3 つの画面仕様書に、hi-fi モック（planning `d980a01`）の**全要素を行番号つきで写像した表**を置いた。
+実装しない要素は 2 種類だけで、いずれも理由を名指しした。
+
+| 画面 | 実装する | 実装しない |
+| --- | --- | --- |
+| SC-01 | 8 要素 | 6 要素（**FR 保留 2**・**契約の不在 1**・共通シェル 3） |
+| SC-02 | 6 要素 | 5 要素（**契約の不在 3**・共通シェル 2） |
+| SC-03 | 6 要素 | 6 要素（**FR 保留 3**・共通シェル 2・ナビ項目 1） |
+
+### 受け入れ基準 2: 旧実装が残っていない（実測）
+
+旧 3 画面は同じパスへ置き直したため、削除は `git log --diff-filter=D` には現れない。
+そこで §受け入れ基準 の 4 検査を実測した（対象は `features/sc0{1,2,3}-*` の**実装ファイル**）。
+
+| # | 検査 | コマンド | 結果 |
+| --- | --- | --- | --- |
+| 1 | `useEffect` による取得が無い | `grep -rn "useEffect" …/sc0[123]-*/*.{ts,tsx}`（`*.test.*` を除く） | **0 件** |
+| 2 | 二重発火ガードが無い | `grep -rn "lastSearched" knowledge/frontend/src` | **0 件** |
+| 3 | インライン `style={{…}}` が無い | `grep -rn "style={{" …/sc0[123]-*` | **0 件** |
+| 4 | 未国際化リテラルが無い | `pnpm exec eslint …` | **0 errors** |
+
+> 検査 1 は `*.test.tsx` を含めると 1 件当たる（SC-02 のテストが**旧実装の二重発火**を説明したコメント）。
+> 実装ファイルに限れば 0 件である。**この但し書きを省くと「grep が 0 件」という記述が誤りになる。**
+
+### 受け入れ基準 3: 検索 → 結果 → 文書詳細の導線
+
+`knowledge/frontend/src/features/searchFlow.test.tsx`（3 ケース）が、**3 ルートを 1 本のルータへ載せて**
+実際に遷移する。
+
+1. SC-01 の「キーワード検索のみ →」→ SC-02（`?q=` が引き継がれ再入力なしで検索が走る）→ 結果クリック → SC-03（本文表示）。
+2. SC-01 の**出典**から直接 SC-03（一覧を経由しない経路）。
+3. **UC-01 例外フロー**（縮退運転）の導線: AI が落ちたときの通知から SC-02 へ 1 クリック。
+
+**E2E では認証済みの導線を実走できない**（トークンは `InMemoryWebStorage` に保持され外部から注入できない。
+`foundation/auth/authConfig.ts`）。E2E は各ルートが**存在し認証ガードが先に効く**ことを見る
+（ルート未登録なら `NotFound` が出て `/login` へ行かないため、この 1 本でルートの実在も固定できる）。
+
+**この環境では `playwright install` がブラウザを取得できない**ため、インストール済みの
+`/opt/pw-browsers/chromium-1194` を `launchOptions.executablePath` で指すローカル専用 config を
+一時的に置いて実走し、**確認後に削除した**（#490 / #496 と同じ作法）。
+**リポジトリの `playwright.config.ts` は無改変である。**
+
+### 受け入れ基準 4: カバレッジ床
+
+| 集計 | lines/statements | branches | functions |
+| --- | --- | --- | --- |
+| 全ユニット横断（本 PR） | **94.53%** | **86.48%** | **87.70%** |
+| MSP 所有分（本 PR） | **93.07%** | **86.29%** | **87.69%** |
+| （参考）本作業前 `83ff0fd` の MSP 所有分 | 92.04% | 82.93% | 86.08% |
+| 床 | 87 → **88** | 77 → **81** | 81 → **82** |
+
+MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイルを除いて再集計した値である
+（`LF/LH`・`BRF/BRH`・`FNF/FNH` を全ファイルで合算し、行数で加重）。
+導出規則は既存どおり**実測から 5pt 下・切り捨て**。
+
+**branches の伸び（82.93 → 86.29）は、テストを足したことだけによるものではない。**
+旧 3 画面が持っていた手書きの状態遷移（`useEffect` ＋ 4 つの state ＋ 二重発火ガード）を
+TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき分岐そのものが減った**
+（[[IADR-0126]] 決定 3）。数字の出所を取り違えないよう明記する。
+
+### 変異試験（「壊すと落ちる」ことの実測）
+
+**9 件すべてで、壊すと落ち、戻すと通ることを確認した。**
+
+| # | 壊した箇所 | 落ちたもの |
+| --- | --- | --- |
+| M1 | SC-03 の版履歴の `enabled` ガードを外す | `never requests the version history when the document is hidden`（1 件） |
+| M2 | SC-03 の 404 表示を「権限がありません」へ変える（**存在秘匿を壊す**） | `shows a neutral not-found message on 404` ほか **2 件** |
+| M3 | SC-03 へ **SC-18 導線（保留対象）を足す** | `does not render the AI suggestion panel or the knowledge-graph link`（1 件） |
+| M4 | SC-02 で入力欄からも取得を発火させる（**二重発火を再現**） | `fires exactly one request per submission`（1 件） |
+| M5 | 出典の種別判定で Wiki を推測させる | `never infers a wiki citation…` ほか **2 件**（純関数と画面の両方） |
+| M6 | SSE の中断（`AbortError`）を失敗として扱う | `does not show an error when the stream is aborted`（1 件） |
+| M7 | SC-01 へ**日本語の**未国際化リテラルを混ぜる | `eslint`: `lingui/no-unlocalized-strings` **1 error** |
+| M8 | SC-02 へ**英語の**未国際化リテラルを混ぜる | 同上 **1 error**（#496 が塞いだ穴が本 feature でも効いている） |
+| M9 | `en` カタログの `msgstr` を 1 件空にする | `check-i18n-catalogs.js` が **exit 1** |
+
+**M3 は最初の試行で素通りした。** 原因は、当該テストが `wikiBaseUrl` 未設定で描画しており、
+導線の行（`{wikiBaseUrl && …}`）ごと描かれていなかったことである。
+**テストを是正して（`wikiBaseUrl` を設定して描かせる）から再実行し、落ちることを確認した。**
+変異試験をやらなければ、「保留対象が無いことを固定している」というテストが
+**実は何も守っていない**まま残っていた。
 
 ## 計画書との差異
 
-> 実装後に埋める。
+| 事項 | 計画の記載 | 実装 | 根拠 |
+| --- | --- | --- | --- |
+| **SC-03 の AI 提案承認欄・SC-18 導線** | 05_screens §SC-03「SC-03 に置くのは次の 2 つのみである: ①SC-18 への導線、②AI 提案の承認欄」 | **実装しない** | **FR-17 / FR-18** に属し、[[IADR-0119]] 決定 1 が「その受け入れを担う画面」まで保留対象としている。決定 2 の着手条件は前提 ADR の `Accepted` 化であり、`ADR-0033` / `0034` / `0035` は planning `d980a01` 時点で全件 `Proposed`。**繰り延べであって放棄ではない**（保留解除後の後続 issue） |
+| **SC-01 の個人資料まわり** | 05_screens §SC-01「区別の表示方法」の `👤`／「個人資料（自分のみ）」・「個人資料を含める」トグル | **実装しない**（`📄` / `📖` ＋「組織文書」は実装する） | **FR-19 / FR-21**。同上。組織文書側を先に実装しても表記は変わらない（保留が解けたら `👤` の行が増えるだけ） |
+| **SC-01 の対象範囲フィルタ** | 05_screens §SC-01 入力表「対象範囲フィルタ｜任意｜選択｜**権限内のタグ／フォルダのみ選択可**」 | **実装しない** | AI 回答要求（`AnalysisRequest`）が属性フィルタを取らず、**権限内候補**を返す BFF が無い（10 グループを実測）。候補を出せないまま欄だけ置くと、計画の保証（権限内のみ提示）を利用者が受けられない。**環流済み** |
+| **SC-02 の検索モード・並び順・更新日時列** | 05_screens §SC-02 主要素 | **実装しない** | `SearchRequest` に指定軸が無く（常にハイブリッド・関連度降順）、`SearchResultDto` に日時が無い。**環流済み** |
+| **SC-03 の機密区分の表示名** | hi-fi が `internal`＝「社内限」、SC-05 / SC-09 が `confidential`＝「秘」と描く | **キーだけ写像し値は生値** | 値集合は 4 値だが、モックに現れる表示名は **2 値だけ**。残る 2 値を実装が決めると事実上の用語定義になる。**環流済み** |
+| **SC-03 を左ナビに出さない** | 05_screens §共通シェル の「利用者」グループに SC-03 が含まれる | **出さない**（旧実装からの継続） | ルートが文書 ID を必須とするため、ID を持たないナビ項目からは到達できない（`/docs/` は 404）。グループ分けは画面の所属を示すもので、各画面が単独のナビ入口を持つことまでは要求していない |
+| **本文の Markdown レンダリング** | 05_screens §SC-03「Markdown プレビュー」 | 原文を等幅・改行保持で表示 | 本文は外部データソース由来であり HTML 化はサニタイズ方針の決定を伴う（誤ると保存型 XSS）。ADR-0031 の採用技術一覧に Markdown レンダラが無い。**旧実装からの継続で、本 issue で変えていない** |
+| **ナビ表示名** | hi-fi 左レール「検索・質問」「結果一覧」 | 同左（旧実装は「検索 / AI質問」「検索結果一覧」だった） | モックを正として是正した |
 
 ## 親への申し送り
 
-> 実装後に埋める。
+### この PR で消化したもの
+
+- SPA 移行の完了条件のうち **SC-01〜03 の 3 画面**（#452 の分割 1 本目）。
+- #496 §親への申し送りの 2 項目: **プリミティブの画面への適用**（`Tag` の新設を含む）と
+  **`eslint-plugin-lingui` の適用範囲の拡大**（本 3 feature へ）。
+- #496 §未決事項 4（**テストハーネスへの `I18nProvider` 組み込み**）。
+
+### 残るもの（引き受け先を明記する）
+
+| 項目 | 引き受け先 |
+| --- | --- |
+| SC-04〜SC-12 の再実装 | #449（SC-04）／ #452 の残り 2 分割 |
+| SC-03 の AI 提案承認欄・SC-18 導線、SC-01 の個人資料まわり | [[IADR-0119]] の**保留解除後**の issue（解除は決定 6 の手順で行う） |
+| 契約の不在 5 件 | 計画の裁定待ち（`feedback/20260804_sc01-03-bff-contract-gaps.md`）。裁定後にバックエンド側の issue が要る |
+| パンくず・権限バッジ | 共通シェルの作業（#452 系） |
+| 右レール AI チャットパネル | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
+| SC-04〜11 の文言の i18n 化と `eslint-plugin-lingui` の files 追加 | 各画面を再実装する issue（**画面を作り直すたびに `files` を伸ばす**） |
+| `Dialog` の移植 | FR-19 / FR-20 の保留解除後（#496 の申し送りのまま） |
+| バンドルサイズ（571 kB / gzip 170 kB） | 全画面の再実装が終わってからのコード分割（#490 / #496 の未決事項を引き継ぐ） |
+
+### 注意（レビュー時に見てほしい点）
+
+1. **`scripts/test-traceability-allowlist.json` の `specMissing` へ FR-17 / FR-18 を追加した。**
+   これは「実装先行」ではなく**逆向きの事例**である——保留対象が**描かれないこと**を SC-03 の
+   単体テストが固定しているため、テストが当該 ID を参照する。理由は同ファイルの `$comment` に書いた。
+2. **カバレッジ床の branches を 77 → 81 へ上げた。** 伸びの一部は「分岐そのものが減った」ことに由来する
+   （§検証）。今後の画面再実装でも同じ向きの効果が出るはずである。
 
 ## 未決事項
 
