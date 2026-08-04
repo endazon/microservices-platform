@@ -4,6 +4,34 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
+// ADR-0031 / IADR-0121 決定 8: 新スタックの禁止事項を機械強制する。専用の検査スクリプトを作らないのは、
+// 対象が import と識別子の静的検査＝ESLint の守備範囲そのものであり、検査器を増やすほど
+// 「走らせ忘れ」と二重メンテが増えるためである。
+// 各ユニットのブロックが no-restricted-imports を上書きしてしまうため（flat config は同一ルールを
+// 後勝ちで置換する）、共通パターンは定数にして各ブロックへ必ず展開する。
+const BANNED_IMPORT_PATTERNS = [
+  {
+    // 13_frontend-stack: クライアント状態は Zustand、サーバー状態は TanStack Query。
+    // グローバルストア（Redux）は持たない。
+    group: ['redux', 'react-redux', '@reduxjs/*', 'redux-*'],
+    message:
+      'Redux は不採用（ADR-0031）。サーバー状態は TanStack Query、クライアント状態は Zustand を使う。',
+  },
+  {
+    // 13_frontend-stack §基本方針:「BFF の OpenAPI から orval で生成する（手書きクライアント禁止）」。
+    group: ['axios', 'ky', 'superagent', 'got', 'node-fetch', 'openapi-fetch'],
+    message:
+      '手書きの HTTP クライアントは禁止（ADR-0031）。BFF 呼び出しは orval 生成フック、'
+      + 'または @foundation/api の apiFetch / apiStream を使う。',
+  },
+  {
+    // IADR-0121 決定 4: 共有 UI の公開面は @platform/ui のエントリのみ。
+    group: ['@platform/ui/src', '@platform/ui/src/*'],
+    message:
+      '@platform/ui の内部実装を直接参照しない。公開面は "@platform/ui" と "@platform/ui/styles.css" のみ。',
+  },
+];
+
 export default tseslint.config(
   {
     ignores: [
@@ -52,6 +80,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
+            ...BANNED_IMPORT_PATTERNS,
             {
               group: ['@knowledge', '@knowledge/*'],
               message:
@@ -75,6 +104,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
+            ...BANNED_IMPORT_PATTERNS,
             {
               group: ['@features', '@features/*'],
               message:
@@ -93,6 +123,7 @@ export default tseslint.config(
         'error',
         {
           patterns: [
+            ...BANNED_IMPORT_PATTERNS,
             {
               group: ['@features', '@features/*'],
               message:
@@ -100,6 +131,59 @@ export default tseslint.config(
             },
           ],
         },
+      ],
+    },
+  },
+  // ADR-0031 / IADR-0121 決定 8: 上の 3 ブロックが当たらないファイル（packages/ui 等）にも
+  // 共通の禁止 import を効かせる。
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      'platform/frontend/src/**/*.{ts,tsx}',
+      'knowledge/frontend/src/**/*.{ts,tsx}',
+      'ai-stock-trading/frontend/src/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: BANNED_IMPORT_PATTERNS }],
+    },
+  },
+  // ADR-0031 / IADR-0121 決定 3 / 決定 8: BFF 境界。SPA から出る HTTP は foundation/api の 1 箇所に
+  // 収束させる。features や共有 UI が直接 fetch を呼ぶと、実行時 config（環境非依存ビルド）と
+  // 401 再ログイン導線を迂回してしまい、画面は動いて見えるので気付けない。
+  // 例外は (1) foundation/api 自身（唯一の出口）、(2) orval 生成物（lint 対象外・mutator 経由）、
+  // (3) テスト（fetch のモック定義に必要）、(4) 可変ユニット AST の standalone E2E ハーネス
+  //     （platform 合成時には使われない別プロジェクトの配線。IADR-0080 / IADR-0120。既存の
+  //      `ai-stock-trading/frontend/test` 除外と同じ理由で、本リポの規約を submodule へ及ぼさない）。
+  {
+    files: ['**/*.{ts,tsx}'],
+    ignores: [
+      'platform/frontend/src/foundation/api/**',
+      '**/*.{test,spec}.{ts,tsx}',
+      '**/*.config.{ts,js}',
+      'ai-stock-trading/frontend/e2e/**',
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'fetch',
+          message:
+            'BFF へは @foundation/api（apiFetch / apiStream）または orval 生成フック経由で呼ぶ（ADR-0031）。',
+        },
+        {
+          name: 'XMLHttpRequest',
+          message: 'XMLHttpRequest は使わない。BFF 呼び出しは @foundation/api 経由（ADR-0031）。',
+        },
+        {
+          name: 'EventSource',
+          message:
+            'EventSource は Authorization を付与できない。SSE は @foundation/api の apiStream を使う（IADR-0037）。',
+        },
+      ],
+      'no-restricted-properties': [
+        'error',
+        { object: 'window', property: 'fetch', message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。' },
+        { object: 'globalThis', property: 'fetch', message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。' },
       ],
     },
   },
