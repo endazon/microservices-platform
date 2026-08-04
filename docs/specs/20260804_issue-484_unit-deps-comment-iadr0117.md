@@ -57,9 +57,13 @@ issue は「行 11 / 45 / 96 付近」を挙げるが、件数表記の見落と
 `プロジェクト` を含む行を全量走査した。
 
 ```
-grep -n 'プロジェクト' scripts/check-unit-dependencies.js
-grep -rn '2 プロジェクト' --exclude-dir=.git --exclude-dir=node_modules .
+grep -n 'プロジェクト' scripts/check-unit-dependencies.js          # 7 行
+grep -rn '2 プロジェクト' --exclude-dir=.git --exclude-dir=node_modules .   # 31 行（14 ファイル）
 ```
+
+（2 本目は**件数を出力に添えて全量を確認する**。`| head` で打ち切ると下位のヒットが落ち、
+「全量走査した」の宣言が実際より狭い範囲の断定になる — 本仕様書の初版で
+`docs/adr/IADR-0057_unit-dependency-machine-check.md` の 2 箇所を落とした実測がある。）
 
 | # | 行 | 現在の記述 | 扱い |
 | --- | --- | --- | --- |
@@ -79,6 +83,8 @@ grep -rn '2 プロジェクト' --exclude-dir=.git --exclude-dir=node_modules .
 | [`src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj) 12 | `ユニット外は Shared の 2 プロジェクトのみ許可。` | IADR-0117 に未追随の**同型の残り**だが、issue #484 のスコープは `check-unit-dependencies.js` のコメントのみ。別 issue 候補として記録する（#478 が本件をそう扱ったのと同じ作法） |
 | [`docs/tech/tech-requirements.md`](../tech/tech-requirements.md) 126、[`src/README.md`](../../src/README.md) 77、[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 76 / 83、[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) 47 / 62 / 125 / 134、[`docs/adr/README.md`](../adr/README.md) 143 | 「**改定前は** 2 プロジェクトだった」という**経緯としての 2** | 是正すると改定の記録が壊れる。現行値としての誤りではない |
 | 過去仕様書（[20260711_issue-231](./20260711_issue-231_unit-dependency-guard.md) 58、[20260710_FR-14](./20260710_FR-14_repo-restructure-platform-knowledge.md) 106、[20260803_issue-455](./20260803_issue-455_backend-application-standard.md) 101 / 199、[20260804_issue-478](./20260804_issue-478_staged-policy-citation-fix.md) 108 / 132） | 当時の事実としての 2 プロジェクト | 記述時点で正しく、IADR-0117 の経緯を語る文脈でもある。#478 の作法（当時の事実は消さず誤りだけを直す）に照らして誤りが無い |
+| [IADR-0057](../adr/IADR-0057_unit-dependency-machine-check.md) 35（コンテキスト §規約 1）／ 73（フォローアップ） | 「`platform/backend/Shared/` の **2 プロジェクト**（Contracts / Infrastructure）のみ許可」「許可参照先（**現状 Shared 2 プロジェクト**）」。上の「経緯としての 2」と違い、**現行値の書き方**で読める 2 箇所 | **`Accepted` の本文であり書き換えない。**[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) フォローアップ 3 が「[IADR-0057](../adr/IADR-0057_unit-dependency-machine-check.md) の本文にある件数表記（「Shared 2 プロジェクト」）は Accepted の本文であり書き換えない。現行値は本 IADR を正とする」と**決定済み**。[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 3 を残置したまま IADR-0117 で部分改定する構図（同 IADR 決定 3・関連節）と同じ扱いであり、追随先は本スクリプトのコメント側である |
+| [`scripts/scripts.test.js`](../../scripts/scripts.test.js) 682、[20260712_issue-245](./20260712_issue-245_ai-stock-trading-unit-integration.md) 68 | `番号帯が重複する 2 プロジェクトを合成する` / `32 プロジェクト / 675 合格` | grep の**別義ヒット**（前者は計画プロジェクト 2 件、後者は `32` の部分一致）。Shared の許可数とは無関係 |
 
 ### 含まないもの
 
@@ -135,6 +141,7 @@ IADR-0117 理由 4 番目の主張を、コードで再確認した。
 | コマンド | 結果 |
 | --- | --- |
 | `grep -n "2 プロジェクト" scripts/check-unit-dependencies.js` | 0 件 |
+| `grep -rn "2 プロジェクト" … . \| wc -l`（全量・打ち切りなし） | 31 件 / 14 ファイル。すべて上の「据え置き」表のいずれかの行に属する（現行値として誤っている残存は 0 件） |
 | `node scripts/check-unit-dependencies.js --self-test` | exit 0（13 件 OK） |
 | `node scripts/check-unit-dependencies.js` | exit 0（違反なし） |
 | `node scripts/scripts.test.js` | exit 0 |
