@@ -20,6 +20,7 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto mt-24 max-w-md text-center">
+      {/* 05_screens §共通シェル: ブランド表示名。en カタログでも訳さない（Layout.tsx の注記を参照）。 */}
       <h1 className="text-2xl font-semibold text-[--color-fg]">
         {i18n._(msg`汎用プラットフォーム`)}
       </h1>

@@ -80,7 +80,7 @@ msgstr "Success"
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "汎用プラットフォーム"
-msgstr "General Platform"
+msgstr "汎用プラットフォーム"
 
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
