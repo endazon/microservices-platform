@@ -2,7 +2,7 @@
 title: IADR-0124 TanStack Router とユニット合成の両立 — 型付きルート木・旧契約ブリッジ・型登録の実装形
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-16, IADR-0033, IADR-0035, IADR-0056, IADR-0070, IADR-0116, IADR-0120, IADR-0121]
+related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-16, IADR-0009, IADR-0033, IADR-0035, IADR-0056, IADR-0070, IADR-0116, IADR-0120, IADR-0121]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -166,7 +166,19 @@ TanStack の公式手順は `declare module '@tanstack/react-router'` だが、�
 `<Link to>` の静的検査は効かない（`to` が `string` 型のため）。代わりに、
 **全ナビ項目の `to` が組み上がったルート木に解決すること**を単体テストで固定する。
 これは型で捕まえられない穴を、型と同じ粒度（配線の誤り）で塞ぐためのものである。
-`Link` への受け渡しに 1 箇所だけキャストが要る——その 1 箇所に本決定への参照を書く。
+
+> **［2026-08-04 追記・実装後の是正］「1 箇所だけキャストが要る」は実態と食い違っていた。**
+> 実装では**実行時に遷移先が決まる 3 系統**でキャストが要る。いずれも「値が実行時にしか
+> 決まらない」点は同じで、静的検査の対象にできない。各所に本決定への参照コメントを置く。
+>
+> | 系統 | 箇所 | 実行時に決まる理由 |
+> | --- | --- | --- |
+> | ナビ項目の遷移先 | `foundation/ui/Layout.tsx`（`NavLink`） | ユニットが公開するデータ（`NavItem.to: string`） |
+> | ログイン後の戻り先 | `foundation/auth/LoginPage.tsx` | `?from=` はガードが付ける外部由来の値（`validateSearch` で検証済み） |
+> | OIDC コールバックの戻り先 | `foundation/auth/CallbackPage.tsx` | OIDC の `state.returnTo`（SPA の外から戻る値） |
+>
+> 後 2 者は**外部由来の値**であり、キャストの前に「SPA 内部の絶対パスであること」を実行時に
+> 検証している（オープンリダイレクト対策）。ナビ項目の到達性は本決定の実行時テストが担う。
 
 ### 決定 6: ルートパスは計画書 §共通シェル の値へ是正する
 
@@ -178,14 +190,47 @@ TanStack の公式手順は `declare module '@tanstack/react-router'` だが、�
 `home` 画面は計画の画面一覧に存在しないため削除し、`/` は SC-01（`/ask`。計画が「本システムの主入口」と
 定義する画面）へリダイレクトする。
 
+**このリダイレクトは platform（アプリホスト）が持つ**（`foundation/routing/shell.tsx` の
+`homeRedirectRoute` と定数 `ENTRY_ROUTE_PATH`）。可変ユニット側に置くと、そのユニットを外したときに
+**アプリのルート直下 `/` そのものが消える**——`/` の存在はホストの責務であり、ユニットの有無で
+左右されてはならない。`ENTRY_ROUTE_PATH` はユニットへの**参照**ではなくパス**文字列**であり、
+IADR-0056 決定 3（platform → 可変ユニットの参照禁止）に抵触しない。値が実在することは
+`router.test.ts` が実行時に固定する（実際にナビゲートさせて `beforeLoad` を通す。
+`buildLocation` では `beforeLoad` を通らず「redirect が壊れても緑」になる）。
+
 ### 決定 7: 通知は「アイコン ＋ テキストラベル」を型で強制する
 
 `sonner`（ADR-0031 の採用技術）を `foundation/ui/notifications.tsx` で包み、
 `notify.success / info / warning / error` の 4 種のみを公開する。各種は固定のアイコンと
 テキストのラベル（「成功」「情報」「注意」「エラー」）を必ず伴い、呼び出し側は省略できない。
-[INDEX 決定 21](../../planning/projects/microservices-platform/INDEX.md)「色だけで意味を持たせない」を、
-[IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 4 の `StatusBadge` と同じ作法で API に落とす
-（選択肢を作らなければ省略されない）。
+[INDEX 決定 21](../../planning/projects/microservices-platform/INDEX.md)「色だけで意味を持たせない」が
+示す原則を、通知へ**敷衍**したものである（同 決定 4 の `StatusBadge` と同じ作法で API に落とす。
+選択肢を作らなければ省略されない）。
+
+**射程の明示**: 決定 21 の実文は対象を「個人資料と組織文書の区別」に限り、適用箇所も
+「SC-01・SC-18・SC-19 の 3 か所」と特定している。**通知は決定 21 が名指しした対象ではない。**
+本決定は、決定 21 が挙げる根拠——色覚特性のある利用者に伝わらない／印刷・スクリーンショット・
+白黒表示で失われる——が通知にも等しく当てはまるため、実装側の a11y 判断として同じ作法を採る、
+というものである（先例: [IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 4 が
+`StatusBadge` へ同様に敷衍している）。計画が通知の表現を定めた場合はそれに従う。
+
+### 決定 8: 未知パスの受け皿（catch-all）は共通シェルの配下に置く
+
+`NotFound` の描画位置を、**未知パス**（不在）と**権限による秘匿**（`RequireRole` → `NotFound`）で
+揃える。具体的には `path: '$'` の catch-all ルートを `shellRoute` の子として置く
+（移行前の `{ path: '*', element: <NotFound /> }` を `RequireAuth` ＋ `Layout` 配下に置いていた配置と同じ）。
+
+**`rootRoute` の `notFoundComponent` だけでは足りない**（実測）。未知パスはどのルートにも
+マッチせずルート木の最上位で解決されるため、共通シェル（ナビ・ヘッダ）の**外側**に素の `NotFound` が出る。
+一方、権限による秘匿はシェルの**内側**に出る。この差は「シェルが出るかどうか」で資源の存在を
+推測させ、[[IADR-0009]] の存在秘匿の趣旨に反する。移行の過程で生まれた退行であり、本決定で戻す。
+
+- 静的パスはスプラットより優先されるため、catch-all は実在ルート（`/login` `/callback` `/` および
+  全ユニットのルート）を横取りしない。**配線と描画の一致は両方ともテストで固定する**
+  （`router.test.ts` = 横取りしないこと・`Layout.test.tsx` = 2 つの `NotFound` の markup が一致すること）。
+- catch-all はシェル配下にあるため認証を要する。未認証で未知パスを開くと `/login` へ誘導される——
+  これも移行前と同じ挙動である。
+- `shellRoute` にも `notFoundComponent` を残す（シェル配下から `notFound()` が投げられた場合の経路）。
 
 ## 理由
 
@@ -257,9 +302,11 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 
 負のプローブを**本 PR の実コード**（`platform/frontend/tsconfig.app.json`）に対して走らせ、
 5 件すべてが `tsc` で落ちること・正しい 3 件が通ることを確認した（確認後にプローブは削除）。
-このとき `<Link to>` が受け付けるパスの union は次のとおりで、
+このとき `<Link to>` が受け付けるパスの union は次のとおりである。
 [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md) の
-ルートパス表と一致する（`.` / `/` / `..` は TanStack の相対指定）。
+ルートパス表に載る**本 SPA 担当の 10 本を過不足なく含み**、これに
+**SPA 内部の認証導線 `/login` `/callback`** と **SC-04（Wiki.js は別ホスト）への導線 `/wiki`** が加わる
+（この 3 本は計画のルート表には無い。`.` / `/` / `..` は TanStack の相対指定）。
 
 ```text
 "." | "/" | ".." | "/ask" | "/login" | "/callback" | "/search" | "/docs/$id" | "/wiki"
@@ -270,6 +317,20 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 **AST の 3 画面（`/settings` / `/settings/risk` / `/controls`）はこの union に現れない**——
 決定 2 のとおり実行時にだけ木へ載るためである。実行時に載っていること自体は
 `router.test.ts` が固定する。
+
+### `NotFound` の描画位置（決定 8 の根拠）
+
+移行後・決定 8 の適用**前**に、認証済みで各パスを実アプリのルータへ読み込ませて観測した。
+
+| パス | 描画 | シェル（ナビ・ブランド） |
+| --- | --- | --- |
+| `/no-such-screen`（未知パス） | `NotFound` | **無し**（`rootRoute` の `notFoundComponent` が最上位で解決） |
+| `/admin/config-viewer`（権限外） | `NotFound` | 有り（`RequireRole` がシェルの内側で描画） |
+
+`shellRoute` へ `notFoundComponent` を足しても**この差は解消しない**——未知パスは
+`shellRoute` にマッチしないため、シェルの component 自体が描画されないからである。
+catch-all（`path: '$'`）を `shellRoute` の子として置いて解消した。
+適用後は両者の markup が一致する（`Layout.test.tsx` が固定）。
 
 ### `no-restricted-imports` の照合方式（機械強制の落とし穴）
 
@@ -290,6 +351,17 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ TypeScript 5.9.3 ／ `@tanstack/react-router` 
 
 ## 関連
 
-- Supersedes: なし（[IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 1 が予告した第 2 段の
-  内部設計を具体化するものであり、既存の決定を覆さない）
+- Supersedes: なし（既存の決定を全面的に置き換えるものは無い）。ただし**部分改定が 4 件ある**。
+  いずれも改定範囲が限定的で、被改定側の骨格（依存の一方向性・合成点の一意性・存在秘匿・
+  段の順序）は有効なため、被改定側は `Accepted` を維持する。被改定側には同日付の追記を入れた。
+  1. [IADR-0070](IADR-0070_ast-frontend-integration.md): §決定 1 の「フロントは `@knowledge` と
+     **厳密同形**で合成する」を「`@knowledge` は新契約・`@ai-stock-trading` は旧契約の互換ブリッジ
+     （＝非同形）」へ（本決定 1・2 / #490）
+  2. [IADR-0035](IADR-0035_frontend-role-based-nav-and-existence-hiding.md): §決定 2 の
+     「`FeatureModule.nav` に `requiresAnyRole?` を持たせ」を「ユニットは `NavItem` を公開し
+     `registerNavItems()` で登録簿へ登録する（`group?` を追加）」へ（本決定 1・5 / #490）
+  3. [IADR-0056](IADR-0056_repo-unit-structure-platform-knowledge.md): §決定 4 の趣旨 (2)
+     「合成点へ import 1 行」を「合成点の 2 か所へ 1 行ずつ（ルートのタプル ＋ ナビ）」へ（本決定 1 / #490）
+  4. [IADR-0121](IADR-0121_spa-stack-migration-staging.md): §決定 1 の「第 2 段」を
+     ルータ／シェル／旧画面（#490）と残り（shadcn/ui 本移植・Lingui・Storybook。要起票）へ分割（#490）
 - Superseded by: なし

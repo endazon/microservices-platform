@@ -9,6 +9,7 @@ related_ids:
   - IADR-0033
   - IADR-0117
   - IADR-0121
+  - IADR-0124
 author: claude
 created: 2026-07-10
 updated: 2026-08-04
@@ -125,6 +126,23 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 > 受け持つ）。したがって置換されたのはパッケージマネージャの名前と lock ファイルの形式だけであり、
 > 状態は `Accepted` のままとする。
 
+> **［2026-08-04 追記］決定 4 の趣旨 (2)「合成点へ import 1 行」は [[IADR-0124]] 決定 1（#490）で
+> 「合成点の 2 か所へ 1 行ずつ」へ部分改定された。**
+> 計画 [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) が
+> ルーティングを TanStack Router と確定し、その型安全（ルート・検索パラメータ）を得るために
+> ユニットが**型付きルート factory のタプル**と**ナビ項目**を別々に公開するようになったためである。
+> **現行値では、ユニット追加時に
+> [`platform/frontend/src/features/index.ts`](../../src/platform/frontend/src/features/index.ts) へ
+> import 1 行に加えて、`createUnitRoutes`（ルートのタプル）と `unitNavItems`（ナビ）の
+> 2 か所へスプレッドを 1 行ずつ足す**（手順は [`src/README.md`](../../src/README.md) を正とする）。
+> ナビのスプレッドを忘れると**ルートは載るが左ナビに項目が出ない**。
+> 決定 4 の趣旨のうち (1)「合成点は `platform/frontend/src/features/index.ts` の 1 ファイル」と
+> (3)「単体テストとカバレッジは横断計測しラチェットを維持」は**変わっていない**。
+> 変わったのは 1 ファイル内で触れる箇所の数だけであり、
+> **「submodule 配置のみで workspace に自動認識される」性質も維持されている**
+> （したがって状態は `Accepted` のまま）。現行値は
+> [IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 1 を正とする。
+
 5. **命名**: .NET 名前空間・アセンブリ名（`KnowledgePlatform.*`）と Helm チャート名
    （`knowledge-platform`）は本再編では変更しない。改名はフォローアップ issue で段階実施する。
 6. **submodule 境界**: 追加可変機能ユニットは `src/<unit>/`（`backend/`・`frontend/` を含む
@@ -170,3 +188,5 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
   2. [IADR-0121](IADR-0121_spa-stack-migration-staging.md): §決定 3 の「フロントエンドの可変ユニットが
      参照してよい共有物」を 1 → 2（`@foundation` ＋ `@platform/ui`）へ、§決定 4 の「npm workspaces」を
      pnpm workspace へ（2026-08-04 / #446）
+  3. [IADR-0124](IADR-0124_tanstack-router-unit-composition.md): §決定 4 の趣旨 (2)「合成点へ import 1 行」を
+     「合成点の 2 か所へ 1 行ずつ（ルートのタプル ＋ ナビ）」へ（2026-08-04 / #490）
