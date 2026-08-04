@@ -19,7 +19,8 @@
  *   1. HTML のリソースタグ: <link href> / <script src> / <img src|srcset> / <iframe src> /
  *      <source src|srcset> / <embed src> / <video src> / <audio src> / <track src> / <use href>
  *      **<a href> は対象外**（利用者が押して初めて起きる遷移であり、読み込み時の取得ではない）。
- *   2. CSS の @import と url()。
+ *   2. CSS の @import と url()。HTML の <style>（インライン CSS）にも当てる——Storybook の
+ *      静的ビルドは index.html のインライン style から @font-face を参照する（実測）。
  *   3. 既知の禁止ホスト（フォント CDN・汎用 CDN・analytics・エラー報告 SaaS）は、
  *      どのファイルのどこに現れても違反とする。JS の中に文字列で埋め込まれた取得先を捕まえるため。
  *
@@ -165,10 +166,10 @@ function inspectFile(relPath, content) {
   // 規則 1: HTML と SVG。JS にも適用する——バンドルが HTML 断片を文字列で持ち、
   // 実行時に注入する形の取得を捕まえるためである。
   if (ext !== '.css') hits.push(...findHtmlResourceRefs(content));
-  // 規則 2: CSS。JS にもインライン CSS（`@import` 付きの文字列）が入り得るので JS にも当てる。
-  if (ext === '.css' || ext === '.js' || ext === '.mjs' || ext === '.cjs') {
-    hits.push(...findCssRefs(content));
-  }
+  // 規則 2: CSS。**HTML にも当てる**——`<style>` のインライン CSS に @font-face が置かれる形が
+  // 実在する（Storybook の静的ビルドは index.html のインライン style からフォントを参照している）。
+  // JS にもインライン CSS（`@import` 付きの文字列）が入り得るので当てる。
+  hits.push(...findCssRefs(content));
   // 規則 3: 既知の禁止ホストは全種類に当てる。
   hits.push(...findForbiddenHosts(content));
 
@@ -364,6 +365,22 @@ function selfTest() {
     assert.ok(imported.some((h) => h.kind === 'css' && h.detail === '@import'));
     const url = inspectFile('a.css', '@font-face{src:url(https://cdn.example.com/f.woff2)}');
     assert.ok(url.some((h) => h.kind === 'css' && h.detail === 'url()'));
+  });
+
+  ok('HTML の <style> 内の外部 @font-face も検出する（負例）', () => {
+    const hits = inspectFile(
+      'index.html',
+      '<style>@font-face{font-family:X;src:url(https://fonts.gstatic.com/s/x.woff2)}</style>',
+    );
+    assert.ok(hits.some((h) => h.kind === 'css' && h.detail === 'url()'));
+  });
+
+  ok('HTML の <style> 内の自己ホスト @font-face は違反にしない（正例。実在の形）', () => {
+    const hits = inspectFile(
+      'index.html',
+      "<style>@font-face{font-family:X;src:url('./sb-common-assets/nunito-sans-regular.woff2')}</style>",
+    );
+    assert.deepStrictEqual(hits, []);
   });
 
   ok('CSS: 自己ホストの url() は違反にしない（正例）', () => {
