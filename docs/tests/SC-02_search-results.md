@@ -1,45 +1,66 @@
 ---
 title: SC-02 検索結果一覧 テスト仕様書
 type: test-spec
-status: completed
+status: in-progress
 related_ids:
   - SC-02
   - UC-01
   - FR-03
   - FR-05
+  - IADR-0126
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-04
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
   - "../screens/SC-02_search-results.md"
-  - "../specs/20260709_issue-128_sc02-search-results.md"
+  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
+  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
 ---
 
 # テスト仕様書: 検索結果一覧（SC-02）
 
-対象: `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx`
-テスト: `src/knowledge/frontend/src/features/sc02-results/SearchResultsPage.test.tsx`（Vitest + Testing Library）
+> **［2026-08-04 / #502］新スタックでの再実装に合わせて改訂した。**
 
-## テスト観点と受け入れ基準の対応
+対象: `src/knowledge/frontend/src/features/sc02-results/`
+テスト: `SearchResultsPage.test.tsx`（Vitest + Testing Library）
 
-> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+## 起点となる計画書（トレーサビリティ）
 
+- 画面（SC）: SC-02 ／ ユースケース（UC）: **UC-01**（**代替フロー**の受け皿）／ 機能要求（FR）: FR-03・FR-05
 
-| # | 観点 | 起点 | 検証内容 | ケース |
-| --- | --- | --- | --- | --- |
-| 1 | 検索・一覧・内部遷移 | FR-03, UC-01 | 送信で `POST /bff/search` を呼び、結果を一覧表示、タイトルが SC-03（`/docs/:id`）へリンク。属性・スニペットも表示 | `searches on submit and lists results linking to SC-03 document detail` |
-| 2 | ディープリンク | FR-03 | `?q=` 付きで開くと自動検索し結果を表示 | `auto-searches from the ?q= deep link` |
-| 3 | 存在秘匿（空） | FR-05, IADR-0009 | 結果 0 件（deny-by-default 含む）で中立メッセージ。権限外と 0 件を区別しない | `shows a neutral empty message when access-scoped results are empty` |
-| 4 | 異常系 | FR-03 | 検索失敗時に `role="alert"` を表示 | `shows an alert when the search request fails` |
-| 5 | 二重発火防止 | FR-03 | 送信 1 回で `/bff/search` は 1 回だけ（?q= 更新で重複実行しない・レビュー #168） | `does not double-fire the search when submitting (single trigger path)` |
+## UC-01 のフロー → テストの写像
+
+| UC-01 のフロー | 画面での現れ方 | テスト |
+| --- | --- | --- |
+| **代替. キーワード検索のみで結果一覧を返し、AI回答を省略する** | 本画面は AI 回答を一切呼ばない。`POST /bff/search` だけを呼ぶ | `searches via /bff/search and lists results linking to SC-03` |
+| 基本 2. システムが認可（ABAC）で権限スコープを解決する | **クライアントはスコープを送らない**（要求は `{ query, topK }` のみ） | 同上（要求本文の検証） |
+| 基本 3. 属性フィルタ付きハイブリッド検索 | 件数に「（権限内のみ表示）」を添える | `states that only permitted documents are listed` |
+| 例外（FR-05・存在秘匿）. 権限外は結果に現れない | 0 件と権限外を**同じ中立文言**で示す | `shows a neutral empty message when results are empty (existence hidden)` |
+
+## テストケース
+
+| # | 観点 | 起点 | 検証内容 |
+| --- | --- | --- | --- |
+| 1 | 検索・一覧・内部遷移 | FR-03 / UC-01 | 送信で `POST /bff/search` を `{ query, topK: 20 }` で呼び、結果を表示。タイトルが `/docs/{documentId}` へリンク。スニペットとタグも出る |
+| 2 | ディープリンク | FR-03 | `?q=` 付きで開くと自動で検索して結果を表示する |
+| 3 | 存在秘匿（空） | FR-05 / [[IADR-0009]] | 0 件（deny-by-default 含む）で中立メッセージ。権限外と 0 件を区別しない |
+| 4 | 件数表示 | FR-05 | 「N 件（権限内のみ表示）」。総数 > 表示件数のときは表示件数も示す |
+| 5 | 異常系 | FR-03 | 検索失敗時に `role="alert"` |
+| 6 | **単一発火** | [[IADR-0126]] 決定 3 | 送信 1 回で `apiFetch` は **1 回だけ**。URL が単一情報源であり、入力欄は取得の引き金にならない |
+| 7 | 空クエリ | — | `?q=` が空なら**要求を出さない**（`enabled: false`） |
+| 8 | SC-01 への復帰 | 導線 | 「← チャットに戻る」が入力中の語を保って `/ask` へ |
+| 9 | ロケール `en` | ADR-0031 | 見出し・ボタンが英語で描画される |
 
 ## ABAC・存在秘匿の担保
 
-- クライアントは検索リクエストに ABAC スコープを含めない（テストで `{ query, topK }` のみを検証）。権限解決はサーバ側（`/bff/search`）で行われ、権限外文書は結果に現れない。
+- クライアントは検索リクエストに ABAC スコープを含めない（テストで `{ query, topK }` のみを検証）。
+  権限解決はサーバ側（`/bff/search`）で行われ、権限外文書は結果に現れない。
 - 空一覧の中立表示により、権限外文書の存在を UI から推測できない。
 
 ## 実行
 
-- `npm run test -- src/features/sc02-results`（単体）/ `npm run test:coverage`（カバレッジ・ラチェット維持）。
+- `pnpm run test -- knowledge/frontend/src/features/sc02-results`（単体）
+- `pnpm run test:coverage`（カバレッジ・ラチェット維持）
