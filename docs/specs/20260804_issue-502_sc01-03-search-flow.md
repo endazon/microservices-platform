@@ -272,7 +272,7 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 | i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。ja / en とも 72 件） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（413 件） |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
-| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**FR-17 / FR-18 を allowlist へ追加**。後述） |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**FR-17 / FR-18 / SC-18 を allowlist へ追加**。後述） |
 | コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（3 件） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
 | スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**244 tests**。本作業で増減なし） |
@@ -398,9 +398,11 @@ TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき�
 
 ### 注意（レビュー時に見てほしい点）
 
-1. **`scripts/test-traceability-allowlist.json` の `specMissing` へ FR-17 / FR-18 を追加した。**
+1. **`scripts/test-traceability-allowlist.json` の `specMissing` へ FR-17 / FR-18 / SC-18 を追加した。**
    これは「実装先行」ではなく**逆向きの事例**である——保留対象が**描かれないこと**を SC-03 の
    単体テストが固定しているため、テストが当該 ID を参照する。理由は同ファイルの `$comment` に書いた。
+   **保留が解けて当該機能に着手する issue が、テスト仕様書を作ってこの 3 件を削除する**
+   （残したままだと `check-test-traceability.js` が「allowlist の減らし忘れ」として落とす）。
 2. **カバレッジ床の branches を 77 → 81 へ上げた。** 伸びの一部は「分岐そのものが減った」ことに由来する
    （§検証）。今後の画面再実装でも同じ向きの効果が出るはずである。
 
