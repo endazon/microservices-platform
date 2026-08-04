@@ -10,8 +10,10 @@ on:
     branches: [develop, main]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
       - ".github/workflows/frontend-tests.yml"
@@ -19,8 +21,10 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
       - ".github/workflows/frontend-tests.yml"
@@ -35,23 +39,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。横断 vitest は AST の feature
-      # テストも収集するため、未取得だと npm ci / test:coverage が解決不能になる（ci.yml と同型・トークン不要）。
+      # テストも収集するため、未取得だと pnpm install / test:coverage が解決不能になる（ci.yml と同型・トークン不要）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         working-directory: ${{ github.workspace }}
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
+      # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      # package_json_file を明示するのは、action の既定がリポジトリ直下の package.json であり、
+      # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
+      # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
+      # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: src/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # 単体テスト（Vitest）をカバレッジ付きで実行する。
       # src/vitest.config.ts の coverage.thresholds を下回ると失敗する（回帰防止ゲート）。
       - name: Unit tests with coverage
-        run: npm run test:coverage
+        run: pnpm run test:coverage
       # カバレッジレポート（lcov / html / text-summary）を成果物として保存する。
       # しきい値未達でも診断できるよう、失敗時も常にアップロードする。
       - name: Upload coverage report

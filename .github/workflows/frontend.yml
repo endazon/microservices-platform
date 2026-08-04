@@ -1,7 +1,7 @@
 # Issue #126: フロントエンド SPA の CI（typecheck / lint / build / e2e スモーク）。
 # FR-14, IADR-0056: フロントエンドは src/<unit>/frontend（workspaces ルート = src/）。
 # 各ユニットの frontend 変更で起動する。バックエンド（.NET）CI とは独立。
-# 単体テスト＝品質ゲートは frontend-tests.yml（npm run test:coverage）が担うため、
+# 単体テスト＝品質ゲートは frontend-tests.yml（pnpm run test:coverage）が担うため、
 # 本ワークフローではテストを実行しない（同一スイートの二重実行を避ける。IADR-0034）。
 name: Frontend CI
 
@@ -10,18 +10,28 @@ on:
     branches: [develop, main]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
+      - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
       - "src/*/frontend/**"
+      - "src/packages/**"
       - "src/package.json"
-      - "src/package-lock.json"
+      - "src/pnpm-lock.yaml"
+      - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
+      - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
       - ".github/workflows/frontend.yml"
 
@@ -35,26 +45,41 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得する。SPA は @ai-stock-trading を
-      # 合成し npm workspace メンバでもあるため、未取得だと npm ci / build / typecheck が解決不能になる。
+      # 合成し pnpm workspace メンバでもあるため、未取得だと pnpm install / build / typecheck が解決不能になる。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         working-directory: ${{ github.workspace }}
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
+      # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      # package_json_file を明示するのは、action の既定がリポジトリ直下の package.json であり、
+      # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
+      # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
+      # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: src/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm run typecheck
       - name: Lint
-        run: npm run lint
-      # 単体テストは frontend-tests.yml（npm run test:coverage）へ集約（二重実行回避・IADR-0034）。
+        run: pnpm run lint
+      # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
+      # 再生成して差分が出るなら、OpenAPI と生成物が乖離している（＝手で触ったか、更新し忘れた）。
+      - name: Codegen is up to date (orval)
+        run: |
+          pnpm run codegen
+          git diff --exit-code -- platform/frontend/src/foundation/api/generated
+      # 単体テストは frontend-tests.yml（pnpm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
   e2e:
     runs-on: ubuntu-latest
@@ -67,16 +92,31 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # IADR-0121 決定 2: パッケージ管理は pnpm workspace。CI では Volta を使わず pnpm/action-setup で
+      # 版を解決する（版の単一情報源は src/package.json の packageManager フィールド）。
+      # package_json_file を明示するのは、action の既定がリポジトリ直下の package.json であり、
+      # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
+      # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
+      # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: src/package.json
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: src/package-lock.json
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # スクリーンレベル・スモーク（バックエンド不要。ログイン画面到達を検証）。
+      # --filter で platform/frontend の文脈を指定する。@playwright/test は workspace ルート（src/）では
+      # なく platform/frontend の devDependency であり、pnpm は npm と違って各パッケージの .bin しか
+      # 見せないため、src/ での素の `pnpm exec playwright` はバイナリを解決できず
+      # 「ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "playwright" not found」で落ちる（PR #489 の CI で実測）。
+      # 後続の Build / E2E も同じく src/ から --filter でパッケージへ委譲する（ルートの package.json の
+      # スクリプト経由）ため、working-directory は src/ のまま揃える。
       - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
+        run: pnpm --filter @platform/frontend exec playwright install --with-deps chromium
       - name: Build
-        run: npm run build
+        run: pnpm run build
       - name: E2E smoke
-        run: npm run test:e2e
+        run: pnpm run test:e2e

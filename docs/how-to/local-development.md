@@ -60,15 +60,15 @@ dotnet test src/knowledge/backend/backend.slnx
 ## 4. フロントエンド（React + TypeScript + Vite）
 
 ```bash
-cd src   # npm workspaces ルート（src/<unit>/frontend を束ねる）
-npm install
-npm run dev         # http://localhost:3100（/bff は BFF(5000) へプロキシ）
-npm run typecheck
-npm run lint
-npm run test         # Vitest 単体（jsdom）
-npm run test:coverage
-npm run build        # tsc -b && vite build
-npm run test:e2e     # Playwright（要 npx playwright install chromium）
+cd src   # pnpm workspace ルート（src/<unit>/frontend と packages/* を束ねる）
+pnpm install
+pnpm run dev         # http://localhost:3100（/bff は BFF(5000) へプロキシ）
+pnpm run typecheck
+pnpm run lint
+pnpm run test         # Vitest 単体（jsdom）
+pnpm run test:coverage
+pnpm run build        # tsc -b && vite build
+pnpm run test:e2e     # Playwright（ブラウザ未取得なら pnpm exec playwright install chromium）
 ```
 
 Keycloak ログインを伴う開発には、dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）
@@ -130,7 +130,7 @@ Wiki.js を使う機能（FR-13 / UC-07）を試す場合、初回のみ管理 U
 | `planning/` が空 | `git submodule update --init --recursive` を実行する |
 | Keycloak の healthcheck が unhealthy のまま | Keycloak 24 イメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照） |
 | Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/microservices-platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
-| フロントエンドから BFF に到達しない | dev は `npm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の nginx `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
+| フロントエンドから BFF に到達しない | dev は `pnpm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の nginx `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
 | LLM/埋め込み呼び出しが失敗する | `.env`（gitignore 済み）に `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` 等を設定する（`deploy/docker-compose.yml` の `llm-gateway` 環境変数を参照）。キー未設定でも起動はするが呼び出しは失敗する |
 
 ## 関連ドキュメント

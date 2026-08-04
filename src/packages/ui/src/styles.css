@@ -1,0 +1,49 @@
+/*
+ * ADR-0031 / IADR-0121 決定 4: 2 ユニット共用のデザイントークンと base スタイル。
+ * Tailwind CSS v4 は CSS ファースト（tailwind.config.js を持たない）。トークンは @theme に置く。
+ *
+ * 08_data-egress-policy（外部 CDN・Web フォント・analytics の利用禁止）:
+ *   - @import は tailwindcss（npm パッケージ＝自己ホスト）のみ。外部 URL からは何も読み込まない。
+ *   - Web フォントを一切読み込まず、OS のシステムフォントスタックを使う。日本語は各 OS 同梱の
+ *     ゴシック体（Hiragino / Yu Gothic / Noto Sans CJK）へフォールバックする。
+ *   - アイコンは lucide-react（npm パッケージ＝バンドルに同梱）。アイコン用 Web フォントは使わない。
+ */
+@import 'tailwindcss';
+
+@theme {
+  /* 面と文字。まずは明色のみを定義する（ダークテーマは画面確定後に第 2 段で追加する）。 */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f7f9;
+  --color-border: #dcdfe4;
+  --color-fg: #1c1f23;
+  --color-fg-muted: #5a626c;
+
+  /* 意味色。INDEX 決定 21「色だけで意味を持たせない」ため、これらは必ずアイコン＋文言と併用する。 */
+  --color-brand: #1f5fbf;
+  --color-brand-fg: #ffffff;
+  --color-success: #1a7f4b;
+  --color-warning: #8a5a00;
+  --color-danger: #b3261e;
+
+  /* フォント: 自己ホスト＝システムフォントのみ（Web フォントの読み込みを行わない）。 */
+  --font-sans:
+    system-ui, -apple-system, 'Segoe UI', 'Hiragino Kaku Gothic ProN', 'Yu Gothic',
+    'Noto Sans CJK JP', 'Meiryo', sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-control: 0.375rem;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+
+  /* キーボード操作の可視性（アクセシビリティの最低線）。 */
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}

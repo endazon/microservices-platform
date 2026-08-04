@@ -1,0 +1,7 @@
+# ADR-0031 / IADR-0121 決定 2: フロントエンドのパッケージ管理は pnpm workspace（npm workspaces から移行）。
+# - '*/frontend' は src/<unit>/frontend を自動認識する（FR-14 / IADR-0056 決定 6。ユニットを submodule で
+#   追加しても本ファイルの編集が要らない性質を npm workspaces から引き継ぐ）。
+# - 'packages/*' はユニットに属さない共有ワークスペースパッケージ（@platform/ui）。IADR-0121 決定 4。
+packages:
+  - '*/frontend'
+  - 'packages/*'

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "$comment": [
+    "shadcn/ui の初期化設定（ADR-0031 / IADR-0121 決定 4）。shadcn/ui は npm 依存ではなく",
+    "「生成したコードをこのリポジトリで所有する」方式のため、本ファイルは CLI の出力先だけを定める。",
+    "コンポーネントの本移植（Dialog / Table / Form 等）は移行第 2 段（#452 と同一段）で行う。",
+    "tailwind.config は Tailwind v4（CSS ファースト）のため持たない。トークンは src/styles.css の @theme。"
+  ],
+  "style": "new-york",
+  "rsc": false,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@platform/ui/components",
+    "utils": "@platform/ui/lib/cn",
+    "ui": "@platform/ui/components"
+  },
+  "iconLibrary": "lucide"
+}

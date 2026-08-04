@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
 // Issue #126 / SC-01..11 SPA 基盤: BFF を境界にした疎結合構成。
@@ -8,7 +9,9 @@ import { fileURLToPath, URL } from 'node:url';
 // - FR-14, IADR-0056: 可変機能ユニット（@knowledge）はソース参照で合成する（単体テストは
 //   ワークスペースルートの vitest.config.ts で横断実行）。
 export default defineConfig({
-  plugins: [react()],
+  // ADR-0031 / IADR-0121 決定 4: Tailwind CSS v4 は Vite プラグインで取り込む（設定ファイルは持たない。
+  // トークンは @platform/ui の styles.css の @theme が正）。
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@foundation': fileURLToPath(new URL('./src/foundation', import.meta.url)),
