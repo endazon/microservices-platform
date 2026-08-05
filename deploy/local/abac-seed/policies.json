@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "FR-05, FR-09, UC-05 / Issue #517: 経路B（dev）の ABAC ポリシーの初期投入データ。",
+    "AbacEvaluator の意味論: 利用者条件をすべて満たすポリシーがマッチ→そのポリシーの文書条件を",
+    "許可フィルタとして union する。フィルタ間は AND、値集合内は OR、キーが無い文書は不一致。",
+    "マッチが 0 件なら deny-by-default（＝投入前の状態＝画面が空になる）。",
+    "",
+    "設計方針: 取扱可能区分（clearance）が高いほど読める機密区分が広がる階段にする。",
+    "階段は最下段（clearance=public）から用意する——最下段を欠くと clearance=public の利用者は",
+    "どのポリシーにもマッチせず、public 文書すら読めない（deny-by-default）。",
+    "序数比較は導入しない（計画 07_abac-attribute-model の「評価は集合帰属のまま」）ため、",
+    "各段の許可集合を明示的に列挙する。dev の初期値であり、実運用は SC-09 から編集する。"
+  ],
+  "policies": [
+    {
+      "name": "dev: public 取扱者は public を読める",
+      "action": "read",
+      "userConditions": { "clearance": ["public", "internal", "confidential", "restricted"] },
+      "documentConditions": { "confidentiality": ["public"] }
+    },
+    {
+      "name": "dev: internal 取扱者は public/internal を読める",
+      "action": "read",
+      "userConditions": { "clearance": ["internal", "confidential", "restricted"] },
+      "documentConditions": { "confidentiality": ["public", "internal"] }
+    },
+    {
+      "name": "dev: confidential 取扱者は confidential も読める",
+      "action": "read",
+      "userConditions": { "clearance": ["confidential", "restricted"] },
+      "documentConditions": { "confidentiality": ["public", "internal", "confidential"] }
+    },
+    {
+      "name": "dev: restricted 取扱者は全区分を読める",
+      "action": "read",
+      "userConditions": { "clearance": ["restricted"] },
+      "documentConditions": { "confidentiality": ["public", "internal", "confidential", "restricted"] }
+    },
+    {
+      "name": "dev: restricted 取扱者は分析を依頼できる",
+      "action": "analyze",
+      "userConditions": { "clearance": ["confidential", "restricted"] },
+      "documentConditions": { "confidentiality": ["public", "internal", "confidential"] }
+    }
+  ]
+}

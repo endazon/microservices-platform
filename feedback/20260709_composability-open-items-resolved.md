@@ -1,7 +1,7 @@
 ---
 title: 10_composability-design「リスク・未決事項」のうち実装で確定済みの 3 項目（スキーマ表現力・構成情報API配置・ドリフト粒度）の反映提案
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids:
   - FR-14
@@ -11,6 +11,7 @@ source_repo: microservices-platform
 source_ref: "docs/adr/IADR-0028_declarative-pipeline-config.md / docs/adr/IADR-0029_config-info-api-placement-and-drift-granularity.md / docs/specs/20260709_composability-plan-feedback-reflux.md"
 author: claude
 created: 2026-07-09
+updated: 2026-08-05
 ---
 
 # フィードバック: 10_composability-design 未決事項のうち実装確定済み 3 項目の反映提案
@@ -72,3 +73,18 @@ created: 2026-07-09
 
 - 計画側: `10_composability-design.md` の未決事項欄の更新のみ（要求・ADR の変更なし）。
 - 実装側: 変更なし（確定済み内容の環流であり、実装は IADR どおり稼働中）。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** 提案 1〜3 が `10_composability-design.md` へ反映済みで、planning#15 も処理済みである。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260709_composability-open-items-resolved.md](../planning/draft/feedback/20260709_composability-open-items-resolved.md) | `status: accepted`（`status_note: GitHub Issue #15 由来`——**この `#15` は `planning#15`**。「トリアージ結果（2026-07-09、accepted）」節） |
+| [06_technical/10_composability-design.md](../planning/projects/microservices-platform/06_technical/10_composability-design.md) `:176-181` | §リスク・未決事項 に「**実装で確定済み（IADR 環流、2026-07-09）**」節。`:177` が**本記録を相対リンクで参照**し、`:178`〜`:180` に確定 3 項目（スキーマ表現力・構成情報 API 配置・ドリフト粒度）、`:181` に「既存実装への段階適用: **完了**」（提案 1・2） |
+| 同 `:172` | 「状態を fixed に確定する（2026-07-09）」= 提案 3。**根拠に planning#15 提案 3 を挙げる** |
+| 同 frontmatter | `status: fixed` |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

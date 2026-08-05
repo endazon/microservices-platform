@@ -16,6 +16,75 @@
  * 実行: node scripts/scripts.test.js（本ファイル単体では実行しない）
  */
 module.exports = ({ ok, assert }) => {
+  // --- seed-abac-policies: 冪等性の核（#517 / IADR-0132） ---------------------------
+
+  {
+    const seed = require('./seed-abac-policies.js');
+    const fsSeed = require('fs');
+    const pathSeed = require('path');
+
+    ok('seed: 属性は key+scope で突合し、未登録のものだけ返す', () => {
+      const wanted = [
+        { key: 'confidentiality', scope: 'document' },
+        { key: 'department', scope: 'document' },
+        { key: 'department', scope: 'user' }, // 同じ key でも scope が違えば別物
+        { key: 'lifecycle', scope: 'document' },
+      ];
+      const existing = [
+        { key: 'Confidentiality', scope: 'Document' }, // 大小文字は同一視する
+        { key: 'department', scope: 'user' },
+      ];
+      assert.deepStrictEqual(
+        seed.selectMissingAttributes(wanted, existing).map((a) => `${a.scope}/${a.key}`),
+        ['document/department', 'document/lifecycle']
+      );
+      // 既存が全部揃っていれば no-op（2 回目の実行が何もしないこと＝冪等の核）。
+      assert.deepStrictEqual(seed.selectMissingAttributes(wanted, wanted), []);
+      // 既存ゼロなら全件が対象（初回投入）。
+      assert.strictEqual(seed.selectMissingAttributes(wanted, []).length, 4);
+    });
+
+    ok('seed: ポリシーは name で突合し、未登録のものだけ返す', () => {
+      const wanted = [{ name: 'dev: A' }, { name: 'dev: B' }];
+      assert.deepStrictEqual(
+        seed.selectMissingPolicies(wanted, [{ name: 'DEV: A' }]).map((p) => p.name),
+        ['dev: B']
+      );
+      assert.deepStrictEqual(seed.selectMissingPolicies(wanted, wanted), []);
+      assert.strictEqual(seed.selectMissingPolicies(wanted, []).length, 2);
+    });
+
+    // 投入データそのものの回帰。**階段の最下段（clearance=public）を欠くと、
+    // clearance=public の利用者はどのポリシーにもマッチせず public 文書すら読めない**
+    // （deny-by-default）。README が謳う「階段」と投入データを一致させ続けるために固定する。
+    ok('seed: clearance の階段が 4 段すべて揃っている', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'policies.json');
+      const readPolicies = JSON.parse(fsSeed.readFileSync(file, 'utf8')).policies.filter(
+        (p) => p.action === 'read'
+      );
+      for (const level of ['public', 'internal', 'confidential', 'restricted']) {
+        // その clearance を持つ利用者にマッチする read ポリシーが 1 本以上あること。
+        const matched = readPolicies.filter((p) => (p.userConditions.clearance || []).includes(level));
+        assert.ok(matched.length > 0, `clearance=${level} にマッチする read ポリシーが無い`);
+        // マッチしたポリシーの文書条件の和 = その利用者が読める機密区分。
+        const visible = new Set(matched.flatMap((p) => p.documentConditions.confidentiality || []));
+        assert.ok(visible.has('public'), `clearance=${level} が public 文書すら読めない`);
+      }
+      // 上位ほど広い（階段であること）。
+      const visibleFor = (level) =>
+        new Set(
+          readPolicies
+            .filter((p) => (p.userConditions.clearance || []).includes(level))
+            .flatMap((p) => p.documentConditions.confidentiality || [])
+        );
+      assert.ok(visibleFor('restricted').size >= visibleFor('confidential').size);
+      assert.ok(visibleFor('confidential').size >= visibleFor('internal').size);
+      assert.ok(visibleFor('internal').size >= visibleFor('public').size);
+      // 最上段は 4 区分すべてを読める。
+      assert.strictEqual(visibleFor('restricted').size, 4);
+    });
+  }
+
   // --- check-doc-links: planning submodule の扱い（Issue #232） -----------------
 
   const { parseArgs: parseDocLinkArgs, planningPopulated } = require('./check-doc-links.js');
@@ -1657,5 +1726,148 @@ module.exports = ({ ok, assert }) => {
           '（#510 が復帰させた記載を再び落としていないか当該のテスト仕様書を確認すること）',
       );
     }
+  });
+  // --- measure-abac-combinations: ABAC 属性組み合わせ数の実測（FR-17 / FR-18・Issue #456） ---
+
+  const abac = require('./measure-abac-combinations.js');
+
+  // 文書行の固定入力。実機と同じ形（属性・タグでまとめた重みつきの行）にする。
+  const ABAC_ROWS = [
+    { attributes: { confidentiality: 'internal', kind: 'Quote', publishedAt: '2026-07-31' }, tags: ['Quote'], count: 900 },
+    { attributes: { confidentiality: 'internal', kind: 'Quote', publishedAt: '2026-07-30' }, tags: ['Quote'], count: 500 },
+    { attributes: { confidentiality: 'restricted', department: 'hr' }, tags: [], count: 3 },
+    { attributes: { kind: 'Daily' }, tags: [], count: 1 },
+  ];
+  const ABAC_USERS = [
+    { username: 'admin', attributes: { clearance: ['restricted'], department: ['engineering'] }, realmRoles: ['platform-admin', 'platform-operator'] },
+    { username: 'developer', attributes: { clearance: ['restricted'], department: ['engineering'] }, realmRoles: ['platform-operator', 'platform-admin'] },
+    { username: 'poc-user', attributes: { clearance: ['internal'], department: ['engineering'] }, realmRoles: [] },
+  ];
+
+  ok('resolveDocumentAbacKeys は属性辞書を計画既定より優先する', () => {
+    const observed = ['confidentiality', 'kind', 'publishedAt'];
+    const withDict = abac.resolveDocumentAbacKeys(
+      [
+        { key: 'confidentiality', scope: 'document' },
+        { key: 'kind', scope: 'document' },
+        { key: 'clearance', scope: 'user' }, // scope=user は文書側の軸に混ぜない
+      ],
+      observed
+    );
+    assert.strictEqual(withDict.source, 'dictionary');
+    assert.deepStrictEqual(withDict.abacKeys, ['confidentiality', 'kind']);
+    assert.deepStrictEqual(withDict.outOfScopeKeys, ['publishedAt']);
+  });
+
+  ok('resolveDocumentAbacKeys は辞書が空なら計画の文書基本属性へ縮退する', () => {
+    const r = abac.resolveDocumentAbacKeys([], ['confidentiality', 'kind', 'publishedAt', 'symbol']);
+    assert.strictEqual(r.source, 'plan');
+    // 高基数のメタデータ（publishedAt 等）を軸にすると「実在する組み合わせ数」が
+    // タイムスタンプの異なり数になってしまう。対象外として分離されること。
+    assert.deepStrictEqual(r.abacKeys, ['confidentiality']);
+    assert.deepStrictEqual(r.outOfScopeKeys, ['kind', 'publishedAt', 'symbol']);
+    assert.ok(r.unusedCandidateKeys.includes('lifecycle'), '計画の未使用候補キーが挙がらない');
+  });
+
+  ok('countCombinations は count で重みづけし、件数降順で並べる', () => {
+    const r = abac.countCombinations(ABAC_ROWS, ['confidentiality']);
+    assert.strictEqual(r.total, 1404);
+    assert.strictEqual(r.distinct, 3); // internal / restricted / 属性なし
+    assert.strictEqual(r.entries[0].label, 'confidentiality=internal');
+    assert.strictEqual(r.entries[0].count, 1400);
+    // 属性が無い文書は「値なし」を 1 つの組み合わせとして数える（黙って落とさない）。
+    assert.ok(r.entries.some((e) => e.label === `confidentiality=${abac.ABSENT}` && e.count === 1));
+  });
+
+  ok('countConfidentiality は設計上の 4 値のうち実在しない値を挙げる', () => {
+    const r = abac.countConfidentiality(ABAC_ROWS);
+    assert.deepStrictEqual(r.observedValues.sort(), ['internal', 'restricted']);
+    assert.deepStrictEqual(r.unusedPlannedValues, ['public', 'confidential']);
+  });
+
+  ok('countRoleSets はロール保有集合を順序非依存で数える', () => {
+    const r = abac.countRoleSets(ABAC_USERS);
+    // admin と developer は順序違いの同一集合＝1 組にまとまる。ロール無しは別の 1 組。
+    assert.strictEqual(r.distinct, 2);
+    assert.strictEqual(r.entries[0].label, 'platform-admin + platform-operator');
+    assert.strictEqual(r.entries[0].count, 2);
+  });
+
+  ok('countUserAttributeCombinations は多値属性の先頭を取って数える', () => {
+    const r = abac.countUserAttributeCombinations(ABAC_USERS);
+    assert.strictEqual(r.distinct, 2);
+    assert.strictEqual(r.entries[0].label, 'clearance=restricted / department=engineering');
+  });
+
+  ok('missingRequiredDocumentAttributes は計画の必須属性の欠落を挙げる', () => {
+    assert.deepStrictEqual(abac.missingRequiredDocumentAttributes(['confidentiality', 'kind']), [
+      'department',
+      'owner',
+      'lifecycle',
+    ]);
+    assert.deepStrictEqual(
+      abac.missingRequiredDocumentAttributes(['confidentiality', 'department', 'owner', 'lifecycle']),
+      []
+    );
+  });
+
+  ok('必須・値集合の判定は属性辞書があればそちらを正とする', () => {
+    const defs = [
+      { key: 'confidentiality', scope: 'document', required: true, allowedValues: ['internal', 'secret'] },
+      { key: 'project', scope: 'document', required: true, allowedValues: [] },
+      { key: 'kind', scope: 'document', required: false, allowedValues: [] },
+      { key: 'clearance', scope: 'user', required: true, allowedValues: [] }, // 文書側の必須に混ぜない
+    ];
+    // 辞書が必須と宣言したキー（confidentiality / project）のうち、実データに無いのは project。
+    assert.deepStrictEqual(abac.missingRequiredDocumentAttributes(['confidentiality', 'kind'], defs), ['project']);
+    // 値集合も辞書の AllowedValues が正になる（計画の 4 値ではなく 2 値で判定する）。
+    const conf = abac.countConfidentiality(ABAC_ROWS, defs);
+    assert.strictEqual(conf.plannedValuesSource, 'dictionary');
+    assert.deepStrictEqual(conf.plannedValues, ['internal', 'secret']);
+    assert.deepStrictEqual(conf.unusedPlannedValues, ['secret']);
+    // 辞書が無ければ計画の値集合へ縮退する。
+    assert.strictEqual(abac.countConfidentiality(ABAC_ROWS, []).plannedValuesSource, 'plan');
+  });
+
+  ok('countReachablePairs はポリシー 0 件なら deny-by-default で 0 を返す', () => {
+    const r = abac.countReachablePairs(ABAC_USERS, ABAC_ROWS, []);
+    assert.deepStrictEqual(r.grantedUsers, []);
+    assert.strictEqual(r.reachablePairs, 0);
+    assert.strictEqual(r.reachableDocuments, 0);
+  });
+
+  ok('countReachablePairs は AbacEvaluator と同じ意味論で到達数を数える', () => {
+    const policies = [
+      {
+        name: 'internal-read',
+        action: 'read',
+        userConditions: { clearance: ['internal', 'restricted'] },
+        documentConditions: { confidentiality: ['internal'] },
+        isActive: true,
+      },
+      // 無効なポリシーは評価しない。
+      { name: 'off', action: 'read', userConditions: {}, documentConditions: {}, isActive: false },
+    ];
+    const r = abac.countReachablePairs(ABAC_USERS, ABAC_ROWS, policies);
+    assert.strictEqual(r.activePolicyCount, 1);
+    assert.strictEqual(r.grantedUsers.length, 3);
+    // internal の 2 行 × 3 人。restricted 行と属性なし行は条件不一致（キー欠落は不一致）。
+    assert.strictEqual(r.reachablePairs, 6);
+    assert.strictEqual(r.reachableDocuments, 4200);
+  });
+
+  ok('summarize は 3 粒度と乖離をまとめて返す（同一入力で同一出力）', () => {
+    const data = { realm: 'test', documents: ABAC_ROWS, users: ABAC_USERS, definitions: [], policies: [] };
+    const r = abac.summarize(data);
+    assert.strictEqual(r.scope.documentCount, 1404);
+    assert.strictEqual(r.scope.userCount, 3);
+    assert.strictEqual(r.byAttributeCombination.distinct, 3); // 粒度 1
+    assert.strictEqual(r.byRole.distinct, 2); // 粒度 2
+    assert.strictEqual(r.byConfidentiality.observedValues.length, 2); // 粒度 3
+    // department は固定入力の 1 行に付いているため欠落に挙がらない（owner / lifecycle は欠落）。
+    assert.deepStrictEqual(r.missingRequiredDocumentAttributes, ['owner', 'lifecycle']);
+    // 再現性: 同一入力なら同一出力（乱数・現在時刻に依存しない）。
+    assert.deepStrictEqual(abac.summarize(data), r);
+    assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
 };

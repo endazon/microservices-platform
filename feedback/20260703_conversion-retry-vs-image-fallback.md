@@ -1,7 +1,7 @@
 ---
 title: 図コード化の LLM 一時障害時の扱い（再試行 vs 画像保持へ縮退）
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids:
   - FR-12
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: "PR #49 / branch claude/issue-26-20260703-0230 / docs/specs/20260703_FR-12_document-normalization-pipeline.md"
 author: claude
 created: 2026-07-03
+updated: 2026-08-05
 ---
 
 # フィードバック: 図コード化の LLM 一時障害は再試行か、画像保持へ縮退か
@@ -72,3 +73,19 @@ PR #49（FR-12 正規化変換パイプライン）の実装・AIコードレビ
 - ConversionService の再試行／デッドレター設計（`Program.cs` の `UseMessageRetry`）。
 - UC-06 代替フロー（人手補正・再登録）の位置づけ（縮退した図の後日コード化）。
 - 監視・アラート方針（画像保持へ縮退した図の可観測性）。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** 提案 (a)（再試行と縮退を分けて明記する）が計画書へ反映済みであり、本記録を根拠に ADR-0012 が `Accepted` 化されている。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260703_conversion-retry-vs-image-fallback.md](../planning/draft/feedback/20260703_conversion-retry-vs-image-fallback.md) | `status: accepted`（「トリアージ結果」節が判定と反映先を列挙） |
+| [04_workflows/03_conversion-flow.md](../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md) `:65-67` | §補足・例外処理 が **再試行（本文変換・資産保存）／縮退（図コード化）／人手補正** の 3 項へ分割済み |
+| [07_adr/ADR-0012_conversion-pipeline.md](../planning/projects/microservices-platform/07_adr/ADR-0012_conversion-pipeline.md) `:41` | §結果 に「**失敗時の縮退方針**」として同内容を明記 |
+| 同 `:43` | 「確定の経緯」が**本記録を相対リンクで参照**し、縮退方針の明確化をもって `Accepted` 化したと記す |
+| [03_usecases/01_usecases.md](../planning/projects/microservices-platform/03_usecases/01_usecases.md) `:163` | UC-06 例外フローが「図コード化（LLM）の失敗は画像保持へ縮退」へ整合済み（変更履歴 `:272` が本記録を根拠に挙げる） |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

@@ -2,7 +2,7 @@
 title: IADR-0127 管理画面（SC-05〜08）の実装方針 — 再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る
 type: impl-adr
 status: Accepted
-related_ids: [SC-05, SC-06, SC-07, SC-08, UC-02, UC-03, UC-04, UC-06, FR-01, FR-06, FR-07, FR-11, FR-12, ADR-0031, IADR-0039, IADR-0041, IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0128]
+related_ids: [SC-05, SC-06, SC-07, SC-08, UC-02, UC-03, UC-04, UC-06, FR-01, FR-06, FR-07, FR-11, FR-12, ADR-0031, IADR-0039, IADR-0041, IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0128, IADR-0131]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -151,6 +151,15 @@ ADR-0031 / [[IADR-0121]] 決定 3 は「orval 生成フック**または** `foun
 **SC-08 は両者に共通して存在するフィールド（`documentId` / `documentTitle` / `chunkId`）だけを使う**——
 これは hi-fi モックの出典表示（タイトルのリンクのみ）と一致するため、表示を削る妥協ではない。
 **食い違いそのものは #506 へ申し送る**（openapi.yaml を実体へ揃える作業の一部）。
+
+> **［2026-08-05 追記・本決定の前提は解消済み（#506 / [IADR-0131](IADR-0131_openapi-as-bff-contract-source.md)）］**
+> 上表の「`/bff/documents` / `/bff/datasources` / `/bff/conversion/jobs` が openapi.yaml に無い」
+> という**事実記述は古くなった**——#506 が 5 群 19 パスを契約へ追加し、`/bff` 配下は 27 パスになった。
+> `AiAnswerDto.citations` の食い違いも `CitationDto[]` へ是正済みで、SC-08 の回避（共通フィールドだけを使う）は
+> **不要になった**（SC-08 は `CitationDto` を直接使う）。
+> **経路の判定基準そのもの（載っている API だけ生成フックで呼ぶ）は変わらない**ため本決定は有効であり、
+> [IADR-0131](IADR-0131_openapi-as-bff-contract-source.md) は本 IADR を Superseded にしない。
+> **SC-05 / SC-06 / SC-07 の実コードを生成フックへ載せ替えるのは #519**（#506 の分割 2 本目）である。
 
 ### 決定 4: **[[IADR-0126]] を SC-08 へ広げない。** 追加の決定も要らない
 

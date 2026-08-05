@@ -18,25 +18,33 @@ export interface SearchRequest {
 
 export type SearchResultDtoAttributes = {[key: string]: string};
 
+/**
+ * FR-03, FR-04: 検索結果 1 件（`Knowledge.Contracts/Dtos/SearchResultDto.cs`）
+ */
 export interface SearchResultDto {
-  chunkId?: string;
-  documentId?: string;
-  documentTitle?: string;
-  text?: string;
-  score?: number;
+  chunkId: string;
+  documentId: string;
+  documentTitle: string;
+  text: string;
+  score: number;
   markdownUri?: string | null;
-  attributes?: SearchResultDtoAttributes;
-  tags?: string[];
+  attributes: SearchResultDtoAttributes;
+  tags: string[];
 }
 
+/**
+ * FR-03: 検索応答（`Knowledge.Contracts/Dtos/SearchDto.cs` の `SearchResponse`）
+ */
 export interface SearchResponse {
-  results?: SearchResultDto[];
-  totalHits?: number;
-  elapsedMs?: number;
+  results: SearchResultDto[];
+  totalHits: number;
+  elapsedMs: number;
 }
 
 export interface AskRequest {
   question: string;
+  /** 呼び出し側が付す任意の絞り込み識別子（`AnalysisRequest.Scope`）。省略可 */
+  scope?: string | null;
 }
 
 /**
@@ -74,12 +82,40 @@ export interface AnalysisTaskRequest {
   range?: AnalysisDataRange;
 }
 
+/**
+ * FR-04: 出典（番号付き＋元文書へのリンク）。AI 回答中の [1][2] と対応する根拠で、
+ * 利用者は `sourceUri` から元文書へ辿れる。
+ */
+export interface CitationDto {
+  /** 回答本文中の [n] と対応する番号 */
+  number: number;
+  documentId: string;
+  documentTitle: string;
+  chunkId: string;
+  sourceUri?: string | null;
+  score: number;
+  /** 根拠箇所の抜粋 */
+  snippet: string;
+}
+
+/**
+ * FR-04: RAG 回答（回答本文＋番号付き出典）。
+ * Issue #506 監査: `citations` の型は **`CitationDto[]`** である（旧記載の `SearchResultDto[]` は誤り。
+ * 実体は `Knowledge.Contracts/Dtos/SearchResultDto.cs` の `AiAnswerDto`）。両者に共通するのは
+ * `documentId` / `documentTitle` / `chunkId` / `score` の 4 つだけで、`number` / `snippet` /
+ * `sourceUri` は `CitationDto` にしか無い。
+ */
 export interface AiAnswerDto {
-  answer?: string;
-  citations?: SearchResultDto[];
-  model?: string;
-  inputTokens?: number;
-  outputTokens?: number;
+  answer: string;
+  citations: CitationDto[];
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  /**
+     * FR-08, UC-01: この回答の識別子。フィードバック（👍/👎・コメント）の紐付け先で、
+     * 回答生成ごとに自動採番される（`FeedbackRequest.answerId` へ渡す）。
+     */
+  answerId: string;
 }
 
 export type AccessScopeRequestUserAttributes = {[key: string]: string};
@@ -89,14 +125,23 @@ export interface AccessScopeRequest {
   userAttributes: AccessScopeRequestUserAttributes;
 }
 
+/**
+ * FR-05: 1 つの属性キーに対する許可値集合（`AttributeFilter`）
+ */
 export type AccessScopeResponseAllowedFiltersItem = {
-  key?: string;
-  allowedValues?: string[];
+  key: string;
+  allowedValues: string[];
 };
 
+/**
+ * FR-05: ABAC スコープ解決結果（`Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`）。
+ * #520 監査: C# には `bool Granted = false`（許可ポリシーが 1 つでも一致したか）が在るが、
+ * 本スキーマには対応する `granted` が無い。**フィールドの追加は本 issue の範囲外**
+ * （`required` を入れる作業と別種の是正）。作業仕様書 #520 §未決事項 1 で申し送る。
+ */
 export interface AccessScopeResponse {
-  userId?: string;
-  allowedFilters?: AccessScopeResponseAllowedFiltersItem[];
+  userId: string;
+  allowedFilters: AccessScopeResponseAllowedFiltersItem[];
 }
 
 export type CreateDocumentRequestAttributes = {[key: string]: string};
@@ -128,6 +173,255 @@ export interface UpdateMetadataRequest {
   /** 楽観的並行制御。現在版と不一致なら 409 */
   expectedVersion?: number | null;
   changeNote?: string | null;
+}
+
+export type DocumentDtoAttributes = {[key: string]: string};
+
+/**
+ * FR-06: 文書 1 件（`Knowledge.Contracts/Dtos/DocumentDto.cs`）
+ */
+export interface DocumentDto {
+  id: string;
+  title: string;
+  /** 公開ライフサイクル（`draft` / `normalized` / `published` / `archived`）。**変換結果ではない** */
+  status: string;
+  markdownUri?: string | null;
+  /** FR-06, UC-03: 現在の版番号（楽観ロックの `expectedVersion` に渡す） */
+  version: number;
+  attributes: DocumentDtoAttributes;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * SC-03, FR-06: 文書本文（正規化 Markdown）。BFF が ABAC 判定後にオブジェクトストレージ
+ * （`storage://`）から読み取り、閲覧を許可された呼び出し元にのみ払い出す。
+ */
+export interface DocumentContentDto {
+  id: string;
+  title: string;
+  markdown: string;
+  sourceUri?: string | null;
+}
+
+export type DocumentVersionDtoAttributes = {[key: string]: string};
+
+/**
+ * FR-06, UC-03: 文書の版スナップショット
+ */
+export interface DocumentVersionDto {
+  documentId: string;
+  version: number;
+  title: string;
+  status: string;
+  markdownUri?: string | null;
+  attributes: DocumentVersionDtoAttributes;
+  tags: string[];
+  changeNote?: string | null;
+  createdAt: string;
+}
+
+/**
+ * FR-06, UC-03: 楽観的並行制御の競合（409）。**RFC7807 ではない素の JSON** である
+ * （`Results.Conflict(new { error, expectedVersion, currentVersion })`）。
+ */
+export interface VersionConflictDto {
+  error: string;
+  expectedVersion: number;
+  currentVersion: number;
+}
+
+/**
+ * FR-06, UC-03, SC-05: 不正な状態遷移（409）。**RFC7807 ではない素の JSON** である
+ * （`Results.Conflict(new { error, from, to })`）。
+ */
+export interface InvalidTransitionDto {
+  error: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * コネクタ設定（秘密キーはマスク済み）
+ */
+export type DataSourceDtoConfig = {[key: string]: string};
+
+/**
+ * FR-05: 原本へ付与する既定 ABAC 文書属性（`confidentiality` 等）
+ */
+export type DataSourceDtoDefaultAttributes = {[key: string]: string};
+
+/**
+ * FR-01, UC-04, SC-06: データソース 1 件（`Knowledge.Contracts/Dtos/DataSourceDto.cs`）。
+ * IADR-0053: `config` の**秘密キー（token / password / secret / credential を含むキー）は
+ * 後段が `***` へマスク済み**である。SPA から秘密を埋め込むことはしない。
+ */
+export interface DataSourceDto {
+  id: string;
+  name: string;
+  /** コネクタ種別（`filesystem` / `wiki` / `saas` / `db` ほか） */
+  sourceType: string;
+  connectionUri: string;
+  /** `active` / `disabled`。**同期の健全性は表さない** */
+  status: string;
+  lastSyncedAt?: string | null;
+  /** コネクタ設定（秘密キーはマスク済み） */
+  config: DataSourceDtoConfig;
+  /** FR-05: 原本へ付与する既定 ABAC 文書属性（`confidentiality` 等） */
+  defaultAttributes: DataSourceDtoDefaultAttributes;
+  createdAt: string;
+}
+
+export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
+
+/**
+ * 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する
+ */
+export type CreateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
+
+export interface CreateDataSourceRequest {
+  name: string;
+  sourceType: string;
+  connectionUri: string;
+  config?: CreateDataSourceRequestConfig;
+  /** 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する */
+  defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
+}
+
+/**
+ * FR-01, UC-04: 手動同期の結果（202 の本文）。契約 record を持たず、
+ * `DataSourceEndpoints` の匿名型がそのまま JSON になる。
+ */
+export interface DataSourceSyncResultDto {
+  /** 取得できた原本の件数 */
+  fetched: number;
+  /** 取得に失敗した件数 */
+  failed: number;
+  /** IADR-0051: 当該 sourceType のコネクタが DI 登録されているか。false は縮退（5xx にしない） */
+  connectorAvailable: boolean;
+  message?: string | null;
+}
+
+/**
+ * FR-12, UC-06, SC-07: 変換ジョブの状況（`Knowledge.Contracts/Dtos/ConversionJobDto.cs`）
+ */
+export interface ConversionJobDto {
+  id: string;
+  sourceId: string;
+  sourceType: string;
+  originalPath: string;
+  /** `queued` / `processing` / `succeeded` / `failed`。**`failed` のみ再変換できる** */
+  status: string;
+  /** 失敗ジョブの理由 */
+  error?: string | null;
+  documentId?: string | null;
+  markdownUri?: string | null;
+  attempts: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * FR-09: 属性キー → 許可値の集合（例 `{"department": ["sales","hr"]}`）。
+ * 契約が表現するのは**集合への所属**だけであり、比較演算子・包含などの式は表現しない。
+ * #520: **`required` を入れない**——`properties` を持たない写像（`additionalProperties` のみ）で、
+ * `required` は `properties` のキーを指すため適用できない。本スキーマは唯一「要求と応答の両方」で
+ * 使われるが、この理由で要求側への波及も起こらない。
+ */
+export interface AbacConditionMap {[key: string]: string[]}
+
+/**
+ * FR-09: ABAC ポリシー（利用者属性 × 文書属性 → 許可アクション）
+ */
+export interface AbacPolicyDto {
+  id: string;
+  name: string;
+  /** `read` / `analyze` / `manage` */
+  action: string;
+  userConditions: AbacConditionMap;
+  documentConditions: AbacConditionMap;
+  /** 削除せず一時停止できるようにするための有効フラグ */
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * FR-09: 属性辞書エントリ（管理者が定義する取りうる値）
+ */
+export interface AttributeDefinitionDto {
+  id: string;
+  key: string;
+  label: string;
+  allowedValues: string[];
+  required: boolean;
+  /** `document` / `user`。**Key と併せて一意**で、登録後は不変 */
+  scope: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * FR-09, UC-05: ポリシーの登録・更新（更新も同じ型を用いる）
+ */
+export interface CreatePolicyRequest {
+  name: string;
+  /** `read` / `analyze` / `manage` */
+  action: string;
+  userConditions: AbacConditionMap;
+  documentConditions: AbacConditionMap;
+}
+
+export interface SetActiveRequest {
+  isActive: boolean;
+}
+
+export interface CreateAttributeRequest {
+  key: string;
+  label: string;
+  allowedValues: string[];
+  required: boolean;
+  /** `document` / `user`。未指定は `document` */
+  scope?: string | null;
+}
+
+/**
+ * FR-09: 属性辞書の更新。**Key / Scope は同一性・一意制約の基礎のため不変で、受け取らない**
+ */
+export interface UpdateAttributeRequest {
+  label: string;
+  allowedValues: string[];
+  required: boolean;
+}
+
+/**
+ * RFC7807。`Results.Problem(title, detail, statusCode)` が返す形。
+ * #520: **`required` を入れない**——RFC7807 はどのメンバーも省略され得る（指定しなかった項目は
+ * 出力されない）。ここで必須化すると、実在しない保証を生成型に持たせることになる。
+ */
+export interface ProblemDetails {
+  type?: string | null;
+  title?: string | null;
+  status?: number | null;
+  detail?: string | null;
+  instance?: string | null;
+}
+
+export type ValidationProblemDetailsErrors = {[key: string]: string[]};
+
+/**
+ * RFC7807 の検証エラー。`Results.ValidationProblem` が返す形で、
+ * AuthorizationService は `errors.errors` に**メッセージの配列**を束ねる
+ * （キーごとの配列という一般形に載せた運用。`apiClient.parseProblemDetails` がこれを平坦化する）。
+ * #520: **`required` を入れない**（理由は `ProblemDetails` と同じ）。
+ */
+export interface ValidationProblemDetails {
+  type?: string | null;
+  title?: string | null;
+  status?: number | null;
+  detail?: string | null;
+  errors?: ValidationProblemDetailsErrors;
 }
 
 /**
@@ -166,25 +460,28 @@ export const FeedbackDtoRating = {
   down: 'down',
 } as const;
 
+/**
+ * FR-08: 保存済みフィードバック（`Knowledge.Contracts/Dtos/FeedbackDto.cs`）
+ */
 export interface FeedbackDto {
-  id?: string;
-  answerId?: string;
-  rating?: FeedbackDtoRating;
+  id: string;
+  answerId: string;
+  rating: FeedbackDtoRating;
   comment?: string | null;
   question?: string | null;
-  userId?: string;
-  createdAt?: string;
-  updatedAt?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
  * フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）
  */
 export interface FeedbackStatsDto {
-  up?: number;
-  down?: number;
-  total?: number;
-  satisfactionRate?: number;
+  up: number;
+  down: number;
+  total: number;
+  satisfactionRate: number;
 }
 
 /**
@@ -205,8 +502,12 @@ export interface UsageEventRequest {
   query?: string | null;
 }
 
+/**
+ * FR-10: 記録された利用イベントの ID。契約 record を持たず、`DashboardEndpoints` の匿名型
+ * （`new { ev.Id }`）がそのまま JSON になる。`UsageEvent.Id` は非 null の `Guid`。
+ */
 export interface UsageEventCreatedDto {
-  id?: string;
+  id: string;
 }
 
 export type UsagePointDtoEventType = typeof UsagePointDtoEventType[keyof typeof UsagePointDtoEventType];
@@ -221,38 +522,38 @@ export const UsagePointDtoEventType = {
  * 日次利用状況の 1 点（日付 × 種別の件数）
  */
 export interface UsagePointDto {
-  date?: string;
-  eventType?: UsagePointDtoEventType;
-  count?: number;
+  date: string;
+  eventType: UsagePointDtoEventType;
+  count: number;
 }
 
 /**
  * 検索傾向の 1 点（検索語 × 件数）
  */
 export interface SearchTrendDto {
-  term?: string;
-  count?: number;
+  term: string;
+  count: number;
 }
 
 /**
  * DashboardService が返す利用側サマリ（回答品質は含まない）
  */
 export interface DashboardUsageDto {
-  totalSearches?: number;
-  totalAnswers?: number;
-  usageTrend?: UsagePointDto[];
-  topSearchTerms?: SearchTrendDto[];
+  totalSearches: number;
+  totalAnswers: number;
+  usageTrend: UsagePointDto[];
+  topSearchTerms: SearchTrendDto[];
 }
 
 /**
  * BFF が組み立てるダッシュボードサマリ（利用状況・検索傾向・回答品質を集約）
  */
 export interface DashboardSummaryDto {
-  totalSearches?: number;
-  totalAnswers?: number;
-  usageTrend?: UsagePointDto[];
-  topSearchTerms?: SearchTrendDto[];
-  quality?: FeedbackStatsDto;
+  totalSearches: number;
+  totalAnswers: number;
+  usageTrend: UsagePointDto[];
+  topSearchTerms: SearchTrendDto[];
+  quality: FeedbackStatsDto;
 }
 
 /**
@@ -289,11 +590,11 @@ export interface CompletionApiRequest {
  * IADR-0104: sent（越境させたか）と stopReason（モデル側の終了理由）は独立した軸である。
  */
 export interface CompletionApiResponse {
-  text?: string;
-  model?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  sent?: boolean;
+  text: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  sent: boolean;
   /** 選択・拒否した呼び出し先（監査・縮退表示用） */
   endpoint?: string | null;
   /** 選択・拒否の理由（監査・縮退表示用） */
@@ -320,7 +621,9 @@ export interface CompletionApiResponse {
 }
 
 /**
- * 構成バージョン（適用中の構成定義の Git コミット・適用日時・適用者。GitOps 注入。未注入時は空）
+ * 構成バージョン（適用中の構成定義の Git コミット・適用日時・適用者。GitOps 注入。未注入時は空）。
+ * #520: **`required` を入れない**——C# の 3 メンバーがすべて nullable である
+ * （`ConfigInfoDto.cs` の `ConfigVersionDto(string? GitCommit, DateTimeOffset? AppliedAt, string? AppliedBy)`）。
  */
 export interface ConfigVersionDto {
   gitCommit?: string | null;
@@ -332,30 +635,30 @@ export interface ConfigVersionDto {
  * 有効なパイプライン段（宣言と照合された実効値）
  */
 export interface PipelineStageDto {
-  name?: string;
-  service?: string;
+  name: string;
+  service: string;
   /** コンシューマ型完全名 */
-  consumer?: string;
-  input?: string;
-  outputs?: string[];
-  enabled?: boolean;
+  consumer: string;
+  input: string;
+  outputs: string[];
+  enabled: boolean;
 }
 
 /**
  * イベント接続（イベント型ごとの発行者・購読者）
  */
 export interface EventBindingDto {
-  event?: string;
-  publishers?: string[];
-  subscribers?: string[];
+  event: string;
+  publishers: string[];
+  subscribers: string[];
 }
 
 /**
  * ポート（LLM・埋め込み・ベクトルDB・ストレージ・Wiki 同期等）で選択中の実装と接続先識別子
  */
 export interface PortSelectionDto {
-  port?: string;
-  implementation?: string;
+  port: string;
+  implementation: string;
   target?: string | null;
 }
 
@@ -363,38 +666,51 @@ export interface PortSelectionDto {
  * データソースコネクタと有効・無効状態
  */
 export interface ConnectorDto {
-  name?: string;
-  enabled?: boolean;
+  name: string;
+  enabled: boolean;
 }
 
 /**
  * FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）
  */
 export interface EffectiveConfigDto {
-  version?: ConfigVersionDto;
-  pipeline?: PipelineStageDto[];
-  eventBindings?: EventBindingDto[];
-  ports?: PortSelectionDto[];
-  connectors?: ConnectorDto[];
+  version: ConfigVersionDto;
+  pipeline: PipelineStageDto[];
+  eventBindings: EventBindingDto[];
+  ports: PortSelectionDto[];
+  connectors: ConnectorDto[];
+}
+
+/**
+ * FR-15 (#139), IADR-0046: 構成バージョン履歴の 1 エントリ。正データ源は GitOps 層（Git / ArgoCD の
+ * 適用履歴）で、API は永続化せず注入されたスライスを返す。`hadDrift` はその時点のドリフト有無
+ * （注入時に判明していれば設定、不明なら null＝画面は「—」と表示する）。
+ * #520: **`required` を入れない**——C# の 4 メンバーがすべて nullable である（#518 の判断を再確認した）。
+ */
+export interface ConfigVersionEntryDto {
+  gitCommit?: string | null;
+  appliedAt?: string | null;
+  appliedBy?: string | null;
+  hadDrift?: boolean | null;
 }
 
 /**
  * 個々の不一致（自己申告到達不能は Unverifiable として縮退報告）
  */
 export interface DriftFindingDto {
-  kind?: string;
-  severity?: string;
-  target?: string;
-  detail?: string;
+  kind: string;
+  severity: string;
+  target: string;
+  detail: string;
 }
 
 /**
  * FR-15: 宣言（Git 上の pipeline.json）と実効構成のドリフト検出結果
  */
 export interface DriftReportDto {
-  hasDrift?: boolean;
-  checkedAt?: string;
-  findings?: DriftFindingDto[];
+  hasDrift: boolean;
+  checkedAt: string;
+  findings: DriftFindingDto[];
 }
 
 /**
@@ -434,18 +750,18 @@ export interface EmbedApiRequest {
  * embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す
  */
 export interface EmbedApiResponse {
-  vector?: number[];
-  dimensions?: number;
-  model?: string;
+  vector: number[];
+  dimensions: number;
+  model: string;
   /** モデル別コレクション名 */
-  collection?: string;
-  embedded?: boolean;
+  collection: string;
+  embedded: boolean;
   /** 選択・拒否した送信先（監査・縮退表示用） */
   endpoint?: string | null;
   /** 選択・拒否の理由（監査・縮退表示用） */
   routingReason?: string | null;
   /** true は一時障害（呼び出し側は再試行）。false は恒久理由（呼び出し側はスキップ） */
-  retryable?: boolean;
+  retryable: boolean;
 }
 
 export type BffFeedbackStatsParams = {
@@ -468,5 +784,12 @@ days?: number;
  * @maximum 50
  */
 top?: number;
+};
+
+export type BffConversionJobListParams = {
+/**
+ * 状態で絞り込む（`queued` / `processing` / `succeeded` / `failed`。「失敗のみ」フィルタの実体）
+ */
+status?: string;
 };
 

@@ -19,6 +19,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ConfigVersionEntryDto,
   DriftReportDto,
   EffectiveConfigDto
 } from '../bff.schemas';
@@ -231,6 +232,105 @@ export function useBffConfigDrift<TData = Awaited<ReturnType<typeof bffConfigDri
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getBffConfigDriftQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffConfigHistoryResponse200 = {
+  data: ConfigVersionEntryDto[]
+  status: 200
+}
+
+export type bffConfigHistoryResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffConfigHistoryResponseSuccess = (bffConfigHistoryResponse200) & {
+  headers: Headers;
+};
+export type bffConfigHistoryResponseError = (bffConfigHistoryResponse404) & {
+  headers: Headers;
+};
+
+export type bffConfigHistoryResponse = (bffConfigHistoryResponseSuccess | bffConfigHistoryResponseError)
+
+export const getBffConfigHistoryUrl = () => {
+
+
+
+
+  return `/bff/admin/config/history`
+}
+
+/**
+ * IADR-0046: 構成バージョン適用履歴（コミット ID・適用日時・適用者・その時点のドリフト有無）を
+ * 新しい順で返す。**正データ源は GitOps 層**（Git のコミット履歴・ArgoCD のリビジョン履歴）であり、
+ * API は永続化せず注入されたスライスを返す。保持範囲は GitOps 側が決めるため API・画面は切り詰めない。
+ * 認可・秘匿・監査の挙動は `/bff/admin/config` と同一（ConfigViewer / 非権限は 404）。
+ * @summary FR-15, SC-11: 構成バージョンの適用履歴（新しい順）
+ */
+export const bffConfigHistory = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffConfigHistoryResponse> => {
+
+  return bffFetch<bffConfigHistoryResponse>(getBffConfigHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffConfigHistoryQueryKey = () => {
+    return [
+    `/bff/admin/config/history`
+    ] as const;
+    }
+
+
+export const getBffConfigHistoryQueryOptions = <TData = Awaited<ReturnType<typeof bffConfigHistory>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConfigHistory>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffConfigHistoryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffConfigHistory>>> = ({ signal }) => bffConfigHistory({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffConfigHistory>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffConfigHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof bffConfigHistory>>>
+export type BffConfigHistoryQueryError = void
+
+
+/**
+ * @summary FR-15, SC-11: 構成バージョンの適用履歴（新しい順）
+ */
+
+export function useBffConfigHistory<TData = Awaited<ReturnType<typeof bffConfigHistory>>, TError = void>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConfigHistory>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffConfigHistoryQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

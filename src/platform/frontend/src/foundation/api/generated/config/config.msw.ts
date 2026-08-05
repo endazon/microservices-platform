@@ -17,16 +17,18 @@ import type {
 } from 'msw';
 
 import type {
+  ConfigVersionEntryDto,
   DriftReportDto,
   EffectiveConfigDto
 } from '../bff.schemas';
 
 import {
   getBffConfigDriftResponseMock,
-  getBffConfigEffectiveResponseMock
+  getBffConfigEffectiveResponseMock,
+  getBffConfigHistoryResponseMock
 } from './config.faker';
 
-export { getBffConfigEffectiveResponseMock, getBffConfigDriftResponseMock } from './config.faker';
+export { getBffConfigEffectiveResponseMock, getBffConfigDriftResponseMock, getBffConfigHistoryResponseMock } from './config.faker';
 
 
 export const getBffConfigEffectiveMockHandler = (overrideResponse?: EffectiveConfigDto | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<EffectiveConfigDto> | EffectiveConfigDto), options?: RequestHandlerOptions) => {
@@ -52,7 +54,20 @@ export const getBffConfigDriftMockHandler = (overrideResponse?: DriftReportDto |
       })
   }, options)
 }
+
+export const getBffConfigHistoryMockHandler = (overrideResponse?: ConfigVersionEntryDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<ConfigVersionEntryDto[]> | ConfigVersionEntryDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/admin/config/history', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffConfigHistoryResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 export const getConfigMock = () => [
   getBffConfigEffectiveMockHandler(),
-  getBffConfigDriftMockHandler()
+  getBffConfigDriftMockHandler(),
+  getBffConfigHistoryMockHandler()
 ]

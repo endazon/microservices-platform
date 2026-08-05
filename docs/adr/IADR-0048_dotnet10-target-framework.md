@@ -7,7 +7,7 @@ related_ids:
   - ADR-0001
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (制約条件: .NET 8)"
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md (実装フレームワーク)"
@@ -74,9 +74,24 @@ plan_refs:
 - 計画: `feedback/20260709_dotnet10-target-framework-deviation.md` の判断依頼が未クローズ。計画側の制約更新 or
   是正指示を待つ。
 
+  > **［2026-08-05 追記 / #497］この「未クローズ・待ち」は解消済みである（乖離そのものが無くなった）。**
+  > 計画側は本 IADR が推奨した前者（実態＝.NET 10 を正とし計画を追随更新する）を採った。planning submodule
+  > pin `d980a01` で実測した現在の記述は次のとおりで、上の「コンテキストと課題」が引く 3 箇所はいずれも
+  > **`.NET 8` ではなく `.NET 10`** である。
+  >
+  > - [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) 制約条件: 「実装は ASP.NET Core + **.NET 10** に統一する」（変更履歴 2026-07-24 で `.NET 8` から更新）
+  > - [06_technical/03_tech-stack-selection.md](../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md) 確定スタック一覧: 「ASP.NET Core + **.NET 10**（C#、LTS）」（変更履歴 2026-07-23）
+  > - [INDEX.md](../../planning/projects/microservices-platform/INDEX.md) 概要: 「実装: ASP.NET Core + **.NET 10**」
+  > - 根拠 ADR: [ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md) = `status: Accepted`（2026-07-23）
+  >
+  > 計画側 draft の環流記録も 2026-08-04 に `accepted` でトリアージ済みで、本リポジトリの控え
+  > [feedback/20260709_dotnet10-target-framework-deviation.md](../../feedback/20260709_dotnet10-target-framework-deviation.md) も #497 で `accepted` へ揃えた。
+  > よって本 IADR は `Accepted` を維持する（「.NET 8 へ是正」の分岐は発生しない）。**行番号は pin が動くとずれるため内容で特定する。**
+
 ## フォローアップ
 
-- 計画側の判断（制約更新 or 是正）の反映と、本 IADR の状態同期（`Accepted` 維持 or `Superseded`）。
+- ~~計画側の判断（制約更新 or 是正）の反映と、本 IADR の状態同期（`Accepted` 維持 or `Superseded`）。~~
+  → **完了（2026-08-05 / #497）**。計画側は制約更新（.NET 10）を採り、本 IADR は `Accepted` を維持する（上記［追記］）。
 - `docs/tech/tech-requirements.md`（#200）への確定結果の記載。
 - INDEX 概要等の版数固定表現を単一情報源参照へ改める提案の追跡（plan-feedback）。
 
