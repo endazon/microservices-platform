@@ -29,7 +29,8 @@ export default defineConfig({
       output: {
         // NFR, ADR-0031 / IADR-0134: 初期チャンクの内訳を実測したうえでの分割。
         // 画面はルート単位の遅延（lazyRouteComponent）で外へ出したが、実測では初期チャンクの
-        // **81.7% が依存**であり、ルート境界では動かせない。ここで扱うのは残りの 2 種類だけである。
+        // **82.0% が依存**（1253.27 / 1527.89 kB rendered）であり、ルート境界では動かせない。
+        // ここで扱うのは残りの 2 種類だけである。
         manualChunks(id) {
           if (!id.includes('/node_modules/')) {
             // 共有 UI プリミティブ（@platform/ui）は**全画面が使う**。放置すると Rollup が
@@ -40,7 +41,7 @@ export default defineConfig({
             return id.includes('/packages/ui/') ? 'ui' : undefined;
           }
           const pkg = id.slice(id.lastIndexOf('/node_modules/') + '/node_modules/'.length);
-          // React ランタイム。初期チャンク最大の塊（実測 561.39 kB / 全体の 36.5%）であり、
+          // React ランタイム。初期チャンク最大の塊（実測 561.39 / 1527.89 kB rendered = 全体の 36.7%）であり、
           // かつ**更新頻度が最も低い**。切り出す目的は初期ロード量の削減ではなく
           // （静的 import なので同時に読み込まれる）、(1) 再訪時にアプリ側の更新で
           // 無効化されないこと、(2) 1 チャンクの上限（500 kB）を守ることである。

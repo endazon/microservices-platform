@@ -49,14 +49,14 @@ related_specs:
 
 ## 目的・背景
 
-全画面の再実装（#502 / #503 / #504）が完了し、バンドルは 572 → 586 → **632.98 kB（gzip 190.04 kB）** まで
+全画面の再実装（#502 / #503 / #504）が完了し、バンドルは 571.92 → 585.83 → **632.98 kB（gzip 190.04 kB）** まで
 伸びて Vite の 500 kB 警告に毎ビルド触れている。ルート単位の遅延分割は「**どの画面がどれだけ重いかが
 確定してから**」行うべきであるとして、上記 5 本の申し送りが一貫して先送りしてきた。全画面が揃った
 いまが実施時期である。
 
 **本作業の要点は「推測で分割しない」ことである。** 実測の前に分割方針を決めると、
 「画面が重いはずだ」という思い込みで境界を引くことになる。実際には（§計測）**初期チャンクの
-81.7% は依存**であり、ルート境界だけでは警告は消えなかった。
+82.0% は依存**（1253.27 / 1527.89 kB rendered）であり、ルート境界だけでは警告は消えなかった。
 
 ## 対象範囲
 
@@ -76,7 +76,7 @@ related_specs:
 | 事項 | 送り先 | 理由 |
 | --- | --- | --- |
 | **i18n カタログのロケール別遅延読み込み**（ja / en の両方を初期チャンクへ載せている。実測 25.89 kB rendered） | 本書 §申し送り | Lingui の初期化（`initI18n`）と カタログの機械検査（[[IADR-0125]] 決定 4）に触れる。本 issue の射程は「ルート単位」である |
-| **`oidc-client-ts` の遅延化**（実測 121.20 kB rendered = 初期チャンク第 3 位） | 第 3 段（#439。ADR-0032 の BFF セッション方式） | issue #512 が「認証は初期チャンクに残す」と明示。**移行第 3 段でライブラリごと消える見込み**であり、いま遅延化しても捨てる作業になる |
+| **`oidc-client-ts` の遅延化**（実測 121.18 kB rendered = 初期チャンク第 3 位） | 第 3 段（#439。ADR-0032 の BFF セッション方式） | issue #512 が「認証は初期チャンクに残す」と明示。**移行第 3 段でライブラリごと消える見込み**であり、いま遅延化しても捨てる作業になる |
 | **AST（`src/ai-stock-trading`）3 画面の遅延化**（実測 62.09 kB rendered） | 本書 §申し送り | 旧契約（`FeatureModule.routes[].element`）は**モジュール初期化時に React 要素を作る**ため、本リポ側だけでは遅延化できない。AST は変更できない（[[IADR-0120]]） |
 | **`sonner` の遅延化**（実測 64.23 kB rendered） | 本書 §申し送り | 共通シェル（`Layout` が `<Toaster/>` を置く）の一部であり、issue の「共通シェルは初期チャンクに残す」に当たる |
 | **画面の内容・文言・権限の変更** | — | 本 issue は分割だけを行う |
@@ -211,7 +211,7 @@ dist/assets/index-Bw-dS6vy.js   632.98 kB │ gzip: 190.04 kB
 
 | 区分 | rendered | 比率 | 内訳（上位） |
 | --- | --- | --- | --- |
-| **依存（node_modules）** | **1253.27 kB** | **82.0%** | react-dom 561.39 ／ @tanstack/router-core 131.65 ／ **oidc-client-ts 121.18** ／ **tailwind-merge 102.19** ／ @tanstack/query-core 75.62 ／ **sonner 64.23** ／ @tanstack/react-router 42.49 ／ react 20.31 ／ @radix-ui/* 計 約 45 ／ scheduler 11.42 ／ @tanstack/store 11.02 ／ @lingui/core 10.91 ／ @tanstack/history 10.51 ／ lucide-react 5.72 |
+| **依存（node_modules）** | **1253.27 kB** | **82.0%** | react-dom 561.39 ／ @tanstack/router-core 131.65 ／ **oidc-client-ts 121.18** ／ **tailwind-merge 102.19** ／ @tanstack/query-core 75.62 ／ **sonner 64.23** ／ **@radix-ui/* 計 61.01** ／ @tanstack/react-router 42.49 ／ react 20.31 ／ scheduler 11.42 ／ @tanstack/store 11.02 ／ @lingui/core 10.91 ／ @tanstack/history 10.51 ／ lucide-react 5.72 |
 | 画面（knowledge の 11 feature） | 146.98 kB | 9.6% | sc09 30.07 ／ sc11 23.84 ／ sc05 16.53 ／ sc06 14.36 ／ sc10 12.10 ／ sc01 10.70 ／ sc03 10.54 ／ sc07 9.96 ／ sc08 9.61 ／ sc02 6.68 ／ sc04 1.09 |
 | AST（旧契約ユニット） | 62.09 kB | 4.1% | — |
 | アプリ（platform/frontend/src） | 53.38 kB | 3.5% | **i18n カタログ ja＋en 25.89** ／ foundation 25.41 ／ orval 生成 1.01 |
@@ -341,9 +341,9 @@ V5b は「`@platform/ui` を初期側に置く費用が本当にどこから来�
 | i18n カタログ | `pnpm run i18n` ＋ `git diff --exit-code -- …/locales`／`node scripts/check-i18n-catalogs.js` | green（差分なし／2 ロケール・未翻訳 0 件） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
-| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**allowlist は着手前と同じ 7 件**＝増やしていない） |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（**allowlist は着手前から増やしていない**。**被覆件数・allowlist 件数はここに書かない**——どちらも本作業と無関係な PR のマージで動く値であり、書けば次のマージで嘘になる。最新値は CI が検査する） |
 | テスト仕様書の被覆 | `node scripts/check-test-spec-coverage.js` | green（床と一致。**本作業はフロントのテストのみを足しており、本検査の対象＝バックエンドの `*Tests.cs` は増減していない**） |
-| scripts の自己検査 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（247 tests） |
+| scripts の自己検査 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**件数はここに書かない**——リポジトリ全体を数える値であり、本作業と無関係な PR のマージで動く。実際に #520 のマージで動いた） |
 | コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**件数はここに書かない**——この表を直すコミット自身が件数を変えるため。最終形は CI の `commit-messages` ジョブが検査する） |
 
 **単体テストの件数の取り方**: 着手前の値は `git stash -u` で本作業の変更を退避した状態の
