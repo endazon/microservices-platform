@@ -218,23 +218,53 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 - [x] [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md) 決定 3 に日付付き［追記］
 - [x] `node scripts/check-doc-links.js` / `check-commit-messages.js` / `check-test-traceability.js` /
       `check-contract-schema.js` / `check-backend-libraries.js` が成功する
+- [x] カバレッジ床（`src/coverage-floor.json`）の扱いを実測に基づいて判断し、据え置きの根拠を記録した
+      （§カバレッジ床は据え置く）
 
 ## 検証結果（実測）
 
+**下表は監査是正（2026-08-05・PR #509 のレビュー指摘 9 件）を反映した後の再実行結果である。**
+
 | コマンド | 結果 |
 | --- | --- |
-| `dotnet build src/knowledge/backend/backend.slnx` | Build succeeded / 0 Error(s)（警告 0。`Knowledge.IntegrationTests` の CS0618 は 2 回目以降の増分ビルドで再表示されない既存警告） |
-| `dotnet test src/knowledge/backend/backend.slnx` | **11 アセンブリすべて Passed / Failed 0**。`ConversionService.Worker.Tests` 54 件（+1 = 新規 409 回帰）／`Knowledge.IntegrationTests` 20 件 passed・18 skipped（Testcontainers 系はコンテナ内 docker 不在で skip。`NetworkIsolationTests` は passed 側） |
+| `dotnet build src/knowledge/backend/backend.slnx` | Build succeeded / 0 Error(s) / 2 Warning(s)（`Knowledge.IntegrationTests` の CS0618。`MinioBuilder` 既定コンストラクタの obsolete。**既存**で本作業とは無関係） |
+| `dotnet test src/knowledge/backend/backend.slnx` | **11 アセンブリすべて Passed / Failed 0**。`ConversionService.Worker.Tests` 54 件（+1 = 新規 409 回帰）／`Knowledge.IntegrationTests` **21 件 passed**・18 skipped（+1 = `InternalServices_HelmServicesMustStayClusterIp`。Testcontainers 系 18 件はコンテナ内 docker 不在で skip。`NetworkIsolationTests` は passed 側） |
 | `dotnet build src/platform/backend/backend.slnx` | Build succeeded / 0 Error(s) / 0 Warning(s) |
-| `dotnet test src/platform/backend/backend.slnx` | **3 アセンブリすべて Passed / Failed 0**。`Platform.Bff.Tests` 147 passed / 1 skipped（既存のベンチマーク由来の skip。`BffConversionEndpointTests` は 14 件すべて passed = 既存 10 + 新規 4） |
+| `dotnet test src/platform/backend/backend.slnx` | **3 アセンブリすべて Passed / Failed 0**。`Platform.Bff.Tests` **148 passed** / 1 skipped（+1 = `GetById_WhenAnonymous_IsUnauthorized`。skip は既存のベンチマーク由来。`BffConversionEndpointTests` は 15 件すべて passed = 既存 10 + 本 PR 5） |
 | `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | exit 0 |
 | `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
-| `node scripts/check-doc-links.js` | exit 0（415 件の Markdown。未 populate submodule 配下 2 件は対象外） |
-| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（2 件すべて規約適合） |
-| `node scripts/check-test-traceability.js` | exit 0（仕様書のある起点 ID 28 件中 28 件が写像済み） |
+| `node scripts/check-doc-links.js` | exit 0（415 件の Markdown に破損した相対リンクなし） |
+| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（13 件すべて規約適合） |
+| `node scripts/check-test-traceability.js` | exit 0（計画レンジ 53 件中 27 件にテスト仕様書あり。仕様書なし 26 件は warn・実装先行 7 件は allowlist 済み） |
 | `node scripts/check-contract-schema.js` | exit 0（2 プロジェクト / 20 ファイル / 56 型が baseline と一致） |
 | `node scripts/check-backend-libraries.js` | exit 0（新規混入 0 件。既知残件 42 件は baseline 済み） |
 | `node scripts/check-unit-dependencies.js` | exit 0 |
+
+### カバレッジ床（`src/coverage-floor.json`）は据え置く（実測に基づく）
+
+`src/coverage-floor.json` の ratchet（テストを増やしたら床を引き上げる。[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)
+決定 3）に対し、本 PR はテストを 7 件増やしたが**床（line 34 / branch 17）は据え置く**。根拠は次の実測である。
+
+- **床は整数で、CI 実測との余裕が薄い**: 同ファイルの注記どおり CI 実測は line 34.14% / branch 17.26% で、
+  現床との差は **line +0.14pt / branch +0.26pt** しかない。**1pt 単位でしか上げられない**ため、
+  引き上げは計測ゆらぎで即座に赤を生む。
+- **本 PR のテストが動かす量は 0.01pt 未満**（本セッションで実測）。同一環境で PR のテスト 3 ファイルを
+  `origin/develop` 版に戻して比較した:
+
+  | 条件 | line | branch |
+  | --- | --- | --- |
+  | `origin/develop` のテスト | 26.38%（7197/27281） | 15.78%（1404/8898） |
+  | 本 PR のテスト | 26.39%（**7199**/27281） | 15.78%（1404/8898） |
+  | 差 | **+2 行（+0.01pt）** | **±0（+0.00pt）** |
+
+  権限テストは既に被覆済みの分岐を別のロールで通るだけであり、`NetworkIsolationTests` は
+  テンプレートを読むだけで製品コードをほぼ通らない。**床を 1pt 上げる余地は生まれない。**
+- **注意（絶対値は CI と比較できない）**: 本セッションの実行環境はコンテナ内に docker が無く
+  `Knowledge.IntegrationTests` の **Testcontainers 系 18 件が skip** される。このため
+  `node scripts/check-coverage-floor.js` の絶対値は **line 26.39% / branch 15.78%** と CI 実測
+  （34.14% / 17.26%）より低く出て **exit 1（床未達）になる**。これは環境差であって本 PR の退行ではない
+  （**差分の測定**は上表のとおり同一条件どうしで行っている）。CI（`ci.yml` の `coverage-floor` ステップ）
+  では Testcontainers 系も走るため、床判定は CI を正とする。
 
 ### 実行環境（実走できた経路・再現条件）
 
@@ -262,13 +292,21 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 | 2 | グループの `RequireRole` から `OperatorRole` を削除（= 照会まで admin へ絞る巻き添え） | 照会側の 2 件が落ちる | **落ちた**。`GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` がいずれも `Expected … OK {value: 200}, but found … Forbidden {value: 403}`（Failed 2 / Passed 12）。**裁定を仰いでいる最中の閲覧権限を巻き添えで変えたら気付ける** |
 | 3 | 後段の再変換不可（409 `not_retryable`）を 202 に置換 | `Retry_ProcessingJob_Returns409NotRetryable` が落ちる | **落ちた**。同テストと既存の `Retry_NonFailedJob_Returns409` がともに `Expected … Conflict {value: 409}, but found … Accepted {value: 202}`（Failed 2 / Passed 5） |
 
+監査是正（PR #509 のレビュー）で足した検査についても、同じく変異で確かめた。
+
+| # | 変異（意図的な退行） | 期待 | **実測結果** |
+| --- | --- | --- | --- |
+| 4 | Helm `templates/service.yaml` の `spec:` 直下へ `type: NodePort` を挿入 | `InternalServices_HelmServicesMustStayClusterIp` が落ちる | **落ちた**。`Did not expect template to match regex "(?m)^\s*type:" …`（Failed 1 / Passed 4） |
+| 5 | 同ファイルの `ports:` 配下へ `nodePort: 30080` を挿入 | 同上 | **落ちた**。`Did not expect template to match regex "(?m)^\s*nodePort:" because IADR-0128 決定3: 内部サービスに nodePort を割り当ててはならない`（Failed 1 / Passed 4） |
+| 6 | `ConversionBffEndpoints` のグループから `RequireAuthorization(...)` ごと削除（= 無認証で 200 が返る実装へ戻す） | `GetById_WhenAnonymous_IsUnauthorized` が落ちる | **落ちた**。`Expected resp.StatusCode to be HttpStatusCode.Unauthorized {value: 401}, but found HttpStatusCode.OK {value: 200}`。落ちたのは `GetById_WhenAnonymous_IsUnauthorized` / `GetList_WhenAnonymous_IsUnauthorized` / `GetList_AsNonPrivilegedRole_IsForbidden` の 3 件（Failed 3 / Passed 12） |
+
 **補足（変異 3 の途中経過も記録する）**: 最初は「エンドポイントの `if (job.Status != Failed) → 409` の
 1 行だけ」を削る変異を試したが、**テストは落ちなかった**（Passed 7）。`PrepareRetryAsync` が非失敗ジョブに
 `null` を返し、後続の 409 分岐が同じ応答を出すためである（**多層になっていた**）。よって
 「409 を返す経路をすべて 202 に置換する」変異へ強めたのが上表 3 である。
 1 回目の変異が落ちなかった事実は、テストの弱さではなく**実装側の冗長な防御**を示す。
 
-**復元の確認**: 3 種の変異はいずれも直後に元へ戻し、最終状態で両ユニットの build / test / format が
+**復元の確認**: 6 種の変異はいずれも直後に元へ戻し、最終状態で両ユニットの build / test / format が
 上表のとおり green であることを再実行して確認した（`git status` はクリーン）。
 
 ## フォローアップ（本 issue の範囲外）
