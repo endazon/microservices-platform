@@ -46,7 +46,7 @@ related_specs:
 
 - 画面（SC）: **SC-08 AI分析ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-08・遷移図 `SC01 → SC08`・`SC08 -- 出典 --> SC03`）
 - 関連ユースケース（UC）: **UC-02**（AI 分析を依頼する。基本 1・3・4／**代替「機密区分の高いデータはセルフホスト LLM で処理する」**／**例外「対象が権限外の場合は対象から除外する。権限の有無は開示しない」**）
-  - issue #503 の表は SC-08 の対応を「UC-05」と書くが、**計画（05_screens 画面一覧・UC-02 §関連画面）は UC-02 に対応づけている**。本書は計画を正とする。
+  - 着手時点の issue #503 の表は SC-08 の対応を「UC-05」と書いていたが、**計画（05_screens 画面一覧・UC-02 §関連画面）は UC-02 に対応づけている**。本書は計画を正とした。**issue 本文は 2026-08-05 に UC-02 へ訂正済みである。**
 - 関連機能要求（FR）: **FR-07**（指定データ範囲での分析・比較・抽出）・**FR-11**（LLM の呼び出し先の切り替え）・**FR-05**（ABAC）
 - モックアップ（**実装の正**）: [hi-fi/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-08.html) ／ [wireframe/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-08.html)
 - 関連 IADR: [[IADR-0005]]（指定範囲は ABAC と narrowing-only で交差する）・[[IADR-0111]]（空 `model` ＝ AI へ未送信の縮退）・[[IADR-0127]]（本作業の設計判断）・[[IADR-0009]]（存在秘匿）
