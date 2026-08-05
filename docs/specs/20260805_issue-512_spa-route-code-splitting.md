@@ -18,6 +18,7 @@ related_specs:
   - ../adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md
   - ../tech/tech-requirements.md
   - ./20260804_issue-490_spa-router-shell.md
+  - ./20260804_issue-496_ui-i18n-storybook.md
   - ./20260804_issue-502_sc01-03-search-flow.md
   - ./20260805_issue-503_sc05-08-admin-screens.md
   - ./20260805_issue-504_sc09-11-admin-ops-screens.md
@@ -138,11 +139,15 @@ React ランタイムは別建てにする（理由は [[IADR-0134]] 決定 3）
 08_data-egress-policy 違反ではない（外部オリジンの参照は 0 件で、gitignore 済みのため本番イメージにも入らない）が、
 **検査の母集団は配布物と一致させておくほうが読み違えが起きない**。`src/.gitignore` に `.analyze/` を追加した。
 
-**依存の増分**: `rollup-plugin-visualizer@7.0.1` を入れると lockfile に推移的依存が加わる
-（`cliui` / `emoji-regex` / `is-in-ssh` / `open` / `powershell-utils` ほか。`git diff --stat src/pnpm-lock.yaml` = 113 行の追加）。
+**依存の増分（実測）**: `rollup-plugin-visualizer@7.0.1` を入れると lockfile に推移的依存が加わる。
+`git diff --stat origin/develop...HEAD -- src/pnpm-lock.yaml` = **113 行の追加**、
+新規パッケージは **11 件**（`rollup-plugin-visualizer` ＋ `cliui` / `emoji-regex` / `is-in-ssh` /
+`open` / `powershell-utils` / `string-width` / `wrap-ansi` / `wsl-utils` / `yargs` / `yargs-parser`）。
 **`open`（ブラウザ起動）系が入るのは、既定テンプレートが HTML を開く機能を持つためである**——
-本リポでは `template: 'raw-data'` しか使わない。開発時のみの依存であり成果物には入らないが、
-**サプライチェーンの面数は増える**ので、値が要らなくなった時点で外す判断はあり得る。
+本リポでは `template: 'raw-data'` しか使わないので**この経路は一度も通らない**。
+開発時のみの依存であり成果物には入らないが、**サプライチェーンの面数は増える**。
+`build:analyze` を残すことは**この 11 件を常時抱える決定**であり、外す／置き換える判断の
+受け皿は §申し送り 6 に置いた（[[IADR-0134]] §結果 のトレードオフにも明記した）。
 
 ## 受け入れ基準
 
@@ -436,19 +441,64 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
   新しい `scripts/check-*.js` を足すと CI への結線（`.github/workflows/`）が要るが、
   本作業の権限では編集できないため、検査が走らないまま増えることになる。§申し送り 3 で起票を求める。
 
+**E2E が守る範囲を実測で確かめた（穴の形を誤解しないために）。**
+`bundle-splitting.smoke.spec.ts` は初期ロードで取得する `/assets/*.js` が **2 本以上**であることを見る。
+
+| 壊し方 | E2E | 実測 |
+| --- | --- | --- |
+| **分割を丸ごと失う**（ルート遅延も `manualChunks` も無い＝V0 相当） | **落ちる** | 初期ロードが 1 本になり `Received: 1` で fail |
+| `manualChunks` の **3 規則を全部外す**（V1 相当。ルート遅延は残す） | **落ちない** | `/` は SC-01 へ解決され、ガードの無いルートは `preloadRouteComponents` が `.preload()` を呼ぶため、`/assets/*.js` を **8 本**取得する（`index` ＋ `SearchChatPage` ＋ 共有チャンク 6 本） |
+| **1 規則だけ欠ける**（M6 / M7） | **落ちない** | 同上 |
+
+よって E2E が守るのは「**ルート分割そのものが消えていないこと**」であり、
+`manualChunks` の規則構成ではない。**「まったく検出手段が無い」ではなく「規則構成だけが無防備」である。**
+
 ## 申し送り
 
 1. **i18n カタログのロケール別遅延読み込み**（初期チャンクに ja＋en の両方が載っている。実測 25.89 kB rendered）。
    実行時に使うのは片方だけであり、`initI18n` を動的 import へ変えれば初期ロードから落とせる。
    [[IADR-0125]] 決定 3・4（カタログのコミットと再生成差分検査）に触れるため別 issue が要る。
-2. **AST 3 画面（62.09 kB rendered）の遅延化**。旧契約（`FeatureModule.routes[].element`）が
-   モジュール初期化時に React 要素を作るため、本リポ側だけでは遅延化できない。
-   [[IADR-0124]] 決定 2 が既に挙げている「AST を新契約（型付き factory）へ移す」が済めば、
-   ルート単位の遅延がそのまま適用できる。**AST リポジトリ側の issue が要る**。
-3. **チャンク構成の機械検査**（変異試験 M6 / M7 が素通りした穴）。
-   「1 チャンクが 500 kB を超えない」「初期ロードの合計が ratchet を割らない」を
-   `scripts/check-*.js` として足し、`frontend.yml` へ結線したい。**本作業では `.github/workflows/` を
-   編集できないため見送った**（結線できない検査を足すと「あるのに走らない」状態を作る）。
+2. **AST 3 画面（62.09 kB rendered）の遅延化** —— **［起票先: 未起票］**。
+   旧契約（`FeatureModule.routes[].element`）がモジュール初期化時に React 要素を作るため、
+   本リポ側だけでは遅延化できない。[[IADR-0124]] 決定 2 が既に挙げている
+   「AST を新契約（型付き factory）へ移す」が済めば、ルート単位の遅延がそのまま適用できる。
+   **起票先は ai-stock-trading リポジトリ**であり、番号は `AST#NNN` の形で修飾して書く
+   （`.claude/rules/traceability.md` §issue / PR 番号の修飾）。**本作業では起票していない**——
+   本リポジトリからは AST を変更できず（[[IADR-0120]]）、起票の可否も確認していないため、
+   **存在しない番号を書かない**。起票したらこの行へ `AST#NNN` を追記すること。
+3. **チャンク構成の機械検査**（変異試験 M6 / M7 が素通りした穴。**［起票先: 未起票 / 本リポジトリ］**）。
+   本作業では `.github/workflows/` を編集できないため見送った（結線できない検査を足すと
+   「あるのに走らない」状態を作る）。**起票時にそのまま受け入れ基準へ写せる粒度**まで書いておく。
+   作法は [[IADR-0118]]（検査スクリプトの追加）・[[IADR-0122]]（baseline による ratchet）・
+   [[IADR-0130]]（床の更新手順と変異試験）に倣う。
+
+   - **検査対象**: `src/platform/frontend/dist/assets/*.js`（ビルド成果物）と `dist/index.html`。
+     初期ロードは `index.html` の `<script type="module">` と `<link rel="modulepreload">` から
+     機械的に判定する（**遅延チャンクと混ぜない**——混ぜると「画面を足すと床を割る」ことになり、
+     ratchet が分割の意図と逆向きに働く）。
+   - **判定 1（fail・固定しきい値）**: 1 チャンクが **500 kB を超えない**。
+     Vite の既定予算と同じ値を使う（本リポは `chunkSizeWarningLimit` を上げない方針）。
+     *警告ではなく fail にする*——警告は毎ビルド出ていたのに 632.98 kB まで放置された実績がある。
+   - **判定 2（fail・ratchet）**: **初期ロード JS の合計**（minified・gzip の 2 値）が
+     `scripts/chunk-budget-baseline.json` の床を**超えたら fail**。床は
+     `node scripts/check-chunk-budget.js --update` で更新し、**差分を PR に載せる**
+     （[[IADR-0130]] と同じ「更新は明示・差分はレビューで見る」運用）。
+     初期値は本 PR の実測（**577.54 kB / gzip 177.94 kB**）を置く。
+   - **判定 3（warn）**: **1 kB 未満の遅延チャンク**が現在（3 本）より増えたら warn。
+     これは `manualChunks` の規則が 1 つ欠けたときに最初に現れる兆候である（M6 の実測: 3 → 9 本）。
+     *fail にしない*——画面追加でも自然に増えうるため、fail にすると無関係な PR を止める。
+   - **self-test**: `--self-test` を実装し、`scripts/scripts.repo.test.js` から
+     `REQUIRE_REPO_TESTS=1` 経由で呼ぶ（`check-permission-denials.js` / `check-action-versions.js` と同じ形）。
+     固定入力（合成した `index.html` ＋ チャンク一覧）で「床を割る／500 kB を超える／
+     1 kB 未満チャンクが増える」の 3 ケースが**それぞれ期待どおり fail / warn する**ことを見る。
+   - **注釈**: `scripts/lib/ci-annotate.js` を使い、fail は `error`・判定 3 は `notice` で出す。
+   - **CI 結線（`.github/workflows/`。★ 権限外）**: **`frontend.yml` の `build-test` ジョブ**へ足す。
+     `ci.yml` の `scripts-tests` ジョブでは**走らせられない**——実測で確認したとおり、
+     `dist` が存在するのは `pnpm run build` を実行する `frontend.yml` の `build-test` だけである。
+     置き場所は既存の `No external egress in build artifacts` ステップの直後が自然
+     （同じ「ビルド成果物を走査する」性質のステップが並ぶ）。
+   - **変異試験（起票時に実施する）**: M6（`ui` 規則を外す）・M7（`vendor-react` 規則を外す）が
+     **落ちること**を実測する。本 PR ではどちらも素通りしている。
 4. **`@platform/ui` を初期チャンクに置く判断の再考余地**（§計測 の V2 と V5 の差 = **gzip 14.31 kB**）。
    差の実体は `Tabs` が引き込む Radix（`@radix-ui/*` 計 **61.01 kB rendered**）である（`Tabs` を使う画面は SC-09 だけ）。
    **この Radix を初期側へ引き込んでいるのは [[IADR-0125]] 決定 1（公開面は `src/index.ts` の 1 ファイル）ではなく、
@@ -464,8 +514,22 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
 5. **`tailwind-merge`（102.19 kB rendered）の妥当性**。`cn()` のためだけに入っており、
    初期チャンクの依存の中で react-dom / router-core / oidc-client-ts に次ぐ 4 位である。
    置き換え候補の評価は本 issue の射程外。
-6. **IADR の採番**: 本 PR は **IADR-0134** を採った。基点 `68d91ce` には `IADR-0131` が無いが、
-   `develop`（`727d021`）に `IADR-0131`（マージ済み）が、並行作業のブランチ
-   `fix/NFR-openapi-response-required` に `IADR-0132`（未マージ）が存在するためである。
-   **`IADR-0132` の PR が先にマージされない場合、本 PR は `IADR-0132` へ改番する**
-   （欠番を作らない。改番手順は `.claude/rules/traceability.md` §採番衝突時の改番手順）。
+6. **`build:analyze` が抱える開発依存 11 件を減らす** —— **［起票先: 未起票 / 本リポジトリ］**。
+   `rollup-plugin-visualizer@7.0.1` ＋ 推移的依存 10 件（`cliui` / `emoji-regex` / `is-in-ssh` /
+   `open` / `powershell-utils` / `string-width` / `wrap-ansi` / `wsl-utils` / `yargs` / `yargs-parser`。
+   `src/pnpm-lock.yaml` に **113 行**の追加）を**常時保持する決定**になっている。
+   うち **`open` / `powershell-utils` / `wsl-utils` / `is-in-ssh` は OS 連携**（既定テンプレートが
+   HTML をブラウザで開くための実装）であり、本リポは `template: 'raw-data'` しか使わないため
+   **機能としては一度も通らない**。取り得る形は 2 つ:
+   (a) Rollup の `emitFile` でモジュールグラフを自前で書き出す（外部プロセス起動が不要になり
+   `open` 系が丸ごと落ちる）、(b) 常設をやめて計測時だけ `pnpm dlx` で入れる。
+   **判断の期限は「次に分割を見直すとき」**——[[IADR-0134]] の全ての数字がこの計測に依存しており、
+   **依存を外すなら代替の計測手段を先に用意する**（さもないと議論が推測に戻る）。
+7. **IADR の採番**: 本 PR は当初 `IADR-0133` を採ったが、**`IADR-0134` へ改番した**
+   （改番時点で未 push であり改番コストが最小だった。`.claude/rules/traceability.md` §採番衝突時の改番手順）。
+   `develop`（`9dc6c13`）には **`IADR-0132` が 2 件ある**——#520 / PR #528 の
+   `IADR-0132_openapi-required-from-csharp-nullability.md`（先着）と #526 の
+   `IADR-0132_abac-dev-seed.md`（後着）が相次いでマージされ、同番のまま残った。
+   先着尊重により**後着の #526 が `IADR-0133` へ改番する**ため、本 PR がその番号を空けた。
+   **`0133` は #526 の改番が入るまでの一時的な欠番**であり、理由は `docs/adr/README.md` の
+   索引行（〔採番注記〕）に残した。**#526 の改番は本 PR の射程外である。**
