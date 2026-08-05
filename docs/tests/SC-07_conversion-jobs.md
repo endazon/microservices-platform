@@ -8,6 +8,7 @@ related_ids:
   - FR-12
   - IADR-0042
   - IADR-0127
+  - IADR-0128
 author: claude
 created: 2026-07-09
 updated: 2026-08-05
@@ -16,6 +17,8 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
   - "../../planning/projects/microservices-platform/INDEX.md"
 related_specs:
+  - "../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md"
+  - "../specs/20260805_issue-501_retry-admin-only.md"
   - "../screens/SC-07_conversion-jobs.md"
   - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
   - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
@@ -24,18 +27,29 @@ related_specs:
 # テスト仕様書: 変換ジョブ（SC-07）
 
 > **［2026-08-05 / #503］計画の 2026-08-04 確定（4 状態モデル・状態フィルタ・再変換の管理者ロール限定・
-> 同一ジョブの直列化）へ追随して全面改訂した。**
+> 同一ジョブの直列化）へ追随して画面側を全面改訂した。**
+>
+> **［2026-08-05 / #501］API 側（BFF・下流のネットワーク分離）の観点を復帰・追補した。**
+> #503 の全面改訂はフロントエンドの表だけを残してバックエンドの表を落としていたが、
+> 当該テストは実在し続けており（`ConversionJobStoreTests` / `ConversionJobEndpointTests` /
+> `BffConversionEndpointTests`）、**#501 はここへ権限テストを足す**。落としたままにすると
+> 「画面のテストしか無い」と読めてしまうため復帰させた（§BFF・§デプロイ・§バックエンド）。
 
-対象: `src/knowledge/frontend/src/features/sc07-conversions/`
+対象（画面）: `src/knowledge/frontend/src/features/sc07-conversions/`
 テスト: `jobStatus.test.ts`（純関数）／ `ConversionJobsPage.test.tsx`（Vitest + Testing Library）／
 導線は `src/knowledge/frontend/src/features/adminFlow.test.tsx`／
 E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
+
+対象（API）: `src/platform/backend/Bff/Platform.Bff.Tests/BffConversionEndpointTests.cs` ／
+`src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/` ／
+`src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs`
 
 ## 起点となる計画書（トレーサビリティ）
 
 - 画面（SC）: SC-07 ／ ユースケース（UC）: **UC-06**（文書を正規化変換する）／ 機能要求（FR）: FR-12
 - **計画の確定事項（2026-08-04。05_screens §SC-07 §データソース）を受け入れ基準として写像する。**
-- 連携: **#501**（API 側の管理者ロール強制の突合。本書は**画面側**を固定する）
+- 連携: **#501**（API 側の管理者ロール強制の突合。**解消済み**）。
+  **本書は画面側と API 側の両方を固定する** —— 権限は片側だけを固定しても実効境界にならない。
 
 ## 計画の確定事項 → テストの写像
 
@@ -45,7 +59,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | デッドレターの表示は `failed` の**内訳** | **実装しない**（契約に標識が無い）。理由は画面仕様書 §実装しない要素 (b) |
 | 照会 API は `GET /jobs` 相当・**状態でのフィルタ**を備える | `sends the status filter to the query API` ／ `starts with the "all" filter so the first view is not narrowed` |
 | 再変換 API は `retry` 相当 | `lets an administrator retry a failed job` |
-| **再変換の実行権限は管理者ロールに限る** | `lets an administrator retry a failed job` ／ **`hides the retry button from an operator and says why`** |
+| **再変換の実行権限は管理者ロールに限る**（「画面と API の権限を揃える」） | 画面: `lets an administrator retry a failed job` ／ **`hides the retry button from an operator and says why`**。API: **`Retry_AsOperator_IsForbidden`**（403）／ `Retry_WhenAnonymous_IsUnauthorized`（401）／ `Retry_AsAdmin_Returns202`（§BFF 7 / 7b / 7c） |
 | 回数上限は設けない。**同一ジョブの再変換は直列化**し、実行中（`processing`）の要求は拒否する | `allows retry only for failed jobs`（純関数）／ `offers no retry for jobs that are not failed`（画面）／ **`explains the 409 rejection as a serialisation conflict`**（サーバ側の拒否） |
 
 ## UC-06 のフロー → テストの写像
@@ -92,8 +106,85 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | A | SC-06 → SC-07 → SC-03 | データソース → 変換ジョブ → 変換結果の文書まで 1 本で通る |
 | B | SC-07 → SC-06 | 「← データソース管理へ戻る」で戻れる |
 
+## バックエンド（ConversionService・xUnit）
+
+読み取りモデル: `ConversionJobStoreTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 開始 | processing・試行 1 | `Start_marks_job_processing_with_attempt_one` |
+| 2 | 成功 | 文書 ID・Markdown 記録 | `Succeed_records_document_and_markdown` |
+| 3 | 失敗 | エラー記録 | `Fail_records_error` |
+| 4 | 絞り込み | status でフィルタ | `List_filters_by_status` |
+| 5 | 再変換 | queued に戻し原本返却 | `PrepareRetry_requeues_and_returns_original_event` |
+| 6 | 未知再変換 | null | `PrepareRetry_returns_null_for_unknown_job` |
+| 6b | 失敗以外は再変換不可 | 成功ジョブは null・状態不変 | `PrepareRetry_returns_null_for_non_failed_job` |
+| 7 | 再試行 | 試行回数加算 | `Start_again_increments_attempts` |
+
+エンドポイント: `ConversionJobEndpointTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 一覧・絞り込み | 一覧＋?status=failed | `GetList_ReturnsSeededJobs_AndFiltersByStatus` |
+| 2 | 個別 | 取得／404 | `GetById_ReturnsJob_Or404` |
+| 3 | 再変換 | 失敗ジョブは 202（queued 化は store 単体で担保） | `Retry_KnownFailedJob_Returns202` |
+| 3b | 失敗以外は 409 | 成功ジョブへの再変換は 409・状態不変 | `Retry_NonFailedJob_Returns409` |
+| 3c | **処理中は 409 not_retryable**（2026-08-04 確定「実行中の再変換要求は拒否」・#501 回帰） | `processing` への再変換は 409・本文 `error=not_retryable`・状態不変 | `Retry_ProcessingJob_Returns409NotRetryable` |
+| 4 | 未知再変換 | 404 | `Retry_UnknownJob_Returns404` |
+
+コンシューマ記録: `RawDocumentFetchedConsumerJobTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 成功記録 | succeeded を記録 | `Consume_success_records_succeeded_job` |
+| 2 | 失敗記録＋再送出 | failed を記録し例外再送出（リトライ保持） | `Consume_failure_records_failed_job_and_rethrows` |
+
+## BFF（xUnit・#501 で権限テストを追加）
+
+`BffConversionEndpointTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 一覧 | admin で一覧 | `GetList_AsAdmin_ReturnsJobs` |
+| 2 | 絞り込み | ?status=failed 透過 | `GetList_FiltersByStatus` |
+| 3 | 運用者許可 | operator も可 | `GetList_AsOperator_IsAllowed` |
+| 4 | ロール制限 | 非特権 403 | `GetList_AsNonPrivilegedRole_IsForbidden` |
+| 5 | 無認証 | 401 | `GetList_WhenAnonymous_IsUnauthorized` |
+| 5b | **照会の据え置き**（個別取得も operator 可・#501 回帰） | retry を絞ってもグループが巻き添えで絞られていない | `GetById_AsOperator_IsAllowed` |
+| 5c | 個別取得の無認証 | 401（一覧の 5 と対。既存の非対称を解消） | `GetById_WhenAnonymous_IsUnauthorized` |
+| 6 | 不在 | 404 透過 | `GetById_WhenMissing_Returns404` |
+| 6b | 後段障害の可視化 | 一覧は後段障害を空へ縮退せず伝播（運用画面の誤認防止・レビュー #172） | `GetList_WhenBackendFails_SurfacesFailure_NotEmptyList` |
+| 6c | 後段不達→502 | 後段不達（例外）時に catch 分岐で 502 へ縮退（レビュー #172） | `GetList_WhenBackendUnreachable_Returns502` |
+| 7 | 再変換 | 202 中継（admin は従来どおり成功） | `Retry_AsAdmin_Returns202` |
+| 7b | **再変換は管理者限定**（2026-08-04 確定・#501 の核心） | **operator は 403**（照会は許されるロールでも実行は不可） | `Retry_AsOperator_IsForbidden` |
+| 7c | 再変換の無認証 | 401（認証欠如と権限不足を取り違えない） | `Retry_WhenAnonymous_IsUnauthorized` |
+| 8 | 未知再変換 | 404 透過 | `Retry_WhenJobUnknown_Passes404Through` |
+| 8b | 再変換不可の透過 | 後段 409（`not_retryable`）を素通し | `Retry_WhenNotRetryable_Passes409Through` |
+
+## デプロイ（Knowledge.IntegrationTests・#501）
+
+`Deployment/NetworkIsolationTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**認可を課さない前提（[[IADR-0128]] 決定 3）を機械検査で固定**する | `InternalServices_MustNotPublishHostPorts` |
+| 2 | 下流の到達性（本番系 Helm） | Service を `type: NodePort` / `LoadBalancer` にすると BFF 以外の公開エッジができる。`service.yaml` に `type:` / `nodePort:` が現れないことを固定する | `InternalServices_HelmServicesMustStayClusterIp` |
+
+> **本表が固定するのは到達不能の論拠 4 本のうち 2 本である。** 残る 2 本
+> （NetworkPolicy への `istio-system` 例外追加・Istio VirtualService への内部サービス向けルート追加）は
+> 機械では止まらない（[[IADR-0128]] フォローアップ 4。対象が conversion に限らないため別 issue）。
+
+## ロール・存在秘匿の担保
+
+- **画面と API の両側で同じ境界を固定する。** 画面側は `hides the retry button from an operator and says why`
+  （テストケース 4）、API 側は BFF の 7b / 7c。**画面のテストだけでは穴は塞げない**——
+  UI 制御はサーバ側の実効境界の写しであり、API を直接叩く経路はテストできないためである。
+- BFF の照会は admin/operator 限定（4 / 5 で 403 / 401）。フロントは `RequireRole` で `/admin/conversions` を出し分け。
+- **再変換（`retry`）は admin のみ**（7b / 7c。2026-08-04 確定・[[IADR-0128]] 決定 1）。照会側（3 / 5b）と対で
+  **ロールの境界を両側から固定**する —— 「admin で通ること」だけでは誰でも通る状態を検出できず、
+  照会側のテストが無いと、planning#198 提案 8 で裁定を仰いでいる閲覧権限が巻き添えで絞られたことに気付けない。
+- 失敗記録後に例外再送出で MassTransit の再試行→デッドレターを保持（コンシューマ 2）。
+
 ## 実行
 
 - `pnpm run test -- knowledge/frontend/src/features/sc07-conversions`（純関数 **7** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
+- `dotnet test src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffConversionEndpointTests`
+- `dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter NetworkIsolationTests`

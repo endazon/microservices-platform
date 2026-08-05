@@ -10,9 +10,10 @@ import { ConversionJobsPage } from './ConversionJobsPage';
 //
 // 画面への到達は platform-admin/operator（IADR-0039 / IADR-0042）。権限外は RequireRole が
 // NotFound を描画して画面の存在を示さない（存在秘匿。IADR-0009）。
-// **再変換の実行だけは platform-admin に限る**（05_screens §SC-07 2026-08-04 確定。IADR-0127 決定 1）
-// ——絞り込みは画面の中（ConversionJobsPage）で行う。ルートごと admin 限定にすると、
-// 計画が確定した範囲（再変換の実行権限）を超えて運用者の閲覧まで奪うことになる。
+// **再変換の実行だけは platform-admin に限る**（05_screens §SC-07 2026-08-04 確定。IADR-0127 決定 1・
+// API 側は IADR-0128 決定 1）——絞り込みは画面の中（ConversionJobsPage）で行う。
+// ルートごと admin 限定にすると、計画が確定した範囲（再変換の実行権限）を超えて
+// 運用者の閲覧まで奪うことになる（閲覧ロールの差異は planning#198 提案 8 で裁定待ち）。
 //
 // 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。

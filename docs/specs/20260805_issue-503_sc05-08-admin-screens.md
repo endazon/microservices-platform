@@ -2,7 +2,7 @@
 title: SC-05〜08（文書管理・データソース管理・変換ジョブ・AI 分析ダッシュボード）の新スタックでの再実装
 type: spec
 status: done
-related_ids: [SC-05, SC-06, SC-07, SC-08, UC-03, UC-04, UC-05, UC-06, UC-02, FR-01, FR-02, FR-06, FR-07, FR-09, FR-11, FR-12, ADR-0031, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127]
+related_ids: [SC-05, SC-06, SC-07, SC-08, UC-03, UC-04, UC-05, UC-06, UC-02, FR-01, FR-02, FR-06, FR-07, FR-09, FR-11, FR-12, ADR-0031, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0128]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -23,6 +23,7 @@ related_specs:
   - ../tests/SC-07_conversion-jobs.md
   - ../tests/SC-08_ai-analysis-dashboard.md
   - ../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md
+  - ../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md
   - ../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
   - ../adr/IADR-0124_tanstack-router-unit-composition.md
@@ -35,6 +36,16 @@ related_specs:
 
 > 本仕様書は実装着手前に作成した。計画書（`project-planning` の `projects/<name>/`）を一次情報とし、
 > 本書は「この作業で何をどう実装するか」を確定するための作業仕様である。
+
+> **［2026-08-05 追記・#501 による後続の解消］本書が「未達」と記した SC-07 再変換 API の管理者ロール強制は、
+> #501（[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 1）が
+> `POST /bff/conversion/jobs/{id}/retry` を `platform-admin` のみへ絞って解消した**
+> （operator は 403・無認証は 401）。計画確定事項（`01_screens.md:257`「画面と API の権限を揃える」）は
+> **両側で満たされている**。本書は #503 完了時点の記録として本文をそのまま残す
+> ——「未達を正当化せずに名指しした」判断自体が記録として要るためである。
+> **現在の状態の説明として読まれる箇所**（§計画書との差異 の「SC-07 の再変換の権限」・§残るもの・§未決事項 3・
+> **§6 データソース（BFF 境界）の API 表**）の **4 箇所**には解消済みの旨を書き足した。
+> **閲覧ロール**（SC-05/06/07 が admin/operator か admin のみか）は **planning#198 提案 8 で裁定待ちのまま**である。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -261,7 +272,7 @@ DOM を描かずに試験できるようにするためである（#502 と同�
 | SC-05 | 一覧 | `GET /bff/documents` | `useQuery` ＋ `apiFetch` | 認証（ABAC スコープ内のみ） |
 | SC-05 | 作成 / 更新 / 公開 / アーカイブ / 削除 | `POST|PUT|POST /publish|POST /archive|DELETE /bff/documents[/{id}]` | `useMutation` ＋ `apiFetch` | admin または operator |
 | SC-06 | 一覧 / 登録 / 手動同期 / 無効化 | `GET|POST /bff/datasources`・`POST /bff/datasources/{id}/sync`・`DELETE /bff/datasources/{id}` | 同上 | admin または operator |
-| SC-07 | 一覧（`?status=`） / 再変換 | `GET /bff/conversion/jobs`・`POST /bff/conversion/jobs/{id}/retry` | 同上 | admin または operator（**#501** が retry を admin のみへ） |
+| SC-07 | 一覧（`?status=`） / 再変換 | `GET /bff/conversion/jobs`・`POST /bff/conversion/jobs/{id}/retry` | 同上 | 一覧＝ admin または operator ／ **再変換＝ admin のみ**（**［2026-08-05 追記］#501 / [[IADR-0128]] 決定 1 が絞った**。operator は 403・無認証 401） |
 | SC-08 | 分析実行 | `POST /bff/analysis/analyze` | **orval 生成フック `useAnalysisAnalyze`** | 認証（ABAC は後段が narrowing-only で適用） |
 
 - **SC-08 だけが orval 生成フックに載る。** `docs/api/openapi.yaml` に `/bff/analysis/analyze` があるためである。
@@ -526,7 +537,7 @@ SC-05 側も同じ形に揃え、M6 として実測した。
 | --- | --- | --- | --- |
 | **SC-08 の対応 UC**（**解消済み**） | 着手時点の issue #503 の表は「UC-05」（**2026-08-05 に UC-02 へ訂正済み**） | **UC-02** として写像する | 計画 05_screens 画面一覧が SC-08 → UC-02、03_usecases UC-02 §関連画面が SC-08 を挙げる。UC-05 の関連画面は SC-09 / SC-17 / SC-10。**計画を正とした**。issue 側の訂正により**計画・issue・実装の 3 者が一致した**（本行は経緯の記録） |
 | **SC-05〜07 の閲覧ロール** | 05_screens §共通シェル に加え、**§SC-05（`01_screens.md:234`。「モックの『管理』バッジ準拠」と根拠つき）・§SC-06（`:242`）・§SC-07（`:250`）の各節が独立して**「管理者ロール限定」と定める | **admin または operator**（据え置き） | [[IADR-0039]]（Accepted・2026-07-08）が「データソース・変換ジョブ・文書 CRUD はいずれも運用／コンテンツ管理者の職務」として operator を含めた既存決定。**計画 4 箇所と正面から食い違う**ため、どちらが正かは**計画側の裁定**（planning#198 提案 8）を要する。**2026-08-04 の確定は「再変換の実行権限」に限られる**ため、本 issue はそこだけを狭める（[[IADR-0127]] 決定 1） |
-| **SC-07 の再変換の権限** | 05_screens §SC-07（`01_screens.md:257`）「再変換の実行権限は管理者ロールに限る。**本画面のアクセス制御と API の権限を揃える**」 | **画面は `platform-admin` のみ**。API は admin/operator のまま | **計画確定事項の未達**（§2）。正当化しない——解消は **#501**（#503 の直後）。API を直接叩ける運用者は依然 retry でき、画面の制御はその穴を塞がない。**計画側の裁定は不要**（実装の追随だけが要る） |
+| **SC-07 の再変換の権限** | 05_screens §SC-07（`01_screens.md:257`）「再変換の実行権限は管理者ロールに限る。**本画面のアクセス制御と API の権限を揃える**」 | **画面は `platform-admin` のみ**。API は #503 時点では admin/operator のまま（**［2026-08-05 追記］#501 / [[IADR-0128]] 決定 1 が admin のみへ絞って解消済み**） | **#503 時点では計画確定事項の未達**（§2）。正当化しない——解消は **#501**（#503 の直後）。**計画側の裁定は不要**（実装の追随だけが要った） |
 | **SC-05 の「変換」列** | 05_screens §SC-05 主要素「変換状況」・hi-fi の「変換」列 | **実装しない** | 文書 → 変換ジョブの対応を返す契約が無い。なお 02_requirements トレーサビリティ表（2026-07-24 是正）は **FR-12 の関連画面から SC-05 を外している**（「SC-05 はモックの FR バッジ準拠で対象外」）。§環流 |
 | **SC-06 の「次回同期」列・「⚠ 再試行中（3/5）」・「設定」** | hi-fi の同名要素 | **実装しない** | ソース別スケジュール・連続失敗回数・更新 API のいずれも契約に無い。§環流 |
 | **SC-06 の琥珀（警告色）の充て先** | `01_screens.md:125`（モック間相違の確定 ②）・`:241`「同期異常は警告表示（警告色＝琥珀）」 | **どの状態にも充てない**（`disabled` は中立） | 琥珀が指すのは**異常**であり、管理者が意図した無効化＝正常な設定状態ではない。契約が同期健全性を持つまで空けておく（[[IADR-0127]] 決定 2）。**色の割当の裁定も環流記録の提案 3 に含めた** |
@@ -554,7 +565,7 @@ SC-05 側も同じ形に揃え、M6 として実測した。
 
 | 項目 | 引き受け先 |
 | --- | --- |
-| **SC-07 再変換 API の管理者ロール強制** | **#501**（#503 の直後に片付ける）。**#501 が閉じるまで計画確定事項（`01_screens.md:257`「画面と API の権限を揃える」）は未達である**——API を直接叩ける運用者は依然 retry でき、画面の制御はその穴を塞がない（[[IADR-0127]] 決定 1） |
+| **SC-07 再変換 API の管理者ロール強制** | **#501**（[[IADR-0128]] 決定 1）。**［2026-08-05 追記］解消済み**——`POST /bff/conversion/jobs/{id}/retry` は `platform-admin` のみとなり（operator は 403・無認証 401）、計画確定事項（`01_screens.md:257`「画面と API の権限を揃える」）は両側で満たされた |
 | 契約の不在 6 件（**要素名基準**。SC-05 の変換列／SC-06 の再試行中・次回同期・設定／SC-07 のデッドレター内訳・人手補正） | `feedback/20260805_sc05-07-admin-contract-gaps.md`。**planning#198 として起票済み・裁定待ち** |
 | SC-08 のタグ／フォルダのチップ・SC-05 の機密区分の表示名 | **planning#197 の裁定待ち**（#502 から継続。**新規起票はしない**） |
 | `docs/api/openapi.yaml` への `/bff/datasources` / `/bff/conversion/jobs` の追加と、`AiAnswerDto.citations` の型の是正 | **#506**（射程を広げる。計画の裁定は不要） |
@@ -585,7 +596,7 @@ SC-05 側も同じ形に揃え、M6 として実測した。
 
 1. **契約の不在 6 件**（環流記録）。**planning#198 として起票済み**であり、実装の再開は裁定の後になる。
 2. **SC-08 のタグ／フォルダのチップ・機密区分の表示名**（planning#197）。裁定待ち。
-3. **再変換の権限（計画確定事項の未達）**（#501）。計画側の裁定は不要で、要るのは実装の追随だけである。#501 の完了をもって解消する。
+3. ~~**再変換の権限（計画確定事項の未達）**（#501）~~ **［2026-08-05 追記］解消済み**（#501 / [[IADR-0128]] 決定 1）。計画側の裁定は不要であり、要ったのは実装の追随だけだった。
 4. **SC-05/06/07 の閲覧ロール**。計画 §共通シェル（管理者）と [[IADR-0039]]（admin/operator）の差異。
 5. **ページング**（SC-05 / SC-06 / SC-07）。計画が送り方を定めていない（SC-02 と同じ）。
    実装は BFF が返す一覧をそのまま表示する。
