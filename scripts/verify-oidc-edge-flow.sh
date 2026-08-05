@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
-# NFR / FR-05, Issue #466: エッジ経由の OIDC 認証導線（認可コード + PKCE）を実機で通し切る。
+# NFR（セキュリティ｜認証・認可）/ FR-05, Issue #466:
+#   エッジ経由の OIDC 認証導線（認可コード + PKCE）を実機で通し切る。
+#   起点 ID の帰属: **認証そのものは非機能要件**（02_requirements §セキュリティ「恒久: 全 API で
+#   OIDC/JWT 認証」）であり、FR-05 は ABAC（利用者属性 × 文書属性による絞り込み）の要求である。
+#   本スクリプトが FR-05 に触れるのは、その**判定入力**（clearance / department クレーム）が
+#   認証を通じて載ることを確認する範囲に限る。
+#
+#   ⚠️ 本スクリプトが通す経路は ADR-0032（BFF セッション方式 / Token Handler・#439）の移行で無くなる。
+#      移行後は BFF が confidential client として交換を行いトークンをブラウザへ渡さないため、
+#      手順 3〜6 を Cookie 経由の検証へ書き換えること（作業仕様書 §未決事項）。
 #
 # 背景:
 #   現行の E2E は「バックエンド不要のスモーク」だけで、`/login` への誘導など**認証前**の導線しか
@@ -155,6 +164,9 @@ fi
 
 # ---- 6) クレーム（ABAC の入力） --------------------------------------------------
 step "6/9" "トークンのクレームを確認する（ABAC の入力が載っているか）"
+# JWT ペイロードは base64url かつパディング無しのため、GNU coreutils の base64 -d は
+# stderr に `invalid input` を出して exit 1 を返すが、**stdout には正しくデコード結果を書く**（実測）。
+# したがって終了コードは見ず、stderr のみ捨てる（エラーの握り潰しではなく既知の挙動への対応）。
 CLAIMS=$(printf '%s' "$ACCESS" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null)
 for claim in iss preferred_username clearance department; do
   value=$(printf '%s' "$CLAIMS" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s.endsWith('}')?s:s+'}')[process.argv[1]]??'')}catch{console.log('')}})" "$claim")

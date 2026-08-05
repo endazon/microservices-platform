@@ -23,7 +23,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: なし（NFR: 検証可能性・セキュリティ。認証は FR-05）
+- 機能要求（FR）: FR-05（**ABAC** — 利用者属性と文書属性に基づき、アクセス可能な文書のみを対象とする）。
+  本検証が FR-05 に触れるのは「**その判定入力（`clearance` / `department` クレーム）が認証を通じて載ること**」を
+  確認する範囲である。**認証そのものは FR ではなく非機能要件**（`02_requirements/01_requirements.md`
+  §セキュリティ｜認証・認可「恒久: 全 API で OIDC/JWT 認証、文書／データ単位の認可」）である
 - 画面（SC）: SC-01〜03（認証後に到達する画面。導線の出口）
 - 関連 ADR（計画）:
   [ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md)（SPA 認証。BFF セッション方式への移行は #439）／
@@ -120,6 +123,12 @@ kubectl -n platform-infra port-forward svc/keycloak 8080:8080
 
 - CI で認証導線を回すには issuer の扱い（手順A の脱却 ＝ Keycloak をエッジへ出すか）の決定が要る。
   これは IADR-0076 の決定変更にあたるため、#466 の中で別途決める。
+- **本スクリプトが通している経路は、[ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md)
+  の移行（#439）で無くなる。** 同 ADR は最終形を **BFF セッション方式（Token Handler）**——BFF が
+  confidential client として PKCE を実施し、**トークンをブラウザへ渡さない**——と定めており、
+  現行の `oidc-client-ts` によるブラウザ内トークン保持は go-live 前に解消される暫定状態である。
+  移行後は「SPA/CLI が直接トークン交換する」という本スクリプトの前提が成立しないため、
+  **#439 の着手時に手順 3〜6 を BFF セッション（Cookie）経由の検証へ書き換える**こと。
 
 ## 実測結果
 
