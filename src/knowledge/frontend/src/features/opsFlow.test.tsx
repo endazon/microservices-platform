@@ -56,7 +56,10 @@ describe('operations flow (SC-10 → SC-11)', () => {
     await user.click(screen.getByRole('link', { name: '構成ビューア →' }));
 
     expect(await screen.findByRole('heading', { name: '実効構成' })).toBeInTheDocument();
-    expect(screen.getByText('コミット a3f81c2')).toBeInTheDocument();
+    // NFR, ADR-0031 / IADR-0133: 見出しは画面の静形、値は useQuery の解決後に出る。
+    // 遅延ルート（lazyRouteComponent）では画面の mount が 1 tick 遅れるぶん
+    // 取得の解決も後ろへずれるため、値は findBy* で待つ（見出しの findBy* では待てない）。
+    expect(await screen.findByText('コミット a3f81c2')).toBeInTheDocument();
   });
 
   // 運用者は SC-11 へ直接到達できるが、SC-10 は存在しないものとして扱われる
