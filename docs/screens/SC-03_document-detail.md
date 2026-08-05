@@ -5,117 +5,242 @@ status: completed
 related_ids:
   - SC-03
   - UC-01
+  - UC-02
   - UC-07
+  - FR-05
   - FR-06
   - FR-12
+  - IADR-0119
+  - IADR-0121
+  - IADR-0124
+  - IADR-0126
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
 related_specs:
+  - "./SC-01_search-chat.md"
+  - "./SC-02_search-results.md"
   - "../adr/IADR-0038_bff-document-read-abac-gating.md"
-  - "../adr/IADR-0033_frontend-spa-foundation.md"
-  - "../specs/20260709_issue-129_sc03-document-detail.md"
+  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
+  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
+  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
+  - "../tests/SC-03_document-detail.md"
 ---
 
 # 画面仕様書: 文書詳細／プレビュー（SC-03）
 
-> 画面（SC）単位で作成する。計画リポジトリの画面設計（05_screens）を実装向けに詳細化する。
+> **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
+> （`docs/README.md` 運用ルール 6。計画側 `05_screens` の `status` には追随しない）。
+> **未実装のまま残っている要素がある**——(1) AI 提案の承認欄と SC-18 への導線
+> （FR-17 / FR-18。[[IADR-0119]] の着手保留）、(2) 機密区分の表示名（計画が 4 値中 2 値しか持たない）、
+> (3) 共通シェルのパンくず・右レール、(4) 左ナビの「文書詳細」項目。
+> 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
+
+> **［2026-08-04 / #502］新スタックでの再実装に合わせて全面改訂した。**
+> ルート `/docs/:id` は #490（[[IADR-0124]] 決定 6）で計画へ是正済みであり、本改訂でも変えていない。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-03 文書詳細／プレビュー**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §画面一覧・遷移図）
-- 関連ユースケース（UC）: **UC-01**（検索・閲覧）、**UC-07**（Wiki 閲覧）
-- 関連機能要求（FR）: **FR-06**（文書管理）、**FR-12**（変換・正規化）、FR-05（ABAC）
+- 画面（SC）: **SC-03 文書詳細／プレビュー**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-03）
+- 関連ユースケース（UC）: **UC-01**（検索・質問する。出典から到達する終点）・**UC-07**（Wiki で閲覧する）
+  - issue #502 は本画面を **UC-02** に対応づけている。UC-02（AI 分析）の**出典クリックの遷移先**が本画面であるため
+    （[03_usecases](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) UC-02 基本フロー 4「結果と出典を返す」／
+    05_screens §画面遷移図 `SC08 -- 出典 --> SC03`）。計画の画面一覧が SC-03 に挙げる関連 UC は **UC-01・UC-07** である。
+- 関連機能要求（FR）: **FR-05**（ABAC）・**FR-06**（文書管理）・**FR-12**（正規化変換の閲覧面）
+- モックアップ（**実装の正**）: [hi-fi/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-03.html) ／ [wireframe/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-03.html)
+- 関連 IADR: [[IADR-0038]]（BFF 読み取りの ABAC ゲート）・[[IADR-0009]]（存在秘匿）・**[[IADR-0119]]（FR-17〜21 の着手保留）**
 
 ## 画面概要・目的
-> **［2026-08-04 / #490］ルートは `/docs/:id` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
 
+正規化文書（Markdown）を 1 件表示し、出典元・Wiki への導線と属性・タグ・版履歴を示す。
 
-正規化文書（Markdown）本文とメタデータを 1 件表示する画面。検索結果一覧（SC-02）・文書管理（SC-05）から `/docs/:id` へ遷移する。出典元リンクと SC-04（Wiki）への遷移導線を備える。
+- ルート: `/docs/:id`（TanStack の表記は `/docs/$id`）
+- アクセス: 認証済みユーザー。ロール限定なし（`RequireAuth` のみ）。ABAC はサーバ側（BFF）で適用し、
+  権限外・不在はいずれも 404（存在秘匿）。
 
-- 主要利用シーン: 検索・一覧で見つけた文書の本文・属性・版履歴を確認する。
-- アクセス: 認証済みユーザー（一般社員）。ロール限定なし（`RequireAuth` のみ）。ABAC はサーバ側（BFF）で適用。
+## hi-fi モックアップとの対応（実装する要素／実装しない要素）
+
+行番号は planning `d980a01` の [hi-fi/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-03.html) に対するものである。
+**粒度の規則は [SC-01 §hi-fi モックアップとの対応](./SC-01_search-chat.md) と共通である**——
+(a) メイン領域の要素は個別に 1 行、(b) 共通シェルはまとめて 1 行（引き受け先を書く）、
+(c) モックに無い状態は本表に入れず §エラー・状態 で扱う。
+
+| # | モックの要素（行） | 実装 | 備考 |
+| --- | --- | --- | --- |
+| 1 | タイトル ＋ 副題「正規化文書（Markdown）プレビュー」（417-418） | **する** | |
+| 2 | 本文プレビューのパネル（419-421） | **する** | `Card`。Markdown **原文**を等幅・改行保持で表示（§本文の描画） |
+| 3 | 「📖 Wikiで閲覧」（422） | **する** | `/wiki`（SC-04）へ。`wikiBaseUrl` 未設定なら出さない |
+| 4 | 「原本（ファイルサーバー）↗」（422） | **する** | `http(s)` のときだけリンク。`storage://` 等は等幅表記 |
+| 5 | 属性・タグのパネル（432-433） | **する** | 機密区分・部門・タグ（§属性の表示） |
+| 6 | バージョンのパネル（434） | **する** | 版番号 ＋ 作成日時 ＋ 変更メモ |
+| 7 | **「◉ 知識グラフで見る（SC-18）」**（422 右） | **しない** | **FR-17**。[[IADR-0119]] 決定 1 の着手保留。§実装しない要素の理由 |
+| 8 | **「AI 提案 — この文書に対するリンク・タグ候補」パネル**（423-429） | **しない** | **FR-18**。同上 |
+| 9 | **SC-21（AI 提案一覧）への導線**（428 内） | **しない** | 同上（SC-21 自体が保留対象） |
+| 10 | **共通シェル**: 右レール「AIチャットパネル」（437-442） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 5） |
+| 11 | **共通シェル**: パンくず「ホーム / 検索結果 / …」（413）・ブランド／アバター（412） | **本画面では作らない** | パンくずは #452 系。ブランド・アバターは `foundation/ui/Layout` が既に持つ |
+| 12 | **共通シェル**: 左ナビの「文書詳細」項目（414） | **しない** | §左ナビに出さない理由（**計画 §共通シェル は SC-03 を「利用者」グループに挙げているため、環流の記録へ 1 項目として載せ、planning#197 §付随の論点 として起票した**） |
+
+### 実装しない要素の理由（#7・#8・#9。**繰り延べであって放棄ではない**）
+
+- **AI 提案の承認欄は FR-18、知識グラフ（SC-18）への導線は FR-17 に属する。**
+  [[IADR-0119]] 決定 1 は「**FR-17〜FR-21 の実装には着手しない。**保留の対象は当該 FR を実現する
+  プロダクトコードと、**その受け入れを担う画面**・API・データモデルである」と定めている。
+  AI 提案の承認欄はまさに「FR-18 の受け入れを担う画面」であり、SC-18 への導線は
+  「保留中の画面へ利用者を送る導線」である。
+- **着手条件（決定 2）は前提 ADR が `Accepted` になること**であり、`Proposed` は満たさない。
+  `ADR-0033` / `ADR-0034` は 2026-08-02、`ADR-0035` は 2026-08-04 に起案されたが、
+  planning `d980a01` 時点でいずれも **`Proposed`** である（[[IADR-0119]] §コンテキスト 4' の追記も同旨）。
+- **後続で実装する。** 前提 ADR が `Accepted` になった時点で、SC-18 / SC-21 の実装と同じ段で本画面へ足す
+  （[[IADR-0119]] 決定 6 の解除手順に従い、着手 issue の作業仕様書へ確認結果を記録する）。
+- 計画 §SC-03 が「SC-03 に置くのは次の 2 つのみである: ①SC-18 への導線、②AI 提案の承認欄」と
+  述べているのは、**バックリンク欄・ローカルグラフを SC-04 側に置く**という分界の説明であり、
+  本画面の他の要素（本文・属性・版履歴）を否定するものではない。本改訂はその 2 つだけを保留する。
+
+### 左ナビに出さない理由（#12）
+
+05_screens §共通シェル の左ナビ 4 グループは「利用者」に **SC-03 文書詳細**を含めており、
+hi-fi モックの左レールにも「文書詳細」がある。しかし**本画面のルートは文書 ID を必須とする**
+（`/docs/$id`）ため、ID を持たないナビ項目からは到達できない（`/docs/` は未知パスとして 404 になる）。
+
+計画のグループ分けは**画面の所属を示すもの**であり、各画面が単独のナビ入口を持つことまでは要求していない
+（モックのリンクは画面間の遷移例を示すために全画面へ張られている）。よって本画面へは
+SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**これは旧実装からの継続であり、本改訂で変えていない。**
+「ID を持たない入口」が必要なら、それは SC-02（一覧）が既に担っている。
+
+ただし**グループ分けの解釈自体は計画側の判断事項**であるため、
+[環流の記録 §付-2](../../feedback/20260804_sc01-03-bff-contract-gaps.md) に載せ、
+**planning#197 §付随の論点 として起票済み**である。**裁定が出るまで実装は変えない。**
 
 ## データソース（BFF 境界）
 
-| 用途 | エンドポイント | 認可 | 応答 |
-| --- | --- | --- | --- |
-| 詳細（メタデータ） | `GET /bff/documents/{id}` | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
-| 本文（Markdown） | `GET /bff/documents/{id}/content` | 同上 | `DocumentContentDto` |
-| 版履歴 | `GET /bff/documents/{id}/versions` | 同上 | `DocumentVersionDto[]` |
+| 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
+| --- | --- | --- | --- | --- |
+| 詳細（メタデータ） | `GET /bff/documents/{id}` | TanStack Query `useQuery` ＋ `apiFetch` | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
+| 本文（Markdown） | `GET /bff/documents/{id}/content` | 同上 | 同上 | `DocumentContentDto` |
+| 版履歴 | `GET /bff/documents/{id}/versions` | 同上（詳細の成功後に有効化） | 同上 | `DocumentVersionDto[]` |
 
 - `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt }`
-- `DocumentContentDto = { id, title, markdown, sourceUri? }`（本文は ABAC 判定後にオブジェクトストレージから取得、未配備時はプレースホルダ）
+- `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後にオブジェクトストレージから取得。未配備時はプレースホルダ本文）
 - `DocumentVersionDto = { documentId, version, title, status, markdownUri?, attributes{}, tags[], changeNote?, createdAt }`
+- キャッシュキーは `['bff','documents',id]` / `[...,'content']` / `[...,'versions']`。
+- **版履歴は詳細の成功後にだけ取りに行く**（`enabled`）。詳細が 404（秘匿）のときに版履歴だけ叩くのは無駄な往復であり、
+  BFF 側でも同じ 404 になる。
 
 ## レイアウト / 主要素
 
-```
-┌───────────────────────────────────────────────┐
-│ 文書詳細                                        │
-├───────────────────────────────────────────────┤
-│ [メタ] タイトル / 状態・版・更新日時            │
-│        属性(confidentiality 等) / #タグ         │
-│ 出典元: storage://… ｜ [Wiki で開く]            │
-├───────────────────────────────────────────────┤
-│ 本文（Markdown 原文・等幅・改行保持）           │
-├───────────────────────────────────────────────┤
-│ 版履歴: v3 published 第3条改定 …                │
-└───────────────────────────────────────────────┘
+```text
+┌──────────────────────────────────────┬───────────────────────┐
+│ 経費精算規程 v3.2                      │ ▸ 属性・タグ           │
+│ 正規化文書（Markdown）プレビュー        │   機密区分: internal   │
+│ ┌──────────────────────────────────┐ │   部門: accounting     │
+│ │ # 経費精算規程                     │ │   タグ: ［経理］［規程］│
+│ │ ## 4. 精算スケジュール …            │ │                       │
+│ └──────────────────────────────────┘ │ ▸ バージョン           │
+│ 📖 Wikiで閲覧 ｜ 原本 ↗               │   v3（2026-05-30）     │
+└──────────────────────────────────────┴───────────────────────┘
 ```
 
 ## 表示項目
 
 | 項目 | 種別 | 説明 |
 | --- | --- | --- |
-| タイトル/状態/版/更新 | 表示 | メタデータ見出し |
-| 属性 attributes | 表示 | ABAC 属性（confidentiality 等）をチップ表示 |
-| タグ tags | 表示 | `#tag` |
-| 出典元 sourceUri | 表示/リンク | http(s) はリンク、storage:// 等はコード表記 |
-| Wiki 導線 | リンク | `wikiBaseUrl` 設定時に `/wiki`（SC-04）へ |
-| 本文 markdown | 表示 | 原文を `pre`（改行保持）で安全表示（HTML 描画しない） |
-| 版履歴 versions | 表 | 版・状態・変更メモ・作成日時 |
+| タイトル | 表示 | `<h1>` |
+| 状態・版・更新日時 | 表示 | `status` / `v{version}` / `updatedAt`（ロケール表記） |
+| 本文 | 表示 | Markdown 原文（§本文の描画） |
+| Wiki で閲覧 | リンク | `/wiki`（SC-04）。`wikiBaseUrl` 未設定時は出さない |
+| 原本 | 表示／リンク | `content.sourceUri ?? doc.markdownUri`。`http(s)` はリンク、それ以外は等幅表記 |
+| 属性 | 表示 | §属性の表示 |
+| タグ | 表示 | `Tag` の並び |
+| 版履歴 | 表 | 版・状態・変更メモ・作成日時（`Table`） |
+
+### 属性の表示
+
+計画 §SC-03 主要素は「属性・タグパネル（**機密区分・部門・タグ**）」と定める。
+[07_abac-attribute-model](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md) の
+基本属性に合わせ、**キーは既知のものだけ日本語ラベルへ写像**する。
+
+| 属性キー | 画面ラベル | 出所 |
+| --- | --- | --- |
+| `confidentiality` | 機密区分 | 07_abac-attribute-model §基本属性・計画 §SC-03 主要素 |
+| `department` | 部門 | 同上 |
+| 上記以外 | **キーをそのまま表示** | 未知のキーを勝手に翻訳しない |
+
+**属性の値は変換せず、そのまま表示する。** hi-fi モックは `internal` を「社内限」、`confidential` を「秘」と
+描いているが、計画が定める値集合は `public` / `internal` / `confidential` / `restricted` の **4 値**であり、
+モックに現れるのは**そのうち 2 値だけ**である（実測: `grep -n "社内限\|秘" mockups/hi-fi/sc-05.html sc-09.html`）。
+残る 2 値の表示名は計画のどこにも無く、実装が決めれば**それが事実上の用語定義になってしまう**。
+機密区分は取り違えると影響が大きい情報であるため、推測で名前を与えず生値を出す。
+表示名は環流の記録に載せ、計画へ環流した（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)。
+**planning#197 として起票済みであり、計画側の裁定を待っている**）。
+
+### 本文の描画
+
+**Markdown を HTML へレンダリングしない。** 原文を等幅・改行保持（`<pre>`）で表示する。
+
+- 理由 1（**セキュリティ**）: 文書本文は外部データソース由来である。HTML 化は
+  サニタイズ方針・許可タグの決定を伴い、誤ると保存型 XSS になる。
+- 理由 2（**スタック**）: ADR-0031 の採用技術一覧に Markdown レンダラは無い。依存の追加は
+  [08_data-egress-policy](../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md) の
+  検査対象を増やす。
+- **繰り延べであって放棄ではない**——レンダリングが必要なら、ライブラリ選定とサニタイズ方針を
+  IADR で決めてから入れる（§未決事項）。旧実装からの継続であり、本改訂で変えていない。
 
 ## アクション・画面遷移
 
 ```mermaid
 flowchart LR
-  SC02[SC-02 結果一覧] --> SC03[SC-03 文書詳細]
+  SC01[SC-01 検索/チャット] -- 出典 --> SC03[SC-03 文書詳細]
+  SC02[SC-02 結果一覧] --> SC03
   SC05[SC-05 文書管理] --> SC03
   SC03 --> SC04[SC-04 Wiki 閲覧]
 ```
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| 出典元リンク押下 | http(s) の場合に出典元を開く | 出典元 |
-| 「Wiki で開く」 | 内部ルート `/wiki` へ遷移（閲覧範囲はゲートウェイ ABAC で制御） | SC-04 |
+| 「Wikiで閲覧」 | 内部ルート `/wiki` へ（閲覧範囲はゲートウェイの ABAC が制御） | SC-04 |
+| 「原本」 | `http(s)` のときだけ新規タブで開く（`rel="noopener noreferrer"`） | 出典元 |
 
 ## 権限・表示条件・存在秘匿
 
-- 認証済みユーザーに表示（ナビには出さない・一覧/検索から到達）。
-- ABAC はサーバ側（BFF）で適用。利用者スコープに合致しない文書、不在の文書はいずれも 404 で秘匿し、UI は「文書が見つかりませんでした。」と中立表示する（「拒否」と「不在」を区別しない・[[IADR-0009]]/[[IADR-0038]]）。
-- 一覧（`/bff/documents`）は権限内文書のみを返す（権限外は列挙しない）。
+- ABAC はサーバ側（BFF）で適用する。利用者スコープに合致しない文書と不在の文書は**いずれも 404**であり、
+  UI は「文書が見つかりませんでした。」と中立に表示する（[[IADR-0009]] / [[IADR-0038]]）。
+- 404 と 5xx は**表示を分ける**。404 は中立（存在を示さない）、5xx は「取得に失敗しました」（再試行の余地がある）。
+  これは存在秘匿に反しない——5xx は文書の有無ではなくサーバの状態を示すためである。
 
 ## エラー・状態
 
 | 状態 | 条件 | 表示 |
 | --- | --- | --- |
-| loading | 取得中 | `role="status"` 読み込み中… |
-| ok | 200 | メタ＋本文＋版履歴 |
-| notFound | 404（不在/秘匿） | 中立「文書が見つかりませんでした。」（[[IADR-0009]]） |
-| error | 5xx/network | `role="alert"` 取得に失敗 |
-| 本文 unavailable | 本文取得失敗（詳細は成功） | 「本文は利用できません。」（本文領域のみ縮退） |
+| loading | 詳細を取得中 | 「読み込み中…」（`role="status"`） |
+| ok | 200 | メタ ＋ 本文 ＋ 属性 ＋ 版履歴 |
+| notFound | 404（不在／秘匿） | 中立「文書が見つかりませんでした。」 |
+| error | 5xx / network | `Alert tone="danger"` `role="alert"` |
+| 本文 unavailable | 本文だけ失敗（詳細は成功） | 「本文は利用できません。」（本文領域のみ縮退） |
+| 版履歴 失敗 | 版履歴だけ失敗 | 版履歴パネルを出さない（補助情報のため本体表示は継続） |
+
+## i18n
+
+- 文言はすべて Lingui のカタログ（ja / en）へ載せる。`eslint-plugin-lingui` の適用範囲に本 feature を含める。
+- 日時は `Intl`（`toLocaleString`）で整形する。**外部の日時ライブラリを足さない。**
+
+## UI 部品（`@platform/ui`）
+
+`Card` 一式 / `Table` 一式 / `Alert` / `Tag`（新規。判定は [SC-01 §UI 部品](./SC-01_search-chat.md) に記載）。
 
 ## 関連仕様
 
-- 作業仕様書: `docs/specs/20260709_issue-129_sc03-document-detail.md`
-- テスト仕様書: `docs/tests/SC-03_document-detail.md`
-- 実装 ADR: [[IADR-0038]]（BFF 側 ABAC ゲーティング・本文取得）、[[IADR-0033]]（SPA 基盤）
+- 作業仕様書: [20260804_issue-502_sc01-03-search-flow.md](../specs/20260804_issue-502_sc01-03-search-flow.md)
+- テスト仕様書: [SC-03_document-detail.md](../tests/SC-03_document-detail.md)
+- 実装 ADR: [[IADR-0038]]（BFF 側 ABAC ゲーティング・本文取得）／[[IADR-0126]]（新スタックでのデータ取得）
 
 ## 未決事項
 
-- 本文は Markdown 原文表示（ライブラリ非導入）。将来レンダリングが必要なら別途検討。
-- Wiki の文書別ディープリンクは未対応（SC-04 の `/wiki` 遷移まで）。
+1. **AI 提案の承認欄・SC-18 への導線**（FR-17 / FR-18）。[[IADR-0119]] の保留解除後に着手する。
+2. **Markdown のレンダリング**。必要になった時点でライブラリ選定とサニタイズ方針を IADR で決める。
+3. **機密区分の表示名**（4 値のうち 2 値しか計画に現れない）。**planning#197 として起票済み・裁定待ち。**
+4. **Wiki の文書別ディープリンク**。現状は SC-04 の `/wiki` までで、ページ単位では飛べない。

@@ -18,8 +18,10 @@ export const rootRoute = createRootRoute({
   notFoundComponent: NotFound,
 });
 
-// 認証導線。計画のルート表（05_screens §共通シェル）には無い SPA 内部のパスであり、
-// 第 3 段（#439 / ADR-0032 の BFF セッション方式）で見直す。
+// 認証導線。**計画のルート表（05_screens §共通シェル）の対象外**である
+// （［2026-08-04 確定］「SPA 内部の認証中継パス `/login`・`/callback` は本表の対象外とする」。
+//  同表は画面と 1 対 1 に対応する表であり、画面を持たない中継点を入れると表の定義が緩む）。
+// **ADR-0032（BFF セッション方式）への移行時に見直す**——これも計画側の方針である（第 3 段 / #439）。
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',

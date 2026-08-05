@@ -8,9 +8,11 @@ related_ids:
   - FR-01
   - FR-02
   - ADR-0004
+  - IADR-0127
+  - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -40,6 +42,20 @@ SC-06 はデータソースの登録・一覧・同期・無効化を行う運�
 ## 決定
 
 1. **管理系 Wave B 画面（SC-06 データソース管理・SC-07 変換ジョブ・SC-05 文書管理）は `platform-admin` もしくは `platform-operator` に限定する。** データソース・変換ジョブ・文書 CRUD はいずれも運用／コンテンツ管理者の職務であり、一般社員（閲覧者）には露出しない。SC-09（管理者設定・ABAC）は計画（Issue #135）の明示により **`platform-admin` のみ**とする（本 IADR の対象外。SC-09 側 IADR で記録）。
+
+   > **［2026-08-05 追記・計画との差異は裁定待ち（#503 / [IADR-0127](IADR-0127_sc07-retry-admin-only-and-derived-states.md) 決定 1、#501 / [IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 2）］**
+   > 計画 05_screens は §共通シェル（`01_screens.md:115`）に加え、
+   > **§SC-05（`:234`）・§SC-06（`:242`）・§SC-07（`:250`）**
+   > の**各節でも独立して**「管理者ロール限定」と定める。本決定 1（admin **または** operator）と正面から食い違う。
+   > **閲覧ロールの差異は planning#198（提案 8）で裁定待ちである。**
+   > どちらに決まっても計画側の改訂か実装の是正が要る（現状は計画と実装の双方が確定済みのまま食い違っている）。
+   > **一方、再変換（`retry`）の実行権限は裁定を要さず、両側で `platform-admin` へ是正済みである**——
+   > 画面のボタンは #503（PR #508。[[IADR-0127]] 決定 1）、
+   > API（`POST /bff/conversion/jobs/{id}/retry`）は #501（[[IADR-0128]] 決定 1）が担った。
+   > **照会（`GET /bff/conversion/jobs` 系）は本決定 1 のまま admin/operator で据え置いてある**
+   > ——ここで併せて絞ると裁定を待たずに実装が先に答えを出すためである（[[IADR-0128]] 決定 2）。
+   > 据え置きは `GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` で回帰ガードしている。
+   > **本 IADR は裁定まで `Accepted` のまま有効**であり、[[IADR-0127]] / [[IADR-0128]] は本 IADR を置換しない。
 2. **サーバ側（BFF）を実効境界とする。** `/bff/datasources/*` はグループ全体を `RequireRole(platform-admin, platform-operator)` で保護する（インラインポリシー。共有 `AuthExtensions` に新ポリシーを追加せず、BFF ローカルに宣言してサービス横断の副作用を避ける）。フロントは `RequireRole`（[[IADR-0035]]）でルート／ナビを出し分け、権限外は NotFound を描画して**画面の存在を示さない**（UI は表示制御専用）。
 3. **権限外は 403（無認証は 401）**とする。データソースは文書のような「存在自体の秘匿」対象ではなく（機密文書のタイトルが漏れる懸念が主眼の [[IADR-0009]] とは性質が異なる）、管理 API としては標準的な 403/401 が適切。画面の存在秘匿はフロントの `RequireRole`→NotFound で担保する。
 

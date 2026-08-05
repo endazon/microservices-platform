@@ -1,135 +1,196 @@
 ---
 title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
-status: draft
+status: completed
 related_ids:
   - SC-08
   - UC-02
-  - FR-04
+  - FR-05
   - FR-07
   - FR-11
+  - IADR-0005
   - IADR-0111
+  - IADR-0121
+  - IADR-0124
+  - IADR-0125
+  - IADR-0127
 author: claude
 created: 2026-07-08
-updated: 2026-07-28
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
 related_specs:
-  - "../adr/IADR-0033_frontend-spa-foundation.md"
+  - "./SC-01_search-chat.md"
+  - "./SC-03_document-detail.md"
   - "../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md"
-  - "../specs/20260708_issue-134_sc08-ai-analysis-dashboard.md"
-  - "../specs/20260728_issue-403_degraded-answer-model.md"
   - "../adr/IADR-0111_degraded-answer-model-label.md"
+  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
+  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
+  - "../tests/SC-08_ai-analysis-dashboard.md"
 ---
 
 # 画面仕様書: AI分析ダッシュボード（SC-08）
 
-> 画面（SC）単位で作成する。計画リポジトリの画面設計（05_screens）を実装向けに詳細化する。
+> **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
+> （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——hi-fi の
+> 分析対象チップ（タグ／フォルダ。**planning#197 の裁定待ち**）と、共通シェルのパンくず・右レール。
+> 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
+
+> **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
+> ルート `/analyze` は #490（[[IADR-0124]] 決定 6）で計画へ是正済みであり、本改訂でも変えていない。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-08 AI分析ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §画面一覧）
-- 関連ユースケース（UC）: **UC-02**（AI分析を依頼する）
-- 関連機能要求（FR）: **FR-07**（指定データ範囲での分析・比較・抽出）、FR-05（ABAC）、FR-11（機密区分によるLLM経路）
-- 計画書リンク: 上記 03_usecases §UC-02
+- 画面（SC）: **SC-08 AI分析ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-08・遷移図 `SC01 → SC08`・`SC08 -- 出典 --> SC03`）
+- 関連ユースケース（UC）: **UC-02**（AI 分析を依頼する。基本 1・3・4／**代替「機密区分の高いデータはセルフホスト LLM で処理する」**／**例外「対象が権限外の場合は対象から除外する。権限の有無は開示しない」**）
+  - 着手時点の issue #503 の表は SC-08 の対応を「UC-05」と書いていたが、**計画（05_screens 画面一覧・UC-02 §関連画面）は UC-02 に対応づけている**。本書は計画を正とした。**issue 本文は 2026-08-05 に UC-02 へ訂正済みである。**
+- 関連機能要求（FR）: **FR-07**（指定データ範囲での分析・比較・抽出）・**FR-11**（LLM の呼び出し先の切り替え）・**FR-05**（ABAC）
+- モックアップ（**実装の正**）: [hi-fi/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-08.html) ／ [wireframe/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-08.html)
+- 関連 IADR: [[IADR-0005]]（指定範囲は ABAC と narrowing-only で交差する）・[[IADR-0111]]（空 `model` ＝ AI へ未送信の縮退）・[[IADR-0127]]（本作業の設計判断）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
-> **［2026-08-04 / #490］ルートは `/analyze` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
 
+範囲を指定して AI 分析（比較・抽出を含む）を依頼し、結果と出典を確認する画面。
+出典から SC-03（文書詳細）へ遷移する。
 
-利用者が「データ範囲」を指定して AI に分析・比較・抽出を依頼し、結果を出典付きで受け取る画面。BFF 集約 `POST /bff/analysis/analyze` を唯一のデータソースとする。指定範囲（query / 属性フィルタ）は ABAC 許可スコープと **AND で交差し権限を広げない**（narrowing-only、[[IADR-0005]]）。範囲が権限外を指す場合は空回答へ縮退し、権限の有無は開示しない（存在秘匿、UC-02 例外フロー）。
+- ルート: `/analyze`（05_screens §共通シェル「ルートパス」）
+- アクセス: **認証済みの全利用者**（ロール限定なし。05_screens §共通シェル「利用者グループ（SC-01〜04・SC-08…）は
+  ABAC の権限内で全利用者が利用できる」）。範囲の限定はサーバ側が narrowing-only で行う（[[IADR-0005]]）。
 
-- 主要利用シーン: 一般社員が対象範囲を絞って要約・比較・項目抽出を依頼する。
-- アクセス: 認証済みユーザー（一般社員）。ロール限定なし（`RequireAuth` のみ）。
+## hi-fi モックアップとの対応（実装する要素／実装しない要素）
+
+行番号は planning `d980a01` の [hi-fi/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-08.html) に対するものである。
+粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
+
+| # | モックの要素（行） | 実装 | 備考 |
+| --- | --- | --- | --- |
+| 1 | 見出し「AI分析依頼」（416） | **する** | `<h1>` |
+| 2 | 副題「範囲指定の分析依頼・結果・出典」（417） | **する** | 説明文 |
+| 3 | パネル見出し「分析対象（**権限内に限定**）」（419） | **する** | `Card`。見出しの「（権限内に限定）」は**存在秘匿の説明そのもの**であり省略しない |
+| 4 | 分析対象の**チップ**「タグ: 営業報告 ✕」「フォルダ: /2026年度/Q1 ✕」（420） | **しない** | **契約の不在**。§実装しない要素の理由 (a)。**SC-01 の対象範囲フィルタと同型の論点で planning#197 の裁定待ち** |
+| 5 | 分析対象の「**＋ 検索条件で追加**」（420 右） | **する** | `Input`（範囲内で関連箇所を絞る検索条件）。計画 §SC-08 主要素「…**＋検索条件による追加**」の実装可能な側 |
+| 6 | パネル「分析内容」＋ 入力欄（421） | **する** | `Textarea`。必須（1 文字以上・最大 2000 文字） |
+| 7 | 「分析実行」（422） | **する** | `Button variant="primary"` |
+| 8 | パネル「結果」＋ 回答本文（424-425） | **する** | 改行を保持して表示（`whitespace-pre-wrap`） |
+| 9 | 「出典: 〈文書名〉／〈文書名〉…」（426） | **する** | 各文書名が `/docs/$id`（SC-03）への内部リンク。計画の遷移図 `SC08 -- 出典 --> SC03` |
+| 10 | 注記「機密区分の高いデータは外部APIへ送信せずセルフホストLLMで処理（UC-02 代替フロー・データ越境ポリシー）。権限外データは黙って対象外（存在秘匿）。」（428） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
+| 11 | **共通シェル**: 右レール「AIチャットパネル」（430-435） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
+| 12 | **共通シェル**: パンくず（413）・ブランド／アバター（412）・左ナビ（414） | **本画面では作らない** | パンくずは #452 系。他は `foundation/ui/Layout` が既に持つ |
+
+### モックに無いが実装する要素
+
+| 要素 | 計画上の根拠 |
+| --- | --- |
+| **タスク種別**（分析 / 比較 / 抽出）の `Select` | **FR-07**「AI に対し、指定データ範囲での**分析・比較・抽出**を依頼できる」。契約（`AnalysisTaskRequest.taskType`）が 3 値を持ち、選択肢が無いと比較・抽出へ到達できない |
+| **モデル・トークン数の脚注** | 02_requirements トレーサビリティ表 **FR-11 → SC-08（モデル振り分けの利用面）**。`model` が空のときは「未使用（AI へ送信なし）」と明示する（[[IADR-0111]]。UC-02 代替フロー＝越境ポリシーによる縮退の可視化） |
+
+### 実装しない要素の理由（**繰り延べであって放棄ではない**）
+
+| # | 計画の記述 | 現在の契約（実測） | 必要な変更 |
+| --- | --- | --- | --- |
+| (a) 分析対象のチップ（タグ／フォルダ） | §SC-08 主要素「分析対象の指定（**タグ・フォルダのチップ**＋検索条件による追加）」・hi-fi 419-420 の「分析対象（**権限内に限定**）」 | `AnalysisDataRange(Query, AttributeFilters, TopK)` は**属性キー → 値集合**しか取らない（`department: [sales]` 等）。**タグは `SearchResultDto.Tags` として属性とは別の軸**にあり、`AttributeFilters` へ載せる先が無い。**フォルダという概念は契約に存在しない**。さらに「権限内に限定」を成立させる**権限内のタグ／フォルダ候補を返す BFF が無い**（タグ辞書は `/bff/admin/authz`＝システム管理者限定） | 範囲指定へのタグ／フォルダ軸の追加 ＋ **権限内候補**を返す照会口 |
+
+**環流先は planning#197 とする**（新しい記録は作らない）。SC-01 の対象範囲フィルタで挙げた
+「①絞り込み条件を要求へ載せる口が無い ②**権限内**候補を得る口が無い」と**同型の論点**であり、
+同じ裁定で解ける（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md) #1・#2）。
+**重複起票を避ける。**
+
+**「押しても結果が変わらない操作」を置かない**（#502 が確立した規則）。候補を出せないまま
+チップの追加欄だけ置くと、計画が本画面へ与えた保証（**権限内に限定**された対象を選ばせる）を利用者が受けられない。
 
 ## データソース（BFF 境界）
 
-| 用途 | エンドポイント | 認可 | 要求 / 応答 |
-| --- | --- | --- | --- |
-| 分析・比較・抽出の依頼 | `POST /bff/analysis/analyze` | 認証済み（ABAC は後段で narrowing） | `AnalysisTaskRequest` → `AiAnswerDto` |
+| 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
+| --- | --- | --- | --- | --- |
+| 分析実行 | `POST /bff/analysis/analyze` | **orval 生成フック `useAnalysisAnalyze`**（`useMutation`） | 認証。範囲は ABAC と **narrowing-only** で交差（[[IADR-0005]]） | `AiAnswerDto { answer, citations, model, inputTokens, outputTokens }` |
 
-要求 `AnalysisTaskRequest = { instruction, taskType: "Analyze"|"Compare"|"Extract", range?: { query?, attributeFilters?: {key:[values]}, topK? } }`。
-応答 `AiAnswerDto = { answer, citations: CitationDto[], model, inputTokens, outputTokens, answerId }`、
-`CitationDto = { number, documentId, documentTitle, chunkId, sourceUri?, score, snippet }`。
+- **本 issue の 4 画面で唯一 orval 生成フックに載る**（`/bff/analysis/analyze` が `docs/api/openapi.yaml` にあるため。[[IADR-0127]] 決定 3）。
+- **要求本文**: `{ instruction, taskType, range?: { query? } }`。`range` は検索条件が入力されたときだけ付ける。
+  **クライアントは ABAC スコープを送らない**（送っても BFF は使わない＝権限昇格の防止）。
+- **出典に使うフィールドは `documentId` / `documentTitle` / `chunkId` に限る。**
+  openapi.yaml の `AiAnswerDto.citations` は `SearchResultDto[]` だが後段が返すのは `CitationDto[]` であり、
+  **両者に共通して存在するフィールドだけを使う**（[[IADR-0127]] 決定 3）。
+  hi-fi の出典表示はタイトルのリンクのみであるため、表示を削る妥協ではない。
+  食い違いそのものは **#506** へ申し送る。
+- **結果はキャッシュに載らない**（`useMutation`）。[[IADR-0126]] を広げる必要は無い（[[IADR-0127]] 決定 4）。
 
 ## レイアウト / 主要素
 
-```
-┌───────────────────────────────────────────────┐
-│ AI分析ダッシュボード                            │
-├───────────────────────────────────────────────┤
-│ 指示(instruction) [テキストエリア・必須]        │
-│ タスク種別 [分析/比較/抽出]                     │
-│ ▸ 対象範囲(任意): 検索クエリ / TopK / 属性フィルタ│
-│                                     [分析を実行] │
-├───────────────────────────────────────────────┤
-│ 回答(answer 本文, [1][2] マーカー付き)          │
-│ 出典: [1] 文書タイトル (score) スニペット → link │
-│       [2] ...                                   │
-│ （モデル・トークン数の補足）                    │
-└───────────────────────────────────────────────┘
+```text
+┌────────────────────────────┬────────────────────────────────────────────┐
+│ 分析対象（権限内に限定）    │ 分析内容                                    │
+│ 検索条件 [Q1 営業報告     ] │ [Q1の営業報告を部門別に比較し…            ] │
+│                            │ 種別 [比較 ▾]              [分析実行]       │
+└────────────────────────────┴────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ 結果                                                                      │
+│ 3部門に共通する失注要因は (1) 見積提示の遅延…                              │
+│ 出典: 第1営業部 Q1報告 ／ 第2営業部 Q1報告 ／ 西日本営業 Q1報告            │
+│ モデル: … / 入力 N ・出力 M トークン                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+ ⓘ 機密区分の高いデータは外部APIへ送信せずセルフホストLLMで処理…（存在秘匿）
 ```
 
 ## 表示・入力項目
 
-| 項目 | 種別 | 必須 | 初期値 | 形式・制約 | 説明 |
-| --- | --- | --- | --- | --- | --- |
-| 指示 instruction | textarea | 必須 | 空 | 1文字以上 | AI への依頼内容 |
-| タスク種別 taskType | select | 必須 | Analyze | Analyze/Compare/Extract | プロンプト種別 |
-| 検索クエリ range.query | text | 任意 | 空 | - | 範囲内で関連箇所を絞る（省略時 instruction 流用） |
-| TopK range.topK | number | 任意 | 8 | 1〜50 | 文脈チャンク上限 |
-| 属性フィルタ range.attributeFilters | key/値の行 | 任意 | なし | key + カンマ区切り値 | 例: department=sales |
-| 回答 answer | 表示 | - | - | テキスト | `[n]` は出典番号 |
-| 出典 citations | 表示 | - | - | 番号・タイトル・スニペット・link | `sourceUri` があればリンク |
-| 使用モデル model | 表示 | - | - | モデル名／空 | 空は「AI へ送信していない縮退」を意味し **「未使用（AI へ送信なし）」** と表示する（FR-11 / IADR-0111・#403） |
-
-## バリデーション
-
-| 項目 | 条件 | エラーメッセージ |
-| --- | --- | --- |
-| instruction | 空（trim後0文字）は送信不可・実行ボタン無効 | 「分析内容を入力してください。」 |
-| instruction | 上限 2000 文字（`textarea maxLength` ＋送信前チェック）。超過は送信不可（400 をクライアントで予防） | （入力抑止） |
-| topK | 1〜50 に丸める。明示的な `0`・負値は下限 `1` へクランプ（既定 8 へ戻さない）。非数値は既定 8 | （送信前に補正） |
+| 項目 | 種別 | 必須 | 形式・制約 | 説明 |
+| --- | --- | --- | --- | --- |
+| 検索条件（分析対象） | `Input` | 任意 | 最大 500 文字 | 省略時はサーバが指示を流用する（`AnalysisDataRange.query` の契約） |
+| 分析内容（指示） | `Textarea` | **必須** | 1 文字以上（前後空白を除く）・**最大 2000 文字** | 上限はバックエンド `AnalysisPromptBuilder.MaxInstructionLength` と揃える（超過は 400） |
+| タスク種別 | `Select` | **必須** | `Analyze` / `Compare` / `Extract` | 既定は `Analyze`。表示名は 分析 / 比較 / 抽出 |
+| 結果 | 表示 | — | 改行保持 | |
+| 出典 | 表示／リンク | — | 文書名の並び | `/docs/$id`（SC-03）へ内部遷移 |
+| モデル・トークン | 表示 | — | 脚注 | `model` が空なら「未使用（AI へ送信なし）」（[[IADR-0111]]） |
 
 ## アクション・イベント
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| 「分析を実行」 | `POST /bff/analysis/analyze` を送信、結果描画。実行中はボタン無効・読み込み表示 | - |
-| 出典リンク押下 | `sourceUri` を開く（将来 SC-03 文書詳細へ接続） | 出典元 |
-
-## 画面遷移
-
-```mermaid
-flowchart LR
-  SC01[SC-01 検索/チャット] --> SC08[SC-08 AI分析]
-  SC08 -.出典.-> SC03[SC-03 文書詳細（将来）]
-```
+| 分析実行 | `POST /bff/analysis/analyze` → 結果と出典を表示（**UC-02 基本 3・4**） | — |
+| 出典クリック | 文書詳細へ | `/docs/$id` |
 
 ## 権限・表示条件・存在秘匿
 
-- 認証済みユーザーに表示（ナビ「AI分析」）。ロール限定なし。
-- ABAC は後段（AiAnalysisService）で narrowing。範囲が権限外を指すと **空回答へ縮退**（answer 空・citations 空）。UI は「該当する情報が見つかりませんでした。」と中立表示し、権限の有無を開示しない（存在秘匿、UC-02 例外フロー・[[IADR-0005]]）。
-- 403/404 も中立に扱う（空縮退と同じ「該当する情報が見つかりませんでした。」表示）。「拒否」と「不在」を区別しない（[[IADR-0009]]）。400/5xx/network は取得失敗（`role="alert"`）。
+- ロール限定は無い。**権限の効きはサーバ側**であり、指定範囲は ABAC 許可スコープと交差して**権限を一切広げない**（[[IADR-0005]]）。
+- **UC-02 例外フロー**: 対象が権限外の場合は対象から除外し、**権限の有無を開示しない**。
+  実装は次の 2 経路をいずれも**同一の中立表示**へ寄せる（[[IADR-0009]]）。
+  1. 200 だが `answer` が空（サーバ側の空縮退）
+  2. 403 / 404（拒否・不在）
+  いずれも「該当する情報が見つかりませんでした。」と表示する。
+  **400 / 5xx / ネットワーク断は区別してエラー表示する**（これらは権限の問題ではなく、
+  中立表示へ寄せると利用者が「該当なし」と誤解して再試行しない）。
 
 ## エラー・状態
 
-| 状態 | 条件 | 表示 |
-| --- | --- | --- |
-| idle | 未実行 | フォームのみ |
-| loading | 実行中 | `role="status"` 実行中… ＋ ボタン無効 |
-| ok（結果あり） | 200・answer/citations あり | 回答＋出典 |
-| ok（空縮退） | 200・answer 空/citations 空、または 403/404 | 中立「該当する情報が見つかりませんでした。」（存在秘匿。[[IADR-0009]]） |
-| error | 400/5xx/network | `role="alert"` 実行に失敗（400 はクライアント検証で予防） |
+| 状態 | 表示 |
+| --- | --- |
+| 未送信 | 結果パネルを出さない |
+| 実行中 | 「分析を実行中…」（`role="status"`）。ボタンは無効 |
+| 成功・回答あり | 結果パネル（回答 ＋ 出典 ＋ モデル脚注） |
+| 成功・回答が空／403／404 | 「該当する情報が見つかりませんでした。」（中立。存在秘匿） |
+| 400 / 5xx / ネットワーク断 | `Alert tone="danger"` `role="alert"`（`toMessages` の詳細を優先） |
+
+## i18n
+
+- 文言はすべて Lingui のカタログ（ja / en）へ載せる。`eslint-plugin-lingui` の適用範囲に本 feature を含める。
+- **タスク種別は表示名を翻訳する**（分析 / 比較 / 抽出）。**モデル名は翻訳しない**（サーバが返す識別子をそのまま出す）。
+
+## UI 部品（`@platform/ui`）
+
+`Card` 一式 / `Button` / `Input` / `Textarea` / `Select` / `Label` / `Alert`。新規プリミティブは追加しない。
 
 ## 関連仕様
 
-- 作業仕様書: `docs/specs/20260708_issue-134_sc08-ai-analysis-dashboard.md`
-- テスト仕様書: `docs/tests/SC-08_ai-analysis-dashboard.md`
-- 実装 ADR: [[IADR-0005]]（範囲×ABAC narrowing-only）、[[IADR-0033]]（SPA 基盤）
+- 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
+- テスト仕様書: [SC-08_ai-analysis-dashboard.md](../tests/SC-08_ai-analysis-dashboard.md)
+- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0005](../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md) / [IADR-0111](../adr/IADR-0111_degraded-answer-model-label.md)
+- 計画への環流: [feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)（**planning#197**。本画面のチップは同記録 #1・#2 と同型）
 
 ## 未決事項
 
-- 出典リンク先: 現状は `sourceUri` を直接開く。SC-03（文書詳細）実装後に SC-03 への内部遷移へ差し替える（#129）。
-- OpenAPI ドリフト（記録）: `docs/api/openapi.yaml` の `AiAnswerDto.citations` は `SearchResultDto` を参照しているが、実 DTO は `CitationDto`。UI は実 DTO（`CitationDto`）に合わせる。OpenAPI 是正は別途。
+1. **分析対象のチップ（タグ／フォルダ）**（§実装しない要素 (a)）。**planning#197 の裁定待ち**（新規起票はしない）。
+2. **`AiAnswerDto.citations` の型の食い違い**（openapi.yaml = `SearchResultDto[]` / 実体 = `CitationDto[]`）。**#506** の射程。
+3. **出典のスニペット・番号**。契約（`CitationDto`）は持つが openapi.yaml の型には無く、生成型では触れない。2 と同じ経路で解ける。

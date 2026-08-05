@@ -1,69 +1,108 @@
 ---
 title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
-status: draft
+status: completed
 related_ids:
   - SC-01
   - UC-01
   - FR-03
   - FR-04
+  - FR-05
   - FR-08
   - FR-11
+  - IADR-0126
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
   - "../screens/SC-01_search-chat.md"
-  - "../specs/20260708_issue-127_sc01-search-chat.md"
+  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
   - "../adr/IADR-0037_llm-sse-streaming.md"
+  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
 ---
 
 # テスト仕様書: SC-01 検索／チャット質問画面
 
-> UC-01 の基本・例外フローと SSE ストリーミング・egress 保持をテストへ写像する（全スタック）。
+> **［2026-08-04 / #502］新スタックでの再実装に合わせて改訂した。**
+> バックエンド側（LlmGateway / AiAnalysisService / BFF）のケースは #127 で作成済みであり本書に残す。
+> フロント側は再実装に伴い全面的に置き換わる。
 
 ## 起点となる計画書（トレーサビリティ）
 
-> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+- 機能要求（FR）: FR-03 / FR-04 / FR-05 / FR-08 / FR-11
+- ユースケース（UC）: **UC-01**（検索・質問する）
+- 画面（SC）: SC-01
+- 受け入れ基準の所在: Issue #502 ／ [作業仕様書](../specs/20260804_issue-502_sc01-03-search-flow.md) §受け入れ基準
 
+## UC-01 のフロー → テストの写像（**本書の核**）
 
-- 機能要求（FR）: FR-03 / FR-04 / FR-08 / FR-11 / FR-05
-- ユースケース（UC）: UC-01
-- 受け入れ基準の所在: Issue #127 ／ `docs/specs/20260708_issue-127_sc01-search-chat.md`
+[03_usecases UC-01](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) の
+基本・代替・例外フローを、画面側で観測できる形へ写像する。
 
-## テスト対象・範囲
+| UC-01 のフロー | 画面での現れ方 | テスト（`SearchChatPage.test.tsx` ほか） |
+| --- | --- | --- |
+| 基本 1. 利用者が質問またはキーワードを入力する | 入力が空／空白のみでは送信できない | `keeps submit disabled until a non-blank question is entered` |
+| 基本 2. システムが認可（ABAC）で権限スコープを解決する | **クライアントはスコープを送らない**（要求本文は `{ question }` のみ） | `sends only the question (the client never sends an ABAC scope)` |
+| 基本 3-4. 検索 → LLM が回答を生成する | `token` を逐次連結して表示。生成中は `role="status"` | `streams the answer tokens as they arrive and shows the sources` |
+| 基本 5. 出典（Wiki／原本リンク）付きで結果を返す | 出典行を SC-03 / SC-04 への導線として描く | `renders document citations linking to SC-03` ／ `renders wiki citations linking to SC-04` ／ `does not infer wiki citations when no wiki base url is configured` |
+| **代替. キーワード検索のみで結果一覧を返し、AI回答を省略する** | 「キーワード検索のみ →」が入力中の語を `?q=` に載せて SC-02 へ | `offers a keyword-only search link carrying the current question` |
+| **例外. LLM が不調な場合は検索結果のみを返す（縮退運転）** | SSE の `error` で警告を出し、**検索結果一覧への導線**を示す | `degrades to keyword search when the answer stream reports an error event` ＋ `degrades to keyword search when the request itself fails`（**2 本に分かれている**） |
+| （FR-08）回答へのフィードバック | `done` 後に 👍/👎 が有効。`answerId` を添えて送信 | `sends feedback with the answer id after the stream completes` |
 
-- backend: LlmGateway `/complete/stream`（egress 保持）、AiAnalysisService `/analysis/ask/stream`、BFF `/bff/search`・`/bff/analysis/ask/stream`。
-- frontend: SSE 購読ヘルパ（`parseSseBlock`/`apiStream`）、SC-01 画面（逐次表示・出典・👍/👎・検索）。
-- 対象外: Retrieval/AuthorizationService の内部実装（既存テスト）。
+## フロント（Vitest + Testing Library）
 
-## テスト観点
+| # | ケース | 期待 | 起点 |
+| --- | --- | --- | --- |
+| 1 | 空・空白のみの入力 | 送信ボタンが無効 | UC-01 基本 1 |
+| 2 | 送信 | `POST /bff/analysis/ask/stream` を `{ question }` だけで呼ぶ | UC-01 基本 2 / FR-05 |
+| 3 | `citations` → `token`* → `done` | 出典が先、本文が連結され、完了後に 👍/👎 が現れる | UC-01 基本 3-5 / FR-04 |
+| 4 | 出典（文書） | `📄` ＋ タグ「組織文書」＋ `/docs/{documentId}` へのリンク | UC-01 基本 5 |
+| 5 | 出典（Wiki） | `sourceUri` が `wikiBaseUrl` 配下なら `📖` ＋ `/wiki` へのリンク | UC-01 基本 5 |
+| 6 | 「キーワード検索のみ →」 | `/search?q=<入力>` へのリンク | **UC-01 代替フロー** |
+| 7 | SSE の `error` イベント | `role="alert"` ＋ 検索結果一覧への導線 | **UC-01 例外フロー（縮退運転）** |
+| 8 | 通信失敗（`apiStream` が throw） | 同上 | UC-01 例外フロー |
+| 9 | 中断（`AbortError`） | エラー表示を出さない | [[IADR-0126]] 決定 1 |
+| 10 | 👍 押下 | `POST /bff/feedback` に `answerId` ＋ `rating='up'` | FR-08 |
+| 11 | フィードバック送信失敗 | 押下状態を戻す（楽観的更新の取り消し） | FR-08 |
+| 12 | 連投（送信 → 送信） | 前のストリームを中断し、本文・出典・`answerId` をリセットする | [[IADR-0126]] 決定 1 |
+| 13 | ロケール `en` | 見出し・ボタンが英語で描画される | ADR-0031（i18n） |
 
-- egress 保持（FR-11・最重要）: `/complete/stream` は送信不可でプロバイダ未呼出・理由のみ。
-- SSE 順序: citations → token* → done。出典が本文より先。
-- 検索（FR-03/FR-05）: スコープ許可で集約結果、deny-by-default で空、クライアント Scope 無視。
-- フロント: token 連結表示、出典リンク、👍/👎（answerId 紐付け）、検索結果、error イベントで alert。
+### 純関数（`citations.ts`）
 
-## テストケース一覧
+| # | 入力 | 期待 |
+| --- | --- | --- |
+| P-1 | `sourceUri` が `wikiBaseUrl` で始まる | `kind='wiki'`（`📖` / SC-04） |
+| P-2 | `sourceUri` が別ホスト | `kind='document'`（`📄` / SC-03） |
+| P-3 | `sourceUri` が `null` | `kind='document'` |
+| P-4 | `wikiBaseUrl` が未設定 | 常に `kind='document'`（Wiki 由来を推測しない） |
 
-| ID | レイヤ | 前提 | 期待結果 | 対応 | 区分 |
-| --- | --- | --- | --- | --- | --- |
-| T-01 | LlmGateway | 許可（public/rag-answer） | SSE デルタ＋done(sent=true, tokens) | FR-04 | 自動 |
-| T-02 | LlmGateway | 拒否（confidential・ティアCのみ） | プロバイダ未呼出・sent=false・理由（越境なし） | FR-11 | 自動 |
-| T-03 | AiAnalysis | 質問 | SSE citations→token→done（出典先行、answerId 付き） | FR-04 | 自動 |
-| T-04 | BFF | スコープ許可 | 集約検索結果 | FR-03 | 自動 |
-| T-05 | BFF | スコープ不許可 | 空（deny-by-default・存在秘匿） | FR-05 | 自動 |
-| T-06 | BFF | クライアントが Scope 偽装 | サーバ解決を優先し空（権限昇格防止） | FR-05 | 自動 |
-| T-07 | BFF | ask/stream＋Authorization | 上流 SSE 中継・Authorization 伝播 | FR-04 | 自動 |
-| T-08 | front | SSE parser | event/data 解析・複数 data 連結・非データは null | IADR-0037 | 自動 |
-| T-09 | front | citations→token*→done | 本文連結表示・出典リンク・検索結果表示 | UC-01 | 自動 |
-| T-10 | front | done 後に 👍 | `/bff/feedback` に answerId＋rating='up' 送信・送信済表示 | FR-08 | 自動 |
-| T-11 | front | error イベント | `role="alert"` 回答生成失敗 | 異常系 | 自動 |
-| T-12 | front | 未認証 `/ask` | `/login` へ誘導 | 認証ガード | 自動(E2E) |
+## バックエンド（#127 で作成済み・本 issue では変更しない）
+
+| ID | レイヤ | 前提 | 期待結果 | 対応 |
+| --- | --- | --- | --- | --- |
+| T-01 | LlmGateway | 許可（public/rag-answer） | SSE デルタ＋`done(sent=true, tokens)` | FR-04 |
+| T-02 | LlmGateway | 拒否（confidential・ティア C のみ） | プロバイダ未呼出・`sent=false`・理由（越境なし） | FR-11 |
+| T-03 | AiAnalysis | 質問 | SSE `citations`→`token`→`done`（出典先行・`answerId` 付き） | FR-04 |
+| T-04 | BFF | スコープ許可 | 集約検索結果 | FR-03 |
+| T-05 | BFF | スコープ不許可 | 空（deny-by-default・存在秘匿） | FR-05 |
+| T-06 | BFF | クライアントが Scope 偽装 | サーバ解決を優先し空（権限昇格防止） | FR-05 |
+| T-07 | BFF | `ask/stream` ＋ Authorization | 上流 SSE 中継・Authorization 伝播 | FR-04 |
+| T-08 | front | SSE parser | `event` / `data` 解析・複数 `data` 連結・非データは `null` | [[IADR-0037]] |
+
+## E2E（Playwright）
+
+| # | ケース | 期待 |
+| --- | --- | --- |
+| E-1 | 未認証で `/ask` | `/login` へ誘導（`?from=` 保持） |
+
+**限界**: 認証済みの導線は E2E で実走できない。トークンは `InMemoryWebStorage` に保持され
+（`foundation/auth/authConfig.ts`）、外部から注入できないためである。認証済みの導線は
+**導線テスト**（`searchFlow.test.tsx`。3 ルートを 1 本のルータへ載せる）が担う。
 
 ## 未決事項
 
-- なし
+- なし（画面要素の不足は [作業仕様書 §2](../specs/20260804_issue-502_sc01-03-search-flow.md) と
+  `feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した）

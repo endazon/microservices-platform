@@ -51,35 +51,39 @@ function nav() {
 }
 
 describe('Layout navigation (role-gated)', () => {
+  // #502: SC-01 のナビ表示名は hi-fi モックの左レール準拠で「検索・質問」である。
+  // ラベルは Lingui の MessageDescriptor で持ち、描画時に解決される（nav.ts の resolveNavLabel）。
   it('always shows the SC-01 entry point link', async () => {
     await renderLayout([]);
-    expect(await within(nav()).findByRole('link', { name: '検索 / AI質問' })).toBeInTheDocument();
+    expect(await within(nav()).findByRole('link', { name: '検索・質問' })).toBeInTheDocument();
   });
 
-  it('shows the 運用ダッシュボード (SC-10) link for platform-admin', async () => {
+  // #504: SC-10 のナビ表示名は hi-fi モックの左レール準拠で「ダッシュボード」である
+  // （従前は「運用ダッシュボード」と表示していた）。
+  it('shows the ダッシュボード (SC-10) link for platform-admin', async () => {
     await renderLayout(['platform-admin']);
     expect(
-      await within(nav()).findByRole('link', { name: '運用ダッシュボード' }),
+      await within(nav()).findByRole('link', { name: 'ダッシュボード' }),
     ).toBeInTheDocument();
   });
 
-  it('hides the 運用ダッシュボード link for users without the admin role (existence hidden)', async () => {
+  it('hides the ダッシュボード link for users without the admin role (existence hidden)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
-    expect(within(nav()).queryByRole('link', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+    await within(nav()).findByRole('link', { name: '検索・質問' });
+    expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
   });
 
   // SC-11 #140: 構成ビューアは ConfigViewer（管理者・運用者）のみメニュー表示（存在秘匿）。
   it('shows the 構成ビューア (SC-11) link for platform-operator', async () => {
     await renderLayout(['platform-operator']);
     expect(await within(nav()).findByRole('link', { name: '構成ビューア' })).toBeInTheDocument();
-    // 運用者は AdminOnly の運用ダッシュボードは見えない。
-    expect(within(nav()).queryByRole('link', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+    // 運用者は AdminOnly の SC-10（ダッシュボード）は見えない。
+    expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
   });
 
   it('hides the 構成ビューア link for non-privileged users (existence hidden)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('link', { name: '構成ビューア' })).not.toBeInTheDocument();
   });
 });
@@ -89,7 +93,7 @@ describe('Layout navigation (role-gated)', () => {
 describe('Layout navigation groups (05_screens §共通シェル)', () => {
   it('groups links under the planned headings for an admin', async () => {
     await renderLayout(['platform-admin']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).getByRole('heading', { name: '利用者' })).toBeInTheDocument();
     expect(within(nav()).getByRole('heading', { name: '管理' })).toBeInTheDocument();
     expect(within(nav()).getByRole('heading', { name: '運用' })).toBeInTheDocument();
@@ -97,10 +101,43 @@ describe('Layout navigation groups (05_screens §共通シェル)', () => {
 
   it('omits the 管理 heading for a non-privileged user (no empty group headings)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('heading', { name: '管理' })).not.toBeInTheDocument();
     // 「個人」グループの画面（個人資料・Obsidian 連携）は未実装のため、どのロールでも見出しは出ない。
     expect(within(nav()).queryByRole('heading', { name: '個人' })).not.toBeInTheDocument();
+  });
+
+  // 05_screens §共通シェル ［2026-08-04 確定］:
+  //   「本計画に属さない可変機能ユニットの画面は、実装側でグループを設けて分類してよい。
+  //     **ただしグループ名は『ユニットの機能名』とする**（例: ai-stock-trading → 「株式自動売買」）。
+  //     並び順は計画の 4 グループの後とする。**総称としての『その他』は使わない**」
+  // 計画は理由も述べている——左ナビのグループ名は利用者が機能を探す唯一の手掛かりであり、
+  // 何が入っているか分からない名前を置くと導線が失われる。ここを固定しないと、
+  // 「グループ名を総称へ戻す」という退行がテストを緑のまま通り抜ける。
+  it('puts non-plan unit screens under the unit feature name, never a generic heading', async () => {
+    // AST（ai-stock-trading）の 3 画面は trading-owner ロールでのみ表示される。
+    await renderLayout(['trading-owner']);
+    const unitHeading = await within(nav()).findByRole('heading', { name: '株式自動売買' });
+    expect(unitHeading).toBeInTheDocument();
+
+    // 見出しの配下（同じグループの <div>）に AST の画面リンクが載っていること。
+    const group = unitHeading.parentElement as HTMLElement;
+    expect(within(group).getByRole('link', { name: '設定' })).toBeInTheDocument();
+    expect(within(group).getByRole('link', { name: 'リスク設定' })).toBeInTheDocument();
+    expect(within(group).getByRole('link', { name: '統制状態' })).toBeInTheDocument();
+
+    // 総称の見出しが存在しないこと（計画が名指しで禁じた文言）。
+    expect(within(nav()).queryByRole('heading', { name: 'その他' })).not.toBeInTheDocument();
+  });
+
+  it('orders the unit feature group after the four plan groups', async () => {
+    await renderLayout(['platform-admin', 'trading-owner']);
+    await within(nav()).findByRole('heading', { name: '株式自動売買' });
+    const headings = within(nav())
+      .getAllByRole('heading')
+      .map((h) => h.textContent);
+    // 計画の 4 グループ（表示されるもの）→ ユニットの機能名、の順。
+    expect(headings).toEqual(['利用者', '管理', '運用', '株式自動売買']);
   });
 });
 

@@ -6,7 +6,12 @@ import { fileURLToPath, URL } from 'node:url';
 // （platform / knowledge の各 frontend）を横断計測する。ビルド・dev サーバは
 // platform/frontend/vite.config.ts。
 export default defineConfig({
-  plugins: [react()],
+  // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3:
+  // マクロ（@lingui/react/macro の <Trans> 等）を babel で展開する。
+  // **同じ設定を platform/frontend/vite.config.ts にも置く**——片方だけに入れると
+  // 「テストは通るのにビルドが壊れる（あるいはその逆）」という静かな破綻になる。
+  // その一致は platform/frontend/src/foundation/i18n/i18n.test.tsx が固定する。
+  plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } })],
   resolve: {
     // IADR-0121 決定 2（pnpm workspace）: pnpm は node_modules を isolated に置くため、ユニットごとに
     // 別々の React 実体が解決され得る（同一プロセスで 2 つの React が動くと「Invalid hook call」になる）。
@@ -52,6 +57,13 @@ export default defineConfig({
         // `src/test/**` と同じ理由で母数から外す——足場を数えると「テストを足すほど床が上がる」
         // 見かけの改善が起き、成果物の被覆率が読めなくなる。
         'platform/frontend/src/foundation/testing/**',
+        // ADR-0031 / IADR-0125 決定 5: Storybook のカタログ（stories と設定）。
+        // `src/test/**`・`foundation/testing/**` と同じ理由で母数から外す——カタログは
+        // **部品の見本であって成果物ではない**。母数へ入れると「stories を足すほど床が下がり、
+        // 消すほど上がる」という、被覆率とは無関係な動き方をする。
+        // **この除外は床の水準を実際に動かす**（除外あり／なしの実測は下の注記を参照）。
+        '**/*.stories.{ts,tsx}',
+        '**/.storybook/**',
         '**/*.d.ts',
         'platform/frontend/src/main.tsx',
         '**/vite-env.d.ts',
@@ -96,11 +108,79 @@ export default defineConfig({
       //   実測で確認した——除外**しない**場合の MSP 所有分は
       //   lines 91.84% / branches 82.19% / functions 84.02% であり、同じ導出規則から出る床は
       //   **3 指標とも同値（86 / 77 / 79）**。すなわちこの除外は床の水準を動かしていない。
+      //
+      // ［2026-08-04 / #496］移行第 2 段の残り（ADR-0031 / IADR-0125: shadcn/ui 本移植・Lingui・
+      //   Storybook）に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/ADR-0031-ui-i18n-storybook` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 93.86% / branches 84.11% / functions 86.58%
+      //     MSP 所有分のみ        lines/statements 92.04% / branches 82.93% / functions 86.08%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用し、床を
+      //   lines/statements 86 → 87 / functions 79 → 81 へ引き上げる（branches は 77 のまま
+      //   ＝ 82.93 − 5 = 77.93 の切り捨て）。
+      //
+      //   **上に足した `**\/*.stories.*` の除外は床の水準を動かす**（`foundation/testing/**` を
+      //   足したときと違い、ここは「動かしていない」と言えない）。除外**しない**場合の
+      //   MSP 所有分は lines 87.96% / branches 82.95% / functions 86.13% であり、同じ導出規則から
+      //   出る床は **lines 82 / branches 77 / functions 81**。すなわち lines だけが 87 → 82 と
+      //   5pt 甘くなる。差は stories 1 ファイル（145 行・テストから実行されない）に由来する。
+      //   除外を採るのは、カタログの行数が被覆率を左右する状態そのものが誤りだからである
+      //   （stories を消すと床が上がる）。**除外なしの実測でも現行床 86 は満たしている**
+      //   （87.96% > 86）ため、この除外は「床を割るのを避けるための除外」ではない。
+      //
+      // ［2026-08-04 / #502］SC-01〜03 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-01-03-search-flow` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 94.53% / branches 86.48% / functions 87.70%
+      //     MSP 所有分のみ        lines/statements 93.07% / branches 86.29% / functions 87.69%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 87 → 88 / branches 77 → 81 / functions 81 → 82 へ引き上げる。
+      //   上げた分は「3 画面の分岐（存在秘匿の中立表示・縮退運転・出典の種別判定・属性の写像）と、
+      //   保留対象（FR-17 / FR-18）が**描かれないこと**にテストを付けた」ことによる。
+      //   branches の伸び（82.93 → 86.29）が大きいのは、旧 3 画面が持っていた手書きの状態遷移
+      //   （useEffect ＋ 4 つの state ＋ 二重発火ガード）を TanStack Query と URL 単一情報源へ置き換え、
+      //   **測るべき分岐そのものが減った**ためでもある（IADR-0126 決定 3）。
+      //
+      // ［2026-08-05 / #503］SC-05〜08 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-05-08-admin-screens` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 95.06% / branches 88.13% / functions 89.25%（357/400）
+      //     MSP 所有分のみ        lines/statements 93.94% / branches 88.56% / functions 89.80%（264/294）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   branches 81 → 83 / functions 82 → 84 へ引き上げる（lines/statements は 88 のまま
+      //   ＝ 93.94 − 5 = 88.94 の切り捨て）。
+      //   **［2026-08-05 追記・実測値の是正（PR #508 のレビュー / クロス監査 P-3）］**
+      //   当初ここには 全ユニット横断 functions **89.20%** と書いていたが、その時点の実測は
+      //   **89.19%（355/398）**であり 0.01pt の転記誤りだった（`f11d4c3` の worktree で再実走して確認。
+      //   355/398 = 89.1959…% で、v8 の要約は 2 桁で**切り捨てる**——同じ実行の
+      //   statements 4724/4970 = 95.0503…% が 95.05% と出ることで確かめられる）。上の数値は、レビュー / 監査の是正
+      //   （別ミューテーションの失敗バナー・琥珀の充て先・機密区分の純関数テスト）を反映した**再測定値**である。
+      //   **床（88 / 88 / 84 / 83）の導出には影響しない**——是正の前後いずれの実測でも同じ床が出る。
+      //   上げた分は「4 画面の分岐（4 状態モデルの写像・同期状態の導出・権限別の出し分け・
+      //   存在秘匿の中立表示・409 の区別）と、契約に無い要素が**描かれないこと**にテストを
+      //   付けた」ことによる。branches は #502 と同じく、旧 4 画面の手書きの取得・再取得
+      //   （useCallback + useEffect + load() の呼び直し）を TanStack Query へ置き換えて
+      //   **測るべき分岐そのものが減った**ぶんも含む（IADR-0127 決定 5）。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      //
+      // ［2026-08-05 / #504］SC-09〜11 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-09-11-admin-ops-screens` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 95.91%（5429/5660）/ branches 89.79%（1118/1245）/
+      //                           functions 91.81%（415/452）
+      //     MSP 所有分のみ        lines 95.22%（4162/4371）/ branches 90.72%（851/938）/
+      //                           functions 93.06%（322/346）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 88 → 90 / branches 83 → 85 / functions 84 → 88 へ引き上げる。
+      //   上げた分は「3 画面の分岐（存在秘匿の中立表示・領域ごとの縮退・権限別の出し分け・
+      //   403/404 の中立化・未知の値の素通し）と、**着手保留（FR-17 / FR-18）・契約の不在の要素が
+      //   描かれないこと**にテストを付けた」ことと、**値集合を純関数テストで固定した**
+      //   （`abacVocabulary` / `driftView` / `opsTools`。IADR-0129 決定 6）ことによる。
+      //   branches の伸びは #502 / #503 と同じく、旧 3 画面の手書きの取得・再取得
+      //   （useEffect ＋ 複数の state ＋ load() の呼び直し）を TanStack Query へ置き換えて
+      //   **測るべき分岐そのものが減った**ぶんも含む。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
       thresholds: {
-        lines: 86,
-        statements: 86,
-        functions: 79,
-        branches: 77,
+        lines: 90,
+        statements: 90,
+        functions: 88,
+        branches: 85,
       },
     },
   },

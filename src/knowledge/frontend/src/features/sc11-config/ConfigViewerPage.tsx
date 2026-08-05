@@ -1,424 +1,522 @@
 import type { ReactNode } from 'react';
-import { useEffect, useMemo, useState } from 'react';
-import { apiFetch } from '@foundation/api/apiClient';
+import { Trans, useLingui } from '@lingui/react/macro';
+import type { MessageDescriptor } from '@lingui/core';
+import {
+  Alert,
+  Button,
+  StatusBadge,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  Tag,
+} from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
+import { i18n } from '@foundation/i18n';
+import { toMessages } from '@foundation/ui/apiErrors';
+import {
+  driftKindLabel,
+  driftSeverityView,
+  driftTargets,
+  hadDriftLabel,
+} from './driftView';
+import {
+  useConfigDrift,
+  useConfigHistory,
+  useEffectiveConfig,
+  useRefreshConfigViewer,
+} from './useConfigViewer';
+import type {
+  ConfigVersion,
+  ConfigVersionEntry,
+  Connector,
+  DriftReport,
+  EventBinding,
+  PipelineStage,
+  PortSelection,
+} from './useConfigViewer';
 
-// SC-11, FR-15, ADR-0018: 構成ビューア。実効構成（構成バージョン・パイプライン段・イベント接続・
-// ポート選択・コネクタ）を参照専用で可視化する。データソースは /bff/admin/config（ConfigViewer,
-// 404 秘匿）。可視化はグラフ描画ライブラリを使わず CSS チェーン＋表で表現する（IADR-0036）。
-// #137: 実効構成の表示、#138: ドリフト表示、#139: 構成バージョン履歴表示（GitOps 由来・IADR-0046）。
+// SC-11, FR-15, ADR-0018: 構成ビューア（05_screens: ルート /admin/config-viewer）。
+// 実効構成・宣言（Git）との差分・構成バージョン履歴を参照専用で可視化する。
+//
+// 可視化はグラフ描画ライブラリを使わず CSS 縦チェーン＋表で表現する（IADR-0036）。折りたたみは
+// ネイティブの <details>/<summary> —— 計画 13_frontend-stack §shadcn/ui 派生の範囲 の 4 基準の
+// いずれにも該当しないため @platform/ui へは入れない（IADR-0129 決定 7）。
+//
+// IADR-0129 決定 5: 3 本の問い合わせは独立に扱い、領域ごとに縮退する。ただし**実効構成が
+// 取れなければ他の 2 領域も出さない**（何に対する差分か読めないため）。
+//
+// 履歴の件数は画面で切り詰めない —— 保持範囲は GitOps 側が決める（IADR-0046・計画 2026-08-04 確定）。
 
-interface ConfigVersion {
-  gitCommit?: string | null;
-  appliedAt?: string | null;
-  appliedBy?: string | null;
-}
-interface PipelineStage {
-  name: string;
-  service: string;
-  consumer: string;
-  input: string;
-  outputs: string[];
-  enabled: boolean;
-}
-interface EventBinding {
-  event: string;
-  publishers: string[];
-  subscribers: string[];
-}
-interface PortSelection {
-  port: string;
-  implementation: string;
-  target?: string | null;
-}
-interface Connector {
-  name: string;
-  enabled: boolean;
-}
-export interface EffectiveConfig {
-  version: ConfigVersion;
-  pipeline: PipelineStage[];
-  eventBindings: EventBinding[];
-  ports: PortSelection[];
-  connectors: Connector[];
-}
+/** ドリフト明細セクションの id（チェーンの警告からページ内リンクで飛ぶ先）。 */
+const DRIFT_SECTION_ID = 'sc11-drift-section';
 
-// #138: ドリフト（宣言 Git との差分）。判定は API 側（DriftDetector）が行い、本画面は結果表示のみ。
-interface DriftFinding {
-  kind: string;
-  severity: string;
-  target: string;
-  detail: string;
-}
-interface DriftReport {
-  hasDrift: boolean;
-  checkedAt: string;
-  findings: DriftFinding[];
+/** MessageDescriptor を描画時に解決する（モジュール初期化時に確定させるとロケール切替に追随しない）。 */
+function labelOf(label: MessageDescriptor | string): string {
+  return typeof label === 'string' ? label : i18n._(label);
 }
 
-// #139, IADR-0046: 構成バージョン適用履歴の1エントリ。正データ源は GitOps 層で、API は /admin/config/history で
-// 新しい順に返す（永続化なし）。hadDrift はその時点のドリフト有無（不明なら null＝「—」）。
-interface ConfigVersionEntry {
-  gitCommit?: string | null;
-  appliedAt?: string | null;
-  appliedBy?: string | null;
-  hadDrift?: boolean | null;
+/** ISO 8601（DateTimeOffset 由来）をロケール表記に整形する。解釈できない値はそのまま表示する。 */
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? value : new Date(t).toLocaleString();
 }
 
-type Status = 'loading' | 'ok' | 'notFound' | 'error';
-type DriftStatus = 'loading' | 'ok' | 'unavailable';
-type HistoryStatus = 'loading' | 'ok' | 'unavailable';
+/** コミット ID は先頭 7 桁で示す（完全な値は title 属性に残す）。 */
+function shortCommit(commit: string | null | undefined): string {
+  return commit ? commit.slice(0, 7) : '—';
+}
+
+/** 404 か（＝存在秘匿として中立文言へ寄せる対象か）。それ以外の失敗は系の状態であり秘匿しない。 */
+function isHidden(error: unknown): boolean {
+  return error instanceof ApiError && error.kind === 'notFound';
+}
 
 export function ConfigViewerPage() {
-  const [status, setStatus] = useState<Status>('loading');
-  const [config, setConfig] = useState<EffectiveConfig | null>(null);
-  const [driftStatus, setDriftStatus] = useState<DriftStatus>('loading');
-  const [drift, setDrift] = useState<DriftReport | null>(null);
-  const [historyStatus, setHistoryStatus] = useState<HistoryStatus>('loading');
-  const [history, setHistory] = useState<ConfigVersionEntry[]>([]);
+  const { t } = useLingui();
+  const config = useEffectiveConfig();
+  const drift = useConfigDrift();
+  const history = useConfigHistory();
+  const refresh = useRefreshConfigViewer();
 
-  // #138: ドリフト対象（finding.target）の集合。実効構成側（段）の強調判定に用いる。
-  // DriftDetector（Shared.Infrastructure）は Target に常に段名（decl.Name/実効段名）のみを返し、
-  // イベント名・ポート名は返さない（CLAUDE.md「起こり得ないケースへの防御的実装を避ける」）ため、
-  // 強調表示はパイプライン段のみを対象とする。
-  const driftTargets = useMemo(
-    () => new Set((drift?.findings ?? []).map((f) => f.target)),
-    [drift],
-  );
-
-  useEffect(() => {
-    let active = true;
-    apiFetch<EffectiveConfig>('/admin/config')
-      .then((data) => {
-        if (!active) return;
-        setConfig(data);
-        setStatus('ok');
-      })
-      .catch((e: unknown) => {
-        if (!active) return;
-        // 404 は不在/秘匿を区別しない（IADR-0009）。
-        setStatus(e instanceof ApiError && e.kind === 'notFound' ? 'notFound' : 'error');
-      });
-    // #138: ドリフトは独立に取得する（構成表示と疎結合）。取得不能時はその領域のみ縮退。
-    apiFetch<DriftReport>('/admin/config/drift')
-      .then((data) => {
-        if (!active) return;
-        setDrift(data);
-        setDriftStatus('ok');
-      })
-      .catch(() => {
-        if (!active) return;
-        setDriftStatus('unavailable');
-      });
-    // #139: 構成バージョン履歴も独立に取得する（構成表示と疎結合）。取得不能時はその領域のみ縮退。
-    apiFetch<ConfigVersionEntry[]>('/admin/config/history')
-      .then((data) => {
-        if (!active) return;
-        setHistory(data ?? []);
-        setHistoryStatus('ok');
-      })
-      .catch(() => {
-        if (!active) return;
-        setHistoryStatus('unavailable');
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // IADR-0009: 404 は「不在」と「権限による秘匿」を区別しない。中立の文言へ寄せる。
+  // IADR-0129 決定 3 は**従の問い合わせにも同じく効く**——「区別しないと運用者が『権限が無い』と
+  // 誤読して障害を見逃す」という理由は、ドリフト・履歴が落ちた場合にも等しく当てはまる。
+  const configHidden = isHidden(config.error);
+  const driftHidden = isHidden(drift.error);
+  const historyHidden = isHidden(history.error);
 
   return (
     <section>
-      <h1>構成ビューア</h1>
-      <p>現在有効なシステム構成（実効構成）を表示します（参照専用）。</p>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h1 className="mr-auto text-lg font-semibold text-[--color-fg]">
+          <Trans>実効構成</Trans>
+        </h1>
+        {/* ヘッダの表示は**実効構成が取れたときだけ**である。ドリフトのバッジも例外ではない
+            ——バッジだけがヘッダに残ると「何に対する差分か読めないドリフト件数」になる
+            （IADR-0129 決定 5）。3 本のクエリは独立に走るため、実効構成が 5xx でドリフトが 200
+            という組み合わせが実際に起こる。 */}
+        {config.isSuccess && config.data && (
+          <>
+            <ConfigVersionTags version={config.data.version} />
+            {/* ドリフトのバッジは**取得できたときだけ**出す（出せないときの「0 件」と紛れるため）。 */}
+            {drift.isSuccess && drift.data && <DriftBadge report={drift.data} />}
+          </>
+        )}
+        <Button type="button" size="sm" onClick={refresh}>
+          <Trans>再取得</Trans>
+        </Button>
+      </div>
 
-      {status === 'loading' && <p role="status">読み込み中…</p>}
-      {status === 'notFound' && <p>構成情報は利用できません。</p>}
-      {status === 'error' && <p role="alert">構成情報の取得に失敗しました。</p>}
+      {config.isPending && (
+        <p role="status" className="text-sm text-[--color-fg-muted]">
+          <Trans>読み込み中…</Trans>
+        </p>
+      )}
 
-      {status === 'ok' && config && (
+      {config.isError && configHidden && (
+        <p className="text-sm">
+          <Trans>構成情報は利用できません。</Trans>
+        </p>
+      )}
+      {config.isError && !configHidden && (
+        <Alert tone="danger" role="alert" label={t`エラー`}>
+          {toMessages(config.error, t`構成情報を取得できませんでした。`).join(' / ')}
+        </Alert>
+      )}
+
+      {config.isSuccess && config.data && (
         <>
-          <ConfigVersionHeader version={config.version} />
-          <DriftView status={driftStatus} report={drift} />
-          {/* #138: §(1) 実効構成側にもドリフトを強調する。finding.target と一致する段に警告色を付け、
-              (2) のドリフト明細（#drift-section）へリンクする（IADR-0036・SC-11 §(1)）。イベント接続・
-              ポートは DriftDetector の対象外（Target は常に段名）のため強調表示の対象としない。 */}
-          <PipelineView stages={config.pipeline} driftTargets={driftTargets} />
-          <EventBindingsView bindings={config.eventBindings} />
-          <PortsView ports={config.ports} />
-          <ConnectorsView connectors={config.connectors} />
-          {/* #139: §(3) 構成バージョン履歴。GitOps 由来の適用履歴を新しい順で一覧する（IADR-0046・SC-11 §(3)）。 */}
-          <HistoryView status={historyStatus} history={history} />
+          <Fold summary={t`(1) 実効構成 — パイプライン段・接続`} defaultOpen>
+            <PipelineChain
+              stages={config.data.pipeline}
+              drifted={driftTargets(drift.data?.findings ?? [])}
+            />
+            <EventBindingsTable bindings={config.data.eventBindings} />
+            <PortsTable ports={config.data.ports} />
+            <ConnectorsTable connectors={config.data.connectors} />
+          </Fold>
+
+          <Fold summary={t`(2) 宣言（Git）との差分 — ドリフト`} defaultOpen id={DRIFT_SECTION_ID}>
+            {drift.isPending && (
+              <p role="status" className="text-sm text-[--color-fg-muted]">
+                <Trans>ドリフトを確認中…</Trans>
+              </p>
+            )}
+            {drift.isError && driftHidden && (
+              <p className="text-sm">
+                <Trans>ドリフト情報は利用できません。</Trans>
+              </p>
+            )}
+            {drift.isError && !driftHidden && (
+              <Alert tone="danger" role="alert" label={t`エラー`}>
+                {toMessages(drift.error, t`ドリフト情報を取得できませんでした。`).join(' / ')}
+              </Alert>
+            )}
+            {drift.isSuccess && drift.data && <DriftTable report={drift.data} />}
+          </Fold>
+
+          <Fold summary={t`(3) 構成バージョン履歴（新しい順）`}>
+            {history.isPending && (
+              <p role="status" className="text-sm text-[--color-fg-muted]">
+                <Trans>履歴を確認中…</Trans>
+              </p>
+            )}
+            {history.isError && historyHidden && (
+              <p className="text-sm">
+                <Trans>バージョン履歴は利用できません。</Trans>
+              </p>
+            )}
+            {history.isError && !historyHidden && (
+              <Alert tone="danger" role="alert" label={t`エラー`}>
+                {toMessages(history.error, t`バージョン履歴を取得できませんでした。`).join(' / ')}
+              </Alert>
+            )}
+            {history.isSuccess && <HistoryTable entries={history.data} />}
+          </Fold>
+
+          <Alert tone="info" className="mt-3" label={t`参照のみ`}>
+            <Trans>
+              構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。
+            </Trans>
+          </Alert>
         </>
       )}
     </section>
   );
 }
 
-// ISO 8601（DateTimeOffset 由来）をロケール表記に整形する。解釈できない値はそのまま表示する。
-function formatAppliedAt(value: string | null | undefined): string {
-  if (!value) return '—';
-  const t = Date.parse(value);
-  return Number.isNaN(t) ? value : new Date(t).toLocaleString();
+/** ヘッダの構成バージョン（コミット・適用日時・適用者）。分類の名前なので Tag を使う。 */
+function ConfigVersionTags({ version }: { version: ConfigVersion }) {
+  const { t } = useLingui();
+  // lingui/no-expression-in-message: 補間には**素の変数だけ**を置く（式を入れると抽出された
+  // メッセージから元の値が読めなくなり、翻訳者が文脈を判断できない）。
+  const commit = shortCommit(version.gitCommit);
+  const appliedAt = formatDateTime(version.appliedAt);
+  const appliedBy = version.appliedBy ?? '—';
+  return (
+    <>
+      <Tag title={version.gitCommit ?? undefined}>{t`コミット ${commit}`}</Tag>
+      <Tag>{t`適用 ${appliedAt}`}</Tag>
+      <Tag>{t`適用者 ${appliedBy}`}</Tag>
+    </>
+  );
 }
 
-function ConfigVersionHeader({ version }: { version: ConfigVersion }) {
-  const { gitCommit, appliedAt, appliedBy } = version;
-  const short = gitCommit ? gitCommit.slice(0, 7) : '—';
+/** 全体ドリフト状態。INDEX 決定 21: 色だけで意味を持たせない（StatusBadge が型で強制する）。 */
+function DriftBadge({ report }: { report: DriftReport }) {
+  const { t } = useLingui();
+  const count = report.findings.length;
+  return count === 0 ? (
+    <StatusBadge tone="success">{t`ドリフトなし`}</StatusBadge>
+  ) : (
+    <StatusBadge tone="warning">{t`ドリフト ${count} 件`}</StatusBadge>
+  );
+}
+
+/** 折りたたみセクション（ネイティブ <details>）。 */
+function Fold({
+  summary,
+  children,
+  defaultOpen = false,
+  id,
+}: {
+  summary: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  id?: string;
+}) {
   return (
-    <div
-      aria-label="構成バージョン"
-      style={{ border: '1px solid #ddd', borderRadius: 8, padding: '0.5rem 0.75rem', margin: '0.75rem 0' }}
+    <details
+      id={id}
+      open={defaultOpen}
+      className="mb-3 rounded-[--radius-control] border border-[--color-border] bg-[--color-surface]"
     >
-      <strong>構成バージョン:</strong> <code>{short}</code>{' '}
-      <span>／ 適用日時: {formatAppliedAt(appliedAt)}</span> <span>／ 適用者: {appliedBy ?? '—'}</span>
-    </div>
-  );
-}
-
-// #139: その時点のドリフト有無（hadDrift）を表示文言へ写像する。不明（null/undefined）は「—」。
-function driftLabel(hadDrift: boolean | null | undefined): string {
-  if (hadDrift === true) return 'あり';
-  if (hadDrift === false) return 'なし';
-  return '—';
-}
-
-// #139, IADR-0046: 構成バージョン適用履歴（新しい順）。API（/admin/config/history）が並び順・データ源を担い、
-// 本画面は表示のみ。取得不能・0 件はその旨を明示する。
-function HistoryView({ status, history }: { status: HistoryStatus; history: ConfigVersionEntry[] }) {
-  return (
-    <Section title={`構成バージョン履歴（${status === 'ok' ? history.length : '—'}）`}>
-      {status === 'loading' && <p role="status">履歴を確認中…</p>}
-      {status === 'unavailable' && <p>バージョン履歴は利用できません。</p>}
-      {status === 'ok' && history.length === 0 && <p>適用履歴はありません。</p>}
-      {status === 'ok' && history.length > 0 && (
-        <table aria-label="構成バージョン履歴">
-          <thead>
-            <tr>
-              <th>コミット ID</th>
-              <th>適用日時</th>
-              <th>適用者</th>
-              <th>ドリフト有無</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((h, i) => (
-              // 注入元が同一 commit+appliedAt の重複を返しても衝突しないよう index を前置する。
-              <tr key={`${i}-${h.gitCommit ?? 'nocommit'}-${h.appliedAt ?? ''}`}>
-                <td>
-                  <code>{h.gitCommit ? h.gitCommit.slice(0, 7) : '—'}</code>
-                </td>
-                <td>{formatAppliedAt(h.appliedAt)}</td>
-                <td>{h.appliedBy ?? '—'}</td>
-                <td>{driftLabel(h.hadDrift)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Section>
-  );
-}
-
-// #138: 深刻度 → 強調色。severity は DriftDetector が返す Warning / Info の2値（IADR-0029）。
-// 大文字小文字を無視して照合し、未知の深刻度は中立色にフォールバックする（種別同様、値域が
-// 増えても UI 改修は不要）。実在しない深刻度への分岐は持たない（防御的実装を避ける）。
-function severityColor(severity: string): string {
-  switch (severity.toLowerCase()) {
-    case 'warning':
-      return '#e67e22';
-    case 'info':
-    default:
-      return '#7f8c8d';
-  }
-}
-
-// #138: ドリフト一覧・強調表示。0 件は「OK」を明示（検出済みを日時とともに示す）。
-function DriftView({ status, report }: { status: DriftStatus; report: DriftReport | null }) {
-  // API 側（ConfigInspectionService.GetDriftAsync）は HasDrift = findings.Count > 0 で構築するため、
-  // 件数から一意に決まる（両者が乖離するケースは無い）。
-  const count = report?.findings.length ?? 0;
-  const hasDrift = count > 0;
-  const badge = status !== 'ok' ? '—' : hasDrift ? `ドリフト ${count} 件` : 'OK';
-
-  return (
-    <Section title={`宣言との差分（ドリフト）: ${badge}`} id="drift-section">
-      {status === 'loading' && <p role="status">ドリフトを確認中…</p>}
-      {status === 'unavailable' && <p>ドリフト情報は利用できません。</p>}
-      {status === 'ok' && report && !hasDrift && (
-        <p>ドリフトなし（OK）。<small>確認時刻: {formatAppliedAt(report.checkedAt)}</small></p>
-      )}
-      {status === 'ok' && report && hasDrift && (
-        <>
-          <p>
-            <small>確認時刻: {formatAppliedAt(report.checkedAt)}</small>
-          </p>
-          <table aria-label="ドリフト明細">
-            <thead>
-              <tr>
-                <th>種別</th>
-                <th>深刻度</th>
-                <th>対象</th>
-                <th>説明</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.findings.map((f, i) => (
-                <tr key={`${f.kind}-${f.target}-${i}`}>
-                  <td>{f.kind}</td>
-                  <td style={{ color: severityColor(f.severity), fontWeight: 600 }}>{f.severity}</td>
-                  <td>{f.target}</td>
-                  <td>{f.detail}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
-    </Section>
-  );
-}
-
-function Section({ title, children, id }: { title: string; children: ReactNode; id?: string }) {
-  return (
-    <details id={id} open style={{ margin: '0.75rem 0' }}>
-      <summary style={{ cursor: 'pointer', fontWeight: 600 }}>{title}</summary>
-      <div style={{ marginTop: '0.5rem' }}>{children}</div>
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-[--color-fg]">
+        {summary}
+      </summary>
+      <div className="flex flex-col gap-3 px-3 pb-3">{children}</div>
     </details>
   );
 }
 
-// #138: ドリフト対象の項目に付ける警告マーク（(2) のドリフト明細 #drift-section へリンクする）。
-function DriftMark() {
+/** パイプライン段の CSS 縦チェーン（IADR-0036）。無効段は淡色 ＋ バッジ、ドリフト段は警告色 ＋ 明細へのリンク。 */
+function PipelineChain({ stages, drifted }: { stages: PipelineStage[]; drifted: Set<string> }) {
+  const { t } = useLingui();
+  if (stages.length === 0) {
+    return (
+      <p className="text-sm">
+        <Trans>段は登録されていません。</Trans>
+      </p>
+    );
+  }
   return (
-    <a
-      href="#drift-section"
-      title="この項目は宣言とドリフトしています"
-      style={{ color: '#c0392b', marginLeft: '0.5rem', fontWeight: 600 }}
-    >
-      ⚠ ドリフト
-    </a>
+    <ol aria-label={t`パイプライン段`} className="flex flex-col gap-1">
+      {stages.map((stage) => {
+        const isDrifted = drifted.has(stage.name);
+        return (
+          <li
+            key={stage.name}
+            className={[
+              'rounded-[--radius-control] border px-3 py-2 text-sm',
+              isDrifted ? 'border-[--color-warning]' : 'border-[--color-border]',
+              stage.enabled ? '' : 'opacity-60',
+            ].join(' ')}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="text-[--color-fg]">{stage.name}</strong>
+              <span className="text-xs text-[--color-fg-muted]">（{stage.service}）</span>
+              {/* 無効は淡色だけで示さない（INDEX 決定 21）。 */}
+              {!stage.enabled && <StatusBadge tone="neutral">{t`無効`}</StatusBadge>}
+              {isDrifted && (
+                <a
+                  href={`#${DRIFT_SECTION_ID}`}
+                  className="text-xs text-[--color-warning] hover:underline"
+                >
+                  <Trans>⚠ ドリフト（明細へ）</Trans>
+                </a>
+              )}
+            </div>
+            <div className="text-xs text-[--color-fg-muted]">
+              {t`consumer`}: {stage.consumer}｜{stage.input} →{' '}
+              {stage.outputs.length > 0 ? stage.outputs.join(', ') : t`（終端）`}
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
-// #138: ドリフト対象の行に付ける強調スタイル（警告色の枠・背景）。
-function driftStyle(drifted: boolean): React.CSSProperties {
-  return drifted ? { borderColor: '#e67e22', background: '#fdf2e6' } : {};
+function EventBindingsTable({ bindings }: { bindings: EventBinding[] }) {
+  const { t } = useLingui();
+  return (
+    <div>
+      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
+        <Trans>イベント接続</Trans>
+      </h2>
+      {bindings.length === 0 ? (
+        <p className="text-sm">
+          <Trans>イベント接続はありません。</Trans>
+        </p>
+      ) : (
+        <Table>
+          <TableCaption>{t`イベント接続の一覧`}</TableCaption>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>
+                <Trans>イベント</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>発行者</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>購読者</Trans>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {bindings.map((b) => (
+              <TableRow key={b.event}>
+                <TableCell>{b.event}</TableCell>
+                <TableCell>{b.publishers.join(', ') || '—'}</TableCell>
+                <TableCell>{b.subscribers.join(', ') || '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
 }
 
-// パイプライン段: consumer → [outputs] の縦チェーン（IADR-0036）。無効段はグレーアウト。
-// #138: finding.target に一致する段は警告色＋(2) の明細へのリンクで強調する（SC-11 §(1)）。
-function PipelineView({ stages, driftTargets }: { stages: PipelineStage[]; driftTargets: Set<string> }) {
+function PortsTable({ ports }: { ports: PortSelection[] }) {
+  const { t } = useLingui();
   return (
-    <Section title={`パイプライン段（${stages.length}）`}>
-      {stages.length === 0 ? (
-        <p>段は登録されていません。</p>
+    <div>
+      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
+        <Trans>ポート実装の選択</Trans>
+      </h2>
+      {ports.length === 0 ? (
+        <p className="text-sm">
+          <Trans>ポートはありません。</Trans>
+        </p>
       ) : (
-        <ol aria-label="パイプライン段" style={{ listStyle: 'none', padding: 0 }}>
-          {stages.map((s) => {
-            const drifted = driftTargets.has(s.name);
+        <Table>
+          <TableCaption>{t`ポート実装の選択の一覧`}</TableCaption>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>
+                <Trans>ポート</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>実装</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>接続先</Trans>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {ports.map((p) => (
+              <TableRow key={p.port}>
+                <TableCell>{p.port}</TableCell>
+                <TableCell>{p.implementation}</TableCell>
+                <TableCell>{p.target ?? '—'}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+function ConnectorsTable({ connectors }: { connectors: Connector[] }) {
+  const { t } = useLingui();
+  return (
+    <div>
+      <h2 className="mb-1 text-sm font-medium text-[--color-fg-muted]">
+        <Trans>コネクタ</Trans>
+      </h2>
+      {connectors.length === 0 ? (
+        <p className="text-sm">
+          <Trans>コネクタはありません。</Trans>
+        </p>
+      ) : (
+        <Table>
+          <TableCaption>{t`コネクタの一覧`}</TableCaption>
+          <TableHead>
+            <TableRow>
+              <TableHeaderCell>
+                <Trans>コネクタ</Trans>
+              </TableHeaderCell>
+              <TableHeaderCell>
+                <Trans>状態</Trans>
+              </TableHeaderCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {connectors.map((c) => (
+              <TableRow key={c.name}>
+                <TableCell>{c.name}</TableCell>
+                <TableCell>
+                  <StatusBadge tone={c.enabled ? 'success' : 'neutral'}>
+                    {c.enabled ? t`有効` : t`無効`}
+                  </StatusBadge>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  );
+}
+
+/** ドリフト明細。0 件のときも**確認時刻**を出す（未検出と未実行を区別できるようにする）。 */
+function DriftTable({ report }: { report: DriftReport }) {
+  const { t } = useLingui();
+  if (report.findings.length === 0) {
+    return (
+      <p className="text-sm">
+        <Trans>ドリフトなし（OK）。</Trans>{' '}
+        <span className="text-xs text-[--color-fg-muted]">
+          {t`確認時刻`}: {formatDateTime(report.checkedAt)}
+        </span>
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="text-xs text-[--color-fg-muted]">
+        {t`確認時刻`}: {formatDateTime(report.checkedAt)}
+      </p>
+      <Table>
+        <TableCaption>{t`ドリフト明細の一覧`}</TableCaption>
+        <TableHead>
+          <TableRow>
+            <TableHeaderCell>
+              <Trans>種別</Trans>
+            </TableHeaderCell>
+            <TableHeaderCell>
+              <Trans>深刻度</Trans>
+            </TableHeaderCell>
+            <TableHeaderCell>
+              <Trans>対象</Trans>
+            </TableHeaderCell>
+            <TableHeaderCell>
+              <Trans>説明</Trans>
+            </TableHeaderCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {report.findings.map((f, i) => {
+            const severity = driftSeverityView(f.severity);
             return (
-              <li
-                key={s.name}
-                style={{
-                  border: '1px solid #ccc',
-                  borderRadius: 6,
-                  padding: '0.5rem 0.75rem',
-                  margin: '0.4rem 0',
-                  opacity: s.enabled ? 1 : 0.5,
-                  ...driftStyle(drifted),
-                }}
-              >
-                <div>
-                  <strong>{s.name}</strong> <small>（{s.service}）</small>
-                  {!s.enabled && <span> — 無効</span>}
-                  {drifted && <DriftMark />}
-                </div>
-                <div>
-                  <small>
-                    consumer: {s.consumer}｜{s.input} → {s.outputs.length ? s.outputs.join(', ') : '（終端）'}
-                  </small>
-                </div>
-              </li>
+              <TableRow key={`${f.kind}-${f.target}-${i}`}>
+                <TableCell>{labelOf(driftKindLabel(f.kind))}</TableCell>
+                <TableCell>
+                  {/* INDEX 決定 21: 深刻度は色 ＋ アイコン ＋ テキストで示す。 */}
+                  <StatusBadge tone={severity.tone}>{labelOf(severity.label)}</StatusBadge>
+                </TableCell>
+                <TableCell>{f.target}</TableCell>
+                <TableCell>{f.detail}</TableCell>
+              </TableRow>
             );
           })}
-        </ol>
-      )}
-    </Section>
+        </TableBody>
+      </Table>
+    </>
   );
 }
 
-function EventBindingsView({ bindings }: { bindings: EventBinding[] }) {
+/** 構成バージョン履歴（新しい順）。並び順とデータ源は API が担い、画面は表示のみ。 */
+function HistoryTable({ entries }: { entries: ConfigVersionEntry[] }) {
+  const { t } = useLingui();
+  if (entries.length === 0) {
+    return (
+      <p className="text-sm">
+        <Trans>適用履歴はありません。</Trans>
+      </p>
+    );
+  }
   return (
-    <Section title={`イベント接続（${bindings.length}）`}>
-      {bindings.length === 0 ? (
-        <p>イベント接続はありません。</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>イベント</th>
-              <th>発行者</th>
-              <th>購読者</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bindings.map((b) => (
-              <tr key={b.event}>
-                <td>{b.event}</td>
-                <td>{b.publishers.join(', ') || '—'}</td>
-                <td>{b.subscribers.join(', ') || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Section>
-  );
-}
-
-function PortsView({ ports }: { ports: PortSelection[] }) {
-  return (
-    <Section title={`ポート実装選択（${ports.length}）`}>
-      {ports.length === 0 ? (
-        <p>ポートはありません。</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>ポート</th>
-              <th>実装</th>
-              <th>接続先</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ports.map((p) => (
-              <tr key={p.port}>
-                <td>{p.port}</td>
-                <td>{p.implementation}</td>
-                <td>{p.target ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Section>
-  );
-}
-
-function ConnectorsView({ connectors }: { connectors: Connector[] }) {
-  return (
-    <Section title={`コネクタ（${connectors.length}）`}>
-      {connectors.length === 0 ? (
-        <p>コネクタはありません。</p>
-      ) : (
-        <ul aria-label="コネクタ一覧">
-          {connectors.map((c) => (
-            <li key={c.name}>
-              {c.name}: {c.enabled ? '有効' : '無効'}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Section>
+    <Table>
+      <TableCaption>{t`構成バージョン履歴の一覧`}</TableCaption>
+      <TableHead>
+        <TableRow>
+          <TableHeaderCell>
+            <Trans>コミット</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>適用日時</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>適用者</Trans>
+          </TableHeaderCell>
+          <TableHeaderCell>
+            <Trans>ドリフト</Trans>
+          </TableHeaderCell>
+        </TableRow>
+      </TableHead>
+      <TableBody>
+        {entries.map((h, i) => (
+          // 注入元が同一 commit + appliedAt の重複を返しても衝突しないよう index を前置する。
+          <TableRow key={`${i}-${h.gitCommit ?? 'nocommit'}-${h.appliedAt ?? ''}`}>
+            <TableCell>
+              <code title={h.gitCommit ?? undefined}>{shortCommit(h.gitCommit)}</code>
+            </TableCell>
+            <TableCell>{formatDateTime(h.appliedAt)}</TableCell>
+            <TableCell>{h.appliedBy ?? '—'}</TableCell>
+            <TableCell>{labelOf(hadDriftLabel(h.hadDrift))}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }

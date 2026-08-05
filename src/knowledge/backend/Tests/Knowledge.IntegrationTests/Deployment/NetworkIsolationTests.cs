@@ -29,6 +29,16 @@ public sealed class NetworkIsolationTests
         "configuration-service", // Issue #283, IADR-0070: AST 設定画面の後段。内部 API（expose のみ）を回帰ガード。
         "risk-management-service", // Issue #287, IADR-0071: AST リスク設定/統制状態の後段。内部 API（expose のみ）を回帰ガード。
         "market-monitor-service", // Issue #288, IADR-0072: AST 監視銘柄（watchlist）の後段。内部 API（expose のみ）を回帰ガード。
+        // FR-12, SC-07, Issue #501, IADR-0128 決定3: 変換ジョブ API（/jobs・retry 含む）の後段。
+        // ConversionService は **アプリ層の認可を課さない**（IADR-0042 決定3 / IADR-0029 の最小 HTTP サーフェス）。
+        // その代償統制がネットワーク分離であるにもかかわらず本列挙から漏れており、host 公開の回帰を
+        // 誰も止められなかった。BFF の retry を管理者限定へ絞っても、後段へ直接到達できれば同じ穴が残る。
+        "conversion-service",
+        // FR-12, SC-07, Issue #501: **`ingestion-service` は意図的に「未対応」であって「公開してよい」ではない**。
+        // 同じく compose では expose のみだが本列挙に無く、host 公開の回帰を止められない（同型の穴）。
+        // 今回入れなかったのは、HTTP サーフェスが MapPlatformIntrospection() 1 件のみで副作用のある操作を
+        // 持たず、FR-12 / SC-07 の射程（retry の権限是正）外だからである（IADR-0128 フォローアップ 2）。
+        // 追加するときはここへ 1 行足す。
     ];
 
     [Fact]
@@ -59,6 +69,26 @@ public sealed class NetworkIsolationTests
         blocks["bff"].Should().MatchRegex(@"(?m)^\s*ports:\s*$",
             "BFF は外部からの入口として host 公開を維持する");
         blocks["bff"].Should().Contain("5000:8080");
+    }
+
+    // FR-12, SC-07, Issue #501, IADR-0128 決定3: compose の host 非公開は代償統制の 1 本にすぎない。
+    // 「外部から後段へ到達できない」の論拠は 本番系（Helm）の Service が ClusterIP であること・
+    // NetworkPolicy が既定 deny であること・Istio VirtualService に経路が無いこと にも支えられている。
+    // このうち **最も起こりやすい公開経路である Service の type** を機械検査に載せる（残り 2 本は
+    // IADR-0128 フォローアップ 4）。service.yaml は .Values.services 全件を 1 枚の range で描画するため、
+    // ここに type: が現れないこと＝全内部サービスが既定の ClusterIP であることを意味する。
+    [Fact]
+    public void InternalServices_HelmServicesMustStayClusterIp()
+    {
+        var template = ReadHelmServiceTemplate();
+
+        // type: を書かない（＝ ClusterIP）。値で差し替えられる形（type: {{ ... }}）も禁止する。
+        template.Should().NotMatchRegex(@"(?m)^\s*type:",
+            "IADR-0128 決定3: 内部サービスの Service は既定 ClusterIP のままとする"
+            + "（NodePort / LoadBalancer 化は BFF 以外の公開エッジを作る）。"
+            + "将来 type を values で持たせる場合は、本検査を values 側の検査へ置き換えること");
+        template.Should().NotMatchRegex(@"(?m)^\s*nodePort:",
+            "IADR-0128 決定3: 内部サービスに nodePort を割り当ててはならない");
     }
 
     // IADR-0032 (#124): dev（compose）は Wiki.js 管理 UI への直接アクセス便宜のため 3001 を公開する
@@ -93,6 +123,11 @@ public sealed class NetworkIsolationTests
 
     private static string ReadComposeFile() =>
         File.ReadAllText(ResolveRepoFile(Path.Combine("deploy", "docker-compose.yml")));
+
+    // Helm の Service テンプレート（.Values.services 全件を range で描画する 1 枚）。
+    private static string ReadHelmServiceTemplate() =>
+        File.ReadAllText(ResolveRepoFile(Path.Combine(
+            "deploy", "helm", "microservices-platform", "templates", "service.yaml")));
 
     // Helm values.yaml から wikijs トップレベルブロック（次のトップレベルキーまで）を抽出する。
     private static string ReadHelmWikijsValues()

@@ -1,160 +1,183 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { apiFetch } from '@foundation/api/apiClient';
+import {
+  Alert,
+  Button,
+  Input,
+  Label,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  Tag,
+} from '@platform/ui';
+import { toMessages } from '@foundation/ui/apiErrors';
+import { useSearchQuery } from './useSearchQuery';
+import type { SearchResult } from './useSearchQuery';
 
-// SC-02, UC-01, FR-03/FR-05: 検索結果一覧画面。キーワード／意味検索の結果を一覧表示し、各件から
-// SC-03（文書詳細）へ内部遷移する。データソースは BFF 集約（POST /bff/search）。ABAC はサーバ側で
-// 適用され、権限外の文書は結果に現れない（deny-by-default → 空一覧。存在秘匿・IADR-0009）。
-// SC-01（検索／AI質問）が出典を外部 URI で開くのに対し、本画面は文書詳細（SC-03）への内部導線を担う。
-
-interface SearchResult {
-  chunkId: string;
-  documentId: string;
-  documentTitle: string;
-  text: string;
-  score: number;
-  attributes?: Record<string, string>;
-  tags?: string[];
-}
-interface SearchResponse {
-  results: SearchResult[];
-  totalHits: number;
-  elapsedMs: number;
-}
-
-type Status = 'idle' | 'loading' | 'ok' | 'error';
+// SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。
+// UC-01 代替フロー（キーワード検索のみで結果一覧を返し、AI 回答を省略する）の受け皿であり、
+// 本画面は AI 回答を一切呼ばない。各件から SC-03（文書詳細）へ内部遷移する。
+//
+// 実装しない要素（画面仕様書 docs/screens/SC-02_search-results.md §hi-fi モックアップとの対応）:
+//   検索モード切替（キーワード｜意味）・並び順・更新日時列。いずれも検索 API / DTO に該当の
+//   指定軸・項目が無く、UI だけ置くと「押しても結果が変わらない操作」「常に空の列」になる
+//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定待ち）。
 
 export function SearchResultsPage() {
+  const { t } = useLingui();
   // SC-02, ADR-0031 / IADR-0124 決定 3: 検索パラメータ `?q=` は型付きで受け取る。
   // ルート ID のリテラルを渡す形だけが厳密に型付く（Route.useSearch() は any になる）。
-  const { q: urlQuery } = useSearch({ from: '/_shell/search' });
+  const { q } = useSearch({ from: '/_shell/search' });
   const navigate = useNavigate();
-  const [input, setInput] = useState(urlQuery);
-  const [status, setStatus] = useState<Status>('idle');
-  const [response, setResponse] = useState<SearchResponse | null>(null);
+  // 入力欄は「未確定の編集値」であり、取得の引き金にはならない（IADR-0126 決定 3）。
+  const [input, setInput] = useState(q);
+  const search = useSearchQuery(q);
 
-  // 直近に実行した検索語。onSubmit の直接実行と ?q= 変化 useEffect の二重発火を防ぐ単一情報源。
-  const lastSearched = useRef<string | null>(null);
-
-  // FR-03: 検索を実行する。ABAC は BFF で適用されるため、クライアントはスコープを送らない。
-  const runSearch = useCallback((query: string) => {
-    const q = query.trim();
-    // 「直近に処理した検索語」を空文字も含め常に記録する（意図的）。effect 側の重複実行を抑止し、
-    // 空クリア後に ?q= を戻る操作で復元した際の重複判定も正しく保つ。空文字検索が将来有効化される
-    // 場合はこの値が '' になり得る点に留意（現状は送信ボタン disabled・effect の `q &&` ガードで実害なし）。
-    lastSearched.current = q;
-    if (!q) {
-      setStatus('idle');
-      setResponse(null);
-      return;
-    }
-    setStatus('loading');
-    apiFetch<SearchResponse>('/search', { method: 'POST', json: { query: q, topK: 20 } })
-      .then((data) => {
-        setResponse(data ?? { results: [], totalHits: 0, elapsedMs: 0 });
-        setStatus('ok');
-      })
-      .catch(() => setStatus('error'));
-  }, []);
-
-  // 初期表示・URL の ?q= 変化（SC-01 等からのディープリンク・戻る操作）で検索する。
-  // onSubmit 由来の navigate による ?q= 更新は既に runSearch 済み（lastSearched 一致）のため再実行しない
-  // （送信ごとの /bff/search 二重発火を防ぐ。単一の発火経路に統一）。
-  useEffect(() => {
-    const q = urlQuery.trim();
-    if (q && q !== lastSearched.current) {
-      setInput(urlQuery);
-      runSearch(urlQuery);
-    }
-  }, [urlQuery, runSearch]);
+  // IADR-0126 決定 3: 検索語の単一情報源は URL である。**入力欄もそれに追随する。**
+  //
+  // `useState(q)` はマウント時の初期値しか取らないため、本画面が**アンマウントされずに `q` だけが
+  // 変わる経路**（ブラウザの戻る／進む、`/search` に居る状態での外部からの `navigate`）では、
+  // 結果一覧だけが更新されて入力欄が古いまま残る（TanStack Router は同一ルートの search 変化で
+  // コンポーネントを再生成しない）。URL を正とすると決めた設計から、入力欄だけが外れる形である。
+  //
+  // **`useEffect` では直さない。** props/URL の変化に合わせた state の調整は React が
+  // 「Effect は不要」とするパターンであり、Effect でやると 1 フレーム古い値が描画されて
+  // 余分な再描画も起きる。ここは**レンダー中に調整する**（React 公式の "Adjusting state when
+  // props change"）。`key` によるコンポーネントごとの再生成も可能だが採らない——
+  // 入力欄の追随という**この画面の内部事情**をルート定義側（index.tsx）へ持ち出すことになり、
+  // 理由がファイルをまたいで分かれるうえ、将来ローカル state が増えたときに巻き添えで捨てられる。
+  //
+  // 編集途中の値を捨てるのは意図どおりである——URL が外から変わったということは、
+  // 利用者（または戻る操作）が別の検索語を選んだということであり、未確定の編集値は無効になる。
+  const [prevQ, setPrevQ] = useState(q);
+  if (q !== prevQ) {
+    setPrevQ(q);
+    setInput(q);
+  }
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const q = input.trim();
-    // 単一経路で実行し、検索条件を URL に反映する（共有・戻る操作で再現可能に）。
-    runSearch(q);
-    void navigate({ to: '/search', search: { q } });
+    // 検索条件の単一情報源は URL である。ここは URL を更新するだけで、取得は URL の変化に従う。
+    void navigate({ to: '/search', search: { q: input.trim() } });
   }
 
-  const results = response?.results ?? [];
+  const results = search.data?.results ?? [];
+  const totalHits = search.data?.totalHits ?? results.length;
+  // `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけである
+  // （`results.length` のようなプロパティ参照はカタログの ID を壊す）。
+  const shownCount = results.length;
 
   return (
     <section>
-      <h1>検索結果一覧</h1>
+      <h1 className="text-lg font-semibold text-[--color-fg]">
+        <Trans>検索結果一覧</Trans>
+      </h1>
 
-      <form onSubmit={onSubmit} role="search">
-        <label htmlFor="q">キーワード・意味検索</label>
-        <br />
-        <input
-          id="q"
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="例: 経費規程 出張"
-          style={{ width: '100%', maxWidth: 640 }}
-        />
-        <div>
-          <button type="submit" disabled={input.trim().length === 0}>
-            検索する
-          </button>
+      <form onSubmit={onSubmit} role="search" className="mt-3 mb-2 flex items-end gap-2">
+        <div className="grow">
+          <Label htmlFor="search-q" className="sr-only">
+            <Trans>キーワード・意味検索</Trans>
+          </Label>
+          <Input
+            id="search-q"
+            value={input}
+            maxLength={1000}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={t`例: 経費精算`}
+          />
         </div>
+        <Button type="submit" variant="primary" disabled={input.trim().length === 0}>
+          <Trans>検索</Trans>
+        </Button>
+        <Link to="/ask" className="shrink-0 text-sm text-[--color-brand] hover:underline">
+          <Trans>← チャットに戻る</Trans>
+        </Link>
       </form>
 
-      {status === 'loading' && <p role="status">検索中…</p>}
-      {status === 'error' && <p role="alert">検索に失敗しました。</p>}
-
-      {status === 'ok' && (
-        <section aria-label="検索結果" style={{ marginTop: '1rem' }}>
-          {results.length === 0 ? (
-            // deny-by-default: 権限外・0 件はいずれも中立に「見つからない」と表示する（存在秘匿）。
-            <p>該当する文書が見つかりませんでした。</p>
-          ) : (
-            <>
-              <p>
-                <small>
-                  {response?.totalHits ?? results.length} 件（表示 {results.length} 件）
-                </small>
-              </p>
-              <ul style={{ listStyle: 'none', padding: 0 }}>
-                {results.map((r) => (
-                  <ResultItem key={r.chunkId} result={r} />
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
+      {search.isFetching && (
+        <p role="status" className="text-sm text-[--color-fg-muted]">
+          <Trans>検索中…</Trans>
+        </p>
       )}
+
+      {search.isError && (
+        <Alert tone="danger" role="alert" label={t`エラー`}>
+          {toMessages(search.error, t`検索に失敗しました。`).join(' / ')}
+        </Alert>
+      )}
+
+      {search.isSuccess &&
+        (results.length === 0 ? (
+          // deny-by-default: 権限外・0 件はいずれも中立に「見つからない」と表示する（存在秘匿・IADR-0009）。
+          <p className="text-sm">
+            <Trans>該当する文書が見つかりませんでした。</Trans>
+          </p>
+        ) : (
+          <>
+            {/* FR-05: 一覧が全体ではないことを明示する（05_screens §SC-02「権限内のみ表示」を明示）。 */}
+            <p className="mb-2 text-sm text-[--color-fg-muted]">
+              <Trans>{totalHits} 件（権限内のみ表示）</Trans>
+              {shownCount < totalHits && (
+                <>
+                  {' '}
+                  <Trans>（表示 {shownCount} 件）</Trans>
+                </>
+              )}
+            </p>
+            <Table>
+              <TableCaption>
+                <Trans>検索結果</Trans>
+              </TableCaption>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>
+                    <Trans>文書</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>タグ</Trans>
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {results.map((r) => (
+                  <ResultRow key={r.chunkId} result={r} />
+                ))}
+              </TableBody>
+            </Table>
+          </>
+        ))}
     </section>
   );
 }
 
-function ResultItem({ result }: { result: SearchResult }) {
-  const attrs = Object.entries(result.attributes ?? {});
+function ResultRow({ result }: { result: SearchResult }) {
   return (
-    <li style={{ border: '1px solid #eee', borderRadius: 6, padding: '0.5rem 0.75rem', margin: '0.5rem 0' }}>
-      {/* SC-02 → SC-03: 文書詳細へ内部遷移する（ABAC はサーバ側で再適用）。 */}
-      <Link to="/docs/$id" params={{ id: result.documentId }} style={{ fontWeight: 600 }}>
-        {result.documentTitle}
-      </Link>{' '}
-      <small aria-label="スコア">score {result.score.toFixed(2)}</small>
-      <p style={{ margin: '0.25rem 0', color: '#444' }}>{result.text}</p>
-      {(attrs.length > 0 || (result.tags?.length ?? 0) > 0) && (
-        <div>
-          {attrs.map(([k, v]) => (
-            <span
-              key={k}
-              style={{ display: 'inline-block', border: '1px solid #ccc', borderRadius: 4, padding: '0 0.4rem', marginRight: '0.3rem', fontSize: '0.85em' }}
-            >
-              {k}: {v}
-            </span>
+    <TableRow>
+      <TableCell>
+        {/* SC-02 → SC-03: 文書詳細へ内部遷移する（ABAC はサーバ側で再適用される）。 */}
+        <Link
+          to="/docs/$id"
+          params={{ id: result.documentId }}
+          className="font-medium text-[--color-brand] hover:underline"
+        >
+          {result.documentTitle}
+        </Link>
+        <p className="text-xs text-[--color-fg-muted]">{result.text}</p>
+      </TableCell>
+      <TableCell>
+        <span className="flex flex-wrap gap-1">
+          {result.tags?.map((tag) => (
+            <Tag key={tag} tone="neutral">
+              {tag}
+            </Tag>
           ))}
-          {result.tags?.map((t) => (
-            <span key={t} style={{ marginRight: '0.3rem', fontSize: '0.85em', color: '#666' }}>
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
-    </li>
+        </span>
+      </TableCell>
+    </TableRow>
   );
 }

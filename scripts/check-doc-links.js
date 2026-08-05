@@ -29,12 +29,12 @@ const REPO_ROOT = process.env.DOC_LINKS_ROOT
 
 // 参照として実在検査を行う拡張子（仕様書・図・スキーマ・**コードファイル**）。
 // コード拡張子（js/ts/cs/csproj/props/slnx/sh ほか）が抜けていた間、仕様書からコードへの
-// live link は一切検査されず、破損したまま「OK: 384 件」と報告された（issue #470）。
-// 実害: docs/tests/TEST_STRATEGY.md が当時未マージの check-backend-libraries.js を live link
-// しており、検査器を作る PR が検査器の穴で自分の参照切れを見逃した。
-// 本ファイルは impl-handoff-kit とバイト一致の分類 A であり、この拡張子追加と下の --self-test は
-// **暫定デルタ**である。環流先は planning#167（https://github.com/endazon/project-planning/issues/167）。
-// キット反映後の同期で撤去しバイト一致へ戻す（IADR-0115。記録: feedback/20260803_doc-links-code-extensions.md）。
+// live link は一切検査されず、破損したまま「OK: 384 件」と報告された（MSP#470 / planning#167。
+// 検査器を作る PR が、検査器の穴で自分の参照切れを見逃した型）。
+// `txt` / `log` / `lock` 等の汎用拡張子は誤検知リスクのため**意図的に対象外**とし、その方針を
+// 下の自己試験（--self-test）で固定してある。スタック固有分（cs/csproj/props/targets/slnx は
+// .NET、ts/tsx は TS）もキット既定に含める（在っても他スタックで誤検知しない拡張子のみ）。
+// 増減するときは self-test の正例・負例を必ず対で更新すること。
 const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio|js|mjs|cjs|ts|tsx|cs|csproj|props|targets|slnx|sh)$/i;
 
 function parseArgs(argv) {
@@ -180,7 +180,7 @@ function collectBroken(fp, onSkip) {
 // --- 自己試験 -------------------------------------------------------------------
 //
 // 検査対象の拡張子を広げるたび、正例（実在 → OK）と負例（不在 → 検出）を対で足す。
-// 「検査しているつもりで何も見ていない」状態（issue #470）を回帰させないための最小の歯止め。
+// 「検査しているつもりで何も見ていない」状態（planning#167）を回帰させないための最小の歯止め。
 
 function selfTest() {
   const cases = [];
@@ -190,9 +190,9 @@ function selfTest() {
   // LINK_EXT: 既存の対象（仕様書・図・スキーマ）は従来どおり。
   t('LINK_EXT: .md / .yaml / .json / .svg は対象', ['a.md', 'a.yaml', 'a.yml', 'a.json', 'a.svg']
     .every((x) => LINK_EXT.test(x)));
-  // LINK_EXT: コードファイル（issue #470 で追加）。
+  // LINK_EXT: コードファイル（MSP#470 / planning#167 で追加）。
   for (const ext of ['js', 'mjs', 'cjs', 'ts', 'tsx', 'cs', 'csproj', 'props', 'targets', 'slnx', 'sh']) {
-    t(`LINK_EXT: .${ext} は対象（issue #470）`, LINK_EXT.test(`a.${ext}`));
+    t(`LINK_EXT: .${ext} は対象（planning#167）`, LINK_EXT.test(`a.${ext}`));
   }
   t('LINK_EXT: 対象外の拡張子は素通し（誤検知しない）',
     !LINK_EXT.test('a.txt') && !LINK_EXT.test('a.tsv') && !LINK_EXT.test('a'));

@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { Navigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@platform/ui';
 import { useAuth } from './useAuth';
@@ -18,10 +20,16 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto mt-24 max-w-md text-center">
+      {/* 05_screens §共通シェル ［2026-08-04 確定］: ブランド表示名は固有名詞として扱い、
+          **翻訳カタログの対象としない**（Layout.tsx の注記と IADR-0125 決定 8 を参照）。 */}
+      {/* eslint-disable-next-line lingui/no-unlocalized-strings --
+          05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
       <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>
-      <p className="mt-2 text-sm text-[--color-fg-muted]">社内ナレッジ検索・AI 回答プラットフォーム</p>
+      <p className="mt-2 text-sm text-[--color-fg-muted]">
+        {i18n._(msg`社内ナレッジ検索・AI 回答プラットフォーム`)}
+      </p>
       <Button variant="primary" className="mt-6" onClick={() => void login()}>
-        Keycloak でサインイン
+        {i18n._(msg`Keycloak でサインイン`)}
       </Button>
     </main>
   );

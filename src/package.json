@@ -18,7 +18,10 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "pnpm --filter @platform/frontend run test:e2e",
-    "codegen": "orval --config ./orval.config.ts"
+    "codegen": "orval --config ./orval.config.ts",
+    "i18n:extract": "lingui extract --clean",
+    "i18n:compile": "lingui compile --strict",
+    "i18n": "pnpm run i18n:extract && pnpm run i18n:compile"
   },
   "pnpm": {
     "//": "IADR-0121 決定 2: pnpm は既定でパッケージの postinstall を実行しない（サプライチェーン対策）。ビルドが必要な依存だけを明示的に許可する。esbuild は Vite/Vitest が使うネイティブバイナリの取得に postinstall を要する。",
@@ -39,6 +42,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.11.1",
+    "@lingui/babel-plugin-lingui-macro": "^6.6.0",
+    "@lingui/cli": "^6.6.0",
+    "@lingui/format-po": "^6.6.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.5.0",
     "@testing-library/react": "^16.0.1",
@@ -49,8 +55,10 @@
     "@vitejs/plugin-react": "^4.3.2",
     "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^9.11.1",
+    "eslint-plugin-lingui": "^0.14.0",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.12",
+    "eslint-plugin-storybook": "^10.5.6",
     "globals": "^15.9.0",
     "jsdom": "^25.0.1",
     "orval": "^8.23.0",

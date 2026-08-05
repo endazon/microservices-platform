@@ -1,112 +1,283 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
-import { createRoute } from '@tanstack/react-router';
-import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
+import { activate } from '@foundation/i18n';
+import { resetAppConfigCache } from '@foundation/config/runtimeConfig';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 
-// SC-10, FR-10, UC-05: BFF 集約の表示・存在秘匿・外部導線・異常系を検証する。
-// apiFetch と実行時 config はモックし、ロール判定は実 roles.ts を通す（access_token から復号）。
-const mocks = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
-  opsLinks: {} as { grafanaUrl?: string; jaegerUrl?: string; kialiUrl?: string },
+// SC-10, UC-05, FR-10: 運用ダッシュボードの再実装（#504）。
+// サマリ表示・外部ツール導線・SC-11 導線・存在秘匿の中立化・**着手保留の要素が無いこと**を固定する。
+const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
+  apiFetch: mocks.apiFetch,
 }));
 
-vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
-vi.mock('@foundation/config/runtimeConfig', () => ({
-  appConfig: () => ({ opsLinks: mocks.opsLinks }),
-}));
-
-import { OperationsDashboardPage } from './OperationsDashboardPage';
-import { createSc11ConfigRoute } from '../sc11-config';
+import { createSc10OperationsRoute, sc10OperationsNav } from './index';
 
 const SUMMARY = {
-  totalSearches: 12,
-  totalAnswers: 8,
-  usageTrend: [{ date: '2026-07-08', eventType: 'search', count: 5 }],
-  topSearchTerms: [{ term: 'ABAC', count: 3 }],
-  quality: { up: 6, down: 2, total: 8, satisfactionRate: 0.75 },
+  totalSearches: 1840,
+  totalAnswers: 312,
+  usageTrend: [
+    { date: '2026-08-04', eventType: 'search', count: 120 },
+    { date: '2026-08-04', eventType: 'answer', count: 44 },
+  ],
+  topSearchTerms: [
+    { term: '経費精算', count: 51 },
+    { term: '就業規則', count: 33 },
+  ],
+  quality: { up: 82, down: 18, total: 100, satisfactionRate: 0.82 },
 };
 
-// 本画面のルート定義は RequireRole（platform-admin 限定）で守られているが、本テストの対象は
-// **画面内部の描画とロール別導線**であり、権限外ロール（'user'）でも画面本体を描画する必要がある。
-// そこでガードを外したルートを同じパスに置く（ガードの挙動は sc11-config/access.test.tsx と
-// foundation の RequireRole.test.tsx が担う）。SC-11 の実ルートは導線の href 解決のため同居させる。
-async function renderPage(roles: string[]) {
-  return renderUnitRoute(
-    (shell) => [
-      createRoute({
-        getParentRoute: () => shell,
-        path: '/admin/ops',
-        component: OperationsDashboardPage,
-      }),
-      createSc11ConfigRoute(shell),
-    ],
-    { initialEntry: '/admin/ops', roles },
-  );
+async function renderPage(roles: readonly string[] = ['platform-admin']) {
+  return renderUnitRoute((shell) => [createSc10OperationsRoute(shell)], {
+    initialEntry: '/admin/ops',
+    roles,
+  });
 }
 
 beforeEach(() => {
   mocks.apiFetch.mockReset();
-  mocks.opsLinks = {};
+  resetAppConfigCache();
+  window.__APP_CONFIG__ = undefined;
+});
+
+afterEach(() => {
+  window.__APP_CONFIG__ = undefined;
+  resetAppConfigCache();
+  act(() => {
+    activate('ja');
+  });
 });
 
 describe('OperationsDashboardPage (SC-10)', () => {
-  it('renders the summary (totals, satisfaction, usage, trends) on 200', async () => {
+  // FR-10: 利用状況・検索傾向・回答品質を可視化する。
+  it('shows the usage, trend and answer-quality summary', async () => {
     mocks.apiFetch.mockResolvedValue(SUMMARY);
-    await renderPage(['platform-admin']);
+    await renderPage();
 
-    expect(await screen.findByText('12')).toBeInTheDocument(); // 検索総数
-    expect(screen.getByText('8')).toBeInTheDocument(); // 回答総数
-    expect(screen.getByText('75%')).toBeInTheDocument(); // 満足率
-    expect(screen.getByText(/2026-07-08 \/ search: 5/)).toBeInTheDocument();
-    expect(screen.getByText(/ABAC: 3/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
+    expect(screen.getByText('1840')).toBeInTheDocument();
+    expect(screen.getByText('312')).toBeInTheDocument();
+    expect(screen.getByText('82%')).toBeInTheDocument();
+
+    const usage = within(screen.getByRole('table', { name: '利用状況（日次）の一覧' }));
+    expect(usage.getByText('検索')).toBeInTheDocument();
+    expect(usage.getByText('AI 回答')).toBeInTheDocument();
+
+    const trend = within(screen.getByRole('table', { name: '検索傾向（上位語）の一覧' }));
+    expect(trend.getByText('経費精算')).toBeInTheDocument();
+
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/dashboard/summary?days=7');
   });
 
-  it('shows only configured external tool links', async () => {
-    mocks.opsLinks = { grafanaUrl: 'https://grafana.example', jaegerUrl: 'https://jaeger.example' };
+  // 契約の期間指定は ?days= の 1 本。既定は 7 日（BFF の既定と揃える）。
+  it('starts at seven days and sends the selected period to the API', async () => {
     mocks.apiFetch.mockResolvedValue(SUMMARY);
-    await renderPage(['platform-admin']);
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByText('1840');
 
-    expect(await screen.findByRole('link', { name: 'Grafana' })).toHaveAttribute(
+    expect(screen.getByLabelText('集計期間')).toHaveValue('7');
+    await user.selectOptions(screen.getByLabelText('集計期間'), '30');
+
+    await waitFor(() =>
+      expect(mocks.apiFetch).toHaveBeenCalledWith('/dashboard/summary?days=30'),
+    );
+  });
+
+  // 未知のイベント種別を握り潰さない（`—`・「不明」へ丸めない）。
+  it('shows an unknown usage event type verbatim', async () => {
+    mocks.apiFetch.mockResolvedValue({
+      ...SUMMARY,
+      usageTrend: [{ date: '2026-08-04', eventType: 'export', count: 3 }],
+    });
+    await renderPage();
+
+    const usage = within(await screen.findByRole('table', { name: '利用状況（日次）の一覧' }));
+    expect(usage.getByText('export')).toBeInTheDocument();
+  });
+
+  it('says the period has no usage rather than showing an empty table', async () => {
+    mocks.apiFetch.mockResolvedValue({ ...SUMMARY, usageTrend: [], topSearchTerms: [] });
+    await renderPage();
+
+    expect(await screen.findByText('期間内の利用はありません。')).toBeInTheDocument();
+    expect(screen.getByText('検索傾向はまだありません。')).toBeInTheDocument();
+  });
+
+  // IADR-0129 決定 3 / IADR-0009: 403 と 404 は**同じ**中立文言。文言から権限の有無を読ませない。
+  it('shows the same neutral message for a 403', async () => {
+    mocks.apiFetch.mockRejectedValue(new ApiError('forbidden', '権限がありません。', 403));
+    await renderPage();
+
+    expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows the same neutral message for a 404', async () => {
+    mocks.apiFetch.mockRejectedValue(new ApiError('notFound', '見つかりませんでした。', 404));
+    await renderPage();
+
+    expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // 5xx は中立化しない（系の状態であって資源の存在ではない。運用者が障害を見逃さないようにする）。
+  it('surfaces a server failure as an alert instead of the neutral message', async () => {
+    mocks.apiFetch.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
+    await renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('運用ダッシュボードは利用できません。')).not.toBeInTheDocument();
+  });
+
+  // 実行時 config で注入されたツールだけを出す（未設定は描かない）。
+  it('renders only the observability tools that runtime config injects', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    window.__APP_CONFIG__ = {
+      opsLinks: { grafanaUrl: 'https://grafana.example', jaegerUrl: 'https://jaeger.example' },
+    };
+    resetAppConfigCache();
+    await renderPage();
+
+    expect(await screen.findByRole('link', { name: /Grafana/ })).toHaveAttribute(
       'href',
       'https://grafana.example',
     );
-    expect(screen.getByRole('link', { name: 'Jaeger' })).toBeInTheDocument();
-    // Kiali は未設定＝非表示。
-    expect(screen.queryByRole('link', { name: 'Kiali' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Jaeger \/ Tempo/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Kiali/ })).not.toBeInTheDocument();
   });
 
-  it('shows the SC-11 config-viewer link for ConfigViewer roles', async () => {
+  it('says the tool links are not configured when none is injected', async () => {
     mocks.apiFetch.mockResolvedValue(SUMMARY);
-    await renderPage(['platform-operator']);
-    expect(await screen.findByRole('link', { name: /構成ビューア/ })).toHaveAttribute(
+    await renderPage();
+
+    expect(await screen.findByText('外部ツールの導線は未設定です。')).toBeInTheDocument();
+  });
+
+  // 計画の遷移図 SC10 --> SC11。IADR-0129 決定 4: 権限で出し分けない（到達しない分岐を作らない）。
+  it('always offers the link to SC-11 for anyone who can open this screen', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    await renderPage();
+
+    expect(await screen.findByRole('link', { name: '構成ビューア →' })).toHaveAttribute(
       'href',
       '/admin/config-viewer',
     );
   });
 
-  it('hides the SC-11 link for non-ConfigViewer users', async () => {
+  // IADR-0119: 「ナレッジ健全性」節は**着手保留の要求**に属するため画面に出さない
+  // （どの要求かは IADR-0119 と画面仕様書が持つ。**保留対象の ID をここへ書くと
+  //  check-test-traceability.js が「実装が先行している」と誤って報告する**——
+  //  その ID は、当該機能に着手する issue が初めて書く）。
+  // **まず「見えるはずの条件」で描画されていることを確かめてから**無いことを assert する
+  // （#502 の M3 の教訓）。
+  it('does not render the knowledge-health section (its requirement is on hold)', async () => {
     mocks.apiFetch.mockResolvedValue(SUMMARY);
-    await renderPage(['user']);
-    await screen.findByText('検索総数');
-    expect(screen.queryByRole('link', { name: /構成ビューア/ })).not.toBeInTheDocument();
+    await renderPage();
+
+    // 見えるはずのもの（サマリ）が在ることを先に確かめる。
+    expect(await screen.findByText('1840')).toBeInTheDocument();
+
+    expect(screen.queryByText(/ナレッジ健全性/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/孤立文書/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/未解決リンク/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/未要約クラスタ/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/陳腐化文書/)).not.toBeInTheDocument();
+    // 辺の型ごとの使用件数・フォールバック警告・除外の注記も同じ節に属する。
+    expect(screen.queryByText(/辺の型/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/フォールバック/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/個人資料/)).not.toBeInTheDocument();
   });
 
-  it('shows a neutral forbidden message on 403', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('forbidden', 'x', 403));
-    await renderPage(['user']);
-    expect(await screen.findByText(/権限がありません/)).toBeInTheDocument();
+  // 契約に無い KPI（SLO・LLM コスト）は「—」のカードすら置かない。
+  // **KPI カードは契約から出せる 3 枚だけ**であることを、カードの見出しの集合で固定する
+  // （「SLO」という語そのものは副題「…SLO・コストは Grafana で参照」に出るため、
+  //  テキスト検索では区別できない——**カードが在るか**を見る）。
+  it('renders only the three KPI cards the contract can fill', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    await renderPage();
+
+    expect(await screen.findByText('1840')).toBeInTheDocument();
+
+    // KPI カードの見出し（CardTitle）は h2。一覧・詳細ツールの見出しも h2 なので、
+    // KPI が増減したらこの集合が動く。
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '検索総数',
+      '回答総数',
+      '満足率',
+      '利用状況（日次）',
+      '検索傾向（上位語）',
+      '詳細ツール',
+    ]);
+
+    expect(screen.queryByRole('heading', { name: 'SLO' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'LLMコスト' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/p95/)).not.toBeInTheDocument();
+    // モックの「人/日」（一意利用者数）も契約に無い。件数だけを出す。
+    expect(screen.queryByText(/人\/日/)).not.toBeInTheDocument();
   });
 
-  it('shows a neutral not-available message on 404 (existence hidden)', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('notFound', 'x', 404));
+  // ADR-0031: 文言は Lingui のカタログ（ja / en）。
+  it('renders in English when the en locale is active', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    await renderPage();
+    await screen.findByText('1840');
+
+    act(() => {
+      activate('en');
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Operations dashboard' }),
+    ).toBeInTheDocument();
+  });
+});
+
+// IADR-0009 / IADR-0035: 存在秘匿。SC-10 は platform-admin 限定である
+// （計画は「運用者・管理者」だが、データ源 /bff/dashboard/summary と後段 DashboardService が
+//  ともに AdminOnly のため据え置いた。IADR-0129 決定 4・環流の提案 7）。
+describe('SC-10 access control (#504)', () => {
+  it('grants access to platform-admin', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
     await renderPage(['platform-admin']);
-    expect(await screen.findByText(/利用できません/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
   });
 
-  it('shows an alert on server/network error', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('server', 'x', 500));
-    await renderPage(['platform-admin']);
-    expect(await screen.findByRole('alert')).toHaveTextContent('取得に失敗');
+  it('hides existence (NotFound) for an operator and for a plain user', async () => {
+    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    for (const roles of [['platform-operator'], ['user']]) {
+      const view = await renderPage(roles);
+      expect(
+        await screen.findByRole('heading', { name: '見つかりませんでした' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+      // 権限外ではサマリ API を呼ばない（要求の有無から存在を推測させない）。
+      expect(mocks.apiFetch).not.toHaveBeenCalled();
+      view.unmount();
+    }
+  });
+
+  it('produces the same not-found markup as a plain absence', async () => {
+    const { NotFound } = await import('@foundation/ui/NotFound');
+    const { render } = await import('@testing-library/react');
+
+    await renderPage(['user']);
+    const forbidden = (await screen.findByRole('heading', { name: '見つかりませんでした' }))
+      .parentElement?.outerHTML;
+
+    const absent = render(<NotFound />);
+    expect(forbidden).toBeTruthy();
+    expect(forbidden).toBe(absent.container.firstElementChild?.outerHTML);
+  });
+
+  it('exposes a nav entry limited to the admin role in the ops group', () => {
+    expect(sc10OperationsNav.requiresAnyRole).toEqual(['platform-admin']);
+    // 05_screens §共通シェル: SC-10 は「運用」グループ。
+    expect(sc10OperationsNav.group).toBe('ops');
   });
 });

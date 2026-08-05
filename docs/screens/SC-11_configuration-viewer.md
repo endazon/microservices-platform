@@ -1,174 +1,231 @@
 ---
 title: 構成ビューア 画面仕様書
 type: screen-spec
-status: draft
+status: completed
 related_ids:
   - SC-11
   - FR-15
   - ADR-0018
   - NFR
+  - IADR-0009
+  - IADR-0029
+  - IADR-0030
+  - IADR-0036
+  - IADR-0046
+  - IADR-0121
+  - IADR-0124
+  - IADR-0125
+  - IADR-0129
 author: claude
 created: 2026-07-07
-updated: 2026-07-08
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
+  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
 related_specs:
-  - "../specs/20260708_issue-111_declarative-pipeline-config.md"
-  - "../specs/20260708_issue-102_composability-fixed-variable-separation.md"
-  - "../specs/20260708_issue-113_sc11-open-items-operator-role.md"
-  - "../adr/IADR-0028_declarative-pipeline-config.md"
+  - "./SC-10_operations-dashboard.md"
+  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
   - "../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md"
   - "../adr/IADR-0030_operator-role-and-config-viewer-policy.md"
+  - "../adr/IADR-0036_sc11-config-viewer-visualization.md"
+  - "../adr/IADR-0046_config-version-history-source.md"
+  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
+  - "../tests/SC-11_configuration-viewer.md"
 ---
 
 # 画面仕様書: 構成ビューア（SC-11）
 
-> 画面（SC）単位で作成する。計画リポジトリの画面設計（05_screens）を実装向けに詳細化する。
-> 本画面は **FR-15（構成情報取得 API）を人間可読に可視化する**ものであり、表示するデータは
-> 構成情報 API（Issue #112）を唯一のデータソースとする。**#112 完了後に画面実装へ着手する**。
+> **［実装状態］`status: completed`。3 画面のうち本画面だけは、hi-fi の要素が
+> **すべて契約に載っている**（未実装として残るのは共通シェルの 2 行だけである）。**
+> **ただし行数基準では捕まらない部分未実装が 1 件ある**——hi-fi のドリフト明細の例示は
+> **3 セルとも契約の値域外**であり、実装は 5 分類・2 深刻度・**段名**の `target` へ読み替えている
+> （§hi-fi モックアップとの対応 #14）。
+
+> **［2026-08-05 / #504］新スタック（ADR-0031: React 19 / TanStack Router / TanStack Query /
+> Tailwind v4 ＋ shadcn/ui / Lingui）での再実装に合わせて全面改訂した。**
+> 3 本の問い合わせ（実効構成・ドリフト・履歴）を独立に扱う性質と、ドリフト種別・深刻度の写像を
+> **純関数へ出した**（[[IADR-0129]] 決定 5・6）。可視化方式（CSS 縦チェーン＋表）は [[IADR-0036]] のまま変えない。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-11 構成ビューア**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-11）
-- 関連機能要求（FR）: **FR-15**（現在有効なシステム構成・構成バージョンの読み取り専用取得、宣言との不一致検出・警告、管理者・運用者限定）
-- 関連ユースケース（UC）: —（FR-15 は運用・保守要求。専用 UC は未定義。運用者による構成確認・障害調査・監査を主要シーンとする）
-- 関連 ADR: **ADR-0018**（Composable Architecture: 宣言的構成＋プラグイン規約、Accepted）
-- 計画技術検討: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6（構成情報 API・イントロスペクション）
-- 非機能: 存在秘匿（権限外には応答自体を返さない）・監査ログ記録
-
-## 依存関係と前提
-
-| 項目 | 状態 | 備考 |
-| --- | --- | --- |
-| 構成情報 API（#112） | **完了（PR #116）** | 実効構成・ドリフトの**データソース**（`/bff/admin/config`・`/bff/admin/config/drift`、IADR-0029）。本画面は API の応答を表示するだけで、独自に構成を収集・判定しない |
-| 宣言的パイプライン構成（#111） | 完了（`develop`） | 宣言（Git）側の正データ。`deploy/helm/microservices-platform/files/pipeline.json` ＋ `pipeline.schema.json` |
-| 固定/可変分離（#102） | 完了 | 段・ポート・コネクタの分類基盤 |
-| フロントエンド基盤 | 後続フェーズ | 本リポジトリに SPA 実装は未着手。他 SC 画面群と足並みを揃える |
-
-> **本仕様書のスコープ**: SC-11 の画面設計（表示項目・レイアウト・権限・遷移・API 契約への要求）を確定する。
-> 実際の画面実装（フロントエンド）と BFF 集約エンドポイントは #112 完了後に、本仕様書に沿って行う。
+- 画面（SC）: **SC-11 構成ビューア**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-11・遷移図 `SC10 → SC11`）
+- 関連機能要求（FR）: **FR-15**（現在有効なシステム構成・構成バージョンの読み取り専用取得、
+  宣言との不一致検出・警告、管理者・運用者限定）
+- 関連ユースケース（UC）: **—（運用・保守要求）**。計画の画面一覧が「—」とする（issue #504 の表も一致）
+- モックアップ（**実装の正**）:
+  [hi-fi/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-11.html) ／
+  [wireframe/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html)
+- 関連 ADR（計画）: **ADR-0018**（Composable Architecture、Accepted）
+- 計画技術検討: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6（構成情報 API）／
+  [05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md) §構成変更の監査ログと適用履歴
+- 関連 IADR: [[IADR-0129]]（本作業の設計判断）・[[IADR-0029]]（API 配置・ドリフト粒度）・
+  [[IADR-0030]]（`platform-operator` と `ConfigViewer` ポリシー）・[[IADR-0036]]（可視化方式）・
+  [[IADR-0046]]（構成バージョン履歴の正データ源）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
-> **［2026-08-04 / #490］ルートは `/admin/config-viewer` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
-
 
 組み替えが自由になるほど「いま何がどう繋がっているか」は自明でなくなる。本画面は、現在有効な
 **実効構成**（パイプライン段・イベント接続・ポート実装選択・コネクタ）を機械可読（FR-15 API）に加えて
 **人間可読**に可視化し、宣言（Git）との差分（ドリフト）と構成バージョン履歴を確認できるようにする。
 
+- ルート: **`/admin/config-viewer`**（05_screens §共通シェル「ルートパス」）
+- 左ナビ: 「運用」グループの **「構成ビューア」**
 - 主要利用シーン: 運用時の構成確認、障害調査（配線・ドリフトの把握）、変更適用直後の反映確認、監査。
-- **参照専用**: 本画面から構成は変更しない。構成変更は Git 経由の構成定義変更（GitOps）に限る（FR-15・SC-11 の入力方針）。
-- アクセスは管理者・運用者ロールに限定し、権限外にはメニュー・画面自体を表示しない（存在秘匿）。閲覧は監査ログに記録する。
+- **参照専用**: 本画面から構成は変更しない。構成変更は Git 経由（GitOps）に限る。
+- アクセスは **`platform-admin` または `platform-operator`**（`ConfigViewer`。[[IADR-0030]]）。
+  権限外にはメニュー・画面自体を表示しない（存在秘匿）。閲覧は監査ログに記録する。
+
+## 構成バージョン履歴の正データ源（**計画は 2026-08-04 に確定済み**）
+
+[05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)
+（`:94-96`。planning#190 の裁定）:
+
+- **正データ源は GitOps 層**（Git のコミット履歴・ArgoCD のリビジョン履歴）。
+- **プラットフォームのサービスに履歴ストアを持たない**（制約）。API と本画面は**永続化せず surfacing する**。
+- **保持範囲**: Git のコミット履歴を正とし**無期限**。**ArgoCD のリビジョン履歴は既定
+  （`revisionHistoryLimit` = 10 世代）**を採用し、それを超える遡及は Git で行う。
+  **本画面が表示できる履歴の上限はこの規則から定まる。**
+
+これは実装側の [[IADR-0046]]（Accepted・2026-07-09）と**同じ内容**である。**画面は件数を切り詰めない**
+（画面が独自の上限を持つと、第二の規則が生まれる。[[IADR-0129]] 決定 5）。
+
+## hi-fi モックアップとの対応（実装する要素／実装しない要素）
+
+行番号は planning `d980a01` の [hi-fi/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-11.html) に対するものである。
+粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
+
+| # | モックの要素（行） | 実装 | 備考 |
+| --- | --- | --- | --- |
+| 1 | 見出し「**実効構成**」（416 左） | **する** | `<h1>` |
+| 2 | ヘッダの `Tag`「**コミット a3f81c2**」（416） | **する** | `version.gitCommit` の**先頭 7 桁**（完全な値は `title` 属性）。未注入は `—` |
+| 3 | ヘッダの `Tag`「**適用 2026-07-22 14:05**」（416） | **する** | `version.appliedAt` をロケール表記へ。解釈できない値は生値のまま |
+| 4 | ヘッダの `Tag`「**適用者 argocd**」（416） | **する** | `version.appliedBy`。未注入は `—` |
+| 5 | ヘッダの**ドリフトバッジ**「ドリフト 1件」（416） | **する** | `StatusBadge`。0 件 = `success`「ドリフトなし」／N 件 = `warning`「ドリフト N 件」。**取得不能なら出さない**（「0 件」と紛れるため）。**実効構成が取れないときも出さない**——バッジだけが残ると「何に対する差分か読めない件数」になる（[[IADR-0129]] 決定 5） |
+| 6 | 折りたたみ「**(1) 実効構成 — パイプライン段・接続**」（417） | **する** | `<details open>`（[[IADR-0036]]。新規プリミティブを作らない） |
+| 7 | **CSS 縦チェーン**の段（418-424。`ingest.consumer（取得）` → … → `wiki-sync（無効）`） | **する** | `consumer` → `outputs` の縦チェーン。`outputs` が空なら「（終端）」 |
+| 8 | チェーンの**ドリフト強調**（421。`embed（voyage-3.5）⚠ ドリフト`） | **する** | `finding.target` と段名が一致する段に警告色 ＋ **(2) の明細へのリンク**。`DriftDetector` の `Target` は常に段名である |
+| 9 | チェーンの**無効段のグレーアウト**（423。`wiki-sync（無効）`） | **する** | `enabled: false` を淡色 ＋ `StatusBadge`「無効」（**色だけで示さない**。INDEX 決定 21） |
+| 10 | 右の表「**イベント接続** / MassTransit / RabbitMQ」（428） | **する** | 契約はイベント型ごとの発行者・購読者を返すため、**イベント / 発行者 / 購読者の表**として出す（モックの 1 行要約より詳しい） |
+| 11 | 右の表「**ポート: 埋め込み** / Voyage AI（既定）／Ruri v3（高機密）」（429） | **する** | **ポート / 実装 / 接続先の表**（同上） |
+| 12 | 右の表「**コネクタ** / fs / wiki / saas / db（4）」（430） | **する** | **コネクタ名 ＋ 有効/無効**の一覧（同上） |
+| 13 | 折りたたみ「**(2) 宣言（Git）との差分 — ドリフト**」（434） | **する** | `<details open>` |
+| 14 | ドリフト明細の表（435-436。種別 / 深刻度 / 対象 / 説明） | **する（部分未実装）** | 種別は 5 値を表示名へ、深刻度は 2 値を `StatusBadge` へ写す（§状態表示）。0 件は「ドリフトなし（OK）」＋確認時刻。**モックの明細行（436）は 3 セルとも契約の値域外**（種別「パラメータ差異」・深刻度「中」・対象 `embed.batch_size`）であり、実装とテストは `BindingMismatch` / `Warning` / `embed` へ**読み替えて**再現している（後述） |
+| 15 | 折りたたみ「**(3) 構成バージョン履歴（新しい順）**」（438） | **する** | `<details>`（**既定は閉**。モックが `open` を付けていない） |
+| 16 | 履歴の表（439-441。コミット / 適用日時 / 適用者 / ドリフト） | **する** | `hadDrift` は あり／なし／**—（不明）**。0 件は「適用履歴はありません。」 |
+| 17 | 注記「**参照のみ — 構成変更は Git 経由（GitOps）に限る。閲覧は監査ログに記録。可視化は CSS 縦チェーン＋表（IADR-0036）**」（443） | **する** | `Alert`（`info`）。**IADR 番号は画面に出さない**（利用者向けの文言ではない） |
+| 18 | **共通シェル**: 右レール「AIチャットパネル」（445-450） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
+| 19 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード / 構成ビューア`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | **本画面では作らない** | パンくず・権限バッジは #452 系。他は `foundation/ui/Layout` が既に持つ |
+
+**対応表の行数は 19 行**（数え方は**行数**であって要素名ではない）。内訳は
+**する 17 行**（#1〜#17）／**しない 1 行**（右レール = #18）／**本画面では作らない 1 行**（#19）である。
+**A（FR の着手保留）・B（契約の不在）に該当する行は 0 行**——**3 画面のうち本画面だけが
+hi-fi の要素をすべて実装できる**（FR-15 の API が #112 / #138 / #139 で揃っているため）。
+**ただし行数基準では捕まらない部分未実装が 1 件ある**——#14（ドリフト明細）は「する」と判定しているが、
+hi-fi `436`（および wireframe `133`）が描く 1 行は **3 セルすべてが契約の値域外**である。
+
+| セル | モックの値 | 契約 | 実装の読み替え |
+| --- | --- | --- | --- |
+| 種別 | 「パラメータ差異」 | 5 値（`MissingApply` / `UndeclaredSubscription` / `StaleStage` / `BindingMismatch` / `Unverifiable`） | `BindingMismatch`（「接続の不一致」） |
+| 深刻度 | 「中」 | 2 値（`Warning` / `Info`） | `Warning`（「警告」） |
+| 対象 | `embed.batch_size`（**パラメータ粒度**） | `DriftDetector.Target` は**常に段名** | `embed`（段名） |
+
+とくに **`target` が段名に限られる**ため、**モックが描く「パラメータ粒度のドリフトが `embed` 段を光らせる」
+場面は実装では再現しない**（`driftView.ts` の `driftTargets()` は段名の完全一致でチェーンを強調する）。
+
+これは **SC-10 #4**（利用状況カードは「する」だが指標の意味が違う）と**同じ類型**——
+**二値判定の外側にある部分未実装**——であり、同じ基準を当てる。是正を求める先は**画面ではなくモック**である:
+計画 [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md)
+`:180` は既に 5 分類を確定しており、**hi-fi / wireframe だけがそれ以前の粒度で残っている**
+（**計画の内部矛盾**。planning#198 §「計画の内部で食い違っている可能性」と同型）。
+環流記録の**提案 8** として渡した。
+
+### モックに無いが実装する要素
+
+| 要素 | 計画上の根拠 |
+| --- | --- |
+| **再取得**（更新）ボタン | 05_screens §SC-11 は参照専用と定めるが、再取得は**参照の操作**であり構成を変更しない。障害調査で「いまの実効構成」を取り直す用途（本書 §アクション・イベント が #113 時点から挙げている） |
+| ドリフト明細の**確認時刻** | `DriftReportDto.CheckedAt`。0 件のとき「検出が実行済みであること」を示さないと、**未検出**と**未実行**が区別できない |
 
 ## レイアウト / 主要素
 
 **タブは用いず**、上部にヘッダ（構成バージョン・全体ドリフト状態）を置き、以下 3 領域を
 **折りたたみ可能なセクション（`<details>`）の縦積み**で構成する。グラフ描画ライブラリは導入せず、
-パイプライン段は CSS の縦チェーン、イベント接続・ポート・コネクタは表で表現する
-（[IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md)。基盤の依存最小方針
-[IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md) と一貫）。
+パイプライン段は CSS の縦チェーン、イベント接続・ポート・コネクタは表で表現する（[[IADR-0036]]）。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ヘッダ: 構成バージョン(コミットID短縮) / 適用日時 / 適用者    │
-│         全体ドリフト状態バッジ [OK | ドリフト検出: N 件]      │
+│ h1 実効構成   [コミット a3f81c2][適用 …][適用者 …]           │
+│               [⚠ ドリフト 1 件]           [再取得]           │
 ├─────────────────────────────────────────────────────────────┤
-│ ▼ (1) 実効構成                                                │
-│   - パイプライン段: consumer → outputs の CSS 縦チェーン      │
-│     （無効段はグレーアウト）                                  │
-│   - イベント接続・ポート実装選択・コネクタは表                │
-│ ▼ (2) 差分(ドリフト)                                          │
-│   - 宣言 vs 実効 の不一致一覧（種別・対象・期待/実際）        │
-│ ▼ (3) バージョン履歴                                          │
-│   - 適用履歴（コミットID・日時・適用者・ドリフト有無）        │
+│ ▼ (1) 実効構成 — パイプライン段・接続                        │
+│   consumer → outputs の CSS 縦チェーン（無効段は淡色＋バッジ）│
+│   イベント接続 / ポート実装選択 / コネクタ の 3 表           │
+│ ▼ (2) 宣言（Git）との差分 — ドリフト                         │
+│   種別 / 深刻度 / 対象 / 説明（0 件は「ドリフトなし（OK）」） │
+│ ▶ (3) 構成バージョン履歴（新しい順）                         │
+│   コミット / 適用日時 / 適用者 / ドリフト                    │
+│ (i) 参照のみ — 構成変更は Git 経由（GitOps）に限ります…      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- 各領域は `<details open>` の折りたたみセクションとし、件数増大は縦スクロールで追う。
-- ワイヤーフレーム（計画）: `05_screens/wireframes/sc-11.drawio`（計画側で別途作成予定）。
-- 画面遷移の入口: SC-10 運用ダッシュボードから本画面へ遷移する（[01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) の遷移図 `SC10 --> SC11`）。
+**`<details>` / `<summary>` はネイティブを使う**（[[IADR-0129]] 決定 7）。計画
+[13_frontend-stack §shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+の 4 基準（フォーカストラップ／複合キーボード操作／ポータル配置計算／`aria-*` の動的同期）の
+**いずれにも該当しない**ため、`@platform/ui` へは入れない。
 
-### (1) 実効構成の表示（グラフ・一覧）
+## 状態表示（INDEX 決定 21「色だけで意味を持たせない」）
 
-計画 §設計要素 6 の「構成取得 API 応答項目」を可視化する。有向グラフ描画ライブラリは用いず
-（[IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md)）、次で表現する。
+**ドリフト深刻度**（契約 `DriftDetector` の 2 値）:
 
-- **パイプライン段**: `service / consumer` を節点、`input → outputs` を明示した **CSS の縦チェーン**
-  として描画する。`outputs` が空の段は終端（`（終端）`）として示す。無効化された段（`enabled: false`）は
-  グレーアウトで区別する。
-- **イベント接続（バインディング）**: イベント型ごとの発行者・購読者の対応を
-  **表**（イベント型 / 発行者 / 購読者）で表示する。
-- **ポート実装の選択**: 各差し替えポイント（LLM・埋め込み・ベクトル DB・ストレージ・Wiki 同期）で
-  選択中の実装名と接続先識別子を **表**（ポート / 実装 / 接続先）で一覧表示する。
-- **コネクタ一覧**: 登録済みコネクタと有効・無効状態を一覧表示する。
-- **ドリフト強調**（#138 で実装）: 該当段/行に警告色を付与し、(2) の該当ドリフト明細へリンクする。
+| `severity` | 表示 | `StatusBadge` の `tone` | アイコン（`tone` から自動） |
+| --- | --- | --- | --- |
+| `Warning` | 警告 | `warning`（琥珀） | `AlertTriangle` |
+| `Info` | 情報 | `neutral` | `Info` |
+| 上記以外（未知の値） | 生値をそのまま | `neutral` | `Info` |
 
-データ量が小さい（段は初期 5・イベント 6 程度）ため、依存を増やさず CSS チェーン＋表で受け入れ基準
-「グラフ・一覧として閲覧できる」を満たす。将来データ量が大きく可読性が損なわれた場合に限り、
-有向グラフライブラリ（mermaid/dagre/react-flow 系）の導入を再検討する（IADR-0036 を Superseded 化）。
+**ドリフト種別**（契約の 5 値。計画 §設計要素 6 の 4 分類に `BindingMismatch` を加えたもの）:
 
-### (2) 宣言との差分（ドリフト）表示
+| `kind` | 表示 |
+| --- | --- |
+| `MissingApply` | 適用漏れ（宣言にあり実効に無い） |
+| `UndeclaredSubscription` | 宣言に無い購読 |
+| `StaleStage` | 古い段の残留 |
+| `BindingMismatch` | 接続の不一致 |
+| `Unverifiable` | 検証不能（担当サービスへ到達できない） |
+| 上記以外（未知の値） | **生値をそのまま**（`—`・「不明」へ丸めない） |
 
-構成情報 API（#112）が返すドリフト検出結果を一覧・強調表示する。**判定は API 側が行い、本画面は結果を表示するのみ**。
+**全体ドリフト状態**（ヘッダ）: 0 件 = `success`「ドリフトなし」／N 件 = `warning`「ドリフト N 件」。
+**取得不能ならバッジを出さない**（「0 件」と見分けが付かなくなるため）。
 
-ドリフト種別（計画 §設計要素 6「不一致（適用漏れ・起動失敗・古い段の残留・宣言に無い購読）」に対応）:
-
-| 種別 | 意味 | 表示 |
-| --- | --- | --- |
-| `missing`（適用漏れ） | 宣言にあり実効に無い段/接続 | 赤・宣言側の内容を表示 |
-| `startup-failure`（起動失敗） | 宣言済みだが起動失敗で未稼働 | 赤・失敗理由（API が提供する場合） |
-| `stale`（古い段の残留） | 実効にあり宣言に無い段 | 橙・実効側の内容を表示 |
-| `undeclared-subscription`（宣言に無い購読） | 宣言に無い購読が実効に存在 | 橙・対象イベント/段 |
-
-- 各明細は「対象（段名/イベント/ポート）・種別・期待（宣言）・実際（実効）・検出時刻」を列に持つ。
-- ドリフトが 0 件なら「ドリフトなし（OK）」を明示する（検出が実行済みであることを日時とともに示す）。
-- ドリフト検出は API 側で定期（例: 5 分間隔）＋適用直後に実行される。本画面はそのスナップショットを表示する。
-
-### (3) 構成バージョン履歴
-
-- **現在の構成バージョン**（ヘッダ常時表示）: 適用中の構成定義の Git コミット ID・適用日時・適用者。
-- **履歴一覧**: 過去の適用（コミット ID・適用日時・適用者・その時点のドリフト有無）を新しい順で表示する。
-- コミット ID はリポジトリ（宣言）へのリンクとして提示できるとよい（任意）。
-- 履歴の保持範囲・データ源（GitOps/ArgoCD 適用履歴 or API 側の保持）は #112 実装時に確定する。
+**段の有効／無効**: 無効段は淡色 ＋ `StatusBadge`（`neutral`「無効」）。**淡色だけに頼らない。**
 
 ## 表示・入力項目
 
-参照専用画面のため入力はフィルタ/選択のみ。主な表示項目は下表のとおり（データはすべて #112 API 由来）。
+参照専用画面のため入力は無い（折りたたみの開閉と再取得のみ）。
 
-| 項目 | 種別 | 必須 | 初期値 | 形式・制約 | 説明 |
-| --- | --- | --- | --- | --- | --- |
-| 構成バージョン（コミット ID） | 表示 | 是 | — | 短縮 SHA（クリックで全文/リンク） | 適用中の構成定義バージョン |
-| 適用日時 | 表示 | 是 | — | ISO 8601 / ローカル表記 | 現構成の適用時刻 |
-| 適用者 | 表示 | 是 | — | 文字列 | 適用を行った主体（GitOps 主体含む） |
-| 全体ドリフト状態 | 表示 | 是 | — | `OK` / `ドリフト N 件` | ドリフト明細の集計バッジ |
-| 段（ステップ）一覧 | 表示 | 是 | — | 段名・サービス・入出力イベント・consumer・有効/無効・キュー | 実効パイプライン構成 |
-| イベント接続 | 表示 | 是 | — | イベント型・発行元・購読段 | バインディング |
-| ポート実装選択 | 表示 | 是 | — | ポート名・実装名・接続先識別子 | 差し替えポイントの選択状態 |
-| コネクタ一覧 | 表示 | 是 | — | コネクタ名・有効/無効 | 登録済みコネクタ |
-| ドリフト明細 | 表示 | 是 | — | 種別・対象・期待・実際・検出時刻 | 宣言 vs 実効の不一致 |
-| バージョン履歴 | 表示 | 是 | — | コミット ID・適用日時・適用者・ドリフト有無 | 適用履歴（新しい順） |
-| 表示フィルタ（種別/ドリフトのみ） | 入力 | 否 | 全件 | チェック/セレクト | クライアント側の絞り込みのみ |
-
-## バリデーション
-
-参照専用のため入力バリデーションは実質なし。フィルタ選択は許可値のみを提示する。
-
-| 項目 | 条件 | エラーメッセージ |
+| 項目 | 出所 | 形式 |
 | --- | --- | --- |
-| フィルタ（ドリフト種別） | 許可値のみ選択可 | （UI 上、不正値は選択不可のため発生しない） |
+| 構成バージョン（コミット ID） | `version.gitCommit` | 短縮 7 桁 ＋ `title` に完全な値。未注入は `—` |
+| 適用日時 | `version.appliedAt` | ロケール表記。解釈できない値は生値 |
+| 適用者 | `version.appliedBy` | 文字列。未注入は `—` |
+| 段（ステップ）一覧 | `pipeline[]` | 段名・サービス・`consumer`・`input → outputs`・有効/無効 |
+| イベント接続 | `eventBindings[]` | イベント型 / 発行者 / 購読者 |
+| ポート実装選択 | `ports[]` | ポート / 実装 / 接続先 |
+| コネクタ一覧 | `connectors[]` | 名前 / 有効・無効 |
+| ドリフト明細 | `drift.findings[]` | 種別 / 深刻度 / 対象 / 説明（＋ 確認時刻） |
+| バージョン履歴 | `history[]` | コミット / 適用日時 / 適用者 / ドリフト有無（新しい順） |
 
 ## アクション・イベント
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| セクション折りたたみ（実効構成/ドリフト/履歴） | 対応領域を開閉（`<details>`・クライアント側） | 同一画面 |
-| 段/行の詳細確認 | 段（consumer・入出力）・イベント・ポートの詳細を各セクション内に表示 | 同一画面 |
-| ドリフト明細→実効構成へ | 該当段/行に警告色を付与して強調表示 | (1) 実効構成 |
-| 再取得（更新） | 構成情報 API を再取得し最新スナップショットを表示 | 同一画面 |
-| コミット ID クリック | 宣言リポジトリの当該コミットを開く（任意） | 外部（Git ホスティング） |
+| セクション折りたたみ（実効構成／ドリフト／履歴） | `<details>` の開閉（クライアント側） | 同一画面 |
+| ドリフト明細へ（チェーンの ⚠） | ページ内リンクで (2) の明細へ | 同一画面 |
+| **再取得** | 3 本の問い合わせを取り直す（`invalidateQueries`） | 同一画面 |
 | SC-10 からの遷移入口 | 本画面を開く | SC-11（本画面） |
 
 ## 画面遷移
@@ -176,84 +233,77 @@ related_specs:
 ```mermaid
 flowchart LR
   SC10[SC-10 運用ダッシュボード] --> SC11[SC-11 構成ビューア]
-  SC11 -->|コミットIDリンク・任意| GIT[宣言リポジトリ<br/>該当コミット]
 ```
+
+## データソース（BFF 境界）と縮退
+
+| 用途 | エンドポイント | 応答 | 認可 |
+| --- | --- | --- | --- |
+| 実効構成 | `GET /bff/admin/config` | `EffectiveConfigDto` | **`ConfigViewer`**（admin または operator）。**非権限は 404 で秘匿** |
+| ドリフト | `GET /bff/admin/config/drift` | `DriftReportDto` | 同上 |
+| 構成バージョン履歴 | `GET /bff/admin/config/history` | `ConfigVersionEntryDto[]` | 同上 |
+
+サーバ側は `RequireAuthorization` を**付けず**にハンドラ内で認可を判定する——付けると無認証が
+404 到達前に 401 で短絡し、**存在が漏れる**ためである（[[IADR-0029]]）。取得は許可・拒否とも監査ログへ記録する。
+
+**3 本は独立に扱い、領域ごとに縮退する**（[[IADR-0129]] 決定 5）:
+
+| 問い合わせ | 失敗時 |
+| --- | --- |
+| **実効構成** | 404 → 中立文言「構成情報は利用できません。」／その他 → `Alert`（`danger`・`role="alert"`）。**この 1 本が落ちたら他の 2 領域も、ヘッダのドリフトバッジも出さない**（構成が無い状態でドリフトだけ出しても何に対する差分か読めない）。3 本は `enabled` を持たず**独立に走る**ため、実効構成が 5xx でドリフトが 200 という組み合わせが実際に起こる |
+| ドリフト | ドリフト領域のみ縮退する。404 → 中立文言「ドリフト情報は利用できません。」／その他 → `Alert`（`danger`・`role="alert"`）。**ヘッダのバッジも出さない** |
+| 履歴 | 履歴領域のみ縮退する。404 → 中立文言「バージョン履歴は利用できません。」／その他 → `Alert`（`danger`・`role="alert"`） |
+
+**従の 2 本（ドリフト・履歴）も種別で分ける**（[[IADR-0129]] 決定 3 の射程）。「区別しないと運用者が
+『権限が無い』と誤読して障害を見逃す」という理由は従の問い合わせにも等しく当てはまり、
+**画面の主要部（実効構成）が正常に見えている分だけ見逃しやすい**。
+
+**本画面は `forbidden`（403）の分岐を持たない。** [[IADR-0129]] 決定 3 は「403 と 404 を同一の中立文言へ」
+と定めるが、これは**各画面の中で**成立していればよく、SC-11 では **404 側だけが実在する**——
+BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限を**すべて `Results.NotFound()`** へ寄せるため、
+3 本のいずれも 403 を返さない（[[IADR-0029]]）。**起こり得ないケースへの防御的実装を避ける**
+（`CLAUDE.md`）という判断の記録である。SC-10 は BFF が `AdminOnly`（403）であるため、そちらでは
+403 側が実在し、同一画面の 404 と同じ文言へ寄せている。
+
+- **`docs/api/openapi.yaml` に本群が無く orval 生成フックが存在しない**ため、`apiFetch` ＋ 手書き型で呼ぶ（**#506** の射程）。
+- キャッシュキー: `['bff','admin','config']` / `['bff','admin','config','drift']` / `['bff','admin','config','history']`。
 
 ## 権限・表示条件
 
-- **ロール限定**: 管理者・運用者ロールのみ閲覧可。権限外にはメニュー項目・画面自体を表示しない
-  （存在秘匿方針・FR-05 fail-closed と整合）。BFF/API は権限外に対し**応答自体を返さない**
-  （200 で空を返さず、認可不足として遮断する。存在を推測させない）。
-- **監査ログ**: 本画面（構成情報 API）の閲覧操作は監査ログに記録する（計画 §設計要素 6・SC-11）。
-- **既存実装との整合（解決済み・2026-07-08）**: 運用者ロール **`platform-operator`** と
-  ポリシー **`ConfigViewer`**（`platform-admin` または `platform-operator` で許可）を
-  `KnowledgePlatformAuthPolicies`（`src/platform/backend/Shared/.../AuthExtensions.cs`）に新設済み
-  （[IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
-  構成情報 API（#112, PR #116）は本ポリシーで保護済みで、非権限には 404 で存在秘匿する
-  （[IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)）。
-  #113 の画面実装も本ポリシーを用いる。詳細は「未決事項」1 を参照。
-- **BFF 経由**: 構成情報は内部構造そのものであり、収集（自己申告）はサービスメッシュ内部に限定する。
-  外部公開は BFF 経由の読み取り専用集約エンドポイントに限る（既存の `/bff/dashboard/summary` と同様、
-  `RequireAuthorization` ＋資格情報の後段伝播パターンを踏襲する）。
+- **ロール限定**: `platform-admin` または `platform-operator`（`ConfigViewer`。[[IADR-0030]]）。
+  権限外は `RequireRole` → **`NotFound`**（存在秘匿）。**未知パスの `NotFound` と markup が一致する**ことを
+  テストで固定する（#490 が確立した作法。本画面の `access.test.tsx` が持つ）。
+- **権限外では BFF を呼ばない**（要求の有無から画面の存在を推測させない）。
+- 左ナビは `requiresAnyRole: [platform-admin, platform-operator]`・`group: 'ops'`。
+- **監査ログ**: 構成情報 API の閲覧は許可・拒否とも監査ログに記録する（サーバ側）。
 
-## API への要求（#112 構成情報 API に期待する契約）
+## 実装
 
-本画面が成立するために、#112 の構成情報 API は最低限、以下を読み取り専用で提供する必要がある
-（項目は計画 §設計要素 6 の応答項目表に対応）。実際のパス/DTO は #112 で確定する。
-
-- 実効構成の取得（段一覧＋入出力イベント／イベント接続／ポート実装選択／コネクタ一覧／構成バージョン）。
-- ドリフト検出結果（種別・対象・期待/実際・検出時刻）。
-- 構成バージョン履歴（コミット ID・適用日時・適用者・ドリフト有無）。
-- すべて管理者・運用者ロール限定・存在秘匿・監査ログ記録。
-
-宣言側（比較の基準）は #111 の `pipeline.json`（`version`/`events`/`sources`/`steps[name,service,consumer,input,outputs,enabled,queue?]`）が正であり、本画面のグラフ描画モデルは実効構成をこの構造に合わせて表示する。
+- BFF: `src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs`
+- 検査ロジック: `Platform.Shared.Infrastructure/Foundation/Introspection/`（`ConfigInspectionService` / `DriftDetector`）
+- フロント: `src/knowledge/frontend/src/features/sc11-config/`
+  （`index.tsx` / `ConfigViewerPage.tsx` / `useConfigViewer.ts` / `driftView.ts`）
+- 契約: `Platform.Shared.Contracts/Dtos/ConfigInfoDto.cs`
+- テスト観点は [tests/SC-11_configuration-viewer.md](../tests/SC-11_configuration-viewer.md)。
 
 ## 関連仕様
 
-- 機能仕様書: [FR-15_config-info-api](../functional/FR-15_config-info-api.md)（Issue #118 監査で作成）
-- 通信仕様書: [openapi.yaml](../api/openapi.yaml)（`/bff/admin/config`・`/bff/admin/config/drift` — Issue #118 監査で反映）
+- 機能仕様書: [FR-15_config-info-api](../functional/FR-15_config-info-api.md)
+- 通信仕様書: [openapi.yaml](../api/openapi.yaml)（`/bff/admin/config`・`/bff/admin/config/drift`）
 - 技術検討（計画）: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6
-- 宣言的構成（実装）: [20260708_issue-111_declarative-pipeline-config.md](../specs/20260708_issue-111_declarative-pipeline-config.md)
-
-## テスト観点（受け入れ基準への写像）
-
-#112 完了後の画面実装時に、下記を `docs/tests/` のテスト仕様へ展開する。
-
-- 実効構成（段・接続・ポート選択・コネクタ）がグラフ・一覧として閲覧できる。
-- 宣言（Git）とのドリフトが 4 種別で一覧・強調表示され、0 件時は「OK」を明示する。
-- 構成バージョン（コミット ID・適用日時・適用者）と履歴が表示される。
-- 管理者・運用者以外はアクセスできない（権限外は応答自体を返さない＝存在秘匿）。
-- 参照専用であり、本画面から構成変更操作が存在しない。
-- 閲覧が監査ログに記録される。
 
 ## 未決事項
 
-各項目の決定先を明示する。1（#113）・2（#112/PR #116）・3（#139）・4（#137）・6（#126）は解決済み。
-5 は計画リポジトリ（#141）で決定する。
+1. **ドリフト判定の粒度**（キュー名の相違を情報レベルに留める点）——[[IADR-0029]] の既定を据え置く。
+2. **`docs/api/openapi.yaml` への `/bff/admin/config` 群の追加**（#506 の射程）。
 
-1. **運用者ロールの新設** — ✅ **解決済み（2026-07-08、issue #113）**: ステークホルダー判断により
-   運用者ロールを**必要とする**方針で確定。ロール `platform-operator`（Keycloak レルムロール）と
-   ポリシー `ConfigViewer`（`platform-admin` または `platform-operator` で許可）を
-   `KnowledgePlatformAuthPolicies` に新設した。既存 `AdminOnly` 画面（SC-10 等）は計画上「管理者」
-   向けのため**変更しない**。決定の詳細は
-   [IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md) を参照。
-   #113 の画面実装は `ConfigViewer` ポリシーを用いる（#112 の API は適用済み）。
-2. **構成情報 API の実装配置** — ✅ **解決済み（#112 / PR #116）**: BFF 配下の管理 API
-   （`/bff/admin/config`・`/bff/admin/config/drift`）へ同居。独立サービス化しない
-   （[IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)）。
-3. **バージョン履歴のデータ源・保持範囲** — ✅ **解決済み（2026-07-09、issue #139）**: 正データ源は
-   **GitOps 層**（Git のコミット履歴 / ArgoCD のリビジョン履歴）とし、プラットフォームのサービスに
-   履歴ストアを新設しない。API（`/bff/admin/config/history`）は、現在バージョンと同じ注入経路で供給される
-   `ConfigVersionOptions.History`（新しい順スライス）を永続化せず surfacing する。保持範囲は GitOps 側が決定。
-   履歴未注入（dev/compose）時は現在バージョンの単一エントリへ縮退し、現在バージョンも空なら空一覧を返す。
-   各エントリはコミット ID・適用日時・適用者・その時点のドリフト有無（`hadDrift`、不明は「—」）を持つ。
-   詳細は [IADR-0046](../adr/IADR-0046_config-version-history-source.md)。GitOps 注入の配線自体は #123 が担当。
-4. **グラフのレイアウト方針** — ✅ **解決済み（2026-07-08、issue #137）**: グラフ描画ライブラリは
-   導入せず、パイプライン段を CSS の縦チェーン（`consumer → outputs`・無効段はグレーアウト）で、
-   イベント接続・ポート・コネクタを表で表現する。各領域は折りたたみ可能なセクションとし、件数増大は
-   縦スクロールで追う。将来大規模化した場合に有向グラフライブラリを再検討する。詳細は
-   [IADR-0036](../adr/IADR-0036_sc11-config-viewer-visualization.md) を参照。基盤の依存最小方針
-   （[IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)）と一貫する。
-5. **ワイヤーフレーム**（→ 計画リポジトリ側の作業）: 計画側 `05_screens/wireframes/sc-11.drawio` の作成。
-6. **フロントエンド基盤**（→ フロントエンドフェーズで決定）: 本リポジトリの SPA 実装方針が未確定。
-   他 SC 画面群の実装方針に合わせる。
+> **［2026-08-05 / #504］解決して畳んだ未決事項**
+>
+> - 旧 1（運用者ロールの新設）・旧 2（構成情報 API の配置）・旧 3（バージョン履歴のデータ源・保持範囲）・
+>   旧 4（グラフのレイアウト方針）・旧 6（フロントエンド基盤）は、いずれも #113 / #112 / #139 / #137 /
+>   ADR-0031 で解決済みであり、本文（§構成バージョン履歴の正データ源・§状態表示・§データソース）へ畳んだ。
+>   **旧 3 は計画側でも 2026-08-04 に確定した**（planning#190。保持範囲 = Git 無期限 ＋ ArgoCD 10 世代）。
+> - **旧 5（ワイヤーフレーム `sc-11.drawio` の作成）は取り下げる。** 計画は
+>   **HTML モックアップを正とし draw.io を作成しない**方針であり（§HTMLモックアップ が hi-fi / wireframe の
+>   HTML を挙げ、SC-11 にも [wireframe/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html) が揃っている。
+>   **`.drawio` は計画リポジトリに 1 件も存在しない**）、計画側へ送る作業自体が成立しない。

@@ -1,5 +1,5 @@
 import type { ShellRoute } from '@foundation/routing/shell';
-import type { NavItem } from '@foundation/routing/featureRegistry';
+import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 import { createSc01SearchRoute, sc01SearchNav } from './sc01-search';
 import { createSc02ResultsRoute, sc02ResultsNav } from './sc02-results';
 import { createSc03DocumentRoute } from './sc03-document';
@@ -20,22 +20,25 @@ import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
 // （IADR-0124 §実測）。画面を足すときはタプルへ 1 行足す。
 export const createKnowledgeRoutes = (shell: ShellRoute) =>
   [
-    createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127）
-    createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128）
-    createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129）
+    createSc01SearchRoute(shell), // SC-01 検索／チャット質問（#127 → 新スタックで再実装 #502）
+    createSc02ResultsRoute(shell), // SC-02 検索結果一覧（#128 → 新スタックで再実装 #502）
+    createSc03DocumentRoute(shell), // SC-03 文書詳細／プレビュー（#129 → 新スタックで再実装 #502）
     createSc04WikiRoute(shell), // SC-04 Wiki 閲覧導線（#130）
     createSc05DocumentsRoute(shell), // SC-05 文書管理（#131）
     createSc06DataSourcesRoute(shell), // SC-06 データソース管理（#132）
     createSc07ConversionsRoute(shell), // SC-07 変換ジョブ（#133）
     createSc08AnalysisRoute(shell), // SC-08 AI分析ダッシュボード（#134）
-    createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135）
-    createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136）
-    createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140）
+    createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135 → 新スタックで再実装 #504）
+    createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136 → 新スタックで再実装 #504）
+    createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140 → 新スタックで再実装 #504）
   ] as const;
 
 // 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。
 // SC-03 はナビに出さない（一覧・検索からの遷移で到達する）。
-export const knowledgeNavItems: readonly NavItem[] = [
+// 05_screens §共通シェル ［2026-08-04 確定］: 総称グループ（「その他」）を持たないため、
+// グループの宣言漏れは「どのグループにも属さず静かに消える」ことを意味する。
+// `PlanNavItem` で受けて tsc に落とさせる。
+export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc01SearchNav,
   sc02ResultsNav,
   sc04WikiNav,

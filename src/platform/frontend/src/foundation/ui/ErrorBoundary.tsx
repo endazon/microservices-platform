@@ -1,3 +1,5 @@
+import { i18n } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
 import { Component } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { ApiError } from '@foundation/api/ApiError';
@@ -27,10 +29,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     const message =
       error instanceof ApiError
         ? error.message
-        : '予期しないエラーが発生しました。時間をおいて再度お試しください。';
+        : i18n._(msg`予期しないエラーが発生しました。時間をおいて再度お試しください。`);
     return (
       <main role="alert" style={{ padding: '2rem', textAlign: 'center' }}>
-        <h1>エラー</h1>
+        <h1>{i18n._(msg`エラー`)}</h1>
         <p>{message}</p>
       </main>
     );

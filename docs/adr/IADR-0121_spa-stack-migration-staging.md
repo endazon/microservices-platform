@@ -2,7 +2,7 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0120, IADR-0124]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0119, IADR-0120, IADR-0124, IADR-0125]
 author: Claude
 created: 2026-08-04
 updated: 2026-08-04
@@ -130,9 +130,13 @@ related_specs:
 > 計画と整合する。ただし「最終的に一括」は**完了条件**を伴う——第 2〜5 段をすべて消化し、
 > 13_frontend-stack §採用技術一覧と実装が完全に一致した時点で「一括移行の完了」とみなす
 > （`react-router-dom` と `oidc-client-ts` がワークスペースから消えていることを含む）。
-> 提起の経緯・確定解釈・完了条件・計画側への追補案は
+> 提起の経緯・確定解釈は
 > [feedback/20260804_frontend-migration-staging-interpretation.md](../../feedback/20260804_frontend-migration-staging-interpretation.md)
-> を正とする（計画リポジトリへの反映操作のみ残タスク）。
+> に記録した。
+> **［2026-08-04 追記・反映済み］裁定は計画本文へ入った**——
+> [13_frontend-stack §実装への移行方針](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+> の追補（planning `d980a01` / planning#186）が「**この追補により移行完了の定義は確定した**」と明記した。
+> **以後、移行完了の定義（完了条件）の正は計画本文であり、feedback 文書は経緯の記録である。**
 
 > **［2026-08-04 追記］決定 1 の「第 2 段」は [[IADR-0124]]（#490）で 2 つへ分割された。**
 > 本決定は段の内容・境界を
@@ -151,6 +155,14 @@ related_specs:
 > **「最終的に結果が同じになるなら進め方はそれでもいいです」**）。**条件付き承認**であり、
 > 条件（最終結果の同一性）が満たされるのは **#452 が旧 13 画面の削除・再実装を完了した時点**である
 > （[feedback/20260804 §追加裁定](../../feedback/20260804_frontend-migration-staging-interpretation.md)）。
+> **［2026-08-04 追記］これは計画本文でも確定した**——
+> [13_frontend-stack §実装への移行方針](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+> の追補が「**旧画面（13 画面）の完全削除は移行の完了条件の一部であり、段階分割によって省略されるものではない**」
+> と明記している（planning#186）。
+> **［2026-08-04 追記］残件（shadcn/ui 本移植・Lingui・Storybook）は #496 として起票・消化された**
+> （[IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) /
+> [#496 作業仕様書](../specs/20260804_issue-496_ui-i18n-storybook.md)）。
+> **第 2 段の項目はこれで全て消化されたが、完了条件は #452 待ちのままである。**
 > 段の順序・第 1 段／第 3〜5 段の内容・「各系統は 1 度だけ切り替える」という並行運用の禁止は
 > 本 IADR が引き続き有効である（したがって状態は `Accepted` のまま）。
 
@@ -201,6 +213,22 @@ related_specs:
 - **アクセシビリティ規約の実装上の型**: 「色だけで意味を持たせない」（INDEX 決定 21）は口約束では守れないため、
   状態表示のプリミティブ `StatusBadge` を**アイコン ＋ テキストラベル必須**の API にして型で強制する。
 
+> **［2026-08-04 追記］本決定の「以後 Input / Dialog / Table 等を第 2 段で追加する」という予告部分は
+> [[IADR-0125]]（#496）が実値で埋めた（部分改定）。** 本決定は入れる／入れないの**判定規則**と
+> 公開面 1 ファイル・依存規則の改定を定めたが、**どの部品を実際に移植するかは書いていなかった**。
+> IADR-0125 決定 1 は「計画の明示・hi-fi モックアップの語彙・既存 11 画面の DOM 要素数の 3 情報源の
+> 突き合わせで要求が示せるもの」に限るという基準を置き、**Input / Textarea / Select / Label /
+> Table 一式 / Card / Alert / Tabs の 8 件**を移植した。
+> **本決定が例示していた `Dialog` は移植していない**（IADR-0125 決定 2）——計画が確認ダイアログを
+> 要求するのは SC-19 / SC-20 だけで、これは FR-19 / FR-20 に属し [[IADR-0119]] 決定 1 が
+> 「その受け入れを担う画面」ごと着手を保留しているためである（繰り延べであって放棄ではない。
+> 引き受け先は #452）。
+> また IADR-0125 決定 1 は本決定の「入れないもの」へ **表示文言**を加えた——プリミティブが既定文言を
+> 持つと i18n の入口が 2 つに割れ、カタログの網羅検査（IADR-0125 決定 4）が抜けるためである。
+> 本決定の骨格（判定規則・公開面 1 ファイル・依存規則 例外 2 の改定）は有効なため `Accepted` を維持する。
+> **`@platform/ui` の収録物の現行値は [IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) と
+> [`src/packages/ui/README.md`](../../src/packages/ui/README.md) を正とする。**
+
 ### 決定 5: 右レール AI チャット（SSE）は「自前フック ＋ TanStack Query は確定済み履歴のみ」とする（論点 D = D2。計画の申し送りへの回答）
 
 - ストリーミング中の途中状態（受信中のトークン列・中断・エラー）は、既存の
@@ -215,6 +243,19 @@ related_specs:
 - **再評価条件**（この決定を見直す唯一のトリガ）: `streamedQuery` が experimental を外し、かつ
   任意の非同期イテレータ（＝当リポの `apiStream`）を素直に受けられるようになったとき。第 4 段の着手時に確認する。
 - 実装は第 4 段。本決定はパターンの確定のみを行う（計画が「実装初期に確定する」と申し送った事項のため）。
+
+> **［2026-08-05 追記・適用範囲の明確化（#502 / [IADR-0126](IADR-0126_sse-answer-state-and-search-url-state.md)）］**
+> 本決定は**右レール AI チャットパネル（第 4 段）**を対象とする。**SC-01 の本文（メイン領域）の回答**は
+> [IADR-0126](IADR-0126_sse-answer-state-and-search-url-state.md) 決定 1 が別に定める。
+> 両者は「自前フックが途中経過を持つ」点では同じだが、**キャッシュの扱いが割れている**——
+> 本決定は「ストリーム完了時に `setQueryData` / `invalidateQueries` して Query 側へ確定値を引き渡す」、
+> IADR-0126 決定 1 は「回答を Query のキャッシュに載せない」である。
+> **適用面が異なるため矛盾は生じていない**（本決定は右レール、IADR-0126 は SC-01 本文）。
+> 統一するか否かは、実際に右レールを作る**第 4 段で本決定の改定として判断する**
+> （IADR-0126 §フォローアップ 1 に未解決事項として記録済み）。
+> **本決定は `Accepted` のまま有効であり、IADR-0126 はこれを置換しない。**
+> なお、計画（13_frontend-stack §リスク・未決事項）の「SSE の状態管理パターン」への回答は
+> **本決定であって IADR-0126 ではない**（IADR-0126 は同じ規則を SC-01 本文へ適用した記録である）。
 
 ### 決定 6: `oidc-client-ts` は第 1 段で撤去せず、第 3 段（#439）で撤去する
 
@@ -283,4 +324,14 @@ Redux 系 import の禁止・`axios` 等の HTTP クライアント import の�
 ## 関連
 
 - Supersedes: [IADR-0033](IADR-0033_frontend-spa-foundation.md)（決定 1・2・4 を置換。決定 5・6 は思想を継承）
-- Superseded by: なし
+- Superseded by: なし。ただし**部分改定が 2 件ある**（いずれも骨格は有効なため本 IADR は `Accepted` を維持し、
+  該当決定の直後へ日付付き［追記］を入れた）。
+  1. [IADR-0124](IADR-0124_tanstack-router-unit-composition.md): §決定 1 の「第 2 段」を
+     ルータ／シェル／旧画面（#490）と残り（shadcn/ui 本移植・Lingui・Storybook）へ分割（#490）
+  2. [IADR-0125](IADR-0125_ui-primitives-i18n-catalog-and-storybook.md): §決定 4 の「以後 Input /
+     Dialog / Table 等を第 2 段で追加する」を実値（移植 8 件・Dialog は繰り延べ）で確定し、
+     「入れないもの」へ表示文言を追加（#496）
+  3. [IADR-0126](IADR-0126_sse-answer-state-and-search-url-state.md): §決定 5 の**適用範囲**を
+     「右レール AI チャット（第 4 段）」に限ることを明確化した（SC-01 本文の回答は IADR-0126 決定 1 が持つ）。
+     **決定の内容は変えていない。**キャッシュ方針の差（Query へ引き渡す／載せない）は第 4 段で
+     本決定の改定として判断する（#502）

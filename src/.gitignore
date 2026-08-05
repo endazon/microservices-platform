@@ -5,6 +5,12 @@ coverage
 .vite
 *.tsbuildinfo
 
+# ADR-0031 / IADR-0125 決定 5: Storybook の静的ビルド（カタログ）。生成物であり、
+# 外部 egress の検査（scripts/check-static-egress.js）はビルドしてから走らせる。
+# 非アンカーで指定するのは、ルートの `**/[Pp]ackages/*` を解除した `!src/packages/**` が
+# packages 配下すべてを追跡対象へ戻してしまうためである。
+storybook-static/
+
 # Playwright（各ユニットの frontend/ 配下で生成されるため非アンカーで指定）
 test-results/
 playwright-report/
