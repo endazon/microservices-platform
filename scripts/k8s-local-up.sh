@@ -368,13 +368,13 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 fi
 
-# IADR-0132 (#517): ABAC の属性辞書とポリシーを dev 既定値で投入する。ポリシーが 0 件だと
+# IADR-0133 (#517): ABAC の属性辞書とポリシーを dev 既定値で投入する。ポリシーが 0 件だと
 # AuthorizationService は deny-by-default で縮退し、**認証を通しても文書一覧・横断検索が常に空**になる
 # （仕様どおりだが「壊れている」のと区別が付かない）。既定（env 未設定）は投入せず挙動不変＝バイト等価で、
 # 本番 values には一切影響しない（投入先は経路B の稼働中サービスであり、chart ではない）。
 # best-effort: 投入の失敗で up 全体を止めない（クラスタ自体は使えるため。再実行は冪等）。
 if [ "${ABACSEED:-}" = "1" ]; then
-  echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0132）"
+  echo "==> [opt-in] ABAC 初期投入（属性辞書・ポリシー / IADR-0133）"
   node "$ROOT/scripts/seed-abac-policies.js" \
     || echo "    WARN: ABAC 初期投入に失敗（best-effort）。node scripts/seed-abac-policies.js で再実行できる" >&2
 fi

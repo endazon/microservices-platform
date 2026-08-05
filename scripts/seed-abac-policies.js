@@ -12,7 +12,7 @@
  *   docs/specs/20260805_issue-466_oidc-edge-flow-verification.md）。本スクリプトは dev の初期値を
  *   宣言的ファイル（deploy/local/abac-seed/）から投入し、その状態を再現可能にする。
  *
- * 方式（IADR-0132）:
+ * 方式（IADR-0133）:
  *   - 単一情報源は **リポジトリ内の JSON**（realm.json / minio-oidc の policies と同型）。
  *   - 投入は **管理 API 経由**（POST /authz/attributes, /authz/policies）。**直 DB 書き込みはしない**——
  *     API 側の検証（AbacValidation）を素通りさせないため。

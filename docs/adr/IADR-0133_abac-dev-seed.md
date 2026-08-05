@@ -1,5 +1,5 @@
 ---
-title: IADR-0132 経路B の ABAC 初期投入 — 宣言的シード＋管理 API 経由の冪等な opt-in 投入
+title: IADR-0133 経路B の ABAC 初期投入 — 宣言的シード＋管理 API 経由の冪等な opt-in 投入
 type: impl-adr
 status: Proposed
 related_ids: [FR-05, FR-09, UC-05, SC-09, ADR-0004, ADR-0036, IADR-0091]
@@ -11,9 +11,15 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
-# IADR-0132: 経路B の ABAC 初期投入 — 宣言的シード＋管理 API 経由の冪等な opt-in 投入
+# IADR-0133: 経路B の ABAC 初期投入 — 宣言的シード＋管理 API 経由の冪等な opt-in 投入
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
+
+> **［2026-08-05 追記］`IADR-0132` から改番した。** 採番時点では `docs/adr/` の最大が 0131 だったが、
+> 実装中に `IADR-0132`（応答スキーマの `required` を C# の非 null 性から起こす・#520 / PR #528）が
+> **先にマージされ**、双方が develop に載って重複した。先着尊重の原則
+> （`.claude/rules/traceability.md` §採番衝突時の改番手順）に従い、後発の本 ADR を `IADR-0133` へ移した。
+> **決定内容は一切変えていない。**
 
 - 状態: Proposed
 - 日付: 2026-08-05

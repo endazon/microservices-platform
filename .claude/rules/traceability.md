@@ -136,10 +136,18 @@ issue / PR へ誤リンクする（コミット footer の `Refs #NNN` で実際
 （ブランチ名由来の規約外件名がそのまま統合ブランチへ載る事象が実際に起きている）。これを防ぐため `pr-title.yml` が PR タイトルを規約
 `種別(起点ID): 要約` に照合し、違反ならマージ前に CI を失敗させる。
 
-- 検査ロジックは `check-commit-messages.js` の単一件名モード（`--title` 引数 / `PR_TITLE` 環境変数）で、
-  `validateSubject` を再利用する（規約の単一情報源）。
+- 検査ロジックは `check-commit-messages.js` の単一件名モード（`--title` / `--author` 引数、
+  `PR_TITLE` / `PR_AUTHOR` 環境変数）で、`validateSubject` を再利用する（規約の単一情報源）。
 - `pull_request` の `opened/edited/reopened/synchronize` で起動し、タイトル後編集も再検査する。
-- bot 作成 PR（`pull_request.user.type == 'Bot'`）・Revert・`[skip ci]` は除外する。
+- **除外は「作成者の名前」で行う**（#524）。ワークフローは `PR_AUTHOR`
+  （`github.event.pull_request.user.login`）を渡すだけで、`dependabot[bot]` 等かどうかの判定は
+  `check-commit-messages.js` の `BOT_AUTHORS`（`isBotAuthorName`）が担う。Revert・`[skip ci]` も
+  同スクリプトが除外する。
+  - **ジョブ条件で `user.type != 'Bot'` を使ってはならない。** それは dependabot だけでなく
+    **GitHub App が人の代わりに作成した PR（`claude[bot]`）まで除外**し、この検査が `skipped` になる
+    （PR #523 で実測）。スカッシュ後件名は develop に恒久的に残り、`base..HEAD` 検査にも含まれず、
+    force push 禁止で事後修正もできないため、規約違反の件名が入る経路が空く。
+    `scripts/scripts.repo.test.js` が全ワークフローを走査してこの判定の再混入を止める。
 
 **事前防止と事後補正の使い分け**: `pr-title.yml` は**マージ前**の予防（規約外件名を止める）。
 万一すり抜けて develop に規約外件名が入った場合は、履歴不変の原則（force push 禁止）に従い、
