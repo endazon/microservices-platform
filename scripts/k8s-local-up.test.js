@@ -43,6 +43,7 @@ const OPTIN_TOKENS = [
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
+  'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0132)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -99,7 +100,10 @@ function runUp(extraEnv) {
   };
   write('k3d', K3D_STUB);
   write('kubectl', KUBECTL_STUB);
-  for (const n of ['helm', 'docker']) write(n, PLAIN_STUB(n));
+  // node も差し替える。ABACSEED=1 は `node scripts/seed-abac-policies.js` を呼ぶため、素の node のままだと
+  // smoke test が実際に投入スクリプトを走らせて（到達しない port-forward を待って）遅くなる。
+  // k8s-local-up.sh が node を使うのはこの 1 か所だけなので、記録スタブで足りる。
+  for (const n of ['helm', 'docker', 'node']) write(n, PLAIN_STUB(n));
 
   const origPath = process.env.PATH || process.env.Path || '';
   // 実行環境に opt-in ゲート/override が漏れていても既定＝全 OFF を再現できるよう、
@@ -114,6 +118,7 @@ function runUp(extraEnv) {
     'ARGOCD',
     'LOCALEDGE',
     'ESO',
+    'ABACSEED',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
   ]) {
@@ -296,6 +301,24 @@ ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
 ok('LOCALEDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
   const res = runUp({ LOCALEDGE: '1' }); // 既定 stub: get namespace argocd → exit 0（存在扱い）
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
+});
+
+// ABACSEED=1: ABAC の属性辞書・ポリシーを dev 既定値で投入する（IADR-0132 / #517）。
+// ポリシー 0 件だと deny-by-default で「認証を通しても画面が空」になるため、その回避を opt-in で用意する。
+ok('ABACSEED=1: seed-abac-policies.js を実行する', () => {
+  const res = runUp({ ABACSEED: '1' });
+  assert.strictEqual(res.status, 0, 'ABACSEED=1 で異常終了した');
+  assert.ok(anyLineHas(res.lines, 'seed-abac-policies.js'), '投入スクリプトが実行されない');
+  // 投入はクラスタ内の稼働サービスに対して行う＝chart/manifest を書き換えないことを固定する。
+  assert.ok(!anyLineHas(res.lines, 'deploy/local/abac-seed'), 'シードを kubectl apply してはいけない');
+});
+
+ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort）', () => {
+  // node スタブを非0 に差し替える代わりに、存在しないシードディレクトリを指して実失敗させる…のではなく、
+  // ここでは「|| で握る」構造そのものを固定する（スタブは常に exit 0 のため、構造を静的に確認する）。
+  const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  const block = src.slice(src.indexOf('ABACSEED'));
+  assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'ABACSEED の投入失敗が best-effort になっていない');
 });
 
 ok('LOCALEDGE=1 (argocd ns 無): argocd-ingress.yaml は apply しない（skip）', () => {

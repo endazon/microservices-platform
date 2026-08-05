@@ -1,7 +1,7 @@
 ---
 title: サービス間内部 API の暫定運用（ネットワーク分離）と NFR 草案（全 API OIDC/JWT・サービス間 mTLS）の相違 — NFR のフェーズ分けと ADR-0005 確定を提案
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids:
   - FR-05
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-62-20260705-0347 / PR #79 / IADR-0017 / docs/specs/20260704_NFR_internal-service-auth-network-isolation.md（Issue #62、親 #48、関連 #55）"
 author: claude
 created: 2026-07-05
+updated: 2026-08-05
 ---
 
 # フィードバック: 内部 API の暫定運用（ネットワーク分離）と NFR 草案の相違
@@ -102,3 +103,20 @@ mesh 導入までは **ネットワーク分離（内部サービスを host 非
 >   3. ADR-0004（ABAC 認可）を併せて Accepted 化。
 >   4. 暫定運用の許容を NFR/ADR に明文化し、IADR-0017 と整合させる。
 > - 根拠: バックグラウンドワーカー含む全呼び出し元が現状 JWT 非保持で、素朴な JWT 必須化は既存フローを破綻させる。詳細は実装側 IADR-0017 / security.md / 本フィードバック参照。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** 提案 1（NFR のフェーズ分け）・4（暫定運用の明文化）が要求書へ反映済みであり、提案 2（ADR-0005 の確定）・3（ADR-0004 の Accepted 化）も後続で達成されている。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260705_internal-service-auth-nfr-deviation.md](../planning/draft/feedback/20260705_internal-service-auth-nfr-deviation.md) | `status: accepted`（「トリアージ結果」節） |
+| [02_requirements/01_requirements.md](../planning/projects/microservices-platform/02_requirements/01_requirements.md) `:100` | 非機能要件表 セキュリティ「認証・認可」= **恒久: 全 API で OIDC/JWT ／ 暫定: エッジ（BFF）で担保** のフェーズ分け |
+| 同 `:107` | セキュリティ「通信暗号化」= **恒久: サービス間 mTLS ／ 暫定: 平文をクラスタ・コンテナネットワーク内に限定して許容** |
+| 同 `:123` | 「**暫定運用の注記（セキュリティ）**」= 移行条件を ADR-0005 の Accepted と実装とし、実装判断 IADR-0017・回帰担保 NetworkIsolationTests を明記 |
+| 同 `:125` | ［2026-08-04 更新］**サービス間 mTLS は Istio STRICT で達成済み**（実装 IADR-0026 が IADR-0017 を Superseded）。提案 2 は達成された |
+| [07_adr/ADR-0005_service-mesh-istio.md](../planning/projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md) / [ADR-0004_authz-abac.md](../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md) | ともに `status: Accepted` |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

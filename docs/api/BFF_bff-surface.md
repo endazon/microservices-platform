@@ -1,8 +1,8 @@
 ---
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
-status: draft
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131]
+status: in-progress
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -11,8 +11,10 @@ plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
   - ../adr/IADR-0131_openapi-as-bff-contract-source.md
+  - ../adr/IADR-0132_openapi-required-from-csharp-nullability.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
   - ../specs/20260805_issue-506_openapi-bff-groups.md
+  - ../specs/20260805_issue-520_openapi-response-required.md
 ---
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -20,6 +22,15 @@ related_specs:
 > 個々のエンドポイントの要求・応答・ステータスは **[`openapi.yaml`](openapi.yaml) を正**とする。
 > 本書はその上位にある**境界の規約**（誰が何をどう呼ぶか／何が生成対象で何が対象外か）を定める。
 > 決定の根拠は [[IADR-0131]] を参照。
+
+> **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙: `draft` =
+> 着手前・記述途中／`in-progress` = 実装中）。BFF 境界は #506（PR #518）で全 27 パスが契約に載り、
+> #520 で応答スキーマの `required` が確定した。**着手前でも記述途中でもないので `draft` は外す。**
+> 一方、次の 2 点が未了なので `completed` でもない。
+>
+> 1. **SPA 側の載せ替えが途上である**（**#519**）。生成フックに載っているのは SC-08 だけで、
+>    残り 9 ファイルは `apiFetch` ＋ 手書き型のまま——**契約と画面が型でつながっていない面が残る**。
+> 2. **`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**（**#521**。§未決事項 3）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -175,6 +186,38 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 契約では `type: string` ＋ `description` に値集合を書き、**未知の値も受け取れる**ようにする。
 画面が値集合を持つ必要があるときは、feature 側の純関数（`jobStatus.ts` / `abacVocabulary.ts` /
 `driftView.ts` 等）に置き、そこを単体テストで固定する。
+
+### 5. 応答スキーマの `required` は **C# の非 null 性**から起こす（#520 / [[IADR-0132]]）
+
+**orval は `required` の無いスキーマの全プロパティを省略可（`?`）で生成する。**
+`required` を書き忘れた面は、契約に載っていても**型検査の網にならない**
+（#506 の変異試験 M2 が実測。誤った型へ戻しても `typecheck exit=0` で素通りした）。
+
+- **入れる**: C# DTO で `?` の付かないメンバー（値型・コレクション・**既定値つきメンバーを含む**）。
+  C# の既定値は「引数を省いたときの値」であってシリアライズ時の省略ではない
+  （`System.Text.Json` はプロパティを省略しない）。
+- **入れない**: `?` の付くメンバー。および次の 5 スキーマ全体——
+  `AbacConditionMap`（`properties` を持たない写像）／`ProblemDetails`・`ValidationProblemDetails`（RFC7807）／
+  `ConfigVersionDto`・`ConfigVersionEntryDto`（C# の全メンバーが nullable）。
+  **「入れない判断」は `description` に理由を書く**（「書き忘れ」と区別が付くようにする）。
+- **`required` に入れたプロパティに `default` を書かない**（[[IADR-0132]] 決定 2 の系）。
+  応答側の `default` は「**欠けていたらこの値と読め**」の意味であり、「必ず出る」と言う `required` と
+  同居させると契約が自己矛盾する。C# の引数既定（`bool Sent = true` 等）は契約の情報ではない。
+  **要求スキーマの `default` は別である**——「送らなければこの値になる」という本来の意味で機能する。
+- **`required` を入れても `?? 既定値` は消さない**（[[IADR-0132]] 決定 3）。
+  **「契約上は必須」と「実行時に必ず来る」は別**であり、応答本文を実行時に検証する層は無い。
+- **`/bff/` 外のスキーマにも `required` を入れる。** 生成の前処理 `src/orval-bff-only.cjs` が
+  入力から落とすのは **`paths` だけ**で、**`components.schemas` は素通りする**
+  ——`/bff/` から到達しないスキーマも含め、**53 個すべてが `bff.schemas.ts` に出力される**
+  （実測: `grep -c '^export interface ' src/platform/frontend/src/foundation/api/generated/bff.schemas.ts`）。
+  **「`/bff/` 外は生成されないから書かなくてよい」は誤りである**——#520 の着手時にこの誤った想定を置き、
+  変異試験 M8（`EmbedApiResponse.model` の削除で生成物に差分が出た）で覆った。
+  ただし**生成されることと型検査の網になることは別**で、網の有無を決めるのは
+  「その型を画面が読んでいるか」である（現に読まれているのは `AiAnswerDto` / `CitationDto` だけ）。
+- **要求スキーマの `required` は別問題である。** 応答と要求の両方で使われるスキーマは
+  `AbacConditionMap` の 1 個だけで、それは上記のとおり `required` を適用できない形をしている
+  ——したがって「応答を厳しくしたら要求も必須になった」という事故は現時点では起こり得ない。
+  **両用スキーマを新設するときはこの前提が崩れるので、要求側への影響を必ず確認すること。**
 
 ## 非機能・運用
 

@@ -2,7 +2,7 @@
 title: IADR-0131 OpenAPI を BFF 契約の単一情報源とし、SSE を生成の入力から機械的に落とす
 type: impl-adr
 status: Accepted
-related_ids: [SC-01, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-04, FR-06, FR-09, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0040, IADR-0116, IADR-0121, IADR-0122, IADR-0127]
+related_ids: [SC-01, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-04, FR-06, FR-09, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0040, IADR-0116, IADR-0121, IADR-0122, IADR-0127, IADR-0132]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -163,6 +163,18 @@ BFF の record（`DocumentCreateRequest` / `DocumentUpdateRequest`）は「Docum
   1. **画面の載せ替え**（分割 2 本目 = **#519**）。手順は作業仕様書 §残りとして何をどうするか。
      **#519 の前に #520（既存の応答スキーマ 23 個へ `required` を入れる）を通す方が手戻りが少ない**
      ——両者は同じ生成型を触るため競合し、`required` の有無で生成される型の省略可否が変わるからである。
+
+     > **［2026-08-05 追記］#520 で本項の前提（既存スキーマへの `required`）を消化した。
+     > 項番 1 本体（画面の載せ替え = #519）は未消化である。** [[IADR-0132]] が方針を確定し、
+     > **応答から到達する 36 スキーマのうち 31 個が `required` を持つ状態**になった
+     > （残り 5 個は「入れない」判断を `description` に明記した除外）。
+     > 生成型の省略可プロパティは **153 → 72**（`grep -c '?:' bff.schemas.ts`）。
+     > **母集合は 25 個であり、上の「23 個」ではなかった**——23 は
+     > 「`required` を持たない全 27 個 − #518 が意図的に持たせなかった 4 個」という数え方で、
+     > **要求専用の 2 個（`AnalysisDataRange` / `UpdateMetadataRequest`）を含み、
+     > 除外 4 個の再確認を範囲外に落としてしまう**。#520 は「27 − 要求専用 2」＝ 25 を採った。
+     > 数え方と突合表は [作業仕様書 #520](../specs/20260805_issue-520_openapi-response-required.md)。
+     > **#519 はこの状態を前提にしてよい**（載せ替え先の生成型はすでに必須化されている）。
   2. **C# → OpenAPI の追随を機械化する**（決定 1 の穴）。透過中継の応答を覆う方法が要る。
   3. 既存 2 本の `operationId` を決定 3 へ揃える（`analysis-ask` / `analysis-analyze`）。
      2 本目（**#519**）で `useAnalysisAnalyze` に触るなら、そのついでが最も安い。

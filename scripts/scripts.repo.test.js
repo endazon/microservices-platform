@@ -16,6 +16,75 @@
  * 実行: node scripts/scripts.test.js（本ファイル単体では実行しない）
  */
 module.exports = ({ ok, assert }) => {
+  // --- seed-abac-policies: 冪等性の核（#517 / IADR-0132） ---------------------------
+
+  {
+    const seed = require('./seed-abac-policies.js');
+    const fsSeed = require('fs');
+    const pathSeed = require('path');
+
+    ok('seed: 属性は key+scope で突合し、未登録のものだけ返す', () => {
+      const wanted = [
+        { key: 'confidentiality', scope: 'document' },
+        { key: 'department', scope: 'document' },
+        { key: 'department', scope: 'user' }, // 同じ key でも scope が違えば別物
+        { key: 'lifecycle', scope: 'document' },
+      ];
+      const existing = [
+        { key: 'Confidentiality', scope: 'Document' }, // 大小文字は同一視する
+        { key: 'department', scope: 'user' },
+      ];
+      assert.deepStrictEqual(
+        seed.selectMissingAttributes(wanted, existing).map((a) => `${a.scope}/${a.key}`),
+        ['document/department', 'document/lifecycle']
+      );
+      // 既存が全部揃っていれば no-op（2 回目の実行が何もしないこと＝冪等の核）。
+      assert.deepStrictEqual(seed.selectMissingAttributes(wanted, wanted), []);
+      // 既存ゼロなら全件が対象（初回投入）。
+      assert.strictEqual(seed.selectMissingAttributes(wanted, []).length, 4);
+    });
+
+    ok('seed: ポリシーは name で突合し、未登録のものだけ返す', () => {
+      const wanted = [{ name: 'dev: A' }, { name: 'dev: B' }];
+      assert.deepStrictEqual(
+        seed.selectMissingPolicies(wanted, [{ name: 'DEV: A' }]).map((p) => p.name),
+        ['dev: B']
+      );
+      assert.deepStrictEqual(seed.selectMissingPolicies(wanted, wanted), []);
+      assert.strictEqual(seed.selectMissingPolicies(wanted, []).length, 2);
+    });
+
+    // 投入データそのものの回帰。**階段の最下段（clearance=public）を欠くと、
+    // clearance=public の利用者はどのポリシーにもマッチせず public 文書すら読めない**
+    // （deny-by-default）。README が謳う「階段」と投入データを一致させ続けるために固定する。
+    ok('seed: clearance の階段が 4 段すべて揃っている', () => {
+      const file = pathSeed.resolve(__dirname, '..', 'deploy', 'local', 'abac-seed', 'policies.json');
+      const readPolicies = JSON.parse(fsSeed.readFileSync(file, 'utf8')).policies.filter(
+        (p) => p.action === 'read'
+      );
+      for (const level of ['public', 'internal', 'confidential', 'restricted']) {
+        // その clearance を持つ利用者にマッチする read ポリシーが 1 本以上あること。
+        const matched = readPolicies.filter((p) => (p.userConditions.clearance || []).includes(level));
+        assert.ok(matched.length > 0, `clearance=${level} にマッチする read ポリシーが無い`);
+        // マッチしたポリシーの文書条件の和 = その利用者が読める機密区分。
+        const visible = new Set(matched.flatMap((p) => p.documentConditions.confidentiality || []));
+        assert.ok(visible.has('public'), `clearance=${level} が public 文書すら読めない`);
+      }
+      // 上位ほど広い（階段であること）。
+      const visibleFor = (level) =>
+        new Set(
+          readPolicies
+            .filter((p) => (p.userConditions.clearance || []).includes(level))
+            .flatMap((p) => p.documentConditions.confidentiality || [])
+        );
+      assert.ok(visibleFor('restricted').size >= visibleFor('confidential').size);
+      assert.ok(visibleFor('confidential').size >= visibleFor('internal').size);
+      assert.ok(visibleFor('internal').size >= visibleFor('public').size);
+      // 最上段は 4 区分すべてを読める。
+      assert.strictEqual(visibleFor('restricted').size, 4);
+    });
+  }
+
   // --- #524: PR タイトル検査が GitHub App 作成 PR で skipped にならないこと ------------
 
   {
