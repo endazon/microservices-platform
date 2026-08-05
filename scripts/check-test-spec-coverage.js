@@ -19,18 +19,19 @@
  *   (a) 仕様書が挙げるテスト名が実在するか  → **今回の欠陥は止まらない**（残った記載はすべて実在した）
  *   (b) 実在するテストが仕様書に載っているか → **止まる**。本検査は (b) を実装する。
  *
- * 粒度（テストクラス = `*Tests.cs` のファイル名）:
+ * 粒度（**仕様書ファイル × テストクラス（`*Tests.cs` のファイル名）の対**）:
  *   - **アセンブリ（テストプロジェクト）単位では止まらない。** `Platform.Bff.Tests` は複数の仕様書から
  *     参照され続けるため、SC-05 の節が消えても「どこにも無い」にならない。
  *   - **メソッド単位は細かすぎる。** 表の 1 行を消すだけで赤くなり、仕様書の正当な要約を禁じてしまう。
- *   - よってクラス（ファイル）単位。節が落ちればクラス名がどこからも参照されなくなるので検出でき、
- *     表の行の増減では赤くならない。
+ *   - **クラス名だけを見る形でも足りない**（本 issue の変異試験 M2 で実測）。`DocumentVersioningTests` は
+ *     SC-05 と FR-06 の両方が参照しているため、SC-05 の節を丸ごと消しても FR-06 が残る限り緑になった。
+ *     **落ちるのは節であり、節は仕様書ファイルに属する。** よって対で固定する。
  *
- * 判定（ratchet。既存ゲートと同じ 3 判定 + warn）:
- *   - baseline にあるのに今は未記載（テストは実在）→ **fail**（＝今回の欠陥。節の消失）
- *   - baseline にあるがテストごと消えた            → **fail**（baseline を減らし、仕様書の記載も見直す）
- *   - 記載されたのに baseline に無い                → **fail**（床を上げっぱなしにする。--update で更新）
- *   - 実在するが未記載で baseline にも無い          → **warn**（基盤・回帰テストに記載義務は負わせない）
+ * 判定（ratchet。既存ゲートと同じ 3 判定 + warn。前 3 つは**対**、最後はクラスが単位）:
+ *   - baseline の対が消えた（テストは実在）→ **fail**（＝今回の欠陥。節の消失）
+ *   - baseline の対のクラスが実在しない    → **fail**（baseline を減らし、仕様書の記載も見直す）
+ *   - 記載された対が baseline に無い        → **fail**（床を上げっぱなしにする。--update で更新）
+ *   - どの仕様書にも載らず baseline にも無いクラス → **warn**（基盤・回帰テストに記載義務は負わせない）
  *
  * fail-closed:
  *   走査結果が 0 件（テストクラス 0 / 仕様書 0）、baseline が読めない・壊れている、のいずれも fail。
@@ -90,32 +91,62 @@ function mentionsClass(text, className) {
 }
 
 /**
- * 実在するクラス名のうち、仕様書本文から参照されているものを返す（Set）。
- * `names` は Iterable<string>、`text` は docs/tests/ 全体を連結した本文。
+ * 記載の単位は「**仕様書ファイル × テストクラス**」の対である。キーは `<spec>::<class>`。
+ *
+ * **クラス名だけを見る設計では足りない**（本 issue の変異試験で実測した）。`DocumentVersioningTests`
+ * は SC-05 と FR-06 の両方が参照しているため、**SC-05 から §状態遷移ガード 節を丸ごと消しても**
+ * FR-06 の記載が残る限り「どこかには載っている」で緑になってしまう。落ちるのは**節**であり、
+ * 節は仕様書ファイルに属する。よって対で固定する。
  */
-function documentedNames(names, text) {
+function pairKey(specFile, className) {
+  return `${specFile}::${className}`;
+}
+
+/** 対をファイル名とクラス名へ戻す（表示用）。 */
+function splitPair(key) {
+  const i = String(key).lastIndexOf('::');
+  return { spec: String(key).slice(0, i), name: String(key).slice(i + 2) };
+}
+
+/**
+ * 実在するクラス名が、どの仕様書ファイルから参照されているかを対の Set として返す。
+ * `names` は Iterable<string>、`docs` は [{ file, text }]。
+ */
+function documentedPairs(names, docs) {
   const out = new Set();
-  for (const n of names) if (mentionsClass(text, n)) out.add(n);
+  const list = [...names];
+  for (const d of docs) {
+    for (const n of list) if (mentionsClass(d.text, n)) out.add(pairKey(d.file, n));
+  }
+  return out;
+}
+
+/** 対の集合から「どこかには載っているクラス」の集合を作る。 */
+function namesInPairs(pairs) {
+  const out = new Set();
+  for (const k of pairs) out.add(splitPair(k).name);
   return out;
 }
 
 /**
- * ratchet の 4 分類。
- *   regressed      : baseline にあり、テストは実在するのに今は未記載 → fail（節の消失）
- *   removedTest    : baseline にあるが、テストクラス自体が実在しない → fail（baseline の減らし忘れ）
- *   newlyDocumented: 記載されたのに baseline に無い                 → fail（床の上げ忘れ）
- *   undocumented   : 実在するが未記載で baseline にも無い           → warn
+ * ratchet の 4 分類。前 3 つは**対**、最後の 1 つは**クラス**を単位にする。
+ *   regressed      : baseline の対が消えた（テストは実在）→ fail（節の消失。**本 issue の欠陥**）
+ *   removedTest    : baseline の対のクラスが実在しない    → fail（床の減らし忘れ）
+ *   newlyDocumented: 記載された対が baseline に無い        → fail（床の上げ忘れ）
+ *   undocumented   : 実在するがどの仕様書にも載らず床にも無いクラス → warn
  */
 function classify({ existing, documented, baseline }) {
   const ex = new Set(existing);
   const doc = new Set(documented);
   const base = new Set(baseline);
   const sorted = (s) => [...s].sort();
+  const basedNames = namesInPairs(base);
+  const docNames = namesInPairs(doc);
   return {
-    regressed: sorted(new Set([...base].filter((n) => ex.has(n) && !doc.has(n)))),
-    removedTest: sorted(new Set([...base].filter((n) => !ex.has(n)))),
-    newlyDocumented: sorted(new Set([...doc].filter((n) => !base.has(n)))),
-    undocumented: sorted(new Set([...ex].filter((n) => !doc.has(n) && !base.has(n)))),
+    regressed: sorted(new Set([...base].filter((k) => ex.has(splitPair(k).name) && !doc.has(k)))),
+    removedTest: sorted(new Set([...base].filter((k) => !ex.has(splitPair(k).name)))),
+    newlyDocumented: sorted(new Set([...doc].filter((k) => !base.has(k)))),
+    undocumented: sorted(new Set([...ex].filter((n) => !docNames.has(n) && !basedNames.has(n)))),
   };
 }
 
@@ -154,11 +185,10 @@ function collectTestClasses(root = REPO_ROOT) {
   return map;
 }
 
-/** docs/tests/ の Markdown を読み、{ text, files } を返す。 */
-function collectSpecText(root = REPO_ROOT) {
-  const files = walk(SPEC_DIR, (p) => /\.md$/i.test(p), [], root);
-  const text = files.map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
-  return { text, files };
+/** docs/tests/ の Markdown を読み、[{ file, text }] を返す。 */
+function collectSpecDocs(root = REPO_ROOT) {
+  return walk(SPEC_DIR, (p) => /\.md$/i.test(p), [], root)
+    .map((f) => ({ file: f, text: fs.readFileSync(path.join(root, f), 'utf8') }));
 }
 
 /** baseline を読む。**読めない・壊れているは例外**（fail-closed）。 */
@@ -175,22 +205,36 @@ function readBaseline(file = path.join(REPO_ROOT, BASELINE_FILE)) {
   } catch (e) {
     throw new Error(`${BASELINE_FILE} を JSON として解釈できません: ${e.message}`);
   }
-  if (!parsed || !Array.isArray(parsed.documented)) {
-    throw new Error(`${BASELINE_FILE} に配列 documented がありません`);
+  const d = parsed && parsed.documented;
+  if (!d || typeof d !== 'object' || Array.isArray(d)) {
+    throw new Error(`${BASELINE_FILE} に「仕様書ファイル → クラス名の配列」のオブジェクト documented がありません`);
   }
-  return parsed.documented.map(String);
+  const pairs = [];
+  for (const [spec, names] of Object.entries(d)) {
+    if (!Array.isArray(names)) throw new Error(`${BASELINE_FILE} の documented["${spec}"] が配列ではありません`);
+    for (const n of names) pairs.push(pairKey(spec, String(n)));
+  }
+  return pairs;
 }
 
-function writeBaseline(documented, file = path.join(REPO_ROOT, BASELINE_FILE)) {
+function writeBaseline(pairs, file = path.join(REPO_ROOT, BASELINE_FILE)) {
+  const bySpec = {};
+  for (const k of [...pairs].sort()) {
+    const { spec, name } = splitPair(k);
+    (bySpec[spec] = bySpec[spec] || []).push(name);
+  }
   const body = {
     $comment: [
-      'check-test-spec-coverage.js の床（NFR / issue #510）。',
-      'docs/tests/ のテスト仕様書から参照されているバックエンドテストクラスの一覧である。',
-      'ここに載っているクラスが仕様書から参照されなくなると CI が fail する（節の消失を止める）。',
-      '記載を増やしたら node scripts/check-test-spec-coverage.js --update で更新し、差分を PR に載せること。',
-      'テストクラスを削除したときは、仕様書の該当記載を直したうえで同じコマンドで更新する。',
+      'check-test-spec-coverage.js の床（NFR / issue #510 / IADR-0130）。',
+      'キーは docs/tests/ のテスト仕様書、値はその仕様書が参照しているバックエンドテストクラスである。',
+      '**クラス名だけでなく「どの仕様書が」まで固定する** —— 同じクラスを複数の仕様書が参照している場合',
+      '（DocumentVersioningTests は SC-05 と FR-06 の両方）、クラス名だけを見る床では片方の節を丸ごと',
+      '消しても検出できない（#510 の変異試験で実測）。',
+      'ここにある対が失われると CI が fail する。記載を増やしたら',
+      'node scripts/check-test-spec-coverage.js --update で更新し、差分を PR に載せること。',
+      'テストクラスや仕様書を削除・改名したときは、記載を直したうえで同じコマンドで更新する。',
     ].join(' '),
-    documented: [...documented].sort(),
+    documented: bySpec,
   };
   fs.writeFileSync(file, JSON.stringify(body, null, 2) + '\n');
 }
@@ -221,35 +265,72 @@ function selfTest() {
   t('mentionsClass: 負例 — 名前が現れなければ false',
     !mentionsClass('フロントの表しかない本文', 'BffDocumentWriteEndpointTests'));
 
-  t('documentedNames: 本文に現れるものだけを返す',
-    [...documentedNames(['A_Tests', 'BTests'], '`BTests` のみ')].join(',') === 'BTests');
+  t('pairKey / splitPair: 仕様書ファイル × クラス名の対を往復できる',
+    splitPair(pairKey('docs/tests/SC-05_x.md', 'ATests')).spec === 'docs/tests/SC-05_x.md'
+    && splitPair(pairKey('docs/tests/SC-05_x.md', 'ATests')).name === 'ATests');
 
-  // --- ratchet の 4 判定 ---------------------------------------------------------
+  t('documentedPairs: 本文に現れる対だけを返す',
+    [...documentedPairs(['ATests', 'BTests'], [{ file: 'S1.md', text: '`BTests` のみ' }])].join(',')
+      === 'S1.md::BTests');
+  t('documentedPairs: 同じクラスを 2 つの仕様書が参照したら対は 2 つ',
+    documentedPairs(['ATests'], [{ file: 'S1.md', text: '`ATests`' }, { file: 'S2.md', text: '`ATests`' }]).size === 2);
+
+  // --- ratchet の 4 判定（前 3 つは対、undocumented はクラス単位） -----------------
+  const P = pairKey;
   {
-    // 今回の欠陥そのもの: テストは実在するのに仕様書から消えた。
-    const r = classify({ existing: ['X_Tests', 'YTests'], documented: ['YTests'], baseline: ['X_Tests', 'YTests'] });
+    // 今回の欠陥そのもの: テストは実在するのに、ある仕様書から節ごと消えた。
+    const r = classify({
+      existing: ['XTests', 'YTests'],
+      documented: [P('S1.md', 'YTests')],
+      baseline: [P('S1.md', 'XTests'), P('S1.md', 'YTests')],
+    });
     t('classify: 節の消失は regressed（fail 対象）',
-      r.regressed.join(',') === 'X_Tests' && r.removedTest.length === 0
+      r.regressed.join(',') === 'S1.md::XTests' && r.removedTest.length === 0
         && r.newlyDocumented.length === 0 && r.undocumented.length === 0, r);
   }
   {
-    const r = classify({ existing: ['YTests'], documented: ['YTests'], baseline: ['X_Tests', 'YTests'] });
-    t('classify: テストごと消えたら removedTest（fail 対象・baseline の減らし忘れ）',
-      r.removedTest.join(',') === 'X_Tests' && r.regressed.length === 0, r);
+    // **クラス単位の床では取り逃す形**（本 issue の変異試験 M2 が実測した穴）。
+    // XTests は S2.md にも載っているため「どこかには載っている」が、S1.md の節は消えている。
+    const r = classify({
+      existing: ['XTests'],
+      documented: [P('S2.md', 'XTests')],
+      baseline: [P('S1.md', 'XTests'), P('S2.md', 'XTests')],
+    });
+    t('classify: 他の仕様書が同じクラスを参照していても、消えた側の節を regressed にする',
+      r.regressed.join(',') === 'S1.md::XTests' && r.undocumented.length === 0, r);
   }
   {
-    const r = classify({ existing: ['X_Tests', 'ZTests'], documented: ['X_Tests', 'ZTests'], baseline: ['X_Tests'] });
+    const r = classify({
+      existing: ['YTests'],
+      documented: [P('S1.md', 'YTests')],
+      baseline: [P('S1.md', 'XTests'), P('S1.md', 'YTests')],
+    });
+    t('classify: テストごと消えたら removedTest（fail 対象・床の減らし忘れ）',
+      r.removedTest.join(',') === 'S1.md::XTests' && r.regressed.length === 0, r);
+  }
+  {
+    const r = classify({
+      existing: ['XTests', 'ZTests'],
+      documented: [P('S1.md', 'XTests'), P('S1.md', 'ZTests')],
+      baseline: [P('S1.md', 'XTests')],
+    });
     t('classify: 記載を増やしたら newlyDocumented（fail 対象・床の上げ忘れ）',
-      r.newlyDocumented.join(',') === 'ZTests' && r.regressed.length === 0, r);
+      r.newlyDocumented.join(',') === 'S1.md::ZTests' && r.regressed.length === 0, r);
   }
   {
-    const r = classify({ existing: ['X_Tests', 'ZTests'], documented: ['X_Tests'], baseline: ['X_Tests'] });
-    t('classify: 未記載の新規テストは undocumented（warn どまり）',
+    const r = classify({
+      existing: ['XTests', 'ZTests'],
+      documented: [P('S1.md', 'XTests')],
+      baseline: [P('S1.md', 'XTests')],
+    });
+    t('classify: どの仕様書にも載らない新規テストは undocumented（warn どまり）',
       r.undocumented.join(',') === 'ZTests' && r.regressed.length === 0
         && r.newlyDocumented.length === 0 && r.removedTest.length === 0, r);
   }
   {
-    const r = classify({ existing: ['X_Tests'], documented: ['X_Tests'], baseline: ['X_Tests'] });
+    const r = classify({
+      existing: ['XTests'], documented: [P('S1.md', 'XTests')], baseline: [P('S1.md', 'XTests')],
+    });
     t('classify: 変化が無ければ 4 分類とも空（緑）',
       r.regressed.length + r.removedTest.length + r.newlyDocumented.length + r.undocumented.length === 0, r);
   }
@@ -264,10 +345,24 @@ function selfTest() {
   t('readBaseline: 負例 — 壊れた JSON は例外',
     (() => { try { readBaseline(bad); return false; } catch { return true; } })());
   fs.writeFileSync(bad, '{"documented": "X"}');
-  t('readBaseline: 負例 — documented が配列でなければ例外',
+  t('readBaseline: 負例 — documented がオブジェクトでなければ例外',
     (() => { try { readBaseline(bad); return false; } catch { return true; } })());
   fs.writeFileSync(bad, '{"documented": ["ATests"]}');
-  t('readBaseline: 正例 — 配列を返す', readBaseline(bad).join(',') === 'ATests');
+  t('readBaseline: 負例 — 旧形式（クラス名の配列）は例外（形式の取り違えを黙って通さない）',
+    (() => { try { readBaseline(bad); return false; } catch { return true; } })());
+  fs.writeFileSync(bad, '{"documented": {"docs/tests/S1.md": "ATests"}}');
+  t('readBaseline: 負例 — 値が配列でなければ例外',
+    (() => { try { readBaseline(bad); return false; } catch { return true; } })());
+  fs.writeFileSync(bad, '{"documented": {"docs/tests/S1.md": ["ATests"]}}');
+  t('readBaseline: 正例 — 対の配列を返す',
+    readBaseline(bad).join(',') === 'docs/tests/S1.md::ATests');
+  {
+    // 往復（write → read）で対が保たれること。床の書き戻しが壊れると検査が静かに空になる。
+    const rt = path.join(tmp, 'roundtrip.json');
+    writeBaseline([pairKey('docs/tests/S2.md', 'BTests'), pairKey('docs/tests/S1.md', 'ATests')], rt);
+    t('writeBaseline → readBaseline: 対が保たれ、順序が安定する',
+      readBaseline(rt).sort().join(',') === 'docs/tests/S1.md::ATests,docs/tests/S2.md::BTests');
+  }
 
   // --- 走査の fail-closed（実ファイル木のフィクスチャ） --------------------------
   const fake = fs.mkdtempSync(path.join(os.tmpdir(), 'tsc-tree-'));
@@ -277,25 +372,27 @@ function selfTest() {
   fs.writeFileSync(path.join(fake, 'src', 'unit', 'backend', 'BetaTests.cs'), '// x');
   fs.writeFileSync(path.join(fake, 'src', 'unit', 'backend', 'Program.cs'), '// x');
   fs.writeFileSync(path.join(fake, 'docs', 'tests', 'SC-99_x.md'), 'テスト: `AlphaTests`');
+  fs.writeFileSync(path.join(fake, 'docs', 'tests', 'FR-99_y.md'), '別の仕様書も `AlphaTests` を挙げる');
   {
     const classes = collectTestClasses(fake);
-    const spec = collectSpecText(fake);
+    const docs = collectSpecDocs(fake);
+    const base = [pairKey('docs/tests/SC-99_x.md', 'AlphaTests'), pairKey('docs/tests/FR-99_y.md', 'AlphaTests')];
     t('collectTestClasses: フィクスチャから 2 クラスを拾い Program.cs は拾わない',
       classes.size === 2 && classes.has('AlphaTests') && classes.has('BetaTests'), [...classes.keys()]);
-    t('collectSpecText: docs/tests/ の md を 1 件読む', spec.files.length === 1);
-    const r = classify({ existing: classes.keys(), documented: documentedNames(classes.keys(), spec.text), baseline: ['AlphaTests'] });
+    t('collectSpecDocs: docs/tests/ の md を 2 件読む', docs.length === 2, docs.map((d) => d.file));
+    const r = classify({ existing: classes.keys(), documented: documentedPairs(classes.keys(), docs), baseline: base });
     t('走査 → 判定の通し: BetaTests は undocumented（warn）で赤くならない',
       r.undocumented.join(',') === 'BetaTests' && r.regressed.length === 0, r);
-    // 変異: 仕様書から AlphaTests の記載を消すと regressed になる。
+    // 変異: **片方の**仕様書から記載を消すと regressed になる（もう片方に残っていても）。
     fs.writeFileSync(path.join(fake, 'docs', 'tests', 'SC-99_x.md'), 'フロントの表しかない');
-    const spec2 = collectSpecText(fake);
-    const r2 = classify({ existing: classes.keys(), documented: documentedNames(classes.keys(), spec2.text), baseline: ['AlphaTests'] });
-    t('変異試験（自己試験内）: 記載を消すと regressed が立つ', r2.regressed.join(',') === 'AlphaTests', r2);
+    const r2 = classify({ existing: classes.keys(), documented: documentedPairs(classes.keys(), collectSpecDocs(fake)), baseline: base });
+    t('変異試験（自己試験内）: 片方の仕様書から記載を消すと regressed が立つ',
+      r2.regressed.join(',') === 'docs/tests/SC-99_x.md::AlphaTests', r2);
   }
   {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'tsc-empty-'));
     t('fail-closed の入口: 走査対象 0 件を 0 件として返す（main が fail へ変換する）',
-      collectTestClasses(empty).size === 0 && collectSpecText(empty).files.length === 0);
+      collectTestClasses(empty).size === 0 && collectSpecDocs(empty).length === 0);
     fs.rmSync(empty, { recursive: true, force: true });
   }
   fs.rmSync(fake, { recursive: true, force: true });
@@ -313,9 +410,9 @@ function selfTest() {
   // 実データでの固定。走査が 0 件へ退行したら（＝検査が静かに失効したら）ここで落ちる。
   {
     const classes = collectTestClasses();
-    const spec = collectSpecText();
+    const docs = collectSpecDocs();
     t('実ファイル: src/ からテストクラスを 1 件以上・docs/tests/ から md を 1 件以上拾える',
-      classes.size > 0 && spec.files.length > 0, { classes: classes.size, specs: spec.files.length });
+      classes.size > 0 && docs.length > 0, { classes: classes.size, specs: docs.length });
   }
 
   let failed = 0;
@@ -336,7 +433,7 @@ function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
 
   const classes = collectTestClasses();
-  const spec = collectSpecText();
+  const docs = collectSpecDocs();
 
   // fail-closed: 「見つからないから素通り」を作らない。
   if (classes.size === 0) {
@@ -345,18 +442,18 @@ function main() {
     process.exit(1);
     return;
   }
-  if (spec.files.length === 0) {
+  if (docs.length === 0) {
     console.error(`[check-test-spec-coverage] ${SPEC_DIR}/ に Markdown が 1 件もありません。`);
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
     process.exit(1);
     return;
   }
 
-  const documented = documentedNames(classes.keys(), spec.text);
+  const documented = documentedPairs(classes.keys(), docs);
 
   if (process.argv.includes('--update')) {
     writeBaseline(documented);
-    console.log(`[check-test-spec-coverage] ${BASELINE_FILE} を更新しました（documented ${documented.size} 件）。` +
+    console.log(`[check-test-spec-coverage] ${BASELINE_FILE} を更新しました（仕様書 × クラスの対 ${documented.size} 件）。` +
       '\n  差分を PR に載せ、増減の理由をレビューで見えるようにしてください。');
     process.exit(0);
     return;
@@ -375,6 +472,11 @@ function main() {
 
   const r = classify({ existing: classes.keys(), documented, baseline });
   const pathsOf = (n) => (classes.get(n) || []).join(' / ');
+  const describePair = (k) => {
+    const { spec, name } = splitPair(k);
+    return `${spec} が挙げていた ${name}（${pathsOf(name) || 'テスト本体は不在'}）`;
+  };
+  const documentedNamesNow = namesInPairs(documented);
 
   const summary = process.env.GITHUB_STEP_SUMMARY;
   if (summary) {
@@ -382,8 +484,9 @@ function main() {
       '### 実在するテスト → テスト仕様書の記載（#510）',
       '',
       `- 走査したテストクラス: **${classes.size}**（\`src/**/*Tests.cs\`。対象外ユニット: ${[...EXCLUDED_UNITS].join(' / ') || 'なし'}）`,
-      `- \`${SPEC_DIR}/\` の仕様書: **${spec.files.length}**`,
-      `- 仕様書から参照済み: **${documented.size}**（床は \`${BASELINE_FILE}\` の **${baseline.length}**）`,
+      `- \`${SPEC_DIR}/\` の仕様書: **${docs.length}**`,
+      `- 記載の対（仕様書 × クラス）: **${documented.size}**（床は \`${BASELINE_FILE}\` の **${baseline.length}**）`,
+      `- どこかの仕様書に載っているクラス: **${documentedNamesNow.size}**`,
       `- 記載が消えた（**fail**）: **${r.regressed.length}**${r.regressed.length ? ` — ${r.regressed.join(' / ')}` : ''}`,
       `- 未記載（warn）: **${r.undocumented.length}**${r.undocumented.length ? ` — ${r.undocumented.join(' / ')}` : ''}`,
       '',
@@ -404,25 +507,26 @@ function main() {
 
   const failures = [];
   if (r.regressed.length) {
-    failures.push('[記載の消失] ' + r.regressed.map((n) => `${n}（${pathsOf(n)}）`).join('\n    ') +
-      `\n    テストは実在するのに ${SPEC_DIR}/ のどこからも参照されなくなりました。` +
+    failures.push('[記載の消失] ' + r.regressed.map(describePair).join('\n    ') +
+      '\n    テストは実在するのに、当該の仕様書がこのクラスを参照しなくなりました。' +
       '\n    仕様書を「全面改訂」した際に節ごと落ちた可能性が高い（#510 の再発）。該当する節を書き戻してください。' +
+      '\n    **他の仕様書に同じクラスの記載が残っていても本検査は落ちる** —— 落ちるのは節であり、節は仕様書に属するためです。' +
       '\n    意図的に記載をやめるなら --update で床を下げ、その理由を PR に書いてください。');
   }
   if (r.removedTest.length) {
-    failures.push(`[床の減らし忘れ] ${r.removedTest.join(' / ')}` +
+    failures.push(`[床の減らし忘れ] ${r.removedTest.map(describePair).join('\n    ')}` +
       `\n    床にありますが、テストクラス自体が src/ に存在しません（削除・改名）。` +
       `\n    ${SPEC_DIR}/ の該当記載を直したうえで --update で床を更新してください。`);
   }
   if (r.newlyDocumented.length) {
-    failures.push(`[床の上げ忘れ] ${r.newlyDocumented.join(' / ')}` +
+    failures.push(`[床の上げ忘れ] ${r.newlyDocumented.join('\n    ')}` +
       '\n    仕様書に記載されましたが床に入っていません。--update で床を上げてください' +
       '（上げておかないと、次に節が落ちても検出できません）。');
   }
 
   if (failures.length === 0) {
-    console.log(`[check-test-spec-coverage] OK: テストクラス ${classes.size} 件中 ${documented.size} 件が ` +
-      `${SPEC_DIR}/ の仕様書 ${spec.files.length} 件から参照済み（床と一致）。` +
+    console.log(`[check-test-spec-coverage] OK: テストクラス ${classes.size} 件のうち ${documentedNamesNow.size} 件が ` +
+      `${SPEC_DIR}/ の仕様書 ${docs.length} 件から参照済み（記載の対 ${documented.size} 件が床と一致）。` +
       `\n  未記載 ${r.undocumented.length} 件は warn（基盤・回帰テストに記載義務は負わせない）。`);
     process.exit(0);
     return;
@@ -443,10 +547,13 @@ module.exports = {
   EXCLUDED_UNITS,
   testClassNameOf,
   mentionsClass,
-  documentedNames,
+  pairKey,
+  splitPair,
+  documentedPairs,
+  namesInPairs,
   classify,
   collectTestClasses,
-  collectSpecText,
+  collectSpecDocs,
   readBaseline,
   writeBaseline,
 };

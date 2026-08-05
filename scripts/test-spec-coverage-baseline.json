@@ -1,68 +1,107 @@
 {
-  "$comment": "check-test-spec-coverage.js の床（NFR / issue #510）。 docs/tests/ のテスト仕様書から参照されているバックエンドテストクラスの一覧である。 ここに載っているクラスが仕様書から参照されなくなると CI が fail する（節の消失を止める）。 記載を増やしたら node scripts/check-test-spec-coverage.js --update で更新し、差分を PR に載せること。 テストクラスを削除したときは、仕様書の該当記載を直したうえで同じコマンドで更新する。",
-  "documented": [
-    "AbacPageFilterTests",
-    "AbacScopeTests",
-    "AbacValidationTests",
-    "AnalysisEndpointTests",
-    "AnalysisPromptBuilderTests",
-    "AnthropicContentBlockSanitizerTests",
-    "AuthzManagementEndpointTests",
-    "BffAuthzEndpointTests",
-    "BffConversionEndpointTests",
-    "BffDataSourceEndpointTests",
-    "BffDocumentEndpointTests",
-    "BffDocumentWriteEndpointTests",
-    "ClaudeProviderStopReasonTests",
-    "ClaudeProviderThinkingTests",
-    "CompletionMetricsTests",
-    "CompletionRoutingEndpointTests",
-    "CompletionStopReasonEndpointTests",
-    "ConfigBffEndpointTests",
-    "ConfigViewerPolicyTests",
-    "ConversionJobEndpointTests",
-    "ConversionJobStoreTests",
-    "DashboardBffEndpointTests",
-    "DashboardEndpointTests",
-    "DataRangeScopeResolverTests",
-    "DataSourceSyncEndpointTests",
-    "DataSourceSyncServiceTests",
-    "DataSourceTests",
-    "DatabaseConnectorTests",
-    "DeterministicGuidTests",
-    "DocumentAttributesTests",
-    "DocumentConfidentialityValidationTests",
-    "DocumentCrudTests",
-    "DocumentDeleteArchiveSyncTests",
-    "DocumentEndpointVersioningTests",
-    "DocumentLifecycleEventTests",
-    "DocumentNormalizedSyncTests",
-    "DocumentSyncConsumerTests",
-    "DocumentVersioningTests",
-    "DriftDetectorTests",
-    "FileSystemConnectorTests",
-    "HealthEndpointTests",
-    "HybridSearchServiceTests",
-    "KeycloakRolesClaimsTransformationTests",
-    "LlmGatewayDiagramCoderTests",
-    "LlmRouterTests",
-    "NetworkIsolationTests",
-    "NormalizationServiceTests",
-    "OpenAiFinishReasonTests",
-    "OpenAiProviderStopReasonTests",
-    "PandocConversionServiceTests",
-    "PipelineRecomposeTests",
-    "PipelineStepRegistrationTests",
-    "QdrantVectorStoreTests",
-    "RagOrchestratorDegradedModelTests",
-    "RagOrchestratorScopeTests",
-    "RagOrchestratorStopReasonTests",
-    "RagOrchestratorTests",
-    "RawDocumentFetchedConsumerJobTests",
-    "RawDocumentFetchedConsumerTests",
-    "SaaSConnectorTests",
-    "WikiConnectorTests",
-    "WikiEndpointsAbacTests",
-    "WikiJsGraphQlClientTests"
-  ]
+  "$comment": "check-test-spec-coverage.js の床（NFR / issue #510 / IADR-0130）。 キーは docs/tests/ のテスト仕様書、値はその仕様書が参照しているバックエンドテストクラスである。 **クラス名だけでなく「どの仕様書が」まで固定する** —— 同じクラスを複数の仕様書が参照している場合 （DocumentVersioningTests は SC-05 と FR-06 の両方）、クラス名だけを見る床では片方の節を丸ごと 消しても検出できない（#510 の変異試験で実測）。 ここにある対が失われると CI が fail する。記載を増やしたら node scripts/check-test-spec-coverage.js --update で更新し、差分を PR に載せること。 テストクラスや仕様書を削除・改名したときは、記載を直したうえで同じコマンドで更新する。",
+  "documented": {
+    "docs/tests/FR-01_data-source-catalog.md": [
+      "DataSourceSyncEndpointTests",
+      "DataSourceSyncServiceTests",
+      "DataSourceTests",
+      "DatabaseConnectorTests",
+      "DocumentNormalizedSyncTests",
+      "FileSystemConnectorTests",
+      "HealthEndpointTests",
+      "SaaSConnectorTests",
+      "WikiConnectorTests"
+    ],
+    "docs/tests/FR-03_hybrid-search.md": [
+      "HybridSearchServiceTests"
+    ],
+    "docs/tests/FR-04_ai-answer-citations.md": [
+      "RagOrchestratorDegradedModelTests"
+    ],
+    "docs/tests/FR-06_document-crud-versioning.md": [
+      "DocumentAttributesTests",
+      "DocumentConfidentialityValidationTests",
+      "DocumentCrudTests",
+      "DocumentEndpointVersioningTests",
+      "DocumentNormalizedSyncTests",
+      "DocumentVersioningTests"
+    ],
+    "docs/tests/FR-07_data-range-analysis.md": [
+      "AnalysisEndpointTests",
+      "AnalysisPromptBuilderTests",
+      "DataRangeScopeResolverTests",
+      "RagOrchestratorScopeTests",
+      "RagOrchestratorTests"
+    ],
+    "docs/tests/FR-09_abac-attribute-policy-management.md": [
+      "AbacScopeTests",
+      "AbacValidationTests",
+      "AuthzManagementEndpointTests",
+      "KeycloakRolesClaimsTransformationTests"
+    ],
+    "docs/tests/FR-11_llm-egress-routing.md": [
+      "AnthropicContentBlockSanitizerTests",
+      "ClaudeProviderStopReasonTests",
+      "ClaudeProviderThinkingTests",
+      "CompletionMetricsTests",
+      "CompletionRoutingEndpointTests",
+      "CompletionStopReasonEndpointTests",
+      "LlmGatewayDiagramCoderTests",
+      "LlmRouterTests",
+      "OpenAiFinishReasonTests",
+      "OpenAiProviderStopReasonTests",
+      "QdrantVectorStoreTests",
+      "RagOrchestratorStopReasonTests"
+    ],
+    "docs/tests/FR-12_document-normalization.md": [
+      "DeterministicGuidTests",
+      "LlmGatewayDiagramCoderTests",
+      "NormalizationServiceTests",
+      "PandocConversionServiceTests",
+      "RawDocumentFetchedConsumerTests"
+    ],
+    "docs/tests/FR-13_wiki-browsing-abac.md": [
+      "AbacPageFilterTests",
+      "DocumentDeleteArchiveSyncTests",
+      "DocumentLifecycleEventTests",
+      "DocumentSyncConsumerTests",
+      "WikiEndpointsAbacTests",
+      "WikiJsGraphQlClientTests"
+    ],
+    "docs/tests/FR-14_composability.md": [
+      "PipelineRecomposeTests",
+      "PipelineStepRegistrationTests"
+    ],
+    "docs/tests/FR-15_config-info-api.md": [
+      "ConfigBffEndpointTests",
+      "ConfigViewerPolicyTests",
+      "DriftDetectorTests",
+      "KeycloakRolesClaimsTransformationTests"
+    ],
+    "docs/tests/SC-03_document-detail.md": [
+      "BffDocumentEndpointTests"
+    ],
+    "docs/tests/SC-05_document-management.md": [
+      "BffDocumentWriteEndpointTests",
+      "DocumentEndpointVersioningTests",
+      "DocumentVersioningTests"
+    ],
+    "docs/tests/SC-06_datasource-management.md": [
+      "BffDataSourceEndpointTests"
+    ],
+    "docs/tests/SC-07_conversion-jobs.md": [
+      "BffConversionEndpointTests",
+      "ConversionJobEndpointTests",
+      "ConversionJobStoreTests",
+      "NetworkIsolationTests",
+      "RawDocumentFetchedConsumerJobTests"
+    ],
+    "docs/tests/SC-09_admin-abac-settings.md": [
+      "BffAuthzEndpointTests"
+    ],
+    "docs/tests/SC-10_operations-dashboard.md": [
+      "DashboardBffEndpointTests",
+      "DashboardEndpointTests"
+    ]
+  }
 }

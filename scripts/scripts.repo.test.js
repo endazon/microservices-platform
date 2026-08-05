@@ -1637,18 +1637,20 @@ module.exports = ({ ok, assert }) => {
   // 床は --update で誰でも下げられるため、「節を消して床も下げる」で黙らせる経路が残る。
   // 本 issue の核心にあたるクラスだけは、床とは別に固定して差分をレビューへ強制的に出す。
   ok('#510 で復帰させたバックエンドテストが床に残っている', () => {
-    const { readBaseline } = require('./check-test-spec-coverage.js');
+    const { readBaseline, pairKey } = require('./check-test-spec-coverage.js');
     const documented = new Set(readBaseline());
-    for (const name of [
-      'BffDocumentWriteEndpointTests', // SC-05 §BFF（書き込み）
-      'BffDataSourceEndpointTests', // SC-06 §BFF
-      'DocumentVersioningTests', // SC-05 §状態遷移ガード（ドメイン）
-      'DocumentEndpointVersioningTests', // SC-05 §状態遷移ガード（API）
+    const SC05 = 'docs/tests/SC-05_document-management.md';
+    const SC06 = 'docs/tests/SC-06_datasource-management.md';
+    for (const [spec, name] of [
+      [SC05, 'BffDocumentWriteEndpointTests'], // SC-05 §BFF（書き込み）
+      [SC05, 'DocumentVersioningTests'], // SC-05 §状態遷移ガード（ドメイン）
+      [SC05, 'DocumentEndpointVersioningTests'], // SC-05 §状態遷移ガード（API）
+      [SC06, 'BffDataSourceEndpointTests'], // SC-06 §BFF
     ]) {
       assert.ok(
-        documented.has(name),
-        `${name} が scripts/test-spec-coverage-baseline.json から消えている` +
-          '（#510 が復帰させた記載を再び落としていないか docs/tests/SC-05・SC-06 を確認すること）',
+        documented.has(pairKey(spec, name)),
+        `${spec} の ${name} が scripts/test-spec-coverage-baseline.json から消えている` +
+          '（#510 が復帰させた記載を再び落としていないか当該のテスト仕様書を確認すること）',
       );
     }
   });
