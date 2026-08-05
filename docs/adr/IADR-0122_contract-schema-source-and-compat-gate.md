@@ -2,10 +2,10 @@
 title: IADR-0122 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート — IADR-0049 §3 の部分繰延解除
 type: impl-adr
 status: Accepted
-related_ids: [NFR, FR-14, ADR-0018, ADR-0027, ADR-0029, IADR-0028, IADR-0049, IADR-0115, IADR-0116, IADR-0120]
+related_ids: [NFR, FR-14, ADR-0018, ADR-0027, ADR-0029, IADR-0028, IADR-0049, IADR-0115, IADR-0116, IADR-0120, IADR-0131]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md"
@@ -125,6 +125,14 @@ CI 契約テストをセットで条件付き繰延**にしている。その根
   （[ADR-0027](../../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md) の
   Wolverine 経路）であり、そこが空白の正本は目的を果たさない。加えて同ファイルは手書き／雛形生成
   （`scripts/gen-openapi-skeleton.js`）であり、コードとドリフトし得る＝**正本にできない**。
+  - > **［2026-08-05 追記・射程の明確化（PR #518 のクロス監査 C）］**
+    > 本項が棄却したのは**イベント契約を含む C# `Shared.Contracts` 全体の互換ゲートの正本**としての
+    > OpenAPI であり、**BFF ↔ SPA の REST 面での用途までは否定していない**。
+    > [IADR-0131](IADR-0131_openapi-as-bff-contract-source.md) 決定 1 は同ファイルを
+    > **SPA の型生成の入力（BFF 面の契約）の正本**としており、本決定と排他ではない
+    > ——下記フォローアップ 3 が「フロントエンドの契約（orval 生成物と OpenAPI の整合）は本件で扱わない」と
+    > 射程外を宣言しているとおりである。**「コードとドリフトし得る」という本項の指摘は IADR-0131 でも
+    > 否定されていない**（同決定は「C# の DTO を変えても SPA の型検査は落ちない」を保証の上限として明記する）。
 - **proto（D）を正本にしない**のは、リポジトリに `.proto` が **0 件**だからである。
   [ADR-0029](../../planning/projects/microservices-platform/07_adr/ADR-0029_grpc-rest-usage-criteria.md)
   は east-west を gRPC + Protobuf と定めており、**将来 east-west の正本は proto になる**。
