@@ -19,7 +19,12 @@ import {
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { attributeLabel, orderedAttributes } from './attributes';
 import { isNotFound, useDocumentQueries } from './useDocumentQueries';
-import type { DocumentContent, DocumentDetail, DocumentVersion } from './useDocumentQueries';
+// SC-03, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type {
+  DocumentContentDto,
+  DocumentDto,
+  DocumentVersionDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細／プレビュー（05_screens: ルート /docs/:id）。
 // 正規化文書（Markdown）本文と属性・タグ・版履歴を表示し、出典元・Wiki（SC-04）への導線を提供する。
@@ -132,7 +137,7 @@ function ContentView({
 }: {
   isPending: boolean;
   isError: boolean;
-  content?: DocumentContent;
+  content?: DocumentContentDto;
 }) {
   return (
     <Card className="mb-3">
@@ -166,7 +171,7 @@ function ContentView({
  * 出典元（原本）リンクと SC-04（Wiki）への導線。
  * `http(s)` のときだけリンク化し、`storage://` 等は等幅表記で参照だけ示す（押せないものを押させない）。
  */
-function SourceLinks({ doc, content }: { doc: DocumentDetail; content?: DocumentContent }) {
+function SourceLinks({ doc, content }: { doc: DocumentDto; content?: DocumentContentDto }) {
   const { wikiBaseUrl } = appConfig();
   const sourceUri = content?.sourceUri ?? doc.markdownUri ?? null;
   const isHttp = !!sourceUri && /^https?:\/\//i.test(sourceUri);
@@ -248,7 +253,7 @@ function AttributeList({
   );
 }
 
-function VersionTable({ versions }: { versions: DocumentVersion[] }) {
+function VersionTable({ versions }: { versions: DocumentVersionDto[] }) {
   return (
     <Table>
       <TableCaption>

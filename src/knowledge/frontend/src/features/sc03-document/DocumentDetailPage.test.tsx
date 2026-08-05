@@ -3,16 +3,20 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
-// SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細の再実装（#502）。
+// SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細の再実装（#502）＋ 生成フックへの載せ替え（#519）。
 // 権限外・不在はいずれも 404 で秘匿され、UI は中立に表示する（IADR-0009 / IADR-0038）。
+//
+// IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
+// モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
 const mocks = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+  apiRequest: vi.fn(),
   wikiBaseUrl: undefined as string | undefined,
 }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
@@ -50,14 +54,12 @@ function respond({
   content = CONTENT as unknown,
   versions = VERSIONS as unknown,
 }: { detail?: unknown; content?: unknown; versions?: unknown } = {}) {
-  mocks.apiFetch.mockImplementation((path: string) => {
-    if (path.endsWith('/content')) {
-      return content instanceof Error ? Promise.reject(content) : Promise.resolve(content);
-    }
-    if (path.endsWith('/versions')) {
-      return versions instanceof Error ? Promise.reject(versions) : Promise.resolve(versions);
-    }
-    return detail instanceof Error ? Promise.reject(detail) : Promise.resolve(detail);
+  const reply = (value: unknown) =>
+    value instanceof Error ? Promise.reject(value) : Promise.resolve(jsonResponse(value));
+  mocks.apiRequest.mockImplementation((path: string) => {
+    if (path.endsWith('/content')) return reply(content);
+    if (path.endsWith('/versions')) return reply(versions);
+    return reply(detail);
   });
 }
 
@@ -68,7 +70,7 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   mocks.wikiBaseUrl = undefined;
 });
 
@@ -166,7 +168,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     await renderPage();
 
     await screen.findByText('文書が見つかりませんでした。');
-    const paths = mocks.apiFetch.mock.calls.map((call) => String(call[0]));
+    const paths = mocks.apiRequest.mock.calls.map((call) => String(call[0]));
     expect(paths.some((p) => p.endsWith('/versions'))).toBe(false);
   });
 
