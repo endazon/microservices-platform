@@ -20,6 +20,7 @@ related_specs:
   - ../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md
   - ./20260805_issue-503_sc05-08-admin-screens.md
   - ./20260805_issue-504_sc09-11-admin-ops-screens.md
+  - ./20260805_issue-520_openapi-response-required.md
 ---
 
 # 仕様書: OpenAPI への BFF 群の追加と `AiAnswerDto` の是正（#506）
@@ -564,7 +565,7 @@ RFC7807 でどのフィールドも省略され得る）。
 | # | 事項 | 種別 | 送り先 |
 | --- | --- | --- | --- |
 | 1 | **画面の載せ替え（分割 2 本目）** | 本 issue の残り | **#519**（起票済み）。対象・手順は §残りとして何をどうするか（9 ファイル・共通の注意 5 点）。**#520 を先に通す方が手戻りが少ない**（同じ生成型を触るため競合し、`required` の有無で生成される型の省略可否が変わる） |
-| 2 | **既存の応答スキーマ 23 個に `required` が無い**（数え方 = `components.schemas` 直下で `required` を持たないキー 27 個から、本作業で追加した 4 個を引いた数） | 是正提案 | 変異試験 M2 が示したとおり、`required` の無いスキーマは型検査の網にならない。入れるかは**別 PR = #520**（起票済み）。影響が `?? 既定値` の表現に及び、載せ替え〔2 本目 = #519〕とも競合する——**同じ生成型を両方が触るため、#520 を先に入れる方が手戻りが少ない** |
+| 2 | **既存の応答スキーマ 23 個に `required` が無い**（数え方 = `components.schemas` 直下で `required` を持たないキー 27 個から、本作業で追加した 4 個を引いた数）<br>**［2026-08-05 追記］#520 / PR で消化した。** 母集合は 23 ではなく **25 個**だった——上の数え方は**要求専用の 2 個**（`AnalysisDataRange` / `UpdateMetadataRequest`）を含み、逆に**除外 4 個の再確認を範囲外へ落として**いる。#520 は「27 − 要求専用 2」＝ 25 を母集合に採った。突合表と数え方は [作業仕様書 #520](./20260805_issue-520_openapi-response-required.md) §設計 1 を参照 | 是正提案 | 変異試験 M2 が示したとおり、`required` の無いスキーマは型検査の網にならない。入れるかは**別 PR = #520**（起票済み）。影響が `?? 既定値` の表現に及び、載せ替え〔2 本目 = #519〕とも競合する——**同じ生成型を両方が触るため、#520 を先に入れる方が手戻りが少ない** |
 | 3 | **C# → OpenAPI の追随が人手** | 構造的な穴 | [[IADR-0131]] 決定 1 の但し書き・フォローアップ 2。透過中継の応答を覆える方式が要る |
 | 4 | 既存 2 本の `operationId` 不統一（`analysis-ask` / `analysis-analyze`） | 小さな是正 | 2 本目で `useAnalysisAnalyze` に触るついでが最も安い |
 | 5 | **BFF のコメントが後段の実体と食い違う**: `DataSourceBffEndpoints.cs:80` は同期応答を `{ fetchId, status }` と書くが、実体は `{ fetched, failed, connectorAvailable, message }`（`DataSourceEndpoints.cs:61-66`） | コメントの誤り | 2 本目、または独立の小さな fix |
