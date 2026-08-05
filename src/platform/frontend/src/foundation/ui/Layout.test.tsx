@@ -184,13 +184,26 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
     expect(screen.getByText('汎用プラットフォーム')).toBeInTheDocument();
   });
 
+  /**
+   * 比べるのは**共通シェルの本文領域（Outlet の器）**である。
+   *
+   * NFR / [[IADR-0133]]: 以前は見出しの親（NotFound 自身の `<main>`）を比べていたが、
+   * それだと **NotFound を包む要素の違いが比較の外に落ちる**——変異試験で、未知パス側だけを
+   * `<div>` で包んでも素通りすることを実測した。包む要素が違えば「シェルが出るかどうか」と
+   * 同種の手がかりになるため、器ごと比べる。器は Layout の `<main>`、その中の
+   * `<main>` が NotFound（DOM 順で外側が先）。
+   */
+  const outletContainer = () => screen.getAllByRole('main')[0];
+
   it('produces the same not-found markup in both cases', async () => {
     const unknown = await renderLayout(['user'], '/no-such-screen');
-    const unknownHtml = heading().parentElement?.outerHTML;
+    expect(heading()).toBeInTheDocument();
+    const unknownHtml = outletContainer().outerHTML;
     unknown.unmount();
 
     await renderLayout(['user'], '/admin/config-viewer');
-    const forbiddenHtml = heading().parentElement?.outerHTML;
+    expect(heading()).toBeInTheDocument();
+    const forbiddenHtml = outletContainer().outerHTML;
 
     expect(unknownHtml).toBeTruthy();
     expect(forbiddenHtml).toBe(unknownHtml);
