@@ -71,7 +71,7 @@
 | IADR-0045 | BFF 文書書き込みのスコープ確認往復は多層防御の要のため現時点で維持し最適化を保留する | Accepted |
 | IADR-0046 | 構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する | Accepted |
 | IADR-0047 | 文書の必須属性（機密区分）のサーバー側検証 | Accepted |
-| IADR-0048 | バックエンドは .NET 10 / C# 13 を採用する（計画制約「.NET 8」からの乖離） | Accepted |
+| IADR-0048 | バックエンドは .NET 10 / C# 13 を採用する（計画制約「.NET 8」からの乖離） **［2026-08-05 追記］乖離は解消済み —— 計画側が実態を追認して `.NET 10` へ更新した**（[ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md) = `Accepted`）。§影響の「計画側の判断待ち」と §フォローアップは #497 で完了し、本 IADR は `Accepted` を維持する（「.NET 8 へ是正」の分岐は発生しない）。 | Accepted |
 | IADR-0049 | コンポーザビリティ標準（共通エンベロープ・CI契約テスト・ステージング適用順序）の段階適用と繰延条件。**決定 1 のうち「CI 契約テスト」は 2026-08-04 に [[IADR-0122]] で繰延解除**（共通エンベロープの繰延・決定 2〔ステージング適用順序〕・決定 3〔起動時 fail-fast の維持〕は引き続き有効なため Accepted を維持） | Accepted |
 | IADR-0050 | HPA/PDB の適用対象はステートレス要求処理系に限定し、キュー駆動ワーカーは対象外とする | Accepted |
 | IADR-0051 | データソースコネクタのポート分離（Discover/Fetch）と filesystem コネクタ・同期基盤 | Accepted |
