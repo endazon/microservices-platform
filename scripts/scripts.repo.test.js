@@ -1742,6 +1742,24 @@ module.exports = ({ ok, assert }) => {
     );
   });
 
+  ok('必須・値集合の判定は属性辞書があればそちらを正とする', () => {
+    const defs = [
+      { key: 'confidentiality', scope: 'document', required: true, allowedValues: ['internal', 'secret'] },
+      { key: 'project', scope: 'document', required: true, allowedValues: [] },
+      { key: 'kind', scope: 'document', required: false, allowedValues: [] },
+      { key: 'clearance', scope: 'user', required: true, allowedValues: [] }, // 文書側の必須に混ぜない
+    ];
+    // 辞書が必須と宣言したキー（confidentiality / project）のうち、実データに無いのは project。
+    assert.deepStrictEqual(abac.missingRequiredDocumentAttributes(['confidentiality', 'kind'], defs), ['project']);
+    // 値集合も辞書の AllowedValues が正になる（計画の 4 値ではなく 2 値で判定する）。
+    const conf = abac.countConfidentiality(ABAC_ROWS, defs);
+    assert.strictEqual(conf.plannedValuesSource, 'dictionary');
+    assert.deepStrictEqual(conf.plannedValues, ['internal', 'secret']);
+    assert.deepStrictEqual(conf.unusedPlannedValues, ['secret']);
+    // 辞書が無ければ計画の値集合へ縮退する。
+    assert.strictEqual(abac.countConfidentiality(ABAC_ROWS, []).plannedValuesSource, 'plan');
+  });
+
   ok('countReachablePairs はポリシー 0 件なら deny-by-default で 0 を返す', () => {
     const r = abac.countReachablePairs(ABAC_USERS, ABAC_ROWS, []);
     assert.deepStrictEqual(r.grantedUsers, []);

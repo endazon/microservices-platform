@@ -162,6 +162,9 @@ realm `microservices-platform`・`document_svc` 実データ）／ **コマン�
 | 利用者属性（`clearance` × `department`）の組み合わせ | 3（`restricted/engineering` 2 人・`internal/engineering` 1 人・属性なし 1 人） |
 | 到達可能な 利用者 × 文書 の組（read） | **0**（有効ポリシー 0 件＝deny-by-default） |
 
+文書数は**測定時点の値**である（定期同期（#299）が動いているため増え続ける。同日の再実行では 2,428 件。
+**組み合わせ数・分布は変わらない**——増えているのは同一属性の文書だからである）。
+
 ABAC 対象キーの決定は**計画の文書基本属性へ縮退**した（属性辞書が空のため）。実データに現れる
 `kind` / `source` / `symbol` / `publishedAt` / `periodKey` / `confirmedAt` / `assumptionsVersion` は
 ABAC 対象外の実在キーとして分離した（これらを軸に数えると「組み合わせ数」がタイムスタンプの異なり数になる）。

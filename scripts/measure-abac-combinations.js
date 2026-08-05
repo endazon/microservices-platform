@@ -136,15 +136,23 @@ function countCombinations(rows, keys) {
 }
 
 // 機密区分単位（ADR-0035 の採用粒度）。
-function countConfidentiality(rows) {
+// 「設計上の値集合」は属性辞書の AllowedValues を優先し、無ければ計画の 4 値を使う
+// （辞書が運用で拡張されていれば、そちらが現場の正になるため）。
+function countConfidentiality(rows, definitions) {
   const result = countCombinations(rows, ['confidentiality']);
   const observedValues = result.entries.map((e) => e.combo.confidentiality).filter((v) => v !== ABSENT);
+  const declared = (definitions || []).find((d) => d && d.scope === 'document' && d.key === 'confidentiality');
+  const plannedValues =
+    declared && Array.isArray(declared.allowedValues) && declared.allowedValues.length > 0
+      ? declared.allowedValues
+      : PLANNED_CONFIDENTIALITY_VALUES;
   return {
     ...result,
-    plannedValues: PLANNED_CONFIDENTIALITY_VALUES,
+    plannedValues,
+    plannedValuesSource: plannedValues === PLANNED_CONFIDENTIALITY_VALUES ? 'plan' : 'dictionary',
     observedValues,
-    // 設計上の 4 通りのうち、実データに現れなかった値。
-    unusedPlannedValues: PLANNED_CONFIDENTIALITY_VALUES.filter((v) => !observedValues.includes(v)),
+    // 設計上の値集合のうち、実データに現れなかった値。
+    unusedPlannedValues: plannedValues.filter((v) => !observedValues.includes(v)),
   };
 }
 
@@ -173,10 +181,16 @@ function countRoleSets(users) {
   return { distinct: entries.length, total: (users || []).length, entries };
 }
 
-// 計画が必須とする文書属性のうち、実データに存在しないもの（＝計画と実装の乖離）。
-function missingRequiredDocumentAttributes(observedKeys) {
+// 必須とされる文書属性のうち、実データに存在しないもの（＝定義と実装の乖離）。
+// 必須の判定は属性辞書の Required を優先し、辞書に文書スコープの定義が無ければ計画の必須属性を使う
+// （辞書がある環境では、そこが必須の正になる）。
+function missingRequiredDocumentAttributes(observedKeys, definitions) {
   const observed = new Set(observedKeys || []);
-  return PLANNED_REQUIRED_DOCUMENT_ATTRIBUTES.filter((k) => !observed.has(k));
+  const documentDefs = (definitions || []).filter((d) => d && d.scope === 'document');
+  const required = documentDefs.length
+    ? documentDefs.filter((d) => d.required).map((d) => d.key)
+    : PLANNED_REQUIRED_DOCUMENT_ATTRIBUTES;
+  return required.filter((k) => !observed.has(k));
 }
 
 // AuthorizationService の意味論（AbacEvaluator.ResolveScope / BffScopeResolver.Matches）を写した評価。
@@ -256,13 +270,13 @@ function summarize(data) {
     },
     keyResolution,
     observedKeys,
-    missingRequiredDocumentAttributes: missingRequiredDocumentAttributes(observedKeys),
+    missingRequiredDocumentAttributes: missingRequiredDocumentAttributes(observedKeys, data.definitions),
     // 粒度 1: 属性組み合わせ単位
     byAttributeCombination: countCombinations(rows, keyResolution.abacKeys),
     // 粒度 2: ロール単位
     byRole: countRoleSets(data.users),
     // 粒度 3: 機密区分単位（ADR-0035 の採用粒度）
-    byConfidentiality: countConfidentiality(rows),
+    byConfidentiality: countConfidentiality(rows, data.definitions),
     userAttributeCombinations: countUserAttributeCombinations(data.users),
     reachability: countReachablePairs(data.users, rows, data.policies),
   };
@@ -308,7 +322,10 @@ function renderText(r, topN = 10) {
   }
   L.push('');
   L.push('粒度 3: 機密区分単位（ADR-0035 の採用粒度）');
-  L.push(`  実在する値の数      : ${r.byConfidentiality.observedValues.length}（設計上は ${r.byConfidentiality.plannedValues.length} 通り）`);
+  L.push(
+    `  実在する値の数      : ${r.byConfidentiality.observedValues.length}（設計上は ${r.byConfidentiality.plannedValues.length} 通り` +
+      `${r.byConfidentiality.plannedValuesSource === 'dictionary' ? '・属性辞書の AllowedValues' : '・計画の値集合'}）`
+  );
   for (const e of r.byConfidentiality.entries) {
     L.push(`    ${String(e.count).padStart(6)} 件  ${e.label}`);
   }
