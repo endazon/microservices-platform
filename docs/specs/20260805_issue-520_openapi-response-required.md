@@ -36,7 +36,8 @@ related_specs:
 - 関連 IADR: **[[IADR-0131]]（本作業は同 ADR フォローアップ 1 の前提／作業仕様書 #506 §未決事項 2 の消化）**・
   **[[IADR-0132]]（本作業の内部設計判断。本書と対で読む）**・[[IADR-0122]]（契約スキーマの正本）・
   [[IADR-0121]] 決定 3（BFF 境界・手書き HTTP クライアント禁止）
-- 本リポジトリの起点: **#520**（親 #454。出所は #506 / PR #518 §未決事項 2・変異試験 M2 / M2b）
+- 本リポジトリの起点: **#520**（親 #454。出所は[作業仕様書 #506](./20260805_issue-506_openapi-bff-groups.md)
+  ＝ PR #518 が書いたもの——の §未決事項 2・変異試験 M2 / M2b）
 
 ## 目的・背景
 
@@ -103,7 +104,8 @@ DriftFindingDto EmbedApiResponse
 
 ### 実測 2: issue の「23」との差分（**どちらが誤りでもない。数え方が違う**）
 
-issue の 23 は #518 作業仕様書 §未決事項 2 の定義、すなわち
+issue の 23 は[作業仕様書 #506](./20260805_issue-506_openapi-bff-groups.md)（PR #518 が書いた）
+§未決事項 2 の定義、すなわち
 「`components.schemas` 直下で `required` を持たないキー **27 個**から、#518 が追加した
 **意図的に `required` を持たない 4 個**を引いた数」である。
 
@@ -211,8 +213,10 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 ### 対象
 
 1. **`docs/api/openapi.yaml` の応答スキーマ 25 個**（実測 1）について、`required` を入れるか否かを
-   **C# の非 null 性から**決め、入れる分を書く。**推測で決めた行は無い**（§設計 1 の表は
-   すべて `ファイル:行` で出所を示す）。
+   **C# の非 null 性から**決め、入れる分を書く。**推測で決めた行は無い**——§設計 1 の表のうち
+   **22 行は `ファイル:行` で出所を示し、残り 3 行は「C# に出所が無い」ことを明記する**
+   （`AbacConditionMap` = 写像そのもの／`ProblemDetails`・`ValidationProblemDetails` = RFC7807 で
+   対応する C# `record` が存在しない）。
 2. **`pnpm run codegen`** で生成物（`platform/frontend/src/foundation/api/generated/`）を更新しコミットする。
 3. 既存コードが壊れないことを確認する。**`?? 既定値` の扱いは方針を決めて [[IADR-0132]] へ残す**（§設計 3）。
 4. **変異試験**で「フィールドを消す／改名すると型検査が落ちる」ことを実測する（§変異試験）。
@@ -256,9 +260,9 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 | 2 | `SearchResultDto` | `Knowledge.Contracts/Dtos/SearchResultDto.cs:4-12` | `chunkId` `documentId` `documentTitle` `text` `score` `attributes` `tags` | `markdownUri`（`string? MarkdownUri`） |
 | 3 | `AiAnswerDto` | 同 `:28-40` | `answer` `citations` `model` `inputTokens` `outputTokens` `answerId` | — （`answerId` は `Guid AnswerId { get; init; }`＝非 null。`:39`） |
 | 4 | `AccessScopeResponse` | `Platform.Shared.Contracts/Dtos/AccessScopeDto.cs:12-15` | `userId` `allowedFilters`（＋ inline の `allowedFilters[]` に `key` `allowedValues`。出所 `AttributeFilter` `:18`） | — （**C# の `bool Granted = false` に対応する `granted` が OpenAPI に無い**。§未決事項 1） |
-| 5 | `AbacConditionMap` | — （写像そのもの） | **入れない** | `properties` が無く `required` を適用できない（§設計 2） |
-| 6 | `ProblemDetails` | RFC7807（`Results.Problem`） | **入れない** | §設計 2 |
-| 7 | `ValidationProblemDetails` | RFC7807（`Results.ValidationProblem`） | **入れない** | §設計 2 |
+| 5 | `AbacConditionMap` | **C# に出所なし**（写像そのもの。対応する `record` が存在しない） | **入れない** | `properties` が無く `required` を適用できない（§設計 2） |
+| 6 | `ProblemDetails` | **C# に出所なし**（RFC7807。`Results.Problem` が組み立てるため DTO `record` が存在しない） | **入れない** | §設計 2 |
+| 7 | `ValidationProblemDetails` | **C# に出所なし**（RFC7807。`Results.ValidationProblem` が組み立てるため DTO `record` が存在しない） | **入れない** | §設計 2 |
 | 8 | `FeedbackDto` | `Knowledge.Contracts/Dtos/FeedbackDto.cs:17-25` | `id` `answerId` `rating` `userId` `createdAt` `updatedAt` | `comment`（`string?`）・`question`（`string?`） |
 | 9 | `FeedbackStatsDto` | 同 `:29-33` | `up` `down` `total` `satisfactionRate` | — |
 | 10 | `UsageEventCreatedDto` | **匿名型** `DashboardService.../DashboardEndpoints.cs:40`（`new { ev.Id }`）。`ev.Id` は `UsageEvent.cs:10` の `Guid Id` | `id` | — |
@@ -278,10 +282,15 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 | 24 | `DriftFindingDto` | 同 `:69` | `kind` `severity` `target` `detail` | — |
 | 25 | `EmbedApiResponse` | `Platform.Shared.Contracts/Dtos/EmbedDto.cs:30-38` | `vector` `dimensions` `model` `collection` `embedded` `retryable` | `endpoint` `routingReason`（`string?`） |
 
-**出所不明のスキーマは 1 個ある**——`UsageEventCreatedDto`（#10）は契約 `record` を持たず、
+**出所不明のスキーマは 1 個ある**——`UsageEventCreatedDto`（**表 No.10**）は契約 `record` を持たず、
 `DashboardEndpoints.cs:40` の**匿名型 `new { ev.Id }`** がそのまま JSON になる。
 `DataSourceSyncResultDto`（#518 が同じ扱いで追加した）と同型の事象であり、**推測ではなく実装を読んで確定した。**
-それ以外の 24 個はすべて `record` に辿れる。
+
+**出所欄の内訳（数え直した）**: `ファイル:行` を持つのは **22 行**（うち 21 行は契約 `record`、
+1 行は上記の匿名型 `DashboardEndpoints.cs:40`）。**残り 3 行（No.5 / No.6 / No.7）は C# に出所が無い**
+——`AbacConditionMap` は写像そのもの、`ProblemDetails` / `ValidationProblemDetails` は RFC7807 を
+ASP.NET の `Results.Problem` / `Results.ValidationProblem` が組み立てるため対応する `record` が存在しない。
+**「25 個すべてに `ファイル:行` がある」ではない**——3 行については「出所が無いこと」自体が確認結果である。
 
 ### 2. `required` を入れないスキーマ（**5 個。理由を 1 つずつ書く**）
 
@@ -320,11 +329,15 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 
 ## 受け入れ基準
 
-- [ ] **応答スキーマの `required` が C# の非 null 性と一致する**（§設計 1 の 25 行がすべて `ファイル:行` で辿れる）。
+- [ ] **応答スキーマの `required` が C# の非 null 性と一致する**（§設計 1 の 25 行のうち
+      **22 行が `ファイル:行` で辿れ、残り 3 行は C# に出所が無いことを明記している**）。
+      **本 PR の最初のコミット本文は「25 個すべて `ファイル:行`」と書いており、この点で本書と食い違う**
+      ——履歴は書き換えないため（force push 禁止）、正しいのは本書と [[IADR-0132]] 決定 1 の側である。
 - [ ] **`required` を入れないスキーマ 5 個に、YAML コメントで理由が書いてある。**
 - [ ] **代表的なフィールドを消す／改名すると `pnpm run typecheck` が落ちる**（実測。§変異試験）。
       **素通りしたものは表に残す。**
-- [ ] **`pnpm run codegen` の後に `git diff --exit-code -- platform/frontend/src/foundation/api/generated` が差分なし。**
+- [ ] **`pnpm run codegen` の後に `git diff --exit-code -- src/platform/frontend/src/foundation/api/generated` が差分なし**
+      （パスはリポジトリルート基準。CI は `src` を作業ディレクトリにするため、そこでは `src/` 接頭辞が要らない）。
 - [ ] **既存コードの挙動が変わっていない**（プロダクションコード差分 0 行・既存テスト無改修で全 green）。
 - [ ] `pnpm run typecheck` / `lint` / `test` / `test:coverage` / `build` / E2E が green。**カバレッジ床を割らない。**
 - [ ] リポジトリの機械検査（`check-doc-links` / `check-commit-messages` / `check-contract-schema` /
@@ -349,7 +362,8 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 
 ## 検証（実測）
 
-**測定条件**: worktree `fix/NFR-openapi-response-required`（`origin/develop` `727d021` 基点）／
+**測定条件**: worktree `fix/NFR-openapi-response-required`（`origin/develop` `727d021` 基点。
+**クロス監査の是正時に `origin/develop`（#515 / #522 を含む）を merge で取り込み、下表を再測した**）／
 Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ orval 8.23.0 ／
 **submodule `src/ai-stock-trading` と `planning` は populate 済み**。
 スコープは断りがない限り**ワークスペース全体**（`src/` の 4 パッケージ ＋ AST）である。
@@ -364,15 +378,23 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ orval 8.23.0 
 | E2E | Playwright（後述の条件） | **12 tests 全 green**（5.3s） |
 | 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- src/platform/frontend/src/foundation/api/generated` | green（コミット後に再実行して差分なし） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
-| ドキュメントリンク | `node scripts/check-doc-links.js` | green（426 件） |
-| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**件数はここに書かない**——この表を直すコミット自身が件数を変えるため） |
-| 契約スキーマ | `node scripts/check-contract-schema.js` | green（2 プロジェクト / 20 ファイル / 56 型が baseline と一致。**C# を 1 行も触っていない**） |
-| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある起点 ID 28 件中 28 件が写像済み。**allowlist は着手前と同じ 7 件**＝増やしていない） |
-| テスト仕様書の被覆 | `node scripts/check-test-spec-coverage.js` | green（テストクラス 107 件のうち 63 件が仕様書 29 件から参照済み。**床 68 は動かしていない**——バックエンドテストを足していないため） |
+| ドキュメントリンク | `node scripts/check-doc-links.js` | green（**件数は書かない**※） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**件数は書かない**※） |
+| 契約スキーマ | `node scripts/check-contract-schema.js` | green（baseline と一致・未消化の承認 0 件。**C# を 1 行も触っていない**）。総数は書かない※ |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（未写像 0 件。**allowlist は着手前と同じ 7 件**＝増やしていない）。総数は書かない※ |
+| テスト仕様書の被覆 | `node scripts/check-test-spec-coverage.js` | green（**床 68 は動かしていない**——バックエンドテストを足していないため）。総数は書かない※ |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
 | i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。**カタログは 1 件も増減していない**——表示文言を足していない） |
 | BFF 後段 | `node scripts/check-bff-downstreams.js` | green（ドリフト 0） |
-| スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**247 tests**） |
+| スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**件数は書かない**※） |
+
+> **※ リポジトリ全体を数える値は、この表に固定値で書かない。** 本 PR の変更とは無関係な他 PR の
+> マージで必ず動き、書いた瞬間から嘘になり始めるためである（実際に develop の取り込みで
+> `check-doc-links` と `scripts.test.js` の件数は動いた）。**本表に残すのは green / 赤の別と、
+> 本 PR 固有の不変量**（「allowlist を増やしていない」「床を動かしていない」「C# を触っていない」）
+> **だけ**にする。件数が要るときはコマンドを実走して読むこと。
+> 上の行のうち `lint` / `単体テスト` / `カバレッジ` / `ビルド` は `src/` ワークスペースに閉じた
+> 測定であり、**本 PR が「挙動を変えていない」ことの根拠そのもの**なので値を残す。
 
 **E2E の実行条件**: この環境では `playwright install` がブラウザを取得できない。導入済みの
 `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` を `launchOptions.executablePath` で指す
@@ -429,7 +451,7 @@ M1〜M3・M5 が示すとおり、**読んでいる面（SC-08）では削除も
 | # | 事項 | 種別 | 送り先 |
 | --- | --- | --- | --- |
 | 1 | **`AccessScopeResponse` に `granted` が無い**（C# `AccessScopeDto.cs:15` には `bool Granted = false` が在る）。`granted=false` は「許可ポリシーが 1 つも一致しなかった」＝**deny-by-default の判定材料**であり、`allowedFilters` が空でも「全件開放」ではないことを示す**意味のあるフィールド**である | **契約の欠落** | **#525（起票済み）**。`/authz/access-scope` はサービス直接 API で SPA は呼ばないため実害はいま無いが、**契約が実体と食い違っている**。フィールドの追加は「`required` を入れる」作業と別種の是正なので本 PR では入れていない |
-| 2 | **テストの fixture が生成型で型付けされていない**（`AnalysisDashboardPage.test.tsx:27` の `ANSWER` は `jsonResponse(body: unknown)` を経由するため、`CitationDto` の `number` / `snippet` を欠いていても型検査に掛からない） | 網の穴 | **#519**。載せ替えで MSW モック（`*.msw.ts`）を使うなら自然に解消する。使わないなら fixture へ `satisfies AiAnswerDto` を付ける小さな判断が要る |
+| 2 | **テストの fixture が生成型で型付けされていない**（`AnalysisDashboardPage.test.tsx:28` の `ANSWER` は `jsonResponse(body: unknown)` を経由するため、`CitationDto` の `number` / `snippet` を欠いていても型検査に掛からない） | 網の穴 | **#519**。載せ替えで MSW モック（`*.msw.ts`）を使うなら自然に解消する。使わないなら fixture へ `satisfies AiAnswerDto` を付ける小さな判断が要る |
 | 3 | **画面の載せ替え（9 ファイル）** | 本 issue の残り | **#519**。**本 PR で生成型はすでに必須化されている**ので、載せ替えた瞬間に「消したフィールドを読んでいる」箇所が型エラーになる（M6 / M7 が素通りしているのは、まさにこの載せ替えがまだ無いためである）。**［2026-08-05 追記］#519 本文の誤記（本 issue を `#516` と書いていた）は訂正済みで、「#520 は先に消化済み・生成型は既に必須化されている」旨も本文へ追記されている**——引き継ぎに際して #519 を読み直す必要は無い |
 | 4 | **C# → OpenAPI の追随は人手のまま**。しかも本作業で `required` を増やしたぶん、**C# 側で `?` を足したのに OpenAPI の `required` を外し忘れると「嘘の必須」が残る**面が増えた | 構造的な穴 | [[IADR-0131]] フォローアップ 2 ／ [[IADR-0132]] フォローアップ 1。**本 issue で穴が広がったことは自覚した差異である** |
 | 5 | **`IADR-0132` の採番衝突は解消済み**——**［2026-08-05 追記］**並行作業（`wt512`）が `IADR-0133` を確保したため、本 PR の `IADR-0132` は**改番不要**である。当初の懸念（`.claude/rules/traceability.md` §採番衝突時の改番手順＝**先着尊重**により後発が改番する）は発生しなかった | 運用（解消） | — （対応不要。改番が必要になった場合の追随先は本仕様書 / `docs/adr/README.md` / [[IADR-0131]] の追記 / `docs/api/BFF_bff-surface.md` / **PR タイトル**） |
