@@ -1600,4 +1600,56 @@ module.exports = ({ ok, assert }) => {
       );
     }
   });
+
+  // --- Issue #510 / IADR-0130: 実在するテストがテスト仕様書に載っているかの検査 --------
+  //
+  // ここに置く理由: .github/workflows/ は GitHub App 権限では編集できないため、専用ジョブを
+  // 足せない。ci.yml の scripts-tests ジョブ（REQUIRE_REPO_TESTS=1）が本 companion を実行する
+  // ので、**自己試験と実データの本走をここへ置くことで CI ゲートになる**（check-i18n-catalogs.js
+  // の実データ検査と同じ結線）。専用ステップ化は任意の改善として別途行う。
+
+  ok('check-test-spec-coverage --self-test が通る（ratchet 4 判定・fail-closed の負例を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-test-spec-coverage.js'), '--self-test'],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(r.status, 0, `自己試験が失敗:\n${r.stdout}\n${r.stderr}`);
+    assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+  });
+
+  ok('check-test-spec-coverage: 本リポの実データが green（節の消失が無い）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-test-spec-coverage.js')],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(
+      r.status,
+      0,
+      `docs/tests/ の記載が床を割っている（#510 の再発の可能性）:\n${r.stdout}\n${r.stderr}`,
+    );
+  });
+
+  // 退行防止: #510 で復帰させた 4 クラスが床に残っていること。
+  // 床は --update で誰でも下げられるため、「節を消して床も下げる」で黙らせる経路が残る。
+  // 本 issue の核心にあたるクラスだけは、床とは別に固定して差分をレビューへ強制的に出す。
+  ok('#510 で復帰させたバックエンドテストが床に残っている', () => {
+    const { readBaseline } = require('./check-test-spec-coverage.js');
+    const documented = new Set(readBaseline());
+    for (const name of [
+      'BffDocumentWriteEndpointTests', // SC-05 §BFF（書き込み）
+      'BffDataSourceEndpointTests', // SC-06 §BFF
+      'DocumentVersioningTests', // SC-05 §状態遷移ガード（ドメイン）
+      'DocumentEndpointVersioningTests', // SC-05 §状態遷移ガード（API）
+    ]) {
+      assert.ok(
+        documented.has(name),
+        `${name} が scripts/test-spec-coverage-baseline.json から消えている` +
+          '（#510 が復帰させた記載を再び落としていないか docs/tests/SC-05・SC-06 を確認すること）',
+      );
+    }
+  });
 };

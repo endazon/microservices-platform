@@ -63,6 +63,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | --- | --- | --- | --- |
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
+| **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | `src/**/*Tests.cs`（AST を除く）↔ `docs/tests/` の全文 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にあるのに仕様書から参照されなくなった → **fail**（節の消失）。床にあるがテストクラスが実在しない → **fail**。仕様書に載ったのに床に無い → **fail**（`--update` で上げる）。実在するが未記載で床にも無い → warn。走査 0 件・床が読めない → **fail**（[IADR-0130](../adr/IADR-0130_test-spec-coverage-ratchet.md)） |
 | **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
@@ -245,6 +246,13 @@ PR ではなく issue を分割する）。
 5. 後回しにする場合は `scripts/test-traceability-allowlist.json` へ**理由とともに**追加し、解消した PR で
    削除する。未写像（仕様書はあるがテストが無い）は `pending`、実装先行（テストはあるが仕様書が無い）は
    `specMissing` に書く。
+6. **テスト仕様書を「全面改訂」するときは、既存の節を落としていないか確かめる**
+   （[#510](https://github.com/endazon/microservices-platform/issues/510) の再発防止）。
+   #503 は SC-05〜08 をフロントエンドの構造で置き換え、**バックエンド試験の節を落とした**
+   ——テストは消えていないのに記載だけが消え、レビューでも当時の CI でも捕まらなかった。
+   **本項は注意書きではなく、上記「記載の被覆」ゲートの説明である**——記載を落とすと
+   `check-test-spec-coverage.js` がクラス名とパスを挙げて fail する。記載を増やしたら
+   `node scripts/check-test-spec-coverage.js --update` で床を上げ、差分を PR に載せること。
 
 > **未着手の FR/UC/SC が仕様書を持たないのは正当**であり、fail にはしない。計画レンジ
 > （[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）にあって
