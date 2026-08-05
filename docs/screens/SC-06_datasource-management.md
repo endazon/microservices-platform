@@ -112,7 +112,7 @@ related_specs:
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`（対象コミット `de55761`）。
 
 **「押しても結果が変わらないボタン」「常に空の列」を置かない**（#502 が確立した規則）。
-3 件は環流の記録に載せた（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)）。
+3 件は環流の記録に載せた（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**計画リポへの起票は未了**）。
 
 ## データソース（BFF 境界）
 
@@ -193,7 +193,7 @@ related_specs:
 - 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
 - テスト仕様書: [SC-06_datasource-management.md](../tests/SC-06_datasource-management.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md)
-- 計画への環流: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 計画への環流（**記録を作成済み・計画リポへの起票は未了**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 

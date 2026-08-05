@@ -130,7 +130,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 **「動かない UI を置く」形は採らない**（#502 が確立した規則）。保存先の無い 2 ペイン編集を置くと、
 管理者は補正したつもりで何も反映されない——UC-06 代替フロー「変換結果を管理者が補正して再登録する」を
 **満たしたように見せて満たさない**のが最も悪い。2 件は環流の記録に載せた
-（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)）。
+（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**計画リポへの起票は未了**）。
 
 ## データソース（BFF 境界）
 
@@ -215,7 +215,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 - 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
 - テスト仕様書: [SC-07_conversion-jobs.md](../tests/SC-07_conversion-jobs.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)
-- 計画への環流: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 計画への環流（**記録を作成済み・計画リポへの起票は未了**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 
