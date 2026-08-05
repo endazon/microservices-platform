@@ -216,7 +216,12 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 2. **`pnpm run codegen`** で生成物（`platform/frontend/src/foundation/api/generated/`）を更新しコミットする。
 3. 既存コードが壊れないことを確認する。**`?? 既定値` の扱いは方針を決めて [[IADR-0132]] へ残す**（§設計 3）。
 4. **変異試験**で「フィールドを消す／改名すると型検査が落ちる」ことを実測する（§変異試験）。
-5. [[IADR-0131]] §フォローアップへ**日付つき［追記］**を入れ、§未決事項 2 の消化を記録する。
+5. **消化の記録を 2 か所へ入れる**（日付つき［追記］）。**§未決事項という節を持つのは
+   [作業仕様書 #506](./20260805_issue-506_openapi-bff-groups.md) の方であり、[[IADR-0131]] には無い**
+   ——両者を取り違えると「消化した」と書いた先に消化対象が無い状態になる。
+   - **[作業仕様書 #506](./20260805_issue-506_openapi-bff-groups.md) §未決事項 2**（＝消化対象の本体）。
+   - **[[IADR-0131]] §結果 > フォローアップ 1**（＝本作業はその**前提**を消化する。
+     項番 1 本体である画面の載せ替え = #519 は未消化のまま残る）。
 6. 通信仕様書（`docs/api/BFF_bff-surface.md`）へ **`required` の扱い（横断の規約 5）** を追記する。
 
 ### 対象外（送り先を明記する）
@@ -325,7 +330,10 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 - [ ] リポジトリの機械検査（`check-doc-links` / `check-commit-messages` / `check-contract-schema` /
       `check-test-traceability` / `check-test-spec-coverage` / `check-unit-dependencies` /
       `check-i18n-catalogs` / `check-bff-downstreams` / `scripts.test.js`）が green。
-- [ ] [[IADR-0131]] に日付つき［追記］があり、§未決事項 2 の消化が辿れる。
+- [ ] **消化の記録が[作業仕様書 #506](./20260805_issue-506_openapi-bff-groups.md) §未決事項 2 に日付つき
+      ［追記］として入っている**（＝消化対象の本体。**[[IADR-0131]] に §未決事項という節は無い**）。
+- [ ] [[IADR-0131]] §結果 > フォローアップ 1 に日付つき［追記］があり、**本作業が消化したのは
+      同項の「前提」であって項番 1 本体（画面の載せ替え = #519）ではない**ことが読み取れる。
 
 ## テスト方針
 
@@ -420,10 +428,10 @@ M1〜M3・M5 が示すとおり、**読んでいる面（SC-08）では削除も
 
 | # | 事項 | 種別 | 送り先 |
 | --- | --- | --- | --- |
-| 1 | **`AccessScopeResponse` に `granted` が無い**（C# `AccessScopeDto.cs:15` には `bool Granted = false` が在る）。`granted=false` は「許可ポリシーが 1 つも一致しなかった」＝**deny-by-default の判定材料**であり、`allowedFilters` が空でも「全件開放」ではないことを示す**意味のあるフィールド**である | **契約の欠落**（要裁定） | `/authz/access-scope` はサービス直接 API で SPA は呼ばないため実害はいま無いが、**契約が実体と食い違っている**。フィールドの追加は「`required` を入れる」作業と別種の是正なので本 PR では入れていない。独立の小さな fix として起票するのが妥当 |
+| 1 | **`AccessScopeResponse` に `granted` が無い**（C# `AccessScopeDto.cs:15` には `bool Granted = false` が在る）。`granted=false` は「許可ポリシーが 1 つも一致しなかった」＝**deny-by-default の判定材料**であり、`allowedFilters` が空でも「全件開放」ではないことを示す**意味のあるフィールド**である | **契約の欠落** | **#525（起票済み）**。`/authz/access-scope` はサービス直接 API で SPA は呼ばないため実害はいま無いが、**契約が実体と食い違っている**。フィールドの追加は「`required` を入れる」作業と別種の是正なので本 PR では入れていない |
 | 2 | **テストの fixture が生成型で型付けされていない**（`AnalysisDashboardPage.test.tsx:27` の `ANSWER` は `jsonResponse(body: unknown)` を経由するため、`CitationDto` の `number` / `snippet` を欠いていても型検査に掛からない） | 網の穴 | **#519**。載せ替えで MSW モック（`*.msw.ts`）を使うなら自然に解消する。使わないなら fixture へ `satisfies AiAnswerDto` を付ける小さな判断が要る |
-| 3 | **画面の載せ替え（9 ファイル）** | 本 issue の残り | **#519**。**本 PR で生成型はすでに必須化されている**ので、載せ替えた瞬間に「消したフィールドを読んでいる」箇所が型エラーになる（M6 / M7 が素通りしているのは、まさにこの載せ替えがまだ無いためである） |
+| 3 | **画面の載せ替え（9 ファイル）** | 本 issue の残り | **#519**。**本 PR で生成型はすでに必須化されている**ので、載せ替えた瞬間に「消したフィールドを読んでいる」箇所が型エラーになる（M6 / M7 が素通りしているのは、まさにこの載せ替えがまだ無いためである）。**［2026-08-05 追記］#519 本文の誤記（本 issue を `#516` と書いていた）は訂正済みで、「#520 は先に消化済み・生成型は既に必須化されている」旨も本文へ追記されている**——引き継ぎに際して #519 を読み直す必要は無い |
 | 4 | **C# → OpenAPI の追随は人手のまま**。しかも本作業で `required` を増やしたぶん、**C# 側で `?` を足したのに OpenAPI の `required` を外し忘れると「嘘の必須」が残る**面が増えた | 構造的な穴 | [[IADR-0131]] フォローアップ 2 ／ [[IADR-0132]] フォローアップ 1。**本 issue で穴が広がったことは自覚した差異である** |
-| 5 | **`IADR-0132` の採番は衝突し得る**——並行して進んでいる別作業（`wt512`）が同じ番号を取る可能性がある。衝突時は `.claude/rules/traceability.md` §採番衝突時の改番手順（**先着尊重**）に従い、後発が改番する | 運用 | 親（クロス監査時）。改番時は本仕様書 / `docs/adr/README.md` / [[IADR-0131]] の追記 / `docs/api/BFF_bff-surface.md` / **PR タイトル**を追随させる |
+| 5 | **`IADR-0132` の採番衝突は解消済み**——**［2026-08-05 追記］**並行作業（`wt512`）が `IADR-0133` を確保したため、本 PR の `IADR-0132` は**改番不要**である。当初の懸念（`.claude/rules/traceability.md` §採番衝突時の改番手順＝**先着尊重**により後発が改番する）は発生しなかった | 運用（解消） | — （対応不要。改番が必要になった場合の追随先は本仕様書 / `docs/adr/README.md` / [[IADR-0131]] の追記 / `docs/api/BFF_bff-surface.md` / **PR タイトル**） |
 | 6 | **要求スキーマの `required` は見直していない**（`AnalysisDataRange` / `UpdateMetadataRequest` が `required` を持たない）。要求側の必須化は**画面の送信コードを壊す**ため、独立に扱うべきである | 範囲外 | 必要なら別 issue。**本 PR では応答側だけを触った** |
 | 7 | **ワークフロー変更は不要**（`.github/workflows/` を触っていない） | 情報 | `frontend.yml` の `paths` に `docs/api/openapi.yaml` が既に入っており、契約変更で CI が起動する |
