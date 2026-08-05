@@ -418,4 +418,11 @@ catch-all（`path: '$'`）を `shellRoute` の子として置いて解消した�
      「合成点へ import 1 行」を「合成点の 2 か所へ 1 行ずつ（ルートのタプル ＋ ナビ）」へ（本決定 1 / #490）
   4. [IADR-0121](IADR-0121_spa-stack-migration-staging.md): §決定 1 の「第 2 段」を
      ルータ／シェル／旧画面（#490）と残り（shadcn/ui 本移植・Lingui・Storybook。要起票）へ分割（#490）
+
+  > **［2026-08-05 追記 / #512］[[IADR-0134]]（SPA バンドルの分割境界）は本 IADR の部分改定ではない。**
+  > 決定 1 の型付きルート構成に対して変えたのは各ユニットが `component` に渡す値だけ
+  > （直接参照 → `lazyRouteComponent`）で、合成点（`featureRegistry`）・ルート ID のリテラル・
+  > `useSearch({ from })` の型付けはいずれも無改変である。したがって上の 4 件と同じ「部分改定」
+  > 扱いにはせず、**本 IADR は `Accepted` のまま**とする。IADR-0134 側は本 IADR を
+  > 「壊さない前提」として §関連 に挙げており、参照はそちらから張られている。
 - Superseded by: なし
