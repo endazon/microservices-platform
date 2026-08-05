@@ -149,7 +149,21 @@ g.MapPost("/{id:guid}/retry", ...)
 グループ定義を触らないため、**照会の権限が巻き添えで変わらないことがコード上で自明**になる。
 `/bff/authz`（[`AuthzBffEndpoints.cs`](../../src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/AuthzBffEndpoints.cs) 18 行）・
 `/bff/dashboard`（[`DashboardBffEndpoints.cs`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DashboardBffEndpoints.cs) 71 行）と
-**同じ名前付きポリシーを使う**ため、管理者限定の表現がリポジトリ内で 1 種類に保たれる。
+**同じ名前付きポリシー（`PlatformAuthPolicies.AdminOnly`）を使う**ため、管理者限定の表現がリポジトリ内で
+1 種類に保たれる。
+
+**ただし、再利用しているのは「名前付きポリシー」であって「重ね掛けの形」ではない**（実測）。
+`grep -rn "RequireAuthorization" --include=*.cs src/` の全 19 件を確認したところ、
+**グループとエンドポイントの両方に認可を課している箇所は無く、本作業が初出**である。
+
+| 箇所 | 実際の形 |
+| --- | --- |
+| `AuthzBffEndpoints.cs:18` | **グループにだけ** `AdminOnly`（エンドポイント側に認可は無い） |
+| `DashboardBffEndpoints.cs:21` / `:71` | **グループには認可が無く**、`/summary` エンドポイントにだけ `AdminOnly` |
+| `AuthzEndpoints.cs:28`（AuthorizationService） | 入れ子 `MapGroup("")` の**内側だけ**に `AdminOnly`（外側の `g` に認可は無い） |
+
+したがって AND 合成の実効は「先例がそうなっているから」ではなく**テストで固定する**
+（`Retry_AsOperator_IsForbidden` = 403 ／ `GetById_AsOperator_IsAllowed` = 200 の対）。
 
 ### 2. 下流: 代償統制の機械検査
 
