@@ -129,6 +129,21 @@ function namesInPairs(pairs) {
 }
 
 /**
+ * 走査で見つかった**実ファイル数**（`collectTestClasses` の Map<name, paths[]> の値の総和）。
+ *
+ * 本検査が数える「テストクラス」は**ファイル名をキーに同名を 1 件へ畳んだ後**の数である
+ * （`HealthEndpointTests` は 10 プロジェクトに在る）。成功メッセージにクラス名の数だけを出すと、
+ * レビュアが「実ファイルを全部見た」と誤読しうる。畳む前の数を併記して母集合を明示する
+ * （限界そのものは IADR-0130 §限界 1）。**数は実行時に数える**——ハードコードすると、
+ * テストが増減したときに黙って嘘になる。
+ */
+function countFiles(classes) {
+  let n = 0;
+  for (const paths of classes.values()) n += paths.length;
+  return n;
+}
+
+/**
  * ratchet の 4 分類。前 3 つは**対**、最後の 1 つは**クラス**を単位にする。
  *   regressed      : baseline の対が消えた（テストは実在）→ fail（節の消失。**本 issue の欠陥**）
  *   removedTest    : baseline の対のクラスが実在しない    → fail（床の減らし忘れ）
@@ -380,6 +395,9 @@ function selfTest() {
     t('collectTestClasses: フィクスチャから 2 クラスを拾い Program.cs は拾わない',
       classes.size === 2 && classes.has('AlphaTests') && classes.has('BetaTests'), [...classes.keys()]);
     t('collectSpecDocs: docs/tests/ の md を 2 件読む', docs.length === 2, docs.map((d) => d.file));
+    t('countFiles: 同名を畳む前の実ファイル数を返す（成功メッセージの母集合）',
+      countFiles(classes) === 2 && countFiles(new Map([['ATests', ['a/ATests.cs', 'b/ATests.cs']]])) === 2,
+      countFiles(classes));
     const r = classify({ existing: classes.keys(), documented: documentedPairs(classes.keys(), docs), baseline: base });
     t('走査 → 判定の通し: BetaTests は undocumented（warn）で赤くならない',
       r.undocumented.join(',') === 'BetaTests' && r.regressed.length === 0, r);
@@ -483,7 +501,8 @@ function main() {
     const lines = [
       '### 実在するテスト → テスト仕様書の記載（#510）',
       '',
-      `- 走査したテストクラス: **${classes.size}**（\`src/**/*Tests.cs\`。対象外ユニット: ${[...EXCLUDED_UNITS].join(' / ') || 'なし'}）`,
+      `- 走査したテストクラス: **${classes.size}**（\`src/**/*Tests.cs\`。**同名は 1 件として集約。実ファイル ${countFiles(classes)} 件**。` +
+        `対象外ユニット: ${[...EXCLUDED_UNITS].join(' / ') || 'なし'}）`,
       `- \`${SPEC_DIR}/\` の仕様書: **${docs.length}**`,
       `- 記載の対（仕様書 × クラス）: **${documented.size}**（床は \`${BASELINE_FILE}\` の **${baseline.length}**）`,
       `- どこかの仕様書に載っているクラス: **${documentedNamesNow.size}**`,
@@ -525,7 +544,8 @@ function main() {
   }
 
   if (failures.length === 0) {
-    console.log(`[check-test-spec-coverage] OK: テストクラス ${classes.size} 件のうち ${documentedNamesNow.size} 件が ` +
+    console.log(`[check-test-spec-coverage] OK: テストクラス ${classes.size} 件` +
+      `（同名は 1 件として集約。実ファイル ${countFiles(classes)} 件）のうち ${documentedNamesNow.size} 件が ` +
       `${SPEC_DIR}/ の仕様書 ${docs.length} 件から参照済み（記載の対 ${documented.size} 件が床と一致）。` +
       `\n  未記載 ${r.undocumented.length} 件は warn（基盤・回帰テストに記載義務は負わせない）。`);
     process.exit(0);
@@ -551,6 +571,7 @@ module.exports = {
   splitPair,
   documentedPairs,
   namesInPairs,
+  countFiles,
   classify,
   collectTestClasses,
   collectSpecDocs,
