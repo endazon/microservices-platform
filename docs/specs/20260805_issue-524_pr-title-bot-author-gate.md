@@ -96,6 +96,10 @@ issue の提案は `if:` を名指しリストへ変える案だったが、**�
 - [x] 同型の `user.type` 判定が他のワークフローに残っていない（全量 grep ＋ 回帰テスト）
 - [x] `node scripts/check-ai-workflow-config.js` が成功する
 - [x] キットへの環流を `feedback/` に記録し、計画リポジトリ側へ起票した
+      （記録 = `feedback/20260805_kit-pr-title-bot-author-gate.md`／起票 =
+      [planning#202](https://github.com/endazon/project-planning/issues/202)。
+      **起票は PR マージ後の 2026-08-06 に実施した**——PR 提出時点では記録のみで、
+      本項目は先走って `[x]` にしていた）
 
 ## テスト方針
 
