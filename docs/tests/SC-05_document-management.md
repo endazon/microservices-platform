@@ -24,11 +24,22 @@ related_specs:
 # テスト仕様書: 文書管理（SC-05）
 
 > **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
+>
+> **［2026-08-05 / #510］API 側（BFF の書き込み・DocumentService の状態遷移ガード）の節を復帰させた。**
+> #503 の全面改訂はフロントエンドの構造で置き換えたため §バックエンド 2 節が落ちていたが、
+> **当該テストは実在し続けている**（`BffDocumentWriteEndpointTests` / `DocumentVersioningTests` /
+> `DocumentEndpointVersioningTests`）。落としたままにすると「画面のテストしか無い」と読め、
+> 次に触る人が重複して書くか消してよいと判断する。**本復帰は当時の記載をそのまま戻したのではなく、
+> 現在のテストの実物（クラス名・メソッド名・ファイルパス）と突き合わせて書き直したものである。**
+> 同種の欠落の再発は [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) が止める。
 
-対象: `src/knowledge/frontend/src/features/sc05-documents/`
+対象（画面）: `src/knowledge/frontend/src/features/sc05-documents/`
 テスト: `DocumentManagementPage.test.tsx`（Vitest + Testing Library）／
 導線は `src/knowledge/frontend/src/features/adminFlow.test.tsx`／
 E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
+
+対象（API）: [`src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs) ／
+[`src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/`](../../src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/)
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -82,6 +93,43 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | --- | --- | --- |
 | A | SC-05 → SC-03 | 一覧のタイトルから文書詳細へ遷移し、本文が表示される（計画の遷移図 `SC05 → SC03`） |
 
+## BFF（書き込み・xUnit）
+
+対象: [`Knowledge.Bff.Endpoints/DocumentBffEndpoints.cs`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DocumentBffEndpoints.cs)（書き込み系）
+テスト: [`Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDocumentWriteEndpointTests.cs)
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| 1 | 作成 | FR-06 | admin で 201 | `Create_AsAdmin_Returns201` |
+| 2 | ロール制限 | [[IADR-0041]] | 非特権ロール（`viewer`）は 403 | `Create_AsNonPrivilegedRole_IsForbidden` |
+| 3 | 無認証 | [[IADR-0041]] | 匿名は 401（認証欠如と権限不足を取り違えない） | `Create_WhenAnonymous_IsUnauthorized` |
+| 4 | 作成の deny-by-default | [[IADR-0041]] | ABAC スコープが与えられていなければ 403 | `Create_WhenScopeNotGranted_IsForbidden_DenyByDefault` |
+| 5 | 検証の透過 | FR-06 | 後段の 400（タイトル必須）を素通しする | `Create_WhenTitleMissing_Passes400Through` |
+| 6 | 更新 | FR-06 | スコープ内で 200 | `Update_AsAdminInScope_Returns200` |
+| 7 | スコープ外の更新 | [[IADR-0041]] / [[IADR-0009]] | スコープ外は **404 秘匿**（403 にしない） | `Update_WhenOutOfScope_Returns404` |
+| 8 | 楽観ロック | FR-06 | 後段の 409（版競合）を素通しする | `Update_WhenVersionConflict_Passes409Through` |
+| 9 | 公開 | FR-06 | スコープ内で 200 | `Publish_AsAdminInScope_Returns200` |
+| 10 | 削除 | FR-06 | スコープ内で 204 | `Delete_AsAdminInScope_Returns204` |
+| 11 | スコープ外の削除 | [[IADR-0041]] | スコープ外は 404 秘匿 | `Delete_WhenOutOfScope_Returns404` |
+
+**画面のテスト（§テストケース 8・11）だけでは境界は塞げない。** UI の出し分けはサーバ側の実効境界の
+写しであり、API を直接叩く経路は画面テストでは踏めないためである（SC-07 が #501 で踏んだのと同じ形）。
+
+## バックエンド（DocumentService・状態遷移ガード・xUnit）
+
+対象: [`Foundation/Domain/Document.cs`](../../src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/Foundation/Domain/Document.cs)（`Publish()` / `CanPublish`）と `POST /documents/{id}/publish`
+テスト: [`DocumentVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentVersioningTests.cs)（ドメイン）／
+[`DocumentEndpointVersioningTests.cs`](../../src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentEndpointVersioningTests.cs)（API）
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| 1 | 不正遷移（ドメイン） | UC-03 | `archived` からの公開は例外・**状態は変わらない** | `Publish_FromArchived_Throws` |
+| 2 | 許可遷移（ドメイン） | FR-06 | `normalized`（pipeline 由来）からの公開は許可（`draft` へ絞りすぎない） | `Publish_FromNormalized_IsAllowed` |
+| 3 | 不正遷移（API） | UC-03 | archive 後の再公開は 409 | `Publish_AfterArchive_Returns409` |
+
+**§テストケース 6（画面は `archived` の行に公開を出さない）と対である。** 画面が出さないことと
+サーバが拒むことは別の担保であり、片方だけでは実効境界にならない。
+
 ## ABAC・存在秘匿の担保
 
 - 読み取りは ABAC スコープ内のみ返る。書き込みは BFF が対象文書のスコープを先に確かめ、
@@ -96,3 +144,5 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
   ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` / `8-b` を含めて 15 行 = 15 ケース）。
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentWriteEndpointTests`
+- `dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests --filter Publish`

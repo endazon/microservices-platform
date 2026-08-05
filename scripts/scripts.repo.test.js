@@ -1601,6 +1601,63 @@ module.exports = ({ ok, assert }) => {
     }
   });
 
+  // --- Issue #510 / IADR-0130: 実在するテストがテスト仕様書に載っているかの検査 --------
+  //
+  // ここに置く理由: .github/workflows/ は GitHub App 権限では編集できないため、実装エージェントの
+  // 手では専用ジョブを足せない。ci.yml の scripts-tests ジョブ（REQUIRE_REPO_TESTS=1）が本 companion
+  // を実行するので、**自己試験と実データの本走をここへ置くことで CI ゲートになる**
+  // （check-i18n-catalogs.js の実データ検査と同じ結線）。
+  //
+  // ［2026-08-05］専用ステップは ci.yml の test-traceability ジョブへ入った（a415e29。親がローカル
+  // 権限で実施）。**本ブロックは残す**——二重に走るのは無駄ではなく、専用ステップは失敗をジョブ名で
+  // 見せ、こちらはワークフローを編集できない環境でも検査が外れないことを担保する（IADR-0130 決定 6）。
+
+  ok('check-test-spec-coverage --self-test が通る（ratchet 4 判定・fail-closed の負例を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-test-spec-coverage.js'), '--self-test'],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(r.status, 0, `自己試験が失敗:\n${r.stdout}\n${r.stderr}`);
+    assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+  });
+
+  ok('check-test-spec-coverage: 本リポの実データが green（節の消失が無い）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-test-spec-coverage.js')],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(
+      r.status,
+      0,
+      `docs/tests/ の記載が床を割っている（#510 の再発の可能性）:\n${r.stdout}\n${r.stderr}`,
+    );
+  });
+
+  // 退行防止: #510 で復帰させた 4 クラスが床に残っていること。
+  // 床は --update で誰でも下げられるため、「節を消して床も下げる」で黙らせる経路が残る。
+  // 本 issue の核心にあたるクラスだけは、床とは別に固定して差分をレビューへ強制的に出す。
+  ok('#510 で復帰させたバックエンドテストが床に残っている', () => {
+    const { readBaseline, pairKey } = require('./check-test-spec-coverage.js');
+    const documented = new Set(readBaseline());
+    const SC05 = 'docs/tests/SC-05_document-management.md';
+    const SC06 = 'docs/tests/SC-06_datasource-management.md';
+    for (const [spec, name] of [
+      [SC05, 'BffDocumentWriteEndpointTests'], // SC-05 §BFF（書き込み）
+      [SC05, 'DocumentVersioningTests'], // SC-05 §状態遷移ガード（ドメイン）
+      [SC05, 'DocumentEndpointVersioningTests'], // SC-05 §状態遷移ガード（API）
+      [SC06, 'BffDataSourceEndpointTests'], // SC-06 §BFF
+    ]) {
+      assert.ok(
+        documented.has(pairKey(spec, name)),
+        `${spec} の ${name} が scripts/test-spec-coverage-baseline.json から消えている` +
+          '（#510 が復帰させた記載を再び落としていないか当該のテスト仕様書を確認すること）',
+      );
+    }
+  });
   // --- measure-abac-combinations: ABAC 属性組み合わせ数の実測（FR-17 / FR-18・Issue #456） ---
 
   const abac = require('./measure-abac-combinations.js');

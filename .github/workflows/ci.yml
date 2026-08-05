@@ -270,6 +270,15 @@ jobs:
         run: node scripts/check-test-traceability.js --self-test
       - name: Check acceptance-criteria to test mapping
         run: node scripts/check-test-traceability.js
+      # Issue #510, IADR-0130: 「実在するテストがテスト仕様書に載っているか」を ratchet で検査する。
+      # #503 の「全面改訂」が SC-05〜07 のバックエンド試験の節を落とし、テスト自体は残っているのに
+      # 記載だけが消えた——レビューでも CI でも捕まらなかった。check-test-traceability.js とは
+      # 突合の単位が違う（あちらは起点 ID の集合、こちらはテストの実体）ため別の検査器にしている。
+      # scripts.repo.test.js からも呼ばれるが、専用ステップにすると失敗がジョブ名で見える。
+      - name: Self-test test-spec coverage checker
+        run: node scripts/check-test-spec-coverage.js --self-test
+      - name: Check tests are covered by test specs
+        run: node scripts/check-test-spec-coverage.js
 
   # Issue #18 再発防止: Keycloak realm export の文字列フィールド長が import 先 RDB の
   # varchar(255) を超えていないかを機械検査する（#307 で description が 364 文字となり import が

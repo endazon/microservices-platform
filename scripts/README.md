@@ -15,6 +15,7 @@
 | `check-contract-schema.js` | サービス間契約（`Shared.Contracts` のイベント/API スキーマ）の後方互換検査（#465 / IADR-0122）。`src/<unit>/backend/Shared/*.Contracts`（`ai-stock-trading` を除く）の `.cs` を**構文解析**し、public 型・メンバー・enum 値・`const` 値・属性を正規化 JSON スナップショット `contract-schema-baseline.json` へ落として比較する。削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・**既定値の無いメンバーの追加**は**破壊的**として終了コード 1。非破壊の追加でも baseline と差分がある限り fail する（＝スナップショットテスト。`--update` で baseline を更新し、差分＝契約変更そのものを PR の diff に載せる）。破壊的変更は `contract-breaking-allowlist.json` の承認エントリ（`key`/`reason`/`approvedBy`/`issue`/`date` すべて必須）で通す（下記「契約の破壊的変更」）。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・proto（`.proto` 0 件）を採らない理由は IADR-0122。`--self-test` で検査器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-i18n-catalogs.js` | Lingui カタログの**未翻訳キー**検査（#496 / ADR-0031 / IADR-0125 決定 4）。`src/lingui.config.ts` から locales とカタログのパスを読み（設定ファイルは**実行せず**正規表現で読む＝外部依存ゼロ）、`.po` を解析して **全ロケール・全エントリの `msgstr` が非空**であること、`fuzzy` フラグと `#~`（obsolete）が残っていないことを検査する。違反があれば終了コード 1。**`lingui extract` の再生成差分検査だけでは足りない**——`extract` は未訳を `msgstr ""` の空エントリとして生成するのが正常動作であり、未翻訳のまま差分検査を通過する。**`lingui compile --strict` でも足りない**——`sourceLocale`（本リポは ja）は検査対象外で、ja の訳文が空でも通る（いずれも実測。作業仕様書 §検証）。設定が読めない・カタログが欠けている場合は **fail-closed**（「見つからないから素通り」で検査が静かに失効するのを防ぐ）。`--self-test` で検査器自体も試験 | 標準出力 |
 | `check-static-egress.js` | 静的ビルド成果物が**外部オリジンから何も取りに行かない**ことの検査（#496 / 08_data-egress-policy / IADR-0125 決定 5）。既定の走査対象は Storybook の静的ビルドと **SPA の `dist/`** の両方（統制対象は「SPA フロントエンド」そのものであり、カタログだけを見ても片手落ちである）。検出するのは**実際に取りに行く参照**——HTML のリソースタグ（`<link href>` / `<script src>` / `<img src|srcset>` / `<iframe src>` ほか。**`<a href>` は対象外**＝遷移であって取得ではない）、CSS の `@import` と `url()`、および既知の禁止ホスト（フォント CDN・汎用 CDN・analytics・エラー報告 SaaS）はどこに現れても違反。XML 名前空間（`http://www.w3.org/2000/svg`）や JSON Schema の `$schema` のような**取りに行かない URL 文字列**は検出しない（除外は用途ではなく**パターン**で書く。個別許可を積むと許可リストが検査の無効化装置になる）。**検出できないものを明記する（本検査は網羅ではない）**: 見るのは上記 3 種だけであり、**禁止ホスト表に無いホストへの `fetch()` / `XMLHttpRequest` / `WebSocket` / 動的 `import()` は検出しない**。その経路は ESLint の `no-restricted-globals`（`foundation/api` 以外での `fetch` 等の禁止。[[IADR-0121]] 決定 8）と orval の入力制限（同 決定 3）が担う。禁止ホスト表は網羅表ではなく代表例の表である。段階ポリシー: 引数なしは成果物が無ければ warn ＋ exit 0（fail-open）、`--require <dir>` は無ければ **fail**（CI はこちら）。`--self-test` で検査器自体も試験 | 標準出力 |
+| `check-test-spec-coverage.js` | **実在するバックエンドテストが `docs/tests/` のテスト仕様書に載っているか**の検査（#510 / IADR-0130）。突合の単位は「**仕様書ファイル × テストクラス**」の対である。`src/**/*Tests.cs`（`.gitmodules` 由来の除外ユニットを除く）のクラス名を集め、各仕様書の本文から**識別子境界つきで**参照を探す（単純な部分一致だと `HealthEndpointTests` が `BffHealthEndpointTests` の一部として誤って被覆済みになる）。**クラス名だけを見る形では足りない**——`DocumentVersioningTests` は SC-05 と FR-06 の両方が参照しているため、SC-05 の節を丸ごと消しても緑になる（#510 の変異試験で実測）。落ちるのは**節**であり節は仕様書に属するので、対で固定する。判定は ratchet: 床 `test-spec-coverage-baseline.json` にある対が消えた（**節の消失**）／床にある対のクラスが実在しない／記載された対が床に無い、のいずれも終了コード 1。どの仕様書にも載らず床にも無いクラスは `warn`（基盤・回帰テストに記載義務は負わせない）。`--update` で床を再生成し差分を PR に載せる。**`check-test-traceability.js` とは対象が異なる**——あちらは起点 ID（FR/UC/SC）の写像、こちらはテストの実体と仕様書の記載の対応であり、ID の写像は「節が丸ごと消えても緑」（#510 の実測）。走査 0 件・`docs/tests/` 0 件・床が読めない／形式が違う場合は **fail-closed**。`--self-test` で検査器自体も試験（ratchet 4 判定と負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-image-mapping.js` | `k8s-local-images.sh` の `MAPPING`（chart-image ↔ Dockerfile）と `deploy/docker-compose.yml` の `build` 定義の対応を機械検査（#275）。欠落・stale・Dockerfile 不一致・命名不整合・compose 専用除外（`frontend`）の腐り/二重掲載を検出し、ドリフトがあれば終了コード 1。ビルド可否は `images.yml`（#268 / IADR-0067）が担う。方式の根拠は IADR-0068 | 標準出力（レポート） |
 | `verify-qdrant-attribute-payload.sh` | IADR-0014 / #71: 実機 Qdrant で ABAC 属性の格納表現・フィルタ通過を検証 | 標準出力（判定） |
 | `measure-abac-combinations.js` | FR-17 / FR-18・#456: **実在する ABAC 属性の組み合わせ数を実測**する（計画 `14_knowledge-graph-graphrag` §6 手順 1）。計画が定める粒度の 3 段階——属性組み合わせ単位 / ロール単位 / 機密区分単位——をまとめて数え、利用者属性（Keycloak）× 文書属性（`document_svc`）の到達可能な組を `AbacEvaluator` と同じ意味論で評価する。**読み取り専用**（SELECT と Admin API の GET のみ）。既定は経路B を `kubectl exec` 経由で見るが、`ABAC_DOC_DSN` / `ABAC_KC_URL` で任意環境へ向けられる。`--dump` で収集した生データを保存し、`--input` で再集計できる（**データ破棄後も追試できる**＝#457 の切替前に測る意義）。集計は純関数で `scripts.repo.test.js` が単体試験する | 標準出力（要約 / `--json`） |
@@ -56,6 +57,9 @@ node scripts/check-i18n-catalogs.js --self-test    # 検査器の自己試験
 node scripts/check-i18n-catalogs.js                # Lingui カタログの未翻訳キー検査（#496）
 node scripts/check-static-egress.js --self-test    # 検査器の自己試験
 node scripts/check-static-egress.js --require src/packages/ui/storybook-static  # 外部 egress 検査（#496・要ビルド）
+node scripts/check-test-spec-coverage.js --self-test  # 検査器の自己試験
+node scripts/check-test-spec-coverage.js             # 実在するテスト → テスト仕様書の記載検査（#510）
+node scripts/check-test-spec-coverage.js --update    # 床を現状で再生成（記載を増やしたとき）
 node scripts/check-image-mapping.js --self-test    # 検査器の自己試験
 node scripts/check-image-mapping.js                # MAPPING ↔ compose build のドリフト検査（#275）
 node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in ゲート横断 smoke test（#334・要 bash）
@@ -92,6 +96,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `doc-links` | `check-doc-links.js`（相対リンクの実在） |
 | `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。`fetch-depth: 0` が必要） |
 | `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
+| `test-traceability` | `check-test-traceability.js --self-test` と本検査（受け入れ基準 → テストの写像）、および `check-test-spec-coverage.js --self-test` と本検査（#510 / IADR-0130。実在するテスト → テスト仕様書の記載） |
 | `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
 | `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
 | `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
@@ -100,6 +105,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `contract-schema` | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
 | `frontend.yml` の `build-test` | `check-i18n-catalogs.js`（＋ `pnpm run i18n` の再生成差分）と `check-static-egress.js --require …`（#496 / IADR-0125）。`ci.yml` の `scripts-tests` は両者の `--self-test` と実データ検査を `scripts.repo.test.js` 経由で走らせる |
 | `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
+| `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。上の `test-traceability` の専用ステップと**二重に走る**——専用ステップは失敗をジョブ名で見せ、companion 側は `.github/workflows/` が編集できない環境（GitHub App 権限）でも検査が外れないことを担保する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
 > 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある

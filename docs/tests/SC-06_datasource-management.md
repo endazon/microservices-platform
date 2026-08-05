@@ -25,11 +25,20 @@ related_specs:
 # テスト仕様書: データソース管理（SC-06）
 
 > **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
+>
+> **［2026-08-05 / #510］API 側（BFF）の節を復帰させた。** #503 の全面改訂はフロントエンドの構造で
+> 置き換えたため §バックエンド（BFF）が落ちていたが、**当該テストは実在し続けている**
+> （`BffDataSourceEndpointTests`）。落としたままにすると「画面のテストしか無い」と読め、
+> 次に触る人が重複して書くか消してよいと判断する。**本復帰は当時の記載をそのまま戻したのではなく、
+> 現在のテストの実物（クラス名・メソッド名・ファイルパス）と突き合わせて書き直したものである。**
+> 同種の欠落の再発は [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) が止める。
 
-対象: `src/knowledge/frontend/src/features/sc06-datasources/`
+対象（画面）: `src/knowledge/frontend/src/features/sc06-datasources/`
 テスト: `syncState.test.ts`（純関数）／ `DataSourceManagementPage.test.tsx`（Vitest + Testing Library）／
 導線は `src/knowledge/frontend/src/features/adminFlow.test.tsx`／
 E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
+
+対象（API）: [`src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs)
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -86,8 +95,36 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | --- | --- | --- |
 | A | SC-06 → SC-07 | 「変換ジョブの状況を見る →」から変換ジョブ画面へ遷移する（計画の遷移図 `SC06 → SC07`） |
 
+## BFF（xUnit）
+
+対象: [`Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs)
+テスト: [`Platform.Bff.Tests/BffDataSourceEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs)
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| 1 | 一覧（管理者） | FR-01 | admin で一覧が返る | `GetList_AsAdmin_ReturnsDataSources` |
+| 2 | 一覧（運用者） | [[IADR-0039]] | operator も許可 | `GetList_AsOperator_IsAllowed` |
+| 3 | ロール制限 | [[IADR-0039]] | 非特権ロールは 403 | `GetList_AsNonPrivilegedRole_IsForbidden` |
+| 4 | 無認証 | [[IADR-0039]] | 匿名は 401（認証欠如と権限不足を取り違えない） | `GetList_WhenAnonymous_IsUnauthorized` |
+| 5 | 不在 | FR-01 | 後段の 404 を透過 | `GetById_WhenMissing_Returns404` |
+| 5-b | **後段障害の可視化** | FR-01 / [[IADR-0039]] | 一覧は後段障害を**空一覧へ縮退させず**伝播する（管理画面の誤認＝重複登録の誘発を避ける。レビュー #169） | `GetList_WhenBackendFails_SurfacesFailure_NotEmptyList` |
+| 6 | 登録 | FR-01 | 201 で中継 | `Create_AsAdmin_Returns201` |
+| 7 | 同期 | FR-01 / FR-02 | 202 で同期トリガを中継 | `Sync_AsAdmin_Returns202` |
+| 8 | 無効化 | FR-01 | 204 で論理削除を中継 | `Delete_AsAdmin_Returns204` |
+
+**5-b は画面側の §テストケース 9（縮退しない）と対である。** 画面が縮退しない実装でも、
+BFF が後段障害を空一覧へ丸めてしまえば画面には何も届かない。両側で固定して初めて担保になる。
+
+## ロール・存在秘匿の担保
+
+- BFF はグループ全体を admin / operator に限定する（3 / 4 で 403 / 401 を固定）。
+  **画面と API の両側で同じ境界を固定する** —— UI の出し分けはサーバ側の実効境界の写しであり、
+  API を直接叩く経路は画面テストでは踏めない（SC-07 が #501 で踏んだのと同じ形）。
+- フロントはルート／ナビを `RequireRole` で出し分け、権限外は `NotFound`（§テストケース 12）。
+
 ## 実行
 
 - `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **7** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
+- `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDataSourceEndpointTests`
