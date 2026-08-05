@@ -1483,8 +1483,14 @@ components:
           type: object
           additionalProperties: { type: string }
 
+    # ── #520 / IADR-0132: 応答スキーマの `required` は C# の**非 null 性**から起こす。
+    # `?` の付かないメンバー（値型・コレクションを含む）だけを required に入れる。
+    # required が無いと orval は全プロパティを省略可（`?`）で生成し、生成型が型検査の網にならない
+    # （#506 の変異試験 M2 で実測）。
     SearchResponse:
       type: object
+      description: "FR-03: 検索応答（`Knowledge.Contracts/Dtos/SearchDto.cs` の `SearchResponse`）"
+      required: [results, totalHits, elapsedMs]
       properties:
         results:
           type: array
@@ -1495,6 +1501,8 @@ components:
 
     SearchResultDto:
       type: object
+      description: "FR-03, FR-04: 検索結果 1 件（`Knowledge.Contracts/Dtos/SearchResultDto.cs`）"
+      required: [chunkId, documentId, documentTitle, text, score, attributes, tags]
       properties:
         chunkId: { type: string, format: uuid }
         documentId: { type: string, format: uuid }
@@ -1558,6 +1566,7 @@ components:
         実体は `Knowledge.Contracts/Dtos/SearchResultDto.cs` の `AiAnswerDto`）。両者に共通するのは
         `documentId` / `documentTitle` / `chunkId` / `score` の 4 つだけで、`number` / `snippet` /
         `sourceUri` は `CitationDto` にしか無い。
+      required: [answer, citations, model, inputTokens, outputTokens, answerId]
       properties:
         answer: { type: string }
         citations:
@@ -1600,12 +1609,20 @@ components:
 
     AccessScopeResponse:
       type: object
+      description: |
+        FR-05: ABAC スコープ解決結果（`Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`）。
+        #520 監査: C# には `bool Granted = false`（許可ポリシーが 1 つでも一致したか）が在るが、
+        本スキーマには対応する `granted` が無い。**フィールドの追加は本 issue の範囲外**
+        （`required` を入れる作業と別種の是正）。作業仕様書 #520 §未決事項 1 で申し送る。
+      required: [userId, allowedFilters]
       properties:
         userId: { type: string }
         allowedFilters:
           type: array
           items:
             type: object
+            description: "FR-05: 1 つの属性キーに対する許可値集合（`AttributeFilter`）"
+            required: [key, allowedValues]
             properties:
               key: { type: string }
               allowedValues:
@@ -1828,6 +1845,9 @@ components:
       description: |
         FR-09: 属性キー → 許可値の集合（例 `{"department": ["sales","hr"]}`）。
         契約が表現するのは**集合への所属**だけであり、比較演算子・包含などの式は表現しない。
+        #520: **`required` を入れない**——`properties` を持たない写像（`additionalProperties` のみ）で、
+        `required` は `properties` のキーを指すため適用できない。本スキーマは唯一「要求と応答の両方」で
+        使われるが、この理由で要求側への波及も起こらない。
       additionalProperties:
         type: array
         items: { type: string }
@@ -1895,7 +1915,10 @@ components:
     # ── RFC7807（Problem Details）──────────────────────
     ProblemDetails:
       type: object
-      description: "RFC7807。`Results.Problem(title, detail, statusCode)` が返す形"
+      description: |
+        RFC7807。`Results.Problem(title, detail, statusCode)` が返す形。
+        #520: **`required` を入れない**——RFC7807 はどのメンバーも省略され得る（指定しなかった項目は
+        出力されない）。ここで必須化すると、実在しない保証を生成型に持たせることになる。
       properties:
         type: { type: string, nullable: true }
         title: { type: string, nullable: true }
@@ -1909,6 +1932,7 @@ components:
         RFC7807 の検証エラー。`Results.ValidationProblem` が返す形で、
         AuthorizationService は `errors.errors` に**メッセージの配列**を束ねる
         （キーごとの配列という一般形に載せた運用。`apiClient.parseProblemDetails` がこれを平坦化する）。
+        #520: **`required` を入れない**（理由は `ProblemDetails` と同じ）。
       properties:
         type: { type: string, nullable: true }
         title: { type: string, nullable: true }
@@ -1946,6 +1970,8 @@ components:
 
     FeedbackDto:
       type: object
+      description: "FR-08: 保存済みフィードバック（`Knowledge.Contracts/Dtos/FeedbackDto.cs`）"
+      required: [id, answerId, rating, userId, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         answerId: { type: string, format: uuid }
@@ -1959,6 +1985,7 @@ components:
     FeedbackStatsDto:
       type: object
       description: "フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）"
+      required: [up, down, total, satisfactionRate]
       properties:
         up: { type: integer }
         down: { type: integer }
@@ -1981,12 +2008,17 @@ components:
 
     UsageEventCreatedDto:
       type: object
+      description: |
+        FR-10: 記録された利用イベントの ID。契約 record を持たず、`DashboardEndpoints` の匿名型
+        （`new { ev.Id }`）がそのまま JSON になる。`UsageEvent.Id` は非 null の `Guid`。
+      required: [id]
       properties:
         id: { type: string, format: uuid }
 
     UsagePointDto:
       type: object
       description: "日次利用状況の 1 点（日付 × 種別の件数）"
+      required: [date, eventType, count]
       properties:
         date: { type: string, format: date }
         eventType: { type: string, enum: [search, answer] }
@@ -1995,6 +2027,7 @@ components:
     SearchTrendDto:
       type: object
       description: "検索傾向の 1 点（検索語 × 件数）"
+      required: [term, count]
       properties:
         term: { type: string }
         count: { type: integer }
@@ -2002,6 +2035,7 @@ components:
     DashboardUsageDto:
       type: object
       description: "DashboardService が返す利用側サマリ（回答品質は含まない）"
+      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms]
       properties:
         totalSearches: { type: integer }
         totalAnswers: { type: integer }
@@ -2017,6 +2051,7 @@ components:
     DashboardSummaryDto:
       type: object
       description: "BFF が組み立てるダッシュボードサマリ（利用状況・検索傾向・回答品質を集約）"
+      required: [totalSearches, totalAnswers, usageTrend, topSearchTerms, quality]
       properties:
         totalSearches: { type: integer }
         totalAnswers: { type: integer }
@@ -2065,6 +2100,7 @@ components:
       description: |
         sent=false は機密区分による送信拒否（縮退）または呼び出し先不調を示す。
         IADR-0104: sent（越境させたか）と stopReason（モデル側の終了理由）は独立した軸である。
+      required: [text, model, inputTokens, outputTokens, sent]
       properties:
         text: { type: string }
         model: { type: string }
@@ -2105,6 +2141,7 @@ components:
     EffectiveConfigDto:
       type: object
       description: "FR-15: 現在有効な実効構成（各サービスの自己申告を BFF が集約）"
+      required: [version, pipeline, eventBindings, ports, connectors]
       properties:
         version:
           $ref: "#/components/schemas/ConfigVersionDto"
@@ -2127,7 +2164,10 @@ components:
 
     ConfigVersionDto:
       type: object
-      description: "構成バージョン（適用中の構成定義の Git コミット・適用日時・適用者。GitOps 注入。未注入時は空）"
+      description: |
+        構成バージョン（適用中の構成定義の Git コミット・適用日時・適用者。GitOps 注入。未注入時は空）。
+        #520: **`required` を入れない**——C# の 3 メンバーがすべて nullable である
+        （`ConfigInfoDto.cs` の `ConfigVersionDto(string? GitCommit, DateTimeOffset? AppliedAt, string? AppliedBy)`）。
       properties:
         gitCommit: { type: string, nullable: true }
         appliedAt: { type: string, format: date-time, nullable: true }
@@ -2139,6 +2179,7 @@ components:
         FR-15 (#139), IADR-0046: 構成バージョン履歴の 1 エントリ。正データ源は GitOps 層（Git / ArgoCD の
         適用履歴）で、API は永続化せず注入されたスライスを返す。`hadDrift` はその時点のドリフト有無
         （注入時に判明していれば設定、不明なら null＝画面は「—」と表示する）。
+        #520: **`required` を入れない**——C# の 4 メンバーがすべて nullable である（#518 の判断を再確認した）。
       properties:
         gitCommit: { type: string, nullable: true }
         appliedAt: { type: string, format: date-time, nullable: true }
@@ -2148,6 +2189,7 @@ components:
     PipelineStageDto:
       type: object
       description: "有効なパイプライン段（宣言と照合された実効値）"
+      required: [name, service, consumer, input, outputs, enabled]
       properties:
         name: { type: string, example: "catalog" }
         service: { type: string, example: "document-service" }
@@ -2161,6 +2203,7 @@ components:
     EventBindingDto:
       type: object
       description: "イベント接続（イベント型ごとの発行者・購読者）"
+      required: [event, publishers, subscribers]
       properties:
         event: { type: string, example: "DocumentUpdated" }
         publishers:
@@ -2173,6 +2216,7 @@ components:
     PortSelectionDto:
       type: object
       description: "ポート（LLM・埋め込み・ベクトルDB・ストレージ・Wiki 同期等）で選択中の実装と接続先識別子"
+      required: [port, implementation]
       properties:
         port: { type: string }
         implementation: { type: string }
@@ -2181,6 +2225,7 @@ components:
     ConnectorDto:
       type: object
       description: "データソースコネクタと有効・無効状態"
+      required: [name, enabled]
       properties:
         name: { type: string }
         enabled: { type: boolean }
@@ -2188,6 +2233,7 @@ components:
     DriftReportDto:
       type: object
       description: "FR-15: 宣言（Git 上の pipeline.json）と実効構成のドリフト検出結果"
+      required: [hasDrift, checkedAt, findings]
       properties:
         hasDrift: { type: boolean }
         checkedAt: { type: string, format: date-time }
@@ -2199,6 +2245,7 @@ components:
     DriftFindingDto:
       type: object
       description: "個々の不一致（自己申告到達不能は Unverifiable として縮退報告）"
+      required: [kind, severity, target, detail]
       properties:
         kind: { type: string, example: "UndeclaredSubscription" }
         severity: { type: string, example: "Warning" }
@@ -2225,6 +2272,7 @@ components:
     EmbedApiResponse:
       type: object
       description: "embedded=false は機密区分による送信拒否（fail-closed）・次元不整合・呼び出し失敗を示す"
+      required: [vector, dimensions, model, collection, embedded, retryable]
       properties:
         vector:
           type: array

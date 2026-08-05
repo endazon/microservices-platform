@@ -2,7 +2,7 @@
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: draft
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131]
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -11,8 +11,10 @@ plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
   - ../adr/IADR-0131_openapi-as-bff-contract-source.md
+  - ../adr/IADR-0132_openapi-required-from-csharp-nullability.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
   - ../specs/20260805_issue-506_openapi-bff-groups.md
+  - ../specs/20260805_issue-520_openapi-response-required.md
 ---
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -175,6 +177,26 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 契約では `type: string` ＋ `description` に値集合を書き、**未知の値も受け取れる**ようにする。
 画面が値集合を持つ必要があるときは、feature 側の純関数（`jobStatus.ts` / `abacVocabulary.ts` /
 `driftView.ts` 等）に置き、そこを単体テストで固定する。
+
+### 5. 応答スキーマの `required` は **C# の非 null 性**から起こす（#520 / [[IADR-0132]]）
+
+**orval は `required` の無いスキーマの全プロパティを省略可（`?`）で生成する。**
+`required` を書き忘れた面は、契約に載っていても**型検査の網にならない**
+（#506 の変異試験 M2 が実測。誤った型へ戻しても `typecheck exit=0` で素通りした）。
+
+- **入れる**: C# DTO で `?` の付かないメンバー（値型・コレクション・**既定値つきメンバーを含む**）。
+  C# の既定値は「引数を省いたときの値」であってシリアライズ時の省略ではない
+  （`System.Text.Json` はプロパティを省略しない）。
+- **入れない**: `?` の付くメンバー。および次の 5 スキーマ全体——
+  `AbacConditionMap`（`properties` を持たない写像）／`ProblemDetails`・`ValidationProblemDetails`（RFC7807）／
+  `ConfigVersionDto`・`ConfigVersionEntryDto`（C# の全メンバーが nullable）。
+  **「入れない判断」は `description` に理由を書く**（「書き忘れ」と区別が付くようにする）。
+- **`required` を入れても `?? 既定値` は消さない**（[[IADR-0132]] 決定 3）。
+  **「契約上は必須」と「実行時に必ず来る」は別**であり、応答本文を実行時に検証する層は無い。
+- **要求スキーマの `required` は別問題である。** 応答と要求の両方で使われるスキーマは
+  `AbacConditionMap` の 1 個だけで、それは上記のとおり `required` を適用できない形をしている
+  ——したがって「応答を厳しくしたら要求も必須になった」という事故は現時点では起こり得ない。
+  **両用スキーマを新設するときはこの前提が崩れるので、要求側への影響を必ず確認すること。**
 
 ## 非機能・運用
 
