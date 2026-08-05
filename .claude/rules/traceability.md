@@ -24,6 +24,13 @@ paths:
 `ADR-0041`（Result 型の外部ライブラリ）／`ADR-0042`（運用管理 UI の本番導入）も `Proposed` である。
 **`ADR-0043`（権限内属性値の照会と存在秘匿の整合・planning#197〜199 の裁定）は `Accepted`** であり、
 実装の着手条件を満たす（#540 が実装する。同 ADR の制限を必ず守ること）。
+
+> **このレンジが実際に効く場所**（PR #550 のレビュー指摘・2026-08-06）:
+> `pr-title.yml` と `ci.yml` の `commit-messages` は `actions/checkout` に `submodules` を付けないため、
+> **PR の CI では計画 ADR の実在性検査は skip される**（`loadExistingPlanAdrIds()` が null を返す。
+> 下記「ADR / IADR の実在性」の注も同じことを述べている）。**レンジの追随が効くのは、
+> submodule を取得する経路**——夜間の planning 系ジョブ、ローカル実行、および本ファイルを
+> 読んで作業する AI エージェント——である。「PR CI が守ってくれる」と誤解しないこと。
 **`Proposed` でも ID としては実在する**——参照の実在性検査（`check-commit-messages.js` 等）は
 状態を見ないため、レンジには含める。実装の着手条件（`Accepted` 化）とは別の話である
 （[[IADR-0119]] 決定 2）。計画側で ID が増減したら本節を追随させる
