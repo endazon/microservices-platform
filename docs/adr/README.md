@@ -65,7 +65,7 @@
 | IADR-0039 | データソース管理の BFF 集約と管理系画面のロールゲーティング | Accepted |
 | IADR-0040 | 管理者設定（ABAC）の BFF 透過中継と AdminOnly ゲーティング | Accepted |
 | IADR-0041 | 文書管理（書き込み）の BFF 集約とスコープ内限定・楽観ロック透過 | Accepted |
-| IADR-0042 | 変換ジョブ読み取りモデル（インメモリ）と状況照会・人手補正 API | Accepted |
+| IADR-0042 | 変換ジョブ読み取りモデル（インメモリ）と状況照会・人手補正 API **［2026-08-05 追記］§決定 3 の「認可は BFF で管理者・運用者に限定」は `retry` について [[IADR-0128]]（#501）が部分改定した** —— `POST /bff/conversion/jobs/{id}/retry` は `platform-admin` のみである（計画 05_screens §SC-07 2026-08-04 確定）。照会（`GET /jobs` 系）と本 IADR の他の決定は有効なため `Accepted` のまま。 | Accepted |
 | IADR-0043 | 変換ジョブ読み取りモデルの永続化（Postgres+EF）と非同期ストア | Accepted |
 | IADR-0044 | バックエンドサービスの書き込み/管理APIへの認可強制（多層防御） | Accepted |
 | IADR-0045 | BFF 文書書き込みのスコープ確認往復は多層防御の要のため現時点で維持し最適化を保留する | Accepted |
