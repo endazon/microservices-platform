@@ -1,16 +1,33 @@
 ---
 title: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加
 type: plan-feedback
-status: open
+status: closed
 category: UC/画面の差異
 related_ids: [FR-15, SC-11, ADR-0018, IADR-0036]
 source_repo: microservices-platform
 source_ref: "docs/screens/SC-11_configuration-viewer.md（未決事項5）/ IADR-0036 /（履歴データ源は PR #189・#139 で導入予定の IADR-0046）"
 author: claude
 created: 2026-07-09
+updated: 2026-08-05
 ---
 
 # フィードバック: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加
+
+## 取り下げ（2026-08-05 / #504）— **計画は draw.io を作らない方針である**
+
+**本記録は取り下げる（`status: closed`）。** #504 の着手時に計画リポジトリ（pin `d980a01`）を実測した結果、
+**計画は HTML モックアップを正とし draw.io を作成しない**方針であることが確かめられた。
+
+| 実測 | 内容 |
+| --- | --- |
+| `05_screens/01_screens.md` §HTMLモックアップ | 全 21 画面について **hi-fi と wireframe の HTML** を表で挙げている。SC-11 も [wireframe/sc-11.html](../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html) が揃っている |
+| 計画リポジトリ全体 | **`.drawio` ファイルは 1 件も存在しない**（`05_screens/wireframes/` というディレクトリ自体が無い） |
+
+すなわち本記録が前提にしていた「他画面はワイヤーフレームを持つが SC-11 だけ未作成」という認識が誤りであり、
+**SC-11 のワイヤーフレームは HTML として既に存在する**。計画側へ渡す作業は無い。
+
+**実装側の追随**: `docs/screens/SC-11_configuration-viewer.md` の未決事項 5 は #504 で
+「解決して畳んだ未決事項」へ移し、**HTML の wireframe / hi-fi を実装の正**として本文から参照した。
 
 ## 種別
 

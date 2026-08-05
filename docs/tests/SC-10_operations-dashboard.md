@@ -1,78 +1,162 @@
 ---
 title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
-status: draft
+status: completed
 related_ids:
   - SC-10
   - UC-05
   - FR-10
+  - NFR
+  - IADR-0009
+  - IADR-0035
+  - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
 related_specs:
   - "../screens/SC-10_operations-dashboard.md"
-  - "../specs/20260708_issue-136_sc10-operations-dashboard.md"
+  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
   - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
+  - "../adr/IADR-0011_dashboard-service-usage-aggregation.md"
+  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
 ---
 
 # テスト仕様書: SC-10 運用ダッシュボード
 
-> 計画の受け入れ基準（Issue #136）と UC-05 のフローをテストケースへ写像する。
+> **［2026-08-05 / #504］新スタックでの再実装に合わせて画面側を全面改訂した。**
+> **改訂にあたり §バックエンド（BFF・xUnit）の節を新設した**——改訂前の本書は「対象外: BFF
+> `/bff/dashboard/summary` のサーバ側テスト（既存）」と 1 行で片付けており、**実在する
+> `DashboardBffEndpointTests` の 6 ケースがどこにも写像されていなかった**。
+> **画面の権限は片側だけを固定しても実効境界にならない**（#503 が SC-05〜07 でバックエンドの節を
+> 落とし、#510 として起票された先例がある）。とくに本画面は**計画と実装で閲覧ロールが食い違って
+> おり**、その根拠が API 側にあるため、両側を並べて読めることに意味がある。
+
+対象（画面）: `src/knowledge/frontend/src/features/sc10-operations/`
+テスト: `opsTools.test.ts`（純関数）／ `OperationsDashboardPage.test.tsx`（Vitest + Testing Library。
+画面 ＋ **アクセス制御**）／ 導線は `src/knowledge/frontend/src/features/opsFlow.test.tsx`／
+E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
+
+対象（API）: `src/platform/backend/Bff/Platform.Bff.Tests/DashboardBffEndpointTests.cs` ／
+`src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardEndpointTests.cs`
 
 ## 起点となる計画書（トレーサビリティ）
 
-> **［2026-08-04 / #490］ルートパスを計画へ是正した。** SPA のルータを TanStack Router へ差し替えるにあたり、本書内のルート表記を [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ揃えた（[[IADR-0124]] 決定 6）。テスト観点そのものは変えていない。
+- 画面（SC）: SC-10 ／ ユースケース（UC）: **UC-05** ／
+  機能要求（FR）: **FR-10**（利用状況・検索傾向・回答品質の可視化）＋ **非機能要件（運用・可観測性）**
+- 受け入れ基準の所在: issue #504 §受け入れ基準 ／ 作業仕様書
+  [20260805_issue-504](../specs/20260805_issue-504_sc09-11-admin-ops-screens.md) §受け入れ基準
 
+## 計画の要素 → 実装／テストの対応
 
-- 機能要求（FR）: FR-10
-- ユースケース（UC）: UC-05
-- 受け入れ基準の所在: Issue #136 ／ `docs/specs/20260708_issue-136_sc10-operations-dashboard.md`
-- 計画書リンク: [05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md)
+| 計画 §SC-10 の要素 | テスト |
+| --- | --- |
+| KPI カード（**SLO 達成率**） | **実装しない**（契約の不在）。`renders only the three KPI cards the contract can fill` |
+| KPI カード（利用状況〔人/日〕） | **部分**（件数を出す）。同上（KPI カードの集合を固定する） |
+| KPI カード（**LLM コスト**） | **実装しない**（契約の不在）。同上 |
+| 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
+| 構成ビューア（SC-11）への導線 | `always offers the link to SC-11 for anyone who can open this screen` ／ 導線テスト A |
+| **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the knowledge-health section` |
+| アクセス制御（計画は運用者・管理者） | **管理者のみ**（差異。§アクセス制御）。`hides existence (NotFound) for an operator and for a plain user` |
 
-## テスト対象・範囲
+## FR-10 → テストの写像
 
-- 対象: SC-10 画面（`features/sc10-operations`）と、本画面で導入する基盤部品（`roles`・`RequireRole`・ロール別ナビ・`opsLinks`）。
-- 対象外: BFF `/bff/dashboard/summary` のサーバ側テスト（既存）。Grafana/Jaeger/Kiali 自体。
+| FR-10 の要素 | テスト |
+| --- | --- |
+| 利用状況の可視化 | `shows the usage, trend and answer-quality summary`（総数 ＋ 日次一覧） |
+| 検索傾向の可視化 | 同上（上位語の一覧） |
+| 回答品質の可視化 | 同上（満足率 ＋ 👍/👎 の内訳） |
+| 期間の切替 | `starts at seven days and sends the selected period to the API` |
 
-## テスト観点
+## テストケース（画面）
 
-- 正常系: 管理者でサマリ（総数・満足率・利用状況・傾向）と外部ツール導線・SC-11 導線が表示される。
-- 認可・存在秘匿: 権限外はナビに「運用」が出ない／`/admin/ops` 直接遷移で `NotFound`（存在を示さない）。
-- API 異常系: 403（forbidden）・404（notFound）・5xx/network（error）・loading の各表示。
-- 実行時 config: `opsLinks` 未設定時は外部リンクを描画しない。設定時のみ描画。
-- ロール読み取り: `realm_access.roles` を access_token から復号。復号不能時は空（フェイルクローズ）。
-- E2E スモーク（バックエンド不要）: 未認証 `/admin/ops` → `/login`。
+| # | 観点 | 起点 | 検証内容 |
+| --- | --- | --- | --- |
+| 1 | サマリ表示 | FR-10 | 検索総数・回答総数・満足率と、日次・上位語の 2 表。`?days=7` を送る |
+| 2 | 集計期間 | 契約（`?days=`） | 既定 7。選択で `?days=30` を送る（キャッシュキーに期間を含む） |
+| 3 | **未知のイベント種別** | 契約の 2 値 | 生値をそのまま出す（`—`・「不明」へ丸めない） |
+| 4 | 0 件 | — | 「期間内の利用はありません。」「検索傾向はまだありません。」 |
+| 5 | **403 の中立化** | [[IADR-0009]] / [[IADR-0129]] 決定 3 | 「運用ダッシュボードは利用できません。」（`role="alert"` を出さない） |
+| 6 | **404 の中立化** | 同上 | **5 と同じ文言**（文言から権限の有無を読ませない） |
+| 7 | **5xx は中立化しない** | 同上 | `role="alert"` で障害として出す（運用者に見逃させない） |
+| 8 | 外部ツール | [[IADR-0121]] 決定 3 | 実行時 config が注入したものだけ描く（Kiali 未設定なら出さない） |
+| 9 | 未設定 | — | 「外部ツールの導線は未設定です。」 |
+| 10 | SC-11 導線 | 遷移図 `SC10 --> SC11` | `/admin/config-viewer` へのリンク。**権限で出し分けない**（[[IADR-0129]] 決定 4） |
+| 11 | **着手保留**（実装しない要素） | [[IADR-0119]] | ナレッジ健全性の語（節見出し・4 KPI・辺の型・フォールバック・個人資料の注記）が無い。**先にサマリが在ることを確かめてから**無いことを見る |
+| 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #3・#5 | **KPI カードの見出しの集合**が 3 枚に固定される（「SLO」の語は副題にも出るため、テキスト検索ではなく**カードが在るか**で見る） |
+| 13 | ロケール `en` | ADR-0031 | 見出しが英語で描画される |
 
-## テストケース一覧
+## アクセス制御・存在秘匿（画面）
 
-| ID | 前提条件 | 手順 | 期待結果 | 対応受け入れ基準 | 区分 |
-| --- | --- | --- | --- | --- | --- |
-| T-01 | `platform-admin`、summary=200 | `/admin/ops` 表示 | 総数・満足率・利用状況・傾向が表示 | サマリ表示 | 自動(単体) |
-| T-02 | opsLinks に Grafana/Jaeger 設定 | `/admin/ops` 表示 | Grafana/Jaeger リンク表示、Kiali 未設定は非表示 | 外部導線 | 自動(単体) |
-| T-03 | `platform-admin`＋ConfigViewer | `/admin/ops` 表示 | 「構成ビューア →」導線が表示 | SC-11 導線 | 自動(単体) |
-| T-04 | 一般利用者（ロールなし） | `/admin/ops` 直接遷移 | `NotFound` を描画（存在秘匿・リダイレクトしない） | AdminOnly/存在秘匿 | 自動(単体) |
-| T-05 | 一般利用者 | ナビ描画 | 「運用」項目が出ない | 存在秘匿 | 自動(単体) |
-| T-06 | summary=403 | `/admin/ops` 表示 | 権限なしの中立メッセージ | 権限外非表示 | 自動(単体) |
-| T-07 | summary=404 | `/admin/ops` 表示 | 利用不可メッセージ（存在秘匿と整合） | 存在秘匿 | 自動(単体) |
-| T-08 | summary=500/network | `/admin/ops` 表示 | `role="alert"` の取得失敗表示 | 異常系 | 自動(単体) |
-| T-09 | access_token に realm_access.roles | `extractRealmRoles` | 該当ロール配列を返す | 認可基盤 | 自動(単体) |
-| T-10 | 不正/欠落トークン | `extractRealmRoles` | 空配列（フェイルクローズ） | 認可基盤 | 自動(単体) |
-| T-11 | 未認証 | `/admin/ops` を開く | `/login` へ誘導 | ルート登録・認証ガード | 自動(E2E) |
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| A1 | 許可 | `platform-admin` は開ける |
+| A2 | **存在秘匿** | `platform-operator` と一般利用者は **`NotFound`**。**BFF を呼ばない** |
+| A3 | **markup 一致** | 権限による秘匿の描画が `foundation/ui/NotFound`（＝不在）と**同じ markup**（#490 の作法） |
+| A4 | ナビ | `requiresAnyRole: [platform-admin]`・`group: 'ops'` |
+
+> **A2 は計画との差異を固定するテストである。** 計画 §SC-10 は「運用者・管理者ロール限定」と定めるが、
+> データ源 `/bff/dashboard/summary` と後段 `DashboardService` がともに `AdminOnly` であるため
+> 管理者のみに据え置いた（[[IADR-0129]] 決定 4）。**裁定は環流記録の提案 7**。
+> 裁定で運用者へ広げるときは、A2 と `opsFlow.test.tsx` の 2 本目を同時に書き換える。
+
+## 純関数（`opsTools.test.ts`）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| P1 | 値集合 | 計画が挙げる **3 件**（`grafana` / `kiali` / `tracing`）と完全一致する |
+| P2 | 表示 | 表示名（固有名詞・翻訳しない）と説明（翻訳する）が計画の記述どおり。**並び順も固定** |
+| P3 | 絞り込み | URL が未注入のツールを落とす |
+| P4 | 空 | 何も設定されていなければ空配列 |
+
+## 導線（`opsFlow.test.tsx`）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| A | SC-10 → SC-11 | 「構成ビューア →」で構成ビューアへ遷移し、構成バージョンが出る（**2 ルートを 1 本のルータへ載せる**） |
+| B | 運用者の到達 | 運用者は SC-11 へ直接到達できるが、SC-10 は `NotFound`（差異の固定） |
+
+## バックエンド（BFF・xUnit）
+
+対象: `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DashboardBffEndpoints.cs`
+テスト: `src/platform/backend/Bff/Platform.Bff.Tests/DashboardBffEndpointTests.cs`
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| 1 | 集約 | FR-10 | `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
+| 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の `AdminOnly` を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
+| 3 | **ロール制限** | [[IADR-0011]] | 管理者ロールが無ければ **403**。**画面が `platform-admin` 限定に据え置かれている根拠はここにある** | `GetSummary_WithoutAdminRole_Returns403` |
+| 4 | 後段障害 | — | 後段の非成功ステータスをそのまま伝播し、空サマリへ縮退させない | `GetSummary_WhenDashboardFails_PropagatesStatus` ／ `GetSummary_WhenFeedbackStatsFails_PropagatesStatus` |
+| 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |
+
+集計そのもの（期間の丸め・日次集計・上位語）は `DashboardService` 側で検証する
+（`src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardEndpointTests.cs`）。
+
+## E2E（Playwright）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| E1 | ルートの実在 ＋ 認証ガード | 未認証で `/admin/ops` を開くと `/login` へ誘導される |
 
 ## テストデータ
 
-- ロール別のダミー `User`（`access_token` は `header.payload.signature` 形式で payload に `realm_access.roles` を base64url 埋め込み）。
-- `DashboardSummaryDto` のダミー（totalSearches/totalAnswers/usageTrend/topSearchTerms/quality）。
+- ロール別のダミー `User`（`access_token` の `realm_access.roles`。`renderUnitRoute` が生成する）。
+- `DashboardSummaryDto` のダミー（`totalSearches` / `totalAnswers` / `usageTrend` / `topSearchTerms` / `quality`）。
+- 実行時 config（`window.__APP_CONFIG__.opsLinks`）。**各テストでキャッシュを破棄する**
+  （`resetAppConfigCache()`。持ち越すと前のテストの config を次が読む）。
 
-## 関連仕様
+## 実行
 
-- 画面仕様書: `docs/screens/SC-10_operations-dashboard.md`
-- 作業仕様書: `docs/specs/20260708_issue-136_sc10-operations-dashboard.md`
-- 実装 ADR: [[IADR-0035]]
+- `pnpm run test -- knowledge/frontend/src/features/sc10-operations`（純関数 **4** ＋ 画面 **13** ＋ アクセス **4** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/opsFlow.test.tsx`（導線）
+- `pnpm run test:coverage`（カバレッジ・ラチェット維持）
+- `pnpm --filter @platform/frontend run test:e2e`
 
 ## 未決事項
 
-- なし
+- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）と閲覧ロールの差異は
+  `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+- ナレッジ健全性節は [[IADR-0119]] の保留解除待ち。
