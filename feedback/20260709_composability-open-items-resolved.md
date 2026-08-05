@@ -82,7 +82,7 @@ updated: 2026-08-05
 
 | 確認先（計画リポジトリ） | 確認した記述 |
 | --- | --- |
-| [draft/feedback/20260709_composability-open-items-resolved.md](../planning/draft/feedback/20260709_composability-open-items-resolved.md) | `status: accepted`（`status_note: GitHub Issue #15 由来`。「トリアージ結果（2026-07-09、accepted）」節） |
+| [draft/feedback/20260709_composability-open-items-resolved.md](../planning/draft/feedback/20260709_composability-open-items-resolved.md) | `status: accepted`（`status_note: GitHub Issue #15 由来`——**この `#15` は `planning#15`**。「トリアージ結果（2026-07-09、accepted）」節） |
 | [06_technical/10_composability-design.md](../planning/projects/microservices-platform/06_technical/10_composability-design.md) `:176-181` | §リスク・未決事項 に「**実装で確定済み（IADR 環流、2026-07-09）**」節。`:177` が**本記録を相対リンクで参照**し、`:178`〜`:180` に確定 3 項目（スキーマ表現力・構成情報 API 配置・ドリフト粒度）、`:181` に「既存実装への段階適用: **完了**」（提案 1・2） |
 | 同 `:172` | 「状態を fixed に確定する（2026-07-09）」= 提案 3。**根拠に planning#15 提案 3 を挙げる** |
 | 同 frontmatter | `status: fixed` |

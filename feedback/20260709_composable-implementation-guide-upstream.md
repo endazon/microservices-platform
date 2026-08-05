@@ -92,8 +92,8 @@ updated: 2026-08-05
 
 | 確認先（計画リポジトリ） | 確認した記述 |
 | --- | --- |
-| [draft/feedback/20260709_composable-implementation-guide-upstream.md](../planning/draft/feedback/20260709_composable-implementation-guide-upstream.md) `:4` | `status: accepted`（「トリアージ結果（2026-07-09、Issue #14）」節） |
-| [draft/feedback/README.md](../planning/draft/feedback/README.md) `:85-87` | 「`status` の値は `open` / `triaged` / `accepted` / `rejected` を用いる。**本記録が使っていた `reflected` は、2026-08-04 のトリアージで `accepted` へ揃えた（表記の揺れは解消した）**」 |
+| [draft/feedback/20260709_composable-implementation-guide-upstream.md](../planning/draft/feedback/20260709_composable-implementation-guide-upstream.md) `:4` | `status: accepted`（「トリアージ結果（2026-07-09、`Issue #14`）」節。**この `#14` は `planning#14`** — 裸で書くと本リポジトリの無関係な PR へ誤リンクするため、原文の表記をコードスパンに入れて修飾する） |
+| [draft/feedback/README.md](../planning/draft/feedback/README.md) `:85-87` | 「`status` の値は `open` / `triaged` / `accepted` / `rejected` を用いる。**`20260709_composable-implementation-guide-upstream.md`〔＝本記録〕が使っていた `reflected` は、2026-08-04 のトリアージで `accepted` へ揃えた（表記の揺れは解消した）**」（〔 〕は引用者の註） |
 | [06_technical/10_composability-design.md](../planning/projects/microservices-platform/06_technical/10_composability-design.md) `:96` | §2 に実装ガイド `docs/tech/composable-component-guide.md` への相互参照と改版時の照合運用を追記（提案 1・2） |
 | 同 `:189` | 変更履歴 2026-07-09 が**本記録を相対リンクで参照**し、§2 を部品種別マップ（軸A / 軸B）へ拡張したと記す（提案 3） |
 

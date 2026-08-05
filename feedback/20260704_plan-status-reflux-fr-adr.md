@@ -200,7 +200,7 @@ updated: 2026-08-05
 | --- | --- |
 | [draft/feedback/20260704_plan-status-reflux-fr-adr.md](../planning/draft/feedback/20260704_plan-status-reflux-fr-adr.md) | `status: accepted`（「トリアージ結果」節が提案ごとの採否を列挙） |
 | [02_requirements/01_requirements.md](../planning/projects/microservices-platform/02_requirements/01_requirements.md) / [03_usecases/01_usecases.md](../planning/projects/microservices-platform/03_usecases/01_usecases.md) / `04_workflows/` 全 3 件 / `06_technical/` 01〜10・12・13 | frontmatter が `status: fixed`（提案 1）。**11・14 は `draft`** だが、いずれも本記録のトリアージより後に新設された文書である |
-| [07_adr/](../planning/projects/microservices-platform/07_adr/README.md) ADR-0001〜0017 | 提案 2・3 のとおり `Accepted` 化済み。**ただし ADR-0003 は現在 `Superseded`**（[ADR-0027](../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md) による後続の遷移であり、本記録の判定は覆らない）。トリアージ時に Proposed 据え置きとされた ADR-0005 / 0007 / 0008 も**現在は `Accepted`** |
+| [07_adr/README.md](../planning/projects/microservices-platform/07_adr/README.md)（ADR 索引）の ADR-0001〜0017 | 提案 2・3 のとおり `Accepted` 化済み。**ただし ADR-0003 は現在 `Superseded`**（[ADR-0027](../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md) による後続の遷移であり、本記録の判定は覆らない）。トリアージ時に Proposed 据え置きとされた ADR-0005 / 0007 / 0008 も**現在は `Accepted`** |
 | [07_adr/ADR-0002_service-boundaries-db-per-service.md](../planning/projects/microservices-platform/07_adr/ADR-0002_service-boundaries-db-per-service.md) `:43` | 「確定の経緯」が**本記録を相対リンクで参照**し、サービス数を実態（11＋BFF）へ改訂のうえ確定したと記す |
 
 作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

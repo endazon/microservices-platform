@@ -73,6 +73,6 @@ updated: 2026-08-05
 | [06_technical/03_tech-stack-selection.md](../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md) `:34` | 技術スタック表 = 「ASP.NET Core + **.NET 10**（C#、LTS）」 |
 | 同 `:60` | 選定根拠の見出し = 「実装フレームワーク: ASP.NET Core + **.NET 10**」 |
 | 同 `:55` | §実装状況 の「配備済み」= **.NET 10 / C# 13**（`src/Directory.Build.props` を単一情報源とする）。**#497 が「残渣」として挙げた「.NET 8（更新は後続）」は既に是正済みである** |
-| 同 `:114` | 変更履歴 2026-08-04 が**本記録を相対リンクで参照**し、実装状況の残渣を是正したと記す（planning#189 / planning#194） |
+| 同 `:114` | 変更履歴 2026-08-04 が**本記録を相対リンクで参照**し、実装状況の残渣を是正したと記す（**この行が挙げるのは planning#189 / planning#188**。是正 PR は planning#194 だが、それを記すのは [draft/feedback/20260709_dotnet10-target-framework-deviation.md](../planning/draft/feedback/20260709_dotnet10-target-framework-deviation.md) 側である） |
 
 作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）
