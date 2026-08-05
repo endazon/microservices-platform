@@ -29,15 +29,17 @@ import {
   useEffectiveConfig,
   useRefreshConfigViewer,
 } from './useConfigViewer';
+// SC-11, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO**である。
+// 手書きの写しを置かない——契約が変われば型検査が落ちる状態にしておく。
 import type {
-  ConfigVersion,
-  ConfigVersionEntry,
-  Connector,
-  DriftReport,
-  EventBinding,
-  PipelineStage,
-  PortSelection,
-} from './useConfigViewer';
+  ConfigVersionDto,
+  ConfigVersionEntryDto,
+  ConnectorDto,
+  DriftReportDto,
+  EventBindingDto,
+  PipelineStageDto,
+  PortSelectionDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-11, FR-15, ADR-0018: 構成ビューア（05_screens: ルート /admin/config-viewer）。
 // 実効構成・宣言（Git）との差分・構成バージョン履歴を参照専用で可視化する。
@@ -191,7 +193,7 @@ export function ConfigViewerPage() {
 }
 
 /** ヘッダの構成バージョン（コミット・適用日時・適用者）。分類の名前なので Tag を使う。 */
-function ConfigVersionTags({ version }: { version: ConfigVersion }) {
+function ConfigVersionTags({ version }: { version: ConfigVersionDto }) {
   const { t } = useLingui();
   // lingui/no-expression-in-message: 補間には**素の変数だけ**を置く（式を入れると抽出された
   // メッセージから元の値が読めなくなり、翻訳者が文脈を判断できない）。
@@ -208,7 +210,7 @@ function ConfigVersionTags({ version }: { version: ConfigVersion }) {
 }
 
 /** 全体ドリフト状態。INDEX 決定 21: 色だけで意味を持たせない（StatusBadge が型で強制する）。 */
-function DriftBadge({ report }: { report: DriftReport }) {
+function DriftBadge({ report }: { report: DriftReportDto }) {
   const { t } = useLingui();
   const count = report.findings.length;
   return count === 0 ? (
@@ -245,7 +247,7 @@ function Fold({
 }
 
 /** パイプライン段の CSS 縦チェーン（IADR-0036）。無効段は淡色 ＋ バッジ、ドリフト段は警告色 ＋ 明細へのリンク。 */
-function PipelineChain({ stages, drifted }: { stages: PipelineStage[]; drifted: Set<string> }) {
+function PipelineChain({ stages, drifted }: { stages: PipelineStageDto[]; drifted: Set<string> }) {
   const { t } = useLingui();
   if (stages.length === 0) {
     return (
@@ -292,7 +294,7 @@ function PipelineChain({ stages, drifted }: { stages: PipelineStage[]; drifted: 
   );
 }
 
-function EventBindingsTable({ bindings }: { bindings: EventBinding[] }) {
+function EventBindingsTable({ bindings }: { bindings: EventBindingDto[] }) {
   const { t } = useLingui();
   return (
     <div>
@@ -334,7 +336,7 @@ function EventBindingsTable({ bindings }: { bindings: EventBinding[] }) {
   );
 }
 
-function PortsTable({ ports }: { ports: PortSelection[] }) {
+function PortsTable({ ports }: { ports: PortSelectionDto[] }) {
   const { t } = useLingui();
   return (
     <div>
@@ -376,7 +378,7 @@ function PortsTable({ ports }: { ports: PortSelection[] }) {
   );
 }
 
-function ConnectorsTable({ connectors }: { connectors: Connector[] }) {
+function ConnectorsTable({ connectors }: { connectors: ConnectorDto[] }) {
   const { t } = useLingui();
   return (
     <div>
@@ -419,7 +421,7 @@ function ConnectorsTable({ connectors }: { connectors: Connector[] }) {
 }
 
 /** ドリフト明細。0 件のときも**確認時刻**を出す（未検出と未実行を区別できるようにする）。 */
-function DriftTable({ report }: { report: DriftReport }) {
+function DriftTable({ report }: { report: DriftReportDto }) {
   const { t } = useLingui();
   if (report.findings.length === 0) {
     return (
@@ -476,7 +478,7 @@ function DriftTable({ report }: { report: DriftReport }) {
 }
 
 /** 構成バージョン履歴（新しい順）。並び順とデータ源は API が担い、画面は表示のみ。 */
-function HistoryTable({ entries }: { entries: ConfigVersionEntry[] }) {
+function HistoryTable({ entries }: { entries: ConfigVersionEntryDto[] }) {
   const { t } = useLingui();
   if (entries.length === 0) {
     return (

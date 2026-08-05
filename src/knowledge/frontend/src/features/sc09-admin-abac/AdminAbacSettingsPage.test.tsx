@@ -4,14 +4,20 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
 // SC-09, UC-05, FR-09: 管理者設定（ABAC）の再実装（#504）。
 // 属性辞書・ポリシー定義・検証結果と、**着手保留（辺の型）・契約の不在（タグ辞書・検証ボタン）が
 // 画面に現れないこと**を固定する。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
+// モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
+// **400 / 409 の Problem 詳細（`ApiError.details`）は載せ替えの影響を受けない**——非 2xx を投げるのは
+// どちらの経路でも `apiRequest` だからである（IADR-0040 決定 2 の表示がそのまま通り続ける）。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc09AdminAbacRoute, sc09AdminAbacNav } from './index';
@@ -62,17 +68,23 @@ function mockApi(
     write?: () => Promise<unknown>;
   } = {},
 ) {
-  mocks.apiFetch.mockImplementation(async (path: string, req?: { method?: string }) => {
+  mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
     const pick = (value: unknown) => {
       if (value instanceof Error) throw value;
-      return value;
+      return jsonResponse(value);
     };
-    if (req?.method && req.method !== 'GET') {
-      return overrides.write ? overrides.write() : undefined;
+    if (init?.method && init.method !== 'GET') {
+      return overrides.write ? overrides.write() : noContent();
     }
     if (path === '/admin/authz/attributes') return pick(overrides.attributes ?? ATTRIBUTES);
     return pick(overrides.policies ?? POLICIES);
   });
+}
+
+/** 生成コードが送った JSON 本文（直近の書き込み要求）を読む。 */
+function sentBody(calls: unknown[][]): unknown {
+  const write = [...calls].reverse().find(([, init]) => (init as RequestInit)?.method === 'POST');
+  return JSON.parse(String((write?.[1] as RequestInit).body));
 }
 
 async function renderPage(roles: readonly string[] = ['platform-admin']) {
@@ -83,7 +95,7 @@ async function renderPage(roles: readonly string[] = ['platform-admin']) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
 });
 
 afterEach(() => {
@@ -146,17 +158,18 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     await user.click(screen.getByRole('button', { name: '追加する' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/authz/attributes', {
-        method: 'POST',
-        json: {
-          key: 'grade',
-          label: '職位',
-          allowedValues: ['一般', '役員'],
-          required: false,
-          scope: 'user',
-        },
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/admin/authz/attributes',
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      key: 'grade',
+      label: '職位',
+      allowedValues: ['一般', '役員'],
+      required: false,
+      scope: 'user',
+    });
   });
 
   // IADR-0006: 参照中の属性は 409 で削除を拒否される。理由を書かないと「なぜ消えないか」が分からない。
@@ -211,16 +224,17 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/authz/policies', {
-        method: 'POST',
-        json: {
-          name: 'P-014 開発設計',
-          action: 'read',
-          userConditions: { dept: ['開発'] },
-          documentConditions: {},
-        },
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/admin/authz/policies',
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
+    expect(sentBody(mocks.apiRequest.mock.calls)).toEqual({
+      name: 'P-014 開発設計',
+      action: 'read',
+      userConditions: { dept: ['開発'] },
+      documentConditions: {},
+    });
   });
 
   // 計画 §SC-09 §アクション: 保存前にポリシーを検証し、矛盾はエラー表示。検証結果パネルへ集約する。
@@ -276,7 +290,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     const user = userEvent.setup();
     await renderPage();
     await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
-    const before = mocks.apiFetch.mock.calls.filter(
+    const before = mocks.apiRequest.mock.calls.filter(
       ([path]) => path === '/admin/authz/policies',
     ).length;
 
@@ -284,7 +298,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
 
     await waitFor(() =>
       expect(
-        mocks.apiFetch.mock.calls.filter(([path]) => path === '/admin/authz/policies').length,
+        mocks.apiRequest.mock.calls.filter(([path]) => path === '/admin/authz/policies').length,
       ).toBe(before + 1),
     );
   });
@@ -310,7 +324,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(await screen.findByRole('alert')).toBeInTheDocument();
 
     // 2 つ目のミューテーション（追加）は成功する。古い失敗が残っていてはいけない。
-    mockApi({ write: () => Promise.resolve(undefined) });
+    mockApi({ write: () => Promise.resolve(noContent()) });
     await user.type(screen.getByLabelText('キー（必須）'), 'grade');
     await user.click(screen.getByRole('button', { name: '追加する' }));
 
@@ -336,7 +350,7 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('P-013 と矛盾');
 
     // 2 つ目のミューテーション（有効／無効の切替）は成功する。
-    mockApi({ write: () => Promise.resolve(undefined) });
+    mockApi({ write: () => Promise.resolve(noContent()) });
     await user.click(screen.getByRole('button', { name: 'ポリシーを無効化: P-012 経理文書' }));
 
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
@@ -426,7 +440,7 @@ describe('SC-09 access control (#504)', () => {
         screen.queryByRole('heading', { name: '管理者設定（ABAC）' }),
       ).not.toBeInTheDocument();
       // 権限外では ABAC 管理 API を呼ばない（要求の有無から存在を推測させない）。
-      expect(mocks.apiFetch).not.toHaveBeenCalled();
+      expect(mocks.apiRequest).not.toHaveBeenCalled();
       view.unmount();
     }
   });

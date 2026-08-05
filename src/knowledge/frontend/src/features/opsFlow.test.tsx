@@ -2,13 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
 // SC-10 → SC-11, UC-05: 運用の導線（計画 05_screens 遷移図 `SC10 --> SC11`）。
 // **2 ルートを 1 本のルータへ載せて**実際に遷移する（画面単体のテストでは導線が繋がっているかを見られない）。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 2 画面とも orval 生成フックで呼ぶため、モックは `apiRequest` に当てる。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc10OperationsRoute } from './sc10-operations';
@@ -31,14 +34,14 @@ const CONFIG = {
 };
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
-  mocks.apiFetch.mockImplementation(async (path: string) => {
-    if (path.startsWith('/dashboard/summary')) return SUMMARY;
+  mocks.apiRequest.mockReset();
+  mocks.apiRequest.mockImplementation(async (path: string) => {
+    if (path.startsWith('/dashboard/summary')) return jsonResponse(SUMMARY);
     if (path === '/admin/config/drift') {
-      return { hasDrift: false, checkedAt: '2026-08-05T00:00:00Z', findings: [] };
+      return jsonResponse({ hasDrift: false, checkedAt: '2026-08-05T00:00:00Z', findings: [] });
     }
-    if (path === '/admin/config/history') return [];
-    return CONFIG;
+    if (path === '/admin/config/history') return jsonResponse([]);
+    return jsonResponse(CONFIG);
   });
 });
 

@@ -5,13 +5,17 @@ import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { resetAppConfigCache } from '@foundation/config/runtimeConfig';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
-// SC-10, UC-05, FR-10: 運用ダッシュボードの再実装（#504）。
+// SC-10, UC-05, FR-10: 運用ダッシュボードの再実装（#504）＋ 生成フックへの載せ替え（#519）。
 // サマリ表示・外部ツール導線・SC-11 導線・存在秘匿の中立化・**着手保留の要素が無いこと**を固定する。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
+// モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc10OperationsRoute, sc10OperationsNav } from './index';
@@ -38,7 +42,7 @@ async function renderPage(roles: readonly string[] = ['platform-admin']) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   resetAppConfigCache();
   window.__APP_CONFIG__ = undefined;
 });
@@ -54,7 +58,7 @@ afterEach(() => {
 describe('OperationsDashboardPage (SC-10)', () => {
   // FR-10: 利用状況・検索傾向・回答品質を可視化する。
   it('shows the usage, trend and answer-quality summary', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
@@ -69,12 +73,12 @@ describe('OperationsDashboardPage (SC-10)', () => {
     const trend = within(screen.getByRole('table', { name: '検索傾向（上位語）の一覧' }));
     expect(trend.getByText('経費精算')).toBeInTheDocument();
 
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/dashboard/summary?days=7');
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/dashboard/summary?days=7', expect.anything());
   });
 
   // 契約の期間指定は ?days= の 1 本。既定は 7 日（BFF の既定と揃える）。
   it('starts at seven days and sends the selected period to the API', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     const user = userEvent.setup();
     await renderPage();
     await screen.findByText('1840');
@@ -83,16 +87,18 @@ describe('OperationsDashboardPage (SC-10)', () => {
     await user.selectOptions(screen.getByLabelText('集計期間'), '30');
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith('/dashboard/summary?days=30'),
+      expect(mocks.apiRequest).toHaveBeenCalledWith('/dashboard/summary?days=30', expect.anything()),
     );
   });
 
   // 未知のイベント種別を握り潰さない（`—`・「不明」へ丸めない）。
   it('shows an unknown usage event type verbatim', async () => {
-    mocks.apiFetch.mockResolvedValue({
-      ...SUMMARY,
-      usageTrend: [{ date: '2026-08-04', eventType: 'export', count: 3 }],
-    });
+    mocks.apiRequest.mockResolvedValue(
+      jsonResponse({
+        ...SUMMARY,
+        usageTrend: [{ date: '2026-08-04', eventType: 'export', count: 3 }],
+      }),
+    );
     await renderPage();
 
     const usage = within(await screen.findByRole('table', { name: '利用状況（日次）の一覧' }));
@@ -100,7 +106,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 
   it('says the period has no usage rather than showing an empty table', async () => {
-    mocks.apiFetch.mockResolvedValue({ ...SUMMARY, usageTrend: [], topSearchTerms: [] });
+    mocks.apiRequest.mockResolvedValue(jsonResponse({ ...SUMMARY, usageTrend: [], topSearchTerms: [] }));
     await renderPage();
 
     expect(await screen.findByText('期間内の利用はありません。')).toBeInTheDocument();
@@ -109,7 +115,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
   // IADR-0129 決定 3 / IADR-0009: 403 と 404 は**同じ**中立文言。文言から権限の有無を読ませない。
   it('shows the same neutral message for a 403', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('forbidden', '権限がありません。', 403));
+    mocks.apiRequest.mockRejectedValue(new ApiError('forbidden', '権限がありません。', 403));
     await renderPage();
 
     expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
@@ -117,7 +123,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 
   it('shows the same neutral message for a 404', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('notFound', '見つかりませんでした。', 404));
+    mocks.apiRequest.mockRejectedValue(new ApiError('notFound', '見つかりませんでした。', 404));
     await renderPage();
 
     expect(await screen.findByText('運用ダッシュボードは利用できません。')).toBeInTheDocument();
@@ -126,7 +132,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
   // 5xx は中立化しない（系の状態であって資源の存在ではない。運用者が障害を見逃さないようにする）。
   it('surfaces a server failure as an alert instead of the neutral message', async () => {
-    mocks.apiFetch.mockRejectedValue(
+    mocks.apiRequest.mockRejectedValue(
       new ApiError('server', 'サーバでエラーが発生しました。', 500),
     );
     await renderPage();
@@ -137,7 +143,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
   // 実行時 config で注入されたツールだけを出す（未設定は描かない）。
   it('renders only the observability tools that runtime config injects', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     window.__APP_CONFIG__ = {
       opsLinks: { grafanaUrl: 'https://grafana.example', jaegerUrl: 'https://jaeger.example' },
     };
@@ -153,7 +159,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 
   it('says the tool links are not configured when none is injected', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
 
     expect(await screen.findByText('外部ツールの導線は未設定です。')).toBeInTheDocument();
@@ -161,7 +167,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
   // 計画の遷移図 SC10 --> SC11。IADR-0129 決定 4: 権限で出し分けない（到達しない分岐を作らない）。
   it('always offers the link to SC-11 for anyone who can open this screen', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
 
     expect(await screen.findByRole('link', { name: '構成ビューア →' })).toHaveAttribute(
@@ -177,7 +183,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
   // **まず「見えるはずの条件」で描画されていることを確かめてから**無いことを assert する
   // （#502 の M3 の教訓）。
   it('does not render the knowledge-health section (its requirement is on hold)', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
 
     // 見えるはずのもの（サマリ）が在ることを先に確かめる。
@@ -199,7 +205,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
   // （「SLO」という語そのものは副題「…SLO・コストは Grafana で参照」に出るため、
   //  テキスト検索では区別できない——**カードが在るか**を見る）。
   it('renders only the three KPI cards the contract can fill', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
 
     expect(await screen.findByText('1840')).toBeInTheDocument();
@@ -224,7 +230,7 @@ describe('OperationsDashboardPage (SC-10)', () => {
 
   // ADR-0031: 文言は Lingui のカタログ（ja / en）。
   it('renders in English when the en locale is active', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage();
     await screen.findByText('1840');
 
@@ -243,13 +249,13 @@ describe('OperationsDashboardPage (SC-10)', () => {
 //  ともに AdminOnly のため据え置いた。IADR-0129 決定 4・環流の提案 7）。
 describe('SC-10 access control (#504)', () => {
   it('grants access to platform-admin', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     await renderPage(['platform-admin']);
     expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
   });
 
   it('hides existence (NotFound) for an operator and for a plain user', async () => {
-    mocks.apiFetch.mockResolvedValue(SUMMARY);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
     for (const roles of [['platform-operator'], ['user']]) {
       const view = await renderPage(roles);
       expect(
@@ -257,7 +263,7 @@ describe('SC-10 access control (#504)', () => {
       ).toBeInTheDocument();
       expect(screen.queryByRole('heading', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
       // 権限外ではサマリ API を呼ばない（要求の有無から存在を推測させない）。
-      expect(mocks.apiFetch).not.toHaveBeenCalled();
+      expect(mocks.apiRequest).not.toHaveBeenCalled();
       view.unmount();
     }
   });

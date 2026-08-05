@@ -1,74 +1,46 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiFetch } from '@foundation/api/apiClient';
-import type { ConditionMap } from './abacVocabulary';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  getBffAuthzListAttributesQueryKey,
+  getBffAuthzListPoliciesQueryKey,
+  useBffAuthzCreateAttribute,
+  useBffAuthzCreatePolicy,
+  useBffAuthzDeleteAttribute,
+  useBffAuthzDeletePolicy,
+  useBffAuthzListAttributes,
+  useBffAuthzListPolicies,
+  useBffAuthzSetPolicyActive,
+} from '@foundation/api/generated/authorization/authorization';
+import { okData } from '@foundation/api/orvalSelect';
+import type {
+  AbacPolicyDto,
+  AttributeDefinitionDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: 属性辞書・ポリシーの照会と編集（サーバー状態は TanStack Query。ADR-0031）。
 //
 // BFF（/bff/admin/authz/*）は AuthorizationService へ透過中継し、保存前検証の 400・
 // 参照中削除の 409 をそのまま返す（IADR-0040 / IADR-0006）。画面はその詳細を検証結果として出す。
+// **その詳細は `ApiError.details` に載り続ける**——非 2xx は生成コードでも `apiRequest` が投げるため、
+// 400 / 409 の Problem 本文の抽出（apiClient.parseProblemDetails）は載せ替えの影響を受けない。
 //
-// `/bff/admin/authz` は docs/api/openapi.yaml に無く orval 生成物が存在しないため、
-// `apiFetch` ＋ 本ファイルの手書き型で呼ぶ（#506 の射程）。手書き HTTP クライアントではない
-// ——出口は foundation/api の 1 箇所に収束している（IADR-0121 決定 3）。
-//
+// IADR-0135 決定 1（#519）: 7 本とも **orval 生成フック**で呼ぶ（`/bff/admin/authz` 群は #506 で契約が揃った）。
 // IADR-0127 決定 5 と同じ作法: 変更操作の成功後は invalidateQueries だけを行う（手書きの再取得を持たない）。
 
-/** 属性辞書エントリ（`AttributeDefinitionDto`）。 */
-export interface AttributeDefinition {
-  id: string;
-  key: string;
-  label: string;
-  allowedValues: string[];
-  required: boolean;
-  /** 契約の 2 値（document / user）。未知の値も受け取る。 */
-  scope: string;
-}
-
-/** ABAC ポリシー（`AbacPolicyDto`）。 */
-export interface AbacPolicy {
-  id: string;
-  name: string;
-  /** 契約の 3 値（read / analyze / manage）。未知の値も受け取る。 */
-  action: string;
-  userConditions: ConditionMap;
-  documentConditions: ConditionMap;
-  isActive: boolean;
-}
-
-export interface NewAttribute {
-  key: string;
-  label: string;
-  allowedValues: string[];
-  required: boolean;
-  scope: string;
-}
-
-export interface NewPolicy {
-  name: string;
-  action: string;
-  userConditions: ConditionMap;
-  documentConditions: ConditionMap;
-}
-
-const ATTRIBUTES_PATH = '/admin/authz/attributes';
-const POLICIES_PATH = '/admin/authz/policies';
-
-export const abacAttributesKey = ['bff', 'admin', 'authz', 'attributes'] as const;
-export const abacPoliciesKey = ['bff', 'admin', 'authz', 'policies'] as const;
+export const abacAttributesKey = getBffAuthzListAttributesQueryKey();
+export const abacPoliciesKey = getBffAuthzListPoliciesQueryKey();
 
 /** 属性辞書の一覧（UC-05 基本フロー「属性を定義する」）。 */
 export function useAbacAttributes() {
-  return useQuery({
-    queryKey: abacAttributesKey,
-    queryFn: async () => (await apiFetch<AttributeDefinition[]>(ATTRIBUTES_PATH)) ?? [],
+  return useBffAuthzListAttributes<AttributeDefinitionDto[], unknown>({
+    // `?? []` は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い。
+    query: { queryKey: abacAttributesKey, select: (res) => okData(res) ?? [] },
   });
 }
 
 /** ポリシーの一覧（UC-05 基本フロー「ポリシーを定義する」）。 */
 export function useAbacPolicies() {
-  return useQuery({
-    queryKey: abacPoliciesKey,
-    queryFn: async () => (await apiFetch<AbacPolicy[]>(POLICIES_PATH)) ?? [],
+  return useBffAuthzListPolicies<AbacPolicyDto[], unknown>({
+    query: { queryKey: abacPoliciesKey, select: (res) => okData(res) ?? [] },
   });
 }
 
@@ -80,17 +52,10 @@ export function useAbacPolicies() {
 export function useAttributeActions() {
   const queryClient = useQueryClient();
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: abacAttributesKey });
+  const onSuccess = { mutation: { onSuccess: invalidate } };
 
-  const create = useMutation({
-    mutationFn: (attribute: NewAttribute) =>
-      apiFetch(ATTRIBUTES_PATH, { method: 'POST', json: attribute }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (id: string) => apiFetch(`${ATTRIBUTES_PATH}/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
-  });
+  const create = useBffAuthzCreateAttribute<unknown>(onSuccess);
+  const remove = useBffAuthzDeleteAttribute<unknown>(onSuccess);
 
   return { create, remove };
 }
@@ -104,22 +69,11 @@ export function useAttributeActions() {
 export function usePolicyActions() {
   const queryClient = useQueryClient();
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: abacPoliciesKey });
+  const onSuccess = { mutation: { onSuccess: invalidate } };
 
-  const create = useMutation({
-    mutationFn: (policy: NewPolicy) => apiFetch(POLICIES_PATH, { method: 'POST', json: policy }),
-    onSuccess: invalidate,
-  });
-
-  const setActive = useMutation({
-    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
-      apiFetch(`${POLICIES_PATH}/${id}/active`, { method: 'PATCH', json: { isActive } }),
-    onSuccess: invalidate,
-  });
-
-  const remove = useMutation({
-    mutationFn: (id: string) => apiFetch(`${POLICIES_PATH}/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
-  });
+  const create = useBffAuthzCreatePolicy<unknown>(onSuccess);
+  const setActive = useBffAuthzSetPolicyActive<unknown>(onSuccess);
+  const remove = useBffAuthzDeletePolicy<unknown>(onSuccess);
 
   return { create, setActive, remove };
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
 // SC-11, FR-15 / IADR-0009 / IADR-0030 / IADR-0035: 構成ビューアのアクセス制御
 // （管理者・運用者限定 ＋ 存在秘匿）。
@@ -12,10 +13,11 @@ import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 //   ConfigViewer ロールに限られ、グループが「運用」である。
 // #504 では (5) として **NotFound の markup が「不在」と一致すること**を足した
 // （#490 が Layout で確立した作法。ここでは feature 単体でも同じ描画になることを見る）。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+// IADR-0135 決定 4（#519）: 生成フックの経路は `apiRequest` を通る（`apiFetch` では効かない）。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc11ConfigRoute, sc11ConfigNav } from './index';
@@ -37,12 +39,12 @@ async function renderConfigRoute(roles: string[]) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   // 実 API と同様にパスで応答を振り分ける（/admin/config=構成, /drift=ドリフト, /history=履歴）。
-  mocks.apiFetch.mockImplementation(async (path: string) => {
-    if (path === '/admin/config/drift') return EMPTY_DRIFT;
-    if (path === '/admin/config/history') return [];
-    return EMPTY_CONFIG;
+  mocks.apiRequest.mockImplementation(async (path: string) => {
+    if (path === '/admin/config/drift') return jsonResponse(EMPTY_DRIFT);
+    if (path === '/admin/config/history') return jsonResponse([]);
+    return jsonResponse(EMPTY_CONFIG);
   });
 });
 
@@ -62,7 +64,7 @@ describe('SC-11 access control (#140 / #504)', () => {
     expect(await screen.findByRole('heading', { name: '見つかりませんでした' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '実効構成' })).not.toBeInTheDocument();
     // 権限外では構成 API を呼ばない（要求の有無から存在を推測させない）。
-    expect(mocks.apiFetch).not.toHaveBeenCalled();
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
   // #490 の作法: 「不在」と「権限による秘匿」で描画が割れると、画面の差から資源の存在を推測できる。
