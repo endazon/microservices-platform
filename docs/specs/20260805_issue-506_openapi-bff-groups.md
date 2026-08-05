@@ -90,7 +90,8 @@ $ grep -rn 'MapGroup("/bff' src/platform/backend src/knowledge/backend | wc -l
 
 ### 実測 3: 対象画面の通信コード（手書き型 / 生成フックの仕分け）
 
-母集合は `src/knowledge/frontend/src/features/sc*/use*.ts`（9 ファイル）である。
+母集合は `src/knowledge/frontend/src/features/sc*/use*.ts`（**10 ファイル**）である
+（`ls src/knowledge/frontend/src/features/sc*/use*.ts | wc -l` = 10。下表も 10 行ある）。
 
 | 画面 | ファイル | 呼び方 | OpenAPI にパスが在るか |
 | --- | --- | --- | --- |
@@ -105,7 +106,8 @@ $ grep -rn 'MapGroup("/bff' src/platform/backend src/knowledge/backend | wc -l
 | SC-10 | `sc10-operations/useDashboardSummary.ts` | `apiFetch('/dashboard/summary')` | **在る** |
 | SC-11 | `sc11-config/useConfigViewer.ts` | `apiFetch` ×3 | **2/3 が在る**（`/history` だけ無い） |
 
-**生成フックを使っているのは 9 ファイル中 1 つ（SC-08）だけである。**
+**生成フックを使っているのは 10 ファイル中 1 つ（SC-08）だけであり、残る 9 ファイルは `apiFetch`
+（SC-01 は `apiStream` も）＋ 手書き型である**（`grep -l apiFetch src/knowledge/frontend/src/features/sc*/use*.ts | wc -l` = 9）。
 
 ### 実測 4（issue が確認を求めた点）: SC-10 / SC-11 は「載っているのに使っていない」
 
@@ -398,7 +400,7 @@ BFF の record（`DocumentCreateRequest` / `DocumentUpdateRequest`）は
 | **変異試験**（本書 §検証） | 「OpenAPI を壊すと型検査が落ちる」——**生成フックに載っている面についてのみ成立する**（現時点では SC-08 だけ） |
 
 **この非対称は隠さない。** 1 本目の時点で網が掛かるのは SC-08 の 1 画面だけであり、
-**残り 8 ファイルは 2 本目まで素通りのままである。**
+**残り 9 ファイルは 2 本目まで素通りのままである**（母集合 10 ファイル − SC-08 の 1 ファイル）。
 
 ## 残りとして何をどうするか（分割 2 本目への申し送り）
 
