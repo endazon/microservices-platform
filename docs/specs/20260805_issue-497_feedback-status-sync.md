@@ -233,19 +233,24 @@ $ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
 - `git diff --name-only origin/develop..HEAD` に `src/` ・`.github/workflows/` ・`planning` が現れないこと
   （＝ビルド・テストの実走は不要）
 - **変異試験**（実行後は必ず復元し、`git status` が汚れていないことを確認する）
-  - **M1**: `docs/screens/SC-11_configuration-viewer.md` に足した計画側リンクを存在しないパスへ
-    書き換える → `check-doc-links.js`（既定）が **fail** すること
-  - **M2**: `feedback/` に足した計画側リンクを存在しないパスへ書き換える →
-    既定の `check-doc-links.js` は **緑のまま**（＝検査対象外である）／`--dir feedback` では **fail**
-    すること。**緑のままなら「検査対象外だった」という発見であり、隠さず報告する。**
+
+| # | 変異 | 期待 | **実測** |
+| --- | --- | --- | --- |
+| M1 | `docs/screens/SC-11_configuration-viewer.md` の追記に足した `01_screens.md` へのリンクを存在しないパスへ | 既定の `check-doc-links.js` が fail | **fail（exit 1・破損リンク 1 件を名指し）**。→ **検査対象である** |
+| M2 | `feedback/20260709_sc11-wireframe-drawio.md` の追記に足した `01_screens.md` へのリンクを存在しないパスへ | 既定は緑 / `--dir feedback` は fail | **既定 = exit 0（「OK: 425 件」のまま）／`--dir feedback` = exit 1**。→ **`feedback/` は既定の検査対象外だった**（§申し送り 2） |
+| M3 | `docs/screens/SC-11_configuration-viewer.md` の `wireframe/sc-11.html` を存在しないパスへ | （追加検証） | **exit 0**。→ **`.html` は `LINK_EXT` に無く、そもそも検査されない**（§申し送り 6） |
+
+**M2・M3 はいずれも「検査されていた」という前提が成り立たないことの実測である。隠さず報告する。**
 
 ## 申し送り
 
 1. **A 群 3 件（#6・#10・#13）が #497 の表から漏れている。** impl=`open` / plan=`accepted` で、
    書換対象 10 件とまったく同型である。別 issue で同期すべき。
-2. **`feedback/` は `check-doc-links.js` の既定走査対象外である。** 控えの記録が計画側を相対リンクで
-   指しても、pin がずれたときに機械検出されない。`ci.yml` は本エージェントの権限では編集できないため、
-   結線（`--dir feedback` の追加、または既定の走査対象へ `feedback` を含める）は親へ引き渡す。
+2. **`feedback/` は `check-doc-links.js` の既定走査対象外である（M2 で実測）。** 控えの記録が計画側を
+   相対リンクで指しても、pin がずれたときに機械検出されない。`ci.yml` は本エージェントの権限では
+   編集できないため、結線（`--dir feedback` の追加、または既定の走査対象へ `feedback` を含める）は
+   親へ引き渡す。**既存の `feedback/20260709_sc11-wireframe-drawio.md`（#504 が足した計画側リンク）も
+   同じく未検査のままだった。**
 3. **計画側 `draft/feedback/20260709_sc11-wireframe-drawio.md` は `open` のままである。** 実装側は
    `rejected` へ揃えたが、原典は未追随であり、計画リポジトリの「未処理」表にも残る。計画側の
    トリアージ（`rejected`）が必要——`/plan-feedback` の候補。**本リポジトリからは触れない。**
@@ -253,3 +258,9 @@ $ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
    計画側より進んだ状態になる。`triaged` を控えでも使うかは運用判断が要る（**要裁定**）。
 5. `feedback/README.md` には status の語彙が書かれていない（計画側 `draft/feedback/README.md` にのみ
    ある）。控え側にも語彙を明記すれば `closed` のような一点物の再発を防げる。
+6. **`.html` は `check-doc-links.js` の `LINK_EXT` に含まれず、リンクが検査されない（M3 で実測）。**
+   計画側のモックアップは HTML であり、**SC-01〜SC-21 の画面仕様書が「実装の正」として指す
+   `mockups/{hi-fi,wireframe}/sc-NN.html` は 1 件も検査されていない**。planning#167 が同種の欠落
+   （コード拡張子の不足）を扱って解消された先例があるため、`html` の追加も同じ形で扱えるはずである。
+   ただし `LINK_EXT` の増減は `check-doc-links.js --self-test` の正例・負例と対で更新する必要があり、
+   本 issue の射程外とする（別 issue の候補）。
