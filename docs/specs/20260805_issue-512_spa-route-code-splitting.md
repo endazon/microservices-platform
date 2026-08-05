@@ -174,8 +174,15 @@ issue #512 §受け入れ基準 を検証可能な形へ展開する。
 ## 計測（実測。**推測で分割しないための一次資料**）
 
 **測定条件**: worktree `perf/NFR-spa-route-code-splitting`（`origin/develop` `68d91ce` 基点）／
-Node 22.22.2 ／ pnpm 10.33.0 ／ Vite 6.4.3 ／ `rollup-plugin-visualizer` 7.0.1 ／
+Node 22.22.2 ／ pnpm 10.33.0（`src/package.json` の `packageManager` を corepack が解決した版。
+シェルの `pnpm -v` は環境によって別の版を返すため、**`pnpm install` の実行ログが報告する版**を書く）／
+Vite 6.4.3 ／ `rollup-plugin-visualizer` 7.0.1 ／
 submodule `planning`（pin `d980a01`）と `src/ai-stock-trading`（pin `655e2ed`）は populate 済み。
+
+**［2026-08-05 追記］`origin/develop` `9dc6c13` を取り込んだ後に全ビルドを測り直した**（V0 / V1 / V5 / V5b と
+`experimentalMinChunkSize` の変種）。**V0 と V5 の出力は取り込み前と完全に一致した**——サイズだけでなく
+`index-GYWu_vx3.js` / `vendor-react-CHRHn5b-.js` 等の**内容ハッシュまで同一**である
+（取り込んだ変更が SPA のモジュールグラフに触れていないため）。よって以下の数値は取り込み後も有効である。
 
 ### 分割前（`origin/develop` `68d91ce` そのまま。`pnpm run build` の生の出力）
 
@@ -273,7 +280,8 @@ stdout だけを見ていると「警告が消えた」と誤って判定する�
 ### 分割方針の候補（全部ビルドして測った）
 
 `origin/develop` 基点のビルドを V0、ルート単位の遅延だけを入れたものを V1 とし、
-そこへ `manualChunks` の規則を足し引きした 5 通りを実測した。すべて**同一のソース状態**で測っている。
+そこへ `manualChunks` の規則を足し引きした 6 通り（V2〜V6 と V5b）を実測した。
+すべて**同一のソース状態**で測っている。
 
 | 変種 | 最大チャンク | 初期ロード JS | 同 gzip | 500 kB 警告 | JS チャンク数 | 1 kB 未満の遅延チャンク |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -284,6 +292,17 @@ stdout だけを見ていると「警告が消えた」と誤って判定する�
 | V4 ＋`vendor-query` のみ | 495.19 kB | 545.86 kB | 168.52 kB | なし | 23 | 9 |
 | V6 全依存を単一 `vendor` へ | 494.74 kB | 573.54 kB | 176.60 kB | なし | 23 | 10 |
 | **V5 採用（3 規則）** | **274.33 kB** | 577.54 kB | 177.94 kB | なし | 17 | 3 |
+| V5b V5 から `Tabs.tsx` と barrel を `ui` 規則の対象外にする | **274.33 kB** | **551.23 kB** | **168.98 kB** | なし | 17 | 3 |
+
+V5b は「`@platform/ui` を初期側に置く費用が本当にどこから来ているか」を切り分けるために測った変種である
+（[[IADR-0134]] §結果 のトレードオフ。**採用はしない**——後述）。V5 との差は `ui` 規則に
+2 行の除外を足すだけで、`@platform/ui` の公開面（`src/index.ts` の 1 ファイル）・ESLint の深い参照禁止・
+[[IADR-0125]] 決定 1 は**いずれも無改変**である。動いたのは次の 2 本だけで、他は V5 と完全に同じだった。
+
+| チャンク | V5 | V5b |
+| --- | --- | --- |
+| `ui-*.js`（初期） | 65.04 kB / gzip 20.43 kB | **38.73 kB / gzip 11.47 kB** |
+| `AdminAbacSettingsPage-*.js`（SC-09 の遅延） | 11.78 kB / gzip 3.56 kB | **38.03 kB / gzip 12.50 kB** |
 
 読み取れること（**採用の根拠であり、[[IADR-0134]] 決定 3 の一次資料**）:
 
@@ -296,6 +315,13 @@ stdout だけを見ていると「警告が消えた」と誤って判定する�
   差の中身は「`@platform/ui` のプリミティブとその依存（Radix ほか）を初期側に置く」ぶんである。
   issue #512 が「`@platform/ui` のプリミティブは初期チャンクに残す」と明示しているため V5 を採る。
   **数字は残しておく**——この 14.31 kB を惜しむなら V2 へ倒す判断があり得る（§申し送り）。
+- **V5b は「Radix が初期側に来る理由」を切り分けた。** 差の実体は `Tabs` が引き込む Radix
+  （`@radix-ui/*` 計 61.01 kB rendered）だが、**それを初期側へ引き込んでいるのは
+  [[IADR-0125]] 決定 1 ではなく `ui` の `manualChunks` 規則である**。V1（`manualChunks` なし）では
+  barrel があるのに Radix は初期チャンクに来ず、SC-09 の遅延チャンクへ落ちている
+  （V1 の `AdminAbacSettingsPage-*.js` = 38.19 kB。初期チャンクに `data-orientation` は現れない）。
+  V5b は規約を一切変えずに初期 gzip を **8.96 kB** 削るが、`Tabs` を遅延側へ出すため
+  issue #512 の「`@platform/ui` のプリミティブは初期チャンクに残す」に反する。**よって採らない。**
 - V5 と V3 は 1 kB 未満の遅延チャンクが同数（3 本）で構成が近いが、**上限までの余裕が大きく違う**
   （274.33 kB vs 487.98 kB）。V5 は +2.83 kB gzip で 213.65 kB ぶんの余裕を買っている。
 
@@ -409,9 +435,17 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
    `scripts/check-*.js` として足し、`frontend.yml` へ結線したい。**本作業では `.github/workflows/` を
    編集できないため見送った**（結線できない検査を足すと「あるのに走らない」状態を作る）。
 4. **`@platform/ui` を初期チャンクに置く判断の再考余地**（§計測 の V2 と V5 の差 = **gzip 14.31 kB**）。
-   差の実体は `Tabs` が引き込む Radix である（`Tabs` を使う画面は SC-09 だけ）。
-   `@platform/ui` の公開面は `src/index.ts` の 1 ファイルと決まっている（[[IADR-0125]] 決定 1）ため、
-   barrel が初期側にある限り Radix も初期側に来る。**規約を変えずに直す方法は無い**。
+   差の実体は `Tabs` が引き込む Radix（`@radix-ui/*` 計 **61.01 kB rendered**）である（`Tabs` を使う画面は SC-09 だけ）。
+   **この Radix を初期側へ引き込んでいるのは [[IADR-0125]] 決定 1（公開面は `src/index.ts` の 1 ファイル）ではなく、
+   本作業が入れた `ui` の `manualChunks` 規則である**——§計測 の V5b が実測で、
+   **`ui` 規則から `Tabs.tsx` と barrel だけを除く 2 行**（公開面・ESLint・[[IADR-0125]] はいずれも無改変）で
+   初期 gzip が 177.94 → **168.98 kB（−8.96 kB）**になる。V1（`manualChunks` なし）でも
+   barrel があるのに Radix は初期チャンクに来ない（Rollup の per-export tree-shaking が
+   `Tabs` を SC-09 の遅延チャンクへ落とす）。
+   **それでも V5b を採らないのは、issue #512 が「`@platform/ui` のプリミティブは初期チャンクに残す」と
+   明示しており、V5b は `Tabs` を遅延側へ出すためこの文言に反するからである。**
+   よってこれは「規約が塞いでいる」問題ではなく、**issue の指定を守るために gzip 8.96 kB を払っている**という
+   費用の話である。指定を見直す価値があるかは人間の判断に委ねる（**［要裁定］はここに限る**）。
 5. **`tailwind-merge`（102.19 kB rendered）の妥当性**。`cn()` のためだけに入っており、
    初期チャンクの依存の中で react-dom / router-core / oidc-client-ts に次ぐ 4 位である。
    置き換え候補の評価は本 issue の射程外。
