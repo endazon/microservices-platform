@@ -1,11 +1,13 @@
-import { useAnalysisAnalyze } from '@foundation/api/generated/analysis/analysis';
+import { useBffAnalysisAnalyze } from '@foundation/api/generated/analysis/analysis';
 import { ApiError } from '@foundation/api/ApiError';
 import type { AiAnswerDto, AnalysisTaskRequest } from '@foundation/api/generated/bff.schemas';
 
 // SC-08, UC-02, FR-07/FR-05: AI 分析の実行（orval 生成フックのラッパ）。
 //
 // IADR-0127 決定 3: `/bff/analysis/analyze` は docs/api/openapi.yaml にあるため、
-// **本 issue の 4 画面で唯一 orval 生成フックに載る**（生成物があるのに手書きするのは契約の二重管理）。
+// **#503 の 4 画面で唯一 orval 生成フックに載っていた**（生成物があるのに手書きするのは契約の二重管理）。
+// #519 で残り 9 ファイルも生成物へ載せ替えたため、いまは本ファイルだけが特別ではない。
+// フック名は `operationId` の規約統一（IADR-0135 決定 5）で `useAnalysisAnalyze` から改名された。
 // IADR-0127 決定 4: 生成フックは `useMutation` であり、そもそも Query のキャッシュに載らない。
 // IADR-0126 決定 1 が避けた事象（戻る操作で古い回答が古い出典つきで復活する）は構造的に起こらないため、
 // 同 IADR の適用範囲（SC-01 本文）を広げる必要は無い。
@@ -39,7 +41,7 @@ function isEmptyAnswer(answer: AiAnswerDto | undefined): boolean {
 }
 
 export function useAnalysisTask() {
-  const mutation = useAnalysisAnalyze();
+  const mutation = useBffAnalysisAnalyze();
 
   // 生成される応答型は成功（200）と検証エラー（400）の union だが、非 2xx は `apiRequest` が
   // ApiError を投げるため 400 の枝は解決しない。型の上でだけ残る枝を status で落とす。
