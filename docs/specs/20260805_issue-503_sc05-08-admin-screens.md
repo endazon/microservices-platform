@@ -348,9 +348,9 @@ Lingui 6.6.0 ／ **submodule `src/ai-stock-trading` と `planning`（pin `d980a0
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components` で、本作業の着手前と同数） |
-| 単体テスト | `pnpm run test` | **52 files / 467 tests** 全 green（本作業前は 52 files / 423 tests） |
+| 単体テスト | `pnpm run test` | **53 files / 473 tests** 全 green（本作業前は 52 files / 423 tests。レビュー / 監査の是正で 4 件を追加し、`abac/confidentiality.test.ts` の 1 ファイルが増えた） |
 | カバレッジ | `pnpm run test:coverage` | 後述（床を 88/81/82 → **88/83/84** へ引き上げ） |
-| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 585.66 kB / gzip 174.87 kB） |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 585.83 kB / gzip 174.95 kB） |
 | E2E | `playwright test`（後述の条件） | **11 tests 全 green**（本作業で 3 本追加） |
 | 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- …/generated` | green（差分なし） |
 | i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。ja / en とも **178 件**） |
@@ -429,14 +429,23 @@ E2E は各ルートが**存在し認証ガードが先に効く**ことを見る
 
 | 集計 | lines/statements | branches | functions |
 | --- | --- | --- | --- |
-| 全ユニット横断（本 PR） | **95.05%** | **87.97%** | **89.20%** |
-| MSP 所有分（本 PR） | **93.91%** | **88.34%** | **89.73%** |
+| 全ユニット横断（本 PR・**レビュー / 監査の是正後**） | **95.06%** | **88.13%** | **89.25%**（357/400） |
+| MSP 所有分（本 PR・同上） | **93.94%** | **88.56%** | **89.80%**（264/294） |
+| （参考）是正前 `f11d4c3` の全ユニット横断 | 95.05% | 87.97% | **89.19%**（355/398） |
 | （参考）本作業前 `de55761` の MSP 所有分 | 93.08% | 86.30% | 87.69% |
 | 床 | 88（据え置き） | 81 → **83** | 82 → **84** |
 
 MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイルを除いて再集計した値である
 （`LF/LH`・`BRF/BRH`・`FNF/FNH` を全ファイルで合算）。導出規則は既存どおり**実測から 5pt 下・切り捨て**
-（lines は 93.91 − 5 = 88.91 の切り捨てで 88 のまま）。**`coverage.exclude` は増やしていない。**
+（lines は 93.94 − 5 = 88.94 の切り捨てで 88 のまま）。**`coverage.exclude` は増やしていない。**
+
+**［2026-08-05 是正・PR #508 のレビュー / 監査 P-3］** 本表は当初、全ユニット横断の functions を
+**89.20%** と書いていたが、その時点（`f11d4c3`）の実測は **89.19%（355/398）**であり 0.01pt の転記誤りだった
+（`f11d4c3` の worktree で `pnpm run test:coverage` を再実走して確認した。355/398 = 89.1959…% であり、
+v8 の要約は 2 桁で**切り捨てる**——同じ実行の statements 4724/4970 = 95.0503…% が 95.05% と出ることで確かめられる）。
+上表の本 PR 行はレビュー / 監査の是正（別ミューテーションの失敗バナー・琥珀の充て先・機密区分の純関数テスト）を
+反映した**再測定値**である。functions の分母が 398 → 400 に増えたのは `beginOperation()` を 2 画面へ足したためで、
+2 つとも被覆されている。**床の導出には影響しない**（是正の前後いずれの実測でも 88 / 88 / 84 / 83 が出る）。
 
 ### 変異試験（「壊すと落ちる」ことの実測）
 
