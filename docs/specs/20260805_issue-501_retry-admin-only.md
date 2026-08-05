@@ -182,8 +182,7 @@ g.MapPost("/{id:guid}/retry", ...)
 - [x] operator のトークンで `retry` を呼ぶと拒否される（テストで固定）
 - [x] admin は成功する／`processing` 中は 409 のまま（テストで固定）
 - [x] 照会（一覧・個別取得）の権限は変わっていない（グループ定義に差分なし＋テストで固定）
-- [ ] `dotnet build` / `dotnet test` が両ユニットで green
-      — **本セッションでは未実行**（.NET SDK 不在・取得不可。下記）
+- [x] `dotnet build` / `dotnet test` が両ユニットで green（**実走**。実行環境は下記）
 - [x] [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md) 決定 3 に日付付き［追記］
 - [x] `node scripts/check-doc-links.js` / `check-commit-messages.js` / `check-test-traceability.js` /
       `check-contract-schema.js` / `check-backend-libraries.js` が成功する
@@ -192,38 +191,53 @@ g.MapPost("/{id:guid}/retry", ...)
 
 | コマンド | 結果 |
 | --- | --- |
-| `dotnet build` / `dotnet test` / `dotnet format`（両ユニット） | **未実行**（`dotnet: command not found`。SDK 取得もプロキシに拒否され不可。下記「実行可否」） |
-| `node scripts/check-doc-links.js` | 後述（PR 記載） |
-| `node scripts/check-commit-messages.js --base origin/develop` | 後述 |
-| `node scripts/check-test-traceability.js` | 後述 |
-| `node scripts/check-contract-schema.js` | 後述 |
-| `node scripts/check-backend-libraries.js` | 後述 |
+| `dotnet build src/knowledge/backend/backend.slnx` | Build succeeded / 0 Error(s)（警告 0。`Knowledge.IntegrationTests` の CS0618 は 2 回目以降の増分ビルドで再表示されない既存警告） |
+| `dotnet test src/knowledge/backend/backend.slnx` | **11 アセンブリすべて Passed / Failed 0**。`ConversionService.Worker.Tests` 54 件（+1 = 新規 409 回帰）／`Knowledge.IntegrationTests` 20 件 passed・18 skipped（Testcontainers 系はコンテナ内 docker 不在で skip。`NetworkIsolationTests` は passed 側） |
+| `dotnet build src/platform/backend/backend.slnx` | Build succeeded / 0 Error(s) / 0 Warning(s) |
+| `dotnet test src/platform/backend/backend.slnx` | **3 アセンブリすべて Passed / Failed 0**。`Platform.Bff.Tests` 147 passed / 1 skipped（既存のベンチマーク由来の skip。`BffConversionEndpointTests` は 14 件すべて passed = 既存 10 + 新規 4） |
+| `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
+| `node scripts/check-doc-links.js` | exit 0（415 件の Markdown。未 populate submodule 配下 2 件は対象外） |
+| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（2 件すべて規約適合） |
+| `node scripts/check-test-traceability.js` | exit 0（仕様書のある起点 ID 28 件中 28 件が写像済み） |
+| `node scripts/check-contract-schema.js` | exit 0（2 プロジェクト / 20 ファイル / 56 型が baseline と一致） |
+| `node scripts/check-backend-libraries.js` | exit 0（新規混入 0 件。既知残件 42 件は baseline 済み） |
+| `node scripts/check-unit-dependencies.js` | exit 0 |
 
-### ビルド・テスト実行の可否（実測・隠さず記録する）
+### 実行環境（実走できた経路・再現条件）
 
-1. **SDK 不在**: `dotnet --version` は `dotnet: command not found`。`/usr/share/dotnet` /
-   `/usr/lib/dotnet` / `~/.dotnet` のいずれも存在しない。
-2. **取得不可**: `curl -L https://dot.net/v1/dotnet-install.sh` は 301 で
-   `builds.dotnet.microsoft.com` へ向かい、そこでエージェントプロキシが
-   `CONNECT tunnel failed, response 403` を返す（先行 [#486 の仕様書](./20260804_issue-486_bff-csproj-comment-iadr0117.md)
-   §ビルド検証の実行可否と同じ拒否）。SDK を入れて実走する経路が無い。
-3. **したがって「壊すと落ちる」の変異試験も実走できない。** 実行していないものを実行したとは書かない。
-   代替として静的な根拠（下記）を示し、**最終判定は CI（`ci.yml` の backend ジョブ）に委ねる**。
+本セッションのホストに .NET SDK は無く（`dotnet: command not found`。`/usr/share/dotnet` /
+`/usr/lib/dotnet` / `~/.dotnet` のいずれも不在）、`dotnet-install.sh` の取得も
+`builds.dotnet.microsoft.com` へのプロキシ拒否（`CONNECT tunnel failed, response 403`）で不可能だった
+（先行 [#486 の仕様書](./20260804_issue-486_bff-csproj-comment-iadr0117.md) §ビルド検証の実行可否と同じ拒否）。
+代わりに **`mcr.microsoft.com/dotnet/sdk:10.0` コンテナ（SDK 10.0.302）**で実走した。
 
-### 変異試験の代替（静的な根拠）
+- 再現条件: `docker run --rm --network host -v <worktree>:/w -w /w -v <ca-bundle>:/etc/ssl/certs/ccr-ca.crt:ro
+  -e SSL_CERT_FILE=/etc/ssl/certs/ccr-ca.crt -e HTTPS_PROXY=... mcr.microsoft.com/dotnet/sdk:10.0 …`
+  （NuGet 復元はプロキシ経由。`--network host` はプロキシが `127.0.0.1` で待ち受けるため必要）。
+- **platform ユニットのビルドには `src/ai-stock-trading` submodule の populate が必要**である
+  （`Platform.Bff` → `AiStockTrading.Bff.Endpoints` の ProjectReference）。pin（`655e2ed`）のまま
+  `git submodule update --init` で取得しており、**pin は変更していない**。
 
-「認可指定を元（admin+operator）へ戻すと新テストが落ちる」ことを、実走の代わりに次で担保する。
+### 変異試験（「壊すと落ちる」の実測）
 
-- `Retry_AsOperator_IsForbidden` は `X-Test-Roles: platform-operator` で POST する。
-  `.RequireAuthorization(AdminOnly)` を**取り除けば**、残るのはグループの
-  `RequireRole(AdminRole, OperatorRole)` だけになり、operator は要件を満たして **202 が返る**
-  （同じ経路・同じスタブで `GetList_AsOperator_IsAllowed` が現に 200 を得ていることが、
-  「operator は当該グループの認可を通過する」ことの実測である）。期待値 403 と一致しないため必ず fail する。
-- 逆に `RequireRole(OperatorRole)` を消す等でグループを絞る改変を行えば、
-  `GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` が 403 で落ちる
-  （**照会の巻き添えを検出する向きのテスト**）。この 2 方向でロールの境界が両側から固定される。
-- `Retry_ProcessingJob_Returns409NotRetryable` は下流の状態遷移（`StartAsync` → `processing`）に依存し、
-  認可の変更とは独立に 409 と `error: "not_retryable"` を検証する（回帰の向き）。
+権限テストは「admin で通ること」だけでは**誰でも通る状態を検出できない**。そこで実装を意図的に壊し、
+テストが落ちることを実測した（3 種・いずれも実行後に復元して green を再確認済み）。
+
+| # | 変異（意図的な退行） | 期待 | **実測結果** |
+| --- | --- | --- | --- |
+| 1 | `retry` から `.RequireAuthorization(PlatformAuthPolicies.AdminOnly)` を削除（= 是正前の admin+operator へ戻す） | `Retry_AsOperator_IsForbidden` が落ちる | **落ちた**。`Expected resp.StatusCode to be HttpStatusCode.Forbidden {value: 403}, but found HttpStatusCode.Accepted {value: 202}`（Failed 1 / Passed 13）。**運用者が実際に再変換を実行できていた**ことの直接の証拠でもある |
+| 2 | グループの `RequireRole` から `OperatorRole` を削除（= 照会まで admin へ絞る巻き添え） | 照会側の 2 件が落ちる | **落ちた**。`GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` がいずれも `Expected … OK {value: 200}, but found … Forbidden {value: 403}`（Failed 2 / Passed 12）。**未裁定の閲覧権限を巻き添えで変えたら気付ける** |
+| 3 | 後段の再変換不可（409 `not_retryable`）を 202 に置換 | `Retry_ProcessingJob_Returns409NotRetryable` が落ちる | **落ちた**。同テストと既存の `Retry_NonFailedJob_Returns409` がともに `Expected … Conflict {value: 409}, but found … Accepted {value: 202}`（Failed 2 / Passed 5） |
+
+**補足（変異 3 の途中経過も記録する）**: 最初は「エンドポイントの `if (job.Status != Failed) → 409` の
+1 行だけ」を削る変異を試したが、**テストは落ちなかった**（Passed 7）。`PrepareRetryAsync` が非失敗ジョブに
+`null` を返し、後続の 409 分岐が同じ応答を出すためである（**多層になっていた**）。よって
+「409 を返す経路をすべて 202 に置換する」変異へ強めたのが上表 3 である。
+1 回目の変異が落ちなかった事実は、テストの弱さではなく**実装側の冗長な防御**を示す。
+
+**復元の確認**: 3 種の変異はいずれも直後に元へ戻し、最終状態で両ユニットの build / test / format が
+上表のとおり green であることを再実行して確認した（`git status` はクリーン）。
 
 ## フォローアップ（本 issue の範囲外）
 
