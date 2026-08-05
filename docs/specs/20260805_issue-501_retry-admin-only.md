@@ -109,8 +109,8 @@ var g = app.MapGroup("/jobs").WithTags("Conversion Jobs");
 | 本番系: NetworkPolicy | 既定 deny-ingress ＋ 同 Namespace 内のみ許可。`istio-system` からの明示許可は **bff-service と frontend-service に限定** | [`templates/networkpolicy.yaml`](../../deploy/helm/microservices-platform/templates/networkpolicy.yaml) |
 
 **結論**: 外部（ブラウザ・エッジ）から `conversion-service:8080/jobs/{id}/retry` へ到達する経路は無い。
-運用者が持つのは Keycloak のロールであってクラスタ内ネットワークではないため、**BFF を絞れば
-「運用者が retry を実行できる」経路は塞がる**。残る到達手段は同 Namespace 内の別 Pod か
+運用者が持つのは Keycloak のロールであってクラスタ内ネットワークではないため、
+**BFF を絞れば「運用者が retry を実行できる」経路は塞がる**。残る到達手段は同 Namespace 内の別 Pod か
 `kubectl port-forward` であり、それは Keycloak ロールではなく**クラスタ権限**の問題である
 （[IADR-0026](../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の防御対象）。
 
