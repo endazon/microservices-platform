@@ -18,10 +18,22 @@ paths:
 
 上記の裸（無修飾）の ID は、**本リポジトリが主に実装するプロジェクトの計画書の名前空間**を指す。
 本リポジトリではそれが **MSP（microservices-platform）** であり、ID レンジは
-`FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0042`（**欠番なし**）である
-（planning `d980a01` = planning#195 時点）。**`ADR-0035`（GraphRAG 検索戦略）は 2026-08-04 に
+`FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0043`（**欠番なし**）である
+（planning `5f1bd63` = planning#200 時点）。**`ADR-0035`（GraphRAG 検索戦略）は 2026-08-04 に
 起案され、欠番ではなくなった**（状態 `Proposed`）。`ADR-0040`（k8s 管理 UI の選定・planning#193）／
 `ADR-0041`（Result 型の外部ライブラリ）／`ADR-0042`（運用管理 UI の本番導入）も `Proposed` である。
+**`ADR-0043`（権限内属性値の照会と存在秘匿の整合・planning#197〜199 の裁定）は `Accepted`** であり、
+実装の着手条件を満たす（#540 が実装する。同 ADR の制限を必ず守ること）。
+
+> **このレンジが実際に効く場所**（PR #550 のレビュー指摘・2026-08-06 に実測して確定）:
+> **計画 ADR の実在性検査は、どのワークフローからも submodule を populate した状態で実行されない。**
+> `check-commit-messages.js` を走らせるのは `pr-title.yml` と `ci.yml` の `commit-messages` だけで、
+> どちらも `actions/checkout` に `submodules` を付けない（`loadExistingPlanAdrIds()` が null を返し
+> skip される）。唯一 submodule を populate する `doc-links-planning.yml` は
+> **`check-doc-links.js --require-planning` しか実行しない**（別スクリプト・別対象）。
+> したがって**このレンジが効くのは、ローカル実行と、本ファイルを読んで作業する AI だけ**である。
+> **CI は計画 ADR の実在性を守っていない。** 実効させたいなら、`check-commit-messages.js` を走らせる
+> ジョブへ `submodules` ＋ `token` を付ける必要がある（下記「ADR / IADR の実在性」の注も参照）。
 **`Proposed` でも ID としては実在する**——参照の実在性検査（`check-commit-messages.js` 等）は
 状態を見ないため、レンジには含める。実装の着手条件（`Accepted` 化）とは別の話である
 （[[IADR-0119]] 決定 2）。計画側で ID が増減したら本節を追随させる
