@@ -241,6 +241,9 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 ## 検証結果（実測）
 
 **下表は監査是正（2026-08-05・PR #509 のレビュー指摘 9 件）を反映した後の再実行結果である。**
+**その後の 2 巡目のトレーサビリティ監査（指摘 8 件）は文書のみの変更で `src/` に差分が無いため
+（`git diff --name-only <1 巡目>..HEAD -- src/` が 0 件）、`dotnet` 系の行は 1 巡目の実測を据え置く。
+再実行した検査スクリプトの行だけを 2 巡目の値へ更新した**（実行していないものを実行したと書かない）。
 
 | コマンド | 結果 |
 | --- | --- |
@@ -250,8 +253,8 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 | `dotnet test src/platform/backend/backend.slnx` | **3 アセンブリすべて Passed / Failed 0**。`Platform.Bff.Tests` **148 passed** / 1 skipped（+1 = `GetById_WhenAnonymous_IsUnauthorized`。skip は既存のベンチマーク由来。`BffConversionEndpointTests` は 15 件すべて passed = 既存 10 + 本 PR 5） |
 | `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | exit 0 |
 | `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
-| `node scripts/check-doc-links.js` | exit 0（415 件の Markdown に破損した相対リンクなし） |
-| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（13 件すべて規約適合） |
+| `node scripts/check-doc-links.js` | exit 0（**417 件**の Markdown に破損した相対リンクなし。2 巡目で再実行） |
+| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（**21 件**すべて規約適合。2 巡目で再実行） |
 | `node scripts/check-test-traceability.js` | exit 0（計画レンジ 53 件中 27 件にテスト仕様書あり。仕様書なし 26 件は warn・実装先行 7 件は allowlist 済み） |
 | `node scripts/check-contract-schema.js` | exit 0（2 プロジェクト / 20 ファイル / 56 型が baseline と一致） |
 | `node scripts/check-backend-libraries.js` | exit 0（新規混入 0 件。既知残件 42 件は baseline 済み） |
