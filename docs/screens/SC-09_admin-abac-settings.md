@@ -231,9 +231,10 @@ TanStack Query は「別のミューテーションが成功した」ことで�
 
 - BFF は要求本文・`Authorization` を AuthorizationService へ透過し、応答（status・本文）をそのまま返す。
   400 / 409 の詳細は `ApiError.details` に抽出され画面に表示される（[[IADR-0040]]）。
-- **`docs/api/openapi.yaml` に本群が無く orval 生成フックが存在しない**ため、`apiFetch` ＋ 手書き型で呼ぶ
-  （出口は `foundation/api` の 1 箇所に収束している。欠落は **#506** の射程）。
-- キャッシュキー: `['bff','admin','authz','attributes']` / `['bff','admin','authz','policies']`。
+- **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
+  **400 / 409 の Problem 詳細は載せ替えの影響を受けない**——非 2xx を投げるのはどちらの経路でも
+  `apiRequest` だからである。
+- キャッシュキー: 生成キー `['/bff/admin/authz/attributes']` / `['/bff/admin/authz/policies']`。
   変更操作の成功後は該当キーを `invalidateQueries` する（手書きの再取得を持たない）。
 
 ## 権限・表示条件

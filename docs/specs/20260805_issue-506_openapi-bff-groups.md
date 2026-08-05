@@ -403,6 +403,10 @@ BFF の record（`DocumentCreateRequest` / `DocumentUpdateRequest`）は
 **この非対称は隠さない。** 1 本目の時点で網が掛かるのは SC-08 の 1 画面だけであり、
 **残り 9 ファイルは 2 本目（#519）まで素通りのままである**（母集合 10 ファイル − SC-08 の 1 ファイル）。
 
+> **［2026-08-05 追記］#519 で 9 ファイルの載せ替えが完了し、この非対称は解消した。**
+> #520 の変異試験で素通りしていた M6（`DriftFindingDto.detail`）／ M7（`SearchResponse.totalHits`）が
+> **落ちることを実測した**（[作業仕様書 #519](./20260805_issue-519_orval-hook-migration.md) §変異試験）。
+
 ## 残りとして何をどうするか（分割 2 本目 = #519 への申し送り）
 
 **対象は 9 ファイル**（`src/knowledge/frontend/src/features/sc*/use*.ts` のうち、
@@ -564,11 +568,11 @@ RFC7807 でどのフィールドも省略され得る）。
 
 | # | 事項 | 種別 | 送り先 |
 | --- | --- | --- | --- |
-| 1 | **画面の載せ替え（分割 2 本目）** | 本 issue の残り | **#519**（起票済み）。対象・手順は §残りとして何をどうするか（9 ファイル・共通の注意 5 点）。**#520 を先に通す方が手戻りが少ない**（同じ生成型を触るため競合し、`required` の有無で生成される型の省略可否が変わる） |
+| 1 | **画面の載せ替え（分割 2 本目）** | 本 issue の残り | **#519**（起票済み）。対象・手順は §残りとして何をどうするか（9 ファイル・共通の注意 5 点）。**#520 を先に通す方が手戻りが少ない**（同じ生成型を触るため競合し、`required` の有無で生成される型の省略可否が変わる）<br>**［2026-08-05 追記］#519 で消化した**（[作業仕様書 #519](./20260805_issue-519_orval-hook-migration.md) / [[IADR-0135]]）。**本書の申し送りと実測が食い違った点が 3 つある**——(a) `useBffSearch` は **mutation** であり照会には使えない（SC-02 は生成された操作関数を `useQuery` に据えた）、(b) **落とし穴は 5 点ではなく 6 点**（テストのモック層が `apiFetch` に当たっており 13 ファイルが赤くなる）、(c) 生成フックの `TError` が `void` になり `error instanceof ApiError` が型エラーになる |
 | 2 | **既存の応答スキーマ 23 個に `required` が無い**（数え方 = `components.schemas` 直下で `required` を持たないキー 27 個から、本作業で追加した 4 個を引いた数）<br>**［2026-08-05 追記］#520 / PR で消化した。** 母集合は 23 ではなく **25 個**だった——上の数え方は**要求専用の 2 個**（`AnalysisDataRange` / `UpdateMetadataRequest`）を含み、逆に**除外 4 個の再確認を範囲外へ落として**いる。#520 は「27 − 要求専用 2」＝ 25 を母集合に採った。突合表と数え方は [作業仕様書 #520](./20260805_issue-520_openapi-response-required.md) §設計 1 を参照 | 是正提案 | 変異試験 M2 が示したとおり、`required` の無いスキーマは型検査の網にならない。入れるかは**別 PR = #520**（起票済み）。影響が `?? 既定値` の表現に及び、載せ替え〔2 本目 = #519〕とも競合する——**同じ生成型を両方が触るため、#520 を先に入れる方が手戻りが少ない** |
 | 3 | **C# → OpenAPI の追随が人手** | 構造的な穴 | [[IADR-0131]] 決定 1 の但し書き・フォローアップ 2。透過中継の応答を覆える方式が要る |
-| 4 | 既存 2 本の `operationId` 不統一（`analysis-ask` / `analysis-analyze`） | 小さな是正 | 2 本目で `useAnalysisAnalyze` に触るついでが最も安い |
-| 5 | **BFF のコメントが後段の実体と食い違う**: `DataSourceBffEndpoints.cs:80` は同期応答を `{ fetchId, status }` と書くが、実体は `{ fetched, failed, connectorAvailable, message }`（`DataSourceEndpoints.cs:61-66`） | コメントの誤り | 2 本目、または独立の小さな fix |
-| 6 | **フロントのコメントが「OpenAPI に無い」と書いているが在る**: `useDashboardSummary.ts:10` / `useConfigViewer.ts:9`（`/bff/admin/config` の**履歴だけ**が無かった） | コメントの誤り | **2 本目**（同じ行を載せ替えで書き換えるため、いま直すと二度手間） |
+| 4 | 既存 2 本の `operationId` 不統一（`analysis-ask` / `analysis-analyze`） | 小さな是正 | 2 本目で `useAnalysisAnalyze` に触るついでが最も安い<br>**［2026-08-05 追記］#519 で消化した**（`bff-analysis-ask` / `bff-analysis-analyze`。[[IADR-0131]] 決定 3 の改定＝[[IADR-0135]] 決定 5） |
+| 5 | **BFF のコメントが後段の実体と食い違う**: `DataSourceBffEndpoints.cs:80` は同期応答を `{ fetchId, status }` と書くが、実体は `{ fetched, failed, connectorAvailable, message }`（`DataSourceEndpoints.cs:61-66`） | コメントの誤り | 2 本目、または独立の小さな fix<br>**［2026-08-05 追記］#519 で消化した**（コメントのみの変更。`dotnet build` を実走して確認済み） |
+| 6 | **フロントのコメントが「OpenAPI に無い」と書いているが在る**: `useDashboardSummary.ts:10` / `useConfigViewer.ts:9`（`/bff/admin/config` の**履歴だけ**が無かった） | コメントの誤り | **2 本目**（同じ行を載せ替えで書き換えるため、いま直すと二度手間）<br>**［2026-08-05 追記］#519 で消化した**（当該コメントは載せ替えで書き換わり、「在る」ことを明記した） |
 | 7 | **`/bff/feedback`・`/bff/feedback/stats` に端点認可が無い** | 要裁定 | **#521**（起票済み）。通信仕様書 §未決事項 3。**本作業では判断しない**（認可の変更は挙動の変更） |
 | 8 | **ワークフロー変更は不要**（`.github/workflows/` を触っていない） | 情報 | `frontend.yml` の `paths` に `docs/api/openapi.yaml` が既に入っており、契約変更で CI が起動する |

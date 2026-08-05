@@ -265,8 +265,11 @@ BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限�
 （`CLAUDE.md`）という判断の記録である。SC-10 は BFF が `AdminOnly`（403）であるため、そちらでは
 403 側が実在し、同一画面の 404 と同じ文言へ寄せている。
 
-- **`docs/api/openapi.yaml` に本群が無く orval 生成フックが存在しない**ため、`apiFetch` ＋ 手書き型で呼ぶ（**#506** の射程）。
-- キャッシュキー: `['bff','admin','config']` / `['bff','admin','config','drift']` / `['bff','admin','config','history']`。
+- **orval 生成フックで呼ぶ**（**#519**。[[IADR-0135]] 決定 1）。実効構成とドリフトは #506 より前から契約に
+  載っており、履歴だけが欠けていた（#506 §実測 4）。
+- キャッシュキー: 生成キー `['/bff/admin/config']` / `['/bff/admin/config/drift']` / `['/bff/admin/config/history']`。
+  **再取得は 3 本を明示的に無効化する**——生成キーは URL 1 要素であり、TanStack Query の部分一致は
+  配列の要素単位なので、`['/bff/admin/config']` は他の 2 本に当たらない（[[IADR-0135]] 決定 3）。
 
 ## 権限・表示条件
 

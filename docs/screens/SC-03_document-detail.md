@@ -120,14 +120,15 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
-| 詳細（メタデータ） | `GET /bff/documents/{id}` | TanStack Query `useQuery` ＋ `apiFetch` | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
+| 詳細（メタデータ） | `GET /bff/documents/{id}` | **orval 生成フック `useBffDocumentDetail`**（#519） | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
 | 本文（Markdown） | `GET /bff/documents/{id}/content` | 同上 | 同上 | `DocumentContentDto` |
 | 版履歴 | `GET /bff/documents/{id}/versions` | 同上（詳細の成功後に有効化） | 同上 | `DocumentVersionDto[]` |
 
 - `DocumentDto = { id, title, status, markdownUri?, version, attributes{}, tags[], createdAt, updatedAt }`
 - `DocumentContentDto = { id, title, markdown, sourceUri? }`（ABAC 判定後にオブジェクトストレージから取得。未配備時はプレースホルダ本文）
 - `DocumentVersionDto = { documentId, version, title, status, markdownUri?, attributes{}, tags[], changeNote?, createdAt }`
-- キャッシュキーは `['bff','documents',id]` / `[...,'content']` / `[...,'versions']`。
+- キャッシュキーは**生成キー**（`['/bff/documents/{id}']` / `[…'/content']` / `[…'/versions']`）。
+  「キーは BFF のパスに対応する」という [[IADR-0126]] 決定 4 の性質はそのまま保たれる。
 - **版履歴は詳細の成功後にだけ取りに行く**（`enabled`）。詳細が 404（秘匿）のときに版履歴だけ叩くのは無駄な往復であり、
   BFF 側でも同じ 404 になる。
 

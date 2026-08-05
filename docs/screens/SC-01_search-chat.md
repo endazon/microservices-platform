@@ -141,9 +141,9 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
 | AI 回答（ストリーミング） | `POST /bff/analysis/ask/stream` | `apiStream`（`foundation/api`） | 認証・ABAC（後段） | SSE: `citations` → `token`* → `done`（失敗時 `error`） |
-| フィードバック | `POST /bff/feedback` | TanStack Query `useMutation` ＋ `apiFetch` | 認証 | `FeedbackDto` |
+| フィードバック | `POST /bff/feedback` | **orval 生成フック `useBffSubmitFeedback`**（#519） | 認証 | `FeedbackDto` |
 
-- **手書き HTTP クライアントは使わない**（`foundation/api` の `apiFetch` / `apiStream` のみ）。
+- **手書き HTTP クライアントは使わない**（生成フック、または `foundation/api` の `apiStream`）。
 - **SSE は orval 生成フックに載らない**（生成器は `text/event-stream` を扱わない）。状態の持ち方は [[IADR-0126]] 決定 1・2 を正とする。
 
 ## レイアウト / 主要素

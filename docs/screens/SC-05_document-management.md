@@ -122,15 +122,16 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧 | `GET /bff/documents` | `useQuery(['bff','documents'])` ＋ `apiFetch` | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
+| 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`**（#519） | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
 | 登録 | `POST /bff/documents` | `useMutation` | admin / operator ＋ スコープ解決 | `DocumentDto`（201） |
 | 更新 | `PUT /bff/documents/{id}` | `useMutation` | 同上。**版不一致は 409** | 204 |
 | 公開 | `POST /bff/documents/{id}/publish` | `useMutation` | 同上。不正遷移は 409 | 204 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | `useMutation` | 同上 | 204 |
 | 削除 | `DELETE /bff/documents/{id}` | `useMutation` | 同上 | 204 |
 
-- **orval 生成フックは使えない**——`/bff/documents/*` は `docs/api/openapi.yaml` に無い（**#506**）。
-  `apiFetch` ＋ feature 内の手書き型で呼ぶ（[[IADR-0127]] 決定 3）。
+- **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
+  状態遷移は 1 本の分岐ではなく **`useBffDocumentPublish` / `useBffDocumentArchive` / `useBffDocumentDelete`
+  の 3 本**になり、画面が `DocumentCommand` で選ぶ（[[IADR-0135]] 決定 6）。
 - 更新系の成功後は `invalidateQueries({ queryKey: ['bff','documents'] })` のみを行う（[[IADR-0127]] 決定 5）。
 
 ## レイアウト / 主要素

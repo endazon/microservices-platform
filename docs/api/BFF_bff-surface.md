@@ -2,7 +2,7 @@
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132]
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -10,11 +10,13 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
+  - ../adr/IADR-0135_generated-client-adoption-and-cache-keys.md
   - ../adr/IADR-0131_openapi-as-bff-contract-source.md
   - ../adr/IADR-0132_openapi-required-from-csharp-nullability.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
   - ../specs/20260805_issue-506_openapi-bff-groups.md
   - ../specs/20260805_issue-520_openapi-response-required.md
+  - ../specs/20260805_issue-519_orval-hook-migration.md
 ---
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -25,12 +27,13 @@ related_specs:
 
 > **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙: `draft` =
 > 着手前・記述途中／`in-progress` = 実装中）。BFF 境界は #506（PR #518）で全 27 パスが契約に載り、
-> #520 で応答スキーマの `required` が確定した。**着手前でも記述途中でもないので `draft` は外す。**
-> 一方、次の 2 点が未了なので `completed` でもない。
+> #520 で応答スキーマの `required` が確定し、**#519 で SPA 側の載せ替えが完了した**。
+> **着手前でも記述途中でもないので `draft` は外す。** 一方、次の 1 点が未了なので `completed` でもない。
 >
-> 1. **SPA 側の載せ替えが途上である**（**#519**）。生成フックに載っているのは SC-08 だけで、
->    残り 9 ファイルは `apiFetch` ＋ 手書き型のまま——**契約と画面が型でつながっていない面が残る**。
-> 2. **`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**（**#521**。§未決事項 3）。
+> 1. **`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**（**#521**。§未決事項 3）。
+>
+> **［2026-08-05 追記］#519 で載せ替えが済み、`apiFetch` を使う画面は 0 になった**
+> （残る `foundation/api` 直接利用は **SSE の `apiStream` だけ**である。[[IADR-0135]]）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -45,7 +48,8 @@ related_specs:
 - **プロトコル**: REST / JSON（＋ SSE が 1 本）。すべて `/bff/` 接頭辞の下に置く。
 - **SPA からの到達経路は 2 つだけである**（ADR-0031 / [[IADR-0121]] 決定 3）。
   1. **orval 生成フック**（`foundation/api/generated/*`）——既定。
-  2. **`foundation/api` の `apiFetch` / `apiStream`**——生成できない面（SSE）と、生成物へ載せ替え途上の面。
+  2. **`foundation/api` の `apiStream`**——**生成できない面（SSE）だけ**。
+     **［2026-08-05 追記］#519 の載せ替え後、画面が `apiFetch` を使う箇所は無い。**
   - **手書きの HTTP クライアントは禁止**。`foundation/api` 以外での `fetch` / `XMLHttpRequest` /
     `EventSource` と `axios` 等の import は ESLint が error にする。
 - **接続先はビルドに焼き込まない**。実行時 config（`platform/frontend/public/config.js` の `bffBaseUrl`。
@@ -88,15 +92,18 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 ## エンドポイント一覧
 
+**`operationId` は例外なく C# の `WithName` のケバブケースである**（#519 で既存 2 本
+〔`analysis-ask` / `analysis-analyze`〕を規約へ揃えた。[[IADR-0131]] 決定 3 の改定＝[[IADR-0135]] 決定 5）。
+
 **認可の列は BFF 実装の実測である。** 「404（秘匿）」は「不在」と「権限外」を区別しないことを指す
 （[[IADR-0009]]）。詳細（要求・応答スキーマ・全ステータス）は [`openapi.yaml`](openapi.yaml) を正とする。
 
 | メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
 | --- | --- | --- | --- | --- |
-| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch` |
-| POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useAnalysisAsk` |
+| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
+| POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
-| POST | `/bff/analysis/analyze` | 同上 | FR-07 / UC-02 / SC-08 | `useAnalysisAnalyze` |
+| POST | `/bff/analysis/analyze` | 同上 | FR-07 / UC-02 / SC-08 | `useBffAnalysisAnalyze` |
 | POST | `/bff/feedback` | **端点認可なし** | FR-08 / UC-01 / SC-01 | `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **端点認可なし** | FR-08 / SC-10 | `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin** | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
@@ -232,7 +239,8 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 ## 関連仕様
 
 - 契約本体: [`openapi.yaml`](openapi.yaml)
-- 実装 ADR: [[IADR-0131]]（本書の決定の根拠）・[[IADR-0121]]（BFF 境界）・[[IADR-0122]]（契約スキーマ）
+- 実装 ADR: [[IADR-0131]]（本書の決定の根拠）・**[[IADR-0135]]（SPA 側の載せ替えとキャッシュキー）**・
+  [[IADR-0121]]（BFF 境界）・[[IADR-0122]]（契約スキーマ）
 - 画面仕様書: `docs/screens/SC-*.md`
 
 ## 未決事項
@@ -240,8 +248,8 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 1. **OpenAPI は手書きであり、C# の DTO からは生成されていない**（`scripts/generate-openapi.sh` は無い）。
    したがって本書と `openapi.yaml` が与える保証は「**OpenAPI を変えると SPA の型検査が落ちる**」であって、
    「**C# の DTO を変えると型検査が落ちる**」ではない。C# → OpenAPI の追随は人手である。
-2. **SPA が生成フックへ載っていない面が残っている**（#506 の分割 2 本目 = **#519**）。一覧と手順は
-   [作業仕様書 §残りとして何をどうするか](../specs/20260805_issue-506_openapi-bff-groups.md) を参照。
+2. **［2026-08-05 解消］SPA の載せ替えは #519 で完了した**（[作業仕様書 #519](../specs/20260805_issue-519_orval-hook-migration.md)）。
+   残るのは **SSE の 1 本だけ**で、これは恒久的に `apiStream` である。
 3. **`/bff/feedback`・`/bff/feedback/stats` は BFF に端点認可が無い**（実測）。ABAC も通らないため、
    BFF 単体では無認証の投稿・集計取得を拒まない。これを意図とみなすか（エッジで塞ぐ）、
    BFF へ `RequireAuthorization` を足すかは**本作業では判断していない**——#506 は契約の記述を
