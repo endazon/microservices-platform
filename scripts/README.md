@@ -95,6 +95,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `doc-links` | `check-doc-links.js`（相対リンクの実在） |
 | `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。`fetch-depth: 0` が必要） |
 | `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
+| `test-traceability` | `check-test-traceability.js --self-test` と本検査（受け入れ基準 → テストの写像）、および `check-test-spec-coverage.js --self-test` と本検査（#510 / IADR-0130。実在するテスト → テスト仕様書の記載） |
 | `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
 | `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
 | `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
@@ -103,7 +104,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `contract-schema` | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
 | `frontend.yml` の `build-test` | `check-i18n-catalogs.js`（＋ `pnpm run i18n` の再生成差分）と `check-static-egress.js --require …`（#496 / IADR-0125）。`ci.yml` の `scripts-tests` は両者の `--self-test` と実データ検査を `scripts.repo.test.js` 経由で走らせる |
 | `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
-| `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。`.github/workflows/` は GitHub App 権限で編集できないため専用ジョブを持たず、`scripts.repo.test.js` 経由で強制する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
+| `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。上の `test-traceability` の専用ステップと**二重に走る**——専用ステップは失敗をジョブ名で見せ、companion 側は `.github/workflows/` が編集できない環境（GitHub App 権限）でも検査が外れないことを担保する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
 > 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある

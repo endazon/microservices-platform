@@ -1603,10 +1603,14 @@ module.exports = ({ ok, assert }) => {
 
   // --- Issue #510 / IADR-0130: 実在するテストがテスト仕様書に載っているかの検査 --------
   //
-  // ここに置く理由: .github/workflows/ は GitHub App 権限では編集できないため、専用ジョブを
-  // 足せない。ci.yml の scripts-tests ジョブ（REQUIRE_REPO_TESTS=1）が本 companion を実行する
-  // ので、**自己試験と実データの本走をここへ置くことで CI ゲートになる**（check-i18n-catalogs.js
-  // の実データ検査と同じ結線）。専用ステップ化は任意の改善として別途行う。
+  // ここに置く理由: .github/workflows/ は GitHub App 権限では編集できないため、実装エージェントの
+  // 手では専用ジョブを足せない。ci.yml の scripts-tests ジョブ（REQUIRE_REPO_TESTS=1）が本 companion
+  // を実行するので、**自己試験と実データの本走をここへ置くことで CI ゲートになる**
+  // （check-i18n-catalogs.js の実データ検査と同じ結線）。
+  //
+  // ［2026-08-05］専用ステップは ci.yml の test-traceability ジョブへ入った（a415e29。親がローカル
+  // 権限で実施）。**本ブロックは残す**——二重に走るのは無駄ではなく、専用ステップは失敗をジョブ名で
+  // 見せ、こちらはワークフローを編集できない環境でも検査が外れないことを担保する（IADR-0130 決定 6）。
 
   ok('check-test-spec-coverage --self-test が通る（ratchet 4 判定・fail-closed の負例を含む）', () => {
     const { spawnSync } = require('child_process');

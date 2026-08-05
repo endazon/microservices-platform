@@ -63,8 +63,13 @@ related_specs:
 | 5 | ゲート一覧・スクリプト索引への追記 | `docs/tests/TEST_STRATEGY.md` / `scripts/README.md` |
 
 **対象外**: バックエンドのテストコードそのもの（**1 行も変えない**。テストは消えていない）。
-画面実装・フロントエンドのテスト。`.github/workflows/`（GitHub App 権限では編集できないため、
+画面実装・フロントエンドのテスト。~~`.github/workflows/`~~（GitHub App 権限では編集できないため、
 必要な変更は本書 §CI 結線 に記して親へ引き渡す）。
+
+> **［2026-08-05 追記］`.github/workflows/` は結果的に本 PR の射程に入った。** 申し送った差分を
+> **親がローカル権限で `a415e29` として同じ PR へ入れた**（`ci.yml` の `test-traceability` ジョブ）。
+> 手順としては正しい（実装エージェント側の権限では触れない）が、本書と [[IADR-0130]] が
+> 申し送り時点の記述のまま凍結していたため実態と食い違っていた。§CI 結線 も併せて訂正する。
 
 ## 1〜2. 復帰の方針（**当時の記載をそのまま戻さない**）
 
@@ -183,8 +188,8 @@ related_specs:
 
 ### CI 結線
 
-`.github/workflows/` は GitHub App 権限では編集できないため、本 PR ではワークフローを変更しない。
-**それでも本検査は CI で強制される**——`scripts.repo.test.js`（companion）へ
+`.github/workflows/` は GitHub App 権限では編集できないため、**実装エージェントの手ではワークフローを
+変更しない**。**それでも本検査は CI で強制される**——`scripts.repo.test.js`（companion）へ
 
 1. `--self-test` が exit 0 であること
 2. **本リポジトリの実データに対する本走が exit 0 であること**
@@ -192,8 +197,9 @@ related_specs:
 の 2 件を足し、これを `ci.yml` の `scripts-tests` ジョブ（`REQUIRE_REPO_TESTS=1`）が実行するためである。
 `check-i18n-catalogs.js` の実データ検査と同じ結線の形である。
 
-**任意の追加（親のローカル権限で行う）**: `ci.yml` の `test-traceability` ジョブに独立ステップを
-足すと、失敗が専用ジョブ名で見え、`::error` 注釈も PR の該当行に出る。要る差分は次のとおり。
+**追加（親のローカル権限で実施済み・`a415e29`）**: `ci.yml` の `test-traceability` ジョブに独立
+ステップを足すと、失敗が専用ジョブ名で見え、`::error` 注釈も PR の該当行に出る。入った差分は
+次のとおり（`check-test-traceability.js` の 2 ステップの直後）。
 
 ```yaml
       - name: Self-test test-spec coverage checker
@@ -201,6 +207,11 @@ related_specs:
       - name: Check tests are covered by test specs
         run: node scripts/check-test-spec-coverage.js
 ```
+
+> **［2026-08-05 追記］上記は「任意の追加」ではなく、同じ PR で実施済みである。**
+> companion 経由の強制（1・2）は**二重化として残す**——専用ステップは失敗をジョブ名で見せ、
+> companion 側はワークフローが編集不能な環境でも検査が外れないことを担保する。
+> [[IADR-0130]] §決定 6 の追記・§フォローアップ 3（**完了**）と対。
 
 ## 実装しないこと（と、その理由）
 
