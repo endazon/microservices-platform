@@ -62,6 +62,20 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #6 | 「変換」列が無い。**先に「機密区分」「版」の列が在ることを確かめてから**無いことを見る |
 | 13 | ロケール `en` | ADR-0031 | 見出し・保存ボタンが英語で描画される |
 
+## 純関数（`src/knowledge/frontend/src/features/abac/confidentiality.test.ts`）
+
+機密区分の値集合は **SC-05（文書の機密区分。必須）と SC-06（データソースの既定の機密区分）が共有する語彙**であり、
+`features/abac/confidentiality.ts` に 1 つだけ置く。値集合は **ABAC の一次情報**
+（計画 06_technical/07_abac-attribute-model の 4 値）に由来し、**増減は機密区分の取り違えに直結する**
+（減れば選べない区分が生まれ、増えれば後段が知らない区分で保存される）。
+画面テスト経由の間接被覆では「4 値であること」自体を固定できないため、直接固定する。
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| C1 | 値集合 | `public` / `internal` / `confidential` / `restricted` の **4 値ちょうど**である |
+| C2 | フェイルセーフ既定 | 既定は `internal`（`public` の過剰公開でも `restricted` の過剰制限でもない。[[IADR-0019]]） |
+| C3 | 属性キー | `confidentiality`（SC-05 の一覧・フォームと SC-06 の既定属性が同じキーで読み書きする） |
+
 ## 導線（`adminFlow.test.tsx`）
 
 | # | 観点 | 検証内容 |
@@ -77,6 +91,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 ## 実行
 
+- `pnpm run test -- knowledge/frontend/src/features/abac`（純関数 **3** ケース。SC-06 と共有）
 - `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**15 ケース**）
   ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` / `8-b` を含めて 15 行 = 15 ケース）。
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）

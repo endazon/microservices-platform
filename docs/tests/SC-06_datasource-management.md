@@ -77,6 +77,9 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | P4 | 未知の種別 | 生値をそのまま返す |
 | P5 | 日時整形 | 空は `—`、解釈できない値はそのまま出す |
 
+**機密区分の値集合**（登録フォームの「既定の機密区分」）は SC-05 と共有する語彙であり、
+`features/abac/confidentiality.test.ts` が固定する（[テスト仕様書 SC-05 §純関数](./SC-05_document-management.md)）。
+
 ## 導線（`adminFlow.test.tsx`）
 
 | # | 観点 | 検証内容 |

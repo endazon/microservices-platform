@@ -326,7 +326,7 @@ issue #503 §受け入れ基準 を検証可能な形へ展開する。
 
 | 層 | 対象 | 見るもの |
 | --- | --- | --- |
-| 純関数 | `syncState.ts` / `jobStatus.ts` / `analysisRange.ts` / `confidentiality.ts` | 状態の導出・4 値の写像・範囲の組み立て・値集合 |
+| 純関数 | `syncState.ts` / `jobStatus.ts` / `analysisRange.ts` / `confidentiality.ts`（**4 つとも `*.test.ts` を持つ**） | 状態の導出・4 値の写像・範囲の組み立て・値集合 |
 | コンポーネント | SC-05 / 06 / 07 / 08 | 表示条件・**権限別の出し分け**・エラー状態・存在秘匿の中立表示・i18n（ja / en） |
 | 導線 | SC-06 → SC-07 → SC-03 | 管理者の運用フロー（1 本のルータへ 3 ルートを載せる） |
 | E2E | Playwright | 未認証で各ルートが `/login` へ誘導されること（ルートの実在も同時に固定される） |
@@ -440,7 +440,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 ### 変異試験（「壊すと落ちる」ことの実測）
 
 **27 件を試し、うち 24 件は最初から落ちた。3 件が素通りしたので、テストを足して落ちることを再確認した。**
-**その後、PR #508 のレビュー・監査の是正で 3 件（M28 / M29 / M30）を追加し、M5 を取り下げた（合計 29 件）。**
+**その後、PR #508 のレビュー・監査の是正で 4 件（M28 / M29 / M30 / M31）を追加し、M5 を取り下げた（合計 30 件）。**
 
 | # | 壊した箇所 | 落ちたもの |
 | --- | --- | --- |
@@ -474,6 +474,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 | **M28** | SC-05 の `beginOperation()` を外す（**是正前の実装そのもの**＝別のミューテーションの失敗状態を残す） | `shows only the latest operation result (a stale failure banner does not survive)`（1 件） |
 | **M29** | SC-06 の `beginOperation()` を外す（同上） | `shows only the latest operation result (neither a stale failure nor a stale success survives)`（1 件） |
 | **M30** | SC-06 の `disabled` へ琥珀（`warning`）を充て直す（**是正前の実装そのもの**） | `marks a disabled source as neutral, leaving amber for a real sync fault` ＋ `never uses the amber warning tone for any state the contract can express`（**2 件**） |
+| **M31** | `CONFIDENTIALITY_VALUES` から `restricted` を落とす（**ABAC 一次情報からの逸脱**） | `fixes exactly the four values of the ABAC attribute dictionary`（1 件）。**画面テストは 1 件も落ちない**——選択肢の数を数えているテストが無いため、値集合の欠落は画面経由では検出できない |
 
 #### 素通りした 3 件と、その是正
 
