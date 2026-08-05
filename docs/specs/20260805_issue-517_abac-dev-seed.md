@@ -2,7 +2,7 @@
 title: 経路B の ABAC 初期投入 — 宣言的シードと冪等な opt-in 投入スクリプト
 type: spec
 status: done
-related_ids: [FR-05, FR-09, UC-05, SC-09, ADR-0004, ADR-0036, IADR-0132]
+related_ids: [FR-05, FR-09, UC-05, SC-09, ADR-0004, ADR-0036, IADR-0133]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -11,7 +11,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md"
 related_specs:
-  - ../adr/IADR-0132_abac-dev-seed.md
+  - ../adr/IADR-0133_abac-dev-seed.md
   - ./20260805_issue-466_oidc-edge-flow-verification.md
   - ./20260805_issue-456_abac-attribute-combination-measurement.md
   - "../../deploy/local/abac-seed/README.md"
@@ -31,7 +31,7 @@ related_specs:
   [ADR-0036](../../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)（所有者ベース裁量制御。本作業では扱わない範囲を明記する）
 - 関連する技術検討（計画）:
   [07_abac-attribute-model](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md)（属性体系・評価モデルの正）
-- 実装 ADR: [IADR-0132](../adr/IADR-0132_abac-dev-seed.md)
+- 実装 ADR: [IADR-0133](../adr/IADR-0133_abac-dev-seed.md)
 - 実装 issue: [#517](https://github.com/endazon/microservices-platform/issues/517)（発見）／
   [#466](https://github.com/endazon/microservices-platform/issues/466)（E2E の前提）／
   [#516](https://github.com/endazon/microservices-platform/issues/516)（必須属性の欠落）
@@ -55,14 +55,14 @@ related_specs:
   - `scripts/k8s-local-up.test.js` への smoke test 追加（既定オフの不在・肯定側・best-effort 構造）
   - 実機投入と、利用者別の可視件数による効果の実測
 - 対象外:
-  - **本番環境の初期投入**（SC-09 の運用手順。IADR-0132 §トレードオフ）
+  - **本番環境の初期投入**（SC-09 の運用手順。IADR-0133 §トレードオフ）
   - `owner` / `shared_with` による動的束縛（ADR-0036）— 実データに `owner` が無い（#516）
   - 必須属性の付与そのもの（#516）・issuer と手順A の扱い（#466）
   - 読み取り系 BFF が匿名を許容する件（#458）
 
 ## 設計
 
-決定の理由は [IADR-0132](../adr/IADR-0132_abac-dev-seed.md) に記す。本節は実装の形のみ。
+決定の理由は [IADR-0133](../adr/IADR-0133_abac-dev-seed.md) に記す。本節は実装の形のみ。
 
 | 決定 | 実装 |
 | --- | --- |
@@ -104,7 +104,7 @@ related_specs:
 ## 未決事項
 
 - 既定オフのままでは、`ABACSEED` を知らない利用者は従来どおり空の画面を見る。
-  既定オンへ倒すかは**セキュリティ既定値の変更**にあたるため、必要になった時点で別途決める（IADR-0132 決定 4）。
+  既定オンへ倒すかは**セキュリティ既定値の変更**にあたるため、必要になった時点で別途決める（IADR-0133 決定 4）。
 
 ## 実測結果
 

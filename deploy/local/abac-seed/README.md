@@ -1,6 +1,6 @@
 # 経路B ABAC 初期投入（opt-in）
 
-> 起点: [IADR-0132](../../../docs/adr/IADR-0132_abac-dev-seed.md) /
+> 起点: [IADR-0133](../../../docs/adr/IADR-0133_abac-dev-seed.md) /
 > 作業仕様書 [`docs/specs/20260805_issue-517_abac-dev-seed.md`](../../../docs/specs/20260805_issue-517_abac-dev-seed.md) / Issue #517
 
 経路B（dev）へ **ABAC の属性辞書とポリシーの初期値**を投入するための宣言的データ。
