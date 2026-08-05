@@ -12,6 +12,12 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "（必須）"
+msgstr "（必須）"
+
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "（表示 {shownCount} 件）"
 msgstr "（表示 {shownCount} 件）"
@@ -24,9 +30,33 @@ msgstr "{totalHits} 件（権限内のみ表示）"
 msgid "← チャットに戻る"
 msgstr "← チャットに戻る"
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "← データソース管理へ戻る"
+msgstr "← データソース管理へ戻る"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "→ 取り込み・Wiki同期をトリガ"
+msgstr "→ 取り込み・Wiki同期をトリガ"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "＋ ソース登録"
+msgstr "＋ ソース登録"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "＋ 新規登録"
+msgstr "＋ 新規登録"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
+
+#: knowledge/frontend/src/features/sc08-analysis/index.tsx
+msgid "AI分析"
+msgstr "AI分析"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "AI分析依頼"
+msgstr "AI分析依頼"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "AI回答（ストリーミング）"
@@ -36,9 +66,21 @@ msgstr "AI回答（ストリーミング）"
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
 
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "SaaS"
+msgstr "SaaS"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "Wiki"
+msgstr "Wiki"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "Wikiで閲覧"
 msgstr "Wikiで閲覧"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "アーカイブ"
+msgstr "アーカイブ"
 
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "アカウント設定（{name}）"
@@ -47,6 +89,10 @@ msgstr "アカウント設定（{name}）"
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "エラー"
@@ -64,6 +110,15 @@ msgstr "キーワード・意味検索"
 msgid "キーワード検索のみ →"
 msgstr "キーワード検索のみ →"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "キャンセル"
+msgstr "キャンセル"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
+msgstr "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
+
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "サインアウト"
 msgstr "サインアウト"
@@ -80,10 +135,65 @@ msgstr "サインインに失敗しました。時間をおいて再度お試し
 msgid "サインイン処理中…"
 msgstr "サインイン処理中…"
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "ジョブ"
+msgstr "ジョブ"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "すべて"
+msgstr "すべて"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "ソース"
+msgstr "ソース"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "タイトル"
+msgstr "タイトル"
+
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 msgid "タグ"
 msgstr "タグ"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "タグ {tag} を削除"
+msgstr "タグ {tag} を削除"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "タスク種別"
+msgstr "タスク種別"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/index.tsx
+msgid "データソース"
+msgstr "データソース"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "データソースは登録されていません。"
+msgstr "データソースは登録されていません。"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "データソースを取得できませんでした。"
+msgstr "データソースを取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "データソースを無効化しました。"
+msgstr "データソースを無効化しました。"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "データソースを登録"
+msgstr "データソースを登録"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "データソースを登録しました。"
+msgstr "データソースを登録しました。"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "データソース登録"
+msgstr "データソース登録"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "ナレッジ検索・AI質問"
@@ -97,6 +207,10 @@ msgstr "バージョン"
 msgid "バージョン履歴"
 msgstr "バージョン履歴"
 
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "ファイルサーバー"
+msgstr "ファイルサーバー"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "フィードバック"
 msgstr "フィードバック"
@@ -108,6 +222,14 @@ msgstr "フィードバックを送信しました。"
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "フィードバックを送信できませんでした。"
 msgstr "フィードバックを送信できませんでした。"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "モデル: {model}"
+msgstr "モデル: {model}"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "モデル: 未使用（AI へ送信なし）"
+msgstr "モデル: 未使用（AI へ送信なし）"
 
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "ユーザー"
@@ -121,37 +243,174 @@ msgstr "主要ナビゲーション"
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
+msgstr "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "作成"
 msgstr "作成"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して"
+msgstr "例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "例: smb://fs01/share/規程集"
+msgstr "例: smb://fs01/share/規程集"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "例: 経費精算"
 msgstr "例: 経費精算"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "保存"
+msgstr "保存"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
 msgstr "個人"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "備考"
+msgstr "備考"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "入力 {inputTokens} ・出力 {outputTokens} トークン"
+msgstr "入力 {inputTokens} ・出力 {outputTokens} トークン"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "公開"
+msgstr "公開"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "再変換"
+msgstr "再変換"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "再変換は管理者のみ実行できます"
+msgstr "再変換は管理者のみ実行できます"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "再変換を受け付けました。"
+msgstr "再変換を受け付けました。"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "再変換を受け付けられませんでした。"
+msgstr "再変換を受け付けられませんでした。"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "出典:"
+msgstr "出典:"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "出典（クリックで文書詳細／Wikiへ）"
 msgstr "出典（クリックで文書詳細／Wikiへ）"
 
+#: knowledge/frontend/src/features/sc08-analysis/analysisRange.ts
+msgid "分析"
+msgstr "分析"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析を実行できませんでした。"
+msgstr "分析を実行できませんでした。"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析を実行中…"
+msgstr "分析を実行中…"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析内容"
+msgstr "分析内容"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析内容（指示）"
+msgstr "分析内容（指示）"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析実行"
+msgstr "分析実行"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "分析対象（権限内に限定）"
+msgstr "分析対象（権限内に限定）"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "利用者"
 msgstr "利用者"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "削除"
+msgstr "削除"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "原本"
 msgstr "原本"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "同期をトリガしました。"
+msgstr "同期をトリガしました。"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "同期済み"
+msgstr "同期済み"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "同期状態"
+msgstr "同期状態"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "名前"
+msgstr "名前"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "回答を生成中…"
 msgstr "回答を生成中…"
 
+#: knowledge/frontend/src/features/sc07-conversions/index.tsx
+msgid "変換ジョブ"
+msgstr "変換ジョブ"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "変換ジョブ（pandoc＋LLM）"
+msgstr "変換ジョブ（pandoc＋LLM）"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "変換ジョブの一覧"
+msgstr "変換ジョブの一覧"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "変換ジョブの状況を見る →"
+msgstr "変換ジョブの状況を見る →"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "変換ジョブを取得できませんでした。"
+msgstr "変換ジョブを取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
+msgid "変換中"
+msgstr "変換中"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "変換結果の文書を開く"
+msgstr "変換結果の文書を開く"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 msgid "変更メモ"
 msgstr "変更メモ"
+
+#: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
+msgid "失敗"
+msgstr "失敗"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
+msgid "完了"
+msgstr "完了"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "属性・タグ"
@@ -165,6 +424,14 @@ msgstr "役に立たなかった"
 msgid "役に立った"
 msgstr "役に立った"
 
+#: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
+msgid "待機中"
+msgstr "待機中"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。"
+msgstr "必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。"
+
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "情報"
 msgstr "情報"
@@ -172,6 +439,33 @@ msgstr "情報"
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "成功"
 msgstr "成功"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "手動同期"
+msgstr "手動同期"
+
+#: knowledge/frontend/src/features/sc08-analysis/analysisRange.ts
+msgid "抽出"
+msgstr "抽出"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "接続先 URI"
+msgstr "接続先 URI"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
+msgstr "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "操作"
+msgstr "操作"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "操作を実行できませんでした。"
+msgstr "操作を実行できませんでした。"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "文書"
@@ -181,9 +475,73 @@ msgstr "文書"
 msgid "文書が見つかりませんでした。"
 msgstr "文書が見つかりませんでした。"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書の一覧"
+msgstr "文書の一覧"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "文書の取得に失敗しました。"
 msgstr "文書の取得に失敗しました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書はありません。"
+msgstr "文書はありません。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書をアーカイブしました。"
+msgstr "文書をアーカイブしました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書を公開しました。"
+msgstr "文書を公開しました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書を削除しました。"
+msgstr "文書を削除しました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書を取得できませんでした。"
+msgstr "文書を取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書を更新しました。"
+msgstr "文書を更新しました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "文書を登録"
+msgstr "文書を登録"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書を登録しました。"
+msgstr "文書を登録しました。"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "文書を編集（v{version}）"
+msgstr "文書を編集（v{version}）"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書一覧"
+msgstr "文書一覧"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "文書登録"
+msgstr "文書登録"
+
+#: knowledge/frontend/src/features/sc05-documents/index.tsx
+msgid "文書管理"
+msgstr "文書管理"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "文書編集"
+msgstr "文書編集"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "既定の機密区分"
+msgstr "既定の機密区分"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "未同期"
+msgstr "未同期"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "本文"
@@ -217,6 +575,10 @@ msgstr "検索に失敗しました。"
 msgid "検索中…"
 msgstr "検索中…"
 
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "検索条件で追加"
+msgstr "検索条件で追加"
+
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "検索結果"
 msgstr "検索結果"
@@ -229,34 +591,93 @@ msgstr "検索結果一覧"
 msgid "検索結果一覧を開く →"
 msgstr "検索結果一覧を開く →"
 
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "業務DB"
+msgstr "業務DB"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
 msgstr "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
 
 #: knowledge/frontend/src/features/sc03-document/attributes.ts
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "機密区分"
 msgstr "機密区分"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "機密区分（ABAC属性）"
+msgstr "機密区分（ABAC属性）"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
+msgstr "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "正規化文書（Markdown）プレビュー"
 msgstr "正規化文書（Markdown）プレビュー"
 
+#: knowledge/frontend/src/features/sc08-analysis/analysisRange.ts
+msgid "比較"
+msgstr "比較"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "注意"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "注記"
+msgstr "注記"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "無効"
+msgstr "無効"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "無効化"
+msgstr "無効化"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "版"
 msgstr "版"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "状態"
+msgstr "状態"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "状態: {status}｜版: v{version}｜更新: {updatedAt}"
 msgstr "状態: {status}｜版: v{version}｜更新: {updatedAt}"
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "状態で絞り込み"
+msgstr "状態で絞り込み"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "登録する"
+msgstr "登録する"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "登録済みデータソースの一覧"
+msgstr "登録済みデータソースの一覧"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "省略時は分析内容を流用します"
+msgstr "省略時は分析内容を流用します"
+
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
 msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "種別"
+msgstr "種別"
 
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "管理"
@@ -266,23 +687,50 @@ msgstr "管理"
 msgid "範囲を指定してAI分析を依頼 →"
 msgstr "範囲を指定してAI分析を依頼 →"
 
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "範囲指定の分析依頼・結果・出典"
+msgstr "範囲指定の分析依頼・結果・出典"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "組織文書"
 msgstr "組織文書"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "結果"
+msgstr "結果"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "結果 →"
+msgstr "結果 →"
 
 #: knowledge/frontend/src/features/sc02-results/index.tsx
 msgid "結果一覧"
 msgstr "結果一覧"
 
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "編集"
+msgstr "編集"
+
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "見つかりませんでした"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "該当する変換ジョブはありません。"
+msgstr "該当する変換ジョブはありません。"
+
+#: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+msgid "該当する情報が見つかりませんでした。"
+msgstr "該当する情報が見つかりませんでした。"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "該当する文書が見つかりませんでした。"
 msgstr "該当する文書が見つかりませんでした。"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: platform/frontend/src/foundation/auth/RequireAuth.tsx
 #: platform/frontend/src/foundation/auth/RequireRole.tsx
 msgid "読み込み中…"
@@ -295,6 +743,10 @@ msgstr "質問・キーワード"
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "質問またはキーワードを入力…（例: 経費精算の締め日は？）"
 msgstr "質問またはキーワードを入力…（例: 経費精算の締め日は？）"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+msgid "追加"
+msgstr "追加"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "送信"

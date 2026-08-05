@@ -1,164 +1,186 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
+import { activate } from '@foundation/i18n';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 
-// SC-08, FR-07, UC-02: 送信ペイロード（範囲指定）・結果/出典表示・空縮退（存在秘匿）・異常系を検証する。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
+// SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボードの再実装（#503）。
+//
+// 本画面は **orval 生成フック（useAnalysisAnalyze）** に載る唯一の画面である（IADR-0127 決定 3）。
+// 生成コードは mutator（bffFetch）→ apiRequest を通るため、モックは `apiRequest` に当てる
+// ——`apiFetch` を差し替えても生成コードの経路には効かない。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
+vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
+  apiRequest: mocks.apiRequest,
+}));
 
-import { AnalysisDashboardPage } from './AnalysisDashboardPage';
+import { createSc08AnalysisRoute } from './index';
+
+const DOC_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+
+/** 生成コードが期待する応答（`bffFetch` は `Response` から本文を読む）。 */
+function jsonResponse(body: unknown) {
+  return { status: 200, text: () => Promise.resolve(JSON.stringify(body)), headers: new Headers() };
+}
 
 const ANSWER = {
-  answer: '変更点は A と B です [1]。',
+  answer: '3部門に共通する失注要因は (1) 見積提示の遅延 …',
   citations: [
-    {
-      number: 1,
-      documentId: 'd1',
-      documentTitle: '経費規程 2025',
-      chunkId: 'c1',
-      sourceUri: 'https://wiki.example/expense-2025',
-      score: 0.91,
-      snippet: '第3条 …',
-    },
+    { chunkId: 'c1', documentId: DOC_ID, documentTitle: '第1営業部 Q1報告', score: 0.9 },
   ],
-  model: 'gpt-x',
+  model: 'self-hosted',
   inputTokens: 120,
   outputTokens: 45,
-  answerId: 'a1',
 };
 
-beforeEach(() => mocks.apiFetch.mockReset());
+async function renderPage() {
+  return renderUnitRoute((shell) => [createSc08AnalysisRoute(shell)], { initialEntry: '/analyze' });
+}
+
+/** 指示を入力して分析を実行する。 */
+async function analyze(instruction = 'Q1の営業報告を比較して') {
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText(/分析内容（指示）/), instruction);
+  await user.click(screen.getByRole('button', { name: '分析実行' }));
+  return user;
+}
+
+/** 送信された要求本文を取り出す。 */
+function sentBody(): unknown {
+  const init = mocks.apiRequest.mock.calls[0]?.[1] as RequestInit | undefined;
+  return JSON.parse(String(init?.body));
+}
+
+beforeEach(() => {
+  mocks.apiRequest.mockReset();
+});
+
+afterEach(() => {
+  act(() => {
+    activate('ja');
+  });
+});
 
 describe('AnalysisDashboardPage (SC-08)', () => {
-  it('renders the answer and numbered citations on success', async () => {
-    mocks.apiFetch.mockResolvedValue(ANSWER);
-    render(<AnalysisDashboardPage />);
+  // UC-02 基本 1・3・4: 分析対象と分析内容を指定し、結果と出典を得る。出典から SC-03 へ遷移する。
+  it('runs an analysis and links the citations to SC-03', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(ANSWER));
+    await renderPage();
+    await analyze();
 
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '経費規程の変更点');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    expect(await screen.findByText(/変更点は A と B です/)).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: '経費規程 2025' });
-    expect(link).toHaveAttribute('href', 'https://wiki.example/expense-2025');
+    expect(await screen.findByText(/3部門に共通する失注要因/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '第1営業部 Q1報告' })).toHaveAttribute(
+      'href',
+      `/docs/${DOC_ID}`,
+    );
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/analysis/analyze', expect.anything());
   });
 
-  it('builds the request with instruction, taskType and range (query/topK/attributeFilters)', async () => {
-    mocks.apiFetch.mockResolvedValue(ANSWER);
-    render(<AnalysisDashboardPage />);
+  // FR-07「分析・比較・抽出」。タスク種別と検索条件が要求へ載る。
+  it('sends the task type and the search condition as the data range', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(ANSWER));
+    const user = userEvent.setup();
+    await renderPage();
 
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '比較して');
-    await userEvent.selectOptions(screen.getByLabelText('タスク種別'), 'Compare');
-    await userEvent.type(screen.getByLabelText('検索クエリ'), '経費');
-    const topk = screen.getByLabelText('TopK（文脈上限 1〜50）');
-    await userEvent.clear(topk);
-    await userEvent.type(topk, '5');
-    await userEvent.click(screen.getByRole('button', { name: '属性フィルタを追加' }));
-    await userEvent.type(screen.getByLabelText('属性キー 1'), 'department');
-    await userEvent.type(screen.getByLabelText('属性値 1'), 'sales, legal');
+    await user.type(screen.getByLabelText(/検索条件で追加/), 'Q1 営業報告');
+    await user.selectOptions(screen.getByLabelText(/タスク種別/), 'Compare');
+    await analyze('部門別に比較して');
 
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
-    const [path, req] = mocks.apiFetch.mock.calls[0];
-    expect(path).toBe('/analysis/analyze');
-    expect(req).toMatchObject({ method: 'POST' });
-    expect(req.json).toEqual({
-      instruction: '比較して',
-      taskType: 'Compare',
-      range: { query: '経費', attributeFilters: { department: ['sales', 'legal'] }, topK: 5 },
-    });
+    await waitFor(() =>
+      expect(sentBody()).toEqual({
+        instruction: '部門別に比較して',
+        taskType: 'Compare',
+        range: { query: 'Q1 営業報告' },
+      }),
+    );
   });
 
-  it('shows a neutral message when the result is empty (existence hidden / narrowing to empty)', async () => {
-    mocks.apiFetch.mockResolvedValue({ ...ANSWER, answer: '', citations: [] });
-    render(<AnalysisDashboardPage />);
-
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '権限外の範囲');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    expect(await screen.findByText('該当する情報が見つかりませんでした。')).toBeInTheDocument();
-  });
-
-  it('disables submit while instruction is empty', async () => {
-    render(<AnalysisDashboardPage />);
-    expect(screen.getByRole('button', { name: '分析を実行' })).toBeDisabled();
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), 'x');
-    expect(screen.getByRole('button', { name: '分析を実行' })).toBeEnabled();
-  });
-
-  it('shows an alert on server error', async () => {
-    // async throw にして await 後にリジェクトさせる（eager-rejection の誤検知回避）。
-    mocks.apiFetch.mockImplementationOnce(async () => {
-      throw new ApiError('server', 'x', 500);
-    });
-    render(<AnalysisDashboardPage />);
-
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), 'エラー');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('実行に失敗');
-  });
-
-  // T-08: 403/404 は「拒否/不在」を区別せず空縮退と同じ中立表示にする（存在秘匿。IADR-0009）。
+  // UC-02 例外フロー: 対象が権限外の場合は対象から除外し、**権限の有無を開示しない**（存在秘匿）。
   it.each([
-    ['forbidden', 403],
-    ['notFound', 404],
-  ] as const)('treats %s (%d) as a neutral empty state, not an alert', async (kind, status) => {
-    mocks.apiFetch.mockImplementationOnce(async () => {
-      throw new ApiError(kind, 'x', status);
-    });
-    render(<AnalysisDashboardPage />);
-
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '権限外');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+    ['an empty answer (server-side degradation)', () => jsonResponse({ ...ANSWER, answer: '  ' })],
+    ['a 403', () => Promise.reject(new ApiError('forbidden', '権限がありません。', 403))],
+    ['a 404', () => Promise.reject(new ApiError('notFound', '見つかりませんでした。', 404))],
+  ])('shows the same neutral message for %s', async (_name, make) => {
+    mocks.apiRequest.mockImplementation(() => Promise.resolve(make()).then((r) => r));
+    await renderPage();
+    await analyze();
 
     expect(await screen.findByText('該当する情報が見つかりませんでした。')).toBeInTheDocument();
+    // 「権限がありません」を示唆する文言を出さない。
+    expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  // T-15f, IADR-0111 (#403): 縮退応答（AI へ送信していない）は model が空で届く。
-  // 「モデル: 」の後ろが空白のまま残らず、未送信であることが読み取れる表示にする。
-  it('labels an empty model as not sent, and shows the model name otherwise', async () => {
-    mocks.apiFetch.mockResolvedValue({
-      ...ANSWER,
-      answer: '機密区分により AI 送信を行いませんでした。',
-      model: '',
-      inputTokens: 0,
-      outputTokens: 0,
-    });
-    render(<AnalysisDashboardPage />);
+  // 400 / 5xx / ネットワーク断は中立表示へ寄せない——寄せると「該当なし」と誤解して再試行しなくなる。
+  it('reports a server error as an error, not as "nothing found"', async () => {
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
+    await renderPage();
+    await analyze();
 
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '機密文書の分析');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    expect(await screen.findByText(/モデル: 未使用（AI へ送信なし）/)).toBeInTheDocument();
-    expect(screen.queryByText(/claude-opus-5/)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバでエラーが発生しました'),
+    );
+    expect(screen.queryByText('該当する情報が見つかりませんでした。')).not.toBeInTheDocument();
   });
 
-  it('shows the reported model name when the answer was generated', async () => {
-    mocks.apiFetch.mockResolvedValue({ ...ANSWER, model: 'claude-sonnet-5' });
-    render(<AnalysisDashboardPage />);
+  // FR-11 / IADR-0111: model が空なのは「AI へ送信していない縮退」。空のまま出さない。
+  it('says the AI was not used when the model is empty', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse({ ...ANSWER, model: '' }));
+    await renderPage();
+    await analyze();
 
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '経費規程の変更点');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
-
-    expect(await screen.findByText(/モデル: claude-sonnet-5/)).toBeInTheDocument();
+    expect(await screen.findByText(/未使用（AI へ送信なし）/)).toBeInTheDocument();
   });
 
-  // T-09: 明示的な topK=0 は既定 8 へ静かに戻さず下限 1 へクランプする。
-  it('clamps an explicit topK of 0 to the lower bound (1), not the default', async () => {
-    mocks.apiFetch.mockResolvedValue(ANSWER);
-    render(<AnalysisDashboardPage />);
+  it('shows the model and token counts when the AI was used', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(ANSWER));
+    await renderPage();
+    await analyze();
 
-    await userEvent.type(screen.getByLabelText('分析内容（指示）'), '範囲確認');
-    const topk = screen.getByLabelText('TopK（文脈上限 1〜50）');
-    await userEvent.clear(topk);
-    await userEvent.type(topk, '0');
-    await userEvent.click(screen.getByRole('button', { name: '分析を実行' }));
+    expect(await screen.findByText(/モデル: self-hosted/)).toBeInTheDocument();
+    expect(screen.getByText(/入力 120 ・出力 45 トークン/)).toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(mocks.apiFetch).toHaveBeenCalled());
-    const [, req] = mocks.apiFetch.mock.calls[0];
-    expect(req.json.range?.topK).toBe(1);
+  it('does not submit an empty instruction', async () => {
+    await renderPage();
+
+    expect(screen.getByRole('button', { name: '分析実行' })).toBeDisabled();
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
+  });
+
+  // 05_screens §SC-08 の注記（データ越境ポリシーと存在秘匿）。
+  it('states the egress policy and the existence-hiding rule', async () => {
+    await renderPage();
+
+    expect(
+      screen.getByText(/機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/権限外のデータは黙って対象外になります（存在秘匿）。/)).toBeInTheDocument();
+  });
+
+  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #4）。
+  // まず「見えるはずの条件」——分析対象パネルが描かれ、検索条件の欄が出ている状態——を
+  // 確かめてから、タグ／フォルダのチップが無いことを見る。
+  it('does not render tag or folder chips (no contract for permitted candidates)', async () => {
+    await renderPage();
+
+    // 「（権限内に限定）」は存在秘匿の説明そのものなので必ず出る。
+    expect(screen.getByText('分析対象（権限内に限定）')).toBeInTheDocument();
+    expect(screen.getByLabelText(/検索条件で追加/)).toBeInTheDocument();
+    // 権限内候補を返す API が無いため、チップの追加欄は置かない（planning#197 の裁定待ち）。
+    expect(screen.queryByText(/タグ:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/フォルダ:/)).not.toBeInTheDocument();
+  });
+
+  it('renders in English when the en locale is active', async () => {
+    activate('en');
+    await renderPage();
+
+    expect(screen.getByRole('heading', { name: 'AI analysis request' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run analysis' })).toBeInTheDocument();
   });
 });

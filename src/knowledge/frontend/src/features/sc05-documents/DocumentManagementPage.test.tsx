@@ -1,176 +1,299 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 import { ApiError } from '@foundation/api/ApiError';
+import { activate } from '@foundation/i18n';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 
-// SC-05, FR-06: 文書管理が一覧・作成・編集（楽観ロック）・公開・削除を BFF 経由で行うこと、
-// 必須属性（機密区分）を含むペイロード、版競合（409）の通知・再読込、異常系を検証する。
+// SC-05, UC-03, FR-06/FR-09: 文書管理画面の再実装（#503）。
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
+vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
+  apiFetch: mocks.apiFetch,
+}));
 
 import { createSc05DocumentsRoute } from './index';
-import { createSc03DocumentRoute } from '../sc03-document';
 
-const ID = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
-const DOCS = [
-  { id: ID, title: '経費規程 2025', status: 'draft', version: 3, attributes: { confidentiality: 'internal' }, tags: ['hr'], updatedAt: '2026-07-01T00:00:00Z' },
-];
+const DOC_ID = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+const DRAFT_DOC = {
+  id: DOC_ID,
+  title: '経費精算規程',
+  status: 'draft',
+  markdownUri: null,
+  version: 3,
+  attributes: { confidentiality: 'internal', department: 'finance' },
+  tags: ['経理', '規程'],
+  createdAt: '2026-07-01T00:00:00Z',
+  updatedAt: '2026-08-01T00:00:00Z',
+};
+const ARCHIVED_DOC = {
+  ...DRAFT_DOC,
+  id: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+  title: '製品ロードマップ 2027',
+  status: 'archived',
+  attributes: { confidentiality: 'confidential' },
+  tags: [],
+};
 
-// ADR-0031 / IADR-0124: 実ルート定義（RequireRole 込み）の上で描画する。
-// SC-03 のルートも同居させ、一覧からの遷移先 href が実定義どおりに解決されることを見る。
-async function renderPage() {
-  return renderUnitRoute(
-    (shell) => [createSc05DocumentsRoute(shell), createSc03DocumentRoute(shell)],
-    { initialEntry: '/admin/documents', roles: ['platform-admin'] },
-  );
+async function renderPage(roles: readonly string[] = ['platform-admin']) {
+  return renderUnitRoute((shell) => [createSc05DocumentsRoute(shell)], {
+    initialEntry: '/admin/documents',
+    roles,
+  });
 }
 
 beforeEach(() => {
   mocks.apiFetch.mockReset();
 });
 
+afterEach(() => {
+  act(() => {
+    activate('ja');
+  });
+});
+
 describe('DocumentManagementPage (SC-05)', () => {
-  it('lists documents linking to SC-03 detail', async () => {
-    mocks.apiFetch.mockResolvedValue(DOCS);
+  // 05_screens §SC-05: 一覧はタイトル・機密区分・版（版列＝現行版の表示）。詳細・版履歴は SC-03。
+  it('lists documents with confidentiality and the current version, linking to SC-03', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
     await renderPage();
 
-    const link = await screen.findByRole('link', { name: '経費規程 2025' });
-    expect(link).toHaveAttribute('href', `/docs/${ID}`);
-    expect(screen.getByText('v3')).toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: '経費精算規程' });
+    expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
+    const table = within(screen.getByRole('table'));
+    // 機密区分は生値のまま出す（表示名が計画にある値は 4 値中 2 値だけ。planning#197 で裁定待ち）。
+    expect(table.getByText('internal')).toBeInTheDocument();
+    expect(table.getByText('v3')).toBeInTheDocument();
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/documents');
   });
 
-  it('creates a document with the required confidentiality attribute', async () => {
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockResolvedValueOnce({ id: 'new' }); // create
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
+  // UC-03 基本フロー 1: 管理者が文書を登録し、属性・タグを設定する。
+  it('creates a document with the required confidentiality attribute and tags', async () => {
+    mocks.apiFetch.mockResolvedValue([]);
     const user = userEvent.setup();
     await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
 
-    const form = screen.getByRole('form', { name: '文書作成' });
-    await user.type(within(form).getByLabelText('タイトル（必須）'), '新規文書');
-    await user.selectOptions(within(form).getByLabelText('機密区分（必須）'), 'confidential');
-    await user.type(within(form).getByLabelText('タグ（カンマ区切り）'), 'hr, legal');
-    await user.click(within(form).getByRole('button', { name: '作成する' }));
+    await user.type(screen.getByLabelText(/タイトル/), '新しい規程');
+    await user.selectOptions(screen.getByLabelText(/機密区分（ABAC属性）/), 'confidential');
+    await user.type(screen.getByLabelText('タグ'), '経理');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() =>
       expect(mocks.apiFetch).toHaveBeenCalledWith('/documents', {
         method: 'POST',
-        json: { title: '新規文書', attributes: { confidentiality: 'confidential' }, tags: ['hr', 'legal'] },
+        json: {
+          title: '新しい規程',
+          attributes: { confidentiality: 'confidential' },
+          tags: ['経理'],
+        },
+      }),
+    );
+    expect(await screen.findByText('文書を登録しました。')).toBeInTheDocument();
+  });
+
+  // UC-03 例外フロー: 必須属性が未設定の場合は保存を拒否する（タイトルが空では保存できない）。
+  it('refuses to save until the required title is filled (UC-03 exception flow)', async () => {
+    mocks.apiFetch.mockResolvedValue([]);
+    const user = userEvent.setup();
+    await renderPage();
+
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    // 空白だけの入力も必須未設定として扱う。
+    await user.type(screen.getByLabelText(/タイトル/), '   ');
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
+    expect(mocks.apiFetch).toHaveBeenCalledTimes(1); // 一覧の取得のみ
+
+    expect(
+      screen.getByText('必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。'),
+    ).toBeInTheDocument();
+  });
+
+  // FR-06 のバージョン管理: 更新は現在版を expectedVersion として送る（楽観ロック）。
+  it('updates a document with the optimistic-lock version and the change note', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+    await user.type(screen.getByLabelText('変更メモ'), '締め日を修正');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(mocks.apiFetch).toHaveBeenCalledWith(`/documents/${DOC_ID}`, {
+        method: 'PUT',
+        json: {
+          title: '経費精算規程',
+          // 既存の属性（部門）を落とさずに機密区分を保つ。
+          attributes: { confidentiality: 'internal', department: 'finance' },
+          tags: ['経理', '規程'],
+          expectedVersion: 3,
+          changeNote: '締め日を修正',
+        },
+      }),
+    );
+    expect(await screen.findByText('文書を更新しました。')).toBeInTheDocument();
+  });
+
+  // IADR-0127 決定 5: 更新系の成功後は invalidateQueries だけを行う（手書きの再取得を持たない）。
+  // これが外れると、保存したのに一覧が古いまま残る（旧実装が load() を手で呼び直していた箇所）。
+  it('refetches the list after a successful save', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+    expect(mocks.apiFetch.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(mocks.apiFetch.mock.calls.filter(([path]) => path === '/documents')).toHaveLength(2),
+    );
+  });
+
+  // 版競合（409）は「他の更新と競合した」ことが読める形で伝える（消えるトーストにしない）。
+  it('explains a 409 version conflict', async () => {
+    mocks.apiFetch.mockImplementation((_path: string, req?: { method?: string }) =>
+      req?.method === 'PUT'
+        ? Promise.reject(new ApiError('conflict', '競合が発生しました。', 409))
+        : Promise.resolve([DRAFT_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('版が変わっています'));
+    // INDEX 決定 21: 深刻度は色（琥珀の警告）だけでなくラベルの文言でも伝える。
+    expect(screen.getByRole('alert')).toHaveTextContent('注意');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('エラー');
+  });
+
+  // 公開は未公開状態（draft / normalized）のみ。アーカイブ済みの誤再公開を防ぐ（サーバも 409）。
+  it('offers publish only for unpublished documents', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC, ARCHIVED_DOC]);
+    const user = userEvent.setup();
+    await renderPage();
+
+    // まず両方の行が描かれていることを確かめる。
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '製品ロードマップ 2027' })).toBeInTheDocument();
+    // 公開できるのは draft の 1 行だけ、アーカイブできるのも archived 以外の 1 行だけ。
+    expect(screen.getAllByRole('button', { name: '公開' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'アーカイブ' })).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: '公開' }));
+    await waitFor(() =>
+      expect(mocks.apiFetch).toHaveBeenCalledWith(`/documents/${DOC_ID}/publish`, {
+        method: 'POST',
       }),
     );
   });
 
-  it('does not show the publish button for archived documents', async () => {
-    // SC-05 仕様: アーカイブ済みは再公開ボタンを出さない（状態遷移の意図を守る）。
-    const archived = [{ ...DOCS[0], status: 'archived' }];
-    mocks.apiFetch.mockResolvedValue(archived);
-    await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
-
-    expect(screen.queryByRole('button', { name: '公開' })).not.toBeInTheDocument();
-  });
-
-  it('shows the publish button for normalized (pipeline-produced) documents', async () => {
-    // SC-05 仕様: 公開は draft だけでなく normalized（変換パイプライン由来）でも可能。
-    const normalized = [{ ...DOCS[0], status: 'normalized' }];
-    mocks.apiFetch.mockResolvedValue(normalized);
-    await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
-
-    expect(screen.getByRole('button', { name: '公開' })).toBeInTheDocument();
-  });
-
-  it('publishes a draft document', async () => {
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockResolvedValueOnce(undefined); // publish
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
+  it('deletes a document', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
     const user = userEvent.setup();
     await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
 
-    await user.click(screen.getByRole('button', { name: '公開' }));
+    await user.click(await screen.findByRole('button', { name: '削除' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith(`/documents/${ID}/publish`, { method: 'POST' }),
+      expect(mocks.apiFetch).toHaveBeenCalledWith(`/documents/${DOC_ID}`, { method: 'DELETE' }),
+    );
+    expect(await screen.findByText('文書を削除しました。')).toBeInTheDocument();
+  });
+
+  // IADR-0041 / IADR-0009: スコープ外・不在はいずれも 404 で返る。画面は中立に扱う。
+  it('reports a 404 neutrally (out of scope and missing are not distinguished)', async () => {
+    mocks.apiFetch.mockImplementation((_path: string, req?: { method?: string }) =>
+      req?.method === 'DELETE'
+        ? Promise.reject(new ApiError('notFound', '見つかりませんでした。', 404))
+        : Promise.resolve([DRAFT_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '削除' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('見つかりませんでした'),
+    );
+    // 「権限がありません」を示唆する文言を出さない。
+    expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
+  });
+
+  // IADR-0127 決定 7: 画面は直近の操作の結果だけを出す。TanStack Query は「別の」ミューテーションの
+  // 成功では他方の isError を戻さないため、これが外れると成功バナーと古い失敗バナーが同時に出る。
+  it('shows only the latest operation result (a stale failure banner does not survive)', async () => {
+    mocks.apiFetch.mockImplementation((_path: string, req?: { method?: string }) =>
+      req?.method === 'DELETE'
+        ? Promise.reject(
+            new ApiError('conflict', '競合が発生しました。', 409, [
+              'この文書は参照中のため削除できません。',
+            ]),
+          )
+        : Promise.resolve([DRAFT_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    // 削除が 409 で失敗する。
+    await user.click(await screen.findByRole('button', { name: '削除' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('参照中のため削除'));
+
+    // 続けて別の操作（編集 → 保存）が成功する。
+    await user.click(screen.getByRole('button', { name: '編集' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByText('文書を更新しました。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows an alert when the list cannot be loaded', async () => {
+    mocks.apiFetch.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    await renderPage();
+
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバでエラーが発生しました'),
     );
   });
 
-  it('edits a document with optimistic concurrency (expectedVersion)', async () => {
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockResolvedValueOnce({ id: ID }); // put
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
-    const user = userEvent.setup();
+  it('shows a neutral message when there is no document', async () => {
+    mocks.apiFetch.mockResolvedValue([]);
     await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
 
-    await user.click(screen.getByRole('button', { name: '編集' }));
-    const form = screen.getByRole('form', { name: '文書編集' });
-    await user.clear(within(form).getByLabelText('タイトル（必須）'));
-    await user.type(within(form).getByLabelText('タイトル（必須）'), '経費規程 2025 改訂');
-    await user.click(within(form).getByRole('button', { name: '保存する' }));
-
-    await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith(
-        `/documents/${ID}`,
-        expect.objectContaining({ method: 'PUT', json: expect.objectContaining({ expectedVersion: 3, title: '経費規程 2025 改訂' }) }),
-      ),
-    );
+    expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
   });
 
-  it('shows a conflict notice and reloads on 409 version conflict', async () => {
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockRejectedValueOnce(new ApiError('unknown', '要求が失敗しました（409）。', 409)); // put -> conflict
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
-    const user = userEvent.setup();
-    await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
+  // 存在秘匿（IADR-0009 / IADR-0035）: ロールを持たない利用者へ画面の存在を示さない。
+  it('hides the screen from a user without any role', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
+    await renderPage([]);
 
-    await user.click(screen.getByRole('button', { name: '編集' }));
-    await user.click(within(screen.getByRole('form', { name: '文書編集' })).getByRole('button', { name: '保存する' }));
-
-    expect(await screen.findByText(/競合しました/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '文書一覧' })).not.toBeInTheDocument();
+    expect(mocks.apiFetch).not.toHaveBeenCalled();
   });
 
-  it('shows validation detail messages from ApiError.details on create (400)', async () => {
-    // #177: 400 検証エラーの詳細（Problem 本文由来）を SC-09 と統一して画面表示する。
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockRejectedValueOnce(
-      new ApiError('validation', '入力内容に誤りがあります。', 400, ['タイトルは必須です。']),
-    ); // create -> 400 with details
-    const user = userEvent.setup();
+  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #6）。
+  // まず「見えるはずの条件」——一覧が描画され、機密区分と版の列が出ている状態——を確かめてから、
+  // 契約に無い「変換」列が無いことを見る。
+  it('does not render the conversion column (no contract links a document to its job)', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
     await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
 
-    const form = screen.getByRole('form', { name: '文書作成' });
-    // 非空タイトルでクライアント必須ガードを通し、サーバ側検証（400 詳細）の表示を確認する。
-    await user.type(within(form).getByLabelText('タイトル（必須）'), '仮タイトル');
-    await user.click(within(form).getByRole('button', { name: '作成する' }));
-
-    expect(await within(form).findByText('タイトルは必須です。')).toBeInTheDocument();
+    expect(await screen.findByRole('columnheader', { name: '機密区分' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '版' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: '変換' })).not.toBeInTheDocument();
   });
 
-  it('shows conflict detail message from ApiError.details on 409', async () => {
-    // #177: 409 に detail 本文があれば平易な既定文言ではなくその詳細を表示する。
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // load
-    mocks.apiFetch.mockRejectedValueOnce(
-      new ApiError('conflict', '競合が発生しました。', 409, ['公開済みの文書はアーカイブできません。']),
-    ); // archive -> 409 with details
-    mocks.apiFetch.mockResolvedValueOnce(DOCS); // reload
-    const user = userEvent.setup();
-    await renderPage();
-    await screen.findByRole('link', { name: '経費規程 2025' });
-
-    await user.click(screen.getByRole('button', { name: 'アーカイブ' }));
-
-    expect(await screen.findByText('公開済みの文書はアーカイブできません。')).toBeInTheDocument();
-  });
-
-  it('shows an alert when the list fails to load', async () => {
-    mocks.apiFetch.mockRejectedValue(new Error('boom'));
+  it('renders in English when the en locale is active', async () => {
+    mocks.apiFetch.mockResolvedValue([DRAFT_DOC]);
+    activate('en');
     await renderPage();
 
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('取得に失敗'));
+    expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
 });
