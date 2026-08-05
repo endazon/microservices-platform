@@ -116,7 +116,7 @@ related_specs:
 **なお計画自身が SC-05 と FR-12 の関係を一度是正している**——02_requirements トレーサビリティ表（2026-07-24）は
 FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR バッジ準拠で対象外**」と明記した。
 05_screens §SC-05 主要素の「変換状況」だけが旧い記述として残っている可能性がある。この点も環流の記録へ含めた
-（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**計画リポへの起票は未了**）。
+（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**planning#198 として起票済み・裁定待ち**）。
 
 ## データソース（BFF 境界）
 
@@ -205,11 +205,11 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 - 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
 - テスト仕様書: [SC-05_document-management.md](../tests/SC-05_document-management.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0041](../adr/IADR-0041_document-write-bff-abac-scoped.md)
-- 計画への環流（**記録を作成済み・計画リポへの起票は未了**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 計画への環流（**planning#198 として起票済み・裁定待ち**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 
-1. **変換列**（§実装しない要素 (a)）。文書 → 変換ジョブの対応を返す契約が要る。**環流の記録を作成済み・計画リポへの起票は未了。**
+1. **変換列**（§実装しない要素 (a)）。文書 → 変換ジョブの対応を返す契約が要る。**環流の記録を作成済み・planning#198 として起票済み（裁定待ち）。**
 2. **タグ辞書との整合**（同 (b)）。管理系ロールが引けるタグ辞書の照会口が要る。同上。
 3. **機密区分の表示名**（#7）。**planning#197 の裁定待ち**（#502 から継続）。
 4. **閲覧ロール**（admin/operator か admin のみか）。計画 §共通シェル と [[IADR-0039]] の差異。同上の環流記録に含めた。

@@ -31,7 +31,7 @@ import type { AdminDocument, DocumentCommand } from './useDocumentAdmin';
 //     ——「✕ 失敗」を決して表示できない列になる。変換状況は SC-07（/admin/conversions）が担う。
 //   - **タグ辞書からの補完**: 辞書は /bff/admin/authz（システム管理者限定）にあり、本画面の
 //     利用者（admin / operator）が引ける保証が無い。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に環流の記録を作成した。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
 //   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照（planning#197 で裁定待ち）。
 
 /** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */

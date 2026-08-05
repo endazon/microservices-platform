@@ -30,7 +30,7 @@ import type { DataSource } from './useDataSources';
 //   - **「次回同期」列**: 同期は全ソース共通の間隔で回る hosted service であり、
 //     ソース別スケジュールという概念が契約に無い（常に空の列になる）。
 //   - **行操作「設定」**: `/bff/datasources` に更新（PUT / PATCH）が無い（押しても何も変わらない）。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に環流の記録を作成した。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
 
 export function DataSourceManagementPage() {
   const { t } = useLingui();

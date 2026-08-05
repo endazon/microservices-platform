@@ -35,7 +35,7 @@ import type { ConversionJob } from './useConversionJobs';
 //     「変換を最初からやり直す」もので編集結果を受け取らない。保存先の無い編集欄を置くと、
 //     管理者は補正したつもりで何も反映されない。
 //   - **「デッドレター」の内訳表示**: `ConversionJobDto` にデッドレターの標識が無い（`Attempts` は試行回数）。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に環流の記録を作成した。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */
 const FILTERS: readonly JobStatusFilter[] = ['', ...JOB_STATUSES];
