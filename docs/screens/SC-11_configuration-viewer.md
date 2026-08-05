@@ -307,3 +307,12 @@ BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限�
 >   **HTML モックアップを正とし draw.io を作成しない**方針であり（§HTMLモックアップ が hi-fi / wireframe の
 >   HTML を挙げ、SC-11 にも [wireframe/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html) が揃っている。
 >   **`.drawio` は計画リポジトリに 1 件も存在しない**）、計画側へ送る作業自体が成立しない。
+>
+> > **［2026-08-05 追記 / #497］根拠を間接証拠から直接の明文へ差し替える。** 上の旧 5 は
+> > 「モックアップの表に HTML が並ぶ」「`.drawio` が 1 件も無い」という**間接証拠**で結論していたが、
+> > 計画側には**直接の明文**がある——[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) `:39`
+> > は「ワイヤーフレームは HTML モックアップ〔`mockups/wireframe/`〕を正とし、**draw.io ワイヤーフレームは
+> > 作成しない**」と書いている（pin `d980a01` で実測。行番号は pin が動くとずれるため内容で特定する）。
+> > これにより旧 5 は「未着手の作業」ではなく「**方針として作らないと決まっている**」ものとして畳まれる。
+> > 環流記録 [feedback/20260709_sc11-wireframe-drawio.md](../../feedback/20260709_sc11-wireframe-drawio.md) も
+> > 同日 `status: rejected`（別解で解消）へ揃えた。

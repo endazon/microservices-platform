@@ -1,19 +1,21 @@
 ---
 title: 実装は .NET 10 / C# 13 へ統一済み — 計画制約「ASP.NET Core + .NET 8」との乖離の解消判断を依頼
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の誤り
 related_ids: [NFR, ADR-0001, IADR-0048]
 source_repo: microservices-platform
 source_ref: "src/Directory.Build.props（net10.0 / LangVersion 13）/ 実装リポ issue #202 / docs/adr/IADR-0048_dotnet10-target-framework.md / 2026-07-09 全体レビュー"
 author: claude
 created: 2026-07-09
-updated: 2026-07-10
+updated: 2026-08-05
 ---
 
 > **実装側の意思決定記録**: 2026-07-10 に **IADR-0048**（.NET 10 / C# 13 採用・単一情報源
 > `src/Directory.Build.props`・実態を正とし計画追随を推奨）を起票し、issue #202 の item 1 を完了。
-> 本 feedback（計画側の制約更新 or 是正の判断依頼）は引き続き open。
+> ~~本 feedback（計画側の制約更新 or 是正の判断依頼）は引き続き open。~~
+> **［2026-08-05 / #497］この行は失効した。計画側は 2026-08-04 に `accepted` としており、本記録も
+> `accepted` へ同期した**（末尾の追記を参照）。
 
 # フィードバック: 実装は .NET 10 / C# 13 — 計画制約「ASP.NET Core + .NET 8」との乖離
 
@@ -57,3 +59,20 @@ updated: 2026-07-10
 
 - 制約条件・技術スタック選定・INDEX の記述のみ（アーキテクチャ・サービス分割への影響なし）。
 - 実装リポジトリ: issue #202（IADR 起票）、`docs/tech/tech-requirements.md` 整備（issue #200）。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** 計画側が実装へ追随する形で解消済みであり、**裁定待ちの論点は残っていない**。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260709_dotnet10-target-framework-deviation.md](../planning/draft/feedback/20260709_dotnet10-target-framework-deviation.md) | `status: accepted`（「トリアージ結果（2026-08-04・status: accepted）」節。**裁定待ちの論点は無い**と明記） |
+| [07_adr/ADR-0020_dotnet-10-upgrade.md](../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md) `:5` | `status: Accepted` |
+| [06_technical/03_tech-stack-selection.md](../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md) `:34` | 技術スタック表 = 「ASP.NET Core + **.NET 10**（C#、LTS）」 |
+| 同 `:60` | 選定根拠の見出し = 「実装フレームワーク: ASP.NET Core + **.NET 10**」 |
+| 同 `:55` | §実装状況 の「配備済み」= **.NET 10 / C# 13**（`src/Directory.Build.props` を単一情報源とする）。**#497 が「残渣」として挙げた「.NET 8（更新は後続）」は既に是正済みである** |
+| 同 `:114` | 変更履歴 2026-08-04 が**本記録を相対リンクで参照**し、実装状況の残渣を是正したと記す（**この行が挙げるのは planning#189 / planning#188**。是正 PR は planning#194 だが、それを記すのは [draft/feedback/20260709_dotnet10-target-framework-deviation.md](../planning/draft/feedback/20260709_dotnet10-target-framework-deviation.md) 側である） |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

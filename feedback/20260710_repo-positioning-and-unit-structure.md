@@ -1,7 +1,7 @@
 ---
 title: リポジトリ位置づけ（主=プラットフォーム基盤）とユニット第一フォルダ構成の計画側反映
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids:
   - FR-14
@@ -10,6 +10,7 @@ source_repo: microservices-platform
 source_ref: refactor/FR-14-platform-knowledge-restructure（issue #209/#210、docs/specs/20260710_FR-14_repo-restructure-platform-knowledge.md、IADR-0056）
 author: claude
 created: 2026-07-10
+updated: 2026-08-05
 ---
 
 # フィードバック: リポジトリ位置づけ（主=基盤）とユニット第一フォルダ構成の計画側反映
@@ -76,3 +77,17 @@ created: 2026-07-10
 
 - 実装は完了済み（PR: refactor/FR-14-platform-knowledge-restructure）。計画側の確定変更は
   `/triage-feedback` と人間の判断に委ねる。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** 提案は同一 PR で計画へ反映され、ADR-0019 として確定している。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260712_repo-positioning-and-unit-structure.md](../planning/draft/feedback/20260712_repo-positioning-and-unit-structure.md) | `status: accepted`（「トリアージ結果（2026-07-12）」節）。**ファイル名の日付が `20260710_` → `20260712_` へずれている**が内容は同一で、差分は `status` / `copied:` / トリアージ結果節のみである（`diff` で確認） |
+| [07_adr/ADR-0019_unit-first-repo-structure.md](../planning/projects/microservices-platform/07_adr/ADR-0019_unit-first-repo-structure.md) `:5` | `status: Accepted`（表題 = 「成果物はユニット第一構成とし、主成果物をプラットフォーム基盤とする」） |
+| [06_technical/10_composability-design.md](../planning/projects/microservices-platform/06_technical/10_composability-design.md) `:190` | 変更履歴 2026-07-12 が §7「ユニット構成」の追加を記し、**`20260712_` 版を根拠記録として相対リンクで参照**する |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）
