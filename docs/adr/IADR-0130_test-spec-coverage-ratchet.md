@@ -7,7 +7,9 @@ related_ids:
   - SC-05
   - SC-06
   - IADR-0115
+  - IADR-0118
   - IADR-0120
+  - IADR-0122
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -26,7 +28,9 @@ plan_refs:
 - 関連する計画書 ID: **NFR**（退行防止の検査基盤）／ **SC-05**・**SC-06**（欠落が起きた画面）
 - 関連 ADR: [IADR-0115](IADR-0115_impl-handoff-kit-as-single-source.md)（分類 A のファイルは変更できない＝
   `scripts.test.js` へ直接テストを足せない）／
-  [IADR-0120](IADR-0120_excluded-units-from-gitmodules.md)（検査対象外ユニットの単一情報源）
+  [IADR-0120](IADR-0120_excluded-units-from-gitmodules.md)（検査対象外ユニットの単一情報源）／
+  **[IADR-0118](IADR-0118_backend-coverage-floor.md)・[IADR-0122](IADR-0122_contract-schema-source-and-compat-gate.md)
+  （本 ADR の決定 4 が踏襲する ratchet の作法。§関連 参照。**再回答ではない**）**
 - 関連する実装仕様書: [作業仕様書 #510](../specs/20260805_issue-510_test-spec-backend-sections.md) ／
   [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md)
 - 本リポジトリの起点: #510（原因は #503 / PR #508。出所は #501 / PR #509 の衝突解消）
@@ -263,6 +267,18 @@ plan_refs:
 
 ## 関連
 
+- **決定 4（ratchet ＋ `--self-test` ＋ `lib/ci-annotate`）は先行 ADR が確立した作法の踏襲であり、
+  本 ADR で新たに決めたことではない。** 本 ADR が実際に判断したのは決定 1（向き）・決定 2（粒度）・
+  決定 3（新規検査器）・決定 5（対象スタック）である。
+  - [IADR-0118](IADR-0118_backend-coverage-floor.md)（バックエンドのカバレッジ床）: **床を単一情報源の
+    JSON に置き、ratchet で上げる／既存検査器の作法（`--self-test` ＋ `lib/ci-annotate`）に揃える**
+    （同 決定 1・決定 3）。本 ADR の `test-spec-coverage-baseline.json` と warn の出し方はこの写しである。
+    「成果物は正しいのに赤」を常態化させない段階ポリシー（同 決定 6）も、未記載を warn に留める根拠
+    として引いている。
+  - [IADR-0122](IADR-0122_contract-schema-source-and-compat-gate.md)（契約スキーマの互換ゲート）:
+    **既存 ratchet 群と同じ作法（外部依存ゼロ Node・`--self-test`・`scripts.repo.test.js` 受け口・
+    `lib/excluded-units.js`・3 判定）へ揃える**（同 §理由）。検査器ごとに操作方法が違うと
+    「直し方が分からない赤」が増えるという理由もそのまま当てはまる。
 - [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) §ゲート一覧（本検査の行を追加）
 - [`scripts/README.md`](../../scripts/README.md)（スクリプト索引）
 - [`scripts/check-test-traceability.js`](../../scripts/check-test-traceability.js)（起点 ID の写像。本検査とは対象が異なる）
