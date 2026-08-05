@@ -1,8 +1,9 @@
 ---
 title: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加
 type: plan-feedback
-status: closed
+status: rejected
 category: UC/画面の差異
+status_note: 計画側原典は open（planning 未追随。控えが #497 で先行）
 related_ids: [FR-15, SC-11, ADR-0018, IADR-0036]
 source_repo: microservices-platform
 source_ref: "docs/screens/SC-11_configuration-viewer.md（未決事項5）/ IADR-0036 /（履歴データ源は PR #189・#139 で導入予定の IADR-0046）"
@@ -78,3 +79,19 @@ UC/画面の差異（画面成果物の不足: ワイヤーフレーム未作成
 - 計画リポジトリへの画面図追加と SC-11 記述リンクのみ。実装（#137/#138/#139）は完了済みで整合。
 - 反映後、実装側 `docs/screens/SC-11_configuration-viewer.md` 未決事項 5（ワイヤーフレーム）を「解決済み」へ更新する
   （本リポジトリ側の追随作業）。なお未決事項 3（履歴データ源）は #139・PR #189 マージ時に IADR-0046 で解決済みへ更新する。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: rejected（別解で解消）。理由: 計画は HTML モックアップを正とし draw.io ワイヤーフレームを作成しない方針であり、SC-11 のワイヤーフレームは既に HTML として存在するため、計画側へ渡す作業が成立しない**（上の「取り下げ」節を参照）。
+
+> **本記録は #504（PR #511）が `status: closed` として先行して取り下げていた。** `closed` は計画リポジトリが定める語彙（`open` / `triaged` / `accepted` / `rejected`）に無い一点物であったため `rejected` へ揃えた。**取り下げの判断そのものは #504 のまま変更していない。**
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [05_screens/01_screens.md](../planning/projects/microservices-platform/05_screens/01_screens.md) `:39` | 「ワイヤーフレームは HTML モックアップ〔`mockups/wireframe/`〕を正とし、**draw.io ワイヤーフレームは作成しない**」——**別解が明文で確定している** |
+| [05_screens/mockups/wireframe/sc-11.html](../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html) | SC-11 のワイヤーフレームが**実在する**（計画リポジトリに `.drawio` は 1 件も無い） |
+| [draft/feedback/20260709_sc11-wireframe-drawio.md](../planning/draft/feedback/20260709_sc11-wireframe-drawio.md) | **`status: open` のまま**。原典（計画リポジトリ）は未追随であり、その追随は計画側の作業である（本リポジトリからは触れない） |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）
