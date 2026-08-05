@@ -12,11 +12,31 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "—"
+msgstr "—"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "(1) 実効構成 — パイプライン段・接続"
+msgstr "(1) Effective configuration — pipeline stages and bindings"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "(2) 宣言（Git）との差分 — ドリフト"
+msgstr "(2) Difference from the declaration (Git) — drift"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "(3) 構成バージョン履歴（新しい順）"
+msgstr "(3) Configuration version history (newest first)"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "（必須）"
 msgstr "(required)"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "（終端）"
+msgstr "(terminal)"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "（表示 {shownCount} 件）"
@@ -46,6 +66,26 @@ msgstr "+ Register source"
 msgid "＋ 新規登録"
 msgstr "+ New document"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "⚠ ドリフト（明細へ）"
+msgstr "⚠ Drift (see details)"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "👍 {up} / 👎 {down}"
+msgstr "👍 {up} / 👎 {down}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx
+msgid "ABAC 設定の区画"
+msgstr "ABAC settings sections"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/index.tsx
+msgid "ABAC設定"
+msgstr "ABAC settings"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "AI 回答"
+msgstr "AI answer"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "The AI answer could not be generated. Please review the keyword search results."
@@ -61,6 +101,10 @@ msgstr "AI analysis request"
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "AI回答（ストリーミング）"
 msgstr "AI answer (streaming)"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "consumer"
+msgstr "consumer"
 
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
@@ -86,6 +130,34 @@ msgstr "Archive"
 msgid "アカウント設定（{name}）"
 msgstr "Account settings ({name})"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "アクセスポリシー"
+msgstr "Access policies"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "アクセスポリシーの一覧"
+msgstr "List of access policies"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "あり"
+msgstr "Yes"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "イベント"
+msgstr "Event"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "イベント接続"
+msgstr "Event bindings"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "イベント接続の一覧"
+msgstr "List of event bindings"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "イベント接続はありません。"
+msgstr "There are no event bindings."
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
@@ -93,6 +165,10 @@ msgstr "Account settings ({name})"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "エラー"
@@ -101,6 +177,14 @@ msgstr "Error"
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "The page does not exist, or you do not have access to it."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "キー"
+msgstr "Key"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "キー（必須）"
+msgstr "Key (required)"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "キーワード・意味検索"
@@ -115,9 +199,37 @@ msgstr "Keyword search only →"
 msgid "キャンセル"
 msgstr "Cancel"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "コネクタ"
+msgstr "Connectors"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "コネクタの一覧"
+msgstr "List of connectors"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "コネクタはありません。"
+msgstr "There are no connectors."
+
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
 msgstr "This job cannot be reconverted (it is running, or is not in the failed state)."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
+msgstr "This attribute is in use and cannot be deleted. Review the policies that reference it first."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "コミット"
+msgstr "Commit"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "コミット {commit}"
+msgstr "Commit {commit}"
+
+#: knowledge/frontend/src/features/sc10-operations/opsTools.ts
+msgid "サービスメッシュ"
+msgstr "Service mesh"
 
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "サインアウト"
@@ -138,6 +250,10 @@ msgstr "Signing in…"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "ジョブ"
 msgstr "Job"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "スコープ"
+msgstr "Scope"
 
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "すべて"
@@ -165,6 +281,10 @@ msgstr "Remove tag {tag}"
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "タスク種別"
 msgstr "Task type"
+
+#: knowledge/frontend/src/features/sc10-operations/index.tsx
+msgid "ダッシュボード"
+msgstr "Dashboard"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/index.tsx
@@ -195,6 +315,38 @@ msgstr "The data source has been registered."
 msgid "データソース登録"
 msgstr "Data source registration"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト"
+msgstr "Drift"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト {count} 件"
+msgstr "{count} drift finding(s)"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフトなし"
+msgstr "No drift"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフトなし（OK）。"
+msgstr "No drift (OK)."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフトを確認中…"
+msgstr "Checking drift…"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト情報は利用できません。"
+msgstr "Drift information is unavailable."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト明細の一覧"
+msgstr "List of drift findings"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "なし"
+msgstr "No"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "ナレッジ検索・AI質問"
 msgstr "Knowledge search / AI question"
@@ -206,6 +358,14 @@ msgstr "Versions"
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "バージョン履歴"
 msgstr "Version history"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "バージョン履歴は利用できません。"
+msgstr "The version history is unavailable."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "パイプライン段"
+msgstr "Pipeline stages"
 
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "ファイルサーバー"
@@ -223,6 +383,74 @@ msgstr "Feedback sent."
 msgid "フィードバックを送信できませんでした。"
 msgstr "Could not send the feedback."
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ポート"
+msgstr "Port"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ポートはありません。"
+msgstr "There are no ports."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ポート実装の選択"
+msgstr "Selected port implementations"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ポート実装の選択の一覧"
+msgstr "List of selected port implementations"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシー"
+msgstr "Policy"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシー（利用者属性 × 文書属性）"
+msgstr "Policies (user attributes × document attributes)"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーは登録されていません。"
+msgstr "No policies have been registered."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを保存しました。認可判定へ即時反映されます。"
+msgstr "The policy has been saved. It takes effect on authorization decisions immediately."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを保存できませんでした。"
+msgstr "The policy could not be saved."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを削除: {policyName}"
+msgstr "Delete policy: {policyName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを取得できませんでした。"
+msgstr "The policies could not be loaded."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを有効化: {policyName}"
+msgstr "Enable policy: {policyName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを無効化: {policyName}"
+msgstr "Disable policy: {policyName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシーを追加"
+msgstr "Add a policy"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx
+msgid "ポリシー定義"
+msgstr "Policies"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "ポリシー登録"
+msgstr "Policy registration"
+
+#: knowledge/frontend/src/features/sc10-operations/opsTools.ts
+msgid "メトリクス・コスト"
+msgstr "Metrics and cost"
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "モデル: {model}"
 msgstr "Model: {model}"
@@ -235,6 +463,10 @@ msgstr "Model: none (nothing was sent to the AI)"
 msgid "ユーザー"
 msgstr "User"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "ラベル"
+msgstr "Label"
+
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
@@ -246,6 +478,14 @@ msgstr "An unexpected error occurred. Please wait a moment and try again."
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
 msgstr "Another update conflicted with yours (the version has changed). Please reload the latest data."
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "件数"
+msgstr "Count"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "任意"
+msgstr "Optional"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "作成"
@@ -264,8 +504,13 @@ msgid "例: 経費精算"
 msgstr "e.g. expense reimbursement"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "保存"
 msgstr "Save"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
+msgstr "Syntax and contradictions are validated before saving. A contradicting policy cannot be saved. Once saved, it takes effect on authorization decisions immediately."
 
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
@@ -282,6 +527,10 @@ msgstr "{inputTokens} input / {outputTokens} output tokens"
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "公開"
 msgstr "Publish"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "再取得"
+msgstr "Refresh"
 
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "再変換"
@@ -307,7 +556,12 @@ msgstr "Sources:"
 msgid "出典（クリックで文書詳細／Wikiへ）"
 msgstr "Sources (open the document detail or the Wiki)"
 
+#: knowledge/frontend/src/features/sc10-operations/opsTools.ts
+msgid "分散トレース"
+msgstr "Distributed tracing"
+
 #: knowledge/frontend/src/features/sc08-analysis/analysisRange.ts
+#: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
 msgid "分析"
 msgstr "Analyse"
 
@@ -335,11 +589,26 @@ msgstr "Run analysis"
 msgid "分析対象（権限内に限定）"
 msgstr "Analysis scope (limited to what you may access)"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）"
+msgstr "Usage, search trends and answer quality (see Grafana for SLO and cost)"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "利用状況（日次）"
+msgstr "Usage (daily)"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "利用状況（日次）の一覧"
+msgstr "List of daily usage"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "利用者"
 msgstr "General"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "削除"
 msgstr "Delete"
 
@@ -347,6 +616,14 @@ msgstr "Delete"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "原本"
 msgstr "Original"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "参照のみ"
+msgstr "Read-only"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "古い段の残留"
+msgstr "Stale stage left running"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -364,9 +641,17 @@ msgstr "Sync state"
 msgid "名前"
 msgstr "Name"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "名前（必須）"
+msgstr "Name (required)"
+
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "回答を生成中…"
 msgstr "Generating the answer…"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "回答総数"
+msgstr "Answers"
 
 #: knowledge/frontend/src/features/sc07-conversions/index.tsx
 msgid "変換ジョブ"
@@ -401,6 +686,10 @@ msgstr "Open the converted document"
 msgid "変更メモ"
 msgstr "Change note"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "外部ツールの導線は未設定です。"
+msgstr "No external tool links are configured."
+
 #: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
 msgid "失敗"
 msgstr "Failed"
@@ -409,12 +698,83 @@ msgstr "Failed"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "完了"
 msgstr "Done"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "実効構成"
+msgstr "Effective configuration"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "実装"
+msgstr "Implementation"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "宣言に無い購読"
+msgstr "Undeclared subscription"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "対象"
+msgstr "Target"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "対象アクション"
+msgstr "Action"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "対象属性"
+msgstr "Attribute"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "属性・タグ"
 msgstr "Attributes and tags"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性は登録されていません。"
+msgstr "No attributes have been registered."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性を削除: {attributeKey}"
+msgstr "Delete attribute: {attributeKey}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性を追加"
+msgstr "Add an attribute"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性体系"
+msgstr "Attributes"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書（利用者属性・文書属性）"
+msgstr "Attribute dictionary (user and document attributes)"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書の一覧"
+msgstr "List of attribute definitions"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書を取得できませんでした。"
+msgstr "The attribute dictionary could not be loaded."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書を更新しました。"
+msgstr "The attribute dictionary has been updated."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書を更新できませんでした。"
+msgstr "The attribute dictionary could not be updated."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "属性辞書登録"
+msgstr "Attribute registration"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "履歴を確認中…"
+msgstr "Loading the history…"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "役に立たなかった"
@@ -428,10 +788,19 @@ msgstr "Helpful"
 msgid "待機中"
 msgstr "Queued"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "必須"
+msgstr "Required"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 msgid "必須属性が未設定の場合は保存を拒否します（UC-03 例外フロー）。"
 msgstr "Saving is rejected when a required attribute is missing (UC-03 exception flow)."
 
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "必須属性にする"
+msgstr "Make this attribute required"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "情報"
 msgstr "Info"
@@ -448,6 +817,14 @@ msgstr "Sync now"
 msgid "抽出"
 msgstr "Extract"
 
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "接続の不一致"
+msgstr "Binding mismatch"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "接続先"
+msgstr "Target"
+
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "接続先 URI"
 msgstr "Connection URI"
@@ -459,6 +836,8 @@ msgstr "Connection credentials are managed in Vault. Repeated connection failure
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "操作"
 msgstr "Actions"
 
@@ -468,6 +847,7 @@ msgid "操作を実行できませんでした。"
 msgstr "Could not carry out the operation."
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
 msgid "文書"
 msgstr "Document"
 
@@ -539,6 +919,23 @@ msgstr "Document editing"
 msgid "既定の機密区分"
 msgstr "Default confidentiality"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "日付"
+msgstr "Date"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "有効"
+msgstr "Enabled"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "有効化"
+msgstr "Enable"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "期間内の利用はありません。"
+msgstr "There is no usage in this period."
+
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "未同期"
 msgstr "Not synchronised"
@@ -555,11 +952,32 @@ msgstr "The body is unavailable."
 msgid "本文を読み込み中…"
 msgstr "Loading the body…"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "条件"
+msgstr "Conditions"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "条件なし（すべてに一致）"
+msgstr "No conditions (matches everything)"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "条件の値"
+msgstr "Value"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "条件を外す: {conditionKey} = {conditionValue}"
+msgstr "Remove condition: {conditionKey} = {conditionValue}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "条件を追加"
+msgstr "Add condition"
+
 #: platform/frontend/src/features/index.ts
 msgid "株式自動売買"
 msgstr "Automated stock trading"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "検索"
 msgstr "Search"
 
@@ -574,6 +992,18 @@ msgstr "The search failed."
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "検索中…"
 msgstr "Searching…"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "検索傾向（上位語）"
+msgstr "Search trends (top terms)"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "検索傾向（上位語）の一覧"
+msgstr "List of top search terms"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "検索傾向はまだありません。"
+msgstr "There are no search trends yet."
 
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "検索条件で追加"
@@ -591,9 +1021,49 @@ msgstr "Search results"
 msgid "検索結果一覧を開く →"
 msgstr "Open the search results →"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "検索総数"
+msgstr "Searches"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "検索語"
+msgstr "Term"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "検証不能（担当サービスへ到達できない）"
+msgstr "Unverifiable (the owning service is unreachable)"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "検証結果"
+msgstr "Validation result"
+
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "業務DB"
 msgstr "Business database"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。"
+msgstr "Configuration changes are made through Git (GitOps) only. This screen cannot change the configuration. Viewing it is recorded in the audit log."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "構成バージョン履歴の一覧"
+msgstr "List of configuration version history"
+
+#: knowledge/frontend/src/features/sc11-config/index.tsx
+msgid "構成ビューア"
+msgstr "Configuration viewer"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "構成ビューア →"
+msgstr "Configuration viewer →"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "構成情報は利用できません。"
+msgstr "The configuration information is unavailable."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "構成情報を取得できませんでした。"
+msgstr "The configuration information could not be loaded."
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
@@ -616,6 +1086,10 @@ msgstr "Highly confidential data is processed by the self-hosted LLM and is neve
 msgid "正規化文書（Markdown）プレビュー"
 msgstr "Normalized document (Markdown) preview"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "段は登録されていません。"
+msgstr "No pipeline stages have been registered."
+
 #: knowledge/frontend/src/features/sc08-analysis/analysisRange.ts
 msgid "比較"
 msgstr "Compare"
@@ -623,6 +1097,7 @@ msgstr "Compare"
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "Warning"
@@ -633,11 +1108,22 @@ msgstr "Warning"
 msgid "注記"
 msgstr "Note"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "深刻度"
+msgstr "Severity"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "満足率"
+msgstr "Satisfaction"
+
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "無効"
 msgstr "Disabled"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "無効化"
 msgstr "Disable"
 
@@ -647,6 +1133,8 @@ msgid "版"
 msgstr "Version"
 
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "状態"
 msgstr "Status"
 
@@ -658,6 +1146,10 @@ msgstr "Status: {status} | Version: v{version} | Updated: {updatedAt}"
 msgid "状態で絞り込み"
 msgstr "Filter by status"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "発行者"
+msgstr "Publishers"
+
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "登録する"
 msgstr "Register"
@@ -666,9 +1158,17 @@ msgstr "Register"
 msgid "登録済みデータソースの一覧"
 msgstr "List of registered data sources"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "直近 {d} 日"
+msgstr "Last {d} days"
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "省略時は分析内容を流用します"
 msgstr "Left blank, the analysis request itself is used"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "確認時刻"
+msgstr "Checked at"
 
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
@@ -676,12 +1176,19 @@ msgstr "Internal knowledge search and AI answering platform"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "種別"
 msgstr "Type"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "管理"
 msgstr "Administration"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx
+msgid "管理者設定（ABAC）"
+msgstr "Administrator settings (ABAC)"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "範囲を指定してAI分析を依頼 →"
@@ -715,6 +1222,18 @@ msgstr "Edit"
 msgid "見つかりませんでした"
 msgstr "Not found"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "設定した条件"
+msgstr "Conditions you added"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "許可値"
+msgstr "Allowed values"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "許可値（カンマ区切り）"
+msgstr "Allowed values (comma separated)"
+
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "該当する変換ジョブはありません。"
 msgstr "There is no matching conversion job."
@@ -727,14 +1246,30 @@ msgstr "No matching information was found."
 msgid "該当する文書が見つかりませんでした。"
 msgstr "No matching document was found."
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "詳細ツール"
+msgstr "Detailed tools"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "説明"
+msgstr "Detail"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 #: platform/frontend/src/foundation/auth/RequireAuth.tsx
 #: platform/frontend/src/foundation/auth/RequireRole.tsx
 msgid "読み込み中…"
 msgstr "Loading…"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "警告"
+msgstr "Warning"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "質問・キーワード"
@@ -744,8 +1279,16 @@ msgstr "Question or keyword"
 msgid "質問またはキーワードを入力…（例: 経費精算の締め日は？）"
 msgstr "Enter a question or keyword… (e.g. When is the expense reimbursement cutoff?)"
 
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "購読者"
+msgstr "Subscribers"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 msgid "追加"
+msgstr "Add"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "追加する"
 msgstr "Add"
 
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
@@ -756,6 +1299,62 @@ msgstr "Send"
 msgid "運用"
 msgstr "Operations"
 
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "運用サマリを取得できませんでした。"
+msgstr "The operations summary could not be loaded."
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "運用ダッシュボード"
+msgstr "Operations dashboard"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "運用ダッシュボードは利用できません。"
+msgstr "The operations dashboard is unavailable."
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "運用ツール"
+msgstr "Operations tools"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。"
+msgstr "Operations are covered by dedicated tools: Grafana (metrics and cost), Kiali (service mesh) and Jaeger / Tempo (distributed tracing). This screen is the entry point to them."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "適用 {appliedAt}"
+msgstr "Applied {appliedAt}"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "適用履歴はありません。"
+msgstr "There is no apply history."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "適用日時"
+msgstr "Applied at"
+
+#: knowledge/frontend/src/features/sc11-config/driftView.ts
+msgid "適用漏れ（宣言にあり実効に無い）"
+msgstr "Missing apply (declared but not effective)"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "適用者"
+msgstr "Applied by"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "適用者 {appliedBy}"
+msgstr "Applied by {appliedBy}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "選択してください"
+msgstr "Select…"
+
 #: knowledge/frontend/src/features/sc03-document/attributes.ts
 msgid "部門"
 msgstr "Department"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
+msgid "閲覧"
+msgstr "Read"
+
+#: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
+msgid "集計期間"
+msgstr "Period"

@@ -58,25 +58,27 @@ describe('Layout navigation (role-gated)', () => {
     expect(await within(nav()).findByRole('link', { name: '検索・質問' })).toBeInTheDocument();
   });
 
-  it('shows the 運用ダッシュボード (SC-10) link for platform-admin', async () => {
+  // #504: SC-10 のナビ表示名は hi-fi モックの左レール準拠で「ダッシュボード」である
+  // （従前は「運用ダッシュボード」と表示していた）。
+  it('shows the ダッシュボード (SC-10) link for platform-admin', async () => {
     await renderLayout(['platform-admin']);
     expect(
-      await within(nav()).findByRole('link', { name: '運用ダッシュボード' }),
+      await within(nav()).findByRole('link', { name: 'ダッシュボード' }),
     ).toBeInTheDocument();
   });
 
-  it('hides the 運用ダッシュボード link for users without the admin role (existence hidden)', async () => {
+  it('hides the ダッシュボード link for users without the admin role (existence hidden)', async () => {
     await renderLayout(['user']);
     await within(nav()).findByRole('link', { name: '検索・質問' });
-    expect(within(nav()).queryByRole('link', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+    expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
   });
 
   // SC-11 #140: 構成ビューアは ConfigViewer（管理者・運用者）のみメニュー表示（存在秘匿）。
   it('shows the 構成ビューア (SC-11) link for platform-operator', async () => {
     await renderLayout(['platform-operator']);
     expect(await within(nav()).findByRole('link', { name: '構成ビューア' })).toBeInTheDocument();
-    // 運用者は AdminOnly の運用ダッシュボードは見えない。
-    expect(within(nav()).queryByRole('link', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+    // 運用者は AdminOnly の SC-10（ダッシュボード）は見えない。
+    expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
   });
 
   it('hides the 構成ビューア link for non-privileged users (existence hidden)', async () => {
