@@ -3,7 +3,7 @@ import { apiFetch } from '@foundation/api/apiClient';
 import { ApiError } from '@foundation/api/ApiError';
 
 // SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細のデータ取得（/bff/documents/*）。
-// IADR-0126 決定 4・5: キーは BFF のパスに対応させ、**版履歴は詳細の成功後にだけ有効化**する
+// IADR-0126 決定 4: キーは BFF のパスに対応させ、**版履歴は詳細の成功後にだけ有効化**する
 // （詳細が 404〔存在秘匿〕の文書に対して版履歴を叩いても、BFF は同じ 404 を返す＝確実に失敗する往復）。
 
 export interface DocumentDetail {

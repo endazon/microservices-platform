@@ -8,7 +8,7 @@ import type { MessageDescriptor } from '@lingui/core';
 // `public` / `internal` / `confidential` / `restricted` の 4 値であり、**モックに現れるのは 2 値だけ**である。
 // 残る 2 値の表示名は計画のどこにも無く、実装が決めるとそれが事実上の用語定義になってしまう。
 // 機密区分は取り違えの影響が大きいため、推測で名前を与えず生値を出す
-// （feedback/20260804_sc01-03-bff-contract-gaps.md で計画へ環流済み）。
+// （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録あり。計画リポへの起票は未了）。
 
 /** 計画が画面ラベルを与えている属性キー。ここに無いキーはそのまま表示する。 */
 const ATTRIBUTE_LABELS: Record<string, MessageDescriptor> = {

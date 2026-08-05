@@ -13,7 +13,7 @@ related_ids:
   - IADR-0126
 author: claude
 created: 2026-07-08
-updated: 2026-08-04
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -44,12 +44,12 @@ related_specs:
 
 | UC-01 のフロー | 画面での現れ方 | テスト（`SearchChatPage.test.tsx` ほか） |
 | --- | --- | --- |
-| 基本 1. 利用者が質問またはキーワードを入力する | 入力が空／空白のみでは送信できない | `submit stays disabled until a non-blank question is entered` |
+| 基本 1. 利用者が質問またはキーワードを入力する | 入力が空／空白のみでは送信できない | `keeps submit disabled until a non-blank question is entered` |
 | 基本 2. システムが認可（ABAC）で権限スコープを解決する | **クライアントはスコープを送らない**（要求本文は `{ question }` のみ） | `sends only the question (the client never sends an ABAC scope)` |
-| 基本 3-4. 検索 → LLM が回答を生成する | `token` を逐次連結して表示。生成中は `role="status"` | `streams the answer tokens as they arrive` |
-| 基本 5. 出典（Wiki／原本リンク）付きで結果を返す | 出典行を SC-03 / SC-04 への導線として描く | `renders document citations linking to SC-03` / `renders wiki citations linking to SC-04` |
+| 基本 3-4. 検索 → LLM が回答を生成する | `token` を逐次連結して表示。生成中は `role="status"` | `streams the answer tokens as they arrive and shows the sources` |
+| 基本 5. 出典（Wiki／原本リンク）付きで結果を返す | 出典行を SC-03 / SC-04 への導線として描く | `renders document citations linking to SC-03` ／ `renders wiki citations linking to SC-04` ／ `does not infer wiki citations when no wiki base url is configured` |
 | **代替. キーワード検索のみで結果一覧を返し、AI回答を省略する** | 「キーワード検索のみ →」が入力中の語を `?q=` に載せて SC-02 へ | `offers a keyword-only search link carrying the current question` |
-| **例外. LLM が不調な場合は検索結果のみを返す（縮退運転）** | SSE の `error` で警告を出し、**検索結果一覧への導線**を示す | `degrades to keyword search when the answer stream fails` |
+| **例外. LLM が不調な場合は検索結果のみを返す（縮退運転）** | SSE の `error` で警告を出し、**検索結果一覧への導線**を示す | `degrades to keyword search when the answer stream reports an error event` ＋ `degrades to keyword search when the request itself fails`（**2 本に分かれている**） |
 | （FR-08）回答へのフィードバック | `done` 後に 👍/👎 が有効。`answerId` を添えて送信 | `sends feedback with the answer id after the stream completes` |
 
 ## フロント（Vitest + Testing Library）

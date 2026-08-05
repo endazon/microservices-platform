@@ -49,7 +49,7 @@ export interface RenderUnitRouteOptions {
 }
 
 /**
- * 検査用の QueryClient（#502 / IADR-0126 決定 6）。
+ * 検査用の QueryClient（#502 / IADR-0126 決定 5）。
  *
  * - **描画のたびに新しく作る**。使い回すと、あるテストが載せたキャッシュを次のテストが読む。
  * - `retry: false`: 本番の既定（`shouldRetryQuery`）は 5xx とネットワーク断を 1 度だけ再試行する。
@@ -93,7 +93,7 @@ export async function renderUnitRoute(
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   });
 
-  // ADR-0031 / IADR-0125 決定 3 / IADR-0126 決定 6（#502）: 実アプリ（App.tsx）と同じ順序で
+  // ADR-0031 / IADR-0125 決定 3 / IADR-0126 決定 5（#502）: 実アプリ（App.tsx）と同じ順序で
   // プロバイダを重ねる。画面は `<Trans>`（I18nProvider が要る）と TanStack Query を使うため、
   // ここで用意しないとユニット側のテストが本質でない wrapper を各ファイルで書くことになる
   // （#496 §未決事項 4 の引き受け）。

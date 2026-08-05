@@ -14,7 +14,7 @@ related_ids:
   - IADR-0126
 author: claude
 created: 2026-07-09
-updated: 2026-08-04
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -40,9 +40,9 @@ related_specs:
 | --- | --- | --- |
 | **UC-01 基本 5**（出典付きで返す）／**UC-02 基本 4**（結果と出典を返す） | 出典・一覧から `/docs/{id}` を開くと、本文・属性・版履歴が出る | `renders title, markdown body, attributes and version history` |
 | **UC-02 例外**（対象が権限外の場合は対象から除外する。**権限の有無は利用者に開示しない**） | 404 を「見つかりません」と中立に表示し、**5xx とは別**の表示にする | `shows a neutral not-found message on 404 (existence hidden)` |
-| **UC-07 基本 1**（利用者が Wiki で文書を開く） | 「Wikiで閲覧」から SC-04 へ | `links to SC-04 when a wiki base url is configured` |
-| **UC-07 例外**（権限外の文書は一覧・本文のいずれにも表示しない） | 本画面は 404 で何も出さない（上の中立表示と同一） | 同上 |
-| **[[IADR-0119]] 決定 1**（FR-17 / FR-18 の着手保留） | **AI 提案の承認欄と SC-18 への導線を描かない** | `does not render the AI suggestion panel or the knowledge-graph link (FR-17/FR-18 on hold)` |
+| **UC-07 基本 1**（利用者が Wiki で文書を開く） | 「Wikiで閲覧」から SC-04 へ | `links to SC-04 only when a wiki base url is configured` |
+| **UC-07 例外**（権限外の文書は一覧・本文のいずれにも表示しない） | 本画面は 404 で何も出さない（**UC-02 例外と同一の中立表示**） | `shows a neutral not-found message on 404 (existence hidden)` ＋ `never requests the version history when the document is hidden`（秘匿された文書へは追加の要求も出さない） |
+| **[[IADR-0119]] 決定 1**（FR-17 / FR-18 の着手保留） | **AI 提案の承認欄と SC-18 への導線を描かない** | `does not render the AI suggestion panel or the knowledge-graph link (deferred features)` |
 
 > **最後の行は「無いこと」を固定するテストである。** 保留対象を後から不用意に足すと落ちるため、
 > 「保留の解除は [[IADR-0119]] 決定 6 の手順を踏む」という制約がテストとしても効く。
@@ -58,7 +58,7 @@ related_specs:
 | 5 | 404 | 中立「文書が見つかりませんでした。」 | **UC-02 例外** / [[IADR-0009]] |
 | 6 | 5xx | `role="alert"`（404 とは別表示。サーバの状態であって文書の有無ではない） | — |
 | 7 | 本文取得失敗 | 詳細は表示、本文領域のみ「本文は利用できません。」へ縮退 | — |
-| 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | [[IADR-0126]] 決定 5 |
+| 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | [[IADR-0126]] 決定 4 |
 | 9 | 版履歴の失敗 | 版履歴パネルを出さず、本体表示は継続 | — |
 | 10 | **保留対象の不在** | 「AI 提案」「知識グラフ」の語が画面に無い | **[[IADR-0119]] 決定 1** |
 | 11 | ロケール `en` | 見出しが英語で描画される | ADR-0031 |
