@@ -67,8 +67,8 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 - ルート: `/admin/conversions`（05_screens §共通シェル「ルートパス」）
 - アクセス: **`platform-admin` または `platform-operator`**（[[IADR-0039]] / [[IADR-0042]]）。権限外は `NotFound`（存在秘匿）。
   **再変換の実行は `platform-admin` のみ**（計画 2026-08-04 確定）。
-  **ただし API（`POST /bff/conversion/jobs/{id}/retry`）は admin/operator のままであり、
-  計画の確定事項（`01_screens.md:257`「本画面のアクセス制御と API の権限を揃える」）は未達である。**
+  **ただし API（`POST /bff/conversion/jobs/{id}/retry`）は admin/operator のままである。**
+  **計画の確定事項（`01_screens.md:257`「本画面のアクセス制御と API の権限を揃える」）は未達である。**
   **API を直接叩ける運用者は依然 retry でき、画面の制御はその穴を塞がない。**
   解消は **#501**（#503 の直後に片付ける。[[IADR-0127]] 決定 1）。
 
