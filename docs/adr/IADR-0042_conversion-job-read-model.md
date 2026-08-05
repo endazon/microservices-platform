@@ -9,9 +9,10 @@ related_ids:
   - ADR-0003
   - ADR-0012
   - IADR-0039
+  - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -43,6 +44,19 @@ SC-07 は変換状況・失敗ジョブの一覧と人手補正（再変換）�
 1. **ConversionService に変換ジョブの読み取りモデルを追加する。** 変換コンシューマ（`RawDocumentFetchedConsumer`）が受信・成功・失敗の各ライフサイクルを `IConversionJobStore` に記録する。失敗時は記録後に例外を**再送出**し、MassTransit の再試行→デッドレター挙動は変えない（記録は可視化・人手補正のためのサイドカー）。
 2. **MVP はインメモリ実装（`InMemoryConversionJobStore`・singleton）**とする。永続化（Postgres+EF）・複数インスタンス共有は follow-up（下記）。理由: 本 PR の主眼は SC-07 画面のエンドツーエンド実現であり、新規 DB スキーマ＋マイグレーション導入は画面実装フェーズとしては過剰・高リスク。ワーカーは現状単一インスタンス（dev）で、状況ビューの MVP としてインメモリで十分機能する。
 3. **API（メッシュ内部・ワーカー上）**: `GET /jobs`（`?status=` 絞り込み）・`GET /jobs/{id}`・`POST /jobs/{id}/retry`（原本イベント `RawDocumentFetched` を再発行して再変換）。ワーカー自身は最小 HTTP サーフェスに留め認可は課さない（[[IADR-0029]] と同方針。ingress 非公開）。**認可は BFF で管理者・運用者に限定**（`/bff/conversion/jobs`。[[IADR-0039]]）。フロントは `RequireRole` で存在秘匿。
+
+> **［2026-08-05 追記・retry は「管理者・運用者」の例外（#501 / [IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md)）］**
+> 計画（[05_screens §SC-07 §データソース](../../planning/projects/microservices-platform/05_screens/01_screens.md)・**2026-08-04 確定**）が
+> 「**再変換の実行権限は管理者ロールに限る**。画面のアクセス制御と API の権限を揃える」と定めた。
+> よって本決定の「認可は BFF で管理者・運用者に限定」は、**`POST /bff/conversion/jobs/{id}/retry` には適用されない**。
+> retry は **`platform-admin` のみ**である（[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 1。
+> 実装はグループの認可へ `PlatformAuthPolicies.AdminOnly` を重ね、AND 合成で admin のみに絞る）。
+> **照会（`GET /jobs`・`GET /jobs/{id}`）は本決定のまま「管理者・運用者」で据え置く** ——
+> 2026-08-04 の確定は再変換の実行権限に限られ、閲覧ロールは planning#198 提案 8 で裁定中のためである
+> （[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 2）。
+> **ワーカー自身に認可を課さない点は変更していない**（[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 3）。
+> その前提であるネットワーク分離は `NetworkIsolationTests` の回帰ガードへ載せた。
+> **本決定は `Accepted` のまま有効**であり、上記 2 点（retry の例外化・下流の代償統制の明文化）だけが部分改定である。
 
 ## 根拠 / 代替案
 

@@ -1,0 +1,140 @@
+---
+title: IADR-0128 変換ジョブの再変換は BFF で管理者限定に絞り、照会は据え置き、下流は代償統制を機械検査で固定する
+type: impl-adr
+status: Accepted
+related_ids:
+  - FR-12
+  - UC-06
+  - SC-07
+  - IADR-0042
+  - IADR-0029
+  - IADR-0026
+  - IADR-0039
+author: Claude
+created: 2026-08-05
+updated: 2026-08-05
+plan_refs:
+  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+---
+
+# IADR-0128: 変換ジョブの再変換は BFF で管理者限定に絞り、照会は据え置き、下流は代償統制を機械検査で固定する
+
+- 状態: Accepted
+- 日付: 2026-08-05
+- 決定者: Claude（実装）
+
+## 起点・関連
+
+- 関連する計画書 ID: **FR-12** ／ **UC-06** ／ **SC-07**
+  （[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-07 §データソース・**2026-08-04 確定**）
+- 関連 ADR: [[IADR-0042]]（決定 3 を本 IADR が部分改定＝ retry を例外化）／
+  [IADR-0029](IADR-0029_config-info-api-placement-and-drift-granularity.md)（ワーカーの最小 HTTP サーフェス）／
+  [IADR-0026](IADR-0026_mesh-mtls-supersedes-network-isolation.md)（mTLS 第一防御・ネットワーク分離は多層防御）／
+  [IADR-0039](IADR-0039_datasource-management-bff-and-role-gating.md)（管理系ロール）
+- 関連する実装仕様書: [作業仕様書 #501](../specs/20260805_issue-501_retry-admin-only.md) ／
+  [画面仕様書 SC-07](../screens/SC-07_conversion-jobs.md) ／ [テスト仕様書 SC-07](../tests/SC-07_conversion-jobs.md)
+- 本リポジトリの起点: #501（画面側 #503 / PR #508・親 #454）
+
+## コンテキストと課題
+
+計画は 2026-08-04 に「**再変換の実行権限は管理者ロールに限る**。**本画面のアクセス制御と API の権限を揃える**
+—— API 側だけ緩いと画面の制御が意味を持たない」と確定した。しかし実装（`de55761`）では
+`MapGroup("/bff/conversion/jobs")` が**グループ一括で admin または operator** を許しており、`retry` も同じ扱いだった
+（[[IADR-0042]] 決定 3 が定めた姿）。画面のボタンを隠しても、API を直接叩ける運用者は retry できる。
+
+同時に、次の 2 点が「単純にグループを絞る」ことを許さない。
+
+1. **閲覧ロールの裁定は未了**である（planning#198 提案 8 で計画へ照会中）。グループ全体を admin へ絞ると、
+   **確定していない閲覧の権限まで実装が先に変えてしまう**。
+2. **下流（ConversionService の `/jobs/*`）はそもそも認可を課していない**。BFF だけ絞って
+   「揃った」と称すると、下流に到達できる経路がある限り穴は残る。
+
+決めること: (1) retry を admin へ絞る**方法**、(2) 照会の扱い、(3) 下流に対する措置。
+
+## 検討した選択肢
+
+### (1) retry を admin へ絞る方法
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| **A（採用）** | グループの認可はそのまま、`retry` にだけ `RequireAuthorization(PlatformAuthPolicies.AdminOnly)` を重ねる | 認可メタデータは AND 合成されるため実効は admin のみ。**グループ定義に差分が出ない＝照会が巻き添えにならないことがコード上で自明**。既存の名前付きポリシー（`/bff/authz`・`/bff/dashboard` と同一）を再利用でき、管理者限定の表現が 1 種類に保たれる |
+| B | グループを admin 限定にし、照会 2 本に operator 許可を個別に付け直す | 実効は同じだが、**閲覧の権限指定が「グループ＋例外」から「例外＋例外」へ散る**。閲覧の裁定（planning#198）が出たときに触る箇所が増える。差分も大きく、レビューで「閲覧も変わったのでは」と読み違えられる |
+| C | `retry` を別の `MapGroup` へ分離する | 意図は最も明示的だが、同一プレフィックスのグループが 2 つ並び、共通の `Forwarding` ヘルパや `WithTags` が重複する。**構造の変更に見合う利得が無い** |
+| D | 認可を BFF に置かず、下流（ConversionService）で判定する | 下流には認証基盤が無い（§(3)）。エッジ認証の一元化（[[IADR-0042]] 決定 3・[[IADR-0039]]）を崩す |
+
+### (2) 照会の扱い
+
+| 案 | 評価 |
+| --- | --- |
+| **据え置き（採用）** | 2026-08-04 の確定は「**再変換の実行権限**」に限られる。閲覧は planning#198 提案 8 で裁定中であり、**計画に無い制限を実装が先に作らない** |
+| 一緒に admin へ絞る | 「画面と API を揃える」の語を拡大解釈することになる。裁定が「閲覧は operator も可」と出た場合、**実装が計画を追い越して壊した**ことになり戻す作業が要る |
+
+### (3) 下流（ConversionService `/jobs/*`）への措置
+
+実測（作業仕様書 §下流の調査）:
+
+- `MapGroup("/jobs")` に `RequireAuthorization` は**無い**。`Program.cs` は `AddPlatformAuth` /
+  `UseAuthentication` / `UseAuthorization` を**呼んでいない**（認証基盤そのものが無い）。
+  すなわち下流は「operator に緩い」のではなく **ロールの区別が存在しない**。
+- 到達性: compose は `expose` のみ（host 非公開）／Helm は ClusterIP ＋ default-deny NetworkPolicy ／
+  Istio VirtualService の経路は `/bff/*` → bff-service と catch-all → frontend-service のみ。
+  **外部から conversion-service へ到達する経路は無い**。
+
+| 案 | 評価 |
+| --- | --- |
+| **代償統制を機械検査へ載せる（採用）** | 「認可を課さない代わりにネットワークで塞ぐ」という前提が、`NetworkIsolationTests` の列挙から `conversion-service` が漏れていたため**機械で守られていなかった**。列挙に加え、`ports:` の追加を CI で止める |
+| 下流に `RequireAuthorization` を足す | **そのままでは起動後に `/jobs/*` が全滅する**（認可ミドルウェア不在で `Endpoint contains authorization metadata, but a middleware was not found`）。認証配線と全環境への `Auth:Authority` 注入を伴い、[[IADR-0029]] / [[IADR-0042]] 決定 3 の構造変更になる。**本 issue が求める「揃える」の範囲を超える独立の決定** |
+| 何もしない | 代償統制が無防備なまま残る。**BFF を絞った意味が構成変更 1 行で失われうる** |
+
+## 決定
+
+1. **`POST /bff/conversion/jobs/{id}/retry` は `platform-admin` のみに限定する。** グループの認可
+   （admin または operator）は残したまま、当該エンドポイントに `PlatformAuthPolicies.AdminOnly` を重ねる（案 A）。
+   実効要件は「(admin または operator) かつ admin」＝ **admin のみ**。
+2. **照会（`GET /bff/conversion/jobs`・`GET /bff/conversion/jobs/{id}`）は据え置く**（admin または operator）。
+   閲覧ロールは planning#198 提案 8 の裁定に従い、出たら追随する。
+   **operator が照会できることをテストで固定**し、将来の巻き添え変更を検出できるようにする。
+3. **下流 ConversionService の `/jobs/*` にはアプリ層の認可を課さない**（[[IADR-0042]] 決定 3・[[IADR-0029]] を維持）。
+   代わりに、その前提である**ネットワーク分離を機械検査へ載せる**——
+   `NetworkIsolationTests.InternalAppServices` に `conversion-service` を加え、host 公開の回帰を CI で止める。
+4. **権限テストは「拒否される」側を主とする。** `Retry_AsOperator_IsForbidden`（403）を置く。
+   「admin で通ること」だけでは、実は誰でも通る状態を検出できない。
+
+## 理由
+
+- 決定 1 の形（案 A）は、**変更の影響範囲がコードの差分と一致する**。グループ定義に手を入れないため、
+  「照会の権限は変えていない」ことをレビューで grep 1 回で確認できる。認可メタデータの AND 合成は
+  ASP.NET Core の `AuthorizationPolicy.CombineAsync` の仕様であり、`/bff/dashboard`・`/bff/authz` で
+  既に使っている名前付きポリシーをそのまま重ねられる。
+- 決定 2 は「計画に忠実」の直接の帰結である。**確定した範囲だけを実装し、未確定を先取りしない。**
+- 決定 3 は、下流の姿勢が**ロールの非対称ではない**という実測に基づく。BFF を絞ることで
+  「運用者ロールを持つ人間が retry を実行する」経路は塞がる（運用者が持つのは Keycloak ロールであって
+  クラスタ内ネットワークではない）。同 Namespace 内 Pod や `kubectl port-forward` からの到達は
+  Keycloak ロールではなく**クラスタ権限**の問題で、[[IADR-0026]] の防御対象である。
+  一方、その代償統制が**機械で守られていなかった**のは実際の欠落であり、そこを塞ぐのが費用対効果に優れる。
+
+## 結果
+
+- 良い影響:
+  - 計画 2026-08-04 の確定（再変換＝管理者ロール限定）が API 面で満たされ、画面の制御が意味を持つ。
+  - 照会の権限が未裁定のまま据え置かれ、計画の追い越しが起きない。
+  - 下流の「認可を課さない」前提が回帰ガード付きになる（`ports:` の追加で CI が落ちる）。
+- 悪い影響・トレードオフ:
+  - **retry の認可がグループ定義とエンドポイント定義の 2 箇所に分かれる**。読み手が
+    「グループが admin+operator だから retry も operator 可」と誤読しうるため、コード内コメントと
+    [[IADR-0042]] 決定 3 の［追記］の両方で例外であることを明示する。
+  - **画面と API の一時的な不整合**。本変更が PR #508（画面側）より先にマージされると、その間だけ
+    「operator に再変換ボタンが見えるが API は 403」になる。計画が禁じたのは「API 側だけ緩い」向きであり、
+    逆向きの一時不整合は許容できる（かつ #508 のマージで解消する）。
+  - 下流は依然として認証を持たない。ゼロトラストの徹底は未達である（下記フォローアップ 1）。
+- フォローアップ:
+  1. **ConversionService へのアプリ層認証の要否**を別 issue で判断する（同 Namespace 内 Pod からの到達は残る）。
+     判断時は [[IADR-0029]] の「最小 HTTP サーフェス」との整合を再検討する。
+  2. `ingestion-service` も `NetworkIsolationTests` の列挙外である（同型の穴）。
+  3. **閲覧ロールの裁定**（planning#198 提案 8）が出たら、照会側の権限と決定 2 を追随させる。
+
+## 関連
+
+- Supersedes: なし（[[IADR-0042]] 決定 3 を**部分改定**する。同決定の本文に日付付き［追記］を入れた）
+- Superseded by: なし
