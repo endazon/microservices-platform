@@ -78,7 +78,12 @@ related_specs:
 `Deployment/NetworkIsolationTests.cs`
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
-| 1 | 下流の到達性 | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**認可を課さない前提（[[IADR-0128]] 決定 3）を機械検査で固定**する | `InternalServices_MustNotPublishHostPorts` |
+| 1 | 下流の到達性（compose） | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**認可を課さない前提（[[IADR-0128]] 決定 3）を機械検査で固定**する | `InternalServices_MustNotPublishHostPorts` |
+| 2 | 下流の到達性（本番系 Helm） | Service を `type: NodePort` / `LoadBalancer` にすると BFF 以外の公開エッジができる。`service.yaml` に `type:` / `nodePort:` が現れないことを固定する | `InternalServices_HelmServicesMustStayClusterIp` |
+
+> **本表が固定するのは到達不能の論拠 4 本のうち 2 本である。** 残る 2 本
+> （NetworkPolicy への `istio-system` 例外追加・Istio VirtualService への内部サービス向けルート追加）は
+> 機械では止まらない（[[IADR-0128]] フォローアップ 4。対象が conversion に限らないため別 issue）。
 
 ## フロントエンド（Vitest + Testing Library）
 

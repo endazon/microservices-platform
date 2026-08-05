@@ -108,8 +108,15 @@ plan_refs:
      **既に決めている**。本 IADR は §(3) の実測でその前提が崩れていないことを確かめ、**維持することを確認する**
      （retry を BFF で絞ったことは下流の姿勢に影響しない）。
    - **（本 IADR が新たに決める部分）** その前提である**ネットワーク分離（代償統制）を機械検査へ載せる**。
-     `NetworkIsolationTests.InternalAppServices` に `conversion-service` を加え、
-     compose の host 公開の回帰を CI で止める（**列挙から漏れていたため、これまで誰も止められなかった**）。
+     到達不能の論拠は **4 本**（compose の host 非公開／Helm Service が ClusterIP ／ NetworkPolicy の
+     既定 deny ／ Istio VirtualService に経路が無い）であり、本 IADR は**そのうち 2 本**を固定する。
+     (a) `NetworkIsolationTests.InternalAppServices` に `conversion-service` を加え、compose の
+     host 公開の回帰を止める（**列挙から漏れていたため、これまで誰も止められなかった**）。
+     (b) `InternalServices_HelmServicesMustStayClusterIp` で Helm の `service.yaml` に `type:` /
+     `nodePort:` が現れないことを固定する（**`type` の変更は最も起こりやすい公開経路**であり、
+     同ファイルには Helm 側を見る先例〔`WikiJs_HelmIngressDisabledByDefault`〕がある）。
+     **残る 2 本（NetworkPolicy の例外追加・Istio VirtualService へのルート追加）は機械では止まらない**
+     （下記フォローアップ 4）。
 4. **権限テストは「拒否される」側を主とする。** `Retry_AsOperator_IsForbidden`（403）を置く。
    「admin で通ること」だけでは、実は誰でも通る状態を検出できない。
 
@@ -133,7 +140,10 @@ plan_refs:
 - 良い影響:
   - 計画 2026-08-04 の確定（再変換＝管理者ロール限定）が API 面で満たされ、画面の制御が意味を持つ。
   - 照会の既知の逸脱（[[IADR-0039]] 決定 1 由来）が据え置かれ、planning#198 の裁定を実装が先取りしない。
-  - 下流の「認可を課さない」前提が回帰ガード付きになる（`ports:` の追加で CI が落ちる）。
+  - 下流の「認可を課さない」前提を支える**到達不能の論拠 4 本のうち 2 本**が回帰ガード付きになる ——
+    compose への `ports:` 追加と、Helm `service.yaml` への `type:` / `nodePort:` 追加で CI が落ちる。
+    **残る 2 本（NetworkPolicy の例外追加・Istio VirtualService へのルート追加）は依然として機械では
+    止まらない**（フォローアップ 4）。
 - 悪い影響・トレードオフ:
   - **retry の認可がグループ定義とエンドポイント定義の 2 箇所に分かれる**。読み手が
     「グループが admin+operator だから retry も operator 可」と誤読しうるため、コード内コメントと
@@ -149,6 +159,10 @@ plan_refs:
   3. **閲覧ロールの差異の裁定**（planning#198 提案 8。**計画は SC-07 全体を管理者限定と定め、実装は
      admin ＋ operator** という既知の逸脱）が出たら、計画改訂・実装是正のいずれであれ照会側の権限と
      決定 2 を追随させる。SC-05・SC-06 も同じ [[IADR-0039]] 決定 1 の適用先であり、まとめて扱う。
+  4. **代償統制の残り 2 本を機械検査へ載せる** —— NetworkPolicy への `istio-system` 例外追加と、
+     Istio VirtualService への内部サービス向けルート追加は、いまも誰も止められない。
+     いずれも「BFF 以外の公開エッジを作る」変更であり、対象は conversion に限らず内部サービス全体である
+     （本 issue の射程を超えるため別 issue で扱う）。
 
 ## 関連
 

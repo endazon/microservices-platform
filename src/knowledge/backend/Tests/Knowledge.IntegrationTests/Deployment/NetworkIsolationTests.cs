@@ -66,6 +66,26 @@ public sealed class NetworkIsolationTests
         blocks["bff"].Should().Contain("5000:8080");
     }
 
+    // FR-12, SC-07, Issue #501, IADR-0128 決定3: compose の host 非公開は代償統制の 1 本にすぎない。
+    // 「外部から後段へ到達できない」の論拠は 本番系（Helm）の Service が ClusterIP であること・
+    // NetworkPolicy が既定 deny であること・Istio VirtualService に経路が無いこと にも支えられている。
+    // このうち **最も起こりやすい公開経路である Service の type** を機械検査に載せる（残り 2 本は
+    // IADR-0128 フォローアップ 4）。service.yaml は .Values.services 全件を 1 枚の range で描画するため、
+    // ここに type: が現れないこと＝全内部サービスが既定の ClusterIP であることを意味する。
+    [Fact]
+    public void InternalServices_HelmServicesMustStayClusterIp()
+    {
+        var template = ReadHelmServiceTemplate();
+
+        // type: を書かない（＝ ClusterIP）。値で差し替えられる形（type: {{ ... }}）も禁止する。
+        template.Should().NotMatchRegex(@"(?m)^\s*type:",
+            "IADR-0128 決定3: 内部サービスの Service は既定 ClusterIP のままとする"
+            + "（NodePort / LoadBalancer 化は BFF 以外の公開エッジを作る）。"
+            + "将来 type を values で持たせる場合は、本検査を values 側の検査へ置き換えること");
+        template.Should().NotMatchRegex(@"(?m)^\s*nodePort:",
+            "IADR-0128 決定3: 内部サービスに nodePort を割り当ててはならない");
+    }
+
     // IADR-0032 (#124): dev（compose）は Wiki.js 管理 UI への直接アクセス便宜のため 3001 を公開する
     // （dev 公開は残す）。この dev 便宜の公開は wiki-js に限定され、他の内部アプリサービスへは波及しない
     // ことを InternalServices_MustNotPublishHostPorts が引き続き保証する。
@@ -98,6 +118,11 @@ public sealed class NetworkIsolationTests
 
     private static string ReadComposeFile() =>
         File.ReadAllText(ResolveRepoFile(Path.Combine("deploy", "docker-compose.yml")));
+
+    // Helm の Service テンプレート（.Values.services 全件を range で描画する 1 枚）。
+    private static string ReadHelmServiceTemplate() =>
+        File.ReadAllText(ResolveRepoFile(Path.Combine(
+            "deploy", "helm", "microservices-platform", "templates", "service.yaml")));
 
     // Helm values.yaml から wikijs トップレベルブロック（次のトップレベルキーまで）を抽出する。
     private static string ReadHelmWikijsValues()

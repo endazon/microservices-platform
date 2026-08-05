@@ -119,6 +119,9 @@ var g = app.MapGroup("/jobs").WithTags("Conversion Jobs");
 [`NetworkIsolationTests.cs`](../../src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs) の
 `InternalAppServices` は 12 サービスを列挙するが、**`conversion-service` はその中に無い**。
 すなわち上記 2 の「host 非公開」は**回帰ガードの外**にあり、誰かが `ports:` を足しても CI は沈黙する。
+**同じことが本番系にも当てはまる**: 上記 2 の「Service は ClusterIP」を固定する検査も無く、
+`templates/service.yaml` に `type: NodePort` を 1 行足せば全内部サービスが host 公開になる
+（同ファイルは `.Values.services` 全件を 1 枚の `range` で描画するため影響は conversion に留まらない）。
 
 **下流に対する本作業の措置は、この代償統制（compensating control）を機械検査に載せること**とする
 （アプリ層認可の新設ではなく。理由は §含まないもの と [IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md)）。
@@ -150,8 +153,21 @@ g.MapPost("/{id:guid}/retry", ...)
 
 ### 2. 下流: 代償統制の機械検査
 
-`NetworkIsolationTests.InternalAppServices` に `conversion-service` を加える
-（`ports:` を足した瞬間に CI が落ちる）。**認可を足すのではなく、認可を課さない前提を固定する**。
+**認可を足すのではなく、認可を課さない前提を固定する**。到達不能の論拠は 4 本（compose の host 非公開／
+Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualService に経路なし）あり、
+本作業は**そのうち 2 本**を機械検査へ載せる。
+
+1. `NetworkIsolationTests.InternalAppServices` に `conversion-service` を加える
+   （compose に `ports:` を足した瞬間に CI が落ちる）。
+2. `InternalServices_HelmServicesMustStayClusterIp` を新設し、Helm の
+   [`templates/service.yaml`](../../deploy/helm/microservices-platform/templates/service.yaml) に
+   `type:` / `nodePort:` が現れないことを固定する。同ファイルは `.Values.services` 全件を 1 枚の
+   `range` で描画するため、`type:` 不在＝全内部サービスが既定 ClusterIP であることを意味する。
+   **`type` の変更は最も起こりやすい公開経路**であり、Helm 側を見る先例
+   （`WikiJs_HelmIngressDisabledByDefault`）が同ファイルにある。
+
+**残る 2 本（NetworkPolicy の例外追加・Istio VirtualService へのルート追加）は機械では止まらない**。
+対象が conversion に限らず内部サービス全体であるため本 issue の射程を超える（フォローアップ 5）。
 
 ### 3. 文書
 
@@ -173,7 +189,8 @@ g.MapPost("/{id:guid}/retry", ...)
 | 4 | `processing` 中の 409 `not_retryable` が**変わっていない** | `Retry_ProcessingJob_Returns409NotRetryable`（新規・本文の `error` まで検証） | `ConversionJobEndpointTests.cs` |
 | 4b | 同 409 が BFF を素通りする | `Retry_WhenNotRetryable_Passes409Through` | `BffConversionEndpointTests.cs` |
 | 5 | 照会の権限が**変わっていない** | `GetList_AsOperator_IsAllowed`（既存）＋ `GetById_AsOperator_IsAllowed`（新規） | 同上 |
-| 6 | 下流の host 非公開が回帰しない | `InternalServices_MustNotPublishHostPorts`（`conversion-service` を追加） | `NetworkIsolationTests.cs` |
+| 6 | 下流の host 非公開が回帰しない（compose） | `InternalServices_MustNotPublishHostPorts`（`conversion-service` を追加） | `NetworkIsolationTests.cs` |
+| 6b | 本番系（Helm）の Service が外部公開型にならない | `InternalServices_HelmServicesMustStayClusterIp`（新規） | 同上 |
 
 **#1 が本作業の要**である。権限テストが「admin で通ること」だけだと、実は誰でも通る状態を検出できない。
 
@@ -252,3 +269,6 @@ g.MapPost("/{id:guid}/retry", ...)
    「画面には operator にも再変換ボタンが見えるが API は 403」という状態になる。
    計画は「API 側だけ緩い」ことを禁じており**逆向きの一時不整合は許容範囲**だが、
    親が調停する（報告に申し送り済み）。
+5. **代償統制の残り 2 本の機械化**（NetworkPolicy への `istio-system` 例外追加・Istio VirtualService への
+   内部サービス向けルート追加）。いずれも「BFF 以外の公開エッジを作る」変更であり、対象は conversion に
+   限らず内部サービス全体である（[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) フォローアップ 4）。
