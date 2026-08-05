@@ -169,7 +169,7 @@ issue #512 §受け入れ基準 を検証可能な形へ展開する。
 | 単体（platform） | `foundation/routing/initialChunk.test.ts`（新規） | 共通シェル・`NotFound`・認証ガード・`AuthProvider`・`@platform/ui` が**初期側に残っている**こと |
 | 単体（platform） | `foundation/ui/Layout.test.tsx`（改訂） | 存在秘匿の markup 一致の**比較範囲を Outlet の器まで広げた**（§変異試験 M4c） |
 | 単体（knowledge） | SC-10 / SC-11 / opsFlow のテスト（改訂） | 遅延で 1 tick 遅れる値の取得を `findBy*` で待つ |
-| テスト基盤 | `platform/frontend/src/test/setup.ts`（改訂） | Testing Library の `asyncUtilTimeout` を 1000 → 5000 ms（理由は §遅延境界が持ち込んだテストの揺れ） |
+| テスト基盤 | `platform/frontend/src/foundation/testing/renderUnitRoute.tsx`（改訂） | Testing Library の `asyncUtilTimeout` を 1000 → 5000 ms。**ガード付き画面を描画する唯一の入口に閉じる**（横断 setup へ置かない理由は §遅延境界が持ち込んだテストの揺れ） |
 | E2E | `e2e/bundle-splitting.smoke.spec.ts`（新規） | **実ブラウザ**で分割成果物から起動できること・要求した資産がすべて 200 であること |
 
 **検出のしかた（2 本の新規テストに共通）**: `vi.mock` の factory は**実際に import されたときにだけ
@@ -339,7 +339,7 @@ V5b は「`@platform/ui` を初期側に置く費用が本当にどこから来�
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components` で、本作業の着手前と同数） |
-| 単体テスト | `pnpm run test` / `pnpm run test:coverage` | **59 files / 557 tests** 全 green（`test:coverage` は **8 回連続**で green を確認。理由は §遅延境界が持ち込んだテストの揺れ）（本作業前は **57 files / 539 tests**。差は新規 2 ファイル ＝ `routeSplitting.test.ts` 12 件 ＋ `initialChunk.test.ts` 6 件） |
+| 単体テスト | `pnpm run test` / `pnpm run test:coverage` | **59 files / 557 tests** 全 green（`test:coverage` は **6 回連続**で green を確認。理由は §遅延境界が持ち込んだテストの揺れ）（本作業前は **57 files / 539 tests**。差は新規 2 ファイル ＝ `routeSplitting.test.ts` 12 件 ＋ `initialChunk.test.ts` 6 件） |
 | ビルド | `pnpm run build` | green・**500 kB 警告なし**（§計測 に生の出力） |
 | E2E | `playwright test`（後述の条件） | **13 tests 全 green**（本作業で 1 本追加＝`bundle-splitting.smoke.spec.ts`） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（検出 0 件。走査は 20 ファイル・分割前は 4 ファイル。**ファイル数は環境依存の参考値**であり判定条件ではない——画面やチャンク規則が変われば動く。`build:analyze` 直後の dist でも 20 のままであることを確認した＝計測出力が走査母集団に混ざらない） |
@@ -392,12 +392,21 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
 | # | 症状 | 原因 | 直し方 |
 | --- | --- | --- | --- |
 | 1 | SC-10 / SC-11 / opsFlow の 3 か所で、見出しを `findBy*` で待った直後の `getByText` が値を見つけられない | 見出しは画面の静形、値は `useQuery` の解決後。mount が 1 tick 遅れたぶん取得の解決も後ろへずれた | 値の側も `findBy*` で待つ |
-| 2 | `sc05-documents` の一覧テストが **`pnpm run test:coverage` でのみ 9 回中 1 回落ちる**（`Unable to find role="link"`。`pnpm run test` では再現しない） | ガード配下の画面は `router.load()` の事前読み込みが効かず、**`findBy*` の待ち時間に動的 import が乗る**。カバレッジ計測を有効にすると既定の 1000 ms に収まらないことがある | `asyncUtilTimeout` を 5000 ms へ（`platform/frontend/src/test/setup.ts`） |
+| 2 | **ガード配下の画面（SC-05 / SC-09 で実測）**のテストが **`pnpm run test:coverage` でのみ落ちることがある**（`sc05-documents` の一覧が `Unable to find role="link"`。9 回中 1 回。`pnpm run test` では再現しない） | ガード配下の画面は `router.load()` の事前読み込みが効かず、**`findBy*` の待ち時間に動的 import が乗る**。カバレッジ計測を有効にすると既定の 1000 ms に収まらないことがある | `asyncUtilTimeout` を 5000 ms へ。**適用範囲はガード付き画面を描画する唯一の入口（`@foundation/testing/renderUnitRoute`）に閉じる** |
 
 **2 は本作業が持ち込んだ揺れである**（着手前の `68d91ce` は `pnpm run test:coverage` を **6 回中 6 回** green）。
-是正後は **8 回中 8 回** green を確認した（所要は 39〜41 秒で、是正前と変わらない——
-`waitFor` のポーリングは条件成立で止まるため、上限を延ばしても通るテストは遅くならない）。
-**「たまたま緑だった」を最終確認にしない**ために、`test:coverage` を繰り返し実走して確かめている。
+`waitFor` のポーリングは条件成立で止まるため、**上限を延ばしても通るテストは遅くならない**。
+
+**適用範囲は横断 setup ではなく `renderUnitRoute` に閉じている。**
+当初は `platform/frontend/src/test/setup.ts` に `configure({ asyncUtilTimeout: 5000 })` を置いていたが、
+このファイルは `src/vitest.config.ts` の `setupFiles` ＝**全ユニット横断の setup** であり、
+遅延ルートと無関係なテスト（AST・`@platform/ui`・純関数）まで巻き込む。
+それは「**1 秒で落ちるべき退行が 5 秒待って落ちる**」経路を作るだけで、何も守らない。
+延長が要るのは**ガード配下の画面を描画するテストだけ**なので、その唯一の入口である
+`@foundation/testing/renderUnitRoute`（本ワークスペースで**画面テスト 14 ファイル**が使う）へ移した。
+
+**「たまたま緑だった」を最終確認にしない**ために、局所化した状態で `pnpm run test:coverage` を
+**6 回連続**実走し、**6 回とも 59 files / 557 tests 全 green**（所要 38.2〜38.8 秒）であることを確認した。
 
 ## 変異試験（「壊すと落ちる」ことの実測）
 

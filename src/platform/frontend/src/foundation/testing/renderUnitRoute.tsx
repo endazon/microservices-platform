@@ -9,6 +9,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
+import { configure } from '@testing-library/dom';
 import { act, render } from '@testing-library/react';
 import type { User } from 'oidc-client-ts';
 import { AuthContext } from '@foundation/auth/AuthContext';
@@ -75,6 +76,18 @@ export async function renderUnitRoute(
   createRoutes: (shell: ShellRoute) => readonly AnyRoute[],
   { initialEntry, roles = [] }: RenderUnitRouteOptions,
 ) {
+  // NFR, ADR-0031 / IADR-0134 決定 2: ガード（`RequireRole`）配下の画面は
+  // `router.load()` の事前読み込みが効かない（`preloadRouteComponents` は
+  // `route.options.component.preload` しか見ず、ガードで包んだ素の関数は `.preload` を持たない）。
+  // よって**描画が始まってから動的 import が走り**、`findBy*` の待ち時間にその往復が乗る。
+  // 既定の 1000 ms はカバレッジ計測を有効にすると足りないことがある（実測: `sc05-documents` /
+  // `sc09-admin-abac` が落ちた。`pnpm run test` では再現せず `pnpm run test:coverage` でのみ再現）。
+  //
+  // **延長はこの入口に閉じる**——横断 setup（`platform/frontend/src/test/setup.ts`）に置くと
+  // ガードと無関係なテスト（AST・`@platform/ui`・純関数）まで巻き込み、
+  // 「1 秒で落ちるべき退行が 5 秒待って落ちる」経路を作る。
+  configure({ asyncUtilTimeout: 5000 });
+
   const testRoot = createRootRoute({ component: Outlet });
   // 実アプリの shellRoute と同じ id を持つ検査用レイアウト。ここだけが型の付け替えであり、
   // ユニット側から見た形（親ルート）は実アプリと同一である。
