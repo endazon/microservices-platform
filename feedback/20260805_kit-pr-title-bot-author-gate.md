@@ -12,6 +12,9 @@ created: 2026-08-05
 
 # フィードバック: `pr-title.yml` の bot 除外条件がキット全体に同じ穴を作っている
 
+> **計画リポジトリへ起票済み: [planning#202](https://github.com/endazon/project-planning/issues/202)**（2026-08-06）。
+> 実装側の是正は microservices-platform#527（マージ済み）で完了している。
+
 ## 種別
 
 新たな制約（キット由来の配布物の欠陥。**同期先の全実装リポジトリで同じ穴が空いている**）。
