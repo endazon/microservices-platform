@@ -90,3 +90,18 @@ superseded_by: ./20260705_wiki-js-deployment-follows-adr-0011.md
 >   3. FR-13 / UC-07 / 画面設計の「既存OSS Wiki」表現を「自前 Wiki 閲覧 API」に更新。
 >   4. `02_requirements/01_requirements.md` の「ADR-0001〜0014 は確定済み」と ADR-0011 `Proposed` の不整合を是正。
 > - 根拠: ADR-0011 自身が指摘した「認可の二重管理リスク」を自前 API が構造的に排除。要件は閲覧のみ（編集は UC-03）で Wiki.js は過剰。詳細は実装側 IADR-0013 を参照。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: rejected（取り下げ）。理由: 実装 Issue #66 で人間が (a) Wiki.js 配備 を選択したため、本記録が提案した ADR-0011 の Supersede は成立しない**（代わりに後継記録 [20260705_wiki-js-deployment-follows-adr-0011.md](./20260705_wiki-js-deployment-follows-adr-0011.md) が ADR-0011 の `Accepted` 化として反映された。実装側も IADR-0013 を Superseded とし IADR-0020 / IADR-0021 で追従済み）。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260703_wiki-selfhosted-supersedes-adr-0011.md](../planning/draft/feedback/20260703_wiki-selfhosted-supersedes-adr-0011.md) | `status: rejected`。「トリアージ結果」= 判定 rejected・**反映先なし（計画書の変更は行わない）** |
+| [07_adr/ADR-0011_wiki-engine.md](../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md) `:5` | `status: Accepted`（**`Superseded` ではない**） |
+| 同 `:49-50` | §関連 が `Supersedes: なし` / `Superseded by: なし`。**Supersede は起きていない** |
+| 同 `:46` | 「確定の経緯」= Issue #66 で人間が (a) Wiki.js 配備 を選択し、実装が IADR-0020 / IADR-0021 で追従したことをもって確定 |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

@@ -67,3 +67,18 @@ supersedes: ./20260703_wiki-selfhosted-supersedes-adr-0011.md
 [IADR-0013]: ../docs/adr/IADR-0013_wiki-selfhosted-read-api-supersedes-adr-0011.md
 [IADR-0020]: ../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md
 [IADR-0021]: ../docs/adr/IADR-0021_wiki-js-sync-graphql-push.md
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted。** ADR-0011 は本記録の提案どおり ABAC 強制点を明確化したうえで `Accepted` 化された。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260705_wiki-js-deployment-follows-adr-0011.md](../planning/draft/feedback/20260705_wiki-js-deployment-follows-adr-0011.md) | `status: accepted`（「トリアージ結果」節） |
+| [07_adr/ADR-0011_wiki-engine.md](../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md) `:5` | `status: Accepted` |
+| 同 `:34` | 「**ABAC 強制点の明確化**」= WikiService を Wiki.js の前段ゲートウェイとし deny-by-default と 404 による存在秘匿を強制する旨を本文へ追記済み |
+| 同 `:46` | 「確定の経緯」が**本記録を相対リンクで参照**し、Issue #66 の (a) Wiki.js 配備 と実装の追従（IADR-0020）をもって確定したと記す |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）

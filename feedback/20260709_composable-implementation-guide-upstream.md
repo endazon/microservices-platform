@@ -81,3 +81,20 @@ updated: 2026-08-05
 - 実装側: 上流改版時の照合運用をガイド §5 に明記済み（`docs/tech/composable-component-guide.md`）。
   対応がない場合も実装は進行可能だが、上流と実装指示の対応関係が暗黙のままとなり、
   外部チーム・サブモジュールでのサービス追加時に上流仕様が参照されないリスクが残る。
+
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: accepted（`reflected` ではない）。** 提案 1〜3 が `10_composability-design.md` へ反映済みである。
+
+> **#497 の表は目標値を `reflected` としているが、それは採らない。** 計画側 draft の実測が `accepted` であり、計画リポジトリの記録一覧が **`reflected` を廃語として `accepted` へ揃えた**と明記しているためである（下表 2 行目）。`reflected` を書けば、計画側が解消した表記の揺れを実装側の控えへ再導入することになる。
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [draft/feedback/20260709_composable-implementation-guide-upstream.md](../planning/draft/feedback/20260709_composable-implementation-guide-upstream.md) `:4` | `status: accepted`（「トリアージ結果（2026-07-09、Issue #14）」節） |
+| [draft/feedback/README.md](../planning/draft/feedback/README.md) `:85-87` | 「`status` の値は `open` / `triaged` / `accepted` / `rejected` を用いる。**本記録が使っていた `reflected` は、2026-08-04 のトリアージで `accepted` へ揃えた（表記の揺れは解消した）**」 |
+| [06_technical/10_composability-design.md](../planning/projects/microservices-platform/06_technical/10_composability-design.md) `:96` | §2 に実装ガイド `docs/tech/composable-component-guide.md` への相互参照と改版時の照合運用を追記（提案 1・2） |
+| 同 `:189` | 変更履歴 2026-07-09 が**本記録を相対リンクで参照**し、§2 を部品種別マップ（軸A / 軸B）へ拡張したと記す（提案 3） |
+
+作業仕様書: [docs/specs/20260805_issue-497_feedback-status-sync.md](../docs/specs/20260805_issue-497_feedback-status-sync.md)（#497）
