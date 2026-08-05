@@ -6,7 +6,7 @@ import { Button } from '@platform/ui';
 import { useAuth } from '@foundation/auth/useAuth';
 import { useRoles, hasAnyRole } from '@foundation/auth/roles';
 import { navGroups } from '@foundation/routing/nav';
-import type { NavItem } from '@foundation/routing/nav';
+import type { NavItemView } from '@foundation/routing/nav';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { Notifications } from './notifications';
 
@@ -23,7 +23,7 @@ export function accountConsoleUrl(authority: string): string {
   return `${authority.replace(/\/+$/, '')}/account`;
 }
 
-function NavLink({ item }: { item: NavItem }) {
+function NavLink({ item }: { item: NavItemView }) {
   // IADR-0124 決定 5: ナビはユニットが公開する**データ**であり、`to` は string 型のため
   // TanStack の型付き union では検査できない。到達性は router.test.ts が実行時に固定する。
   return (

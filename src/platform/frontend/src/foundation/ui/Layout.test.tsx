@@ -51,9 +51,11 @@ function nav() {
 }
 
 describe('Layout navigation (role-gated)', () => {
+  // #502: SC-01 のナビ表示名は hi-fi モックの左レール準拠で「検索・質問」である。
+  // ラベルは Lingui の MessageDescriptor で持ち、描画時に解決される（nav.ts の resolveNavLabel）。
   it('always shows the SC-01 entry point link', async () => {
     await renderLayout([]);
-    expect(await within(nav()).findByRole('link', { name: '検索 / AI質問' })).toBeInTheDocument();
+    expect(await within(nav()).findByRole('link', { name: '検索・質問' })).toBeInTheDocument();
   });
 
   it('shows the 運用ダッシュボード (SC-10) link for platform-admin', async () => {
@@ -65,7 +67,7 @@ describe('Layout navigation (role-gated)', () => {
 
   it('hides the 運用ダッシュボード link for users without the admin role (existence hidden)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('link', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
   });
 
@@ -79,7 +81,7 @@ describe('Layout navigation (role-gated)', () => {
 
   it('hides the 構成ビューア link for non-privileged users (existence hidden)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('link', { name: '構成ビューア' })).not.toBeInTheDocument();
   });
 });
@@ -89,7 +91,7 @@ describe('Layout navigation (role-gated)', () => {
 describe('Layout navigation groups (05_screens §共通シェル)', () => {
   it('groups links under the planned headings for an admin', async () => {
     await renderLayout(['platform-admin']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).getByRole('heading', { name: '利用者' })).toBeInTheDocument();
     expect(within(nav()).getByRole('heading', { name: '管理' })).toBeInTheDocument();
     expect(within(nav()).getByRole('heading', { name: '運用' })).toBeInTheDocument();
@@ -97,7 +99,7 @@ describe('Layout navigation groups (05_screens §共通シェル)', () => {
 
   it('omits the 管理 heading for a non-privileged user (no empty group headings)', async () => {
     await renderLayout(['user']);
-    await within(nav()).findByRole('link', { name: '検索 / AI質問' });
+    await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('heading', { name: '管理' })).not.toBeInTheDocument();
     // 「個人」グループの画面（個人資料・Obsidian 連携）は未実装のため、どのロールでも見出しは出ない。
     expect(within(nav()).queryByRole('heading', { name: '個人' })).not.toBeInTheDocument();

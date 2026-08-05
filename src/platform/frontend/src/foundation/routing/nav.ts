@@ -1,14 +1,14 @@
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
-import type { NavGroup, NavItem, PlanNavItem, UnitNavGroup } from './featureRegistry';
+import type { NavGroup, NavItem, NavLabel, PlanNavItem, UnitNavGroup } from './featureRegistry';
 
 // Issue #136 / IADR-0035: 共通シェルの左ナビ（05_screens §共通シェル）。
 // IADR-0124 決定 1: 本モジュールは**合成点（@features）を import しない**。
 // foundation/ui（Layout）はナビを読むため、ここが features を直接参照すると
 // 「foundation → 可変ユニット」の逆依存が共通シェルの経路に生まれる。
 // 代わりに router.tsx（合成点を知る唯一の場所）が起動時に登録する。
-export type { NavItem, NavGroup, PlanNavItem, UnitNavGroup };
+export type { NavItem, NavGroup, NavLabel, PlanNavItem, UnitNavGroup };
 
 /**
  * 計画の左ナビのグループ ID と表示順（05_screens §共通シェル の **4 グループ**）。
@@ -33,11 +33,27 @@ export const PLAN_NAV_GROUP_MESSAGES: Record<NavGroup, MessageDescriptor> = {
   ops: msg`運用`,
 };
 
+/**
+ * 描画用に解決済みのナビ項目（#502）。
+ *
+ * `NavItem.label` は `string | MessageDescriptor` だが、共通シェル（`foundation/ui/Layout`）へは
+ * **解決済みの文字列**だけを渡す。分岐を描画側へ持ち出すと、i18n の解決点が 2 か所になり、
+ * 「片方だけ翻訳される」形の欠陥を作れてしまう。
+ */
+export interface NavItemView extends Omit<NavItem, 'label'> {
+  label: string;
+}
+
 export interface NavGroupView {
   /** 計画の 4 グループは固定 ID、ユニットのグループはユニット名。 */
   id: string;
   label: string;
-  items: NavItem[];
+  items: NavItemView[];
+}
+
+/** ナビ表示名を描画時に解決する（`MessageDescriptor` は現在のロケールで翻訳する）。 */
+export function resolveNavLabel(label: NavLabel): string {
+  return typeof label === 'string' ? label : i18n._(label);
 }
 
 let registeredPlanItems: readonly PlanNavItem[] = [];
@@ -84,15 +100,17 @@ export function navGroups(
   items: readonly PlanNavItem[] = navItems(),
   groups: readonly UnitNavGroup[] = unitNavGroups(),
 ): NavGroupView[] {
+  const resolve = (list: readonly NavItem[]): NavItemView[] =>
+    list.map((i) => ({ ...i, label: resolveNavLabel(i.label) }));
   const planGroups: NavGroupView[] = PLAN_NAV_GROUP_ORDER.map((id) => ({
     id,
     label: i18n._(PLAN_NAV_GROUP_MESSAGES[id]),
-    items: items.filter((i) => i.group === id),
+    items: resolve(items.filter((i) => i.group === id)),
   }));
   const unitGroups: NavGroupView[] = groups.map((g) => ({
     id: g.id,
     label: i18n._(g.label),
-    items: [...g.items],
+    items: resolve(g.items),
   }));
   return [...planGroups, ...unitGroups].filter((g) => g.items.length > 0);
 }

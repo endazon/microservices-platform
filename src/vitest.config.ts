@@ -126,11 +126,23 @@ export default defineConfig({
       //   除外を採るのは、カタログの行数が被覆率を左右する状態そのものが誤りだからである
       //   （stories を消すと床が上がる）。**除外なしの実測でも現行床 86 は満たしている**
       //   （87.96% > 86）ため、この除外は「床を割るのを避けるための除外」ではない。
+      //
+      // ［2026-08-04 / #502］SC-01〜03 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-01-03-search-flow` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 94.53% / branches 86.48% / functions 87.70%
+      //     MSP 所有分のみ        lines/statements 93.07% / branches 86.29% / functions 87.69%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 87 → 88 / branches 77 → 81 / functions 81 → 82 へ引き上げる。
+      //   上げた分は「3 画面の分岐（存在秘匿の中立表示・縮退運転・出典の種別判定・属性の写像）と、
+      //   保留対象（FR-17 / FR-18）が**描かれないこと**にテストを付けた」ことによる。
+      //   branches の伸び（82.93 → 86.29）が大きいのは、旧 3 画面が持っていた手書きの状態遷移
+      //   （useEffect ＋ 4 つの state ＋ 二重発火ガード）を TanStack Query と URL 単一情報源へ置き換え、
+      //   **測るべき分岐そのものが減った**ためでもある（IADR-0126 決定 3）。
       thresholds: {
-        lines: 87,
-        statements: 87,
-        functions: 81,
-        branches: 77,
+        lines: 88,
+        statements: 88,
+        functions: 82,
+        branches: 81,
       },
     },
   },

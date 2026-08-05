@@ -1,3 +1,4 @@
+import { msg } from '@lingui/core/macro';
 import { createRoute } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
 import type { PlanNavItem } from '@foundation/routing/featureRegistry';
@@ -18,9 +19,13 @@ export const createSc01SearchRoute = (shell: ShellRoute) =>
     component: SearchChatPage,
   });
 
+// 05_screens §共通シェル: 左ナビ「利用者」グループの「検索・質問」（hi-fi モックの左レール準拠）。
+// ADR-0031 / IADR-0125 決定 6（#502 で拡張）: 表示名は **MessageDescriptor** で持ち、
+// 解決は描画時（`navGroups()`）に行う——ここは**モジュール初期化時**に評価されるため、
+// 翻訳済みの文字列で持つとロケール切替に追随しない。
 export const sc01SearchNav: PlanNavItem = {
   id: 'sc01-search',
-  label: '検索 / AI質問',
+  label: msg`検索・質問`,
   to: '/ask',
   group: 'user',
 };

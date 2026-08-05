@@ -8,6 +8,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@lingui/core": "^6.6.0",
+    "@lingui/react": "^6.6.0",
+    "@platform/ui": "workspace:*",
+    "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-router": "^1.170.18",
     "oidc-client-ts": "^3.1.0",
     "react": "^19.2.0",

@@ -212,15 +212,21 @@ export default tseslint.config(
   // ADR-0031 / IADR-0125 決定 6: 13_frontend-stack §採用技術一覧 の Linter 欄
   // 「Storybook / Lingui のプラグインを併用」に従う。
   //
-  // **Lingui 規則の適用先は i18n 化済みのファイルに限る。** 既存 11 画面（SC-01〜11）は
-  // #452 が作り直すため文言を触っておらず（IADR-0125 決定 6）、いま規則を及ぼすと
-  // 「本 issue では直さないと決めた箇所」の error が数百件出る。適用範囲を広げるのは #452 の作業である。
+  // **Lingui 規則の適用先は i18n 化済みのファイルに限る。** 残る画面（SC-04〜11）は
+  // #452 の残り分割が作り直すため文言を触っておらず（IADR-0125 決定 6）、いま規則を及ぼすと
+  // 「その issue では直さないと決めた箇所」の error が数百件出る。
+  // **#502 で SC-01〜03 を再実装したため、その 3 feature を適用範囲へ加えた**
+  // （#496 §親への申し送り「`eslint-plugin-lingui` の適用範囲の拡大」の引き受け）。
+  // 画面を作り直すたびにこの files を伸ばす——「i18n 化したのに検査されない」状態を残さないためである。
   {
     files: [
       'platform/frontend/src/foundation/i18n/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/ui/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/auth/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/routing/nav.ts',
+      'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc02-results/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc03-document/**/*.{ts,tsx}',
     ],
     ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
     plugins: { lingui },

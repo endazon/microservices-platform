@@ -12,14 +12,41 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "（表示 {shownCount} 件）"
+msgstr "（表示 {shownCount} 件）"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "{totalHits} 件（権限内のみ表示）"
+msgstr "{totalHits} 件（権限内のみ表示）"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "← チャットに戻る"
+msgstr "← チャットに戻る"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
+msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "AI回答（ストリーミング）"
+msgstr "AI回答（ストリーミング）"
+
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
 msgstr "Keycloak でサインイン"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "Wikiで閲覧"
+msgstr "Wikiで閲覧"
 
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "アカウント設定（{name}）"
 msgstr "アカウント設定（{name}）"
 
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "エラー"
@@ -28,6 +55,14 @@ msgstr "エラー"
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "お探しのページは存在しないか、アクセスできません。"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "キーワード・意味検索"
+msgstr "キーワード・意味検索"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "キーワード検索のみ →"
+msgstr "キーワード検索のみ →"
 
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "サインアウト"
@@ -45,6 +80,35 @@ msgstr "サインインに失敗しました。時間をおいて再度お試し
 msgid "サインイン処理中…"
 msgstr "サインイン処理中…"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "タグ"
+msgstr "タグ"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "ナレッジ検索・AI質問"
+msgstr "ナレッジ検索・AI質問"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "バージョン"
+msgstr "バージョン"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "バージョン履歴"
+msgstr "バージョン履歴"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "フィードバック"
+msgstr "フィードバック"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "フィードバックを送信しました。"
+msgstr "フィードバックを送信しました。"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "フィードバックを送信できませんでした。"
+msgstr "フィードバックを送信できませんでした。"
+
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "ユーザー"
 msgstr "ユーザー"
@@ -57,13 +121,49 @@ msgstr "主要ナビゲーション"
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "作成"
+msgstr "作成"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "例: 経費精算"
+msgstr "例: 経費精算"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
 msgstr "個人"
 
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "出典（クリックで文書詳細／Wikiへ）"
+msgstr "出典（クリックで文書詳細／Wikiへ）"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "利用者"
 msgstr "利用者"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "原本"
+msgstr "原本"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "回答を生成中…"
+msgstr "回答を生成中…"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "変更メモ"
+msgstr "変更メモ"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "属性・タグ"
+msgstr "属性・タグ"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "役に立たなかった"
+msgstr "役に立たなかった"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "役に立った"
+msgstr "役に立った"
 
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "情報"
@@ -73,13 +173,86 @@ msgstr "情報"
 msgid "成功"
 msgstr "成功"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "文書"
+msgstr "文書"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "文書が見つかりませんでした。"
+msgstr "文書が見つかりませんでした。"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "文書の取得に失敗しました。"
+msgstr "文書の取得に失敗しました。"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "本文"
+msgstr "本文"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "本文は利用できません。"
+msgstr "本文は利用できません。"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "本文を読み込み中…"
+msgstr "本文を読み込み中…"
+
 #: platform/frontend/src/features/index.ts
 msgid "株式自動売買"
 msgstr "株式自動売買"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "検索"
+msgstr "検索"
+
+#: knowledge/frontend/src/features/sc01-search/index.tsx
+msgid "検索・質問"
+msgstr "検索・質問"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "検索に失敗しました。"
+msgstr "検索に失敗しました。"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "検索中…"
+msgstr "検索中…"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "検索結果"
+msgstr "検索結果"
+
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "検索結果一覧"
+msgstr "検索結果一覧"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "検索結果一覧を開く →"
+msgstr "検索結果一覧を開く →"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
+msgstr "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
+
+#: knowledge/frontend/src/features/sc03-document/attributes.ts
+msgid "機密区分"
+msgstr "機密区分"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "正規化文書（Markdown）プレビュー"
+msgstr "正規化文書（Markdown）プレビュー"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "注意"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "版"
+msgstr "版"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
+msgid "状態: {status}｜版: v{version}｜更新: {updatedAt}"
+msgstr "状態: {status}｜版: v{version}｜更新: {updatedAt}"
 
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "社内ナレッジ検索・AI 回答プラットフォーム"
@@ -89,15 +262,48 @@ msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
 msgid "管理"
 msgstr "管理"
 
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "範囲を指定してAI分析を依頼 →"
+msgstr "範囲を指定してAI分析を依頼 →"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "組織文書"
+msgstr "組織文書"
+
+#: knowledge/frontend/src/features/sc02-results/index.tsx
+msgid "結果一覧"
+msgstr "結果一覧"
+
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "見つかりませんでした"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "該当する文書が見つかりませんでした。"
+msgstr "該当する文書が見つかりませんでした。"
+
+#: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: platform/frontend/src/foundation/auth/RequireAuth.tsx
 #: platform/frontend/src/foundation/auth/RequireRole.tsx
 msgid "読み込み中…"
 msgstr "読み込み中…"
 
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "質問・キーワード"
+msgstr "質問・キーワード"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "質問またはキーワードを入力…（例: 経費精算の締め日は？）"
+msgstr "質問またはキーワードを入力…（例: 経費精算の締め日は？）"
+
+#: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
+msgid "送信"
+msgstr "送信"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "運用"
 msgstr "運用"
+
+#: knowledge/frontend/src/features/sc03-document/attributes.ts
+msgid "部門"
+msgstr "部門"
