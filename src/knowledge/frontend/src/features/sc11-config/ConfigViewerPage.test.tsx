@@ -229,6 +229,7 @@ describe('ConfigViewerPage (SC-11)', () => {
   });
 
   // 実効構成が取れなければ他の 2 領域も出さない（何に対する差分か読めないため）。
+  // **ドリフトは成功したまま**にして、実効構成の失敗だけで隠れることを見る（既定の DRIFT は 1 件）。
   it('hides the drift and history sections when the effective config is unavailable', async () => {
     mockApi({ config: new ApiError('notFound', 'nope', 404) });
     await renderPage();
@@ -238,6 +239,18 @@ describe('ConfigViewerPage (SC-11)', () => {
     expect(
       screen.queryByRole('table', { name: '構成バージョン履歴の一覧' }),
     ).not.toBeInTheDocument();
+    // ヘッダのバッジも出さない。**明細が無いのに件数だけが残る**のが IADR-0129 決定 5 が
+    // 名指しで禁じた形である（3 本のクエリは独立に走るため実際に起こる組み合わせ）。
+    expect(screen.queryByText('ドリフト 1 件')).not.toBeInTheDocument();
+  });
+
+  // 同じことを 5xx でも見る（404 は「秘匿」、5xx は「障害」であり経路が違う）。
+  it('hides the drift badge when the effective config fails with a server error', async () => {
+    mockApi({ config: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    await screen.findByRole('alert');
+    expect(screen.queryByText('ドリフト 1 件')).not.toBeInTheDocument();
   });
 
   // 参照専用。構成を変更する操作は画面に存在しない。**先に見えるはずの要素を確かめてから**

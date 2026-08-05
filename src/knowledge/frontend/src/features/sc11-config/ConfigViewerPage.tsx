@@ -87,11 +87,17 @@ export function ConfigViewerPage() {
         <h1 className="mr-auto text-lg font-semibold text-[--color-fg]">
           <Trans>実効構成</Trans>
         </h1>
+        {/* ヘッダの表示は**実効構成が取れたときだけ**である。ドリフトのバッジも例外ではない
+            ——バッジだけがヘッダに残ると「何に対する差分か読めないドリフト件数」になる
+            （IADR-0129 決定 5）。3 本のクエリは独立に走るため、実効構成が 5xx でドリフトが 200
+            という組み合わせが実際に起こる。 */}
         {config.isSuccess && config.data && (
-          <ConfigVersionTags version={config.data.version} />
+          <>
+            <ConfigVersionTags version={config.data.version} />
+            {/* ドリフトのバッジは**取得できたときだけ**出す（出せないときの「0 件」と紛れるため）。 */}
+            {drift.isSuccess && drift.data && <DriftBadge report={drift.data} />}
+          </>
         )}
-        {/* ドリフトのバッジは**取得できたときだけ**出す（出せないときの「0 件」と紛れるため）。 */}
-        {drift.isSuccess && drift.data && <DriftBadge report={drift.data} />}
         <Button type="button" size="sm" onClick={refresh}>
           <Trans>再取得</Trans>
         </Button>
