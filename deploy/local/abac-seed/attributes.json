@@ -1,0 +1,48 @@
+{
+  "_comment": [
+    "FR-05, FR-09, UC-05 / Issue #517: 経路B（dev）の ABAC 属性辞書の初期投入データ。",
+    "投入は scripts/seed-abac-policies.js が AuthorizationService の管理 API 経由で行う（直 DB 書き込みはしない）。",
+    "値集合は計画 06_technical/07_abac-attribute-model.md の文書基本属性・利用者属性に合わせる。",
+    "required は **すべて false** にしてある。/authz/attributes/validate を呼ぶ取り込み経路は現時点で存在しないが、",
+    "将来 required=true を入れると既存の取り込み（属性を 1 つしか付けない）を落としうるため、",
+    "必須化は実データ側が属性を備えてから行う（#516）。",
+    "本ファイルは dev の初期値であり、実運用の属性辞書は SC-09（管理者設定）から編集する。"
+  ],
+  "attributes": [
+    {
+      "key": "confidentiality",
+      "label": "機密区分",
+      "scope": "document",
+      "required": false,
+      "allowedValues": ["public", "internal", "confidential", "restricted"]
+    },
+    {
+      "key": "department",
+      "label": "所管部門",
+      "scope": "document",
+      "required": false,
+      "allowedValues": ["engineering", "sales", "hr", "finance", "legal"]
+    },
+    {
+      "key": "lifecycle",
+      "label": "状態",
+      "scope": "document",
+      "required": false,
+      "allowedValues": ["draft", "active", "archived"]
+    },
+    {
+      "key": "clearance",
+      "label": "取扱可能区分",
+      "scope": "user",
+      "required": false,
+      "allowedValues": ["public", "internal", "confidential", "restricted"]
+    },
+    {
+      "key": "department",
+      "label": "所属部門",
+      "scope": "user",
+      "required": false,
+      "allowedValues": ["engineering", "sales", "hr", "finance", "legal"]
+    }
+  ]
+}
