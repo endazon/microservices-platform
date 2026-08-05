@@ -108,6 +108,15 @@ BFF のハンドラだけを読むと**透過中継されるステータスが�
 再生成差分を検査するので、除外が壊れれば `useBffAnalysisAskStream` が現れて差分検査が落ちる。
 専用の単体テストは置かない（トートロジーになる）。
 
+**判定条件は応答の種別（2xx / エラー）を区別しない。** `isServerSentEventsOnly` は
+`application/json` を持つ応答を 1 つでも見つけた時点で false を返すため、**SSE パスへ
+`application/json` のエラー応答を足すと除外が外れる**。それでも判定を「2xx の応答に JSON があるか」へ
+絞らないのは、(a) 現に `/bff/analysis/ask/stream` の応答は 200 の `text/event-stream` 1 つだけで
+`application/json` を持たない（上流不達・非 2xx はヘッダ送出済みのため `event: error` で運ぶ）、
+(b) 外れれば `useBffAnalysisAskStream` が生成物へ現れて再生成差分検査が落ちる、の 2 点による。
+**絞るべきなのは、SSE パスが JSON のエラー応答を持つようになったときである**（そのとき判定を
+「2xx の応答に JSON があるか」へ変える。前提が変わるまで規則を先回りして複雑にしない）。
+
 **決定 5（論点 C）: C2 を採る。状態・種別の文字列を `enum` にしない。**
 C# 側は `string` であり、値集合は `DocumentStatus` / `PolicyAction` / `AttributeScope` /
 `ConversionJobStatus` などの `const` 群にすぎない。閉じた `enum` にすると後段の値追加で SPA が壊れる。
