@@ -1,7 +1,7 @@
 ---
 title: 画面の通信を orval 生成物へ載せ替える
 type: spec
-status: in-progress
+status: completed
 related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, NFR, ADR-0031, IADR-0009, IADR-0040, IADR-0121, IADR-0122, IADR-0126, IADR-0127, IADR-0129, IADR-0131, IADR-0132, IADR-0135]
 author: Claude
 created: 2026-08-05
@@ -313,8 +313,125 @@ export const okData = <R extends { status: number; data: unknown }>(res: R): OkP
 
 ## 検証（実測）
 
-（実装後に記入する）
+**測定条件**: worktree `chore/SC-03-11-orval-hook-migration`（`origin/develop` `3398a53` 基点。
+**作業中に develop が 2 コミット進んだため `origin/develop`〔#549 = IADR-0134 のバンドル分割 ／
+#551 = `SearchRequest` の検索モード〕を merge で取り込み、下表はすべて取り込み後に測った**）／
+Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ orval 8.23.0 ／
+**submodule `src/ai-stock-trading` と `planning` は populate 済み**。
+スコープは断りがない限り**ワークスペース全体**（`src/` の 4 パッケージ ＋ AST）である。
+
+| 検査 | コマンド | 結果 |
+| --- | --- | --- |
+| 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
+| lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components` で、**着手前と同数**＝ errors も warnings も増やしていない） |
+| 単体テスト | `pnpm run test` | **60 files / 559 tests** 全 green（内訳: develop 取り込み後の基準 58 files / 557 tests ＋ 本作業の `orvalSelect.test.ts` 1 file / 2 tests） |
+| カバレッジ | `pnpm run test:coverage` | statements **96.24%** ／ branches **89.91%** ／ functions **91.72%** ／ lines **96.24%**。床（lines 90 / statements 90 / functions 88 / branches 85）を満たす。**床は動かしていない** |
+| ビルド | `pnpm run build` | green（最大チャンク `index-*.js` 274.47 kB / gzip 83.57 kB。**#549 の分割規則を壊していない**——500 kB 警告は出ない） |
+| E2E | Playwright（後述の条件） | **13 tests 全 green**（12 tests ＋ #549 の `bundle-splitting.smoke.spec.ts` 1 件） |
+| 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- src/platform/frontend/src/foundation/api/generated` | green（コミット後に再実行して差分なし） |
+| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（23 ファイル・検出 0 件） |
+| ドキュメントリンク | `node scripts/check-doc-links.js` | green（**件数は書かない**※） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**検査対象 8 件 / 除外 0 件**。マージコミットは `--no-merges` で対象外） |
+| 契約スキーマ | `node scripts/check-contract-schema.js` | green（baseline と一致・未消化の承認 0 件。**C# はコメント 1 行しか触っていない**） |
+| テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（未写像 0 件。**allowlist は着手前と同じ 7 件**＝増やしていない） |
+| テスト仕様書の被覆 | `node scripts/check-test-spec-coverage.js` | green（**床 68 は動かしていない**——バックエンドテストを足していない） |
+| ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
+| i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。**カタログは 1 件も増減していない**——表示文言を足していない） |
+| BFF 後段 | `node scripts/check-bff-downstreams.js` | green（ドリフト 0） |
+| スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**件数は書かない**※） |
+| バックエンドのビルド | `dotnet build knowledge/backend/backend.slnx`（`mcr.microsoft.com/dotnet/sdk:10.0` コンテナ） | green（0 errors / 2 warnings。**warning は既存の `CS0618`**〔Testcontainers の廃止 API〕で本作業とは無関係） |
+
+> **※ リポジトリ全体を数える値は、この表に固定値で書かない。** 他 PR のマージで必ず動き、
+> 書いた瞬間から嘘になり始めるためである（#520 が同じ理由で採った作法）。**本表に残すのは
+> green / 赤の別と、本 PR 固有の不変量**（allowlist を増やしていない・床を動かしていない・
+> lint の警告数が着手前と同じ・C# はコメントだけ）**である**。
+
+**E2E の実行条件**: この環境では `playwright install` がブラウザを取得できない。導入済みの
+`/opt/pw-browsers/chromium-1194/chrome-linux/chrome` を `launchOptions.executablePath` で指す
+**ローカル専用 config を一時的に置いて実走し、確認後に削除した**（#490 / #496 / #502〜#506 と同じ作法）。
+**リポジトリの `platform/frontend/playwright.config.ts` は無改変であり、作業ツリーは clean である。**
+
+> **1 件だけ、環境に起因する追加の手当てが要った。** 既定ポート 4173 は**別の作業ツリーの
+> プレビューが使用中**だったため 4180 で実走した。ところが #549 が足した
+> `bundle-splitting.smoke.spec.ts` は**応答の URL を `http://localhost:4173` の文字列で絞り込む**ため、
+> 別ポートでは収集が空になり `chunks.length > 1` が落ちる。**本作業の変更に起因する失敗ではない。**
+> ポート番号だけを 4180 へ読み替えたローカル複製で同じアサーションを実走して green を確認し、
+> 複製は削除した（リポジトリの `e2e/` は無改変）。**この spec はポートを直書きしているため、
+> 4173 が空いていない環境では常に落ちる**——申し送り 3。
+
+### 受け入れ基準 1: 9 ファイルが生成物に載ったこと
+
+```console
+$ grep -rnE "apiFetch[<(]" src/knowledge/frontend/src src/platform/frontend/src \
+    --include=*.ts --include=*.tsx | grep -v 'apiClient.ts\|apiClient.test.ts'
+（出力なし＝呼び出しは 0 件）
+
+$ grep -rn "from '@foundation/api/generated" src/knowledge/frontend/src/features/sc*/use*.ts | wc -l
+18
+```
+
+`apiFetch` の**呼び出し**は SPA から消えた（残る文字列は 3 ファイルのコメント内の言及だけである）。
+`foundation/api` の直接利用として残るのは **SC-01 の `apiStream`（SSE）のみ**で、これは恒久的に対象外である。
+
+### 受け入れ基準 2: 画面の挙動が変わっていないこと
+
+- **アサーションを変えたテストは 1 件も無い。** 変えたのは (a) モックの差し替え先（`apiFetch` →
+  `apiRequest`）、(b) 応答の作り方（素の JSON → `Response` 相当）、(c) 要求の検証の**書き方**
+  （`('/x', { json })` → `('/x', objectContaining({ method }))` ＋ 本文の JSON 比較）だけである。
+  **パス文字列と呼び出し回数の期待値はそのまま**である。
+- issue が名指しした 4 系統はいずれも**当該テストが無改修のアサーションで通り続けている**:
+  存在秘匿の markup 一致（`sc11-config/access.test.tsx` / `sc09` / `sc10`）／403・404 の中立化と
+  5xx の `role="alert"` の区別（`sc10` / `sc11`）／SC-09 の 409 の Problem 詳細（参照元ポリシー名）／
+  `beginOperation()` による直近の操作結果の表示（`sc05` / `sc06` / `sc09`）。
+- **SC-11 の「1 回の再取得で 3 本」も既存テストのまま通っている**（実装は前方一致から
+  明示的な 3 本の無効化へ変わったが、**観測される挙動は同じ**）。
+
+### 変異試験（**受け入れ基準そのもの**）
+
+**件数の基準**: 契約（OpenAPI）側 **13 件（M1〜M13）**＋ コード側 **3 件（MC1〜MC3）**である。
+手順は契約側が「変異を当てる → `pnpm run codegen` → `pnpm run typecheck` → **復元して差分 0 を確認**」、
+コード側が「変異を当てる → `pnpm exec vitest run <画面>` → **復元して差分 0 を確認**」。
+**全 16 件で `restored OK`（作業ツリーに残骸なし）を確認した。**
+
+| # | 壊した箇所 | 読む画面 | 期待 | **実測** |
+| --- | --- | --- | --- | --- |
+| **M1** | `DriftFindingDto.detail` を削除（**#520 の M6 の再実行**） | SC-11 | 落ちる | **落ちた**。`typecheck exit=2` / error 1 件 / `TS2339`。**#520 では素通りしていた** |
+| **M2** | `SearchResponse.totalHits` を削除（**#520 の M7 の再実行**） | SC-02 | 落ちる | **落ちた**。`exit=2` / `SearchResultsPage.tsx(71,34): error TS2339: Property 'totalHits' does not exist on type 'NoInfer<SearchResponse>'`。**#520 では素通りしていた** |
+| M2′ | 同じ `totalHits` を **`required` からだけ外す**（プロパティは残す） | SC-02 | — | **素通りした**（`exit=0`）。**変異が不完全だっただけ**だが、#520 の M4 と同じ事象を再現している——`required` を落とす退行は型検査ではなく**生成物の再生成差分検査**が捕まえる |
+| **M3** | `DocumentDto.title` を `titleRenamed` へ改名 | SC-03 / SC-05 | 落ちる | **落ちた**。`exit=2` / error 3 件（`DocumentDetailPage` / `DocumentForm` / `DocumentManagementPage`） |
+| **M4** | `DataSourceDto.lastSyncedAt` を削除 | SC-06 | 落ちる | **落ちた**。`exit=2` / error 2 件 / `TS2339` |
+| **M5** | `ConversionJobDto.attempts` を削除（**#506 の M5 の再実行**） | SC-07 | **素通りする** | **素通りした**（`exit=0`）。**載せ替え後も**である——理由は下表 |
+| **M6** | `AbacPolicyDto.isActive` を削除 | SC-09 | 落ちる | **落ちた**。`exit=2` / error 5 件 / `TS2339` |
+| **M7** | `DashboardSummaryDto.quality` を削除 | SC-10 | 落ちる | **落ちた**。`exit=2` / error 3 件 / `TS2339` |
+| **M8** | `ConfigVersionEntryDto.hadDrift` を削除 | SC-11（履歴） | 落ちる | **落ちた**。`exit=2` / error 1 件 / `TS2339` |
+| **M9** | `FeedbackRequest.rating` を改名 | SC-01（送信） | 落ちる | **落ちた**。`exit=2` / `useAskStream.ts(120,43): error TS2353`（**要求側の型でも網が効く**） |
+| **M10** | `DocumentContentDto.markdown` を削除 | SC-03 | 落ちる | **落ちた**。`exit=2` / error 1 件 / `TS2339` |
+| **M11** | `/bff/admin/config` の 200 応答型を `EffectiveConfigDto` → `DriftReportDto` へ**差し替え** | SC-11 | 落ちる | **落ちた**。`exit=2` / `useConfigViewer.ts(31,57): error TS2322`。**フィールドの増減だけでなく「応答型そのものの取り違え」も捕まる**（§設計 1 の主張の実測） |
+| **M12** | `operationId` を旧記載へ戻す（`bff-analysis-analyze` → `analysis-analyze`） | SC-08 | 落ちる | **落ちた**。`exit=2` / `TS2724: has no exported member named 'useBffAnalysisAnalyze'` |
+| **M13** | `EmbedApiResponse.model` を削除（**画面が読まない面**） | — | **素通りする** | **素通りした**（`exit=0`）。**ただし生成物には差分が出る**（`bff.schemas.ts` が 1 行減る）＝再生成差分検査は捕まえる |
+| **MC1** | SC-11 の再取得を **1 本だけ**の無効化にする | SC-11 | 落ちる | **落ちた**。`ConfigViewerPage (SC-11) > refetches all three queries when the refresh button is pressed` が失敗（1 failed / 34 passed） |
+| **MC2** | SC-11 のドリフト取得から `select: okData` を外す（封筒が漏れる） | SC-11 | 落ちる | **落ちた**（12 failed / 23 passed）。**封筒剥がしが外れると画面は例外を出さずに静かに空になる**——テストが唯一の防波堤である |
+| **MC3** | SC-07 の再変換後の無効化キーを**条件つきキー**にする | SC-07 | 落ちる | **落ちた**。`refetches the list after a successful retry` が失敗（1 failed / 21 passed） |
+
+#### 素通りしたもの（**3 件。隠さない**）
+
+| # | 素通りした事象 | いま網が無い理由 | 引き受け先 |
+| --- | --- | --- | --- |
+| M2′ | `required` からだけ外す退行が型検査で落ちない | orval は `required` の無いプロパティを `?` で生成するだけで、**プロパティ自体は残る**。読み出しは型として妥当なままになる | **恒久（設計どおり）**。この退行は生成物の再生成差分検査（CI）が捕まえる（#520 の M4 と同じ） |
+| M5 | `ConversionJobDto.attempts` を消しても落ちない | **SC-07 の画面が `attempts` を読んでいない**（「デッドレターの内訳」は契約に標識が無く**意図的に未実装**。画面仕様書 §hi-fi モックアップとの対応）。載せ替えは「画面が読むフィールド」にしか網を張らない | **恒久**。読まないフィールドに型検査の網は原理的に張れない。fixture 側の型付け（IADR-0135 フォローアップ 1）で別種の網は張れる |
+| M13 | `EmbedApiResponse.model` を消しても落ちない | `/embed` は **SPA が呼ぶ面ではない**（BFF 境界の外） | **恒久**。契約記述の正しさは人手の突合に依存する（#520 決定 5 の但し書きと同じ） |
+
+**素通りの原因は「型検査の網の弱さ」ではなく「その型を画面が読んでいないこと」である。**
+M1〜M4・M6〜M12 が示すとおり、**読んでいる面では削除も改名も型の差し替えも、要求側の型まで含めて捕まる。**
 
 ## 未決事項・親への申し送り
 
-（実装後に記入する）
+| # | 事項 | 種別 | 送り先 |
+| --- | --- | --- | --- |
+| 1 | **テストの fixture が生成型で型付けされていない**（#520 §未決事項 2 は**未解消のまま**）。`jsonResponse(body: unknown)` を経由するため、契約に無いフィールドを持つ fixture も、必須フィールドを欠く fixture も検出されない（実測: M5 の `attempts: 3` は fixture に残っているが型検査に掛からない） | 網の穴 | **[[IADR-0135]] フォローアップ 1**。生成 MSW モック（`*.msw.ts` / `*.faker.ts`）へ移すのが筋。**本作業では行っていない**——13 ファイルの fixture を一斉に置き換えると「挙動が変わっていない」ことの確認と混ざる |
+| 2 | **C# → OpenAPI の追随は人手のまま**。本作業で届いたのは「**OpenAPI を変えると型検査が落ちる**」までで、「**C# の DTO を変えると落ちる**」ではない | 構造的な穴 | [[IADR-0131]] フォローアップ 2 ／ [[IADR-0132]] フォローアップ 1。**載せ替えが済んだいま、残る穴はここだけ**である |
+| 3 | **`e2e/bundle-splitting.smoke.spec.ts` がポート 4173 を文字列で直書きしている**（#549 が追加）。`baseURL` を変えても応答の絞り込みが追随しないため、**4173 が空いていない環境では常に落ちる**。CI（専用 runner）では問題にならないが、**ローカル並行作業では落ちる**（本作業で実際に踏んだ） | 小さな是正 | 親。`baseURL` から組み立てるか、`new URL(url).origin` と `page.url()` を突き合わせる形にすれば解消する。**本作業では直していない**（#549 の成果物であり、範囲が混ざる） |
+| 4 | **SC-02 だけが生成「フック」を使わない**（`/bff/search` が POST であるため。[[IADR-0135]] 決定 2） | 自覚した非対称 | 恒久。「生成フックに載っているか」で機械的に検査することはできない——検査するなら「生成物由来の型／関数を import しているか」で見る必要がある |
+| 5 | **`orval-bff-only.cjs` に「`components.schemas` は素通りする」知見が無い**（#520 §未決事項 8） | 知見の置き場所 | **未消化**。本作業でも同ファイルは触っていない。次に同ファイルを触る issue で入れるのが妥当 |
+| 6 | **`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定**（#521） | 要裁定 | **#521**（起票済み）。本作業では判断しない（認可の変更は挙動の変更） |
+| 7 | **`.github/workflows/` は触っていない**（権限外） | 情報 | `frontend.yml` の `paths` に `docs/api/openapi.yaml` が入っており、契約変更で CI が起動する。#520 §未決事項 7（`frontend-tests.yml` の `paths` に契約が無い）は**未解消のまま**である |
