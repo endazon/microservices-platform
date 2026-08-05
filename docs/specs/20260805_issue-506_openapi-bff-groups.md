@@ -204,8 +204,11 @@ issue #506 と [[IADR-0116]] 規約 4 に従い、**2 本に分割する**。
 
 ```console
 $ grep -rn 'WithName("Bff' src/platform/backend src/knowledge/backend | wc -l
-27
+39
 ```
+
+**39 個の `WithName("Bff…")` のうち 1 つ（`BffConfigDriftRun`）は `ExcludeFromDescription()` で契約に
+載せない**（§対象外）ため、契約に載る `/bff` 配下の操作は **38** である（§検証 受け入れ基準 1 の内訳と一致する）。
 
 既存 8 パスのうち **6 本はこの規約に合致**し、**2 本（`analysis-ask` / `analysis-analyze`）は合致しない**
 （`WithName` は `BffAnalysisAsk` / `BffAnalysisAnalyze`）。**既存は改名しない**（§対象外）。
