@@ -161,7 +161,16 @@ g.MapPost("/{id:guid}/retry", ...)
 1 種類に保たれる。
 
 **ただし、再利用しているのは「名前付きポリシー」であって「重ね掛けの形」ではない**（実測）。
-`grep -rn "RequireAuthorization" --include=*.cs src/` の全 19 件を確認したところ、
+母集合は本リポジトリが所有する 2 ユニット（`src/platform` / `src/knowledge`）である
+——`src/ai-stock-trading` は submodule の別プロジェクトのため除く（[`traceability.md`](../../.claude/rules/traceability.md) §名前空間）。
+
+```
+grep -rn "RequireAuthorization" --include=*.cs src/platform src/knowledge | wc -l   # → 18（是正後）
+grep -rn "RequireAuthorization" --include=*.cs src/platform src/knowledge | grep -c "//"  # → 4（コメント行）
+```
+
+すなわち **18 件中 4 件はコメント行**で、実際の呼び出しは **14 箇所**（うち 1 件が本作業で足した `retry`。
+是正前の `origin/develop` は 17 件 / 呼び出し 13 箇所）。その全件を確認したところ、
 **グループとエンドポイントの両方に認可を課している箇所は無く、本作業が初出**である。
 
 | 箇所 | 実際の形 |

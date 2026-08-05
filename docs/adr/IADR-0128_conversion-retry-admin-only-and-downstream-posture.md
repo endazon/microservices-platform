@@ -64,7 +64,7 @@ plan_refs:
 
 | 案 | 内容 | 評価 |
 | --- | --- | --- |
-| **A（採用）** | グループの認可はそのまま、`retry` にだけ `RequireAuthorization(PlatformAuthPolicies.AdminOnly)` を重ねる | 認可メタデータは AND 合成されるため実効は admin のみ。**グループ定義に差分が出ない＝照会が巻き添えにならないことがコード上で自明**。**再利用するのは既存の名前付きポリシー**（`/bff/authz` のグループ・`/bff/dashboard` のエンドポイントが使う `PlatformAuthPolicies.AdminOnly`）であり、管理者限定の表現がリポジトリ内で 1 種類に保たれる。**ただし「グループとエンドポイントの両方に認可を重ねる」形そのものは本 PR が初出**である（`RequireAuthorization` の全 19 件を実測。`AuthzEndpoints.cs:28` は入れ子 `MapGroup` の内側だけ、`DashboardBffEndpoints.cs:21` のグループには認可が無い）。挙動は `Retry_AsOperator_IsForbidden` / `GetById_AsOperator_IsAllowed` の実測で確かめた |
+| **A（採用）** | グループの認可はそのまま、`retry` にだけ `RequireAuthorization(PlatformAuthPolicies.AdminOnly)` を重ねる | 認可メタデータは AND 合成されるため実効は admin のみ。**グループ定義に差分が出ない＝照会が巻き添えにならないことがコード上で自明**。**再利用するのは既存の名前付きポリシー**（`/bff/authz` のグループ・`/bff/dashboard` のエンドポイントが使う `PlatformAuthPolicies.AdminOnly`）であり、管理者限定の表現がリポジトリ内で 1 種類に保たれる。**ただし「グループとエンドポイントの両方に認可を重ねる」形そのものは本 PR が初出**である（`grep -rn "RequireAuthorization" --include=*.cs src/platform src/knowledge` の 18 件〔コメント 4 件を除く呼び出し 14 箇所〕を実測。`AuthzEndpoints.cs:28` は入れ子 `MapGroup` の内側だけ、`DashboardBffEndpoints.cs:21` のグループには認可が無い）。挙動は `Retry_AsOperator_IsForbidden` / `GetById_AsOperator_IsAllowed` の実測で確かめた |
 | B | グループを admin 限定にし、照会 2 本に operator 許可を個別に付け直す | 実効は同じだが、**閲覧の権限指定が「グループ＋例外」から「例外＋例外」へ散る**。閲覧の裁定（planning#198）が出たときに触る箇所が増える。差分も大きく、レビューで「閲覧も変わったのでは」と読み違えられる |
 | C | `retry` を別の `MapGroup` へ分離する | 意図は最も明示的だが、同一プレフィックスのグループが 2 つ並び、共通の `Forwarding` ヘルパや `WithTags` が重複する。**構造の変更に見合う利得が無い** |
 | D | 認可を BFF に置かず、下流（ConversionService）で判定する | 下流には認証基盤が無い（§(3)）。エッジ認証の一元化（[[IADR-0042]] 決定 3・[[IADR-0039]]）を崩す |
@@ -131,7 +131,10 @@ plan_refs:
   ASP.NET Core の `AuthorizationPolicy.CombineAsync` の仕様である。重ねるポリシー自体は
   `/bff/authz`・`/bff/dashboard` が使う既存の `PlatformAuthPolicies.AdminOnly` をそのまま用いる。
   **一方、「グループとエンドポイントの両方に認可を課す」形の先例はリポジトリ内に無い**——
-  `RequireAuthorization` の全 19 件を実測したところ、`AuthzEndpoints.cs:28` は入れ子 `MapGroup` の
+  `grep -rn "RequireAuthorization" --include=*.cs src/platform src/knowledge` の **18 件**
+  （コメント 4 件を除く**呼び出し 14 箇所**。是正前の `origin/develop` は 17 件 / 13 箇所。
+  別プロジェクトの `src/ai-stock-trading` は母集合から除く）を実測したところ、
+  `AuthzEndpoints.cs:28` は入れ子 `MapGroup` の
   内側にだけ認可を置き、`DashboardBffEndpoints.cs:21` のグループには認可が無く `:71` のエンドポイント
   だけが持つ。**本 PR が初出である**ため、AND 合成の実効（operator は 403・照会は 200）は
   仕様の読みに頼らずテストで固定した（決定 4）。
