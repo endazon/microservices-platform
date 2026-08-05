@@ -34,6 +34,11 @@ public sealed class NetworkIsolationTests
         // その代償統制がネットワーク分離であるにもかかわらず本列挙から漏れており、host 公開の回帰を
         // 誰も止められなかった。BFF の retry を管理者限定へ絞っても、後段へ直接到達できれば同じ穴が残る。
         "conversion-service",
+        // FR-12, SC-07, Issue #501: **`ingestion-service` は意図的に「未対応」であって「公開してよい」ではない**。
+        // 同じく compose では expose のみだが本列挙に無く、host 公開の回帰を止められない（同型の穴）。
+        // 今回入れなかったのは、HTTP サーフェスが MapPlatformIntrospection() 1 件のみで副作用のある操作を
+        // 持たず、FR-12 / SC-07 の射程（retry の権限是正）外だからである（IADR-0128 フォローアップ 2）。
+        // 追加するときはここへ 1 行足す。
     ];
 
     [Fact]

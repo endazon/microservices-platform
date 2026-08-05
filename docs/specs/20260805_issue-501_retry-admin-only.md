@@ -261,7 +261,9 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 1. **ConversionService へのアプリ層認証の要否**。現状はネットワーク分離（＋mTLS）に依存する。
    同 Namespace 内の任意 Pod からは到達できるため、ゼロトラストを徹底するなら別 issue で判断する
    （[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) フォローアップ 1）。
-2. `ingestion-service` も `NetworkIsolationTests` の列挙外である（同型の穴）。
+2. `ingestion-service` も `NetworkIsolationTests` の列挙外である（同型の穴）。今回入れないのは、
+   HTTP サーフェスが `MapPlatformIntrospection()` 1 件のみで副作用のある操作を持たないためである。
+   **「公開してよい」の意味ではない**ことを `NetworkIsolationTests` の列挙にもコメントで残した。
 3. **閲覧ロールの差異の裁定**（planning#198 提案 8。**計画は SC-07 全体を管理者限定と定め、実装は
    admin/operator** という [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) 決定 1 由来の
    既知の逸脱）が出たら、計画改訂・実装是正のいずれであれ照会側の権限を追随させる（SC-05・SC-06 も同じ適用先）。
