@@ -82,6 +82,18 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // FR-12, SC-07, IADR-0039 決定3: 無認証は 401（権限不足の 403 と取り違えない）。一覧側には
+    // GetList_WhenAnonymous_IsUnauthorized があるのに個別取得には無く、非対称が残っていた。
+    [Fact]
+    public async Task GetById_WhenAnonymous_IsUnauthorized()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
+        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     [Fact]
     public async Task GetById_WhenMissing_Returns404()
     {

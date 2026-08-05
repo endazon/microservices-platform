@@ -203,6 +203,7 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 | 4 | `processing` 中の 409 `not_retryable` が**変わっていない** | `Retry_ProcessingJob_Returns409NotRetryable`（新規・本文の `error` まで検証） | `ConversionJobEndpointTests.cs` |
 | 4b | 同 409 が BFF を素通りする | `Retry_WhenNotRetryable_Passes409Through` | `BffConversionEndpointTests.cs` |
 | 5 | 照会の権限が**変わっていない** | `GetList_AsOperator_IsAllowed`（既存）＋ `GetById_AsOperator_IsAllowed`（新規） | 同上 |
+| 5b | 個別取得の無認証が 401（一覧側にしか無かった非対称の解消・AI レビュー指摘） | `GetById_WhenAnonymous_IsUnauthorized`（新規） | 同上 |
 | 6 | 下流の host 非公開が回帰しない（compose） | `InternalServices_MustNotPublishHostPorts`（`conversion-service` を追加） | `NetworkIsolationTests.cs` |
 | 6b | 本番系（Helm）の Service が外部公開型にならない | `InternalServices_HelmServicesMustStayClusterIp`（新規） | 同上 |
 
