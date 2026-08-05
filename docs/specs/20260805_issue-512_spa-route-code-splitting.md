@@ -427,11 +427,21 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
 | M4a | `NotFound` の見出し文言を 1 文字変える | **5 件**（`Layout.test.tsx` 3 / `sc11-config/access.test.tsx` 2） |
 | M4b | `NotFound` の `padding` を 1 文字変える（見出しは変えない） | **素通り**。markup 一致テストは**両側を同じ関数で描く**ため、両方が同じだけ変わる変異は原理的に検出しない（意図どおり。検出するのは**乖離**である） |
 | M4c | **未知パス側の `NotFound` だけ**を `<div>` で包む（＝存在秘匿の乖離そのもの） | **是正前は素通りした。** 比較範囲が「見出しの親（＝`NotFound` 自身の `<main>`）」に閉じており、包む要素の違いが比較の外に落ちていた。**比較範囲を Outlet の器（共通シェルの `<main>`）まで広げて是正**し、再測定で 1 件が落ちることを確認した |
-| M5a | **共通シェル（`Layout`）を遅延側へ移す** | **是正前は完全に素通りした**（`typecheck` green・`pnpm run test` **551 件全 green**・`build` は警告も出さず初期チャンクがむしろ 274.33 → 238.71 kB に縮む）。**`initialChunk.test.ts` を足して是正**し、再測定で 1 件が落ちることを確認した |
+| M5a | **共通シェル（`Layout`）を遅延側へ移す** | **是正前は完全に素通りした**（`typecheck` green・`pnpm run test` **当時の 551 件が全 green**・`build` は警告も出さず初期チャンクがむしろ 274.33 → 238.71 kB に縮む）。**`initialChunk.test.ts` を足して是正**し、落ちることを確認した |
 | M5d | ガード（`RequireRole`）ごと外して画面を直接ルートに載せる | **4 件**（`sc11-config` の access / 画面テスト） |
 | M6 | `manualChunks` の `ui` 規則を外す | **素通り**（ビルドは成功し警告も出ない。1 kB 未満の遅延チャンクが 3 → 9 本に増えるだけ）。**チャンク構成そのものを検査する機械は無い**（§申し送り 3） |
 | M7 | `manualChunks` の `vendor-react` 規則を外す | **素通り**（index が 274.33 → 458.79 kB へ増えるが 500 kB は超えないため警告も出ない）。同上 |
 | M8 | 分割後の**遅延**チャンク（`ConfigViewerPage-*.js`）へ CDN の URL を混ぜる | **`check-static-egress.js` が落ちる**（`cdn.jsdelivr.net -> cdn.jsdelivr.net`）。**走査が初期チャンクだけを見ている穴は無い**ことを確認した（走査対象は 4 → 20 ファイルへ増えている） |
+
+**［2026-08-05 追記］改番と `asyncUtilTimeout` の局所化のあと、3 件を測り直した。**
+どちらの変更もモジュールグラフと存在秘匿の比較範囲に触れていないが、
+**「壊すと落ちる」は変更のたびに確かめないと意味が無い**ので実測した。
+
+| # | 再測定の結果 |
+| --- | --- |
+| M1（SC-09 を静的 import へ戻す） | `routeSplitting.test.ts` が **2 件 fail**（12 件中）。当初と同じ |
+| M4c（未知パス側の `NotFound` だけを `<div>` で包む） | `Layout.test.tsx` が **1 件 fail**（15 件中。`forbiddenHtml` と `unknownHtml` の一致が破れる） |
+| M5a（`Layout` を遅延側へ移す） | **全体で 557 件中 1 件だけが fail し、それが `initialChunk.test.ts` の `loads Layout eagerly`**。残り 556 件は green のまま。**この 1 本が唯一の防波堤であること**を、最終状態の件数で改めて確認した |
 
 **素通り 3 件（M4b / M6 / M7）の扱い**:
 
