@@ -17,7 +17,7 @@ import {
   CONFIDENTIALITY_VALUES,
   DEFAULT_CONFIDENTIALITY,
 } from '../abac/confidentiality';
-import type { AdminDocument } from './useDocumentAdmin';
+import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書の登録／編集フォーム（hi-fi の「編集フォーム」パネル）。
 // 1 つの部品で新規登録と編集の両方を担う——項目（タイトル・機密区分・タグ）が同一であり、
@@ -43,7 +43,7 @@ export function DocumentForm({
   onCancel,
 }: {
   /** 編集対象。`null` なら新規登録。 */
-  editing: AdminDocument | null;
+  editing: DocumentDto | null;
   submitting: boolean;
   onSubmit: (values: DocumentFormValues) => void;
   onCancel: () => void;

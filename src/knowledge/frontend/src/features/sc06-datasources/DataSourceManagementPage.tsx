@@ -19,7 +19,8 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
 import { formatDateTime, sourceTypeLabel, syncStateView } from './syncState';
 import { useDataSourceActions, useDataSources } from './useDataSources';
-import type { DataSource } from './useDataSources';
+// SC-06, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。
 // ソースの登録・一覧・同期状態の確認・手動同期を行い、SC-07（変換ジョブ）への導線を持つ。
@@ -82,7 +83,7 @@ export function DataSourceManagementPage() {
           onCancel={() => setFormOpen(false)}
           onSubmit={(input) => {
             beginOperation();
-            create.mutate(input, {
+            create.mutate({ data: input }, {
               onSuccess: () => {
                 setFormOpen(false);
                 setNotice(t`データソースを登録しました。`);
@@ -151,13 +152,13 @@ export function DataSourceManagementPage() {
                   busy={sync.isPending || disable.isPending}
                   onSync={() => {
                     beginOperation();
-                    sync.mutate(source.id, {
+                    sync.mutate({ id: source.id }, {
                       onSuccess: () => setNotice(t`同期をトリガしました。`),
                     });
                   }}
                   onDisable={() => {
                     beginOperation();
-                    disable.mutate(source.id, {
+                    disable.mutate({ id: source.id }, {
                       onSuccess: () => setNotice(t`データソースを無効化しました。`),
                     });
                   }}
@@ -190,7 +191,7 @@ function SourceRow({
   onSync,
   onDisable,
 }: {
-  source: DataSource;
+  source: DataSourceDto;
   busy: boolean;
   onSync: () => void;
   onDisable: () => void;

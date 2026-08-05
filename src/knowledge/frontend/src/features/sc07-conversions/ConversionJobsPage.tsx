@@ -23,7 +23,8 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import { isRetryable, jobStatusView, JOB_STATUSES } from './jobStatus';
 import type { JobStatusFilter } from './jobStatus';
 import { useConversionJobs, useRetryConversionJob } from './useConversionJobs';
-import type { ConversionJob } from './useConversionJobs';
+// SC-07, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-07, UC-06, FR-12: 変換ジョブ画面（05_screens: ルート /admin/conversions）。
 // 計画が 2026-08-04 に確定した内容（4 状態モデル・状態フィルタ・retry・**再変換は管理者ロール限定**・
@@ -178,7 +179,7 @@ export function ConversionJobsPage() {
                   key={job.id}
                   job={job}
                   canRetry={canRetry}
-                  onRetry={() => retry.mutate(job.id)}
+                  onRetry={() => retry.mutate({ id: job.id })}
                   retrying={retry.isPending}
                 />
               ))}
@@ -202,7 +203,7 @@ function JobRow({
   onRetry,
   retrying,
 }: {
-  job: ConversionJob;
+  job: ConversionJobDto;
   canRetry: boolean;
   onRetry: () => void;
   retrying: boolean;
