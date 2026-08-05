@@ -605,5 +605,6 @@ AST の features には触れていない。Lingui の抽出対象からも AST 
 5. **バンドルサイズ**。`index.js` が 544 kB（gzip 161 kB）で Vite の 500 kB 警告に触れる
    （#490 から +7 kB。Lingui ランタイム分）。コード分割は画面が確定する #452 の後が適切である
    （#490 の未決事項 5 を引き継ぐ）。
+   **［2026-08-05 追記］#512 / [[IADR-0134]] で消化**（ルート単位の遅延 ＋ `manualChunks` 3 規則。500 kB 警告は解消し、初期ロードは 632.98 → 577.54 kB / gzip 190.04 → 177.94 kB）。
 6. **Storybook のアドオン**。現状 0 個である。a11y チェック（`@storybook/addon-a11y`）等を入れる場合は
    08_data-egress-policy に照らして判断する（判断の材料は `check-static-egress.js` の走査結果が与える）。

@@ -9,8 +9,10 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
+import { configure, getConfig } from '@testing-library/dom';
 import { act, render } from '@testing-library/react';
 import type { User } from 'oidc-client-ts';
+import { afterEach } from 'vitest';
 import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
 import { i18n } from '@foundation/i18n';
@@ -25,6 +27,18 @@ import type { ShellRoute } from '@foundation/routing/shell';
 // 実アプリのルート木（`@foundation/routing/router`）をそのまま使わないのは、それが合成点
 // （`@features`）＝他ユニットまで引き込み、ユニット単体のテストが他ユニットの存在に依存するためである
 // （IADR-0056 の依存規則。可変ユニットは `@foundation` しか参照しない）。
+
+// NFR, ADR-0031 / IADR-0134 決定 2: `configure()` は @testing-library/dom の**グローバル設定**を
+// 書き換える。したがって `renderUnitRoute` の中で呼ぶだけでは「その 1 回の描画」ではなく
+// **そのテストファイル全体**へ効いてしまい、横断 setup に置いたのと同じ弊害（「1 秒で落ちるべき
+// 退行が 5 秒待って落ちる」）がファイル内で再現しうる。各テストの後に既定値へ戻すことで、
+// **この入口を実際に使ったテストだけ**が延長を受けるようにする。
+// （Vitest はファイル単位で環境を分離するため、他のテストファイルへは元々漏れない。）
+const DEFAULT_ASYNC_UTIL_TIMEOUT = getConfig().asyncUtilTimeout;
+
+afterEach(() => {
+  configure({ asyncUtilTimeout: DEFAULT_ASYNC_UTIL_TIMEOUT });
+});
 
 function makeJwt(payload: unknown): string {
   const b64url = (obj: unknown) =>
@@ -75,6 +89,19 @@ export async function renderUnitRoute(
   createRoutes: (shell: ShellRoute) => readonly AnyRoute[],
   { initialEntry, roles = [] }: RenderUnitRouteOptions,
 ) {
+  // NFR, ADR-0031 / IADR-0134 決定 2: ガード（`RequireRole`）配下の画面は
+  // `router.load()` の事前読み込みが効かない（`preloadRouteComponents` は
+  // `route.options.component.preload` しか見ず、ガードで包んだ素の関数は `.preload` を持たない）。
+  // よって**描画が始まってから動的 import が走り**、`findBy*` の待ち時間にその往復が乗る。
+  // 既定の 1000 ms はカバレッジ計測を有効にすると足りないことがある（実測: `sc05-documents` /
+  // `sc09-admin-abac` が落ちた。`pnpm run test` では再現せず `pnpm run test:coverage` でのみ再現）。
+  //
+  // **延長はこの入口を使ったテストに閉じる**——横断 setup（`platform/frontend/src/test/setup.ts`）に
+  // 置くとガードと無関係なテスト（AST・`@platform/ui`・純関数）まで巻き込み、
+  // 「1 秒で落ちるべき退行が 5 秒待って落ちる」経路を作る。閉じ込めは冒頭の `afterEach` が担う
+  // （`configure()` はグローバル設定なので、戻さないとファイル内の他のテストまで巻き込む）。
+  configure({ asyncUtilTimeout: 5000 });
+
   const testRoot = createRootRoute({ component: Outlet });
   // 実アプリの shellRoute と同じ id を持つ検査用レイアウト。ここだけが型の付け替えであり、
   // ユニット側から見た形（親ルート）は実アプリと同一である。

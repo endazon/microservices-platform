@@ -1482,6 +1482,16 @@ components:
         attributeFilters:
           type: object
           additionalProperties: { type: string }
+        # FR-03, SC-02, #531: 検索モード（**3 値**・既定 hybrid）。利用者裁定 Q4（planning#197）。
+        # enum にはしない（IADR-0131 決定 5）——閉じた enum は後段の値追加を SPA 側で破壊的にする。
+        # 未知の値・未指定は RetrievalService が hybrid へ縮退させる。
+        mode:
+          type: string
+          default: hybrid
+          description: >-
+            hybrid（既定・ベクトル＋全文の RRF 融合）/ keyword（全文のみ）/ semantic（ベクトルのみ）。
+            未知の値は hybrid として扱う。
+          example: hybrid
 
     # ── #520 / IADR-0132: 応答スキーマの `required` は C# の**非 null 性**から起こす。
     # `?` の付かないメンバー（値型・コレクションを含む）だけを required に入れる。

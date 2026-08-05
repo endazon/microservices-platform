@@ -32,6 +32,21 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         // 融合精度のため topK より広めの候補を各系統から取得する
         var candidateK = Math.Max(request.TopK * 4, request.TopK);
 
+        // FR-03, SC-02, #531: 検索モード（3 値）で使う系統を選ぶ。未知・未指定は hybrid へ縮退する。
+        // 単系統のときは候補を広げる意味が無い（融合しないため）ので topK をそのまま使う。
+        var mode = SearchModes.Normalize(request.Mode);
+
+        if (mode == SearchModes.Keyword)
+            return (await store.KeywordSearchAsync(request.Query, request.TopK, filters, ct))
+                .Take(request.TopK).ToList();
+
+        if (mode == SearchModes.Semantic)
+        {
+            var semanticVector = await embed.EmbedAsync(request.Query, ct);
+            return (await store.SearchAsync(semanticVector, request.TopK, filters, ct))
+                .Take(request.TopK).ToList();
+        }
+
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
         var vector = await embed.EmbedAsync(request.Query, ct);
         var vectorTask = store.SearchAsync(vector, candidateK, filters, ct);
