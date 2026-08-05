@@ -1,5 +1,5 @@
 ---
-title: IADR-0133 SPA バンドルの分割境界 — ルート単位の遅延と、初期チャンクに残すものの線引き
+title: IADR-0134 SPA バンドルの分割境界 — ルート単位の遅延と、初期チャンクに残すものの線引き
 type: impl-adr
 status: Accepted
 related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, IADR-0009, IADR-0056, IADR-0120, IADR-0121, IADR-0124, IADR-0125]
@@ -15,7 +15,7 @@ related_specs:
   - ../tech/tech-requirements.md
 ---
 
-# IADR-0133: SPA バンドルの分割境界（ルート単位の遅延と、初期チャンクに残すものの線引き）
+# IADR-0134: SPA バンドルの分割境界（ルート単位の遅延と、初期チャンクに残すものの線引き）
 
 > 実装リポジトリ内の意思決定記録（Implementation ADR）。1 ファイル = 1 意思決定。
 > 計画リポジトリの ADR（`ADR-XXXX`）とは別系統（`IADR-XXXX`）とし、実装に閉じた決定を記録する。
@@ -244,8 +244,10 @@ minify 後の値は「kB（minified）」と明記する。生の出力は[作�
 - Superseded by: なし。
 - **部分的に補う**: [IADR-0124](IADR-0124_tanstack-router-unit-composition.md) 決定 1 の「ルート factory」に
   `component` の遅延化という選択肢を足す（型付き構成の要件は変わらない）。
-- **採番について**: 本 ADR は `IADR-0133` を採った。作業ブランチの基点（`68d91ce`）には
-  `IADR-0131` が無いが、`develop`（`727d021`）に `IADR-0131`（マージ済み）が、並行作業のブランチ
-  `fix/NFR-openapi-response-required` に `IADR-0132`（未マージ）が存在するためである。
-  **`IADR-0132` の PR が先にマージされない場合は、欠番を作らないよう `IADR-0132` へ改番する**
-  （`.claude/rules/traceability.md` §採番衝突時の改番手順）。
+- **採番について**: 本 ADR は当初 `IADR-0133` を採ったが、**`IADR-0134` へ改番した**（本 PR は改番時点で
+  未 push であり、改番コストが最小だったため。`.claude/rules/traceability.md` §採番衝突時の改番手順）。
+  経緯は次のとおりで、**`0133` は #526 の改番先として予約されている**。
+  - `develop`（`9dc6c13`）には **`IADR-0132` が 2 件ある** —— `IADR-0132_openapi-required-from-csharp-nullability.md`（#520 / PR #528。先着）と
+    `IADR-0132_abac-dev-seed.md`（#526。後着）が相次いでマージされ、同番のまま残った。
+  - 先着尊重により**後着の #526 が `IADR-0133` へ改番する**。本 PR がその番号を空けるため `0134` を採る。
+  - よって `0133` は**一時的な欠番**であり、#526 の改番が入った時点で解消する（索引 `docs/adr/README.md` にも注記した）。

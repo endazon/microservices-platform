@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// NFR, ADR-0031 / IADR-0133: ルート単位の分割後も、**実ブラウザで**アプリが起動すること。
+// NFR, ADR-0031 / IADR-0134: ルート単位の分割後も、**実ブラウザで**アプリが起動すること。
 //
 // 単体テスト（jsdom）は動的 import を Vite の解決に任せるため、成果物側の配線
 // （index.html の modulepreload・チャンク間の相対 URL・base の解決）は検査していない。

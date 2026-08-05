@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// NFR, ADR-0031 / IADR-0133: 初期チャンクに残すもの（共通シェル・認証・UI プリミティブ）の回帰ガード。
+// NFR, ADR-0031 / IADR-0134: 初期チャンクに残すもの（共通シェル・認証・UI プリミティブ）の回帰ガード。
 //
 // 何を守るか: **全画面が使うものを遅延側へ移さないこと**。移しても型検査もテストもビルドも通り、
 // バンドルはむしろ小さく見える——変異試験で、共通シェル（Layout）を lazyRouteComponent へ
-// 移しても 551 件のテストが全部緑のままだったことを実測した（IADR-0133 §変異試験 M5a）。
+// 移しても 551 件のテストが全部緑のままだったことを実測した（IADR-0134 §変異試験 M5a）。
 // 実害は初期表示の往復が 1 つ増えること、および描画が suspend してシェルごと空白になることである。
 //
 // 検出のしかたは routeSplitting.test.ts（knowledge）の裏返しで、同じ `vi.mock` の性質
@@ -37,7 +37,7 @@ const MUST_BE_EAGER = [
   ['@platform/ui', 'UI プリミティブ。全画面が使うので分けても往復が増えるだけ'],
 ] as const;
 
-describe('initial chunk contents (NFR / IADR-0133)', () => {
+describe('initial chunk contents (NFR / IADR-0134)', () => {
   it.each(MUST_BE_EAGER)('loads %s eagerly (%s)', async (id) => {
     // アプリの合成ルート＝実アプリが初期チャンクへ載せる範囲そのもの。
     const mod = await import('../../App');

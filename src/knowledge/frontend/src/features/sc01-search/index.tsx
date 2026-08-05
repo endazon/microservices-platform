@@ -11,7 +11,7 @@ import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 // `homeRedirectRoute`）が持つ。`/` の存在はアプリホストの責務であり、可変ユニットを外したときに
 // 消えてはならないためである（IADR-0124 決定 6）。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const SearchChatPage = lazyRouteComponent(() => import('./SearchChatPage'), 'SearchChatPage');
 
 export const createSc01SearchRoute = (shell: ShellRoute) =>

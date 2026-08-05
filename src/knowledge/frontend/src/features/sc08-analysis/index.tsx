@@ -8,7 +8,7 @@ import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 // ABAC の権限内で全利用者が利用できる」）。範囲の限定はサーバ側が narrowing-only で行う（IADR-0005）。
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const AnalysisDashboardPage = lazyRouteComponent(() => import('./AnalysisDashboardPage'), 'AnalysisDashboardPage');
 
 export const createSc08AnalysisRoute = (shell: ShellRoute) =>

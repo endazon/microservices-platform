@@ -187,7 +187,7 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
   /**
    * 比べるのは**共通シェルの本文領域（Outlet の器）**である。
    *
-   * NFR / [[IADR-0133]]: 以前は見出しの親（NotFound 自身の `<main>`）を比べていたが、
+   * NFR / [[IADR-0134]]: 以前は見出しの親（NotFound 自身の `<main>`）を比べていたが、
    * それだと **NotFound を包む要素の違いが比較の外に落ちる**——変異試験で、未知パス側だけを
    * `<div>` で包んでも素通りすることを実測した。包む要素が違えば「シェルが出るかどうか」と
    * 同種の手がかりになるため、器ごと比べる。器は Layout の `<main>`、その中の

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 
-// NFR, ADR-0031 / IADR-0133: ルート単位の遅延読み込み（分割境界の回帰ガード）。
+// NFR, ADR-0031 / IADR-0134: ルート単位の遅延読み込み（分割境界の回帰ガード）。
 //
 // 何を守るか: **画面のモジュールが feature の index から静的 import へ戻らないこと**。
 // 戻ると Rollup はその画面を初期チャンクへ載せ直すが、ビルドは通り、画面のテストも通り、
 // 型検査も通る——**バンドルのサイズ表を人が読まない限り誰も気付かない**。
 // 実測では画面 11 本の遅延化で初期チャンクが 632.98 kB → 533.66 kB へ下がっている
-// （その先の 274.33 kB までは manualChunks の寄与。IADR-0133 §実測）。
+// （その先の 274.33 kB までは manualChunks の寄与。IADR-0134 §実測）。
 //
 // 検出のしかた: 画面モジュールを `vi.mock` で包む。**mock の factory は実際に import された
 // ときにだけ評価される**ため、feature の index を import しただけで factory が走ったなら
@@ -65,7 +65,7 @@ const SCREENS = [
   ['SC-11', 'sc11', () => import('./sc11-config'), true],
 ] as const;
 
-describe('route-level code splitting (NFR / IADR-0133)', () => {
+describe('route-level code splitting (NFR / IADR-0134)', () => {
   it('keeps every screen module out of the eagerly imported graph', async () => {
     // 合成点（ユニットの束ね役）を読む＝実アプリが初期チャンクへ載せるものと同じ範囲。
     const mod = await import('./index');

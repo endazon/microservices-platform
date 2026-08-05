@@ -7,7 +7,7 @@ import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 // ABAC はサーバ側（/bff/search の deny-by-default）で適用され、権限外文書は結果に現れない。
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const SearchResultsPage = lazyRouteComponent(() => import('./SearchResultsPage'), 'SearchResultsPage');
 
 export const createSc02ResultsRoute = (shell: ShellRoute) =>

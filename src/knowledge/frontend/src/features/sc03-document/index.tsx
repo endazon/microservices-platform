@@ -12,7 +12,7 @@ import type { ShellRoute } from '@foundation/routing/shell';
 //
 // ADR-0031 / IADR-0124 決定 1: パスパラメータは TanStack の `$id` 表記。`useParams({ from })` で型が付く。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const DocumentDetailPage = lazyRouteComponent(() => import('./DocumentDetailPage'), 'DocumentDetailPage');
 
 export const createSc03DocumentRoute = (shell: ShellRoute) =>

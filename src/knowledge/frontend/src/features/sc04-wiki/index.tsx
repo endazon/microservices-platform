@@ -6,7 +6,7 @@ import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 // 本 feature は SPA 側の遷移導線のみを提供する（05_screens は SC-04 に SPA ルートを定義していない）。
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const WikiAccessPage = lazyRouteComponent(() => import('./WikiAccessPage'), 'WikiAccessPage');
 
 export const createSc04WikiRoute = (shell: ShellRoute) =>

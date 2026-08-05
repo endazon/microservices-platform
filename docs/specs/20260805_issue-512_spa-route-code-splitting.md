@@ -2,7 +2,7 @@
 title: SPA のバンドルをルート単位で分割する（初期チャンクの削減と 500 kB 警告の解消）
 type: spec
 status: done
-related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, IADR-0009, IADR-0056, IADR-0121, IADR-0124, IADR-0125, IADR-0133]
+related_ids: [NFR, ADR-0031, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, IADR-0009, IADR-0056, IADR-0121, IADR-0124, IADR-0125, IADR-0134]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -12,7 +12,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
-  - ../adr/IADR-0133_spa-route-code-splitting-boundaries.md
+  - ../adr/IADR-0134_spa-route-code-splitting-boundaries.md
   - ../adr/IADR-0121_spa-stack-migration-staging.md
   - ../adr/IADR-0124_tanstack-router-unit-composition.md
   - ../adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md
@@ -27,7 +27,7 @@ related_specs:
 
 > 本仕様書は実装着手前に作成した。計画書（`project-planning` の `projects/<name>/`）を一次情報とし、
 > 本書は「この作業で何をどう実装するか」を確定するための作業仕様である。
-> **内部設計の判断（分割境界・棄却した案・計測の解釈）は [[IADR-0133]] を正とする。**
+> **内部設計の判断（分割境界・棄却した案・計測の解釈）は [[IADR-0134]] を正とする。**
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -42,7 +42,7 @@ related_specs:
   [13_frontend-stack](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)（fixed）
 - **画面（SC）**: 分割の単位が画面（ルート）であるため **SC-01〜SC-11** が対象になる
   （SC-04 は SPA 側の遷移導線のみ）。画面の内容は変えない。
-- 関連 IADR: **[[IADR-0133]]（本作業の内部設計判断。本書と対で読む）**・
+- 関連 IADR: **[[IADR-0134]]（本作業の内部設計判断。本書と対で読む）**・
   [[IADR-0121]]（移行の 5 段）・[[IADR-0124]]（型付きルート木・合成点）・
   [[IADR-0125]]（UI プリミティブ・i18n）・[[IADR-0009]]（存在秘匿）・[[IADR-0056]]（ユニット分離）
 - 本リポジトリの起点: **#512**（親 #446 / #454。出所は #490 / #496 / #502 / #503 / #504 の申し送り）
@@ -67,9 +67,9 @@ related_specs:
    `@knowledge` の画面 11 本。**合成点（`featureRegistry` / `createKnowledgeRoutes`）の
    型付きルート構成は壊さない**（[[IADR-0124]] 決定 1）。
 3. **初期チャンクに残すものの明示と機械的な固定**（共通シェル・認証・`@platform/ui` のプリミティブ）。
-4. **`build.rollupOptions.output.manualChunks` の併用**（実測に基づく。§計測・[[IADR-0133]]）。
+4. **`build.rollupOptions.output.manualChunks` の併用**（実測に基づく。§計測・[[IADR-0134]]）。
 5. 分割境界の**回帰ガード**（単体テスト 2 本 ＋ E2E 1 本）。
-6. 分割の境界と根拠を **[[IADR-0133]]** に記録する。
+6. 分割の境界と根拠を **[[IADR-0134]]** に記録する。
 
 ### 対象外（送り先を明記する）
 
@@ -104,7 +104,7 @@ related_specs:
 **ガードを初期チャンク側に残すのは意図的である**——`RequireRole` が先に評価されるため、
 権限外の利用者は画面チャンクを**取りに行かない**。`wrapInSuspense` を省くと suspend が
 ルート木の最上位まで遡り（`Match.js` の `rootRouteId` の Suspense が受ける）、
-**共通シェルごと空白になる**。理由と棄却案は [[IADR-0133]] 決定 2 を正とする。
+**共通シェルごと空白になる**。理由と棄却案は [[IADR-0134]] 決定 2 を正とする。
 
 ### 2. 初期チャンクに残すもの（`manualChunks`）
 
@@ -112,7 +112,7 @@ issue #512 の指定どおり、**共通シェル・認証・`@platform/ui` の�
 `@platform/ui` は放置すると Rollup が「2 つ以上の遅延チャンクが共有するモジュール」として
 1 kB 未満のチャンクへ切り出す（実測: Label / Tag / Card / Input / Select / StatusBadge）ため、
 `manualChunks` で 1 本に束ねる。同じ理由で TanStack Query の内部も束ねる。
-React ランタイムは別建てにする（理由は [[IADR-0133]] 決定 3）。
+React ランタイムは別建てにする（理由は [[IADR-0134]] 決定 3）。
 
 ```text
 初期ロード（index.html の <script> ＋ modulepreload）
@@ -143,7 +143,7 @@ React ランタイムは別建てにする（理由は [[IADR-0133]] 決定 3）
 issue #512 §受け入れ基準 を検証可能な形へ展開する。
 
 - [x] **Vite の 500 kB 警告が出ない。**（§検証。**警告は stderr に出る**ので `2>&1` で捕まえる）
-- [x] **初期チャンクのサイズと分割境界の根拠が [[IADR-0133]]・本書に記録されている。**
+- [x] **初期チャンクのサイズと分割境界の根拠が [[IADR-0134]]・本書に記録されている。**
       根拠は**計測値に紐づく**こと（「重そうだから」で切らない）。
 - [x] **分割前後の実測値を並べて記録した**（初期チャンク・遅延チャンクそれぞれ・gzip 込み）。
 - [x] **合成点の型付きルート構成を壊していない**（[[IADR-0124]] 決定 1。`pnpm run typecheck` が green で、
@@ -285,7 +285,7 @@ stdout だけを見ていると「警告が消えた」と誤って判定する�
 | V6 全依存を単一 `vendor` へ | 494.74 kB | 573.54 kB | 176.60 kB | なし | 23 | 10 |
 | **V5 採用（3 規則）** | **274.33 kB** | 577.54 kB | 177.94 kB | なし | 17 | 3 |
 
-読み取れること（**採用の根拠であり、[[IADR-0133]] 決定 3 の一次資料**）:
+読み取れること（**採用の根拠であり、[[IADR-0134]] 決定 3 の一次資料**）:
 
 - **V1 では警告が消えない。** ルート単位の遅延だけでは 533.66 kB までしか下がらない
   （＝ issue が想定した「ルート分割で警告が消える」は**成り立たなかった**）。
@@ -415,7 +415,7 @@ Vitest 側の各画面テストが**実際に動的 import を通して**固定�
 5. **`tailwind-merge`（102.19 kB rendered）の妥当性**。`cn()` のためだけに入っており、
    初期チャンクの依存の中で react-dom / router-core / oidc-client-ts に次ぐ 4 位である。
    置き換え候補の評価は本 issue の射程外。
-6. **IADR の採番**: 本 PR は **IADR-0133** を採った。基点 `68d91ce` には `IADR-0131` が無いが、
+6. **IADR の採番**: 本 PR は **IADR-0134** を採った。基点 `68d91ce` には `IADR-0131` が無いが、
    `develop`（`727d021`）に `IADR-0131`（マージ済み）が、並行作業のブランチ
    `fix/NFR-openapi-response-required` に `IADR-0132`（未マージ）が存在するためである。
    **`IADR-0132` の PR が先にマージされない場合、本 PR は `IADR-0132` へ改番する**

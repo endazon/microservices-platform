@@ -14,7 +14,7 @@ export default defineConfig({
   // トークンは @platform/ui の styles.css の @theme が正）。
   // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3: マクロを babel で展開する。
   // 同じ設定を src/vitest.config.ts にも置く（片方だけだとビルドとテストのどちらかが静かに壊れる）。
-  // NFR, ADR-0031 / IADR-0133: バンドル内訳の実測（`pnpm run build:analyze`）。
+  // NFR, ADR-0031 / IADR-0134: バンドル内訳の実測（`pnpm run build:analyze`）。
   // 既定のビルドには載せない（成果物と所要時間を変えないため）。出力 dist/stats.json は
   // 生成物であり src/.gitignore の `dist` に含まれるためコミットされない。
   plugins: [
@@ -27,7 +27,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // NFR, ADR-0031 / IADR-0133: 初期チャンクの内訳を実測したうえでの分割。
+        // NFR, ADR-0031 / IADR-0134: 初期チャンクの内訳を実測したうえでの分割。
         // 画面はルート単位の遅延（lazyRouteComponent）で外へ出したが、実測では初期チャンクの
         // **81.7% が依存**であり、ルート境界では動かせない。ここで扱うのは残りの 2 種類だけである。
         manualChunks(id) {

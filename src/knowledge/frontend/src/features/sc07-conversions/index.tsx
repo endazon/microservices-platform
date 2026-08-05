@@ -17,14 +17,14 @@ import { PlatformRole } from '@foundation/auth/roles';
 // 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
-// NFR, ADR-0031 / IADR-0133: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
 const ConversionJobsPage = lazyRouteComponent(() => import('./ConversionJobsPage'), 'ConversionJobsPage');
 
 export const createSc07ConversionsRoute = (shell: ShellRoute) =>
   createRoute({
     getParentRoute: () => shell,
     path: '/admin/conversions',
-    // NFR, ADR-0031 / IADR-0133: ガード（RequireRole）は初期チャンクに残し、画面だけを遅延させる。
+    // NFR, ADR-0031 / IADR-0134: ガード（RequireRole）は初期チャンクに残し、画面だけを遅延させる。
     // ガードが先に評価されるため、権限外の利用者は画面チャンクを取得しない（存在秘匿。IADR-0009）。
     // 反面 router.load() の事前読み込み（preloadRouteComponents）が効かず描画時に suspend するため、
     // このルートには Suspense 境界が要る（無いと最上位まで遡り共通シェルごと消える）。
