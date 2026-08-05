@@ -1,7 +1,7 @@
 ---
 title: サービス間内部 API の暫定運用（ネットワーク分離）と NFR 草案（全 API OIDC/JWT・サービス間 mTLS）の相違 — NFR のフェーズ分けと ADR-0005 確定を提案
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids:
   - FR-05
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-62-20260705-0347 / PR #79 / IADR-0017 / docs/specs/20260704_NFR_internal-service-auth-network-isolation.md（Issue #62、親 #48、関連 #55）"
 author: claude
 created: 2026-07-05
+updated: 2026-08-05
 ---
 
 # フィードバック: 内部 API の暫定運用（ネットワーク分離）と NFR 草案の相違

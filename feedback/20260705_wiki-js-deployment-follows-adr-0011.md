@@ -1,7 +1,7 @@
 ---
 title: ADR-0011（Wiki.js 採用）に実装を追従 — Proposed→Accepted 確定と記述整合を提案
 type: plan-feedback
-status: open
+status: accepted
 category: 状態確定・記述整合
 related_ids:
   - FR-13
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-66-20260705-0804 / Issue #66（親 #56 → #48）/ docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md"
 author: claude
 created: 2026-07-05
+updated: 2026-08-05
 supersedes: ./20260703_wiki-selfhosted-supersedes-adr-0011.md
 ---
 

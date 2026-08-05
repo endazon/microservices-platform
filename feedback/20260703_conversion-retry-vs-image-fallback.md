@@ -1,7 +1,7 @@
 ---
 title: 図コード化の LLM 一時障害時の扱い（再試行 vs 画像保持へ縮退）
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids:
   - FR-12
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: "PR #49 / branch claude/issue-26-20260703-0230 / docs/specs/20260703_FR-12_document-normalization-pipeline.md"
 author: claude
 created: 2026-07-03
+updated: 2026-08-05
 ---
 
 # フィードバック: 図コード化の LLM 一時障害は再試行か、画像保持へ縮退か

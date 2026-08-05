@@ -1,7 +1,7 @@
 ---
 title: リポジトリ位置づけ（主=プラットフォーム基盤）とユニット第一フォルダ構成の計画側反映
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids:
   - FR-14
@@ -10,6 +10,7 @@ source_repo: microservices-platform
 source_ref: refactor/FR-14-platform-knowledge-restructure（issue #209/#210、docs/specs/20260710_FR-14_repo-restructure-platform-knowledge.md、IADR-0056）
 author: claude
 created: 2026-07-10
+updated: 2026-08-05
 ---
 
 # フィードバック: リポジトリ位置づけ（主=基盤）とユニット第一フォルダ構成の計画側反映

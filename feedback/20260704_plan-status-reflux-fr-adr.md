@@ -1,7 +1,7 @@
 ---
 title: 計画書ステータスの環流 — 全計画書 draft・全 ADR Proposed のまま FR-01〜13 実装完了、状態確定と実装差分を提案
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids:
   - FR-01
@@ -34,6 +34,7 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-57-20260704-0226 / Issue #57（親 #48）"
 author: claude
 created: 2026-07-04
+updated: 2026-08-05
 ---
 
 # フィードバック: 計画書ステータスの環流（状態確定と実装差分の反映）

@@ -1,7 +1,7 @@
 ---
 title: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加
 type: plan-feedback
-status: closed
+status: rejected
 category: UC/画面の差異
 related_ids: [FR-15, SC-11, ADR-0018, IADR-0036]
 source_repo: microservices-platform

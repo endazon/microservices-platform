@@ -1,7 +1,7 @@
 ---
 title: Wiki 閲覧は自前軽量読み取り API を正式採用 — ADR-0011（Wiki.js 採用）の Supersede 提案
 type: plan-feedback
-status: open
+status: rejected
 category: 新たな制約(ADR要)
 related_ids:
   - FR-13
@@ -13,7 +13,7 @@ source_repo: microservices-platform
 source_ref: "branch claude/issue-56-20260703-1411 / Issue #56（親 #48）/ docs/adr/IADR-0013_wiki-selfhosted-read-api-supersedes-adr-0011.md"
 author: claude
 created: 2026-07-03
-updated: 2026-07-05
+updated: 2026-08-05
 superseded_by: ./20260705_wiki-js-deployment-follows-adr-0011.md
 ---
 

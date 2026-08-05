@@ -1,7 +1,7 @@
 ---
 title: 10_composability-design「リスク・未決事項」のうち実装で確定済みの 3 項目（スキーマ表現力・構成情報API配置・ドリフト粒度）の反映提案
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids:
   - FR-14
@@ -11,6 +11,7 @@ source_repo: microservices-platform
 source_ref: "docs/adr/IADR-0028_declarative-pipeline-config.md / docs/adr/IADR-0029_config-info-api-placement-and-drift-granularity.md / docs/specs/20260709_composability-plan-feedback-reflux.md"
 author: claude
 created: 2026-07-09
+updated: 2026-08-05
 ---
 
 # フィードバック: 10_composability-design 未決事項のうち実装確定済み 3 項目の反映提案

@@ -1,14 +1,14 @@
 ---
 title: 実装は .NET 10 / C# 13 へ統一済み — 計画制約「ASP.NET Core + .NET 8」との乖離の解消判断を依頼
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の誤り
 related_ids: [NFR, ADR-0001, IADR-0048]
 source_repo: microservices-platform
 source_ref: "src/Directory.Build.props（net10.0 / LangVersion 13）/ 実装リポ issue #202 / docs/adr/IADR-0048_dotnet10-target-framework.md / 2026-07-09 全体レビュー"
 author: claude
 created: 2026-07-09
-updated: 2026-07-10
+updated: 2026-08-05
 ---
 
 > **実装側の意思決定記録**: 2026-07-10 に **IADR-0048**（.NET 10 / C# 13 採用・単一情報源

@@ -1,7 +1,7 @@
 ---
 title: 可変部品 共通実装ガイドの新設に伴う上流（10_composability-design）との相互参照追加・整合確認の提案
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids:
   - FR-14
@@ -11,6 +11,7 @@ source_repo: microservices-platform
 source_ref: "PR #205 / docs/tech/composable-component-guide.md / docs/specs/20260709_composable-component-implementation-guide.md"
 author: claude
 created: 2026-07-09
+updated: 2026-08-05
 ---
 
 # フィードバック: 可変部品 共通実装ガイドの新設 — 上流との相互参照追加・整合確認の提案
