@@ -55,12 +55,14 @@ const US = '\x1f'; // Unit Separator
 const RS = '\x1e'; // Record Separator
 
 function parseArgs(argv) {
-  const a = { range: null, verbose: false, title: null };
+  const a = { range: null, verbose: false, title: null, author: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--range') a.range = argv[++i];
     else if (argv[i].startsWith('--range=')) a.range = argv[i].slice('--range='.length);
     else if (argv[i] === '--title') a.title = argv[++i];
     else if (argv[i].startsWith('--title=')) a.title = argv[i].slice('--title='.length);
+    else if (argv[i] === '--author') a.author = argv[++i];
+    else if (argv[i].startsWith('--author=')) a.author = argv[i].slice('--author='.length);
     else if (argv[i] === '--verbose' || argv[i] === '-v') a.verbose = true;
   }
   return a;
@@ -120,6 +122,17 @@ function collectCommits(range) {
 
 function isBot(c) {
   const hay = `${c.author} ${c.email}`.toLowerCase();
+  return BOT_AUTHORS.some((b) => hay.includes(b.toLowerCase()));
+}
+
+// #524: PR の作成者ログイン名が「規約対象外の自動 PR」かを判定する（BOT_AUTHORS が単一情報源）。
+// ワークフロー側の `if: github.event.pull_request.user.type != 'Bot'` は **App が代行した PR まで
+// 除外してしまう**（`claude[bot]` は user.type == 'Bot'）ため、判定をここへ寄せて名前で除外する。
+// GitHub App が人の代わりに書いた PR は**検査対象に残す**——スカッシュ後件名は develop に恒久的に
+// 残り、force push 禁止のため事後修正できないため（pr-title.yml が「最後の砦」と自称する所以）。
+function isBotAuthorName(login) {
+  const hay = String(login == null ? '' : login).toLowerCase();
+  if (!hay) return false;
   return BOT_AUTHORS.some((b) => hay.includes(b.toLowerCase()));
 }
 
@@ -324,9 +337,16 @@ function validateSubject(subject) {
  * git を使わず、渡された 1 件名のみを規約に照合する。Revert / [skip ci] はスキップ扱い。
  * 合格・スキップ時 0、違反時 1 を返す。
  */
-function checkSingleTitle(title) {
+function checkSingleTitle(title, author) {
   const subject = String(title == null ? '' : title).trim();
   process.stdout.write(`PR タイトル（スカッシュ後件名）チェック: "${subject}"\n`);
+
+  // #524: 除外は **作成者の名前**で行う（`user.type == 'Bot'` ではない）。判定は BOT_AUTHORS の
+  // 単一情報源を使い、ワークフロー側で規約を二重実装しない。
+  if (isBotAuthorName(author)) {
+    process.stdout.write(`  skip(bot)    作成者 ${author} は規約対象外（BOT_AUTHORS）\n`);
+    return 0;
+  }
 
   if (!subject) {
     // タイトル未取得（イベント外実行等）。CI をブロックしない（fail-open）。
@@ -361,7 +381,9 @@ function main() {
   // 単一件名モード（PR タイトル検査）。git リポジトリ内外を問わず動作する。
   const title = args.title != null ? args.title : process.env.PR_TITLE;
   if (title != null) {
-    process.exit(checkSingleTitle(title));
+    // 作成者は PR_AUTHOR（ワークフローが github.event.pull_request.user.login を渡す）。
+    const author = args.author != null ? args.author : process.env.PR_AUTHOR;
+    process.exit(checkSingleTitle(title, author));
   }
 
   if (tryGit('rev-parse --is-inside-work-tree') !== 'true') {
@@ -456,6 +478,8 @@ module.exports = {
   loadExistingPlanAdrIds,
   checkSingleTitle,
   isBot,
+  isBotAuthorName,
+  BOT_AUTHORS,
   isSkippable,
   hashMatches,
   loadAllowlist,
