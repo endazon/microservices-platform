@@ -148,10 +148,35 @@ plan_refs:
 5. **対象はバックエンドの xUnit テストクラスに限る。** 実測（母集合は
    `src/{platform,knowledge}/frontend` ＋ `src/packages` 配下の `*.{test,spec}.{ts,tsx}` から
    `node_modules` を除いた **59 件**）では、`docs/tests/` が**ファイル名で**参照していないものが
-   **28 件**ある。大半は `foundation/` と `@platform/ui` の基盤テストで、画面の受け入れ基準に
-   紐づかない。残る画面テスト（SC-01 / SC-04）は**節そのものは存在し**、仕様書が
-   ディレクトリ名で参照しているために「ファイル名では見つからない」だけである。ここを fail に
-   すると、**仕様書の参照様式の統一**という別件を本検査が強制することになる。
+   **28 件**ある。**内訳は次のとおり**（再実測: 2026-08-05。当初の記述は 23 件しか説明して
+   おらず、**E2E 5 件が漏れていた**）。
+
+   ```sh
+   # 母集合 59 件
+   cd src && find platform/frontend knowledge/frontend packages -path '*/node_modules' -prune -o \
+     -type f \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \) \
+     -print | sort > /tmp/fe-all.txt; wc -l < /tmp/fe-all.txt
+   # 未参照 28 件
+   cd .. && while read -r f; do b=$(basename "$f"); grep -rqF "$b" docs/tests/ || echo "$f"; done < /tmp/fe-all.txt
+   ```
+
+   | 区分 | 件数 | 中身 |
+   | --- | --- | --- |
+   | `platform/frontend/src/foundation/` の基盤テスト | **15** | `api/`（orvalMutator / queryClient / sse）・`auth/`（CallbackPage / RequireAuth / RequireRole / roles / safeRedirect）・`config/runtimeConfig`・`i18n/i18n`・`routing/`（loginRouteSearch / router）・`ui/`（ErrorList / apiErrors / notifications） |
+   | `packages/ui`（`@platform/ui`）のプリミティブ | **6** | Alert / StatusBadge / Tag / formControls / layout / `lib/cn` |
+   | 画面の単体テスト | **2** | SC-01 `sc01-search/citations.test.ts`・SC-04 `sc04-wiki/WikiAccessPage.test.tsx` |
+   | **E2E（Playwright smoke）** | **5** | `platform/frontend/e2e/` の `login` / `sc01-search` / `sc02-results` / `sc03-document` / `sc04-wiki` |
+
+   前 2 区分（21 件）は基盤テストであり、画面の受け入れ基準に紐づかない。画面の単体テスト 2 件は
+   **節そのものは存在し**、仕様書がディレクトリ名で参照しているために「ファイル名では見つからない」
+   だけである。**E2E 5 件は事情が違う——ディレクトリ名でもなく、`docs/tests/` から一切参照されて
+   いない**（SC-05〜SC-11 のテスト仕様書は自分の smoke spec をファイル名で挙げているのに、
+   SC-01〜SC-04 は挙げていない）。**この 5 件は §フォローアップ 2（フロントへの拡張）の射程に含める。**
+
+   いずれにせよ、ここを fail にすると **仕様書の参照様式の統一**という別件を本検査が強制することに
+   なる。**E2E 5 件が「様式の不揃い」ではなく「記載そのものの不在」だったことは、決定 5 を覆す
+   材料ではなく強める材料である**——含めれば即座に別件の作業（SC-01〜SC-04 のテスト仕様書へ
+   E2E の記載を足す）を強制する。
 6. **CI へは `scripts.repo.test.js` 経由で結線する**（`--self-test` ＋ **実データの本走**）。
    `.github/workflows/` は GitHub App 権限では編集できないが、`ci.yml` の `scripts-tests` ジョブ
    （`REQUIRE_REPO_TESTS=1`）が companion を実行するため、**ワークフローを変更せずに CI で強制される**。
@@ -223,7 +248,7 @@ plan_refs:
 | # | 事項 | 扱い |
 | --- | --- | --- |
 | 1 | 向き (a)（仕様書が挙げるテスト名の実在検査） | 別 issue の候補。散文中の識別子をテスト名と判別する設計が本題であり、本 issue の射程では誤検出の設計に十分な根拠を置けない |
-| 2 | フロントエンドへの拡張 | 仕様書の参照様式（ディレクトリ名ではなくファイル名で書く）を先に揃えてから別 issue |
+| 2 | フロントエンドへの拡張 | 仕様書の参照様式（ディレクトリ名ではなくファイル名で書く）を先に揃えてから別 issue。**射程には E2E 5 件（`platform/frontend/e2e/` の `login` / `sc01-search` / `sc02-results` / `sc03-document` / `sc04-wiki` の smoke spec）を含める**——これらは様式の不揃いではなく `docs/tests/` から**一切参照されていない**（決定 5 の内訳表） |
 | 3 | `ci.yml` の `test-traceability` ジョブへの専用ステップ追加 | **要ワークフロー変更**。親のローカル権限で行う（差分は作業仕様書 §CI 結線） |
 | 4 | **対の判定を見出し配下の本文に限る `--strict`** | 別 issue。§限界 2 の追記が示すとおり、現状は「表と見出しだけを落とす」型を止められない。**本 issue では実装しない**——見出し配下だけを見ると §対象 / §実行 からの正当な参照が被覆から外れ、誤検出（床の上げ忘れ扱い）が増える。「どの節からの参照を被覆と数えるか」の設計が本題であり、`--strict` を既定にするか opt-in にするかも含めて別に検討する |
 
