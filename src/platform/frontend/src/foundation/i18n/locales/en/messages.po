@@ -629,6 +629,10 @@ msgstr "Original"
 msgid "参照のみ"
 msgstr "Read-only"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "参照元は特定できませんでした。"
+msgstr "The referencing policies could not be identified."
+
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "古い段の残留"
 msgstr "Stale stage left running"

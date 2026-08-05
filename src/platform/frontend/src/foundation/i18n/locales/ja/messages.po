@@ -629,6 +629,10 @@ msgstr "原本"
 msgid "参照のみ"
 msgstr "参照のみ"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+msgid "参照元は特定できませんでした。"
+msgstr "参照元は特定できませんでした。"
+
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "古い段の残留"
 msgstr "古い段の残留"

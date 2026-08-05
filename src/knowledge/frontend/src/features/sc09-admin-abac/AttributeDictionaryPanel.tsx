@@ -131,7 +131,13 @@ export function AttributeDictionaryPanel({
         >
           {conflicted ? (
             // IADR-0006: 参照中の属性は削除できない。理由を書かないと「なぜ消えないか」が分からない。
-            <Trans>この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。</Trans>
+            // IADR-0040: サーバは**どのポリシーが参照しているか**を Problem 本文に載せ、apiClient が
+            // それを ApiError.details へ抽出している。固定文言だけへ置き換えるとその参照元一覧が
+            // 画面から消える——利用者は「先に見直す」対象を自力で探すことになる。両方を出す。
+            <>
+              <Trans>この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。</Trans>{' '}
+              {toMessages(failed.error, t`参照元は特定できませんでした。`).join(' / ')}
+            </>
           ) : (
             toMessages(failed.error, t`属性辞書を更新できませんでした。`).join(' / ')
           )}

@@ -160,9 +160,17 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
   });
 
   // IADR-0006: 参照中の属性は 409 で削除を拒否される。理由を書かないと「なぜ消えないか」が分からない。
-  it('explains a 409 when deleting a referenced attribute', async () => {
+  // IADR-0040: サーバは**参照元のポリシー名**を Problem 本文に載せる（AuthzEndpoints.cs の
+  // `Results.Problem(detail: "属性 '…' は次のポリシーが参照しているため削除できません: …")`）。
+  // fixture は**実サーバ応答の形**（details 非空）を再現し、詳細が消えないことを固定する。
+  it('explains a 409 when deleting a referenced attribute and keeps the server detail', async () => {
     mockApi({
-      write: () => Promise.reject(new ApiError('conflict', '競合が発生しました。', 409)),
+      write: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [
+            "属性 'dept' (scope=user) は次のポリシーが参照しているため削除できません: P-012 経理文書",
+          ]),
+        ),
     });
     const user = userEvent.setup();
     await renderPage();
@@ -174,6 +182,8 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'この属性は使用中のため削除できません。',
     );
+    // **どのポリシーが参照しているか**が消えていない（固定文言で潰さない）。
+    expect(screen.getByRole('alert')).toHaveTextContent('P-012 経理文書');
     // 409 は障害ではなく拒否である。tone に合わせてラベルも「注意」にする（INDEX 決定 21 の敷衍）。
     expect(screen.getByRole('alert')).toHaveTextContent('注意');
   });

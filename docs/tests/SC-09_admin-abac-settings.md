@@ -52,7 +52,7 @@ related_specs:
 | 基本 2. ポリシー（利用者属性 × 文書属性 → 許可アクション）を定義する | ポリシー定義タブ（一覧 ＋ 構造化条件エディタ ＋ 保存） | `opens on the policy tab and lists the policies with their conditions` ／ `builds a policy condition from the defined attributes only` |
 | 基本 3. 保存前に矛盾を検証する | 検証結果パネル | `shows the server-side contradiction detail in the validation panel` |
 | 基本 4. 保存すると認可判定へ即時反映される | 検証結果パネルの完了表示 | `confirms in the validation panel that a saved policy takes effect immediately` |
-| **例外**. 参照中の属性は削除できない | 409 の理由表示 | `explains a 409 when deleting a referenced attribute` |
+| **例外**. 参照中の属性は削除できない | 409 の理由表示 ＋ 参照元ポリシー名 | `explains a 409 when deleting a referenced attribute and keeps the server detail` |
 | 認可判定の実行（`AbacEvaluator`） | **写像しない**（サーバ側の責務） | — |
 
 ## 計画の要素 → 実装／テストの対応
@@ -76,7 +76,7 @@ related_specs:
 | 3 | 状態表示 | INDEX 決定 21 | 有効／無効を `StatusBadge`（色 ＋ アイコン ＋ テキスト）で示す |
 | 4 | 属性辞書 | FR-09 | タブ切替で一覧が出る。スコープは `Tag`（分類名） |
 | 5 | 属性追加 | FR-09 | 許可値のカンマ区切りを配列へ。ペイロードを固定する |
-| 6 | **参照中削除の 409** | [[IADR-0006]] | 理由を出し、**tone に合わせてラベルも「注意」**にする（琥珀に「エラー」と書かない） |
+| 6 | **参照中削除の 409** | [[IADR-0006]] / [[IADR-0040]] | 理由（固定文言）と**サーバが返す参照元ポリシー名**（`ApiError.details`）の両方を出し、**tone に合わせてラベルも「注意」**にする（琥珀に「エラー」と書かない）。fixture は**実サーバ応答の形**（`details` 非空）を再現する |
 | 7 | **条件エディタ** | 計画の入力表 | 選択肢は属性辞書由来。積んだ条件がチップで見え、保存のペイロードへ入る |
 | 8 | **保存前検証（400）** | 計画 §アクション | サーバの矛盾検証の詳細を**検証結果パネル**に `role="alert"` で出す |
 | 9 | 保存成功 | 計画 §アクション | 「認可判定へ即時反映されます」を `role="status"` で出す |
