@@ -37,10 +37,26 @@ export function DataSourceManagementPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const sources = useDataSources();
-  const { create, sync, disable } = useDataSourceActions();
+  const actions = useDataSourceActions();
+  const { create, sync, disable } = actions;
 
   const items = sources.data ?? [];
-  const failed = [create, sync, disable].find((m) => m.isError);
+  // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDataSourceActions()` の
+  // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに同じ穴が空く。
+  const mutations = Object.values(actions);
+  const failed = mutations.find((m) => m.isError);
+
+  /**
+   * 新しい操作を始める前に、前回の結果（成功メッセージと各ミューテーションの失敗状態）を捨てる。
+   *
+   * TanStack Query は「**別の**ミューテーションが成功した」ことでは他方の `isError` を戻さない。
+   * これが無いと「手動同期が失敗 → 無効化が成功」で成功バナーと古い失敗バナーが並び、
+   * どの操作の結果なのかが読めなくなる（IADR-0127 決定 7）。
+   */
+  function beginOperation() {
+    setNotice(null);
+    for (const mutation of mutations) mutation.reset();
+  }
 
   return (
     <section>
@@ -52,7 +68,7 @@ export function DataSourceManagementPage() {
           type="button"
           variant="primary"
           onClick={() => {
-            setNotice(null);
+            beginOperation();
             setFormOpen((open) => !open);
           }}
         >
@@ -64,14 +80,15 @@ export function DataSourceManagementPage() {
         <DataSourceForm
           submitting={create.isPending}
           onCancel={() => setFormOpen(false)}
-          onSubmit={(input) =>
+          onSubmit={(input) => {
+            beginOperation();
             create.mutate(input, {
               onSuccess: () => {
                 setFormOpen(false);
                 setNotice(t`データソースを登録しました。`);
               },
-            })
-          }
+            });
+          }}
         />
       )}
 
@@ -132,14 +149,18 @@ export function DataSourceManagementPage() {
                   key={source.id}
                   source={source}
                   busy={sync.isPending || disable.isPending}
-                  onSync={() =>
-                    sync.mutate(source.id, { onSuccess: () => setNotice(t`同期をトリガしました。`) })
-                  }
-                  onDisable={() =>
+                  onSync={() => {
+                    beginOperation();
+                    sync.mutate(source.id, {
+                      onSuccess: () => setNotice(t`同期をトリガしました。`),
+                    });
+                  }}
+                  onDisable={() => {
+                    beginOperation();
                     disable.mutate(source.id, {
                       onSuccess: () => setNotice(t`データソースを無効化しました。`),
-                    })
-                  }
+                    });
+                  }}
                 />
               ))}
             </TableBody>

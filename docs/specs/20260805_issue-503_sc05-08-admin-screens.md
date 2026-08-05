@@ -426,6 +426,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 ### 変異試験（「壊すと落ちる」ことの実測）
 
 **27 件を試し、うち 24 件は最初から落ちた。3 件が素通りしたので、テストを足して落ちることを再確認した。**
+**その後、PR #508 のレビュー指摘の是正で 2 件（M28 / M29）を追加し、合計 29 件になった。**
 
 | # | 壊した箇所 | 落ちたもの |
 | --- | --- | --- |
@@ -456,6 +457,8 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 | **M25** | SC-05 の更新成功後の `invalidateQueries` を外す | **初回は素通りした**（後述）。是正後は `refetches the list after a successful save`（1 件） |
 | **M26** | SC-07 の再変換成功後の `invalidateQueries` を外す | **初回は素通りした**（後述）。是正後は `refetches the list after a successful retry`（1 件） |
 | M27 | SC-06 の手動同期成功後の `invalidateQueries` を外す | `refetches the list after a successful sync`（1 件。M26 と同時に足したテスト） |
+| **M28** | SC-05 の `beginOperation()` を外す（**是正前の実装そのもの**＝別のミューテーションの失敗状態を残す） | `shows only the latest operation result (a stale failure banner does not survive)`（1 件） |
+| **M29** | SC-06 の `beginOperation()` を外す（同上） | `shows only the latest operation result (neither a stale failure nor a stale success survives)`（1 件） |
 
 #### 素通りした 3 件と、その是正
 
@@ -478,6 +481,13 @@ SC-05 側も同じ形に揃え、M6 として実測した。
 [[IADR-0127]] 決定 5 が定めた挙動そのものが無検査だったということであり、外れると
 「保存したのに一覧が古いまま」という、旧実装が `load()` を手で呼び直して防いでいた不具合が復活する。
 **3 画面それぞれに再取得の回数を数えるテストを足し**（SC-05 / SC-06 / SC-07）、M25〜M27 で落ちることを確認した。
+
+**M28 / M29（別ミューテーションの古い失敗バナー）**: PR #508 の AI レビューが指摘した**実在する欠陥**である。
+既存の 27 件はいずれもこれを捕まえていなかった——**どのテストも 1 回の操作しか行わず、
+「操作を 2 つ続ける」経路が無かった**ためである。是正（[[IADR-0127]] 決定 7）の前後で
+**是正前は 2 件とも落ち、是正後は通る**ことを実測した。
+**教訓**: 変異試験は「壊したら落ちるか」を測るが、**そもそも到達しない経路は壊しても落ちない**。
+複数の操作を持つ画面には「操作を跨いだ後の表示」を 1 本置く。
 
 **「無いことを確かめるテスト」の作法**（#502 の M3 の教訓）: M16〜M19 の 4 件は
 **まず「見えるはずの条件」で描画されていることを確かめてから**無いことを assert している

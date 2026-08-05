@@ -55,14 +55,31 @@ export function DocumentManagementPage() {
   const [editing, setEditing] = useState<AdminDocument | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const documents = useAdminDocuments();
-  const { create, update, command } = useDocumentActions();
+  const actions = useDocumentActions();
+  const { create, update, command } = actions;
 
   const items = documents.data ?? [];
-  const failed = [create, update, command].find((m) => m.isError);
+  // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
+  // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに
+  // 「一覧には出るが読まれない失敗」「消し忘れる古い失敗」が静かに生まれる。
+  const mutations = Object.values(actions);
+  const failed = mutations.find((m) => m.isError);
   const conflicted = failed?.error instanceof ApiError && failed.error.status === 409;
 
-  function save(values: DocumentFormValues) {
+  /**
+   * 新しい操作を始める前に、前回の結果（成功メッセージと各ミューテーションの失敗状態）を捨てる。
+   *
+   * TanStack Query は「**別の**ミューテーションが成功した」ことでは他方の `isError` を戻さない。
+   * これが無いと「削除が 409 で失敗 → 別文書の保存が成功」で成功バナーと古い失敗バナーが並び、
+   * どの操作の結果なのかが読めなくなる（IADR-0127 決定 7）。
+   */
+  function beginOperation() {
     setNotice(null);
+    for (const mutation of mutations) mutation.reset();
+  }
+
+  function save(values: DocumentFormValues) {
+    beginOperation();
     if (editing) {
       update.mutate(
         { id: editing.id, expectedVersion: editing.version, ...values },
@@ -83,7 +100,7 @@ export function DocumentManagementPage() {
   }
 
   function run(id: string, kind: DocumentCommand, message: string) {
-    setNotice(null);
+    beginOperation();
     command.mutate({ id, kind }, { onSuccess: () => setNotice(message) });
   }
 
@@ -98,7 +115,7 @@ export function DocumentManagementPage() {
             type="button"
             variant="primary"
             onClick={() => {
-              setNotice(null);
+              beginOperation();
               setEditing(null);
             }}
           >
@@ -171,7 +188,7 @@ export function DocumentManagementPage() {
                     doc={doc}
                     busy={command.isPending}
                     onEdit={() => {
-                      setNotice(null);
+                      beginOperation();
                       setEditing(doc);
                     }}
                     onCommand={run}

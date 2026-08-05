@@ -59,6 +59,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 8 | 注記 | **UC-04 例外** | Vault 管理と継続失敗アラートを明示する |
 | 9 | **異常系（縮退しない）** | [[IADR-0039]] | 取得失敗を `role="alert"` で出し、**「登録されていません」へ寄せない**（重複登録の誘発を避ける） |
 | 10 | 操作の失敗 | — | 一覧を保ったままエラーを出す |
+| 10-b | **直近の操作結果だけを出す** | [[IADR-0127]] 決定 7 | 失敗 → 成功・成功 → 失敗のどちらの並びでも、**前の操作のバナーが残らない** |
 | 11 | 0 件 | — | 「データソースは登録されていません。」 |
 | 12 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
 | 12-b | **SC-07 への導線** | 05_screens 遷移図 `SC06 → SC07` | 「変換ジョブの状況を見る →」が `/admin/conversions` を指す（画面単体でリンク先を固定する。実際に遷移することは §導線 A が見る） |
@@ -83,6 +84,6 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **6** ＋ 画面 **14** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **6** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）

@@ -224,6 +224,33 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(screen.queryByText(/権限がありません/)).not.toBeInTheDocument();
   });
 
+  // IADR-0127 決定 7: 画面は直近の操作の結果だけを出す。TanStack Query は「別の」ミューテーションの
+  // 成功では他方の isError を戻さないため、これが外れると成功バナーと古い失敗バナーが同時に出る。
+  it('shows only the latest operation result (a stale failure banner does not survive)', async () => {
+    mocks.apiFetch.mockImplementation((_path: string, req?: { method?: string }) =>
+      req?.method === 'DELETE'
+        ? Promise.reject(
+            new ApiError('conflict', '競合が発生しました。', 409, [
+              'この文書は参照中のため削除できません。',
+            ]),
+          )
+        : Promise.resolve([DRAFT_DOC]),
+    );
+    const user = userEvent.setup();
+    await renderPage();
+
+    // 削除が 409 で失敗する。
+    await user.click(await screen.findByRole('button', { name: '削除' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('参照中のため削除'));
+
+    // 続けて別の操作（編集 → 保存）が成功する。
+    await user.click(screen.getByRole('button', { name: '編集' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByText('文書を更新しました。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('shows an alert when the list cannot be loaded', async () => {
     mocks.apiFetch.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
     await renderPage();

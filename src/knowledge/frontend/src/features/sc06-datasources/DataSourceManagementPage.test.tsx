@@ -196,6 +196,40 @@ describe('DataSourceManagementPage (SC-06)', () => {
     expect(screen.getByText('規程集')).toBeInTheDocument();
   });
 
+  // IADR-0127 決定 7: 画面は直近の操作の結果だけを出す。TanStack Query は「別の」ミューテーションの
+  // 成功では他方の isError を戻さないため、これが外れると成功バナーと古い失敗バナーが同時に出る。
+  // 逆向き（古い成功バナーが新しい失敗の隣に残る）も同じ穴なので、両方向を 1 本で見る。
+  it('shows only the latest operation result (neither a stale failure nor a stale success survives)', async () => {
+    mocks.apiFetch.mockImplementation((path: string, req?: { method?: string }) => {
+      if (path.endsWith('/sync')) {
+        return Promise.reject(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+      }
+      return req?.method === 'DELETE'
+        ? Promise.resolve(undefined)
+        : Promise.resolve([ACTIVE_SOURCE]);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    // 手動同期が失敗する。
+    await user.click(await screen.findByRole('button', { name: '手動同期' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバでエラーが発生しました'),
+    );
+
+    // 続けて無効化が成功する → 古い失敗バナーは残らない。
+    await user.click(screen.getByRole('button', { name: '無効化' }));
+    expect(await screen.findByText('データソースを無効化しました。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    // さらに手動同期が失敗する → 古い成功バナーも残らない。
+    await user.click(screen.getByRole('button', { name: '手動同期' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバでエラーが発生しました'),
+    );
+    expect(screen.queryByText('データソースを無効化しました。')).not.toBeInTheDocument();
+  });
+
   it('shows a neutral message when there is no source', async () => {
     mocks.apiFetch.mockResolvedValue([]);
     await renderPage();

@@ -178,6 +178,10 @@ related_specs:
 | 登録・同期・無効化の成功 | `Alert tone="success"` `role="status"` |
 | 操作の失敗 | `Alert tone="danger"` `role="alert"`（`toMessages` の詳細を優先） |
 
+**画面が出すのは直近の操作の結果 1 件だけである**（[[IADR-0127]] 決定 7）。新しい操作を始めた時点で、
+前の成功メッセージと**各ミューテーションの失敗状態**を捨てる。これが無いと「手動同期が失敗 → 無効化が成功」で
+成功バナーと古い失敗バナーが並び、どの操作の結果かが読めなくなる。
+
 ## i18n
 
 - 文言はすべて Lingui のカタログ（ja / en）へ載せる。`eslint-plugin-lingui` の適用範囲に本 feature を含める。

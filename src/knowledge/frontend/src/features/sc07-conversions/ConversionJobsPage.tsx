@@ -99,6 +99,10 @@ export function ConversionJobsPage() {
         </div>
       </div>
 
+      {/* IADR-0127 決定 7: 本画面のミューテーションは retry の 1 本だけであり、成功と失敗は
+          同じミューテーションの状態として排他である（古い結果が並ぶ余地が無い）。**2 本目を
+          足すときは SC-05 / SC-06 の `beginOperation()` と同じ形へ移すこと**——複数の
+          ミューテーションを並べて読むと、別の操作の成功後も古い失敗バナーが残る。 */}
       {retry.isSuccess && (
         <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
           <Trans>再変換を受け付けました。</Trans>

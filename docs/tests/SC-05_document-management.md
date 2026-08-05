@@ -55,6 +55,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | 6 | 状態遷移 | FR-06 / [[IADR-0041]] | 公開は未公開（`draft`/`normalized`）の行のみ・アーカイブは `archived` 以外の行のみ |
 | 7 | 削除 | FR-06 | `DELETE /bff/documents/{id}` を呼び、完了を伝える |
 | 8 | **存在秘匿（404）** | [[IADR-0009]] / [[IADR-0041]] | スコープ外・不在をいずれも中立に扱い、「権限がありません」を示唆しない |
+| 8-b | **直近の操作結果だけを出す** | [[IADR-0127]] 決定 7 | 削除が 409 で失敗した後に別の操作（編集 → 保存）が成功したとき、**成功バナーの隣に古い失敗バナーが残らない** |
 | 9 | 異常系 | — | 一覧の取得失敗で `role="alert"` |
 | 10 | 0 件 | — | 「文書はありません。」 |
 | 11 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
@@ -76,7 +77,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**14 ケース**）
-  ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` を含めて 14 行 = 14 ケース）。
+- `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**15 ケース**）
+  ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` / `8-b` を含めて 15 行 = 15 ケース）。
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
