@@ -110,19 +110,21 @@ related_specs:
 **本作業での扱い**: `closed` → **`rejected`** へ揃える。理由は 2 つ。
 
 1. `closed` は計画リポジトリが定める語彙（`open` / `triaged` / `accepted` / `rejected`）に無い**一点物**で
-   ある（`feedback/` 26 件で `closed` を使うのはこの 1 件のみ）。
+   ある（`feedback/` 27 件で `closed` を使うのはこの 1 件のみ）。
 2. #497 の受け入れ基準が明示的に `rejected` を指定しており、意味（取り下げ・計画側へ渡す作業なし）は同じ。
 
 **なお計画側の draft は `open` のままである**（`planning/draft/feedback/README.md` の「未処理」表にも
 残る）。これは計画リポジトリ側の追随作業であり、**本リポジトリからは触れない**（§申し送り）。
 
-## `feedback/` 全 26 件の現 status と分類
+## `feedback/` 全 27 件の現 status と分類
 
-件数は次のコマンドの実測値である。
+件数は次のコマンドの実測値である。**作業ツリー（`ls feedback/*.md`）ではなくマージ先
+（`origin/develop`）を数える**——棚卸しは「マージ後にどうなるか」が答えであり、作業ツリーを数えると
+並行してマージされた記録を取りこぼして、書いた瞬間に古くなる（本書は実際にこれで 26 → 27 とずれた）。
 
 ```console
-$ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
-26
+$ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE' | wc -l
+27
 ```
 
 `impl` = 本リポジトリ `feedback/` の値、`plan` = `planning/draft/feedback/` の同名ファイルの値（pin `d980a01`）。
@@ -153,10 +155,11 @@ $ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
 | 22 | `20260803_doc-links-code-extensions.md` | open | accepted | 計画 issue 追跡中（planning#167） |
 | 23 | `20260804_frontend-migration-staging-interpretation.md` | accepted | （同名なし） | 計画 issue 追跡中（planning#186） |
 | 24 | `20260804_sc01-03-bff-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
-| 25 | `20260805_sc05-07-admin-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
-| 26 | `20260805_sc09-11-admin-ops-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
+| 25 | `20260805_abac-attribute-combination-measurement-result.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）**。#515（`a14f912`）が develop へ後から追加した記録 |
+| 26 | `20260805_sc05-07-admin-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
+| 27 | `20260805_sc09-11-admin-ops-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
 
-**#497 の 3 分類の合計は 10 + 4 + 3 = 17 件であり、9 件が分類から漏れている。** 内訳は次のとおりで、
+**#497 の 3 分類の合計は 10 + 4 + 3 = 17 件であり、10 件が分類から漏れている。** 内訳は次のとおりで、
 質が 4 種類に分かれる（**いずれも本作業の射程外。status は書き換えない**）。
 
 | 種別 | 件数 | 該当 | 性質 |
@@ -164,7 +167,7 @@ $ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
 | A: **書換対象 10 件と同型の未同期** | 3 | #6・#10・#13 | impl=`open` / plan=`accepted`。**同じ欠陥だが #497 の表に無い** |
 | B: 既に正しいが列挙から漏れ | 2 | #11・#14 | impl=`accepted` / plan=`accepted`。作業不要 |
 | C: 計画側が `triaged`（裁定待ち） | 1 | #17 | `accepted` にはできない。ADR-0040 / ADR-0042 とも `Proposed` |
-| D: 計画側へ未到達 | 3 | #24・#25・#26 | `open` が正しい（`draft/feedback/` に同名なし） |
+| D: 計画側へ未到達 | 4 | #24・#25・#26・#27 | `open` が正しい（`draft/feedback/` に同名なし） |
 
 > **#497 の注意書きへの補足**: 「自動突合の ✅ を積み残しなしと読まない」に加え、**A の 3 件は #497 の
 > 表からも漏れている**。控えの `status` だけを数えても実態は出ない。
@@ -180,7 +183,7 @@ $ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
 **対象外**:
 
 - `planning/`（submodule）の内容と pin。**読み取り専用**。
-- 上表 A〜D の 9 件の `status`（**射程外。勝手に書き換えない**）。
+- 上表 A〜D の 10 件の `status`（**射程外。勝手に書き換えない**）。
 - 計画側 `06_technical/03_tech-stack-selection.md:55` の残渣（**pin `d980a01` で既に是正済み**。§突合結果 #12）。
 - `.github/workflows/` ・ソースコード・テスト（1 行も変えない）。
 
