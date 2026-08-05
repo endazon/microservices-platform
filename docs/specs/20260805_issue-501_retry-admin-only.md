@@ -254,7 +254,7 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 | `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | exit 0 |
 | `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | exit 0 |
 | `node scripts/check-doc-links.js` | exit 0（**417 件**の Markdown に破損した相対リンクなし。2 巡目で再実行） |
-| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（**21 件**すべて規約適合。2 巡目で再実行） |
+| `node scripts/check-commit-messages.js --base origin/develop` | exit 0（`origin/develop..HEAD` のコミットすべてが規約適合。2 巡目で再実行。**件数は本行を直すコミット自身で増える自己言及になるため記さない**） |
 | `node scripts/check-test-traceability.js` | exit 0（計画レンジ 53 件中 27 件にテスト仕様書あり。仕様書なし 26 件は warn・実装先行 7 件は allowlist 済み） |
 | `node scripts/check-contract-schema.js` | exit 0（2 プロジェクト / 20 ファイル / 56 型が baseline と一致） |
 | `node scripts/check-backend-libraries.js` | exit 0（新規混入 0 件。既知残件 42 件は baseline 済み） |
