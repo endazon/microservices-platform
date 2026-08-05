@@ -11,6 +11,8 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md"
 related_specs:
   - ../adr/IADR-0014_qdrant-attribute-payload-key.md
   - ../how-to/local-development.md
@@ -30,7 +32,7 @@ related_specs:
 - 関連 ADR（計画）:
   [ADR-0033](../../planning/projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md)（Proposed。ストア選定は実測後）／
   [ADR-0034](../../planning/projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md)（Proposed。クラスタ要約の作り分け粒度は本 ADR では決めないとした）／
-  [ADR-0035](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md)（Proposed。**案 B（実測なしで起案）**を採用し、要約の粒度は「機密区分単位（4 通り）から始める」と決定済み。実測は**稼働後の検証項目**として §結果 に明示された）
+  [ADR-0035](../../planning/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md)（Proposed。**案 B（実測なしで起案）**を採用し、要約の粒度は「機密区分単位（4 通り）から始める」と決定済み。実測は**稼働後の検証項目**として §結果 に明示された）
 - 関連する技術検討（計画）:
   [14_knowledge-graph-graphrag](../../planning/projects/microservices-platform/06_technical/14_knowledge-graph-graphrag.md) §6「コミュニティ要約の粒度と費用の決定手順」（**本作業が満たすのは手順 1「実測する」**）／
   [07_abac-attribute-model](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md)（文書属性・利用者属性の正）
@@ -188,7 +190,7 @@ deny-by-default で縮退している**ためである。
   属性の多様性が 1 通りに留まるのはデータ源が単一であることの反映であって、
   「本番でも 1 通りである」ことを意味しない。
 - 計画が**必須**とする文書属性 `department` / `owner` / `lifecycle` は実データに 1 件も無い。
-  `owner` は [ADR-0036](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
+  `owner` は [ADR-0036](../../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
   の所有者ベース裁量制御の基礎であり、**現状の取り込み経路はその前提を満たしていない**。
 - ABAC ポリシーが 0 件であること自体は仕様どおりの初期状態（ポリシーは SC-09 の管理画面から登録する）だが、
   **投入経路が実行されない限り検索・文書一覧が常に空になる**。実機の観測として別 issue で扱う。

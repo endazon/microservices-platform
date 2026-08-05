@@ -26,8 +26,8 @@ created: 2026-08-05
 - ユースケース（UC）/ 画面（SC）: なし
 - 関連 ADR: [ADR-0033](../planning/projects/microservices-platform/07_adr/ADR-0033_knowledge-graph-data-model-and-store.md)／
   [ADR-0034](../planning/projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md)／
-  [ADR-0035](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md)（Proposed）／
-  [ADR-0036](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
+  [ADR-0035](../planning/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md)（Proposed）／
+  [ADR-0036](../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
 - 計画書リンク:
   [`06_technical/14_knowledge-graph-graphrag.md`](../planning/projects/microservices-platform/06_technical/14_knowledge-graph-graphrag.md) §6（粒度と費用の決定手順）／
   [`06_technical/07_abac-attribute-model.md`](../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md)（属性体系）
@@ -81,7 +81,7 @@ created: 2026-08-05
 [`07_abac-attribute-model.md`](../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md)
 §文書の基本属性は `confidentiality` / `department` / `owner` / `lifecycle` を**必須**と定めるが、
 実データ 2,368 件のうち付与されているのは **`confidentiality` のみ**である。
-とくに `owner` は [ADR-0036](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
+とくに `owner` は [ADR-0036](../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md)
 の所有者ベース裁量制御（`doc.owner ∈ { ${current_user} }`）の基礎であり、
 **現行の取り込み経路は ADR-0036 の前提を満たしていない**。
 
@@ -92,7 +92,7 @@ FR-17/18 の着手（#450）に先立って解消すべき前提であるため�
 
 - 反映先候補: **その他（記述の追補のみ。決定の変更は不要）**
 - 提案内容:
-  1. [ADR-0035](https://github.com/endazon/project-planning/blob/main/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md) §結果 の
+  1. [ADR-0035](../planning/projects/microservices-platform/07_adr/ADR-0035_graphrag-retrieval-strategy.md) §結果 の
      「実測は稼働後の検証項目」に、**2026-08-05 の実測値（属性組み合わせ 1 / ロール 4 / 機密区分 1）と
      「決定は実測に対し安全側」**である旨を 1〜2 行で追補する（決定そのものは変更しない）。
   2. [`14_knowledge-graph-graphrag.md`](../planning/projects/microservices-platform/06_technical/14_knowledge-graph-graphrag.md) §6 の
