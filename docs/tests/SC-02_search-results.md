@@ -52,6 +52,8 @@ related_specs:
 | 6 | **単一発火** | [[IADR-0126]] 決定 3 | 送信 1 回で `apiFetch` は **1 回だけ**。URL が単一情報源であり、入力欄は取得の引き金にならない |
 | 7 | 空クエリ | — | `?q=` が空なら**要求を出さない**（`enabled: false`） |
 | 8 | SC-01 への復帰 | 導線 | 「← チャットに戻る」が入力中の語を保って `/ask` へ |
+| 8-b | **`?q=` の変化への追随** | [[IADR-0126]] 決定 3（2026-08-05 追記） | **アンマウントを伴わずに** `?q=` だけが変わる経路（`router.navigate` ＋ `router.history.back()`＝ブラウザの戻る／進む）で、**結果一覧と入力欄の両方**が新しい語になる |
+| 8-c | 編集途中の値の破棄 | 同上 | 入力途中に `?q=` が外から変わったら、未確定の編集値を捨てて URL の値にする |
 | 9 | ロケール `en` | ADR-0031 | 見出し・ボタンが英語で描画される |
 
 ## ABAC・存在秘匿の担保
@@ -62,5 +64,5 @@ related_specs:
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc02-results`（単体）
+- `pnpm run test -- knowledge/frontend/src/features/sc02-results`（単体。**11 ケース**）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）

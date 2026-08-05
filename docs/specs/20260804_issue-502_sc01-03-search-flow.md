@@ -273,16 +273,16 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components`。移行前は 0 errors / 8 warnings で、増えた 1 件は `Tag` が cva のバリアントを併せて export するため） |
-| 単体テスト | `pnpm run test` | **48 files / 421 tests** 全 green（本作業前は 44 files / 385 tests） |
+| 単体テスト | `pnpm run test` | **48 files / 423 tests** 全 green（本作業前は 44 files / 385 tests。うち 2 件は PR #505 の回帰テスト） |
 | カバレッジ | `pnpm run test:coverage` | 後述（床を 87/81/77 → **88/82/81** へ引き上げ） |
-| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 571.88 kB / gzip 170.19 kB） |
+| ビルド | `pnpm run build` | green（`dist/assets/index-*.js` 571.92 kB / gzip 170.21 kB） |
 | E2E | `playwright test`（後述の条件） | **8 tests 全 green**（本作業で 2 本追加） |
 | i18n 乖離 | `pnpm run i18n` ＋ `git diff --exit-code` | green（差分なし） |
 | i18n カタログ | `node scripts/check-i18n-catalogs.js` | green（2 ロケール・未翻訳 0 件。ja / en とも 72 件） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（413 件） |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
 | テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**allowlist は本 issue の着手前と同じ 7 件**＝増やしていない。後述） |
-| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**最終形は 6 件**。`3717fc2` 時点は 3 件だった） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**最終形は 8 件**。`3717fc2` 時点は 3 件だった） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
 | スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**244 tests**。本作業で増減なし） |
 
@@ -310,13 +310,16 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 
 | # | 検査 | コマンド | 結果 |
 | --- | --- | --- | --- |
-| 1 | `useEffect` による取得が無い | `grep -rn "useEffect" …/sc0[123]-*/*.{ts,tsx}`（`*.test.*` を除く） | **0 件** |
+| 1 | `useEffect` による取得が無い | `grep -rn "useEffect(" …/sc0[123]-*`（`*.test.*` を除く） | **0 件**（`import` からの取り込みも 0 件） |
 | 2 | 二重発火ガードが無い | `grep -rn "lastSearched" knowledge/frontend/src` | **0 件** |
 | 3 | インライン `style={{…}}` が無い | `grep -rn "style={{" …/sc0[123]-*` | **0 件** |
 | 4 | 未国際化リテラルが無い | `pnpm exec eslint …` | **0 errors** |
 
-> 検査 1 は `*.test.tsx` を含めると 1 件当たる（SC-02 のテストが**旧実装の二重発火**を説明したコメント）。
-> 実装ファイルに限れば 0 件である。**この但し書きを省くと「grep が 0 件」という記述が誤りになる。**
+> **検査 1 は「`useEffect(`（呼び出し）」で数える。** 語だけを `grep` すると**コメント中の言及**が当たる——
+> 実装ファイルで 1 件（SC-02 が「`useEffect` では直さない」と理由を書いた箇所。後述 §レビュー指摘の是正）、
+> `*.test.tsx` を含めるとさらに 1 件（旧実装の二重発火を説明したコメント）である。
+> 実測（`83ff0fd..HEAD`）: 素の `useEffect` = **1 件（コメント）**／`useEffect(` = **0 件**／
+> `import` からの取り込み = **0 件**。**この但し書きを省くと「grep が 0 件」という記述が誤りになる。**
 
 ### 受け入れ基準 3: 検索 → 結果 → 文書詳細の導線
 
@@ -340,8 +343,8 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 
 | 集計 | lines/statements | branches | functions |
 | --- | --- | --- | --- |
-| 全ユニット横断（本 PR） | **94.53%** | **86.48%** | **87.70%** |
-| MSP 所有分（本 PR） | **93.07%** | **86.29%** | **87.69%** |
+| 全ユニット横断（本 PR・最終形） | **94.53%** | **86.49%** | **87.70%** |
+| MSP 所有分（本 PR・最終形） | **93.08%** | **86.30%** | **87.69%** |
 | （参考）本作業前 `83ff0fd` の MSP 所有分 | 92.04% | 82.93% | 86.08% |
 | 床 | 87 → **88** | 77 → **81** | 81 → **82** |
 
@@ -356,7 +359,7 @@ TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき�
 
 ### 変異試験（「壊すと落ちる」ことの実測）
 
-**9 件すべてで、壊すと落ち、戻すと通ることを確認した。**
+**10 件すべてで、壊すと落ち、戻すと通ることを確認した。**
 
 | # | 壊した箇所 | 落ちたもの |
 | --- | --- | --- |
@@ -369,6 +372,7 @@ TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき�
 | M7 | SC-01 へ**日本語の**未国際化リテラルを混ぜる | `eslint`: `lingui/no-unlocalized-strings` **1 error** |
 | M8 | SC-02 へ**英語の**未国際化リテラルを混ぜる | 同上 **1 error**（#496 が塞いだ穴が本 feature でも効いている） |
 | M9 | `en` カタログの `msgstr` を 1 件空にする | `check-i18n-catalogs.js` が **exit 1** |
+| **M10** | SC-02 の**レンダー中の追随**（`if (q !== prevQ) { … }`）を外す | `syncs the input box when only ?q= changes (browser back/forward, no remount)` ＋ `discards the pending edit when ?q= changes from outside`（**2 件**） |
 
 **M3 は最初の試行で素通りした。** 原因は、当該テストが `wikiBaseUrl` 未設定で描画しており、
 導線の行（`{wikiBaseUrl && …}`）ごと描かれていなかったことである。
@@ -378,7 +382,7 @@ TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき�
 
 **M3 の測定条件は他と異なる。** `3717fc2` の状態では**素通りする**（＝上表の「落ちたもの」は
 その時点では成立しない）。是正は `b4d3f83` で入っており、**M3 の「落ちる」は `b4d3f83` 以降で成立する**。
-他の 8 件は `3717fc2` の状態で実測した。この差を書かないと、上表全体が同一条件で得られたように読める。
+他の 8 件は `3717fc2` の状態で実測し、**M10 は後述の是正コミットで実測した**。この差を書かないと、上表全体が同一条件で得られたように読める。
 
 ### 監査（クロス監査 2026-08-05）を受けた是正と、その再検証
 
@@ -407,8 +411,54 @@ TanStack Query と URL 単一情報源へ置き換えた結果、**測るべき�
 （`typecheck` / `lint` 0 errors / `test` 48 files・421 tests / `test:coverage`（床維持）/ `build` /
 `check-doc-links` 413 件 / `check-unit-dependencies` / `check-test-traceability`（**allowlist 7 件のまま green**）/
 `check-i18n-catalogs` / `check-static-egress --self-test` / `scripts.test.js` 244 tests / E2E 8 tests）。
-**カバレッジは是正の前後で不変**（全ユニット横断 94.53 / 86.48 / 87.70、MSP 所有分 93.07 / 86.29 / 87.69）——
+**カバレッジは記録の是正では動かなかった**（全ユニット横断 94.53 / 86.48 / 87.70、MSP 所有分 93.07 / 86.29 / 87.69）——
 是正はコメントと文書が中心であり、`*.test.tsx` のコメント変更は計測に影響しない。
+**その後の PR #505 のバグ修正（後述）で branches が +0.01pt 動いた**（横断 86.48 → 86.49、
+MSP 所有分 86.29 → 86.30）。上表の「本 PR・最終形」はこの修正後の値である。**床は動かさない**
+（同じ導出規則から出る値が 88 / 82 / 81 のまま変わらないため）。
+
+### AI レビュー（PR #505）を受けた是正 — SC-02 の入力欄が URL に追随していなかった
+
+レビューの結果は **🔴 重大なし・🟢 軽微なし・🟡 1 件**で、その 1 件は**実在するバグ**だった。
+
+**症状**: `SearchResultsPage` の `const [input, setInput] = useState(q)` は**マウント時の初期値しか取らない**。
+本画面が**アンマウントされずに `q` だけが変わる経路**——ブラウザの戻る／進む、`/search` に居る状態で
+外部から別の `q` へ `navigate`——では、`useSearchQuery(q)` が正しく再取得して**結果一覧だけが更新され、
+入力欄が古い語のまま残る**。TanStack Router は同一ルートの search 変化でコンポーネントを再生成せず、
+ルート定義（`index.tsx`）にも remount を強制する `key` は無い（実物で確認済み）。
+
+**この不具合の性質**: [[IADR-0126]] 決定 3 は「検索語の単一情報源は URL」と定めたのに、
+**入力欄だけがその外にあった**。旧実装の二重 state を消すために採った設計で、
+**同じ種類のズレが 1 箇所だけ残っていた**——決定の射程を「取得の引き金」に限って読み、
+「表示」まで及ぶことを書いていなかったのが原因である。
+
+**採った方針: レンダー中の調整**（React 公式の "Adjusting state when props change"）。
+
+```ts
+const [prevQ, setPrevQ] = useState(q);
+if (q !== prevQ) {
+  setPrevQ(q);
+  setInput(q);
+}
+```
+
+| 案 | 採否 | 理由 |
+| --- | --- | --- |
+| **レンダー中の調整**（採用） | ○ | 追随の理由が state の宣言と同じ場所に書ける。1 フレーム古い値を描画しない |
+| `useEffect(() => setInput(q), [q])` | × | **props/URL 変化に合わせた state 調整は Effect が不要**なパターンであり、Effect でやると 1 フレーム古い値が描画され余分な再描画も起きる。加えて本書 §受け入れ基準 2 が「`useEffect` による取得が無い」を検査項目にしており、記録が崩れる |
+| ルート側で `<SearchResultsPage key={q} />` | × | 追随という**この画面の内部事情**をルート定義（別ファイル）へ持ち出すことになり、理由がファイルをまたいで分かれる。将来ローカル state（スクロール位置・選択状態など）が増えたとき**巻き添えで捨てられる**。なお `useSearchQuery` のキャッシュは TanStack Query 側にあるため、`key` 案でも再取得は起きない——採らない理由は取得ではなく**設計の置き場所**である |
+
+**編集途中の値を捨てるのは意図どおり**である。URL が外から変わったということは、利用者（または戻る操作）が
+別の検索語を選んだということであり、未確定の編集値は無効になる。これもテストで固定した
+（`discards the pending edit when ?q= changes from outside`）。
+
+**回帰テスト**: `syncs the input box when only ?q= changes (browser back/forward, no remount)` が、
+**アンマウントを伴わずに** `router.navigate` で `q` を変え、さらに `router.history.back()` で
+戻る操作を再現して、**結果一覧と入力欄の両方**が追随することを見る。
+**変異試験 M10** で、追随を外すとこの 2 件が落ちることを実測した。
+
+**`useEffect` は 0 件のまま**である（§受け入れ基準 2 の実測を参照。語の `grep` はコメントに当たるため
+`useEffect(` で数える）。
 
 ## 計画書との差異
 

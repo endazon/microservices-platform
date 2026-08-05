@@ -38,6 +38,28 @@ export function SearchResultsPage() {
   const [input, setInput] = useState(q);
   const search = useSearchQuery(q);
 
+  // IADR-0126 決定 3: 検索語の単一情報源は URL である。**入力欄もそれに追随する。**
+  //
+  // `useState(q)` はマウント時の初期値しか取らないため、本画面が**アンマウントされずに `q` だけが
+  // 変わる経路**（ブラウザの戻る／進む、`/search` に居る状態での外部からの `navigate`）では、
+  // 結果一覧だけが更新されて入力欄が古いまま残る（TanStack Router は同一ルートの search 変化で
+  // コンポーネントを再生成しない）。URL を正とすると決めた設計から、入力欄だけが外れる形である。
+  //
+  // **`useEffect` では直さない。** props/URL の変化に合わせた state の調整は React が
+  // 「Effect は不要」とするパターンであり、Effect でやると 1 フレーム古い値が描画されて
+  // 余分な再描画も起きる。ここは**レンダー中に調整する**（React 公式の "Adjusting state when
+  // props change"）。`key` によるコンポーネントごとの再生成も可能だが採らない——
+  // 入力欄の追随という**この画面の内部事情**をルート定義側（index.tsx）へ持ち出すことになり、
+  // 理由がファイルをまたいで分かれるうえ、将来ローカル state が増えたときに巻き添えで捨てられる。
+  //
+  // 編集途中の値を捨てるのは意図どおりである——URL が外から変わったということは、
+  // 利用者（または戻る操作）が別の検索語を選んだということであり、未確定の編集値は無効になる。
+  const [prevQ, setPrevQ] = useState(q);
+  if (q !== prevQ) {
+    setPrevQ(q);
+    setInput(q);
+  }
+
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     // 検索条件の単一情報源は URL である。ここは URL を更新するだけで、取得は URL の変化に従う。

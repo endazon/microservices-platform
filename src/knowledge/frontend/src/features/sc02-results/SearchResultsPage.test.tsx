@@ -107,6 +107,54 @@ describe('SearchResultsPage (SC-02)', () => {
     expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
   });
 
+  // IADR-0126 決定 3: URL が単一情報源であることは、**入力欄の表示にも及ぶ**。
+  // 本画面が**アンマウントされずに `q` だけが変わる経路**（ブラウザの戻る／進む）を再現する。
+  // 直すまでは、結果一覧だけが更新されて入力欄が古い語のまま残っていた（PR #505 レビュー指摘）。
+  it('syncs the input box when only ?q= changes (browser back/forward, no remount)', async () => {
+    mocks.apiFetch.mockImplementation((_path: string, req: { json: { query: string } }) =>
+      Promise.resolve({
+        results: [{ ...RESPONSE.results[0], documentTitle: `${req.json.query} の文書` }],
+        totalHits: 1,
+        elapsedMs: 1,
+      }),
+    );
+    const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB'); // 経費
+    expect(await screen.findByRole('link', { name: '経費 の文書' })).toBeInTheDocument();
+    expect(screen.getByLabelText('キーワード・意味検索')).toHaveValue('経費');
+
+    // 画面を出したまま URL だけを進める（同一ルートのため再マウントされない）。
+    await act(async () => {
+      await router.navigate({ to: '/search', search: { q: '出張' } });
+    });
+
+    // 結果一覧が新しい語で更新され……
+    expect(await screen.findByRole('link', { name: '出張 の文書' })).toBeInTheDocument();
+    // ……**入力欄も追随する**（ここが崩れると、表示中の一覧と入力欄が食い違う）。
+    expect(screen.getByLabelText('キーワード・意味検索')).toHaveValue('出張');
+
+    // 戻る操作（履歴を 1 つ戻す）でも同じく追随する。
+    await act(async () => {
+      await router.history.back();
+    });
+    expect(await screen.findByRole('link', { name: '経費 の文書' })).toBeInTheDocument();
+    expect(screen.getByLabelText('キーワード・意味検索')).toHaveValue('経費');
+  });
+
+  // 編集途中の値は、URL が外から変わった時点で捨てるのが正しい（利用者が別の検索語を選んだため）。
+  it('discards the pending edit when ?q= changes from outside', async () => {
+    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    const user = userEvent.setup();
+    const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB');
+    await user.clear(screen.getByLabelText('キーワード・意味検索'));
+    await user.type(screen.getByLabelText('キーワード・意味検索'), '書きかけ');
+
+    await act(async () => {
+      await router.navigate({ to: '/search', search: { q: '出張' } });
+    });
+
+    expect(screen.getByLabelText('キーワード・意味検索')).toHaveValue('出張');
+  });
+
   // deny-by-default: 権限外・0 件はいずれも中立に表示する（存在秘匿・IADR-0009）。
   it('shows a neutral empty message when results are empty (existence hidden)', async () => {
     mocks.apiFetch.mockResolvedValue({ results: [], totalHits: 0, elapsedMs: 1 });
