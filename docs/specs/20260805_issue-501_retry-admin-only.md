@@ -328,10 +328,12 @@ Helm Service が ClusterIP ／ NetworkPolicy の既定 deny ／ Istio VirtualSer
 3. **閲覧ロールの差異の裁定**（planning#198 提案 8。**計画は SC-07 全体を管理者限定と定め、実装は
    admin/operator** という [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) 決定 1 由来の
    既知の逸脱）が出たら、計画改訂・実装是正のいずれであれ照会側の権限を追随させる（SC-05・SC-06 も同じ適用先）。
-4. **PR #508 とのマージ順**: 本 PR が先にマージされると、#508 マージまでの間だけ
+4. ~~**PR #508 とのマージ順**: 本 PR が先にマージされると、#508 マージまでの間だけ
    「画面には operator にも再変換ボタンが見えるが API は 403」という状態になる。
-   計画は「API 側だけ緩い」ことを禁じており**逆向きの一時不整合は許容範囲**だが、
-   親が調停する（報告に申し送り済み）。
+   計画は「API 側だけ緩い」ことを禁じており**逆向きの一時不整合は許容範囲**だが、親が調停する。~~
+   → **［2026-08-05 追記］不要になった**。**#508 が先に develop へ入った**ため（`5ce3ec9`）
+   この過渡状態は生じない（§目的・背景 の［追記］・
+   [IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) §結果 のトレードオフ）。
 5. **代償統制の残り 2 本の機械化**（NetworkPolicy への `istio-system` 例外追加・Istio VirtualService への
    内部サービス向けルート追加）。いずれも「BFF 以外の公開エッジを作る」変更であり、対象は conversion に
    限らず内部サービス全体である（[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) フォローアップ 4）。
