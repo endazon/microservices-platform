@@ -2,7 +2,7 @@
 title: feedback 記録の status を計画側の実態へ同期する（#497）
 type: spec
 status: done
-related_ids: [NFR, SC-11, FR-12, FR-14, FR-15]
+related_ids: [NFR, FR-05, FR-12, FR-13, FR-14, FR-15, UC-06, UC-07, SC-11]
 author: Claude
 created: 2026-08-05
 updated: 2026-08-05
@@ -31,7 +31,15 @@ related_specs:
   [`feedback/README.md`](../../feedback/README.md)（**この `feedback/` は実装リポジトリ側の控えであり、
   原典の反映先は計画リポジトリである**）。
 - 画面（**SC-11**）: 構成ビューア（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md)）。
-- 関連 FR: FR-12（正規化変換）・FR-14 / FR-15（コンポーザビリティ・構成情報 API）。書き換え対象の記録の起点。
+- 関連 FR / UC: **書き換え対象 10 件の記録が `related_ids` に挙げている起点 ID の和**である
+  （各記録の frontmatter を開いて確認した）。
+  - FR-12 / UC-06（正規化変換。`20260703_conversion-retry-vs-image-fallback.md` の起点）
+  - **FR-13 / UC-07（Wiki 連携。`wiki-selfhosted-supersedes-adr-0011` と
+    `wiki-js-deployment-follows-adr-0011` の 2 件の起点）**
+  - FR-05（内部サービス認証の NFR 乖離）
+  - FR-14 / FR-15（コンポーザビリティ・構成情報 API）／SC-11（構成ビューア）
+  - ただし `20260704_plan-status-reflux-fr-adr.md` は**性質上 FR-01〜FR-13 / SC-01〜SC-10 をまとめて
+    起点に挙げる**（計画書全体の status 環流）ため、その分は列挙に含めない（含めると全 ID の再掲になる）。
 - 本リポジトリの起点: #497。
 
 ## 目的・背景
@@ -221,9 +229,11 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 
 **#497 が求める「未決事項 5 を解決済みへ更新する」は、既に #504（PR #511・`56d3f50`）で完了している。**
 
-- `docs/screens/SC-11_configuration-viewer.md` の未決事項は**現在 2 項目**（`:297-298`）で、
-  **旧 5 は `:300-309` の引用ブロック「［2026-08-05 / #504］解決して畳んだ未決事項」へ移されている**
-  （`:306` = 「**旧 5（ワイヤーフレーム `sc-11.drawio` の作成）は取り下げる。**」）。
+- `docs/screens/SC-11_configuration-viewer.md` の §未決事項 は**現在 2 項目**で、
+  **旧 5 は引用ブロック「［2026-08-05 / #504］解決して畳んだ未決事項」へ移されている**
+  （同ブロック中の「**旧 5（ワイヤーフレーム `sc-11.drawio` の作成）は取り下げる。**」）。
+  **行番号では特定しない**——本作業自身が同ブロックへ追記するためマージ時点でずれる（本書が
+  件数でやったのと同じ型の誤りになる）。
   → **#497 が言う「未決事項 5」は現在の番号ではなく「旧 5」である**（実測を優先する）。
 - したがって**番号の振り直しは行わない**。本作業で足すのは根拠 1 点のみ:
   現在の記述は「§HTMLモックアップ が hi-fi / wireframe の HTML を挙げている」「`.drawio` が 1 件も無い」
@@ -240,7 +250,8 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 - `node scripts/check-test-traceability.js`
 - `node scripts/check-test-spec-coverage.js`
 - `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
-- `git diff --name-only origin/develop..HEAD` に `src/` ・`.github/workflows/` ・`planning` が現れないこと
+- `git diff --name-only origin/develop...HEAD` に `src/` ・`.github/workflows/` ・`planning` が現れないこと
+  （**three-dot**。two-dot だと develop が進んだぶんの無関係な差分が「削除」として混ざり、射程の判定を誤る）
   （＝ビルド・テストの実走は不要）
 - **変異試験**（実行後は必ず復元し、`git status` が汚れていないことを確認する）
 
