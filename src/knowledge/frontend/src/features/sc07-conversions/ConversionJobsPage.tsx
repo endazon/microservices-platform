@@ -27,7 +27,7 @@ import type { ConversionJob } from './useConversionJobs';
 
 // SC-07, UC-06, FR-12: 変換ジョブ画面（05_screens: ルート /admin/conversions）。
 // 計画が 2026-08-04 に確定した内容（4 状態モデル・状態フィルタ・retry・**再変換は管理者ロール限定**・
-// 同一ジョブの直列化）に従う。API 側の管理者ロール強制の突合は #501 が担当する。
+// 同一ジョブの直列化）に従う。API 側の管理者ロール強制の突合は #501（IADR-0128）が済ませている。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-07_conversion-jobs.md §hi-fi モックアップとの対応）:
 //   - **人手補正の 2 ペイン編集**（変換結果の編集 ＋ 原本プレビュー ＋「補正して再登録」）:
@@ -68,10 +68,11 @@ export function ConversionJobsPage() {
   const jobs = useConversionJobs(filter);
   const retry = useRetryConversionJob();
 
-  // 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
-  // **計画は「本画面のアクセス制御と API の権限を揃える」と確定している**が、API（/bff/conversion/jobs）は
-  // まだ admin/operator であり、**この確定事項は未達である**——API を直接叩ける運用者は依然 retry でき、
-  // 画面のこの制御はその穴を塞がない。解消は #501（IADR-0127 決定 1）。
+  // FR-12, UC-06, SC-07: 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
+  // 計画の「本画面のアクセス制御と API の権限を揃える」は**両側で満たされている**——
+  // 画面のこの制御（IADR-0127 決定 1）と、BFF `POST /bff/conversion/jobs/{id}/retry` の
+  // admin 限定（#501 / IADR-0128 決定 1。operator は 403）。
+  // **実効境界はサーバ側**であり、ここは表示制御にすぎない（IADR-0039 決定 2）。
   const canRetry = useHasAnyRole(PlatformRole.Admin);
 
   const items = jobs.data ?? [];

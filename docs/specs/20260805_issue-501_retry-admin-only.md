@@ -50,11 +50,19 @@ related_specs:
 | 面 | 現状（`de55761`） | 根拠 |
 | --- | --- | --- |
 | BFF `POST /bff/conversion/jobs/{id}/retry` | **admin または operator**（グループ一括） | [`ConversionBffEndpoints.cs`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/ConversionBffEndpoints.cs) 18-22 行の `MapGroup(...).RequireAuthorization(p => p.RequireRole(AdminRole, OperatorRole))` に `retry` も含まれる |
-| 画面（この develop 時点） | **admin または operator**（`RequireRole anyOf=[Admin, Operator]`） | [`features/sc07-conversions/index.tsx`](../../src/knowledge/frontend/src/features/sc07-conversions/index.tsx) 20 行 |
-| 画面（#503 / PR #508・**未マージ**） | 再変換ボタンは **platform-admin のみ** | issue #501 の実測表 |
+| 画面（着手時点の develop `de55761`） | **admin または operator**（`RequireRole anyOf=[Admin, Operator]`。ボタンはロールを見ずに出る） | [`features/sc07-conversions/index.tsx`](../../src/knowledge/frontend/src/features/sc07-conversions/index.tsx) 20 行 |
+| 画面（#503 / PR #508。**2026-08-05 に develop へマージ済み** `5ce3ec9`） | 到達は admin/operator のまま、**再変換ボタンは `platform-admin` のみ** | [[IADR-0127]] 決定 1 |
 
 画面のボタンを消しても、**API を直接叩ける運用者は依然 retry できる**。本作業は API 側の是正を行う。
 **計画側の裁定は不要**である（計画は既に「admin 限定」と確定しており、要るのは実装の追随だけ）。
+
+> **［2026-08-05 追記・PR #508 のマージに伴う前提の更新］**
+> 本作業の着手時点で #503（PR #508）は未マージだったが、**先に develop へ入った**（`5ce3ec9`）。
+> したがって [[IADR-0128]] §トレードオフが挙げた「本 PR が先にマージされると
+> 一時的に『画面にボタンは見えるが API は 403』になる」**過渡状態は生じない**——
+> 本 PR のマージで画面と API の権限が同時に揃う。
+> 本 PR の変更対象（BFF・下流の分離ガード・文書）は #508 と重ならず、**是正の必要性は変わらない**
+> （develop の `ConversionBffEndpoints.cs` は依然としてグループ一括の admin/operator である）。
 
 ## 対象範囲
 
