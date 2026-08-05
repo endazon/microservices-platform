@@ -16,7 +16,7 @@ import {
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
-import type { AiAnswerDto, SearchResultDto } from '@foundation/api/generated/bff.schemas';
+import type { AiAnswerDto, CitationDto } from '@foundation/api/generated/bff.schemas';
 import {
   buildAnalysisRequest,
   isSubmittableInstruction,
@@ -219,11 +219,13 @@ function ModelFootnote({ answer }: { answer: AiAnswerDto }) {
 /**
  * 出典 1 件。
  *
- * **`documentId` / `documentTitle` / `chunkId` だけを使う**（IADR-0127 決定 3）——openapi.yaml の
- * `AiAnswerDto.citations` は `SearchResultDto[]`、後段の実体は `CitationDto[]` であり、
- * 両者に共通して存在するフィールドはこの 3 つである。hi-fi の出典表示（タイトルのリンクのみ）とも一致する。
+ * 型は **`CitationDto`**（後段 `AiAnswerDto.Citations` の実体）である。#506 / IADR-0131 で
+ * openapi.yaml の `AiAnswerDto.citations` を `SearchResultDto[]` から実体へ是正したため、
+ * IADR-0127 決定 3 が採っていた「両者に共通するフィールドだけを使う」回避は**不要になった**。
+ * 表示に使うのは引き続き `documentId` / `documentTitle` / `chunkId` だけである
+ * ——hi-fi の出典表示（タイトルのリンクのみ）がそれ以上を求めないためで、回避の名残ではない。
  */
-function CitationLink({ citation }: { citation: SearchResultDto }) {
+function CitationLink({ citation }: { citation: CitationDto }) {
   if (!citation.documentId) {
     return <span>{citation.documentTitle}</span>;
   }

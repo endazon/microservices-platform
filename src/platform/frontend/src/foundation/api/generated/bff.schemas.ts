@@ -37,6 +37,8 @@ export interface SearchResponse {
 
 export interface AskRequest {
   question: string;
+  /** 呼び出し側が付す任意の絞り込み識別子（`AnalysisRequest.Scope`）。省略可 */
+  scope?: string | null;
 }
 
 /**
@@ -74,12 +76,40 @@ export interface AnalysisTaskRequest {
   range?: AnalysisDataRange;
 }
 
+/**
+ * FR-04: 出典（番号付き＋元文書へのリンク）。AI 回答中の [1][2] と対応する根拠で、
+ * 利用者は `sourceUri` から元文書へ辿れる。
+ */
+export interface CitationDto {
+  /** 回答本文中の [n] と対応する番号 */
+  number: number;
+  documentId: string;
+  documentTitle: string;
+  chunkId: string;
+  sourceUri?: string | null;
+  score: number;
+  /** 根拠箇所の抜粋 */
+  snippet: string;
+}
+
+/**
+ * FR-04: RAG 回答（回答本文＋番号付き出典）。
+ * Issue #506 監査: `citations` の型は **`CitationDto[]`** である（旧記載の `SearchResultDto[]` は誤り。
+ * 実体は `Knowledge.Contracts/Dtos/SearchResultDto.cs` の `AiAnswerDto`）。両者に共通するのは
+ * `documentId` / `documentTitle` / `chunkId` / `score` の 4 つだけで、`number` / `snippet` /
+ * `sourceUri` は `CitationDto` にしか無い。
+ */
 export interface AiAnswerDto {
   answer?: string;
-  citations?: SearchResultDto[];
+  citations?: CitationDto[];
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  /**
+     * FR-08, UC-01: この回答の識別子。フィードバック（👍/👎・コメント）の紐付け先で、
+     * 回答生成ごとに自動採番される（`FeedbackRequest.answerId` へ渡す）。
+     */
+  answerId?: string;
 }
 
 export type AccessScopeRequestUserAttributes = {[key: string]: string};
