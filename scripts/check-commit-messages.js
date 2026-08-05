@@ -130,10 +130,14 @@ function isBot(c) {
 // 除外してしまう**（`claude[bot]` は user.type == 'Bot'）ため、判定をここへ寄せて名前で除外する。
 // GitHub App が人の代わりに書いた PR は**検査対象に残す**——スカッシュ後件名は develop に恒久的に
 // 残り、force push 禁止のため事後修正できないため（pr-title.yml が「最後の砦」と自称する所以）。
+// 照合は **完全一致**（大小文字は無視）である。`isBot`（コミット著者）が部分一致なのは
+// 突合先が "名前 <メール>" という連結文字列だからであって、こちらの突合先は**ログイン名そのもの**。
+// 部分一致にすると `the-renovate-guy` のような人間のログインまで「bot」と見なして
+// 最後の砦を無検査で素通りさせる（PR #527 のレビュー指摘）。除外は狭く取る。
 function isBotAuthorName(login) {
-  const hay = String(login == null ? '' : login).toLowerCase();
-  if (!hay) return false;
-  return BOT_AUTHORS.some((b) => hay.includes(b.toLowerCase()));
+  const name = String(login == null ? '' : login).trim().toLowerCase();
+  if (!name) return false;
+  return BOT_AUTHORS.some((b) => name === b.toLowerCase());
 }
 
 /** 短縮/完全 SHA を前方一致で照合する（changelog-overrides.json と同方針）。 */

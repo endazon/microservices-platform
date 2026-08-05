@@ -59,6 +59,13 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(isBotAuthorName('endazon'), false);
       assert.strictEqual(isBotAuthorName(''), false);
       assert.strictEqual(isBotAuthorName(undefined), false);
+      // 照合は完全一致。部分一致だと BOT_AUTHORS の語を含む**人間のログイン**まで
+      // 除外され、最後の砦を無検査で素通りする（PR #527 のレビュー指摘）。
+      assert.strictEqual(isBotAuthorName('the-renovate-guy'), false);
+      assert.strictEqual(isBotAuthorName('dependabot-team'), false);
+      assert.strictEqual(isBotAuthorName('my-github-actions-fan'), false);
+      // 大小文字・前後の空白は無視する。
+      assert.strictEqual(isBotAuthorName('  Dependabot[Bot] '), true);
     });
 
     ok('#524: checkSingleTitle は作成者で分岐する（bot=skip / App=検査）', () => {
