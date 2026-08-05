@@ -227,6 +227,13 @@ export default tseslint.config(
       'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc02-results/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc03-document/**/*.{ts,tsx}',
+      // #503 で SC-05〜08 を再実装したため適用範囲へ加えた。`abac/` は SC-05 / SC-06 が共有する
+      // 語彙（機密区分の値集合）であり、同じ規則の下に置く。
+      'knowledge/frontend/src/features/abac/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc05-documents/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc06-datasources/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc07-conversions/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc08-analysis/**/*.{ts,tsx}',
     ],
     ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
     plugins: { lingui },

@@ -1,314 +1,282 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
+import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
-import { apiFetch } from '@foundation/api/apiClient';
+import {
+  Alert,
+  Button,
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  Tag,
+} from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
-import { ErrorList } from '@foundation/ui/ErrorList';
 import { toMessages } from '@foundation/ui/apiErrors';
+import { CONFIDENTIALITY_KEY } from '../abac/confidentiality';
+import { DocumentForm } from './DocumentForm';
+import type { DocumentFormValues } from './DocumentForm';
+import { useAdminDocuments, useDocumentActions } from './useDocumentAdmin';
+import type { AdminDocument, DocumentCommand } from './useDocumentAdmin';
 
-// SC-05, UC-03, FR-06: 文書管理画面。文書の作成・更新・公開／アーカイブ・削除と属性／タグ設定を行う。
-// 管理系のため platform-admin/operator 限定（ルートは RequireRole、サーバ側 /bff/documents 書き込みも同ロール）。
-// 一覧・詳細は ABAC スコープ内のみ（SC-02/03 と同じ読み取り境界）。更新は楽観ロック（版不一致=409 を表示）。
-// 保存→取り込み・Wiki 同期がトリガされる（公開）。詳細・版履歴は SC-03（/documents/:id）へ遷移する。
+// SC-05, UC-03, FR-06/FR-09: 文書管理画面（05_screens: ルート /admin/documents）。
+// 正規化文書の一覧・登録・編集（属性／タグ設定）を行う。詳細と版履歴は SC-03（/docs/$id）が持つ
+// （05_screens §SC-05「版ごとの履歴パネルは SC-03 側に置く。本画面は一覧の版列で現行版を示す」）。
+//
+// 実装しない要素（画面仕様書 docs/screens/SC-05_document-management.md §hi-fi モックアップとの対応）:
+//   - **「変換」列**: `DocumentDto` に変換の情報が無く（`Status` は公開ライフサイクル）、
+//     `ConversionJobDto` からの結合も**失敗ジョブが `DocumentId` を持たない**ため原理的にできない
+//     ——「✕ 失敗」を決して表示できない列になる。変換状況は SC-07（/admin/conversions）が担う。
+//   - **タグ辞書からの補完**: 辞書は /bff/admin/authz（システム管理者限定）にあり、本画面の
+//     利用者（admin / operator）が引ける保証が無い。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
+//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照（planning#197 で裁定待ち）。
 
-interface DocumentItem {
-  id: string;
-  title: string;
-  status: string;
-  version: number;
-  attributes: Record<string, string>;
-  tags: string[];
-  updatedAt: string;
+/** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */
+function canPublish(status: string): boolean {
+  return status === 'draft' || status === 'normalized';
 }
 
-// FR-05, ADR-0004: 機密区分の許可値（AuthorizationService の属性辞書に準拠）。必須属性。
-const CONFIDENTIALITY = ['public', 'internal', 'confidential', 'restricted'] as const;
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const t = Date.parse(value);
-  return Number.isNaN(t) ? value : new Date(t).toLocaleString();
+/**
+ * 409 の詳細（Problem 本文の errors / detail / title 由来）。
+ *
+ * `toMessages` を使わないのは、同関数が詳細の無い `ApiError` に対して**汎用の `message`**
+ * （「競合が発生しました。」）を返してしまい、版競合であることが読み取れないためである。
+ * 詳細があればそれを、無ければ呼び出し側の平易な文言を出す。
+ */
+function conflictDetails(error: unknown): string | null {
+  return error instanceof ApiError && error.details.length > 0 ? error.details.join(' ') : null;
 }
 
 export function DocumentManagementPage() {
-  const [items, setItems] = useState<DocumentItem[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
+  const { t } = useLingui();
+  const [editing, setEditing] = useState<AdminDocument | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [editing, setEditing] = useState<DocumentItem | null>(null);
+  const documents = useAdminDocuments();
+  const actions = useDocumentActions();
+  const { create, update, command } = actions;
 
-  const load = useCallback(() => {
-    setStatus('loading');
-    apiFetch<DocumentItem[]>('/documents')
-      .then((data) => {
-        setItems(data ?? []);
-        setStatus('ok');
-      })
-      .catch(() => setStatus('error'));
-  }, []);
+  const items = documents.data ?? [];
+  // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
+  // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに
+  // 「一覧には出るが読まれない失敗」「消し忘れる古い失敗」が静かに生まれる。
+  const mutations = Object.values(actions);
+  const failed = mutations.find((m) => m.isError);
+  const conflicted = failed?.error instanceof ApiError && failed.error.status === 409;
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  /**
+   * 新しい操作を始める前に、前回の結果（成功メッセージと各ミューテーションの失敗状態）を捨てる。
+   *
+   * TanStack Query は「**別の**ミューテーションが成功した」ことでは他方の `isError` を戻さない。
+   * これが無いと「削除が 409 で失敗 → 別文書の保存が成功」で成功バナーと古い失敗バナーが並び、
+   * どの操作の結果なのかが読めなくなる（IADR-0127 決定 7）。
+   */
+  function beginOperation() {
+    setNotice(null);
+    for (const mutation of mutations) mutation.reset();
+  }
 
-  function reportError(err: unknown, fallback: string) {
-    if (err instanceof ApiError && err.status === 409) {
-      // #177: 競合の詳細（Problem 本文の detail/title）があれば表示。版競合（version_conflict 本文で
-      // details 空）の場合は従来の平易な文言へフォールバックし、いずれも最新を再読み込みする。
-      setNotice(
-        err.details.length > 0
-          ? err.details.join(' ')
-          : '他の更新と競合しました（版が変わっています）。最新を再読み込みしました。',
+  function save(values: DocumentFormValues) {
+    beginOperation();
+    if (editing) {
+      update.mutate(
+        { id: editing.id, expectedVersion: editing.version, ...values },
+        {
+          onSuccess: () => {
+            setEditing(null);
+            setNotice(t`文書を更新しました。`);
+          },
+        },
       );
-      load();
       return;
     }
-    // #177: 検証（400）等の詳細メッセージを SC-09 と統一して優先表示する。
-    setNotice(toMessages(err, fallback).join(' '));
+    // 新規登録に変更メモは無い（版スナップショットの説明であり、初版には対象の変更が無い）。
+    create.mutate(
+      { title: values.title, attributes: values.attributes, tags: values.tags },
+      { onSuccess: () => setNotice(t`文書を登録しました。`) },
+    );
   }
 
-  async function act(path: string, okMsg: string, errMsg: string) {
-    setNotice(null);
-    try {
-      await apiFetch(path, { method: 'POST' });
-      setNotice(okMsg);
-      load();
-    } catch (err) {
-      reportError(err, errMsg);
-    }
-  }
-
-  async function onDelete(id: string) {
-    setNotice(null);
-    try {
-      await apiFetch(`/documents/${id}`, { method: 'DELETE' });
-      setNotice('文書を削除しました。');
-      load();
-    } catch (err) {
-      reportError(err, '削除に失敗しました。');
-    }
+  function run(id: string, kind: DocumentCommand, message: string) {
+    beginOperation();
+    command.mutate({ id, kind }, { onSuccess: () => setNotice(message) });
   }
 
   return (
-    <section>
-      <h1>文書管理</h1>
+    <section className="flex flex-col gap-4 lg:flex-row">
+      <div className="min-w-0 grow">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-lg font-semibold text-[--color-fg]">
+            <Trans>文書一覧</Trans>
+          </h1>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              beginOperation();
+              setEditing(null);
+            }}
+          >
+            <Trans>＋ 新規登録</Trans>
+          </Button>
+        </div>
 
-      {editing ? (
-        <EditForm
-          doc={editing}
+        {notice && (
+          <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
+            {notice}
+          </Alert>
+        )}
+        {failed && (
+          // INDEX 決定 21: 色（tone）だけで深刻度を伝えない。**ラベルの文言も tone に揃える**
+          // ——琥珀のアイコンに「エラー」と書かれていると、色を除いたときに区別が消える。
+          <Alert
+            tone={conflicted ? 'warning' : 'danger'}
+            role="alert"
+            className="mb-2"
+            label={conflicted ? t`注意` : t`エラー`}
+          >
+            {conflicted
+              ? conflictDetails(failed.error) ??
+                t`他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。`
+              : toMessages(failed.error, t`操作を実行できませんでした。`).join(' / ')}
+          </Alert>
+        )}
+
+        {documents.isPending && (
+          <p role="status" className="text-sm text-[--color-fg-muted]">
+            <Trans>読み込み中…</Trans>
+          </p>
+        )}
+        {documents.isError && (
+          <Alert tone="danger" role="alert" label={t`エラー`}>
+            {toMessages(documents.error, t`文書を取得できませんでした。`).join(' / ')}
+          </Alert>
+        )}
+
+        {documents.isSuccess &&
+          (items.length === 0 ? (
+            <p className="text-sm">
+              <Trans>文書はありません。</Trans>
+            </p>
+          ) : (
+            <Table>
+              <TableCaption>
+                <Trans>文書の一覧</Trans>
+              </TableCaption>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>
+                    <Trans>タイトル</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>機密区分</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>版</Trans>
+                  </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>操作</Trans>
+                  </TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {items.map((doc) => (
+                  <DocumentRow
+                    key={doc.id}
+                    doc={doc}
+                    busy={command.isPending}
+                    onEdit={() => {
+                      beginOperation();
+                      setEditing(doc);
+                    }}
+                    onCommand={run}
+                  />
+                ))}
+              </TableBody>
+            </Table>
+          ))}
+      </div>
+
+      <div className="w-full lg:max-w-md">
+        {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
+        <DocumentForm
+          key={editing?.id ?? 'new'}
+          editing={editing}
+          submitting={create.isPending || update.isPending}
+          onSubmit={save}
           onCancel={() => setEditing(null)}
-          onSaved={() => {
-            setEditing(null);
-            setNotice('文書を更新しました。');
-            load();
-          }}
-          onError={(err) => {
-            setEditing(null);
-            reportError(err, '更新に失敗しました。');
-          }}
         />
-      ) : (
-        <CreateForm
-          onCreated={() => {
-            setNotice('文書を作成しました。');
-            load();
-          }}
-        />
-      )}
-
-      {notice && <p role="status">{notice}</p>}
-
-      <h2>文書一覧</h2>
-      {status === 'loading' && <p role="status">読み込み中…</p>}
-      {status === 'error' && <p role="alert">文書の取得に失敗しました。</p>}
-      {status === 'ok' &&
-        (items.length === 0 ? (
-          <p>文書はありません。</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>タイトル</th>
-                <th>状態</th>
-                <th>版</th>
-                <th>機密区分</th>
-                <th>更新</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((d) => (
-                <tr key={d.id}>
-                  <td>
-                    {/* SC-03: 詳細・版履歴へ内部遷移 */}
-                    <Link to="/docs/$id" params={{ id: d.id }}>
-                      {d.title}
-                    </Link>
-                  </td>
-                  <td>{d.status}</td>
-                  <td>v{d.version}</td>
-                  <td>{d.attributes?.confidentiality ?? '—'}</td>
-                  <td>{formatDate(d.updatedAt)}</td>
-                  <td>
-                    <button type="button" onClick={() => setEditing(d)}>
-                      編集
-                    </button>{' '}
-                    {/* SC-05 仕様: 公開は未公開状態（draft / normalized）のみ。published・archived では出さない
-                        （アーカイブ済みの誤再公開を防止＝状態遷移の意図を守る。サーバも 409 で拒否）。 */}
-                    {(d.status === 'draft' || d.status === 'normalized') && (
-                      <button type="button" onClick={() => void act(`/documents/${d.id}/publish`, '公開しました。', '公開に失敗しました。')}>
-                        公開
-                      </button>
-                    )}{' '}
-                    {d.status !== 'archived' && (
-                      <button type="button" onClick={() => void act(`/documents/${d.id}/archive`, 'アーカイブしました。', 'アーカイブに失敗しました。')}>
-                        アーカイブ
-                      </button>
-                    )}{' '}
-                    <button type="button" onClick={() => void onDelete(d.id)}>
-                      削除
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ))}
+      </div>
     </section>
   );
 }
 
-// FR-06, UC-03: 新規作成。タイトル・機密区分（必須属性）を伴って作成する。必須未設定は保存不可。
-function CreateForm({ onCreated }: { onCreated: () => void }) {
-  const [title, setTitle] = useState('');
-  const [confidentiality, setConfidentiality] = useState<(typeof CONFIDENTIALITY)[number]>('internal');
-  const [tags, setTags] = useState('');
-  // #177: 検証エラー（400）の詳細を SC-09 と統一して一覧表示する。
-  const [errors, setErrors] = useState<string[]>([]);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (title.trim().length === 0) return;
-    setErrors([]);
-    try {
-      await apiFetch('/documents', {
-        method: 'POST',
-        json: {
-          title: title.trim(),
-          attributes: { confidentiality },
-          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-        },
-      });
-      setTitle('');
-      setTags('');
-      onCreated();
-    } catch (err) {
-      setErrors(toMessages(err, '文書の作成に失敗しました。'));
-    }
-  }
-
-  return (
-    <form onSubmit={onSubmit} aria-label="文書作成">
-      <h2>文書を作成</h2>
-      <div>
-        <label htmlFor="doc-title">タイトル（必須）</label>
-        <br />
-        <input id="doc-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <label htmlFor="doc-conf">機密区分（必須）</label>
-        <br />
-        <select id="doc-conf" value={confidentiality} onChange={(e) => setConfidentiality(e.target.value as typeof confidentiality)}>
-          {CONFIDENTIALITY.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="doc-tags">タグ（カンマ区切り）</label>
-        <br />
-        <input id="doc-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-      </div>
-      <ErrorList errors={errors} />
-      <button type="submit" disabled={title.trim().length === 0}>
-        作成する
-      </button>
-    </form>
-  );
-}
-
-// FR-06, UC-03: 編集（楽観ロック）。現在版を ExpectedVersion として送り、競合は 409 で検出する。
-function EditForm({
+function DocumentRow({
   doc,
-  onCancel,
-  onSaved,
-  onError,
+  busy,
+  onEdit,
+  onCommand,
 }: {
-  doc: DocumentItem;
-  onCancel: () => void;
-  onSaved: () => void;
-  onError: (err: unknown) => void;
+  doc: AdminDocument;
+  busy: boolean;
+  onEdit: () => void;
+  onCommand: (id: string, kind: DocumentCommand, message: string) => void;
 }) {
-  const [title, setTitle] = useState(doc.title);
-  const [confidentiality, setConfidentiality] = useState(doc.attributes?.confidentiality ?? 'internal');
-  const [tags, setTags] = useState((doc.tags ?? []).join(', '));
-  const [changeNote, setChangeNote] = useState('');
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (title.trim().length === 0) return;
-    try {
-      await apiFetch(`/documents/${doc.id}`, {
-        method: 'PUT',
-        json: {
-          title: title.trim(),
-          attributes: { ...doc.attributes, confidentiality },
-          tags: tags.split(',').map((t) => t.trim()).filter(Boolean),
-          expectedVersion: doc.version,
-          changeNote: changeNote.trim() || null,
-        },
-      });
-      onSaved();
-    } catch (err) {
-      onError(err);
-    }
-  }
+  const { t } = useLingui();
+  const confidentiality = doc.attributes?.[CONFIDENTIALITY_KEY];
 
   return (
-    <form onSubmit={onSubmit} aria-label="文書編集">
-      <h2>文書を編集（v{doc.version}）</h2>
-      <div>
-        <label htmlFor="edit-title">タイトル（必須）</label>
-        <br />
-        <input id="edit-title" value={title} onChange={(e) => setTitle(e.target.value)} />
-      </div>
-      <div>
-        <label htmlFor="edit-conf">機密区分（必須）</label>
-        <br />
-        <select id="edit-conf" value={confidentiality} onChange={(e) => setConfidentiality(e.target.value)}>
-          {CONFIDENTIALITY.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="edit-tags">タグ（カンマ区切り）</label>
-        <br />
-        <input id="edit-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-      </div>
-      <div>
-        <label htmlFor="edit-note">変更メモ</label>
-        <br />
-        <input id="edit-note" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} />
-      </div>
-      <button type="submit" disabled={title.trim().length === 0}>
-        保存する
-      </button>{' '}
-      <button type="button" onClick={onCancel}>
-        キャンセル
-      </button>
-    </form>
+    <TableRow>
+      <TableCell>
+        {/* 計画の遷移図 SC05 → SC03（詳細・版履歴）。 */}
+        <Link
+          to="/docs/$id"
+          params={{ id: doc.id }}
+          className="font-medium text-[--color-brand] hover:underline"
+        >
+          {doc.title}
+        </Link>
+      </TableCell>
+      <TableCell>{confidentiality ? <Tag tone="neutral">{confidentiality}</Tag> : '—'}</TableCell>
+      <TableCell>v{doc.version}</TableCell>
+      <TableCell>
+        <span className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={onEdit}>
+            <Trans>編集</Trans>
+          </Button>
+          {canPublish(doc.status) && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => onCommand(doc.id, 'publish', t`文書を公開しました。`)}
+            >
+              <Trans>公開</Trans>
+            </Button>
+          )}
+          {doc.status !== 'archived' && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={busy}
+              onClick={() => onCommand(doc.id, 'archive', t`文書をアーカイブしました。`)}
+            >
+              <Trans>アーカイブ</Trans>
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            disabled={busy}
+            onClick={() => onCommand(doc.id, 'delete', t`文書を削除しました。`)}
+          >
+            <Trans>削除</Trans>
+          </Button>
+        </span>
+      </TableCell>
+    </TableRow>
   );
 }

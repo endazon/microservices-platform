@@ -1,286 +1,239 @@
 import { useState } from 'react';
-import { apiFetch } from '@foundation/api/apiClient';
-import { ApiError } from '@foundation/api/ApiError';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { Link } from '@tanstack/react-router';
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Select,
+  Textarea,
+} from '@platform/ui';
+import { i18n } from '@foundation/i18n';
+import { toMessages } from '@foundation/ui/apiErrors';
+import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
+import type { AiAnswerDto, SearchResultDto } from '@foundation/api/generated/bff.schemas';
+import {
+  buildAnalysisRequest,
+  isSubmittableInstruction,
+  MAX_INSTRUCTION_LENGTH,
+  MAX_RANGE_QUERY_LENGTH,
+  TASK_TYPES,
+  taskTypeLabel,
+} from './analysisRange';
+import type { TaskType } from './analysisRange';
+import { useAnalysisTask } from './useAnalysisTask';
 
-// SC-08, UC-02, FR-07: AI分析ダッシュボード。データ範囲を指定して分析・比較・抽出を依頼し、
-// 回答と番号付き出典を表示する。範囲は ABAC と narrowing-only で交差し権限を広げない（IADR-0005）。
-// 権限外は空回答へ縮退し、権限の有無は開示しない（存在秘匿。UC-02 例外フロー）。
-
-// BFF/OpenAPI 契約に対応する表示・送信用の型（camelCase）。
-type TaskType = 'Analyze' | 'Compare' | 'Extract';
-
-interface Citation {
-  number: number;
-  documentId: string;
-  documentTitle: string;
-  chunkId: string;
-  sourceUri?: string | null;
-  score: number;
-  snippet: string;
-}
-interface AiAnswer {
-  answer: string;
-  citations: Citation[];
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  answerId: string;
-}
-interface AnalysisRange {
-  query?: string;
-  attributeFilters?: Record<string, string[]>;
-  topK?: number;
-}
-interface AnalysisTaskRequest {
-  instruction: string;
-  taskType: TaskType;
-  range?: AnalysisRange;
-}
-
-interface FilterRow {
-  key: string;
-  values: string;
-}
-
-type Status = 'idle' | 'loading' | 'ok' | 'empty' | 'error';
-
-const DEFAULT_TOPK = 8;
-// バックエンド AnalysisPromptBuilder.MaxInstructionLength と揃える。超過は 400 になるためクライアントで予防する。
-const MAX_INSTRUCTION_LENGTH = 2000;
-const MIN_TOPK = 1;
-const MAX_TOPK = 50;
-const TASK_LABELS: Record<TaskType, string> = {
-  Analyze: '分析',
-  Compare: '比較',
-  Extract: '抽出',
-};
-
-// 属性フィルタ行を {key: [values]} へ畳み込む。空 key・空値は除外し、無ければ undefined。
-function rowsToFilters(rows: FilterRow[]): Record<string, string[]> | undefined {
-  const out: Record<string, string[]> = {};
-  for (const r of rows) {
-    const key = r.key.trim();
-    if (!key) continue;
-    const values = r.values
-      .split(',')
-      .map((v) => v.trim())
-      .filter(Boolean);
-    if (values.length) out[key] = values;
-  }
-  return Object.keys(out).length ? out : undefined;
-}
+// SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボード（05_screens: ルート /analyze）。
+// 範囲を指定して分析（比較・抽出を含む）を依頼し、結果と出典を確認する。出典から SC-03 へ遷移する。
+// ロール限定は無い（05_screens §共通シェル: 利用者グループは ABAC の権限内で全利用者が使える）。
+//
+// 実装しない要素（画面仕様書 docs/screens/SC-08_ai-analysis-dashboard.md §hi-fi モックアップとの対応）:
+//   - **分析対象のチップ（タグ・フォルダ）**: `AnalysisDataRange` は属性キー → 値集合しか取らず、
+//     タグは属性とは別の軸・フォルダは契約に存在しない。加えて「分析対象（**権限内に限定**）」を
+//     成立させる権限内候補の照会口が無い。**SC-01 の対象範囲フィルタと同型の論点**であり
+//     planning#197 の裁定を待つ（新規の環流記録は作らない）。実装するのは「検索条件による追加」に
+//     当たる `range.query` である。
 
 export function AnalysisDashboardPage() {
+  const { t } = useLingui();
   const [instruction, setInstruction] = useState('');
-  const [taskType, setTaskType] = useState<TaskType>('Analyze');
-  const [query, setQuery] = useState('');
-  const [topK, setTopK] = useState<number>(DEFAULT_TOPK);
-  const [rows, setRows] = useState<FilterRow[]>([]);
-  const [status, setStatus] = useState<Status>('idle');
-  const [result, setResult] = useState<AiAnswer | null>(null);
+  const [taskType, setTaskType] = useState<TaskType>(AnalysisTaskRequestTaskType.Analyze);
+  const [rangeQuery, setRangeQuery] = useState('');
+  const { outcome, run } = useAnalysisTask();
 
-  const trimmedInstruction = instruction.trim();
-  // instruction は 1文字以上かつ上限内（400 をクライアントで予防）。
-  const canSubmit =
-    trimmedInstruction.length > 0 &&
-    trimmedInstruction.length <= MAX_INSTRUCTION_LENGTH &&
-    status !== 'loading';
-
-  function buildRequest(): AnalysisTaskRequest {
-    const range: AnalysisRange = {};
-    const q = query.trim();
-    if (q) range.query = q;
-    const filters = rowsToFilters(rows);
-    if (filters) range.attributeFilters = filters;
-    // 明示的な 0・負値は下限 1 へクランプ（既定 8 へ静かに戻さない）。非数値のみ既定へフォールバック。
-    const truncated = Math.trunc(topK);
-    const clampedTopK = Number.isNaN(truncated)
-      ? DEFAULT_TOPK
-      : Math.min(Math.max(truncated, MIN_TOPK), MAX_TOPK);
-    // range に他の指定があるか、TopK を既定から変えた場合のみ TopK を含める。
-    if (range.query !== undefined || range.attributeFilters !== undefined || clampedTopK !== DEFAULT_TOPK) {
-      range.topK = clampedTopK;
-    }
-    const req: AnalysisTaskRequest = { instruction: trimmedInstruction, taskType };
-    if (Object.keys(range).length > 0) req.range = range;
-    return req;
-  }
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setStatus('loading');
-    setResult(null);
-    try {
-      const answer = await apiFetch<AiAnswer>('/analysis/analyze', {
-        method: 'POST',
-        json: buildRequest(),
-      });
-      // 権限外は空回答へ縮退する（存在秘匿）。回答本文が無ければ中立表示にする。
-      if (!answer || !answer.answer.trim()) {
-        setResult(answer ?? null);
-        setStatus('empty');
-      } else {
-        setResult(answer);
-        setStatus('ok');
-      }
-    } catch (e) {
-      // 403/404 は「拒否/不在」を区別せず空縮退と同じ中立表示にする（存在秘匿。IADR-0009・UC-02 例外フロー）。
-      // 400/5xx/network は取得失敗として alert 表示にする。
-      if (e instanceof ApiError && (e.kind === 'forbidden' || e.kind === 'notFound')) {
-        setStatus('empty');
-      } else {
-        setStatus('error');
-      }
-    }
-  }
+  const canSubmit = isSubmittableInstruction(instruction) && outcome.kind !== 'running';
 
   return (
     <section>
-      <h1>AI分析ダッシュボード</h1>
+      <h1 className="text-lg font-semibold text-[--color-fg]">
+        <Trans>AI分析依頼</Trans>
+      </h1>
+      <p className="mb-4 text-sm text-[--color-fg-muted]">
+        <Trans>範囲指定の分析依頼・結果・出典</Trans>
+      </p>
 
-      {/* 検証は JS 側（canSubmit・buildRequest のクランプ）を正とする。HTML5 制約（min/max）で
-          送信自体をブロックせず、範囲外値はクランプして扱う（TopK=0→1 等）。 */}
-      <form onSubmit={onSubmit} noValidate>
-        <p>
-          <label htmlFor="instruction">分析内容（指示）</label>
-          <br />
-          <textarea
-            id="instruction"
-            rows={3}
-            maxLength={MAX_INSTRUCTION_LENGTH}
-            style={{ width: '100%', maxWidth: 640 }}
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            placeholder="例: 2025 年度の経費規程の変更点を比較して"
-          />
-        </p>
-
-        <p>
-          <label htmlFor="taskType">タスク種別</label>{' '}
-          <select
-            id="taskType"
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value as TaskType)}
-          >
-            {(Object.keys(TASK_LABELS) as TaskType[]).map((t) => (
-              <option key={t} value={t}>
-                {TASK_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        </p>
-
-        <fieldset>
-          <legend>対象範囲（任意）</legend>
-          <p>
-            <label htmlFor="range-query">検索クエリ</label>{' '}
-            <input
+      <form
+        className="grid gap-3 md:grid-cols-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!canSubmit) return;
+          run(buildAnalysisRequest(instruction, taskType, rangeQuery));
+        }}
+      >
+        <Card>
+          <CardHeader>
+            {/* 「（権限内に限定）」は存在秘匿の説明そのものであり省略しない。 */}
+            <CardTitle>
+              <Trans>分析対象（権限内に限定）</Trans>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Label htmlFor="range-query">
+              <Trans>検索条件で追加</Trans>
+            </Label>
+            <Input
               id="range-query"
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="省略時は指示を流用"
+              value={rangeQuery}
+              maxLength={MAX_RANGE_QUERY_LENGTH}
+              onChange={(e) => setRangeQuery(e.target.value)}
+              placeholder={t`省略時は分析内容を流用します`}
             />
-          </p>
-          <p>
-            <label htmlFor="range-topk">TopK（文脈上限 1〜50）</label>{' '}
-            <input
-              id="range-topk"
-              type="number"
-              min={1}
-              max={50}
-              value={topK}
-              onChange={(e) => setTopK(Number(e.target.value))}
-              style={{ width: 80 }}
-            />
-          </p>
+          </CardContent>
+        </Card>
 
-          <fieldset>
-            <legend>属性フィルタ（narrowing-only）</legend>
-            {rows.map((row, i) => (
-              <p key={i} style={{ display: 'flex', gap: '0.5rem' }}>
-                <input
-                  aria-label={`属性キー ${i + 1}`}
-                  type="text"
-                  placeholder="キー（例: department）"
-                  value={row.key}
-                  onChange={(e) =>
-                    setRows((rs) => rs.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
-                  }
-                />
-                <input
-                  aria-label={`属性値 ${i + 1}`}
-                  type="text"
-                  placeholder="値（カンマ区切り 例: sales,legal）"
-                  value={row.values}
-                  onChange={(e) =>
-                    setRows((rs) =>
-                      rs.map((r, j) => (j === i ? { ...r, values: e.target.value } : r)),
-                    )
-                  }
-                />
-                <button type="button" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}>
-                  削除
-                </button>
-              </p>
-            ))}
-            <button type="button" onClick={() => setRows((rs) => [...rs, { key: '', values: '' }])}>
-              属性フィルタを追加
-            </button>
-          </fieldset>
-        </fieldset>
-
-        <p>
-          <button type="submit" disabled={!canSubmit}>
-            分析を実行
-          </button>
-        </p>
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              <Trans>分析内容</Trans>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <div>
+              <Label htmlFor="instruction" requiredHint={t`（必須）`}>
+                <Trans>分析内容（指示）</Trans>
+              </Label>
+              <Textarea
+                id="instruction"
+                rows={3}
+                value={instruction}
+                maxLength={MAX_INSTRUCTION_LENGTH}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder={t`例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して`}
+              />
+            </div>
+            <div>
+              {/* FR-07「分析・比較・抽出」。選択肢が無いと比較・抽出へ到達できない。 */}
+              <Label htmlFor="task-type" requiredHint={t`（必須）`}>
+                <Trans>タスク種別</Trans>
+              </Label>
+              <Select
+                id="task-type"
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value as TaskType)}
+              >
+                {TASK_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {i18n._(taskTypeLabel(type))}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <Button type="submit" variant="primary" disabled={!canSubmit}>
+                <Trans>分析実行</Trans>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </form>
 
-      {status === 'loading' && <p role="status">分析を実行中…</p>}
-      {status === 'error' && <p role="alert">分析の実行に失敗しました。</p>}
-      {status === 'empty' && <p>該当する情報が見つかりませんでした。</p>}
-
-      {status === 'ok' && result && (
-        <article aria-label="分析結果">
-          <h2>回答</h2>
-          <p style={{ whiteSpace: 'pre-wrap' }}>{result.answer}</p>
-
-          {result.citations.length > 0 && (
-            <>
-              <h3>出典</h3>
-              <ol>
-                {result.citations.map((c) => (
-                  <li key={c.chunkId}>
-                    {c.sourceUri ? (
-                      <a href={c.sourceUri} target="_blank" rel="noreferrer">
-                        {c.documentTitle}
-                      </a>
-                    ) : (
-                      <span>{c.documentTitle}</span>
-                    )}{' '}
-                    <small>（score: {c.score.toFixed(2)}）</small>
-                    <div>
-                      <small>{c.snippet}</small>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-
-          {/* SC-08, FR-11, IADR-0111 (#403): model が空なのは「AI へ送信していない縮退」（ABAC 不許可・
-              機密区分による送信拒否・ゲートウェイ不達）を意味する。空のままだと「モデル: 」がぶら下がって
-              読めないため、未送信であることを明示する。 */}
-          <p>
-            <small>
-              モデル: {result.model || '未使用（AI へ送信なし）'} / 入力 {result.inputTokens} ・出力{' '}
-              {result.outputTokens} トークン
-            </small>
-          </p>
-        </article>
+      {outcome.kind === 'running' && (
+        <p role="status" className="mt-3 text-sm text-[--color-fg-muted]">
+          <Trans>分析を実行中…</Trans>
+        </p>
       )}
+
+      {/* UC-02 例外フロー: 権限外は対象から除外し、権限の有無を開示しない（存在秘匿）。
+          空回答・403・404 をすべて同じ中立文言へ寄せる。 */}
+      {outcome.kind === 'empty' && (
+        <p className="mt-3 text-sm">
+          <Trans>該当する情報が見つかりませんでした。</Trans>
+        </p>
+      )}
+
+      {outcome.kind === 'failed' && (
+        <Alert tone="danger" role="alert" className="mt-3" label={t`エラー`}>
+          {toMessages(outcome.error, t`分析を実行できませんでした。`).join(' / ')}
+        </Alert>
+      )}
+
+      {outcome.kind === 'answered' && (
+        <Card className="mt-3">
+          <CardHeader>
+            <CardTitle>
+              <Trans>結果</Trans>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="whitespace-pre-wrap">{outcome.answer.answer}</p>
+
+            {(outcome.answer.citations ?? []).length > 0 && (
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-[--color-fg-muted]">
+                <Trans>出典:</Trans>
+                {(outcome.answer.citations ?? []).map((citation, index) => (
+                  <CitationLink key={citation.chunkId ?? index} citation={citation} />
+                ))}
+              </p>
+            )}
+
+            {/* FR-11（モデル振り分けの利用面）/ IADR-0111: model が空なのは「AI へ送信していない縮退」
+                （ABAC 不許可・機密区分による送信拒否・ゲートウェイ不達）を意味する。空のままだと
+                「モデル: 」がぶら下がって読めないため、未送信であることを明示する。 */}
+            <ModelFootnote answer={outcome.answer} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 05_screens §SC-08 の注記。静的な注記なので role は付けない。 */}
+      <Alert tone="info" className="mt-3" label={t`注記`}>
+        <Trans>
+          機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・
+          データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。
+        </Trans>
+      </Alert>
     </section>
+  );
+}
+
+/**
+ * モデルとトークン数の脚注。
+ *
+ * FR-11（モデル振り分けの利用面。02_requirements トレーサビリティ表）/ IADR-0111:
+ * `model` が空なのは「**AI へ送信していない縮退**」（ABAC 不許可・機密区分による送信拒否・
+ * ゲートウェイ不達）を意味する。空のままだと「モデル: 」がぶら下がって読めないため、
+ * 未送信であることを明示する。
+ *
+ * `lingui/no-expression-in-message`: 翻訳単位へ渡せるのは単一の変数だけなので、
+ * プロパティ参照はここで局所変数へ落としてから渡す。
+ */
+function ModelFootnote({ answer }: { answer: AiAnswerDto }) {
+  const model = answer.model;
+  const inputTokens = answer.inputTokens ?? 0;
+  const outputTokens = answer.outputTokens ?? 0;
+  return (
+    <p className="mt-2 text-xs text-[--color-fg-muted]">
+      {model ? <Trans>モデル: {model}</Trans> : <Trans>モデル: 未使用（AI へ送信なし）</Trans>}
+      {' / '}
+      <Trans>
+        入力 {inputTokens} ・出力 {outputTokens} トークン
+      </Trans>
+    </p>
+  );
+}
+
+/**
+ * 出典 1 件。
+ *
+ * **`documentId` / `documentTitle` / `chunkId` だけを使う**（IADR-0127 決定 3）——openapi.yaml の
+ * `AiAnswerDto.citations` は `SearchResultDto[]`、後段の実体は `CitationDto[]` であり、
+ * 両者に共通して存在するフィールドはこの 3 つである。hi-fi の出典表示（タイトルのリンクのみ）とも一致する。
+ */
+function CitationLink({ citation }: { citation: SearchResultDto }) {
+  if (!citation.documentId) {
+    return <span>{citation.documentTitle}</span>;
+  }
+  return (
+    <Link
+      to="/docs/$id"
+      params={{ id: citation.documentId }}
+      className="text-[--color-brand] hover:underline"
+    >
+      {citation.documentTitle}
+    </Link>
   );
 }
