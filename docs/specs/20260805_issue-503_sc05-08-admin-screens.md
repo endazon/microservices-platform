@@ -43,7 +43,8 @@ related_specs:
 > （operator は 403・無認証は 401）。計画確定事項（`01_screens.md:257`「画面と API の権限を揃える」）は
 > **両側で満たされている**。本書は #503 完了時点の記録として本文をそのまま残す
 > ——「未達を正当化せずに名指しした」判断自体が記録として要るためである。
-> **現在の状態の説明として読まれる箇所**（§計画書との差異 の「SC-07 の再変換の権限」・§残るもの・§未決事項 3）には解消済みの旨を書き足した。
+> **現在の状態の説明として読まれる箇所**（§計画書との差異 の「SC-07 の再変換の権限」・§残るもの・§未決事項 3・
+> **§6 データソース（BFF 境界）の API 表**）の **4 箇所**には解消済みの旨を書き足した。
 > **閲覧ロール**（SC-05/06/07 が admin/operator か admin のみか）は **planning#198 提案 8 で裁定待ちのまま**である。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -271,7 +272,7 @@ DOM を描かずに試験できるようにするためである（#502 と同�
 | SC-05 | 一覧 | `GET /bff/documents` | `useQuery` ＋ `apiFetch` | 認証（ABAC スコープ内のみ） |
 | SC-05 | 作成 / 更新 / 公開 / アーカイブ / 削除 | `POST|PUT|POST /publish|POST /archive|DELETE /bff/documents[/{id}]` | `useMutation` ＋ `apiFetch` | admin または operator |
 | SC-06 | 一覧 / 登録 / 手動同期 / 無効化 | `GET|POST /bff/datasources`・`POST /bff/datasources/{id}/sync`・`DELETE /bff/datasources/{id}` | 同上 | admin または operator |
-| SC-07 | 一覧（`?status=`） / 再変換 | `GET /bff/conversion/jobs`・`POST /bff/conversion/jobs/{id}/retry` | 同上 | admin または operator（**#501** が retry を admin のみへ） |
+| SC-07 | 一覧（`?status=`） / 再変換 | `GET /bff/conversion/jobs`・`POST /bff/conversion/jobs/{id}/retry` | 同上 | 一覧＝ admin または operator ／ **再変換＝ admin のみ**（**［2026-08-05 追記］#501 / [[IADR-0128]] 決定 1 が絞った**。operator は 403・無認証 401） |
 | SC-08 | 分析実行 | `POST /bff/analysis/analyze` | **orval 生成フック `useAnalysisAnalyze`** | 認証（ABAC は後段が narrowing-only で適用） |
 
 - **SC-08 だけが orval 生成フックに載る。** `docs/api/openapi.yaml` に `/bff/analysis/analyze` があるためである。
