@@ -252,6 +252,7 @@ export const okData = <R extends { status: number; data: unknown }>(res: R): OkP
 | `sc11-config/useConfigViewer.ts` | 履歴の `?? []` | **残す** |
 | `sc02-results/SearchResultsPage.tsx` | `search.data?.totalHits ?? results.length` | **残す**（`data` は取得前 `undefined`。契約とは無関係） |
 | 各ページの `data ?? []` | | **残す**（同上） |
+| `sc02-results/useSearchQuery.ts` | 旧 `(await apiFetch(...)) ?? EMPTY` | **唯一の削除。** 旧既定値は `apiFetch` が本文なし（204・空ボディ）で `undefined` を返すことへの備えだったが、`bffFetch` は同じ場合に **`{}` を返す**ため `??` が発火しない——**置いても何も守らないコード**になる。空ボディの縮退は画面側の `search.data?.results ?? []` / `?? results.length` が受けており、**「本文が来なくても画面が壊れない」という性質は保たれている**（理由はコードのコメントにも残した） |
 
 **新たに `??` を足すことはしない。**
 

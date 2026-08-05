@@ -26,6 +26,11 @@ export const searchQueryKey = (query: string) => ['bff', 'search', query] as con
  */
 export function useSearchQuery(query: string) {
   const q = query.trim();
+  // **載せ替え前にあった `?? EMPTY` は置かない**（IADR-0132 決定 3 の唯一の例外。理由は形が変わったこと）。
+  // 旧実装の既定値は `apiFetch` が本文なし（204・空ボディ）で `undefined` を返すことへの備えだった。
+  // `bffFetch` は同じ場合に `{}` を返すため **`??` は発火せず、置いても何も守らない**。
+  // 空ボディの縮退は画面側の `search.data?.results ?? []` / `?? results.length` が受けており、
+  // 「本文が来なくても画面が壊れない」という性質はそのまま保たれている。
   return useQuery({
     queryKey: searchQueryKey(q),
     queryFn: ({ signal }) => bffSearch({ query: q, topK: SEARCH_TOP_K }, { signal }),
