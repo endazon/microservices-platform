@@ -706,6 +706,26 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.SearchModes": {
+        "kind": "class",
+        "members": {
+          "Hybrid": {
+            "source": "const",
+            "type": "string",
+            "value": "\"hybrid\""
+          },
+          "Keyword": {
+            "source": "const",
+            "type": "string",
+            "value": "\"keyword\""
+          },
+          "Semantic": {
+            "source": "const",
+            "type": "string",
+            "value": "\"semantic\""
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SearchRequest": {
         "kind": "record",
         "members": {
@@ -714,6 +734,12 @@
             "type": "Dictionary<string,string>?",
             "required": false,
             "position": 2
+          },
+          "Mode": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 4
           },
           "Query": {
             "source": "positional",
