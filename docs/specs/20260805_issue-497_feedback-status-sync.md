@@ -170,7 +170,7 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 
 | 種別 | 件数 | 該当 | 性質 |
 | --- | --- | --- | --- |
-| A: **書換対象 10 件と同型の未同期** | 3 | #6・#10・#13 | impl=`open` / plan=`accepted`。**同じ欠陥だが #497 の表に無い** |
+| A: **書換対象 10 件と同型の未同期** | 3 | #6・#10・#13 | impl=`open` / plan=`accepted`。**同じ欠陥だが #497 の表に無い**。なお**同型は #497 が「計画 issue 追跡中」へ分類した #20・#21・#22 にもあり、全数では 6 件**である（§申し送り 1） |
 | B: 既に正しいが列挙から漏れ | 2 | #11・#14 | impl=`accepted` / plan=`accepted`。作業不要 |
 | C: 計画側が `triaged`（裁定待ち） | 1 | #17 | `accepted` にはできない。ADR-0040 / ADR-0042 とも `Proposed` |
 | D: 計画側へ未到達 | 4 | #24・#25・#26・#27 | `open` が正しい（`draft/feedback/` に同名なし） |
@@ -211,8 +211,9 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 ```
 
 - リンクは**相対リンク**（`../planning/...`）で書く。`feedback/` はリポジトリ直下のため 1 段上がる。
-- **ただし `check-doc-links.js` は既定で `docs/` しか走査しない**（`--dir` の既定値が `docs`。CI の
-  `ci.yml` も引数なしで起動する）ため、**`feedback/` に置いた相対リンクは既定の CI では検査されない**。
+- **ただし `check-doc-links.js` は既定で `docs/` しか走査しない**（`--dir` の既定値が `docs`。`ci.yml` も
+  夜間の `doc-links-planning.yml` も `--dir` を渡さない）ため、**`feedback/` に置いた相対リンクは
+  CI のどの経路でも検査されない**（§申し送り 2）。
   本作業では `node scripts/check-doc-links.js --dir feedback` を明示的に実走して確認し、
   既定で検査されない事実を §検証（変異試験 M2）で実測し、§申し送り へ残す。
 
@@ -253,13 +254,61 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 
 ## 申し送り
 
-1. **A 群 3 件（#6・#10・#13）が #497 の表から漏れている。** impl=`open` / plan=`accepted` で、
-   書換対象 10 件とまったく同型である。別 issue で同期すべき。
-2. **`feedback/` は `check-doc-links.js` の既定走査対象外である（M2 で実測）。** 控えの記録が計画側を
-   相対リンクで指しても、pin がずれたときに機械検出されない。`ci.yml` は本エージェントの権限では
-   編集できないため、結線（`--dir feedback` の追加、または既定の走査対象へ `feedback` を含める）は
-   親へ引き渡す。**既存の `feedback/20260709_sc11-wireframe-drawio.md`（#504 が足した計画側リンク）も
-   同じく未検査のままだった。**
+1. **書換対象 10 件と同型の未同期（impl=`open` / plan=`accepted`）は、全数で 6 件残る。** 後続 issue の
+   射程を「A 群 3 件」で切ると 3 件が取り残されるため、**6 件で起票すること**。
+
+   次のコマンドで全 27 件の impl / plan を突き合わせた実測である（**個別の目視ではなく全数照合**）。
+
+   ```console
+   $ for f in feedback/*.md; do b=$(basename "$f"); case "$b" in README.md|TEMPLATE.md) continue;; esac; \
+       impl=$(awk '/^status:/{print $2; exit}' "$f"); p="planning/draft/feedback/$b"; \
+       if [ -f "$p" ]; then plan=$(awk '/^status:/{print $2; exit}' "$p"); else plan="(none)"; fi; \
+       [ "$impl" = "open" ] && [ "$plan" = "accepted" ] && echo "$b"; done
+   20260707_iadr-0017-superseded-mesh-mtls.md
+   20260709_config-version-history-source-gitops.md
+   20260709_fr01-connector-and-nfr-verification-status.md
+   20260803_ai-review-execution-permissions.md
+   20260803_ai-workflow-grep-sort-and-submodule-git-c.md
+   20260803_doc-links-code-extensions.md
+   ```
+
+   前半 3 件（#6・#10・#13）は **#497 の表からも 3 分類からも漏れていた**もの。後半 3 件（#20・#21・#22）は
+   #497 が「計画 issue 追跡中（planning#168 / planning#163 / planning#167）」へ分類したものだが、
+   **`status` の同期という観点では前半とまったく同型である**——計画側原典は 3 件とも 2026-08-04 に
+   `accepted` でトリアージ済みで、控えだけが `open` に取り残されている。
+   **除外しない**（本書は当初「A 群 3 件」と書いていたが、これは過少である）。
+
+   ただし後半 3 件には**同期とは別の残タスク**が付いている点を後続 issue へ引き継ぐこと。計画側の
+   トリアージ結果が「`repo-template/.claude/settings.json` は AI 編集が deny のため未反映（人間対応）」
+   「MSP 側は kit 反映のリリース後、暫定デルタを撤去してバイト一致へ戻す（[[IADR-0115]] の運用）」と
+   記しており、**`status` を `accepted` へ揃えても、その残タスクが消えるわけではない**。
+2. **`feedback/` は `check-doc-links.js` の既定走査対象外であり（M2 で実測）、`ci.yml` と
+   `doc-links-planning.yml` の*両方*が素通りする。** 走査対象は `--dir` の既定値 `docs` だけである。
+
+   ```console
+   $ grep -n "const a = { dir: 'docs'" scripts/check-doc-links.js
+   41:  const a = { dir: 'docs', requirePlanning: false };
+   $ grep -n check-doc-links .github/workflows/*.yml
+   .github/workflows/ci.yml:102:        run: node scripts/check-doc-links.js --self-test
+   .github/workflows/ci.yml:104:        run: node scripts/check-doc-links.js
+   .github/workflows/doc-links-planning.yml:60:        run: node scripts/check-doc-links.js --require-planning
+   ```
+
+   **どちらの起動にも `--dir` が無い。** とりわけ夜間の `doc-links-planning.yml` は
+   **planning submodule を populate して計画側リンクを実際に解決する唯一のジョブ**であり
+   （`ci.yml` の `doc-links` は submodule 無しで checkout するため計画側リンクを検査対象外にする）、
+   それが `docs/` しか見ていない。結果として、**本作業が `feedback/` へ足した計画側への相対リンクは
+   CI のどの経路でも検査されない**——PR CI（対象外・かつ planning 未 populate）でも、夜間ジョブ
+   （planning は解決できるが `feedback/` を見ない）でも守られていない。pin がずれても機械検出されない。
+
+   `.github/workflows/` は本エージェントの権限では編集できないため、結線は親へ引き渡す。**`ci.yml`
+   だけでは足りない**（それでは計画側リンクは相変わらず解決されない）。両方に手当てすること:
+   - `ci.yml` の `doc-links` ジョブ: 非 planning リンクを `feedback/` でも毎 PR 検査する。
+   - `doc-links-planning.yml`: `--require-planning` に `--dir feedback` の走査を足す（または
+     `check-doc-links.js` の既定走査対象へ `feedback` を含め、両ジョブが自動で拾うようにする）。
+
+   **既存の `feedback/20260709_sc11-wireframe-drawio.md`（#504 が足した計画側リンク）も同じく未検査の
+   ままだった。**
 3. **計画側 `draft/feedback/20260709_sc11-wireframe-drawio.md` は `open` のままである。** 実装側は
    `rejected` へ揃えたが、原典は未追随であり、計画リポジトリの「未処理」表にも残る。計画側の
    トリアージ（`rejected`）が必要——`/plan-feedback` の候補。**本リポジトリからは触れない。**
