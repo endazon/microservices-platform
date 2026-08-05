@@ -70,8 +70,10 @@ export function DocumentManagementPage() {
 
   const items = documents.data ?? [];
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
-  // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに
+  // 戻り値から導く——手書きの配列にすると、次のミューテーションを足したときに
   // 「一覧には出るが読まれない失敗」「消し忘れる古い失敗」が静かに生まれる。
+  // **#519 の載せ替えで束は 3 本から 5 本へ増えたが、ここは 1 文字も変えずに追随した**
+  // （手書きの配列だったら 2 本を書き足す必要があった。IADR-0135 決定 6）。
   const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
   const conflicted = failed?.error instanceof ApiError && failed.error.status === 409;
