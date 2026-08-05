@@ -62,7 +62,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
     const table = within(screen.getByRole('table'));
     expect(table.getByText('ファイルサーバー')).toBeInTheDocument();
     expect(table.getByText('SaaS')).toBeInTheDocument();
-    // active ＋ 最終同期あり → 同期済み。disabled → 無効（琥珀の警告）。
+    // active ＋ 最終同期あり → 同期済み。disabled → 無効（中立。琥珀は同期異常のために空けてある）。
     expect(table.getByText('同期済み')).toBeInTheDocument();
     expect(table.getByText('無効')).toBeInTheDocument();
     expect(mocks.apiFetch).toHaveBeenCalledWith('/datasources');

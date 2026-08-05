@@ -240,12 +240,15 @@ DOM を描かずに試験できるようにするためである（#502 と同�
 
 | 条件 | 表示 | `tone` |
 | --- | --- | --- |
-| `status = disabled` | 無効 | **`warning`（琥珀）** |
+| `status = disabled` | 無効 | `neutral` |
 | `status = active` かつ `lastSyncedAt` あり | 同期済み（日時） | `success` |
 | `status = active` かつ `lastSyncedAt` なし | 未同期 | `neutral` |
+| （同期異常） | — | **`warning`（琥珀）は空けておく** |
 
-**琥珀は「取り込みが止まっている」状態へ充てる**（05_screens モック間相違の確定 ②「SC-06 の同期異常表示の警告色＝琥珀」）。
-モックが琥珀を充てた「⚠ 再試行中（3/5）」そのものは連続失敗回数の契約が無く実装しない（B）。
+**琥珀はどの状態にも充てない**（05_screens モック間相違の確定 ②「SC-06 の**同期異常表示**の警告色＝琥珀」）。
+琥珀が指すのは**異常**であり、管理者が意図して無効化した**正常な設定状態**ではない。
+モックが琥珀を充てた「⚠ 再試行中（3/5）」そのものは連続失敗回数の契約が無く実装しない（B）ため、
+**契約が同期健全性を持つまで琥珀を保留する**（[[IADR-0127]] 決定 2。色の割当も環流記録の提案 3 に含めた）。
 
 ### 6. データソース（BFF 境界）
 
@@ -426,7 +429,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 ### 変異試験（「壊すと落ちる」ことの実測）
 
 **27 件を試し、うち 24 件は最初から落ちた。3 件が素通りしたので、テストを足して落ちることを再確認した。**
-**その後、PR #508 のレビュー指摘の是正で 2 件（M28 / M29）を追加し、合計 29 件になった。**
+**その後、PR #508 のレビュー・監査の是正で 3 件（M28 / M29 / M30）を追加し、M5 を取り下げた（合計 29 件）。**
 
 | # | 壊した箇所 | 落ちたもの |
 | --- | --- | --- |
@@ -434,7 +437,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 | M2 | `isRetryable` に `processing` を足す（**直列化を壊す**） | `allows retry only for failed jobs` ＋ `offers no retry for jobs that are not failed`（**2 件**） |
 | M3 | 未知のジョブ状態を「不明」へ丸める | `shows an unknown status verbatim instead of hiding it`（1 件） |
 | **M4** | SC-07 の 409 を通常のエラーと同じ扱いにする（tone とラベル） | **初回は素通りした**（後述）。是正後は `explains the 409 rejection as a serialisation conflict`（1 件） |
-| M5 | SC-06 の `disabled` から琥珀の警告を外す | `marks a disabled source with the amber warning tone`（1 件） |
+| ~~M5~~ | ~~SC-06 の `disabled` から琥珀の警告を外す~~ | **取り下げ**（琥珀を `disabled` へ充てること自体を是正した。M30 を参照） |
 | M6 | SC-05 の 409 を通常のエラーと同じ扱いにする | `explains a 409 version conflict`（1 件） |
 | M7 | SC-08 で 403/404 を存在秘匿へ寄せない（**権限を開示する**） | `shows the same neutral message for a 403` ＋ `… for a 404`（**2 件**） |
 | M8 | SC-08 の空回答の縮退を検出しない | `shows the same neutral message for an empty answer (server-side degradation)`（1 件） |
@@ -459,6 +462,7 @@ MSP 所有分は `src/coverage/lcov.info` から `ai-stock-trading` のファイ
 | M27 | SC-06 の手動同期成功後の `invalidateQueries` を外す | `refetches the list after a successful sync`（1 件。M26 と同時に足したテスト） |
 | **M28** | SC-05 の `beginOperation()` を外す（**是正前の実装そのもの**＝別のミューテーションの失敗状態を残す） | `shows only the latest operation result (a stale failure banner does not survive)`（1 件） |
 | **M29** | SC-06 の `beginOperation()` を外す（同上） | `shows only the latest operation result (neither a stale failure nor a stale success survives)`（1 件） |
+| **M30** | SC-06 の `disabled` へ琥珀（`warning`）を充て直す（**是正前の実装そのもの**） | `marks a disabled source as neutral, leaving amber for a real sync fault` ＋ `never uses the amber warning tone for any state the contract can express`（**2 件**） |
 
 #### 素通りした 3 件と、その是正
 
@@ -503,6 +507,7 @@ SC-05 側も同じ形に揃え、M6 として実測した。
 | **SC-07 の再変換の権限** | 05_screens §SC-07「再変換の実行権限は管理者ロールに限る」 | **画面は `platform-admin` のみ**。API は #501 | 計画確定への追随。画面が API より厳しい状態を一時的に作る（§2） |
 | **SC-05 の「変換」列** | 05_screens §SC-05 主要素「変換状況」・hi-fi の「変換」列 | **実装しない** | 文書 → 変換ジョブの対応を返す契約が無い。なお 02_requirements トレーサビリティ表（2026-07-24 是正）は **FR-12 の関連画面から SC-05 を外している**（「SC-05 はモックの FR バッジ準拠で対象外」）。§環流 |
 | **SC-06 の「次回同期」列・「⚠ 再試行中（3/5）」・「設定」** | hi-fi の同名要素 | **実装しない** | ソース別スケジュール・連続失敗回数・更新 API のいずれも契約に無い。§環流 |
+| **SC-06 の琥珀（警告色）の充て先** | `01_screens.md:125`（モック間相違の確定 ②）・`:241`「同期異常は警告表示（警告色＝琥珀）」 | **どの状態にも充てない**（`disabled` は中立） | 琥珀が指すのは**異常**であり、管理者が意図した無効化＝正常な設定状態ではない。契約が同期健全性を持つまで空けておく（[[IADR-0127]] 決定 2）。**色の割当の裁定も環流記録の提案 3 に含めた** |
 | **SC-07 の人手補正 2 ペイン** | 05_screens §SC-07 主要素「人手補正の2ペイン編集」 | **実装しない**（再変換は実装する） | 補正済み Markdown を受け取る API が無い。§環流 |
 | **SC-07 の「デッドレター」表示** | 05_screens §SC-07「デッドレター状態の表示は `failed` の内訳」 | **`failed` として表示し、内訳は区別しない** | `ConversionJobDto` にデッドレターの標識が無い。§環流 |
 | **SC-08 の分析対象チップ（タグ／フォルダ）** | 05_screens §SC-08 主要素「タグ・フォルダのチップ＋検索条件による追加」 | **検索条件（`range.query`）のみ実装** | **権限内**のタグ／フォルダ候補を返す API が無い（SC-01 と同型）。**planning#197 の裁定待ち** |

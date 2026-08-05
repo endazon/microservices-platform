@@ -8,7 +8,13 @@ import type { MessageDescriptor } from '@lingui/core';
 // （連続失敗回数）と「次回同期」（ソース別スケジュール）はいずれも契約に無い。
 // 実装しない理由は画面仕様書 docs/screens/SC-06_datasource-management.md に記録した。
 
-/** `StatusBadge` の tone。tone ごとに固定アイコンが付く（INDEX 決定 21 を型で強制する部品）。 */
+/**
+ * `StatusBadge` の tone。tone ごとに固定アイコンが付く（INDEX 決定 21 を型で強制する部品）。
+ *
+ * **`warning`（琥珀）は今のところどの状態にも充てていない。** 計画（05_screens モック間相違の確定 ②）が
+ * 琥珀へ与えた意味は「**同期異常**」であり、`DataSourceDto` が同期健全性を持つまで空けておく
+ * （IADR-0127 決定 2）。union に残してあるのは、契約が来たときの充て先が決まっているためである。
+ */
 export type SyncTone = 'neutral' | 'success' | 'warning';
 
 export interface SyncStateView {
@@ -21,14 +27,17 @@ export interface SyncStateView {
 /**
  * 同期状態を表示の組（文言 ＋ tone）へ写像する。
  *
- * **琥珀（warning）は `disabled` へ充てる。** 05_screens モック間相違の確定 ②（2026-07-24）は
- * 「SC-06 の同期異常表示の警告色＝琥珀（hi-fi を正）」と定める。同期異常そのものは契約に無く
- * 表示できないが、琥珀が指すべき意味——「**このソースから取り込みが行われていない**」——は
- * `disabled` が満たす。色だけで意味を持たせない（`StatusBadge` がアイコンとテキストを伴わせる）。
+ * **`disabled` は中立（neutral）である。** 05_screens モック間相違の確定 ②（2026-07-24）は
+ * 「SC-06 の**同期異常表示**の警告色＝琥珀（hi-fi を正）」と定める。すなわち琥珀が指すのは
+ * **異常**であって、管理者が意図して無効化した**正常な設定状態**ではない。無効へ琥珀を充てると
+ * 「⚠」が付いた正常状態が生まれ、計画が琥珀に与えた意味と表示の意味がずれる
+ * （IADR-0127 決定 2）。**同期健全性が契約に載るまで琥珀は空けておく**——
+ * 「異常」の語彙を先に使い切ると、契約が来たときに区別する色が無くなる。
+ * 中立でも色だけに意味を持たせない点は変わらない（`StatusBadge` がアイコンとテキストを伴わせる）。
  */
 export function syncStateView(status: string, lastSyncedAt: string | null | undefined): SyncStateView {
   if (status === 'disabled') {
-    return { label: msg`無効`, tone: 'warning', showSyncedAt: false };
+    return { label: msg`無効`, tone: 'neutral', showSyncedAt: false };
   }
   if (lastSyncedAt) {
     return { label: msg`同期済み`, tone: 'success', showSyncedAt: true };

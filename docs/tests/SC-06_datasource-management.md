@@ -49,7 +49,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
 | 1 | 一覧 | SC-06 / FR-01 | `GET /bff/datasources` を呼び、ソース名 ＋ 接続先・**種別（日本語表示名）**・**同期状態**を表示する |
-| 2 | **同期状態の導出** | INDEX 決定 21 / [[IADR-0127]] 決定 2 | `disabled` → 無効（**琥珀の警告**）／ `active`＋最終同期あり → 同期済み／ `active`＋なし → 未同期。**tone とテキストが対で決まる** |
+| 2 | **同期状態の導出** | INDEX 決定 21 / [[IADR-0127]] 決定 2 | `disabled` → 無効（**中立**）／ `active`＋最終同期あり → 同期済み／ `active`＋なし → 未同期。**tone とテキストが対で決まる**。**琥珀は同期異常のために空けてある** |
 | 3 | 種別の写像 | SC-06 | 4 種（`filesystem` / `wiki` / `saas` / `db`）に表示名がある。**未知の種別は生値**を出す |
 | 4 | 登録 | UC-04 基本 1 | 名前・種別・接続先・既定の機密区分を送る |
 | 5 | 必須項目 | UC-04 | 名前と接続先が埋まるまで登録できない |
@@ -70,7 +70,8 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
-| P1 | 琥珀の充て先 | `disabled` が `warning` になり、「同期済み（日時）」を出さない |
+| P1 | 無効の表示 | `disabled` が `neutral` になり、「同期済み（日時）」を出さない |
+| P1-b | **琥珀の保留** | 契約から導出できる 3 状態のいずれにも `warning` を充てない（同期異常のために空けておく） |
 | P2 | 同期済み / 未同期 | `lastSyncedAt` の有無で `success` / `neutral` が決まる |
 | P3 | 種別の値集合 | 計画が挙げる 4 種と表示名 |
 | P4 | 未知の種別 | 生値をそのまま返す |
@@ -84,6 +85,6 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **6** ＋ 画面 **15** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc06-datasources`（純関数 **7** ＋ 画面 **15** ケース）
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）

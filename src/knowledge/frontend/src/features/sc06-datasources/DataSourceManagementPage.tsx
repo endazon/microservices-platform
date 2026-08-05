@@ -196,8 +196,8 @@ function SourceRow({
   onDisable: () => void;
 }) {
   // INDEX 決定 21: 同期状態は色だけで意味を持たせない。StatusBadge が tone ごとの固定アイコンと
-  // テキストを型で強制する。警告色（琥珀）は「取り込みが行われていない」状態＝無効へ充てる
-  // （05_screens モック間相違の確定 ②。IADR-0127 決定 2）。
+  // テキストを型で強制する。警告色（琥珀）は計画が**同期異常**へ与えた色であり、契約が同期健全性を
+  // 持つまで**どの状態にも充てない**（無効は中立。05_screens モック間相違の確定 ②。IADR-0127 決定 2）。
   const state = syncStateView(source.status, source.lastSyncedAt);
   const typeLabel = sourceTypeLabel(source.sourceType);
 
