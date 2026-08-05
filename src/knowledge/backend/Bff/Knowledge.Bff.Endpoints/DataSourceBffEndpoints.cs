@@ -77,7 +77,8 @@ public static class DataSourceBffEndpoints
             var resp = await client.PostAsync($"/datasources/{id}/sync", content: null, ct);
             if (!resp.IsSuccessStatusCode)
                 return Results.StatusCode((int)resp.StatusCode);
-            // 後段は 202 Accepted + { fetchId, status } を返す。そのまま中継する。
+            // 後段は 202 Accepted + { fetched, failed, connectorAvailable, message } を返す
+            // （DataSourceEndpoints.cs の匿名型 = 契約の DataSourceSyncResultDto）。そのまま中継する。
             var body = await resp.Content.ReadAsStringAsync(ct);
             return Results.Content(body, "application/json", statusCode: (int)resp.StatusCode);
         }).WithName("BffDataSourceSync");
