@@ -92,7 +92,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.getByText('部門:')).toBeInTheDocument();
     expect(screen.getByText('accounting')).toBeInTheDocument();
     expect(screen.getByText('経理')).toBeInTheDocument();
-    // 版履歴は詳細の成功後に取りに行く（IADR-0126 決定 5）ため、1 段階遅れて現れる。
+    // 版履歴は詳細の成功後に取りに行く（IADR-0126 決定 4）ため、1 段階遅れて現れる。
     expect(await screen.findByText('v3')).toBeInTheDocument();
     expect(screen.getByText('§4 改定')).toBeInTheDocument();
   });
@@ -160,7 +160,7 @@ describe('DocumentDetailPage (SC-03)', () => {
     expect(screen.getByText('本文は利用できません。')).toBeInTheDocument();
   });
 
-  // IADR-0126 決定 5: 詳細が 404 のときに版履歴を要求しない（確実に 404 になる往復を出さない）。
+  // IADR-0126 決定 4: 詳細が 404 のときに版履歴を要求しない（確実に 404 になる往復を出さない）。
   it('never requests the version history when the document is hidden', async () => {
     respond({ detail: ApiError.fromStatus(404), content: ApiError.fromStatus(404) });
     await renderPage();
@@ -179,11 +179,17 @@ describe('DocumentDetailPage (SC-03)', () => {
     await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
   });
 
-  // IADR-0119 決定 1: FR-17（ナレッジグラフ）/ FR-18（AI 提案）は着手保留である。
-  // **「無いこと」を固定する**——保留対象を後から不用意に足すとこのテストが落ちる。
-  it('does not render the AI suggestion panel or the knowledge-graph link (FR-17/FR-18 on hold)', async () => {
+  // IADR-0119 決定 1 が着手を保留した機能（保留の根拠と対象の起点 ID は、本画面のプロダクトコード
+  // DocumentDetailPage.tsx の冒頭コメントに記載してある）。
+  // **「無いこと」を固定するテストである**——保留対象を後から不用意に足すとこのテストが落ちる。
+  //
+  // **ここに起点 ID を書かないのは意図的である。** check-test-traceability.js は「テスト直前の
+  // コメントの起点 ID」を写像として拾う仕様であり、**着手していない機能の ID を書くと
+  // 「実装が先行している」と誤って報告される**（実測: 一度書いたところ、allowlist で黙らせる形になった）。
+  // 保留の追跡は IADR-0119 とプロダクトコード側のコメントが担う。
+  it('does not render the AI suggestion panel or the knowledge-graph link (deferred features)', async () => {
     // **導線の並びを全部描かせた状態で見る。** wikiBaseUrl 未設定だと「Wikiで閲覧」を含む行ごと
-    // 描画されず、そこへ SC-18 導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
+    // 描画されず、そこへ保留対象の導線を足しても検出できない（実測: 変異試験 M3 が素通りした）。
     mocks.wikiBaseUrl = 'https://wiki.example.co.jp';
     respond();
     await renderPage();
