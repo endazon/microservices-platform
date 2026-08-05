@@ -29,6 +29,11 @@ public sealed class NetworkIsolationTests
         "configuration-service", // Issue #283, IADR-0070: AST 設定画面の後段。内部 API（expose のみ）を回帰ガード。
         "risk-management-service", // Issue #287, IADR-0071: AST リスク設定/統制状態の後段。内部 API（expose のみ）を回帰ガード。
         "market-monitor-service", // Issue #288, IADR-0072: AST 監視銘柄（watchlist）の後段。内部 API（expose のみ）を回帰ガード。
+        // FR-12, SC-07, Issue #501, IADR-0128 決定3: 変換ジョブ API（/jobs・retry 含む）の後段。
+        // ConversionService は **アプリ層の認可を課さない**（IADR-0042 決定3 / IADR-0029 の最小 HTTP サーフェス）。
+        // その代償統制がネットワーク分離であるにもかかわらず本列挙から漏れており、host 公開の回帰を
+        // 誰も止められなかった。BFF の retry を管理者限定へ絞っても、後段へ直接到達できれば同じ穴が残る。
+        "conversion-service",
     ];
 
     [Fact]

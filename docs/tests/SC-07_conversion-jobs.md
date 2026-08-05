@@ -8,10 +8,12 @@ related_ids:
   - FR-12
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
+  - "../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md"
+  - "../specs/20260805_issue-501_retry-admin-only.md"
   - "../screens/SC-07_conversion-jobs.md"
   - "../specs/20260709_issue-133_sc07-conversion-jobs.md"
 ---
@@ -42,6 +44,7 @@ related_specs:
 | 2 | 個別 | 取得／404 | `GetById_ReturnsJob_Or404` |
 | 3 | 再変換 | 失敗ジョブは 202（queued 化は store 単体で担保） | `Retry_KnownFailedJob_Returns202` |
 | 3b | 失敗以外は 409 | 成功ジョブへの再変換は 409・状態不変 | `Retry_NonFailedJob_Returns409` |
+| 3c | **処理中は 409 not_retryable**（2026-08-04 確定「実行中の再変換要求は拒否」・#501 回帰） | `processing` への再変換は 409・本文 `error=not_retryable`・状態不変 | `Retry_ProcessingJob_Returns409NotRetryable` |
 | 4 | 未知再変換 | 404 | `Retry_UnknownJob_Returns404` |
 
 コンシューマ記録: `RawDocumentFetchedConsumerJobTests.cs`
@@ -60,11 +63,22 @@ related_specs:
 | 3 | 運用者許可 | operator も可 | `GetList_AsOperator_IsAllowed` |
 | 4 | ロール制限 | 非特権 403 | `GetList_AsNonPrivilegedRole_IsForbidden` |
 | 5 | 無認証 | 401 | `GetList_WhenAnonymous_IsUnauthorized` |
+| 5b | **照会の据え置き**（個別取得も operator 可・#501 回帰） | retry を絞ってもグループが巻き添えで絞られていない | `GetById_AsOperator_IsAllowed` |
 | 6 | 不在 | 404 透過 | `GetById_WhenMissing_Returns404` |
 | 6b | 後段障害の可視化 | 一覧は後段障害を空へ縮退せず伝播（運用画面の誤認防止・レビュー #172） | `GetList_WhenBackendFails_SurfacesFailure_NotEmptyList` |
 | 6c | 後段不達→502 | 後段不達（例外）時に catch 分岐で 502 へ縮退（レビュー #172） | `GetList_WhenBackendUnreachable_Returns502` |
-| 7 | 再変換 | 202 中継 | `Retry_AsAdmin_Returns202` |
+| 7 | 再変換 | 202 中継（admin は従来どおり成功） | `Retry_AsAdmin_Returns202` |
+| 7b | **再変換は管理者限定**（2026-08-04 確定・#501 の核心） | **operator は 403**（照会は許されるロールでも実行は不可） | `Retry_AsOperator_IsForbidden` |
+| 7c | 再変換の無認証 | 401（認証欠如と権限不足を取り違えない） | `Retry_WhenAnonymous_IsUnauthorized` |
 | 8 | 未知再変換 | 404 透過 | `Retry_WhenJobUnknown_Passes404Through` |
+| 8b | 再変換不可の透過 | 後段 409（`not_retryable`）を素通し | `Retry_WhenNotRetryable_Passes409Through` |
+
+## デプロイ（Knowledge.IntegrationTests・#501）
+
+`Deployment/NetworkIsolationTests.cs`
+| # | 観点 | 検証内容 | ケース |
+| --- | --- | --- | --- |
+| 1 | 下流の到達性 | `conversion-service` は host 非公開（`expose` のみ）。BFF で retry を絞っても後段へ直接到達できれば同じ穴が残るため、**認可を課さない前提（[[IADR-0128]] 決定 3）を機械検査で固定**する | `InternalServices_MustNotPublishHostPorts` |
 
 ## フロントエンド（Vitest + Testing Library）
 
@@ -78,7 +92,10 @@ related_specs:
 
 ## ロール・存在秘匿の担保
 
-- BFF は admin/operator 限定（4/5 で 403/401）。フロントは `RequireRole` で `/admin/conversions` を出し分け。
+- BFF の照会は admin/operator 限定（4/5 で 403/401）。フロントは `RequireRole` で `/admin/conversions` を出し分け。
+- **再変換（`retry`）は admin のみ**（7b/7c。2026-08-04 確定・[[IADR-0128]] 決定 1）。照会側（3/5b）と対で
+  **ロールの境界を両側から固定**する —— 「admin で通ること」だけでは誰でも通る状態を検出できず、
+  照会側のテストが無いと未裁定の閲覧権限が巻き添えで絞られたことに気付けない。
 - 失敗記録後に例外再送出で MassTransit の再試行→デッドレターを保持（コンシューマ 2）。
 
 ## 実行

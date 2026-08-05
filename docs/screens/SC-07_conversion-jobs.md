@@ -8,11 +8,13 @@ related_ids:
   - FR-12
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
+  - "../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md"
+  - "../specs/20260805_issue-501_retry-admin-only.md"
   - "../adr/IADR-0042_conversion-job-read-model.md"
   - "../specs/20260709_issue-133_sc07-conversion-jobs.md"
   - "../tests/SC-07_conversion-jobs.md"
@@ -32,7 +34,7 @@ related_specs:
 
 変換状況・失敗ジョブの一覧を表示し、失敗ジョブの人手補正（再変換）を行う運用画面。SC-06（データソース管理）からの遷移先（取り込み→変換の運用フロー）。
 
-- アクセス: **platform-admin/operator 限定**（[IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)・管理系ロール方針は [[IADR-0039]]）。権限外はルート・ナビとも非表示。サーバ側 `/bff/conversion/jobs` も同ロール。
+- アクセス: **platform-admin/operator 限定**（[IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)・管理系ロール方針は [[IADR-0039]]）。権限外はルート・ナビとも非表示。サーバ側 `/bff/conversion/jobs` も同ロール。**ただし再変換（`retry`）だけは admin のみ**（2026-08-04 確定 / [[IADR-0128]]。下表・下記追記）。
 
 ## データソース（BFF 境界）
 
@@ -40,7 +42,15 @@ related_specs:
 | --- | --- | --- | --- |
 | 一覧 | `GET /bff/conversion/jobs?status=` | admin/operator（403/401） | `ConversionJobDto[]` |
 | 個別取得 | `GET /bff/conversion/jobs/{id}` | 同上 | `ConversionJobDto` / 404 |
-| 人手補正（再変換） | `POST /bff/conversion/jobs/{id}/retry` | 同上 | 202 / 404 / 409（失敗以外は再変換不可） |
+| 人手補正（再変換） | `POST /bff/conversion/jobs/{id}/retry` | **admin のみ**（operator は 403・無認証 401） | 202 / 404 / 409（失敗以外は再変換不可） |
+
+> **［2026-08-05 追記・再変換は管理者ロール限定（#501 / [[IADR-0128]]）］**
+> 計画 [05_screens §SC-07 §データソース](../../planning/projects/microservices-platform/05_screens/01_screens.md)（**2026-08-04 確定**）の
+> 「**再変換の実行権限は管理者ロールに限る**。本画面のアクセス制御と API の権限を揃える」に追随し、
+> `retry` の認可を `platform-admin` のみへ絞った（[[IADR-0128]] 決定 1・[[IADR-0042]] 決定 3 への［追記］）。
+> **照会（一覧・個別取得）は admin/operator のまま据え置く** —— 閲覧ロールの裁定は planning#198 提案 8 で継続中であり、
+> グループごと絞ると未確定の閲覧まで変わるためである（[[IADR-0128]] 決定 2）。
+> 画面側の再変換ボタンを管理者のみにする作業は **#503 / PR #508** が持つ。
 
 - `ConversionJobDto = { id, sourceId, sourceType, originalPath, status, error?, documentId?, markdownUri?, attempts, createdAt, updatedAt }`
 - `status`: queued / processing / succeeded / failed。

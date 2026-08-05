@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
 using FluentAssertions;
@@ -106,6 +107,29 @@ public class ConversionJobEndpointTests
 
         var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
         job!.Status.Should().Be(ConversionJobStatus.Succeeded); // 状態は変わらない
+    }
+
+    // FR-12, UC-06, SC-07（計画 05_screens §SC-07 2026-08-04 確定）: 「同一ジョブの再変換は直列化し、
+    // 実行中（processing）の再変換要求は拒否する」。BFF の認可を管理者限定へ絞った（IADR-0128 決定1）後も
+    // 後段の状態強制が変わっていないことを固定する回帰テスト。本文の error=not_retryable まで検証する
+    // （状態コードだけだと 404 との取り違えや理由の入れ替わりを見逃す）。
+    [Fact]
+    public async Task Retry_ProcessingJob_Returns409NotRetryable()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = Guid.NewGuid();
+        // StartAsync は processing（試行 1）にする。以降イベントを発行しないため processing のまま。
+        await SeedAsync(factory, store => store.StartAsync(Raw(id)));
+
+        var resp = await client.PostAsync($"/jobs/{id}/retry", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("error").GetString().Should().Be("not_retryable");
+
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        job!.Status.Should().Be(ConversionJobStatus.Processing); // 状態は変わらない
     }
 
     [Fact]
