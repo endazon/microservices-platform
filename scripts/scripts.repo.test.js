@@ -85,6 +85,79 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #524: PR タイトル検査が GitHub App 作成 PR で skipped にならないこと ------------
+
+  {
+    const fsGate = require('fs');
+    const pathGate = require('path');
+    const { isBotAuthorName, checkSingleTitle } = require('./check-commit-messages.js');
+    const WORKFLOW = pathGate.resolve(__dirname, '..', '.github', 'workflows', 'pr-title.yml');
+
+    // YAML のコメント行を落とす。**経緯の説明で `user.type` に言及すること自体は禁じない**——
+    // 禁じたいのは「効いている条件」であって、なぜそれを止めたかの記録ではない。
+    const withoutComments = (yml) =>
+      yml
+        .split('\n')
+        .filter((l) => !/^\s*#/.test(l))
+        .join('\n');
+
+    ok('#524: pr-title.yml が user.type で bot を除外していない', () => {
+      const yml = withoutComments(fsGate.readFileSync(WORKFLOW, 'utf8'));
+      // `user.type != 'Bot'` は dependabot だけでなく App 代行 PR（claude[bot]）まで除外し、
+      // 「最後の砦」が外れる。除外は名前で行う（判定はスクリプト側の BOT_AUTHORS）。
+      assert.ok(!/user\.type/.test(yml), 'pr-title.yml に user.type 判定が残っている');
+      assert.ok(/PR_AUTHOR:\s*\$\{\{\s*github\.event\.pull_request\.user\.login/.test(yml),
+        'PR_AUTHOR（作成者ログイン）が渡されていない');
+    });
+
+    ok('#524: 同型の user.type 判定が他のワークフローに無い', () => {
+      const dir = pathGate.resolve(__dirname, '..', '.github', 'workflows');
+      const offenders = fsGate
+        .readdirSync(dir)
+        .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+        .filter((f) => /user\.type/.test(withoutComments(fsGate.readFileSync(pathGate.join(dir, f), 'utf8'))));
+      assert.deepStrictEqual(offenders, [], `user.type 判定が残っている: ${offenders.join(', ')}`);
+    });
+
+    ok('#524: 除外は名前で判定する（App 代行 PR は検査対象に残る）', () => {
+      assert.strictEqual(isBotAuthorName('dependabot[bot]'), true);
+      assert.strictEqual(isBotAuthorName('renovate[bot]'), true);
+      assert.strictEqual(isBotAuthorName('github-actions[bot]'), true);
+      // ここが本 issue の核心。App が人の代わりに書いた PR は**除外しない**。
+      assert.strictEqual(isBotAuthorName('claude[bot]'), false);
+      assert.strictEqual(isBotAuthorName('endazon'), false);
+      assert.strictEqual(isBotAuthorName(''), false);
+      assert.strictEqual(isBotAuthorName(undefined), false);
+      // 照合は完全一致。部分一致だと BOT_AUTHORS の語を含む**人間のログイン**まで
+      // 除外され、最後の砦を無検査で素通りする（PR #527 のレビュー指摘）。
+      assert.strictEqual(isBotAuthorName('the-renovate-guy'), false);
+      assert.strictEqual(isBotAuthorName('dependabot-team'), false);
+      assert.strictEqual(isBotAuthorName('my-github-actions-fan'), false);
+      // 大小文字・前後の空白は無視する。
+      assert.strictEqual(isBotAuthorName('  Dependabot[Bot] '), true);
+    });
+
+    ok('#524: checkSingleTitle は作成者で分岐する（bot=skip / App=検査）', () => {
+      const silence = () => true;
+      const outOrig = process.stdout.write;
+      const errOrig = process.stderr.write;
+      process.stdout.write = silence;
+      process.stderr.write = silence;
+      try {
+        // dependabot は規約違反の件名でも 0（従来どおり除外）。
+        assert.strictEqual(checkSingleTitle('壊れた件名', 'dependabot[bot]'), 0);
+        // claude[bot] は検査され、規約違反なら 1（本 issue が塞いだ穴）。
+        assert.strictEqual(checkSingleTitle('壊れた件名', 'claude[bot]'), 1);
+        assert.strictEqual(checkSingleTitle('fix(NFR): 直った件名', 'claude[bot]'), 0);
+        // 作成者未指定（ローカル実行・イベント外）は従来どおり件名だけで判定する。
+        assert.strictEqual(checkSingleTitle('壊れた件名'), 1);
+      } finally {
+        process.stdout.write = outOrig;
+        process.stderr.write = errOrig;
+      }
+    });
+  }
+
   // --- check-doc-links: planning submodule の扱い（Issue #232） -----------------
 
   const { parseArgs: parseDocLinkArgs, planningPopulated } = require('./check-doc-links.js');

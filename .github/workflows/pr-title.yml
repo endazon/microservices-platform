@@ -33,8 +33,13 @@ jobs:
   pr-title:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # bot 作成 PR は規約対象外（check-commit-messages.js の BOT_AUTHORS と同方針）。
-    if: github.event.pull_request.user.type != 'Bot'
+    # #524: ジョブ条件で bot を除外しない。`user.type != 'Bot'` は dependabot だけでなく
+    # **GitHub App が人の代わりに作成した PR（claude[bot] 等）まで除外**し、この検査が
+    # skipped になっていた（PR #523 で実測）。スカッシュ後件名は develop に恒久的に残り、
+    # `check-commit-messages.js` の `base..HEAD` 検査にも含まれず、force push 禁止のため
+    # 事後修正もできない——つまり規約違反の件名が入る経路が 1 本空いていた。
+    # 除外は **作成者の名前**で行い、判定は check-commit-messages.js の BOT_AUTHORS
+    # （単一情報源）に委ねる。ここで名前の一覧を持つと規約を二重実装することになる。
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -45,4 +50,6 @@ jobs:
         # Revert / [skip ci] の除外と、空タイトル時の fail-open はスクリプト側が担う。
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # #524: 作成者を渡し、除外（dependabot 等）の判定はスクリプト側の BOT_AUTHORS に委ねる。
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: node scripts/check-commit-messages.js
