@@ -14,6 +14,8 @@ export interface SearchRequest {
   query: string;
   topK?: number;
   attributeFilters?: SearchRequestAttributeFilters;
+  /** hybrid（既定・ベクトル＋全文の RRF 融合）/ keyword（全文のみ）/ semantic（ベクトルのみ）。 未知の値は hybrid として扱う。 */
+  mode?: string;
 }
 
 export type SearchResultDtoAttributes = {[key: string]: string};

@@ -44,8 +44,10 @@ public static class SearchBffEndpoints
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
             try
             {
+                // #531: 検索モードは利用者の指定をそのまま透過する（Scope と違い信頼性の問題が無い——
+                // モードは絞り込みの種類であって権限ではない）。未知値の縮退は RetrievalService 側が行う。
                 var searchResp = await retrievalClient.PostAsJsonAsync("/search",
-                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope), ct);
+                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope, req.Mode), ct);
                 if (!searchResp.IsSuccessStatusCode)
                     return Results.StatusCode((int)searchResp.StatusCode);
 
