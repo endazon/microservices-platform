@@ -97,6 +97,16 @@ PR #518 は自分が追加した 11 個にだけ `required` を入れた。**既
 `CompletionApiResponse.Sent = true` / `EmbedApiResponse.Retryable = false` などが該当する。
 C# の既定値は**呼び出し側が引数を省いたときの値**であって、シリアライズ時の省略ではない。
 
+**系: `required` に入れたプロパティから OpenAPI の `default` を落とす。**
+OpenAPI（JSON Schema）の `default` は応答側では「**欠けていたらこの値と読め**」を意味する。
+本決定は「既定値つきメンバーは必ず出力される（欠けない）」と言っているので、
+**同じプロパティに `required` と `default` が同居すると契約が自己矛盾する。**
+該当は 3 プロパティ（`CompletionApiResponse.sent` / `EmbedApiResponse.embedded` /
+`EmbedApiResponse.retryable`）で、いずれも C# の**引数既定**を写しただけであり契約上の情報を持たない。
+orval は `default` を読まないため生成物への影響は無い（実測: 除去しても再生成差分は出ない）。
+**要求スキーマの `default` は落とさない**——`AnalysisAskRequest.topK` 等は「送らなければこの値になる」
+という本来の意味で機能しており、応答側とは別の話である。
+
 **決定 3（論点 C）: C1 を採る。`?? 既定値` と optional chaining は残す。**
 **「契約上は必須」と「実行時に必ず来る」は別である。** 生成型は OpenAPI の写しにすぎず、
 実行時に本文を検証する層は無い（`bffFetch` は `JSON.parse` するだけである）。

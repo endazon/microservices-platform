@@ -254,6 +254,13 @@ platform/frontend/src/foundation/i18n/locales/en/messages.ts
 既定値は「省略できる」ではなく「呼び出し側が省いたらこの値になる」であり、
 **JSON へは必ず出力される**（`System.Text.Json` は既定でプロパティを省略しない）。
 
+**その系として、`required` に入れたプロパティからは OpenAPI の `default` を落とす**
+（[[IADR-0132]] 決定 2 の系）。応答側の `default` は「欠けていたらこの値と読め」の意味なので、
+**「必ず出る」と言う `required` と同居すると契約が自己矛盾する。** 該当は 3 プロパティ
+（`CompletionApiResponse.sent` / `EmbedApiResponse.embedded` / `EmbedApiResponse.retryable`）で、
+いずれも C# の**引数既定**を写しただけだった。**要求スキーマの `default` は本来の意味で
+機能しているので落とさない**（`AnalysisAskRequest.topK` / `EmbedApiRequest.purpose` 等）。
+
 | # | スキーマ | 出所（C#） | `required` に入れる | 入れない（理由） |
 | --- | --- | --- | --- | --- |
 | 1 | `SearchResponse` | `Knowledge.Contracts/Dtos/SearchDto.cs:14-17` | `results` `totalHits` `elapsedMs` | — |

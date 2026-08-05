@@ -2106,7 +2106,7 @@ components:
         model: { type: string }
         inputTokens: { type: integer }
         outputTokens: { type: integer }
-        sent: { type: boolean, default: true }
+        sent: { type: boolean }
         endpoint:
           type: string
           nullable: true
@@ -2280,10 +2280,9 @@ components:
         dimensions: { type: integer, example: 1024 }
         model: { type: string, example: "voyage-3.5" }
         collection: { type: string, example: "knowledge_chunks_voyage_3_5", description: "モデル別コレクション名" }
-        embedded: { type: boolean, default: true }
+        embedded: { type: boolean }
         endpoint: { type: string, nullable: true, description: "選択・拒否した送信先（監査・縮退表示用）" }
         routingReason: { type: string, nullable: true, description: "選択・拒否の理由（監査・縮退表示用）" }
         retryable:
           type: boolean
-          default: false
           description: "true は一時障害（呼び出し側は再試行）。false は恒久理由（呼び出し側はスキップ）"
