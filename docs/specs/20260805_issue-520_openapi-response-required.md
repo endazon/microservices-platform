@@ -382,7 +382,7 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ orval 8.23.0 
 | 単体テスト | `pnpm run test` | **57 files / 539 tests** 全 green。**着手前と同数**——テストを 1 件も足さず、既存テストを 1 件も改変していない |
 | カバレッジ | `pnpm run test:coverage` | statements/lines **95.93%**（5447/5678）／ branches **89.77%**（1124/1252）／ functions **91.83%**（416/453）。床（lines 90 / statements 90 / functions 88 / branches 85）を満たす |
 | ビルド | `pnpm run build` | green（`dist/assets/index-Bw-dS6vy.js` 632.98 kB / gzip 190.04 kB）。**バンドルのハッシュが #506 の記録と一致する**＝プロダクションコードを 1 バイトも変えていないことの傍証 |
-| E2E | Playwright（後述の条件） | **12 tests 全 green**（5.3s） |
+| E2E | Playwright（後述の条件） | **12 tests 全 green**（所要時間は測定ごとに揺れるため書かない） |
 | 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- src/platform/frontend/src/foundation/api/generated` | green（コミット後に再実行して差分なし） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（**件数は書かない**※） |
