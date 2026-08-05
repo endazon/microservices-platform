@@ -16,7 +16,7 @@
  * 実行: node scripts/scripts.test.js（本ファイル単体では実行しない）
  */
 module.exports = ({ ok, assert }) => {
-  // --- seed-abac-policies: 冪等性の核（#517 / IADR-0132） ---------------------------
+  // --- seed-abac-policies: 冪等性の核（#517 / IADR-0133） ---------------------------
 
   {
     const seed = require('./seed-abac-policies.js');

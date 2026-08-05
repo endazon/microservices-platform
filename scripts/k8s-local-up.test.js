@@ -43,7 +43,7 @@ const OPTIN_TOKENS = [
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
-  'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0132)
+  'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -303,7 +303,7 @@ ok('LOCALEDGE=1 (argocd ns 有): argocd-ingress.yaml を apply', () => {
   assert.ok(anyLineHas(res.lines, 'apply -f deploy/local/edge/argocd-ingress.yaml'), 'ns 有なのに argocd-ingress が apply されない');
 });
 
-// ABACSEED=1: ABAC の属性辞書・ポリシーを dev 既定値で投入する（IADR-0132 / #517）。
+// ABACSEED=1: ABAC の属性辞書・ポリシーを dev 既定値で投入する（IADR-0133 / #517）。
 // ポリシー 0 件だと deny-by-default で「認証を通しても画面が空」になるため、その回避を opt-in で用意する。
 ok('ABACSEED=1: seed-abac-policies.js を実行する', () => {
   const res = runUp({ ABACSEED: '1' });
