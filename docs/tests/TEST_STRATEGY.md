@@ -253,6 +253,10 @@ PR ではなく issue を分割する）。
    **本項は注意書きではなく、上記「記載の被覆」ゲートの説明である**——記載を落とすと
    `check-test-spec-coverage.js` がクラス名とパスを挙げて fail する。記載を増やしたら
    `node scripts/check-test-spec-coverage.js --update` で床を上げ、差分を PR に載せること。
+   **ただし fail するのは、当該クラス名が仕様書ファイルから**（節の中だけでなく改訂ノート・
+   §対象・§実行 も含めて）**消えたときである。表と見出しだけを落として他所に名前が残っていれば
+   緑になる**（[IADR-0130](../adr/IADR-0130_test-spec-coverage-ratchet.md) §限界 2 の追記で実測）。
+   **検査に頼り切らず、全面改訂のときは落とした節を自分で読み直すこと。**
 
 > **未着手の FR/UC/SC が仕様書を持たないのは正当**であり、fail にはしない。計画レンジ
 > （[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）にあって
