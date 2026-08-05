@@ -260,8 +260,10 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
 | M1 | `docs/screens/SC-11_configuration-viewer.md` の追記に足した `01_screens.md` へのリンクを存在しないパスへ | 既定の `check-doc-links.js` が fail | **fail（exit 1・破損リンク 1 件を名指し）**。→ **検査対象である** |
 | M2 | `feedback/20260709_sc11-wireframe-drawio.md` の追記に足した `01_screens.md` へのリンクを存在しないパスへ | 既定は緑 / `--dir feedback` は fail | **既定 = exit 0（「OK: 425 件」のまま）／`--dir feedback` = exit 1**。→ **`feedback/` は既定の検査対象外だった**（§申し送り 2） |
 | M3 | `docs/screens/SC-11_configuration-viewer.md` の `wireframe/sc-11.html` を存在しないパスへ | （追加検証） | **exit 0**。→ **`.html` は `LINK_EXT` に無く、そもそも検査されない**（§申し送り 6） |
+| M4 | `20260709_dotnet10-target-framework-deviation.md` へ足した計画側 draft へのリンクを存在しないパスへ | 既定は緑 / `--dir feedback` は fail | **既定 = exit 0 ／ `--dir feedback` = exit 1（破損 1 件を名指し）**。→ 明示指定でのみ守られる（§申し送り 2 の穴そのもの） |
+| M5 | クロスリポ番号を壊す（`planning#14` → `#14`、変更履歴の引用元 `planning#188` → 実在しない番号） | （追加検証） | **`check-doc-links.js`（既定・`--dir feedback` とも）= exit 0、`check-commit-messages.js` = exit 0**。→ **本文中の issue / PR 番号は修飾の有無も引用元の正誤も一切機械検査されない**（§申し送り 7） |
 
-**M2・M3 はいずれも「検査されていた」という前提が成り立たないことの実測である。隠さず報告する。**
+**M2〜M5 はいずれも「検査されていた」という前提が成り立たないことの実測である。隠さず報告する。**
 
 ## 申し送り
 
@@ -333,3 +335,9 @@ $ git ls-tree --name-only origin/develop feedback/ | grep -v -E 'README|TEMPLATE
    （コード拡張子の不足）を扱って解消された先例があるため、`html` の追加も同じ形で扱えるはずである。
    ただし `LINK_EXT` の増減は `check-doc-links.js --self-test` の正例・負例と対で更新する必要があり、
    本 issue の射程外とする（別 issue の候補）。
+7. **本文中の issue / PR 番号は、修飾（`planning#NNN`）の有無も引用元の正誤も機械検査されない（M5 で実測）。**
+   `check-commit-messages.js` はコミット件名 / PR タイトルのスコープしか見ず、`check-doc-links.js` は
+   相対パスしか見ない。裸の `#NNN` は GitHub 上で本リポジトリの無関係な issue / PR へ**実際に誤リンクする**
+   （本 PR で是正した `Issue #14` がその実例）。`.claude/rules/traceability.md` は規約を定めているが、
+   **仕様書 / 記録の本文に対する検査器が無い**。`feedback/` と `docs/` の本文で「行頭・空白直後の裸 `#\d+`」を
+   拾う lint は機械化できるはずで、別 issue の候補とする（**本 issue の射程外**）。
