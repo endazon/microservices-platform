@@ -58,7 +58,10 @@ describe('OperationsDashboardPage (SC-10)', () => {
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
-    expect(screen.getByText('1840')).toBeInTheDocument();
+    // NFR, ADR-0031 / IADR-0134: 見出しは画面の静形、値は useQuery の解決後に出る。
+    // 遅延ルート（lazyRouteComponent）では画面の mount が 1 tick 遅れるぶん
+    // 取得の解決も後ろへずれるため、値は findBy* で待つ（見出しの findBy* では待てない）。
+    expect(await screen.findByText('1840')).toBeInTheDocument();
     expect(screen.getByText('312')).toBeInTheDocument();
     expect(screen.getByText('82%')).toBeInTheDocument();
 

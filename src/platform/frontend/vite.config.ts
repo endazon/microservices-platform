@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { visualizer } from 'rollup-plugin-visualizer';
 import { fileURLToPath, URL } from 'node:url';
 
 // Issue #126 / SC-01..11 SPA 基盤: BFF を境界にした疎結合構成。
@@ -13,7 +14,51 @@ export default defineConfig({
   // トークンは @platform/ui の styles.css の @theme が正）。
   // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3: マクロを babel で展開する。
   // 同じ設定を src/vitest.config.ts にも置く（片方だけだとビルドとテストのどちらかが静かに壊れる）。
-  plugins: [react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } }), tailwindcss()],
+  // NFR, ADR-0031 / IADR-0134: バンドル内訳の実測（`pnpm run build:analyze`）。
+  // 既定のビルドには載せない（成果物と所要時間を変えないため）。
+  // 出力先を **dist の外**（.analyze/）に置くのは、計測出力が配布物ではないためである——
+  // dist に置くと、ビルドマシンの絶対パスを含む数 MB のモジュールグラフが
+  // scripts/check-static-egress.js の走査母集団（＝配布する静的資産）へ紛れ込む。
+  // .analyze/ は src/.gitignore でコミット対象から外している。
+  plugins: [
+    react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } }),
+    tailwindcss(),
+    ...(process.env.ANALYZE_BUNDLE === '1'
+      ? [visualizer({ filename: '.analyze/stats.json', template: 'raw-data', gzipSize: true })]
+      : []),
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        // NFR, ADR-0031 / IADR-0134: 初期チャンクの内訳を実測したうえでの分割。
+        // 画面はルート単位の遅延（lazyRouteComponent）で外へ出したが、実測では初期チャンクの
+        // **82.0% が依存**（1253.27 / 1527.89 kB rendered）であり、ルート境界では動かせない。
+        // ここで扱うのは残りの 2 種類だけである。
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) {
+            // 共有 UI プリミティブ（@platform/ui）は**全画面が使う**。放置すると Rollup が
+            // 「2 つ以上の遅延チャンクが共有するモジュール」を 1 kB 未満のチャンクへ切り出し、
+            //  往復だけが増える（実測: Label / Tag / Card / Input / Select / StatusBadge の 6 本）。
+            // エントリが Button を静的 import しているため、この名前へ寄せると
+            // **エントリの静的依存＝初期ロード**のまま 1 本に束ねられる。
+            return id.includes('/packages/ui/') ? 'ui' : undefined;
+          }
+          const pkg = id.slice(id.lastIndexOf('/node_modules/') + '/node_modules/'.length);
+          // React ランタイム。初期チャンク最大の塊（実測 561.39 / 1527.89 kB rendered = 全体の 36.7%）であり、
+          // かつ**更新頻度が最も低い**。切り出す目的は初期ロード量の削減ではなく
+          // （静的 import なので同時に読み込まれる）、(1) 再訪時にアプリ側の更新で
+          // 無効化されないこと、(2) 1 チャンクの上限（500 kB）を守ることである。
+          if (/^(react|react-dom|scheduler|use-sync-external-store)\//.test(pkg)) {
+            return 'vendor-react';
+          }
+          // TanStack Query の内部も全画面が使う。放置すると @platform/ui と同じ理由で
+          // 遅延チャンク側へ切り出される（実測: useMutation 3.10 kB / Table 11.41 kB の 2 本）。
+          if (/^@tanstack\/(react-)?query(-core)?\//.test(pkg)) return 'vendor-query';
+          return undefined;
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       '@foundation': fileURLToPath(new URL('./src/foundation', import.meta.url)),

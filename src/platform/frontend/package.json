@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:analyze": "ANALYZE_BUNDLE=1 tsc -b && ANALYZE_BUNDLE=1 vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test:e2e": "playwright test"
@@ -34,6 +35,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^4.3.2",
     "msw": "^2.6.0",
+    "rollup-plugin-visualizer": "^7.0.1",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.6.2",
     "vite": "^6.4.3"

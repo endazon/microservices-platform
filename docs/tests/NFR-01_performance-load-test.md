@@ -7,9 +7,11 @@ related_ids:
   - FR-02
   - FR-03
   - IADR-0052
+  - ADR-0031
+  - IADR-0134
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 性能・受け入れ基準)"
 ---
@@ -27,6 +29,8 @@ plan_refs:
 
 - 対象: `/bff/search`（検索 p95）、`/bff/analysis/ask`（RAG p95）、取り込みパイプライン（スループット・反映時間）。
 - 対象外: 個別ロジックの単体性能、外部 LLM プロバイダ自体の SLA。
+- **§フロントエンドの初期ロード（#512）は別ハーネスである**——k6 ではなくビルド成果物の実測と
+  Vitest / Playwright で見る（サーバ側の p95 とは指標も測り方も違うので節を分ける）。
 
 ## ハーネス
 
@@ -42,6 +46,28 @@ plan_refs:
 | P-02 | RAG 初回 p95 | `k6 run rag-load.js` | `http_req_duration{scenario:rag}` p(95) < 5000ms・失敗率 < 2% | 負荷（手動/環境） |
 | P-03 | 取り込みスループット | N 件投入→`IngestionCompleted`/Qdrant points が N に達する時間 T を計測 | `N/T` ≥ 1 万件/時（必要ワーカー数を記録） | 負荷（手動/環境） |
 | P-04 | 反映時間 | 一意語文書を投入→`/bff/search` ポーリングでヒットまで計測 | ≤ 15 分 | 負荷（手動/環境） |
+
+## フロントエンドの初期ロード（#512 / [[IADR-0134]]）
+
+**計画は初期バンドルの上限値を定めていない。** よって合否は (a) ビルドツールの既定予算
+（Vite の 500 kB/チャンク）と (b) 前後の実測差で判定する。**目標値ではなく退行の検出**が目的である。
+
+| ID | 指標 | 手順 | 合格条件 | 区分 |
+| --- | --- | --- | --- | --- |
+| P-05 | 1 チャンクの上限 | `pnpm run build`（**警告は stderr に出る**ので `2>&1`） | `Some chunks are larger than 500 kB` が出ない | ビルド（手動。**機械検査は未整備**——[[IADR-0134]] 決定 4 の但し書き） |
+| P-06 | 画面が遅延側にあること | `pnpm vitest run knowledge/frontend/src/features/routeSplitting.test.ts` | 画面 11 本が feature index の静的 import に無く、遅延境界（`.preload` / `wrapInSuspense`）が宣言されている | 単体（CI） |
+| P-07 | 共通シェル・認証・UI プリミティブが初期側にあること | `pnpm vitest run platform/frontend/src/foundation/routing/initialChunk.test.ts` | `Layout` / `NotFound` / `RequireAuth` / `RequireRole` / `AuthProvider` / `@platform/ui` が初期側で読まれる | 単体（CI） |
+| P-08 | 分割成果物で実ブラウザから起動できること | `playwright test e2e/bundle-splitting.smoke.spec.ts` | 要求した資産がすべて 200・`pageerror` なし・`/assets/*.js` を 2 本以上読む・ログイン画面が描画される | E2E |
+| P-09 | 外部 egress が**全チャンク**に無いこと | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | 検出 0 件（走査対象は分割で 4 → 20 ファイルへ増えた。**判定は「検出 0 件」であってファイル数ではない**——ファイル数は画面やチャンク規則が変われば動く環境依存の値であり、参考値として書いている） | 成果物（CI） |
+
+**実測（#512 時点。測定条件は[作業仕様書](../specs/20260805_issue-512_spa-route-code-splitting.md#計測実測推測で分割しないための一次資料)）**:
+
+| | 分割前（`68d91ce`） | 分割後 |
+| --- | --- | --- |
+| 最大チャンク | 632.98 kB | **274.33 kB** |
+| 初期ロード JS 合計 | 632.98 kB（1 本） | **577.54 kB**（4 本） |
+| 同 gzip | 190.04 kB | **177.94 kB** |
+| 500 kB 警告 | あり | **なし** |
 
 ## 実測記録
 
@@ -64,3 +90,4 @@ plan_refs:
 - 機能: `../functional/FR-03_hybrid-search.md`、`../tests/FR-02_ingestion.md`、`../tests/FR-03_hybrid-search.md`
 - 監視: `../operations/operations.md`（監視・アラート）、`deploy/prometheus/alerts.yml`
 - スケール: `../adr/IADR-0050_hpa-pdb-scaling-scope.md`、#197
+- フロントの分割境界: `../adr/IADR-0134_spa-route-code-splitting-boundaries.md`、`../specs/20260805_issue-512_spa-route-code-splitting.md`

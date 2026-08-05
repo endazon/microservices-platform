@@ -117,7 +117,10 @@ describe('ConfigViewerPage (SC-11)', () => {
 
     expect(await screen.findByRole('heading', { name: '実効構成' })).toBeInTheDocument();
     // コミット ID は短縮 7 桁で示す（完全な値は title 属性）。
-    expect(screen.getByText('コミット a3f81c2')).toBeInTheDocument();
+    // NFR, ADR-0031 / IADR-0134: 見出しは画面の静形、値は useQuery の解決後に出る。
+    // 遅延ルート（lazyRouteComponent）では画面の mount が 1 tick 遅れるぶん
+    // 取得の解決も後ろへずれるため、値は findBy* で待つ（見出しの findBy* では待てない）。
+    expect(await screen.findByText('コミット a3f81c2')).toBeInTheDocument();
     expect(screen.getByText('適用者 argocd')).toBeInTheDocument();
 
     const stages = within(screen.getByRole('list', { name: 'パイプライン段' }));

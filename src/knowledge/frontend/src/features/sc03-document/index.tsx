@@ -1,6 +1,5 @@
-import { createRoute } from '@tanstack/react-router';
+import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
 import type { ShellRoute } from '@foundation/routing/shell';
-import { DocumentDetailPage } from './DocumentDetailPage';
 
 // SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細／プレビュー（05_screens: ルート /docs/:id）。
 // 認証済みユーザー向け（ロール限定なし）。SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から遷移する。
@@ -12,6 +11,9 @@ import { DocumentDetailPage } from './DocumentDetailPage';
 // 各画面が単独のナビ入口を持つことまでは要求していない（画面仕様書 §左ナビに出さない理由）。
 //
 // ADR-0031 / IADR-0124 決定 1: パスパラメータは TanStack の `$id` 表記。`useParams({ from })` で型が付く。
+
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+const DocumentDetailPage = lazyRouteComponent(() => import('./DocumentDetailPage'), 'DocumentDetailPage');
 
 export const createSc03DocumentRoute = (shell: ShellRoute) =>
   createRoute({
