@@ -70,7 +70,7 @@ related_specs:
 
 | 対象 | 据え置きの理由 |
 | --- | --- |
-| **照会（`GET /bff/conversion/jobs`・`GET /bff/conversion/jobs/{id}`）の権限** | 2026-08-04 の確定は**再変換の実行権限**に限られる。**閲覧ロールの裁定は planning#198 提案 8 で別途仰いでいる最中**であり、グループ全体を絞ると**まだ裁定の出ていない閲覧まで巻き添えで変わる**（計画に無い制限を実装が先に作ることになる）。 |
+| **照会（`GET /bff/conversion/jobs`・`GET /bff/conversion/jobs/{id}`）の権限** | 2026-08-04 の確定が命じたのは**再変換の実行権限**の是正である。照会については計画（[§共通シェル `01_screens.md:115`](../../planning/projects/microservices-platform/05_screens/01_screens.md)「SC-05/06/07 = 管理者（管理）」・§SC-07 `:250`「アクセス制御: 管理者ロール限定。」）が **SC-07 全体を管理者ロール限定**と定めており、現状の admin/operator は [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) 決定 1 由来の**既知の逸脱**である（未確定なのではない）。**その是正の向き（計画改訂か実装是正か）は planning#198 提案 8 で裁定を仰いでいる最中**であり、ここで併せて絞ると**裁定を待たずに実装が先に答えを出す**ことになる。 |
 | **画面（`ConversionJobsPage.tsx` / `index.tsx`）の再変換ボタン** | #503 / PR #508 が引き受け済み。ここで触ると同一ファイルで衝突する。 |
 | **ConversionService へのアプリ層認証・認可の導入** | [IADR-0029](../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md)（ワーカーは最小 HTTP サーフェス）と [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md) 決定 3 が定めた構造の変更であり、認証配線（`AddPlatformAuth` ＋ 全環境への `Auth:Authority` 注入）を伴う。§下流の調査のとおり**ロールの非対称は存在しない**ため「揃える」対象ではなく、別 issue で判断すべき独立の決定である（[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 3・フォローアップ 1）。 |
 | `ingestion-service` のネットワーク分離ガード追加 | 同型の穴だが FR-12 / SC-07 の範囲外（フォローアップ 2）。 |
@@ -227,7 +227,7 @@ g.MapPost("/{id:guid}/retry", ...)
 | # | 変異（意図的な退行） | 期待 | **実測結果** |
 | --- | --- | --- | --- |
 | 1 | `retry` から `.RequireAuthorization(PlatformAuthPolicies.AdminOnly)` を削除（= 是正前の admin+operator へ戻す） | `Retry_AsOperator_IsForbidden` が落ちる | **落ちた**。`Expected resp.StatusCode to be HttpStatusCode.Forbidden {value: 403}, but found HttpStatusCode.Accepted {value: 202}`（Failed 1 / Passed 13）。**運用者が実際に再変換を実行できていた**ことの直接の証拠でもある |
-| 2 | グループの `RequireRole` から `OperatorRole` を削除（= 照会まで admin へ絞る巻き添え） | 照会側の 2 件が落ちる | **落ちた**。`GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` がいずれも `Expected … OK {value: 200}, but found … Forbidden {value: 403}`（Failed 2 / Passed 12）。**未裁定の閲覧権限を巻き添えで変えたら気付ける** |
+| 2 | グループの `RequireRole` から `OperatorRole` を削除（= 照会まで admin へ絞る巻き添え） | 照会側の 2 件が落ちる | **落ちた**。`GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` がいずれも `Expected … OK {value: 200}, but found … Forbidden {value: 403}`（Failed 2 / Passed 12）。**裁定を仰いでいる最中の閲覧権限を巻き添えで変えたら気付ける** |
 | 3 | 後段の再変換不可（409 `not_retryable`）を 202 に置換 | `Retry_ProcessingJob_Returns409NotRetryable` が落ちる | **落ちた**。同テストと既存の `Retry_NonFailedJob_Returns409` がともに `Expected … Conflict {value: 409}, but found … Accepted {value: 202}`（Failed 2 / Passed 5） |
 
 **補足（変異 3 の途中経過も記録する）**: 最初は「エンドポイントの `if (job.Status != Failed) → 409` の
@@ -245,7 +245,9 @@ g.MapPost("/{id:guid}/retry", ...)
    同 Namespace 内の任意 Pod からは到達できるため、ゼロトラストを徹底するなら別 issue で判断する
    （[IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) フォローアップ 1）。
 2. `ingestion-service` も `NetworkIsolationTests` の列挙外である（同型の穴）。
-3. **閲覧ロールの裁定**（planning#198 提案 8）が出たら、照会側の権限を追随させる。
+3. **閲覧ロールの差異の裁定**（planning#198 提案 8。**計画は SC-07 全体を管理者限定と定め、実装は
+   admin/operator** という [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) 決定 1 由来の
+   既知の逸脱）が出たら、計画改訂・実装是正のいずれであれ照会側の権限を追随させる（SC-05・SC-06 も同じ適用先）。
 4. **PR #508 とのマージ順**: 本 PR が先にマージされると、#508 マージまでの間だけ
    「画面には operator にも再変換ボタンが見えるが API は 403」という状態になる。
    計画は「API 側だけ緩い」ことを禁じており**逆向きの一時不整合は許容範囲**だが、

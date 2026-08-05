@@ -48,8 +48,11 @@ related_specs:
 > 計画 [05_screens §SC-07 §データソース](../../planning/projects/microservices-platform/05_screens/01_screens.md)（**2026-08-04 確定**）の
 > 「**再変換の実行権限は管理者ロールに限る**。本画面のアクセス制御と API の権限を揃える」に追随し、
 > `retry` の認可を `platform-admin` のみへ絞った（[[IADR-0128]] 決定 1・[[IADR-0042]] 決定 3 への［追記］）。
-> **照会（一覧・個別取得）は admin/operator のまま据え置く** —— 閲覧ロールの裁定は planning#198 提案 8 で継続中であり、
-> グループごと絞ると未確定の閲覧まで変わるためである（[[IADR-0128]] 決定 2）。
+> **照会（一覧・個別取得）は admin/operator のまま据え置く**。計画は §共通シェル（`01_screens.md:115`）と
+> §SC-07（`:250`）で **SC-07 全体を管理者ロール限定**と定めており、現状の admin/operator は
+> [[IADR-0039]] 決定 1 由来の**既知の逸脱**である。是正の向き（計画改訂か実装是正か）は
+> **planning#198 提案 8 の裁定に従う** —— ここで併せて絞ると裁定を待たずに実装が先に答えを出す
+> （[[IADR-0128]] 決定 2）。
 > 画面側の再変換ボタンを管理者のみにする作業は **#503 / PR #508** が持つ。
 
 - `ConversionJobDto = { id, sourceId, sourceType, originalPath, status, error?, documentId?, markdownUri?, attempts, createdAt, updatedAt }`

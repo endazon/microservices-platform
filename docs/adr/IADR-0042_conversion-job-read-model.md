@@ -52,7 +52,10 @@ SC-07 は変換状況・失敗ジョブの一覧と人手補正（再変換）�
 > retry は **`platform-admin` のみ**である（[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 1。
 > 実装はグループの認可へ `PlatformAuthPolicies.AdminOnly` を重ね、AND 合成で admin のみに絞る）。
 > **照会（`GET /jobs`・`GET /jobs/{id}`）は本決定のまま「管理者・運用者」で据え置く** ——
-> 2026-08-04 の確定は再変換の実行権限に限られ、閲覧ロールは planning#198 提案 8 で裁定中のためである
+> 2026-08-04 の確定が命じたのは再変換の実行権限の是正だからである。
+> **照会が計画（`01_screens.md:115`・`:250` の「管理者ロール限定」）と食い違っている点は既知の逸脱**
+> （[[IADR-0039]] 決定 1 由来）であり、その是正の向き（計画改訂か実装是正か）は
+> **planning#198 提案 8 の裁定に従う**
 > （[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 2）。
 > **ワーカー自身に認可を課さない点は変更していない**（[IADR-0128](IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 3）。
 > その前提であるネットワーク分離は `NetworkIsolationTests` の回帰ガードへ載せた。
