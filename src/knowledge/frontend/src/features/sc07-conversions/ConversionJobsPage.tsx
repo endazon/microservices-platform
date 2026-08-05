@@ -69,7 +69,9 @@ export function ConversionJobsPage() {
   const retry = useRetryConversionJob();
 
   // 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
-  // 画面のアクセス制御と API の権限を揃える（IADR-0127 決定 1。API 側の突合は #501）。
+  // **計画は「本画面のアクセス制御と API の権限を揃える」と確定している**が、API（/bff/conversion/jobs）は
+  // まだ admin/operator であり、**この確定事項は未達である**——API を直接叩ける運用者は依然 retry でき、
+  // 画面のこの制御はその穴を塞がない。解消は #501（IADR-0127 決定 1）。
   const canRetry = useHasAnyRole(PlatformRole.Admin);
 
   const items = jobs.data ?? [];

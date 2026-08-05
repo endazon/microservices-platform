@@ -56,6 +56,8 @@ related_specs:
 - ルート: `/admin/sources`（05_screens §共通シェル「ルートパス」）
 - アクセス: **`platform-admin` または `platform-operator`**（[[IADR-0039]]）。権限外は `NotFound`（存在秘匿）。
   サーバ側 `/bff/datasources` も同ロールに限定（実効境界）。
+  計画は §共通シェル に加え **§SC-05（`01_screens.md:234`）・§SC-06（`:242`）・§SC-07（`:250`）の各節でも
+  独立して**「管理者ロール限定」と定める。**どちらが正かは計画側の裁定を要する**（planning#198 提案 8）。
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
