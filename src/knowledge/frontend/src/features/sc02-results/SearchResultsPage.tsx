@@ -26,7 +26,7 @@ import type { SearchResult } from './useSearchQuery';
 // 実装しない要素（画面仕様書 docs/screens/SC-02_search-results.md §hi-fi モックアップとの対応）:
 //   検索モード切替（キーワード｜意味）・並び順・更新日時列。いずれも検索 API / DTO に該当の
 //   指定軸・項目が無く、UI だけ置くと「押しても結果が変わらない操作」「常に空の列」になる
-//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録あり。計画リポへの起票は未了）。
+//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定待ち）。
 
 export function SearchResultsPage() {
   const { t } = useLingui();

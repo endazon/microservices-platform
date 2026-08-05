@@ -20,8 +20,8 @@ updated: 2026-08-05
 | 手順 | 状態 |
 | --- | --- |
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
-| 3-a. `planning/draft/feedback/` へのコピー | **不要**（実装ブランチでは planning submodule の内容を変更しない。pin 更新のみ） |
-| 3-b. `endazon/project-planning` への Issue 起票 | **完了**: [project-planning#197](https://github.com/endazon/project-planning/issues/197)（2026-08-05・**裁定待ち**） |
+| 3-a. `planning/draft/feedback/` へのコピー | **本件は実施しない**（手順 3 は[記録ファイル経路と GitHub Issue 経路の**両経路に対応**](README.md)し、[`docs/README.md` 運用ルール 5](../docs/README.md) も「計画リポへのコピー、**または** Issue 起票」と定める。本件は 3-b の Issue 経路を採ったため 3-a は行わない。**記録ファイル経路が適する場面（Issue を起票できない環境）まで否定するものではない**） |
+| 3-b. `endazon/project-planning` への Issue 起票 | **完了**: [planning#197](https://github.com/endazon/project-planning/issues/197)（2026-08-05・**裁定待ち**） |
 | 付-1（OpenAPI 欠落）の実装側起票 | **完了**: [#506](https://github.com/endazon/microservices-platform/issues/506)（計画の裁定は不要・実装側で閉じる） |
 | 付-2（左ナビの SC-03）の起票 | **完了**: planning#197 §付随の論点 に含めた（計画の裁定が要るため） |
 | §提案 5（裁定までの暫定注記）の伝達 | **完了**: planning#197 へのコメントで補った（起票本文から落ちていたのをクロス監査が検出） |
@@ -153,7 +153,7 @@ UC/画面の差異（**計画は画面要素を定めているが、それを支
 
 - 提案: `docs/api/openapi.yaml` へ `/bff/documents/{id}`・`/content`・`/versions` を追加し、
   SC-03 を orval 生成フックへ載せ替える（後続 issue）。SSE は対象外である旨を明記する。
-- 反映先候補: 実装側の後続 issue（計画の変更は不要と思われる）。**起票の要否は親が判断する。**
+- 反映先候補: 実装側の後続 issue（計画の変更は不要と思われる）。**[#506](https://github.com/endazon/microservices-platform/issues/506) として起票済み**（§起票状況）。
 
 ### 付-2. 計画は左ナビに SC-03（文書詳細）を置いているが、実装は置いていない
 

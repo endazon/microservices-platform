@@ -13,7 +13,7 @@ import { useAskStream, useFeedback } from './useAskStream';
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-01_search-chat.md §hi-fi モックアップとの対応）:
 //   - 対象範囲フィルタ（タグ／フォルダ）: BFF に載せる先が無く、権限内候補を得る API も無い
-//     （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録あり。計画リポへの起票は未了）。
+//     （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定待ち）。
 //   - 個人資料まわり（「個人資料を含める」トグル・出典行の 👤）: FR-19 / FR-21 であり
 //     IADR-0119 決定 1 が着手を保留している（**繰り延べであって放棄ではない**）。
 
