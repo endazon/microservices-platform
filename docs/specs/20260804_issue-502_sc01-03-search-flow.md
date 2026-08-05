@@ -282,7 +282,7 @@ TypeScript 5.9.3 ／ Vite 6.4.3 ／ Lingui 6.6.0 ／
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（413 件） |
 | ユニット依存方向 | `node scripts/check-unit-dependencies.js` | green |
 | テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（仕様書のある 28 件中 28 件が写像済み。**allowlist は本 issue の着手前と同じ 7 件**＝増やしていない。後述） |
-| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**最終形は 8 件**。`3717fc2` 時点は 3 件だった） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**件数はここに書かない**。この表を直すコミット自体が件数を変えるため、書いた瞬間にずれる——実際 6 → 8 → 9 と 2 度ずれた。最終形は CI の `commit-messages` ジョブが検査する） |
 | 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（4 ファイル・検出 0 件） |
 | スクリプト自己試験 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | green（**244 tests**。本作業で増減なし） |
 
