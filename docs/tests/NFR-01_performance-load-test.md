@@ -58,7 +58,7 @@ plan_refs:
 | P-06 | 画面が遅延側にあること | `pnpm vitest run knowledge/frontend/src/features/routeSplitting.test.ts` | 画面 11 本が feature index の静的 import に無く、遅延境界（`.preload` / `wrapInSuspense`）が宣言されている | 単体（CI） |
 | P-07 | 共通シェル・認証・UI プリミティブが初期側にあること | `pnpm vitest run platform/frontend/src/foundation/routing/initialChunk.test.ts` | `Layout` / `NotFound` / `RequireAuth` / `RequireRole` / `AuthProvider` / `@platform/ui` が初期側で読まれる | 単体（CI） |
 | P-08 | 分割成果物で実ブラウザから起動できること | `playwright test e2e/bundle-splitting.smoke.spec.ts` | 要求した資産がすべて 200・`pageerror` なし・`/assets/*.js` を 2 本以上読む・ログイン画面が描画される | E2E |
-| P-09 | 外部 egress が**全チャンク**に無いこと | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | 検出 0 件（走査対象は分割で 4 → 20 ファイルへ増えた） | 成果物（CI） |
+| P-09 | 外部 egress が**全チャンク**に無いこと | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | 検出 0 件（走査対象は分割で 4 → 20 ファイルへ増えた。**判定は「検出 0 件」であってファイル数ではない**——ファイル数は画面やチャンク規則が変われば動く環境依存の値であり、参考値として書いている） | 成果物（CI） |
 
 **実測（#512 時点。測定条件は[作業仕様書](../specs/20260805_issue-512_spa-route-code-splitting.md#計測実測推測で分割しないための一次資料)）**:
 

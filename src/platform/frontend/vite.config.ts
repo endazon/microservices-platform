@@ -15,13 +15,16 @@ export default defineConfig({
   // ADR-0031（i18n = Lingui・コンパイル時抽出）/ IADR-0125 決定 3: マクロを babel で展開する。
   // 同じ設定を src/vitest.config.ts にも置く（片方だけだとビルドとテストのどちらかが静かに壊れる）。
   // NFR, ADR-0031 / IADR-0134: バンドル内訳の実測（`pnpm run build:analyze`）。
-  // 既定のビルドには載せない（成果物と所要時間を変えないため）。出力 dist/stats.json は
-  // 生成物であり src/.gitignore の `dist` に含まれるためコミットされない。
+  // 既定のビルドには載せない（成果物と所要時間を変えないため）。
+  // 出力先を **dist の外**（.analyze/）に置くのは、計測出力が配布物ではないためである——
+  // dist に置くと、ビルドマシンの絶対パスを含む数 MB のモジュールグラフが
+  // scripts/check-static-egress.js の走査母集団（＝配布する静的資産）へ紛れ込む。
+  // .analyze/ は src/.gitignore でコミット対象から外している。
   plugins: [
     react({ babel: { plugins: ['@lingui/babel-plugin-lingui-macro'] } }),
     tailwindcss(),
     ...(process.env.ANALYZE_BUNDLE === '1'
-      ? [visualizer({ filename: 'dist/stats.json', template: 'raw-data', gzipSize: true })]
+      ? [visualizer({ filename: '.analyze/stats.json', template: 'raw-data', gzipSize: true })]
       : []),
   ],
   build: {

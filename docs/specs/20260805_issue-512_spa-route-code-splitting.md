@@ -129,8 +129,14 @@ React ランタイムは別建てにする（理由は [[IADR-0134]] 決定 3）
 `rollup-plugin-visualizer` を `@platform/frontend` の devDependency として入れ、
 **環境変数で明示したときだけ**プラグインへ載せる（`pnpm --filter @platform/frontend run build:analyze`
 ＝ `ANALYZE_BUNDLE=1`）。既定のビルドは成果物も所要時間も変えない。
-出力 `dist/stats.json` は生成物であり `src/.gitignore` の `dist` に含まれるためコミットされない
-（`.gitignore` への追記は不要だった。実測: `git check-ignore -v src/platform/frontend/dist/stats.json`）。
+
+**出力先は `dist` の外（`platform/frontend/.analyze/stats.json`）に置く。**
+当初は `dist/stats.json` に出していたが、**計測出力は配布物ではない**——
+`dist` に置くと `node scripts/check-static-egress.js --require src/platform/frontend/dist` の
+走査母集団（＝配布する静的資産）に、**ビルドマシンの絶対パスを含む約 2 MB のモジュールグラフ**が
+混ざる（実測: `build:analyze` 直後の dist を走査すると 20 → 21 ファイルになる）。
+08_data-egress-policy 違反ではない（外部オリジンの参照は 0 件で、gitignore 済みのため本番イメージにも入らない）が、
+**検査の母集団は配布物と一致させておくほうが読み違えが起きない**。`src/.gitignore` に `.analyze/` を追加した。
 
 **依存の増分**: `rollup-plugin-visualizer@7.0.1` を入れると lockfile に推移的依存が加わる
 （`cliui` / `emoji-regex` / `is-in-ssh` / `open` / `powershell-utils` ほか。`git diff --stat src/pnpm-lock.yaml` = 113 行の追加）。
@@ -336,7 +342,7 @@ V5b は「`@platform/ui` を初期側に置く費用が本当にどこから来�
 | 単体テスト | `pnpm run test` / `pnpm run test:coverage` | **59 files / 557 tests** 全 green（`test:coverage` は **8 回連続**で green を確認。理由は §遅延境界が持ち込んだテストの揺れ）（本作業前は **57 files / 539 tests**。差は新規 2 ファイル ＝ `routeSplitting.test.ts` 12 件 ＋ `initialChunk.test.ts` 6 件） |
 | ビルド | `pnpm run build` | green・**500 kB 警告なし**（§計測 に生の出力） |
 | E2E | `playwright test`（後述の条件） | **13 tests 全 green**（本作業で 1 本追加＝`bundle-splitting.smoke.spec.ts`） |
-| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（**20 ファイル**・検出 0 件。分割前は 4 ファイルだった） |
+| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（検出 0 件。走査は 20 ファイル・分割前は 4 ファイル。**ファイル数は環境依存の参考値**であり判定条件ではない——画面やチャンク規則が変われば動く。`build:analyze` 直後の dist でも 20 のままであることを確認した＝計測出力が走査母集団に混ざらない） |
 | 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- …/generated` | green（差分なし） |
 | i18n カタログ | `pnpm run i18n` ＋ `git diff --exit-code -- …/locales`／`node scripts/check-i18n-catalogs.js` | green（差分なし／2 ロケール・未翻訳 0 件） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green |

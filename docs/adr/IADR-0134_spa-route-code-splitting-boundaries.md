@@ -168,8 +168,13 @@ minify 後の値は「kB（minified）」と明記する。生の出力は[作�
 
 `rollup-plugin-visualizer` を `@platform/frontend` の devDependency として持ち、
 **`ANALYZE_BUNDLE=1` のときだけ**プラグインへ載せる（`pnpm --filter @platform/frontend run build:analyze`）。
-既定のビルドは成果物も所要時間も変えない。出力 `dist/stats.json` は生成物であり、
-`src/.gitignore` の `dist` に含まれるためコミットされない。
+既定のビルドは成果物も所要時間も変えない。
+
+**出力先は `dist` の外**（`platform/frontend/.analyze/stats.json`。`src/.gitignore` に `.analyze/` を追加）。
+計測出力は配布物ではないため、**成果物ディレクトリの走査母集団に混ぜない**——
+`dist` に置くと `check-static-egress.js` の走査が 20 → 21 ファイルになり、
+その 1 件が**ビルドマシンの絶対パスを含む約 2 MB のモジュールグラフ**になる
+（08_data-egress-policy 違反ではない。外部オリジンの参照は 0 件で、gitignore 済みのため本番イメージにも入らない）。
 
 **「一度測って捨てる」形にしない理由**は、本決定の全ての数字がこの計測に依存しており、
 次に誰かが分割を見直すときに**同じ計測を再現できなければ議論が推測に戻る**からである。

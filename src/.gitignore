@@ -11,6 +11,12 @@ coverage
 # packages 配下すべてを追跡対象へ戻してしまうためである。
 storybook-static/
 
+# NFR / IADR-0134 決定 5: バンドル内訳の計測出力（`pnpm run build:analyze`）。
+# **dist の外**へ出す——成果物ディレクトリに置くと、ビルドマシンの絶対パスを含む
+# 数 MB のモジュールグラフが `check-static-egress.js` の走査対象（＝配布物の検査母集団）に
+# 紛れ込む。配布物ではないので走査母集団に入れない。
+.analyze/
+
 # Playwright（各ユニットの frontend/ 配下で生成されるため非アンカーで指定）
 test-results/
 playwright-report/
