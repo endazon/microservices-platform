@@ -25,12 +25,15 @@ paths:
 **`ADR-0043`（権限内属性値の照会と存在秘匿の整合・planning#197〜199 の裁定）は `Accepted`** であり、
 実装の着手条件を満たす（#540 が実装する。同 ADR の制限を必ず守ること）。
 
-> **このレンジが実際に効く場所**（PR #550 のレビュー指摘・2026-08-06）:
-> `pr-title.yml` と `ci.yml` の `commit-messages` は `actions/checkout` に `submodules` を付けないため、
-> **PR の CI では計画 ADR の実在性検査は skip される**（`loadExistingPlanAdrIds()` が null を返す。
-> 下記「ADR / IADR の実在性」の注も同じことを述べている）。**レンジの追随が効くのは、
-> submodule を取得する経路**——夜間の planning 系ジョブ、ローカル実行、および本ファイルを
-> 読んで作業する AI エージェント——である。「PR CI が守ってくれる」と誤解しないこと。
+> **このレンジが実際に効く場所**（PR #550 のレビュー指摘・2026-08-06 に実測して確定）:
+> **計画 ADR の実在性検査は、どのワークフローからも submodule を populate した状態で実行されない。**
+> `check-commit-messages.js` を走らせるのは `pr-title.yml` と `ci.yml` の `commit-messages` だけで、
+> どちらも `actions/checkout` に `submodules` を付けない（`loadExistingPlanAdrIds()` が null を返し
+> skip される）。唯一 submodule を populate する `doc-links-planning.yml` は
+> **`check-doc-links.js --require-planning` しか実行しない**（別スクリプト・別対象）。
+> したがって**このレンジが効くのは、ローカル実行と、本ファイルを読んで作業する AI だけ**である。
+> **CI は計画 ADR の実在性を守っていない。** 実効させたいなら、`check-commit-messages.js` を走らせる
+> ジョブへ `submodules` ＋ `token` を付ける必要がある（下記「ADR / IADR の実在性」の注も参照）。
 **`Proposed` でも ID としては実在する**——参照の実在性検査（`check-commit-messages.js` 等）は
 状態を見ないため、レンジには含める。実装の着手条件（`Accepted` 化）とは別の話である
 （[[IADR-0119]] 決定 2）。計画側で ID が増減したら本節を追随させる
