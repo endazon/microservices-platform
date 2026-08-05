@@ -3,6 +3,7 @@ title: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を�
 type: plan-feedback
 status: rejected
 category: UC/画面の差異
+status_note: 計画側原典は open（planning 未追随。控えが #497 で先行）
 related_ids: [FR-15, SC-11, ADR-0018, IADR-0036]
 source_repo: microservices-platform
 source_ref: "docs/screens/SC-11_configuration-viewer.md（未決事項5）/ IADR-0036 /（履歴データ源は PR #189・#139 で導入予定の IADR-0046）"

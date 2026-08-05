@@ -116,6 +116,12 @@ related_specs:
 **なお計画側の draft は `open` のままである**（`planning/draft/feedback/README.md` の「未処理」表にも
 残る）。これは計画リポジトリ側の追随作業であり、**本リポジトリからは触れない**（§申し送り）。
 
+**この「控えが原典より先行している」事実は frontmatter からも読めるようにする。** 本文の表にだけ書くと、
+`status` だけを機械的に読む運用（一覧生成・棚卸し）では先行が見えない。計画側が用いる
+`status_note:`（`planning/draft/feedback/20260709_composability-open-items-resolved.md:6` の書式。
+`category:` の直後に置く 1 行）に倣い、本記録へ `status_note: 計画側原典は open（planning 未追随。控えが #497 で先行）`
+を足す。**`feedback/TEMPLATE.md` に `status_note` の項は無い**（＝任意項目）ため、書式は計画側の先例に合わせた。
+
 ## `feedback/` 全 27 件の現 status と分類
 
 件数は次のコマンドの実測値である。**作業ツリー（`ls feedback/*.md`）ではなくマージ先
