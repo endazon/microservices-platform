@@ -76,6 +76,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**13 ケース**）
+- `pnpm run test -- knowledge/frontend/src/features/sc05-documents`（単体。**14 ケース**）
+  ——**表の行末番号（13）ではなく実測のケース数**である（`4-b` を含めて 14 行 = 14 ケース）。
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
