@@ -138,11 +138,25 @@ export default defineConfig({
       //   branches の伸び（82.93 → 86.29）が大きいのは、旧 3 画面が持っていた手書きの状態遷移
       //   （useEffect ＋ 4 つの state ＋ 二重発火ガード）を TanStack Query と URL 単一情報源へ置き換え、
       //   **測るべき分岐そのものが減った**ためでもある（IADR-0126 決定 3）。
+      //
+      // ［2026-08-05 / #503］SC-05〜08 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-05-08-admin-screens` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 95.05% / branches 87.97% / functions 89.20%
+      //     MSP 所有分のみ        lines/statements 93.91% / branches 88.34% / functions 89.73%
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   branches 81 → 83 / functions 82 → 84 へ引き上げる（lines/statements は 88 のまま
+      //   ＝ 93.91 − 5 = 88.91 の切り捨て）。
+      //   上げた分は「4 画面の分岐（4 状態モデルの写像・同期状態の導出・権限別の出し分け・
+      //   存在秘匿の中立表示・409 の区別）と、契約に無い要素が**描かれないこと**にテストを
+      //   付けた」ことによる。branches は #502 と同じく、旧 4 画面の手書きの取得・再取得
+      //   （useCallback + useEffect + load() の呼び直し）を TanStack Query へ置き換えて
+      //   **測るべき分岐そのものが減った**ぶんも含む（IADR-0127 決定 5）。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
       thresholds: {
         lines: 88,
         statements: 88,
-        functions: 82,
-        branches: 81,
+        functions: 84,
+        branches: 83,
       },
     },
   },
