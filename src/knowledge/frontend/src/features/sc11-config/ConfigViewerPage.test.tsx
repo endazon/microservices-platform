@@ -191,23 +191,45 @@ describe('ConfigViewerPage (SC-11)', () => {
   });
 
   // IADR-0129 決定 5: 3 本は独立。ドリフトが落ちても構成は出し続ける。
+  // 決定 3 は**従の問い合わせにも効く**——5xx は中立化せず `role="alert"` の障害として出す
+  // （中立文言へ寄せると運用者が「権限が無い」と誤読して障害を見逃す）。
   it('degrades only the drift section when the drift query fails', async () => {
-    mockApi({ drift: new ApiError('server', 'boom', 500) });
+    mockApi({ drift: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
     await renderPage();
 
-    expect(await screen.findByText('ドリフト情報は利用できません。')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('ドリフト情報は利用できません。')).not.toBeInTheDocument();
     // 構成は表示され続ける。
     expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
     // 取得できていないので全体バッジは出さない（「0 件」と紛れるため）。
     expect(screen.queryByText('ドリフトなし')).not.toBeInTheDocument();
   });
 
+  // 404 は「不在」と「権限による秘匿」を区別しない中立文言へ寄せる（決定 3）。
+  it('shows the neutral drift message for a 404 without an alert', async () => {
+    mockApi({ drift: new ApiError('notFound', 'nope', 404) });
+    await renderPage();
+
+    expect(await screen.findByText('ドリフト情報は利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+  });
+
   it('degrades only the history section when the history query fails', async () => {
-    mockApi({ history: new ApiError('server', 'boom', 500) });
+    mockApi({ history: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('バージョン履歴は利用できません。')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+  });
+
+  it('shows the neutral history message for a 404 without an alert', async () => {
+    mockApi({ history: new ApiError('notFound', 'nope', 404) });
     await renderPage();
 
     expect(await screen.findByText('バージョン履歴は利用できません。')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   // IADR-0009: 404 は「不在」と「権限による秘匿」を区別しない中立文言にする。

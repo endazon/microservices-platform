@@ -340,6 +340,10 @@ msgid "ドリフト情報は利用できません。"
 msgstr "Drift information is unavailable."
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト情報を取得できませんでした。"
+msgstr "The drift information could not be loaded."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "ドリフト明細の一覧"
 msgstr "List of drift findings"
 
@@ -362,6 +366,10 @@ msgstr "Version history"
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "バージョン履歴は利用できません。"
 msgstr "The version history is unavailable."
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "バージョン履歴を取得できませんでした。"
+msgstr "The version history could not be loaded."
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "パイプライン段"

@@ -71,6 +71,11 @@ function shortCommit(commit: string | null | undefined): string {
   return commit ? commit.slice(0, 7) : '—';
 }
 
+/** 404 か（＝存在秘匿として中立文言へ寄せる対象か）。それ以外の失敗は系の状態であり秘匿しない。 */
+function isHidden(error: unknown): boolean {
+  return error instanceof ApiError && error.kind === 'notFound';
+}
+
 export function ConfigViewerPage() {
   const { t } = useLingui();
   const config = useEffectiveConfig();
@@ -79,7 +84,11 @@ export function ConfigViewerPage() {
   const refresh = useRefreshConfigViewer();
 
   // IADR-0009: 404 は「不在」と「権限による秘匿」を区別しない。中立の文言へ寄せる。
-  const configHidden = config.error instanceof ApiError && config.error.kind === 'notFound';
+  // IADR-0129 決定 3 は**従の問い合わせにも同じく効く**——「区別しないと運用者が『権限が無い』と
+  // 誤読して障害を見逃す」という理由は、ドリフト・履歴が落ちた場合にも等しく当てはまる。
+  const configHidden = isHidden(config.error);
+  const driftHidden = isHidden(drift.error);
+  const historyHidden = isHidden(history.error);
 
   return (
     <section>
@@ -138,10 +147,15 @@ export function ConfigViewerPage() {
                 <Trans>ドリフトを確認中…</Trans>
               </p>
             )}
-            {drift.isError && (
+            {drift.isError && driftHidden && (
               <p className="text-sm">
                 <Trans>ドリフト情報は利用できません。</Trans>
               </p>
+            )}
+            {drift.isError && !driftHidden && (
+              <Alert tone="danger" role="alert" label={t`エラー`}>
+                {toMessages(drift.error, t`ドリフト情報を取得できませんでした。`).join(' / ')}
+              </Alert>
             )}
             {drift.isSuccess && drift.data && <DriftTable report={drift.data} />}
           </Fold>
@@ -152,10 +166,15 @@ export function ConfigViewerPage() {
                 <Trans>履歴を確認中…</Trans>
               </p>
             )}
-            {history.isError && (
+            {history.isError && historyHidden && (
               <p className="text-sm">
                 <Trans>バージョン履歴は利用できません。</Trans>
               </p>
+            )}
+            {history.isError && !historyHidden && (
+              <Alert tone="danger" role="alert" label={t`エラー`}>
+                {toMessages(history.error, t`バージョン履歴を取得できませんでした。`).join(' / ')}
+              </Alert>
             )}
             {history.isSuccess && <HistoryTable entries={history.data} />}
           </Fold>

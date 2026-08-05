@@ -340,6 +340,10 @@ msgid "ドリフト情報は利用できません。"
 msgstr "ドリフト情報は利用できません。"
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "ドリフト情報を取得できませんでした。"
+msgstr "ドリフト情報を取得できませんでした。"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "ドリフト明細の一覧"
 msgstr "ドリフト明細の一覧"
 
@@ -362,6 +366,10 @@ msgstr "バージョン履歴"
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "バージョン履歴は利用できません。"
 msgstr "バージョン履歴は利用できません。"
+
+#: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+msgid "バージョン履歴を取得できませんでした。"
+msgstr "バージョン履歴を取得できませんでした。"
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "パイプライン段"
