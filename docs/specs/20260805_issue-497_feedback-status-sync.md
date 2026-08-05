@@ -1,0 +1,255 @@
+---
+title: feedback 記録の status を計画側の実態へ同期する（#497）
+type: spec
+status: done
+related_ids: [NFR, SC-11, FR-12, FR-14, FR-15]
+author: Claude
+created: 2026-08-05
+updated: 2026-08-05
+plan_refs:
+  - "../../planning/draft/feedback/README.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md"
+  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+  - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
+  - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
+related_specs:
+  - "../../feedback/README.md"
+  - "../screens/SC-11_configuration-viewer.md"
+---
+
+# 仕様書: feedback 記録の status を計画側の実態へ同期する（#497）
+
+> 本仕様書は実装着手前に作成する。計画書（`project-planning` の `projects/<name>/` および
+> `draft/feedback/`）を一次情報とし、本書は「この作業で何をどう変更するか」を確定する作業仕様である。
+
+## 起点となる計画書（トレーサビリティ）
+
+- 非機能（**NFR**）: 計画と実装のトレーサビリティ維持。規約は
+  [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md) と
+  [`feedback/README.md`](../../feedback/README.md)（**この `feedback/` は実装リポジトリ側の控えであり、
+  原典の反映先は計画リポジトリである**）。
+- 画面（**SC-11**）: 構成ビューア（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md)）。
+- 関連 FR: FR-12（正規化変換）・FR-14 / FR-15（コンポーザビリティ・構成情報 API）。書き換え対象の記録の起点。
+- 本リポジトリの起点: #497。
+
+## 目的・背景
+
+`feedback/` の記録は**控え**であり、原典（計画リポジトリ `draft/feedback/`）でトリアージが完了しても
+控え側の `status:` は自動では追随しない。その結果、控えだけを見ると「未処理が多数ある」ように読める。
+
+本作業は #497 が挙げた 10 件について、**計画側の実体（planning submodule pin `d980a01`）を自分で開いて
+突合し**、控えの `status:` を実態へ同期する。あわせて、なぜその判定になったのかを後から辿れるよう、
+**確認先を各記録の本文へ日付つきの追記として残す**。
+
+**pin は動かさない。`planning/` の内容は読み取り専用の突合相手としてのみ使う。**
+
+## 用語（status の語彙）
+
+計画リポジトリ [draft/feedback/README.md](../../planning/draft/feedback/README.md)（`:19` / `:85`）が正である。
+
+- 遷移: `open` → `triaged` → `accepted` / `rejected`
+- **語彙は `open` / `triaged` / `accepted` / `rejected` の 4 値**。
+- 同 README `:86-87` は「`20260709_composable-implementation-guide-upstream.md` が使っていた
+  **`reflected` は 2026-08-04 のトリアージで `accepted` へ揃えた**（表記の揺れは解消した）」と明記する。
+  → **#497 の表が求める `reflected` は既に廃語である**（§食い違い 1）。
+- **裁定待ちの論点を残したまま反映した記録は `triaged` に留める**（同 `:88-90`）。
+
+## 突合結果（10 件・**すべて自分で確認した**）
+
+確認は planning submodule pin `d980a01`（`git submodule status` で実測）に対して行った。
+**行番号は #497 の表ではなく実測値**である。「一致」列は #497 の表との突合結果。
+
+| # | 記録 | #497 の現 status | 実測の現 status | #497 の → | **実施値** | 計画側 draft の status（実測） | 計画書側の根拠（実測行） | 一致 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | `20260703_conversion-retry-vs-image-fallback.md` | open | open | accepted | **accepted** | accepted | `04_workflows/03_conversion-flow.md:65-67`（再試行／縮退／人手補正の 3 分割）・`ADR-0012:41`（失敗時の縮退方針）・`:43`（確定の経緯が本記録を参照）・`03_usecases/01_usecases.md:163`（UC-06 例外フロー） | ✅ |
+| 2 | `20260703_wiki-selfhosted-supersedes-adr-0011.md` | open | open | rejected | **rejected** | **rejected** | `ADR-0011_wiki-engine.md:5` = `status: Accepted`・`:49-50` = `Supersedes / Superseded by: なし`・`:46`（確定の経緯: Issue #66 で (a) Wiki.js 配備を選択） | ✅ |
+| 3 | `20260704_plan-status-reflux-fr-adr.md` | open | open | accepted | **accepted** | accepted | `02_requirements/01_requirements.md` / `03_usecases/01_usecases.md` / `04_workflows/` 3 件 / `06_technical/` 01〜10・12・13 が `status: fixed`。ADR-0001〜0017 は `ADR-0003` を除き `Accepted`（**ADR-0003 は `Superseded`**。§食い違い 3） | ⚠️ 一部 |
+| 4 | `20260705_internal-service-auth-nfr-deviation.md` | open | open | accepted | **accepted** | accepted | `02_requirements/01_requirements.md:100`（認証・認可の暫定／恒久フェーズ分け）・`:107`（通信暗号化）・`:123`（暫定運用の注記）。**#497 の 99 / 105 / 121 から 1〜2 行ずれる**（§食い違い 2） | ⚠️ 行番号 |
+| 5 | `20260705_wiki-js-deployment-follows-adr-0011.md` | open | open | accepted | **accepted** | accepted | `ADR-0011_wiki-engine.md:5` = `status: Accepted`・`:46`（確定の経緯が本記録を参照） | ✅ |
+| 7 | `20260709_composability-open-items-resolved.md` | open | open | accepted | **accepted** | accepted | `06_technical/10_composability-design.md:176-181`（「実装で確定済み（IADR 環流、2026-07-09）」節。`:177` が本記録を参照）。**#497 の 178-181 は節の箇条書きのみを指す**（見出しは `:176`） | ⚠️ 行番号 |
+| 9 | `20260709_composable-implementation-guide-upstream.md` | open | open | **reflected** | **accepted** | **accepted** | `06_technical/10_composability-design.md:96`（実装ガイドへの相互参照）・`:189`（変更履歴 2026-07-09 が本記録を参照）。`draft/feedback/README.md:86-87` が **`reflected` を廃語とし `accepted` へ揃えたと明記** | ❌ **食い違い 1** |
+| 12 | `20260709_dotnet10-target-framework-deviation.md` | open | open | accepted | **accepted** | accepted | `ADR-0020_dotnet-10-upgrade.md:5` = `status: Accepted`・`06_technical/03_tech-stack-selection.md:34`（制約表 = .NET 10）・`:60`（選定根拠の見出し = .NET 10）。**残渣とされた `:55` は既に「.NET 10 / C# 13」へ是正済み**（変更履歴 `:114` = planning#189 / planning#194） | ✅ |
+| 15 | `20260709_sc11-wireframe-drawio.md` | open | **closed** | rejected | **rejected** | **open** | `05_screens/01_screens.md:39`（「ワイヤーフレームは HTML モックアップを正とし、**draw.io ワイヤーフレームは作成しない**」）・`05_screens/mockups/wireframe/sc-11.html` が実在（計画リポジトリに `.drawio` は 1 件も無い） | ❌ **食い違い 4** |
+| 16 | `20260710_repo-positioning-and-unit-structure.md` | open | open | accepted | **accepted** | accepted（**`20260712_` 付き**） | `ADR-0019_unit-first-repo-structure.md:5` = `status: Accepted`・`06_technical/10_composability-design.md:190`（変更履歴 2026-07-12 が `20260712_` 版を参照）。日付ずれ・内容同一を `diff` で確認（差分は status / `copied:` / トリアージ結果節のみ） | ✅ |
+
+## #497 の表と食い違った点（**最重要**）
+
+### 食い違い 1 — #9 の目標値は `reflected` ではなく `accepted`（**採用値を変更した**）
+
+#497 は「計画 draft = **reflected**」を根拠に `reflected` を指定するが、pin `d980a01` の実測は
+**`accepted`** である（`planning/draft/feedback/20260709_composable-implementation-guide-upstream.md:4`）。
+計画リポジトリの [draft/feedback/README.md](../../planning/draft/feedback/README.md) `:85-87` は語彙を
+`open` / `triaged` / `accepted` / `rejected` の 4 値に定め、**`reflected` は 2026-08-04 のトリアージで
+`accepted` へ揃えた（表記の揺れは解消した）**と明記している。
+
+→ **実測を優先し `accepted` を採用する。** `reflected` を書けば、計画側が解消したはずの表記の揺れを
+実装側の控えに再導入することになる。
+
+### 食い違い 2 — 行番号のずれ（#4）
+
+#497 の `02_requirements/01_requirements.md:99,105,121` は、pin `d980a01` では **`:100` / `:107` / `:123`**
+である。内容（暫定／恒久のフェーズ分け 2 行と暫定運用の注記）は一致するため、判定は変わらない。
+**行番号は pin が動くとずれるため、本書と追記は内容で特定する。**
+
+### 食い違い 3 — 「ADR-0001〜0017 が `Accepted` 化済み」は厳密には誤り（#3）
+
+**`ADR-0003_messaging-masstransit-rabbitmq.md` は `Superseded`** である（ADR-0027 Wolverine による）。
+`Accepted` を経たうえでの後続の状態遷移であり、#3 のトリアージ（accepted）自体は覆らない。
+同様に `06_technical/` のうち **`11_mcp-server-integration.md` と `14_knowledge-graph-graphrag.md` は
+`draft`** である（いずれも #3 のトリアージより後に新設された文書）。
+
+### 食い違い 4 — #15 は**現 status が `open` ではなく `closed`**。作業は #504 で先行実施済み（**射程の重複**）
+
+`feedback/20260709_sc11-wireframe-drawio.md` は **2026-08-05 に #504（PR #511・`56d3f50`）が
+`status: closed` へ変更済み**で、取り下げ理由の節（「取り下げ（2026-08-05 / #504）— 計画は draw.io を
+作らない方針である」）と `wireframe/sc-11.html` への相対リンクを既に持つ。#497 の表は起票時点の状態で
+ある。同様に **付随作業「15 の追随」（SC-11 未決事項 5）も #504 で完了済み**（§SC-11 の追随）。
+
+**本作業での扱い**: `closed` → **`rejected`** へ揃える。理由は 2 つ。
+
+1. `closed` は計画リポジトリが定める語彙（`open` / `triaged` / `accepted` / `rejected`）に無い**一点物**で
+   ある（`feedback/` 26 件で `closed` を使うのはこの 1 件のみ）。
+2. #497 の受け入れ基準が明示的に `rejected` を指定しており、意味（取り下げ・計画側へ渡す作業なし）は同じ。
+
+**なお計画側の draft は `open` のままである**（`planning/draft/feedback/README.md` の「未処理」表にも
+残る）。これは計画リポジトリ側の追随作業であり、**本リポジトリからは触れない**（§申し送り）。
+
+## `feedback/` 全 26 件の現 status と分類
+
+件数は次のコマンドの実測値である。
+
+```console
+$ ls feedback/*.md | grep -v -E 'README|TEMPLATE' | wc -l
+26
+```
+
+`impl` = 本リポジトリ `feedback/` の値、`plan` = `planning/draft/feedback/` の同名ファイルの値（pin `d980a01`）。
+
+| # | 記録 | impl（作業前） | plan | #497 の分類 |
+| --- | --- | --- | --- | --- |
+| 1 | `20260703_conversion-retry-vs-image-fallback.md` | open | accepted | 書換対象 |
+| 2 | `20260703_wiki-selfhosted-supersedes-adr-0011.md` | open | rejected | 書換対象 |
+| 3 | `20260704_plan-status-reflux-fr-adr.md` | open | accepted | 書換対象 |
+| 4 | `20260705_internal-service-auth-nfr-deviation.md` | open | accepted | 書換対象 |
+| 5 | `20260705_wiki-js-deployment-follows-adr-0011.md` | open | accepted | 書換対象 |
+| 6 | `20260707_iadr-0017-superseded-mesh-mtls.md` | **open** | **accepted** | **どれにも該当しない（分類漏れ）** |
+| 7 | `20260709_composability-open-items-resolved.md` | open | accepted | 書換対象 |
+| 8 | `20260709_composability-safety-net-gaps.md` | accepted | accepted | 既に正しい |
+| 9 | `20260709_composable-implementation-guide-upstream.md` | open | accepted | 書換対象 |
+| 10 | `20260709_config-version-history-source-gitops.md` | **open** | **accepted** | **どれにも該当しない（分類漏れ）** |
+| 11 | `20260709_conversion-job-query-reconvert-api.md` | accepted | accepted | **どれにも該当しない**（既に正しいが 3 件の列挙から漏れ） |
+| 12 | `20260709_dotnet10-target-framework-deviation.md` | open | accepted | 書換対象 |
+| 13 | `20260709_fr01-connector-and-nfr-verification-status.md` | **open** | **accepted** | **どれにも該当しない（分類漏れ）** |
+| 14 | `20260709_frontend-sc-screens-implemented-status.md` | accepted | accepted | **どれにも該当しない**（既に正しいが 3 件の列挙から漏れ） |
+| 15 | `20260709_sc11-wireframe-drawio.md` | **closed** | **open** | 書換対象（前提が古い。§食い違い 4） |
+| 16 | `20260710_repo-positioning-and-unit-structure.md` | open | （同名なし。`20260712_` = accepted） | 書換対象 |
+| 17 | `20260719_headlamp-k8s-management-ui.md` | open | **triaged** | **どれにも該当しない**（計画側は `triaged` = 裁定待ちあり） |
+| 18 | `20260801_impl-handoff-kit-gaps.md` | accepted | （同名なし） | 既に正しい |
+| 19 | `20260802_review-allowlist-diff-and-denial-labeling.md` | accepted | （同名なし） | 既に正しい |
+| 20 | `20260803_ai-review-execution-permissions.md` | open | accepted | 計画 issue 追跡中（planning#168） |
+| 21 | `20260803_ai-workflow-grep-sort-and-submodule-git-c.md` | open | accepted | 計画 issue 追跡中（planning#163） |
+| 22 | `20260803_doc-links-code-extensions.md` | open | accepted | 計画 issue 追跡中（planning#167） |
+| 23 | `20260804_frontend-migration-staging-interpretation.md` | accepted | （同名なし） | 計画 issue 追跡中（planning#186） |
+| 24 | `20260804_sc01-03-bff-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
+| 25 | `20260805_sc05-07-admin-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
+| 26 | `20260805_sc09-11-admin-ops-contract-gaps.md` | **open** | **（同名なし）** | **どれにも該当しない（計画側未到達）** |
+
+**#497 の 3 分類の合計は 10 + 4 + 3 = 17 件であり、9 件が分類から漏れている。** 内訳は次のとおりで、
+質が 4 種類に分かれる（**いずれも本作業の射程外。status は書き換えない**）。
+
+| 種別 | 件数 | 該当 | 性質 |
+| --- | --- | --- | --- |
+| A: **書換対象 10 件と同型の未同期** | 3 | #6・#10・#13 | impl=`open` / plan=`accepted`。**同じ欠陥だが #497 の表に無い** |
+| B: 既に正しいが列挙から漏れ | 2 | #11・#14 | impl=`accepted` / plan=`accepted`。作業不要 |
+| C: 計画側が `triaged`（裁定待ち） | 1 | #17 | `accepted` にはできない。ADR-0040 / ADR-0042 とも `Proposed` |
+| D: 計画側へ未到達 | 3 | #24・#25・#26 | `open` が正しい（`draft/feedback/` に同名なし） |
+
+> **#497 の注意書きへの補足**: 「自動突合の ✅ を積み残しなしと読まない」に加え、**A の 3 件は #497 の
+> 表からも漏れている**。控えの `status` だけを数えても実態は出ない。
+
+## 対象範囲
+
+| # | 作業 | 出力 |
+| --- | --- | --- |
+| 1 | 10 件の frontmatter `status:` の書き換え（`updated:` も追随） | `feedback/*.md` × 10 |
+| 2 | 各記録への日付つき追記（**確認先を計画側の相対リンクで示す**）。`rejected` の 2 件は取り下げ／別解の理由を残す | 同上 |
+| 3 | SC-11 未決事項の追随（**#504 で完了済み。根拠の直接引用を補強するのみ**） | `docs/screens/SC-11_configuration-viewer.md` |
+
+**対象外**:
+
+- `planning/`（submodule）の内容と pin。**読み取り専用**。
+- 上表 A〜D の 9 件の `status`（**射程外。勝手に書き換えない**）。
+- 計画側 `06_technical/03_tech-stack-selection.md:55` の残渣（**pin `d980a01` で既に是正済み**。§突合結果 #12）。
+- `.github/workflows/` ・ソースコード・テスト（1 行も変えない）。
+
+## 追記の書式
+
+本リポジトリの先例（IADR への日付つき追記・`20260709_sc11-wireframe-drawio.md` の取り下げ節）に倣い、
+各記録の**末尾**へ次の形で置く。
+
+```md
+## ［2026-08-05 追記 / #497］計画側の実態へ status を同期した
+
+**判定: <accepted|rejected>**（... 1 行の理由 ...）
+
+確認は planning submodule pin `d980a01` に対して行った（**行番号は pin が動くとずれるため内容で特定する**）。
+
+| 確認先（計画リポジトリ） | 確認した記述 |
+| --- | --- |
+| [<パス>](../planning/...) | ... |
+```
+
+- リンクは**相対リンク**（`../planning/...`）で書く。`feedback/` はリポジトリ直下のため 1 段上がる。
+- **ただし `check-doc-links.js` は既定で `docs/` しか走査しない**（`--dir` の既定値が `docs`。CI の
+  `ci.yml` も引数なしで起動する）ため、**`feedback/` に置いた相対リンクは既定の CI では検査されない**。
+  本作業では `node scripts/check-doc-links.js --dir feedback` を明示的に実走して確認し、
+  既定で検査されない事実を §検証（変異試験 M2）で実測し、§申し送り へ残す。
+
+## SC-11 の追随
+
+**#497 が求める「未決事項 5 を解決済みへ更新する」は、既に #504（PR #511・`56d3f50`）で完了している。**
+
+- `docs/screens/SC-11_configuration-viewer.md` の未決事項は**現在 2 項目**（`:297-298`）で、
+  **旧 5 は `:300-309` の引用ブロック「［2026-08-05 / #504］解決して畳んだ未決事項」へ移されている**
+  （`:306` = 「**旧 5（ワイヤーフレーム `sc-11.drawio` の作成）は取り下げる。**」）。
+  → **#497 が言う「未決事項 5」は現在の番号ではなく「旧 5」である**（実測を優先する）。
+- したがって**番号の振り直しは行わない**。本作業で足すのは根拠 1 点のみ:
+  現在の記述は「§HTMLモックアップ が hi-fi / wireframe の HTML を挙げている」「`.drawio` が 1 件も無い」
+  という**間接証拠**で結論しているが、`05_screens/01_screens.md:39` には
+  **「draw.io ワイヤーフレームは作成しない」という直接の明文がある**。これを引用として補う。
+
+## 検証
+
+すべて作業ツリー `wt497` で実走し、出力を報告に貼る。
+
+- `node scripts/check-doc-links.js`（既定 = `docs/`）
+- `node scripts/check-doc-links.js --dir feedback`（**本作業が足した相対リンクの実在確認**）
+- `node scripts/check-commit-messages.js --base origin/develop`
+- `node scripts/check-test-traceability.js`
+- `node scripts/check-test-spec-coverage.js`
+- `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`
+- `git diff --name-only origin/develop..HEAD` に `src/` ・`.github/workflows/` ・`planning` が現れないこと
+  （＝ビルド・テストの実走は不要）
+- **変異試験**（実行後は必ず復元し、`git status` が汚れていないことを確認する）
+  - **M1**: `docs/screens/SC-11_configuration-viewer.md` に足した計画側リンクを存在しないパスへ
+    書き換える → `check-doc-links.js`（既定）が **fail** すること
+  - **M2**: `feedback/` に足した計画側リンクを存在しないパスへ書き換える →
+    既定の `check-doc-links.js` は **緑のまま**（＝検査対象外である）／`--dir feedback` では **fail**
+    すること。**緑のままなら「検査対象外だった」という発見であり、隠さず報告する。**
+
+## 申し送り
+
+1. **A 群 3 件（#6・#10・#13）が #497 の表から漏れている。** impl=`open` / plan=`accepted` で、
+   書換対象 10 件とまったく同型である。別 issue で同期すべき。
+2. **`feedback/` は `check-doc-links.js` の既定走査対象外である。** 控えの記録が計画側を相対リンクで
+   指しても、pin がずれたときに機械検出されない。`ci.yml` は本エージェントの権限では編集できないため、
+   結線（`--dir feedback` の追加、または既定の走査対象へ `feedback` を含める）は親へ引き渡す。
+3. **計画側 `draft/feedback/20260709_sc11-wireframe-drawio.md` は `open` のままである。** 実装側は
+   `rejected` へ揃えたが、原典は未追随であり、計画リポジトリの「未処理」表にも残る。計画側の
+   トリアージ（`rejected`）が必要——`/plan-feedback` の候補。**本リポジトリからは触れない。**
+4. **#17（Headlamp）は計画側が `triaged`**（裁定待ちを残したまま反映）。控えを `accepted` にすると
+   計画側より進んだ状態になる。`triaged` を控えでも使うかは運用判断が要る（**要裁定**）。
+5. `feedback/README.md` には status の語彙が書かれていない（計画側 `draft/feedback/README.md` にのみ
+   ある）。控え側にも語彙を明記すれば `closed` のような一点物の再発を防げる。
