@@ -234,6 +234,10 @@ export default tseslint.config(
       'knowledge/frontend/src/features/sc06-datasources/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc07-conversions/**/*.{ts,tsx}',
       'knowledge/frontend/src/features/sc08-analysis/**/*.{ts,tsx}',
+      // #504 で SC-09〜11 を再実装したため適用範囲へ加えた（画面を作り直すたびに files を伸ばす運用）。
+      'knowledge/frontend/src/features/sc09-admin-abac/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc10-operations/**/*.{ts,tsx}',
+      'knowledge/frontend/src/features/sc11-config/**/*.{ts,tsx}',
     ],
     ignores: ['**/*.{test,spec}.{ts,tsx}', '**/locales/**'],
     plugins: { lingui },

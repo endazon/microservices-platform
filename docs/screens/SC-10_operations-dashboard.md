@@ -1,99 +1,168 @@
 ---
 title: 運用ダッシュボード 画面仕様書
 type: screen-spec
-status: draft
+status: completed
 related_ids:
   - SC-10
   - UC-05
   - FR-10
+  - NFR
+  - IADR-0009
+  - IADR-0035
+  - IADR-0119
+  - IADR-0121
+  - IADR-0124
+  - IADR-0125
+  - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-05
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
+  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
+  - "../../planning/projects/microservices-platform/INDEX.md"
 related_specs:
+  - "./SC-11_configuration-viewer.md"
+  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
+  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
   - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
-  - "../adr/IADR-0033_frontend-spa-foundation.md"
   - "../adr/IADR-0011_dashboard-service-usage-aggregation.md"
-  - "../screens/SC-11_configuration-viewer.md"
-  - "../specs/20260708_issue-136_sc10-operations-dashboard.md"
+  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
+  - "../tests/SC-10_operations-dashboard.md"
 ---
 
 # 画面仕様書: 運用ダッシュボード（SC-10）
 
-> 画面（SC）単位で作成する。計画リポジトリの画面設計（05_screens）を実装向けに詳細化する。
+> **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
+> （`docs/README.md` 運用ルール 6）。**本画面はモックの見た目に最も遠い**——
+> hi-fi の KPI カード 3 枚（SLO・利用状況〔人/日〕・LLM コスト）は**いずれも現在の契約から出せない**。
+> 「ナレッジ健全性」節は **FR-17 / FR-18 の着手保留**（[[IADR-0119]]）である。
+> 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
+
+> **［2026-08-05 / #504］新スタック（ADR-0031: React 19 / TanStack Router / TanStack Query /
+> Tailwind v4 ＋ shadcn/ui / Lingui）での再実装に合わせて全面改訂した。**
+> 403 と 404 を**同一の中立文言**へ寄せ（[[IADR-0129]] 決定 3）、
+> SC-11 への導線から**到達しない条件分岐を外した**（同 決定 4）。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-10 運用ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §画面一覧・別掲）
-- 関連ユースケース（UC）: **UC-05**（管理者・運用者による利用状況・品質の確認）
-- 関連機能要求（FR）: **FR-10**（利用状況・検索傾向・回答品質のダッシュボード集計）
-- 計画技術検討: [05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)（Grafana/Kiali/Jaeger は専用ツールで提供し、SC-10 はその入口）
+- 画面（SC）: **SC-10 運用ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-10・別掲）
+- 関連ユースケース（UC）: **UC-05**（計画の画面一覧 `:56`。hi-fi のバッジも `UC-05`）
+- 関連機能要求（FR）: **FR-10**（利用状況・検索傾向・回答品質の可視化）＋ **非機能要件（運用・可観測性）**
+  - **issue #504 §スコープ の表は SC-10 を「UC-07」と書くが、計画とは一致しない**——
+    計画で UC-07 は「Wiki で閲覧する」（SC-04）である。**本書は計画を正とした。**
+- モックアップ（**実装の正**）:
+  [hi-fi/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-10.html) ／
+  [wireframe/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-10.html)
+- 計画の運用設計: [06_technical/05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)
+  （Grafana / Kiali / Jaeger・Tempo は専用ツールで提供し、SC-10 はその入口）
+- 関連 IADR: [[IADR-0129]]（本作業の設計判断）・[[IADR-0035]]（ロール別ナビ・存在秘匿）・
+  [[IADR-0119]]（FR-17〜21 の着手保留）・[[IADR-0009]]（存在秘匿）・[[IADR-0011]]（ダッシュボード集約）
 
 ## 画面概要・目的
-> **［2026-08-04 / #490］ルートは `/admin/ops` である。** SPA のルータを TanStack Router へ差し替えるにあたり、ルートパスを [05_screens §共通シェル](../../planning/projects/microservices-platform/05_screens/01_screens.md)「ルートパス（wireframe の URL バー準拠）」の値へ是正した（[[IADR-0124]] 決定 6）。画面内容そのものの計画準拠は #452 が担う。
 
+SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（Grafana / Kiali / Jaeger・Tempo）への入口**となる画面。
+本画面から設定を変更する操作は無い（参照専用）。構成ビューア（SC-11）への遷移導線も提供する。
 
-運用・分析向けに、システムの利用状況・検索傾向・回答品質のサマリを 1 画面で提示する。SLO・リソース・コスト・トレース・メッシュなどの詳細は専用ツール（Grafana / Jaeger・Tempo / Kiali）へ委譲し、本画面はそれらへの**入口（リンク集）**と、既存 BFF 集約（`/bff/dashboard/summary`）の要約表示を担う。構成ビューア（SC-11）への遷移導線も提供する。
+- ルート: **`/admin/ops`**（05_screens §共通シェル「ルートパス」）
+- 左ナビ: 「運用」グループの **「ダッシュボード」**（hi-fi の左レール表記に合わせた。従前の実装は「運用ダッシュボード」だった）
+- アクセス: **`platform-admin` のみ**（**計画との差異**。§権限・表示条件）。
+  権限外は `RequireRole` → `NotFound`（存在秘匿。[[IADR-0009]] / [[IADR-0035]]）。
 
-- 主要利用シーン: 日次の利用状況確認、回答品質（満足率）の把握、詳細分析ツールへの導線、構成確認（SC-11）への遷移。
-- **参照専用**: 本画面から設定変更は行わない。
-- アクセスは管理者ロール（`platform-admin`）に限定する。データソース `/bff/dashboard/summary` は `AdminOnly`（[[IADR-0011]]）であり、UI もこれに揃える。権限外にはメニュー・画面を表示しない（存在秘匿、[[IADR-0035]]）。
+## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-## データソース（BFF 境界）
+行番号は planning `d980a01` の [hi-fi/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-10.html) に対するものである。
+粒度の規則は [SC-05](./SC-05_document-management.md) と共通である（(a) メイン領域は個別に 1 行、
+(b) 共通シェルはまとめて 1 行、(c) モックに無い状態は表外）。
 
-| 用途 | エンドポイント | 認可 | 応答 DTO |
+| # | モックの要素（行） | 実装 | 備考 |
 | --- | --- | --- | --- |
-| 利用状況・傾向・品質サマリ | `GET /bff/dashboard/summary?days&top` | `AdminOnly`（403） | `DashboardSummaryDto` |
+| 1 | 見出し「**運用ダッシュボード**」（416） | **する** | `<h1>` |
+| 2 | 副題「SLO・利用状況・コスト（詳細は各専用ツールへ）」（417） | **する（文言を変える）** | 実装は「**利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）**」。SLO・コストを出さない画面が「SLO・コスト」を名乗ると読み手を誤らせる |
+| 3 | KPI カード「**SLO** 99.7% / 検索 p95 820ms」（419） | **しない** | **契約の不在**。§実装しない要素の理由 (b) |
+| 4 | KPI カード「**利用状況** 312人/日 / 質問 1,840件/週」（420） | **する（部分）** | 「**312 人/日**」は**一意利用者数**であり、契約が返すのは**イベント件数**（`UsagePointDto(Date, EventType, Count)`）。実装は**検索総数・回答総数**を出す。**隠れた部分未実装** |
+| 5 | KPI カード「**LLMコスト** ¥184k / 今月（予算内）」（421） | **しない** | **契約の不在**。同 (b) |
+| 6 | 節見出し「**ナレッジ健全性 — 運用者・システム管理者のみ閲覧可**」（423） | **しない** | **FR-17 / FR-18 の着手保留**（[[IADR-0119]]）。同 (a) |
+| 7 | ナレッジ健全性の 4 KPI（425-428。孤立文書 12 / 未解決リンク 9 / 未要約クラスタ 3 / 陳腐化文書 21） | **しない** | #6 と同じ |
+| 8 | 「**辺の型ごとの使用件数**」の見出しと表（431-433） | **しない** | #6 と同じ（**FR-17**。ADR-0033 は `Proposed`） |
+| 9 | 「**フォールバック警告**（未定義型 → related 17 件/週）」（434-436） | **しない** | #6 と同じ |
+| 10 | 注記「**個人資料（private-note）を除く全体の件数**…」（439） | **しない** | #6 と同じ（ナレッジ健全性節に属する固定文言） |
+| 11 | 外部ツール「**Grafana ↗**」（442） | **する** | 実行時 config `opsLinks.grafanaUrl`。**未設定なら出さない**。副題「メトリクス・コスト」（計画 §主要素 / wireframe） |
+| 12 | 外部ツール「**Kiali ↗**」（443） | **する** | `opsLinks.kialiUrl`。副題「サービスメッシュ」 |
+| 13 | 外部ツール「**Jaeger / Tempo ↗**」（444） | **する** | `opsLinks.jaegerUrl`。副題「分散トレース」 |
+| 14 | 「**構成ビューア →**」（445） | **する** | `/admin/config-viewer`（SC-11）への内部リンク。**権限で出し分けない**（[[IADR-0129]] 決定 4） |
+| 15 | 注記「運用面は専用ツールで提供: Grafana（メトリクス・コスト）・Kiali（メッシュ）・Jaeger/Tempo（トレース）…」（447） | **する** | `Alert`（`info`） |
+| 16 | **共通シェル**: 右レール「AIチャットパネル」（449-454） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
+| 17 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | **本画面では作らない** | パンくず・権限バッジは #452 系。他は `foundation/ui/Layout` が既に持つ |
 
-`DashboardSummaryDto = { totalSearches, totalAnswers, usageTrend: UsagePointDto[], topSearchTerms: SearchTrendDto[], quality: FeedbackStatsDto }`。
-外部ツール（Grafana/Jaeger/Kiali）URL は実行時 config（`appConfig().opsLinks`）から取得し、環境非依存ビルドを保つ（[[IADR-0033]]）。未設定のツールはリンクを描画しない。
+**対応表の行数は 17 行**（数え方は**行数**であって要素名ではない）。内訳は
+**する 8 行**（#1・#2・#4・#11〜#15）／**しない 8 行**（**A: FR の着手保留 5 行** = #6〜#10 ／
+**B: 契約の不在 2 行** = #3・#5 ／ 右レール 1 行 = #16）／**本画面では作らない 1 行**（#17）である。
+
+**さらに、行数基準では捕まらない部分未実装が 1 件ある**——**利用状況の指標**である
+（#4 は KPI カードを実装したので「**する**」だが、モックが示す「人/日」＝**一意利用者数**ではなく**件数**を出す）。
+**二値の判定では表に現れない**ため、ここに明記する（#503 の教訓）。
+
+### モックに無いが実装する要素
+
+| 要素 | 計画上の根拠 |
+| --- | --- |
+| **集計期間**（直近 7 / 30 / 90 日）の切替 | FR-10（利用状況の可視化）。モックの KPI 副題は「/日」「/週」「今月」と**期間で語る**が、契約の期間指定は `?days=` の 1 本だけである（BFF が 1〜90 へ丸める） |
+| **回答品質（満足率）**の KPI カード | FR-10「利用状況・検索傾向・**回答品質**を可視化する」／FR-08（フィードバック収集）。契約 `DashboardSummaryDto.Quality` が実在する |
+| **利用状況（日次）**の一覧 | FR-10 の 3 本柱の 1 つ。モックは KPI カードの副題に畳んでいるが、契約は日次の内訳（`UsageTrend`）を返す |
+| **検索傾向（上位語）**の一覧 | 同上（`TopSearchTerms`） |
 
 ## レイアウト / 主要素
 
 ```
-┌───────────────────────────────────────────────┐
-│ 運用ダッシュボード            [構成ビューア →]  │  ← SC-11 へ（ConfigViewer 権限時）
-├───────────────────────────────────────────────┤
-│ [検索総数] [回答総数] [満足率]  ← サマリカード   │
-├───────────────────────────────────────────────┤
-│ 利用状況（日次件数）        検索傾向（上位語）   │
-│  日付 / 種別 / 件数の一覧    語 / 件数の一覧     │
-├───────────────────────────────────────────────┤
-│ 詳細ツール: [Grafana] [Jaeger] [Kiali]          │  ← 入口（設定時のみ）
-└───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ h1 運用ダッシュボード          集計期間 [直近 7 日 ▾]          │
+│ 利用状況・検索傾向・回答品質（SLO・コストは Grafana で参照）    │
+├──────────────────────────────────────────────────────────────┤
+│ [検索総数]      [回答総数]      [満足率]      ← Card ×3        │
+├──────────────────────────────────────────────────────────────┤
+│ 利用状況（日次）           │ 検索傾向（上位語）                │
+│  日付 / 種別 / 件数        │  検索語 / 件数                    │
+├──────────────────────────────────────────────────────────────┤
+│ 詳細ツール:                                                    │
+│  [Grafana ↗][Kiali ↗][Jaeger / Tempo ↗][構成ビューア →]        │
+│ (i) 運用面は専用ツールで提供します…                            │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-グラフ描画ライブラリは導入せず（基盤の依存を増やさない）、数値・一覧・簡易バーで表現する。可視化の高度化は Grafana 側に委ねる方針（計画の別掲）と整合する。
+グラフ描画ライブラリは導入しない（[[IADR-0036]] と同じ向き。可視化の高度化は Grafana 側に委ねる
+——計画 §別掲「運用面は専用ツールで提供する」）。数値と一覧で表す。
 
 ## 表示・入力項目
 
-| 項目 | 種別 | 必須 | 初期値 | 形式・制約 | 説明 |
-| --- | --- | --- | --- | --- | --- |
-| 集計期間 days | 入力（任意） | 任意 | 7 | 1〜90 の整数 | BFF が Clamp。未指定は 7 |
-| 検索総数 | 表示 | - | - | 整数 | `totalSearches` |
-| 回答総数 | 表示 | - | - | 整数 | `totalAnswers` |
-| 満足率 | 表示 | - | - | 0〜100% | `quality.satisfactionRate` |
-| 利用状況 | 表示 | - | - | 日次 (日付×種別×件数) | `usageTrend` |
-| 検索傾向 | 表示 | - | - | 語×件数 | `topSearchTerms` |
-| 外部ツール導線 | リンク | - | - | URL | `opsLinks`（設定時のみ） |
+| 項目 | 種別 | 出所 | 形式・制約 |
+| --- | --- | --- | --- |
+| 集計期間 `days` | 入力（任意） | 画面の `Select` | **7 / 30 / 90**。既定 7。BFF が 1〜90 へ丸める |
+| 検索総数 | 表示 | `DashboardSummaryDto.TotalSearches` | 整数 |
+| 回答総数 | 表示 | `DashboardSummaryDto.TotalAnswers` | 整数 |
+| 満足率 | 表示 | `Quality.SatisfactionRate` | 百分率（四捨五入）。副題に 👍 / 👎 の内訳 |
+| 利用状況（日次） | 表示 | `UsageTrend[]`（`Date` / `EventType` / `Count`） | 表。0 件は「期間内の利用はありません。」 |
+| 検索傾向（上位語） | 表示 | `TopSearchTerms[]`（`Term` / `Count`） | 表。0 件は「検索傾向はまだありません。」 |
+| 外部ツール導線 | リンク | 実行時 config `opsLinks` | **未設定のツールは描かない**。すべて未設定なら「外部ツールの導線は未設定です。」 |
+
+**利用イベント種別（`EventType`）は契約の 2 値**（`search` / `answer`）を表示名（検索 / AI 回答）へ写す。
+**未知の値は生値のまま**出す（`—`・「不明」へ丸めない。契約が 3 つ目を返したときに気付けるようにする）。
 
 ## バリデーション
 
-| 項目 | 条件 | エラーメッセージ |
-| --- | --- | --- |
-| 集計期間 days | 1〜90 の整数以外は送らない（UI で丸め） | （送信前に補正） |
+参照専用のため入力バリデーションは実質なし。集計期間は許可値（7 / 30 / 90）のみを提示する。
 
 ## アクション・イベント
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| 画面表示 | `GET /bff/dashboard/summary` を取得しサマリ描画 | - |
-| 期間変更 | days を変えて再取得 | - |
-| 「構成ビューア →」 | SC-11 へ遷移（ConfigViewer 権限時のみ表示） | `/admin/config-viewer`（SC-11、#137 で実装） |
-| 外部ツール押下 | 別タブで Grafana/Jaeger/Kiali を開く | 外部 URL |
+| 画面表示 | `GET /bff/dashboard/summary?days=7` を取得して描画 | 同一画面 |
+| 集計期間の変更 | `days` を変えて再取得（キャッシュキーに `days` を含む） | 同一画面 |
+| 「構成ビューア →」 | SC-11 へ遷移 | `/admin/config-viewer` |
+| 外部ツール押下 | 別タブで Grafana / Kiali / Jaeger・Tempo を開く（`rel="noreferrer"`） | 外部 URL |
 
 ## 画面遷移
 
@@ -101,35 +170,117 @@ related_specs:
 flowchart LR
   SC10[SC-10 運用ダッシュボード] --> SC11[SC-11 構成ビューア]
   SC10 -. 外部 .-> G[Grafana]
-  SC10 -. 外部 .-> J[Jaeger/Tempo]
   SC10 -. 外部 .-> K[Kiali]
+  SC10 -. 外部 .-> J[Jaeger/Tempo]
 ```
 
-## 権限・表示条件
+## 状態・異常系（**存在秘匿の中立化**）
 
-- ルート `/admin/ops` は `RequireRole anyOf=['platform-admin']`。権限外は `NotFound`（存在秘匿、[[IADR-0035]]）。
-- ナビの「運用」項目は `platform-admin` にのみ表示。
-- 「構成ビューア →」導線は ConfigViewer 相当（`platform-admin` または `platform-operator`）にのみ表示。
-  - **補足（到達性）**: 現状 `/admin/ops` は `platform-admin` 限定のため、`platform-operator` は本画面に到達しない（`RequireRole` が門前で `NotFound`）。それでも導線判定を `useHasAnyRole(Admin, Operator)` としているのは、SC-11（ConfigViewer）の認可条件（管理者・運用者）を単一の述語で共有し、将来 SC-10 を運用者にも開放した場合に導線を自動で有効化するための**意図的な先取り**である。現時点で Operator 分岐は実運用上デッドだが、SC-11 の認可と整合させるための冗長性として許容する（誤って運用者向けサマリを露出するものではない。実効境界はサーバ側 `AdminOnly`）。
-- サーバが実効境界: `/bff/dashboard/summary` は `AdminOnly`。UI をすり抜けても 403。UI は 403/404 を中立メッセージで扱う（利用可否のみ、詳細を露出しない）。
+| 状態 | 表示 |
+| --- | --- |
+| 取得中 | `role="status"`「読み込み中…」 |
+| **403（権限不足）** | **中立文言**「運用ダッシュボードは利用できません。」 |
+| **404（不在／秘匿）** | **同じ中立文言**（[[IADR-0129]] 決定 3。文言から権限の有無を読ませない） |
+| 5xx・ネットワーク断 | `Alert`（`danger`・`role="alert"`）＋ `ApiError` の詳細 |
 
-## エラー・状態
+**旧実装は 403 と 404 で文言を出し分けていた**（「このダッシュボードを表示する権限がありません。」／
+「ダッシュボードは利用できません。」）。**画面の文言から権限の有無が読める**状態であり、
+[[IADR-0009]] の趣旨に反していたため中立化した。
 
-| 状態 | 条件 | 表示 |
+**5xx は中立化しない。** 系の状態であって資源の存在ではなく、秘匿の対象ではない。
+区別しないと運用者が「権限が無い」と誤読して障害を見逃す。
+
+## 実装しない要素の理由
+
+**(a) FR の着手保留（[[IADR-0119]]）— ナレッジ健全性節（#6〜#10）**
+
+計画 §SC-10 の当該節は「**ナレッジ健全性（起案・2026-08-01。Phase 3。集計範囲は 2026-08-02 に確定）**」であり、
+辺の型ごとの使用件数・`related` フォールバック警告件数は **ADR-0033 決定3**（状態 `Proposed`）に由来する。
+孤立文書・解決できないリンク・未要約クラスタ・陳腐化文書は **FR-17 / FR-18** の指標である。
+[[IADR-0119]] 決定 2 の着手条件（前提 ADR の `Accepted`）を満たさないため実装しない。
+
+**注記の固定文言（#10）だけを先に置くこともしない**——注記は「その節の件数の読み方」を説明するものであり、
+節が無い画面に置くと**何の件数の話か分からない**。
+
+**(b) 契約の不在 — SLO（#3）・LLM コスト（#5）・一意利用者数（#4 の部分）**
+
+| 要素 | 契約の実測 |
+| --- | --- |
+| SLO 達成率・検索 p95 | `DashboardSummaryDto(TotalSearches, TotalAnswers, UsageTrend, TopSearchTerms, Quality)` に**該当項目が無い**。レイテンシは可観測性基盤（Prometheus / Grafana）側にあり、BFF は集約していない |
+| LLM コスト | 同上。コストの集計はモデル呼び出しの課金情報を要し、**返す口が無い** |
+| 一意利用者数（人/日） | `UsagePointDto(Date, EventType, Count)` は**イベント件数**であり、利用者の一意性を持たない |
+
+**「—」の KPI カードを置く**案は採らない。常に「—」のカードは、指標が**未取得なのか未実装なのか**を
+区別できず、運用画面としてむしろ有害である（#502 が確立した「動かない UI を置かない」）。
+
+## 権限・表示条件（**計画との差異あり**）
+
+| | 計画 | 実装 |
 | --- | --- | --- |
-| loading | 取得中 | `role="status"` 読み込み中 |
-| ok | 200 | サマリ描画 |
-| forbidden | 403 | 「このダッシュボードを表示する権限がありません。」 |
-| notFound | 404 | 「ダッシュボードは利用できません。」（存在秘匿と整合、[[IADR-0009]]） |
-| error | 5xx/network | `role="alert"` 取得失敗 |
+| 閲覧ロール | §SC-10「**運用者・管理者**ロール限定（モックの「運用」バッジ準拠）」 | **`platform-admin` のみ** |
 
-## 関連仕様
+**据え置きの根拠**（[[IADR-0129]] 決定 4）: データ源 `/bff/dashboard/summary` は `AdminOnly` であり、
+**後段 `DashboardService` の集計も `AdminOnly`** である（[[IADR-0011]]）。画面だけを運用者へ開くと、
+運用者には「開くと必ず 403 になる画面」が見えることになる——#503 が SC-07 で名指しした
+「**画面と API の権限がずれている**」形そのものである。**BFF と後段を同時に広げる判断は計画側の裁定を要する**
+（環流記録の提案 7）。planning#198 提案 8（SC-05/06/07 の閲覧ロール）と**同じ類型だが向きが逆**である
+（planning#198 は「計画は管理者限定だが実装が広い」、本件は「計画は運用者も許すが実装が狭い」）。
 
-- 実装 ADR: [[IADR-0035]]（ロールベース nav・存在秘匿）、[[IADR-0033]]（SPA 基盤）、[[IADR-0011]]（ダッシュボード集約）
-- 画面仕様書: [[SC-11]] 構成ビューア（`docs/screens/SC-11_configuration-viewer.md`）
-- テスト仕様書: `docs/tests/SC-10_operations-dashboard.md`
-- 作業仕様書: `docs/specs/20260708_issue-136_sc10-operations-dashboard.md`
+**SC-11 への導線を権限で出し分けない理由**: SC-10 に到達できるのは `platform-admin` だけであり、
+`platform-admin` は `ConfigViewer`（admin または operator）の部分集合である。
+`useHasAnyRole(Admin, Operator)` は**この画面では常に真**になる——旧実装が持っていたこの分岐は
+`CLAUDE.md`「起こり得ないケースへの防御的実装を避ける」に反する到達しない分岐であった
+（旧仕様書はこれを「将来の開放に備えた意図的な先取り」と説明していたが、**先取りは分岐ではなくロールの定義で行う**）。
+**SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分けを書く。**
+
+その他:
+
+- 権限外は `RequireRole` → **`NotFound`**（存在秘匿）。**未知パスの `NotFound` と markup が一致する**ことを
+  テストで固定する（#490 が確立した作法）。
+- **権限外では BFF を呼ばない**（要求の有無から画面の存在を推測させない）。
+- 左ナビは `requiresAnyRole: [platform-admin]`・`group: 'ops'`。
+- 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
+
+## データソース（BFF 境界）
+
+| 用途 | エンドポイント | 応答 | 認可 |
+| --- | --- | --- | --- |
+| サマリ | `GET /bff/dashboard/summary?days={7\|30\|90}` | `DashboardSummaryDto` | **AdminOnly**（403 / 401） |
+
+- BFF は `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する。
+  `days` は BFF が 1〜90 へ丸め、両後段へ同じ値を渡す（期間の起点を揃えるため）。
+- **`docs/api/openapi.yaml` に本群が無く orval 生成フックが存在しない**ため、`apiFetch` ＋ 手書き型で呼ぶ
+  （出口は `foundation/api` の 1 箇所に収束している。欠落は **#506** の射程）。
+- キャッシュキー: `['bff','dashboard','summary', days]`（**期間を含める**——期間を変えると別の問い合わせになる）。
+
+## 外部ツール導線（実行時 config）
+
+接続先をビルドへ焼き込まない（[[IADR-0121]] 決定 3）。`platform/frontend/public/config.js` が注入する
+`opsLinks` から組み立てる。**未設定のツールは描かない**（Kiali 未配備などを想定した既存の設計）。
+
+| ID | 表示名 | 副題 | config |
+| --- | --- | --- | --- |
+| `grafana` | Grafana | メトリクス・コスト | `opsLinks.grafanaUrl` |
+| `kiali` | Kiali | サービスメッシュ | `opsLinks.kialiUrl` |
+| `tracing` | Jaeger / Tempo | 分散トレース | `opsLinks.jaegerUrl` |
+
+**表示名は翻訳しない**（製品の固有名詞）。**副題は翻訳する**（役割の説明であり、計画 §主要素 の記述に由来する）。
+**ページから外部 CDN・Web フォント・analytics へ接続することはない**（08_data-egress-policy）——
+ここで扱うのは**運用者が自分で押して開くリンク**である。
+
+## 実装
+
+- BFF: `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DashboardBffEndpoints.cs`
+- フロント: `src/knowledge/frontend/src/features/sc10-operations/`
+  （`index.tsx` / `OperationsDashboardPage.tsx` / `useDashboardSummary.ts` / `opsTools.ts`）
+- 実行時 config: `src/platform/frontend/src/foundation/config/runtimeConfig.ts`（`OpsLinks`）
+- テスト観点は [tests/SC-10_operations-dashboard.md](../tests/SC-10_operations-dashboard.md)。
 
 ## 未決事項
 
-- なし（外部ツール URL は環境の実行時 config で注入する。Kiali は未配備のため既定では未設定＝非表示。導線の高度な可視化は Grafana 側に委ねる）。
+1. **SLO 指標の契約**（達成率・p95）——環流記録
+   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md` の提案 4。**起票は親**。
+2. **LLM コストの契約**——同 提案 5。
+3. **一意利用者数（人/日）**——同 提案 6。**部分未実装**の側。
+4. **閲覧ロール**（計画=運用者・管理者／実装=管理者のみ）——同 提案 7。
+5. **ナレッジ健全性節**——[[IADR-0119]] の保留解除待ち（ADR-0033・0034・0035 の `Accepted` 化）。

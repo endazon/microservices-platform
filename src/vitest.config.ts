@@ -159,11 +159,28 @@ export default defineConfig({
       //   （useCallback + useEffect + load() の呼び直し）を TanStack Query へ置き換えて
       //   **測るべき分岐そのものが減った**ぶんも含む（IADR-0127 決定 5）。
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      //
+      // ［2026-08-05 / #504］SC-09〜11 の新スタックでの再実装に伴う引き上げ。
+      //   実測（測定条件は上と同じ。worktree `feat/SC-09-11-admin-ops-screens` / `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 95.91%（5429/5660）/ branches 89.79%（1118/1245）/
+      //                           functions 91.81%（415/452）
+      //     MSP 所有分のみ        lines 95.22%（4162/4371）/ branches 90.72%（851/938）/
+      //                           functions 93.06%（322/346）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 88 → 90 / branches 83 → 85 / functions 84 → 88 へ引き上げる。
+      //   上げた分は「3 画面の分岐（存在秘匿の中立表示・領域ごとの縮退・権限別の出し分け・
+      //   403/404 の中立化・未知の値の素通し）と、**着手保留（FR-17 / FR-18）・契約の不在の要素が
+      //   描かれないこと**にテストを付けた」ことと、**値集合を純関数テストで固定した**
+      //   （`abacVocabulary` / `driftView` / `opsTools`。IADR-0129 決定 6）ことによる。
+      //   branches の伸びは #502 / #503 と同じく、旧 3 画面の手書きの取得・再取得
+      //   （useEffect ＋ 複数の state ＋ load() の呼び直し）を TanStack Query へ置き換えて
+      //   **測るべき分岐そのものが減った**ぶんも含む。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
       thresholds: {
-        lines: 88,
-        statements: 88,
-        functions: 84,
-        branches: 83,
+        lines: 90,
+        statements: 90,
+        functions: 88,
+        branches: 85,
       },
     },
   },

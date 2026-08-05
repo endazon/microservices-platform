@@ -1,167 +1,319 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
+import { activate } from '@foundation/i18n';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 
-// SC-11 #137/#138, FR-15: 実効構成の表示、ドリフト一覧・0件OK、秘匿(404)/異常系を検証する。
-// データソース /bff/admin/config と /bff/admin/config/drift をパスで振り分けてモックする。
+// SC-11, FR-15, ADR-0018: 構成ビューアの再実装（#504）。
+// 実効構成・ドリフト・構成バージョン履歴の表示と、領域ごとの縮退を固定する。
 const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
-vi.mock('@foundation/api/apiClient', () => ({ apiFetch: mocks.apiFetch }));
+vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
+  apiFetch: mocks.apiFetch,
+}));
 
-import { ConfigViewerPage } from './ConfigViewerPage';
+import { createSc11ConfigRoute } from './index';
 
 const CONFIG = {
-  version: { gitCommit: 'abcdef1234567', appliedAt: '2026-07-08T00:00:00Z', appliedBy: 'gitops' },
+  version: {
+    gitCommit: 'a3f81c2ffffffffffffffffffffffffffffffffff',
+    appliedAt: '2026-07-22T14:05:00Z',
+    appliedBy: 'argocd',
+  },
   pipeline: [
-    { name: 'ingest', service: 'ingestion', consumer: 'IngestConsumer', input: 'doc.received', outputs: ['doc.normalized'], enabled: true },
-    { name: 'legacy', service: 'ingestion', consumer: 'OldConsumer', input: 'doc.x', outputs: [], enabled: false },
+    {
+      name: 'convert',
+      service: 'conversion-service',
+      consumer: 'RawDocumentFetchedConsumer',
+      input: 'RawDocumentFetched',
+      outputs: ['DocumentNormalized'],
+      enabled: true,
+    },
+    {
+      name: 'embed',
+      service: 'embedding-service',
+      consumer: 'DocumentNormalizedConsumer',
+      input: 'DocumentNormalized',
+      outputs: ['DocumentEmbedded'],
+      enabled: true,
+    },
+    {
+      name: 'wiki-sync',
+      service: 'wiki-sync-service',
+      consumer: 'DocumentEmbeddedConsumer',
+      input: 'DocumentEmbedded',
+      outputs: [],
+      enabled: false,
+    },
   ],
-  eventBindings: [{ event: 'doc.normalized', publishers: ['ingestion'], subscribers: ['indexing'] }],
-  ports: [{ port: 'llm', implementation: 'openai', target: 'gpt-x' }],
-  connectors: [{ name: 'sharepoint', enabled: true }],
-};
-const DRIFT_OK = { hasDrift: false, checkedAt: '2026-07-08T00:05:00Z', findings: [] };
-// 深刻度は実 API（DriftDetector）が返す Warning / Info を用いる（IADR-0029）。
-const DRIFT_FOUND = {
-  hasDrift: true,
-  checkedAt: '2026-07-08T00:05:00Z',
-  findings: [
-    { kind: 'StaleStage', severity: 'Warning', target: 'legacy', detail: '宣言に無い段が残留' },
-    { kind: 'Unverifiable', severity: 'Info', target: 'ingest', detail: '照合できない要素' },
+  eventBindings: [
+    { event: 'DocumentNormalized', publishers: ['conversion-service'], subscribers: ['embedding-service'] },
+  ],
+  ports: [{ port: 'embedding', implementation: 'VoyageAI', target: 'voyage-3.5' }],
+  connectors: [
+    { name: 'filesystem', enabled: true },
+    { name: 'wiki', enabled: false },
   ],
 };
 
-// #139: 構成バージョン履歴（新しい順）。API（/admin/config/history）が並び順・データ源を担い、本画面は表示のみ。
+const DRIFT = {
+  hasDrift: true,
+  checkedAt: '2026-07-22T14:10:00Z',
+  findings: [
+    {
+      kind: 'BindingMismatch',
+      severity: 'Warning',
+      target: 'embed',
+      detail: '宣言 64 / 実効 32（手動変更の疑い）',
+    },
+  ],
+};
+
+const NO_DRIFT = { hasDrift: false, checkedAt: '2026-07-22T14:10:00Z', findings: [] };
+
 const HISTORY = [
-  { gitCommit: 'abcdef1234567', appliedAt: '2026-07-08T00:00:00Z', appliedBy: 'gitops', hadDrift: false },
-  { gitCommit: '9876543210fed', appliedAt: '2026-07-05T00:00:00Z', appliedBy: 'argocd', hadDrift: true },
+  { gitCommit: 'a3f81c2000000', appliedAt: '2026-07-22T14:05:00Z', appliedBy: 'argocd', hadDrift: true },
+  { gitCommit: '9d02b77000000', appliedAt: '2026-07-15T09:12:00Z', appliedBy: 'argocd', hadDrift: false },
 ];
 
-interface RouteOpts {
-  config?: typeof CONFIG;
-  configError?: ApiError;
-  drift?: typeof DRIFT_OK | typeof DRIFT_FOUND;
-  driftError?: boolean;
-  history?: typeof HISTORY;
-  historyError?: boolean;
-}
-function route(opts: RouteOpts = {}) {
+/** パスごとに応答（または失敗）を差し替えるモック。3 本を独立に壊せるようにする。 */
+function mockApi(
+  overrides: Partial<Record<'config' | 'drift' | 'history', unknown | Error>> = {},
+) {
   mocks.apiFetch.mockImplementation(async (path: string) => {
-    if (path === '/admin/config') {
-      if (opts.configError) throw opts.configError;
-      return opts.config ?? CONFIG;
-    }
-    if (path === '/admin/config/drift') {
-      if (opts.driftError) throw new ApiError('server', 'x', 500);
-      return opts.drift ?? DRIFT_OK;
-    }
-    if (path === '/admin/config/history') {
-      if (opts.historyError) throw new ApiError('server', 'x', 500);
-      return opts.history ?? [];
-    }
-    throw new ApiError('unknown', 'x', 0);
+    const pick = (value: unknown) => {
+      if (value instanceof Error) throw value;
+      return value;
+    };
+    if (path === '/admin/config/drift') return pick(overrides.drift ?? DRIFT);
+    if (path === '/admin/config/history') return pick(overrides.history ?? HISTORY);
+    return pick(overrides.config ?? CONFIG);
   });
 }
 
-// 注意: アロー式の暗黙 return を避ける。mockReset() はモックを返し、それを beforeEach が返すと
-// vitest がテスト後のティアダウン関数として実行して apiFetch(undefined) を呼ぶ（ルーティング用
-// フォールバックの throw を誤発火させる）。ブロック本体で undefined を返す。
+async function renderPage(roles: readonly string[] = ['platform-operator']) {
+  return renderUnitRoute((shell) => [createSc11ConfigRoute(shell)], {
+    initialEntry: '/admin/config-viewer',
+    roles,
+  });
+}
+
 beforeEach(() => {
   mocks.apiFetch.mockReset();
 });
 
-describe('ConfigViewerPage (SC-11 #137/#138)', () => {
-  it('fetches /admin/config and renders effective configuration', async () => {
-    route();
-    render(<ConfigViewerPage />);
+afterEach(() => {
+  act(() => {
+    activate('ja');
+  });
+});
 
-    expect(await screen.findByText('abcdef1')).toBeInTheDocument();
+describe('ConfigViewerPage (SC-11)', () => {
+  // 計画 §SC-11 §主要素: 実効構成（段・接続・ポート・コネクタ）＋ 構成バージョン。
+  it('shows the effective configuration with the config version in the header', async () => {
+    mockApi();
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: '実効構成' })).toBeInTheDocument();
+    // コミット ID は短縮 7 桁で示す（完全な値は title 属性）。
+    expect(screen.getByText('コミット a3f81c2')).toBeInTheDocument();
+    expect(screen.getByText('適用者 argocd')).toBeInTheDocument();
+
+    const stages = within(screen.getByRole('list', { name: 'パイプライン段' }));
+    expect(stages.getByText('convert')).toBeInTheDocument();
+    expect(stages.getByText('embed')).toBeInTheDocument();
+    expect(stages.getByText('wiki-sync')).toBeInTheDocument();
+
+    expect(screen.getByText('DocumentNormalized')).toBeInTheDocument();
+    expect(screen.getByText('VoyageAI')).toBeInTheDocument();
+    expect(screen.getByText('filesystem')).toBeInTheDocument();
+
     expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config');
-    expect(screen.getByText(/consumer: IngestConsumer/)).toBeInTheDocument();
-    expect(screen.getByText('doc.normalized')).toBeInTheDocument();
-    expect(screen.getByText('openai')).toBeInTheDocument();
-    expect(screen.getByText(/sharepoint: 有効/)).toBeInTheDocument();
-  });
-
-  it('marks disabled stages (terminal output shown)', async () => {
-    route();
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText(/legacy/)).toBeInTheDocument();
-    expect(screen.getByText(/（終端）/)).toBeInTheDocument();
-  });
-
-  it('shows OK when there is no drift (0 findings)', async () => {
-    route({ drift: DRIFT_OK });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText(/ドリフトなし（OK）/)).toBeInTheDocument();
-  });
-
-  it('lists drift findings with kind/severity/target and colors by real severity (Warning/Info)', async () => {
-    route({ drift: DRIFT_FOUND });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText('StaleStage')).toBeInTheDocument();
-    expect(screen.getByText('宣言に無い段が残留')).toBeInTheDocument();
-    // 実 API が返す深刻度（Warning=橙 / Info=灰）に着色されることを検証する。
-    expect(screen.getByText('Warning')).toHaveStyle({ color: '#e67e22' });
-    expect(screen.getByText('Info')).toHaveStyle({ color: '#7f8c8d' });
-    expect(screen.getByText(/宣言との差分（ドリフト）: ドリフト 2 件/)).toBeInTheDocument();
-  });
-
-  // #138 §(1): ドリフト対象（finding.target）に一致する実効構成の段は、警告リンク付きで強調され、
-  // (2) のドリフト明細（#drift-section）へリンクする。
-  it('emphasizes effective-config stages matching a drift target with a link to the drift detail', async () => {
-    route({ drift: DRIFT_FOUND });
-    render(<ConfigViewerPage />);
-    const pipeline = await screen.findByRole('list', { name: 'パイプライン段' });
-    // legacy・ingest の2段がドリフト対象なので、いずれもドリフトリンクが付く。
-    const marks = within(pipeline).getAllByRole('link', { name: /ドリフト/ });
-    expect(marks).toHaveLength(2);
-    marks.forEach((m) => expect(m).toHaveAttribute('href', '#drift-section'));
-  });
-
-  it('degrades the drift area only when drift fetch fails (config still shown)', async () => {
-    route({ driftError: true });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText('abcdef1')).toBeInTheDocument();
-    expect(screen.getByText('ドリフト情報は利用できません。')).toBeInTheDocument();
-  });
-
-  it('shows a neutral message on 404 config (existence hidden)', async () => {
-    route({ configError: new ApiError('notFound', 'x', 404) });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText('構成情報は利用できません。')).toBeInTheDocument();
-  });
-
-  it('shows an alert on server error', async () => {
-    route({ configError: new ApiError('server', 'x', 500) });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('取得に失敗');
-  });
-
-  // #139: 構成バージョン履歴を新しい順・短縮コミット・ドリフト有無つきで一覧する。
-  it('lists config version history with short commit, applied info and drift状態', async () => {
-    route({ history: HISTORY });
-    render(<ConfigViewerPage />);
-
-    const table = await screen.findByRole('table', { name: '構成バージョン履歴' });
+    expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config/drift');
     expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config/history');
-    // 短縮コミット（7 桁）・適用者・ドリフト有無（false→なし / true→あり）が表示される。
-    expect(within(table).getByText('abcdef1')).toBeInTheDocument();
-    expect(within(table).getByText('9876543')).toBeInTheDocument();
-    expect(within(table).getByText('gitops')).toBeInTheDocument();
-    expect(within(table).getByText('あり')).toBeInTheDocument();
-    expect(within(table).getByText('なし')).toBeInTheDocument();
   });
 
-  it('shows empty history message when there is no applied history', async () => {
-    route({ history: [] });
-    render(<ConfigViewerPage />);
+  // 段の終端は「（終端）」で示す（outputs が空）。INDEX 決定 21: 無効段は淡色だけで示さない。
+  it('marks a terminal stage and labels a disabled stage with text, not only opacity', async () => {
+    mockApi();
+    await renderPage();
+
+    const stages = within(await screen.findByRole('list', { name: 'パイプライン段' }));
+    expect(stages.getByText(/（終端）/)).toBeInTheDocument();
+    // 「無効」は StatusBadge（アイコン ＋ テキスト）で出る。
+    expect(stages.getAllByText('無効').length).toBeGreaterThan(0);
+  });
+
+  // 計画 §SC-11 §主要素: 宣言との差分表示（ドリフト警告）。実効構成側にも強調する。
+  it('lists the drift findings and highlights the affected stage', async () => {
+    mockApi();
+    await renderPage();
+
+    expect(await screen.findByText('接続の不一致')).toBeInTheDocument();
+    expect(screen.getByText('宣言 64 / 実効 32（手動変更の疑い）')).toBeInTheDocument();
+    // ヘッダの全体状態（色 ＋ アイコン ＋ テキスト）。
+    expect(screen.getByText('ドリフト 1 件')).toBeInTheDocument();
+    // 実効構成側の強調は明細セクションへのリンクとして出る。
+    expect(screen.getByRole('link', { name: '⚠ ドリフト（明細へ）' })).toHaveAttribute(
+      'href',
+      '#sc11-drift-section',
+    );
+  });
+
+  // 0 件でも「検出が実行済みであること」を確認時刻とともに示す（未検出と未実行を区別する）。
+  it('states that there is no drift, with the time the check ran', async () => {
+    mockApi({ drift: NO_DRIFT });
+    await renderPage();
+
+    expect(await screen.findByText('ドリフトなし（OK）。')).toBeInTheDocument();
+    expect(screen.getByText('ドリフトなし')).toBeInTheDocument();
+    expect(screen.getByText(/確認時刻/)).toBeInTheDocument();
+  });
+
+  // #139 / IADR-0046: 履歴は新しい順。hadDrift は 3 値（あり / なし / 不明）。
+  it('lists the configuration version history in the order the API returns', async () => {
+    mockApi();
+    await renderPage();
+
+    const table = within(await screen.findByRole('table', { name: '構成バージョン履歴の一覧' }));
+    expect(table.getByText('a3f81c2')).toBeInTheDocument();
+    expect(table.getByText('9d02b77')).toBeInTheDocument();
+    expect(table.getByText('あり')).toBeInTheDocument();
+    expect(table.getByText('なし')).toBeInTheDocument();
+  });
+
+  it('says the history is empty rather than hiding the section', async () => {
+    mockApi({ history: [] });
+    await renderPage();
+
     expect(await screen.findByText('適用履歴はありません。')).toBeInTheDocument();
   });
 
-  it('degrades the history area only when history fetch fails (config still shown)', async () => {
-    route({ historyError: true });
-    render(<ConfigViewerPage />);
-    expect(await screen.findByText('abcdef1')).toBeInTheDocument();
-    expect(screen.getByText('バージョン履歴は利用できません。')).toBeInTheDocument();
+  // IADR-0129 決定 5: 3 本は独立。ドリフトが落ちても構成は出し続ける。
+  // 決定 3 は**従の問い合わせにも効く**——5xx は中立化せず `role="alert"` の障害として出す
+  // （中立文言へ寄せると運用者が「権限が無い」と誤読して障害を見逃す）。
+  it('degrades only the drift section when the drift query fails', async () => {
+    mockApi({ drift: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('ドリフト情報は利用できません。')).not.toBeInTheDocument();
+    // 構成は表示され続ける。
+    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+    // 取得できていないので全体バッジは出さない（「0 件」と紛れるため）。
+    expect(screen.queryByText('ドリフトなし')).not.toBeInTheDocument();
+  });
+
+  // 404 は「不在」と「権限による秘匿」を区別しない中立文言へ寄せる（決定 3）。
+  it('shows the neutral drift message for a 404 without an alert', async () => {
+    mockApi({ drift: new ApiError('notFound', 'nope', 404) });
+    await renderPage();
+
+    expect(await screen.findByText('ドリフト情報は利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+  });
+
+  it('degrades only the history section when the history query fails', async () => {
+    mockApi({ history: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('バージョン履歴は利用できません。')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'パイプライン段' })).toBeInTheDocument();
+  });
+
+  it('shows the neutral history message for a 404 without an alert', async () => {
+    mockApi({ history: new ApiError('notFound', 'nope', 404) });
+    await renderPage();
+
+    expect(await screen.findByText('バージョン履歴は利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // IADR-0009: 404 は「不在」と「権限による秘匿」を区別しない中立文言にする。
+  it('shows a neutral message for a 404 without revealing whether it exists', async () => {
+    mockApi({ config: new ApiError('notFound', 'nope', 404) });
+    await renderPage();
+
+    expect(await screen.findByText('構成情報は利用できません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // 5xx は中立化しない（系の状態であって資源の存在ではない）。
+  it('surfaces a server failure as an alert instead of the neutral message', async () => {
+    mockApi({ config: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバでエラーが発生しました。');
+    expect(screen.queryByText('構成情報は利用できません。')).not.toBeInTheDocument();
+  });
+
+  // 実効構成が取れなければ他の 2 領域も出さない（何に対する差分か読めないため）。
+  // **ドリフトは成功したまま**にして、実効構成の失敗だけで隠れることを見る（既定の DRIFT は 1 件）。
+  it('hides the drift and history sections when the effective config is unavailable', async () => {
+    mockApi({ config: new ApiError('notFound', 'nope', 404) });
+    await renderPage();
+
+    await screen.findByText('構成情報は利用できません。');
+    expect(screen.queryByText('接続の不一致')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('table', { name: '構成バージョン履歴の一覧' }),
+    ).not.toBeInTheDocument();
+    // ヘッダのバッジも出さない。**明細が無いのに件数だけが残る**のが IADR-0129 決定 5 が
+    // 名指しで禁じた形である（3 本のクエリは独立に走るため実際に起こる組み合わせ）。
+    expect(screen.queryByText('ドリフト 1 件')).not.toBeInTheDocument();
+  });
+
+  // 同じことを 5xx でも見る（404 は「秘匿」、5xx は「障害」であり経路が違う）。
+  it('hides the drift badge when the effective config fails with a server error', async () => {
+    mockApi({ config: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    await renderPage();
+
+    await screen.findByRole('alert');
+    expect(screen.queryByText('ドリフト 1 件')).not.toBeInTheDocument();
+  });
+
+  // 参照専用。構成を変更する操作は画面に存在しない。**先に見えるはずの要素を確かめてから**
+  // 無いことを見る（#502 の M3 の教訓）。
+  it('offers no way to change the configuration (read-only screen)', async () => {
+    mockApi();
+    await renderPage();
+
+    // 見えるはずのもの（再取得ボタンと注記）が在ることを先に確かめる。
+    expect(await screen.findByRole('button', { name: '再取得' })).toBeInTheDocument();
+    expect(screen.getByText(/構成の変更は Git 経由（GitOps）に限ります。/)).toBeInTheDocument();
+    // 参照以外のボタンは無い。
+    const buttons = screen.getAllByRole('button').map((b) => b.textContent);
+    expect(buttons).toEqual(['再取得']);
+  });
+
+  // 再取得は 3 本を取り直す（手書きの再取得は持たない。invalidateQueries だけ）。
+  it('refetches all three queries when the refresh button is pressed', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('heading', { name: '実効構成' });
+    const before = mocks.apiFetch.mock.calls.length;
+
+    await user.click(screen.getByRole('button', { name: '再取得' }));
+
+    await waitFor(() => expect(mocks.apiFetch.mock.calls.length).toBe(before + 3));
+  });
+
+  // ADR-0031: 文言は Lingui のカタログ（ja / en）。
+  it('renders in English when the en locale is active', async () => {
+    mockApi();
+    await renderPage();
+    await screen.findByRole('heading', { name: '実効構成' });
+
+    act(() => {
+      activate('en');
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Effective configuration' }),
+    ).toBeInTheDocument();
   });
 });

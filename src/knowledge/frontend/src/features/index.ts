@@ -28,9 +28,9 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
     createSc06DataSourcesRoute(shell), // SC-06 データソース管理（#132）
     createSc07ConversionsRoute(shell), // SC-07 変換ジョブ（#133）
     createSc08AnalysisRoute(shell), // SC-08 AI分析ダッシュボード（#134）
-    createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135）
-    createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136）
-    createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140）
+    createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135 → 新スタックで再実装 #504）
+    createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136 → 新スタックで再実装 #504）
+    createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140 → 新スタックで再実装 #504）
   ] as const;
 
 // 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。

@@ -1,312 +1,65 @@
-import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '@foundation/api/apiClient';
-import { ErrorList } from '@foundation/ui/ErrorList';
-import { toMessages } from '@foundation/ui/apiErrors';
+import { Trans, useLingui } from '@lingui/react/macro';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@platform/ui';
+import { AttributeDictionaryPanel } from './AttributeDictionaryPanel';
+import { PolicyEditorPanel } from './PolicyEditorPanel';
+import { useAbacAttributes, useAbacPolicies } from './useAbacAdmin';
 
-// SC-09, UC-05, FR-09: 管理者設定（ABAC）画面。属性辞書・アクセスポリシーを管理する（platform-admin 限定）。
-// データソースは BFF 集約（/bff/admin/authz/*）。保存前検証（矛盾・構文）は AuthorizationService が行い、
-// 400 の詳細を画面へ表示する（IADR-0040）。属性が参照中の削除は 409 で拒否される（IADR-0006）。
-
-interface AttributeDef {
-  id: string;
-  key: string;
-  label: string;
-  allowedValues: string[];
-  required: boolean;
-  scope: string;
-}
-interface Policy {
-  id: string;
-  name: string;
-  action: string;
-  userConditions: Record<string, string[]>;
-  documentConditions: Record<string, string[]>;
-  isActive: boolean;
-}
-
-const ATTR = '/admin/authz/attributes';
-const POL = '/admin/authz/policies';
-const ACTIONS = ['read', 'analyze', 'manage'] as const;
-const SCOPES = ['document', 'user'] as const;
+// SC-09, UC-05, FR-09: 管理者設定（ABAC）（05_screens: ルート /admin/abac）。
+// 区画の切替は @platform/ui の Tabs（#496 で移植済み。hi-fi の seg / seg-opt に対応）。
+//
+// 実装しない区画（画面仕様書 docs/screens/SC-09_admin-abac-settings.md §hi-fi モックアップとの対応）:
+//   - **辺の型辞書**: **着手保留**（IADR-0119）。計画 §SC-09 の当該節は見出し自体が
+//     「辺の型（値集合）の管理（起案・2026-08-02。FR-17・ADR-0033 決定3）」であり、画面一覧の
+//     SC-09 行も関連要求に FR-17 を挙げる。前提 ADR-0033 の状態は Proposed であり、
+//     IADR-0119 決定 2 の着手条件（Accepted）を満たさない。**値集合だけを先に作ることもしない**
+//     ——中核 5 種・推奨追加 4 種・逆向きの表示語はいずれも ADR-0033 決定3 の内容そのものである。
+//   - **タグ辞書**: **契約の不在**。/bff/admin/authz にあるのは attributes と policies の 2 群だけで、
+//     タグ辞書の値集合を返す口・使用件数・改名の追随のいずれも無い。計画が確定した規則
+//     （参照 1 件以上は削除拒否・件数 N の提示・改名は既存文書が追随）はそのすべてが契約側の機能である。
+//   いずれも**空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
+//   「動かない UI を置かない」）。記録は feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
 
 export function AdminAbacSettingsPage() {
-  const [attributes, setAttributes] = useState<AttributeDef[]>([]);
-  const [policies, setPolicies] = useState<Policy[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ok' | 'error'>('loading');
-
-  const load = useCallback(() => {
-    setStatus('loading');
-    Promise.all([apiFetch<AttributeDef[]>(ATTR), apiFetch<Policy[]>(POL)])
-      .then(([attrs, pols]) => {
-        setAttributes(attrs ?? []);
-        setPolicies(pols ?? []);
-        setStatus('ok');
-      })
-      .catch(() => setStatus('error'));
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { t } = useLingui();
+  const attributes = useAbacAttributes();
+  const policies = useAbacPolicies();
 
   return (
     <section>
-      <h1>管理者設定（ABAC）</h1>
-      {status === 'loading' && <p role="status">読み込み中…</p>}
-      {status === 'error' && <p role="alert">設定の取得に失敗しました。</p>}
-      {status === 'ok' && (
-        <>
-          <AttributeSection attributes={attributes} onChanged={load} />
-          <PolicySection policies={policies} onChanged={load} />
-        </>
-      )}
-    </section>
-  );
-}
+      <h1 className="mb-3 text-lg font-semibold text-[--color-fg]">
+        <Trans>管理者設定（ABAC）</Trans>
+      </h1>
 
-// ---- 属性辞書 ----
-function AttributeSection({ attributes, onChanged }: { attributes: AttributeDef[]; onChanged: () => void }) {
-  const [key, setKey] = useState('');
-  const [label, setLabel] = useState('');
-  const [allowedValues, setAllowedValues] = useState('');
-  const [required, setRequired] = useState(false);
-  const [scope, setScope] = useState<(typeof SCOPES)[number]>('document');
-  const [errors, setErrors] = useState<string[]>([]);
+      {/* 既定は「ポリシー定義」（hi-fi 417 が同区画を選択中に描く）。 */}
+      <Tabs defaultValue="policies">
+        <TabsList aria-label={t`ABAC 設定の区画`}>
+          <TabsTrigger value="attributes">
+            <Trans>属性体系</Trans>
+          </TabsTrigger>
+          <TabsTrigger value="policies">
+            <Trans>ポリシー定義</Trans>
+          </TabsTrigger>
+        </TabsList>
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setErrors([]);
-    try {
-      await apiFetch(ATTR, {
-        method: 'POST',
-        json: {
-          key: key.trim(),
-          label: label.trim(),
-          allowedValues: allowedValues.split(',').map((v) => v.trim()).filter(Boolean),
-          required,
-          scope,
-        },
-      });
-      setKey('');
-      setLabel('');
-      setAllowedValues('');
-      onChanged();
-    } catch (err) {
-      setErrors(toMessages(err, '属性辞書の登録に失敗しました。'));
-    }
-  }
+        <TabsContent value="attributes">
+          <AttributeDictionaryPanel
+            attributes={attributes.data ?? []}
+            isPending={attributes.isPending}
+            isError={attributes.isError}
+            error={attributes.error}
+          />
+        </TabsContent>
 
-  async function onDelete(id: string) {
-    setErrors([]);
-    try {
-      await apiFetch(`${ATTR}/${id}`, { method: 'DELETE' });
-      onChanged();
-    } catch (err) {
-      // 参照中の属性は 409（IADR-0006）。理由を表示する。
-      setErrors(toMessages(err, '属性辞書の削除に失敗しました。'));
-    }
-  }
-
-  return (
-    <section aria-label="属性辞書">
-      <h2>属性辞書</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>キー</th>
-            <th>ラベル</th>
-            <th>スコープ</th>
-            <th>許可値</th>
-            <th>必須</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {attributes.map((a) => (
-            <tr key={a.id}>
-              <td>{a.key}</td>
-              <td>{a.label}</td>
-              <td>{a.scope}</td>
-              <td>{a.allowedValues.join(' / ')}</td>
-              <td>{a.required ? '必須' : '任意'}</td>
-              <td>
-                {/* 対象を含む aria-label で取り違え・アクセシビリティを堅牢にする。 */}
-                <button type="button" aria-label={`属性を削除: ${a.key}`} onClick={() => void onDelete(a.id)}>
-                  削除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <form onSubmit={onCreate} aria-label="属性辞書登録">
-        <h3>属性を追加</h3>
-        <div>
-          <label htmlFor="attr-key">キー（必須）</label>
-          <br />
-          <input id="attr-key" value={key} onChange={(e) => setKey(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="attr-label">ラベル</label>
-          <br />
-          <input id="attr-label" value={label} onChange={(e) => setLabel(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="attr-values">許可値（カンマ区切り）</label>
-          <br />
-          <input id="attr-values" value={allowedValues} onChange={(e) => setAllowedValues(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="attr-scope">スコープ</label>
-          <br />
-          <select id="attr-scope" value={scope} onChange={(e) => setScope(e.target.value as typeof scope)}>
-            {SCOPES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-        <label>
-          <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} /> 必須
-        </label>
-        <ErrorList errors={errors} />
-        <button type="submit" disabled={key.trim().length === 0}>
-          追加する
-        </button>
-      </form>
-    </section>
-  );
-}
-
-// ---- ポリシー ----
-function PolicySection({ policies, onChanged }: { policies: Policy[]; onChanged: () => void }) {
-  const [name, setName] = useState('');
-  const [action, setAction] = useState<(typeof ACTIONS)[number]>('read');
-  const [userConditions, setUserConditions] = useState('{}');
-  const [documentConditions, setDocumentConditions] = useState('{}');
-  const [errors, setErrors] = useState<string[]>([]);
-
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setErrors([]);
-    // 条件は {key: [値,…]} 形式の JSON。構文エラーはローカルで検出する（矛盾検証はサーバ側）。
-    let userCond: unknown;
-    let docCond: unknown;
-    try {
-      userCond = JSON.parse(userConditions || '{}');
-      docCond = JSON.parse(documentConditions || '{}');
-    } catch {
-      setErrors(['条件は正しい JSON（{"key":["値"]} 形式）で入力してください。']);
-      return;
-    }
-    try {
-      await apiFetch(POL, {
-        method: 'POST',
-        json: { name: name.trim(), action, userConditions: userCond, documentConditions: docCond },
-      });
-      setName('');
-      setUserConditions('{}');
-      setDocumentConditions('{}');
-      onChanged();
-    } catch (err) {
-      setErrors(toMessages(err, 'ポリシーの登録に失敗しました。'));
-    }
-  }
-
-  async function onToggleActive(p: Policy) {
-    setErrors([]);
-    try {
-      await apiFetch(`${POL}/${p.id}/active`, { method: 'PATCH', json: { isActive: !p.isActive } });
-      onChanged();
-    } catch (err) {
-      setErrors(toMessages(err, 'ポリシーの状態変更に失敗しました。'));
-    }
-  }
-
-  async function onDelete(id: string) {
-    setErrors([]);
-    try {
-      await apiFetch(`${POL}/${id}`, { method: 'DELETE' });
-      onChanged();
-    } catch (err) {
-      setErrors(toMessages(err, 'ポリシーの削除に失敗しました。'));
-    }
-  }
-
-  return (
-    <section aria-label="アクセスポリシー">
-      <h2>アクセスポリシー</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>名前</th>
-            <th>アクション</th>
-            <th>利用者条件</th>
-            <th>文書条件</th>
-            <th>状態</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {policies.map((p) => (
-            <tr key={p.id}>
-              <td>{p.name}</td>
-              <td>{p.action}</td>
-              <td>
-                <code>{JSON.stringify(p.userConditions)}</code>
-              </td>
-              <td>
-                <code>{JSON.stringify(p.documentConditions)}</code>
-              </td>
-              <td>{p.isActive ? '有効' : '無効'}</td>
-              <td>
-                <button type="button" aria-label={`ポリシーを${p.isActive ? '無効化' : '有効化'}: ${p.name}`} onClick={() => void onToggleActive(p)}>
-                  {p.isActive ? '無効化' : '有効化'}
-                </button>{' '}
-                <button type="button" aria-label={`ポリシーを削除: ${p.name}`} onClick={() => void onDelete(p.id)}>
-                  削除
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <form onSubmit={onCreate} aria-label="ポリシー登録">
-        <h3>ポリシーを追加</h3>
-        <div>
-          <label htmlFor="pol-name">名前（必須）</label>
-          <br />
-          <input id="pol-name" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="pol-action">アクション</label>
-          <br />
-          <select id="pol-action" value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
-            {ACTIONS.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="pol-user">利用者条件（JSON）</label>
-          <br />
-          <textarea id="pol-user" value={userConditions} onChange={(e) => setUserConditions(e.target.value)} rows={2} />
-        </div>
-        <div>
-          <label htmlFor="pol-doc">文書条件（JSON）</label>
-          <br />
-          <textarea id="pol-doc" value={documentConditions} onChange={(e) => setDocumentConditions(e.target.value)} rows={2} />
-        </div>
-        <ErrorList errors={errors} />
-        <button type="submit" disabled={name.trim().length === 0}>
-          追加する
-        </button>
-      </form>
+        <TabsContent value="policies">
+          <PolicyEditorPanel
+            policies={policies.data ?? []}
+            attributes={attributes.data ?? []}
+            isPending={policies.isPending}
+            isError={policies.isError}
+            error={policies.error}
+          />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
