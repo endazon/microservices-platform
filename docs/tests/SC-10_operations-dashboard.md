@@ -150,7 +150,19 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc10-operations`（純関数 **4** ＋ 画面 **13** ＋ アクセス **4** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc10-operations`
+
+  **件数は母集合を明記する**。下表は上記コマンドの出力と突き合わせた実測である。
+
+  | 括り | 本書の観点行 | `it` 宣言 | vitest の `Tests` |
+  | --- | --- | --- | --- |
+  | 純関数（`opsTools.test.ts`） | **4**（P1〜P4） | **4** | **4** |
+  | 画面（`OperationsDashboardPage.test.tsx` の 1 つ目の `describe`） | **13** | **13** | **13** |
+  | アクセス（同 2 つ目の `describe`） | **4**（A1〜A4） | **4** | **4** |
+  | **合計** | **21** | **21** | **21**（2 ファイル） |
+
+  本画面は 3 つの数え方が**たまたま一致する**（`it.each` を使っておらず、観点とテストが 1 対 1 である）。
+  **一致するとは限らない**ため、SC-09 / SC-11 と同じ形で母集合を明記する。
 - `pnpm run test -- knowledge/frontend/src/features/opsFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `pnpm --filter @platform/frontend run test:e2e`

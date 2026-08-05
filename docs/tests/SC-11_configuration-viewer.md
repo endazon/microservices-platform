@@ -162,7 +162,21 @@ E2E は `src/platform/frontend/e2e/sc11-config.smoke.spec.ts`
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc11-config`（純関数 **8** ＋ 画面 **14** ＋ アクセス **5** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc11-config`
+
+  **件数は母集合を明記する**（観点行・`it` 宣言・vitest が数える `Tests` は一致しない）。
+  下表は上記コマンドの出力と突き合わせた実測である。
+
+  | 括り | 本書の観点行 | `it` 宣言 | vitest の `Tests` |
+  | --- | --- | --- | --- |
+  | 純関数（`driftView.test.ts`） | **8**（P1〜P8） | **8**（うち `it.each` 2） | **13** |
+  | 画面（`ConfigViewerPage.test.tsx`） | **16** | **17** | **17** |
+  | アクセス（`access.test.tsx`） | **5**（A1〜A5） | **5** | **5** |
+  | **合計** | **29** | **30** | **35**（3 ファイル） |
+
+  観点行と `it` 宣言がずれるのは、**画面 観点 13 が 2 本に分かれる**（実効構成の 404〔秘匿〕と
+  5xx〔障害〕の両方でヘッダのバッジが消えることを見る）ためである。
+  `it` 宣言と `Tests` がずれるのは `it.each` の展開による。
 - `pnpm run test -- knowledge/frontend/src/features/opsFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter Config`

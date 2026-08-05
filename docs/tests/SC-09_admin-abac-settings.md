@@ -155,7 +155,21 @@ related_specs:
 
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc09-admin-abac`（純関数 **9** ＋ 画面 **17** ＋ アクセス **4** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc09-admin-abac`
+
+  **件数は母集合を明記する**（観点行・`it` 宣言・vitest が数える `Tests` は一致しない）。
+  下表は上記コマンドの出力と突き合わせた実測である。
+
+  | 括り | 本書の観点行 | `it` 宣言 | vitest の `Tests` |
+  | --- | --- | --- | --- |
+  | 純関数（`abacVocabulary.test.ts`） | **9**（P1〜P9） | **12**（うち `it.each` 2） | **15** |
+  | 画面（`AdminAbacSettingsPage.test.tsx` の 1 つ目の `describe`） | **17** | **16** | **16** |
+  | アクセス（同 2 つ目の `describe`） | **4**（A1〜A4） | **4** | **4** |
+  | **合計** | **30** | **32** | **35**（2 ファイル） |
+
+  観点行と `it` 宣言がずれるのは、**画面 観点 1・2・3 が 1 本のテストに同居**し（既定タブ・条件の要約・
+  状態表示を 1 回の描画で見る）、**観点 12 が 2 本に分かれる**（属性側「削除 → 追加」／ポリシー側
+  「保存 → 切替」）ためである（17 − 2 ＋ 1 = 16）。`it` 宣言と `Tests` がずれるのは `it.each` の展開による。
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffAuthzEndpointTests`
 - `pnpm --filter @platform/frontend run test:e2e`
