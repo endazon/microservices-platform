@@ -13,20 +13,20 @@ updated: 2026-08-05
 
 # フィードバック: SC-01〜03 の画面要素のうち 6 点が現在の API 契約に載らない
 
-## 起票状況（**この記録は計画リポジトリへまだ渡っていない**）
+## 起票状況（**計画リポジトリへ起票済み・裁定待ち**）
 
 `feedback/README.md` の手順は 3 段（1. `/plan-feedback` 実行 → 2. 記録作成 → 3. **計画リポへの伝達**）である。
-**本記録は手順 2 まで**である。
 
 | 手順 | 状態 |
 | --- | --- |
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
-| 3-a. `planning/draft/feedback/` へのコピー | **未了** |
-| 3-b. `endazon/project-planning` への Issue 起票 | **未了** |
+| 3-a. `planning/draft/feedback/` へのコピー | **不要**（実装ブランチでは planning submodule の内容を変更しない。pin 更新のみ） |
+| 3-b. `endazon/project-planning` への Issue 起票 | **完了**: [project-planning#197](https://github.com/endazon/project-planning/issues/197)（2026-08-05・**裁定待ち**） |
+| 付-1（OpenAPI 欠落）の実装側起票 | **完了**: [#506](https://github.com/endazon/microservices-platform/issues/506)（計画の裁定は不要・実装側で閉じる） |
+| 付-2（左ナビの SC-03）の起票 | **完了**: project-planning#197 §付随の論点 に含めた（計画の裁定が要るため） |
 
-**起票は親（人間）が行う。** フロントマターの `status: open` は TEMPLATE の既定値であり、
-「未起票」と「起票済み・未トリアージ」を区別しない。**本節の表が実態の正である。**
-起票したら本節を更新し、issue 番号を記す。
+フロントマターの `status: open` は TEMPLATE の既定値であり、「未起票」と「起票済み・未トリアージ」を
+区別しない。**本節の表が実態の正である。**
 
 ## 種別
 
