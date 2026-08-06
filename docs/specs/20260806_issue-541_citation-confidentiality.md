@@ -213,15 +213,35 @@ related_specs:
 
 ## 検証
 
-**この環境では .NET SDK を導入できない。** `dotnet` は PATH にもファイルシステムにも存在せず
-（`find / -maxdepth 4 -name dotnet -type f` = 0 件・`~/.nuget` 無し）、`dotnet-install.sh` の取得は
-プロキシに拒否される（`curl: (56) CONNECT tunnel failed, response 403`。
-`$HTTPS_PROXY/__agentproxy/status` の `recentRelayFailures` に `builds.dotnet.microsoft.com:443` の
-403 が記録されている）。**したがって `dotnet build` / `dotnet test` /
-`dotnet format --verify-no-changes` は未検証である。** 実行できたものだけを下に記す。
+**`dotnet` はホストの PATH には無いが、SDK コンテナで実走できる。** 当初「この環境では .NET SDK を
+導入できない」と記録していたが、それは **`dotnet-install.sh` でホストへ入れる経路だけを試した**結果で
+あった（`builds.dotnet.microsoft.com:443` はプロキシに 403 で拒否される）。**docker は使える**ので、
+バックエンドの検証はコンテナで行える。素の `docker run` では NuGet が
+`NU1301 … UntrustedRoot` で全滅するため、**プロキシの CA を信頼させ、`--network host` で
+プロキシ（`127.0.0.1:39793`）へ到達させる**必要がある。
+
+```console
+$ docker run --rm --network host \
+    -v "<worktree>:/w" \
+    -v /root/.ccr/ca-bundle.crt:/usr/local/share/ca-certificates/ccr.crt:ro \
+    -v "<scratchpad>/nuget:/root/.nuget/packages" \
+    -w /w -e HTTPS_PROXY=http://127.0.0.1:39793 -e HTTP_PROXY=http://127.0.0.1:39793 \
+    mcr.microsoft.com/dotnet/sdk:10.0 \
+    bash -lc 'update-ca-certificates >/dev/null; dotnet build src/knowledge/backend/backend.slnx'
+```
+
+- **`--network host` が要る**。プロキシは**ホストの** `127.0.0.1:39793` にあり、コンテナ内の
+  `127.0.0.1` は別物である。
+- **CA の投入が要る**。`SSL_CERT_FILE` を渡すだけでは NuGet の SSL 検証を通らなかった。
+  `/usr/local/share/ca-certificates/` へ置いて `update-ca-certificates` を走らせる。
+- NuGet パッケージはボリュームで再利用する（毎回の復元を避ける）。
 
 | コマンド | 結果 |
 | --- | --- |
+| `dotnet build src/knowledge/backend/backend.slnx` | **green**（0 Error / Warning 2 件は `MinioBuilder` の既存 obsolete 警告で本作業と無関係） |
+| `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | **差分なし** |
+| `dotnet test …/AiAnalysisService.Api.Tests` | **59 件すべて合格** |
+| `dotnet test …/Knowledge.Contracts.Tests` | **6 件すべて合格** |
 | `node scripts/check-contract-schema.js`（変更前） | OK（2 プロジェクト / 20 ファイル / **57 型**） |
 | `node scripts/check-contract-schema.js`（変更後・`--update` 前） | 差分 **2 件**（破壊的 **0** / 非破壊 2）。`CitationDto.Confidentiality` のメンバー追加・`ConfidentialityLevels` の型追加 |
 | `node scripts/check-contract-schema.js`（`--update` 後） | OK（**58 型**） |
@@ -244,9 +264,8 @@ related_specs:
 
 ### 変異試験（壊すと落ちることの実測）
 
-**バックエンドのテスト（T-17〜T-21）は走らせられないため、C# の写像を壊す変異は実測できていない。**
-実測できたのは契約（C# ソース → baseline）・OpenAPI・生成物・テスト仕様カバレッジにかかる変異である。
-**素通りしたものも隠さず記す。**
+**素通りしたものも隠さず記す。** バックエンドのテストを壊す変異（M7 / M8）も、上記のコンテナ経路で
+**実際に当てて落ちることを確かめた**（当初は「SDK が無いので未検証」としていた。§検証の冒頭を参照）。
 
 | # | 変異 | 期待 | 実測 |
 | --- | --- | --- | --- |
@@ -258,16 +277,20 @@ related_specs:
 | M6 | `restricted` の表示名を「**極秘**」へ戻す（Storybook の例） | 何かが落ちてほしい | **素通りした**（lint / typecheck / `packages/ui` の Vitest すべて exit=0）。**表示名を機械検査する仕組みは無い**——正は計画リポジトリの用語集であり、実装側に照合先が無いためである。§申し送り 5 に挙げる |
 | M9 | テスト仕様書から `CitationMapperTests` の記載を落とす | カバレッジのラチェットが落ちる | **落ちた**（`[記載の消失] docs/tests/FR-04_ai-answer-citations.md が挙げていた CitationMapperTests`） |
 
-**未実測（.NET SDK が無いため）**:
+**バックエンドのテストを壊す変異**（SDK コンテナで実走）:
 
-| # | 変異 | 期待（机上） | 実測 |
+| # | 変異 | 期待 | 実測 |
 | --- | --- | --- | --- |
-| M7 | `CitationMapper` から `Confidentiality:` の実引数を落とす | T-17 / T-20 が落ちる（既定値により**コンパイルは通る**ため、テストだけが検出できる） | **未検証** |
-| M8 | `ConfidentialityLevels.FromAttributes` の縮退先を `Public` にする | T-18 が落ちる | **未検証**（M5 と違い `SafeDefault` を触らないため契約検査では捕まらない） |
+| M7 | `CitationMapper` から `Confidentiality:` の実引数を落とす | T-17 / T-20 が落ちる（既定値により**コンパイルは通る**ため、テストだけが検出できる） | **落ちた**。`Failed: 5 / Passed: 54`。`ToCitations_CarriesConfidentialityFromAttributes`（3 ケース）・`ToCitations_NormalizesConfidentialityCasing`・`ToCitations_AssignsConfidentialityPerCitation`。**予告どおりコンパイルは通った**（`Build FAILED` は出ていない） |
+| M8 | `ConfidentialityLevels.SafeDefault` を `Restricted` → `Public` にする（縮退先の反転） | T-18 が落ちる | **落ちた**。`Failed: 6 / Passed: 53`。`ToCitations_FallsBackToRestricted_WhenConfidentialityMissingOrUnknown`（`null` / `""` / `"   "` / `"top-secret"` の 4 ケース）・`ConfidentialityLevels_HasFourValues_AndFailsSafeToRestricted`・`ToCitations_AssignsConfidentialityPerCitation` |
+
+いずれも変異を戻したうえで **59 件すべて合格**に復帰することを確認した（変異が残っていないこと・
+テストが変異そのものに反応したことの両方を示す）。
 
 > **M7 が「コンパイルは通るがテストだけが落ちる」型である**ことは、既定値つき位置引数を選んだ帰結である
-> （§D1 系）。**そのテストを走らせられない環境で実装した**以上、この一点は CI に依存する。
-> §申し送り 4 のとおり、マージ前に CI の緑を確認すること。
+> （§D1 系）。**その予測が正しかったことを実測で確かめた** —— 変異後もビルドは成功し、
+> 落ちたのはテストだけだった。既定値つき位置引数は「壊しても静かに通る」経路を作るので、
+> **この形を選ぶときはテストが唯一の網になる**ことを意識する必要がある。
 
 ## 申し送り
 
@@ -279,9 +302,10 @@ related_specs:
 3. **属性キー定数の三重化**。`ConfidentialityLevels.AttributeKey`（本 PR で追加）・
    `DataSource.ConfidentialityKey`・`DocumentAttributes.ConfidentialityKey` が同じ値を持つ。
    後 2 者を契約定数へ寄せる整理は別 issue。
-4. **バックエンドの未検証**（上記）。`dotnet build` / `dotnet test` / `dotnet format --verify-no-changes`
-   は CI（`ci.yml`）で初めて走る。**マージ前に CI の緑を確認すること。** とくに変異 M7 / M8
-   （§変異試験）は本 PR のテストだけが検出でき、その実行が CI 頼みである。
+4. **バックエンドの検証手順を残した**（§検証の冒頭）。`dotnet` はホストに無いが SDK コンテナで実走できる。
+   **ただし `--network host` とプロキシ CA の投入が要る**（素の `docker run` は NuGet が `NU1301
+   UntrustedRoot` で全滅する）。この手順は本仕様書にしか書かれておらず、**次に C# を触る作業者が
+   同じ壁で「SDK が無い」と結論しかねない**。`docs/how-to/` へ切り出す価値がある。**別 issue の候補。**
 5. **表示名を機械検査する仕組みが無い**（変異 M6 が素通りした）。正は計画リポジトリの用語集だが、
    実装側にはそれを照合する検査が無く、誰かが「極秘」と書いても止まらない。
    用語集の表を読んで写像を突合する検査（`scripts/check-*.js`）を足す価値がある。**別 issue の候補。**
