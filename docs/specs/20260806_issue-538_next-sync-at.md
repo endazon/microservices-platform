@@ -148,9 +148,9 @@ BFF（`DataSourceBffEndpoints`）は `DataSourceDto` で型付けして中継す
 - [x] 契約（OpenAPI・`contract-schema-baseline.json`・orval 生成物）が実装と一致している。**実行して確認済み**
 - [x] ソース別のスケジュール設定（cron / ソース単位 interval）を**足していない**。**差分で確認**
 
-> **チェックの意味に注意する。** 上の 1〜4 は「**受け入れ基準をテストへ写像し、そのテストを書いた**」ことを
-> 指す。**.NET SDK が本環境に無いため、これらのテストは 1 度も実行していない**（§未検証）。
-> 実行による確認は CI が初回に行う。5・6 は本環境で実際に検査した（§検証）。
+> 上の 1〜4 は受け入れ基準をテストへ写像したものであり、**SDK コンテナで実際に走らせて全件合格を
+> 確認した**（`DataSourceService.Api.Tests` 78 件・`Platform.Bff.Tests` 149 件 ＋ skip 1）。
+> 5・6 は本環境のスクリプト検査で確認した（§検証）。
 
 ## テスト方針
 
@@ -188,8 +188,12 @@ BFF（`DataSourceBffEndpoints`）は `DataSourceDto` で型付けして中継す
 | `pnpm run codegen`（`src/`） | 生成物 `bff.schemas.ts` に `nextSyncAt?: string \| null` が入り、faker も追随。**再生成しても差分が出ない**状態でコミットした |
 | `pnpm run lint`（`src/`） | **OK**（0 errors / 8 warnings。warning はすべて既存の `react-refresh/only-export-components`） |
 | `npx vitest run knowledge/frontend/src/features/sc06-datasources` | **OK**（**23 passed** / 2 files。画面は未変更） |
-| `pnpm run typecheck`（`src/`） | **失敗するが本作業とは無関係**（下記） |
-| `dotnet build` / `dotnet test` / `dotnet format` | **未検証**（下記） |
+| `pnpm run typecheck`（`src/`） | `src/ai-stock-trading` を populate すれば通る（下記） |
+| `dotnet build src/knowledge/backend/backend.slnx` | **green**（0 Error） |
+| `dotnet build src/platform/backend/backend.slnx` | **green**（0 Error）。**`src/ai-stock-trading` の populate が要る**（下記） |
+| `dotnet format <slnx> --verify-no-changes`（両ユニット） | **差分なし** |
+| `dotnet test …/DataSourceService.Api.Tests` | **78 件すべて合格** |
+| `dotnet test …/Platform.Bff.Tests` | **149 件合格 / 1 件 skip** |
 
 #### `pnpm run typecheck` の失敗は環境由来である（本作業の変更ではない）
 
@@ -207,47 +211,51 @@ $ git submodule status | grep ai-stock-trading
 いずれも `Failed to resolve import "@ai-stock-trading/features"`）。**本作業が触る SC-06 の 23 ケースと
 `knowledge/frontend` の typecheck は通っている。** submodule を populate できる環境（CI）では解消する。
 
-### 未検証（実行できなかったもの・理由）
+### バックエンドの検証手順（`dotnet` はホストに無いが SDK コンテナで実走できる）
 
-**本作業環境に .NET SDK が無く、導入も出口ポリシーで塞がれている。**
+当初この節は「本作業環境に .NET SDK が無く、導入も出口ポリシーで塞がれている」として
+`dotnet build` / `test` / `format` を未検証としていた。**それは `dotnet-install.sh` でホストへ入れる
+経路だけを試した結果である**（`builds.dotnet.microsoft.com:443` はプロキシに 403 で拒否される）。
+**docker は使えるので、SDK コンテナで実走できる。**
 
 ```console
-$ which dotnet          # → 出力なし
-$ curl -sSL https://dot.net/v1/dotnet-install.sh
-curl: (56) CONNECT tunnel failed, response 403
-$ curl -sS "$HTTPS_PROXY/__agentproxy/status"   # recentRelayFailures より
-  { "kind": "connect_rejected", "host": "builds.dotnet.microsoft.com:443",
-    "detail": "gateway answered 403 to CONNECT (policy denial or upstream failure)" }
+$ docker run --rm --network host \
+    -v "<worktree>:/w" \
+    -v /root/.ccr/ca-bundle.crt:/usr/local/share/ca-certificates/ccr.crt:ro \
+    -v "<scratchpad>/nuget:/root/.nuget/packages" \
+    -w /w -e HTTPS_PROXY=http://127.0.0.1:39793 -e HTTP_PROXY=http://127.0.0.1:39793 \
+    mcr.microsoft.com/dotnet/sdk:10.0 \
+    bash -lc 'update-ca-certificates >/dev/null; dotnet build src/knowledge/backend/backend.slnx'
 ```
 
-したがって以下は**実行していない**（「通した」とは書けない）。
+**素の `docker run` では NuGet が全滅する**（`NU1301 … The remote certificate is invalid …
+UntrustedRoot`。122 Error）。必要なのは次の 2 点である。
 
-- `dotnet build src/knowledge/backend/backend.slnx`
-- `dotnet test src/knowledge/backend/backend.slnx` / `src/platform/backend/backend.slnx`
-- `dotnet format <slnx> --verify-no-changes`
+- **`--network host`**。プロキシは**ホストの** `127.0.0.1:39793` にあり、コンテナ内の `127.0.0.1` は別物。
+- **CA をコンテナの信頼ストアへ入れる**。`SSL_CERT_FILE` を渡すだけでは NuGet の SSL 検証を通らない。
+  `/usr/local/share/ca-certificates/` へ置いて `update-ca-certificates` を走らせる。
 
-**影響**: 本作業の C# 変更（DTO 1 メンバー・新規クラス 1 本・エンドポイント投影・テスト 3 ファイル）は
-**コンパイル未確認**であり、上表のテスト S1〜E2 / B1 は**書いただけで走らせていない**。
-CI（`ci.yml`）が初回の検証となる。**レビューはここを最初に見ること。**
-リスクの抑え方: ①既存コードの書き方に揃える（primary constructor・minimal API の DI 解決・
-`internal` を切ってテストする形＝`TryRunCycleAsync` と同型）、②新 API は BCL の `TimeProvider` だけ
-（新規パッケージ 0・`Directory.Packages.props` 無改変）、③使用するアサーションは
-リポジトリ内に実績のあるものだけ（`HaveCountGreaterThanOrEqualTo` / `ContainSingle().Which` /
-`OnlyContain`）を選んだ。**いずれも構文の保証にはならない。**
+**`src/platform/backend` のビルドには `src/ai-stock-trading` の populate が要る。** 未 populate だと
+`BffEndpointComposition.cs(1,7): error CS0246: … 'AiStockTrading' could not be found` で落ちる
+（**本作業とは無関係**。`git submodule update --init -- src/ai-stock-trading` で解消し、pin は動かない）。
+同じ populate で `pnpm run typecheck` の `@ai-stock-trading/features` 解決失敗も解消する。
 
 ### 変異試験
 
-「壊すと落ちる」ことを実測する。**.NET SDK が無いため C# 側の変異は測れない**（M4〜M6）。
-測れたものと測れなかったものを分けて開示する。
+「壊すと落ちる」ことを実測する。C# 側の変異（M4 / M6）も上記のコンテナ経路で**実際に当てた**。
+**素通りするもの（M5）は隠さず開示する。**
 
 | # | 変異 | 期待 | 実測 |
 | --- | --- | --- | --- |
 | M1 | `openapi.yaml` の `DataSourceDto.nextSyncAt` を削除 | 生成物に差分が出る（CI の `codegen && git diff --exit-code` が落ちる） | **落ちた**。再生成した `bff.schemas.ts` から `nextSyncAt?: string \| null` を含む **5 行が消え**、正しい生成物との `diff` は exit=1 |
 | M2 | C# `DataSourceDto` から `NextSyncAt` を削除 | 契約スナップショットが不一致 | **落ちた**。`check-contract-schema.js` exit=1 —— `[破壊的] メンバーの削除: Knowledge.Contracts.Dtos.DataSourceDto.NextSyncAt` |
 | M3 | `NextSyncAt` の既定値 `= null` を外す | 破壊的変更として fail（旧発行者の位置引数が壊れる） | **落ちた**。exit=1 —— `[破壊的] メンバーの必須化: …DataSourceDto.NextSyncAt（省略可能 → 必須）` |
-| M4 | `SyncSchedule.NextRunAt` を「起点 ＋ 間隔」固定へ戻す | S3 / S4 が落ちる | **未実測**（.NET SDK 無し） |
+| M4 | `SyncSchedule.NextRunAt` を「起点 ＋ 間隔」固定へ戻す（何間隔経過しても 1 回分しか進まない） | S3 / S4 が落ちる | **落ちた**。`Failed: 3 / Passed: 75` —— `NextRunAt_AfterSeveralIntervals_IsNextBoundary`（`elapsed 7 分 → 10 分` / `23 分 → 25 分`）と `NextRunAt_ExactlyOnBoundary_MovesToNextBoundary` |
 | M5 | 一覧で行ごとに `NextRunAt` を読む | E1 は**落ちない見込み**（固定時計では境界跨ぎを再現できず同値になる） | **未実測**。**素通りが見込まれる変異である**（下記） |
-| M6 | `StartSchedule` の `Math.Max(30, …)` を外す | W3 が落ちる | **未実測**（.NET SDK 無し） |
+| M6 | `StartSchedule` の `Math.Max(30, …)` を外す | W3 が落ちる | **落ちた**。`Failed: 1 / Passed: 77` —— `StartSchedule_FloorsIntervalAtThirtySeconds(configured: 5, effectiveSeconds: 30)` |
+
+M4 / M6 とも変異を戻して **78 件合格へ復帰**することを確認した（変異が残っていないこと・テストが
+変異そのものに反応したことの両方を示す）。
 
 **M5 は素通りする見込みであることを隠さずに書く。** 「一覧では 1 回だけ読む」という規則を機械で守らせるには、
 エンドポイント越しに境界を跨ぐ時計を動かす（＝応答生成の途中で時刻を進める）必要があり、本作業の射程を超える。
@@ -265,12 +273,17 @@ CI（`ci.yml`）が初回の検証となる。**レビューはここを最初�
 
 ## 未決事項・親への申し送り
 
-1. **C# のビルド・テスト・format が未検証**（上記）。CI が初回検証となる。
+1. **バックエンドの検証手順を残した**（§検証）。`dotnet` はホストに無いが SDK コンテナで実走できる。
+   **`--network host` とプロキシ CA の投入が要る**（素の `docker run` は NuGet が `NU1301 UntrustedRoot`
+   で全滅する）。この手順は仕様書にしか書かれておらず、**次に C# を触る作業者が同じ壁で
+   「SDK が無い」と結論しかねない**。`docs/how-to/` へ切り出す価値がある。**別 issue の候補。**
 2. **表示（SC-06 の「次回同期」列）は未実装**。契約が揃ったので繰り延べの理由は消えた。
    画面作業で拾うこと（画面仕様書 §未決事項 2 を書き換え済み）。
 3. **マルチレプリカでの位相差**（[[IADR-0136]] §限界）。応答するレプリカ自身の位相を返すため、
    実際に同期を行うレプリカ（advisory lock を取った側・[[IADR-0083]]）とは最大 1 間隔ずれ得る。
    運用者への意味（「次に取り込まれるのはいつ頃か」）は保たれるため許容する。
-4. **作業環境の制約 2 件**（本作業に固有の欠陥ではない）。①.NET SDK が無く導入経路も塞がれている、
-   ②`src/ai-stock-trading` submodule が未 populate のため `platform/frontend` の typecheck / 一部テストが
-   落ちる。**どちらも本作業の変更とは無関係**であり、CI（submodule ＋ SDK あり）では解消する見込みである。
+4. **作業環境の制約は 2 件とも回避できた**（本作業に固有の欠陥ではない）。①`dotnet` はホストに無いが
+   **SDK コンテナで実走できる**（§検証）、②`src/ai-stock-trading` submodule は
+   `git submodule update --init -- src/ai-stock-trading` で populate でき、これで
+   `platform/backend` のビルドと `platform/frontend` の typecheck / 一部テストの失敗が解消する
+   （**pin は動かない**ので実装ブランチで行ってよい）。**どちらも本作業の変更とは無関係**であった。
