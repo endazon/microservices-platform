@@ -306,5 +306,4 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
     expect(await screen.findByText('データソースは登録されていません。')).toBeInTheDocument();
   });
-
 });

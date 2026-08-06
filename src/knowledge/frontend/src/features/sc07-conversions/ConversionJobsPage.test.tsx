@@ -284,5 +284,4 @@ describe('ConversionJobsPage (SC-07)', () => {
 
     expect(await screen.findByText('該当する変換ジョブはありません。')).toBeInTheDocument();
   });
-
 });

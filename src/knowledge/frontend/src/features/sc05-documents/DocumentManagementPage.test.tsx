@@ -327,5 +327,4 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
   });
-
 });
