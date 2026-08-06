@@ -59,6 +59,7 @@ SC-06 の「次回同期」列は、契約に該当する値が無いため**実
 $ git grep -n "IntervalSeconds" -- src deploy scripts | grep -i datasource
 deploy/helm/microservices-platform/templates/deployment.yaml:93:  - name: DataSourceSync__IntervalSeconds
 src/.../DataSourceService.Api/Foundation/Services/DataSourceSyncHostedService.cs:29:  var interval = TimeSpan.FromSeconds(Math.Max(30, opt.IntervalSeconds));
+#   ↑ 行番号は着手時点。本作業で StartSchedule() へ切り出したため現在は同メソッド内にある。
 src/.../DataSourceService.Api/Foundation/Services/DataSourceSyncOptions.cs:13:  public int IntervalSeconds { get; set; } = 300;
 $ grep -rn "DataSourceSync" deploy/docker-compose.yml    # → 0 件
 ```
@@ -66,7 +67,7 @@ $ grep -rn "DataSourceSync" deploy/docker-compose.yml    # → 0 件
 | # | 層 | 実体 | 値 |
 | --- | --- | --- | --- |
 | 1 | コード既定 | `DataSourceSyncOptions.IntervalSeconds`（`DataSourceSync` セクション） | **300 秒**。`Enabled` の既定は **false** |
-| 2 | 実効値 | `DataSourceSyncHostedService`（`:29`） | `Math.Max(30, IntervalSeconds)` 秒（**過負荷防止の 30 秒床**） |
+| 2 | 実効値 | `DataSourceSyncHostedService.StartSchedule()` | `Math.Max(30, IntervalSeconds)` 秒（**過負荷防止の 30 秒床**） |
 | 3 | 配備（k8s） | `values.yaml` `services.datasource.dataSourceSync`（`enabled: true` / `intervalSeconds: 300`）→ env `DataSourceSync__Enabled` / `DataSourceSync__IntervalSeconds`（[[IADR-0074]]） | **300 秒・有効** |
 | 4 | 配備（compose / ローカル） | `deploy/docker-compose.yml` に **記述なし** | 既定のまま＝**定期同期は無効** |
 
@@ -168,7 +169,7 @@ BFF（`DataSourceBffEndpoints`）は `DataSourceDto` で型付けして中継す
 | S4 | 境界ちょうどでは次の境界 | 同上 | `NextRunAt_ExactlyOnBoundary_MovesToNextBoundary` |
 | W1 | 無効なら位相を記録しない | 実測 4（compose は無効） | `StartSchedule_WhenDisabled_LeavesScheduleUnset` |
 | W2 | 有効なら起動時刻を起点に記録する | [[IADR-0051]] | `StartSchedule_WhenEnabled_AnchorsAtStartup` |
-| W3 | 30 秒床が次回時刻にも効く | ワーカー `:29` | `StartSchedule_FloorsIntervalAtThirtySeconds`（Theory） |
+| W3 | 30 秒床が次回時刻にも効く | ワーカー `StartSchedule()` | `StartSchedule_FloorsIntervalAtThirtySeconds`（Theory） |
 | E1 | 一覧の全ソースが同値 | **裁定 Q15 の核心** | `ListDataSources_ReturnsSameNextSyncAtForEverySource` |
 | E2 | 無効時は null | [[IADR-0136]] 決定 2 | `ListDataSources_WhenPeriodicSyncDisabled_ReturnsNullNextSyncAt` |
 | B1 | BFF が透過する | [[IADR-0039]] | `GetList_PassesThroughNextSyncAt` |

@@ -38,7 +38,7 @@ plan_refs:
 
 | 事実 | 出所 |
 | --- | --- |
-| 間隔は設定に**ある**（既定 300 秒 / 実効は 30 秒床） | `DataSourceSyncOptions.IntervalSeconds` ／ `DataSourceSyncHostedService:29` |
+| 間隔は設定に**ある**（既定 300 秒 / 実効は 30 秒床） | `DataSourceSyncOptions.IntervalSeconds` ／ `DataSourceSyncHostedService.StartSchedule()` |
 | **位相（いつ回るか）はどこにも無い** | `PeriodicTimer` はワーカー起動時刻から刻むだけで、次回時刻を持つ場所が無い |
 | 既定は**無効**（compose は有効化しない。k8s の values だけが `enabled: true`） | `DataSourceSyncOptions.Enabled` / `deploy/helm/.../values.yaml` |
 
@@ -105,6 +105,16 @@ plan_refs:
   計算上の境界と実際の実行が最大 1 間隔ずれる。
 - 「一覧で 1 回だけ読む」規則は**機械では守られていない**（境界跨ぎを注入できる時計をエンドポイント越しに
   動かす必要があるため。作業仕様書 §変異試験 M5 で素通りを開示した）。規則はコード注釈と本 ADR で残す。
+- **`null` の意味は 1 つではない。** 決定 2 は `null` に「定期同期が無効」という意味を与えたが、
+  **起動直後のごく短い間は `Enabled=true` でも `null` を返し得る**。位相を記録するのは
+  `DataSourceSyncHostedService.ExecuteAsync` → `StartSchedule()` であり、
+  `builder.Services.AddHostedService<DataSourceSyncHostedService>()`（`Program.cs`）は
+  `WebApplication.CreateBuilder` が先に登録する `GenericWebHostService`（Kestrel）**より後**に起動する。
+  したがって「Kestrel が受け付けを開始してから位相が記録されるまで」の窓で `/datasources` を叩くと
+  `nextSyncAt: null` が返る。**この窓では `null` が「無効」ではなく「まだ起動していない」を意味する。**
+  窓は実運用上ほぼ無視できる長さであり、番兵値や第 3 の状態を足すほうが害が大きいため実装は変えない。
+  ただし**画面が `null` を「同期は行われません」と断定して表示すると、起動直後だけ嘘になる**——
+  表示側は「未定」相当の中立な文言にすること（SC-06 の表示作業への申し送り）。
 
 ## フォローアップ
 
