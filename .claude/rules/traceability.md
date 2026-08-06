@@ -20,7 +20,7 @@ paths:
 本リポジトリではそれが **MSP（microservices-platform）** であり、ID レンジは
 `FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0043`（**欠番なし**）である
 （planning `e36b592` = planning#207 時点。**レンジは planning#200 時点から変わっていない**——
-planning#206 / #207 は既存 ADR の更新と AST 側の反映で、新規 ADR を起こしていない）。
+planning#206 / planning#207 は既存 ADR の更新と AST 側の反映で、新規 ADR を起こしていない）。
 **`ADR-0035`（GraphRAG 検索戦略）は 2026-08-04 に起案され、欠番ではなくなった**（状態 `Proposed`）。
 `ADR-0040`（k8s 管理 UI の選定・planning#193）／`ADR-0041`（Result 型の外部ライブラリ）／
 `ADR-0042`（運用管理 UI の本番導入）も `Proposed` である。
