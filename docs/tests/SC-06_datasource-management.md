@@ -9,9 +9,10 @@ related_ids:
   - FR-02
   - IADR-0039
   - IADR-0127
+  - IADR-0136
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -20,6 +21,8 @@ related_specs:
   - "../screens/SC-06_datasource-management.md"
   - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
   - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
+  - "../adr/IADR-0136_next-sync-at-from-worker-cadence.md"
+  - "../specs/20260806_issue-538_next-sync-at.md"
 ---
 
 # テスト仕様書: データソース管理（SC-06）
@@ -32,13 +35,18 @@ related_specs:
 > 次に触る人が重複して書くか消してよいと判断する。**本復帰は当時の記載をそのまま戻したのではなく、
 > 現在のテストの実物（クラス名・メソッド名・ファイルパス）と突き合わせて書き直したものである。**
 > 同種の欠落の再発は [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) が止める。
+>
+> **［2026-08-06 / #538］§DataSourceService（xUnit・次回同期）を追加した。** 裁定（planning#200 Q15）で
+> `NextSyncAt`（共通間隔の次回実行時刻・全ソース同値）が契約へ入ったことに伴う。**画面への「次回同期」列の
+> 追加は本作業の範囲外**であり、§テストケース 13 は当面そのまま（列が無いことを見る）である。
 
 対象（画面）: `src/knowledge/frontend/src/features/sc06-datasources/`
 テスト: `syncState.test.ts`（純関数）／ `DataSourceManagementPage.test.tsx`（Vitest + Testing Library）／
 導線は `src/knowledge/frontend/src/features/adminFlow.test.tsx`／
 E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 
-対象（API）: [`src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs)
+対象（API）: [`src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`](../../src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs) ／
+[`src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/SyncScheduleTests.cs`](../../src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/SyncScheduleTests.cs)（**次回同期**・#538）
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -72,7 +80,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 11 | 0 件 | — | 「データソースは登録されていません。」 |
 | 12 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
 | 12-b | **SC-07 への導線** | 05_screens 遷移図 `SC06 → SC07` | 「変換ジョブの状況を見る →」が `/admin/conversions` を指す（画面単体でリンク先を固定する。実際に遷移することは §導線 A が見る） |
-| 13 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #6・#7・#9 | 「次回同期」列・「再試行中」表示・「設定」操作が無い。**先に手動同期の操作が在ることを確かめてから**無いことを見る |
+| 13 | **未実装の要素** | 画面仕様書 §hi-fi 対応 #6・#7・#9 | 「次回同期」列・「再試行中」表示・「設定」操作が無い。**先に手動同期の操作が在ることを確かめてから**無いことを見る。**［2026-08-06 / #538］「次回同期」だけは理由が変わった**——契約（`nextSyncAt`）は揃い、残るのは表示の未実装である（他 2 件は契約の不在のまま）。列を足す作業が本ケースを書き換える |
 | 14 | ロケール `en` | ADR-0031 | 見出しと種別が英語で描画される |
 
 ## 純関数（`syncState.test.ts`）
@@ -111,9 +119,34 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 6 | 登録 | FR-01 | 201 で中継 | `Create_AsAdmin_Returns201` |
 | 7 | 同期 | FR-01 / FR-02 | 202 で同期トリガを中継 | `Sync_AsAdmin_Returns202` |
 | 8 | 無効化 | FR-01 | 204 で論理削除を中継 | `Delete_AsAdmin_Returns204` |
+| 9 | **次回同期の透過** | SC-06 裁定 Q15 / [[IADR-0136]] | 後段が返す `nextSyncAt` を欠落させず、**ソースごとに変えもしない**（BFF は `DataSourceDto` で中継するだけなので実装は変わらないが、契約のメンバーが増えたとき落ちる場所が要る） | `GetList_PassesThroughNextSyncAt` |
 
 **5-b は画面側の §テストケース 9（縮退しない）と対である。** 画面が縮退しない実装でも、
 BFF が後段障害を空一覧へ丸めてしまえば画面には何も届かない。両側で固定して初めて担保になる。
+
+## DataSourceService（xUnit・次回同期）
+
+対象: [`.../DataSourceService.Api/Foundation/Services/SyncSchedule.cs`](../../src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Services/SyncSchedule.cs) ／
+[`.../Foundation/Services/DataSourceSyncHostedService.cs`](../../src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Services/DataSourceSyncHostedService.cs) ／
+[`.../Foundation/Endpoints/DataSourceEndpoints.cs`](../../src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Endpoints/DataSourceEndpoints.cs)
+テスト: [`DataSourceService.Api.Tests/SyncScheduleTests.cs`](../../src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/SyncScheduleTests.cs)
+
+計画の裁定（planning#200 Q15）は「`NextSyncAt` は**共通間隔の次回実行時刻**として全ソース同じ値を返す」である。
+**時刻依存は `TimeProvider` を固定して決定的にする**（`DateTimeOffset.UtcNow` をテストから呼ばない）。
+
+| # | 観点 | 起点 | 検証内容 | ケース |
+| --- | --- | --- | --- | --- |
+| S1 | 未起動なら次回は無い | [[IADR-0136]] 決定 2 | 定期同期が動いていなければ `null` | `NextRunAt_WhenNeverStarted_IsNull` |
+| S2 | 起動直後 | UC-04 基本 2 | 「起点 ＋ 共通間隔」 | `NextRunAt_JustAfterStart_IsOneIntervalAhead` |
+| S3 | 周期の経過 | [[IADR-0136]] 決定 1 | 何周期経っても**現在より後の最初の境界**（過去を「次回」と呼ばない） | `NextRunAt_AfterSeveralIntervals_IsNextBoundary`（Theory 3 件） |
+| S4 | 境界ちょうど | 同上 | その回は今走っているので次の境界へ進む | `NextRunAt_ExactlyOnBoundary_MovesToNextBoundary` |
+| W1 | 無効なワーカー | [[IADR-0136]] 決定 2 | 位相を記録しない（compose / dev の既定） | `StartSchedule_WhenDisabled_LeavesScheduleUnset` |
+| W2 | 有効なワーカー | [[IADR-0051]] | 起動時刻を起点に共通間隔を刻み始める | `StartSchedule_WhenEnabled_AnchorsAtStartup` |
+| W3 | 30 秒床 | ワーカーの過負荷防止 | 実効間隔（`Math.Max(30, …)`）が次回時刻にも効く | `StartSchedule_FloorsIntervalAtThirtySeconds`（Theory 3 件） |
+| E1 | **全ソース同値** | **裁定 Q15 の核心** | `GET /datasources` の全要素が同じ `nextSyncAt` を返す（ソース別スケジュールを持たない） | `ListDataSources_ReturnsSameNextSyncAtForEverySource` |
+| E2 | 無効時の応答 | [[IADR-0136]] 決定 2 | `nextSyncAt` は `null`（「次回がある」と偽らない） | `ListDataSources_WhenPeriodicSyncDisabled_ReturnsNullNextSyncAt` |
+
+**E1 と BFF の 9（透過）は対である。** 後段が同値を返しても BFF が落とせば画面には届かない。
 
 ## ロール・存在秘匿の担保
 
@@ -128,3 +161,4 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
 - `pnpm run test -- knowledge/frontend/src/features/adminFlow.test.tsx`（導線）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDataSourceEndpointTests`
+- `dotnet test src/knowledge/backend/backend.slnx --filter SyncScheduleTests`（次回同期・#538）

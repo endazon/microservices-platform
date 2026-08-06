@@ -28,6 +28,20 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
         body[0].Name.Should().Be("社内共有フォルダ");
     }
 
+    // SC-06（planning#200 / 裁定 Q15）, IADR-0136: 次回同期は後段が計算する共通間隔の次回実行時刻であり、
+    // BFF は**全ソース同値のまま透過**する。BFF は DataSourceDto で型付けして中継するだけなので実装は
+    // 変わらないが、契約のメンバーが増えたときに落ちる場所が無いと静かに欠落する（ここで固定する）。
+    [Fact]
+    public async Task GetList_PassesThroughNextSyncAt()
+    {
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>();
+        body!.Should().OnlyContain(d => d.NextSyncAt == BffTestFactory.StubNextSyncAt,
+            "後段が返す次回同期を欠落させず、ソースごとに変えもしない");
+    }
+
     [Fact]
     public async Task GetList_AsOperator_IsAllowed()
     {

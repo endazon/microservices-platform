@@ -132,14 +132,21 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-01/FR-02 BFF テスト（SC-06 データソース管理）: DataSourceService の応答をスタブ制御する。
     public static readonly Guid StubDataSourceId = Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc");
     public HttpStatusCode DataSourceStatusCode { get; set; } = HttpStatusCode.OK;
+
+    // SC-06（planning#200 / 裁定 Q15）: 次回同期は共通間隔の次回実行時刻であり**全ソース同値**である。
+    // スタブも同値を返す（後段が計算した値を BFF がそのまま透過することの検証に用いる。固定値＝決定的）。
+    public static readonly DateTimeOffset StubNextSyncAt = new(2026, 8, 6, 14, 5, 0, TimeSpan.Zero);
+
     public List<DataSourceDto> StubDataSources { get; set; } =
     [
         new(StubDataSourceId, "社内共有フォルダ", "filesystem", "smb://share/docs", "active",
             DateTimeOffset.UtcNow, new Dictionary<string, string>(),
-            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow),
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow,
+            StubNextSyncAt),
         new(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"), "社内 Wiki", "wiki", "https://wiki.example",
             "disabled", null, new Dictionary<string, string>(),
-            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow),
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow,
+            StubNextSyncAt),
     ];
 
     // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
