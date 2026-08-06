@@ -23,7 +23,7 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import { isRetryable, jobStatusView, JOB_STATUSES } from './jobStatus';
 import type { JobStatusFilter } from './jobStatus';
 import { useConversionJobs, useRetryConversionJob } from './useConversionJobs';
-// SC-07, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-07, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-07, UC-06, FR-12: 変換ジョブ画面（05_screens: ルート /admin/conversions）。

@@ -26,7 +26,7 @@ import {
 } from './abacVocabulary';
 import type { AttributeScope } from './abacVocabulary';
 import { useAttributeActions } from './useAbacAdmin';
-// SC-09, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: 属性体系エディタ（計画 §SC-09 §主要素）。

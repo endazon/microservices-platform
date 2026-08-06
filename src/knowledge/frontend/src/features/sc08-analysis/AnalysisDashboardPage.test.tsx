@@ -4,12 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
 // SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボードの再実装（#503）。
 //
-// 本画面は **orval 生成フック（useAnalysisAnalyze）** に載る唯一の画面である（IADR-0127 決定 3）。
+// 本画面は **orval 生成フック（useBffAnalysisAnalyze）** に載る（IADR-0127 決定 3）。
 // 生成コードは mutator（bffFetch）→ apiRequest を通るため、モックは `apiRequest` に当てる
 // ——`apiFetch` を差し替えても生成コードの経路には効かない。
+//
+// **［2026-08-06 追記］本コメントはかつて「useAnalysisAnalyze に載る唯一の画面」と書いていた。
+// どちらも失効している。** フック名は `operationId` の規約統一で改名され（IADR-0135 決定 5 が
+// IADR-0131 決定 3 を改定）、**当て先も本画面だけの作法ではなくなった**——#519 / IADR-0135 決定 4 で
+// 画面テスト 13 ファイルすべてが `apiRequest` を差し替える形へ揃った。
 const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
@@ -19,11 +25,6 @@ vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
 import { createSc08AnalysisRoute } from './index';
 
 const DOC_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
-
-/** 生成コードが期待する応答（`bffFetch` は `Response` から本文を読む）。 */
-function jsonResponse(body: unknown) {
-  return { status: 200, text: () => Promise.resolve(JSON.stringify(body)), headers: new Headers() };
-}
 
 const ANSWER = {
   answer: '3部門に共通する失注要因は (1) 見積提示の遅延 …',

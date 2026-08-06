@@ -105,9 +105,15 @@ related_specs:
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 分析実行 | `POST /bff/analysis/analyze` | **orval 生成フック `useAnalysisAnalyze`**（`useMutation`） | 認証。範囲は ABAC と **narrowing-only** で交差（[[IADR-0005]]） | `AiAnswerDto { answer, citations, model, inputTokens, outputTokens }` |
+| 分析実行 | `POST /bff/analysis/analyze` | **orval 生成フック `useBffAnalysisAnalyze`**（`useMutation`） | 認証。範囲は ABAC と **narrowing-only** で交差（[[IADR-0005]]） | `AiAnswerDto { answer, citations, model, inputTokens, outputTokens }` |
 
-- **本 issue の 4 画面で唯一 orval 生成フックに載る**（`/bff/analysis/analyze` が `docs/api/openapi.yaml` にあるため。[[IADR-0127]] 決定 3）。
+- **［2026-08-06 追記］フック名は `useAnalysisAnalyze` から改名された**——`operationId` を C# の
+  `WithName` のケバブケースへ例外なく揃えた（`analysis-analyze` → `bff-analysis-analyze`。
+  [[IADR-0135]] 決定 5 が [[IADR-0131]] 決定 3 を改定した）。
+- **［2026-08-06 追記］「本 issue の 4 画面で唯一 orval 生成フックに載る」という記述は失効した**——
+  #519 / [[IADR-0135]] 決定 1 で `features/sc*/use*.ts` の 9 ファイルが生成物へ載り、
+  画面から `apiFetch` を呼ぶ箇所は 0 件になった。本画面が生成フックに載る根拠
+  （`/bff/analysis/analyze` が `docs/api/openapi.yaml` にあること。[[IADR-0127]] 決定 3）は変わらない。
 - **要求本文**: `{ instruction, taskType, range?: { query? } }`。`range` は検索条件が入力されたときだけ付ける。
   **クライアントは ABAC スコープを送らない**（送っても BFF は使わない＝権限昇格の防止）。
 - **出典に使うフィールドは `documentId` / `documentTitle` / `chunkId` に限る。**

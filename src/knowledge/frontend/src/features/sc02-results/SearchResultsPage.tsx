@@ -17,7 +17,7 @@ import {
 } from '@platform/ui';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { useSearchQuery } from './useSearchQuery';
-// SC-02, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-02, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-02, UC-01, FR-03/FR-05: 検索結果一覧（05_screens: ルート /search?q=）。

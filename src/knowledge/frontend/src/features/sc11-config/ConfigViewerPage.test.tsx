@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
-import { jsonResponse } from '@foundation/testing/bffResponse';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
 // SC-11, FR-15, ADR-0018: 構成ビューアの再実装（#504）＋ 生成フックへの載せ替え（#519）。
 // 実効構成・ドリフト・構成バージョン履歴の表示と、領域ごとの縮退を固定する。
@@ -308,6 +308,25 @@ describe('ConfigViewerPage (SC-11)', () => {
     await user.click(screen.getByRole('button', { name: '再取得' }));
 
     await waitFor(() => expect(mocks.apiRequest.mock.calls.length).toBe(before + 3));
+  });
+
+  // SC-11, IADR-0135 決定 7［2026-08-06 追記］: 履歴が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // このテストは「配列を期待する面に配列でない値が入る経路が型の外に実在する」（決定 7）ことを
+  // **画面の挙動として**固定する。`bffFetch` は本文が空なら `{}` を返すため、
+  // `okData(res) ?? []` では `??` が発火せず `{}` がそのまま `entries.map` へ届いていた
+  // （＝ルートごとクラッシュした）。`okArray` が「配列でなければ空配列」まで詰めることで縮退する。
+  it('degrades to the empty-history message when the history response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/admin/config/history') return noContent();
+      if (path === '/admin/config/drift') return jsonResponse(NO_DRIFT);
+      return jsonResponse(CONFIG);
+    });
+    await renderPage();
+
+    // 履歴だけが縮退し、他の領域（実効構成）は通常どおり描画される。
+    expect(await screen.findByText('適用履歴はありません。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '実効構成' })).toBeInTheDocument();
   });
 
   // ADR-0031: 文言は Lingui のカタログ（ja / en）。

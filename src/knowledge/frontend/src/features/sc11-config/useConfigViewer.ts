@@ -7,7 +7,7 @@ import {
   useBffConfigEffective,
   useBffConfigHistory,
 } from '@foundation/api/generated/config/config';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray, okData } from '@foundation/api/orvalSelect';
 import type {
   ConfigVersionEntryDto,
   DriftReportDto,
@@ -47,10 +47,12 @@ export function useConfigDrift() {
  * GitOps 側が決める**ため、画面は件数を切り詰めない。
  */
 export function useConfigHistory() {
-  // `?? []` は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い
+  // 既定値は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い
   // ——`bffFetch` は本文が空なら `{}` を返す（`orvalMutator.ts`）。
+  // **`?? []` ではなく `okArray` を使う**——`{} ?? []` は `{}` なので `??` は発火せず、
+  // `{}` が `entries.map` へ届いてクラッシュしていた（IADR-0135 決定 7［2026-08-06 追記］）。
   return useBffConfigHistory<ConfigVersionEntryDto[], unknown>({
-    query: { queryKey: getBffConfigHistoryQueryKey(), select: (res) => okData(res) ?? [] },
+    query: { queryKey: getBffConfigHistoryQueryKey(), select: okArray },
   });
 }
 

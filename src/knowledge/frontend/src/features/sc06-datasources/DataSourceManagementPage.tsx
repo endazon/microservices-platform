@@ -19,7 +19,7 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
 import { formatDateTime, sourceTypeLabel, syncStateView } from './syncState';
 import { useDataSourceActions, useDataSources } from './useDataSources';
-// SC-06, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-06, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。

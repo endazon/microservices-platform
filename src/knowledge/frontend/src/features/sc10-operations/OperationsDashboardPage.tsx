@@ -26,7 +26,7 @@ import { toMessages } from '@foundation/ui/apiErrors';
 import { opsTools } from './opsTools';
 import { DAYS_OPTIONS, useDashboardSummary } from './useDashboardSummary';
 import type { DaysOption } from './useDashboardSummary';
-// SC-10, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-10, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type {
   DashboardSummaryDto,
   SearchTrendDto,

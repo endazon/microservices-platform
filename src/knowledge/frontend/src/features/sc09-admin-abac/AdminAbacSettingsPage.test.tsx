@@ -365,6 +365,37 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(screen.queryByText('ポリシーは登録されていません。')).not.toBeInTheDocument();
   });
 
+  // SC-09, IADR-0135 決定 7［2026-08-06 追記］: 一覧が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // `bffFetch` は本文が空なら `{}` を返すため、`okData(res) ?? []` では `??` が発火せず
+  // `{}` がそのまま `policies.map` / `attributes.map` へ届いていた（＝ルートごとクラッシュした）。
+  // `okArray` が「配列でなければ空配列」まで詰めることで、0 件表示へ縮退する。
+  it('degrades to the empty list when the policy response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/admin/authz/attributes') return jsonResponse(ATTRIBUTES);
+      return noContent();
+    });
+    await renderPage();
+
+    expect(await screen.findByText('ポリシーは登録されていません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('degrades to the empty list when the attribute response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/admin/authz/attributes') return noContent();
+      return jsonResponse(POLICIES);
+    });
+    const user = userEvent.setup();
+    await renderPage();
+    await screen.findByRole('table', { name: 'アクセスポリシーの一覧' });
+
+    await user.click(screen.getByRole('tab', { name: '属性体系' }));
+
+    expect(await screen.findByText('属性は登録されていません。')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   // IADR-0119: 「辺の型」は**着手保留の要求**に属する（どの要求かは IADR-0119 と画面仕様書が持つ。
   // **保留対象の ID をここへ書くと check-test-traceability.js が「実装が先行している」と
   //  誤って報告する**——その ID は、当該機能に着手する issue が初めて書く）。

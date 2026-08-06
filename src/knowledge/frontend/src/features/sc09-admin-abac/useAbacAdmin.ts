@@ -10,7 +10,7 @@ import {
   useBffAuthzListPolicies,
   useBffAuthzSetPolicyActive,
 } from '@foundation/api/generated/authorization/authorization';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray } from '@foundation/api/orvalSelect';
 import type {
   AbacPolicyDto,
   AttributeDefinitionDto,
@@ -32,15 +32,18 @@ export const abacPoliciesKey = getBffAuthzListPoliciesQueryKey();
 /** 属性辞書の一覧（UC-05 基本フロー「属性を定義する」）。 */
 export function useAbacAttributes() {
   return useBffAuthzListAttributes<AttributeDefinitionDto[], unknown>({
-    // `?? []` は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い。
-    query: { queryKey: abacAttributesKey, select: (res) => okData(res) ?? [] },
+    // 既定値は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い。
+    // **`?? []` ではなく `okArray`**——`bffFetch` は本文が空なら `{}` を返すため
+    // `{} ?? []` は発火せず、`{}` が `attributes.map` へ届いてクラッシュしていた
+    // （IADR-0135 決定 7［2026-08-06 追記］）。
+    query: { queryKey: abacAttributesKey, select: okArray },
   });
 }
 
 /** ポリシーの一覧（UC-05 基本フロー「ポリシーを定義する」）。 */
 export function useAbacPolicies() {
   return useBffAuthzListPolicies<AbacPolicyDto[], unknown>({
-    query: { queryKey: abacPoliciesKey, select: (res) => okData(res) ?? [] },
+    query: { queryKey: abacPoliciesKey, select: okArray },
   });
 }
 

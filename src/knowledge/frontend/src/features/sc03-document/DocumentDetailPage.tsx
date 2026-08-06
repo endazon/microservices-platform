@@ -19,7 +19,7 @@ import {
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { attributeLabel, orderedAttributes } from './attributes';
 import { isNotFound, useDocumentQueries } from './useDocumentQueries';
-// SC-03, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-03, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type {
   DocumentContentDto,
   DocumentDto,

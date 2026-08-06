@@ -28,7 +28,7 @@ import {
 } from './abacVocabulary';
 import type { ConditionEntry, PolicyAction } from './abacVocabulary';
 import { usePolicyActions } from './useAbacAdmin';
-// SC-09, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type {
   AbacPolicyDto,
   AttributeDefinitionDto,

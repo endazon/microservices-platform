@@ -35,3 +35,26 @@ export function okData<TResponse extends { status: number; data: unknown }>(
 ): OkPayload<TResponse> {
   return res.data as OkPayload<TResponse>;
 }
+
+/**
+ * 配列を返す面のための `select`。**本文が配列でなければ空配列へ縮退させる。**
+ *
+ * IADR-0135 決定 7［2026-08-06 追記］: 載せ替え前は `apiFetch` が本文なし（204・空ボディ）で
+ * `undefined` を返したため `?? []` が実効ガードだった。**`bffFetch` は同じ場合に `{}` を返すので
+ * `okData(res) ?? []` の `??` は発火しない**（`{} ?? []` は `{}`）——「契約上は必須でも実行時に
+ * 必ず来るとは限らない」という決定 7 の前提は正しいまま、**その前提を守る式だけが空振りしていた**。
+ * したがって `??` ではなく `Array.isArray` で判定する（実測: 空ボディで `entries.map is not a
+ * function` により SC-11 / SC-09 がルートごとクラッシュしていた）。
+ *
+ * **型の保証は `okData` と同じ**である——戻り値は `OkPayload<TResponse>` なので、契約側で応答型が
+ * 変われば呼び出し側（`useBffX<XDto[], unknown>`）が型検査で落ちる。
+ *
+ * **配列を返す面にだけ使う。** 非配列の面へ誤って使っても型検査は落ちない（空ボディのとき静かに
+ * `[]` になる）。それでも `okData` のまま落ちるより退行は小さい。
+ */
+export function okArray<TResponse extends { status: number; data: unknown }>(
+  res: TResponse,
+): OkPayload<TResponse> {
+  const value = okData(res);
+  return (Array.isArray(value) ? value : []) as OkPayload<TResponse>;
+}

@@ -325,14 +325,14 @@ Node 22.22.2 ／ pnpm 10.33.0 ／ Vitest 3.2.7（v8 provider）／ orval 8.23.0 
 | --- | --- | --- |
 | 型検査 | `pnpm run typecheck` | green（4 パッケージ。AST は**無改修**） |
 | lint | `pnpm run lint` | green（**0 errors / 9 warnings**。warning は全件 `react-refresh/only-export-components` で、**着手前と同数**＝ errors も warnings も増やしていない） |
-| 単体テスト | `pnpm run test` | **60 files / 559 tests** 全 green（内訳: develop 取り込み後の基準 58 files / 557 tests ＋ 本作業の `orvalSelect.test.ts` 1 file / 2 tests） |
-| カバレッジ | `pnpm run test:coverage` | statements **96.24%** ／ branches **89.91%** ／ functions **91.72%** ／ lines **96.24%**。床（lines 90 / statements 90 / functions 88 / branches 85）を満たす。**床は動かしていない** |
+| 単体テスト | `pnpm run test` | 全 green（**件数は書かない**※。本作業が足したのは `orvalSelect.test.ts` と `useDocumentAdmin.test.tsx` の 2 ファイル、削除は 0） |
+| カバレッジ | `pnpm run test:coverage` | green（**床を割らない**。lines 90 / statements 90 / functions 88 / branches 85。**床は動かしていない**——実測値は他 PR のマージで動くため書かない※） |
 | ビルド | `pnpm run build` | green（最大チャンク `index-*.js` 274.47 kB / gzip 83.57 kB。**#549 の分割規則を壊していない**——500 kB 警告は出ない） |
 | E2E | Playwright（後述の条件） | **13 tests 全 green**（12 tests ＋ #549 の `bundle-splitting.smoke.spec.ts` 1 件） |
 | 生成物の乖離 | `pnpm run codegen` ＋ `git diff --exit-code -- src/platform/frontend/src/foundation/api/generated` | green（コミット後に再実行して差分なし） |
-| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（23 ファイル・検出 0 件） |
+| 静的 egress | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | green（**検出 0 件**。走査ファイル数は分割構成で動くため書かない※） |
 | ドキュメントリンク | `node scripts/check-doc-links.js` | green（**件数は書かない**※） |
-| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**検査対象 8 件 / 除外 0 件**。マージコミットは `--no-merges` で対象外） |
+| コミット件名 | `node scripts/check-commit-messages.js --base origin/develop` | green（**件数は書かない**※——自分でコミットを積むたびに動く。マージコミットは `--no-merges` で対象外） |
 | 契約スキーマ | `node scripts/check-contract-schema.js` | green（baseline と一致・未消化の承認 0 件。**C# はコメント 1 行しか触っていない**） |
 | テスト・トレーサビリティ | `node scripts/check-test-traceability.js` | green（未写像 0 件。**allowlist は着手前と同じ 7 件**＝増やしていない） |
 | テスト仕様書の被覆 | `node scripts/check-test-spec-coverage.js` | green（**床 68 は動かしていない**——バックエンドテストを足していない） |
@@ -413,6 +413,23 @@ $ grep -rn "from '@foundation/api/generated" src/knowledge/frontend/src/features
 | **MC1** | SC-11 の再取得を **1 本だけ**の無効化にする | SC-11 | 落ちる | **落ちた**。`ConfigViewerPage (SC-11) > refetches all three queries when the refresh button is pressed` が失敗（1 failed / 34 passed） |
 | **MC2** | SC-11 のドリフト取得から `select: okData` を外す（封筒が漏れる） | SC-11 | 落ちる | **落ちた**（12 failed / 23 passed）。**封筒剥がしが外れると画面は例外を出さずに静かに空になる**——テストが唯一の防波堤である |
 | **MC3** | SC-07 の再変換後の無効化キーを**条件つきキー**にする | SC-07 | 落ちる | **落ちた**。`refetches the list after a successful retry` が失敗（1 failed / 21 passed） |
+| **MD1** | SC-11 の履歴取得の `select: okArray` を `okData` へ戻す（**🔴 是正前の状態**） | SC-11 | 落ちる | **落ちた**。`TypeError: entries.map is not a function` で `degrades to the empty-history message when the history response has no body (204)` が失敗（1 failed / 17 passed）。**是正前はこの経路でルートごとクラッシュしていた** |
+| **MD2** | SC-05 の `documentInvalidationKeys` を**一覧キーだけ**へ戻す（**🔴 是正前の状態**） | SC-05 → SC-03 | 落ちる | **落ちた**。`useDocumentAdmin.test.tsx` が **5 件失敗**（`expected [true, false, false, false] to deeply equal [true, true, true, true]`）。公開・アーカイブ・更新・削除の各成功後に SC-03 の 3 クエリへ届かないことを捕まえる |
+
+#### MD1 / MD2 —— **クロス監査が見つけた 2 つの退行を、恒久のテストで固定した**
+
+MD1 / MD2 はいずれも**載せ替えが持ち込んだ実挙動の退行**であり、クロス監査が実測で発見した。
+
+- **MD1**: `bffFetch` は本文が空なら `{}` を返す。**`{} ?? []` は `{}` なので `??` は発火しない**——
+  「`?? []` を残したから安全」という当初の記録は事実と逆で、**空ボディで `.map` に `{}` が届いてクラッシュ**
+  していた（develop では `apiFetch → undefined → ?? []` が実際に効いていた）。`okArray` で実効ガードへ置き換えた。
+- **MD2**: 階層キー（`['bff','documents']` / `['bff','documents',id,…]`）が持っていた前方一致が、
+  生成キー（`['/bff/documents']` / `['/bff/documents/{id}']`）では**成立しない**。SC-05 の更新が SC-03 の
+  詳細・本文・版履歴へ届かなくなっていた。明示列挙（`documentInvalidationKeys`）で復元した。
+
+**どちらも画面テストでは原理的に検出できない。** テスト用 QueryClient（`renderUnitRoute.tsx`）が
+`staleTime: 0 / gcTime: 0` で作られるため、無効化が届かなくても再マウントで必ず再取得されるからである。
+MD2 は **QueryClient を直接使う単体テスト**（`useDocumentAdmin.test.tsx`）でしか固定できない。
 
 #### 素通りしたもの（**3 件。隠さない**）
 

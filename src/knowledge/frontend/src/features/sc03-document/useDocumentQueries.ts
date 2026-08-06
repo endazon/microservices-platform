@@ -6,7 +6,7 @@ import {
   useBffDocumentDetail,
   useBffDocumentVersions,
 } from '@foundation/api/generated/documents/documents';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray, okData } from '@foundation/api/orvalSelect';
 import { ApiError } from '@foundation/api/ApiError';
 import type {
   DocumentContentDto,
@@ -47,8 +47,10 @@ export function useDocumentQueries(id: string) {
   const versions = useBffDocumentVersions<DocumentVersionDto[], unknown>(id, {
     query: {
       queryKey: getBffDocumentVersionsQueryKey(id),
-      // `?? []` は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い。
-      select: (res) => okData(res) ?? [],
+      // 既定値は残す（IADR-0132 決定 3）。契約上は必須でも、実行時に本文を検証する層は無い。
+      // **`?? []` ではなく `okArray`**——`bffFetch` は本文が空なら `{}` を返すため
+      // `{} ?? []` は発火しない（IADR-0135 決定 7［2026-08-06 追記］）。
+      select: okArray,
       enabled: detail.isSuccess,
     },
   });

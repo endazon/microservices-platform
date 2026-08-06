@@ -20,7 +20,7 @@ import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
 import { useAdminDocuments, useDocumentActions } from './useDocumentAdmin';
 import type { DocumentCommand } from './useDocumentAdmin';
-// SC-05, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+// SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理画面（05_screens: ルート /admin/documents）。

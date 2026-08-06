@@ -29,7 +29,7 @@ import {
   useEffectiveConfig,
   useRefreshConfigViewer,
 } from './useConfigViewer';
-// SC-11, IADR-0135 決定 2: 表示に使う型は**契約（OpenAPI）から生成された DTO**である。
+// SC-11, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO**である。
 // 手書きの写しを置かない——契約が変われば型検査が落ちる状態にしておく。
 import type {
   ConfigVersionDto,
