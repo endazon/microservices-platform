@@ -143,7 +143,7 @@ export const Cards: Story = {
       <Card>
         <CardHeader>
           <CardTitle>属性・タグ</CardTitle>
-          <StatusBadge tone="neutral">社内</StatusBadge>
+          <StatusBadge tone="neutral">社内限</StatusBadge>
         </CardHeader>
         <CardContent>部門: 経理 / タグ: 経費, 規程</CardContent>
       </Card>

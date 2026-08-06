@@ -31,6 +31,7 @@ related_specs:
   - "../adr/IADR-0121_spa-stack-migration-staging.md"
   - "../adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md"
   - "../specs/20260804_issue-502_sc01-03-search-flow.md"
+  - "../specs/20260806_issue-541_citation-confidentiality.md"
   - "../tests/SC-01_search-chat.md"
   - "./SC-02_search-results.md"
   - "./SC-03_document-detail.md"

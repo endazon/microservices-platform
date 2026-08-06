@@ -164,17 +164,34 @@ related_specs:
 （裁定 Q30）。「極秘」にすると個人の作業メモがすべて極秘表示になり、本当に極秘の組織文書を
 見分けられなくなる。正は planning `docs/glossary.md` であり、**本リポジトリは表示名を再定義しない**。
 
-### 表示名の母集合（是正した 1 件と、しなかった 4 件）
+### 表示名の母集合（是正した 3 件と、しなかった 4 件）
 
-`git grep -rn '極秘\|取扱制限\|社内限' -- src docs ':!src/ai-stock-trading'` で数え切った。
+> **最初に使った grep 式が母集合を取りこぼしていた。** 当初は
+> `git grep -rn '極秘\|取扱制限\|社内限' -- src docs ':!src/ai-stock-trading'` で数えたが、
+> **是正対象そのもの（`internal`＝「社内」）は「社内限」を含まないので、この式では構造的に拾えない。**
+> 「誤った表示名を探すのに、正しい表示名だけを検索語にしていた」という取りこぼしである
+> （マージ前監査で指摘され、残存 2 件が見つかった）。**正しくは値側から数える。**
+>
+> ```console
+> $ git grep -nE '>(公開|社内|社内限|秘|取扱制限|極秘)<' -- src ':!src/ai-stock-trading'
+> ```
+>
+> **是正は母集合から入る**という原則は、母集合の取り方そのものを間違えると効かない。
 
 | # | 箇所 | 種別 | 本 PR |
 | --- | --- | --- | --- |
-| 1 | `src/packages/ui/src/stories/Primitives.stories.tsx` | **正に反する写像**（`internal`＝「社内」・`restricted`＝「極秘」） | **是正した**（社内限 / 取扱制限） |
+| 1 | `src/packages/ui/src/stories/Primitives.stories.tsx`（`Select` の選択肢） | **正に反する写像**（`internal`＝「社内」・`restricted`＝「極秘」） | **是正した**（社内限 / 取扱制限） |
+| 1' | 同ファイル（`StatusBadge` の例） | 同上（`社内`）。**#1 と同じファイルに残っていた** | **是正した**（社内限） |
+| 1'' | `src/packages/ui/src/components/formControls.test.tsx`（`aria-label="機密区分"` の `Select`） | 同上（`社内`） | **是正した**（社内限） |
 | 2 | `docs/screens/SC-03_document-detail.md` §属性の表示 | 「表示名が計画に無いので生値を出す」＝**古くなった根拠** | しない（§申し送り） |
 | 3 | `docs/screens/SC-05_document-management.md` 表 #7 | 同上（「planning#197 の裁定待ち」） | しない（§申し送り） |
 | 4 | `src/knowledge/frontend/src/features/abac/confidentiality.ts` の見出しコメント | 同上 | しない（§申し送り） |
 | 5 | `src/knowledge/frontend/src/features/sc03-document/attributes.ts` の見出しコメント | 同上 | しない（§申し送り） |
+
+> **偽陽性を 1 件除外した。** `sc05-documents/DocumentManagementPage.tsx` の `<Trans>公開</Trans>` は
+> **文書を公開するボタンの label** であって機密区分の表示名ではない（`onCommand(doc.id, 'publish', …)`）。
+> 値側から数える式は語だけを見るので、こうした同綴りを拾う。**機械検査を作るときは
+> 「値と並んでいるか」を条件に含める必要がある**（§申し送り 5）。
 
 **切り方**: #1 は**正（用語集）に反する記述**であり、放置すると誤った用語を教え続ける。#2〜#5 は
 「まだ決まっていない」という**古くなった根拠**で、直すには「SPA が表示名を出すのか／どこで i18n するか」
@@ -242,6 +259,15 @@ $ docker run --rm --network host \
 | `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | **差分なし** |
 | `dotnet test …/AiAnalysisService.Api.Tests` | **59 件すべて合格** |
 | `dotnet test …/Knowledge.Contracts.Tests` | **6 件すべて合格** |
+| `dotnet build src/platform/backend/backend.slnx` | **green**（0 Error）。**4 箇所目の呼び出し元 `Platform.Bff.Tests/BffTestFactory.cs`（位置引数 7 個）が無改修でコンパイルできることを実測**した |
+| `dotnet test …/Platform.Bff.Tests` | **148 合格 / 1 skip** |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | **差分なし** |
+
+> **`platform/backend` のビルドには `src/ai-stock-trading` の populate が要る。** 未 populate だと
+> `BffEndpointComposition.cs(1,7): error CS0246: … 'AiStockTrading' could not be found` で落ちる。
+> `git submodule update --init -- src/ai-stock-trading` で解消し、**pin は動かない**。
+> これにより「**4 箇所すべてが無改修でコンパイルできる**」という受け入れ基準は 4/4 を機械検証できた
+> （当初は platform 側が実コンパイル検証できず 3/4 に留まっていた）。
 | `node scripts/check-contract-schema.js`（変更前） | OK（2 プロジェクト / 20 ファイル / **57 型**） |
 | `node scripts/check-contract-schema.js`（変更後・`--update` 前） | 差分 **2 件**（破壊的 **0** / 非破壊 2）。`CitationDto.Confidentiality` のメンバー追加・`ConfidentialityLevels` の型追加 |
 | `node scripts/check-contract-schema.js`（`--update` 後） | OK（**58 型**） |
@@ -309,6 +335,23 @@ $ docker run --rm --network host \
 5. **表示名を機械検査する仕組みが無い**（変異 M6 が素通りした）。正は計画リポジトリの用語集だが、
    実装側にはそれを照合する検査が無く、誰かが「極秘」と書いても止まらない。
    用語集の表を読んで写像を突合する検査（`scripts/check-*.js`）を足す価値がある。**別 issue の候補。**
+   **検査を作るときの要件は本作業で 2 つ判明した** —— (a) **誤った表示名を検索語にできない**ので、
+   `internal` などの**値の側から**引く必要がある（§表示名の母集合の取りこぼし）、(b) 値と並んでいない
+   同綴り（`<Trans>公開</Trans>` = 公開ボタンの label）を**偽陽性として除外**する必要がある。
+6. **「フェイルセーフ」が 2 つの逆向きの既定に付いている。** 本作業は「属性の欠落 = `restricted`」を
+   FR-05 deny-by-default の帰結として確立したが、`knowledge/frontend` の
+   `features/abac/confidentiality.ts` はコメントで**「フェイルセーフ既定値」と名乗りながら `internal` を返す**。
+   `sc05-documents/DocumentForm.tsx` はそれをフォーム初期値に使うため、**属性を持たない既存文書を編集すると
+   `internal` が既定選択され、保存でその値が確定する**（書き込み経路）。
+   両者は軸が違う（本作業＝**読み取り時の表示の縮退**／前者＝**付与時の初期値**）ので ADR 違反ではないが、
+   同じ語が逆向きの既定に付いている状態は、**次の読み手にどちらかへ「揃える」誤修正を誘発する**。
+   `confidentiality.ts` のコメントを「フォーム初期値であって縮退規則ではない」と書き分けるべきである。
+7. **`ConfidentialityLevels.All` は契約ゲートの網に載らない。** `contract-schema-baseline.json` に
+   記録されるのは `const` 群だけで、`public static readonly string[] All` は含まれない。したがって
+   **梯子の順序を入れ替える変更（= 越境判定の `Rank` の意味を変える変更）は契約検査で止まらない**
+   （変異 M5 が落ちたのは `SafeDefault` が `const` だったため）。現在の唯一の網は
+   `ConfidentialityLevels_HasFourValues_AndFailsSafeToRestricted` が `All` を順序ごと固定していることであり、
+   **このテストを緩めた瞬間に網が消える。**
 
 ## 未決事項
 
