@@ -98,6 +98,16 @@ export interface CitationDto {
   score: number;
   /** 根拠箇所の抜粋 */
   snippet: string;
+  /**
+     * FR-04, SC-01, #541: この出典の文書の機密区分（ABAC 文書属性 `confidentiality`）。
+     * 利用者が AI 回答を社外資料へ引用してよいか判断する手掛かり（利用者裁定 Q10 / planning#200）。
+     * 値集合は `public` / `internal` / `confidential` / `restricted`。
+     * **`enum` にしない**（IADR-0131 決定 5。後段の値追加を SPA 側の破壊的変更にしない）。
+     * 発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
+     * ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
+     * **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
+     */
+  confidentiality: string;
 }
 
 /**

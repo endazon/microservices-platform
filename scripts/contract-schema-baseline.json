@@ -159,6 +159,12 @@
             "required": true,
             "position": 3
           },
+          "Confidentiality": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 7
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",
@@ -194,6 +200,41 @@
             "type": "string?",
             "required": true,
             "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ConfidentialityLevels": {
+        "kind": "class",
+        "members": {
+          "AttributeKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"confidentiality\""
+          },
+          "Confidential": {
+            "source": "const",
+            "type": "string",
+            "value": "\"confidential\""
+          },
+          "Internal": {
+            "source": "const",
+            "type": "string",
+            "value": "\"internal\""
+          },
+          "Public": {
+            "source": "const",
+            "type": "string",
+            "value": "\"public\""
+          },
+          "Restricted": {
+            "source": "const",
+            "type": "string",
+            "value": "\"restricted\""
+          },
+          "SafeDefault": {
+            "source": "const",
+            "type": "string",
+            "value": "Restricted"
           }
         }
       },
