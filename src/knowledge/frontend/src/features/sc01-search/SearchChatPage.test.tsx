@@ -3,20 +3,25 @@ import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 import type { SseEvent } from '@foundation/api/apiClient';
 
 // SC-01, UC-01, FR-03/FR-04/FR-05/FR-08: 主入口の再実装（#502）。
 // UC-01 の基本フロー（入力 → ABAC → 検索 → 回答 → 出典）・代替フロー（キーワード検索のみ）・
 // 例外フロー（LLM 不調時の縮退運転）を画面から観測できる形で固定する。
+//
+// IADR-0135 決定 1 / 決定 4（#519）: フィードバック送信だけを生成フックへ載せ替えた。
+// 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るのでモックは `apiRequest` に当てる。
+// **本文の SSE は `apiStream` のまま**（orval は SSE を扱えない。IADR-0131 決定 4）。
 const mocks = vi.hoisted(() => ({
   apiStream: vi.fn(),
-  apiFetch: vi.fn(),
+  apiRequest: vi.fn(),
   wikiBaseUrl: undefined as string | undefined,
 }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
   apiStream: mocks.apiStream,
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
@@ -78,7 +83,7 @@ async function ask(question: string) {
 
 beforeEach(() => {
   mocks.apiStream.mockReset();
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   mocks.wikiBaseUrl = WIKI;
 });
 
@@ -217,17 +222,22 @@ describe('SearchChatPage (SC-01)', () => {
   // FR-08: done で得た answerId を添えてフィードバックを送る。
   it('sends feedback with the answer id after the stream completes', async () => {
     streamEvents([DONE_EVENT]);
-    mocks.apiFetch.mockResolvedValue({});
+    mocks.apiRequest.mockResolvedValue(jsonResponse({}));
     await renderPage();
     const user = await ask('締め日は？');
 
     await user.click(await screen.findByRole('button', { name: '役に立った' }));
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith('/feedback', {
-        method: 'POST',
-        json: { answerId: ANSWER_ID, rating: 'up', question: '締め日は？' },
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/feedback',
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
+    expect(JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body))).toEqual({
+      answerId: ANSWER_ID,
+      rating: 'up',
+      question: '締め日は？',
+    });
     expect(screen.getByRole('button', { name: '役に立った' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -238,7 +248,7 @@ describe('SearchChatPage (SC-01)', () => {
   // FR-08: 送信に失敗したら楽観的な押下状態を取り消す（押したのに何も起きない状態を残さない）。
   it('reverts the optimistic rating when the feedback request fails', async () => {
     streamEvents([DONE_EVENT]);
-    mocks.apiFetch.mockRejectedValue(new Error('boom'));
+    mocks.apiRequest.mockRejectedValue(new Error('boom'));
     await renderPage();
     const user = await ask('締め日は？');
 

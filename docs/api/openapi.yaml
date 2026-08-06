@@ -83,7 +83,7 @@ paths:
         Issue #118 監査: 実装パスは `/bff/analysis/ask`（旧記載 `/analysis/ask` は誤り。
         `/analysis/ask` は AiAnalysisService 直接の内部パス）。ABAC 権限解決のため
         Authorization ヘッダを後段へ伝播する。
-      operationId: analysis-ask
+      operationId: bff-analysis-ask
       requestBody:
         required: true
         content:
@@ -107,7 +107,7 @@ paths:
         `/analysis/analyze` は AiAnalysisService 直接の内部パス）。
         指定データ範囲（attributeFilters / query）は ABAC 許可スコープと交差し、権限を一切広げない
         （narrowing-only, IADR-0005）。範囲が権限外を指す場合は空回答へ縮退する。
-      operationId: analysis-analyze
+      operationId: bff-analysis-analyze
       requestBody:
         required: true
         content:

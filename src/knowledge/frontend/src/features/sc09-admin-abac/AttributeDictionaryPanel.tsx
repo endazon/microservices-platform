@@ -26,7 +26,8 @@ import {
 } from './abacVocabulary';
 import type { AttributeScope } from './abacVocabulary';
 import { useAttributeActions } from './useAbacAdmin';
-import type { AttributeDefinition } from './useAbacAdmin';
+// SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type { AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: 属性体系エディタ（計画 §SC-09 §主要素）。
 // 利用者属性・文書属性の辞書（キー・ラベル・許可値・必須・スコープ）を一覧・追加・削除する。
@@ -48,7 +49,7 @@ function AttributeRow({
   attribute,
   onDelete,
 }: {
-  attribute: AttributeDefinition;
+  attribute: AttributeDefinitionDto;
   onDelete: () => void;
 }) {
   const { t } = useLingui();
@@ -84,7 +85,7 @@ export function AttributeDictionaryPanel({
   isError,
   error,
 }: {
-  attributes: AttributeDefinition[];
+  attributes: AttributeDefinitionDto[];
   isPending: boolean;
   isError: boolean;
   error: unknown;
@@ -193,7 +194,7 @@ export function AttributeDictionaryPanel({
                   attribute={a}
                   onDelete={() => {
                     beginOperation();
-                    remove.mutate(a.id);
+                    remove.mutate({ id: a.id });
                   }}
                 />
               ))}
@@ -209,11 +210,13 @@ export function AttributeDictionaryPanel({
           beginOperation();
           create.mutate(
             {
-              key: key.trim(),
-              label: label.trim(),
-              allowedValues: parseAllowedValues(allowedValues),
-              required,
-              scope,
+              data: {
+                key: key.trim(),
+                label: label.trim(),
+                allowedValues: parseAllowedValues(allowedValues),
+                required,
+                scope,
+              },
             },
             {
               onSuccess: () => {

@@ -30,19 +30,19 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 
-export type analysisAskResponse200 = {
+export type bffAnalysisAskResponse200 = {
   data: AiAnswerDto
   status: 200
 }
 
-export type analysisAskResponseSuccess = (analysisAskResponse200) & {
+export type bffAnalysisAskResponseSuccess = (bffAnalysisAskResponse200) & {
   headers: Headers;
 };
 ;
 
-export type analysisAskResponse = (analysisAskResponseSuccess)
+export type bffAnalysisAskResponse = (bffAnalysisAskResponseSuccess)
 
-export const getAnalysisAskUrl = () => {
+export const getBffAnalysisAskUrl = () => {
 
 
 
@@ -56,9 +56,9 @@ export const getAnalysisAskUrl = () => {
  * Authorization ヘッダを後段へ伝播する。
  * @summary FR-04, UC-01: RAG 質問回答（BFF 集約）
  */
-export const analysisAsk = async (askRequest: AskRequest, options?: Parameters<typeof bffFetch>[1]): Promise<analysisAskResponse> => {
+export const bffAnalysisAsk = async (askRequest: AskRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffAnalysisAskResponse> => {
 
-  return bffFetch<analysisAskResponse>(getAnalysisAskUrl(),
+  return bffFetch<bffAnalysisAskResponse>(getBffAnalysisAskUrl(),
   {
     ...options,
     method: 'POST',
@@ -71,11 +71,11 @@ export const analysisAsk = async (askRequest: AskRequest, options?: Parameters<t
 
 
 
-export const getAnalysisAskMutationOptions = <TError = unknown,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof analysisAsk>>, TError,{data: AskRequest}, TContext> => {
+export const getBffAnalysisAskMutationOptions = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext> => {
 
-const mutationKey = ['analysisAsk'];
+const mutationKey = ['bffAnalysisAsk'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -85,10 +85,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analysisAsk>>, {data: AskRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffAnalysisAsk>>, {data: AskRequest}> = (props) => {
           const {data} = props ?? {};
 
-          return  analysisAsk(data,requestOptions)
+          return  bffAnalysisAsk(data,requestOptions)
         }
 
 
@@ -98,43 +98,43 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type AnalysisAskMutationResult = NonNullable<Awaited<ReturnType<typeof analysisAsk>>>
-    export type AnalysisAskMutationBody = AskRequest
-    export type AnalysisAskMutationError = unknown
+    export type BffAnalysisAskMutationResult = NonNullable<Awaited<ReturnType<typeof bffAnalysisAsk>>>
+    export type BffAnalysisAskMutationBody = AskRequest
+    export type BffAnalysisAskMutationError = unknown
 
     /**
  * @summary FR-04, UC-01: RAG 質問回答（BFF 集約）
  */
-export const useAnalysisAsk = <TError = unknown,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+export const useBffAnalysisAsk = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof analysisAsk>>,
+        Awaited<ReturnType<typeof bffAnalysisAsk>>,
         TError,
         {data: AskRequest},
         TContext
       > => {
-      return useMutation(getAnalysisAskMutationOptions(options));
+      return useMutation(getBffAnalysisAskMutationOptions(options));
     }
-    export type analysisAnalyzeResponse200 = {
+    export type bffAnalysisAnalyzeResponse200 = {
   data: AiAnswerDto
   status: 200
 }
 
-export type analysisAnalyzeResponse400 = {
+export type bffAnalysisAnalyzeResponse400 = {
   data: void
   status: 400
 }
 
-export type analysisAnalyzeResponseSuccess = (analysisAnalyzeResponse200) & {
+export type bffAnalysisAnalyzeResponseSuccess = (bffAnalysisAnalyzeResponse200) & {
   headers: Headers;
 };
-export type analysisAnalyzeResponseError = (analysisAnalyzeResponse400) & {
+export type bffAnalysisAnalyzeResponseError = (bffAnalysisAnalyzeResponse400) & {
   headers: Headers;
 };
 
-export type analysisAnalyzeResponse = (analysisAnalyzeResponseSuccess | analysisAnalyzeResponseError)
+export type bffAnalysisAnalyzeResponse = (bffAnalysisAnalyzeResponseSuccess | bffAnalysisAnalyzeResponseError)
 
-export const getAnalysisAnalyzeUrl = () => {
+export const getBffAnalysisAnalyzeUrl = () => {
 
 
 
@@ -149,9 +149,9 @@ export const getAnalysisAnalyzeUrl = () => {
  * （narrowing-only, IADR-0005）。範囲が権限外を指す場合は空回答へ縮退する。
  * @summary FR-07, UC-02: 指定データ範囲での分析・比較・抽出（BFF 集約）
  */
-export const analysisAnalyze = async (analysisTaskRequest: AnalysisTaskRequest, options?: Parameters<typeof bffFetch>[1]): Promise<analysisAnalyzeResponse> => {
+export const bffAnalysisAnalyze = async (analysisTaskRequest: AnalysisTaskRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffAnalysisAnalyzeResponse> => {
 
-  return bffFetch<analysisAnalyzeResponse>(getAnalysisAnalyzeUrl(),
+  return bffFetch<bffAnalysisAnalyzeResponse>(getBffAnalysisAnalyzeUrl(),
   {
     ...options,
     method: 'POST',
@@ -164,11 +164,11 @@ export const analysisAnalyze = async (analysisTaskRequest: AnalysisTaskRequest, 
 
 
 
-export const getAnalysisAnalyzeMutationOptions = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof analysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext> => {
+export const getBffAnalysisAnalyzeMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext> => {
 
-const mutationKey = ['analysisAnalyze'];
+const mutationKey = ['bffAnalysisAnalyze'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -178,10 +178,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analysisAnalyze>>, {data: AnalysisTaskRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffAnalysisAnalyze>>, {data: AnalysisTaskRequest}> = (props) => {
           const {data} = props ?? {};
 
-          return  analysisAnalyze(data,requestOptions)
+          return  bffAnalysisAnalyze(data,requestOptions)
         }
 
 
@@ -191,20 +191,20 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type AnalysisAnalyzeMutationResult = NonNullable<Awaited<ReturnType<typeof analysisAnalyze>>>
-    export type AnalysisAnalyzeMutationBody = AnalysisTaskRequest
-    export type AnalysisAnalyzeMutationError = void
+    export type BffAnalysisAnalyzeMutationResult = NonNullable<Awaited<ReturnType<typeof bffAnalysisAnalyze>>>
+    export type BffAnalysisAnalyzeMutationBody = AnalysisTaskRequest
+    export type BffAnalysisAnalyzeMutationError = void
 
     /**
  * @summary FR-07, UC-02: 指定データ範囲での分析・比較・抽出（BFF 集約）
  */
-export const useAnalysisAnalyze = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+export const useBffAnalysisAnalyze = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAnalyze>>, TError,{data: AnalysisTaskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof analysisAnalyze>>,
+        Awaited<ReturnType<typeof bffAnalysisAnalyze>>,
         TError,
         {data: AnalysisTaskRequest},
         TContext
       > => {
-      return useMutation(getAnalysisAnalyzeMutationOptions(options));
+      return useMutation(getBffAnalysisAnalyzeMutationOptions(options));
     }

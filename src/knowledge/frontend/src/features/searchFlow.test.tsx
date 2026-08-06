@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 import type { SseEvent } from '@foundation/api/apiClient';
 
 // SC-01 → SC-02 → SC-03, UC-01: **利用者の主導線**（検索 → 結果一覧 → 文書詳細）を 1 本のルータで通す。
@@ -12,10 +13,13 @@ import type { SseEvent } from '@foundation/api/apiClient';
 //
 // 認証済みの導線を Playwright で実走できないため（トークンは InMemoryWebStorage に保持され外から
 // 注入できない。docs/tests/SC-01_search-chat.md §E2E の限界）、この層が導線の受け皿である。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn(), apiStream: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 検索・文書は生成物経由（→ `apiRequest`）、AI 回答は SSE のまま
+// （`apiStream`。orval は SSE を扱えない。IADR-0131 決定 4）。**モックは両方に当てる。**
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn(), apiStream: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
   apiStream: mocks.apiStream,
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
@@ -57,13 +61,13 @@ const DETAIL = {
 const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程\n締め日は毎月25日。', sourceUri: null };
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   mocks.apiStream.mockReset();
-  mocks.apiFetch.mockImplementation((path: string) => {
-    if (path === '/search') return Promise.resolve(SEARCH_RESPONSE);
-    if (path.endsWith('/content')) return Promise.resolve(CONTENT);
-    if (path.endsWith('/versions')) return Promise.resolve([]);
-    return Promise.resolve(DETAIL);
+  mocks.apiRequest.mockImplementation((path: string) => {
+    if (path === '/search') return Promise.resolve(jsonResponse(SEARCH_RESPONSE));
+    if (path.endsWith('/content')) return Promise.resolve(jsonResponse(CONTENT));
+    if (path.endsWith('/versions')) return Promise.resolve(jsonResponse([]));
+    return Promise.resolve(jsonResponse(DETAIL));
   });
 });
 
@@ -91,16 +95,22 @@ describe('search flow (SC-01 → SC-02 → SC-03)', () => {
 
     // SC-02: `?q=` が引き継がれ、そのまま検索が走る（入力し直さない）。
     expect(await screen.findByRole('heading', { name: '検索結果一覧' })).toBeInTheDocument();
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/search', {
-      method: 'POST',
-      json: { query: '経費精算', topK: 20 },
-    });
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(
+      JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body)),
+    ).toEqual({ query: '経費精算', topK: 20 });
 
     // SC-03: 結果から文書詳細へ。
     await user.click(await screen.findByRole('link', { name: TITLE }));
     expect(await screen.findByRole('heading', { name: TITLE })).toBeInTheDocument();
     expect(screen.getByText(/締め日は毎月25日。/)).toBeInTheDocument();
-    expect(mocks.apiFetch).toHaveBeenCalledWith(`/documents/${DOC_ID}`);
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      `/documents/${DOC_ID}`,
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   // UC-01 基本フロー 5: AI 回答の出典から直接 SC-03 へ到達できる（一覧を経由しない経路）。

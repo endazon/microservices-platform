@@ -19,7 +19,9 @@ import { CONFIDENTIALITY_KEY } from '../abac/confidentiality';
 import { DocumentForm } from './DocumentForm';
 import type { DocumentFormValues } from './DocumentForm';
 import { useAdminDocuments, useDocumentActions } from './useDocumentAdmin';
-import type { AdminDocument, DocumentCommand } from './useDocumentAdmin';
+import type { DocumentCommand } from './useDocumentAdmin';
+// SC-05, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理画面（05_screens: ルート /admin/documents）。
 // 正規化文書の一覧・登録・編集（属性／タグ設定）を行う。詳細と版履歴は SC-03（/docs/$id）が持つ
@@ -52,16 +54,26 @@ function conflictDetails(error: unknown): string | null {
 
 export function DocumentManagementPage() {
   const { t } = useLingui();
-  const [editing, setEditing] = useState<AdminDocument | null>(null);
+  const [editing, setEditing] = useState<DocumentDto | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const documents = useAdminDocuments();
   const actions = useDocumentActions();
-  const { create, update, command } = actions;
+  const { create, update, publish, archive, remove } = actions;
+  // IADR-0135 決定 6: 状態遷移は生成フックが 3 本に分かれる。画面の語彙（DocumentCommand）から
+  // どのミューテーションを撃つかをここで選ぶ（パスの組み立ては生成コードが持つ）。
+  const commands: Record<DocumentCommand, typeof publish | typeof archive | typeof remove> = {
+    publish,
+    archive,
+    delete: remove,
+  };
+  const commandPending = publish.isPending || archive.isPending || remove.isPending;
 
   const items = documents.data ?? [];
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
-  // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに
+  // 戻り値から導く——手書きの配列にすると、次のミューテーションを足したときに
   // 「一覧には出るが読まれない失敗」「消し忘れる古い失敗」が静かに生まれる。
+  // **#519 の載せ替えで束は 3 本から 5 本へ増えたが、ここは 1 文字も変えずに追随した**
+  // （手書きの配列だったら 2 本を書き足す必要があった。IADR-0135 決定 6）。
   const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
   const conflicted = failed?.error instanceof ApiError && failed.error.status === 409;
@@ -82,7 +94,7 @@ export function DocumentManagementPage() {
     beginOperation();
     if (editing) {
       update.mutate(
-        { id: editing.id, expectedVersion: editing.version, ...values },
+        { id: editing.id, data: { ...values, expectedVersion: editing.version } },
         {
           onSuccess: () => {
             setEditing(null);
@@ -94,14 +106,14 @@ export function DocumentManagementPage() {
     }
     // 新規登録に変更メモは無い（版スナップショットの説明であり、初版には対象の変更が無い）。
     create.mutate(
-      { title: values.title, attributes: values.attributes, tags: values.tags },
+      { data: { title: values.title, attributes: values.attributes, tags: values.tags } },
       { onSuccess: () => setNotice(t`文書を登録しました。`) },
     );
   }
 
   function run(id: string, kind: DocumentCommand, message: string) {
     beginOperation();
-    command.mutate({ id, kind }, { onSuccess: () => setNotice(message) });
+    commands[kind].mutate({ id }, { onSuccess: () => setNotice(message) });
   }
 
   return (
@@ -186,7 +198,7 @@ export function DocumentManagementPage() {
                   <DocumentRow
                     key={doc.id}
                     doc={doc}
-                    busy={command.isPending}
+                    busy={commandPending}
                     onEdit={() => {
                       beginOperation();
                       setEditing(doc);
@@ -219,7 +231,7 @@ function DocumentRow({
   onEdit,
   onCommand,
 }: {
-  doc: AdminDocument;
+  doc: DocumentDto;
   busy: boolean;
   onEdit: () => void;
   onCommand: (id: string, kind: DocumentCommand, message: string) => void;

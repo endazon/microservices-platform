@@ -8,7 +8,7 @@ import {
 } from '../abac/confidentiality';
 import { i18n } from '@foundation/i18n';
 import { SOURCE_TYPES, sourceTypeLabel } from './syncState';
-import type { CreateDataSourceInput } from './useDataSources';
+import type { CreateDataSourceRequest } from '@foundation/api/generated/bff.schemas';
 
 // SC-06, UC-04 基本 1, FR-01: データソース登録フォーム
 // （05_screens §SC-06 主要素「ソース登録ボタン」「コネクタ設定」）。
@@ -22,7 +22,7 @@ export function DataSourceForm({
   onCancel,
   submitting,
 }: {
-  onSubmit: (input: CreateDataSourceInput) => void;
+  onSubmit: (input: CreateDataSourceRequest) => void;
   onCancel: () => void;
   submitting: boolean;
 }) {

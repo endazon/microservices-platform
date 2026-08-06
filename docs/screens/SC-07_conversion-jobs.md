@@ -14,7 +14,7 @@ related_ids:
   - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -153,7 +153,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧（状態フィルタ） | `GET /bff/conversion/jobs[?status=]` | `useQuery(['bff','conversion','jobs',status])` ＋ `apiFetch` | admin / operator（非特権 403・無認証 401） | `ConversionJobDto[]` |
+| 一覧（状態フィルタ） | `GET /bff/conversion/jobs[?status=]` | **orval 生成フック `useBffConversionJobList`**（#519。キーは `['/bff/conversion/jobs', { status }]`） | admin / operator（非特権 403・無認証 401） | `ConversionJobDto[]` |
 | 再変換 | `POST /bff/conversion/jobs/{id}/retry` | `useMutation` | **admin のみ**（operator は 403・無認証 401。#501 / [[IADR-0128]] 決定 1） | 202 / 404 / **409 `not_retryable`** |
 
 > **［2026-08-05 追記・再変換は API 側も管理者ロール限定（#501 / [[IADR-0128]]）］**
@@ -170,10 +170,16 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 > retry を絞った際に巻き添えで絞られていないことをテストで固定している
 > （テスト仕様書 §BFF の 5b / 5c）。
 
-- **orval 生成フックは使えない**——`/bff/conversion/jobs` は `docs/api/openapi.yaml` に無い（#506 の射程を広げる。[[IADR-0127]] 決定 3）。
+- **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
+  再変換の成功後は**引数なしの生成キー**（`['/bff/conversion/jobs']`）で無効化する——絞り込み条件は
+  キーの 2 要素目に載るため、これが条件つきキーの前方一致になる（[[IADR-0135]] 決定 3）。
 - **BFF は後段障害を空一覧へ縮退させない**（502 で可視化する。「ジョブ無し」と「サービス障害」を誤認させない）。
   画面もこれに合わせて**取得失敗をエラーとして表示する**。
-- 再変換の成功後は `invalidateQueries({ queryKey: ['bff','conversion','jobs'] })` のみを行う（[[IADR-0127]] 決定 5）。
+- 再変換の成功後は `invalidateQueries({ queryKey: getBffConversionJobListQueryKey() })`
+  （**引数なし**＝`['/bff/conversion/jobs']`）のみを行う（[[IADR-0127]] 決定 5）。
+  **［2026-08-06 追記］かつて `['bff','conversion','jobs']` と書いていたのは載せ替え前の階層キーで
+  あり、上の行（前方一致が成立する理由）と食い違っていた。** 生成キーでの前方一致は
+  「絞り込み条件がキーの 2 要素目に載る」ことで成立する（[[IADR-0135]] 決定 3）。
 
 ## レイアウト / 主要素
 

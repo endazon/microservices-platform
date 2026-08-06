@@ -25,7 +25,13 @@ import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { opsTools } from './opsTools';
 import { DAYS_OPTIONS, useDashboardSummary } from './useDashboardSummary';
-import type { DashboardSummary, DaysOption, SearchTrend, UsagePoint } from './useDashboardSummary';
+import type { DaysOption } from './useDashboardSummary';
+// SC-10, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type {
+  DashboardSummaryDto,
+  SearchTrendDto,
+  UsagePointDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-10, UC-05, FR-10: 運用ダッシュボード（05_screens: ルート /admin/ops）。
 // 利用状況・検索傾向・回答品質のサマリと、専用ツール（Grafana / Kiali / Jaeger・Tempo）・
@@ -178,7 +184,7 @@ export function OperationsDashboardPage() {
  * 補間には**素の変数だけ**を置く（`${summary.quality.up}` のような式を入れると、
  * 抽出されたメッセージから元の値が読めなくなり、翻訳者が文脈を判断できない）。
  */
-function SummaryView({ summary }: { summary: DashboardSummary }) {
+function SummaryView({ summary }: { summary: DashboardSummaryDto }) {
   const { t } = useLingui();
   const up = summary.quality.up;
   const down = summary.quality.down;
@@ -218,7 +224,7 @@ function Kpi({ label, value, note }: { label: string; value: string; note?: stri
   );
 }
 
-function UsageTrendTable({ points }: { points: UsagePoint[] }) {
+function UsageTrendTable({ points }: { points: UsagePointDto[] }) {
   const { t } = useLingui();
   return (
     <Card>
@@ -264,7 +270,7 @@ function UsageTrendTable({ points }: { points: UsagePoint[] }) {
   );
 }
 
-function SearchTrendTable({ terms }: { terms: SearchTrend[] }) {
+function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
   const { t } = useLingui();
   return (
     <Card>

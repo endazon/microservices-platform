@@ -8,7 +8,7 @@ related_ids:
   - ADR-0018
 author: claude
 created: 2026-07-09
-updated: 2026-07-10
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -158,8 +158,21 @@ related_specs:
 2. feature は `FeatureModule`（`routes`）を公開し、合成点 `src/platform/frontend/src/features/index.ts`
    （IADR-0056）へ 1 行登録する。
    登録により認証済みレイアウト配下へマウントされる（**登録しないと画面へ到達できない**）。
-3. バックエンド呼び出しは必ず `@foundation/api` の `apiFetch`（`/bff/*` 経由）を使う。
-   各サービスの直接呼び出し・接続先のビルド焼き込みは禁止（実行時 config `public/config.js`）。
+3. バックエンド呼び出しは必ず **`/bff/*` 経由**にする。各サービスの直接呼び出し・接続先の
+   ビルド焼き込みは禁止（実行時 config `public/config.js`）。
+
+   > **［2026-08-06 追記］この項はかつて「必ず `@foundation/api` の `apiFetch` を使う」と
+   > 指示していた。いまは逆である。** 既定は **orval 生成フック／生成された操作関数**
+   > （`@foundation/api/generated`。`pnpm run codegen` の生成物はコミットする）であり、
+   > **画面から `apiFetch` を呼ぶ箇所は 0 件**である（#519 / [[IADR-0135]] 決定 1・2）。
+   > 契約（`docs/api/openapi.yaml`）を変えたときに画面の型検査が落ちる、という保証を
+   > 得るためである（[[IADR-0131]] 決定 1）。
+   > `foundation/api` を直接使ってよいのは **SSE の `apiStream`** だけで、これは orval が
+   > 扱えないため恒久的な例外である（[[IADR-0131]] 決定 4）。生成物が無い面を新設するときは、
+   > **`apiFetch` を書く前に OpenAPI へ宣言を足す**。
+   >
+   > 本節の原典 IADR-0033 は [[IADR-0121]] が Superseded 済みであり、本文書（`status: fixed`）の
+   > 全面改訂はこの追記の射程外である。ここでは**成果を次の実装者が壊す入口だけを塞ぐ**。
 4. 認証・ロールは foundation の OIDC（Keycloak `spa-web`）とロールベースナビゲーション
    （IADR-0035）に従う。トークン・シークレットをコードに置かない。
 5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { apiFetch, apiStream } from '@foundation/api/apiClient';
+import { apiStream } from '@foundation/api/apiClient';
+import { useBffSubmitFeedback } from '@foundation/api/generated/feedback/feedback';
 import type { AskCitation } from './citations';
 
 // SC-01, UC-01, FR-04/FR-08: AI 回答（SSE）とフィードバック送信の状態管理。
@@ -94,20 +95,21 @@ export type FeedbackRating = 'up' | 'down';
  * FR-08: 回答へのフィードバック送信。
  *
  * 押下は**楽観的に**反映し、送信に失敗したら取り消す（押したのに何も起きない状態を残さない）。
+ *
+ * IADR-0135 決定 1（#519）: 送信は **orval 生成フック**（`useBffSubmitFeedback`）で行う。
+ * **本文の SSE（`apiStream`）は載せ替えない**——orval は SSE を扱えず、生成物に該当の関数が
+ * 存在しない（IADR-0131 決定 4。恒久的に対象外）。
  */
 export function useFeedback() {
   const [rating, setRating] = useState<FeedbackRating | null>(null);
   const [failed, setFailed] = useState(false);
 
-  const mutation = useMutation({
-    mutationFn: (vars: { answerId: string; rating: FeedbackRating; question: string }) =>
-      apiFetch('/feedback', {
-        method: 'POST',
-        json: { answerId: vars.answerId, rating: vars.rating, question: vars.question },
-      }),
-    onError: () => {
-      setRating(null);
-      setFailed(true);
+  const mutation = useBffSubmitFeedback<unknown>({
+    mutation: {
+      onError: () => {
+        setRating(null);
+        setFailed(true);
+      },
     },
   });
 
@@ -115,7 +117,7 @@ export function useFeedback() {
     (answerId: string, next: FeedbackRating, question: string) => {
       setRating(next);
       setFailed(false);
-      mutation.mutate({ answerId, rating: next, question });
+      mutation.mutate({ data: { answerId, rating: next, question } });
     },
     [mutation],
   );

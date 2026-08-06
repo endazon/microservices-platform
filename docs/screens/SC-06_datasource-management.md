@@ -14,7 +14,7 @@ related_ids:
   - IADR-0127
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -124,15 +124,19 @@ related_specs:
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧 | `GET /bff/datasources` | `useQuery(['bff','datasources'])` ＋ `apiFetch` | admin / operator | `DataSourceDto[]` |
+| 一覧 | `GET /bff/datasources` | **orval 生成フック `useBffDataSourceList`**（#519） | admin / operator | `DataSourceDto[]` |
 | 登録 | `POST /bff/datasources` | `useMutation` | 同上 | `DataSourceDto`（201） |
-| 手動同期 | `POST /bff/datasources/{id}/sync` | `useMutation` | 同上 | 202 `{ fetchId, status }` |
+| 手動同期 | `POST /bff/datasources/{id}/sync` | `useMutation` | 同上 | 202 `DataSourceSyncResultDto`（`{ fetched, failed, connectorAvailable, message }`） |
 | 無効化 | `DELETE /bff/datasources/{id}` | `useMutation` | 同上 | 204 |
 
-- **orval 生成フックは使えない**——`/bff/datasources` は `docs/api/openapi.yaml` に無い（#506 の射程を広げる。[[IADR-0127]] 決定 3）。
+- **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
 - **BFF は後段障害を空一覧へ縮退させない**（502 で可視化する）。「未登録」と誤認させて重複登録を招かないためであり、
   画面もこれに合わせて**取得失敗をエラーとして表示する**（0 件表示へ寄せない）。
-- 更新系の成功後は `invalidateQueries({ queryKey: ['bff','datasources'] })` のみを行う（[[IADR-0127]] 決定 5）。
+- 更新系の成功後は `invalidateQueries({ queryKey: getBffDataSourceListQueryKey() })`
+  （＝`['/bff/datasources']`）のみを行う（[[IADR-0127]] 決定 5）。
+  **［2026-08-06 追記］かつて `['bff','datasources']` と書いていたのは載せ替え前の階層キーである
+  （#519 / [[IADR-0135]] 決定 1 で生成キーへ移った）。** 本画面は詳細ページを持たず、無効化の対象は
+  一覧 1 本だけなので、SC-05 のような前方一致の破れ（[[IADR-0135]] 決定 3）は生じない。
 
 ## レイアウト / 主要素
 

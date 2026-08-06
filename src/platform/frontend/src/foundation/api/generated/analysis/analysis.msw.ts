@@ -21,37 +21,37 @@ import type {
 } from '../bff.schemas';
 
 import {
-  getAnalysisAnalyzeResponseMock,
-  getAnalysisAskResponseMock
+  getBffAnalysisAnalyzeResponseMock,
+  getBffAnalysisAskResponseMock
 } from './analysis.faker';
 
-export { getAnalysisAskResponseMock, getAnalysisAnalyzeResponseMock } from './analysis.faker';
+export { getBffAnalysisAskResponseMock, getBffAnalysisAnalyzeResponseMock } from './analysis.faker';
 
 
-export const getAnalysisAskMockHandler = (overrideResponse?: AiAnswerDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiAnswerDto> | AiAnswerDto), options?: RequestHandlerOptions) => {
+export const getBffAnalysisAskMockHandler = (overrideResponse?: AiAnswerDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiAnswerDto> | AiAnswerDto), options?: RequestHandlerOptions) => {
   return http.post('*/bff/analysis/ask', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
 
 
     return HttpResponse.json(overrideResponse !== undefined
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
-    : getAnalysisAskResponseMock(),
+    : getBffAnalysisAskResponseMock(),
       { status: 200
       })
   }, options)
 }
 
-export const getAnalysisAnalyzeMockHandler = (overrideResponse?: AiAnswerDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiAnswerDto> | AiAnswerDto), options?: RequestHandlerOptions) => {
+export const getBffAnalysisAnalyzeMockHandler = (overrideResponse?: AiAnswerDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AiAnswerDto> | AiAnswerDto), options?: RequestHandlerOptions) => {
   return http.post('*/bff/analysis/analyze', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
 
 
     return HttpResponse.json(overrideResponse !== undefined
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
-    : getAnalysisAnalyzeResponseMock(),
+    : getBffAnalysisAnalyzeResponseMock(),
       { status: 200
       })
   }, options)
 }
 export const getAnalysisMock = () => [
-  getAnalysisAskMockHandler(),
-  getAnalysisAnalyzeMockHandler()
+  getBffAnalysisAskMockHandler(),
+  getBffAnalysisAnalyzeMockHandler()
 ]

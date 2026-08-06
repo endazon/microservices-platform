@@ -4,14 +4,24 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
-// SC-02, UC-01（代替フロー）, FR-03/FR-05: 検索結果一覧の再実装（#502）。
+// SC-02, UC-01（代替フロー）, FR-03/FR-05: 検索結果一覧の再実装（#502）＋ 生成物への載せ替え（#519）。
 // 検索語は URL（?q=）が単一情報源であり（IADR-0126 決定 3）、入力欄は取得の引き金にならない。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 2 / 決定 4（#519）: 検索は生成された操作関数（`bffSearch`）を `useQuery` に据える。
+// 経路は mutator（`bffFetch`）→ **`apiRequest`** なので、モックは `apiRequest` に当てる。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
+
+/** 送信された検索要求の本文（生成コードは JSON 文字列を `body` に載せる）。 */
+function sentQuery(call: unknown[]): { query: string; topK: number } {
+  const init = call[1] as RequestInit;
+  return JSON.parse(String(init.body)) as { query: string; topK: number };
+}
 
 import { createSc02ResultsRoute } from './index';
 
@@ -44,7 +54,7 @@ async function search(term: string) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
 });
 
 afterEach(() => {
@@ -57,7 +67,7 @@ describe('SearchResultsPage (SC-02)', () => {
   // UC-01 代替フロー: キーワード検索のみで結果一覧を返す（AI 回答は呼ばない）。
   // UC-01 基本フロー 2 / FR-05: クライアントは ABAC スコープを送らない。
   it('searches via /bff/search and lists results linking to SC-03', async () => {
-    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage();
     await search('経費精算');
 
@@ -65,17 +75,18 @@ describe('SearchResultsPage (SC-02)', () => {
     expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
     expect(screen.getByText(/精算の締め日は毎月25日/)).toBeInTheDocument();
     expect(screen.getByText('経理')).toBeInTheDocument();
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/search', {
-      method: 'POST',
-      json: { query: '経費精算', topK: 20 },
-    });
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(sentQuery(mocks.apiRequest.mock.calls[0])).toEqual({ query: '経費精算', topK: 20 });
     // AI 回答（/analysis/ask/stream）は呼ばない＝この画面は代替フローだけを担う。
-    expect(mocks.apiFetch.mock.calls.every(([path]) => path === '/search')).toBe(true);
+    expect(mocks.apiRequest.mock.calls.every(([path]) => path === '/search')).toBe(true);
   });
 
   // FR-05: 一覧が全体ではないことを明示する（05_screens §SC-02「権限内のみ表示」）。
   it('states that only permitted documents are listed', async () => {
-    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage();
     await search('経費精算');
 
@@ -86,38 +97,42 @@ describe('SearchResultsPage (SC-02)', () => {
 
   // IADR-0126 決定 3: `?q=` は検索語の単一情報源。ディープリンク・戻る操作でそのまま再現される。
   it('auto-searches from the ?q= deep link', async () => {
-    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage('/search?q=%E7%B5%8C%E8%B2%BB');
 
     expect(await screen.findByRole('link', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/search', {
-      method: 'POST',
-      json: { query: '経費', topK: 20 },
-    });
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/search',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(sentQuery(mocks.apiRequest.mock.calls[0])).toEqual({ query: '経費', topK: 20 });
   });
 
   // IADR-0126 決定 3: 発火点は URL の 1 つだけ。送信 1 回で要求は 1 回である
   // （旧実装は「送信の直接実行」と「?q= 変化の useEffect」で二重発火し、ガードで抑えていた）。
   it('fires exactly one request per submission (URL is the single source of truth)', async () => {
-    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage();
     await search('経費精算');
 
     await screen.findByRole('link', { name: '経費精算規程 v3.2' });
-    expect(mocks.apiFetch).toHaveBeenCalledTimes(1);
+    expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
   });
 
   // IADR-0126 決定 3: URL が単一情報源であることは、**入力欄の表示にも及ぶ**。
   // 本画面が**アンマウントされずに `q` だけが変わる経路**（ブラウザの戻る／進む）を再現する。
   // 直すまでは、結果一覧だけが更新されて入力欄が古い語のまま残っていた（PR #505 レビュー指摘）。
   it('syncs the input box when only ?q= changes (browser back/forward, no remount)', async () => {
-    mocks.apiFetch.mockImplementation((_path: string, req: { json: { query: string } }) =>
-      Promise.resolve({
-        results: [{ ...RESPONSE.results[0], documentTitle: `${req.json.query} の文書` }],
-        totalHits: 1,
-        elapsedMs: 1,
-      }),
-    );
+    mocks.apiRequest.mockImplementation((_path: string, init: RequestInit) => {
+      const { query } = JSON.parse(String(init.body)) as { query: string };
+      return Promise.resolve(
+        jsonResponse({
+          results: [{ ...RESPONSE.results[0], documentTitle: `${query} の文書` }],
+          totalHits: 1,
+          elapsedMs: 1,
+        }),
+      );
+    });
     const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB'); // 経費
     expect(await screen.findByRole('link', { name: '経費 の文書' })).toBeInTheDocument();
     expect(screen.getByLabelText('キーワード・意味検索')).toHaveValue('経費');
@@ -142,7 +157,7 @@ describe('SearchResultsPage (SC-02)', () => {
 
   // 編集途中の値は、URL が外から変わった時点で捨てるのが正しい（利用者が別の検索語を選んだため）。
   it('discards the pending edit when ?q= changes from outside', async () => {
-    mocks.apiFetch.mockResolvedValue(RESPONSE);
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     const user = userEvent.setup();
     const { router } = await renderPage('/search?q=%E7%B5%8C%E8%B2%BB');
     await user.clear(screen.getByLabelText('キーワード・意味検索'));
@@ -157,7 +172,7 @@ describe('SearchResultsPage (SC-02)', () => {
 
   // deny-by-default: 権限外・0 件はいずれも中立に表示する（存在秘匿・IADR-0009）。
   it('shows a neutral empty message when results are empty (existence hidden)', async () => {
-    mocks.apiFetch.mockResolvedValue({ results: [], totalHits: 0, elapsedMs: 1 });
+    mocks.apiRequest.mockResolvedValue(jsonResponse({ results: [], totalHits: 0, elapsedMs: 1 }));
     await renderPage();
     await search('取締役会');
 
@@ -167,7 +182,7 @@ describe('SearchResultsPage (SC-02)', () => {
   });
 
   it('shows an alert when the search request fails', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
     await renderPage();
     await search('x');
 
@@ -180,7 +195,7 @@ describe('SearchResultsPage (SC-02)', () => {
   it('does not request anything without a query', async () => {
     await renderPage();
 
-    expect(mocks.apiFetch).not.toHaveBeenCalled();
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '検索' })).toBeDisabled();
   });
 

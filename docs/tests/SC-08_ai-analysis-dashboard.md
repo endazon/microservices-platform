@@ -13,7 +13,7 @@ related_ids:
   - IADR-0127
 author: claude
 created: 2026-07-08
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -74,12 +74,18 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 | P4 | **スコープを送らない** | FR-05。要求のキーは `instruction` / `taskType` / `range` のみ、`range` のキーは `query` のみ |
 | P5 | 指示の上限 | 空・上限超過は送信不可（サーバの 400 を手前で防ぐ） |
 
-## モックの当て先（**他の 3 画面と異なる**）
+## モックの当て先
 
-本画面だけが **orval 生成フック（`useAnalysisAnalyze`）** に載る（[[IADR-0127]] 決定 3）。
+本画面は **orval 生成フック（`useBffAnalysisAnalyze`）** に載る（[[IADR-0127]] 決定 3）。
 生成コードは mutator（`bffFetch`）→ `apiRequest` を通るため、**モックは `apiRequest` に当てる**。
 `apiFetch` を差し替えても生成コードの経路には効かない——ここを取り違えると、
 「モックしたのに実際のネットワーク呼び出しが走る」形の見えない失敗になる。
+
+> **［2026-08-06 追記］この節はかつて「モックの当て先（他の 3 画面と異なる）」であり、
+> 「本画面だけが `useAnalysisAnalyze` に載る」と書いていた。両方とも失効している。**
+> フック名は `operationId` の規約統一で `useBffAnalysisAnalyze` へ改名され（[[IADR-0135]] 決定 5 が
+> [[IADR-0131]] 決定 3 を改定）、**当て先も特別ではなくなった**——#519 / [[IADR-0135]] 決定 4 で
+> 画面テスト 13 ファイルすべてが `apiRequest` を差し替える形へ揃ったためである。
 
 ## 実行
 

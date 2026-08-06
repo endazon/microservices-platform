@@ -102,10 +102,13 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
-| 横断検索 | `POST /bff/search` | TanStack Query `useQuery` ＋ `apiFetch` | 認証・**サーバ側で ABAC スコープ解決** | `SearchResponse { results, totalHits, elapsedMs }` |
+| 横断検索 | `POST /bff/search` | TanStack Query `useQuery` ＋ **生成された操作関数 `bffSearch`**（#519） | 認証・**サーバ側で ABAC スコープ解決** | `SearchResponse { results, totalHits, elapsedMs }` |
 
 - 要求本文は `{ query, topK: 20 }` のみ。**クライアントは ABAC スコープを送らない**（送っても BFF は使わない＝権限昇格の防止）。
 - キャッシュキーは `['bff', 'search', query]`。同じ語での再訪・戻る操作は `staleTime`（30 秒）内なら再要求しない。
+- **生成フック（`useBffSearch`）は使わない。** `/bff/search` は POST なので orval は `useMutation` を生成し、
+  照会としては使えない（キャッシュに載らず、上のキー設計が成立しない）。**生成された操作関数を
+  `useQuery` の `queryFn` に据える**——型・URL・出口はすべて生成物由来である（[[IADR-0135]] 決定 2）。
 
 ## 検索条件の単一情報源（URL）
 

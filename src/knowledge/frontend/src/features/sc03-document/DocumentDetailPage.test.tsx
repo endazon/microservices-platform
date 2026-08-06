@@ -3,16 +3,20 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
-// SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細の再実装（#502）。
+// SC-03, UC-01/UC-02/UC-07, FR-05/FR-06/FR-12: 文書詳細の再実装（#502）＋ 生成フックへの載せ替え（#519）。
 // 権限外・不在はいずれも 404 で秘匿され、UI は中立に表示する（IADR-0009 / IADR-0038）。
+//
+// IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
+// モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
 const mocks = vi.hoisted(() => ({
-  apiFetch: vi.fn(),
+  apiRequest: vi.fn(),
   wikiBaseUrl: undefined as string | undefined,
 }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ wikiBaseUrl: mocks.wikiBaseUrl }),
@@ -44,20 +48,24 @@ const VERSIONS = [
   { documentId: DOC_ID, version: 2, title: DETAIL.title, status: 'archived', changeNote: null, createdAt: '2026-01-15T00:00:00Z' },
 ];
 
+/** 「本文なし（204）で返す」ことを指す標識（`null` の JSON 本文と区別するため Symbol を使う）。 */
+const NO_BODY = Symbol('204 No Content');
+
 /** BFF の 3 エンドポイントへ応答を割り当てる（既定はすべて成功）。 */
 function respond({
   detail = DETAIL as unknown,
   content = CONTENT as unknown,
   versions = VERSIONS as unknown,
 }: { detail?: unknown; content?: unknown; versions?: unknown } = {}) {
-  mocks.apiFetch.mockImplementation((path: string) => {
-    if (path.endsWith('/content')) {
-      return content instanceof Error ? Promise.reject(content) : Promise.resolve(content);
-    }
-    if (path.endsWith('/versions')) {
-      return versions instanceof Error ? Promise.reject(versions) : Promise.resolve(versions);
-    }
-    return detail instanceof Error ? Promise.reject(detail) : Promise.resolve(detail);
+  const reply = (value: unknown) => {
+    if (value instanceof Error) return Promise.reject(value);
+    if (value === NO_BODY) return Promise.resolve(noContent());
+    return Promise.resolve(jsonResponse(value));
+  };
+  mocks.apiRequest.mockImplementation((path: string) => {
+    if (path.endsWith('/content')) return reply(content);
+    if (path.endsWith('/versions')) return reply(versions);
+    return reply(detail);
   });
 }
 
@@ -68,7 +76,7 @@ async function renderPage() {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
   mocks.wikiBaseUrl = undefined;
 });
 
@@ -166,13 +174,27 @@ describe('DocumentDetailPage (SC-03)', () => {
     await renderPage();
 
     await screen.findByText('文書が見つかりませんでした。');
-    const paths = mocks.apiFetch.mock.calls.map((call) => String(call[0]));
+    const paths = mocks.apiRequest.mock.calls.map((call) => String(call[0]));
     expect(paths.some((p) => p.endsWith('/versions'))).toBe(false);
   });
 
   // 版履歴は補助情報。取れなくても本体表示は続ける。
   it('keeps the document readable when the version history fails', async () => {
     respond({ versions: ApiError.fromStatus(500) });
+    await renderPage();
+
+    expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('バージョン')).not.toBeInTheDocument());
+  });
+
+  // SC-03, IADR-0135 決定 7［2026-08-06 追記］: 版履歴が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // `bffFetch` は本文が空なら `{}` を返すため、`okData(res) ?? []` では `??` が発火せず
+  // `{}` が `versions.data` に入っていた。**本画面は `versions.data.length > 0` で節を出し分けるため
+  // クラッシュはしなかった**（`undefined > 0` は false）が、配列でない値が画面へ届く経路は同じである。
+  // `okArray` で必ず配列になることを、`VersionTable` を直接描く将来の変更に備えて固定する。
+  it('keeps the document readable when the version history has no body (204)', async () => {
+    respond({ versions: NO_BODY });
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();

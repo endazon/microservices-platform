@@ -4,13 +4,18 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
-// SC-11, FR-15, ADR-0018: 構成ビューアの再実装（#504）。
+// SC-11, FR-15, ADR-0018: 構成ビューアの再実装（#504）＋ 生成フックへの載せ替え（#519）。
 // 実効構成・ドリフト・構成バージョン履歴の表示と、領域ごとの縮退を固定する。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 3 本とも orval 生成フックで呼ぶため、モックは **`apiRequest`** に当てる
+// ——生成コードは mutator（`bffFetch`）→ `apiRequest` を通り、`apiFetch` を差し替えても効かない。
+// **パス文字列は載せ替えの前後で変わらない**（`bffFetch` が `/bff` 接頭辞を外して渡す）。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc11ConfigRoute } from './index';
@@ -81,10 +86,10 @@ const HISTORY = [
 function mockApi(
   overrides: Partial<Record<'config' | 'drift' | 'history', unknown | Error>> = {},
 ) {
-  mocks.apiFetch.mockImplementation(async (path: string) => {
+  mocks.apiRequest.mockImplementation(async (path: string) => {
     const pick = (value: unknown) => {
       if (value instanceof Error) throw value;
-      return value;
+      return jsonResponse(value);
     };
     if (path === '/admin/config/drift') return pick(overrides.drift ?? DRIFT);
     if (path === '/admin/config/history') return pick(overrides.history ?? HISTORY);
@@ -100,7 +105,7 @@ async function renderPage(roles: readonly string[] = ['platform-operator']) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
 });
 
 afterEach(() => {
@@ -132,9 +137,9 @@ describe('ConfigViewerPage (SC-11)', () => {
     expect(screen.getByText('VoyageAI')).toBeInTheDocument();
     expect(screen.getByText('filesystem')).toBeInTheDocument();
 
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config');
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config/drift');
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/admin/config/history');
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config', expect.anything());
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config/drift', expect.anything());
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/admin/config/history', expect.anything());
   });
 
   // 段の終端は「（終端）」で示す（outputs が空）。INDEX 決定 21: 無効段は淡色だけで示さない。
@@ -298,11 +303,30 @@ describe('ConfigViewerPage (SC-11)', () => {
     const user = userEvent.setup();
     await renderPage();
     await screen.findByRole('heading', { name: '実効構成' });
-    const before = mocks.apiFetch.mock.calls.length;
+    const before = mocks.apiRequest.mock.calls.length;
 
     await user.click(screen.getByRole('button', { name: '再取得' }));
 
-    await waitFor(() => expect(mocks.apiFetch.mock.calls.length).toBe(before + 3));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.length).toBe(before + 3));
+  });
+
+  // SC-11, IADR-0135 決定 7［2026-08-06 追記］: 履歴が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // このテストは「配列を期待する面に配列でない値が入る経路が型の外に実在する」（決定 7）ことを
+  // **画面の挙動として**固定する。`bffFetch` は本文が空なら `{}` を返すため、
+  // `okData(res) ?? []` では `??` が発火せず `{}` がそのまま `entries.map` へ届いていた
+  // （＝ルートごとクラッシュした）。`okArray` が「配列でなければ空配列」まで詰めることで縮退する。
+  it('degrades to the empty-history message when the history response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path === '/admin/config/history') return noContent();
+      if (path === '/admin/config/drift') return jsonResponse(NO_DRIFT);
+      return jsonResponse(CONFIG);
+    });
+    await renderPage();
+
+    // 履歴だけが縮退し、他の領域（実効構成）は通常どおり描画される。
+    expect(await screen.findByText('適用履歴はありません。')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '実効構成' })).toBeInTheDocument();
   });
 
   // ADR-0031: 文言は Lingui のカタログ（ja / en）。

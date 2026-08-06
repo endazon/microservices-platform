@@ -4,12 +4,16 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面の再実装（#503）。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 生成コードは mutator（`bffFetch`）→ **`apiRequest`** を通るため、
+// モックは `apiRequest` に当てる（`apiFetch` を差し替えても効かない）。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 
 import { createSc06DataSourcesRoute } from './index';
@@ -42,7 +46,7 @@ async function renderPage(roles: readonly string[] = ['platform-admin']) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
+  mocks.apiRequest.mockReset();
 });
 
 afterEach(() => {
@@ -55,7 +59,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
   // UC-04: 登録済みソースの一覧・種別・同期状態を確認する。
   // INDEX 決定 21: 同期状態は色だけで意味を持たせない（アイコン ＋ テキストを伴う）。
   it('lists sources with their type and derived sync state', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE, DISABLED_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     await renderPage();
 
     expect(await screen.findByText('規程集')).toBeInTheDocument();
@@ -65,12 +69,12 @@ describe('DataSourceManagementPage (SC-06)', () => {
     // active ＋ 最終同期あり → 同期済み。disabled → 無効（中立。琥珀は同期異常のために空けてある）。
     expect(table.getByText('同期済み')).toBeInTheDocument();
     expect(table.getByText('無効')).toBeInTheDocument();
-    expect(mocks.apiFetch).toHaveBeenCalledWith('/datasources');
+    expect(mocks.apiRequest).toHaveBeenCalledWith('/datasources', expect.objectContaining({ method: 'GET' }));
   });
 
   // UC-04 基本フロー 1: 管理者がソース（ファイルサーバー／Wiki／SaaS／業務DB）を登録する。
   it('registers a data source with a default confidentiality attribute', async () => {
-    mocks.apiFetch.mockResolvedValue([]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -80,22 +84,26 @@ describe('DataSourceManagementPage (SC-06)', () => {
     await user.click(screen.getByRole('button', { name: '登録する' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith('/datasources', {
-        method: 'POST',
-        json: {
-          name: '規程集',
-          sourceType: 'filesystem',
-          connectionUri: 'smb://fs01/share',
-          defaultAttributes: { confidentiality: 'internal' },
-        },
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/datasources',
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
+    const posted = mocks.apiRequest.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'POST',
+    )!;
+    expect(JSON.parse(String((posted[1] as RequestInit).body))).toEqual({
+      name: '規程集',
+      sourceType: 'filesystem',
+      connectionUri: 'smb://fs01/share',
+      defaultAttributes: { confidentiality: 'internal' },
+    });
     expect(await screen.findByText('データソースを登録しました。')).toBeInTheDocument();
   });
 
   // 必須（名前・接続先）が埋まるまで登録できない。
   it('keeps the register button disabled until the required fields are filled', async () => {
-    mocks.apiFetch.mockResolvedValue([]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -111,16 +119,17 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   // UC-04 代替フロー: 手動同期を実行する。
   it('triggers a manual sync', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
     const user = userEvent.setup();
     await renderPage();
 
     await user.click(await screen.findByRole('button', { name: '手動同期' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith(`/datasources/${ACTIVE_SOURCE.id}/sync`, {
-        method: 'POST',
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/datasources/${ACTIVE_SOURCE.id}/sync`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
     );
     expect(await screen.findByText('同期をトリガしました。')).toBeInTheDocument();
   });
@@ -128,8 +137,10 @@ describe('DataSourceManagementPage (SC-06)', () => {
   // IADR-0127 決定 5: 操作の成功後は invalidateQueries だけを行う（手書きの再取得を持たない）。
   // これが外れると、同期をトリガしたのに最終同期日時が古いまま残る。
   it('refetches the list after a successful sync', async () => {
-    mocks.apiFetch.mockImplementation((path: string) =>
-      path.endsWith('/sync') ? Promise.resolve(undefined) : Promise.resolve([ACTIVE_SOURCE]),
+    mocks.apiRequest.mockImplementation((path: string) =>
+      path.endsWith('/sync')
+        ? Promise.resolve(noContent())
+        : Promise.resolve(jsonResponse([ACTIVE_SOURCE])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -137,12 +148,12 @@ describe('DataSourceManagementPage (SC-06)', () => {
     await user.click(await screen.findByRole('button', { name: '手動同期' }));
 
     await waitFor(() =>
-      expect(mocks.apiFetch.mock.calls.filter(([path]) => path === '/datasources')).toHaveLength(2),
+      expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/datasources')).toHaveLength(2),
     );
   });
 
   it('disables an active source and offers no disable action for a disabled one', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE, DISABLED_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     const user = userEvent.setup();
     await renderPage();
 
@@ -152,15 +163,16 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
     await user.click(buttons[0]);
     await waitFor(() =>
-      expect(mocks.apiFetch).toHaveBeenCalledWith(`/datasources/${ACTIVE_SOURCE.id}`, {
-        method: 'DELETE',
-      }),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/datasources/${ACTIVE_SOURCE.id}`,
+        expect.objectContaining({ method: 'DELETE' }),
+      ),
     );
   });
 
   // UC-04 例外フロー（接続の継続失敗はアラート）に対応する静的な注記。
   it('states that credentials live in Vault and that repeated failures raise an alert', async () => {
-    mocks.apiFetch.mockResolvedValue([]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     await renderPage();
 
     expect(
@@ -170,7 +182,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   // BFF は後段障害を空一覧へ縮退させない（502）。「未登録」と誤認させて重複登録を招かないため。
   it('shows an error instead of an empty list when the query fails', async () => {
-    mocks.apiFetch.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
     await renderPage();
 
     await waitFor(() =>
@@ -180,10 +192,10 @@ describe('DataSourceManagementPage (SC-06)', () => {
   });
 
   it('reports an operation failure without losing the list', async () => {
-    mocks.apiFetch.mockImplementation((path: string) =>
+    mocks.apiRequest.mockImplementation((path: string) =>
       path.endsWith('/sync')
         ? Promise.reject(new ApiError('server', 'サーバでエラーが発生しました。', 500))
-        : Promise.resolve([ACTIVE_SOURCE]),
+        : Promise.resolve(jsonResponse([ACTIVE_SOURCE])),
     );
     const user = userEvent.setup();
     await renderPage();
@@ -200,13 +212,13 @@ describe('DataSourceManagementPage (SC-06)', () => {
   // 成功では他方の isError を戻さないため、これが外れると成功バナーと古い失敗バナーが同時に出る。
   // 逆向き（古い成功バナーが新しい失敗の隣に残る）も同じ穴なので、両方向を 1 本で見る。
   it('shows only the latest operation result (neither a stale failure nor a stale success survives)', async () => {
-    mocks.apiFetch.mockImplementation((path: string, req?: { method?: string }) => {
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
       if (path.endsWith('/sync')) {
         return Promise.reject(new ApiError('server', 'サーバでエラーが発生しました。', 500));
       }
-      return req?.method === 'DELETE'
-        ? Promise.resolve(undefined)
-        : Promise.resolve([ACTIVE_SOURCE]);
+      return init?.method === 'DELETE'
+        ? Promise.resolve(noContent())
+        : Promise.resolve(jsonResponse([ACTIVE_SOURCE]));
     });
     const user = userEvent.setup();
     await renderPage();
@@ -231,7 +243,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
   });
 
   it('shows a neutral message when there is no source', async () => {
-    mocks.apiFetch.mockResolvedValue([]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     await renderPage();
 
     expect(await screen.findByText('データソースは登録されていません。')).toBeInTheDocument();
@@ -239,16 +251,16 @@ describe('DataSourceManagementPage (SC-06)', () => {
 
   // 存在秘匿（IADR-0009 / IADR-0035）: ロールを持たない利用者へ画面の存在を示さない。
   it('hides the screen from a user without any role', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
     await renderPage([]);
 
     expect(screen.queryByRole('heading', { name: 'データソース' })).not.toBeInTheDocument();
-    expect(mocks.apiFetch).not.toHaveBeenCalled();
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
   // 導線: 計画の遷移図 SC06 → SC07。
   it('links to the conversion jobs screen (SC-07)', async () => {
-    mocks.apiFetch.mockResolvedValue([]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     await renderPage();
 
     expect(screen.getByRole('link', { name: '変換ジョブの状況を見る →' })).toHaveAttribute(
@@ -261,7 +273,7 @@ describe('DataSourceManagementPage (SC-06)', () => {
   // まず「見えるはずの条件」——一覧が描画され、手動同期の操作が出ている状態——を確かめてから、
   // 契約に無い列・操作が無いことを見る。
   it('does not render the next-sync column, the retry state, or a settings action', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE, DISABLED_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
     await renderPage();
 
     expect(await screen.findAllByRole('button', { name: '手動同期' })).toHaveLength(2);
@@ -271,11 +283,27 @@ describe('DataSourceManagementPage (SC-06)', () => {
   });
 
   it('renders in English when the en locale is active', async () => {
-    mocks.apiFetch.mockResolvedValue([ACTIVE_SOURCE]);
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
     activate('en');
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: 'Data sources' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('File server')).toBeInTheDocument();
+  });
+
+  // SC-06, IADR-0135 決定 7［2026-08-06 追記］: 一覧が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // 載せ替え前は `apiFetch` が空ボディで `undefined` を返すため `items = data ?? []` が実効ガード
+  // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
+  // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
+  // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+  it('degrades to the empty state when the list response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/datasources')) return noContent();
+      return jsonResponse([]);
+    });
+    await renderPage();
+
+    expect(await screen.findByText('データソースは登録されていません。')).toBeInTheDocument();
   });
 });

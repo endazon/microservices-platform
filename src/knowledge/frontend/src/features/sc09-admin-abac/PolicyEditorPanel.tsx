@@ -28,7 +28,11 @@ import {
 } from './abacVocabulary';
 import type { ConditionEntry, PolicyAction } from './abacVocabulary';
 import { usePolicyActions } from './useAbacAdmin';
-import type { AbacPolicy, AttributeDefinition } from './useAbacAdmin';
+// SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
+import type {
+  AbacPolicyDto,
+  AttributeDefinitionDto,
+} from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: ポリシー定義 ＋ 検証結果（計画 §SC-09 §主要素）。
 //
@@ -58,7 +62,7 @@ function PolicyRow({
   onToggleActive,
   onDelete,
 }: {
-  policy: AbacPolicy;
+  policy: AbacPolicyDto;
   onToggleActive: () => void;
   onDelete: () => void;
 }) {
@@ -117,8 +121,8 @@ export function PolicyEditorPanel({
   isError,
   error,
 }: {
-  policies: AbacPolicy[];
-  attributes: AttributeDefinition[];
+  policies: AbacPolicyDto[];
+  attributes: AttributeDefinitionDto[];
   isPending: boolean;
   isError: boolean;
   error: unknown;
@@ -193,11 +197,11 @@ export function PolicyEditorPanel({
                     policy={p}
                     onToggleActive={() => {
                       beginOperation();
-                      setActive.mutate({ id: p.id, isActive: !p.isActive });
+                      setActive.mutate({ id: p.id, data: { isActive: !p.isActive } });
                     }}
                     onDelete={() => {
                       beginOperation();
-                      remove.mutate(p.id);
+                      remove.mutate({ id: p.id });
                     }}
                   />
                 ))}
@@ -212,7 +216,7 @@ export function PolicyEditorPanel({
             e.preventDefault();
             beginOperation();
             create.mutate(
-              { name: name.trim(), action, ...buildConditions(conditions) },
+              { data: { name: name.trim(), action, ...buildConditions(conditions) } },
               {
                 onSuccess: () => {
                   setName('');
@@ -387,7 +391,7 @@ function ConditionChip({
 }
 
 /** 条件の要約。契約が表現するのは**属性キー → 許可値の集合所属**だけである。 */
-function ConditionSummary({ policy }: { policy: AbacPolicy }) {
+function ConditionSummary({ policy }: { policy: AbacPolicyDto }) {
   const rows = summarizeConditions(policy);
   if (rows.length === 0) {
     return (

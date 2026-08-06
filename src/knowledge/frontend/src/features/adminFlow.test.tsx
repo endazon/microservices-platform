@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { jsonResponse } from '@foundation/testing/bffResponse';
 
 // SC-06 → SC-07 → SC-03 / SC-05 → SC-03, UC-04 / UC-06 / UC-03:
 // **管理者の運用導線**（データソース → 変換ジョブ → 変換結果／文書管理 → 文書詳細）を
@@ -13,10 +14,12 @@ import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
 //
 // 認証済みの導線を Playwright で実走できないため（トークンは InMemoryWebStorage に保持され
 // 外から注入できない）、この層が導線の受け皿である。
-const mocks = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+//
+// IADR-0135 決定 4（#519）: 4 画面とも orval 生成フックで呼ぶため、モックは `apiRequest` に当てる。
+const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 vi.mock('@foundation/api/apiClient', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@foundation/api/apiClient')>()),
-  apiFetch: mocks.apiFetch,
+  apiRequest: mocks.apiRequest,
 }));
 vi.mock('@foundation/config/runtimeConfig', () => ({
   appConfig: () => ({ wikiBaseUrl: undefined }),
@@ -69,12 +72,12 @@ const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程', so
 
 /** 4 画面ぶんの応答を 1 つの mock で返す（実アプリと同じく画面が必要なものだけを呼ぶ）。 */
 function routeResponses(path: string): Promise<unknown> {
-  if (path === '/datasources') return Promise.resolve([SOURCE]);
-  if (path.startsWith('/conversion/jobs')) return Promise.resolve([JOB]);
-  if (path === '/documents') return Promise.resolve([DOCUMENT]);
-  if (path === `/documents/${DOC_ID}`) return Promise.resolve(DOCUMENT);
-  if (path === `/documents/${DOC_ID}/content`) return Promise.resolve(CONTENT);
-  if (path === `/documents/${DOC_ID}/versions`) return Promise.resolve([]);
+  if (path === '/datasources') return Promise.resolve(jsonResponse([SOURCE]));
+  if (path.startsWith('/conversion/jobs')) return Promise.resolve(jsonResponse([JOB]));
+  if (path === '/documents') return Promise.resolve(jsonResponse([DOCUMENT]));
+  if (path === `/documents/${DOC_ID}`) return Promise.resolve(jsonResponse(DOCUMENT));
+  if (path === `/documents/${DOC_ID}/content`) return Promise.resolve(jsonResponse(CONTENT));
+  if (path === `/documents/${DOC_ID}/versions`) return Promise.resolve(jsonResponse([]));
   return Promise.reject(new Error(`unexpected path: ${path}`));
 }
 
@@ -91,8 +94,8 @@ async function renderAdminRoutes(initialEntry: string) {
 }
 
 beforeEach(() => {
-  mocks.apiFetch.mockReset();
-  mocks.apiFetch.mockImplementation(routeResponses);
+  mocks.apiRequest.mockReset();
+  mocks.apiRequest.mockImplementation(routeResponses);
 });
 
 describe('admin flow (SC-06 → SC-07 → SC-03)', () => {

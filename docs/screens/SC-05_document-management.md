@@ -14,7 +14,7 @@ related_ids:
   - IADR-0127
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -122,16 +122,25 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧 | `GET /bff/documents` | `useQuery(['bff','documents'])` ＋ `apiFetch` | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
+| 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`**（#519） | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
 | 登録 | `POST /bff/documents` | `useMutation` | admin / operator ＋ スコープ解決 | `DocumentDto`（201） |
 | 更新 | `PUT /bff/documents/{id}` | `useMutation` | 同上。**版不一致は 409** | 204 |
 | 公開 | `POST /bff/documents/{id}/publish` | `useMutation` | 同上。不正遷移は 409 | 204 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | `useMutation` | 同上 | 204 |
 | 削除 | `DELETE /bff/documents/{id}` | `useMutation` | 同上 | 204 |
 
-- **orval 生成フックは使えない**——`/bff/documents/*` は `docs/api/openapi.yaml` に無い（**#506**）。
-  `apiFetch` ＋ feature 内の手書き型で呼ぶ（[[IADR-0127]] 決定 3）。
-- 更新系の成功後は `invalidateQueries({ queryKey: ['bff','documents'] })` のみを行う（[[IADR-0127]] 決定 5）。
+- **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
+  状態遷移は 1 本の分岐ではなく **`useBffDocumentPublish` / `useBffDocumentArchive` / `useBffDocumentDelete`
+  の 3 本**になり、画面が `DocumentCommand` で選ぶ（[[IADR-0135]] 決定 6）。
+- 更新系の成功後は `invalidateQueries` のみを行う（手書きの再取得を持たない。[[IADR-0127]] 決定 5）。
+  **対象は一覧 `getBffDocumentListQueryKey()`（＝`['/bff/documents']`）に加え、当該文書について
+  SC-03（[画面仕様書](./SC-03_document-detail.md)）が使う 3 本**——`getBffDocumentDetailQueryKey(id)` / `…ContentQueryKey(id)` /
+  `…VersionsQueryKey(id)` ——を**明示列挙する**（`documentInvalidationKeys`）。
+  **［2026-08-06 追記］この節はかつて `['bff','documents']` 1 本と書いていた。二重に失効している。**
+  (a) 生成キーは URL 1 要素であり階層キーではない。(b) TanStack Query の部分一致は**配列の要素単位**
+  なので、`['/bff/documents']` は `['/bff/documents/{id}']` に**当たらない**——載せ替え前の階層キーが
+  持っていた前方一致（一覧の無効化が SC-03 の詳細・本文・版履歴まで届く）が失われていた
+  （[[IADR-0135]] 決定 3［2026-08-06 追記］）。作成だけは対象 id が無いので一覧のみを無効化する。
 
 ## レイアウト / 主要素
 
