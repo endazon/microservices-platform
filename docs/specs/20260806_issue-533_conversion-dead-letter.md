@@ -2,7 +2,7 @@
 title: ConversionJobDto にデッドレター標識と試行上限を追加する
 type: spec
 status: done
-related_ids: [FR-12, UC-06, SC-07, ADR-0003, ADR-0012, IADR-0042, IADR-0043, IADR-0131, IADR-0132, IADR-0136]
+related_ids: [FR-12, UC-06, SC-07, ADR-0003, ADR-0012, IADR-0042, IADR-0043, IADR-0131, IADR-0132, IADR-0137]
 author: Claude
 created: 2026-08-06
 updated: 2026-08-06
@@ -15,7 +15,7 @@ related_specs:
   - ../api/openapi.yaml
   - ../data/conversion-job.md
   - ../screens/SC-07_conversion-jobs.md
-  - ../adr/IADR-0136_conversion-dead-letter-marker.md
+  - ../adr/IADR-0137_conversion-dead-letter-marker.md
 ---
 
 # 仕様書: 変換ジョブのデッドレター標識と試行上限（issue #533）
@@ -32,7 +32,7 @@ related_specs:
 - 関連 IADR: [[IADR-0042]]（変換ジョブ読み取りモデル）／[[IADR-0043]]（同・永続化）／
   [[IADR-0131]] 決定 1・決定 5（OpenAPI が BFF 契約の単一情報源／値集合を `enum` にしない）／
   [[IADR-0132]] 決定 1・決定 2（`required` は C# の非 null 性から起こす）／
-  **[[IADR-0136]]（本作業で起票。標識を導出せず記録する）**
+  **[[IADR-0137]]（本作業で起票。標識を導出せず記録する）**
 - 裁定: **質問票 第12回 Q13**（2026-08-05 確定）／環流元 planning#198 ／実装 issue #533
 - 参照した計画書の版: planning submodule pin `e36b592`
 
@@ -97,7 +97,7 @@ issue 本文は「`ConversionJobDto` にデッドレター標識と試行上限�
 | # | 決定 | 内容と理由 |
 | --- | --- | --- |
 | D1 | **標識は独立した真偽値**（`DeadLettered`） | 引用 2 が「4 値」「`failed` の内訳」と明記する。5 番目の状態にすると `JOB_STATUSES` / `jobStatus.test.ts` が固定した 4 値を壊し、**裁定の範囲を超える** |
-| D2 | **標識は導出せず記録する** | `Attempts >= MaxAttempts` による導出は**手動再変換で壊れる**——`Attempts` は手動再変換をまたいで累積するため（実測）、2 回目以降の配信中に一時的に真になる（まだ `<queue>_error` へ送られていないのに立つ）。コンシューマは自分が最後の試行かを知れるので、**事実として記録する**。詳細と棄却案は [[IADR-0136]] |
+| D2 | **標識は導出せず記録する** | `Attempts >= MaxAttempts` による導出は**手動再変換で壊れる**——`Attempts` は手動再変換をまたいで累積するため（実測）、2 回目以降の配信中に一時的に真になる（まだ `<queue>_error` へ送られていないのに立つ）。コンシューマは自分が最後の試行かを知れるので、**事実として記録する**。詳細と棄却案は [[IADR-0137]] |
 | D3 | **試行上限の単一情報源は再試行設定** | `MassTransitExtensions` の間隔配列（要素数 = 再試行回数）から `MaxAttempts = 要素数 + 1` を導く。数字を 2 か所に書かない |
 | D4 | 契約側 `const` は `ConversionJobRetryPolicy.MaxAttempts`（`Knowledge.Contracts`） | record の**既定値には `const` が要る**。`Knowledge.Contracts`（契約）から `Platform.Shared.Infrastructure`（MassTransit 依存の基盤）を参照するのは筋が悪いため、値は契約側に `const` で置き、**両者の一致を単体テストで束ねる**（D3 の単一情報源が壊れたらテストが落ちる） |
 | D5 | **DTO への追加は既定値つき** | 既定値の無いメンバー追加は `check-contract-schema.js` が**破壊的**に分類する（[[IADR-0122]] 決定 2）。`bool DeadLettered = false` / `int MaxAttempts = ConversionJobRetryPolicy.MaxAttempts` を**末尾へ追加**する（位置の入れ替えも破壊的） |
@@ -200,9 +200,15 @@ AC-8 は決定的な `PrepareRetry_clears_dead_letter_marker` で担保する。
    **手動再変換を重ねた行で上限を超えた表示になる**。SC-06 の hi-fi「3/5」に倣った表示を SC-07 でも
    採るなら、`Attempts` を配信ごとにリセットするか「今回の配信での試行回数」を別に持つ必要がある。
    **どちらも既存契約の意味変更であり、裁定（Q13）の範囲外**と判断して本作業では触っていない。
-3. **IADR の採番衝突**。`docs/adr/` の最大は着手時点で `IADR-0135` であり `IADR-0136` を採ったが、
-   並行作業（#538 / #541 等）が先にマージすれば**先着尊重で改番**が要る
-   （追随先: 本書の `related_ids` と本文・`docs/adr/README.md`・コード内コメント・テスト名）。
+3. **IADR の採番衝突は実際に起きた。改番済みである。** 着手時点の最大は `IADR-0135` で、本作業は
+   当初 `IADR-0136` を採った。しかし**並行作業の #538（SC-06 の次回同期）も同じ `IADR-0136` を採っており**、
+   コミット時刻は #538 が `15:43`、本作業が `15:57` であった。`.claude/rules/traceability.md`
+   §採番衝突時の改番手順（**先着尊重・後発は次の空き番号へ・欠番を作らない**）に従い、
+   **本作業を `IADR-0137` へ改番した**。追随先は同節が挙げる 4 点すべてを母集合として数え切った
+   —— ファイル名 ＋ 本文の自番号・索引（`docs/adr/README.md`）・関連文書（本書 / `docs/data/conversion-job.md` /
+   `docs/functional/FR-12_*.md` / `IADR-0127`）・コード内コメントとテスト名の**計 24 箇所**。
+   置換後に `IADR-0136` の残存が 0 件であることを確認した。
+   **PR タイトルには IADR 番号を含めていない**ため、同節が「最も漏れやすい」とする 4 点目の追随は不要である。
 
 ## 検証
 
@@ -214,9 +220,15 @@ AC-8 は決定的な `PrepareRetry_clears_dead_letter_marker` で担保する。
 | `dotnet build src/knowledge/backend/backend.slnx` | **成功**（0 error / 2 warning。warning は既存の `MinioBuilder` 廃止予定） |
 | `dotnet test src/knowledge/backend/backend.slnx` | **全 11 アセンブリ合格**（ConversionService.Worker.Tests は 62 合格。うち本作業 8 件） |
 | `dotnet format src/knowledge/backend/backend.slnx --verify-no-changes` | **exit 0**（EF が生成した migration 2 ファイルの BOM を剥がして解消。初回は `error CHARSET`） |
-| `dotnet build src/platform/backend/Shared/Platform.Shared.Infrastructure/…csproj` | **成功**（0 error / 0 warning） |
-| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | **exit 0**（workspace 読み込み警告あり。submodule 未 populate のため） |
+| `dotnet build src/platform/backend/backend.slnx`（**ソリューション全体**） | **成功**（0 error）。**`src/ai-stock-trading` の populate が要る**（下記） |
+| `dotnet format src/platform/backend/backend.slnx --verify-no-changes` | **exit 0** |
 | `dotnet test`（platform の submodule 非依存 2 本） | LlmGateway 145 合格 / AuthorizationService 58 合格 |
+| `dotnet test src/platform/backend/Bff/Platform.Bff.Tests` | **148 合格 / 1 skip** |
+
+> **`platform/backend` のビルドには `src/ai-stock-trading` の populate が要る。** 未 populate だと
+> `BffEndpointComposition.cs(1,7): error CS0246: … 'AiStockTrading' could not be found` で落ちる。
+> `git submodule update --init -- src/ai-stock-trading` で解消し、**pin は動かない**ので実装ブランチで
+> 行ってよい。同じ populate で `pnpm run typecheck` の `@ai-stock-trading/features` 解決失敗も消える。
 | `node scripts/check-contract-schema.js` | **OK**（差分 3 件はすべて**非破壊**。破壊的 0 件。`--update` で baseline へ反映済み） |
 | `node scripts/check-doc-links.js` | **OK**（440 件。未 populate submodule 配下 2 件は対象外） |
 | `node scripts/check-backend-libraries.js` | **OK**（新規混入 0 件。既知残件 42 件は baseline 済み） |
@@ -251,16 +263,13 @@ AC-8 は決定的な `PrepareRetry_clears_dead_letter_marker` で担保する。
 
 ## 未検証
 
-- **`dotnet build` / `dotnet test src/platform/backend/backend.slnx`（ソリューション全体）**。
-  `src/ai-stock-trading` submodule が未 populate のため `Platform.Bff` が
-  `error CS0246: 'AiStockTrading' が見つかりません` で落ちる。**本作業の変更とは無関係である**
-  （変更したのは `Platform.Shared.Infrastructure` の 1 ファイルで、そのプロジェクト単体のビルドは成功）。
-  同じ理由で `Platform.Bff.Tests` も実行できていない。
-- **`pnpm run typecheck`（`platform/frontend`）と platform 側の Vitest 3 ファイル**
-  （`router.test.ts` / `Layout.test.tsx` / `initialChunk.test.ts`）。いずれも
-  `Failed to resolve import "@ai-stock-trading/features"` で、同じ submodule 未 populate に起因する。
-  `knowledge/frontend` と `packages/ui` の `typecheck` は通っている。
+> **当初 §未検証 に挙げていた 2 件（platform ソリューション全体のビルド / テストと、
+> `platform/frontend` の typecheck・Vitest 3 ファイル）は解消した。** どちらも
+> `src/ai-stock-trading` submodule が未 populate であることだけが原因で、
+> `git submodule update --init -- src/ai-stock-trading` で populate すれば通る（**pin は動かない**）。
+> **本作業の変更とは無関係であったことが実測で確かめられた。**
+
 - **実 DB（PostgreSQL）へのマイグレーション適用**。`AddDeadLetteredMarker` は `dotnet ef` で生成したが、
   実行環境（Postgres）へ当てての確認はしていない。テストは EF InMemory である。
 - **RabbitMQ 実機での `<queue>_error` 送出との突合**。標識は読み取りモデル側の記録であり、
-  実際のキュー移送そのものは確認していない（[[IADR-0136]] §結果 のトレードオフ）。
+  実際のキュー移送そのものは確認していない（[[IADR-0137]] §結果 のトレードオフ）。

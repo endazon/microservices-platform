@@ -5,7 +5,7 @@ namespace Knowledge.Contracts.Dtos;
 //
 // SC-07（05_screens:324・裁定 Q13）: デッドレター標識（DeadLettered）と試行上限（MaxAttempts）を持つ。
 // **標識は Status の 5 値目ではない**——同 :308 が「ジョブ状態モデルは 4 値である…デッドレターの表示は
-// failed の内訳として扱う」と定めるため、独立した真偽値にしてある（IADR-0136 決定 1）。
+// failed の内訳として扱う」と定めるため、独立した真偽値にしてある（IADR-0137 決定 1）。
 // 新メンバーは**末尾に既定値つきで**足す（既定値の無い追加・位置の入れ替えは契約上の破壊的変更。
 // IADR-0122 決定 2）。
 public record ConversionJobDto(
@@ -40,7 +40,7 @@ public static class ConversionJobStatus
 // **実体は Platform.Shared.Infrastructure の UsePlatformRetry（再試行間隔 3 段）である。**
 // 契約プロジェクトから基盤プロジェクト（MassTransit 依存）を参照しないため値をここに置き、
 // 両者が一致することは ConversionJobTests.MaxAttempts_matches_platform_retry_policy が束ねる
-// （IADR-0136 決定 3・決定 4）。record の既定値に使うため const である。
+// （IADR-0137 決定 3・決定 4）。record の既定値に使うため const である。
 public static class ConversionJobRetryPolicy
 {
     public const int MaxAttempts = 4;

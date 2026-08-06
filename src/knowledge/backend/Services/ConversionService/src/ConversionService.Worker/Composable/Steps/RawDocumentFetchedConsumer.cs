@@ -73,7 +73,7 @@ public class RawDocumentFetchedConsumer(
         }
     }
 
-    // FR-12, SC-07, IADR-0136: この失敗が 1 回の配信における最後の試行か（＝この後 MassTransit が
+    // FR-12, SC-07, IADR-0137: この失敗が 1 回の配信における最後の試行か（＝この後 MassTransit が
     // <queue>_error へ送るか）。GetRetryAttempt() は初回 0・再試行ごとに +1 を返すため、+1 して
     // 1 始まりの試行回数にしてから試行上限と比べる。上限は再試行設定（UsePlatformRetry）が単一情報源で、
     // 本サービスの受信エンドポイントはその設定で構成される（Program.cs）。

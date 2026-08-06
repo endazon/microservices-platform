@@ -18,7 +18,7 @@ public class ConversionJob
     public string? MarkdownUri { get; private set; }
     public int Attempts { get; private set; }
 
-    // FR-12, SC-07, IADR-0136: 再試行を使い切って <queue>_error へ送られたか（failed の内訳）。
+    // FR-12, SC-07, IADR-0137: 再試行を使い切って <queue>_error へ送られたか（failed の内訳）。
     // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
     public bool DeadLettered { get; private set; }
 

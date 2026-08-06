@@ -9,7 +9,7 @@ related_ids:
   - ADR-0002
   - IADR-0042
   - IADR-0043
-  - IADR-0136
+  - IADR-0137
 author: claude
 created: 2026-07-09
 updated: 2026-08-06
@@ -32,7 +32,7 @@ plan_refs:
 - **ADR / 実装ADR**:
   - [[IADR-0042]] 変換ジョブ読み取りモデル（MVP インメモリ）
   - [[IADR-0043]] 変換ジョブ読み取りモデルの永続化（Postgres+EF）＋非同期ストア（本仕様書の対象）
-  - [[IADR-0136]] デッドレター標識と試行上限（2026-08-06 / #533。`DeadLettered` 列の追加）
+  - [[IADR-0137]] デッドレター標識と試行上限（2026-08-06 / #533。`DeadLettered` 列の追加）
   - ADR-0002 DB per Service（ConversionService 専用 DB `conversion_svc`）
   - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行・**再試行→デッドレター**）
 
@@ -61,7 +61,7 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | DocumentId | Guid? (uuid) | - | NULL 可。成功時に設定 | 生成された文書 ID（冪等） |
 | MarkdownUri | string? (varchar(2048)) | - | NULL 可。成功時に設定 | 正規化本文（Markdown）の URI |
 | Attempts | int | ○ | 既定 0。受信・再試行の都度 +1。**手動再変換でリセットしない**（累積） | 変換試行回数 |
-| DeadLettered | bool | ○ | 既定 `false`（列の DEFAULT も false）。`Status = failed` のときのみ true になり得る | **デッドレター標識**（自動再試行を使い切って `<queue>_error` へ送られたか。SC-07・[[IADR-0136]]） |
+| DeadLettered | bool | ○ | 既定 `false`（列の DEFAULT も false）。`Status = failed` のときのみ true になり得る | **デッドレター標識**（自動再試行を使い切って `<queue>_error` へ送られたか。SC-07・[[IADR-0137]]） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 初回受信時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。状態遷移の都度更新 | 最終更新時刻 |
 | StorageUri | string (varchar(2048)) | ○ | 再変換のため保持（`RawDocumentFetched.StorageUri`） | 原本の保管 URI |
@@ -118,7 +118,7 @@ erDiagram
   再変換不可（null 返却＝API 409）とし、処理中の二重発行・成功済みの不要な再処理を防ぐ。
 - **失敗理由の要約**: `Error` はコンシューマ側で 1 行・最大 300 文字に丸めた文言のみを保存する
   （内部詳細・スタック様文言の UI 露出抑制）。
-- **デッドレター標識の生存期間**（[[IADR-0136]]）: `DeadLettered` は「この失敗で自動再試行を使い切った」
+- **デッドレター標識の生存期間**（[[IADR-0137]]）: `DeadLettered` は「この失敗で自動再試行を使い切った」
   ことをコンシューマから受け取って立てる。**`MarkProcessing`（再受信）と `TryRequeue`（手動再変換）で
   false へ戻す**——`processing` / `queued` なのに標識が立った行は自己矛盾するためである。
   **`Attempts` からは導出しない**（`Attempts` は手動再変換をまたいで累積するため上限との比較が成立しない）。
@@ -142,7 +142,7 @@ erDiagram
 ## 関連仕様
 
 - 実装ADR: `../adr/IADR-0042_conversion-job-read-model.md`、`../adr/IADR-0043_conversion-job-persistence.md`、
-  `../adr/IADR-0136_conversion-dead-letter-marker.md`
+  `../adr/IADR-0137_conversion-dead-letter-marker.md`
 - 画面仕様書: `../screens/SC-07_conversion-jobs.md`
 - テスト仕様書: `../tests/SC-07_conversion-jobs.md`
 - 通信仕様書: `../api/openapi.yaml`

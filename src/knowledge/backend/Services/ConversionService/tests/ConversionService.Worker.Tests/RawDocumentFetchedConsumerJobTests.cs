@@ -150,7 +150,7 @@ public class RawDocumentFetchedConsumerJobTests
         // FR-12, SC-07（AC-11）: 契約が公開する試行上限（ConversionJobRetryPolicy）と、
         // 実際に再試行を行う設定（UsePlatformRetry）は同じ値でなければならない。
         // 契約プロジェクトから基盤プロジェクトを参照しない代わりに、両者の一致をここで束ねる
-        // （IADR-0136 決定 3・決定 4）。**間隔を増減したらこのテストが落ちる。**
+        // （IADR-0137 決定 3・決定 4）。**間隔を増減したらこのテストが落ちる。**
         ConversionJobRetryPolicy.MaxAttempts.Should().Be(MassTransitExtensions.MaxAttempts);
     }
 }

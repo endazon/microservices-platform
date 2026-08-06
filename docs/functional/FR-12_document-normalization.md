@@ -6,7 +6,7 @@ related_ids:
   - FR-12
   - UC-06
   - SC-07
-  - IADR-0136
+  - IADR-0137
 author: claude
 created: 2026-07-03
 updated: 2026-08-06
@@ -19,7 +19,7 @@ related_specs:
   - ../tests/FR-12_document-normalization.md
   - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
   - ../adr/IADR-0007_llm-egress-routing-config-driven.md
-  - ../adr/IADR-0136_conversion-dead-letter-marker.md
+  - ../adr/IADR-0137_conversion-dead-letter-marker.md
   - ../data/conversion-job.md
 related_adrs:
   - ADR-0012
@@ -92,7 +92,7 @@ related_adrs:
 - **E2 / E4 のデッドレター標識（2026-08-06 / #533。SC-07 の裁定 Q13）**: 再試行を使い切った失敗は
   読み取りモデルへ `DeadLettered = true` として記録し、`ConversionJobDto.deadLettered` /
   `maxAttempts` として契約に載せる。**状態値は `failed` のままである**（デッドレターは `failed` の
-  内訳であって 5 番目の状態ではない）。判定・生存期間は [[IADR-0136]]、列は
+  内訳であって 5 番目の状態ではない）。判定・生存期間は [[IADR-0137]]、列は
   [データ仕様書](../data/conversion-job.md)。E3（図コード化の縮退）は再試行を発火させないため
   **標識の対象にならない**。
 

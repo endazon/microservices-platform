@@ -1,5 +1,5 @@
 ---
-title: IADR-0136 変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする
+title: IADR-0137 変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする
 type: impl-adr
 status: Accepted
 related_ids:
@@ -22,7 +22,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md"
 ---
 
-# IADR-0136: 変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする
+# IADR-0137: 変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする
 
 - 状態: Accepted
 - 日付: 2026-08-06
