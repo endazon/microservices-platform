@@ -9,9 +9,10 @@ related_ids:
   - ADR-0002
   - IADR-0042
   - IADR-0043
+  - IADR-0136
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
@@ -31,8 +32,9 @@ plan_refs:
 - **ADR / 実装ADR**:
   - [[IADR-0042]] 変換ジョブ読み取りモデル（MVP インメモリ）
   - [[IADR-0043]] 変換ジョブ読み取りモデルの永続化（Postgres+EF）＋非同期ストア（本仕様書の対象）
+  - [[IADR-0136]] デッドレター標識と試行上限（2026-08-06 / #533。`DeadLettered` 列の追加）
   - ADR-0002 DB per Service（ConversionService 専用 DB `conversion_svc`）
-  - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行）
+  - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行・**再試行→デッドレター**）
 
 ## 概要
 
@@ -58,7 +60,8 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | Error | string? (text) | - | NULL 可。失敗時のみ。1 行・最大 300 文字に要約済み | 失敗理由（UI 露出のため要約） |
 | DocumentId | Guid? (uuid) | - | NULL 可。成功時に設定 | 生成された文書 ID（冪等） |
 | MarkdownUri | string? (varchar(2048)) | - | NULL 可。成功時に設定 | 正規化本文（Markdown）の URI |
-| Attempts | int | ○ | 既定 0。受信・再試行の都度 +1 | 変換試行回数 |
+| Attempts | int | ○ | 既定 0。受信・再試行の都度 +1。**手動再変換でリセットしない**（累積） | 変換試行回数 |
+| DeadLettered | bool | ○ | 既定 `false`（列の DEFAULT も false）。`Status = failed` のときのみ true になり得る | **デッドレター標識**（自動再試行を使い切って `<queue>_error` へ送られたか。SC-07・[[IADR-0136]]） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 初回受信時刻 |
 | UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。状態遷移の都度更新 | 最終更新時刻 |
 | StorageUri | string (varchar(2048)) | ○ | 再変換のため保持（`RawDocumentFetched.StorageUri`） | 原本の保管 URI |
@@ -68,7 +71,8 @@ ConversionService はイベント駆動の fire-and-forget ワーカーで、`Ra
 | FetchedAt | DateTimeOffset (timestamptz) | ○ | 再変換のため保持 | 原本取得時刻 |
 
 > `ConversionJobDto`（BFF↔SPA 契約）には Id / SourceId / SourceType / OriginalPath / Status / Error /
-> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt を射影する。原本イベント再構成用の
+> DocumentId / MarkdownUri / Attempts / CreatedAt / UpdatedAt / **DeadLettered** を射影し、加えて
+> **MaxAttempts**（自動再試行の試行上限。エンティティの列ではなく設定値）を載せる。原本イベント再構成用の
 > StorageUri / ContentType / Attributes / Tags / FetchedAt は DTO に含めない（再変換にのみ用いる内部列）。
 
 ## ER 図
@@ -85,6 +89,7 @@ erDiagram
         uuid DocumentId
         varchar MarkdownUri
         int Attempts
+        bool DeadLettered
         timestamptz CreatedAt
         timestamptz UpdatedAt
         varchar StorageUri
@@ -113,6 +118,10 @@ erDiagram
   再変換不可（null 返却＝API 409）とし、処理中の二重発行・成功済みの不要な再処理を防ぐ。
 - **失敗理由の要約**: `Error` はコンシューマ側で 1 行・最大 300 文字に丸めた文言のみを保存する
   （内部詳細・スタック様文言の UI 露出抑制）。
+- **デッドレター標識の生存期間**（[[IADR-0136]]）: `DeadLettered` は「この失敗で自動再試行を使い切った」
+  ことをコンシューマから受け取って立てる。**`MarkProcessing`（再受信）と `TryRequeue`（手動再変換）で
+  false へ戻す**——`processing` / `queued` なのに標識が立った行は自己矛盾するためである。
+  **`Attempts` からは導出しない**（`Attempts` は手動再変換をまたいで累積するため上限との比較が成立しない）。
 - **属性・タグの NULL 非許容**: `Attributes` / `Tags` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）。
 - **並行性（既知の制約）**: `StartAsync` の attempts++ は read-modify-write で楽観的並行制御を持たない。
   単一インスタンス（dev）前提。水平スケール時は行ロックまたは並行トークンを要する（[[IADR-0043]] follow-up）。
@@ -126,10 +135,14 @@ erDiagram
 ## マイグレーション・初期データ
 
 - `InitialCreate` — `ConversionJobs` テーブル作成（主キーのみ）。シードなし。
+- `AddDeadLetteredMarker`（2026-08-06 / #533）— `DeadLettered`（boolean NOT NULL DEFAULT false）を追加。
+  **既存行は「デッドレターへ送っていない」として読む**（過去の失敗が本当に上限到達だったかは記録が無く、
+  遡って復元できないため。既定値で偽陽性を出さない側に倒す）。
 
 ## 関連仕様
 
-- 実装ADR: `../adr/IADR-0042_conversion-job-read-model.md`、`../adr/IADR-0043_conversion-job-persistence.md`
+- 実装ADR: `../adr/IADR-0042_conversion-job-read-model.md`、`../adr/IADR-0043_conversion-job-persistence.md`、
+  `../adr/IADR-0136_conversion-dead-letter-marker.md`
 - 画面仕様書: `../screens/SC-07_conversion-jobs.md`
 - テスト仕様書: `../tests/SC-07_conversion-jobs.md`
 - 通信仕様書: `../api/openapi.yaml`
@@ -137,5 +150,7 @@ erDiagram
 ## 未決事項
 
 - デッドレター（`<queue>_error`）との突合による失敗ジョブ網羅性（本 PR 対象外）。
+  **#533 が加えた `DeadLettered` は「送られたはず」を読み取りモデル側で記録するものであり、
+  キューの実体との突合ではない**（コンシューマの記録が落ちれば標識も落ちる）。
 - ジョブ履歴の保持期間・アーカイブ（監査・長期保全）。
 - `Status` 絞り込みのインデックス要否（件数増加時）。

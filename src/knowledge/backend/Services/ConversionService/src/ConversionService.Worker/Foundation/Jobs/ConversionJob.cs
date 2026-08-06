@@ -17,6 +17,11 @@ public class ConversionJob
     public Guid? DocumentId { get; private set; }
     public string? MarkdownUri { get; private set; }
     public int Attempts { get; private set; }
+
+    // FR-12, SC-07, IADR-0136: 再試行を使い切って <queue>_error へ送られたか（failed の内訳）。
+    // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
+    public bool DeadLettered { get; private set; }
+
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -46,10 +51,12 @@ public class ConversionJob
     }
 
     // 再受信・再試行の都度：processing へ・attempts++・エラー消去・原本を更新。
+    // SC-07: 処理を再開したらデッドレター標識は落とす（「processing なのにデッドレター」を出さない）。
     public void MarkProcessing(RawDocumentFetched ev)
     {
         Status = ConversionJobStatus.Processing;
         Error = null;
+        DeadLettered = false;
         Attempts++;
         UpdatedAt = DateTimeOffset.UtcNow;
         ApplyEvent(ev);
@@ -64,19 +71,24 @@ public class ConversionJob
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    public void MarkFailed(string error)
+    // SC-07: deadLettered は「この失敗で自動再試行を使い切った（＝<queue>_error へ送られる）」ことを
+    // コンシューマから受け取る。再試行の余地が残る失敗では立たない（failed の内訳を区別するため）。
+    public void MarkFailed(string error, bool deadLettered = false)
     {
         Status = ConversionJobStatus.Failed;
         Error = error;
+        DeadLettered = deadLettered;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     // UC-06: 人手補正は失敗ジョブに限る。失敗以外（processing/succeeded/queued）は再変換不可。
+    // SC-07: 再変換を受け付けた時点でデッドレター標識は落とす（queued は「自動では直らない」状態ではない）。
     public bool TryRequeue()
     {
         if (Status != ConversionJobStatus.Failed) return false;
         Status = ConversionJobStatus.Queued;
         Error = null;
+        DeadLettered = false;
         UpdatedAt = DateTimeOffset.UtcNow;
         return true;
     }
@@ -86,9 +98,10 @@ public class ConversionJob
         new(Id, SourceId, SourceType, OriginalPath, StorageUri, ContentType,
             new Dictionary<string, string>(Attributes), [.. Tags], FetchedAt);
 
+    // SC-07: 試行上限は全ジョブ共通の設定値であり、画面がしきい値を推測しなくて済むよう毎行へ射影する。
     public ConversionJobDto ToDto() =>
         new(Id, SourceId, SourceType, OriginalPath, Status, Error, DocumentId, MarkdownUri,
-            Attempts, CreatedAt, UpdatedAt);
+            Attempts, CreatedAt, UpdatedAt, DeadLettered, ConversionJobRetryPolicy.MaxAttempts);
 
     private void ApplyEvent(RawDocumentFetched ev)
     {

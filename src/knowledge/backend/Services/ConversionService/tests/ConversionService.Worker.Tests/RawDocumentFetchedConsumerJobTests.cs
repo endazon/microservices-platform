@@ -6,9 +6,11 @@ using ConversionService.Worker.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
+using MassTransit;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace ConversionService.Worker.Tests;
 
@@ -33,7 +35,8 @@ public class RawDocumentFetchedConsumerJobTests
             throw new InvalidOperationException("pandoc failed");
     }
 
-    private static ServiceProvider BuildHarness(INormalizationService normalizer)
+    // retries: バスに構成する即時再試行の回数。既定 0 は「再試行を構成しない」＝ 1 回だけ消費する。
+    private static ServiceProvider BuildHarness(INormalizationService normalizer, int retries = 0)
     {
         // IADR-0043: EF ストア（scoped）＋ EF InMemory DbContext。InMemory DB は provider 内で共有され、
         // コンシューマのスコープが書き込んだジョブを別スコープ（検証）から参照できる。
@@ -44,7 +47,17 @@ public class RawDocumentFetchedConsumerJobTests
             .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(dbName))
             .AddScoped<IConversionJobStore, EfConversionJobStore>()
             .AddSingleton(normalizer)
-            .AddMassTransitTestHarness(x => x.AddConsumer<RawDocumentFetchedConsumer>())
+            .AddMassTransitTestHarness(x =>
+            {
+                x.AddConsumer<RawDocumentFetchedConsumer>();
+                x.UsingInMemory((ctx, cfg) =>
+                {
+                    // SC-07: 本番は UsePlatformRetry（間隔つき 3 回）。試験では待ち時間を持たない
+                    // 即時再試行で同じ**回数**を再現する（デッドレター標識の判定は回数だけを見る）。
+                    if (retries > 0) cfg.UseMessageRetry(r => r.Immediate(retries));
+                    cfg.ConfigureEndpoints(ctx);
+                });
+            })
             .BuildServiceProvider(true);
     }
 
@@ -88,10 +101,56 @@ public class RawDocumentFetchedConsumerJobTests
             var job = (await store.GetAsync(ev.FetchId))!;
             job.Status.Should().Be(ConversionJobStatus.Failed);
             job.Error.Should().Contain("pandoc failed");
+            // FR-12, SC-07（AC-4）: 試行上限に達していない失敗にデッドレター標識は立たない。
+            // 「失敗した」ことではなく「**再試行を使い切った**」ことが標識の意味である。
+            job.Attempts.Should().BeLessThan(ConversionJobRetryPolicy.MaxAttempts);
+            job.DeadLettered.Should().BeFalse();
         }
         finally
         {
             await harness.Stop();
         }
+    }
+
+    [Fact]
+    public async Task Consume_failure_exhausting_retries_marks_dead_lettered()
+    {
+        // FR-12, SC-07（AC-6/AC-7）: 自動再試行を使い切った継続失敗は <queue>_error（デッドレター）へ送られる。
+        // 04_workflows/03_conversion-flow.md:65「継続失敗はデッドレターキューへ送り、管理者に通知する」。
+        // 本番と同じ**試行上限**（初回 ＋ 再試行）で消費させ、最後の試行の失敗で標識が立つことを見る。
+        await using var provider = BuildHarness(
+            new FailingNormalizer(), retries: MassTransitExtensions.MaxAttempts - 1);
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            var ev = Raw(Guid.NewGuid());
+            await harness.Bus.Publish(ev);
+
+            // 再試行を使い切ると MassTransit は Fault<T> を発行する（＝これ以上再試行しない合図）。
+            (await harness.Published.Any<Fault<RawDocumentFetched>>()).Should().BeTrue();
+
+            using var scope = provider.CreateScope();
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            var job = (await store.GetAsync(ev.FetchId))!;
+            // AC-3: 状態値は 4 値のまま。デッドレターは failed の**内訳**である。
+            job.Status.Should().Be(ConversionJobStatus.Failed);
+            job.DeadLettered.Should().BeTrue();
+            job.Attempts.Should().Be(ConversionJobRetryPolicy.MaxAttempts);
+        }
+        finally
+        {
+            await harness.Stop();
+        }
+    }
+
+    [Fact]
+    public void MaxAttempts_contract_constant_matches_platform_retry_policy()
+    {
+        // FR-12, SC-07（AC-11）: 契約が公開する試行上限（ConversionJobRetryPolicy）と、
+        // 実際に再試行を行う設定（UsePlatformRetry）は同じ値でなければならない。
+        // 契約プロジェクトから基盤プロジェクトを参照しない代わりに、両者の一致をここで束ねる
+        // （IADR-0136 決定 3・決定 4）。**間隔を増減したらこのテストが落ちる。**
+        ConversionJobRetryPolicy.MaxAttempts.Should().Be(MassTransitExtensions.MaxAttempts);
     }
 }

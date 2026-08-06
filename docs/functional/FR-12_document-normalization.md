@@ -5,9 +5,11 @@ status: in-progress
 related_ids:
   - FR-12
   - UC-06
+  - SC-07
+  - IADR-0136
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
@@ -17,6 +19,8 @@ related_specs:
   - ../tests/FR-12_document-normalization.md
   - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
   - ../adr/IADR-0007_llm-egress-routing-config-driven.md
+  - ../adr/IADR-0136_conversion-dead-letter-marker.md
+  - ../data/conversion-job.md
 related_adrs:
   - ADR-0012
   - ADR-0014
@@ -85,6 +89,12 @@ related_adrs:
   （パイプラインを完了させる）。この経路はメッセージ再試行を発火させない。計画書（draft）との差異は
   `feedback/20260703_conversion-retry-vs-image-fallback.md` で計画側へ環流する。
 - **E4（保存の恒久失敗）**: `IObjectStore` が例外を送出した場合は E2 と同様に再試行→デッドレターへ委ねる。
+- **E2 / E4 のデッドレター標識（2026-08-06 / #533。SC-07 の裁定 Q13）**: 再試行を使い切った失敗は
+  読み取りモデルへ `DeadLettered = true` として記録し、`ConversionJobDto.deadLettered` /
+  `maxAttempts` として契約に載せる。**状態値は `failed` のままである**（デッドレターは `failed` の
+  内訳であって 5 番目の状態ではない）。判定・生存期間は [[IADR-0136]]、列は
+  [データ仕様書](../data/conversion-job.md)。E3（図コード化の縮退）は再試行を発火させないため
+  **標識の対象にならない**。
 
 ## 機密制御（ADR-0012 / ADR-0010）
 

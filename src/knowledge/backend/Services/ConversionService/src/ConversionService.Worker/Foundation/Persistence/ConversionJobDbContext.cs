@@ -19,6 +19,8 @@ public class ConversionJobDbContext(DbContextOptions<ConversionJobDbContext> opt
             e.Property(j => j.SourceType).HasMaxLength(50).IsRequired();
             e.Property(j => j.OriginalPath).HasMaxLength(2048).IsRequired();
             e.Property(j => j.Status).HasMaxLength(20).IsRequired();
+            // FR-12, SC-07: デッドレター標識。既存行は「未送出」として読むため既定 false。
+            e.Property(j => j.DeadLettered).HasDefaultValue(false);
             e.Property(j => j.MarkdownUri).HasMaxLength(2048);
             e.Property(j => j.StorageUri).HasMaxLength(2048).IsRequired();
             e.Property(j => j.ContentType).HasMaxLength(255).IsRequired();
