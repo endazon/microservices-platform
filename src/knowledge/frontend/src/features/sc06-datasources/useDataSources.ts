@@ -6,7 +6,7 @@ import {
   useBffDataSourceList,
   useBffDataSourceSync,
 } from '@foundation/api/generated/data-sources/data-sources';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray } from '@foundation/api/orvalSelect';
 import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-06, UC-04, FR-01/FR-02: データソースの照会・登録・手動同期・無効化
@@ -21,7 +21,7 @@ export const dataSourcesKey = getBffDataSourceListQueryKey();
 /** 一覧。BFF は後段障害を空一覧へ縮退させない（502）ので、失敗はそのままエラーとして扱う。 */
 export function useDataSources() {
   return useBffDataSourceList<DataSourceDto[], unknown>({
-    query: { queryKey: dataSourcesKey, select: okData },
+    query: { queryKey: dataSourcesKey, select: okArray },
   });
 }
 

@@ -11,7 +11,7 @@ import {
   useBffDocumentPublish,
   useBffDocumentUpdate,
 } from '@foundation/api/generated/documents/documents';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray } from '@foundation/api/orvalSelect';
 import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理の照会・作成・更新・状態遷移・削除
@@ -34,7 +34,7 @@ export const documentsKey = getBffDocumentListQueryKey();
 /** 一覧（ABAC スコープ内のみ返る）。 */
 export function useAdminDocuments() {
   return useBffDocumentList<DocumentDto[], unknown>({
-    query: { queryKey: documentsKey, select: okData },
+    query: { queryKey: documentsKey, select: okArray },
   });
 }
 

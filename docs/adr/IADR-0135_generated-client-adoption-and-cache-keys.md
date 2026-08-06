@@ -272,3 +272,9 @@ D2（MSW）は**捨てていない**——fixture を契約由来にする価値
 
 - Supersedes: なし（[[IADR-0131]] 決定 3 を**改定**する。同 ADR は Accepted のまま）
 - Superseded by: なし
+
+> **［2026-08-06 追記 / #559］決定 7 の適用は「配列を返す面の全数」である。**
+> 当初 4 箇所（SC-03 版履歴 / SC-09 属性 / SC-09 ポリシー / SC-11 履歴）にだけ `okArray` を当てたが、
+> 同型の一覧が 3 つ残っていた（`useAdminDocuments` / `useDataSources` / `useConversionJobs`）。
+> AI レビューが検出し、3 画面へ適用のうえ 204 縮退の回帰テストを足した。
+> **母集合は `grep -n 'select: ok' features/**/use*.ts` で数え切れる。是正は母集合から入ること。**

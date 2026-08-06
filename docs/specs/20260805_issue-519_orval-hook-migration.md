@@ -415,6 +415,7 @@ $ grep -rn "from '@foundation/api/generated" src/knowledge/frontend/src/features
 | **MC3** | SC-07 の再変換後の無効化キーを**条件つきキー**にする | SC-07 | 落ちる | **落ちた**。`refetches the list after a successful retry` が失敗（1 failed / 21 passed） |
 | **MD1** | SC-11 の履歴取得の `select: okArray` を `okData` へ戻す（**🔴 是正前の状態**） | SC-11 | 落ちる | **落ちた**。`TypeError: entries.map is not a function` で `degrades to the empty-history message when the history response has no body (204)` が失敗（1 failed / 17 passed）。**是正前はこの経路でルートごとクラッシュしていた** |
 | **MD2** | SC-05 の `documentInvalidationKeys` を**一覧キーだけ**へ戻す（**🔴 是正前の状態**） | SC-05 → SC-03 | 落ちる | **落ちた**。`useDocumentAdmin.test.tsx` が **5 件失敗**（`expected [true, false, false, false] to deeply equal [true, true, true, true]`）。公開・アーカイブ・更新・削除の各成功後に SC-03 の 3 クエリへ届かないことを捕まえる |
+| **MD3** | SC-05 / SC-06 / SC-07 の一覧の `select: okArray` を `okData` へ戻す（**AI レビューが見つけた同型の残り**） | SC-05・SC-06・SC-07 | 落ちる | **落ちた**。3 画面とも `TypeError: items.map is not a function` で 204 縮退テストが失敗 |
 
 #### MD1 / MD2 —— **クロス監査が見つけた 2 つの退行を、恒久のテストで固定した**
 
@@ -430,6 +431,21 @@ MD1 / MD2 はいずれも**載せ替えが持ち込んだ実挙動の退行**で
 **どちらも画面テストでは原理的に検出できない。** テスト用 QueryClient（`renderUnitRoute.tsx`）が
 `staleTime: 0 / gcTime: 0` で作られるため、無効化が届かなくても再マウントで必ず再取得されるからである。
 MD2 は **QueryClient を直接使う単体テスト**（`useDocumentAdmin.test.tsx`）でしか固定できない。
+
+#### MD3 —— **是正が 4 箇所で止まっており、同型が 3 画面に残っていた**
+
+MD1 の是正（`?? []` → `okArray`）を **SC-03 版履歴・SC-09 属性・SC-09 ポリシー・SC-11 履歴の 4 箇所**に
+当てたが、**本文そのものが配列である一覧エンドポイントが他に 3 つあり、手つかずだった**
+（`useAdminDocuments` / `useDataSources` / `useConversionJobs`）。AI レビューの指摘で判明した。
+
+**これも本作業が持ち込んだ退行である。** 載せ替え前は `apiFetch` が空ボディで `undefined` を返すため
+`items = data ?? []` が実効ガードだった。生成物の `bffFetch` は `{}` を返すので `??` は発火せず、
+さらに **`items.length === 0` も `{}.length === undefined` で救えない**ため `items.map` が投げる。
+
+3 画面とも `okArray` へ寄せ、**204 縮退の回帰テストを各画面に足した**（MD3 で落ちることを実測）。
+
+> **教訓**: 「同じ失敗モードが他にもないか」を**母集合で確かめずに個別対処した**のが原因である。
+> 配列を返す面の一覧は `grep -n 'select: ok' features/**/use*.ts` で数え切れる。**是正は母集合から入る。**
 
 #### 素通りしたもの（**3 件。隠さない**）
 

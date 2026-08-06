@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
-import { jsonResponse } from '@foundation/testing/bffResponse';
+import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
 // SC-05, UC-03, FR-06/FR-09: 文書管理画面の再実装（#503）＋ 生成フックへの載せ替え（#519）。
 //
@@ -311,4 +311,21 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(await screen.findByRole('heading', { name: 'Documents' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
   });
+
+  // SC-05, IADR-0135 決定 7［2026-08-06 追記］: 一覧が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // 載せ替え前は `apiFetch` が空ボディで `undefined` を返すため `items = data ?? []` が実効ガード
+  // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
+  // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
+  // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+  it('degrades to the empty state when the list response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/documents')) return noContent();
+      return jsonResponse([]);
+    });
+    await renderPage();
+
+    expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
+  });
+
 });

@@ -290,4 +290,21 @@ describe('DataSourceManagementPage (SC-06)', () => {
     expect(await screen.findByRole('heading', { name: 'Data sources' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('File server')).toBeInTheDocument();
   });
+
+  // SC-06, IADR-0135 決定 7［2026-08-06 追記］: 一覧が**本文なし**（204）で返っても画面は落ちない。
+  //
+  // 載せ替え前は `apiFetch` が空ボディで `undefined` を返すため `items = data ?? []` が実効ガード
+  // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
+  // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
+  // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+  it('degrades to the empty state when the list response has no body (204)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/datasources')) return noContent();
+      return jsonResponse([]);
+    });
+    await renderPage();
+
+    expect(await screen.findByText('データソースは登録されていません。')).toBeInTheDocument();
+  });
+
 });

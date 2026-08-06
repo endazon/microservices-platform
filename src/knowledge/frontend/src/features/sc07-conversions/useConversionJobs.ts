@@ -4,7 +4,7 @@ import {
   useBffConversionJobList,
   useBffConversionJobRetry,
 } from '@foundation/api/generated/conversion/conversion';
-import { okData } from '@foundation/api/orvalSelect';
+import { okArray } from '@foundation/api/orvalSelect';
 import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 import type { JobStatusFilter } from './jobStatus';
 
@@ -32,7 +32,7 @@ export const conversionJobsKey = (status: JobStatusFilter) =>
  */
 export function useConversionJobs(status: JobStatusFilter) {
   return useBffConversionJobList<ConversionJobDto[], unknown>(listParams(status), {
-    query: { queryKey: conversionJobsKey(status), select: okData },
+    query: { queryKey: conversionJobsKey(status), select: okArray },
   });
 }
 
