@@ -4,9 +4,13 @@
     "ratchet: 新規混入は fail、ここに載る残件は許容、直したのに残っていれば fail（baseline を縮める）。",
     "是正の方向は索引タイトルセルを本体 title: の要約へ縮めること（docs/adr/README.md §運用ルール）。",
     "title-too-long は maxTitleChars 超過、title-addendum は ［YYYY-MM-DD 追記］ ブロックの混入。",
+    "title-drift は本体 title: との文字単位 LCS が min(minTitleOverlap, 本体長, タイトル長) 未満。",
+    "字義一致は課さないが「別の決定の話へ丸ごと書き換える」型を落とす（現状の違反は 0 行）。",
+    "閾値は scripts.repo.test.js が値そのものを固定する（緩める変更を必ず diff へ出すため）。",
     "検査本体は scripts/scripts.repo.test.js の inspectAdrIndexTitles。"
   ],
   "maxTitleChars": 200,
+  "minTitleOverlap": 12,
   "rows": {
     "IADR-0042": [
       "title-addendum",

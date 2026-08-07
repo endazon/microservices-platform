@@ -172,15 +172,6 @@ module.exports = ({ ok, assert }) => {
 };
 ```
 
-#### `adr-index-title-baseline.json`（#580）
-
-`scripts.repo.test.js` が使う**唯一の baseline ファイル**。`docs/adr/README.md` の索引タイトルセルの
-既知違反（`title-addendum` / `title-too-long`）を保持し、**新規混入と stale（直したのに baseline に
-残っている）を fail**、baseline 内の残件は許容する——`backend-library-baseline.json` と同じ 3 判定。
-索引と本体の**字義一致は対象外**（実測で 141 行中 96 行が不一致、うち 87 行は索引の方が長い＝索引に
-決定文が貼られている状態であり、是正の方向は「索引タイトルセルを要約へ縮める」ため。
-`docs/adr/README.md` §運用ルール）。**行を縮めたら baseline も同じ分だけ縮める**（縮め忘れは stale で落ちる）。
-
 `ok` をそのまま受け取るため、件数の集計は自動で正しくなる（カウンタが分かれない）。
 
 > **このファイルは必ずコミットする。** 追跡されていないと CI（clean checkout）に存在せず、
@@ -206,6 +197,22 @@ module.exports = ({ ok, assert }) => {
 | companion が git 未追跡 | `warning:`（CI に存在せず固有テストが走らないため） |
 | 旧名 `scripts.local.test.js` のみ | 読み込む ＋ `warning:` で改名を促す |
 | 新旧が**両方**ある | 新名を優先して読み込み、`warning:` で旧名の残存を知らせる（移行漏れならテストを移し、不要なら削除する） |
+
+### `adr-index-title-baseline.json`（#580）
+
+`scripts.repo.test.js` の**索引タイトル検査が使う** baseline ファイル（同ファイルはほかに
+`backend-library-baseline.json` / `contract-schema-baseline.json` を直接読み、
+`check-test-spec-coverage.js` 経由で `test-spec-coverage-baseline.json` も読む）。
+`docs/adr/README.md` の索引タイトルセルの既知違反（`title-addendum` / `title-too-long`）を保持し、
+**新規混入と stale（直したのに baseline に残っている）を fail**、baseline 内の残件は許容する
+——`backend-library-baseline.json` と同じ 3 判定。
+索引と本体の**字義一致は対象外**（実測で 141 行中 96 行が不一致、うち 86 行は索引の方が長い＝索引に
+決定文が貼られている状態であり、是正の方向は「索引タイトルセルを要約へ縮める」ため。
+`docs/adr/README.md` §運用ルール）。ただし**無検査ではなく**、本体 `title:` と文字を共有する下限
+（`minTitleOverlap`。文字単位 LCS が `min(12, 本体長, タイトル長)` 未満なら `title-drift`）を課し、
+「別の決定の話へ丸ごと書き換える」型を落とす。閾値（`maxTitleChars` / `minTitleOverlap`）は
+`scripts.repo.test.js` が値そのものを固定するので、**緩める変更は必ず diff に出る**。
+**行を縮めたら baseline も同じ分だけ縮める**（縮め忘れは stale で落ちる）。
 
 ## 契約の破壊的変更（`Shared.Contracts`）
 
