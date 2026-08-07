@@ -440,6 +440,8 @@ function selfTest() {
   // --- #283 / IADR-0070: context/args 対応の追加試験 -----------------------------
 
   // パーサ: build.context と build.args を抽出する（AST 型の単一 Dockerfile＋args）。
+  // 合成フィクスチャ（値は検査の成否に対して任意）だが、実 compose からの貼り付けなので現行値へ揃える。
+  // #570: AST が *.Worker → *.Api へ改名したのに合わせて更新（検査ロジックは不変）。
   const composeAst = [
     'services:',
     '  configuration-service:',
@@ -447,8 +449,8 @@ function selfTest() {
     '      context: ../src/ai-stock-trading',
     '      dockerfile: backend/Dockerfile',
     '      args:',
-    '        SERVICE_PROJECT: backend/Services/ConfigurationService/src/ConfigurationService.Worker/ConfigurationService.Worker.csproj',
-    '        SERVICE_DLL: ConfigurationService.Worker.dll',
+    '        SERVICE_PROJECT: backend/Services/ConfigurationService/src/ConfigurationService.Api/ConfigurationService.Api.csproj',
+    '        SERVICE_DLL: ConfigurationService.Api.dll',
     '    expose:',
     '      - "8080"',
     '',
@@ -460,8 +462,8 @@ function selfTest() {
       parsedAst.length === 1 &&
       parsedAst[0].context === '../src/ai-stock-trading' &&
       parsedAst[0].dockerfile === 'backend/Dockerfile' &&
-      parsedAst[0].args.SERVICE_DLL === 'ConfigurationService.Worker.dll' &&
-      parsedAst[0].args.SERVICE_PROJECT.endsWith('ConfigurationService.Worker.csproj'),
+      parsedAst[0].args.SERVICE_DLL === 'ConfigurationService.Api.dll' &&
+      parsedAst[0].args.SERVICE_PROJECT.endsWith('ConfigurationService.Api.csproj'),
     actual: parsedAst[0],
   });
 

@@ -11,7 +11,7 @@ related_ids:
   - IADR-0070
 author: claude
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -104,6 +104,17 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 **根拠**: RiskManagementService の HTTP サーフェス（`/risk-controls/*`）は Worker が DbContext と MassTransit を
 初期化してから提供される。compose（ローカル dev）で実際に到達させるには DB と RabbitMQ が要る。helm は #285 と
 同じく「宣言・既定 disabled」に留め、稼働時依存の充足は live 側の責務とする（本 PR はリポ内検証に閉じる）。
+
+> **［2026-08-07 追記 / #570］決定 3 の `SERVICE_PROJECT` / `SERVICE_DLL` の値が失効し、追随した。**
+> AST がサービスホストのプロジェクトを **`*.Worker` → `*.Api`** へ一斉改名した（技術詳細＝DbContext・
+> consumer・常駐ジョブは `*.Infrastructure` へ分離。AST/IADR-0128）。#564 の pin bump
+> （`655e2ed` → `91d52c2`）で旧パスが実在しなくなり `build (risk-management-service)` が MSB1009 で落ちたため、
+> `deploy/docker-compose.yml` と `scripts/k8s-local-images.sh` を
+> `.../RiskManagementService.Api/RiskManagementService.Api.csproj` ＋ `RiskManagementService.Api.dll` へ揃えた。
+> **上記本文（呼称「Worker」を含む）は 2026-07-18 時点の記録としてそのまま残す。**
+> 登録の形（DB＋RabbitMQ・既定 disabled・専用 DB `risk_management_svc`・helm キー `risk-management`）と
+> 到達先（`http://risk-management-service:8080`）は不変で、動いたのは build args の値だけである
+> （[作業仕様書](../specs/20260807_issue-570_ast-project-rename.md)）。
 
 ## 影響・トレードオフ
 

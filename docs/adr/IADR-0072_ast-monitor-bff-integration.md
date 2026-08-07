@@ -12,7 +12,7 @@ related_ids:
   - IADR-0071
 author: claude
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -34,6 +34,18 @@ plan_refs:
 - Issue: MSP #288 ／ 先行 MSP #287（PR #289）／ AST endazon/ai-stock-trading#196（PR #197）
 - 上流仕様: `src/ai-stock-trading/frontend/src/features/monitor/contracts.ts`（watchlist の応答契約）／
   `src/ai-stock-trading/backend/Services/MarketMonitorService/src/MarketMonitorService.Worker/Foundation/Endpoints/MonitorSettingsEndpoints.cs`
+
+> **［2026-08-07 追記 / #570］上記「上流仕様」の 2 本目のパスと、決定 4 の `SERVICE_PROJECT` /
+> `SERVICE_DLL` の値は、submodule pin `91d52c2` 以降は実在しない。** AST がサービスホストのプロジェクトを
+> **`*.Worker` → `*.Api` へ一斉改名**した（技術詳細は `*.Infrastructure` へ分離。AST/IADR-0128）ためで、
+> 現行のパスは `.../MarketMonitorService/src/MarketMonitorService.Api/Foundation/Endpoints/MonitorSettingsEndpoints.cs`
+> である。**本文は 2026-07-18 時点の記録としてそのまま残す。**
+> #564 の pin bump（`655e2ed` → `91d52c2`）でこの改名が入り、追随していなかった
+> `deploy/docker-compose.yml` / `scripts/k8s-local-images.sh` を #570 で `*.Api` へ揃えた
+> （`build (market-monitor-service)` の `dotnet restore` が MSB1009 で落ちていた）。
+> 決定 4 のうち**登録の形（DB＋RabbitMQ・既定 disabled・専用 DB `market_monitor_svc`・expose のみ）は不変**で、
+> 動いたのは build args の値だけである（[作業仕様書](../specs/20260807_issue-570_ast-project-rename.md)）。
+> なお決定 4 本文の「MarketMonitorService は Worker で〜」というホストの呼称も改名前の記述である。
 
 ## 背景・課題
 
