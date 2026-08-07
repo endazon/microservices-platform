@@ -54,7 +54,7 @@ describe('Select（ネイティブ select。IADR-0125 決定 1）', () => {
   const options = (
     <>
       <option value="public">公開</option>
-      <option value="internal">社内</option>
+      <option value="internal">社内限</option>
     </>
   );
 

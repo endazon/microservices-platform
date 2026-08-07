@@ -159,6 +159,12 @@
             "required": true,
             "position": 3
           },
+          "Confidentiality": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 7
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid",
@@ -197,6 +203,41 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.ConfidentialityLevels": {
+        "kind": "class",
+        "members": {
+          "AttributeKey": {
+            "source": "const",
+            "type": "string",
+            "value": "\"confidentiality\""
+          },
+          "Confidential": {
+            "source": "const",
+            "type": "string",
+            "value": "\"confidential\""
+          },
+          "Internal": {
+            "source": "const",
+            "type": "string",
+            "value": "\"internal\""
+          },
+          "Public": {
+            "source": "const",
+            "type": "string",
+            "value": "\"public\""
+          },
+          "Restricted": {
+            "source": "const",
+            "type": "string",
+            "value": "\"restricted\""
+          },
+          "SafeDefault": {
+            "source": "const",
+            "type": "string",
+            "value": "Restricted"
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.ConversionJobDto": {
         "kind": "record",
         "members": {
@@ -211,6 +252,12 @@
             "type": "DateTimeOffset",
             "required": true,
             "position": 9
+          },
+          "DeadLettered": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 11
           },
           "DocumentId": {
             "source": "positional",
@@ -235,6 +282,12 @@
             "type": "string?",
             "required": true,
             "position": 7
+          },
+          "MaxAttempts": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 12
           },
           "OriginalPath": {
             "source": "positional",
@@ -265,6 +318,16 @@
             "type": "DateTimeOffset",
             "required": true,
             "position": 10
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ConversionJobRetryPolicy": {
+        "kind": "class",
+        "members": {
+          "MaxAttempts": {
+            "source": "const",
+            "type": "int",
+            "value": "4"
           }
         }
       },

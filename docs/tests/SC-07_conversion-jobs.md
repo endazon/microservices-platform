@@ -56,7 +56,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 計画の確定 | テスト |
 | --- | --- |
 | ジョブ状態モデルは **4 値** | `covers exactly the four statuses the plan fixed` ／ `maps %s to a labelled badge`（4 件）／ `lists jobs with the four-value status model` |
-| デッドレターの表示は `failed` の**内訳** | **実装しない**（契約に標識が無い）。理由は画面仕様書 §実装しない要素 (b) |
+| デッドレターの表示は `failed` の**内訳** | **画面では実装しない**（画面側が未着手。理由は画面仕様書 §実装しない要素 (b)）。**契約と後段は #533 で固定した**——§バックエンド の読み取りモデル 8〜12・エンドポイント 4・コンシューマ 3〜4 |
 | 照会 API は `GET /jobs` 相当・**状態でのフィルタ**を備える | `sends the status filter to the query API` ／ `starts with the "all" filter so the first view is not narrowed` |
 | 再変換 API は `retry` 相当 | `lets an administrator retry a failed job` |
 | **再変換の実行権限は管理者ロールに限る**（「画面と API の権限を揃える」） | 画面: `lets an administrator retry a failed job` ／ **`hides the retry button from an operator and says why`**。API: **`Retry_AsOperator_IsForbidden`**（403）／ `Retry_WhenAnonymous_IsUnauthorized`（401）／ `Retry_AsAdmin_Returns202`（§BFF 7 / 7b / 7c） |
@@ -68,7 +68,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | --- | --- | --- |
 | **代替（2026-08-04 追記）. 変換ジョブの状況を照会する** | 一覧 ＋ 状態フィルタ | `lists jobs with the four-value status model` ／ `sends the status filter to the query API` |
 | **代替（2026-08-04 追記）. 失敗した変換を再実行する** | `failed` の行の再変換ボタン（管理者のみ） | `lets an administrator retry a failed job` |
-| **例外. 恒久失敗は再試行し、継続失敗はデッドレターへ送る** | `failed` として表示する（内訳は区別しない） | `lists jobs with the four-value status model`（`failed` の表示） |
+| **例外. 恒久失敗は再試行し、継続失敗はデッドレターへ送る** | `failed` として表示する（**画面では**内訳を区別しない） | 画面: `lists jobs with the four-value status model`（`failed` の表示）。**契約・後段（#533）**: `Consume_failure_exhausting_retries_marks_dead_lettered` ／ `Fail_at_attempt_limit_marks_dead_letter_without_changing_status` |
 | 基本 1〜4（受領・pandoc・図の LLM コード化・登録） | **写像しない**（ワーカー側の責務） | — |
 
 ## テストケース
@@ -119,6 +119,11 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 6 | 未知再変換 | null | `PrepareRetry_returns_null_for_unknown_job` |
 | 6b | 失敗以外は再変換不可 | 成功ジョブは null・状態不変 | `PrepareRetry_returns_null_for_non_failed_job` |
 | 7 | 再試行 | 試行回数加算 | `Start_again_increments_attempts` |
+| 8 | **試行上限・標識の初期値**（#533） | 全ジョブが `MaxAttempts` を持ち、標識は既定で立たない | `Job_carries_max_attempts_and_is_not_dead_lettered_initially` |
+| 9 | **上限前の失敗**（#533） | 再試行の余地がある失敗に標識は立たない（`failed` の内訳を区別する） | `Fail_without_reaching_attempt_limit_does_not_mark_dead_letter` |
+| 10 | **上限到達の失敗**（#533） | 標識が立ち、**状態値は `failed` のまま**（4 値モデル不変） | `Fail_at_attempt_limit_marks_dead_letter_without_changing_status` |
+| 11 | **再受信で標識が落ちる**（#533） | 処理再開で `processing` ＋ 標識 false | `Reprocessing_clears_dead_letter_marker` |
+| 12 | **手動再変換で標識が落ちる**（#533） | 試行回数が上限を超えていても受け付け、`queued` ＋ 標識 false | `PrepareRetry_clears_dead_letter_marker` |
 
 エンドポイント: `ConversionJobEndpointTests.cs`
 | # | 観点 | 検証内容 | ケース |
@@ -128,13 +133,16 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 3 | 再変換 | 失敗ジョブは 202（queued 化は store 単体で担保） | `Retry_KnownFailedJob_Returns202` |
 | 3b | 失敗以外は 409 | 成功ジョブへの再変換は 409・状態不変 | `Retry_NonFailedJob_Returns409` |
 | 3c | **処理中は 409 not_retryable**（2026-08-04 確定「実行中の再変換要求は拒否」・#501 回帰） | `processing` への再変換は 409・本文 `error=not_retryable`・状態不変 | `Retry_ProcessingJob_Returns409NotRetryable` |
+| 3d | **標識の HTTP 露出**（#533） | 応答に `deadLettered` / `maxAttempts` が載る（状態は `failed` のまま）。**再変換での消滅はここで見ない**——3 と同じレース理由。読み取りモデル 12 で担保 | `GetById_ExposesDeadLetterMarkerAndMaxAttempts` |
 | 4 | 未知再変換 | 404 | `Retry_UnknownJob_Returns404` |
 
 コンシューマ記録: `RawDocumentFetchedConsumerJobTests.cs`
 | # | 観点 | 検証内容 | ケース |
 | --- | --- | --- | --- |
 | 1 | 成功記録 | succeeded を記録 | `Consume_success_records_succeeded_job` |
-| 2 | 失敗記録＋再送出 | failed を記録し例外再送出（リトライ保持） | `Consume_failure_records_failed_job_and_rethrows` |
+| 2 | 失敗記録＋再送出 | failed を記録し例外再送出（リトライ保持）。**試行上限前なので標識は立たない**（#533） | `Consume_failure_records_failed_job_and_rethrows` |
+| 3 | **再試行を使い切った失敗**（#533） | 本番と同じ試行上限で消費させ、最後の失敗で標識が立つ（`Fault<T>` 発行で待つ） | `Consume_failure_exhausting_retries_marks_dead_lettered` |
+| 4 | **試行上限の単一情報源**（#533） | 契約の `ConversionJobRetryPolicy.MaxAttempts` が再試行設定（`UsePlatformRetry`）と一致する | `MaxAttempts_contract_constant_matches_platform_retry_policy` |
 
 ## BFF（xUnit・#501 で権限テストを追加）
 

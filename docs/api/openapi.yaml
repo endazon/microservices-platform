@@ -1598,7 +1598,7 @@ components:
       description: |
         FR-04: 出典（番号付き＋元文書へのリンク）。AI 回答中の [1][2] と対応する根拠で、
         利用者は `sourceUri` から元文書へ辿れる。
-      required: [number, documentId, documentTitle, chunkId, score, snippet]
+      required: [number, documentId, documentTitle, chunkId, score, snippet, confidentiality]
       properties:
         number: { type: integer, description: "回答本文中の [n] と対応する番号" }
         documentId: { type: string, format: uuid }
@@ -1607,6 +1607,16 @@ components:
         sourceUri: { type: string, nullable: true }
         score: { type: number, format: float }
         snippet: { type: string, description: "根拠箇所の抜粋" }
+        confidentiality:
+          type: string
+          description: |
+            FR-04, SC-01, #541: この出典の文書の機密区分（ABAC 文書属性 `confidentiality`）。
+            利用者が AI 回答を社外資料へ引用してよいか判断する手掛かり（利用者裁定 Q10 / planning#200）。
+            値集合は `public` / `internal` / `confidential` / `restricted`。
+            **`enum` にしない**（IADR-0131 決定 5。後段の値追加を SPA 側の破壊的変更にしない）。
+            発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
+            ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
+            **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
 
     AccessScopeRequest:
       type: object
@@ -1826,7 +1836,7 @@ components:
     ConversionJobDto:
       type: object
       description: "FR-12, UC-06, SC-07: 変換ジョブの状況（`Knowledge.Contracts/Dtos/ConversionJobDto.cs`）"
-      required: [id, sourceId, sourceType, originalPath, status, attempts, createdAt, updatedAt]
+      required: [id, sourceId, sourceType, originalPath, status, attempts, deadLettered, maxAttempts, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         sourceId: { type: string, format: uuid }
@@ -1838,7 +1848,21 @@ components:
         error: { type: string, nullable: true, description: "失敗ジョブの理由" }
         documentId: { type: string, format: uuid, nullable: true }
         markdownUri: { type: string, nullable: true }
-        attempts: { type: integer }
+        attempts: { type: integer, description: "変換試行の累計。**手動再変換をまたいで累積する**ため `maxAttempts` を超え得る" }
+        deadLettered:
+          type: boolean
+          description: |
+            **デッドレター標識**（05_screens §SC-07・裁定 Q13）。自動再試行を使い切って
+            `<queue>_error` へ送られた失敗か。**`status` の 5 値目ではない**——同節は
+            「ジョブ状態モデルは 4 値である…デッドレターの表示は `failed` の内訳として扱う」と定める。
+            `true` は「人が原本に手を入れるまで自動では直らない」信号であり、`status` が `failed` の
+            ときだけ真になる（再変換を受け付けた時点で `false` へ戻る）。
+        maxAttempts:
+          type: integer
+          description: |
+            **試行上限**（同上）。1 回の配信で行う自動再試行の上限（初回 ＋ 再試行）。
+            **手動再変換の回数上限ではない**（同節「手動再変換の回数上限は設けない」）。
+            全ジョブで同じ値を返す（実体は変換サービスの再試行設定）。
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

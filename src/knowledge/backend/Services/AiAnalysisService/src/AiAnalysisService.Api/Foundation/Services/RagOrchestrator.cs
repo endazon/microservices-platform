@@ -348,36 +348,21 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     }
 
     // FR-11: 検索結果の confidentiality 属性から最も高い機密区分を求める。
-    // 値の序列は public < internal < confidential < restricted。
-    // 08_data-egress-policy「既定は安全側」/ FR-05 deny-by-default に従い、属性欠落・未知値は restricted 扱い。
+    // 値の序列・安全側への縮退規則（属性欠落・空文字・未知値は restricted）は
+    // ConfidentialityLevels（Knowledge.Contracts）が単一情報源である。#541 で出典（CitationDto）も
+    // 同じ規則で区分を持つようになったため、梯子をここに複製しない
+    // （複製すると「出典の表示」と「越境判定」が静かに食い違う）。
     private static string HighestConfidentiality(IReadOnlyList<SearchResultDto> results)
     {
         if (results.Count == 0)
-            return "public";
+            return ConfidentialityLevels.Public;
 
-        var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["public"] = 0,
-            ["internal"] = 1,
-            ["confidential"] = 2,
-            ["restricted"] = 3
-        };
-
-        var highest = "public";
-        var highestRank = 0;
+        var highest = ConfidentialityLevels.Public;
         foreach (var r in results)
         {
-            // 属性が欠落・空文字の文書は安全側（restricted）とみなす。
-            var value = r.Attributes.TryGetValue("confidentiality", out var c) && !string.IsNullOrWhiteSpace(c)
-                ? c
-                : "restricted";
-            // 未知の値も安全側（restricted 相当）に倒す。
-            var rank = order.TryGetValue(value, out var v) ? v : 3;
-            if (rank > highestRank)
-            {
-                highestRank = rank;
-                highest = order.ContainsKey(value) ? value : "restricted";
-            }
+            var level = ConfidentialityLevels.FromAttributes(r.Attributes);
+            if (ConfidentialityLevels.Rank(level) > ConfidentialityLevels.Rank(highest))
+                highest = level;
         }
         return highest;
     }

@@ -98,6 +98,16 @@ export interface CitationDto {
   score: number;
   /** 根拠箇所の抜粋 */
   snippet: string;
+  /**
+     * FR-04, SC-01, #541: この出典の文書の機密区分（ABAC 文書属性 `confidentiality`）。
+     * 利用者が AI 回答を社外資料へ引用してよいか判断する手掛かり（利用者裁定 Q10 / planning#200）。
+     * 値集合は `public` / `internal` / `confidential` / `restricted`。
+     * **`enum` にしない**（IADR-0131 決定 5。後段の値追加を SPA 側の破壊的変更にしない）。
+     * 発行側が値を持たない場合は安全側の `restricted` へ縮退する。`default` は書かない
+     * ——`required` と同居すると「欠けてよい」と読め、契約が自己矛盾する（IADR-0132 決定 2 系）。
+     * **表示名（公開 / 社内限 / 秘 / 取扱制限）は契約に載せない。** 正は計画リポジトリの用語集。
+     */
+  confidentiality: string;
 }
 
 /**
@@ -326,7 +336,22 @@ export interface ConversionJobDto {
   error?: string | null;
   documentId?: string | null;
   markdownUri?: string | null;
+  /** 変換試行の累計。**手動再変換をまたいで累積する**ため `maxAttempts` を超え得る */
   attempts: number;
+  /**
+     * **デッドレター標識**（05_screens §SC-07・裁定 Q13）。自動再試行を使い切って
+     * `<queue>_error` へ送られた失敗か。**`status` の 5 値目ではない**——同節は
+     * 「ジョブ状態モデルは 4 値である…デッドレターの表示は `failed` の内訳として扱う」と定める。
+     * `true` は「人が原本に手を入れるまで自動では直らない」信号であり、`status` が `failed` の
+     * ときだけ真になる（再変換を受け付けた時点で `false` へ戻る）。
+     */
+  deadLettered: boolean;
+  /**
+     * **試行上限**（同上）。1 回の配信で行う自動再試行の上限（初回 ＋ 再試行）。
+     * **手動再変換の回数上限ではない**（同節「手動再変換の回数上限は設けない」）。
+     * 全ジョブで同じ値を返す（実体は変換サービスの再試行設定）。
+     */
+  maxAttempts: number;
   createdAt: string;
   updatedAt: string;
 }

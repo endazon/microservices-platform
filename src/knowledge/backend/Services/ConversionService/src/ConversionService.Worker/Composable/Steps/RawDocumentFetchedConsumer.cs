@@ -7,6 +7,7 @@ using ConversionService.Worker.Composable.Adapters;
 using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.Extensions.Logging;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace ConversionService.Worker.Composable.Steps;
 
@@ -66,10 +67,18 @@ public class RawDocumentFetchedConsumer(
             // 例外メッセージは admin/operator UI に露出するため、単一行・長さ上限に要約する（内部詳細の露出抑制）。
             // 失敗記録は best-effort（CancellationToken.None）で行い、元例外を消さずに再送出する
             // （ct 失効時に SaveChanges がキャンセル例外を投げて元の変換失敗を隠さないため）。
-            await jobs.FailAsync(ev.FetchId, SummarizeError(ex.Message), CancellationToken.None);
+            await jobs.FailAsync(ev.FetchId, SummarizeError(ex.Message), IsLastAttempt(context),
+                CancellationToken.None);
             throw;
         }
     }
+
+    // FR-12, SC-07, IADR-0137: この失敗が 1 回の配信における最後の試行か（＝この後 MassTransit が
+    // <queue>_error へ送るか）。GetRetryAttempt() は初回 0・再試行ごとに +1 を返すため、+1 して
+    // 1 始まりの試行回数にしてから試行上限と比べる。上限は再試行設定（UsePlatformRetry）が単一情報源で、
+    // 本サービスの受信エンドポイントはその設定で構成される（Program.cs）。
+    private static bool IsLastAttempt(ConsumeContext context) =>
+        context.GetRetryAttempt() + 1 >= MassTransitExtensions.MaxAttempts;
 
     // SC-07: 変換失敗メッセージを 1 行・最大 300 文字へ丸める（改行・冗長なスタック様文言の UI 露出を避ける）。
     private static string SummarizeError(string message)
