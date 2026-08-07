@@ -2098,8 +2098,20 @@ module.exports = ({ ok, assert }) => {
       const p = path.join(__dirname, '..', 'docs', 'adr', 'README.md');
       const md = fs.readFileSync(p, 'utf8');
       const rows = md.split('\n').filter((l) => /^\|\s*\[?IADR-\d{4}/.test(l));
-      // 走査 0 件で緑になる fail-open を塞ぐ（表の書式が変わったら気づけるように下限を置く）。
-      assert.ok(rows.length >= 140, `索引行が ${rows.length} 件しか取れていない（走査が壊れている）`);
+      // 走査 0 件で緑になる fail-open を塞ぐ。**下限は実在する ADR 本体の件数から導く**——
+      // 固定値（当初は `>= 140`）は他 PR が ADR を 1 本足すたびに動き、無関係な PR を赤にする
+      // 手作業の更新点になる（#454 原則 12。本 PR の作業中だけで #582 が 0139、#584 が 0140 を
+      // 足しており、実際に 2 回動いた）。**下限が満たせない＝索引に行が無い ADR がある**という
+      // 意味も持つが、それは #581（索引 vs 本体の突合）が引き受ける範囲なので、#581 が入った
+      // 時点で本ブロックごと統合・削除する（上のコメントの申し送りのとおり）。
+      const bodyCount = fs
+        .readdirSync(path.join(__dirname, '..', 'docs', 'adr'))
+        .filter((f) => /^IADR-\d{4}_.*\.md$/.test(f)).length;
+      assert.ok(bodyCount > 0, 'docs/adr/ に ADR 本体が 1 件も見つからない（走査が壊れている）');
+      assert.ok(
+        rows.length >= bodyCount,
+        `索引行 ${rows.length} 件に対し ADR 本体は ${bodyCount} 件（走査が壊れているか索引行が欠けている）`,
+      );
       const v = inspectAdrIndex(md);
       assert.deepStrictEqual(
         v,

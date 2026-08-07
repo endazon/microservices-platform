@@ -261,7 +261,14 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 （`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` → companion 自動読込）に載せる
 （#507 が確立した経路。`check-i18n-catalogs` / `check-test-spec-coverage` の実データ検査と同じ結線）。
 **`scripts/scripts.test.js` はキットとバイト一致に保つ必要があり変更しない**（IADR-0115 分類 A）。
-走査 0 件で緑になる fail-open を塞ぐため、索引行が 140 件未満なら fail させる下限を置く。
+
+**fail-open の塞ぎ方（下限を固定値にしない）**: 走査の正規表現が壊れて 0 件になると
+「違反 0 件」で緑になる。これを塞ぐ下限を置くが、**下限は実在する ADR 本体（`docs/adr/IADR-*.md`）の
+件数から導く**。当初は `>= 140` の固定値にしていたが、**固定値は他 PR が ADR を 1 本足すたびに動き、
+無関係な PR を赤にする手作業の更新点になる**（#454 原則 12）。実際、本 PR の作業中だけで
+**#582 が `IADR-0139` を、#584 が `IADR-0140` を足しており 2 回動いた**。
+副作用として「索引に行が無い ADR がある」ことも検出するが、それは #581 の範囲なので、
+#581 が入った時点で本ブロックごと統合・削除する（下記の申し送りのとおり）。
 
 **#581 への申し送り**: #581 が採番の機械検査（索引 vs 本体の突合・採番の連続性）を入れるときは、
 **本ブロックを #581 側の検査へ統合し、`scripts.repo.test.js` からは削除する**。
@@ -315,13 +322,19 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 
 | 変異 | CI 呼び出し口の exit code |
 | --- | --- |
-| なし（正常な索引） | **0**（270 tests passed） |
+| なし（正常な索引） | **0**（**274 tests passed**） |
 | **`IADR-0139` 行のリンクを外す**（#582 が実際に入れた形の再現） | **1**（`README.md:172 not-linked`） |
+| **`IADR-0140` 行のリンクを外す**（#584 が実際に入れた形の再現） | **1**（`README.md:173 not-linked`） |
 | 変異を戻す | **0** |
 | **`IADR-0082` 行の閉じ `|` を外す**（着手時の実測形の再現） | **1**（`README.md:115 no-trailing-pipe`） |
 
 負例 3 種（`not-linked` / `no-trailing-pipe` / `id-file-mismatch`）と正例は、実データを汚さない
 純関数の単体テストとしても固定してある。
+
+**同じ入口に相乗りしている #507 / IADR-0140 の検査も落ちることを確かめた**（衝突解消で
+どちらかを黙って落としていないことの確認）: `.claude/rules/traceability.md` から
+「修飾語と番号の間に空白を入れない」（型 3 の条文）を消すと **exit 1**（`型 3 の規約が消えている`）、
+戻すと **exit 0**。
 
 ### 変異試験 2（G-2 が実際に検査されることの確認）
 
@@ -363,7 +376,7 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 
 | ファイル | 変更 |
 | --- | --- |
-| [`docs/adr/README.md`](../adr/README.md) | R-1（0061 行）／G-1（4 行の状態列）／G-2（**140 行**の ID セル＋0082 行の閉じパイプ。#582 のマージ後は 0139 行を含む）／§運用ルールへ突合規則 |
+| [`docs/adr/README.md`](../adr/README.md) | R-1（0061 行）／G-1（4 行の状態列）／G-2（**141 行**の ID セル＋0082 行の閉じパイプ。#582 の `IADR-0139`・#584 の `IADR-0140` を含む）／§運用ルールへ突合規則 |
 | [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) | **A-1**: 索引の行の形の機械検査（正例 1・負例 3・実データ 1 の計 5 テスト） |
 | [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | Y-3: ゲート一覧の「ライブラリ標準」行へ測定範囲 |
 | [`scripts/README.md`](../../scripts/README.md) | Y-3: 同上（`check-backend-libraries.js` の行が表に無いので追加） |
