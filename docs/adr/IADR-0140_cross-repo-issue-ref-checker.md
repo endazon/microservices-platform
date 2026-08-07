@@ -11,6 +11,7 @@ plan_refs:
 related_specs:
   - ../specs/20260807_issue-507_cross-repo-issue-refs.md
   - ../specs/20260804_issue-478_staged-policy-citation-fix.md
+  - ../specs/20260807_issue-595_changelog-legacy-ref-remap.md
 ---
 
 # IADR-0140: 他リポジトリ issue 表記の検査は「表示テキストのみ」を見て、既存の CI 呼び出し口へ相乗りする
@@ -190,6 +191,88 @@ PR タイトルの 3 面すべてで犯しており、片面だけでは同じ�
 
 規約自体は impl-handoff-kit が配布する `.claude/rules/traceability.md` に書かれているため、検査器ごと
 キットへ環流する価値がある。[`feedback/20260807_kit-cross-repo-issue-ref-check.md`](../../feedback/20260807_kit-cross-repo-issue-ref-check.md) に記録した。
+
+## 追記（2026-08-07・Issue #595）— 生成物も走査対象であり、その入力は不変の履歴である
+
+本 IADR の決定は不変（決定 1〜4 はそのまま）だが、**決定 4 が「追跡下の `*.md`」と書いたときに
+`CHANGELOG.md` のような生成物を明示的に考えていなかった**ため、追記で射程を明文化する
+（履歴不変の原則により本文は書き換えない。[IADR-0095](IADR-0095_wikijs-keycloak-oidc.md) の前例と同型）。
+
+### 何が起きたか
+
+#507 のマージ後、**`develop` が単体で赤くなり全 PR が止まった**。
+
+```console
+$ node scripts/check-cross-repo-refs.js
+  CHANGELOG.md
+    CHANGELOG.md:198  [空白区切りの修飾] planning PR #144  →  planning#144
+```
+
+`CHANGELOG.md` は `scripts/gen-changelog.js` の**生成物**であり、その入力は**コミット `3441861` の
+件名**である。#507 の是正は `.md` の 63 件を直したが、`CHANGELOG.md` は `changelog.yml` が
+develop への push を契機に**非同期で**再生成するため、当該行は #507 の時点でまだ存在しなかった。
+**検査器の追加と、その検査対象の更新がずれている間に赤が生まれた。**
+
+### 決定 5: 生成物（`CHANGELOG.md`）も走査対象に残す。検査から外さない
+
+決定 4 の「追跡下の `*.md`」は**生成物を含む**。`CHANGELOG.md` は利用者が読む成果物であり、
+表記ゆれの害（機械的突合の不安定）は手書きの `.md` と変わらない。さらに、**生成物が赤いことは
+「新しい違反コミットが履歴へ入った」ことの信号**でもあり、外すと信号が消える。
+
+### 決定 6: 履歴由来の違反は `changelog-overrides.json` の `remap` で是正する
+
+生成物の入力である git 履歴は**不変**である（force push 禁止）。件名は直せない。
+したがって是正は**生成側**で行い、`scripts/gen-changelog.js` が既に持つ
+`scripts/changelog-overrides.json` の `remap` を使う——**誤記コミットを「履歴は書き換えず
+CHANGELOG 上でのみ補正する」ための機構であり、まさにこの用途で作られている**
+（先行 2 件: `b421761` / `3d8852f`）。
+
+- **`desc` のみを指定する。** 誤っているのが表記だけなら `type` / `scope` は元コミットの値を保つ
+  （`applyOverride` は省略項目を素通しする）。
+- **検査器の `suggestion` を鵜呑みにしない。** `suggestion` は「型に当たらなくなる最小形」であって
+  採用すべき表記の唯一解ではない。`planning PR #144` の是正は `planning#144` ではなく
+  **`PR planning#144`**（規約 `.claude/rules/traceability.md:102-103` の正例）。
+  `PR` を落とすと「planning の PR #144」という意味が失われる。
+  **この取り違えは検査器では捕まらない**（どちらも exit 0）。`reason` に根拠を残して人手で守る。
+
+| 案 | 採否 | 理由 |
+| --- | --- | --- |
+| `trackedMarkdown` の pathspec へ `:!CHANGELOG.md` を足す | **棄却** | 利用者が読む成果物を規約の外へ置く理由が無い。入力側の違反増殖の信号も消える |
+| `gen-changelog.js` に一括正規化（生成時に表記を書き換える）を入れる | **棄却** | 件名の一部だけを機械置換すると `PR` の語のような意味の差を潰す。件数が少ないうちは個別 `remap` の方が根拠を残せる |
+| `remap` で是正する | **採用** | 既存機構。履歴を書き換えない。`reason` に判断根拠が残る |
+
+**この判断は「履歴の違反が少数である」ことに依存する。** #595 の悉皆走査（下記）は
+**342 コミット中 1 件**を実測しており、閾値を論じるまでもない。**将来 override が 10 件を超えるなら、
+生成側での一括正規化か検査除外を再検討すべき**である。
+
+### 決定 7: 履歴の悉皆走査は `--all` ＋ 件名・本文で、**unshallow してから**行う
+
+#595 の走査で 2 つの落とし穴を実測した。
+
+1. **母集合を ref で絞らない。** `git log --all`（全ブランチ・全タグ、**マージコミットも含む**）を
+   対象にする。CHANGELOG の生成範囲は `--no-merges` の HEAD 系だが、**生成範囲は将来変わり得る**
+   ので、走査は生成範囲より広く取る。判定は `findViolations(text, { markdown: false })`
+   ——コミットメッセージはバッククォートをコードスパンにしないので**潰さない＝より厳しい**
+   （`check-commit-messages.js` と同じ扱い）。
+2. **shallow clone では悉皆走査ができない。** #595 の作業ツリーは `git log --all` で
+   **115 コミット**しか見えなかった（真値 342）。`git fetch --filter=blob:none --unshallow` で
+   完全化してから走査した。**気付かずに `gen-changelog.js --out CHANGELOG.md` を走らせると、
+   生成物を大量欠落した版で破壊する。** 同種の作業の前に `git rev-list --all --count` を確認すること。
+   完全化の確認は「再生成した出力がコミット済み `CHANGELOG.md` と一致するか」で取れる
+   （HEAD 自身の 1 行だけは CI が「生成 → コミット」の順で動くため必ず差が出る）。
+
+### 実測（#595）
+
+| 項 | 実測 |
+| --- | --- |
+| 走査コミット総数（`--all`・マージ込み） | **342** |
+| 件名に違反のあるコミット | **1**（`3441861`。型 3） |
+| 本文に違反のあるコミット | **0** |
+| CHANGELOG に現れていない履歴違反 | **0**（生成範囲外・未マージブランチにも同型なし） |
+
+**規約の正例 `PR planning#NNN` は既に履歴で使われている**（`462410b` 本文の
+`PR planning#244〔裁定依頼 planning#237〕`）。本件の `remap` は新しい書式を導入していない。
+詳細は [`docs/specs/20260807_issue-595_changelog-legacy-ref-remap.md`](../specs/20260807_issue-595_changelog-legacy-ref-remap.md)。
 
 ## 採番に関する注記
 
