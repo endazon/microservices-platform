@@ -18,7 +18,14 @@ updated: 2026-08-07
 | 手順 | 状態 |
 | --- | --- |
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
-| 3. 計画リポ（`impl-handoff-kit`）への伝達 | **未実施**。本 PR は push しない運用のため、伝達は監査後に人間が行う |
+| 3. 計画リポ（`impl-handoff-kit`）への伝達 | **完了**（2026-08-07）。`plan-feedback` ラベル付き Issue として起票した: [planning#249](https://github.com/endazon/project-planning/issues/249) |
+
+> **上表の「未実施」は 2026-08-07 に解消した（誤りではなく、当時の記述である）。** 記録作成時は
+> 「本 PR は push しない運用のため、伝達は監査後に人間が行う」としていたが、当該 PR
+> （microservices-platform#584）はマージされ、伝達だけが残っていた。計画側の定期突合
+> （`tools/impl-handoff-kit` の親である planning の `tools/impl-sync/sync-impl-adr.js --check`）が
+> 本記録を**未到達**として検出したため送付した。以降のトリアージ・裁定は
+> [planning#249](https://github.com/endazon/project-planning/issues/249) で行う。
 
 ## 事実
 
