@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 AST の *.Worker → *.Api 改名に deploy 面（compose / MAPPING）を追随させる（#570）
 type: spec
-status: draft
+status: done
 related_ids: [NFR, FR-14, IADR-0067, IADR-0068, IADR-0070, IADR-0071, IADR-0072, IADR-0101]
 author: Claude
 created: 2026-08-07
@@ -185,13 +185,13 @@ backend/Services/<S>/src/<S>.Worker/<S>.Worker.csproj  →  backend/Services/<S>
 
 ## 受け入れ基準
 
-- [ ] `deploy/docker-compose.yml` の 3 サービスが `*.Api` の csproj と `*.Api.dll` を指す
-- [ ] `scripts/k8s-local-images.sh` の MAPPING 3 エントリが compose と同値
-- [ ] `node scripts/check-image-mapping.js` / `--self-test` が exit 0（ドリフト無し）
-- [ ] `node scripts/check-doc-links.js` が exit 0
-- [ ] compose の YAML が構文的に妥当
-- [ ] 旧名の残存が **ADR の本文（過去の記録）と、それを指す日付つき追記の引用だけ**になる
-- [ ] `docs/adr/IADR-0070` / `IADR-0071` / `IADR-0072` / `IADR-0101` に日付つき追記があり、**本文は無改変**
+- [x] `deploy/docker-compose.yml` の 3 サービスが `*.Api` の csproj と `*.Api.dll` を指す
+- [x] `scripts/k8s-local-images.sh` の MAPPING 3 エントリが compose と同値
+- [x] `node scripts/check-image-mapping.js` / `--self-test` が exit 0（ドリフト無し）
+- [x] `node scripts/check-doc-links.js` が exit 0
+- [x] compose の YAML が構文的に妥当
+- [x] 旧名の残存が **ADR の本文（過去の記録）と、それを指す日付つき追記の引用だけ**になる
+- [x] `docs/adr/IADR-0070` / `IADR-0071` / `IADR-0072` / `IADR-0101` に日付つき追記があり、**本文は無改変**
 
 ## テスト方針
 
