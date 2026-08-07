@@ -64,7 +64,7 @@ jobs:
       # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
       # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
       # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: src/package.json
       - uses: actions/setup-node@v7
@@ -130,7 +130,7 @@ jobs:
       # 本リポジトリの workspace ルートは src/ のため既定では版を解決できず
       # 「Error: No pnpm version is specified.」で落ちるからである（PR #489 の CI で実測）。
       # version: を直書きしないのは、版の単一情報源を src/package.json の packageManager に保つため。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: src/package.json
       - uses: actions/setup-node@v7
