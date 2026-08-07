@@ -2,7 +2,7 @@
 title: IADR-0142 FR-19 / FR-20 の着手条件を「前提検証の完了」から「覆り得る範囲の外であること」へ改める — IADR-0119 決定 2 の部分改定
 type: impl-adr
 status: Accepted
-related_ids: [NFR, FR-19, FR-20, FR-21, SC-19, SC-20, ADR-0037, IADR-0116, IADR-0117, IADR-0119, IADR-0141]
+related_ids: [NFR, FR-19, FR-20, FR-21, SC-19, SC-20, ADR-0036, ADR-0037, IADR-0116, IADR-0117, IADR-0119, IADR-0141]
 author: Claude
 created: 2026-08-07
 updated: 2026-08-07
@@ -101,7 +101,7 @@ related_specs:
 
 [[IADR-0119]] 決定 2 の FR-19 / FR-20 の行を、次に**置き換える**。
 
-> **FR-19・FR-20**: `ADR-0036`・`ADR-0037` が `Accepted` であること **かつ、着手する範囲が
+> **FR-19・FR-20**: **上記（FR-17・FR-18 の条件＝`ADR-0033`・`0034`・`0035` の確定）に加えて** `ADR-0036`・`ADR-0037` が `Accepted` であること **かつ、着手する範囲が
 > 計画の定める「覆り得る範囲」の外であること。** 覆り得る範囲は `ADR-0037` の**着手可否の注記**を正とする
 > （2026-08-07 時点では **SC-19 の「本文を編集（Wiki.js）」導線ただ 1 つ**）。
 
