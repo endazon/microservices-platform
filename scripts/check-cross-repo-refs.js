@@ -128,7 +128,7 @@ function lineNumberAt(text, index) {
  * 1 つのテキストから違反を集める。
  * @param {string} text
  * @param {{markdown?: boolean}} opts markdown=true でコードスパン／フェンスを対象外にする。
- * @returns {{kind: 'long'|'enum', line: number, matched: string, suggestion: string}[]}
+ * @returns {{kind: 'long'|'enum'|'spaced'|'fence', line: number, matched: string, suggestion: string}[]}
  */
 function findViolations(text, opts = {}) {
   const src = String(text == null ? '' : text);

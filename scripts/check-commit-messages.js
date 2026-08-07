@@ -314,8 +314,16 @@ function validateIdExistence(subject, iadrIds, planAdrIds) {
 function crossRepoRefReasons(text, where) {
   const s = String(text == null ? '' : text);
   if (!s.trim()) return [];
+  // ラベルは kind と 1:1 で対応させる。分岐が足りないと、CI ログを読んで直す人が
+  // 実際には存在しない「列挙」を探すことになる（#507 の AI レビュー指摘）。
+  const LABELS = {
+    long: '他リポジトリ名の長い表記',
+    enum: '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）',
+    spaced: '空白区切りの修飾（裸の #NNN が本リポの issue へ誤リンクする）',
+    fence: '閉じないコードフェンス（以降の行が検査から漏れる）',
+  };
   return findCrossRepoRefViolations(s, { markdown: false }).map((v) => {
-    const label = v.kind === 'long' ? '他リポジトリ名の長い表記' : '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）';
+    const label = LABELS[v.kind] || `未知の違反種別 ${v.kind}`;
     return `${where}の ${label}: "${v.matched}" → "${v.suggestion}"（.claude/rules/traceability.md）`;
   });
 }
