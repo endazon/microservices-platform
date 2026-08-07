@@ -4,6 +4,18 @@
 
 ### 新機能
 
+- **FR-04,SC-01**: CitationDto に機密区分を追加する (#569) (ef588ce)
+- **FR-12**: 変換ジョブのデッドレター標識と試行上限を契約へ追加する (#568) (bc7bc8e)
+- **SC-06**: データソース一覧に共通間隔の次回同期時刻を返す (#567) (ebfd410)
+- **FR-03,SC-02**: SearchRequest に検索モードを追加する（3 値・既定ハイブリッド） (#551) (560dd01)
+- **FR-05,FR-09**: 経路B の ABAC 初期投入を宣言的シードと冪等な opt-in 投入で用意する (#526) (9dc6c13)
+- **SC-09,SC-10,SC-11**: 管理者設定・運用ダッシュボード・構成ビューアを新スタックで再実装し旧実装を削除する (#511) (56d3f50)
+- **SC-05,SC-06,SC-07,SC-08**: 管理画面 4 枚を新スタックで再実装し旧実装を削除する (#508) (5ce3ec9)
+- **SC-01,SC-02,SC-03**: 検索・結果一覧・文書詳細を新スタックで再実装し旧実装を削除する (#505) (de55761)
+- **ADR-0031**: SPA 移行 第 2 段の残り — shadcn/ui 本移植・Lingui(ja/en)・Storybook と計画確定事項への追随 (#499) (83ff0fd)
+- **ADR-0031**: SPA 移行 第 2 段 — TanStack Router へ差し替え、共通シェルと旧画面のルートを計画へ是正 (#495) (4147899)
+- **ADR-0031**: SPA 基盤の新スタック移行 第 1 段 — pnpm / React 19 / TanStack Query / Tailwind v4 / orval と機械強制 (#489) (08758f3)
+- **ADR-0030**: バックエンドアプリケーション層標準の確立と不採用ライブラリの ratchet 強制 (#463) (6f9f2bb)
 - **FR-11,IADR-0112**: 報告書を種別ごとの用途へ分離し取引判断の割当モデルを改定する (#422) (15d6f7f)
 - **IADR-0110**: 補完の終了理由を計上して拒否率を可観測にする (#417) (3f3931c)
 - **IADR-0109**: OpenAI 互換 finish_reason を正準語彙の StopReason へ正規化する (#415) (76ab7ca)
@@ -100,6 +112,16 @@
 
 ### 不具合修正
 
+- **NFR,FR-14**: AST の *.Worker → *.Api 改名に deploy 面を追随させる (#577) (36a8bc8)
+- **NFR,IADR-0138**: EF 生成コードをカバレッジ集計から除外し、床を新定義で置き直す (#573) (0bf69eb)
+- **NFR**: PR タイトル検査の bot 除外を user.type から作成者名へ変える (#527) (a49500e)
+- **NFR,IADR-0131,IADR-0132**: 既存の応答スキーマへ required を入れ、生成型を必須化する (#528) (40cb48f)
+- **FR-12,SC-07**: 再変換 API を管理者ロール限定へ揃え、下流の到達性を回帰ガードする (#509) (cf0a0b0)
+- **IADR-0115**: 環境変数前置き形の拒否をプロンプト手順の制約で塞ぐ — #469 の拒否 0 件達成に向けた追補 (#480) (1a16140)
+- **ADR-0030**: check-backend-libraries の検出漏れ 3 種を塞ぐ — Kiota 訂正・不採用 6 種の追加・props 経由の混入検査 (#479) (68b27df)
+- **IADR-0115**: AI レビューの実走に伴う権限拒否を塞ぐ — SDK 確認・CI 結果参照の許可とプロンプト手順の制約 (#475) (1e629d0)
+- **NFR**: check-doc-links の検査対象にコードファイルの拡張子を追加し、既存の破損リンク 1 件を是正 (#477) (577b5ce)
+- **NFR,IADR-0115**: AI レビューの権限拒否を塞ぐ（grep / sort / git -C submodule）とキットへの環流 (#461) (0227a6f)
 - **FR-04,FR-11,IADR-0114**: Anthropic 応答の未知 content ブロックで LLM 応答全体を失う欠陥を是正する (#431) (987dc86)
 - **FR-11,IADR-0113**: 月報の割当モデルを ZDR 対応の claude-opus-5 へ改定する (#429) (404b1c3)
 - **IADR-0111**: 縮退応答が名乗る使用モデルをゲートウェイ報告値へ是正する（存在しない Llm:DefaultModel を除去） (#411) (374f7ea)
@@ -141,6 +163,10 @@
 - **FR-01**: 統合テストの MassTransit Bus 起動レースを解消 (#37) (f026ce9)
 - **#34**: EFCore.Relational を 10.0.9 に直接ピンし MSB3277 を解消 (#36) (1dda3f9)
 
+### 性能
+
+- **NFR,ADR-0031,IADR-0134**: SPA のバンドルをルート単位で分割し、初期チャンクに残すものをテストで固定する (#549) (158e034)
+
 ### リファクタ
 
 - **IADR-0073**: AST 向け BFF pass-through を例外3 の unit-owned Bff へ移行 (Closes #286) (#295) (6c8465e)
@@ -162,6 +188,16 @@
 
 ### ドキュメント
 
+- **NFR,IADR-0140**: キット環流記録を計画リポへ送付し起票状況を更新する (#588) (bc70108)
+- **NFR**: 計画リポジトリへの起票番号を feedback と作業仕様書へ記録する (#547) (3398a53)
+- **NFR**: feedback 記録 10 件の status を計画側の実態へ同期し、控えと原典の食い違いを解消する (#523) (978aee6)
+- **NFR**: Knowledge.Bff.Endpoints.csproj のコメントを IADR-0117 の 3 プロジェクトへ追随 (#487) (875cb87)
+- **NFR**: check-unit-dependencies.js のコメントを IADR-0117 の 3 プロジェクトへ追随 (#485) (5031483)
+- **NFR**: 段階ポリシーの典拠から planning#149 を除き planning#161 / planning#162 を補う — develop 追随の文書是正 (#483) (f2d791d)
+- **IADR-0118,IADR-0116**: バックエンドカバレッジ床の IADR 起票と IADR-0116 フォローアップの消化 (#476) (52bb2bb)
+- **NFR,IADR-0116**: 全面再実装（#454）の着手準備 — planning PR #144 の取り込み・ID レンジ追随・issue 単位の PR 規約 (#459) (3441861)
+- **NFR,IADR-0115**: 作業仕様書へ実地検証の記録を残し status を done にする (#462) (a4e06ef)
+- **NFR**: CHANGELOG を自動更新 (#358) (06fe13d)
 - **IADR-0110,IADR-0114**: 計画 ADR-0006 改名への参照追随（夜間 doc-links 復旧）とクロスリポ issue 修飾規約の明文化 (#432) (0a70796)
 - **IADR-0095**: wiki-oidc README の Site URL 記述を経路別に整合させる (#414) (9e2ea85)
 - **IADR-0084**: Headlamp のローカルログインを token 方式へ正式化し #328 を wontfix・#388 統合として記録する (#393) (f344f97)
@@ -218,6 +254,12 @@
 
 ### テスト
 
+- **NFR,FR-05**: エッジ経由 OIDC 認証導線を通し切る実機検証スクリプトを新設する (#522) (5101558)
+- **NFR,SC-05,SC-06**: テスト仕様書から消えたバックエンド試験の節を復帰させ、記載被覆を機械検査する (#513) (68d91ce)
+- **NFR**: カバレッジ床の集計を class 単位走査へ作り替え、合成点経由の AST の行を filename 帰属で除く (#494) (be3c71c)
+- **NFR**: 契約テスト基盤 — Shared.Contracts の後方互換を機械検査する check-contract-schema.js の新設と IADR-0122 起票 (#492) (0c2cd83)
+- **NFR**: 写像検査に計画レンジの逆方向検査を追加し、仕様書の無い ID の沈黙を塞ぐ (#481) (3bee06c)
+- **NFR**: 退行防止テスト基盤 — 写像規約の機械強制とバックエンドのカバレッジ床 (#464) (ba7cd06)
 - **IADR-0087**: k8s-local-up.sh の opt-in ゲートを横断 smoke test で固定する (#337) (bc7d3d7)
 - **NFR**: 負荷試験ハーネス（k6）と性能テスト仕様を整備する (#196) (#221) (4219a0e)
 - **NFR**: scaling.services の総数アサーションを追加 (#197) (#216) (9d669a0)
@@ -225,6 +267,9 @@
 
 ### ビルド
 
+- **deps**: bump pnpm/action-setup from 4 to 6 (#566) (3804511)
+- **deps**: bump github/codeql-action from 4.37.3 to 4.37.6 (#565) (43f587d)
+- **deps**: bump src/ai-stock-trading from `655e2ed` to `91d52c2` (#564) (25ccef3)
 - **deps**: bump github/codeql-action from 4 to 4.37.3 (#426) (c39ff22)
 - **deps**: bump src/ai-stock-trading from `b66fcae` to `655e2ed` (#425) (0a6b2a9)
 - **deps**: bump planning from `0578ec6` to `10d8ce2` (#424) (33db411)
@@ -278,6 +323,20 @@
 
 ### その他
 
+- **NFR,IADR-0140**: 他リポジトリ issue 表記を短縮形へ揃え、機械検査へ載せる (#584) (cf15568)
+- **NFR,IADR-0139**: 同型の契約追加をドメイン単位で束ねる限定例外を起票し IADR-0116 を改定する (#582) (7d68e42)
+- **NFR**: planning pin を planning#206 / planning#207 へ進め、環流 3 件の反映を取り込む (#561) (a9c0e6b)
+- **SC-01,SC-02,SC-03,SC-05,SC-06,SC-07,SC-09,SC-10,SC-11**: 画面の通信を orval 生成物へ載せ替える (#559) (ef1978e)
+- **NFR**: planning pin を planning#200（裁定反映済み）へ進め、ADR レンジを 0043 まで追随させる (#550) (51ef9b0)
+- **IADR-0133**: 重複した IADR-0132 を解消し、ABAC 初期投入を IADR-0133 へ改番する (#530) (6a0336e)
+- **FR-17,FR-18**: ABAC 属性組み合わせ数の測定スクリプトを新設し、経路B 実機で実測する (#515) (a14f912)
+- **SC-03,SC-05,SC-06,SC-07,SC-09,SC-11**: OpenAPI へ BFF の欠落 5 群を追加し、citations の型を実体へ是正する (#518) (727d021)
+- **IADR-0115**: キット同期 第 14 ラウンド — planning#176 の反映に伴い暫定デルタを撤去する (#498) (ab26b7d)
+- **NFR**: CPM のバージョン直書き禁止を機械検査する — check-cpm-versions.js の新設と CI ゲート化 (#488) (00d0de1)
+- **NFR**: 検査器 3 つの EXCLUDED_UNITS を .gitmodules 由来の共通ヘルパへ寄せる (#482) (3d0078c)
+- **NFR,IADR-0115**: レビューに検証の誠実性を強制し、残り 2 系統の権限拒否を塞ぐ (#437) (e72befd)
+- **NFR,IADR-0115**: planning submodule を最新化し AI ワークフローの拒否検出と Actions 退行検査を取り込む (#436) (a766d4c)
+- **NFR,IADR-0115**: planning submodule を最新化し impl-handoff-kit を全面同期する (#433) (f2679cb)
 - Add LICENSE file (1a98939)
 - **IADR-0088**: 浮動タグ latest+IfNotPresent の再デプロイ安全性を是正・明文化する (#339) (a584fc3)
 - **IADR-0066**: ローカル k8s(k3d) dev 環境の MSP 側資産（in-cluster インフラ/values-local/導線） (#267) (36d81a9)
