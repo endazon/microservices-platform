@@ -35,8 +35,12 @@ import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 //     補正済み Markdown を受け取る API も、原本・変換結果の本文を返す API も無い。`retry` は
 //     「変換を最初からやり直す」もので編集結果を受け取らない。保存先の無い編集欄を置くと、
 //     管理者は補正したつもりで何も反映されない。
-//   - **「デッドレター」の内訳表示**: `ConversionJobDto` にデッドレターの標識が無い（`Attempts` は試行回数）。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
+//   - **「デッドレター」の内訳表示**: **契約は #533 で載った**（`ConversionJobDto.deadLettered` /
+//     `maxAttempts`。planning#198 の裁定 Q13）。**画面へ出す作業は本ファイルではまだ行っていない**——
+//     契約の追加とは別の作業単位である（作業仕様書 docs/specs/20260806_issue-533_*.md §未決事項 1）。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した。
+//   **2 件とも 2026-08-05 に裁定済みである**（人手補正は Phase 1 = 図のコード化のやり直しに範囲確定・
+//   契約は未追加。デッドレター標識は #533 で契約へ反映済み）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */
 const FILTERS: readonly JobStatusFilter[] = ['', ...JOB_STATUSES];

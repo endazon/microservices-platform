@@ -126,4 +126,84 @@ public class ConversionJobStoreTests
 
         (await store.GetAsync(id))!.Attempts.Should().Be(2);
     }
+
+    // ── FR-12, SC-07（05_screens:324・裁定 Q13）: デッドレター標識と試行上限 ────────────────
+
+    [Fact]
+    public async Task Job_carries_max_attempts_and_is_not_dead_lettered_initially()
+    {
+        // AC-1/AC-2: 試行上限は全ジョブに載る。AC-4: 標識は既定で立たない。
+        var store = NewStore();
+        var id = Guid.NewGuid();
+        await store.StartAsync(Raw(id));
+
+        var job = (await store.GetAsync(id))!;
+        job.MaxAttempts.Should().Be(ConversionJobRetryPolicy.MaxAttempts);
+        job.DeadLettered.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Fail_without_reaching_attempt_limit_does_not_mark_dead_letter()
+    {
+        // AC-4: まだ自動再試行の余地がある失敗は failed だが「デッドレター」ではない。
+        // 内訳が区別できないと、運用者は「再実行すれば直るもの」と「直らないもの」を見分けられない。
+        var store = NewStore();
+        var id = Guid.NewGuid();
+        await store.StartAsync(Raw(id));
+        await store.FailAsync(id, "一時的な失敗", deadLettered: false);
+
+        var job = (await store.GetAsync(id))!;
+        job.Status.Should().Be(ConversionJobStatus.Failed);
+        job.DeadLettered.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Fail_at_attempt_limit_marks_dead_letter_without_changing_status()
+    {
+        // AC-6/AC-7: 再試行を使い切った失敗は <queue>_error へ送られる＝デッドレター。
+        // AC-3: それでも状態値は failed のままである（4 値モデルを壊さない）。
+        var store = NewStore();
+        var id = Guid.NewGuid();
+        await store.StartAsync(Raw(id));
+        await store.FailAsync(id, "本文変換 恒久失敗", deadLettered: true);
+
+        var job = (await store.GetAsync(id))!;
+        job.Status.Should().Be(ConversionJobStatus.Failed);
+        job.DeadLettered.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Reprocessing_clears_dead_letter_marker()
+    {
+        // AC-8: 再受信で処理が始まったら標識は落ちる（processing なのにデッドレター、を出さない）。
+        var store = NewStore();
+        var id = Guid.NewGuid();
+        await store.StartAsync(Raw(id));
+        await store.FailAsync(id, "恒久失敗", deadLettered: true);
+        await store.StartAsync(Raw(id));
+
+        var job = (await store.GetAsync(id))!;
+        job.Status.Should().Be(ConversionJobStatus.Processing);
+        job.DeadLettered.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PrepareRetry_clears_dead_letter_marker()
+    {
+        // AC-8: 手動再変換を受け付けた時点で標識は落ちる（queued は「自動では直らない」状態ではない）。
+        // AC-5: 試行上限は**自動再試行**の上限であり、手動再変換は回数で縛らない
+        //       （05_screens:310「手動再変換の回数上限は設けない」）。試行回数が上限を超えていても受け付ける。
+        var store = NewStore();
+        var id = Guid.NewGuid();
+        for (var i = 0; i < ConversionJobRetryPolicy.MaxAttempts + 1; i++)
+            await store.StartAsync(Raw(id));
+        await store.FailAsync(id, "恒久失敗", deadLettered: true);
+
+        (await store.GetAsync(id))!.Attempts.Should().BeGreaterThan(ConversionJobRetryPolicy.MaxAttempts);
+        (await store.PrepareRetryAsync(id)).Should().NotBeNull();
+
+        var job = (await store.GetAsync(id))!;
+        job.Status.Should().Be(ConversionJobStatus.Queued);
+        job.DeadLettered.Should().BeFalse();
+    }
 }
