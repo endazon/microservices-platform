@@ -12,7 +12,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-08-05
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -172,3 +172,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 - 契約の不在 3 件（SLO・LLM コスト・一意利用者数）と閲覧ロールの差異は
   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
 - ナレッジ健全性節は [[IADR-0119]] の保留解除待ち。
+  **［2026-08-07 / #586］ADR-0033・0034・0035 は `Accepted` へ移り保留は解除された**
+  （planning `3e58b97` = PR planning#244〔裁定依頼 planning#237〕）。**待っていた条件は成立している。**
+  節を実装するか、したがって観点を書くかは **#504 / #452** が判断する（#586 は pin 更新と事実の追随に限る）。
+  画面仕様書側の対の追記は [SC-10](../screens/SC-10_operations-dashboard.md) §実装しない要素の理由 (a)・§未決事項 5。

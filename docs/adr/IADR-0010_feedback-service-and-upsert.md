@@ -7,7 +7,7 @@ related_ids:
   - UC-01
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-08)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-01)"
@@ -55,6 +55,14 @@ FR-08 は「回答へのフィードバック（👍/👎・コメント）を�
 - **一覧の認可**: `GET /feedback` は自由記述 `Comment` と `UserId`（個人特定情報）を返すため、`AdminOnly`
   ポリシー（`platform-admin` ロール）で保護する。集計 `GET /feedback/stats` は件数・満足率のみで PII を含まず、
   BFF ダッシュボードが匿名集約するため認可を課さない。一覧は `skip`/`take`（既定 100・上限 500）でページングする。
+  - > **［2026-08-07 追記・事実の更新 / #586］この「認可を課さない」は計画と食い違う。**
+    > 計画 FR-08 が **「統計は運用者・管理者に限って参照できる」「投稿には認証を要する（匿名投稿は許さない）」**を
+    > **確定**した（planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕。受け入れ基準は無認証 401・権限外 403）。
+    > 本決定は「PII を含まないから認可を課さない」と判断したが、**計画は PII の有無ではなく参照者のロールで
+    > 線を引いた**。**本追記は決定を変えない**——`RequireAuthorization` の追加は挙動の変更であり、
+    > **是正は #521 が持つ**（#586 は planning pin の更新と事実の追随に限る）。
+    > 同型の記述: [機能仕様書 FR-08](../functional/FR-08_answer-feedback.md)・
+    > [通信仕様書](../api/BFF_bff-surface.md) §未決事項 3。
 
 ## 理由
 

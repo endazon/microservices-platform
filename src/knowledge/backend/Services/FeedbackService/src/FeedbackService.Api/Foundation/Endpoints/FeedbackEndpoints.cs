@@ -35,6 +35,12 @@ public static class FeedbackEndpoints
                 });
 
             // FR-08: JWT から利用者を特定（テスト・開発環境では anonymous）。
+            // ［2026-08-07 / #586］計画 FR-08 が「投稿には認証を要する（匿名投稿は許さない）」を確定し、
+            //   受け入れ基準に「投稿端点が無認証で 401」が入った（planning 3e58b97 = PR planning#244
+            //   〔裁定依頼 planning#236〕）。**この anonymous フォールバックは計画と食い違う。**
+            //   ただし上の記述は現在の実装の事実としては正しいため #586 では書き換えていない
+            //   （#586 は planning pin の更新と事実の追随に限る）。**是正は #521 が持つ**
+            //   ——RequireAuthorization の追加は挙動の変更であり、独立した PR とテスト（401）が要る。
             var userId = http.User.Identity?.Name ?? "anonymous";
             var rating = FeedbackRating.Normalize(req.Rating);
 
@@ -78,6 +84,10 @@ public static class FeedbackEndpoints
         // NFR（認可）: 自由記述 Comment と UserId（個人特定情報）を返すため、管理者ロールのみ許可する。
         //   AuthorizationService の管理系 CRUD と同じ AdminOnly ポリシーで保護する。
         //   一方 /feedback/stats は集計値のみ（PII なし）で BFF ダッシュボードが匿名集約するため対象外。
+        // ［2026-08-07 / #586］最終行の「/feedback/stats は対象外」という根拠は計画側で失効した。
+        //   計画 FR-08 は「統計は運用者・管理者に限って参照できる」を確定し、受け入れ基準に
+        //   「認証済みでも権限外は 403」を置いている（planning 3e58b97 = PR planning#244
+        //   〔裁定依頼 planning#236〕）。**是正は #521**（下の /stats の同型コメントと対）。
         g.MapGet("/", async (string? rating, Guid? answerId, int? skip, int? take,
             FeedbackDbContext db, CancellationToken ct) =>
         {
@@ -104,6 +114,13 @@ public static class FeedbackEndpoints
 
         // FR-08: 集計（👍/👎 件数・満足率）。品質可視化（FR-10 ダッシュボード）の入力。
         // 集計値のみで PII を含まないため一覧のような AdminOnly は課さない（BFF が集約して画面へ）。
+        // ［2026-08-07 / #586］**上の根拠は失効している。** 計画 FR-08 は「統計は運用者・管理者に
+        //   限って参照できる」を確定し、受け入れ基準に「認証済みでも権限外は 403」を置いた
+        //   （planning 3e58b97 = PR planning#244〔裁定依頼 planning#236〕）。PII の有無ではなく
+        //   **権限で絞る**という判断である。上の記述は現在の実装の事実としては正しいため
+        //   #586 では書き換えていない。**是正（認可の追加と 403 テスト）は #521 が持つ**。
+        //   同型の記述: docs/api/openapi.yaml の /feedback/stats・docs/adr/IADR-0010・
+        //   docs/api/BFF_bff-surface.md・docs/functional/FR-08_answer-feedback.md。
         //   days — FR-10: 期間指定（日数）。指定時はその範囲に絞る。未指定は全期間（後方互換）。
         g.MapGet("/stats", async (Guid? answerId, int? days, FeedbackDbContext db, CancellationToken ct) =>
         {
