@@ -7,7 +7,7 @@ related_ids:
   - UC-01
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-08)"
 related_specs:

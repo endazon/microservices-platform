@@ -12,7 +12,7 @@ related_ids:
   - IADR-0137
 author: claude
 created: 2026-07-09
-updated: 2026-08-06
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
@@ -34,7 +34,7 @@ plan_refs:
   - [[IADR-0043]] 変換ジョブ読み取りモデルの永続化（Postgres+EF）＋非同期ストア（本仕様書の対象）
   - [[IADR-0137]] デッドレター標識と試行上限（2026-08-06 / #533。`DeadLettered` 列の追加）
   - ADR-0002 DB per Service（ConversionService 専用 DB `conversion_svc`）
-  - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行・**再試行→デッドレター**）
+  - ADR-0003 メッセージング（`RawDocumentFetched` 受信・再変換再発行・**再試行→デッドレター**。Superseded by ADR-0027・注記は #580）
 
 ## 概要
 

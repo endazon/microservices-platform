@@ -26,6 +26,12 @@
       "scope": "IADR-0014",
       "desc": "Qdrant 属性ペイロードキーの検証・修正（実装・検証スクリプト・docs。元コミット件名 'Claude/issue 71 20260705 1545 (#95)' は規約外）",
       "reason": "スカッシュマージ既定件名がブランチ名由来のまま入り規約 `種別(起点ID): 要約` に違反（CI はPR 追加コミットのみ検査するためすり抜け）。実体は Issue #71 / IADR-0014 の Qdrant attribute payload 検証・修正。履歴は書き換えず CHANGELOG 生成時のみ補正する。Issue #118 監査で検出。"
+    },
+    {
+      "hash": "3441861",
+      "action": "remap",
+      "desc": "全面再実装（#454）の着手準備 — PR planning#144 の取り込み・ID レンジ追随・issue 単位の PR 規約 (#459)",
+      "reason": "元コミット件名がクロスリポ参照の表記規約（.claude/rules/traceability.md「修飾語と番号の間に空白を入れない」）に違反しており、生成物 CHANGELOG.md 経由で check-cross-repo-refs.js を型 3（空白区切り）で赤くし develop 全体を止めていた。誤: `planning PR #144` / 正: `PR planning#144`。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。desc のみを指定し type（docs）と scope（NFR,IADR-0116）は元コミットの値を保つ——誤っているのは表記だけで種別も起点 ID も正しいため。検査器の suggestion は `planning#144` だが PR の語を落とすと『planning の PR #144』という意味が失われるので採らない（規約 :102-103 の正例が `PR planning#144`）。Issue #595。全 342 コミットの件名・本文を悉皆走査し、同型は本件 1 件のみであることを実測済み（docs/specs/20260807_issue-595_changelog-legacy-ref-remap.md）。"
     }
   ]
 }

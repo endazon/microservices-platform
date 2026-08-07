@@ -1,4 +1,4 @@
-# IADR-0066 / ADR-0003(MassTransit/RabbitMQ): 共有 RabbitMQ（dev）。
+# IADR-0066 / ADR-0003(MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580): 共有 RabbitMQ（dev）。
 # MSP/AST サービスは appsettings 既定でホスト `rabbitmq`（guest/guest）へ接続する。
 apiVersion: apps/v1
 kind: Deployment
