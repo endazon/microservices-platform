@@ -13,7 +13,7 @@ created: 2026-07-09
 > **［2026-08-04］反映済み。** 計画側が planning#189 / planning#191 のトリアージで本記録を受理し、
 > [05_screens/01_screens.md](../planning/projects/microservices-platform/05_screens/01_screens.md) の
 > §変更履歴 が本記録を名指しして SC-07（変換ジョブ）の記述へ反映した
-> （planning `d980a01` / planning PR #194）。**実装側に残作業は無い。**
+> （planning `d980a01` / PR planning#194）。**実装側に残作業は無い。**
 # フィードバック: 変換ジョブ照会/再変換 API と状態モデルを計画（UC-06 / SC-07）へ明記
 
 ## 種別

@@ -32,7 +32,7 @@ related_specs:
 - 画面（SC）: —
 - 関連 ADR: ADR-0008（実行基盤 = Kubernetes k3s）／ADR-0007（GitOps・Helm・Harbor）／ADR-0005（Istio mTLS）
 - 実装判断: [[IADR-0066]]（ローカル k8s dev 環境 = k3d・in-cluster インフラ資産・mesh/NP/HPA 無効化・イメージ import）
-- Issue: MSP #266（本 issue）／ AST #122（AST k8s chart）／ 主目的 AST #121（K8s CronJob）／ AST #24・#22
+- Issue: MSP #266（本 issue）／ AST#122（AST k8s chart）／ 主目的 AST#121（K8s CronJob）／ AST#24・AST#22
 
 ## 目的・背景
 
@@ -48,7 +48,7 @@ related_specs:
 - レジストリは `harbor.internal` 固定。`mesh`(Istio)/`networkPolicy`/`scaling`(HPA) はローカル k3d に不向き。
 
 したがって本作業は「既存資産の起動」ではなく、**(A) in-cluster インフラ資産と (B) AST の k8s chart** の
-新規作成を伴う。AST 側の chart は AST #122 で AST リポに実装し、本 MSP 側 issue と連結する。
+新規作成を伴う。AST 側の chart は AST#122 で AST リポに実装し、本 MSP 側 issue と連結する。
 
 ## 対象範囲
 
@@ -63,15 +63,15 @@ related_specs:
 - 手順ドキュメント（`docs/operations` / `docs/infra`）。
 - [[IADR-0066]] と本作業仕様書。
 
-**対象（AST 側 / AST #122・別 PR）**
+**対象（AST 側 / AST#122・別 PR）**
 - AST 10 Worker の Helm chart、DB-per-service、realm、**取引サイクル CronJob 骨子（#121）**、
   外部連携 env（Anthropic/Finnhub/Discord/moomoo **simulate**、fail-safe 既定）。
 
 **対象外（実 external 依存・fail-safe no-op のまま）**
-- AST #13 moomoo 実弾発注（dev は simulate 口座＋OpenD のみ／実資金は動かさない）。
-- AST #79 実 LLM 費用・#81 実市場データ・#15 Discord は「有効化は明示設定時のみ」。
-- AST #24 の Hetzner リージョン実測・Vault・実費用（実インフラ依存）。
-- AST #49（相場操縦検知アルゴリズム。k8s 非依存）。
+- AST#13 moomoo 実弾発注（dev は simulate 口座＋OpenD のみ／実資金は動かさない）。
+- AST#79 実 LLM 費用・#81 実市場データ・#15 Discord は「有効化は明示設定時のみ」。
+- AST#24 の Hetzner リージョン実測・Vault・実費用（実インフラ依存）。
+- AST#49（相場操縦検知アルゴリズム。k8s 非依存）。
 
 ## 設計
 
@@ -102,10 +102,10 @@ related_specs:
 ## 受け入れ基準
 
 - [ ] `k3d cluster create` → build/import → secret → infra → MSP chart で **全 MSP Pod が Ready**
-- [ ] AST 10 Worker が Ready、共有インフラへ疎通、各専有 DB へ接続（AST #122）
+- [ ] AST 10 Worker が Ready、共有インフラへ疎通、各専有 DB へ接続（AST#122）
 - [ ] `mesh/NP/HPA` 無効化でも既存 chart がレンダリング・起動する（values-local）
 - [ ] BFF / Keycloak / Grafana へ到達でき health が緑
-- [ ] 取引サイクル CronJob が起動でき、未設定時は in-process にフォールバック（AST #121）
+- [ ] 取引サイクル CronJob が起動でき、未設定時は in-process にフォールバック（AST#121）
 - [ ] 秘密情報は Git に含まれず、fail-safe 既定（未設定=no-op / paper）で安全に起動
 - [ ] 手順が `docs/` に記載される
 
@@ -123,7 +123,7 @@ related_specs:
 - 差異: あり（限定的）。
   - 計画（ADR-0005 Istio mTLS / networkPolicy / HPA）はローカル k3d では無効化する。これは**本番像を
     変更するものではなく、dev 環境のみの上書き**（values-local）であり、恒久像は不変。IADR-0066 に根拠を記録。
-  - AST #24 の受け入れ基準のうち「k8s デプロイ構成が存在し GitOps 適用できる」はローカルで実証するが、
+  - AST#24 の受け入れ基準のうち「k8s デプロイ構成が存在し GitOps 適用できる」はローカルで実証するが、
     Hetzner/Vault/実費用は分離（/plan-feedback で計画へ環流予定）。
 
 ## 未決事項

@@ -36,7 +36,7 @@ related_specs:
 [[IADR-0060]] は追加可変機能ユニットの submodule 運用（テンプレート・CI 自動発見・単独ビルド規約・
 バージョン固定）を整備したが、**サンプルユニット（別リポジトリ）での end-to-end 通し検証**は本リポジトリ
 内で完結できないため #230 → #245 に繰延されていた。本作業は、実ユニット `endazon/ai-stock-trading`
-（既にユニットレイアウト済み・AST PR #103）をサンプルユニットとして `src/ai-stock-trading` に submodule
+（既にユニットレイアウト済み・PR AST#103）をサンプルユニットとして `src/ai-stock-trading` に submodule
 追加し、**ビルド／単体テスト／フォーマット**が submodule 配置状態で成立することを検証・記録する。
 
 実行時（`docker compose` 起動・実 RabbitMQ/PostgreSQL/Keycloak 疎通・実 API）はスコープ外とし、

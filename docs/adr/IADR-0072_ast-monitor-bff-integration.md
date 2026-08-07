@@ -38,9 +38,9 @@ plan_refs:
 ## 背景・課題
 
 #289（IADR-0071）で AST の SC-02（リスク設定）/ SC-03（統制状態参照）を `/bff/risk-controls/*` 経由で MSP SPA へ
-載せた。その後 AST develop で SC-02（`settings/risk`）に **監視銘柄（watchlist）変更 UI**（AST #196/PR #197・
+載せた。その後 AST develop で SC-02（`settings/risk`）に **監視銘柄（watchlist）変更 UI**（AST#196/PR #197・
 IADR-0090）が追加された。これはリスク設定（RiskManagementService）とは**別サービス**の MarketMonitorService の
-OwnerOnly 契約 `/monitor/watchlist`（AST #195・IADR-0088）を BFF 経由で消費する。`/bff/monitor/*` の BFF 登録が
+OwnerOnly 契約 `/monitor/watchlist`（AST#195・IADR-0088）を BFF 経由で消費する。`/bff/monitor/*` の BFF 登録が
 未了のため、監視銘柄セクションは実 BFF へ到達しない。本 issue はその**リポ内配線**を完了させる。
 
 論点は #285/#289 でおおむね確定済み（合成の形／deploy ツールの context/args 対応／pass-through／interim 同居）
@@ -87,7 +87,7 @@ AST フロント（`sc02-risk-settings/WatchlistForm.tsx`）が `apiFetch` で�
 
 IADR-0071 の `ProxyAsync` は本文転送条件を PUT/POST/PATCH に限っていた。MarketMonitorService の
 `DELETE /monitor/watchlist` は本文（`[FromBody] WatchlistChangeRequest`）で削除対象銘柄と理由を受け取り、
-不在削除・空理由はサーバ 400（AST #191）。よって本 proxy は **DELETE でも本文を後段へ転送**する（`HttpMethods.IsDelete`
+不在削除・空理由はサーバ 400（AST#191）。よって本 proxy は **DELETE でも本文を後段へ転送**する（`HttpMethods.IsDelete`
 を本文転送条件へ追加）。GET は従来通り本文なし。ステータス・本文・Content-Type の透過方式は #289 と同一（バッファ方式）。
 
 ### 4. MarketMonitorService は DB+RabbitMQ を伴う形で deploy 面へ既定 disabled で登録する

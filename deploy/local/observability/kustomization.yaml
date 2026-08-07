@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): 経路B の可観測性バックエンド（opt-in オーバーレイ）。
+# ADR-0006, IADR-0077 (AST#24): 経路B の可観測性バックエンド（opt-in オーバーレイ）。
 # ⚠️ deploy/local/infra/kustomization.yaml には**含めない**。既定の経路B 起動には出てこない（fail-safe）。
 # 適用（opt-in）: kubectl apply -k deploy/local/observability
 #   → その後 otel-collector を forwarding 構成へ更新するため rollout restart:

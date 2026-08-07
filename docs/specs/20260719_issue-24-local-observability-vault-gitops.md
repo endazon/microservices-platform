@@ -1,5 +1,5 @@
 ---
-title: ローカル（経路B）可観測性スタック・Vault・GitOps の opt-in オーバーレイ（AST #24 の MSP 分）
+title: ローカル（経路B）可観測性スタック・Vault・GitOps の opt-in オーバーレイ（AST#24 の MSP 分）
 type: work
 status: draft
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
 
-# 作業仕様書: ローカル（経路B）可観測性・Vault・GitOps の opt-in オーバーレイ（AST #24 の MSP 分）
+# 作業仕様書: ローカル（経路B）可観測性・Vault・GitOps の opt-in オーバーレイ（AST#24 の MSP 分）
 
 > AST [AST#24](https://github.com/endazon/ai-stock-trading/issues/24)（ADR-0006 インフラ・デプロイ構成）の
 > ローカル（経路B）分のうち、**共有インフラの stand-up は MSP 側**で行う（AST 側は AST PR で完結）。
@@ -26,7 +26,7 @@ plan_refs:
 
 - 起点: **ADR-0006**（Hetzner・Vault 秘匿・OTel/Prometheus/Loki 可観測性）/ **NFR**（可観測性・認証情報 Vault 秘匿）
 - 実装 ADR: [IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md)（経路B ローカル k8s dev 環境）、本作業の [IADR-0077](../adr/IADR-0077_local-observability-vault-gitops-overlays.md)
-- 対象 Issue: AST #24（`Refs`）。AST 側 = ai-stock-trading PR（IADR-0094）。
+- 対象 Issue: AST#24（`Refs`）。AST 側 = ai-stock-trading PR（IADR-0094）。
 
 ## 対象範囲（追加のみ・opt-in）
 

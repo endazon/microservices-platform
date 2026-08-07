@@ -25,7 +25,7 @@ plan_refs:
 
 - 関連する計画書 ID: ADR-0008（実行基盤 = k3s）／ADR-0007（GitOps・Helm・Harbor）／ADR-0005（Istio mTLS）
 - 関連仕様書: `docs/specs/20260713_issue-266_local-k8s-dev-env.md`
-- Issue: MSP #266（本 issue）／ AST #122（AST chart）／ AST #121（K8s CronJob）
+- Issue: MSP #266（本 issue）／ AST#122（AST chart）／ AST#121（K8s CronJob）
 
 ## コンテキストと課題
 
@@ -39,7 +39,7 @@ plan_refs:
 2. レジストリは `harbor.internal` 固定（ADR-0007）。ローカルに Harbor は無い。
 3. `mesh.enabled`（Istio・ADR-0005）/`networkPolicy`/`scaling`（HPA・metrics-server 依存）は本番前提で、
    素の k3d には Istio が無く、ローカルでは阻害要因になる。
-4. AST には k8s 資産が無い（別途 AST #122 で chart 化）。
+4. AST には k8s 資産が無い（別途 AST#122 で chart 化）。
 
 ## 決定
 

@@ -34,7 +34,7 @@ plan_refs:
 
 ## 背景・課題
 
-AST #24（ADR-0006）はローカル（経路B）で可観測性 UI（Prometheus/Grafana/Loki/Tempo）・Vault 秘匿・GitOps(ArgoCD)を
+AST#24（ADR-0006）はローカル（経路B）で可観測性 UI（Prometheus/Grafana/Loki/Tempo）・Vault 秘匿・GitOps(ArgoCD)を
 立てて配線検証する分を求める。経路B のハーネス（`scripts/k8s-local-up.sh`・`deploy/local/`）と共有インフラ
 （otel-collector 等）は本リポにあるが、これらのバックエンドは **compose（経路A）専用**で経路B(k8s) には無い
 （route B infra は postgres/rabbitmq/redis/keycloak/qdrant/otel-collector のみ・otel は debug exporter だけ）。
@@ -87,7 +87,7 @@ stand-up・本番 NFR）を明示分離する、(4) 並行作業（realm-fix・`
 
 ## 結果
 
-- 良い影響: 経路B で観測 UI・Vault・GitOps を opt-in で立てられ、AST #24 のローカル配線検証が成立する。既定は不変。
+- 良い影響: 経路B で観測 UI・Vault・GitOps を opt-in で立てられ、AST#24 のローカル配線検証が成立する。既定は不変。
 - 悪い影響 / トレードオフ: compose と config の二重管理が増える（inline）。Vault dev は再起動で揮発（dev 専用）。
   ESO/ArgoCD 本体 install は URL 適用（vendoring しない）ため、CRD 未導入では該当ステップを skip/警告する。
 - フォローアップ: Tier 3 の Hetzner 実 stand-up・本番 Vault・実同期。config 二重管理の単一情報源化（将来検討）。

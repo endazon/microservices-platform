@@ -36,7 +36,7 @@ plan_refs:
 ## 背景・課題
 
 #285（IADR-0070）で AST フロントの SC-01（設定・`/bff/assumptions`）を MSP SPA へ載せた。その後 AST develop に
-**SC-02（リスク設定）/ SC-03（統制状態参照）** の 2 画面が追加された（AST #186/#192/#194/#195）。これらは
+**SC-02（リスク設定）/ SC-03（統制状態参照）** の 2 画面が追加された（AST#186/AST#192/AST#194/AST#195）。これらは
 RiskManagementService の OwnerOnly 契約 `/risk-controls/*` を BFF 経由で消費する。#285 時点の submodule ピンは
 #185 で、`/bff/risk-controls/*` の BFF 登録も未了だった。本 issue はその**リポ内配線の残り**を完了させる。
 
@@ -109,7 +109,7 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 
 - **利点**: SPA は再ピンだけで SC-02/03 が載り、BFF は AST 契約に結合せず（IADR-0057）6 経路を薄く中継する。
   deploy 登録は #285 の後方互換拡張（context/args）を再利用し、DB+RabbitMQ 依存だけ compose へ足す。
-- **代償**: pass-through は BFF での型検証を行わない（契約検証は後段 RiskManagementService と AST #194 の
+- **代償**: pass-through は BFF での型検証を行わない（契約検証は後段 RiskManagementService と AST#194 の
   Playwright E2E が担う）。compose に RabbitMQ 依存のサービスが 1 つ増える（既存 rabbitmq インフラを共有）。
 - **却下案**: (a) `/risk-controls/*` を総なめでプロキシ登録 → 未使用経路への防御的実装（禁止事項）。
   (b) RiskManagementService を helm 既定 enabled で登録 → 稼働時依存（DB/RabbitMQ/Secret）未充足で

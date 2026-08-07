@@ -28,7 +28,7 @@ plan_refs:
   [ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md) が土台）
 - 関連する実装仕様書: [20260802_issue-454_reimplementation-kickoff.md](../specs/20260802_issue-454_reimplementation-kickoff.md)
 - 関連 issue: #454（親トラッキング）と配下の 20 件（#438〜#453 ＝ 16 件 ＋ #455〜#458 ＝ 4 件）
-- 上流の起点: project-planning PR #144（2026-08-02 マージ）
+- 上流の起点: PR planning#144（2026-08-02 マージ）
 
 ## コンテキストと課題
 

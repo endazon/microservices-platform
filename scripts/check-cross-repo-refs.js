@@ -7,20 +7,30 @@
  * 規約は .claude/rules/traceability.md「クロスリポジトリの issue / PR 番号の修飾」。
  * 短縮形（planning#NNN / AST#NNN）へ寄せ、フルパス形式（<owner>/<repo>#NNN）だけを例外として許す。
  *
- * 検出する 2 つの型:
- *   型 1（長い表記）: リポジトリ名の裸書き。短縮形でもフルパス形式でもない「第 3 の表記」。
- *                     実害は無いが規約が明示的に禁じる表記ゆれ（機械的突合が揺れる）。
- *   型 2（列挙裸）  : 修飾付き参照の**直後**に続く裸の #NNN。先頭だけ修飾して後続を裸にする形で、
- *                     裸の番号が**本リポジトリの実在 issue へ静かに誤リンクする**（実害あり）。
- *                     PR #561 が、規約の書いてある当のファイルの中で犯した型である。
+ * 検出する 3 つの型:
+ *   型 1（長い表記）  : リポジトリ名の裸書き（第 3 の表記）。短縮形でもフルパス形式でもない。
+ *   型 2（列挙裸）    : 修飾付き参照の**直後**に続く裸の #NNN。先頭だけ修飾して後続を裸にする形。
+ *                       PR #561 が、規約の書いてある当のファイルの中で犯した型である。
+ *   型 3（空白区切り）: 修飾語と番号が空白で離れた形。規約の書式は詰めた形であり、空白が入ると
+ *                       機械的突合に掛からない。#507 のクロス監査（2026-08-07）が実測した型。
+ *
+ * **自動リンクが効く面と効かない面を区別すること**（クロス監査の実測。IADR-0140 決定 1・4）:
+ *   - `.md` のレンダリングでは、裸の `#NNN` も短縮形の修飾も**自動リンクにならない**。
+ *     `.md` で自動リンクするのはフルパス形式（`endazon/<repo>` + `#` + 番号）だけである。
+ *     したがって `.md` における 3 型の害は**表記ゆれ（機械的突合の不安定）**であって誤リンクではない。
+ *   - issue / PR / コミットメッセージの本文では裸の `#NNN` が**本リポジトリの issue へ自動リンクする**。
+ *     こちらは誤リンクという実害が出る面であり、`check-commit-messages.js` 経由で検査する。
  *
  * 検出しない（＝偽陽性を出さない）もの:
  *   - 本リポジトリ自身の issue 参照。単独の `#454`、自リポ列挙 `#450（FR-17/18）・#451（FR-19/20）`。
  *     **修飾語が直前に無い**ので構造的に掛からない。
+ *   - **自リポジトリを指す修飾語**（`MSP` / `microservices-platform` の直後）。裸の `#NNN` が
+ *     本リポジトリを指すのは**正しい**ので、型 3 の修飾語集合から意図的に外してある（実測 22 件）。
  *   - フルパス形式 `endazon/project-planning#50`（規約が許す）。負の後読みで除く。
- *   - スカッシュ既定件名の末尾 ` (#123)`。空白のみを区切りとして採らないため掛からない。
- *   - Markdown のインラインコード／コードフェンスの中（--markdown 時）。GitHub は**そこで自動リンク
- *     しない**ので実害が無く、かつ反例（規約の「誤: ...」）や是正記録の引用を書けなくなる。
+ *   - スカッシュ既定件名の末尾 ` (#123)`。空白のみを列挙の区切りとして採らないため掛からない。
+ *   - Markdown のインラインコード／コードフェンスの中（--markdown 時）。**反例（規約の「誤: ...」）や
+ *     是正記録が引用する「誤った文字列そのもの」を書けなくしないため**（除外リストではなく
+ *     「literal な引用は表記規約の対象外」という定義）。実測でも code span 内は平文で描画される。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ）。違反があれば終了コード 1。
  *
@@ -56,6 +66,15 @@ const SEP = String.raw`[ \t]*[/／,，、・･][ \t]*`;
 // 型 2: 修飾付き参照の直後に「区切り + 裸の #数字」が 1 個以上続く形。
 const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
 
+// 型 3: 修飾語と番号が空白で離れた形（間に PR / issue の語が入る形も含む）。
+// **自リポジトリを指す修飾語（MSP / microservices-platform）は入れない**——その直後の裸 `#NNN` は
+// 本リポジトリを指しており正しい。入れると正当な記述を 22 件止める（実測）。
+const SPACED_RE =
+  /(?<![\w/-])(planning|AST|project-planning|ai-stock-trading)[ \t]+(?:PR[ \t]+|issue[ \t]+)?#(\d+)/g;
+
+// フェンス行（``` / ~~~ で始まる行）。maskCode の状態遷移と unbalancedFenceLine の単一情報源。
+const FENCE_LINE_RE = /^\s*(```|~~~)/;
+
 /**
  * Markdown のコードフェンスとインラインコードを**同じ長さの空白**へ潰す。
  * 長さを保つのは、行番号・桁位置を元テキストと一致させたまま走査するためである。
@@ -64,7 +83,7 @@ function maskCode(text) {
   const out = [];
   let fenced = false;
   for (const line of String(text).split('\n')) {
-    if (/^\s*(```|~~~)/.test(line)) {
+    if (FENCE_LINE_RE.test(line)) {
       fenced = !fenced;
       out.push(' '.repeat(line.length));
       continue;
@@ -73,9 +92,29 @@ function maskCode(text) {
       out.push(' '.repeat(line.length));
       continue;
     }
-    out.push(line.replace(/`[^`]*`/g, (m) => ' '.repeat(m.length)));
+    // **バッククォートの本数を合わせて対応付ける**（CommonMark のコードスパン）。
+    // 単一バッククォートだけを見ていた頃は、二重バッククォートのスパンが素通りして
+    // 偽陽性になっていた（#507 クロス監査 Y2 の実測）。
+    out.push(line.replace(/(`+)(?:(?!\1)[\s\S])*?\1/g, (m) => ' '.repeat(m.length)));
   }
   return out.join('\n');
+}
+
+/**
+ * フェンスが閉じていない Markdown の、最後のフェンス行番号を返す（閉じていれば null）。
+ * maskCode は行ベースのトグルなので、閉じないフェンスが 1 本あると**以降のファイル全体が
+ * 検査対象外**になる。黙って見逃さないよう違反として上げる（#507 クロス監査 Y2）。
+ */
+function unbalancedFenceLine(text) {
+  let count = 0;
+  let last = 0;
+  String(text).split('\n').forEach((line, i) => {
+    if (FENCE_LINE_RE.test(line)) {
+      count++;
+      last = i + 1;
+    }
+  });
+  return count % 2 === 1 ? last : null;
 }
 
 /** 文字オフセットから 1 始まりの行番号を返す。 */
@@ -125,6 +164,31 @@ function findViolations(text, opts = {}) {
     });
   }
 
+  SPACED_RE.lastIndex = 0;
+  while ((m = SPACED_RE.exec(scan))) {
+    const short = LONG_NAMES[m[1]] || m[1];
+    out.push({
+      kind: 'spaced',
+      line: lineNumberAt(scan, m.index),
+      matched: m[0],
+      suggestion: `${short}#${m[2]}`,
+    });
+  }
+
+  // 閉じないフェンスは「検査していない範囲」を生む。Markdown モードでのみ見る
+  // （コミットメッセージにフェンスの概念は無い）。
+  if (opts.markdown) {
+    const fenceLine = unbalancedFenceLine(src);
+    if (fenceLine !== null) {
+      out.push({
+        kind: 'fence',
+        line: fenceLine,
+        matched: '(閉じていないコードフェンス)',
+        suggestion: 'フェンスを閉じる（閉じないと以降のファイル全体が黙って検査対象外になる）',
+      });
+    }
+  }
+
   out.sort((a, b) => a.line - b.line || a.matched.localeCompare(b.matched));
   return out;
 }
@@ -165,7 +229,12 @@ function formatReport(report) {
   for (const r of report) {
     lines.push(`\n  ${r.file}`);
     for (const v of r.violations) {
-      const label = v.kind === 'long' ? '長い表記' : '列挙形の修飾漏れ';
+      const label = {
+        long: '長い表記',
+        enum: '列挙形の修飾漏れ',
+        spaced: '空白区切りの修飾',
+        fence: '閉じないコードフェンス',
+      }[v.kind];
       lines.push(`    ${r.file}:${v.line}  [${label}] ${v.matched}  →  ${v.suggestion}`);
     }
   }
@@ -213,7 +282,34 @@ function selfTest() {
   t('型2: 先頭が AST なら AST を配る',
     findViolations('AST#217 / #208')[0].suggestion === 'AST#217 / AST#208');
 
+  // --- 正のケース: 型 3（空白区切りの修飾。#507 クロス監査 R1 が実測した「第 4 の表記」） ---
+  t('型3: 空白区切り（AST + 空白 + 番号）を検出', kinds('Tier 3（AST #24）で追加').join() === 'spaced');
+  t('型3: 間に PR の語が入る形も検出', kinds('計画大改定（planning PR #144）').join() === 'spaced');
+  t('型3: 間に issue の語が入る形も検出',
+    kinds('ai-stock-trading issue #104 を参照').join() === 'spaced');
+  t('型3: タブ区切りも検出', kinds('AST\t#24').join() === 'spaced');
+  t('型3: 是正案は空白を詰めた短縮形', findViolations('AST #24')[0].suggestion === 'AST#24');
+  t('型3: 長い表記 + 空白は短縮形へ寄せる',
+    findViolations('project-planning PR #144')[0].suggestion === 'planning#144');
+  // 空白区切り + 列挙は **2 段**で解ける。型 2 の先頭は空白なしの修飾付き参照を求めるため、
+  // 1 回目は型 3 だけが上がる。型 3 を直すと 2 回目に型 2 が上がる。この段階性を固定する。
+  t('型3: 空白区切り + 列挙は 1 回目に型 3 だけが上がる',
+    kinds('AST #196/#197 を参照').join() === 'spaced');
+  t('型3: 型 3 を直すと 2 回目に型 2 が上がる',
+    kinds('AST#196/#197 を参照').join() === 'enum');
+
   // --- 負のケース: 偽陽性を出してはならない ---
+  // **自リポジトリの修飾語は型 3 に含めない。** 裸の #NNN が本リポジトリを指すのは正しい。
+  t('負例: MSP + 空白 + 番号（自リポジトリの修飾語）は検出しない',
+    kinds('本 issue は MSP #283 である').length === 0);
+  t('負例: microservices-platform + 空白 + 番号も検出しない',
+    kinds('microservices-platform #232 と同根').length === 0);
+  t('負例: 修飾語と番号の間に助詞があれば型 3 に掛からない',
+    kinds('AST は #24 で追跡している').length === 0);
+  t('負例: 語の一部（FAST / planning-kit）は検出しない',
+    kinds('FAST #24').length === 0 && kinds('planning-kit #1').length === 0);
+  t('負例: 修飾なしの「PR #123」「issue #454」は自リポ参照なので検出しない',
+    kinds('PR #123 と issue #454 を参照').length === 0);
   t('負例: 正しい列挙（planning#206 / planning#207）は検出しない',
     kinds('planning#206 / planning#207 へ進め').length === 0);
   t('負例: 本リポジトリの単独参照 #454 は検出しない', kinds('親 issue は #454 である。').length === 0);
@@ -254,6 +350,30 @@ function selfTest() {
   })());
   t('非 md モードではバッククォートを潰さない（コミットメッセージは自動リンクが効く）',
     kinds('`planning#206 / #207`').join() === 'enum');
+
+  // --- Y2（#507 クロス監査）: コードスパン除外「実装」の穴。正例・負例を対で固定する ---
+  t('md: 二重バッククォートのコードスパンも潰す（偽陽性を出さない）',
+    kinds('反例は ``planning#146 / #149`` である', { markdown: true }).length === 0);
+  t('md: 二重バッククォートの中に単一バッククォートがあっても潰す',
+    kinds('`` 誤: `planning#146 / #149 / #160` `` を参照', { markdown: true }).length === 0);
+  t('md: 行中の三重バッククォートのスパンも潰す',
+    kinds('参照は ```project-planning#50``` である', { markdown: true }).length === 0);
+  t('md: 二重バッククォートの**外**は従来どおり検出する（潰しすぎていない）',
+    kinds('``ok`` project-planning#50', { markdown: true }).join() === 'long');
+  t('md: 行頭の ``` はスパンではなくフェンス開始として扱う（CommonMark）', (() => {
+    const v = findViolations('```project-planning#50```\n', { markdown: true });
+    return v.length === 1 && v[0].kind === 'fence';
+  })());
+  t('md: 閉じないフェンスは fence 違反として上げる（黙って盲目化しない）', (() => {
+    const v = findViolations('前文\n```console\n$ echo x\n\n本文 project-planning#50\n', { markdown: true });
+    return v.length === 1 && v[0].kind === 'fence' && v[0].line === 2;
+  })());
+  t('md: 閉じたフェンスなら fence 違反を出さない',
+    kinds('前文\n```console\n$ echo x\n```\n後文\n', { markdown: true }).length === 0);
+  t('非 md モードでは fence 判定をしない（コミットメッセージにフェンスの概念が無い）',
+    kinds('```\nx\n').length === 0);
+  t('unbalancedFenceLine: 偶数なら null・奇数なら最後のフェンス行',
+    unbalancedFenceLine('a\n```\nb\n```\nc') === null && unbalancedFenceLine('a\n```\nb') === 2);
 
   // --- 複数行・複数件 ---
   t('複数行から全件を拾い、行番号を返す', (() => {
@@ -331,10 +451,12 @@ module.exports = {
   checkFiles,
   formatReport,
   maskCode,
+  unbalancedFenceLine,
   trackedMarkdown,
   selfTest,
   LONG_RE,
   ENUM_RE,
+  SPACED_RE,
   SHORT_NAMES,
   LONG_NAMES,
 };

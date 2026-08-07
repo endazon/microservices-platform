@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): 経路B の Grafana（opt-in・platform-infra）。
+# ADR-0006, IADR-0077 (AST#24): 経路B の Grafana（opt-in・platform-infra）。
 # datasource は compose（deploy/grafana/provisioning/datasources/datasources.yaml）と同内容を inline。
 # ダッシュボードは UI から import する（MSP overview・AST overview=ai-stock-trading deploy/observability/dashboards）。
 apiVersion: v1

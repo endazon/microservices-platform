@@ -54,7 +54,7 @@ kubectl -n microservices-platform port-forward svc/bff-service 5080:8080
 bash scripts/k8s-local-down.sh
 ```
 
-### opt-in オーバーレイ（可観測性 / Vault / GitOps・AST #24 / IADR-0077）
+### opt-in オーバーレイ（可観測性 / Vault / GitOps・AST#24 / IADR-0077）
 
 既定は**無効**（env 未設定で従来どおり）。env ゲートで追加のみ有効化する（既存ステップは不変）。
 

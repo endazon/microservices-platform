@@ -1975,17 +1975,35 @@ module.exports = ({ ok, assert }) => {
       const osX = require('os');
       const dir = fsX.mkdtempSync(pathXrepo.join(osX.tmpdir(), 'crossrepo-repo-test-'));
       try {
+        // 3 型を 1 枚に入れる。型 3（空白区切り）は #507 のクロス監査が実測した「第 4 の表記」で、
+        // 着手時の母集合から丸ごと欠落していた——**検出されることを常設で確かめる**。
         const ng = pathXrepo.join(dir, 'ng.md');
-        fsX.writeFileSync(ng, '# x\n\n環流は project-planning#50 と planning#206 / #207。\n');
+        fsX.writeFileSync(
+          ng,
+          '# x\n\n環流は project-planning#50 と planning#206 / #207。追跡は AST' + ' #24。\n'
+        );
         const r = run([ng]);
         assert.strictEqual(r.status, 1, `違反ファイルで exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
         assert.match(String(r.stderr), /長い表記/);
         assert.match(String(r.stderr), /列挙形の修飾漏れ/);
+        assert.match(String(r.stderr), /空白区切りの修飾/);
 
         // 正しい表記へ直すと 0 に戻る（偽陽性を出していないことの対）。
+        // **自リポジトリを指す修飾語（MSP）の直後の裸番号は正しい**ので、ここで落ちてはならない。
         const okFile = pathXrepo.join(dir, 'ok.md');
-        fsX.writeFileSync(okFile, '# x\n\n環流は planning#50 と planning#206 / planning#207。親は #454。\n');
+        fsX.writeFileSync(
+          okFile,
+          '# x\n\n環流は planning#50 と planning#206 / planning#207。追跡は AST#24。\n' +
+            '親は #454。MSP' + ' #283 と #450（FR-17/18）・#451（FR-19/20）は本リポジトリの参照。\n'
+        );
         assert.strictEqual(run([okFile]).status, 0, '正しい表記で落ちている（偽陽性）');
+
+        // 閉じないフェンスは「以降のファイル全体が黙って検査対象外」になる経路。fail-loud を固定する。
+        const fence = pathXrepo.join(dir, 'fence.md');
+        fsX.writeFileSync(fence, '# x\n\n```console\n$ echo unterminated\n');
+        const rf = run([fence]);
+        assert.strictEqual(rf.status, 1, '閉じないフェンスで exit 1 にならない（黙って盲目化する）');
+        assert.match(String(rf.stderr), /閉じないコードフェンス/);
       } finally {
         fsX.rmSync(dir, { recursive: true, force: true });
       }
@@ -2001,6 +2019,8 @@ module.exports = ({ ok, assert }) => {
       );
       assert.match(rules, /check-cross-repo-refs\.js/, '規約から検査器へ辿れない');
       assert.match(rules, /列挙形でも各番号を修飾する/, '列挙形の規約が消えている');
+      // 型 3（空白区切り）の規約。#507 クロス監査 R1 で追加した。
+      assert.match(rules, /修飾語と番号の間に空白を入れない/, '型 3 の規約が消えている');
     });
   }
 };
