@@ -2,10 +2,10 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0119, IADR-0120, IADR-0124, IADR-0125]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0119, IADR-0142, IADR-0120, IADR-0124, IADR-0125]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-04
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md"
@@ -223,6 +223,9 @@ related_specs:
 > 要求するのは SC-19 / SC-20 だけで、これは FR-19 / FR-20 に属し [[IADR-0119]] 決定 1 が
 > 「その受け入れを担う画面」ごと着手を保留しているためである（繰り延べであって放棄ではない。
 > 引き受け先は #452）。
+> **［2026-08-07 追記 / #599］この根拠は失効した。** **［2026-08-07 / #599］FR-19 / FR-20 の保留は範囲基準へ変わった**（[[IADR-0142]] 決定 1・2。**範囲の正は計画 `ADR-0037` の「着手可否の注記」**であり、ここには転記しない —— 転記すると計画側が動いたとき一斉に腐る）。
+> **計画 `05_screens` の SC-19 / SC-20 が要求する確認ダイアログは、いずれも「本文を編集（Wiki.js）」導線ではない**（完全削除・論理削除・公開範囲の変更・Break-glass・全端末の一括失効）。**件数は数え方が争える**〔「確認ダイアログ」と明記された箇所と、ダイアログ一般を含めるかで変わる〕**ので書かない**——したがって覆り得る範囲の外である。
+> **移植の再判断は引き受け先の #452 に委ねる。**
 > また IADR-0125 決定 1 は本決定の「入れないもの」へ **表示文言**を加えた——プリミティブが既定文言を
 > 持つと i18n の入口が 2 つに割れ、カタログの網羅検査（IADR-0125 決定 4）が抜けるためである。
 > 本決定の骨格（判定規則・公開面 1 ファイル・依存規則 例外 2 の改定）は有効なため `Accepted` を維持する。

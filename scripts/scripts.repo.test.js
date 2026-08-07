@@ -750,10 +750,14 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(trace.implementedWithoutSpec(missing, new Set(['FR-01'])), []);
   });
 
-  ok('実ファイル: 計画レンジ 53 件を読み、実装先行はすべて allowlist 済み（specMissing の残置も無い）', () => {
+  // NFR: 件数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する（#599 で 53 → 54）。
+  // 変えるときは「計画側で ID が増減した」ことを実測してから同ファイルと同時に動かす——
+  // 先にこの数だけ合わせると、レンジの追随漏れを検出する唯一の網が消える。
+  ok('実ファイル: 計画レンジ 54 件を読み、実装先行はすべて allowlist 済み（specMissing の残置も無い）', () => {
     const planIds = trace.readPlanIds();
-    assert.strictEqual(planIds.length, 53, `計画レンジの件数が変わった: ${planIds.length}`);
-    for (const id of ['FR-21', 'UC-11', 'SC-21']) assert.ok(planIds.includes(id), `${id} が欠けている`);
+    assert.strictEqual(planIds.length, 54, `計画レンジの件数が変わった: ${planIds.length}`);
+    // FR-22（通知・#599 で planning 891b199 から取り込み）を含む上端を固定する。
+    for (const id of ['FR-22', 'UC-11', 'SC-21']) assert.ok(planIds.includes(id), `${id} が欠けている`);
     const missing = trace.missingSpecIds(planIds, trace.collectSpecIds());
     const implFirst = trace.implementedWithoutSpec(missing, trace.collectTestIds());
     const { blocked, stale } = trace.classifyAgainstAllowlist(implFirst, trace.readSpecMissingAllowlist());

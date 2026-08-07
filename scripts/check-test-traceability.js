@@ -392,8 +392,10 @@ function selfTest() {
   // 実ファイルでの固定。レンジが読めなくなる／数が変わることを検知する（数が変わったら本行を直す）。
   {
     const ids = readPlanIds();
-    t('実ファイル: .claude/rules/traceability.md から計画 ID 53 件を読める',
-      ids.length === 53 && ids.includes('FR-21') && ids.includes('UC-11') && ids.includes('SC-21'), ids.length);
+    // #599: planning 891b199 で FR-22（通知）が新設され 53 → 54 になった。
+    // この数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する。
+    t('実ファイル: .claude/rules/traceability.md から計画 ID 54 件を読める',
+      ids.length === 54 && ids.includes('FR-22') && ids.includes('UC-11') && ids.includes('SC-21'), ids.length);
   }
 
   let failed = 0;
