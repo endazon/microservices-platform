@@ -64,7 +64,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
 | **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | **`docs/tests/` の仕様書ファイル × `src/**/*Tests.cs` のクラス**（AST を除く）の対 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にある対が消えた → **fail**（節の消失。**他の仕様書に同じクラスの記載が残っていても落ちる**——落ちるのは節であり、節は仕様書に属するため）。床にある対のクラスが実在しない → **fail**。記載された対が床に無い → **fail**（`--update` で上げる）。どの仕様書にも載らず床にも無いクラス → warn。走査 0 件・床が読めない → **fail**（[IADR-0130](../adr/IADR-0130_test-spec-coverage-ratchet.md)） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 34` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)。**生成コード（`Migrations/` 配下・`*ModelSnapshot.cs`）も対象外**——[#571](https://github.com/endazon/microservices-platform/issues/571) / [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 33` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -193,12 +193,36 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 切り下げは `line 34` / `branch 17` で**従前と同値**のため、[`src/coverage-floor.json`](../../src/coverage-floor.json)
 の値は据え置き、根拠のみ差し替えた（同ファイルの `$comment` に測定条件つきで記録。値の正は同ファイル）。
 
-> **余裕は薄い**: line は **+0.14pt**、branch は **+0.26pt** しかない。テスト 1 件の skip や被覆済みコードの
-> 削除で床を割りうる幅である。ratchet で床を引き上げる際は、この薄さを踏まえて「成果物は正しいのに赤」に
-> ならない幅を確認してから上げること。
+> ~~**余裕は薄い**: line は **+0.14pt**、branch は **+0.26pt** しかない。~~ 上記の薄さが実害になった
+> ——[PR #568](https://github.com/endazon/microservices-platform/pull/568) は EF マイグレーションを
+> 1 本追加しただけで床を割った。対処は [#571](https://github.com/endazon/microservices-platform/issues/571) /
+> [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)（下記）。
+
+##### 生成コードの除外と床の置き直し（#571 / IADR-0138）
+
+**`Migrations/` 配下と `*ModelSnapshot.cs` は集計から落とす。** 人が書いていないコードの被覆率が床判定を
+動かす状態（マイグレーションを 1 本足すだけで割れる）を塞ぐためである。判定は `<class filename>` を
+IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除外量は毎回診断へ出す。
+
+これに伴い**床を置き直した: `line 34` → `line 33`。`branch` は `17` のまま据え置く。**
+
+- **引き下げ（退行）ではなく、測定基準の変更に伴う置き直しである**（IADR-0123 決定 7 が #468 で行ったのと
+  同じ性質の作業）。**旧定義の 34 と新定義の 33 は分母・分子が違うため直接比較できない。**
+- **下がるのは、生成コードが平均より厚く被覆されているためである。** 統合テストが起動時 `MigrateAsync()`
+  を通ると migration の `Up()` と Designer の `BuildTargetModel()`、`ModelSnapshot` の `BuildModel()` が
+  実行される（`Down()` は実行されない）。#571 のローカル実測（Postgres / RabbitMQ を実際に起動して
+  統合テストを 35/39 通した測定）で **生成コード 2310 行のうち 933 行が被覆**＝ 40.4% となり、全体（約 34%）を
+  上回った。分子・分母の両方から同じものを抜いた結果として比率は下がる。
+- **branch を据え置くのは生成コードの分岐が 0 だからである**（除外前後で分岐率は同値）。分岐の定義は
+  変えていないため、IADR-0123 決定 4 の追記が課した「定義変更は床の置き直しとセット」には該当しない。
+- **床 33 は CI ログを直接読んだ実測値ではなく、CI が通ることで検証される下限である。** 導出は
+  `(9314 − 933) / (27280 − 2310) = 33.56%`（上限側 `(9314 − 969) / (27280 − 2310) = 33.42%`）を整数へ
+  切り下げたもの。基準の `9314/27280` は上記 run_number 1144 の実測、`2310` と `933〜969` は #571 の
+  ローカル実測である（測定条件は [作業仕様書](../specs/20260807_issue-571_coverage-exclude-generated.md) を参照）。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
-> [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（フロントは
+> [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（生成コードの除外と床の置き直しは
+> [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)。フロントは
 > [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)）。
 
 ## テスト種別と責務

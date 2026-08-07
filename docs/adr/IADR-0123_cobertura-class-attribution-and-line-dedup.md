@@ -287,8 +287,14 @@ reportgenerator のどの集計とも一致しなくなる。A は coverlet 自�
      確認済み（値の正は `src/coverage-floor.json`）。
   2. line の照合値が乖離した場合は、二重記載の扱いを再判断する（新 IADR）。branch の差は定義差であり
      対象外である（上記トレードオフ）。
-  3. **床の余裕は薄い**（line +0.14pt / branch +0.26pt）。ratchet で引き上げる際も、計測ゆらぎで
-     「成果物は正しいのに赤」にならない幅を確認してから上げる（IADR-0118 決定 2 の作法）。
+  3. ~~**床の余裕は薄い**（line +0.14pt / branch +0.26pt）。~~ **［2026-08-07 追記］この薄さが実害に
+     なった**——[PR #568](https://github.com/endazon/microservices-platform/pull/568) は EF マイグレーションを
+     1 本追加しただけで床を割った。[#571](https://github.com/endazon/microservices-platform/issues/571) /
+     [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) が**本決定と同じ層**（class 単位走査と
+     `filename` の解釈）で**生成コード**（`Migrations/` 配下・`*ModelSnapshot.cs`）を落とし、床を
+     `line 34 → 33` へ置き直した（`branch` は生成コードの分岐が 0 のため据え置き。**分岐の定義は
+     変えていない**ため決定 4 の追記の制約には該当しない）。本決定の 4 項目（帰属・多段解釈・class 直下計数・
+     coverlet 照合）は**いずれも変えていない**。
 
 ## 関連
 
