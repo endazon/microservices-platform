@@ -149,6 +149,28 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
    > 整数切り下げは `line 34` / `branch 17` で**現在値と同値**のため
    > [`src/coverage-floor.json`](../../src/coverage-floor.json) は変更していない（値の正は同ファイル）。
    > **余裕は薄い——line +0.14pt / branch +0.26pt しかない。** ratchet で引き上げる際はこの薄さを踏まえること。
+
+   > **［2026-08-07 追記］床の値を置き直した（`line 34` → `line 33`。`branch` は `17` 据え置き）。**
+   > 上記の薄さが実害になった——[PR #568](https://github.com/endazon/microservices-platform/pull/568) は
+   > **EF マイグレーションを 1 本追加しただけ**で床を割った。
+   > [#571](https://github.com/endazon/microservices-platform/issues/571) /
+   > [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) が**生成コード**
+   > （`Migrations/` 配下・`*ModelSnapshot.cs`）を集計から落とし、新しい定義での実測に合わせて床を置き直した。
+   > **これは ratchet の引き下げ（退行）ではなく、測定基準の変更に伴う置き直しである**
+   > （[IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 7 が #468 で行ったのと
+   > 同じ性質の作業。あちらは切り下げ結果が同値だったため据え置きになった）。**旧定義の 34 と新定義の 33 は
+   > 分母・分子が違うため直接比較できない。**
+   > 値が下がったのは、**生成コードが平均より厚く被覆されている**ためである——統合テストが起動時
+   > `MigrateAsync()` を通ると migration の `Up()` と Designer の `BuildTargetModel()`、`ModelSnapshot` の
+   > `BuildModel()` が実行される（`Down()` は実行されない）。#571 のローカル実測（Postgres / RabbitMQ を
+   > 実際に起動して統合テストを 35/39 通した測定）で **生成コード 2310 行のうち 933 行が被覆**＝ 40.4% となり、
+   > 全体（約 34%）を上回った。分子・分母の双方から同じものを抜いた結果として比率は下がる。
+   > **branch を据え置くのは生成コードの分岐が 0 だからである**（除外前後で分岐率は同値。分岐の定義は
+   > 変えていないため、決定 4 の追記が課した「定義変更は床の置き直しとセット」には該当しない）。
+   > **床 33 は CI ログを直接読んだ実測値ではなく、CI が通ることで検証される下限である**——導出は
+   > `(9314 − 933) / (27280 − 2310) = 33.56%`（上限側 `(9314 − 969) / (27280 − 2310) = 33.42%`）の整数切り下げ。
+   > 測定条件と導出は [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) 決定 5 と
+   > [`src/coverage-floor.json`](../../src/coverage-floor.json) の `$comment` を参照（値の正は同 JSON）。
    > なお**分岐の分母は `condition-coverage` の合算**であり coverlet の `branches-valid`（除外前 9356）とは
    > 定義が異なる。**被覆数を据え置いたまま分母だけ coverlet 基準に置き換える試算**では
    > 除外前 `1577 ÷ 9356 = 16.86%`、床が判定に使う除外後の対でも `1536 ÷ (9356 − 50) = 16.51%` となり、
@@ -280,6 +302,11 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      決定 2 の［2026-08-04 追記］を参照）。**次に床を引き上げる際は余裕の薄さ（line +0.14pt /
      branch +0.26pt）を踏まえること。**
   2. 各ドメイン issue（#438〜#451）がテストを追加したら **床を引き上げる**（ratchet）。
+     **［2026-08-07 追記］[#571](https://github.com/endazon/microservices-platform/issues/571) /
+     [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) 以降は EF の生成コードが集計から外れるため、
+     マイグレーションの増減で床が動かなくなった。** ただし **source generator の出力（`obj/` 配下）は
+     集計に残る**（175 クラス / 3866 行 / 分岐 3424 = 分岐分母の 38%）ので、**引き上げ幅がテストの増分
+     だけを反映するわけではない**（XML doc コメントの増減でも動く）。扱いは **#574** で決める。
   3. [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 の受け入れゲートに
      本床の具体値を記載した（#474 で追記済み）。床を引き上げた際は同規約の記載も追随させる。
 
