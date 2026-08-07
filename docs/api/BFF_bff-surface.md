@@ -2,10 +2,10 @@
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135]
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
@@ -17,6 +17,8 @@ related_specs:
   - ../specs/20260805_issue-506_openapi-bff-groups.md
   - ../specs/20260805_issue-520_openapi-response-required.md
   - ../specs/20260805_issue-519_orval-hook-migration.md
+  - ../specs/20260806_issue-538_next-sync-at.md
+  - ../adr/IADR-0136_next-sync-at-from-worker-cadence.md
 ---
 
 # 通信仕様書: BFF 境界（`/bff/*`）
@@ -225,6 +227,16 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   `AbacConditionMap` の 1 個だけで、それは上記のとおり `required` を適用できない形をしている
   ——したがって「応答を厳しくしたら要求も必須になった」という事故は現時点では起こり得ない。
   **両用スキーマを新設するときはこの前提が崩れるので、要求側への影響を必ず確認すること。**
+
+### 6. 応答項目の一部は**エンティティの列ではなく導出値**である（#538 / [[IADR-0136]]）
+
+`DataSourceDto.nextSyncAt`（SC-06「次回同期」）は DB の列ではない。定期同期は**全ソース共通の間隔**で
+回る hosted service であり、次回実行時刻は**ワーカーの位相から導出される**。契約上の性質は次のとおりで、
+これを知らずに読むと「ソースごとに時刻を設定できる」と誤読する。
+
+- **全ソースで同じ値**を返す（ソース別スケジュールは持たない。planning#200 の裁定 Q15）。
+- **定期同期が無効なら `null`**（compose / dev の既定。`nullable: true`・`required` に入れない）。
+- 保存されないため、**同じソースでも時間が経てば別の値**になる（キャッシュの鮮度と混同しない）。
 
 ## 非機能・運用
 
