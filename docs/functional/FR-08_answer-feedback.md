@@ -7,7 +7,7 @@ related_ids:
   - UC-01
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-08)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-01)"
@@ -46,7 +46,19 @@ AI 回答（FR-04, UC-01）に対し、利用者が **👍（up）/ 👎（down�
 | --- | --- | --- |
 | POST | `/feedback` | フィードバック送信（新規は 201、既存更新は 200） |
 | GET | `/feedback?rating=down&answerId=…&skip=…&take=…` | 一覧（**AdminOnly**。品質レビュー用。`rating`/`answerId` 絞り込み・`skip`/`take` ページング。既定 100・上限 500 件） |
-| GET | `/feedback/stats?answerId=…` | 集計（👍/👎 件数・合計・満足率）。`answerId` 省略で全体集計。集計値のみ・PII 無しのため認可なし |
+| GET | `/feedback/stats?answerId=…` | 集計（👍/👎 件数・合計・満足率）。`answerId` 省略で全体集計。集計値のみ・PII 無しのため認可なし（**現在の実装の事実**。下記 2026-08-07 追記のとおり計画と食い違う） |
+
+> **［2026-08-07 追記 / #586］計画 FR-08 は認可を確定した。上表の「認可なし」は計画と食い違う。**
+> planning `3e58b97`（PR planning#244。裁定依頼 planning#236 の反映）で
+> [02_requirements](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) の
+> FR-08 に次が**確定**として追加された——**投稿には認証を要する（匿名投稿は許さない）／統計は運用者・
+> 管理者に限って参照できる／受け入れ基準は「投稿端点が無認証で 401」「統計端点は認証済みでも権限外は 403」
+> 「同一利用者が 2 回投稿しても集計は 1 件のまま」**。
+> **上表と下記「例外フロー」の記述は、いまの実装の事実としては正しい**ため書き換えない。
+> **是正（`RequireAuthorization` の追加とテスト）は #521 が持つ**——挙動の変更を伴うため独立した PR が要る
+> （#586 は planning pin の更新と事実の追随に限る。[作業仕様書 #586](../specs/20260807_issue-586_planning-pin-adr-accepted.md) §対象外）。
+> 関連する同型の記述: [通信仕様書](../api/BFF_bff-surface.md) §エンドポイント一覧・§未決事項 3、
+> [[IADR-0010]]。
 
 BFF 集約（UC-01 チャット画面向け）:
 
@@ -80,6 +92,10 @@ BFF 集約（UC-01 チャット画面向け）:
   `DbUpdateException` を捕捉して既存行の更新へフォールバックし、冪等を保つ（500 を返さない。[IADR-0010](../adr/IADR-0010_feedback-service-and-upsert.md)）。
 - 一覧 `GET /feedback` への非管理ロールアクセス: 403（`Comment`/`UserId` を含むため `AdminOnly`）。
 - 未認証（JWT 無し）: 開発・テスト環境では `anonymous` として受理。本番は認可基盤（ADR-0004）の下で識別子を得る。
+  - > **［2026-08-07 追記 / #586］計画 FR-08 は「投稿には認証を要する（匿名投稿は許さない）」を確定した**
+    > （planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕）。**受け入れ基準は「投稿端点が無認証で 401」**であり、
+    > 本行の `anonymous` 受理は計画と食い違う。**是正は #521**（挙動の変更を伴うため独立した PR）。
+    > 本行は「現在の実装の事実」としては正しいため書き換えていない。
 
 ## トレーサビリティ
 

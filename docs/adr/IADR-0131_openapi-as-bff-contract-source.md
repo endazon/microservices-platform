@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-01, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-04, FR-06, FR-09, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0040, IADR-0116, IADR-0121, IADR-0122, IADR-0127, IADR-0132]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
 ---
@@ -189,6 +189,9 @@ BFF の record（`DocumentCreateRequest` / `DocumentUpdateRequest`）は「Docum
      2 本目（**#519**）で `useAnalysisAnalyze` に触るなら、そのついでが最も安い。
      **［2026-08-05 追記］#519 で消化した**（[[IADR-0135]] 決定 5）。
   4. `/bff/feedback` 系の端点認可の裁定（通信仕様書 §未決事項 3 = **#521**。要裁定）。
+     > **［2026-08-07 追記 / #586］裁定は下りた。** 計画 FR-08 が **無認証 401 / 権限外 403
+     > （統計は運用者・管理者のみ）**を確定した（planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕）。
+     > 本項に残るのは**実装**であり、**#521** が持つ。
 
 ## 関連
 
