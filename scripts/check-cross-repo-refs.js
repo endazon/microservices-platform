@@ -61,10 +61,33 @@ const LONG_RE = /(?<![\w/-])(project-planning|ai-stock-trading)#(\d+)/g;
 
 // 修飾付き参照 1 個ぶん（短縮形・長い表記・フルパス形式のいずれか）。
 const QUALIFIED = String.raw`(?:[A-Za-z][\w.-]*\/)?(?:planning|AST|project-planning|ai-stock-trading)#\d+`;
-// 列挙の区切り。**空白のみは採らない**（スカッシュ既定件名の ` (#123)` と衝突するため）。
-const SEP = String.raw`[ \t]*[/／,，、・･][ \t]*`;
+// 列挙の区切り（句読点）。**空白のみは採らない**（スカッシュ既定件名の ` (#123)` と衝突するため）。
+const SEP_PUNCT = String.raw`[/／,，、・･]`;
+// 列挙の区切り（注記括弧）。#586 が採った「PR 番号に裁定依頼 issue 番号を添える」記法
+//   `PR planning#244〔裁定依頼 planning#237〕`
+// の開き括弧である（.claude/rules/traceability.md「関連番号を添える注記」）。規約は
+// **`〔〕` の中の番号は先頭と同じ他リポジトリを指す**と定めるため、中を裸の `#NNN` にした形は
+// 型 2（先頭だけ修飾）として検出する。短い見出し語（`裁定依頼` 等）を挟む形も同じ扱いにする。
+//
+// **全角丸括弧 `（` は入れない。** 日本語の地の文で従属節を開く一般的な記号であり、その直後の
+// 裸 `#NNN` が**本リポジトリを指すのは正しい**（規約: 裸の `#NNN` は常に本リポジトリ）。
+// 実測すると偽陽性が出る —— `feedback/20260805_sc05-07-admin-contract-gaps.md:44` の
+// `planning#197（#502 由来）` の `#502` は本リポジトリの issue であり、止めてはならない。
+// 対して `〔` を入れた場合の追加検出は追跡下の *.md 全件で **0 件**（＝偽陽性なし）である。
+// 見出し語の長さ上限 16 は、節や文をまたいで拾わないための保険（超える形は検出しない側へ倒す）。
+//
+// **見出し語に修飾語（planning / AST / …）が現れたら区切りとして採らない。** 採らないと
+// 採用形 `〔裁定依頼 planning#237〕` の `〔裁定依頼 planning` までを区切りと読んで
+// **正しい書き方そのものを違反にしてしまう**（自己試験の負例で固定）。修飾語が現れる形は、
+// 詰まっていれば正（検出不要）、空白で離れていれば型 3 の担当である。
+const SEP_BRACKET =
+  String.raw`〔(?:(?!planning|AST|project-planning|ai-stock-trading)[^#〔〕\n]){0,16}`;
+const SEP = String.raw`[ \t]*(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*`;
 // 型 2: 修飾付き参照の直後に「区切り + 裸の #数字」が 1 個以上続く形。
 const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
+// 是正案を組み立てるときの「区切り + 裸の #数字」。**ENUM_RE と同じ区切り定義から作る**
+// （2 箇所に別々の文字集合を書くと、片方だけ足したときに是正案が黙って壊れる）。
+const ENUM_FIX_RE = new RegExp(String.raw`(^|(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*)#(\d+)`, 'g');
 
 // 型 3: 修飾語と番号が空白で離れた形（間に PR / issue の語が入る形も含む）。
 // **自リポジトリを指す修飾語（MSP / microservices-platform）は入れない**——その直後の裸 `#NNN` は
@@ -153,7 +176,8 @@ function findViolations(text, opts = {}) {
     const head = m[1];
     const nameMatch = head.match(/(?:^|\/)(planning|AST|project-planning|ai-stock-trading)#/);
     const short = nameMatch ? LONG_NAMES[nameMatch[1]] || nameMatch[1] : 'planning';
-    const fixed = m[0].replace(/(^|[/／,，、・･][ \t]*)#(\d+)/g, (whole, pre, num) =>
+    ENUM_FIX_RE.lastIndex = 0;
+    const fixed = m[0].replace(ENUM_FIX_RE, (whole, pre, num) =>
       pre === '' ? whole : `${pre}${short}#${num}`
     );
     out.push({
@@ -281,6 +305,36 @@ function selfTest() {
       === 'planning#201 / planning#202 / planning#203');
   t('型2: 先頭が AST なら AST を配る',
     findViolations('AST#217 / #208')[0].suggestion === 'AST#217 / AST#208');
+
+  // --- 正のケース: 型 2 の `〔〕` 注記（#586。PR #593 レビュー Y6 の変異試験が突いた死角） ---
+  // 採用形は `PR planning#244〔裁定依頼 planning#237〕`。この記法を足したとき、`SEP` に `〔` が
+  // 無かったため **変異 A（〔〕の中を裸にする）と変異 C（先頭を裸にする）が無検出**だった。
+  // 変異ごとに 1 件ずつ、**採用形（負例）と対で**固定する。
+  t('型2〔〕: 変異A（〔〕の中を裸にする）を検出する',
+    kinds('planning `3e58b97` = PR planning#244〔裁定依頼 #237〕。').join() === 'enum');
+  t('型2〔〕: 見出し語が無い形（〔#237〕）も検出する',
+    kinds('PR planning#244〔#237〕').join() === 'enum');
+  t('型2〔〕: 変異A の是正案は〔〕の中を修飾する',
+    findViolations('PR planning#244〔裁定依頼 #237〕')[0].suggestion
+      === 'planning#244〔裁定依頼 planning#237');
+  t('型2〔〕: 先頭が AST なら〔〕の中へ AST を配る',
+    findViolations('AST#196〔関連 #197〕')[0].suggestion === 'AST#196〔関連 AST#197');
+  t('型2〔〕: 変異B（〔〕の中を空白で修飾）は従来どおり型 3 で上がる',
+    kinds('PR planning#244〔裁定依頼 planning #237〕').join() === 'spaced');
+  // 変異 C（先頭を裸にする＝`PR #244〔裁定依頼 planning#237〕`）は**本検査の対象外**である。
+  // 先頭の裸 `#244` は規約上「本リポジトリの PR」を意味する正しい表記であり、意味の取り違えは
+  // 構文からは判定できない（`planning#197（#502 由来）` と同型）。負例として固定し、
+  // 「検出しないことが仕様」であることを明示する。
+  t('負例: 変異C（先頭が裸）は検出しない —— 裸の #NNN は本リポジトリを指すのが規約',
+    kinds('PR #244〔裁定依頼 planning#237〕').length === 0);
+  t('負例: 採用形（〔〕の中も修飾済み）は検出しない',
+    kinds('planning `3e58b97` = PR planning#244〔裁定依頼 planning#237〕。実測して確認').length === 0);
+  t('負例: 全角丸括弧の直後の裸 #NNN は本リポジトリ参照なので検出しない',
+    kinds('planning#197（#502 由来）は別論点である').length === 0);
+  t('負例: 〔〕の中に他リポ番号が無ければ検出しない',
+    kinds('planning#244〔裁定依頼〕を反映した').length === 0);
+  t('負例: 〔〕の見出し語が長すぎる場合は拾わない（節をまたいで拾わないための上限）',
+    kinds('planning#244〔この括弧の中はとても長い見出し語になっている場合 #237〕').length === 0);
 
   // --- 正のケース: 型 3（空白区切りの修飾。#507 クロス監査 R1 が実測した「第 4 の表記」） ---
   t('型3: 空白区切り（AST + 空白 + 番号）を検出', kinds('Tier 3（AST #24）で追加').join() === 'spaced');
@@ -459,4 +513,5 @@ module.exports = {
   SPACED_RE,
   SHORT_NAMES,
   LONG_NAMES,
+  SEP,
 };
