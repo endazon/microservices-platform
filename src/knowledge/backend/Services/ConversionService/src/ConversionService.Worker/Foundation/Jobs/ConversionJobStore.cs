@@ -14,7 +14,8 @@ public interface IConversionJobStore
     // 変換開始（受信・再試行の都度）。原本イベントは人手補正（再変換）のため保持する。
     Task StartAsync(RawDocumentFetched ev, CancellationToken ct = default);
     Task SucceedAsync(Guid id, Guid documentId, string markdownUri, CancellationToken ct = default);
-    Task FailAsync(Guid id, string error, CancellationToken ct = default);
+    // SC-07: deadLettered＝この失敗で自動再試行を使い切ったか（<queue>_error へ送られる失敗か）。
+    Task FailAsync(Guid id, string error, bool deadLettered = false, CancellationToken ct = default);
     Task<IReadOnlyList<ConversionJobDto>> ListAsync(string? status, CancellationToken ct = default);
     Task<ConversionJobDto?> GetAsync(Guid id, CancellationToken ct = default);
     // 人手補正: 失敗ジョブを queued に戻し、再変換用の原本イベントを返す。
@@ -45,11 +46,11 @@ public sealed class EfConversionJobStore(ConversionJobDbContext db) : IConversio
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task FailAsync(Guid id, string error, CancellationToken ct = default)
+    public async Task FailAsync(Guid id, string error, bool deadLettered = false, CancellationToken ct = default)
     {
         var job = await db.ConversionJobs.FindAsync([id], ct);
         if (job is null) return;
-        job.MarkFailed(error);
+        job.MarkFailed(error, deadLettered);
         await db.SaveChangesAsync(ct);
     }
 

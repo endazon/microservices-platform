@@ -16,6 +16,7 @@
       "HybridSearchServiceTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [
+      "CitationMapperTests",
       "RagOrchestratorDegradedModelTests"
     ],
     "docs/tests/FR-06_document-crud-versioning.md": [

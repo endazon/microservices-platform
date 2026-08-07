@@ -93,11 +93,14 @@ export const FormControls: Story = {
         <Label htmlFor="sb-class" requiredHint="（必須）">
           機密区分
         </Label>
+        {/* 機密区分の表示名は計画リポジトリの用語集（planning/docs/glossary.md）が正である。
+            restricted は「取扱制限」であって「極秘」ではない——個人資料が既定でこの区分を持つため、
+            「極秘」にすると本当に極秘の組織文書を見分けられなくなる（利用者裁定 Q30 / planning#200）。 */}
         <Select id="sb-class" defaultValue="internal">
           <option value="public">公開</option>
-          <option value="internal">社内</option>
+          <option value="internal">社内限</option>
           <option value="confidential">秘</option>
-          <option value="restricted">極秘</option>
+          <option value="restricted">取扱制限</option>
         </Select>
       </div>
       <div className="space-y-1">
@@ -140,7 +143,7 @@ export const Cards: Story = {
       <Card>
         <CardHeader>
           <CardTitle>属性・タグ</CardTitle>
-          <StatusBadge tone="neutral">社内</StatusBadge>
+          <StatusBadge tone="neutral">社内限</StatusBadge>
         </CardHeader>
         <CardContent>部門: 経理 / タグ: 経費, 規程</CardContent>
       </Card>

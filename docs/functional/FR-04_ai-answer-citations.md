@@ -8,11 +8,14 @@ related_ids:
   - FR-11
   - UC-01
   - UC-02
+  - SC-01
   - SC-08
   - IADR-0111
+  - IADR-0131
+  - IADR-0132
 author: claude
 created: 2026-06-27
-updated: 2026-07-28
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
@@ -51,6 +54,18 @@ plan_refs:
 | `SourceUri` | 元文書へのリンク（Markdown URI もしくは `/documents/{id}`） |
 | `Score` | 検索スコア |
 | `Snippet` | 該当箇所の抜粋（240 文字で丸め） |
+| `Confidentiality` | **その文書の機密区分**（ABAC 文書属性 `confidentiality`）。値集合は `public` / `internal` / `confidential` / `restricted`（**`enum` にしない**。[[IADR-0131]] 決定 5）。#541 |
+
+**`Confidentiality` の供給と縮退（#541・FR-04「出典には機密区分を含める」）**
+
+- 供給元は `SearchResultDto.Attributes` の `confidentiality`（実在の ABAC 属性キー）である。
+- **属性の欠落・空文字・未知値は安全側（`restricted`）へ縮退する**（`08_data-egress-policy`「既定は安全側」/
+  FR-05 deny-by-default）。過剰公開は「社外資料へ引用してよいか」の判断を誤らせるため、過剰制限へ倒す。
+- 出典に載る区分と、LLM ゲートウェイへ渡す最高機密区分（FR-11）は**同じ規則**
+  （`ConfidentialityLevels`）から導く。画面に「公開」と出ているのにゲートウェイは `restricted` として
+  扱う、という食い違いを作らない。
+- **表示名（公開 / 社内限 / 秘 / 取扱制限）は本リポジトリで定義しない。** 正は計画リポジトリの用語集
+  （`planning/docs/glossary.md`）である。**`restricted` は「取扱制限」であって「極秘」ではない。**
 
 ## 処理フロー / 状態遷移
 
@@ -82,17 +97,18 @@ flowchart TD
 - [x] 権限の無い文書は ABAC フィルタにより検索・回答のいずれにも現れない（後段で担保）。
 - [x] `/bff/analysis/ask` から単一窓口で回答＋出典を取得できる。
 - [x] 応答の `Model` が実際に使用したモデルと一致する。LLM を呼んでいない縮退応答はモデル名を名乗らない（空）。（#403 / IADR-0111。T-10〜T-15・T-15f）
+- [x] **出典に機密区分が載る**（FR-04 追加・2026-08-05／SC-01 裁定 Q10）。属性の欠落・空・未知値は安全側（`restricted`）へ縮退する。（#541。T-17〜T-21）
 
 > 検証（#201）: `CitationMapperTests`（出典番号↔本文整合）／`RagOrchestratorScopeTests`（ABAC スコープ適用）／
 > 統合 `RagOrchestratorTests` で担保。実装は `RagOrchestrator` ＋ BFF `/bff/analysis/ask`。
 
 ## 関連仕様
 
-- 画面仕様書: `../screens/SC-08_ai-analysis-dashboard.md`（モデル・トークン数の補足表示）
+- 画面仕様書: `../screens/SC-08_ai-analysis-dashboard.md`（モデル・トークン数の補足表示）/ `../screens/SC-01_search-chat.md`（出典表示。機密区分チップは別 issue）
 - 通信仕様書: `../api/openapi.yaml`（`/analysis/ask`, `/bff/analysis/ask`）
 - データ仕様書: 検索結果は `SearchResultDto`、出典は `CitationDto`
 - テスト仕様書: `../tests/FR-04_ai-answer-citations.md`
-- 作業仕様書: `../specs/20260627_FR-04_ai-answer-citations.md` / `../specs/20260728_issue-403_degraded-answer-model.md`
+- 作業仕様書: `../specs/20260627_FR-04_ai-answer-citations.md` / `../specs/20260728_issue-403_degraded-answer-model.md` / `../specs/20260806_issue-541_citation-confidentiality.md`
 - 実装 ADR: `../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
 
 ## 未決事項
