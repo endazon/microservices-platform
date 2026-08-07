@@ -11,6 +11,7 @@ plan_refs:
 related_specs:
   - ../specs/20260803_issue-474_backend-floor-iadr-and-0116-followup.md
   - ../specs/20260807_issue-586_planning-pin-adr-accepted.md
+  - ../specs/20260807_issue-599_planning-pin-fr22.md
 ---
 
 # IADR-0119: FR-17〜21 の着手保留 — 前提 ADR の確定に連動（IADR-0116 規約 7 の適用範囲拡張）
