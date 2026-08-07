@@ -1,0 +1,224 @@
+{
+  "$comment": [
+    "docs/adr/README.md の索引タイトルセルに対する既知違反の baseline（NFR / #580）。",
+    "ratchet: 新規混入は fail、ここに載る残件は許容、直したのに残っていれば fail（baseline を縮める）。",
+    "是正の方向は索引タイトルセルを本体 title: の要約へ縮めること（docs/adr/README.md §運用ルール）。",
+    "title-too-long は maxTitleChars 超過、title-addendum は ［YYYY-MM-DD 追記］ ブロックの混入。",
+    "title-drift は本体 title: との文字単位 LCS が min(minTitleOverlap, 本体長, タイトル長) 未満。",
+    "字義一致は課さないが「別の決定の話へ丸ごと書き換える」型を落とす（現状の違反は 0 行）。",
+    "閾値は scripts.repo.test.js が値そのものを固定する（緩める変更を必ず diff へ出すため）。",
+    "検査本体は scripts/scripts.repo.test.js の inspectAdrIndexTitles。"
+  ],
+  "maxTitleChars": 200,
+  "minTitleOverlap": 12,
+  "rows": {
+    "IADR-0042": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0048": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0077": [
+      "title-too-long"
+    ],
+    "IADR-0078": [
+      "title-too-long"
+    ],
+    "IADR-0079": [
+      "title-too-long"
+    ],
+    "IADR-0080": [
+      "title-too-long"
+    ],
+    "IADR-0081": [
+      "title-too-long"
+    ],
+    "IADR-0082": [
+      "title-too-long"
+    ],
+    "IADR-0083": [
+      "title-too-long"
+    ],
+    "IADR-0084": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0085": [
+      "title-too-long"
+    ],
+    "IADR-0086": [
+      "title-too-long"
+    ],
+    "IADR-0087": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0088": [
+      "title-too-long"
+    ],
+    "IADR-0090": [
+      "title-too-long"
+    ],
+    "IADR-0091": [
+      "title-too-long"
+    ],
+    "IADR-0092": [
+      "title-too-long"
+    ],
+    "IADR-0093": [
+      "title-too-long"
+    ],
+    "IADR-0094": [
+      "title-too-long"
+    ],
+    "IADR-0095": [
+      "title-too-long"
+    ],
+    "IADR-0096": [
+      "title-too-long"
+    ],
+    "IADR-0097": [
+      "title-too-long"
+    ],
+    "IADR-0098": [
+      "title-too-long"
+    ],
+    "IADR-0099": [
+      "title-too-long"
+    ],
+    "IADR-0100": [
+      "title-too-long"
+    ],
+    "IADR-0101": [
+      "title-too-long"
+    ],
+    "IADR-0102": [
+      "title-too-long"
+    ],
+    "IADR-0103": [
+      "title-too-long"
+    ],
+    "IADR-0104": [
+      "title-too-long"
+    ],
+    "IADR-0105": [
+      "title-too-long"
+    ],
+    "IADR-0106": [
+      "title-too-long"
+    ],
+    "IADR-0107": [
+      "title-too-long"
+    ],
+    "IADR-0108": [
+      "title-too-long"
+    ],
+    "IADR-0109": [
+      "title-too-long"
+    ],
+    "IADR-0110": [
+      "title-too-long"
+    ],
+    "IADR-0111": [
+      "title-too-long"
+    ],
+    "IADR-0112": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0113": [
+      "title-too-long"
+    ],
+    "IADR-0114": [
+      "title-too-long"
+    ],
+    "IADR-0115": [
+      "title-too-long"
+    ],
+    "IADR-0116": [
+      "title-too-long"
+    ],
+    "IADR-0117": [
+      "title-too-long"
+    ],
+    "IADR-0118": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0119": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0120": [
+      "title-too-long"
+    ],
+    "IADR-0121": [
+      "title-too-long"
+    ],
+    "IADR-0122": [
+      "title-too-long"
+    ],
+    "IADR-0123": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0124": [
+      "title-too-long"
+    ],
+    "IADR-0125": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0126": [
+      "title-too-long"
+    ],
+    "IADR-0127": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0128": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0129": [
+      "title-too-long"
+    ],
+    "IADR-0130": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0131": [
+      "title-addendum",
+      "title-too-long"
+    ],
+    "IADR-0132": [
+      "title-too-long"
+    ],
+    "IADR-0133": [
+      "title-too-long"
+    ],
+    "IADR-0134": [
+      "title-too-long"
+    ],
+    "IADR-0135": [
+      "title-too-long"
+    ],
+    "IADR-0136": [
+      "title-too-long"
+    ],
+    "IADR-0137": [
+      "title-too-long"
+    ],
+    "IADR-0138": [
+      "title-too-long"
+    ],
+    "IADR-0139": [
+      "title-too-long"
+    ],
+    "IADR-0140": [
+      "title-too-long"
+    ]
+  }
+}

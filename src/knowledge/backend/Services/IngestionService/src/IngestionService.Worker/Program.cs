@@ -47,7 +47,7 @@ builder.Services.AddHttpClient<IDocumentContentReader, StorageDocumentContentRea
 builder.Services.AddHttpClient<IEmbeddingService, LlmGatewayEmbeddingService>(c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"] ?? "http://llm-gateway:5007"));
 
-// ADR-0003: MassTransit
+// ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
@@ -65,7 +65,7 @@ builder.Services.AddMassTransit(x =>
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
             ?? "amqp://guest:guest@rabbitmq:5672");
 
-        // ADR-0003: 取り込み（チャンク化・埋め込み・ベクトル登録）の一時的失敗を再試行し、
+        // ADR-0003（Superseded by ADR-0027・注記は #580）: 取り込み（チャンク化・埋め込み・ベクトル登録）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
         cfg.UsePlatformRetry();
 

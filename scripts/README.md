@@ -12,6 +12,7 @@
 | `check-action-versions.js` | ワークフローの `uses: <action>@vN` を集め、**メジャーバージョンの退行**を検出。`action-versions.json` の下限を下回る、または `--compare-with` で指定したディレクトリ（Dependabot 管理下のリポジトリ直下）より古ければ終了コード 1。Dependabot は github-actions エコシステムでは**リポジトリ直下しか走査しない**ため、配布テンプレートは自動追随しない（planning#148）。表に無いアクション・使われていない表エントリは `warn`。`--check-latest` で GitHub API から新しいメジャーを確認（warn のみ・fail-open）。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-unit-dependencies.js` | ユニット依存方向の機械検査（#231）。csproj の `ProjectReference`（ユニット外参照は `platform/backend/Shared/` の 3 プロジェクトのみ許可・platform→可変ユニット禁止・統合テスト例外。2 → 3 の改定は IADR-0117）と `Foundation/` 配下の `using *.Composable.*` を静的走査。違反があれば終了コード 1。フロントの合成点制約は ESLint（`src/eslint.config.js`）が担う。方式の根拠は IADR-0057 | 標準出力（レポート） |
+| `check-backend-libraries.js` | バックエンドのライブラリ標準（計画 ADR-0030）の機械強制（#455 / #471）。不採用ライブラリ（MassTransit / FluentAssertions / Serilog ほか）の参照禁止と Domain 層の外部依存ゼロを検査する。既存実装が広範に使用中のため **ratchet 方式**（baseline に無いプロジェクトでの違反 → fail ／ baseline 内 → warn ／ baseline にあるのに違反が消えた → fail）。**測定範囲は「参照の有無」だけで、結合の深さは見ない**——検査対象は `.csproj` / `.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）と `.cs` の `using` 宣言のみであり、**baseline 済みプロジェクトの内部で当該ライブラリの API・セマンティクスへの依存が深まっても検出しない**（実例: `bc7bc8e`（#568）が `RawDocumentFetchedConsumer.cs:81` へ `context.GetRetryAttempt()` 依存の判定を追加したが ratchet は動かない）。**「新規混入 0 件」の緑を「結合が増えていない証拠」と読んではならない**（#580。限界の明記は `check-coverage-floor.js` / IADR-0138 §「検出しないこと」と同じ作法）。`--self-test` で検査ロジック自体も試験 | 標準出力＋実行サマリ |
 | `check-cpm-versions.js` | CPM（Central Package Management）のバージョン直書き禁止の機械強制（#467）。`src/`（`ai-stock-trading` を除く）と `templates/` の `.csproj` を走査し、`PackageReference` の `Version` **属性**と `<Version>` **子要素**（MSBuild では属性形と等価）を違反として検出。違反があれば終了コード 1（着手時点の実測が違反 0 件のため ratchet / baseline を持たず最初から fail）。`VersionOverride` は CPM 公式の回避口のため**許可**し、使用箇所のみ `warn` ＋ 実行サマリの表で可視化する（終了コードは変えない）。走査対象は `.csproj`（雛形の `.csproj.sample` 含む）のみ——`.props` / `.targets` には正当な版記述（`PackageVersion` / `GlobalPackageReference`）があるため。XML コメントは除去してから走査する（説明コメント内の例示を赤にしない）。`check-backend-libraries.js` とは関心が異なる（**どの**ライブラリか / 版を**どこに**書くか）。`--self-test` で検証器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-contract-schema.js` | サービス間契約（`Shared.Contracts` のイベント/API スキーマ）の後方互換検査（#465 / IADR-0122）。`src/<unit>/backend/Shared/*.Contracts`（`ai-stock-trading` を除く）の `.cs` を**構文解析**し、public 型・メンバー・enum 値・`const` 値・属性を正規化 JSON スナップショット `contract-schema-baseline.json` へ落として比較する。削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・**既定値の無いメンバーの追加**は**破壊的**として終了コード 1。非破壊の追加でも baseline と差分がある限り fail する（＝スナップショットテスト。`--update` で baseline を更新し、差分＝契約変更そのものを PR の diff に載せる）。破壊的変更は `contract-breaking-allowlist.json` の承認エントリ（`key`/`reason`/`approvedBy`/`issue`/`date` すべて必須）で通す（下記「契約の破壊的変更」）。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・proto（`.proto` 0 件）を採らない理由は IADR-0122。`--self-test` で検査器自体も試験（負例を一時ツリーで実走査） | 標準出力＋実行サマリ |
 | `check-i18n-catalogs.js` | Lingui カタログの**未翻訳キー**検査（#496 / ADR-0031 / IADR-0125 決定 4）。`src/lingui.config.ts` から locales とカタログのパスを読み（設定ファイルは**実行せず**正規表現で読む＝外部依存ゼロ）、`.po` を解析して **全ロケール・全エントリの `msgstr` が非空**であること、`fuzzy` フラグと `#~`（obsolete）が残っていないことを検査する。違反があれば終了コード 1。**`lingui extract` の再生成差分検査だけでは足りない**——`extract` は未訳を `msgstr ""` の空エントリとして生成するのが正常動作であり、未翻訳のまま差分検査を通過する。**`lingui compile --strict` でも足りない**——`sourceLocale`（本リポは ja）は検査対象外で、ja の訳文が空でも通る（いずれも実測。作業仕様書 §検証）。設定が読めない・カタログが欠けている場合は **fail-closed**（「見つからないから素通り」で検査が静かに失効するのを防ぐ）。`--self-test` で検査器自体も試験 | 標準出力 |
@@ -196,6 +197,22 @@ module.exports = ({ ok, assert }) => {
 | companion が git 未追跡 | `warning:`（CI に存在せず固有テストが走らないため） |
 | 旧名 `scripts.local.test.js` のみ | 読み込む ＋ `warning:` で改名を促す |
 | 新旧が**両方**ある | 新名を優先して読み込み、`warning:` で旧名の残存を知らせる（移行漏れならテストを移し、不要なら削除する） |
+
+### `adr-index-title-baseline.json`（#580）
+
+`scripts.repo.test.js` の**索引タイトル検査が使う** baseline ファイル（同ファイルはほかに
+`backend-library-baseline.json` / `contract-schema-baseline.json` を直接読み、
+`check-test-spec-coverage.js` 経由で `test-spec-coverage-baseline.json` も読む）。
+`docs/adr/README.md` の索引タイトルセルの既知違反（`title-addendum` / `title-too-long`）を保持し、
+**新規混入と stale（直したのに baseline に残っている）を fail**、baseline 内の残件は許容する
+——`backend-library-baseline.json` と同じ 3 判定。
+索引と本体の**字義一致は対象外**（実測で 141 行中 96 行が不一致、うち 86 行は索引の方が長い＝索引に
+決定文が貼られている状態であり、是正の方向は「索引タイトルセルを要約へ縮める」ため。
+`docs/adr/README.md` §運用ルール）。ただし**無検査ではなく**、本体 `title:` と文字を共有する下限
+（`minTitleOverlap`。文字単位 LCS が `min(12, 本体長, タイトル長)` 未満なら `title-drift`）を課し、
+「別の決定の話へ丸ごと書き換える」型を落とす。閾値（`maxTitleChars` / `minTitleOverlap`）は
+`scripts.repo.test.js` が値そのものを固定するので、**緩める変更は必ず diff に出る**。
+**行を縮めたら baseline も同じ分だけ縮める**（縮め忘れは stale で落ちる）。
 
 ## 契約の破壊的変更（`Shared.Contracts`）
 
