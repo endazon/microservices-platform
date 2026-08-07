@@ -25,6 +25,11 @@
  *   （Platform.Bff → AiStockTrading.Bff.Endpoints）経由で src/platform/ 配下のレポートの**中身**に
  *   入り込む他ユニットの行に届かない。
  *
+ *   **生成コードは集計から落とす**（#571 / IADR-0138）。EF Core が生成する Migrations/ 配下と
+ *   *ModelSnapshot.cs は人が書くコードではなく、テストで被覆する対象でもない。含めると
+ *   「マイグレーションを 1 本足しただけ」で床判定が動く（実際に PR #568 がそれで止まった）。
+ *   判定は <class filename>（帰属で解決した経路）に対して行い、除外量は毎回診断へ出す。
+ *
  *   **二重記載の扱い**（IADR-0123 決定 3）: coverlet の Cobertura は同じ行を <methods> 配下と
  *   class 直下の <lines> の両方に書く。集計は **行・分岐とも class 直下の <lines> を正**とし、
  *   <methods> 配下は内訳として数えない。両方数えるとメソッドを持つ行だけが 2 票を持ち、メソッド外の
@@ -309,6 +314,32 @@ function unitOfFilename(filename, sources = []) {
   return { unit: null, how: 'unattributed', resolved: raw };
 }
 
+/**
+ * 生成コード（EF Core のマイグレーション）と判定するパスの規則（#571 / IADR-0138 決定 1）。
+ *
+ * 実測で決めた（形を仮定して書くと、何にもマッチせず「除外したつもりで素通り」になる。
+ * IADR-0123 が同じ失敗を名指ししている）。develop 実測の <class filename> は 2 形あった。
+ *   - `knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/20260626150858_InitialCreate.cs`
+ *     （<sources> が `…/src/` のレポート）
+ *   - `Services/AuthorizationService/src/AuthorizationService.Api/Migrations/AuthorizationDbContextModelSnapshot.cs`
+ *     （<sources> が `…/src/platform/backend/` のレポート）
+ * いずれも `Migrations/` をパスの**区切り付きの一区画**として含む。`*.Designer.cs` も同ディレクトリに
+ * 出るため、この 1 規則で 3 種（migration 本体 / Designer / ModelSnapshot）すべてに当たる。
+ * ModelSnapshot を別規則で持つのは、出力ディレクトリを変えた場合の取りこぼしを避けるためである
+ * （develop 実測では Migrations/ の外に ModelSnapshot は 0 件だった）。
+ *
+ * 区切り付きで見るのは誤爆を避けるためである（`MigrationsHelper.cs` や `MyMigrations/` は生成物ではない）。
+ */
+const GENERATED_DIR_RE = /(?:^|\/)Migrations\//;
+const GENERATED_FILE_RE = /(?:^|\/)[^/]*ModelSnapshot\.cs$/i;
+
+/** filename（帰属で解決した経路）が生成コードか。IADR-0138 決定 1。 */
+function isGeneratedFilename(filename) {
+  if (filename === null || filename === undefined || filename === '') return false;
+  const p = toPosix(filename);
+  return GENERATED_DIR_RE.test(p) || GENERATED_FILE_RE.test(p);
+}
+
 function addTotals(a, b) {
   a.lines += b.lines;
   a.covered += b.covered;
@@ -332,6 +363,10 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
   const totals = zeroTotals();
   const excluded = zeroTotals();
   const excludedClasses = [];
+  const generated = zeroTotals();
+  const generatedByUnit = new Map();
+  const generatedSamples = [];
+  let generatedClasses = 0;
   const how = { relative: 0, absolute: 0, 'source-joined': 0, unattributed: 0 };
   const unitTotals = new Map();
   const filenameSamples = [];
@@ -368,6 +403,18 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
       });
       continue;
     }
+
+    // 生成コード（EF Core の Migrations / ModelSnapshot）は集計から落とす（#571 / IADR-0138 決定 1）。
+    // 集計対象外ユニットの除外を先に通すのは、AST 由来の行を「生成コード」として二重計上させない
+    // ため（既存の診断値〔IADR-0123 の 133 行〕の意味を変えない）。
+    if (isGeneratedFilename(attribution.resolved)) {
+      generatedClasses++;
+      addTotals(generated, stats);
+      if (!generatedByUnit.has(key)) generatedByUnit.set(key, zeroTotals());
+      addTotals(generatedByUnit.get(key), stats);
+      if (generatedSamples.length < MAX_SAMPLES) generatedSamples.push(c.filename);
+      continue;
+    }
     addTotals(totals, stats);
   }
 
@@ -379,6 +426,12 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
   return {
     ...totals,
     excluded: { ...excluded, classes: excludedClasses },
+    generated: {
+      ...generated,
+      classCount: generatedClasses,
+      byUnit: Object.fromEntries([...generatedByUnit.entries()]),
+      samples: generatedSamples,
+    },
     diagnostics: {
       sources,
       classCount: classes.length,
@@ -417,6 +470,10 @@ function mergeTotals(totalsList) {
 function aggregateReports(parsedList) {
   const totals = mergeTotals(parsedList);
   const excluded = mergeTotals(parsedList.map((p) => p.excluded));
+  const generated = mergeTotals(parsedList.map((p) => p.generated));
+  const generatedByUnit = {};
+  const generatedSamples = [];
+  let generatedClasses = 0;
   const excludedClasses = [];
   const how = { relative: 0, absolute: 0, 'source-joined': 0, unattributed: 0 };
   const unitTotals = {};
@@ -435,6 +492,12 @@ function aggregateReports(parsedList) {
   for (const p of parsedList) {
     const d = p.diagnostics;
     excludedClasses.push(...p.excluded.classes);
+    generatedClasses += p.generated.classCount;
+    for (const [unit, t] of Object.entries(p.generated.byUnit)) {
+      if (!generatedByUnit[unit]) generatedByUnit[unit] = zeroTotals();
+      addTotals(generatedByUnit[unit], t);
+    }
+    for (const s of p.generated.samples) if (generatedSamples.length < MAX_SAMPLES) generatedSamples.push(s);
     for (const k of Object.keys(how)) how[k] += d.how[k] || 0;
     for (const [unit, t] of Object.entries(d.unitTotals)) {
       if (!unitTotals[unit]) unitTotals[unit] = zeroTotals();
@@ -463,8 +526,12 @@ function aggregateReports(parsedList) {
   return {
     totals,
     excluded: { ...excluded, classes: excludedClasses },
-    // 除外前（＝混入込み）の値。床を置き直す際の突き合わせに使う。
-    beforeExclusion: mergeTotals([totals, excluded]),
+    generated: { ...generated, classCount: generatedClasses, byUnit: generatedByUnit, samples: generatedSamples },
+    // 生成コードだけを戻した値（#571 / IADR-0138 の前後比較用）。
+    beforeGeneratedExclusion: mergeTotals([totals, generated]),
+    // すべての除外の前（＝混入込み・生成コード込み）の値。coverlet の lines-valid との照合
+    // （IADR-0123 決定 4）はこの値で行う——除外を足し戻さないと突合が成立しない。
+    beforeExclusion: mergeTotals([totals, excluded, generated]),
     diagnostics: {
       sources: [...sources],
       classCount,
@@ -533,6 +600,19 @@ function attributionMessages(agg) {
     });
   }
 
+  // NFR（#571 / IADR-0138 決定 3）: 生成コードのフィルタが何にもマッチしない状態は、床を静かに
+  // 元の定義へ戻す（＝マイグレーション 1 本で床判定が動く状態へ逆戻りする）。EF の出力先を変えれば
+  // 正常に 0 件になり得るため fail や warn にはせず notice で毎回可視化する（IADR-0118 決定 6 の段階ポリシー）。
+  if (d.classCount > 0 && agg.generated.lines === 0) {
+    msgs.push({
+      level: 'notice',
+      text:
+        '[check-coverage-floor] 生成コード（Migrations/ 配下・*ModelSnapshot.cs）由来の行は 0 行でした。' +
+        ' マイグレーションが 1 本も無いか、EF の出力先が想定と異なりフィルタが素通りしています' +
+        '（#571 / IADR-0138 決定 1）。',
+    });
+  }
+
   if (d.fallbackClasses > 0) {
     msgs.push({
       level: 'notice',
@@ -589,8 +669,24 @@ function formatDiagnostics(agg, floor = {}) {
   out.push(
     `除外（filename 帰属・#468）: 集計対象外ユニット（${units}）由来 ${agg.excluded.classes.length} クラス / ` +
       `${agg.excluded.lines} 行（被覆 ${agg.excluded.covered}） / 分岐 ${agg.excluded.branches}（被覆 ${agg.excluded.coveredBranches}）を落としました。` +
-      ` 除外前: ${formatTotals(agg.beforeExclusion)}`,
+      ` 除外前: ${formatTotals(agg.beforeExclusion)}（生成コードも戻した値）`,
   );
+
+  // NFR（#571 / IADR-0138 決定 2）: 生成コードの除外量を毎回出す。AST 除外と同じ作法で、
+  // 「何行落としたか」「除外前後で実測値がどう動いたか」を CI ログからそのまま読めるようにする。
+  {
+    const g = agg.generated;
+    const byUnit = Object.entries(g.byUnit)
+      .sort((a, b) => b[1].lines - a[1].lines)
+      .map(([unit, t]) => `${unit} ${t.lines} 行（被覆 ${t.covered}）`)
+      .join(' / ');
+    out.push(
+      `除外（生成コード・#571）: Migrations/ 配下・*ModelSnapshot.cs 由来 ${g.classCount} クラス / ` +
+        `${g.lines} 行（被覆 ${g.covered}） / 分岐 ${g.branches}（被覆 ${g.coveredBranches}）を落としました。` +
+        ` 生成コードを戻すと: ${formatTotals(agg.beforeGeneratedExclusion)}` +
+        `。内訳: ${byUnit || '（0 件）'}。filename 例: ${JSON.stringify(g.samples)}`,
+    );
+  }
 
   out.push(
     `帰属: クラス ${d.classCount} 件（そのまま(相対) ${d.how.relative} / そのまま(絶対) ${d.how.absolute} / ` +
@@ -601,7 +697,11 @@ function formatDiagnostics(agg, floor = {}) {
 
   const unitLine = Object.entries(d.unitTotals)
     .sort((a, b) => b[1].lines - a[1].lines)
-    .map(([unit, t]) => `${EXCLUDED_UNITS.has(unit) ? '[除外] ' : ''}${unit} ${t.lines} 行（被覆 ${t.covered}）`)
+    .map(([unit, t]) => {
+      const g = agg.generated.byUnit[unit];
+      return `${EXCLUDED_UNITS.has(unit) ? '[除外] ' : ''}${unit} ${t.lines} 行（被覆 ${t.covered}` +
+        `${g ? `・うち生成 ${g.lines} 行（被覆 ${g.covered}）を除外` : ''}）`;
+    })
     .join(' / ');
   out.push(`ユニット別の行数: ${unitLine || '（0 件）'}` +
     (d.orphan.lines ? ` / [class 外] ${d.orphan.lines} 行` : ''));
@@ -929,6 +1029,89 @@ function selfTest() {
         && text.includes('比 行 2.00 / 分岐 2.00'), text);
   }
 
+  // --- #571 / IADR-0138: 生成コード（EF の Migrations / ModelSnapshot）を集計から落とす ---
+
+  // 判定に使うパスの形は develop の実レポートから採った（形を仮定すると素通りする）。
+  t('isGeneratedFilename: <sources> が …/src/ のレポートの形（Migrations 本体）',
+    isGeneratedFilename('knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/20260626150858_InitialCreate.cs'));
+  t('isGeneratedFilename: 同上の Designer.cs',
+    isGeneratedFilename('knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/20260626150858_InitialCreate.Designer.cs'));
+  t('isGeneratedFilename: <sources> が …/src/platform/backend/ のレポートの形（先頭が Services/…）',
+    isGeneratedFilename('Services/AuthorizationService/src/AuthorizationService.Api/Migrations/AuthorizationDbContextModelSnapshot.cs'));
+  t('isGeneratedFilename: 絶対パスでも当たる',
+    isGeneratedFilename('/home/runner/work/msp/msp/src/knowledge/backend/X/Migrations/20260101_Init.cs'));
+  t('isGeneratedFilename: Windows の区切りでも当たる',
+    isGeneratedFilename('C:\\work\\msp\\src\\knowledge\\backend\\X\\Migrations\\Init.cs'));
+  t('isGeneratedFilename: Migrations/ の外の ModelSnapshot も当たる（出力先を変えた場合の取りこぼし防止）',
+    isGeneratedFilename('knowledge/backend/X/Data/FooDbContextModelSnapshot.cs'));
+  t('isGeneratedFilename: 手書きコードは落とさない',
+    !isGeneratedFilename('src/platform/backend/Bff/Platform.Bff/HealthEndpoints.cs'));
+  t('isGeneratedFilename: MigrationsHelper.cs は落とさない（区切りで見る）',
+    !isGeneratedFilename('src/platform/backend/X/MigrationsHelper.cs'));
+  t('isGeneratedFilename: MyMigrations/ は落とさない（区切りで見る）',
+    !isGeneratedFilename('src/platform/backend/X/MyMigrations/Foo.cs'));
+  t('isGeneratedFilename: ModelSnapshotBuilder.cs は落とさない（末尾一致で見る）',
+    !isGeneratedFilename('src/platform/backend/X/ModelSnapshotBuilder.cs'));
+  t('isGeneratedFilename: filename が無ければ false（未帰属を巻き込まない）',
+    !isGeneratedFilename(null) && !isGeneratedFilename(''));
+
+  {
+    // 実レポートに近い形: 手書き 1 クラス ＋ 生成 2 クラス。生成分は集計から落ち、診断へ出る。
+    const xml = '<coverage lines-valid="6" lines-covered="4"><sources><source>/w/src/</source></sources>' +
+      '<packages><package name="WikiService.Api"><classes>' +
+      '<class name="WikiService.Api.Endpoints" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/Endpoints.cs">' +
+      '<lines><line number="1" hits="1" /><line number="2" hits="0" /></lines></class>' +
+      '<class name="WikiService.Api.Migrations.InitialCreate" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/20260626150858_InitialCreate.cs">' +
+      '<lines><line number="10" hits="3" /><line number="11" hits="0" /></lines></class>' +
+      '<class name="WikiService.Api.Migrations.WikiDbContextModelSnapshot" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/WikiDbContextModelSnapshot.cs">' +
+      '<lines><line number="20" hits="4" /><line number="21" hits="4" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const p = parseCobertura(xml);
+    t('parseCobertura: 生成コードを集計から落とす', p.lines === 2 && p.covered === 1, p);
+    t('parseCobertura: 落とした生成コードを別枠で数える',
+      p.generated.lines === 4 && p.generated.covered === 3 && p.generated.classCount === 2, p.generated);
+    // 帰属先のキーは unitOfFilename の結果に従う（本改修では帰属規則を変えない）。ここで見たいのは
+    // 「生成コードがユニット別にも数えられている」ことなので、キー名ではなく内訳の合計で確かめる。
+    t('parseCobertura: 生成コードをユニット別に数える',
+      Object.keys(p.generated.byUnit).length === 1
+        && Object.values(p.generated.byUnit).reduce((n, u) => n + u.lines, 0) === 4, p.generated.byUnit);
+    const agg = aggregateReports([p]);
+    t('aggregateReports: 生成コードだけ戻した値を持つ（前後比較用）',
+      agg.beforeGeneratedExclusion.lines === 6 && agg.beforeGeneratedExclusion.covered === 4, agg.beforeGeneratedExclusion);
+    t('aggregateReports: coverlet 照合は全除外を戻した値で行う（lines-valid と一致する）',
+      agg.beforeExclusion.lines === 6 && agg.beforeExclusion.covered === 4, agg.beforeExclusion);
+    const text = formatDiagnostics(agg).join('\n');
+    t('formatDiagnostics: 生成コードの除外量を出す（AST 除外と同じ作法）',
+      text.includes('除外（生成コード・#571）: Migrations/ 配下・*ModelSnapshot.cs 由来 2 クラス / 4 行（被覆 3）'), text);
+    t('formatDiagnostics: 生成コードを戻した値も出す（前後比較が CI ログで読める）',
+      text.includes('生成コードを戻すと: line 66.67%（4/6）'), text);
+    t('formatDiagnostics: ユニット別の行数に生成の内訳を添える',
+      /ユニット別の行数: \S+ 6 行（被覆 4・うち生成 4 行（被覆 3）を除外）/.test(text), text);
+    t('attributionMessages: 生成コードが落ちていれば notice を出さない',
+      attributionMessages(agg).every((m) => !/生成コード/.test(m.text)), attributionMessages(agg));
+  }
+  {
+    // 生成コードが 1 行も落ちない＝フィルタが素通り。fail にはしないが notice で毎回可視化する。
+    const onlyHandWritten = '<coverage><packages><package><classes>' +
+      '<class name="X" filename="src/platform/backend/X.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const msgs = attributionMessages(aggregateReports([parseCobertura(onlyHandWritten)]));
+    t('attributionMessages: 生成コード 0 行は notice（素通りに気付ける）',
+      msgs.some((m) => m.level === 'notice' && /生成コード/.test(m.text))
+        && msgs.every((m) => m.level !== 'warn'), msgs);
+  }
+  {
+    // 集計対象外ユニット配下の生成コードは「ユニット除外」として数える（二重計上しない）。
+    // IADR-0123 が記録した混入行数（AST 由来 n 行）の意味を本改修で変えないための固定。
+    const xml = '<coverage><packages><package><classes>' +
+      `<class name="M" filename="src/${excludedUnitName}/backend/X/Migrations/20260101_Init.cs">` +
+      '<lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const p = parseCobertura(xml);
+    t('parseCobertura: 除外ユニット配下の生成コードはユニット除外側で数える（二重計上しない）',
+      p.excluded.lines === 1 && p.generated.lines === 0 && p.lines === 0, { excluded: p.excluded.lines, generated: p.generated.lines });
+  }
+
   t('parseSources: <source> を読み、空要素は落とす',
     parseSources('<sources><source>/a/b/</source><source></source></sources>').join(',') === '/a/b/');
   t('classBlocks: 自己終了形の <class /> も 1 クラスとして数える',
@@ -1019,7 +1202,13 @@ function main() {
       '',
       `集計対象外ユニット（${[...EXCLUDED_UNITS].join(', ') || 'なし'}）由来の行は `
         + `**${agg.excluded.lines} 行**（${agg.excluded.classes.length} クラス・被覆 ${agg.excluded.covered}）を `
-        + `\`<class filename>\` の帰属で除外した（#468 / IADR-0123）。除外前は ${formatTotals(before)}。`,
+        + `\`<class filename>\` の帰属で除外した（#468 / IADR-0123）。`,
+      '',
+      `生成コード（\`Migrations/\` 配下・\`*ModelSnapshot.cs\`）は `
+        + `**${agg.generated.lines} 行**（${agg.generated.classCount} クラス・被覆 ${agg.generated.covered}）`
+        + `を除外した（#571 / IADR-0138）。生成コードを戻すと ${formatTotals(agg.beforeGeneratedExclusion)}。`,
+      '',
+      `いずれの除外もかける前は ${formatTotals(before)}。`,
     ];
     try { fs.appendFileSync(summary, lines.join('\n') + '\n'); } catch { /* サマリ不可でも検査は続ける */ }
   }
@@ -1061,6 +1250,7 @@ module.exports = {
   countLinesUnique,
   classLineStats,
   unitOfFilename,
+  isGeneratedFilename,
   parseCobertura,
   mergeTotals,
   aggregateReports,
