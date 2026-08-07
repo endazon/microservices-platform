@@ -39,7 +39,8 @@ public static class ConversionJobStatus
 // FR-12, SC-07: 自動再試行の試行上限（初回 1 回 ＋ 再試行 3 回）。
 // **実体は Platform.Shared.Infrastructure の UsePlatformRetry（再試行間隔 3 段）である。**
 // 契約プロジェクトから基盤プロジェクト（MassTransit 依存）を参照しないため値をここに置き、
-// 両者が一致することは ConversionJobTests.MaxAttempts_matches_platform_retry_policy が束ねる
+// 両者が一致することは
+// RawDocumentFetchedConsumerJobTests.MaxAttempts_contract_constant_matches_platform_retry_policy が束ねる
 // （IADR-0137 決定 3・決定 4）。record の既定値に使うため const である。
 public static class ConversionJobRetryPolicy
 {
