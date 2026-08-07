@@ -2,10 +2,10 @@
 title: IADR-0116 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119]
+related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0139]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-03
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 ---
@@ -118,6 +118,34 @@ plan_refs:
 >   （実装 ADR）を含めており、実運用でも起点が実装 ADR の子 issue は `IADR-xxxx` を具体 ID として採っている。
 >   `NFR` を読み飛ばす扱いは従来どおりである。
 
+> **［2026-08-07 追記・規約 1 の限定例外（#575。改定は
+> [IADR-0139](IADR-0139_domain-bundled-contract-prs.md)）］**
+>
+> **規約 1（子 issue 1 件 = ブランチ 1 本 = PR 1 本）に、条件つきの例外を 1 つ加えた。**
+> 利用者裁定（2026-08-07・#572 の施策 1）により、**裁定済みの同型な契約追加は同一ドメイン単位で
+> 1 PR に束ねてよい**。ただし例外が働くのは
+> [IADR-0139](IADR-0139_domain-bundled-contract-prs.md) 決定 1 の **6 条件をすべて満たすとき**に限り、
+> **束の上限は 3 件**である。条件を満たさないものは本規約 1 のままである。
+>
+> - **本 IADR は `Superseded` にしない。** 原則（1 issue = 1 branch = 1 PR）は残り、限定例外が
+>   1 つ増えるだけである。改定範囲を 1 点に限る先例は
+>   [IADR-0117](IADR-0117_platform-shared-kernel-placement.md)（IADR-0056 決定 3 の部分改定）と
+>   [IADR-0122](IADR-0122_contract-schema-source-and-compat-gate.md) 決定 4（IADR-0049 決定 1 の
+>   部分繰延解除）。
+> - **規約 4（PR ではなく issue を分割する）は変わらない。**
+>   [IADR-0139](IADR-0139_domain-bundled-contract-prs.md) は逆向き（束ねる方向）にも同じ上限を当て、
+>   実測（B 群 1 件 = 15〜25 ファイル / +636〜943 行）から**概ね 50 ファイル / +2500 行**を超えるなら
+>   分けると定めた。
+> - **「1 issue に複数 PR」は依然として認めない。** 例外が認めるのは「1 PR に複数 issue」であり、
+>   規約 4 の理由（issue のクローズ条件が PR から読めなくなる）はそのまま生きている。束ねた PR は
+>   **`Closes #NNN` を issue ごとに 1 行**書いて閉じる
+>   （[IADR-0139](IADR-0139_domain-bundled-contract-prs.md) 決定 3。**本リポジトリはスカッシュのみ**
+>   （`allow_merge_commit` / `allow_rebase_merge` がいずれも無効）で、コミット境界は develop に残らない
+>   ——「1 コミット = 1 issue」だけではトレーサビリティが担保できないことを実測で確かめた）。
+> - **適用対象は #532〜#544 のうち未着手の 10 件**であり、実効は **2 束 ＋ 単独 6 件**である
+>   （判定と根拠は [IADR-0139](IADR-0139_domain-bundled-contract-prs.md) 決定 5）。
+> - **クロス監査は軽くしない**（同 決定 4）。減るのは PR 単位の固定費だけである。
+
 ## 理由
 
 - **案B が壊すもの**が具体的である。カバレッジ ratchet は「develop 到達点を床とする」設計であり、
@@ -155,3 +183,7 @@ plan_refs:
 
 - Supersedes: なし
 - Superseded by: なし
+- **Amended by: [IADR-0139](IADR-0139_domain-bundled-contract-prs.md)**（#575・2026-08-07。
+  規約 1 に「同型の契約追加はドメイン単位で最大 3 件まで 1 PR に束ねてよい」という限定例外を足す。
+  上記［2026-08-07 追記］が本 IADR 側の記載であり、条件・棄却案・検出しないことは同 IADR にある。
+  **本 IADR は `Accepted` のまま**で、条件を満たさない issue には規約 1 がそのまま働く）
