@@ -132,6 +132,32 @@ public class ConversionJobEndpointTests
         job!.Status.Should().Be(ConversionJobStatus.Processing); // 状態は変わらない
     }
 
+    // FR-12, SC-07（05_screens:324・裁定 Q13）: 照会 API の応答にデッドレター標識と試行上限が載ること
+    // （AC-1/AC-2/AC-3）を HTTP 越しに固定する。契約（DTO）に持たせても射影や JSON 化で落ちれば
+    // 画面には届かないため、経路の端で見る。
+    //
+    // 再変換で標識が落ちること（AC-8）はここでは見ない —— Retry_KnownFailedJob_Returns202 と同じ理由で、
+    // 再発行イベントがハーネスのコンシューマに即時消費されて状態が進み得るためレースになる
+    // （実際に本 PR で solution 一括実行時のみ落ちるフレークとして観測した）。標識の消滅は決定的な
+    // store 単体テスト（PrepareRetry_clears_dead_letter_marker）で担保する。
+    [Fact]
+    public async Task GetById_ExposesDeadLetterMarkerAndMaxAttempts()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = Guid.NewGuid();
+        await SeedAsync(factory, async store =>
+        {
+            await store.StartAsync(Raw(id));
+            await store.FailAsync(id, "本文変換 恒久失敗", deadLettered: true);
+        });
+
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        job!.Status.Should().Be(ConversionJobStatus.Failed); // 4 値モデルは変わらない
+        job.DeadLettered.Should().BeTrue();
+        job.MaxAttempts.Should().Be(ConversionJobRetryPolicy.MaxAttempts);
+    }
+
     [Fact]
     public async Task Retry_UnknownJob_Returns404()
     {

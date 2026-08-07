@@ -212,6 +212,12 @@
             "required": true,
             "position": 9
           },
+          "DeadLettered": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 11
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid?",
@@ -235,6 +241,12 @@
             "type": "string?",
             "required": true,
             "position": 7
+          },
+          "MaxAttempts": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 12
           },
           "OriginalPath": {
             "source": "positional",
@@ -265,6 +277,16 @@
             "type": "DateTimeOffset",
             "required": true,
             "position": 10
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.ConversionJobRetryPolicy": {
+        "kind": "class",
+        "members": {
+          "MaxAttempts": {
+            "source": "const",
+            "type": "int",
+            "value": "4"
           }
         }
       },
