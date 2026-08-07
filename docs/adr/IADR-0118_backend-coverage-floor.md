@@ -303,8 +303,10 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
      branch +0.26pt）を踏まえること。**
   2. 各ドメイン issue（#438〜#451）がテストを追加したら **床を引き上げる**（ratchet）。
      **［2026-08-07 追記］[#571](https://github.com/endazon/microservices-platform/issues/571) /
-     [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) 以降は生成コードが集計から外れるため、
-     引き上げ幅は素直にテストの増分を反映する**（マイグレーションの増減で床が動かなくなった）。
+     [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) 以降は EF の生成コードが集計から外れるため、
+     マイグレーションの増減で床が動かなくなった。** ただし **source generator の出力（`obj/` 配下）は
+     集計に残る**（175 クラス / 3866 行 / 分岐 3424 = 分岐分母の 38%）ので、**引き上げ幅がテストの増分
+     だけを反映するわけではない**（XML doc コメントの増減でも動く）。扱いは **#574** で決める。
   3. [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 6 の受け入れゲートに
      本床の具体値を記載した（#474 で追記済み）。床を引き上げた際は同規約の記載も追随させる。
 
