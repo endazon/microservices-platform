@@ -144,7 +144,7 @@ helm upgrade --install msp deploy/helm/microservices-platform \
 echo "==> [7/7] ExternalName aliases (素のサービス名 -> platform-infra FQDN)"
 kubectl apply -f deploy/local/aliases/microservices-platform-externalnames.yaml
 
-# ADR-0006, IADR-0077 (AST #24): opt-in オーバーレイ（既定オフ・fail-safe）。
+# ADR-0006, IADR-0077 (AST#24): opt-in オーバーレイ（既定オフ・fail-safe）。
 # 既定（env 未設定）では以下は一切実行されず、上記 [1/7]..[7/7] の挙動は不変。
 if [ "${OBSERVABILITY:-}" = "1" ]; then
   echo "==> [opt-in] observability stack (Prometheus/Loki/Tempo/Grafana)"

@@ -14,7 +14,7 @@ created: 2026-07-09
 updated: 2026-07-10
 ---
 
-> **triage 結果（2026-07-10, project-planning #16）**: 提案2「段階適用の注記」が accepted。計画側は
+> **triage 結果（2026-07-10, planning#16）**: 提案2「段階適用の注記」が accepted。計画側は
 > `10_composability-design` §3/§5 に段階適用注記を反映（PR #19）、実装側は移行の繰延条件を **IADR-0049**
 > に明文化（本 feedback を根拠）。エンベロープ項目確定時は上流 `07_abac-attribute-model.md` と整合させる。
 

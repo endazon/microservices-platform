@@ -23,7 +23,7 @@ related_specs:
 
 - 機能要求(FR): FR-14（構成変更のみで完結する疎結合ユニット）
 - 実装判断: [[IADR-0060]]（submodule 運用）／本修正の決定は [[IADR-0064]]
-- Issue: #256（IADR-0060 フォローアップ／ai-stock-trading#103 で実証済み）
+- Issue: #256（IADR-0060 フォローアップ／AST#103 で実証済み）
 
 ## 目的・背景
 
@@ -57,7 +57,7 @@ error MSB4092: 予期しないトークン "Directory" が、条件
 - 対象外（本リポジトリ内で完結不可・#230 のフォローアップに含む）:
   - サンプルユニットでの end-to-end 通し検証（別リポジトリ作成が必須）。
 
-## 実装方針（修正案・ai-stock-trading#103 実証済み）
+## 実装方針（修正案・AST#103 実証済み）
 
 パスを一旦プロパティ（`ParentDirectoryBuildProps`）へ束ね、`Condition` は単純なプロパティ参照にする。
 

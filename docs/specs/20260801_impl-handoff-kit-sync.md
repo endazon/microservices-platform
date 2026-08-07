@@ -164,7 +164,7 @@ allowlist をそのまま引き継いだものと考えられる。実害とし�
 - `scripts/verify-qdrant-attribute-payload.sh` — キットからは削除された（MSP 固有のため妥当）。
   本リポジトリの成果物として保持する（IADR-0014 / #71）。
 
-### 第 3 ラウンド（planning#105 / #107 反映後の再同期）
+### 第 3 ラウンド（planning#105 / planning#107 反映後の再同期）
 
 pin を `12cc9b8` → `35b830a` へ進めた。キット側では planning#105（`7546777`。#98 の反映漏れ・回帰 3 件の是正）
 と planning#107（`35b830a`。配布物から他プロジェクトの痕跡を除去）が入っている。
@@ -285,7 +285,7 @@ planning#116 で反映され、提案より良い実装になった——受け�
 
 pin を `30a4b78` → `cff9b6c` へ進めた。第 6 ラウンドで環流した
 [planning#117](https://github.com/endazon/project-planning/issues/117)（opt-in 忘れが無言）が反映され、
-あわせて planning#118 / #120 由来の変更（Bash 許可の**前方一致**の落とし穴、
+あわせて planning#118 / planning#120 由来の変更（Bash 許可の**前方一致**の落とし穴、
 `Bash(git -C planning …:*)` 4 件の追加）が入った。
 
 **適用内容**
@@ -375,7 +375,7 @@ pin を `25b4291` → `3325903` へ進めた。第 8 ラウンドで環流した
 起票し、比較基準を 2 ファイルの `setup-*` の**和集合**にする案を示した。
 本リポジトリは両ワークフローとも `setup-dotnet` のみで対称なため、現時点の実害は無い。
 
-### 第 10 ラウンド（planning#132 / #133 反映後の再同期・環流の決着）
+### 第 10 ラウンド（planning#132 / planning#133 反映後の再同期・環流の決着）
 
 pin を `3325903` → `4d3eb6b` へ進めた。第 9 ラウンドで環流した
 [planning#130](https://github.com/endazon/project-planning/issues/130)（`toolchainDrift` の誤検知）が
@@ -475,7 +475,7 @@ CI を赤にできないため **`scripts/scripts.test.js` の `captureStderr` �
 先行修正した（`GITHUB_ACTIONS=true` でも `✓ 111 tests passed`・漏れる `::warning::` は 0 件）。
 キット是正後に撤去してバイト一致（分類 A）へ戻す。
 
-### 第 13 ラウンド（planning#141 / #143 反映後の再同期・暫定デルタの撤去）
+### 第 13 ラウンド（planning#141 / planning#143 反映後の再同期・暫定デルタの撤去）
 
 pin を `cd6c4f4` → `9cd3499` へ進めた。第 12 ラウンドで環流した
 [planning#140](https://github.com/endazon/project-planning/issues/140)（Actions 上でのテスト失敗）が

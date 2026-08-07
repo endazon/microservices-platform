@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): Vault **dev モード**（opt-in・platform-infra）。
+# ADR-0006, IADR-0077 (AST#24): Vault **dev モード**（opt-in・platform-infra）。
 # ⚠️ dev 専用（インメモリ・単一 Pod・unseal 不要）。**本番の Vault 化充足ではない**（本番は unseal/監査/HA/ローテーション）。
 # root トークンは平文で置かない: Secret `vault-dev-token`（k8s-local-up.sh が dev 既定 or env で作成）から注入する。
 # IADR-0096 (#310): Vault 専用 ServiceAccount。k8s auth の TokenReview 権限（system:auth-delegator）は

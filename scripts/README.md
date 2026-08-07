@@ -7,6 +7,7 @@
 | `gen-changelog.js` | コミット履歴（`種別(起点ID): 要約`）から変更履歴を生成 | `CHANGELOG.md` |
 | `gen-openapi-skeleton.js` | 通信仕様書（`docs/api/`）から OpenAPI 雛形を生成 | `docs/api/openapi.yaml` |
 | `check-doc-links.js` | `docs/` 配下 Markdown の相対リンク（frontmatter の `plan_refs`/`related_specs`・本文リンク・インラインコードのパス）の実在を検査。破損があれば終了コード 1。**未 populate な submodule 配下は対象外にし、その件数を submodule 別に `notice` で報告する**（黙って飛ばすと「破損リンクはありません」が検査していない範囲まで含んだ断定になる） 。`--require-planning` で planning サブモジュール未 populate を fail 扱いにする（#232 / IADR-0058） | 標準出力（レポート） |
+| `check-cross-repo-refs.js` | 他リポジトリ issue / PR 番号の修飾を検査（#507 / IADR-0140）。**型 1**: リポジトリ名の裸書き（短縮形でもフルパス形式でもない第 3 の表記）。**型 2**: 修飾付き参照の**直後**に続く裸の `#NNN`。**型 3**: 修飾語と番号が空白で離れた形（`AST` + 空白 + 番号）。**自リポジトリを指す修飾語の直後の裸番号は正しい**ので対象外にする。加えて**閉じないコードフェンス**（以降のファイルが黙って検査対象外になる）も違反として上げる。対象は追跡下の `*.md` で、**インラインコード／コードフェンスの中は見ない**（literal な引用は表記規約の対象外）。`check-commit-messages.js` からも呼ばれ、コミット件名・本文・PR タイトルを同じ規則で検査する（**誤リンクという実害が出るのはこちらの面**——`.md` の裸 `#NNN` は自動リンクにならないことを実測済み）。`--self-test` を持つ | 標準出力（レポート） |
 | `check-permission-denials.js` | claude-code-action の実行ログ（`outputs.execution_file`）を読み、**権限拒否で実行できなかったツール**を名前と件数で報告（Bash は `Bash(git show | diff)` のようにパイプ・置換の**全セグメント**を出す。引数は出さない）。**失敗判定は段階ポリシー**: 件数が許容値（既定 4、`PERMISSION_DENIALS_TOLERANCE` で変更可）を超えるか、拒否がターン数の半分以上なら終了コード 1。それ未満は警告（アノテーション + 実行サマリ）のみで終了コード 0——「成果物は正しいのに赤」の常態化は、拒否の赤を無視する学習を生み検査の目的を壊すため。`STRICT_PERMISSION_DENIALS=1` で「1 件でも失敗」の旧挙動に戻せる（実測: レビューが 17 件の拒否で潰れ、本文を書けないまま `success` で終了した事故が起点）。実行ログを読めない場合は `warn` を出して終了コード 0（fail-open）。**内訳は `$GITHUB_STEP_SUMMARY`（PR の Checks 画面から 1 クリック）にも書く**——ジョブログにしか無いと、AI 本文の「✅ 実測」との突き合わせができないため（planning#155）。`--self-test` で検証器自体も試験 | 標準出力＋実行サマリ |
 | `check-action-versions.js` | ワークフローの `uses: <action>@vN` を集め、**メジャーバージョンの退行**を検出。`action-versions.json` の下限を下回る、または `--compare-with` で指定したディレクトリ（Dependabot 管理下のリポジトリ直下）より古ければ終了コード 1。Dependabot は github-actions エコシステムでは**リポジトリ直下しか走査しない**ため、配布テンプレートは自動追随しない（planning#148）。表に無いアクション・使われていない表エントリは `warn`。`--check-latest` で GitHub API から新しいメジャーを確認（warn のみ・fail-open）。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
 | `check-ai-workflow-config.js` | Claude 系ワークフローのツール許可設定を検査。`claude_args` の記法誤り（空白分割で無効化）・ブロック内コメント・「SDK を用意して実行ツールを許可していない」不一致・**実装用とレビュー用のスタック別実行ツールのドリフト**（片方にだけ `Bash(node:*)` が無い等）を検出。不備があれば終了コード 1。`--self-test` で検証器自体も試験 | 標準出力（レポート） |
@@ -56,6 +57,8 @@ node scripts/check-cpm-versions.js                 # CPM のバージョン直�
 node scripts/check-contract-schema.js --self-test  # 検査器の自己試験
 node scripts/check-contract-schema.js              # Shared.Contracts の後方互換検査（#465）
 node scripts/check-contract-schema.js --update     # baseline を現状で更新（承認済みの破壊的変更を消費）
+node scripts/check-cross-repo-refs.js --self-test   # 検査器の自己試験
+node scripts/check-cross-repo-refs.js               # 他リポジトリ issue 表記の検査（#507）
 node scripts/check-i18n-catalogs.js --self-test    # 検査器の自己試験
 node scripts/check-i18n-catalogs.js                # Lingui カタログの未翻訳キー検査（#496）
 node scripts/check-static-egress.js --self-test    # 検査器の自己試験
@@ -95,7 +98,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | ジョブ | 実行内容 |
 | --- | --- |
 | `scripts-tests` | `node scripts/scripts.test.js`（本 README のスクリプト群の横断テスト。`fetch-depth: 0` が必要） |
-| `commit-messages` | `check-commit-messages.js`（コミット件名の規約と ADR/IADR 実在性） |
+| `commit-messages` | `check-commit-messages.js`（コミット件名の規約と ADR/IADR 実在性、および `check-cross-repo-refs.js` 経由の**件名・本文**の他リポジトリ参照表記。#507 / IADR-0140） |
 | `doc-links` | `check-doc-links.js`（相対リンクの実在） |
 | `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。`fetch-depth: 0` が必要） |
 | `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
@@ -109,6 +112,7 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 | `frontend.yml` の `build-test` | `check-i18n-catalogs.js`（＋ `pnpm run i18n` の再生成差分）と `check-static-egress.js --require …`（#496 / IADR-0125）。`ci.yml` の `scripts-tests` は両者の `--self-test` と実データ検査を `scripts.repo.test.js` 経由で走らせる |
 | `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
 | `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。上の `test-traceability` の専用ステップと**二重に走る**——専用ステップは失敗をジョブ名で見せ、companion 側は `.github/workflows/` が編集できない環境（GitHub App 権限）でも検査が外れないことを担保する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
+| `scripts-tests`（再掲 2） | `check-cross-repo-refs.js` の `--self-test`・**実データの本走**・違反フィクスチャでの検出力確認（#507 / IADR-0140）。**`.github/workflows/` を編集できない（GitHub App 権限）ため、新しい検査器を CI へ載せる経路はこの companion 相乗りと `check-commit-messages.js` からの `require` の 2 つしかない** |
 
 > `scripts.test.js` を CI に載せないと「誰かが手で叩いたときだけ走るテスト」になる。
 > 実際に、CHANGELOG 生成が全面的に壊れる回帰が PR の CI をすべて green のまま通り抜けたことがある

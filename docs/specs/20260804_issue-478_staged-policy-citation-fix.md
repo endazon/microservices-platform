@@ -1,5 +1,5 @@
 ---
-title: 段階ポリシーの典拠「planning#146 / #149 / #160」の三つ組を develop 全域で是正する
+title: 段階ポリシーの典拠「planning#146 / planning#149 / planning#160」の三つ組を develop 全域で是正する
 type: spec
 status: done
 related_ids: [NFR, IADR-0115, IADR-0117, IADR-0118]
@@ -17,7 +17,7 @@ related_specs:
   - "../adr/IADR-0118_backend-coverage-floor.md"
 ---
 
-# 仕様書: 段階ポリシーの典拠「planning#146 / #149 / #160」の三つ組を develop 全域で是正する
+# 仕様書: 段階ポリシーの典拠「planning#146 / planning#149 / planning#160」の三つ組を develop 全域で是正する
 
 > 本仕様書は実装着手前に作成する。計画書（`project-planning` の `projects/<name>/`）を一次情報とし、
 > 本書は「この作業で何をどう実装するか」を確定するための作業仕様である。
@@ -118,7 +118,7 @@ grep -rn '#160' .
   **実際に書き換えた**（当時のパスは注記として本文に残し、リンク先だけ現在位置へ差し替える形）。
   「歴史記録だから触らない」という慣行は本リポジトリに存在しない。
 - ただし PR #477 の作法は「**当時の事実は消さず、誤りだけを直す**」である。本件は planning#149 が
-  当時から段階ポリシーと無関係であり（当時の事実ですらない）、planning#161 / #162 も当時すでに存在した
+  当時から段階ポリシーと無関係であり（当時の事実ですらない）、planning#161 / planning#162 も当時すでに存在した
   （[20260802_impl-handoff-kit-sync.md](./20260802_impl-handoff-kit-sync.md) の 8 / 9 番目）。よって
   **注記を足さず本文を直接是正すれば足りる**（「当時はこう書いていた」を残す価値のある差分ではない）。
 - issue #478 が [20260803_issue-453](./20260803_issue-453_regression-test-foundation.md) の 2 箇所を

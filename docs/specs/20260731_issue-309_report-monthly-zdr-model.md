@@ -30,7 +30,7 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 起点 issue: [ai-stock-trading#309](https://github.com/endazon/ai-stock-trading/issues/309)
+- 起点 issue: [AST#309](https://github.com/endazon/ai-stock-trading/issues/309)
   「月報の割当 `claude-fable-5` が非 ZDR のため既定機密区分では構造的に到達不能」。
   利用者は 3 案のうち **案 A（月報を ZDR モデルへ割り当て直す）**を採用した。
 - 直前の実装判断: [[IADR-0112]]（報告書の種別別 purpose 割当・#422）。本作業はその**月報エントリのみ**を改定する。
@@ -169,7 +169,7 @@ AST の `HttpReportNarrativeDrafter` は `Sent=false` のすべてに対して
 - **AST のログ文言**: `HttpReportNarrativeDrafter` が `Sent=false` の 3 分岐すべてに
   「機密区分による縮退」と出すため、今回の誤診が生じた。応答の `RoutingReason` / `Endpoint` を
   ログへ載せて分岐を区別できるようにする是正が要る。
-  → [ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315)
+  → [AST#315](https://github.com/endazon/ai-stock-trading/issues/315)
 - **`claude-fable-5` の ZDR 提供有無の契約確認**
   → [#428](https://github.com/endazon/microservices-platform/issues/428)
 - **live の実原因の確定**: 稼働環境に触れないため未確認。改定後も月報がプレースホルダのままなら、

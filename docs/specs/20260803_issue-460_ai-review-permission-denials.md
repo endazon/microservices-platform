@@ -22,7 +22,7 @@ related_specs:
   （`impl-handoff-kit` を足場の単一情報源とする同期規約。両ワークフローは**分類 B**）
 - 検出元: PR [#459](https://github.com/endazon/microservices-platform/pull/459) の
   `claude-review` ジョブが**権限拒否 6 件**で exit 1（レビュー本文は正常に投稿されていた）
-- 上流の先行事例: planning#145 / #146 / #155 / #157 / #158 / #160 / #161 / #162
+- 上流の先行事例: planning#145 / planning#146 / planning#155 / planning#157 / planning#158 / planning#160 / planning#161 / planning#162
 
 ## 目的・背景
 

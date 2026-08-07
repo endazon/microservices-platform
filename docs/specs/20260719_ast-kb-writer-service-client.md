@@ -1,5 +1,5 @@
 ---
-title: AST の KB 書き込み用サービスクライアント（platform-operator）を microservices-platform レルムに追加する（AST #18）
+title: AST の KB 書き込み用サービスクライアント（platform-operator）を microservices-platform レルムに追加する（AST#18）
 type: spec
 status: review
 related_ids:
@@ -46,9 +46,9 @@ plan_refs:
 1. 本レルムを再インポート（Keycloak dev）。
 2. AST 側で `KnowledgeBase__Documents__BaseUrl`＝DocumentService、`KnowledgeBase__Auth__Authority`＝本レルム、
    `KnowledgeBase__Auth__ClientId=ai-stock-trading-kb-writer`＋シークレットを投入。
-3. AST の収集/報告で `POST /documents` が **201** を返すことを確認（AST #18 に手順を記載）。
+3. AST の収集/報告で `POST /documents` が **201** を返すことを確認（AST#18 に手順を記載）。
 
 ## スコープ外
 
-- object storage への本文取り込み・Ingestion による検索可能化（AST #9/#14 系・platform 側の別作業）。
+- object storage への本文取り込み・Ingestion による検索可能化（AST#9/AST#14 系・platform 側の別作業）。
 - 本番シークレットの Vault 投入・配布（運用）。

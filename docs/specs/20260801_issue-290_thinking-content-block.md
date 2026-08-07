@@ -1,5 +1,5 @@
 ---
-title: thinking（拡張思考）content ブロックで LLM 応答全体を失う欠陥を是正する（ai-stock-trading#290 の調査から）
+title: thinking（拡張思考）content ブロックで LLM 応答全体を失う欠陥を是正する（AST#290 の調査から）
 type: spec
 status: done
 related_ids:
@@ -30,7 +30,7 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 起点 issue: [ai-stock-trading#290](https://github.com/endazon/ai-stock-trading/issues/290)
+- 起点 issue: [AST#290](https://github.com/endazon/ai-stock-trading/issues/290)
   「LLM 構造化出力の解析が断続的に失敗し Hold に倒れる」。同 issue の調査中に、**別系統かつより重篤な**
   本欠陥（本リポジトリ側）を実測で確定させたため、本 PR はそちらを是正する。#290 が観測している
   rationale は本欠陥では出ない（後述「#290 との関係」）ため、issue は閉じない（`Refs`）。
@@ -148,7 +148,7 @@ related_specs:
 ## 残（本 PR スコープ外）
 
 - #290 本体（AST 側パーサ／集約層の可観測性 8 分岐の切り分けと堅牢化）。
-- AST の縮退ログ文言の是正（[ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315)）。
+- AST の縮退ログ文言の是正（[AST#315](https://github.com/endazon/ai-stock-trading/issues/315)）。
   本欠陥は「機密区分による縮退」ではないのに同一文言が出る。
 - thinking 本文（`display: "summarized"`）を**活用**したい場合の SDK 更新検討（別 PR）。
 - live 環境での実地確認（稼働環境不触のため本 PR では行わない）。

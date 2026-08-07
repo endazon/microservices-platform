@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): opt-in 時のみ otel-collector を **forwarding 構成**へ差し替える。
+# ADR-0006, IADR-0077 (AST#24): opt-in 時のみ otel-collector を **forwarding 構成**へ差し替える。
 # 既定（deploy/local/infra のみ適用）は otel-collector.yaml の **debug exporter のみ**＝外部送信なし（fail-safe）。
 # 本 ConfigMap は同名（otel-collector-config・platform-infra）で、apply で上書きする。適用後は collector を
 # rollout restart すること（k8s-local-up.sh の OBSERVABILITY ゲートが実施）。config は compose の
