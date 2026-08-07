@@ -11,7 +11,7 @@ related_ids:
   - IADR-0124
 author: claude
 created: 2026-07-18
-updated: 2026-08-04
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -97,6 +97,21 @@ per-service Dockerfile を前提にした統合仕様どおりの MAPPING は**�
 **根拠**: #275 検査の目的は「compose と k8s ビルドが同一の Dockerfile/context/args から同一イメージを作る」
 ことの保証である。context が異なれば別物になるため、検査は context/args も見なければ意味を保てない。
 既存エントリはすべて context=ルートで不変のため、拡張は後方互換（フォールバック）で成立する。
+
+> **［2026-08-07 追記 / #570］決定 2 の仕組み（単一 Dockerfile＋context/args）は有効なまま、`SERVICE_PROJECT` /
+> `SERVICE_DLL` の値だけが失効した。** AST が**サービスホストのプロジェクトを `*.Worker` → `*.Api` へ一斉改名**
+> （11 ホスト全部。技術詳細を `*.Infrastructure` へ分離。AST IADR-0128）したためである。#564 が submodule pin を
+> `655e2ed` → `91d52c2` へ上げた時点で旧パスが実在しなくなり、`build (configuration-service)` /
+> `build (risk-management-service)` / `build (market-monitor-service)` が `dotnet restore` の
+> **MSBUILD error MSB1009** で落ちた（集約ゲート `image-build` はその派生）。
+> **本文および上記「背景・課題」の論点 2 が引用する `ConfigurationService.Worker` は、2026-07-18 時点の
+> 記録としてそのまま残す。** 現行値は `deploy/docker-compose.yml` と `scripts/k8s-local-images.sh` を正とする
+> （`.../ConfigurationService.Api/ConfigurationService.Api.csproj` ＋ `ConfigurationService.Api.dll`）。
+> 決定 2 が要求する「compose と MAPPING が同一の Dockerfile/context/args を指す」不変条件は保たれており
+> （`check-image-mapping.js` の `args-mismatch` 検査が両者を突合する）、**#570 で動いたのは名前だけ**である
+> ——SDK（`Microsoft.NET.Sdk.Web`）・待受（`:8080`）・ヘルス（`/health/live`・`/health/ready`）・
+> アセンブリ名の規則（csproj 名と同一）は改名の前後で不変であることを pin `91d52c2` で実測した
+> （[作業仕様書](../specs/20260807_issue-570_ast-project-rename.md)）。
 
 ### 3. `/bff/assumptions` は DTO 非依存の pass-through プロキシとする
 
