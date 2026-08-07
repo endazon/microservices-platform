@@ -23,7 +23,11 @@ public static class CitationMapper
                 ChunkId: r.ChunkId,
                 SourceUri: ResolveSourceUri(r),
                 Score: r.Score,
-                Snippet: BuildSnippet(r.Text)));
+                Snippet: BuildSnippet(r.Text),
+                // FR-04, SC-01, #541: 出典ごとの機密区分。文書属性から読み、欠落・空・未知値は
+                // 安全側（restricted）へ縮退する。越境判定（FR-11）と同じ規則を使い、
+                // 「画面には公開と出ているのにゲートウェイは restricted 扱い」を起こさない。
+                Confidentiality: ConfidentialityLevels.FromAttributes(r.Attributes)));
         }
         return citations;
     }
