@@ -116,7 +116,10 @@ plan_refs:
 
      > **［2026-08-07 追記 / #570］項番 5 は AST 側で消化済みであり、上記 2 パスも実在しない。**
      > submodule pin `91d52c2` を実読したところ、2 箇所とも `MaxTokens: 4096`（コメントに
-     > `IADR-0101, MSP/ADR-0025` を明記）へ引き上げ済みだった。またホストプロジェクトの
+     > `IADR-0101, MSP/ADR-0025` を明記）へ引き上げ済みだった。
+     > **引き上げ自体は #564 の pin bump より前に済んでいる**——旧 pin `655e2ed` の時点で既に
+     > `4096` であり、**#564 で変わったのはパスだけである**（本追記は改名の文脈に置かれているが、
+     > 消化と改名は別の出来事なので混同しないこと）。またホストプロジェクトの
      > **`*.Worker` → `*.Api` 一斉改名（AST IADR-0128）**に伴い、両アダプタは技術詳細として
      > `*.Infrastructure` へ移っている（`TradeDecisionService.Infrastructure/Composable/Adapters/HttpLlmCompletionClient.cs` /
      > `ReportService.Infrastructure/Foundation/Adapters/HttpReportNarrativeDrafter.cs`）。

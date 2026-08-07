@@ -2,7 +2,7 @@
 title: 作業仕様書 AST の *.Worker → *.Api 改名に deploy 面（compose / MAPPING）を追随させる（#570）
 type: spec
 status: draft
-related_ids: [NFR, FR-14, IADR-0067, IADR-0068, IADR-0070, IADR-0071, IADR-0072]
+related_ids: [NFR, FR-14, IADR-0067, IADR-0068, IADR-0070, IADR-0071, IADR-0072, IADR-0101]
 author: Claude
 created: 2026-08-07
 updated: 2026-08-07
@@ -13,6 +13,7 @@ related_specs:
   - "../adr/IADR-0070_ast-frontend-integration.md"
   - "../adr/IADR-0071_ast-risk-controls-bff-integration.md"
   - "../adr/IADR-0072_ast-monitor-bff-integration.md"
+  - "../adr/IADR-0101_default-model-opus-5.md"
 ---
 
 # 仕様書: AST の `*.Worker` → `*.Api` 改名に deploy 面を追随させる（#570）
