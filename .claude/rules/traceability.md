@@ -148,6 +148,11 @@ RabbitMQ）は `Superseded by ADR-0027`（Wolverine）だが、コードは未�
 by ADR-0027・注記は #580）` のように**注記そのものへ起票 ID を書き**、あわせて frontmatter の
 `updated:` を前進させる。決定を変える追記なら ID ではなく**日付つきの追記ブロック**にする
 （`［YYYY-MM-DD 追記 / #NNN］…`。#570 / #577 / #582 が採っている形）。
+**「ADR / 仕様書」は `docs/` 配下の live な文書すべてを指す**——`docs/adr/` だけでなく
+`docs/functional/` `docs/data/` `docs/tech/` `docs/tests/` 等も同じに扱う（下記の母集合の
+内側にあるものはすべて対象。ADR 本体だけに適用しない）。**コード・設定ファイルのコメントは
+注記 ID の対象外**とする（frontmatter が無く `updated:` を前進させる先が無い。注記の由来は
+`git blame` と当該コミットの起点 ID で 1 行単位に辿れるため、上の理由が当たらない）。
 
 **後継 ID は旧 ID の隣に置く**（#580 / クロス監査 G-c）。frontmatter の ID リストで `ADR-0003` の
 直後に `ADR-0027` を置くと番号順が崩れるが、**これは意図的**である——「この旧 ID の後継はこれ」と
@@ -162,11 +167,18 @@ by ADR-0027・注記は #580）` のように**注記そのものへ起票 ID �
 > `commit-messages` 等、`pr-title.yml`）は**どれも submodule を populate しない**ため、検査を作っても
 > 常に skip され緑のまま素通りする。よって本規約は人と AI が守るものであり、CI は守っていない。
 >
-> **例外はあるが、ゲートではない**: `claude-code-review.yml`（`on: pull_request`）だけは
-> `PLANNING_REPO_TOKEN` を使って `git submodule update --init --recursive` を実行する。ただし
-> これは **AI レビューであってマージを止める決定的ゲートではない**ので、これに検査を載せても
-> 「PR で planning を読む検査」にはならない。「**PR で planning は絶対に取れない**」と読み違えない
-> こと——取れるジョブは在るが、ゲートではない、が正しい。
+> **例外は 2 本あるが、いずれもゲートではない**（#580 の測定・実測日 2026-08-07）。どちらも
+> `PLANNING_REPO_TOKEN` を使って `git submodule update --init --recursive` を実行する。
+>
+> | ワークフロー | トリガ | PR 文脈で起動するか |
+> | --- | --- | --- |
+> | `claude-code-review.yml` | `on: pull_request`（`opened` / `synchronize`） | する |
+> | `claude-coding.yml` | `issue_comment` / `pull_request_review_comment` / `pull_request_review` / `issues` | する（PR へのコメント・レビューで起動する） |
+>
+> ただしどちらも **AI 実行系であってマージを止める決定的ゲートではない**（前者は AI レビュー、
+> 後者は `@claude` メンションでの対話実装）ので、これらに検査を載せても「PR で planning を読む
+> **検査**」にはならない。「**PR で planning は絶対に取れない**」と読み違えないこと——取れるジョブは
+> 在るが、ゲートではない、が正しい。
 
 ## 守ること
 

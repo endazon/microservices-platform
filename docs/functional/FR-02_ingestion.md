@@ -7,7 +7,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -26,7 +26,7 @@ related_adrs:
 ## 起点
 
 - FR-02 / UC-04
-- 関連 ADR: ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）、ADR-0009（Qdrant 直接書き込み）、ADR-0013（LLM Gateway 経由の埋め込み）
+- 関連 ADR: ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027・注記は #580）、ADR-0009（Qdrant 直接書き込み）、ADR-0013（LLM Gateway 経由の埋め込み）
 
 ## 機能概要
 

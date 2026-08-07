@@ -172,6 +172,18 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 > 改竄になるため、母集合の切り方をここで確定し、規約として
 > [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md) へ残す（同型の再発防止）。
 
+**注記の書式は live 母集合の全 22 ファイルへ一様に適用する**（同規約「注記には起票 ID を添える」）。
+Markdown の 11 ファイル（`docs/adr/` 5 本 ＋ live な仕様書 6 本）は本文の注記へ `・注記は #580` を
+添え、frontmatter の `updated:` を `2026-08-07` へ前進させる。**ADR 本体だけに適用して仕様書を
+外す選択は採らない**——(a) 規約の適用範囲は既に「live な権威文書とコード」で切ってあり、
+`docs/functional/` `docs/data/` `docs/tech/` `docs/tests/` はその内側である、(b) 「原文と後付けの
+注記が見分けられない」という規約の理由は仕様書にも等しく当てはまる（むしろ ADR より改訂が多い）、
+(c) 規約に実装を合わせるのではなく規約側を縮めて辻褄を合わせるのは、本 issue が是正しようとしている
+「記録と実態のずれ」そのものである。`.cs` / `.csproj` / `deploy/` の 11 ファイルは**対象外**とする
+（規約が「ADR / 仕様書の本文」と書いているとおり）——frontmatter を持たず `updated:` を前進させる
+先が無いうえ、注記の由来は `git blame` と当該コミットの起点 ID で 1 行単位に辿れるため、規約の
+理由（原文と後付けの見分けが付かない）が当てはまらない。この線引きを規約側にも明記する。
+
 #### 機械検査を作らない理由（測定範囲の明示）
 
 「Superseded な計画 ADR を無注記で引用していないか」を機械検査するには、計画 ADR の `status` を
@@ -216,8 +228,9 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 
 ### G-1（🟢）索引の Superseded 表記を 1 形式へ揃える
 
-実測で 4 形式（`Superseded（by IADR-0020）` / `Superseded by IADR-0026` / `Superseded（[[IADR-0121]]）` /
-`Superseded by IADR-0105`）。**揃える先は `Superseded by IADR-XXXX`** とする——同じ
+実測で **Superseded 行は 4 行・表記は 3 形式**（`Superseded（by IADR-0020）`＝`IADR-0013` /
+`Superseded（[[IADR-0121]]）`＝`IADR-0033` / `Superseded by IADR-XXXX`＝`IADR-0017`・`IADR-0084`）。
+**書き換えたのは前 2 形式の 2 行**で、既に規約形だった `IADR-0017`・`IADR-0084` の状態列は変えていない。**揃える先は `Superseded by IADR-XXXX`** とする——同じ
 `docs/adr/README.md` の §運用ルールが「旧 IADR に `Superseded by IADR-XXXX` を追記する」と
 **既にこの形を規約として書いている**ため、新しい形を作らずに済む。
 
@@ -299,10 +312,10 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 | 検査 | exit code |
 | --- | --- |
 | `node scripts/check-doc-links.js --self-test`（自己試験 34 件） | **0** |
-| `node scripts/check-doc-links.js`（446 件の Markdown） | **0** |
+| `node scripts/check-doc-links.js`（451 件の Markdown） | **0** |
 | `node scripts/check-backend-libraries.js` | **0**（新規混入 0 / 既知残件 42 件は baseline 済み） |
 | `node scripts/check-cpm-versions.js` | **0** |
-| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（**270 tests**。§A-1 の索引検査 5 件を含む） | **0** |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`（**274 tests**。§A-1 の索引検査 5 件を含む） | **0** |
 | `node scripts/scripts.repo.test.js` | **0** |
 | `node scripts/check-unit-dependencies.js` | **0** |
 | `node scripts/check-test-spec-coverage.js` / `check-test-traceability.js` | **0** / **0** |
@@ -376,7 +389,7 @@ ADR[ _]0003 : 0 / ADR-3 : 0 / ADR-03 : 0 全角 : 0 / masstransit-rabbitmq : 3�
 
 | ファイル | 変更 |
 | --- | --- |
-| [`docs/adr/README.md`](../adr/README.md) | R-1（0061 行）／G-1（4 行の状態列）／G-2（**141 行**の ID セル＋0082 行の閉じパイプ。#582 の `IADR-0139`・#584 の `IADR-0140` を含む）／§運用ルールへ突合規則 |
+| [`docs/adr/README.md`](../adr/README.md) | R-1（0061 行）／G-1（**2 行**の状態列＝`IADR-0013`・`IADR-0033`。`IADR-0017`・`IADR-0084` は既に `Superseded by IADR-XXXX` 形で無変更）／G-2（**141 行**の ID セル＋0082 行の閉じパイプ。#582 の `IADR-0139`・#584 の `IADR-0140` を含む）／§運用ルールへ突合規則 |
 | [`scripts/scripts.repo.test.js`](../../scripts/scripts.repo.test.js) | **A-1**: 索引の行の形の機械検査（正例 1・負例 3・実データ 1 の計 5 テスト） |
 | [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) | Y-3: ゲート一覧の「ライブラリ標準」行へ測定範囲 |
 | [`scripts/README.md`](../../scripts/README.md) | Y-3: 同上（`check-backend-libraries.js` の行が表に無いので追加） |

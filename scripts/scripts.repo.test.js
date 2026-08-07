@@ -2024,7 +2024,7 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
-  // --- Issue #580: ADR 索引の行の「形」を固定する ------------------------------------
+  // --- NFR / #580: ADR 索引の行の「形」を固定する ------------------------------------
   //
   // ここに置く理由: `.github/workflows/` は GitHub App 権限では編集できない。ci.yml の
   // scripts-tests ジョブ（REQUIRE_REPO_TESTS=1 → 本 companion）が CI ゲートになる

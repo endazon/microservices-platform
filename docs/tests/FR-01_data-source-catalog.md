@@ -7,7 +7,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-07-04
-updated: 2026-07-19
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -19,9 +19,9 @@ plan_refs:
 
 - 機能要求（FR）: FR-01
 - ユースケース（UC）: UC-04
-- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）
+- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027・注記は #580）
 - 実装 ADR: IADR-0001（カタログ正本は DocumentService が所有）
-- 計画書リンク: `02_requirements/01_requirements.md`, `07_adr/ADR-0003`（Superseded by `07_adr/ADR-0027`）
+- 計画書リンク: `02_requirements/01_requirements.md`, `07_adr/ADR-0003`（Superseded by `07_adr/ADR-0027`・注記は #580）
 
 ## テスト対象・範囲
 
