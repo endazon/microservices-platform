@@ -19,9 +19,9 @@ plan_refs:
 
 - 機能要求（FR）: FR-01
 - ユースケース（UC）: UC-04
-- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ）
+- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）
 - 実装 ADR: IADR-0001（カタログ正本は DocumentService が所有）
-- 計画書リンク: `02_requirements/01_requirements.md`, `07_adr/ADR-0003`
+- 計画書リンク: `02_requirements/01_requirements.md`, `07_adr/ADR-0003`（Superseded by `07_adr/ADR-0027`）
 
 ## テスト対象・範囲
 

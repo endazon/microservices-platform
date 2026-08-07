@@ -16,7 +16,7 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.OpenTelemetry" />
-    <!-- ADR-0003: 全サービス共通の MassTransit リトライ設定（MassTransitExtensions）を提供する。
+    <!-- ADR-0003（Superseded by ADR-0027）: 全サービス共通の MassTransit リトライ設定（MassTransitExtensions）を提供する。
          RabbitMQ 依存は各サービス側（*.Worker/*.Api）が持つため、ここはブローカ非依存の core のみ参照する。 -->
     <PackageReference Include="MassTransit" />
     <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント（Storage/*） -->

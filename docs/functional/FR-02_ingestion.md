@@ -16,6 +16,7 @@ related_specs:
   - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
 related_adrs:
   - ADR-0003
+  - ADR-0027
   - ADR-0009
   - ADR-0013
 ---
@@ -25,7 +26,7 @@ related_adrs:
 ## 起点
 
 - FR-02 / UC-04
-- 関連 ADR: ADR-0003（MassTransit + RabbitMQ）、ADR-0009（Qdrant 直接書き込み）、ADR-0013（LLM Gateway 経由の埋め込み）
+- 関連 ADR: ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）、ADR-0009（Qdrant 直接書き込み）、ADR-0013（LLM Gateway 経由の埋め込み）
 
 ## 機能概要
 

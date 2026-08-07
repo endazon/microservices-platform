@@ -17,7 +17,7 @@ plan_refs:
 - 状態: Accepted
 - 日付: 2026-06-27
 - 決定者: claude（実装）
-- 関連: ADR-0002（サービス境界・DB per Service）、ADR-0003（MassTransit + RabbitMQ）
+- 関連: ADR-0002（サービス境界・DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）
 
 ## コンテキストと課題
 
@@ -47,7 +47,7 @@ FR-01 の同期パイプラインでは、`ConversionService` が変換完了後
 
 - ADR-0002（DB per Service）に従い、文書（カタログ）の状態は `DocumentService` が単独所有すべき。
   ConversionService から他サービスの DB/API を直接触れさせない。
-- ADR-0003（イベント駆動）に沿い、サービス間は疎結合なイベントで連携する（選択肢 2 の同期結合を避ける）。
+- ADR-0003（イベント駆動。Superseded by ADR-0027）に沿い、サービス間は疎結合なイベントで連携する（選択肢 2 の同期結合を避ける）。
 - カタログを経由することで、Wiki 同期・検索索引化・API 参照が単一の `DocumentUpdated` 連鎖に
   集約され、責務とイベントフローが一貫する（選択肢 3 はカタログを迂回し整合が崩れる）。
 

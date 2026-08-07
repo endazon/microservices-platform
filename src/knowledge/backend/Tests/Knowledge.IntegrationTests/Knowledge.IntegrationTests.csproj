@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <!-- NFR / #580, IADR-0048 決定 1: TargetFramework / ImplicitUsings / Nullable は
+         src/Directory.Build.props が単一情報源。ここで上書きしない（値が同じでも、props を
+         上げたときにこの 1 件だけが取り残される）。 -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>

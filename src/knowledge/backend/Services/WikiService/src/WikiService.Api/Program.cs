@@ -59,7 +59,7 @@ builder.Services.AddPlatformObjectStorage(builder.Configuration);
 // （storage:// はオブジェクトストレージから実取得。IADR-0020 ゲートウェイ経由の ABAC 強制と整合）。
 builder.Services.AddHttpClient<IWikiContentReader, StorageMarkdownReader>();
 
-// ADR-0003: MassTransit — DocumentUpdated を購読し Wiki ページに同期
+// ADR-0003（Superseded by ADR-0027）: MassTransit — DocumentUpdated を購読し Wiki ページに同期
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
@@ -79,7 +79,7 @@ builder.Services.AddMassTransit(x =>
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
             ?? "amqp://guest:guest@rabbitmq:5672");
 
-        // ADR-0003: DocumentUpdated 購読による Wiki 同期（DocumentSyncConsumer）の一時的失敗を再試行し、
+        // ADR-0003（Superseded by ADR-0027）: DocumentUpdated 購読による Wiki 同期（DocumentSyncConsumer）の一時的失敗を再試行し、
         // 継続失敗はデッドレターへ退避して回復性を確保する（共通設定）。
         cfg.UsePlatformRetry();
 

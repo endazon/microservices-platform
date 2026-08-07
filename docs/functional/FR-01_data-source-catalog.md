@@ -21,7 +21,7 @@ plan_refs:
 
 - 機能要求（FR）: FR-01
 - ユースケース（UC）: UC-04
-- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ）
+- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027）
 - 実装 ADR: [IADR-0001](../adr/IADR-0001_document-service-owns-catalog.md)
 - 作業仕様書: [20260627_FR-01_data-source-catalog-pipeline](../specs/20260627_FR-01_data-source-catalog-pipeline.md)
 
@@ -31,7 +31,7 @@ plan_refs:
 文書を正規化（Markdown 化）してカタログに登録し、検索インデックスへ取り込む。
 利用者は権限内の全データソースを横断検索でき、結果に出典が付く。
 
-本機能はイベント駆動マイクロサービス（ADR-0003）で構成され、各サービスが疎結合に連携する。
+本機能はイベント駆動マイクロサービス（ADR-0003。Superseded by ADR-0027）で構成され、各サービスが疎結合に連携する。
 
 ## 機能詳細
 

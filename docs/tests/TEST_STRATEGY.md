@@ -68,9 +68,28 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
-| **ライブラリ標準（ADR-0030）** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)） |
+| **ライブラリ標準（ADR-0030）** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)）。**測定範囲＝参照の有無のみ。結合の深さは見ない**（下記「※ ライブラリ標準 ratchet が検出しないこと」） |
 | **CPM バージョン直書き禁止** | `src/`（AST を除く）と `templates/` の `.csproj` の `PackageReference`（`.props` / `.targets` は正当な版記述があるため対象外） | [`check-cpm-versions.js`](../../scripts/check-cpm-versions.js) | `Version` 属性 / `<Version>` 子要素 → **fail**（着手時点の違反 0 件を実測したため ratchet 無しで最初から fail）。`VersionOverride` は**許可**し使用箇所を warn ＋実行サマリへ（[#467](https://github.com/endazon/microservices-platform/issues/467)） |
 | **契約の後方互換（`Shared.Contracts`）** | `src/<unit>/backend/Shared/*.Contracts`（AST を除く）の public 型・メンバー・enum 値・`const` 値・属性 | [`check-contract-schema.js`](../../scripts/check-contract-schema.js) | 削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・既定値の無いメンバーの追加 → **破壊的・fail**。非破壊の追加でも [`contract-schema-baseline.json`](../../scripts/contract-schema-baseline.json) と差分があれば **fail**（`--update` で更新し差分を PR の diff に載せる）。破壊的変更は [`contract-breaking-allowlist.json`](../../scripts/contract-breaking-allowlist.json) の承認エントリで通す（[#465](https://github.com/endazon/microservices-platform/issues/465) / [IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)） |
+
+### ※ ライブラリ標準 ratchet が検出しないこと（#580）
+
+**`check-backend-libraries.js` は「不採用ライブラリを参照しているか」だけを見る検査であり、
+結合の深さ（そのライブラリの API・セマンティクスにどれだけ依存しているか）は見ない。**
+検査対象は `.csproj` / `.props` / `.targets` の `PackageReference` と `.cs` の `using` 宣言だけである。
+したがって **baseline 済みのプロジェクト内で結合が深まっても「新規混入 0 件」の緑のまま**になる。
+
+実例: `bc7bc8e`（#568）が
+`src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Composable/Steps/RawDocumentFetchedConsumer.cs:81`
+へ `context.GetRetryAttempt() + 1 >= MassTransitExtensions.MaxAttempts` を追加し、production の判定
+ロジックが MassTransit の再試行セマンティクスに依存するようになったが、`using MassTransit;` は既存・
+`PackageReference` は baseline 済みのため ratchet は動かない（[IADR-0137](../adr/IADR-0137_conversion-dead-letter-marker.md)
+が自己開示している）。
+
+**危ういのはこの緑を「結合が増えていない証拠」として読むことである**（ADR-0027 Wolverine への移行
+コストの見積りにこの緑を使ってはならない）。移行コストは baseline の**件数**ではなく、
+MassTransit の API を直接呼んでいる箇所を都度数えて評価する。
+この節は [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md) §結果「検出しないこと」と同じ作法である。
 
 ※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
 未マージ成果物への前方参照は live link ではなくバッククォート表記で書く

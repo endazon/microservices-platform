@@ -6,6 +6,7 @@ related_ids:
   - FR-01
   - FR-02
   - ADR-0003
+  - ADR-0027
   - SC-06
   - IADR-0136
 author: claude
@@ -14,6 +15,7 @@ updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md"
 ---
 
 # データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
@@ -24,7 +26,7 @@ plan_refs:
 
 - **関連機能要求(FR)**: FR-01（データソースの登録・接続・同期カタログ化）、FR-02（取り込み＝チャンク分割・埋め込み・ベクトルストア upsert）
 - **技術検討(06_technical)・ADR**:
-  - ADR-0003 メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携）
+  - ADR-0003 メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携。Superseded by ADR-0027）
   - 関連: ADR-0002 DB per Service（DataSourceService 専用 DB）、ADR-0009 ベクトルストア Qdrant、ADR-0013 埋め込みモデル
 - **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`、`../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md`
 
@@ -118,7 +120,7 @@ erDiagram
 
 - **DataSource**: PostgreSQL、EF Core（`DataSourceDbContext`）。ADR-0002 に従い DataSourceService 専用 DB。`Config` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み）。
 - **ベクトルチャンク**: Qdrant（ADR-0009）。IngestionService は RDB を持たず、埋め込み結果を Qdrant コレクションへ直接 upsert（ADR-0009）。
-- **越境**: 両者は別ストアのため、整合はイベント（ADR-0003 メッセージング）と決定的 ID で担保する。
+- **越境**: 両者は別ストアのため、整合はイベント（ADR-0003 メッセージング。Superseded by ADR-0027）と決定的 ID で担保する。
 
 ## マイグレーション・初期データ
 

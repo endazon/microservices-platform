@@ -7,7 +7,7 @@ using System.Net.Http.Json;
 
 namespace Knowledge.IntegrationTests.WikiService;
 
-// FR-13, ADR-0003: Wiki ページ CRUD + DocumentUpdated 同期 統合テスト
+// FR-13, ADR-0003（Superseded by ADR-0027）: Wiki ページ CRUD + DocumentUpdated 同期 統合テスト
 [Trait("Category", "Integration")]
 public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabbit)
     : IClassFixture<PostgresFixture>, IClassFixture<RabbitMqFixture>, IAsyncLifetime
