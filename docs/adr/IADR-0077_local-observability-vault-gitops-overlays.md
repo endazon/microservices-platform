@@ -26,7 +26,7 @@ plan_refs:
 
 - 関連する計画書 ID: **ADR-0006**（observability: OTel/Prometheus/Loki）、**NFR**（可観測性・認証情報秘匿・可用性）、
   基盤の [IADR-0066](IADR-0066_local-k8s-dev-environment.md)（経路B ローカル k8s dev 環境）
-- 対象 Issue: **ai-stock-trading#24**（ADR-0006 インフラ・デプロイ構成）の MSP 分。`Refs`。
+- 対象 Issue: **AST#24**（ADR-0006 インフラ・デプロイ構成）の MSP 分。`Refs`。
   AST 側は ai-stock-trading の PR（AST IADR-0094）で完結する。
 - 関連する実装仕様書: [20260719_issue-24-local-observability-vault-gitops](../specs/20260719_issue-24-local-observability-vault-gitops.md)
 

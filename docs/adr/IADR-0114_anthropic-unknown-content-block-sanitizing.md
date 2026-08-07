@@ -25,11 +25,11 @@ plan_refs:
 
 - 状態: Accepted
 - 日付: 2026-08-01
-- 決定者: claude（実装）／利用者（[ai-stock-trading#290](https://github.com/endazon/ai-stock-trading/issues/290) の調査依頼で選択肢 A/B/C を提示され **A** を採用）
+- 決定者: claude（実装）／利用者（[AST#290](https://github.com/endazon/ai-stock-trading/issues/290) の調査依頼で選択肢 A/B/C を提示され **A** を採用）
 
 ## 起点・関連
 
-- 起点 issue: [ai-stock-trading#290](https://github.com/endazon/ai-stock-trading/issues/290)。
+- 起点 issue: [AST#290](https://github.com/endazon/ai-stock-trading/issues/290)。
   同 issue の調査中に、**issue 本体とは別系統かつより重篤な**本欠陥を実測で確定させた。
   #290 が観測する rationale（`解析不能または見送り`）は本欠陥からは出ない（§結果「#290 との関係」）ため
   issue は閉じず、`Refs` で参照する。
@@ -160,5 +160,5 @@ SDK 既定の内部クライアントの設定に依存しないよう `Automati
 - 機能仕様: `docs/functional/FR-11_llm-egress-routing.md`（応答 content ブロックの未知型除去）
 - テスト仕様: `docs/tests/FR-11_llm-egress-routing.md`（T-24）
 - 残: #290 本体（AST 側）、AST の縮退ログ文言是正
-  （[ai-stock-trading#315](https://github.com/endazon/ai-stock-trading/issues/315)）、
+  （[AST#315](https://github.com/endazon/ai-stock-trading/issues/315)）、
   thinking 本文を活用する場合の SDK 更新検討、live 環境での実地確認。

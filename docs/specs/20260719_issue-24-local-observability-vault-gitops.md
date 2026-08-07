@@ -17,7 +17,7 @@ plan_refs:
 
 # 作業仕様書: ローカル（経路B）可観測性・Vault・GitOps の opt-in オーバーレイ（AST #24 の MSP 分）
 
-> AST [ai-stock-trading#24](https://github.com/endazon/ai-stock-trading/issues/24)（ADR-0006 インフラ・デプロイ構成）の
+> AST [AST#24](https://github.com/endazon/ai-stock-trading/issues/24)（ADR-0006 インフラ・デプロイ構成）の
 > ローカル（経路B）分のうち、**共有インフラの stand-up は MSP 側**で行う（AST 側は AST PR で完結）。
 > すべて **opt-in / 既定オフ**で、既存の経路B 起動（`deploy/local/infra`・`k8s-local-up.sh`）は**追加のみ・不変**。
 > `deploy/keycloak/*realm*.json`（realm-fix）・`docker-compose.yml` は**触らない**。**平文の秘密をコミットしない。**

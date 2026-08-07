@@ -37,7 +37,7 @@ related_specs:
   [14_knowledge-graph-graphrag](../../planning/projects/microservices-platform/06_technical/14_knowledge-graph-graphrag.md) §6「コミュニティ要約の粒度と費用の決定手順」（**本作業が満たすのは手順 1「実測する」**）／
   [07_abac-attribute-model](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md)（文書属性・利用者属性の正）
 - 実装 issue: [#456](https://github.com/endazon/microservices-platform/issues/456)
-- 環流済み: [project-planning#187](https://github.com/endazon/project-planning/issues/187)（CLOSED・回答あり）
+- 環流済み: [planning#187](https://github.com/endazon/project-planning/issues/187)（CLOSED・回答あり）
 
 ## 目的・背景
 

@@ -2,7 +2,7 @@
 
 > 起点: [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) /
 > 作業仕様書 [`docs/specs/20260713_issue-266_local-k8s-dev-env.md`](../../docs/specs/20260713_issue-266_local-k8s-dev-env.md) /
-> Issue #266（MSP）・ai-stock-trading#122（AST chart）・#121（K8s CronJob）
+> Issue #266（MSP）・AST#122（AST chart）・#121（K8s CronJob）
 
 本ディレクトリは **dev 専用**の資産である。本番像（[`deploy/helm`](../helm) 本体・
 [`deploy/docker-compose.yml`](../docker-compose.yml)・[`deploy/argocd`](../argocd)）は変更しない。
@@ -14,7 +14,7 @@
   ns platform-infra          postgres / rabbitmq / redis / keycloak / qdrant / otel-collector   ← deploy/local/infra
   ns microservices-platform  既存 Helm chart（values-local: mesh/NP/HPA off, registry=local）
                              + ExternalName エイリアス（素のサービス名 → platform-infra）
-  ns ai-stock-trading        AST chart（ai-stock-trading#122 で追加）
+  ns ai-stock-trading        AST chart（AST#122 で追加）
 ```
 
 MSP chart はインフラを**デプロイせず**素のサービス名（`postgres` 等）で参照するため、infra を
@@ -145,7 +145,7 @@ PERSIST=1 bash scripts/k8s-local-up.sh
 > この Secret（`deploy/bootstrap/secret-templates.example.yaml` 由来）を未参照であり、本番側の配線は別課題。
 
 AST 側の機密（`ANTHROPIC_API_KEY` / Finnhub / Discord / `Broker__Provider=paper`）は
-ai-stock-trading#122 の chart で同様に fail-safe 既定で注入する。
+AST#122 の chart で同様に fail-safe 既定で注入する。
 
 ## dev ログインユーザー（realm import・本番流用禁止）
 

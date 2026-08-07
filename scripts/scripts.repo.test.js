@@ -1943,4 +1943,64 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(abac.summarize(data), r);
     assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
+
+  // --- NFR / #507 / IADR-0140: 他リポジトリ issue 表記の機械検査 --------------------
+  //
+  // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
+  // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。
+  // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が
+  // 本 companion を読み込むので、そこから子プロセスで検査器を起動する。
+  // 検査器を消す・壊す・実データに違反を混ぜる、のいずれでもこのテストが落ちる。
+  {
+    const { spawnSync } = require('child_process');
+    const pathXrepo = require('path');
+    const script = pathXrepo.join(__dirname, 'check-cross-repo-refs.js');
+    const run = (args) => spawnSync(process.execPath, [script, ...args], { encoding: 'utf8' });
+
+    ok('check-cross-repo-refs --self-test が通る（正例・負例を対で固定）', () => {
+      const r = run(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+      assert.match(String(r.stdout), /all passed/);
+    });
+
+    ok('check-cross-repo-refs: 本リポの *.md が green（実データ）', () => {
+      const r = run([]);
+      assert.strictEqual(r.status, 0, `実データで違反が出ている:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 検出力の実地確認（変異試験の常設化）。フィクスチャを 1 枚置いて exit 1 になることを
+    // 確かめる。「実データが green」だけでは、検査器が何も見ていない状態と区別できない。
+    ok('check-cross-repo-refs: 違反を含む .md を渡すと exit 1（素通りの検出）', () => {
+      const fsX = require('fs');
+      const osX = require('os');
+      const dir = fsX.mkdtempSync(pathXrepo.join(osX.tmpdir(), 'crossrepo-repo-test-'));
+      try {
+        const ng = pathXrepo.join(dir, 'ng.md');
+        fsX.writeFileSync(ng, '# x\n\n環流は project-planning#50 と planning#206 / #207。\n');
+        const r = run([ng]);
+        assert.strictEqual(r.status, 1, `違反ファイルで exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /長い表記/);
+        assert.match(String(r.stderr), /列挙形の修飾漏れ/);
+
+        // 正しい表記へ直すと 0 に戻る（偽陽性を出していないことの対）。
+        const okFile = pathXrepo.join(dir, 'ok.md');
+        fsX.writeFileSync(okFile, '# x\n\n環流は planning#50 と planning#206 / planning#207。親は #454。\n');
+        assert.strictEqual(run([okFile]).status, 0, '正しい表記で落ちている（偽陽性）');
+      } finally {
+        fsX.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // 規約（.claude/rules/traceability.md）と検査器の対応。規約だけ書いても再発するので
+    // 「検査器がある」ことを規約側から辿れる状態を固定する（#507 の受け入れ基準）。
+    ok('traceability.md が短縮形の統一と検査器への導線を持つ', () => {
+      const fsX = require('fs');
+      const rules = fsX.readFileSync(
+        pathXrepo.join(__dirname, '..', '.claude', 'rules', 'traceability.md'),
+        'utf8'
+      );
+      assert.match(rules, /check-cross-repo-refs\.js/, '規約から検査器へ辿れない');
+      assert.match(rules, /列挙形でも各番号を修飾する/, '列挙形の規約が消えている');
+    });
+  }
 };

@@ -23,7 +23,7 @@ plan_refs:
 - 関連する計画書 ID: FR-14（構成変更のみで完結する疎結合ユニット）
 - 関連 ADR: [[IADR-0060]]（submodule 運用。本 IADR はその成果物 = 単独ビルド用フォールバック props の欠陥を是正する）
 - 関連仕様書: `docs/specs/20260712_issue-256_fix-standalone-props-condition.md`、`templates/unit-template/README.md`、`docs/how-to/adding-a-unit-submodule.md`
-- Issue: #256（修正案は ai-stock-trading#103 で実証済み）
+- Issue: #256（修正案は AST#103 で実証済み）
 
 ## コンテキストと課題
 

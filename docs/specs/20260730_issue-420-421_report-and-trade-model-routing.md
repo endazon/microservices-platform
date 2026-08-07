@@ -44,14 +44,14 @@ related_specs:
     （LLM ゲートウェイ・本文凍結）§用途別ルーティング。
   - [ADR-0025](../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md)
     （グローバル既定 Opus 5・Accepted）。本作業は `default` を変更しない。
-- 計画への環流: [project-planning#50](https://github.com/endazon/project-planning/issues/50)
+- 計画への環流: [planning#50](https://github.com/endazon/project-planning/issues/50)
   （AST/ADR-0011 の改定を新 ADR で起案する依頼）。**本作業に先行して起票済み**。
 - 要求: FR-11（LLM 送信可否の統制・用途別ルーティング）。
 - 設計: [[IADR-0022]]（ゲートウェイ経路・ZDR 除外）、[[IADR-0102]]（`Models` 未登録による無音失効の罠）、
   [[IADR-0106]]（同罠の集合ガード T-19）。
 - 本作業の実装判断は [[IADR-0112]]。
 - AST 側の対応（種別ごとの purpose 送出・上位方針の feed-forward）は
-  [ai-stock-trading#291](https://github.com/endazon/ai-stock-trading/issues/291) /
+  [AST#291](https://github.com/endazon/ai-stock-trading/issues/291) /
   [#293](https://github.com/endazon/ai-stock-trading/issues/293)。**別リポ・別 PR**。
 
 ## 背景と問題（原因の確定）
@@ -179,7 +179,7 @@ report-service の既定 `LlmGateway:Confidentiality` は `internal`（ZDR 要�
 - [x] `confidential` × `report-monthly` が `claude-fable-5` を除外し `DefaultModel` へ落ちることを
       テストで固定した（無音失効の明示化）
 - [x] AST/ADR-0011 の手続き（計画への環流・Stage 0 再検証の要否判断）を [[IADR-0112]] に記録した
-- [x] Stage 0 再検証のゲートを追跡可能なブロッカー（AST#296）として実体化し、AST#217 / #208 から参照させた
+- [x] Stage 0 再検証のゲートを追跡可能なブロッカー（AST#296）として実体化し、AST#217 / AST#208 から参照させた
 - [x] 計画側 ADR が非承認だった場合のロールバック条件を追跡可能な形（[#423](https://github.com/endazon/microservices-platform/issues/423)）にした
 - [x] 取引判断のバージョン固定原則（`default` に自動追随しない）が維持されている
 
@@ -190,7 +190,7 @@ Stage 0 再検証を要求している。両立の手順を次のとおり定め
 
 1. **計画への環流を先行させる。** ADR は Accepted 後に本文を実質変更しない規約
    （`planning/.claude/rules/adr.md`）に従い、**ADR-0011 を書き換えず新 ADR を起案**する依頼を
-   [project-planning#50](https://github.com/endazon/project-planning/issues/50) へ起票済み。
+   [planning#50](https://github.com/endazon/project-planning/issues/50) へ起票済み。
    起案はまだ Accepted ではない＝実装は「起案済み・未承認」で先行する。承認可否の確認と、
    非承認時に `claude-opus-4-8` へ戻す動作は [#423](https://github.com/endazon/microservices-platform/issues/423) で追跡する（IADR 本文は運用を強制しないため）。
 2. **Stage 0 再検証は「要る」。ただし実弾解禁の必須ゲートとして課す。**
@@ -200,7 +200,7 @@ Stage 0 再検証を要求している。両立の手順を次のとおり定め
    - Stage 0 再検証は**現時点で実行不能**である（バックテストの実過去データ源が未接続。AST#208）。
      先行条件とすると利用者の仕様指定が無期限に凍結される。
    - よって設定は改定し、`claude-sonnet-5` での Stage 0 再検証を**実弾解禁の必須ゲート**として課す。
-     このゲートは IADR の記述だけでは運用を強制しないため、[ai-stock-trading#296](https://github.com/endazon/ai-stock-trading/issues/296)
+     このゲートは IADR の記述だけでは運用を強制しないため、[AST#296](https://github.com/endazon/ai-stock-trading/issues/296)
      を「実弾解禁ブロッカー」として起票し、実弾解禁の設計 issue（AST#217）と前提 issue（AST#208）の
      双方から参照させた。
 3. **バージョン固定の原則は維持する。** 改定するのはピンの値であって、ピンする仕組みではない。

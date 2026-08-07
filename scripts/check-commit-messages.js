@@ -23,6 +23,12 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { warn, notice } = require('./lib/ci-annotate.js');
+// 【固有デルタ】本リポジトリにしか存在しない検査器（IADR-0115 の固有デルタ種 3）。
+// NFR / #507 / IADR-0140: 他リポジトリ issue 番号の修飾（短縮形への統一・列挙形の修飾漏れ）を
+// **コミット件名 / 本文 / PR タイトル**でも検査する。`.github/workflows/` は編集できないため、
+// 既にワークフローから呼ばれている本スクリプトへ相乗りするのが CI へ載せる唯一の経路である。
+// PR #561 は件名・本文・PR タイトルの 3 面すべてで列挙形の修飾漏れを犯し、書式検査を素通りした。
+const { findViolations: findCrossRepoRefViolations } = require('./check-cross-repo-refs.js');
 
 // 規約導入前の既存コミットの恒久適用除外リスト（force push 禁止のため件名を書き換えられない）。
 const ALLOWLIST_PATH = path.join(__dirname, 'commit-allowlist.json');
@@ -101,9 +107,11 @@ function resolveRange(explicit) {
   return 'HEAD';
 }
 
-/** 範囲のコミットを {hash, subject, author} で返す（マージコミットは除外）。 */
+/** 範囲のコミットを {hash, subject, author, email, body} で返す（マージコミットは除外）。 */
 function collectCommits(range) {
-  const fmt = `%H${US}%s${US}%an${US}%ae`;
+  // body（%b）は最後に置く。複数行を含むが、レコード境界は RS なのでフィールド分割は壊れない。
+  // #507: 列挙形の修飾漏れは**本文**にも出る（PR #561 の実例）ため件名だけでは足りない。
+  const fmt = `%H${US}%s${US}%an${US}%ae${US}%b`;
   const raw = tryGit(`log ${range} --no-merges --pretty=format:${fmt}${RS}`);
   if (raw === null) {
     process.stderr.write(`検査範囲を git log できなかった: ${range}\n`);
@@ -115,8 +123,8 @@ function collectCommits(range) {
     .map((r) => r.replace(/^\n/, '').trim())
     .filter(Boolean)
     .map((line) => {
-      const [hash, subject = '', author = '', email = ''] = line.split(US);
-      return { hash, subject, author, email };
+      const [hash, subject = '', author = '', email = '', body = ''] = line.split(US);
+      return { hash, subject, author, email, body };
     });
 }
 
@@ -294,6 +302,24 @@ function validateIdExistence(subject, iadrIds, planAdrIds) {
   return reasons;
 }
 
+/**
+ * 他リポジトリ issue 番号の修飾違反（#507 / IADR-0140）を違反理由の配列で返す。
+ * `validateSubject`（書式の単一情報源）とは**別関数**に保つ。書式規約と参照表記の規約は
+ * 別物であり、allowlist の「規約に準拠した件名を無意味に除外していない」判定が
+ * 表記の是非で揺れないようにするためである。
+ *
+ * コミットメッセージは Markdown ではない（GitHub はバッククォートをコードスパンとして
+ * 描画せず、`#NNN` の自動リンクは効く）ため、コードスパン除外を**しない**モードで見る。
+ */
+function crossRepoRefReasons(text, where) {
+  const s = String(text == null ? '' : text);
+  if (!s.trim()) return [];
+  return findCrossRepoRefViolations(s, { markdown: false }).map((v) => {
+    const label = v.kind === 'long' ? '他リポジトリ名の長い表記' : '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）';
+    return `${where}の ${label}: "${v.matched}" → "${v.suggestion}"（.claude/rules/traceability.md）`;
+  });
+}
+
 /** 件名を検証し、違反理由の配列を返す（空なら合格）。 */
 function validateSubject(subject) {
   const reasons = [];
@@ -362,9 +388,11 @@ function checkSingleTitle(title, author) {
     return 0;
   }
 
-  const reasons = validateSubject(subject).concat(
-    validateIdExistence(subject, loadExistingIadrIds(), loadExistingPlanAdrIds())
-  );
+  const reasons = validateSubject(subject)
+    .concat(validateIdExistence(subject, loadExistingIadrIds(), loadExistingPlanAdrIds()))
+    // #507: PR タイトルはスカッシュ後件名として develop に恒久的に残る。裸の #NNN を含む
+    // 列挙が入ると事後修正できない（force push 禁止）ため、ここで止める。
+    .concat(crossRepoRefReasons(subject, 'PR タイトル'));
   if (reasons.length) {
     process.stderr.write('\n✗ PR タイトルが規約違反:\n');
     process.stderr.write(`  ${subject}\n`);
@@ -446,7 +474,12 @@ function main() {
       skipped++;
       continue;
     }
-    const reasons = validateSubject(c.subject).concat(validateIdExistence(c.subject, iadrIds, planAdrIds));
+    const reasons = validateSubject(c.subject)
+      .concat(validateIdExistence(c.subject, iadrIds, planAdrIds))
+      // #507: 他リポジトリ issue 番号の修飾は件名だけでなく**本文**にも規約が及ぶ
+      // （`.claude/rules/traceability.md`「適用箇所: … コミット件名 / footer」）。
+      .concat(crossRepoRefReasons(c.subject, '件名'))
+      .concat(crossRepoRefReasons(c.body, '本文'));
     if (reasons.length) {
       violations.push({ short, subject: c.subject, reasons });
     } else if (args.verbose) {
@@ -478,6 +511,7 @@ if (require.main === module) {
 module.exports = {
   validateSubject,
   validateIdExistence,
+  crossRepoRefReasons,
   loadExistingIadrIds,
   loadExistingPlanAdrIds,
   checkSingleTitle,

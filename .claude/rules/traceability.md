@@ -94,6 +94,18 @@ submodule で取り込む等）、**計画 ID はプロジェクトごとに独�
   箇所に限りフルパス形式（`endazon/ai-stock-trading#NNN`）を用いてよい。
   **列挙形でも各番号を修飾する**（先頭だけの修飾は後続の番号を本リポジトリへ誤リンクさせる）。
   誤: `planning#146 / #149 / #160`。正: `planning#146 / planning#149 / planning#160`。
+  - **［#507 の裁定］Markdown の明示リンクもテキストは短縮形へ揃える**
+    （`[planning#197](https://github.com/endazon/project-planning/issues/197)`）。URL 側が自動リンクを
+    担うのでテキストを短縮形にしても機能は落ちず、表記を 1 つに保てる。**`project-planning#NNN` /
+    `ai-stock-trading#NNN`（リポジトリ名の裸書き）は短縮形でもフルパス形式でもない第 3 の表記であり、
+    使わない。**
+  - **機械検査**: `scripts/check-cross-repo-refs.js`（`--self-test` あり）が上記 2 型
+    （長い表記・列挙形の修飾漏れ）を検出する。対象は追跡下の `*.md` と、
+    `scripts/check-commit-messages.js` 経由の**コミット件名 / 本文 / PR タイトル**。
+    規約に書くだけでは再発する（PR #561 は**本ファイルを編集する PR でありながら**同じ違反を犯し、
+    書式しか見ない検査を green で通過した）。[[IADR-0140]]。
+  - **意図的に誤例を書くときはインラインコードかコードフェンスに入れる**（上の「誤:」の行がその形）。
+    GitHub はコード中で自動リンクしないため実害が無く、検査器も対象外にする。
 
 ## 残す箇所と書式
 
