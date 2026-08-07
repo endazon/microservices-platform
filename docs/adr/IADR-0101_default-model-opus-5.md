@@ -9,7 +9,7 @@ related_ids:
   - IADR-0022
 author: claude
 created: 2026-07-24
-updated: 2026-07-24
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Claude Opus 5 へ改定・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
@@ -113,6 +113,19 @@ plan_refs:
      エラーも出ない）、報告書生成は途中で切れた文章が成果物になる。`report-narrative` は
      `AST/ADR-0011` §決定「報告書生成の LLM は別扱い。基盤の既定モデルを用いてよい」により
      **仕様上 `default` 追随が正しい**ため、取引用途をピン留めしても本件は解消しない。
+
+     > **［2026-08-07 追記 / #570］項番 5 は AST 側で消化済みであり、上記 2 パスも実在しない。**
+     > submodule pin `91d52c2` を実読したところ、2 箇所とも `MaxTokens: 4096`（コメントに
+     > `IADR-0101, MSP/ADR-0025` を明記）へ引き上げ済みだった。
+     > **引き上げ自体は #564 の pin bump より前に済んでいる**——旧 pin `655e2ed` の時点で既に
+     > `4096` であり、**#564 で変わったのはパスだけである**（本追記は改名の文脈に置かれているが、
+     > 消化と改名は別の出来事なので混同しないこと）。またホストプロジェクトの
+     > **`*.Worker` → `*.Api` 一斉改名（AST/IADR-0128）**に伴い、両アダプタは技術詳細として
+     > `*.Infrastructure` へ移っている（`TradeDecisionService.Infrastructure/Composable/Adapters/HttpLlmCompletionClient.cs` /
+     > `ReportService.Infrastructure/Foundation/Adapters/HttpReportNarrativeDrafter.cs`）。
+     > **本文は 2026-07-24 時点の記録としてそのまま残す。** 本追記は #570（改名への deploy 面の追随）で
+     > 母集合を数え直した際の副産物であり、パスの陳腐化と消化済みの事実のみを記録する
+     > （[作業仕様書](../specs/20260807_issue-570_ast-project-rename.md)）。
 
 ## 関連
 
