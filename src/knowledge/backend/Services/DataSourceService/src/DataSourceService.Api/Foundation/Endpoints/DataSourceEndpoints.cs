@@ -21,23 +21,30 @@ public static class DataSourceEndpoints
 
         // IADR-0053, claude-review #222: 応答では Config 内の秘密（apiToken 等）をマスクする。
         // Vault 移行までの暫定措置。admin/operator であっても API 応答で平文の資格情報を露出させない。
-        g.MapGet("/", async (DataSourceDbContext db) =>
-            Results.Ok((await db.DataSources.ToListAsync()).Select(ToResponse)));
-
-        g.MapGet("/{id:guid}", async (Guid id, DataSourceDbContext db) =>
+        //
+        // SC-06（planning#200 / 裁定 Q15）, IADR-0136: 次回同期は**全ソース同値**である。一覧では
+        // SyncSchedule を**1 回だけ**読んでその値を全行へ配る（行ごとに読むと境界を跨いだ瞬間に
+        // 列内で値が割れ、「ソースごとに時刻が違う」という持たないはずの意味を生む）。
+        g.MapGet("/", async (DataSourceDbContext db, SyncSchedule schedule) =>
         {
-            var ds = await db.DataSources.FindAsync(id);
-            return ds is null ? Results.NotFound() : Results.Ok(ToResponse(ds));
+            var nextSyncAt = schedule.NextRunAt;
+            return Results.Ok((await db.DataSources.ToListAsync()).Select(ds => ToResponse(ds, nextSyncAt)));
         });
 
-        g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db) =>
+        g.MapGet("/{id:guid}", async (Guid id, DataSourceDbContext db, SyncSchedule schedule) =>
+        {
+            var ds = await db.DataSources.FindAsync(id);
+            return ds is null ? Results.NotFound() : Results.Ok(ToResponse(ds, schedule.NextRunAt));
+        });
+
+        g.MapPost("/", async (CreateDataSourceRequest req, DataSourceDbContext db, SyncSchedule schedule) =>
         {
             // FR-01, FR-05: 既定 ABAC 属性（機密区分）を伴ってデータソースを登録する。
             var ds = DataSource.Create(req.Name, req.SourceType, req.ConnectionUri,
                 req.Config, req.DefaultAttributes);
             db.DataSources.Add(ds);
             await db.SaveChangesAsync();
-            return Results.Created($"/datasources/{ds.Id}", ToResponse(ds));
+            return Results.Created($"/datasources/{ds.Id}", ToResponse(ds, schedule.NextRunAt));
         });
 
         // FR-01, UC-04: 手動同期トリガー（IADR-0051）。実コネクタ経由で原本を取得・格納し
@@ -78,7 +85,8 @@ public static class DataSourceEndpoints
 
     // IADR-0053, claude-review #222: API 応答用の投影。エンティティをそのまま返すと Config 内の
     // 秘密（apiToken 等）が平文露出するため、秘密キーの値をマスクして返す（Vault 移行までの暫定）。
-    private static object ToResponse(DataSource ds) => new
+    // SC-06: nextSyncAt はエンティティに持たない導出値（共通間隔の次回実行時刻）であり、呼び出し側が渡す。
+    private static object ToResponse(DataSource ds, DateTimeOffset? nextSyncAt) => new
     {
         ds.Id,
         ds.Name,
@@ -89,6 +97,7 @@ public static class DataSourceEndpoints
         Config = RedactSecrets(ds.Config),
         ds.DefaultAttributes,
         ds.CreatedAt,
+        NextSyncAt = nextSyncAt,
     };
 
     // 秘密とみなすキー名の部分一致マーカー（大文字小文字無視）。spaceKey/listPath/rootPath 等は誤マスクしない。

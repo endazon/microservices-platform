@@ -478,6 +478,12 @@
             "required": true,
             "position": 1
           },
+          "NextSyncAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 9
+          },
           "SourceType": {
             "source": "positional",
             "type": "string",

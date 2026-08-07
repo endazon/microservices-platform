@@ -6,9 +6,11 @@ related_ids:
   - FR-01
   - FR-02
   - ADR-0003
+  - SC-06
+  - IADR-0136
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-06
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
@@ -46,6 +48,11 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | LastSyncedAt | DateTimeOffset? (timestamptz) | - | NULL 可（未同期）。`RecordSync()` で更新 | 最終同期時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
+
+> **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（SC-06 / #538 / [[IADR-0136]]）。
+> 定期同期は全ソース共通の間隔で回るため、次回実行時刻は**ワーカーの位相から導出できる値**であり、
+> 状態として持たない（永続化するとプロセス再起動のたびに実体とずれる）。全ソース同値で、
+> 定期同期が無効なときは `null` を返す。したがって本テーブルにマイグレーションは生じない。
 
 ### ベクトルチャンク（Qdrant コレクション `knowledge_chunks`、IngestionService）
 

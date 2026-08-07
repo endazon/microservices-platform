@@ -64,6 +64,10 @@ builder.Services.AddSingleton<IDataSourceConnector, SaaSConnector>();        // 
 builder.Services.AddSingleton<IDataSourceConnector, DatabaseConnector>();    // 優先4: 業務DB（IADR-0055）
 builder.Services.AddSingleton<ConnectorRegistry>();
 builder.Services.AddSingleton<SyncFailureTracker>();
+// SC-06（planning#200 / 裁定 Q15）, IADR-0136: 「次回同期」は共通間隔の次回実行時刻（全ソース同値）である。
+// ワーカーが起動時に位相を記録し、/datasources が読む。時計は BCL の TimeProvider（テストで固定できる）。
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<SyncSchedule>();
 builder.Services.AddScoped<DataSourceSyncService>();
 // 定期同期（既定無効。DataSourceSync:Enabled=true で有効化）。
 builder.Services.Configure<DataSourceSyncOptions>(

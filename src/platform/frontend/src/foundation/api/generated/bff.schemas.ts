@@ -268,6 +268,8 @@ export type DataSourceDtoDefaultAttributes = {[key: string]: string};
  * FR-01, UC-04, SC-06: データソース 1 件（`Knowledge.Contracts/Dtos/DataSourceDto.cs`）。
  * IADR-0053: `config` の**秘密キー（token / password / secret / credential を含むキー）は
  * 後段が `***` へマスク済み**である。SPA から秘密を埋め込むことはしない。
+ * SC-06（planning#200 / 裁定 Q15）: `nextSyncAt` は**共通間隔の次回実行時刻**であり
+ * **全ソースで同じ値**になる。ソース別スケジュールは持たない（IADR-0136）。
  */
 export interface DataSourceDto {
   id: string;
@@ -283,6 +285,11 @@ export interface DataSourceDto {
   /** FR-05: 原本へ付与する既定 ABAC 文書属性（`confidentiality` 等） */
   defaultAttributes: DataSourceDtoDefaultAttributes;
   createdAt: string;
+  /**
+     * SC-06: 定期同期（全ソース共通の間隔）の**次回実行時刻**。**全ソースで同じ値**を返す。
+     * 定期同期が無効なとき（`DataSourceSync:Enabled=false`。compose / dev の既定）は `null`。
+     */
+  nextSyncAt?: string | null;
 }
 
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
