@@ -22,19 +22,19 @@ export const getBffDataSourceListResponseMock = (): DataSourceDto[] => (Array.fr
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, defaultAttributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
-      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z'})))
+      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', nextSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null])})))
 
 export const getBffDataSourceCreateResponseMock = (overrideResponse: Partial<Extract<DataSourceDto, object>> = {}): DataSourceDto => ({id: faker.string.uuid(), name: faker.string.alpha({length: {min: 10, max: 20}}), sourceType: faker.string.alpha({length: {min: 10, max: 20}}), connectionUri: faker.string.alpha({length: {min: 10, max: 20}}), status: faker.string.alpha({length: {min: 10, max: 20}}), lastSyncedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), config: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, defaultAttributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
-      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', nextSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), ...overrideResponse})
 
 export const getBffDataSourceGetResponseMock = (overrideResponse: Partial<Extract<DataSourceDto, object>> = {}): DataSourceDto => ({id: faker.string.uuid(), name: faker.string.alpha({length: {min: 10, max: 20}}), sourceType: faker.string.alpha({length: {min: 10, max: 20}}), connectionUri: faker.string.alpha({length: {min: 10, max: 20}}), status: faker.string.alpha({length: {min: 10, max: 20}}), lastSyncedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), config: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, defaultAttributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
-      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+      }, createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', nextSyncAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null]), ...overrideResponse})
 
 export const getBffDataSourceSyncResponseMock = (overrideResponse: Partial<Extract<DataSourceSyncResultDto, object>> = {}): DataSourceSyncResultDto => ({fetched: faker.number.int(), failed: faker.number.int(), connectorAvailable: faker.datatype.boolean(), message: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), ...overrideResponse})
 

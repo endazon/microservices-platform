@@ -59,6 +59,8 @@ public sealed class DataSourceSyncHostedServiceTests : IDisposable
         new(
             factory.Services.GetRequiredService<IServiceScopeFactory>(),
             coordinator,
+            // SC-06: 次回同期の位相（本テストの対象はリースのゲートなので、記録先を渡すだけ）。
+            factory.Services.GetRequiredService<SyncSchedule>(),
             Options.Create(new DataSourceSyncOptions { Enabled = true }),
             NullLogger<DataSourceSyncHostedService>.Instance);
 
