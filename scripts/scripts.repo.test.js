@@ -1943,4 +1943,89 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(abac.summarize(data), r);
     assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
+
+  // --- Issue #580: ADR 索引の行の「形」を固定する ------------------------------------
+  //
+  // ここに置く理由: `.github/workflows/` は GitHub App 権限では編集できない。ci.yml の
+  // scripts-tests ジョブ（REQUIRE_REPO_TESTS=1 → 本 companion）が CI ゲートになる
+  // （check-i18n-catalogs / check-test-spec-coverage の実データ検査と同じ結線・#507 の経路）。
+  //
+  // **なぜ必要か（#580 のクロス監査 A-1 で実測）**: #580 は索引 140 行の ID セルを本体への
+  // リンクにして「本体を改名・削除すると索引が壊れて CI が落ちる」経路を作った。しかし
+  // `check-doc-links.js` は **「あるリンクが壊れているか」しか見ず「リンクが無いこと」を
+  // 検出しない**。実際、#580 の作業中に develop へ入った #582 は新規 `IADR-0139` 行を
+  // **リンク無しのプレーンテキストで**追加しており、不変条件は無検査のまま破れていた。
+  // よって「全 ID セルがリンクである」ことを機械で固定する。
+  //
+  // **検査するのは行の「形」だけである**（#581 への申し送り）:
+  //   - 見る:   ID セルがリンク形式か／リンク先ファイル名が当該 ID で始まるか／行末の閉じ `|`
+  //   - 見ない: リンク先の実在（`check-doc-links.js` の担当。二重に持たない）
+  //             状態列と本体 `status:` の突合・採番の連続性・索引行の欠落（**#581 の担当**）
+  //   #581 が採番検査を入れるときは、本ブロックを #581 側へ統合して**ここから削除する**
+  //   （同じ不変条件の検査を 2 本残さない）。
+
+  {
+    // 索引 1 ファイル分の Markdown を受け取り、違反を返す純関数。負例を実データを汚さずに試せる。
+    const inspectAdrIndex = (md) => {
+      const violations = [];
+      md.split('\n').forEach((line, i) => {
+        if (!/^\|\s*\[?IADR-\d{4}/.test(line)) return; // 索引の行だけを見る
+        const n = i + 1;
+        const linked = line.match(/^\|\s*\[(IADR-\d{4})\]\(\.\/([^)]+)\)\s*\|/);
+        if (!linked) {
+          violations.push({ line: n, kind: 'not-linked' });
+        } else if (!linked[2].startsWith(linked[1] + '_')) {
+          violations.push({ line: n, kind: 'id-file-mismatch' });
+        }
+        if (!/\|\s*$/.test(line)) violations.push({ line: n, kind: 'no-trailing-pipe' });
+      });
+      return violations;
+    };
+
+    const GOOD = [
+      '| IADR | タイトル | 状態 |',
+      '| --- | --- | --- |',
+      '| [IADR-0000](./IADR-0000_a.md) | あ | Accepted |',
+      '| [IADR-0001](./IADR-0001_b.md) | い | Superseded by IADR-0002 |',
+    ].join('\n');
+
+    ok('索引: 正常な索引は違反 0（正例。検査が何にでも赤を出すわけではないこと）', () => {
+      assert.deepStrictEqual(inspectAdrIndex(GOOD), []);
+      // 索引行以外（見出し・区切り・ブロック引用）を誤検出しない。
+      assert.deepStrictEqual(
+        inspectAdrIndex('## 一覧\n> 採番に関する注記: IADR-0139 を採った\nただの本文 IADR-0001'),
+        [],
+      );
+    });
+
+    ok('索引: リンクを 1 本外すと not-linked を検出する（変異試験）', () => {
+      const mutated = GOOD.replace('| [IADR-0001](./IADR-0001_b.md) |', '| IADR-0001 |');
+      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 4, kind: 'not-linked' }]);
+    });
+
+    ok('索引: 閉じパイプを 1 つ外すと no-trailing-pipe を検出する（変異試験）', () => {
+      // #580 着手時の実測: IADR-0082 の行が実際にこの状態だった（GFM は描画するが厳密解析は落ちる）。
+      const mutated = GOOD.replace('| あ | Accepted |', '| あ | Accepted');
+      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 3, kind: 'no-trailing-pipe' }]);
+    });
+
+    ok('索引: ID とリンク先ファイル名の食い違いを検出する（実在検査では捕まらない型）', () => {
+      const mutated = GOOD.replace('](./IADR-0001_b.md)', '](./IADR-0000_a.md)');
+      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 4, kind: 'id-file-mismatch' }]);
+    });
+
+    ok('索引: 本リポの docs/adr/README.md が全行リンク形式である（実データ）', () => {
+      const p = path.join(__dirname, '..', 'docs', 'adr', 'README.md');
+      const md = fs.readFileSync(p, 'utf8');
+      const rows = md.split('\n').filter((l) => /^\|\s*\[?IADR-\d{4}/.test(l));
+      // 走査 0 件で緑になる fail-open を塞ぐ（表の書式が変わったら気づけるように下限を置く）。
+      assert.ok(rows.length >= 140, `索引行が ${rows.length} 件しか取れていない（走査が壊れている）`);
+      const v = inspectAdrIndex(md);
+      assert.deepStrictEqual(
+        v,
+        [],
+        `索引の行の形が崩れている:\n${v.map((x) => `  README.md:${x.line} ${x.kind}`).join('\n')}`,
+      );
+    });
+  }
 };

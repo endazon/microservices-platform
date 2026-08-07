@@ -17,7 +17,7 @@ related_ids:
   - IADR-0132
 author: Claude
 created: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md"
@@ -34,7 +34,7 @@ plan_refs:
 - 関連する計画書 ID: **FR-12** ／ **UC-06** ／ **SC-07**
   （[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) `:324`
   「`ConversionJobDto` へ**デッドレター標識（または失敗種別）と試行上限**を加える」・**2026-08-05 確定**〔質問票 第12回 Q13〕）
-  ／ ADR-0003（再試行・デッドレターで回復性を確保する。Superseded by ADR-0027）／ ADR-0012（変換パイプラインの失敗時縮退方針）
+  ／ ADR-0003（再試行・デッドレターで回復性を確保する。Superseded by ADR-0027・注記は #580）／ ADR-0012（変換パイプラインの失敗時縮退方針）
 - 関連 IADR: [[IADR-0042]] / [[IADR-0043]]（変換ジョブ読み取りモデルとその永続化。本 IADR はこれを拡張する）／
   [[IADR-0127]] 決定 2（**契約から導出できる値だけで状態を表示する**。本 IADR がその前提を 1 件解消する）／
   [[IADR-0122]] 決定 2（契約の後方互換の判定）／[[IADR-0131]] 決定 1・決定 5 ／[[IADR-0132]] 決定 1・決定 2

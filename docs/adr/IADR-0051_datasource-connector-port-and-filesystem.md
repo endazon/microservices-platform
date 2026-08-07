@@ -10,7 +10,7 @@ related_ids:
   - IADR-0019
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md (fixed)"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01)"
@@ -28,7 +28,7 @@ plan_refs:
 - 関連する計画書 ID: FR-01（データソース登録・同期・カタログ化。Must）／UC-04（定期/手動同期・失敗再試行/アラート）
 - 技術検討: `06_technical/09_datasource-connectors.md`（fixed）— 共通 IF `Discover/Fetch/Watch|Poll/Map`、優先順位
   ファイルサーバー→Wiki→SaaS→業務DB、増分同期、RawFetched でパイプラインへ送出
-- 関連 ADR: ADR-0003（MassTransit。Superseded by ADR-0027）／[[IADR-0019]]（データソース既定属性のフェイルセーフ）
+- 関連 ADR: ADR-0003（MassTransit。Superseded by ADR-0027・注記は #580）／[[IADR-0019]]（データソース既定属性のフェイルセーフ）
 - 関連仕様書: `docs/specs/20260710_issue-195_filesystem-connector-and-sync.md`、`docs/functional/FR-01`、`docs/tests/FR-01`
 - Issue: #195（本体）／子 issue: Wiki/SaaS/業務DB コネクタ
 

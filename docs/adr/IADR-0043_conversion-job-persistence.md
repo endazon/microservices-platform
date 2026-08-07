@@ -12,7 +12,7 @@ related_ids:
   - IADR-0042
 author: claude
 created: 2026-07-09
-updated: 2026-07-09
+updated: 2026-08-07
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -27,7 +27,7 @@ plan_refs:
 ## 起点・関連
 
 - 関連する計画書 ID: SC-07（変換ジョブ）／ UC-06 ／ FR-12（文書正規化）
-- 関連 ADR: [[IADR-0042]]（変換ジョブ読み取りモデル・MVP インメモリ）／ [[ADR-0002]]（サービスごとの DB）／ [[ADR-0003]]（MassTransit。Superseded by ADR-0027）／ [[IADR-0029]]（ワーカーの最小 HTTP サーフェス）
+- 関連 ADR: [[IADR-0042]]（変換ジョブ読み取りモデル・MVP インメモリ）／ [[ADR-0002]]（サービスごとの DB）／ [[ADR-0003]]（MassTransit。Superseded by ADR-0027・注記は #580）／ [[IADR-0029]]（ワーカーの最小 HTTP サーフェス）
 - 関連仕様書: `docs/data/conversion-job.md` / `docs/screens/SC-07_conversion-jobs.md`
 - Issue: #173（[[IADR-0042]] フォローアップ）
 
