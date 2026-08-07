@@ -88,7 +88,7 @@ public class BffMonitorEndpointTests : IClassFixture<BffTestFactory>
     [Fact]
     public async Task PostWatchlist_WhenValidationFails_Passes400Through()
     {
-        // 重複追加・空・未定義 market は後段 400（AST #191）。破壊的な自動再試行はしない（そのまま透過）。
+        // 重複追加・空・未定義 market は後段 400（AST#191）。破壊的な自動再試行はしない（そのまま透過）。
         _factory.MonitorStatusCode = HttpStatusCode.BadRequest;
         var resp = await _factory.CreateClient()
             .PostAsync("/bff/monitor/watchlist", new StringContent("{}", Encoding.UTF8, "application/json"));

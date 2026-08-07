@@ -1,6 +1,6 @@
 # 経路B ローカル可観測性スタック（opt-in）
 
-> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST #24）
+> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
 
 経路B（k8s）で Prometheus / Loki / Tempo / Grafana を `platform-infra` に立てる **opt-in オーバーレイ**。
 既定（`deploy/local/infra` のみ）は otel-collector が **debug exporter のみ**＝外部送信なし（fail-safe）。

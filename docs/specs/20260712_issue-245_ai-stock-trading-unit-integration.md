@@ -36,11 +36,11 @@ related_specs:
 [[IADR-0060]] は追加可変機能ユニットの submodule 運用（テンプレート・CI 自動発見・単独ビルド規約・
 バージョン固定）を整備したが、**サンプルユニット（別リポジトリ）での end-to-end 通し検証**は本リポジトリ
 内で完結できないため #230 → #245 に繰延されていた。本作業は、実ユニット `endazon/ai-stock-trading`
-（既にユニットレイアウト済み・AST PR #103）をサンプルユニットとして `src/ai-stock-trading` に submodule
+（既にユニットレイアウト済み・PR AST#103）をサンプルユニットとして `src/ai-stock-trading` に submodule
 追加し、**ビルド／単体テスト／フォーマット**が submodule 配置状態で成立することを検証・記録する。
 
 実行時（`docker compose` 起動・実 RabbitMQ/PostgreSQL/Keycloak 疎通・実 API）はスコープ外とし、
-ai-stock-trading 側の後続 issue（compose 整備 = ai-stock-trading#107、実 E2E = #82）へ分離する。
+ai-stock-trading 側の後続 issue（compose 整備 = AST#107、実 E2E = #82）へ分離する。
 
 ## スコープ
 
@@ -53,8 +53,8 @@ ai-stock-trading 側の後続 issue（compose 整備 = ai-stock-trading#107、�
 - 作業仕様書（本書）と [[IADR-0065]] の記録。
 
 **含まない（後続へ分離）**
-- ai-stock-trading の実行環境（docker-compose / appsettings / .env.example）整備 → ai-stock-trading#107。
-- 実コンテナ/実 API による統合 E2E → ai-stock-trading#82。
+- ai-stock-trading の実行環境（docker-compose / appsettings / .env.example）整備 → AST#107。
+- 実コンテナ/実 API による統合 E2E → AST#82。
 - Renovate/Dependabot の `git-submodules` 自動更新の有効化（メンテナ判断・IADR-0060 記載どおり任意）。
 
 ## 実施内容と検証結果（ローカル: Windows / .NET SDK 10.0.301）
@@ -93,7 +93,7 @@ ai-stock-trading 側の後続 issue（compose 整備 = ai-stock-trading#107、�
 - [x] `ci.yml` の `lint` / `build-and-test` が submodule を取得し、CI 上で AST を含めて緑（PR #258 の CI で確認済み。
   `build-and-test` 3m18s / `lint` 1m30s pass、取得ステップが `src/ai-stock-trading` のみ clone）。加えて
   `unit-dependencies` でも AST を取得し依存方向を継続検査する。
-- [x] 実行環境（compose）整備を ai-stock-trading#107 に前提 issue として分離、#82 と相互参照。
+- [x] 実行環境（compose）整備を AST#107 に前提 issue として分離、#82 と相互参照。
 - [x] claude-review の指摘（🔴 なし / 🟡🟢）をすべて解消（PR にマッピングをコメント）。
 
 ## リスク・未確定

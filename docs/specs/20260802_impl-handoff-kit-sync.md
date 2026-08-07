@@ -21,7 +21,7 @@ plan_refs: []
 - 関連 ADR: [IADR-0115](../adr/IADR-0115_impl-handoff-kit-as-single-source.md)
   （impl-handoff-kit を正とする同期規約。本作業はその規約の適用であり、新規の実装判断は生じない）
 - 計画書リンク: `planning/tools/impl-handoff-kit/`（`HOWTO.md` / `repo-template/`）
-- 上流の起点: planning#145 / #146 / #148 / #149 / #152 / #153 / #155 / #157 / #158 / #160 / #161 / #162
+- 上流の起点: planning#145 / planning#146 / planning#148 / planning#149 / planning#152 / planning#153 / planning#155 / planning#157 / planning#158 / planning#160 / planning#161 / planning#162
   （AI ワークフローが「緑のまま実質未実施」「成果物は正しいのに赤」になる欠陥と、
   キット同期そのものが Actions のバージョンを巻き戻す欠陥、レビューが未実施の検証を
   「実測」と偽る欠陥、およびそれらの検出器）

@@ -85,7 +85,7 @@ done                                                                          # 
 ```
 
 > Discord の環境固有 ID（GuildId/ChannelId/AllowedUserIds/UserMapping）を `kubectl set env` で入れると、
-> 次回の `helm upgrade` が `conflict with "kubectl-set"` で失敗する（AST #245）。復旧時は**先に当該 env を
+> 次回の `helm upgrade` が `conflict with "kubectl-set"` で失敗する（AST#245）。復旧時は**先に当該 env を
 > `KEY-` で削除**してから helm を通す。
 
 ## STEP 2: Vault OIDC（**vault Pod 再起動時のみ**）

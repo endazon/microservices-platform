@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): 経路B の Tempo（opt-in・platform-infra）。config は compose（tempo.yaml）と同内容を inline。
+# ADR-0006, IADR-0077 (AST#24): 経路B の Tempo（opt-in・platform-infra）。config は compose（tempo.yaml）と同内容を inline。
 apiVersion: v1
 kind: ConfigMap
 metadata:

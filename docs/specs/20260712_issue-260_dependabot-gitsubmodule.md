@@ -28,7 +28,7 @@ related_specs:
   Renovate/Dependabot 有効化部分。`Refs #260`）
 - 関連 IADR: [[IADR-0058]]（private submodule の CI 取得）／[[IADR-0060]]（submodule 運用・バージョン固定・
   Renovate/Dependabot 言及）／[[IADR-0065]]（public ユニットの CI 取得はトークン不要・`src/*` 非再帰 init）
-- 横断ハンドオフ: project-planning#22（repo-template への gitsubmodule 同梱）／ai-stock-trading#109
+- 横断ハンドオフ: planning#22（repo-template への gitsubmodule 同梱）／AST#109
   （AST 自リポへの個別適用。本作業はその 3 リポ横断作業の最終タスク）
 
 ## 目的・背景
@@ -48,8 +48,8 @@ issue #260 の本文（スコープ節）には「対象を `src/*` のユニッ
 
 理由:
 
-1. 3 リポ横断の統一方針（project-planning#22 → ai-stock-trading#109 → 本 #260）として、`planning` pin も
-   計画リポの前進に追従させることが望ましいと判断された（ai-stock-trading#109 の主目的そのものが
+1. 3 リポ横断の統一方針（planning#22 → AST#109 → 本 #260）として、`planning` pin も
+   計画リポの前進に追従させることが望ましいと判断された（AST#109 の主目的そのものが
    `planning` pin の自動追従であり、MSP だけ `planning` を除外すると 3 リポで方針が割れる）。
 2. Dependabot の `gitsubmodule` エコシステムは `directory: "/"` を指定すると、その配下の `.gitmodules` に
    列挙された **全 submodule** を対象にする。特定 submodule（`planning`）だけを除外することは技術的には
@@ -115,7 +115,7 @@ auto-merge 設定は一切追加しない（fail-safe: pin 更新は必ず PR �
 MSP 内でのローカルな設計トレードオフの選択（新たな技術選定・アーキテクチャ変更）は発生していない。
 「planning を含める」という判断も、3 リポ統一方針への追従であって MSP 単独の設計判断ではない。
 したがって IADR-0060/0065 の適用範囲内の運用整備と位置づけ、**新規 IADR は起票しない**。
-（ai-stock-trading#109 でも同様の判断がなされている。）
+（AST#109 でも同様の判断がなされている。）
 
 ## 検証
 

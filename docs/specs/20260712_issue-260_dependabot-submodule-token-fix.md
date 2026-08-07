@@ -29,7 +29,7 @@ related_specs:
 
 - Issue: #260（`docs/specs/20260712_issue-260_dependabot-gitsubmodule.md` の「private planning への
   Dependabot アクセス（マージ後の確認事項）」節で予告されていた確認作業。`Refs #260`）
-- 横断ハンドオフ: project-planning#24（repo-template 根本対応）／ai-stock-trading#112（AST 側修正）。
+- 横断ハンドオフ: planning#24（repo-template 根本対応）／AST#112（AST 側修正）。
   本作業はその 3 リポ横断修正の最終タスク（microservices-platform 側）。
 - 関連 IADR: [[IADR-0058]]（private submodule の CI 取得はトークン付き）／[[IADR-0060]]（submodule 運用）／
   [[IADR-0065]]（public ユニットの CI 取得はトークン不要・`src/*` 非再帰 init）
@@ -137,7 +137,7 @@ updates:
 - `SUBMODULE_ACCESS_PAT` という文字列は本 PR 適用後、`.github/` 配下の実ファイル
   （`claude-code-review.yml` / `claude-coding.yml`）からは除去される。`planning/` および
   `src/ai-stock-trading/` 配下（submodule として取り込んだ他リポのファイル）に同名の参照が残るのは
-  正常（それぞれ project-planning#24 / ai-stock-trading#112 で別途対応済み・別リポのスコープ）。
+  正常（それぞれ planning#24 / AST#112 で別途対応済み・別リポのスコープ）。
 - **secret 自体（`SUBMODULE_ACCESS_PAT`）の削除はオーナーが実施する**（本 PR では参照を切り替えるのみ。
   値は一切コミットしない）。
 - `develop` への直接 push・マージは行わない。PR 経由。`claude-review` の指摘対応は本作業のスコープ外

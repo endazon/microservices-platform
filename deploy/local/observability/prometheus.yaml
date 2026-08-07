@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): 経路B（k8s）の Prometheus（opt-in・platform-infra）。
+# ADR-0006, IADR-0077 (AST#24): 経路B（k8s）の Prometheus（opt-in・platform-infra）。
 # ⚠️ config は compose（deploy/prometheus.yml + deploy/prometheus/alerts.yml）と同内容を inline する
 #    （kustomize の root 外参照制約に従う。経路B の otel-collector.yaml と同じ方針＝二重管理を許容）。
 apiVersion: v1

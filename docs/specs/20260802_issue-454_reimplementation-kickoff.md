@@ -1,5 +1,5 @@
 ---
-title: 全面再実装の着手準備（planning PR #144 の取り込みと進行規約の確定）
+title: 全面再実装の着手準備（PR planning#144 の取り込みと進行規約の確定）
 type: spec
 status: done
 related_ids: [NFR, IADR-0116]
@@ -12,7 +12,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/README.md"
 ---
 
-# 仕様書: 全面再実装の着手準備（planning PR #144 の取り込みと進行規約の確定）
+# 仕様書: 全面再実装の着手準備（PR planning#144 の取り込みと進行規約の確定）
 
 > 本仕様書は実装着手前に作成する。計画書（`project-planning` の `projects/<name>/`）を一次情報とし、
 > 本書は「この作業で何をどう実装するか」を確定するための作業仕様である。
@@ -23,7 +23,7 @@ plan_refs:
 - ユースケース（UC）/ 画面（SC）: なし（**再実装の対象範囲**は `FR-01..21` / `UC-01..11` / `SC-01..21` 全域）
 - 関連 ADR: [IADR-0116](../adr/IADR-0116_reimplementation-branching-and-pr-policy.md)（本作業で起案）
 - 計画書リンク: [`planning/projects/microservices-platform/INDEX.md`](../../planning/projects/microservices-platform/INDEX.md)
-- 上流の起点: project-planning PR #144（2026-08-02 マージ。`aeb97c4` → `df8bce5`）
+- 上流の起点: PR planning#144（2026-08-02 マージ。`aeb97c4` → `df8bce5`）
 - 本リポジトリの起点: #454（親トラッキング issue）
 
 ## 目的・背景
@@ -183,7 +183,7 @@ plan_refs:
 
 本作業（準備）の受け入れ基準である。各子 issue の受け入れ基準は個別の作業仕様書で定義する。
 
-- [x] `git submodule status planning` が `df8bce5`（project-planning PR #144 のマージコミット）を指す
+- [x] `git submodule status planning` が `df8bce5`（PR planning#144 のマージコミット）を指す
 - [x] `planning/projects/microservices-platform/07_adr/` に `ADR-0030`〜`ADR-0039`（`ADR-0035` を除く）が実在し、
       `check-commit-messages.js` の ADR 実在性検査が新 ADR スコープを解決できる
 - [x] `.claude/rules/traceability.md` の ID レンジが計画書の実測値（`FR-01..21` / `UC-01..11` / `SC-01..21`）と一致する

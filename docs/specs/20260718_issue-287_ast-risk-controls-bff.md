@@ -1,5 +1,5 @@
 ---
-title: AST SC-02/SC-03 の /bff/risk-controls/* プロキシ登録と submodule 再pin（Issue #287 / AST #106 T2 の残り配線）
+title: AST SC-02/SC-03 の /bff/risk-controls/* プロキシ登録と submodule 再pin（Issue #287 / AST#106 T2 の残り配線）
 type: spec
 status: draft
 related_ids:
@@ -34,7 +34,7 @@ related_specs:
   [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（先行・SC-01）／
   **[[IADR-0071]]（本スライスの設計判断）**
 - Issue: MSP #287（本 issue）／先行 MSP #283（PR #285）／ AST endazon/ai-stock-trading#106（T2）
-- 上流: AST PR #186（SC-02/SC-03 追加）／#192（SC-02 ガード変更 UI・AST IADR-0086）／#194（3画面 E2E・AST IADR-0087）／#195
+- 上流: PR AST#186（SC-02/SC-03 追加）／#192（SC-02 ガード変更 UI・AST IADR-0086）／#194（3画面 E2E・AST IADR-0087）／#195
 
 ## 目的・背景
 

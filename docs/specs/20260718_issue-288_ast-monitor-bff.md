@@ -1,5 +1,5 @@
 ---
-title: AST SC-02 監視銘柄（watchlist）の /bff/monitor/* プロキシ登録（Issue #288 / AST #196 の残り配線）
+title: AST SC-02 監視銘柄（watchlist）の /bff/monitor/* プロキシ登録（Issue #288 / AST#196 の残り配線）
 type: spec
 status: draft
 related_ids:
@@ -35,12 +35,12 @@ related_specs:
   [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（SC-01）／[[IADR-0071]]（SC-02/03 risk-controls）／
   **[[IADR-0072]]（本スライスの設計判断）**
 - Issue: MSP #288（本 issue）／先行 MSP #287（PR #289）／ AST endazon/ai-stock-trading#196（PR #197）
-- 上流: AST #195（watchlist 設定ストア API・IADR-0088）／#197（SC-02 監視銘柄変更 UI・IADR-0090）
+- 上流: AST#195（watchlist 設定ストア API・IADR-0088）／#197（SC-02 監視銘柄変更 UI・IADR-0090）
 
 ## 目的・背景
 
 #289 で AST SC-02/03（risk-controls）を MSP SPA へ載せた。その後 AST develop の SC-02（`settings/risk`）に
-**監視銘柄（watchlist）変更 UI** が追加された（AST #196/#197・IADR-0090）。これはリスク設定とは別サービスの
+**監視銘柄（watchlist）変更 UI** が追加された（AST#196/AST#197・IADR-0090）。これはリスク設定とは別サービスの
 MarketMonitorService の OwnerOnly 契約 `/monitor/watchlist` を BFF 経由で消費する。本 issue は SC-02 の監視銘柄
 セクションを実 BFF へ到達させる**合成点の残り**（`/bff/monitor/*` の BFF 登録＋MarketMonitorService の deploy
 登録）を完了させる。合成の形・pass-through 方針は [[IADR-0070]]/[[IADR-0071]] を踏襲する。

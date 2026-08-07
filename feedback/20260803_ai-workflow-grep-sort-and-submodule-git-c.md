@@ -50,7 +50,7 @@ Bash(grep | sort)（3 件） / Bash(git -C src/ai-stock-trading log)（1 件）
 | `mcp__github__list_sub_issues` | 1 | 未許可。ただし許可済みの `mcp__github__issue_read` が `method: get_sub_issues` を持つ |
 
 キットのレビュー用 `--allowedTools`（planning `aeb97c4` 実測）には `cat` / `head` / `tail` /
-`cmp` / `diff` / `echo` / `rg` が既に在り、**`grep` と `sort` だけが無い**。planning#145 / #146 /
+`cmp` / `diff` / `echo` / `rg` が既に在り、**`grep` と `sort` だけが無い**。planning#145 / planning#146 /
 #155 / #157 / #158 / #160 / #161 / #162 が繰り返し塞いできたのと同型の非対称である。
 
 `git -C` は `planning` の 4 サブコマンド（`log` / `show` / `diff` / `ls-tree`）だけが列挙されており、
@@ -130,7 +130,7 @@ Bash の許可はコマンド文字列の**前方一致**であるため、`Bash
   提案 3 は新しい ERROR 条件であり、**既存リポジトリで非対称があれば CI が赤くなる**——
   受け入れ時は段階導入（まず warn、次のラウンドで ERROR）も選択肢である。
 - 本リポジトリ側: 暫定デルタを保持し、キット反映後の同期で撤去する（IADR-0115 の運用）。
-- 関連: planning#145 / #146（読み取り系 git の欠落）・#147（拒否報告をコマンド名まで出す）・
+- 関連: planning#145 / planning#146（読み取り系 git の欠落）・#147（拒否報告をコマンド名まで出す）・
   #155 / #157 / #158（整形パイプ・検証の誠実性）・#160（`git -C` の報告ラベル・`cmp` / `diff` 追加）・
   #161 / #162（段階ポリシーと「成果物は正しいのに赤」の常態化）。本件はその系列の続きである。
 

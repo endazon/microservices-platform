@@ -1,6 +1,6 @@
 # 経路B ローカル Vault + External Secrets（opt-in）
 
-> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST #24）
+> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
 
 経路B（k8s）で **Vault dev モード**と External Secrets Operator の `ClusterSecretStore`（`vault-backend`）を立てる
 **opt-in オーバーレイ**。AST chart 側の `ExternalSecret`（`ast-secrets` / `moomoo-*`・opt-in）がこのストアを

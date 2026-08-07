@@ -28,7 +28,7 @@ plan_refs:
 - 関連仕様書: `docs/tech/composable-component-guide.md`（§1.1 エンベロープ・§2.1 ステートレス）、
   `feedback/20260709_composability-safety-net-gaps.md`
 - Issue: #206（共通エンベロープ＋CI契約テスト）／#207（ステージング適用順序）
-- 計画側 triage: project-planning issue #16（2026-07-10、**提案2「段階適用の注記」accepted**）／PR #19
+- 計画側 triage: issue planning#16（2026-07-10、**提案2「段階適用の注記」accepted**）／PR #19
 
 ## コンテキストと課題
 
@@ -49,7 +49,7 @@ plan_refs:
 | CI の契約テスト（§3） | 未実装。CI は `pipeline-config`（宣言内整合 V1〜V6）のみ。互換性は「後方互換の追加のみ許可」の運用ルール＋PR レビューで担保 |
 | ステージング→本番の適用順序（§5） | 未整備。単一環境（ArgoCD 単一 Application）。CI 検証＋起動時 fail-fast（[[IADR-0028]]）＋Git revert ロールバックで代替 |
 
-計画側 triage（project-planning #16、2026-07-10）は**提案2「段階適用の注記」を accepted** とし、3 点を
+計画側 triage（planning#16、2026-07-10）は**提案2「段階適用の注記」を accepted** とし、3 点を
 **到達目標として維持**しつつ初期は現行の代替策を許容、**実装側は移行の繰延条件を IADR に明文化**すること、
 エンベロープ項目確定時は `07_abac-attribute-model.md` と整合させることを依頼した。本 IADR はその繰延条件の
 明文化である（FR-14／ADR-0018 は不変。到達目標として維持）。

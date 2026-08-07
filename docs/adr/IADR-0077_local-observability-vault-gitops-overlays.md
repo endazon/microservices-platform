@@ -26,7 +26,7 @@ plan_refs:
 
 - 関連する計画書 ID: **ADR-0006**（observability: OTel/Prometheus/Loki）、**NFR**（可観測性・認証情報秘匿・可用性）、
   基盤の [IADR-0066](IADR-0066_local-k8s-dev-environment.md)（経路B ローカル k8s dev 環境）
-- 対象 Issue: **ai-stock-trading#24**（ADR-0006 インフラ・デプロイ構成）の MSP 分。`Refs`。
+- 対象 Issue: **AST#24**（ADR-0006 インフラ・デプロイ構成）の MSP 分。`Refs`。
   AST 側は ai-stock-trading の PR（AST IADR-0094）で完結する。
 - 関連する実装仕様書: [20260719_issue-24-local-observability-vault-gitops](../specs/20260719_issue-24-local-observability-vault-gitops.md)
 
@@ -34,7 +34,7 @@ plan_refs:
 
 ## 背景・課題
 
-AST #24（ADR-0006）はローカル（経路B）で可観測性 UI（Prometheus/Grafana/Loki/Tempo）・Vault 秘匿・GitOps(ArgoCD)を
+AST#24（ADR-0006）はローカル（経路B）で可観測性 UI（Prometheus/Grafana/Loki/Tempo）・Vault 秘匿・GitOps(ArgoCD)を
 立てて配線検証する分を求める。経路B のハーネス（`scripts/k8s-local-up.sh`・`deploy/local/`）と共有インフラ
 （otel-collector 等）は本リポにあるが、これらのバックエンドは **compose（経路A）専用**で経路B(k8s) には無い
 （route B infra は postgres/rabbitmq/redis/keycloak/qdrant/otel-collector のみ・otel は debug exporter だけ）。
@@ -87,7 +87,7 @@ stand-up・本番 NFR）を明示分離する、(4) 並行作業（realm-fix・`
 
 ## 結果
 
-- 良い影響: 経路B で観測 UI・Vault・GitOps を opt-in で立てられ、AST #24 のローカル配線検証が成立する。既定は不変。
+- 良い影響: 経路B で観測 UI・Vault・GitOps を opt-in で立てられ、AST#24 のローカル配線検証が成立する。既定は不変。
 - 悪い影響 / トレードオフ: compose と config の二重管理が増える（inline）。Vault dev は再起動で揮発（dev 専用）。
   ESO/ArgoCD 本体 install は URL 適用（vendoring しない）ため、CRD 未導入では該当ステップを skip/警告する。
 - フォローアップ: Tier 3 の Hetzner 実 stand-up・本番 Vault・実同期。config 二重管理の単一情報源化（将来検討）。

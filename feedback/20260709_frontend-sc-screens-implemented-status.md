@@ -13,7 +13,7 @@ created: 2026-07-09
 > **［2026-08-04］反映済み。** 計画側が planning#189 / planning#191 のトリアージで本記録を受理し、
 > [05_screens/01_screens.md](../planning/projects/microservices-platform/05_screens/01_screens.md) の
 > §変更履歴 が本記録を名指しして「SC-01〜11 の実装状況」に関する注記を是正した
-> （planning `d980a01` / planning PR #194。同 PR のレビュー指摘により、環流記録を `accepted` としながら
+> （planning `d980a01` / PR planning#194。同 PR のレビュー指摘により、環流記録を `accepted` としながら
 > 本文の注記が審議中のままだった食い違いも併せて解消された）。**実装側に残作業は無い。**
 # フィードバック: フロントエンド SC-01〜11 全画面の実装完了 — 計画書の「未着手」注記と draft 状態の更新提案
 

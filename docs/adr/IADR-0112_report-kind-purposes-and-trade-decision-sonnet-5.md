@@ -30,13 +30,13 @@ plan_refs:
 
 - 起点 issue: [#420](https://github.com/endazon/microservices-platform/issues/420)（報告書の種別別 purpose）、
   [#421](https://github.com/endazon/microservices-platform/issues/421)（`trade-decision` の改定）。
-- 計画への環流: [project-planning#50](https://github.com/endazon/project-planning/issues/50)。
+- 計画への環流: [planning#50](https://github.com/endazon/project-planning/issues/50)。
   AST/ADR-0011 の改定を**新 ADR で**起案する依頼（本 IADR に先行して起票済み）。
 - 仕様書: `docs/specs/20260730_issue-420-421_report-and-trade-model-routing.md`。
 - 本 IADR は [[IADR-0022]] の**用途別割当の内容のみ**を更新する。ルーティング設計・ティア判定・
   ZDR 除外ロジックは変更しない。
 - AST 側の対応（種別ごとの purpose 送出・上位方針の feed-forward）は
-  [ai-stock-trading#291](https://github.com/endazon/ai-stock-trading/issues/291) /
+  [AST#291](https://github.com/endazon/ai-stock-trading/issues/291) /
   [#293](https://github.com/endazon/ai-stock-trading/issues/293)。別リポ・別 PR。
 
 ## コンテキストと課題
@@ -128,7 +128,7 @@ AST/ADR-0011（Accepted）§決定:
 ## 決定
 
 > **⚠️ 2026-07-31 追記: 決定1 の月報行と決定2 の帰結は [[IADR-0113]] で改定済み**
-> （[ai-stock-trading#309](https://github.com/endazon/ai-stock-trading/issues/309) 案 A）。
+> （[AST#309](https://github.com/endazon/ai-stock-trading/issues/309) 案 A）。
 > **月報の割当は `claude-fable-5` → `claude-opus-5`**（ZDR 対応モデルの最上位）が現行値である。
 > 決定2 が「無音で `DefaultModel` へ落ちる既知事項」として受け入れた構造は、割当を ZDR 対応モデルへ
 > 移したことで**解消した**（機密区分によらず同一モデルへ解決する。回帰は T-23）。
@@ -168,7 +168,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
 
 **(1) 計画への環流を先行させる。** ADR は Accepted 後に本文を実質変更しない規約
 （`planning/.claude/rules/adr.md`）に従い、**ADR-0011 を書き換えず新 ADR を起案**する依頼を
-[project-planning#50](https://github.com/endazon/project-planning/issues/50) へ起票済み。
+[planning#50](https://github.com/endazon/project-planning/issues/50) へ起票済み。
 併せて ADR-0011 §決定の「報告書生成の LLM は別扱い。基盤の既定モデルを用いてよい」も、報告書が
 方針書である以上整合しないため改定を提案している（決定 1 の計画側根拠）。
 
@@ -185,7 +185,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
   実弾解禁時に「Stage 0 で検証したモデル」と「本番モデル」が一致しない状態は ADR-0008 の段階ゲートを
   空洞化させるため、ここは譲らない。
 - **このゲートは本 IADR の記述だけでなく、追跡可能なブロッカーとして実体化する。**
-  [ai-stock-trading#296](https://github.com/endazon/ai-stock-trading/issues/296) を「実弾解禁ブロッカー」として
+  [AST#296](https://github.com/endazon/ai-stock-trading/issues/296) を「実弾解禁ブロッカー」として
   起票し（完了条件＝AST#208 の解決・`claude-sonnet-5` での Stage 0 再実行・エッジ維持の確認・更新前後の
   モデル ID の月報記録・実運用値と検証モデルの一致確認・計画側 ADR の Accepted）、実弾解禁の設計 issue
   （AST#217）と前提 issue（AST#208）の双方から参照させた。**IADR の本文は運用を強制しない**——
@@ -227,7 +227,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
     （#382 の提供終了リスクが下がる）。
   - 最頻経路（日報・取引判断）の単価が下がる。
 - 悪い影響 / トレードオフ:
-  - **計画側 ADR（project-planning#50）が Accepted になるまで、本改定は「起案済み・未承認」である。**
+  - **計画側 ADR（planning#50）が Accepted になるまで、本改定は「起案済み・未承認」である。**
     承認されなければ設定を `claude-opus-4-8` へ戻す。ロールバックのため `Models` に旧モデルを残してある（決定3-(4)）
     ため、差し戻しは `PurposeModels` の 1 値とテストの期待値の変更で完結する。
     この条件も IADR 本文では運用を強制しないため、**[#423](https://github.com/endazon/microservices-platform/issues/423) として追跡可能な形にした**（Stage 0 ゲートと同じ理由）。
@@ -248,7 +248,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
   1. **`report-narrative` エントリの掃除**。AST#291 の移行完了後、`LlmGateway:Purpose` の明示設定が
      どのデプロイにも残っていないことを確認したうえで、未知 purpose のフォールバック経路を
      整理するか判断する。
-  2. **`claude-sonnet-5` での Stage 0 再検証**（[ai-stock-trading#296](https://github.com/endazon/ai-stock-trading/issues/296)
+  2. **`claude-sonnet-5` での Stage 0 再検証**（[AST#296](https://github.com/endazon/ai-stock-trading/issues/296)
      ＝実弾解禁ブロッカー。前提は AST#208、解禁設計は AST#217）。
      本 IADR の最重要フォローアップ。実データ源が接続され次第、Stage 0 を再実行してエッジ維持を
      確認し、結果を月報へ記録する（ADR-0011 §決定「更新前後のモデル ID を報告書へ記録する」）。
@@ -256,7 +256,7 @@ AST/ADR-0011 の手続きは次のとおり踏む。
      +30% トークンの差引、および月報 `claude-fable-5` の月 1 回ぶんを実測する。
   4. **#382 の見直し**。`claude-opus-4-8` の提供終了監視は本改定でピン対象から外れたため、
      追跡内容を `claude-sonnet-5` へ改める必要がある。
-  5. **計画側 ADR の承認可否の確認と、非承認時のロールバック**（[#423](https://github.com/endazon/microservices-platform/issues/423)）。project-planning#50 が
+  5. **計画側 ADR の承認可否の確認と、非承認時のロールバック**（[#423](https://github.com/endazon/microservices-platform/issues/423)）。planning#50 が
      Accepted になれば新 ADR の番号を本 IADR へ追記し、ならなければ `claude-opus-4-8` へ戻す。
   6. **AST#285 の解消**。取引判断の実効モデルに関する AST 側ドキュメントの記述が本改定で再び
      陳腐化するため、AST 側で追随する。

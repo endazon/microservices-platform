@@ -1,4 +1,4 @@
-# ADR-0006, IADR-0077 (AST #24): Vault dev + ESO ClusterSecretStore（opt-in オーバーレイ）。
+# ADR-0006, IADR-0077 (AST#24): Vault dev + ESO ClusterSecretStore（opt-in オーバーレイ）。
 # ⚠️ deploy/local/infra には含めない（既定オフ・fail-safe）。ESO 本体 CRD が前提。
 # 適用（opt-in・k8s-local-up.sh の VAULT=1 が実施）:
 #   1) ESO install:  kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/main/deploy/crds/bundle.yaml
