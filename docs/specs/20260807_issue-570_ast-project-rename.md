@@ -45,7 +45,7 @@ related_specs:
 ```
 
 **#564 が submodule `src/ai-stock-trading` の pin を `655e2ed` → `91d52c2` へ上げた際、AST 側がサービスホスト
-プロジェクトを `*.Worker` → `*.Api` へ改名し `*.Infrastructure` を新設していた**（AST IADR-0128。ホストと
+プロジェクトを `*.Worker` → `*.Api` へ改名し `*.Infrastructure` を新設していた**（AST/IADR-0128。ホストと
 技術詳細の分離）。本リポジトリの deploy 面が旧名を書いたままであり、**4 件の赤は 1 つの原因に収束する**。
 
 ## 着手時の実測
@@ -168,6 +168,8 @@ $ grep -n "ConfigurationService\|RiskManagementService\|MarketMonitorService" \
 | Helm values / create-multiple-dbs.sh / realm json / BFF コード | 実測 4 のとおりプロジェクトパスを持たない | — |
 | `src/knowledge/**/*.Worker` | MSP 自身のプロジェクト。AST の改名とは無関係 | — |
 | 再発防止の機械化 | 本 PR では**実装しない**（後述「申し送り」） | 利用者判断 |
+| 裸の AST 計画 ID（`compose:486` / `values.yaml:338` の `FR-17, UC-06`、`BffTestFactory.cs:152,199,237,559` の `SC-01`） | 規約は「裸の ID は必ず MSP を指す」と定めるが、これらは **AST の ID**（MSP の `FR-17` は知識グラフ探索、AST の `FR-17` は取引前提条件の一元管理）。**本 PR で 2 箇所だけ直すと母集合の一部だけが揃い、同型が残る** | **#576** |
+| 空白区切りの `AST <ID>` 既存 12 箇所（`AST IADR-0048` 等） | 本 PR が新規に書いた 9 箇所は `AST/IADR-0128` へ揃えたが、既存分は射程外。**8 番号すべてが本リポジトリの同番号 IADR と衝突している** | **#576** |
 
 ## 設計
 

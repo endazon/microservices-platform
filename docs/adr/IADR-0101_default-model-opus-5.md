@@ -120,11 +120,12 @@ plan_refs:
      > **引き上げ自体は #564 の pin bump より前に済んでいる**——旧 pin `655e2ed` の時点で既に
      > `4096` であり、**#564 で変わったのはパスだけである**（本追記は改名の文脈に置かれているが、
      > 消化と改名は別の出来事なので混同しないこと）。またホストプロジェクトの
-     > **`*.Worker` → `*.Api` 一斉改名（AST IADR-0128）**に伴い、両アダプタは技術詳細として
+     > **`*.Worker` → `*.Api` 一斉改名（AST/IADR-0128）**に伴い、両アダプタは技術詳細として
      > `*.Infrastructure` へ移っている（`TradeDecisionService.Infrastructure/Composable/Adapters/HttpLlmCompletionClient.cs` /
      > `ReportService.Infrastructure/Foundation/Adapters/HttpReportNarrativeDrafter.cs`）。
      > **本文は 2026-07-24 時点の記録としてそのまま残す。** 本追記は #570（改名への deploy 面の追随）で
-     > 母集合を数え直した際の副産物であり、パスの陳腐化と消化済みの事実のみを記録する。
+     > 母集合を数え直した際の副産物であり、パスの陳腐化と消化済みの事実のみを記録する
+     > （[作業仕様書](../specs/20260807_issue-570_ast-project-rename.md)）。
 
 ## 関連
 

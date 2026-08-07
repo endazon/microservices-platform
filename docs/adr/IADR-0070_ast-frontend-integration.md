@@ -100,7 +100,7 @@ per-service Dockerfile を前提にした統合仕様どおりの MAPPING は**�
 
 > **［2026-08-07 追記 / #570］決定 2 の仕組み（単一 Dockerfile＋context/args）は有効なまま、`SERVICE_PROJECT` /
 > `SERVICE_DLL` の値だけが失効した。** AST が**サービスホストのプロジェクトを `*.Worker` → `*.Api` へ一斉改名**
-> （11 ホスト全部。技術詳細を `*.Infrastructure` へ分離。AST IADR-0128）したためである。#564 が submodule pin を
+> （11 ホスト全部。技術詳細を `*.Infrastructure` へ分離。AST/IADR-0128）したためである。#564 が submodule pin を
 > `655e2ed` → `91d52c2` へ上げた時点で旧パスが実在しなくなり、`build (configuration-service)` /
 > `build (risk-management-service)` / `build (market-monitor-service)` が `dotnet restore` の
 > **MSBUILD error MSB1009** で落ちた（集約ゲート `image-build` はその派生）。

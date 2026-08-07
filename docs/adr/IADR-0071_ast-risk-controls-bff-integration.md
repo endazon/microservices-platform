@@ -107,7 +107,7 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 
 > **［2026-08-07 追記 / #570］決定 3 の `SERVICE_PROJECT` / `SERVICE_DLL` の値が失効し、追随した。**
 > AST がサービスホストのプロジェクトを **`*.Worker` → `*.Api`** へ一斉改名した（技術詳細＝DbContext・
-> consumer・常駐ジョブは `*.Infrastructure` へ分離。AST IADR-0128）。#564 の pin bump
+> consumer・常駐ジョブは `*.Infrastructure` へ分離。AST/IADR-0128）。#564 の pin bump
 > （`655e2ed` → `91d52c2`）で旧パスが実在しなくなり `build (risk-management-service)` が MSB1009 で落ちたため、
 > `deploy/docker-compose.yml` と `scripts/k8s-local-images.sh` を
 > `.../RiskManagementService.Api/RiskManagementService.Api.csproj` ＋ `RiskManagementService.Api.dll` へ揃えた。

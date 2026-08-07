@@ -37,7 +37,7 @@ plan_refs:
 
 > **［2026-08-07 追記 / #570］上記「上流仕様」の 2 本目のパスと、決定 4 の `SERVICE_PROJECT` /
 > `SERVICE_DLL` の値は、submodule pin `91d52c2` 以降は実在しない。** AST がサービスホストのプロジェクトを
-> **`*.Worker` → `*.Api` へ一斉改名**した（技術詳細は `*.Infrastructure` へ分離。AST IADR-0128）ためで、
+> **`*.Worker` → `*.Api` へ一斉改名**した（技術詳細は `*.Infrastructure` へ分離。AST/IADR-0128）ためで、
 > 現行のパスは `.../MarketMonitorService/src/MarketMonitorService.Api/Foundation/Endpoints/MonitorSettingsEndpoints.cs`
 > である。**本文は 2026-07-18 時点の記録としてそのまま残す。**
 > #564 の pin bump（`655e2ed` → `91d52c2`）でこの改名が入り、追随していなかった

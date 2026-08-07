@@ -489,7 +489,7 @@ services:
   # （../src/ai-stock-trading）である（AST IADR-0048 決定3）。
   # k8s-local-images.sh の MAPPING と #275 ドリフト検査は context/args も突合する（IADR-0070）。
   # そのため SERVICE_PROJECT / SERVICE_DLL は MAPPING と必ず同時に・同値で動かす。
-  # Issue #570: AST はホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST IADR-0128。ホストと
+  # Issue #570: AST はホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST/IADR-0128。ホストと
   # 技術詳細の分離で *.Infrastructure を新設）。#564 の pin bump（655e2ed → 91d52c2）で旧名が実在しなく
   # なり restore が MSB1009 で落ちていた。実行時の契約（Web SDK・:8080・/health/live・/health/ready・
   # アセンブリ名＝csproj 名）は改名前後で同一のため、追随したのは名前だけである。
@@ -514,7 +514,7 @@ services:
   # Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 先＝RiskManagementService。
   # ConfigurationService と同型（単一 Dockerfile＋build args＋AST ユニットルート context）だが、RiskManagementService は
   # 専用 DB（risk_management_svc）に加え RabbitMQ（MassTransit）を使うため *rabbit-env と rabbitmq 依存を併用する。
-  # Issue #570: configuration-service と同じく *.Worker → *.Api 改名へ追随した（AST IADR-0128）。
+  # Issue #570: configuration-service と同じく *.Worker → *.Api 改名へ追随した（AST/IADR-0128）。
   # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）。
   risk-management-service:
     build:
@@ -539,7 +539,7 @@ services:
   # RiskManagementService と同型（単一 Dockerfile＋build args＋AST ユニットルート context）。MarketMonitorService は
   # 専用 DB（market_monitor_svc）に加え RabbitMQ（MassTransit：TradeDecisionMade 購読／監視イベント発行）を使うため
   # *rabbit-env と rabbitmq 依存を併用する。
-  # Issue #570: configuration-service と同じく *.Worker → *.Api 改名へ追随した（AST IADR-0128）。
+  # Issue #570: configuration-service と同じく *.Worker → *.Api 改名へ追随した（AST/IADR-0128）。
   # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）。
   market-monitor-service:
     build:

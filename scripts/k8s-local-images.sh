@@ -45,7 +45,7 @@ MAPPING=(
   "microservices-platform/bff|src/platform/backend/Bff/Platform.Bff/Dockerfile"
   # 以下 3 件の SERVICE_PROJECT / SERVICE_DLL は deploy/docker-compose.yml の build args と同値でなければ
   # ならない（check-image-mapping.js の args-mismatch 検査。IADR-0068 / IADR-0070）。片側だけ動かさない。
-  # Issue #570: AST がホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST IADR-0128）ため 3 件とも
+  # Issue #570: AST がホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST/IADR-0128）ため 3 件とも
   # 追随した。context / dockerfile / イメージ名は不変。
   # Issue #283, IADR-0070: AST 設定画面の ConfigurationService。単一 Dockerfile＋build args＋ユニットルート context。
   "microservices-platform/configuration-service|src/ai-stock-trading|backend/Dockerfile|SERVICE_PROJECT=backend/Services/ConfigurationService/src/ConfigurationService.Api/ConfigurationService.Api.csproj,SERVICE_DLL=ConfigurationService.Api.dll"
