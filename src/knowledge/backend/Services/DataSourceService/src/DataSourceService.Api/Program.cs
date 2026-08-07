@@ -34,7 +34,7 @@ var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DataSourceDbContext>(opt => opt.UseNpgsql(connStr));
 
-// ADR-0003（Superseded by ADR-0027）: MassTransit
+// ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 builder.Services.AddMassTransit(x =>
 {
     x.UsingRabbitMq((ctx, cfg) =>

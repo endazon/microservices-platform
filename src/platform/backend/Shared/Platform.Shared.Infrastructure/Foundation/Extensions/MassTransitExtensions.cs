@@ -2,11 +2,11 @@ using MassTransit;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
-// ADR-0003（Superseded by ADR-0027）: 非同期メッセージング（MassTransit + RabbitMQ）の「再試行・デッドレターで回復性を確保する」
+// ADR-0003（Superseded by ADR-0027・注記は #580）: 非同期メッセージング（MassTransit + RabbitMQ）の「再試行・デッドレターで回復性を確保する」
 // 決定を全サービス共通で満たすためのバス設定拡張。各 Program.cs の UsingRabbitMq 内で呼び出す。
 public static class MassTransitExtensions
 {
-    // ADR-0003（Superseded by ADR-0027）: 自動再試行の間隔。**要素数がそのまま再試行回数**である。
+    // ADR-0003（Superseded by ADR-0027・注記は #580）: 自動再試行の間隔。**要素数がそのまま再試行回数**である。
     private static readonly TimeSpan[] RetryIntervals =
         [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
 
@@ -16,7 +16,7 @@ public static class MassTransitExtensions
     // （数字を 2 か所に書かないため。IADR-0137 決定 3）。
     public static int MaxAttempts => RetryIntervals.Length + 1;
 
-    // ADR-0003（Superseded by ADR-0027）: 一時的失敗（保存失敗・外部サービス呼び出しの一時エラー等）は間隔を空けて再試行する。
+    // ADR-0003（Superseded by ADR-0027・注記は #580）: 一時的失敗（保存失敗・外部サービス呼び出しの一時エラー等）は間隔を空けて再試行する。
     // 再試行を使い切った継続失敗は MassTransit が自動で <queue>_error（デッドレター）へ送るため、
     // メッセージ喪失なく回復性を確保できる。ブローカ非依存の IBusFactoryConfigurator に対して適用する。
     public static void UsePlatformRetry(this IBusFactoryConfigurator cfg)

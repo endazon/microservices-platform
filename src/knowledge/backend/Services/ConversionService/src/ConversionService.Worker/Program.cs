@@ -55,7 +55,7 @@ builder.Services.AddScoped<INormalizationService, NormalizationService>();
 // EF（Postgres）実装。DbContext が scoped のため本ストアも scoped（メッセージ消費ごとの DI スコープで解決）。
 builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 
-// ADR-0003（Superseded by ADR-0027）: MassTransit
+// ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
 var pipeline = builder.Configuration.GetPlatformPipeline();
@@ -73,7 +73,7 @@ builder.Services.AddMassTransit(x =>
         cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
             ?? "amqp://guest:guest@rabbitmq:5672");
 
-        // FR-12, UC-06 例外フロー / ADR-0003（Superseded by ADR-0027）: 変換失敗（pandoc エラー・保存失敗）は再試行する。
+        // FR-12, UC-06 例外フロー / ADR-0003（Superseded by ADR-0027・注記は #580）: 変換失敗（pandoc エラー・保存失敗）は再試行する。
         // 再試行を使い切った継続失敗は MassTransit が自動で <queue>_error（デッドレター）へ送る（共通設定）。
         cfg.UsePlatformRetry();
 

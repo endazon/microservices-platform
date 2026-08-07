@@ -2120,4 +2120,147 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- NFR / #580: 索引タイトルセルのラチェット ---------------------------------------
+  //
+  // **なぜ必要か（#580 の再監査 🟡-2 で実測）**: 索引と本体の突合から「タイトル列の字義一致」を
+  // 外した結果、タイトル列が**完全に無検査**になった。識別可能な変異で確認したところ、
+  // `IADR-0005` のタイトルセルを**まったく別の決定の話**へ置換しても全ゲートが緑だった
+  // （`doc-links` / `scripts.test` / `cross-repo` / `repo.test` すべて exit 0）。
+  //
+  // **字義一致を課さない**のは、実測で 141 行中 96 行が本体 `title:` と一致せず、そのうち
+  // **87 行は索引の方が長い**（＝索引に決定文がまるごと貼られている）ためである。つまり必要な
+  // 是正は「本体へ揃える」ではなく「**索引タイトルセルを要約へ縮める**」であり、字義一致検査は
+  // その作業の前に 96 行を一斉に赤にするだけで方向が合わない（`docs/adr/README.md` §運用ルール）。
+  //
+  // よって**縮める方向へ効く不変条件だけ**をラチェットで固定する。現在の違反を
+  // `scripts/adr-index-title-baseline.json` に baseline 化し、**新規混入のみ落とす**
+  // （`scripts/backend-library-baseline.json` やカバレッジ床と同じ作法）。直したのに baseline に
+  // 残っていれば fail させ、baseline が必ず縮む向きにする。
+  //
+  //   - 見る:   タイトルセルの空・状態語（`Superseded by IADR-XXXX`）・`［YYYY-MM-DD 追記］`・長さ上限
+  //   - 見ない: 本体 `title:` との字義一致（上記のとおり方向が合わない。#581 も対象外）
+  //
+  // **検出できること / できないこと**（変異試験で実測・2026-08-07）:
+  //   - 検出する: baseline 外の行への `［追記］` 混入 / 他の決定の**全文**をタイトルへ貼る
+  //     （監査が使った変異はこの型で、`title-too-long` が捕まえる）/ baseline を縮め忘れた stale
+  //   - 検出しない: **200 字以内のきれいな文で別の決定の話へ書き換える**変異。これは字義一致でしか
+  //     捕まらず、上の理由で免除している範囲そのものである（無検査に戻したわけではないが、
+  //     この 1 型は残る。索引を要約へ縮め切った後なら #581 が字義一致を掛けられる）。
+  {
+    const TITLE_BASELINE_PATH = path.join(__dirname, 'adr-index-title-baseline.json');
+    const titleBaseline = JSON.parse(fs.readFileSync(TITLE_BASELINE_PATH, 'utf8'));
+
+    // 索引 1 ファイル分の Markdown を受け取り、タイトルセルの違反を返す純関数。
+    const inspectAdrIndexTitles = (md, maxChars = titleBaseline.maxTitleChars) => {
+      const violations = [];
+      md.split('\n').forEach((line, i) => {
+        if (!/^\|\s*\[?IADR-\d{4}/.test(line)) return; // 索引の行だけを見る
+        const id = line.match(/IADR-\d{4}/)[0];
+        const t = line.trim();
+        const cells = t.slice(1, t.endsWith('|') ? -1 : undefined).split('|').map((c) => c.trim());
+        const title = cells.length >= 3 ? cells[1] : null;
+        const push = (kind) => violations.push({ line: i + 1, id, kind });
+        if (title === null || title === '') {
+          push('title-missing'); // 空セル。索引から決定の内容が読めない
+          return;
+        }
+        // 状態は状態列の役割。タイトルへ書くと 2 箇所に分かれて片方が腐る。
+        if (/(Superseded|Deprecated)\s+by\s+I?ADR-\d{4}/.test(title)) push('title-status-word');
+        // 追記ブロックは本体本文が持つ。索引へ複製すると同じ内容が 2 箇所にあり索引側が腐る。
+        if (/［\d{4}-\d{2}-\d{2}\s*追記/.test(title)) push('title-addendum');
+        // 決定文の貼り付けを止める上限。要約に収まる長さを超えたら縮める。
+        if ([...title].length > maxChars) push('title-too-long');
+      });
+      return violations;
+    };
+
+    const TITLE_GOOD = [
+      '| IADR | タイトル | 状態 |',
+      '| --- | --- | --- |',
+      '| [IADR-0000](./IADR-0000_a.md) | 実装意思決定の記録方針 | Accepted |',
+      '| [IADR-0001](./IADR-0001_b.md) | カタログの正本所有 | Superseded by IADR-0002 |',
+    ].join('\n');
+
+    ok('索引タイトル: 正常な索引は違反 0（正例）', () => {
+      assert.deepStrictEqual(inspectAdrIndexTitles(TITLE_GOOD), []);
+      // 索引行以外（見出し・ブロック引用・本文）を誤検出しない。
+      assert.deepStrictEqual(
+        inspectAdrIndexTitles('## 一覧\n> 採番に関する注記: IADR-0139 を採った\nただの本文 IADR-0001'),
+        [],
+      );
+    });
+
+    ok('索引タイトル: 空セルを検出する（変異試験）', () => {
+      const mutated = TITLE_GOOD.replace('| 実装意思決定の記録方針 |', '|  |');
+      assert.deepStrictEqual(inspectAdrIndexTitles(mutated), [
+        { line: 3, id: 'IADR-0000', kind: 'title-missing' },
+      ]);
+    });
+
+    ok('索引タイトル: 状態語の混入を検出する（状態列と二重持ちになる型・変異試験）', () => {
+      const mutated = TITLE_GOOD.replace(
+        '| カタログの正本所有 |',
+        '| カタログの正本所有（Superseded by IADR-0002） |',
+      );
+      assert.deepStrictEqual(inspectAdrIndexTitles(mutated), [
+        { line: 4, id: 'IADR-0001', kind: 'title-status-word' },
+      ]);
+    });
+
+    ok('索引タイトル: ［YYYY-MM-DD 追記］ の混入を検出する（変異試験）', () => {
+      const mutated = TITLE_GOOD.replace(
+        '| 実装意思決定の記録方針 |',
+        '| 実装意思決定の記録方針。［2026-08-07 追記 / #580］本体にも同じ追記がある |',
+      );
+      assert.deepStrictEqual(inspectAdrIndexTitles(mutated), [
+        { line: 3, id: 'IADR-0000', kind: 'title-addendum' },
+      ]);
+    });
+
+    ok('索引タイトル: 長さ上限の超過を検出する（決定文の貼り付け・変異試験）', () => {
+      const mutated = TITLE_GOOD.replace('| 実装意思決定の記録方針 |', `| ${'あ'.repeat(201)} |`);
+      assert.deepStrictEqual(inspectAdrIndexTitles(mutated), [
+        { line: 3, id: 'IADR-0000', kind: 'title-too-long' },
+      ]);
+      // 上限ちょうどは通す（境界の取り違えを固定する）。
+      assert.deepStrictEqual(
+        inspectAdrIndexTitles(TITLE_GOOD.replace('| 実装意思決定の記録方針 |', `| ${'あ'.repeat(200)} |`)),
+        [],
+      );
+    });
+
+    ok('索引タイトル: 本リポの docs/adr/README.md が baseline を超えていない（実データ・ラチェット）', () => {
+      const md = fs.readFileSync(path.join(__dirname, '..', 'docs', 'adr', 'README.md'), 'utf8');
+      const actual = inspectAdrIndexTitles(md);
+      // 走査 0 件で緑になる fail-open を塞ぐ（baseline に行がある限り違反も出るはず）。
+      assert.ok(
+        Object.keys(titleBaseline.rows).length === 0 || actual.length > 0,
+        'baseline に残件があるのに違反 0（走査が壊れている）',
+      );
+
+      const seen = new Map(); // id -> Set(kind)
+      for (const v of actual) {
+        if (!seen.has(v.id)) seen.set(v.id, new Set());
+        seen.get(v.id).add(v.kind);
+      }
+      const added = actual.filter((v) => !(titleBaseline.rows[v.id] || []).includes(v.kind));
+      assert.deepStrictEqual(
+        added,
+        [],
+        '索引タイトルセルに新しい違反が入った（baseline へ足さず、タイトルを本体 title: の要約へ縮めること）:\n' +
+          added.map((x) => `  README.md:${x.line} ${x.id} ${x.kind}`).join('\n'),
+      );
+
+      const stale = [];
+      for (const [id, kinds] of Object.entries(titleBaseline.rows)) {
+        for (const kind of kinds) if (!(seen.get(id) || new Set()).has(kind)) stale.push(`${id} ${kind}`);
+      }
+      assert.deepStrictEqual(
+        stale,
+        [],
+        `直っているのに baseline に残っている（scripts/adr-index-title-baseline.json から削除する）:\n  ${stale.join('\n  ')}`,
+      );
+    });
+  }
 };

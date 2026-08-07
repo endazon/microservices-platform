@@ -172,6 +172,15 @@ module.exports = ({ ok, assert }) => {
 };
 ```
 
+#### `adr-index-title-baseline.json`（#580）
+
+`scripts.repo.test.js` が使う**唯一の baseline ファイル**。`docs/adr/README.md` の索引タイトルセルの
+既知違反（`title-addendum` / `title-too-long`）を保持し、**新規混入と stale（直したのに baseline に
+残っている）を fail**、baseline 内の残件は許容する——`backend-library-baseline.json` と同じ 3 判定。
+索引と本体の**字義一致は対象外**（実測で 141 行中 96 行が不一致、うち 87 行は索引の方が長い＝索引に
+決定文が貼られている状態であり、是正の方向は「索引タイトルセルを要約へ縮める」ため。
+`docs/adr/README.md` §運用ルール）。**行を縮めたら baseline も同じ分だけ縮める**（縮め忘れは stale で落ちる）。
+
 `ok` をそのまま受け取るため、件数の集計は自動で正しくなる（カウンタが分かれない）。
 
 > **このファイルは必ずコミットする。** 追跡されていないと CI（clean checkout）に存在せず、
