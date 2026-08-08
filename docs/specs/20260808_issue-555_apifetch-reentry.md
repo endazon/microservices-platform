@@ -7,7 +7,7 @@ author: Claude
 created: 2026-08-08
 updated: 2026-08-08
 plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-spa-stack.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md"
 related_specs:
   - ../adr/IADR-0146_apifetch-reentry-guard.md
 ---
