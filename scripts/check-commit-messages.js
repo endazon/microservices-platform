@@ -283,11 +283,43 @@ function loadExistingPlanAdrIds(
 }
 
 /**
- * 件名スコープ中の `IADR-xxxx` / `ADR-xxxx` が実在するか検証し、違反理由の配列を返す。
- * 各集合が null（読めない環境）の場合は該当種別の検査をスキップする。
+ * 計画レンジ（`FR-xx` / `UC-xx` / `SC-xx`）の実在集合を返す（NFR / #579）。
+ *
+ * **なぜ必要か（#579 の実測）**: 実在性検査は `IADR` と `ADR` にしか実装されておらず、
+ * `feat(SC-99)` / `feat(FR-77)` / `feat(UC-88)` はいずれも **exit 0 で受理**されていた。
+ * これらはスカッシュ後件名として develop の恒久履歴へ載り、force push 禁止で事後修正できない。
+ *
+ * **レンジの正は `.claude/rules/traceability.md`「起点 ID の種別」節**であり、
+ * そのパーサは既に `check-test-traceability.js`（#472）に在る。**同じ事実を 2 本のパーサで
+ * 持たない** —— 片方だけ直したとき、どちらが正か決められなくなる。
+ *
+ * **fail の向きを 2 つに分ける**（「見つからないから素通り」を一律には採らない）:
+ *   - **モジュールが無い**（キット派生リポで `check-test-traceability.js` を持たない構成）
+ *     → `null` を返して**当該検査をスキップ**する（呼び出し側が notice で可視化する）。
+ *   - **モジュールは在るが節をパースできない** → **例外を投げる**。本リポジトリでは
+ *     `.claude/rules/traceability.md` は追跡下の必ず読めるファイルであり、読めない／拾えないのは
+ *     環境差ではなく**規約側の破壊**（節の改名・書式変更）である。ここを黙って通すと、
+ *     レンジの単一情報源が壊れたまま「違反 0 件」で緑になる。
+ */
+function loadExistingPlanIds() {
+  let traceability;
+  try {
+    traceability = require('./check-test-traceability.js');
+  } catch (e) {
+    return null; // キット派生リポで当該検査器を持たない構成。スキップする。
+  }
+  if (typeof traceability.readPlanIds !== 'function') return null;
+  // 節が壊れていれば readPlanIds が投げる。**握り潰さない**（上記の 2 つ目の向き）。
+  return new Set(traceability.readPlanIds());
+}
+
+/**
+ * 件名スコープ中の `IADR-xxxx` / `ADR-xxxx` / `FR-xx` / `UC-xx` / `SC-xx` が実在するか検証し、
+ * 違反理由の配列を返す。
+ * 各集合が null（読めない環境・当該検査器を持たない構成）の場合は該当種別の検査をスキップする。
  * 書式違反の検出は validateSubject が担う（本関数は書式適合を前提に実在のみ見る）。
  */
-function validateIdExistence(subject, iadrIds, planAdrIds) {
+function validateIdExistence(subject, iadrIds, planAdrIds, planIds) {
   const s = String(subject == null ? '' : subject).replace(/\s*\(#\d+\)\s*$/, '').trim();
   const m = s.match(/^(\w+)(?:\(([^)]*)\))?(!)?:\s+(.+)$/);
   if (!m || m[2] === undefined) return [];
@@ -297,9 +329,26 @@ function validateIdExistence(subject, iadrIds, planAdrIds) {
       reasons.push(`起点 ID "${id}" が docs/adr/ に実在しない（採番衝突・改番後のタイトル未追随の可能性）`);
     } else if (planAdrIds && /^ADR-\d{3,4}$/.test(id) && !planAdrIds.has(id)) {
       reasons.push(`起点 ID "${id}" が planning の 07_adr/ に実在しない（誤記・廃止の可能性）`);
+    } else if (planIds && /^(FR|UC|SC)-\d+$/.test(id) && !planIds.has(normalizePlanId(id))) {
+      // #579: ここが無い間、`feat(SC-99)` は exit 0 で恒久履歴へ載れた。
+      reasons.push(
+        `起点 ID "${id}" が計画レンジに実在しない` +
+          `（.claude/rules/traceability.md「起点 ID の種別」節が正。誤記・別プロジェクトの ID の可能性）`
+      );
     }
   }
   return reasons;
+}
+
+/**
+ * 計画レンジ側はゼロ埋め 2 桁（`FR-01`）で持つが、規約は `FR-012` のような表記も書式として許す
+ * （`ID_PATTERN` は `FR-\d+`）。**桁数の違いで「実在しない」と誤検出しない**よう、比較の前に
+ * 数値へ正規化して突き合わせる。
+ */
+function normalizePlanId(id) {
+  const m = String(id).match(/^(FR|UC|SC)-(\d+)$/);
+  if (!m) return id;
+  return `${m[1]}-${String(Number(m[2])).padStart(2, '0')}`;
 }
 
 /**
@@ -402,7 +451,14 @@ function checkSingleTitle(title, author) {
   }
 
   const reasons = validateSubject(subject)
-    .concat(validateIdExistence(subject, loadExistingIadrIds(), loadExistingPlanAdrIds()))
+    .concat(
+      validateIdExistence(
+        subject,
+        loadExistingIadrIds(),
+        loadExistingPlanAdrIds(),
+        loadExistingPlanIds()
+      )
+    )
     // #507: PR タイトルはスカッシュ後件名として develop に恒久的に残る。裸の #NNN を含む
     // 列挙が入ると事後修正できない（force push 禁止）ため、ここで止める。
     .concat(crossRepoRefReasons(subject, 'PR タイトル'));
@@ -447,6 +503,7 @@ function main() {
   const allowlist = loadAllowlist();
   const iadrIds = loadExistingIadrIds();
   const planAdrIds = loadExistingPlanAdrIds();
+  const planIds = loadExistingPlanIds();
   // 検査を skip したことは notice で可視化する（issue #139）。素の stderr 行は緑ジョブの
   // ログに埋もれて読まれず、「検査していない範囲があること」が CI の UI から読み取れない。
   // 終了コードは変えない（fail-open。ローカル環境差で CI を落とさない）。
@@ -460,6 +517,14 @@ function main() {
       'planning submodule が未 populate のため計画 ADR 実在性チェックをスキップした' +
         '（この範囲は検査されていない。実効しているのは IADR 検査のみである）。' +
         'PR 段階で検査するには checkout に submodules とトークンを付けること'
+    );
+  }
+  if (!planIds) {
+    // #579: モジュールを持たない構成（キット派生リポ）でのみここへ来る。節が壊れている場合は
+    // loadExistingPlanIds が投げるので、ここは「持っていない」の意味しかない。
+    notice(
+      'check-test-traceability.js を持たない構成のため FR / UC / SC の実在性チェックをスキップした' +
+        '（この範囲は検査されていない）'
     );
   }
 
@@ -488,7 +553,13 @@ function main() {
       continue;
     }
     const reasons = validateSubject(c.subject)
-      .concat(validateIdExistence(c.subject, iadrIds, planAdrIds))
+      // #579 / #612 レビュー 🔴: **ここに planIds を渡し忘れていた。**
+      // `checkSingleTitle`（--title）へは渡していたので `--title` の変異試験は通り、
+      // 「検査が効いている」と誤って結論した。`ci.yml` の commit-messages ジョブが実行するのは
+      // **こちら（レンジモード）**であり、そこでは FR/UC/SC 実在性が無効のままだった。
+      // **同じ型（呼び出し口を 1 つだけ配線する）はこのリポジトリで 3 度目である。**
+      // 下の scripts.repo.test.js が実バイナリでレンジモードを通し、再発を止める。
+      .concat(validateIdExistence(c.subject, iadrIds, planAdrIds, planIds))
       // #507: 他リポジトリ issue 番号の修飾は件名だけでなく**本文**にも規約が及ぶ
       // （`.claude/rules/traceability.md`「適用箇所: … コミット件名 / footer」）。
       .concat(crossRepoRefReasons(c.subject, '件名'))
@@ -524,6 +595,8 @@ if (require.main === module) {
 module.exports = {
   validateSubject,
   validateIdExistence,
+  loadExistingPlanIds,
+  normalizePlanId,
   crossRepoRefReasons,
   CROSS_REPO_REF_LABELS,
   loadExistingIadrIds,

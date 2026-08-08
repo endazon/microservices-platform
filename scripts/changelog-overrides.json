@@ -32,6 +32,12 @@
       "action": "remap",
       "desc": "全面再実装（#454）の着手準備 — PR planning#144 の取り込み・ID レンジ追随・issue 単位の PR 規約 (#459)",
       "reason": "元コミット件名がクロスリポ参照の表記規約（.claude/rules/traceability.md「修飾語と番号の間に空白を入れない」）に違反しており、生成物 CHANGELOG.md 経由で check-cross-repo-refs.js を型 3（空白区切り）で赤くし develop 全体を止めていた。誤: `planning PR #144` / 正: `PR planning#144`。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。desc のみを指定し type（docs）と scope（NFR,IADR-0116）は元コミットの値を保つ——誤っているのは表記だけで種別も起点 ID も正しいため。検査器の suggestion は `planning#144` だが PR の語を落とすと『planning の PR #144』という意味が失われるので採らない（規約 :102-103 の正例が `PR planning#144`）。Issue #595。全 342 コミットの件名・本文を悉皆走査し、同型は本件 1 件のみであることを実測済み（docs/specs/20260807_issue-595_changelog-legacy-ref-remap.md）。"
+    },
+    {
+      "hash": "bc7bc8e",
+      "action": "remap",
+      "scope": "FR-12,SC-07",
+      "reason": "PR #568 のタイトルは `feat(FR-12,SC-07): ...` だったが、スカッシュマージ時に件名を書き直した際 SC-07 を落とした（API 実測で updated_at == merged_at であり、マージ後のタイトル編集ではない）。同 PR は docs/screens/SC-07_conversion-jobs.md / docs/tests/SC-07_conversion-jobs.md / src/knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx を実際に改変しており、SC-07 は正しい起点 ID である。scope だけを補正し type（feat）と desc は元コミットの値を保つ——誤っているのは落ちた ID だけである。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。Issue #579（発見: 定期監査 traceability-auditor 2026-08-07）。"
     }
   ]
 }
