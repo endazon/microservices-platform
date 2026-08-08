@@ -361,6 +361,12 @@ check-static-egress --require   OK: dist 23 ファイルに外部オリジンな
 
 ### 検証側で踏んだこと（記録）
 
+- **★ レビュー是正で `openapi.yaml` の説明文だけを直し、orval の再生成を忘れて CI を落とした**
+  （`build-test` が生成物の再生成差分で fail。`ceb871d` → `pnpm run codegen` して是正）。
+  **説明文の変更でも生成物は動く** —— orval は `description` を JSDoc へ写すためである。
+  **「契約を触ったら再生成する」は、フィールドを足したときだけの作法ではない。**
+  最初のコミットでは再生成していたのに、**是正コミットで同じ手順を踏み直さなかった**。
+  **同じ PR の中でも、契約に触れるたびに手順を通す。**
 - **`dotnet ef` が生成したマイグレーションに BOM が付き、`dotnet format` が `error CHARSET` で落ちた。**
   `.cs` と `.Designer.cs` の 2 本から BOM を除いて解消した。**生成物だからといって整形ゲートを免れない。**
 - **件数を `git add` の前に測ると `check-cross-repo-refs` が 2 件少なく出る**（`git ls-files` 走査のため）。

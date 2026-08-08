@@ -329,6 +329,10 @@ export interface CreateDataSourceRequest {
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
 }
 
+/**
+ * コネクタ設定。**秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
+ * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
+ */
 export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
@@ -344,6 +348,10 @@ export interface UpdateDataSourceRequest {
   name: string;
   sourceType: string;
   connectionUri: string;
+  /**
+     * コネクタ設定。**秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
+     * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
+     */
   config?: UpdateDataSourceRequestConfig;
   /** 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する */
   defaultAttributes?: UpdateDataSourceRequestDefaultAttributes;
