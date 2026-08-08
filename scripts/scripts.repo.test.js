@@ -1949,6 +1949,47 @@ module.exports = ({ ok, assert }) => {
   });
 
   // --- NFR / #507 / IADR-0140: 他リポジトリ issue 表記の機械検査 --------------------
+  // IADR 採番の一意性・連続性・索引との双方向一致（#581 / [[IADR-0144]]）。
+  // **実データは全判定 clean なので、検出力は変異でしか示せない** —— 一時ツリーで当てる。
+  {
+    const { spawnSync: spawnAdrNum } = require('child_process');
+    const pathAdrNum = require('path');
+    const adrNumScript = pathAdrNum.join(__dirname, 'check-adr-numbering.js');
+    const runAdrNum = (args) =>
+      spawnAdrNum(process.execPath, [adrNumScript, ...args], { encoding: 'utf8' });
+
+    ok('check-adr-numbering --self-test が通る（M1〜M6 を対で固定）', () => {
+      const r = runAdrNum(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-adr-numbering が実データ（docs/adr）で違反 0 件', () => {
+      const r = runAdrNum([]);
+      assert.strictEqual(r.status, 0, `IADR 採番に違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // **実バイナリ経路での検出力**。自己試験は関数を直接叩くので、CLI が exit 1 を返すかは別に見る。
+    ok('check-adr-numbering: 欠番のあるツリーで exit 1', () => {
+      const fsAdrNum = require('fs');
+      const osAdrNum = require('os');
+      const dir = fsAdrNum.mkdtempSync(pathAdrNum.join(osAdrNum.tmpdir(), 'adrnum-repo-'));
+      try {
+        fsAdrNum.writeFileSync(pathAdrNum.join(dir, 'IADR-0000_a.md'), '# IADR-0000: a\n');
+        fsAdrNum.writeFileSync(pathAdrNum.join(dir, 'IADR-0002_c.md'), '# IADR-0002: c\n');
+        fsAdrNum.writeFileSync(
+          pathAdrNum.join(dir, 'README.md'),
+          '| [IADR-0000](./IADR-0000_a.md) | a | Accepted |\n' +
+            '| [IADR-0002](./IADR-0002_c.md) | c | Accepted |\n'
+        );
+        const r = runAdrNum(['--dir', dir]);
+        assert.strictEqual(r.status, 1, `欠番で exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /missing-number/);
+      } finally {
+        fsAdrNum.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
   //
   // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
   // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。
