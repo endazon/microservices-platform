@@ -143,7 +143,7 @@ related_specs:
 ```
 check-doc-links              OK: 481 件（未 populate の planning 配下 1058 件は対象外）
 check-adr-numbering          OK（重複・欠番なし、索引と双方向一致・昇順）
-check-cross-repo-refs        OK: 557 件
+check-cross-repo-refs        OK: 558 件
 check-plan-id-qualification  OK: 1184 件
 check-landed-subjects        OK: 着地件名 328 件
 check-chunk-budget --self-test   ✓ 13 件すべて通過
@@ -156,6 +156,20 @@ pnpm run build               ✓ built
 pnpm run test:coverage       Statements 96.36% / Branches 90.4% / Functions 91.7%
 pnpm run test:e2e            13 passed
 ```
+
+> **★ `check-cross-repo-refs` の件数を一度 `557` と誤記した（AI レビューの 🟢 指摘で発覚・実測して是正）。**
+> 原因は **[[IADR-0141]] のフォローアップと #620 のレビューが名指しした「作業仕様書ファイル自身を足す前に測った値を持ち越す」型そのもの**である。
+> **2 本の検査器は走査対象の取り方が違う**ため、同じ時点で測っても本仕様書ファイルの扱いが割れる。
+>
+> | 検査器 | 走査対象の取り方 | 未追跡の本仕様書 |
+> | --- | --- | --- |
+> | `check-doc-links.js` | `readdirSync`（**ファイルシステム走査**） | **数える** → 481 |
+> | `check-cross-repo-refs.js` | `git ls-files`（**追跡下のみ**） | **数えない** → 557 |
+>
+> `git add` 後は両方が数えるので **558 が正**である。
+> **なお AI レビューが挙げた原因（レビュー環境が `CLAUDE.md` / `.claude/` を develop 版へ復元するため）は誤りである** ——
+> 当該 2 ファイルを develop 版へ差し替えて実走しても **558 のまま**で、件数は変わらなかった（実測）。
+> **他人の切り分けも、自分で当ててから受け入れる。**
 
 > **`--require` は引数を取らない真偽フラグである。** 本仕様書の執筆中に `--require <dist>` と
 > 誤って書き、`✗ 未知の引数` で気づいた（`scripts/README.md` へ書いた説明も同時に是正した）。
