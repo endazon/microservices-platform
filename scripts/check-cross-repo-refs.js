@@ -132,6 +132,13 @@ const OWNED_REPO_SHORT = {
 // **集合はここから導出する**（2 箇所に別々に書くと、片方だけ足したとき suggestion が
 // `undefined#123` として黙って壊れる。同ファイルの ENUM_FIX_RE が戒めているのと同じ型）。
 const OWNED_REPOS = Object.keys(OWNED_REPO_SHORT);
+// **リポジトリ相対パスは owner ではない。** 本リポジトリは可変ユニットを `src/<repo>` に
+// submodule として持つので、`src/ai-stock-trading#1`（ディレクトリ ＋ アンカー）が
+// 「owner=src」と読まれてしまう。**この偽陽性は実際に起きた** —— #590 の是正コミット本文が
+// この形を含み、`commit-messages` ジョブが赤になった（力技の force push は規約で禁止のため、
+// 検査器側を直すのが正しい解である）。**列挙は「本リポジトリに実在するパス」に限る**
+// ——`src` 一般を owner 集合から外すと、`src` という実在の GitHub owner を取りこぼす。
+const REPO_RELATIVE_PATHS = new Set(['src/ai-stock-trading']);
 // 直前が \w / - / `/` なら owner ではない（URL 中の `github.com/<owner>/…` を含む）。
 // URL 形式の owner は本検査の対象外である（#590 で実測し、違反 0 件であることを開示したうえで
 // 射程外とした）。
@@ -253,6 +260,7 @@ function findViolations(text, opts = {}) {
   OWNER_RE.lastIndex = 0;
   while ((m = OWNER_RE.exec(scan))) {
     if (KNOWN_OWNERS.includes(m[1])) continue; // 規約が許すフルパス形式。
+    if (REPO_RELATIVE_PATHS.has(`${m[1]}/${m[2]}`)) continue; // owner ではなくリポ相対パス。
     const short = OWNED_REPO_SHORT[m[2]];
     out.push({
       kind: 'owner',
@@ -455,6 +463,16 @@ function selfTest() {
     kinds('[作業仕様書 §2](../specs/20260804_issue-490_spa-router-shell.md#2-ルートパス)').length === 0);
   t('負例4: URL 形式は型 4 の対象外（#590 で射程外と開示。owner は / の直後で後読みが効く）',
     kinds('https://github.com/endodazon/project-planning#50').length === 0);
+  // **この偽陽性は実際に CI を止めた**（#590 の是正コミット本文が `src/ai-stock-trading#1` を
+  // 含み `commit-messages` が赤になった）。リポ相対パスは owner ではない。
+  t('負例4: リポ相対パス src/ai-stock-trading#1 を owner と読まない',
+    kinds('ディレクトリ src/ai-stock-trading#1 を見よ').length === 0);
+  t('負例4: Markdown リンクのリポ相対パスも読まない',
+    kinds('[x](src/ai-stock-trading#1-概要)', { markdown: true }).length === 0);
+  // 除外は「実在するパス」に限る。owner が `src` の**別リポジトリ**は従来どおり検出する
+  // （`src` 一般を owner から外すと、実在の GitHub owner `src` を取りこぼす）。
+  t('型4: 除外は実在パスに限る —— src/project-planning#50 は従来どおり検出する',
+    kinds('src/project-planning#50').join() === 'owner');
 
   // --- 負のケース: 偽陽性を出してはならない ---
   // **自リポジトリの修飾語は型 3 に含めない。** 裸の #NNN が本リポジトリを指すのは正しい。
