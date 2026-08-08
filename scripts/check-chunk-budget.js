@@ -64,7 +64,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { warn, notice } = require('./lib/ci-annotate');
+const { warn } = require('./lib/ci-annotate');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DEFAULT_DIST = 'src/platform/frontend/dist';
@@ -96,8 +96,14 @@ function chunkNameMatcher(name) {
 function parseInitialJs(html) {
   const found = new Set();
   for (const m of html.matchAll(/<script[^>]*\ssrc="([^"]+\.js)"/g)) found.add(m[1]);
-  for (const m of html.matchAll(/<link[^>]*rel="modulepreload"[^>]*\shref="([^"]+\.js)"/g)) {
-    found.add(m[1]);
+  // **属性の順序に依存させない。** `rel` が `href` より前に来る前提で 1 本の正規表現にすると、
+  // 順序が変わった瞬間に初期ロードを**過小に数える**（＝床が下がり、判定 3 が沈黙側へ倒れる）。
+  // タグを丸ごと取ってから 2 つの属性を別々に見る。
+  for (const m of html.matchAll(/<link\b[^>]*>/g)) {
+    const tag = m[0];
+    if (!/\srel="modulepreload"/.test(tag)) continue;
+    const href = tag.match(/\shref="([^"]+\.js)"/);
+    if (href) found.add(href[1]);
   }
   return found;
 }
@@ -312,6 +318,19 @@ function selfTest() {
     const r = evaluate(measure(d), BASE);
     assert.deepStrictEqual(r.failures, [], `想定外の違反: ${r.failures.join(' / ')}`);
     assert.deepStrictEqual(r.warnings, []);
+  });
+
+  ok('modulepreload の抽出は属性の順序に依存しない（href が先でも拾う）', () => {
+    // AI レビュー（PR #618 🟢）の指摘。順序を前提にすると初期ロードを過小に数え、
+    // 判定 3 が沈黙側へ倒れる。両方の順序で同じ集合になることを固定する。
+    const relFirst = '<link rel="modulepreload" href="/assets/a-1.js">';
+    const hrefFirst = '<link href="/assets/a-1.js" rel="modulepreload">';
+    const withCrossorigin = '<link rel="modulepreload" crossorigin href="/assets/a-1.js">';
+    for (const html of [relFirst, hrefFirst, withCrossorigin]) {
+      assert.deepStrictEqual([...parseInitialJs(html)], ['/assets/a-1.js'], `拾えていない: ${html}`);
+    }
+    // stylesheet は初期ロードの JS ではない（拾ってはいけない）。
+    assert.deepStrictEqual([...parseInitialJs('<link rel="stylesheet" href="/assets/a-1.js">')], []);
   });
 
   ok('初期ロードは index.html 由来で数える（遅延チャンクを含めない）', () => {
