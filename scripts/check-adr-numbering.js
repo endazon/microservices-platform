@@ -212,9 +212,20 @@ function selfTest() {
   const t = (name, pass, actual) => cases.push({ name, pass, actual });
   const os = require('os');
 
+  // 作った一時ディレクトリを控え、最後にまとめて消す（#606 レビュー）。
+  // **各呼び出しの直後に消さないのは、失敗時に中身を見たいから**ではなく、
+  // ケースが `kinds(makeTree(...))` の 1 式で書かれていて後始末を挟む場所が無いためである。
+  // `check-cross-repo-refs.js` / `check-i18n-catalogs.js` と同じく、残骸を積まない。
+  const tmpDirs = [];
+  const mkTmp = (prefix) => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+    tmpDirs.push(d);
+    return d;
+  };
+
   /** 一時ディレクトリに ADR 群と索引を作る。**実データは汚さない。** */
   const makeTree = (spec) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'adrnum-'));
+    const dir = mkTmp('adrnum-');
     for (const [file, body] of Object.entries(spec.files)) {
       fs.writeFileSync(path.join(dir, file), body);
     }
@@ -329,7 +340,7 @@ function selfTest() {
 
   // --- fail-closed: 検査不能を「違反 0」にしない ---
   {
-    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'adrnum-empty-'));
+    const empty = mkTmp('adrnum-empty-');
     fs.writeFileSync(path.join(empty, 'README.md'), '');
     const k = kinds(empty);
     t('fail-closed: ADR が 1 件も無いディレクトリは緑にしない', k.includes('no-adr-files'), k);
@@ -345,6 +356,11 @@ function selfTest() {
     s.readme = '本文で IADR-0009 に言及する。\n\n' + s.readme;
     return checkAdrNumbering(makeTree(s)).length === 0;
   })());
+
+  // 後始末（#606 レビュー）。判定はすべて上で終わっているので、報告の前に消してよい。
+  for (const d of tmpDirs) {
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* 後始末の失敗は握る */ }
+  }
 
   let failed = 0;
   for (const c of cases) {
