@@ -311,19 +311,24 @@ function validateIdExistence(subject, iadrIds, planAdrIds) {
  * コミットメッセージは Markdown ではない（GitHub はバッククォートをコードスパンとして
  * 描画せず、`#NNN` の自動リンクは効く）ため、コードスパン除外を**しない**モードで見る。
  */
+// ラベルは kind と 1:1 で対応させる。分岐が足りないと、CI ログを読んで直す人が
+// 実際には存在しない「列挙」を探すことになる（#507 の AI レビュー指摘）。
+// **これは 2 度漏れた**（#507 で 1 度、型 4 を足した #590 でもう 1 度）。よって
+// `scripts.repo.test.js` が `check-cross-repo-refs.js` の `kind:` リテラルを静的に走査し、
+// **全 kind がここに在ること**を機械で固定する。3 度目は検査で止まる。
+const CROSS_REPO_REF_LABELS = {
+  long: '他リポジトリ名の長い表記',
+  enum: '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）',
+  spaced: '空白区切りの修飾（裸の #NNN が本リポの issue へ誤リンクする）',
+  owner: 'フルパス形式の owner 誤り（存在しない owner への死んだリンクになる）',
+  fence: '閉じないコードフェンス（以降の行が検査から漏れる）',
+};
+
 function crossRepoRefReasons(text, where) {
   const s = String(text == null ? '' : text);
   if (!s.trim()) return [];
-  // ラベルは kind と 1:1 で対応させる。分岐が足りないと、CI ログを読んで直す人が
-  // 実際には存在しない「列挙」を探すことになる（#507 の AI レビュー指摘）。
-  const LABELS = {
-    long: '他リポジトリ名の長い表記',
-    enum: '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）',
-    spaced: '空白区切りの修飾（裸の #NNN が本リポの issue へ誤リンクする）',
-    fence: '閉じないコードフェンス（以降の行が検査から漏れる）',
-  };
   return findCrossRepoRefViolations(s, { markdown: false }).map((v) => {
-    const label = LABELS[v.kind] || `未知の違反種別 ${v.kind}`;
+    const label = CROSS_REPO_REF_LABELS[v.kind] || `未知の違反種別 ${v.kind}`;
     return `${where}の ${label}: "${v.matched}" → "${v.suggestion}"（.claude/rules/traceability.md）`;
   });
 }
@@ -520,6 +525,7 @@ module.exports = {
   validateSubject,
   validateIdExistence,
   crossRepoRefReasons,
+  CROSS_REPO_REF_LABELS,
   loadExistingIadrIds,
   loadExistingPlanAdrIds,
   checkSingleTitle,
