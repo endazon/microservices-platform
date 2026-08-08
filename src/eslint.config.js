@@ -23,8 +23,12 @@ const BANNED_IMPORT_PATTERNS = [
     // 13_frontend-stack §基本方針:「BFF の OpenAPI から orval で生成する（手書きクライアント禁止）」。
     group: ['axios', 'ky', 'superagent', 'got', 'node-fetch', 'openapi-fetch'],
     message:
-      '手書きの HTTP クライアントは禁止（ADR-0031）。BFF 呼び出しは orval 生成フック、' +
-      'または @foundation/api の apiFetch / apiStream を使う。',
+      '手書きの HTTP クライアントは禁止（ADR-0031）。BFF 呼び出しは orval 生成フックを使う。' +
+      // ［2026-08-08 / フェーズ末クロス監査］従前ここは「または @foundation/api の apiFetch / apiStream を使う」
+      // と案内していたが、**画面（features）では apiFetch は別の規則が error にする**（IADR-0146）。
+      // 案内どおりに直すと別の error になるため、どこから呼ぶかで割って書く。
+      'SSE だけは apiStream が恒久的な正規の口（IADR-0131 決定 4）。' +
+      'apiFetch は foundation 配下でのみ使ってよい——画面からは禁止（IADR-0146）。',
   },
   {
     // IADR-0121 決定 4: 共有 UI の公開面は @platform/ui のエントリのみ。
@@ -55,6 +59,22 @@ const NO_APIFETCH_IN_FEATURES = {
     '画面（features）から apiFetch を呼ばない（#555 / IADR-0146）。BFF 呼び出しは orval 生成フックを使う' +
     '——apiFetch は手書き型と組で使われるため、その画面だけ契約変更が型検査で捕まらなくなる。' +
     'SSE は apiStream が恒久的な正規の口（IADR-0131 決定 4）。',
+};
+
+// ［2026-08-08 / フェーズ末クロス監査］`bffFetch` も塞ぐ。
+// `apiFetch` だけを禁じても、**同じ「任意 URL ＋ 手書き型」の口がもう 1 つ空いていた** ——
+// `orvalMutator.bffFetch<T>(url, options)` は orval 生成物が使う mutator だが `export` されており、
+// features から import すれば `apiFetch` と同じ抜け道になる（IADR-0146 決定 2 が「禁止対象を絞ること
+// 自体が例外の明示」と述べながら、`bffFetch` を「検出しないこと」へ挙げていなかった＝片側しか書いていない）。
+// **実測では features からの import は 0 件**（利用は `foundation/api/generated/` の 4 ファイルのみ）なので、
+// 禁止しても既存コードは壊れない。**生成物は features ではないため対象外である。**
+const NO_BFFFETCH_IN_FEATURES = {
+  name: '@foundation/api/orvalMutator',
+  importNames: ['bffFetch'],
+  message:
+    '画面（features）から bffFetch を呼ばない（#555 / IADR-0146）。bffFetch は orval 生成物の mutator であり、' +
+    '直接呼ぶと apiFetch と同じく「任意 URL ＋ 手書き型」になって契約変更が型検査で捕まらなくなる。' +
+    'BFF 呼び出しは orval 生成フックを使う。',
 };
 
 // ADR-0031 / IADR-0124: ルーティングは TanStack Router に一本化する（移行第 2 段 / #490）。
@@ -154,7 +174,7 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
-          paths: [...NO_LEGACY_ROUTER_PATHS, NO_APIFETCH_IN_FEATURES],
+          paths: [...NO_LEGACY_ROUTER_PATHS, NO_APIFETCH_IN_FEATURES, NO_BFFFETCH_IN_FEATURES],
           patterns: [
             ...BANNED_IMPORT_PATTERNS,
             {

@@ -491,12 +491,22 @@ function selfTest() {
     const body = vite.slice(vite.indexOf('manualChunks(id)'));
     const end = body.indexOf('\n        },');
     const region = body.slice(0, end === -1 ? undefined : end);
-    // `return '<name>'` だけを見てはいけない —— `ui` は三項演算子で返している
+    // `return '<name>'` の形だけを見てはいけない —— `ui` は三項演算子で返している
     // （`return id.includes('/packages/ui/') ? 'ui' : undefined`）。実際にこの取りこぼしを踏んだ。
     // チャンク名は「パスでもパッケージ名でもない裸の識別子」なので、その形で拾う。
+    //
+    // ［2026-08-08 / フェーズ末クロス監査］**ただし region 全体から拾ってはいけない。**
+    // 従前は region 内の裸の文字列リテラルをすべて拾っていたため、**述語側のリテラルを
+    // チャンク名と誤認する**潜在的な偽陽性があった（例: `if (pkg.startsWith('lodash')) return 'vendor-lodash';`
+    // を足すと `lodash` まで宣言済みチャンク名として拾い、self-test が落ちる。指示どおり baseline へ
+    // `lodash` を入れると、今度は判定 1 が実ビルドで恒久的に fail する）。
+    // 現行の規則はたまたま述語が正規表現リテラルなので発火していないだけである。
+    // **IADR-0147 決定 4 は「偽陽性は塞ぐ」を方針として掲げている**ので、開示ではなく塞ぐ。
+    // チャンク名が現れるのは `return` 句だけなので、抽出をそこへ限定する。
+    const returnStatements = Array.from(region.matchAll(/\breturn\b[^;]*;/g)).map((m) => m[0]);
     const declared = new Set(
-      Array.from(region.matchAll(/'([^']+)'/g))
-        .map((m) => m[1])
+      returnStatements
+        .flatMap((stmt) => Array.from(stmt.matchAll(/'([^']+)'/g)).map((m) => m[1]))
         .filter((s) => !s.includes('/') && !s.startsWith('@'))
     );
     assert.deepStrictEqual(
