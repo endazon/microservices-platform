@@ -42,6 +42,69 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
             "後段が返す次回同期を欠落させず、ソースごとに変えもしない");
     }
 
+    // SC-06（裁定 Q14 / #537）: 同期健全性も NextSyncAt と同じく**欠落させずに透過**する。
+    // BFF は DataSourceDto で型付けして中継するだけなので実装は変わらないが、契約のメンバーが
+    // 増えたときに落ちる場所が無いと静かに欠落する（ここで固定する）。
+    [Fact]
+    public async Task GetList_PassesThroughSyncHealth()
+    {
+        var resp = await _factory.CreateClient().GetAsync("/bff/datasources");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<List<DataSourceDto>>();
+        body!.Should().OnlyContain(d => d.RetryLimit == BffTestFactory.StubRetryLimit,
+            "しきい値の分母は後段が返す値をそのまま運ぶ（BFF で定数を持たない）");
+        var failing = body.Single(d => d.ConsecutiveFailureCount >= d.RetryLimit);
+        failing.LastSyncError.Should().Be("connect failed: Host=db;Password=***",
+            "直近エラーは後段でマスク済みのまま運ぶ（BFF は再マスクも復元もしない）");
+        failing.LastSyncErrorAt.Should().NotBeNull();
+    }
+
+    // SC-06（裁定 Q16 / #534）: 更新（PUT 全置換）を中継する。
+    [Fact]
+    public async Task Put_AsAdmin_ForwardsAndReturnsUpdated()
+    {
+        var resp = await _factory.CreateClient().PutAsJsonAsync(
+            $"/bff/datasources/{BffTestFactory.StubDataSourceId}",
+            new UpdateDataSourceRequest("後", "wiki", "https://wiki.example.test"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resp.Content.ReadFromJsonAsync<DataSourceDto>()).Should().NotBeNull();
+        _factory.LastDataSourceUpdateMethod.Should().Be(HttpMethod.Put);
+    }
+
+    // PATCH は「省略＝現状維持」が意味を持つ。**BFF が省略項目を埋めて転送してはならない**
+    // （埋めると後段には「明示的に null で上書きせよ」と届き、部分更新の意味が消える）。
+    [Fact]
+    public async Task Patch_AsAdmin_ForwardsOnlyProvidedFields()
+    {
+        var resp = await _factory.CreateClient().PatchAsJsonAsync(
+            $"/bff/datasources/{BffTestFactory.StubDataSourceId}",
+            new PatchDataSourceRequest(ConnectionUri: "smb://relocated/share"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastDataSourceUpdateMethod.Should().Be(HttpMethod.Patch);
+        _factory.LastDataSourceUpdateBody.Should().Contain("smb://relocated/share");
+    }
+
+    // 計画 §SC-06「登録・更新・無効化は管理者限定」。**運用者は閲覧できるが更新はできない。**
+    // グループ既定（admin ＋ operator）に AdminOnly を積んで実効させている（IADR-0128 と同じ形）。
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task Update_AsOperator_IsForbidden(string method)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        using var req = new HttpRequestMessage(
+            new HttpMethod(method), $"/bff/datasources/{BffTestFactory.StubDataSourceId}")
+        {
+            Content = JsonContent.Create(new UpdateDataSourceRequest("x", "filesystem", "smb://x")),
+        };
+
+        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task GetList_AsOperator_IsAllowed()
     {

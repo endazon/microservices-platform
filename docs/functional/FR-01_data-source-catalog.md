@@ -74,6 +74,8 @@ flowchart TB
 | データソース CRUD | ✅ 実装済 | DataSourceService |
 | 同期トリガ（`/sync`） | ✅ **実コネクタ経由（filesystem / wiki / saas / db）** | IADR-0051・#195（filesystem）／IADR-0053・#217（Wiki＝汎用 REST 契約）／IADR-0054・#218（SaaS＝汎用契約＋カーソルページング＋429 バックオフ）／IADR-0055・#219（業務DB＝参照専用 SQL・行→文書化）。実データを列挙・取得しストレージ格納＋実メタ付き `RawDocumentFetched` を発行。 |
 | 定期同期（スケジューラ） | ✅ **HostedService（既定無効）** | `DataSourceSyncHostedService`（`DataSourceSync:Enabled`）。UC-04 基本フロー。 |
+| 同期健全性（連続失敗回数・再試行上限・直近エラー） | ✅ **エンティティへ永続化し `DataSourceDto` で返す** | #537 / 裁定 Q14（planning#200）。**継続失敗のしきい値は再試行上限（5）に達した時点**。直近エラーは保存時点でマスクする。UC-04 例外フロー「継続失敗はアラートする」の表示側の土台（[[IADR-0148]]）。発報は構造化ログ（`Alert=true`。[[IADR-0051]] 決定 3a）で、Alertmanager への配線は未配備（#546）。 |
+| 更新（`PUT` 全置換 / `PATCH` 部分更新） | ✅ **管理者限定** | #534 / 裁定 Q16（planning#200）。従前は「削除→再登録」しかなく **ID と履歴が切れた**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。**更新は `Id` / `CreatedAt` / `LastSyncedAt` / 健全性を変えない**。 |
 | 接続失敗の継続アラート | ✅ **インメモリ追跡** | 連続失敗閾値超過で構造化アラートログ（UC-04 例外フロー）。DB 永続化は follow-up。 |
 | 変換（pandoc） | ✅ **実装済（pandoc 実変換・`--extract-media` 図抽出）** | `PandocConversionService`。pandoc 未導入／原本がローカル解決不能（実オブジェクトストレージ未接続・ADR-0014）の dev 環境ではプレースホルダ本文へグレースフルデグレード。 |
 | **正規化文書→カタログ登録** | ✅ 実装済 | `DocumentNormalizedConsumer`。 |

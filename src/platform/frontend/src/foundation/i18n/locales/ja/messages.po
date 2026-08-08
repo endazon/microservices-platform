@@ -556,6 +556,10 @@ msgstr "再変換を受け付けました。"
 msgid "再変換を受け付けられませんでした。"
 msgstr "再変換を受け付けられませんでした。"
 
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "再試行中（{failures}/{limit}）"
+msgstr "再試行中（{failures}/{limit}）"
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "出典:"
 msgstr "出典:"
@@ -648,6 +652,10 @@ msgstr "同期済み"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "同期状態"
 msgstr "同期状態"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "同期異常（{failures}/{limit}）"
+msgstr "同期異常（{failures}/{limit}）"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "名前"

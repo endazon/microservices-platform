@@ -270,6 +270,8 @@ export type DataSourceDtoDefaultAttributes = {[key: string]: string};
  * 後段が `***` へマスク済み**である。SPA から秘密を埋め込むことはしない。
  * SC-06（planning#200 / 裁定 Q15）: `nextSyncAt` は**共通間隔の次回実行時刻**であり
  * **全ソースで同じ値**になる。ソース別スケジュールは持たない（IADR-0136）。
+ * SC-06（同 裁定 Q14 / #537）: 同期健全性（`consecutiveFailureCount` / `retryLimit` /
+ * `lastSyncError`）を持つ。`status` は健全性を表さない（`active` / `disabled` の設定状態のみ）。
  */
 export interface DataSourceDto {
   id: string;
@@ -290,6 +292,25 @@ export interface DataSourceDto {
      * 定期同期が無効なとき（`DataSourceSync:Enabled=false`。compose / dev の既定）は `null`。
      */
   nextSyncAt?: string | null;
+  /**
+     * SC-06（裁定 Q14 / #537）: UC-04 例外フローの**連続同期失敗回数**。完全成功で 0 へ戻る。
+     * `retryLimit` に達した時点が「継続失敗」であり、アラート（構造化ログ `Alert=true`）が出る。
+     * 画面はこの値と `retryLimit` から**琥珀（警告）**を描く。
+     */
+  consecutiveFailureCount: number;
+  /**
+     * SC-06（裁定 Q14 / #537）: 再試行上限。**継続失敗のしきい値そのもの**である
+     * （計画「「継続失敗」のしきい値は再試行上限に達した時点とする」）。
+     * 画面が「3/5」の分母を契約から得るために返す（画面へ定数を複写させない）。
+     */
+  retryLimit: number;
+  /**
+     * SC-06（裁定 Q14 / #537）: 直近の同期エラー。**後段が保存時点でマスク済み**である
+     * （接続文字列・資格情報つき URI・`Bearer` トークンを伏せる。IADR-0053 と同じ守り）。
+     */
+  lastSyncError?: string | null;
+  /** SC-06（裁定 Q14 / #537）: 直近の同期エラーの発生時刻。 */
+  lastSyncErrorAt?: string | null;
 }
 
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
@@ -306,6 +327,46 @@ export interface CreateDataSourceRequest {
   config?: CreateDataSourceRequestConfig;
   /** 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する */
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
+}
+
+export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
+
+/**
+ * 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する
+ */
+export type UpdateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
+
+/**
+ * FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース更新（全置換）。
+ * **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は含まない**（更新で履歴を巻き戻さない）。
+ */
+export interface UpdateDataSourceRequest {
+  name: string;
+  sourceType: string;
+  connectionUri: string;
+  config?: UpdateDataSourceRequestConfig;
+  /** 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する */
+  defaultAttributes?: UpdateDataSourceRequestDefaultAttributes;
+}
+
+export type PatchDataSourceRequestConfig = {[key: string]: string} | null;
+
+/**
+ * 指定したときのみ差し替える。差し替え時は機密区分のフェイルセーフを通す
+ */
+export type PatchDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
+
+/**
+ * FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース部分更新。
+ * **省略した項目は現状維持**である（`null` は「変更しない」を意味する）。
+ */
+export interface PatchDataSourceRequest {
+  name?: string | null;
+  sourceType?: string | null;
+  connectionUri?: string | null;
+  config?: PatchDataSourceRequestConfig;
+  /** 指定したときのみ差し替える。差し替え時は機密区分のフェイルセーフを通す */
+  defaultAttributes?: PatchDataSourceRequestDefaultAttributes;
 }
 
 /**

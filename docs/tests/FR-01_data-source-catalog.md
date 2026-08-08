@@ -67,6 +67,17 @@ plan_refs:
 | T-23 | `updated` 列が NULL の行を含む | `DiscoverAsync` | 当該行のみスキップ＋警告・同期全体は成功 | DB 不正行の縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-24 | Fetch 対象 id が存在しない（消えた行） | `FetchAsync` | 例外にせず空本文へ縮退 | DB 該当なしの縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-25 | `Config.password` に `;`/`'` を含む | `DiscoverAsync` | 接続文字列がクオート合成され特殊文字が往復 | DB パスワードエスケープ（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
+| T-26 | 連続して discover が失敗する（再試行上限まで） | `SyncAsync` | **再試行上限に達した時点**で継続失敗となり、連続失敗回数がエンティティに載る。しきい値と再試行上限は同一定数 | 継続失敗のしきい値（#537 / UC-04 例外 / [[IADR-0148]] 決定 3） | 自動（単体） |
+| T-27 | 失敗の後に完全成功する | `SyncAsync` | 連続失敗回数が 0 へ戻り、**直近エラーも消える** | 健全性の回復（#537 / [[IADR-0148]]） | 自動（単体） |
+| T-28 | 例外メッセージが接続文字列（`Password=`）を含む | `SyncAsync` | **保存時点でマスク**され、平文の秘密が永続化されない | 直近エラーの秘密マスク（#537 / [[IADR-0148]] 決定 5 / IADR-0053） | 自動（単体） |
+| T-29 | キー=値／URI 資格情報／`Bearer` `Basic`／秘密を含まない文 | `SyncErrorRedactor.Redact` | 値だけを伏せキー名は残す・URI はユーザー名も伏せる・無関係な文は素通し・**切り詰めはマスクの後**（上限より後ろの秘密も伏せる） | マスク規則（#537 / [[IADR-0148]] 決定 5） | 自動（単体） |
+| T-30 | 登録済みソース | `PUT /datasources/{id}` | 200・項目が置換され **`id` / `createdAt` / `lastSyncedAt` は不変**（削除→再登録との違い） | 更新が ID と履歴を切らない（#534 / 裁定 Q16） | 自動（エンドポイント） |
+| T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | 機密区分が `internal` へフェイルセーフ補完される | 更新でも fail-closed を割らない（#534 / FR-05 / IADR-0019） | 自動（エンドポイント） |
+| T-32 | 一部項目だけを送る | `PATCH /datasources/{id}` | 省略した項目が現状維持される | 部分更新の意味論（#534 / 裁定 Q16） | 自動（エンドポイント） |
+| T-33 | `config` を省略した `PATCH` | `PATCH /datasources/{id}` | 保存された `config` の秘密が `***` で潰れない | 読んで書き戻す往復事故の防止（#534 / IADR-0053） | 自動（エンドポイント） |
+| T-34 | 存在しない ID | `PUT` / `PATCH` | 404 | 更新の対象不在（#534） | 自動（エンドポイント） |
+| T-35 | `disabled` なソース | `PATCH /datasources/{id}` | 更新できる（`status` は変わらない） | 無効中の認証情報ローテーション（#534） | 自動（エンドポイント） |
+| T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画 §SC-06「登録・更新・無効化は管理者限定」（#534 / IADR-0044） | 自動（エンドポイント） |
 
 ## テストデータ
 
@@ -89,6 +100,9 @@ plan_refs:
 - Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
 - SaaS コネクタテスト（#218）: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
 - 業務DB コネクタテスト（#219）: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
+- 同期健全性（#537）: `.../DataSourceService.Api.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
+- 更新 API（#534）: `.../DataSourceService.Api.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
+- BFF の中継（#534 / #537）: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
 - 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項

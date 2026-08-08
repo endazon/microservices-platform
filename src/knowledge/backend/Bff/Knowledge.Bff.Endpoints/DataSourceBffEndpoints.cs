@@ -83,6 +83,42 @@ public static class DataSourceBffEndpoints
             return Results.Content(body, "application/json", statusCode: (int)resp.StatusCode);
         }).WithName("BffDataSourceSync");
 
+        // FR-01, UC-04, SC-06（Q16 / #534）: 更新（全置換）。従前は更新の口が無く、登録済みソースの変更が
+        // 「削除→再登録」でしかできなかった（ID と履歴が切れる）。
+        // **認可は管理者限定**（計画 §SC-06「登録・更新・無効化は管理者限定」）。グループ既定は
+        // admin + operator なので本エンドポイントだけ AdminOnly を上書きで要求する。後段（DataSourceService）も
+        // 同じ制限を持つ多層防御（IADR-0044）であり、BFF 迂回でも実効する。
+        g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var client = CreateForwardingClient(httpFactory, http);
+            var resp = await client.PutAsJsonAsync($"/datasources/{id}", req, ct);
+            if (!resp.IsSuccessStatusCode)
+                return Results.StatusCode((int)resp.StatusCode);
+            var updated = await resp.Content.ReadFromJsonAsync<DataSourceDto>(ct);
+            return updated is null
+                ? Results.StatusCode(StatusCodes.Status502BadGateway)
+                : Results.Ok(updated);
+        }).WithName("BffDataSourceUpdate").Produces<DataSourceDto>()
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+
+        // FR-01, UC-04, SC-06（Q16 / #534）: 部分更新。**null の項目は現状維持**。
+        // 接続先だけ・認証情報だけの差し替えを、他項目の読み書き往復なしに行えるようにする
+        // （往復させると応答のマスク済みの値〔***〕を書き戻して秘密を破壊する）。
+        g.MapPatch("/{id:guid}", async (Guid id, PatchDataSourceRequest req, IHttpClientFactory httpFactory,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var client = CreateForwardingClient(httpFactory, http);
+            var resp = await client.PatchAsJsonAsync($"/datasources/{id}", req, ct);
+            if (!resp.IsSuccessStatusCode)
+                return Results.StatusCode((int)resp.StatusCode);
+            var patched = await resp.Content.ReadFromJsonAsync<DataSourceDto>(ct);
+            return patched is null
+                ? Results.StatusCode(StatusCodes.Status502BadGateway)
+                : Results.Ok(patched);
+        }).WithName("BffDataSourcePatch").Produces<DataSourceDto>()
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+
         // 無効化（論理削除）
         g.MapDelete("/{id:guid}", async (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>

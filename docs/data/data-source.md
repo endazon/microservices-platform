@@ -48,6 +48,9 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | ConnectionUri | string (varchar(2048)) | ○ | 最大長 2048 | 接続先 URI |
 | Status | string (varchar(50)) | ○ | 最大長 50。既定 `active`。値: `active` / `disabled` | 稼働状態 |
 | LastSyncedAt | DateTimeOffset? (timestamptz) | - | NULL 可（未同期）。`RecordSync()` で更新 | 最終同期時刻 |
+| ConsecutiveFailureCount | int | ○ | 既定 `0`。`RecordSyncFailure()` で増え、完全成功の `ClearSyncFailures()` で `0` へ戻る | 連続同期失敗回数（SC-06 / Q14 / #537。[[IADR-0148]]） |
+| LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
+| LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
 
@@ -83,6 +86,9 @@ erDiagram
         varchar ConnectionUri
         varchar Status
         timestamptz LastSyncedAt
+        int ConsecutiveFailureCount
+        varchar LastSyncError
+        timestamptz LastSyncErrorAt
         jsonb Config
         timestamptz CreatedAt
     }
@@ -114,6 +120,12 @@ erDiagram
 - **コレクション名の解決**: `Qdrant:CollectionName` を正とし、後方互換で `Qdrant:Collection`、既定 `knowledge_chunks` の順（RetrievalService と整合）。
 - **コレクション自動作成**: `EnsureCollectionAsync` で未作成なら `VectorParams { Size, Distance = Cosine }` で作成。
 - **状態遷移**: DataSource は `active` →（`Disable()`）→ `disabled`。`RecordSync()` で `LastSyncedAt` を更新。
+  **同期健全性は状態と直交する**（SC-06 / #537）——`Status` は設定状態（`active` / `disabled`）だけを表し、
+  健全性は `ConsecutiveFailureCount` が表す。**再試行上限（＝継続失敗のしきい値）は列ではない**
+  ——`DataSourceSyncHealth.DefaultRetryLimit` の定数であり、応答（`DataSourceDto.retryLimit`）にだけ載る
+  （画面が「3/5」の分母を契約から得るため。[[IADR-0148]] 決定 4）。
+  **更新（`Update()` / `Patch()`。#534）は健全性・`LastSyncedAt`・`CreatedAt` を変えない**
+  ——更新で履歴を巻き戻さないためである。
 - **設定の NULL 非許容**: `Config` はカラム上 NOT NULL。未設定時は空 JSON（`{}`）。
 
 ## 永続化方針

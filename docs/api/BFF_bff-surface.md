@@ -124,6 +124,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/datasources` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceList` |
 | POST | `/bff/datasources` | **admin / operator** | FR-01 / UC-04 / SC-06 | `useBffDataSourceCreate` |
 | GET | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceGet` |
+| PUT | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceUpdate` |
+| PATCH | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourcePatch` |
 | DELETE | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceDelete` |
 | POST | `/bff/datasources/{id}/sync` | **admin / operator** | FR-01 / UC-04 / SC-06 | `useBffDataSourceSync` |
 | GET | `/bff/conversion/jobs` | **admin / operator** | FR-12 / UC-06 / SC-07 | `useBffConversionJobList` |

@@ -556,6 +556,10 @@ msgstr "The reconversion has been accepted."
 msgid "再変換を受け付けられませんでした。"
 msgstr "The reconversion could not be accepted."
 
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "再試行中（{failures}/{limit}）"
+msgstr "Retrying ({failures}/{limit})"
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "出典:"
 msgstr "Sources:"
@@ -648,6 +652,10 @@ msgstr "Synchronised"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "同期状態"
 msgstr "Sync state"
+
+#: knowledge/frontend/src/features/sc06-datasources/syncState.ts
+msgid "同期異常（{failures}/{limit}）"
+msgstr "Sync failing ({failures}/{limit})"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "名前"

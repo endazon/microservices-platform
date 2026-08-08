@@ -137,17 +137,28 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // スタブも同値を返す（後段が計算した値を BFF がそのまま透過することの検証に用いる。固定値＝決定的）。
     public static readonly DateTimeOffset StubNextSyncAt = new(2026, 8, 6, 14, 5, 0, TimeSpan.Zero);
 
+    // SC-06（planning#200 / 裁定 Q14 / #537）: 同期健全性。2 件目を**継続失敗（上限到達）**にして、
+    // BFF が健全性を欠落させず透過することを検証できるようにする。
+    public const int StubRetryLimit = DataSourceSyncHealth.DefaultRetryLimit;
+
     public List<DataSourceDto> StubDataSources { get; set; } =
     [
         new(StubDataSourceId, "社内共有フォルダ", "filesystem", "smb://share/docs", "active",
             DateTimeOffset.UtcNow, new Dictionary<string, string>(),
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow,
-            StubNextSyncAt),
+            StubNextSyncAt, ConsecutiveFailureCount: 0, RetryLimit: StubRetryLimit),
         new(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"), "社内 Wiki", "wiki", "https://wiki.example",
             "disabled", null, new Dictionary<string, string>(),
             new Dictionary<string, string> { ["confidentiality"] = "internal" }, DateTimeOffset.UtcNow,
-            StubNextSyncAt),
+            StubNextSyncAt, ConsecutiveFailureCount: StubRetryLimit, RetryLimit: StubRetryLimit,
+            LastSyncError: "connect failed: Host=db;Password=***",
+            LastSyncErrorAt: new DateTimeOffset(2026, 8, 8, 2, 0, 0, TimeSpan.Zero)),
     ];
+
+    // SC-06（裁定 Q16 / #534）: 更新系で後段へ転送された本文を捕捉する（PATCH の意味論が
+    // BFF で潰れていないことの検証に用いる）。
+    public string? LastDataSourceUpdateBody { get; internal set; }
+    public HttpMethod? LastDataSourceUpdateMethod { get; internal set; }
 
     // Issue #283 (AST/SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
     // AssumptionsStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
@@ -487,6 +498,18 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 if (owner.DataSourceStatusCode != HttpStatusCode.OK)
                     return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
                 return Json(HttpStatusCode.OK, owner.StubDataSources);
+            }
+
+            // SC-06（裁定 Q16 / #534）: 更新（PUT 全置換 / PATCH 部分更新）。転送された本文を捕捉し、
+            // 後段が返す更新後の姿を中継する。
+            if (method == HttpMethod.Put || method == HttpMethod.Patch)
+            {
+                owner.LastDataSourceUpdateMethod = method;
+                owner.LastDataSourceUpdateBody =
+                    request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (owner.DataSourceStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.DataSourceStatusCode));
+                return Json(HttpStatusCode.OK, owner.StubDataSources[0]);
             }
 
             // /datasources/{id}

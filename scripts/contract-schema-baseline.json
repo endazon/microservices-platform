@@ -470,6 +470,12 @@
             "required": true,
             "position": 3
           },
+          "ConsecutiveFailureCount": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 10
+          },
           "CreatedAt": {
             "source": "positional",
             "type": "DateTimeOffset",
@@ -487,6 +493,18 @@
             "type": "Guid",
             "required": true,
             "position": 0
+          },
+          "LastSyncError": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 12
+          },
+          "LastSyncErrorAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 13
           },
           "LastSyncedAt": {
             "source": "positional",
@@ -506,6 +524,12 @@
             "required": false,
             "position": 9
           },
+          "RetryLimit": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 11
+          },
           "SourceType": {
             "source": "positional",
             "type": "string",
@@ -517,6 +541,16 @@
             "type": "string",
             "required": true,
             "position": 4
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.DataSourceSyncHealth": {
+        "kind": "class",
+        "members": {
+          "DefaultRetryLimit": {
+            "source": "const",
+            "type": "int",
+            "value": "5"
           }
         }
       },
@@ -775,6 +809,41 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.PatchDataSourceRequest": {
+        "kind": "record",
+        "members": {
+          "Config": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 3
+          },
+          "ConnectionUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 2
+          },
+          "DefaultAttributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 4
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 0
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SearchModes": {
         "kind": "class",
         "members": {
@@ -920,6 +989,41 @@
             "type": "string",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.UpdateDataSourceRequest": {
+        "kind": "record",
+        "members": {
+          "Config": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 3
+          },
+          "ConnectionUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "DefaultAttributes": {
+            "source": "positional",
+            "type": "Dictionary<string,string>?",
+            "required": false,
+            "position": 4
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "SourceType": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
           }
         }
       },

@@ -25,7 +25,9 @@ import type {
 import type {
   CreateDataSourceRequest,
   DataSourceDto,
-  DataSourceSyncResultDto
+  DataSourceSyncResultDto,
+  PatchDataSourceRequest,
+  UpdateDataSourceRequest
 } from '../bff.schemas';
 
 import { bffFetch } from '../../orvalMutator';
@@ -361,7 +363,215 @@ export function useBffDataSourceGet<TData = Awaited<ReturnType<typeof bffDataSou
 
 
 
-export type bffDataSourceDeleteResponse204 = {
+export type bffDataSourceUpdateResponse200 = {
+  data: DataSourceDto
+  status: 200
+}
+
+export type bffDataSourceUpdateResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffDataSourceUpdateResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffDataSourceUpdateResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffDataSourceUpdateResponseSuccess = (bffDataSourceUpdateResponse200) & {
+  headers: Headers;
+};
+export type bffDataSourceUpdateResponseError = (bffDataSourceUpdateResponse401 | bffDataSourceUpdateResponse403 | bffDataSourceUpdateResponse404) & {
+  headers: Headers;
+};
+
+export type bffDataSourceUpdateResponse = (bffDataSourceUpdateResponseSuccess | bffDataSourceUpdateResponseError)
+
+export const getBffDataSourceUpdateUrl = (id: string,) => {
+
+
+
+
+  return `/bff/datasources/${id}`
+}
+
+/**
+ * 裁定 Q16（#534）: 従前は更新の口が無く、登録済みソースの変更が「削除→再登録」でしかできなかった。
+ * **削除→再登録は ID と履歴を切る**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。
+ * **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は更新の対象外**である（履歴を巻き戻さない）。
+ * FR-05: `defaultAttributes` は後段が機密区分 `internal` をフェイルセーフ補完する。
+ * **無効（`disabled`）なソースも更新できる**（認証情報のローテーションは無効中にも起こる）。
+ * @summary FR-01, UC-04, SC-06: データソース更新（全置換・**管理者のみ**）
+ */
+export const bffDataSourceUpdate = async (id: string,
+    updateDataSourceRequest: UpdateDataSourceRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffDataSourceUpdateResponse> => {
+
+  return bffFetch<bffDataSourceUpdateResponse>(getBffDataSourceUpdateUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateDataSourceRequest)
+  }
+);}
+
+
+
+
+
+export const getBffDataSourceUpdateMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceUpdate>>, TError,{id: string;data: UpdateDataSourceRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceUpdate>>, TError,{id: string;data: UpdateDataSourceRequest}, TContext> => {
+
+const mutationKey = ['bffDataSourceUpdate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffDataSourceUpdate>>, {id: string;data: UpdateDataSourceRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bffDataSourceUpdate(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffDataSourceUpdateMutationResult = NonNullable<Awaited<ReturnType<typeof bffDataSourceUpdate>>>
+    export type BffDataSourceUpdateMutationBody = UpdateDataSourceRequest
+    export type BffDataSourceUpdateMutationError = void
+
+    /**
+ * @summary FR-01, UC-04, SC-06: データソース更新（全置換・**管理者のみ**）
+ */
+export const useBffDataSourceUpdate = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceUpdate>>, TError,{id: string;data: UpdateDataSourceRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffDataSourceUpdate>>,
+        TError,
+        {id: string;data: UpdateDataSourceRequest},
+        TContext
+      > => {
+      return useMutation(getBffDataSourceUpdateMutationOptions(options));
+    }
+    export type bffDataSourcePatchResponse200 = {
+  data: DataSourceDto
+  status: 200
+}
+
+export type bffDataSourcePatchResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffDataSourcePatchResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffDataSourcePatchResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffDataSourcePatchResponseSuccess = (bffDataSourcePatchResponse200) & {
+  headers: Headers;
+};
+export type bffDataSourcePatchResponseError = (bffDataSourcePatchResponse401 | bffDataSourcePatchResponse403 | bffDataSourcePatchResponse404) & {
+  headers: Headers;
+};
+
+export type bffDataSourcePatchResponse = (bffDataSourcePatchResponseSuccess | bffDataSourcePatchResponseError)
+
+export const getBffDataSourcePatchUrl = (id: string,) => {
+
+
+
+
+  return `/bff/datasources/${id}`
+}
+
+/**
+ * 裁定 Q16（#534）: **`null`（省略）の項目は現状維持**である。接続先だけ・認証情報だけの
+ * 差し替えを、他項目を読んで書き戻す往復なしに行えるようにする —— 往復させると応答の
+ * マスク済みの値（`***`。IADR-0053）を書き戻して秘密を破壊する。
+ * @summary FR-01, UC-04, SC-06: データソース部分更新（**管理者のみ**）
+ */
+export const bffDataSourcePatch = async (id: string,
+    patchDataSourceRequest: PatchDataSourceRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffDataSourcePatchResponse> => {
+
+  return bffFetch<bffDataSourcePatchResponse>(getBffDataSourcePatchUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(patchDataSourceRequest)
+  }
+);}
+
+
+
+
+
+export const getBffDataSourcePatchMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourcePatch>>, TError,{id: string;data: PatchDataSourceRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffDataSourcePatch>>, TError,{id: string;data: PatchDataSourceRequest}, TContext> => {
+
+const mutationKey = ['bffDataSourcePatch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffDataSourcePatch>>, {id: string;data: PatchDataSourceRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  bffDataSourcePatch(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffDataSourcePatchMutationResult = NonNullable<Awaited<ReturnType<typeof bffDataSourcePatch>>>
+    export type BffDataSourcePatchMutationBody = PatchDataSourceRequest
+    export type BffDataSourcePatchMutationError = void
+
+    /**
+ * @summary FR-01, UC-04, SC-06: データソース部分更新（**管理者のみ**）
+ */
+export const useBffDataSourcePatch = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourcePatch>>, TError,{id: string;data: PatchDataSourceRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffDataSourcePatch>>,
+        TError,
+        {id: string;data: PatchDataSourceRequest},
+        TContext
+      > => {
+      return useMutation(getBffDataSourcePatchMutationOptions(options));
+    }
+    export type bffDataSourceDeleteResponse204 = {
   data: void
   status: 204
 }
