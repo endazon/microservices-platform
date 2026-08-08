@@ -99,6 +99,14 @@ jobs:
       # 単体テストは frontend-tests.yml（pnpm run test:coverage）へ集約（二重実行回避・IADR-0034）。
       - name: Build
         run: pnpm run build
+      # NFR / ADR-0031 / IADR-0134 / issue #556: manualChunks の規則構成と初期ロード量の検査。
+      # **dist が在るジョブはここだけ**（ci.yml の scripts-tests には無い）なので、実成果物に対する
+      # 検査はこの位置へ結線する。--require は dist が無ければ fail する
+      # （「成果物が無いから素通り」で検査が静かに失効するのを防ぐ）。
+      # 規則を 1 つ外すと落ちることは実ビルドの変異試験で実測済み（#556 の作業仕様書）。
+      - name: manualChunks rules and initial-load budget
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-chunk-budget.js --require
       # ADR-0031 / IADR-0125: 共有 UI パッケージのカタログ。ビルドが通ることの確認と、
       # 次のステップの走査対象を作ることを兼ねる。
       - name: Build Storybook (catalog)
