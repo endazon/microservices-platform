@@ -1,13 +1,14 @@
 ---
 title: キット由来の pr-title.yml が GitHub App 作成 PR で skipped になる — 除外条件 user.type != 'Bot' の見直し
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids: [NFR, IADR-0115]
 source_repo: microservices-platform
 source_ref: docs/specs/20260805_issue-524_pr-title-bot-author-gate.md（ブランチ fix/NFR-pr-title-bot-author-gate・issue #524）
 author: Claude
 created: 2026-08-05
+updated: 2026-08-08
 ---
 
 # フィードバック: `pr-title.yml` の bot 除外条件がキット全体に同じ穴を作っている

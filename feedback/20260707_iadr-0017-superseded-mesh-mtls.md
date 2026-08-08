@@ -1,7 +1,7 @@
 ---
 title: IADR-0017 の暫定運用を解消（Istio STRICT mTLS 配備）— 暫定運用の注記の状態更新
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids:
   - NFR
@@ -12,6 +12,7 @@ source_repo: microservices-platform
 source_ref: claude/issue-100-20260707-1319 / docs/specs/20260707_issue-100_production-runtime-k3s-istio-argocd.md / Issue #100
 author: claude
 created: 2026-07-07
+updated: 2026-08-08
 ---
 
 # フィードバック: IADR-0017 の暫定運用を解消（Istio STRICT mTLS 配備）

@@ -1,14 +1,14 @@
 ---
 title: SC-09〜10 の画面要素 6 種が現在の API 契約に載らない（タグ辞書・dry-run 検証・条件式・SLO・LLM コスト・一意利用者数）＋ SC-10 の閲覧ロールの食い違い ＋ SC-11 モックのドリフト例が計画自身の 5 分類と揃っていない
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids: [SC-09, SC-10, SC-11, UC-05, FR-05, FR-09, FR-10, NFR]
 source_repo: microservices-platform
 source_ref: "feat/SC-09-11-admin-ops-screens / docs/specs/20260805_issue-504_sc09-11-admin-ops-screens.md（#504）"
 author: Claude（実装）
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-08
 ---
 
 # フィードバック: SC-09〜10 の画面要素 6 種が現在の API 契約に載らない ＋ SC-10 の閲覧ロールの食い違い ＋ SC-11 モックのドリフト例の粒度

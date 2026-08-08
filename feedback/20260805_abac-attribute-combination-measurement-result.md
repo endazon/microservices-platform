@@ -1,13 +1,14 @@
 ---
 title: ABAC 属性組み合わせ数の実測結果 — 実測値は 1 通り（ADR-0035 の「機密区分単位 4 通り」は安全側）・必須属性 3 種が実データに不在
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [FR-17, FR-18, FR-05, FR-09, ADR-0033, ADR-0034, ADR-0035, ADR-0036]
 source_repo: microservices-platform
 source_ref: docs/specs/20260805_issue-456_abac-attribute-combination-measurement.md（ブランチ chore/FR-17-abac-attribute-measurement・issue #456）
 author: Claude
 created: 2026-08-05
+updated: 2026-08-08
 ---
 
 # フィードバック: ABAC 属性組み合わせ数の実測結果（issue #456 の完了報告）
