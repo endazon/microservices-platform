@@ -480,3 +480,4 @@ coverage/
 # .venv/
 # .pytest_cache/
 # .coverage
+.claude/worktrees/
