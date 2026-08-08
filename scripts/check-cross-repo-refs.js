@@ -7,17 +7,32 @@
  * 規約は .claude/rules/traceability.md「クロスリポジトリの issue / PR 番号の修飾」。
  * 短縮形（planning#NNN / AST#NNN）へ寄せ、フルパス形式（<owner>/<repo>#NNN）だけを例外として許す。
  *
- * 検出する 3 つの型:
+ * 検出する型（**件数はここに書かない** —— 数を書くと型を足したとき片方が黙って古くなる。
+ * 下の列挙そのものが単一情報源である。#590 / [[IADR-0141]]「参照点を 1 つに畳む」）:
  *   型 1（長い表記）  : リポジトリ名の裸書き（第 3 の表記）。短縮形でもフルパス形式でもない。
  *   型 2（列挙裸）    : 修飾付き参照の**直後**に続く裸の #NNN。先頭だけ修飾して後続を裸にする形。
  *                       PR #561 が、規約の書いてある当のファイルの中で犯した型である。
  *   型 3（空白区切り）: 修飾語と番号が空白で離れた形。規約の書式は詰めた形であり、空白が入ると
  *                       機械的突合に掛からない。#507 のクロス監査（2026-08-07）が実測した型。
+ *   型 4（owner 誤り）: フルパス形式だが owner が既知集合（endazon）でない形。定期監査 2 回目
+ *                       （adr-guardian・2026-08-07）が実測した型。**.md で唯一「実害」が出る型**
+ *                       である —— 型 1〜3 は .md では表記ゆれに留まるのに対し、フルパス形式だけが
+ *                       .md で自動リンクになるため、owner を誤ると**死んだリンクが描画される**。
+ *
+ * **型 4 は「フルパス形式一般」ではなく「自組織が持つリポジトリ名」に限定して検査する**（#590 の
+ * 母集合の実測）。フルパス形式に見えるスラッシュには owner でないものが多数あり、限定しないと
+ * 以下がすべて偽陽性になる:
+ *   - `anthropics/claude-code-action#723` … 第三者リポジトリへの正当な参照（owner が endazon で
+ *     ないのが**正しい**）
+ *   - `owner/repo#123`                    … 書式を説明するリテラルな見本（実装・自己試験・仕様書）
+ *   - `AST#186/AST#192`                   … `/` は**列挙の区切り**であって owner ではない
+ *   - `…spa-router-shell.md#2`            … Markdown のアンカーリンク
  *
  * **自動リンクが効く面と効かない面を区別すること**（クロス監査の実測。IADR-0140 決定 1・4）:
  *   - `.md` のレンダリングでは、裸の `#NNN` も短縮形の修飾も**自動リンクにならない**。
  *     `.md` で自動リンクするのはフルパス形式（`endazon/<repo>` + `#` + 番号）だけである。
- *     したがって `.md` における 3 型の害は**表記ゆれ（機械的突合の不安定）**であって誤リンクではない。
+ *     したがって `.md` における**型 1〜3 の害は表記ゆれ（機械的突合の不安定）**であって誤リンクではない。
+ *     **型 4 だけは別で、.md でも誤リンク（死んだリンク）という実害が出る**（#590）。
  *   - issue / PR / コミットメッセージの本文では裸の `#NNN` が**本リポジトリの issue へ自動リンクする**。
  *     こちらは誤リンクという実害が出る面であり、`check-commit-messages.js` 経由で検査する。
  *
@@ -89,6 +104,27 @@ const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
 // （2 箇所に別々の文字集合を書くと、片方だけ足したときに是正案が黙って壊れる）。
 const ENUM_FIX_RE = new RegExp(String.raw`(^|(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*)#(\d+)`, 'g');
 
+// 型 4: フルパス形式の owner。規約（.claude/rules/traceability.md「本リポジトリでの名前空間」）が
+// 定める既知の owner はただ 1 つ `endazon` である（実測: フルパス形式 30 件・URL 形式 245 件すべて）。
+const KNOWN_OWNERS = ['endazon'];
+// **自組織が持つリポジトリ名**。この 3 つに限って owner を検査する（上のコメントの理由）。
+// `microservices-platform` は自リポジトリだが、フルパス形式で書かれること自体は規約が許すため
+// 対象に含める（owner を誤れば同じく死んだリンクになる）。
+const OWNED_REPOS = ['project-planning', 'ai-stock-trading', 'microservices-platform'];
+// 短縮形への対応。自リポジトリは裸の `#NNN` が正（規約: 裸の #NNN は常に本リポジトリ）。
+const OWNED_REPO_SHORT = {
+  'project-planning': 'planning',
+  'ai-stock-trading': 'AST',
+  'microservices-platform': '',
+};
+// 直前が \w / - / `/` なら owner ではない（URL 中の `github.com/<owner>/…` を含む）。
+// URL 形式の owner は本検査の対象外である（#590 で実測し、違反 0 件であることを開示したうえで
+// 射程外とした）。
+const OWNER_RE = new RegExp(
+  String.raw`(?<![\w/-])([A-Za-z][\w.-]*)\/(${OWNED_REPOS.join('|')})#(\d+)`,
+  'g'
+);
+
 // 型 3: 修飾語と番号が空白で離れた形（間に PR / issue の語が入る形も含む）。
 // **自リポジトリを指す修飾語（MSP / microservices-platform）は入れない**——その直後の裸 `#NNN` は
 // 本リポジトリを指しており正しい。入れると正当な記述を 22 件止める（実測）。
@@ -151,7 +187,7 @@ function lineNumberAt(text, index) {
  * 1 つのテキストから違反を集める。
  * @param {string} text
  * @param {{markdown?: boolean}} opts markdown=true でコードスパン／フェンスを対象外にする。
- * @returns {{kind: 'long'|'enum'|'spaced'|'fence', line: number, matched: string, suggestion: string}[]}
+ * @returns {{kind: 'long'|'enum'|'spaced'|'owner'|'fence', line: number, matched: string, suggestion: string}[]}
  */
 function findViolations(text, opts = {}) {
   const src = String(text == null ? '' : text);
@@ -196,6 +232,20 @@ function findViolations(text, opts = {}) {
       line: lineNumberAt(scan, m.index),
       matched: m[0],
       suggestion: `${short}#${m[2]}`,
+    });
+  }
+
+  OWNER_RE.lastIndex = 0;
+  while ((m = OWNER_RE.exec(scan))) {
+    if (KNOWN_OWNERS.includes(m[1])) continue; // 規約が許すフルパス形式。
+    const short = OWNED_REPO_SHORT[m[2]];
+    out.push({
+      kind: 'owner',
+      line: lineNumberAt(scan, m.index),
+      matched: m[0],
+      // 規約は短縮形へ寄せることを求めるため、owner を直すのではなく短縮形を提案する
+      // （自リポジトリ = microservices-platform は裸の `#NNN` が正）。
+      suggestion: `${short}#${m[3]}`,
     });
   }
 
@@ -257,6 +307,7 @@ function formatReport(report) {
         long: '長い表記',
         enum: '列挙形の修飾漏れ',
         spaced: '空白区切りの修飾',
+        owner: 'フルパス形式の owner 誤り',
         fence: '閉じないコードフェンス',
       }[v.kind];
       lines.push(`    ${r.file}:${v.line}  [${label}] ${v.matched}  →  ${v.suggestion}`);
@@ -351,6 +402,44 @@ function selfTest() {
     kinds('AST #196/#197 を参照').join() === 'spaced');
   t('型3: 型 3 を直すと 2 回目に型 2 が上がる',
     kinds('AST#196/#197 を参照').join() === 'enum');
+
+  // --- 正のケース: 型 4（フルパス形式の owner 誤り。#590） ---
+  // **正例と負例を対で置くこと**が本型の要である —— 型 4 を足したせいで規約が許すフルパス形式
+  // （`endazon/...`）や、owner でないスラッシュ（第三者リポ・見本・列挙・アンカー）まで
+  // 落ちては本末転倒だからである。下の負例群がその歯止めであり、消してはならない。
+  t('型4: 誤 owner（endodazon）を検出する —— #590 の実在違反',
+    kinds('AST endodazon/ai-stock-trading#106（T2）').join() === 'owner');
+  t('型4: project-planning 側の誤 owner も検出する',
+    kinds('endazonn/project-planning#207 を参照').join() === 'owner');
+  t('型4: 自リポジトリ（microservices-platform）の誤 owner も検出する',
+    kinds('endodazon/microservices-platform#56 を参照').join() === 'owner');
+  // 是正案の照合は `?.` で引く。**検出そのものが壊れたとき、スタックトレースではなく
+  // 「どのケースが落ちたか」を名前つきで出すため**（`[0].suggestion` を素で書くと
+  // 未検出時に TypeError で落ち、失敗したケース名が出ない）。#590 の変異試験で実測した。
+  t('型4: 是正案は短縮形（ai-stock-trading → AST）',
+    findViolations('endodazon/ai-stock-trading#106')[0]?.suggestion === 'AST#106');
+  t('型4: 是正案は短縮形（project-planning → planning）',
+    findViolations('endazonn/project-planning#207')[0]?.suggestion === 'planning#207');
+  t('型4: 自リポジトリの是正案は裸の #NNN（規約: 裸の #NNN は常に本リポジトリ）',
+    findViolations('endodazon/microservices-platform#56')[0]?.suggestion === '#56');
+  t('型4: Markdown のコードスパンの中は検出しない（反例を書けること）',
+    kinds('誤: `endodazon/ai-stock-trading#106`', { markdown: true }).length === 0);
+
+  // --- 負のケース（型 4）: #590 で実測した「owner に見えて owner でない」形 ---
+  t('負例4: 正しい owner のフルパス形式は通す（endazon/ai-stock-trading#106）',
+    kinds('endazon/ai-stock-trading#106 を参照').length === 0);
+  t('負例4: 正しい owner の自リポ参照も通す（feedback/ の実在 4 件）',
+    kinds('実装 Issue: endazon/microservices-platform#56, 親 #48').length === 0);
+  t('負例4: 第三者リポジトリは owner が endazon でなくても通す',
+    kinds('参考: anthropics/claude-code-action#723）。').length === 0);
+  t('負例4: 書式を説明するリテラルな見本 owner/repo#123 は通す',
+    kinds('`issue` は `#123` か `owner/repo#123` の形式を検査する').length === 0);
+  t('負例4: 列挙の区切りスラッシュ（AST#186/AST#192）を owner と読まない',
+    kinds('（AST#186/AST#192/AST#194/AST#195）これらは').length === 0);
+  t('負例4: Markdown のアンカーリンク（.md#2）を owner 付き参照と読まない',
+    kinds('[作業仕様書 §2](../specs/20260804_issue-490_spa-router-shell.md#2-ルートパス)').length === 0);
+  t('負例4: URL 形式は型 4 の対象外（#590 で射程外と開示。owner は / の直後で後読みが効く）',
+    kinds('https://github.com/endodazon/project-planning#50').length === 0);
 
   // --- 負のケース: 偽陽性を出してはならない ---
   // **自リポジトリの修飾語は型 3 に含めない。** 裸の #NNN が本リポジトリを指すのは正しい。
@@ -511,7 +600,10 @@ module.exports = {
   LONG_RE,
   ENUM_RE,
   SPACED_RE,
+  OWNER_RE,
   SHORT_NAMES,
   LONG_NAMES,
+  KNOWN_OWNERS,
+  OWNED_REPOS,
   SEP,
 };

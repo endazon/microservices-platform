@@ -33,7 +33,7 @@ related_specs:
 - 実装判断: [[IADR-0056]]（ユニット構成 platform/knowledge）／[[IADR-0057]]（一方向依存）／
   [[IADR-0063]]（BFF 合成点・例外3）／[[IADR-0068]]（image-mapping ドリフト検査）／
   **[[IADR-0070]]（本統合の設計判断・AST 共有 Dockerfile を context/args 対応で載せる）**
-- Issue: MSP #283（本 issue）／ AST endodazon/ai-stock-trading#106（T2）
+- Issue: MSP #283（本 issue）／ AST#106（T2）
 - 上流: PR AST#185（AST フロント第1スライス・設定画面 AST/SC-01・[[IADR-0080]]）
 
 ## 目的・背景
