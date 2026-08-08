@@ -9,10 +9,19 @@
  *
  * 検査する判定（**件数はここに書かない**。判定は「関係」であって「N 件であること」ではない）:
  *   1. 番号の重複が無い
- *   2. 欠番が無い（`0000..NNNN` が連続）
+ *   2. 欠番が無い（`0000` から始まり最大番号まで連続）
  *   3. ファイル名の番号 = 本文の自称番号
  *   4. 索引（docs/adr/README.md）⇔ 実ファイルが**双方向**で過不足なし
  *   5. 索引の並びが昇順
+ *   6. 索引行の「形」（ID セルがリンク形式か／リンク先ファイル名が当該 ID で始まるか／行末の閉じ `|`）
+ *
+ * **判定 6 は #580 から統合したものである**（#580 作業仕様書
+ * `docs/specs/20260807_issue-580_adr-records-drift.md` の「#581 への申し送り」）。#580 は同じ検査を
+ * `scripts/scripts.repo.test.js` の `inspectAdrIndex` ブロックに置き、「#581 が索引行をパースする
+ * 時点で統合し、そちらからは削除する。**同じ不変条件の検査を 2 本残さない**」と申し送っていた。
+ * 本検査が判定 4・5 のために索引行をパースするので、ここが統合先である。あわせて #580 が置いていた
+ * fail-open 下限（索引行数 >= ADR 本体数）は、判定 4 の `index-missing` と `no-adr-files` が
+ * **同じことをより直接に**見るため引き継がない（下限値という手作業の更新点も消える）。
  *
  * **この検査が防げないこと**（#581 が明記を求めた。IADR-0144 決定 3）:
  *   衝突の本体は「**並行 PR が互いの採番を見ない**」ことであり、本検査は develop に着地した後しか
@@ -20,6 +29,15 @@
  *   初めて落ちる**。つまり**未然に防げない**。それでも価値はある —— 現状は後発も素通りし、
  *   人が気づくまで develop が壊れたままである（実際に衝突は 2 回起き、2 回とも人手で事後修復した）。
  *   規約の後半（欠番を作らない・重複を残さない）だけを機械化するものであり、**先着の調停はできない**。
+ *
+ * **検出しないもの**（IADR-0144「検出しないこと」と同じ列挙。ここを正とする）:
+ *   - **索引の状態列と本体 `status:` の突合**。#580 はこれも #581 へ委ねたが、本 PR では実装しない
+ *     ——索引の状態セルは `Superseded by IADR-XXXX` のように**後継 ID を含む自由文**であり、
+ *     本体 `status:` の語（`Accepted` 等）と 1 対 1 に対応しない。突合するには先に語彙を規約化する
+ *     必要があり、それは索引タイトル列の要約化（`adr-index-title-baseline.json` のラチェット）と
+ *     同じ「先に是正、後から検査」の順序になる。**未実装であることをここに開示する**（#606 レビュー）。
+ *   - **リンク先ファイルの実在**（`check-doc-links.js` の担当。二重に持たない）。
+ *   - **索引タイトル列**（`scripts.repo.test.js` のラチェット。字義一致は方向が合わない）。
  *
  * **計画 ADR（`ADR-xxxx`）は対象外**——計画リポの所有物であり、本リポは pin を進めるだけで採番しない。
  * **`docs/superpowers/` も対象外**（保管された旧計画であり live な採番空間ではない）。
@@ -42,10 +60,12 @@ const DEFAULT_DIR = path.join(REPO_ROOT, 'docs', 'adr');
 
 /** ファイル名から番号を取る。`IADR-0143_xxx.md` → 143。 */
 const FILE_RE = /^IADR-(\d{4})_.*\.md$/;
-/** 索引行の判定と ID 抽出。**`scripts.repo.test.js:2201` と同じ形に揃える**
+/** 索引行の判定と ID 抽出。**同じ式を `scripts.repo.test.js` のタイトル列ラチェットも使う**
  *  ——2 箇所に別々の式を書くと、片方だけ直したとき挙動が黙って割れる。 */
 const INDEX_LINE_RE = /^\|\s*\[?IADR-\d{4}/;
 const ID_RE = /IADR-(\d{4})/;
+/** 索引行の ID セルがリンク形式か（判定 6。#580 から統合）。`[IADR-0001](./IADR-0001_x.md) |` を取る。 */
+const INDEX_LINK_RE = /^\|\s*\[(IADR-\d{4})\]\(\.\/([^)]+)\)\s*\|/;
 
 /** 本文の自称番号を探す範囲（冒頭）。frontmatter の title と H1 がここに入る。 */
 const SELF_ID_HEAD_CHARS = 400;
@@ -88,8 +108,16 @@ function checkAdrNumbering(dir = DEFAULT_DIR) {
   }
 
   // --- 判定 2: 欠番 ---
+  // **起点を `nums[0]` にすると「先頭がまるごと欠けている」型を取りこぼす**（#606 レビュー）。
+  // 採番は `IADR-0000` から始まる規約なので、下端は 0 に固定して数える。
   const nums = [...byNum.keys()].sort((a, b) => a - b);
-  for (let i = nums[0]; i <= nums[nums.length - 1]; i++) {
+  if (nums[0] !== 0) {
+    push(
+      'numbering-not-from-zero',
+      `採番が IADR-0000 から始まっていない（最小は IADR-${String(nums[0]).padStart(4, '0')}）`
+    );
+  }
+  for (let i = 0; i <= nums[nums.length - 1]; i++) {
     if (!byNum.has(i)) push('missing-number', `IADR-${String(i).padStart(4, '0')} が欠番`);
   }
 
@@ -119,9 +147,25 @@ function checkAdrNumbering(dir = DEFAULT_DIR) {
   }
 
   const indexIds = [];
-  readme.split('\n').forEach((line) => {
+  readme.split('\n').forEach((line, i) => {
     if (!INDEX_LINE_RE.test(line)) return;
     indexIds.push(line.match(ID_RE)[1]);
+
+    // --- 判定 6: 索引行の「形」（#580 から統合。同じ不変条件の検査を 2 本残さない） ---
+    // `check-doc-links.js` は「あるリンクが壊れているか」しか見ず「**リンクが無いこと**」を
+    // 検出しない。実際 #582 は新規行をリンク無しのプレーンテキストで足し、無検査で通過した。
+    const n = i + 1;
+    const linked = line.match(INDEX_LINK_RE);
+    if (!linked) {
+      push('index-not-linked', `README.md:${n} の ID セルがリンク形式でない`);
+    } else if (!linked[2].startsWith(linked[1] + '_')) {
+      push(
+        'index-id-file-mismatch',
+        `README.md:${n} のリンク先 ${linked[2]} が ${linked[1]}_ で始まらない（実在検査では捕まらない型）`
+      );
+    }
+    // GFM は閉じ `|` が無くても描画するが、厳密なパーサ（本検査を含む）は落ちる。
+    if (!/\|\s*$/.test(line)) push('index-no-trailing-pipe', `README.md:${n} に行末の閉じ | が無い`);
   });
 
   const fileIds = files.map((f) => f.match(FILE_RE)[1]);
@@ -248,6 +292,41 @@ function selfTest() {
     t('M5: 索引の並びを入れ替える → index-not-sorted', k.includes('index-not-sorted'), k);
   }
 
+  // --- M7: 採番の下端（先頭がまるごと欠けている型。#606 レビュー） ---
+  {
+    const s = { files: {}, readme: '| ID | 決定 | 状態 |\n| --- | --- | --- |\n' };
+    for (const id of ['0001', '0002']) {
+      s.files[`IADR-${id}_x.md`] = `# IADR-${id}: x\n`;
+      s.readme += `| [IADR-${id}](./IADR-${id}_x.md) | x | Accepted |\n`;
+    }
+    const k = kinds(makeTree(s));
+    // 起点を最小番号にすると連続なので緑になってしまう型。下端を 0 に固定して初めて落ちる。
+    t('M7: 採番が IADR-0001 から始まる → numbering-not-from-zero', k.includes('numbering-not-from-zero'), k);
+    t('M7: 併せて IADR-0000 を欠番として数える', k.includes('missing-number'), k);
+  }
+
+  // --- M8〜M10: 索引行の「形」（#580 から統合した判定 6） ---
+  {
+    const s = JSON.parse(JSON.stringify(okSpec));
+    s.readme = s.readme.replace('| [IADR-0001](./IADR-0001_b.md) |', '| IADR-0001 |');
+    const k = kinds(makeTree(s));
+    t('M8: 索引の ID セルからリンクを外す → index-not-linked', k.includes('index-not-linked'), k);
+  }
+  {
+    const s = JSON.parse(JSON.stringify(okSpec));
+    // #580 着手時の実測: IADR-0082 の行が実際にこの状態だった（GFM は描画するが厳密解析は落ちる）。
+    s.readme = s.readme.replace('| [IADR-0000](./IADR-0000_a.md) | a | Accepted |', '| [IADR-0000](./IADR-0000_a.md) | a | Accepted');
+    const k = kinds(makeTree(s));
+    t('M9: 行末の閉じパイプを外す → index-no-trailing-pipe', k.includes('index-no-trailing-pipe'), k);
+  }
+  {
+    const s = JSON.parse(JSON.stringify(okSpec));
+    // 実在するファイルを指しているのでリンク切れ検査（check-doc-links.js）では捕まらない型。
+    s.readme = s.readme.replace('[IADR-0001](./IADR-0001_b.md)', '[IADR-0001](./IADR-0000_a.md)');
+    const k = kinds(makeTree(s));
+    t('M10: ID とリンク先ファイル名の食い違い → index-id-file-mismatch', k.includes('index-id-file-mismatch'), k);
+  }
+
   // --- fail-closed: 検査不能を「違反 0」にしない ---
   {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'adrnum-empty-'));
@@ -314,5 +393,6 @@ module.exports = {
   selfTest,
   FILE_RE,
   INDEX_LINE_RE,
+  INDEX_LINK_RE,
   DEFAULT_DIR,
 };

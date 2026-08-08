@@ -1948,8 +1948,8 @@ module.exports = ({ ok, assert }) => {
     assert.match(abac.renderText(r), /粒度 3: 機密区分単位/);
   });
 
-  // --- NFR / #507 / IADR-0140: 他リポジトリ issue 表記の機械検査 --------------------
-  // IADR 採番の一意性・連続性・索引との双方向一致（#581 / [[IADR-0144]]）。
+  // --- NFR / #581 / IADR-0144: IADR 採番の機械検査 ---------------------------------
+  // 採番の一意性・連続性（`0000` 起点）・索引との双方向一致・索引行の「形」（#580 から統合）。
   // **実データは全判定 clean なので、検出力は変異でしか示せない** —— 一時ツリーで当てる。
   {
     const { spawnSync: spawnAdrNum } = require('child_process');
@@ -2141,102 +2141,16 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
-  // --- NFR / #580: ADR 索引の行の「形」を固定する ------------------------------------
+  // --- NFR / #580: ADR 索引の行の「形」を固定する検査は #581 側へ統合した ---------------
   //
-  // ここに置く理由: `.github/workflows/` は GitHub App 権限では編集できない。ci.yml の
-  // scripts-tests ジョブ（REQUIRE_REPO_TESTS=1 → 本 companion）が CI ゲートになる
-  // （check-i18n-catalogs / check-test-spec-coverage の実データ検査と同じ結線・#507 の経路）。
-  //
-  // **なぜ必要か（#580 のクロス監査 A-1 で実測）**: #580 は索引 140 行の ID セルを本体への
-  // リンクにして「本体を改名・削除すると索引が壊れて CI が落ちる」経路を作った。しかし
-  // `check-doc-links.js` は **「あるリンクが壊れているか」しか見ず「リンクが無いこと」を
-  // 検出しない**。実際、#580 の作業中に develop へ入った #582 は新規 `IADR-0139` 行を
-  // **リンク無しのプレーンテキストで**追加しており、不変条件は無検査のまま破れていた。
-  // よって「全 ID セルがリンクである」ことを機械で固定する。
-  //
-  // **検査するのは行の「形」だけである**（#581 への申し送り）:
-  //   - 見る:   ID セルがリンク形式か／リンク先ファイル名が当該 ID で始まるか／行末の閉じ `|`
-  //   - 見ない: リンク先の実在（`check-doc-links.js` の担当。二重に持たない）
-  //             状態列と本体 `status:` の突合・採番の連続性・索引行の欠落（**#581 の担当**）
-  //   #581 が採番検査を入れるときは、本ブロックを #581 側へ統合して**ここから削除する**
-  //   （同じ不変条件の検査を 2 本残さない）。
-
-  {
-    // 索引 1 ファイル分の Markdown を受け取り、違反を返す純関数。負例を実データを汚さずに試せる。
-    const inspectAdrIndex = (md) => {
-      const violations = [];
-      md.split('\n').forEach((line, i) => {
-        if (!/^\|\s*\[?IADR-\d{4}/.test(line)) return; // 索引の行だけを見る
-        const n = i + 1;
-        const linked = line.match(/^\|\s*\[(IADR-\d{4})\]\(\.\/([^)]+)\)\s*\|/);
-        if (!linked) {
-          violations.push({ line: n, kind: 'not-linked' });
-        } else if (!linked[2].startsWith(linked[1] + '_')) {
-          violations.push({ line: n, kind: 'id-file-mismatch' });
-        }
-        if (!/\|\s*$/.test(line)) violations.push({ line: n, kind: 'no-trailing-pipe' });
-      });
-      return violations;
-    };
-
-    const GOOD = [
-      '| IADR | タイトル | 状態 |',
-      '| --- | --- | --- |',
-      '| [IADR-0000](./IADR-0000_a.md) | あ | Accepted |',
-      '| [IADR-0001](./IADR-0001_b.md) | い | Superseded by IADR-0002 |',
-    ].join('\n');
-
-    ok('索引: 正常な索引は違反 0（正例。検査が何にでも赤を出すわけではないこと）', () => {
-      assert.deepStrictEqual(inspectAdrIndex(GOOD), []);
-      // 索引行以外（見出し・区切り・ブロック引用）を誤検出しない。
-      assert.deepStrictEqual(
-        inspectAdrIndex('## 一覧\n> 採番に関する注記: IADR-0139 を採った\nただの本文 IADR-0001'),
-        [],
-      );
-    });
-
-    ok('索引: リンクを 1 本外すと not-linked を検出する（変異試験）', () => {
-      const mutated = GOOD.replace('| [IADR-0001](./IADR-0001_b.md) |', '| IADR-0001 |');
-      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 4, kind: 'not-linked' }]);
-    });
-
-    ok('索引: 閉じパイプを 1 つ外すと no-trailing-pipe を検出する（変異試験）', () => {
-      // #580 着手時の実測: IADR-0082 の行が実際にこの状態だった（GFM は描画するが厳密解析は落ちる）。
-      const mutated = GOOD.replace('| あ | Accepted |', '| あ | Accepted');
-      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 3, kind: 'no-trailing-pipe' }]);
-    });
-
-    ok('索引: ID とリンク先ファイル名の食い違いを検出する（実在検査では捕まらない型）', () => {
-      const mutated = GOOD.replace('](./IADR-0001_b.md)', '](./IADR-0000_a.md)');
-      assert.deepStrictEqual(inspectAdrIndex(mutated), [{ line: 4, kind: 'id-file-mismatch' }]);
-    });
-
-    ok('索引: 本リポの docs/adr/README.md が全行リンク形式である（実データ）', () => {
-      const p = path.join(__dirname, '..', 'docs', 'adr', 'README.md');
-      const md = fs.readFileSync(p, 'utf8');
-      const rows = md.split('\n').filter((l) => /^\|\s*\[?IADR-\d{4}/.test(l));
-      // 走査 0 件で緑になる fail-open を塞ぐ。**下限は実在する ADR 本体の件数から導く**——
-      // 固定値（当初は `>= 140`）は他 PR が ADR を 1 本足すたびに動き、無関係な PR を赤にする
-      // 手作業の更新点になる（#454 原則 12。本 PR の作業中だけで #582 が 0139、#584 が 0140 を
-      // 足しており、実際に 2 回動いた）。**下限が満たせない＝索引に行が無い ADR がある**という
-      // 意味も持つが、それは #581（索引 vs 本体の突合）が引き受ける範囲なので、#581 が入った
-      // 時点で本ブロックごと統合・削除する（上のコメントの申し送りのとおり）。
-      const bodyCount = fs
-        .readdirSync(path.join(__dirname, '..', 'docs', 'adr'))
-        .filter((f) => /^IADR-\d{4}_.*\.md$/.test(f)).length;
-      assert.ok(bodyCount > 0, 'docs/adr/ に ADR 本体が 1 件も見つからない（走査が壊れている）');
-      assert.ok(
-        rows.length >= bodyCount,
-        `索引行 ${rows.length} 件に対し ADR 本体は ${bodyCount} 件（走査が壊れているか索引行が欠けている）`,
-      );
-      const v = inspectAdrIndex(md);
-      assert.deepStrictEqual(
-        v,
-        [],
-        `索引の行の形が崩れている:\n${v.map((x) => `  README.md:${x.line} ${x.kind}`).join('\n')}`,
-      );
-    });
-  }
+  // ここに `inspectAdrIndex`（`not-linked` / `id-file-mismatch` / `no-trailing-pipe` と、
+  // 索引行数 >= ADR 本体数の fail-open 下限）を置いていたが、**#580 の申し送りどおり**
+  // （`docs/specs/20260807_issue-580_adr-records-drift.md`「#581 への申し送り」）
+  // `scripts/check-adr-numbering.js` の**判定 6** へ統合し、ここからは削除した。
+  // **同じ不変条件の検査を 2 本残さない。** 下限は判定 4（`index-missing`）と
+  // `no-adr-files` が同じことをより直接に見るため引き継いでいない。
+  // 実行経路は変わらない —— 上の `check-adr-numbering` ブロックが `--self-test` と実データ走査を
+  // 呼び、同じ `scripts-tests` ジョブ（`REQUIRE_REPO_TESTS=1`）でゲートになる。
 
   // --- NFR / #580: 索引タイトルセルのラチェット ---------------------------------------
   //
