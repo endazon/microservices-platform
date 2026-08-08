@@ -127,7 +127,19 @@ function isBrokenRef(ref, baseDir, onSkip) {
   if (t.startsWith('<') || t.includes('${') || t.includes('{{')) return false; // テンプレ変数
   t = t.split('#')[0].split('?')[0].trim();
   if (!t) return false;
-  const looksRelative = t.startsWith('./') || t.startsWith('../') || (t.includes('/') && !t.startsWith('/'));
+  // **同一ディレクトリのベアファイル名も相対リンクである**（NFR / #609）。
+  // 従来は `./` `../` で始まるか `/` を含むものしか相対と見なさず、`IADR-0138_x.md` の形が
+  // **一切検査されていなかった**。実際、実在しないファイルを指すリンクを足しても緑のままだった。
+  // **`docs/adr/` の §関連 はほぼこの形で書かれている。**
+  // **実測値はここに書かない** —— 走査基準つきの数は作業仕様書
+  // `docs/specs/20260808_issue-609_bare-relative-links.md` §母集合 を正とする
+  // （数を条文へ埋めると、リンクを 1 本足しただけで黙って古くなる。#590 が実際にそれを踏んだ）。
+  //
+  // 誤検出の抑えは `LINK_EXT`（直後）が担う —— 拡張子を持たない語（`README`）や、
+  // `Foo.Bar` のような識別子は `LINK_EXT` に掛からないので相対リンクとして扱われない。
+  const bareFileName = !t.includes('/') && LINK_EXT.test(t);
+  const looksRelative =
+    t.startsWith('./') || t.startsWith('../') || (t.includes('/') && !t.startsWith('/')) || bareFileName;
   if (!looksRelative) return false;
   if (!LINK_EXT.test(t)) return false;
   const resolved = path.resolve(baseDir, t);
@@ -210,6 +222,24 @@ function selfTest() {
   }
   t('対象外: 拡張子が対象外なら実在しなくても検出しない',
     isBrokenRef('./__no_such__.txt', here) === false);
+
+  // --- NFR / #609: 同一ディレクトリのベアファイル名（`./` も `/` も無い形） -----------
+  //
+  // **この対が無かったことが穴を長く開けたままにした直接の原因である。**
+  // `docs/adr/` の §関連 はほぼこの形（`IADR-0118_backend-coverage-floor.md`）で書かれており、
+  // 実データに多数あるが（件数は作業仕様書 §母集合 を正とする）、`looksRelative` が `/` の
+  // 有無しか見ていなかったため**全件が無検査**だった。
+  // 実在しないファイルを指すリンクを足しても `OK: ... 破損した相対リンクはありません` で緑になる。
+  t('正例（#609）: 同一ディレクトリの実在ファイルをベア名で指しても破損でない',
+    isBrokenRef('check-doc-links.js', here) === false);
+  t('負例（#609）: 同一ディレクトリの不在ファイルをベア名で指すと検出する',
+    isBrokenRef('__no_such_script__.js', here) === true);
+  t('負例（#609）: .md も同じ（ADR の §関連 で実際に踏んだ型）',
+    isBrokenRef('__no_such_adr__.md', here) === true);
+  t('誤検出しない（#609）: 拡張子を持たない語はベア名でも相対リンクと見なさない',
+    isBrokenRef('README', here) === false && isBrokenRef('IADR-0138', here) === false);
+  t('誤検出しない（#609）: 対象外拡張子の識別子はベア名でも検出しない',
+    isBrokenRef('Foo.Bar', here) === false && isBrokenRef('__no_such__.txt', here) === false);
   t('対象外: 外部 URL・アンカー・ルート絶対パスは検出しない',
     ['https://example.com/a.js', '#section', '/etc/a.js'].every((x) => isBrokenRef(x, here) === false));
   t('対象外: テンプレ変数を含む表記は検出しない',
