@@ -5,13 +5,14 @@ status: Accepted
 related_ids: [NFR, IADR-0115]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
   - ../specs/20260807_issue-507_cross-repo-issue-refs.md
   - ../specs/20260804_issue-478_staged-policy-citation-fix.md
   - ../specs/20260807_issue-595_changelog-legacy-ref-remap.md
+  - ../specs/20260807_issue-590_fullpath-owner-check.md
 ---
 
 # IADR-0140: 他リポジトリ issue 表記の検査は「表示テキストのみ」を見て、既存の CI 呼び出し口へ相乗りする
@@ -68,6 +69,25 @@ related_specs:
 したがって **`.md` における 3 型の害は「表記ゆれ ＝ 機械的突合の不安定」**であって誤リンクではない
 （規約が禁じている理由そのものであり、是正の正当性は変わらない）。**誤リンクという実害が出るのは
 issue / PR / コミットメッセージの本文**であり、この面は `check-commit-messages.js` 経由で検査する。
+
+> **［2026-08-08 追記 / #590］この表から第 4 の型が導かれた——決定は 1 つも変えていない。**
+> 上表は「**`.md` でリンクになるのはフルパス形式だけ**」と述べている。**その裏を取ると、
+> フルパス形式の owner を誤ったときだけは `.md` でも実害（死んだリンク）が出る**。
+> 本 IADR は当初 3 型（長い表記・列挙形の修飾漏れ・空白区切り）を検査対象としており、
+> **owner の妥当性を誰も見ていなかった**（定期監査 2 回目・`cf15568` が実測）。
+> 実在違反は 1 件（`endodazon/ai-stock-trading#106`）で、`AST#106` へ是正した。
+>
+> **型 4 は「フルパス形式一般」ではなく「自組織が持つリポジトリ名」に限定して owner を検査する。**
+> 母集合を実測すると、スラッシュの前が owner でない形が多数あり（第三者リポジトリ
+> `anthropics/claude-code-action#723`・書式の見本 `owner/repo#123`・列挙の区切り `AST#186/AST#192`・
+> Markdown のアンカー `….md#2`）、限定しないとこれらがすべて偽陽性になる。
+> **とくに第三者リポジトリは owner が `endazon` でないことが正しい。**
+>
+> **検出しないことを明記する**（本検査は網羅ではない）: **URL 形式**
+> （`https://github.com/<owner>/<repo>/…`）の owner は見ない（実測 245 件すべて `endazon` で
+> 違反ゼロだが、同じ誤字が URL 側で起きれば同じく死んだリンクになる）。**リポジトリ名自体の誤字**
+> （`ai-stock-tradnig`）も、リポ名の集合に一致しないため型 1 にも型 4 にも掛からない。
+> 詳細と変異試験の結果は [作業仕様書](../specs/20260807_issue-590_fullpath-owner-check.md) を見ること。
 
 ## 決定
 

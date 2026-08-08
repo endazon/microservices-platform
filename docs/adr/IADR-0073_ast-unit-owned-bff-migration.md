@@ -30,7 +30,7 @@ plan_refs:
 - 関連 ADR: [[IADR-0063]]（BFF 合成点・例外3 の規範）／[[IADR-0056]]（ユニット構成）／
   [[IADR-0057]]（一方向依存）／[[IADR-0070]]（assumptions・決定4=interim）／
   [[IADR-0071]]（risk-controls・決定4）／[[IADR-0072]]（monitor・決定4）／
-  AST IADR-0091（AST 側 `AiStockTrading.Bff.Endpoints` 新設）
+  AST/IADR-0091（AST 側 `AiStockTrading.Bff.Endpoints` 新設）
 - Issue: MSP #286（本 issue）／依存する AST 側 PR: endazon/ai-stock-trading（`AiStockTrading.Bff.Endpoints` 新設）
 - 先行実装: MSP #283/PR #285・#287/PR #289・#288/PR #294
 

@@ -9,7 +9,7 @@ import type {
 // FR-14, IADR-0056: ユニット合成点 — 可変機能ユニットの画面をここで束ねる。
 // ユニット追加時は src/<unit>/（frontend/ を含む）を submodule 配置し、ここへ 1 行ずつ追加する。
 import { createKnowledgeRoutes, knowledgeNavItems } from '@knowledge/features';
-// Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの features を合成する（SC-01 設定画面ほか）。
+// Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの features を合成する（AST/SC-01 設定画面ほか）。
 // AST は本リポジトリから変更できない別プロジェクト（IADR-0120）であり、旧契約のまま束ねる（IADR-0124 決定 2）。
 import { features as aiStockTradingFeatures } from '@ai-stock-trading/features';
 

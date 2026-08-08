@@ -1996,6 +1996,51 @@ module.exports = ({ ok, assert }) => {
   // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が
   // 本 companion を読み込むので、そこから子プロセスで検査器を起動する。
   // 検査器を消す・壊す・実データに違反を混ぜる、のいずれでもこのテストが落ちる。
+  // 他プロジェクト（AST）の**計画 ID / ADR ID** の修飾（#576）。`check-cross-repo-refs.js` とは
+  // 対象が違う（あちらは issue / PR 番号、こちらは計画 ID）。`.github/workflows/` は編集不可なので
+  // 同じ呼び出し口（ci.yml の scripts-tests）へ相乗りする（IADR-0140 決定 2）。
+  {
+    const { spawnSync: spawnPlanId } = require('child_process');
+    const pathPlanId = require('path');
+    const planIdScript = pathPlanId.join(__dirname, 'check-plan-id-qualification.js');
+    const runPlanId = (args) =>
+      spawnPlanId(process.execPath, [planIdScript, ...args], { encoding: 'utf8' });
+
+    ok('check-plan-id-qualification --self-test が通る（正例・負例を対で固定）', () => {
+      const r = runPlanId(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-plan-id-qualification が実データで違反 0 件', () => {
+      const r = runPlanId([]);
+      assert.strictEqual(r.status, 0, `他プロジェクト ID の修飾違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 検出力の実地確認。**規約どおりの形（AST/FR-17）で落ちないこと**も対で見る
+    // ——偽陽性を出す検査は外されるため、正例だけでは不十分である。
+    ok('check-plan-id-qualification: 空白形で exit 1・規約どおりの形で exit 0', () => {
+      const fsPlanId = require('fs');
+      const osPlanId = require('os');
+      const dir = fsPlanId.mkdtempSync(pathPlanId.join(osPlanId.tmpdir(), 'planid-repo-test-'));
+      try {
+        const ng = pathPlanId.join(dir, 'ng.md');
+        // **違反文字列はリテラルで書かない。** 本検査は `.md` に限らず追跡下の全ファイルを走査する
+        // ので、フィクスチャをそのまま書くと**このファイル自身が違反として上がる**（実測した）。
+        // 連結で組み立てる（`check-cross-repo-refs` の repo テストが採っている定石と同じ）。
+        fsPlanId.writeFileSync(ng, '# x\n\n（AST' + ' IADR-0048 決定3）と AST' + ' FR-17。\n');
+        const r = runPlanId([ng]);
+        assert.strictEqual(r.status, 1, `違反ファイルで exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /空白区切りの ID 修飾/);
+
+        const okFile = pathPlanId.join(dir, 'ok.md');
+        fsPlanId.writeFileSync(okFile, '# y\n\nAST/IADR-0048 と AST/FR-17 と MSP の FR-14。\n');
+        assert.strictEqual(runPlanId([okFile]).status, 0, '規約どおりの形で落ちている（偽陽性）');
+      } finally {
+        fsPlanId.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
   {
     const { spawnSync } = require('child_process');
     const pathXrepo = require('path');
@@ -2020,18 +2065,22 @@ module.exports = ({ ok, assert }) => {
       const osX = require('os');
       const dir = fsX.mkdtempSync(pathXrepo.join(osX.tmpdir(), 'crossrepo-repo-test-'));
       try {
-        // 3 型を 1 枚に入れる。型 3（空白区切り）は #507 のクロス監査が実測した「第 4 の表記」で、
+        // 各型を 1 枚に入れる。型 3（空白区切り）は #507 のクロス監査が実測した「第 4 の表記」で、
         // 着手時の母集合から丸ごと欠落していた——**検出されることを常設で確かめる**。
+        // 型 4（owner 誤り）は #590。**.md で唯一「死んだリンク」になる型**なので、ここで
+        // CI ゲートに載せる（自己試験だけだと実バイナリ経路の回帰を見ない）。
         const ng = pathXrepo.join(dir, 'ng.md');
         fsX.writeFileSync(
           ng,
-          '# x\n\n環流は project-planning#50 と planning#206 / #207。追跡は AST' + ' #24。\n'
+          '# x\n\n環流は project-planning#50 と planning#206 / #207。追跡は AST' +
+            ' #24。実装は endodazon/ai-stock-trading#106。\n'
         );
         const r = run([ng]);
         assert.strictEqual(r.status, 1, `違反ファイルで exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
         assert.match(String(r.stderr), /長い表記/);
         assert.match(String(r.stderr), /列挙形の修飾漏れ/);
         assert.match(String(r.stderr), /空白区切りの修飾/);
+        assert.match(String(r.stderr), /フルパス形式の owner 誤り/);
 
         // 正しい表記へ直すと 0 に戻る（偽陽性を出していないことの対）。
         // **自リポジトリを指す修飾語（MSP）の直後の裸番号は正しい**ので、ここで落ちてはならない。
@@ -2039,7 +2088,10 @@ module.exports = ({ ok, assert }) => {
         fsX.writeFileSync(
           okFile,
           '# x\n\n環流は planning#50 と planning#206 / planning#207。追跡は AST#24。\n' +
-            '親は #454。MSP' + ' #283 と #450（FR-17/18）・#451（FR-19/20）は本リポジトリの参照。\n'
+            '親は #454。MSP' + ' #283 と #450（FR-17/18）・#451（FR-19/20）は本リポジトリの参照。\n' +
+            // 型 4 の対（#590）: 規約が許すフルパス形式と、owner が endazon でないのが**正しい**
+            // 第三者リポジトリ参照。型 4 を足したせいでこれらが落ちては本末転倒である。
+            'フルパスは endazon/ai-stock-trading#106、第三者は anthropics/claude-code-action#723。\n'
         );
         assert.strictEqual(run([okFile]).status, 0, '正しい表記で落ちている（偽陽性）');
 
@@ -2052,6 +2104,26 @@ module.exports = ({ ok, assert }) => {
       } finally {
         fsX.rmSync(dir, { recursive: true, force: true });
       }
+    });
+
+    // **findViolations が返し得る全 kind に、CI ログ用のラベルが在ること**（#590）。
+    // ラベルの追随は 2 度漏れた（#507 で 1 度、型 4 を足した #590 でもう 1 度）。漏れても
+    // 検査は落ちず「未知の違反種別 owner」と出るだけなので、テキストの追随では止まらない。
+    // **検査器のソースから `kind:` リテラルを静的に集めて突き合わせる**ことで、
+    // 将来 kind を足したときも自動的に対象へ入る（フィクスチャ列挙だと新 kind を取りこぼす）。
+    ok('crossRepoRefReasons のラベルが findViolations の全 kind を覆う', () => {
+      const src = require('fs').readFileSync(script, 'utf8');
+      const kinds = [...src.matchAll(/kind:\s*'([a-z]+)'/g)].map((m) => m[1]);
+      assert.ok(kinds.length >= 4, `kind リテラルを集められていない（${kinds.length} 件）`);
+      const { CROSS_REPO_REF_LABELS } = require(
+        pathXrepo.join(__dirname, 'check-commit-messages.js')
+      );
+      const missing = [...new Set(kinds)].filter((k) => !(k in CROSS_REPO_REF_LABELS));
+      assert.deepStrictEqual(
+        missing,
+        [],
+        `check-commit-messages.js の CROSS_REPO_REF_LABELS に無い kind: ${missing.join(', ')}`
+      );
     });
 
     // 規約（.claude/rules/traceability.md）と検査器の対応。規約だけ書いても再発するので

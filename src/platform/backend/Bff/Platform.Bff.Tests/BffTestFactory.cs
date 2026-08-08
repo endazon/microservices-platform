@@ -149,7 +149,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             StubNextSyncAt),
     ];
 
-    // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
+    // Issue #283 (AST/SC-01 設定画面): ConfigurationService(/assumptions) への pass-through をスタブ制御する。
     // AssumptionsStatusCode を 403/400/409 に差し替えると、後段の非 2xx 透過（非 owner・検証・競合）を検証できる。
     public HttpStatusCode AssumptionsStatusCode { get; set; } = HttpStatusCode.OK;
     // 後段（ConfigurationService）不達を再現する（BFF が 502 へ縮退することの検証用）。
@@ -196,7 +196,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 // メッシュポート（:8080）を明示注入し、named client の BaseAddress が Services 設定駆動である
                 // ことを固定する（コード既定 5002 の直書き退行を検出する。BffDownstreamResolutionTests 参照）。
                 ["Services:DataSourceService"] = "http://datasource-service:8080",
-                // Issue #283 (SC-01): AST ConfigurationService の集約先（テスト用）。
+                // Issue #283 (AST/SC-01): AST ConfigurationService の集約先（テスト用）。
                 ["Services:ConfigurationService"] = "http://localhost:5011",
                 // Issue #287 (AST/SC-02/AST/SC-03): AST RiskManagementService の集約先（テスト用）。
                 ["Services:RiskManagementService"] = "http://localhost:5012",
@@ -234,7 +234,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // FR-01/FR-02 (SC-06 データソース管理): DataSourceService をスタブ化する。
             services.AddHttpClient("DataSourceService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DataSourceStubHandler(this));
-            // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
+            // Issue #283 (AST/SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。
             services.AddHttpClient("ConfigurationService")
                 .ConfigurePrimaryHttpMessageHandler(() => new AssumptionsStubHandler(this));
             // Issue #287 (AST/SC-02/AST/SC-03): RiskManagementService(/risk-controls/*) をスタブ化する。
@@ -556,7 +556,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
         }
     }
 
-    // Issue #283 (SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。BFF の pass-through
+    // Issue #283 (AST/SC-01 設定画面): ConfigurationService(/assumptions) をスタブ化する。BFF の pass-through
     // （ステータス・本文・Content-Type 透過、トークン伝播、PUT 本文転送、502 縮退）を検証するための最小スタブ。
     private sealed class AssumptionsStubHandler(BffTestFactory owner) : HttpMessageHandler
     {

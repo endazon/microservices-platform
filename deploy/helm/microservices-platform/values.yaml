@@ -335,7 +335,7 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
-  # Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
+  # Issue #283, AST/FR-17, AST/UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
   # 既定 disabled（fail-safe）— 実行時依存（専用 DB configuration_svc・trading-owner realm・実イメージ）は稼働
   # クラスタ前提のため、稼働導入（enabled: true＋DB プロビジョニング＋Secret）は後続 issue で行う。
   # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
@@ -350,7 +350,7 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
-  # Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 先＝RiskManagementService。
+  # Issue #287, FR-14, IADR-0071: AST リスク設定（AST/SC-02）・統制状態参照（AST/SC-03）の BFF 先＝RiskManagementService。
   # 既定 disabled（fail-safe）— 実行時依存（専用 DB risk_management_svc・RabbitMQ・trading-owner realm・実イメージ）は
   # 稼働クラスタ前提のため、稼働導入（enabled: true＋DB/RabbitMQ プロビジョニング＋Secret）は後続 live issue #284 で行う。
   # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
@@ -367,7 +367,7 @@ services:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
 
-  # Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の BFF 先＝MarketMonitorService。
+  # Issue #288, FR-14, IADR-0072: AST 監視銘柄（AST/SC-02 watchlist）の BFF 先＝MarketMonitorService。
   # 既定 disabled（fail-safe）— 実行時依存（専用 DB market_monitor_svc・RabbitMQ・trading-owner realm・実イメージ）は
   # 稼働クラスタ前提のため、稼働導入（enabled: true＋DB/RabbitMQ プロビジョニング＋Secret）は後続 live issue #284 で行う。
   # イメージは k8s-local-images.sh が AST 単一 Dockerfile＋build args でビルド供給する（MAPPING・#275 整合済み）。
