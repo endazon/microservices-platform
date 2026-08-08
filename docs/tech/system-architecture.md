@@ -5,7 +5,7 @@ status: draft
 related_ids: [ADR-0001, ADR-0002, ADR-0003, ADR-0027, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, IADR-0026, IADR-0056]
 author: endazon (with Claude Code)
 created: 2026-07-16
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - ../../planning/projects/microservices-platform/06_technical/01_architecture-overview.md
   - ../../planning/projects/microservices-platform/06_technical/02_service-decomposition.md
@@ -215,7 +215,8 @@ sequenceDiagram
 - **stg / prod**: Kubernetes（k3s・ADR-0008）＋ Helm / ArgoCD（GitOps・ADR-0007）、Istio サービスメッシュ
   （STRICT mTLS をサービス間認証の第一防御とする・ADR-0005 / IADR-0026）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
 - **ビルド**: ユニット別 slnx（`dotnet build src/platform/backend/backend.slnx` /
-  `src/knowledge/backend/backend.slnx`・.NET 10）、フロントは npm workspaces（`src/`・Node 22）。
+  `src/knowledge/backend/backend.slnx`・.NET 10）、フロントは pnpm workspace（`src/`・Node 22。
+  #591: 従前は「npm workspaces」と書いていたが [[IADR-0121]] 決定 2 で移行済み）。
 
 ## 関連仕様
 

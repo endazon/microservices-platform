@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "テンプレート: 追加可変機能ユニットのフロントエンド（src/ の npm workspaces \"*/frontend\" で自動認識される）。",
+  "description": "テンプレート: 追加可変機能ユニットのフロントエンド（src/pnpm-workspace.yaml の '*/frontend' で自動認識される。#591 / IADR-0121 決定 2 で npm workspaces から pnpm workspace へ移行済み）。",
   "scripts": {
     "typecheck": "tsc --noEmit"
   }

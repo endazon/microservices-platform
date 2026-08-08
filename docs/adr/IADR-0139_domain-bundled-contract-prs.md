@@ -2,10 +2,10 @@
 title: IADR-0139 同型の契約追加はドメイン単位（判定は資源単位）で 1 PR に束ねてよい — IADR-0116 規約 1 の限定例外
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0043, IADR-0115, IADR-0116, IADR-0119, IADR-0122, IADR-0130, IADR-0141]
+related_ids: [NFR, ADR-0043, IADR-0115, IADR-0116, IADR-0119, IADR-0122, IADR-0130, IADR-0140, IADR-0141]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -126,8 +126,16 @@ PR #422（merged 2026-07-30T16:18:23Z）の本文: 「Closes #420」「Closes #4
 ——手動クローズは遅れるし、忘れられ得る。）
 
 `.github/PULL_REQUEST_TEMPLATE.md` に issue リンク欄は無く、`check-commit-messages.js` も
-issue 番号を見ない（件名の書式と ADR/IADR の実在のみ）。**書き忘れても何も落ちない**——
+**`Closes` の有無を見ない**。**書き忘れても何も落ちない**——
 落ちない代わりに**人の手作業が残る**。束ねるとその手作業が件数分まとめて発生する。
+
+> **［2026-08-08 追記・事実の更新 / #591］同スクリプトが見る範囲は増えた。**
+> 起案時ここには「issue 番号を見ない（件名の書式と ADR/IADR の実在のみ）」と書いていたが、
+> [[IADR-0140]]（#507 / #584 / #603）以降は**件名の書式・ADR/IADR の実在・他リポジトリ参照表記**
+> （`check-cross-repo-refs.js` 経由でコミット件名 / 本文 / PR タイトル）の 3 つを見る
+> ——**issue 番号そのものは表記の面で見ている**（列挙は `scripts/README.md` の CI ジョブ表を正とする）。
+> **本 ADR の主張は変わらない**——増えたのは表記の検査であって、
+> **`Closes` の有無・「1 コミット = 1 issue」を見るものは依然として存在しない。**
 
 #### (d) 束の 1 件だけを差し戻す実験（scratch のクローンで実走）
 
@@ -421,8 +429,9 @@ issue はいずれも `closed` / `completed`）。条件 E（着手済みを含�
   - **`Closes` の書き忘れが件数分まとめて効く**（実測 (c)）。
   - **検出しないこと**（明示する）:
     - **束の 6 条件に機械検査は無い。** 本決定は規約であって検査器ではない。
-      `check-commit-messages.js` が見るのは件名の書式と ADR/IADR の実在だけで、
-      **「1 コミット = 1 issue」も「Closes の行数 = 束の件数」も検査していない**（実測）。
+      `check-commit-messages.js` は
+      **「1 コミット = 1 issue」も「Closes の行数 = 束の件数」も検査していない**（実測。
+      **同スクリプトが何を見るかは実測 (c) を正とする** —— ここへ列挙を写すと片方が腐る）。
       守られているかはレビューと監査でしか分からない。
     - **`Closes` の書き忘れ**——PR テンプレートに欄が無く、CI も見ない。マージは通り、issue は
       **人が気づいて手で閉じるまで開いたまま**である（#538 は 10 分 50 秒開いていた。実測 (c)）。

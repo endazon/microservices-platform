@@ -2,10 +2,10 @@
 title: IADR-0116 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0142, IADR-0139, IADR-0141]
+related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0121, IADR-0142, IADR-0139, IADR-0141]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 ---
@@ -22,10 +22,14 @@ plan_refs:
 
 ## 起点・関連
 
-- 関連する計画書 ID（FR/UC/SC/ADR）: NFR（保守性・運用性）／再実装の対象は `FR-01..21` / `UC-01..11` /
-  `SC-01..21` / `ADR-0001..0039` 全域（[ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md) /
+- 関連する計画書 ID（FR/UC/SC/ADR）: NFR（保守性・運用性）／再実装の対象は
+  **計画 ID の全域**（[ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md) /
   [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) /
-  [ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md) が土台）
+  [ADR-0032](../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md) が土台）。
+  **［2026-08-08 / #591］レンジの値はここへ転記しない** —— 起案時は転記していたが、#599 で
+  `FR-22` / `ADR-0044` / `ADR-0045` が新設されて腐った。値の正は
+  [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節ただ 1 つである
+  （本 IADR の決定〔規約 1〜7〕はレンジの値に依存しないため、決定は変わらない）。
 - 関連する実装仕様書: [20260802_issue-454_reimplementation-kickoff.md](../specs/20260802_issue-454_reimplementation-kickoff.md)
 - 関連 issue: #454（親トラッキング）と配下の 20 件（#438〜#453 ＝ 16 件 ＋ #455〜#458 ＝ 4 件）
 - 上流の起点: PR planning#144（2026-08-02 マージ）
@@ -105,7 +109,7 @@ plan_refs:
 > | 受け入れ基準 → テストの写像 | `node scripts/check-test-traceability.js` | `docs/tests/` に仕様書がある FR/SC にテストが 1 件も無ければ **fail**。`scripts/test-traceability-allowlist.json` にある未写像は warn、写像済みなのに allowlist へ残置は **fail**。加えて逆方向（#472）: 計画レンジにあって仕様書が無い ID は warn、うちテストが先行している ID は同 JSON の `specMissing` による ratchet で **fail**（判定の正は[テスト戦略](../tests/TEST_STRATEGY.md)のゲート一覧） |
 > | バックエンド カバレッジ床 | `node scripts/check-coverage-floor.js`（`ci.yml` の `build-and-test`） | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床 **`line 33` / `branch 17`** 未満は **fail**（[IADR-0118](IADR-0118_backend-coverage-floor.md)。ratchet のため引き上げ後は本表も追随させる。値の正は同 JSON。**`line` は #571 / [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) で 34 → 33 へ置き直した——生成コードを集計から落とす測定基準の変更に伴うもので、退行ではない**） |
 > | ライブラリ標準（ADR-0030） | `node scripts/check-backend-libraries.js` | `scripts/backend-library-baseline.json` の **ratchet**。不採用ライブラリの新規混入・baseline の減らし忘れは **fail**（#455） |
-> | フロント カバレッジ ratchet | `npm run test:coverage`（`frontend-tests.yml`） | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満は **fail**（[IADR-0034](IADR-0034_frontend-coverage-gate.md)） |
+> | フロント カバレッジ ratchet | `pnpm run test:coverage`（`frontend-tests.yml`。**#591: 起案時は `npm` と書いていたが、パッケージ管理は [IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済みであり、`npm` では打てない**） | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満は **fail**（[IADR-0034](IADR-0034_frontend-coverage-gate.md)） |
 >
 > ゲートの全体像・検査対象ユニットの切り分け（`ai-stock-trading` は対象外）・各ドメイン issue が守ることは
 > [テスト戦略](../tests/TEST_STRATEGY.md)を参照する。`/verify` 通過と
