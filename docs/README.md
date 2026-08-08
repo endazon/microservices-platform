@@ -54,7 +54,7 @@ docs/
 | `error` | エラー・メッセージ仕様書 | `docs/errors/` |
 | `infra` | インフラ・構成仕様書 | `docs/infra/` |
 | `runbook` | 運用 Runbook（運用仕様書の**下位**にあたる手順書） | `docs/operations/` |
-| `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)） |
+| `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・**[引継資料](how-to/session-handoff.md)**） |
 
 > `operations` はリポ単位で 1 つと定めているため、手順書が複数必要になると置き場が無くなる。
 > **状態の単一情報源は `operations.md` に置き、Runbook は手順に特化して複数存在してよい**。
