@@ -1955,6 +1955,51 @@ module.exports = ({ ok, assert }) => {
   // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が
   // 本 companion を読み込むので、そこから子プロセスで検査器を起動する。
   // 検査器を消す・壊す・実データに違反を混ぜる、のいずれでもこのテストが落ちる。
+  // 他プロジェクト（AST）の**計画 ID / ADR ID** の修飾（#576）。`check-cross-repo-refs.js` とは
+  // 対象が違う（あちらは issue / PR 番号、こちらは計画 ID）。`.github/workflows/` は編集不可なので
+  // 同じ呼び出し口（ci.yml の scripts-tests）へ相乗りする（IADR-0140 決定 2）。
+  {
+    const { spawnSync: spawnPlanId } = require('child_process');
+    const pathPlanId = require('path');
+    const planIdScript = pathPlanId.join(__dirname, 'check-plan-id-qualification.js');
+    const runPlanId = (args) =>
+      spawnPlanId(process.execPath, [planIdScript, ...args], { encoding: 'utf8' });
+
+    ok('check-plan-id-qualification --self-test が通る（正例・負例を対で固定）', () => {
+      const r = runPlanId(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-plan-id-qualification が実データで違反 0 件', () => {
+      const r = runPlanId([]);
+      assert.strictEqual(r.status, 0, `他プロジェクト ID の修飾違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // 検出力の実地確認。**規約どおりの形（AST/FR-17）で落ちないこと**も対で見る
+    // ——偽陽性を出す検査は外されるため、正例だけでは不十分である。
+    ok('check-plan-id-qualification: 空白形で exit 1・規約どおりの形で exit 0', () => {
+      const fsPlanId = require('fs');
+      const osPlanId = require('os');
+      const dir = fsPlanId.mkdtempSync(pathPlanId.join(osPlanId.tmpdir(), 'planid-repo-test-'));
+      try {
+        const ng = pathPlanId.join(dir, 'ng.md');
+        // **違反文字列はリテラルで書かない。** 本検査は `.md` に限らず追跡下の全ファイルを走査する
+        // ので、フィクスチャをそのまま書くと**このファイル自身が違反として上がる**（実測した）。
+        // 連結で組み立てる（`check-cross-repo-refs` の repo テストが採っている定石と同じ）。
+        fsPlanId.writeFileSync(ng, '# x\n\n（AST' + ' IADR-0048 決定3）と AST' + ' FR-17。\n');
+        const r = runPlanId([ng]);
+        assert.strictEqual(r.status, 1, `違反ファイルで exit 1 にならない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /空白区切りの ID 修飾/);
+
+        const okFile = pathPlanId.join(dir, 'ok.md');
+        fsPlanId.writeFileSync(okFile, '# y\n\nAST/IADR-0048 と AST/FR-17 と MSP の FR-14。\n');
+        assert.strictEqual(runPlanId([okFile]).status, 0, '規約どおりの形で落ちている（偽陽性）');
+      } finally {
+        fsPlanId.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
   {
     const { spawnSync } = require('child_process');
     const pathXrepo = require('path');

@@ -13,7 +13,7 @@
       { "name": "platform-admin", "description": "FR-09: 属性辞書・ABAC ポリシー管理者（AdminOnly ポリシー）" },
       { "name": "platform-operator", "description": "FR-15, IADR-0030: 運用者。構成情報の閲覧（ConfigViewer ポリシー）のみ可。管理系操作（AdminOnly）は不可" },
       { "name": "wiki-editor", "description": "Wiki.js での編集権限（表示制御の補助。ABAC 判定は本システムが真実源）" },
-      { "name": "trading-owner", "description": "Issue #283, AST FR-17/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" },
+      { "name": "trading-owner", "description": "Issue #283, AST/FR-17・AST/UC-06, IADR-0070: AST 設定画面（全体前提条件の閲覧/変更）の利用者。ConfigurationService の OwnerOnly/OwnerOrService と同一ソース。owner ユーザーへの付与＋OIDC ログイン実疎通は後続 live issue。" },
       { "name": "Administrators", "description": "IADR-0103: Wiki.js の管理者グループ名に文字列一致させる dev ロール。wiki-js の groups claim 経由で Map Groups が Administrators へ対応づける（Wiki.js 側は自前グループ管理のため名前一致が唯一の接点）。" }
     ],
     "client": {
@@ -271,7 +271,7 @@
     {
       "clientId": "ai-stock-trading-kb-writer",
       "name": "AST KB writer (cross-unit s2s, client_credentials)",
-      "description": "AST#18/IADR-0075（AST FR-08＝KB保存, 本レルム FR-06＝文書CRUD）: ai-stock-trading が確定報告書・収集情報を DocumentService へ書き込む機密クライアント（client_credentials, service-account に platform-operator）。AST レルムのトークンは issuer 不一致で通らないため本レルムで発行。本番シークレットは config から供給し dev export 値は使わない。",
+      "description": "AST#18/IADR-0075（AST/FR-08＝KB保存, 本レルム FR-06＝文書CRUD）: ai-stock-trading が確定報告書・収集情報を DocumentService へ書き込む機密クライアント（client_credentials, service-account に platform-operator）。AST レルムのトークンは issuer 不一致で通らないため本レルムで発行。本番シークレットは config から供給し dev export 値は使わない。",
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,

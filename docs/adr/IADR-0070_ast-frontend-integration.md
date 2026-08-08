@@ -27,7 +27,7 @@ plan_refs:
 
 - 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点 1 行組み込み）
 - 関連 ADR: [[IADR-0056]]（ユニット構成）／[[IADR-0057]]（一方向依存）／[[IADR-0063]]（BFF 合成点・例外3）／
-  [[IADR-0068]]（image-mapping ドリフト検査）／ AST [[IADR-0080]]（AST フロント第1スライス）
+  [[IADR-0068]]（image-mapping ドリフト検査）／ AST/IADR-0080（AST フロント第1スライス）
 - Issue: MSP #283 ／ AST endazon/ai-stock-trading#106
 - 上流仕様: `src/ai-stock-trading/docs/integration/20260718_msp-frontend-integration-requirements.md`
 
@@ -44,7 +44,7 @@ AST の設定画面（AST/SC-01・AST/FR-17）を MSP の単一 SPA に載せ、
    `configuration-service|.../ConfigurationService.Worker/Dockerfile` を前提にしていたが、
    **実際の AST は per-service Dockerfile を持たず**、単一のパラメータ化 Dockerfile
    （`backend/Dockerfile`＋build args `SERVICE_PROJECT`/`SERVICE_DLL`、**build context = AST ユニットルート**。
-   AST IADR-0048 決定3）に統合済みだった。MSP の `k8s-local-images.sh` は context=MSP ルート・args なしを
+   AST/IADR-0048 決定3）に統合済みだった。MSP の `k8s-local-images.sh` は context=MSP ルート・args なしを
    前提とし、#275 ドリフト検査（`check-image-mapping.js`）は compose の `dockerfile:` リテラルのみを
    突合するため、そのままでは AST サービスを正しくビルド／検査できない。
 3. **BFF の型結合**: `/bff/assumptions` の DTO は AST 契約（可変ユニット）に属する。platform→可変ユニット
