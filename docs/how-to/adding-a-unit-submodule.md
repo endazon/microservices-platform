@@ -83,7 +83,9 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 
 ## 4. フロントエンドを組み込む（合成点 1 行）
 
-- npm workspaces は `src/` ルートの `"*/frontend"` により**自動認識**される（`package.json` 追記不要）。
+- pnpm workspace は `src/pnpm-workspace.yaml` の `'*/frontend'` により**自動認識**される
+  （同ファイルの追記不要。#591: 従前ここは「npm workspaces（`package.json` 追記不要）」と書いていたが、
+  パッケージ管理は [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済み）。
 - platform の合成点 [`src/platform/frontend/src/features/index.ts`](../../src/platform/frontend/src/features/index.ts) へ
   **import を 1 行追加**して feature を束ねる:
 

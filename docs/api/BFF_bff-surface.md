@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
@@ -234,7 +234,9 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   **「`/bff/` 外は生成されないから書かなくてよい」は誤りである**——#520 の着手時にこの誤った想定を置き、
   変異試験 M8（`EmbedApiResponse.model` の削除で生成物に差分が出た）で覆った。
   ただし**生成されることと型検査の網になることは別**で、網の有無を決めるのは
-  「その型を画面が読んでいるか」である（現に読まれているのは `AiAnswerDto` / `CitationDto` だけ）。
+  「その型を画面が読んでいるか」である（**［2026-08-08 / #591］#519 の載せ替え後、生成型は
+  `sc01`〜`sc11` の各画面が読んでいる**。従前ここには「読まれているのは `AiAnswerDto` /
+  `CitationDto` だけ」と書いてあり、載せ替え前の事実のまま残っていた）。
 - **要求スキーマの `required` は別問題である。** 応答と要求の両方で使われるスキーマは
   `AbacConditionMap` の 1 個だけで、それは上記のとおり `required` を適用できない形をしている
   ——したがって「応答を厳しくしたら要求も必須になった」という事故は現時点では起こり得ない。

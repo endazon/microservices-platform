@@ -92,7 +92,7 @@ flowchart LR
 │   ├── platform/        #   基盤ユニット（主成果物）: backend/backend.slnx + frontend/
 │   ├── knowledge/       #   ナレッジ機能ユニット（付随可変機能）: backend/backend.slnx + frontend/
 │   ├── Directory.Build.props / Directory.Packages.props   # バックエンド共通設定（単一情報源）
-│   └── package.json     #   フロントエンド npm workspaces ルート（workspaces: ["*/frontend"]）
+│   └── package.json     #   フロントエンド pnpm workspace ルート（メンバは pnpm-workspace.yaml）
 ├── deploy/              # デプロイ定義: docker-compose（dev）、helm/argocd/istio/keycloak（stg/prod）
 ├── docs/                # 実装仕様書（機能/画面/API/データ/技術/テスト/運用/セキュリティ/ADR）と how-to
 ├── scripts/             # 補助スクリプト（CHANGELOG/OpenAPI 生成、doc リンク検査、環境セットアップ）
@@ -126,13 +126,14 @@ dotnet build src/knowledge/backend/backend.slnx --configuration Release
 dotnet test src/platform/backend/backend.slnx
 dotnet test src/knowledge/backend/backend.slnx
 
-# 3. フロントエンド: workspaces ルート（src/）で依存関係・型チェック・lint・テスト・ビルド
+# 3. フロントエンド: pnpm workspace ルート（src/）で依存関係・型チェック・lint・テスト・ビルド
+#    （#591: パッケージ管理は pnpm。@platform/ui を workspace: 依存で参照するため npm では解決できない）
 cd src
-npm install
-npm run typecheck
-npm run lint
-npm run test
-npm run build
+pnpm install
+pnpm run typecheck
+pnpm run lint
+pnpm run test
+pnpm run build
 cd ..
 
 # 4. インフラ + 全サービスを起動（dev）。scripts/compose-up.sh は実 Git コミット ID を
