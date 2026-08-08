@@ -119,8 +119,21 @@ baseline に在るのに違反しなくなった項目も fail させ、**baseli
 
 - `scripts/check-landed-subjects.js` ＋ `scripts/landed-subject-baseline.json` を新設。
 - `scripts/check-commit-messages.js` に `loadExistingPlanIds` / `normalizePlanId` を追加し、
-  `validateIdExistence` へ第 4 引数を足した（**既存の呼び出しは 3 引数のままでも動く** ——
-  `planIds` が `undefined` なら当該検査をスキップする）。
+  `validateIdExistence` へ第 4 引数を足した。**呼び出し口は 3 つあり、すべてに渡す**
+  ——`checkSingleTitle`（`--title`）／`main()` のレンジモード（`ci.yml` の `commit-messages` ジョブ）／
+  `check-landed-subjects.js`。
+
+  > **［2026-08-08 追記 / #612 レビュー 🔴］当初この節は「既存の呼び出しは 3 引数のままでも動く」と
+  > 書いており、それは**配線漏れを設計として追認する記述**だった。**実際 `main()` のレンジモードへ
+  > `planIds` を渡し忘れており、`ci.yml` の必須チェック `commit-messages` では FR/UC/SC 実在性検査が
+  > 無効のままだった。** `--title` の変異試験だけが通ったので「検査が効いている」と誤って結論した。
+  >
+  > **同じ型（呼び出し口を 1 つだけ配線する）はこのリポジトリで 3 度目である**
+  > （`crossRepoRefReasons` のラベル欠落が #507 と #590 の 2 度）。
+  > **引数を増やすときは、呼び出し口を `grep` で全部出してから配線する。**
+  > 再発防止として `scripts.repo.test.js` が**実バイナリでレンジモードを通す**テストを持つ
+  > （使い捨ての git リポジトリに `feat(SC-99)` のコミットを作り exit 1 を確認する）。
+  > **このテストは、修正を戻すと実際に赤くなることを実測した**（変異試験）。
 - `.github/workflows/` は編集していない（GitHub App 権限で編集不可。[[IADR-0140]] 決定 2）。
 
 ## 棄却した案

@@ -2141,6 +2141,70 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- NFR / #579 / IADR-0145: check-commit-messages のレンジモードを実バイナリで通す ---
+  //
+  // **なぜ必要か（#612 レビュー 🔴 で実測）**: FR/UC/SC 実在性検査を足したとき、
+  // `checkSingleTitle`（`--title`）へは `planIds` を渡したのに、**`main()` のレンジモード
+  // （`ci.yml` の `commit-messages` ジョブが実際に実行する経路）へ渡し忘れていた。**
+  // `--title` の変異試験だけが通ったので「検査が効いている」と誤って結論した。
+  // **同じ型（呼び出し口を 1 つだけ配線する）はこのリポジトリで 3 度目である**
+  // （`crossRepoRefReasons` のラベル欠落が 2 度）。**経路ごとに実バイナリで当てる。**
+  {
+    const { spawnSync: spawnCcm } = require('child_process');
+    const pathCcm = require('path');
+    const fsCcm = require('fs');
+    const osCcm = require('os');
+    const ccmScript = pathCcm.join(__dirname, 'check-commit-messages.js');
+
+    /** 使い捨ての git リポジトリに件名 1 件のコミットを作り、レンジモードで検査する。 */
+    const runRangeOn = (subject) => {
+      const dir = fsCcm.mkdtempSync(pathCcm.join(osCcm.tmpdir(), 'ccm-range-'));
+      const g = (args) =>
+        spawnCcm('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      try {
+        g(['init', '-q', '-b', 'main']);
+        g(['config', 'user.email', 'test@example.com']);
+        g(['config', 'user.name', 'tester']);
+        fsCcm.writeFileSync(pathCcm.join(dir, 'a.txt'), 'base\n');
+        g(['add', '-A']);
+        g(['commit', '-q', '-m', 'chore(NFR): 基点']);
+        fsCcm.writeFileSync(pathCcm.join(dir, 'a.txt'), 'head\n');
+        g(['add', '-A']);
+        g(['commit', '-q', '-m', subject]);
+        // 検査器は本リポジトリの docs/adr と .claude/rules を見るので、cwd は一時リポでよい
+        // （--range で範囲だけを与える）。
+        return spawnCcm(process.execPath, [ccmScript, '--range', 'HEAD~1..HEAD'], {
+          cwd: dir,
+          encoding: 'utf8',
+        });
+      } finally {
+        fsCcm.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    ok('check-commit-messages レンジモード: 正当な件名は通る（正例）', () => {
+      const r = runRangeOn('feat(FR-12,SC-07): 正当な起点 ID');
+      assert.strictEqual(r.status, 0, `正当な件名で落ちた:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-commit-messages レンジモード: 実在しない画面 ID で exit 1（#612 レビュー 🔴 の回帰）', () => {
+      const r = runRangeOn('feat(SC-99): 存在しない画面 ID');
+      assert.strictEqual(
+        r.status,
+        1,
+        `レンジモードで実在性検査が効いていない（planIds の配線漏れ）:\n${r.stdout}\n${r.stderr}`
+      );
+      assert.match(String(r.stdout) + String(r.stderr), /計画レンジに実在しない/);
+    });
+
+    ok('check-commit-messages レンジモード: 実在しない要求 ID / UC でも exit 1', () => {
+      for (const subject of ['feat(FR-77): 存在しない要求 ID', 'feat(UC-88): 存在しない UC']) {
+        const r = runRangeOn(subject);
+        assert.strictEqual(r.status, 1, `${subject} で落ちない:\n${r.stdout}\n${r.stderr}`);
+      }
+    });
+  }
+
   // --- NFR / #579 / IADR-0145: スカッシュ着地件名の検査 -----------------------------
   // `pr-title.yml`（PR タイトル）と `commit-messages`（base..HEAD）のどちらでもない
   // **第 3 の文字列** ——実際に develop へ載る件名——を規約へ照合する。

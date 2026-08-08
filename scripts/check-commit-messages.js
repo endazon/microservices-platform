@@ -553,7 +553,13 @@ function main() {
       continue;
     }
     const reasons = validateSubject(c.subject)
-      .concat(validateIdExistence(c.subject, iadrIds, planAdrIds))
+      // #579 / #612 レビュー 🔴: **ここに planIds を渡し忘れていた。**
+      // `checkSingleTitle`（--title）へは渡していたので `--title` の変異試験は通り、
+      // 「検査が効いている」と誤って結論した。`ci.yml` の commit-messages ジョブが実行するのは
+      // **こちら（レンジモード）**であり、そこでは FR/UC/SC 実在性が無効のままだった。
+      // **同じ型（呼び出し口を 1 つだけ配線する）はこのリポジトリで 3 度目である。**
+      // 下の scripts.repo.test.js が実バイナリでレンジモードを通し、再発を止める。
+      .concat(validateIdExistence(c.subject, iadrIds, planAdrIds, planIds))
       // #507: 他リポジトリ issue 番号の修飾は件名だけでなく**本文**にも規約が及ぶ
       // （`.claude/rules/traceability.md`「適用箇所: … コミット件名 / footer」）。
       .concat(crossRepoRefReasons(c.subject, '件名'))
