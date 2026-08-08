@@ -1,0 +1,55 @@
+{
+  "_note": "check-landed-subjects.js のラチェット床。統合ブランチへ既に載っており、force push 禁止のため直せない着地件名を控える。新規混入だけを落とし、baseline は縮む向きにのみ動かす（backend-library-baseline.json と同じ作法）。--update で実測から置き直せるが、その差分は必ず PR に載せてレビューさせること。",
+  "known": [
+    {
+      "hash": "3d8852f",
+      "subject": "Claude/issue 71 20260705 1545 (#95)",
+      "reason": "形式が `種別(起点ID): 要約` に一致しない"
+    },
+    {
+      "hash": "867d6c7",
+      "subject": "docs: 必須仕様書の欠落補完・リンク切れ/status 修正 (#59) (#72)",
+      "reason": "起点 ID が無い（docs は必須）。例: docs(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "3f69944",
+      "subject": "fix: FR-11 用途別・機密度別 LLM ルーティングの実運用不具合を修正 (#70)",
+      "reason": "起点 ID が無い（fix は必須）。例: fix(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "3f89bb0",
+      "subject": "docs: 計画書ステータスの環流フィードバック (#57) (#68)",
+      "reason": "起点 ID が無い（docs は必須）。例: docs(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "a23fb8a",
+      "subject": "feat: Claude Code ワークフローと設定ファイルの更新および新規作成 (#45)",
+      "reason": "起点 ID が無い（feat は必須）。例: feat(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "2381b1a",
+      "subject": "feat: 破壊的コマンドと機密ファイルアクセスのガードを強化し、直接コミットをブロックする機能を追加 (#44)",
+      "reason": "起点 ID が無い（feat は必須）。例: feat(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "d04ba5f",
+      "subject": "fix: claude-code-review permission_denials_count:1 を解消 (#40)",
+      "reason": "起点 ID が無い（fix は必須）。例: fix(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    },
+    {
+      "hash": "1dda3f9",
+      "subject": "fix(#34): EFCore.Relational を 10.0.9 に直接ピンし MSB3277 を解消 (#36)",
+      "reason": "起点 ID \"#34\" が書式に一致しない（例: FR-08 / UC-03 / NFR / ADR-0001 / IADR-0001 / P0）"
+    },
+    {
+      "hash": "38f68ad",
+      "subject": "Feature/official support (#28)",
+      "reason": "形式が `種別(起点ID): 要約` に一致しない"
+    },
+    {
+      "hash": "a40c411",
+      "subject": "feat: Add various specification templates for observability, operations, screens, security, technical requirements, and testing (#1)",
+      "reason": "起点 ID が無い（feat は必須）。例: feat(FR-08): ...。ID が本当に無い雑多な変更は chore / style / build / ci 種別を用いる"
+    }
+  ]
+}
