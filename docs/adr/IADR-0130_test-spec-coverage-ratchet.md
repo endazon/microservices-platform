@@ -10,6 +10,8 @@ related_ids:
   - IADR-0118
   - IADR-0120
   - IADR-0122
+  - IADR-0138
+  - IADR-0141
 author: Claude
 created: 2026-08-05
 updated: 2026-08-08
@@ -306,6 +308,15 @@ plan_refs:
     **既存 ratchet 群と同じ作法（外部依存ゼロ Node・`--self-test`・`scripts.repo.test.js` 受け口・
     `lib/excluded-units.js`・3 判定）へ揃える**（同 §理由）。検査器ごとに操作方法が違うと
     「直し方が分からない赤」が増えるという理由もそのまま当てはまる。
+- **［2026-08-08 追記 / #514・#607］追補（`--strict` を実装しないという決定）が依拠した 2 件**を
+  ここへ足す。**根拠として引いたものは `related_ids` にも載せる**——上の IADR-0118 / IADR-0122 と
+  同じ扱いにしないと、この ADR の中だけで引用の作法が 2 通りになる（#607 のレビュー指摘）。
+  - [IADR-0138](IADR-0138_coverage-exclude-generated-code.md): **「検出しないこと」を節として明示し、
+    先行 ADR を Superseded にせず補完する**書式（同 §結果）。本 ADR の追補が
+    [[IADR-0118]] / [[IADR-0123]] を Supersede せずに追記で足した扱いは、この先例に倣っている。
+  - [IADR-0141](IADR-0141_audit-rounds-and-population-drawing.md): **参照点を 1 つに畳む**
+    （同じ数え・同じ言明を 2 箇所に持たない）。追補を `docs/tests/TEST_STRATEGY.md` へ写さず、
+    本 ADR を正として指すだけに留めた根拠。母集合の引き直し（同 決定 1）も追補の実測に用いた。
 - [`docs/tests/TEST_STRATEGY.md`](../tests/TEST_STRATEGY.md) §ゲート一覧（本検査の行を追加）
 - [`scripts/README.md`](../../scripts/README.md)（スクリプト索引）
 - [`scripts/check-test-traceability.js`](../../scripts/check-test-traceability.js)（起点 ID の写像。本検査とは対象が異なる）
