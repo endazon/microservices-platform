@@ -101,6 +101,20 @@ related_specs:
   テストを足すときは **companion の `scripts.repo.test.js`** へ書く。
 - **計画 ADR（`ADR-xxxx`）の実在性は CI で守られていない**（どの決定的ジョブも submodule を populate しない）。
 
+## 4.5 この実行環境でできないこと（実測）
+
+**引き継ぐ人が同じ壁に当たる前に書いておく。**
+
+| できないこと | 実測した症状 | 影響する issue |
+| --- | --- | --- |
+| **フロントの `build`**（したがって **Playwright E2E も**） | `src/ai-stock-trading` submodule が未 populate のため、合成点 `platform/frontend/src/features/index.ts` の `@ai-stock-trading/features` が解決できず `error TS2307` で落ちる。CI（`frontend.yml`）は `Fetch unit submodules` ステップで populate するので**CI では通る** | **#554**（E2E の変異試験が要る）／#556（`dist` が要る） |
+| `.github/workflows/` の編集 | GitHub App 権限。**push が拒否される** | #562 #556 |
+| `planning/` の内容確認 | submodule 未 populate。計画 ADR の実在性検査は skip される | 計画 ID を扱う全作業 |
+
+> **#554 は「ポートの直書きを直す」だけなら机上でできるが、issue が要求している
+> 「①が空振りしても緑になることを変異試験で実測する」がこの環境では実行できない。**
+> submodule を populate できる経路（トークン付き）か、CI 上での実測が要る。
+
 ## 5. ★ このリポジトリで繰り返し起きる事故の型
 
 **新しい失敗はほとんど無い。同じ型が名前を変えて再発している。** 着手前にここを読むこと。
