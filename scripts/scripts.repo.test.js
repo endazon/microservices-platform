@@ -2141,6 +2141,55 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- NFR / #579 / IADR-0145: スカッシュ着地件名の検査 -----------------------------
+  // `pr-title.yml`（PR タイトル）と `commit-messages`（base..HEAD）のどちらでもない
+  // **第 3 の文字列** ——実際に develop へ載る件名——を規約へ照合する。
+  // **#568 で実際に起きた「マージ時に ID が落ちる」型は本検査では検出できない**
+  // （落ちた後の件名はそれ自体が規約適合であり、判定には PR タイトルとの突合が要る）。
+  // 検出できるのは書式違反と実在しない起点 ID の 2 型で、どちらも事後検知である。
+  {
+    const { spawnSync: spawnLanded } = require('child_process');
+    const pathLanded = require('path');
+    const landedScript = pathLanded.join(__dirname, 'check-landed-subjects.js');
+    const runLanded = (args) =>
+      spawnLanded(process.execPath, [landedScript, ...args], { encoding: 'utf8' });
+
+    ok('check-landed-subjects --self-test が通る（M1〜M6 ＋ ラチェット 3 件を対で固定）', () => {
+      const r = runLanded(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-landed-subjects が実データで baseline 外の違反 0 件', () => {
+      const r = runLanded([]);
+      // 浅いクローンでは skip される（notice が出て exit 0）。その場合も緑でよい——
+      // **skip したことは notice で可視化されている**（黙って 0 件にはしない）。
+      assert.strictEqual(r.status, 0, `着地件名に baseline 外の違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // **実バイナリ経路での検出力**。自己試験は純関数を直接叩くので、CLI が exit 1 を返すかは別に見る。
+    // ラチェットを 1 段緩める（baseline から 1 件外す）と、その件が「新規違反」として落ちること。
+    ok('check-landed-subjects: baseline を 1 件緩めると exit 1（ラチェットが効いている）', () => {
+      const fsLanded = require('fs');
+      const blPath = pathLanded.join(__dirname, 'landed-subject-baseline.json');
+      const original = fsLanded.readFileSync(blPath, 'utf8');
+      const json = JSON.parse(original);
+      if (json.known.length === 0) return; // baseline が空なら緩める先が無い（将来 0 件になったとき）
+      try {
+        fsLanded.writeFileSync(
+          blPath,
+          JSON.stringify({ ...json, known: json.known.slice(1) }, null, 2) + '\n'
+        );
+        const r = runLanded([]);
+        // 浅いクローンでは skip されるため exit 0 になり得る。その場合は検出力を主張しない。
+        if (/浅いクローン/.test(String(r.stdout) + String(r.stderr))) return;
+        assert.strictEqual(r.status, 1, `baseline を緩めても落ちない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /baseline 外の着地件名の違反/);
+      } finally {
+        fsLanded.writeFileSync(blPath, original);
+      }
+    });
+  }
+
   // --- NFR / #580: ADR 索引の行の「形」を固定する検査は #581 側へ統合した ---------------
   //
   // ここに `inspectAdrIndex`（`not-linked` / `id-file-mismatch` / `no-trailing-pipe` と、
