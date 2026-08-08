@@ -1,14 +1,14 @@
 ---
 title: SC-01〜03 の画面要素 7 点（要素名としては 6 種）が現在の API 契約に載らない（対象範囲フィルタ・機密区分チップ・検索モード・並び順・更新日時・機密区分の表示名）
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids: [SC-01, SC-02, SC-03, UC-01, FR-03, FR-04, FR-05]
 source_repo: microservices-platform
 source_ref: "feat/SC-01-03-search-flow / docs/specs/20260804_issue-502_sc01-03-search-flow.md（#502）"
 author: Claude（実装）
 created: 2026-08-04
-updated: 2026-08-05
+updated: 2026-08-08
 ---
 
 # フィードバック: SC-01〜03 の画面要素 7 点（要素名としては 6 種）が現在の API 契約に載らない

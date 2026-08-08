@@ -1,13 +1,14 @@
 ---
 title: レビュー用 allowedTools に grep / sort が無く、git -C が planning 決め打ちで submodule の履歴を検証できない
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: endazon/microservices-platform
 source_ref: issue #460 / PR #459（検出元）/ docs/specs/20260803_issue-460_ai-review-permission-denials.md
 author: Claude
 created: 2026-08-03
+updated: 2026-08-08
 ---
 
 # フィードバック: `grep` / `sort` の欠落と `git -C` の planning 決め打ち

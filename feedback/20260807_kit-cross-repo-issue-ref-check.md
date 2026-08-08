@@ -1,14 +1,14 @@
 ---
 title: 他リポジトリ issue 表記（短縮形への統一・列挙形の修飾漏れ）を止める機械がキットに無い — `check-cross-repo-refs.js` の環流提案
 type: plan-feedback
-status: open
+status: accepted
 category: ツールチェーン（impl-handoff-kit）
 related_ids: [NFR, IADR-0115, IADR-0140]
 source_repo: microservices-platform
 source_ref: "chore/NFR-507-cross-repo-issue-refs / docs/specs/20260807_issue-507_cross-repo-issue-refs.md（#507）"
 author: Claude（実装）
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # フィードバック: 他リポジトリ issue 表記の規約に対応する機械検査がキットに無い
