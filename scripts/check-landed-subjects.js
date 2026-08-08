@@ -158,9 +158,18 @@ function diffAgainstBaseline(violations, baseline) {
  *     **baseline へ打ち間違いを 1 つ入れるだけで検査全体が黙って無効化される**
  *     （変異試験で実際に踏んだ。`0000000` を足すと exit 0 で緑になった）。**fail させる。**
  */
-function scanPrecondition(baseline, ref = 'HEAD') {
-  const shallow = git('rev-parse --is-shallow-repository');
-  if (shallow !== null && shallow.trim() === 'true') {
+function scanPrecondition(baseline, ref = 'HEAD', opts = {}) {
+  // `isShallow` を注入できるようにするのは**自己試験のため**である（#615 レビュー 🟡）。
+  // 当初は `git rev-parse --is-shallow-repository` を無条件に先に見ており、
+  // **浅いクローンでは merge-base の分岐へ一度も入れず、変異試験 3 件が偽の失敗で落ちた**
+  // （CI は `fetch-depth: 0` なので通るが、**ローカルで叩いた開発者には「テストが壊れている」と見える**）。
+  // **検出漏れは開示してよいが偽陽性は塞ぐ** —— 自分の規則に自分で反していた。
+  // 注入があれば環境を見ない。**両方の分岐を決定的に固定できる。**
+  const shallow =
+    opts.isShallow !== undefined
+      ? String(opts.isShallow)
+      : git('rev-parse --is-shallow-repository');
+  if (shallow !== null && String(shallow).trim() === 'true') {
     return { skip: true, why: '浅いクローンのため履歴を遡れない' };
   }
   const missing = baseline.known
@@ -262,21 +271,31 @@ function selfTest() {
     const realHash = { known: [{ hash: 'HEAD', subject: '実在する ref', reason: 'テスト' }] };
     const fakeHash = { known: [{ hash: '0000000', subject: '架空', reason: 'テスト' }] };
 
+    // **`isShallow` を注入して環境を見ない。** これを怠ると浅いクローンで偽の失敗になる（#615 レビュー）。
+    const deep = { isShallow: false };
+
     t(
       'scanPrecondition 正例: 解決できるハッシュだけなら ok',
-      scanPrecondition(realHash).ok === true,
-      scanPrecondition(realHash)
+      scanPrecondition(realHash, 'HEAD', deep).ok === true,
+      scanPrecondition(realHash, 'HEAD', deep)
     );
     t(
       'scanPrecondition 変異: 解決できないハッシュは broken（skip にしない）',
-      scanPrecondition(fakeHash).broken === true &&
-        scanPrecondition(fakeHash).missing.includes('0000000'),
-      scanPrecondition(fakeHash)
+      scanPrecondition(fakeHash, 'HEAD', deep).broken === true &&
+        scanPrecondition(fakeHash, 'HEAD', deep).missing.includes('0000000'),
+      scanPrecondition(fakeHash, 'HEAD', deep)
     );
     t(
       'scanPrecondition: baseline が空でも ok（走査対象ゼロは別の判定が見る）',
-      scanPrecondition({ known: [] }).ok === true,
-      scanPrecondition({ known: [] })
+      scanPrecondition({ known: [] }, 'HEAD', deep).ok === true,
+      scanPrecondition({ known: [] }, 'HEAD', deep)
+    );
+    // **skip 側の分岐も固定する。** 注入前はこの経路をテストで踏めなかった
+    // ——「浅いクローンなら skip」は実装にあるだけで、誰も確かめていなかった。
+    t(
+      'scanPrecondition: 浅いクローンは skip（broken にしない）',
+      scanPrecondition(fakeHash, 'HEAD', { isShallow: true }).skip === true,
+      scanPrecondition(fakeHash, 'HEAD', { isShallow: true })
     );
   }
 
