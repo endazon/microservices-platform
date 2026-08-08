@@ -2020,6 +2020,26 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
+    // **findViolations が返し得る全 kind に、CI ログ用のラベルが在ること**（#590）。
+    // ラベルの追随は 2 度漏れた（#507 で 1 度、型 4 を足した #590 でもう 1 度）。漏れても
+    // 検査は落ちず「未知の違反種別 owner」と出るだけなので、テキストの追随では止まらない。
+    // **検査器のソースから `kind:` リテラルを静的に集めて突き合わせる**ことで、
+    // 将来 kind を足したときも自動的に対象へ入る（フィクスチャ列挙だと新 kind を取りこぼす）。
+    ok('crossRepoRefReasons のラベルが findViolations の全 kind を覆う', () => {
+      const src = require('fs').readFileSync(script, 'utf8');
+      const kinds = [...src.matchAll(/kind:\s*'([a-z]+)'/g)].map((m) => m[1]);
+      assert.ok(kinds.length >= 4, `kind リテラルを集められていない（${kinds.length} 件）`);
+      const { CROSS_REPO_REF_LABELS } = require(
+        pathXrepo.join(__dirname, 'check-commit-messages.js')
+      );
+      const missing = [...new Set(kinds)].filter((k) => !(k in CROSS_REPO_REF_LABELS));
+      assert.deepStrictEqual(
+        missing,
+        [],
+        `check-commit-messages.js の CROSS_REPO_REF_LABELS に無い kind: ${missing.join(', ')}`
+      );
+    });
+
     // 規約（.claude/rules/traceability.md）と検査器の対応。規約だけ書いても再発するので
     // 「検査器がある」ことを規約側から辿れる状態を固定する（#507 の受け入れ基準）。
     ok('traceability.md が短縮形の統一と検査器への導線を持つ', () => {

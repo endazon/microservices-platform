@@ -11,7 +11,7 @@ related_ids:
   - IADR-0070
 author: claude
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md (コンポーザブル)"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md (合成点)"

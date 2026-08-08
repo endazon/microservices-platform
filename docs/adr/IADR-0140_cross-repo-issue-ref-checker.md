@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0115]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -70,7 +70,7 @@ related_specs:
 （規約が禁じている理由そのものであり、是正の正当性は変わらない）。**誤リンクという実害が出るのは
 issue / PR / コミットメッセージの本文**であり、この面は `check-commit-messages.js` 経由で検査する。
 
-> **［2026-08-07 追記 / #590］この表から第 4 の型が導かれた——決定は 1 つも変えていない。**
+> **［2026-08-08 追記 / #590］この表から第 4 の型が導かれた——決定は 1 つも変えていない。**
 > 上表は「**`.md` でリンクになるのはフルパス形式だけ**」と述べている。**その裏を取ると、
 > フルパス形式の owner を誤ったときだけは `.md` でも実害（死んだリンク）が出る**。
 > 本 IADR は当初 3 型（長い表記・列挙形の修飾漏れ・空白区切り）を検査対象としており、

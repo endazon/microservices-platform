@@ -28,6 +28,18 @@
  *   - `AST#186/AST#192`                   … `/` は**列挙の区切り**であって owner ではない
  *   - `…spa-router-shell.md#2`            … Markdown のアンカーリンク
  *
+ * **型 4 が検出しないこと**（網羅ではない。#590 で実測して開示した）:
+ *   - **URL 形式**（`https://github.com/<owner>/<repo>/…`）の owner。owner の直前が `/` なので
+ *     負の後読みで落ちる。同じ誤字が URL 側で起きれば同じく死んだリンクになる。
+ *   - **2 階層以上のパス**（`x/y/ai-stock-trading#3`）。同じ理由で落ちる。GitHub の owner/repo
+ *     形式ではあり得ない構造だが、明記しないと将来の変異試験で気づけない。
+ *   - **第三者リポジトリの owner 誤字**（`anthropcis/claude-code-action#723`）。OWNED_REPOS 限定
+ *     のため対象外。これも `.md` では死んだリンクになる。
+ *   - **リポジトリ名自体の誤字**（`endazon/ai-stock-tradnig#106`）。リポ名の集合に一致しないため
+ *     型 1 にも型 4 にも掛からない。
+ *   逆に**実在リポ名を使った書式見本**（`owner/microservices-platform#123`）は型 4 が検出する。
+ *   見本はインラインコードかコードフェンスへ入れること（決定 1 の「引用は対象外」で解決する）。
+ *
  * **自動リンクが効く面と効かない面を区別すること**（クロス監査の実測。IADR-0140 決定 1・4）:
  *   - `.md` のレンダリングでは、裸の `#NNN` も短縮形の修飾も**自動リンクにならない**。
  *     `.md` で自動リンクするのはフルパス形式（`endazon/<repo>` + `#` + 番号）だけである。
@@ -105,18 +117,21 @@ const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
 const ENUM_FIX_RE = new RegExp(String.raw`(^|(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*)#(\d+)`, 'g');
 
 // 型 4: フルパス形式の owner。規約（.claude/rules/traceability.md「本リポジトリでの名前空間」）が
-// 定める既知の owner はただ 1 つ `endazon` である（実測: フルパス形式 30 件・URL 形式 245 件すべて）。
+// 定める既知の owner はただ 1 つ `endazon` である。**実測件数はここに書かない** —— 自己試験へ
+// 正例を足しただけで古くなるためである（#590 で実際に踏んだ。走査基準つきの数は作業仕様書が正）。
 const KNOWN_OWNERS = ['endazon'];
-// **自組織が持つリポジトリ名**。この 3 つに限って owner を検査する（上のコメントの理由）。
+// **自組織が持つリポジトリ名 → 短縮形**。この 3 つに限って owner を検査する（上のコメントの理由）。
 // `microservices-platform` は自リポジトリだが、フルパス形式で書かれること自体は規約が許すため
-// 対象に含める（owner を誤れば同じく死んだリンクになる）。
-const OWNED_REPOS = ['project-planning', 'ai-stock-trading', 'microservices-platform'];
-// 短縮形への対応。自リポジトリは裸の `#NNN` が正（規約: 裸の #NNN は常に本リポジトリ）。
+// 対象に含める（owner を誤れば同じく死んだリンクになる）。自リポジトリの短縮形は空文字＝裸の
+// `#NNN` が正（規約: 裸の #NNN は常に本リポジトリ）。
 const OWNED_REPO_SHORT = {
   'project-planning': 'planning',
   'ai-stock-trading': 'AST',
   'microservices-platform': '',
 };
+// **集合はここから導出する**（2 箇所に別々に書くと、片方だけ足したとき suggestion が
+// `undefined#123` として黙って壊れる。同ファイルの ENUM_FIX_RE が戒めているのと同じ型）。
+const OWNED_REPOS = Object.keys(OWNED_REPO_SHORT);
 // 直前が \w / - / `/` なら owner ではない（URL 中の `github.com/<owner>/…` を含む）。
 // URL 形式の owner は本検査の対象外である（#590 で実測し、違反 0 件であることを開示したうえで
 // 射程外とした）。
