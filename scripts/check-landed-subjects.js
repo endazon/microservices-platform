@@ -69,7 +69,7 @@ const {
   loadExistingIadrIds,
   loadExistingPlanAdrIds,
   loadExistingPlanIds,
-  isBotAuthorName,
+  isBot,
   isSkippable,
 } = require('./check-commit-messages.js');
 
@@ -108,7 +108,13 @@ function collectLanded(ref = 'HEAD') {
  * bot 著者・Revert / [skip ci] は規約対象外（`check-commit-messages.js` と同じ除外）。
  */
 function reasonsFor(commit, ids) {
-  if (isBotAuthorName(commit.author) || isBotAuthorName(commit.email)) return [];
+  // bot 判定は `isBot`（コミット著者用。`"名前 <メール>"` への部分一致）を使う。
+  // **`isBotAuthorName`（完全一致）は PR の作成者ログイン名用**であり、突合先が違う
+  // ——dependabot のコミットのメールは `49699333+dependabot[bot]@users.noreply...` で、
+  // 完全一致では当たらない（名前側で当たっていたので実データの結果は変わらないが、
+  // **同じ「bot 除外」が 2 検査器で別ロジックになっているのは事故の芽**である。#612 レビュー 🟢）。
+  // 実測: どちらでも着地件名の違反は 10 件で同数。**挙動を変えずに揃えた。**
+  if (isBot(commit)) return [];
   if (isSkippable(commit.subject)) return [];
   return validateSubject(commit.subject).concat(
     validateIdExistence(commit.subject, ids.iadrIds, ids.planAdrIds, ids.planIds)
