@@ -43,7 +43,7 @@ plan_refs:
 
 ## 決定
 
-1. **ランタイム = k3s**（ローカル実体）。ADR-0008（k3s）・AST ADR-0006（Hetzner k3s）に忠実。導線は
+1. **ランタイム = k3s**（ローカル実体）。ADR-0008（k3s）・AST/ADR-0006（Hetzner k3s）に忠実。導線は
    **2 経路をサポート**し、スクリプトが自動判定する（`K8S_LOCAL_RUNTIME` で明示可）:
    (a) **Rancher Desktop（推奨）**: 内蔵 k3s をそのまま使う（containerd + `nerdctl`）。Docker Desktop も
    k3d も不要で、最も k3s に忠実。(b) **Docker Desktop + k3d**: k3d が k3s-in-docker を作成。

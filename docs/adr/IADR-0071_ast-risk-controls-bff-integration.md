@@ -1,5 +1,5 @@
 ---
-title: IADR-0071 AST SC-02/SC-03 の /bff/risk-controls/* は IADR-0070 と同形の DTO 非依存 pass-through とし、RiskManagementService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する
+title: IADR-0071 AST/SC-02・AST/SC-03 の /bff/risk-controls/* は IADR-0070 と同形の DTO 非依存 pass-through とし、RiskManagementService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -28,8 +28,8 @@ plan_refs:
 - 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点 1 行組み込み）
 - 関連 ADR: [[IADR-0056]]（ユニット構成）／[[IADR-0057]]（一方向依存）／[[IADR-0063]]（BFF 合成点・例外3）／
   [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（AST フロント第1スライス SC-01・本 IADR の先行）／
-  AST [[IADR-0084]]（SC-02/03 の `/risk-controls/*` 契約消費）／AST IADR-0086（SC-02 ガード変更 UI）／
-  AST IADR-0087（BFF 契約の Playwright E2E 追認）
+  AST [[IADR-0084]]（SC-02/03 の `/risk-controls/*` 契約消費）／AST/IADR-0086（SC-02 ガード変更 UI）／
+  AST/IADR-0087（BFF 契約の Playwright E2E 追認）
 - Issue: MSP #287 ／ 先行 MSP #283（PR #285）／ AST endazon/ai-stock-trading#106
 - 上流仕様: `src/ai-stock-trading/frontend/src/features/risk/contracts.ts`（SC-02/03 が共有する応答契約）
 
@@ -72,7 +72,7 @@ AST フロント（`sc02-risk-settings`/`sc03-controls`）が `apiFetch` で叩�
 | `/bff/risk-controls/settings` | GET | `/settings` | SC-02 |
 | `/bff/risk-controls/settings/history` | GET | `/settings/history` | SC-02 |
 | `/bff/risk-controls/settings/limits` | PUT | `/settings/limits` | SC-02 |
-| `/bff/risk-controls/settings/guard` | PUT | `/settings/guard` | SC-02（AST IADR-0086） |
+| `/bff/risk-controls/settings/guard` | PUT | `/settings/guard` | SC-02（AST/IADR-0086） |
 | `/bff/risk-controls/status` | GET | `/status` | SC-03 |
 | `/bff/risk-controls/stage-gate` | GET | `/stage-gate` | SC-03 |
 
@@ -133,7 +133,7 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 
 ## 検証
 
-- フロント: `npm run typecheck` / `npm run lint` / `npm run build` / 横断 `vitest`（AST SC-02/03 feature を実
+- フロント: `npm run typecheck` / `npm run lint` / `npm run build` / 横断 `vitest`（AST/SC-02・AST/SC-03 feature を実
   foundation 上で収集）が緑。
 - deploy: `node scripts/check-image-mapping.js --self-test` と実突合が緑、`helm template`
   （`services.risk-management.enabled=true` で Deployment/Service 描画・既定は非描画）、`helm lint`、

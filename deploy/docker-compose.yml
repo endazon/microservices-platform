@@ -483,10 +483,10 @@ services:
       postgres:
         condition: service_healthy
 
-  # Issue #283, FR-17, UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
+  # Issue #283, AST/FR-17, AST/UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
   # AST は全サービスホスト（pin 91d52c2 時点で 11 件）で共有する単一のパラメータ化 Dockerfile
   # （backend/Dockerfile＋build args）を持ち、ビルド context は AST ユニットルート
-  # （../src/ai-stock-trading）である（AST IADR-0048 決定3）。
+  # （../src/ai-stock-trading）である（AST/IADR-0048 決定3）。
   # k8s-local-images.sh の MAPPING と #275 ドリフト検査は context/args も突合する（IADR-0070）。
   # そのため SERVICE_PROJECT / SERVICE_DLL は MAPPING と必ず同時に・同値で動かす。
   # Issue #570: AST はホストプロジェクトを *.Worker → *.Api へ一斉改名した（AST/IADR-0128。ホストと
@@ -511,7 +511,7 @@ services:
       postgres:
         condition: service_healthy
 
-  # Issue #287, FR-14, IADR-0071: AST リスク設定（SC-02）・統制状態参照（SC-03）の BFF 先＝RiskManagementService。
+  # Issue #287, FR-14, IADR-0071: AST リスク設定（AST/SC-02）・統制状態参照（AST/SC-03）の BFF 先＝RiskManagementService。
   # ConfigurationService と同型（単一 Dockerfile＋build args＋AST ユニットルート context）だが、RiskManagementService は
   # 専用 DB（risk_management_svc）に加え RabbitMQ（MassTransit）を使うため *rabbit-env と rabbitmq 依存を併用する。
   # Issue #570: configuration-service と同じく *.Worker → *.Api 改名へ追随した（AST/IADR-0128）。
@@ -535,7 +535,7 @@ services:
       rabbitmq:
         condition: service_healthy
 
-  # Issue #288, FR-14, IADR-0072: AST 監視銘柄（SC-02 watchlist）の BFF 先＝MarketMonitorService。
+  # Issue #288, FR-14, IADR-0072: AST 監視銘柄（AST/SC-02 watchlist）の BFF 先＝MarketMonitorService。
   # RiskManagementService と同型（単一 Dockerfile＋build args＋AST ユニットルート context）。MarketMonitorService は
   # 専用 DB（market_monitor_svc）に加え RabbitMQ（MassTransit：TradeDecisionMade 購読／監視イベント発行）を使うため
   # *rabbit-env と rabbitmq 依存を併用する。

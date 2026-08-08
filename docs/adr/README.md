@@ -124,8 +124,8 @@
 | [IADR-0068](./IADR-0068_image-mapping-drift-check.md) | k8s-local-images.sh の MAPPING と compose build 定義のドリフトは機械突合スクリプト＋独立ワークフローで検査する | Accepted |
 | [IADR-0069](./IADR-0069_config-history-gitops-injection-wiring.md) | 構成バージョン履歴は現在バージョンと同一注入経路で Helm から env 配列供給する（GitOps 配線・既定空で縮退） | Accepted |
 | [IADR-0070](./IADR-0070_ast-frontend-integration.md) | AST フロント/設定画面は @knowledge と同形の合成で SPA へ載せ、AST 共有 Dockerfile は deploy ツールを context/args 対応へ拡張して登録し、/bff/assumptions は DTO 非依存の pass-through とする | Accepted |
-| [IADR-0071](./IADR-0071_ast-risk-controls-bff-integration.md) | AST SC-02/SC-03 の /bff/risk-controls/* は IADR-0070 と同形の DTO 非依存 pass-through とし、RiskManagementService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する | Accepted |
-| [IADR-0072](./IADR-0072_ast-monitor-bff-integration.md) | AST SC-02 監視銘柄（watchlist）の /bff/monitor/* は IADR-0070/0071 と同形の DTO 非依存 pass-through とし、MarketMonitorService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する | Accepted |
+| [IADR-0071](./IADR-0071_ast-risk-controls-bff-integration.md) | AST/SC-02・AST/SC-03 の /bff/risk-controls/* は IADR-0070 と同形の DTO 非依存 pass-through とし、RiskManagementService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する | Accepted |
+| [IADR-0072](./IADR-0072_ast-monitor-bff-integration.md) | AST/SC-02 監視銘柄（watchlist）の /bff/monitor/* は IADR-0070/0071 と同形の DTO 非依存 pass-through とし、MarketMonitorService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する | Accepted |
 | [IADR-0073](./IADR-0073_ast-unit-owned-bff-migration.md) | AST 向け BFF pass-through（assumptions/risk-controls/monitor）を interim の platform 同居から例外3 の unit-owned Bff プロジェクト（AiStockTrading.Bff.Endpoints）へ挙動不変で移行する | Accepted |
 | [IADR-0074](./IADR-0074_datasource-periodic-sync-helm-wiring.md) | データソース定期同期は Helm の専用 dataSourceSync ブロックで配線し、本番有効・経路B(ローカル k8s)で検証する | Accepted |
 | [IADR-0075](./IADR-0075_ast-kb-writer-service-client.md) | AST の KB 書き込みは microservices-platform レルムの専用 confidential client（service-account に platform-operator）で受ける（AST#18・基盤無改修・最小権限・追加のみ） | Accepted |

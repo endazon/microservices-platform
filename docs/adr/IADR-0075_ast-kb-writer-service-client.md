@@ -28,12 +28,12 @@ plan_refs:
 - 関連 ADR: [[IADR-0030]]（platform-operator ロール新設）／[[IADR-0041]]（文書書き込みの BFF ABAC ゲート）／
   [[IADR-0044]]（バックエンド書き込みの多層防御＝`POST /documents` は platform-admin/operator 必須）
 - Issue: AST endazon/ai-stock-trading#18（FR-08 ナレッジベース保存の実 s2s 配線）。AST 側は
-  `feat/FR-08-kb-writer-cross-realm-s2s`（AST IADR-0093）。
+  `feat/FR-08-kb-writer-cross-realm-s2s`（AST/IADR-0093）。
 - 対応する AST 側決定: AST `docs/adr/IADR-0093`（KB の s2s を本レルムの専用クライアントでクロスレルム認証する）。
 
 ## 背景・課題
 
-`ai-stock-trading`（AST）ユニットは、確定報告書・収集情報を DocumentService（`POST /documents`）へ保存する（AST FR-08）。
+`ai-stock-trading`（AST）ユニットは、確定報告書・収集情報を DocumentService（`POST /documents`）へ保存する（AST/FR-08）。
 しかし本エンドポイントは [[IADR-0044]] の多層防御で `platform-admin`/`platform-operator` ロール必須であり、かつ
 DocumentService は **`microservices-platform` レルム**の Authority で JWT を検証する。AST の既存 s2s クライアント
 （AST レルムの `ai-stock-trading-svc` / `trading-service`）が発行するトークンは:

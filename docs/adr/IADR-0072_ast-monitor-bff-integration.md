@@ -1,5 +1,5 @@
 ---
-title: IADR-0072 AST SC-02 監視銘柄（watchlist）の /bff/monitor/* は IADR-0070/0071 と同形の DTO 非依存 pass-through とし、MarketMonitorService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する
+title: IADR-0072 AST/SC-02 監視銘柄（watchlist）の /bff/monitor/* は IADR-0070/0071 と同形の DTO 非依存 pass-through とし、MarketMonitorService は DB+RabbitMQ を伴う deploy 面へ既定 disabled で登録する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -30,7 +30,7 @@ plan_refs:
 - 関連 ADR: [[IADR-0056]]（ユニット構成）／[[IADR-0057]]（一方向依存）／[[IADR-0063]]（BFF 合成点・例外3）／
   [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（AST フロント第1スライス SC-01）／
   [[IADR-0071]]（先行・SC-02/03 risk-controls）／
-  AST IADR-0088（watchlist 設定ストア API）／AST IADR-0090（フロント watchlist UI）
+  AST/IADR-0088（watchlist 設定ストア API）／AST/IADR-0090（フロント watchlist UI）
 - Issue: MSP #288 ／ 先行 MSP #287（PR #289）／ AST endazon/ai-stock-trading#196（PR #197）
 - 上流仕様: `src/ai-stock-trading/frontend/src/features/monitor/contracts.ts`（watchlist の応答契約）／
   `src/ai-stock-trading/backend/Services/MarketMonitorService/src/MarketMonitorService.Worker/Foundation/Endpoints/MonitorSettingsEndpoints.cs`
