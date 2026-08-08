@@ -318,7 +318,7 @@ pnpm run test:e2e                               13 passed
 REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js   293 tests passed
 check-doc-links                 OK: 482 件
 check-cross-repo-refs           OK: 559 件
-check-plan-id-qualification     OK: 1189 件
+check-plan-id-qualification     OK: 1190 件（`ceb871d` で `SecretConfigMask.cs` を新設した分 +1）
 check-landed-subjects           OK: 着地件名 328 件
 check-adr-numbering             OK
 check-i18n-catalogs             OK: 2 ロケール（ja / en）
