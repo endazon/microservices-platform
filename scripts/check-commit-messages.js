@@ -306,7 +306,12 @@ function loadExistingPlanIds() {
   try {
     traceability = require('./check-test-traceability.js');
   } catch (e) {
-    return null; // キット派生リポで当該検査器を持たない構成。スキップする。
+    // **「持っていない」だけを skip にする。** 種別を見ずに握ると、当該モジュールの構文エラーまで
+    // 「持たない構成」として素通りし、決定 2 が定めた fail の向き（節が壊れていれば fail）が崩れる
+    // ——コメントは「ここは『持っていない』の意味しかない」と断定していたが、実装はそうなっていなかった
+    // （2026-08-08 フェーズ末クロス監査 Y-4）。
+    if (e && e.code === 'MODULE_NOT_FOUND') return null;
+    throw e;
   }
   if (typeof traceability.readPlanIds !== 'function') return null;
   // 節が壊れていれば readPlanIds が投げる。**握り潰さない**（上記の 2 つ目の向き）。

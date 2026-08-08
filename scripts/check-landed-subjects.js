@@ -21,7 +21,10 @@
  *
  * ## この検査が「できないこと」を先に言う（IADR-0145 決定 3）
  *
- * **#568 で実際に起きた事故（PR タイトルにあった ID がマージ時に落ちる）は、本検査では検出できない。**
+ * **#568 で実際に起きた事故（PR タイトルにあった ID がマージ時に落ちる）は、本検査では見ない。**
+ * **（「見られない」ではない。** 変更パス由来の ID をスコープと突き合わせれば当該事故は上がる
+ * ——実測で着地件名 319 件中 26 件ヒットし `bc7bc8e` を含む。**採らないのは偽陽性 25/26 で
+ * 方向が合わないからである**。IADR-0145 決定 3 の 2026-08-08 追記。）
  * 落ちた後の件名 `feat(FR-12): ...` は**それ自体は完全に規約適合**であり、
  * 「落ちた」と判定するには PR タイトルとの突合が要る。**PR タイトルはリポジトリの中に無い。**
  * したがって本検査が見るのは「載った件名それ自体が規約に反していないか」だけである。
@@ -113,7 +116,7 @@ function reasonsFor(commit, ids) {
   // ——dependabot のコミットのメールは `49699333+dependabot[bot]@users.noreply...` で、
   // 完全一致では当たらない（名前側で当たっていたので実データの結果は変わらないが、
   // **同じ「bot 除外」が 2 検査器で別ロジックになっているのは事故の芽**である。#612 レビュー 🟢）。
-  // 実測: どちらでも着地件名の違反は 10 件で同数。**挙動を変えずに揃えた。**
+  // **挙動を変えずに揃えた**（件数は baseline ファイルが正。ここへ書くと縮むたびに腐る）。
   if (isBot(commit)) return [];
   if (isSkippable(commit.subject)) return [];
   return validateSubject(commit.subject).concat(
@@ -155,9 +158,18 @@ function diffAgainstBaseline(violations, baseline) {
  *     **baseline へ打ち間違いを 1 つ入れるだけで検査全体が黙って無効化される**
  *     （変異試験で実際に踏んだ。`0000000` を足すと exit 0 で緑になった）。**fail させる。**
  */
-function scanPrecondition(baseline, ref = 'HEAD') {
-  const shallow = git('rev-parse --is-shallow-repository');
-  if (shallow !== null && shallow.trim() === 'true') {
+function scanPrecondition(baseline, ref = 'HEAD', opts = {}) {
+  // `isShallow` を注入できるようにするのは**自己試験のため**である（#615 レビュー 🟡）。
+  // 当初は `git rev-parse --is-shallow-repository` を無条件に先に見ており、
+  // **浅いクローンでは merge-base の分岐へ一度も入れず、変異試験 3 件が偽の失敗で落ちた**
+  // （CI は `fetch-depth: 0` なので通るが、**ローカルで叩いた開発者には「テストが壊れている」と見える**）。
+  // **検出漏れは開示してよいが偽陽性は塞ぐ** —— 自分の規則に自分で反していた。
+  // 注入があれば環境を見ない。**両方の分岐を決定的に固定できる。**
+  const shallow =
+    opts.isShallow !== undefined
+      ? String(opts.isShallow)
+      : git('rev-parse --is-shallow-repository');
+  if (shallow !== null && String(shallow).trim() === 'true') {
     return { skip: true, why: '浅いクローンのため履歴を遡れない' };
   }
   const missing = baseline.known
@@ -248,6 +260,44 @@ function selfTest() {
     '母集合: (#NNN) で終わらない件名は着地件名ではない',
     !LANDED_RE.test('feat(FR-01): ローカルコミット') && LANDED_RE.test('feat(FR-01): 着地 (#12)')
   );
+
+  // --- scanPrecondition: 走査可能かの 3 値判定（**この関数にだけ変異試験が無かった**） ---
+  //
+  // **ここは実際に穴を作って踏んだ場所である**（IADR-0145 決定 5）。当初は「baseline のハッシュを
+  // 解決できない ＝ 浅いクローン」と決め打ちしており、**`0000000` を 1 行足すだけで検査全体が
+  // exit 0 の緑になった**。それを割って塞いだのに、**割れたことを固定するテストを置き忘れていた**
+  // ——修正を戻せば黙って全緑に戻る状態だった（フェーズ末クロス監査 R-2）。
+  {
+    const realHash = { known: [{ hash: 'HEAD', subject: '実在する ref', reason: 'テスト' }] };
+    const fakeHash = { known: [{ hash: '0000000', subject: '架空', reason: 'テスト' }] };
+
+    // **`isShallow` を注入して環境を見ない。** これを怠ると浅いクローンで偽の失敗になる（#615 レビュー）。
+    const deep = { isShallow: false };
+
+    t(
+      'scanPrecondition 正例: 解決できるハッシュだけなら ok',
+      scanPrecondition(realHash, 'HEAD', deep).ok === true,
+      scanPrecondition(realHash, 'HEAD', deep)
+    );
+    t(
+      'scanPrecondition 変異: 解決できないハッシュは broken（skip にしない）',
+      scanPrecondition(fakeHash, 'HEAD', deep).broken === true &&
+        scanPrecondition(fakeHash, 'HEAD', deep).missing.includes('0000000'),
+      scanPrecondition(fakeHash, 'HEAD', deep)
+    );
+    t(
+      'scanPrecondition: baseline が空でも ok（走査対象ゼロは別の判定が見る）',
+      scanPrecondition({ known: [] }, 'HEAD', deep).ok === true,
+      scanPrecondition({ known: [] }, 'HEAD', deep)
+    );
+    // **skip 側の分岐も固定する。** 注入前はこの経路をテストで踏めなかった
+    // ——「浅いクローンなら skip」は実装にあるだけで、誰も確かめていなかった。
+    t(
+      'scanPrecondition: 浅いクローンは skip（broken にしない）',
+      scanPrecondition(fakeHash, 'HEAD', { isShallow: true }).skip === true,
+      scanPrecondition(fakeHash, 'HEAD', { isShallow: true })
+    );
+  }
 
   // ラチェット: 新規違反は added、直った baseline 項目は fixed
   {

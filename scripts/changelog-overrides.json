@@ -34,6 +34,12 @@
       "reason": "元コミット件名がクロスリポ参照の表記規約（.claude/rules/traceability.md「修飾語と番号の間に空白を入れない」）に違反しており、生成物 CHANGELOG.md 経由で check-cross-repo-refs.js を型 3（空白区切り）で赤くし develop 全体を止めていた。誤: `planning PR #144` / 正: `PR planning#144`。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。desc のみを指定し type（docs）と scope（NFR,IADR-0116）は元コミットの値を保つ——誤っているのは表記だけで種別も起点 ID も正しいため。検査器の suggestion は `planning#144` だが PR の語を落とすと『planning の PR #144』という意味が失われるので採らない（規約 :102-103 の正例が `PR planning#144`）。Issue #595。全 342 コミットの件名・本文を悉皆走査し、同型は本件 1 件のみであることを実測済み（docs/specs/20260807_issue-595_changelog-legacy-ref-remap.md）。"
     },
     {
+      "hash": "2cd8508",
+      "action": "remap",
+      "scope": "NFR,IADR-0145",
+      "reason": "着地件名が feat(NFR,FR-12,SC-07,IADR-0145) を名乗っているが、当該コミットは FR-12 / SC-07 の成果物を 1 つも触っていない（docs/screens/SC-07_* / docs/tests/SC-07_* / docs/functional/FR-12_* / src/knowledge/frontend/src/features/sc07-conversions/ すべて不変。git show --name-only で実測）。両 ID が現れるのは本ファイルの bc7bc8e 用 remap の値としてだけである。作業仕様書は『起点 ID: NFR（是正対象の記録は FR-12 / SC-07）』と正しく区別しており、件名だけがこの区別を潰していた。放置すると FR-12 / SC-07 を辿る読み手に、変換ジョブと無関係な検査器の PR が新機能として二重計上される（実測: 再生成すると bc7bc8e の正当な行と並んで出る）。これは b421761 の reason が『新たな誤帰属を避ける』として禁じている型と同じである。先例は #596（78c9753）で、同じく remap で他コミットの記録を是正する作業でありながら remap 対象の scope を継承せず自分の起点 fix(NFR,IADR-0140) を名乗っている。#612 だけがこの作法を破った。scope のみを補正し type（feat）と desc は元コミットの値を保つ。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。Issue #579 / フェーズ末クロス監査（traceability-auditor・2026-08-08）。"
+    },
+    {
       "hash": "bc7bc8e",
       "action": "remap",
       "scope": "FR-12,SC-07",
