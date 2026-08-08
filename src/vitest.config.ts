@@ -22,7 +22,9 @@ export default defineConfig({
       '@features': fileURLToPath(new URL('./platform/frontend/src/features', import.meta.url)),
       '@knowledge': fileURLToPath(new URL('./knowledge/frontend/src', import.meta.url)),
       // Issue #283, FR-14, IADR-0056/0070: AST（ai-stock-trading）ユニットの feature テストも横断収集する。
-      '@ai-stock-trading': fileURLToPath(new URL('./ai-stock-trading/frontend/src', import.meta.url)),
+      '@ai-stock-trading': fileURLToPath(
+        new URL('./ai-stock-trading/frontend/src', import.meta.url),
+      ),
     },
   },
   test: {

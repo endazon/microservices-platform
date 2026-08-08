@@ -37,7 +37,15 @@ describe('route tree (05_screens §共通シェル のルートパス)', () => {
   });
 
   it('keeps the old paths gone (they were not the planned ones)', () => {
-    const stale = ['/results', '/documents', '/datasources', '/conversions', '/analysis', '/ops', '/config'];
+    const stale = [
+      '/results',
+      '/documents',
+      '/datasources',
+      '/conversions',
+      '/analysis',
+      '/ops',
+      '/config',
+    ];
     expect(fullPaths().filter((p) => stale.includes(p))).toEqual([]);
   });
 

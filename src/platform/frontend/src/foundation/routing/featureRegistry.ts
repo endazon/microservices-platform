@@ -131,7 +131,10 @@ export interface FeatureModule {
  * 旧契約の feature 群を TanStack のルートへ変換する（IADR-0124 決定 2）。
  * 戻り値は `AnyRoute[]`＝型情報を持たない。呼び出し側は**型付きの木を組んだ後**に足すこと。
  */
-export function createLegacyRoutes(shell: ShellRoute, modules: readonly FeatureModule[]): AnyRoute[] {
+export function createLegacyRoutes(
+  shell: ShellRoute,
+  modules: readonly FeatureModule[],
+): AnyRoute[] {
   return modules.flatMap((m) =>
     m.routes.map((r) =>
       createRoute({

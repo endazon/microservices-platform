@@ -83,12 +83,15 @@ export function DataSourceManagementPage() {
           onCancel={() => setFormOpen(false)}
           onSubmit={(input) => {
             beginOperation();
-            create.mutate({ data: input }, {
-              onSuccess: () => {
-                setFormOpen(false);
-                setNotice(t`データソースを登録しました。`);
+            create.mutate(
+              { data: input },
+              {
+                onSuccess: () => {
+                  setFormOpen(false);
+                  setNotice(t`データソースを登録しました。`);
+                },
               },
-            });
+            );
           }}
         />
       )}
@@ -152,15 +155,21 @@ export function DataSourceManagementPage() {
                   busy={sync.isPending || disable.isPending}
                   onSync={() => {
                     beginOperation();
-                    sync.mutate({ id: source.id }, {
-                      onSuccess: () => setNotice(t`同期をトリガしました。`),
-                    });
+                    sync.mutate(
+                      { id: source.id },
+                      {
+                        onSuccess: () => setNotice(t`同期をトリガしました。`),
+                      },
+                    );
                   }}
                   onDisable={() => {
                     beginOperation();
-                    disable.mutate({ id: source.id }, {
-                      onSuccess: () => setNotice(t`データソースを無効化しました。`),
-                    });
+                    disable.mutate(
+                      { id: source.id },
+                      {
+                        onSuccess: () => setNotice(t`データソースを無効化しました。`),
+                      },
+                    );
                   }}
                 />
               ))}

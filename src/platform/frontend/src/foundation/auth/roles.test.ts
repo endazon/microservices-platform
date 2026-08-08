@@ -17,7 +17,9 @@ function userWith(token: string | undefined): User {
 
 describe('extractRealmRoles (IADR-0035)', () => {
   it('reads realm_access.roles from the access token', () => {
-    const user = userWith(makeJwt({ realm_access: { roles: ['platform-admin', 'default-roles'] } }));
+    const user = userWith(
+      makeJwt({ realm_access: { roles: ['platform-admin', 'default-roles'] } }),
+    );
     expect(extractRealmRoles(user)).toEqual(['platform-admin', 'default-roles']);
   });
 
@@ -42,7 +44,9 @@ describe('extractRealmRoles (IADR-0035)', () => {
 
 describe('hasAnyRole', () => {
   it('matches when any requested role is owned', () => {
-    expect(hasAnyRole([PlatformRole.Operator], PlatformRole.Admin, PlatformRole.Operator)).toBe(true);
+    expect(hasAnyRole([PlatformRole.Operator], PlatformRole.Admin, PlatformRole.Operator)).toBe(
+      true,
+    );
   });
   it('is false when none match', () => {
     expect(hasAnyRole(['user'], PlatformRole.Admin)).toBe(false);

@@ -11,10 +11,7 @@ import {
   useBffAuthzSetPolicyActive,
 } from '@foundation/api/generated/authorization/authorization';
 import { okArray } from '@foundation/api/orvalSelect';
-import type {
-  AbacPolicyDto,
-  AttributeDefinitionDto,
-} from '@foundation/api/generated/bff.schemas';
+import type { AbacPolicyDto, AttributeDefinitionDto } from '@foundation/api/generated/bff.schemas';
 
 // SC-09, UC-05, FR-09: 属性辞書・ポリシーの照会と編集（サーバー状態は TanStack Query。ADR-0031）。
 //

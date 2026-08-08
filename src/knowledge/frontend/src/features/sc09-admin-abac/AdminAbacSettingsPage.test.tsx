@@ -210,7 +210,9 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
 
     // 選択肢は属性辞書に由来する（自由入力の余地が無い）。
     const attributeSelect = screen.getByLabelText('対象属性');
-    expect(within(attributeSelect).getByRole('option', { name: '部門（利用者）' })).toBeInTheDocument();
+    expect(
+      within(attributeSelect).getByRole('option', { name: '部門（利用者）' }),
+    ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText('名前（必須）'), 'P-014 開発設計');
     await user.selectOptions(attributeSelect, 'dept');
@@ -467,9 +469,7 @@ describe('SC-09 access control (#504)', () => {
       expect(
         await screen.findByRole('heading', { name: '見つかりませんでした' }),
       ).toBeInTheDocument();
-      expect(
-        screen.queryByRole('heading', { name: '管理者設定（ABAC）' }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: '管理者設定（ABAC）' })).not.toBeInTheDocument();
       // 権限外では ABAC 管理 API を呼ばない（要求の有無から存在を推測させない）。
       expect(mocks.apiRequest).not.toHaveBeenCalled();
       view.unmount();

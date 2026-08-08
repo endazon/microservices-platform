@@ -127,7 +127,10 @@ describe('マクロ変換の設定がビルドとテストの両方に入って�
   it('vite.config.ts にも同じ babel プラグインが入っている', () => {
     // jsdom 環境では import.meta.url が http スキームになるため相対解決に使えない。
     // 横断 Vitest はワークスペースルート（src/）で走るので cwd から辿る。
-    const viteConfig = readFileSync(resolve(process.cwd(), 'platform/frontend/vite.config.ts'), 'utf8');
+    const viteConfig = readFileSync(
+      resolve(process.cwd(), 'platform/frontend/vite.config.ts'),
+      'utf8',
+    );
     expect(viteConfig).toContain(PLUGIN);
   });
 

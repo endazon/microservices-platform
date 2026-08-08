@@ -58,7 +58,12 @@ const DETAIL = {
   createdAt: '2025-10-02T00:00:00Z',
   updatedAt: '2026-05-30T00:00:00Z',
 };
-const CONTENT = { id: DOC_ID, title: TITLE, markdown: '# 経費精算規程\n締め日は毎月25日。', sourceUri: null };
+const CONTENT = {
+  id: DOC_ID,
+  title: TITLE,
+  markdown: '# 経費精算規程\n締め日は毎月25日。',
+  sourceUri: null,
+};
 
 beforeEach(() => {
   mocks.apiRequest.mockReset();
@@ -99,9 +104,10 @@ describe('search flow (SC-01 → SC-02 → SC-03)', () => {
       '/search',
       expect.objectContaining({ method: 'POST' }),
     );
-    expect(
-      JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body)),
-    ).toEqual({ query: '経費精算', topK: 20 });
+    expect(JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body))).toEqual({
+      query: '経費精算',
+      topK: 20,
+    });
 
     // SC-03: 結果から文書詳細へ。
     await user.click(await screen.findByRole('link', { name: TITLE }));

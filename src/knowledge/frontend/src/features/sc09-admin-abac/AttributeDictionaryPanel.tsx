@@ -19,11 +19,7 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
-import {
-  ATTRIBUTE_SCOPES,
-  attributeScopeLabel,
-  parseAllowedValues,
-} from './abacVocabulary';
+import { ATTRIBUTE_SCOPES, attributeScopeLabel, parseAllowedValues } from './abacVocabulary';
 import type { AttributeScope } from './abacVocabulary';
 import { useAttributeActions } from './useAbacAdmin';
 // SC-09, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -136,7 +132,9 @@ export function AttributeDictionaryPanel({
             // それを ApiError.details へ抽出している。固定文言だけへ置き換えるとその参照元一覧が
             // 画面から消える——利用者は「先に見直す」対象を自力で探すことになる。両方を出す。
             <>
-              <Trans>この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。</Trans>{' '}
+              <Trans>
+                この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。
+              </Trans>{' '}
               {toMessages(failed.error, t`参照元は特定できませんでした。`).join(' / ')}
             </>
           ) : (

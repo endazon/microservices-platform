@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Select } from '@platform/ui';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Select,
+} from '@platform/ui';
 import {
   CONFIDENTIALITY_KEY,
   CONFIDENTIALITY_VALUES,

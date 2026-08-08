@@ -16,7 +16,7 @@ import { describe, it, expect, vi } from 'vitest';
 const loaded = vi.hoisted(() => new Set<string>());
 
 const trace =
-  <T,>(id: string, importOriginal: () => Promise<T>) =>
+  <T>(id: string, importOriginal: () => Promise<T>) =>
   async (): Promise<T> => {
     loaded.add(id);
     return await importOriginal();

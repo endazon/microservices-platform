@@ -83,7 +83,10 @@ describe('ConversionJobsPage (SC-07)', () => {
     expect(table.getByText('変換中')).toBeInTheDocument();
     // 失敗の理由は備考列に出る（状態バッジは 4 値のまま保つ）。
     expect(screen.getByText('図コード化失敗')).toBeInTheDocument();
-    expect(mocks.apiRequest).toHaveBeenCalledWith('/conversion/jobs', expect.objectContaining({ method: 'GET' }));
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/conversion/jobs',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   // 計画確定: 照会 API は状態でのフィルタを備える（「失敗のみ」フィルタの実体）。
@@ -109,7 +112,10 @@ describe('ConversionJobsPage (SC-07)', () => {
     await renderPage();
 
     expect(await screen.findByLabelText('状態で絞り込み')).toHaveValue('');
-    expect(mocks.apiRequest).toHaveBeenCalledWith('/conversion/jobs', expect.objectContaining({ method: 'GET' }));
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/conversion/jobs',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   // 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
@@ -209,7 +215,9 @@ describe('ConversionJobsPage (SC-07)', () => {
 
   // BFF は後段障害を空一覧へ縮退させない（502）。画面も「ジョブ無し」と見せない。
   it('shows an error instead of an empty list when the query fails', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
     await renderPage();
 
     await waitFor(() =>
@@ -230,7 +238,9 @@ describe('ConversionJobsPage (SC-07)', () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([FAILED_JOB]));
     await renderPage([]);
 
-    expect(screen.queryByRole('heading', { name: '変換ジョブ（pandoc＋LLM）' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: '変換ジョブ（pandoc＋LLM）' }),
+    ).not.toBeInTheDocument();
     expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 

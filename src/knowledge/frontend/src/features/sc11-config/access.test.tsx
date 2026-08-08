@@ -61,7 +61,9 @@ describe('SC-11 access control (#140 / #504)', () => {
 
   it('hides existence (NotFound) for a non-privileged user', async () => {
     await renderConfigRoute(['user']);
-    expect(await screen.findByRole('heading', { name: '見つかりませんでした' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '見つかりませんでした' }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '実効構成' })).not.toBeInTheDocument();
     // 権限外では構成 API を呼ばない（要求の有無から存在を推測させない）。
     expect(mocks.apiRequest).not.toHaveBeenCalled();

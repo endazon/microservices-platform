@@ -19,6 +19,10 @@ on:
       - "src/orval-bff-only.cjs"
       - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
+      # Issue #562: 整形ゲートの設定と**対象範囲の単一情報源**。これらを単独で変えても
+      # CI が走らないと、範囲を広げすぎ／狭めすぎる変更を検出できない（eslint.config.js と同じ理由）。
+      - "src/.prettierrc.json"
+      - "src/.prettierignore"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
@@ -36,6 +40,10 @@ on:
       - "src/orval-bff-only.cjs"
       - "docs/api/openapi.yaml"
       - "src/eslint.config.js"
+      # Issue #562: 整形ゲートの設定と**対象範囲の単一情報源**。これらを単独で変えても
+      # CI が走らないと、範囲を広げすぎ／狭めすぎる変更を検出できない（eslint.config.js と同じ理由）。
+      - "src/.prettierrc.json"
+      - "src/.prettierignore"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
@@ -77,6 +85,12 @@ jobs:
         run: pnpm run typecheck
       - name: Lint
         run: pnpm run lint
+      # NFR / issue #562: 整形ゲート。バックエンドは ci.yml の lint ジョブが
+      # `dotnet format --verify-no-changes` で整形を強制しているのに対し、フロントには
+      # 同等のゲートが無く、整形揺れは AI レビューの目でしか拾えなかった。
+      # 対象範囲の単一情報源は src/.prettierignore（グロブをここへ複写しない）。
+      - name: Format check (prettier)
+        run: pnpm run format:check
       # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
       # 再生成して差分が出るなら、OpenAPI と生成物が乖離している（＝手で触ったか、更新し忘れた）。
       - name: Codegen is up to date (orval)

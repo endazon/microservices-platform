@@ -66,7 +66,9 @@ describe('foundation/api/orvalMutator（生成クライアントの唯一の出�
   it('treats bodyless successes (204) as empty data instead of failing to parse', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 
-    const res = await bffFetch<{ data: unknown; status: number }>('/bff/feedback', { method: 'POST' });
+    const res = await bffFetch<{ data: unknown; status: number }>('/bff/feedback', {
+      method: 'POST',
+    });
 
     expect(res.status).toBe(204);
     expect(res.data).toEqual({});
@@ -84,6 +86,8 @@ describe('foundation/api/orvalMutator（生成クライアントの唯一の出�
   it('maps a transport failure to a network ApiError（生成コードへ生の例外を漏らさない）', async () => {
     fetchMock.mockRejectedValue(new TypeError('failed to fetch'));
 
-    await expect(bffFetch('/bff/search', { method: 'POST' })).rejects.toMatchObject({ kind: 'network' });
+    await expect(bffFetch('/bff/search', { method: 'POST' })).rejects.toMatchObject({
+      kind: 'network',
+    });
   });
 });

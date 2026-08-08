@@ -89,7 +89,11 @@ export function DocumentDetailPage() {
           </Trans>
         </p>
 
-        <ContentView isPending={content.isPending} isError={content.isError} content={content.data} />
+        <ContentView
+          isPending={content.isPending}
+          isError={content.isError}
+          content={content.data}
+        />
         <SourceLinks doc={doc} content={content.data} />
       </div>
 

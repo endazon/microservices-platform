@@ -90,7 +90,10 @@ describe('OperationsDashboardPage (SC-10)', () => {
     await user.selectOptions(screen.getByLabelText('集計期間'), '30');
 
     await waitFor(() =>
-      expect(mocks.apiRequest).toHaveBeenCalledWith('/dashboard/summary?days=30', expect.anything()),
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/dashboard/summary?days=30',
+        expect.anything(),
+      ),
     );
   });
 
@@ -109,7 +112,9 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 
   it('says the period has no usage rather than showing an empty table', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse({ ...SUMMARY, usageTrend: [], topSearchTerms: [] }));
+    mocks.apiRequest.mockResolvedValue(
+      jsonResponse({ ...SUMMARY, usageTrend: [], topSearchTerms: [] }),
+    );
     await renderPage();
 
     expect(await screen.findByText('期間内の利用はありません。')).toBeInTheDocument();

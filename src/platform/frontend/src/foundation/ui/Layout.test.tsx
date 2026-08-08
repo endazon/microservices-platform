@@ -62,9 +62,7 @@ describe('Layout navigation (role-gated)', () => {
   // （従前は「運用ダッシュボード」と表示していた）。
   it('shows the ダッシュボード (SC-10) link for platform-admin', async () => {
     await renderLayout(['platform-admin']);
-    expect(
-      await within(nav()).findByRole('link', { name: 'ダッシュボード' }),
-    ).toBeInTheDocument();
+    expect(await within(nav()).findByRole('link', { name: 'ダッシュボード' })).toBeInTheDocument();
   });
 
   it('hides the ダッシュボード link for users without the admin role (existence hidden)', async () => {
@@ -171,7 +169,9 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
 
   it('renders NotFound inside the common shell for an unknown path', async () => {
     await renderLayout(['user'], '/no-such-screen');
-    expect(await screen.findByRole('heading', { name: '見つかりませんでした' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '見つかりませんでした' }),
+    ).toBeInTheDocument();
     // シェル（ナビ・ブランド）が付いた状態で出る。
     expect(nav()).toBeInTheDocument();
     expect(screen.getByText('汎用プラットフォーム')).toBeInTheDocument();
@@ -179,7 +179,9 @@ describe('existence hiding: unknown path and forbidden path render alike (IADR-0
 
   it('renders NotFound inside the common shell for a role-gated path (SC-11)', async () => {
     await renderLayout(['user'], '/admin/config-viewer');
-    expect(await screen.findByRole('heading', { name: '見つかりませんでした' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: '見つかりませんでした' }),
+    ).toBeInTheDocument();
     expect(nav()).toBeInTheDocument();
     expect(screen.getByText('汎用プラットフォーム')).toBeInTheDocument();
   });

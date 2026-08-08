@@ -53,7 +53,11 @@ const CONFIG = {
     },
   ],
   eventBindings: [
-    { event: 'DocumentNormalized', publishers: ['conversion-service'], subscribers: ['embedding-service'] },
+    {
+      event: 'DocumentNormalized',
+      publishers: ['conversion-service'],
+      subscribers: ['embedding-service'],
+    },
   ],
   ports: [{ port: 'embedding', implementation: 'VoyageAI', target: 'voyage-3.5' }],
   connectors: [
@@ -78,14 +82,22 @@ const DRIFT = {
 const NO_DRIFT = { hasDrift: false, checkedAt: '2026-07-22T14:10:00Z', findings: [] };
 
 const HISTORY = [
-  { gitCommit: 'a3f81c2000000', appliedAt: '2026-07-22T14:05:00Z', appliedBy: 'argocd', hadDrift: true },
-  { gitCommit: '9d02b77000000', appliedAt: '2026-07-15T09:12:00Z', appliedBy: 'argocd', hadDrift: false },
+  {
+    gitCommit: 'a3f81c2000000',
+    appliedAt: '2026-07-22T14:05:00Z',
+    appliedBy: 'argocd',
+    hadDrift: true,
+  },
+  {
+    gitCommit: '9d02b77000000',
+    appliedAt: '2026-07-15T09:12:00Z',
+    appliedBy: 'argocd',
+    hadDrift: false,
+  },
 ];
 
 /** パスごとに応答（または失敗）を差し替えるモック。3 本を独立に壊せるようにする。 */
-function mockApi(
-  overrides: Partial<Record<'config' | 'drift' | 'history', unknown | Error>> = {},
-) {
+function mockApi(overrides: Partial<Record<'config' | 'drift' | 'history', unknown | Error>> = {}) {
   mocks.apiRequest.mockImplementation(async (path: string) => {
     const pick = (value: unknown) => {
       if (value instanceof Error) throw value;

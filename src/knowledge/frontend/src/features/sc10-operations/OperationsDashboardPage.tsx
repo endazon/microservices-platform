@@ -134,9 +134,7 @@ export function OperationsDashboardPage() {
         </Alert>
       )}
 
-      {summary.isSuccess && summary.data && (
-        <SummaryView summary={summary.data} />
-      )}
+      {summary.isSuccess && summary.data && <SummaryView summary={summary.data} />}
 
       <h2 className="mb-2 text-sm font-medium text-[--color-fg-muted]">
         <Trans>詳細ツール</Trans>
@@ -175,7 +173,9 @@ export function OperationsDashboardPage() {
 
       <Alert tone="info" className="mt-3" label={t`運用ツール`}>
         <Trans>
-          運用面は専用ツールで提供します: Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger / Tempo（分散トレース）。本画面はこれらへの入口です。
+          運用面は専用ツールで提供します:
+          Grafana（メトリクス・コスト）・Kiali（サービスメッシュ）・Jaeger /
+          Tempo（分散トレース）。本画面はこれらへの入口です。
         </Trans>
       </Alert>
     </section>

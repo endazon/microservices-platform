@@ -29,7 +29,8 @@ export function CallbackPage({ manager }: { manager?: UserManager }) {
         void navigate({ to: returnTo as typeof ENTRY_ROUTE_PATH, replace: true });
       })
       .catch((e: unknown) => {
-        if (active) setError(e instanceof Error ? e.message : i18n._(msg`サインインに失敗しました。`));
+        if (active)
+          setError(e instanceof Error ? e.message : i18n._(msg`サインインに失敗しました。`));
       });
     return () => {
       active = false;
@@ -38,14 +39,8 @@ export function CallbackPage({ manager }: { manager?: UserManager }) {
 
   if (error) {
     return (
-      <p role="alert">
-        {i18n._(msg`サインインに失敗しました。時間をおいて再度お試しください。`)}
-      </p>
+      <p role="alert">{i18n._(msg`サインインに失敗しました。時間をおいて再度お試しください。`)}</p>
     );
   }
-  return (
-    <p role="status">
-      {i18n._(msg`サインイン処理中…`)}
-    </p>
-  );
+  return <p role="status">{i18n._(msg`サインイン処理中…`)}</p>;
 }

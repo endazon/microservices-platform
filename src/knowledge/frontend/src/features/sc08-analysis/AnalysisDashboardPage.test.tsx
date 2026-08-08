@@ -28,9 +28,7 @@ const DOC_ID = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
 
 const ANSWER = {
   answer: '3部門に共通する失注要因は (1) 見積提示の遅延 …',
-  citations: [
-    { chunkId: 'c1', documentId: DOC_ID, documentTitle: '第1営業部 Q1報告', score: 0.9 },
-  ],
+  citations: [{ chunkId: 'c1', documentId: DOC_ID, documentTitle: '第1営業部 Q1報告', score: 0.9 }],
   model: 'self-hosted',
   inputTokens: 120,
   outputTokens: 45,
@@ -160,7 +158,9 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     expect(
       screen.getByText(/機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/権限外のデータは黙って対象外になります（存在秘匿）。/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/権限外のデータは黙って対象外になります（存在秘匿）。/),
+    ).toBeInTheDocument();
   });
 
   // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #4）。

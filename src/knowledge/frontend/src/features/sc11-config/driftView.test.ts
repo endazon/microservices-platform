@@ -69,11 +69,7 @@ describe('driftView (SC-11)', () => {
 
   // DriftDetector は Target に常に段名だけを返す。強調判定はその集合で行う。
   it('collects the drift targets for highlighting the pipeline chain', () => {
-    const targets = driftTargets([
-      { target: 'embed' },
-      { target: 'index' },
-      { target: 'embed' },
-    ]);
+    const targets = driftTargets([{ target: 'embed' }, { target: 'index' }, { target: 'embed' }]);
     expect([...targets].sort()).toEqual(['embed', 'index']);
   });
 

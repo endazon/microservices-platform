@@ -75,7 +75,8 @@ export interface PolicyConditions {
 export function buildConditions(entries: readonly ConditionEntry[]): PolicyConditions {
   const conditions: PolicyConditions = { userConditions: {}, documentConditions: {} };
   for (const entry of entries) {
-    const bucket = entry.scope === 'user' ? conditions.userConditions : conditions.documentConditions;
+    const bucket =
+      entry.scope === 'user' ? conditions.userConditions : conditions.documentConditions;
     const values = (bucket[entry.key] ??= []);
     if (!values.includes(entry.value)) values.push(entry.value);
   }

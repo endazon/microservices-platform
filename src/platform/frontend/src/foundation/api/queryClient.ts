@@ -29,7 +29,12 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
   // `failureCount < 1` が数値指定の `retry: 1`（＝再試行 1 回）と同じ回数になる。
   if (failureCount >= MAX_QUERY_RETRIES) return false;
 
-  if (error instanceof ApiError && error.status !== null && error.status >= 400 && error.status < 500) {
+  if (
+    error instanceof ApiError &&
+    error.status !== null &&
+    error.status >= 400 &&
+    error.status < 500
+  ) {
     return error.status === 408 || error.status === 429;
   }
   return true;

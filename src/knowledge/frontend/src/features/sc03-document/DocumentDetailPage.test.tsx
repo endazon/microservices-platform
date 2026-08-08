@@ -44,8 +44,22 @@ const CONTENT = {
   sourceUri: 'https://files.example.co.jp/keihi.docx',
 };
 const VERSIONS = [
-  { documentId: DOC_ID, version: 3, title: DETAIL.title, status: 'published', changeNote: '§4 改定', createdAt: '2026-05-30T00:00:00Z' },
-  { documentId: DOC_ID, version: 2, title: DETAIL.title, status: 'archived', changeNote: null, createdAt: '2026-01-15T00:00:00Z' },
+  {
+    documentId: DOC_ID,
+    version: 3,
+    title: DETAIL.title,
+    status: 'published',
+    changeNote: '§4 改定',
+    createdAt: '2026-05-30T00:00:00Z',
+  },
+  {
+    documentId: DOC_ID,
+    version: 2,
+    title: DETAIL.title,
+    status: 'archived',
+    changeNote: null,
+    createdAt: '2026-01-15T00:00:00Z',
+  },
 ];
 
 /** 「本文なし（204）で返す」ことを指す標識（`null` の JSON 本文と区別するため Symbol を使う）。 */
@@ -119,7 +133,9 @@ describe('DocumentDetailPage (SC-03)', () => {
     respond({ content: { ...CONTENT, sourceUri: 'storage://normalized/keihi.md' } });
     await renderPage();
     await waitFor(() =>
-      expect(screen.queryByRole('link', { name: 'storage://normalized/keihi.md' })).not.toBeInTheDocument(),
+      expect(
+        screen.queryByRole('link', { name: 'storage://normalized/keihi.md' }),
+      ).not.toBeInTheDocument(),
     );
   });
 

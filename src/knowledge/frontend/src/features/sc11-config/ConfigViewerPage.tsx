@@ -17,12 +17,7 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
-import {
-  driftKindLabel,
-  driftSeverityView,
-  driftTargets,
-  hadDriftLabel,
-} from './driftView';
+import { driftKindLabel, driftSeverityView, driftTargets, hadDriftLabel } from './driftView';
 import {
   useConfigDrift,
   useConfigHistory,
@@ -183,7 +178,8 @@ export function ConfigViewerPage() {
 
           <Alert tone="info" className="mt-3" label={t`参照のみ`}>
             <Trans>
-              構成の変更は Git 経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。
+              構成の変更は Git
+              経由（GitOps）に限ります。本画面から構成は変更できません。閲覧は監査ログに記録されます。
             </Trans>
           </Alert>
         </>

@@ -21,7 +21,12 @@ describe('orderedAttributes (SC-03)', () => {
   // 表示順を応答の JSON 順に左右させない（計画の挙げる順を先頭に、残りは辞書順）。
   it('puts the plan-named attributes first and sorts the rest', () => {
     expect(
-      orderedAttributes({ owner: 'u1', department: 'accounting', confidentiality: 'internal', lifecycle: 'active' }),
+      orderedAttributes({
+        owner: 'u1',
+        department: 'accounting',
+        confidentiality: 'internal',
+        lifecycle: 'active',
+      }),
     ).toEqual([
       ['confidentiality', 'internal'],
       ['department', 'accounting'],

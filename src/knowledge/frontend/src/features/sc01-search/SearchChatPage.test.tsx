@@ -288,8 +288,9 @@ describe('SearchChatPage (SC-01)', () => {
     activate('en');
     await renderPage();
 
-
-    expect(screen.getByRole('heading', { name: 'Knowledge search / AI question' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Knowledge search / AI question' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 });

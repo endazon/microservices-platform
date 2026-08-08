@@ -21,7 +21,9 @@ describe('notifications (INDEX 決定 21: 色だけで意味を持たせない)'
   it('exposes exactly the four severities (no colour-only variant can be added by callers)', () => {
     expect(Object.keys(notify).sort()).toEqual(['error', 'info', 'success', 'warning']);
     expect(
-      (['success', 'info', 'warning', 'error'] as const).every((s) => notificationLabel(s).length > 0),
+      (['success', 'info', 'warning', 'error'] as const).every(
+        (s) => notificationLabel(s).length > 0,
+      ),
     ).toBe(true);
   });
 });
