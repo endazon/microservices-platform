@@ -20,8 +20,11 @@ related_specs:
 - 制約: **ADR-0031** ／ [[IADR-0134]]（分割境界。本テストはその回帰ガードの一部）
 - 対象: [`src/platform/frontend/e2e/bundle-splitting.smoke.spec.ts`](../../src/platform/frontend/e2e/bundle-splitting.smoke.spec.ts)
   ／ [`src/platform/frontend/playwright.config.ts`](../../src/platform/frontend/playwright.config.ts)
-- 分類（[[IADR-0141]] 決定 4）: **既存の決定の範囲内**（[[IADR-0134]] の回帰ガードを効かせ直すだけで、
-  分割境界そのものは変えない）。**新規 IADR は作らない** —— 下記「IADR を作らない理由」参照
+- 分類（[[IADR-0141]] 決定 4 ＝ **監査強度**の分岐）: **機械検査を新設・改修する**
+  （E2E の回帰ガードを改修し、同行が要求する**変異試験**を実施した）。
+  したがってフェーズ末クロス監査は**全面 1 巡 ＋ 是正差分 1 巡**が要る。
+  なお同決定 4 は**監査の巡数を決める表であり、IADR を書くべきかの分類ではない** ——
+  後者は下記「IADR を作らない理由」で別に論じる
 
 ## 目的
 
@@ -89,8 +92,9 @@ $ grep -rn "4173" src/platform/frontend/ --include=*.ts --include=*.json --inclu
 
 ## IADR を作らない理由
 
-[[IADR-0141]] 決定 4 の分類で「**既存の決定の範囲内**」に当たる。本 PR は [[IADR-0134]] が定めた分割境界を
-**変えず**、その回帰ガードが空振りしないよう直すだけである。`reuseExistingServer` の方針は
+根拠は `CLAUDE.md`「重要な実装判断（内部設計・ライブラリ選定等）は実装 ADR に必ず残す」の**適用範囲**である。
+本 PR は [[IADR-0134]] が定めた分割境界を**変えず**、その回帰ガードが空振りしないよう直すだけで、
+**他の実装が従うべき決定を 1 つも作らない**。`reuseExistingServer` の方針は
 **このテストハーネスに閉じた設定**であり、他の実装が従うべき決定ではない
 （issue の受け入れ基準も「方針が**記録**されている」であり、IADR を求めていない）。
 記録先は本書と `playwright.config.ts` のコメントの 2 箇所で、**理由は後者に置き前者から参照する**
