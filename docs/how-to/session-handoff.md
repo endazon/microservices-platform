@@ -8,6 +8,7 @@ created: 2026-08-08
 updated: 2026-08-08
 plan_refs: []
 related_specs:
+  - ../specs/20260808_session-handoff.md
   - ../adr/IADR-0141_audit-rounds-and-population-drawing.md
   - ../adr/IADR-0116_reimplementation-branching-and-pr-policy.md
 ---
