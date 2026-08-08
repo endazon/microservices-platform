@@ -140,15 +140,11 @@ public static class DataSourceEndpoints
         ds.LastSyncErrorAt,
     };
 
-    // 秘密とみなすキー名の部分一致マーカー（大文字小文字無視）。spaceKey/listPath/rootPath 等は誤マスクしない。
-    private static readonly string[] SecretKeyMarkers = ["token", "password", "secret", "credential"];
-
+    // 秘密キーの定義とマスク値は SecretConfigMask が単一情報源である（IADR-0148 決定 6）。
+    // **読み（ここ）と書き（DataSource.Update / Patch）で同じ知識を使う** —— 2 箇所に持つと、
+    // マーカーを足したときに片方が黙って古くなる。
     private static Dictionary<string, string> RedactSecrets(IReadOnlyDictionary<string, string> config)
-        => config.ToDictionary(
-            kv => kv.Key,
-            kv => SecretKeyMarkers.Any(m => kv.Key.Contains(m, StringComparison.OrdinalIgnoreCase))
-                ? "***"
-                : kv.Value);
+        => SecretConfigMask.Redact(config);
 }
 
 public record CreateDataSourceRequest(

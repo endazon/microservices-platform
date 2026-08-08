@@ -84,7 +84,8 @@ public class DataSource
         Name = name;
         SourceType = sourceType;
         ConnectionUri = connectionUri;
-        Config = config ?? [];
+        // IADR-0148 決定 6: 応答のマスク値（***）を書き戻しても本物の秘密を壊さない。
+        Config = SecretConfigMask.PreserveMasked(config ?? [], Config);
         DefaultAttributes = WithConfidentialityFailsafe(defaultAttributes);
     }
 
@@ -98,7 +99,9 @@ public class DataSource
         if (name is not null) Name = name;
         if (sourceType is not null) SourceType = sourceType;
         if (connectionUri is not null) ConnectionUri = connectionUri;
-        if (config is not null) Config = config;
+        // IADR-0148 決定 6: 同上。PATCH は「読んで一部だけ直して送り返す」経路そのものなので、
+        // ここが無いと最も普通の使い方が資格情報を破壊する。
+        if (config is not null) Config = SecretConfigMask.PreserveMasked(config, Config);
         // FR-05: 属性を差し替えるときも機密区分のフェイルセーフを通す。空にできると fail-closed 検索
         // （IADR-0012）から文書が落ちる。省略時（null）は現状維持なので補完も走らせない。
         if (defaultAttributes is not null) DefaultAttributes = WithConfidentialityFailsafe(defaultAttributes);

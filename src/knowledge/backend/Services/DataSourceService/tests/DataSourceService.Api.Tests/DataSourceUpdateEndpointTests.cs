@@ -123,6 +123,60 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         entity!.Config["apiToken"].Should().Be("s3cret", "Config を送らない PATCH は秘密を書き換えない");
     }
 
+    // IADR-0053 / IADR-0148 決定 6（AI レビュー 🟡・#627）: **読んで書き戻す往復が秘密を壊さない。**
+    // 応答は秘密キーを *** でマスクするため、GET の結果をそのまま編集して送り返すと、
+    // マスク値が本物の資格情報を上書きしてしまう。**マスク値は保存せず、既存値を保つ。**
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task Update_WritingBackMaskedSecret_KeepsStoredValue(string method)
+    {
+        var client = factory.CreateClient();
+        var created = await CreateAsync(client);
+        var id = created.GetProperty("id").GetGuid();
+
+        // GET の応答をそのまま部分編集して送り返す（API を直接叩く運用者・将来の編集フォームの経路）。
+        using var req = new HttpRequestMessage(new HttpMethod(method), $"/datasources/{id}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "round-tripped",
+                sourceType = "filesystem",
+                connectionUri = "smb://old/share",
+                config = new Dictionary<string, string> { ["rootPath"] = "/new", ["apiToken"] = "***" },
+            }),
+        };
+        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider
+            .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
+        var entity = await db.DataSources.FindAsync(id);
+        entity!.Config["apiToken"].Should().Be("s3cret", "マスク値は本物の秘密を上書きしない");
+        entity.Config["rootPath"].Should().Be("/new", "秘密でない項目は要求どおり更新される");
+    }
+
+    // 過剰に守らない: **秘密キーでなければ *** は普通の値**である（マスクされて返らないため、
+    // 利用者が意図して入れた文字列と区別できる）。
+    [Fact]
+    public async Task Patch_NonSecretKeyWithPlaceholderValue_IsStoredVerbatim()
+    {
+        var client = factory.CreateClient();
+        var created = await CreateAsync(client);
+        var id = created.GetProperty("id").GetGuid();
+
+        await client.PatchAsJsonAsync($"/datasources/{id}", new
+        {
+            config = new Dictionary<string, string> { ["rootPath"] = "***" },
+        });
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider
+            .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
+        var entity = await db.DataSources.FindAsync(id);
+        entity!.Config["rootPath"].Should().Be("***");
+    }
+
     [Theory]
     [InlineData("PUT")]
     [InlineData("PATCH")]
