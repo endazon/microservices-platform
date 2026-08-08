@@ -34,6 +34,29 @@ const BANNED_IMPORT_PATTERNS = [
   },
 ];
 
+// NFR / #555 / IADR-0146: 画面（features）からの `apiFetch` 再混入を止める。
+//
+// **なぜ必要か**: #519 が画面の通信を orval 生成物へ載せ替え、`apiFetch` の呼び出しは
+// **本番コードから 0 件**になった。これにより契約の変更が型検査で捕まるようになったが、
+// **その状態を守る仕組みが無かった** —— ESLint は `fetch` / `axios` を止めるが、
+// **`apiFetch` は `foundation/api` の正規 API なので止まらない**（IADR-0121 決定 3）。
+// 次の実装者が `apiFetch` ＋ 手書き型で書いても **CI は緑**であり、その画面ぶんだけ
+// 「契約を変えても型検査が落ちない」状態が静かに戻る（#512 の M5a と同じ「壊れても何も赤くならない」型）。
+//
+// **`apiStream` は禁止しない。** SSE は orval が扱えず生成物が存在しないため
+// （IADR-0131 決定 4）、`foundation/api` の `apiStream` が**恒久的に正規の口**である。
+// 実際 `knowledge/frontend/src/features/sc01-search/useAskStream.ts` が唯一の利用箇所である。
+// **禁止の対象を `apiFetch` に限ることが、そのまま例外の明示になっている**
+// ——「SSE だけ許可リストに載せる」形にすると、許可リストの保守という新しい手作業が増える。
+const NO_APIFETCH_IN_FEATURES = {
+  name: '@foundation/api/apiClient',
+  importNames: ['apiFetch'],
+  message:
+    '画面（features）から apiFetch を呼ばない（#555 / IADR-0146）。BFF 呼び出しは orval 生成フックを使う'
+    + '——apiFetch は手書き型と組で使われるため、その画面だけ契約変更が型検査で捕まらなくなる。'
+    + 'SSE は apiStream が恒久的な正規の口（IADR-0131 決定 4）。',
+};
+
 // ADR-0031 / IADR-0124: ルーティングは TanStack Router に一本化する（移行第 2 段 / #490）。
 // 「各系統は 1 度だけ切り替え、2 つのルータが同時に存在する状態を作らない」（IADR-0121 決定 1）を
 // 機械で守る。本リポジトリが所有する platform / knowledge にのみ適用する——`ai-stock-trading` は
@@ -118,13 +141,20 @@ export default tseslint.config(
     },
   },
   // 可変ユニット（@knowledge）は @foundation のみ参照可。platform の合成点（@features）は参照しない。
+  //
+  // **`knowledge/frontend/src/` の中身は `features/` だけである**（実測）。したがって本ブロックの
+  // 適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止をここへ足せば足りる。
+  // **専用のブロックを新設しない** —— flat config は同一ルールを後勝ちで**置換**するため、
+  // `features/**` を対象にした 2 本目の `no-restricted-imports` を置くと、
+  // このブロックの `BANNED_IMPORT_PATTERNS` と `@features` 禁止が丸ごと無効化される
+  // （本ファイル冒頭が警告している型そのもの）。
   {
     files: ['knowledge/frontend/src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: NO_LEGACY_ROUTER_PATHS,
+          paths: [...NO_LEGACY_ROUTER_PATHS, NO_APIFETCH_IN_FEATURES],
           patterns: [
             ...BANNED_IMPORT_PATTERNS,
             {
