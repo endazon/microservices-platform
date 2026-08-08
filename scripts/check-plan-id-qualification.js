@@ -116,11 +116,18 @@ function trackedFiles(root = REPO_ROOT) {
   } catch (e) {
     return null;
   }
+  // **検査器自身は走査しない。** ヘッダの説明と自己試験のフィクスチャが「検出対象の文字列そのもの」
+  // を持つので、含めると必ず自分で落ちる（[[IADR-0140]] 決定 4 が `.js` へ広げない理由として
+  // 挙げていた当の型。#576 の CI で実際に発火した）。
+  // **除外リストではなく `__filename` から導出する**ので腐らない —— ファイル名を変えても追随する。
+  // **ローカルでは気づけなかった**: 新設直後は untracked で `git ls-files` に載らず、
+  // コミットして追跡下に入った瞬間に初めて自分を走査した。
+  const selfPath = path.relative(root, __filename).split(path.sep).join('/');
   return raw
     .split('\n')
     .map((s) => s.trim())
     .filter(Boolean)
-    .filter((p) => !EXCLUDED_PATH_RE.test(p));
+    .filter((p) => p !== selfPath && !EXCLUDED_PATH_RE.test(p));
 }
 
 /** ファイル群を検査し、{file, violations} の配列を返す。 */
@@ -211,6 +218,14 @@ function selfTest() {
   t('非 md モードでは潰さない（コード・設定のコメントは引用ではない）',
     kinds('`AST' + ' FR-17`').join() === 'spaced-id');
   t('負例: 数字の無い ID 種別は検出しない', kinds('AST FR-').length === 0);
+
+  // **自己除外が外れていないこと。** 外すと検査器自身のヘッダと自己試験フィクスチャで必ず落ちる。
+  // ローカルでは新設直後 untracked のため気づけず、**CI で初めて発火した**（#576）ので常設する。
+  t('自己除外: trackedFiles に検査器自身が含まれない', (() => {
+    const files = trackedFiles();
+    if (files === null) return true; // git を使えない環境は対象外（fail-open と揃える）
+    return !files.includes('scripts/check-plan-id-qualification.js');
+  })());
 
   // --- 実ファイル走査の経路（fixture） ---
   {
