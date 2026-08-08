@@ -1698,6 +1698,28 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- Issue #556 / ADR-0031 / IADR-0134: manualChunks の規則構成の検査 ---------------
+  //
+  // **この経路（ci.yml の scripts-tests）には dist が無い。** 実成果物に対する検査は
+  // frontend.yml の build-test（Build ステップの後）へ `--require` 付きで結線している。
+  // ここで固定するのは自己試験——とくに「**baseline の requiredChunks が vite.config.ts の
+  // manualChunks と一致すること**」で、これは dist 無しで判定でき、かつ
+  // 「規則を足したのに床へ入れ忘れ、新しい規則だけ検査されない」状態を止める。
+  ok('check-chunk-budget.js --self-test が通る（規則欠落の変異 2 件を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(
+      process.execPath,
+      [path.join(__dirname, 'check-chunk-budget.js'), '--self-test'],
+      { encoding: 'utf8' },
+    );
+    assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    assert.match(String(r.stdout), /件すべて通過/);
+    // 実測に基づく 2 つの変異（ui / vendor-react の規則欠落）が実際に走っていること。
+    // 件数だけを見ると、変異ケースを消しても「通過」しつづける。
+    assert.match(String(r.stdout), /変異 M6/);
+    assert.match(String(r.stdout), /変異 M7/);
+  });
+
   ok('check-i18n-catalogs: 本リポのカタログに未翻訳が無い（実データ）', () => {
     const { spawnSync } = require('child_process');
     const r = spawnSync(
