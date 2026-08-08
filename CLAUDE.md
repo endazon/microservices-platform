@@ -41,7 +41,7 @@
 
 ## 実装作業の進め方（計画リポの運用ガイド）
 
-実装作業の運用標準（フェーズ分割・並列実装・監査・裁定・メタ作業の統制）は [`planning/docs/ai-implementation-workflow-guide.md`](planning/docs/ai-implementation-workflow-guide.md)（planning#294 で 2026-08-08 に確定）を正本とする。拘束点の要約:
+実装作業の運用標準（フェーズ分割・並列実装・監査・裁定・メタ作業の統制）は [`planning/docs/ai-implementation-workflow-guide.md`](planning/docs/ai-implementation-workflow-guide.md)（planning#294 で新設、planning#298 で 2026-08-08 に fixed へ確定）を正本とする。拘束点の要約:
 
 - **並列作業は宣言済みファイル領域の非重複で機械的に判定**し、交差する issue は直列化する。**マージは FIFO で 1 本ずつ**（develop へ rebase → CI 通過 → マージ → 次の PR が rebase）
 - **同型・低リスクの変更は 1 PR に束ねる**（[IADR-0116](docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md) の限定例外を活用。1 issue = 1 PR を教条適用しない）

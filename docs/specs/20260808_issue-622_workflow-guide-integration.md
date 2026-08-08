@@ -16,7 +16,7 @@ related_specs: []
 ## 起点となる ID（トレーサビリティ）
 
 - 起点 issue: **#622** ／起点 ID: **NFR**（運用保守）
-- 計画リポの正本: [`planning/docs/ai-implementation-workflow-guide.md`](../../planning/docs/ai-implementation-workflow-guide.md)（planning#294 で 2026-08-08 に確定）
+- 計画リポの正本: [`planning/docs/ai-implementation-workflow-guide.md`](../../planning/docs/ai-implementation-workflow-guide.md)（planning#294 で新設、planning#298 で 2026-08-08 に fixed へ確定）
 
 ## 背景
 
@@ -37,7 +37,7 @@ related_specs: []
 
 | issue の基準 | 結果 |
 | --- | --- |
-| planning pin を `356e8c7` 以降へ前進 | ✅ `356e8c7`（planning main の先頭。ガイド初版 planning#294 を含む） |
+| planning pin を `356e8c7` 以降へ前進 | ✅ `90f5251`（planning main の先頭。ガイド新設 planning#294 と fixed 化 planning#298 を含む） |
 | `CLAUDE.md` に節を追加し拘束点の要約を 15 行以内で記載 | ✅ 見出し込み 11 行（本文 9 行） |
 | `AGENTS.md` に 3〜5 行の要約を追加 | ✅ 見出し除き 3 行 |
 
