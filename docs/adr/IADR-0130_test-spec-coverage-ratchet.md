@@ -17,6 +17,9 @@ created: 2026-08-05
 updated: 2026-08-08
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+related_specs:
+  - ../specs/20260805_issue-510_test-spec-backend-sections.md
+  - ../specs/20260808_issue-514_strict-decision.md
 ---
 
 # IADR-0130: テスト仕様書の「節ごと落ちる」を、テストクラス単位の被覆 ratchet で機械検査する

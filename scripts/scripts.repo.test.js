@@ -2265,6 +2265,11 @@ module.exports = ({ ok, assert }) => {
   // 実行経路は変わらない —— 上の `check-adr-numbering` ブロックが `--self-test` と実データ走査を
   // 呼び、同じ `scripts-tests` ジョブ（`REQUIRE_REPO_TESTS=1`）でゲートになる。
 
+  // [[IADR-0144]] 決定 5: 索引行の抽出式は **1 つに畳む**。定義は `check-adr-numbering.js` に在り、
+  // ここでは **import して借りる**（リテラルを複製すると、片方だけ直したとき挙動が黙って割れる
+  // ——決定 5 が防ごうとしたのはまさにこれで、統合時は複製のままだった。2026-08-08 監査 Y-3）。
+  const { INDEX_LINE_RE: INDEX_LINE_RE_SHARED } = require('./check-adr-numbering.js');
+
   // --- NFR / #580: 索引タイトルセルのラチェット ---------------------------------------
   //
   // **なぜ必要か（#580 の再監査 🟡-2 で実測）**: 索引と本体の突合から「タイトル列の字義一致」を
@@ -2338,7 +2343,7 @@ module.exports = ({ ok, assert }) => {
       const bodyTitles = opts.bodyTitles ?? {};
       const violations = [];
       md.split('\n').forEach((line, i) => {
-        if (!/^\|\s*\[?IADR-\d{4}/.test(line)) return; // 索引の行だけを見る
+        if (!INDEX_LINE_RE_SHARED.test(line)) return; // 索引の行だけを見る
         const id = line.match(/IADR-\d{4}/)[0];
         const t = line.trim();
         const cells = t.slice(1, t.endsWith('|') ? -1 : undefined).split('|').map((c) => c.trim());
@@ -2492,10 +2497,17 @@ module.exports = ({ ok, assert }) => {
         'baseline に残件があるのに違反 0（走査が壊れている）',
       );
       // **行を索引から隠す**変異（先頭に空白を入れて `^|` アンカーから外す）は違反数が減るだけで
-      // 上のガードを通り抜ける。行数の下限を本ブロック自身に持たせて塞ぐ——隣の「全行リンク形式」
-      // ブロックが同じ下限を持っているが、あちらは #581 が入った時点で削除する申し送りがあり、
-      // 消えた瞬間に本ラチェットが「行を隠すだけ」で回避可能になるため二重に持つ。
-      const indexRows = md.split('\n').filter((l) => /^\|\s*\[?IADR-\d{4}/.test(l));
+      // 上のガードを通り抜ける。行数の下限を本ブロック自身に持たせて塞ぐ。
+      //
+      // **［2026-08-08 追記 / フェーズ末クロス監査 G-2］隣の「全行リンク形式」ブロックは #581（PR #606）で
+      // `check-adr-numbering.js` の判定 6 へ統合され、既に消えている。** よってこの下限は
+      // 「二重に持つ」ものではなく**本ラチェット唯一の fail-open 塞ぎ**である。
+      // [[IADR-0144]] 決定 6 の「fail-open 下限も同時に消える」は**この行を見落としており不正確**だった
+      // （あちらが消したのは削除済みブロック側の下限であって、本ブロックのものではない）。
+      //
+      // 索引行の抽出は `check-adr-numbering.js` の `INDEX_LINE_RE` を**借りる**（同 決定 5）。
+      // 同じ式をリテラルで複製すると、片方だけ直したとき挙動が黙って割れる。
+      const indexRows = md.split('\n').filter((l) => INDEX_LINE_RE_SHARED.test(l));
       assert.ok(bodyFiles.length > 0, 'docs/adr/ に ADR 本体が 1 件も見つからない（走査が壊れている）');
       assert.ok(
         indexRows.length >= bodyFiles.length,
