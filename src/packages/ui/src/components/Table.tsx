@@ -17,7 +17,10 @@ import { cn } from '../lib/cn';
 export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
   return (
     <div className="w-full overflow-x-auto">
-      <table className={cn('w-full border-collapse text-sm text-[--color-fg]', className)} {...props} />
+      <table
+        className={cn('w-full border-collapse text-sm text-[--color-fg]', className)}
+        {...props}
+      />
     </div>
   );
 }
@@ -54,7 +57,11 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
  * 見出しセル。`scope` の既定を `col` にする——省略できる API にすると必ず省略され、
  * スクリーンリーダが行と列の対応を読めなくなる（`Button` の `type` を既定値で固定したのと同じ作法）。
  */
-export function TableHeaderCell({ className, scope, ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
+export function TableHeaderCell({
+  className,
+  scope,
+  ...props
+}: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
     <th
       scope={scope ?? 'col'}

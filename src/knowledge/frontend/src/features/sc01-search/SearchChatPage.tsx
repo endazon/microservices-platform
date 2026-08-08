@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Link } from '@tanstack/react-router';
-import { Alert, Button, Card, CardContent, CardHeader, CardTitle, Input, Label, Tag } from '@platform/ui';
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  Tag,
+} from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { citationKind } from './citations';
 import type { AskCitation } from './citations';
@@ -92,7 +102,11 @@ export function SearchChatPage() {
             {answer.status === 'error' && (
               <Alert tone="warning" role="alert" className="mt-3" label={t`注意`}>
                 <Trans>AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。</Trans>{' '}
-                <Link to="/search" search={{ q: trimmed }} className="text-[--color-brand] underline">
+                <Link
+                  to="/search"
+                  search={{ q: trimmed }}
+                  className="text-[--color-brand] underline"
+                >
                   <Trans>検索結果一覧を開く →</Trans>
                 </Link>
               </Alert>

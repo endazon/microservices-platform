@@ -150,8 +150,8 @@ export function DocumentManagementPage() {
             label={conflicted ? t`注意` : t`エラー`}
           >
             {conflicted
-              ? conflictDetails(failed.error) ??
-                t`他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。`
+              ? (conflictDetails(failed.error) ??
+                t`他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。`)
               : toMessages(failed.error, t`操作を実行できませんでした。`).join(' / ')}
           </Alert>
         )}

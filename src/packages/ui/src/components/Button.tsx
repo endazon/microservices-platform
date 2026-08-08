@@ -11,7 +11,8 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         primary: 'bg-[--color-brand] text-[--color-brand-fg] hover:opacity-90',
-        secondary: 'border border-[--color-border] bg-[--color-surface] text-[--color-fg] hover:bg-[--color-surface-muted]',
+        secondary:
+          'border border-[--color-border] bg-[--color-surface] text-[--color-fg] hover:bg-[--color-surface-muted]',
         ghost: 'text-[--color-fg] hover:bg-[--color-surface-muted]',
         danger: 'bg-[--color-danger] text-white hover:opacity-90',
       },
@@ -25,10 +26,17 @@ export const buttonVariants = cva(
   },
 );
 
-export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>;
+export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  VariantProps<typeof buttonVariants>;
 
 export function Button({ className, variant, size, type, ...props }: ButtonProps) {
   // type を明示しない <button> はフォーム内で submit として振る舞う。既定を button に固定して
   // 「押したら意図せず送信される」事故を型ではなく既定値で防ぐ。
-  return <button type={type ?? 'button'} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+  return (
+    <button
+      type={type ?? 'button'}
+      className={cn(buttonVariants({ variant, size }), className)}
+      {...props}
+    />
+  );
 }

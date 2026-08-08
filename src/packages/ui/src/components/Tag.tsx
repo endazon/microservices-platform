@@ -36,8 +36,7 @@ export const tagVariants = cva(
 );
 
 export interface TagProps
-  extends HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof tagVariants> {
+  extends HTMLAttributes<HTMLSpanElement>, VariantProps<typeof tagVariants> {
   /** 分類の名前。**必須**である（色や枠線だけで意味を持たせない。INDEX 決定 21）。 */
   children: string;
 }

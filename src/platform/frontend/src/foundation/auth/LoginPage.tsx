@@ -21,7 +21,7 @@ export function LoginPage() {
   return (
     <main className="mx-auto mt-24 max-w-md text-center">
       {/* 05_screens §共通シェル ［2026-08-04 確定］: ブランド表示名は固有名詞として扱い、
-          **翻訳カタログの対象としない**（Layout.tsx の注記と IADR-0125 決定 8 を参照）。 */}
+       **翻訳カタログの対象としない**（Layout.tsx の注記と IADR-0125 決定 8 を参照）。 */}
       {/* eslint-disable-next-line lingui/no-unlocalized-strings --
           05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
       <h1 className="text-2xl font-semibold text-[--color-fg]">汎用プラットフォーム</h1>

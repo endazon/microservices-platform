@@ -76,12 +76,7 @@ describe('SC-05 invalidation reaches SC-03 (IADR-0135 決定 3)', () => {
       await queryClient.invalidateQueries({ queryKey });
     }
 
-    expect(invalidated(queryClient, [documentsKey, ...sc03Keys])).toEqual([
-      true,
-      true,
-      true,
-      true,
-    ]);
+    expect(invalidated(queryClient, [documentsKey, ...sc03Keys])).toEqual([true, true, true, true]);
   });
 
   // 列挙が**実際に配線されている**ことまで見る（キーの一覧だけを直しても意味がないため）。

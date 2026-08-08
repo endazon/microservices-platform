@@ -23,8 +23,8 @@ const BANNED_IMPORT_PATTERNS = [
     // 13_frontend-stack §基本方針:「BFF の OpenAPI から orval で生成する（手書きクライアント禁止）」。
     group: ['axios', 'ky', 'superagent', 'got', 'node-fetch', 'openapi-fetch'],
     message:
-      '手書きの HTTP クライアントは禁止（ADR-0031）。BFF 呼び出しは orval 生成フック、'
-      + 'または @foundation/api の apiFetch / apiStream を使う。',
+      '手書きの HTTP クライアントは禁止（ADR-0031）。BFF 呼び出しは orval 生成フック、' +
+      'または @foundation/api の apiFetch / apiStream を使う。',
   },
   {
     // IADR-0121 決定 4: 共有 UI の公開面は @platform/ui のエントリのみ。
@@ -52,9 +52,9 @@ const NO_APIFETCH_IN_FEATURES = {
   name: '@foundation/api/apiClient',
   importNames: ['apiFetch'],
   message:
-    '画面（features）から apiFetch を呼ばない（#555 / IADR-0146）。BFF 呼び出しは orval 生成フックを使う'
-    + '——apiFetch は手書き型と組で使われるため、その画面だけ契約変更が型検査で捕まらなくなる。'
-    + 'SSE は apiStream が恒久的な正規の口（IADR-0131 決定 4）。',
+    '画面（features）から apiFetch を呼ばない（#555 / IADR-0146）。BFF 呼び出しは orval 生成フックを使う' +
+    '——apiFetch は手書き型と組で使われるため、その画面だけ契約変更が型検査で捕まらなくなる。' +
+    'SSE は apiStream が恒久的な正規の口（IADR-0131 決定 4）。',
 };
 
 // ADR-0031 / IADR-0124: ルーティングは TanStack Router に一本化する（移行第 2 段 / #490）。
@@ -234,8 +234,16 @@ export default tseslint.config(
       ],
       'no-restricted-properties': [
         'error',
-        { object: 'window', property: 'fetch', message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。' },
-        { object: 'globalThis', property: 'fetch', message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。' },
+        {
+          object: 'window',
+          property: 'fetch',
+          message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。',
+        },
+        {
+          object: 'globalThis',
+          property: 'fetch',
+          message: 'BFF へは @foundation/api 経由で呼ぶ（ADR-0031）。',
+        },
       ],
     },
   },
@@ -289,7 +297,9 @@ export default tseslint.config(
           // （厳しくすると誤検出が実用の域を超え、規則ごと無効化される方が高くつく）。
           ignore: ['^[a-z0-9-]+$', '^[A-Za-z0-9_./:#$?&=@%+-]*$'],
           ignoreNames: [
-            { regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' } },
+            {
+              regex: { pattern: '^(className|id|role|to|from|href|src|type|name|key|scope|path)$' },
+            },
           ],
           // 開発者向けの例外メッセージは UI ではない（利用者の目に触れない）。
           // 翻訳すると、障害時のログと検索性を落とす。

@@ -69,7 +69,10 @@ describe('DataSourceManagementPage (SC-06)', () => {
     // active ＋ 最終同期あり → 同期済み。disabled → 無効（中立。琥珀は同期異常のために空けてある）。
     expect(table.getByText('同期済み')).toBeInTheDocument();
     expect(table.getByText('無効')).toBeInTheDocument();
-    expect(mocks.apiRequest).toHaveBeenCalledWith('/datasources', expect.objectContaining({ method: 'GET' }));
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/datasources',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   // UC-04 基本フロー 1: 管理者がソース（ファイルサーバー／Wiki／SaaS／業務DB）を登録する。
@@ -148,7 +151,9 @@ describe('DataSourceManagementPage (SC-06)', () => {
     await user.click(await screen.findByRole('button', { name: '手動同期' }));
 
     await waitFor(() =>
-      expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/datasources')).toHaveLength(2),
+      expect(mocks.apiRequest.mock.calls.filter(([path]) => path === '/datasources')).toHaveLength(
+        2,
+      ),
     );
   });
 
@@ -175,14 +180,14 @@ describe('DataSourceManagementPage (SC-06)', () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([]));
     await renderPage();
 
-    expect(
-      await screen.findByText(/接続情報（認証情報）は Vault 管理です。/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/接続情報（認証情報）は Vault 管理です。/)).toBeInTheDocument();
   });
 
   // BFF は後段障害を空一覧へ縮退させない（502）。「未登録」と誤認させて重複登録を招かないため。
   it('shows an error instead of an empty list when the query fails', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
     await renderPage();
 
     await waitFor(() =>

@@ -12,7 +12,10 @@ import { PlatformRole } from '@foundation/auth/roles';
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
 // NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
-const DocumentManagementPage = lazyRouteComponent(() => import('./DocumentManagementPage'), 'DocumentManagementPage');
+const DocumentManagementPage = lazyRouteComponent(
+  () => import('./DocumentManagementPage'),
+  'DocumentManagementPage',
+);
 
 export const createSc05DocumentsRoute = (shell: ShellRoute) =>
   createRoute({

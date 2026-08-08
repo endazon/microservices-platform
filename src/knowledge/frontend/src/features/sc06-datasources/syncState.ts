@@ -35,7 +35,10 @@ export interface SyncStateView {
  * 「異常」の語彙を先に使い切ると、契約が来たときに区別する色が無くなる。
  * 中立でも色だけに意味を持たせない点は変わらない（`StatusBadge` がアイコンとテキストを伴わせる）。
  */
-export function syncStateView(status: string, lastSyncedAt: string | null | undefined): SyncStateView {
+export function syncStateView(
+  status: string,
+  lastSyncedAt: string | null | undefined,
+): SyncStateView {
   if (status === 'disabled') {
     return { label: msg`無効`, tone: 'neutral', showSyncedAt: false };
   }
@@ -62,7 +65,9 @@ const SOURCE_TYPE_LABELS: Record<SourceType, MessageDescriptor> = {
  * 画面が「空欄」ではなく実際の値を見せて異常へ気付ける状態にしておく。
  */
 export function sourceTypeLabel(sourceType: string): MessageDescriptor | string {
-  return (SOURCE_TYPE_LABELS as Record<string, MessageDescriptor | undefined>)[sourceType] ?? sourceType;
+  return (
+    (SOURCE_TYPE_LABELS as Record<string, MessageDescriptor | undefined>)[sourceType] ?? sourceType
+  );
 }
 
 /** 日時の表示。解釈できない値はそのまま出す（握り潰さない）。 */

@@ -39,16 +39,14 @@ describe('apiStream abort handling', () => {
     const abortErr = new DOMException('aborted', 'AbortError');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr));
 
-    await expect(apiStream('/analysis/ask/stream', { json: {} }, () => {})).rejects.toBe(
-      abortErr,
-    );
+    await expect(apiStream('/analysis/ask/stream', { json: {} }, () => {})).rejects.toBe(abortErr);
   });
 
   it('wraps non-abort fetch failures into a network ApiError', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('failed to fetch')));
 
-    await expect(
-      apiStream('/analysis/ask/stream', { json: {} }, () => {}),
-    ).rejects.toMatchObject({ kind: 'network' });
+    await expect(apiStream('/analysis/ask/stream', { json: {} }, () => {})).rejects.toMatchObject({
+      kind: 'network',
+    });
   });
 });

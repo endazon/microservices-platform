@@ -14,7 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 const loaded = vi.hoisted(() => new Set<string>());
 
 const trace =
-  <T,>(id: string, importOriginal: () => Promise<T>) =>
+  <T>(id: string, importOriginal: () => Promise<T>) =>
   async (): Promise<T> => {
     loaded.add(id);
     return await importOriginal();
@@ -24,7 +24,9 @@ vi.mock('@foundation/ui/Layout', (o) => trace('Layout', o as () => Promise<unkno
 vi.mock('@foundation/ui/NotFound', (o) => trace('NotFound', o as () => Promise<unknown>)());
 vi.mock('@foundation/auth/RequireAuth', (o) => trace('RequireAuth', o as () => Promise<unknown>)());
 vi.mock('@foundation/auth/RequireRole', (o) => trace('RequireRole', o as () => Promise<unknown>)());
-vi.mock('@foundation/auth/AuthProvider', (o) => trace('AuthProvider', o as () => Promise<unknown>)());
+vi.mock('@foundation/auth/AuthProvider', (o) =>
+  trace('AuthProvider', o as () => Promise<unknown>)(),
+);
 vi.mock('@platform/ui', (o) => trace('@platform/ui', o as () => Promise<unknown>)());
 
 /** 初期チャンクに残すもの（issue #512 の指定）と、そう決めた理由。 */

@@ -83,7 +83,7 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
     return undefined as T;
   }
   const text = await res.text();
-  return (text ? (JSON.parse(text) as T) : (undefined as T));
+  return text ? (JSON.parse(text) as T) : (undefined as T);
 }
 
 // FR-09, SC-09: RFC7807 ValidationProblem / Problem 応答から人間可読なメッセージ群を抽出する。
@@ -154,7 +154,13 @@ export async function apiStream(
 
   let res: Response;
   try {
-    res = await fetch(cfg.bffBaseUrl + path, { ...rest, method: method ?? 'POST', headers, body, signal });
+    res = await fetch(cfg.bffBaseUrl + path, {
+      ...rest,
+      method: method ?? 'POST',
+      headers,
+      body,
+      signal,
+    });
   } catch (err) {
     // SC-01: ヘッダ受信前に AbortController.abort() された場合は AbortError（DOMException）を保持して
     // 再スローする（連投質問などで前フェッチを中断した際、呼び出し側が意図的中断として無視できるように）。

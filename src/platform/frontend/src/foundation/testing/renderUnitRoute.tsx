@@ -52,7 +52,13 @@ export function authStateWithRoles(roles: readonly string[]): AuthState {
     access_token: makeJwt({ realm_access: { roles } }),
     profile: { preferred_username: 'tester' },
   } as unknown as User;
-  return { user, isAuthenticated: true, isLoading: false, login: async () => {}, logout: async () => {} };
+  return {
+    user,
+    isAuthenticated: true,
+    isLoading: false,
+    login: async () => {},
+    logout: async () => {},
+  };
 }
 
 export interface RenderUnitRouteOptions {

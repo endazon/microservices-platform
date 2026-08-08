@@ -1,11 +1,7 @@
 import { msg } from '@lingui/core/macro';
 import type { ShellRoute } from '@foundation/routing/shell';
 import { legacyNavItems } from '@foundation/routing/featureRegistry';
-import type {
-  FeatureModule,
-  PlanNavItem,
-  UnitNavGroup,
-} from '@foundation/routing/featureRegistry';
+import type { FeatureModule, PlanNavItem, UnitNavGroup } from '@foundation/routing/featureRegistry';
 // FR-14, IADR-0056: ユニット合成点 — 可変機能ユニットの画面をここで束ねる。
 // ユニット追加時は src/<unit>/（frontend/ を含む）を submodule 配置し、ここへ 1 行ずつ追加する。
 import { createKnowledgeRoutes, knowledgeNavItems } from '@knowledge/features';

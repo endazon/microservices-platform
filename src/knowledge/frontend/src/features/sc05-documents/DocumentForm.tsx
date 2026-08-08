@@ -75,11 +75,7 @@ export function DocumentForm({
     <Card>
       <CardHeader>
         <CardTitle>
-          {editing ? (
-            <Trans>文書を編集（v{version}）</Trans>
-          ) : (
-            <Trans>文書を登録</Trans>
-          )}
+          {editing ? <Trans>文書を編集（v{version}）</Trans> : <Trans>文書を登録</Trans>}
         </CardTitle>
       </CardHeader>
       <CardContent>

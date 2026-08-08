@@ -73,7 +73,10 @@ describe('DocumentManagementPage (SC-05)', () => {
     // 機密区分は生値のまま出す（表示名が計画にある値は 4 値中 2 値だけ。planning#197 で裁定待ち）。
     expect(table.getByText('internal')).toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
-    expect(mocks.apiRequest).toHaveBeenCalledWith('/documents', expect.objectContaining({ method: 'GET' }));
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/documents',
+      expect.objectContaining({ method: 'GET' }),
+    );
   });
 
   // UC-03 基本フロー 1: 管理者が文書を登録し、属性・タグを設定する。
@@ -94,7 +97,11 @@ describe('DocumentManagementPage (SC-05)', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(sentBody(mocks.apiRequest.mock.calls.find(([, init]) => (init as RequestInit).method === 'POST')!)).toEqual({
+    expect(
+      sentBody(
+        mocks.apiRequest.mock.calls.find(([, init]) => (init as RequestInit).method === 'POST')!,
+      ),
+    ).toEqual({
       title: '新しい規程',
       attributes: { confidentiality: 'confidential' },
       tags: ['経理'],
@@ -135,7 +142,11 @@ describe('DocumentManagementPage (SC-05)', () => {
         expect.objectContaining({ method: 'PUT' }),
       ),
     );
-    expect(sentBody(mocks.apiRequest.mock.calls.find(([, init]) => (init as RequestInit).method === 'PUT')!)).toEqual({
+    expect(
+      sentBody(
+        mocks.apiRequest.mock.calls.find(([, init]) => (init as RequestInit).method === 'PUT')!,
+      ),
+    ).toEqual({
       title: '経費精算規程',
       // 既存の属性（部門）を落とさずに機密区分を保つ。
       attributes: { confidentiality: 'internal', department: 'finance' },
@@ -267,7 +278,9 @@ describe('DocumentManagementPage (SC-05)', () => {
   });
 
   it('shows an alert when the list cannot be loaded', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
     await renderPage();
 
     await waitFor(() =>

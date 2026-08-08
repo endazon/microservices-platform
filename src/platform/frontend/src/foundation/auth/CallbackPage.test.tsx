@@ -54,9 +54,7 @@ describe('CallbackPage: 外部への遷移を弾き主入口へ倒す（オー�
       expect(mocks.navigate).toHaveBeenCalledWith({ to: ENTRY_ROUTE_PATH, replace: true }),
     );
     // 外部 origin へ navigate していないこと。
-    expect(mocks.navigate).not.toHaveBeenCalledWith(
-      expect.objectContaining({ to: returnTo }),
-    );
+    expect(mocks.navigate).not.toHaveBeenCalledWith(expect.objectContaining({ to: returnTo }));
   });
 });
 

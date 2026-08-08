@@ -9,7 +9,10 @@ import type { PlanNavItem } from '@foundation/routing/featureRegistry';
 // ADR-0031 / IADR-0124 決定 1: ルートは型付き factory で公開する（戻り値へ型注釈を付けない）。
 
 // NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
-const AnalysisDashboardPage = lazyRouteComponent(() => import('./AnalysisDashboardPage'), 'AnalysisDashboardPage');
+const AnalysisDashboardPage = lazyRouteComponent(
+  () => import('./AnalysisDashboardPage'),
+  'AnalysisDashboardPage',
+);
 
 export const createSc08AnalysisRoute = (shell: ShellRoute) =>
   createRoute({

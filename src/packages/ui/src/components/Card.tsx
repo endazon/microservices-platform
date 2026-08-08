@@ -18,7 +18,9 @@ export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
 }
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('mb-3 flex items-center justify-between gap-2', className)} {...props} />;
+  return (
+    <div className={cn('mb-3 flex items-center justify-between gap-2', className)} {...props} />
+  );
 }
 
 /**

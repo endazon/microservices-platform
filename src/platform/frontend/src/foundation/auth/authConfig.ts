@@ -8,7 +8,9 @@ import { UserManager, WebStorageStateStore, InMemoryWebStorage } from 'oidc-clie
 import type { UserManagerSettings } from 'oidc-client-ts';
 import { appConfig } from '@foundation/config/runtimeConfig';
 
-export function buildUserManagerSettings(origin: string = window.location.origin): UserManagerSettings {
+export function buildUserManagerSettings(
+  origin: string = window.location.origin,
+): UserManagerSettings {
   const { oidc } = appConfig();
   return {
     authority: oidc.authority,

@@ -10,12 +10,7 @@ import {
 } from './shell';
 import { createLegacyRoutes } from './featureRegistry';
 import { registerNavItems, registerUnitNavGroups } from './nav';
-import {
-  createUnitRoutes,
-  planNavItems,
-  legacyUnitFeatures,
-  unitNavGroups,
-} from '@features/index';
+import { createUnitRoutes, planNavItems, legacyUnitFeatures, unitNavGroups } from '@features/index';
 
 // ADR-0031 / IADR-0124: ルート木の組み立て。
 //

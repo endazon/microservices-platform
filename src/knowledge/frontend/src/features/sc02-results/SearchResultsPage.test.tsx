@@ -182,7 +182,9 @@ describe('SearchResultsPage (SC-02)', () => {
   });
 
   it('shows an alert when the search request fails', async () => {
-    mocks.apiRequest.mockRejectedValue(new ApiError('server', 'サーバでエラーが発生しました。', 500));
+    mocks.apiRequest.mockRejectedValue(
+      new ApiError('server', 'サーバでエラーが発生しました。', 500),
+    );
     await renderPage();
     await search('x');
 

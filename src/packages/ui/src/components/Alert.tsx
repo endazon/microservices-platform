@@ -41,8 +41,7 @@ const TONE_ICON_COLORS: Record<Tone, string> = {
 };
 
 export interface AlertProps
-  extends Omit<HTMLAttributes<HTMLDivElement>, 'title'>,
-    VariantProps<typeof alertVariants> {
+  extends Omit<HTMLAttributes<HTMLDivElement>, 'title'>, VariantProps<typeof alertVariants> {
   /**
    * 種別を表すテキスト（例: 「注意」「エラー」）。**必須**である。
    *

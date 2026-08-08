@@ -6,7 +6,10 @@ import { toMessages } from './apiErrors';
 
 describe('toMessages', () => {
   it('returns ApiError.details when present（最も具体的な詳細を優先）', () => {
-    const err = new ApiError('validation', '入力内容に誤りがあります。', 400, ['タイトルは必須です。', 'X が不正です。']);
+    const err = new ApiError('validation', '入力内容に誤りがあります。', 400, [
+      'タイトルは必須です。',
+      'X が不正です。',
+    ]);
     expect(toMessages(err, 'fallback')).toEqual(['タイトルは必須です。', 'X が不正です。']);
   });
 
