@@ -70,10 +70,14 @@ related_specs:
 
 ## 検証（実走した結果）
 
+**本表は最終コミットの内容（本仕様書自身を含む）に対して取り直した値である**
+（#620 のレビュー 🟢 の指摘。**当初は本書を足す前に測った値を持ち越しており、2 つの検査で 1 件ずつずれていた**
+—— 判定〔違反 0 件〕は同じだが、**検証の記録としては誤り**である。走査対象は「今コミットする内容」でなければならない）。
+
 | コマンド | 結果 |
 | --- | --- |
-| `node scripts/check-doc-links.js --require-planning` | **OK 477 件**（planning を populate した状態で実行） |
-| `node scripts/check-cross-repo-refs.js` | OK 554 件 |
+| `node scripts/check-doc-links.js --require-planning` | **OK 478 件**（planning を populate した状態で実行） |
+| `node scripts/check-cross-repo-refs.js` | OK **555 件** |
 | `node scripts/check-plan-id-qualification.js` | OK 1184 件 |
 | `node scripts/check-adr-numbering.js` | OK |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **293 passed** |
