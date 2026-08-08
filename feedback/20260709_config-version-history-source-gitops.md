@@ -1,13 +1,14 @@
 ---
 title: 構成バージョン履歴の正データ源（GitOps 層）と保持方針を計画の運用設計へ環流
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids: [FR-15, SC-11, ADR-0018]
 source_repo: microservices-platform
 source_ref: "PR #189 / #139 で導入予定の IADR-0046 / docs/screens/SC-11_configuration-viewer.md（未決事項3）"
 author: claude
 created: 2026-07-09
+updated: 2026-08-08
 ---
 
 # フィードバック: 構成バージョン履歴の正データ源（GitOps 層）と保持方針を計画の運用設計へ環流

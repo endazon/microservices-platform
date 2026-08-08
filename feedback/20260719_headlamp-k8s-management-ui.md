@@ -1,7 +1,7 @@
 ---
 title: Kubernetes 管理 UI（Headlamp・Keycloak OIDC 認証）を運用設計へ明記し、本番導入是非を論点化する
 type: plan-feedback
-status: open
+status: triaged
 category: 新たな制約(ADR要)
 related_ids:
   - NFR
@@ -10,6 +10,7 @@ source_repo: microservices-platform
 source_ref: "Issue #271 / branch feat/issue-271-headlamp-oidc / docs/adr/IADR-0080_headlamp-k8s-management-ui.md"
 author: claude
 created: 2026-07-19
+updated: 2026-08-08
 ---
 
 # フィードバック: Kubernetes 管理 UI = Headlamp（Keycloak OIDC）を運用設計へ明記する

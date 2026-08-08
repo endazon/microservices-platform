@@ -1,13 +1,14 @@
 ---
 title: FR-01 の実コネクタ・定期同期は未実装（カタログ＋スタブ同期のみ）— 「FR-01〜13 全件実装済み」表記の適正化と NFR 実測状況の環流
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [FR-01, FR-02, UC-04, NFR]
 source_repo: microservices-platform
 source_ref: "src/Services/DataSourceService（/sync はダミー文書発行）/ docs/functional/FR-01_data-source-catalog.md §対応状況 / 実装リポ issue #195・#196・#197・#198 / 2026-07-09 全体レビュー"
 author: claude
 created: 2026-07-09
+updated: 2026-08-08
 ---
 
 # フィードバック: FR-01 実コネクタ未実装と NFR 実測状況 — 計画書の実装状況表記の適正化

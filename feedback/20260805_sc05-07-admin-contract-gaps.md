@@ -1,14 +1,14 @@
 ---
 title: SC-05〜07 の画面要素 6 種が現在の API 契約に載らない（人手補正・デッドレター内訳・同期異常・次回同期・コネクタ設定・文書の変換状況）
 type: plan-feedback
-status: open
+status: accepted
 category: UC/画面の差異
 related_ids: [SC-05, SC-06, SC-07, UC-03, UC-04, UC-06, FR-01, FR-02, FR-06, FR-09, FR-12]
 source_repo: microservices-platform
 source_ref: "feat/SC-05-08-admin-screens / docs/specs/20260805_issue-503_sc05-08-admin-screens.md（#503）"
 author: Claude（実装）
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-08
 ---
 
 # フィードバック: SC-05〜07 の画面要素 6 種が現在の API 契約に載らない

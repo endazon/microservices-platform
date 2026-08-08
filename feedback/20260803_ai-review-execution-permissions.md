@@ -1,13 +1,14 @@
 ---
 title: 実走を求めるプロンプトと allowedTools の非対称 — which / dotnet --version / list_workflow_runs の欠落と、rm・シェル構文の扱い
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: endazon/microservices-platform
 source_ref: issue #469 / PR #464（検出元）/ docs/specs/20260803_issue-469_ai-review-execution-permissions.md
 author: Claude
 created: 2026-08-03
+updated: 2026-08-08
 ---
 
 # フィードバック: 実走を求めながら、実走に伴う周辺操作を許可していない

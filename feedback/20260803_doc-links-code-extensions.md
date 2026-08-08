@@ -1,13 +1,14 @@
 ---
 title: check-doc-links の検査対象拡張子にコードファイルが無く、仕様書からコードへの live link が一切検査されない
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: endazon/microservices-platform
 source_ref: issue #470 / PR #477（`fix/NFR-doc-links-code-extensions`）/ docs/specs/20260803_issue-470_doc-links-code-extensions.md
 author: Claude
 created: 2026-08-03
+updated: 2026-08-08
 ---
 
 # フィードバック: `check-doc-links` がコードファイルへのリンクを検査しない
