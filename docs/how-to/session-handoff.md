@@ -139,9 +139,19 @@ related_specs:
 | 能力 | 実測コマンド | 使える場合の出力 | 使えない場合 |
 | --- | --- | --- | --- |
 | **`gh` CLI** | `gh auth status` | `✓ Logged in to github.com` | コマンドが無い／未認証 → MCP ツール（`mcp__github__*`）を使う |
-| **`.github/workflows/` の編集** | `gh auth status`（Token scopes の行） | scopes に **`workflow`** が在る | 無ければ push が拒否される → 結線は人手へ渡す |
+| **`.github/workflows/` の編集** | `gh` が在れば `gh auth status`（Token scopes の行）。**`gh` が無い環境では、捨てブランチでワークフローを 1 行変えて `git push` してみる**（下記） | scopes に **`workflow`** が在る ／ push が通る | 拒否される → 結線は人手へ渡す |
 | **submodule の populate** | `git submodule update --init src/ai-stock-trading planning` | `Submodule path ...: checked out` | 認証エラー → フロントの `build` / E2E と計画 ADR の実在性検査が不可 |
-| **フロントの `build` / E2E** | 上の populate 後に `pnpm run build` ／ `pnpm run test:e2e` | ビルド成功 ／ **13 passed** | `@ai-stock-trading/features` が `error TS2307`（＝populate に失敗している） |
+| **フロントの `build` / E2E** | 上の populate 後に `pnpm run build` ／ `pnpm run test:e2e` | ビルド成功 ／ **全件 passed（failed 0）** | `@ai-stock-trading/features` が `error TS2307`（＝populate に失敗している） |
+
+> **`gh` が無い環境での workflow スコープの測り方**（上表 2 行目）:
+> 2 行目の実測は 1 行目の結果に依存するため、`gh` が無いと測れないままになる。その場合は
+> **捨てブランチで実際に押してみるのが唯一の確実な判定**である（拒否は push の時点で起きる）。
+> ```
+> git switch -c probe/workflow-scope
+> printf '\n' >> .github/workflows/frontend.yml && git commit -am "chore(NFR): probe" && git push -u origin probe/workflow-scope
+> ```
+> **通れば scope が在る**。確認後はリモートのブランチを消し、コミットは捨てる
+> （`git switch -` で元へ戻る。**force push は使わない**）。
 
 - **`pnpm` が PATH に無いことがある**（Volta の shim が壊れている等）。その場合は
   `npx --yes pnpm@<package.json の packageManager の版> …` で代用できる（実測）。
