@@ -55,7 +55,7 @@ public class BffEndpointCompositionTests
     {
         // 全 12 モジュール。ナレッジ 7 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource）は
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
-        // platform 同居。AST の Assumptions（#283・SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
+        // platform 同居。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
         // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
         BffEndpointComposition.Modules.Should().HaveCount(12);
     }

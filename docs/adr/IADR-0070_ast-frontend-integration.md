@@ -27,7 +27,7 @@ plan_refs:
 
 - 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点 1 行組み込み）
 - 関連 ADR: [[IADR-0056]]（ユニット構成）／[[IADR-0057]]（一方向依存）／[[IADR-0063]]（BFF 合成点・例外3）／
-  [[IADR-0068]]（image-mapping ドリフト検査）／ AST [[IADR-0080]]（AST フロント第1スライス）
+  [[IADR-0068]]（image-mapping ドリフト検査）／ AST/IADR-0080（AST フロント第1スライス）
 - Issue: MSP #283 ／ AST endazon/ai-stock-trading#106
 - 上流仕様: `src/ai-stock-trading/docs/integration/20260718_msp-frontend-integration-requirements.md`
 

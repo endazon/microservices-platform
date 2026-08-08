@@ -17,7 +17,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
 ---
 
-# IADR-0071: AST リスク設定/統制状態参照（SC-02/SC-03）の MSP 組み込み
+# IADR-0071: AST リスク設定/統制状態参照（AST/SC-02/SC-03）の MSP 組み込み
 
 - 状態: Accepted
 - 日付: 2026-07-18
@@ -27,16 +27,16 @@ plan_refs:
 
 - 関連する計画書 ID: **FR-14**（構成変更で完結する疎結合ユニット・合成点 1 行組み込み）
 - 関連 ADR: [[IADR-0056]]（ユニット構成）／[[IADR-0057]]（一方向依存）／[[IADR-0063]]（BFF 合成点・例外3）／
-  [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（AST フロント第1スライス SC-01・本 IADR の先行）／
-  AST [[IADR-0084]]（SC-02/03 の `/risk-controls/*` 契約消費）／AST/IADR-0086（SC-02 ガード変更 UI）／
+  [[IADR-0068]]（image-mapping ドリフト検査）／[[IADR-0070]]（AST フロント第1スライス AST/SC-01・本 IADR の先行）／
+  AST/IADR-0084（AST/SC-02/03 の `/risk-controls/*` 契約消費）／AST/IADR-0086（AST/SC-02 ガード変更 UI）／
   AST/IADR-0087（BFF 契約の Playwright E2E 追認）
 - Issue: MSP #287 ／ 先行 MSP #283（PR #285）／ AST endazon/ai-stock-trading#106
-- 上流仕様: `src/ai-stock-trading/frontend/src/features/risk/contracts.ts`（SC-02/03 が共有する応答契約）
+- 上流仕様: `src/ai-stock-trading/frontend/src/features/risk/contracts.ts`（AST/SC-02/03 が共有する応答契約）
 
 ## 背景・課題
 
-#285（IADR-0070）で AST フロントの SC-01（設定・`/bff/assumptions`）を MSP SPA へ載せた。その後 AST develop に
-**SC-02（リスク設定）/ SC-03（統制状態参照）** の 2 画面が追加された（AST#186/AST#192/AST#194/AST#195）。これらは
+#285（IADR-0070）で AST フロントの AST/SC-01（設定・`/bff/assumptions`）を MSP SPA へ載せた。その後 AST develop に
+**AST/SC-02（リスク設定）/ AST/SC-03（統制状態参照）** の 2 画面が追加された（AST#186/AST#192/AST#194/AST#195）。これらは
 RiskManagementService の OwnerOnly 契約 `/risk-controls/*` を BFF 経由で消費する。#285 時点の submodule ピンは
 #185 で、`/bff/risk-controls/*` の BFF 登録も未了だった。本 issue はその**リポ内配線の残り**を完了させる。
 
@@ -44,7 +44,7 @@ RiskManagementService の OwnerOnly 契約 `/risk-controls/*` を BFF 経由で�
 interim 同居＝決定4）だが、本スライス固有の 2 点を判断する。
 
 1. **どの `/risk-controls/*` 経路を BFF に登録するか**。RiskManagementService は `/risk-controls` 配下に
-   kill-switch・pause・sizing-context・open-positions など多数の経路を持つが、SC-02/03 が実際に叩くのは一部である。
+   kill-switch・pause・sizing-context・open-positions など多数の経路を持つが、AST/SC-02/03 が実際に叩くのは一部である。
 2. **RiskManagementService のデプロイ登録形**。#285 の ConfigurationService は **DB 専用**（RabbitMQ 不使用）
    だったが、RiskManagementService は **DB（`risk_management_svc`）に加え RabbitMQ（MassTransit）** を使う。
 
@@ -62,19 +62,19 @@ Content-Type を透過、`Authorization` 伝播、後段不達 502）とする�
 > AST 側 unit-owned Bff プロジェクト `AiStockTrading.Bff.Endpoints`（AST PR）へ挙動不変で移設され、合成点は
 > 例外3 で参照する。
 
-### 2. BFF は SC-02/03 が実消費する 6 経路のみを登録する（未使用経路は登録しない）
+### 2. BFF は AST/SC-02/03 が実消費する 6 経路のみを登録する（未使用経路は登録しない）
 
 AST フロント（`sc02-risk-settings`/`sc03-controls`）が `apiFetch` で叩くのは以下 6 経路のみ（バックエンドは
 いずれも **OwnerOnly**。`RiskControlEndpoints.cs` 参照）。
 
 | BFF | メソッド | 後段 `/risk-controls/*` | 消費画面 |
 | --- | --- | --- | --- |
-| `/bff/risk-controls/settings` | GET | `/settings` | SC-02 |
-| `/bff/risk-controls/settings/history` | GET | `/settings/history` | SC-02 |
-| `/bff/risk-controls/settings/limits` | PUT | `/settings/limits` | SC-02 |
-| `/bff/risk-controls/settings/guard` | PUT | `/settings/guard` | SC-02（AST/IADR-0086） |
-| `/bff/risk-controls/status` | GET | `/status` | SC-03 |
-| `/bff/risk-controls/stage-gate` | GET | `/stage-gate` | SC-03 |
+| `/bff/risk-controls/settings` | GET | `/settings` | AST/SC-02 |
+| `/bff/risk-controls/settings/history` | GET | `/settings/history` | AST/SC-02 |
+| `/bff/risk-controls/settings/limits` | PUT | `/settings/limits` | AST/SC-02 |
+| `/bff/risk-controls/settings/guard` | PUT | `/settings/guard` | AST/SC-02（AST/IADR-0086） |
+| `/bff/risk-controls/status` | GET | `/status` | AST/SC-03 |
+| `/bff/risk-controls/stage-gate` | GET | `/stage-gate` | AST/SC-03 |
 
 kill-switch・pause・sizing-context・open-positions・settings/stage・stage-gate/history 等は**フロントが叩かない**ため
 登録しない（起こり得ない経路への防御的追加を避ける＝CLAUDE.md 禁止事項）。将来 SC が増えて新経路を消費する時に
@@ -118,7 +118,7 @@ RiskManagementService 固有の実行時依存を compose に反映する。
 
 ## 影響・トレードオフ
 
-- **利点**: SPA は再ピンだけで SC-02/03 が載り、BFF は AST 契約に結合せず（IADR-0057）6 経路を薄く中継する。
+- **利点**: SPA は再ピンだけで AST/SC-02/03 が載り、BFF は AST 契約に結合せず（IADR-0057）6 経路を薄く中継する。
   deploy 登録は #285 の後方互換拡張（context/args）を再利用し、DB+RabbitMQ 依存だけ compose へ足す。
 - **代償**: pass-through は BFF での型検証を行わない（契約検証は後段 RiskManagementService と AST#194 の
   Playwright E2E が担う）。compose に RabbitMQ 依存のサービスが 1 つ増える（既存 rabbitmq インフラを共有）。

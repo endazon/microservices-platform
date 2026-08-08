@@ -27,7 +27,7 @@ plan_refs:
 - 関連する計画書 ID: **FR-06**（文書管理＝ナレッジベースへの保存）、ADR-0018（合成可能アーキテクチャ・可変ユニットの拡張は基盤無改修）
 - 関連 ADR: [[IADR-0030]]（platform-operator ロール新設）／[[IADR-0041]]（文書書き込みの BFF ABAC ゲート）／
   [[IADR-0044]]（バックエンド書き込みの多層防御＝`POST /documents` は platform-admin/operator 必須）
-- Issue: AST endazon/ai-stock-trading#18（FR-08 ナレッジベース保存の実 s2s 配線）。AST 側は
+- Issue: AST endazon/ai-stock-trading#18（AST/FR-08 ナレッジベース保存の実 s2s 配線）。AST 側は
   `feat/FR-08-kb-writer-cross-realm-s2s`（AST/IADR-0093）。
 - 対応する AST 側決定: AST `docs/adr/IADR-0093`（KB の s2s を本レルムの専用クライアントでクロスレルム認証する）。
 

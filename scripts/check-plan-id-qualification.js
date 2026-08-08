@@ -15,8 +15,10 @@
  * 「番号の表記」に閉じた道具であり、そこへ ID 修飾を混ぜると責務が割れる。
  *
  * 検出する型（**件数はここに書かない**。列挙そのものが単一情報源。#590 の教訓）:
- *   型 A（空白区切り）: `AST FR-17` / `AST IADR-0048`。規約書式 `AST/FR-17` と混在している。
+ *   型 A（空白区切り）: `AST FR-17` / `AST IADR-0048` / **`AST [[IADR-0080]]`** / TAB 区切り。
+ *                       規約書式 `AST/FR-17` と混在している。
  *                       **8 番号が本リポジトリの同番号 IADR と衝突していた**（#570 のクロス監査）。
+ *                       **wiki リンク形は実際に本リポの Headlamp IADR へ張り付いていた**（#576）。
  *
  * **検出しないこと**（本検査は網羅ではない。#576 で実測して開示した）:
  *   - **型 B（AST 文脈で裸の計画 ID）は検出しない。** issue #576 は「同じコメント塊が `AST` を
@@ -25,7 +27,10 @@
  *     **誤帰属そのものを説明する地の文**を持ち、`docs/adr/IADR-0071` のように MSP の ID と
  *     AST の ID が同じ段落へ混在する文書も多い。偽陽性を 1 件でも出すと検査は外される
  *     （IADR-0140 決定 3 が裸 `#NNN` の一律検出を同じ理由で棄却している）。
- *     型 B は #576 の是正で 0 件にしたが、**再混入は人と AI が防ぐ**。
+ *     型 B は #576 で是正し、クロス監査の指摘後に `docs/adr/IADR-0071/0072/0075`・
+ *     `src/platform/frontend/.../features/index.ts`・`BffEndpointCompositionTests.cs` まで
+ *     引き直して 0 件にした（**最初の走査では 32 occurrence を見落としていた**）。
+ *     **再混入は人と AI が防ぐ**。
  *   - **列挙の後続 ID**（`AST/SC-02/SC-03` の `SC-03`）は検出しない。**この型は実在した**
  *     ——#576 の一括置換が実際に 4 件作り、手で直した。近傍規則になるため型 B と同じ判断。
  *
@@ -52,14 +57,20 @@ const ID_KINDS = ['IADR', 'ADR', 'FR', 'UC', 'SC'];
 
 // 型 A: `AST` と ID が空白（半角/全角）で離れた形。
 // **直前が \w / - / `/` なら別物**（`AST/FR-17` は規約どおり、`FAST FR-1` は別語）。
+// **区切りは空白だけではない。** `AST [[IADR-0080]]` のように wiki リンク括弧・バッククォート・
+// 全角括弧が挟まる形が実在した（#576 のクロス監査と AI レビューが実測）。**しかも本リポジトリに
+// 同番号の IADR が実在するため、wiki リンクが Headlamp の文書へ実際に張り付いていた** ——
+// 表記ゆれではなく生きた誤帰属である。TAB も許す（YAML / コードで現実的）。
+// 当初は `[ 　]+` ＋ ID 直結しか見ておらず、**軸を 1 本で終わらせた**ため丸ごと落ちていた。
+const ID_LEAD = String.raw`[\[\`*_（(「『]{0,2}`;
 const SPACED_ID_RE = new RegExp(
-  String.raw`(?<![\w/-])(${PROJECT_PREFIXES.join('|')})[ 　]+((?:${ID_KINDS.join('|')})-\d+)`,
+  String.raw`(?<![\w/-])(${PROJECT_PREFIXES.join('|')})[ 　\t]+${ID_LEAD}((?:${ID_KINDS.join('|')})-\d+)`,
   'g'
 );
 
 /** 走査から外すパス。submodule と、生成物・記録（下記の理由）。 */
 const EXCLUDED_PATH_RE =
-  /^(planning\/|src\/ai-stock-trading\/|CHANGELOG\.md$|docs\/specs\/|feedback\/)/;
+  /^(planning\/|src\/ai-stock-trading\/|CHANGELOG\.md$|docs\/specs\/|feedback\/|docs\/superpowers\/)/;
 
 /** 文字オフセットから 1 始まりの行番号を返す。 */
 function lineNumberAt(text, index) {
@@ -183,6 +194,16 @@ function selfTest() {
     return v.length === 1 && v[0].line === 3;
   })());
 
+  // **区切りに記号が挟まる形**（#576 のクロス監査 / AI レビューが実測。当初の走査式が丸ごと落とした）。
+  // `AST [[IADR-0080]]` は**本リポジトリの実在 IADR（Headlamp）へ wiki リンクが張り付いていた** ——
+  // 表記ゆれではなく生きた誤帰属だったので、正例として常設する。
+  t('型A: wiki リンク形 AST [[IADR-0080]] を検出', kinds('AST [[IADR-0080]]（AST フロント）').join() === 'spaced-id');
+  t('型A: wiki リンク形の是正案は素の AST/ 形',
+    findPlanIdViolations('AST [[IADR-0084]]')[0]?.suggestion === 'AST/IADR-0084');
+  t('型A: TAB 区切りも検出（YAML / コードで現実的）', kinds('AST\tFR-17').join() === 'spaced-id');
+  t('型A: バッククォート挟みも検出', kinds('AST `FR-17` を参照').join() === 'spaced-id');
+  t('型A: 全角括弧挟みも検出', kinds('AST （FR-17）').join() === 'spaced-id');
+
   // --- 負のケース: 偽陽性を出してはならない ---
   t('負例: 規約どおりの AST/FR-17 は検出しない', kinds('AST/FR-17 と AST/SC-01 は別採番').length === 0);
   t('負例: AST/IADR-0048 も検出しない', kinds('（AST/IADR-0048 決定3）').length === 0);
@@ -224,7 +245,14 @@ function selfTest() {
   t('自己除外: trackedFiles に検査器自身が含まれない', (() => {
     const files = trackedFiles();
     if (files === null) return true; // git を使えない環境は対象外（fail-open と揃える）
-    return !files.includes('scripts/check-plan-id-qualification.js');
+    // **リテラルで書かない。** ファイル名を変えたとき、実装が壊れていてもテストが常に真になる
+    // （vacuous truth）。導出したうえで「自ファイルは追跡下に在る」ことも併せて主張する
+    // ——両方が揃って初めて「追跡下だが除外されている」を固定できる。
+    const self = path.relative(REPO_ROOT, __filename).split(path.sep).join('/');
+    const tracked = execFileSync('git', ['-C', REPO_ROOT, 'ls-files', '--', self], {
+      encoding: 'utf8',
+    }).trim();
+    return tracked !== '' && !files.includes(self);
   })());
 
   // --- 実ファイル走査の経路（fixture） ---
