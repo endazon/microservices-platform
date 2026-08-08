@@ -77,6 +77,12 @@ jobs:
         run: pnpm run typecheck
       - name: Lint
         run: pnpm run lint
+      # NFR / issue #562: 整形ゲート。バックエンドは ci.yml の lint ジョブが
+      # `dotnet format --verify-no-changes` で整形を強制しているのに対し、フロントには
+      # 同等のゲートが無く、整形揺れは AI レビューの目でしか拾えなかった。
+      # 対象範囲の単一情報源は src/.prettierignore（グロブをここへ複写しない）。
+      - name: Format check (prettier)
+        run: pnpm run format:check
       # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
       # 再生成して差分が出るなら、OpenAPI と生成物が乖離している（＝手で触ったか、更新し忘れた）。
       - name: Codegen is up to date (orval)

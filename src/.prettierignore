@@ -1,0 +1,39 @@
+# Issue #562: format ゲートの対象外。
+# **除外は「手で書かないもの」と「本リポジトリが所有しないもの」に限る** ——
+# 「整形すると落ちるから」を理由に手書きコードを外していくと、除外リストそのものが
+# ゲートの無効化装置になる。
+
+# --- バックエンド（別のゲートが持つ） ----------------------------------------
+# C# 側の整形は ci.yml の lint ジョブが `dotnet format --verify-no-changes` で強制している。
+# ここを除外しないと、`bin/` `obj/` の生成物や appsettings.json まで対象に入る
+# （実測: 対象を src/ 全体にすると .NET のビルド成果物 750 件が該当した）。
+*/backend/
+
+# --- ビルド成果物・依存 -------------------------------------------------------
+node_modules/
+dist/
+coverage/
+storybook-static/
+.analyze/
+playwright-report/
+test-results/
+pnpm-lock.yaml
+
+# --- 別プロジェクトの submodule ---------------------------------------------
+# CLAUDE.md / IADR-0056: src/ai-stock-trading は別リポジトリであり、本リポジトリからは
+# 変更しない。整形対象に入れると submodule の作業ツリーを汚す（実測: 8 ファイルが該当）。
+ai-stock-trading/
+
+# --- Markdown（本ゲートの射程外） --------------------------------------------
+# 本 issue の契機は **コードの整形揺れ**（テスト末尾の余分な空行）である。
+# prettier の Markdown 整形は日本語の散文と表を再流し込みするため、意図して組んだ表や
+# 改行位置（`check-doc-links.js` が見る相対リンクを含む）を壊し得る。
+# **文書の整形は本ゲートの目的ではない**ので対象に入れない。
+*.md
+
+# --- 生成物（コミットするが手で整形しない） ----------------------------------
+# ADR-0031 / IADR-0121 決定 3: orval 生成物はコミットし、CI が**再生成差分**を検査する。
+# 整形すると生成器の出力と食い違い、`Codegen is up to date` が必ず落ちる（実測: 28 ファイルが該当）。
+platform/frontend/src/foundation/api/generated/
+# IADR-0125 決定 4: Lingui のカタログも同じ理由（`i18n catalogs are up to date` と衝突。実測: 2 ファイル）。
+platform/frontend/src/foundation/i18n/locales/
