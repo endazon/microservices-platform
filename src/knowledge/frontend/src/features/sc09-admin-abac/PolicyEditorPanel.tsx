@@ -129,7 +129,8 @@ export function PolicyEditorPanel({
   error: unknown;
 }) {
   const { t } = useLingui();
-  const { create, setActive, remove, validate } = usePolicyActions();
+  const actions = usePolicyActions();
+  const { create, setActive, remove, validate } = actions;
 
   const [name, setName] = useState('');
   const [action, setAction] = useState<PolicyAction>('read');
@@ -137,7 +138,10 @@ export function PolicyEditorPanel({
   const [attributeKey, setAttributeKey] = useState('');
   const [conditionValue, setConditionValue] = useState('');
 
-  const mutations = [create, setActive, remove, validate];
+  // **列挙は手書きの配列にしない**（[[IADR-0127]] 決定 7）——
+  // 4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く。
+  // フックの戻り値を `Object.values` で辿れば、足した時点で自動的に含まれる。
+  const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
   const saved = create.isSuccess;
 

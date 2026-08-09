@@ -60,7 +60,7 @@ related_specs:
 | 計画 §SC-09 の要素 | テスト |
 | --- | --- |
 | 属性体系エディタ | 上表 基本 1 |
-| **タグ辞書** | **実装しない**（BFF の書き込み口が無い。**#640 として起票済み**）。`does not render the tag dictionary (no BFF write contract behind it yet)` |
+| **タグ辞書** | **［2026-08-09 / #640］実装した。** `renders the tag dictionary now that the BFF write contract exists` / `lists dictionary tags with their usage counts` / `adds a tag to the dictionary from the screen` / `renames a dictionary tag from the screen` / `deletes an unused dictionary tag` / **`shows the usage count when a tag deletion is refused`** |
 | **dry-run の検証** | **［2026-08-09 / #535］実装した。** `renders the dry-run validate button now that the contract exists` / `validates without saving, and says so` / `shows the contradictions the dry-run found` |
 | **辺の型辞書** | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the edge-type dictionary` |
 | ポリシー定義 | 上表 基本 2 |
@@ -86,7 +86,8 @@ related_specs:
 | 12 | **操作を跨いだ状態** | [[IADR-0127]] 決定 7 | **異なるミューテーション**を続けたとき、古い失敗バナーが残らない（属性: 削除 → 追加／ポリシー: 保存 → 切替） |
 | 13 | **異常系（縮退しない）** | — | 取得失敗を `role="alert"` で出し、「0 件」へ寄せない |
 | 14 | **着手保留**（実装しない要素） | [[IADR-0119]] | 「辺の型」が無い。**先に 2 つの区画が在ることを確かめてから**無いことを見る |
-| 15 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #2 | 「タグ辞書」タブが無い（**#640 待ち**。「検証」ボタンは #535 で着地したので**この観点から外した**） |
+| 15 | ~~**契約の不在**（実装しない要素）~~ **［2026-08-09 / #640］観点ごと解消** | 画面仕様書 §hi-fi 対応 #2 | 従前は「『タグ辞書』タブが無い」。**`/bff/tags` の着地で実装したので、不在を固定するテストは反転させた**（削除ではない——[[IADR-0129]] が実装しない理由を記録している以上、理由が消えた証跡が要る） |
+| 15-d | ★ **削除拒否は使用件数つき** | SC-09「削除前に使用件数を示す」／[[IADR-0153]] 決定 6 | 参照 1 件以上のタグを消そうとすると 409 になり、**画面が件数を翻訳済みの文へ差し込んで**表示する。**件数を持たない 409（重複名など）では既定の文言へ落ちる**ことも対で固定する |
 | 15-b | ★ **検証は保存しない** | 裁定 Q23「保存せず検証だけ行う」 | 「検証」を押すと `/admin/authz/policies/validate` だけを呼び、登録の口を呼ばない。「まだ保存していません」と明示する |
 | 15-c | 矛盾は**エラーではなく検証結果** | 同上（200 ＋ `valid: false`） | 矛盾の理由が一覧表示される |
 | 16 | **他 issue の射程** | 同 #5 | MCP クライアント管理へのリンクが無い（遷移先が未実装） |
@@ -179,5 +180,6 @@ related_specs:
 
 ## 未決事項
 
-- 契約の不在 3 件（タグ辞書・dry-run 検証・条件式の表現力）は
+- 契約の不在は**残り 1 件（条件式の表現力）**である。
   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+  **タグ辞書は #640 で、dry-run 検証は #535 で解消した。**

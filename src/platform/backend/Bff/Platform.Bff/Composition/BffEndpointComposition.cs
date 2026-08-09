@@ -40,6 +40,10 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapDataSourceBffEndpoints()),
+        // Issue #640, FR-09, SC-09, IADR-0152/0153: タグ辞書の管理（追加・改名・削除）。
+        // 後段は DocumentService（knowledge ユニット）なので Knowledge.Bff.Endpoints に置く
+        // （platform 側の /bff/admin/authz へ寄せない。作業仕様書 §判断 1）。
+        new DelegateBffEndpointModule(a => a.MapTagDictionaryBffEndpoints()),
         // Issue #283/#286, AST/FR-17, AST/UC-06, IADR-0070/0073: AST 設定画面（全体前提条件）の BFF 集約
         // （ConfigurationService へ pass-through）。AiStockTrading.Bff.Endpoints（AST unit-owned Bff・例外3）を参照。
         new DelegateBffEndpointModule(a => a.MapAssumptionsBffEndpoints()),

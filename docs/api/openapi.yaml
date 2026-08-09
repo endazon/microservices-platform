@@ -110,6 +110,107 @@ paths:
               schema:
                 $ref: "#/components/schemas/AttributeValuesResponse"
 
+  # ── SC-09, FR-09, UC-05: タグ辞書 BFF（#640）─────────
+  # IADR-0152 / IADR-0153: 辞書は DocumentService（knowledge ユニット）が所有する。
+  # **読み取りは platform-admin / platform-operator**（裁定 Q18）、
+  # **書き込み（追加・改名・削除）は platform-admin のみ**（SC-09 のアクセス制御）。
+  # 後段 `/tags` にも同じ制限があり両層で効かせる（IADR-0044 の多層防御）。
+  # **後段の応答は本文ごと透過する** —— 削除拒否の 409 に載る `usageCount` を画面が表示するため
+  # （SC-09「削除前に使用件数を示す」）。BFF で数え直すと一覧と削除拒否で件数が割れる。
+  /bff/tags:
+    get:
+      tags: [Tags]
+      summary: "FR-09, SC-09: タグ辞書の一覧（値集合 ＋ 使用件数。管理者・運用者）"
+      operationId: bff-tag-list
+      responses:
+        "200":
+          description: タグ辞書（使用件数つき）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagDictionaryResponse"
+        "401": { description: 未認証 }
+        "403": { description: 管理者・運用者ロール以外 }
+        "502": { description: DocumentService へ到達できない }
+    post:
+      tags: [Tags]
+      summary: "FR-09, SC-09: タグ辞書へ追加（管理者のみ。#640）"
+      description: |
+        **名前の重複は 409**（SC-09「新しい名前は既存値と重複しない」）。
+        正規化後の名前で判定するため、前後の空白だけが違う 2 つは別物にならない。
+      operationId: bff-tag-create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: 追加したタグ（使用件数は 0）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagDto"
+        "400": { description: タグ名が空 }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "409": { description: 同名のタグが既に辞書にある }
+        "502": { description: DocumentService へ到達できない }
+
+  /bff/tags/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [Tags]
+      summary: "FR-09, SC-09: タグ辞書の改名（管理者のみ。#640）"
+      description: |
+        **文書は 1 件も書き換えない** —— 正本が識別子を参照しているので追随は表示の解決だけで起こる
+        （IADR-0153 決定 1）。**版も増えない**（改名は文書の内容変更ではない。同 決定 3）。
+        射影（Qdrant / Wiki.js）は表示名を焼き込んだ複写なので `DocumentUpdated` を再発行して作り直す。
+        応答の `republishedDocuments` は**その再発行件数**であり、使用件数と同じ値になる。
+        **反映は非同期なので、この件数が無いと「0 件だった」と「まだ届いていない」を区別できない。**
+      operationId: bff-tag-rename
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameTagRequest"
+      responses:
+        "200":
+          description: 改名後のタグと再発行件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenameTagResponse"
+        "400": { description: タグ名が空 }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "404": { description: 見つからない }
+        "409": { description: 同名のタグが既に辞書にある（自分自身は除く） }
+        "502": { description: DocumentService へ到達できない }
+    delete:
+      tags: [Tags]
+      summary: "FR-09, SC-09: タグ辞書から削除（管理者のみ。#640）"
+      description: |
+        **使用件数が 0 件のときだけ許す**（SC-09「参照が 1 件でもあるタグは削除拒否」。IADR-0153 決定 6）。
+        **拒否は 409 に `usageCount` を添える** —— SC-09 が「削除前に使用件数を示す」と定めており、
+        件数があれば「まず 3 件を外してから消す」と管理者が行動できる。
+      operationId: bff-tag-delete
+      responses:
+        "204": { description: 削除した }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
+        "404": { description: 見つからない }
+        "409":
+          description: 使用中のため削除できない（`usageCount` つき）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagInUseProblem"
+        "502": { description: DocumentService へ到達できない }
+
   /bff/analysis/ask:
     post:
       tags: [Analysis]
@@ -624,8 +725,10 @@ paths:
   # ── SC-03/SC-05, FR-06, UC-01/UC-03/UC-07: 文書 BFF ─
   # IADR-0041 / IADR-0009: 読み取りはロールで塞がず、ABAC スコープ解決の結果でのみ絞る。
   # スコープ外・不在はいずれも 404 で応答し存在を秘匿する（「拒否」と「不在」を区別しない）。
-  # 書き込みは platform-admin / platform-operator に限定し、対象がスコープ内であることを先に確かめる
-  # （閲覧できない文書は変更もできない）。後段の検証 400・競合 409・不在 404 は透過する。
+  # 書き込みは **platform-admin のみ**（#629。グループ既定は「閲覧の下限」として
+  # platform-admin / platform-operator を残し、各書き込み口へ AdminOnly を積んで AND 合成する）。
+  # 対象がスコープ内であることを先に確かめる（閲覧できない文書は変更もできない）。
+  # 後段の検証 400・競合 409・不在 404 は透過する。
   /bff/documents:
     get:
       tags: [Documents]
@@ -818,7 +921,9 @@ paths:
 
   # ── SC-06, FR-01/FR-02, UC-04: データソース BFF ─────
   # IADR-0039: データソースは文書 ABAC のスコープ対象ではなくシステム運用資産のため、
-  # 閲覧・操作を platform-admin / platform-operator に限定する（グループ全体に RequireRole）。
+  # 閲覧を platform-admin / platform-operator に限定する（グループ全体に RequireRole）。
+  # **［#628］登録・更新・無効化・削除は platform-admin のみ**（各口へ AdminOnly を積んで AND 合成する。
+  # 手動同期〔`POST /{id}/sync`〕は破壊的操作に含めないので admin ＋ operator のままである。planning#299）。
   # 一覧は後段障害を空一覧へ縮退させない——「未登録」と誤認させ重複登録を誘発するため。
   /bff/datasources:
     get:
@@ -1722,8 +1827,8 @@ components:
           description: >-
             識別子。**改名で変わらない**（SC-09 の「改名は既存文書へ追随する」の土台）。
             **［#635］文書はこの識別子を参照して保持する**（表示名を複写しない。IADR-0153 決定 1）。
-            **改名・削除の口は DocumentService 側にだけ在る**（`PUT` / `DELETE /tags/{id}`。
-            BFF の書き込み口は #542 の射程外で、#640 へ起票した）。
+            **［#640］改名・削除は `/bff/tags/{id}` から操作する**（`PUT` / `DELETE`。
+            後段 DocumentService の `/tags/{id}` へ中継する。書き込みはシステム管理者限定）。
         name: { type: string, description: 表示名。改名で変わるのはこちらだけである。 }
         usageCount: { type: integer, format: int32 }
 
@@ -1737,6 +1842,48 @@ components:
         tags:
           type: array
           items: { $ref: "#/components/schemas/TagDto" }
+
+    CreateTagRequest:
+      type: object
+      description: >-
+        FR-09, SC-09（#640）: 辞書へタグを追加する。
+        **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
+      required: [name]
+      properties:
+        name: { type: string, description: 表示名。前後の空白は正規化される。 }
+
+    RenameTagRequest:
+      type: object
+      description: >-
+        FR-09, SC-09（#640）: 辞書のタグを改名する。**識別子は変えない** ——
+        文書は識別子を参照しているので追随は自動である（IADR-0153 決定 1）。
+      required: [name]
+      properties:
+        name: { type: string, description: 新しい表示名。既存値と重複してはならない（自分自身は除く）。 }
+
+    RenameTagResponse:
+      type: object
+      description: |
+        FR-09, SC-09（#640 / IADR-0153 決定 3）: 改名の結果。
+        `republishedDocuments` は**射影を作り直すために `DocumentUpdated` を再発行した文書の数**であり、
+        `tag.usageCount` と同じ値になる（どちらも「現行版でこのタグを持つ文書の数」。2 通りの数え方を持たない）。
+      required: [tag, republishedDocuments]
+      properties:
+        tag: { $ref: "#/components/schemas/TagDto" }
+        republishedDocuments: { type: integer, format: int32 }
+
+    TagInUseProblem:
+      type: object
+      description: |
+        FR-09, SC-09（#640 / IADR-0153 決定 6）: 使用中のタグの削除を拒否したときの本文。
+        **`usageCount` は SC-09 の「削除前に使用件数を示す」を満たすために要る** ——
+        件数が無いと管理者は「なぜ消えないか」しか分からず、外す作業に着手できない。
+        **BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で件数が割れる）。
+      required: [error, message, usageCount]
+      properties:
+        error: { type: string, enum: [tag_in_use] }
+        message: { type: string }
+        usageCount: { type: integer, format: int32 }
 
     # ── #520 / IADR-0132: 応答スキーマの `required` は C# の**非 null 性**から起こす。
     # `?` の付かないメンバー（値型・コレクションを含む）だけを required に入れる。

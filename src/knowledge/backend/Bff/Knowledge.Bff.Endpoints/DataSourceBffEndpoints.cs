@@ -10,7 +10,10 @@ namespace Knowledge.Bff.Endpoints;
 
 // FR-01, FR-02, UC-04, SC-06, IADR-0039: データソース管理の BFF 集約。
 // DataSourceService（/datasources）へプロキシする。データソースは文書 ABAC のスコープ対象ではなく
-// システム運用資産のため、閲覧・操作は管理者・運用者ロールに限定する（画面側は RequireRole で存在秘匿）。
+// システム運用資産のため、**閲覧**は管理者・運用者ロールに限定する（画面側は RequireRole で存在秘匿）。
+// **［#628］登録・更新・無効化・削除は管理者のみ**である——グループ既定（admin ＋ operator）は
+// 閲覧の下限として残し、各書き込み口へ `AdminOnly` を積んで AND 合成する（[[IADR-0128]] 決定 1 の形）。
+// **手動同期（`POST /{id}/sync`）は破壊的操作に含めない**ので admin ＋ operator のままである（planning#299）。
 // 利用者の資格情報（Authorization）は後段へ伝播する（将来の後段認可・監査の一貫性のため）。
 public static class DataSourceBffEndpoints
 {
