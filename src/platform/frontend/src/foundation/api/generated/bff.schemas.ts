@@ -38,7 +38,7 @@ export interface AttributeValuesRequest {
  * 文書がタグの識別子を参照するようになったので、**改名しても件数は変わらない**。
  */
 export interface TagDto {
-  /** 識別子。**改名で変わらない**（SC-09 の「改名は既存文書へ追随する」の土台）。 **［#635］文書はこの識別子を参照して保持する**（表示名を複写しない。IADR-0153 決定 1）。 **改名・削除の口は DocumentService 側にだけ在る**（`PUT` / `DELETE /tags/{id}`。 BFF の書き込み口は #542 の射程外で、#640 へ起票した）。 */
+  /** 識別子。**改名で変わらない**（SC-09 の「改名は既存文書へ追随する」の土台）。 **［#635］文書はこの識別子を参照して保持する**（表示名を複写しない。IADR-0153 決定 1）。 **［#640］改名・削除は `/bff/tags/{id}` から操作する**（`PUT` / `DELETE`。 後段 DocumentService の `/tags/{id}` へ中継する。書き込みはシステム管理者限定）。 */
   id: string;
   /** 表示名。改名で変わるのはこちらだけである。 */
   name: string;
@@ -65,6 +65,51 @@ export interface AttributeValuesResponse {
   values: string[];
   /** FR-09, SC-05, SC-09（#634）: タグ辞書。管理者・運用者かつ `key` が `tags` のときだけ入る。 */
   dictionary?: TagDictionaryResponse | null;
+}
+
+/**
+ * FR-09, SC-09（#640）: 辞書へタグを追加する。 **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
+ */
+export interface CreateTagRequest {
+  /** 表示名。前後の空白は正規化される。 */
+  name: string;
+}
+
+/**
+ * FR-09, SC-09（#640）: 辞書のタグを改名する。**識別子は変えない** —— 文書は識別子を参照しているので追随は自動である（IADR-0153 決定 1）。
+ */
+export interface RenameTagRequest {
+  /** 新しい表示名。既存値と重複してはならない（自分自身は除く）。 */
+  name: string;
+}
+
+/**
+ * FR-09, SC-09（#640 / IADR-0153 決定 3）: 改名の結果。
+ * `republishedDocuments` は**射影を作り直すために `DocumentUpdated` を再発行した文書の数**であり、
+ * `tag.usageCount` と同じ値になる（どちらも「現行版でこのタグを持つ文書の数」。2 通りの数え方を持たない）。
+ */
+export interface RenameTagResponse {
+  tag: TagDto;
+  republishedDocuments: number;
+}
+
+export type TagInUseProblemError = typeof TagInUseProblemError[keyof typeof TagInUseProblemError];
+
+
+export const TagInUseProblemError = {
+  tag_in_use: 'tag_in_use',
+} as const;
+
+/**
+ * FR-09, SC-09（#640 / IADR-0153 決定 6）: 使用中のタグの削除を拒否したときの本文。
+ * **`usageCount` は SC-09 の「削除前に使用件数を示す」を満たすために要る** ——
+ * 件数が無いと管理者は「なぜ消えないか」しか分からず、外す作業に着手できない。
+ * **BFF は本文を詰め替えず透過する**（数え方を 2 つ持つと一覧と削除拒否で件数が割れる）。
+ */
+export interface TagInUseProblem {
+  error: TagInUseProblemError;
+  message: string;
+  usageCount: number;
 }
 
 export type SearchResultDtoAttributes = {[key: string]: string};
