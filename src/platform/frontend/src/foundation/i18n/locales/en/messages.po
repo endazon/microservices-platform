@@ -1082,6 +1082,10 @@ msgstr "Searches"
 msgid "検索語"
 msgstr "Term"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "検証"
+msgstr "Validate"
+
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "検証不能（担当サービスへ到達できない）"
 msgstr "Unverifiable (the owning service is unreachable)"
@@ -1218,6 +1222,10 @@ msgstr "Last {d} days"
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "省略時は分析内容を流用します"
 msgstr "Left blank, the analysis request itself is used"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "矛盾はありません。まだ保存していません。"
+msgstr "No contradictions found. Nothing has been saved yet."
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "確認時刻"

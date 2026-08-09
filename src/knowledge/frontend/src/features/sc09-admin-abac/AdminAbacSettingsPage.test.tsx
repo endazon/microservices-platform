@@ -417,15 +417,82 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(screen.queryByText(/使用件数/)).not.toBeInTheDocument();
   });
 
-  // 契約の不在: タグ辞書（値集合・使用件数・改名の追随）と dry-run の検証ボタン。
-  it('does not render the tag dictionary or a dry-run validate button (no contract behind them)', async () => {
+  // ★ #535: dry-run の検証ボタンは**契約が着地したので描く**（裁定 Q23）。
+  //
+  // **タグ辞書はまだ描かない。** BFF の書き込み口が無く、#640 として起票済みである。
+  // **1 つの `it` が 2 つの不在をまとめて主張していたので分けた**——
+  // 片方の契約が着地したときにもう片方まで巻き込んで書き換えることになり、
+  // 「なぜ落ちたのか」が読み取れなくなる。
+  it('renders the dry-run validate button now that the contract exists', async () => {
     mockApi();
     await renderPage();
 
     expect(await screen.findByRole('tab', { name: 'ポリシー定義' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '検証' })).toBeInTheDocument();
+  });
 
+  // ★ #535: **検証は保存しない。** 押した先が `/admin/authz/policies/validate` であり、
+  // 登録の口（`/admin/authz/policies`）は呼ばれないこと。
+  //
+  // **これを取り違えると「試しに検証したら壊れた」という最悪の結果になる。**
+  it('validates without saving, and says so', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method && init.method !== 'GET') {
+        if (path === '/admin/authz/policies/validate') {
+          return jsonResponse({ valid: true, errors: [] });
+        }
+        return noContent();
+      }
+      if (path === '/admin/authz/attributes') return jsonResponse(ATTRIBUTES);
+      return jsonResponse(POLICIES);
+    });
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('名前（必須）'), '検証だけ');
+    await user.click(screen.getByRole('button', { name: '検証' }));
+
+    expect(await screen.findByText('矛盾はありません。まだ保存していません。')).toBeInTheDocument();
+
+    const writes = mocks.apiRequest.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === 'POST',
+    );
+    expect(writes.map(([path]) => path)).toEqual(['/admin/authz/policies/validate']);
+  });
+
+  // #535: 矛盾は**エラーではなく検証結果**として出る（200 ＋ `valid: false`）。
+  it('shows the contradictions the dry-run found', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method && init.method !== 'GET') {
+        if (path === '/admin/authz/policies/validate') {
+          return jsonResponse({
+            valid: false,
+            errors: ['documentConditions.dept に辞書外の値があります: 総務'],
+          });
+        }
+        return noContent();
+      }
+      if (path === '/admin/authz/attributes') return jsonResponse(ATTRIBUTES);
+      return jsonResponse(POLICIES);
+    });
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('名前（必須）'), '矛盾あり');
+    await user.click(screen.getByRole('button', { name: '検証' }));
+
+    expect(
+      await screen.findByText('documentConditions.dept に辞書外の値があります: 総務'),
+    ).toBeInTheDocument();
+  });
+
+  // 契約の不在: タグ辞書（値集合・使用件数・改名の追随）の BFF 書き込み口（#640）。
+  it('does not render the tag dictionary (no BFF write contract behind it yet)', async () => {
+    mockApi();
+    await renderPage();
+
+    expect(await screen.findByRole('tab', { name: 'ポリシー定義' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'タグ辞書' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '検証' })).not.toBeInTheDocument();
   });
 
   // 遷移先の画面（MCP クライアント管理）が未実装（#445 待ち）のリンクを置かない——押すと

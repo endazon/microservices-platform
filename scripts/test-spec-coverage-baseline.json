@@ -49,8 +49,10 @@
       "AbacScopeTests",
       "AbacValidationTests",
       "AuthzManagementEndpointTests",
+      "BffAuthzEndpointTests",
       "IngestTagFilterTests",
       "KeycloakRolesClaimsTransformationTests",
+      "PolicyDryRunValidationTests",
       "TagIdentityMigrationTests",
       "TagIdentityTests"
     ],

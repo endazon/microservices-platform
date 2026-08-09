@@ -1082,6 +1082,10 @@ msgstr "検索総数"
 msgid "検索語"
 msgstr "検索語"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "検証"
+msgstr "検証"
+
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "検証不能（担当サービスへ到達できない）"
 msgstr "検証不能（担当サービスへ到達できない）"
@@ -1218,6 +1222,10 @@ msgstr "直近 {d} 日"
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "省略時は分析内容を流用します"
 msgstr "省略時は分析内容を流用します"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+msgid "矛盾はありません。まだ保存していません。"
+msgstr "矛盾はありません。まだ保存していません。"
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "確認時刻"

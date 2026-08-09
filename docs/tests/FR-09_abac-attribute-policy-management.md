@@ -92,6 +92,25 @@ plan_refs:
 - 認可解決の堅牢性（条件 null で `/scope` が落ちない）→ 単体 #18、結合 #12。
 - 参照整合（参照中の属性辞書は削除不可）→ 単体 #19、結合 #14。
 
+## ポリシーの dry-run 検証（#535 / 裁定 Q23）
+
+**実装は `AuthorizationService.Api.Tests/PolicyDryRunValidationTests.cs`（5 件）と
+`Platform.Bff.Tests/BffAuthzEndpointTests.cs`（2 件）。**
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-50 | 妥当なポリシーは `valid: true`（**200**。矛盾の有無は要求の成否と別） | `Validate_ValidPolicy_ReturnsValid` |
+| T-51 | 矛盾は `valid: false` ＋ 理由（**200 のまま**） | `Validate_InvalidPolicy_ReturnsErrorsWithOk` |
+| T-52 | ★ **何も保存されない**（件数が変わらず、名前も現れない） | `Validate_DoesNotPersistAnything` |
+| T-53 | ★★ **dry-run と保存が同じ結果を出す**（矛盾する入力で、`errors` が一致） | `Validate_AgreesWithSave_OnTheSameInput` |
+| T-54 | 妥当な入力でも一致する（dry-run が通れば保存も通る） | `Validate_AgreesWithSave_WhenInputIsValid` |
+| T-55 | BFF が中継する（200） | `ValidatePolicy_AsAdmin_Returns200` |
+| T-56 | **運用者は 403**（検証も管理操作である） | `ValidatePolicy_AsNonAdmin_IsForbidden` |
+
+**T-53 が本 issue の中心である。** 計画は「検証は通ったのに保存で矛盾が出る」形を名指しで禁じた。
+実装は 3 経路が同じ関数を呼ぶことで守っているが、**将来それが割れたらここが落ちる**。
+空同士の一致で通してしまわないよう、**`errors` が空でないこと**も併せて固定している。
+
 ## タグ辞書（#634 / [[IADR-0152]]）
 
 | # | 確かめること | 実装 |

@@ -420,6 +420,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
                     return Json(owner.AuthzManagementStatusCode, new { errors = new[] { "invalid" } });
                 if (method == HttpMethod.Delete)
                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+                // FR-05, FR-09, SC-09, #535: dry-run 検証は **200 ＋ { valid, errors }** で返る。
+                // **POST の分岐より先に置く**——`/authz/policies/validate` も
+                // `StartsWith("/authz/policies")` に一致するため、後ろに置くと 201 Created に化ける。
+                if (path == "/authz/policies/validate")
+                    return Json(HttpStatusCode.OK, new { valid = true, errors = Array.Empty<string>() });
                 if (method == HttpMethod.Post)
                     return Json(HttpStatusCode.Created, owner.StubPolicies[0]);
                 if (path == "/authz/policies")

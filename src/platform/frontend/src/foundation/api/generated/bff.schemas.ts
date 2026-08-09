@@ -563,6 +563,19 @@ export interface AttributeDefinitionDto {
 }
 
 /**
+ * FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証の結果。
+ * **保存していない。** `valid: false` でも HTTP は 200 である
+ * （矛盾が見つかったことは要求の失敗ではない）。
+ * `errors` の内容は保存時の 400（`errors.errors`）と**同じ検証から出る**。
+ */
+export interface ValidatePolicyResponse {
+  /** 矛盾が無ければ true */
+  valid: boolean;
+  /** 矛盾の理由（日本語）。`valid: true` のときは空配列。 */
+  errors: string[];
+}
+
+/**
  * FR-09, UC-05: ポリシーの登録・更新（更新も同じ型を用いる）
  */
 export interface CreatePolicyRequest {

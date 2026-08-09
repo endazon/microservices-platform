@@ -14,7 +14,8 @@ import {
 
 import type {
   AbacPolicyDto,
-  AttributeDefinitionDto
+  AttributeDefinitionDto,
+  ValidatePolicyResponse
 } from '../bff.schemas';
 
 
@@ -29,6 +30,8 @@ export const getBffAuthzCreatePolicyResponseMock = (overrideResponse: Partial<Ex
       }, documentConditions: {
         [faker.string.alphanumeric(5)]: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}})))
       }, isActive: faker.datatype.boolean(), createdAt: faker.date.past().toISOString().slice(0, 19) + 'Z', updatedAt: faker.date.past().toISOString().slice(0, 19) + 'Z', ...overrideResponse})
+
+export const getBffAuthzValidatePolicyResponseMock = (overrideResponse: Partial<Extract<ValidatePolicyResponse, object>> = {}): ValidatePolicyResponse => ({valid: faker.datatype.boolean(), errors: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
 
 export const getBffAuthzGetPolicyResponseMock = (overrideResponse: Partial<Extract<AbacPolicyDto, object>> = {}): AbacPolicyDto => ({id: faker.string.uuid(), name: faker.string.alpha({length: {min: 10, max: 20}}), action: faker.string.alpha({length: {min: 10, max: 20}}), userConditions: {
         [faker.string.alphanumeric(5)]: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}})))

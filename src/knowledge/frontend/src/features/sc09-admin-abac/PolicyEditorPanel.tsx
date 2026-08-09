@@ -39,9 +39,13 @@ import type { AbacPolicyDto, AttributeDefinitionDto } from '@foundation/api/gene
 // 表現できないため実装しない（**部分未実装**として画面仕様書に明記した）。
 // 計画の入力表「対象属性｜必須｜選択｜**定義済み属性のみ**」はこの形で満たしている。
 //
-// 「検証」ボタン（hi-fi 430 左）は**実装しない**——保存せずに矛盾検証だけを行う API が無い。
-// 検証は `POST /policies` の 400（ValidationProblem）としてのみ得られるため、
-// 検証結果パネルは**保存時のサーバ検証を唯一の情報源**とする（IADR-0040）。
+// **［#535］「検証」ボタン（hi-fi 430 左）を実装した。** 従前ここには「実装しない——保存せずに
+// 矛盾検証だけを行う API が無い」と書いてあったが、**その API が着地した**（裁定 Q23 /
+// `POST /bff/admin/authz/policies/validate`）。
+//
+// **検証は後段が行う。画面では判定しない。** 計画は「ローカルでの代用は採らない——『検証は通ったのに
+// 保存で矛盾が出る』形になり、検証ボタンへの信頼が失われる。**信頼できない検証ボタンは無いより悪い**」
+// と定めている。後段は dry-run と保存で同じ検証関数を呼ぶ。
 
 function labelOf(label: MessageDescriptor | string): string {
   return typeof label === 'string' ? label : i18n._(label);
@@ -125,7 +129,7 @@ export function PolicyEditorPanel({
   error: unknown;
 }) {
   const { t } = useLingui();
-  const { create, setActive, remove } = usePolicyActions();
+  const { create, setActive, remove, validate } = usePolicyActions();
 
   const [name, setName] = useState('');
   const [action, setAction] = useState<PolicyAction>('read');
@@ -133,12 +137,21 @@ export function PolicyEditorPanel({
   const [attributeKey, setAttributeKey] = useState('');
   const [conditionValue, setConditionValue] = useState('');
 
-  const mutations = [create, setActive, remove];
+  const mutations = [create, setActive, remove, validate];
   const failed = mutations.find((m) => m.isError);
   const saved = create.isSuccess;
 
+  // #535: dry-run の結果。**矛盾があっても 200 で返る**ので `isError` では拾えない
+  // （`isError` は通信・認可の失敗であって、検証の結果ではない）。
+  const validated = validate.data?.status === 200 ? validate.data.data : undefined;
+
   function beginOperation() {
     for (const mutation of mutations) mutation.reset();
+  }
+
+  /** 現在の入力から要求本文を組み立てる。**保存と検証で同じものを送る**（ズレる余地を作らない）。 */
+  function currentPolicyBody() {
+    return { name: name.trim(), action, ...buildConditions(conditions) };
   }
 
   const selected = attributes.find((a) => a.key === attributeKey);
@@ -213,7 +226,7 @@ export function PolicyEditorPanel({
             e.preventDefault();
             beginOperation();
             create.mutate(
-              { data: { name: name.trim(), action, ...buildConditions(conditions) } },
+              { data: currentPolicyBody() },
               {
                 onSuccess: () => {
                   setName('');
@@ -322,7 +335,20 @@ export function PolicyEditorPanel({
             </ul>
           )}
 
-          <div>
+          <div className="flex gap-2">
+            {/* #535: hi-fi 430 左の「検証」。**保存とは別のボタンである**——
+                押しても何も保存されない（裁定 Q23）。 */}
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={name.trim().length === 0 || validate.isPending}
+              onClick={() => {
+                beginOperation();
+                validate.mutate({ data: currentPolicyBody() });
+              }}
+            >
+              <Trans>検証</Trans>
+            </Button>
             <Button type="submit" variant="primary" disabled={name.trim().length === 0}>
               <Trans>保存</Trans>
             </Button>
@@ -339,6 +365,22 @@ export function PolicyEditorPanel({
             <Trans>ポリシーを保存しました。認可判定へ即時反映されます。</Trans>
           </Alert>
         )}
+        {/* #535: dry-run の結果。**保存していないことを文言で明示する**——
+            「検証した」と「保存した」を取り違えると、直したつもりで直っていない状態になる。 */}
+        {validated?.valid === true && (
+          <Alert tone="success" role="status" label={t`検証`}>
+            <Trans>矛盾はありません。まだ保存していません。</Trans>
+          </Alert>
+        )}
+        {validated?.valid === false && (
+          <Alert tone="danger" role="alert" label={t`検証`}>
+            <ul>
+              {validated.errors.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          </Alert>
+        )}
         {failed && (
           <Alert tone="danger" role="alert" label={t`エラー`}>
             <ul>
@@ -348,7 +390,7 @@ export function PolicyEditorPanel({
             </ul>
           </Alert>
         )}
-        {!saved && !failed && (
+        {!saved && !failed && !validated && (
           <p className="text-sm text-[--color-fg-muted]">
             <Trans>
               保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。

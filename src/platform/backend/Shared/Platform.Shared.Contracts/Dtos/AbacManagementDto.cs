@@ -25,3 +25,16 @@ public record AttributeDefinitionDto(
     string Scope,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+// FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証の応答（利用者裁定 2026-08-05 Q23）。
+//
+// **保存せず検証だけ行った結果である。** 矛盾が見つかっても要求としては成功（200）——
+// 「検証した結果、矛盾が 2 件あった」は正常な応答であり、要求の失敗ではない。
+// **保存（`POST /policies`）は従来どおり 400 ＋ RFC7807 を返す**（既存の契約は変えない）。
+//
+// **形は `ValidateDocumentAttributesResponse`（属性の辞書整合検証）と揃えてある**——
+// 画面が 2 種類の検証結果の読み方を覚えなくて済む。
+//
+// **要求型は専用に作らず `CreatePolicyRequest` を再利用する。** 画面が保存用と検証用で
+// 2 つの組み立てを持つと、そこがズレる余地になる（ズレると「検証は通ったのに保存で矛盾」に戻る）。
+public record ValidatePolicyResponse(bool Valid, List<string> Errors);

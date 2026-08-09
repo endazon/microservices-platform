@@ -35,6 +35,19 @@ public static class AuthzBffEndpoints
             Proxy(f, h, HttpMethod.Put, $"/authz/policies/{id}", ct))
             .WithName("BffAuthzUpdatePolicy");
 
+        // FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証（保存せず検証だけ行う）。
+        //
+        // 計画確定（2026-08-05・裁定 Q23）。hi-fi が**保存とは別に**描く「検証」ボタンの後ろ側である。
+        // **中継するだけで、ここでは検証しない**——[[IADR-0040]] 決定 2 のとおり判断は後段に置く。
+        // 画面側で代用すると「検証は通ったのに保存で矛盾が出る」形になり、
+        // 計画が「**信頼できない検証ボタンは無いより悪い**」と名指しで禁じている。
+        //
+        // **矛盾は 200 ＋ `{ valid: false, errors }` で返る**（要求の失敗ではない）。
+        // 保存（`POST /policies`）の 400 とは別物であり、そちらは従来どおり透過する。
+        g.MapPost("/policies/validate", (IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
+            Proxy(f, h, HttpMethod.Post, "/authz/policies/validate", ct))
+            .WithName("BffAuthzValidatePolicy").Produces<ValidatePolicyResponse>();
+
         // 有効／無効の切替（削除せず一時停止）。
         g.MapPatch("/policies/{id:guid}/active", (Guid id, IHttpClientFactory f, HttpContext h, CancellationToken ct) =>
             Proxy(f, h, HttpMethod.Patch, $"/authz/policies/{id}/active", ct))
