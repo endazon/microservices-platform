@@ -98,7 +98,8 @@ public static class SearchBffEndpoints
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
-                // 後段不調も空配列へ縮退する（検索と同じ扱い。存在秘匿を崩さない）。
+                // **後段へ到達できないときだけ**空配列へ縮退する（検索と同じ扱い。存在秘匿を崩さない）。
+                // **後段が返した非 2xx は上で透過済み**である —— 障害を 200 空応答で隠さない。
                 return Results.Ok(new AttributeValuesResponse([]));
             }
         }).WithName("BffAttributeValues").Produces<AttributeValuesResponse>();

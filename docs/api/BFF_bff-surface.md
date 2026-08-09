@@ -203,6 +203,14 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | `/bff/datasources`・`/bff/conversion/jobs`（一覧） | **502** | 運用画面。「未登録」「ジョブ無し」と誤認させると重複登録・見落としを誘発する |
 | `/bff/analysis/ask/stream` | `event: error` の SSE イベント | ヘッダ送出済みで HTTP ステータスを変えられない |
 
+> **［2026-08-09 注記 / #540］「縮退」は後段への到達失敗を指す。後段の非 2xx はそのまま透過する。**
+> `/bff/search` と `/bff/attribute-values` はどちらも、`HttpRequestException` /
+> `TaskCanceledException`（**接続断・タイムアウト**）だけを空応答へ畳み、
+> 後段が返した非 2xx は `Results.StatusCode` で**そのまま返す**（実測）。
+> **「後段が失敗したら必ず 200 空応答になる」と読まないこと。** 後段が 500 を返せば 500 が出る。
+> deny-by-default が守るのは「**権限外の存在を示さない**」ことであって、
+> 後段の障害を利用者から隠すことではない。
+
 ### 4. 状態・種別の文字列を **enum にしない**
 
 `status` / `action` / `scope` / `sourceType` などの値は C# 側で `string` であり、値集合は `const` 群
