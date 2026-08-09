@@ -13,6 +13,8 @@ plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
 related_specs:
   - ../specs/20260809_issue-536_search-result-updated-at.md
+  - ../specs/20260809_issue-532_search-sort-order.md
+  - ../adr/IADR-0150_search-sort-after-retrieval.md
   - ../tests/FR-03_hybrid-search.md
   - ../screens/SC-02_search-results.md
   - ../adr/IADR-0149_search-result-updated-at-indexing.md

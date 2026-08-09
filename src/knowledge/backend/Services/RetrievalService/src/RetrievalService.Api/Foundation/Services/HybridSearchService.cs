@@ -33,18 +33,26 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         var candidateK = Math.Max(request.TopK * 4, request.TopK);
 
         // FR-03, SC-02, #531: 検索モード（3 値）で使う系統を選ぶ。未知・未指定は hybrid へ縮退する。
-        // 単系統のときは候補を広げる意味が無い（融合しないため）ので topK をそのまま使う。
         var mode = SearchModes.Normalize(request.Mode);
 
+        // FR-03, SC-02, #532: 並び順（2 値）。未知・未指定は既定（relevance）へ縮退する。
+        // **取得後に並べ替える**（IADR-0150 決定 1）——関連度が候補を決め、日時は表示順だけを決める。
+        var sort = SearchSorts.Normalize(request.SortBy);
+
+        // 単系統のときは候補を広げる意味が無い（融合しないため）ので topK をそのまま使う。
+        // **ただし日時順のときは広げる**（IADR-0150 決定 3）——並べ替える以上、候補が広いほど
+        // 「もっと新しい関連文書」を拾える。融合と同じ幅に揃える（同じ検索で 2 つの候補幅を持たない）。
+        var singleModeK = sort == SearchSorts.Updated ? candidateK : request.TopK;
+
         if (mode == SearchModes.Keyword)
-            return (await store.KeywordSearchAsync(request.Query, request.TopK, filters, ct))
-                .Take(request.TopK).ToList();
+            return Finish(await store.KeywordSearchAsync(request.Query, singleModeK, filters, ct),
+                sort, request.TopK);
 
         if (mode == SearchModes.Semantic)
         {
             var semanticVector = await embed.EmbedAsync(request.Query, ct);
-            return (await store.SearchAsync(semanticVector, request.TopK, filters, ct))
-                .Take(request.TopK).ToList();
+            return Finish(await store.SearchAsync(semanticVector, singleModeK, filters, ct),
+                sort, request.TopK);
         }
 
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
@@ -55,7 +63,29 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
 
         // FR-03: 順位ベースで両系統を統合（スコアのスケール差を正規化なしで吸収）
         var fused = ReciprocalRankFusion(vectorTask.Result, keywordTask.Result);
-        return fused.Take(request.TopK).ToList();
+        return Finish(fused, sort, request.TopK);
+    }
+
+    // FR-03, SC-02, #532: 並び順を適用して topK 件へ切る（IADR-0150 決定 1・3・4）。
+    //
+    // **relevance（既定）は取得順のまま**——現行の振る舞いを一切変えない。
+    // **updated は更新日時の降順**で、**日時を持たないチャンク（未再索引・IADR-0149 決定 3）は末尾**へ置く。
+    // 「新しい順」の先頭が日時不明で埋まらないようにするためであり、**DateTimeOffset.MinValue へ
+    // 倒さない**——倒すと比較子が嘘を持ち、「本当に古い文書」と区別できなくなる。
+    //
+    // **OrderByDescending は安定ソート**である（.NET の保証）。同着（同じ日時・日時なし同士）は
+    // 元の順序＝関連度の順を保つ。
+    internal static List<SearchResultDto> Finish(
+        List<SearchResultDto> results, string sort, int topK)
+    {
+        if (sort != SearchSorts.Updated)
+            return results.Take(topK).ToList();
+
+        return results
+            .OrderByDescending(r => r.UpdatedAt.HasValue)   // 日時なしを末尾へ（null-last を明示する）
+            .ThenByDescending(r => r.UpdatedAt ?? default)  // 日時ありの中で新しい順
+            .Take(topK)
+            .ToList();
     }
 
     // FR-05: 単値 AttributeFilters（FR-03 後方互換）と ABAC 多値 Scope を 1 本の allow-list へ統合。

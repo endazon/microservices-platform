@@ -47,7 +47,9 @@ public static class SearchBffEndpoints
                 // #531: 検索モードは利用者の指定をそのまま透過する（Scope と違い信頼性の問題が無い——
                 // モードは絞り込みの種類であって権限ではない）。未知値の縮退は RetrievalService 側が行う。
                 var searchResp = await retrievalClient.PostAsJsonAsync("/search",
-                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope, req.Mode), ct);
+                    // FR-03, SC-02（#531 / #532）: 検索モードと並び順は**利用者の指定をそのまま後段へ渡す**。
+                    // 縮退（未知値 → 既定）は RetrievalService が一箇所で行う（BFF で二重に正規化しない）。
+                    new SearchRequest(req.Query, topK, req.AttributeFilters, scope, req.Mode, req.SortBy), ct);
                 if (!searchResp.IsSuccessStatusCode)
                     return Results.StatusCode((int)searchResp.StatusCode);
 

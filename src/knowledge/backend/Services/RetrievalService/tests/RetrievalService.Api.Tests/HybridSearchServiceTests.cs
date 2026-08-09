@@ -144,12 +144,13 @@ public class HybridSearchServiceTests
 
     private static readonly AccessScope Granted = new([], true);
 
-    private static (HybridSearchService svc, RecordingVectorStore store, CountingEmbeddingService embed) NewService()
+    private static (HybridSearchService svc, RecordingVectorStore store, CountingEmbeddingService embed) NewService(
+        List<SearchResultDto>? vectorResults = null, List<SearchResultDto>? keywordResults = null)
     {
         var store = new RecordingVectorStore
         {
-            VectorResults = [Hit(Guid.NewGuid())],
-            KeywordResults = [Hit(Guid.NewGuid())],
+            VectorResults = vectorResults ?? [Hit(Guid.NewGuid())],
+            KeywordResults = keywordResults ?? [Hit(Guid.NewGuid())],
         };
         var embed = new CountingEmbeddingService();
         return (new HybridSearchService(store, embed), store, embed);
@@ -255,5 +256,135 @@ public class HybridSearchServiceTests
         SearchModes.Normalize(null).Should().Be(SearchModes.Hybrid);
         SearchModes.IsValid("semantic").Should().BeTrue();
         SearchModes.IsValid("fuzzy").Should().BeFalse();
+    }
+
+    // --- FR-03, SC-02, #532: 並び順（2 値）--------------------------------------
+
+    private static DateTimeOffset At(int month, int day) => new(2026, month, day, 0, 0, 0, TimeSpan.Zero);
+
+    // 既定（SortBy 未指定）は関連度順のまま＝**現行の振る舞いを一切変えない**（後方互換）。
+    // 取得順（＝関連度順）がそのまま返ることを、あえて日時の逆順に積んで確かめる。
+    [Fact]
+    public async Task Sort_DefaultsToRelevance_AndKeepsRetrievalOrder()
+    {
+        var old = Hit(Guid.NewGuid(), updatedAt: At(1, 1));
+        var recent = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
+        var (svc, _, _) = NewService(keywordResults: [old, recent]);
+
+        var results = await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Keyword));
+
+        results.Select(r => r.ChunkId).Should().Equal([old.ChunkId, recent.ChunkId],
+            "既定では取得順（関連度順）を並べ替えない");
+    }
+
+    // updated: 更新日時の降順になる（利用者裁定 Q5「更新日時の新しい順」）。
+    [Fact]
+    public async Task Sort_Updated_OrdersByUpdatedAtDescending()
+    {
+        var mid = Hit(Guid.NewGuid(), updatedAt: At(6, 1));
+        var oldest = Hit(Guid.NewGuid(), updatedAt: At(1, 1));
+        var newest = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
+        var (svc, _, _) = NewService(keywordResults: [mid, oldest, newest]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+
+        results.Select(r => r.ChunkId).Should().Equal(newest.ChunkId, mid.ChunkId, oldest.ChunkId);
+    }
+
+    // **日時を持たないチャンク（未再索引・IADR-0149 決定 3）は末尾**（IADR-0150 決定 4）。
+    // 「新しい順」の先頭が日時不明で埋まらないようにする。再索引で解消する一時状態を先頭に出さない。
+    [Fact]
+    public async Task Sort_Updated_PutsChunksWithoutDateLast()
+    {
+        var unknown = Hit(Guid.NewGuid());
+        var oldest = Hit(Guid.NewGuid(), updatedAt: At(1, 1));
+        var newest = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
+        var (svc, _, _) = NewService(keywordResults: [unknown, oldest, newest]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+
+        results.Select(r => r.ChunkId).Should().Equal([newest.ChunkId, oldest.ChunkId, unknown.ChunkId],
+            "日時なしは末尾。DateTimeOffset.MinValue 扱いにすると『とても古い文書』と区別できなくなる");
+    }
+
+    // 同着（同じ日時・日時なし同士）は**元の順序＝関連度の順**を保つ（安定ソート）。
+    [Fact]
+    public async Task Sort_Updated_IsStableForTies()
+    {
+        var same = At(6, 1);
+        var first = Hit(Guid.NewGuid(), updatedAt: same);
+        var second = Hit(Guid.NewGuid(), updatedAt: same);
+        var noDateFirst = Hit(Guid.NewGuid());
+        var noDateSecond = Hit(Guid.NewGuid());
+        var (svc, _, _) = NewService(keywordResults: [first, second, noDateFirst, noDateSecond]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+
+        results.Select(r => r.ChunkId).Should()
+            .Equal(first.ChunkId, second.ChunkId, noDateFirst.ChunkId, noDateSecond.ChunkId);
+    }
+
+    // 未知の値・空文字は既定（relevance）へ縮退する＝旧クライアント／誤入力で検索が壊れない。
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("unknown-sort")]
+    public async Task Sort_UnknownValue_FallsBackToRelevance(string? sort)
+    {
+        var old = Hit(Guid.NewGuid(), updatedAt: At(1, 1));
+        var recent = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
+        var (svc, _, _) = NewService(keywordResults: [old, recent]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, sort));
+
+        results.Select(r => r.ChunkId).Should().Equal(old.ChunkId, recent.ChunkId);
+    }
+
+    // 大文字小文字は問わない（SearchModes と同じ作法）。
+    [Fact]
+    public async Task Sort_IsCaseInsensitive()
+    {
+        var old = Hit(Guid.NewGuid(), updatedAt: At(1, 1));
+        var recent = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
+        var (svc, _, _) = NewService(keywordResults: [old, recent]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, "UPDATED"));
+
+        results.Select(r => r.ChunkId).Should().Equal(recent.ChunkId, old.ChunkId);
+    }
+
+    // **日時順のときは単系統でも候補を広げる**（IADR-0150 決定 3）。並べ替える以上、候補が広いほど
+    // 「もっと新しい関連文書」を拾える。融合と同じ幅（topK*4）に揃える。
+    [Fact]
+    public async Task Sort_Updated_WidensCandidatesEvenForSingleMode()
+    {
+        var (svc, store, _) = NewService();
+
+        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Keyword));
+        store.LastKeywordTopK.Should().Be(5, "関連度順なら単系統は広げない（従来どおり）");
+
+        await svc.SearchAsync(
+            new SearchRequest("q", 5, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+        store.LastKeywordTopK.Should().Be(20, "日時順は並べ替えるので候補を広く取る");
+    }
+
+    // 候補を広げても**返すのは topK 件**である（広げた分をそのまま返さない）。
+    [Fact]
+    public async Task Sort_Updated_StillReturnsOnlyTopK()
+    {
+        var hits = Enumerable.Range(1, 12)
+            .Select(i => Hit(Guid.NewGuid(), updatedAt: At(1, i))).ToList();
+        var (svc, _, _) = NewService(keywordResults: hits);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 3, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+
+        results.Should().HaveCount(3);
+        results[0].UpdatedAt.Should().Be(At(1, 12), "最も新しい 3 件が返る");
     }
 }

@@ -891,6 +891,12 @@
             "required": false,
             "position": 3
           },
+          "SortBy": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 5
+          },
           "TopK": {
             "source": "positional",
             "type": "int",
@@ -978,6 +984,21 @@
             "type": "DateTimeOffset?",
             "required": false,
             "position": 8
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.SearchSorts": {
+        "kind": "class",
+        "members": {
+          "Relevance": {
+            "source": "const",
+            "type": "string",
+            "value": "\"relevance\""
+          },
+          "Updated": {
+            "source": "const",
+            "type": "string",
+            "value": "\"updated\""
           }
         }
       },

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
+using System.Text.Json;
 using System.Net.Http.Json;
 
 namespace Platform.Bff.Tests;
@@ -46,6 +47,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
     public bool SearchScopeGranted { get; set; } = true;
+    // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
+    public string? LastSearchSortBy { get; private set; }
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
@@ -572,15 +575,26 @@ public class BffTestFactory : WebApplicationFactory<Program>
     }
 
     // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。
+    // FR-03, SC-02, #532: BFF が後段へ渡した並び順を観測できるようにする（縮退させず運ぶことの検証用）。
     private sealed class RetrievalStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            if (request.Content is not null)
+            {
+                var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(body);
+                owner.LastSearchSortBy = doc.RootElement.TryGetProperty("sortBy", out var sort)
+                    && sort.ValueKind == JsonValueKind.String
+                        ? sort.GetString()
+                        : null;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(owner.StubSearchResponse)
-            });
+            };
         }
     }
 

@@ -36,6 +36,22 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
             "後段が返す更新日時をそのまま運ぶ（BFF で時刻を作らない）");
     }
 
+    // FR-03, SC-02, #532: 並び順は**利用者の指定をそのまま後段へ渡す**（BFF で正規化しない）。
+    // 縮退（未知値 → 既定）は RetrievalService が一箇所で行う——2 か所で正規化すると規則が割れる。
+    [Theory]
+    [InlineData("updated")]
+    [InlineData("relevance")]
+    [InlineData("unknown-sort")]
+    public async Task PostSearch_ForwardsSortByToDownstream(string sortBy)
+    {
+        factory.SearchScopeGranted = true;
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5, sortBy });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory.LastSearchSortBy.Should().Be(sortBy, "BFF は縮退させずそのまま運ぶ");
+    }
+
     [Fact]
     public async Task PostSearch_WhenNotGranted_ReturnsEmpty_DenyByDefault()
     {

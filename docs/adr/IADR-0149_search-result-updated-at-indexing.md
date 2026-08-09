@@ -16,6 +16,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
 related_specs:
   - "../specs/20260809_issue-536_search-result-updated-at.md"
+  - "./IADR-0150_search-sort-after-retrieval.md"
   - "./IADR-0014_qdrant-attribute-payload-key.md"
   - "./IADR-0122_contract-schema-source-and-compat-gate.md"
   - "../screens/SC-02_search-results.md"
@@ -111,5 +112,9 @@ related_specs:
 
 - **#532**: 並び順 2 値（関連度〔既定〕／更新日時の新しい順）。本決定の索引項目を使う。
   `null` の順位づけは #532 の論点である。
-- Qdrant のペイロードインデックス（`updated_at`）の作成は、並び替えを実装する #532 の射程とする
-  （本 PR は値を載せるところまで）。
+- ~~Qdrant のペイロードインデックス（`updated_at`）の作成は、並び替えを実装する #532 の射程とする~~
+  —— **［2026-08-09 追記 / #532］作らないことになった**（[[IADR-0150]] 決定 5）。
+  **本項は「ストア側で並べる」ことを暗黙の前提にしていた。** #532 は
+  **取得後に並べ替える**方式を採ったため（Qdrant の `order_by` はスコアリングを置き換え、
+  クエリ語が順位に効かなくなる）、Qdrant は `updated_at` で絞りも並べもしない。
+  **前提が変わったので作らない** —— 使われないインデックスは書き込みコストと運用の説明責任だけを増やす。
