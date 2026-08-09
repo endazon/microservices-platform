@@ -26,7 +26,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         {
             ReplaceDbContext<DashboardDbContext>(services, _dbName);
 
-            // FR-10: 集計 (GET /dashboard/*) は AdminOnly を要求する。テストでは Keycloak/JWT に依存せず
+            // FR-10: 集計 (GET /dashboard/*) は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });

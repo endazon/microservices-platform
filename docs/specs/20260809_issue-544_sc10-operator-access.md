@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 運用ダッシュボード（SC-10）の閲覧を運用者へ広げる（#544）
 type: work-spec
-status: draft
+status: fixed
 related_ids:
   - FR-10
   - SC-10
@@ -31,7 +31,7 @@ related_specs:
 | 要求 | **FR-10** | 利用状況・検索傾向・回答品質の可視化 |
 | ユースケース | **UC-05** | 運用・管理 |
 
-**計画を正とする**（issue の明示）。裁定 **Q19 / Q28**、環流元 planning#198・#199。
+**計画を正とする**（issue の明示）。裁定 **Q19 / Q28**、環流元 planning#198・planning#199。
 
 **方向が #628 / #629 と逆である** —— あちらは「計画が狭く実装が広い」ので**狭めた**。
 本件は「**計画が広く実装が狭い**」ので**広げる**。同じ「計画を正とする」原則の適用である。
@@ -144,6 +144,74 @@ issue は「**節の運用者・システム管理者限定はそのまま維持
 **変異試験を行う** —— 広げる方向は「テストが通ってしまう」罠が逆向きに効く
 （**広げ忘れても既存テストは緑のまま**）。運用者で引くテストを足し、効くことを確かめる。
 
-## 検証記録（実測）
+## 実装中に決めたこと（仕様書からの差分）
 
-（実装後に記入する）
+### 1. 母集合は 6 箇所ではなく **14 箇所**だった（実装 6 ＋ 追随 8）
+
+§軸 5 の予告どおり実装後に引き直したところ、**認可そのもの以外に 8 件**が誤りになった。
+
+| # | 箇所 | 内容 |
+| --- | --- | --- |
+| 1 | `docs/api/openapi.yaml` | `description`（AdminOnly）と `403` の説明 → **`pnpm run codegen`** |
+| 2 | `docs/api/BFF_bff-surface.md` | `/bff/dashboard/summary` の認可欄 |
+| 3 | `docs/functional/FR-10_dashboard.md` | 口の一覧表 **4 行** |
+| 4 | `docs/tests/FR-10_dashboard.md` | T-08 / T-11 |
+| 5 | `docs/tests/SC-10_*` | **A2 を「差異の固定」から「一致の固定」へ反転**＋ A2-b を新設 |
+| 6 | `docs/screens/SC-10_*` | 計画との差異表・据え置きの根拠・未決事項 4 |
+| 7 | `docs/screens/SC-11_*` | 「SC-10 は BFF が `AdminOnly`」という**他画面からの参照** |
+| 8 | [[IADR-0129]] 決定 4 | 日付つき追記（決定は置換しない） |
+
+**テスト用の足場（`TestAuthHandler` / `BffTestFactory` / `TestWebApplicationFactory`）のコメントも
+`AdminOnly` と書いていた** —— `.cs` を走査対象に含めたので拾えた（規則 3。#646 の教訓）。
+
+### 2. ★ 走査語に当たらない箇所をテストが捕まえた
+
+**`Layout.test.tsx` の `shows the 構成ビューア (SC-11) link for platform-operator` が落ちた。**
+「運用者は AdminOnly の SC-10 は見えない」ことを**併せて**固定していたためである。
+
+**私の走査では引けなかった** —— この行は `dashboard` でも `AdminOnly` でもなく
+**`ダッシュボード`（リンクの表示名）**で書かれており、認可の語彙を含まない。
+
+**教訓は「走査語を増やす」ではない** —— 表示名まで含めると偽陽性が支配的になる。
+**この型は走査ではなくテストで捕まえるのが正しい**（実際そうなった）。
+本作業では走査 ＋ 全件テストの二段で押さえている。
+
+### 3. `| tail` が検査器の終了コードを隠していた
+
+`node scripts/check-cross-repo-refs.js 2>&1 | tail -1` は**パイプ最終段（`tail`）の終了コード**を返すため、
+**検査器が exit 1 でも成功に見えた**。実際 `docs/specs/20260809_issue-544_*.md:34` に
+列挙形の修飾漏れ（`planning#198・#199`）が 1 件あった。
+
+**出力を捨てずにファイルへ落として `$?` を見る**形へ改めて確認した。
+**同じ違反が `.cs` にもあった**（検査器は Markdown のみ走査するので素通りする）ので、そちらも揃えた。
+
+## 検証記録（実測。base = `6447062`）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build`（両ユニット） | Build succeeded・0 Error |
+| `dotnet test Platform.Bff.Tests` | **196 → 197 Passed** / 1 Skipped |
+| `dotnet test DashboardService.Api.Tests` | **10 → 16 Passed** |
+| `dotnet test knowledge`（全体） | Failed 0 |
+| `dotnet format --verify-no-changes`（両ユニット） | exit 0 |
+| `pnpm typecheck` / `lint`（**0 errors**）/ `format:check` / `build` | すべて OK |
+| `pnpm test:coverage` | **623 → 624 Passed** / 63 files |
+| `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-contract-schema` / `check-test-traceability` / `check-i18n-catalogs` / `check-static-egress` | すべて OK |
+| `check-chunk-budget` | 584.61 → **584.64 kB** へ更新（+0.02 kB） |
+
+### ★ 変異試験（**両方向**）
+
+**「広げる」作業は罠が逆向きに効く** —— 広げ忘れても既存テストは緑のままである。
+**広げすぎも検査できなければ意味が無い**ので、両方向で確かめた。
+
+| 変異 | 結果 |
+| --- | --- |
+| BFF を `AdminOnly` へ戻す（**広げ忘れ**の再現） | **Failed 1** —— `GetSummary_AsOperator_IsAllowed` **だけ** |
+| BFF を `RequireAuthorization()` にする（**広げすぎ**の再現） | **Failed 2** —— `GetSummary_WithoutPrivilegedRole_Returns403` ＋ 既存の 403 テスト |
+| 戻す | **Failed 0**（197 Passed） |
+
+## 申し送り
+
+- **#543（人手補正 API）は本 PR に含めない。** 別資源であり、[[IADR-0116]] 規約 1（1 issue = 1 PR）に従う。
+  同 issue は「**`IADR-0042` の表題を実体へ合わせるか、後継 IADR を起こすか**」という
+  **決定待ちの問い**を含むので、着手時にそこから扱う。

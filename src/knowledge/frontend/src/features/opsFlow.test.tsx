@@ -65,9 +65,15 @@ describe('operations flow (SC-10 → SC-11)', () => {
     expect(await screen.findByText('コミット a3f81c2')).toBeInTheDocument();
   });
 
-  // 運用者は SC-11 へ直接到達できるが、SC-10 は存在しないものとして扱われる
-  // （IADR-0129 決定 4。閲覧ロールの差異は環流の提案 7 で裁定を仰いでいる）。
-  it('lets an operator reach SC-11 directly while SC-10 stays hidden', async () => {
+  // ★ #544: 運用者は **SC-10 にも SC-11 にも**直接到達できる。
+  //
+  // **従前は SC-10 だけが存在しないものとして扱われていた**（[[IADR-0129]] 決定 4）——
+  // データ源と後段が `AdminOnly` のままだったので、画面だけ開くと必ず 403 になるためである。
+  // **#544 が 3 層すべてを広げたので据え置きは解けた**（計画 §SC-10 が正。裁定 Q19 / Q28）。
+  //
+  // **このテストは削除ではなく反転させた** —— [[IADR-0129]] 決定 4 が
+  // 「なぜ隠していたか」を記録している以上、**その理由が消えたことを示す証跡が要る**。
+  it('lets an operator reach both SC-10 and SC-11 directly', async () => {
     const operatorAtConfig = await renderUnitRoute(
       (shell) => [createSc10OperationsRoute(shell), createSc11ConfigRoute(shell)],
       { initialEntry: '/admin/config-viewer', roles: ['platform-operator'] },
@@ -79,8 +85,6 @@ describe('operations flow (SC-10 → SC-11)', () => {
       (shell) => [createSc10OperationsRoute(shell), createSc11ConfigRoute(shell)],
       { initialEntry: '/admin/ops', roles: ['platform-operator'] },
     );
-    expect(
-      await screen.findByRole('heading', { name: '見つかりませんでした' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
   });
 });

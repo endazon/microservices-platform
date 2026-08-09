@@ -45,9 +45,9 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 | メソッド | パス | 認可 | 説明 |
 | --- | --- | --- | --- |
 | POST | `/dashboard/events` | 認証済み（`RequireAuthorization`。管理者限定にはしない） | 利用イベント記録。`EventType` 必須（`search`/`answer`）。201 |
-| GET | `/dashboard/usage?days=N` | AdminOnly | 日次利用状況（日付 × 種別の件数） |
-| GET | `/dashboard/trends?days=N&top=M` | AdminOnly | 検索傾向（検索語 × 件数の上位） |
-| GET | `/dashboard/summary?days=N&top=M` | AdminOnly | 利用側サマリ（総件数・利用状況・検索傾向） |
+| GET | `/dashboard/usage?days=N` | admin ＋ operator（**#544**） | 日次利用状況（日付 × 種別の件数） |
+| GET | `/dashboard/trends?days=N&top=M` | admin ＋ operator（**#544**） | 検索傾向（検索語 × 件数の上位） |
+| GET | `/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | 利用側サマリ（総件数・利用状況・検索傾向） |
 
 - `days`：既定 7・上限 90 にクランプ。`top`：既定 10・上限 50 にクランプ（無制限集計を防ぐ）。
 - 集計は UTC 当日 00:00 を含む起点から現在まで。日付は UTC で丸める。
@@ -56,7 +56,7 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 | メソッド | パス | 認可 | 説明 |
 | --- | --- | --- | --- |
-| GET | `/bff/dashboard/summary?days=N&top=M` | AdminOnly | DashboardService の利用側サマリと FeedbackService の回答品質を集約し `DashboardSummaryDto` を返す |
+| GET | `/bff/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | DashboardService の利用側サマリと FeedbackService の回答品質を集約し `DashboardSummaryDto` を返す |
 
 - BFF は DashboardService（AdminOnly）へ `Authorization` ヘッダを伝播する。
 - 利用側サマリと回答品質は並行取得する（互いに独立）。後段が非 2xx ならそのステータスを透過する。

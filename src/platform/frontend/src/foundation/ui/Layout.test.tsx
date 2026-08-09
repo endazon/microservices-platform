@@ -65,18 +65,21 @@ describe('Layout navigation (role-gated)', () => {
     expect(await within(nav()).findByRole('link', { name: 'ダッシュボード' })).toBeInTheDocument();
   });
 
-  it('hides the ダッシュボード link for users without the admin role (existence hidden)', async () => {
+  it('hides the ダッシュボード link for users without a privileged role (existence hidden)', async () => {
     await renderLayout(['user']);
     await within(nav()).findByRole('link', { name: '検索・質問' });
     expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
   });
 
   // SC-11 #140: 構成ビューアは ConfigViewer（管理者・運用者）のみメニュー表示（存在秘匿）。
-  it('shows the 構成ビューア (SC-11) link for platform-operator', async () => {
+  //
+  // **［2026-08-09 / #544］運用者は SC-10（ダッシュボード）も見える。**
+  // 従前は「運用者は AdminOnly の SC-10 は見えない」ことを併せて固定していたが、
+  // 計画 §SC-10 を正として 3 層を広げた（裁定 Q19 / Q28。[[IADR-0129]] 決定 4 の追記）。
+  it('shows both the 構成ビューア (SC-11) and ダッシュボード (SC-10) links for platform-operator', async () => {
     await renderLayout(['platform-operator']);
     expect(await within(nav()).findByRole('link', { name: '構成ビューア' })).toBeInTheDocument();
-    // 運用者は AdminOnly の SC-10（ダッシュボード）は見えない。
-    expect(within(nav()).queryByRole('link', { name: 'ダッシュボード' })).not.toBeInTheDocument();
+    expect(within(nav()).getByRole('link', { name: 'ダッシュボード' })).toBeInTheDocument();
   });
 
   it('hides the 構成ビューア link for non-privileged users (existence hidden)', async () => {

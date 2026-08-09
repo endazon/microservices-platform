@@ -141,6 +141,12 @@ FR-17 を明示しており、画面一覧（`01_screens.md:55`）も SC-09 の�
   （`docs/screens/SC-09_admin-abac-settings.md` / `SC-10_operations-dashboard.md`）。
   **二値判定の外側にある部分未実装（#3 の条件式・#6 の指標の意味・#8 のドリフト例の粒度）も
   同じ表の備考に併記した**（#8 は `docs/screens/SC-11_configuration-viewer.md` §hi-fi 対応 #14）。
+> **［2026-08-09 追記］提案 7 は「運用者も含む」と裁定され（Q19 / Q28）、#544 で実装した。**
+> 下の (a)〜(d) の手順は**予告どおりすべて同時に実施した** ——
+> (a) `/bff/dashboard/summary`、(b) `DashboardService` の集計 3 口、
+> (c) `RequireRole` ＋ `requiresAnyRole`、(d) テスト仕様書 SC-10 の A2 ＋ `opsFlow.test.tsx` の 2 本目。
+> **参照専用であり、利用イベントの記録（`POST /dashboard/events`）は触っていない。**
+
 - 提案 7 が「運用者も含む」と裁定された場合、実装側は
   (a) `/bff/dashboard/summary` の認可を `ConfigViewer` 相当へ、(b) 後段 `DashboardService` の認可も同様に、
   (c) 画面の `RequireRole` とナビの `requiresAnyRole` を、(d) テスト仕様書 SC-10 の A2 と

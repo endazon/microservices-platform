@@ -7,10 +7,17 @@ import { PlatformRole } from '@foundation/auth/roles';
 
 // SC-10, UC-05, FR-10: 運用ダッシュボード（05_screens: ルート /admin/ops）。
 //
-// 画面への到達は **platform-admin のみ**。**計画 §SC-10 は「運用者・管理者ロール限定」と定めるが、
-// データ源 /bff/dashboard/summary も後段 DashboardService も AdminOnly** であり、画面だけ広げると
-// 運用者に「開くと必ず 403 になる画面」を見せることになる（IADR-0129 決定 4）。
-// 是正の向き（計画の改訂か実装の是正か）は計画側の裁定を要するため据え置き、環流記録の提案 7 で問う。
+// 画面への到達は **platform-admin または platform-operator** である。
+//
+// **［2026-08-09 / #544］計画を正として広げた。** 計画 §SC-10 は「運用者・管理者ロール限定」
+// （モックの「運用」バッジ準拠）と定めており、**実装だけが `platform-admin` のみに狭かった**
+// （裁定 Q19 / Q28。環流記録の提案 7 が問うていた差異である）。
+//
+// **画面だけを広げてはいない** —— データ源 `/bff/dashboard/summary` と後段 `DashboardService` の
+// 照会 3 口も同時に広げた（[[IADR-0044]] の多層防御）。片側だけだと運用者に
+// 「開くと必ず 403 になる画面」を見せることになる（[[IADR-0129]] 決定 4 が警告した形）。
+//
+// **参照専用である。** 利用イベントの記録（`POST /dashboard/events`）は触っていない。
 //
 // 権限外は RequireRole が NotFound を描画して画面の存在を示さない（存在秘匿。IADR-0009 / IADR-0035）。
 // 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
@@ -33,7 +40,7 @@ export const createSc10OperationsRoute = (shell: ShellRoute) =>
     wrapInSuspense: true,
     component: function GuardedRoute() {
       return (
-        <RequireRole anyOf={[PlatformRole.Admin]}>
+        <RequireRole anyOf={[PlatformRole.Admin, PlatformRole.Operator]}>
           <OperationsDashboardPage />
         </RequireRole>
       );
@@ -48,5 +55,5 @@ export const sc10OperationsNav: PlanNavItem = {
   label: msg`ダッシュボード`,
   to: '/admin/ops',
   group: 'ops',
-  requiresAnyRole: [PlatformRole.Admin],
+  requiresAnyRole: [PlatformRole.Admin, PlatformRole.Operator],
 };

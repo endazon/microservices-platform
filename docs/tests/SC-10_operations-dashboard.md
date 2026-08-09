@@ -94,14 +94,19 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
 | A1 | 許可 | `platform-admin` は開ける |
-| A2 | **存在秘匿** | `platform-operator` と一般利用者は **`NotFound`**。**BFF を呼ばない** |
+| A2 | **許可**（**#544**） | **`platform-operator` も開ける**（計画 §SC-10。裁定 Q19 / Q28。従前は `NotFound` だった） |
+| A2-b | **存在秘匿** | **一般利用者**は **`NotFound`**。**BFF を呼ばない**（**広げすぎない**の側） |
 | A3 | **markup 一致** | 権限による秘匿の描画が `foundation/ui/NotFound`（＝不在）と**同じ markup**（#490 の作法） |
-| A4 | ナビ | `requiresAnyRole: [platform-admin]`・`group: 'ops'` |
+| A4 | ナビ | `requiresAnyRole: [platform-admin, platform-operator]`・`group: 'ops'`（**#544**。ルートゲートと揃える） |
 
-> **A2 は計画との差異を固定するテストである。** 計画 §SC-10 は「運用者・管理者ロール限定」と定めるが、
-> データ源 `/bff/dashboard/summary` と後段 `DashboardService` がともに `AdminOnly` であるため
-> 管理者のみに据え置いた（[[IADR-0129]] 決定 4）。**裁定は環流記録の提案 7**。
-> 裁定で運用者へ広げるときは、A2 と `opsFlow.test.tsx` の 2 本目を同時に書き換える。
+> **［2026-08-09 / #544］A2 は「差異の固定」から「一致の固定」へ反転した。**
+> 従前は計画との差異（計画=運用者・管理者／実装=管理者のみ）を固定していたが、
+> **裁定 Q19 / Q28 で計画が正となり、3 層を同時に広げて一致させた**（[[IADR-0129]] 決定 4 の追記）。
+> 予告どおり `opsFlow.test.tsx` の 2 本目も同時に反転してある
+> （`lets an operator reach both SC-10 and SC-11 directly`）。
+>
+> **A2-b を対で置いたのは、「広げる」作業が検査にならないためである** ——
+> 権限を全開にしても A2 は緑のまま通る（変異試験で確認した）。
 
 ## 純関数（`opsTools.test.ts`）
 
@@ -169,8 +174,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 ## 未決事項
 
-- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）と閲覧ロールの差異は
+- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）は
   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+  **閲覧ロールの差異（提案 7）は [2026-08-09 / #544] で解決した**（計画が正。3 層を広げて一致）。
 - ナレッジ健全性節は [[IADR-0119]] の保留解除待ち。
   **［2026-08-07 / #586］ADR-0033・0034・0035 は `Accepted` へ移り保留は解除された**
   （planning `3e58b97` = PR planning#244〔裁定依頼 planning#237〕）。**待っていた条件は成立している。**

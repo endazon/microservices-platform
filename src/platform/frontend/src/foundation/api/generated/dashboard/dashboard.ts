@@ -87,7 +87,7 @@ export const getBffDashboardSummaryUrl = (params?: BffDashboardSummaryParams,) =
 /**
  * DashboardService（利用状況・検索傾向）と FeedbackService（回答品質）を 1 応答へ集約する。
  * 利用状況と満足率の期間の起点を揃えるため、有効な days を BFF で確定し双方へ同じ値を渡す。
- * 管理者ロール（AdminOnly）に限定する。
+ * **管理者・運用者ロール**に限定する（計画 §SC-10。**［#544］従前は管理者のみだった**）。
  * @summary FR-10, UC-05: ダッシュボードサマリ（BFF 集約）
  */
 export const bffDashboardSummary = async (params?: BffDashboardSummaryParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffDashboardSummaryResponse> => {

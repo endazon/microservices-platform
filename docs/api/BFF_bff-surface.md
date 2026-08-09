@@ -116,7 +116,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/analysis/analyze` | 同上 | FR-07 / UC-02 / SC-08 | `useBffAnalysisAnalyze` |
 | POST | `/bff/feedback` | **端点認可なし**（**計画は認証必須＝無認証 401。是正は #521**。下記注） | FR-08 / UC-01 / SC-01 | `useBffSubmitFeedback` |
 | GET | `/bff/feedback/stats` | **端点認可なし**（**計画は運用者・管理者のみ＝権限外 403。是正は #521**。下記注） | FR-08 / SC-10 | `useBffFeedbackStats` |
-| GET | `/bff/dashboard/summary` | **admin** | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
+| GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画 §SC-10「運用者・管理者ロール限定」。従前は admin のみ） | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | FR-06 / SC-05 | `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentCreate` |
 | GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / SC-03 | `useBffDocumentDetail` |

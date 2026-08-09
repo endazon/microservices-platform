@@ -21,7 +21,13 @@ public static class DashboardBffEndpoints
         var g = app.MapGroup("/bff/dashboard").WithTags("Dashboard BFF");
 
         // FR-10: 利用状況・検索傾向・回答品質を 1 つのサマリに集約して返す。
-        // 運用・分析向けの管理画面のため、管理者ロールに限定する。
+        // FR-10, SC-10（#544）: **閲覧は管理者・運用者**である。計画 §SC-10 は
+        // 「運用者・管理者ロール限定」（モックの「運用」バッジ準拠）と定めており、
+        // **実装だけが `platform-admin` のみに狭かった**（裁定 Q19 / Q28。環流 planning#198・planning#199）。
+        // **参照専用であり、書き込み権限を広げるものではない**——利用イベントの記録
+        // （`POST /dashboard/events`）は本作業で触らない。
+        // **後段（`DashboardEndpoints`）にも同じ範囲を置いてある**（[[IADR-0044]] の多層防御）——
+        // 片側だけだと「BFF 迂回で通る」か「画面だけ 403 になる」のどちらかが起きる。
         g.MapGet("/summary", async (
             int? days,
             int? top,
@@ -68,7 +74,9 @@ public static class DashboardBffEndpoints
                 quality);
             return Results.Ok(summary);
         }).WithName("BffDashboardSummary")
-          .RequireAuthorization(PlatformAuthPolicies.AdminOnly)
+          .RequireAuthorization(p => p.RequireRole(
+              PlatformAuthPolicies.AdminRole,
+              PlatformAuthPolicies.OperatorRole))
           .Produces<DashboardSummaryDto>();
 
         return app;

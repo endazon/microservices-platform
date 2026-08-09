@@ -37,10 +37,10 @@ related_specs:
 | T-05 | DashboardService | 同一語×3・別語×1 → 検索傾向 | 件数降順、先頭が該当語（count=3） |
 | T-06 | DashboardService | `Foo`/` foo `/`FOO` → 検索傾向 | 1 語 `foo`（count=3、正規化） |
 | T-07 | DashboardService | サマリ集約 | 総件数・利用状況・検索傾向が整合 |
-| T-08 | DashboardService | 非管理ロールで `/dashboard/usage` | 403（AdminOnly） |
+| T-08 | DashboardService | **管理系ロール以外**で `/dashboard/{usage,trends,summary}` | 403（**#544** で名称と趣旨を実態へ）／**運用者は 200**（`Aggregates_AsOperator_AreAllowed`） |
 | T-09 | DashboardService | 非管理ロールで `POST /dashboard/events` | 201（記録は開放） |
 | T-10 | BFF | `/bff/dashboard/summary` 集約 | 利用状況・検索傾向・回答品質を集約して返す |
-| T-11 | BFF | 非管理ロールで `/bff/dashboard/summary` | 403（AdminOnly） |
+| T-11 | BFF | **管理系ロール以外**で `/bff/dashboard/summary` | 403（**#544** で名称と趣旨を実態へ）／**運用者は 200**（`GetSummary_AsOperator_IsAllowed`） |
 | T-12 | BFF | DashboardService が 5xx | 後段ステータスを透過（500） |
 | T-13 | BFF | FeedbackService（満足率）が 5xx | 後段ステータスを透過（503） |
 | T-14 | BFF | 後段が 2xx でも本文が null | 502（BadGateway） |
