@@ -26,9 +26,10 @@ import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 // 本画面は AI 回答を一切呼ばない。各件から SC-03（文書詳細）へ内部遷移する。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-02_search-results.md §hi-fi モックアップとの対応）:
-//   検索モード切替（キーワード｜意味）・並び順。いずれも検索 API / DTO に該当の指定軸が無く、
-//   UI だけ置くと「押しても結果が変わらない操作」になる
-//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定済み）。
+//   - **検索モード切替（ハイブリッド｜キーワード｜意味）**: **契約は #531 で揃った**
+//     （`SearchRequest.Mode` の 3 値・裁定 Q4）。**切替 UI が未実装**なので画面には出ていない。
+//   - **並び順（関連度｜更新日時の新しい順）**: 契約に指定軸が無い（裁定 Q5・**#532 が引き受ける**）。
+//   もとの記録は feedback/20260804_sc01-03-bff-contract-gaps.md（planning#197 で裁定済み）。
 //   **［2026-08-09 / #536］更新日時列は実装した。** 契約（`SearchResultDto.updatedAt`）が
 //   裁定 Q6 を受けて日時を持ち、索引（Qdrant のペイロード）へも取り込むようにしたため（[[IADR-0149]]）。
 //   **並び順（#532）は本 issue の射程外**であり、この列の値をソートキーに使う。
