@@ -263,6 +263,10 @@ msgstr "All"
 msgid "ソース"
 msgstr "Source"
 
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
+msgid "ソースの登録・無効化は管理者のみ実行できます"
+msgstr "Only administrators can register or disable sources"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "タイトル"

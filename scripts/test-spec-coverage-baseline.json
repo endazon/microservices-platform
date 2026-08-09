@@ -93,6 +93,7 @@
     ],
     "docs/tests/SC-06_datasource-management.md": [
       "BffDataSourceEndpointTests",
+      "DataSourceAuthorizationTests",
       "SyncScheduleTests"
     ],
     "docs/tests/SC-07_conversion-jobs.md": [

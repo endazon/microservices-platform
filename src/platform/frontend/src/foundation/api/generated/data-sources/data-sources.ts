@@ -197,7 +197,9 @@ export const getBffDataSourceCreateUrl = () => {
 
 /**
  * FR-05: `defaultAttributes` 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する。
- * @summary FR-01, UC-04, SC-06: データソース登録（管理者・運用者のみ）
+ * **登録は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
+ * 従前は運用者にも開いていた）。
+ * @summary FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）
  */
 export const bffDataSourceCreate = async (createDataSourceRequest: CreateDataSourceRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffDataSourceCreateResponse> => {
 
@@ -246,7 +248,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDataSourceCreateMutationError = void
 
     /**
- * @summary FR-01, UC-04, SC-06: データソース登録（管理者・運用者のみ）
+ * @summary FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）
  */
 export const useBffDataSourceCreate = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceCreate>>, TError,{data: CreateDataSourceRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -619,7 +621,9 @@ export const getBffDataSourceDeleteUrl = (id: string,) => {
 
 /**
  * 後段は実体を消さず status を `disabled` にする（`DataSource.Disable()`）。
- * @summary FR-01, SC-06: データソースの無効化（論理削除）
+ * **無効化は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
+ * 従前は運用者にも開いていた）。
+ * @summary FR-01, SC-06: データソースの無効化（論理削除・**管理者のみ**）
  */
 export const bffDataSourceDelete = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDataSourceDeleteResponse> => {
 
@@ -668,7 +672,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDataSourceDeleteMutationError = void
 
     /**
- * @summary FR-01, SC-06: データソースの無効化（論理削除）
+ * @summary FR-01, SC-06: データソースの無効化（論理削除・**管理者のみ**）
  */
 export const useBffDataSourceDelete = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceDelete>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -721,7 +725,10 @@ export const getBffDataSourceSyncUrl = (id: string,) => {
  * IADR-0051: 実コネクタ経由で原本を取得・格納し `RawDocumentFetched` を発行する。
  * 未登録の SourceType は縮退する（連携件数 0。5xx にしない）。
  * 増分 watermark（`lastSyncedAt`）の前進は完全成功時のみ行う（失敗時は進めず次回再試行）。
- * @summary FR-01, UC-04, SC-06: 手動同期トリガー
+ * **手動同期は破壊的操作に含めない**（planning#299 で裁定・2026-08-09）——外部システムへ接続して
+ * 取り込みを走らせるが既存データを壊さないためであり、**運用者が異常に気づいたその場で
+ * 再同期して一次対応できること**を優先する。**登録・無効化（管理者限定）と同じに扱わないこと。**
+ * @summary FR-01, UC-04, SC-06: 手動同期トリガー（管理者・運用者）
  */
 export const bffDataSourceSync = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDataSourceSyncResponse> => {
 
@@ -770,7 +777,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDataSourceSyncMutationError = void
 
     /**
- * @summary FR-01, UC-04, SC-06: 手動同期トリガー
+ * @summary FR-01, UC-04, SC-06: 手動同期トリガー（管理者・運用者）
  */
 export const useBffDataSourceSync = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDataSourceSync>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}

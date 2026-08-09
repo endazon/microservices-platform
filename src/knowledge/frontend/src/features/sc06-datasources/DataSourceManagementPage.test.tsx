@@ -300,6 +300,41 @@ describe('DataSourceManagementPage (SC-06)', () => {
     expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
+  // FR-01, UC-04, SC-06（#628）: 計画 §SC-06「**登録・更新・無効化は管理者限定**」（裁定 Q19）。
+  // #502 が確立した規則——**押しても結果が変わらないボタンを置かない**——に従い、運用者へは
+  // 登録・無効化を出さない。**理由を書いて消す**（無言で消すと「登録できない画面」に見え、
+  // 権限の問題と状態の問題を区別できない。[[IADR-0127]] 決定 1）。
+  it('hides the create and disable actions from an operator, with a reason', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
+    await renderPage(['platform-operator']);
+
+    expect(await screen.findByText('規程集')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '＋ ソース登録' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '無効化' })).not.toBeInTheDocument();
+    expect(screen.getByText('ソースの登録・無効化は管理者のみ実行できます')).toBeInTheDocument();
+  });
+
+  // planning#299（2026-08-09 裁定）: **手動同期は破壊的操作に含めない。**運用者にも出したままにする——
+  // 運用者が SC-10 で異常に気づいたその場で再同期して一次対応できることを優先する。
+  // **閲覧を狭めないこと**（一覧が読めること）も対で固定する。
+  it('keeps the list and the manual sync action available to an operator', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE, DISABLED_SOURCE]));
+    await renderPage(['platform-operator']);
+
+    expect(await screen.findAllByRole('button', { name: '手動同期' })).toHaveLength(2);
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  // 狭めすぎていないこと: 管理者には 3 つとも出る。
+  it('shows create, sync, and disable to an administrator', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
+    await renderPage(['platform-admin']);
+
+    expect(await screen.findByRole('button', { name: '＋ ソース登録' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '手動同期' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '無効化' })).toBeInTheDocument();
+  });
+
   // 導線: 計画の遷移図 SC06 → SC07。
   it('links to the conversion jobs screen (SC-07)', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([]));

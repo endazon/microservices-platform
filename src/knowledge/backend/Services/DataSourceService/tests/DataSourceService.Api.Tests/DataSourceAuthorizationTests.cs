@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 
 namespace DataSourceService.Api.Tests;
@@ -65,6 +66,69 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
         // 運用者は BFF ゲート（IADR-0039）と同様に許可される。
         var client = ClientAs("platform-operator");
         (await client.GetAsync("/datasources")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // FR-01, SC-06（#628）: **登録は管理者限定**である（計画 §SC-06・裁定 Q19「破壊的操作は管理者限定」）。
+    // 従前はグループ既定（admin + operator）のままで、計画より広かった。
+    [Fact]
+    public async Task Create_OperatorRole_Returns403()
+    {
+        var client = ClientAs("platform-operator");
+        var resp = await client.PostAsJsonAsync("/datasources", new
+        {
+            name = "fs",
+            sourceType = "filesystem",
+            connectionUri = "smb://share/docs",
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // FR-01, SC-06（#628）: **無効化（論理削除）も管理者限定**である。
+    [Fact]
+    public async Task Delete_OperatorRole_Returns403()
+    {
+        var client = ClientAs("platform-operator");
+        (await client.DeleteAsync($"/datasources/{Guid.NewGuid()}"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // FR-01, UC-04, SC-06（#628 / planning#299・2026-08-09）: **手動同期は破壊的操作に含めない。**
+    // 運用者に開いたままであることを固定する——登録・無効化を狭めた勢いで一緒に絞ると、
+    // 「運用者が異常に気づいたその場で再同期して一次対応する」という計画の裁定を壊す。
+    // 対象が存在しないので 404 だが、**403 ではない**ことが認可を通過した証拠になる。
+    [Fact]
+    public async Task Sync_OperatorRole_IsAllowed()
+    {
+        var client = ClientAs("platform-operator");
+        var resp = await client.PostAsync($"/datasources/{Guid.NewGuid()}/sync", content: null);
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // FR-01, SC-06（#628）: 個別取得も運用者に開いたままである（**閲覧を狭めない**）。
+    [Fact]
+    public async Task GetById_OperatorRole_IsAllowed()
+    {
+        var client = ClientAs("platform-operator");
+        (await client.GetAsync($"/datasources/{Guid.NewGuid()}"))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // FR-01, SC-06（#628）: 管理者は登録・無効化を従来どおり実行できる（狭めすぎていないこと）。
+    [Fact]
+    public async Task CreateAndDelete_AdminRole_IsAllowed()
+    {
+        var client = ClientAs("platform-admin");
+        var created = await client.PostAsJsonAsync("/datasources", new
+        {
+            name = "admin-only-fs",
+            sourceType = "filesystem",
+            connectionUri = "smb://share/admin",
+        });
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var body = await created.Content.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+        var id = body!["id"].GetGuid();
+        (await client.DeleteAsync($"/datasources/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     // FR-01, SC-06（Q16 / #534）: **更新は管理者限定**である（計画 §SC-06「登録・更新・無効化は管理者限定」）。

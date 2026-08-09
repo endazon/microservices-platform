@@ -12,7 +12,7 @@ related_ids:
   - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -56,6 +56,27 @@ SC-06 はデータソースの登録・一覧・同期・無効化を行う運�
    > ——ここで併せて絞ると裁定を待たずに実装が先に答えを出すためである（[[IADR-0128]] 決定 2）。
    > 据え置きは `GetList_AsOperator_IsAllowed` / `GetById_AsOperator_IsAllowed` で回帰ガードしている。
    > **本 IADR は裁定まで `Accepted` のまま有効**であり、[[IADR-0127]] / [[IADR-0128]] は本 IADR を置換しない。
+
+   > **［2026-08-09 追記 / #628］上の「裁定待ち」は解消した。本決定 1 は閲覧について計画と一致し、
+   > 書き込みについては計画が正である。**
+   >
+   > planning#198 提案 8 の裁定（**Q19**・2026-08-05 確定）は
+   > 「**閲覧は管理者・運用者に開く。破壊的操作は管理者限定を維持する**」であり、
+   > **計画側が改訂されて本決定 1 の閲覧範囲（admin **または** operator）を採った。**
+   > すなわち割れていたのは閲覧ではなく**書き込み**であった。
+   >
+   > - **閲覧**（`GET /datasources` 系・`GET /bff/conversion/jobs` 系・SC-05 の照会）:
+   >   **本決定 1 のまま有効**である。上の追記が「据え置き」と呼んでいたものは、裁定によって
+   >   **据え置きではなく確定**になった。回帰ガード（`GetList_AsOperator_IsAllowed` 等）もそのまま活きる。
+   > - **書き込み**（登録・更新・無効化）: **計画が正であり、実装を狭めた。**
+   >   `POST /datasources` と `DELETE /datasources/{id}` は BFF・後段の両方で `AdminOnly` を積む
+   >   （[[IADR-0128]] 決定 1 と同じ形・[[IADR-0044]] の多層防御）。`PUT` / `PATCH` は #534 が既に同形で作っている。
+   > - **手動同期**（`POST /datasources/{id}/sync`）: **破壊的操作に含めない**（planning#299・2026-08-09 裁定）。
+   >   admin ＋ operator のままであり、**現行実装を追認したものである**。
+   >
+   > **SC-05 の文書書き込み（`POST` / `PUT` / `PATCH` / `DELETE` / `publish` / `archive`）は
+   > 同型の逸脱が残っている**（グループ既定 admin ＋ operator のまま）。#628 の射程外であり、
+   > **#629 として起票した**（[[IADR-0116]] 規約 4）。
 2. **サーバ側（BFF）を実効境界とする。** `/bff/datasources/*` はグループ全体を `RequireRole(platform-admin, platform-operator)` で保護する（インラインポリシー。共有 `AuthExtensions` に新ポリシーを追加せず、BFF ローカルに宣言してサービス横断の副作用を避ける）。フロントは `RequireRole`（[[IADR-0035]]）でルート／ナビを出し分け、権限外は NotFound を描画して**画面の存在を示さない**（UI は表示制御専用）。
 3. **権限外は 403（無認証は 401）**とする。データソースは文書のような「存在自体の秘匿」対象ではなく（機密文書のタイトルが漏れる懸念が主眼の [[IADR-0009]] とは性質が異なる）、管理 API としては標準的な 403/401 が適切。画面の存在秘匿はフロントの `RequireRole`→NotFound で担保する。
 

@@ -56,6 +56,9 @@ public static class DataSourceBffEndpoints
         }).WithName("BffDataSourceGet").Produces<DataSourceDto>();
 
         // 登録（FR-01: 機密区分の既定属性はサービス側でフェイルセーフ補完される）
+        // SC-06（#628）: **管理者限定**（計画 §SC-06「登録・更新・無効化は管理者限定」）。
+        // 後段（DataSourceService）にも同じ制限を積む多層防御である（[[IADR-0044]]）——
+        // 片側だけだと BFF 迂回で通る／画面だけ 403 になる。
         g.MapPost("/", async (CreateDataSourceRequest req, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
@@ -67,9 +70,13 @@ public static class DataSourceBffEndpoints
             return created is null
                 ? Results.StatusCode(StatusCodes.Status502BadGateway)
                 : Results.Created($"/bff/datasources/{created.Id}", created);
-        }).WithName("BffDataSourceCreate").Produces<DataSourceDto>(StatusCodes.Status201Created);
+        }).WithName("BffDataSourceCreate").Produces<DataSourceDto>(StatusCodes.Status201Created)
+          .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // FR-01, UC-04: 手動同期トリガ（実際の取得はポーリングジョブ／コネクタが行う）
+        // **認可はグループ既定（admin ＋ operator）のままである**（#628 / planning#299 で裁定・2026-08-09）。
+        // 計画は手動同期を**破壊的操作に含めない** —— 既存データを壊さず、運用者の一次対応（異常に気づいた
+        // その場で再同期する）を成立させることを優先する。**登録・無効化と同じに扱わないこと。**
         g.MapPost("/{id:guid}/sync", async (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
@@ -119,14 +126,14 @@ public static class DataSourceBffEndpoints
         }).WithName("BffDataSourcePatch").Produces<DataSourceDto>()
           .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
-        // 無効化（論理削除）
+        // 無効化（論理削除）。SC-06（#628）: **管理者限定**（登録と同じ扱い）。
         g.MapDelete("/{id:guid}", async (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
         {
             var client = CreateForwardingClient(httpFactory, http);
             var resp = await client.DeleteAsync($"/datasources/{id}", ct);
             return Results.StatusCode((int)resp.StatusCode);
-        }).WithName("BffDataSourceDelete");
+        }).WithName("BffDataSourceDelete").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         return app;
     }
