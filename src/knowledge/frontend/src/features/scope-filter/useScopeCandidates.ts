@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
 import { bffAttributeValues } from '@foundation/api/generated/search/search';
+import { okData } from '@foundation/api/orvalSelect';
 import { SCOPE_AXES, type ScopeAxis } from './scopeFilter';
 
 // FR-04, FR-05, SC-01, SC-08, #539 / #540: 対象範囲の**候補**を引く。
@@ -12,48 +13,51 @@ import { SCOPE_AXES, type ScopeAxis } from './scopeFilter';
 //
 // **画面はここへ何も足さない。** 候補の絞り込みはサーバ側の責務であり、
 // クライアントで補うと存在秘匿の境界が 2 か所に割れる。
+//
+// **［#641 レビュー 🟡 の是正］サーバー状態は TanStack Query に一元化する**
+// （`CLAUDE.md`「サーバー状態」。`queryClient.ts` が唯一の生成点）。
+// 当初 `useEffect` ＋ `useState` で直接呼んでいたが、**規約からの無記録の逸脱**であり、
+// **`ScopeFilter` は SC-01 / SC-08 の共有部品なので、マウントのたびに 3 軸を取り直していた**。
+//
+// **`/bff/attribute-values` は POST なので orval が生成するのは `useMutation` である**
+// （`useBffAttributeValues`）。照会には使えない——キャッシュに載らない。
+// そこで `useSearchQuery`（SC-02）と同じ作法で、**生成された操作関数を `useQueries` の
+// `queryFn` に据える**（[[IADR-0135]] 決定 2）。出口は `bffFetch` → `apiRequest` の一本道であり、
+// 手書き HTTP クライアントではない（[[IADR-0121]] 決定 3）。
 
 /** 軸ごとの候補。未取得・取得失敗の軸は空配列になる。 */
 export type ScopeCandidates = Record<ScopeAxis, string[]>;
 
-const EMPTY: ScopeCandidates = { tags: [], department: [], project: [] };
+/** キャッシュキー。**軸を含める**——3 軸は別々の要求であり、別々にキャッシュされるべきである。 */
+export const scopeCandidatesQueryKey = (axis: ScopeAxis) =>
+  ['bff', 'attribute-values', axis] as const;
 
 /**
  * 3 軸の候補をまとめて引く。
  *
  * **失敗した軸は空配列へ縮退させ、画面全体を落とさない**——対象範囲は任意の絞り込みであり、
  * 候補が引けないことは「検索・分析ができない」ことを意味しない。
- * **`useMutation` を 3 本並べない**（生成フックは mutation なので、初回表示で自動的には走らない）。
+ * `useQueries` なので**軸ごとに独立して成功・失敗する**（1 軸の失敗が他を巻き込まない）。
  */
 export function useScopeCandidates(): { candidates: ScopeCandidates; loading: boolean } {
-  const [candidates, setCandidates] = useState<ScopeCandidates>(EMPTY);
-  const [loading, setLoading] = useState(true);
+  const results = useQueries({
+    queries: SCOPE_AXES.map((axis) => ({
+      queryKey: scopeCandidatesQueryKey(axis),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        bffAttributeValues({ key: axis }, { signal }),
+      // **`select` の引数型を明示する。** `useQueries` は配列を map で組み立てると
+      // 封筒型の推論が落ちる（実測: `okData` の戻りが `never` になる）。
+      // `orvalSelect.ts` が「呼び出し側は本文型を明示する」と書いているのと同じ理由である。
+      select: (res: Awaited<ReturnType<typeof bffAttributeValues>>) => okData(res),
+      // 候補は人が管理する値集合であり、1 回の画面操作の間に変わらない。
+      // **再取得で候補が入れ替わると、利用者が選んでいる最中にチップが消える。**
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const candidates = Object.fromEntries(
+    SCOPE_AXES.map((axis, i) => [axis, results[i]?.data?.values ?? []]),
+  ) as ScopeCandidates;
 
-    const load = async () => {
-      const results = await Promise.all(
-        SCOPE_AXES.map(async (axis) => {
-          try {
-            const res = await bffAttributeValues({ key: axis });
-            return [axis, res.data.values ?? []] as const;
-          } catch {
-            // 軸ごとに独立して縮退する（1 軸の失敗で他の軸の候補まで失わない）。
-            return [axis, [] as string[]] as const;
-          }
-        }),
-      );
-      if (cancelled) return;
-      setCandidates(Object.fromEntries(results) as ScopeCandidates);
-      setLoading(false);
-    };
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { candidates, loading };
+  return { candidates, loading: results.some((r) => r.isLoading) };
 }

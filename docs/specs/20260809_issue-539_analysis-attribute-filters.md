@@ -180,30 +180,50 @@ SC-01（`ask` 系）は `AnalysisDataRange`（`Query` / `TopK` を持つ）を�
 規則を 2 本持つと「検索では効くが分析では効かない」型の食い違いが生まれる
 （**まさにその食い違いが `tags` で実際に起きていた**のが本 issue の出発点である）。
 
-### 4. バンドルの床が +0.57 kB 動いた。**折り畳もうとしたらもっと悪化した**
+### 4. **候補の取得を TanStack Query へ載せ替えた**（PR #641 レビュー 🟡 の是正）
+
+**当初 `useEffect` ＋ `useState` ＋ 手製の `cancelled` フラグで直接呼んでいた。**
+`CLAUDE.md` は「**サーバー状態は TanStack Query に一元化する**（`queryClient.ts` が唯一の生成点）」と
+定めており、**無記録の逸脱**だった。指摘は正当である。
+
+**実害もあった**——`ScopeFilter` は SC-01 / SC-08 の共有部品なので、
+**マウントのたびに 3 軸をキャッシュなしで取り直していた**。
+
+`/bff/attribute-values` は POST なので orval は `useMutation` しか生成しない（照会に使えない）。
+**`useSearchQuery`（SC-02）と同じ作法**で、生成された操作関数を `useQueries` の `queryFn` に据えた
+（[[IADR-0135]] 決定 2）。軸ごとに独立したクエリなので、**1 軸の失敗が他を巻き込まない**性質は保たれる。
+
+**指摘が挙げた傍証は当たっていた**——`ScopeFilter.test.tsx` は `QueryClientProvider` で包んでいたのに
+ツリーに `useQuery` が無く、**wrapper が死んでいた**。載せ替えで生きた。
+
+**是正で 2 つ副次的に直った／動いた:**
+
+| | 変化 |
+| --- | --- |
+| **テストの `QueryClient`** | 素の `new QueryClient()` は**本番の再試行を持ち込む**ため、「1 軸だけ失敗したときの縮退」が再試行の待ちに隠れて観測できなかった（実測で失敗）。`renderUnitRoute` と同じ `retry: false` へ揃えた |
+| **1 kB 未満の遅延チャンク** | **7 本 → 6 本**（`search-*.js` 400 B が解消）。載せ替えでチャンクグラフが変わった |
+
+### 5. バンドルの床が動いた（**2 度**）。**折り畳もうとしたらもっと悪化した**
 
 CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回していなかったので気づけなかった）。
 
-| 指標 | 変化 |
-| --- | --- |
-| 初期ロード合計 | 578.15 kB → **578.72 kB**（+0.57 kB） |
-| 1 kB 未満の遅延チャンク | 6 本 → **7 本**（`search-*.js` 400 B が増えた） |
+| 段階 | 初期ロード合計 | 1 kB 未満の遅延チャンク |
+| --- | --- | --- |
+| develop | 578.15 kB | 6 本 |
+| 対象範囲フィルタを足した直後 | 578.72 kB（+0.57） | **7 本**（orval 生成の `search` 400 B が共有され切り出された） |
+| **TanStack Query へ載せ替えた後（最終）** | **582.78 kB**（develop から +4.63） | **6 本**（元に戻った） |
 
-**増えた 400 B は orval 生成の `search` モジュールである。** 従前は 1 つのルートからしか使われず
-そのルートのチャンクに収まっていたが、**SC-01 と SC-08 の双方が候補照会に使うようになったため
-共有モジュールとして切り出された**。往復が 1 つ増える。
+**最後の +4.06 kB は規約に従った代償である**——`useQueries` を使うと `vendor-query`
+（**名前付きチャンク＝エントリの静的依存**）に載る量が増える。
+**`CLAUDE.md` が定める「サーバー状態は TanStack Query に一元化する」は確定事項**であり、
+0.7% の初期ロードと引き換えに破る理由は無い。
 
-**`vite.config.ts` の先例（`@platform/ui` / `vendor-query`）に倣って
-「生成 API を 1 本へ束ねる」manualChunks 規則を試したが、逆効果だった**——実測で
-**初期ロードが +13.49 kB**（578.15 → 591.64 kB）に増えた。名前付きチャンクへ寄せると
-エントリの静的依存になり、**遅延ロードだったものが初期ロードへ移る**ためである。
-**0.57 kB の節約のために 13.49 kB を払うことになるので採らない。**
+**先例に倣った折り畳みは逆効果だった。** `vite.config.ts` の `@platform/ui` / `vendor-query` に倣って
+「生成 API を 1 本へ束ねる」manualChunks 規則を試したが、実測で**初期ロードが +13.49 kB**
+（578.15 → 591.64 kB）に増えた。名前付きチャンクへ寄せると**遅延ロードだったものが初期ロードへ移る**ためである。
+**0.57 kB の節約に 13.49 kB は払えないので採らない。**
 
-したがって**床の更新（`--update`）が正しい対応**である。増加は新機能に由来し、
-`check-chunk-budget.js` はまさにその経路（意図した増加は床を更新して差分をレビューに載せる）を用意している。
-
-### 5. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
-
+### 6. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
 `QdrantVectorStore.MapPayload` は `Tags: []` を固定で入れている（実測）。
 **絞り込みには影響しない**（フィルタは Qdrant 側で効き、候補は `/bff/attribute-values` が返す）ため
 本 issue では触らない。**ただし SC-02 の結果一覧は既にタグを描こうとしており**
@@ -226,7 +246,7 @@ CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回し�
 | `pnpm run test` | **606 件 Passed**（着手時 588 件） |
 | `pnpm run test:coverage` | 床（90/90/88/86）を満たす |
 | `pnpm run codegen` / `pnpm run i18n` | 再生成差分をコミット済み |
-| `pnpm run build` ＋ `node scripts/check-chunk-budget.js` | 床を +0.57 kB 更新（上記「実装中に決めたこと 4」） |
+| `pnpm run build` ＋ `node scripts/check-chunk-budget.js` | 床を 578.15 → **582.78 kB** へ更新・1 kB 未満の遅延チャンクは 6 本のまま（上記「実装中に決めたこと 5」） |
 | `node scripts/{check-doc-links,check-cross-repo-refs,check-plan-id-qualification,check-i18n-catalogs,check-test-traceability,check-test-spec-coverage}.js` | すべて OK |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 293 件 Passed |
 

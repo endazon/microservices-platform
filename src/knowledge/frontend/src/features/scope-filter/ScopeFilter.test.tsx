@@ -33,9 +33,20 @@ function respondWith(byAxis: Record<string, string[]>) {
   });
 }
 
+// `renderUnitRoute` と同じ既定にする——**本番の再試行（5xx・ネットワーク断を 1 回）をテストへ持ち込むと、
+// 「1 軸だけ失敗したときの縮退」が再試行の待ち時間に隠れて観測できない**（実測: 縮退の表示が出ない）。
+function testQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
+  });
+}
+
 function renderFilter(selection: ScopeSelection, onChange = vi.fn()) {
   render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={testQueryClient()}>
       <I18nProvider i18n={i18n}>
         <ScopeFilter selection={selection} onChange={onChange} />
       </I18nProvider>
