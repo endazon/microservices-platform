@@ -79,8 +79,10 @@ public class DocumentUpdatedConsumer(
             }
 
             // FR-02 index: 機密区分ルーティングが決めたモデル別コレクションへ登録。chunk_index/tags、FR-05 ABAC 属性を保持
+            // FR-03, SC-02, #536: 更新日時は**イベントが運んできた値をそのまま渡す**（IADR-0149 決定 5）。
+            // ここで DateTimeOffset.UtcNow を採ると、再索引のたびに全文書の「更新日時」が今になる。
             await store.UpsertChunkAsync(embedding.Collection, chunkId, ev.DocumentId, ev.Title, text, idx,
-                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ct);
+                embedding.Vector, ev.MarkdownUri, ev.Attributes, ev.Tags, ev.UpdatedAt, ct);
             chunkCount++;
         }
 

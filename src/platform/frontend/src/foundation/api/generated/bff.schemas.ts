@@ -32,6 +32,13 @@ export interface SearchResultDto {
   markdownUri?: string | null;
   attributes: SearchResultDtoAttributes;
   tags: string[];
+  /**
+     * FR-03, SC-02（裁定 Q6 / #536）: 文書の更新日時。**`null` は「索引がまだ日時を持たない」を表す**
+     * （IADR-0149 決定 3）。本項目は索引（Qdrant のペイロード）へ日時を取り込むところから必要であり、
+     * **本項目より前に索引されたチャンクは日時を持たない**。再索引が済むまでの縮退であって障害ではない
+     * —— 画面は `—` を描く。**`0001-01-01` のような既定値で埋めない**（「知らない」が「とても古い」に化ける）。
+     */
+  updatedAt?: string | null;
 }
 
 /**

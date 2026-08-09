@@ -108,7 +108,19 @@ public class QdrantVectorStore(
             MarkdownUri: payload.GetValueOrDefault("markdown_uri")?.StringValue,
             // FR-05, FR-11: ABAC 属性（confidentiality 等）を DTO へ復元する。
             Attributes: ExtractAttributes(payload),
-            Tags: []);
+            Tags: [],
+            // FR-03, SC-02, #536: 更新日時を復元する（IADR-0149 決定 1・3）。
+            UpdatedAt: ExtractUpdatedAt(payload));
+
+    // FR-03, SC-02, #536: 索引ペイロードの `updated_at`（Unix epoch ミリ秒の整数）を復元する。
+    // **キーが無ければ null を返す**（IADR-0149 決定 3）——本項目より前に索引されたチャンクは
+    // 日時を持たない。DateTimeOffset.MinValue で埋めると「知らない」が「とても古い」に化け、
+    // 並び順（#532）が嘘をつく。再索引が済むまでの縮退であって障害ではない。
+    internal static DateTimeOffset? ExtractUpdatedAt(IReadOnlyDictionary<string, Value> payload) =>
+        payload.TryGetValue("updated_at", out var value)
+        && value.KindCase == Value.KindOneofCase.IntegerValue
+            ? DateTimeOffset.FromUnixTimeMilliseconds(value.IntegerValue)
+            : null;
 
     // FR-05, FR-11: ペイロードに保持した ABAC 属性を `Attributes` 辞書へ復元する。
     // 復元しないと AiAnalysisService の機密区分判定（HighestConfidentiality）が常に
@@ -154,6 +166,11 @@ public class QdrantVectorStore(
             ["text"] = new Value { StringValue = chunk.Text },
             ["markdown_uri"] = new Value { StringValue = chunk.MarkdownUri ?? "" },
         };
+        // FR-03, SC-02, #536: 更新日時は **Unix epoch ミリ秒の整数**で持つ（IADR-0149 決定 1）。
+        // 取り込み側（QdrantIngestionVectorStore.BuildChunkPayload）と**同じキー・同じ表現**であること。
+        if (chunk.UpdatedAt is { } updatedAt)
+            payload["updated_at"] = new Value { IntegerValue = updatedAt.ToUnixTimeMilliseconds() };
+
         // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。
         // IADR-0014（選択肢C・実機検証済み）: ネスト構造体 `attributes -> { k: v }` へ統一する。
         if (chunk.Attributes.Count > 0)

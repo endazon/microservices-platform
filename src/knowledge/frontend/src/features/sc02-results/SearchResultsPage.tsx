@@ -17,6 +17,7 @@ import {
 } from '@platform/ui';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { useSearchQuery } from './useSearchQuery';
+import { formatDateTime } from '@foundation/ui/formatDateTime';
 // SC-02, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 
@@ -25,9 +26,12 @@ import type { SearchResultDto } from '@foundation/api/generated/bff.schemas';
 // 本画面は AI 回答を一切呼ばない。各件から SC-03（文書詳細）へ内部遷移する。
 //
 // 実装しない要素（画面仕様書 docs/screens/SC-02_search-results.md §hi-fi モックアップとの対応）:
-//   検索モード切替（キーワード｜意味）・並び順・更新日時列。いずれも検索 API / DTO に該当の
-//   指定軸・項目が無く、UI だけ置くと「押しても結果が変わらない操作」「常に空の列」になる
-//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定待ち）。
+//   検索モード切替（キーワード｜意味）・並び順。いずれも検索 API / DTO に該当の指定軸が無く、
+//   UI だけ置くと「押しても結果が変わらない操作」になる
+//   （feedback/20260804_sc01-03-bff-contract-gaps.md に環流の記録。planning#197 で裁定済み）。
+//   **［2026-08-09 / #536］更新日時列は実装した。** 契約（`SearchResultDto.updatedAt`）が
+//   裁定 Q6 を受けて日時を持ち、索引（Qdrant のペイロード）へも取り込むようにしたため（[[IADR-0149]]）。
+//   **並び順（#532）は本 issue の射程外**であり、この列の値をソートキーに使う。
 
 export function SearchResultsPage() {
   const { t } = useLingui();
@@ -142,6 +146,9 @@ export function SearchResultsPage() {
                   <TableHeaderCell>
                     <Trans>タグ</Trans>
                   </TableHeaderCell>
+                  <TableHeaderCell>
+                    <Trans>更新日時</Trans>
+                  </TableHeaderCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -178,6 +185,12 @@ function ResultRow({ result }: { result: SearchResultDto }) {
             </Tag>
           ))}
         </span>
+      </TableCell>
+      {/* SC-02（裁定 Q6 / #536）: 更新日時。**未再索引のチャンクは値を持たない**ので `—` になる
+          （[[IADR-0149]] 決定 3）。「日時が無い」と「まだ再索引していない」を利用者へ区別して
+          見せない —— 索引の内部事情である。 */}
+      <TableCell className="whitespace-nowrap text-sm text-[--color-fg-muted]">
+        {formatDateTime(result.updatedAt)}
       </TableCell>
     </TableRow>
   );

@@ -1,8 +1,8 @@
 ---
 title: SC-02 検索結果へ更新日時を追加する（索引への取り込みと再索引を伴う）
 type: spec
-status: in-progress
-related_ids: [FR-02, FR-03, UC-01, SC-02, IADR-0014, IADR-0122, IADR-0131, IADR-0149]
+status: done
+related_ids: [FR-02, FR-03, UC-01, SC-02, IADR-0014, IADR-0122, IADR-0125, IADR-0131, IADR-0148, IADR-0149]
 author: Claude
 created: 2026-08-09
 updated: 2026-08-09
@@ -163,9 +163,44 @@ public record SearchResultDto(
 - `docs/operations/operations.md`（**再索引手順へ本項目の追記**）
 - `docs/adr/IADR-0149_*.md`（**新設**）＋ `docs/adr/README.md`
 
-## 検証（完了前）
+## 実装中に決めたこと（仕様書からの差分）
+
+### `formatDateTime` を foundation へ移した
+
+SC-02 の「更新日時」列は**値なしを `—` で描く**。同じ整形規則は SC-06 が既に持っていた
+（`features/sc06-datasources/syncState.ts`）。**2 つ目の利用者が現れた時点で**
+`platform/frontend/src/foundation/ui/formatDateTime.ts` へ移し、SC-06 は再エクスポートで受ける。
+
+- **複写しない理由**: `—` の書き方が画面ごとに割れる。SC-06 の同期健全性で
+  「同じ数が 2 箇所に立つと黙って割れる」（[[IADR-0148]] 決定 4）を踏んだのと同じ型である。
+- **射程を広げたのではない**: 移したのは**本作業が必要とする 4 行**であり、`@platform/ui` へは入れない
+  （**表示文言を持つ**ため。[[IADR-0125]] 決定 1 が禁じている）。SC-06 の振る舞いは変えていない
+  （`syncState.test.ts` 12 件がそのまま緑）。
+
+## 検証記録（実測・すべて本作業の head で走らせた）
 
 `node scripts/…` は**リポジトリのルートから実行する**（`src/` から走らせると相対パスが割れる）。
-両ユニットの `dotnet build` / `test` / `format --verify-no-changes`、
-`pnpm typecheck` / `lint` / `format:check` / `test:coverage` / `build`、
-`check-contract-schema`（**契約が動くので baseline の承認が要る**）ほか各 check スクリプト。
+
+| 対象 | 結果 |
+| --- | --- |
+| `dotnet test knowledge/backend/backend.slnx` | **440 passed / 0 failed**（18 skipped は統合テストの環境依存。**本作業で 9 件追加**） |
+| `dotnet test platform/backend/backend.slnx` | **362 passed / 0 failed**（1 skipped。**本作業で 1 件追加**） |
+| `dotnet format --verify-no-changes`（両ユニット） | OK |
+| `pnpm typecheck` / `lint` / `format:check` | OK（lint は warning 9・error 0。既存の `react-refresh` 警告） |
+| `pnpm test:coverage` | statements **96.39%** / branches **90.53%** / functions **91.68%** / lines **96.39%**（床 90 / 85 / 88 / 90。**割っていない**） |
+| `pnpm build` ＋ `check-static-egress` | OK（24 ファイル・外部オリジン 0） |
+| `check-chunk-budget` | **床を 578.06 → 578.15 kB へ更新**（+0.09 kB ＝ **新しい表示文言 1 件**〔「更新日時」〕が Lingui カタログへ載った分） |
+| `check-contract-schema` | **baseline を更新**（`SearchResultDto.UpdatedAt` の**追加**。破壊的変更 0 件） |
+| `check-test-spec-coverage --update` | **床を 75 → 78 対へ**（`FR-02 × QdrantIngestionVectorStoreTests` / `FR-03 × QdrantVectorStoreTests` / `FR-03 × BffSearchEndpointTests`） |
+| `check-i18n-catalogs` | OK（**ja / en 両方に訳を入れた**。「更新日時」→ `Updated`） |
+| その他 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-landed-subjects` / `check-adr-numbering` / `check-bff-downstreams` / `check-test-traceability` / `check-unit-dependencies` / `check-unit-service-ownership` / `check-backend-libraries` / `check-commit-messages` すべて OK |
+
+**カバレッジ床は上げない**（#628 と同じ判断。床は #619 以降どの PR も動かしておらず、全ユニット横断の
+床をここで上げると並走中の PR を巻き添えにする）。
+
+### AI レビュー（仕様書のみの時点・PR #631）への対応
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🟢 [[IADR-0149]] に `related_specs` が無い | **修正した**（作業仕様書・[[IADR-0014]]・[[IADR-0122]]・SC-02 画面仕様書への逆リンクを追加） |
+| 🟢 ブランチ名に起点 ID が無い | **直せない。** ブランチ名 `claude/handover-work-start-7g1vu3` はセッションに与えられた指定であり、**別ブランチへ push してはならない**制約がある。**指摘は正しい** —— PR 本文のチェックを外し、代わりにコミット件名・PR タイトル・コード内コメントで追跡を成立させている旨を明記した |

@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-03
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -468,6 +468,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
      コレクションから当該文書を削除してから再索引するため、決定的チャンク ID により冪等に再構築される。
   3. 旧コレクション `knowledge_chunks` は移行完了後に手動削除する（`DELETE /collections/knowledge_chunks`）。
   - モデル差し替え（例 ruri-v3→BGE-M3）時も、当該コレクションを作り直し同手順で再索引する。
+- **ペイロード項目を増やしたときの再索引（#536 / [[IADR-0149]]）**: 索引ペイロードへ**新しい項目**を
+  足した場合も、上記手順 2（**全文書に対する `DocumentUpdated` の再発行**）がそのまま使える。
+  コレクションの作り直しは要らない —— 決定的チャンク ID により同じ点が上書きされる。
+  - **直近の該当**: **`updated_at`**（文書の更新日時。Unix epoch ミリ秒の整数）を #536 で追加した。
+  - **再索引が済むまでの振る舞いは縮退であって障害ではない。** 当該項目を持たないチャンクは
+    検索応答で `updatedAt` が `null` になり、画面（SC-02）は `—` を描く。**検索そのものは従来どおり
+    ヒットする**（項目の欠落で結果から落とすことはしない）。
+  - **急ぐ必要は無いが、放置すると「更新日時の新しい順」（#532）が実質的に使えない**
+    （日時を知らないチャンクが混ざり続けるため）。並び順の提供時期に合わせて実施すること。
 
 ## 可用性・水平スケール（HPA / PDB）（NFR / #197）
 

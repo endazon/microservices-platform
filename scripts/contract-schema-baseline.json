@@ -972,6 +972,12 @@
             "type": "string",
             "required": true,
             "position": 3
+          },
+          "UpdatedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 8
           }
         }
       },

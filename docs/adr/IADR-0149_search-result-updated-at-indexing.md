@@ -14,6 +14,11 @@ created: 2026-08-09
 updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+related_specs:
+  - "../specs/20260809_issue-536_search-result-updated-at.md"
+  - "./IADR-0014_qdrant-attribute-payload-key.md"
+  - "./IADR-0122_contract-schema-source-and-compat-gate.md"
+  - "../screens/SC-02_search-results.md"
 ---
 
 # IADR-0149: 検索結果の更新日時は索引ペイロードへ epoch ミリ秒で持ち、未再索引は null で縮退する

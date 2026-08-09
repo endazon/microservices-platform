@@ -947,6 +947,10 @@ msgstr "Default confidentiality"
 msgid "日付"
 msgstr "Date"
 
+#: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
+msgid "更新日時"
+msgstr "Updated"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "有効"

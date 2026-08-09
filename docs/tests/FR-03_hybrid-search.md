@@ -7,7 +7,7 @@ related_ids:
   - UC-01
 author: claude
 created: 2026-07-04
-updated: 2026-07-10
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -52,11 +52,17 @@ plan_refs:
 | T-13 | ネスト構造体 `attributes` を持つペイロード | 同上 | ネストから属性を復元 | 権限制御の前提（属性復元） | 自動 |
 | T-14 | 属性を持たないペイロード | 同上 | 空辞書を返す | 権限制御の前提（属性復元） | 自動 |
 | T-15 | フラットキーとネストで同一キーが競合 | 同上 | フラットキー値を尊重（ネストで上書きしない） | 権限制御の前提（属性復元） | 自動 |
+| T-16 | `updated_at`（epoch ミリ秒）を持つペイロード | `QdrantVectorStore.ExtractUpdatedAt` | 元の `DateTimeOffset` を復元する | SC-02 裁定 Q6（#536） | 自動 |
+| T-17 | `updated_at` を**持たない**ペイロード（未再索引） | 同上 | **`null`**（`0001-01-01` で埋めない。[[IADR-0149]] 決定 3） | SC-02 裁定 Q6（#536） | 自動 |
+| T-18 | `updated_at` が整数でない（文字列で書かれた混入） | 同上 | **`null`**（黙って誤った日時にしない） | 縮退（#536） | 自動 |
+| T-19 | 両系統に同一チャンク（更新日時あり） | `ReciprocalRankFusion` | 融合後も **`UpdatedAt` が残る**（RRF はスコアだけを差し替える） | SC-02 裁定 Q6（#536） | 自動 |
+| T-20 | 片方だけ日時を持つ（再索引済みと未再索引の混在） | 同上 | 再索引済みは値を保ち、未再索引は `null` のまま | 縮退（#536） | 自動 |
+| T-21 | 後段が `updatedAt` を返す | `POST /bff/search` | **BFF が欠落させずに透過**する（`BffSearchEndpointTests`） | SC-02 裁定 Q6（#536） | 自動 |
 
 ## テストデータ
 
 - `ChunkPayload`: 1536 次元ゼロベクトル＋日本語本文＋ `s3://bucket/{guid}.md` 形式の `MarkdownUri`＋任意の ABAC 属性（`dept`, `confidentiality`）。
-- `SearchResultDto`: `ReciprocalRankFusion` 用に `ChunkId` を変えたヒット群（`HybridSearchServiceTests.Hit`）。
+- `SearchResultDto`: `ReciprocalRankFusion` 用に `ChunkId` を変えたヒット群（`HybridSearchServiceTests.Hit`。**`updatedAt` は任意**で、未再索引の縮退を再現できる）。
 - `Qdrant.Client.Grpc.Value` ペイロード辞書（フラットキー／ネスト構造体の両表現）。
 
 ## 関連仕様

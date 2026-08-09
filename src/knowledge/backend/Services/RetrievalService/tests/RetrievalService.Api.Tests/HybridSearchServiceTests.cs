@@ -52,8 +52,8 @@ internal sealed class CountingEmbeddingService : IEmbeddingService
 // FR-03, UC-01: ハイブリッド検索の核 — Reciprocal Rank Fusion ロジックの単体テスト
 public class HybridSearchServiceTests
 {
-    private static SearchResultDto Hit(Guid id, float score = 0f) =>
-        new(id, Guid.NewGuid(), "title", "text", score, "uri", new(), []);
+    private static SearchResultDto Hit(Guid id, float score = 0f, DateTimeOffset? updatedAt = null) =>
+        new(id, Guid.NewGuid(), "title", "text", score, "uri", new(), [], updatedAt);
 
     // FR-03: 両系統（ベクトル/全文）に現れる文書は、片方のみの文書より上位になる
     [Fact]
@@ -70,6 +70,36 @@ public class HybridSearchServiceTests
 
         fused[0].ChunkId.Should().Be(both, "両リストに出現する文書が最上位になる");
         fused.Select(r => r.ChunkId).Should().Contain([vectorOnly, keywordOnly]);
+    }
+
+    // FR-03, SC-02, #536: **融合で更新日時が落ちない。** RRF はスコアだけを差し替える（`with { Score = … }`）
+    // が、射影を書き直したときに黙って欠ける型の変更である。契約に載せた項目は融合の後も残ることを固定する。
+    [Fact]
+    public void Rrf_PreservesUpdatedAt()
+    {
+        var id = Guid.NewGuid();
+        var updatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var fused = HybridSearchService.ReciprocalRankFusion(
+            [Hit(id, updatedAt: updatedAt)], [Hit(id, updatedAt: updatedAt)]);
+
+        fused.Should().ContainSingle();
+        fused[0].UpdatedAt.Should().Be(updatedAt);
+    }
+
+    // 片方だけが日時を持つ場合も、残った側の値が消えない（未再索引と再索引済みが混在する期間の振る舞い）。
+    [Fact]
+    public void Rrf_KeepsUpdatedAt_WhenOnlyOneSideWasReindexed()
+    {
+        var reindexed = Guid.NewGuid();
+        var notYet = Guid.NewGuid();
+        var updatedAt = new DateTimeOffset(2026, 5, 1, 0, 0, 0, TimeSpan.Zero);
+
+        var fused = HybridSearchService.ReciprocalRankFusion(
+            [Hit(reindexed, updatedAt: updatedAt), Hit(notYet)], []);
+
+        fused.Single(r => r.ChunkId == reindexed).UpdatedAt.Should().Be(updatedAt);
+        fused.Single(r => r.ChunkId == notYet).UpdatedAt.Should().BeNull();
     }
 
     // FR-03: 片方のリストにしか無い文書も結果に含まれる（取りこぼさない）

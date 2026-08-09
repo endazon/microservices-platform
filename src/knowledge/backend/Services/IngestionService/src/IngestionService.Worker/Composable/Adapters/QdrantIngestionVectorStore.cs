@@ -30,9 +30,10 @@ public class QdrantIngestionVectorStore(
     public async Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
         CancellationToken ct = default)
     {
-        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes, tags);
+        var payload = BuildChunkPayload(documentId, title, text, chunkIndex, markdownUri, attributes, tags, updatedAt);
 
         await client.UpsertAsync(collection,
             [new PointStruct { Id = new PointId { Uuid = chunkId.ToString() }, Vectors = vector, Payload = { payload } }],
@@ -44,7 +45,8 @@ public class QdrantIngestionVectorStore(
     // へ統一する。RetrievalService.QdrantVectorStore の書き込み・フィルタ表現と一致させる。
     internal static Dictionary<string, Value> BuildChunkPayload(Guid documentId, string title,
         string text, int chunkIndex, string? markdownUri,
-        Dictionary<string, string> attributes, List<string> tags)
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -55,6 +57,13 @@ public class QdrantIngestionVectorStore(
             // FR-02: チャンクの並び順・出典の一部として保持
             ["chunk_index"] = new Value { IntegerValue = chunkIndex },
         };
+
+        // FR-03, SC-02, #536: 文書の更新日時（利用者裁定 Q6）。**Unix epoch ミリ秒の整数**で持つ
+        // （IADR-0149 決定 1）。ISO-8601 文字列は同じ時刻を `+09:00` とも `Z` とも書けるため、
+        // 文字列のまま並べると辞書順が実時刻順と一致しない（並び順は #532 が使う）。
+        // 検索側（RetrievalService.QdrantVectorStore）の書き込み・復元と表現を揃えること。
+        if (updatedAt is { } at)
+            payload["updated_at"] = new Value { IntegerValue = at.ToUnixTimeMilliseconds() };
 
         // FR-02: タグをペイロードに保持（検索結果の絞り込み・表示用）
         if (tags.Count > 0)

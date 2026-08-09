@@ -35,4 +35,8 @@ public record ChunkPayload(
     float[] Vector,
     string? MarkdownUri,
     Dictionary<string, string> Attributes,
-    List<string> Tags);
+    List<string> Tags,
+    // FR-03, SC-02, #536: 文書の更新日時（IADR-0149）。本番の書き込みは IngestionService が担うが、
+    // **同じコレクションを読む復元側と表現を揃える**ため本ポートでも同じ値を運ぶ
+    // （表現がずれると「テストは緑・本番は空」になる。IADR-0014 が ABAC 属性で踏んだのと同じ型）。
+    DateTimeOffset? UpdatedAt = null);
