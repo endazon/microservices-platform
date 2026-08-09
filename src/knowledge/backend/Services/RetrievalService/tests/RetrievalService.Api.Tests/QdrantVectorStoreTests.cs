@@ -102,10 +102,14 @@ public class QdrantVectorStoreTests
     }
 
     // --- FR-03, SC-02（Issue #642）: タグの書き込みと復元 -------------------------------
-    // MapPayload が `Tags: []` を固定で返し、UpsertAsync が `tags` を書いてもいなかったため、
+    // **本番の欠陥は復元側である** —— MapPayload が `Tags: []` を固定で返していたため、
     // SC-02 の結果一覧（SearchResultsPage のタグ列）が本番でのみ常に空欄になっていた。
     // InMemoryVectorStore は ChunkPayload.Tags をそのまま運ぶのでテストは緑のままであり、
     // IADR-0014 が名指しした「テストは緑・本番は空」と同型である。
+    //
+    // **書き込み側（BuildPayload）の 3 件は予防である** —— UpsertAsync を呼ぶ本番コードは無く
+    // （書いているのは IngestionService 側）、直しても現時点の本番挙動は変わらない。
+    // それでも固定するのは、この口を使い始めたときに表現が割れていないことを保証するためである。
 
     // 取り込み側（QdrantIngestionVectorStore.BuildChunkPayload）と同じ `tags -> ListValue` から復元する。
     [Fact]

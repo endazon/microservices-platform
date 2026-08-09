@@ -65,7 +65,7 @@ related_specs:
 **画面テストが緑のまま本番のタグ列だけが常に空欄**であった（[[IADR-0014]] と同型）。
 
 - **担保する場所**: `RetrievalService.Api.Tests.QdrantVectorStoreTests`
-  （テスト仕様書 [FR-03_hybrid-search.md](./FR-03_hybrid-search.md) の T-16〜T-22）。
+  （テスト仕様書 [FR-03_hybrid-search.md](./FR-03_hybrid-search.md) の T-30〜T-36）。
 - **本仕様書の側では何も足さない** —— 画面の責務は「渡ってきた `tags` を `Tag` で描く」ことであり、
   その責務はケース 1 が既に固定している。**同じことを 2 か所で主張すると、どちらが正か読めなくなる。**
 

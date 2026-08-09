@@ -170,7 +170,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 - **#642 で是正した。** 書き込みと復元を取り込み側（`IngestionService`）と同じ表現
   （`tags -> ListValue[StringValue]`）へ揃え、両面を純関数として単体テストで固定した
   （作業仕様書 [20260809_issue-642_qdrant-tag-restoration.md](../specs/20260809_issue-642_qdrant-tag-restoration.md)／
-  テスト仕様書 [FR-03_hybrid-search.md](../tests/FR-03_hybrid-search.md) の T-16〜T-22）。
+  テスト仕様書 [FR-03_hybrid-search.md](../tests/FR-03_hybrid-search.md) の T-30〜T-36）。
 - **既存データは再取込まで空欄のままである**（[[IADR-0014]] の属性と同じ扱い。誤ったタグは出ない）。
 
 ## アクション・イベント

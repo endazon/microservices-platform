@@ -55,7 +55,7 @@ related_specs:
 | 経路 | 実測 | 判定 |
 | --- | --- | --- |
 | `QdrantVectorStore.MapPayload`（本番） | `Tags: []` 固定 | **欠陥。直す** |
-| `QdrantVectorStore.UpsertAsync`（本番） | ペイロードに `tags` を書かない | **欠陥。直す** |
+| `QdrantVectorStore.UpsertAsync` | ペイロードに `tags` を書かない | **直す（ただし予防）。§追補を見ること** |
 | `InMemoryVectorStore`（テスト／ローカル） | `c.Tags` を 2 箇所とも運ぶ | 正常。**だからテストが緑のままだった** |
 | `HybridSearchService`（RRF 融合） | `byId[kv.Key] with { Score = … }` で DTO ごと保持 | 素通し。変更不要 |
 | BFF（`SearchBffEndpoints`） | `SearchResponse` をそのまま返す | 素通し。変更不要 |
@@ -100,6 +100,43 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 - **タグが 0 件のときはキー自体を書かない**（`QdrantIngestionVectorStore.BuildChunkPayload` と同じ。
   `attributes` の扱いとも揃う）。
 - 復元は**キーが無い／リストでない**とき空リストを返す（画面は空欄になる）。
+
+## ★ 追補（PR #644 のレビュー指摘 2 / 2026-08-09）: 書き込み側は**予防**であって本番の欠陥ではない
+
+**着手時の母集合の引き方が甘く、「本番で実行される経路か」を確かめていなかった。**
+レビュー指摘を受けて自分で引き直した結果、**指摘は正しい**。
+
+```console
+$ grep -rn 'UpsertAsync' --include=*.cs src/ | grep -v /obj/ | grep -v ai-stock-trading
+（RetrievalService 側の呼び出し元は **テストのみ**。本体からの呼び出しは 0 件）
+
+$ grep -rn 'IVectorStore' --include=*.cs src/knowledge/backend/Services/RetrievalService/src/
+Program.cs:30              builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
+HybridSearchService.cs:8   HybridSearchService(IVectorStore store, IEmbeddingService embed)  ← 検索のみ
+SearchEndpoints.cs:33      AttributeValuesRequest req, IVectorStore store                    ← 値集合のみ
+```
+
+**`QdrantVectorStore.UpsertAsync` を呼ぶ本番コードは存在しない。**
+実際に Qdrant へ書いているのは **IngestionService の `QdrantIngestionVectorStore`**（別サービス）であり、
+そちらは元から `tags` を書いている（母集合 §軸 2 のとおり「変更不要」）。
+
+**したがって射程の内訳は次のとおりである。**
+
+| 面 | 本番の挙動への影響 |
+| --- | --- |
+| **復元**（`MapPayload` / `ExtractTags`） | **これが本番の欠陥である。** SC-02 のタグ列が空欄だったのは、ここが `Tags: []` を返していたからで、**本 PR はこれを直している** |
+| **書き込み**（`UpsertAsync` / `BuildPayload`） | **現時点の本番挙動は変わらない**（呼び出し元が無い）。`IVectorStore` の実装として取り込み側と同じ表現に揃える**予防・契約整合**である |
+
+**書き込み側の修正を取り下げない理由**: `IVectorStore` は**書き込みを含むポート**であり、
+`InMemoryVectorStore` は `Tags` を運んでいる。**Qdrant 実装だけが運ばない状態**を残すと、
+この口を使い始めた瞬間に同じ欠陥が再発する。[[IADR-0014]] の「書き込み・フィルタ・復元を一致させる」も
+実装単位に掛かる要求である。**射程外ではなく、射程の性格が「是正」ではなく「予防」だというだけである。**
+
+> **記録として残す理由**（[[IADR-0141]] 決定 1 の「他人の数えを検証せず転記しない」の裏返し）:
+> 着手時の母集合は**「`Tags` を落としている面」を漏れなく数えた**が、
+> **「その面が本番で実行されるか」という軸を引いていなかった**（§引かなかった軸にも挙げていない）。
+> **同型 1 回目なので検査器は足さない**（`CLAUDE.md`「同型の事故が 2 回起きたら」）。
+> **次に同じ形を踏むとしたら「直した面が呼ばれているか」を確かめない引き方である。**
 
 ## 判断（仕様書＝本書が正）
 
@@ -175,13 +212,14 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 | 7 | **書いた表現をそのまま復元できる**（本番経路の往復） | `BuildPayloadThenExtractTags_RoundTrips` | 入力タグと一致 |
 | 8 | 既存の属性復元を壊していない | 既存 3 件（`ExtractAttributes_*`） | 変更なしで緑 |
 
-**#7 が本欠陥の核心である** —— 書き込みと復元のどちらかだけを直しても、本番では依然としてタグが出ない。
+**#7 は「書いた表現をそのまま復元できる」ことを固定する** —— 書き込み側と復元側の表現が割れたら赤になる。
+**ただし「どちらかだけ直しても本番でタグが出ない」とは書けない**（§追補を見ること）。
 
 ## 追随させた仕様書
 
 | 文書 | 追記内容 |
 | --- | --- |
-| `../tests/FR-03_hybrid-search.md` | T-16〜T-22（上表 #1〜#7）を追加。対象範囲に `ExtractTags` / `BuildPayload` を明記 |
+| `../tests/FR-03_hybrid-search.md` | **T-30〜T-36**（上表 #1〜#7）を追加。対象範囲に `ExtractTags` / `BuildPayload` を明記。**着手時は T-16〜T-22 だったが、rebase 先の develop が #536 / #532 で T-16〜T-29 を使っていたため採番し直した** |
 | `../screens/SC-02_search-results.md` | §hi-fi 対応表 #6（タグ列）に「**本番経路でタグが渡っていなかった**」旨と是正を追記 |
 | `../tests/SC-02_search-results.md` | 画面テストは**タグが渡ってくる前提**であり、その前提を固定するのは backend 側であることを明記 |
 
@@ -204,7 +242,7 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 | `node scripts/check-doc-links.js` | **OK: 497 件**（未 populate の submodule 配下は対象外） |
 | `node scripts/check-test-spec-coverage.js` | 初回は **違反 1 件（床の上げ忘れ）** → `--update` 後 **OK**（§下記）。`check-commit-messages` / `check-landed-subjects` も OK |
 | `node scripts/check-cross-repo-refs.js` | **OK: 575 件** |
-| `node scripts/check-contract-schema.js` | **OK: 2 プロジェクト / 20 ファイル / 59 型が baseline と一致**（＝射程どおり契約は変わっていない） |
+| `node scripts/check-contract-schema.js` | **OK: 2 プロジェクト / 22 ファイル / 71 型が baseline と一致**（＝射程どおり契約は変わっていない） |
 | `node scripts/check-plan-id-qualification.js` | **OK: 1218 件** |
 
 ### 変異試験（**テストが本当に欠陥を捕まえるか**）
@@ -218,7 +256,7 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 | 両方を元に戻す | **Failed 0 / Passed 71**（`git diff` も差分 0 で、変異が残っていないことを確認した） |
 
 **どちらの変異でも `BuildPayloadThenExtractTags_RoundTrips` が落ちた** ——
-書き込み・復元のどちらが欠けても赤になる。**これが作業前の状態（両方欠けている）を捕まえる面である。**
+書き込み・復元のどちらが欠けても赤になる。**これが表現の一致を守っている面である。**
 
 ### `test-spec-coverage-baseline.json` の更新
 

@@ -263,7 +263,12 @@ public class QdrantVectorStore(
             payload["updated_at"] = new Value { IntegerValue = updatedAt.ToUnixTimeMilliseconds() };
 
         // FR-03, SC-02（#642）: タグをペイロードに保持する（結果一覧の表示用）。
-        // **書いていなかったため、復元だけ直しても本経路で書いた分は往復で消えていた。**
+        // **これは予防であって、本番の欠陥の是正ではない** —— `UpsertAsync` を呼ぶ本番コードは
+        // 現在 1 つも無く（実測。書いているのは IngestionService の `QdrantIngestionVectorStore`）、
+        // **本番でタグ列が空欄だったのは復元側（`MapPayload`）が原因である。**
+        // それでも書くのは、`IVectorStore` が**書き込みを含むポート**で `InMemoryVectorStore` は
+        // `Tags` を運んでおり、**Qdrant 実装だけが運ばない状態**を残すとこの口を使い始めた瞬間に
+        // 同じ欠陥が再発するためである（[[IADR-0014]] は実装単位に掛かる）。作業仕様書 §追補。
         // 0 件のときはキー自体を書かない（`attributes` と同じ扱い・取り込み側とも一致する）。
         if (chunk.Tags.Count > 0)
         {
