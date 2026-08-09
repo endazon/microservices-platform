@@ -53,6 +53,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
     // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
     public string? LastAttributeValuesBody { get; set; }
+    // AttributeValuesStatusCode を 500/400 に差し替えると、後段の非 2xx 透過を検証できる。
+    // **縮退（空配列）で潰さないことを固定するために要る** —— 潰すと運用側が後段の不調に気づけない。
+    public HttpStatusCode AttributeValuesStatusCode { get; set; } = HttpStatusCode.OK;
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
@@ -593,6 +596,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
             if (request.RequestUri?.AbsolutePath.EndsWith("/attribute-values", StringComparison.Ordinal) == true)
             {
                 owner.LastAttributeValuesBody = body;
+                if (owner.AttributeValuesStatusCode != HttpStatusCode.OK)
+                    return new HttpResponseMessage(owner.AttributeValuesStatusCode);
+
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = JsonContent.Create(new AttributeValuesResponse(owner.StubAttributeValues))

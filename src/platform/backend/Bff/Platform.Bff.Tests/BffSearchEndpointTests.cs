@@ -152,4 +152,29 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!.Values.Should().BeEmpty();
         factory.LastAttributeValuesBody.Should().BeNull();
     }
+
+    // FR-04, FR-05, SC-01, SC-08, #540: **後段が返した非 2xx はそのまま透過する。**
+    // **縮退（200 空配列）で潰さない** —— 縮退が守るのは「権限外の存在を示さない」ことであって、
+    // **後段の障害を利用者から隠すことではない**。潰すと運用側が不調に気づけない
+    // （`docs/api/BFF_bff-surface.md` の縮退表の注記・[[IADR-0151]] 決定 5 の射程）。
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task PostAttributeValues_WhenDownstreamFails_PropagatesStatus_NotEmptyList(HttpStatusCode status)
+    {
+        factory.SearchScopeGranted = true;
+        factory.AttributeValuesStatusCode = status;
+        try
+        {
+            var resp = await factory.CreateClient()
+                .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+
+            resp.StatusCode.Should().Be(status, "後段の非 2xx は透過する（空配列へ畳まない）");
+        }
+        finally
+        {
+            // BffTestFactory は IClassFixture で共有される。後続テストへ漏らさない。
+            factory.AttributeValuesStatusCode = HttpStatusCode.OK;
+        }
+    }
 }
