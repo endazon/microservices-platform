@@ -1,3 +1,4 @@
+using FluentAssertions;
 using DocumentService.Api.Foundation.Domain;
 
 namespace DocumentService.Api.Tests;
@@ -90,5 +91,37 @@ public class DocumentVersioningTests
         doc.Publish();
 
         Assert.Equal(DocumentStatus.Published, doc.Status);
+    }
+
+    // FR-01, UC-04, SC-05, #637: **再正規化はタグ欄を上書きしない**（計画確定・2026-08-09）。
+    //
+    // **取り込み経路はタグを生成しない**ので（[[IADR-0153]] 決定 5）、ここで上書きすると
+    // **SC-05 で管理者が付けたタグが再同期のたびに空で消える**。
+    // **「取り込みはタグを作らない」と「取り込みはタグを消す」は別**である。
+    [Fact]
+    public void ApplyNormalized_PreservesTags()
+    {
+        var doc = Document.Create("文書", null, null, null, ["経理", "規程"]);
+
+        doc.ApplyNormalized("再正規化後", "storage://x.md",
+            new Dictionary<string, string> { ["confidentiality"] = "internal" });
+
+        doc.Tags.Should().Equal(["経理", "規程"],
+            "管理者が SC-05 で付けたタグは再同期で消えない");
+        doc.Title.Should().Be("再正規化後", "タイトル・属性・本文の所在は取り込みが正本である");
+        doc.Attributes["confidentiality"].Should().Be("internal");
+    }
+
+    // 画面（SC-05）からの更新は**従来どおりタグを更新できる**。止めるとタグを外せなくなる。
+    [Fact]
+    public void UpdateMetadata_StillReplacesTags()
+    {
+        var doc = Document.Create("文書", null, null, null, ["経理"]);
+
+        doc.UpdateMetadata([], ["規程"], "付け替え");
+        doc.Tags.Should().Equal(["規程"]);
+
+        doc.UpdateMetadata([], [], "全部外す");
+        doc.Tags.Should().BeEmpty("利用者が意図して外せる");
     }
 }

@@ -77,14 +77,24 @@ public class Document
     }
 
     // FR-01, UC-04: 同一文書の DocumentNormalized 再配信時に正規化内容を反映する（冪等更新）。
+    //
+    // **［#637］タグ欄は上書きしない**（計画確定・2026-08-09。SC-05「再正規化はタグ欄を上書きしない」）。
+    // **取り込み経路はタグを生成しない**ので（[[IADR-0153]] 決定 5）、ここで上書きすると
+    // **SC-05 で管理者が付けたタグが再同期のたびに空で消える**。
+    // **「取り込みはタグを作らない」と「取り込みはタグを消す」は別**であり、後者は SC-05 のタグ設定を無意味にする。
+    //
+    // **属性は上書きしてよい** —— ソースのメタ（所在・部門・フォルダ等）の写像先は ABAC 基本属性であり、
+    // **取り込みが正本である**（タグとは出どころが違う）。
+    //
+    // **画面からの更新（`Update` / `UpdateMetadata`）は従来どおりタグを更新する。**
+    // そちらは利用者が意図した更新であり、止めるとタグを外せなくなる。
     public void ApplyNormalized(string title, string markdownUri,
-        Dictionary<string, string> attributes, List<string> tags)
+        Dictionary<string, string> attributes)
     {
         Title = title;
         MarkdownUri = markdownUri;
         Status = DocumentStatus.Normalized;
         Attributes = attributes;
-        Tags = tags;
         Touch();
         Snapshot("re-normalized");
     }
