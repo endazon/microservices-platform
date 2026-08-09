@@ -195,11 +195,24 @@ export default defineConfig({
       //   （useEffect ＋ 複数の state ＋ load() の呼び直し）を TanStack Query へ置き換えて
       //   **測るべき分岐そのものが減った**ぶんも含む。
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      //
+      // ［2026-08-09 / #629］文書の書き込みを管理者限定へ狭めたことに伴う引き上げ。
+      //   実測（worktree `fix/FR-06-document-write-admin-only` / `pnpm run test:coverage`。
+      //   MSP 所有分は lcov.info を `ai-stock-trading` の有無で分けて集計した）:
+      //     全ユニット横断  lines/statements 96.5%（5768/5977）/ branches 90.98%（1201/1320）/
+      //                     functions 91.94%（411/447）
+      //     MSP 所有分のみ  lines 96.01%（4501/4688）/ branches 92.20%（934/1013）/
+      //                     functions 93.25%（318/341）
+      //   同じ導出規則（**MSP 所有分の実測から 5pt 下・切り捨て**）を適用して
+      //   lines/statements 90 → 91 / branches 86 → 87 へ引き上げる（functions は 88 のまま）。
+      //   上げた分は「SC-05 の**権限別の出し分け**（運用者に書き込みの導線を 1 つも出さない・
+      //   管理者には出す・閲覧は狭めない）を対で固定した」ことによる。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
       thresholds: {
-        lines: 90,
-        statements: 90,
+        lines: 91,
+        statements: 91,
         functions: 88,
-        branches: 86,
+        branches: 87,
       },
     },
   },

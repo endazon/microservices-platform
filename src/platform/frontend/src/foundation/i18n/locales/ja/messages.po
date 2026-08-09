@@ -913,6 +913,10 @@ msgid "文書の取得に失敗しました。"
 msgstr "文書の取得に失敗しました。"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
+msgid "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
+msgstr "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
+
+#: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "文書はありません。"
 msgstr "文書はありません。"
 

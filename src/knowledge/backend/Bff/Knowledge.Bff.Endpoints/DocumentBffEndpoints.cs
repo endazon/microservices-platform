@@ -71,9 +71,14 @@ public static class DocumentBffEndpoints
         }).WithName("BffDocumentContent").Produces<DocumentContentDto>();
 
         // ---- SC-05, FR-06, UC-03, IADR-0041: 文書管理（書き込み） ----
-        // 書き込みは管理系のため platform-admin/operator に限定する（読み取りは SC-02/03 用に無制限）。
-        // 既存文書への操作（更新・メタ更新・公開・アーカイブ・削除）は、対象が利用者スコープ内であることを
+        // 既存文書への操作（更新・公開・アーカイブ・削除）は、対象が利用者スコープ内であることを
         // 先に確認し、スコープ外・不在はいずれも 404 で秘匿する（閲覧できない文書は変更もできない）。
+        //
+        // **［#629］このグループ既定は「閲覧の下限」であり、書き込みの実効境界ではない。**
+        // 計画 §SC-05（裁定 Q19）は**閲覧を管理者・運用者へ開き、破壊的操作は管理者限定を維持する**と
+        // 定めている。したがって**個々の書き込み口へ `AdminOnly` を積む**（AND 合成で実効 admin のみ）。
+        // **後段（`DocumentEndpoints`）にも同じ制限を置いてある** —— 片側だけだと
+        // 「BFF 迂回で通る」か「画面だけ 403 になる」のどちらかが起きる（[[IADR-0044]] の多層防御）。
         var write = app.MapGroup("/bff/documents")
             .WithTags("Documents BFF")
             .RequireAuthorization(p => p.RequireRole(
@@ -91,31 +96,38 @@ public static class DocumentBffEndpoints
             var client = Forwarding(httpFactory, http);
             var resp = await client.PostAsJsonAsync("/documents", req, ct);
             return await RelayAsync(resp, ct);
-        }).WithName("BffDocumentCreate").Produces<DocumentDto>(StatusCodes.Status201Created);
+        }).WithName("BffDocumentCreate").Produces<DocumentDto>(StatusCodes.Status201Created)
+            // #629: 登録は管理者限定（計画の列挙「登録」）。
+            .RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // 更新（楽観ロック。ExpectedVersion 不一致=409 透過）。
         write.MapPut("/{id:guid}", (Guid id, DocumentUpdateRequest req, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
             ForwardIfInScope(id, HttpMethod.Put, $"/documents/{id}", req, httpFactory, http, ct))
-            .WithName("BffDocumentUpdate");
+            // #629: 編集は管理者限定（計画の列挙「文書の編集」）。
+            .WithName("BffDocumentUpdate").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // 公開（取り込み・Wiki 同期をトリガ）。
         write.MapPost("/{id:guid}/publish", (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
             ForwardIfInScope(id, HttpMethod.Post, $"/documents/{id}/publish", null, httpFactory, http, ct))
-            .WithName("BffDocumentPublish");
+            // #629: 公開は管理者限定。計画の列挙に名前が無いため planning#299 の基準を当てはめた
+            // （作業仕様書 §判断 1。後段 `DocumentEndpoints` の同じ口に理由の全文がある）。
+            .WithName("BffDocumentPublish").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // アーカイブ（非公開化）。
         write.MapPost("/{id:guid}/archive", (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
             ForwardIfInScope(id, HttpMethod.Post, $"/documents/{id}/archive", null, httpFactory, http, ct))
-            .WithName("BffDocumentArchive");
+            // #629: アーカイブは管理者限定（公開と同じ基準。可視性を落とすので (a) すら満たさない）。
+            .WithName("BffDocumentArchive").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // 削除（下流の Wiki 同期へ伝播）。
         write.MapDelete("/{id:guid}", (Guid id, IHttpClientFactory httpFactory,
             HttpContext http, CancellationToken ct) =>
             ForwardIfInScope(id, HttpMethod.Delete, $"/documents/{id}", null, httpFactory, http, ct))
-            .WithName("BffDocumentDelete");
+            // #629: 削除は管理者限定（計画の列挙「文書の削除」）。
+            .WithName("BffDocumentDelete").RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         return app;
     }
