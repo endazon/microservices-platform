@@ -1,4 +1,5 @@
 using RetrievalService.Api.Composable.Adapters;
+using RetrievalService.Api.Foundation.Ports;
 using FluentAssertions;
 using Qdrant.Client.Grpc;
 
@@ -99,4 +100,108 @@ public class QdrantVectorStoreTests
 
         QdrantVectorStore.ExtractAttributes(payload).Should().BeEmpty();
     }
+
+    // --- FR-03, SC-02（Issue #642）: タグの書き込みと復元 -------------------------------
+    // **本番の欠陥は復元側である** —— MapPayload が `Tags: []` を固定で返していたため、
+    // SC-02 の結果一覧（SearchResultsPage のタグ列）が本番でのみ常に空欄になっていた。
+    // InMemoryVectorStore は ChunkPayload.Tags をそのまま運ぶのでテストは緑のままであり、
+    // IADR-0014 が名指しした「テストは緑・本番は空」と同型である。
+    //
+    // **書き込み側（BuildPayload）の 3 件は予防である** —— UpsertAsync を呼ぶ本番コードは無く
+    // （書いているのは IngestionService 側）、直しても現時点の本番挙動は変わらない。
+    // それでも固定するのは、この口を使い始めたときに表現が割れていないことを保証するためである。
+
+    // 取り込み側（QdrantIngestionVectorStore.BuildChunkPayload）と同じ `tags -> ListValue` から復元する。
+    [Fact]
+    public void ExtractTags_RestoresFromListValue()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            ["text"] = new() { StringValue = "本文" },
+            ["tags"] = TagList("経理", "規程"),
+        };
+
+        QdrantVectorStore.ExtractTags(payload).Should().Equal("経理", "規程");
+    }
+
+    // タグを持たない文書は空リスト（画面はタグ列を空欄にする。0 件は正常な状態である）。
+    [Fact]
+    public void ExtractTags_WhenNoTags_ReturnsEmpty()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            ["document_id"] = new() { StringValue = "doc" },
+            ["text"] = new() { StringValue = "本文" },
+        };
+
+        QdrantVectorStore.ExtractTags(payload).Should().BeEmpty();
+    }
+
+    // `tags` がリストでない（手で投入された等）場合も検索全体を失敗させず空リストに倒す。
+    [Fact]
+    public void ExtractTags_WhenTagsNotAList_ReturnsEmpty()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            ["tags"] = new() { StringValue = "経理,規程" },
+        };
+
+        QdrantVectorStore.ExtractTags(payload).Should().BeEmpty();
+    }
+
+    // 非文字列スカラーは文字列化し、非スカラー（構造体）は読み飛ばす。
+    [Fact]
+    public void ExtractTags_CoercesScalarsAndSkipsNonScalars()
+    {
+        var list = new ListValue();
+        list.Values.Add(new Value { IntegerValue = 42 });
+        list.Values.Add(new Value { BoolValue = true });
+        list.Values.Add(new Value { StructValue = new Struct() });
+
+        var payload = new Dictionary<string, Value> { ["tags"] = new() { ListValue = list } };
+
+        QdrantVectorStore.ExtractTags(payload).Should().Equal("42", "true");
+    }
+
+    // 書き込みの表現が取り込み側と一致すること。
+    // 期待の形は IngestionService 側の QdrantIngestionVectorStoreTests と同じ主張である
+    // （片側の表現を変えればもう片側が赤くなる）。
+    [Fact]
+    public void BuildPayload_WritesTagsInIngestionRepresentation()
+    {
+        var payload = QdrantVectorStore.BuildPayload(Chunk(["経理", "規程"]));
+
+        payload["tags"].ListValue.Values.Select(v => v.StringValue).Should().Equal("経理", "規程");
+    }
+
+    // タグ 0 件ではキー自体を書かない（attributes と同じ扱い・取り込み側とも一致する）。
+    [Fact]
+    public void BuildPayload_WhenNoTags_OmitsTagsKey()
+    {
+        var payload = QdrantVectorStore.BuildPayload(Chunk([]));
+
+        payload.ContainsKey("tags").Should().BeFalse();
+    }
+
+    // ★ 書き込みと復元の**表現が一致している**ことを往復で固定する。
+    // **「どちらが欠けても本番でタグが出ない」ではない** —— 本番の欠陥は復元側だけであり
+    // （クラス冒頭のとおり書き込み側に呼び出し元は無い）、この往復は表現の一致を守る面である。
+    [Fact]
+    public void BuildPayloadThenExtractTags_RoundTrips()
+    {
+        var payload = QdrantVectorStore.BuildPayload(Chunk(["経理", "規程"]));
+
+        QdrantVectorStore.ExtractTags(payload).Should().Equal("経理", "規程");
+    }
+
+    private static Value TagList(params string[] tags)
+    {
+        var list = new ListValue();
+        foreach (var t in tags)
+            list.Values.Add(new Value { StringValue = t });
+        return new Value { ListValue = list };
+    }
+
+    private static ChunkPayload Chunk(List<string> tags) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), "経費精算規程 v3.2", "本文", [0f], "s3://bucket/a.md", [], tags);
 }

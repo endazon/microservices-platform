@@ -95,6 +95,9 @@
       "DriftDetectorTests",
       "KeycloakRolesClaimsTransformationTests"
     ],
+    "docs/tests/SC-02_search-results.md": [
+      "QdrantVectorStoreTests"
+    ],
     "docs/tests/SC-03_document-detail.md": [
       "BffDocumentEndpointTests"
     ],

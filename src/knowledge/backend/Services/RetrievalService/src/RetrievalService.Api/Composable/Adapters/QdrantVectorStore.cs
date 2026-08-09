@@ -149,7 +149,10 @@ public class QdrantVectorStore(
             MarkdownUri: payload.GetValueOrDefault("markdown_uri")?.StringValue,
             // FR-05, FR-11: ABAC 属性（confidentiality 等）を DTO へ復元する。
             Attributes: ExtractAttributes(payload),
-            Tags: [],
+            // FR-03, SC-02（#642）: タグを DTO へ復元する。
+            // **これが `[]` 固定だったため、本番でだけタグ列が空になっていた**
+            // （`InMemoryVectorStore` は運ぶのでテストは緑のまま。[[IADR-0014]] と同型）。
+            Tags: ExtractTags(payload),
             // FR-03, SC-02, #536: 更新日時を復元する（IADR-0149 決定 1・3）。
             UpdatedAt: ExtractUpdatedAt(payload));
 
@@ -188,6 +191,35 @@ public class QdrantVectorStore(
         return attributes;
     }
 
+    // FR-03, SC-02（Issue #642）: ペイロードに保持したタグを `Tags` リストへ復元する。
+    // 復元しないと SC-02 の結果一覧（`SearchResultsPage`）のタグ列が本番で常に空欄になる。
+    // InMemoryVectorStore は `ChunkPayload.Tags` をそのまま運ぶためテストは緑のままであり、
+    // IADR-0014 が記録した「テストは緑・本番は空」と同型の欠陥であった。
+    // 表現は取り込み側（IngestionService の QdrantIngestionVectorStore.BuildChunkPayload）と同じ
+    // `tags -> ListValue[StringValue]` である。書き込み（BuildPayload）もこれに揃えてある。
+    //
+    // **キーは `AttributeValueKeys.Tags` を使う**——#539 が絞り込み側（`BuildAttributeConditions`）を
+    // `ToPayloadKey` へ寄せて「候補に出る値と絞れる値を 1 つの関数に持たせた」ため、
+    // ここでリテラルを書くと**書き込み・復元・絞り込みでキーの真実が 3 つに割れる**。
+    internal static List<string> ExtractTags(IReadOnlyDictionary<string, Value> payload)
+    {
+        var tags = new List<string>();
+
+        if (payload.TryGetValue(AttributeValueKeys.Tags, out var value)
+            && value.KindCase == Value.KindOneofCase.ListValue)
+        {
+            // 非スカラー（構造体・入れ子リスト）は AsString が null を返すので読み飛ばす。
+            // 手で投入されたデータでも検索全体を失敗させない。
+            foreach (var item in value.ListValue.Values)
+            {
+                if (AsString(item) is { } text)
+                    tags.Add(text);
+            }
+        }
+
+        return tags;
+    }
+
     // 属性値をスカラー文字列へ写像する（属性は原則文字列だが、数値/真偽値も安全に文字列化する）。
     private static string? AsString(Value value) => value.KindCase switch
     {
@@ -199,6 +231,24 @@ public class QdrantVectorStore(
     };
 
     public async Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default)
+    {
+        var payload = BuildPayload(chunk);
+
+        var point = new PointStruct
+        {
+            Id = new PointId { Uuid = chunk.ChunkId.ToString() },
+            Vectors = chunk.Vector,
+            Payload = { payload }
+        };
+
+        await client.UpsertAsync(_collection, [point], cancellationToken: ct);
+    }
+
+    // FR-03, FR-05, SC-02: チャンクの Qdrant ペイロードを構築する。
+    // 純関数として切り出すのは、実機 Qdrant なしで書き込み表現を固定するためである
+    // （復元側の ExtractAttributes / ExtractTags と同じ位置づけ。Issue #642）。
+    // 取り込み側 IngestionService の QdrantIngestionVectorStore.BuildChunkPayload と同じ表現に揃える。
+    internal static Dictionary<string, Value> BuildPayload(ChunkPayload chunk)
     {
         var payload = new Dictionary<string, Value>
         {
@@ -212,6 +262,22 @@ public class QdrantVectorStore(
         if (chunk.UpdatedAt is { } updatedAt)
             payload["updated_at"] = new Value { IntegerValue = updatedAt.ToUnixTimeMilliseconds() };
 
+        // FR-03, SC-02（#642）: タグをペイロードに保持する（結果一覧の表示用）。
+        // **これは予防であって、本番の欠陥の是正ではない** —— `UpsertAsync` を呼ぶ本番コードは
+        // 現在 1 つも無く（実測。書いているのは IngestionService の `QdrantIngestionVectorStore`）、
+        // **本番でタグ列が空欄だったのは復元側（`MapPayload`）が原因である。**
+        // それでも書くのは、`IVectorStore` が**書き込みを含むポート**で `InMemoryVectorStore` は
+        // `Tags` を運んでおり、**Qdrant 実装だけが運ばない状態**を残すとこの口を使い始めた瞬間に
+        // 同じ欠陥が再発するためである（[[IADR-0014]] は実装単位に掛かる）。作業仕様書 §追補。
+        // 0 件のときはキー自体を書かない（`attributes` と同じ扱い・取り込み側とも一致する）。
+        if (chunk.Tags.Count > 0)
+        {
+            var tagList = new ListValue();
+            foreach (var t in chunk.Tags)
+                tagList.Values.Add(new Value { StringValue = t });
+            payload[AttributeValueKeys.Tags] = new Value { ListValue = tagList };
+        }
+
         // FR-05: ABAC 属性をペイロードに保持（検索時フィルタ用）。
         // IADR-0014（選択肢C・実機検証済み）: ネスト構造体 `attributes -> { k: v }` へ統一する。
         if (chunk.Attributes.Count > 0)
@@ -222,14 +288,7 @@ public class QdrantVectorStore(
             payload["attributes"] = new Value { StructValue = attrs };
         }
 
-        var point = new PointStruct
-        {
-            Id = new PointId { Uuid = chunk.ChunkId.ToString() },
-            Vectors = chunk.Vector,
-            Payload = { payload }
-        };
-
-        await client.UpsertAsync(_collection, [point], cancellationToken: ct);
+        return payload;
     }
 
     public async Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default)
