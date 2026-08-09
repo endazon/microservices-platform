@@ -112,10 +112,26 @@ public static class TagDictionaryEndpoints
 
             // **改名したタグを使っている文書だけ再発行する。** 全文書を流すと辞書の 1 語の変更で
             // 索引全体が再構築され、規模に比例して費用が出る。
+            //
+            // **2 段に分けているのは、文書の実体を全件読まないためである。**
+            // 1 段目は `Id` ＋ `Tags` だけを読んで対象を絞り（`LoadWithUsageAsync` と同じ形）、
+            // 2 段目で**該当した文書だけ**実体を読む。改名は「使っているのは数件」が普通なので、
+            // ここで全行（本文 URI・属性を含む）を読むと、費やす I/O が発行するイベント数に見合わない。
+            //
+            // **`Tags` の走査自体は全件のままである** —— jsonb へ変換した `List<Guid>` は SQL 側で
+            // 展開できないためで、消したければ jsonb 包含（`@>`）＋ GIN 索引が要る。
+            // ただし `FromSql` は EF InMemory で動かず、端点テストが全滅するため本 issue では採らない。
             var names = await TagResolver.NamesAsync(db, ct);
-            var affected = (await db.Documents.ToListAsync(ct))
+            var affectedIds = (await db.Documents
+                    .Select(d => new { d.Id, d.Tags })
+                    .ToListAsync(ct))
                 .Where(d => d.Tags.Contains(id))
+                .Select(d => d.Id)
                 .ToList();
+
+            var affected = affectedIds.Count == 0
+                ? []
+                : await db.Documents.Where(d => affectedIds.Contains(d.Id)).ToListAsync(ct);
             foreach (var doc in affected)
                 await bus.Publish(DocumentEndpoints.ToEvent(doc, names), ct);
 
