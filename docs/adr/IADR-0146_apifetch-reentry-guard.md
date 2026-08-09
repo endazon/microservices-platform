@@ -2,7 +2,7 @@
 title: IADR-0146 画面からの apiFetch 再混入を ESLint で止め、禁止対象を絞ることで例外表を作らない
 type: impl-adr
 status: Accepted
-related_ids: [NFR, IADR-0121, IADR-0131, IADR-0135, IADR-0141]
+related_ids: [NFR, ADR-0031, IADR-0121, IADR-0131, IADR-0135, IADR-0141]
 author: Claude
 created: 2026-08-08
 updated: 2026-08-08
@@ -85,6 +85,21 @@ flat config は同一ルールを**後勝ちで置換**する。`features/**` �
   （広げると `foundation` 自身とテストの例外が増え、決定 2 の判断と矛盾する）。
 - **手書き型そのもの**。`apiFetch` を使わずに手書き型を置くことは止められない。
   本検査が塞ぐのは「契約を迂回する呼び出し口」であって型の書き方ではない。
+
+> **［2026-08-08 追記 / フェーズ末クロス監査］`bffFetch` を禁止対象へ加えた（当初の欠落を是正）。**
+>
+> 上の列挙は `apiRequest` と「手書き型そのもの」を挙げていたが、**`orvalMutator.bffFetch` を数えていなかった。**
+> `bffFetch<T>(url, options)` は `apiFetch<T>(path, req)` と同じ「**任意 URL ＋ 手書き型**」の口であり、
+> `export` されているので features から import すれば同じ抜け道になる。
+> **決定 2 は「禁止対象を絞ること自体が例外の明示になっている」と述べたが、`bffFetch` については
+> 絞ったことも明示したことも無かった** ——[[IADR-0141]] が名指しした「**条文が片側しか書いていない**」型である。
+>
+> **実測**: features からの `bffFetch` import は **0 件**（利用は `foundation/api/generated/` の 4 ファイルのみ）。
+> したがって禁止しても既存コードの是正は発生せず、本決定と同じく**予防**である。
+> **生成物（`foundation/api/generated/`）は features ではないので対象外**であり、mutator としての利用は続く。
+>
+> `src/eslint.config.js` に定数 `NO_BFFFETCH_IN_FEATURES` を追加し、`NO_APIFETCH_IN_FEATURES` と同じ
+> knowledge ブロックの `paths` へ展開した（決定 3 の後勝ち置換を避けるため、**新しいブロックを足さず既存の配列へ加えている**）。
 
 ## 影響
 
