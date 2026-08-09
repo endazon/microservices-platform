@@ -37,8 +37,9 @@ related_specs:
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——hi-fi の「次回同期」列
-> （**契約は #538 で揃った。残るのは表示だけ**）・「⚠ 再試行中（3/5）」・「設定」（後の 2 つは契約に
-> 載る先が無い）と、共通シェルのパンくず・右レール。
+> （**契約は #538 で揃った。残るのは表示だけ**）・行操作「設定」（**契約は #534 で揃った。残るのは
+> 編集フォームだけ**）と、共通シェルのパンくず・右レール。
+> **［2026-08-08 / #537］「⚠ 再試行中（3/5）」は実装した**（契約が同期健全性を持ったため）。
 > 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
 
 > **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
@@ -75,10 +76,10 @@ related_specs:
 | 3 | 一覧の**ソース**列（418・420-423） | **する** | 名前 ＋ 接続先 URI（`<code>`）。モックはパス（`\\fs01\share\規程集`）とサービス名を同じ列に描く |
 | 4 | 一覧の**種別**列（418・420-423。ファイルサーバー／Wiki／SaaS／業務DB） | **する** | `Tag`（分類名）。`filesystem` / `wiki` / `saas` / `db` を**日本語の表示名へ写像する**（計画 §SC-06 主要素が 4 種の名前を与えている） |
 | 5 | 一覧の**同期状態**列（418・420-423） | **する（導出できる範囲で）** | `StatusBadge`。**色 ＋ アイコン ＋ テキスト**（INDEX 決定 21）。導出規則は §同期状態の導出 |
-| 6 | 同期状態の**「⚠ 再試行中（3/5）」**（422） | **しない** | **契約の不在**。§実装しない要素の理由 (a) |
+| 6 | 同期状態の**「⚠ 再試行中（3/5）」**（422） | **する** | **［2026-08-08 / #537］契約が同期健全性を持ったため実装した**（裁定 Q14）。`StatusBadge tone="warning"`（琥珀）。導出規則は §同期状態の導出 |
 | 7 | 一覧の**次回同期**列（418・420-423） | **しない** | **契約は #538 で追加済み**（`DataSourceDto.nextSyncAt`）。**表示が未実装**なので判定は「しない」である。繰り延べの理由が「契約に無い」から「表示が未実装」へ変わっただけで、画面としては出ていない。§実装しない要素 (b) |
 | 8 | 行操作「**手動同期**」（420-421） | **する** | `POST /bff/datasources/{id}/sync`（UC-04 **代替フロー**） |
-| 9 | 行操作「**設定**」（422-423） | **しない** | 同上 (c) |
+| 9 | 行操作「**設定**」（422-423） | **しない** | **契約は #534 で追加済み**（`PUT` / `PATCH`）。**編集フォームの画面実装が未了**なので判定は「しない」である（#538 と同じく、繰り延べの理由が「契約に無い」から「表示が未実装」へ変わった）。§実装しない要素 (c) |
 | 10 | 「変換ジョブの状況を見る →」（426） | **する** | `/admin/conversions`（SC-07）への内部リンク。計画の遷移図 `SC06 → SC07` |
 | 11 | 注記「接続情報（認証情報）は Vault 管理。接続の継続失敗はアラート（UC-04 例外フロー）。」（427） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
 | 12 | **共通シェル**: 右レール「AIチャットパネル」（429-434） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
@@ -98,23 +99,35 @@ related_specs:
 | `status = disabled` | 無効 | `neutral` | `Info` |
 | `status = active` かつ `lastSyncedAt` あり | 同期済み（日時） | `success` | `CircleCheck` |
 | `status = active` かつ `lastSyncedAt` なし | 未同期 | `neutral` | `Info` |
-| （同期異常） | — | **`warning`（琥珀）を空けてある** | — |
+| `status = active` かつ `0 < consecutiveFailureCount < retryLimit` | 再試行中（n/limit） | **`warning`（琥珀）** | `AlertTriangle` |
+| `status = active` かつ `consecutiveFailureCount >= retryLimit` | 同期異常（n/limit） | **`warning`（琥珀）** | `AlertTriangle` |
 
 **琥珀（警告色）の充て先**: 05_screens モック間相違の確定 ②（2026-07-24）は
 「SC-06 の**同期異常表示**の警告色＝琥珀（hi-fi を正）」と定める。すなわち琥珀が指すのは**異常**であり、
 **管理者が意図して無効化した正常な設定状態ではない**。`disabled` へ琥珀を充てると「⚠ が付いた正常状態」が
-生まれ、計画が琥珀へ与えた意味と表示の意味がずれる。同期異常は契約（`DataSourceDto`）に無く表示できないため、
-**琥珀は同期健全性が契約に載るまで空けておく**——「異常」の語彙を先に使い切ると、契約が来たときに
-区別する色が無くなる（[[IADR-0127]] 決定 2）。`disabled` は中立で示すが、
+生まれ、計画が琥珀へ与えた意味と表示の意味がずれる。
+
+> **［2026-08-08 / #537］琥珀の充て先が確定した。** [[IADR-0127]] 決定 2 は「同期健全性が契約に載るまで
+> 琥珀を空けておく」と予約していたが、裁定 Q14 により `DataSourceDto` が
+> `consecutiveFailureCount` / `retryLimit` / `lastSyncError` を持った（[[IADR-0148]]）。
+> **`disabled` を中立に置く判断は変わらない** —— 計画も「実装が `disabled` を中立表示に改めて琥珀を
+> 空けたまま保留した判断は**妥当であり、そのまま活かす**」と明記している。
+
+**判定の順序は「状態 → 健全性」である。** 無効化されたソースは同期が回らないため、残っている失敗回数を
+異常として出し続けると「管理者が意図して止めた正常な状態」に ⚠ が付く（`disabled` を中立に置いた理由と同じ）。
+
+**しきい値は契約が返す `retryLimit` である**（計画 §SC-06「「継続失敗」のしきい値は再試行上限に達した
+時点とする」）。**画面に定数を複写しない** —— 複写すると同じ数が 2 箇所に立ち、サーバ側を変えたときに
+黙って割れる（[[IADR-0148]] 決定 4）。`disabled` は中立で示すが、
 **色だけで意味を持たせない**（INDEX 決定 21）点は変わらない（`StatusBadge` が色 ＋ アイコン ＋ テキストを型で強制する）。
 
 ### 実装しない要素の理由（**いずれも繰り延べであって放棄ではない**）
 
 | # | 計画の記述 | 現在の契約（実測） | 必要な変更 |
 | --- | --- | --- | --- |
-| (a) 「⚠ 再試行中（3/5）」 | hi-fi 422・§SC-06 アクション「同期異常は警告表示」・UC-04 例外「接続失敗時は再試行し、継続失敗はアラートする」 | `DataSourceDto(Id, Name, SourceType, ConnectionUri, Status, LastSyncedAt, Config, DefaultAttributes, CreatedAt)` で `Status` は **`active` / `disabled` の 2 値のみ**。連続失敗回数・再試行上限を持つフィールドが無い | `DataSourceDto` への同期健全性（連続失敗回数 / 上限 / 直近エラー）の追加 |
+| ~~(a) 「⚠ 再試行中（3/5）」~~ | hi-fi 422・§SC-06 アクション「同期異常は警告表示」・UC-04 例外「接続失敗時は再試行し、継続失敗はアラートする」 | 従前は `Status` が **`active` / `disabled` の 2 値のみ**で、連続失敗回数・再試行上限を持つフィールドが無かった | **［2026-08-08 / #537］解消済み。** `DataSourceDto` へ同期健全性（`consecutiveFailureCount` / `retryLimit` / `lastSyncError` / `lastSyncErrorAt`）を追加し、表示まで実装した（[[IADR-0148]]） |
 | (b) 「次回同期」列 | hi-fi 418・420-423（**是正後は全行「本日 14:00」＋「同期は全ソース共通の間隔で実行する」の注記**） | 同期は `DataSourceSyncHostedService` が**全ソース共通の間隔**（`DataSourceSync__IntervalSeconds`。既定 300 秒）で回す。**ソース別のスケジュールという概念が無い**。**2026-08-06 / #538 で `DataSourceDto.nextSyncAt`（共通間隔の次回実行時刻・全ソース同値・無効時 null）を契約へ追加した**（[[IADR-0136]]） | ~~ソース別スケジュール（cron 等）のモデル化~~ → **裁定で不採用**（planning#200 Q15）。残るのは**画面側の列の追加**だけである |
-| (c) 行操作「設定」 | hi-fi 422-423 | `/bff/datasources` に**更新（`PUT` / `PATCH`）が無い**。あるのは一覧・個別取得・登録・手動同期・無効化のみ | データソース更新 API |
+| (c) 行操作「設定」 | hi-fi 422-423 | 従前は `/bff/datasources` に**更新（`PUT` / `PATCH`）が無かった**。**［2026-08-08 / #534］契約は追加済み**（全置換 `PUT` / 部分更新 `PATCH`・**管理者限定**） | ~~データソース更新 API~~ → **契約は揃った**。残るのは**編集フォームの画面実装**だけである（#534 は契約の追加に閉じる。[[IADR-0139]] 条件 F） |
 
 実測の出所: `src/knowledge/backend/Shared/Knowledge.Contracts/Dtos/DataSourceDto.cs` ／
 `src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs` ／
@@ -125,7 +138,9 @@ related_specs:
 3 件は環流の記録に載せ（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)）、
 planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て計画本文へ反映済みである**（planning#200。
 (a) = Q14 同期健全性を契約へ追加／(b) = Q15 次回同期は共通間隔・ソース別スケジュールは持たない／
-(c) = Q16 更新 API を定める）。**このうち (b) の契約は #538 が実装した**（[[IADR-0136]]）。
+(c) = Q16 更新 API を定める）。**3 件とも契約は揃った** —— (b) は #538（[[IADR-0136]]）、
+**(a) と (c) は #534 ＋ #537 の束**（[[IADR-0148]] / [[IADR-0139]] 決定 5）である。
+**(a) は表示まで実装済み**、(b) と (c) は**画面側の実装だけが残っている**。
 
 ## データソース（BFF 境界）
 
@@ -133,6 +148,8 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 | --- | --- | --- | --- | --- |
 | 一覧 | `GET /bff/datasources` | **orval 生成フック `useBffDataSourceList`**（#519） | admin / operator | `DataSourceDto[]` |
 | 登録 | `POST /bff/datasources` | `useMutation` | 同上 | `DataSourceDto`（201） |
+| 更新（全置換） | `PUT /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
+| 更新（部分） | `PATCH /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
 | 手動同期 | `POST /bff/datasources/{id}/sync` | `useMutation` | 同上 | 202 `DataSourceSyncResultDto`（`{ fetched, failed, connectorAvailable, message }`） |
 | 無効化 | `DELETE /bff/datasources/{id}` | `useMutation` | 同上 | 204 |
 
@@ -214,16 +231,27 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 - 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
 - テスト仕様書: [SC-06_datasource-management.md](../tests/SC-06_datasource-management.md)
 - 作業仕様書（次回同期の契約）: [20260806_issue-538_next-sync-at.md](../specs/20260806_issue-538_next-sync-at.md)
-- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) / [IADR-0136](../adr/IADR-0136_next-sync-at-from-worker-cadence.md)
+- 作業仕様書（同期健全性・更新 API）: [20260808_issue-534-537_datasource-contract-bundle.md](../specs/20260808_issue-534-537_datasource-contract-bundle.md)
+- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) / [IADR-0136](../adr/IADR-0136_next-sync-at-from-worker-cadence.md) / [IADR-0148](../adr/IADR-0148_datasource-sync-health-persistence.md)
 - 計画への環流（**planning#198 として起票済み・2026-08-05 に裁定され planning#200 で計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 
-1. **同期異常（再試行中 N/M）の表示**（§実装しない要素 (a)）。`DataSourceDto` への同期健全性の追加が要る。
-   **環流の記録を作成済み・planning#198 として起票済み（裁定待ち）。**
+1. ~~**同期異常（再試行中 N/M）の表示**~~ —— **［2026-08-08 / #537］解消済み。** 裁定（planning#200 Q14）を受けて
+   `DataSourceDto` へ同期健全性を追加し、琥珀の 2 状態を表示するところまで実装した（[[IADR-0148]]）。
 2. **次回同期**（同 (b)）。**裁定済み**（planning#200 Q15: ソース別スケジュールは持たない・共通間隔の
    次回実行時刻を全ソース同値で返す）。**契約は #538 が追加した**（`nextSyncAt`。[[IADR-0136]]）。
    **残るのは画面側の列の追加**であり、繰り延べの理由（契約の不在）はもう無い。
    表示にあたっては `nextSyncAt` が `null`（定期同期が無効な環境）になり得ることに注意する。
-3. **コネクタ設定の編集**（同 (c)）。データソース更新 API が要る。同上。
+3. **コネクタ設定の編集**（同 (c)）。**裁定済み**（planning#200 Q16）。**契約は #534 が追加した**
+   （`PUT` / `PATCH`・**管理者限定**）。**残るのは編集フォームの画面実装**であり、繰り延べの理由
+   （契約の不在）はもう無い。**登録フォーム（`DataSourceForm`）を編集にも使えるようにするのが自然**だが、
+   秘密の扱いは**サーバ側が守っている** —— **［2026-08-08 / PR #627 の AI レビュー 🟡］
+   マスク値（`***`）は保存されず既存値が保たれる**（[[IADR-0148]] 決定 6）。
+   したがって GET の応答をそのまま編集して送り返してよい。`config` を省略する必要はない。
 4. **閲覧ロール**（admin/operator か admin のみか）。計画 §共通シェル と [[IADR-0039]] の差異。同上。
+5. **書き込みロールの計画との差異**（#534 で判明・**別 issue 化する**）。計画 §SC-06 §アクセス制御 は
+   「**登録・更新・無効化は管理者限定**」と定めるが、現行実装は `POST` と `DELETE` が
+   **admin ＋ operator** である（グループ既定をそのまま使っている）。**#534 が新設した `PUT` / `PATCH` は
+   計画どおり管理者限定で作った**が、既存 2 口は本束の射程外として触れていない（[[IADR-0116]] 規約 4）。
+   **是正は #628 として起票済みである。**

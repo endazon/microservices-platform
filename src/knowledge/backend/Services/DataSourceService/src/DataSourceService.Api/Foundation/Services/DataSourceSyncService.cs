@@ -1,5 +1,6 @@
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Ports;
+using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using MassTransit;
@@ -13,11 +14,14 @@ public sealed class DataSourceSyncService(
     ConnectorRegistry registry,
     IObjectStorageClient storage,
     IPublishEndpoint bus,
-    SyncFailureTracker failures,
     ILogger<DataSourceSyncService> logger)
 {
-    // UC-04 例外フロー: 連続失敗がこの回数以上でアラート（継続失敗の警告）。
-    public const int AlertThreshold = 3;
+    // UC-04 例外フロー / SC-06（Q14 / #537）: 連続失敗がこの回数に達した時点でアラート（継続失敗の警告）。
+    // **しきい値は再試行上限そのものである**（計画 §SC-06「「継続失敗」のしきい値は再試行上限に達した
+    // 時点とする」）。値の単一情報源は契約側の DataSourceSyncHealth.DefaultRetryLimit であり、
+    // ここで別の数を持たない —— 従前は 3 を独自に持っており、計画が「実装が決めることになる」として
+    // 明示的に排した状態だった。
+    public const int AlertThreshold = DataSourceSyncHealth.DefaultRetryLimit;
 
     public async Task<SyncResult> SyncAsync(DataSource source, CancellationToken ct = default)
     {
@@ -90,7 +94,7 @@ public sealed class DataSourceSyncService(
         }
 
         if (failed == 0)
-            failures.Reset(source.Id);
+            source.ClearSyncFailures();
         else
             AlertOnFailure(source, $"{failed}/{items.Count} 件の取得に失敗", null);
 
@@ -107,10 +111,14 @@ public sealed class DataSourceSyncService(
         return string.IsNullOrWhiteSpace(folder) ? [] : [folder];
     }
 
-    // UC-04 例外フロー: 連続失敗を記録し、閾値超過で継続失敗アラート（構造化ログ Alert=true）を出す。
+    // UC-04 例外フロー: 連続失敗を記録し、しきい値到達で継続失敗アラート（構造化ログ Alert=true）を出す。
+    // SC-06（Q14 / #537）: 計数と直近エラーは**エンティティへ**記録する（永続化され SC-06 が読む）。
+    // 永続化は呼び出し側の SaveChangesAsync が行う（手動 /sync・定期同期ワーカーの双方が呼んでいる）。
+    // エラーメッセージは保存の時点でマスクする（IADR-0053 と同じ守りを直近エラーの経路にも通す）。
     private void AlertOnFailure(DataSource source, string phase, Exception? ex)
     {
-        var count = failures.RecordFailure(source.Id);
+        var count = source.RecordSyncFailure(
+            SyncErrorRedactor.Redact(ex?.Message ?? phase), DateTimeOffset.UtcNow);
         if (ex is not null)
             logger.LogWarning(ex, "同期失敗（{Phase}）source {Id} 連続{Count}回", phase, source.Id, count);
 

@@ -75,6 +75,43 @@ describe('DataSourceManagementPage (SC-06)', () => {
     );
   });
 
+  // UC-04 例外フロー / SC-06（裁定 Q14 / #537）: 継続失敗を琥珀で見せ、直近エラーを添える。
+  // 計画は「データソースの同期は**静かに壊れる**種類の機能であり、気づく手段が本画面の状態表示である」
+  // と述べている。INDEX 決定 21 により、色だけでなくテキストでも異常が読める。
+  it('shows an amber sync-fault state with the redacted last error', async () => {
+    const FAILING_SOURCE = {
+      ...ACTIVE_SOURCE,
+      id: '33333333-3333-3333-3333-333333333333',
+      name: '社内Wiki',
+      sourceType: 'wiki',
+      consecutiveFailureCount: 5,
+      retryLimit: 5,
+      // 後段が保存時点でマスク済みの文字列（IADR-0053 と同じ守り）。
+      lastSyncError: 'connect failed: Host=db;Password=***',
+      lastSyncErrorAt: '2026-08-08T02:00:00Z',
+    };
+    mocks.apiRequest.mockResolvedValue(jsonResponse([FAILING_SOURCE]));
+    await renderPage();
+
+    expect(await screen.findByText('社内Wiki')).toBeInTheDocument();
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('同期異常（5/5）')).toBeInTheDocument();
+    expect(table.getByText('connect failed: Host=db;Password=***')).toBeInTheDocument();
+    // 異常時に「同期済み」は出さない（取り込みが続いていると読めてしまう）。
+    expect(table.queryByText('同期済み')).not.toBeInTheDocument();
+  });
+
+  // 上限未満は「再試行中」（hi-fi の「⚠ 再試行中（3/5）」）。まだ回復し得るが既に壊れかけている。
+  it('shows an amber retrying state below the retry limit', async () => {
+    mocks.apiRequest.mockResolvedValue(
+      jsonResponse([{ ...ACTIVE_SOURCE, consecutiveFailureCount: 3, retryLimit: 5 }]),
+    );
+    await renderPage();
+
+    expect(await screen.findByText('規程集')).toBeInTheDocument();
+    expect(within(screen.getByRole('table')).getByText('再試行中（3/5）')).toBeInTheDocument();
+  });
+
   // UC-04 基本フロー 1: 管理者がソース（ファイルサーバー／Wiki／SaaS／業務DB）を登録する。
   it('registers a data source with a default confidentiality attribute', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([]));

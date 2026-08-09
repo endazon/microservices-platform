@@ -10,7 +10,8 @@ namespace DataSourceService.Api.Foundation.Services;
 // そこでワーカーが起動時に起点を記録し、読み出し時に「現在より真に後の最初の境界」を計算する。
 //
 // インメモリで持つ理由: 次回時刻はワーカーの位相から**導出できる値**であって状態ではない。DB に持つと
-// プロセス再起動のたびに実体とずれる（SyncFailureTracker と同じくプロセスローカルに持つ）。
+// プロセス再起動のたびに実体とずれる。**同期健全性（連続失敗回数・直近エラー）とは扱いが逆である** ——
+// あちらは導出できない事実なのでエンティティへ永続化する（#537 / IADR-0148）。
 public sealed class SyncSchedule(TimeProvider timeProvider)
 {
     // ワーカー起動時に 1 回だけ書き、以後は読むだけ。参照の差し替えは原子的なので volatile で足りる

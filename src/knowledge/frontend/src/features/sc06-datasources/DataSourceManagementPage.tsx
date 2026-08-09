@@ -25,13 +25,15 @@ import type { DataSourceDto } from '@foundation/api/generated/bff.schemas';
 // SC-06, UC-04, FR-01/FR-02: データソース管理画面（05_screens: ルート /admin/sources）。
 // ソースの登録・一覧・同期状態の確認・手動同期を行い、SC-07（変換ジョブ）への導線を持つ。
 //
-// 実装しない要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）:
-//   - **「⚠ 再試行中（3/5）」**: `DataSourceDto.Status` は active / disabled の 2 値のみで、
-//     連続失敗回数・再試行上限を持つフィールドが無い。
-//   - **「次回同期」列**: 同期は全ソース共通の間隔で回る hosted service であり、
-//     ソース別スケジュールという概念が契約に無い（常に空の列になる）。
-//   - **行操作「設定」**: `/bff/datasources` に更新（PUT / PATCH）が無い（押しても何も変わらない）。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
+// 未実装の要素（画面仕様書 docs/screens/SC-06_datasource-management.md §hi-fi モックアップとの対応）:
+//   - **「⚠ 再試行中（3/5）」**: **［2026-08-08 / #537］実装した。** 契約が同期健全性
+//     （`consecutiveFailureCount` / `retryLimit` / `lastSyncError`）を持ったため（裁定 Q14）。
+//   - **「次回同期」列**: 契約（`nextSyncAt`）は #538 で揃ったが、**列の表示は未実装**である
+//     （全ソース同値の共通間隔。IADR-0136）。
+//   - **行操作「設定」**: **［2026-08-08 / #534］契約側の更新 API（PUT / PATCH）は揃った。**
+//     ただし**編集フォームの画面実装は本 issue の射程外**であり、まだボタンを置いていない
+//     （#534 は契約の追加に閉じる。IADR-0139 条件 F）。
+//   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 export function DataSourceManagementPage() {
   const { t } = useLingui();
@@ -206,9 +208,12 @@ function SourceRow({
   onDisable: () => void;
 }) {
   // INDEX 決定 21: 同期状態は色だけで意味を持たせない。StatusBadge が tone ごとの固定アイコンと
-  // テキストを型で強制する。警告色（琥珀）は計画が**同期異常**へ与えた色であり、契約が同期健全性を
-  // 持つまで**どの状態にも充てない**（無効は中立。05_screens モック間相違の確定 ②。IADR-0127 決定 2）。
-  const state = syncStateView(source.status, source.lastSyncedAt);
+  // テキストを型で強制する。警告色（琥珀）は計画が**同期異常**へ与えた色であり、
+  // **#537 で契約が同期健全性を持ったので充て先が確定した**（無効は中立のまま。IADR-0127 決定 2）。
+  const state = syncStateView(source.status, source.lastSyncedAt, {
+    consecutiveFailureCount: source.consecutiveFailureCount,
+    retryLimit: source.retryLimit,
+  });
   const typeLabel = sourceTypeLabel(source.sourceType);
 
   return (
@@ -226,6 +231,16 @@ function SourceRow({
         <StatusBadge tone={state.tone}>{i18n._(state.label)}</StatusBadge>
         {state.showSyncedAt && (
           <p className="text-xs text-[--color-fg-muted]">{formatDateTime(source.lastSyncedAt)}</p>
+        )}
+        {/* SC-06（Q14 / #537）: 直近エラーは「なぜ止まったか」の唯一の手掛かりである。値は
+            サービス側でマスク済み（IADR-0053 と同じ守り）。異常時だけ出す。 */}
+        {state.tone === 'warning' && source.lastSyncError && (
+          <p
+            className="text-xs text-[--color-fg-muted]"
+            title={formatDateTime(source.lastSyncErrorAt)}
+          >
+            <code>{source.lastSyncError}</code>
+          </p>
         )}
       </TableCell>
       <TableCell>

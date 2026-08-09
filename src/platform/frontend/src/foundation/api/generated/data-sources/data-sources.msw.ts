@@ -25,10 +25,12 @@ import {
   getBffDataSourceCreateResponseMock,
   getBffDataSourceGetResponseMock,
   getBffDataSourceListResponseMock,
-  getBffDataSourceSyncResponseMock
+  getBffDataSourcePatchResponseMock,
+  getBffDataSourceSyncResponseMock,
+  getBffDataSourceUpdateResponseMock
 } from './data-sources.faker';
 
-export { getBffDataSourceListResponseMock, getBffDataSourceCreateResponseMock, getBffDataSourceGetResponseMock, getBffDataSourceSyncResponseMock } from './data-sources.faker';
+export { getBffDataSourceListResponseMock, getBffDataSourceCreateResponseMock, getBffDataSourceGetResponseMock, getBffDataSourceUpdateResponseMock, getBffDataSourcePatchResponseMock, getBffDataSourceSyncResponseMock } from './data-sources.faker';
 
 
 export const getBffDataSourceListMockHandler = (overrideResponse?: DataSourceDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<DataSourceDto[]> | DataSourceDto[]), options?: RequestHandlerOptions) => {
@@ -67,6 +69,30 @@ export const getBffDataSourceGetMockHandler = (overrideResponse?: DataSourceDto 
   }, options)
 }
 
+export const getBffDataSourceUpdateMockHandler = (overrideResponse?: DataSourceDto | ((info: Parameters<Parameters<typeof http.put>[1]>[0]) => Promise<DataSourceDto> | DataSourceDto), options?: RequestHandlerOptions) => {
+  return http.put('*/bff/datasources/:id', async (info: Parameters<Parameters<typeof http.put>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffDataSourceUpdateResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffDataSourcePatchMockHandler = (overrideResponse?: DataSourceDto | ((info: Parameters<Parameters<typeof http.patch>[1]>[0]) => Promise<DataSourceDto> | DataSourceDto), options?: RequestHandlerOptions) => {
+  return http.patch('*/bff/datasources/:id', async (info: Parameters<Parameters<typeof http.patch>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffDataSourcePatchResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
 export const getBffDataSourceDeleteMockHandler = (overrideResponse?: void | ((info: Parameters<Parameters<typeof http.delete>[1]>[0]) => Promise<void> | void), options?: RequestHandlerOptions) => {
   return http.delete('*/bff/datasources/:id', async (info: Parameters<Parameters<typeof http.delete>[1]>[0]) => {
   if (typeof overrideResponse === 'function') {await overrideResponse(info); }
@@ -92,6 +118,8 @@ export const getDataSourcesMock = () => [
   getBffDataSourceListMockHandler(),
   getBffDataSourceCreateMockHandler(),
   getBffDataSourceGetMockHandler(),
+  getBffDataSourceUpdateMockHandler(),
+  getBffDataSourcePatchMockHandler(),
   getBffDataSourceDeleteMockHandler(),
   getBffDataSourceSyncMockHandler()
 ]

@@ -1,4 +1,5 @@
 using DataSourceService.Api.Foundation.Domain;
+using DataSourceService.Api.Foundation.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -18,6 +19,9 @@ public class DataSourceDbContext(DbContextOptions<DataSourceDbContext> options) 
             e.Property(d => d.SourceType).HasMaxLength(50).IsRequired();
             e.Property(d => d.ConnectionUri).HasMaxLength(2048).IsRequired();
             e.Property(d => d.Status).HasMaxLength(50).IsRequired();
+            // FR-01, UC-04, SC-06（Q14 / #537）: 同期健全性。直近エラーはマスク済みの短い文字列だけを
+            // 保存する（SyncErrorRedactor が長さも丸める）。列長はその上限に合わせる。
+            e.Property(d => d.LastSyncError).HasMaxLength(SyncErrorRedactor.MaxLength);
             e.Property(d => d.Config)
                 .HasConversion(
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),

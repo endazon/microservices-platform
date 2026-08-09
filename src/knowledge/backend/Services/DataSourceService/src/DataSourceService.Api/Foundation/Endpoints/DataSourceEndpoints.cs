@@ -71,6 +71,50 @@ public static class DataSourceEndpoints
             });
         });
 
+        // FR-01, UC-04, SC-06（Q16 / #534）: 更新（全置換）。従前は更新の口が無く、登録済みソースの変更が
+        // 「削除→再登録」でしかできなかった。削除→再登録は **ID と履歴を切る**（認証情報のローテーションの
+        // たびに文書の出所の追跡が切れるのは監査上受け入れがたい）。
+        //
+        // **認可は管理者限定である**（計画 §SC-06「登録・更新・無効化は管理者限定」）。グループ既定は
+        // admin + operator なので、本エンドポイントだけ AdminOnly を上書きで要求する。
+        // **無効（disabled）なソースも更新できる** —— 無効化は論理削除であり、認証情報のローテーションは
+        // 無効中にも起こる。
+        g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req, DataSourceDbContext db,
+            SyncSchedule schedule) =>
+        {
+            // AI レビュー 🟡（#627）: **省略を受理しない。** PUT は全置換なので「省略 ＝ 空で置換」は
+            // 意味論としては筋が通るが、契約が省略を許していると**うっかりで秘密が消える**
+            // （`config` を送り忘れた PUT が apiToken を丸ごと落とす）。消したいなら `{}` と明示させる。
+            // **null を現状維持にする道は採らない** —— それをやると PUT と PATCH の区別が消える。
+            if (req.Config is null || req.DefaultAttributes is null)
+                return Results.BadRequest(new
+                {
+                    error = "PUT は全置換です。config と defaultAttributes を明示してください"
+                          + "（消す場合は {} を送る）。一部だけ変更するなら PATCH を使ってください。",
+                });
+
+            var ds = await db.DataSources.FindAsync(id);
+            if (ds is null) return Results.NotFound();
+
+            ds.Update(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
+            await db.SaveChangesAsync();
+            return Results.Ok(ToResponse(ds, schedule.NextRunAt));
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+
+        // FR-01, UC-04, SC-06（Q16 / #534）: 部分更新。**null の項目は現状維持**である。
+        // 接続先だけ・認証情報だけを差し替える日常運用を、他項目を読んで書き戻す往復なしに行えるようにする
+        // ——往復させると応答のマスク済みの値（*** ・IADR-0053）を書き戻して秘密を破壊する。
+        g.MapPatch("/{id:guid}", async (Guid id, PatchDataSourceRequest req, DataSourceDbContext db,
+            SyncSchedule schedule) =>
+        {
+            var ds = await db.DataSources.FindAsync(id);
+            if (ds is null) return Results.NotFound();
+
+            ds.Patch(req.Name, req.SourceType, req.ConnectionUri, req.Config, req.DefaultAttributes);
+            await db.SaveChangesAsync();
+            return Results.Ok(ToResponse(ds, schedule.NextRunAt));
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+
         g.MapDelete("/{id:guid}", async (Guid id, DataSourceDbContext db) =>
         {
             var ds = await db.DataSources.FindAsync(id);
@@ -98,17 +142,20 @@ public static class DataSourceEndpoints
         ds.DefaultAttributes,
         ds.CreatedAt,
         NextSyncAt = nextSyncAt,
+        // SC-06（Q14 / #537）: 同期健全性。RetryLimit は画面が「3/5」の分母を契約から得るために返す
+        // （画面へ定数を複写すると IADR-0127 決定 2 が禁じた「契約から導出できない表示」に戻る）。
+        // LastSyncError は保存時点でマスク済み（SyncErrorRedactor）。
+        ds.ConsecutiveFailureCount,
+        RetryLimit = DataSourceSyncService.AlertThreshold,
+        ds.LastSyncError,
+        ds.LastSyncErrorAt,
     };
 
-    // 秘密とみなすキー名の部分一致マーカー（大文字小文字無視）。spaceKey/listPath/rootPath 等は誤マスクしない。
-    private static readonly string[] SecretKeyMarkers = ["token", "password", "secret", "credential"];
-
+    // 秘密キーの定義とマスク値は SecretConfigMask が単一情報源である（IADR-0148 決定 6）。
+    // **読み（ここ）と書き（DataSource.Update / Patch）で同じ知識を使う** —— 2 箇所に持つと、
+    // マーカーを足したときに片方が黙って古くなる。
     private static Dictionary<string, string> RedactSecrets(IReadOnlyDictionary<string, string> config)
-        => config.ToDictionary(
-            kv => kv.Key,
-            kv => SecretKeyMarkers.Any(m => kv.Key.Contains(m, StringComparison.OrdinalIgnoreCase))
-                ? "***"
-                : kv.Value);
+        => SecretConfigMask.Redact(config);
 }
 
 public record CreateDataSourceRequest(
@@ -117,4 +164,24 @@ public record CreateDataSourceRequest(
     string ConnectionUri,
     Dictionary<string, string>? Config,
     // FR-05: 原本へ付与する既定 ABAC 文書属性（confidentiality 等）。未指定時は internal を補完。
+    Dictionary<string, string>? DefaultAttributes = null);
+
+// FR-01, UC-04, SC-06（Q16 / #534）: 更新（全置換）要求。契約側の Knowledge.Contracts.Dtos の
+// 同名レコードと JSON 互換である（本サービスは SPA 契約に依存せず自前の入力型を持つ既存の作法に倣う）。
+// **Id / CreatedAt / LastSyncedAt / 同期健全性は含まない** —— 更新で履歴を巻き戻せてはならない。
+// **Config / DefaultAttributes の省略は 400 で拒否する**（AI レビュー 🟡 / #627）。型としては
+// nullable だが、null は「未指定」であって「空にする」ではない —— 消すなら {} を明示させる。
+public record UpdateDataSourceRequest(
+    string Name,
+    string SourceType,
+    string ConnectionUri,
+    Dictionary<string, string>? Config = null,
+    Dictionary<string, string>? DefaultAttributes = null);
+
+// FR-01, UC-04, SC-06（Q16 / #534）: 部分更新要求。**null は「変更しない」を意味する**。
+public record PatchDataSourceRequest(
+    string? Name = null,
+    string? SourceType = null,
+    string? ConnectionUri = null,
+    Dictionary<string, string>? Config = null,
     Dictionary<string, string>? DefaultAttributes = null);

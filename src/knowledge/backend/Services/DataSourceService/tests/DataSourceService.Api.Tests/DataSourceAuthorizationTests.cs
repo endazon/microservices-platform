@@ -66,4 +66,43 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
         var client = ClientAs("platform-operator");
         (await client.GetAsync("/datasources")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    // FR-01, SC-06（Q16 / #534）: **更新は管理者限定**である（計画 §SC-06「登録・更新・無効化は管理者限定」）。
+    // グループ既定は admin + operator なので、新設した PUT / PATCH だけが AdminOnly を上書き要求する。
+    // 運用者が閲覧できること（上のテスト）と対で固定し、上書きが外れたときに回帰を検知する。
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task Update_OperatorRole_Returns403(string method)
+    {
+        var client = ClientAs("platform-operator");
+        using var req = new HttpRequestMessage(new HttpMethod(method), $"/datasources/{Guid.NewGuid()}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "x",
+                sourceType = "filesystem",
+                connectionUri = "smb://x",
+            }),
+        };
+        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Theory]
+    [InlineData("PUT")]
+    [InlineData("PATCH")]
+    public async Task Update_NonPrivilegedRole_Returns403(string method)
+    {
+        var client = ClientAs("viewer");
+        using var req = new HttpRequestMessage(new HttpMethod(method), $"/datasources/{Guid.NewGuid()}")
+        {
+            Content = JsonContent.Create(new
+            {
+                name = "x",
+                sourceType = "filesystem",
+                connectionUri = "smb://x",
+            }),
+        };
+        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
 }

@@ -1,7 +1,11 @@
 {
   "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。",
-  "requiredChunks": ["ui", "vendor-react", "vendor-query"],
+  "requiredChunks": [
+    "ui",
+    "vendor-react",
+    "vendor-query"
+  ],
   "maxChunkBytes": 500000,
-  "initialTotalBytes": 577680,
+  "initialTotalBytes": 577918,
   "smallLazyChunks": 5
 }

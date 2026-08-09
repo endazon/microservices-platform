@@ -2,14 +2,18 @@
   "$comment": "check-test-spec-coverage.js の床（NFR / issue #510 / IADR-0130）。 キーは docs/tests/ のテスト仕様書、値はその仕様書が参照しているバックエンドテストクラスである。 **クラス名だけでなく「どの仕様書が」まで固定する** —— 同じクラスを複数の仕様書が参照している場合 （DocumentVersioningTests は SC-05 と FR-06 の両方）、クラス名だけを見る床では片方の節を丸ごと 消しても検出できない（#510 の変異試験で実測）。 ここにある対が失われると CI が fail する。記載を増やしたら node scripts/check-test-spec-coverage.js --update で更新し、差分を PR に載せること。 テストクラスや仕様書を削除・改名したときは、記載を直したうえで同じコマンドで更新する。",
   "documented": {
     "docs/tests/FR-01_data-source-catalog.md": [
+      "BffDataSourceEndpointTests",
+      "DataSourceAuthorizationTests",
       "DataSourceSyncEndpointTests",
       "DataSourceSyncServiceTests",
       "DataSourceTests",
+      "DataSourceUpdateEndpointTests",
       "DatabaseConnectorTests",
       "DocumentNormalizedSyncTests",
       "FileSystemConnectorTests",
       "HealthEndpointTests",
       "SaaSConnectorTests",
+      "SyncErrorRedactorTests",
       "WikiConnectorTests"
     ],
     "docs/tests/FR-03_hybrid-search.md": [
