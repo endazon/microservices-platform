@@ -105,6 +105,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 | メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
 | --- | --- | --- | --- | --- |
+| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043） | FR-04 / FR-05 / SC-01 / SC-08 | `useBffAttributeValues` |
 | POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
 | POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
@@ -198,8 +199,17 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | 面 | 後段不達・不調のとき | 理由 |
 | --- | --- | --- |
 | `/bff/search`・`/bff/documents`（一覧） | **空応答へ縮退**（200） | 権限外の存在を示さない（deny-by-default） |
+| `/bff/attribute-values` | **空配列へ縮退**（200） | **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを区別させない（ADR-0043 決定 3 の趣旨・[[IADR-0151]] 決定 5） |
 | `/bff/datasources`・`/bff/conversion/jobs`（一覧） | **502** | 運用画面。「未登録」「ジョブ無し」と誤認させると重複登録・見落としを誘発する |
 | `/bff/analysis/ask/stream` | `event: error` の SSE イベント | ヘッダ送出済みで HTTP ステータスを変えられない |
+
+> **［2026-08-09 注記 / #540］「縮退」は後段への到達失敗を指す。後段の非 2xx はそのまま透過する。**
+> `/bff/search` と `/bff/attribute-values` はどちらも、`HttpRequestException` /
+> `TaskCanceledException`（**接続断・タイムアウト**）だけを空応答へ畳み、
+> 後段が返した非 2xx は `Results.StatusCode` で**そのまま返す**（実測）。
+> **「後段が失敗したら必ず 200 空応答になる」と読まないこと。** 後段が 500 を返せば 500 が出る。
+> deny-by-default が守るのは「**権限外の存在を示さない**」ことであって、
+> 後段の障害を利用者から隠すことではない。
 
 ### 4. 状態・種別の文字列を **enum にしない**
 

@@ -62,6 +62,48 @@ public static class SearchBffEndpoints
             }
         }).WithName("BffSearch").Produces<SearchResponse>();
 
+        // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043・裁定 Q2）。
+        // SC-01 / SC-08 の対象範囲フィルタが「**権限内のタグ／部門／プロジェクトのみ選択可**」を
+        // 満たすための候補一覧である。**一般利用者が呼べる**（従前は管理者限定の辞書しか無かった）。
+        //
+        // **スコープはサーバ側で解決し、クライアント指定は信頼しない**（検索と同じ。権限昇格の防止）。
+        // **解決できないときは空配列**（[[IADR-0151]] 決定 5）——404 にも 403 にもしない。
+        // **候補が無いことと権限が無いことを利用者へ区別させない。**
+        var values = app.MapGroup("/bff/attribute-values").WithTags("Search BFF");
+
+        values.MapPost("/", async (
+            AttributeValuesRequest req,
+            IHttpClientFactory httpFactory,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Key))
+                return Results.Ok(new AttributeValuesResponse([]));
+
+            var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
+            if (scope is null)
+                return Results.Ok(new AttributeValuesResponse([]));
+
+            var retrievalClient = httpFactory.CreateClient("RetrievalService");
+            try
+            {
+                // **クライアントが送ってきた Scope は使わない**（解決済みで置き換える）。
+                var resp = await retrievalClient.PostAsJsonAsync("/search/attribute-values",
+                    new AttributeValuesRequest(req.Key, scope), ct);
+                if (!resp.IsSuccessStatusCode)
+                    return Results.StatusCode((int)resp.StatusCode);
+
+                var result = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(ct);
+                return Results.Ok(result ?? new AttributeValuesResponse([]));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                // **後段へ到達できないときだけ**空配列へ縮退する（検索と同じ扱い。存在秘匿を崩さない）。
+                // **後段が返した非 2xx は上で透過済み**である —— 障害を 200 空応答で隠さない。
+                return Results.Ok(new AttributeValuesResponse([]));
+            }
+        }).WithName("BffAttributeValues").Produces<AttributeValuesResponse>();
+
         return app;
     }
 }

@@ -73,6 +73,8 @@ public class BffEndpointCompositionTests
             "/bff/admin/config",
             "/bff/analysis",
             "/bff/assumptions",
+            // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（ADR-0043）。
+            "/bff/attribute-values",
             "/bff/conversion/jobs",
             "/bff/dashboard",
             "/bff/datasources",

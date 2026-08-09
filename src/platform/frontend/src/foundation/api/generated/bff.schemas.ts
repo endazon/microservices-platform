@@ -20,6 +20,25 @@ export interface SearchRequest {
   sortBy?: string;
 }
 
+/**
+ * FR-04, FR-05, SC-01, SC-08（ADR-0043 / #540）: 権限内属性値の照会。
+ * **`scope` は受け取らない** —— BFF がサーバ側で解決した値だけを後段へ渡す（権限昇格の防止）。
+ */
+export interface AttributeValuesRequest {
+  /** 引きたい属性の種別。`tags`（タグ）または ABAC 属性キー（`department` 等）。 未知・空は空集合へ縮退する。 */
+  key: string;
+}
+
+/**
+ * FR-04, SC-01, SC-08（ADR-0043 決定 2 / #540）: 権限内の属性値。
+ * **件数のフィールドを持たない。** 件数は値集合そのものより漏洩力が強いため返さない。
+ * **#542 がシステム管理者スコープの使用件数を足すときは、管理者スコープ専用の別フィールド**
+ * として足す（一般利用者の応答形を変えない。IADR-0151 決定 4）。
+ */
+export interface AttributeValuesResponse {
+  values: string[];
+}
+
 export type SearchResultDtoAttributes = {[key: string]: string};
 
 /**

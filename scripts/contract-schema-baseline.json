@@ -115,6 +115,49 @@
           "JsonConverter(typeof(JsonStringEnumConverter<AnalysisTaskType>))"
         ]
       },
+      "Knowledge.Contracts.Dtos.AttributeValueKeys": {
+        "kind": "class",
+        "members": {
+          "AttributesPrefix": {
+            "source": "const",
+            "type": "string",
+            "value": "\"attributes\""
+          },
+          "Tags": {
+            "source": "const",
+            "type": "string",
+            "value": "\"tags\""
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.AttributeValuesRequest": {
+        "kind": "record",
+        "members": {
+          "Key": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Scope": {
+            "source": "positional",
+            "type": "AccessScope?",
+            "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.AttributeValuesResponse": {
+        "kind": "record",
+        "members": {
+          "Values": {
+            "source": "positional",
+            "type": "List<string>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.ChunkDto": {
         "kind": "class",
         "members": {

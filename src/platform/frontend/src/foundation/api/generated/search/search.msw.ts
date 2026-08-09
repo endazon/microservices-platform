@@ -17,14 +17,16 @@ import type {
 } from 'msw';
 
 import type {
+  AttributeValuesResponse,
   SearchResponse
 } from '../bff.schemas';
 
 import {
+  getBffAttributeValuesResponseMock,
   getBffSearchResponseMock
 } from './search.faker';
 
-export { getBffSearchResponseMock } from './search.faker';
+export { getBffSearchResponseMock, getBffAttributeValuesResponseMock } from './search.faker';
 
 
 export const getBffSearchMockHandler = (overrideResponse?: SearchResponse | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<SearchResponse> | SearchResponse), options?: RequestHandlerOptions) => {
@@ -38,6 +40,19 @@ export const getBffSearchMockHandler = (overrideResponse?: SearchResponse | ((in
       })
   }, options)
 }
+
+export const getBffAttributeValuesMockHandler = (overrideResponse?: AttributeValuesResponse | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<AttributeValuesResponse> | AttributeValuesResponse), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/attribute-values', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffAttributeValuesResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 export const getSearchMock = () => [
-  getBffSearchMockHandler()
+  getBffSearchMockHandler(),
+  getBffAttributeValuesMockHandler()
 ]

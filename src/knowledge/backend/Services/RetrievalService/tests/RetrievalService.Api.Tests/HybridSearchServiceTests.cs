@@ -33,6 +33,10 @@ internal sealed class RecordingVectorStore : IVectorStore
         return Task.FromResult(KeywordResults);
     }
 
+    public Task<List<string>> ListAttributeValuesAsync(
+        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult<List<string>>([]);
+
     public Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default) => Task.CompletedTask;
 
     public Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;

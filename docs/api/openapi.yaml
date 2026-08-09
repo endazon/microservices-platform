@@ -75,6 +75,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
 
+  /bff/attribute-values:
+    post:
+      tags: [Search]
+      summary: "FR-04, FR-05, SC-01, SC-08: 権限内属性値の照会（BFF 集約）"
+      description: |
+        計画 **ADR-0043**（裁定 Q2）。SC-01 / SC-08 の対象範囲フィルタ
+        「**権限内のタグ／部門／プロジェクトのみ選択可**」を満たすための候補一覧であり、
+        **一般利用者が呼べる**（従前は `/bff/admin/authz` の管理者限定の辞書しか無かった）。
+
+        **返す範囲に強い制限がある。外すと存在秘匿（ADR-0004 の 404 原則）が実質的に破れる。**
+
+        - **辞書を丸ごと返さない**（決定 1）。返すのは「**到達できる文書に実際に付与された値**」だけ。
+        - **件数を返さない**（決定 2）。「12 件だが自分の検索では 8 件」＝**見えない文書が 4 件ある**
+          ことが分かるため、**件数は値集合そのものより漏洩力が強い**。
+        - ABAC スコープは**サーバ側で解決**し、クライアント指定は信頼しない（権限昇格の防止）。
+        - **スコープが解決できないときは空配列**（IADR-0151 決定 5）。**404 にも 403 にもしない** ——
+          候補が無いことと権限が無いことを区別させない。
+
+        実装は検索段と**同じ ABAC フィルタ**で Qdrant の facet を呼び、**件数を捨ててから**返す
+        （IADR-0151 決定 1・2）。**#542 が同じ口へシステム管理者スコープを足す**（ADR-0043 決定 4）。
+      operationId: bff-attribute-values
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttributeValuesRequest"
+      responses:
+        "200":
+          description: 権限内の属性値（**件数は含まない**）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributeValuesResponse"
+
   /bff/analysis/ask:
     post:
       tags: [Analysis]
@@ -1599,6 +1634,33 @@ components:
             決める。したがって候補（関連度上位）の外にある、より新しい関連文書は現れない。
             **更新日時を持たないチャンク（未再索引・IADR-0149 決定 3）は末尾**に置く。
           example: relevance
+
+    AttributeValuesRequest:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+          description: >-
+            引きたい属性の種別。`tags`（タグ）または ABAC 属性キー（`department` 等）。
+            未知・空は空集合へ縮退する。
+          example: tags
+      description: |
+        FR-04, FR-05, SC-01, SC-08（ADR-0043 / #540）: 権限内属性値の照会。
+        **`scope` は受け取らない** —— BFF がサーバ側で解決した値だけを後段へ渡す（権限昇格の防止）。
+
+    AttributeValuesResponse:
+      type: object
+      description: |
+        FR-04, SC-01, SC-08（ADR-0043 決定 2 / #540）: 権限内の属性値。
+        **件数のフィールドを持たない。** 件数は値集合そのものより漏洩力が強いため返さない。
+        **#542 がシステム管理者スコープの使用件数を足すときは、管理者スコープ専用の別フィールド**
+        として足す（一般利用者の応答形を変えない。IADR-0151 決定 4）。
+      required: [values]
+      properties:
+        values:
+          type: array
+          items: { type: string }
 
     # ── #520 / IADR-0132: 応答スキーマの `required` は C# の**非 null 性**から起こす。
     # `?` の付かないメンバー（値型・コレクションを含む）だけを required に入れる。

@@ -8,7 +8,7 @@ related_ids:
   - UC-05
 author: claude
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05)"
 ---
@@ -46,6 +46,14 @@ plan_refs:
 | T-06 | スコープ属性キーを持たない文書混在 | 同上 | 当該文書は除外される | 権限外を出さない | 自動 |
 | T-07 | `GrantsAccess=false` | 同上 | 結果 0 件（deny-by-default） | 権限外を出さない | 自動 |
 | T-08 | 単値 `AttributeFilters`（FR-03 後方互換） | `POST /search` | 既存の権限フィルタが従来どおり機能 | 横断検索 | 自動 |
+| T-09 | 権限内／権限外の文書にそれぞれ別のタグ（#540） | `POST /search/attribute-values` | **到達できる文書に付いた値だけ**が返る（辞書の全値ではない。ADR-0043 決定 1） | 権限外を出さない | 自動 |
+| T-10 | 同じタグが複数文書に付く（#540） | 同上 | **応答に件数が現れない**（生の本文で確認。ADR-0043 決定 2） | 権限外を出さない | 自動 |
+| T-11 | 同一スコープで検索と照会を両方引く（#540） | `POST /search` ＋ `POST /search/attribute-values` | **候補は検索に現れる集合と一致**（[[IADR-0151]] 決定 1） | 横断検索 | 自動 |
+| T-12 | `GrantsAccess=false` / `Scope=null`（#540） | `POST /search/attribute-values` | **空配列**（404 / 403 にしない。[[IADR-0151]] 決定 5） | 権限外を出さない | 自動 |
+| T-13 | タグと ABAC 属性の両方（#540） | 同上 | `tags` と `attributes.<key>` の**両方を同じ口から**引ける | 横断検索 | 自動 |
+| T-14 | 未知・空のキー（#540） | 同上 | 空集合へ縮退する | 例外フロー | 自動 |
+| T-15 | BFF 経由（#540） | `POST /bff/attribute-values` | **クライアント指定の Scope を信頼しない**。不許可なら後段を呼ばず空配列 | 権限昇格の防止 | 自動 |
+| T-16 | 後段が 500 / 400 を返す（#540） | 同上 | **そのステータスを透過する**（200 空配列へ**畳まない**）。縮退が守るのは権限外の存在を示さないことであって、**後段の障害を隠すことではない** | 例外フロー | 自動 |
 
 ## テストデータ
 

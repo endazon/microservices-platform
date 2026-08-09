@@ -22,6 +22,16 @@ public interface IVectorStore
         IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default);
 
+    // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043）。
+    // **到達できる文書に実際に付与されている値だけ**を返す（辞書を丸ごと返さない。決定 1）。
+    // **件数は返さない**（決定 2）——実装が facet で数えても、値集合だけを返すこと。
+    // filters は検索と**同じ ABAC 多値 allow-list** を渡す（別経路で数えると「検索には出るが
+    // 候補に無い値」が生まれる。IADR-0151 決定 1）。
+    Task<List<string>> ListAttributeValuesAsync(
+        string payloadKey,
+        IReadOnlyList<AttributeFilter>? filters,
+        CancellationToken ct = default);
+
     Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default);
 
     Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default);
