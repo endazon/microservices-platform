@@ -147,7 +147,40 @@ related_specs:
 応答に `republishedDocuments` を添えた——Qdrant / Wiki.js の反映は非同期なので、
 「0 件だった」と「まだ届いていない」を管理者が切り分けられる。
 
-### 5. ［残件］改名・削除に **BFF 口が無い**
+### 5. ★ **母集合の引き漏らし** —— 統合テスト 2 件が CI で落ちた
+
+**着手時に引いた「触るもの」の表は、テストを「＋ それぞれのテスト」と一括りにしていた。**
+そこが漏れた。**CI（実 Docker）の初回実走で 2 件が 400 で落ちた**:
+
+| 落ちたテスト | 何を送っていたか |
+| --- | --- |
+| `DocumentCrudTests.CreateDocument_ThenGet_ReturnsDocument` | `tags = ["test", "integration"]` |
+| `DocumentVersioningTests.CreateUpdate_BuildsVersionHistory` | `tags = ["v1"] / ["v2"] / ["v3"]` |
+
+どちらも**辞書に登録していない名前**であり、#635 が入れた「辞書に無い名前は 400」
+（SC-05・[[IADR-0153]] 決定 5）に**正しく弾かれている**。実装ではなくテストの側の追随漏れである。
+
+**なぜ手元で気づけなかったか。2 つ重なっている。**
+
+1. **型エラーとして現れない。** 単体テストは `Document.Create(..., List<Guid>)` を直接呼ぶので
+   `string` → `Guid` のコンパイルエラーで全件炙り出せた（48 件）。
+   **統合テストはタグ名を HTTP 越しの JSON 文字列として送る**ので、**コンパイルは通り、実行時にだけ落ちる。**
+2. **手元では skip される。** `[DockerFact]` は Docker が無いと skip なので、
+   **ローカルの `dotnet test` は緑のままだった**（本仕様書の検証記録にも「skip される」と書いてあった）。
+
+**教訓: 「コンパイルエラーで全部出た」を母集合の証拠にしない。**
+型が変わったとき、**型検査に掛からない経路（HTTP・JSON・生 SQL・設定ファイル）を別途引くこと。**
+[[IADR-0141]] 決定 1 の規則 3「拡張子で絞らない」と同じ話が、**言語の層**でも起きる。
+
+**ただし規則としては足さない。同型 1 回目だからである**
+（`CLAUDE.md`「検査器・規約の追加は同型の事故が 2 回起きたら」。1 回目は記録に留める）。
+**次に同じ型を踏んだら、`.claude/rules/traceability.md` の母集合の表へ 7 番目の規則として足すこと。**
+
+**是正**: 両テストとも辞書へ先に登録してから文書を作る形にした（共有 DB で他テストと競合しても
+落ちないよう、重複時の 409 も許容する）。**引き直した結果、他に該当は無い**——
+残る `tags` の指定はすべて空配列である（`DocumentCrudTests` 4 箇所・`DocumentVersioningTests` 2 箇所。実測）。
+
+### 6. ［残件］改名・削除に **BFF 口が無い**
 
 #634 の `POST /tags` と同じく、口は DocumentService 側にだけ在る（`/bff/attribute-values` は読み取り専用）。
 **SC-09 の画面から改名・削除を操作するには BFF の書き込み口が要る。**
@@ -170,6 +203,11 @@ related_specs:
 - **`TagIdentityMigrationTests`（`[DockerFact]` 2 件）は本環境で skip される**——Docker が無い。
   **データ移行の SQL は実 PostgreSQL でしか走らない**（EF InMemory はマイグレーションを実行しない）ので、
   **本 PR の中核部分は CI 側の実走が初回検証になる**。#636 の一意インデックスと同じ状況である。
-  実測: `Knowledge.IntegrationTests` は Passed 21 / **Skipped 22** / Total 43 で、
+  実測（手元）: `Knowledge.IntegrationTests` は Passed 21 / **Skipped 22** / Total 43 で、
   skip の中に `Migration_RewritesDisplayNamesToIdentifiers` と `Migration_Down_RestoresDisplayNames` が
   discovery されていることを確認した（**「書いたが discovery されていない」ではない**ことを分ける）。
+
+  **［CI の実走で確認済み］移行の 2 件はどちらも通った**
+  （`Migration_Down_RestoresDisplayNames` 327ms / `Migration_RewritesDisplayNamesToIdentifiers` 289ms。
+  実 PostgreSQL 16）。**同じ実走で別の 2 件が落ちた**——上記「実装中に決めたこと 5」を参照。
+  **手元で緑・CI で赤という差そのものが、この issue の検証の要点である。**
