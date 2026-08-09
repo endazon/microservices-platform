@@ -13,7 +13,8 @@ namespace IngestionService.Worker.Tests;
 public class QdrantIngestionVectorStoreTests
 {
     private static Dictionary<string, Value> Build(
-        Dictionary<string, string>? attributes = null, List<string>? tags = null) =>
+        Dictionary<string, string>? attributes = null, List<string>? tags = null,
+        DateTimeOffset? updatedAt = null) =>
         QdrantIngestionVectorStore.BuildChunkPayload(
             documentId: Guid.NewGuid(),
             title: "タイトル",
@@ -21,7 +22,42 @@ public class QdrantIngestionVectorStoreTests
             chunkIndex: 3,
             markdownUri: "s3://bucket/doc.md",
             attributes: attributes ?? new Dictionary<string, string>(),
-            tags: tags ?? new List<string>());
+            tags: tags ?? new List<string>(),
+            updatedAt: updatedAt);
+
+    // FR-03, SC-02, #536（IADR-0149 決定 1）: 更新日時は `updated_at` へ **Unix epoch ミリ秒の整数**で書く。
+    // 文字列（ISO-8601）にすると、同じ時刻を `+09:00` とも `Z` とも書けるため辞書順が実時刻順と一致せず、
+    // 並び順（#532）が表記の揺れで壊れる。
+    [Fact]
+    public void BuildChunkPayload_WritesUpdatedAtAsEpochMilliseconds()
+    {
+        var updatedAt = new DateTimeOffset(2026, 8, 9, 12, 34, 56, TimeSpan.FromHours(9));
+
+        var payload = Build(updatedAt: updatedAt);
+
+        payload.Should().ContainKey("updated_at");
+        payload["updated_at"].KindCase.Should().Be(Value.KindOneofCase.IntegerValue);
+        payload["updated_at"].IntegerValue.Should().Be(updatedAt.ToUnixTimeMilliseconds());
+    }
+
+    // オフセット表記が違っても**同じ瞬間なら同じ値**になる（整数で持つことの目的そのもの）。
+    [Fact]
+    public void BuildChunkPayload_UpdatedAtIsIndependentOfOffsetNotation()
+    {
+        var jst = new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.FromHours(9));
+        var utc = jst.ToUniversalTime();
+
+        Build(updatedAt: jst)["updated_at"].IntegerValue
+            .Should().Be(Build(updatedAt: utc)["updated_at"].IntegerValue);
+    }
+
+    // 更新日時を渡さなければキーを置かない（IADR-0149 決定 3）。既定値で埋めると
+    // 「知らない」が「とても古い」に化ける。
+    [Fact]
+    public void BuildChunkPayload_WhenNoUpdatedAt_OmitsTheKey()
+    {
+        Build().Should().NotContainKey("updated_at");
+    }
 
     // ABAC 属性はネスト構造体として格納される（フラットキー `attributes.{k}` にはしない）。
     [Fact]

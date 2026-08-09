@@ -7,10 +7,15 @@ related_ids:
   - UC-01
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+related_specs:
+  - ../specs/20260809_issue-536_search-result-updated-at.md
+  - ../tests/FR-03_hybrid-search.md
+  - ../screens/SC-02_search-results.md
+  - ../adr/IADR-0149_search-result-updated-at-indexing.md
 ---
 
 # 機能仕様書: ハイブリッド検索
@@ -50,6 +55,7 @@ plan_refs:
 | `MarkdownUri` | 正規化 Markdown へのリンク（出典。無い場合あり） |
 | `Attributes` | ABAC 属性（`confidentiality`/`department` 等。Qdrant ペイロードから復元） |
 | `Tags` | タグ |
+| `UpdatedAt` | 文書の更新日時（Qdrant ペイロード `updated_at` から復元。#536 / 裁定 Q6）。**未再索引のチャンクは `null`**（[[IADR-0149]] 決定 3。`0001-01-01` で埋めない） |
 
 ## 処理フロー / 状態遷移
 

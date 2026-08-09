@@ -49,10 +49,15 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
+    // FR-03, SC-02, #536: 更新日時（`UpdatedAt`）を持たせる。BFF は型付きで中継するだけなので
+    // 実装は変わらないが、契約のメンバーが増えたときに落ちる場所が無いと静かに欠落する。
+    public static readonly DateTimeOffset StubSearchUpdatedAt =
+        new(2026, 7, 24, 3, 0, 0, TimeSpan.Zero);
     public SearchResponse StubSearchResponse { get; set; } = new(
         [new SearchResultDto(Guid.NewGuid(), Guid.NewGuid(), "経費規程 2025",
             "第3条 …", 0.91f, "s3://bucket/expense.md",
-            new Dictionary<string, string> { ["confidentiality"] = "internal" }, ["hr"])],
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, ["hr"],
+            StubSearchUpdatedAt)],
         1, 5);
 
     // FR-06 BFF テスト（SC-03 文書閲覧）: DocumentService の応答をスタブ制御する。

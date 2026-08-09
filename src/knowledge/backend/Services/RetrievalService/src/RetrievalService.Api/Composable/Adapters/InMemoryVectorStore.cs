@@ -16,7 +16,7 @@ public class InMemoryVectorStore : IVectorStore
             .Where(c => MatchesFilters(c, filters))
             .Take(topK)
             .Select(c => new SearchResultDto(c.ChunkId, c.DocumentId, c.DocumentTitle,
-                c.Text, 0.9f, c.MarkdownUri, c.Attributes, c.Tags))
+                c.Text, 0.9f, c.MarkdownUri, c.Attributes, c.Tags, c.UpdatedAt))
             .ToList();
 
         return Task.FromResult(results);
@@ -38,7 +38,7 @@ public class InMemoryVectorStore : IVectorStore
             .OrderByDescending(x => x.Hits)
             .Take(topK)
             .Select(x => new SearchResultDto(x.Chunk.ChunkId, x.Chunk.DocumentId, x.Chunk.DocumentTitle,
-                x.Chunk.Text, x.Hits, x.Chunk.MarkdownUri, x.Chunk.Attributes, x.Chunk.Tags))
+                x.Chunk.Text, x.Hits, x.Chunk.MarkdownUri, x.Chunk.Attributes, x.Chunk.Tags, x.Chunk.UpdatedAt))
             .ToList();
 
         return Task.FromResult(results);

@@ -16,7 +16,12 @@
       "SyncErrorRedactorTests",
       "WikiConnectorTests"
     ],
+    "docs/tests/FR-02_ingestion.md": [
+      "DocumentUpdatedConsumerTests",
+      "QdrantIngestionVectorStoreTests"
+    ],
     "docs/tests/FR-03_hybrid-search.md": [
+      "BffSearchEndpointTests",
       "HybridSearchServiceTests"
     ],
     "docs/tests/FR-04_ai-answer-citations.md": [

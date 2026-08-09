@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
@@ -36,10 +36,19 @@ const RESPONSE = {
       score: 0.91,
       attributes: { confidentiality: 'internal' },
       tags: ['経理', '規程'],
+      // SC-02（裁定 Q6 / #536）: 更新日時。索引（Qdrant のペイロード）由来である。
+      updatedAt: '2026-07-24T03:00:00Z',
     },
   ],
   totalHits: 24,
   elapsedMs: 5,
+};
+
+// #536 / [[IADR-0149]] 決定 3: **本項目より前に索引されたチャンクは日時を持たない。**
+// 再索引が済むまでの縮退を画面が描けることを固定するための応答。
+const RESPONSE_NOT_REINDEXED = {
+  ...RESPONSE,
+  results: [{ ...RESPONSE.results[0], updatedAt: null }],
 };
 
 async function renderPage(initialPath = '/search') {
@@ -85,6 +94,30 @@ describe('SearchResultsPage (SC-02)', () => {
   });
 
   // FR-05: 一覧が全体ではないことを明示する（05_screens §SC-02「権限内のみ表示」）。
+  // SC-02, FR-03, #536: 計画 §SC-02 主要素「結果テーブル（文書／タグ／**更新日時**）」。
+  // 契約が裁定 Q6 を受けて `updatedAt` を持ったので列を出す（[[IADR-0149]]）。
+  it('lists the updated-at column for each result', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
+    await renderPage();
+    await search('経費');
+
+    expect(await screen.findByRole('columnheader', { name: '更新日時' })).toBeInTheDocument();
+    // ロケール依存の整形なので、日付そのものではなく「— ではない値が出ている」ことを見る。
+    const row = screen.getByRole('link', { name: '経費精算規程 v3.2' }).closest('tr')!;
+    expect(within(row).queryByText('—')).not.toBeInTheDocument();
+  });
+
+  // [[IADR-0149]] 決定 3: 未再索引のチャンクは `updatedAt` を持たない。**画面は `—` を描く**。
+  // 「日時が無い」と「まだ再索引していない」を利用者へ区別して見せない（索引の内部事情である）。
+  it('renders an em dash when the chunk has not been reindexed yet', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE_NOT_REINDEXED));
+    await renderPage();
+    await search('経費');
+
+    const row = (await screen.findByRole('link', { name: '経費精算規程 v3.2' })).closest('tr')!;
+    expect(within(row).getByText('—')).toBeInTheDocument();
+  });
+
   it('states that only permitted documents are listed', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(RESPONSE));
     await renderPage();

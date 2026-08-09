@@ -14,7 +14,8 @@ public class DocumentUpdatedConsumerTests
 {
     private static DocumentUpdated SampleEvent(
         string? markdownUri = "https://storage.example/docs/test.md",
-        string confidentiality = "internal")
+        string confidentiality = "internal",
+        DateTimeOffset? updatedAt = null)
         => new(
             Guid.Parse("11111111-1111-1111-1111-111111111111"),
             "テスト文書",
@@ -22,7 +23,7 @@ public class DocumentUpdatedConsumerTests
             markdownUri,
             new Dictionary<string, string> { ["confidentiality"] = confidentiality },
             ["knowledge-mgmt", "ops"],
-            DateTimeOffset.UtcNow);
+            updatedAt ?? DateTimeOffset.UtcNow);
 
     private static ServiceProvider BuildHarness(
         IIngestionVectorStore store,
@@ -54,6 +55,32 @@ public class DocumentUpdatedConsumerTests
             // 見出し 2 つ → 2 チャンク。パース本文の内容がチャンクに反映される。
             store.Upserts.Should().HaveCount(2);
             store.Upserts.Select(u => u.Text).Should().Contain(t => t.Contains("本文アルファ"));
+        }
+        finally { await harness.Stop(); }
+    }
+
+    // FR-03, SC-02, #536（IADR-0149 決定 5）: **更新日時はイベントが運んできた値をそのまま索引へ渡す。**
+    // 取り込み側で `DateTimeOffset.UtcNow` を採ると、**再索引のたびに全文書の「更新日時」が今になり**、
+    // 計画が並び順を求めた動機（「規程が改訂されたはずだが最新版はどれか」）が成立しなくなる。
+    // 過去の日時を渡して「今」に化けていないことを見る（現在時刻を渡すと両者が区別できない）。
+    [Fact]
+    public async Task Consumer_ShouldIndexDocumentUpdatedAt_NotIngestionTime()
+    {
+        var documentUpdatedAt = new DateTimeOffset(2026, 3, 1, 9, 0, 0, TimeSpan.FromHours(9));
+        var store = new RecordingVectorStore();
+        var reader = new StubContentReader("# A\n\nまる\n\n# B\n\nばつ");
+        await using var provider = BuildHarness(store, reader);
+
+        var harness = provider.GetRequiredService<ITestHarness>();
+        await harness.Start();
+        try
+        {
+            await harness.Bus.Publish(SampleEvent(updatedAt: documentUpdatedAt));
+            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+
+            store.Upserts.Should().NotBeEmpty();
+            store.Upserts.Should().OnlyContain(u => u.UpdatedAt == documentUpdatedAt,
+                "索引には文書の更新日時が載る（取り込み時刻ではない）");
         }
         finally { await harness.Stop(); }
     }
@@ -290,7 +317,8 @@ file class StubContentReader(string markdown) : IDocumentContentReader
 }
 
 file record UpsertRecord(string Collection, Guid ChunkId, Guid DocumentId, string Title, string Text,
-    int ChunkIndex, string? MarkdownUri, Dictionary<string, string> Attributes, List<string> Tags);
+    int ChunkIndex, string? MarkdownUri, Dictionary<string, string> Attributes, List<string> Tags,
+    DateTimeOffset? UpdatedAt);
 
 file class RecordingVectorStore : IIngestionVectorStore
 {
@@ -306,10 +334,11 @@ file class RecordingVectorStore : IIngestionVectorStore
 
     public Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
-        Dictionary<string, string> attributes, List<string> tags, CancellationToken ct = default)
+        Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null, CancellationToken ct = default)
     {
         Upserts.Add(new UpsertRecord(collection, chunkId, documentId, title, text, chunkIndex,
-            markdownUri, attributes, tags));
+            markdownUri, attributes, tags, updatedAt));
         return Task.CompletedTask;
     }
 

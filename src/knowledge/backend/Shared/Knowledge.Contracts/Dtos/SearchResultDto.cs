@@ -9,7 +9,16 @@ public record SearchResultDto(
     float Score,
     string? MarkdownUri,
     Dictionary<string, string> Attributes,
-    List<string> Tags);
+    List<string> Tags,
+    // FR-03, SC-02, #536: 文書の更新日時（利用者裁定 Q6 / planning#197）。計画 §SC-02 主要素の
+    // 結果テーブル（文書／タグ／**更新日時**）に要る。既定値を持たせて追加する（既定値の無いメンバー
+    // 追加は契約上の破壊的変更。IADR-0122 決定 2）。
+    //
+    // **null 許容である理由は再索引にある**（IADR-0149 決定 3）。本項目は索引（Qdrant のペイロード）
+    // へ日時を取り込むところから必要であり、**既に索引済みのチャンクは日時を持たない**。
+    // null は「まだ索引に無い」を正しく表す —— DateTimeOffset.MinValue で埋めると
+    // 「知らない」が「とても古い」に化け、並び順（#532）が嘘をつく。
+    DateTimeOffset? UpdatedAt = null);
 
 // FR-04: 出典（番号付き＋元文書へのリンク）
 // AI 回答中の [1][2] と対応する根拠。利用者は SourceUri から元文書へ辿れる。

@@ -29,6 +29,49 @@ public class QdrantVectorStoreTests
         attrs["department"].Should().Be("legal");
     }
 
+    // FR-03, SC-02, #536（IADR-0149 決定 1）: `updated_at`（Unix epoch ミリ秒の整数）を復元する。
+    // 書き込み側（取り込み・検索の 2 経路）と同じ表現から読む。
+    [Fact]
+    public void ExtractUpdatedAt_RestoresFromEpochMilliseconds()
+    {
+        var updatedAt = new DateTimeOffset(2026, 8, 9, 3, 0, 0, TimeSpan.Zero);
+        var payload = new Dictionary<string, Value>
+        {
+            ["text"] = new() { StringValue = "本文" },
+            ["updated_at"] = new() { IntegerValue = updatedAt.ToUnixTimeMilliseconds() },
+        };
+
+        QdrantVectorStore.ExtractUpdatedAt(payload).Should().Be(updatedAt);
+    }
+
+    // **本項目より前に索引されたチャンクは日時を持たない。**null を返すことがその状態を正しく表す
+    // （IADR-0149 決定 3）。DateTimeOffset.MinValue で埋めると「知らない」が「とても古い」に化け、
+    // 並び順（#532）が嘘をつく。再索引が済むまでの縮退であって障害ではない。
+    [Fact]
+    public void ExtractUpdatedAt_WhenNotIndexed_ReturnsNull()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            ["document_id"] = new() { StringValue = "doc" },
+            ["text"] = new() { StringValue = "本文" },
+        };
+
+        QdrantVectorStore.ExtractUpdatedAt(payload).Should().BeNull();
+    }
+
+    // 整数以外が入っていた場合も null へ倒す（文字列で書かれた旧データ・手作業の混入を黙って
+    // 誤った日時にしない）。
+    [Fact]
+    public void ExtractUpdatedAt_WhenNotAnInteger_ReturnsNull()
+    {
+        var payload = new Dictionary<string, Value>
+        {
+            ["updated_at"] = new() { StringValue = "2026-08-09T03:00:00Z" },
+        };
+
+        QdrantVectorStore.ExtractUpdatedAt(payload).Should().BeNull();
+    }
+
     // 属性を持たないペイロードでは空辞書を返す（機密区分判定側は欠落を安全側 restricted に倒す）。
     [Fact]
     public void ExtractAttributes_WhenNoAttributes_ReturnsEmpty()

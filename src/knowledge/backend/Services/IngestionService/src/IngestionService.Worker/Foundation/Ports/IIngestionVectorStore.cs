@@ -8,9 +8,13 @@ public interface IIngestionVectorStore
     Task EnsureCollectionsAsync(CancellationToken ct = default);
 
     // FR-02: 指定コレクションへチャンクを索引する（コレクションはゲートウェイの機密区分ルーティングが決める）。
+    // FR-03, SC-02, #536: `updatedAt` は文書の更新日時（DocumentUpdated.UpdatedAt）である。
+    // **取り込み時刻を渡さないこと**（IADR-0149 決定 5）——渡すと再索引のたびに全文書の
+    // 「更新日時」が今になり、計画が並び順を求めた動機そのものが成立しなくなる。
     Task UpsertChunkAsync(string collection, Guid chunkId, Guid documentId, string title,
         string text, int chunkIndex, float[] vector, string? markdownUri,
         Dictionary<string, string> attributes, List<string> tags,
+        DateTimeOffset? updatedAt = null,
         CancellationToken ct = default);
 
     // FR-02, FR-05: 全モデル別コレクションから当該文書のチャンクを削除する。

@@ -21,6 +21,21 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         body!.Results.Should().ContainSingle(r => r.DocumentTitle == "経費規程 2025");
     }
 
+    // FR-03, SC-02, #536: 後段が返す更新日時を**欠落させずに透過**する（IADR-0149）。
+    // BFF は SearchResponse で型付けして中継するだけなので実装は変わらないが、契約のメンバーが
+    // 増えたときに落ちる場所が無いと静かに欠ける（SC-06 の `nextSyncAt` / 同期健全性と同じ守り）。
+    [Fact]
+    public async Task PostSearch_PassesThroughUpdatedAt()
+    {
+        factory.SearchScopeGranted = true;
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/search", new { query = "経費", topK = 5 });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        body!.Results.Should().OnlyContain(r => r.UpdatedAt == BffTestFactory.StubSearchUpdatedAt,
+            "後段が返す更新日時をそのまま運ぶ（BFF で時刻を作らない）");
+    }
+
     [Fact]
     public async Task PostSearch_WhenNotGranted_ReturnsEmpty_DenyByDefault()
     {

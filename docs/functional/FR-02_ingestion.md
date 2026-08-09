@@ -7,13 +7,15 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-06-27
-updated: 2026-08-07
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
   - ../specs/20260627_FR-02_ingestion-pipeline.md
+  - ../specs/20260809_issue-536_search-result-updated-at.md
   - ../tests/FR-02_ingestion.md
   - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
+  - ../adr/IADR-0149_search-result-updated-at-indexing.md
 related_adrs:
   - ADR-0003
   - ADR-0027
@@ -44,7 +46,7 @@ related_adrs:
 | `MarkdownUri` | string? | 本文の所在。null の場合は取り込みをスキップ。 |
 | `Attributes` | Dictionary<string,string> | ABAC 属性。ペイロード `attributes.<key>`。 |
 | `Tags` | List<string> | タグ。ペイロード `tags`。 |
-| `UpdatedAt` | DateTimeOffset | 更新時刻。 |
+| `UpdatedAt` | DateTimeOffset | 更新時刻。**ペイロード `updated_at`（Unix epoch ミリ秒の整数）としてそのまま索引へ載せる**（#536 / [[IADR-0149]] 決定 5）。**取り込み時刻を書かない** —— 書くと再索引のたびに全文書の「更新日時」が今になる。 |
 
 ### 出力イベント: `IngestionCompleted`
 
@@ -81,7 +83,8 @@ related_adrs:
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
-- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>`。
+- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`**（#536）。
+- **`updated_at` は Unix epoch ミリ秒の整数**である（[[IADR-0149]] 決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。**本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
 
 ## トレーサビリティ
 
