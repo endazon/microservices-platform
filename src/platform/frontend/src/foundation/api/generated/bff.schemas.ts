@@ -16,6 +16,8 @@ export interface SearchRequest {
   attributeFilters?: SearchRequestAttributeFilters;
   /** hybrid（既定・ベクトル＋全文の RRF 融合）/ keyword（全文のみ）/ semantic（ベクトルのみ）。 未知の値は hybrid として扱う。 */
   mode?: string;
+  /** relevance（既定・関連度順）/ updated（更新日時の新しい順）。未知の値は relevance として扱う。 **updated は取得後に並べ替える**（IADR-0150 決定 1）——関連度が候補を決め、並び順は表示順だけを 決める。したがって候補（関連度上位）の外にある、より新しい関連文書は現れない。 **更新日時を持たないチャンク（未再索引・IADR-0149 決定 3）は末尾**に置く。 */
+  sortBy?: string;
 }
 
 export type SearchResultDtoAttributes = {[key: string]: string};
