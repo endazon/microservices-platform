@@ -790,7 +790,7 @@ export const getBffDocumentPublishUrl = (id: string,) => {
 /**
  * アーカイブ済みからの再公開は不正遷移として **409** で拒否する。
  * 409 の本文は RFC7807 ではなく `{ error: "invalid_transition", from, to }`。
- * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ）
+ * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）
  */
 export const bffDocumentPublish = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentPublishResponse> => {
 
@@ -839,7 +839,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentPublishMutationError = void | InvalidTransitionDto
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ）
+ * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）
  */
 export const useBffDocumentPublish = <TError = void | InvalidTransitionDto,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentPublish>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -890,7 +890,7 @@ export const getBffDocumentArchiveUrl = (id: string,) => {
 
 /**
  * status=archived の DocumentUpdated を発行し、下流の Wiki.js 同期がページを非公開化する。
- * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する
+ * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）
  */
 export const bffDocumentArchive = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentArchiveResponse> => {
 
@@ -939,7 +939,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentArchiveMutationError = void
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する
+ * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）
  */
 export const useBffDocumentArchive = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentArchive>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}

@@ -136,11 +136,14 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
 | 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`**（#519） | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
-| 登録 | `POST /bff/documents` | `useMutation` | admin / operator ＋ スコープ解決 | `DocumentDto`（201） |
+| 登録 | `POST /bff/documents` | `useMutation` | **admin のみ**（#629）＋ スコープ解決 | `DocumentDto`（201） |
 | 更新 | `PUT /bff/documents/{id}` | `useMutation` | 同上。**版不一致は 409** | 204 |
 | 公開 | `POST /bff/documents/{id}/publish` | `useMutation` | 同上。不正遷移は 409 | 204 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | `useMutation` | 同上 | 204 |
 | 削除 | `DELETE /bff/documents/{id}` | `useMutation` | 同上 | 204 |
+
+> **［2026-08-09 / #629］書き込み 5 口は `AdminOnly` になった**（§アクセス）。**運用者は 403 である。**
+> 一覧（読み取り）は従来どおり認証のみ＋ABAC スコープで、**狭めていない**。
 
 - **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
   状態遷移は 1 本の分岐ではなく **`useBffDocumentPublish` / `useBffDocumentArchive` / `useBffDocumentDelete`

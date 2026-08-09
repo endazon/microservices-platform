@@ -773,7 +773,7 @@ paths:
   /bff/documents/{id}/publish:
     post:
       tags: [Documents]
-      summary: "FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ）"
+      summary: "FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）"
       description: |
         アーカイブ済みからの再公開は不正遷移として **409** で拒否する。
         409 の本文は RFC7807 ではなく `{ error: "invalid_transition", from, to }`。
@@ -800,7 +800,7 @@ paths:
   /bff/documents/{id}/archive:
     post:
       tags: [Documents]
-      summary: "FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する"
+      summary: "FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）"
       description: "status=archived の DocumentUpdated を発行し、下流の Wiki.js 同期がページを非公開化する。"
       operationId: bff-document-archive
       parameters:
