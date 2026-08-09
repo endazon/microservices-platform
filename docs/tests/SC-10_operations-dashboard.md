@@ -132,7 +132,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
 | 1 | 集約 | FR-10 | `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
-| 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の `AdminOnly` を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
+| 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の**管理系ロール要求**（admin ＋ operator。**#544**）を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
 | 3 | **ロール制限** | [[IADR-0011]] | 管理者ロールが無ければ **403**。**画面が `platform-admin` 限定に据え置かれている根拠はここにある** | `GetSummary_WithoutAdminRole_Returns403` |
 | 4 | 後段障害 | — | 後段の非成功ステータスをそのまま伝播し、空サマリへ縮退させない | `GetSummary_WhenDashboardFails_PropagatesStatus` ／ `GetSummary_WhenFeedbackStatsFails_PropagatesStatus` |
 | 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |

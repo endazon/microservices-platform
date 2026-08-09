@@ -131,6 +131,12 @@ plan_refs:
   「照会の権限は変えていない」ことをレビューで grep 1 回で確認できる。認可メタデータの AND 合成は
   ASP.NET Core の `AuthorizationPolicy.CombineAsync` の仕様である。重ねるポリシー自体は
   `/bff/authz`・`/bff/dashboard` が使う既存の `PlatformAuthPolicies.AdminOnly` をそのまま用いる。
+
+  > **［2026-08-09 追記 / #544］`/bff/dashboard` はもう `AdminOnly` を使わない。**
+  > 計画 §SC-10 を正として **admin ＋ operator** へ広げたためである（[[IADR-0129]] 決定 4 の追記）。
+  > **本決定 1 は変わらない** —— 重ねるポリシーが既存の名前付きポリシーであることが要点であり、
+  > 現在の利用例は `/bff/authz`・`/bff/datasources`・`/bff/documents`・`/bff/tags`（**#640**）である
+  > （実測）。**`AdminOnly` の表現がリポジトリ内で 1 種類に保たれている**という性質も維持されている。
   **一方、「グループとエンドポイントの両方に認可を課す」形の先例はリポジトリ内に無い**——
   `grep -rn "RequireAuthorization" --include=*.cs src/platform src/knowledge` の **18 件**
   （コメント 4 件を除く**呼び出し 14 箇所**。是正前の `origin/develop` は 17 件 / 13 箇所。

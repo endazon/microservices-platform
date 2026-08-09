@@ -58,7 +58,7 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 | --- | --- | --- | --- |
 | GET | `/bff/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | DashboardService の利用側サマリと FeedbackService の回答品質を集約し `DashboardSummaryDto` を返す |
 
-- BFF は DashboardService（AdminOnly）へ `Authorization` ヘッダを伝播する。
+- BFF は DashboardService（**admin ＋ operator**。#544）へ `Authorization` ヘッダを伝播する。
 - 利用側サマリと回答品質は並行取得する（互いに独立）。後段が非 2xx ならそのステータスを透過する。
   いずれかの応答本文が null（欠損）なら 502（BadGateway）を返す。
 - **期間の整合**: BFF は有効な `days`（既定 7・上限 90 にクランプ）を確定し、DashboardService（利用状況・検索傾向）と
@@ -78,7 +78,7 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 - `EventType` が `search`/`answer` 以外 → 400。
 - 検索語は種別が `search` のときのみ集計対象（`answer` では保持しない）。空・空白のみは集計対象外。
-- 集計 API を非管理ロールで呼ぶ → 403（AdminOnly）。
+- 集計 API を**管理系ロール以外**で呼ぶ → 403（**#544**。運用者は 200）。
 - `days`/`top` は範囲外でもクランプして常に有効値で集計する（エラーにしない）。
 
 ## 非機能・セキュリティ

@@ -50,7 +50,7 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
         summary.Quality.Total.Should().Be(summary.Quality.Up + summary.Quality.Down);
     }
 
-    // FR-10: DashboardService は AdminOnly のため、資格情報を後段へ伝播する。
+    // FR-10: DashboardService も管理系ロール（admin ＋ operator。#544）を要求するため、資格情報を後段へ伝播する。
     [Fact]
     public async Task GetSummary_PropagatesAuthorizationHeader()
     {

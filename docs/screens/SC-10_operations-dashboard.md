@@ -257,7 +257,7 @@ flowchart LR
 
 | 用途 | エンドポイント | 応答 | 認可 |
 | --- | --- | --- | --- |
-| サマリ | `GET /bff/dashboard/summary?days={7\|30\|90}` | `DashboardSummaryDto` | **AdminOnly**（403 / 401） |
+| サマリ | `GET /bff/dashboard/summary?days={7\|30\|90}` | `DashboardSummaryDto` | **admin ＋ operator**（**#544**。管理系ロール以外は 403 / 無認証は 401） |
 
 - BFF は `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する。
   `days` は BFF が 1〜90 へ丸め、両後段へ同じ値を渡す（期間の起点を揃えるため）。

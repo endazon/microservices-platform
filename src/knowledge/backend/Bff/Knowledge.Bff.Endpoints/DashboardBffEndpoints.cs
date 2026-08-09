@@ -40,7 +40,8 @@ public static class DashboardBffEndpoints
             var effectiveDays = Math.Clamp(days ?? DefaultDays, 1, MaxDays);
             var qs = BuildQuery(effectiveDays, top);
 
-            // DashboardService の集計は AdminOnly のため、利用者の資格情報を後段へ引き継ぐ。
+            // DashboardService の集計も管理系ロール（admin ＋ operator。#544）を要求するため、
+            // 利用者の資格情報を後段へ引き継ぐ。
             var dashClient = httpFactory.CreateClient("DashboardService");
             var auth = http.Request.Headers.Authorization.ToString();
             if (!string.IsNullOrEmpty(auth))
