@@ -189,11 +189,26 @@ SC-02 の「更新日時」列は**値なしを `—` で描く**。同じ整形
 | `pnpm typecheck` / `lint` / `format:check` | OK（lint は warning 9・error 0。既存の `react-refresh` 警告） |
 | `pnpm test:coverage` | statements **96.39%** / branches **90.53%** / functions **91.68%** / lines **96.39%**（床 90 / 85 / 88 / 90。**割っていない**） |
 | `pnpm build` ＋ `check-static-egress` | OK（24 ファイル・外部オリジン 0） |
-| `check-chunk-budget` | **床を 578.06 → 578.15 kB へ更新**（+0.09 kB ＝ **新しい表示文言 1 件**〔「更新日時」〕が Lingui カタログへ載った分） |
+| `check-chunk-budget` | **床を 2 つ更新した。**(1) 初期ロード合計 578.06 → 578.15 kB（+0.09 kB ＝ **新しい表示文言 1 件**〔「更新日時」〕が Lingui カタログへ載った分）。(2) **1 kB 未満の遅延チャンク 5 → 6 本**（下記） |
 | `check-contract-schema` | **baseline を更新**（`SearchResultDto.UpdatedAt` の**追加**。破壊的変更 0 件） |
 | `check-test-spec-coverage --update` | **床を 75 → 78 対へ**（`FR-02 × QdrantIngestionVectorStoreTests` / `FR-03 × QdrantVectorStoreTests` / `FR-03 × BffSearchEndpointTests`） |
 | `check-i18n-catalogs` | OK（**ja / en 両方に訳を入れた**。「更新日時」→ `Updated`） |
 | その他 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-landed-subjects` / `check-adr-numbering` / `check-bff-downstreams` / `check-test-traceability` / `check-unit-dependencies` / `check-unit-service-ownership` / `check-backend-libraries` / `check-commit-messages` すべて OK |
+
+### 1 kB 未満の遅延チャンクが 1 本増えた理由（実測）
+
+**増えた 1 本は `formatDateTime-*.js`（124 B）である**（`ls dist/assets` で実測）。
+`formatDateTime` を SC-02 と SC-06 の**2 つのルートチャンクが参照する**ようになったため、
+Rollup が共有モジュールとして切り出した。**§実装中に決めたこと の直接の帰結であり、意図した増加である。**
+
+**既存の同型と同じ扱いになっただけである** —— dist には既に
+`orvalSelect`（107 B）・`confidentiality`（121 B）・`apiErrors`（166 B）・`orvalMutator`（267 B）・
+`WikiAccessPage`（737 B）の 5 本が在り（＝従前の床 5）、本作業の 1 本が 6 本目にあたる。
+
+**判定 4 は `warn` であって `fail` ではない**（`check-chunk-budget.js` の設計: 往復の増加は
+「性能の劣化ではあっても壊れではない」ため、fail にすると遅延ルートを 1 本足すたびに他人の PR が止まる）。
+**複写を選べばこの 1 本は増えないが、`—` の書き方が 2 か所に割れる** —— 124 B の往復 1 回と引き換えに
+表示規則の単一情報源を採った。
 
 **カバレッジ床は上げない**（#628 と同じ判断。床は #619 以降どの PR も動かしておらず、全ユニット横断の
 床をここで上げると並走中の PR を巻き添えにする）。
