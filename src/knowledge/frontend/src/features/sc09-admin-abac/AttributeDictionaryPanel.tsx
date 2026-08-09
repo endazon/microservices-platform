@@ -87,7 +87,8 @@ export function AttributeDictionaryPanel({
   error: unknown;
 }) {
   const { t } = useLingui();
-  const { create, remove } = useAttributeActions();
+  const actions = useAttributeActions();
+  const { create, remove } = actions;
   const [key, setKey] = useState('');
   const [label, setLabel] = useState('');
   const [allowedValues, setAllowedValues] = useState('');
@@ -97,7 +98,10 @@ export function AttributeDictionaryPanel({
   // IADR-0127 決定 7 と同じ形: 画面が出す操作結果は**直近の 1 件だけ**。新しい操作の開始時に
   // 全ミューテーションの状態を捨てる。TanStack Query は「別のミューテーションが成功した」ことでは
   // 他方の isError を戻さないため、放置すると成功バナーと古い失敗バナーが並ぶ。
-  const mutations = [create, remove];
+  // **列挙は手書きの配列にしない**（[[IADR-0127]] 決定 7）——
+  // 4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く。
+  // フックの戻り値を `Object.values` で辿れば、足した時点で自動的に含まれる。
+  const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
   const conflicted = failed?.error instanceof ApiError && failed.error.status === 409;
   const succeeded = mutations.find((m) => m.isSuccess);

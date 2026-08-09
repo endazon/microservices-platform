@@ -357,6 +357,44 @@ TanStack Query の `isError` は**そのミューテーション自身が再度 
 **軸として立てるべきだったのは「この画面に既にある同種の部品」である** ——
 `docs/tests/SC-09_admin-abac-settings.md` の観点 12「**操作を跨いだ状態**」も同じことを求めていた。
 
+### 7. ★ [[IADR-0127]] 決定 7 の**実装指定**まで踏襲していなかった（レビュー 4 巡目の 🟡）
+
+**§6 で `beginOperation()` を足したが、決定 7 はその先の実装方法まで確定していた。**
+
+> **列挙は `useDocumentActions()` / `useDataSourceActions()` の戻り値を `Object.values` で辿る。**
+> 手書きの配列を残すと、4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く
+> ——**指摘は 2 画面に対するものだったが、原因は「配列を手で並べたこと」であって画面の数ではない。**
+
+**`const mutations = [create, rename, remove]` は、この文が名指しで禁じている形である。**
+
+#### レビューの指摘には 1 件漏れがあった
+
+レビューは `AttributeDictionaryPanel.tsx:100` を挙げたが、**走査すると SC-09 の 3 パネルすべてが手書き配列だった**。
+
+| ファイル | 変更前 | 本数 |
+| --- | --- | --- |
+| `TagDictionaryPanel.tsx`（本 PR で新設） | `[create, rename, remove]` | 3 |
+| `AttributeDictionaryPanel.tsx` | `[create, remove]` | 2 |
+| **`PolicyEditorPanel.tsx`**（**レビュー未指摘**） | `[create, setActive, remove, validate]` | **4** |
+| `DocumentManagementPage.tsx`（SC-05） | `Object.values(actions)` | — |
+| `DataSourceManagementPage.tsx`（SC-06） | `Object.values(actions)` | — |
+
+**`PolicyEditorPanel` は既に 4 本ある** —— 決定 7 が「4 本目を足したときに足し忘れる」と警告した状況に
+**最も近いのはこのファイル**だった。**指摘された 1 件だけを直していたら、最も危ういものを残していた。**
+
+**SC-09 の 3 パネルすべてを `Object.values(actions)` へ揃えた**（5 画面が同じ形になった）。
+
+#### なぜ引き漏らしたか
+
+**§6 で ADR を「引いた」つもりが、隣のファイルの実装を見ただけだった。**
+
+`AttributeDictionaryPanel` のコメントは `IADR-0127 決定 7` を参照していたが、
+**その ADR の本文を開いていない**。開けば `Object.values` の指定は決定の直後に書かれている。
+
+**「隣がやっている形」は ADR の写しであって ADR ではない。** 隣が逸脱していれば逸脱ごと写る——
+実際そうなった（`AttributeDictionaryPanel` の手書き配列を追認してコピーした）。
+**参照先の ADR を必ず開く**、が正しい手順である。
+
 ## 申し送り
 
 - **検査器の起票**（上記 §3）。`openapi.yaml` が宣言するロールと実装の

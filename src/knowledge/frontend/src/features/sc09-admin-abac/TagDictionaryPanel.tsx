@@ -118,7 +118,8 @@ function TagRow({
 export function TagDictionaryPanel() {
   const { t } = useLingui();
   const { data, isPending, isError } = useTagDictionary();
-  const { create, rename, remove } = useTagActions();
+  const actions = useTagActions();
+  const { create, rename, remove } = actions;
   const [name, setName] = useState('');
 
   // [[IADR-0127]] 決定 7 と同じ形: 画面が出す操作結果は**直近の 1 件だけ**。新しい操作の開始時に
@@ -126,7 +127,10 @@ export function TagDictionaryPanel() {
   // 他方の `isError` を戻さない**ため、放置すると「削除が 409 で拒否された直後に別のタグを改名して
   // 成功しても、古い削除拒否の警告が残り、改名成功の通知が出ない」状態になる
   // （管理者は「今の改名が失敗した」と誤解する）。`AttributeDictionaryPanel` と同じ作法である。
-  const mutations = [create, rename, remove];
+  // **列挙は手書きの配列にしない**（[[IADR-0127]] 決定 7）——
+  // 4 本目のミューテーションを足したときに配列へ足し忘れて同じ穴が開く。
+  // フックの戻り値を `Object.values` で辿れば、足した時点で自動的に含まれる。
+  const mutations = Object.values(actions);
   const failed = mutations.find((m) => m.isError);
   // SC-09「削除前に使用件数を示す」。**数値が取れたときだけ専用の文言にする。**
   const inUseCount = failed ? tagInUseCount(failed.error) : null;
