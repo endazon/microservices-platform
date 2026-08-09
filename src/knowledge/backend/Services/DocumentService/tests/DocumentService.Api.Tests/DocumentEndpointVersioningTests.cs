@@ -67,13 +67,20 @@ public class DocumentEndpointVersioningTests(TestWebApplicationFactory factory)
             new { title = "keep-title", attributes = Conf(), tags = new List<string>() });
         var doc = await create.Content.ReadFromJsonAsync<DocumentDto>();
 
+        // SC-05, #635: **タグは辞書に在る名前しか付けられない**（手入力は自動登録しない。
+        // [[IADR-0153]] 決定 5）。辞書へ先に登録する。
+        var tagName = $"q3-{Guid.NewGuid():N}";
+        (await client.PostAsJsonAsync("/tags", new CreateTagRequest(tagName)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
         var patch = await client.PatchAsJsonAsync($"/documents/{doc!.Id}/metadata",
-            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { "q3" } });
+            new { attributes = new Dictionary<string, string> { ["confidentiality"] = "internal", ["dept"] = "sales" }, tags = new[] { tagName } });
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
         var patched = await patch.Content.ReadFromJsonAsync<DocumentDto>();
         patched!.Title.Should().Be("keep-title");
         patched.Attributes.Should().ContainKey("dept");
-        patched.Tags.Should().Contain("q3");
+        // **応答は表示名で返る**（正本は識別子。[[IADR-0153]] 決定 2。契約は変わっていない）。
+        patched.Tags.Should().Contain(tagName);
         patched.Version.Should().Be(2);
     }
 

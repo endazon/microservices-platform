@@ -82,11 +82,16 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
         // ハッシュも等価判定と同じ内容ベースにする（参照 GetHashCode は equals と契約不整合になるため）。
         v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(), v => new Dictionary<string, string>(v));
 
-    private static ValueConverter<List<string>, string> ListConverter() => new(
+    // **［#635］タグは識別子（`Guid`）の配列である**（[[IADR-0153]] 決定 1。正本は表示名を複写しない）。
+    //
+    // **型を合わせること自体が守りである。** `HasConversion` には非ジェネリックの多重定義があり、
+    // `List<string>` 用の変換器を `List<Guid>` の列へ渡しても**コンパイルは通ってしまう**（実測）。
+    // 壊れるのは実行時なので、ここでズレると気づくのがずっと後になる。
+    private static ValueConverter<List<Guid>, string> ListConverter() => new(
         v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
-        v => System.Text.Json.JsonSerializer.Deserialize<List<string>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new());
+        v => System.Text.Json.JsonSerializer.Deserialize<List<Guid>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new());
 
-    private static ValueComparer<List<string>> ListComparer() => new(
+    private static ValueComparer<List<Guid>> ListComparer() => new(
         (a, b) => a!.SequenceEqual(b!),
         v => v.Aggregate(0, (h, e) => HashCode.Combine(h, e.GetHashCode())),
         v => v.ToList());

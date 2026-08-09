@@ -29,10 +29,20 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
+    // SC-05, #635: **タグは辞書に在る名前しか付けられない**（手入力は自動登録しない。
+    // [[IADR-0153]] 決定 5）。辞書へ先に登録する。
+    private async Task RegisterTagsAsync(params string[] names)
+    {
+        foreach (var name in names)
+            (await _client.PostAsJsonAsync("/tags", new { name })).StatusCode
+                .Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.Conflict);
+    }
+
     [DockerFact]
     public async Task CreateDocument_ThenGet_ReturnsDocument()
     {
         // Arrange
+        await RegisterTagsAsync("test", "integration");
         var req = new
         {
             title = "統合テスト文書",

@@ -54,13 +54,15 @@ public sealed class IngestTagFilterTests
     public async Task KnownTag_IsKept_AndNotCounted()
     {
         using var db = NewDb();
-        db.Tags.Add(Tag.Create("経理"));
+        var tag = Tag.Create("経理");
+        db.Tags.Add(tag);
         await db.SaveChangesAsync();
         var (consumer, probe) = Build(db);
 
         var kept = await consumer.KnownTagsAsync(["経理"], default);
 
-        kept.Should().Equal(["経理"]);
+        // #635: 通ったタグは**識別子**で返る（正本は表示名を持たない。[[IADR-0153]] 決定 1）。
+        kept.Should().Equal([tag.Id]);
         probe.Total.Should().Be(0);
     }
 
@@ -82,13 +84,14 @@ public sealed class IngestTagFilterTests
     public async Task MixedTags_KeepsKnown_AndCountsUnknownOnly()
     {
         using var db = NewDb();
-        db.Tags.Add(Tag.Create("規程"));
+        var tag = Tag.Create("規程");
+        db.Tags.Add(tag);
         await db.SaveChangesAsync();
         var (consumer, probe) = Build(db);
 
         var kept = await consumer.KnownTagsAsync(["規程", "未登録A", "未登録B"], default);
 
-        kept.Should().Equal(["規程"]);
+        kept.Should().Equal([tag.Id]);
         probe.Total.Should().Be(2);
     }
 

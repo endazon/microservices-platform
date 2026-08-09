@@ -13,7 +13,10 @@ public class Document
     public string? ContentType { get; private set; }
     public int Version { get; private set; } = 1;
     public Dictionary<string, string> Attributes { get; private set; } = [];
-    public List<string> Tags { get; private set; } = [];
+    // FR-06, FR-09, SC-09, #635: **タグの識別子**を持つ。**表示名を複写しない**
+    // （計画確定「辺は型の識別子を参照して保持し、表示名を複写しない」。[[IADR-0153]] 決定 1）。
+    // 複写すると**改名時に古い名前のまま取り残される**。表示名への解決は `DocumentEndpoints` が行う。
+    public List<Guid> Tags { get; private set; } = [];
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
@@ -23,7 +26,7 @@ public class Document
     private Document() { }
 
     public static Document Create(string title, string? originalUri, string? contentType,
-        Dictionary<string, string>? attributes = null, List<string>? tags = null)
+        Dictionary<string, string>? attributes = null, List<Guid>? tags = null)
     {
         var doc = new Document
         {
@@ -41,7 +44,7 @@ public class Document
     // FR-01, UC-04: 正規化文書（DocumentNormalized）からカタログ文書を生成する。
     // パイプライン全体で ID を一貫させるため、変換側が採番した DocumentId を指定する（IADR-0001）。
     public static Document CreateNormalized(Guid id, string title, string markdownUri,
-        Dictionary<string, string>? attributes = null, List<string>? tags = null)
+        Dictionary<string, string>? attributes = null, List<Guid>? tags = null)
     {
         var doc = new Document
         {
@@ -56,7 +59,7 @@ public class Document
         return doc;
     }
 
-    public void Update(string title, Dictionary<string, string> attributes, List<string> tags,
+    public void Update(string title, Dictionary<string, string> attributes, List<Guid> tags,
         string? changeNote = null)
     {
         Title = title;
@@ -67,7 +70,7 @@ public class Document
     }
 
     // FR-06, UC-03: メタデータ（属性・タグ）のみを更新する。本文・タイトルは変更しない。
-    public void UpdateMetadata(Dictionary<string, string> attributes, List<string> tags,
+    public void UpdateMetadata(Dictionary<string, string> attributes, List<Guid> tags,
         string? changeNote = null)
     {
         Attributes = attributes;

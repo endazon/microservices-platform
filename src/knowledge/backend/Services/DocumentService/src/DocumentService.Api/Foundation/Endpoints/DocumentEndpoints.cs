@@ -1,5 +1,6 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
+using DocumentService.Api.Foundation.Services;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -27,17 +28,18 @@ public static class DocumentEndpoints
 
         g.MapGet("/", async (DocumentDbContext db) =>
         {
+            var names = await TagResolver.NamesAsync(db);
             var docs = await db.Documents
                 .OrderByDescending(d => d.UpdatedAt)
-                .Select(d => ToDto(d))
                 .ToListAsync();
-            return Results.Ok(docs);
+            return Results.Ok(docs.Select(d => ToDto(d, names)).ToList());
         });
 
         g.MapGet("/{id:guid}", async (Guid id, DocumentDbContext db) =>
         {
             var doc = await db.Documents.FindAsync(id);
-            return doc is null ? Results.NotFound() : Results.Ok(ToDto(doc));
+            if (doc is null) return Results.NotFound();
+            return Results.Ok(ToDto(doc, await TagResolver.NamesAsync(db)));
         });
 
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
@@ -55,12 +57,17 @@ public static class DocumentEndpoints
             if (ConfidentialityProblemOrNull(req.Attributes) is { } createError)
                 return createError;
 
+            // SC-05, #635: タグ名を辞書の識別子へ解決する。**辞書に無い名前は 400**（手入力は自動登録しない）。
+            var (createTagIds, createUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
+            if (createUnknown.Count > 0) return UnknownTagsProblem(createUnknown);
+
             var doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
-                req.Attributes, req.Tags);
+                req.Attributes, createTagIds);
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
-            await bus.Publish(ToEvent(doc));
-            return Results.Created($"/documents/{doc.Id}", ToDto(doc));
+            var createNames = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, createNames));
+            return Results.Created($"/documents/{doc.Id}", ToDto(doc, createNames));
         });
 
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
@@ -88,10 +95,14 @@ public static class DocumentEndpoints
                     currentVersion = doc.Version
                 });
 
-            doc.Update(req.Title, req.Attributes ?? [], req.Tags ?? [], req.ChangeNote);
+            var (updateTagIds, updateUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
+            if (updateUnknown.Count > 0) return UnknownTagsProblem(updateUnknown);
+
+            doc.Update(req.Title, req.Attributes ?? [], updateTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
-            await bus.Publish(ToEvent(doc));
-            return Results.Ok(ToDto(doc));
+            var updateNames = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, updateNames));
+            return Results.Ok(ToDto(doc, updateNames));
         });
 
         // FR-06, UC-03: メタデータ（属性・タグ）のみ更新する。
@@ -113,10 +124,14 @@ public static class DocumentEndpoints
                     currentVersion = doc.Version
                 });
 
-            doc.UpdateMetadata(req.Attributes ?? [], req.Tags ?? [], req.ChangeNote);
+            var (metaTagIds, metaUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
+            if (metaUnknown.Count > 0) return UnknownTagsProblem(metaUnknown);
+
+            doc.UpdateMetadata(req.Attributes ?? [], metaTagIds, req.ChangeNote);
             await db.SaveChangesAsync();
-            await bus.Publish(ToEvent(doc));
-            return Results.Ok(ToDto(doc));
+            var metaNames = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, metaNames));
+            return Results.Ok(ToDto(doc, metaNames));
         });
 
         // FR-06, UC-03, SC-05: 文書を公開する。アーカイブ済みからの再公開は不正遷移として 409 で拒否する。
@@ -134,8 +149,9 @@ public static class DocumentEndpoints
                 });
             doc.Publish();
             await db.SaveChangesAsync();
-            await bus.Publish(ToEvent(doc));
-            return Results.Ok(ToDto(doc));
+            var names = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, names));
+            return Results.Ok(ToDto(doc, names));
         });
 
         // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流の Wiki.js 同期が
@@ -147,8 +163,9 @@ public static class DocumentEndpoints
             if (doc is null) return Results.NotFound();
             doc.Archive();
             await db.SaveChangesAsync();
-            await bus.Publish(ToEvent(doc));
-            return Results.Ok(ToDto(doc));
+            var names = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, names));
+            return Results.Ok(ToDto(doc, names));
         });
 
         // FR-06, UC-03: 版履歴一覧（新しい順）。
@@ -157,12 +174,12 @@ public static class DocumentEndpoints
             var exists = await db.Documents.AnyAsync(d => d.Id == id);
             if (!exists) return Results.NotFound();
 
+            var names = await TagResolver.NamesAsync(db);
             var versions = await db.DocumentVersions
                 .Where(v => v.DocumentId == id)
                 .OrderByDescending(v => v.Version)
-                .Select(v => ToVersionDto(v))
                 .ToListAsync();
-            return Results.Ok(versions);
+            return Results.Ok(versions.Select(v => ToVersionDto(v, names)).ToList());
         });
 
         // FR-06, UC-03: 特定版の取得。
@@ -171,7 +188,8 @@ public static class DocumentEndpoints
         {
             var snapshot = await db.DocumentVersions
                 .FirstOrDefaultAsync(v => v.DocumentId == id && v.Version == version);
-            return snapshot is null ? Results.NotFound() : Results.Ok(ToVersionDto(snapshot));
+            if (snapshot is null) return Results.NotFound();
+            return Results.Ok(ToVersionDto(snapshot, await TagResolver.NamesAsync(db)));
         });
 
         write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
@@ -202,7 +220,9 @@ public static class DocumentEndpoints
             });
     }
 
-    private static DocumentDto ToDto(Document d) => new()
+    // FR-09, SC-09, #635: **外へ出す形は表示名である**（正本は識別子。[[IADR-0153]] 決定 2）。
+    // 契約（`DocumentDto.Tags`）は `List<string>` のままで、**下流も画面も変わらない**。
+    private static DocumentDto ToDto(Document d, IReadOnlyDictionary<Guid, string> names) => new()
     {
         Id = d.Id,
         Title = d.Title,
@@ -210,12 +230,13 @@ public static class DocumentEndpoints
         MarkdownUri = d.MarkdownUri,
         Version = d.Version,
         Attributes = d.Attributes,
-        Tags = d.Tags,
+        Tags = TagResolver.ToNames(d.Tags, names),
         CreatedAt = d.CreatedAt,
         UpdatedAt = d.UpdatedAt,
     };
 
-    private static DocumentVersionDto ToVersionDto(DocumentVersion v) => new()
+    // **過去版も現在の表示名で出る**——改名は表示上の変更である（[[IADR-0153]] 決定 4）。
+    private static DocumentVersionDto ToVersionDto(DocumentVersion v, IReadOnlyDictionary<Guid, string> names) => new()
     {
         DocumentId = v.DocumentId,
         Version = v.Version,
@@ -223,15 +244,27 @@ public static class DocumentEndpoints
         Status = v.Status,
         MarkdownUri = v.MarkdownUri,
         Attributes = v.Attributes,
-        Tags = v.Tags,
+        Tags = TagResolver.ToNames(v.Tags, names),
         ChangeNote = v.ChangeNote,
         CreatedAt = v.CreatedAt,
     };
 
     // FR-06, UC-03: DocumentUpdated イベント生成
-    private static DocumentUpdated ToEvent(Document d) => new(
+    // **イベントも表示名を運ぶ。** 射影（Qdrant / Wiki.js）は人が読む面であり、
+    // 検索の hot path に辞書引きを増やさない（[[IADR-0153]] 決定 1・2）。
+    //
+    // **［#635］`internal` にしてある。** 改名の再発行（`TagDictionaryEndpoints`）が同じ形を要るためで、
+    // **識別子 → 表示名の変換点を 2 つに割らない**ことがここでの目的である（同 決定 2）。
+    internal static DocumentUpdated ToEvent(Document d, IReadOnlyDictionary<Guid, string> names) => new(
         d.Id, d.Title, d.Status, d.MarkdownUri,
-        d.Attributes, d.Tags, d.UpdatedAt);
+        d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt);
+
+    // SC-05, #635: 辞書に無いタグ名を 400 にする（「既定タグ辞書に整合」。手入力は自動登録しない）。
+    private static IResult UnknownTagsProblem(List<string> unknown) =>
+        Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["tags"] = [$"辞書に無いタグです: {string.Join(" / ", unknown)}。SC-09 の辞書へ先に登録してください。"],
+        });
 }
 
 public record CreateDocumentRequest(
