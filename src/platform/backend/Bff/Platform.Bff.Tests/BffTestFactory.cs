@@ -62,6 +62,16 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public List<TagDto> StubTagDictionary { get; set; } = [new(Guid.NewGuid(), "経理", 3)];
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
+
+    // FR-09, SC-09, #640: 辞書の書き込み（追加・改名・削除）。
+    // **後段が返す識別子を固定する** —— BFF は中継するだけなので、応答が素通りすることを検証できる。
+    public static readonly Guid StubCreatedTagId = new("11111111-2222-3333-4444-555555555555");
+    // 追加・改名の後段応答を差し替える（409 の透過を検証する）。
+    public HttpStatusCode TagWriteStatusCode { get; set; } = HttpStatusCode.OK;
+    // 改名で再発行した文書数（[[IADR-0153]] 決定 3。画面が「まだ届いていない」と切り分けるために要る）。
+    public int StubRenameRepublished { get; set; } = 2;
+    // **削除時の使用件数。0 なら 204、1 以上なら 409 ＋ `usageCount`**（SC-09 の確定規則）。
+    public int StubDeleteUsageCount { get; set; }
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
@@ -468,10 +478,39 @@ public class BffTestFactory : WebApplicationFactory<Program>
             // （一般利用者のとき呼んでいないことを固定するため）。
             if (path == "/tags")
             {
+                // FR-09, SC-09, #640: 追加。**名前の重複は 409**（後段が判定する）。
+                if (method == HttpMethod.Post)
+                    return owner.TagWriteStatusCode != HttpStatusCode.OK
+                        ? Status(owner.TagWriteStatusCode, new { message = "タグ「経理」は既に辞書にあります。" })
+                        : Json(HttpStatusCode.Created, new TagDto(BffTestFactory.StubCreatedTagId, "新規タグ", 0));
+
                 owner.TagDictionaryFetched = true;
                 if (owner.TagDictionaryStatusCode != HttpStatusCode.OK)
                     return Task.FromResult(new HttpResponseMessage(owner.TagDictionaryStatusCode));
                 return Ok(new TagDictionaryResponse(owner.StubTagDictionary));
+            }
+
+            // FR-09, SC-09, #640: 改名（`PUT /tags/{id}`）・削除（`DELETE /tags/{id}`）。
+            if (path.StartsWith("/tags/", StringComparison.Ordinal))
+            {
+                if (method == HttpMethod.Put)
+                    return owner.TagWriteStatusCode != HttpStatusCode.OK
+                        ? Status(owner.TagWriteStatusCode, new { message = "タグ「経理」は既に辞書にあります。" })
+                        : Ok(new RenameTagResponse(
+                            new TagDto(BffTestFactory.StubCreatedTagId, "改名後", owner.StubRenameRepublished),
+                            owner.StubRenameRepublished));
+
+                if (method == HttpMethod.Delete)
+                    // **使用件数が 1 件以上なら 409 を件数つきで返す**（SC-09「削除前に使用件数を示す」）。
+                    // **BFF は本文を詰め替えず透過する**ので、この `usageCount` がそのまま画面へ届く。
+                    return owner.StubDeleteUsageCount > 0
+                        ? Status(HttpStatusCode.Conflict, new
+                        {
+                            error = "tag_in_use",
+                            message = $"タグ「経理」は {owner.StubDeleteUsageCount} 件の文書で使われているため削除できません。",
+                            usageCount = owner.StubDeleteUsageCount,
+                        })
+                        : Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
             }
 
             if (path.EndsWith("/versions", StringComparison.Ordinal))
