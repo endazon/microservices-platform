@@ -24,7 +24,7 @@ plan_refs:
 
 ## テスト対象・範囲
 
-- 対象: RRF 融合ロジック（`HybridSearchService.ReciprocalRankFusion`）、`/search` エンドポイント結合（`InMemoryVectorStore`）、ABAC フィルタ適用（両系統）、Qdrant ペイロードからの ABAC 属性復元（`QdrantVectorStore.ExtractAttributes`）。
+- 対象: RRF 融合ロジック（`HybridSearchService.ReciprocalRankFusion`）、`/search` エンドポイント結合（`InMemoryVectorStore`）、ABAC フィルタ適用（両系統）、Qdrant ペイロードからの ABAC 属性復元（`QdrantVectorStore.ExtractAttributes`）、**Qdrant ペイロードへのタグ書き込みと復元（`QdrantVectorStore.BuildPayload` / `QdrantVectorStore.ExtractTags`。［2026-08-09 追記 / #642］）**。
 - 対象外: 実 Qdrant の full-text Match 挙動・実埋め込みモデルの精度、反映時間（インジェスト責務）、負荷/p95、画面。
 
 ## テスト観点
@@ -66,17 +66,26 @@ plan_refs:
 | T-27 | `SortBy = updated` かつ単系統 | 同上 | **候補を `topK*4` まで広げる**（関連度順では広げない）。[[IADR-0150]] 決定 3 | SC-02（#532） | 自動 |
 | T-28 | `SortBy = updated` で候補を広げた | 同上 | **返すのは `topK` 件**（広げた分をそのまま返さない） | SC-02（#532） | 自動 |
 | T-29 | 画面が `sortBy` を送る | `POST /bff/search` | **BFF は縮退させず後段へそのまま渡す**（正規化は RetrievalService の 1 か所。`BffSearchEndpointTests`） | SC-02（#532） | 自動 |
+| T-30 | `tags` を持つペイロード（`ListValue` の文字列） | `QdrantVectorStore.ExtractTags` | `["経理","規程"]` を順序どおり復元 | 結果一覧のタグ表示（SC-02・#642） | 自動 |
+| T-31 | `tags` を持たないペイロード | 同上 | 空リスト（画面はタグ列を空欄にする） | 同上 | 自動 |
+| T-32 | `tags` がリストでない（手投入・旧データ） | 同上 | 空リスト（検索全体を失敗させない） | 例外フロー（#642） | 自動 |
+| T-33 | `tags` に数値・真偽値・構造体が混在 | 同上 | スカラーは文字列化（`"42"`/`"true"`）、構造体は読み飛ばす | 例外フロー（#642） | 自動 |
+| T-34 | タグを持つ `ChunkPayload` | `QdrantVectorStore.BuildPayload` | `payload["tags"]` が `ListValue[StringValue]`（**取り込み側 `QdrantIngestionVectorStore.BuildChunkPayload` と同じ表現**） | 表現の一致（[[IADR-0014]]・#642） | 自動 |
+| T-35 | タグ 0 件の `ChunkPayload` | 同上 | `tags` キー自体を書かない（`attributes` と同じ扱い） | 表現の一致（#642） | 自動 |
+| T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込み・復元のどちらが欠けても本番でタグが出ない**） | 結果一覧のタグ表示（SC-02・#642） | 自動 |
 
 ## テストデータ
 
 - `ChunkPayload`: 1536 次元ゼロベクトル＋日本語本文＋ `s3://bucket/{guid}.md` 形式の `MarkdownUri`＋任意の ABAC 属性（`dept`, `confidentiality`）。
 - `SearchResultDto`: `ReciprocalRankFusion` 用に `ChunkId` を変えたヒット群（`HybridSearchServiceTests.Hit`。**`updatedAt` は任意**で、未再索引の縮退を再現できる）。
 - `Qdrant.Client.Grpc.Value` ペイロード辞書（フラットキー／ネスト構造体の両表現）。
+- **タグ（#642）**: `tags` を `ListValue` で持つペイロード辞書と、`Tags` を持つ `ChunkPayload`（`["経理","規程"]`）。
 
 ## 関連仕様
 
 - 機能仕様書: `../functional/FR-03_hybrid-search.md`
-- 作業仕様書: `../specs/20260627_FR-03_hybrid-search.md`
+- 作業仕様書: `../specs/20260627_FR-03_hybrid-search.md` ／ `../specs/20260809_issue-642_qdrant-tag-restoration.md`
+- 画面仕様書: `../screens/SC-02_search-results.md`（タグ列の表示元）
 - 通信仕様書: `../api/openapi.yaml`（`/search`）
 - データ仕様書: `../data/document-and-version.md`（未整備の場合あり）
 

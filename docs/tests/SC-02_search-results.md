@@ -10,7 +10,7 @@ related_ids:
   - IADR-0126
 author: claude
 created: 2026-07-09
-updated: 2026-08-06
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -55,6 +55,19 @@ related_specs:
 | 8-b | **`?q=` の変化への追随** | [[IADR-0126]] 決定 3（2026-08-05 追記） | **アンマウントを伴わずに** `?q=` だけが変わる経路（`router.navigate` ＋ `router.history.back()`＝ブラウザの戻る／進む）で、**結果一覧と入力欄の両方**が新しい語になる |
 | 8-c | 編集途中の値の破棄 | 同上 | 入力途中に `?q=` が外から変わったら、未確定の編集値を捨てて URL の値にする |
 | 9 | ロケール `en` | ADR-0031 | 見出し・ボタンが英語で描画される |
+
+## タグ列の担保は本仕様書の外にある（［2026-08-09 追記 / #642］）
+
+ケース 1 は「スニペットとタグも出る」を検証するが、**それはモックが `tags` を返しているからである。**
+**本番でタグが渡ってくることは、この画面テストでは一切担保されない。**
+
+実際、`RetrievalService` の Qdrant 経路は `tags` をペイロードへ書かず、復元もしていなかったため、
+**画面テストが緑のまま本番のタグ列だけが常に空欄**であった（[[IADR-0014]] と同型）。
+
+- **担保する場所**: `RetrievalService.Api.Tests.QdrantVectorStoreTests`
+  （テスト仕様書 [FR-03_hybrid-search.md](./FR-03_hybrid-search.md) の T-16〜T-22）。
+- **本仕様書の側では何も足さない** —— 画面の責務は「渡ってきた `tags` を `Tag` で描く」ことであり、
+  その責務はケース 1 が既に固定している。**同じことを 2 か所で主張すると、どちらが正か読めなくなる。**
 
 ## ABAC・存在秘匿の担保
 
