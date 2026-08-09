@@ -92,6 +92,20 @@ public sealed class IngestTagFilterTests
         probe.Total.Should().Be(2);
     }
 
+    // **同じ未知タグが 2 度来ても 1 件と数える**（#634 の使用件数と同じ理屈。
+    // 数えるのは「現れたタグの種類」であって出現回数ではない）。
+    [Fact]
+    public async Task DuplicateUnknownTag_IsCountedOnce()
+    {
+        using var db = NewDb();
+        var (consumer, probe) = Build(db);
+
+        var kept = await consumer.KnownTagsAsync(["未登録", "未登録", "未登録"], default);
+
+        kept.Should().BeEmpty();
+        probe.Total.Should().Be(1, "出現回数ではなく種類を数える");
+    }
+
     // Meter 名へ一意な接尾辞を付ける（テスト間の測定の混入を構造的に防ぐ）。
     private sealed class TestMeterFactory : IMeterFactory
     {

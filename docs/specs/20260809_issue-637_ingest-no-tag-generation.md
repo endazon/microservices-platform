@@ -139,3 +139,16 @@ xUnit のコレクションで直列化してこれを避けているが、本�
 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-adr-numbering` / `check-test-traceability` / `check-bff-downstreams` / `check-unit-dependencies` / `check-backend-libraries` / `check-landed-subjects` / `check-test-spec-coverage` / `check-i18n-catalogs` / `scripts.repo.test` | すべて OK |
 
 **フロントは触っていない**ので `pnpm` 系の床（カバレッジ・chunk budget）は動かない。
+
+## レビュー指摘への対応（PR #638・AI レビュー）
+
+**🔴 は 0 件。** 🟡 1 件・🟢 1 件をいずれも受け入れた。
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🟡 **PR タイトルのスコープから `FR-09` と `NFR` が落ちている**（4 コミットの scope 合算は `FR-01,FR-06,FR-09,NFR,SC-05,SC-09,SC-10,IADR-0153`）。`.claude/rules/traceability.md`「★ スカッシュ件名を書き直すときは、スコープの ID を 1 つも落とさない」が名指しする事故型（`bc7bc8e` / #612）と同じ構造 | **指摘のとおり。PR タイトルへ `FR-09,NFR` を足した。** 両方とも本 PR に実体がある——**`NFR`** は `.claude/rules/traceability.md` の NFR 採番追記、**`FR-09`** は [[IADR-0153]] と #635 作業仕様書（タグ辞書）の変更である。**対になる規則（実体を伴わない ID を足さない）にも触れていない**ことを確認した |
+| 🟢 `KnownTagsAsync` が**重複した未知タグを複数回カウント**する | **受け入れた。** `Distinct` を通した。**[[IADR-0152]] 決定 2 の使用件数と同じ理屈**である——数えるのは「現れたタグの種類」であって出現回数ではない。テスト `DuplicateUnknownTag_IsCountedOnce` で固定した（knowledge 480 → 481 件） |
+
+**レビューが独立に追試した結果も記録する**（他人の数えを転記しないが、自分の測れなかった範囲は記録する）。
+レビュー環境は Docker が使えたため統合テストが skip されず、**knowledge は 500 passed / 0 skipped** だった
+（当方の 480 passed + 20 skipped と総数が一致する）。

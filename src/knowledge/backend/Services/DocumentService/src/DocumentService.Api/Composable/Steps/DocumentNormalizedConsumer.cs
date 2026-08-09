@@ -75,7 +75,9 @@ public class DocumentNormalizedConsumer(
             .Select(t => t.Name)
             .ToListAsync(ct);
 
-        foreach (var unknown in incoming.Where(t => !known.Contains(t)))
+        // **同じタグが 2 度来ても 1 件と数える**（[[IADR-0152]] 決定 2 の使用件数と同じ理屈——
+        // 数えるのは「現れたタグの種類」であって出現回数ではない）。
+        foreach (var unknown in incoming.Where(t => !known.Contains(t)).Distinct(StringComparer.Ordinal))
         {
             metrics.RecordUnknownTag("normalized");
             logger.LogWarning(
