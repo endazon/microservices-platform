@@ -120,12 +120,13 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     public async Task UsageCount_CountsDocumentsOnCurrentVersion()
     {
         var name = UniqueName("計上");
-        await AddTagAsync(name);
+        var tag = await AddTagAsync(name);
+        var other = await AddTagAsync(UniqueName("他"));
         await SeedAsync(db =>
         {
-            db.Documents.Add(Document.Create("文書1", null, null, null, [name]));
-            db.Documents.Add(Document.Create("文書2", null, null, null, [name, "他"]));
-            db.Documents.Add(Document.Create("文書3", null, null, null, ["他"]));
+            db.Documents.Add(Document.Create("文書1", null, null, null, [tag.Id]));
+            db.Documents.Add(Document.Create("文書2", null, null, null, [tag.Id, other.Id]));
+            db.Documents.Add(Document.Create("文書3", null, null, null, [other.Id]));
             return Task.CompletedTask;
         });
 
@@ -141,16 +142,16 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     public async Task UsageCount_DoesNotCountVersionHistory()
     {
         var name = UniqueName("旧タグ");
-        await AddTagAsync(name);
+        var tag = await AddTagAsync(name);
         await SeedAsync(db =>
         {
             // 版 1 でタグを付け、版 2 で外す。版履歴には版 1 のタグが残る。
-            var doc = Document.Create("付け替え", null, null, null, [name]);
+            var doc = Document.Create("付け替え", null, null, null, [tag.Id]);
             doc.UpdateMetadata([], [], "タグを外した");
             db.Documents.Add(doc);
 
             doc.Versions.Should().HaveCount(2);
-            doc.Versions[0].Tags.Should().Contain(name, "版履歴には付いていた事実が残る");
+            doc.Versions[0].Tags.Should().Contain(tag.Id, "版履歴には付いていた事実が残る");
             doc.Tags.Should().BeEmpty("現行版からは外れている");
             return Task.CompletedTask;
         });
@@ -168,10 +169,10 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     public async Task UsageCount_CountsArchivedDocuments()
     {
         var name = UniqueName("保管");
-        await AddTagAsync(name);
+        var tag = await AddTagAsync(name);
         await SeedAsync(db =>
         {
-            var doc = Document.Create("アーカイブ済み", null, null, null, [name]);
+            var doc = Document.Create("アーカイブ済み", null, null, null, [tag.Id]);
             doc.Archive();
             db.Documents.Add(doc);
             return Task.CompletedTask;
@@ -185,10 +186,10 @@ public class TagDictionaryTests(TestWebApplicationFactory factory)
     public async Task UsageCount_CountsEachDocumentOnce()
     {
         var name = UniqueName("重出");
-        await AddTagAsync(name);
+        var tag = await AddTagAsync(name);
         await SeedAsync(db =>
         {
-            db.Documents.Add(Document.Create("重複タグ", null, null, null, [name, name]));
+            db.Documents.Add(Document.Create("重複タグ", null, null, null, [tag.Id, tag.Id]));
             return Task.CompletedTask;
         });
 

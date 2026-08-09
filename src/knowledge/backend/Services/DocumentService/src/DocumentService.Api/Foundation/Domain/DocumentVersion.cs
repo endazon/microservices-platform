@@ -14,7 +14,10 @@ public class DocumentVersion
     public string Status { get; private set; } = DocumentStatus.Draft;
     public string? MarkdownUri { get; private set; }
     public Dictionary<string, string> Attributes { get; private set; } = [];
-    public List<string> Tags { get; private set; } = [];
+    // FR-06, SC-09, #635: **識別子**を持つ（現行版と同じ）。
+    // **過去版も改名に追随して新しい名前で表示される**——改名は表示上の変更であり、同一のタグを指し続ける
+    // （[[IADR-0153]] 決定 4）。**古い名前を抱えるほうが計画に反する。**
+    public List<Guid> Tags { get; private set; } = [];
     public string? ChangeNote { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
 

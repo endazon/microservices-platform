@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — タグを識別子参照へ移行し、改名の追随と削除を実装する（#635）
 type: work-spec
-status: in-progress
+status: fixed
 related_ids:
   - FR-06
   - FR-09
@@ -109,8 +109,67 @@ related_specs:
 
 ## 実装中に決めたこと（仕様書からの差分）
 
-（着手後に追記する）
+### 1. 母集合は 7 ファイルではなく **9 ファイル**だった（＋契約 1）
+
+着手時の表に**漏れがあった**。実測で足したもの:
+
+| 追加 | 何を | なぜ着手時に挙がらなかったか |
+| --- | --- | --- |
+| `Foundation/Services/TagResolver.cs`（**新規**） | 識別子 ⇄ 表示名の変換点 | 「`DocumentEndpoints` で解決する」とだけ書き、**置き場所を決めていなかった**。改名の再発行（`TagDictionaryEndpoints`）も同じ変換を要るので、端点に埋めると 2 つに割れる |
+| `Shared/Knowledge.Contracts/Dtos/TagDictionaryDto.cs` | `RenameTagRequest` / `RenameTagResponse` | 「触らないもの」に**契約を一括で入れてしまっていた**。変わらないのは**既存**の契約（`DocumentDto` 等）であって、改名という新しい操作の要求・応答は当然増える |
+
+**`DocumentEndpoints.ToEvent` を `internal` へ上げた。** 改名の再発行が同じ形を要るためで、
+**識別子 → 表示名の変換点を 2 つに割らない**ことがここでの目的である。
+
+### 2. マイグレーションは EF が生成しない部分が**本体**だった
+
+`dotnet ef migrations add` が出したのは `Tags.UpdatedAt` 列の追加だけである。
+**`Tags` 列の型は変わらない**（前後とも `jsonb` の配列で、変わるのは中身だけ）ので、EF は差分を検出しない。
+**データ移行の SQL は全て手書きである。**
+
+**scaffold の既定値をそのまま使わなかった。** `AddColumn` の既定は `0001-01-01` で、
+**未改名のタグが「西暦 1 年に改名された」ように見える**。`defaultValueSql: "now()"` にしたうえで、
+既存行を `CreatedAt` と同じ値へ揃えた。
+
+### 3. `btrim` の既定では C# の `Trim()` と揃わない
+
+`Tag.Normalize` は `string.Trim()`（`char.IsWhiteSpace` の集合）だが、**`btrim(x)` の既定は半角空白だけ**である。
+揃えないと、移行で登録した名前と実行時に C# が正規化した名前が食い違い、
+**辞書に在るのに「辞書に無いタグです」と 400 になる**。落とす文字の集合を明示した。
+
+**そのとき `\v` を使ってはならない。** PostgreSQL の `E''` が解釈する短縮形は `\b \f \n \r \t` だけで、
+**`\v` は素の `v` になる**——**タグ名から文字 `v` を削る**という、気づきにくい壊れ方をする。
+制御文字はすべて `\uXXXX` で書いた。
+
+### 4. 改名の再発行は「そのタグを使っている文書だけ」に絞った
+
+全文書を流すと**辞書の 1 語の変更で索引全体が再構築され**、規模に比例して費用が出る。
+応答に `republishedDocuments` を添えた——Qdrant / Wiki.js の反映は非同期なので、
+「0 件だった」と「まだ届いていない」を管理者が切り分けられる。
+
+### 5. ［残件］改名・削除に **BFF 口が無い**
+
+#634 の `POST /tags` と同じく、口は DocumentService 側にだけ在る（`/bff/attribute-values` は読み取り専用）。
+**SC-09 の画面から改名・削除を操作するには BFF の書き込み口が要る。**
+#542 の射程外なので**別途起票する**（[[IADR-0153]] の残件へも記録した）。
 
 ## 検証記録（実測）
 
-（着手後に追記する）
+**走査基準: develop `040edd6` ＋ 本ブランチ。**
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet build knowledge/backend/backend.slnx` | `Build succeeded.` |
+| `dotnet test knowledge/backend/backend.slnx` | 全 11 アセンブリ Passed（`DocumentService.Api.Tests` は **92 件**。着手時 75 件 ＋ #635 の 17 件） |
+| `dotnet format knowledge/backend/backend.slnx --verify-no-changes` | 差分なし |
+| `node scripts/check-doc-links.js` | `OK: 495 件の Markdown に破損した相対リンクはありません。` |
+| `pnpm run codegen` | 再生成差分あり（`bff.schemas.ts` の説明文。コミット済み） |
+
+### 実走できなかったもの（**理由つき**）
+
+- **`TagIdentityMigrationTests`（`[DockerFact]` 2 件）は本環境で skip される**——Docker が無い。
+  **データ移行の SQL は実 PostgreSQL でしか走らない**（EF InMemory はマイグレーションを実行しない）ので、
+  **本 PR の中核部分は CI 側の実走が初回検証になる**。#636 の一意インデックスと同じ状況である。
+  実測: `Knowledge.IntegrationTests` は Passed 21 / **Skipped 22** / Total 43 で、
+  skip の中に `Migration_RewritesDisplayNamesToIdentifiers` と `Migration_Down_RestoresDisplayNames` が
+  discovery されていることを確認した（**「書いたが discovery されていない」ではない**ことを分ける）。

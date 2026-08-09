@@ -20,6 +20,20 @@ public record TagDto(Guid Id, string Name, int UsageCount);
 // **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
 public record CreateTagRequest(string Name);
 
+// FR-09, SC-09, #635: 辞書のタグを改名する（SC-09「改名は許して既存の文書が新しい名前へ追随する」）。
+//
+// **識別子は変えない。** 変わるのは表示名だけであり、文書は識別子を参照しているので追随は自動である
+// （[[IADR-0153]] 決定 1・3）。**版は増えない**——改名は文書の内容変更ではない（同 決定 3）。
+public record RenameTagRequest(string Name);
+
+// FR-09, SC-09, #635: 改名の結果。
+//
+// `RepublishedDocuments` は**射影を作り直すために `DocumentUpdated` を再発行した文書の数**である。
+// **`Tag.UsageCount` と同じ値になる**——どちらも「現行版でこのタグを持つ文書の数」であり、
+// 2 通りの数え方を持たない。**添えるのは、改名が下流へ何件波及したかを管理者が確認できるようにするため**で、
+// Qdrant / Wiki.js の反映は非同期なので「0 件だった」と「まだ届いていない」を切り分けられる。
+public record RenameTagResponse(TagDto Tag, int RepublishedDocuments);
+
 // FR-09, SC-05, SC-09, #634: 辞書の値集合（管理者スコープ）。
 //
 // **一般利用者の応答（`AttributeValuesResponse.Values`）とは別物である。**

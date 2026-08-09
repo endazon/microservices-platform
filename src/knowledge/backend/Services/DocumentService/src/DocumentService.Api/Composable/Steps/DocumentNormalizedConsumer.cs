@@ -2,6 +2,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Observability;
 using DocumentService.Api.Foundation.Persistence;
+using DocumentService.Api.Foundation.Services;
 using Knowledge.Contracts.Events;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
@@ -54,9 +55,12 @@ public class DocumentNormalizedConsumer(
         await db.SaveChangesAsync(ct);
 
         // FR-01: カタログ登録を後続フロー（取り込み・Wiki 同期）へ通知する。
+        // **［#635］イベントは表示名を運ぶ**（正本は識別子。[[IADR-0153]] 決定 2）——
+        // 射影（Qdrant / Wiki.js）は人が読む面であり、下流は変わらない。
+        var names = await TagResolver.NamesAsync(db, ct);
         await bus.Publish(new DocumentUpdated(
             doc.Id, doc.Title, doc.Status, doc.MarkdownUri,
-            doc.Attributes, doc.Tags, doc.UpdatedAt), ct);
+            doc.Attributes, TagResolver.ToNames(doc.Tags, names), doc.UpdatedAt), ct);
     }
 
     // SC-05, SC-09, SC-10, #637: 辞書に在るタグだけを返し、**無いものは件数として記録して捨てる**。
@@ -66,18 +70,16 @@ public class DocumentNormalizedConsumer(
     // **規定どおり（取り込みはタグを生成しない）なら `incoming` は空で、この関数は何もしない。**
     // **`internal`** にしているのは、この絞り込みを `ConsumeContext` を組み立てずに検証するためである
     // （テストハーネスに本 consumer は登録されていない。実測）。
-    internal async Task<List<string>> KnownTagsAsync(List<string> incoming, CancellationToken ct)
+    internal async Task<List<Guid>> KnownTagsAsync(List<string> incoming, CancellationToken ct)
     {
         if (incoming.Count == 0) return [];
 
-        var known = await db.Tags
-            .Where(t => incoming.Contains(t.Name))
-            .Select(t => t.Name)
-            .ToListAsync(ct);
+        // **［#635］識別子を返す。** 正本は表示名を複写しない（[[IADR-0153]] 決定 1）。
+        // `ToIdsAsync` は正規化・重複除去まで行うので、**同じタグが 2 度来ても 1 件**である
+        // （[[IADR-0152]] 決定 2 の使用件数と同じ理屈——数えるのは種類であって出現回数ではない）。
+        var (ids, unknownNames) = await TagResolver.ToIdsAsync(db, incoming, ct);
 
-        // **同じタグが 2 度来ても 1 件と数える**（[[IADR-0152]] 決定 2 の使用件数と同じ理屈——
-        // 数えるのは「現れたタグの種類」であって出現回数ではない）。
-        foreach (var unknown in incoming.Where(t => !known.Contains(t)).Distinct(StringComparer.Ordinal))
+        foreach (var unknown in unknownNames)
         {
             metrics.RecordUnknownTag("normalized");
             logger.LogWarning(
@@ -85,6 +87,6 @@ public class DocumentNormalizedConsumer(
                 unknown);
         }
 
-        return known;
+        return ids;
     }
 }

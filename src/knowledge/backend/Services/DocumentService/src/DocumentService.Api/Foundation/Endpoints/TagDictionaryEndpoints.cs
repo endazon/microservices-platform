@@ -1,7 +1,9 @@
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
+using DocumentService.Api.Foundation.Services;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Api.Foundation.Endpoints;
@@ -12,8 +14,8 @@ namespace DocumentService.Api.Foundation.Endpoints;
 // サービスを跨ぐと削除拒否の判定のたびに同期呼び出しが要り、
 // 数え落としが「消してはいけないタグを消せる」事故になる。
 //
-// **改名・削除は #635 で足す**（保持方式を識別子参照へ移してからでないと、
-// 改名と削除で前提が食い違う）。
+// **［#635］改名・削除を足した。** #634 で先送りしたのは、保持方式を識別子参照へ移す前だと
+// 改名と削除で前提が食い違うためである（表示名を複写したままの改名は既存文書へ追随しない）。
 public static class TagDictionaryEndpoints
 {
     public static IEndpointRouteBuilder MapTagDictionaryEndpoints(this IEndpointRouteBuilder app)
@@ -71,6 +73,85 @@ public static class TagDictionaryEndpoints
             return Results.Created($"/tags/{tag.Id}", new TagDto(tag.Id, tag.Name, 0));
         }).WithName("CreateTag").Produces<TagDto>(StatusCodes.Status201Created);
 
+        // FR-09, SC-09, #635: 改名する（「改名は許して既存の文書が新しい名前へ追随する」）。
+        //
+        // **文書は 1 件も書き換えない。** 正本が識別子を持つので、**追随は表示の解決だけで起こる**
+        // （[[IADR-0153]] 決定 1）。**版も増えない**——改名は文書の内容変更ではない（同 決定 3）。
+        //
+        // **射影（Qdrant / Wiki.js）は書き換える必要がある**——あちらは表示名を焼き込んだ複写だからである。
+        // `DocumentUpdated` を再発行して作り直す（同 決定 3）。**再発行は既存の経路をそのまま使う**ので、
+        // 下流のサービスは変更しない。
+        write.MapPut("/{id:guid}", async (Guid id, RenameTagRequest req, DocumentDbContext db,
+            IPublishEndpoint bus, CancellationToken ct) =>
+        {
+            var name = Tag.Normalize(req.Name ?? string.Empty);
+            if (string.IsNullOrEmpty(name))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["name"] = ["タグ名は必須です。"],
+                });
+
+            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id, ct);
+            if (tag is null) return Results.NotFound();
+
+            // SC-09「新しい名前は既存値と重複しない」。**自分自身は除く**——
+            // 同じ名前への改名（実質の no-op）を 409 にしても利用者は何も直せない。
+            if (await db.Tags.AnyAsync(t => t.Name == name && t.Id != id, ct))
+                return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
+
+            tag.Rename(name);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // 追加と同じ race（検査と保存の間に別の要求が同名を入れる）。契約どおり 409 にする。
+                return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
+            }
+
+            // **改名したタグを使っている文書だけ再発行する。** 全文書を流すと辞書の 1 語の変更で
+            // 索引全体が再構築され、規模に比例して費用が出る。
+            var names = await TagResolver.NamesAsync(db, ct);
+            var affected = (await db.Documents.ToListAsync(ct))
+                .Where(d => d.Tags.Contains(id))
+                .ToList();
+            foreach (var doc in affected)
+                await bus.Publish(DocumentEndpoints.ToEvent(doc, names), ct);
+
+            // **再発行件数 ＝ 使用件数である**（どちらも「現行版でこのタグを持つ文書の数」。
+            // `LoadWithUsageAsync` と同じ母集合を使っており、2 通りの数え方を持たない）。
+            return Results.Ok(new RenameTagResponse(
+                new TagDto(tag.Id, tag.Name, affected.Count), affected.Count));
+        }).WithName("RenameTag").Produces<RenameTagResponse>();
+
+        // FR-09, SC-09, #635: 削除する。**使用件数が 0 件のときだけ許す**
+        //（SC-09「参照が 1 件でもあるタグは削除拒否」。[[IADR-0153]] 決定 6）。
+        //
+        // **件数を添えて 409 を返す**——SC-09 が「削除前に使用件数を示す」と定めており、
+        // 数だけでも「まず 3 件を外してから消す」と管理者が行動できる。
+        write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db, CancellationToken ct) =>
+        {
+            var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id, ct);
+            if (tag is null) return Results.NotFound();
+
+            // **数え方は一覧と同じでなければならない**（`LoadWithUsageAsync` と同じ母集合）。
+            // 一覧が 0 件と表示したのに削除が 409 を返す（あるいはその逆）と、管理者は辞書を信用できなくなる。
+            var documentTagLists = await db.Documents.Select(d => d.Tags).ToListAsync(ct);
+            var usage = documentTagLists.Count(tags => tags.Contains(id));
+            if (usage > 0)
+                return Results.Conflict(new
+                {
+                    error = "tag_in_use",
+                    message = $"タグ「{tag.Name}」は {usage} 件の文書で使われているため削除できません。",
+                    usageCount = usage,
+                });
+
+            db.Tags.Remove(tag);
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        }).WithName("DeleteTag");
+
         return app;
     }
 
@@ -82,26 +163,25 @@ public static class TagDictionaryEndpoints
     // - **アーカイブ済みの文書は数える** —— アーカイブ済みでもタグは付け替えられる
     //   （`Document.UpdateMetadata` に状態の guard が無い。実測）ので、数えても管理者は行動できる。
     //
-    // **［暫定］表示名の一致で数えている。** 文書はまだタグの識別子ではなく表示名を複写しており
-    // （IADR-0152 決定 6。移行は **#635**）、識別子で数えられない。
-    // **#635 が保持方式を移したら、ここは識別子の一致へ置き換える。**
+    // **［#635］識別子の一致で数える**（暫定だった表示名一致を置き換えた）。
+    // 正本が識別子を持つようになったので、**改名しても件数は変わらない**——同じタグを指し続けるためである。
     private static async Task<List<TagDto>> LoadWithUsageAsync(DocumentDbContext db, CancellationToken ct)
     {
         var tags = await db.Tags.OrderBy(t => t.Name).ToListAsync(ct);
         if (tags.Count == 0) return [];
 
-        // `Tags` は jsonb へ変換した `List<string>` なので、SQL 側で展開して数えられない。
+        // `Tags` は jsonb へ変換した `List<Guid>` なので、SQL 側で展開して数えられない。
         // 辞書の規模（管理画面で人が管理する値集合）に対して、現行版の文書のタグだけを読む。
         var documentTagLists = await db.Documents.Select(d => d.Tags).ToListAsync(ct);
 
-        var usage = new Dictionary<string, int>(StringComparer.Ordinal);
+        var usage = new Dictionary<Guid, int>();
         foreach (var documentTags in documentTagLists)
         {
             // **同じ文書に同じタグが 2 度入っていても 1 件と数える**（数えるのは「使っている文書の数」である）。
-            foreach (var name in documentTags.Distinct(StringComparer.Ordinal))
-                usage[name] = usage.GetValueOrDefault(name) + 1;
+            foreach (var id in documentTags.Distinct())
+                usage[id] = usage.GetValueOrDefault(id) + 1;
         }
 
-        return [.. tags.Select(t => new TagDto(t.Id, t.Name, usage.GetValueOrDefault(t.Name)))];
+        return [.. tags.Select(t => new TagDto(t.Id, t.Name, usage.GetValueOrDefault(t.Id)))];
     }
 }

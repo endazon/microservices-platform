@@ -4,10 +4,14 @@ type: test-spec
 status: draft
 related_ids:
   - FR-09
+  - SC-05
+  - SC-09
   - UC-05
+  - IADR-0152
+  - IADR-0153
 author: claude
 created: 2026-07-02
-updated: 2026-07-02
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
@@ -109,6 +113,42 @@ plan_refs:
 
 **T-27 / T-28 はエンドポイント経由では作れない状態を検証するため、DB を直接組み立てている**
 （版履歴だけが参照する状態は、API からは作れない）。
+
+## タグの識別子保持・改名・削除（#635 / [[IADR-0153]]）
+
+**実装は `DocumentService.Api.Tests/TagIdentityTests.cs`。**
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-34 | **辞書に無い名前は保存できない**（作成。手入力は自動登録しない） | `Create_WithUnknownTag_Returns400` |
+| T-35 | 同上（メタデータ更新） | `PatchMetadata_WithUnknownTag_Returns400` |
+| T-36 | **契約は表示名のままである**（要求も応答も表示名で行き来する） | `Roundtrip_RequestAndResponse_UseDisplayNames` |
+| T-37 | ★ **改名すると既存文書の表示が追随し、版は増えない**。`DocumentUpdated` が新しい名前で再発行される | `Rename_ExistingDocumentsFollow_WithoutVersionBump` |
+| T-38 | **改名したタグを使っていない文書は再発行しない**（索引全体を作り直さない） | `Rename_DoesNotRepublishUnrelatedDocuments` |
+| T-39 | **過去版も新しい名前で表示される** | `Rename_VersionHistoryAlsoShowsNewName` |
+| T-40 | 既存値への改名は 409。**自分自身への改名（no-op）は許す** | `Rename_ToExistingName_Returns409` / `Rename_ToSameName_IsAllowed` |
+| T-41 | 改名・削除は**システム管理者限定**（運用者も不可） | `Rename_NonAdmin_IsForbidden` / `Delete_NonAdmin_IsForbidden`（`[Theory]`） |
+| T-42 | 使用件数 0 件のタグは削除できる | `Delete_UnusedTag_Succeeds` |
+| T-43 | **参照 1 件以上の削除は件数を添えて 409** | `Delete_UsedTag_Returns409_WithUsageCount` |
+| T-44 | **削除の判定と一覧の使用件数は同じ母集合**（版履歴だけが参照するタグは削除できる） | `Delete_TagOnlyInVersionHistory_Succeeds` |
+| T-45 | 存在しない識別子の改名・削除は 404 | `Rename_UnknownId_Returns404` / `Delete_UnknownId_Returns404` |
+| T-46 | 移行後も**取り込み経路は辞書を増やさない**（#637 の不変条件） | `IngestTagFilterTests`（戻り値が識別子になっても未知タグは落として数える） |
+
+### データ移行（実 PostgreSQL のみ）
+
+**実装は `Knowledge.IntegrationTests/DocumentService/TagIdentityMigrationTests.cs`（`[DockerFact]`）。**
+
+**単体テストでは 1 行も走らない** —— `DocumentService.Api.Tests` は EF InMemory を使っており、
+**InMemory プロバイダはマイグレーションの SQL を実行しない**
+（#634 の一意インデックスが InMemory で強制されないのと同じ型の限界である）。
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-47 | 現行版・**版履歴の双方**の表示名が辞書へ登録され、配列が識別子へ書き換わる。**並び・重複は保つ** | `Migration_RewritesDisplayNamesToIdentifiers` |
+| T-48 | 全角空白で囲まれた名前も同じタグへ解決される（`btrim` の既定では落ちない） | 同上 |
+| T-49 | 解決できない要素しか無い行も表示名のまま取り残さない（`[]` になる） | 同上 |
+| T-50 | 辞書に既に在るものは重複登録されない。未改名のタグは `UpdatedAt` == `CreatedAt` | 同上 |
+| T-51 | **下りで表示名へ戻る**（巻き戻せないものを「巻き戻せる」と称して置かない） | `Migration_Down_RestoresDisplayNames` |
 
 ## 備考
 
