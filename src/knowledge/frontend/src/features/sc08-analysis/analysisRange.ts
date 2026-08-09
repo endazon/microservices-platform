@@ -2,17 +2,22 @@ import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
 import type { AnalysisTaskRequest } from '@foundation/api/generated/bff.schemas';
+import { toAttributeFilters, type ScopeSelection } from '../scope-filter/scopeFilter';
 
 // SC-08, UC-02, FR-07: 分析要求の組み立て（純関数）。
 //
 // 05_screens §SC-08 主要素:「分析対象の指定（タグ・フォルダのチップ＋**検索条件による追加**）、
 // 分析内容の入力（テキストエリア）、分析実行、結果パネル、出典リンク」。
 //
-// **タグ・フォルダのチップは実装しない**（画面仕様書 §実装しない要素 (a)）——`AnalysisDataRange` は
-// 属性キー → 値集合しか取らず、タグは属性とは別の軸、フォルダは契約に存在しない。加えて
-// 「分析対象（**権限内に限定**）」を成立させる権限内候補の照会口が無い。SC-01 の対象範囲フィルタと
-// **同型の論点**であり、planning#197 の裁定を待つ（新規の環流記録は作らない）。
-// 実装するのは「検索条件による追加」に当たる `range.query` である。
+// **［#539］タグ・部門・プロジェクトのチップを実装した。** 従前ここには「実装しない」と書いてあり、
+// その理由は「権限内候補の照会口が無い」「SC-01 と同型の論点であり planning#197 の裁定を待つ」だった。
+// **両方とも解消している**——候補の口は #540（`POST /bff/attribute-values`）で着地し、
+// 裁定（2026-08-05 Q1・Q3・Q9）は「契約を拡張する」「SC-08 にも同じ裁定を適用する」と定めた。
+//
+// **「フォルダ」は実装しない。これは保留ではなく確定である**（裁定 Q9）——
+// ABAC 属性体系に `folder` が存在せず、新設もしないと決まった。
+//
+// チップの部品と軸の定義は SC-01 と共有する（`features/scope-filter`）。
 
 /** 指示の最大長。バックエンド `AnalysisPromptBuilder.MaxInstructionLength` と揃える（超過は 400）。 */
 export const MAX_INSTRUCTION_LENGTH = 2000;
@@ -44,20 +49,28 @@ export function taskTypeLabel(taskType: TaskType): MessageDescriptor {
  * 入力から分析要求を組み立てる。
  *
  * - `instruction` は前後の空白を落とす（空白だけの指示を送らない）。
- * - `range` は**検索条件が入力されたときだけ**付ける。空の `range` を送ると、契約上は
- *   「範囲を指定した」ことになり、サーバ側の解釈（省略時は instruction を流用）と食い違う。
+ * - `range` は**検索条件かチップのどちらかが指定されたときだけ**付ける。空の `range` を送ると、
+ *   契約上は「範囲を指定した」ことになり、サーバ側の解釈（省略時は instruction を流用）と食い違う。
  * - **ABAC スコープはクライアントから送らない**（送っても BFF は使わない＝権限昇格の防止）。
+ *   **［#539］`attributeFilters` は別物である**——これは「自分の権限の内側をさらに絞る」指定であり、
+ *   サーバ側で ABAC と交差して **narrowing-only** に扱われる。
  */
 export function buildAnalysisRequest(
   instruction: string,
   taskType: TaskType,
   rangeQuery: string,
+  scope?: ScopeSelection,
 ): AnalysisTaskRequest {
   const query = rangeQuery.trim();
+  const attributeFilters = scope ? toAttributeFilters(scope) : undefined;
+  const range = {
+    ...(query ? { query } : {}),
+    ...(attributeFilters ? { attributeFilters } : {}),
+  };
   return {
     instruction: instruction.trim(),
     taskType,
-    ...(query ? { range: { query } } : {}),
+    ...(Object.keys(range).length > 0 ? { range } : {}),
   };
 }
 

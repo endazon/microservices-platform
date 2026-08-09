@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { apiStream } from '@foundation/api/apiClient';
+import type { AskRequestAttributeFilters } from '@foundation/api/generated/bff.schemas';
 import { useBffSubmitFeedback } from '@foundation/api/generated/feedback/feedback';
 import type { AskCitation } from './citations';
 
@@ -38,12 +39,18 @@ function isAbort(err: unknown): boolean {
   return err instanceof DOMException && err.name === 'AbortError';
 }
 
+/** SC-01, #539: 質問と、任意の対象範囲（絞り込み）。 */
+interface AskInput {
+  question: string;
+  attributeFilters?: AskRequestAttributeFilters;
+}
+
 export function useAskStream() {
   const [state, setState] = useState<AnswerState>(INITIAL);
   const abortRef = useRef<AbortController | null>(null);
 
   const ask = useMutation({
-    mutationFn: async (question: string) => {
+    mutationFn: async ({ question, attributeFilters }: AskInput) => {
       // 直前のストリームを中断する（連投で 2 本のストリームが同じ state へ書き込むのを防ぐ）。
       abortRef.current?.abort();
       const controller = new AbortController();
@@ -53,7 +60,12 @@ export function useAskStream() {
       await apiStream(
         '/analysis/ask/stream',
         // FR-05: クライアントは ABAC スコープを送らない（送っても BFF は使わない＝権限昇格の防止）。
-        { json: { question } },
+        //
+        // **［#539］`attributeFilters` は権限昇格ではない。** これは「自分の権限の内側を
+        // さらに絞る」指定であり、サーバ側で ABAC と交差して **narrowing-only** に扱われる
+        // （`DataRangeScopeResolver`）。**何も選んでいなければ載せない**（`undefined` は
+        // JSON から落ちる）ので、旧来の要求と同じ形になる。
+        { json: { question, attributeFilters } },
         (ev) => {
           if (ev.event === 'citations') {
             const parsed = JSON.parse(ev.data) as { citations?: AskCitation[] };
@@ -83,7 +95,11 @@ export function useAskStream() {
     },
   });
 
-  const submit = useCallback((question: string) => ask.mutate(question), [ask]);
+  const submit = useCallback(
+    (question: string, attributeFilters?: AskRequestAttributeFilters) =>
+      ask.mutate({ question, attributeFilters }),
+    [ask],
+  );
 
   return { ...state, submit };
 }

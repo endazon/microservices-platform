@@ -84,7 +84,9 @@ public sealed class RagIntegrationFactory : WebApplicationFactory<global::AiAnal
 file class StubRagOrchestrator : IRagOrchestrator
 {
     public Task<AiAnswerDto> AskAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, CancellationToken ct = default)
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        CancellationToken ct = default)
         => Task.FromResult(Answer($"「{question}」への回答（統合テストスタブ）"));
 
     public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
@@ -94,6 +96,7 @@ file class StubRagOrchestrator : IRagOrchestrator
     // IADR-0037, UC-01: SSE 用イベント列のスタブ。エンドポイント配線（citations→token→done）の確認までを対象とする。
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
         Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         await Task.CompletedTask;

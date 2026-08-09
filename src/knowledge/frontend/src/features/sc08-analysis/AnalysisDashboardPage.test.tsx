@@ -46,9 +46,17 @@ async function analyze(instruction = 'Q1の営業報告を比較して') {
   return user;
 }
 
-/** 送信された要求本文を取り出す。 */
+// **［#539］呼び出しは URL で選ぶ。** 画面が対象範囲の候補（`/attribute-values`）を
+// 起動時に引くようになったため、**`mock.calls[0]` は目的の呼び出しとは限らない**。
+// 添字で取ると、候補の取得を足しただけでテストが壊れる（実際に壊れた）。
+/** 指定した口への呼び出しだけを取り出す。 */
+function callsTo(url: string) {
+  return mocks.apiRequest.mock.calls.filter((c) => c[0] === url);
+}
+
+/** 送信された分析要求の本文を取り出す。 */
 function sentBody(): unknown {
-  const init = mocks.apiRequest.mock.calls[0]?.[1] as RequestInit | undefined;
+  const init = callsTo('/analysis/analyze')[0]?.[1] as RequestInit | undefined;
   return JSON.parse(String(init?.body));
 }
 
@@ -63,6 +71,36 @@ afterEach(() => {
 });
 
 describe('AnalysisDashboardPage (SC-08)', () => {
+  // ★ FR-04, SC-08, #539: 分析対象のチップ（タグ・部門・プロジェクト）を `range.attributeFilters` へ載せる。
+  // **裁定 Q3「SC-08 の分析対象チップにも同じ裁定を適用する」の受け入れ基準である。**
+  it('puts the selected scope chips into the data range', async () => {
+    mocks.apiRequest.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/attribute-values') {
+        const key = (JSON.parse(String(init?.body)) as { key: string }).key;
+        return Promise.resolve(jsonResponse({ values: key === 'tags' ? ['経理'] : [] }));
+      }
+      return Promise.resolve(jsonResponse(ANSWER));
+    });
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /経理/ }));
+    await analyze();
+
+    expect(sentBody()).toMatchObject({ range: { attributeFilters: { tags: ['経理'] } } });
+  });
+
+  // **何も選ばなければ `attributeFilters` は載らない**（旧来の要求と同じ形になる）。
+  it('omits the filters when no chip is selected', async () => {
+    mocks.apiRequest.mockImplementation((url: string) =>
+      Promise.resolve(jsonResponse(url === '/attribute-values' ? { values: [] } : ANSWER)),
+    );
+    await renderPage();
+    await analyze();
+
+    expect(sentBody()).not.toHaveProperty('range.attributeFilters');
+  });
+
   // UC-02 基本 1・3・4: 分析対象と分析内容を指定し、結果と出典を得る。出典から SC-03 へ遷移する。
   it('runs an analysis and links the citations to SC-03', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(ANSWER));
@@ -148,7 +186,8 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     await renderPage();
 
     expect(screen.getByRole('button', { name: '分析実行' })).toBeDisabled();
-    expect(mocks.apiRequest).not.toHaveBeenCalled();
+    // **「1 度も通信していない」ではなく「分析を投げていない」を見る**（候補の取得は起動時に走る）。
+    expect(callsTo('/analysis/analyze')).toHaveLength(0);
   });
 
   // 05_screens §SC-08 の注記（データ越境ポリシーと存在秘匿）。

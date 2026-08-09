@@ -28,14 +28,20 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
 
     // FR-04, UC-01: 自然文質問に対する RAG 回答。
     public async Task<AiAnswerDto> AskAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, CancellationToken ct = default)
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        CancellationToken ct = default)
     {
         // FR-05: ABAC 権限スコープ解決。閲覧可能文書が無ければ空回答へ縮退（多値 allow-list を破棄しない）。
         var resolved = await ResolveScopeAsync(userId, userAttributes, ct);
         if (!resolved.Granted)
             return EmptyAnswer();
 
-        var scope = new AccessScope(resolved.AllowedFilters, resolved.Granted);
+        // FR-04/FR-05, SC-01, #539: 利用者が指定した対象範囲を ABAC と交差させる（narrowing-only）。
+        // **範囲が権限の外だけを指していれば全体 deny へ倒れる**——`AnalyzeAsync` と同じ規則である。
+        var scope = DataRangeScopeResolver.Resolve(resolved, attributeFilters);
+        if (!scope.GrantsAccess)
+            return EmptyAnswer();
         // FR-11, UC-01: 用途は rag-answer。呼び出し先は LlmGateway が機密区分に応じて切り替える。
         return await GenerateAsync(question, scope, DefaultAskTopK,
             context => BuildAskPrompt(question, context), "rag-answer", ct);
@@ -69,7 +75,9 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
     // 出典は LLM 生成前に確定するため先に送り、フロントは本文表示中に出典を先行併記できる。
     // 反復子内で yield を跨ぐ try/catch は使えないため、失敗は下位ヘルパが done(Sent=false) へ縮退させる。
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
         // FR-05: ABAC 権限スコープ解決。閲覧可能文書が無ければ空回答へ縮退（外部送信しない）。
         var resolved = await ResolveScopeAsync(userId, userAttributes, ct);
@@ -84,7 +92,17 @@ public class RagOrchestrator(IHttpClientFactory httpFactory) : IRagOrchestrator
             yield break;
         }
 
-        var scope = new AccessScope(resolved.AllowedFilters, resolved.Granted);
+        // FR-04/FR-05, SC-01, #539: 対象範囲を ABAC と交差させる（narrowing-only）。
+        // **非ストリーミング版と同じ縮退にする** —— 範囲が権限の外だけを指していれば、
+        // 「閲覧権限のある文書が見つかりませんでした。」へ倒す（存在秘匿を破らない中立文言）。
+        var scope = DataRangeScopeResolver.Resolve(resolved, attributeFilters);
+        if (!scope.GrantsAccess)
+        {
+            yield return new AskCitationsEvent([]);
+            yield return new AskTokenEvent("閲覧権限のある文書が見つかりませんでした。");
+            yield return new AskDoneEvent(Guid.NewGuid(), NoModel, 0, 0);
+            yield break;
+        }
 
         // 検索 → 出典（本文より先に送出）。
         var results = await SearchAsync(question, scope, DefaultAskTopK, ct);

@@ -42,6 +42,10 @@ msgstr "(terminal)"
 msgid "（表示 {shownCount} 件）"
 msgstr "({shownCount} shown)"
 
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "{count} 件で絞り込み中"
+msgstr "Narrowed by {count}"
+
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
@@ -259,6 +263,10 @@ msgstr "Scope"
 msgid "すべて"
 msgstr "All"
 
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "すべてが対象"
+msgstr "All in scope"
+
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "ソース"
 msgstr "Source"
@@ -275,6 +283,7 @@ msgstr "Title"
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "タグ"
 msgstr "Tags"
 
@@ -394,6 +403,10 @@ msgstr "Feedback sent."
 #: knowledge/frontend/src/features/sc01-search/SearchChatPage.tsx
 msgid "フィードバックを送信できませんでした。"
 msgstr "Could not send the feedback."
+
+#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
+msgid "プロジェクト"
+msgstr "Project"
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "ポート"
@@ -527,6 +540,10 @@ msgstr "Syntax and contradictions are validated before saving. A contradicting p
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
+
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "候補を読み込み中…"
+msgstr "Loading options…"
 
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "備考"
@@ -750,6 +767,14 @@ msgstr "Action"
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "対象属性"
 msgstr "Attribute"
+
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "対象範囲"
+msgstr "Scope"
+
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "対象範囲フィルタ"
+msgstr "Scope filter"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "属性・タグ"
@@ -1242,6 +1267,10 @@ msgstr "Result →"
 msgid "結果一覧"
 msgstr "Results"
 
+#: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
+msgid "絞り込める候補はありません。"
+msgstr "No options available to narrow by."
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "編集"
 msgstr "Edit"
@@ -1376,6 +1405,7 @@ msgid "選択してください"
 msgstr "Select…"
 
 #: knowledge/frontend/src/features/sc03-document/attributes.ts
+#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "部門"
 msgstr "Department"
 

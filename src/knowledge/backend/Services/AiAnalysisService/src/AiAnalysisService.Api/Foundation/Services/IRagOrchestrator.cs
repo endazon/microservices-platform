@@ -6,8 +6,13 @@ namespace AiAnalysisService.Api.Foundation.Services;
 public interface IRagOrchestrator
 {
     // FR-04, UC-01: 自然文の質問に対し、権限内文書を根拠に回答＋出典を返す。
+    //
+    // **［#539］`attributeFilters` は利用者が指定した対象範囲**（SC-01 の対象範囲フィルタ）。
+    // **ABAC 許可スコープと交差し、権限を広げない（narrowing-only）** —— `AnalyzeAsync` と同じ規則である。
     Task<AiAnswerDto> AskAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, CancellationToken ct = default);
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        CancellationToken ct = default);
 
     // FR-07, UC-02: 指定データ範囲（range）に対する分析・比較・抽出を行い、回答＋出典を返す。
     // データ範囲は ABAC 許可スコープと交差し、権限を広げない（narrowing-only）。
@@ -17,7 +22,9 @@ public interface IRagOrchestrator
     // IADR-0037, FR-04, UC-01: 自然文質問への回答を SSE 用のイベント列としてストリーミングする。
     // 出典（citations）は LLM 生成前に確定するため先に送出し、続いて本文トークン、最後に done を送る。
     IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, CancellationToken ct = default);
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        CancellationToken ct = default);
 }
 
 // IADR-0037: ask ストリームのイベント（SSE の event 名 + data JSON へ写像する）。

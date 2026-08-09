@@ -25,7 +25,7 @@ public static class AnalysisEndpoints
             // JWT から userId を取得（テスト環境では anonymous を使用）
             var userId = http.User.Identity?.Name ?? "anonymous";
             var userAttrs = ExtractUserAttributes(http);
-            var answer = await rag.AskAsync(req.Question, userId, userAttrs);
+            var answer = await rag.AskAsync(req.Question, userId, userAttrs, req.AttributeFilters);
             return Results.Ok(answer);
         }).WithName("Ask").Produces<AiAnswerDto>();
 
@@ -41,7 +41,7 @@ public static class AnalysisEndpoints
             var userId = http.User.Identity?.Name ?? "anonymous";
             var userAttrs = ExtractUserAttributes(http);
 
-            await foreach (var ev in rag.AskStreamAsync(req.Question, userId, userAttrs, ct))
+            await foreach (var ev in rag.AskStreamAsync(req.Question, userId, userAttrs, req.AttributeFilters, ct))
             {
                 var (name, payload) = ev switch
                 {
@@ -99,4 +99,19 @@ public static class AnalysisEndpoints
     }
 }
 
-public record AskRequest(string Question, string? Scope = null);
+// FR-04, FR-05, SC-01, SC-08, #539: 対象範囲（属性フィルタ）。
+//
+// **`SearchRequest` は既に `AttributeFilters` を持つのに、こちらだけ持たなかった**
+// （計画 L198・裁定 Q1 が「非対称を解消する」と定めた）。
+//
+// **多値である**（キー → 許可値の集合）。画面はチップを**複数**選ぶので単値では表現できない。
+// `SearchRequest` 側の単値は自ら「後方互換」と名乗っている形であり、手本にしない。
+//
+// **範囲は narrowing-only である** —— ABAC 許可スコープと交差させ、**権限を一切広げない**
+// （`DataRangeScopeResolver`）。クライアントが権限外の値を送っても結果は広がらない。
+//
+// 既定値つきで足すので**契約上は非破壊**である（[[IADR-0122]] 決定 2）。
+public record AskRequest(
+    string Question,
+    string? Scope = null,
+    Dictionary<string, List<string>>? AttributeFilters = null);

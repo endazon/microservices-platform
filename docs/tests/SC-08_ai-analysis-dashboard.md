@@ -13,7 +13,7 @@ related_ids:
   - IADR-0127
 author: claude
 created: 2026-07-08
-updated: 2026-08-06
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -87,7 +87,21 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 > [[IADR-0131]] 決定 3 を改定）、**当て先も特別ではなくなった**——#519 / [[IADR-0135]] 決定 4 で
 > 画面テスト 13 ファイルすべてが `apiRequest` を差し替える形へ揃ったためである。
 
+## 分析対象のチップ（#539 / 裁定 Q3）
+
+**チップの部品と軸の定義は SC-01 と共有する**（`features/scope-filter`）。
+共有そのものが裁定の要求である——「同じ『範囲を絞る』操作が画面ごとに違う挙動になると、
+利用者は操作を覚え直すことになる」。**部品のテストは `../tests/SC-01_search-chat.md` の T-30〜T-43 を参照。**
+
+本画面に固有なのは、選択が **`range.attributeFilters`** へ載ることである
+（SC-01 は `attributeFilters` 直下。器が違う）。
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-20 | ★ 選択したチップが `range.attributeFilters` へ載る | `puts the selected scope chips into the data range` |
+| T-21 | **何も選ばなければ載らない**（旧来の要求と同じ形） | `omits the filters when no chip is selected` |
+
 ## 実行
 
-- `pnpm run test -- knowledge/frontend/src/features/sc08-analysis`（純関数 **5** ＋ 画面 **12** ケース）
+- `pnpm run test -- knowledge/frontend/src/features/sc08-analysis`（純関数 **5** ＋ 画面 **14** ケース）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
