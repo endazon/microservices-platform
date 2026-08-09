@@ -206,7 +206,12 @@ CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回し�
 
 `QdrantVectorStore.MapPayload` は `Tags: []` を固定で入れている（実測）。
 **絞り込みには影響しない**（フィルタは Qdrant 側で効き、候補は `/bff/attribute-values` が返す）ため
-本 issue では触らないが、**検索結果にタグを表示したくなったときに効いてくる**。記録に留める。
+本 issue では触らない。**ただし SC-02 の結果一覧は既にタグを描こうとしており**
+（`SearchResultsPage.tsx` が `result.tags?.map(...)` を持つ）、**本番ではタグが 1 つも出ない**。
+`InMemoryVectorStore` は `Tags` を正しく運ぶので**テストは緑のまま**である——
+[[IADR-0014]] が ABAC 属性で踏んだ「テストは緑・本番は空」と同じ型である。
+
+**#642 として起票した**（「記録に留める」だけだと、起票されたかどうかを文書から確認できない）。
 
 ## 検証記録（実測）
 
