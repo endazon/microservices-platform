@@ -30,6 +30,7 @@ import type {
   ProblemDetails,
   SetActiveRequest,
   UpdateAttributeRequest,
+  ValidatePolicyResponse,
   ValidationProblemDetails
 } from '../bff.schemas';
 
@@ -265,6 +266,118 @@ export const useBffAuthzCreatePolicy = <TError = ValidationProblemDetails | void
         TContext
       > => {
       return useMutation(getBffAuthzCreatePolicyMutationOptions(options));
+    }
+    export type bffAuthzValidatePolicyResponse200 = {
+  data: ValidatePolicyResponse
+  status: 200
+}
+
+export type bffAuthzValidatePolicyResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffAuthzValidatePolicyResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffAuthzValidatePolicyResponse502 = {
+  data: void
+  status: 502
+}
+
+export type bffAuthzValidatePolicyResponseSuccess = (bffAuthzValidatePolicyResponse200) & {
+  headers: Headers;
+};
+export type bffAuthzValidatePolicyResponseError = (bffAuthzValidatePolicyResponse401 | bffAuthzValidatePolicyResponse403 | bffAuthzValidatePolicyResponse502) & {
+  headers: Headers;
+};
+
+export type bffAuthzValidatePolicyResponse = (bffAuthzValidatePolicyResponseSuccess | bffAuthzValidatePolicyResponseError)
+
+export const getBffAuthzValidatePolicyUrl = () => {
+
+
+
+
+  return `/bff/admin/authz/policies/validate`
+}
+
+/**
+ * **保存せず検証だけ行う。** hi-fi が保存とは別に描く「検証」ボタンの後ろ側である
+ * （確定・2026-08-05・利用者裁定 Q23）。
+ *
+ * **保存経路（`POST /bff/admin/authz/policies`）と同じ検証を通る。**
+ * 後段の 3 経路（dry-run / 登録 / 更新）が同一の検証関数を呼ぶことで一致を保証している。
+ * 計画は「ローカルでの代用は採らない——『検証は通ったのに保存で矛盾が出る』形になり、
+ * 検証ボタンへの信頼が失われる。**信頼できない検証ボタンは無いより悪い**」と定めている。
+ *
+ * **矛盾があっても 200 である**（`valid: false` ＋ `errors`）。検証した結果として矛盾が
+ * 見つかったことは、要求の失敗ではない。**保存は従来どおり 400（RFC7807）** を返す。
+ *
+ * **要求型は登録と同じ `CreatePolicyRequest` である**——画面が保存用と検証用で 2 つの
+ * 組み立てを持つと、そこがズレる余地になる。
+ * @summary FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証（保存しない）
+ */
+export const bffAuthzValidatePolicy = async (createPolicyRequest: CreatePolicyRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffAuthzValidatePolicyResponse> => {
+
+  return bffFetch<bffAuthzValidatePolicyResponse>(getBffAuthzValidatePolicyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createPolicyRequest)
+  }
+);}
+
+
+
+
+
+export const getBffAuthzValidatePolicyMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAuthzValidatePolicy>>, TError,{data: CreatePolicyRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffAuthzValidatePolicy>>, TError,{data: CreatePolicyRequest}, TContext> => {
+
+const mutationKey = ['bffAuthzValidatePolicy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffAuthzValidatePolicy>>, {data: CreatePolicyRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bffAuthzValidatePolicy(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffAuthzValidatePolicyMutationResult = NonNullable<Awaited<ReturnType<typeof bffAuthzValidatePolicy>>>
+    export type BffAuthzValidatePolicyMutationBody = CreatePolicyRequest
+    export type BffAuthzValidatePolicyMutationError = void
+
+    /**
+ * @summary FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証（保存しない）
+ */
+export const useBffAuthzValidatePolicy = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAuthzValidatePolicy>>, TError,{data: CreatePolicyRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffAuthzValidatePolicy>>,
+        TError,
+        {data: CreatePolicyRequest},
+        TContext
+      > => {
+      return useMutation(getBffAuthzValidatePolicyMutationOptions(options));
     }
     export type bffAuthzGetPolicyResponse200 = {
   data: AbacPolicyDto

@@ -41,9 +41,7 @@ public static class AuthzEndpoints
         // ポリシー登録（保存前に矛盾検証）
         admin.MapPost("/policies", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
         {
-            var definitions = await db.AttributeDefinitions.ToListAsync();
-            var errors = AbacValidation.ValidatePolicy(
-                req.Name, req.Action, req.UserConditions, req.DocumentConditions, definitions);
+            var errors = await ValidatePolicyAsync(req, db);
             if (errors.Count > 0)
                 return ValidationProblem(errors);
 
@@ -61,9 +59,7 @@ public static class AuthzEndpoints
             if (policy is null)
                 return Results.NotFound();
 
-            var definitions = await db.AttributeDefinitions.ToListAsync();
-            var errors = AbacValidation.ValidatePolicy(
-                req.Name, req.Action, req.UserConditions, req.DocumentConditions, definitions);
+            var errors = await ValidatePolicyAsync(req, db);
             if (errors.Count > 0)
                 return ValidationProblem(errors);
 
@@ -179,6 +175,28 @@ public static class AuthzEndpoints
             return Results.NoContent();
         });
 
+        // FR-05, FR-09, SC-09, #535: ポリシーの dry-run 検証（保存せず検証だけ行う。副作用なし）。
+        //
+        // 計画確定（2026-08-05・裁定 Q23）:「**保存せず検証だけ行う口を定める**。従前は検証が
+        // `POST /policies` の応答（400）としてのみ得られ、hi-fi が保存とは別に描く『検証』ボタンを
+        // 満たせなかった。**検証ロジックは既にあるため、保存せず同じ検証を走らせる口を足すだけで足りる**。」
+        //
+        // **`ValidatePolicyAsync` を保存経路と共有しているのが本エンドポイントの要点である。**
+        // 計画は「ローカルでの代用は採らない——『検証は通ったのに保存で矛盾が出る』形になり、
+        // 検証ボタンへの信頼が失われる。**信頼できない検証ボタンは無いより悪い**」と書いている。
+        // **その一致をコメントではなく構造で守る**（3 経路が同じ 1 つの関数を呼ぶ）。
+        //
+        // **200 で返す。** 矛盾が見つかったことは要求の失敗ではない（保存は従来どおり 400 ＋ RFC7807）。
+        // **要求型は `CreatePolicyRequest` を再利用する**——画面が保存用と検証用で 2 つの組み立てを
+        // 持つと、そこがズレる余地になる。
+        //
+        // **管理者限定**は `admin` グループが担う（[[IADR-0040]] 決定 2）。
+        admin.MapPost("/policies/validate", async (CreatePolicyRequest req, AuthorizationDbContext db) =>
+        {
+            var errors = await ValidatePolicyAsync(req, db);
+            return Results.Ok(new ValidatePolicyResponse(errors.Count == 0, errors));
+        });
+
         // 文書属性の辞書整合バリデーション（保存前チェック用。副作用なし）
         g.MapPost("/attributes/validate", async (ValidateDocumentAttributesRequest req, AuthorizationDbContext db) =>
         {
@@ -188,6 +206,21 @@ public static class AuthzEndpoints
         });
 
         return app;
+    }
+
+    // FR-09, SC-09, #535: ポリシーの矛盾検証。**保存（POST / PUT）と dry-run の 3 経路が
+    // この 1 つを呼ぶ。**
+    //
+    // 従前は同じ 3 行が `POST /policies` と `PUT /policies/{id}` に**重複していた**。
+    // dry-run を 3 つ目の複製として足すと、**将来どれか 1 つだけを直したときに黙ってズレ**、
+    // 計画が名指しで禁じた事態（「検証は通ったのに保存で矛盾が出る」）が構造的に可能になる。
+    // **括り出しは抽象化のためではなく、計画が求めた一致を構造で守るためである。**
+    private static async Task<List<string>> ValidatePolicyAsync(
+        CreatePolicyRequest req, AuthorizationDbContext db)
+    {
+        var definitions = await db.AttributeDefinitions.ToListAsync();
+        return AbacValidation.ValidatePolicy(
+            req.Name, req.Action, req.UserConditions, req.DocumentConditions, definitions);
     }
 
     // RFC7807 準拠のバリデーションエラー（400）。エラー一覧を errors キーへ束ねる。

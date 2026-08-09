@@ -391,6 +391,42 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly） }
         "502": { description: AuthorizationService へ到達できない }
 
+  /bff/admin/authz/policies/validate:
+    post:
+      tags: [Authorization]
+      summary: "FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証（保存しない）"
+      description: |
+        **保存せず検証だけ行う。** hi-fi が保存とは別に描く「検証」ボタンの後ろ側である
+        （確定・2026-08-05・利用者裁定 Q23）。
+
+        **保存経路（`POST /bff/admin/authz/policies`）と同じ検証を通る。**
+        後段の 3 経路（dry-run / 登録 / 更新）が同一の検証関数を呼ぶことで一致を保証している。
+        計画は「ローカルでの代用は採らない——『検証は通ったのに保存で矛盾が出る』形になり、
+        検証ボタンへの信頼が失われる。**信頼できない検証ボタンは無いより悪い**」と定めている。
+
+        **矛盾があっても 200 である**（`valid: false` ＋ `errors`）。検証した結果として矛盾が
+        見つかったことは、要求の失敗ではない。**保存は従来どおり 400（RFC7807）** を返す。
+
+        **要求型は登録と同じ `CreatePolicyRequest` である**——画面が保存用と検証用で 2 つの
+        組み立てを持つと、そこがズレる余地になる。
+      operationId: bff-authz-validate-policy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePolicyRequest"
+      responses:
+        "200":
+          description: 検証結果（矛盾の有無によらず 200）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidatePolicyResponse"
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（AdminOnly） }
+        "502": { description: AuthorizationService へ到達できない }
+
   /bff/admin/authz/policies/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2232,6 +2268,21 @@ components:
         scope: { type: string, description: "`document` / `user`。**Key と併せて一意**で、登録後は不変" }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    ValidatePolicyResponse:
+      type: object
+      description: |
+        FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証の結果。
+        **保存していない。** `valid: false` でも HTTP は 200 である
+        （矛盾が見つかったことは要求の失敗ではない）。
+        `errors` の内容は保存時の 400（`errors.errors`）と**同じ検証から出る**。
+      required: [valid, errors]
+      properties:
+        valid: { type: boolean, description: 矛盾が無ければ true }
+        errors:
+          type: array
+          items: { type: string }
+          description: "矛盾の理由（日本語）。`valid: true` のときは空配列。"
 
     CreatePolicyRequest:
       type: object

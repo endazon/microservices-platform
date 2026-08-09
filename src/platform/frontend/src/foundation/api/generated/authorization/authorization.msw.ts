@@ -18,7 +18,8 @@ import type {
 
 import type {
   AbacPolicyDto,
-  AttributeDefinitionDto
+  AttributeDefinitionDto,
+  ValidatePolicyResponse
 } from '../bff.schemas';
 
 import {
@@ -30,10 +31,11 @@ import {
   getBffAuthzListPoliciesResponseMock,
   getBffAuthzSetPolicyActiveResponseMock,
   getBffAuthzUpdateAttributeResponseMock,
-  getBffAuthzUpdatePolicyResponseMock
+  getBffAuthzUpdatePolicyResponseMock,
+  getBffAuthzValidatePolicyResponseMock
 } from './authorization.faker';
 
-export { getBffAuthzListPoliciesResponseMock, getBffAuthzCreatePolicyResponseMock, getBffAuthzGetPolicyResponseMock, getBffAuthzUpdatePolicyResponseMock, getBffAuthzSetPolicyActiveResponseMock, getBffAuthzListAttributesResponseMock, getBffAuthzCreateAttributeResponseMock, getBffAuthzGetAttributeResponseMock, getBffAuthzUpdateAttributeResponseMock } from './authorization.faker';
+export { getBffAuthzListPoliciesResponseMock, getBffAuthzCreatePolicyResponseMock, getBffAuthzValidatePolicyResponseMock, getBffAuthzGetPolicyResponseMock, getBffAuthzUpdatePolicyResponseMock, getBffAuthzSetPolicyActiveResponseMock, getBffAuthzListAttributesResponseMock, getBffAuthzCreateAttributeResponseMock, getBffAuthzGetAttributeResponseMock, getBffAuthzUpdateAttributeResponseMock } from './authorization.faker';
 
 
 export const getBffAuthzListPoliciesMockHandler = (overrideResponse?: AbacPolicyDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<AbacPolicyDto[]> | AbacPolicyDto[]), options?: RequestHandlerOptions) => {
@@ -56,6 +58,18 @@ export const getBffAuthzCreatePolicyMockHandler = (overrideResponse?: AbacPolicy
     ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
     : getBffAuthzCreatePolicyResponseMock(),
       { status: 201
+      })
+  }, options)
+}
+
+export const getBffAuthzValidatePolicyMockHandler = (overrideResponse?: ValidatePolicyResponse | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<ValidatePolicyResponse> | ValidatePolicyResponse), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/admin/authz/policies/validate', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffAuthzValidatePolicyResponseMock(),
+      { status: 200
       })
   }, options)
 }
@@ -166,6 +180,7 @@ export const getBffAuthzDeleteAttributeMockHandler = (overrideResponse?: void | 
 export const getAuthorizationMock = () => [
   getBffAuthzListPoliciesMockHandler(),
   getBffAuthzCreatePolicyMockHandler(),
+  getBffAuthzValidatePolicyMockHandler(),
   getBffAuthzGetPolicyMockHandler(),
   getBffAuthzUpdatePolicyMockHandler(),
   getBffAuthzDeletePolicyMockHandler(),

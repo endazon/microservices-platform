@@ -4,6 +4,7 @@ import {
   getBffAuthzListPoliciesQueryKey,
   useBffAuthzCreateAttribute,
   useBffAuthzCreatePolicy,
+  useBffAuthzValidatePolicy,
   useBffAuthzDeleteAttribute,
   useBffAuthzDeletePolicy,
   useBffAuthzListAttributes,
@@ -61,10 +62,14 @@ export function useAttributeActions() {
 }
 
 /**
- * ポリシーの編集（追加・有効／無効切替・削除）。
+ * ポリシーの編集（追加・有効／無効切替・削除）＋ **dry-run 検証**。
  *
  * 追加は**保存前に矛盾検証**され、矛盾があれば 400（`ValidationProblem`）で拒否される。
  * 呼び出し側が検証結果として詳細を表示する（計画 §SC-09 §アクション）。
+ *
+ * **［#535］`validate` は保存せず同じ検証だけを走らせる**（裁定 Q23）。
+ * **キャッシュを無効化しない**——何も変えていないためである
+ * （`create` / `setActive` / `remove` は一覧を書き換えるので無効化する）。
  */
 export function usePolicyActions() {
   const queryClient = useQueryClient();
@@ -74,6 +79,7 @@ export function usePolicyActions() {
   const create = useBffAuthzCreatePolicy<unknown>(onSuccess);
   const setActive = useBffAuthzSetPolicyActive<unknown>(onSuccess);
   const remove = useBffAuthzDeletePolicy<unknown>(onSuccess);
+  const validate = useBffAuthzValidatePolicy<unknown>();
 
-  return { create, setActive, remove };
+  return { create, setActive, remove, validate };
 }

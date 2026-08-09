@@ -82,6 +82,32 @@ public class BffAuthzEndpointTests : IClassFixture<BffTestFactory>
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    // FR-05, FR-09, SC-09, #535: dry-run 検証を中継する。
+    //
+    // **矛盾は 200 ＋ `{ valid, errors }`** であり、保存の 400 とは別物である
+    // （BFF は判断せず透過する。[[IADR-0040]] 決定 2）。
+    [Fact]
+    public async Task ValidatePolicy_AsAdmin_Returns200()
+    {
+        var resp = await _factory.CreateClient().PostAsync("/bff/admin/authz/policies/validate",
+            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // SC-09 は platform-admin のみ（operator も不可）。**検証も管理操作である。**
+    [Fact]
+    public async Task ValidatePolicy_AsNonAdmin_IsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+
+        var resp = await client.PostAsync("/bff/admin/authz/policies/validate",
+            Json("""{"name":"検証","action":"read","userConditions":{},"documentConditions":{}}"""));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     [Fact]
     public async Task CreateAttribute_AsAdmin_Returns201()
     {

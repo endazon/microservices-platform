@@ -12,7 +12,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -60,7 +60,8 @@ related_specs:
 | 計画 §SC-09 の要素 | テスト |
 | --- | --- |
 | 属性体系エディタ | 上表 基本 1 |
-| **タグ辞書** | **実装しない**（契約の不在）。`does not render the tag dictionary or a dry-run validate button` |
+| **タグ辞書** | **実装しない**（BFF の書き込み口が無い。**#640 として起票済み**）。`does not render the tag dictionary (no BFF write contract behind it yet)` |
+| **dry-run の検証** | **［2026-08-09 / #535］実装した。** `renders the dry-run validate button now that the contract exists` / `validates without saving, and says so` / `shows the contradictions the dry-run found` |
 | **辺の型辞書** | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the edge-type dictionary` |
 | ポリシー定義 | 上表 基本 2 |
 | 検証結果 | 上表 基本 3・4 |
@@ -85,7 +86,9 @@ related_specs:
 | 12 | **操作を跨いだ状態** | [[IADR-0127]] 決定 7 | **異なるミューテーション**を続けたとき、古い失敗バナーが残らない（属性: 削除 → 追加／ポリシー: 保存 → 切替） |
 | 13 | **異常系（縮退しない）** | — | 取得失敗を `role="alert"` で出し、「0 件」へ寄せない |
 | 14 | **着手保留**（実装しない要素） | [[IADR-0119]] | 「辺の型」が無い。**先に 2 つの区画が在ることを確かめてから**無いことを見る |
-| 15 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #2・#11 | 「タグ辞書」タブと「検証」ボタンが無い |
+| 15 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #2 | 「タグ辞書」タブが無い（**#640 待ち**。「検証」ボタンは #535 で着地したので**この観点から外した**） |
+| 15-b | ★ **検証は保存しない** | 裁定 Q23「保存せず検証だけ行う」 | 「検証」を押すと `/admin/authz/policies/validate` だけを呼び、登録の口を呼ばない。「まだ保存していません」と明示する |
+| 15-c | 矛盾は**エラーではなく検証結果** | 同上（200 ＋ `valid: false`） | 矛盾の理由が一覧表示される |
 | 16 | **他 issue の射程** | 同 #5 | MCP クライアント管理へのリンクが無い（遷移先が未実装） |
 | 17 | ロケール `en` | ADR-0031 | 見出しが英語で描画される |
 

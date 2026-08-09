@@ -134,6 +134,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobRetry` |
 | GET | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzListPolicies` |
 | POST | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzCreatePolicy` |
+| POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | FR-05 / FR-09 / SC-09 | `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |
 | GET | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzGetPolicy` |
 | PUT | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzUpdatePolicy` |
 | DELETE | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzDeletePolicy` |
