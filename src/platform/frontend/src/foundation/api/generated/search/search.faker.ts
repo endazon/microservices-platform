@@ -13,6 +13,7 @@ import {
 } from '@faker-js/faker';
 
 import type {
+  AttributeValuesResponse,
   SearchResponse
 } from '../bff.schemas';
 
@@ -20,4 +21,6 @@ import type {
 export const getBffSearchResponseMock = (overrideResponse: Partial<Extract<SearchResponse, object>> = {}): SearchResponse => ({results: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({chunkId: faker.string.uuid(), documentId: faker.string.uuid(), documentTitle: faker.string.alpha({length: {min: 10, max: 20}}), text: faker.string.alpha({length: {min: 10, max: 20}}), score: faker.number.float({fractionDigits: 2}), markdownUri: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), attributes: {
         [faker.string.alphanumeric(5)]: faker.string.alpha({length: {min: 10, max: 20}})
       }, tags: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), updatedAt: faker.helpers.arrayElement([faker.date.past().toISOString().slice(0, 19) + 'Z', null])})), totalHits: faker.number.int(), elapsedMs: faker.number.int(), ...overrideResponse})
+
+export const getBffAttributeValuesResponseMock = (overrideResponse: Partial<Extract<AttributeValuesResponse, object>> = {}): AttributeValuesResponse => ({values: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
 

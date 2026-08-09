@@ -87,4 +87,69 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
         body!.Results.Should().BeEmpty();          // クライアント Scope は無視される
     }
+
+    // --- FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043）--------------
+
+    // 許可スコープがあれば後段の候補をそのまま返す（SC-01 / SC-08 の対象範囲フィルタの供給源）。
+    [Fact]
+    public async Task PostAttributeValues_WhenGranted_ReturnsCandidates()
+    {
+        factory.SearchScopeGranted = true;
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        body!.Values.Should().Equal(["社内", "規程"]);
+    }
+
+    // **[[IADR-0151]] 決定 5**: スコープが解決できない（deny-by-default）ときは**空配列**。
+    // **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを利用者へ区別させない
+    // （区別を与えると、試行錯誤で値の存在を探れてしまう）。
+    [Fact]
+    public async Task PostAttributeValues_WhenNotGranted_ReturnsEmpty_NotForbidden()
+    {
+        factory.SearchScopeGranted = false;
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, "403 / 404 で権限の有無を教えない");
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        body!.Values.Should().BeEmpty();
+    }
+
+    // 権限昇格の防止: **クライアントが送った Scope は使わない。** サーバ側で解決した値で置き換える
+    // （検索と同じ扱い）。後段へ渡した本文に、クライアントが送った偽の許可が現れないことを見る。
+    [Fact]
+    public async Task PostAttributeValues_IgnoresClientSuppliedScope()
+    {
+        // BffTestFactory は IClassFixture でテスト間に共有されるため、観測前に戻す。
+        factory.LastAttributeValuesBody = null;
+        factory.SearchScopeGranted = false;
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values", new
+        {
+            key = "tags",
+            scope = new { filters = Array.Empty<object>(), grantsAccess = true },
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        body!.Values.Should().BeEmpty("サーバ側の解決が不許可なら、クライアント指定は無視される");
+        factory.LastAttributeValuesBody.Should().BeNull("不許可なら後段を呼ばない");
+    }
+
+    // 空・空白のキーは後段を呼ばずに空配列で返す（無駄な往復をしない）。
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task PostAttributeValues_BlankKey_ReturnsEmptyWithoutCallingDownstream(string key)
+    {
+        factory.LastAttributeValuesBody = null;
+        factory.SearchScopeGranted = true;
+        var resp = await factory.CreateClient().PostAsJsonAsync("/bff/attribute-values", new { key });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!.Values.Should().BeEmpty();
+        factory.LastAttributeValuesBody.Should().BeNull();
+    }
 }

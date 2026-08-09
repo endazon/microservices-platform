@@ -11,9 +11,10 @@ namespace RetrievalService.Api.Tests;
 // FR-03, UC-01: /search ハイブリッド検索のエンドポイント結合テスト（InMemory ストア）
 public class HybridSearchEndpointTests
 {
-    private static ChunkPayload Chunk(string text, Dictionary<string, string>? attrs = null) =>
+    private static ChunkPayload Chunk(string text, Dictionary<string, string>? attrs = null,
+        List<string>? tags = null) =>
         new(Guid.NewGuid(), Guid.NewGuid(), $"doc:{text}", text,
-            new float[1536], $"s3://bucket/{Guid.NewGuid()}.md", attrs ?? [], []);
+            new float[1536], $"s3://bucket/{Guid.NewGuid()}.md", attrs ?? [], tags ?? []);
 
     private static async Task SeedAsync(TestWebApplicationFactory factory, params ChunkPayload[] chunks)
     {
@@ -161,5 +162,126 @@ public class HybridSearchEndpointTests
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
         body!.Results.Should().BeEmpty();
+    }
+
+    // --- FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043）--------------
+
+    private static async Task<AttributeValuesResponse> ListValuesAsync(
+        TestWebApplicationFactory factory, string key, AccessScope? scope)
+    {
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/search/attribute-values", new AttributeValuesRequest(key, scope));
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        return (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+    }
+
+    // **ADR-0043 決定 1**: 返すのは「**到達できる文書に実際に付与された値**」だけである。
+    // 権限外の文書にしか付かない値が混ざると、その存在が推測でき 404 原則が実質的に破れる。
+    [Fact]
+    public async Task AttributeValues_ReturnsOnlyValuesOnReachableDocuments()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("見える", new() { ["dept"] = "sales" }, ["公開資料"]),
+            Chunk("見えない", new() { ["dept"] = "hr" }, ["極秘プロジェクト"]));
+
+        var scope = new AccessScope([new AttributeFilter("dept", ["sales"])], GrantsAccess: true);
+        var body = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
+
+        body.Values.Should().Equal(["公開資料"]);
+        body.Values.Should().NotContain("極秘プロジェクト",
+            "権限外の文書にしか付かない値は、その存在を推測させるため返さない");
+    }
+
+    // **ADR-0043 決定 2**: 件数を返さない。「12 件だが自分の検索では 8 件」＝**見えない文書が 4 件ある**。
+    // **応答の JSON に件数らしきものが 1 つも無い**ことを、生の本文で見る
+    // （DTO にフィールドが無いだけでなく、実装が余計なものを載せていないことまで確かめる）。
+    [Fact]
+    public async Task AttributeValues_ResponseCarriesNoCounts()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("A", tags: ["共有"]),
+            Chunk("B", tags: ["共有"]),
+            Chunk("C", tags: ["単独"]));
+
+        var resp = await factory.CreateClient().PostAsJsonAsync("/search/attribute-values",
+            new AttributeValuesRequest(AttributeValueKeys.Tags, new AccessScope([], GrantsAccess: true)));
+        var raw = await resp.Content.ReadAsStringAsync();
+
+        raw.Should().NotContainAny("count", "Count", "件数");
+        // 「共有」は 2 件あるが、応答には値が 1 つ現れるだけで多重度も出ない。
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        body!.Values.Should().Equal(["共有", "単独"]);
+    }
+
+    // **[[IADR-0151]] 決定 1**: ABAC フィルタは検索段と同じものを使う。
+    // 同じスコープで検索した結果に現れる文書の値だけが候補になることを、両方引いて確かめる。
+    [Fact]
+    public async Task AttributeValues_UsesTheSameAbacFilterAsSearch()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("アルファ 社内", new() { ["confidentiality"] = "internal" }, ["社内"]),
+            Chunk("アルファ 秘", new() { ["confidentiality"] = "confidential" }, ["秘"]));
+
+        var scope = new AccessScope(
+            [new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
+
+        var searchResp = await factory.CreateClient().PostAsJsonAsync("/search",
+            new SearchRequest("アルファ", TopK: 10, Scope: scope));
+        var search = await searchResp.Content.ReadFromJsonAsync<SearchResponse>();
+        var values = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
+
+        search!.Results.Should().ContainSingle("スコープが 1 件へ絞る");
+        values.Values.Should().Equal(["社内"], "候補は検索に現れる集合と一致する");
+    }
+
+    // **[[IADR-0151]] 決定 5**: スコープ未解決・不許可は**空配列**（404 にも 403 にもしない）。
+    // 候補が無いことと権限が無いことを利用者へ区別させない。
+    [Theory]
+    [InlineData(false)]  // GrantsAccess=false（deny-by-default）
+    [InlineData(true)]   // Scope 自体が null
+    public async Task AttributeValues_WhenScopeNotGranted_ReturnsEmpty(bool scopeIsNull)
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory, Chunk("A", tags: ["社内"]));
+
+        var scope = scopeIsNull ? null : new AccessScope([], GrantsAccess: false);
+        var body = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
+
+        body.Values.Should().BeEmpty();
+    }
+
+    // `tags`（リスト項目）と `attributes.<key>`（ネスト項目・[[IADR-0014]]）の**両方**を引ける。
+    [Fact]
+    public async Task AttributeValues_ReadsBothTagsAndAbacAttributes()
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory,
+            Chunk("A", new() { ["department"] = "法務" }, ["規程"]),
+            Chunk("B", new() { ["department"] = "経理" }, ["手順書"]));
+
+        var scope = new AccessScope([], GrantsAccess: true);
+
+        (await ListValuesAsync(factory, AttributeValueKeys.Tags, scope))
+            .Values.Should().Equal(["手順書", "規程"]);
+        (await ListValuesAsync(factory, "department", scope))
+            .Values.Should().Equal(["法務", "経理"], "ネスト属性も同じ口から引ける");
+    }
+
+    // 未知・空のキーは空集合へ縮退する（呼び出し側の分岐を 1 か所に閉じる）。
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("no-such-key")]
+    public async Task AttributeValues_UnknownKey_ReturnsEmpty(string key)
+    {
+        await using var factory = new TestWebApplicationFactory();
+        await SeedAsync(factory, Chunk("A", tags: ["社内"]));
+
+        var body = await ListValuesAsync(factory, key, new AccessScope([], GrantsAccess: true));
+
+        body.Values.Should().BeEmpty();
     }
 }

@@ -49,6 +49,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public bool SearchScopeGranted { get; set; } = true;
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順（縮退させずそのまま運ぶことを固定するため）。
     public string? LastSearchSortBy { get; private set; }
+    // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会。後段が返す候補と、BFF が渡した本文。
+    public List<string> StubAttributeValues { get; set; } = ["社内", "規程"];
+    // **テスト間で共有される**（IClassFixture）ため、観測する側が呼ぶ前に null へ戻すこと。
+    public string? LastAttributeValuesBody { get; set; }
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
@@ -581,9 +585,22 @@ public class BffTestFactory : WebApplicationFactory<Program>
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request, CancellationToken cancellationToken)
         {
-            if (request.Content is not null)
+            var body = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            // FR-04, #540: 権限内属性値の照会は別の応答を返す（同じ後段の別の口）。
+            if (request.RequestUri?.AbsolutePath.EndsWith("/attribute-values", StringComparison.Ordinal) == true)
             {
-                var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                owner.LastAttributeValuesBody = body;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(new AttributeValuesResponse(owner.StubAttributeValues))
+                };
+            }
+
+            if (body is not null)
+            {
                 using var doc = JsonDocument.Parse(body);
                 owner.LastSearchSortBy = doc.RootElement.TryGetProperty("sortBy", out var sort)
                     && sort.ValueKind == JsonValueKind.String

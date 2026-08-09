@@ -44,6 +44,30 @@ public class InMemoryVectorStore : IVectorStore
         return Task.FromResult(results);
     }
 
+    // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（テスト/ローカル用の等価実装）。
+    // **Qdrant 実装と同じ意味論**にする——同じ ABAC フィルタで絞った集合から、値集合だけを返す
+    // （件数は返さない。ADR-0043 決定 2 / [[IADR-0151]] 決定 2）。
+    public Task<List<string>> ListAttributeValuesAsync(
+        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+    {
+        var reachable = _store.Where(c => MatchesFilters(c, filters));
+
+        // `tags` はリスト項目、それ以外は `attributes.<key>` のネスト項目（IADR-0014）。
+        var values = payloadKey == AttributeValueKeys.Tags
+            ? reachable.SelectMany(c => c.Tags)
+            : reachable
+                .Select(c => c.Attributes.GetValueOrDefault(
+                    payloadKey.StartsWith($"{AttributeValueKeys.AttributesPrefix}.", StringComparison.Ordinal)
+                        ? payloadKey[(AttributeValueKeys.AttributesPrefix.Length + 1)..]
+                        : payloadKey))
+                .OfType<string>();
+
+        return Task.FromResult<List<string>>([.. values
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)]);
+    }
+
     // FR-05: ABAC 多値 allow-list 評価。フィルタ間は AND、値集合内は OR。
     // 属性キーを持たない文書は不一致（deny-by-default）。
     private static bool MatchesFilters(ChunkPayload c, IReadOnlyList<AttributeFilter>? filters)

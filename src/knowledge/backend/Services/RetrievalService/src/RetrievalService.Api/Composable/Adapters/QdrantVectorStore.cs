@@ -67,6 +67,36 @@ public class QdrantVectorStore(
         }
     }
 
+    // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（計画 ADR-0043 / [[IADR-0151]] 決定 1・2）。
+    //
+    // **検索と同じ ABAC フィルタを渡して facet を呼ぶ。** 別経路（辞書・DocumentService）で数えると
+    // 「検索には出るが候補に無い値」「候補にあるのに検索に出ない値」が生まれる。
+    //
+    // **facet は値と件数の対で返るが、件数はここで捨てる**（ADR-0043 決定 2。件数は値集合そのものより
+    // 漏洩力が強い——「12 件だが自分の検索では 8 件」＝見えない文書が 4 件ある、が分かる）。
+    // **件数がサービスの外へ出ないことがこの実装の要点である。**
+    public async Task<List<string>> ListAttributeValuesAsync(
+        string payloadKey,
+        IReadOnlyList<AttributeFilter>? filters,
+        CancellationToken ct = default)
+    {
+        var facets = await client.FacetAsync(_collection, payloadKey,
+            filter: BuildAttributeFilter(filters), cancellationToken: ct);
+
+        // **値だけを取り出す。`Count` は読まない**（ADR-0043 決定 2）。
+        // 明示的なループにしてあるのは、**件数へ触れていないことが読んで分かる**ようにするためである。
+        // 文字列でない facet 値（整数・真偽）は候補にならないため落とす。
+        var values = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (var hit in facets.Hits)
+        {
+            if (!hit.Value.HasStringValue) continue;
+            var value = hit.Value.StringValue;
+            if (!string.IsNullOrWhiteSpace(value)) values.Add(value);
+        }
+
+        return [.. values];
+    }
+
     private static Filter? BuildAttributeFilter(IReadOnlyList<AttributeFilter>? filters)
     {
         // FR-05: ABAC 多値 allow-list を Qdrant のペイロードフィルタに変換

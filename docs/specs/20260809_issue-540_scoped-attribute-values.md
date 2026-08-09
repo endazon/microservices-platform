@@ -1,7 +1,7 @@
 ---
 title: SC-01 / SC-08 の権限内属性値の照会 API を新設する（ADR-0043 の制限を守る）
 type: spec
-status: in-progress
+status: done
 related_ids: [FR-04, FR-05, UC-02, SC-01, SC-08, ADR-0043, IADR-0014, IADR-0139, IADR-0151]
 author: Claude
 created: 2026-08-09
@@ -148,9 +148,49 @@ $ git grep -ln "BuildAttributeFilter\|attributes\[" -- src ':!src/ai-stock-tradi
 - `docs/adr/IADR-0151_*.md`（**新設**）＋ `docs/adr/README.md`
 - **[[IADR-0139]] 決定 5 の表へ追記**（束ねの判定を覆したこと。**本作業で実施済み**）
 
-## 検証（完了前）
+## 実装中に決めたこと（仕様書からの差分）
+
+### facet の畳み込みを LINQ にせず、明示的なループにした
+
+`ADR-0043` 決定 2（件数を返さない）が守られていることを、**コードを読んで確認できる形**にした。
+LINQ の連鎖だと `Count` に触れていないことが読み取りにくい——**明示的な `foreach` で
+`hit.Value` しか参照しない**ようにし、その理由をコメントに書いた。
+`InMemoryVectorStore` 側も同じ意味論（値集合だけを返す）で実装した。
+
+### 応答の「件数が無いこと」を **生の JSON 本文**で見る
+
+`AttributeValuesResponse` にフィールドが無いことは型で分かるが、**実装が余計なものを載せていない**
+ことまでは型では分からない。`AttributeValues_ResponseCarriesNoCounts` は**応答本文の文字列**に
+`count` / `Count` / `件数` が現れないことを見る。**同じタグが 2 件ある状態を作ってから**確かめており、
+多重度が漏れないことも同時に固定している。
+
+### `BffEndpointCompositionTests` が新しいルートを止めた（想定どおりの働き）
+
+`/bff/attribute-values` を足したところ、**合成点のルート一覧を固定するテストが落ちた**
+（「期待外の `/bff/*` ルートグループが登録されている」）。**期待リストへ明示的に足して通した**——
+BFF の口が黙って増えないようにする既存の守りであり、**落ちたのは正しい**。
+
+### `BffTestFactory` の観測プロパティはテスト間で共有される
+
+`IClassFixture` なので `LastAttributeValuesBody` はテストを跨いで残る。**観測する側が呼ぶ前に
+`null` へ戻す**ようにし、その理由をプロパティのコメントとテストに書いた
+（最初に書いたときは前のテストの値を拾って落ちた）。
+
+## 検証記録（実測・すべて本作業の head で走らせた）
 
 `node scripts/…` は**リポジトリのルートから実行する**。
-両ユニットの `dotnet build` / `test` / `format --verify-no-changes`、
-`pnpm typecheck` / `lint` / `format:check` / `test:coverage` / `build`、
-`check-contract-schema`（**契約が動くので baseline の承認が要る**）ほか各 check スクリプト。
+
+| 対象 | 結果 |
+| --- | --- |
+| `dotnet test knowledge/backend/backend.slnx` | **459 passed / 0 failed**（18 skipped は統合テストの環境依存。**本作業で 9 件追加**） |
+| `dotnet test platform/backend/backend.slnx` | **370 passed / 0 failed**（1 skipped。**本作業で 5 件追加**） |
+| `dotnet format --verify-no-changes`（両ユニット） | OK |
+| `pnpm typecheck` / `lint` / `format:check` | OK（lint は warning 9・error 0。既存の `react-refresh` 警告） |
+| `pnpm test:coverage` | statements **96.39%** / branches **90.53%** / functions **91.68%** / lines **96.39%**（床 90 / 85 / 88 / 90。**割っていない**） |
+| `pnpm build` ＋ `check-static-egress` | OK（24 ファイル・外部オリジン 0） |
+| `check-chunk-budget` | **床は動かない**（578.15 kB・遅延チャンク 6 本のまま）。**画面を触っていないので当然である** |
+| `check-contract-schema` | **baseline を更新**（`AttributeValuesRequest` / `AttributeValuesResponse` / `AttributeValueKeys` の**型追加 3 件**。**破壊的 0 件**） |
+| `check-test-spec-coverage` | **床は動かない**（78 対のまま）。**既存のテストクラスへ足しただけ**だからである |
+| その他 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-adr-numbering` / `check-i18n-catalogs` / `check-test-traceability` / `check-bff-downstreams` / `check-unit-dependencies` / `check-backend-libraries` / `check-landed-subjects` すべて OK |
+
+**カバレッジ床は上げない**（#628・#536・#532 と同じ判断）。**i18n カタログも動かない**——画面を触っていない。

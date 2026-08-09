@@ -18,6 +18,8 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AttributeValuesRequest,
+  AttributeValuesResponse,
   SearchRequest,
   SearchResponse
 } from '../bff.schemas';
@@ -115,4 +117,101 @@ export const useBffSearch = <TError = unknown,
         TContext
       > => {
       return useMutation(getBffSearchMutationOptions(options));
+    }
+    export type bffAttributeValuesResponse200 = {
+  data: AttributeValuesResponse
+  status: 200
+}
+
+export type bffAttributeValuesResponseSuccess = (bffAttributeValuesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type bffAttributeValuesResponse = (bffAttributeValuesResponseSuccess)
+
+export const getBffAttributeValuesUrl = () => {
+
+
+
+
+  return `/bff/attribute-values`
+}
+
+/**
+ * 計画 **ADR-0043**（裁定 Q2）。SC-01 / SC-08 の対象範囲フィルタ
+ * 「**権限内のタグ／部門／プロジェクトのみ選択可**」を満たすための候補一覧であり、
+ * **一般利用者が呼べる**（従前は `/bff/admin/authz` の管理者限定の辞書しか無かった）。
+ *
+ * **返す範囲に強い制限がある。外すと存在秘匿（ADR-0004 の 404 原則）が実質的に破れる。**
+ *
+ * - **辞書を丸ごと返さない**（決定 1）。返すのは「**到達できる文書に実際に付与された値**」だけ。
+ * - **件数を返さない**（決定 2）。「12 件だが自分の検索では 8 件」＝**見えない文書が 4 件ある**
+ *   ことが分かるため、**件数は値集合そのものより漏洩力が強い**。
+ * - ABAC スコープは**サーバ側で解決**し、クライアント指定は信頼しない（権限昇格の防止）。
+ * - **スコープが解決できないときは空配列**（IADR-0151 決定 5）。**404 にも 403 にもしない** ——
+ *   候補が無いことと権限が無いことを区別させない。
+ *
+ * 実装は検索段と**同じ ABAC フィルタ**で Qdrant の facet を呼び、**件数を捨ててから**返す
+ * （IADR-0151 決定 1・2）。**#542 が同じ口へシステム管理者スコープを足す**（ADR-0043 決定 4）。
+ * @summary FR-04, FR-05, SC-01, SC-08: 権限内属性値の照会（BFF 集約）
+ */
+export const bffAttributeValues = async (attributeValuesRequest: AttributeValuesRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffAttributeValuesResponse> => {
+
+  return bffFetch<bffAttributeValuesResponse>(getBffAttributeValuesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(attributeValuesRequest)
+  }
+);}
+
+
+
+
+
+export const getBffAttributeValuesMutationOptions = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext> => {
+
+const mutationKey = ['bffAttributeValues'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffAttributeValues>>, {data: AttributeValuesRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  bffAttributeValues(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffAttributeValuesMutationResult = NonNullable<Awaited<ReturnType<typeof bffAttributeValues>>>
+    export type BffAttributeValuesMutationBody = AttributeValuesRequest
+    export type BffAttributeValuesMutationError = unknown
+
+    /**
+ * @summary FR-04, FR-05, SC-01, SC-08: 権限内属性値の照会（BFF 集約）
+ */
+export const useBffAttributeValues = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffAttributeValues>>,
+        TError,
+        {data: AttributeValuesRequest},
+        TContext
+      > => {
+      return useMutation(getBffAttributeValuesMutationOptions(options));
     }
