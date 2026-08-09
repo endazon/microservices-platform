@@ -131,8 +131,18 @@ erDiagram
 **［#635］`Documents.Tags` / `DocumentVersions.Tags` から `Tags.Id` への外部キーは張っていない。**
 jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単位に及ばない）ためである。
 **代わりに削除側で守る**——`DELETE /tags/{id}` は使用件数が 0 件のときだけ許し、1 件以上なら件数を添えて 409 を返す
-（[[IADR-0153]] 決定 6）。**残る穴は手作業の DB 操作だけ**であり、そのとき解決できない識別子は
-`TagResolver.ToNames` が落とす（古い識別子を画面へ出すより落とすほうがよい）。
+（[[IADR-0153]] 決定 6）。
+
+**穴は 2 つ残る。どちらも FK を張らない以上避けられない。**
+
+1. **手作業の DB 操作**（辞書の行を直接消す）。
+2. **稀な同時実行**（[#639](https://github.com/endazon/microservices-platform/pull/639) の AI レビュー指摘）。
+   `POST /documents` が `TagResolver.ToIdsAsync` で識別子を解決した**直後・`SaveChangesAsync` の前**に、
+   `DELETE /tags/{id}` が使用件数 0 件と判定して削除を確定させると、
+   コミット後の文書に解決できない識別子が残る。
+
+**どちらも `TagResolver.ToNames` が黙って落として吸収する**（古い識別子を画面へ出すより落とすほうがよい）。
+**タグが 1 つ静かに消えるだけで、文書そのものは壊れない。**
 
 - `Versions` ナビゲーションはバッキングフィールド（`_versions`）経由でアクセス（`PropertyAccessMode.Field`）。
 
