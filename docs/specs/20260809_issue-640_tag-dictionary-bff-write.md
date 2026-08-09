@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — タグ辞書の追加・改名・削除を BFF へ通し、SC-09 の画面から操作できるようにする（#640）
 type: work-spec
-status: draft
+status: fixed
 related_ids:
   - FR-06
   - FR-09
@@ -199,6 +199,99 @@ $ grep -rn --exclude-dir={bin,obj,coverage,node_modules} -E '"/tags|/tags/' src/
 **変異試験を行う** —— `AdminOnly` を積み忘れても既存テストは緑のままになり得るため
 （#629 で同じ穴を実測した）。狙った 1 件だけが落ちることを確認する。
 
-## 検証記録（実測）
+## 実装中に決めたこと（仕様書からの差分）
 
-（実装後に記入する）
+### 1. ★ `usageCount` は**画面まで届いていなかった**（契約は正しいのに）
+
+**判断 2（`RelayAsync` で本文ごと透過）だけでは受け入れ基準を満たせなかった。**
+BFF は正しく透過していたが、**クライアント側の解析層が落としていた**（実測）。
+
+```
+後段の 409 本文        : { error, message, usageCount }
+parseProblemDetails が読むキー: errors / detail / title   ← どれも持たない
+→ ApiError.details = []  →  画面は「競合が発生しました。」しか出せない
+```
+
+**軸の引き漏らしである** —— 母集合に「**誰がこの応答を読むか**」を入れていなかった。
+軸 3 で「誰がこの口を**呼ぶ**か」は引いたのに、**戻りを解釈する層**を見ていない。
+
+是正:
+
+1. `parseProblemDetails` が **`message` も読む**（一般の改善。`details` の意味は変えていない）
+2. `ApiError` が**解析済みの本文を持つ**（`body`）。`details` は文字列しか持てず、
+   **翻訳済みの文へ数値を差し込めない** —— サーバの日本語をそのまま出すと en ロケールで混ざる
+
+`tagInUseCount()` が `error === 'tag_in_use'` のときだけ数値を返し、
+**件数を持たない 409（重複名など）では既定の文言へ落ちる**ことも対でテストに固定した。
+
+### 2. 射程外だが同時に直した 2 件（`openapi.yaml` の群コメント）
+
+**`openapi.yaml` は自ら「正」を名乗る文書であり、誤ったまま残せない**ため直した。
+
+| 箇所 | 誤り | 由来 |
+| --- | --- | --- |
+| `/bff/documents` の群コメント | 「書き込みは `platform-admin` / `platform-operator` に限定し」 | **#629 の追随漏れ**（実測: BFF の書き込み 5 口すべてに `AdminOnly`） |
+| `/bff/datasources` の群コメント | 「閲覧・**操作**を `platform-admin` / `platform-operator` に限定する」 | #628 が 4 口へ `AdminOnly` を積んだことが書かれていない |
+
+### 3. ★ #645 の走査が 1 件落としていた —— **規則 4 の違反**（同型 2 回目）
+
+上の 1 件目は **#645 が是正しそこねたもの**である。走査式を再現して原因を特定した。
+
+| 段 | 式 | 結果 |
+| --- | --- | --- |
+| 1 段目 | `admin ?/ ?operator｜platform-admin.{0,4}(または｜/｜、).{0,4}platform-operator` ほか | **137 件。当該行は当たっている** |
+| 2 段目 | `\| grep -iE 'document\|文書\|/bff/documents'` | **34 件へ絞られ、当該行が落ちた** |
+
+**変種の列挙（規則 2）は正しかった。** 落としたのは**2 段目の行フィルタ**で、
+当該行は `/bff/documents:` の**直上のブロックコメント**にあり `document` も `文書` も含まない。
+
+**これは規則 4「行フィルタで絞らない。パスから引く」の違反である。**
+同規則の先例 #593 は「走査の末尾に `grep -i "feedback\|FR-08"` を継いだため、
+該当行が両語を含まない `docs/api/openapi.yaml` が落ちた」——**同じ機構・同じファイル**である。
+
+**規則を足さない。** #645 は規則 7・8 を新設したが、**今回落ちたのは既存の規則 4 であり、
+規則の不足ではなく規則の不遵守**だった。`CLAUDE.md`「同型の事故が 2 回起きたら」の
+条件を満たすのは**検査器**の側である（`openapi.yaml` の宣言ロールと
+実装の `RequireAuthorization` を突き合わせる）。**本 issue の射程外なので別 issue とする**
+（[[IADR-0116]] 規約 4）。
+
+## 検証記録（実測。base = `a6d93fa`）
+
+| 検査 | 結果 |
+| --- | --- |
+| `dotnet build`（platform / knowledge） | Build succeeded・0 Error |
+| `dotnet test Platform.Bff.Tests` | **184 → 196 Passed** / 1 Skipped / 0 Failed |
+| `dotnet format --verify-no-changes`（両ユニット） | exit 0 |
+| `pnpm typecheck` | Done |
+| `pnpm lint` | **0 errors**（warning 9 件はすべて既存） |
+| `pnpm format:check` | All matched files use Prettier code style |
+| `pnpm build` | built in 5.96s |
+| `pnpm i18n` | **ja / en とも未翻訳 0**（en に 12 件を追加した） |
+| `pnpm test:coverage` | **612 → 621 Passed** / 63 files |
+| `check-i18n-catalogs` / `check-doc-links` / `check-contract-schema` / `check-test-traceability` | すべて OK |
+| `check-static-egress` | OK（25 ファイル・外部オリジン 0） |
+| `check-chunk-budget` | 583.16 → **584.42 kB** へ更新 |
+
+**カバレッジ床は据え置いた**（MSP 所有分の実測: lines 96.17 → 床 91〔現行と同じ〕・
+functions 93.52 → 床 88〔現行と同じ〕・branches 91.95 → 床 86〔**現行 87 より低い**〕）。
+**ラチェットなので下げない。**
+
+新規ファイルの被覆: `TagDictionaryPanel.tsx` **L100 / B96.8 / F100**、
+`useTagDictionary.ts` **L100 / B70 / F100**。
+
+### ★ 変異試験
+
+**`AdminOnly` を積み忘れても既存テストは緑のまま通る** —— 読み取り群が元から admin ＋ operator なので
+`viewer` は積まなくても 403 になる。**だから運用者で引くテストを足し、効くことを変異で確かめた。**
+
+| 変異 | 結果 |
+| --- | --- |
+| `/bff/tags` の `write` 群の `AdminOnly` を admin ＋ operator へ緩める | **Failed 3** —— `Write_AsOperator_IsForbidden` の POST / PUT / DELETE **だけ** |
+| 戻す | **Failed 0**（196 Passed） |
+
+## 申し送り
+
+- **検査器の起票**（上記 §3）。`openapi.yaml` が宣言するロールと実装の
+  `RequireAuthorization` を突き合わせる。**規則 4 の同型 2 回目**が根拠である。
+- **辺の型辞書の区画**は本作業でも実装していない（[[IADR-0129]] 決定 1 の理由 A = FR-17 の
+  着手保留。#586 で保留理由は失効しているが、**引き受けは #504 / #452 の側**である）。

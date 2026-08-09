@@ -106,6 +106,10 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
 | --- | --- | --- | --- | --- |
 | POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（[[IADR-0044]] 多層防御） | FR-04 / FR-05 / FR-09 / SC-01 / SC-05 / SC-08 / SC-09 | `useBffAttributeValues` |
+| GET | `/bff/tags` | **admin ＋ operator**（辞書の読み取り。裁定 Q18・[[IADR-0152]] 決定 5） | FR-09 / UC-05 / SC-09 | `useBffTagList`（**#640**） |
+| POST | `/bff/tags` | **AdminOnly**（運用者も不可。SC-09 はシステム管理者ロール限定） | FR-09 / UC-05 / SC-09 | `useBffTagCreate`（**#640**。名前の重複は 409） |
+| PUT | `/bff/tags/{id}` | **AdminOnly** | FR-09 / UC-05 / SC-09 | `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。[[IADR-0153]] 決定 1。応答の `republishedDocuments` は射影の再発行件数） |
+| DELETE | `/bff/tags/{id}` | **AdminOnly** | FR-09 / UC-05 / SC-09 | `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。SC-09「削除前に使用件数を示す」のため**本文ごと透過する**） |
 | POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
 | POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
