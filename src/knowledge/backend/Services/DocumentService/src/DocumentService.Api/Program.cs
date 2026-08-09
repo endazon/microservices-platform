@@ -72,6 +72,8 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDocumentEndpoints();
+// FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
+app.MapTagDictionaryEndpoints();
 
 app.Run();
 

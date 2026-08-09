@@ -56,6 +56,12 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // AttributeValuesStatusCode を 500/400 に差し替えると、後段の非 2xx 透過を検証できる。
     // **縮退（空配列）で潰さないことを固定するために要る** —— 潰すと運用側が後段の不調に気づけない。
     public HttpStatusCode AttributeValuesStatusCode { get; set; } = HttpStatusCode.OK;
+
+    // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152）。**テスト間で共有される**（IClassFixture）ため、
+    // 観測する側が呼ぶ前に既定へ戻すこと。
+    public List<TagDto> StubTagDictionary { get; set; } = [new(Guid.NewGuid(), "経理", 3)];
+    public bool TagDictionaryFetched { get; set; }
+    public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
     // FR-05 (SC-03): スコープ解決が返す許可フィルタ。既定は空（＝条件なしで全件許可）。SC-03 の
     // 属性不一致 → 404 秘匿を検証する際に非空へ差し替える。
     public List<AttributeFilter> ScopeFilters { get; set; } = [];
@@ -451,6 +457,17 @@ public class BffTestFactory : WebApplicationFactory<Program>
         {
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var method = request.Method;
+
+            // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152）。
+            // BFF は管理者・運用者のときだけここを呼ぶ。**呼ばれたこと自体を観測する**
+            // （一般利用者のとき呼んでいないことを固定するため）。
+            if (path == "/tags")
+            {
+                owner.TagDictionaryFetched = true;
+                if (owner.TagDictionaryStatusCode != HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(owner.TagDictionaryStatusCode));
+                return Ok(new TagDictionaryResponse(owner.StubTagDictionary));
+            }
 
             if (path.EndsWith("/versions", StringComparison.Ordinal))
                 return Ok(owner.StubVersions);

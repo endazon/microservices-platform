@@ -30,13 +30,39 @@ export interface AttributeValuesRequest {
 }
 
 /**
+ * FR-09, SC-05, SC-09（#634 / IADR-0152 決定 2）: 辞書のタグ 1 件。
+ * `usageCount` は**現行版の文書の件数**である。**版履歴は数えない**（append-only で付け替えられず、
+ * 数えると一度でも使われたタグを永久に削除できなくなる）。**アーカイブ済みの文書は数える**
+ * （アーカイブ済みでもタグは付け替えられる）。
+ */
+export interface TagDto {
+  /** 識別子。**改名で変わらない**（SC-09 の「改名は既存文書へ追随する」の土台）。 */
+  id: string;
+  /** 表示名。改名で変わるのはこちらだけである。 */
+  name: string;
+  usageCount: number;
+}
+
+/**
+ * FR-09, SC-05, SC-09（#634）: タグ辞書の値集合。**一般利用者へは返さない** ——
+ * 辞書を丸ごと返すと権限外の文書に固有の値からその存在が推測できる（ADR-0043 決定 1）。
+ */
+export interface TagDictionaryResponse {
+  tags: TagDto[];
+}
+
+/**
  * FR-04, SC-01, SC-08（ADR-0043 決定 2 / #540）: 権限内の属性値。
- * **件数のフィールドを持たない。** 件数は値集合そのものより漏洩力が強いため返さない。
- * **#542 がシステム管理者スコープの使用件数を足すときは、管理者スコープ専用の別フィールド**
- * として足す（一般利用者の応答形を変えない。IADR-0151 決定 4）。
+ * **`values` は件数を持たない。** 件数は値集合そのものより漏洩力が強いため一般利用者へ返さない。
+ * **［#634］管理者スコープの辞書は `dictionary` として足した**（IADR-0151 決定 4 が用意した拡張点。
+ * IADR-0152 決定 3）。**一般利用者には常に `null`** で、`values` の形は #540 から変わらない。
+ * 件数が載るのは `dictionary` の中だけである —— ADR-0043 決定 2 の制限は**一般利用者に対するもの**で、
+ * 辞書の全体を見てよい管理者には当たらない。
  */
 export interface AttributeValuesResponse {
   values: string[];
+  /** FR-09, SC-05, SC-09（#634）: タグ辞書。管理者・運用者かつ `key` が `tags` のときだけ入る。 */
+  dictionary?: TagDictionaryResponse | null;
 }
 
 export type SearchResultDtoAttributes = {[key: string]: string};

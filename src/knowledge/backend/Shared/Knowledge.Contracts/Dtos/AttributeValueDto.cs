@@ -22,9 +22,19 @@ public record AttributeValuesRequest(
 // **件数は値集合そのものより漏洩力が強い**。実装は Qdrant の facet（件数つき）で数えるが、
 // **件数はサービス内で捨てる**。
 //
-// #542 がシステム管理者スコープ（値集合・使用件数・追加・改名・削除）を**同じ口へ**足すときは、
+// #542（→ #634）がシステム管理者スコープを**同じ口へ**足すときは、
 // **管理者スコープ専用の別フィールド**として足す（一般利用者の応答形を変えない。IADR-0151 決定 4）。
-public record AttributeValuesResponse(List<string> Values);
+//
+// **［2026-08-09 / #634］その拡張点を実際に使った。** `Dictionary` を足している——
+// **一般利用者には常に `null`** であり、`Values` の形は #540 から変わっていない。
+// **件数が載るのは `Dictionary` の中だけである**（ADR-0043 決定 2 の「件数を返さない」は
+// **一般利用者に対する制限**である。理由が「見えない文書が N 件ある」ことの推測を封じることだからで、
+// 辞書の全体を見てよい管理者には当たらない。IADR-0152 決定 3）。
+public record AttributeValuesResponse(
+    List<string> Values,
+    // FR-09, SC-05, SC-09, #634: 管理者スコープの辞書（値集合 ＋ 使用件数）。
+    // **一般利用者には `null`。** 既定値ありのメンバー追加なので契約上は破壊的変更ではない（IADR-0122 決定 2）。
+    TagDictionaryResponse? Dictionary = null);
 
 // FR-04, SC-01, SC-08, #540: 引ける種別。
 // enum ではなく文字列 + const で持つ（IADR-0131 決定 5。SearchModes / SearchSorts と同じ作法）。

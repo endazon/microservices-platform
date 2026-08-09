@@ -105,7 +105,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 | メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
 | --- | --- | --- | --- | --- |
-| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043） | FR-04 / FR-05 / SC-01 / SC-08 | `useBffAttributeValues` |
+| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（[[IADR-0044]] 多層防御） | FR-04 / FR-05 / FR-09 / SC-01 / SC-05 / SC-08 / SC-09 | `useBffAttributeValues` |
 | POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
 | POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
