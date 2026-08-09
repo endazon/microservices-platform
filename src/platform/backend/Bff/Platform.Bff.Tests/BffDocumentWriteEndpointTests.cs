@@ -5,9 +5,14 @@ using System.Net.Http.Json;
 
 namespace Platform.Bff.Tests;
 
-// FR-06, UC-03, SC-05, IADR-0041: /bff/documents の書き込み（作成・更新・メタ更新・公開・アーカイブ・削除）が
-// 管理者・運用者に限定されること、スコープ外文書の変更は 404 秘匿されること、検証 400・楽観ロック競合 409 を
+// FR-06, UC-03, SC-05, IADR-0041: /bff/documents の書き込み（作成・更新・公開・アーカイブ・削除）が
+// **管理者限定**であること、スコープ外文書の変更は 404 秘匿されること、検証 400・楽観ロック競合 409 を
 // 透過することを検証する。各テストはスタブ状態を変えるため直列（共有 fixture を汚さない）。
+//
+// **［#629］「管理者・運用者」から「管理者限定」へ狭めた。** 計画 §SC-05（裁定 Q19）が
+// **閲覧は管理者・運用者／破壊的操作は管理者限定**と定めており、実装だけが運用者にも開いていた。
+// **後段（`DocumentEndpoints`）にも同じ制限がある**（[[IADR-0044]] の多層防御）ので、
+// **両側を別々のテストが押さえる** —— 片側だけ直すと BFF 迂回で通るか、画面だけ 403 になる。
 public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
@@ -40,6 +45,49 @@ public class BffDocumentWriteEndpointTests : IClassFixture<BffTestFactory>
         var resp = await client.PostAsJsonAsync("/bff/documents", new { title = "x" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // ── #629: 運用者は 5 口すべてで 403（受け入れ基準 2）───────────────────────
+    //
+    // **`Create_AsNonPrivilegedRole_IsForbidden` では代わりにならない** ——
+    // あちらは `viewer` でグループ既定を検査しており、**グループ既定は据え置いた**ので
+    // `AdminOnly` を 1 つも積まなくても緑になる。**運用者で引くことがこの作業の検査である。**
+    [Theory]
+    [InlineData("POST", "/bff/documents")]
+    [InlineData("PUT", "/bff/documents/{id}")]
+    [InlineData("POST", "/bff/documents/{id}/publish")]
+    [InlineData("POST", "/bff/documents/{id}/archive")]
+    [InlineData("DELETE", "/bff/documents/{id}")]
+    public async Task Write_AsOperator_IsForbidden(string method, string template)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+
+        var path = template.Replace("{id}", BffTestFactory.StubDocumentId.ToString());
+        using var req = new HttpRequestMessage(new HttpMethod(method), path)
+        {
+            Content = JsonContent.Create(new { title = "x" })
+        };
+        var resp = await client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // 受け入れ基準 4（対）: 運用者の**閲覧は従来どおり**塞がれていない（Q19）。
+    // これが無いと、読み取りグループまで狭めてしまっても上のテストは緑のまま通る。
+    [Theory]
+    [InlineData("/bff/documents")]
+    [InlineData("/bff/documents/{id}")]
+    [InlineData("/bff/documents/{id}/versions")]
+    [InlineData("/bff/documents/{id}/content")]
+    public async Task Read_AsOperator_IsStillAllowed(string template)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+
+        var resp = await client.GetAsync(template.Replace("{id}", BffTestFactory.StubDocumentId.ToString()));
+
+        resp.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
     }
 
     [Fact]

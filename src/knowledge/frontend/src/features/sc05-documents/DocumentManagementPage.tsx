@@ -14,6 +14,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { ApiError } from '@foundation/api/ApiError';
+import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { CONFIDENTIALITY_KEY } from '../abac/confidentiality';
 import { DocumentForm } from './DocumentForm';
@@ -67,6 +68,14 @@ export function DocumentManagementPage() {
     delete: remove,
   };
   const commandPending = publish.isPending || archive.isPending || remove.isPending;
+
+  // FR-06, UC-03, SC-05（#629）: 計画 §SC-05「破壊的操作は管理者限定」（裁定 Q19）。
+  // **本画面のボタンは 5 つとも書き込みなので、運用者には 1 つも出さない**
+  // （＋新規登録・編集・公開・アーカイブ・削除。公開／アーカイブを含める根拠は
+  // 作業仕様書 §判断 1）。押しても 403 になるボタンを置かない（[[IADR-0127]] 決定 1）。
+  // **実効境界はサーバ側**（`/bff/documents` と後段の `AdminOnly`）であり、ここは表示制御にすぎない
+  // （[[IADR-0039]] 決定 2）。**閲覧（一覧・SC-03 への詳細リンク）は運用者にも残す。**
+  const canWrite = useHasAnyRole(PlatformRole.Admin);
 
   const items = documents.data ?? [];
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDocumentActions()` の
@@ -123,16 +132,24 @@ export function DocumentManagementPage() {
           <h1 className="text-lg font-semibold text-[--color-fg]">
             <Trans>文書一覧</Trans>
           </h1>
-          <Button
-            type="button"
-            variant="primary"
-            onClick={() => {
-              beginOperation();
-              setEditing(null);
-            }}
-          >
-            <Trans>＋ 新規登録</Trans>
-          </Button>
+          {/* 押しても 403 になるボタンを置かない（#502 が確立した規則・[[IADR-0127]] 決定 1）。
+              無言で消すと「何もできない壊れた画面」に見えるので、理由の文言を残す。 */}
+          {canWrite ? (
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => {
+                beginOperation();
+                setEditing(null);
+              }}
+            >
+              <Trans>＋ 新規登録</Trans>
+            </Button>
+          ) : (
+            <span className="text-xs text-[--color-fg-muted]">
+              <Trans>文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます</Trans>
+            </span>
+          )}
         </div>
 
         {notice && (
@@ -188,9 +205,13 @@ export function DocumentManagementPage() {
                   <TableHeaderCell>
                     <Trans>版</Trans>
                   </TableHeaderCell>
-                  <TableHeaderCell>
-                    <Trans>操作</Trans>
-                  </TableHeaderCell>
+                  {/* #629: 運用者には操作が 1 つも無いので、列ごと出さない
+                      （空の「操作」列が並ぶと、押せる何かがあるように読める）。 */}
+                  {canWrite && (
+                    <TableHeaderCell>
+                      <Trans>操作</Trans>
+                    </TableHeaderCell>
+                  )}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -199,6 +220,7 @@ export function DocumentManagementPage() {
                     key={doc.id}
                     doc={doc}
                     busy={commandPending}
+                    canWrite={canWrite}
                     onEdit={() => {
                       beginOperation();
                       setEditing(doc);
@@ -211,16 +233,19 @@ export function DocumentManagementPage() {
           ))}
       </div>
 
-      <div className="w-full lg:max-w-md">
-        {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
-        <DocumentForm
-          key={editing?.id ?? 'new'}
-          editing={editing}
-          submitting={create.isPending || update.isPending}
-          onSubmit={save}
-          onCancel={() => setEditing(null)}
-        />
-      </div>
+      {/* #629: 入力フォームそのものが登録・編集の口なので、運用者には出さない。 */}
+      {canWrite && (
+        <div className="w-full lg:max-w-md">
+          {/* 編集対象が変わったらフォームを作り直す（前の文書の入力値を持ち越さない）。 */}
+          <DocumentForm
+            key={editing?.id ?? 'new'}
+            editing={editing}
+            submitting={create.isPending || update.isPending}
+            onSubmit={save}
+            onCancel={() => setEditing(null)}
+          />
+        </div>
+      )}
     </section>
   );
 }
@@ -228,11 +253,13 @@ export function DocumentManagementPage() {
 function DocumentRow({
   doc,
   busy,
+  canWrite,
   onEdit,
   onCommand,
 }: {
   doc: DocumentDto;
   busy: boolean;
+  canWrite: boolean;
   onEdit: () => void;
   onCommand: (id: string, kind: DocumentCommand, message: string) => void;
 }) {
@@ -253,42 +280,45 @@ function DocumentRow({
       </TableCell>
       <TableCell>{confidentiality ? <Tag tone="neutral">{confidentiality}</Tag> : '—'}</TableCell>
       <TableCell>v{doc.version}</TableCell>
-      <TableCell>
-        <span className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" onClick={onEdit}>
-            <Trans>編集</Trans>
-          </Button>
-          {canPublish(doc.status) && (
+      {/* #629: 見出しと同じ条件で列ごと落とす（列数がずれると表が壊れる）。 */}
+      {!canWrite ? null : (
+        <TableCell>
+          <span className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={onEdit}>
+              <Trans>編集</Trans>
+            </Button>
+            {canPublish(doc.status) && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={() => onCommand(doc.id, 'publish', t`文書を公開しました。`)}
+              >
+                <Trans>公開</Trans>
+              </Button>
+            )}
+            {doc.status !== 'archived' && (
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy}
+                onClick={() => onCommand(doc.id, 'archive', t`文書をアーカイブしました。`)}
+              >
+                <Trans>アーカイブ</Trans>
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
+              variant="danger"
               disabled={busy}
-              onClick={() => onCommand(doc.id, 'publish', t`文書を公開しました。`)}
+              onClick={() => onCommand(doc.id, 'delete', t`文書を削除しました。`)}
             >
-              <Trans>公開</Trans>
+              <Trans>削除</Trans>
             </Button>
-          )}
-          {doc.status !== 'archived' && (
-            <Button
-              type="button"
-              size="sm"
-              disabled={busy}
-              onClick={() => onCommand(doc.id, 'archive', t`文書をアーカイブしました。`)}
-            >
-              <Trans>アーカイブ</Trans>
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="danger"
-            disabled={busy}
-            onClick={() => onCommand(doc.id, 'delete', t`文書を削除しました。`)}
-          >
-            <Trans>削除</Trans>
-          </Button>
-        </span>
-      </TableCell>
+          </span>
+        </TableCell>
+      )}
     </TableRow>
   );
 }

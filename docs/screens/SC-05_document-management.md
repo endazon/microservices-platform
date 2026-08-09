@@ -54,12 +54,25 @@ related_specs:
 （05_screens §SC-05「版ごとの履歴パネルは SC-03 文書詳細側に置く。本画面は一覧の版列で現行版を示す」）。
 
 - ルート: `/admin/documents`（05_screens §共通シェル「ルートパス」）
-- アクセス: **`platform-admin` または `platform-operator`**（[[IADR-0039]] / [[IADR-0041]]）。
+- アクセス（**［2026-08-09 / #629］裁定を受けて確定した**）: **閲覧は `platform-admin` または
+  `platform-operator`／破壊的操作は `platform-admin` 限定**（計画 §SC-05「管理系 3 画面の閲覧ロール」・裁定 **Q19**）。
   権限外は `RequireRole` が `NotFound` を描き、画面の存在を示さない（[[IADR-0009]]）。
-  計画は §共通シェル に加え、**§SC-05（`01_screens.md:234`。「モックの『管理』バッジ準拠」と根拠つき）**・
-  **§SC-06（`:242`）**・**§SC-07（`:250`）** の各節でも独立して「管理者ロール限定」と定めるが、
-  operator を含める既存決定（[[IADR-0039]]）を据え置いた。**どちらが正かは計画側の裁定を要する**
-  （planning#198 提案 8。差異と根拠は [作業仕様書 §計画書との差異](../specs/20260805_issue-503_sc05-08-admin-screens.md)）。
+  - **閲覧**（一覧・機密区分・版列・SC-03 への導線）は運用者にも開く。
+  - **破壊的操作**（登録・編集・公開・アーカイブ・削除の 5 つ）は管理者限定である。
+    **本画面のボタンは 5 つとも書き込みなので、運用者にはボタンも「操作」列も出さない**
+    （押しても 403 になるボタンを置かない。[[IADR-0127]] 決定 1）。
+    **実効境界はサーバ側**（`/bff/documents` と後段 `DocumentEndpoints` の `AdminOnly`。
+    [[IADR-0044]] の多層防御）であり、画面は表示制御にすぎない（[[IADR-0039]] 決定 2）。
+  - **`publish` / `archive` は計画の破壊的操作の列挙に名前が無い**が、planning#299 の基準
+    （「実行系だが破壊的ではない」操作だけを運用者へ開く）を当てはめて**管理者限定と判断した**。
+    根拠は [作業仕様書 §判断 1](../specs/20260809_issue-629_document-write-admin-only.md)。
+  - **従前は「`platform-admin` または `platform-operator`」で書き込みまで開いており、計画との乖離だった**
+    （planning#198 提案 8 の「どちらが正かは計画側の裁定を要する」は **Q19 で決着した**）。
+  - **★ 後段 `DocumentService` の `POST /documents` だけは admin ＋ operator のまま据え置いている。**
+    **本画面には影響しない** —— 画面は `/bff/documents` を通り、そちらは `AdminOnly` だからである。
+    据え置きの理由は、この口を **`ai-stock-trading` の KB 書き込みが BFF を経由せず直接叩いており**、
+    その service-account が `platform-operator` しか持たないこと（[[IADR-0075]]）である。
+    **機械クライアントの扱いは計画へ裁定を依頼中**（作業仕様書 §追補 1）。
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
@@ -123,11 +136,14 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
 | 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`**（#519） | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
-| 登録 | `POST /bff/documents` | `useMutation` | admin / operator ＋ スコープ解決 | `DocumentDto`（201） |
+| 登録 | `POST /bff/documents` | `useMutation` | **admin のみ**（#629）＋ スコープ解決 | `DocumentDto`（201） |
 | 更新 | `PUT /bff/documents/{id}` | `useMutation` | 同上。**版不一致は 409** | 204 |
 | 公開 | `POST /bff/documents/{id}/publish` | `useMutation` | 同上。不正遷移は 409 | 204 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | `useMutation` | 同上 | 204 |
 | 削除 | `DELETE /bff/documents/{id}` | `useMutation` | 同上 | 204 |
+
+> **［2026-08-09 / #629］書き込み 5 口は `AdminOnly` になった**（§アクセス）。**運用者は 403 である。**
+> 一覧（読み取り）は従来どおり認証のみ＋ABAC スコープで、**狭めていない**。
 
 - **orval 生成フックで呼ぶ**（#506 で契約が揃い、**#519** で載せ替えた。[[IADR-0135]] 決定 1）。
   状態遷移は 1 本の分岐ではなく **`useBffDocumentPublish` / `useBffDocumentArchive` / `useBffDocumentDelete`

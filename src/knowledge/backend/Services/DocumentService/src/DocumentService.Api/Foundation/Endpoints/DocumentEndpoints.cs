@@ -18,9 +18,15 @@ public static class DocumentEndpoints
         // 読み取りの機密制御は取得段の ABAC（IADR-0012）が担う。
         var g = app.MapGroup("/documents").WithTags("Documents");
 
-        // FR-06, FR-09, UC-03, IADR-0044: 多層防御。文書の書き込み（作成・更新・メタデータ・公開・
-        // アーカイブ・削除）は管理者・運用者に限定する（[[IADR-0041]] の BFF write ゲートと同一要件）。
-        // BFF 迂回の直接呼び出しでも認可を実効化する（サービスが最終防衛線）。利用者トークンは BFF が伝播する。
+        // FR-06, FR-09, UC-03, IADR-0044: 多層防御。BFF 迂回の直接呼び出しでも認可を実効化する
+        // （サービスが最終防衛線）。利用者トークンは BFF が伝播する。
+        //
+        // **［#629］このグループ既定は「閲覧の下限」であり、書き込みの実効境界ではない。**
+        // 計画 §SC-05「管理系 3 画面の閲覧ロール」（裁定 Q19）は
+        // **閲覧を管理者・運用者へ開き、破壊的操作は管理者限定を維持する**と定めている。
+        // したがって**個々の書き込み口へ `AdminOnly` を積む**（AND 合成で実効 admin のみ）。
+        // **既定を `AdminOnly` へ置き換えないのは、この行が閲覧の下限を表しているからである**
+        // （[[IADR-0128]] 決定 1 が #501 で確立し、#628 が踏襲した形）。
         var write = app.MapGroup("/documents").WithTags("Documents")
             .RequireAuthorization(p => p.RequireRole(
                 PlatformAuthPolicies.AdminRole,
@@ -42,6 +48,23 @@ public static class DocumentEndpoints
             return Results.Ok(ToDto(doc, await TagResolver.NamesAsync(db)));
         });
 
+        // FR-06, UC-03, SC-05（#629）: **ここだけ `AdminOnly` を積んでいない。据え置きである。**
+        //
+        // 計画の列挙は「登録」を破壊的操作に含めるが、**この口は人間の画面だけの口ではない**——
+        // `ai-stock-trading` の KB 書き込み（AST/FR-08）が `HttpKnowledgeBaseWriter` から
+        // **BFF を経由せず直接**叩いており、その service-account
+        // （`ai-stock-trading-kb-writer`）は **`platform-operator` しか持たない**。
+        // [[IADR-0075]] が最小権限を理由に `platform-admin` の付与を**明示的に却下している**ためである。
+        //
+        // したがって `AdminOnly` を積むと **AST の KB 書き込みが 403 で止まる**（実測で確認）。
+        // 計画の Q19 は SC-05 の**画面と人間のロール**についての裁定であり、
+        // **機械クライアントの扱いを述べていない**。実装側で決めずに計画へ裁定を依頼した
+        // （環流記録 `feedback/20260809_document-write-machine-client.md`。
+        // 計画側へは PR planning#306 で伝達済み・**裁定待ち**）。
+        //
+        // **人間の運用者に対する実効境界は BFF 側で閉じている**——`/bff/documents` の `POST` は
+        // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
+        // **裁定が出たらここを追随させる。**
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
@@ -70,6 +93,7 @@ public static class DocumentEndpoints
             return Results.Created($"/documents/{doc.Id}", ToDto(doc, createNames));
         });
 
+        // FR-06, UC-03, SC-05（#629）: 編集は**管理者限定**（計画の列挙「文書の編集」）。
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
@@ -103,9 +127,11 @@ public static class DocumentEndpoints
             var updateNames = await TagResolver.NamesAsync(db);
             await bus.Publish(ToEvent(doc, updateNames));
             return Results.Ok(ToDto(doc, updateNames));
-        });
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // FR-06, UC-03: メタデータ（属性・タグ）のみ更新する。
+        // FR-06, UC-03, SC-05（#629）: メタデータ更新も**管理者限定**（計画の列挙「更新」「文書の編集」）。
+        // **BFF にこの口は無い**（実測。射程は「狭める」なので、ここで足さない）。
         write.MapPatch("/{id:guid}/metadata", async (Guid id, UpdateMetadataRequest req,
             DocumentDbContext db, IPublishEndpoint bus) =>
         {
@@ -132,9 +158,18 @@ public static class DocumentEndpoints
             var metaNames = await TagResolver.NamesAsync(db);
             await bus.Publish(ToEvent(doc, metaNames));
             return Results.Ok(ToDto(doc, metaNames));
-        });
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // FR-06, UC-03, SC-05: 文書を公開する。アーカイブ済みからの再公開は不正遷移として 409 で拒否する。
+        // FR-06, UC-03, SC-05（#629）: 公開は**管理者限定**。
+        //
+        // **計画の破壊的操作の列挙に名前が無い**ため、planning#299 が新設した基準を当てはめた。
+        // 同基準の例外（運用者へ開く）は **2 条件を同時に満たすとき**であり、
+        // 唯一の適用例である手動同期（SC-06）は (a) 既存データを壊さない ＋
+        // (b) **運用者が SC-10 で異常に気づいたその場で一次対応できる**の両方を満たしていた。
+        // **公開は (b) を満たさない** —— 異常への一次対応ではなく、公開範囲を決める統制行為である。
+        // **計画が名指しした例外は手動同期ただ 1 つ**なので、名指しの無い操作の既定は一般則
+        // （破壊的操作は管理者限定）に従う。判断の全文は作業仕様書 §判断 1。
         write.MapPost("/{id:guid}/publish", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
@@ -152,10 +187,13 @@ public static class DocumentEndpoints
             var names = await TagResolver.NamesAsync(db);
             await bus.Publish(ToEvent(doc, names));
             return Results.Ok(ToDto(doc, names));
-        });
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // FR-06, UC-03, Issue #88: 文書をアーカイブ（非公開化）する。下流の Wiki.js 同期が
         // status=archived を受けてページを非公開化・メタデータ Archived 化する。
+        // FR-06, UC-03, SC-05（#629）: アーカイブは**管理者限定**。公開と同じ基準で分類した
+        // （作業仕様書 §判断 1）。**アーカイブは (a) すら満たさない** —— 下流の Wiki.js 同期が
+        // ページを非公開化するため、**可視性を落とす**。「既存データを壊さない」とは言い切れない。
         write.MapPost("/{id:guid}/archive", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
@@ -166,7 +204,7 @@ public static class DocumentEndpoints
             var names = await TagResolver.NamesAsync(db);
             await bus.Publish(ToEvent(doc, names));
             return Results.Ok(ToDto(doc, names));
-        });
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         // FR-06, UC-03: 版履歴一覧（新しい順）。
         g.MapGet("/{id:guid}/versions", async (Guid id, DocumentDbContext db) =>
@@ -192,6 +230,7 @@ public static class DocumentEndpoints
             return Results.Ok(ToVersionDto(snapshot, await TagResolver.NamesAsync(db)));
         });
 
+        // FR-06, UC-03, SC-05（#629）: 削除は**管理者限定**（計画の列挙「文書の削除」）。
         write.MapDelete("/{id:guid}", async (Guid id, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
@@ -202,7 +241,7 @@ public static class DocumentEndpoints
             // Issue #88: 削除を下流（Wiki.js 同期）へ伝播し、外部システムの実体を撤去する。
             await bus.Publish(new DocumentDeleted(id, DateTimeOffset.UtcNow));
             return Results.NoContent();
-        });
+        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
         return app;
     }

@@ -185,7 +185,7 @@ export const getBffDocumentCreateUrl = () => {
 /**
  * IADR-0047: 後段は機密区分（必須属性）を検証し、欠落・未知値を 400 で拒否する（最終防衛線）。
  * タイトル未指定も 400。許可ポリシーが無い呼び出し元は **403**（deny-by-default で作成不可）。
- * @summary FR-06, UC-03, SC-05: 文書作成（管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書作成（管理者のみ。#629）
  */
 export const bffDocumentCreate = async (createDocumentRequest: CreateDocumentRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentCreateResponse> => {
 
@@ -234,7 +234,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentCreateMutationError = ValidationProblemDetails | void
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書作成（管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書作成（管理者のみ。#629）
  */
 export const useBffDocumentCreate = <TError = ValidationProblemDetails | void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentCreate>>, TError,{data: CreateDocumentRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -391,7 +391,7 @@ export const getBffDocumentUpdateUrl = (id: string,) => {
 /**
  * `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
  * 409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
- * @summary FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）
  */
 export const bffDocumentUpdate = async (id: string,
     updateDocumentRequest: UpdateDocumentRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentUpdateResponse> => {
@@ -441,7 +441,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentUpdateMutationError = ValidationProblemDetails | void | VersionConflictDto
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）
  */
 export const useBffDocumentUpdate = <TError = ValidationProblemDetails | void | VersionConflictDto,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentUpdate>>, TError,{id: string;data: UpdateDocumentRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -492,7 +492,7 @@ export const getBffDocumentDeleteUrl = (id: string,) => {
 
 /**
  * 削除は下流（Wiki.js 同期）へ伝播し、外部システムの実体も撤去する。
- * @summary FR-06, UC-03, SC-05: 文書削除（管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書削除（管理者のみ。#629）
  */
 export const bffDocumentDelete = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentDeleteResponse> => {
 
@@ -541,7 +541,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentDeleteMutationError = void
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書削除（管理者・運用者のみ）
+ * @summary FR-06, UC-03, SC-05: 文書削除（管理者のみ。#629）
  */
 export const useBffDocumentDelete = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentDelete>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -790,7 +790,7 @@ export const getBffDocumentPublishUrl = (id: string,) => {
 /**
  * アーカイブ済みからの再公開は不正遷移として **409** で拒否する。
  * 409 の本文は RFC7807 ではなく `{ error: "invalid_transition", from, to }`。
- * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ）
+ * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）
  */
 export const bffDocumentPublish = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentPublishResponse> => {
 
@@ -839,7 +839,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentPublishMutationError = void | InvalidTransitionDto
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ）
+ * @summary FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）
  */
 export const useBffDocumentPublish = <TError = void | InvalidTransitionDto,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentPublish>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
@@ -890,7 +890,7 @@ export const getBffDocumentArchiveUrl = (id: string,) => {
 
 /**
  * status=archived の DocumentUpdated を発行し、下流の Wiki.js 同期がページを非公開化する。
- * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する
+ * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）
  */
 export const bffDocumentArchive = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentArchiveResponse> => {
 
@@ -939,7 +939,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type BffDocumentArchiveMutationError = void
 
     /**
- * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する
+ * @summary FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）
  */
 export const useBffDocumentArchive = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffDocumentArchive>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}

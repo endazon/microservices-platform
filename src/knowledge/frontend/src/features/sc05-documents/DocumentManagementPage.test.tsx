@@ -304,6 +304,55 @@ describe('DocumentManagementPage (SC-05)', () => {
     expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
+  // ── #629: 破壊的操作は管理者限定（計画 §SC-05・裁定 Q19）───────────────────
+  //
+  // **実効境界はサーバ側**（`/bff/documents` と後段の `AdminOnly`）であり、ここは表示制御である
+  // （[[IADR-0039]] 決定 2）。それでも固定するのは、**押しても 403 になるボタンを置かない**
+  // という規則（[[IADR-0127]] 決定 1・#502）が守られていることを見るためである。
+
+  // 受け入れ基準 5: 運用者へ書き込みの導線を 1 つも出さない（5 つとも書き込みである）。
+  it('offers no write action to an operator', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    await renderPage(['platform-operator']);
+
+    // まず「見えるはずの条件」を確かめる——一覧が出ていないと、
+    // 下の queryBy が**単に画面が描かれていないだけ**で緑になる。
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toBeInTheDocument();
+
+    for (const name of ['＋ 新規登録', '編集', '公開', 'アーカイブ', '削除']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole('columnheader', { name: '操作' })).not.toBeInTheDocument();
+    // 無言で消さない（「何もできない壊れた画面」に見せない）。
+    expect(
+      screen.getByText('文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます'),
+    ).toBeInTheDocument();
+  });
+
+  // 受け入れ基準 4（対）: **閲覧は狭めない**。運用者にも一覧と SC-03 への導線は残る。
+  it('still lets an operator read the list and reach SC-03', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    await renderPage(['platform-operator']);
+
+    expect(await screen.findByRole('link', { name: '経費精算規程' })).toHaveAttribute(
+      'href',
+      `/docs/${DOC_ID}`,
+    );
+    expect(screen.getByRole('columnheader', { name: '機密区分' })).toBeInTheDocument();
+  });
+
+  // 受け入れ基準 6（対）: 管理者には従来どおり出す（**狭めすぎていない**）。
+  // これが無いと、全員から消しても上の 2 件は緑のまま通る。
+  it('still offers every write action to an administrator', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([DRAFT_DOC]));
+    await renderPage(['platform-admin']);
+
+    for (const name of ['＋ 新規登録', '編集', '公開', 'アーカイブ', '削除']) {
+      expect(await screen.findByRole('button', { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('columnheader', { name: '操作' })).toBeInTheDocument();
+  });
+
   // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #6）。
   // まず「見えるはずの条件」——一覧が描画され、機密区分と版の列が出ている状態——を確かめてから、
   // 契約に無い「変換」列が無いことを見る。

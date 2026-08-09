@@ -55,6 +55,22 @@ mTLS/NetworkPolicy（[[IADR-0017]]／IADR-0026）は第一防御だが、アプ�
    - `DocumentService`: **書き込み**（POST/PUT/PATCH/metadata/publish/archive/DELETE）に admin/operator を要求
      （[[IADR-0041]] の BFF write ゲートと一致）。**読み取り**（GET 一覧/個別/版）は一般利用者が文書を
      閲覧するため据え置き（ロールで塞がない）。
+
+     > **［2026-08-09 追記 / #629］書き込みのうち 5 口を管理者限定へ狭めた。**
+     > 計画 §SC-05「管理系 3 画面の閲覧ロール」（裁定 Q19）が**破壊的操作は管理者限定**と定めており、
+     > 本決定の admin/operator が計画より広かったためである。
+     > **PUT / PATCH metadata / publish / archive / DELETE の 5 口へ `AdminOnly` を積んだ**
+     > （グループ既定は閲覧の下限として残し、AND 合成で実効 admin のみ。[[IADR-0128]] 決定 1 の形）。
+     >
+     > **★ `POST /documents` だけは admin/operator のまま据え置いた。**
+     > この口は人間の画面だけの口ではなく、**`ai-stock-trading` の KB 書き込み（AST/FR-08）が
+     > BFF を経由せず直接叩いている**。その service-account は `platform-operator` しか持たない
+     > （[[IADR-0075]] が最小権限を理由に `platform-admin` の付与を明示的に却下している）ため、
+     > 狭めると **AST の KB 書き込みが 403 で止まる**。計画の Q19 は**画面と人間のロール**の裁定であり
+     > 機械クライアントを述べていないので、**実装側で決めずに計画へ裁定を依頼した**
+     > （環流記録 [20260809_document-write-machine-client.md](../../feedback/20260809_document-write-machine-client.md)。
+     > 計画側へは PR planning#306 で伝達済み・**裁定待ち**）。
+     > **人間に対する実効境界は BFF 側で閉じている**（`/bff/documents` の `POST` は `AdminOnly`）。
 2. **サービス間内部呼び出しは対象外**とする。`AuthorizationService` `/authz/scope`（ABAC スコープ照会）は
    RetrievalService/AiAnalysisService が内部呼び出しするため無認可を維持（[[IADR-0017]] と整合）。
    管理系 `/authz`（属性辞書・ポリシー）は既に AdminOnly。

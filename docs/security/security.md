@@ -15,7 +15,7 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-07-19
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -59,10 +59,15 @@ related_adrs:
   （`IClaimsTransformation`）でトークン検証後に展開し、`RequireRole("platform-admin")` を成立させる。展開ロジックは
   単体テスト（`KeycloakRolesClaimsTransformationTests`）で検証。不正 JSON は fail-closed（ロール無し）で扱う。
 - **認可（後段サービスの多層防御、FR-09, IADR-0044）**: 管理系画面の認可は BFF 集約点でロールを強制する
-  （データソース／文書書き込み＝`platform-admin` または `platform-operator`。IADR-0039／IADR-0041）が、
+  （**［2026-08-09 / #628・#629］データソースの登録・無効化と、文書書き込みのうち 5 口は
+  `platform-admin` 限定へ狭めた**。計画 §SC-05 の裁定 Q19「破壊的操作は管理者限定」に合わせたものである。
+  読み取りと手動同期は `platform-admin` または `platform-operator`。IADR-0039／IADR-0041）が、
   BFF 迂回のメッシュ内部直呼びに備え、**後段サービスにも同一のロール要件を二重化**する（サービスが最終防衛線）。
   - `DataSourceService` `/datasources`（一覧・登録・sync・無効化）: admin/operator 必須。
-  - `DocumentService` 書き込み（作成・更新・メタデータ・公開・アーカイブ・削除）: admin/operator 必須。
+  - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**（#629）。
+    **作成（`POST`）だけ admin/operator のまま据え置く** —— `ai-stock-trading` の KB 書き込みが
+    BFF を経由せず直接叩いており、その service-account は `platform-operator` しか持たないためである
+    （IADR-0075。計画へ裁定を依頼中）。**人間に対する境界は BFF 側（`AdminOnly`）で閉じている。**
     読み取り（GET）は一般利用者の文書閲覧のため据え置き（機密制御は取得段の ABAC が担う）。
   - 利用者トークンは BFF が後段へ伝播する（各 *BffEndpoints の `CreateForwardingClient`）。非権限は 403。
     否定テストは各サービスの `*AuthorizationTests` で検証。

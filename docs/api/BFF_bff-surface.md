@@ -114,14 +114,14 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/feedback/stats` | **端点認可なし**（**計画は運用者・管理者のみ＝権限外 403。是正は #521**。下記注） | FR-08 / SC-10 | `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin** | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | FR-06 / SC-05 | `useBffDocumentList` |
-| POST | `/bff/documents` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentCreate` |
+| POST | `/bff/documents` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentCreate` |
 | GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / SC-03 | `useBffDocumentDetail` |
-| PUT | `/bff/documents/{id}` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentUpdate` |
-| DELETE | `/bff/documents/{id}` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentDelete` |
+| PUT | `/bff/documents/{id}` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentUpdate` |
+| DELETE | `/bff/documents/{id}` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentDelete` |
 | GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / SC-03 | `useBffDocumentContent` |
 | GET | `/bff/documents/{id}/versions` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / UC-03 / SC-03 | `useBffDocumentVersions` |
-| POST | `/bff/documents/{id}/publish` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentPublish` |
-| POST | `/bff/documents/{id}/archive` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentArchive` |
+| POST | `/bff/documents/{id}/publish` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentPublish` |
+| POST | `/bff/documents/{id}/archive` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentArchive` |
 | GET | `/bff/datasources` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceList` |
 | POST | `/bff/datasources` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceCreate` |
 | GET | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceGet` |
