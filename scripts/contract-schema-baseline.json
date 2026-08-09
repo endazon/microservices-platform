@@ -904,6 +904,34 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.RenameTagRequest": {
+        "kind": "record",
+        "members": {
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.RenameTagResponse": {
+        "kind": "record",
+        "members": {
+          "RepublishedDocuments": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 1
+          },
+          "Tag": {
+            "source": "positional",
+            "type": "TagDto",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.SearchModes": {
         "kind": "class",
         "members": {

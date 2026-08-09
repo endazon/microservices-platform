@@ -47,7 +47,10 @@
       "AbacScopeTests",
       "AbacValidationTests",
       "AuthzManagementEndpointTests",
-      "KeycloakRolesClaimsTransformationTests"
+      "IngestTagFilterTests",
+      "KeycloakRolesClaimsTransformationTests",
+      "TagIdentityMigrationTests",
+      "TagIdentityTests"
     ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicContentBlockSanitizerTests",
