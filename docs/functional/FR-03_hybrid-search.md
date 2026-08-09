@@ -11,6 +11,11 @@ updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+related_specs:
+  - ../specs/20260809_issue-536_search-result-updated-at.md
+  - ../tests/FR-03_hybrid-search.md
+  - ../screens/SC-02_search-results.md
+  - ../adr/IADR-0149_search-result-updated-at-indexing.md
 ---
 
 # 機能仕様書: ハイブリッド検索

@@ -12,8 +12,10 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
   - ../specs/20260627_FR-02_ingestion-pipeline.md
+  - ../specs/20260809_issue-536_search-result-updated-at.md
   - ../tests/FR-02_ingestion.md
   - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
+  - ../adr/IADR-0149_search-result-updated-at-indexing.md
 related_adrs:
   - ADR-0003
   - ADR-0027
