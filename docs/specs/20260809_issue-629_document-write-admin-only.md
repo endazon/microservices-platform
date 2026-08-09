@@ -299,6 +299,11 @@ lines/statements を 90 → 91、branches を 86 → 87 へ引き上げた（fun
 
 ## 申し送り
 
+- **★ サービス側 `POST /documents` は裁定待ちの据え置きである**（§追補 1）。
+  環流記録は [`feedback/20260809_document-write-machine-client.md`](../../feedback/20260809_document-write-machine-client.md)、
+  計画側へは **PR planning#306 で伝達済み**。**案 A（統制の対象は人間の利用者と明記）なら実装は変更不要**、
+  案 C（機械にも適用）なら AST 側に代替経路が要る。**裁定が出たら
+  `Create_OperatorRole_IsStillAllowed_ForMachineClientUntilArbitration` ごと追随させる。**
 - **計画の破壊的操作の列挙に `publish` / `archive` の名前が無い。** 本作業は planning#299 の基準を
   当てはめて管理者限定と判断したが（§判断 1）、**基準の当てはめであって明文ではない**。
   `/plan-feedback` で「列挙へ明示的に加える（または例外として明記する）」を環流する。

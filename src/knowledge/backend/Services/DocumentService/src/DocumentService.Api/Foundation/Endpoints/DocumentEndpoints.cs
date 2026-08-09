@@ -59,7 +59,8 @@ public static class DocumentEndpoints
         // したがって `AdminOnly` を積むと **AST の KB 書き込みが 403 で止まる**（実測で確認）。
         // 計画の Q19 は SC-05 の**画面と人間のロール**についての裁定であり、
         // **機械クライアントの扱いを述べていない**。実装側で決めずに計画へ裁定を依頼した
-        // （環流記録 `20260809_document-write-machine-client.md`）。
+        // （環流記録 `feedback/20260809_document-write-machine-client.md`。
+        // 計画側へは PR planning#306 で伝達済み・**裁定待ち**）。
         //
         // **人間の運用者に対する実効境界は BFF 側で閉じている**——`/bff/documents` の `POST` は
         // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。

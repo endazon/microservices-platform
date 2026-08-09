@@ -78,12 +78,22 @@ SC-06 はデータソースの登録・一覧・同期・無効化を行う運�
    > 同型の逸脱が残っている**（グループ既定 admin ＋ operator のまま）。#628 の射程外であり、
    > **#629 として起票した**（[[IADR-0116]] 規約 4）。
    >
-   > > **［2026-08-09 追記 / #629］★ この逸脱は解消した。** SC-05 の 6 口（サービス側）と
-   > > 5 口（BFF 側。**`PATCH /{id}/metadata` に BFF の口は無い**——実測）へ `AdminOnly` を積み、
+   > > **［2026-08-09 追記 / #629］★ この逸脱は 1 口を除いて解消した。**
+   > > **BFF は書き込み 5 口すべて**、**サービス側は 6 口のうち 5 口**（`PUT` / `PATCH metadata` /
+   > > `publish` / `archive` / `DELETE`）へ `AdminOnly` を積み、
    > > 画面も 5 つのボタンを管理者だけに出すようにした。**閲覧は運用者に開いたままである。**
+   > > なお **`PATCH /{id}/metadata` に BFF の口は無い**（実測）。
    > > **`publish` / `archive` は計画の列挙に名前が無いが、planning#299 の基準を当てはめて
    > > 管理者限定と判断した**（作業仕様書 [20260809_issue-629_document-write-admin-only.md](../specs/20260809_issue-629_document-write-admin-only.md) §判断 1）。
-   > > **これで管理系 3 画面（SC-05 / SC-06 / SC-07）の同型の逸脱は残っていない。**
+   > >
+   > > **★ 残る 1 口はサービス側の `POST /documents` である（意図した据え置き）。**
+   > > `ai-stock-trading` の KB 書き込みが **BFF を経由せず本口を直接**叩いており、その service-account は
+   > > `platform-operator` しか持たない（[[IADR-0075]] が最小権限を理由に `platform-admin` を却下している）。
+   > > 狭めると **AST/FR-08 が 403 で止まる**ため、**計画へ裁定を依頼して据え置いた**
+   > > （環流記録 [20260809_document-write-machine-client.md](../../feedback/20260809_document-write-machine-client.md)）。
+   > > **人間に対する実効境界は BFF 側（`AdminOnly`）で閉じている。**
+   > >
+   > > したがって **SC-06 / SC-07 の同型の逸脱は残っていないが、SC-05 は `POST` 1 口が裁定待ちで残る。**
 2. **サーバ側（BFF）を実効境界とする。** `/bff/datasources/*` はグループ全体を `RequireRole(platform-admin, platform-operator)` で保護する（インラインポリシー。共有 `AuthExtensions` に新ポリシーを追加せず、BFF ローカルに宣言してサービス横断の副作用を避ける）。フロントは `RequireRole`（[[IADR-0035]]）でルート／ナビを出し分け、権限外は NotFound を描画して**画面の存在を示さない**（UI は表示制御専用）。
 3. **権限外は 403（無認証は 401）**とする。データソースは文書のような「存在自体の秘匿」対象ではなく（機密文書のタイトルが漏れる懸念が主眼の [[IADR-0009]] とは性質が異なる）、管理 API としては標準的な 403/401 が適切。画面の存在秘匿はフロントの `RequireRole`→NotFound で担保する。
 
