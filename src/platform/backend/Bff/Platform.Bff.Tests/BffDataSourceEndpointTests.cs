@@ -6,7 +6,9 @@ using System.Net.Http.Json;
 namespace Platform.Bff.Tests;
 
 // FR-01, FR-02, UC-04, SC-06, IADR-0039: /bff/datasources が DataSourceService へ集約し、
-// 管理者・運用者ロールに限定されること（権限外は 403・無認証は 401）、CRUD・同期を中継することを検証する。
+// **閲覧**が管理者・運用者ロールに限定されること（権限外は 403・無認証は 401）、CRUD・同期を中継すること、
+// **［#628］書き込み（登録・更新・無効化・削除）は管理者のみ**で運用者が 403 になることを検証する
+// （手動同期は破壊的操作に含めないので運用者にも開いたままである）。
 public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
 {
     private readonly BffTestFactory _factory;
