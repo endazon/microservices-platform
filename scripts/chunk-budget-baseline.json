@@ -6,6 +6,6 @@
     "vendor-query"
   ],
   "maxChunkBytes": 500000,
-  "initialTotalBytes": 583161,
+  "initialTotalBytes": 584416,
   "smallLazyChunks": 6
 }

@@ -60,11 +60,20 @@ const POLICIES = [
   },
 ];
 
-/** 一覧 2 本（属性・ポリシー）に応答を与え、書き込みは既定で成功させる。 */
+// FR-09, SC-09, #640: タグ辞書（値集合 ＋ 使用件数）。
+const TAGS = {
+  tags: [
+    { id: '11111111-2222-3333-4444-555555555555', name: '経理', usageCount: 3 },
+    { id: '22222222-3333-4444-5555-666666666666', name: '規程', usageCount: 0 },
+  ],
+};
+
+/** 一覧 3 本（属性・ポリシー・タグ辞書）に応答を与え、書き込みは既定で成功させる。 */
 function mockApi(
   overrides: {
     attributes?: unknown;
     policies?: unknown;
+    tags?: unknown;
     write?: () => Promise<unknown>;
   } = {},
 ) {
@@ -77,6 +86,8 @@ function mockApi(
       return overrides.write ? overrides.write() : noContent();
     }
     if (path === '/admin/authz/attributes') return pick(overrides.attributes ?? ATTRIBUTES);
+    // FR-09, SC-09, #640: タグ辞書（/bff/tags）。
+    if (path === '/tags') return pick(overrides.tags ?? TAGS);
     return pick(overrides.policies ?? POLICIES);
   });
 }
@@ -419,10 +430,9 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
 
   // ★ #535: dry-run の検証ボタンは**契約が着地したので描く**（裁定 Q23）。
   //
-  // **タグ辞書はまだ描かない。** BFF の書き込み口が無く、#640 として起票済みである。
-  // **1 つの `it` が 2 つの不在をまとめて主張していたので分けた**——
-  // 片方の契約が着地したときにもう片方まで巻き込んで書き換えることになり、
-  // 「なぜ落ちたのか」が読み取れなくなる。
+  // **［2026-08-09 / #640］タグ辞書も描くようになった**（BFF の書き込み口が着地したため）。
+  // **1 つの `it` が 2 つの不在をまとめて主張していたので分けてあった**——
+  // 分けていたおかげで、片方の契約が着地しても、もう片方を巻き込まずに反転できた。
   it('renders the dry-run validate button now that the contract exists', async () => {
     mockApi();
     await renderPage();
@@ -486,13 +496,183 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     ).toBeInTheDocument();
   });
 
-  // 契約の不在: タグ辞書（値集合・使用件数・改名の追随）の BFF 書き込み口（#640）。
-  it('does not render the tag dictionary (no BFF write contract behind it yet)', async () => {
+  // ★ #640: タグ辞書は**契約が着地したので描く**。
+  //
+  // **このテストは「不在を固定する」ものから反転させた**（削除ではない）——
+  // IADR-0129 決定 1 が理由 B（契約の不在）として実装しないと記録しており、
+  // **その理由が消えたことを示す証跡が要る**。消すと「なぜ描くようになったか」が追えなくなる。
+  it('renders the tag dictionary now that the BFF write contract exists', async () => {
     mockApi();
     await renderPage();
 
-    expect(await screen.findByRole('tab', { name: 'ポリシー定義' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'タグ辞書' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: 'タグ辞書' })).toBeInTheDocument();
+  });
+
+  // FR-09, SC-09, #640: 一覧は**使用件数つき**で出る（IADR-0152 決定 2）。
+  it('lists dictionary tags with their usage counts', async () => {
+    mockApi();
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+
+    expect(await screen.findByText('経理')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  // ★ SC-09「削除前に使用件数を示す」。**件数が画面に出ることを固定する。**
+  //
+  // **`toMessages` の既定文言では代わりにならない** —— サーバの 409 本文は
+  // `{ error, message, usageCount }` であり、`parseProblemDetails` が `message` を
+  // 読むまでは `details` が空で「競合が発生しました。」しか出せなかった（#640 で実測）。
+  // **件数は翻訳済みの文へ数値として差し込む**（サーバの日本語をそのまま出すと en で混ざる）。
+  it('shows the usage count when a tag deletion is refused', async () => {
+    // **`ApiError.body` に本文を載せる**（#640 で追加）。`details` は文字列しか持てず、
+    // **翻訳済みの文へ数値を差し込めない**ためである。
+    mockApi({
+      write: () =>
+        Promise.reject(
+          new ApiError(
+            'conflict',
+            '競合が発生しました。',
+            409,
+            ['タグ「経理」は 3 件の文書で使われているため削除できません。'],
+            { error: 'tag_in_use', usageCount: 3 },
+          ),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを削除: 経理' }));
+
+    // 件数が**翻訳済みの文の中に**出る（サーバの日本語をそのまま流していない）。
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'このタグは 3 件の文書で使われているため削除できません。',
+    );
+    // 409 は障害ではなく拒否である。ラベルも「注意」にする（INDEX 決定 21 の敷衍）。
+    expect(screen.getByRole('alert')).toHaveTextContent('注意');
+  });
+
+  // FR-09, SC-09, #640（受け入れ基準 1）: 画面から**追加**できる。
+  it('adds a tag to the dictionary from the screen', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.type(screen.getByLabelText('タグ名（必須）'), '新規タグ');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+
+    // **手書き HTTP クライアントを使っていない**（生成フック経由で /tags へ POST される）。
+    const post = [...mocks.apiRequest.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit)?.method === 'POST');
+    expect(post?.[0]).toBe('/tags');
+    expect(JSON.parse(String((post?.[1] as RequestInit).body))).toEqual({ name: '新規タグ' });
+  });
+
+  // FR-09, SC-09, #640（受け入れ基準 2）: 画面から**改名**できる。
+  //
+  // **文書は 1 件も書き換わらない**（IADR-0153 決定 1）——正本が識別子を参照しているためで、
+  // 画面は名前だけを送る。ここで固定するのは「改名の口を叩けること」である。
+  it('renames a dictionary tag from the screen', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを改名: 経理' }));
+
+    const field = screen.getByLabelText('タグの新しい名前: 経理');
+    await user.clear(field);
+    await user.type(field, '経理部');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    const put = [...mocks.apiRequest.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit)?.method === 'PUT');
+    expect(String(put?.[0])).toContain('/tags/');
+    expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ name: '経理部' });
+  });
+
+  // 改名はキャンセルできる（**送らない**）。編集欄を開いただけで書き込みが走ってはならない。
+  it('does not write anything when a rename is cancelled', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを改名: 経理' }));
+    await user.click(screen.getByRole('button', { name: 'キャンセル' }));
+
+    expect(
+      mocks.apiRequest.mock.calls.some(([, init]) => (init as RequestInit)?.method === 'PUT'),
+    ).toBe(false);
+    expect(await screen.findByText('経理')).toBeInTheDocument();
+  });
+
+  // 使用件数 0 のタグは**削除できる**（SC-09。拒否されるのは参照 1 件以上のときだけ）。
+  it('deletes an unused dictionary tag', async () => {
+    mockApi();
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを削除: 規程' }));
+
+    const del = [...mocks.apiRequest.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit)?.method === 'DELETE');
+    expect(String(del?.[0])).toContain('/tags/');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  // 辞書が空のときは**行を描かず**、その旨を出す（0 件と読み込み中を区別する）。
+  it('says so when the dictionary is empty', async () => {
+    mockApi({ tags: { tags: [] } });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+
+    expect(await screen.findByText('タグは登録されていません。')).toBeInTheDocument();
+  });
+
+  // 一覧の取得が落ちたときはエラーを出す（**空の辞書と区別する**——
+  // 区別しないと「タグが 1 つも無い」と誤読して重複登録を招く）。
+  it('reports a failure to load the dictionary', async () => {
+    mockApi({ tags: new ApiError('server', 'サーバでエラーが発生しました。', 500) });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('タグ辞書を読み込めませんでした。');
+  });
+
+  // 削除以外の失敗（重複名の 409 など）は**件数つきの文言にしない**——
+  // `usageCount` を持たないので、専用文言を出すと嘘になる。
+  it('falls back to the generic message when a conflict carries no usage count', async () => {
+    mockApi({
+      write: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [
+            'タグ「規程」は既に辞書にあります。',
+          ]),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.type(screen.getByLabelText('タグ名（必須）'), '規程');
+    await user.click(screen.getByRole('button', { name: '追加' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('タグ「規程」は既に辞書にあります。');
+    expect(alert).not.toHaveTextContent('件の文書で使われている');
   });
 
   // 遷移先の画面（MCP クライアント管理）が未実装（#445 待ち）のリンクを置かない——押すと

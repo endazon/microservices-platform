@@ -171,6 +171,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
@@ -200,6 +201,7 @@ msgstr "Keyword search only →"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "キャンセル"
 msgstr "Cancel"
 
@@ -218,6 +220,10 @@ msgstr "There are no connectors."
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
 msgstr "This job cannot be reconverted (it is running, or is not in the failed state)."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "このタグは {inUseCount} 件の文書で使われているため削除できません。"
+msgstr "This tag is used by {inUseCount} document(s) and cannot be deleted."
 
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
@@ -283,6 +289,7 @@ msgstr "Title"
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "タグ"
 msgstr "Tags"
@@ -290,6 +297,43 @@ msgstr "Tags"
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 msgid "タグ {tag} を削除"
 msgstr "Remove tag {tag}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグの新しい名前: {tagName}"
+msgstr "New name for tag: {tagName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグは登録されていません。"
+msgstr "No tags have been registered."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグを削除: {tagName}"
+msgstr "Delete tag: {tagName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグを改名: {tagName}"
+msgstr "Rename tag: {tagName}"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグ名（必須）"
+msgstr "Tag name (required)"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/AdminAbacSettingsPage.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグ辞書"
+msgstr "Tag dictionary"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグ辞書の一覧"
+msgstr "List of dictionary tags"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグ辞書を更新できませんでした。"
+msgstr "The tag dictionary could not be updated."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグ辞書を読み込めませんでした。"
+msgstr "The tag dictionary could not be loaded."
 
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "タスク種別"
@@ -516,6 +560,10 @@ msgstr "Optional"
 msgid "作成"
 msgstr "Created"
 
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "使用件数"
+msgstr "Usage count"
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して"
 msgstr "e.g. Compare the Q1 sales reports by department and extract the shared reasons for lost deals"
@@ -530,6 +578,7 @@ msgstr "e.g. expense reimbursement"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "保存"
 msgstr "Save"
 
@@ -642,6 +691,7 @@ msgstr "General"
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "削除"
 msgstr "Delete"
 
@@ -887,6 +937,7 @@ msgstr "Connection credentials are managed in Vault. Repeated connection failure
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "操作"
 msgstr "Actions"
 
@@ -894,6 +945,10 @@ msgstr "Actions"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "操作を実行できませんでした。"
 msgstr "Could not carry out the operation."
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "改名"
+msgstr "Rename"
 
 #: knowledge/frontend/src/features/sc02-results/SearchResultsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
@@ -1159,6 +1214,7 @@ msgstr "Compare"
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "Warning"
@@ -1329,6 +1385,7 @@ msgstr "Detail"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 #: platform/frontend/src/foundation/auth/RequireAuth.tsx
@@ -1353,6 +1410,7 @@ msgid "購読者"
 msgstr "Subscribers"
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "追加"
 msgstr "Add"
 

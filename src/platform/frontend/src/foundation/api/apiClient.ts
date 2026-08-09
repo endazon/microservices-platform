@@ -60,8 +60,11 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
       unauthorizedHandler();
     }
     // FR-09, SC-09: 検証（400）・競合（409）は本文の詳細メッセージを抽出して伝える（矛盾・構文エラー表示用）。
-    const details = res.status === 400 || res.status === 409 ? await parseProblemDetails(res) : [];
-    throw ApiError.fromStatus(res.status, details);
+    const problem =
+      res.status === 400 || res.status === 409
+        ? await parseProblemDetails(res)
+        : { details: [], body: undefined };
+    throw ApiError.fromStatus(res.status, problem.details, problem.body);
   }
   return res;
 }
@@ -88,12 +91,21 @@ export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T
 
 // FR-09, SC-09: RFC7807 ValidationProblem / Problem 応答から人間可読なメッセージ群を抽出する。
 // AuthorizationService の検証エラーは { errors: { errors: ["…"] } }、競合は { title, detail } 形式。
-async function parseProblemDetails(res: Response): Promise<string[]> {
+//
+// **［#640］`message` も読む。** タグ辞書の削除拒否（`DELETE /bff/tags/{id}`）は
+// `{ error, message, usageCount }` を返しており、**上の 3 キーをどれも持たない**。
+// 読まないと `details` が空になり、画面は「競合が発生しました。」という
+// **理由の分からない既定文言**しか出せない（実測した）。
+//
+// **解析済みの本文も返す** —— `details` は文字列しか持てず、SC-09 が求める
+// **使用件数（数値）**を画面が翻訳済みの文へ差し込めないためである。
+async function parseProblemDetails(res: Response): Promise<{ details: string[]; body: unknown }> {
   try {
     const body = (await res.clone().json()) as {
       errors?: Record<string, unknown>;
       detail?: unknown;
       title?: unknown;
+      message?: unknown;
     };
     const out: string[] = [];
     if (body.errors && typeof body.errors === 'object') {
@@ -104,9 +116,10 @@ async function parseProblemDetails(res: Response): Promise<string[]> {
     }
     if (out.length === 0 && typeof body.detail === 'string') out.push(body.detail);
     if (out.length === 0 && typeof body.title === 'string') out.push(body.title);
-    return out;
+    if (out.length === 0 && typeof body.message === 'string') out.push(body.message);
+    return { details: out, body };
   } catch {
-    return [];
+    return { details: [], body: undefined };
   }
 }
 

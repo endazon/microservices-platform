@@ -2,6 +2,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@platform/ui';
 import { AttributeDictionaryPanel } from './AttributeDictionaryPanel';
 import { PolicyEditorPanel } from './PolicyEditorPanel';
+import { TagDictionaryPanel } from './TagDictionaryPanel';
 import { useAbacAttributes, useAbacPolicies } from './useAbacAdmin';
 
 // SC-09, UC-05, FR-09: 管理者設定（ABAC）（05_screens: ルート /admin/abac）。
@@ -17,10 +18,11 @@ import { useAbacAttributes, useAbacPolicies } from './useAbacAdmin';
 //     = PR planning#244〔裁定依頼 planning#237〕）、IADR-0119 の保留は FR-17 / FR-18 について解除された。**本区画を足すかどうかは
 //     #504 / #452 の作業仕様書で判断する**（#586 は pin 更新と事実の追随に限り、UI は変更していない）。
 //     根拠は IADR-0129 の 2026-08-07 追記。
-//   - **タグ辞書**: **契約の不在**。/bff/admin/authz にあるのは attributes と policies の 2 群だけで、
-//     タグ辞書の値集合を返す口・使用件数・改名の追随のいずれも無い。計画が確定した規則
-//     （参照 1 件以上は削除拒否・件数 N の提示・改名は既存文書が追随）はそのすべてが契約側の機能である。
-//   いずれも**空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
+//   **［2026-08-09 / #640］「タグ辞書」は実装した。** 契約の不在という理由は消えている——
+//   #634 / #635 が後段（値集合・使用件数・改名の追随・削除拒否）を作り、
+//   **#640 が BFF の書き込み口（/bff/tags）を足した**。IADR-0129 決定 1 の理由 B は解除済みである。
+//   **辺の型辞書（理由 A）は残る**ので、計画 §SC-09 の 4 区画のうち 3 区画が揃った状態である。
+//   **空のタブを置かない**——保留であることを伝えず、むしろ壊れて見える（#502 が確立した
 //   「動かない UI を置かない」）。記録は feedback/20260805_sc09-11-admin-ops-contract-gaps.md（起票は親）。
 
 export function AdminAbacSettingsPage() {
@@ -40,6 +42,9 @@ export function AdminAbacSettingsPage() {
           <TabsTrigger value="attributes">
             <Trans>属性体系</Trans>
           </TabsTrigger>
+          <TabsTrigger value="tags">
+            <Trans>タグ辞書</Trans>
+          </TabsTrigger>
           <TabsTrigger value="policies">
             <Trans>ポリシー定義</Trans>
           </TabsTrigger>
@@ -52,6 +57,12 @@ export function AdminAbacSettingsPage() {
             isError={attributes.isError}
             error={attributes.error}
           />
+        </TabsContent>
+
+        {/* FR-09, SC-09, #640: タグ辞書。自前でデータを取るので props を持たない
+            （属性辞書と違い、この区画以外から使われない）。 */}
+        <TabsContent value="tags">
+          <TagDictionaryPanel />
         </TabsContent>
 
         <TabsContent value="policies">
