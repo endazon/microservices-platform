@@ -11,6 +11,7 @@ related_ids:
   - UC-05
   - IADR-0040
   - IADR-0044
+  - IADR-0127
   - IADR-0129
   - IADR-0152
   - IADR-0153
@@ -327,6 +328,34 @@ functions 93.52 → 床 88〔現行と同じ〕・branches 91.95 → 床 86〔**
 
 成功時の `Alert`（`tone="success"` / `role="status"`）は
 `AttributeDictionaryPanel` が既に採っている形に揃えた。
+
+### 6. ★ [[IADR-0127]] 決定 7 を踏襲していなかった（レビュー 3 巡目の 🟡）
+
+**確定済み ADR からの逸脱である。** 指摘を受けて**先に再現テストを書き、落ちることを実測**してから直した。
+
+TanStack Query の `isError` は**そのミューテーション自身が再度 `mutate()` されるまで消えない**。
+`failed = [create, rename, remove].find(m => m.isError)` だけだと:
+
+1. 使用中のタグを消そうとして 409 → `remove.isError = true`
+2. **別のタグを改名して成功** → `rename.isSuccess = true` だが `remove.isError` は残る
+3. `republished = rename.isSuccess && !failed` の `!failed` が false になり、
+   **改名成功の通知が出ないうえ、古い削除拒否の警告が残り続ける**
+
+**管理者は「今の改名が失敗した」と誤解する。**
+
+`beginOperation()`（全ミューテーションを `reset()`）を追加した。
+**`AttributeDictionaryPanel` が同じ決定に従って既に持っていた形**である。
+
+#### なぜ引き漏らしたか
+
+**母集合に「同じ画面の隣の区画はどう解決しているか」という軸が無かった。**
+
+新しい区画を足すとき、**同じディレクトリの既存パネルが従っている ADR を引いていない**。
+`AttributeDictionaryPanel.tsx:97-107` にコメント付きで書かれており、
+**読めば分かる場所にあった**（[[IADR-0127]] 決定 7 への参照も明記されている）。
+
+**軸として立てるべきだったのは「この画面に既にある同種の部品」である** ——
+`docs/tests/SC-09_admin-abac-settings.md` の観点 12「**操作を跨いだ状態**」も同じことを求めていた。
 
 ## 申し送り
 

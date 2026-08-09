@@ -121,8 +121,13 @@ export function TagDictionaryPanel() {
   const { create, rename, remove } = useTagActions();
   const [name, setName] = useState('');
 
-  // **失敗は 1 つに畳む** —— 同時に 2 つ走らせる導線が無いので、最後の失敗だけを出せば足りる。
-  const failed = [create, rename, remove].find((m) => m.isError);
+  // [[IADR-0127]] 決定 7 と同じ形: 画面が出す操作結果は**直近の 1 件だけ**。新しい操作の開始時に
+  // 全ミューテーションの状態を捨てる。**TanStack Query は「別のミューテーションが成功した」ことでは
+  // 他方の `isError` を戻さない**ため、放置すると「削除が 409 で拒否された直後に別のタグを改名して
+  // 成功しても、古い削除拒否の警告が残り、改名成功の通知が出ない」状態になる
+  // （管理者は「今の改名が失敗した」と誤解する）。`AttributeDictionaryPanel` と同じ作法である。
+  const mutations = [create, rename, remove];
+  const failed = mutations.find((m) => m.isError);
   // SC-09「削除前に使用件数を示す」。**数値が取れたときだけ専用の文言にする。**
   const inUseCount = failed ? tagInUseCount(failed.error) : null;
 
@@ -138,6 +143,10 @@ export function TagDictionaryPanel() {
     rename.isSuccess && !failed ? (rename.data?.data?.republishedDocuments ?? null) : null;
 
   const tags = data?.tags ?? [];
+
+  function beginOperation() {
+    for (const mutation of mutations) mutation.reset();
+  }
 
   return (
     <section className="mt-3">
@@ -208,8 +217,14 @@ export function TagDictionaryPanel() {
               <TagRow
                 key={tag.id}
                 tag={tag}
-                onRename={(next) => rename.mutate({ id: tag.id, data: { name: next } })}
-                onDelete={() => remove.mutate({ id: tag.id })}
+                onRename={(next) => {
+                  beginOperation();
+                  rename.mutate({ id: tag.id, data: { name: next } });
+                }}
+                onDelete={() => {
+                  beginOperation();
+                  remove.mutate({ id: tag.id });
+                }}
               />
             ))
           )}
@@ -221,6 +236,7 @@ export function TagDictionaryPanel() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!name.trim()) return;
+          beginOperation();
           create.mutate({ data: { name } });
           setName('');
         }}

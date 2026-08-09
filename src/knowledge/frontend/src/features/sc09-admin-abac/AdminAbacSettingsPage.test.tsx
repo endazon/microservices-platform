@@ -628,6 +628,51 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     );
   });
 
+  // ★ [[IADR-0127]] 決定 7: **画面が出す操作結果は直近の 1 件だけ**である。
+  //
+  // TanStack Query の `isError` は**そのミューテーション自身が再度 mutate されるまで消えない**。
+  // 放置すると「削除が 409 で拒否された直後に別のタグを改名して成功しても、
+  // **古い削除拒否の警告が残り、改名成功の通知が出ない**」という状態になる。
+  // 管理者は「今の改名が失敗した」と誤解する。
+  //
+  // `AttributeDictionaryPanel` は同じ決定に従って `beginOperation()` を持っている。
+  it('drops a stale failure when a different operation succeeds', async () => {
+    let mode: 'conflict' | 'ok' = 'conflict';
+    mockApi({
+      write: () =>
+        mode === 'conflict'
+          ? Promise.reject(
+              new ApiError('conflict', '競合が発生しました。', 409, [], {
+                error: 'tag_in_use',
+                usageCount: 3,
+              }),
+            )
+          : Promise.resolve(
+              jsonResponse({
+                tag: { id: '11111111-2222-3333-4444-555555555555', name: '経理部', usageCount: 3 },
+                republishedDocuments: 3,
+              }),
+            ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+
+    // 1. 使用中のタグを消そうとして 409 で拒否される。
+    await user.click(await screen.findByRole('button', { name: 'タグを削除: 経理' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('3 件の文書で使われている');
+
+    // 2. 削除を諦め、**別の操作（改名）を成功させる**。
+    mode = 'ok';
+    await user.click(await screen.findByRole('button', { name: 'タグを改名: 経理' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    // 3. **古い削除拒否は消え、改名成功が出る。**
+    expect(await screen.findByRole('status')).toHaveTextContent('タグを改名しました。');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   // 改名はキャンセルできる（**送らない**）。編集欄を開いただけで書き込みが走ってはならない。
   it('does not write anything when a rename is cancelled', async () => {
     mockApi();
