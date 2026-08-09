@@ -209,7 +209,7 @@ SearchEndpoints.cs:33      AttributeValuesRequest req, IVectorStore store       
 | 4 | 非文字列スカラーは文字列化、非スカラーは読み飛ばす | `ExtractTags_CoercesScalarsAndSkipsNonScalars` | `["42","true"]` |
 | 5 | 書き込みが取り込み側と同じ表現である | `BuildPayload_WritesTagsInIngestionRepresentation` | `payload["tags"].ListValue` の `StringValue` 列 |
 | 6 | タグ 0 件ではキーを書かない | `BuildPayload_WhenNoTags_OmitsTagsKey` | `ContainsKey("tags") == false` |
-| 7 | **書いた表現をそのまま復元できる**（本番経路の往復） | `BuildPayloadThenExtractTags_RoundTrips` | 入力タグと一致 |
+| 7 | **書いた表現をそのまま復元できる**（**書き込みと復元の表現の一致**。§追補のとおり書き込み側に本番の呼び出し元は無く、これは本番経路の往復ではない） | `BuildPayloadThenExtractTags_RoundTrips` | 入力タグと一致 |
 | 8 | 既存の属性復元を壊していない | 既存 3 件（`ExtractAttributes_*`） | 変更なしで緑 |
 
 **#7 は「書いた表現をそのまま復元できる」ことを固定する** —— 書き込み側と復元側の表現が割れたら赤になる。
