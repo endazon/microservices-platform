@@ -37,13 +37,20 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 // **［#539］受け取った対象範囲を記録する。** 端点が対象範囲を後段へ渡しているかは、
 // **端点の外からは観測できない**（回答本文は範囲に依存しない）ためである。
 // `file` から `internal` へ上げたのは、別のテストファイルから記録を読むためである。
+//
+// **［#641 CI の実測］記録は `static` にしてはならない。**
+// xUnit は**テストクラスを並列に走らせる**ので、`/analysis/ask/stream` を叩く別のクラス
+// （`AskStreamEndpointTests` 等）の要求が、こちらの記録を上書きする。
+// **手元では通り、CI で落ちた**（`LastStreamFilters` が null になった）。
+// **インスタンスの状態にすれば安全である**——スタブは factory ごとの singleton であり、
+// `IClassFixture` はクラスごとに factory を作るため、クラス間で共有されない。
 internal sealed class StubRagOrchestrator : IRagOrchestrator
 {
     // 直近に受け取った対象範囲（`ask` / `ask/stream` それぞれ）。
-    public static Dictionary<string, List<string>>? LastAskFilters { get; private set; }
-    public static Dictionary<string, List<string>>? LastStreamFilters { get; private set; }
+    public Dictionary<string, List<string>>? LastAskFilters { get; private set; }
+    public Dictionary<string, List<string>>? LastStreamFilters { get; private set; }
 
-    public static void ResetRecording()
+    public void ResetRecording()
     {
         LastAskFilters = null;
         LastStreamFilters = null;

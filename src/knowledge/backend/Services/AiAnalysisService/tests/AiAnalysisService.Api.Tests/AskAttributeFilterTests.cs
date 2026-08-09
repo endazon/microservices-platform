@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using AiAnalysisService.Api.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;
 
 namespace AiAnalysisService.Api.Tests;
@@ -19,6 +20,13 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
 {
     private static AccessScopeResponse Abac(bool granted, params AttributeFilter[] filters)
         => new("u1", filters.ToList(), granted);
+
+    // **記録はこのクラスの factory が持つ singleton から読む。**
+    // `static` にすると、`/analysis/ask/stream` を叩く別のクラスと**並列に**走ったときに
+    // 記録が上書きされる（CI で実際に落ちた）。`IClassFixture` はクラスごとに factory を作るので、
+    // ここから解決した実体は本クラス専用である。
+    private StubRagOrchestrator Stub =>
+        (StubRagOrchestrator)factory.Services.GetRequiredService<IRagOrchestrator>();
 
     // ── 交差の規則（純粋ロジック）────────────────────────────────────────
     //
@@ -112,7 +120,7 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Ask_PassesAttributeFiltersDownstream()
     {
-        StubRagOrchestrator.ResetRecording();
+        Stub.ResetRecording();
 
         var resp = await factory.CreateClient().PostAsJsonAsync("/analysis/ask", new
         {
@@ -125,16 +133,16 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        StubRagOrchestrator.LastAskFilters.Should().NotBeNull();
-        StubRagOrchestrator.LastAskFilters!["tags"].Should().Equal(["経理", "規程"]);
-        StubRagOrchestrator.LastAskFilters["department"].Should().Equal(["finance"]);
+        Stub.LastAskFilters.Should().NotBeNull();
+        Stub.LastAskFilters!["tags"].Should().Equal(["経理", "規程"]);
+        Stub.LastAskFilters["department"].Should().Equal(["finance"]);
     }
 
     // ★ 受け入れ基準 1: `/analysis/ask/stream` も同じ形で受け取る（SC-01 の本文は SSE 経路である）。
     [Fact]
     public async Task AskStream_PassesAttributeFiltersDownstream()
     {
-        StubRagOrchestrator.ResetRecording();
+        Stub.ResetRecording();
 
         var resp = await factory.CreateClient().PostAsJsonAsync("/analysis/ask/stream", new
         {
@@ -144,8 +152,8 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         await resp.Content.ReadAsStringAsync();
-        StubRagOrchestrator.LastStreamFilters.Should().NotBeNull();
-        StubRagOrchestrator.LastStreamFilters!["tags"].Should().Equal(["経理"]);
+        Stub.LastStreamFilters.Should().NotBeNull();
+        Stub.LastStreamFilters!["tags"].Should().Equal(["経理"]);
     }
 
     // ★ 受け入れ基準 6: 範囲を指定しないときの挙動は従来どおり（既定値つき追加は非破壊）。
@@ -153,13 +161,13 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Ask_WithoutFilters_IsUnchanged()
     {
-        StubRagOrchestrator.ResetRecording();
+        Stub.ResetRecording();
 
         var resp = await factory.CreateClient()
             .PostAsJsonAsync("/analysis/ask", new { question = "経理の規程は？" });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         (await resp.Content.ReadFromJsonAsync<AiAnswerDto>())!.Answer.Should().NotBeNullOrEmpty();
-        StubRagOrchestrator.LastAskFilters.Should().BeNull("送らなければ後段にも渡らない");
+        Stub.LastAskFilters.Should().BeNull("送らなければ後段にも渡らない");
     }
 }

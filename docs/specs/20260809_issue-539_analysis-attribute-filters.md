@@ -203,7 +203,24 @@ SC-01（`ask` 系）は `AnalysisDataRange`（`Query` / `TopK` を持つ）を�
 | **テストの `QueryClient`** | 素の `new QueryClient()` は**本番の再試行を持ち込む**ため、「1 軸だけ失敗したときの縮退」が再試行の待ちに隠れて観測できなかった（実測で失敗）。`renderUnitRoute` と同じ `retry: false` へ揃えた |
 | **1 kB 未満の遅延チャンク** | **7 本 → 6 本**（`search-*.js` 400 B が解消）。載せ替えでチャンクグラフが変わった |
 
-### 5. バンドルの床が動いた（**2 度**）。**折り畳もうとしたらもっと悪化した**
+### 5. ★ **テストの記録を `static` にして CI で落ちた**（並列実行）
+
+`AskStream_PassesAttributeFiltersDownstream` が CI で落ちた（`LastStreamFilters` が null）。
+**手元では 1 度も落ちなかった。**
+
+**原因は `StubRagOrchestrator` の記録を `static` にしたことである。**
+xUnit は**テストクラスを並列に走らせる**ので、同じ端点（`/analysis/ask/stream`）を叩く
+別のクラス（`AskStreamEndpointTests` 等）の要求が、**こちらの記録を上書きする**。
+
+**是正**: 記録をインスタンスの状態にし、テストは `factory.Services` から解決する。
+スタブは factory ごとの singleton であり、`IClassFixture` はクラスごとに factory を作るので、
+**クラス間で共有されない**。
+
+**教訓**: **「端点の外から観測できないものを観測する」ために状態を置くときは、その状態の寿命と共有範囲を決める。**
+`static` は最も広い共有範囲であり、**並列実行と最も相性が悪い**。
+`dotnet test` を 3 回連続で回して再現しないことも確認した（対症でなく原因を消したことの確認）。
+
+### 6. バンドルの床が動いた（**2 度**）。**折り畳もうとしたらもっと悪化した**
 
 CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回していなかったので気づけなかった）。
 
@@ -223,7 +240,7 @@ CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回し�
 （578.15 → 591.64 kB）に増えた。名前付きチャンクへ寄せると**遅延ロードだったものが初期ロードへ移る**ためである。
 **0.57 kB の節約に 13.49 kB は払えないので採らない。**
 
-### 6. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
+### 7. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
 `QdrantVectorStore.MapPayload` は `Tags: []` を固定で入れている（実測）。
 **絞り込みには影響しない**（フィルタは Qdrant 側で効き、候補は `/bff/attribute-values` が返す）ため
 本 issue では触らない。**ただし SC-02 の結果一覧は既にタグを描こうとしており**
@@ -246,7 +263,7 @@ CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回し�
 | `pnpm run test` | **606 件 Passed**（着手時 588 件） |
 | `pnpm run test:coverage` | 床（90/90/88/86）を満たす |
 | `pnpm run codegen` / `pnpm run i18n` | 再生成差分をコミット済み |
-| `pnpm run build` ＋ `node scripts/check-chunk-budget.js` | 床を 578.15 → **582.78 kB** へ更新・1 kB 未満の遅延チャンクは 6 本のまま（上記「実装中に決めたこと 5」） |
+| `pnpm run build` ＋ `node scripts/check-chunk-budget.js` | 床を 578.15 → **582.78 kB** へ更新・1 kB 未満の遅延チャンクは 6 本のまま（上記「実装中に決めたこと 6」） |
 | `node scripts/{check-doc-links,check-cross-repo-refs,check-plan-id-qualification,check-i18n-catalogs,check-test-traceability,check-test-spec-coverage}.js` | すべて OK |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 293 件 Passed |
 
