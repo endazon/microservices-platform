@@ -190,7 +190,7 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 - [x] `MapPayload` がペイロードの `tags` から `Tags` を復元する
 - [x] `UpsertAsync` が `tags` を**取り込み側と同じ表現**で書く
 - [x] 復元は `internal` の純関数として切り出され、**実機 Qdrant なしで直接テストされている**
-- [x] `QdrantVectorStoreTests.cs` に tags のテストがある（`[Fact]` **3 件 → 10 件**。tags の言及 **0 件 → 7 ケース**）
+- [x] `QdrantVectorStoreTests.cs` に tags のテストがある（`[Fact]`/`[Theory]` **6 件 → 13 件**。tags の言及 **0 件 → 7 ケース**）
 - [x] 取り込み側・契約・フロントエンドを変更していない（**実測で差分 0**）
 - [x] `dotnet build` / `dotnet test` / `dotnet format --verify-no-changes` が緑
 
@@ -199,25 +199,25 @@ tags: ListValue { Values: [ StringValue("経理"), StringValue("規程") ] }
 | コマンド | 結果 |
 | --- | --- |
 | `cd src && /opt/dotnet/dotnet build knowledge/backend/backend.slnx` | **Build succeeded**（0 Error / 2 Warning。警告は既存の `MinioBuilder` obsolete で本作業と無関係） |
-| `/opt/dotnet/dotnet test knowledge/backend/backend.slnx` | **Failed 0 / Passed 400 / Skipped 18 / Total 418**（11 アセンブリの合計。作業前 393 → **+7**）。うち `RetrievalService.Api.Tests` は **27 → 34** |
+| `/opt/dotnet/dotnet test knowledge/backend/backend.slnx` | **Failed 0 / Passed 527 / Skipped 22 / Total 549**（11 アセンブリの合計）。うち `RetrievalService.Api.Tests` は **64 → 71**（**+7**） |
 | `/opt/dotnet/dotnet format knowledge/backend/backend.slnx --verify-no-changes` | **exit 0**（差分なし） |
-| `node scripts/check-doc-links.js` | **OK: 481 件**（未 populate の submodule 配下 1061 件は対象外） |
-| `node scripts/check-test-spec-coverage.js` | 初回は **違反 1 件（床の上げ忘れ）** → `--update` 後 **OK: 対 71 件が床と一致**（§下記） |
-| `node scripts/check-cross-repo-refs.js` | **OK: 557 件** |
+| `node scripts/check-doc-links.js` | **OK: 497 件**（未 populate の submodule 配下は対象外） |
+| `node scripts/check-test-spec-coverage.js` | 初回は **違反 1 件（床の上げ忘れ）** → `--update` 後 **OK**（§下記）。`check-commit-messages` / `check-landed-subjects` も OK |
+| `node scripts/check-cross-repo-refs.js` | **OK: 575 件** |
 | `node scripts/check-contract-schema.js` | **OK: 2 プロジェクト / 20 ファイル / 59 型が baseline と一致**（＝射程どおり契約は変わっていない） |
-| `node scripts/check-plan-id-qualification.js` | **OK: 1184 件** |
+| `node scripts/check-plan-id-qualification.js` | **OK: 1218 件** |
 
 ### 変異試験（**テストが本当に欠陥を捕まえるか**）
 
-対象は `RetrievalService.Api.Tests`（34 件）。
+対象は `RetrievalService.Api.Tests`（**71 件**。rebase 後の base = `c614c34` で再実走した）。
 
 | 変異 | 結果 |
 | --- | --- |
-| `ExtractTags` を早期 return で `[]` 固定へ戻す（＝復元欠陥の再現） | **Failed 3 / Passed 31** —— `ExtractTags_RestoresFromListValue` / `ExtractTags_CoercesScalarsAndSkipsNonScalars` / `BuildPayloadThenExtractTags_RoundTrips` |
-| `BuildPayload` の `if (chunk.Tags.Count > 0)` を `if (false)` にする（＝書き込み欠陥の再現） | **Failed 2 / Passed 32** —— `BuildPayload_WritesTagsInIngestionRepresentation` / `BuildPayloadThenExtractTags_RoundTrips` |
-| 両方を元に戻す | **Failed 0 / Passed 34** |
+| `ExtractTags` を早期 return で `[]` 固定へ戻す（＝復元欠陥の再現） | **Failed 3 / Passed 68** —— `ExtractTags_RestoresFromListValue` / `ExtractTags_CoercesScalarsAndSkipsNonScalars` / `BuildPayloadThenExtractTags_RoundTrips` |
+| `BuildPayload` の `if (chunk.Tags.Count > 0)` を `if (false)` にする（＝書き込み欠陥の再現） | **Failed 2 / Passed 69** —— `BuildPayload_WritesTagsInIngestionRepresentation` / `BuildPayloadThenExtractTags_RoundTrips` |
+| 両方を元に戻す | **Failed 0 / Passed 71**（`git diff` も差分 0 で、変異が残っていないことを確認した） |
 
-**どちらの変異でも `BuildPayloadThenExtractTags_RoundTrips`（#7）が落ちた** ——
+**どちらの変異でも `BuildPayloadThenExtractTags_RoundTrips` が落ちた** ——
 書き込み・復元のどちらが欠けても赤になる。**これが作業前の状態（両方欠けている）を捕まえる面である。**
 
 ### `test-spec-coverage-baseline.json` の更新
