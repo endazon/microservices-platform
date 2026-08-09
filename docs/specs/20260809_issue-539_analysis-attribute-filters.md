@@ -180,7 +180,29 @@ SC-01（`ask` 系）は `AnalysisDataRange`（`Query` / `TopK` を持つ）を�
 規則を 2 本持つと「検索では効くが分析では効かない」型の食い違いが生まれる
 （**まさにその食い違いが `tags` で実際に起きていた**のが本 issue の出発点である）。
 
-### 4. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
+### 4. バンドルの床が +0.57 kB 動いた。**折り畳もうとしたらもっと悪化した**
+
+CI の `check-chunk-budget` が落ちた（手元で `pnpm run build` を回していなかったので気づけなかった）。
+
+| 指標 | 変化 |
+| --- | --- |
+| 初期ロード合計 | 578.15 kB → **578.72 kB**（+0.57 kB） |
+| 1 kB 未満の遅延チャンク | 6 本 → **7 本**（`search-*.js` 400 B が増えた） |
+
+**増えた 400 B は orval 生成の `search` モジュールである。** 従前は 1 つのルートからしか使われず
+そのルートのチャンクに収まっていたが、**SC-01 と SC-08 の双方が候補照会に使うようになったため
+共有モジュールとして切り出された**。往復が 1 つ増える。
+
+**`vite.config.ts` の先例（`@platform/ui` / `vendor-query`）に倣って
+「生成 API を 1 本へ束ねる」manualChunks 規則を試したが、逆効果だった**——実測で
+**初期ロードが +13.49 kB**（578.15 → 591.64 kB）に増えた。名前付きチャンクへ寄せると
+エントリの静的依存になり、**遅延ロードだったものが初期ロードへ移る**ためである。
+**0.57 kB の節約のために 13.49 kB を払うことになるので採らない。**
+
+したがって**床の更新（`--update`）が正しい対応**である。増加は新機能に由来し、
+`check-chunk-budget.js` はまさにその経路（意図した増加は床を更新して差分をレビューに載せる）を用意している。
+
+### 5. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
 
 `QdrantVectorStore.MapPayload` は `Tags: []` を固定で入れている（実測）。
 **絞り込みには影響しない**（フィルタは Qdrant 側で効き、候補は `/bff/attribute-values` が返す）ため
@@ -199,6 +221,7 @@ SC-01（`ask` 系）は `AnalysisDataRange`（`Query` / `TopK` を持つ）を�
 | `pnpm run test` | **606 件 Passed**（着手時 588 件） |
 | `pnpm run test:coverage` | 床（90/90/88/86）を満たす |
 | `pnpm run codegen` / `pnpm run i18n` | 再生成差分をコミット済み |
+| `pnpm run build` ＋ `node scripts/check-chunk-budget.js` | 床を +0.57 kB 更新（上記「実装中に決めたこと 4」） |
 | `node scripts/{check-doc-links,check-cross-repo-refs,check-plan-id-qualification,check-i18n-catalogs,check-test-traceability,check-test-spec-coverage}.js` | すべて OK |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 293 件 Passed |
 
