@@ -72,7 +72,7 @@ plan_refs:
 | T-33 | `tags` に数値・真偽値・構造体が混在 | 同上 | スカラーは文字列化（`"42"`/`"true"`）、構造体は読み飛ばす | 例外フロー（#642） | 自動 |
 | T-34 | タグを持つ `ChunkPayload` | `QdrantVectorStore.BuildPayload` | `payload["tags"]` が `ListValue[StringValue]`（**取り込み側 `QdrantIngestionVectorStore.BuildChunkPayload` と同じ表現**） | 表現の一致（[[IADR-0014]]・#642） | 自動 |
 | T-35 | タグ 0 件の `ChunkPayload` | 同上 | `tags` キー自体を書かない（`attributes` と同じ扱い） | 表現の一致（#642） | 自動 |
-| T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込み・復元のどちらが欠けても本番でタグが出ない**） | 結果一覧のタグ表示（SC-02・#642） | 自動 |
+| T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込みと復元の表現の一致**を往復で固定する。本番の欠陥は復元側だけで、書き込み側に呼び出し元は無い） | 表現の一致（SC-02・#642） | 自動 |
 
 ## テストデータ
 

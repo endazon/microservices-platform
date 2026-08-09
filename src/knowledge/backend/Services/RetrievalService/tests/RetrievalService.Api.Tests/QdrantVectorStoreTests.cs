@@ -183,7 +183,9 @@ public class QdrantVectorStoreTests
         payload.ContainsKey("tags").Should().BeFalse();
     }
 
-    // ★ 本欠陥の核心: 書き込みと復元のどちらが欠けても本番でタグは出ない。往復で固定する。
+    // ★ 書き込みと復元の**表現が一致している**ことを往復で固定する。
+    // **「どちらが欠けても本番でタグが出ない」ではない** —— 本番の欠陥は復元側だけであり
+    // （クラス冒頭のとおり書き込み側に呼び出し元は無い）、この往復は表現の一致を守る面である。
     [Fact]
     public void BuildPayloadThenExtractTags_RoundTrips()
     {
