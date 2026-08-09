@@ -207,7 +207,15 @@ related_specs:
   skip の中に `Migration_RewritesDisplayNamesToIdentifiers` と `Migration_Down_RestoresDisplayNames` が
   discovery されていることを確認した（**「書いたが discovery されていない」ではない**ことを分ける）。
 
-  **［CI の実走で確認済み］移行の 2 件はどちらも通った**
-  （`Migration_Down_RestoresDisplayNames` 327ms / `Migration_RewritesDisplayNamesToIdentifiers` 289ms。
-  実 PostgreSQL 16）。**同じ実走で別の 2 件が落ちた**——上記「実装中に決めたこと 5」を参照。
+  **［CI の実走で確認済み］移行の 2 件はどちらも通った。**
+  **数値は最終コミット（`5259b3f`）のジョブログから取った**
+  （`build-and-test` run `31314685753` / job `93247918743` = success）:
+  `Migration_Down_RestoresDisplayNames` 382ms / `Migration_RewritesDisplayNamesToIdentifiers` 356ms、
+  **`Knowledge.IntegrationTests` は 43 件すべて Passed**（実 PostgreSQL 16）。
+
+  **初回の実走（`322970c`）では 41/43 で 2 件が落ちた**——上記「実装中に決めたこと 5」を参照。
   **手元で緑・CI で赤という差そのものが、この issue の検証の要点である。**
+
+  **［記録］「実装が同じでも、実走の記録が最新コミットに無いなら根拠にならない。」**
+  従前ここには 1 つ前のコミット（`573158e`）の数値を書いていた。実装差分は無かったが、
+  **AI レビューが 🟡 で「最新コミットで確認せよ」と指摘したのは正しい**ので取り直した。
