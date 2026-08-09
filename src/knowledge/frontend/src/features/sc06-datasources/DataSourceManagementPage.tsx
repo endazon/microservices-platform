@@ -15,6 +15,7 @@ import {
   Tag,
 } from '@platform/ui';
 import { i18n } from '@foundation/i18n';
+import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { toMessages } from '@foundation/ui/apiErrors';
 import { DataSourceForm } from './DataSourceForm';
 import { formatDateTime, sourceTypeLabel, syncStateView } from './syncState';
@@ -43,6 +44,13 @@ export function DataSourceManagementPage() {
   const actions = useDataSourceActions();
   const { create, sync, disable } = actions;
 
+  // FR-01, UC-04, SC-06（#628）: 計画 §SC-06「**登録・更新・無効化は管理者限定**」（裁定 Q19）。
+  // **手動同期は含まない** —— planning#299（2026-08-09）が「実行系だが破壊的ではない」として
+  // 運用者へ開いたままにすると裁定した。したがって出し分けるのは登録と無効化の 2 つだけである。
+  // **実効境界はサーバ側**（`/bff/datasources` と後段の `AdminOnly`）であり、ここは表示制御にすぎない
+  // （[[IADR-0039]] 決定 2）。閲覧ロール（ルートのゲート）は admin ＋ operator のまま据え置く。
+  const canWrite = useHasAnyRole(PlatformRole.Admin);
+
   const items = sources.data ?? [];
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useDataSourceActions()` の
   // 戻り値から導く——手書きの配列にすると、4 本目のミューテーションを足したときに同じ穴が空く。
@@ -67,16 +75,24 @@ export function DataSourceManagementPage() {
         <h1 className="text-lg font-semibold text-[--color-fg]">
           <Trans>データソース</Trans>
         </h1>
-        <Button
-          type="button"
-          variant="primary"
-          onClick={() => {
-            beginOperation();
-            setFormOpen((open) => !open);
-          }}
-        >
-          <Trans>＋ ソース登録</Trans>
-        </Button>
+        {/* 押しても 403 になるボタンを置かない（#502 が確立した規則・[[IADR-0127]] 決定 1）。
+            無言で消すと「登録できない画面」に見えるので、理由の文言を残す。 */}
+        {canWrite ? (
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              beginOperation();
+              setFormOpen((open) => !open);
+            }}
+          >
+            <Trans>＋ ソース登録</Trans>
+          </Button>
+        ) : (
+          <span className="text-xs text-[--color-fg-muted]">
+            <Trans>ソースの登録・無効化は管理者のみ実行できます</Trans>
+          </span>
+        )}
       </div>
 
       {formOpen && (
@@ -154,6 +170,7 @@ export function DataSourceManagementPage() {
                 <SourceRow
                   key={source.id}
                   source={source}
+                  canWrite={canWrite}
                   busy={sync.isPending || disable.isPending}
                   onSync={() => {
                     beginOperation();
@@ -198,11 +215,13 @@ export function DataSourceManagementPage() {
 
 function SourceRow({
   source,
+  canWrite,
   busy,
   onSync,
   onDisable,
 }: {
   source: DataSourceDto;
+  canWrite: boolean;
   busy: boolean;
   onSync: () => void;
   onDisable: () => void;
@@ -245,11 +264,14 @@ function SourceRow({
       </TableCell>
       <TableCell>
         <span className="flex flex-wrap gap-2">
+          {/* 手動同期は運用者にも開いたままである（planning#299・2026-08-09 の裁定）。
+              運用者が異常に気づいたその場で一次対応できることを優先する。 */}
           <Button type="button" size="sm" disabled={busy} onClick={onSync}>
             <Trans>手動同期</Trans>
           </Button>
-          {/* 既に無効なソースへ再度無効化を送らない。 */}
-          {source.status !== 'disabled' && (
+          {/* 無効化は管理者限定（#628）。既に無効なソースへ再度無効化を送らない。
+           **理由の文言は画面の先頭に 1 つだけ置く**——行ごとに繰り返すと一覧が読めなくなる。 */}
+          {canWrite && source.status !== 'disabled' && (
             <Button type="button" size="sm" disabled={busy} onClick={onDisable}>
               <Trans>無効化</Trans>
             </Button>

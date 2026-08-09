@@ -10,9 +10,11 @@ related_ids:
   - IADR-0039
   - IADR-0127
   - IADR-0136
+  - IADR-0044
+  - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-08-06
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -81,6 +83,9 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 10-b | **直近の操作結果だけを出す** | [[IADR-0127]] 決定 7 | 失敗 → 成功・成功 → 失敗のどちらの並びでも、**前の操作のバナーが残らない** |
 | 11 | 0 件 | — | 「データソースは登録されていません。」 |
 | 12 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
+| 12-c | **書き込みの出し分け（運用者）** | SC-06 §アクセス制御 / 裁定 Q19（#628） / [[IADR-0127]] 決定 1 | 運用者へは「＋ ソース登録」「無効化」を**出さない**。**無言で消さず理由の文言を出す**（権限の問題と状態の問題を読み分けられるようにする） |
+| 12-d | **狭めすぎない（運用者）** | planning#299（#628） | 運用者にも一覧と「手動同期」は**出る**（一次対応を潰さない） |
+| 12-e | **管理者には 3 つとも出る** | SC-06 | 登録・手動同期・無効化がすべて出る |
 | 12-b | **SC-07 への導線** | 05_screens 遷移図 `SC06 → SC07` | 「変換ジョブの状況を見る →」が `/admin/conversions` を指す（画面単体でリンク先を固定する。実際に遷移することは §導線 A が見る） |
 | 13 | **未実装の要素** | 画面仕様書 §hi-fi 対応 #7・#9 | 「次回同期」列・「設定」操作が無い。**先に手動同期の操作が在ることを確かめてから**無いことを見る。**［2026-08-08 / #534・#537］2 件が動いた**——「再試行中」表示は**実装した**ので本ケースの対象から外れ（ケース 2-b が見る）、「設定」は**契約（`PUT` / `PATCH`）が揃って**残るのが画面実装だけになった。**3 件とも契約の不在ではなくなった** |
 | 14 | ロケール `en` | ADR-0031 | 見出しと種別が英語で描画される |
@@ -126,6 +131,13 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 7 | 同期 | FR-01 / FR-02 | 202 で同期トリガを中継 | `Sync_AsAdmin_Returns202` |
 | 8 | 無効化 | FR-01 | 204 で論理削除を中継 | `Delete_AsAdmin_Returns204` |
 | 9 | **次回同期の透過** | SC-06 裁定 Q15 / [[IADR-0136]] | 後段が返す `nextSyncAt` を欠落させず、**ソースごとに変えもしない**（BFF は `DataSourceDto` で中継するだけなので実装は変わらないが、契約のメンバーが増えたとき落ちる場所が要る） | `GetList_PassesThroughNextSyncAt` |
+| 10 | **登録は管理者限定** | SC-06 §アクセス制御 / 裁定 Q19（#628） | 運用者の `POST /bff/datasources` は **403** | `Create_AsOperator_IsForbidden` |
+| 11 | **無効化は管理者限定** | 同上（#628） | 運用者の `DELETE /bff/datasources/{id}` は **403** | `Delete_AsOperator_IsForbidden` |
+| 12 | **手動同期は運用者へ開いたまま** | planning#299（2026-08-09 裁定・#628） | 運用者の `POST /bff/datasources/{id}/sync` は **202**（破壊的操作に含めない） | `Sync_AsOperator_IsAllowed` |
+| 13 | **閲覧を狭めない** | 裁定 Q19 | 運用者の個別取得は **200**（10・11 と対で固定する） | `GetById_AsOperator_IsAllowed` |
+
+**10〜13 は「狭める」と「狭めすぎない」を対で固定する。** 登録・無効化だけを 403 にし、
+閲覧と手動同期は通ることまで見ないと、**計画の裁定（運用者の一次対応を成立させる）を壊しても緑になる。**
 
 **5-b は画面側の §テストケース 9（縮退しない）と対である。** 画面が縮退しない実装でも、
 BFF が後段障害を空一覧へ丸めてしまえば画面には何も届かない。両側で固定して初めて担保になる。
@@ -156,7 +168,12 @@ BFF が後段障害を空一覧へ丸めてしまえば画面には何も届か�
 
 ## ロール・存在秘匿の担保
 
-- BFF はグループ全体を admin / operator に限定する（3 / 4 で 403 / 401 を固定）。
+- BFF はグループ全体を admin / operator に限定し（3 / 4 で 403 / 401 を固定）、
+  **破壊的操作（登録・更新・無効化）にはさらに `AdminOnly` を積む**（10 / 11。[[IADR-0128]] 決定 1 の形）。
+  **後段（`DataSourceService`）にも同じ制限を置く多層防御**であり（[[IADR-0044]]）、
+  `DataSourceAuthorizationTests` の `Create_OperatorRole_Returns403` / `Delete_OperatorRole_Returns403` /
+  `Sync_OperatorRole_IsAllowed` / `GetById_OperatorRole_IsAllowed` / `CreateAndDelete_AdminRole_IsAllowed`
+  が BFF 側と対で固定する（**片側だけだと BFF 迂回で通る／画面だけ 403 になる**）。
   **画面と API の両側で同じ境界を固定する** —— UI の出し分けはサーバ側の実効境界の写しであり、
   API を直接叩く経路は画面テストでは踏めない（SC-07 が #501 で踏んだのと同じ形）。
 - フロントはルート／ナビを `RequireRole` で出し分け、権限外は `NotFound`（§テストケース 12）。

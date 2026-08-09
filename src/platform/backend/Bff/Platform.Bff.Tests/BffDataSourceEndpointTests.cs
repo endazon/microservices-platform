@@ -105,12 +105,61 @@ public class BffDataSourceEndpointTests : IClassFixture<BffTestFactory>
         (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    // FR-01, SC-06（#628）: **登録・無効化も管理者限定**である（計画 §SC-06・裁定 Q19）。
+    // 従前はグループ既定（admin ＋ operator）のままで計画より広かった。**後段と同時に狭める**
+    // （[[IADR-0044]] の多層防御。片側だけだと BFF 迂回で通る／画面だけ 403 になる）。
+    [Fact]
+    public async Task Create_AsOperator_IsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.PostAsJsonAsync("/bff/datasources",
+            new CreateDataSourceRequest("新ソース", "filesystem", "smb://x/y"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Delete_AsOperator_IsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.DeleteAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // FR-01, UC-04, SC-06（#628 / planning#299・2026-08-09）: **手動同期は破壊的操作に含めない。**
+    // 運用者に開いたままであることを対で固定する——登録・無効化を狭めた勢いで一緒に絞ると、
+    // 「運用者が異常に気づいたその場で再同期して一次対応する」という計画の裁定を壊す。
+    [Fact]
+    public async Task Sync_AsOperator_IsAllowed()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.PostAsync(
+            $"/bff/datasources/{BffTestFactory.StubDataSourceId}/sync", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+    }
+
     [Fact]
     public async Task GetList_AsOperator_IsAllowed()
     {
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
         var resp = await client.GetAsync("/bff/datasources");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // FR-01, SC-06（#628）: 個別取得も運用者に開いたままである（**閲覧を狭めない**）。
+    [Fact]
+    public async Task GetById_AsOperator_IsAllowed()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.GetAsync($"/bff/datasources/{BffTestFactory.StubDataSourceId}");
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }

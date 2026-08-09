@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-08
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
@@ -122,12 +122,12 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/documents/{id}/publish` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentPublish` |
 | POST | `/bff/documents/{id}/archive` | **admin / operator** | FR-06 / UC-03 / SC-05 | `useBffDocumentArchive` |
 | GET | `/bff/datasources` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceList` |
-| POST | `/bff/datasources` | **admin / operator** | FR-01 / UC-04 / SC-06 | `useBffDataSourceCreate` |
+| POST | `/bff/datasources` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceCreate` |
 | GET | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceGet` |
 | PUT | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceUpdate` |
 | PATCH | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourcePatch` |
-| DELETE | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceDelete` |
-| POST | `/bff/datasources/{id}/sync` | **admin / operator** | FR-01 / UC-04 / SC-06 | `useBffDataSourceSync` |
+| DELETE | `/bff/datasources/{id}` | **admin のみ** | FR-01 / SC-06 | `useBffDataSourceDelete` |
+| POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。planning#299） | FR-01 / UC-04 / SC-06 | `useBffDataSourceSync` |
 | GET | `/bff/conversion/jobs` | **admin / operator** | FR-12 / UC-06 / SC-07 | `useBffConversionJobList` |
 | GET | `/bff/conversion/jobs/{id}` | **admin / operator** | FR-12 / SC-07 | `useBffConversionJobGet` |
 | POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobRetry` |
