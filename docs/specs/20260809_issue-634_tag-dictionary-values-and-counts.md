@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — タグ辞書の値集合の照会・追加と使用件数（#634）
 type: work-spec
-status: in-progress
+status: done
 related_ids:
   - FR-06
   - FR-09
@@ -123,8 +123,73 @@ related_specs:
 
 ## 実装中に決めたこと（仕様書からの差分）
 
-（着手後に追記する）
+### `Tag` に `Rename` と `UpdatedAt` を置かなかった
 
-## 検証記録（実測）
+改名は #635 の射程である。**先に置くと、何も書き込まない `UpdatedAt` 列と呼ぶ側の無いメソッドが残る**——
+`UpdatedAt` が常に `CreatedAt` と等しい列は読み手を誤らせる。`CLAUDE.md` の
+「過剰な抽象化・起こり得ないケースへの防御的実装」を避けた。**#635 が自分のマイグレーションで足す。**
 
-（着手後に追記する）
+**`Id` は #634 の時点でも要る。** 主キーであり、[[IADR-0152]] 決定 6 の
+「識別子は改名で変わらない」という土台そのものだからである。
+
+### 使用件数を SQL で数えず、現行版の文書のタグを読んで数えた
+
+`Document.Tags` は jsonb へ変換した `List<string>` であり、**SQL 側で展開して数えられない**。
+辞書は管理画面で人が管理する値集合なので、現行版の文書のタグだけを読んで数える。
+**版履歴は読んでいない**（[[IADR-0152]] 決定 2）。
+
+### 同じ文書に同じタグが 2 度あっても 1 件と数える
+
+数えるのは「このタグを**使っている文書の数**」である（SC-09 の「このタグは N 件で使われている」）。
+`Distinct` を通す。
+
+### BFF で辞書を引くのは `key=tags` かつ管理者・運用者のときだけにした
+
+`IsTagKey` と `IsDictionaryReader` の 2 条件で門を作った。**一般利用者では後段を呼びもしない**
+（呼べば DocumentService が 403 で止めるが、呼ぶこと自体が無駄である）。
+**実効境界は DocumentService 側**であり（[[IADR-0044]] 多層防御 / [[IADR-0039]] 決定 2）、
+BFF の判定は早期の門にすぎない。**BFF を迂回されても `/tags` が同じロールを要求する。**
+
+### 辞書が引けなくても候補一覧を落とさない
+
+`FetchTagDictionaryAsync` は**後段へ到達できないとき**は辞書を添えずに続ける
+（候補 `Values` は辞書に依存しないため）。**後段が返した非 2xx は透過する**——
+辞書を引けるのは管理者・運用者だけなので、一般利用者には影響しない
+（`BFF_bff-surface.md` の縮退表の注記と同じ扱い）。
+
+### 読み取りに `ConfigViewer` ポリシーを使わず、`RequireRole` を直に書いた
+
+仕様書では `ConfigViewer`（管理者 OR 運用者）と書いたが、**採らなかった**。
+`ConfigViewer` は「**FR-15, SC-11, IADR-0030: 構成情報の閲覧**は管理者・運用者ロールに限定する」と
+**用途を名前で宣言しているポリシー**であり、タグ辞書の読み取りへ流用すると意味が二重になる——
+以後どちらかの要件が動いたときに、もう一方が黙って巻き添えになる。
+**`DocumentEndpoints` の書き込みグループと同じく `p.RequireRole(AdminRole, OperatorRole)` を直に書いた**
+（ロール定数は共有しているので、綴りの単一情報源は保たれている）。
+
+### 名前の重複は正規化後に見た
+
+前後の空白だけが違う 2 つを別物として登録できると、**辞書が実質的に重複を許す**ことになる。
+`Tag.Normalize`（`Trim`）を通し、DB にも一意インデックスを張った。
+
+## 検証記録（実測・すべて本作業の head で走らせた）
+
+`node scripts/…` は**リポジトリのルートから実行する**。
+
+| 対象 | 結果 |
+| --- | --- |
+| `dotnet test knowledge/backend/backend.slnx` | **473 passed / 0 failed**（18 skipped は統合テストの環境依存。**本作業で 14 件追加**。459 → 473） |
+| `dotnet test platform/backend/backend.slnx` | **376 passed / 0 failed**（1 skipped。**本作業で 4 件追加**。372 → 376） |
+| `dotnet format --verify-no-changes`（両ユニット） | OK |
+| `pnpm typecheck` / `lint` / `format:check` | OK（lint は warning 9・error 0。既存の `react-refresh` 警告） |
+| `pnpm test:coverage` | statements **96.39%** / branches **90.53%** / functions **91.68%** / lines **96.39%**（床 90 / 85 / 88 / 90。**割っていない**） |
+| `pnpm build` ＋ `check-static-egress` | OK（24 ファイル・外部オリジン 0） |
+| `check-chunk-budget` | **床は動かない**（578.15 kB のまま）。**画面を触っていないので当然である** |
+| `check-contract-schema` | **baseline を更新**（`TagDto` / `CreateTagRequest` / `TagDictionaryResponse` の型追加 ＋ `AttributeValuesResponse.Dictionary` の**既定値ありメンバー追加**。**破壊的変更 0 件**。[[IADR-0122]] 決定 2） |
+| `check-test-spec-coverage` | 床は動かない（`TagDictionaryTests` は FR-09 のテスト仕様書へ記載済み） |
+| EF マイグレーション | `AddTagDictionary`（**新規テーブル 1 本のみ。既存テーブルへの変更なし**） |
+| その他 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-adr-numbering` / `check-i18n-catalogs` / `check-test-traceability` / `check-bff-downstreams` / `check-unit-dependencies` / `check-backend-libraries` / `check-landed-subjects` / `scripts.repo.test` すべて OK |
+
+**カバレッジ床は上げない**（#628・#536・#532・#540 と同じ判断）。**i18n カタログも動かない**——画面を触っていない。
+
+**#634 の変更規模は 18 ファイル**である。#542 を分けなければ、これに #635 の
+30 ファイル・マイグレーション 3 本・Qdrant 全再索引が乗っていた。

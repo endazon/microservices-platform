@@ -88,6 +88,28 @@ plan_refs:
 - 認可解決の堅牢性（条件 null で `/scope` が落ちない）→ 単体 #18、結合 #12。
 - 参照整合（参照中の属性辞書は削除不可）→ 単体 #19、結合 #14。
 
+## タグ辞書（#634 / [[IADR-0152]]）
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-20 | 辞書の値集合を**管理者・運用者**が引ける | `List_AdminOrOperator_IsAllowed`（`[Theory]`） |
+| T-21 | **一般利用者は辞書を引けない**（ADR-0043 決定 1） | `List_GeneralUser_IsForbidden` |
+| T-22 | 追加は**システム管理者のみ**（運用者は読めるが書けない） | `Create_NonAdmin_IsForbidden`（`[Theory]`） |
+| T-23 | 追加直後の使用件数は 0 である | `Create_Admin_AddsTagWithZeroUsage` |
+| T-24 | 名前の重複は 409。**前後の空白だけの違いは同一とみなす** | `Create_DuplicateName_Returns409_IgnoringSurroundingWhitespace` |
+| T-25 | 空・空白のみの名前は拒否する | `Create_BlankName_IsRejected`（`[Theory]`） |
+| T-26 | 使用件数は**現行版の文書の件数**である | `UsageCount_CountsDocumentsOnCurrentVersion` |
+| T-27 | **版履歴だけが参照するタグは 0 件である**（数えると付け替えても削除できなくなる） | `UsageCount_DoesNotCountVersionHistory` |
+| T-28 | **アーカイブ済みの文書も数える**（付け替えられるため） | `UsageCount_CountsArchivedDocuments` |
+| T-29 | 同じ文書に同じタグが 2 度あっても 1 件と数える | `UsageCount_CountsEachDocumentOnce` |
+| T-30 | 誰も使っていないタグも辞書には出る（管理面と利用者面の集合は一致しない） | `List_IncludesUnusedTags` |
+| T-31 | BFF: **管理者・運用者には `dictionary` が付く**。口は 1 系統のまま | `PostAttributeValues_DictionaryReader_GetsDictionary`（`[Theory]`） |
+| T-32 | BFF: **一般利用者には `dictionary` が付かず、後段も呼ばない** | `PostAttributeValues_GeneralUser_GetsNoDictionary_AndDownstreamNotCalled` |
+| T-33 | BFF: `tags` 以外のキーでは辞書を引かない | `PostAttributeValues_NonTagKey_GetsNoDictionary` |
+
+**T-27 / T-28 はエンドポイント経由では作れない状態を検証するため、DB を直接組み立てている**
+（版履歴だけが参照する状態は、API からは作れない）。
+
 ## 備考
 
 - InMemory DB は同一テストクラス内で共有されるため、各ケースは一意なキー／名前を用い、

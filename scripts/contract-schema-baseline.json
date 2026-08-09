@@ -150,6 +150,12 @@
       "Knowledge.Contracts.Dtos.AttributeValuesResponse": {
         "kind": "record",
         "members": {
+          "Dictionary": {
+            "source": "positional",
+            "type": "TagDictionaryResponse?",
+            "required": false,
+            "position": 1
+          },
           "Values": {
             "source": "positional",
             "type": "List<string>",
@@ -431,6 +437,17 @@
             "type": "string",
             "required": true,
             "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.CreateTagRequest": {
+        "kind": "record",
+        "members": {
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
           }
         }
       },
@@ -1059,6 +1076,40 @@
             "type": "string",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.TagDictionaryResponse": {
+        "kind": "record",
+        "members": {
+          "Tags": {
+            "source": "positional",
+            "type": "List<TagDto>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.TagDto": {
+        "kind": "record",
+        "members": {
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UsageCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
           }
         }
       },

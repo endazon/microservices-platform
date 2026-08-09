@@ -153,6 +153,63 @@ public class BffSearchEndpointTests(BffTestFactory factory) : IClassFixture<BffT
         factory.LastAttributeValuesBody.Should().BeNull();
     }
 
+    // FR-09, SC-05, SC-09, #634: 管理者・運用者には**辞書そのもの**が添う（IADR-0152 決定 3）。
+    // **口は 1 系統のまま**（ADR-0043 決定 4）——新しい読み取り口を作っていない。
+    [Theory]
+    [InlineData("platform-admin")]
+    [InlineData("platform-operator")]
+    public async Task PostAttributeValues_DictionaryReader_GetsDictionary(string role)
+    {
+        factory.SearchScopeGranted = true;
+        factory.TagDictionaryFetched = false;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, role);
+
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+        body.Dictionary.Should().NotBeNull();
+        body.Dictionary!.Tags.Should().NotBeEmpty();
+        factory.TagDictionaryFetched.Should().BeTrue();
+    }
+
+    // **一般利用者には辞書が出ない。** 辞書を丸ごと返すと権限外の文書に固有の値から
+    // その存在が推測できる（ADR-0043 決定 1 / IADR-0152 決定 4）。
+    // **後段を呼んでもいない**ことまで固定する（呼べば後段が 403 で止めるが、呼ぶこと自体が無駄である）。
+    [Fact]
+    public async Task PostAttributeValues_GeneralUser_GetsNoDictionary_AndDownstreamNotCalled()
+    {
+        factory.SearchScopeGranted = true;
+        factory.TagDictionaryFetched = false;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
+
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "tags" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+        body.Dictionary.Should().BeNull("一般利用者の応答形は #540 から変わらない");
+        body.Values.Should().NotBeNull();
+        factory.TagDictionaryFetched.Should().BeFalse();
+    }
+
+    // 辞書が在るのは `tags` だけである。ABAC 属性の許可値は `AttributeDefinition.AllowedValues` が
+    // 持っており、**タグ辞書ではない**（計画も同じ切り分けをしている）。
+    [Fact]
+    public async Task PostAttributeValues_NonTagKey_GetsNoDictionary()
+    {
+        factory.SearchScopeGranted = true;
+        factory.TagDictionaryFetched = false;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-admin");
+
+        var resp = await client.PostAsJsonAsync("/bff/attribute-values", new { key = "department" });
+
+        (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!.Dictionary.Should().BeNull();
+        factory.TagDictionaryFetched.Should().BeFalse();
+    }
+
     // FR-04, FR-05, SC-01, SC-08, #540: **後段が返した非 2xx はそのまま透過する。**
     // **縮退（200 空配列）で潰さない** —— 縮退が守るのは「権限外の存在を示さない」ことであって、
     // **後段の障害を利用者から隠すことではない**。潰すと運用側が不調に気づけない

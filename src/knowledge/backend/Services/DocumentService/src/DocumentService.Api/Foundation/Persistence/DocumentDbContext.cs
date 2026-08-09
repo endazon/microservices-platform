@@ -13,6 +13,9 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     // FR-06, UC-03: 版履歴
     public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
 
+    // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
+    public DbSet<Tag> Tags => Set<Tag>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -57,6 +60,15 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .HasConversion(ListConverter())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(ListComparer());
+        });
+
+        // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である
+        // （SC-09「新しい名前は既存値と重複しない」。追加・改名の両方に効かせる）。
+        mb.Entity<Tag>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Name).HasMaxLength(200).IsRequired();
+            e.HasIndex(t => t.Name).IsUnique();
         });
     }
 

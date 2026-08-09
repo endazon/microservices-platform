@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Platform.Shared.Infrastructure.Foundation.Authz;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
 using System.Net.Http;
 using System.Net.Http.Json;
 
@@ -80,9 +81,23 @@ public static class SearchBffEndpoints
             if (string.IsNullOrWhiteSpace(req.Key))
                 return Results.Ok(new AttributeValuesResponse([]));
 
+            // FR-09, SC-05, SC-09, #634: 管理者・運用者には**辞書そのもの**を添える（IADR-0152 決定 3）。
+            // **口は 1 系統のまま**（ADR-0043 決定 4「読み取り口を 3 種類作らない。スコープだけロール別」）。
+            // **一般利用者には `null` のまま**で、`Values` の形は #540 から変わらない。
+            // 一般利用者へ辞書を返してはならない —— ADR-0043 決定 1 が明示的に禁じている
+            // （権限外の文書に固有の値からその存在が推測できる）。
+            TagDictionaryResponse? dictionary = null;
+            if (IsTagKey(req.Key) && IsDictionaryReader(http))
+            {
+                var (dict, failure) = await FetchTagDictionaryAsync(httpFactory, http, ct);
+                // 後段の非 2xx は透過する（辞書を引けるのは管理者・運用者だけなので一般利用者に影響しない）。
+                if (failure is not null) return failure;
+                dictionary = dict;
+            }
+
             var scope = await BffScopeResolver.ResolveAsync(httpFactory, http, ct);
             if (scope is null)
-                return Results.Ok(new AttributeValuesResponse([]));
+                return Results.Ok(new AttributeValuesResponse([], dictionary));
 
             var retrievalClient = httpFactory.CreateClient("RetrievalService");
             try
@@ -94,16 +109,57 @@ public static class SearchBffEndpoints
                     return Results.StatusCode((int)resp.StatusCode);
 
                 var result = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(ct);
-                return Results.Ok(result ?? new AttributeValuesResponse([]));
+                // 後段は辞書を知らない。**辞書は BFF がここで添える**（IADR-0152 決定 3）。
+                return Results.Ok(new AttributeValuesResponse(result?.Values ?? [], dictionary));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
                 // **後段へ到達できないときだけ**空配列へ縮退する（検索と同じ扱い。存在秘匿を崩さない）。
                 // **後段が返した非 2xx は上で透過済み**である —— 障害を 200 空応答で隠さない。
-                return Results.Ok(new AttributeValuesResponse([]));
+                return Results.Ok(new AttributeValuesResponse([], dictionary));
             }
         }).WithName("BffAttributeValues").Produces<AttributeValuesResponse>();
 
         return app;
+    }
+
+    // FR-09, SC-05, SC-09, #634: 辞書が在るのは `tags` だけである。
+    // ABAC 属性（`department` 等）の許可値は `AttributeDefinition.AllowedValues` が持っており、
+    // **タグ辞書ではない**（計画も同じ切り分けをしている）。
+    private static bool IsTagKey(string key) =>
+        string.Equals(key, AttributeValueKeys.Tags, StringComparison.OrdinalIgnoreCase);
+
+    // FR-09, SC-05, #634: 辞書を読めるのは管理者・運用者である（裁定 Q18。IADR-0152 決定 5）。
+    // **ここで塞ぐのは早期の門であり、実効境界は DocumentService 側である**（IADR-0044 多層防御 /
+    // IADR-0039 決定 2）。BFF を迂回されても後段の `/tags` が同じロールを要求する。
+    private static bool IsDictionaryReader(HttpContext http) =>
+        http.User.IsInRole(PlatformAuthPolicies.AdminRole)
+        || http.User.IsInRole(PlatformAuthPolicies.OperatorRole);
+
+    // FR-09, SC-05, SC-09, #634: DocumentService からタグ辞書（値集合 ＋ 使用件数）を取る。
+    // **利用者の資格情報を後段へ引き継ぐ**（後段が最終防衛線として同じロールを検査する）。
+    // 戻り値は (辞書, 透過すべき失敗応答) で、**どちらか一方だけが非 null** である。
+    private static async Task<(TagDictionaryResponse? Dictionary, IResult? Failure)> FetchTagDictionaryAsync(
+        IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+    {
+        var client = httpFactory.CreateClient("DocumentService");
+        var auth = http.Request.Headers.Authorization.ToString();
+        if (!string.IsNullOrEmpty(auth))
+            client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
+
+        try
+        {
+            var resp = await client.GetAsync("/tags", ct);
+            if (!resp.IsSuccessStatusCode)
+                return (null, Results.StatusCode((int)resp.StatusCode));
+
+            return (await resp.Content.ReadFromJsonAsync<TagDictionaryResponse>(ct), null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            // **後段へ到達できないときは辞書を添えずに続ける** —— 候補一覧（`Values`）は
+            // 辞書に依存しないので、辞書が引けないことで検索の候補まで落とさない。
+            return (null, null);
+        }
     }
 }
