@@ -1,3 +1,4 @@
+using DocumentService.Api.Foundation.Observability;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Api.Foundation.Endpoints;
@@ -15,6 +16,12 @@ builder.Host.UseSerilog((ctx, logConfig) =>
     logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
+
+// FR-01, SC-05, SC-09, SC-10, #637: 取り込み経路で辞書に無いタグが現れた件数（0 が正常）。
+builder.Services.AddMetrics();
+builder.Services.AddSingleton<IngestTagMetrics>();
+builder.Services.AddOpenTelemetry()
+    .WithMetrics(metrics => metrics.AddMeter(IngestTagMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
     .AddNpgSql(

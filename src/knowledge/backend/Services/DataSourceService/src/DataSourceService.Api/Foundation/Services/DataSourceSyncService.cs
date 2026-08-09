@@ -79,10 +79,24 @@ public sealed class DataSourceSyncService(
                 var key = $"{source.Id}/{fetchId}/raw{Path.GetExtension(item.Path)}";
                 var storageUri = await storage.PutBytesAsync(key, raw.Bytes, raw.ContentType, ct);
 
+                // FR-01, UC-04, SC-05, SC-09, #637: **取り込み経路はタグを生成しない**
+                // （計画確定・2026-08-09。利用者裁定 planning#304。正は計画
+                // `06_technical/09_datasource-connectors.md` §取り込み経路はタグを生成しない）。
+                //
+                // **ソースのメタ（所在・部門・フォルダ・更新者等）の写像先は ABAC 基本属性であり、
+                // タグではない。** それらは上の `attributes` に載っている。
+                //
+                // 従前ここは**親フォルダ名をタグへ写していた**（`BuildTags`）。**削除した。**
+                // フォルダ名をタグにすると**ファイルサーバーのディレクトリ名がそのまま辞書になる**うえ、
+                // 使用件数が登録の瞬間に 1 件以上となるため、SC-09 の削除拒否により
+                // **管理者は増えた値を一切消せなくなる**（[[IADR-0153]] 決定 5）。
+                //
+                // **コネクタは構造上タグを運べない**（`SourceItem` は所在・更新日時・サイズのみ）。
+                // 将来コネクタがソース側のタグを運ぶようになったら**計画へ改めて裁定を仰ぐ**。
                 await bus.Publish(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
-                    new Dictionary<string, string>(attributes), BuildTags(item),
+                    new Dictionary<string, string>(attributes), [],
                     DateTimeOffset.UtcNow), ct);
                 fetched++;
             }
@@ -102,13 +116,6 @@ public sealed class DataSourceSyncService(
             "同期完了 source {Id}（{Type}）: fetched={Fetched} failed={Failed}",
             source.Id, source.SourceType, fetched, failed);
         return new SyncResult(fetched, failed, ConnectorAvailable: true, DiscoverSucceeded: true, Message: null);
-    }
-
-    // Map: フォルダ名をタグへ（ソースメタの粗マッピング）。機密区分等の ABAC 属性は Attributes 側で運搬する。
-    private static List<string> BuildTags(SourceItem item)
-    {
-        var folder = Path.GetFileName(Path.GetDirectoryName(item.Path));
-        return string.IsNullOrWhiteSpace(folder) ? [] : [folder];
     }
 
     // UC-04 例外フロー: 連続失敗を記録し、しきい値到達で継続失敗アラート（構造化ログ Alert=true）を出す。

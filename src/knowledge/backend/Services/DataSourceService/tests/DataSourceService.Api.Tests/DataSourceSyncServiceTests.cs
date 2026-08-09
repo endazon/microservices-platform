@@ -4,8 +4,10 @@ using DataSourceService.Api.Foundation.Ports;
 using DataSourceService.Api.Foundation.Services;
 using FluentAssertions;
 using Knowledge.Contracts.Dtos;
+using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using MassTransit;
+using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -129,6 +131,39 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         source.LastSyncError.Should().NotBeNull();
         source.LastSyncError.Should().NotContain("hunter2", "接続文字列の秘密が平文で保存されてはならない");
         source.LastSyncError.Should().Contain("***");
+    }
+
+    // FR-01, UC-04, SC-05, SC-09, #637: **取り込み経路はタグを生成しない**
+    // （計画確定・2026-08-09。利用者裁定 planning#304）。
+    //
+    // 従前は**親フォルダ名をタグへ写していた**（`BuildTags`）。**その挙動にはテストが 1 件も無く**、
+    // 削除しても既存 473 件は 1 件も落ちなかった（実測）。**だからここで固定する。**
+    //
+    // フォルダ名をタグにすると**ファイルサーバーのディレクトリ名がそのまま辞書になる**うえ、
+    // 使用件数が登録の瞬間に 1 件以上となり、SC-09 の削除拒否で**管理者が消せなくなる**。
+    [Fact]
+    public async Task Sync_DoesNotTurnFolderNameIntoTag()
+    {
+        using var scope = factory.Services.CreateScope();
+        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var dir = CreateTempDirWithFile("ok.md", "ok");
+        var svc = BuildService(scope, new FileSystemConnector(NullLogger<FileSystemConnector>.Instance));
+        var source = DataSource.Create("share", "filesystem", "",
+            new Dictionary<string, string> { ["rootPath"] = dir });
+
+        await svc.SyncAsync(source);
+
+        var published = harness.Published.Select<RawDocumentFetched>()
+            .Select(p => p.Context.Message)
+            .Where(m => m.SourceId == source.Id)
+            .ToList();
+
+        published.Should().NotBeEmpty("同期は原本取得イベントを発行する");
+        published.Should().OnlyContain(m => m.Tags.Count == 0,
+            "取り込み経路はタグを生成しない。ソースのメタ（フォルダ等）は ABAC 基本属性側で運ぶ");
+        // 属性側は従来どおり運ばれている（タグを止めただけで、メタが失われたのではない）。
+        published.Should().OnlyContain(m => m.Attributes.Count > 0,
+            "ソースのメタは ABAC 基本属性として運ばれ続ける");
     }
 
     private static DataSourceSyncService BuildService(
