@@ -99,10 +99,47 @@ export interface SearchResponse {
   elapsedMs: number;
 }
 
+/**
+ * FR-04, FR-05, SC-01, SC-08（裁定 Q1・Q3 / #539）: **対象範囲**（属性キー → 許可値集合）。
+ * 計画は「`SearchRequest` は既に `AttributeFilters` を持つのに `AnalysisRequest` だけが
+ * 持たない非対称を解消する」と定めた。**軸はタグ・部門（`department`）・
+ * プロジェクト（`project`）である。`folder` は用いない**（裁定 Q9。ABAC 属性体系に
+ * `folder` が存在せず、フォルダは取り込み時に属性へ写像されて消える）。
+ *
+ * **多値である**——画面はチップを**複数**選ぶ。`AnalysisDataRange.attributeFilters` と同じ形で、
+ * `SearchRequest.attributeFilters`（単値）とは違う（あちらは後方互換のために残る口である）。
+ *
+ * **タグは `tags` をキーに指定する**（値集合の照会 `POST /bff/attribute-values` と同じキー）。
+ * **候補に出る値と絞れる値は同じ写像を通る**（#539 で 1 つの関数へ寄せた）。
+ *
+ * **narrowing-only である。** ABAC 許可スコープと交差し、**権限を一切広げない**。
+ * 権限の外だけを指す範囲は全体 deny へ倒れる（結果は空になる）。
+ * **ABAC スコープ自体はクライアントから受け取らない**（受け取っても使わない＝権限昇格の防止）。
+ */
+export type AskRequestAttributeFilters = {[key: string]: string[]};
+
 export interface AskRequest {
   question: string;
   /** 呼び出し側が付す任意の絞り込み識別子（`AnalysisRequest.Scope`）。省略可 */
   scope?: string | null;
+  /**
+     * FR-04, FR-05, SC-01, SC-08（裁定 Q1・Q3 / #539）: **対象範囲**（属性キー → 許可値集合）。
+     * 計画は「`SearchRequest` は既に `AttributeFilters` を持つのに `AnalysisRequest` だけが
+     * 持たない非対称を解消する」と定めた。**軸はタグ・部門（`department`）・
+     * プロジェクト（`project`）である。`folder` は用いない**（裁定 Q9。ABAC 属性体系に
+     * `folder` が存在せず、フォルダは取り込み時に属性へ写像されて消える）。
+     *
+     * **多値である**——画面はチップを**複数**選ぶ。`AnalysisDataRange.attributeFilters` と同じ形で、
+     * `SearchRequest.attributeFilters`（単値）とは違う（あちらは後方互換のために残る口である）。
+     *
+     * **タグは `tags` をキーに指定する**（値集合の照会 `POST /bff/attribute-values` と同じキー）。
+     * **候補に出る値と絞れる値は同じ写像を通る**（#539 で 1 つの関数へ寄せた）。
+     *
+     * **narrowing-only である。** ABAC 許可スコープと交差し、**権限を一切広げない**。
+     * 権限の外だけを指す範囲は全体 deny へ倒れる（結果は空になる）。
+     * **ABAC スコープ自体はクライアントから受け取らない**（受け取っても使わない＝権限昇格の防止）。
+     */
+  attributeFilters?: AskRequestAttributeFilters;
 }
 
 /**

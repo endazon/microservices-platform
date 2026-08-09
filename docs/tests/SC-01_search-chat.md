@@ -13,7 +13,7 @@ related_ids:
   - IADR-0126
 author: claude
 created: 2026-07-08
-updated: 2026-08-05
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -102,7 +102,31 @@ related_specs:
 （`foundation/auth/authConfig.ts`）、外部から注入できないためである。認証済みの導線は
 **導線テスト**（`searchFlow.test.tsx`。3 ルートを 1 本のルータへ載せる）が担う。
 
+## 対象範囲フィルタ（#539 / 裁定 Q1・Q3・Q9）
+
+**実装は `features/scope-filter/scopeFilter.test.ts`（7 件）と `ScopeFilter.test.tsx`（8 件）。
+SC-08 と共有する部品なので、テストも 1 か所に置く。**
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-30 | **軸は 3 つ（タグ・部門・プロジェクト）で「フォルダ」は無い**（裁定 Q9。不採用であって保留ではない） | `has exactly the three axes the plan fixed, and no folder` |
+| T-31 | 選択の切り替え（元の選択を破壊しない） | `toggles a value on and off without mutating the original selection` |
+| T-32 | **同じ軸に複数の値を保つ**（チップは複数選ぶ＝多値が要る根拠） | `keeps multiple values on the same axis` |
+| T-33 | 軸をまたいで契約の形へ変換する | `combines axes into the contract shape` |
+| T-34 | **空の軸は載せない**（「絞ったのに効いていない」と読ませない） | `omits axes with no selection` |
+| T-35 | **何も選ばなければ `undefined`**（旧クライアントと同じ要求の形） | `returns undefined when nothing is selected` |
+| T-36 | 選択件数を数える | `counts the selected values across axes` |
+| T-37 | ★ **候補 API の値でチップを組み立てる**（権限内に限る） | `renders chips from the permitted candidate values` |
+| T-38 | **3 軸すべてを引く**（引き漏らすとその軸だけ黙って絞れない） | `queries all three axes` |
+| T-39 | チップ押下で選択を通知する | `reports the selection when a chip is pressed` |
+| T-40 | ★ **選択を色だけで表さない**（`aria-pressed` ＋ ✓。INDEX 決定 21） | `marks the selected chip without relying on colour alone` |
+| T-41 | 絞り込み件数／すべてが対象を文字で示す | `shows how many values are narrowing the scope` / `says everything is in scope when nothing is selected` |
+| T-42 | **候補が無いときは中立文言**（「権限が無い」と区別しない。IADR-0009） | `uses a neutral message when there are no candidates at all` |
+| T-43 | **1 軸の失敗で他の軸の候補まで失わない** | `degrades one failing axis without losing the others` |
+| T-44 | ★ SC-01 が選択を**質問と一緒に送る**（SSE の要求本文） | `SearchChatPage.test.tsx` の `sends the selected scope with the question` |
+
 ## 未決事項
 
 - なし（画面要素の不足は [作業仕様書 §2](../specs/20260804_issue-502_sc01-03-search-flow.md) と
-  `feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した）
+  `feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した。
+  **対象範囲フィルタは #539 で実装した**）

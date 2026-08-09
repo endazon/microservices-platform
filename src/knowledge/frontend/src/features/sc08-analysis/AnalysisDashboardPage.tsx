@@ -27,23 +27,27 @@ import {
 } from './analysisRange';
 import type { TaskType } from './analysisRange';
 import { useAnalysisTask } from './useAnalysisTask';
+import { ScopeFilter } from '../scope-filter/ScopeFilter';
+import { EMPTY_SELECTION } from '../scope-filter/scopeFilter';
+import type { ScopeSelection } from '../scope-filter/scopeFilter';
 
 // SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボード（05_screens: ルート /analyze）。
 // 範囲を指定して分析（比較・抽出を含む）を依頼し、結果と出典を確認する。出典から SC-03 へ遷移する。
 // ロール限定は無い（05_screens §共通シェル: 利用者グループは ABAC の権限内で全利用者が使える）。
 //
-// 実装しない要素（画面仕様書 docs/screens/SC-08_ai-analysis-dashboard.md §hi-fi モックアップとの対応）:
-//   - **分析対象のチップ（タグ・フォルダ）**: `AnalysisDataRange` は属性キー → 値集合しか取らず、
-//     タグは属性とは別の軸・フォルダは契約に存在しない。加えて「分析対象（**権限内に限定**）」を
-//     成立させる権限内候補の照会口が無い。**SC-01 の対象範囲フィルタと同型の論点**であり
-//     planning#197 の裁定を待つ（新規の環流記録は作らない）。実装するのは「検索条件による追加」に
-//     当たる `range.query` である。
+// **［#539］分析対象のチップ（タグ・部門・プロジェクト）を実装した。**
+// 従前ここには「planning#197 の裁定を待つ」と書いてあったが、裁定（2026-08-05 Q1・Q3・Q9）が着地し、
+// 権限内候補の照会口も #540 で着地した。**「フォルダ」は保留ではなく不採用である**（Q9）。
+// チップは SC-01 と同じ部品（`features/scope-filter`）を使う——同じ操作が画面ごとに違うと、
+// 利用者は操作を覚え直すことになる。
 
 export function AnalysisDashboardPage() {
   const { t } = useLingui();
   const [instruction, setInstruction] = useState('');
   const [taskType, setTaskType] = useState<TaskType>(AnalysisTaskRequestTaskType.Analyze);
   const [rangeQuery, setRangeQuery] = useState('');
+  // FR-07, SC-08, #539: 分析対象のチップ（タグ・部門・プロジェクト）。
+  const [scope, setScope] = useState<ScopeSelection>(EMPTY_SELECTION);
   const { outcome, run } = useAnalysisTask();
 
   const canSubmit = isSubmittableInstruction(instruction) && outcome.kind !== 'running';
@@ -57,12 +61,17 @@ export function AnalysisDashboardPage() {
         <Trans>範囲指定の分析依頼・結果・出典</Trans>
       </p>
 
+      {/* SC-08: 分析対象の指定（チップ）。**候補は権限内に限る**（#540 の口）。 */}
+      <div className="mb-3">
+        <ScopeFilter selection={scope} onChange={setScope} disabled={outcome.kind === 'running'} />
+      </div>
+
       <form
         className="grid gap-3 md:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (!canSubmit) return;
-          run(buildAnalysisRequest(instruction, taskType, rangeQuery));
+          run(buildAnalysisRequest(instruction, taskType, rangeQuery, scope));
         }}
       >
         <Card>

@@ -75,6 +75,23 @@ export default defineConfig({
       ],
       // 回帰防止のラチェット。床を割る変更を CI で止める（レビュー #168 指摘対応・IADR-0034）。
       //
+      // ［2026-08-09 / #539］SC-01 / SC-08 の対象範囲フィルタに伴う引き上げ。
+      //   実測（測定条件は上と同じ。ブランチ `claude/handover-work-start-7g1vu3` /
+      //         `pnpm run test:coverage`）:
+      //     全ユニット横断        lines/statements 96.48%（5740/5949）/ branches 90.78%（1182/1302）/
+      //                           functions 91.87%（407/443）
+      //     MSP 所有分のみ        lines/statements 95.98%（4473/4660）/ branches 91.95%（915/995）/
+      //                           functions 93.17%（314/337）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   **branches 85 → 86** へ引き上げる。**lines/statements 90・functions 88 は据え置き**
+      //   （95.98 − 5 = 90.98 の切り捨てで 90、93.17 − 5 = 88.17 の切り捨てで 88。どちらも現行と同値）。
+      //   **当初この節へ「数ポイントずつ上げる」という別の作法で 92/92/90/88 を書いたが、
+      //   本ファイルが定めているのは「MSP 所有分の実測から 5pt 下」であり、誤りだったので測り直した。**
+      //   上げた分は「対象範囲の分岐（軸ごとの候補の有無・選択の切り替え・空の軸を載せない・
+      //   1 軸だけ失敗したときの縮退・候補が 1 つも無いときの中立表示）に純関数テストと
+      //   描画テストを付けた」ことによる。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
+      //
       // ［2026-08-04 / #446］移行第 1 段（ADR-0031 / IADR-0121）に伴う引き上げ。
       //   実測（Node 22.22.2 / pnpm 10.33.0 / Vitest 3.2.7 + v8 provider /
       //         submodule `src/ai-stock-trading` populate 済み）:
@@ -182,7 +199,7 @@ export default defineConfig({
         lines: 90,
         statements: 90,
         functions: 88,
-        branches: 85,
+        branches: 86,
       },
     },
   },

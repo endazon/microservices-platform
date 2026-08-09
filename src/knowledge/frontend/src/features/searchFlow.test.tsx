@@ -104,7 +104,9 @@ describe('search flow (SC-01 → SC-02 → SC-03)', () => {
       '/search',
       expect.objectContaining({ method: 'POST' }),
     );
-    expect(JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body))).toEqual({
+    // **［#539］呼び出しは URL で選ぶ**（SC-01 が起動時に候補を引くため添字は当てにならない）。
+    const searchCall = mocks.apiRequest.mock.calls.find((c) => String(c[0]).startsWith('/search'));
+    expect(JSON.parse(String((searchCall![1] as RequestInit).body))).toEqual({
       query: '経費精算',
       topK: 20,
     });

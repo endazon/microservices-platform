@@ -14,7 +14,7 @@ related_ids:
   - IADR-0131
 author: claude
 created: 2026-06-27
-updated: 2026-08-06
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
@@ -84,6 +84,50 @@ plan_refs:
 
 - `SearchResultDto`（タイトル・URI・本文を変えた 1〜3 件）。機密区分は `Attributes["confidentiality"]` で与える。
 - BFF スタブハンドラが返す `AiAnswerDto`（出典 1 件）。
+
+## 対象範囲（属性フィルタ）と narrowing-only（#539 / 裁定 Q1・Q3・Q9）
+
+**実装は `AiAnalysisService.Api.Tests/AskAttributeFilterTests.cs`（9 件）と
+`RetrievalService.Api.Tests/TagFilteringTests.cs`（13 件）。**
+
+計画 L198・裁定 Q1:「`SearchRequest` は既に `AttributeFilters` を持つのに `AnalysisRequest` だけが
+持たない非対称を解消する。」**最重要の不変条件は「範囲指定は権限を一切広げない」ことである。**
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-01 | `/analysis/ask` が対象範囲を受け取り**後段へ渡す**（回答本文は範囲に依存しないため、スタブの記録で見る） | `Ask_PassesAttributeFiltersDownstream` |
+| T-02 | `/analysis/ask/stream` も同じ形で受け取る（SC-01 の本文は SSE 経路である） | `AskStream_PassesAttributeFiltersDownstream` |
+| T-03 | **範囲を送らないときの挙動は従来どおり**（既定値つき追加は非破壊） | `Ask_WithoutFilters_IsUnchanged` |
+| T-04 | ★ **範囲は ABAC の内側へ狭まる**（広がらない） | `Resolve_NarrowsWithinAbac_DoesNotWiden` |
+| T-05 | ★ **権限の外だけを指す範囲は全体 deny** へ倒れる | `Resolve_RangeOutsideAbac_DeniesEverything` |
+| T-06 | ABAC が不許可なら、いかなる範囲でも開かない（deny-by-default） | `Resolve_NotGranted_StaysDenied` |
+| T-07 | ABAC が無制約に許可するキーは、範囲で絞れる（安全な narrowing） | `Resolve_KeyUnconstrainedByAbac_AddsRangeFilter` |
+| T-08 | **`ask` と `analyze` が同じ規則を通る**（多重定義の一致） | `Resolve_BothOverloadsAgree` |
+| T-09 | 範囲が無ければ ABAC をそのまま保つ | `Resolve_NullFilters_PreservesAbac` |
+
+### タグで絞れること（#539 の中心的な是正）
+
+**着手時の実測では、候補（#540）は `tags` を返すのに、絞り込みは `tags` を見ていなかった**
+——両ストアとも `attributes.{key}` しか参照していなかった。
+**「候補には出るのに、その候補で絞れない」状態は、利用者から見て壊れている。**
+
+| # | 確かめること | 実装 |
+| --- | --- | --- |
+| T-10 | ★ `tags` で絞れる | `Filter_ByTag_KeepsOnlyChunksCarryingIt` |
+| T-11 | タグは**リストのいずれかが一致**すれば真（属性の単一値とは違う） | `Filter_ByTag_MatchesAnyElementOfTheList` |
+| T-12 | 値集合内は OR（チップを複数選ぶ） | `Filter_ByTag_MultipleValuesAreOr` |
+| T-13 | 属性経路の**回帰**（タグ対応で壊していない） | `Filter_ByAttribute_StillWorks` |
+| T-14 | フィルタ間は AND（タグ ∧ 属性） | `Filter_TagAndAttribute_AreCombinedWithAnd` |
+| T-15 | タグを持たない文書はタグ指定で残らない | `Filter_ByTag_ExcludesChunksWithoutTags` |
+| T-16 | 全文検索の経路にも同じフィルタが効く | `KeywordSearch_AppliesTagFilterToo` |
+| T-17 | ★ **候補と絞り込みが同じ写像を通る**（`tags` → リスト項目 / 属性 → `attributes.<key>`） | `QdrantConditions_MapTagsToListField_AndAttributesToNestedPath` |
+| T-18 | `tags` のキーは大小同一視してよい（本コードが所有するリテラル） | `QdrantConditions_TagKeyIsCaseInsensitive`（`[Theory]`） |
+| T-19 | **属性キーの綴りは畳まない**（畳むと投入時のキーと一致せず黙って空集合になる） | `QdrantConditions_AttributeKeyCaseIsPreserved` |
+| T-20 | 値集合が空のフィルタは条件を作らない | `QdrantConditions_EmptyAllowedValuesProduceNoCondition` |
+
+**Qdrant 側で実機なしに固定できるのはキーの写像だけである**（検索そのものは実 Qdrant が要る）。
+そこが「候補に出る値」と「絞れる値」を一致させる要なので、`BuildAttributeConditions` を
+`internal` にして直接呼んでいる。
 
 ## 関連仕様
 

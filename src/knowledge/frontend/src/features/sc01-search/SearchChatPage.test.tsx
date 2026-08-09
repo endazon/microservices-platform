@@ -95,6 +95,32 @@ afterEach(() => {
 });
 
 describe('SearchChatPage (SC-01)', () => {
+  // ★ FR-04, SC-01, #539: 対象範囲フィルタで選んだ値を SSE の要求本文へ載せる。
+  // **計画 §SC-01 の主要素「対象範囲フィルタ（タグ／部門／プロジェクト）」の受け入れ基準である。**
+  it('sends the selected scope with the question', async () => {
+    mocks.apiRequest.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/attribute-values') {
+        const key = (JSON.parse(String(init?.body)) as { key: string }).key;
+        return Promise.resolve(jsonResponse({ values: key === 'tags' ? ['経理'] : [] }));
+      }
+      return Promise.resolve(jsonResponse({}));
+    });
+    streamEvents([CITATIONS_EVENT, DONE_EVENT]);
+    await renderPage();
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /経理/ }));
+    await user.type(screen.getByLabelText('質問・キーワード'), '締め日は？');
+    await user.click(screen.getByRole('button', { name: '送信' }));
+
+    await waitFor(() => expect(mocks.apiStream).toHaveBeenCalled());
+    const [, options] = mocks.apiStream.mock.calls[0] as [string, { json: unknown }];
+    expect(options.json).toMatchObject({
+      question: '締め日は？',
+      attributeFilters: { tags: ['経理'] },
+    });
+  });
+
   // UC-01 基本フロー 1: 利用者が質問またはキーワードを入力する（空・空白のみは送信できない）。
   it('keeps submit disabled until a non-blank question is entered', async () => {
     const user = userEvent.setup();
@@ -233,7 +259,10 @@ describe('SearchChatPage (SC-01)', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
-    expect(JSON.parse(String((mocks.apiRequest.mock.calls[0][1] as RequestInit).body))).toEqual({
+    // **［#539］呼び出しは URL で選ぶ**——画面が起動時に候補（`/attribute-values`）を引くため、
+    // `mock.calls[0]` はフィードバックの呼び出しとは限らない。
+    const feedbackCall = mocks.apiRequest.mock.calls.find((c) => c[0] === '/feedback');
+    expect(JSON.parse(String((feedbackCall![1] as RequestInit).body))).toEqual({
       answerId: ANSWER_ID,
       rating: 'up',
       question: '締め日は？',

@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — AnalysisRequest に対象範囲（属性フィルタ）を追加する（#539）
 type: work-spec
-status: in-progress
+status: fixed
 related_ids:
   - FR-04
   - FR-05
@@ -144,8 +144,68 @@ InMemoryVectorStore.cs:79  c.Attributes.TryGetValue(f.Key, out var v)
 
 ## 実装中に決めたこと（仕様書からの差分）
 
-（着手後に追記する）
+### 1. 母集合は 8 行の表より広かった。**画面テストが「通信していないこと」を assert していた**
+
+**着手時の表に無かったもの**:
+
+| 追加 | 何を | なぜ着手時に挙がらなかったか |
+| --- | --- | --- |
+| `features/scope-filter/`（**新規 4 ファイル**） | 軸の定義・候補の取得・チップの部品・テスト | 表は「SC-01 の画面」「SC-08 の画面」と書いており、**2 画面が 1 つの部品を共有する**ことを織り込んでいなかった。計画は「SC-01 と一体で扱う」と書いてある |
+| `searchFlow.test.tsx` / `SearchChatPage.test.tsx` / `AnalysisDashboardPage.test.tsx` | 呼び出しを**添字ではなく URL で選ぶ**形へ | **候補の取得を起動時に足したことで `mock.calls[0]` が別の呼び出しになった。** 3 件が落ちた |
+| `src/vitest.config.ts` | カバレッジ床（branches 85 → 86） | テストを増やしたら床を上げる規約（[[IADR-0034]]） |
+| 英語カタログ 7 件 | 新規文言の翻訳 | 未翻訳は `check-i18n-catalogs.js` が止める |
+
+**教訓（#635 の型の再来である）。** #635 では「コンパイルエラーで全部出た」を母集合の証拠にして
+統合テストを取りこぼした。今回は**契約にメンバーを足すだけなので型検査は何も教えない**と
+着手時に書いており、そこは正しく警戒できた。**それでも落ちたのは「テストが観測している範囲」**である——
+`expect(apiRequest).not.toHaveBeenCalled()` は「送信していない」の代理表現であり、
+**画面が別の通信を始めた瞬間に意味が変わる**。是正では、その代理表現を
+`callsTo('/analysis/analyze')` という**意図どおりの表現**へ置き換えた。
+
+### 2. カバレッジ床の導出規則を**取り違えた**（自己是正）
+
+当初「数ポイントずつ上げる」という読みで 92/92/90/88 を書いたが、
+**`vitest.config.ts` が定めている規則は「MSP 所有分の実測から 5pt 下・切り捨て」**である。
+測り直した結果、**引き上がるのは branches だけ（85 → 86）**で、lines/statements と functions は据え置きだった。
+
+- 全ユニット横断: lines/statements 96.48%（5740/5949）／ branches 90.78%（1182/1302）／ functions 91.87%（407/443）
+- **MSP 所有分のみ**: lines/statements 95.98%（4473/4660）／ branches 91.95%（915/995）／ functions 93.17%（314/337）
+
+**規則を読まずに「それらしい値」を置くと、床が回帰防止ではなく気分になる。**
+
+### 3. `AnalysisDataRange` の器は SC-08 だけが使う
+
+SC-01（`ask` 系）は `AnalysisDataRange`（`Query` / `TopK` を持つ）を取らない。
+そこで **`DataRangeScopeResolver` へ器に依存しない多重定義を足し、交差の規則だけを共有した**。
+規則を 2 本持つと「検索では効くが分析では効かない」型の食い違いが生まれる
+（**まさにその食い違いが `tags` で実際に起きていた**のが本 issue の出発点である）。
+
+### 4. ［観測・射程外］Qdrant の検索結果は `Tags` を復元していない
+
+`QdrantVectorStore.MapPayload` は `Tags: []` を固定で入れている（実測）。
+**絞り込みには影響しない**（フィルタは Qdrant 側で効き、候補は `/bff/attribute-values` が返す）ため
+本 issue では触らないが、**検索結果にタグを表示したくなったときに効いてくる**。記録に留める。
 
 ## 検証記録（実測）
 
-（着手後に追記する）
+**走査基準: develop `7d9b0e4`（#635 マージ直後）＋ 本ブランチ。**
+
+| コマンド | 結果 |
+| --- | --- |
+| `dotnet build knowledge/backend/backend.slnx` | `Build succeeded.` |
+| `dotnet test knowledge/backend/backend.slnx` | 全 11 アセンブリ Passed（`RetrievalService` 64 件・`AiAnalysisService` 68 件。着手時は 51 / 59） |
+| `dotnet format knowledge/backend/backend.slnx --verify-no-changes` | 差分なし |
+| `pnpm run typecheck` / `lint` / `format:check` | いずれも通過（lint の warning 9 件は既存の `react-refresh` のみ） |
+| `pnpm run test` | **606 件 Passed**（着手時 588 件） |
+| `pnpm run test:coverage` | 床（90/90/88/86）を満たす |
+| `pnpm run codegen` / `pnpm run i18n` | 再生成差分をコミット済み |
+| `node scripts/{check-doc-links,check-cross-repo-refs,check-plan-id-qualification,check-i18n-catalogs,check-test-traceability,check-test-spec-coverage}.js` | すべて OK |
+| `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | 293 件 Passed |
+
+### 実走できなかったもの（**理由つき**）
+
+- **実 Qdrant での絞り込みは実走していない。** `QdrantVectorStore` の検索そのものは実機が要る。
+  **実機なしに固定できるのはキーの写像**（`BuildAttributeConditions`）であり、そこが
+  「候補に出る値」と「絞れる値」を一致させる要なので、`internal` へ上げて直接テストした。
+  **意味論（`Match.Keywords` が配列ペイロードの要素いずれかに一致すること）は Qdrant の仕様に依存しており、
+  ここでは固定できていない**——`InMemoryVectorStore` 側で同じ意味論をテストして揃えてある。
