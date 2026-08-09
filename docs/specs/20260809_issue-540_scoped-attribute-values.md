@@ -194,3 +194,18 @@ BFF の口が黙って増えないようにする既存の守りであり、**�
 | その他 | `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-adr-numbering` / `check-i18n-catalogs` / `check-test-traceability` / `check-bff-downstreams` / `check-unit-dependencies` / `check-backend-libraries` / `check-landed-subjects` すべて OK |
 
 **カバレッジ床は上げない**（#628・#536・#532 と同じ判断）。**i18n カタログも動かない**——画面を触っていない。
+
+## レビュー指摘への対応（PR #633・AI レビュー）
+
+**🔴 重大は 0 件。** 🟡 1 件・🟢 1 件をいずれも受け入れた。
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🟡 **実 Qdrant での facet の動作と payload index の要否が未検証**。`QdrantIngestionVectorStore.EnsureCollectionsAsync` は `tags` / `attributes.<key>` に索引を張っていない | **[[IADR-0151]] のフォローアップへ残課題として明記した。索引の付与は本 PR で行わない。** 検索段の ABAC フィルタも同じキーを未索引で引いており、**索引の要否は照会 API 固有ではなくフィルタ経路全体の性能判断**である。ここで片側だけ張ると「照会は速いが検索は遅い」という非対称を作る。実 Qdrant を立てるテスト構成が本リポに無いことも実測で確認した |
+| 🟢 `ToPayloadKey` が `tags` だけ `OrdinalIgnoreCase` で、属性キーは大小を区別する理由が読めない | **`AttributeValueDto.cs` にコメントを足した。** `tags` は本コードが所有するリテラルなので畳んでよいが、**属性キーは投入時に書いたキーがそのままペイロードのキーになる**（[[IADR-0014]]）ため、畳むと書き込み側と一致せず**黙って空集合が返る** |
+
+**レビューが本 PR の主張を独立に追試した結果も記録する**（他人の数えを転記しない）。
+
+- **統合テスト 18 件が本当に通ることが分かった。** レビュー環境は Docker が使えたため skip されず、`knowledge` は **477 passed / 0 failed / 0 skipped** だった（本作業の環境では 459 passed + 18 skipped ＝ 477 で件数が一致する）。**本作業の環境では測れなかった部分である。**
+- 束ねを覆した根拠（`Document.Tags` / `DocumentVersion.Tags` が `List<string>` の表示名複写でタグ辞書エンティティが無い）を、レビューが `grep` で独立に追試し**一致**した。
+- BFF がクライアント指定の `Scope` を読まないことを、レビューがコードで独立に確認した。

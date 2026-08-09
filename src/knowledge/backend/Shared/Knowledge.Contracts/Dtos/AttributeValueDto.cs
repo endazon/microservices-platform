@@ -38,6 +38,12 @@ public static class AttributeValueKeys
     public const string AttributesPrefix = "attributes";
 
     // 照会キーを Qdrant ペイロードのキーへ写す。**`tags` だけが例外で、他は属性として扱う。**
+    //
+    // **大文字小文字の扱いが `tags` と属性キーで違うのは意図的である。**
+    // `tags` は**本コードが所有するリテラル**なので、呼び出し側が `Tags` と書いても同じ口へ寄せてよい。
+    // 属性キーは違う——**投入時に書いたキーがそのままペイロードのキーになる**（IADR-0014 のネスト構造体）ため、
+    // ここで畳むと `Department` が書き込み時の `department` と一致しなくなり、**黙って空集合が返る**。
+    // 属性キーの正規化は権限側（属性定義）の責務であり、照会側で勝手に変えない。
     public static string ToPayloadKey(string key) =>
         string.Equals(key, Tags, StringComparison.OrdinalIgnoreCase)
             ? Tags
