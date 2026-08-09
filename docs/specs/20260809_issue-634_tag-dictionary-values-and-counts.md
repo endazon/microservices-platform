@@ -193,3 +193,27 @@ BFF の判定は早期の門にすぎない。**BFF を迂回されても `/tags
 
 **#634 の変更規模は 18 ファイル**である。#542 を分けなければ、これに #635 の
 30 ファイル・マイグレーション 3 本・Qdrant 全再索引が乗っていた。
+
+## レビュー指摘への対応（PR #636・AI レビュー）
+
+| 指摘 | 対応 |
+| --- | --- |
+| 🔴 **[[IADR-0152]] 決定 5 と実装が食い違っている**（決定 5 は `ConfigViewer` と書いているのに、実装は `RequireRole(AdminRole, OperatorRole)` を直書き）。**決定の正本が古いまま `Accepted` で残る**ため、将来 `adr-guardian` / `traceability-auditor` が今回の実装を「ADR 違反」と誤検出する | **指摘のとおりで、私の落ち度である。** 逸脱の理由を**作業仕様書にだけ書いて、決定の正本を直さなかった**。[[IADR-0152]] の決定 5 を実装に合わせて書き直し、**選択肢の節（2b）に `ConfigViewer` を採らなかった理由**を残した。**日付つき追記ではなく本文を直した**——本 IADR は**この PR で新設したもの**であり、着地した版が無いので「後から差し込んだ注記」に当たらない（`.claude/rules/traceability.md` の注記規約は live な文書への事後注記が対象である） |
+| 🟡 **タグ追加の重複チェックに TOCTOU の隙**。事前検証（`AnyAsync`）と保存の間に別の要求が同名を入れると、DB の一意インデックス違反が未処理の `DbUpdateException` になり、契約「重複は 409」に反して**素の 500** になり得る | **受け入れた。** `SaveChangesAsync` を `try/catch (DbUpdateException)` で包み 409 へ写した。**`AuthzEndpoints` の `AttributeDefinition` が同型の先例**であり、そこを見ていなかった取りこぼしである |
+
+### レースのテストは統合テスト側へ置いた（実測にもとづく判断）
+
+**単体テストでは踏めない。** `DocumentService.Api.Tests` は **EF InMemory** を使っており
+（`TestWebApplicationFactory` の `UseInMemoryDatabase`）、**InMemory プロバイダは一意インデックスを強制しない**。
+単体側に並行作成のテストを書いても、**2 件とも 201 になって通ってしまい、ガードを検証したことにならない**。
+
+そこで **`Knowledge.IntegrationTests`（実 PostgreSQL）** へ 2 件足した:
+
+- `CreateTag_Duplicate_Returns409`（逐次の重複 → 事前検証が 409）
+- `CreateTag_Concurrently_ExactlyOneSucceeds_AndNoServerError`（**同時 4 本 → 201 が 1 件・残りは 409・500 は 0 件**）
+
+**本作業環境では Docker が無く skip される**（`knowledge` の skipped が 18 → 20 になったのはこの 2 件である）。
+**CI と、Docker のあるレビュー環境では実走する。**
+
+**なお先例（`AuthzEndpoints` の `catch (DbUpdateException)`）にはテストが無い**（実測）。
+同じ理由（InMemory では踏めない）と思われるが、**そちらへテストを足すのは本 issue の射程外**なので触らない。

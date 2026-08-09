@@ -54,7 +54,18 @@ public static class TagDictionaryEndpoints
 
             var tag = Tag.Create(name);
             db.Tags.Add(tag);
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Name 一意制約違反。**上の事前検証をすり抜けた同時登録（race）**を 409 で返す。
+                // 事前検証だけでは埋まらない —— 検査と保存の間に別の要求が同名を入れられる。
+                // **契約は「重複は 409」なので、素の 500 にしない**
+                // （`AuthzEndpoints` の `AttributeDefinition` が同型の先例である）。
+                return Results.Conflict(new { message = $"タグ「{name}」は既に辞書にあります。" });
+            }
 
             // 追加直後の使用件数は 0 である（まだどの文書にも付いていない）。
             return Results.Created($"/tags/{tag.Id}", new TagDto(tag.Id, tag.Name, 0));
