@@ -52,7 +52,7 @@ src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DocumentBffEndpoints.cs
 
 | # | 口 | サービス | BFF | 計画上の分類 | 本作業 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `POST /` （登録） | `:45` | `:84` | **破壊的**（「登録」） | **`AdminOnly` を積む** |
+| 1 | `POST /` （登録） | `:45` | `:84` | **破壊的**（「登録」） | **BFF のみ積む。サービス側は据え置き**（§追補） |
 | 2 | `PUT /{id}` （編集） | `:73` | `:97` | **破壊的**（「文書の編集」） | **積む** |
 | 3 | `PATCH /{id}/metadata` | `:109` | **無い** | **破壊的**（「更新」「文書の編集」） | **サービスのみ積む** |
 | 4 | `POST /{id}/publish` | `:138` | `:103` | **列挙に無い**（§判断 1） | **積む** |
@@ -77,6 +77,20 @@ src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DocumentBffEndpoints.cs
 
 **＋新規登録 / 編集 / 公開 / アーカイブ / 削除 の 5 つ。全部が書き込みである。**
 **現状は運用者にも全部見えている**（ロール判定が 1 つも無い。実測: 同ファイルに `useHasAnyRole` は 0 件）。
+
+### ★ 軸 5: **これらの口を叩く機械クライアント**（着手時に引き漏らした軸。§追補）
+
+```console
+$ grep -rn 'PostAsJsonAsync("/documents"' --include=*.cs src/
+src/ai-stock-trading/backend/Shared/AiStockTrading.Shared.KnowledgeBase/Adapters/HttpKnowledgeBaseWriter.cs:49
+```
+
+| クライアント | 叩く先 | 保有ロール | 影響 |
+| --- | --- | --- | --- |
+| `ai-stock-trading-kb-writer`（AST/FR-08） | **`POST /documents`（BFF を経由せず直接）** | **`platform-operator` のみ**（[[IADR-0075]] が最小権限を理由に admin を却下） | **`AdminOnly` を積むと 403 で止まる** |
+
+**この軸を着手時に引いていなかった。** 軸 1〜4 は「誰が画面から押すか」だけを見ており、
+**「誰がこの口を呼ぶか」を見ていない**。詳細は §追補。
 
 ### 引かなかった軸と理由
 
@@ -156,18 +170,76 @@ issue は「planning#299 が新設した基準を当てはめて判断せよ」�
 
 **「狭める」と「狭めすぎない」を必ず対で固定する**（#628 が採った形）。
 
+## ★ 追補（PR #645 のレビューと自己走査 / 2026-08-09）
+
+レビューの 🔴 指摘（文書の追随漏れ）を受けて**誤りの側から全数走査**したところ、
+**指摘された 4 文書に加えて、指摘されていない機能上の欠陥が 1 件出た。**
+
+### 追補 1: サービス側 `POST /documents` を狭めると AST の KB 書き込みが止まる（**利用者裁定を受けた**）
+
+```console
+$ grep -rn 'PostAsJsonAsync("/documents"' --include=*.cs src/
+src/ai-stock-trading/.../HttpKnowledgeBaseWriter.cs:49   ← BFF を経由せず DocumentService を直接叩く
+
+$ python3 -c "…realm.json の users を読む"
+service-account-ai-stock-trading-kb-writer -> ['platform-operator']
+```
+
+[[IADR-0075]]（Accepted）は **`platform-admin` の付与を最小権限を理由に明示的に却下**している。
+したがって `POST /documents` へ `AdminOnly` を積むと **AST/FR-08 の KB 書き込みが 403 で止まる**。
+
+**計画の Q19 は SC-05 の画面と人間のロールについての裁定であり、機械クライアントを述べていない。**
+実装側で決めずに**利用者へ確認し、「`POST` だけ据え置いて計画へ裁定を回す」との判断を得た**（2026-08-09）。
+
+| 面 | 本 PR での扱い |
+| --- | --- |
+| BFF の書き込み **5 口**（`POST` 含む） | **すべて `AdminOnly`**。人間の画面はここを通るので、**人間に対する境界は閉じている** |
+| サービス側の `PUT` / `PATCH metadata` / `publish` / `archive` / `DELETE` | **`AdminOnly`**（機械クライアントはこの 5 口を呼ばない。[[IADR-0075]] 自身が「構造上 `POST` しか発行しない」と記録している） |
+| **サービス側 `POST`** | **据え置き（admin ＋ operator）**。裁定が出たら追随する |
+
+**据え置きはテストで固定した** —— `Create_OperatorRole_IsStillAllowed_ForMachineClientUntilArbitration`。
+これが無いと、次に来た人が「狭め漏れ」と読んで塞ぎ、**AST を静かに壊す**。
+
+### 追補 2: 追随する文書を 3 件しか挙げていなかった（**母集合の引き漏らし**）
+
+**誤りの側（`admin/operator` と書いている箇所）から引き直した**結果、live な文書で**4 件**足りなかった。
+
+| 文書 | 何が古かったか |
+| --- | --- |
+| `docs/api/openapi.yaml` | `/bff/documents` の書き込み 5 口の `summary` と `403`（**#628 は `/bff/datasources` で同じ追随をしていた**） |
+| [[IADR-0044]] 決定 | 「`DocumentService`: 書き込みに admin/operator を要求」 |
+| [[IADR-0041]] 決定 1 | 「書き込みは platform-admin/operator に限定する」 |
+| `docs/security/security.md` | 文書書き込み＝admin/operator（`updated:` も 2026-07-19 のまま） |
+
+**除外したもの**（[[IADR-0141]] 決定 6 に従い理由を書く）:
+
+| 除外 | 理由 |
+| --- | --- |
+| `docs/specs/` の過去 PR の作業仕様書 4 件 | **確定済み（書いた時点の記録）**。`.claude/rules/traceability.md` が書き換えを禁じている |
+| [[IADR-0075]] / [[IADR-0045]] / [[IADR-0042]] / [[IADR-0047]] | **`POST` を据え置いたので記述が古くならない**（0075）／**IADR-0044 が課した内容の引用**であって独自の決定ではない（0045）／**別資源**の話である（0042 は変換ジョブ・0047 は機密区分検証） |
+| `docs/screens/SC-05_...:232` | **過去の差異を説明する地の文**（履歴）であり、現在の仕様の記述ではない |
+
+### この 2 件から学んだこと
+
+**同じ型（走査せず記憶で「追随する文書」を挙げた）を #642 でも踏んでいる。** 本セッションで **2 回目**である。
+`CLAUDE.md`「**同型の事故が 2 回起きたら**検査器・規約を足す」に該当するため、
+**`.claude/rules/traceability.md` §母集合の取り方へ規則 7 を追加した**（認可・契約を変えたら
+**誤りの側の文字列で全文書を走査する**）。**軸 5（機械クライアント）の引き漏らしは別型で 1 回目**なので記録に留める。
+
 ## 追随する文書
 
 - `docs/screens/SC-05_document-management.md` §アクセス
 - `docs/api/BFF_bff-surface.md` の書き込み **5 行**（軸 2 の差異 2 のとおり 6 行ではない）
 - [[IADR-0039]] の 2026-08-09 追記（#628 が書いた「SC-05 は同型の逸脱が残っている」）を**解消済みへ**
+- **［追補 2 で追加］** `docs/api/openapi.yaml`（書き込み 5 口の `summary` / `403`。**orval 生成物も再生成**）／
+  [[IADR-0044]] 決定／[[IADR-0041]] 決定 1／`docs/security/security.md`
 
-## 検証（実走した結果・base = `c614c34`）
+## 検証（実走した結果・base = **`4ea6950`**。追補の是正後に全件を再実走した）
 
 | コマンド | 結果 |
 | --- | --- |
 | `dotnet build knowledge/backend/backend.slnx` | **Build succeeded**（0 Error） |
-| `dotnet test knowledge/backend/backend.slnx` | **Failed 0**。`DocumentService.Api.Tests` は **92 → 101**（**+9**） |
+| `dotnet test knowledge/backend/backend.slnx` | **Failed 0**。`DocumentService.Api.Tests` は **92 → 101**（**+9**。うち 1 件は据え置きの明示） |
 | `dotnet test platform/backend/Bff/Platform.Bff.Tests` | **Failed 0 / Passed 184 / Skipped 1**（**175 → 184**。**+9**） |
 | `dotnet format knowledge/backend/backend.slnx --verify-no-changes` | **exit 0** |
 | `pnpm run typecheck` | 3 プロジェクトとも Done |
@@ -201,7 +273,11 @@ lines/statements を 90 → 91、branches を 86 → 87 へ引き上げた（fun
 | --- | --- |
 | BFF の `publish` から `AdminOnly` を外す | **Failed 1 / Passed 183** —— `Write_AsOperator_IsForbidden(POST, /bff/documents/{id}/publish)` **だけ**が落ちた |
 | サービスの `DELETE` から `AdminOnly` を外す | **Failed 1 / Passed 100** —— `Write_OperatorRole_Returns403(DELETE, /documents/{id})` **だけ**が落ちた |
-| 両方戻す | **Failed 0**（`git diff` も差分 0 で変異が残っていないことを確認） |
+| **★ サービスの `POST` へ `AdminOnly` を積む**（＝将来「狭め漏れ」と誤解して塞ぐ動きの再現） | **Failed 1 / Passed 100** —— `Create_OperatorRole_IsStillAllowed_ForMachineClientUntilArbitration` **だけ**が落ちた |
+| すべて戻す | **Failed 0**（`git diff` も差分 0 で変異が残っていないことを確認） |
+
+**3 つ目が追補 1 の守り**である —— 据え置きを「狭め漏れ」と読んで塞いだ瞬間に赤くなる。
+**テストが無ければ AST は静かに壊れる**（AST のテストは MSP のロール設定を知らない）。
 
 **落ちたのが狙った 1 件だけ**である点が重要である —— 巻き添えで落ちるなら、
 そのテストは口ごとの認可ではなく別の何かを見ていることになる。
@@ -215,6 +291,11 @@ lines/statements を 90 → 91、branches を 86 → 87 へ引き上げた（fun
    `Missing 1 translation(s)` で落ちる。`check-i18n-catalogs.js` は再生成後にしか効かない。
 3. **`git worktree` には submodule が付いてこない。** `Platform.Bff` のビルドが
    `AiStockTrading` の名前解決で落ちるので、`git submodule update --init src/ai-stock-trading` が要る。
+   **この submodule を populate したから追補 1 の欠陥に気づけた** —— 未 populate のままなら
+   `HttpKnowledgeBaseWriter` を grep できず、AST を壊したまま出していた。
+4. **`openapi.yaml` の `summary` は orval 生成物へ流れる。** 認可の文言を直したら
+   `pnpm run codegen` を回して `generated/documents/documents.ts` の差分もコミットする
+   （CI が再生成差分を検査する）。
 
 ## 申し送り
 

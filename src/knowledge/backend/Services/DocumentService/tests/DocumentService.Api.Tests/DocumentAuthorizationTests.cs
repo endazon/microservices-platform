@@ -69,9 +69,11 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
     // グループ既定を検査しており、**グループ既定は据え置いた**ので `AdminOnly` を 1 つも積まなくても緑になる。
     // **運用者で引くことが、この作業が実際に効いていることの検査である。**
     //
-    // POST を Theory に含めるためテンプレートに `{id}` を持たないケースも通す。
+    // **`POST /documents` は含めない。** あの口だけは admin ＋ operator のまま据え置いた
+    // —— `ai-stock-trading` の KB 書き込みが BFF を経由せず直接叩いており、その service-account は
+    // `platform-operator` しか持たないためである（[[IADR-0075]] が最小権限を理由に admin を却下）。
+    // 計画の裁定を待つ。据え置きであることは `Create_OperatorRole_IsStillAllowed` が固定する。
     [Theory]
-    [InlineData("POST", "/documents")]
     [InlineData("PUT", "/documents/{id}")]
     [InlineData("PATCH", "/documents/{id}/metadata")]
     [InlineData("POST", "/documents/{id}/publish")]
@@ -113,5 +115,26 @@ public class DocumentAuthorizationTests(TestWebApplicationFactory factory)
         var resp = await client.PostAsJsonAsync("/documents",
             new { title = "admin-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    // ★ #629: **`POST /documents` だけは運用者に開いたままである**（据え置きの明示）。
+    //
+    // **これは「狭め忘れ」ではなく意図した据え置きである。** `ai-stock-trading` の KB 書き込み
+    // （AST/FR-08・`HttpKnowledgeBaseWriter`）が **BFF を経由せず本口を直接**叩いており、
+    // その service-account `ai-stock-trading-kb-writer` は **`platform-operator` しか持たない**
+    // （[[IADR-0075]] が最小権限を理由に `platform-admin` の付与を明示的に却下している）。
+    // ここへ `AdminOnly` を積むと **AST の KB 書き込みが 403 で止まる**。
+    //
+    // **このテストが無いと、次に来た人が「狭め漏れ」と読んで塞ぎ、AST を静かに壊す。**
+    // 計画の裁定（機械クライアントの扱い）が出るまでこの状態を守る。
+    [Fact]
+    public async Task Create_OperatorRole_IsStillAllowed_ForMachineClientUntilArbitration()
+    {
+        var client = ClientAs("platform-operator");
+        var resp = await client.PostAsJsonAsync("/documents",
+            new { title = "kb-writer-doc", attributes = new Dictionary<string, string> { ["confidentiality"] = "internal" } });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created,
+            "AST の KB 書き込みが operator ロールで本口を直接叩いている（IADR-0075）。裁定まで据え置く");
     }
 }

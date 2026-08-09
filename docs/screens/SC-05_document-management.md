@@ -68,6 +68,11 @@ related_specs:
     根拠は [作業仕様書 §判断 1](../specs/20260809_issue-629_document-write-admin-only.md)。
   - **従前は「`platform-admin` または `platform-operator`」で書き込みまで開いており、計画との乖離だった**
     （planning#198 提案 8 の「どちらが正かは計画側の裁定を要する」は **Q19 で決着した**）。
+  - **★ 後段 `DocumentService` の `POST /documents` だけは admin ＋ operator のまま据え置いている。**
+    **本画面には影響しない** —— 画面は `/bff/documents` を通り、そちらは `AdminOnly` だからである。
+    据え置きの理由は、この口を **`ai-stock-trading` の KB 書き込みが BFF を経由せず直接叩いており**、
+    その service-account が `platform-operator` しか持たないこと（[[IADR-0075]]）である。
+    **機械クライアントの扱いは計画へ裁定を依頼中**（作業仕様書 §追補 1）。
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 

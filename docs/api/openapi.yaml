@@ -645,7 +645,7 @@ paths:
                   $ref: "#/components/schemas/DocumentDto"
     post:
       tags: [Documents]
-      summary: "FR-06, UC-03, SC-05: 文書作成（管理者・運用者のみ）"
+      summary: "FR-06, UC-03, SC-05: 文書作成（管理者のみ。#629）"
       description: |
         IADR-0047: 後段は機密区分（必須属性）を検証し、欠落・未知値を 400 で拒否する（最終防衛線）。
         タイトル未指定も 400。許可ポリシーが無い呼び出し元は **403**（deny-by-default で作成不可）。
@@ -670,7 +670,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationProblemDetails"
         "401": { description: 未認証 }
-        "403": { description: 管理者・運用者ロール以外、または許可ポリシーが無い }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可）、または許可ポリシーが無い }
 
   /bff/documents/{id}:
     parameters:
@@ -689,7 +689,7 @@ paths:
         "404": { description: 不在またはスコープ外（存在秘匿。区別しない） }
     put:
       tags: [Documents]
-      summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者・運用者のみ）"
+      summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）"
       description: |
         `expectedVersion` が現在版と異なれば lost update を防ぐため **409** で拒否する。
         409 の本文は RFC7807 ではなく `{ error: "version_conflict", expectedVersion, currentVersion }`。
@@ -714,7 +714,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ValidationProblemDetails"
         "401": { description: 未認証 }
-        "403": { description: 管理者・運用者ロール以外 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
         "409":
           description: 版競合（楽観的並行制御）
@@ -724,13 +724,13 @@ paths:
                 $ref: "#/components/schemas/VersionConflictDto"
     delete:
       tags: [Documents]
-      summary: "FR-06, UC-03, SC-05: 文書削除（管理者・運用者のみ）"
+      summary: "FR-06, UC-03, SC-05: 文書削除（管理者のみ。#629）"
       description: "削除は下流（Wiki.js 同期）へ伝播し、外部システムの実体も撤去する。"
       operationId: bff-document-delete
       responses:
         "204": { description: 削除成功 }
         "401": { description: 未認証 }
-        "403": { description: 管理者・運用者ロール以外 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
 
   /bff/documents/{id}/content:
@@ -788,7 +788,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentDto"
         "401": { description: 未認証 }
-        "403": { description: 管理者・運用者ロール以外 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
         "409":
           description: "不正な状態遷移（例 archived → published）"
@@ -813,7 +813,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/DocumentDto"
         "401": { description: 未認証 }
-        "403": { description: 管理者・運用者ロール以外 }
+        "403": { description: 管理者ロール以外（AdminOnly。運用者も不可） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
 
   # ── SC-06, FR-01/FR-02, UC-04: データソース BFF ─────

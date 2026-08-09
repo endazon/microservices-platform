@@ -48,7 +48,22 @@ public static class DocumentEndpoints
             return Results.Ok(ToDto(doc, await TagResolver.NamesAsync(db)));
         });
 
-        // FR-06, UC-03, SC-05（#629）: 登録は**管理者限定**（計画の列挙「登録」）。
+        // FR-06, UC-03, SC-05（#629）: **ここだけ `AdminOnly` を積んでいない。据え置きである。**
+        //
+        // 計画の列挙は「登録」を破壊的操作に含めるが、**この口は人間の画面だけの口ではない**——
+        // `ai-stock-trading` の KB 書き込み（AST/FR-08）が `HttpKnowledgeBaseWriter` から
+        // **BFF を経由せず直接**叩いており、その service-account
+        // （`ai-stock-trading-kb-writer`）は **`platform-operator` しか持たない**。
+        // [[IADR-0075]] が最小権限を理由に `platform-admin` の付与を**明示的に却下している**ためである。
+        //
+        // したがって `AdminOnly` を積むと **AST の KB 書き込みが 403 で止まる**（実測で確認）。
+        // 計画の Q19 は SC-05 の**画面と人間のロール**についての裁定であり、
+        // **機械クライアントの扱いを述べていない**。実装側で決めずに計画へ裁定を依頼した
+        // （環流記録 `20260809_document-write-machine-client.md`）。
+        //
+        // **人間の運用者に対する実効境界は BFF 側で閉じている**——`/bff/documents` の `POST` は
+        // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
+        // **裁定が出たらここを追随させる。**
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
             IPublishEndpoint bus) =>
         {
@@ -75,7 +90,7 @@ public static class DocumentEndpoints
             var createNames = await TagResolver.NamesAsync(db);
             await bus.Publish(ToEvent(doc, createNames));
             return Results.Created($"/documents/{doc.Id}", ToDto(doc, createNames));
-        }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
+        });
 
         // FR-06, UC-03, SC-05（#629）: 編集は**管理者限定**（計画の列挙「文書の編集」）。
         write.MapPut("/{id:guid}", async (Guid id, UpdateDocumentRequest req,
