@@ -118,7 +118,6 @@ public sealed class DataSourceSyncService(
         return new SyncResult(fetched, failed, ConnectorAvailable: true, DiscoverSucceeded: true, Message: null);
     }
 
-
     // UC-04 例外フロー: 連続失敗を記録し、しきい値到達で継続失敗アラート（構造化ログ Alert=true）を出す。
     // SC-06（Q14 / #537）: 計数と直近エラーは**エンティティへ**記録する（永続化され SC-06 が読む）。
     // 永続化は呼び出し側の SaveChangesAsync が行う（手動 /sync・定期同期ワーカーの双方が呼んでいる）。
