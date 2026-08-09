@@ -126,6 +126,17 @@ export function TagDictionaryPanel() {
   // SC-09「削除前に使用件数を示す」。**数値が取れたときだけ専用の文言にする。**
   const inUseCount = failed ? tagInUseCount(failed.error) : null;
 
+  // FR-09, SC-09, #640: 改名が下流へ**何件波及したか**を出す（[[IADR-0153]] 決定 3）。
+  //
+  // **射影（Qdrant / Wiki.js）の反映は非同期である。** 件数を出さないと、管理者は
+  // **「対象が 0 件だった」と「まだ届いていない」を区別できない**——どちらも
+  // 「一覧の名前は変わったのに検索結果が古いまま」に見えるためである。
+  //
+  // **削除拒否では件数を見せて行動させているのに、改名では見せない**のは非対称で、
+  // 同じ「非同期の波及」を扱う面として揃わない。
+  const republished =
+    rename.isSuccess && !failed ? (rename.data?.data?.republishedDocuments ?? null) : null;
+
   const tags = data?.tags ?? [];
 
   return (
@@ -137,6 +148,12 @@ export function TagDictionaryPanel() {
       {isError && (
         <Alert tone="danger" role="alert" label={t`エラー`}>
           <Trans>タグ辞書を読み込めませんでした。</Trans>
+        </Alert>
+      )}
+
+      {republished !== null && (
+        <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
+          <Trans>タグを改名しました。{republished} 件の文書へ反映しています。</Trans>
         </Alert>
       )}
 

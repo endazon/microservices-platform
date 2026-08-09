@@ -601,6 +601,33 @@ describe('AdminAbacSettingsPage (SC-09)', () => {
     expect(JSON.parse(String((put?.[1] as RequestInit).body))).toEqual({ name: '経理部' });
   });
 
+  // ★ FR-09, SC-09, #640: 改名の**波及件数**を出す（[[IADR-0153]] 決定 3）。
+  //
+  // **射影（Qdrant / Wiki.js）の反映は非同期である。** 件数が無いと管理者は
+  // **「対象が 0 件だった」と「まだ届いていない」を区別できない**。
+  // 削除拒否では件数を見せて行動させているので、**同じ非同期の波及を扱う面として揃える**。
+  it('shows how many documents a rename propagated to', async () => {
+    mockApi({
+      write: () =>
+        Promise.resolve(
+          jsonResponse({
+            tag: { id: '11111111-2222-3333-4444-555555555555', name: '経理部', usageCount: 7 },
+            republishedDocuments: 7,
+          }),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('tab', { name: 'タグ辞書' }));
+    await user.click(await screen.findByRole('button', { name: 'タグを改名: 経理' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'タグを改名しました。7 件の文書へ反映しています。',
+    );
+  });
+
   // 改名はキャンセルできる（**送らない**）。編集欄を開いただけで書き込みが走ってはならない。
   it('does not write anything when a rename is cancelled', async () => {
     mockApi();

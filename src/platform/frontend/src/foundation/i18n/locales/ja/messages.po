@@ -315,6 +315,10 @@ msgid "タグを改名: {tagName}"
 msgstr "タグを改名: {tagName}"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+msgid "タグを改名しました。{republished} 件の文書へ反映しています。"
+msgstr "タグを改名しました。{republished} 件の文書へ反映しています。"
+
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "タグ名（必須）"
 msgstr "タグ名（必須）"
 
@@ -791,6 +795,7 @@ msgstr "失敗"
 #: knowledge/frontend/src/features/sc07-conversions/jobStatus.ts
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
+#: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "完了"
 msgstr "完了"
 
