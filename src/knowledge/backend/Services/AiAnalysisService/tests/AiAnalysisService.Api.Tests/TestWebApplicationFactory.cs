@@ -33,11 +33,30 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 }
 
 // テスト用スタブ RAG オーケストレーター（番号付き出典を含む回答を返す）
-file class StubRagOrchestrator : IRagOrchestrator
+//
+// **［#539］受け取った対象範囲を記録する。** 端点が対象範囲を後段へ渡しているかは、
+// **端点の外からは観測できない**（回答本文は範囲に依存しない）ためである。
+// `file` から `internal` へ上げたのは、別のテストファイルから記録を読むためである。
+internal sealed class StubRagOrchestrator : IRagOrchestrator
 {
+    // 直近に受け取った対象範囲（`ask` / `ask/stream` それぞれ）。
+    public static Dictionary<string, List<string>>? LastAskFilters { get; private set; }
+    public static Dictionary<string, List<string>>? LastStreamFilters { get; private set; }
+
+    public static void ResetRecording()
+    {
+        LastAskFilters = null;
+        LastStreamFilters = null;
+    }
+
     public Task<AiAnswerDto> AskAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, CancellationToken ct = default)
-        => Task.FromResult(Answer("テスト回答 [1]"));
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        CancellationToken ct = default)
+    {
+        LastAskFilters = attributeFilters;
+        return Task.FromResult(Answer("テスト回答 [1]"));
+    }
 
     public Task<AiAnswerDto> AnalyzeAsync(AnalysisTaskRequest request, string userId,
         Dictionary<string, string> userAttributes, CancellationToken ct = default)
@@ -45,8 +64,11 @@ file class StubRagOrchestrator : IRagOrchestrator
 
     // IADR-0037: ストリーミングのスタブ（citations → token* → done）。
     public async IAsyncEnumerable<AskEvent> AskStreamAsync(string question, string userId,
-        Dictionary<string, string> userAttributes, [EnumeratorCancellation] CancellationToken ct = default)
+        Dictionary<string, string> userAttributes,
+        Dictionary<string, List<string>>? attributeFilters = null,
+        [EnumeratorCancellation] CancellationToken ct = default)
     {
+        LastStreamFilters = attributeFilters;
         yield return new AskCitationsEvent(
             [new CitationDto(1, Guid.NewGuid(), "文書A", Guid.NewGuid(), "s3://bucket/a.md", 0.9f, "抜粋")]);
         yield return new AskTokenEvent("テスト");

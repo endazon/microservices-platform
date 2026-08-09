@@ -70,14 +70,24 @@ public class InMemoryVectorStore : IVectorStore
 
     // FR-05: ABAC 多値 allow-list 評価。フィルタ間は AND、値集合内は OR。
     // 属性キーを持たない文書は不一致（deny-by-default）。
+    // FR-05: フィルタ間は AND、値集合内は OR（Qdrant 側と同じ意味論）。
+    //
+    // **［#539］`tags` を絞れるようにした。** 従前は `c.Attributes` しか見ておらず、
+    // **`tags` を指定すると必ず 0 件になっていた**（属性辞書に `tags` というキーが無いため）。
+    // **写像の判定は `AttributeValueKeys.ToPayloadKey` に寄せて Qdrant 側と 1 つの真実にする**——
+    // ここで独自に `f.Key == "tags"` と書くと、片方だけ直したとき静かに割れる。
+    //
+    // **タグはリストなので「いずれかが一致」で真になる**（属性は単一値の完全一致）。
     private static bool MatchesFilters(ChunkPayload c, IReadOnlyList<AttributeFilter>? filters)
     {
         if (filters is not { Count: > 0 })
             return true;
 
         return filters.All(f =>
-            c.Attributes.TryGetValue(f.Key, out var v)
-            && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
+            AttributeValueKeys.ToPayloadKey(f.Key) == AttributeValueKeys.Tags
+                ? c.Tags.Any(t => f.AllowedValues.Contains(t, StringComparer.OrdinalIgnoreCase))
+                : c.Attributes.TryGetValue(f.Key, out var v)
+                  && f.AllowedValues.Contains(v, StringComparer.OrdinalIgnoreCase));
     }
 
     private static string[] Tokenize(string query) =>

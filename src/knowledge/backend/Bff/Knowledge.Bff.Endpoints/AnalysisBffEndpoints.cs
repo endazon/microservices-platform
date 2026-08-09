@@ -117,4 +117,14 @@ public static class AnalysisBffEndpoints
     }
 }
 
-public record AnalysisRequest(string Question, string? Scope = null);
+// FR-04, FR-05, SC-01, SC-08, #539: 対象範囲（属性フィルタ）。**後段の `AskRequest` と同じ形である。**
+//
+// **BFF だけに足しても意味が無い** —— ここはパススルーであり、絞り込みを実効するのは
+// AiAnalysisService 側だからである。**両方を同時に足す。**
+//
+// **ABAC スコープはクライアントから受け取らない**（受け取っても使わない＝権限昇格の防止）。
+// ここで受けるのは「利用者が自分の権限の内側をさらに絞る」指定だけである。
+public record AnalysisRequest(
+    string Question,
+    string? Scope = null,
+    Dictionary<string, List<string>>? AttributeFilters = null);

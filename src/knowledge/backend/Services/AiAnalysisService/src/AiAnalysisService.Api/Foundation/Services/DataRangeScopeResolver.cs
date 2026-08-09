@@ -18,6 +18,17 @@ namespace AiAnalysisService.Api.Foundation.Services;
 public static class DataRangeScopeResolver
 {
     public static AccessScope Resolve(AccessScopeResponse abac, AnalysisDataRange? range)
+        => Resolve(abac, range?.AttributeFilters);
+
+    // FR-04, SC-01, SC-08, #539: 対象範囲を**データ範囲の器から切り離して**受ける。
+    //
+    // SC-01（検索・質問）と SC-08（AI 分析）は「同じ『範囲を絞る』操作」であり、
+    // **画面ごとに違う挙動になると利用者は操作を覚え直すことになる**（計画 L342・裁定 Q3）。
+    // `/analysis/ask` は `AnalysisDataRange`（`Query` / `TopK` を持つ）を取らないので、
+    // **交差の規則だけを共有する**——規則を 2 本持つと、片方だけ直したときに
+    // 「検索では効くが分析では効かない」という食い違いが生まれる。
+    public static AccessScope Resolve(
+        AccessScopeResponse abac, IReadOnlyDictionary<string, List<string>>? rangeFilters)
     {
         // FR-05: deny-by-default。許可ポリシーが無ければ、いかなる範囲指定でも何も開放しない。
         if (!abac.Granted)
@@ -27,7 +38,6 @@ public static class DataRangeScopeResolver
         foreach (var f in abac.AllowedFilters)
             byKey[f.Key] = new List<string>(f.AllowedValues);
 
-        var rangeFilters = range?.AttributeFilters;
         if (rangeFilters is { Count: > 0 })
         {
             foreach (var (key, requested) in rangeFilters)

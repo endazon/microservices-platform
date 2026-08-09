@@ -109,7 +109,18 @@ public class QdrantVectorStore(
     // IADR-0014: フィルタキー "attributes.{k}" は書き込み側のネスト構造体
     // `attributes -> { k: v }` に対する JSON パスとして実機 Qdrant で正しく解決されることを確認済み
     // （フラットキー書き込みとの組み合わせでは過剰除外が生じるため、書き込み側をネストへ統一した）。
-    private static List<Condition> BuildAttributeConditions(IReadOnlyList<AttributeFilter>? filters)
+    //
+    // **［#539］キーの写像は `AttributeValueKeys.ToPayloadKey` に寄せた。**
+    // 従前はここが `attributes.{key}` をハードコードしており、**`tags` を絞れなかった**——
+    // 一方 #540 が入れた**値集合の照会側は `tags` を知っていた**ので、
+    // **「候補には出るのに、その候補で絞れない」**という食い違いが生じていた（実測）。
+    // **同じ知識を 2 か所に持たせない**。片方だけ直すと同じ食い違いが再発する。
+    //
+    // **`tags` はリスト項目なので、`Match.Keywords` はリストの要素いずれかに一致すれば真になる**
+    // （Qdrant の配列ペイロードに対する既定の意味論。属性の単一値と同じ書き方で通る）。
+    // **`internal` にしてある**——キーの写像は「候補に出る値」と「絞れる値」を一致させる要であり、
+    // 実機 Qdrant なしで固定できる唯一の面である（#539 のテストが直接呼ぶ）。
+    internal static List<Condition> BuildAttributeConditions(IReadOnlyList<AttributeFilter>? filters)
     {
         if (filters is not { Count: > 0 })
             return [];
@@ -120,7 +131,7 @@ public class QdrantVectorStore(
             {
                 Field = new FieldCondition
                 {
-                    Key = $"attributes.{f.Key}",
+                    Key = AttributeValueKeys.ToPayloadKey(f.Key),
                     Match = new Match { Keywords = new RepeatedStrings { Strings = { f.AllowedValues } } }
                 }
             })
