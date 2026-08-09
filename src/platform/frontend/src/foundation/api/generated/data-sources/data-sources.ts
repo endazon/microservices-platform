@@ -368,6 +368,11 @@ export type bffDataSourceUpdateResponse200 = {
   status: 200
 }
 
+export type bffDataSourceUpdateResponse400 = {
+  data: void
+  status: 400
+}
+
 export type bffDataSourceUpdateResponse401 = {
   data: void
   status: 401
@@ -386,7 +391,7 @@ export type bffDataSourceUpdateResponse404 = {
 export type bffDataSourceUpdateResponseSuccess = (bffDataSourceUpdateResponse200) & {
   headers: Headers;
 };
-export type bffDataSourceUpdateResponseError = (bffDataSourceUpdateResponse401 | bffDataSourceUpdateResponse403 | bffDataSourceUpdateResponse404) & {
+export type bffDataSourceUpdateResponseError = (bffDataSourceUpdateResponse400 | bffDataSourceUpdateResponse401 | bffDataSourceUpdateResponse403 | bffDataSourceUpdateResponse404) & {
   headers: Headers;
 };
 
@@ -406,6 +411,9 @@ export const getBffDataSourceUpdateUrl = (id: string,) => {
  * **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は更新の対象外**である（履歴を巻き戻さない）。
  * FR-05: `defaultAttributes` は後段が機密区分 `internal` をフェイルセーフ補完する。
  * **無効（`disabled`）なソースも更新できる**（認証情報のローテーションは無効中にも起こる）。
+ * **`config` / `defaultAttributes` の省略は 400 で拒否する**（#627 の AI レビュー 🟡）——
+ * PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（`apiToken` 等）が黙って消える。
+ * **消したいときは `{}` を明示する。一部だけ変えるなら `PATCH` を使う。**
  * @summary FR-01, UC-04, SC-06: データソース更新（全置換・**管理者のみ**）
  */
 export const bffDataSourceUpdate = async (id: string,

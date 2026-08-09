@@ -58,6 +58,9 @@ public record CreateDataSourceRequest(
 // 従前は更新の口が無く、登録済みソースの変更が「削除→再登録」でしかできなかった。削除→再登録は
 // **ID と履歴を切る**（認証情報のローテーションのたびに文書の出所の追跡が切れるのは監査上受け入れがたい）。
 // **Id / CreatedAt / LastSyncedAt / 同期健全性は更新の対象外**である —— 更新で履歴を巻き戻せてはならない。
+// **Config / DefaultAttributes を省略した要求はサービスが 400 で拒否する**（AI レビュー 🟡 / #627）。
+// PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（apiToken 等）が黙って消える。
+// 消したいときは {} を明示する。一部だけ変えるなら PATCH を使う。
 public record UpdateDataSourceRequest(
     string Name,
     string SourceType,

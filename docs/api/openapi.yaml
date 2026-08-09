@@ -817,6 +817,9 @@ paths:
         **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は更新の対象外**である（履歴を巻き戻さない）。
         FR-05: `defaultAttributes` は後段が機密区分 `internal` をフェイルセーフ補完する。
         **無効（`disabled`）なソースも更新できる**（認証情報のローテーションは無効中にも起こる）。
+        **`config` / `defaultAttributes` の省略は 400 で拒否する**（#627 の AI レビュー 🟡）——
+        PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（`apiToken` 等）が黙って消える。
+        **消したいときは `{}` を明示する。一部だけ変えるなら `PATCH` を使う。**
       operationId: bff-data-source-update
       requestBody:
         required: true
@@ -831,6 +834,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataSourceDto"
+        "400": { description: "`config` / `defaultAttributes` が省略された（全置換なので明示が要る）" }
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（運用者も不可） }
         "404": { description: 見つからない }
@@ -1943,7 +1947,9 @@ components:
       description: |
         FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース更新（全置換）。
         **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は含まない**（更新で履歴を巻き戻さない）。
-      required: [name, sourceType, connectionUri]
+        **`config` / `defaultAttributes` は必須である**（#627 の AI レビュー 🟡）——
+        省略を許すと「送り忘れ」で秘密が黙って消える。消すときは `{}` を明示する。
+      required: [name, sourceType, connectionUri, config, defaultAttributes]
       properties:
         name: { type: string }
         sourceType: { type: string }
@@ -1953,7 +1959,8 @@ components:
           nullable: true
           additionalProperties: { type: string }
           description: |
-            コネクタ設定。**秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
+            コネクタ設定。**必須**（省略は 400）。消すときは `{}` を送る。
+            **秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
             （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
         defaultAttributes:
           type: object

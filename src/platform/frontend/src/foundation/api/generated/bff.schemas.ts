@@ -330,7 +330,8 @@ export interface CreateDataSourceRequest {
 }
 
 /**
- * コネクタ設定。**秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
+ * コネクタ設定。**必須**（省略は 400）。消すときは `{}` を送る。
+ * **秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
  * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
  */
 export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
@@ -343,18 +344,21 @@ export type UpdateDataSourceRequestDefaultAttributes = {[key: string]: string} |
 /**
  * FR-01, UC-04, SC-06（裁定 Q16 / #534）: データソース更新（全置換）。
  * **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は含まない**（更新で履歴を巻き戻さない）。
+ * **`config` / `defaultAttributes` は必須である**（#627 の AI レビュー 🟡）——
+ * 省略を許すと「送り忘れ」で秘密が黙って消える。消すときは `{}` を明示する。
  */
 export interface UpdateDataSourceRequest {
   name: string;
   sourceType: string;
   connectionUri: string;
   /**
-     * コネクタ設定。**秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
+     * コネクタ設定。**必須**（省略は 400）。消すときは `{}` を送る。
+     * **秘密キーの値が `***`（応答のマスク）のときは保存されず既存値が保たれる**
      * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
      */
-  config?: UpdateDataSourceRequestConfig;
+  config: UpdateDataSourceRequestConfig;
   /** 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する */
-  defaultAttributes?: UpdateDataSourceRequestDefaultAttributes;
+  defaultAttributes: UpdateDataSourceRequestDefaultAttributes;
 }
 
 export type PatchDataSourceRequestConfig = {[key: string]: string} | null;

@@ -60,9 +60,11 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
     }
 
     [Fact]
-    public async Task Put_OmittedConfidentiality_IsFailsafedToInternal()
+    public async Task Put_EmptyAttributes_IsFailsafedToInternal()
     {
         // FR-05, IADR-0019: 更新で機密区分を空にできると fail-closed 検索（IADR-0012）から文書が落ちる。
+        // **空辞書を明示した場合**でもフェイルセーフが働くことを固定する（省略は 400 で拒否されるので、
+        // 「属性を全部消す」意図はこの形でしか表現できない。AI レビュー 🟡 / #627）。
         var client = factory.CreateClient();
         var created = await CreateAsync(client);
         var id = created.GetProperty("id").GetGuid();
@@ -72,6 +74,8 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
             name = "no-attrs",
             sourceType = "filesystem",
             connectionUri = "smb://new/share",
+            config = new Dictionary<string, string>(),
+            defaultAttributes = new Dictionary<string, string>(),
         });
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -144,6 +148,7 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
                 sourceType = "filesystem",
                 connectionUri = "smb://old/share",
                 config = new Dictionary<string, string> { ["rootPath"] = "/new", ["apiToken"] = "***" },
+                defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
             }),
         };
         (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -177,6 +182,69 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         entity!.Config["rootPath"].Should().Be("***");
     }
 
+    // AI レビュー 🟡（#627・`2b7ddc9` 時点）: **PUT で `config` を省略すると秘密が黙って消えていた。**
+    // PUT は全置換なので「省略 ＝ 空で置換」は筋が通るが、**契約が省略を許していた**ため、
+    // 事故が「うっかり」で起きる形になっていた（PATCH は省略＝現状維持なので挙動が非対称でもあった）。
+    //
+    // **是正の方向は「PUT の意味論を曲げる」ではなく「省略を許さない」である** ——
+    // null を現状維持にすると PUT と PATCH の区別が消える。消したいなら `{}` と明示させる。
+    [Theory]
+    [InlineData("config")]
+    [InlineData("defaultAttributes")]
+    public async Task Put_OmittingReplaceableField_IsRejected(string omitted)
+    {
+        var client = factory.CreateClient();
+        var created = await CreateAsync(client);
+        var id = created.GetProperty("id").GetGuid();
+
+        var body = new Dictionary<string, object?>
+        {
+            ["name"] = "after",
+            ["sourceType"] = "filesystem",
+            ["connectionUri"] = "smb://new/share",
+            ["config"] = new Dictionary<string, string> { ["rootPath"] = "/new" },
+            ["defaultAttributes"] = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+        };
+        body.Remove(omitted);
+
+        var resp = await client.PutAsJsonAsync($"/datasources/{id}", body);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+            "PUT は全置換なので、消えては困る項目の省略を受理しない（消すなら {} と明示させる）");
+
+        // 拒否されたので実体は無傷である（ここが本質——秘密が残っていること）。
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider
+            .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
+        var entity = await db.DataSources.FindAsync(id);
+        entity!.Config["apiToken"].Should().Be("s3cret", "拒否された更新は秘密を壊さない");
+    }
+
+    // **空辞書は「消す」という明示なので受理する。** 過剰に守らない。
+    [Fact]
+    public async Task Put_ExplicitEmptyConfig_ClearsIt()
+    {
+        var client = factory.CreateClient();
+        var created = await CreateAsync(client);
+        var id = created.GetProperty("id").GetGuid();
+
+        var resp = await client.PutAsJsonAsync($"/datasources/{id}", new
+        {
+            name = "cleared",
+            sourceType = "filesystem",
+            connectionUri = "smb://new/share",
+            config = new Dictionary<string, string>(),
+            defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider
+            .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
+        var entity = await db.DataSources.FindAsync(id);
+        entity!.Config.Should().BeEmpty("空辞書は「消す」という明示である");
+    }
+
     [Theory]
     [InlineData("PUT")]
     [InlineData("PATCH")]
@@ -185,11 +253,15 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         using var req = new HttpRequestMessage(new HttpMethod(method), $"/datasources/{Guid.NewGuid()}")
         {
+            // PUT は全置換なので、存在確認より先に本文の妥当性を見る（省略は 400）。
+            // ここでは「存在しない ID」だけを見たいので、本文は妥当な形で送る。
             Content = JsonContent.Create(new
             {
                 name = "x",
                 sourceType = "filesystem",
                 connectionUri = "smb://x",
+                config = new Dictionary<string, string>(),
+                defaultAttributes = new Dictionary<string, string>(),
             }),
         };
         (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.NotFound);

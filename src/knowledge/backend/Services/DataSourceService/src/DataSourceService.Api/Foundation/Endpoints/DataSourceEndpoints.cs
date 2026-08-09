@@ -82,6 +82,17 @@ public static class DataSourceEndpoints
         g.MapPut("/{id:guid}", async (Guid id, UpdateDataSourceRequest req, DataSourceDbContext db,
             SyncSchedule schedule) =>
         {
+            // AI レビュー 🟡（#627）: **省略を受理しない。** PUT は全置換なので「省略 ＝ 空で置換」は
+            // 意味論としては筋が通るが、契約が省略を許していると**うっかりで秘密が消える**
+            // （`config` を送り忘れた PUT が apiToken を丸ごと落とす）。消したいなら `{}` と明示させる。
+            // **null を現状維持にする道は採らない** —— それをやると PUT と PATCH の区別が消える。
+            if (req.Config is null || req.DefaultAttributes is null)
+                return Results.BadRequest(new
+                {
+                    error = "PUT は全置換です。config と defaultAttributes を明示してください"
+                          + "（消す場合は {} を送る）。一部だけ変更するなら PATCH を使ってください。",
+                });
+
             var ds = await db.DataSources.FindAsync(id);
             if (ds is null) return Results.NotFound();
 
@@ -158,6 +169,8 @@ public record CreateDataSourceRequest(
 // FR-01, UC-04, SC-06（Q16 / #534）: 更新（全置換）要求。契約側の Knowledge.Contracts.Dtos の
 // 同名レコードと JSON 互換である（本サービスは SPA 契約に依存せず自前の入力型を持つ既存の作法に倣う）。
 // **Id / CreatedAt / LastSyncedAt / 同期健全性は含まない** —— 更新で履歴を巻き戻せてはならない。
+// **Config / DefaultAttributes の省略は 400 で拒否する**（AI レビュー 🟡 / #627）。型としては
+// nullable だが、null は「未指定」であって「空にする」ではない —— 消すなら {} を明示させる。
 public record UpdateDataSourceRequest(
     string Name,
     string SourceType,
