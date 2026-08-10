@@ -174,8 +174,8 @@ function checkTree() {
       violations.push({ kind: 'foundation-composable', from: rel, to: '(Composable)', reason: line });
     }
   }
-  violations.scanned = scanned;
-  return violations;
+  // #664: 走査件数を併せて返す。**配列へプロパティを生やさない**（戻り値の型が読みづらくなる）。
+  return { violations, scanned };
 }
 
 // --- 自己試験（--self-test） --------------------------------------------------
@@ -261,8 +261,7 @@ function selfTest() {
 
 function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
-  const violations = checkTree();
-  const scanned = violations.scanned || { csprojs: 0, csFiles: 0 };
+  const { violations, scanned } = checkTree();
   // #664 / IADR-0130 の作法: **0 件走査で緑を返さない**（fail-closed）。
   // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
   // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
