@@ -2382,11 +2382,11 @@ module.exports = ({ ok, assert }) => {
     });
 
     // ラチェットの向き。**減らすのは自由・増やすのは禁止**であることを条文ではなく機械で持つ。
-    ok('check-openapi-dto-drift: requiredMismatchBaseline は 20 件を超えない', () => {
+    ok('check-openapi-dto-drift: requiredMismatchBaseline は 10 件を超えない', () => {
       const fsB = require('fs');
       const list = JSON.parse(
         fsB.readFileSync(pathDrift.join(__dirname, 'openapi-dto-drift-allowlist.json'), 'utf8'));
-      assert.ok(list.requiredMismatchBaseline.length <= 20,
+      assert.ok(list.requiredMismatchBaseline.length <= 10,
         `据え置きが増えている（${list.requiredMismatchBaseline.length} 件）。新規混入は検査器で止めること`);
     });
   }

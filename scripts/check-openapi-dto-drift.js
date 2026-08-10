@@ -76,6 +76,25 @@ function collectSchemas(yamlText) {
       schemas[cur].required = m[1].split(',').map((s) => s.trim()).filter(Boolean);
       continue;
     }
+    // ★ **複数行の `required` を読み落とさない。** prettier が長い配列を折り返すため、
+    // 1 行形式だけを読むと**「required に無い」と誤って報告する**（`DataSourceDto` で実際に踏んだ。
+    // 10 件を「是正待ちの債務」としてラチェットへ据え置きかけた）。
+    // 折り返し形（`[` 改行 …）と YAML のブロック形（`- name`）の両方を読む。
+    if (/^ {6}required:\s*$/.test(line)) {
+      const items = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const l = lines[j];
+        if (/^ {6}\S/.test(l) || /^\S/.test(l)) break; // 同じ深さの別キーへ出た
+        const flow = l.match(/^\s*([A-Za-z0-9_]+)\s*,?\s*$/);
+        const block = l.match(/^\s*-\s*([A-Za-z0-9_]+)\s*$/);
+        if (block) items.push(block[1]);
+        else if (flow) items.push(flow[1]);
+        else if (/^\s*\]\s*$/.test(l)) { i = j; break; }
+        i = j;
+      }
+      schemas[cur].required = items;
+      continue;
+    }
     if (/^ {6}properties:\s*$/.test(line)) {
       inProps = true;
       continue;
@@ -342,6 +361,50 @@ function selfTest() {
     eq(s.Foo.props, ['a', 'b']);
     eq(s.Foo.required, ['a', 'b']);
     eq(s.Bar.props, ['c']);
+  });
+
+  // ★ **偽陽性を生んだ実際の形**。prettier が長い `required` を折り返すため、1 行形式だけを
+  // 読むと「required に無い」と誤って報告する。`DataSourceDto` の 10 件がこれで、
+  // **是正待ちの債務として baseline へ据え置きかけた**（実データは最初から一致していた）。
+  check('折り返された required（複数行の flow 形）を読む', () => {
+    const y = [
+      'components:',
+      '  schemas:',
+      '    Foo:',
+      '      required:',
+      '        [',
+      '          a,',
+      '          b,',
+      '        ]',
+      '      properties:',
+      '        a: { type: string }',
+      '        b: { type: string }',
+      '',
+    ].join('\n');
+    const s = collectSchemas(y);
+    eq(s.Foo.required, ['a', 'b']);
+    eq(s.Foo.props, ['a', 'b']);
+  });
+
+  check('YAML のブロック形の required を読む', () => {
+    const y = [
+      'components:',
+      '  schemas:',
+      '    Foo:',
+      '      required:',
+      '        - a',
+      '        - b',
+      '      properties:',
+      '        a: { type: string }',
+      '',
+    ].join('\n');
+    eq(collectSchemas(y).Foo.required, ['a', 'b']);
+  });
+
+  check('実データ: DataSourceDto の required を 10 件読める（偽陽性の回帰）', () => {
+    const s = collectSchemas(fs.readFileSync(OPENAPI, 'utf8'));
+    if (!s.DataSourceDto) throw new Error('DataSourceDto を読めていない');
+    eq(s.DataSourceDto.required.length, 10, 'DataSourceDto.required の件数');
   });
 
   check('入れ子の items 内キーを properties と誤認しない', () => {
