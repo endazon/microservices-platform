@@ -271,7 +271,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 - テスト仕様書: [SC-07_conversion-jobs.md](../tests/SC-07_conversion-jobs.md)
 - 作業仕様書（API 側）: [20260805_issue-501_retry-admin-only.md](../specs/20260805_issue-501_retry-admin-only.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) / [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)
-- 計画への環流（**planning#198 として起票済み・裁定待ち**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 

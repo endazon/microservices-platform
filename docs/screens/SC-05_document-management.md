@@ -131,6 +131,12 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 05_screens §SC-05 主要素の「変換状況」だけが旧い記述として残っている可能性がある。この点も環流の記録へ含めた
 （[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**planning#198 として起票済み・裁定待ち**）。
 
+> **★［2026-08-10 追記 / #553］この推測は当たっていた。** 裁定 **Q17**（2026-08-05）で
+> **計画側が §SC-05 主要素から「変換状況」を削除した**（`01_screens.md:276`。
+> 「**本書の内部矛盾を解消するものである**」と明記されている）。
+> **02_requirements の 2026-07-24 是正の側が正しく、`05_screens` の旧記述が残っていた**という判定である。
+> **したがって本画面が「変換」列を出していないのが正しい。**
+
 ## データソース（BFF 境界）
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
@@ -230,7 +236,7 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 - 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
 - テスト仕様書: [SC-05_document-management.md](../tests/SC-05_document-management.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0041](../adr/IADR-0041_document-write-bff-abac-scoped.md)
-- 計画への環流（**planning#198 として起票済み・裁定待ち**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 
 ## 未決事項
 
