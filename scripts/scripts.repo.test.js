@@ -2152,6 +2152,194 @@ module.exports = ({ ok, assert }) => {
   }
 
   //
+  // NFR / #647: openapi.yaml の宣言ロール（x-roles）と BFF 実装の実効ロールを突き合わせる検査器。
+  // **認可を狭めたのに契約が追随しない事故が 2 回起きた**ので入れた（#629 → #640 で偶然発見）。
+  // ここが CI 呼び出し口である（IADR-0140 決定 2 の相乗り。check-doc-updated と同じ）。
+  {
+    const authz = require('./check-bff-authz-docs.js');
+
+    const AUTH_SRC = `
+      public static class PlatformAuthPolicies {
+        public const string AdminOnly = "AdminOnly";
+        public const string AdminRole = "platform-admin";
+        public const string OperatorRole = "platform-operator";
+      }
+      services.AddAuthorization(options => {
+        options.AddPolicy(PlatformAuthPolicies.AdminOnly, policy =>
+          policy.RequireRole(PlatformAuthPolicies.AdminRole));
+      });
+    `;
+    const { consts, policies } = authz.loadPolicies(AUTH_SRC);
+
+    ok('check-bff-authz-docs: ポリシー名 → ロールをソースから解決する', () => {
+      assert.deepStrictEqual([...policies.AdminOnly], ['platform-admin']);
+      assert.strictEqual(consts.OperatorRole, 'platform-operator');
+    });
+
+    // ★ 実測 4 点（作業仕様書 #647 §母集合）を 1 つずつ固定する。
+    // どれも「素朴な実装なら壊れる」形であり、壊れたら実効ロールを誤って報告する。
+    ok('check-bff-authz-docs: 認可は AND 合成される（群 admin+operator × 端点 AdminOnly = admin）', () => {
+      const stmt = 'g.MapPost("/x", h).WithName("N").RequireAuthorization(PlatformAuthPolicies.AdminOnly)';
+      assert.deepStrictEqual([...authz.rolesFromStatement(stmt, consts, policies)], ['platform-admin']);
+    });
+
+    ok('check-bff-authz-docs: RequireAuthorization() だけならロール制約なし', () => {
+      assert.strictEqual(
+        authz.rolesFromStatement('g.MapGet("/x", h).RequireAuthorization()', consts, policies),
+        null,
+      );
+    });
+
+    ok('check-bff-authz-docs: RequireRole ラムダを解ける', () => {
+      const stmt =
+        '.RequireAuthorization(p => p.RequireRole(PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole))';
+      assert.deepStrictEqual(
+        [...authz.rolesFromStatement(stmt, consts, policies)].sort(),
+        ['platform-admin', 'platform-operator'],
+      );
+    });
+
+    // 実測 2・3: 認可が MapGroup / WithName と別行でも、`;` までを 1 文として読めること。
+    ok('check-bff-authz-docs: 文は深さ 0 の ; まで（ラムダ本体の ; で切れない）', () => {
+      const src = 'g.MapGet("/x", async () => { var a = 1; return a; }).RequireAuthorization();';
+      const stmt = authz.statementFrom(src, 0);
+      assert.ok(stmt.includes('RequireAuthorization'), '端点の認可まで届いていない');
+    });
+
+    // コメント内の ; や " で壊れないこと（stripComments）。
+    ok('check-bff-authz-docs: コメントを落としても文字列は守る', () => {
+      const out = authz.stripComments('var a = "x;y"; // c;omment "q"\nvar b = 2;');
+      assert.ok(out.includes('"x;y"'), '文字列が壊れた');
+      assert.ok(!out.includes('omment'), 'コメントが残っている');
+    });
+
+    // 実装の経路制約を openapi の表記へ揃える。
+    ok('check-bff-authz-docs: {id:guid} を {id} へ正規化する', () => {
+      assert.strictEqual(authz.normalizePath('/bff/documents/{id:guid}/x'), '/bff/documents/{id}/x');
+    });
+
+    ok('check-bff-authz-docs: x-roles を読む（インライン形・列挙形とも）', () => {
+      const yaml = [
+        '  /bff/a:',
+        '    get:',
+        '      x-roles: [platform-admin, platform-operator]',
+        '    post:',
+        '      x-roles:',
+        '        - platform-admin',
+      ].join('\n');
+      const ops = authz.collectContract(yaml);
+      assert.deepStrictEqual(ops.get('get /bff/a').roles, ['platform-admin', 'platform-operator']);
+      assert.deepStrictEqual(ops.get('post /bff/a').roles, ['platform-admin']);
+    });
+
+    // ★ 判定の両方向。片側だけ見るテストでは「誰でも通る」状態を検出できない。
+    ok('check-bff-authz-docs: 実装が狭く文書が広いと fail（#629 の事故そのもの）', () => {
+      const eps = [{ file: 'f', path: '/bff/documents', method: 'post', roles: new Set(['platform-admin']) }];
+      const ops = new Map([['post /bff/documents', { roles: ['platform-admin', 'platform-operator'], line: 1 }]]);
+      const v = authz.findViolations(eps, ops);
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'mismatch');
+    });
+
+    ok('check-bff-authz-docs: 実装が広く文書が狭くても fail（逆向き）', () => {
+      const eps = [{
+        file: 'f', path: '/bff/documents', method: 'post',
+        roles: new Set(['platform-admin', 'platform-operator']),
+      }];
+      const ops = new Map([['post /bff/documents', { roles: ['platform-admin'], line: 1 }]]);
+      assert.strictEqual(authz.findViolations(eps, ops).length, 1);
+    });
+
+    ok('check-bff-authz-docs: 一致していれば通る', () => {
+      const eps = [{ file: 'f', path: '/bff/x', method: 'get', roles: new Set(['platform-admin']) }];
+      const ops = new Map([['get /bff/x', { roles: ['platform-admin'], line: 1 }]]);
+      assert.deepStrictEqual(authz.findViolations(eps, ops), []);
+    });
+
+    // 新しい端点が x-roles を書かずに素通りしないこと（allowlist を持たない代わりの担保）。
+    ok('check-bff-authz-docs: x-roles が無い端点は fail（書き忘れを素通りさせない）', () => {
+      const eps = [{ file: 'f', path: '/bff/x', method: 'get', roles: new Set(['platform-admin']) }];
+      const ops = new Map([['get /bff/x', { roles: null, line: 9 }]]);
+      const v = authz.findViolations(eps, ops);
+      assert.strictEqual(v[0].kind, 'missing-x-roles');
+    });
+
+    ok('check-bff-authz-docs: ロール制約なしと x-roles: [] は一致', () => {
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null }];
+      const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
+      assert.deepStrictEqual(authz.findViolations(eps, ops), []);
+    });
+
+    // ★ PR #653 レビュー 1 巡目の 🔴 を固定する回帰。
+    // `ConfigBffEndpoints` は **RequireAuthorization を意図的に付けず**、ハンドラ内で
+    // AuthorizeAsync(ConfigViewer) を呼んで 404 で存在を秘匿する（IADR-0009）。
+    // **ミドルウェアを使っていないだけでロール制約は在る。** 当初これを「制約なし」と
+    // 誤って記録しかけた——コメントだけ読んで DenyAsync の本体を開かなかったためである。
+    ok('check-bff-authz-docs: ハンドラ内の AuthorizeAsync も実効ロールに数える', () => {
+      const pol = { ConfigViewer: new Set(['platform-admin', 'platform-operator']) };
+      const src = `
+        private static async Task<IResult?> DenyAsync(HttpContext http, IAuthorizationService authz) {
+          var authorized = (await authz.AuthorizeAsync(http.User, PlatformAuthPolicies.ConfigViewer)).Succeeded;
+          if (!authorized) { return Results.NotFound(); }
+          return null;
+        }
+      `;
+      const helpers = authz.collectAuthHelpers(src, consts, pol);
+      assert.ok(helpers.DenyAsync, 'ヘルパを認可の担い手として拾えていない');
+      assert.deepStrictEqual([...helpers.DenyAsync].sort(), ['platform-admin', 'platform-operator']);
+    });
+
+    ok('check-bff-authz-docs: 直接の AuthorizeAsync も拾う', () => {
+      const pol = { ConfigViewer: new Set(['platform-admin', 'platform-operator']) };
+      const roles = authz.rolesFromAuthorizeAsync(
+        'await authz.AuthorizeAsync(http.User, PlatformAuthPolicies.ConfigViewer)', consts, pol);
+      assert.deepStrictEqual([...roles].sort(), ['platform-admin', 'platform-operator']);
+    });
+
+    // 実データ: /bff/admin/config は「制約なし」ではないこと（🔴 の再発防止）。
+    ok('check-bff-authz-docs: /bff/admin/config の実効ロールは admin+operator', () => {
+      const fsC = require('fs');
+      const pathC = require('path');
+      const authSrc = fsC.readFileSync(
+        pathC.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8');
+      const real = authz.loadPolicies(authSrc);
+      const eps = authz.collectImplementation(
+        [pathC.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(eps.length > 0, '端点を 1 つも抽出できていない');
+      for (const ep of eps) {
+        assert.notStrictEqual(ep.roles, null, `${ep.path} が「制約なし」になっている`);
+        assert.deepStrictEqual([...ep.roles].sort(), ['platform-admin', 'platform-operator']);
+      }
+    });
+
+    // 実データ。実装と openapi.yaml が一致していること。
+    ok('check-bff-authz-docs が実データで違反 0 件', () => {
+      const { spawnSync: spawnAuthz } = require('child_process');
+      const pathAuthz = require('path');
+      const r = spawnAuthz(process.execPath, [pathAuthz.join(__dirname, 'check-bff-authz-docs.js')], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `宣言ロールと実効ロールが食い違っている:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // allowlist を持たないこと（#647 受け入れ基準。持つと事故を隠す）。
+    ok('check-bff-authz-docs: allowlist ファイルを持たない', () => {
+      const fsA = require('fs');
+      const pathA = require('path');
+      const src = fsA.readFileSync(pathA.join(__dirname, 'check-bff-authz-docs.js'), 'utf8');
+      assert.ok(!/allowlist/i.test(src.replace(/allowlist を持たない[^\n]*/g, '')
+        .replace(/allowlist は事故を隠[^\n]*/g, '')
+        .replace(/allowlist ファイルを持たない[^\n]*/g, '')
+        .replace(/allowlist を持たない（#647[^\n]*/g, '')),
+        'allowlist を参照している');
+    });
+  }
+
+  //
   // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
   // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。
   // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が

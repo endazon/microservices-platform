@@ -52,6 +52,7 @@ paths:
   # ── BFF ──────────────────────────────────────────
   /bff/search:
     post:
+      x-roles: []
       tags: [Search]
       summary: "FR-03: ベクトル検索（BFF 集約）"
       description: |
@@ -77,6 +78,7 @@ paths:
 
   /bff/attribute-values:
     post:
+      x-roles: []
       tags: [Search]
       summary: "FR-04, FR-05, SC-01, SC-08: 権限内属性値の照会（BFF 集約）"
       description: |
@@ -119,6 +121,7 @@ paths:
   # （SC-09「削除前に使用件数を示す」）。BFF で数え直すと一覧と削除拒否で件数が割れる。
   /bff/tags:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Tags]
       summary: "FR-09, SC-09: タグ辞書の一覧（値集合 ＋ 使用件数。管理者・運用者）"
       operationId: bff-tag-list
@@ -133,6 +136,7 @@ paths:
         "403": { description: 管理者・運用者ロール以外 }
         "502": { description: DocumentService へ到達できない }
     post:
+      x-roles: [platform-admin]
       tags: [Tags]
       summary: "FR-09, SC-09: タグ辞書へ追加（管理者のみ。#640）"
       description: |
@@ -162,6 +166,7 @@ paths:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     put:
+      x-roles: [platform-admin]
       tags: [Tags]
       summary: "FR-09, SC-09: タグ辞書の改名（管理者のみ。#640）"
       description: |
@@ -191,6 +196,7 @@ paths:
         "409": { description: 同名のタグが既に辞書にある（自分自身は除く） }
         "502": { description: DocumentService へ到達できない }
     delete:
+      x-roles: [platform-admin]
       tags: [Tags]
       summary: "FR-09, SC-09: タグ辞書から削除（管理者のみ。#640）"
       description: |
@@ -213,6 +219,7 @@ paths:
 
   /bff/analysis/ask:
     post:
+      x-roles: []
       tags: [Analysis]
       summary: "FR-04, UC-01: RAG 質問回答（BFF 集約）"
       description: |
@@ -236,6 +243,7 @@ paths:
 
   /bff/analysis/analyze:
     post:
+      x-roles: []
       tags: [Analysis]
       summary: "FR-07, UC-02: 指定データ範囲での分析・比較・抽出（BFF 集約）"
       description: |
@@ -262,6 +270,7 @@ paths:
 
   /bff/analysis/ask/stream:
     post:
+      x-roles: []
       tags: [Analysis]
       summary: "FR-04, UC-01, SC-01: RAG 質問回答の SSE ストリーミング（BFF パススルー）"
       description: |
@@ -299,6 +308,7 @@ paths:
   # ——description へ書くと orval 生成物（コミット対象）の JSDoc が動くため。
   /bff/feedback:
     post:
+      x-roles: []
       tags: [Feedback]
       summary: "FR-08, UC-01: 回答へのフィードバック送信（BFF 集約）"
       description: |
@@ -331,6 +341,7 @@ paths:
   # 内部 API `/feedback/stats` の同日追記を参照。
   /bff/feedback/stats:
     get:
+      x-roles: []
       tags: [Feedback]
       summary: "FR-08: 満足率の集計取得（BFF 集約・品質可視化）"
       operationId: bff-feedback-stats
@@ -350,6 +361,7 @@ paths:
 
   /bff/dashboard/summary:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Dashboard]
       summary: "FR-10, UC-05: ダッシュボードサマリ（BFF 集約）"
       description: |
@@ -382,6 +394,7 @@ paths:
 
   /bff/admin/config:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 現在有効な実効構成の取得"
       description: |
@@ -403,6 +416,7 @@ paths:
 
   /bff/admin/config/drift:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 宣言（Git）と実効構成のドリフト検出"
       description: |
@@ -421,6 +435,7 @@ paths:
 
   /bff/admin/config/history:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 構成バージョンの適用履歴（新しい順）"
       description: |
@@ -447,6 +462,7 @@ paths:
   # 全パスに共通する応答: 401（未認証）／403（管理者ロール以外）／502（後段不達）。
   /bff/admin/authz/policies:
     get:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: ABAC ポリシー一覧（BFF 集約）"
       operationId: bff-authz-list-policies
@@ -463,6 +479,7 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly） }
         "502": { description: AuthorizationService へ到達できない }
     post:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, UC-05, SC-09: ABAC ポリシー登録（保存前に矛盾検証）"
       description: |
@@ -494,6 +511,7 @@ paths:
 
   /bff/admin/authz/policies/validate:
     post:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-05, FR-09, SC-09（裁定 Q23 / #535）: ポリシーの dry-run 検証（保存しない）"
       description: |
@@ -532,6 +550,7 @@ paths:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: ABAC ポリシー個別取得（BFF 集約）"
       operationId: bff-authz-get-policy
@@ -547,6 +566,7 @@ paths:
         "404": { description: 見つからない }
         "502": { description: AuthorizationService へ到達できない }
     put:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, UC-05, SC-09: ABAC ポリシー更新（保存前に矛盾検証）"
       description: "後段は登録と同じ `CreatePolicyRequest` を受ける（専用の更新型を持たない）。"
@@ -575,6 +595,7 @@ paths:
         "404": { description: 見つからない }
         "502": { description: AuthorizationService へ到達できない }
     delete:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: ABAC ポリシー削除（BFF 集約）"
       operationId: bff-authz-delete-policy
@@ -587,6 +608,7 @@ paths:
 
   /bff/admin/authz/policies/{id}/active:
     patch:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: ポリシー有効／無効の切替（削除せず一時停止）"
       operationId: bff-authz-set-policy-active
@@ -612,6 +634,7 @@ paths:
 
   /bff/admin/authz/attributes:
     get:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: 属性辞書一覧（BFF 集約）"
       operationId: bff-authz-list-attributes
@@ -628,6 +651,7 @@ paths:
         "403": { description: 管理者ロール以外（AdminOnly） }
         "502": { description: AuthorizationService へ到達できない }
     post:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, UC-05, SC-09: 属性辞書登録（キー重複・許可値検証）"
       operationId: bff-authz-create-attribute
@@ -658,6 +682,7 @@ paths:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: 属性辞書個別取得（BFF 集約）"
       operationId: bff-authz-get-attribute
@@ -673,6 +698,7 @@ paths:
         "404": { description: 見つからない }
         "502": { description: AuthorizationService へ到達できない }
     put:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, UC-05, SC-09: 属性辞書更新（Key / Scope は不変のため受け取らない）"
       operationId: bff-authz-update-attribute
@@ -700,6 +726,7 @@ paths:
         "404": { description: 見つからない }
         "502": { description: AuthorizationService へ到達できない }
     delete:
+      x-roles: [platform-admin]
       tags: [Authorization]
       summary: "FR-09, SC-09: 属性辞書削除（参照中は 409）"
       description: |
@@ -731,6 +758,7 @@ paths:
   # 後段の検証 400・競合 409・不在 404 は透過する。
   /bff/documents:
     get:
+      x-roles: []
       tags: [Documents]
       summary: "FR-06, SC-05: 文書一覧（ABAC スコープ内のみ）"
       description: |
@@ -747,6 +775,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/DocumentDto"
     post:
+      x-roles: [platform-admin]
       tags: [Documents]
       summary: "FR-06, UC-03, SC-05: 文書作成（管理者のみ。#629）"
       description: |
@@ -779,6 +808,7 @@ paths:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
+      x-roles: []
       tags: [Documents]
       summary: "FR-06, SC-03: 文書詳細（スコープ外・不在は同じ 404）"
       operationId: bff-document-detail
@@ -791,6 +821,7 @@ paths:
                 $ref: "#/components/schemas/DocumentDto"
         "404": { description: 不在またはスコープ外（存在秘匿。区別しない） }
     put:
+      x-roles: [platform-admin]
       tags: [Documents]
       summary: "FR-06, UC-03, SC-05: 文書更新（楽観ロック。管理者のみ。#629）"
       description: |
@@ -826,6 +857,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/VersionConflictDto"
     delete:
+      x-roles: [platform-admin]
       tags: [Documents]
       summary: "FR-06, UC-03, SC-05: 文書削除（管理者のみ。#629）"
       description: "削除は下流（Wiki.js 同期）へ伝播し、外部システムの実体も撤去する。"
@@ -838,6 +870,7 @@ paths:
 
   /bff/documents/{id}/content:
     get:
+      x-roles: []
       tags: [Documents]
       summary: "FR-06, SC-03: 文書本文（正規化 Markdown）"
       description: |
@@ -857,6 +890,7 @@ paths:
 
   /bff/documents/{id}/versions:
     get:
+      x-roles: []
       tags: [Documents]
       summary: "FR-06, UC-03, SC-03: 版履歴一覧（新しい順）"
       operationId: bff-document-versions
@@ -875,6 +909,7 @@ paths:
 
   /bff/documents/{id}/publish:
     post:
+      x-roles: [platform-admin]
       tags: [Documents]
       summary: "FR-06, UC-03, SC-05: 文書を公開する（取り込み・Wiki 同期をトリガ。管理者のみ。#629）"
       description: |
@@ -902,6 +937,7 @@ paths:
 
   /bff/documents/{id}/archive:
     post:
+      x-roles: [platform-admin]
       tags: [Documents]
       summary: "FR-06, UC-03, SC-05: 文書をアーカイブ（非公開化）する（管理者のみ。#629）"
       description: "status=archived の DocumentUpdated を発行し、下流の Wiki.js 同期がページを非公開化する。"
@@ -927,6 +963,7 @@ paths:
   # 一覧は後段障害を空一覧へ縮退させない——「未登録」と誤認させ重複登録を誘発するため。
   /bff/datasources:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [DataSources]
       summary: "FR-01, SC-06: データソース一覧（管理者・運用者のみ）"
       description: |
@@ -945,6 +982,7 @@ paths:
         "403": { description: 管理者・運用者ロール以外 }
         "502": { description: DataSourceService へ到達できない }
     post:
+      x-roles: [platform-admin]
       tags: [DataSources]
       summary: "FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）"
       description: |
@@ -973,6 +1011,7 @@ paths:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [DataSources]
       summary: "FR-01, SC-06: データソース個別取得"
       operationId: bff-data-source-get
@@ -987,6 +1026,7 @@ paths:
         "403": { description: 管理者・運用者ロール以外 }
         "404": { description: 見つからない }
     put:
+      x-roles: [platform-admin]
       tags: [DataSources]
       summary: "FR-01, UC-04, SC-06: データソース更新（全置換・**管理者のみ**）"
       description: |
@@ -1017,6 +1057,7 @@ paths:
         "403": { description: 管理者ロール以外（運用者も不可） }
         "404": { description: 見つからない }
     patch:
+      x-roles: [platform-admin]
       tags: [DataSources]
       summary: "FR-01, UC-04, SC-06: データソース部分更新（**管理者のみ**）"
       description: |
@@ -1042,6 +1083,7 @@ paths:
         "403": { description: 管理者ロール以外（運用者も不可） }
         "404": { description: 見つからない }
     delete:
+      x-roles: [platform-admin]
       tags: [DataSources]
       summary: "FR-01, SC-06: データソースの無効化（論理削除・**管理者のみ**）"
       description: |
@@ -1057,6 +1099,7 @@ paths:
 
   /bff/datasources/{id}/sync:
     post:
+      x-roles: [platform-admin, platform-operator]
       tags: [DataSources]
       summary: "FR-01, UC-04, SC-06: 手動同期トリガー（管理者・運用者）"
       description: |
@@ -1086,6 +1129,7 @@ paths:
   # グループの「admin または operator」と AdminOnly の積＝admin のみが実効要件になる）。
   /bff/conversion/jobs:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 変換ジョブ一覧（新しい順・状態で絞り込み）"
       description: |
@@ -1113,6 +1157,7 @@ paths:
 
   /bff/conversion/jobs/{id}:
     get:
+      x-roles: [platform-admin, platform-operator]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 変換ジョブ個別取得"
       operationId: bff-conversion-job-get
@@ -1131,6 +1176,7 @@ paths:
 
   /bff/conversion/jobs/{id}/retry:
     post:
+      x-roles: [platform-admin]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: **再変換**（人手補正ではない）。**管理者ロールのみ**"
       description: |
@@ -1175,6 +1221,7 @@ paths:
 
   /bff/conversion/jobs/{id}/figures:
     get:
+      x-roles: [platform-admin]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 人手補正 Phase 1 の本文取得。**管理者ロールのみ**"
       description: |
@@ -1203,6 +1250,7 @@ paths:
 
   /bff/conversion/jobs/{id}/figures/{figureId}/image:
     get:
+      x-roles: [platform-admin]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**"
       description: |
@@ -1225,6 +1273,7 @@ paths:
 
   /bff/conversion/jobs/{id}/figures/{figureId}/correction:
     post:
+      x-roles: [platform-admin]
       tags: [Conversion]
       summary: "FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 = 図のコード化）。**管理者ロールのみ**"
       description: |
