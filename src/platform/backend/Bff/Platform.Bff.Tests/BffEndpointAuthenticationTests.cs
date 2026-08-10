@@ -97,15 +97,21 @@ public class BffEndpointAuthenticationTests(BffTestFactory factory)
 
     // SC-03: 文書詳細は**一般利用者が SC-01 の出典クリックから遷移する**（計画 `05_screens` SC-01 §アクション）。
     // ここへロールを足すと出典が開けなくなる。
-    [Fact]
-    public async Task DocumentDetail_AsNonPrivilegedRole_IsNotForbidden()
+    //
+    // 当初は「403 でも 401 でもない」という弱い主張にしていたが、**それでは足りない** ——
+    // スコープ外の 404 と混ざるため、ロールを足す変異でも 404 のままなら緑になりうる。
+    // テスト基盤は `/authz/scope` を `Granted=true`・フィルタ空（＝全件許可）で、
+    // `/documents/{id}` を文書ありでスタブしているので、**200 を直接主張できる**（実測）。
+    [Theory]
+    [InlineData("")]
+    [InlineData("/content")]
+    [InlineData("/versions")]
+    public async Task DocumentReadEndpoints_AsNonPrivilegedRole_AreAllowed(string suffix)
     {
         var resp = await WithRoles("viewer")
-            .GetAsync("/bff/documents/11111111-1111-1111-1111-111111111111");
+            .GetAsync($"/bff/documents/11111111-1111-1111-1111-111111111111{suffix}");
 
-        // スコープ外・不在は 404（存在秘匿。[[IADR-0009]]）。**403 にならないこと**が要点である。
-        resp.StatusCode.Should().NotBe(HttpStatusCode.Forbidden);
-        resp.StatusCode.Should().NotBe(HttpStatusCode.Unauthorized);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, "SC-03 は一般利用者が出典から遷移する");
     }
 
     // ── T-21（#656）: 文書一覧だけ SC-05 の閲覧ロールに絞る ──────────
