@@ -186,7 +186,7 @@ BFF が契約違反の 200 を返せば `undefined` が入り、`??` を消し�
      いまは本 ADR の表が人手の突合結果でしかない。
      **［2026-08-10 追記 / #525］配備した。** `scripts/check-openapi-dto-drift.js`（[[IADR-0159]] 決定 3・4）が
      プロパティ集合と `required` を機械的に突き合わせる。**論点 A1 ＋ B1 をそのまま規則にしている。**
-     ただし**既存の不一致 20 件はラチェットで据え置き**であり（`scripts/openapi-dto-drift-allowlist.json`）、
+     ただし**既存の不一致 10 件はラチェットで据え置き**であり（`scripts/openapi-dto-drift-allowlist.json`。是正は #658）、
      新規混入だけを止める。**型の不一致は見ない**（表現が 1 対 1 でなく誤検出が保守コストを上回るため）。
   2. **`AccessScopeResponse` に `granted` が無い**（C# には在る）。フィールドの追加は本 issue の範囲外
      として申し送り、**独立の issue #525 として起票済み**である（作業仕様書 §未決事項 1）。

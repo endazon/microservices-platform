@@ -26,12 +26,19 @@
  * 自己試験が落とす —— 「黙って除外した」を残さないためである
  * （`.claude/rules/traceability.md` 母集合の規則 6）。
  *
- * ── C# 側のパースで気をつけた 3 点（すべて実データで確認した）
+ * ── パースで気をつけた点（すべて実データまたは投入試験で確認した。自己試験に 1 件ずつ対応がある）
  *   1. **本体つき record**（`record X(...) { ... }`）がある。`AiAnswerDto` は位置引数 5 つに加えて
  *      本体に `public Guid AnswerId { get; init; }` を持つ。**本体を読まないと 1 つ落ちる。**
  *   2. **位置引数にジェネリクスと既定値が混ざる**（`Dictionary<string, List<string>>? X = null`）。
  *      `,` での素朴な分割は `Dictionary<string, ...>` の中で割れるので**深さを数えて**切る。
  *   3. **1 ファイルに複数の record が並ぶ**。`AccessScopeDto.cs` は 4 つ持つ。
+ *   4. **本体の `static` / `const` は拾わない**（偽陽性。`System.Text.Json` は直列化しない）。
+ *   5. **`required` は折り返される**（偽陽性。prettier が長い配列を複数行にする。`DataSourceDto` で
+ *      実際に踏み、10 件を偽の債務としてラチェットへ据え置きかけた）。
+ *   6. `record struct` / `readonly record struct` も拾う。ジェネリック record は**意図的に拾わない**。
+ *
+ * **4 と 5 は偽陽性であり、見逃しより重い** —— 検査器が無関係な PR を誤って落とすからである。
+ * 新しい書き方を足すときは、まず**偽陽性の側**を投入試験で確かめること。
  *
  * 使い方:
  *   node scripts/check-openapi-dto-drift.js            # 検査（差異があれば exit 1）
@@ -212,7 +219,7 @@ const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 
 function findDrift(schemas, records, allowlist) {
   const allowed = new Set((allowlist.entries || []).map((e) => `${e.schema}.${e.property}`));
-  // `required` の不一致は**ラチェット**である。既存 20 件は据え置き、新規混入だけを落とす
+  // `required` の不一致は**ラチェット**である。既存を据え置き、新規混入だけを落とす
   // （リポジトリ既定の方式。backend-library-baseline / landed-subject-baseline と同じ）。
   const requiredBaseline = new Set(allowlist.requiredMismatchBaseline || []);
   const drift = [];
