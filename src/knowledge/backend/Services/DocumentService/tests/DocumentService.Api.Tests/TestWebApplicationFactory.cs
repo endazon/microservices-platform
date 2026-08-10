@@ -12,6 +12,12 @@ namespace DocumentService.Api.Tests;
 
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
+    // NFR, #660: **各テストクラスで DB を分離するための一意名（InMemory）。**
+    // xUnit はテストクラスごとに並列で走り、`IClassFixture` はクラスごとに別インスタンスを作る。
+    // ところが DB 名が固定だと**ストアだけがプロセス内で共有され**、
+    // 他クラスの書き込みが見えてしまう（`DocumentTest` で実際に発火した。#660）。
+    private readonly string _dbName = $"DocumentTest_{Guid.NewGuid()}";
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -26,7 +32,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
         {
             // EF Core プロバイダーを InMemory へ差し替え
             // IDbContextOptionsConfiguration<T> をすべて削除し再登録
-            ReplaceDbContext<DocumentDbContext>(services, "DocumentTest");
+            ReplaceDbContext<DocumentDbContext>(services, _dbName);
 
             // FR-09, IADR-0044: 書き込みは admin/operator を要求する。Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。

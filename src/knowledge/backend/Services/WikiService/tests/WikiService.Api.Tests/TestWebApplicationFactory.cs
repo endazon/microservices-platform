@@ -15,6 +15,12 @@ namespace WikiService.Api.Tests;
 
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
+    // NFR, #660: **各テストクラスで DB を分離するための一意名（InMemory）。**
+    // xUnit はテストクラスごとに並列で走り、`IClassFixture` はクラスごとに別インスタンスを作る。
+    // ところが DB 名が固定だと**ストアだけがプロセス内で共有され**、
+    // 他クラスの書き込みが見えてしまう（`WikiTest` で実際に発火した。#660）。
+    private readonly string _dbName = $"WikiTest_{Guid.NewGuid()}";
+
     // FR-13/FR-05: 閲覧テストで使う ABAC 許可スコープ。既定は全件許可（Health/一覧テスト用）。
     // ABAC テストはテストごとに差し替える（クラス内テストは直列実行のため安全）。
     public AccessScopeResponse Scope { get; set; } = new("test-user", [], true);
@@ -31,7 +37,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             }));
         builder.ConfigureServices(services =>
         {
-            ReplaceDbContext<WikiDbContext>(services, "WikiTest");
+            ReplaceDbContext<WikiDbContext>(services, _dbName);
 
             // FR-13: ABAC 解決を HTTP に依存させず、テスト制御可能なスタブへ差し替える。
             services.RemoveAll<IWikiAccessResolver>();
