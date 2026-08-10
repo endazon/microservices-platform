@@ -2090,6 +2090,42 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(v[0].kind, 'stale');
     });
 
+    // ★ PR #652 レビュー 1 巡目の誤検知を固定する回帰。
+    // テンプレートの `updated:` は雛形の穴（`<YYYY-MM-DD>`）であり、**埋まっていないのが正しい**。
+    // 本文を編集するたびに invalid-date で落ちると、**検査器が邪魔者になって外される**。
+    ok('check-doc-updated: docs/templates/ は対象外（雛形の穴で落ちない）', () => {
+      const tpl = '---\ntitle: t\nupdated: <YYYY-MM-DD>\n---\n\n';
+      const v = run(
+        [{ path: 'docs/templates/spec_template.md', baseText: tpl + '旧\n', headText: tpl + '新\n' }],
+        '2026-08-09',
+      );
+      assert.deepStrictEqual(v, []);
+      // 同じ穴つき frontmatter でも、テンプレート**以外**なら invalid-date で落ちること
+      // （除外がパスに閉じていて、日付検査そのものを緩めていないことの確認）。
+      const outside = run(
+        [{ path: 'docs/specs/x.md', baseText: tpl + '旧\n', headText: tpl + '新\n' }],
+        '2026-08-09',
+      );
+      assert.strictEqual(outside.length, 1);
+      assert.strictEqual(outside[0].kind, 'invalid-date');
+    });
+
+    // 実データ: 追跡下のテンプレートが本当に穴のままであること（前提が崩れたら気づく）。
+    ok('check-doc-updated: 実データのテンプレートは updated: が穴のまま', () => {
+      const fsTpl = require('fs');
+      const pathTpl = require('path');
+      const dir = pathTpl.join(__dirname, '..', 'docs', 'templates');
+      const files = fsTpl.readdirSync(dir).filter((f) => f.endsWith('.md'));
+      assert.ok(files.length > 0, 'テンプレートが 1 件も無い');
+      const withPlaceholder = files.filter((f) =>
+        /^updated:\s*<YYYY-MM-DD>/m.test(fsTpl.readFileSync(pathTpl.join(dir, f), 'utf8')),
+      );
+      assert.ok(
+        withPlaceholder.length > 0,
+        '穴つきテンプレートが 1 件も無い（除外の前提が変わったなら除外を見直すこと）',
+      );
+    });
+
     ok('check-doc-updated: 削除された文書は対象外', () => {
       const v = run([{ path: 'docs/gone.md', baseText: doc('2026-07-08', '旧'), headText: null }], '2026-08-09');
       assert.deepStrictEqual(v, []);

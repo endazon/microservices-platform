@@ -29,6 +29,8 @@
  *
  * ── **この検査器が検出しないこと**（網羅ではない。開示しておく）
  *   - `created:` の誤り。作成日は後から動かないため対象外。
+ *   - **`docs/templates/` 配下**。雛形の `updated:` は穴（`<YYYY-MM-DD>`）であり、埋まっていないのが
+ *     正しい。本文を編集するたびに落ちると検査器が外されるので、丸ごと対象外にする。
  *   - **`updated:` を持たない文書**（`README.md` 等）。notice として件数だけ出す。
  *     「日付を持て」という規約は別の話であり、本検査器の射程ではない。
  *   - **未来日**。`updated: 2099-01-01` は本式を通る。日付の妥当性そのものは見ない。
@@ -46,6 +48,10 @@ const path = require('node:path');
 
 const DEFAULT_BASE = 'origin/develop';
 const TARGET_PREFIX = 'docs/';
+// **テンプレートは対象外。** `docs/templates/*.md` の `updated:` は雛形の穴（`<YYYY-MM-DD>`）であり、
+// 埋まっていないのが正しい状態である。本文（項目追加・誤字直し）を編集するたびに `invalid-date` で
+// 落ちると、**検査器が邪魔者になって外される**（PR #652 レビュー 1 巡目が 17 件で実測した）。
+const TEMPLATE_PREFIX = 'docs/templates/';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function git(args, cwd) {
@@ -98,6 +104,7 @@ function findViolations(files, firstCommitDate) {
 
   for (const file of files) {
     if (file.headText === null || file.headText === undefined) continue; // 削除
+    if (file.path.startsWith(TEMPLATE_PREFIX)) continue; // 雛形の穴は埋まっていないのが正しい
     const headBody = stripFrontmatter(file.headText);
     const baseBody = file.baseText === null || file.baseText === undefined
       ? null // 新規追加。本文は「全部が変更」とみなす
@@ -217,4 +224,5 @@ module.exports = {
   stripFrontmatter,
   readUpdated,
   DATE_RE,
+  TEMPLATE_PREFIX,
 };
