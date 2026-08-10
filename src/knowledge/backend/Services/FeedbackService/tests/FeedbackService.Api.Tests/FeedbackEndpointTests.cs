@@ -211,7 +211,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    // T-16（#521）: 投稿にロールは要らない（認証さえあれば一般利用者も送れる）。
+    // T-18（#521）: 投稿にロールは要らない（認証さえあれば一般利用者も送れる）。
     // **狭めすぎていないことの側**——ロールまで要求すると FR-08 が成り立たなくなる。
     [Fact]
     public async Task PostFeedback_AsNonPrivilegedRole_IsAllowed()
@@ -237,7 +237,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    // T-18（#521）: 統計は認証済みでも運用者・管理者以外は 403（[[IADR-0039]] 決定 3: 401 と区別する）。
+    // T-16（#521）: 統計は認証済みでも運用者・管理者以外は 403（[[IADR-0039]] 決定 3: 401 と区別する）。
     [Fact]
     public async Task Stats_AsNonPrivilegedRole_IsForbidden()
     {

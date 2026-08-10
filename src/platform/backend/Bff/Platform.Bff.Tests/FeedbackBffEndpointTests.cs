@@ -54,7 +54,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
     // （`02_requirements:209`）は「投稿端点が無認証で 401。統計は認証済みでも運用者・管理者以外は 403」。
     // 後段（FeedbackService）にも同じ認可がある（[[IADR-0044]] 多層防御）。
 
-    // T-13（#521）: 投稿は無認証で 401（匿名投稿を許さない）。
+    // T-15（#521）: 投稿は無認証で 401（匿名投稿を許さない）。
     [Fact]
     public async Task PostFeedback_WhenAnonymous_IsUnauthorized()
     {
@@ -67,7 +67,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    // T-14（#521）: 投稿にロールは要らない（認証さえあれば一般利用者も送れる）。
+    // T-18（#521）: 投稿にロールは要らない（認証さえあれば一般利用者も送れる）。
     // **狭めすぎていないことの側**——ロールまで要求すると FR-08 が成り立たなくなる。
     [Fact]
     public async Task PostFeedback_AsNonPrivilegedRole_IsAllowed()
@@ -81,7 +81,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
-    // T-15（#521）: 統計は無認証で 401。
+    // T-17（#521）: 統計は無認証で 401。
     [Fact]
     public async Task Stats_WhenAnonymous_IsUnauthorized()
     {
@@ -105,7 +105,7 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // T-17（#521）: 運用者は統計を取得できる（SC-10 の閲覧ロールと揃える。#544 と同じ線）。
+    // T-19（#521）: 運用者は統計を取得できる（SC-10 の閲覧ロールと揃える。#544 と同じ線）。
     // 403 の側と**対**で固定する——片側だけだと「全部拒否」でも緑になる。
     [Fact]
     public async Task Stats_AsOperator_IsAllowed()
