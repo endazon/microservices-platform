@@ -2340,6 +2340,58 @@ module.exports = ({ ok, assert }) => {
   }
 
   //
+  // NFR / #525: openapi.yaml の components.schemas と C# 契約 record を突き合わせる検査器。
+  // **契約が実装と食い違ったまま残る事故が 4 回起きた**ので入れた
+  // （#118 パス誤り 3 件 / #506 型誤り / #520 required 欠落 / #525 フィールド欠落）。
+  // `.github/workflows/` は編集不可なので、ここが CI 呼び出し口である（IADR-0140 決定 2 の相乗り）。
+  {
+    const { spawnSync: spawnDrift } = require('child_process');
+    const pathDrift = require('path');
+    const driftScript = pathDrift.join(__dirname, 'check-openapi-dto-drift.js');
+    const runDrift = (args) => spawnDrift(process.execPath, [driftScript, ...args], { encoding: 'utf8' });
+
+    ok('check-openapi-dto-drift --self-test が通る', () => {
+      const r = runDrift(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-openapi-dto-drift が実データで違反 0 件', () => {
+      const r = runDrift([]);
+      assert.strictEqual(r.status, 0, `契約と C# DTO が食い違っている:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // ★ #525 そのものの回帰。`granted` を落とすと deny-by-default と全件許可が
+    // 契約の上で同一になる。**検査器がそれを検出できることを実データで固定する。**
+    ok('check-openapi-dto-drift: AccessScopeResponse.granted の欠落を検出する', () => {
+      const drift = require('./check-openapi-dto-drift.js');
+      const fsD = require('fs');
+      const schemas = drift.collectSchemas(
+        fsD.readFileSync(pathDrift.join(__dirname, '..', 'docs/api/openapi.yaml'), 'utf8'));
+      assert.ok(schemas.AccessScopeResponse, 'AccessScopeResponse を読めていない');
+      // 実データ: いまは載っている。
+      assert.ok(schemas.AccessScopeResponse.props.includes('granted'));
+      assert.ok(schemas.AccessScopeResponse.required.includes('granted'));
+      // 落とすと検出される（properties から消した場合・required から外した場合の両方）。
+      const cs = { AccessScopeResponse: [{ name: 'Granted', nonNullable: true }] };
+      assert.strictEqual(
+        drift.findDrift({ AccessScopeResponse: { props: [], required: [] } }, cs, { entries: [] })[0].kind,
+        'missing-in-openapi');
+      assert.strictEqual(
+        drift.findDrift({ AccessScopeResponse: { props: ['granted'], required: [] } }, cs, { entries: [] })[0].kind,
+        'missing-in-required');
+    });
+
+    // ラチェットの向き。**減らすのは自由・増やすのは禁止**であることを条文ではなく機械で持つ。
+    ok('check-openapi-dto-drift: requiredMismatchBaseline は 20 件を超えない', () => {
+      const fsB = require('fs');
+      const list = JSON.parse(
+        fsB.readFileSync(pathDrift.join(__dirname, 'openapi-dto-drift-allowlist.json'), 'utf8'));
+      assert.ok(list.requiredMismatchBaseline.length <= 20,
+        `据え置きが増えている（${list.requiredMismatchBaseline.length} 件）。新規混入は検査器で止めること`);
+    });
+  }
+
+  //
   // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
   // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。
   // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が

@@ -1,0 +1,59 @@
+{
+  "_comment": [
+    "NFR / issue #525: check-openapi-dto-drift.js の除外宣言。",
+    "契約（docs/api/openapi.yaml）と C# 契約 record のプロパティ集合が**意図的に**食い違う箇所を、",
+    "理由つきで宣言する。reason の無いエントリは検査器の --self-test が落とす",
+    "（.claude/rules/traceability.md 母集合の規則 6「黙って除外したことでも事故は起きる」）。",
+    "追加するときは『なぜ契約に出さないのが正しいか』を書くこと。『いま合っていないから』は理由ではない。"
+  ],
+  "entries": [
+    {
+      "schema": "SearchRequest",
+      "property": "scope",
+      "reason": "FR-05: ABAC スコープは BFF がサーバ側で解決した値だけを後段へ渡す。契約へ出すとクライアントが送ってよいと読め、権限昇格の入口を契約自身が示唆することになる。openapi.yaml の説明文が「scope は受け取らない」と明記しており、BFF は受け取った値を解決済みの値で上書きする（SearchBffEndpoints.cs）。"
+    },
+    {
+      "schema": "AttributeValuesRequest",
+      "property": "scope",
+      "reason": "同上（#540 / ADR-0043）。`POST /bff/attribute-values` も BFF が BffScopeResolver で解決した値だけを後段へ渡す。C# 型は BFF と後段で共有しているため `Scope` を持つが、公開契約には出さない。"
+    }
+  ],
+  "_requiredMismatchBaselineComment": [
+    "IADR-0132 論点 B の B1（C# の非 null 性から required を起こす）を全数へ当てたとき、",
+    "#525 の着手時点で既に一致していなかった 20 件である。**ラチェットとして据え置く**。",
+    "#525 は `AccessScopeResponse` の資源に閉じており（IADR-0139 決定 1）、20 件の是正は別の作業である。",
+    "",
+    "**是正は 2 種類に分かれる。まとめて直してはならない**:",
+    "  - 応答スキーマ（DataSourceDto / ConversionJobDto）: required を足すのは安全である。",
+    "    サーバは必ず送っており、生成型が `?` から必須へ変わるだけで送信側は壊れない。",
+    "  - 要求スキーマ（SearchRequest / AnalysisTaskRequest / AnalysisDataRange /",
+    "    CompletionApiRequest / EmbedApiRequest / UpdateDataSourceRequest）: required を足すと",
+    "    **呼び出し側が送信を強制される**。#520 §未決事項 6 が『要求側の必須化は画面の送信コードを壊す』",
+    "    として独立に扱うべきと申し送っている。逆向き（嘘の必須を外す）は緩和なので安全である。",
+    "",
+    "行を減らすときは openapi.yaml を直してからこの配列から消すこと。**増やしてはならない** —— 増やす",
+    "変更は新規混入であり、検査器が止めるべきものである。"
+  ],
+  "requiredMismatchBaseline": [
+    "SearchRequest.topK",
+    "AnalysisTaskRequest.taskType",
+    "AnalysisDataRange.topK",
+    "DataSourceDto.id",
+    "DataSourceDto.name",
+    "DataSourceDto.sourceType",
+    "DataSourceDto.connectionUri",
+    "DataSourceDto.status",
+    "DataSourceDto.config",
+    "DataSourceDto.defaultAttributes",
+    "DataSourceDto.createdAt",
+    "DataSourceDto.consecutiveFailureCount",
+    "DataSourceDto.retryLimit",
+    "UpdateDataSourceRequest.config",
+    "UpdateDataSourceRequest.defaultAttributes",
+    "ConversionJobDto.diagramsCoded",
+    "ConversionJobDto.diagramsRetained",
+    "ConversionJobDto.hasCorrection",
+    "CompletionApiRequest.maxTokens",
+    "EmbedApiRequest.purpose"
+  ]
+}
