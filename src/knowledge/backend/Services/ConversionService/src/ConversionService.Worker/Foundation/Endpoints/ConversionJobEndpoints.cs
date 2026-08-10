@@ -84,7 +84,10 @@ public static class ConversionJobEndpoints
         g.MapPost("/{id:guid}/figures/{figureId}/correction", async (Guid id, string figureId,
             FigureCorrectionRequest request, IFigureCorrectionService corrections, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(request.Language) || string.IsNullOrWhiteSpace(request.Code))
+            // IADR-0154 決定 3: 空だけでなく、**コードフェンスを内側から閉じられる入力**も弾く。
+            // 保存された本文は再発行されて一般利用者が読むため、ここを通すと文書が壊れる
+            // （PR #650 レビュー 2 巡目）。
+            if (!FigureMarkdown.IsEmbeddable(request.Language, request.Code))
                 return Results.BadRequest(new { error = "invalid_correction" });
 
             var outcome = await corrections.CorrectAsync(id, figureId, request, ct);

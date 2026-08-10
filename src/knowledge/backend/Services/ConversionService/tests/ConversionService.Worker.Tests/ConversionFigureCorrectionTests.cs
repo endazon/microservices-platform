@@ -269,6 +269,57 @@ public class ConversionFigureCorrectionTests
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // ★ PR #650 レビュー 2 巡目: コードフェンスを内側から閉じられる入力を弾く。
+    // 通すと、閉じた後ろが**生の本文**として保存され、`DocumentNormalized` で再発行されて
+    // **補正操作をしていない一般利用者が読む文書**に永続化される。
+    [Fact]
+    public async Task Correction_WithFenceBreakingCode_Is400_AndDoesNotPersist()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = await SeedSucceededAsync(factory);
+
+        var breakout = "flowchart LR; X-->Y;\n" + "``" + "`\n\n<script>alert(1)</script>";
+        var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", breakout));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // 本文にも補正にも入っていないこと。
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        job!.HasCorrection.Should().BeFalse();
+        using var scope = factory.Services.CreateScope();
+        var objects = (FakeObjectStore)scope.ServiceProvider.GetRequiredService<IObjectStore>();
+        var body = await objects.TryGetMarkdownAsync(job.MarkdownUri!);
+        body.Should().NotContain("<script>");
+    }
+
+    // ★ レビュー 2 巡目の繰り越し指摘: 補正ゲートが実際に発火する経路を固定する。
+    // **図は MarkFailed で消えない**——これが崩れると分岐の意義が失われるので、そこを直接見る。
+    [Fact]
+    public async Task Figures_AndCorrections_SurviveFailure_SoTheRetryGateStillFires()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = await SeedSucceededAsync(factory);
+
+        await client.PostAsJsonAsync($"/jobs/{id}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IConversionJobStore>();
+            await store.FailAsync(id, "成功後の再変換で失敗");
+        }
+
+        // 失敗しても図と補正が残っていること（＝ゲートが守るべき状態が実在する）。
+        var figures = await client.GetFromJsonAsync<List<ConversionFigureDto>>($"/jobs/{id}/figures");
+        figures!.Should().Contain(f => f.Corrected);
+        var job = await client.GetFromJsonAsync<ConversionJobDto>($"/jobs/{id}");
+        job!.Status.Should().Be(ConversionJobStatus.Failed);
+        job.HasCorrection.Should().BeTrue();
+    }
+
     private sealed class Factory : WebApplicationFactory<Program>
     {
         private readonly string _dbName = Guid.NewGuid().ToString();
