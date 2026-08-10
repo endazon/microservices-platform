@@ -2264,8 +2264,70 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(v[0].kind, 'missing-x-roles');
     });
 
+    // ★ #656: **無認証は、契約と一致していても違反である。**
+    // `rolesFromStatement` は「認可属性なし」と「RequireAuthorization()」をどちらも null へ畳むため、
+    // ロールの一致だけを見ていると**無認証の端点が素通りする**（#521 が 1 例目・#656 が 2 例目）。
+    ok('check-bff-authz-docs: 無認証の端点は x-roles: [] と一致していても fail（#656）', () => {
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: false }];
+      const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
+      const v = authz.findViolations(eps, ops);
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'anonymous');
+    });
+
+    ok('check-bff-authz-docs: 認証のみ（RequireAuthorization()）は通る（#656）', () => {
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: true }];
+      const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
+      assert.deepStrictEqual(authz.findViolations(eps, ops), []);
+    });
+
+    // ★ 誤検出の側。`ConfigBffEndpoints` は **RequireAuthorization を意図的に付けず**、
+    // ハンドラ内 `AuthorizeAsync(ConfigViewer)` ＋ 404 で存在を秘匿する（IADR-0009）。
+    // **ミドルウェアの有無で判定すると、この 3 本を「無認証」と誤って報告する。**
+    ok('check-bff-authz-docs: ハンドラ内認可の端点を無認証と誤判定しない（#656 / 実データ）', () => {
+      const fsC = require('fs');
+      const pathC = require('path');
+      const real = authz.loadPolicies(fsC.readFileSync(
+        pathC.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      const eps = authz.collectImplementation(
+        [pathC.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(eps.length > 0, '端点を 1 つも抽出できていない');
+      for (const ep of eps) {
+        assert.strictEqual(ep.requiresAuth, true, `${ep.path} を無認証と誤判定している`);
+      }
+    });
+
+    // 実データ: 無認証の端点が 1 つも無いこと（#656 の受け入れ基準）。
+    ok('check-bff-authz-docs: /bff/* に無認証の端点が無い（#656 / 実データ）', () => {
+      const fsD = require('fs');
+      const pathD = require('path');
+      const real = authz.loadPolicies(fsD.readFileSync(
+        pathD.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      const bffFiles = [];
+      const walkBff = (d) => {
+        if (!fsD.existsSync(d)) return;
+        for (const e of fsD.readdirSync(d, { withFileTypes: true })) {
+          const p = pathD.join(d, e.name);
+          if (e.isDirectory()) walkBff(p);
+          else if (e.name.endsWith('BffEndpoints.cs')) bffFiles.push(p);
+        }
+      };
+      for (const r of ['src/platform/backend/Bff', 'src/knowledge/backend/Bff']) {
+        walkBff(pathD.join(__dirname, '..', r));
+      }
+      const eps = authz.collectImplementation(bffFiles.sort(), real.consts, real.policies);
+      const anon = eps.filter((e) => !e.requiresAuth).map((e) => `${e.method} ${e.path}`);
+      assert.deepStrictEqual(anon, [], '無認証で到達できる端点が在る（NFR-09 暫定運用）');
+    });
+
     ok('check-bff-authz-docs: ロール制約なしと x-roles: [] は一致', () => {
-      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null }];
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: true }];
       const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
       assert.deepStrictEqual(authz.findViolations(eps, ops), []);
     });
