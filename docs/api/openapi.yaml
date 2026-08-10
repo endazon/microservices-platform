@@ -2539,7 +2539,7 @@ components:
             図のうち**画像保持へ縮退した件数**（＝人手補正 Phase 1 の対象数）。
             hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」は**ここから導出する表示**であり、
             **`status` の 5 値目ではない**——縮退はジョブの失敗ではなく、`status` は `succeeded` である
-            （05_screens:317「ジョブ状態モデルは 4 値である」。`deadLettered` と同じ扱い）。
+            （05_screens:320「ジョブ状態モデルは 4 値である」。`deadLettered` と同じ扱い）。
         hasCorrection:
           type: boolean
           description: |
