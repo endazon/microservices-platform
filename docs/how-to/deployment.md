@@ -1,6 +1,6 @@
 ---
 title: how-to — デプロイ手順（環境ごと）と GitOps 運用
-type: how-to-guide
+type: how-to
 status: published
 related_ids:
   - NFR

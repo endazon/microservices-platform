@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — SC-07 に人手補正の 2 ペイン編集・「補正あり」標識・再変換の確認を実装する（#651）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - FR-12

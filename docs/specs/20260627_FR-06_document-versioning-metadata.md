@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-06 文書のCRUD・バージョン管理・メタデータ管理
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-06

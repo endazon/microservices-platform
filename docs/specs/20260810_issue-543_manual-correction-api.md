@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 人手補正の本文取得 API と補正投稿 API を新設する（Phase 1 = 図のコード化。#543）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-12

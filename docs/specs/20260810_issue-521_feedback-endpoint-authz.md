@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — /bff/feedback と /feedback の端点認可を計画（FR-08 確定 2026-08-07）へ揃える（#521）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - FR-08

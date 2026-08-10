@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — Wiki.js 配備（ADR-0011 追従・WikiService を同期/ABAC ゲートウェイへ縮退）
-type: work-spec
+type: spec
 status: superseded
 related_ids:
   - FR-13

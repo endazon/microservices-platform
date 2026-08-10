@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — openapi.yaml が宣言するロールと実装の RequireAuthorization を突き合わせる検査器（#647）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - NFR

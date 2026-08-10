@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 運用ダッシュボード（SC-10）の閲覧を運用者へ広げる（#544）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-10

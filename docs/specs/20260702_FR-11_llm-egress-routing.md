@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-11 LLM 呼び出し先の用途・機密度による切り替え
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-11

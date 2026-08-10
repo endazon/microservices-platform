@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 本文を変えたのに frontmatter の updated: が古いままの文書を CI で止める（#649）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - NFR

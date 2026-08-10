@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 本番実行基盤の段階配備（k3s → Istio mTLS → ArgoCD/Harbor）
-type: work-spec
+type: spec
 status: in-progress
 related_ids:
   - NFR

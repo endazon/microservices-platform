@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — CI・補助成果物ワークフローの develop 運用整合
-type: work-spec
+type: spec
 status: review
 related_ids:
   - NFR

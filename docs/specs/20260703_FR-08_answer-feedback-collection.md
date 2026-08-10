@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-08 回答へのフィードバック（👍/👎・コメント）収集
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-08

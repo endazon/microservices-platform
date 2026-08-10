@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — データソース定期同期の単一書き手化（本番マルチレプリカでの冗長 fetch 排除）
-type: work
+type: spec
 status: draft
 related_ids:
   - FR-01

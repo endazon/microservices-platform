@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 構成情報 API・イントロスペクション・ドリフト検出（FR-15）
-type: work-spec
+type: spec
 status: in-progress
 related_ids:
   - FR-15

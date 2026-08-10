@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — Wiki.js 同期・認可ゲートウェイ実装（IADR-0020 段2）
-type: work-spec
+type: spec
 status: in-progress
 related_ids:
   - FR-13

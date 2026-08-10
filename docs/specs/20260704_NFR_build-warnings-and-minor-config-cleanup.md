@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — ビルド警告の解消と軽微な構成不備の整理
-type: work-spec
+type: spec
 status: review
 related_ids:
   - NFR

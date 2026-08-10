@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — テストの InMemory DB を固定名からクラス単位の一意名へ変え、並列競合を止める（#660）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - NFR

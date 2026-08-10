@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — Wiki.js 稼働検証・シークレット手順・削除/アーカイブ同期（Issue #88）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-13

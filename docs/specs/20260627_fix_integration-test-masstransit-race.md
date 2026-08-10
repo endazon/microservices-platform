@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 統合テスト CI 失敗（MassTransit Bus 起動レース）の修正
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-01

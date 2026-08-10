@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコード化＋画像保持）
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-12

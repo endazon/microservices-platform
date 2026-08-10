@@ -3592,4 +3592,139 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #675: 仕様書 type の値域（テンプレートが正本） -------------------------------
+  //
+  // ★ 再発防止の軸を 1 度取り違えた（IADR-0167 決定 6）。初版は「2 枚のテンプレートが同じ type を
+  //   書いていないか」を見ていたが、欠陥は「1 枚を 2 種別が共用している」形であり、
+  //   是正前の状態に当てても素通りした。**直したはずのものを捕まえるかを確かめる。**
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const tv = require('./check-doc-type-vocabulary.js');
+
+    const runType = (args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-doc-type-vocabulary.js'), ...args], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-doc-type-vocabulary --self-test が通る', () => {
+      const { code, out } = runType(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    ok('check-doc-type-vocabulary: self-test が主要な変異ケースを実際に走らせている', () => {
+      const { out } = runType(['--self-test']);
+      for (const name of [
+        'テンプレートが書かない type を検出する',
+        '1 枚のテンプレートを 2 種別が共用していたら衝突として検出する',
+        '別テンプレートへ分ければ衝突しない',
+        '本文中の type: を frontmatter と取り違えない',
+        '据え置きが上限を超えると落ちる',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-doc-type-vocabulary が実データで違反 0 件', () => {
+      const { code, out } = runType();
+      assert.strictEqual(code, 0, out);
+    });
+
+    ok('0 件走査の門: check-doc-type-vocabulary は実データで 1 件以上を走査する（下限）', () => {
+      const { code, out } = runType();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/OK: (\d+) 件の文書/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, `走査件数が 0 だった:\n${out}`);
+    });
+
+    // ★★ #675 の欠陥そのものを実データで再現して当てる。
+    //   フィクスチャだけだと「実ファイルの表の書式が正規表現に合っていない」型の空振りを捕まえられない。
+    ok('check-doc-type-vocabulary: 実データの種別表を是正前へ戻すと衝突を検出する（変異試験）', () => {
+      const cmd = fs.readFileSync(path.join(REPO, '.claude/commands/new-spec.md'), 'utf8');
+      const kinds = tv.parseKindTable(cmd);
+      assert.ok(kinds.length > 0, '実データの種別表を 1 行も読めない（表の書式が変わった）');
+
+      const templates = fs
+        .readdirSync(path.join(REPO, 'docs/templates'))
+        .filter((n) => n.endsWith('.md'))
+        .map((n) => ({ name: n, text: fs.readFileSync(path.join(REPO, 'docs/templates', n), 'utf8') }));
+      const { typeOfTemplate } = tv.buildVocabulary(templates);
+
+      assert.deepStrictEqual(tv.kindCollisions(kinds, typeOfTemplate), [], '実データが既に衝突している');
+
+      // 是正前の形: runbook / how-to を共用テンプレへ差し戻す。
+      const before = kinds.map((k) =>
+        k.kind === 'runbook'
+          ? { ...k, template: 'operations_spec_template.md' }
+          : k.kind === 'how-to'
+            ? { ...k, template: 'spec_template.md' }
+            : k,
+      );
+      const c = tv.kindCollisions(before, typeOfTemplate);
+      const types = c.map((x) => x.type).sort();
+      assert.deepStrictEqual(
+        types,
+        ['operations-spec', 'spec'],
+        `是正前の衝突 2 件を検出できなかった: ${JSON.stringify(c)}`,
+      );
+    });
+
+    // ★ 門は 3 つある。別々に確かめる（IADR-0167 §結果）。
+    const makeRepo = (files) => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'type-vocab-'));
+      fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+      for (const [rel, body] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, body);
+      }
+      // ★ **写した側のスクリプトを叩く。** cwd を変えるだけでは REPO_ROOT が実リポジトリのままになる。
+      const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-doc-type-vocabulary.js')], {
+        encoding: 'utf8',
+        cwd: dir,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      fs.rmSync(dir, { recursive: true, force: true });
+      return { code: r.status, out };
+    };
+    const KIND_TABLE = '| `work` | 作業仕様書 | `spec_template.md` | `docs/specs/` | 単位 |\n';
+    const TPL = '---\ntype: spec\n---\n';
+
+    ok('門 A: docs/templates から type を読めないと fail する（変異試験）', () => {
+      const { code, out } = makeRepo({
+        'docs/specs/a.md': '---\ntype: spec\n---\n',
+        '.claude/commands/new-spec.md': KIND_TABLE,
+      });
+      assert.strictEqual(code, 1, `テンプレが無いのに緑を返した。門 A が消えている:\n${out}`);
+      assert.match(out, /0 件検査/, out);
+    });
+
+    ok('門 B: テンプレはあるが type を持つ文書が 0 件なら fail する（変異試験）', () => {
+      const { code, out } = makeRepo({
+        'docs/templates/spec_template.md': TPL,
+        '.claude/commands/new-spec.md': KIND_TABLE,
+      });
+      assert.strictEqual(code, 1, `走査 0 件で緑を返した。門 B が消えている:\n${out}`);
+      assert.match(out, /0 件検査/, out);
+    });
+
+    ok('門 C: new-spec.md の種別表を 1 行も読めないと fail する（変異試験）', () => {
+      const { code, out } = makeRepo({
+        'docs/templates/spec_template.md': TPL,
+        'docs/specs/a.md': '---\ntype: spec\n---\n',
+        '.claude/commands/new-spec.md': '表の書式が変わった\n',
+      });
+      assert.strictEqual(code, 1, `種別表 0 行で緑を返した。門 C が消えている:\n${out}`);
+      assert.match(out, /0 件検査/, out);
+    });
+  }
 };

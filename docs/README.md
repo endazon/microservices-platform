@@ -56,6 +56,14 @@ docs/
 | `runbook` | 運用 Runbook（運用仕様書の**下位**にあたる手順書） | `docs/operations/` |
 | `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・[引継資料](how-to/session-handoff.md)） |
 
+> **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [IADR-0167](adr/IADR-0167_type-vocabulary-from-templates.md)）。
+> **`type` を書いているのはテンプレートだけ**である（引数 `work` → `spec_template.md` → `type: spec`）。
+> **`type` の値域は `docs/templates/*.md` が書く値**であり、
+> `node scripts/check-doc-type-vocabulary.js` が**テンプレートを実行時に読んで**閉じる
+> —— 値域を別の場所へ写すと二重定義になるため、**この文書にも一覧を置かない**。
+> **1 枚のテンプレートを 2 つの種別が共用してはいけない**（`type` から種別を決められなくなる）。
+> 同じ検査器がそれも見る。
+
 > `operations` はリポ単位で 1 つと定めているため、手順書が複数必要になると置き場が無くなる。
 > **状態の単一情報源は `operations.md` に置き、Runbook は手順に特化して複数存在してよい**。
 > `how-to` は仕様ではなく作業手順の案内であり、起点 ID を持たないことがある。
@@ -94,7 +102,7 @@ docs/
      状態欄。**本リポに `.claude/rules/adr.md` は無い** —— 同名の規約は計画リポ側にあり、
      実装 ADR（IADR）には適用されない）。
    - **★ 対象外の種別**: **上の種別表に無い `type`**（`tech-note` / `design` 等）と、
-     **`how-to` / `how-to-guide` / `runbook`** は値域の検査から外す。
+     **`how-to` / `runbook`** は値域の検査から外す（**`how-to-guide` は #675 で `how-to` へ寄せた**）。
      手順ガイドと Runbook は**仕様ではなく作業手順の案内**であり（本書 §種別の注記）、
      「その仕様書が記述する実装の状態」という定義が当てはまらないためである。
      **検査器は除外した件数をログに出す**（黙って飛ばさない）。

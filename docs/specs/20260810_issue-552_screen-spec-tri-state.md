@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 画面仕様書の対応表を 3 値へ揃え、「する」に丸められた部分未実装を棚卸しする（#552）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - SC-01

@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — フロントエンド単体テスト＋カバレッジの専用 CI
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

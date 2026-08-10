@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — CI のルート実行に対応するルートソリューション配置
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

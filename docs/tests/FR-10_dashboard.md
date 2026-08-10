@@ -1,6 +1,6 @@
 ---
 title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質ダッシュボード
-type: test
+type: test-spec
 status: in-progress
 related_ids:
   - FR-10

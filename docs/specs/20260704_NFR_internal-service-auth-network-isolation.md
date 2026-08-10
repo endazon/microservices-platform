@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — サービス間内部 API の認証方針（mesh 導入までの暫定・ネットワーク分離）
-type: work-spec
+type: spec
 status: review
 related_ids:
   - FR-05

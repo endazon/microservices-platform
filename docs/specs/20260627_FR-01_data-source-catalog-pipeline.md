@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-01 データソース同期→カタログ化パイプラインの接続
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-01
