@@ -2013,6 +2013,109 @@ module.exports = ({ ok, assert }) => {
   }
 
   //
+  // NFR / #649: 本文を変えたのに frontmatter の `updated:` が古いままの文書を止める検査器。
+  // **同型の事故が 2 回起きたので入れた**（PR #648 のレビュー 2 巡目で 9 件・4 巡目で 1 件）。
+  //
+  // **ここが check-doc-updated.js の CI 呼び出し口である。** `.github/workflows/` は GitHub App
+  // 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。ci.yml の scripts-tests
+  // ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が本 companion を読み込むので、
+  // ここから呼ぶ（check-cross-repo-refs / check-plan-id-qualification と同じ相乗り。IADR-0140 決定 2）。
+  {
+    const { findViolations: findUpdatedViolations, stripFrontmatter, readUpdated } =
+      require('./check-doc-updated.js');
+
+    const doc = (updated, body) => `---\ntitle: t\nupdated: ${updated}\n---\n\n${body}\n`;
+    const run = (files, first) => findUpdatedViolations(files, first).violations;
+
+    ok('check-doc-updated: 本文を変えて updated: 据え置きは stale', () => {
+      const v = run(
+        [{ path: 'docs/a.md', baseText: doc('2026-07-08', '旧'), headText: doc('2026-07-08', '新') }],
+        '2026-08-09',
+      );
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'stale');
+    });
+
+    ok('check-doc-updated: 本文を変えて updated: を進めれば通る', () => {
+      const v = run(
+        [{ path: 'docs/a.md', baseText: doc('2026-07-08', '旧'), headText: doc('2026-08-09', '新') }],
+        '2026-08-09',
+      );
+      assert.deepStrictEqual(v, []);
+    });
+
+    // ★ 案 A（base から updated: が変わったか）の誤検知を固定する回帰。
+    // base 側が既に同じ日付なら、同日中の再編集で据え置きが**正しい**。
+    // 案 A を入れていたら PR #648 の docs/api/BFF_bff-surface.md がここで落ちていた。
+    ok('check-doc-updated: 同日中の再編集（base と同じ日付）は通る', () => {
+      const v = run(
+        [{ path: 'docs/a.md', baseText: doc('2026-08-09', '旧'), headText: doc('2026-08-09', '新') }],
+        '2026-08-09',
+      );
+      assert.deepStrictEqual(v, []);
+    });
+
+    ok('check-doc-updated: frontmatter だけの変更は対象外', () => {
+      const v = run(
+        [{ path: 'docs/a.md', baseText: doc('2026-07-08', '同じ'), headText: doc('2026-07-09', '同じ') }],
+        '2026-08-09',
+      );
+      assert.deepStrictEqual(v, []);
+    });
+
+    ok('check-doc-updated: updated: を持たない文書は violation にせず notice へ回す', () => {
+      const r = findUpdatedViolations(
+        [{ path: 'docs/README.md', baseText: '# a\n旧\n', headText: '# a\n新\n' }],
+        '2026-08-09',
+      );
+      assert.deepStrictEqual(r.violations, []);
+      assert.deepStrictEqual(r.skippedNoUpdated, ['docs/README.md']);
+    });
+
+    ok('check-doc-updated: 日付形式でない updated: は invalid-date', () => {
+      const v = run(
+        [{ path: 'docs/a.md', baseText: doc('2026-07-08', '旧'), headText: doc('未定', '新') }],
+        '2026-08-09',
+      );
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'invalid-date');
+    });
+
+    ok('check-doc-updated: 新規追加も検査する（base 版が無い＝本文は全部が変更）', () => {
+      const v = run(
+        [{ path: 'docs/new.md', baseText: null, headText: doc('2026-07-08', '新規') }],
+        '2026-08-09',
+      );
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'stale');
+    });
+
+    ok('check-doc-updated: 削除された文書は対象外', () => {
+      const v = run([{ path: 'docs/gone.md', baseText: doc('2026-07-08', '旧'), headText: null }], '2026-08-09');
+      assert.deepStrictEqual(v, []);
+    });
+
+    ok('check-doc-updated: frontmatter の抽出（無い・閉じていない場合は全文が本文）', () => {
+      assert.strictEqual(stripFrontmatter('# a\nb\n'), '# a\nb\n');
+      assert.strictEqual(stripFrontmatter('---\nx: 1\n'), '---\nx: 1\n');
+      assert.strictEqual(stripFrontmatter('---\nx: 1\n---\n本文\n'), '本文\n');
+      assert.strictEqual(readUpdated('---\nupdated: 2026-08-09\n---\nb\n'), '2026-08-09');
+      assert.strictEqual(readUpdated('---\nupdated: "2026-08-09"\n---\nb\n'), '2026-08-09');
+      assert.strictEqual(readUpdated('# a\n'), null);
+    });
+
+    // 実データ。本ブランチの docs/ 変更に据え置きが無いこと（＝自分自身に適用する）。
+    ok('check-doc-updated が実データで違反 0 件', () => {
+      const { spawnSync: spawnUpd } = require('child_process');
+      const pathUpd = require('path');
+      const r = spawnUpd(process.execPath, [pathUpd.join(__dirname, 'check-doc-updated.js')], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `updated: の据え置きがある:\n${r.stdout}\n${r.stderr}`);
+    });
+  }
+
+  //
   // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
   // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。
   // ci.yml の scripts-tests ジョブ（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が
