@@ -46,7 +46,7 @@ metadata:
   namespace: platform-infra
 data:
   slo-alerts.yaml: |
-    # ADR-0006, NFR, #665: SLO アラートの**暫定**の一次検知（Grafana 統合アラート）。
+    # ADR-0006, NFR-21, #665: SLO アラートの**暫定**の一次検知（Grafana 統合アラート）。
     #
     # ★ これは暫定である。Alertmanager が配備されたら閉じる（併存させない）。
     #   計画 `06_technical/05_observability-ops.md` 決定 42:
@@ -62,7 +62,7 @@ data:
     #      **contactPoints / policies を本ファイルへ書かないのは意図的である** ——
     #      届かない宛先を書くと「配線した」と読めてしまう。
     #   2. **したがって暫定期間は「人が Grafana の Alerting 画面を見る」ことで気づく。**
-    #      **NFR「障害検出 5 分以内」を満たすのは評価の側だけ**であり、
+    #      **NFR-21「障害検出 5 分以内」を満たすのは評価の側だけ**であり、
     #      **人が気づくまでの時間は見に行く間隔に等しい。** 運用仕様書へ同じことを書いてある。
     #   3. **本ファイルが Grafana に受理されるかは未検証である**（#665 の作業仕様書 §判断 0）。
     #      実装環境で Grafana を起動できなかった（docker daemon へ到達不可）。
@@ -152,7 +152,7 @@ data:
               severity: critical
             annotations:
               summary: "5xx 率が 5% 超"
-              description: "直近 5 分の 5xx 率が閾値超過。障害検出 5 分以内（NFR）。"
+              description: "直近 5 分の 5xx 率が閾値超過。障害検出 5 分以内（NFR-21）。"
             data:
               - refId: A
                 relativeTimeRange: { from: 600, to: 0 }
@@ -182,7 +182,7 @@ data:
               severity: warning
             annotations:
               summary: "検索 p95 が 1.5s 超"
-              description: "RetrievalService の p95 レイテンシが NFR 目標(1.5s)を 10 分継続で超過。"
+              description: "RetrievalService の p95 レイテンシが NFR-01 目標(1.5s)を 10 分継続で超過。"
             data:
               - refId: A
                 relativeTimeRange: { from: 600, to: 0 }
@@ -211,7 +211,7 @@ data:
               severity: warning
             annotations:
               summary: "RAG 応答 p95 が 5s 超"
-              description: "AiAnalysisService /analysis/ask の p95 が NFR 目標(5s)を 10 分継続で超過。"
+              description: "AiAnalysisService /analysis/ask の p95 が NFR-02 目標(5s)を 10 分継続で超過。"
             data:
               - refId: A
                 relativeTimeRange: { from: 600, to: 0 }

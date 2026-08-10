@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /*
- * check-grafana-alerting.js — #665 / ADR-0006 / NFR
+ * check-grafana-alerting.js — #665 / ADR-0006 / NFR-21
  *
  * SLO アラートの**暫定**の一次検知（Grafana 統合アラート）が、Prometheus のアラートルールと
  * 食い違っていないことを機械で見る。

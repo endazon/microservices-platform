@@ -3,7 +3,7 @@ title: IADR-0165 SLO の暫定通知先は Grafana 統合アラートへ「検�
 type: impl-adr
 status: Accepted
 related_ids:
-  - NFR
+  - NFR-21
   - ADR-0006
   - IADR-0130
   - IADR-0164
@@ -22,7 +22,7 @@ plan_refs:
 
 ## 起点・関連
 
-- **NFR**（障害検出 5 分以内）。計画 ADR: **ADR-0006**（アラートは Alertmanager を用いる）
+- **NFR-21**（MTTR 30 分以内・**障害検出 5 分以内**）。計画 ADR: **ADR-0006**（アラートは Alertmanager を用いる）
 - 計画の裁定: planning#286 → planning `b8002cc` **決定 42**
   「SLO の一次検知 = Grafana の内蔵アラートを暫定の通知先とする。欠けているのは検知そのものではなく通知の送り先だけである」
 - 実装 issue: **#665**（出所は #546 / [IADR-0164](./IADR-0164_llm-cost-monthly-review-interim-control.md) 決定 6）
@@ -42,7 +42,7 @@ plan_refs:
 | 案 | 可否（**実測**） | 判断 |
 | --- | --- | --- |
 | **c**: `docker compose up grafana` して `/api/v1/provisioning/alert-rules` が 5 件返すのを見る | **不可**。`docker` CLI はあるが daemon へ到達できない（`dial unix /var/run/docker.sock: no such file or directory`） | **採れない** |
-| **b**: `k8s-local-up-smoke` 相当へ足す | **不可**。`kubectl` もクラスタも無い | **採れない** |
+| **b**: `k8s-local-up-smoke` 相当へ足す | **不可**。手元に `kubectl` もクラスタも無い。**CI の当該ジョブも「stub-on-PATH, no cluster」**であり（`ci.yml:312`）、実クラスタへ apply しない —— **そこへ足しても Grafana は起動しない** | **採れない** |
 | **a**: provisioning YAML の内部整合をスキーマ検査する | **可** | **採用** |
 
 **採用は a のみである。** したがって本 PR が主張できるのは
@@ -60,9 +60,24 @@ Grafana のアラートルールは datasource を **`uid`** で指すが、
 **いずれも `uid` を宣言していなかった**。宣言が無い場合 Grafana は provisioning 時に uid を生成するため、
 **アラートから `datasourceUid: prometheus` と書いても解決しない。**
 
-**さらに、既存の Tempo 設定がその uid を参照していた**（`tracesToLogs.datasourceUid: loki` /
-`serviceMap.datasourceUid: prometheus`）。**つまり traces-to-logs とサービスマップの連携は
-現状すでに切れている疑いがある** —— 本決定は副次的にこれも解消する。
+**さらに、既存の Tempo 設定がその uid を参照していた** —— **つまり Tempo の連携は
+現状すでに切れている疑いがある。** 本決定は副次的にこれも解消する。
+
+**★ ただし「どちらの経路で解消するか」は同じではない。数え直した。**
+
+| 参照 | compose（`datasources.yaml`） | k8s（`grafana.yaml` の inline） | uid 宣言で解消するか |
+| --- | --- | --- | --- |
+| `serviceMap.datasourceUid: prometheus` | **有り** | **有り** | **両経路で解消する** |
+| `tracesToLogs.datasourceUid: loki` | **有り** | **無し** | **compose のみ**。k8s は**ブロックごと存在しない** |
+| `search.hide` | 有り | **無し** | uid とは無関係 |
+
+**k8s 側には `tracesToLogs` ブロックそのものが無い**ため、**traces-to-logs は k8s 経路では
+uid を宣言しても繋がらない。**「両方直った」と書くと誤りになるので、**表で分けて書く。**
+
+**この datasource の乖離は本 PR が持ち込んだものではない**（本 PR の差分は `uid:` 3 行の追加のみ）。
+**#665 の射程はアラートであり datasource の同内容化ではない**ため、**本 PR では直さず、
+フォローアップとして残す**（下記 §結果 フォローアップ 2）。**検査器も datasource は突合しない**
+——突合するのは `alerting/` の compose ↔ k8s だけである。
 
 **ダッシュボードは触らない。** `"datasource": "Prometheus"` と**名前**で参照しており、
 **uid 宣言は名前参照を壊さない。**
@@ -78,7 +93,7 @@ Grafana 統合アラートの provisioning は `groups` / `contactPoints` / `pol
 **#546 が問題にした「統制を定めた」と「統制が働いている」の混同**を、こちらから作ることになる。
 
 **代わりに限界を明示する。** 暫定期間に人が気づく経路は**「Grafana の Alerting 画面を見る」ことだけ**であり、
-**NFR「障害検出 5 分以内」を満たしているのは評価の側だけである。人が気づくまでの時間は見に行く間隔に等しい。**
+**NFR-21「障害検出 5 分以内」を満たしているのは評価の側だけである。人が気づくまでの時間は見に行く間隔に等しい。**
 この 1 文を **`slo-alerts.yaml` の冒頭と運用仕様書の両方**へ置く。
 
 > **決定 3 は「やらない」という決定である。** 何もしなかったのではなく、
@@ -146,6 +161,10 @@ k8s（`deploy/local/observability/grafana.yaml`）は ConfigMap へ inline す�
 ### フォローアップ
 
 1. **配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめる**（決定 1 の未検証部分）。
-2. **Tempo の traces-to-logs / サービスマップが実際に繋がるかを配備時に確かめる**（決定 2 は宣言を足しただけで、
-   連携が復活したことは未検証）。
+2. **Tempo の連携を配備時に確かめ、k8s 側の datasource 欠落を埋める**。決定 2 の表のとおり
+   **サービスマップは両経路、traces-to-logs は compose のみ**が uid 宣言で解消する見込みであり、
+   **k8s には `tracesToLogs` / `search.hide` がそもそも無い**。**この乖離は #665 の射程外**なので、
+   **別 issue として起票した（#674）**（datasource の compose ↔ k8s 同内容化。検査器の対象を
+   `alerting/` から datasources へ広げるかも、そこで判断する）。
+   なお**宣言を足しただけで連携が復活したことは未検証**である（決定 1）。
 3. **Alertmanager 配備時に暫定経路を削除する**（決定 5 の 3 条件。#546 で追跡）。

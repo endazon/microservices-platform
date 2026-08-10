@@ -558,7 +558,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
 >   読めてしまうため、**意図的に書いていない**（[IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 3）。
 > - **したがって暫定期間に人が気づく経路は「Grafana の Alerting 画面を見る」ことだけ**である。
->   **NFR「障害検出 5 分以内」を満たしているのは評価の側だけ**であり、
+>   **NFR-21「障害検出 5 分以内」を満たしているのは評価の側だけ**であり、
 >   **人が気づくまでの時間は見に行く間隔に等しい。**
 > - **Grafana が provisioning を受理するかは未検証**である（実装環境で Grafana を起動できない。
 >   [IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 1）。機械で確かめたのは
