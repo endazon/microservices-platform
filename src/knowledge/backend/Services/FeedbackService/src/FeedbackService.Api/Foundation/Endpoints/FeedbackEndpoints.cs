@@ -34,14 +34,24 @@ public static class FeedbackEndpoints
                     error = $"comment must be {AnswerFeedback.MaxCommentLength} characters or fewer"
                 });
 
-            // FR-08: JWT から利用者を特定（テスト・開発環境では anonymous）。
-            // ［2026-08-07 / #586］計画 FR-08 が「投稿には認証を要する（匿名投稿は許さない）」を確定し、
-            //   受け入れ基準に「投稿端点が無認証で 401」が入った（planning 3e58b97 = PR planning#244
-            //   〔裁定依頼 planning#236〕）。**この anonymous フォールバックは計画と食い違う。**
-            //   ただし上の記述は現在の実装の事実としては正しいため #586 では書き換えていない
-            //   （#586 は planning pin の更新と事実の追随に限る）。**是正は #521 が持つ**
-            //   ——RequireAuthorization の追加は挙動の変更であり、独立した PR とテスト（401）が要る。
-            var userId = http.User.Identity?.Name ?? "anonymous";
+            // FR-08: JWT から利用者を特定する。
+            //
+            // **［2026-08-10 / #521］`anonymous` フォールバックを消した。** 従前は
+            // `http.User.Identity?.Name ?? "anonymous"` であり、#586 の追記が「計画と食い違う。
+            // 是正は #521 が持つ」と予告していたものである。
+            //
+            // **フォールバックの害は「無認証で投稿できる」だけではなかった。**
+            // `(AnswerId, UserId)` にユニーク索引がある（`FeedbackDbContext`）ため、
+            // **無認証の投稿は全員が `"anonymous"` という 1 行を共有し、互いに上書きし合っていた**
+            // ——「1 利用者 1 件」の upsert が、匿名に対しては「**全匿名で 1 件**」として働く。
+            // 指標の汚染に加えて**他人の投稿の改変**にあたる。
+            //
+            // 端点に `RequireAuthorization` を付けたので通常ここへ無認証は到達しないが、
+            // **フォールバックを残すと「認可を外したときに静かに匿名共有へ戻る」**。
+            // 名前が取れない場合は 401 を返す（[[IADR-0039]] 決定 3: 無認証は 401）。
+            var userId = http.User.Identity?.Name;
+            if (string.IsNullOrEmpty(userId))
+                return Results.Unauthorized();
             var rating = FeedbackRating.Normalize(req.Rating);
 
             // FR-08: 同一 (AnswerId, UserId) は upsert（二重計上しない。IADR-0010）。
@@ -78,7 +88,11 @@ public static class FeedbackEndpoints
                 await db.SaveChangesAsync(ct);
                 return Results.Ok(ToDto(winner));
             }
-        }).WithName("SubmitFeedback").Produces<FeedbackDto>(StatusCodes.Status201Created);
+        }).WithName("SubmitFeedback")
+          // FR-08（計画確定 2026-08-07・`02_requirements:33`）: **投稿は認証必須・匿名は許さない。**
+          // **ロールは要求しない**——計画が定めていない制限を足すと一般利用者が投稿できなくなる。
+          // BFF 側にも同じ認可がある（[[IADR-0044]] 多層防御）。
+          .RequireAuthorization().Produces<FeedbackDto>(StatusCodes.Status201Created);
 
         // FR-08: 品質改善向けの一覧。rating / answerId で絞り込み可（低評価回答のレビュー）。
         // NFR（認可）: 自由記述 Comment と UserId（個人特定情報）を返すため、管理者ロールのみ許可する。
@@ -140,7 +154,12 @@ public static class FeedbackEndpoints
             var total = up + down;
             var rate = total == 0 ? 0d : (double)up / total;
             return Results.Ok(new FeedbackStatsDto(up, down, total, rate));
-        }).WithName("FeedbackStats").Produces<FeedbackStatsDto>();
+        }).WithName("FeedbackStats")
+          // FR-08, SC-10（計画確定 2026-08-07・`05_screens:431`）: **統計は運用者・管理者に限る。**
+          // BFF 側にも同じ認可がある（[[IADR-0044]] 多層防御）。
+          .RequireAuthorization(p => p.RequireRole(
+              PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole))
+          .Produces<FeedbackStatsDto>();
 
         return app;
     }

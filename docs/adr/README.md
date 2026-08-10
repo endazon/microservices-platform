@@ -211,6 +211,7 @@
 | [IADR-0155](./IADR-0155_doc-updated-staleness-checker.md) | 文書の `updated:` 据え置きは **base 以降の最初のコミット日**と比べて検出する（案 C）。**判定式は 3 案を実例へ当てて誤検知を数えてから選ぶ**。`docs/templates/` は雛形の穴が正しいので対象外。CI は [[IADR-0140]] 決定 2 の相乗りに載せる。 | Accepted |
 | [IADR-0156](./IADR-0156_bff-authz-contract-checker.md) | BFF の**実効ロール**（群 × 端点の AND 合成）を `openapi.yaml` の **`x-roles`** と機械的に突き合わせる。**散文からロールを推定しない**——「管理者ロール以外（運用者も拒否される）」のように語を数えると必ず誤るためである。allowlist は持たない。 | Accepted |
 | [IADR-0157](./IADR-0157_sc07-manual-correction-ui.md) | SC-07 の人手補正 UI（Phase 1）。**非 JSON 応答は `bffFetch`（出口 1 箇所）で解く**——生成フックは `data: Blob` を宣言しながら実行不能だった。**再変換の確認は 409 を受けてから出す**（先に出すと取得〜押下の間の補正を無確認で消す）。縮退・補正の表示は導出とし `status` は 4 値のまま。 | Accepted |
+| [IADR-0158](./IADR-0158_feedback-endpoint-authz.md) | フィードバック端点の認可を BFF と後段の**両層**で塞ぐ（多層防御）。投稿は**認証のみ**でロールを要求しない、統計は admin ＋ operator。**`anonymous` フォールバックを消す**——ユニーク索引と噛み合い、無認証の投稿者が互いの評価を上書きし合っていた。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

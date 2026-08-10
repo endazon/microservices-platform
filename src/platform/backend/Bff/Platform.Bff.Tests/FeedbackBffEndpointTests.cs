@@ -47,4 +47,74 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
         stats.Should().NotBeNull();
         stats!.Total.Should().Be(stats.Up + stats.Down);
     }
+
+    // ── #521: 端点認可（計画 FR-08 確定 2026-08-07・裁定依頼 planning#236 案 2）
+    //
+    // 従前この群には認可が無く、**無認証で投稿も統計取得もできた**。計画の受け入れ基準
+    // （`02_requirements:209`）は「投稿端点が無認証で 401。統計は認証済みでも運用者・管理者以外は 403」。
+    // 後段（FeedbackService）にも同じ認可がある（[[IADR-0044]] 多層防御）。
+
+    // T-13（#521）: 投稿は無認証で 401（匿名投稿を許さない）。
+    [Fact]
+    public async Task PostFeedback_WhenAnonymous_IsUnauthorized()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
+
+        var resp = await client.PostAsJsonAsync("/bff/feedback",
+            new FeedbackRequest(Guid.NewGuid(), "up"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // T-14（#521）: 投稿にロールは要らない（認証さえあれば一般利用者も送れる）。
+    // **狭めすぎていないことの側**——ロールまで要求すると FR-08 が成り立たなくなる。
+    [Fact]
+    public async Task PostFeedback_AsNonPrivilegedRole_IsAllowed()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
+
+        var resp = await client.PostAsJsonAsync("/bff/feedback",
+            new FeedbackRequest(Guid.NewGuid(), "up"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    // T-15（#521）: 統計は無認証で 401。
+    [Fact]
+    public async Task Stats_WhenAnonymous_IsUnauthorized()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
+
+        var resp = await client.GetAsync("/bff/feedback/stats");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // T-16（#521）: 統計は認証済みでも運用者・管理者以外は 403（[[IADR-0039]] 決定 3: 401 と区別）。
+    [Fact]
+    public async Task Stats_AsNonPrivilegedRole_IsForbidden()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
+
+        var resp = await client.GetAsync("/bff/feedback/stats");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // T-17（#521）: 運用者は統計を取得できる（SC-10 の閲覧ロールと揃える。#544 と同じ線）。
+    // 403 の側と**対**で固定する——片側だけだと「全部拒否」でも緑になる。
+    [Fact]
+    public async Task Stats_AsOperator_IsAllowed()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+
+        var resp = await client.GetAsync("/bff/feedback/stats");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
 }
