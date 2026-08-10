@@ -3727,4 +3727,131 @@ module.exports = ({ ok, assert }) => {
       assert.match(out, /0 件検査/, out);
     });
   }
+
+  // --- #674: Grafana provisioning の経路間パリティ ---------------------------------
+  //
+  // ★ #665 の check-grafana-alerting.js は `alerting/` だけを突合していた。だから
+  //   `dashboards/` が k8s に丸ごと無いことを誰も見ていなかった —— その中の llm-usage.json は
+  //   #546（IADR-0164）の月次確認 Runbook が指す行き先である。射程が狭かった。
+  {
+    const { spawnSync, execFileSync } = require('child_process');
+    const path = require('path');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const parity = require('./check-grafana-provisioning-parity.js');
+
+    const runParity = (args = []) => {
+      const r = spawnSync(
+        process.execPath,
+        [path.join(SCRIPTS, 'check-grafana-provisioning-parity.js'), ...args],
+        { encoding: 'utf8', cwd: REPO },
+      );
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-grafana-provisioning-parity --self-test が通る', () => {
+      const { code, out } = runParity(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    ok('check-grafana-provisioning-parity: self-test が主要な変異ケースを実際に走らせている', () => {
+      const { out } = runParity(['--self-test']);
+      for (const name of [
+        'k8s に無いファイルを検出する',
+        'ConfigMap はあるがマウントされていない形を検出する',
+        '内容の乖離を検出する',
+        'JSON の中身が違えば検出する',
+        'k8s にだけある inline を検出する',
+        'k8s の ConfigMap に同名がある形を検出する',
+        'compose 側に同名がある形も検出する',
+        '同名があるときは「同内容でない」と断定しない',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-grafana-provisioning-parity が実データで違反 0 件', () => {
+      const { code, out } = runParity();
+      assert.strictEqual(code, 0, out);
+    });
+
+    ok('0 件走査の門: check-grafana-provisioning-parity は実データで 1 件以上を突合する（下限）', () => {
+      const { code, out } = runParity();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/compose (\d+) 件 \/ k8s inline (\d+) 件/);
+      assert.ok(m, `OK メッセージから件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0 && Number(m[2]) > 0, `突合件数が 0 だった:\n${out}`);
+    });
+
+    // ★★ 「直したものを捕まえるか」を実データで確かめる（IADR-0167 決定 6 の教訓）。
+    //   develop 時点の k8s マニフェストを取り出して当て、4 件の乖離が出ることを見る。
+    //   ここが空振りだと、#674 が直した欠陥の再発を止められない。
+    ok('check-grafana-provisioning-parity: develop 時点の k8s へ当てると乖離を検出する（変異試験）', () => {
+      let before;
+      try {
+        before = execFileSync('git', ['show', 'origin/develop:deploy/local/observability/grafana.yaml'], {
+          encoding: 'utf8',
+          cwd: REPO,
+        });
+      } catch {
+        return; // origin/develop が無い環境（浅いクローン等）ではこの試験を飛ばす
+      }
+      // develop に既に是正が入っている（＝本 PR がマージ済み）なら、この試験の前提が消える。
+      const inlineBefore = parity.extractInlineFiles(before);
+      if (inlineBefore.has('llm-usage.json')) return;
+
+      const compose = parity.collectCompose(path.join(REPO, 'deploy/grafana/provisioning'));
+      const r = parity.findIssues({
+        compose,
+        inline: inlineBefore,
+        mounts: parity.mountedPaths(before),
+      });
+      assert.ok(
+        r.issues.some((x) => x.includes('llm-usage.json') && x.includes('経路 B に存在しない')),
+        `develop の欠落を検出できなかった: ${JSON.stringify(r.issues)}`,
+      );
+      assert.ok(
+        r.issues.some((x) => x.includes('datasources.yaml') && x.includes('同内容でない')),
+        `develop の datasource 乖離を検出できなかった: ${JSON.stringify(r.issues)}`,
+      );
+    });
+
+    // 門は 2 つある（compose 側 0 件 / k8s 側 0 件）。別々に確かめる。
+    const fsP = require('fs');
+    const makeRepo = (files) => {
+      const os = require('os');
+      const dir = fsP.mkdtempSync(path.join(os.tmpdir(), 'grafana-parity-'));
+      fsP.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+      for (const [rel, body] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fsP.mkdirSync(path.dirname(abs), { recursive: true });
+        fsP.writeFileSync(abs, body);
+      }
+      const r = spawnSync(
+        process.execPath,
+        [path.join(dir, 'scripts', 'check-grafana-provisioning-parity.js')],
+        { encoding: 'utf8', cwd: dir },
+      );
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      fsP.rmSync(dir, { recursive: true, force: true });
+      return { code: r.status, out };
+    };
+
+    ok('門 A: compose の provisioning が 1 件も無いと fail する（変異試験）', () => {
+      const { code, out } = makeRepo({
+        'deploy/local/observability/grafana.yaml': 'data:\n  x.yaml: |\n    a: 1\n',
+      });
+      assert.strictEqual(code, 1, `compose 0 件で緑を返した。門 A が消えている:\n${out}`);
+      assert.match(out, /0 件検査/, out);
+    });
+
+    ok('門 B: k8s の inline を 1 件も取り出せないと fail する（変異試験）', () => {
+      const { code, out } = makeRepo({
+        'deploy/grafana/provisioning/datasources/datasources.yaml': 'apiVersion: 1\n',
+        'deploy/local/observability/grafana.yaml': 'kind: ConfigMap\n',
+      });
+      assert.strictEqual(code, 1, `inline 0 件で緑を返した。門 B が消えている:\n${out}`);
+      assert.match(out, /0 件検査/, out);
+    });
+  }
 };
