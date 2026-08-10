@@ -32,10 +32,10 @@ related_specs:
 > #520 で応答スキーマの `required` が確定し、**#519 で SPA 側の載せ替えが完了した**。
 > **着手前でも記述途中でもないので `draft` は外す。** 一方、次の 1 点が未了なので `completed` でもない。
 >
-> 1. **`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**（**#521**。§未決事項 3）。
->    **［2026-08-07 追記 / #586］裁定は下りた。未了なのは実装である。** 計画 FR-08 が
->    **無認証 401 / 権限外 403（統計は運用者・管理者のみ）**を確定した（planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕）。
->    **是正は #521 が持つ**（挙動の変更を伴う）。
+> 1. ~~**`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**~~
+>    **［2026-08-10 解消 / #521・[[IADR-0158]]］裁定（2026-08-07）と実装の双方が揃った。**
+>    投稿は認証必須（無認証 401）、統計は運用者・管理者のみ（権限外 403）を
+>    **BFF と後段の両層**で実装し、テストで固定した。
 >
 > **［2026-08-05 追記］#519 で載せ替えが済み、`apiFetch` を使う画面は 0 になった**
 > （残る `foundation/api` 直接利用は **SSE の `apiStream` だけ**である。[[IADR-0135]]）。
@@ -114,8 +114,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
 | POST | `/bff/analysis/analyze` | 同上 | FR-07 / UC-02 / SC-08 | `useBffAnalysisAnalyze` |
-| POST | `/bff/feedback` | **端点認可なし**（**計画は認証必須＝無認証 401。是正は #521**。下記注） | FR-08 / UC-01 / SC-01 | `useBffSubmitFeedback` |
-| GET | `/bff/feedback/stats` | **端点認可なし**（**計画は運用者・管理者のみ＝権限外 403。是正は #521**。下記注） | FR-08 / SC-10 | `useBffFeedbackStats` |
+| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521 / [[IADR-0158]]） | FR-08 / UC-01 / SC-01 | `useBffSubmitFeedback` |
+| GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521 / [[IADR-0158]]） | FR-08 / SC-10 | `useBffFeedbackStats` |
 | GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画 §SC-10「運用者・管理者ロール限定」。従前は admin のみ） | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | FR-06 / SC-05 | `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentCreate` |
@@ -159,10 +159,12 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 > planning `3e58b97`（PR planning#244。裁定依頼 planning#236 の反映）で計画 FR-08 に
 > **「投稿には認証を要する（匿名投稿は許さない）／統計は運用者・管理者に限って参照できる」**が確定し、
 > 受け入れ基準として **無認証で 401 / 認証済みでも権限外は 403** が置かれた。
-> **上表の「端点認可なし」は BFF 実装の実測であり、その意味では正しい**ため書き換えていない。
-> **是正（`RequireAuthorization` の追加とテスト）は #521 が持つ**——認可の変更は挙動の変更であり、
-> 独立した PR とテストが要る（#586 は planning pin の更新と事実の追随に限る）。
-> 同型の記述: [機能仕様書 FR-08](../functional/FR-08_answer-feedback.md)・[[IADR-0010]]・§未決事項 3。
+> **［2026-08-10 是正 / #521・[[IADR-0158]]］上表を実装へ揃えた。** 従前の「端点認可なし」は
+> 当時の実測としては正しかったが、**BFF と後段の両層へ認可を足した**ので現在は誤りである。
+> 投稿は `RequireAuthorization()`（ロールは問わない——計画が定めていない制限を足さない）、
+> 統計は群の認証と `RequireRole(Admin, Operator)` の **AND 合成**で実効 admin ＋ operator。
+> 同型の記述も同じ PR で揃えた: [機能仕様書 FR-08](../functional/FR-08_answer-feedback.md)・
+> [テスト仕様書 FR-08](../tests/FR-08_answer-feedback.md)・[[IADR-0010]]・[[IADR-0131]]・§未決事項 3。
 
 ## 横断の規約
 
@@ -304,5 +306,6 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
    **#521** として起票済みである。
    - > **［2026-08-07 追記・裁定は下りた / #586］計画側が FR-08 の認可を確定した**
      > （planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕。**投稿は認証必須で無認証は 401／統計は運用者・管理者のみで
-     > 権限外は 403／同一利用者の 2 回投稿でも集計は 1 件**）。**したがって本項はもう「未決」ではない。
-     > 残っているのは実装であり、#521 が持つ。** 本書の認可列は実測（＝現状）のままである。
+     > 権限外は 403／同一利用者の 2 回投稿でも集計は 1 件**）。**したがって本項はもう「未決」ではない。**
+     > **［2026-08-10 解消 / #521・[[IADR-0158]]］実装も揃った。** BFF と後段の両層へ認可を足し、
+     > 上表の認可列も実装へ揃えた（従前は実測＝現状のままだった）。

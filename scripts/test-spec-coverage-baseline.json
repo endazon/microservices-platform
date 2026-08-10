@@ -45,6 +45,9 @@
       "RagOrchestratorScopeTests",
       "RagOrchestratorTests"
     ],
+    "docs/tests/FR-08_answer-feedback.md": [
+      "FeedbackEndpointTests"
+    ],
     "docs/tests/FR-09_abac-attribute-policy-management.md": [
       "AbacScopeTests",
       "AbacValidationTests",

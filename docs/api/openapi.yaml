@@ -301,13 +301,13 @@ paths:
               schema:
                 type: string
 
-  # ［2026-08-07 / #586］**本端点の responses に 401 が無いのは計画と食い違う**（FR-08 の受け入れ基準
-  # 「投稿端点が無認証で 401」。planning 3e58b97 = PR planning#244〔裁定依頼 planning#236〕）。
-  # **是正は #521**（RequireAuthorization の追加と同じ PR で足す）。根拠と実測は下の内部 API
-  # `/feedback` の description に書いた。**ここを YAML コメントで書くのは意図的である**
-  # ——description へ書くと orval 生成物（コミット対象）の JSDoc が動くため。
+  # ［2026-08-10 / #521］**是正済み。** 従前ここには「responses に 401 が無いのは計画と食い違う。
+  # 是正は #521」という予告コメントが置かれていた。計画 FR-08（2026-08-07 確定・裁定依頼
+  # planning#236 案 2）の「投稿には認証を要する（匿名投稿は許さない）」に合わせ、
+  # 実装へ `RequireAuthorization()` を足し、ここに 401 を記した。
   /bff/feedback:
     post:
+      # 認証は要るがロールは問わない（計画は「認証を要する」までしか定めていない）。
       x-roles: []
       tags: [Feedback]
       summary: "FR-08, UC-01: 回答へのフィードバック送信（BFF 集約）"
@@ -335,13 +335,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackDto"
+        "401": { description: 未認証（匿名投稿は許さない。FR-08 確定 2026-08-07） }
 
-  # ［2026-08-07 / #586］**本端点の responses に 403 が無いのは計画と食い違う**（FR-08 の受け入れ基準
-  # 「統計は認証済みでも運用者・管理者以外には 403」）。**是正は #521**。詳細は上の `/bff/feedback` と
-  # 内部 API `/feedback/stats` の同日追記を参照。
+  # ［2026-08-10 / #521］**是正済み。** 従前ここには「responses に 403 が無いのは計画と食い違う。
+  # 是正は #521」という予告コメントが置かれていた。計画 SC-10（`05_screens:431`）の
+  # 「統計は運用者・管理者に限る」に合わせ、実装へ RequireRole を足し、ここに 401 / 403 を記した。
   /bff/feedback/stats:
     get:
-      x-roles: []
+      x-roles: [platform-admin, platform-operator]
       tags: [Feedback]
       summary: "FR-08: 満足率の集計取得（BFF 集約・品質可視化）"
       operationId: bff-feedback-stats
@@ -358,6 +359,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackStatsDto"
+        "401": { description: 未認証 }
+        "403": { description: 運用者・管理者以外（SC-10 の閲覧ロールと揃える） }
 
   /bff/dashboard/summary:
     get:
@@ -1624,23 +1627,15 @@ paths:
       summary: "FR-08, UC-01: フィードバック送信（upsert・冪等）"
       description: |
         新規は 201、既存 (answerId, userId) の更新は 200（upsert）。
-        利用者は JWT から特定する（テスト・開発環境では anonymous）。
+        **投稿には認証を要する（匿名投稿は許さない）。** 利用者は JWT から特定する。
         同一 (answerId, userId) は二重計上しない（IADR-0010）。
 
-        ［2026-08-07 追記 / #586］上の `anonymous` フォールバックは計画と食い違う。
-        planning `3e58b97`（PR planning#244〔裁定依頼 planning#236〕）で計画 FR-08 に
-        「投稿には認証を要する（匿名投稿は許さない）」が確定し、受け入れ基準として
-        **無認証で 401** が置かれた。上の記述は現在の実装の事実としては正しいため #586 では
-        書き換えていない。**是正は #521 が持つ**——本端点と `/bff/feedback` の双方に
-        `401` の `responses` を足す作業は、`RequireAuthorization` の追加（挙動の変更）と
-        同じ PR で行う必要がある。理由: 本書は IADR-0131 が定めた **BFF 契約の源**であり、
-        実装が返さない応答を先に宣言すると偽の向きが変わるだけで、しかも
-        `/bff/*` 側の宣言は orval の生成物（コミット対象）の**公開型**を変える
-        （実測: `"401"` を 1 個足すと `bffSubmitFeedbackResponse` が union になり
-        `TError` 既定が `unknown` → `void` へ変わる）。同型の記述と送り先:
-        `docs/api/BFF_bff-surface.md` の 2026-08-07 追記・`docs/functional/FR-08_answer-feedback.md`・
-        `docs/adr/IADR-0010`・`docs/adr/IADR-0131` フォローアップ 4・
-        `FeedbackEndpoints.cs` の同日コメント。
+        ［2026-08-10 是正 / #521・IADR-0158］**`anonymous` フォールバックを消した。**
+        計画 FR-08（2026-08-07 確定・裁定依頼 planning#236 案 2）に合わせて実装へ
+        `RequireAuthorization()` を足し、本端点と `/bff/feedback` の**双方**へ `401` を
+        記した（#586 の予告どおり）。**害は「無認証で投稿できる」だけではなかった**——
+        `(AnswerId, UserId)` のユニーク索引と噛み合い、**無認証の投稿は全員が `anonymous`
+        の 1 行を共有して互いに上書きし合っていた**。
       operationId: submit-feedback
       requestBody:
         required: true
@@ -1663,6 +1658,7 @@ paths:
                 $ref: "#/components/schemas/FeedbackDto"
         "400":
           description: "バリデーションエラー（answerId 未指定 / rating 不正 / comment 長超過）"
+        "401": { description: 未認証（匿名投稿は許さない。FR-08 確定 2026-08-07） }
     get:
       tags: [Feedback]
       summary: "FR-08: フィードバック一覧（品質レビュー用）"
@@ -1707,17 +1703,15 @@ paths:
       tags: [Feedback]
       summary: "FR-08, FR-10: フィードバック集計（👍/👎 件数・満足率）"
       description: |
-        集計値のみで PII を含まないため AdminOnly は課さない（BFF が集約して画面へ）。
+        **統計の参照は運用者・管理者に限る**（計画 FR-08 / SC-10・2026-08-07 確定）。
         FR-10 ダッシュボードの回答品質の入力となる。
 
-        ［2026-08-07 追記 / #586］**上の根拠は計画側で失効した。**
-        planning `3e58b97`（PR planning#244〔裁定依頼 planning#236〕）で計画 FR-08 に
-        「統計は運用者・管理者に限って参照できる」が確定し、受け入れ基準として
-        **認証済みでも権限外は 403** が置かれた。判断軸は「PII を含むか」ではなく
-        「権限で絞るか」へ変わっている。上の記述は現在の実装の事実としては正しいため
-        #586 では書き換えていない。**是正は #521 が持つ**——本端点と `/bff/feedback/stats`
-        の双方へ `403`（および無認証の `401`）を足す作業は、認可の追加（挙動の変更）と
-        テストを伴うため同じ PR で行う。理由は `/feedback` の同日追記に書いたとおり。
+        ［2026-08-10 是正 / #521・IADR-0158］従前の「集計値のみで PII を含まないため
+        AdminOnly は課さない」という根拠は**計画側で失効していた**。判断軸は「PII を含むか」
+        ではなく「**権限で絞るか**」へ変わっている（裁定依頼 planning#236 案 2）。
+        実装へ `RequireRole(Admin, Operator)` を足し、本端点と `/bff/feedback/stats` の
+        **双方**へ `401` / `403` を記した（#586 の予告どおり）。閲覧ロールは **SC-10 の画面**
+        （#544 で運用者へ開いた）と同じ線で引いている。
       operationId: feedback-stats
       parameters:
         - name: answerId
@@ -1737,6 +1731,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackStatsDto"
+        "401": { description: 未認証 }
+        "403": { description: 運用者・管理者以外（SC-10 の閲覧ロールと揃える） }
 
   # ── DashboardService（直接・内部 API / IADR-0017）────
   /dashboard/events:
