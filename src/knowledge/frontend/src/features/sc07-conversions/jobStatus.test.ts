@@ -41,9 +41,11 @@ describe('jobStatus (SC-07)', () => {
   it('derives the retained-figure marker without adding a fifth status', () => {
     expect(hasRetainedFigures({ diagramsRetained: 2 })).toBe(true);
     expect(hasRetainedFigures({ diagramsRetained: 0 })).toBe(false);
-    // **フィールド自体が無い場合**（古いサーバ・省略時）は「縮退なし」へ倒す。
-    // 契約上は任意（`diagramsRetained?`）なので、ここを undefined のまま比較すると
-    // `undefined > 0` が false になるのに依存した暗黙の挙動になる。
+    // **フィールド自体が無い場合**（古いサーバ・契約違反の応答）は「縮退なし」へ倒す。
+    // ★ #658 / IADR-0162: **契約では `diagramsRetained` は required である**（従前は任意だった）。
+    // それでも画面側は省略に耐える形を保つ —— IADR-0132 決定 3 のとおり
+    // 「**契約上は必須**」と「**実行時に必ず来る**」は別であり、本文を検証する層は無い。
+    // ここを undefined のまま比較すると `undefined > 0` が false になるのに依存した暗黙の挙動になる。
     expect(hasRetainedFigures({})).toBe(false);
   });
 
