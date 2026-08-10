@@ -535,6 +535,9 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
   が同じ 5 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
+- **★ 経路間のパリティ（#674 / [IADR-0168](../adr/IADR-0168_grafana-provisioning-parity.md)）**: provisioning（datasources / dashboards / alerting）は
+  **compose と k8s の両方に同内容で置く**。`node scripts/check-grafana-provisioning-parity.js` が突合する。
+  **是正前は k8s 側にダッシュボードが 1 枚も無く、下記 `llm-usage.json` へ経路 B から辿り着けなかった。**
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
   スループット・5xx 率・p99・RAG レイテンシ）と
   [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の呼び出し回数。費用ではない**）。
