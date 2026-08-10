@@ -582,20 +582,20 @@ export interface ConversionJobDto {
   createdAt: string;
   updatedAt: string;
   /** 図のうち LLM がコード化できた件数（hi-fi:422「Mermaid 2図」の導出元） */
-  diagramsCoded?: number;
+  diagramsCoded: number;
   /**
      * 図のうち**画像保持へ縮退した件数**（＝人手補正 Phase 1 の対象数）。
      * hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」は**ここから導出する表示**であり、
      * **`status` の 5 値目ではない**——縮退はジョブの失敗ではなく、`status` は `succeeded` である
      * （05_screens:320「ジョブ状態モデルは 4 値である」。`deadLettered` と同じ扱い）。
      */
-  diagramsRetained?: number;
+  diagramsRetained: number;
   /**
      * **「補正あり」の標識**（hi-fi:422。05_screens:313）。人手補正が入った図があるか。
      * `true` のジョブを再変換すると補正は失われるため、`retry` は 409
      * `corrections_would_be_lost` で明示確認を求める（IADR-0154 決定 4）。
      */
-  hasCorrection?: boolean;
+  hasCorrection: boolean;
 }
 
 /**
