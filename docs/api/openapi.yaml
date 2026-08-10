@@ -2528,7 +2528,22 @@ components:
     ConversionJobDto:
       type: object
       description: "FR-12, UC-06, SC-07: 変換ジョブの状況（`Knowledge.Contracts/Dtos/ConversionJobDto.cs`）"
-      required: [id, sourceId, sourceType, originalPath, status, attempts, deadLettered, maxAttempts, createdAt, updatedAt]
+      required:
+        [
+          id,
+          sourceId,
+          sourceType,
+          originalPath,
+          status,
+          attempts,
+          deadLettered,
+          maxAttempts,
+          createdAt,
+          updatedAt,
+          diagramsCoded,
+          diagramsRetained,
+          hasCorrection,
+        ]
       properties:
         id: { type: string, format: uuid }
         sourceId: { type: string, format: uuid }

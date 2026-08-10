@@ -18,42 +18,34 @@
       "reason": "同上（#540 / ADR-0043）。`POST /bff/attribute-values` も BFF が BffScopeResolver で解決した値だけを後段へ渡す。C# 型は BFF と後段で共有しているため `Scope` を持つが、公開契約には出さない。"
     }
   ],
-  "_requiredMismatchBaselineComment": [
-    "IADR-0132 論点 B の B1（C# の非 null 性から required を起こす）を全数へ当てたとき、",
-    "#525 の着手時点で既に一致していなかった 10 件である。**ラチェットとして据え置く**。",
-    "#525 は `AccessScopeResponse` の資源に閉じており（IADR-0139 決定 1）、10 件の是正は別の作業である。",
-    "是正は #658 が引き受ける。",
+  "_requiredExceptionsComment": [
+    "`required` の判定**だけ**を外す宣言（#658 / IADR-0162）。**entries とは別である** ——",
+    "entries はプロパティ集合の突合ごと外すので、契約からプロパティが消えても検出できなくなる。",
+    "「プロパティは双方に在るが、required にするかどうかの判定だけが意図的に違う」ものはこちらへ書く。",
     "",
-    "★ **当初この配列は 20 件だった。うち 10 件（DataSourceDto の全プロパティ）は検査器の偽陽性である。**",
-    "  collectSchemas が 1 行形式の `required: [a, b]` しか読めておらず、prettier が折り返した",
-    "  複数行形式（`required:` 改行 `[` 改行 …）を『required が無い』と誤って報告していた。",
-    "  **是正待ちの債務として据え置きかけたが、実データは最初から一致していた。**",
-    "  パーサを直して 20 → 10 へ減らした。**baseline へ入れる前に 1 件ずつ実データを開くこと。**",
+    "**当初この位置には requiredMismatchBaseline（是正待ち 10 件のラチェット）があった。撤去した。**",
+    "10 件を 1 件ずつ実データで引き直したところ、**是正すべき乖離は 3 件だけ**だった:",
+    "  - 応答側 3 件（ConversionJobDto）: openapi.yaml へ required を足して解消した。",
+    "  - 要求側 5 件（SearchRequest.topK 等）: **債務ではなく検査器の規則が広すぎた**。",
+    "    IADR-0132 論点 B の B1 は**応答スキーマの規則**であり（表題・決定 2 の系が明示）、",
+    "    要求側では C# の既定値が「送らなければこの値になる」を意味する。required を足すと",
+    "    送信を強制して既定値を殺す。検査器を要求側／応答側で分けて解消した（宣言は要らない）。",
+    "  - 要求側 2 件（UpdateDataSourceRequest）: **意図的な差**である。下記のとおり。",
     "",
-    "**是正は 2 種類に分かれる。まとめて直してはならない**:",
-    "  - 応答スキーマ（ConversionJobDto 3 件）: required を足すのは安全である。サーバは必ず送っており、",
-    "    生成型が `?` から必須へ変わるだけで送信側は壊れない。**費用も実測済み**（#525 で試行した",
-    "    ところ生成物 5 行の差分・typecheck 緑）。それでも本 PR で直さないのは SC-07 の資源だからである。",
-    "  - 要求スキーマ（SearchRequest / AnalysisTaskRequest / AnalysisDataRange /",
-    "    CompletionApiRequest / EmbedApiRequest）: required を足すと**呼び出し側が送信を強制される**。",
-    "    #520 §未決事項 6 が『要求側の必須化は画面の送信コードを壊す』として独立に扱うべきと申し送っている。",
-    "    **C# が非 null でも既定値を持つ（topK = 10 等）なら、送らなくてよいのが正しい設計であり、",
-    "    その場合は required を足すのではなく entries へ理由つきで移すのが正解である。**",
-    "  - 要求スキーマの『嘘の必須』（UpdateDataSourceRequest 2 件）: 外すのは緩和なので安全である。",
-    "",
-    "行を減らすときは openapi.yaml を直してからこの配列から消すこと。**増やしてはならない** —— 増やす",
-    "変更は新規混入であり、検査器が止めるべきものである。"
+    "**ラチェットは空配列でも残さない。** 「また据え置いてよい」と読めるからである。",
+    "据え置きたい差があるなら、**なぜ契約と C# が食い違うのが正しいか**を書いてここへ入れること。",
+    "**「いま合っていないから」は理由ではない**（--self-test が reason の空を落とす）。"
   ],
-  "requiredMismatchBaseline": [
-    "SearchRequest.topK",
-    "AnalysisTaskRequest.taskType",
-    "AnalysisDataRange.topK",
-    "UpdateDataSourceRequest.config",
-    "UpdateDataSourceRequest.defaultAttributes",
-    "ConversionJobDto.diagramsCoded",
-    "ConversionJobDto.diagramsRetained",
-    "ConversionJobDto.hasCorrection",
-    "CompletionApiRequest.maxTokens",
-    "EmbedApiRequest.purpose"
+  "requiredExceptions": [
+    {
+      "schema": "UpdateDataSourceRequest",
+      "property": "config",
+      "reason": "FR-01 / #627 の AI レビュー 🟡: PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（apiToken 等）が黙って消える。契約の required は**その事故を塞ぐための制約そのもの**である（消したいときは `{}` を明示する）。C# が `Dictionary<string,string>?` なのは**省略を検知して 400 で拒否するための手段**であって、省略してよいという意味ではない。required を外すと #627 で塞いだ経路が契約上また開く。"
+    },
+    {
+      "schema": "UpdateDataSourceRequest",
+      "property": "defaultAttributes",
+      "reason": "同上（#627）。`config` と同じく PUT の全置換対象であり、省略は 400 で拒否される。C# の nullable は省略の検知手段である。"
+    }
   ]
 }

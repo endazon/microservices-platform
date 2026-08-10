@@ -21,6 +21,20 @@
  * `array/$ref` の対応は表現が 1 対 1 でなく、判定器を書くと誤検出が保守コストを上回る（#506 の型誤りは
  * 本検査器では捕まらない。**正直に書いておく**）。名前の欠落・余剰は表現に依らず判定できる。
  *
+ * ── `required` の規則は**要求側と応答側で違う**（#658 / [[IADR-0162]]）
+ * [[IADR-0132]] の表題は「**応答スキーマ**の `required` は C# の非 null 性から起こす」であり、
+ * 決定 2 の系は「**要求スキーマの `default` は落とさない**——応答側とは別の話である」と明示している。
+ * B1 の理屈（「C# の既定値はシリアライズの省略と無関係で、`System.Text.Json` は必ず出力する」）は
+ * **サーバが書き出す側でしか成り立たない**。要求側では C# の既定値こそが
+ * 「クライアントが送らなかったときの値」であり、`required` を足すと**送信を強制して既定値を殺す**。
+ *
+ * 初版（#525）はこれを区別せず A1＋B1 を全スキーマへ当てており、**要求側 5 件を偽の債務として
+ * ラチェットへ据え置いていた**。本版は `openapi.yaml` から到達性を導いて規則を分ける:
+ *   - **要求側にのみ**到達するスキーマ: `required` ⟺ 非 null **かつ既定値を持たない**
+ *   - それ以外（応答側に到達する／どちらからも到達しない）: 従来どおり A1＋B1
+ * **緩む方向へ倒れるのは「要求側にのみ到達する」と確定したときだけ**である（安全側の既定）。
+ * `wrongly-required`（nullable なのに required）は**両側で見る** —— 嘘はどちらでも嘘である。
+ *
  * ── 意図的な差は allowlist で通す
  * `scripts/openapi-dto-drift-allowlist.json` に **理由つきで**宣言する。理由の無いエントリは
  * 自己試験が落とす —— 「黙って除外した」を残さないためである
@@ -119,6 +133,92 @@ function collectSchemas(yamlText) {
   return schemas;
 }
 
+// ── 到達性（要求側 / 応答側） ─────────────────────────────────
+//
+// #658 / [[IADR-0162]]: `required` の規則を分けるために、各スキーマが
+// `requestBody:` から到達するか `responses:` から到達するかを `openapi.yaml` 自身から導く。
+//
+// **入れ子を推移的にたどる必要がある。** `AnalysisDataRange` はどの `requestBody:` からも
+// 直接参照されておらず、`AnalysisTaskRequest.range` の下にぶら下がっているだけである
+// ——直接参照だけを見ると「要求側と判らない」ので、従来の（応答側の）規則が当たってしまう。
+function collectReachability(yamlText) {
+  const lines = yamlText.split('\n');
+  const indentOf = (l) => l.match(/^ */)[0].length;
+  const REF = /\$ref:\s*["']?#\/components\/schemas\/([A-Za-z0-9_]+)["']?/;
+
+  // 1. paths: を歩き、requestBody: / responses: のサブツリーで現れた $ref を分ける。
+  const reqSeed = new Set();
+  const resSeed = new Set();
+  let i = lines.indexOf('paths:');
+  if (i >= 0) {
+    let mode = null;
+    let modeIndent = -1;
+    for (i++; i < lines.length; i++) {
+      const line = lines[i];
+      if (/^\S/.test(line)) break; // paths を抜けた
+      if (!line.trim()) continue;
+      const ind = indentOf(line);
+      if (mode !== null && ind <= modeIndent) {
+        mode = null;
+        modeIndent = -1;
+      }
+      if (/^\s*requestBody:\s*$/.test(line)) {
+        mode = 'req';
+        modeIndent = ind;
+        continue;
+      }
+      if (/^\s*responses:\s*$/.test(line)) {
+        mode = 'res';
+        modeIndent = ind;
+        continue;
+      }
+      const m = line.match(REF);
+      if (!m || mode === null) continue;
+      (mode === 'req' ? reqSeed : resSeed).add(m[1]);
+    }
+  }
+
+  // 2. components.schemas 内の $ref グラフ。
+  const graph = {};
+  let cur = null;
+  let j = lines.indexOf('  schemas:');
+  if (j >= 0) {
+    for (j++; j < lines.length; j++) {
+      const line = lines[j];
+      if (/^\S/.test(line)) break;
+      const m = line.match(/^ {4}([A-Za-z0-9_]+):\s*$/);
+      if (m) {
+        cur = m[1];
+        graph[cur] = graph[cur] || new Set();
+        continue;
+      }
+      if (!cur) continue;
+      const r = line.match(REF);
+      if (r) graph[cur].add(r[1]);
+    }
+  }
+
+  // 3. 推移閉包。
+  const close = (seed) => {
+    const out = new Set();
+    const stack = [...seed];
+    while (stack.length) {
+      const n = stack.pop();
+      if (out.has(n)) continue;
+      out.add(n);
+      for (const c of graph[n] || []) if (!out.has(c)) stack.push(c);
+    }
+    return out;
+  };
+  const fromRequest = close(reqSeed);
+  const fromResponse = close(resSeed);
+
+  // **要求側にのみ到達するものだけ**を返す。応答側に 1 度でも到達するもの、
+  // どちらからも到達しないものは従来どおり A1＋B1 を当てる（IADR-0132 決定 5 と整合）。
+  const requestOnly = new Set([...fromRequest].filter((n) => !fromResponse.has(n)));
+  return { fromRequest, fromResponse, requestOnly };
+}
+
 // ── C# 側 ────────────────────────────────────────────────────
 
 // 深さを数えて `,` で切る（`Dictionary<string, List<string>>` の中で割れないため）。
@@ -169,7 +269,13 @@ function collectRecords(csText) {
         const prop = tokens[tokens.length - 1];
         const type = tokens.slice(0, -1).join(' ').trim();
         // IADR-0132 論点 A1: `?` の付かないメンバーが非 null ＝ required の候補である。
-        return { name: prop, nonNullable: type.length > 0 && !type.endsWith('?') };
+        // #658 / IADR-0162: 既定値の有無は**要求側でだけ**意味を持つ（省略してよい印になる）。
+        // 応答側では B1 のとおり無関係である（`System.Text.Json` は既定値でも出力する）。
+        return {
+          name: prop,
+          nonNullable: type.length > 0 && !type.endsWith('?'),
+          hasDefault: p.includes('='),
+        };
       })
       .filter((p) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(p.name));
 
@@ -186,7 +292,7 @@ function collectRecords(csText) {
         body += ch;
         if (d === 0) break;
       }
-      const pr = /public\s+([^;{}()]+?)\s+([A-Za-z0-9_]+)\s*\{\s*get\s*;/g;
+      const pr = /public\s+([^;{}()]+?)\s+([A-Za-z0-9_]+)\s*\{\s*get\s*;[^}]*\}\s*(=)?/g;
       let pm;
       while ((pm = pr.exec(body))) {
         const modifiersAndType = pm[1].trim();
@@ -195,7 +301,11 @@ function collectRecords(csText) {
         // 要求すると**無関係な PR の CI を誤って落とす**（実データにはまだ無いが、
         // record 本体に定数を 1 つ置いた瞬間に起きる）。
         if (/\b(?:static|const)\b/.test(modifiersAndType)) continue;
-        props.push({ name: pm[2], nonNullable: !modifiersAndType.endsWith('?') });
+        props.push({
+          name: pm[2],
+          nonNullable: !modifiersAndType.endsWith('?'),
+          hasDefault: pm[3] === '=',
+        });
       }
     }
     records[name] = props;
@@ -217,11 +327,15 @@ function listCsFiles(dir, acc = []) {
 
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
 
-function findDrift(schemas, records, allowlist) {
+function findDrift(schemas, records, allowlist, requestOnly = new Set()) {
   const allowed = new Set((allowlist.entries || []).map((e) => `${e.schema}.${e.property}`));
-  // `required` の不一致は**ラチェット**である。既存を据え置き、新規混入だけを落とす
-  // （リポジトリ既定の方式。backend-library-baseline / landed-subject-baseline と同じ）。
-  const requiredBaseline = new Set(allowlist.requiredMismatchBaseline || []);
+  // `requiredExceptions` は **`required` の判定だけ**を外す（#658 / [[IADR-0162]]）。
+  // `entries` と分けているのは、`entries` が**プロパティ集合の突合ごと**外してしまうためである
+  // —— `entries` に入れた項目は契約から丸ごと消えても `missing-in-openapi` で検出されない。
+  // 「プロパティは在るが `required` の判定だけ意図的に違う」ものはこちらへ書く。
+  const requiredExceptions = new Set(
+    (allowlist.requiredExceptions || []).map((e) => `${e.schema}.${e.property}`)
+  );
   const drift = [];
   for (const [name, schema] of Object.entries(schemas)) {
     const csProps = records[name];
@@ -238,12 +352,17 @@ function findDrift(schemas, records, allowlist) {
       }
     }
     // 双方に在るものだけ `required` を見る（片側欠落は上で報告済み）。
+    const isRequestOnly = requestOnly.has(name);
     for (const [p, cs] of csByJson) {
       if (!schema.props.includes(p)) continue;
       const key = `${name}.${p}`;
-      if (requiredBaseline.has(key) || allowed.has(key)) continue;
+      if (requiredExceptions.has(key) || allowed.has(key)) continue;
       const isRequired = schema.required.includes(p);
       if (cs.nonNullable && !isRequired) {
+        // #658 / IADR-0162: **要求側にのみ到達するスキーマでは、既定値つきメンバーは省略可が正**である。
+        // `required` を足すと送信を強制し、C# の既定値（＝「送らなかったときの値」）を殺す。
+        // 応答側では B1 のとおり既定値の有無に関わらず `required` である。
+        if (isRequestOnly && cs.hasDefault) continue;
         drift.push({ schema: name, property: p, kind: 'missing-in-required' });
       } else if (!cs.nonNullable && isRequired) {
         drift.push({ schema: name, property: p, kind: 'wrongly-required' });
@@ -266,8 +385,10 @@ function formatReport(drift) {
   };
   for (const d of drift) lines.push(`  ✗ ${d.schema}.${d.property}: ${why[d.kind]}`);
   lines.push('');
-  lines.push('  意図的な差であれば scripts/openapi-dto-drift-allowlist.json へ**理由つきで**追加すること。');
-  lines.push('  既存の required 不一致（是正待ち）は同ファイルの requiredMismatchBaseline に据え置いてある。');
+  lines.push('  プロパティ自体を契約へ出さないのが正しいなら scripts/openapi-dto-drift-allowlist.json の');
+  lines.push('  entries へ**理由つきで**追加すること（プロパティ集合の突合ごと外れる）。');
+  lines.push('  プロパティは在るが required の判定だけ意図的に違うなら requiredExceptions へ書くこと。');
+  lines.push('  **「いま合っていないから」は理由ではない。** 契約と C# のどちらが正しいかを先に決めること。');
   return lines.join('\n');
 }
 
@@ -472,13 +593,147 @@ function selfTest() {
     eq(d.map((x) => x.kind), ['wrongly-required']);
   });
 
-  check('required のラチェットは既存を据え置く', () => {
+  // ── #658 / IADR-0162: 要求側 / 応答側で `required` の規則が違う ──────────
+
+  const csd = (...defs) =>
+    defs.map(([name, nonNullable = true, hasDefault = false]) => ({ name, nonNullable, hasDefault }));
+
+  check('要求側にのみ到達するスキーマでは、既定値つきメンバーを required に要求しない', () => {
     const d = findDrift(
       { Foo: { props: ['a'], required: [] } },
-      { Foo: cs(['A', true]) },
-      { entries: [], requiredMismatchBaseline: ['Foo.a'] }
+      { Foo: csd(['A', true, true]) },
+      { entries: [] },
+      new Set(['Foo'])
     );
     eq(d, []);
+  });
+
+  // ★ **緩めすぎていない側**。要求側でも「既定値が無ければ必須」は効いていなければならない。
+  // これが無いと、要求スキーマの必須漏れを丸ごと見逃す判定器になる。
+  check('要求側でも、既定値を持たない非 null メンバーは required を要求する', () => {
+    const d = findDrift(
+      { Foo: { props: ['a'], required: [] } },
+      { Foo: csd(['A', true, false]) },
+      { entries: [] },
+      new Set(['Foo'])
+    );
+    eq(
+      d.map((x) => x.kind),
+      ['missing-in-required']
+    );
+  });
+
+  check('応答側では既定値があっても required を要求する（IADR-0132 決定 2 = B1）', () => {
+    const d = findDrift(
+      { Foo: { props: ['a'], required: [] } },
+      { Foo: csd(['A', true, true]) },
+      { entries: [] },
+      new Set() // 要求側にのみ到達するものは無い
+    );
+    eq(
+      d.map((x) => x.kind),
+      ['missing-in-required']
+    );
+  });
+
+  check('「嘘の必須」は要求側でも見る（緩和の向きへ倒さない）', () => {
+    const d = findDrift(
+      { Foo: { props: ['a'], required: ['a'] } },
+      { Foo: csd(['A', false, true]) },
+      { entries: [] },
+      new Set(['Foo'])
+    );
+    eq(
+      d.map((x) => x.kind),
+      ['wrongly-required']
+    );
+  });
+
+  check('requiredExceptions は required の判定だけを外す（プロパティ集合は見続ける）', () => {
+    // required の判定は外れる。
+    eq(
+      findDrift(
+        { Foo: { props: ['a'], required: ['a'] } },
+        { Foo: csd(['A', false]) },
+        { requiredExceptions: [{ schema: 'Foo', property: 'a', reason: 'ため' }] }
+      ),
+      []
+    );
+    // ★ が、プロパティが契約から消えれば**落ちる**（entries との違い）。
+    eq(
+      findDrift(
+        { Foo: { props: [], required: [] } },
+        { Foo: csd(['A', false]) },
+        { requiredExceptions: [{ schema: 'Foo', property: 'a', reason: 'ため' }] }
+      ).map((x) => x.kind),
+      ['missing-in-openapi']
+    );
+  });
+
+  check('collectReachability: requestBody / responses を見分け、入れ子を推移的にたどる', () => {
+    const y = [
+      'paths:',
+      '  /a:',
+      '    post:',
+      '      requestBody:',
+      '        content:',
+      '          application/json:',
+      '            schema:',
+      '              $ref: "#/components/schemas/Req"',
+      '      responses:',
+      '        "200":',
+      '          content:',
+      '            application/json:',
+      '              schema:',
+      '                $ref: "#/components/schemas/Res"',
+      'components:',
+      '  schemas:',
+      '    Req:',
+      '      properties:',
+      '        nested:',
+      '          $ref: "#/components/schemas/Nested"',
+      '    Nested:',
+      '      properties:',
+      '        x: { type: string }',
+      '    Res:',
+      '      properties:',
+      '        y: { type: string }',
+      '    Orphan:',
+      '      properties:',
+      '        z: { type: string }',
+      '',
+    ].join('\n');
+    const r = collectReachability(y);
+    eq([...r.requestOnly].sort(), ['Nested', 'Req'], '入れ子も要求側とみなす');
+    // **どちらからも到達しないものは requestOnly に入れない**（安全側 ＝ 従来どおり B1 を当てる）。
+    if (r.requestOnly.has('Orphan')) throw new Error('Orphan を緩めてはならない');
+    if (r.requestOnly.has('Res')) throw new Error('応答側を緩めてはならない');
+  });
+
+  // ★ 実データ。規則が「たまたま」効いているのではなく、狙った 5 件に当たっていること。
+  check('実データ: 要求側にのみ到達するスキーマを取れる', () => {
+    const r = collectReachability(fs.readFileSync(OPENAPI, 'utf8'));
+    for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange', 'CompletionApiRequest', 'EmbedApiRequest']) {
+      if (!r.requestOnly.has(n)) throw new Error(`${n} が要求側として取れていない`);
+    }
+    if (r.requestOnly.has('ConversionJobDto')) throw new Error('ConversionJobDto は応答側である');
+  });
+
+  check('requiredExceptions の各エントリは理由を持つ', () => {
+    const list = JSON.parse(fs.readFileSync(ALLOWLIST, 'utf8'));
+    for (const e of list.requiredExceptions || []) {
+      if (!e.reason || !e.reason.trim()) {
+        throw new Error(`${e.schema}.${e.property} に reason が無い`);
+      }
+    }
+  });
+
+  // #658: ラチェットは撤去した（0 件になったため）。**空配列で残すと「また据え置いてよい」と読める。**
+  check('requiredMismatchBaseline は撤去済みである', () => {
+    const list = JSON.parse(fs.readFileSync(ALLOWLIST, 'utf8'));
+    if ('requiredMismatchBaseline' in list) {
+      throw new Error('requiredMismatchBaseline は #658 で撤去した。据え置きたい差は理由を書いて requiredExceptions へ');
+    }
   });
 
   check('片側欠落のときは required を二重に報告しない', () => {
@@ -513,7 +768,9 @@ function selfTest() {
 function main(argv) {
   if (argv.includes('--self-test')) return selfTest();
 
-  const schemas = collectSchemas(fs.readFileSync(OPENAPI, 'utf8'));
+  const yamlText = fs.readFileSync(OPENAPI, 'utf8');
+  const schemas = collectSchemas(yamlText);
+  const { requestOnly } = collectReachability(yamlText);
   const records = {};
   const files = DTO_ROOTS.flatMap((d) => listCsFiles(path.join(REPO, d))).sort();
   for (const f of files) Object.assign(records, collectRecords(fs.readFileSync(f, 'utf8')));
@@ -521,11 +778,11 @@ function main(argv) {
   const allowlist = fs.existsSync(ALLOWLIST)
     ? JSON.parse(fs.readFileSync(ALLOWLIST, 'utf8'))
     : { entries: [] };
-  const drift = findDrift(schemas, records, allowlist);
+  const drift = findDrift(schemas, records, allowlist, requestOnly);
   if (drift.length === 0) {
     const matched = Object.keys(schemas).filter((n) => records[n]).length;
     console.log(
-      `[check-openapi-dto-drift] OK: schemas ${Object.keys(schemas).length} / C# record ${Object.keys(records).length} のうち同名 ${matched} 件のプロパティ集合が一致しています。`
+      `[check-openapi-dto-drift] OK: schemas ${Object.keys(schemas).length} / C# record ${Object.keys(records).length} のうち同名 ${matched} 件のプロパティ集合が一致しています（要求側にのみ到達する ${requestOnly.size} 件は既定値つきメンバーを省略可として扱う）。`
     );
     return 0;
   }
@@ -533,6 +790,13 @@ function main(argv) {
   return 1;
 }
 
-module.exports = { collectSchemas, collectRecords, splitTopLevel, findDrift, selfTest };
+module.exports = {
+  collectSchemas,
+  collectRecords,
+  collectReachability,
+  splitTopLevel,
+  findDrift,
+  selfTest,
+};
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));

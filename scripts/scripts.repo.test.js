@@ -2501,13 +2501,58 @@ module.exports = ({ ok, assert }) => {
         'missing-in-required');
     });
 
-    // ラチェットの向き。**減らすのは自由・増やすのは禁止**であることを条文ではなく機械で持つ。
-    ok('check-openapi-dto-drift: requiredMismatchBaseline は 10 件を超えない', () => {
+    // #658 / IADR-0162: ラチェット（requiredMismatchBaseline・是正待ち 10 件）は**撤去した**。
+    // 10 件のうち是正すべき乖離は 3 件だけで、残り 7 件は偽陽性か意図的な差だった。
+    // **空配列でも残さない** —— 「また据え置いてよい」と読めるからである。
+    ok('check-openapi-dto-drift: requiredMismatchBaseline が復活していない', () => {
       const fsB = require('fs');
       const list = JSON.parse(
         fsB.readFileSync(pathDrift.join(__dirname, 'openapi-dto-drift-allowlist.json'), 'utf8'));
-      assert.ok(list.requiredMismatchBaseline.length <= 10,
-        `据え置きが増えている（${list.requiredMismatchBaseline.length} 件）。新規混入は検査器で止めること`);
+      assert.ok(!('requiredMismatchBaseline' in list),
+        'ラチェットは #658 で撤去した。据え置きたい差は理由を書いて requiredExceptions へ入れること');
+    });
+
+    // `requiredExceptions` は**理由つきの宣言**である。理由の無い据え置きを機械で止める。
+    ok('check-openapi-dto-drift: requiredExceptions は理由を持ち、2 件を超えない', () => {
+      const fsB = require('fs');
+      const list = JSON.parse(
+        fsB.readFileSync(pathDrift.join(__dirname, 'openapi-dto-drift-allowlist.json'), 'utf8'));
+      const ex = list.requiredExceptions || [];
+      assert.ok(ex.length <= 2, `意図的な差が増えている（${ex.length} 件）。増やす前に契約と C# のどちらが正しいかを決めること`);
+      for (const e of ex) {
+        assert.ok(e.reason && e.reason.trim(), `${e.schema}.${e.property} に reason が無い`);
+      }
+    });
+
+    // ★ **規則を緩めすぎていないことの側**（#658 の変異試験 M3）。
+    // 要求側にのみ到達するスキーマでも、**既定値を持たない**非 null メンバーは required でなければならない。
+    // これが抜けると、要求スキーマの必須漏れを丸ごと見逃す判定器になる。
+    ok('check-openapi-dto-drift: 要求側でも既定値なしの非 null は required を要求する', () => {
+      const drift = require('./check-openapi-dto-drift.js');
+      const schemas = { Req: { props: ['a', 'b'], required: [] } };
+      const records = {
+        Req: [
+          { name: 'A', nonNullable: true, hasDefault: true },
+          { name: 'B', nonNullable: true, hasDefault: false },
+        ],
+      };
+      const found = drift.findDrift(schemas, records, { entries: [] }, new Set(['Req']));
+      assert.deepStrictEqual(found.map((d) => d.property), ['b'],
+        '既定値つき a は見逃してよいが、既定値なし b は required を要求しなければならない');
+    });
+
+    // 到達性そのもの。実データで狙った 5 件に当たっていること（規則が「たまたま」効いていない側）。
+    ok('check-openapi-dto-drift: 実データの要求側スキーマを取れる', () => {
+      const fsB = require('fs');
+      const drift = require('./check-openapi-dto-drift.js');
+      const yaml = fsB.readFileSync(
+        pathDrift.join(__dirname, '..', 'docs/api/openapi.yaml'), 'utf8');
+      const { requestOnly } = drift.collectReachability(yaml);
+      for (const n of ['SearchRequest', 'AnalysisTaskRequest', 'AnalysisDataRange',
+        'CompletionApiRequest', 'EmbedApiRequest']) {
+        assert.ok(requestOnly.has(n), `${n} が要求側として取れていない`);
+      }
+      assert.ok(!requestOnly.has('ConversionJobDto'), 'ConversionJobDto は応答側である');
     });
   }
 
