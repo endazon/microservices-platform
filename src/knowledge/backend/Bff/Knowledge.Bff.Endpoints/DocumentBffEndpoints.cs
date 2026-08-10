@@ -20,9 +20,21 @@ public static class DocumentBffEndpoints
 {
     public static IEndpointRouteBuilder MapDocumentBffEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/bff/documents").WithTags("Documents BFF");
+        // NFR-09, #656: **読み取り群にも認証を要求する。** 書き込み群（下記 `write`）だけが認可を持ち、
+        // **読み取り群は無認証で到達できた**——同じファイルに `RequireAuthorization` が 6 個在るため、
+        // ファイル単位の走査では気づけない形だった。
+        // **ロールは群に置かない** —— 詳細・本文・版履歴は **SC-03**（文書詳細）であり、
+        // SC-01 の出典クリックから**一般利用者が遷移する**（計画 `05_screens` の SC-01 §アクション）。
+        var g = app.MapGroup("/bff/documents").WithTags("Documents BFF").RequireAuthorization();
 
         // 一覧: 権限内の文書のみ返す（deny-by-default。権限外文書は列挙しない）。
+        //
+        // NFR-09, SC-05, #656: **この口だけ管理者・運用者に絞る。** 計画 `05_screens`（2026-08-05 の裁定）は
+        // 「**SC-05/06/07 = 閲覧は管理者・運用者**」と定めており、**呼び出し元は SC-05 の管理画面ただ 1 つ**
+        // である（`sc05-documents/useDocumentAdmin.ts`。実測）。画面側は既に
+        // `RequireRole anyOf={[Admin, Operator]}` で絞られているのに API が絞られていない状態で、
+        // **#628 / #629 で 2 度直したのと同じ型**（画面は絞れているが API が誰でも通る）だった。
+        // 群の `RequireAuthorization()` と AND 合成され、実効は admin ＋ operator になる（IADR-0128 決定 1）。
         g.MapGet("/", async (
             IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct) =>
         {
@@ -33,7 +45,10 @@ public static class DocumentBffEndpoints
             var docs = await FetchListAsync(httpFactory, ct);
             var visible = docs.Where(d => BffScopeResolver.Matches(d.Attributes, scope)).ToList();
             return Results.Ok(visible);
-        }).WithName("BffDocumentList").Produces<List<DocumentDto>>();
+        }).WithName("BffDocumentList").Produces<List<DocumentDto>>()
+            .RequireAuthorization(p => p.RequireRole(
+                PlatformAuthPolicies.AdminRole,
+                PlatformAuthPolicies.OperatorRole));
 
         // 詳細: スコープ外・不在ともに 404（存在秘匿）。
         g.MapGet("/{id:guid}", async (
