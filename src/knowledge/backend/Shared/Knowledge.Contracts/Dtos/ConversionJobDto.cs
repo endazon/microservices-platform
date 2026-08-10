@@ -25,7 +25,16 @@ public record ConversionJobDto(
     bool DeadLettered = false,
     // 1 回の配信で行う自動再試行の試行上限（初回 ＋ 再試行）。**手動再変換の回数上限ではない**
     // （05_screens:310「手動再変換の回数上限は設けない」）。
-    int MaxAttempts = ConversionJobRetryPolicy.MaxAttempts);
+    int MaxAttempts = ConversionJobRetryPolicy.MaxAttempts,
+    // SC-07（hi-fi:420-422）: 図のコード化の内訳。**状態の 5 値目ではない**——「✕ 図コード化失敗
+    // （画像保持へ縮退済み）」は DiagramsRetained > 0 から導出する表示であり、ジョブ自体は succeeded
+    // である（05_screens:317「ジョブ状態モデルは 4 値である」。DeadLettered と同じ扱い。IADR-0154 決定 5）。
+    // IADR-0127「状態表示は契約から導出できる値だけで作る」に従い、導出元を DTO へ載せる。
+    int DiagramsCoded = 0,
+    int DiagramsRetained = 0,
+    // SC-07（hi-fi:422）「補正あり」の標識。**再変換すると失われる補正があること**を示す
+    // （05_screens:313・333。IADR-0154 決定 4）。
+    bool HasCorrection = false);
 
 // FR-12, UC-06, SC-07: 変換ジョブの状態値。
 public static class ConversionJobStatus

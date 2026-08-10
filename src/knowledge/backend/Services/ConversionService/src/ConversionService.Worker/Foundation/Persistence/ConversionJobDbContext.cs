@@ -9,6 +9,9 @@ public class ConversionJobDbContext(DbContextOptions<ConversionJobDbContext> opt
 {
     public DbSet<ConversionJob> ConversionJobs => Set<ConversionJob>();
 
+    // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1 の対象（抽出した図）。
+    public DbSet<ConversionJobFigure> ConversionJobFigures => Set<ConversionJobFigure>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<ConversionJob>(e =>
@@ -48,6 +51,29 @@ public class ConversionJobDbContext(DbContextOptions<ConversionJobDbContext> opt
                     // ハッシュも等価判定と同じ内容ベースにする（参照 GetHashCode は equals と契約不整合になるため）。
                     v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
                     v => new List<string>(v)));
+
+            // IADR-0154 決定 1: 図はジョブの子。ジョブが消えれば図も消える。
+            e.HasMany(j => j.Figures)
+                .WithOne()
+                .HasForeignKey(f => f.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        mb.Entity<ConversionJobFigure>(e =>
+        {
+            e.HasKey(f => f.Id);
+            // Id はエンティティ側で採番するため EF に生成させない（ConversionJob.Id と同じ扱い）。
+            // 生成扱いのままだと、値が入った新規行を「既存行の更新」と解釈して SaveChanges が落ちる。
+            e.Property(f => f.Id).ValueGeneratedNever();
+            e.Property(f => f.FigureId).HasMaxLength(255).IsRequired();
+            e.Property(f => f.Language).HasMaxLength(50);
+            e.Property(f => f.ImageUri).HasMaxLength(2048);
+            e.Property(f => f.ImageContentType).HasMaxLength(255);
+            e.Property(f => f.Caption).HasMaxLength(2048);
+            // 補正済みかどうかは既存行を「未補正」として読むため既定 false。
+            e.Property(f => f.Corrected).HasDefaultValue(false);
+            // 図 ID はジョブ内で一意（本文の埋め込み位置を突き止める鍵であるため重複を許さない）。
+            e.HasIndex(f => new { f.JobId, f.FigureId }).IsUnique();
         });
     }
 }

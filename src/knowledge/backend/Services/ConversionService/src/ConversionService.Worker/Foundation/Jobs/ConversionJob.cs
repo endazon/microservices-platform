@@ -25,6 +25,10 @@ public class ConversionJob
     public DateTimeOffset CreatedAt { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
 
+    // FR-12, UC-06, SC-07, IADR-0154: 抽出した図の記録（人手補正 Phase 1 の対象）。
+    // 変換が成功した時点で洗い替える（再変換は図を作り直すため）。
+    public List<ConversionJobFigure> Figures { get; private set; } = [];
+
     // 再変換のための原本イベント項目（RawDocumentFetched の再構成に用いる。DTO には射影しない）。
     public string StorageUri { get; private set; } = string.Empty;
     public string ContentType { get; private set; } = string.Empty;
@@ -62,11 +66,26 @@ public class ConversionJob
         ApplyEvent(ev);
     }
 
-    public void MarkSucceeded(Guid documentId, string markdownUri)
+    // IADR-0154 決定 1: 図の記録は成功のたびに洗い替える（再変換は図を作り直すため、
+    // 前回の図をそのまま残すと「どの図が今の本文に居るか」が割れる）。
+    public void MarkSucceeded(Guid documentId, string markdownUri,
+        IReadOnlyList<ConversionJobFigure>? figures = null)
     {
         Status = ConversionJobStatus.Succeeded;
         Error = null;
         DocumentId = documentId;
+        MarkdownUri = markdownUri;
+        UpdatedAt = DateTimeOffset.UtcNow;
+        if (figures is null) return;
+        Figures.Clear();
+        Figures.AddRange(figures);
+    }
+
+    // UC-06: 人手補正で本文を差し替えたときに、参照先だけを更新する（状態は succeeded のまま）。
+    // **再変換ではない**——原本からやり直すと LLM が再び縮退して補正が消えるためである
+    // （IADR-0154 決定 3）。
+    public void MarkCorrected(string markdownUri)
+    {
         MarkdownUri = markdownUri;
         UpdatedAt = DateTimeOffset.UtcNow;
     }
@@ -81,7 +100,10 @@ public class ConversionJob
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    // UC-06: 人手補正は失敗ジョブに限る。失敗以外（processing/succeeded/queued）は再変換不可。
+    // UC-06: **再変換**は失敗ジョブに限る。失敗以外（processing/succeeded/queued）は再変換不可。
+    // **「人手補正」と混同しない**——人手補正 Phase 1（図のコード化のやり直し）の対象は
+    // **画像保持へ縮退した図を持つ成功ジョブ**である（UC-06 は縮退を例外フローの中の正常な収束として
+    // 定めている。IADR-0154 決定 5）。同じ語で 2 つの操作を指さないこと。
     // SC-07: 再変換を受け付けた時点でデッドレター標識は落とす（queued は「自動では直らない」状態ではない）。
     public bool TryRequeue()
     {
@@ -99,9 +121,15 @@ public class ConversionJob
             new Dictionary<string, string>(Attributes), [.. Tags], FetchedAt);
 
     // SC-07: 試行上限は全ジョブ共通の設定値であり、画面がしきい値を推測しなくて済むよう毎行へ射影する。
+    // IADR-0127「状態表示は契約から導出できる値だけで作る」: 図の内訳と「補正あり」も毎行へ射影する
+    // （画面が図の一覧を全ジョブ分引かずに一覧を描けるようにするため）。
     public ConversionJobDto ToDto() =>
         new(Id, SourceId, SourceType, OriginalPath, Status, Error, DocumentId, MarkdownUri,
-            Attempts, CreatedAt, UpdatedAt, DeadLettered, ConversionJobRetryPolicy.MaxAttempts);
+            Attempts, CreatedAt, UpdatedAt, DeadLettered, ConversionJobRetryPolicy.MaxAttempts,
+            Figures.Count(f => f.Coded), Figures.Count(f => !f.Coded), Figures.Any(f => f.Corrected));
+
+    // UC-06: 再変換で失われる補正の件数（409 corrections_would_be_lost の本文へ載せる）。
+    public int CorrectedFigureCount => Figures.Count(f => f.Corrected);
 
     private void ApplyEvent(RawDocumentFetched ev)
     {

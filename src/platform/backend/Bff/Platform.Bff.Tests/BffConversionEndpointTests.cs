@@ -18,6 +18,10 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
         _factory = factory;
         _factory.ConversionStatusCode = HttpStatusCode.OK;
         _factory.ConversionThrows = false;
+        // IADR-0154: 本文つき 409 と観測用パスも毎テスト戻す（IClassFixture は共有されるため、
+        // 戻し忘れると後続テストの retry 応答へ本文が漏れる）。
+        _factory.ConversionConflictBody = null;
+        _factory.LastConversionPath = null;
     }
 
     [Fact]
@@ -180,5 +184,87 @@ public class BffConversionEndpointTests : IClassFixture<BffTestFactory>
             .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1 の 3 本。
+    // **計画 05_screens:314「再変換の実行と人手補正は管理者限定」** に従い、照会（GET /figures）も
+    // 管理者限定にする——2 ペインを開く操作そのものが人手補正であるため。
+    [Fact]
+    public async Task Figures_AsAdmin_IsAllowed()
+    {
+        var resp = await _factory.CreateClient()
+            .GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var figures = await resp.Content.ReadFromJsonAsync<List<ConversionFigureDto>>();
+        figures!.Should().HaveCount(2);
+        figures.Should().ContainSingle(f => !f.Coded).Which.ImageUri.Should().NotBeNull();
+    }
+
+    // **運用者は照会画面（一覧・個別）は見られるが、人手補正には入れない。**
+    // 「admin で通ること」だけを見るテストでは、誰でも通る状態を検出できない（#501 の教訓）。
+    [Theory]
+    [InlineData("figures")]
+    [InlineData("figures/fig-1/image")]
+    public async Task FigureReads_AsOperator_AreForbidden(string suffix)
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.GetAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/{suffix}");
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Correction_AsAdmin_IsAllowed()
+    {
+        var resp = await _factory.CreateClient().PostAsJsonAsync(
+            $"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Correction_AsOperator_IsForbidden()
+    {
+        var client = _factory.CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
+        var resp = await client.PostAsJsonAsync(
+            $"/bff/conversion/jobs/{BffTestFactory.StubJobId}/figures/fig-1/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    // ★ IADR-0154 決定 4 / #640 と同型の回帰: **409 の本文を落とさない**。
+    // 従前この BFF は Results.StatusCode で状態コードだけを返しており、後段が載せた理由・件数が
+    // 画面まで届かなかった。corrections_would_be_lost は件数を出して確認を求めるための応答なので、
+    // 本文が消えると画面が「何件失われるか」を言えない。
+    [Fact]
+    public async Task Retry_Passes409Body_ThroughVerbatim()
+    {
+        _factory.ConversionStatusCode = HttpStatusCode.Conflict;
+        _factory.ConversionConflictBody =
+            """{"error":"corrections_would_be_lost","status":"failed","correctedFigures":2}""";
+
+        var resp = await _factory.CreateClient()
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().Contain("corrections_would_be_lost");
+        body.Should().Contain("\"correctedFigures\":2");
+    }
+
+    // 明示確認は後段へ伝わること（BFF が握り潰すと補正は永遠に破棄できない）。
+    [Fact]
+    public async Task Retry_ForwardsDiscardConfirmation_ToDownstream()
+    {
+        await _factory.CreateClient()
+            .PostAsync($"/bff/conversion/jobs/{BffTestFactory.StubJobId}/retry?discardCorrections=true",
+                content: null);
+
+        _factory.LastConversionPath.Should().Contain("discardCorrections=true");
     }
 }

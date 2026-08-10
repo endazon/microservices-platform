@@ -118,10 +118,15 @@ public class NormalizationServiceTests
         public string LastMarkdown { get; private set; } = string.Empty;
         public List<string> SavedAssets { get; } = [];
 
+        // IADR-0154: 人手補正が本文を読み戻すため、保存した本文を URI 引きできるようにする。
+        private readonly Dictionary<string, string> _markdown = [];
+
         public Task<string> SaveMarkdownAsync(string key, string markdown, CancellationToken ct = default)
         {
             LastMarkdown = markdown;
-            return Task.FromResult($"storage://normalized/{key}");
+            var uri = $"storage://normalized/{key}";
+            _markdown[uri] = markdown;
+            return Task.FromResult(uri);
         }
 
         public Task<string> SaveAssetAsync(string key, byte[] bytes, string contentType,
@@ -130,5 +135,8 @@ public class NormalizationServiceTests
             SavedAssets.Add(key);
             return Task.FromResult($"storage://normalized/{key}");
         }
+
+        public Task<string?> TryGetMarkdownAsync(string uri, CancellationToken ct = default) =>
+            Task.FromResult(_markdown.TryGetValue(uri, out var md) ? md : null);
     }
 }

@@ -172,6 +172,6 @@ public class PipelineStepRegistrationTests
             CancellationToken ct = default)
             => Task.FromResult(new NormalizationResult(
                 DeterministicGuid.ForDocument(raw.SourceId, raw.OriginalPath),
-                "storage://normalized/pipe.md", [], 0, 0));
+                "storage://normalized/pipe.md", [], 0, 0, []));
     }
 }
