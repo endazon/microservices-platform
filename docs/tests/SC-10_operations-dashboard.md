@@ -12,7 +12,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-08-07
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -60,7 +60,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
 | 構成ビューア（SC-11）への導線 | `always offers the link to SC-11 for anyone who can open this screen` ／ 導線テスト A |
 | **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the knowledge-health section` |
-| アクセス制御（計画は運用者・管理者） | **管理者のみ**（差異。§アクセス制御）。`hides existence (NotFound) for an operator and for a plain user` |
+| アクセス制御（計画は運用者・管理者） | **管理者 ＋ 運用者**（**#544** で計画と一致）。`grants access to platform-admin` / `grants access to platform-operator` / `hides existence (NotFound) for a plain user` |
 
 ## FR-10 → テストの写像
 
@@ -122,7 +122,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
 | A | SC-10 → SC-11 | 「構成ビューア →」で構成ビューアへ遷移し、構成バージョンが出る（**2 ルートを 1 本のルータへ載せる**） |
-| B | 運用者の到達 | 運用者は SC-11 へ直接到達できるが、SC-10 は `NotFound`（差異の固定） |
+| B | 運用者の到達 | 運用者は **SC-10 にも SC-11 にも**直接到達できる（**#544** で反転。`lets an operator reach both SC-10 and SC-11 directly`） |
 
 ## バックエンド（BFF・xUnit）
 
@@ -133,7 +133,8 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | --- | --- | --- | --- | --- |
 | 1 | 集約 | FR-10 | `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
 | 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の**管理系ロール要求**（admin ＋ operator。**#544**）を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
-| 3 | **ロール制限** | [[IADR-0011]] | 管理者ロールが無ければ **403**。**画面が `platform-admin` 限定に据え置かれている根拠はここにある** | `GetSummary_WithoutAdminRole_Returns403` |
+| 3 | **ロール制限**（広げすぎない） | [[IADR-0011]] | **管理系ロール**（admin ＋ operator）が無ければ **403**（**#544** で名称と趣旨を実態へ） | `GetSummary_WithoutPrivilegedRole_Returns403` |
+| 3-b | **ロール開放**（**#544**） | 計画 §SC-10・裁定 Q19 / Q28 | **運用者は 200**。**この対が無いと「広げる」作業は検査にならない**（権限を全開にしても 3 は緑のまま） | `GetSummary_AsOperator_IsAllowed` |
 | 4 | 後段障害 | — | 後段の非成功ステータスをそのまま伝播し、空サマリへ縮退させない | `GetSummary_WhenDashboardFails_PropagatesStatus` ／ `GetSummary_WhenFeedbackStatsFails_PropagatesStatus` |
 | 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |
 
