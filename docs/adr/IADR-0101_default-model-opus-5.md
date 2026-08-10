@@ -9,7 +9,7 @@ related_ids:
   - IADR-0022
 author: claude
 created: 2026-07-24
-updated: 2026-08-07
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Claude Opus 5 へ改定・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
