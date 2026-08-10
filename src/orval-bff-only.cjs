@@ -19,14 +19,16 @@
  * 契約ファイル 1 か所で区別できる（区別の一覧は docs/api/BFF_bff-surface.md）。
  *
  * ★ 落とすのは `paths` **だけ**である。`components.schemas` は素通りする（#520 の変異試験 M8・#558）。
- * 下の `stripNonBff()` は `return { ...spec, paths }` であり、`components` には一切触れていない。
+ * 本ファイル末尾の `module.exports = (spec) => { … }` は `return { ...spec, paths }` であり、
+ * `components` には一切触れていない（**この前処理に名前付き関数は無い**——`grep` で探すときは
+ * `module.exports` を見ること）。
  * つまり **BFF が使わないスキーマも `bff.schemas.ts` へ出力される**（宣言数と生成数は一致する）。
  *   $ grep -c '^export interface ' platform/frontend/src/foundation/api/generated/bff.schemas.ts
  * **ここに件数を書かない。** 契約が増えれば動くためで、実際 #558 が引用した #520 時点の件数は
  * 起票から本コメント追記までの間に古くなっていた。**数えたいときは上のコマンドで数える。**
  *
  * **帰結**: 「型が生成されていない」ことを当てにした網は張れない。**網の有無を決めるのは
- * 「生成されるか」ではなく「画面がその型を読んでいるか」である**（[[IADR-0132]]。
+ * 「生成されるか」ではなく「画面がその型を読んでいるか」である**（IADR-0132。
  * 区別の一覧は docs/api/BFF_bff-surface.md §横断の規約 5）。
  *
  * この除外規則に専用の単体テストは置かない。**生成物がコミットされ、CI が再生成差分を検査する**
