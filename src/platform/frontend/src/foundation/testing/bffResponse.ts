@@ -43,7 +43,11 @@ export function noContent(): BffResponseStub {
  * 実物と違う経路を試験してしまう。
  */
 export function blobResponse(bytes: Uint8Array, contentType = 'image/png'): BffResponseStub {
-  const blob = new Blob([bytes], { type: contentType });
+  // `Uint8Array<ArrayBufferLike>` はそのままでは `BlobPart` に代入できない（TS 5.7 以降）。
+  // ビューのオフセットを持ち込まないよう、実体をコピーしてから `ArrayBuffer` を渡す。
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const blob = new Blob([copy.buffer], { type: contentType });
   return {
     status: 200,
     text: () => Promise.reject(new Error('binary body must not be read as text')),

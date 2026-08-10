@@ -487,14 +487,16 @@ describe('ConversionJobsPage (SC-07)', () => {
     await user.click(await screen.findByRole('button', { name: '再変換' }));
 
     // 件数を翻訳済みの文へ差し込む（サーバの日本語をそのまま出さない）。
-    const dialog = await screen.findByRole('alertdialog');
+    // **確認の同定は role ではなく「破棄ボタンが在ること」で行う。** 本確認は非モーダルなので
+    // `alertdialog` を名乗らない（実装しない振る舞いを role で宣言しない）。
+    const dialog = await screen.findByRole('alert');
     expect(
       within(dialog).getByText(/このジョブには人手補正が\s*3\s*件あります/),
     ).toBeInTheDocument();
 
     // 確認するまで discardCorrections は飛ばない。
     expect(
-      mocks.apiRequest.mock.calls.filter(([path]: [string]) => path.includes('discardCorrections')),
+      mocks.apiRequest.mock.calls.filter((call) => String(call[0]).includes('discardCorrections')),
     ).toHaveLength(0);
 
     discarded = true;
@@ -524,12 +526,18 @@ describe('ConversionJobsPage (SC-07)', () => {
     await renderPage(['platform-admin']);
 
     await user.click(await screen.findByRole('button', { name: '再変換' }));
-    const dialog = await screen.findByRole('alertdialog');
-    await user.click(within(dialog).getByRole('button', { name: '取り消す' }));
+    // 確認が出ていることを確かめてから取り消す（出ていないのに「送らなかった」では意味が無い）。
+    expect(await screen.findByRole('button', { name: '補正を破棄して再変換' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '取り消す' }));
 
-    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    // 確認が消え、破棄の要求は 1 度も飛んでいない。
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: '補正を破棄して再変換' }),
+      ).not.toBeInTheDocument(),
+    );
     expect(
-      mocks.apiRequest.mock.calls.filter(([path]: [string]) => path.includes('discardCorrections')),
+      mocks.apiRequest.mock.calls.filter((call) => String(call[0]).includes('discardCorrections')),
     ).toHaveLength(0);
   });
 
@@ -550,7 +558,8 @@ describe('ConversionJobsPage (SC-07)', () => {
     expect(
       await screen.findByText('このジョブは再変換できません（実行中、または失敗以外の状態です）。'),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    // **確認ではない**——破棄ボタンが出ていないことで区別する。
+    expect(screen.queryByRole('button', { name: '補正を破棄して再変換' })).not.toBeInTheDocument();
   });
 
   // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。#503 の時点ではミューテーションが

@@ -165,9 +165,14 @@ export function ConversionJobsPage() {
       {/* **補正が失われる旨の確認**（計画 `05_screens:313`「補正のあるジョブの再実行は、補正が
           失われる旨を示して明示確認を求める」）。**409 を受けてから出す**——先に出して通ったら
           投げる形にはしない（§correctionsWouldBeLost のコメント参照）。
-          `alertdialog` は「応答するまで先へ進めない」意味を持つ role である。 */}
+
+          **`role="alertdialog"` は使わない。** WAI-ARIA の `alertdialog` は「モーダルであり、
+          開いた時点で焦点が移り、応答するまで背後を操作できない」ことを意味する。本確認は
+          ページ内に差し込む**非モーダル**の注意であり、焦点も移さない（共有 UI に Dialog
+          プリミティブが無い）。**実装しない振る舞いを role で宣言しない**——支援技術の利用者に
+          嘘をつくことになるためである。`role="alert"` で即時に読み上げ、確認は本文とボタンで表す。 */}
       {pendingDiscard !== null && retryTarget && (
-        <Alert tone="warning" role="alertdialog" className="mb-2" label={t`確認`}>
+        <Alert tone="warning" role="alert" className="mb-2" label={t`確認`}>
           <p>
             <Trans>
               このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。
