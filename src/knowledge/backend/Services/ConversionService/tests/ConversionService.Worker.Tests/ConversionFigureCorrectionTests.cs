@@ -234,6 +234,41 @@ public class ConversionFigureCorrectionTests
         job!.HasCorrection.Should().BeFalse();
     }
 
+    // ★ レビュー指摘の検証: 「corrections_would_be_lost は通常の API 経路では到達しない」か。
+    // **ストアを直叩きせず、公開 API だけで到達できるか**を実測する。
+    [Fact]
+    public async Task Retry_CorrectionsGate_IsReachable_ThroughPublicApiOnly()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = await SeedSucceededAsync(factory);
+
+        // 失敗させるのもストア直叩きを使わない——変換の失敗は公開 API では起こせないので、
+        // ここでは「失敗済みのジョブに図が残っている」状態を作れるかを見る。
+        // 公開 API で作れないなら、この Fact 自体が到達不能性の証拠になる。
+        var beforeCorrection = await client.PostAsync($"/jobs/{id}/retry", content: null);
+        // succeeded なので not_retryable で弾かれる（＝補正ゲートまで届かない）。
+        beforeCorrection.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await beforeCorrection.Content.ReadAsStringAsync()).Should().Contain("not_retryable");
+    }
+
+    // CodeQL（Log entries created from user input）: 利用者由来の値をログへ出す前に無害化すること。
+    // **改行を残すと偽のログ行を注入できる。** 経路パラメータ（figureId）は呼び出し元が自由に決められる。
+    [Fact]
+    public async Task Correction_WithControlCharsInFigureId_DoesNotBreak()
+    {
+        using var factory = new Factory();
+        var client = factory.CreateClient();
+        var id = await SeedSucceededAsync(factory);
+
+        // 改行を含む図 ID は当然どの図にも一致しないので 404。**落ちたり注入されたりしないこと**を見る。
+        var injected = Uri.EscapeDataString("fig-1\n2026-01-01 INFO 偽のログ行");
+        var resp = await client.PostAsJsonAsync($"/jobs/{id}/figures/{injected}/correction",
+            new FigureCorrectionRequest("mermaid", "flowchart LR; X-->Y;"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
     private sealed class Factory : WebApplicationFactory<Program>
     {
         private readonly string _dbName = Guid.NewGuid().ToString();

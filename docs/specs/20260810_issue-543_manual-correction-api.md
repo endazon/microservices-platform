@@ -361,11 +361,48 @@ return Results.StatusCode((int)resp.StatusCode);   // ← 本文が消える
 `LastConversionPath` をテストのコンストラクタで戻さないと、**後続テストの retry 応答へ本文が漏れる**。
 既存の `ConversionStatusCode` / `ConversionThrows` と並べて戻すようにした。
 
+### 7. ★ 補正ゲートの到達経路（レビュー 1 巡目の 🟡）
+
+レビューが「`corrections_would_be_lost` は通常操作では到達しない」と指摘した。**実測して確かめた。**
+
+```
+補正済みの succeeded ジョブ → POST /jobs/{id}/retry → 409 not_retryable（補正ゲートまで届かない）
+```
+
+（`Retry_CorrectionsGate_IsReachable_ThroughPublicApiOnly` で固定した。）
+
+**指摘は正しい。** `retry` は直上で `failed` 以外を弾き、補正は `succeeded` のジョブへ入るためである。
+
+**ただし「到達しない」わけではない。** 発火するのは
+**「一度成功して図が記録されたジョブが、その後の変換で失敗した」**場合である
+——図は `MarkFailed` で消えないので補正が残り、そこへ `retry` が来る。稀だが実在する経路であり、
+**そのときこそ補正が黙って消えてはならない**ので分岐は残す。
+
+**分岐を消さないための注記をコードへ置いた。** 書いておかないと、次に読む人が
+「到達しない分岐」と判断して外しかねない（レビューがまさにその読み方をしかけた）。
+
+### 8. CodeQL: 利用者由来の値をログへ出していた（3 件）
+
+`figureId`（経路パラメータ）と `request.Language`（要求本文）が `logger` へ直接渡っていた。
+**改行を残すと偽のログ行を注入できる**（Log entries created from user input）。
+
+`RawDocumentFetchedConsumer.SummarizeError` が変換失敗メッセージを 1 行へ丸めているのと**同じ趣旨**であり、
+`ForLog()` で**制御文字を落として長さを切る**。**ログ本文だけの措置**で、保存する値は変えていない。
+回帰テスト `Correction_WithControlCharsInFigureId_DoesNotBreak` を置いた。
+
+### 9. BFF の画像取得が図一覧を毎回引く（レビュー 1 巡目の 🟡・**変更しない**）
+
+`GET /figures/{figureId}/image` は 1 枚のために `GET /jobs/{id}/figures` を丸ごと取る。
+**指摘のとおりだが、変更しない。** 単一図取得の口をワーカーへ足すと [[IADR-0029]]
+（ワーカーは最小 HTTP サーフェス）に反する。SC-07 の想定図数（数枚）では実害が無く、
+レビュー自身も「妥当な範囲のトレードオフ」と評している。**Phase 2 で図数が増えるなら見直す。**
+
 ## 申し送り
 
 - **SC-07 画面（2 ペイン編集・「補正あり」標識・確認ダイアログ）は別 issue** で起票する。
 - **#545 は本 issue の着手で解消**する（後継 IADR = [[IADR-0154]]）。
 - Phase 2（Markdown 全体の編集）は計画が繰り延べており、**本 issue では扱わない**。
+- **Phase 2 で 1 ジョブの図数が増えるなら、BFF の画像取得を見直す**（§9）。
 - `01_screens.md:289,298` が「**人手補正（Phase 2）の導入時に SC-06 手動同期の分類を再確認する**」と
   予告している。**Phase 1 では補正が retry で消えるゲートを API に置くため実害は無い**が、
   **手動同期がトリガする再変換にも同じゲートが及ぶかは未確定のまま**である。

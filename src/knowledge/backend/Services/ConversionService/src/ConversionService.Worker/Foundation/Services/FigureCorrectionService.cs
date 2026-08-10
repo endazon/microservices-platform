@@ -67,7 +67,7 @@ public class FigureCorrectionService(
         {
             logger.LogWarning(
                 "Manual correction aborted for job {JobId} figure {FigureId}: image embed not found in body",
-                jobId, figureId);
+                jobId, ForLog(figureId));
             return new(FigureCorrectionStatus.BodyUnavailable);
         }
 
@@ -94,9 +94,23 @@ public class FigureCorrectionService(
             NormalizedAt: DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation("Manual correction applied: job={JobId} figure={FigureId} lang={Language}",
-            jobId, figureId, request.Language);
+            jobId, ForLog(figureId), ForLog(request.Language));
 
         return new(FigureCorrectionStatus.Applied, markdownUri,
             figures?.Count(f => f.Corrected) ?? 0);
+    }
+
+    // 利用者由来の値をログへ出す前に無害化する（CodeQL: Log entries created from user input）。
+    // `figureId` は経路パラメータ、`language` は要求本文であり、**どちらも呼び出し元が自由に決められる**。
+    // 改行を残すと**偽のログ行を注入**できてしまい、後からログを読む人・機械が別の事象と誤読する。
+    // 変換失敗メッセージを 1 行へ丸めている `RawDocumentFetchedConsumer.SummarizeError` と同じ趣旨で、
+    // **制御文字を落とし、長さを切る**。ログ本文だけの措置であり、保存する値は変えない。
+    private static string ForLog(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "(empty)";
+        var chars = value.Select(c => char.IsControl(c) ? ' ' : c).ToArray();
+        var flattened = new string(chars).Trim();
+        const int max = 120;
+        return flattened.Length <= max ? flattened : flattened[..max] + "…";
     }
 }

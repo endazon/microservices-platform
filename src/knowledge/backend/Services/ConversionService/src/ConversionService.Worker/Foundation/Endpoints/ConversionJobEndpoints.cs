@@ -44,6 +44,14 @@ public static class ConversionJobEndpoints
             if (job.Status != ConversionJobStatus.Failed)
                 return Results.Conflict(new { error = "not_retryable", status = job.Status });
 
+            // **［到達経路の注記 / PR #650 レビュー 1 巡目］この分岐は「人が手で retry を押す」主経路では
+            // 発火しない。** 直上で `failed` 以外を弾いているのに対し、補正は `succeeded` のジョブへ入る
+            // ためである（実測: 補正済みの succeeded ジョブへ retry すると `not_retryable` で止まる。
+            // `Retry_CorrectionsGate_IsReachable_ThroughPublicApiOnly` が固定している）。
+            // **発火するのは「一度成功して図が記録されたジョブが、その後の変換で失敗した」場合**である
+            // ——図は `MarkFailed` で消えないので補正が残り、そこへ retry が来る。稀だが実在する経路で
+            // あり、**そのときこそ補正が黙って消えてはならない**ので分岐は残す。
+            // これを書いておかないと、次に読む人が「到達しない分岐」と判断して外しかねない。
             var discard = discardCorrections == true;
             if (!discard && job.HasCorrection)
             {
