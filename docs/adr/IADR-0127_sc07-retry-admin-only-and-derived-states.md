@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-05, SC-06, SC-07, SC-08, UC-02, UC-03, UC-04, UC-06, FR-01, FR-06, FR-07, FR-11, FR-12, ADR-0031, IADR-0039, IADR-0041, IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0128, IADR-0131]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -50,6 +50,15 @@ related_specs:
 - 起点 issue: **#503**（連携 **#501**）
 
 ## コンテキストと課題
+
+> **★［2026-08-10 追記 / #553］planning#198 提案 8 の裁定が出た（案 B に関する裁定待ちは解消）。**
+>
+> **利用者裁定 2026-08-05（質問票 第12回 Q19）で計画側が実装へ合わせて改訂された** ——
+> 計画 `05_screens/01_screens.md:124` / `:273` / `:298` / `:314` は現在
+> **「閲覧は管理者・運用者／破壊的操作は管理者限定」**である。
+> **本 ADR が案 B を却下して [[IADR-0039]] 決定 1 を維持した判断が正しかった。**
+> 本文の「裁定を要する」「裁定待ち」は**当時の状況として正しい記録**なので書き換えない。
+> **再変換の管理者限定（決定 1）は維持**であり、本 ADR の決定は 1 つも覆っていない。
 
 #503 は SC-05〜08 を新スタックへ載せ替える。実装にあたり、計画が値を与えていない／
 計画と既存の実装決定が食い違う次の 7 論点を確定する必要がある（7 は PR #508 のレビューで顕在化した）。
