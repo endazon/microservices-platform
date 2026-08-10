@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-09
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -532,13 +532,24 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`。受信先＝メール/チャットは
   運用環境ごとに配備・設定）。未配備でもルール評価は行われ Prometheus UI / Grafana から発火を確認できる。
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
-  スループット・5xx 率・p99・RAG レイテンシ）。
+  スループット・5xx 率・p99・RAG レイテンシ）と
+  [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の呼び出し回数。費用ではない**）。
+- **LLM 費用の統制（暫定）**: **上限アラートは Alertmanager 配備後に有効となる。配備までは月次の手動確認である**
+  （計画 決定 39〜41 / #546）。手順・担当・記録は
+  [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) が定める。
+  **費用の金額は現状 1 円も出せない**（トークン消費量・金額換算とも未実装。[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §結果 フォローアップ 2）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
   現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/microservices-platform/` 配下に Prometheus/
   Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
-| 監視対象 | 指標（メトリクス） | 閾値 | 通知先 | 対応 NFR |
+> **★ 通知先の現状（#546 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価している**が、
+> **通知は誰にも届いていない** —— `prometheus.yml` の `alertmanagers.targets` が**空**だからである
+> （compose・k8s の**2 か所とも**空。実測）。**「通知先」列は配備後の宛先であって、いま働いている経路ではない。**
+> 暫定の一次検知は **Prometheus UI / Grafana で発火を目視すること**である。
+> 計画は**暫定の通知先を Grafana の内蔵アラートとする**と定めた（決定 42）が、**その配線は未了**である（#665）。
+
+| 監視対象 | 指標（メトリクス） | 閾値 | 通知先（**配備後**。現状は未配線） | 対応 NFR |
 | --- | --- | --- | --- | --- |
 | 可観測性パイプライン | `up{job="otel-collector"}`（唯一の scrape 対象） | ==0 が 2 分 | Alertmanager（critical） | 検出 5 分以内 |
 | サービス応答断（近似） | `rate(http_server_duration_milliseconds_count)` の途絶（直近まで受信有） | 0 が 5 分 | Alertmanager（warning） | 可用性 99.9% |
@@ -599,7 +610,8 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 | サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し（#197） |
 | 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ。IADR-0029） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fast（IADR-0028）で不整合構成の反映は阻止済み。恒常化は宣言の是正 |
 
-- **エスカレーション/通知**: Alertmanager の受信先（メール/チャット）と担当・当番は運用体制に応じて定める（環境ごと）。
+- **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。
+  **配備までは自動通知が無い** —— 一次検知は Prometheus UI / Grafana の目視である（#546 / #665）。
 - **MTTR 目標（30 分）**: アラート（検出 5 分以内）→ Runbook 一次対応 → 復旧、の各段を Grafana/Tempo/Loki で追跡する。
 
 ## 定期点検（年次）
@@ -627,7 +639,11 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 ## 未決事項
 
 - **Alertmanager の受信先設定**: メール/チャット通知経路（`prometheus.yml` の `alerting.alertmanagers`）は
-  運用環境ごとに配備・設定する（現状はターゲット未設定でルール評価のみ）。
+  運用環境ごとに配備・設定する（現状はターゲット未設定でルール評価のみ。**compose・k8s の 2 か所とも空**）。
+  **配備時期は実環境の判断**であり **#546 で追跡している**。**暫定の通知先（Grafana 内蔵アラート）の配線は #665**。
+- **LLM 費用の自動検知**: **無い**（Alertmanager 未配備）。**検知の遅れは最大 1 か月**であることを受け入れ、
+  月次の手動確認を暫定の統制として置いた（計画 決定 39 / [Runbook](llm-cost-monthly-review-runbook.md)）。
+  **月次予算の金額（しきい値）も未確定**であり、実測後に確定する（決定 41）。
 - **監視の stg/prod（k3s）展開**: Prometheus/Alertmanager を Helm（Operator 等）で配備し、`alerts.yml` 相当の
   ルールと通知を k3s にも展開する（現状は dev/compose のみ配線）。
 - **RabbitMQ キュー滞留・デッドレター・構成ドリフトのアラート**: それぞれ RabbitMQ Prometheus プラグインの

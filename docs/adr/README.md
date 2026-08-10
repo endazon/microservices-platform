@@ -217,6 +217,7 @@
 | [IADR-0161](./IADR-0161_test-inmemory-db-isolation.md) | テストの InMemory DB を**クラスごとの一意名**で分離する（固定名を 4 サービスが計 23 クラスで共有し、xUnit のクラス並列と噛み合って確率的に落ちていた）。並列は止めない。回帰は**確率に頼らず**「別インスタンスから見えない」ことで固定する。 | Accepted |
 | [IADR-0162](./IADR-0162_openapi-required-request-vs-response.md) | `required` の規則を**要求側と応答側で分ける**（IADR-0132 論点 B の B1 は応答側の規則である）。要求側は「非 null **かつ既定値なし**」だけを必須とし、到達性は openapi.yaml から推移的に導く。据え置き 10 件は**是正 3・偽陽性 5・意図的な差 2** で、ラチェットは撤去した。 | Accepted |
 | [IADR-0163](./IADR-0163_doc-source-path-existence-check.md) | 必須仕様書が指す **`.cs` パスの実在**を検査する（IADR-0062 の改名と IADR-0027 の Foundation 分割に 4 本が追随していなかった）。**汎用のパス検査にしない** —— 偽陽性が 6 クラス（kubectl 資源・生成物・省略形・不在を述べる文 等）あり無関係な文書を落とす。**履歴文書（specs / adr / superpowers）は対象外**。 | Accepted |
+| [IADR-0164](./IADR-0164_llm-cost-monthly-review-interim-control.md) | LLM 費用の暫定統制を**代理指標の月次確認**として置く（計画 決定 39〜41）。実測すると**Grafana に LLM コストダッシュボードが無く費用も出せない**ため、`llm_completion_total` から**「費用ではない」と明示した**ダッシュボードを作り手順書の行き先を実在させる。**絶対額のしきい値は持たない**。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

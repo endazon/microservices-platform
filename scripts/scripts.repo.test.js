@@ -2556,6 +2556,65 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // ── #546 / IADR-0164: Grafana の LLM ダッシュボードが実装のメトリクスから乖離しないこと ──
+  //
+  // 月次の手動確認（`docs/operations/llm-cost-monthly-review-runbook.md`）はこのダッシュボードを
+  // 見に行く。**式のメトリクス名・属性名が実装とずれると、運用者は空のグラフを見て「異常なし」と記録する。**
+  // 名前の一致だけは機械で固定する（描画そのものは Grafana を起動できないため検証していない）。
+  {
+    const fsG = require('fs');
+    const pathG = require('path');
+    const root = pathG.join(__dirname, '..');
+    const dashFile = 'deploy/grafana/provisioning/dashboards/llm-usage.json';
+
+    ok('llm-usage ダッシュボード: JSON として妥当で uid が既存と重複しない', () => {
+      const d = JSON.parse(fsG.readFileSync(pathG.join(root, dashFile), 'utf8'));
+      const other = JSON.parse(fsG.readFileSync(
+        pathG.join(root, 'deploy/grafana/provisioning/dashboards/microservices-platform-overview.json'), 'utf8'));
+      assert.ok(d.uid && d.uid !== other.uid, `uid が空か重複している: ${d.uid}`);
+      assert.ok(Array.isArray(d.panels) && d.panels.length > 0, 'panels が空');
+    });
+
+    // ★ **母集合を 1 ファイルに絞ると誤判定する。** 属性値（max_tokens / refusal）の実体は
+    // CompletionStopReasons（CompletionDto.cs）にあり、メトリクス側は定数を参照しているだけである。
+    ok('llm-usage ダッシュボード: 式の名前がすべて実装に実在する', () => {
+      const d = JSON.parse(fsG.readFileSync(pathG.join(root, dashFile), 'utf8'));
+      const exprs = d.panels.flatMap((p) => (p.targets || []).map((t) => t.expr)).join(' ');
+      const src = fsG.readFileSync(pathG.join(root,
+        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs'), 'utf8');
+      const dto = fsG.readFileSync(pathG.join(root,
+        'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs'), 'utf8');
+      const impl = src + dto;
+
+      // メトリクス名（OTel の `.` は Prometheus で `_` になる）。
+      const metrics = [...new Set(exprs.match(/\bllm_[a-z_]+_total\b/g) || [])];
+      assert.deepStrictEqual(metrics, ['llm_completion_total'], '式のメトリクス名が想定と違う');
+      assert.ok(/"llm\.completion\.total"/.test(impl), '実装に llm.completion.total が無い');
+
+      // 属性名。
+      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality)\b/g) || [])) {
+        const otel = attr.replace(/^llm_/, 'llm.');
+        assert.ok(impl.includes(`"${otel}"`), `式の属性 ${attr} が実装に無い`);
+      }
+
+      // 属性値（リテラルで絞り込んでいるもの）。
+      const vals = new Set();
+      for (const m of exprs.matchAll(/llm_(?:stop_reason|result)="([a-z_]+)"/g)) vals.add(m[1]);
+      assert.ok(vals.size > 0, '属性値による絞り込みが 1 つも無い（式が空か形が変わった）');
+      for (const v of vals) assert.ok(impl.includes(`"${v}"`), `式の属性値 ${v} が実装に無い`);
+    });
+
+    // Runbook が指す先が実在すること（#592 / IADR-0163 と同じ趣旨を、この 1 対について持つ）。
+    ok('月次確認 Runbook が指すダッシュボードが実在する', () => {
+      const rb = fsG.readFileSync(pathG.join(root, 'docs/operations/llm-cost-monthly-review-runbook.md'), 'utf8');
+      assert.ok(rb.includes(dashFile), 'Runbook がダッシュボードのパスを指していない');
+      assert.ok(fsG.existsSync(pathG.join(root, dashFile)), 'ダッシュボードが存在しない');
+      // 決定 41: 絶対額のしきい値を書かない。
+      assert.ok(!/[0-9][0-9,]*\s*(円|ドル|USD|JPY|\$)/.test(rb),
+        'Runbook に絶対額のしきい値が書かれている（計画 決定 41 に反する）');
+    });
+  }
+
   //
   // **ここが check-cross-repo-refs.js の CI 呼び出し口である。**`.github/workflows/` は
   // GitHub App 権限で編集できないため、新しい検査器を足しても新ジョブからは呼べない。

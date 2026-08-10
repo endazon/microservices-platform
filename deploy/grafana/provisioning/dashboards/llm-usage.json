@@ -1,0 +1,105 @@
+{
+  "title": "LLM Usage (proxy for cost — NOT cost)",
+  "uid": "llm-usage",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": false,
+  "tags": ["microservices-platform", "llm", "cost-proxy"],
+  "time": { "from": "now-30d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "READ ME FIRST — これは費用ではない / This is NOT cost",
+      "type": "text",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "options": {
+        "mode": "markdown",
+        "content": "**このダッシュボードは費用を表示しない。** トークン消費量・金額換算・単価表はいずれも未実装である（`IADR-0110` §結果 フォローアップ 2 / #443）。\n\n表示しているのは **`llm_completion_total`（補完の呼び出し回数）** であり、**費用の代理指標**にすぎない。1 回あたりのトークン数はプロンプトと応答の長さで大きく変わるため、**回数が横ばいでも費用は増えうる**。\n\n**使い方**（#546 / 計画 決定 39・41）: 毎月 1 回、`docs/operations/llm-cost-monthly-review-runbook.md` の手順に従って**前月比の増減**と**月内累計の推移**を見る。**絶対額のしきい値は持たない**（月次予算の金額は実測後に確定する）。\n\n**自動検知は無い。** Alertmanager が未配備のため、超過してもアラートは飛ばない。**検知の遅れは最大 1 か月である。**"
+      }
+    },
+    {
+      "id": 2,
+      "title": "呼び出し回数（選択期間の累計・用途別） / Cumulative by purpose (selected range)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 6, "w": 12, "h": 9 },
+      "description": "**選択した時間範囲の累計**（`$__range` に追随する）。Runbook の手順どおり範囲を前月 1 か月へ合わせてから読む（決定 41 の「月内累計の推移」）。既定は直近 30 日。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (llm_purpose) (increase(llm_completion_total[$__range]))",
+          "legendFormat": "{{llm_purpose}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "呼び出し回数（選択期間の累計・モデル別） / Cumulative by model (selected range)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 6, "w": 12, "h": 9 },
+      "description": "モデル振り分けの効果を見る。上位モデルの比率が上がっていれば費用は回数以上に増える。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (llm_model) (increase(llm_completion_total[$__range]))",
+          "legendFormat": "{{llm_model}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "前月比（用途別） / Month-over-month by purpose",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 15, "w": 12, "h": 9 },
+      "description": "直近 30 日と、その 30 日前との比。1 を超えていれば増加している（決定 41 の「前月比の増減」）。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (llm_purpose) (increase(llm_completion_total[30d])) / clamp_min(sum by (llm_purpose) (increase(llm_completion_total[30d] offset 30d)), 1)",
+          "legendFormat": "{{llm_purpose}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "送信可否の内訳（選択期間） / Egress result breakdown (selected range)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 15, "w": 12, "h": 9 },
+      "description": "sent が費用の発生する経路である。egress_denied は機密区分により送信していない（費用は発生しない）。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum by (llm_result) (increase(llm_completion_total[$__range]))",
+          "legendFormat": "{{llm_result}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "拒否率 / Refusal rate",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "description": "送ったがモデルが拒否した割合。費用は発生しているのに成果が無い分である（IADR-0104 / IADR-0110）。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(llm_completion_total{llm_stop_reason=\"refusal\"}[30m])) / clamp_min(sum(rate(llm_completion_total{llm_result=\"sent\"}[30m])), 1e-9)",
+          "legendFormat": "refusal rate"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "max_tokens 打ち切り率 / Truncation rate",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "description": "打ち切りは再試行を招きやすく、費用の押し上げ要因になる。",
+      "targets": [
+        {
+          "datasource": "Prometheus",
+          "expr": "sum(rate(llm_completion_total{llm_stop_reason=\"max_tokens\"}[30m])) / clamp_min(sum(rate(llm_completion_total{llm_result=\"sent\"}[30m])), 1e-9)",
+          "legendFormat": "max_tokens rate"
+        }
+      ]
+    }
+  ]
+}
