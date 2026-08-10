@@ -87,7 +87,14 @@ done:   {202607: 88, 202608: 71}
 
 ### 軸 5: **`docs/specs/` へ絞らない**（issue は絞っていた）
 
-`docs/` 全体 **548 ファイル**（`git ls-files docs/`）。`docs/specs/*.md` の 263 件は一部でしかない。
+`docs/` 全体 **548 ファイル**（`git ls-files docs/`。**基準は本 PR の変更前＝develop `9e1971a`**）。
+`docs/specs/*.md` の 263 件は一部でしかない。
+
+> **★ 件数には基準時点を書く。** 本 PR は文書を 2 件（本書 ＋ [IADR-0166](../adr/IADR-0166_status-vocabulary-and-record-rewrite-boundary.md)）
+> 足すため、**マージ後は 550 になる**。基準を書かずに件数だけ載せると、
+> **読んだ人が「いま数え直したら合わない」と受け取る。**
+> 実際、**PR 本文へ貼った検査器のログが 1 件古くなり**（`502` → 実際は `503`）、AI レビュー 🟢 で指摘された ——
+> **本書の 548 も同型であり、指摘 1 件を氷山の一角として引き直して見つけた。**
 
 | ディレクトリ | 件数 | `status` の内訳 |
 | --- | ---: | --- |
@@ -181,7 +188,8 @@ issue は `grep -h '^status:' docs/specs/*.md | sort | uniq -c` を貼ってい�
 
 | 種別 | 件数 | 種別表 | 扱い |
 | --- | ---: | --- | --- |
-| `how-to` / `how-to-guide` | 3（`published` 2 / `active` 1） | 有り（任意） | **対象外**。README:61「仕様ではなく作業手順の案内」 |
+| `how-to` | 1（`active`） | 有り（任意） | **対象外**。README:61「仕様ではなく作業手順の案内」。**手順に「実装中」は無い** |
+| `how-to-guide` | 2（`published`） | **無し** | **対象外**。**種別表は `how-to` であり `how-to-guide` は無い** —— `type` の割れ（#675）の一例。どちらの基準でも対象外になる |
 | `runbook` | 2（`fixed` 1 / `active` 1） | 有り（任意） | **対象外**。README:60「状態の単一情報源は `operations.md`」 |
 | `tech-note` | 1（`fixed`） | **無し** | **対象外**。`docs/tech/20260707_wikijs-poc-record.md` は PoC の実測記録であり要件書ではない |
 | `design`（`docs/superpowers/`） | 1（`approved`） | **無し** | **対象外**。#59 / #72 由来の旧構造 |
