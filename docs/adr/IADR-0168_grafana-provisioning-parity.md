@@ -115,6 +115,18 @@ k8s 側で区別できない。**初版はフラットな Map を作っており
 **k8s 側・compose 側の両方で同名を検出して違反にする。**
 `extractInlineFiles` は**上書きせず** `duplicates` へ記録し、`findIssues` がそれを違反として返す。
 
+### ★ 追記: **曖昧なまま比較して「乖離している」と断定しない**
+
+**AI レビュー 🟢**（同 PR の 2 回目）。同名があるとき、主ループが**どちらか一方**の inline と比較して
+「`provisioning/alerting/x.yaml` が compose と k8s で同内容でない」と報告していた。
+**レビューは「出力が賑やかになるだけで実害はない」と評したが、そうではない** ——
+**対応付けが決まっていないのに、特定のファイルが乖離していると断定している。**
+
+> **黙るより悪い。** 読む人はその 1 行を根拠に、実際には比べていないファイルを直しに行く。
+
+**同名の名前については比較そのものを行わず、曖昧さだけを報告して降りる。**
+**「断定しないこと」を自己試験で固定した**（`同内容でない` を含まないことを assert する）。
+
 ## ★ 決定 4: **自己試験が、自分の書いた主張の誤りを捕まえた**
 
 `.json` の比較を「鍵順・空白を無視する」と書いたが、
@@ -129,7 +141,7 @@ k8s 側で区別できない。**初版はフラットな Map を作っており
 ## 結果
 
 - `deploy/local/observability/grafana.yaml`（`grafana-dashboards` ConfigMap 新設 ＋ マウント ＋ Tempo の 2 キー）
-- `scripts/check-grafana-provisioning-parity.js`（新規。自己試験 **12 件**）
+- `scripts/check-grafana-provisioning-parity.js`（新規。自己試験 **13 件**）
 - `scripts/scripts.repo.test.js`（7 件追加。**門 A / 門 B を別々に変異試験**）
 - `docs/operations/operations.md`（経路 B でダッシュボードが見られるようになったこと）
 

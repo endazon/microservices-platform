@@ -3764,6 +3764,7 @@ module.exports = ({ ok, assert }) => {
         'k8s にだけある inline を検出する',
         'k8s の ConfigMap に同名がある形を検出する',
         'compose 側に同名がある形も検出する',
+        '同名があるときは「同内容でない」と断定しない',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }

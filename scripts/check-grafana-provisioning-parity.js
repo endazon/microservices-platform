@@ -146,10 +146,12 @@ function findIssues({ compose, inline, mounts }) {
     issues.push(`k8s の ConfigMap に ${dup} が 2 つ以上ある。突合は basename で行うため、どれと比べたかが決まらない`);
   }
   const seen = new Set();
+  const ambiguous = new Set(inline.duplicates ?? []);
   for (const { rel } of compose) {
     const name = rel.split('/').pop();
     if (seen.has(name)) {
       issues.push(`compose の provisioning に ${name} が 2 つ以上ある（別ディレクトリでも ConfigMap では同じキーになる）`);
+      ambiguous.add(name);
     }
     seen.add(name);
   }
@@ -157,6 +159,9 @@ function findIssues({ compose, inline, mounts }) {
   for (const { rel, text } of compose) {
     const key = rel.split('/').pop();
     const dir = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+    // ★ 同名があるとどれと比べるべきかが決まらない。**曖昧なまま比較して「同内容でない」と
+    //   断定するほうが、黙るより悪い**（PR #678 の AI レビュー 🟢）。曖昧さだけを報告して降りる。
+    if (ambiguous.has(key)) continue;
     if (!inline.has(key)) {
       issues.push(`compose の provisioning/${rel} が k8s の ConfigMap に無い（経路 B に存在しない）`);
       continue;
@@ -252,6 +257,23 @@ function selfTest() {
     const b = base();
     b.compose.push({ rel: 'alerting/a.json', text: '{"uid":"a","panels":[]}' });
     assert.ok(findIssues(b).issues.some((x) => x.includes('compose の provisioning に a.json が 2 つ以上')));
+  });
+
+  t('★ 同名があるときは「同内容でない」と断定しない（曖昧な比較を報告しない）', () => {
+    const b = {
+      compose: [
+        { rel: 'datasources/x.yaml', text: 'a: 1\n' },
+        { rel: 'alerting/x.yaml', text: 'b: 2\n' },
+      ],
+      inline: Object.assign(new Map([['x.yaml', 'a: 1\n']]), { duplicates: [] }),
+      mounts: ['/etc/grafana/provisioning/datasources', '/etc/grafana/provisioning/alerting'],
+    };
+    const r = findIssues(b);
+    assert.ok(r.issues.some((x) => x.includes('2 つ以上ある')), JSON.stringify(r.issues));
+    assert.ok(
+      !r.issues.some((x) => x.includes('同内容でない')),
+      `曖昧な対応付けに対して乖離を断定している: ${JSON.stringify(r.issues)}`,
+    );
   });
 
   t('extractInlineFiles は同名を上書きせず duplicates へ記録する', () => {
