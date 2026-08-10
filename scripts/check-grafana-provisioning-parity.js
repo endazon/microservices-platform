@@ -21,6 +21,14 @@
  *     **限界**: 鍵の順序を入れ替えただけでも「不一致」と報告する ——
  *     **緩いより厳しい側へ倒している**（本物の乖離を素通りさせない）。
  *
+ * ★★ 突合は **basename**（ConfigMap の data キー）で行う。ConfigMap の data はディレクトリを
+ *   持たないため、`dashboards/x.yaml` と `datasources/x.yaml` は k8s 側では区別できない。
+ *   **初版はフラットな Map を作っており、同名があると後勝ちで上書きされ、片方の突合が黙って
+ *   空振りしていた**（PR #678 の AI レビュー 🟡。再現して確認した）。
+ *   **限界をコメントで残すのではなく、同名を検出して落とす**——
+ *   「黙って空振りする検査器」は #664 / #674 が是正した型そのものであり、
+ *   **本 PR がその型を新しく持ち込むわけにはいかない。**
+ *
  * 実行: node scripts/check-grafana-provisioning-parity.js [--self-test]
  */
 const fs = require('fs');
@@ -58,6 +66,7 @@ function collectCompose(root) {
 function extractInlineFiles(text) {
   const lines = text.split('\n');
   const files = new Map();
+  const duplicates = [];
   for (let i = 0; i < lines.length; i++) {
     const m = /^ {2}([A-Za-z0-9._-]+): \|\s*$/.exec(lines[i]);
     if (!m) continue;
@@ -72,9 +81,12 @@ function extractInlineFiles(text) {
       if (!l.startsWith('    ')) break;
       body.push(l.slice(4));
     }
-    files.set(m[1], body.join('\n'));
+    // ★ 同名は後勝ちで上書きせず、記録して呼び出し側へ返す（黙って空振りさせない）。
+    if (files.has(m[1])) duplicates.push(m[1]);
+    else files.set(m[1], body.join('\n'));
     i = j - 1;
   }
+  files.duplicates = duplicates;
   return files;
 }
 
@@ -127,6 +139,20 @@ function sameContent(rel, a, b) {
 function findIssues({ compose, inline, mounts }) {
   const issues = [];
   const mountSet = new Set(mounts);
+
+  // ★ 突合は basename で行うため、同名があると「どれと比べたか」が決まらない。
+  //   k8s 側（ConfigMap の data キー）と compose 側の両方を見る。
+  for (const dup of inline.duplicates ?? []) {
+    issues.push(`k8s の ConfigMap に ${dup} が 2 つ以上ある。突合は basename で行うため、どれと比べたかが決まらない`);
+  }
+  const seen = new Set();
+  for (const { rel } of compose) {
+    const name = rel.split('/').pop();
+    if (seen.has(name)) {
+      issues.push(`compose の provisioning に ${name} が 2 つ以上ある（別ディレクトリでも ConfigMap では同じキーになる）`);
+    }
+    seen.add(name);
+  }
 
   for (const { rel, text } of compose) {
     const key = rel.split('/').pop();
@@ -213,6 +239,25 @@ function selfTest() {
     const b = base();
     b.inline.set('extra.yaml', 'x: 1\n');
     assert.ok(findIssues(b).issues.some((x) => x.includes('経路 A に存在しない')));
+  });
+
+  t('★ k8s の ConfigMap に同名がある形を検出する（後勝ちで黙って空振りさせない・変異試験）', () => {
+    const b = base();
+    b.inline.duplicates = ['a.json'];
+    const r = findIssues(b);
+    assert.ok(r.issues.some((x) => x.includes('2 つ以上ある') && x.includes('a.json')), JSON.stringify(r.issues));
+  });
+
+  t('★ compose 側に同名がある形も検出する（別ディレクトリでも ConfigMap では同じキー）', () => {
+    const b = base();
+    b.compose.push({ rel: 'alerting/a.json', text: '{"uid":"a","panels":[]}' });
+    assert.ok(findIssues(b).issues.some((x) => x.includes('compose の provisioning に a.json が 2 つ以上')));
+  });
+
+  t('extractInlineFiles は同名を上書きせず duplicates へ記録する', () => {
+    const got = extractInlineFiles('data:\n  a.yaml: |\n    first: 1\n---\ndata:\n  a.yaml: |\n    second: 2\n');
+    assert.strictEqual(got.get('a.yaml'), 'first: 1', '後勝ちで上書きされている');
+    assert.deepStrictEqual(got.duplicates, ['a.yaml']);
   });
 
   t('extractInlineFiles は字下げ 4 を剥がし、次のキーで止まる', () => {

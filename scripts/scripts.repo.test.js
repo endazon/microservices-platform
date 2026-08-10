@@ -3762,6 +3762,8 @@ module.exports = ({ ok, assert }) => {
         '内容の乖離を検出する',
         'JSON の中身が違えば検出する',
         'k8s にだけある inline を検出する',
+        'k8s の ConfigMap に同名がある形を検出する',
+        'compose 側に同名がある形も検出する',
       ]) {
         assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
       }

@@ -96,7 +96,26 @@ Runbook は `uid: llm-usage` のダッシュボードを開けと書いている
 **限界**: 鍵の順序を入れ替えただけでも「不一致」と報告する ——
 **緩いより厳しい側へ倒している**（本物の乖離を素通りさせない）。
 
-## ★ 決定 3: **自己試験が、自分の書いた主張の誤りを捕まえた**
+## ★★ 決定 3: **同名の basename は「限界」として書かず、検出して落とす**
+
+**AI レビュー 🟡 の指摘**（PR #678）。突合は **basename**（ConfigMap の data キー）で行う ——
+ConfigMap の data はディレクトリを持たないため、`dashboards/x.yaml` と `datasources/x.yaml` は
+k8s 側で区別できない。**初版はフラットな Map を作っており、同名があると後勝ちで上書きされ、
+片方の突合が黙って空振りしていた。**
+
+**再現して確かめた**（`extractInlineFiles` に同名を 2 つ与えると後の値だけが残る）。
+**現状の 5 ファイルはすべて名前が違うので実害は無い。**
+
+**レビューは「限界を一言コメントに残せば安全（ブロッキングではない）」と提案したが、採らなかった。**
+
+> **「黙って空振りする検査器」は #664 と本 issue（#674）が是正した型そのものである。**
+> **その型を是正する PR が、新しい同型を持ち込むわけにはいかない。**
+> **コメントは読まれないことがあるが、fail するテストは読まれる。**
+
+**k8s 側・compose 側の両方で同名を検出して違反にする。**
+`extractInlineFiles` は**上書きせず** `duplicates` へ記録し、`findIssues` がそれを違反として返す。
+
+## ★ 決定 4: **自己試験が、自分の書いた主張の誤りを捕まえた**
 
 `.json` の比較を「鍵順・空白を無視する」と書いたが、
 **`JSON.stringify(JSON.parse(x))` は挿入順を保つ**ため実際には鍵順に依存していた。
@@ -110,7 +129,7 @@ Runbook は `uid: llm-usage` のダッシュボードを開けと書いている
 ## 結果
 
 - `deploy/local/observability/grafana.yaml`（`grafana-dashboards` ConfigMap 新設 ＋ マウント ＋ Tempo の 2 キー）
-- `scripts/check-grafana-provisioning-parity.js`（新規。自己試験 9 件）
+- `scripts/check-grafana-provisioning-parity.js`（新規。自己試験 **12 件**）
 - `scripts/scripts.repo.test.js`（7 件追加。**門 A / 門 B を別々に変異試験**）
 - `docs/operations/operations.md`（経路 B でダッシュボードが見られるようになったこと）
 
