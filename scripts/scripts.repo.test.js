@@ -3301,4 +3301,158 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #665: Grafana 内蔵アラート（暫定の一次検知）の provisioning ------------------
+  //
+  // **この検査器は「Grafana が受理するか」を見ていない**（実装環境で Grafana を起動できない。
+  // #665 の作業仕様書 §判断 0）。見ているのは provisioning YAML の内部整合だけである。
+  // **だからこそ、その狭い検出力が本当に働いていることを自動回帰にする。**
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const script = path.join(SCRIPTS, 'check-grafana-alerting.js');
+
+    const runGrafana = (args = [], cwd = REPO) => {
+      const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', cwd });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-grafana-alerting --self-test が通る', () => {
+      const { code, out } = runGrafana(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // ★ **self-test の件数だけを見ない。** 件数は変異ケースを消しても通りつづける
+    //   （#657 で実際にやった誤り）。**個々の変異ケースが走っていることを名指しで確かめる。**
+    ok('check-grafana-alerting: self-test が 5 種の変異ケースを実際に走らせている', () => {
+      const { out } = runGrafana(['--self-test']);
+      for (const name of [
+        'Prometheus にだけあるルールを検出する',
+        'Grafana にだけあるルールを検出する',
+        '宣言されていない datasourceUid を検出する',
+        'compose と k8s の乖離を検出する',
+        '必須キーの欠落を検出する',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-grafana-alerting が実データで違反 0 件', () => {
+      const { code, out } = runGrafana();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // #664 / IADR-0130 の下限。**件数リテラルは書かない**（ルールが増えれば動く。#558 の教訓）。
+    ok('0 件走査の門: check-grafana-alerting は実データでルールを 1 件以上拾う（下限）', () => {
+      const { code, out } = runGrafana();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/Prometheus (\d+) 件 \/ Grafana (\d+) 件/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0 && Number(m[2]) > 0, `走査件数が 0 だった:\n${out}`);
+    });
+
+    // ★ **変異試験は実データに対しても当てる。** フィクスチャだけだと、
+    //   「実ファイルの書式が正規表現に合っていない」型の空振り（#664 の枝番行・
+    //   #665 の `^  - alert:` 決め打ち）を捕まえられない。
+    ok('check-grafana-alerting: 実データのルールを 1 件消すと違反を出す（変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const prom = read('deploy/prometheus/alerts.yml');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const datasources = read('deploy/grafana/provisioning/datasources/datasources.yaml');
+      const k8sInline = g.extractK8sInline(read('deploy/local/observability/grafana.yaml'));
+
+      const clean = g.findIssues({ prom, grafana, datasources, k8sInline });
+      assert.deepStrictEqual(clean.issues, [], `実データが既に違反を持っている:\n${clean.issues.join('\n')}`);
+
+      // 実データの Grafana 側から**先頭のルール名だけ**を書き換える（Prometheus 側と食い違わせる）。
+      const first = g.promAlertNames(prom)[0];
+      assert.ok(first, 'Prometheus のルール名を 1 件も拾えなかった（正規表現が実書式に合っていない）');
+      const mutated = grafana.replace(`title: ${first}`, `title: ${first}Renamed`);
+      assert.notStrictEqual(mutated, grafana, `変異が当たっていない（title: ${first} が実ファイルに無い）`);
+      const r = g.findIssues({ prom, grafana: mutated, datasources, k8sInline });
+      assert.ok(
+        r.issues.some((x) => x.includes(`Grafana に無いルール: ${first}`)),
+        `実データの変異を検出できなかった:\n${JSON.stringify(r.issues)}`,
+      );
+    });
+
+    ok('check-grafana-alerting: 実データの datasource 宣言を消すと違反を出す（変異試験）', () => {
+      const g = require('./check-grafana-alerting.js');
+      const read = (p) => fs.readFileSync(path.join(REPO, p), 'utf8');
+      const grafana = read('deploy/grafana/provisioning/alerting/slo-alerts.yaml');
+      const r = g.findIssues({
+        prom: read('deploy/prometheus/alerts.yml'),
+        grafana,
+        datasources: 'apiVersion: 1\ndatasources: []\n', // uid 宣言を全部落とす
+        k8sInline: g.extractK8sInline(read('deploy/local/observability/grafana.yaml')),
+      });
+      assert.ok(
+        r.issues.some((x) => x.includes('datasourceUid') && x.includes('宣言されていない')),
+        `datasource 宣言の欠落を検出できなかった（軸 3 の再発防止が効いていない）:\n${JSON.stringify(r.issues)}`,
+      );
+    });
+
+    // ★ 門が効いていることの側（#672 のレビュー指摘。手元の 1 回で終わらせない）。
+    //
+    // **門は 2 つある。1 つの変異で両方を確かめたつもりにならない**（メタ変異試験で実測した）:
+    //   門 A: 4 つの対象ファイルのいずれかが読めない
+    //   門 B: ファイルは読めるが**ルールを 1 件も拾えない**（正規表現が実書式に合っていない型）
+    // **門 B を消しても門 A の試験は緑のまま通る。** だから 2 本に分ける。
+    const makeRepoWith = (files) => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'grafana-alerting-'));
+      fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+      for (const [rel, body] of Object.entries(files)) {
+        const abs = path.join(dir, rel);
+        fs.mkdirSync(path.dirname(abs), { recursive: true });
+        fs.writeFileSync(abs, body);
+      }
+      return dir;
+    };
+    const runInRepo = (dir) => {
+      const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-grafana-alerting.js')], {
+        encoding: 'utf8',
+        cwd: dir,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('0 件走査の門 A: check-grafana-alerting は対象ファイルが無いと fail する（変異試験）', () => {
+      const dir = makeRepoWith({});
+      try {
+        const { code, out } = runInRepo(dir);
+        assert.strictEqual(code, 1, `対象ファイルが無いのに緑を返した。門が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('0 件走査の門 B: 4 ファイルが揃っていてもルール 0 件なら fail する（変異試験）', () => {
+      // **ファイルはすべて読める**（門 A は通過する）。中身にルールが 1 件も無い状態を作る。
+      // これは「`^  - alert:` の決め打ちで実書式を拾えなかった」型の事故そのものである
+      // （#665 の作業仕様書 §軸 2 で実際にやった誤り）。
+      // ★ フィクスチャは**ルール 0 件以外はすべて健全**にする。他の違反を踏ませると、
+      //   門 B を消しても「別の理由で exit 1」になり、**門 B の試験が空振りする**
+      //   （最初に書いた `groups: []` がまさにこれで、必須キー検査に引っかかっていた）。
+      const dir = makeRepoWith({
+        'deploy/prometheus/alerts.yml': 'groups:\n',
+        'deploy/grafana/provisioning/alerting/slo-alerts.yaml': 'apiVersion: 1\ngroups:\n',
+        'deploy/grafana/provisioning/datasources/datasources.yaml': 'apiVersion: 1\ndatasources:\n',
+        'deploy/local/observability/grafana.yaml':
+          'data:\n  slo-alerts.yaml: |\n    apiVersion: 1\n    groups:\n',
+      });
+      try {
+        const { code, out } = runInRepo(dir);
+        assert.strictEqual(code, 1, `ルール 0 件で緑を返した。門 B が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  }
 };

@@ -11,6 +11,9 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        # #665: uid は compose 側（deploy/grafana/provisioning/datasources/datasources.yaml）と揃える。
+        # アラートルールが datasource を uid で指すため必須で、宣言しないと Grafana が生成する。
+        uid: prometheus
         type: prometheus
         access: proxy
         url: http://prometheus:9090
@@ -18,10 +21,12 @@ data:
         jsonData:
           timeInterval: "15s"
       - name: Loki
+        uid: loki
         type: loki
         access: proxy
         url: http://loki:3100
       - name: Tempo
+        uid: tempo
         type: tempo
         access: proxy
         url: http://tempo:3200
@@ -30,6 +35,200 @@ data:
             datasourceUid: prometheus
           nodeGraph:
             enabled: true
+---
+# #665: SLO アラートの暫定の一次検知。**compose 側の
+# deploy/grafana/provisioning/alerting/slo-alerts.yaml と同内容を inline する**
+# （datasources と同じ二重管理の方針）。乖離は scripts/check-grafana-alerting.js が止める。
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting
+  namespace: platform-infra
+data:
+  slo-alerts.yaml: |
+    # ADR-0006, NFR-21, #665: SLO アラートの**暫定**の一次検知（Grafana 統合アラート）。
+    #
+    # ★ これは暫定である。Alertmanager が配備されたら閉じる（併存させない）。
+    #   計画 `06_technical/05_observability-ops.md` 決定 42:
+    #     「SLO の一次検知 = Grafana の内蔵アラートを暫定の通知先とする。欠けているのは
+    #      検知そのものではなく通知の送り先だけである」
+    #   **ADR-0006（アラートは Alertmanager を用いる）は改めない。**
+    #   判断の経緯: docs/adr/IADR-0165_grafana-interim-alerting.md（**閉じる条件は docs/operations/operations.md**）
+    #
+    # ★★ 限界を先に書く（#546 / 計画 決定 40。「統制を定めた」と「統制が働いている」を読み分けられるように）
+    #
+    #   1. **push 配信の宛先は設定していない。** ここが定めるのは**検知とその可視化**までで、
+    #      メール / Slack 等の宛先は**実環境の判断**である（Alertmanager の配備と同じ性質）。
+    #      **contactPoints / policies を本ファイルへ書かないのは意図的である** ——
+    #      届かない宛先を書くと「配線した」と読めてしまう。
+    #   2. **したがって暫定期間は「人が Grafana の Alerting 画面を見る」ことで気づく。**
+    #      **NFR-21「障害検出 5 分以内」を満たすのは評価の側だけ**であり、
+    #      **人が気づくまでの時間は見に行く間隔に等しい。** 運用仕様書へ同じことを書いてある。
+    #   3. **本ファイルが Grafana に受理されるかは未検証である**（#665 の作業仕様書 §判断 0）。
+    #      実装環境で Grafana を起動できなかった（docker daemon へ到達不可）。
+    #      機械で確かめたのは **`scripts/check-grafana-alerting.js`** の範囲
+    #      —— ルール数と名前が `deploy/prometheus/alerts.yml` と 1 対 1、参照する
+    #      `datasourceUid` が実在、compose と k8s が同内容、必須キーが揃っている、まで。
+    #      **配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめること。**
+    #
+    # 式は `deploy/prometheus/alerts.yml` と**同じもの**を使う（二重管理だが、暫定期間だけである）。
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: platform-availability
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: slo-otel-collector-down
+            title: OtelCollectorDown
+            condition: C
+            for: 2m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: critical
+            annotations:
+              summary: "OTel Collector 到達不可（可観測性パイプライン断）"
+              description: "otel-collector の scrape が 2 分間失敗。メトリクス/トレース/ログの収集が停止している可能性。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: 'up{job="otel-collector"} == 0'
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+          - uid: slo-service-request-metrics-absent
+            title: ServiceRequestMetricsAbsent
+            condition: C
+            for: 5m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "サービスのリクエストメトリクスが途絶"
+              description: "直近まで処理していたサービスの HTTP メトリクスが 5 分間ゼロ。ダウン/到達不可の可能性（要 blackbox 補完）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 1800, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: |
+                    sum by (service_name) (rate(http_server_duration_milliseconds_count[5m])) == 0
+                    and on (service_name) (sum by (service_name) (http_server_duration_milliseconds_count offset 15m) > 0)
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0] }
+
+      - orgId: 1
+        name: platform-slo
+        folder: SLO
+        interval: 1m
+        rules:
+          - uid: slo-high-http-5xx-rate
+            title: HighHttp5xxRate
+            condition: C
+            for: 5m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: critical
+            annotations:
+              summary: "5xx 率が 5% 超"
+              description: "直近 5 分の 5xx 率が閾値超過。障害検出 5 分以内（NFR-21）。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: |
+                    sum by (service_name) (rate(http_server_duration_milliseconds_count{http_status_code=~"5.."}[5m]))
+                    / sum by (service_name) (rate(http_server_duration_milliseconds_count[5m]))
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [0.05] }
+
+          - uid: slo-search-latency-p95-high
+            title: SearchLatencyP95High
+            condition: C
+            for: 10m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "検索 p95 が 1.5s 超"
+              description: "RetrievalService の p95 レイテンシが NFR-01 目標(1.5s)を 10 分継続で超過。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: |
+                    histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.retrieval-service"}[5m])))
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [1500] }
+
+          - uid: slo-rag-latency-p95-high
+            title: RagLatencyP95High
+            condition: C
+            for: 10m
+            noDataState: NoData
+            execErrState: Error
+            labels:
+              severity: warning
+            annotations:
+              summary: "RAG 応答 p95 が 5s 超"
+              description: "AiAnalysisService /analysis/ask の p95 が NFR-02 目標(5s)を 10 分継続で超過。"
+            data:
+              - refId: A
+                relativeTimeRange: { from: 600, to: 0 }
+                datasourceUid: prometheus
+                model:
+                  refId: A
+                  instant: true
+                  expr: |
+                    histogram_quantile(0.95, sum by (le) (rate(http_server_duration_milliseconds_bucket{service_name="microservices-platform.aianalysis-service", http_route="/analysis/ask"}[5m])))
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  refId: C
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator: { type: gt, params: [5000] }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -89,6 +288,9 @@ spec:
             - name: datasources
               mountPath: /etc/grafana/provisioning/datasources
               readOnly: true
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting
+              readOnly: true
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits: { cpu: 500m, memory: 512Mi }
@@ -96,6 +298,9 @@ spec:
         - name: datasources
           configMap:
             name: grafana-datasources
+        - name: alerting
+          configMap:
+            name: grafana-alerting
 ---
 apiVersion: v1
 kind: Service

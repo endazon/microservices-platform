@@ -1,6 +1,10 @@
 apiVersion: 1
 datasources:
   - name: Prometheus
+    # #665: **uid を固定する。** Grafana のアラートルールは datasource を uid で指すため必須で、
+    # 宣言しないと Grafana が uid を生成する。Tempo の jsonData が `datasourceUid: prometheus` /
+    # `loki` を参照しているのに宣言が無く、**その参照が解決していなかった**（#665 で実測）。
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -9,11 +13,13 @@ datasources:
       timeInterval: "15s"
 
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
 
   - name: Tempo
+    uid: tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
