@@ -2278,13 +2278,43 @@ module.exports = ({ ok, assert }) => {
     // ★ #656: **検査器自身の盲点。** 群を辿って認可を合成する設計なので、
     // `app.MapVerb("/bff/...")` を群外に書かれると `requiresAuth` を判定できない。
     // 黙って読み飛ばすと「無認証の /bff/ 端点は存在しない」という不変条件がすり抜ける。
+    // **`collectImplementation` に実際に読ませる。** 手組みの端点オブジェクトを `findViolations` へ
+    // 渡すだけでは、**検出そのもの（正規表現で `app.MapVerb("/bff/...")` を拾う経路）が 1 度も走らない**。
+    // 実データには群外の `/bff/` 端点が無いため、そこからも到達しない。
     ok('check-bff-authz-docs: 群に属さない /bff/ 端点を違反として報告する（#656）', () => {
-      const src = 'app.MapPost("/bff/rogue", async () => Results.Ok());';
-      const eps = authz.collectImplementation.length >= 0
-        ? [{ file: 'f', path: '/bff/rogue', method: 'post', roles: null, requiresAuth: false, ungrouped: true }]
-        : [];
-      const v = authz.findViolations(eps, new Map());
-      assert.strictEqual(v[0].kind, 'ungrouped', src);
+      const fsG = require('fs');
+      const osG = require('os');
+      const pathG = require('path');
+      const dir = fsG.mkdtempSync(pathG.join(osG.tmpdir(), 'bff-authz-'));
+      const file = pathG.join(dir, 'RogueBffEndpoints.cs');
+      try {
+        fsG.writeFileSync(file, [
+          'public static class RogueBffEndpoints {',
+          '  public static IEndpointRouteBuilder Map(this IEndpointRouteBuilder app) {',
+          '    var g = app.MapGroup("/bff/ok").RequireAuthorization();',
+          '    g.MapGet("/", h);',
+          '    app.MapPost("/bff/rogue", h);          // 群外の /bff/ → 検出される',
+          '    app.MapPost("/internal/thing", h);     // 群外だが /bff/ ではない → 検出されない',
+          '    return app;',
+          '  }',
+          '}',
+        ].join('\n'));
+
+        const eps = authz.collectImplementation([file], consts, policies);
+        const rogue = eps.find((e) => e.path === '/bff/rogue');
+        assert.ok(rogue, '群外の /bff/ 端点を拾えていない');
+        assert.strictEqual(rogue.ungrouped, true);
+        assert.ok(!eps.some((e) => e.path.startsWith('/internal/')), '/internal/ を拾っている');
+        // 群内の端点は通常どおり（ungrouped ではない）。
+        assert.strictEqual(eps.find((e) => e.path === '/bff/ok').ungrouped, undefined);
+
+        const v = authz.findViolations(eps, new Map([['get /bff/ok', { roles: [], line: 1 }]]));
+        assert.strictEqual(v.length, 1);
+        assert.strictEqual(v[0].kind, 'ungrouped');
+        assert.strictEqual(v[0].key, 'post /bff/rogue');
+      } finally {
+        fsG.rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     ok('check-bff-authz-docs: 群外でも /bff/ 以外（/internal/ 等）は対象外（#656）', () => {
