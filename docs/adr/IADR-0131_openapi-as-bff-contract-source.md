@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-01, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-04, FR-06, FR-09, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0040, IADR-0116, IADR-0121, IADR-0122, IADR-0127, IADR-0132]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-07
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
 ---
