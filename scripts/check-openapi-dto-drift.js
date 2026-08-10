@@ -120,7 +120,10 @@ function stripComments(src) {
 function collectRecords(csText) {
   const src = stripComments(csText);
   const records = {};
-  const re = /public\s+(?:sealed\s+)?record\s+([A-Za-z0-9_]+)\s*\(/g;
+  // `sealed record` / `readonly record struct` / `record struct` を含める。
+  // **ジェネリック record（`record Foo<T>(...)`）は意図的に拾わない** —— OpenAPI のスキーマ名に
+  // 対応するものが無いので、拾っても照合相手が存在しない。
+  const re = /public\s+(?:sealed\s+|readonly\s+)?record\s+(?:struct\s+)?([A-Za-z0-9_]+)\s*\(/g;
   let m;
   while ((m = re.exec(src))) {
     const name = m[1];
@@ -160,7 +163,13 @@ function collectRecords(csText) {
       const pr = /public\s+([^;{}()]+?)\s+([A-Za-z0-9_]+)\s*\{\s*get\s*;/g;
       let pm;
       while ((pm = pr.exec(body))) {
-        props.push({ name: pm[2], nonNullable: !pm[1].trim().endsWith('?') });
+        const modifiersAndType = pm[1].trim();
+        // **`static` / `const` は直列化されない。** `System.Text.Json` はインスタンスの
+        // プロパティしか書き出さないので、契約へ出すことを要求してはならない ——
+        // 要求すると**無関係な PR の CI を誤って落とす**（実データにはまだ無いが、
+        // record 本体に定数を 1 つ置いた瞬間に起きる）。
+        if (/\b(?:static|const)\b/.test(modifiersAndType)) continue;
+        props.push({ name: pm[2], nonNullable: !modifiersAndType.endsWith('?') });
       }
     }
     records[name] = props;
@@ -283,6 +292,22 @@ function selfTest() {
     );
     eq(names(r.Foo), ['A', 'B']);
     eq(r.Foo[1].nonNullable, true);
+  });
+
+  // ★ **false positive を防ぐ側**。record 本体の static / const は直列化されないので、
+  // 契約へ出すことを要求してはならない。要求すると無関係な PR の CI を誤って落とす。
+  check('本体の static / const プロパティは拾わない', () => {
+    const r = collectRecords(
+      'public record Foo(string A)\n{\n' +
+        '    public static string Known { get; } = "k";\n' +
+        '    public Guid B { get; init; }\n}'
+    );
+    eq(names(r.Foo), ['A', 'B']);
+  });
+
+  check('record struct / readonly record struct を拾う', () => {
+    eq(names(collectRecords('public record struct Foo(string A);').Foo), ['A']);
+    eq(names(collectRecords('public readonly record struct Bar(int X);').Bar), ['X']);
   });
 
   check('1 ファイルの複数 record を拾う', () => {
