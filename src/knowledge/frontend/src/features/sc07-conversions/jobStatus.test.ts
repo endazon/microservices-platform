@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
-import { isRetryable, jobStatusView, JOB_STATUSES } from './jobStatus';
+import {
+  hasRetainedFigures,
+  isCorrectable,
+  isRetryable,
+  jobStatusView,
+  JOB_STATUSES,
+} from './jobStatus';
 
 // SC-07, UC-06, FR-12: ジョブ状態の写像（純関数）。
 // 05_screens §SC-07 §データソース（2026-08-04 確定）の 4 状態モデルをそのまま固定する。
@@ -28,6 +34,25 @@ describe('jobStatus (SC-07)', () => {
     const view = jobStatusView('quarantined');
     expect(view.label).toBe('quarantined');
     expect(view.tone).toBe('neutral');
+  });
+
+  // #651 / IADR-0154: 縮退・補正の表示は**導出**であり、`status` の 5 値目にしない。
+  // 上の「4 値ちょうど」の試験と対で、**契約が増えても状態モデルが増えていない**ことを固定する。
+  it('derives the retained-figure marker without adding a fifth status', () => {
+    expect(hasRetainedFigures({ diagramsRetained: 2 })).toBe(true);
+    expect(hasRetainedFigures({ diagramsRetained: 0 })).toBe(false);
+    // **フィールド自体が無い場合**（古いサーバ・省略時）は「縮退なし」へ倒す。
+    // 契約上は任意（`diagramsRetained?`）なので、ここを undefined のまま比較すると
+    // `undefined > 0` が false になるのに依存した暗黙の挙動になる。
+    expect(hasRetainedFigures({})).toBe(false);
+  });
+
+  // 補正の対象は**縮退した図があること**で決まる。権限は混ぜない——混ぜると画面が
+  // 「対象が無い」と「権限が無い」を区別できず、理由の文言を選べなくなる（IADR-0127 決定 1）。
+  it('offers correction exactly when there are retained figures', () => {
+    expect(isCorrectable({ diagramsRetained: 1 })).toBe(true);
+    expect(isCorrectable({ diagramsRetained: 0 })).toBe(false);
+    expect(isCorrectable({})).toBe(false);
   });
 
   // 計画確定: 同一ジョブの再変換は直列化し、実行中（processing）の要求は拒否する。

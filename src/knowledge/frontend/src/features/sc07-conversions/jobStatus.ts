@@ -47,6 +47,32 @@ export function jobStatusView(status: string): JobStatusView {
   return isKnown(status) ? VIEWS[status] : { label: status, tone: 'neutral' };
 }
 
+// ── 図の縮退・補正にまつわる導出（#651 / [[IADR-0154]]）
+//
+// **いずれも `status` の 5 値目にしない。** `05_screens:320`「ジョブ状態モデルは 4 値である」に従い、
+// 契約のフィールドから**導出**する（[[IADR-0127]]「状態表示は契約から導出できる値だけで作る」）。
+// `deadLettered` と同じ扱いである。
+//
+// **縮退したジョブの `status` は `succeeded`** である——図のコード化に失敗して画像保持へ落ちても、
+// 変換そのものは成功している。ここを `failed` と読むと再変換ボタンの出し分けまで狂う。
+
+/** 図が画像保持へ縮退しているか（hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」の導出元）。 */
+export function hasRetainedFigures(job: { diagramsRetained?: number }): boolean {
+  return (job.diagramsRetained ?? 0) > 0;
+}
+
+/**
+ * 人手補正の導線を出してよいジョブか。
+ *
+ * **縮退した図があること**が条件である（補正の対象が無ければ 2 ペインを開く意味が無い）。
+ * 権限（管理者限定）は呼び出し側が別に判定する——**条件と権限を 1 つの関数へ混ぜない**。
+ * 混ぜると「対象が無いから出ない」と「権限が無いから出ない」を画面が区別できず、
+ * [[IADR-0127]] 決定 1 が求める**理由の文言**を選べなくなる。
+ */
+export function isCorrectable(job: { diagramsRetained?: number }): boolean {
+  return hasRetainedFigures(job);
+}
+
 /**
  * 再変換できる状態か。
  *

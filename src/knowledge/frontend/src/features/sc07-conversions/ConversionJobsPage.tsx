@@ -20,9 +20,16 @@ import { ApiError } from '@foundation/api/ApiError';
 import { PlatformRole, useHasAnyRole } from '@foundation/auth/roles';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
-import { isRetryable, jobStatusView, JOB_STATUSES } from './jobStatus';
+import {
+  hasRetainedFigures,
+  isCorrectable,
+  isRetryable,
+  jobStatusView,
+  JOB_STATUSES,
+} from './jobStatus';
 import type { JobStatusFilter } from './jobStatus';
-import { useConversionJobs, useRetryConversionJob } from './useConversionJobs';
+import { useConversionJobs, useConversionJobActions } from './useConversionJobs';
+import { FigureCorrectionPanel } from './FigureCorrectionPanel';
 // SC-07, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
 import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 
@@ -30,19 +37,17 @@ import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 // 計画が 2026-08-04 に確定した内容（4 状態モデル・状態フィルタ・retry・**再変換は管理者ロール限定**・
 // 同一ジョブの直列化）に従う。API 側の管理者ロール強制の突合は #501（IADR-0128）が済ませている。
 //
+// **［2026-08-10 / #651］人手補正の 2 ペイン編集を実装した。**
+//   Phase 1 = 図コードの編集 ＋ 元の図画像 ＋「補正して再登録」（`FigureCorrectionPanel.tsx`）。
+//   契約は #543（`GET .../figures`・`.../figures/{figureId}/image`・`POST .../correction`。IADR-0154）。
+//   **Markdown 全体の編集欄は置かない**——`05_screens:330` が Phase 2 へ繰り延べている。
+//
 // 実装しない要素（画面仕様書 docs/screens/SC-07_conversion-jobs.md §hi-fi モックアップとの対応）:
-//   - **人手補正の 2 ペイン編集**（**Phase 1 = 図コードの編集 ＋ 元の図画像 ＋「補正して再登録」**）:
-//     **契約は #543 で載った**（`GET /bff/conversion/jobs/{id}/figures` ・`.../figures/{figureId}/image`・
-//     `POST .../figures/{figureId}/correction`。IADR-0154）。**画面へ出す作業は本ファイルではまだ
-//     行っていない**——契約の追加とは別の作業単位である。従前ここに書いていた「補正済み Markdown を
-//     受け取る API も本文を返す API も無い」は #543 以前の実測であり、**Phase 1 が受け取るのは
-//     Markdown 全体ではなく図のコード片**である（全体編集は Phase 2）。
 //   - **「デッドレター」の内訳表示**: **契約は #533 で載った**（`ConversionJobDto.deadLettered` /
 //     `maxAttempts`。planning#198 の裁定 Q13）。**画面へ出す作業は本ファイルではまだ行っていない**——
-//     契約の追加とは別の作業単位である（作業仕様書 docs/specs/20260806_issue-533_*.md §未決事項 1）。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した。
-//   **2 件とも 2026-08-05 に裁定済みで、契約も揃った**（人手補正は Phase 1 = 図のコード化のやり直しに
-//   範囲確定・契約は #543。デッドレター標識は #533）。**残るのはどちらも画面側の作業である。**
+//     契約の追加とは別の作業単位であり、**人手補正とは別の資源**なので #651 でも束ねなかった
+//     （[[IADR-0139]] の判定単位は資源。作業仕様書 docs/specs/20260806_issue-533_*.md §未決事項 1）。
+//   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */
 const FILTERS: readonly JobStatusFilter[] = ['', ...JOB_STATUSES];
@@ -67,13 +72,54 @@ function isConflict(err: unknown): boolean {
   return err instanceof ApiError && err.status === 409;
 }
 
+/**
+ * 再変換の 409 が「**補正が失われる**」ものなら、失われる件数を返す（そうでなければ `null`）。
+ *
+ * **確認ダイアログは 409 を受けてから出す**（[[IADR-0154]] 決定 4 / #651）。
+ * `hasCorrection` を画面が読んで**先に**分岐する形にはしない——一覧を取ってから押すまでの間に
+ * 補正が入ると**無確認で消える**うえ、件数もサーバの値でなければ嘘になる。
+ * #640 のタグ削除（`usageCount` つき 409）と同じ形である。
+ *
+ * 本文は BFF が透過する（#543 で中継を直した）。`ApiError.body` から読む——`details` は
+ * 文字列しか持てず、**翻訳済みの文へ数値を差し込めない**（サーバの日本語をそのまま出すと
+ * en ロケールで日本語が混ざる）。
+ */
+function correctionsWouldBeLost(err: unknown): number | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  const body = err.body as { error?: unknown; correctedFigures?: unknown } | null | undefined;
+  if (!body || body.error !== 'corrections_would_be_lost') return null;
+  return typeof body.correctedFigures === 'number' ? body.correctedFigures : 0;
+}
+
 export function ConversionJobsPage() {
   const { t } = useLingui();
   // IADR-0127 決定 4: 絞り込み条件は URL へ載せない（計画のルートパス表は /admin/conversions に
   // クエリを持たない）。単一の state を useQuery のキーに入れ、情報源を 1 つに保つ。
   const [filter, setFilter] = useState<JobStatusFilter>('');
   const jobs = useConversionJobs(filter);
-  const retry = useRetryConversionJob();
+  const actions = useConversionJobActions();
+  const { retry, correct } = actions;
+  /** 2 ペインを開いているジョブ（`null`＝閉じている）。 */
+  const [correcting, setCorrecting] = useState<string | null>(null);
+  /** 直近の再変換の対象。409 の確認後に `discardCorrections=true` で再送するために覚える。 */
+  const [retryTarget, setRetryTarget] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。列挙は `useConversionJobActions()` の
+  // 戻り値から導く——手書きの配列にすると、3 本目のミューテーションを足したときに同じ穴が空く
+  // （SC-05 / SC-06 と同じ形）。#503 時点の「retry の 1 本だけ」という前提は #651 で崩れた。
+  const mutations = Object.values(actions);
+
+  /** 新しい操作を始める前に、前回の結果（成功メッセージと各ミューテーションの失敗状態）を捨てる。 */
+  function beginOperation() {
+    setNotice(null);
+    for (const mutation of mutations) mutation.reset();
+  }
+
+  // 補正が失われる旨の 409 を受けているか（＝確認を出す状態か）。**状態を別に持たない**——
+  // 件数はサーバの応答が唯一の情報源であり、複製すると必ずどちらかが古くなる。
+  const pendingDiscard = correctionsWouldBeLost(retry.error);
+  const failed = mutations.find((m) => m.isError);
 
   // FR-12, UC-06, SC-07: 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
   // 計画の「本画面のアクセス制御と API の権限を揃える」は**両側で満たされている**——
@@ -109,31 +155,89 @@ export function ConversionJobsPage() {
         </div>
       </div>
 
-      {/* IADR-0127 決定 7: 本画面のミューテーションは retry の 1 本だけであり、成功と失敗は
-          同じミューテーションの状態として排他である（古い結果が並ぶ余地が無い）。**2 本目を
-          足すときは SC-05 / SC-06 の `beginOperation()` と同じ形へ移すこと**——複数の
-          ミューテーションを並べて読むと、別の操作の成功後も古い失敗バナーが残る。 */}
-      {retry.isSuccess && (
+      {/* IADR-0127 決定 7: 直近の操作の結果だけを出す（`beginOperation()` が前回を捨てる）。 */}
+      {notice && (
         <Alert tone="success" role="status" className="mb-2" label={t`完了`}>
-          <Trans>再変換を受け付けました。</Trans>
+          {notice}
         </Alert>
       )}
-      {retry.isError && (
+
+      {/* **補正が失われる旨の確認**（計画 `05_screens:313`「補正のあるジョブの再実行は、補正が
+          失われる旨を示して明示確認を求める」）。**409 を受けてから出す**——先に出して通ったら
+          投げる形にはしない（§correctionsWouldBeLost のコメント参照）。
+          `alertdialog` は「応答するまで先へ進めない」意味を持つ role である。 */}
+      {pendingDiscard !== null && retryTarget && (
+        <Alert tone="warning" role="alertdialog" className="mb-2" label={t`確認`}>
+          <p>
+            <Trans>
+              このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。
+            </Trans>
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              disabled={retry.isPending}
+              onClick={() => {
+                const id = retryTarget;
+                beginOperation();
+                retry.mutate(
+                  { id, params: { discardCorrections: true } },
+                  { onSuccess: () => setNotice(t`再変換を受け付けました。`) },
+                );
+              }}
+            >
+              <Trans>補正を破棄して再変換</Trans>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                beginOperation();
+                setRetryTarget(null);
+              }}
+            >
+              <Trans>取り消す</Trans>
+            </Button>
+          </div>
+        </Alert>
+      )}
+
+      {/* 確認を出している 409 は上で扱っているので、ここでは**それ以外の失敗**だけを出す。 */}
+      {failed && pendingDiscard === null && (
         // INDEX 決定 21: 色（tone）だけで深刻度を伝えない。**ラベルの文言も tone に揃える**
         // ——琥珀のアイコンに「エラー」と書かれていると、色を除いたときに区別が消える。
         <Alert
-          tone={isConflict(retry.error) ? 'warning' : 'danger'}
+          tone={isConflict(failed.error) ? 'warning' : 'danger'}
           role="alert"
           className="mb-2"
-          label={isConflict(retry.error) ? t`注意` : t`エラー`}
+          label={isConflict(failed.error) ? t`注意` : t`エラー`}
         >
-          {isConflict(retry.error) ? (
+          {isConflict(failed.error) ? (
             // 計画確定の「直列化」の実体。UI 制御をすり抜けた要求もここで扱う。
             <Trans>このジョブは再変換できません（実行中、または失敗以外の状態です）。</Trans>
           ) : (
-            toMessages(retry.error, t`再変換を受け付けられませんでした。`).join(' / ')
+            toMessages(failed.error, t`操作を受け付けられませんでした。`).join(' / ')
           )}
         </Alert>
+      )}
+
+      {/* 人手補正の 2 ペイン（Phase 1）。**管理者だけが開ける**——導線を出すのは JobRow 側。 */}
+      {correcting && (
+        <FigureCorrectionPanel
+          jobId={correcting}
+          submitting={correct.isPending}
+          onClose={() => setCorrecting(null)}
+          onSubmit={(figureId, input) => {
+            beginOperation();
+            correct.mutate(
+              { id: correcting, figureId, data: input },
+              { onSuccess: () => setNotice(t`図を補正して再登録しました。`) },
+            );
+          }}
+        />
       )}
 
       {jobs.isPending && (
@@ -185,7 +289,18 @@ export function ConversionJobsPage() {
                   key={job.id}
                   job={job}
                   canRetry={canRetry}
-                  onRetry={() => retry.mutate({ id: job.id })}
+                  onRetry={() => {
+                    beginOperation();
+                    setRetryTarget(job.id);
+                    retry.mutate(
+                      { id: job.id },
+                      { onSuccess: () => setNotice(t`再変換を受け付けました。`) },
+                    );
+                  }}
+                  onCorrect={() => {
+                    beginOperation();
+                    setCorrecting(job.id);
+                  }}
                   retrying={retry.isPending}
                 />
               ))}
@@ -207,17 +322,22 @@ function JobRow({
   job,
   canRetry,
   onRetry,
+  onCorrect,
   retrying,
 }: {
   job: ConversionJobDto;
   canRetry: boolean;
   onRetry: () => void;
+  onCorrect: () => void;
   retrying: boolean;
 }) {
   const { t } = useLingui();
   // INDEX 決定 21: 状態は色だけで意味を持たせない。StatusBadge が tone ごとの固定アイコンと
   // テキストを型で強制する（呼び出し側はアイコンを省略できない）。
   const view = jobStatusView(job.status);
+  // **導出であって `status` の 5 値目ではない**（`05_screens:320`「ジョブ状態モデルは 4 値である」）。
+  const retained = hasRetainedFigures(job);
+  const coded = job.diagramsCoded ?? 0;
 
   return (
     <TableRow>
@@ -228,35 +348,70 @@ function JobRow({
       </TableCell>
       <TableCell>{job.originalPath}</TableCell>
       <TableCell>
-        <StatusBadge tone={view.tone}>{labelOf(view.label)}</StatusBadge>
+        <div className="flex flex-wrap items-center gap-1">
+          <StatusBadge tone={view.tone}>{labelOf(view.label)}</StatusBadge>
+          {/* hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」。**状態ではなく併記の標識**である。 */}
+          {retained && (
+            <StatusBadge tone="danger">{t`図コード化失敗（画像保持へ縮退済み）`}</StatusBadge>
+          )}
+          {/* hi-fi:422「補正あり」。 */}
+          {job.hasCorrection && <StatusBadge tone="success">{t`補正あり`}</StatusBadge>}
+        </div>
       </TableCell>
-      <TableCell className="text-xs text-[--color-fg-muted]">{job.error ?? '—'}</TableCell>
+      <TableCell className="text-xs text-[--color-fg-muted]">
+        {/* hi-fi:422「Mermaid 2図」——備考は `diagramsCoded` から導出する。
+            補間には**素の変数だけ**を置く（`lingui/no-expression-in-message`）。 */}
+        {coded > 0 ? <Trans>Mermaid {coded}図</Trans> : (job.error ?? '—')}
+      </TableCell>
       <TableCell>
-        {isRetryable(job.status) ? (
-          canRetry ? (
-            <Button type="button" size="sm" variant="primary" disabled={retrying} onClick={onRetry}>
-              <Trans>再変換</Trans>
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 人手補正（Phase 1）。**縮退した図がある行にだけ**・**管理者のみ**。
+              条件（対象の有無）と権限を別に判定しているのは、出ない理由を区別して
+              文言を選ぶためである（[[IADR-0127]] 決定 1）。 */}
+          {isCorrectable(job) &&
+            (canRetry ? (
+              <Button type="button" size="sm" variant="secondary" onClick={onCorrect}>
+                <Trans>人手補正</Trans>
+              </Button>
+            ) : (
+              <span className="text-xs text-[--color-fg-muted]">
+                <Trans>人手補正は管理者のみ実行できます</Trans>
+              </span>
+            ))}
+          {isRetryable(job.status) ? (
+            canRetry ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                disabled={retrying}
+                onClick={onRetry}
+              >
+                <Trans>再変換</Trans>
+              </Button>
+            ) : (
+              // 無言でボタンを消すと「このジョブは再変換できない（状態の問題）」と読めてしまい、
+              // 権限の問題と区別できない。理由を書く（IADR-0127 決定 1。存在秘匿の対象ではない）。
+              <span className="text-xs text-[--color-fg-muted]">
+                <Trans>再変換は管理者のみ実行できます</Trans>
+              </span>
+            )
+          ) : job.status === 'succeeded' && job.documentId ? (
+            // 計画の遷移図 SC07 -- 変換結果 --> SC03。
+            <Link
+              to="/docs/$id"
+              params={{ id: job.documentId }}
+              aria-label={t`変換結果の文書を開く`}
+              className="text-sm text-[--color-brand] hover:underline"
+            >
+              <Trans>結果 →</Trans>
+            </Link>
           ) : (
-            // 無言でボタンを消すと「このジョブは再変換できない（状態の問題）」と読めてしまい、
-            // 権限の問題と区別できない。理由を書く（IADR-0127 決定 1。存在秘匿の対象ではない）。
-            <span className="text-xs text-[--color-fg-muted]">
-              <Trans>再変換は管理者のみ実行できます</Trans>
-            </span>
-          )
-        ) : job.status === 'succeeded' && job.documentId ? (
-          // 計画の遷移図 SC07 -- 変換結果 --> SC03。
-          <Link
-            to="/docs/$id"
-            params={{ id: job.documentId }}
-            aria-label={t`変換結果の文書を開く`}
-            className="text-sm text-[--color-brand] hover:underline"
-          >
-            <Trans>結果 →</Trans>
-          </Link>
-        ) : (
-          '—'
-        )}
+            // 補正の導線も出ない行は、操作が 1 つも無いので `—` を出す。
+            // **補正の導線がある行では出さない**——「操作なし」と読めてしまうためである。
+            !isCorrectable(job) && '—'
+          )}
+        </div>
       </TableCell>
     </TableRow>
   );

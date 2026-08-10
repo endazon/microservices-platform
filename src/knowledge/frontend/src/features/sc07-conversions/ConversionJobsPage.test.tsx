@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
 import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
-import { jsonResponse, noContent } from '@foundation/testing/bffResponse';
+import { blobResponse, jsonResponse, noContent } from '@foundation/testing/bffResponse';
 
 // SC-07, UC-06, FR-12: 変換ジョブ画面の再実装（#503）。
 // 計画（05_screens §SC-07 §データソース・2026-08-04 確定）の 4 状態モデル・状態フィルタ・
@@ -50,6 +50,84 @@ const PROCESSING_JOB = {
   error: null,
 };
 
+// #651: 図が画像保持へ縮退した成功ジョブ。**`status` は `succeeded` である**——縮退は
+// ジョブの失敗ではない（`05_screens:320`「ジョブ状態モデルは 4 値である」）。
+const RETAINED_JOB = {
+  ...SUCCEEDED_JOB,
+  id: '9807abcd-0000-0000-0000-000000000004',
+  originalPath: 'ネットワーク構成図.pptx',
+  diagramsCoded: 2,
+  diagramsRetained: 1,
+  hasCorrection: false,
+};
+
+/** 補正済みの図を持つジョブ（再変換すると補正が失われる側）。 */
+const CORRECTED_JOB = {
+  ...RETAINED_JOB,
+  id: '9809abcd-0000-0000-0000-000000000005',
+  originalPath: '業務フロー.docx',
+  status: 'failed',
+  hasCorrection: true,
+};
+
+/** 失敗かつ縮退あり。**再変換と人手補正の両方の導線が同じ行に出る**（決定 7 の試験に要る）。 */
+const FAILED_RETAINED_JOB = {
+  ...FAILED_JOB,
+  id: '9811abcd-0000-0000-0000-000000000006',
+  originalPath: '設備一覧.xlsx',
+  diagramsCoded: 0,
+  diagramsRetained: 1,
+  hasCorrection: false,
+};
+
+const RETAINED_FIGURE = {
+  figureId: 'fig-1',
+  coded: false,
+  language: null,
+  code: null,
+  imageUri: 'storage://figures/fig-1.png',
+  imageContentType: 'image/png',
+  caption: '拠点間の接続',
+  corrected: false,
+  correctedAt: null,
+};
+
+/** コード化済みの図。**2 ペインの対象にしない**（Phase 1 は縮退のやり直しに限る）。 */
+const CODED_FIGURE = {
+  ...RETAINED_FIGURE,
+  figureId: 'fig-2',
+  coded: true,
+  language: 'mermaid',
+  code: 'graph TD; A-->B;',
+  imageUri: null,
+  caption: '状態遷移',
+};
+
+const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** ジョブ一覧・図一覧・画像を経路で振り分ける（画像だけが非 JSON である）。 */
+function mockConversionApi(
+  jobs: unknown[],
+  opts: {
+    figures?: unknown[];
+    onRetry?: () => Promise<unknown>;
+    onCorrect?: () => Promise<unknown>;
+  } = {},
+) {
+  mocks.apiRequest.mockImplementation(async (path: string) => {
+    if (path.includes('/image')) return blobResponse(PNG);
+    if (path.includes('/correction')) {
+      return opts.onCorrect
+        ? opts.onCorrect()
+        : jsonResponse({ figureId: 'fig-1', markdownUri: 'storage://m.md', correctedFigures: 1 });
+    }
+    if (path.endsWith('/retry')) return opts.onRetry ? opts.onRetry() : noContent();
+    if (path.includes('/figures'))
+      return jsonResponse(opts.figures ?? [RETAINED_FIGURE, CODED_FIGURE]);
+    return jsonResponse(jobs);
+  });
+}
+
 /** 既定は管理者（再変換ボタンが出る側）。運用者・無権限は各テストで明示する。 */
 async function renderPage(roles: readonly string[] = ['platform-admin']) {
   return renderUnitRoute((shell) => [createSc07ConversionsRoute(shell)], {
@@ -58,8 +136,21 @@ async function renderPage(roles: readonly string[] = ['platform-admin']) {
   });
 }
 
+/**
+ * jsdom は `URL.createObjectURL` を実装しない（#651 の実測）。右ペインは Blob をオブジェクト URL
+ * にして表示するので、**スタブを置かないと画像の描画経路そのものを試験できない**。
+ */
+const OBJECT_URL = 'blob:mock/figure-1';
+
 beforeEach(() => {
   mocks.apiRequest.mockReset();
+  vi.stubGlobal(
+    'URL',
+    Object.assign(globalThis.URL, {
+      createObjectURL: vi.fn(() => OBJECT_URL),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
 });
 
 afterEach(() => {
@@ -285,6 +376,265 @@ describe('ConversionJobsPage (SC-07)', () => {
   // だった。生成物の `bffFetch` は空ボディで `{}` を返すので `??` は発火せず、`items.length === 0`
   // も `{}.length === undefined` で救えず、`items.map` が `TypeError` を投げていた。
   // `okArray` が「配列でなければ空配列」まで詰めることで、載せ替え前と同じ縮退に戻る。
+
+  // ── #651: 人手補正（Phase 1 = 図のコード化）。契約は #543 / IADR-0154。
+
+  // 受け入れ基準「状態・備考・標識が契約から導出されている（`status` は 4 値のまま）」。
+  // hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」／hi-fi:422「Mermaid 2図」「補正あり」。
+  it('derives the retained/coded/corrected markers from the contract without a fifth status', async () => {
+    mockConversionApi([{ ...RETAINED_JOB, hasCorrection: true }]);
+    await renderPage(['platform-admin']);
+
+    const table = within(await screen.findByRole('table'));
+    // **`status` は succeeded のまま**。縮退はジョブの失敗ではない。
+    expect(table.getByText('完了')).toBeInTheDocument();
+    expect(table.getByText('図コード化失敗（画像保持へ縮退済み）')).toBeInTheDocument();
+    expect(table.getByText('補正あり')).toBeInTheDocument();
+    expect(table.getByText('Mermaid 2図')).toBeInTheDocument();
+  });
+
+  // 縮退していないジョブに標識を出さない（導出が「常に真」になっていないことの側）。
+  it('shows no correction affordance for a job with no retained figures', async () => {
+    mockConversionApi([SUCCEEDED_JOB]);
+    await renderPage(['platform-admin']);
+
+    expect(await screen.findByText('経費精算規程.docx')).toBeInTheDocument();
+    expect(screen.queryByText('図コード化失敗（画像保持へ縮退済み）')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '人手補正' })).not.toBeInTheDocument();
+  });
+
+  // 受け入れ基準「運用者には人手補正の導線が出ない」。**権限別の対**で固定する。
+  // 無言で消さず理由を書く（IADR-0127 決定 1。人手補正は 3 口とも admin のみ＝IADR-0154 決定 6）。
+  it('hides the manual-correction affordance from an operator and says why', async () => {
+    mockConversionApi([RETAINED_JOB]);
+    await renderPage(['platform-operator']);
+
+    // まず「見えるはずの条件」で描画されていることを確かめる。
+    expect(await screen.findByText('ネットワーク構成図.pptx')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '人手補正' })).not.toBeInTheDocument();
+    expect(screen.getByText('人手補正は管理者のみ実行できます')).toBeInTheDocument();
+  });
+
+  // 受け入れ基準「管理者が 2 ペインを開き、コードを投稿して本文が差し替わる」。
+  // **右ペインの画像は `/image` から取る**（`imageUri` の `storage://` を img に入れない）。
+  it('lets an administrator open the two-pane editor and post a correction', async () => {
+    mockConversionApi([RETAINED_JOB]);
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    // 左ペイン: 縮退した図だけが編集対象になる（コード化済みの fig-2 は出さない）。
+    const editor = await screen.findByLabelText('図コード: fig-1');
+    expect(screen.queryByLabelText('図コード: fig-2')).not.toBeInTheDocument();
+
+    // 右ペイン: 画像は BFF の /image から取得する。
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/conversion/jobs/${RETAINED_JOB.id}/figures/fig-1/image`,
+        expect.objectContaining({ method: 'GET' }),
+      ),
+    );
+    // **要求が飛んだことだけでは足りない。** バイト列が解析層を通って `<img>` まで届いたことを見る
+    // ——`bffFetch` が非 JSON を `JSON.parse` していた時期（#651 で直すまで）、要求は飛ぶが
+    // ここで必ず失敗していた。**この行が無いと、本 issue が直した欠陥のままテストが通る**
+    // （変異試験で実測: blob 分岐を戻してもこのテストは緑のままだった）。
+    const img = await screen.findByAltText('補正対象の図の元画像');
+    expect(img.getAttribute('src')).toBe(OBJECT_URL);
+    // `storage://` をそのまま src に入れていないこと。
+    expect(img.getAttribute('src') ?? '').not.toContain('storage://');
+
+    await user.type(editor, 'graph TD; X-->Y;');
+    await user.click(screen.getByRole('button', { name: '補正して再登録' }));
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/conversion/jobs/${RETAINED_JOB.id}/figures/fig-1/correction`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    expect(await screen.findByText('図を補正して再登録しました。')).toBeInTheDocument();
+  });
+
+  // 受け入れ基準「補正のあるジョブの再変換で確認を求め、**件数を示す**」。
+  //
+  // **確認は 409 を受けてから出す**（IADR-0154 決定 4）。先にダイアログを出して通ったら投げる形に
+  // すると、一覧取得から押下までの間に入った補正を無確認で消す。件数もサーバの値でなければ嘘になる。
+  it('asks for confirmation only after the server rejects the retry with 409, showing the count', async () => {
+    let discarded = false;
+    mockConversionApi([CORRECTED_JOB], {
+      onRetry: () =>
+        discarded
+          ? Promise.resolve(noContent())
+          : Promise.reject(
+              new ApiError('conflict', '競合が発生しました。', 409, [], {
+                error: 'corrections_would_be_lost',
+                correctedFigures: 3,
+              }),
+            ),
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '再変換' }));
+
+    // 件数を翻訳済みの文へ差し込む（サーバの日本語をそのまま出さない）。
+    const dialog = await screen.findByRole('alertdialog');
+    expect(
+      within(dialog).getByText(/このジョブには人手補正が\s*3\s*件あります/),
+    ).toBeInTheDocument();
+
+    // 確認するまで discardCorrections は飛ばない。
+    expect(
+      mocks.apiRequest.mock.calls.filter(([path]: [string]) => path.includes('discardCorrections')),
+    ).toHaveLength(0);
+
+    discarded = true;
+    await user.click(within(dialog).getByRole('button', { name: '補正を破棄して再変換' }));
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/conversion/jobs/${CORRECTED_JOB.id}/retry?discardCorrections=true`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    expect(await screen.findByText('再変換を受け付けました。')).toBeInTheDocument();
+  });
+
+  // 取り消したら何も起きない（確認が飾りでないことの側）。
+  it('sends nothing when the discard confirmation is cancelled', async () => {
+    mockConversionApi([CORRECTED_JOB], {
+      onRetry: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [], {
+            error: 'corrections_would_be_lost',
+            correctedFigures: 2,
+          }),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '再変換' }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: '取り消す' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(
+      mocks.apiRequest.mock.calls.filter(([path]: [string]) => path.includes('discardCorrections')),
+    ).toHaveLength(0);
+  });
+
+  // `not_retryable` の 409 は**確認ではなく拒否**である。両者を取り違えると
+  // 「実行中のジョブに補正破棄を勧める」ことになる。
+  it('treats a not_retryable 409 as a refusal, not as a discard confirmation', async () => {
+    mockConversionApi([FAILED_JOB], {
+      onRetry: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [], { error: 'not_retryable' }),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '再変換' }));
+
+    expect(
+      await screen.findByText('このジョブは再変換できません（実行中、または失敗以外の状態です）。'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  // IADR-0127 決定 7: 画面は**直近の操作の結果だけ**を出す。#503 の時点ではミューテーションが
+  // retry の 1 本だけで、この穴は開きようがなかった。#651 で 2 本目（補正投稿）が入ったので、
+  // 「別の操作が成功しても古い失敗バナーが残る」形になっていないことを固定する。
+  it('drops the previous failure banner once another operation succeeds', async () => {
+    // **別々のミューテーション**でなければこの穴は再現しない。TanStack Query は同じ
+    // ミューテーションを再実行すれば自分の `isError` を戻すので、「retry が失敗 → correct が成功」
+    // という**組み合わせ**でしか `beginOperation()` の要否は測れない
+    // （実測: 同じミューテーションを 2 回叩く形では、reset を外しても緑のままだった）。
+    mockConversionApi([FAILED_RETAINED_JOB], {
+      onRetry: () => Promise.reject(new ApiError('server', 'サーバでエラーが発生しました。', 500)),
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    // 1) 再変換を失敗させる。
+    await user.click(await screen.findByRole('button', { name: '再変換' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+    // 2) 別の操作（人手補正）を成功させる。
+    await user.click(screen.getByRole('button', { name: '人手補正' }));
+    const editor = await screen.findByLabelText('図コード: fig-1');
+    await user.type(editor, 'graph TD;');
+    await user.click(screen.getByRole('button', { name: '補正して再登録' }));
+
+    // 成功だけが残り、**retry の古い失敗バナーは消えている**。
+    expect(await screen.findByText('図を補正して再登録しました。')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+  });
+
+  // 図の一覧が取れないときに空パネルを見せない（「補正すべき図が無い」と読めてしまう）。
+  it('shows an error instead of an empty panel when the figures cannot be loaded', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes('/figures'))
+        throw new ApiError('server', 'サーバでエラーが発生しました。', 500);
+      return jsonResponse([RETAINED_JOB]);
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    expect(await screen.findByText('図の一覧を取得できませんでした。')).toBeInTheDocument();
+    expect(screen.queryByText('補正が必要な図はありません。')).not.toBeInTheDocument();
+  });
+
+  // コード化済みの図しか無いジョブでは、対象が無いことを明示する（黙って空にしない）。
+  it('says there is nothing to correct when every figure is already coded', async () => {
+    mockConversionApi([RETAINED_JOB], { figures: [CODED_FIGURE] });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    expect(await screen.findByText('補正が必要な図はありません。')).toBeInTheDocument();
+  });
+
+  // 画像が無い図（404）でも右ペインは中立に倒れる。**空白にしない**——読み込み中と区別が付かなくなる。
+  // 404 は不在と秘匿を区別しない（IADR-0009）。
+  it('degrades the image pane neutrally when the figure has no image (404)', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.includes('/image')) throw new ApiError('notFound', '見つかりませんでした。', 404);
+      if (path.includes('/figures')) return jsonResponse([RETAINED_FIGURE]);
+      return jsonResponse([RETAINED_JOB]);
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    expect(await screen.findByText('元の画像を表示できません。')).toBeInTheDocument();
+  });
+
+  // 補正済みの図は、既存のコードと記法を編集欄へ引き継ぎ「補正あり」を示す
+  // （やり直しのたびに白紙から書き直させない）。
+  it('prefills the editor from an already corrected figure', async () => {
+    mockConversionApi([RETAINED_JOB], {
+      figures: [
+        { ...RETAINED_FIGURE, corrected: true, language: 'plantuml', code: '@startuml\n@enduml' },
+      ],
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    expect(await screen.findByLabelText('図コード: fig-1')).toHaveValue('@startuml\n@enduml');
+    expect(screen.getByLabelText('記法')).toHaveValue('plantuml');
+    expect(screen.getByText('補正あり')).toBeInTheDocument();
+  });
+
   it('degrades to the empty state when the list response has no body (204)', async () => {
     mocks.apiRequest.mockImplementation(async (path: string) => {
       if (path.startsWith('/conversion/jobs')) return noContent();
