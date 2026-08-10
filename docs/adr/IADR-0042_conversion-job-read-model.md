@@ -12,9 +12,10 @@ related_ids:
   - IADR-0039
   - IADR-0127
   - IADR-0128
+  - IADR-0154
 author: claude
 created: 2026-07-09
-updated: 2026-08-07
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -64,6 +65,17 @@ SC-07 は変換状況・失敗ジョブの一覧と人手補正（再変換）�
    > **ワーカー自身に認可を課さない点は変更していない**（[[IADR-0128]] 決定 3）。
    > その前提であるネットワーク分離は `NetworkIsolationTests` の回帰ガードへ載せた。
    > **本決定は `Accepted` のまま有効**であり、上記 2 点（retry の例外化・下流の代償統制の明文化）だけが部分改定である。
+
+   > **［2026-08-10 追記・表題の「人手補正 API」の実体は [IADR-0154](IADR-0154_manual-figure-correction-phase1.md) が定める（#543 / #545）］**
+   > 本 ADR の**表題**は「変換ジョブ読み取りモデル（インメモリ）と状況照会・**人手補正 API**」であるが、
+   > **本決定 3 が列挙する口は `GET /jobs`・`GET /jobs/{id}`・`POST /jobs/{id}/retry` の 3 本**である。
+   > 表題に残る「人手補正 API」は**設計時点の想定であって、本 ADR が実装を決めた口ではない**
+   > （2026-08-05 の実測。計画側 `01_screens.md:327` の突合結論と一致する）。
+   > **表題は書き換えない** —— 当時の決定と想定を、当時の言葉のまま残すためである。
+   > **実体は後継 [[IADR-0154]] が定める**。同 ADR は計画の 2026-08-05 確定（**Phase 1 = 図のコード化の
+   > やり直し**・**補正版を正とする**・**マージは採らない**）に基づき、本 ADR が想定していた口とは
+   > **範囲の違う別の決定**を置いている。
+   > **本 ADR の決定 1〜3 は引き続き有効**である（読み取りモデル・照会・再変換）。
 
 ## 根拠 / 代替案
 

@@ -8,7 +8,7 @@ source_repo: microservices-platform
 source_ref: "feat/SC-05-08-admin-screens / docs/specs/20260805_issue-503_sc05-08-admin-screens.md（#503）"
 author: Claude（実装）
 created: 2026-08-05
-updated: 2026-08-08
+updated: 2026-08-10
 ---
 
 # フィードバック: SC-05〜07 の画面要素 6 種が現在の API 契約に載らない
@@ -124,3 +124,30 @@ UC/画面の差異（**計画は画面要素を定めているが、それを支
 | --- | --- | --- |
 | 付-1 | `docs/api/openapi.yaml` に `/bff/datasources` と `/bff/conversion/jobs` が無く、SC-06 / SC-07 が orval 生成フックに載らない（SC-03 の `/bff/documents` と同じ問題） | **#506 が射程を広げて引き受ける**（planning#198 へは渡していない。計画の裁定を要さないため） |
 | 付-2 | 同 `AiAnswerDto.citations` の型が `SearchResultDto[]` だが、後段の実体は `CitationDto[]`（`number` / `snippet` / `sourceUri` を持つ）である | **#506 が射程を広げて引き受ける**（同上） |
+
+## ［2026-08-10 / #543］提案 1（人手補正の契約）は解消した
+
+計画は 2026-08-05 の裁定（planning#198・質問票 第12回 Q12・Q20 および派生 Q31・Q33）で
+**提案 1 の前者**——「人手補正の投稿 API と本文取得 API を定める」——を採った。
+画面から 2 ペインを外す後者の案は採られていない。
+
+**ただし範囲が絞られた。** **Phase 1 は「図のコード化のやり直し」に限る**（対象は縮退した図、
+投稿するのは PlantUML / Mermaid のコード片）。本記録が「補正済み **Markdown** の受け取り」と
+書いていたのは、当時 SC-07 が描いていた「変換結果 Markdown 全体の 2 ペイン編集」に基づく。
+**その範囲は UC-06 より広く食い違っており、計画は UC を正として画面側を狭めた**（`01_screens.md:331`）。
+Markdown 全体の編集は **Phase 2** である。
+
+実装（#543 / [[IADR-0154]]）:
+
+| 提案が求めたもの | 実装した口 |
+| --- | --- |
+| 本文取得 API | `GET /bff/conversion/jobs/{id}/figures`（2 ペインの材料）／ `.../figures/{figureId}/image`（元の図画像） |
+| 補正投稿 API | `POST /bff/conversion/jobs/{id}/figures/{figureId}/correction` |
+
+**着手時に、より手前の欠落が見つかった。** 本記録は「補正済みの内容を受け取る口が無い」と書いたが、
+実際には**補正の対象（画像保持へ縮退した図）自体がどこにも記録されていなかった**——
+`NormalizationService` は図ごとの結果を返していたのに、`RawDocumentFetchedConsumer` が
+`SucceedAsync` へ渡さず**ログ行へ出して捨てて**いた。記録するところから足している。
+
+**残る提案**: 3〜6（提案 2 は #533、提案 7 は #640、提案 8 は #544 で解消済み）。
+**画面側（2 ペイン編集・「補正あり」標識・再変換の確認ダイアログ）は別 issue** である。

@@ -5,7 +5,7 @@ status: in-progress
 related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-09
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
@@ -136,6 +136,9 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/conversion/jobs` | **admin / operator** | FR-12 / UC-06 / SC-07 | `useBffConversionJobList` |
 | GET | `/bff/conversion/jobs/{id}` | **admin / operator** | FR-12 / SC-07 | `useBffConversionJobGet` |
 | POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobRetry` |
+| GET | `/bff/conversion/jobs/{id}/figures` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigures` |
+| GET | `/bff/conversion/jobs/{id}/figures/{figureId}/image` | **admin のみ** | FR-12 / UC-06 / SC-07 | （画像。生成フックを使わない） |
+| POST | `/bff/conversion/jobs/{id}/figures/{figureId}/correction` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigureCorrection` |
 | GET | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzListPolicies` |
 | POST | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzCreatePolicy` |
 | POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | FR-05 / FR-09 / SC-09 | `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |
@@ -193,7 +196,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | **RFC7807 `ValidationProblemDetails`** | 保存前検証の 400 | `/bff/admin/authz/*` の登録・更新／`/bff/documents` の作成・更新 |
 | **RFC7807 `ProblemDetails`** | 参照中削除の 409 | `DELETE /bff/admin/authz/attributes/{id}`（`detail` に参照元ポリシー名） |
 | **素の JSON** | 楽観ロック・状態遷移の 409 | `PUT /bff/documents/{id}`（`version_conflict`）／`POST …/publish`（`invalid_transition`） |
-| **本文なし** | 再変換の 409 | `POST /bff/conversion/jobs/{id}/retry`（**後段の `not_retryable` 本文は BFF が落とす**） |
+| **本文あり（透過）** | 再変換の 409 | `POST /bff/conversion/jobs/{id}/retry`（`not_retryable` / **`corrections_would_be_lost` ＋ `correctedFigures`**） |
+| **本文あり（透過）** | 人手補正の 409 | `POST /bff/conversion/jobs/{id}/figures/{figureId}/correction`（`figure_not_correctable` / `job_busy` / `body_unavailable`） |
 
 `apiClient.parseProblemDetails` は 400 / 409 のとき本文から人間可読なメッセージ群を抽出し、
 `ApiError.details` に載せる（`errors` の配列 → `detail` → `title` の順で拾う）。

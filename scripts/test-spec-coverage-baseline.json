@@ -113,6 +113,7 @@
     ],
     "docs/tests/SC-07_conversion-jobs.md": [
       "BffConversionEndpointTests",
+      "ConversionFigureCorrectionTests",
       "ConversionJobEndpointTests",
       "ConversionJobStoreTests",
       "NetworkIsolationTests",

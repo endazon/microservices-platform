@@ -1132,24 +1132,135 @@ paths:
   /bff/conversion/jobs/{id}/retry:
     post:
       tags: [Conversion]
-      summary: "FR-12, UC-06, SC-07: 人手補正（再変換）。**管理者ロールのみ**"
+      summary: "FR-12, UC-06, SC-07: **再変換**（人手補正ではない）。**管理者ロールのみ**"
       description: |
         失敗ジョブのみ再変換する（原本イベントを再発行）。**`failed` 以外（`queued` / `processing` /
         `succeeded`）は 409 で拒否する**——UI 制御だけに頼らず API 側で状態を強制し、処理中の二重発行・
         成功済みの不要な再処理を防ぐ。
 
-        **409 に本文は無い。** 後段（ConversionService）は `{ error: "not_retryable", status }` を返すが、
-        BFF は `Results.StatusCode` で**ステータスのみ**を中継する（本文は落ちる）。画面は 409 という
-        ステータスだけを「拒否された」の根拠にする。
+        **「人手補正」とは別の操作である**（IADR-0154 決定 5）。人手補正は成功ジョブの縮退した図を
+        コード化し直すもので、`/figures` 系が担う。
+
+        **［2026-08-10 / #543］409 は本文を伴う。** 従前ここには「409 に本文は無い。BFF は
+        `Results.StatusCode` でステータスのみを中継する」と書いていたが、**その中継が欠陥だった**
+        （#640 で `usageCount` が画面へ届かなかったのと同型）。IADR-0154 決定 4 で
+        **後段の本文をそのまま透過する**よう改めた。画面は `error` で理由を出し分け、
+        `corrections_would_be_lost` のときは `correctedFigures` を示して確認を求める。
       operationId: bff-conversion-job-retry
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - name: discardCorrections
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: |
+            **補正版を正とするための明示確認**（05_screens:333。IADR-0154 決定 4）。
+            補正のあるジョブは既定で 409 `corrections_would_be_lost` になる。破棄してよい場合だけ
+            `true` を付けて再送する。**確認をダイアログだけに置かない**——生成クライアントや
+            別経路の呼び出しが素通りするためである。
       responses:
         "202": { description: 再変換を受け付けた（本文なし） }
         "401": { description: 未認証 }
         "403": { description: 管理者ロール以外（IADR-0128 決定 1。運用者も拒否される） }
         "404": { description: 見つからない }
-        "409": { description: "`failed` 以外のジョブは再変換できない（本文なし）" }
+        "409":
+          description: |
+            再変換できない。本文の `error` が理由を示す。
+            `not_retryable`（`failed` 以外のジョブ）／
+            **`corrections_would_be_lost`**（人手補正があり、`discardCorrections=true` が無い。
+            `correctedFigures` に失われる件数が入る）。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversionRetryConflictDto" }
+
+  /bff/conversion/jobs/{id}/figures:
+    get:
+      tags: [Conversion]
+      summary: "FR-12, UC-06, SC-07: 人手補正 Phase 1 の本文取得。**管理者ロールのみ**"
+      description: |
+        ジョブが抽出した図の一覧（SC-07 の 2 ペイン編集の材料）。**`coded: false` の図が補正の対象**である
+        （Phase 1 は図のコード化のやり直しに限る。05_screens:330）。
+
+        **画像のバイト列は含まない**——応答が図の枚数だけ膨らむため、`/image` が別途配信する
+        （IADR-0154 決定 2）。
+
+        **人手補正は管理者限定**（05_screens:314）。2 ペインを開く操作そのものが人手補正であるため、
+        照会（GET）だが運用者は 403 になる。ジョブの照会（`GET /bff/conversion/jobs`）とは実効ロールが違う。
+      operationId: bff-conversion-job-figures
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: 図の一覧
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConversionFigureDto" }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外（運用者も拒否される。IADR-0154 決定 6） }
+        "404": { description: 見つからない }
+
+  /bff/conversion/jobs/{id}/figures/{figureId}/image:
+    get:
+      tags: [Conversion]
+      summary: "FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**"
+      description: |
+        **BFF がオブジェクトストレージから解決して返す**（`GET /bff/documents/{id}/content` と同じ形。
+        IADR-0154 決定 2）。コード化済みの図は画像を保持しないため 404 になる——
+        **未知の図と区別しない**（どちらも「その画像は無い」）。
+      operationId: bff-conversion-job-figure-image
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: figureId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 画像
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外 }
+        "404": { description: 画像が無い（未知の図・コード化済みの図・ストレージ未解決） }
+
+  /bff/conversion/jobs/{id}/figures/{figureId}/correction:
+    post:
+      tags: [Conversion]
+      summary: "FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 = 図のコード化）。**管理者ロールのみ**"
+      description: |
+        縮退した図へ PlantUML / Mermaid のコード片を与え、**本文の図ブロックを置換して**
+        取り込みへ再投入する（05_screens:313）。**原本からの再変換ではない**——やり直すと LLM が
+        再び縮退して補正が消えるためである（IADR-0154 決定 3）。
+
+        **変換結果 Markdown 全体の編集は Phase 2** であり、本口は受け付けない（05_screens:330）。
+      operationId: bff-conversion-job-figure-correction
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: figureId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FigureCorrectionRequest" }
+      responses:
+        "200":
+          description: 補正を適用し、本文を差し替えた
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FigureCorrectionResultDto" }
+        "400": { description: "`language` または `code` が空（`invalid_correction`）" }
+        "401": { description: 未認証 }
+        "403": { description: 管理者ロール以外 }
+        "404": { description: ジョブまたは図が見つからない }
+        "409":
+          description: |
+            補正できない。本文の `error` が理由を示す。
+            **`figure_not_correctable`**（コード化済みの図。Phase 1 の対象外）／
+            **`job_busy`**（`queued` / `processing`。同一ジョブの直列化。05_screens:319）／
+            **`body_unavailable`**（本文を読めない・図の埋め込みが見つからない。**補正は保存していない**）。
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConversionCorrectionConflictDto" }
 
   # ── DocumentService ───────────────────────────────
   /documents:
@@ -2370,6 +2481,79 @@ components:
             全ジョブで同じ値を返す（実体は変換サービスの再試行設定）。
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        diagramsCoded:
+          type: integer
+          description: "図のうち LLM がコード化できた件数（hi-fi:422「Mermaid 2図」の導出元）"
+        diagramsRetained:
+          type: integer
+          description: |
+            図のうち**画像保持へ縮退した件数**（＝人手補正 Phase 1 の対象数）。
+            hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」は**ここから導出する表示**であり、
+            **`status` の 5 値目ではない**——縮退はジョブの失敗ではなく、`status` は `succeeded` である
+            （05_screens:317「ジョブ状態モデルは 4 値である」。`deadLettered` と同じ扱い）。
+        hasCorrection:
+          type: boolean
+          description: |
+            **「補正あり」の標識**（hi-fi:422。05_screens:313）。人手補正が入った図があるか。
+            `true` のジョブを再変換すると補正は失われるため、`retry` は 409
+            `corrections_would_be_lost` で明示確認を求める（IADR-0154 決定 4）。
+
+    ConversionFigureDto:
+      type: object
+      description: "FR-12, UC-06, SC-07: 変換ジョブが抽出した図（`Knowledge.Contracts/Dtos/ConversionFigureDto.cs`）"
+      required: [figureId, coded, corrected]
+      properties:
+        figureId: { type: string, description: "ジョブ内で一意。本文の埋め込み位置を突き止める鍵でもある" }
+        coded:
+          type: boolean
+          description: "LLM がコード化できたか。**`false` が人手補正 Phase 1 の対象**である"
+        language: { type: string, nullable: true, description: "`plantuml` / `mermaid`" }
+        code: { type: string, nullable: true, description: "コード片（自動コード化または人手補正の結果）" }
+        imageUri: { type: string, nullable: true, description: "縮退した図の画像参照。コード化済みの図は null" }
+        imageContentType: { type: string, nullable: true }
+        caption: { type: string, nullable: true, description: "キャプション・近傍テキスト（補正の手がかり）" }
+        corrected:
+          type: boolean
+          description: "**人手補正で `code` が入ったか**（自動コード化と区別する）"
+        correctedAt: { type: string, format: date-time, nullable: true }
+
+    FigureCorrectionRequest:
+      type: object
+      description: "FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 は図のコード片のみ）"
+      required: [language, code]
+      properties:
+        language: { type: string, description: "`plantuml` / `mermaid`" }
+        code: { type: string, description: "図のコード片。**Markdown 全体ではない**（Phase 2 の範囲）" }
+
+    FigureCorrectionResultDto:
+      type: object
+      description: "FR-12, UC-06, SC-07: 人手補正の結果"
+      required: [figureId, markdownUri, correctedFigures]
+      properties:
+        figureId: { type: string }
+        markdownUri: { type: string, description: "差し替え後の本文（画面が SC-03 への導線を張れるように返す）" }
+        correctedFigures: { type: integer, description: "このジョブで補正済みの図の件数" }
+
+    ConversionRetryConflictDto:
+      type: object
+      description: "FR-12, SC-07: 再変換の 409 本文。**BFF が透過する**（IADR-0154 決定 4）"
+      required: [error]
+      properties:
+        error: { type: string, description: "`not_retryable` / `corrections_would_be_lost`" }
+        status: { type: string, nullable: true, description: "拒否時点のジョブ状態" }
+        correctedFigures:
+          type: integer
+          nullable: true
+          description: "`corrections_would_be_lost` のとき、再変換で失われる補正の件数"
+
+    ConversionCorrectionConflictDto:
+      type: object
+      description: "FR-12, SC-07: 人手補正の 409 本文"
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: "`figure_not_correctable` / `job_busy` / `body_unavailable`"
 
     # ── FR-09, SC-09: ABAC 管理（属性辞書・ポリシー）───
     AbacPolicyDto:

@@ -3,13 +3,14 @@ title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコー�
 type: functional-spec
 status: in-progress
 related_ids:
+  - IADR-0154
   - FR-12
   - UC-06
   - SC-07
   - IADR-0137
 author: claude
 created: 2026-07-03
-updated: 2026-08-06
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
@@ -76,6 +77,9 @@ related_adrs:
    2. **成功**（```mermaid / ```plantuml を抽出）: 本文へコードブロックを埋め込む。
    3. **不可**（送信拒否 `Sent=false`／コード化不能／呼び出し失敗）: 画像を `IObjectStore` へ保存し、
       本文へ `![figureId](uri)` を埋め込む（deny-by-default で画像保持へ収束）。
+      **この埋め込み形は人手補正が置換する目印でもある**——形は `FigureMarkdown` を単一情報源とし、
+      埋め込む側と置換する側が別々に書かないようにする（[[IADR-0154]] 決定 3。片方だけ変えると
+      置換が静かに空振りする）。
 6. **正規化 Markdown を保管**（`IObjectStore.SaveMarkdownAsync`）して参照 URI を得る。
 7. `DocumentNormalized`（`DocumentId`／`MarkdownUri`／`AssetUris` 等）を発行する。
 
@@ -88,6 +92,15 @@ related_adrs:
 - **E3（図コード化の LLM 一時障害・送信拒否・コード化不能）**: 例外を送出せず**画像保持へ縮退**する
   （パイプラインを完了させる）。この経路はメッセージ再試行を発火させない。計画書（draft）との差異は
   `feedback/20260703_conversion-retry-vs-image-fallback.md` で計画側へ環流する。
+
+  > **［2026-08-10 追記 / #543・[[IADR-0154]]］E3 で縮退した図は記録し、後から人手補正できる。**
+  > UC-06 は縮退を「**後日の人手補正・再登録でコード化する**」と定めており、**縮退はジョブの失敗ではない**
+  > （変換は成功し、`status` は `succeeded` になる）。従前は縮退した図が**どこにも記録されておらず**、
+  > 「どの図が画像で残っているか」を後から引けなかった——`NormalizationResult` は図ごとの結果を
+  > 返していたが、コンシューマがログ行へ出して捨てていた。
+  > 現在は `NormalizationResult.Figures` を `ConversionJobFigures` へ記録し、
+  > `GET /bff/conversion/jobs/{id}/figures` から引ける（**Phase 1 = 図のコード化のやり直し**）。
+  > **`Figures` に既定値は置いていない** —— 既定値があると、また黙って落とせてしまうためである。
 - **E4（保存の恒久失敗）**: `IObjectStore` が例外を送出した場合は E2 と同様に再試行→デッドレターへ委ねる。
 - **E2 / E4 のデッドレター標識（2026-08-06 / #533。SC-07 の裁定 Q13）**: 再試行を使い切った失敗は
   読み取りモデルへ `DeadLettered = true` として記録し、`ConversionJobDto.deadLettered` /

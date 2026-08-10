@@ -24,7 +24,13 @@ import type {
 
 import type {
   BffConversionJobListParams,
-  ConversionJobDto
+  BffConversionJobRetryParams,
+  ConversionCorrectionConflictDto,
+  ConversionFigureDto,
+  ConversionJobDto,
+  ConversionRetryConflictDto,
+  FigureCorrectionRequest,
+  FigureCorrectionResultDto
 } from '../bff.schemas';
 
 import { bffFetch } from '../../orvalMutator';
@@ -289,7 +295,7 @@ export type bffConversionJobRetryResponse404 = {
 }
 
 export type bffConversionJobRetryResponse409 = {
-  data: void
+  data: ConversionRetryConflictDto
   status: 409
 }
 
@@ -302,12 +308,20 @@ export type bffConversionJobRetryResponseError = (bffConversionJobRetryResponse4
 
 export type bffConversionJobRetryResponse = (bffConversionJobRetryResponseSuccess | bffConversionJobRetryResponseError)
 
-export const getBffConversionJobRetryUrl = (id: string,) => {
+export const getBffConversionJobRetryUrl = (id: string,
+    params?: BffConversionJobRetryParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/bff/conversion/jobs/${id}/retry`
+  return stringifiedParams.length > 0 ? `/bff/conversion/jobs/${id}/retry?${stringifiedParams}` : `/bff/conversion/jobs/${id}/retry`
 }
 
 /**
@@ -315,14 +329,20 @@ export const getBffConversionJobRetryUrl = (id: string,) => {
  * `succeeded`）は 409 で拒否する**——UI 制御だけに頼らず API 側で状態を強制し、処理中の二重発行・
  * 成功済みの不要な再処理を防ぐ。
  *
- * **409 に本文は無い。** 後段（ConversionService）は `{ error: "not_retryable", status }` を返すが、
- * BFF は `Results.StatusCode` で**ステータスのみ**を中継する（本文は落ちる）。画面は 409 という
- * ステータスだけを「拒否された」の根拠にする。
- * @summary FR-12, UC-06, SC-07: 人手補正（再変換）。**管理者ロールのみ**
+ * **「人手補正」とは別の操作である**（IADR-0154 決定 5）。人手補正は成功ジョブの縮退した図を
+ * コード化し直すもので、`/figures` 系が担う。
+ *
+ * **［2026-08-10 / #543］409 は本文を伴う。** 従前ここには「409 に本文は無い。BFF は
+ * `Results.StatusCode` でステータスのみを中継する」と書いていたが、**その中継が欠陥だった**
+ * （#640 で `usageCount` が画面へ届かなかったのと同型）。IADR-0154 決定 4 で
+ * **後段の本文をそのまま透過する**よう改めた。画面は `error` で理由を出し分け、
+ * `corrections_would_be_lost` のときは `correctedFigures` を示して確認を求める。
+ * @summary FR-12, UC-06, SC-07: **再変換**（人手補正ではない）。**管理者ロールのみ**
  */
-export const bffConversionJobRetry = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffConversionJobRetryResponse> => {
+export const bffConversionJobRetry = async (id: string,
+    params?: BffConversionJobRetryParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffConversionJobRetryResponse> => {
 
-  return bffFetch<bffConversionJobRetryResponse>(getBffConversionJobRetryUrl(id),
+  return bffFetch<bffConversionJobRetryResponse>(getBffConversionJobRetryUrl(id,params),
   {
     ...options,
     method: 'POST'
@@ -335,9 +355,9 @@ export const bffConversionJobRetry = async (id: string, options?: Parameters<typ
 
 
 
-export const getBffConversionJobRetryMutationOptions = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string}, TContext> => {
+export const getBffConversionJobRetryMutationOptions = <TError = void | ConversionRetryConflictDto,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string;params?: BffConversionJobRetryParams}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string;params?: BffConversionJobRetryParams}, TContext> => {
 
 const mutationKey = ['bffConversionJobRetry'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -349,10 +369,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffConversionJobRetry>>, {id: string}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffConversionJobRetry>>, {id: string;params?: BffConversionJobRetryParams}> = (props) => {
+          const {id,params} = props ?? {};
 
-          return  bffConversionJobRetry(id,requestOptions)
+          return  bffConversionJobRetry(id,params,requestOptions)
         }
 
 
@@ -364,18 +384,361 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffConversionJobRetryMutationResult = NonNullable<Awaited<ReturnType<typeof bffConversionJobRetry>>>
 
-    export type BffConversionJobRetryMutationError = void
+    export type BffConversionJobRetryMutationError = void | ConversionRetryConflictDto
 
     /**
- * @summary FR-12, UC-06, SC-07: 人手補正（再変換）。**管理者ロールのみ**
+ * @summary FR-12, UC-06, SC-07: **再変換**（人手補正ではない）。**管理者ロールのみ**
  */
-export const useBffConversionJobRetry = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof bffFetch>}
+export const useBffConversionJobRetry = <TError = void | ConversionRetryConflictDto,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobRetry>>, TError,{id: string;params?: BffConversionJobRetryParams}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffConversionJobRetry>>,
         TError,
-        {id: string},
+        {id: string;params?: BffConversionJobRetryParams},
         TContext
       > => {
       return useMutation(getBffConversionJobRetryMutationOptions(options));
+    }
+    export type bffConversionJobFiguresResponse200 = {
+  data: ConversionFigureDto[]
+  status: 200
+}
+
+export type bffConversionJobFiguresResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffConversionJobFiguresResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffConversionJobFiguresResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffConversionJobFiguresResponseSuccess = (bffConversionJobFiguresResponse200) & {
+  headers: Headers;
+};
+export type bffConversionJobFiguresResponseError = (bffConversionJobFiguresResponse401 | bffConversionJobFiguresResponse403 | bffConversionJobFiguresResponse404) & {
+  headers: Headers;
+};
+
+export type bffConversionJobFiguresResponse = (bffConversionJobFiguresResponseSuccess | bffConversionJobFiguresResponseError)
+
+export const getBffConversionJobFiguresUrl = (id: string,) => {
+
+
+
+
+  return `/bff/conversion/jobs/${id}/figures`
+}
+
+/**
+ * ジョブが抽出した図の一覧（SC-07 の 2 ペイン編集の材料）。**`coded: false` の図が補正の対象**である
+ * （Phase 1 は図のコード化のやり直しに限る。05_screens:330）。
+ *
+ * **画像のバイト列は含まない**——応答が図の枚数だけ膨らむため、`/image` が別途配信する
+ * （IADR-0154 決定 2）。
+ *
+ * **人手補正は管理者限定**（05_screens:314）。2 ペインを開く操作そのものが人手補正であるため、
+ * 照会（GET）だが運用者は 403 になる。ジョブの照会（`GET /bff/conversion/jobs`）とは実効ロールが違う。
+ * @summary FR-12, UC-06, SC-07: 人手補正 Phase 1 の本文取得。**管理者ロールのみ**
+ */
+export const bffConversionJobFigures = async (id: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffConversionJobFiguresResponse> => {
+
+  return bffFetch<bffConversionJobFiguresResponse>(getBffConversionJobFiguresUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffConversionJobFiguresQueryKey = (id: string,) => {
+    return [
+    `/bff/conversion/jobs/${id}/figures`
+    ] as const;
+    }
+
+
+export const getBffConversionJobFiguresQueryOptions = <TData = Awaited<ReturnType<typeof bffConversionJobFigures>>, TError = void>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigures>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffConversionJobFiguresQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffConversionJobFigures>>> = ({ signal }) => bffConversionJobFigures(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigures>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffConversionJobFiguresQueryResult = NonNullable<Awaited<ReturnType<typeof bffConversionJobFigures>>>
+export type BffConversionJobFiguresQueryError = void
+
+
+/**
+ * @summary FR-12, UC-06, SC-07: 人手補正 Phase 1 の本文取得。**管理者ロールのみ**
+ */
+
+export function useBffConversionJobFigures<TData = Awaited<ReturnType<typeof bffConversionJobFigures>>, TError = void>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigures>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffConversionJobFiguresQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffConversionJobFigureImageResponse200 = {
+  data: Blob
+  status: 200
+}
+
+export type bffConversionJobFigureImageResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffConversionJobFigureImageResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffConversionJobFigureImageResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffConversionJobFigureImageResponseSuccess = (bffConversionJobFigureImageResponse200) & {
+  headers: Headers;
+};
+export type bffConversionJobFigureImageResponseError = (bffConversionJobFigureImageResponse401 | bffConversionJobFigureImageResponse403 | bffConversionJobFigureImageResponse404) & {
+  headers: Headers;
+};
+
+export type bffConversionJobFigureImageResponse = (bffConversionJobFigureImageResponseSuccess | bffConversionJobFigureImageResponseError)
+
+export const getBffConversionJobFigureImageUrl = (id: string,
+    figureId: string,) => {
+
+
+
+
+  return `/bff/conversion/jobs/${id}/figures/${figureId}/image`
+}
+
+/**
+ * **BFF がオブジェクトストレージから解決して返す**（`GET /bff/documents/{id}/content` と同じ形。
+ * IADR-0154 決定 2）。コード化済みの図は画像を保持しないため 404 になる——
+ * **未知の図と区別しない**（どちらも「その画像は無い」）。
+ * @summary FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**
+ */
+export const bffConversionJobFigureImage = async (id: string,
+    figureId: string, options?: Parameters<typeof bffFetch>[1]): Promise<bffConversionJobFigureImageResponse> => {
+
+  return bffFetch<bffConversionJobFigureImageResponse>(getBffConversionJobFigureImageUrl(id,figureId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffConversionJobFigureImageQueryKey = (id: string,
+    figureId: string,) => {
+    return [
+    `/bff/conversion/jobs/${id}/figures/${figureId}/image`
+    ] as const;
+    }
+
+
+export const getBffConversionJobFigureImageQueryOptions = <TData = Awaited<ReturnType<typeof bffConversionJobFigureImage>>, TError = void>(id: string,
+    figureId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigureImage>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffConversionJobFigureImageQueryKey(id,figureId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffConversionJobFigureImage>>> = ({ signal }) => bffConversionJobFigureImage(id,figureId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && figureId !== null && figureId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigureImage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffConversionJobFigureImageQueryResult = NonNullable<Awaited<ReturnType<typeof bffConversionJobFigureImage>>>
+export type BffConversionJobFigureImageQueryError = void
+
+
+/**
+ * @summary FR-12, UC-06, SC-07: 縮退した図の元画像（2 ペインの右側）。**管理者ロールのみ**
+ */
+
+export function useBffConversionJobFigureImage<TData = Awaited<ReturnType<typeof bffConversionJobFigureImage>>, TError = void>(
+ id: string,
+    figureId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffConversionJobFigureImage>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffConversionJobFigureImageQueryOptions(id,figureId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffConversionJobFigureCorrectionResponse200 = {
+  data: FigureCorrectionResultDto
+  status: 200
+}
+
+export type bffConversionJobFigureCorrectionResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffConversionJobFigureCorrectionResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffConversionJobFigureCorrectionResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffConversionJobFigureCorrectionResponse404 = {
+  data: void
+  status: 404
+}
+
+export type bffConversionJobFigureCorrectionResponse409 = {
+  data: ConversionCorrectionConflictDto
+  status: 409
+}
+
+export type bffConversionJobFigureCorrectionResponseSuccess = (bffConversionJobFigureCorrectionResponse200) & {
+  headers: Headers;
+};
+export type bffConversionJobFigureCorrectionResponseError = (bffConversionJobFigureCorrectionResponse400 | bffConversionJobFigureCorrectionResponse401 | bffConversionJobFigureCorrectionResponse403 | bffConversionJobFigureCorrectionResponse404 | bffConversionJobFigureCorrectionResponse409) & {
+  headers: Headers;
+};
+
+export type bffConversionJobFigureCorrectionResponse = (bffConversionJobFigureCorrectionResponseSuccess | bffConversionJobFigureCorrectionResponseError)
+
+export const getBffConversionJobFigureCorrectionUrl = (id: string,
+    figureId: string,) => {
+
+
+
+
+  return `/bff/conversion/jobs/${id}/figures/${figureId}/correction`
+}
+
+/**
+ * 縮退した図へ PlantUML / Mermaid のコード片を与え、**本文の図ブロックを置換して**
+ * 取り込みへ再投入する（05_screens:313）。**原本からの再変換ではない**——やり直すと LLM が
+ * 再び縮退して補正が消えるためである（IADR-0154 決定 3）。
+ *
+ * **変換結果 Markdown 全体の編集は Phase 2** であり、本口は受け付けない（05_screens:330）。
+ * @summary FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 = 図のコード化）。**管理者ロールのみ**
+ */
+export const bffConversionJobFigureCorrection = async (id: string,
+    figureId: string,
+    figureCorrectionRequest: FigureCorrectionRequest, options?: Parameters<typeof bffFetch>[1]): Promise<bffConversionJobFigureCorrectionResponse> => {
+
+  return bffFetch<bffConversionJobFigureCorrectionResponse>(getBffConversionJobFigureCorrectionUrl(id,figureId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(figureCorrectionRequest)
+  }
+);}
+
+
+
+
+
+export const getBffConversionJobFigureCorrectionMutationOptions = <TError = void | ConversionCorrectionConflictDto,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>, TError,{id: string;figureId: string;data: FigureCorrectionRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>, TError,{id: string;figureId: string;data: FigureCorrectionRequest}, TContext> => {
+
+const mutationKey = ['bffConversionJobFigureCorrection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>, {id: string;figureId: string;data: FigureCorrectionRequest}> = (props) => {
+          const {id,figureId,data} = props ?? {};
+
+          return  bffConversionJobFigureCorrection(id,figureId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BffConversionJobFigureCorrectionMutationResult = NonNullable<Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>>
+    export type BffConversionJobFigureCorrectionMutationBody = FigureCorrectionRequest
+    export type BffConversionJobFigureCorrectionMutationError = void | ConversionCorrectionConflictDto
+
+    /**
+ * @summary FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 = 図のコード化）。**管理者ロールのみ**
+ */
+export const useBffConversionJobFigureCorrection = <TError = void | ConversionCorrectionConflictDto,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>, TError,{id: string;figureId: string;data: FigureCorrectionRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof bffConversionJobFigureCorrection>>,
+        TError,
+        {id: string;figureId: string;data: FigureCorrectionRequest},
+        TContext
+      > => {
+      return useMutation(getBffConversionJobFigureCorrectionMutationOptions(options));
     }

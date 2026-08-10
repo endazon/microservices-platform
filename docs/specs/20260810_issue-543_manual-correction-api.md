@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 人手補正の本文取得 API と補正投稿 API を新設する（Phase 1 = 図のコード化。#543）
 type: work-spec
-status: draft
+status: fixed
 related_ids:
   - FR-12
   - UC-06
@@ -36,7 +36,7 @@ related_specs:
 - **FR-12**（文書正規化）／**UC-06**（文書を正規化変換する。代替フロー「変換結果を管理者が補正して再登録する」）／**SC-07**（変換ジョブ画面）
 - 計画の確定: `05_screens/01_screens.md` §SC-07「人手補正の契約とその範囲」（**確定・2026-08-05**。利用者裁定〔質問票 第12回 Q12・Q20 および派生 Q31・Q33〕）
 - 関連 issue: **#545**（IADR-0042 の表題と実体のずれ。**本 issue の着手で解消する**）
-- 環流元: planning#198 / planning PR #200
+- 環流元: planning#198 / planning#200
 
 ## 射程
 
@@ -170,8 +170,8 @@ $ grep -rn --exclude-dir={bin,obj,coverage} -E '"/jobs|/bff/conversion' src/ \
 | 追随先 | 何が誤りになるか |
 | --- | --- |
 | `docs/screens/SC-07_conversion-jobs.md` | §hi-fi 対応表 #10 / #12「人手補正 → **しない。契約の不在**」・§実装しない要素の理由 (a)・§未決事項 1 |
-| `docs/functional/FR-12_document-normalization.md` | 縮退した図の扱い |
-| `docs/tests/SC-07_conversion-jobs.md` / `docs/tests/FR-12_document-normalization.md` | テスト仕様の追加 |
+| `docs/functional/FR-12_document-normalization.md` | 縮退した図の扱い（**E3 の説明自体は誤りにならなかった**が、縮退した図が記録・補正できるようになった旨と、埋め込み形が置換の目印になった旨の追記が要る） |
+| `docs/tests/SC-07_conversion-jobs.md` | テスト仕様の追加。**`docs/tests/FR-12_*` は追加不要だった**——同書の T-02 / T-03 / T-06 / T-12 は縮退の**判定**を写像しており、本 issue はその判定を変えていない |
 | `docs/data/conversion-job.md` | **図テーブルの追加**（データ仕様書） |
 | `docs/adr/IADR-0042_*` | **日付つき追記**（表題の「人手補正 API」は設計時点の想定であり、実体は後継 IADR が定める） |
 | `docs/api/openapi.yaml` ＋ `docs/api/BFF_bff-surface.md` | `/bff/conversion/jobs/**` の新設 |
@@ -300,6 +300,66 @@ public record FigureCorrectionRequest(string Language, string Code);
 
 **変異検査（両方向）**: `AdminOnly` を外すと 7 が落ちること、
 `corrections_would_be_lost` の判定を外すと 5 が落ちることを**実測してから**確定させる。
+
+## 実装中に決めたこと（仕様書からの差分）
+
+### 1. `NormalizationResult.Figures` に既定値を付けない
+
+`[]` を既定にすれば呼び出し側 3 箇所（すべてテスト）を直さずに済んだが、**付けなかった。**
+本 issue が直している事故は、まさに「**渡さなくてもコンパイルが通り、黙って落ちる**」形である。
+既定値を付けると同じ事故が再発する。テストの 3 箇所は**件数と図の内訳が一致するよう明示的に**書いた。
+
+### 2. EF が新規行を「既存行の更新」と解釈して落ちた
+
+`ConversionJobFigure.Id` をエンティティ側で採番していたところ、EF が Guid 主キーを
+**ストア生成**と見なし、値が入った新規行を UPDATE しようとして
+`DbUpdateConcurrencyException: Attempted to update or delete an entity that does not exist in the store`
+になった。`ConversionJob.Id` と同じく **`ValueGeneratedNever()`** を置いて解決した。
+
+**マイグレーションは作り直した** —— `ValueGeneratedNever` はモデルスナップショットに出るため、
+先に生成したマイグレーションでは snapshot が `ValueGeneratedOnAdd()` のまま食い違っていた。
+（`dotnet ef migrations remove` は DB へ接続しようとして失敗するので、
+ファイルを消して snapshot を `git checkout` で戻してから再生成した。）
+
+### 3. ★ BFF の `retry` が 409 の本文を捨てていた（**#640 と同型・3 度目の発見**）
+
+新しい 409（`corrections_would_be_lost` ＋ `correctedFigures`）を足そうとして気づいた:
+
+```csharp
+var resp = await client.PostAsync($"/jobs/{id}/retry", content: null, ct);
+return Results.StatusCode((int)resp.StatusCode);   // ← 本文が消える
+```
+
+**#640 では解析層（`ApiError.parseProblemDetails`）を直したが、中継層はここに残っていた。**
+`docs/api/openapi.yaml` と `docs/api/BFF_bff-surface.md` は**その挙動を仕様として明記していた**
+（「409 に本文は無い。BFF は `Results.StatusCode` でステータスのみを中継する」）。
+[[IADR-0040]] の透過中継へ改め、**両文書も直した**（規則 8）。
+
+**変異試験**: 中継を `Results.StatusCode` へ戻すと `Retry_Passes409Body_ThroughVerbatim` **のみ**が
+落ちる（Failed 1 / Passed 21）ことを実測した。**テストが本当にこの欠陥を捕まえている。**
+
+### 4. ★ 再発行する `DocumentNormalized` が ABAC 属性を落とすところだった
+
+最初に書いた実装は `Attributes: new Dictionary<string, string>()` / `Tags: []` で再発行していた。
+**取り込み側は属性から機密区分を読む**ため、これは**文書の可視範囲を変える**欠陥である。
+`GetSourceEventAsync` を足し、原本イベントから復元して載せるよう直した
+（回帰テスト `Correction_Republishes_WithAbacAttributesPreserved`）。
+
+**契約 DTO を見ているだけでは気づけなかった** —— `ConversionJobDto` は
+「原本イベント再構成用の列は DTO に含めない」設計であり、**属性は DTO に無い**。
+軸を「誰がこの応答を読むか」から**「このイベントを誰が読むか」**へ広げて初めて出てきた。
+
+### 5. 「人手補正」が「再変換」の別名として使われていた
+
+母集合 軸 4 のとおり、`ConversionJob.cs:88` と `ConversionJobEndpoints.cs:31` が
+「人手補正は失敗ジョブに限る」と書いていた。**再変換の説明としては正しいが、人手補正の説明としては誤り**である。
+`docs/data/conversion-job.md:117` にも同じ記述があった。**3 箇所とも実態へ揃えた**（[[IADR-0154]] 決定 5）。
+
+### 6. テスト間の状態漏れ
+
+`BffTestFactory` は `IClassFixture` で共有されるため、足した `ConversionConflictBody` /
+`LastConversionPath` をテストのコンストラクタで戻さないと、**後続テストの retry 応答へ本文が漏れる**。
+既存の `ConversionStatusCode` / `ConversionThrows` と並べて戻すようにした。
 
 ## 申し送り
 

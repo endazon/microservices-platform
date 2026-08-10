@@ -565,6 +565,84 @@ export interface ConversionJobDto {
   maxAttempts: number;
   createdAt: string;
   updatedAt: string;
+  /** 図のうち LLM がコード化できた件数（hi-fi:422「Mermaid 2図」の導出元） */
+  diagramsCoded?: number;
+  /**
+     * 図のうち**画像保持へ縮退した件数**（＝人手補正 Phase 1 の対象数）。
+     * hi-fi:420「✕ 図コード化失敗（画像保持へ縮退済み）」は**ここから導出する表示**であり、
+     * **`status` の 5 値目ではない**——縮退はジョブの失敗ではなく、`status` は `succeeded` である
+     * （05_screens:317「ジョブ状態モデルは 4 値である」。`deadLettered` と同じ扱い）。
+     */
+  diagramsRetained?: number;
+  /**
+     * **「補正あり」の標識**（hi-fi:422。05_screens:313）。人手補正が入った図があるか。
+     * `true` のジョブを再変換すると補正は失われるため、`retry` は 409
+     * `corrections_would_be_lost` で明示確認を求める（IADR-0154 決定 4）。
+     */
+  hasCorrection?: boolean;
+}
+
+/**
+ * FR-12, UC-06, SC-07: 変換ジョブが抽出した図（`Knowledge.Contracts/Dtos/ConversionFigureDto.cs`）
+ */
+export interface ConversionFigureDto {
+  /** ジョブ内で一意。本文の埋め込み位置を突き止める鍵でもある */
+  figureId: string;
+  /** LLM がコード化できたか。**`false` が人手補正 Phase 1 の対象**である */
+  coded: boolean;
+  /** `plantuml` / `mermaid` */
+  language?: string | null;
+  /** コード片（自動コード化または人手補正の結果） */
+  code?: string | null;
+  /** 縮退した図の画像参照。コード化済みの図は null */
+  imageUri?: string | null;
+  imageContentType?: string | null;
+  /** キャプション・近傍テキスト（補正の手がかり） */
+  caption?: string | null;
+  /** **人手補正で `code` が入ったか**（自動コード化と区別する） */
+  corrected: boolean;
+  correctedAt?: string | null;
+}
+
+/**
+ * FR-12, UC-06, SC-07: 人手補正の投稿（Phase 1 は図のコード片のみ）
+ */
+export interface FigureCorrectionRequest {
+  /** `plantuml` / `mermaid` */
+  language: string;
+  /** 図のコード片。**Markdown 全体ではない**（Phase 2 の範囲） */
+  code: string;
+}
+
+/**
+ * FR-12, UC-06, SC-07: 人手補正の結果
+ */
+export interface FigureCorrectionResultDto {
+  figureId: string;
+  /** 差し替え後の本文（画面が SC-03 への導線を張れるように返す） */
+  markdownUri: string;
+  /** このジョブで補正済みの図の件数 */
+  correctedFigures: number;
+}
+
+/**
+ * FR-12, SC-07: 再変換の 409 本文。**BFF が透過する**（IADR-0154 決定 4）
+ */
+export interface ConversionRetryConflictDto {
+  /** `not_retryable` / `corrections_would_be_lost` */
+  error: string;
+  /** 拒否時点のジョブ状態 */
+  status?: string | null;
+  /** `corrections_would_be_lost` のとき、再変換で失われる補正の件数 */
+  correctedFigures?: number | null;
+}
+
+/**
+ * FR-12, SC-07: 人手補正の 409 本文
+ */
+export interface ConversionCorrectionConflictDto {
+  /** `figure_not_correctable` / `job_busy` / `body_unavailable` */
+  error: string;
 }
 
 /**
@@ -1049,5 +1127,15 @@ export type BffConversionJobListParams = {
  * 状態で絞り込む（`queued` / `processing` / `succeeded` / `failed`。「失敗のみ」フィルタの実体）
  */
 status?: string;
+};
+
+export type BffConversionJobRetryParams = {
+/**
+ * **補正版を正とするための明示確認**（05_screens:333。IADR-0154 決定 4）。
+ * 補正のあるジョブは既定で 409 `corrections_would_be_lost` になる。破棄してよい場合だけ
+ * `true` を付けて再送する。**確認をダイアログだけに置かない**——生成クライアントや
+ * 別経路の呼び出しが素通りするためである。
+ */
+discardCorrections?: boolean;
 };
 

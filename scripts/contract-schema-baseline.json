@@ -287,6 +287,65 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.ConversionFigureDto": {
+        "kind": "record",
+        "members": {
+          "Caption": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 6
+          },
+          "Code": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 3
+          },
+          "Coded": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 1
+          },
+          "Corrected": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 7
+          },
+          "CorrectedAt": {
+            "source": "positional",
+            "type": "DateTimeOffset?",
+            "required": false,
+            "position": 8
+          },
+          "FigureId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "ImageContentType": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 5
+          },
+          "ImageUri": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 4
+          },
+          "Language": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.ConversionJobDto": {
         "kind": "record",
         "members": {
@@ -308,6 +367,18 @@
             "required": false,
             "position": 11
           },
+          "DiagramsCoded": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 13
+          },
+          "DiagramsRetained": {
+            "source": "positional",
+            "type": "int",
+            "required": false,
+            "position": 14
+          },
           "DocumentId": {
             "source": "positional",
             "type": "Guid?",
@@ -319,6 +390,12 @@
             "type": "string?",
             "required": true,
             "position": 5
+          },
+          "HasCorrection": {
+            "source": "positional",
+            "type": "bool",
+            "required": false,
+            "position": 15
           },
           "Id": {
             "source": "positional",
@@ -866,6 +943,46 @@
             "type": "int",
             "required": true,
             "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FigureCorrectionRequest": {
+        "kind": "record",
+        "members": {
+          "Code": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Language": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.FigureCorrectionResultDto": {
+        "kind": "record",
+        "members": {
+          "CorrectedFigures": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          },
+          "FigureId": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "MarkdownUri": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
           }
         }
       },
