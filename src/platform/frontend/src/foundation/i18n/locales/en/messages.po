@@ -114,6 +114,10 @@ msgstr "consumer"
 msgid "Keycloak でサインイン"
 msgstr "Sign in with Keycloak"
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "Mermaid {coded}図"
+msgstr "Mermaid, {coded} diagram(s)"
+
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "SaaS"
 msgstr "SaaS"
@@ -168,6 +172,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
@@ -216,6 +221,10 @@ msgstr "List of connectors"
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "コネクタはありません。"
 msgstr "There are no connectors."
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。"
+msgstr "This job has {pendingDiscard} manual correction(s). Re-converting will discard them."
 
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "このジョブは再変換できません（実行中、または失敗以外の状態です）。"
@@ -548,6 +557,18 @@ msgstr "Main navigation"
 msgid "予期しないエラーが発生しました。時間をおいて再度お試しください。"
 msgstr "An unexpected error occurred. Please wait a moment and try again."
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "人手補正"
+msgstr "Manual correction"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "人手補正（図のコード化）"
+msgstr "Manual correction (diagram coding)"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "人手補正は管理者のみ実行できます"
+msgstr "Only administrators can apply manual corrections"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 msgid "他の更新と競合しました（版が変わっています）。最新を再読み込みしてください。"
 msgstr "Another update conflicted with yours (the version has changed). Please reload the latest data."
@@ -602,6 +623,14 @@ msgstr "Loading options…"
 msgid "備考"
 msgstr "Notes"
 
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "元の図"
+msgstr "Original diagram"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "元の画像を表示できません。"
+msgstr "The original image cannot be displayed."
+
 #: knowledge/frontend/src/features/sc08-analysis/AnalysisDashboardPage.tsx
 msgid "入力 {inputTokens} ・出力 {outputTokens} トークン"
 msgstr "{inputTokens} input / {outputTokens} output tokens"
@@ -625,10 +654,6 @@ msgstr "Only administrators can reconvert"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "再変換を受け付けました。"
 msgstr "The reconversion has been accepted."
-
-#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
-msgid "再変換を受け付けられませんでした。"
-msgstr "The reconversion could not be accepted."
 
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
@@ -712,6 +737,10 @@ msgstr "Read-only"
 msgid "参照元は特定できませんでした。"
 msgstr "The referencing policies could not be identified."
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "取り消す"
+msgstr "Cancel"
+
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "古い段の残留"
 msgstr "Stale stage left running"
@@ -747,6 +776,26 @@ msgstr "Generating the answer…"
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "回答総数"
 msgstr "Answers"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "図コード: {figureId}"
+msgstr "Diagram code: {figureId}"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "図コード化失敗（画像保持へ縮退済み）"
+msgstr "Diagram coding failed (fell back to keeping the image)"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "図の一覧を取得できませんでした。"
+msgstr "Could not load the diagrams."
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "図を補正して再登録しました。"
+msgstr "The diagram was corrected and re-registered."
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "図を読み込み中…"
+msgstr "Loading diagrams…"
 
 #: knowledge/frontend/src/features/sc07-conversions/index.tsx
 msgid "変換ジョブ"
@@ -945,6 +994,10 @@ msgstr "Connection credentials are managed in Vault. Repeated connection failure
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 msgid "操作"
 msgstr "Actions"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "操作を受け付けられませんでした。"
+msgstr "The operation could not be accepted."
 
 #: knowledge/frontend/src/features/sc05-documents/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
@@ -1268,6 +1321,10 @@ msgstr "Status: {status} | Version: v{version} | Updated: {updatedAt}"
 msgid "状態で絞り込み"
 msgstr "Filter by status"
 
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "画像を読み込み中…"
+msgstr "Loading image…"
+
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "発行者"
 msgstr "Publishers"
@@ -1291,6 +1348,10 @@ msgstr "Left blank, the analysis request itself is used"
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "矛盾はありません。まだ保存していません。"
 msgstr "No contradictions found. Nothing has been saved yet."
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "確認"
+msgstr "Confirm"
 
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
 msgid "確認時刻"
@@ -1348,9 +1409,34 @@ msgstr "No options available to narrow by."
 msgid "編集"
 msgstr "Edit"
 
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "補正あり"
+msgstr "Corrected"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "補正が必要な図はありません。"
+msgstr "No diagrams need correction."
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "補正して再登録"
+msgstr "Correct and re-register"
+
+#: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
+msgid "補正を破棄して再変換"
+msgstr "Discard corrections and re-convert"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "補正対象の図の元画像"
+msgstr "Original image of the diagram being corrected"
+
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "見つかりませんでした"
 msgstr "Not found"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "記法"
+msgstr "Notation"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 msgid "設定した条件"
@@ -1483,6 +1569,10 @@ msgstr "Select…"
 #: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "部門"
 msgstr "Department"
+
+#: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
+msgid "閉じる"
+msgstr "Close"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/abacVocabulary.ts
 msgid "閲覧"
