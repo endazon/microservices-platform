@@ -36,12 +36,19 @@ export type bffSearchResponse200 = {
   status: 200
 }
 
+export type bffSearchResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffSearchResponseSuccess = (bffSearchResponse200) & {
   headers: Headers;
 };
-;
+export type bffSearchResponseError = (bffSearchResponse401) & {
+  headers: Headers;
+};
 
-export type bffSearchResponse = (bffSearchResponseSuccess)
+export type bffSearchResponse = (bffSearchResponseSuccess | bffSearchResponseError)
 
 export const getBffSearchUrl = () => {
 
@@ -74,7 +81,7 @@ export const bffSearch = async (searchRequest: SearchRequest, options?: Paramete
 
 
 
-export const getBffSearchMutationOptions = <TError = unknown,
+export const getBffSearchMutationOptions = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSearch>>, TError,{data: SearchRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bffSearch>>, TError,{data: SearchRequest}, TContext> => {
 
@@ -103,12 +110,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffSearchMutationResult = NonNullable<Awaited<ReturnType<typeof bffSearch>>>
     export type BffSearchMutationBody = SearchRequest
-    export type BffSearchMutationError = unknown
+    export type BffSearchMutationError = void
 
     /**
  * @summary FR-03: ベクトル検索（BFF 集約）
  */
-export const useBffSearch = <TError = unknown,
+export const useBffSearch = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSearch>>, TError,{data: SearchRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffSearch>>,
@@ -123,12 +130,19 @@ export const useBffSearch = <TError = unknown,
   status: 200
 }
 
+export type bffAttributeValuesResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffAttributeValuesResponseSuccess = (bffAttributeValuesResponse200) & {
   headers: Headers;
 };
-;
+export type bffAttributeValuesResponseError = (bffAttributeValuesResponse401) & {
+  headers: Headers;
+};
 
-export type bffAttributeValuesResponse = (bffAttributeValuesResponseSuccess)
+export type bffAttributeValuesResponse = (bffAttributeValuesResponseSuccess | bffAttributeValuesResponseError)
 
 export const getBffAttributeValuesUrl = () => {
 
@@ -171,7 +185,7 @@ export const bffAttributeValues = async (attributeValuesRequest: AttributeValues
 
 
 
-export const getBffAttributeValuesMutationOptions = <TError = unknown,
+export const getBffAttributeValuesMutationOptions = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext> => {
 
@@ -200,12 +214,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffAttributeValuesMutationResult = NonNullable<Awaited<ReturnType<typeof bffAttributeValues>>>
     export type BffAttributeValuesMutationBody = AttributeValuesRequest
-    export type BffAttributeValuesMutationError = unknown
+    export type BffAttributeValuesMutationError = void
 
     /**
  * @summary FR-04, FR-05, SC-01, SC-08: 権限内属性値の照会（BFF 集約）
  */
-export const useBffAttributeValues = <TError = unknown,
+export const useBffAttributeValues = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAttributeValues>>, TError,{data: AttributeValuesRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffAttributeValues>>,
