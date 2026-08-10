@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-09, SC-10, SC-11, UC-05, FR-05, FR-09, FR-10, FR-15, FR-17, ADR-0031, ADR-0033, IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0040, IADR-0046, IADR-0119, IADR-0142, IADR-0121, IADR-0124, IADR-0125, IADR-0127]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-07
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -128,7 +128,7 @@ hi-fi はこれを `seg` / `seg-opt` の切替として描く。本 issue が実
 [[IADR-0009]]（存在秘匿）は「権限外の資源は不在と同じ応答にする」と定める。
 画面側でこれを崩さないため、**`forbidden` と `notFound` を区別した文言を出さない**。
 
-- SC-10（BFF は AdminOnly ＝ 403 を返す）も SC-11（BFF は 404 で秘匿する）も、**それぞれの画面の中で**
+- SC-10（BFF は管理系ロール以外へ 403 を返す。**#544 で admin ＋ operator へ広げた**）も SC-11（BFF は 404 で秘匿する）も、**それぞれの画面の中で**
   403 と 404 に**同じ文言**を出す。**画面をまたいで同一文言にするという意味ではない**——
   実際の文言は「運用ダッシュボードは利用できません。」／「構成情報は利用できません。」と画面ごとに違う。
   秘匿が破れるのは**同じ画面の中で**権限の有無によって文言が変わるときだけである。
@@ -147,6 +147,24 @@ hi-fi はこれを `seg` / `seg-opt` の切替として描く。本 issue が実
 決定の理由（障害の見逃し）と噛み合わないためである。
 
 ### 決定 4: SC-10 の閲覧ロールは **`platform-admin` 据え置き**とし、裁定を求める
+
+> **［2026-08-09 追記 / #544］据え置きは解けた。閲覧は `platform-admin` ＋ `platform-operator` である。**
+>
+> 求めていた裁定（環流記録の提案 7）は **Q19 / Q28** で確定し、**計画が正**となった
+> ——計画 §SC-10 の「運用者・管理者ロール限定」をそのまま実装へ写した。
+>
+> **本決定が「本 issue では採らない」とした案（BFF と後段を同時に広げる）を、#544 が実施した。**
+> 3 層（画面のルートゲート・`/bff/dashboard/summary`・`DashboardService` の集計 3 口）を
+> **同時に**広げてあるので、本決定が避けようとした「開くと必ず 403 になる画面」は生じない。
+>
+> **決定 3（403 と 404 を同一の中立文言へ寄せる）は変わらない。** 本文中の
+> 「SC-10（BFF は `AdminOnly` ＝ 403 を返す）」という括弧書きは、**403 を返す相手が
+> 管理系ロール以外へ変わった**だけで、作法そのものは有効である。
+>
+> **その帰結（SC-10 から SC-11 への導線を権限で出し分けない）も変わらない** ——
+> 到達できるのが `platform-admin` **＋ `platform-operator`** になったが、
+> これは `ConfigViewer`（admin または operator）と**同じ集合**であり、
+> `useHasAnyRole(Admin, Operator)` がこの画面で常に真であることは維持される。
 
 計画 §SC-10 は「**運用者・管理者**ロール限定」と定めるが、実装は `platform-admin` のみである。
 データ源 `/bff/dashboard/summary` は `AdminOnly`、**後段 `DashboardService` の集計も AdminOnly** であり、

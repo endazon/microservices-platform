@@ -7,7 +7,7 @@ related_ids:
   - UC-05
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-10)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
@@ -52,6 +52,14 @@ FR-10 は「利用状況・検索傾向・回答品質を可視化するダッ�
   BFF `/bff/dashboard/summary` が DashboardService の利用側サマリと並行取得して 1 応答（`DashboardSummaryDto`）へ集約する。
 - **認可**: 利用傾向・検索語は運用情報のため、集計 API（`/dashboard/usage|trends|summary`、`/bff/dashboard/summary`）は
   `AdminOnly`（`platform-admin`）で保護する。BFF は DashboardService（AdminOnly）へ資格情報を伝播する。
+
+  > **［2026-08-09 追記 / #544］保護の範囲を `platform-admin` ＋ `platform-operator` へ広げた。**
+  > 計画 §SC-10 は閲覧を「**運用者・管理者**ロール限定」と定めており、裁定 **Q19 / Q28** で**計画が正**となった
+  > （[[IADR-0129]] 決定 4 の追記を参照）。**両層（BFF・DashboardService の集計 3 口）を同時に広げてある。**
+  >
+  > **「運用情報だから保護する」という本決定の骨子は変わらない** —— 保護の**相手**が
+  > 「管理者以外」から「**管理系ロール以外**」へ変わっただけである。
+  > **イベント記録（`POST /dashboard/events`）の扱いも変えていない**（下段のとおり認証済みユーザへ開放）。
   一方、イベント記録（`POST /dashboard/events`）は集計の入力を欠かさないよう認証済みユーザに開放する
   （記録には検索語のみで文書本文は含めない）。
 - **無制限集計の抑止**: 期間 `days`（既定 7・上限 90）、上位件数 `top`（既定 10・上限 50）をクランプする。

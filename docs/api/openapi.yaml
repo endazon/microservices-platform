@@ -355,7 +355,7 @@ paths:
       description: |
         DashboardService（利用状況・検索傾向）と FeedbackService（回答品質）を 1 応答へ集約する。
         利用状況と満足率の期間の起点を揃えるため、有効な days を BFF で確定し双方へ同じ値を渡す。
-        管理者ロール（AdminOnly）に限定する。
+        **管理者・運用者ロール**に限定する（計画 §SC-10。**［#544］従前は管理者のみだった**）。
       operationId: bff-dashboard-summary
       parameters:
         - name: days
@@ -378,7 +378,7 @@ paths:
         "401":
           description: 未認証
         "403":
-          description: 管理者ロール以外（AdminOnly）
+          description: 管理系ロール以外（admin ＋ operator 以外。#544）
 
   /bff/admin/config:
     get:
@@ -1609,7 +1609,7 @@ paths:
     get:
       tags: [Dashboard]
       summary: "FR-10: 日次利用状況（日付 × 種別の件数）"
-      description: "利用傾向は運用情報のため管理者ロール（AdminOnly）に限定する。"
+      description: "利用傾向は運用情報のため管理系ロール（admin ＋ operator。#544）に限定する。"
       operationId: dashboard-usage
       parameters:
         - name: days
@@ -1628,7 +1628,7 @@ paths:
         "401":
           description: 未認証
         "403":
-          description: 管理者ロール以外（AdminOnly）
+          description: 管理系ロール以外（admin ＋ operator 以外。#544）
 
   /dashboard/trends:
     get:
@@ -1656,7 +1656,7 @@ paths:
         "401":
           description: 未認証
         "403":
-          description: 管理者ロール以外（AdminOnly）
+          description: 管理系ロール以外（admin ＋ operator 以外。#544）
 
   /dashboard/summary:
     get:
@@ -1664,7 +1664,7 @@ paths:
       summary: "FR-10: 利用側サマリ（総件数・利用状況・検索傾向）"
       description: |
         回答品質は含まず、BFF が FeedbackService から付加して DashboardSummaryDto を組み立てる。
-        管理者ロール（AdminOnly）に限定する。
+        管理系ロール（admin ＋ operator。#544）に限定する。
       operationId: dashboard-usage-summary
       parameters:
         - name: days
@@ -1685,7 +1685,7 @@ paths:
         "401":
           description: 未認証
         "403":
-          description: 管理者ロール以外（AdminOnly）
+          description: 管理系ロール以外（admin ＋ operator 以外。#544）
 
   # ── LlmGateway（直接・内部 API / IADR-0017）─────────
   /complete:

@@ -286,7 +286,7 @@ public class BffTestFactory : WebApplicationFactory<Program>
             services.AddHttpClient("MarketMonitorService")
                 .ConfigurePrimaryHttpMessageHandler(() => new MonitorStubHandler(this));
 
-            // FR-10: /bff/dashboard/summary は AdminOnly。テストでは Keycloak/JWT に依存せず
+            // FR-10: /bff/dashboard/summary は管理系ロール（admin ＋ operator。#544）を要求する。テストでは Keycloak/JWT に依存せず
             // TestAuthHandler で認証し、既定で管理者ロールを付与する（既定スキームを Test に切替）。
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });

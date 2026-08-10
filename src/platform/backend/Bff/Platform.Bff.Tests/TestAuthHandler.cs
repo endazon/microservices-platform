@@ -8,8 +8,8 @@ namespace Platform.Bff.Tests;
 
 // FR-10: BFF テスト用認証ハンドラ。JWT/Keycloak に依存せず ClaimsPrincipal を注入する。
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。
-//   - ヘッダ無し             → platform-admin（/bff/dashboard/summary の AdminOnly が通る）
-//   - "X-Test-Roles: viewer" → 非管理ロール（AdminOnly が 403 になる確認用）
+//   - ヘッダ無し             → platform-admin（/bff/dashboard/summary の管理系ロール要求が通る）
+//   - "X-Test-Roles: viewer" → 管理系以外のロール（403 になる確認用）
 //   - "X-Test-Anonymous"     → 認証しない（無認証＝真の匿名リクエスト。FR-15 の存在秘匿 404 検証用）
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

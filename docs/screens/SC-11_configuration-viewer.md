@@ -18,7 +18,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-07
-updated: 2026-08-05
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
@@ -262,8 +262,8 @@ flowchart LR
 と定めるが、これは**各画面の中で**成立していればよく、SC-11 では **404 側だけが実在する**——
 BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限を**すべて `Results.NotFound()`** へ寄せるため、
 3 本のいずれも 403 を返さない（[[IADR-0029]]）。**起こり得ないケースへの防御的実装を避ける**
-（`CLAUDE.md`）という判断の記録である。SC-10 は BFF が `AdminOnly`（403）であるため、そちらでは
-403 側が実在し、同一画面の 404 と同じ文言へ寄せている。
+（`CLAUDE.md`）という判断の記録である。SC-10 は BFF が**管理系ロール以外へ 403** を返すため（**#544** で admin ＋ operator へ広げた）、
+そちらでは 403 側が実在し、同一画面の 404 と同じ文言へ寄せている。
 
 - **orval 生成フックで呼ぶ**（**#519**。[[IADR-0135]] 決定 1）。実効構成とドリフトは #506 より前から契約に
   載っており、履歴だけが欠けていた（#506 §実測 4）。

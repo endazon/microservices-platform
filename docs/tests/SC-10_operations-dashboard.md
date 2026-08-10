@@ -12,7 +12,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-08-07
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -60,7 +60,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
 | 構成ビューア（SC-11）への導線 | `always offers the link to SC-11 for anyone who can open this screen` ／ 導線テスト A |
 | **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the knowledge-health section` |
-| アクセス制御（計画は運用者・管理者） | **管理者のみ**（差異。§アクセス制御）。`hides existence (NotFound) for an operator and for a plain user` |
+| アクセス制御（計画は運用者・管理者） | **管理者 ＋ 運用者**（**#544** で計画と一致）。`grants access to platform-admin` / `grants access to platform-operator` / `hides existence (NotFound) for a plain user` |
 
 ## FR-10 → テストの写像
 
@@ -94,14 +94,19 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
 | A1 | 許可 | `platform-admin` は開ける |
-| A2 | **存在秘匿** | `platform-operator` と一般利用者は **`NotFound`**。**BFF を呼ばない** |
+| A2 | **許可**（**#544**） | **`platform-operator` も開ける**（計画 §SC-10。裁定 Q19 / Q28。従前は `NotFound` だった） |
+| A2-b | **存在秘匿** | **一般利用者**は **`NotFound`**。**BFF を呼ばない**（**広げすぎない**の側） |
 | A3 | **markup 一致** | 権限による秘匿の描画が `foundation/ui/NotFound`（＝不在）と**同じ markup**（#490 の作法） |
-| A4 | ナビ | `requiresAnyRole: [platform-admin]`・`group: 'ops'` |
+| A4 | ナビ | `requiresAnyRole: [platform-admin, platform-operator]`・`group: 'ops'`（**#544**。ルートゲートと揃える） |
 
-> **A2 は計画との差異を固定するテストである。** 計画 §SC-10 は「運用者・管理者ロール限定」と定めるが、
-> データ源 `/bff/dashboard/summary` と後段 `DashboardService` がともに `AdminOnly` であるため
-> 管理者のみに据え置いた（[[IADR-0129]] 決定 4）。**裁定は環流記録の提案 7**。
-> 裁定で運用者へ広げるときは、A2 と `opsFlow.test.tsx` の 2 本目を同時に書き換える。
+> **［2026-08-09 / #544］A2 は「差異の固定」から「一致の固定」へ反転した。**
+> 従前は計画との差異（計画=運用者・管理者／実装=管理者のみ）を固定していたが、
+> **裁定 Q19 / Q28 で計画が正となり、3 層を同時に広げて一致させた**（[[IADR-0129]] 決定 4 の追記）。
+> 予告どおり `opsFlow.test.tsx` の 2 本目も同時に反転してある
+> （`lets an operator reach both SC-10 and SC-11 directly`）。
+>
+> **A2-b を対で置いたのは、「広げる」作業が検査にならないためである** ——
+> 権限を全開にしても A2 は緑のまま通る（変異試験で確認した）。
 
 ## 純関数（`opsTools.test.ts`）
 
@@ -117,7 +122,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
 | A | SC-10 → SC-11 | 「構成ビューア →」で構成ビューアへ遷移し、構成バージョンが出る（**2 ルートを 1 本のルータへ載せる**） |
-| B | 運用者の到達 | 運用者は SC-11 へ直接到達できるが、SC-10 は `NotFound`（差異の固定） |
+| B | 運用者の到達 | 運用者は **SC-10 にも SC-11 にも**直接到達できる（**#544** で反転。`lets an operator reach both SC-10 and SC-11 directly`） |
 
 ## バックエンド（BFF・xUnit）
 
@@ -127,8 +132,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
 | 1 | 集約 | FR-10 | `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
-| 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の `AdminOnly` を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
-| 3 | **ロール制限** | [[IADR-0011]] | 管理者ロールが無ければ **403**。**画面が `platform-admin` 限定に据え置かれている根拠はここにある** | `GetSummary_WithoutAdminRole_Returns403` |
+| 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の**管理系ロール要求**（admin ＋ operator。**#544**）を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
+| 3 | **ロール制限**（広げすぎない） | [[IADR-0011]] | **管理系ロール**（admin ＋ operator）が無ければ **403**（**#544** で名称と趣旨を実態へ） | `GetSummary_WithoutPrivilegedRole_Returns403` |
+| 3-b | **ロール開放**（**#544**） | 計画 §SC-10・裁定 Q19 / Q28 | **運用者は 200**。**この対が無いと「広げる」作業は検査にならない**（権限を全開にしても 3 は緑のまま） | `GetSummary_AsOperator_IsAllowed` |
 | 4 | 後段障害 | — | 後段の非成功ステータスをそのまま伝播し、空サマリへ縮退させない | `GetSummary_WhenDashboardFails_PropagatesStatus` ／ `GetSummary_WhenFeedbackStatsFails_PropagatesStatus` |
 | 5 | 本文欠落 | — | 後段が本文を返さなければ 502 | `GetSummary_WhenDashboardBodyNull_Returns502` |
 
@@ -169,8 +175,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 ## 未決事項
 
-- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）と閲覧ロールの差異は
+- 契約の不在 3 件（SLO・LLM コスト・一意利用者数）は
   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
+  **閲覧ロールの差異（提案 7）は [2026-08-09 / #544] で解決した**（計画が正。3 層を広げて一致）。
 - ナレッジ健全性節は [[IADR-0119]] の保留解除待ち。
   **［2026-08-07 / #586］ADR-0033・0034・0035 は `Accepted` へ移り保留は解除された**
   （planning `3e58b97` = PR planning#244〔裁定依頼 planning#237〕）。**待っていた条件は成立している。**

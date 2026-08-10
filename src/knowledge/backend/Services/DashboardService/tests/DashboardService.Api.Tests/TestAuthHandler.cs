@@ -8,8 +8,8 @@ namespace DashboardService.Api.Tests;
 
 // FR-10: テスト用認証ハンドラ。JWT/Keycloak に依存せず ClaimsPrincipal を注入する。
 // 既定では管理者ロール（platform-admin）を付与し、ヘッダ "X-Test-Roles" で上書きできる。
-//   - ヘッダ無し             → platform-admin（集計 AdminOnly が通る）
-//   - "X-Test-Roles: viewer" → 非管理ロール（集計 AdminOnly が 403 になる確認用）
+//   - ヘッダ無し             → platform-admin（集計の管理系ロール要求が通る）
+//   - "X-Test-Roles: viewer" → 管理系以外のロール（集計が 403 になる確認用）
 // ※ FeedbackService.Api.Tests.TestAuthHandler と同一方針。
 public class TestAuthHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

@@ -7,7 +7,7 @@ related_ids:
   - UC-05
 author: claude
 created: 2026-07-03
-updated: 2026-07-03
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-10)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
@@ -45,9 +45,9 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 | メソッド | パス | 認可 | 説明 |
 | --- | --- | --- | --- |
 | POST | `/dashboard/events` | 認証済み（`RequireAuthorization`。管理者限定にはしない） | 利用イベント記録。`EventType` 必須（`search`/`answer`）。201 |
-| GET | `/dashboard/usage?days=N` | AdminOnly | 日次利用状況（日付 × 種別の件数） |
-| GET | `/dashboard/trends?days=N&top=M` | AdminOnly | 検索傾向（検索語 × 件数の上位） |
-| GET | `/dashboard/summary?days=N&top=M` | AdminOnly | 利用側サマリ（総件数・利用状況・検索傾向） |
+| GET | `/dashboard/usage?days=N` | admin ＋ operator（**#544**） | 日次利用状況（日付 × 種別の件数） |
+| GET | `/dashboard/trends?days=N&top=M` | admin ＋ operator（**#544**） | 検索傾向（検索語 × 件数の上位） |
+| GET | `/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | 利用側サマリ（総件数・利用状況・検索傾向） |
 
 - `days`：既定 7・上限 90 にクランプ。`top`：既定 10・上限 50 にクランプ（無制限集計を防ぐ）。
 - 集計は UTC 当日 00:00 を含む起点から現在まで。日付は UTC で丸める。
@@ -56,9 +56,9 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 | メソッド | パス | 認可 | 説明 |
 | --- | --- | --- | --- |
-| GET | `/bff/dashboard/summary?days=N&top=M` | AdminOnly | DashboardService の利用側サマリと FeedbackService の回答品質を集約し `DashboardSummaryDto` を返す |
+| GET | `/bff/dashboard/summary?days=N&top=M` | admin ＋ operator（**#544**） | DashboardService の利用側サマリと FeedbackService の回答品質を集約し `DashboardSummaryDto` を返す |
 
-- BFF は DashboardService（AdminOnly）へ `Authorization` ヘッダを伝播する。
+- BFF は DashboardService（**admin ＋ operator**。#544）へ `Authorization` ヘッダを伝播する。
 - 利用側サマリと回答品質は並行取得する（互いに独立）。後段が非 2xx ならそのステータスを透過する。
   いずれかの応答本文が null（欠損）なら 502（BadGateway）を返す。
 - **期間の整合**: BFF は有効な `days`（既定 7・上限 90 にクランプ）を確定し、DashboardService（利用状況・検索傾向）と
@@ -78,7 +78,7 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 - `EventType` が `search`/`answer` 以外 → 400。
 - 検索語は種別が `search` のときのみ集計対象（`answer` では保持しない）。空・空白のみは集計対象外。
-- 集計 API を非管理ロールで呼ぶ → 403（AdminOnly）。
+- 集計 API を**管理系ロール以外**で呼ぶ → 403（**#544**。運用者は 200）。
 - `days`/`top` は範囲外でもクランプして常に有効値で集計する（エラーにしない）。
 
 ## 非機能・セキュリティ

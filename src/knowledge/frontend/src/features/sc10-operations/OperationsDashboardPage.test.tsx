@@ -252,9 +252,11 @@ describe('OperationsDashboardPage (SC-10)', () => {
   });
 });
 
-// IADR-0009 / IADR-0035: 存在秘匿。SC-10 は platform-admin 限定である
-// （計画は「運用者・管理者」だが、データ源 /bff/dashboard/summary と後段 DashboardService が
-//  ともに AdminOnly のため据え置いた。IADR-0129 決定 4・環流の提案 7）。
+// IADR-0009 / IADR-0035: 存在秘匿。SC-10 は **platform-admin または platform-operator** である。
+// **［2026-08-09 / #544］計画を正として広げた**（計画 §SC-10「運用者・管理者ロール限定」。
+// 裁定 Q19 / Q28）。従前はデータ源 /bff/dashboard/summary と後段 DashboardService が
+// ともに AdminOnly のため据え置いていたが、**3 層すべてを同時に広げたので解けた**
+// （[[IADR-0129]] 決定 4 の追記を参照）。
 describe('SC-10 access control (#504)', () => {
   it('grants access to platform-admin', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
@@ -262,18 +264,29 @@ describe('SC-10 access control (#504)', () => {
     expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
   });
 
-  it('hides existence (NotFound) for an operator and for a plain user', async () => {
+  // ★ #544: **運用者にも開く**（計画 §SC-10「運用者・管理者ロール限定」。裁定 Q19 / Q28）。
+  //
+  // **従前は運用者も NotFound だった**——データ源と後段が `AdminOnly` のままで画面だけ広げると
+  // 「開くと必ず 403 になる画面」になるため据え置いていた。**#544 で 3 層すべてを広げたので解除する。**
+  it('grants access to platform-operator', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
-    for (const roles of [['platform-operator'], ['user']]) {
-      const view = await renderPage(roles);
-      expect(
-        await screen.findByRole('heading', { name: '見つかりませんでした' }),
-      ).toBeInTheDocument();
-      expect(screen.queryByRole('heading', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
-      // 権限外ではサマリ API を呼ばない（要求の有無から存在を推測させない）。
-      expect(mocks.apiRequest).not.toHaveBeenCalled();
-      view.unmount();
-    }
+    await renderPage(['platform-operator']);
+    expect(await screen.findByRole('heading', { name: '運用ダッシュボード' })).toBeInTheDocument();
+  });
+
+  // ★ **広げすぎない。** 一般利用者には従来どおり存在を秘匿する（IADR-0009 / IADR-0035）。
+  //
+  // **この対が無いと「広げる」作業は検査にならない**——権限を全開にしても
+  // `grants access to …` は緑のまま通るためである。
+  it('hides existence (NotFound) for a plain user', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
+    await renderPage(['user']);
+    expect(
+      await screen.findByRole('heading', { name: '見つかりませんでした' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '運用ダッシュボード' })).not.toBeInTheDocument();
+    // 権限外ではサマリ API を呼ばない（要求の有無から存在を推測させない）。
+    expect(mocks.apiRequest).not.toHaveBeenCalled();
   });
 
   it('produces the same not-found markup as a plain absence', async () => {
@@ -289,8 +302,10 @@ describe('SC-10 access control (#504)', () => {
     expect(forbidden).toBe(absent.container.firstElementChild?.outerHTML);
   });
 
-  it('exposes a nav entry limited to the admin role in the ops group', () => {
-    expect(sc10OperationsNav.requiresAnyRole).toEqual(['platform-admin']);
+  // ★ #544: ナビも**ルートゲートと同じ範囲**でなければならない——
+  // 揃っていないと「ナビに出ないのに URL では開ける」か「押すと NotFound」のどちらかになる。
+  it('exposes a nav entry limited to the admin and operator roles in the ops group', () => {
+    expect(sc10OperationsNav.requiresAnyRole).toEqual(['platform-admin', 'platform-operator']);
     // 05_screens §共通シェル: SC-10 は「運用」グループ。
     expect(sc10OperationsNav.group).toBe('ops');
   });

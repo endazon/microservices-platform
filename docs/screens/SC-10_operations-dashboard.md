@@ -16,7 +16,7 @@ related_ids:
   - IADR-0129
 author: claude
 created: 2026-07-08
-updated: 2026-08-07
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -69,7 +69,7 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
 
 - ルート: **`/admin/ops`**（05_screens §共通シェル「ルートパス」）
 - 左ナビ: 「運用」グループの **「ダッシュボード」**（hi-fi の左レール表記に合わせた。従前の実装は「運用ダッシュボード」だった）
-- アクセス: **`platform-admin` のみ**（**計画との差異**。§権限・表示条件）。
+- アクセス: **`platform-admin` または `platform-operator`**（**#544** で計画と一致。§権限・表示条件）。
   権限外は `RequireRole` → `NotFound`（存在秘匿。[[IADR-0009]] / [[IADR-0035]]）。
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
@@ -226,7 +226,10 @@ flowchart LR
 
 | | 計画 | 実装 |
 | --- | --- | --- |
-| 閲覧ロール | §SC-10「**運用者・管理者**ロール限定（モックの「運用」バッジ準拠）」 | **`platform-admin` のみ** |
+| ~~閲覧ロール~~ **［2026-08-09 / #544］一致した** | §SC-10「**運用者・管理者**ロール限定（モックの「運用」バッジ準拠）」 | **`platform-admin` ＋ `platform-operator`** |
+
+**［2026-08-09 / #544］据え置きは解けた。** 裁定（Q19 / Q28）で**計画が正**となり、
+**3 層（画面・BFF・`DashboardService` の集計 3 口）を同時に広げた**。以下は当時の据え置きの記録である。
 
 **据え置きの根拠**（[[IADR-0129]] 決定 4）: データ源 `/bff/dashboard/summary` は `AdminOnly` であり、
 **後段 `DashboardService` の集計も `AdminOnly`** である（[[IADR-0011]]）。画面だけを運用者へ開くと、
@@ -235,26 +238,32 @@ flowchart LR
 （環流記録の提案 7）。planning#198 提案 8（SC-05/06/07 の閲覧ロール）と**同じ類型だが向きが逆**である
 （planning#198 は「計画は管理者限定だが実装が広い」、本件は「計画は運用者も許すが実装が狭い」）。
 
-**SC-11 への導線を権限で出し分けない理由**: SC-10 に到達できるのは `platform-admin` だけであり、
-`platform-admin` は `ConfigViewer`（admin または operator）の部分集合である。
+**SC-11 への導線を権限で出し分けない理由**: SC-10 に到達できるのは
+**`platform-admin` または `platform-operator`**（**#544**）であり、
+これは `ConfigViewer`（admin または operator）と**同じ集合**である。
 `useHasAnyRole(Admin, Operator)` は**この画面では常に真**になる——旧実装が持っていたこの分岐は
 `CLAUDE.md`「起こり得ないケースへの防御的実装を避ける」に反する到達しない分岐であった
 （旧仕様書はこれを「将来の開放に備えた意図的な先取り」と説明していたが、**先取りは分岐ではなくロールの定義で行う**）。
-**SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分けを書く。**
+
+> **［2026-08-09 追記 / #544］「閲覧ロールが広がる時点で出し分けを書く」と書いていたが、
+> 広げた結果、書くべき出し分けは無かった。**
+> 従前は `platform-admin` ⊂ `ConfigViewer` という**部分集合**の関係で常に真だったが、
+> 現在は **`ConfigViewer` と同一集合**になったので、やはり常に真である。
+> **結論は変わらず、理由だけが「部分集合だから」→「同一集合だから」へ変わった。**
 
 その他:
 
 - 権限外は `RequireRole` → **`NotFound`**（存在秘匿）。**未知パスの `NotFound` と markup が一致する**ことを
   テストで固定する（#490 が確立した作法）。
 - **権限外では BFF を呼ばない**（要求の有無から画面の存在を推測させない）。
-- 左ナビは `requiresAnyRole: [platform-admin]`・`group: 'ops'`。
+- 左ナビは `requiresAnyRole: [platform-admin, platform-operator]`（**#544**。ルートゲートと揃える）・`group: 'ops'`。
 - 認可の実効境界はサーバ側であり、UI は表示制御と存在秘匿のためだけに用いる。
 
 ## データソース（BFF 境界）
 
 | 用途 | エンドポイント | 応答 | 認可 |
 | --- | --- | --- | --- |
-| サマリ | `GET /bff/dashboard/summary?days={7\|30\|90}` | `DashboardSummaryDto` | **AdminOnly**（403 / 401） |
+| サマリ | `GET /bff/dashboard/summary?days={7\|30\|90}` | `DashboardSummaryDto` | **admin ＋ operator**（**#544**。管理系ロール以外は 403 / 無認証は 401） |
 
 - BFF は `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する。
   `days` は BFF が 1〜90 へ丸め、両後段へ同じ値を渡す（期間の起点を揃えるため）。
@@ -292,7 +301,7 @@ flowchart LR
    `feedback/20260805_sc09-11-admin-ops-contract-gaps.md` の提案 4。**起票は親**。
 2. **LLM コストの契約**——同 提案 5。
 3. **一意利用者数（人/日）**——同 提案 6。**部分未実装**の側。
-4. **閲覧ロール**（計画=運用者・管理者／実装=管理者のみ）——同 提案 7。
+4. ~~**閲覧ロール**（計画=運用者・管理者／実装=管理者のみ）~~ **［2026-08-09 / #544］解決した。** 裁定 Q19 / Q28 で計画が正となり、3 層を広げて一致させた。
 5. **ナレッジ健全性節**——[[IADR-0119]] の保留解除待ち（ADR-0033・0034・0035 の `Accepted` 化）。
    **［2026-08-07 / #586］ADR-0033・0034・0035 は `Accepted` へ移り保留は解除された。実装可否は #504 / #452 が判断する。**
    （待っていた条件は成立している。上の §実装しない要素の理由 (a) の追記と対。）

@@ -41,13 +41,15 @@ public static class DashboardEndpoints
         }).WithName("RecordUsageEvent").RequireAuthorization().Produces(StatusCodes.Status201Created);
 
         // FR-10: 日次利用状況（日付 × 種別の件数）。利用状況グラフの入力。
-        // 集計値のみだが利用傾向は運用情報のため、管理者ロールに限定する（FeedbackService 一覧と同方針）。
+        // **［#544］閲覧は管理者・運用者**（計画 §SC-10。裁定 Q19 / Q28）。
+        // **最終防衛線としてここでも同じ範囲を要求する**（[[IADR-0044]]）。
         g.MapGet("/usage", async (int? days, DashboardDbContext db, CancellationToken ct) =>
         {
             var since = SinceUtc(days);
             var points = await AggregateUsageAsync(db, since, ct);
             return Results.Ok(points);
-        }).WithName("DashboardUsage").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardUsage").RequireAuthorization(p => p.RequireRole(
+              PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole))
           .Produces<List<UsagePointDto>>();
 
         // FR-10: 検索傾向（よく検索される語の上位）。
@@ -56,7 +58,8 @@ public static class DashboardEndpoints
             var since = SinceUtc(days);
             var trends = await AggregateTrendsAsync(db, since, ClampTop(top), ct);
             return Results.Ok(trends);
-        }).WithName("DashboardTrends").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardTrends").RequireAuthorization(p => p.RequireRole(
+              PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole))
           .Produces<List<SearchTrendDto>>();
 
         // FR-10: 利用側サマリ（総件数・利用状況・検索傾向）を 1 応答で返す。
@@ -69,7 +72,8 @@ public static class DashboardEndpoints
             var totalSearches = usage.Where(p => p.EventType == UsageEventType.Search).Sum(p => p.Count);
             var totalAnswers = usage.Where(p => p.EventType == UsageEventType.Answer).Sum(p => p.Count);
             return Results.Ok(new DashboardUsageDto(totalSearches, totalAnswers, usage, trends));
-        }).WithName("DashboardSummary").RequireAuthorization(PlatformAuthPolicies.AdminOnly)
+        }).WithName("DashboardSummary").RequireAuthorization(p => p.RequireRole(
+              PlatformAuthPolicies.AdminRole, PlatformAuthPolicies.OperatorRole))
           .Produces<DashboardUsageDto>();
 
         return app;

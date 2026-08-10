@@ -117,20 +117,48 @@ public class DashboardEndpointTests
         summary.TopSearchTerms.Should().ContainSingle(t => t.Term == "契約" && t.Count == 2);
     }
 
-    // T-08: 集計 (GET /dashboard/usage) は運用情報のため AdminOnly。非管理ロールは 403。
-    [Fact]
-    public async Task Usage_WithoutAdminRole_Returns403()
+    // ★ #544: **運用者が集計を引ける**（受け入れ基準 1 のサービス層。[[IADR-0044]] の多層防御）。
+    //
+    // **BFF 側のテストでは代わりにならない** —— BFF を迂回した直接呼び出しでも
+    // 同じ範囲が効くことを、ここで独立に押さえる。
+    [Theory]
+    [InlineData("/dashboard/usage")]
+    [InlineData("/dashboard/trends")]
+    [InlineData("/dashboard/summary")]
+    public async Task Aggregates_AsOperator_AreAllowed(string path)
     {
         using var factory = new TestWebApplicationFactory();
-        var req = new HttpRequestMessage(HttpMethod.Get, "/dashboard/usage");
-        req.Headers.Add(TestAuthHandler.RolesHeader, "viewer"); // 管理者以外のロールを明示。
+        var req = new HttpRequestMessage(HttpMethod.Get, path);
+        req.Headers.Add(TestAuthHandler.RolesHeader, "platform-operator");
+
+        var resp = await factory.CreateClient().SendAsync(req);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK,
+            "計画 §SC-10 は閲覧を運用者・管理者ロール限定と定めている（裁定 Q19 / Q28）");
+    }
+
+    // T-08: ★ **管理系ロール以外では 403**（受け入れ基準 2「広げすぎない」）。
+    //
+    // **［#544］名前と趣旨を実態へ揃えた。** 従前は `Usage_WithoutAdminRole_Returns403`
+    // ＋「AdminOnly。非管理ロールは 403」だったが、**運用者は管理者ではないのに 200 になった**ので
+    // その言い方は誤りになった。検証しているのは「**管理系ロール以外**は 403」である。
+    [Theory]
+    [InlineData("/dashboard/usage")]
+    [InlineData("/dashboard/trends")]
+    [InlineData("/dashboard/summary")]
+    public async Task Aggregates_WithoutPrivilegedRole_Return403(string path)
+    {
+        using var factory = new TestWebApplicationFactory();
+        var req = new HttpRequestMessage(HttpMethod.Get, path);
+        req.Headers.Add(TestAuthHandler.RolesHeader, "viewer"); // 管理系以外のロールを明示。
 
         var resp = await factory.CreateClient().SendAsync(req);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
-    // T-09: イベント記録は認証済みなら管理者以外でも可能（集計の入力を絞らない）。
+    // T-09: イベント記録は認証済みなら管理系ロール以外でも可能（集計の入力を絞らない）。
+    // **［#544］本作業で触っていない** —— 参照専用であり、書き込み権限は広げない。
     [Fact]
     public async Task RecordEvent_AllowedForNonAdmin()
     {
