@@ -102,6 +102,9 @@
       "DriftDetectorTests",
       "KeycloakRolesClaimsTransformationTests"
     ],
+    "docs/tests/NFR-09_bff-edge-authentication.md": [
+      "BffEndpointAuthenticationTests"
+    ],
     "docs/tests/SC-02_search-results.md": [
       "QdrantVectorStoreTests"
     ],

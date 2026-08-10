@@ -75,7 +75,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
-
+        "401": { description: 未認証（#656） }
   /bff/attribute-values:
     post:
       x-roles: []
@@ -111,7 +111,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AttributeValuesResponse"
-
+        "401": { description: 未認証（#656） }
   # ── SC-09, FR-09, UC-05: タグ辞書 BFF（#640）─────────
   # IADR-0152 / IADR-0153: 辞書は DocumentService（knowledge ユニット）が所有する。
   # **読み取りは platform-admin / platform-operator**（裁定 Q18）、
@@ -240,7 +240,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiAnswerDto"
-
+        "401": { description: 未認証（#656） }
   /bff/analysis/analyze:
     post:
       x-roles: []
@@ -267,7 +267,7 @@ paths:
                 $ref: "#/components/schemas/AiAnswerDto"
         "400":
           description: instruction 未指定
-
+        "401": { description: 未認証（#656） }
   /bff/analysis/ask/stream:
     post:
       x-roles: []
@@ -300,7 +300,7 @@ paths:
             text/event-stream:
               schema:
                 type: string
-
+        "401": { description: 未認証（#656） }
   # ［2026-08-10 / #521］**是正済み。** 従前ここには「responses に 401 が無いのは計画と食い違う。
   # 是正は #521」という予告コメントが置かれていた。計画 FR-08（2026-08-07 確定・裁定依頼
   # planning#236 案 2）の「投稿には認証を要する（匿名投稿は許さない）」に合わせ、
@@ -761,12 +761,19 @@ paths:
   # 後段の検証 400・競合 409・不在 404 は透過する。
   /bff/documents:
     get:
-      x-roles: []
+      x-roles: [platform-admin, platform-operator]
       tags: [Documents]
-      summary: "FR-06, SC-05: 文書一覧（ABAC スコープ内のみ）"
+      summary: "FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）"
       description: |
         利用者の ABAC 許可スコープに合致する文書だけを返す（deny-by-default。権限外文書は列挙しない）。
         許可ポリシーが無い／認可サービス不調のときは**空配列**へ縮退し、権限外の存在を示さない。
+
+        ［2026-08-10 / #656］**閲覧を管理者・運用者へ絞った。** 計画 `05_screens`（2026-08-05 の裁定）が
+        「**SC-05/06/07 = 閲覧は管理者・運用者／破壊的操作は管理者限定**」と定めており、
+        **本口の呼び出し元は SC-05 の管理画面ただ 1 つ**である（実測）。画面側は既に
+        `RequireRole anyOf={[Admin, Operator]}` で絞られていたが、**API は無認証でも通っていた**。
+        **同じ `/bff/documents` でも `{id}` 以下（SC-03 の文書詳細）は認証のみ**である ——
+        あちらは SC-01 の出典クリックから一般利用者が遷移する。
       operationId: bff-document-list
       responses:
         "200":
@@ -777,6 +784,10 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentDto"
+        "401":
+          description: 未認証（#656）
+        "403":
+          description: 管理者・運用者以外（#656）
     post:
       x-roles: [platform-admin]
       tags: [Documents]
@@ -822,6 +833,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentDto"
+        "401": { description: 未認証（#656） }
         "404": { description: 不在またはスコープ外（存在秘匿。区別しない） }
     put:
       x-roles: [platform-admin]
@@ -889,8 +901,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentContentDto"
+        "401": { description: 未認証（#656） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
-
   /bff/documents/{id}/versions:
     get:
       x-roles: []
@@ -908,8 +920,8 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/DocumentVersionDto"
+        "401": { description: 未認証（#656） }
         "404": { description: 不在またはスコープ外（存在秘匿） }
-
   /bff/documents/{id}/publish:
     post:
       x-roles: [platform-admin]

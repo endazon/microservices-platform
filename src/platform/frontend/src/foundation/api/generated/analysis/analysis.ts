@@ -35,12 +35,19 @@ export type bffAnalysisAskResponse200 = {
   status: 200
 }
 
+export type bffAnalysisAskResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffAnalysisAskResponseSuccess = (bffAnalysisAskResponse200) & {
   headers: Headers;
 };
-;
+export type bffAnalysisAskResponseError = (bffAnalysisAskResponse401) & {
+  headers: Headers;
+};
 
-export type bffAnalysisAskResponse = (bffAnalysisAskResponseSuccess)
+export type bffAnalysisAskResponse = (bffAnalysisAskResponseSuccess | bffAnalysisAskResponseError)
 
 export const getBffAnalysisAskUrl = () => {
 
@@ -71,7 +78,7 @@ export const bffAnalysisAsk = async (askRequest: AskRequest, options?: Parameter
 
 
 
-export const getBffAnalysisAskMutationOptions = <TError = unknown,
+export const getBffAnalysisAskMutationOptions = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext> => {
 
@@ -100,12 +107,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffAnalysisAskMutationResult = NonNullable<Awaited<ReturnType<typeof bffAnalysisAsk>>>
     export type BffAnalysisAskMutationBody = AskRequest
-    export type BffAnalysisAskMutationError = unknown
+    export type BffAnalysisAskMutationError = void
 
     /**
  * @summary FR-04, UC-01: RAG 質問回答（BFF 集約）
  */
-export const useBffAnalysisAsk = <TError = unknown,
+export const useBffAnalysisAsk = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAnalysisAsk>>, TError,{data: AskRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffAnalysisAsk>>,
@@ -125,10 +132,15 @@ export type bffAnalysisAnalyzeResponse400 = {
   status: 400
 }
 
+export type bffAnalysisAnalyzeResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffAnalysisAnalyzeResponseSuccess = (bffAnalysisAnalyzeResponse200) & {
   headers: Headers;
 };
-export type bffAnalysisAnalyzeResponseError = (bffAnalysisAnalyzeResponse400) & {
+export type bffAnalysisAnalyzeResponseError = (bffAnalysisAnalyzeResponse400 | bffAnalysisAnalyzeResponse401) & {
   headers: Headers;
 };
 

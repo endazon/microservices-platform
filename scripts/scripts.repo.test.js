@@ -2264,8 +2264,128 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(v[0].kind, 'missing-x-roles');
     });
 
+    // ★ #656: **無認証は、契約と一致していても違反である。**
+    // `rolesFromStatement` は「認可属性なし」と「RequireAuthorization()」をどちらも null へ畳むため、
+    // ロールの一致だけを見ていると**無認証の端点が素通りする**（#521 が 1 例目・#656 が 2 例目）。
+    ok('check-bff-authz-docs: 無認証の端点は x-roles: [] と一致していても fail（#656）', () => {
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: false }];
+      const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
+      const v = authz.findViolations(eps, ops);
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'anonymous');
+    });
+
+    // ★ #656: **検査器自身の盲点。** 群を辿って認可を合成する設計なので、
+    // `app.MapVerb("/bff/...")` を群外に書かれると `requiresAuth` を判定できない。
+    // 黙って読み飛ばすと「無認証の /bff/ 端点は存在しない」という不変条件がすり抜ける。
+    // **`collectImplementation` に実際に読ませる。** 手組みの端点オブジェクトを `findViolations` へ
+    // 渡すだけでは、**検出そのもの（正規表現で `app.MapVerb("/bff/...")` を拾う経路）が 1 度も走らない**。
+    // 実データには群外の `/bff/` 端点が無いため、そこからも到達しない。
+    ok('check-bff-authz-docs: 群に属さない /bff/ 端点を違反として報告する（#656）', () => {
+      const fsG = require('fs');
+      const osG = require('os');
+      const pathG = require('path');
+      const dir = fsG.mkdtempSync(pathG.join(osG.tmpdir(), 'bff-authz-'));
+      const file = pathG.join(dir, 'RogueBffEndpoints.cs');
+      try {
+        fsG.writeFileSync(file, [
+          'public static class RogueBffEndpoints {',
+          '  public static IEndpointRouteBuilder Map(this IEndpointRouteBuilder app) {',
+          '    var g = app.MapGroup("/bff/ok").RequireAuthorization();',
+          '    g.MapGet("/", h);',
+          '    app.MapPost("/bff/rogue", h);          // 群外の /bff/ → 検出される',
+          '    app.MapPost("/internal/thing", h);     // 群外だが /bff/ ではない → 検出されない',
+          '    return app;',
+          '  }',
+          '}',
+        ].join('\n'));
+
+        const eps = authz.collectImplementation([file], consts, policies);
+        const rogue = eps.find((e) => e.path === '/bff/rogue');
+        assert.ok(rogue, '群外の /bff/ 端点を拾えていない');
+        assert.strictEqual(rogue.ungrouped, true);
+        assert.ok(!eps.some((e) => e.path.startsWith('/internal/')), '/internal/ を拾っている');
+        // 群内の端点は通常どおり（ungrouped ではない）。
+        assert.strictEqual(eps.find((e) => e.path === '/bff/ok').ungrouped, undefined);
+
+        const v = authz.findViolations(eps, new Map([['get /bff/ok', { roles: [], line: 1 }]]));
+        assert.strictEqual(v.length, 1);
+        assert.strictEqual(v[0].kind, 'ungrouped');
+        assert.strictEqual(v[0].key, 'post /bff/rogue');
+      } finally {
+        fsG.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('check-bff-authz-docs: 群外でも /bff/ 以外（/internal/ 等）は対象外（#656）', () => {
+      const fsU = require('fs');
+      const pathU = require('path');
+      const real = authz.loadPolicies(fsU.readFileSync(
+        pathU.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      // 実データ: ConfigBffEndpoints は `/internal/config/drift-run` を群外に持つ（意図的・メッシュ内部限定）。
+      const eps = authz.collectImplementation(
+        [pathU.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(!eps.some((e) => e.ungrouped), '/internal/ を違反として拾っている');
+      assert.ok(!eps.some((e) => e.path.startsWith('/internal/')), '/internal/ を端点として数えている');
+    });
+
+    ok('check-bff-authz-docs: 認証のみ（RequireAuthorization()）は通る（#656）', () => {
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: true }];
+      const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
+      assert.deepStrictEqual(authz.findViolations(eps, ops), []);
+    });
+
+    // ★ 誤検出の側。`ConfigBffEndpoints` は **RequireAuthorization を意図的に付けず**、
+    // ハンドラ内 `AuthorizeAsync(ConfigViewer)` ＋ 404 で存在を秘匿する（IADR-0009）。
+    // **ミドルウェアの有無で判定すると、この 3 本を「無認証」と誤って報告する。**
+    ok('check-bff-authz-docs: ハンドラ内認可の端点を無認証と誤判定しない（#656 / 実データ）', () => {
+      const fsC = require('fs');
+      const pathC = require('path');
+      const real = authz.loadPolicies(fsC.readFileSync(
+        pathC.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      const eps = authz.collectImplementation(
+        [pathC.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(eps.length > 0, '端点を 1 つも抽出できていない');
+      for (const ep of eps) {
+        assert.strictEqual(ep.requiresAuth, true, `${ep.path} を無認証と誤判定している`);
+      }
+    });
+
+    // 実データ: 無認証の端点が 1 つも無いこと（#656 の受け入れ基準）。
+    ok('check-bff-authz-docs: /bff/* に無認証の端点が無い（#656 / 実データ）', () => {
+      const fsD = require('fs');
+      const pathD = require('path');
+      const real = authz.loadPolicies(fsD.readFileSync(
+        pathD.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      const bffFiles = [];
+      const walkBff = (d) => {
+        if (!fsD.existsSync(d)) return;
+        for (const e of fsD.readdirSync(d, { withFileTypes: true })) {
+          const p = pathD.join(d, e.name);
+          if (e.isDirectory()) walkBff(p);
+          else if (e.name.endsWith('BffEndpoints.cs')) bffFiles.push(p);
+        }
+      };
+      for (const r of ['src/platform/backend/Bff', 'src/knowledge/backend/Bff']) {
+        walkBff(pathD.join(__dirname, '..', r));
+      }
+      const eps = authz.collectImplementation(bffFiles.sort(), real.consts, real.policies);
+      const anon = eps.filter((e) => !e.requiresAuth).map((e) => `${e.method} ${e.path}`);
+      assert.deepStrictEqual(anon, [], '無認証で到達できる端点が在る（NFR-09 暫定運用）');
+    });
+
     ok('check-bff-authz-docs: ロール制約なしと x-roles: [] は一致', () => {
-      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null }];
+      const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: true }];
       const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);
       assert.deepStrictEqual(authz.findViolations(eps, ops), []);
     });

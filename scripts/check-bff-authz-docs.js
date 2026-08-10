@@ -160,6 +160,10 @@ function loadPolicies(text) {
 
 // 文中の RequireAuthorization(...) から役割集合を出す。制約が無ければ null。
 // 複数あれば AND 合成（積）。
+// #656: `.RequireAuthorization(` が文中に在るか。`g` フラグを付けない（`test` が lastIndex を進めて
+// 2 回目以降が偽になる）。
+const HAS_REQUIRE_AUTH = /\.RequireAuthorization\s*\(/;
+
 function rolesFromStatement(stmt, consts, policies) {
   let acc = null;
   for (const m of stmt.matchAll(/\.RequireAuthorization\s*\(/g)) {
@@ -238,12 +242,36 @@ function collectImplementation(files, consts, policies) {
     const groups = {};
     for (const m of src.matchAll(/\bvar\s+(\w+)\s*=\s*app\s*\.\s*MapGroup\(\s*"([^"]+)"/g)) {
       const stmt = statementFrom(src, m.index);
-      groups[m[1]] = { prefix: m[2], roles: rolesFromStatement(stmt, consts, policies) };
+      groups[m[1]] = {
+        prefix: m[2],
+        roles: rolesFromStatement(stmt, consts, policies),
+        // #656: **ロールとは別の軸**。`rolesFromStatement` は「認可属性なし」と
+        // 「`RequireAuthorization()`（認証のみ・ロール不問）」をどちらも null へ畳むため、
+        // ロールだけを見ていると**無認証の端点が「ロール制約なし」として素通りする**。
+        requiresAuth: HAS_REQUIRE_AUTH.test(stmt),
+      };
     }
     // 端点: NAME.MapVerb("SUB" … ;
     for (const m of src.matchAll(/\b(\w+)\s*\.\s*Map(Get|Post|Put|Patch|Delete)\(\s*"([^"]*)"/g)) {
       const group = groups[m[1]];
-      if (!group) continue; // app.MapGet 等（群に属さない）は対象外
+      if (!group) {
+        // #656: **群に属さない `app.MapVerb("/bff/...")` は本検査器の網から漏れる。**
+        // 群を辿って認可を合成する設計なので、群が無いと `requiresAuth` を判定できない。
+        // 現状 0 件だが（`/internal/config/drift-run` だけが群外で、これは `/bff/` ではない）、
+        // **将来この形で書かれると「無認証の /bff/ 端点は存在しない」という不変条件が黙ってすり抜ける。**
+        // 見逃さず、**明示的な違反として報告する**（対処は群へ移すこと）。
+        if (m[1] === 'app' && m[3].startsWith('/bff/')) {
+          endpoints.push({
+            file: path.relative(REPO, file),
+            path: normalizePath(m[3]),
+            method: m[2].toLowerCase(),
+            roles: null,
+            requiresAuth: false,
+            ungrouped: true,
+          });
+        }
+        continue; // それ以外（`/internal/` 等）は対象外
+      }
       const stmt = statementFrom(src, m.index);
       let own = rolesFromStatement(stmt, consts, policies);
       // ハンドラ内の認可（直接 AuthorizeAsync / ヘルパ呼び出し）も AND 合成する。
@@ -260,11 +288,18 @@ function collectImplementation(files, consts, policies) {
         : own === null
           ? new Set(group.roles)
           : new Set([...group.roles].filter((x) => own.has(x)));
+      // #656: 認証を要求しているか。**ミドルウェアの有無で判定してはならない** ——
+      // `ConfigBffEndpoints` は `RequireAuthorization` を意図的に付けず、ハンドラ内の
+      // `AuthorizeAsync(user, ConfigViewer)` ＋ 404 で存在を秘匿する（[[IADR-0009]]）。
+      // したがって**群・端点・ハンドラ内・ヘルパの 4 経路のいずれかに認可が在れば真**とする。
+      const requiresAuth =
+        group.requiresAuth || HAS_REQUIRE_AUTH.test(stmt) || effective !== null;
       endpoints.push({
         file: path.relative(REPO, file),
         path: joinPath(group.prefix, m[3]),
         method: m[2].toLowerCase(),
         roles: effective,
+        requiresAuth,
       });
     }
   }
@@ -325,6 +360,18 @@ function findViolations(endpoints, contractOps) {
   const violations = [];
   for (const ep of endpoints) {
     const key = `${ep.method} ${ep.path}`;
+    // #656: **無認証で到達できる端点は、契約と一致していても違反である。**
+    // 計画 NFR-09 の暫定運用が「エッジ（BFF）で OIDC/JWT を担保する」と定めており、
+    // `/bff/*` に無認証の端点は存在してはならない（本 PR 時点で実測 0 件。それを不変条件にする）。
+    // **ロールの一致だけを見ていると素通りする** —— 実装も契約も「ロール制約なし」で辻褄が合うため。
+    if (ep.ungrouped) {
+      violations.push({ kind: 'ungrouped', key, file: ep.file });
+      continue;
+    }
+    if (ep.requiresAuth === false) {
+      violations.push({ kind: 'anonymous', key, file: ep.file });
+      continue;
+    }
     const declared = contractOps.get(key);
     if (!declared) {
       violations.push({ kind: 'missing-in-contract', key, file: ep.file, effective: ep.roles });
@@ -350,9 +397,17 @@ function findViolations(endpoints, contractOps) {
 }
 
 function formatReport(violations) {
-  const lines = [`[check-bff-authz-docs] 宣言ロールと実効ロールの不一致 ${violations.length} 件を検出しました:`, ''];
+  const lines = [`[check-bff-authz-docs] BFF 認可の違反 ${violations.length} 件を検出しました:`, ''];
   for (const v of violations) {
-    if (v.kind === 'mismatch') {
+    if (v.kind === 'ungrouped') {
+      lines.push(`  ${v.key}  (${v.file})`);
+      lines.push('    **`app.MapVerb("/bff/...")` が群に属していない。** 本検査器は群を辿って認可を');
+      lines.push('    合成するため、この形は認可を判定できない。`MapGroup` 配下へ移すこと（#656）');
+    } else if (v.kind === 'anonymous') {
+      lines.push(`  ${v.key}  (${v.file})`);
+      lines.push('    **無認証で到達できる。** 群・端点・ハンドラ内のいずれにも認可が無い');
+      lines.push('    （NFR-09 暫定運用「エッジ〔BFF〕で OIDC/JWT を担保する」・#656）');
+    } else if (v.kind === 'mismatch') {
       lines.push(`  ${v.key}  (docs/api/openapi.yaml:${v.line})`);
       lines.push(`    実装の実効ロール: ${fmt(v.effective)}`);
       lines.push(`    openapi の x-roles: ${fmt(v.declared)}`);

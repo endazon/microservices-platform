@@ -60,12 +60,24 @@ export type bffDocumentListResponse200 = {
   status: 200
 }
 
+export type bffDocumentListResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffDocumentListResponse403 = {
+  data: void
+  status: 403
+}
+
 export type bffDocumentListResponseSuccess = (bffDocumentListResponse200) & {
   headers: Headers;
 };
-;
+export type bffDocumentListResponseError = (bffDocumentListResponse401 | bffDocumentListResponse403) & {
+  headers: Headers;
+};
 
-export type bffDocumentListResponse = (bffDocumentListResponseSuccess)
+export type bffDocumentListResponse = (bffDocumentListResponseSuccess | bffDocumentListResponseError)
 
 export const getBffDocumentListUrl = () => {
 
@@ -78,7 +90,14 @@ export const getBffDocumentListUrl = () => {
 /**
  * 利用者の ABAC 許可スコープに合致する文書だけを返す（deny-by-default。権限外文書は列挙しない）。
  * 許可ポリシーが無い／認可サービス不調のときは**空配列**へ縮退し、権限外の存在を示さない。
- * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ）
+ *
+ * ［2026-08-10 / #656］**閲覧を管理者・運用者へ絞った。** 計画 `05_screens`（2026-08-05 の裁定）が
+ * 「**SC-05/06/07 = 閲覧は管理者・運用者／破壊的操作は管理者限定**」と定めており、
+ * **本口の呼び出し元は SC-05 の管理画面ただ 1 つ**である（実測）。画面側は既に
+ * `RequireRole anyOf={[Admin, Operator]}` で絞られていたが、**API は無認証でも通っていた**。
+ * **同じ `/bff/documents` でも `{id}` 以下（SC-03 の文書詳細）は認証のみ**である ——
+ * あちらは SC-01 の出典クリックから一般利用者が遷移する。
+ * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 export const bffDocumentList = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffDocumentListResponse> => {
 
@@ -102,7 +121,7 @@ export const getBffDocumentListQueryKey = () => {
     }
 
 
-export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = unknown>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffDocumentListQueryOptions = <TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -121,14 +140,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffDocumentListQueryResult = NonNullable<Awaited<ReturnType<typeof bffDocumentList>>>
-export type BffDocumentListQueryError = unknown
+export type BffDocumentListQueryError = void
 
 
 /**
- * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ）
+ * @summary FR-06, SC-05: 文書一覧（ABAC スコープ内のみ。管理者・運用者。#656）
  */
 
-export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = unknown>(
+export function useBffDocumentList<TData = Awaited<ReturnType<typeof bffDocumentList>>, TError = void>(
   options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffDocumentList>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -251,6 +270,11 @@ export const useBffDocumentCreate = <TError = ValidationProblemDetails | void,
   status: 200
 }
 
+export type bffDocumentDetailResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffDocumentDetailResponse404 = {
   data: void
   status: 404
@@ -259,7 +283,7 @@ export type bffDocumentDetailResponse404 = {
 export type bffDocumentDetailResponseSuccess = (bffDocumentDetailResponse200) & {
   headers: Headers;
 };
-export type bffDocumentDetailResponseError = (bffDocumentDetailResponse404) & {
+export type bffDocumentDetailResponseError = (bffDocumentDetailResponse401 | bffDocumentDetailResponse404) & {
   headers: Headers;
 };
 
@@ -558,6 +582,11 @@ export const useBffDocumentDelete = <TError = void,
   status: 200
 }
 
+export type bffDocumentContentResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffDocumentContentResponse404 = {
   data: void
   status: 404
@@ -566,7 +595,7 @@ export type bffDocumentContentResponse404 = {
 export type bffDocumentContentResponseSuccess = (bffDocumentContentResponse200) & {
   headers: Headers;
 };
-export type bffDocumentContentResponseError = (bffDocumentContentResponse404) & {
+export type bffDocumentContentResponseError = (bffDocumentContentResponse401 | bffDocumentContentResponse404) & {
   headers: Headers;
 };
 
@@ -655,6 +684,11 @@ export type bffDocumentVersionsResponse200 = {
   status: 200
 }
 
+export type bffDocumentVersionsResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffDocumentVersionsResponse404 = {
   data: void
   status: 404
@@ -663,7 +697,7 @@ export type bffDocumentVersionsResponse404 = {
 export type bffDocumentVersionsResponseSuccess = (bffDocumentVersionsResponse200) & {
   headers: Headers;
 };
-export type bffDocumentVersionsResponseError = (bffDocumentVersionsResponse404) & {
+export type bffDocumentVersionsResponseError = (bffDocumentVersionsResponse401 | bffDocumentVersionsResponse404) & {
   headers: Headers;
 };
 

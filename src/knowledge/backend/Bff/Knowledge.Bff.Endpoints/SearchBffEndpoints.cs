@@ -21,7 +21,13 @@ public static class SearchBffEndpoints
 
     public static IEndpointRouteBuilder MapSearchBffEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/bff/search").WithTags("Search BFF");
+        // NFR-09, #656: **認証を要求する。** 計画の暫定運用は「エッジ（BFF）で OIDC/JWT を担保する」と
+        // 定めており、本群はそれを満たしていなかった（無認証で到達できた）。
+        // **ロールは要求しない** —— 計画 `05_screens` は利用者グループ（SC-01〜04・SC-08）を
+        // 「ABAC の権限内で全利用者が利用できる」と定めており、書かれていない制限を足さない。
+        // 無認証でも ABAC が fail-closed で空を返していたが、**それは防御が 1 枚しかない状態**である
+        // （利用者条件を持たないポリシーが 1 件でも入ると開く。IADR-0044 の多層防御）。
+        var g = app.MapGroup("/bff/search").WithTags("Search BFF").RequireAuthorization();
 
         // FR-03, UC-01: 横断検索。要求は query（＋任意 topK）。Scope はクライアントから受け取らずサーバで解決する。
         g.MapPost("/", async (
@@ -70,7 +76,8 @@ public static class SearchBffEndpoints
         // **スコープはサーバ側で解決し、クライアント指定は信頼しない**（検索と同じ。権限昇格の防止）。
         // **解決できないときは空配列**（[[IADR-0151]] 決定 5）——404 にも 403 にもしない。
         // **候補が無いことと権限が無いことを利用者へ区別させない。**
-        var values = app.MapGroup("/bff/attribute-values").WithTags("Search BFF");
+        // NFR-09, #656: 同上（認証のみ・ロール不問）。SC-01 / SC-08 の対象範囲フィルタが呼ぶ口である。
+        var values = app.MapGroup("/bff/attribute-values").WithTags("Search BFF").RequireAuthorization();
 
         values.MapPost("/", async (
             AttributeValuesRequest req,

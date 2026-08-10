@@ -12,7 +12,12 @@ public static class AnalysisBffEndpoints
 {
     public static IEndpointRouteBuilder MapAnalysisBffEndpoints(this IEndpointRouteBuilder app)
     {
-        var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF");
+        // NFR-09, #656: **認証を要求する。** 計画の暫定運用は「エッジ（BFF）で OIDC/JWT を担保する」と
+        // 定めており、本群はそれを満たしていなかった（無認証で到達できた）。
+        // **ロールは要求しない**（SC-01 / SC-08 は利用者グループ。計画 `05_screens`）。
+        // 無認証でも `RagOrchestrator` が `!Granted` で LLM 呼び出し前に縮退していたが、
+        // **その安全は ABAC ポリシーの内容だけに依存していた**（IADR-0044 の多層防御）。
+        var g = app.MapGroup("/bff/analysis").WithTags("Analysis BFF").RequireAuthorization();
 
         // FR-04, UC-01, UC-02: 検索結果を根拠に AI 回答＋出典を返す。
         // AiAnalysisService へ集約し、ABAC 権限解決のため Authorization ヘッダを伝播する。
