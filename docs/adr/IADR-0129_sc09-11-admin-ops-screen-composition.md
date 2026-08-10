@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-09, SC-10, SC-11, UC-05, FR-05, FR-09, FR-10, FR-15, FR-17, ADR-0031, ADR-0033, IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0040, IADR-0046, IADR-0119, IADR-0142, IADR-0121, IADR-0124, IADR-0125, IADR-0127]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-09
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -263,6 +263,10 @@ SC-10 の閲覧ロールが広がる時点で、そのとき必要な出し分�
   - **SC-10 は KPI カード 3 枚のうちモックと一致するものが無い**（SLO・コストは契約に無く、
     利用状況は件数であって人数ではない）。**モックの見た目に最も遠い画面**になる。
   - **SC-10 の閲覧ロールが計画と食い違ったまま残る**（裁定待ち）。
+    **［2026-08-10 追記 / #553］この食い違いは解消した。** 裁定 **Q28**（2026-08-05）が
+    「**SC-10 も計画を正として運用者へ開く**」と定め（計画 `01_screens.md:125`。BFF と後段の 2 層改修を伴う）、
+    **#544 が `/bff/dashboard/summary` と後段 `DashboardService` を運用者へ開いた**。
+    **決定 4 の「据え置き」は当時の判断として正しく、その後に裁定で解けた。**
   - ポリシー条件の表現力が契約に縛られ、計画が描いた条件式は書けない。
 - フォローアップ:
   1. 環流記録（`feedback/20260805_sc09-11-admin-ops-contract-gaps.md`）の起票と裁定。

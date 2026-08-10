@@ -13,7 +13,7 @@ related_ids:
   - IADR-0126
 author: claude
 created: 2026-07-09
-updated: 2026-08-09
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -105,6 +105,13 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 
 3 件はまとめて環流の記録に載せ、計画へ環流した（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)。
 **planning#197 として起票済みであり、計画側の裁定を待っている**）。
+
+> **★［2026-08-10 追記 / #553］3 件とも裁定が出て、契約はすべて解消済みである。**
+> 利用者裁定 2026-08-05（質問票 第12回 **Q4〜Q6**）が「いずれも**契約を拡張する**」と定め
+> （計画 `05_screens/01_screens.md:213`）、実装は **#531（検索モード 3 値）/ #532（並び順 2 値）/
+> #536（更新日時）** で着地した。**上表の 3 行にはそれぞれ解消の追記が入っている。**
+> **残るのは (a)(b) の切替 UI の画面実装だけ**であり、**契約の不足はもう無い。**
+> 直上の「計画側の裁定を待っている」は**当時の記録**として残す。
 
 ## データソース（BFF 境界）
 

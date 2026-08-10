@@ -34,8 +34,16 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //     ——「✕ 失敗」を決して表示できない列になる。変換状況は SC-07（/admin/conversions）が担う。
 //   - **タグ辞書からの補完**: 辞書は /bff/admin/authz（システム管理者限定）にあり、本画面の
 //     利用者（admin / operator）が引ける保証が無い。
-//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
-//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照（planning#197 で裁定待ち）。
+//   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した。
+//   **［2026-08-10 追記 / #553］2 件とも裁定で決着している。**
+//     - **「変換」列 → 裁定 Q17 で計画側が「変換状況」を削除した**（01_screens.md:276）。
+//       契約を足すのではなく**要素そのものが落ちた**ので、**出していないのが正しい**。
+//     - **タグ辞書 → 裁定 Q18 で照会口を管理系ロールへ開くと確定し、#634 / #640 で実装済み**。
+//       **本画面が補完へ載せる作業は未了**であり、そこが残りである。
+//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。
+//   **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は 2026-08-05 の裁定
+//   （Q7・Q8・派生 Q30）で確定し、正は planning/docs/glossary.md（restricted＝**取扱制限**）。
+//   **写像の実装先は #541 であり、それまでは生値を出す。**
 
 /** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */
 function canPublish(status: string): boolean {

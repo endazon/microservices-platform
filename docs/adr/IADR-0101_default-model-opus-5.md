@@ -9,7 +9,7 @@ related_ids:
   - IADR-0022
 author: claude
 created: 2026-07-24
-updated: 2026-08-07
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Claude Opus 5 へ改定・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
@@ -101,9 +101,14 @@ plan_refs:
   3. **`stop_reason: "refusal"` のハンドリング検討**。Opus 5 はサイバー系の安全性分類器を持ち
      HTTP 200 + `refusal` を返し得る。現行は空応答へ縮退し例外にならないため即時の不具合には
      ならないが、監査ログ上「送信したが空応答」と区別できない。必要なら別 IADR で起票する。
-  4. `rag-answer` は [ADR-0022] が Sonnet 5 への改定を決めたが、実装の `PurposeModels` は現在も
+  4. ~~`rag-answer` は [ADR-0022] が Sonnet 5 への改定を決めたが、実装の `PurposeModels` は現在も
      `claude-sonnet-4-6` であり**同 ADR のフォローアップが未消化**である（本 IADR のスコープ外）。
-     Sonnet 5 へ追随する際は、同モデルも thinking が既定有効であるため `max_tokens` の実測が必要になる。
+     Sonnet 5 へ追随する際は、同モデルも thinking が既定有効であるため `max_tokens` の実測が必要になる。~~
+     → **［2026-08-10 追記 / #553］解消済み。** 実測すると
+     `LlmGateway.Api/appsettings.json:42` は現在 `"rag-answer": "claude-sonnet-5"` である
+     （[[IADR-0106]] が ADR-0022 へ追従した）。**「現在も `claude-sonnet-4-6`」は失効している。**
+     **本項は #553 の論点（裁定の追随）ではないが、同型（現在形の断定が事実の変化で偽になる）の
+     全数走査で見つかったため、あわせて是正した。**
   5. **ai-stock-trading 側の `MaxTokens: 1024` ハードコード 2 箇所の引き上げ（必須・本リポジトリでは修正不可）**。
      - `TradeDecisionService.Worker/Composable/Adapters/HttpLlmCompletionClient.cs`（`purpose = trade-decision`）
      - `ReportService.Worker/Foundation/Adapters/HttpReportNarrativeDrafter.cs`（`purpose = report-narrative`）

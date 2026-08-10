@@ -108,7 +108,10 @@ describe('DocumentDetailPage (SC-03)', () => {
 
     expect(await screen.findByRole('heading', { name: '経費精算規程 v3.2' })).toBeInTheDocument();
     expect(screen.getByText(/締め日は毎月25日とする。/)).toBeInTheDocument();
-    // 属性はキーだけをラベルへ写像し、値は生値のまま出す（計画が 4 値中 2 値しか表示名を持たない）。
+    // 属性はキーだけをラベルへ写像し、値は生値のまま出す。
+    // **［2026-08-10 訂正 / #553］理由は「計画が 4 値中 2 値しか表示名を持たない」ではなくなった**
+    // —— 4 値の表示名は裁定（2026-08-05 Q7・Q8・派生 Q30）で確定している。
+    // **写像の実装先が #541 である**ため、それまでの現状として生値を出している。
     expect(screen.getByText('機密区分:')).toBeInTheDocument();
     expect(screen.getByText('internal')).toBeInTheDocument();
     expect(screen.getByText('部門:')).toBeInTheDocument();
