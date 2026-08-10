@@ -300,6 +300,14 @@ function main() {
       process.exit(0);
     }
   }
+  // #664 / IADR-0130 の作法: **0 件走査で緑を返さない**（fail-closed）。
+  // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
+  // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
+  if (files.length === 0) {
+    console.error('[check-plan-id-qualification] 走査対象のファイルを 1 件も見つけられませんでした。');
+    console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
+    process.exit(1);
+  }
   const report = checkFiles(files);
   const total = report.reduce((n, r) => n + r.violations.length, 0);
   if (total === 0) {

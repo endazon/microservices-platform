@@ -150,8 +150,11 @@ function projectReferencesOf(csprojAbs) {
 
 function checkTree() {
   const violations = [];
+  // #664: 走査件数を持ち帰り、呼び出し側の fail-closed の門に使う（0 件走査で緑を返さない）。
+  const scanned = { csprojs: 0, csFiles: 0 };
   // 1) ProjectReference の方向検査。
   const csprojs = walk(path.join(REPO_ROOT, SRC_DIR), (n) => n.endsWith('.csproj'), []);
+  scanned.csprojs = csprojs.length;
   for (const abs of csprojs) {
     const from = repoRel(abs);
     for (const to of projectReferencesOf(abs)) {
@@ -161,6 +164,7 @@ function checkTree() {
   }
   // 2) Foundation → Composable の using 検査。
   const csFiles = walk(path.join(REPO_ROOT, SRC_DIR), (n) => n.endsWith('.cs'), []);
+  scanned.csFiles = csFiles.length;
   for (const abs of csFiles) {
     const rel = repoRel(abs);
     if (!/(^|\/)Foundation\//.test(rel)) continue;
@@ -170,7 +174,8 @@ function checkTree() {
       violations.push({ kind: 'foundation-composable', from: rel, to: '(Composable)', reason: line });
     }
   }
-  return violations;
+  // #664: 走査件数を併せて返す。**配列へプロパティを生やさない**（戻り値の型が読みづらくなる）。
+  return { violations, scanned };
 }
 
 // --- 自己試験（--self-test） --------------------------------------------------
@@ -256,9 +261,24 @@ function selfTest() {
 
 function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
-  const violations = checkTree();
+  const { violations, scanned } = checkTree();
+  // #664 / IADR-0130 の作法: **0 件走査で緑を返さない**（fail-closed）。
+  // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
+  // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
+  if (scanned.csprojs === 0 || scanned.csFiles === 0) {
+    console.error(
+      `[check-unit-dependencies] ${SRC_DIR}/ から .csproj / .cs を 1 件も見つけられませんでした` +
+        `（csproj ${scanned.csprojs} 件 / cs ${scanned.csFiles} 件）。`,
+    );
+    console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
+    process.exit(1);
+    return;
+  }
   if (violations.length === 0) {
-    console.log('[check-unit-dependencies] OK: ユニット依存方向の違反はありません。');
+    // #664: **件数を出す。** 従前は件数を出しておらず、0 件走査かどうかがログから読めなかった。
+    console.log(
+      `[check-unit-dependencies] OK: csproj ${scanned.csprojs} 件 / .cs ${scanned.csFiles} 件を走査し、ユニット依存方向の違反はありません。`,
+    );
     process.exit(0);
   }
   console.error(`[check-unit-dependencies] 依存方向の違反 ${violations.length} 件を検出しました:`);

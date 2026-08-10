@@ -3167,4 +3167,138 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #664: 0 件走査で緑を返さない（fail-closed の門） -------------------------
+  //
+  // #592 の初版は `walk()` へ絶対パスを渡し、`catch` が黙って空配列を返していた。
+  // 必須仕様書を 1 件も読まないまま「違反 0 件」と報告し、**変異試験 M1 が落ちるべきなのに
+  // 通ってしまった**。門だけでは「門をすり抜ける経路」が残るため、**実データでの下限**
+  // （走査 1 件以上）を自己試験として常設する。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const SCRIPTS = __dirname;
+
+    /** 検査器を実データで走らせ、stdout ＋ stderr を返す。 */
+    const run = (name, args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, name), ...args], {
+        encoding: 'utf8',
+        cwd: path.join(SCRIPTS, '..'),
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    // 走査件数が OK メッセージに出ることを、**数字を書かずに**確かめる。
+    // 件数をリテラルで書くと契約が増えるたびに落ちる（#558 の教訓）。
+    const scannedAtLeastOne = [
+      ['check-doc-links.js', /OK: (\d+) 件の Markdown/],
+      ['check-cross-repo-refs.js', /OK: (\d+) 件の Markdown/],
+      ['check-plan-id-qualification.js', /OK: (\d+) 件に/],
+      ['check-unit-dependencies.js', /OK: csproj (\d+) 件/],
+    ];
+    for (const [name, re] of scannedAtLeastOne) {
+      ok(`0 件走査の門: ${name} は実データで 1 件以上を走査する（下限）`, () => {
+        const { code, out } = run(name);
+        assert.strictEqual(code, 0, `${name} が実データで落ちた:\n${out}`);
+        const m = out.match(re);
+        assert.ok(m, `${name} の OK メッセージから走査件数を読めない（門の下限を検査できない）:\n${out}`);
+        assert.ok(
+          Number(m[1]) > 0,
+          `${name} の走査件数が 0 だった。0 件検査は「検査しているつもりで何も見ていない」状態である`,
+        );
+      });
+    }
+
+    ok('0 件走査の門: check-openapi-dto-drift は C# record を 1 件以上拾う（下限）', () => {
+      const { code, out } = run('check-openapi-dto-drift.js');
+      assert.strictEqual(code, 0, `実データで落ちた:\n${out}`);
+      const m = out.match(/C# record (\d+)/);
+      assert.ok(m, `OK メッセージから C# record 数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, 'C# record が 0 件だった（DTO_ROOTS のパスずれを疑う）');
+    });
+
+    // **門そのものが効いていることの側**（変異試験）。走査結果を空にすると fail する。
+    // ★ **門が効いていることの側**（変異試験）を、手元の 1 回で終わらせず自動回帰にする。
+    //
+    // 上の下限テストは**実データ（走査件数 > 0）**に対して走るため、**門の分岐を 1 度も通らない**。
+    // 門を消しても下限テストは緑のままであり、**「検査しているつもりで何も見ていない」を防ぐ
+    // 本 PR が、自分の追加した試験で同じ穴を作る**ことになる（#672 のレビュー指摘）。
+    //
+    // 装置: **走査ルートが存在しない一時リポジトリ**へ `scripts/` を写し、そこで走らせる。
+    // 検査器は `__dirname/..` を REPO_ROOT にするため、**cwd を変えるだけでは足りない**。
+    {
+      const fs = require('fs');
+      const os = require('os');
+
+      /** scripts/ だけを持つ一時リポジトリを作る（走査ルートは存在しない）。 */
+      const makeEmptyRepo = () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'empty-scan-'));
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const pkg = path.join(SCRIPTS, '..', 'package.json');
+        if (fs.existsSync(pkg)) fs.copyFileSync(pkg, path.join(dir, 'package.json'));
+        spawnSync('git', ['init', '-q'], { cwd: dir });
+        spawnSync('git', ['commit', '-q', '--allow-empty', '-m', 'init'], { cwd: dir });
+        return dir;
+      };
+
+      const runIn = (dir, name) => {
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', name)], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+      };
+
+      const gated = [
+        'check-doc-links.js',
+        'check-cross-repo-refs.js',
+        'check-plan-id-qualification.js',
+        'check-unit-dependencies.js',
+      ];
+      for (const name of gated) {
+        ok(`0 件走査の門: ${name} は走査ルートが無いと fail する（変異試験）`, () => {
+          const dir = makeEmptyRepo();
+          try {
+            const { code, out } = runIn(dir, name);
+            assert.strictEqual(
+              code,
+              1,
+              `${name} が 0 件走査で緑を返した。門が消えている:\n${out}`,
+            );
+            assert.match(out, /0 件検査/, `${name} が 0 件検査であることを述べていない:\n${out}`);
+          } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+          }
+        });
+      }
+
+      // `check-openapi-dto-drift` は空リポジトリでは OPENAPI が読めず例外で落ちるため、
+      // **上の装置では門を通らない**。契約だけを置いて DTO を 1 件も置かない状態を作る。
+      ok('0 件走査の門: check-openapi-dto-drift は DTO を拾えないと fail する（変異試験）', () => {
+        const dir = makeEmptyRepo();
+        try {
+          fs.mkdirSync(path.join(dir, 'docs/api'), { recursive: true });
+          fs.writeFileSync(
+            path.join(dir, 'docs/api/openapi.yaml'),
+            'openapi: 3.0.3\ncomponents:\n  schemas:\n    FooDto:\n      type: object\n      properties:\n        a:\n          type: string\n',
+          );
+          const { code, out } = runIn(dir, 'check-openapi-dto-drift.js');
+          assert.strictEqual(code, 1, `DTO 0 件で緑を返した。門が消えている:\n${out}`);
+          assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+        } finally {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+      });
+    }
+
+    ok('0 件走査の門: findDrift は records が空でも [] を返す（門が main 側に要る根拠）', () => {
+      const d = require('./check-openapi-dto-drift.js');
+      const r = d.findDrift({ Foo: { props: ['a'], required: [] } }, {}, { entries: [] }, new Set());
+      assert.deepStrictEqual(
+        r,
+        [],
+        'findDrift は 0 件走査を違反 0 件として返す。**だから main() 側に門が要る**',
+      );
+    });
+  }
 };

@@ -775,6 +775,19 @@ function main(argv) {
   const files = DTO_ROOTS.flatMap((d) => listCsFiles(path.join(REPO, d))).sort();
   for (const f of files) Object.assign(records, collectRecords(fs.readFileSync(f, 'utf8')));
 
+  // #664 / IADR-0130 の作法: **0 件走査で緑を返さない**（fail-closed）。
+  // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
+  // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
+  // **空リポジトリ試験では捕まらない経路である**（OPENAPI が読めず例外で落ちるため）。
+  // DTO_ROOTS のパスずれ・ユニット改名・submodule 構成の変化のいずれでも 0 件になりうる。
+  if (files.length === 0 || Object.keys(records).length === 0) {
+    console.error(
+      `[check-openapi-dto-drift] C# の DTO を 1 件も拾えませんでした（探した先: ${DTO_ROOTS.join(' / ')}）。`,
+    );
+    console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
+    return 1;
+  }
+
   const allowlist = fs.existsSync(ALLOWLIST)
     ? JSON.parse(fs.readFileSync(ALLOWLIST, 'utf8'))
     : { entries: [] };
