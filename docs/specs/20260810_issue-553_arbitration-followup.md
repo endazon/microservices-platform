@@ -180,3 +180,18 @@ IADR-0128 / IADR-0127 / IADR-0042 / IADR-0039 / `docs/adr/README.md` /
 - **planning#306 の裁定待ち 2 箇所**（判断 3）。
 - **条件付きの「必要なら仰ぐ」10 箇所**（判断 3）。
 - **`docs/specs/` / `feedback/` の履歴記述**（判断 5）。
+- **★ `docs/adr/README.md` の索引 4 行（`IADR-0126` / `0127` / `0128` / `0129`）** ——
+  索引セルにも「裁定待ち」が残るが、**追記を入れてはならない**。
+  `scripts/adr-index-title-baseline.json` が **`title-addendum`＝「索引タイトルセルへの
+  ［YYYY-MM-DD 追記］の混入」を違反として定義**しており、**実際に落ちることを実測した**:
+
+  ```console
+  $ # IADR-0129 の索引セルへ「［2026-08-10 追記］Q19 で決着」を足して
+  $ node --test scripts/scripts.test.js
+  README.md:185 IADR-0129 title-addendum
+  # fail 1
+  ```
+
+  `IADR-0127` / `0128` は既に `title-addendum` を**ラチェットへ据え置かれている**（過去分）。
+  新しく足すと**ラチェットを増やす**ことになり向きが逆である。
+  **索引は「決定当時の要約」であり、現在を示すのは本体の追記**という役割分担で通す。
