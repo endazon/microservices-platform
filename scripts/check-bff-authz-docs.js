@@ -22,6 +22,14 @@
  * があり、**「管理者」と「運用者」の両方を含みながら意味は admin のみ**である。語を数える判定は
  * ここで必ず誤る。**機械可読な宣言を 1 つ置き、それを正とする。**
  *
+ * ── **`RequireAuthorization` だけでは足りない**（PR #653 レビュー 1 巡目の 🔴）
+ * `ConfigBffEndpoints` は **`RequireAuthorization` を意図的に付けず**、ハンドラ内で
+ * `IAuthorizationService.AuthorizeAsync(user, ConfigViewer)` を呼んで **404 で存在を秘匿**する
+ * （[[IADR-0009]]。`RequireAuthorization` だと無認証が 404 到達前に 401 で短絡して存在が漏れる）。
+ * **ミドルウェアを使っていないだけで、ロール制約は在る。** 当初これを「制約なし」と誤って
+ * 記録しかけた —— **コメントだけ読んで `DenyAsync` の本体を開かなかった**ためである。
+ * よって**同一ファイルの private ヘルパを 1 段だけたどり**、`AuthorizeAsync(..., ポリシー)` も拾う。
+ *
  * ── 実効ロール（[[IADR-0128]] 決定 1）
  * 認可メタデータは **AND 合成**される。群が admin ＋ operator で端点が `AdminOnly` なら
  * **実効は admin のみ**。本検査器はこの**積**を出す。
@@ -43,7 +51,8 @@
  *     散文の追随は人とレビューの仕事として残る。
  *   - **後段サービス（`*Endpoints.cs`）の認可。** [[IADR-0044]] の多層防御のうち BFF 層だけを見る。
  *     後段まで広げるなら別 issue（[[IADR-0116]] 規約 4）。
- *   - `RequireAuthorization` 以外の認可（ハンドラ内での自前判定など）。
+ *   - **ヘルパを 2 段以上たどる**ハンドラ内判定。1 段（端点 → 同一ファイルの private ヘルパ）までは
+ *     解くが、そのヘルパがさらに別のヘルパへ委譲する形は追わない。
  *   - `src/ai-stock-trading`（別プロジェクトの submodule）。
  *
  * ── allowlist を持たない（#647 受け入れ基準）
@@ -174,6 +183,40 @@ function rolesFromStatement(stmt, consts, policies) {
   return acc;
 }
 
+// 同一ファイルの private ヘルパ名 → そのヘルパが強制するポリシーのロール集合。
+// `ConfigBffEndpoints.DenyAsync` のように、ミドルウェアではなくハンドラ内で認可する形を拾う。
+// **1 段だけ**たどる（ヘルパがさらに委譲する形は追わない。冒頭コメントに開示済み）。
+function collectAuthHelpers(src, consts, policies) {
+  const helpers = {};
+  for (const m of src.matchAll(/\b(?:private|internal)\s+static\s+[\w<>?,\s]+?\s(\w+)\s*\(/g)) {
+    const name = m[1];
+    // メソッド本体（最初の `{` から対応する `}` まで）を切り出す。
+    const braceStart = src.indexOf('{', m.index + m[0].length);
+    if (braceStart === -1) continue;
+    let depth = 0;
+    let i = braceStart;
+    for (; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) break; }
+    }
+    const body = src.slice(braceStart, i);
+    const roles = rolesFromAuthorizeAsync(body, consts, policies);
+    if (roles !== null) helpers[name] = roles;
+  }
+  return helpers;
+}
+
+// `AuthorizeAsync(..., PlatformAuthPolicies.X)` からロール集合を出す。無ければ null。
+function rolesFromAuthorizeAsync(text, consts, policies) {
+  let acc = null;
+  for (const m of text.matchAll(/AuthorizeAsync\([^)]*?PlatformAuthPolicies\.(\w+)\s*\)/g)) {
+    const roles = policies[m[1]] ? new Set(policies[m[1]]) : null;
+    if (roles === null) continue;
+    acc = acc === null ? roles : new Set([...acc].filter((x) => roles.has(x)));
+  }
+  return acc;
+}
+
 // 実装の経路制約（`{id:guid}`）を openapi の表記（`{id}`）へ揃える。
 // **openapi 側を実装へ寄せない** —— OpenAPI に ASP.NET の経路制約構文は無い。
 function normalizePath(p) {
@@ -190,6 +233,7 @@ function collectImplementation(files, consts, policies) {
   const endpoints = [];
   for (const file of files) {
     const src = stripComments(fs.readFileSync(file, 'utf8'));
+    const helpers = collectAuthHelpers(src, consts, policies);
     // 群: var NAME = app.MapGroup("PATH") … ;
     const groups = {};
     for (const m of src.matchAll(/\bvar\s+(\w+)\s*=\s*app\s*\.\s*MapGroup\(\s*"([^"]+)"/g)) {
@@ -201,7 +245,16 @@ function collectImplementation(files, consts, policies) {
       const group = groups[m[1]];
       if (!group) continue; // app.MapGet 等（群に属さない）は対象外
       const stmt = statementFrom(src, m.index);
-      const own = rolesFromStatement(stmt, consts, policies);
+      let own = rolesFromStatement(stmt, consts, policies);
+      // ハンドラ内の認可（直接 AuthorizeAsync / ヘルパ呼び出し）も AND 合成する。
+      const inline = rolesFromAuthorizeAsync(stmt, consts, policies);
+      for (const [name, roles] of Object.entries(helpers)) {
+        if (!new RegExp(`\\b${name}\\s*\\(`).test(stmt)) continue;
+        own = own === null ? new Set(roles) : new Set([...own].filter((x) => roles.has(x)));
+      }
+      if (inline !== null) {
+        own = own === null ? inline : new Set([...own].filter((x) => inline.has(x)));
+      }
       const effective = group.roles === null
         ? own
         : own === null
@@ -352,6 +405,8 @@ module.exports = {
   loadPolicies,
   rolesFromStatement,
   collectImplementation,
+  collectAuthHelpers,
+  rolesFromAuthorizeAsync,
   collectContract,
   normalizePath,
   findViolations,

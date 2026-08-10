@@ -394,7 +394,7 @@ paths:
 
   /bff/admin/config:
     get:
-      x-roles: []
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 現在有効な実効構成の取得"
       description: |
@@ -416,7 +416,7 @@ paths:
 
   /bff/admin/config/drift:
     get:
-      x-roles: []
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 宣言（Git）と実効構成のドリフト検出"
       description: |
@@ -435,7 +435,7 @@ paths:
 
   /bff/admin/config/history:
     get:
-      x-roles: []
+      x-roles: [platform-admin, platform-operator]
       tags: [Config]
       summary: "FR-15, SC-11: 構成バージョンの適用履歴（新しい順）"
       description: |

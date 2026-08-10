@@ -2270,6 +2270,52 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(authz.findViolations(eps, ops), []);
     });
 
+    // ★ PR #653 レビュー 1 巡目の 🔴 を固定する回帰。
+    // `ConfigBffEndpoints` は **RequireAuthorization を意図的に付けず**、ハンドラ内で
+    // AuthorizeAsync(ConfigViewer) を呼んで 404 で存在を秘匿する（IADR-0009）。
+    // **ミドルウェアを使っていないだけでロール制約は在る。** 当初これを「制約なし」と
+    // 誤って記録しかけた——コメントだけ読んで DenyAsync の本体を開かなかったためである。
+    ok('check-bff-authz-docs: ハンドラ内の AuthorizeAsync も実効ロールに数える', () => {
+      const pol = { ConfigViewer: new Set(['platform-admin', 'platform-operator']) };
+      const src = `
+        private static async Task<IResult?> DenyAsync(HttpContext http, IAuthorizationService authz) {
+          var authorized = (await authz.AuthorizeAsync(http.User, PlatformAuthPolicies.ConfigViewer)).Succeeded;
+          if (!authorized) { return Results.NotFound(); }
+          return null;
+        }
+      `;
+      const helpers = authz.collectAuthHelpers(src, consts, pol);
+      assert.ok(helpers.DenyAsync, 'ヘルパを認可の担い手として拾えていない');
+      assert.deepStrictEqual([...helpers.DenyAsync].sort(), ['platform-admin', 'platform-operator']);
+    });
+
+    ok('check-bff-authz-docs: 直接の AuthorizeAsync も拾う', () => {
+      const pol = { ConfigViewer: new Set(['platform-admin', 'platform-operator']) };
+      const roles = authz.rolesFromAuthorizeAsync(
+        'await authz.AuthorizeAsync(http.User, PlatformAuthPolicies.ConfigViewer)', consts, pol);
+      assert.deepStrictEqual([...roles].sort(), ['platform-admin', 'platform-operator']);
+    });
+
+    // 実データ: /bff/admin/config は「制約なし」ではないこと（🔴 の再発防止）。
+    ok('check-bff-authz-docs: /bff/admin/config の実効ロールは admin+operator', () => {
+      const fsC = require('fs');
+      const pathC = require('path');
+      const authSrc = fsC.readFileSync(
+        pathC.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8');
+      const real = authz.loadPolicies(authSrc);
+      const eps = authz.collectImplementation(
+        [pathC.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(eps.length > 0, '端点を 1 つも抽出できていない');
+      for (const ep of eps) {
+        assert.notStrictEqual(ep.roles, null, `${ep.path} が「制約なし」になっている`);
+        assert.deepStrictEqual([...ep.roles].sort(), ['platform-admin', 'platform-operator']);
+      }
+    });
+
     // 実データ。実装と openapi.yaml が一致していること。
     ok('check-bff-authz-docs が実データで違反 0 件', () => {
       const { spawnSync: spawnAuthz } = require('child_process');
