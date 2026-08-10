@@ -7,7 +7,7 @@ related_ids:
   - UC-04
 author: claude
 created: 2026-07-04
-updated: 2026-08-07
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -97,7 +97,7 @@ plan_refs:
 - 作業仕様書: `../specs/20260627_FR-01_data-source-catalog-pipeline.md`
 - データ仕様書: `../data/data-source.md`
 - 実装 ADR: `../adr/IADR-0001_document-service-owns-catalog.md`
-- テストコード: `src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
+- テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
 - コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
 - Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
 - SaaS コネクタテスト（#218）: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）

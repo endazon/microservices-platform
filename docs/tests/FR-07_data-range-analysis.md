@@ -7,7 +7,7 @@ related_ids:
   - UC-02
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -74,7 +74,7 @@ plan_refs:
 - 作業仕様書: `../specs/20260627_FR-07_data-range-analysis.md`
 - 実装 ADR: `../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`, `../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
 - 関連テスト仕様: `./FR-04_ai-answer-citations.md`（出典付与）、`./FR-05_abac-access-control.md`（ABAC）
-- テストコード: `src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/DataRangeScopeResolverTests.cs`, `AnalysisPromptBuilderTests.cs`, `AnalysisEndpointTests.cs`, `RagOrchestratorScopeTests.cs`, `src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/AiAnalysisService/RagOrchestratorTests.cs`
+- テストコード: `src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/DataRangeScopeResolverTests.cs`, `AnalysisPromptBuilderTests.cs`, `AnalysisEndpointTests.cs`, `RagOrchestratorScopeTests.cs`, `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AiAnalysisService/RagOrchestratorTests.cs`
 
 ## 未決事項
 

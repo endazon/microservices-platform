@@ -7,7 +7,7 @@ related_ids:
   - UC-03
 author: claude
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -67,7 +67,7 @@ plan_refs:
 
 - 単体（ドメイン）: `src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentVersioningTests.cs`（T-01〜T-05）、`DocumentAttributesTests.cs`（T-23）
 - 単体（エンドポイント, InMemory）: `.../DocumentEndpointVersioningTests.cs`（T-06〜T-11）、`DocumentConfidentialityValidationTests.cs`（T-19〜T-22）
-- 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/KnowledgePlatform.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
+- 統合（実 PostgreSQL）: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DocumentService/DocumentCrudTests.cs`（T-12〜T-14）、`DocumentVersioningTests.cs`（T-15〜T-16）
 - 統合（実 PostgreSQL / RabbitMQ）: `.../DocumentNormalizedSyncTests.cs`（T-17〜T-18）
 
 ## テストデータ
