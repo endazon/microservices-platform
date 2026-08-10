@@ -8,7 +8,7 @@ related_ids:
   - ADR-0018
 author: claude
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-09
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
