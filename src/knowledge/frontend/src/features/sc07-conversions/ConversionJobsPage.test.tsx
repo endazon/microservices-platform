@@ -346,16 +346,24 @@ describe('ConversionJobsPage (SC-07)', () => {
     );
   });
 
-  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #10・#12）。
-  // まず「見えるはずの条件」——失敗ジョブが在り、管理者として再変換ボタンが出ている状態——で
-  // 描画されていることを確かめてから、人手補正の 2 ペインが無いことを見る。
-  it('does not render the manual-correction pane (no contract to save into)', async () => {
-    mocks.apiRequest.mockResolvedValue(jsonResponse([FAILED_JOB]));
+  // **［2026-08-10 / #651］この試験は反転させた。**
+  //
+  // 従前は「人手補正の 2 ペインが**無い**こと」を、理由「保存先の契約が無い」とともに固定していた。
+  // 契約は #543 で、画面は #651 で載ったので、**その理由はもう成り立たない**。
+  // 一方で **Phase 2（変換結果 Markdown 全体の編集）は計画が繰り延べたまま**であり
+  // （`05_screens:330`）、**そこが射程外であることの回帰は残す価値がある**——本口
+  // （`POST …/correction`）はコード片しか受け付けないので、全体編集欄を置くと契約を超える。
+  it('offers per-figure code editing but no whole-Markdown editor (Phase 2 is out of scope)', async () => {
+    mockConversionApi([RETAINED_JOB]);
+    const user = userEvent.setup();
     await renderPage(['platform-admin']);
 
-    expect(await screen.findByRole('button', { name: '再変換' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '人手補正' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '補正して再登録' })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: '人手補正' }));
+
+    // Phase 1 の編集欄は**図ごと**である。
+    expect(await screen.findByLabelText('図コード: fig-1')).toBeInTheDocument();
+    // Phase 2 の要素は無い。
+    expect(screen.queryByLabelText('変換結果 Markdown')).not.toBeInTheDocument();
     expect(screen.queryByText('原本プレビュー')).not.toBeInTheDocument();
   });
 
