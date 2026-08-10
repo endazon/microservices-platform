@@ -252,8 +252,10 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   **「契約上は必須」と「実行時に必ず来る」は別**であり、応答本文を実行時に検証する層は無い。
 - **`/bff/` 外のスキーマにも `required` を入れる。** 生成の前処理 `src/orval-bff-only.cjs` が
   入力から落とすのは **`paths` だけ**で、**`components.schemas` は素通りする**
-  ——`/bff/` から到達しないスキーマも含め、**53 個すべてが `bff.schemas.ts` に出力される**
-  （実測: `grep -c '^export interface ' src/platform/frontend/src/foundation/api/generated/bff.schemas.ts`）。
+  ——`/bff/` から到達しないスキーマも含め、**`components.schemas` の宣言がそのまま `bff.schemas.ts` へ出力される**
+  （数え方: `grep -c '^export interface ' src/platform/frontend/src/foundation/api/generated/bff.schemas.ts`。
+  **件数はここに書かない**——契約が増えれば動く。**［2026-08-10 / #558］従前ここには「53 個すべて」と
+  書いてあり、実測すると 69 で古くなっていた**。数を書くと次に読む人が古い数を信じる）。
   **「`/bff/` 外は生成されないから書かなくてよい」は誤りである**——#520 の着手時にこの誤った想定を置き、
   変異試験 M8（`EmbedApiResponse.model` の削除で生成物に差分が出た）で覆った。
   ただし**生成されることと型検査の網になることは別**で、網の有無を決めるのは

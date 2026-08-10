@@ -16,6 +16,13 @@ on:
       - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
+      # Issue #558: **契約と生成の設定**。これらだけを変える PR（`required` の追加のみ等）でも
+      # 生成型が変わり、テスト対象のコードがその型で書かれている。従前 frontend.yml にだけ
+      # あり、**契約だけを直す PR ではカバレッジ床の検査が起動しなかった**。
+      # **確認は「success か」ではなく「skipped になっていないか」で見ること**（#524 の先例）。
+      - "docs/api/openapi.yaml"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
       - ".github/workflows/frontend-tests.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -27,6 +34,13 @@ on:
       - "src/pnpm-workspace.yaml"
       - "src/vitest.config.ts"
       - "src/eslint.config.js"
+      # Issue #558: **契約と生成の設定**。これらだけを変える PR（`required` の追加のみ等）でも
+      # 生成型が変わり、テスト対象のコードがその型で書かれている。従前 frontend.yml にだけ
+      # あり、**契約だけを直す PR ではカバレッジ床の検査が起動しなかった**。
+      # **確認は「success か」ではなく「skipped になっていないか」で見ること**（#524 の先例）。
+      - "docs/api/openapi.yaml"
+      - "src/orval.config.ts"
+      - "src/orval-bff-only.cjs"
       - ".github/workflows/frontend-tests.yml"
 
 defaults:
