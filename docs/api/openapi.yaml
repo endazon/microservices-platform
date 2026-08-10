@@ -2209,13 +2209,32 @@ components:
     AccessScopeResponse:
       type: object
       description: |
-        FR-05: ABAC スコープ解決結果（`Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`）。
-        #520 監査: C# には `bool Granted = false`（許可ポリシーが 1 つでも一致したか）が在るが、
-        本スキーマには対応する `granted` が無い。**フィールドの追加は本 issue の範囲外**
-        （`required` を入れる作業と別種の是正）。作業仕様書 #520 §未決事項 1 で申し送る。
-      required: [userId, allowedFilters]
+        FR-05, ADR-0004: ABAC スコープ解決結果（`Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`）。
+
+        **`granted` と `allowedFilters` は組で読む。** 計画 `06_technical/07_abac-attribute-model.md`
+        §ポリシー評価モデル の具体判定規則を、そのまま契約の 2 状態へ写したものである。
+
+        | `granted` | `allowedFilters` | 意味 |
+        | --- | --- | --- |
+        | `false` | `[]` | **全件遮断**（利用者にマッチするポリシーが 1 件も無い＝deny-by-default） |
+        | `true` | `[]` | **条件なしで全件許可**（マッチしたポリシーに文書条件が無い） |
+        | `true` | 1 件以上 | 各フィルタを満たす文書だけ許可（フィルタ間は AND・値集合内は OR） |
+
+        **`allowedFilters` が空であることだけでは 1 行目と 2 行目を区別できない。**
+        `granted` を読まずに「フィルタが無い＝制限なし」と解釈すると **deny-by-default が全件開放へ反転する**。
+        `granted` は既定値つきメンバー（`bool Granted = false`）だが**応答本文には必ず出る**ため
+        `required` に含める（IADR-0132 論点 B の B1）。
+
+        ［2026-08-10 / #525］`granted` はこの版で追加した。それ以前の本スキーマは
+        `userId` と `allowedFilters` しか持たず、上表の 1 行目と 2 行目が同一の応答になっていた。
+      required: [userId, allowedFilters, granted]
       properties:
         userId: { type: string }
+        granted:
+          type: boolean
+          description: >-
+            許可ポリシーが 1 つでも一致したか。`false` は「閲覧可能な文書が無い」を意味し、
+            `allowedFilters` が空でも**全件開放ではない**。
         allowedFilters:
           type: array
           items:

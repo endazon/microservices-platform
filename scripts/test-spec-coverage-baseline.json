@@ -30,6 +30,10 @@
       "RagOrchestratorDegradedModelTests",
       "TagFilteringTests"
     ],
+    "docs/tests/FR-05_abac-access-control.md": [
+      "AbacEvaluatorTests",
+      "AccessScopeContractTests"
+    ],
     "docs/tests/FR-06_document-crud-versioning.md": [
       "DocumentAttributesTests",
       "DocumentConfidentialityValidationTests",
