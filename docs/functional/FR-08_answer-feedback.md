@@ -1,6 +1,6 @@
 ---
 title: 機能仕様書 — FR-08 回答へのフィードバック収集
-type: functional
+type: functional-spec
 status: in-progress
 related_ids:
   - FR-08

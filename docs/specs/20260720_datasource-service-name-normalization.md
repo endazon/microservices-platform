@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 構成ビューア発行者名の表記ゆれ是正（data-source-service → datasource-service）
-type: work
+type: spec
 status: done
 related_ids:
   - FR-14

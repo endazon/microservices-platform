@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-06/FR-12 オブジェクトストレージ実体（MinIO）配備と IObjectStore 本実装
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-06

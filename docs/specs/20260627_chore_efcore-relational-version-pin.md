@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — EFCore.Relational バージョン競合（MSB3277）の解消
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

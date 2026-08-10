@@ -1,6 +1,6 @@
 ---
 title: Dependabot gitsubmodule による submodule pin 自動更新の有効化（Issue #260）
-type: work
+type: spec
 status: done
 related_ids:
   - FR-14

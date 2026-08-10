@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-11 用途別・機密度別 LLM ルーティングの実運用不具合修正
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-11

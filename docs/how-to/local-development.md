@@ -1,6 +1,6 @@
 ---
 title: how-to — ローカル開発フロー
-type: how-to-guide
+type: how-to
 status: published
 related_ids:
   - NFR

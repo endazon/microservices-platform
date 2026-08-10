@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — DataSourceService 原本への既定 ABAC 属性（機密区分）付与
-type: work-spec
+type: spec
 status: review
 related_ids:
   - FR-01

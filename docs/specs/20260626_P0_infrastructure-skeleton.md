@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — P0 基盤整備・スケルトン構築
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-01

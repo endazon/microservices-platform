@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-02/UC-04 埋め込み生成の実体実装（Voyage 既定＋高機密セルフホスト）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-02

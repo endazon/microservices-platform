@@ -8,6 +8,11 @@ allowed-tools: Read, Grep, Glob, Write, Bash(ls:*), Bash(mkdir:*)
 
 種別・テンプレート・出力先の対応（必須/任意は `CLAUDE.md` の仕様書一覧を参照）:
 
+> **★ この表の「種別」は本コマンドの引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [[IADR-0167]]）。
+> **`type` を書いているのはテンプレートだけ**である（引数 `work` → `spec_template.md` → `type: spec` のように、
+> 引数と `type` は一致しない）。**`type` の値域は `docs/README.md` と
+> `scripts/check-doc-type-vocabulary.js` が定める。**
+
 | 種別 | 文書 | テンプレート | 出力先 | 粒度 |
 | --- | --- | --- | --- | --- |
 | `work` | 作業仕様書 | `spec_template.md` | `docs/specs/` | 作業（PR）単位 |
@@ -27,8 +32,8 @@ allowed-tools: Read, Grep, Glob, Write, Bash(ls:*), Bash(mkdir:*)
 | `migration` | 移行仕様書 | `migration_spec_template.md` | `docs/migration/` | 任意 |
 | `error` | エラー・メッセージ仕様書 | `error_spec_template.md` | `docs/errors/` | リポ単位 |
 | `infra` | インフラ・構成仕様書 | `infra_spec_template.md` | `docs/infra/` | 任意 |
-| `runbook` | 運用 Runbook（`operations` の下位の手順書） | `operations_spec_template.md` | `docs/operations/` | 手順単位（複数可） |
-| `how-to` | 手順ガイド（環境起動・デプロイ等） | `spec_template.md` | `docs/how-to/` | 手順単位（起点 ID 任意） |
+| `runbook` | 運用 Runbook（`operations` の下位の手順書） | `runbook_template.md` | `docs/operations/` | 手順単位（複数可） |
+| `how-to` | 手順ガイド（環境起動・デプロイ等） | `how_to_template.md` | `docs/how-to/` | 手順単位（起点 ID 任意） |
 
 手順:
 

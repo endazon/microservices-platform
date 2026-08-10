@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-04 AI 回答の出典（元文書リンク）提示
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-04

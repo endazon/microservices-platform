@@ -17,7 +17,7 @@
  *
  * ★ 対象外（`docs/README.md` 運用ルール 6 の追記と同じ判断）:
  *   - **種別表に無い `type`**（`tech-note` / `design` 等）
- *   - **`how-to` / `how-to-guide` / `runbook`** —— 仕様ではなく作業手順の案内であり、
+ *   - **`how-to` / `runbook`** —— 仕様ではなく作業手順の案内であり、
  *     「その仕様書が記述する実装の状態」という定義が当てはまらない
  *   - `docs/templates/` —— 雛形。`draft` / `Proposed` を書くのが正しい
  *   **除外は黙って飛ばさず件数をログに出す**（「検査しているつもりで何も見ていない」を作らない）。
@@ -46,7 +46,11 @@ const SPEC_STATUSES = new Set(['draft', 'in-progress', 'completed', 'done', 'sup
 const ADR_STATUSES = new Set(['Proposed', 'Accepted', 'Deprecated', 'Superseded']);
 
 /** 値域の検査から外す `type`（docs/README.md の種別表に無い、または仕様ではない）。 */
-const EXEMPT_TYPES = new Set(['how-to', 'how-to-guide', 'runbook', 'tech-note', 'design']);
+// ★ `how-to-guide` は #675 で `how-to` へ寄せたため一覧から外した（実在しない値を許し続けない）。
+//   #675 は `how_to_template.md` / `runbook_template.md` を新設し、**テンプレート経由でも
+//   `type: how-to` / `type: runbook` になる**ようにした —— それまでこの除外は
+//   「いま実データが手書きでそうなっている」ことに依存していた（IADR-0167 軸 4）。
+const EXEMPT_TYPES = new Set(['how-to', 'runbook', 'tech-note', 'design']);
 
 /** 据え置き（ラチェット）。**増えたら落ちる。** */
 const BASELINE = {
@@ -206,7 +210,7 @@ function selfTest() {
 
   t('対象外の type は検査せず、件数を数える', () => {
     const r = findIssues([
-      d('docs/how-to/x.md', 'type: how-to-guide\nstatus: published'),
+      d('docs/how-to/x.md', 'type: how-to\nstatus: published'),
       d('docs/operations/y.md', 'type: runbook\nstatus: active'),
       d('docs/tech/z.md', 'type: tech-note\nstatus: fixed'),
     ]);

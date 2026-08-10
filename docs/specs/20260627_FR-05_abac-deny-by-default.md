@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-05 ABAC による文書アクセス制御（deny-by-default の是正）
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-05

@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 推移依存の脆弱性を CI で定期スキャン（#61 の後継）
-type: work-spec
+type: spec
 status: review
 related_ids:
   - NFR

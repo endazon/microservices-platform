@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 無認証で到達できる BFF 9 端点を塞ぎ、検査器が無認証を見分けられるようにする（#656）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - FR-03

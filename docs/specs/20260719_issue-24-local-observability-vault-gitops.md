@@ -1,6 +1,6 @@
 ---
 title: ローカル（経路B）可観測性スタック・Vault・GitOps の opt-in オーバーレイ（AST#24 の MSP 分）
-type: work
+type: spec
 status: draft
 related_ids:
   - ADR-0006

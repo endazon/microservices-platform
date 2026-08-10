@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — docs 相対リンク検査を CI に組み込む
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

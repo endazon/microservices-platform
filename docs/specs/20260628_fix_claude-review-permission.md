@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — claude-code-review の permission_denials を解消し、レビュー投稿を保証する
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

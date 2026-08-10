@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — タグ辞書の値集合の照会・追加と使用件数（#634）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-06

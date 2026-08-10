@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — openapi.yaml の required と C# 非 null 性の乖離 10 件を是正する（#658）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - NFR

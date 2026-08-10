@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 必須仕様書が指す存在しないコードパスを是正し、同型を機械検査する（#592）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - NFR

@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — AnalysisRequest に対象範囲（属性フィルタ）を追加する（#539）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-04

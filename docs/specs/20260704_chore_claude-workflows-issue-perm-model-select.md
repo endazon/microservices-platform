@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — @claude ワークフローに Issue 発行権限とモデル選択を追加
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - NFR

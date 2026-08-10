@@ -1,6 +1,6 @@
 ---
 title: テスト仕様書 — FR-08 回答へのフィードバック収集
-type: test
+type: test-spec
 status: in-progress
 related_ids:
   - FR-08

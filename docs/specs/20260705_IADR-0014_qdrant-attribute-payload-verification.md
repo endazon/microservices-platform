@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — Qdrant ABAC 属性ペイロードの格納表現 実機検証（IADR-0014 フォローアップ）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-05

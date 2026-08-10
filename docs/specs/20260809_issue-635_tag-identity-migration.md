@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — タグを識別子参照へ移行し、改名の追随と削除を実装する（#635）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-06

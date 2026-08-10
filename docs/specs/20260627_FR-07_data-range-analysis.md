@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — FR-07 指定データ範囲での分析・比較・抽出
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - FR-07

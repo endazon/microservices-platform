@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 取り込み経路がタグを生成・上書きしないようにする（#637）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - FR-01

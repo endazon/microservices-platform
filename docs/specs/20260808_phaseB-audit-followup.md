@@ -1,6 +1,6 @@
 ---
 title: フェーズ B 末クロス監査の指摘を是正する
-type: work
+type: spec
 status: done
 related_ids: [NFR, ADR-0031, IADR-0116, IADR-0134, IADR-0139, IADR-0141, IADR-0145, IADR-0146, IADR-0147]
 author: Claude

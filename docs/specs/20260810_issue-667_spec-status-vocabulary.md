@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — 仕様書の `status` を規約どおりの値域へ揃え、機械検査で閉じる（#667）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - NFR

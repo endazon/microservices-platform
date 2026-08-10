@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — LLM 費用の暫定統制（月次の手動確認）を運用仕様へ置く（#546）
-type: work-spec
+type: spec
 status: done
 related_ids:
   - NFR

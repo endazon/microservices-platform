@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — ADR-0010 (b)実装追従: 既定モデル変更・fable-5/Copilot 経路の追加
-type: work-spec
+type: spec
 status: completed
 related_ids:
   - ADR-0010

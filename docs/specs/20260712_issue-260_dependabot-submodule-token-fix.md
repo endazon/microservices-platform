@@ -1,6 +1,6 @@
 ---
 title: Dependabot/submodule トークン配線の失敗修正（Issue #260 マージ後・3 リポ横断最終タスク）
-type: work
+type: spec
 status: done
 related_ids:
   - FR-14

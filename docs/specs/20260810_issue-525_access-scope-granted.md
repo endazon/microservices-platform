@@ -1,6 +1,6 @@
 ---
 title: 作業仕様書 — AccessScopeResponse の granted を契約へ載せ、deny-by-default と全件許可を区別可能にする（#525）
-type: work-spec
+type: spec
 status: draft
 related_ids:
   - FR-05
