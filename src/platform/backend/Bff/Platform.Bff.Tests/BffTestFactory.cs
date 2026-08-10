@@ -130,6 +130,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public HttpStatusCode ConversionStatusCode { get; set; } = HttpStatusCode.OK;
     // 後段（ConversionService）不達を再現する（BFF が 502 へ縮退することの検証用）。
     public bool ConversionThrows { get; set; }
+    // IADR-0154 決定 4: 409 の本文を BFF が落とさないことの検証用（#640 と同型の回帰）。
+    public string? ConversionConflictBody { get; set; }
+    // BFF が後段へ渡したパス（?discardCorrections=true が伝わることの観測点）。
+    public string? LastConversionPath { get; set; }
     public List<ConversionJobDto> StubJobs { get; set; } =
     [
         new(StubJobId, Guid.NewGuid(), "filesystem", "/docs/a.docx", ConversionJobStatus.Failed,
@@ -137,6 +141,13 @@ public class BffTestFactory : WebApplicationFactory<Program>
         new(Guid.Parse("34343434-3434-3434-3434-343434343434"), Guid.NewGuid(), "wiki", "/wiki/b.md",
             ConversionJobStatus.Succeeded, null, Guid.NewGuid(), "storage://bucket/b.md", 1,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
+    ];
+
+    // FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1 の図。コード化済み 1・画像保持へ縮退 1。
+    public List<ConversionFigureDto> StubFigures { get; set; } =
+    [
+        new("fig-0", true, "mermaid", "flowchart TD; A-->B;", null, null, null),
+        new("fig-1", false, null, null, "storage://normalized/assets/fig-1.png", "image/png", "全体構成"),
     ];
 
     // FR-09 BFF テスト（SC-09 管理者設定 ABAC）: AuthorizationService 管理 API の応答をスタブ制御する。
@@ -612,14 +623,36 @@ public class BffTestFactory : WebApplicationFactory<Program>
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var query = request.RequestUri?.Query ?? string.Empty;
             var method = request.Method;
+            owner.LastConversionPath = request.RequestUri?.PathAndQuery;
 
             // 後段不達を再現する（BFF の catch → 502 縮退の検証用）。
             if (owner.ConversionThrows)
                 throw new HttpRequestException("conversion-service unreachable");
 
+            // IADR-0154: 人手補正 Phase 1。補正投稿は 200（結果 DTO）を返す。
+            if (path.EndsWith("/correction", StringComparison.Ordinal))
+                return owner.ConversionStatusCode != HttpStatusCode.OK
+                    ? Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode))
+                    : Json(HttpStatusCode.OK, new FigureCorrectionResultDto("fig-1",
+                        "storage://normalized/doc.md", 1));
+
+            // IADR-0154: 図の一覧（2 ペインの材料）。
+            if (path.EndsWith("/figures", StringComparison.Ordinal))
+                return owner.ConversionStatusCode != HttpStatusCode.OK
+                    ? Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode))
+                    : Json(HttpStatusCode.OK, owner.StubFigures);
+
             if (path.EndsWith("/retry", StringComparison.Ordinal))
-                return Task.FromResult(new HttpResponseMessage(owner.ConversionStatusCode == HttpStatusCode.OK
-                    ? HttpStatusCode.Accepted : owner.ConversionStatusCode));
+            {
+                if (owner.ConversionStatusCode == HttpStatusCode.OK)
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Accepted));
+                var resp = new HttpResponseMessage(owner.ConversionStatusCode);
+                // 後段が本文を載せる場合は、それを BFF が透過することを検証できるようにする。
+                if (owner.ConversionConflictBody is not null)
+                    resp.Content = new StringContent(owner.ConversionConflictBody,
+                        System.Text.Encoding.UTF8, "application/json");
+                return Task.FromResult(resp);
+            }
 
             if (path == "/jobs")
             {

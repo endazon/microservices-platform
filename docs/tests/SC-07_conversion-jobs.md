@@ -3,6 +3,7 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 related_ids:
+  - IADR-0154
   - SC-07
   - UC-06
   - FR-12
@@ -11,7 +12,7 @@ related_ids:
   - IADR-0128
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -87,7 +88,7 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 | 9 | 0 件 | — | 「該当する変換ジョブはありません。」 |
 | 10 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
 | 11 | 導線 | 遷移図 | 「← データソース管理へ戻る」が `/admin/sources` を指す |
-| 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #10・#12 | 人手補正の 2 ペインが無い。**先に管理者として再変換ボタンが在ることを確かめてから**無いことを見る |
+| 12 | **画面側が未着手**（実装しない要素） | 画面仕様書 §hi-fi 対応 #10・#12 | 人手補正の 2 ペインが無い。**先に管理者として再変換ボタンが在ることを確かめてから**無いことを見る。**［2026-08-10 / #543］理由が「契約の不在」から「画面側の作業がまだ」へ変わった**（契約は [[IADR-0154]] で載った）。**不在の回帰テストは残す**——画面の別 issue が着手するまで理由が消えていないためである |
 | 13 | ロケール `en` | ADR-0031 | 見出しと状態が英語で描画される |
 
 ## 純関数（`jobStatus.test.ts`）
@@ -196,3 +197,30 @@ E2E は `src/platform/frontend/e2e/sc07-conversions.smoke.spec.ts`
 - `dotnet test src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests`
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffConversionEndpointTests`
 - `dotnet test src/knowledge/backend/Tests/Knowledge.IntegrationTests --filter NetworkIsolationTests`
+
+## 人手補正 Phase 1（バックエンド。[[IADR-0154]] / #543）
+
+画面（2 ペイン編集）は別 issue のため、本節は**契約側のテスト**を写像する。
+
+### `ConversionFigureCorrectionTests`（ConversionService）
+
+| # | 受け入れ基準 | テスト |
+| --- | --- | --- |
+| B1 | 縮退した図がジョブから引ける | `Figures_AreRecorded_AndReadable`（コード化 1・縮退 1・`imageUri` と `caption` が返る） |
+| B2 | 画面の状態表示が契約から導出できる（[[IADR-0127]]） | `JobDto_DerivesDiagramCounts_ForScreenState`（**`status` は `succeeded` のまま**・`diagramsRetained == 1`） |
+| B3 | 補正で本文の図ブロックが置換され再発行される | `Correction_ReplacesImageEmbedWithCodeBlock_AndRepublishes`（画像参照が消え、**自動コード化済みの図は触らない**） |
+| B4 | **再発行が ABAC 属性を落とさない** | `Correction_Republishes_WithAbacAttributesPreserved`（`confidentiality` とタグが残る。落とすと文書の可視範囲が変わる） |
+| B5 | コード化済みの図は補正できない（Phase 1 の範囲） | `Correction_OnCodedFigure_Is409`（`figure_not_correctable`） |
+| B6 | 未知の図は 404 | `Correction_OnUnknownFigure_Is404` |
+| B7 | **補正のある再変換は止まる** | `Retry_OnCorrectedJob_Is409_UntilDiscardIsConfirmed`（`corrections_would_be_lost` ＋ **本文の `correctedFigures`**。確認つきなら 202 で補正が消える） |
+| B8 | ゲートを広げすぎていない | `Retry_OnFailedJobWithoutCorrections_IsStillAccepted` |
+| B9 | 本文を読めないときは**補正を保存しない** | `Correction_WhenBodyMissing_Is409_AndDoesNotPersist`（補正だけ保存されて本文に出ない状態を作らない） |
+
+### `BffConversionEndpointTests`（BFF。多層防御 [[IADR-0044]]）
+
+| # | 受け入れ基準 | テスト |
+| --- | --- | --- |
+| F1 | 管理者は人手補正に入れる | `Figures_AsAdmin_IsAllowed` / `Correction_AsAdmin_IsAllowed` |
+| F2 | **運用者は入れない**（05_screens:314） | `FigureReads_AsOperator_AreForbidden`（`figures` / `image` の 2 ケース）／`Correction_AsOperator_IsForbidden`。**「admin で通ること」だけを見るテストでは、誰でも通る状態を検出できない** |
+| F3 | **409 の本文を落とさない** | `Retry_Passes409Body_ThroughVerbatim`。**変異試験で確認済み**——中継を `Results.StatusCode` へ戻すと本テストのみ落ちる |
+| F4 | 明示確認が後段へ伝わる | `Retry_ForwardsDiscardConfirmation_ToDownstream`（BFF が握り潰すと補正を永遠に破棄できない） |

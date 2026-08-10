@@ -55,6 +55,10 @@ builder.Services.AddScoped<INormalizationService, NormalizationService>();
 // EF（Postgres）実装。DbContext が scoped のため本ストアも scoped（メッセージ消費ごとの DI スコープで解決）。
 builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 
+// FR-12, UC-06, SC-07, IADR-0154: 人手補正 Phase 1（図のコード化のやり直し）。
+// 本文の図ブロックを置換して DocumentNormalized を再発行する（再変換ではない）。
+builder.Services.AddScoped<IFigureCorrectionService, FigureCorrectionService>();
+
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();

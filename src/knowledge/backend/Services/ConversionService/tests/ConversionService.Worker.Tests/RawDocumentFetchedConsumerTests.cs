@@ -24,7 +24,13 @@ public class RawDocumentFetchedConsumerTests
             MarkdownUri: "storage://normalized/doc.md",
             AssetUris: ["storage://normalized/assets/fig-1.png"],
             DiagramsCoded: 1,
-            DiagramsRetained: 1));
+            DiagramsRetained: 1,
+            // IADR-0154: 件数と図の記録は一致させる（1 件コード化・1 件が画像保持へ縮退）。
+            Figures: [
+                new NormalizedFigure("fig-0", true, "mermaid", "flowchart TD; A-->B;", null, null, null),
+                new NormalizedFigure("fig-1", false, null, null,
+                    "storage://normalized/assets/fig-1.png", "image/png", null),
+            ]));
 
         await using var provider = new ServiceCollection()
             .AddSingleton<INormalizationService>(normalizer)

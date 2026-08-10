@@ -53,8 +53,10 @@ public class RawDocumentFetchedConsumer(
                 Tags: ev.Tags,
                 NormalizedAt: DateTimeOffset.UtcNow), ct);
 
-            // SC-07: 成功を記録。
-            await jobs.SucceedAsync(ev.FetchId, result.DocumentId, result.MarkdownUri, ct);
+            // SC-07: 成功を記録。IADR-0154 決定 1: 図の記録も渡す（人手補正 Phase 1 の対象を残すため。
+            // 従前は件数をログへ出して捨てており、どの図が縮退したかを後から引けなかった）。
+            await jobs.SucceedAsync(ev.FetchId, result.DocumentId, result.MarkdownUri,
+                result.Figures, ct);
 
             logger.LogInformation(
                 "Conversion complete for {FetchId}: doc={DocumentId} markdown={Uri} coded={Coded} retained={Retained}",

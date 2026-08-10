@@ -17,15 +17,20 @@ import type {
 } from 'msw';
 
 import type {
-  ConversionJobDto
+  ConversionFigureDto,
+  ConversionJobDto,
+  FigureCorrectionResultDto
 } from '../bff.schemas';
 
 import {
+  getBffConversionJobFigureCorrectionResponseMock,
+  getBffConversionJobFigureImageResponseMock,
+  getBffConversionJobFiguresResponseMock,
   getBffConversionJobGetResponseMock,
   getBffConversionJobListResponseMock
 } from './conversion.faker';
 
-export { getBffConversionJobListResponseMock, getBffConversionJobGetResponseMock } from './conversion.faker';
+export { getBffConversionJobListResponseMock, getBffConversionJobGetResponseMock, getBffConversionJobFiguresResponseMock, getBffConversionJobFigureImageResponseMock, getBffConversionJobFigureCorrectionResponseMock } from './conversion.faker';
 
 
 export const getBffConversionJobListMockHandler = (overrideResponse?: ConversionJobDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<ConversionJobDto[]> | ConversionJobDto[]), options?: RequestHandlerOptions) => {
@@ -61,8 +66,51 @@ export const getBffConversionJobRetryMockHandler = (overrideResponse?: void | ((
       })
   }, options)
 }
+
+export const getBffConversionJobFiguresMockHandler = (overrideResponse?: ConversionFigureDto[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<ConversionFigureDto[]> | ConversionFigureDto[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/conversion/jobs/:id/figures', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffConversionJobFiguresResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
+
+export const getBffConversionJobFigureImageMockHandler = (overrideResponse?: ArrayBuffer | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<ArrayBuffer> | ArrayBuffer), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/conversion/jobs/:id/figures/:figureId/image', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+  const binaryBody = overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffConversionJobFigureImageResponseMock();
+    return HttpResponse.arrayBuffer(
+      binaryBody instanceof ArrayBuffer
+        ? binaryBody
+        : new ArrayBuffer(0),
+      { status: 200,
+        headers: { 'Content-Type': 'image/*' }
+      })
+  }, options)
+}
+
+export const getBffConversionJobFigureCorrectionMockHandler = (overrideResponse?: FigureCorrectionResultDto | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<FigureCorrectionResultDto> | FigureCorrectionResultDto), options?: RequestHandlerOptions) => {
+  return http.post('*/bff/conversion/jobs/:id/figures/:figureId/correction', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffConversionJobFigureCorrectionResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 export const getConversionMock = () => [
   getBffConversionJobListMockHandler(),
   getBffConversionJobGetMockHandler(),
-  getBffConversionJobRetryMockHandler()
+  getBffConversionJobRetryMockHandler(),
+  getBffConversionJobFiguresMockHandler(),
+  getBffConversionJobFigureImageMockHandler(),
+  getBffConversionJobFigureCorrectionMockHandler()
 ]

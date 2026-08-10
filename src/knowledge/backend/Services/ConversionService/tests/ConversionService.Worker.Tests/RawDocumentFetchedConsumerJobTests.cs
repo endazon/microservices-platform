@@ -26,7 +26,8 @@ public class RawDocumentFetchedConsumerJobTests
     private sealed class SucceedingNormalizer : INormalizationService
     {
         public Task<NormalizationResult> NormalizeAsync(RawDocumentFetched raw, CancellationToken ct = default) =>
-            Task.FromResult(new NormalizationResult(Guid.NewGuid(), "storage://bucket/a.md", [], 1, 0));
+            Task.FromResult(new NormalizationResult(Guid.NewGuid(), "storage://bucket/a.md", [], 1, 0,
+                [new NormalizedFigure("fig-0", true, "mermaid", "flowchart TD; A-->B;", null, null, null)]));
     }
 
     private sealed class FailingNormalizer : INormalizationService
