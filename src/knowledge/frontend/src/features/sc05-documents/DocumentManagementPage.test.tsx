@@ -70,7 +70,9 @@ describe('DocumentManagementPage (SC-05)', () => {
     const link = await screen.findByRole('link', { name: '経費精算規程' });
     expect(link).toHaveAttribute('href', `/docs/${DOC_ID}`);
     const table = within(screen.getByRole('table'));
-    // 機密区分は生値のまま出す（表示名が計画にある値は 4 値中 2 値だけ。planning#197 で裁定待ち）。
+    // 機密区分は生値のまま出す。**［2026-08-10 追記 / #553］理由は「表示名が 2 値しか無いから」
+    // ではなくなった** —— 4 値の表示名は裁定（2026-08-05 Q7・Q8・派生 Q30）で確定しており、
+    // **写像の実装先が #541 である**ため、それまでの現状として生値を出している。
     expect(table.getByText('internal')).toBeInTheDocument();
     expect(table.getByText('v3')).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith(

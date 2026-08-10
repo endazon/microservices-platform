@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@foundation/api/ApiError';
 import { activate } from '@foundation/i18n';
@@ -202,18 +202,38 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     ).toBeInTheDocument();
   });
 
-  // **実装しない要素**（画面仕様書 §hi-fi モックアップとの対応 #4）。
-  // まず「見えるはずの条件」——分析対象パネルが描かれ、検索条件の欄が出ている状態——を
-  // 確かめてから、タグ／フォルダのチップが無いことを見る。
-  it('does not render tag or folder chips (no contract for permitted candidates)', async () => {
+  // **［2026-08-10 訂正 / #553］この試験はかつて
+  // `does not render tag or folder chips (no contract for permitted candidates)` という名で、
+  // 「権限内候補を返す API が無いため、チップの追加欄は置かない（planning#197 の裁定待ち）」
+  // と書いて**チップが無いこと**を確かめていた。2 つの意味で誤っていた。**
+  //
+  //   1. **実装と食い違っていた** —— 裁定（2026-08-05 Q1・Q3・Q9）が着地し、候補の口は #540 で
+  //      揃い、**チップは #539 で実装済み**である（同じファイルの先頭の試験が実際にそれを確かめている）。
+  //   2. **そのうえ空振りだった** —— 照合していた `/タグ:/` `/フォルダ:/` は**コロン付き**で、
+  //      軸ラベル（「タグ」「部門」「プロジェクト」）とは**どのみち一致しない**。
+  //      したがってチップが描かれるようになっても、この試験は落ちなかった。
+  //
+  // いま確かめるのは**軸が 3 つであること**と、**「フォルダ」の軸が無いこと**である
+  // ——「フォルダ」は保留ではなく**不採用**（裁定 Q9。ABAC 属性体系に `folder` が存在しない）。
+  it('renders the three scope axes and offers no folder axis (Q9)', async () => {
+    mocks.apiRequest.mockImplementation((url: string, init?: RequestInit) => {
+      if (url === '/attribute-values') {
+        const key = (JSON.parse(String(init?.body)) as { key: string }).key;
+        return Promise.resolve(jsonResponse({ values: [`${key}-1`] }));
+      }
+      return Promise.resolve(jsonResponse(ANSWER));
+    });
     await renderPage();
 
     // 「（権限内に限定）」は存在秘匿の説明そのものなので必ず出る。
     expect(screen.getByText('分析対象（権限内に限定）')).toBeInTheDocument();
     expect(screen.getByLabelText(/検索条件で追加/)).toBeInTheDocument();
-    // 権限内候補を返す API が無いため、チップの追加欄は置かない（planning#197 の裁定待ち）。
-    expect(screen.queryByText(/タグ:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/フォルダ:/)).not.toBeInTheDocument();
+
+    const scope = within(await screen.findByRole('region', { name: '対象範囲フィルタ' }));
+    expect(scope.getByText('タグ')).toBeInTheDocument();
+    expect(scope.getByText('部門')).toBeInTheDocument();
+    expect(scope.getByText('プロジェクト')).toBeInTheDocument();
+    expect(screen.queryByText('フォルダ')).not.toBeInTheDocument();
   });
 
   it('renders in English when the en locale is active', async () => {

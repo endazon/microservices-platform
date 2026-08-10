@@ -35,7 +35,10 @@ import type { DocumentDto } from '@foundation/api/generated/bff.schemas';
 //   - **タグ辞書からの補完**: 辞書は /bff/admin/authz（システム管理者限定）にあり、本画面の
 //     利用者（admin / operator）が引ける保証が無い。
 //   いずれも feedback/20260805_sc05-07-admin-contract-gaps.md に記録し、planning#198 として起票した（裁定待ち）。
-//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照（planning#197 で裁定待ち）。
+//   機密区分の**値**を訳さない理由は abac/confidentiality.ts を参照。
+//   **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は 2026-08-05 の裁定
+//   （Q7・Q8・派生 Q30）で確定し、正は planning/docs/glossary.md（restricted＝**取扱制限**）。
+//   **写像の実装先は #541 であり、それまでは生値を出す。**
 
 /** 未公開状態のみ公開できる（アーカイブ済みの誤再公開を防ぐ。サーバも 409 で拒否する）。 */
 function canPublish(status: string): boolean {
