@@ -531,8 +531,12 @@ describe('ConversionJobsPage (SC-07)', () => {
 
     await user.click(await screen.findByRole('button', { name: '再変換' }));
 
-    const discard = await screen.findByRole('button', { name: '補正を破棄して再変換' });
-    await waitFor(() => expect(discard).toHaveFocus());
+    // **焦点は非破壊側（取り消す）へ移る。** 既定の焦点は `Enter` の当たり先でもあるため、
+    // 破壊側（補正を破棄して再変換）に置くと、反射的な連打で補正が消える
+    // （ARIA APG の Alert/Confirm・ネイティブダイアログの慣習。AI レビュー 2 巡目の 🟡）。
+    const cancel = await screen.findByRole('button', { name: '取り消す' });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    expect(screen.getByRole('button', { name: '補正を破棄して再変換' })).not.toHaveFocus();
   });
 
   // 取り消したら何も起きない（確認が飾りでないことの側）。

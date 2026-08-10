@@ -129,6 +129,9 @@ export function ConversionJobsPage() {
    * **DOM 上で手前**にあり、**前方 Tab では決して届かない**（Shift+Tab を知っている人しか
    * 操作できない）。読み上げ（`role="alert"`）は届いても、操作手段が保証されない。
    *
+   * **移す先は非破壊側（取り消す）である。** 既定の焦点は `Enter` の当たり先でもあるため、
+   * 破壊側へ置くと**反射的な連打で補正が消える**（[[IADR-0157]] 決定 2 の追補 2）。
+   *
    * **焦点の横取りではない。** 利用者自身の押下に対する応答であり、かつ**破壊的操作を
    * 差し止めている**確認なので、そこへ焦点が移るのは期待される挙動である。
    * これは[[IADR-0157]] 決定 2 の「モーダルにしない」判断とは両立する——背後は操作でき、
@@ -137,7 +140,13 @@ export function ConversionJobsPage() {
   const confirmRef = useRef<HTMLDivElement>(null);
   const confirmShown = pendingDiscard !== null && retryTarget !== null;
   useEffect(() => {
-    if (confirmShown) confirmRef.current?.querySelector('button')?.focus();
+    if (!confirmShown) return;
+    // **非破壊側（取り消す）を名指しで焦点にする。** 「先頭のボタン」に頼らないのは、
+    // 並びを変えたときに既定の焦点が**黙って破壊側へ移る**からである。
+    // 下の文字列は CSS セレクタであって表示文言ではない。eslint.config.js の ignore は
+    // `[` `]` を許さないためここだけ個別に外す（設定側を緩めると属性セレクタ全般が素通りする）。
+    // eslint-disable-next-line lingui/no-unlocalized-strings -- CSS セレクタ（表示文言ではない）
+    confirmRef.current?.querySelector<HTMLButtonElement>('[data-confirm-default]')?.focus();
   }, [confirmShown]);
 
   // FR-12, UC-06, SC-07: 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
@@ -198,9 +207,26 @@ export function ConversionJobsPage() {
               このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。
             </Trans>
           </p>
-          {/* `@platform/ui` の `Button` は ref を転送しない（公開面を広げないため、ここは
-              包む側の ref から最初のボタンを引く）。 */}
+          {/* **非破壊側（取り消す）を先に置く。** 破壊的操作の確認では、DOM 順の先頭＝
+              既定の焦点＝`Enter` の当たり先になるため、ここに「補正を破棄して再変換」を
+              置くと**反射的な `Enter` の連打で補正が消える**（ARIA APG の Alert/Confirm と
+              ネイティブダイアログの慣習も既定を非破壊側に置く）。
+              `@platform/ui` の `Button` は ref を転送しないので、焦点は包む側の ref から引く
+              ——**`data-confirm-default` で明示的に指す**。「先頭のボタン」に頼ると、
+              並びを変えたときに既定の焦点が黙って破壊側へ移る。 */}
           <div className="mt-2 flex gap-2" ref={confirmRef}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              data-confirm-default=""
+              onClick={() => {
+                beginOperation();
+                setRetryTarget(null);
+              }}
+            >
+              <Trans>取り消す</Trans>
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -216,17 +242,6 @@ export function ConversionJobsPage() {
               }}
             >
               <Trans>補正を破棄して再変換</Trans>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                beginOperation();
-                setRetryTarget(null);
-              }}
-            >
-              <Trans>取り消す</Trans>
             </Button>
           </div>
         </Alert>
