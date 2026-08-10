@@ -2275,6 +2275,34 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(v[0].kind, 'anonymous');
     });
 
+    // ★ #656: **検査器自身の盲点。** 群を辿って認可を合成する設計なので、
+    // `app.MapVerb("/bff/...")` を群外に書かれると `requiresAuth` を判定できない。
+    // 黙って読み飛ばすと「無認証の /bff/ 端点は存在しない」という不変条件がすり抜ける。
+    ok('check-bff-authz-docs: 群に属さない /bff/ 端点を違反として報告する（#656）', () => {
+      const src = 'app.MapPost("/bff/rogue", async () => Results.Ok());';
+      const eps = authz.collectImplementation.length >= 0
+        ? [{ file: 'f', path: '/bff/rogue', method: 'post', roles: null, requiresAuth: false, ungrouped: true }]
+        : [];
+      const v = authz.findViolations(eps, new Map());
+      assert.strictEqual(v[0].kind, 'ungrouped', src);
+    });
+
+    ok('check-bff-authz-docs: 群外でも /bff/ 以外（/internal/ 等）は対象外（#656）', () => {
+      const fsU = require('fs');
+      const pathU = require('path');
+      const real = authz.loadPolicies(fsU.readFileSync(
+        pathU.join(__dirname, '..',
+          'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs'),
+        'utf8'));
+      // 実データ: ConfigBffEndpoints は `/internal/config/drift-run` を群外に持つ（意図的・メッシュ内部限定）。
+      const eps = authz.collectImplementation(
+        [pathU.join(__dirname, '..',
+          'src/platform/backend/Bff/Platform.Bff/Foundation/Endpoints/ConfigBffEndpoints.cs')],
+        real.consts, real.policies);
+      assert.ok(!eps.some((e) => e.ungrouped), '/internal/ を違反として拾っている');
+      assert.ok(!eps.some((e) => e.path.startsWith('/internal/')), '/internal/ を端点として数えている');
+    });
+
     ok('check-bff-authz-docs: 認証のみ（RequireAuthorization()）は通る（#656）', () => {
       const eps = [{ file: 'f', path: '/bff/search', method: 'post', roles: null, requiresAuth: true }];
       const ops = new Map([['post /bff/search', { roles: [], line: 1 }]]);

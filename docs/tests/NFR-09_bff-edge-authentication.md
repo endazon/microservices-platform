@@ -71,6 +71,8 @@ plan_refs:
 | T-21 | 認証済み・**管理者** | 同上 | **200** | 同上 | 自動 |
 | T-22 | — | `node scripts/check-bff-authz-docs.js` | `/bff/*` に**無認証の端点が 0 件** | 不変条件 | 自動（CI） |
 | T-22 | — | 同検査器 × `ConfigBffEndpoints` | 3 本とも `requiresAuth = true`（**誤検出しない**） | 検査器の健全性 | 自動（CI） |
+| T-23 | 群に属さない `app.MapPost("/bff/...")` | 同検査器 | **`ungrouped` として報告**（群を辿れないため認可を判定できない） | 不変条件の穴を塞ぐ | 自動（CI） |
+| T-23 | 群外だが `/internal/` | 同検査器 | **報告しない**（メッシュ内部限定。対象外で正しい） | 誤検出しない | 自動（CI） |
 
 > **T-20 の SC-03 だけ期待値の書き方が違う。** スコープ外・不在は **404** であり（存在秘匿）、
 > テスト環境の文書の有無に依存する。**「403 でも 401 でもない」ことを固定する**——
@@ -81,7 +83,7 @@ plan_refs:
 | テストクラス | 担当するケース |
 | --- | --- |
 | `BffEndpointAuthenticationTests` | T-19〜T-21 |
-| `scripts/scripts.repo.test.js`（`check-bff-authz-docs` の節） | T-22 |
+| `scripts/scripts.repo.test.js`（`check-bff-authz-docs` の節） | T-22 / T-23 |
 
 ## 変異試験
 

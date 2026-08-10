@@ -254,7 +254,24 @@ function collectImplementation(files, consts, policies) {
     // 端点: NAME.MapVerb("SUB" … ;
     for (const m of src.matchAll(/\b(\w+)\s*\.\s*Map(Get|Post|Put|Patch|Delete)\(\s*"([^"]*)"/g)) {
       const group = groups[m[1]];
-      if (!group) continue; // app.MapGet 等（群に属さない）は対象外
+      if (!group) {
+        // #656: **群に属さない `app.MapVerb("/bff/...")` は本検査器の網から漏れる。**
+        // 群を辿って認可を合成する設計なので、群が無いと `requiresAuth` を判定できない。
+        // 現状 0 件だが（`/internal/config/drift-run` だけが群外で、これは `/bff/` ではない）、
+        // **将来この形で書かれると「無認証の /bff/ 端点は存在しない」という不変条件が黙ってすり抜ける。**
+        // 見逃さず、**明示的な違反として報告する**（対処は群へ移すこと）。
+        if (m[1] === 'app' && m[3].startsWith('/bff/')) {
+          endpoints.push({
+            file: path.relative(REPO, file),
+            path: normalizePath(m[3]),
+            method: m[2].toLowerCase(),
+            roles: null,
+            requiresAuth: false,
+            ungrouped: true,
+          });
+        }
+        continue; // それ以外（`/internal/` 等）は対象外
+      }
       const stmt = statementFrom(src, m.index);
       let own = rolesFromStatement(stmt, consts, policies);
       // ハンドラ内の認可（直接 AuthorizeAsync / ヘルパ呼び出し）も AND 合成する。
@@ -347,6 +364,10 @@ function findViolations(endpoints, contractOps) {
     // 計画 NFR-09 の暫定運用が「エッジ（BFF）で OIDC/JWT を担保する」と定めており、
     // `/bff/*` に無認証の端点は存在してはならない（本 PR 時点で実測 0 件。それを不変条件にする）。
     // **ロールの一致だけを見ていると素通りする** —— 実装も契約も「ロール制約なし」で辻褄が合うため。
+    if (ep.ungrouped) {
+      violations.push({ kind: 'ungrouped', key, file: ep.file });
+      continue;
+    }
     if (ep.requiresAuth === false) {
       violations.push({ kind: 'anonymous', key, file: ep.file });
       continue;
@@ -378,7 +399,11 @@ function findViolations(endpoints, contractOps) {
 function formatReport(violations) {
   const lines = [`[check-bff-authz-docs] BFF 認可の違反 ${violations.length} 件を検出しました:`, ''];
   for (const v of violations) {
-    if (v.kind === 'anonymous') {
+    if (v.kind === 'ungrouped') {
+      lines.push(`  ${v.key}  (${v.file})`);
+      lines.push('    **`app.MapVerb("/bff/...")` が群に属していない。** 本検査器は群を辿って認可を');
+      lines.push('    合成するため、この形は認可を判定できない。`MapGroup` 配下へ移すこと（#656）');
+    } else if (v.kind === 'anonymous') {
       lines.push(`  ${v.key}  (${v.file})`);
       lines.push('    **無認証で到達できる。** 群・端点・ハンドラ内のいずれにも認可が無い');
       lines.push('    （NFR-09 暫定運用「エッジ〔BFF〕で OIDC/JWT を担保する」・#656）');

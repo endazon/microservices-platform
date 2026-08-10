@@ -120,6 +120,22 @@ SC-09 から管理者が利用者条件を持たないポリシーを 1 件作�
 ——`collectImplementation` が既に持っている経路をそのまま使う。
 **実データで 3 本が `requiresAuth = true` になることをテストで固定した。**
 
+### ★ 検査器自身の盲点も 1 つ塞いだ（**PR を出したあとに自分で見つけた**）
+
+本検査器は**群を辿って認可を合成する**設計なので、`app.MapVerb("/bff/...")` のように
+**群に属さない形で書かれると `requiresAuth` を判定できず、黙って読み飛ばす**
+（`collectImplementation` の `if (!group) continue`）。
+**決定 3 が立てた不変条件（「無認証の `/bff/` 端点は存在しない」）が、そこだけすり抜ける。**
+
+`[Authorize]` 属性は BFF に **0 件**（実測）なので認可の経路はこれで尽きているが、
+群外の `app.Map*` は**実在する** —— `ConfigBffEndpoints` の `/internal/config/drift-run` である。
+これは `/bff/` ではなく**メッシュ内部限定**（ClusterIP ＋ NetworkPolicy / mTLS が防御・
+`ExcludeFromDescription`）で、ArgoCD の PostSync フックが叩く。**対象外で正しい。**
+
+したがって **`app.MapVerb` かつパスが `/bff/` で始まるものだけ**を
+`kind: 'ungrouped'` として報告する（対処は `MapGroup` 配下へ移すこと）。
+現状の実データでは 0 件であり、**この検査は是正ではなく予防である**。
+
 ### 契約側に新しいフィールドは足さない
 
 「無認証」を契約で宣言する形（`x-anonymous: true` 等）も検討したが、**採らない** ——
