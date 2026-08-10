@@ -1,7 +1,7 @@
 ---
 title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
-status: implemented
+status: completed
 related_ids:
   - FR-01
   - UC-04

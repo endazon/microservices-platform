@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — ポリシーの dry-run 検証 API を追加する（#535）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - FR-05
   - FR-09

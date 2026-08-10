@@ -1,7 +1,7 @@
 ---
 title: 可変部品（Composable コンポーネント）共通実装ガイドの新設と計画側フィードバック
 type: spec
-status: fixed
+status: done
 related_ids:
   - FR-14
   - FR-15

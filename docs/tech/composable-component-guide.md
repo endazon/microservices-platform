@@ -1,7 +1,7 @@
 ---
 title: 可変部品（Composable コンポーネント）共通実装ガイド — 基盤への接続仕様と実装指示
 type: tech
-status: fixed
+status: completed
 related_ids:
   - FR-14
   - FR-15

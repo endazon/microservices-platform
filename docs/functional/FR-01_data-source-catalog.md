@@ -1,7 +1,7 @@
 ---
 title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
-status: implemented
+status: completed
 related_ids:
   - FR-01
   - UC-04

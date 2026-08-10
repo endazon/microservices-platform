@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 2 回持ち越された負債の回収（orval-bff-only.cjs の知見・frontend-tests.yml の paths）（#558）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - NFR
   - IADR-0131

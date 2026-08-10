@@ -3455,4 +3455,141 @@ module.exports = ({ ok, assert }) => {
       }
     });
   }
+
+  // --- #667: 仕様書 status の値域 ------------------------------------------------
+  //
+  // 規約（docs/README.md 運用ルール 6）は最初から 5 値を定義していたが、**誰も追随していなかった**。
+  // 実測で 37 件が語彙外で、うち 16 件は**計画リポの語彙（`fixed`）を持ち込んだ自分の仕様書**だった。
+  // **規約を書き足すのではなく、既にある規約を機械で閉じる。**
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const vocab = require('./check-doc-status-vocabulary.js');
+
+    const runVocab = (args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-doc-status-vocabulary.js'), ...args], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-doc-status-vocabulary --self-test が通る', () => {
+      const { code, out } = runVocab(['--self-test']);
+      assert.strictEqual(code, 0, out);
+    });
+
+    // 件数だけを見ると変異ケースを消しても通る（#657 の誤り）。**ケース名で確かめる。**
+    ok('check-doc-status-vocabulary: self-test が主要な変異ケースを実際に走らせている', () => {
+      const { out } = runVocab(['--self-test']);
+      for (const name of [
+        '値域外の語を検出する',
+        'ADR に仕様書の語を書くと検出する',
+        '仕様書に ADR の語を書くと検出する',
+        '大小文字だけ違う語を素通ししない',
+        '本文中の status: を frontmatter と取り違えない',
+        '据え置きが上限を超えると落ちる',
+      ]) {
+        assert.ok(out.includes(name), `self-test から変異ケース「${name}」が消えている:\n${out}`);
+      }
+    });
+
+    ok('check-doc-status-vocabulary が実データで違反 0 件', () => {
+      const { code, out } = runVocab();
+      assert.strictEqual(code, 0, out);
+    });
+
+    // #664 / IADR-0130 の下限。**件数リテラルは書かない**（文書が増えれば動く）。
+    ok('0 件走査の門: check-doc-status-vocabulary は実データで 1 件以上を走査する（下限）', () => {
+      const { code, out } = runVocab();
+      assert.strictEqual(code, 0, out);
+      const m = out.match(/OK: (\d+) 件の仕様書/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      assert.ok(Number(m[1]) > 0, `走査件数が 0 だった:\n${out}`);
+    });
+
+    // ★ 変異試験は**実データにも当てる**。フィクスチャだけだと「実ファイルの frontmatter が
+    //   想定の形でない」型の空振り（#665 で実際にやった）を捕まえられない。
+    ok('check-doc-status-vocabulary: 実データの 1 件を語彙外へ変えると検出する（変異試験）', () => {
+      const docs = [];
+      const walk = (dir) => {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const p = path.join(dir, e.name);
+          if (e.isDirectory()) walk(p);
+          else if (e.name.endsWith('.md'))
+            docs.push({
+              relPath: path.relative(REPO, p).split(path.sep).join('/'),
+              text: fs.readFileSync(p, 'utf8'),
+            });
+        }
+      };
+      walk(path.join(REPO, 'docs'));
+
+      const clean = vocab.findIssues(docs);
+      assert.deepStrictEqual(clean.violations, [], `実データが既に違反を持っている:\n${JSON.stringify(clean.violations)}`);
+      assert.ok(clean.scanned > 0, 'frontmatter を 1 件も拾えていない（形が想定と違う）');
+
+      // 実ファイルのうち docs/specs の 1 件だけを語彙外へ変異させる。
+      const target = docs.find((d) => d.relPath.startsWith('docs/specs/') && /^status: done$/m.test(vocab.frontMatter(d.text) || ''));
+      assert.ok(target, '実データに status: done の作業仕様書が 1 件も無い（前提が崩れている）');
+      const mutated = docs.map((d) =>
+        d === target ? { ...d, text: d.text.replace(/^status: done$/m, 'status: bogus-value') } : d,
+      );
+      const r = vocab.findIssues(mutated);
+      assert.ok(
+        r.violations.some((v) => v.file === target.relPath && v.status === 'bogus-value'),
+        `実データの変異を検出できなかった:\n${JSON.stringify(r.violations)}`,
+      );
+    });
+
+    // ★ 門は 2 つある（#665 の教訓。1 つの変異で両方を確かめたつもりにならない）。
+    //   門 A: 走査 0 件 ／ 門 B: 据え置きのラチェット
+    ok('0 件走査の門 A: docs/ が無いと fail する（変異試験）', () => {
+      const os = require('os');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'status-vocab-'));
+      try {
+        // ★ **写した側のスクリプトを叩く。** 検査器は `__dirname/..` を REPO_ROOT にするため、
+        //   cwd を変えるだけでは実リポジトリの docs/ を読んでしまい、変異が当たらない
+        //   （最初にそう書いて、門 A を消していないのに「緑を返した」と落ちた）。
+        fs.cpSync(SCRIPTS, path.join(dir, 'scripts'), { recursive: true });
+        const r = spawnSync(process.execPath, [path.join(dir, 'scripts', 'check-doc-status-vocabulary.js')], {
+          encoding: 'utf8',
+          cwd: dir,
+        });
+        const code = r.status;
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(code, 1, `docs/ が無いのに緑を返した。門 A が消えている:\n${out}`);
+        assert.match(out, /0 件検査/, `0 件検査であることを述べていない:\n${out}`);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    ok('門 B: 据え置きが 1 件でも増えると fail する（ラチェット・変異試験）', () => {
+      // **門 A は通る**（走査件数は 0 でない）状態で、据え置きだけを超過させる。
+      // 門 A と同じ変異で確かめると、門 B が消えても気づけない。
+      assert.deepStrictEqual(vocab.ratchetViolations({ ...vocab.BASELINE }), []);
+      for (const key of Object.keys(vocab.BASELINE)) {
+        const over = vocab.ratchetViolations({ ...vocab.BASELINE, [key]: vocab.BASELINE[key] + 1 });
+        assert.strictEqual(over.length, 1, `据え置き "${key}" の超過を検出できない: ${JSON.stringify(over)}`);
+      }
+    });
+
+    // 据え置きの件数は**実データと一致していること**。ずれたまま放置すると
+    // 「据え置きを許しているつもりで、実は上限に余裕がある」状態になる。
+    ok('門 B: 据え置きの上限が実データの件数と一致している（余裕を残さない）', () => {
+      const { out } = runVocab();
+      const m = out.match(/据え置き: review (\d+) \/ docs\/specs の completed (\d+)/);
+      assert.ok(m, `OK メッセージから据え置き件数を読めない:\n${out}`);
+      assert.strictEqual(Number(m[1]), vocab.BASELINE.review, 'review の据え置きが実データとずれている');
+      assert.strictEqual(
+        Number(m[2]),
+        vocab.BASELINE['specs-completed'],
+        'docs/specs の completed の据え置きが実データとずれている',
+      );
+    });
+  }
 };
