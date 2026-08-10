@@ -19,6 +19,20 @@
  *   (a) 仕様書が挙げるテスト名が実在するか  → **今回の欠陥は止まらない**（残った記載はすべて実在した）
  *   (b) 実在するテストが仕様書に載っているか → **止まる**。本検査は (b) を実装する。
  *
+ * ── [#592 追加] 方向 (a) を**パスについて**足した（[[IADR-0163]]）
+ * #510 の欠陥（節の消失）は (b) でしか止まらないが、**別の欠陥が (a) でしか止まらない**:
+ * `IADR-0062`（ユニット改名）と `IADR-0027`（Composable / Foundation 分割）という確定済みの決定に
+ * **必須仕様書 4 本が追随しておらず、存在しないコードパスを指したまま**になっていた（#592）。
+ * `check-doc-links.js` は**相対リンク**しか見ず、本検査の (b) は**クラス名**で突合するため
+ * どちらも原理的に見ない。**2 つの方向は競合せず補い合う**ので同じ検査器に両方を置く。
+ *
+ * **見るのは `.cs` で終わるパスだけである。** 汎用のパス実在検査にしない理由は**偽陽性が 6 クラス
+ * あると実測した**ため（#592 の作業仕様書 §偽陽性）——kubectl の `deploy/<name>` 資源参照・
+ * ビルド生成物（`dist`）・省略形（`docs/screens/SC-`）・**不在そのものを述べる文**
+ * （「`scripts/generate-openapi.sh` は無い」）・パッケージ内の相対表記・省略記号入り（`.../`）。
+ * 汎用にすると**無関係な運用 Runbook と通信仕様書を落とす**（[[IADR-0159]]「偽陽性は見逃しより重い」）。
+ * `.cs` はそのどれとも取り違えようがない。**種類で絞るのではなく、曖昧さの無い形だけを見る。**
+ *
  * 粒度（**仕様書ファイル × テストクラス（`*Tests.cs` のファイル名）の対**）:
  *   - **アセンブリ（テストプロジェクト）単位では止まらない。** `Platform.Bff.Tests` は複数の仕様書から
  *     参照され続けるため、SC-05 の節が消えても「どこにも無い」にならない。
@@ -57,6 +71,28 @@ const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'covera
 
 /** バックエンドの xUnit テストクラスのファイル名。`*Test.cs`（単数）は本リポジトリに存在しない。 */
 const TEST_CLASS_FILE = /(^|\/)([A-Za-z0-9_]+Tests)\.cs$/;
+
+// ── [#592 / IADR-0163] `.cs` パスの実在検査 ─────────────────────────────
+//
+// **対象は「現在を記述する必須仕様書」に限る。** 作業当時の事実を記録した文書
+// （`docs/specs/` の作業仕様書・`docs/adr/` の決定記録・`docs/superpowers/plans/` の旧計画）は
+// **追随させてはならない** —— 改定前の構造を説明している箇所が多数あり（実測 458 件）、
+// 書き換えると「当時こう決めた」という記録として壊れる。
+// #592 は `docs/specs/` だけを対象外と書いていたが、**同じ理屈が `docs/adr/` にも当たる**。
+const SOURCE_PATH_SPEC_DIRS = [
+  'docs/tests',
+  'docs/functional',
+  'docs/screens',
+  'docs/api',
+  'docs/data',
+  'docs/tech',
+  'docs/operations',
+  'docs/security',
+];
+
+// `src/` `deploy/` `scripts/` `tools/` `.github/` `docs/` で始まり `.cs` で終わるもの。
+// 直前が単語構成文字・`/`・`.`・`-` のときは拾わない（長いパスの途中で切り出さないため）。
+const CS_PATH = /(?<![\w./-])((?:src|deploy|scripts|tools|\.github|docs)\/[A-Za-z0-9_./-]+\.cs)/g;
 
 /**
  * 検査対象外のユニット（他プロジェクトの submodule）。単一情報源は `.gitmodules`
@@ -166,6 +202,67 @@ function classify({ existing, documented, baseline }) {
 }
 
 // --- ファイル走査 ---------------------------------------------------------------
+
+// ── [#592 / IADR-0163] `.cs` パスの抽出と実在判定 ───────────────────────
+
+/**
+ * 1 ファイル分のテキストから `.cs` パスを行番号つきで抽出する（純関数）。
+ *
+ * **`...` を含むものは返さない。** `src/Tests/.../Deployment/MeshMtlsTests.cs` の `...` は
+ * 省略記号であって階層名ではなく、**「省略された表記」と「壊れた表記」を機械が区別できない**。
+ * 黙って飛ばすのではなく、**判定しないことを明示する**（母集合の規則 6）。
+ */
+function extractCsPaths(text) {
+  const out = [];
+  const lines = String(text).split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    CS_PATH.lastIndex = 0;
+    let m;
+    while ((m = CS_PATH.exec(lines[i]))) {
+      const p = m[1];
+      if (p.includes('...')) continue; // 省略記号。判定しない
+      out.push({ line: i + 1, path: p });
+    }
+  }
+  return out;
+}
+
+/**
+ * 必須仕様書が指す `.cs` パスのうち、実体が無いものを返す。
+ *
+ * `exists` は差し替え可能にしてある（自己試験がフィクスチャで駆動するため）。
+ * **除外ユニット配下は判定しない** —— 実体は submodule の中にあり、populate していない場面では
+ * 実在しても不在に見える（別プロジェクトのコードを自リポジトリの都合で赤くしない。IADR-0118 決定 4）。
+ */
+function findMissingSourcePaths(docs, { exists, isExcluded = isExcludedPath } = {}) {
+  const missing = [];
+  for (const doc of docs) {
+    for (const { line, path: p } of extractCsPaths(doc.text)) {
+      if (isExcluded(p)) continue;
+      if (exists(p)) continue;
+      missing.push({ spec: doc.file, line, path: p });
+    }
+  }
+  return missing;
+}
+
+/**
+ * 必須仕様書（`SOURCE_PATH_SPEC_DIRS`）の Markdown を `{ file, text }` で集める。
+ *
+ * **`walk` はリポジトリ相対のディレクトリを取る**（絶対パスを渡すと `readdirSync` が投げ、
+ * `walk` の catch が**黙って空配列を返す**）。初版でこれを取り違え、
+ * **0 件検査になっていることに変異試験 M1 が通ってしまうまで気づかなかった**。
+ * 呼び出し側の `main()` に fail-closed の門を置いてあるのはそのためである。
+ */
+function collectSourcePathDocs(root = REPO_ROOT) {
+  const out = [];
+  for (const dir of SOURCE_PATH_SPEC_DIRS) {
+    for (const file of walk(dir, (p) => /\.md$/i.test(p), [], root)) {
+      out.push({ file, text: fs.readFileSync(path.join(root, file), 'utf8') });
+    }
+  }
+  return out;
+}
 
 function walk(dir, predicate, acc = [], root = REPO_ROOT) {
   const abs = path.join(root, dir);
@@ -433,6 +530,59 @@ function selfTest() {
       classes.size > 0 && docs.length > 0, { classes: classes.size, specs: docs.length });
   }
 
+  // ── [#592 / IADR-0163] `.cs` パスの実在検査 ───────────────────────────
+  {
+    const paths = (text) => extractCsPaths(text).map((x) => x.path);
+
+    t('extractCsPaths: コードスパン内の .cs を行番号つきで拾う',
+      JSON.stringify(extractCsPaths('a\n`src/x/YTests.cs` を見る\n')) ===
+        JSON.stringify([{ line: 2, path: 'src/x/YTests.cs' }]),
+      extractCsPaths('a\n`src/x/YTests.cs` を見る\n'));
+
+    t('extractCsPaths: 1 行に複数あっても全部拾う',
+      paths('`src/a/ATests.cs`, `src/b/BTests.cs`').join(',') === 'src/a/ATests.cs,src/b/BTests.cs');
+
+    // ★ **落とさない側**（偽陽性を作らないことの主張）。#592 で実測した 6 クラスのうち、
+    // `.cs` で終わらないものはそもそも抽出されない。
+    t('extractCsPaths: .cs で終わらないものは拾わない（kubectl 資源・生成物・省略形・相対表記）',
+      paths('kubectl logs deploy/wiki-js / src/platform/frontend/dist / docs/screens/SC- / src/index.ts').length === 0,
+      paths('kubectl logs deploy/wiki-js / src/platform/frontend/dist / docs/screens/SC- / src/index.ts'));
+
+    // ★ **省略記号は判定しない**（「省略された表記」と「壊れた表記」を機械が区別できない）。
+    t('extractCsPaths: ... を含むパスは返さない',
+      paths('`src/Tests/.../Deployment/MeshMtlsTests.cs`').length === 0);
+
+    t('extractCsPaths: 長いパスの途中から切り出さない',
+      paths('xsrc/a/ATests.cs').length === 0 && paths('../src/a/ATests.cs').length === 0);
+
+    const doc = (file, text) => [{ file, text }];
+    const never = () => false; // 何も実在しない世界
+
+    t('findMissingSourcePaths: 不在なら報告する',
+      findMissingSourcePaths(doc('docs/tests/X.md', '`src/a/ATests.cs`'), { exists: never }).length === 1);
+
+    t('findMissingSourcePaths: 実在すれば報告しない',
+      findMissingSourcePaths(doc('docs/tests/X.md', '`src/a/ATests.cs`'), { exists: () => true }).length === 0);
+
+    // ★ **除外ユニット（別プロジェクトの submodule）は判定しない。**
+    // 実体は submodule の中にあり、populate していない場面では実在しても不在に見える。
+    t('findMissingSourcePaths: 除外ユニット配下は報告しない',
+      findMissingSourcePaths(doc('docs/tests/X.md', '`src/vendor-unit/a/ATests.cs`'),
+        { exists: never, isExcluded: makeIsExcludedPath(new Set(['vendor-unit'])) }).length === 0);
+
+    // 走査対象のディレクトリに履歴文書を含めていないこと（判断 3）。
+    t('SOURCE_PATH_SPEC_DIRS: docs/specs ・docs/adr ・docs/superpowers を含まない',
+      !SOURCE_PATH_SPEC_DIRS.some((d) => /^docs\/(specs|adr|superpowers)/.test(d)),
+      SOURCE_PATH_SPEC_DIRS);
+
+    // 実データでの固定。**0 件へ退行したら検査が静かに失効する**
+    // （初版は walk へ絶対パスを渡して実際に 0 件になっており、変異試験 M1 が通ってしまった）。
+    const spDocs = collectSourcePathDocs();
+    const spPaths = spDocs.reduce((n, d) => n + extractCsPaths(d.text).length, 0);
+    t('実ファイル: 必須仕様書を 1 件以上拾い、.cs 参照を 1 件以上抽出できる',
+      spDocs.length > 0 && spPaths > 0, { docs: spDocs.length, csRefs: spPaths });
+  }
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -543,6 +693,29 @@ function main() {
       '（上げておかないと、次に節が落ちても検出できません）。');
   }
 
+  // [#592 / IADR-0163] 方向 (a): 必須仕様書が指す `.cs` パスが実在するか。
+  // **ラチェットにしない。** 実測で不在は 0 件へ是正済みであり、据え置く債務が無い。
+  // 空の床を置くと「また据え置いてよい」と読める（IADR-0162 決定 4 と同じ理由）。
+  const sourcePathDocs = collectSourcePathDocs();
+  // fail-closed。**初版はここで黙って 0 件になっていた**（`walk` へ絶対パスを渡し、
+  // catch が空配列を返していた）。0 件検査は本検査器が塞ごうとしている穴と同型である。
+  if (sourcePathDocs.length === 0) {
+    console.error('[check-test-spec-coverage] 必須仕様書の Markdown を 1 件も見つけられませんでした' +
+      `（${SOURCE_PATH_SPEC_DIRS.join(' / ')}）。0 件検査は fail させています。`);
+    process.exit(1);
+    return;
+  }
+  const missingPaths = findMissingSourcePaths(sourcePathDocs, {
+    exists: (p) => fs.existsSync(path.join(REPO_ROOT, p)),
+  });
+  if (missingPaths.length) {
+    failures.push(`[存在しないコードパス] ${missingPaths.map((m) => `${m.spec}:${m.line}  ${m.path}`).join('\n    ')}` +
+      '\n    必須仕様書が指す `.cs` が実在しません（改名・移動に追随していない。#592 の再発）。' +
+      '\n    実体の場所は `git ls-files | grep <ファイル名>` で確かめ、**推測で書き換えないこと**。' +
+      `\n    対象は「現在を記述する必須仕様書」（${SOURCE_PATH_SPEC_DIRS.join(' / ')}）に限ります —— ` +
+      'docs/specs/ ・docs/adr/ ・docs/superpowers/ は**作業当時の記録**なので追随させません。');
+  }
+
   if (failures.length === 0) {
     console.log(`[check-test-spec-coverage] OK: テストクラス ${classes.size} 件` +
       `（同名は 1 件として集約。実ファイル ${countFiles(classes)} 件）のうち ${documentedNamesNow.size} 件が ` +
@@ -564,7 +737,11 @@ module.exports = {
   SRC_DIR,
   BASELINE_FILE,
   TEST_CLASS_FILE,
+  SOURCE_PATH_SPEC_DIRS,
   EXCLUDED_UNITS,
+  extractCsPaths,
+  findMissingSourcePaths,
+  collectSourcePathDocs,
   testClassNameOf,
   mentionsClass,
   pairKey,

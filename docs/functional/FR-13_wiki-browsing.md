@@ -8,7 +8,7 @@ related_ids:
   - FR-05
 author: claude
 created: 2026-07-03
-updated: 2026-07-05
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
@@ -56,7 +56,7 @@ plan_refs:
 
 ## エンドポイント
 
-`src/knowledge/backend/Services/WikiService/src/WikiService.Api/Endpoints/WikiEndpoints.cs`
+`src/knowledge/backend/Services/WikiService/src/WikiService.Api/Foundation/Endpoints/WikiEndpoints.cs`
 
 | メソッド | パス | 説明 | 権限外の挙動 |
 | --- | --- | --- | --- |
