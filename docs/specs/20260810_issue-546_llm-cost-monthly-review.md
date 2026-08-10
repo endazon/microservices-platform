@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — LLM 費用の暫定統制（月次の手動確認）を運用仕様へ置く（#546）
 type: work-spec
-status: draft
+status: fixed
 related_ids:
   - NFR
   - SC-10
@@ -144,3 +144,17 @@ docs/how-to/session-handoff.md / docs/specs/…（3 件）
 - **トークン消費量・金額換算・単価表の実装** —— `IADR-0110` §結果 フォローアップ 2 / #443 の領域。
   **本 PR はそれを前提にしない形で統制を置く。**
 - **月次予算の金額** —— 決定 41 により実測後に確定する。
+
+## 申し送り（本 PR のレビューで見つけた別件）
+
+**作業仕様書の `status` を完了時に何へ遷移させるかが、どこにも定義されていない。**
+
+- `docs/templates/spec_template.md` と `/new-spec` は **`draft` を作る**（`new-spec.md:43`）。
+- **完了時の遷移先を定めた規定は `.claude/rules/` にも `docs/README.md` にも無い**（実測）。
+- 結果として `docs/specs/` 全体で **4 つの同義語**が併存している ——
+  `done` 159 / `completed` 43 / `draft` 24 / `fixed` 10（ほかに `in-progress` 11 / `review` 8 等）。
+
+**本 PR では自分の仕様書を `fixed` にした**（レビューが挙げた同日の先例 `20260810_issue-543` に揃えた）。
+**既にマージ済みの仕様書は触らない** —— 確定した過去 PR の記録であり、
+`.claude/rules/traceability.md` が書き換えを禁じている。**語彙を決めるのが先である**（#667）。
+
