@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { Link } from '@tanstack/react-router';
@@ -121,6 +121,25 @@ export function ConversionJobsPage() {
   const pendingDiscard = correctionsWouldBeLost(retry.error);
   const failed = mutations.find((m) => m.isError);
 
+  /**
+   * 確認が出たら、その最初のボタンへ焦点を移す。
+   *
+   * **これが無いとキーボードで確認へ到達できない。** 確認は表より**前**に描かれるのに対し、
+   * それを出す「再変換」ボタンは**表の行の中**にある——すなわち確認のボタンは焦点位置より
+   * **DOM 上で手前**にあり、**前方 Tab では決して届かない**（Shift+Tab を知っている人しか
+   * 操作できない）。読み上げ（`role="alert"`）は届いても、操作手段が保証されない。
+   *
+   * **焦点の横取りではない。** 利用者自身の押下に対する応答であり、かつ**破壊的操作を
+   * 差し止めている**確認なので、そこへ焦点が移るのは期待される挙動である。
+   * これは[[IADR-0157]] 決定 2 の「モーダルにしない」判断とは両立する——背後は操作でき、
+   * `Esc` も奪わない。移すのは焦点だけである。
+   */
+  const confirmRef = useRef<HTMLDivElement>(null);
+  const confirmShown = pendingDiscard !== null && retryTarget !== null;
+  useEffect(() => {
+    if (confirmShown) confirmRef.current?.querySelector('button')?.focus();
+  }, [confirmShown]);
+
   // FR-12, UC-06, SC-07: 05_screens §SC-07（2026-08-04 確定）: 再変換の実行権限は管理者ロールに限る。
   // 計画の「本画面のアクセス制御と API の権限を揃える」は**両側で満たされている**——
   // 画面のこの制御（IADR-0127 決定 1）と、BFF `POST /bff/conversion/jobs/{id}/retry` の
@@ -166,9 +185,10 @@ export function ConversionJobsPage() {
           失われる旨を示して明示確認を求める」）。**409 を受けてから出す**——先に出して通ったら
           投げる形にはしない（§correctionsWouldBeLost のコメント参照）。
 
-          **`role="alertdialog"` は使わない。** WAI-ARIA の `alertdialog` は「モーダルであり、
-          開いた時点で焦点が移り、応答するまで背後を操作できない」ことを意味する。本確認は
-          ページ内に差し込む**非モーダル**の注意であり、焦点も移さない（共有 UI に Dialog
+          **`role="alertdialog"` は使わない。** WAI-ARIA の `alertdialog` は「**モーダル**であり、
+          応答するまで背後を操作できない」ことを意味する。本確認は
+          ページ内に差し込む**非モーダル**の注意であり、**背後は操作でき `Esc` も奪わない**
+          （焦点は移すが、それはモーダル性とは別物である。共有 UI に Dialog
           プリミティブが無い）。**実装しない振る舞いを role で宣言しない**——支援技術の利用者に
           嘘をつくことになるためである。`role="alert"` で即時に読み上げ、確認は本文とボタンで表す。 */}
       {pendingDiscard !== null && retryTarget && (
@@ -178,7 +198,9 @@ export function ConversionJobsPage() {
               このジョブには人手補正が {pendingDiscard} 件あります。再変換すると補正は失われます。
             </Trans>
           </p>
-          <div className="mt-2 flex gap-2">
+          {/* `@platform/ui` の `Button` は ref を転送しない（公開面を広げないため、ここは
+              包む側の ref から最初のボタンを引く）。 */}
+          <div className="mt-2 flex gap-2" ref={confirmRef}>
             <Button
               type="button"
               size="sm"

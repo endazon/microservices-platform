@@ -511,6 +511,30 @@ describe('ConversionJobsPage (SC-07)', () => {
     expect(await screen.findByText('再変換を受け付けました。')).toBeInTheDocument();
   });
 
+  // **確認へキーボードで到達できること**（AI レビュー 🟡 / [[IADR-0157]] 決定 2）。
+  //
+  // 確認は表より**前**に描かれるのに対し、それを出す「再変換」ボタンは**表の行の中**にある。
+  // つまり確認のボタンは焦点位置より **DOM 上で手前**にあり、**前方 Tab では届かない**。
+  // 焦点を移していないと、読み上げは届くのに操作手段が無い利用者が出る。
+  it('moves focus to the confirmation so it is reachable without Shift+Tab', async () => {
+    mockConversionApi([CORRECTED_JOB], {
+      onRetry: () =>
+        Promise.reject(
+          new ApiError('conflict', '競合が発生しました。', 409, [], {
+            error: 'corrections_would_be_lost',
+            correctedFigures: 1,
+          }),
+        ),
+    });
+    const user = userEvent.setup();
+    await renderPage(['platform-admin']);
+
+    await user.click(await screen.findByRole('button', { name: '再変換' }));
+
+    const discard = await screen.findByRole('button', { name: '補正を破棄して再変換' });
+    await waitFor(() => expect(discard).toHaveFocus());
+  });
+
   // 取り消したら何も起きない（確認が飾りでないことの側）。
   it('sends nothing when the discard confirmation is cancelled', async () => {
     mockConversionApi([CORRECTED_JOB], {
