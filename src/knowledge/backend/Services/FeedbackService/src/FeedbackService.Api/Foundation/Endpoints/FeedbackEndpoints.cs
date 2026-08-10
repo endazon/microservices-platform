@@ -97,11 +97,10 @@ public static class FeedbackEndpoints
         // FR-08: 品質改善向けの一覧。rating / answerId で絞り込み可（低評価回答のレビュー）。
         // NFR（認可）: 自由記述 Comment と UserId（個人特定情報）を返すため、管理者ロールのみ許可する。
         //   AuthorizationService の管理系 CRUD と同じ AdminOnly ポリシーで保護する。
-        //   一方 /feedback/stats は集計値のみ（PII なし）で BFF ダッシュボードが匿名集約するため対象外。
-        // ［2026-08-07 / #586］最終行の「/feedback/stats は対象外」という根拠は計画側で失効した。
-        //   計画 FR-08 は「統計は運用者・管理者に限って参照できる」を確定し、受け入れ基準に
-        //   「認証済みでも権限外は 403」を置いている（planning 3e58b97 = PR planning#244
-        //   〔裁定依頼 planning#236〕）。**是正は #521**（下の /stats の同型コメントと対）。
+        // ［2026-08-10 是正 / #521・IADR-0158］従前ここには「/feedback/stats は集計値のみ（PII なし）
+        //   なので対象外」と書いていたが、**その根拠は計画側で失効していた**。計画 FR-08 は
+        //   「統計は運用者・管理者に限って参照できる」を確定している（裁定依頼 planning#236 案 2）。
+        //   **判断軸は PII の有無ではなく「権限で絞るか」である。** /stats へ RequireRole を足した。
         g.MapGet("/", async (string? rating, Guid? answerId, int? skip, int? take,
             FeedbackDbContext db, CancellationToken ct) =>
         {
@@ -127,14 +126,11 @@ public static class FeedbackEndpoints
           .Produces<List<FeedbackDto>>();
 
         // FR-08: 集計（👍/👎 件数・満足率）。品質可視化（FR-10 ダッシュボード）の入力。
-        // 集計値のみで PII を含まないため一覧のような AdminOnly は課さない（BFF が集約して画面へ）。
-        // ［2026-08-07 / #586］**上の根拠は失効している。** 計画 FR-08 は「統計は運用者・管理者に
-        //   限って参照できる」を確定し、受け入れ基準に「認証済みでも権限外は 403」を置いた
-        //   （planning 3e58b97 = PR planning#244〔裁定依頼 planning#236〕）。PII の有無ではなく
-        //   **権限で絞る**という判断である。上の記述は現在の実装の事実としては正しいため
-        //   #586 では書き換えていない。**是正（認可の追加と 403 テスト）は #521 が持つ**。
-        //   同型の記述: docs/api/openapi.yaml の /feedback/stats・docs/adr/IADR-0010・
-        //   docs/api/BFF_bff-surface.md・docs/functional/FR-08_answer-feedback.md。
+        // **統計の参照は運用者・管理者に限る**（計画 FR-08 / SC-10・2026-08-07 確定）。
+        // ［2026-08-10 是正 / #521・IADR-0158］従前は「集計値のみで PII を含まないため AdminOnly は
+        //   課さない」としていたが、**その根拠は計画側で失効していた**。判断軸は PII の有無ではなく
+        //   **権限で絞るか**である（裁定依頼 planning#236 案 2）。閲覧ロールは SC-10 の画面
+        //   （#544 で運用者へ開いた）と同じ線で引く。BFF 側にも同じ認可がある（IADR-0044 多層防御）。
         //   days — FR-10: 期間指定（日数）。指定時はその範囲に絞る。未指定は全期間（後方互換）。
         g.MapGet("/stats", async (Guid? answerId, int? days, FeedbackDbContext db, CancellationToken ct) =>
         {

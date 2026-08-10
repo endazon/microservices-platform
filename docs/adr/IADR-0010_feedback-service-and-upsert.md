@@ -60,9 +60,12 @@ FR-08 は「回答へのフィードバック（👍/👎・コメント）を�
     > **確定**した（planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕。受け入れ基準は無認証 401・権限外 403）。
     > 本決定は「PII を含まないから認可を課さない」と判断したが、**計画は PII の有無ではなく参照者のロールで
     > 線を引いた**。**本追記は決定を変えない**——`RequireAuthorization` の追加は挙動の変更であり、
-    > **是正は #521 が持つ**（#586 は planning pin の更新と事実の追随に限る）。
+    > **［2026-08-10 是正 / #521・[[IADR-0158]]］実装が計画へ揃った。** `/feedback/stats` へ
+    > `RequireRole(Admin, Operator)` を足し、`/feedback`（投稿）へ `RequireAuthorization()` を足した。
+    > **本決定（upsert と一覧の AdminOnly）は変えていない**——変わったのは「PII を含まないから
+    > 認可を課さない」という **stats の認可の根拠**だけである。
     > 同型の記述: [機能仕様書 FR-08](../functional/FR-08_answer-feedback.md)・
-    > [通信仕様書](../api/BFF_bff-surface.md) §未決事項 3。
+    > [通信仕様書](../api/BFF_bff-surface.md) §未決事項 3・[[IADR-0158]]。
 
 ## 理由
 
