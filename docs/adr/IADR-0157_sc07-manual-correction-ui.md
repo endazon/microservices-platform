@@ -156,10 +156,32 @@ WAI-ARIA の `alertdialog` は「**モーダルであり、開いた時点で焦
 **いずれも「テストが通った」だけでは分からず、変異させて初めて出た。**
 新しく書いた試験は、**通ることではなく落ちることを一度確かめる**。
 
+## バンドル初期ロードの床を +1.92 kB 更新した（[[IADR-0134]] / `check-chunk-budget`）
+
+CI の `build-test` が初期ロードの ratchet で落ちた（**586.56 kB > 床 584.64 kB**）。
+**床を上げる前に、増えた分がどこから来たのかを実測した**——「意図した増加」かどうかは
+測らずに言えないためである。
+
+| 初期ロードに載るファイル | 素のサイズ差 | 実体 |
+| --- | --- | --- |
+| `i18n/locales/ja/messages.ts` | **+1,084 B** | 新規 23 メッセージの訳文（**実行時データ**。minify で消えない） |
+| `i18n/locales/en/messages.ts` | **+1,033 B** | 同上 |
+| `foundation/api/orvalMutator.ts` | +2,133 B | **うち 24 行がコメント**（ビルドで除かれる）。実コードは **14 行** |
+
+**`ConversionJobsPage` 自体は初期ロードに載っていない**（`dist/index.html` の
+`modulepreload` は `vendor-react` / `ui` / `vendor-query` / `index` の 4 本のみで、
+画面は遅延チャンク 11.69 kB）。すなわち**増分の実体は i18n カタログ 2 ロケール分**である。
+
+**これは表示文言を持つ機能を足す限り避けられない**——カタログは `foundation/i18n` が
+起動時に読む（[[IADR-0125]]）。遅延化はアーキテクチャの変更であり本 issue の射程外である。
+したがって `--update` で床を更新した（**`initialTotalBytes` のみ。`smallLazyChunks` は 6 のまま**）。
+
 ## 申し送り
 
 - **`apiRequest` の `Accept` 既定値（`application/json`）は見直していない。** 本口では
   `Results.File` が内容交渉をしないため**破綻の原因ではない**（原因は `JSON.parse` 側）。
+- **i18n カタログは初期ロードに直接効く。** 画面を足すたびに床が上がる構造であり、
+  いずれ「カタログを遅延化するか」の判断が要る。**本 issue では判断しない**（別 issue）。
 - **jsdom の `Blob` は undici の `Blob` と別コンストラクタである**（実測: `instanceof` が false）。
   バイト列の試験は型名ではなく**実体**で判定する。`URL.createObjectURL` も jsdom は
   実装しないため、描画経路を試験するにはスタブが要る。
