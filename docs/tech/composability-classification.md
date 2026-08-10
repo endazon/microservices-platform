@@ -1,7 +1,7 @@
 ---
 title: 固定/可変 区分表（実装版）— コンポーザビリティ対応の棚卸し
 type: tech
-status: fixed
+status: completed
 related_ids:
   - FR-14
   - FR-15

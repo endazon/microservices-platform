@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 検査器が「0 件走査」で静かに緑を返す形を全数で洗い出し、fail-closed の門を足す（#664）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - NFR
   - IADR-0130

@@ -219,6 +219,7 @@
 | [IADR-0163](./IADR-0163_doc-source-path-existence-check.md) | 必須仕様書が指す **`.cs` パスの実在**を検査する（IADR-0062 の改名と IADR-0027 の Foundation 分割に 4 本が追随していなかった）。**汎用のパス検査にしない** —— 偽陽性が 6 クラス（kubectl 資源・生成物・省略形・不在を述べる文 等）あり無関係な文書を落とす。**履歴文書（specs / adr / superpowers）は対象外**。 | Accepted |
 | [IADR-0164](./IADR-0164_llm-cost-monthly-review-interim-control.md) | LLM 費用の暫定統制を**代理指標の月次確認**として置く（計画 決定 39〜41）。実測すると**Grafana に LLM コストダッシュボードが無く費用も出せない**ため、`llm_completion_total` から**「費用ではない」と明示した**ダッシュボードを作り手順書の行き先を実在させる。**絶対額のしきい値は持たない**。 | Accepted |
 | [IADR-0165](./IADR-0165_grafana-interim-alerting.md) | SLO の暫定通知先（計画 決定 42）を Grafana 統合アラートへ配線するが、**`contactPoints` / `policies` は意図的に書かない**（届かない宛先は「配線した」と読める）。datasource の **`uid` 未宣言**も併せて是正し、**暫定経路を閉じる 3 条件**を運用仕様書へ書く。 | Accepted |
+| [IADR-0166](./IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) | 仕様書 `status` の値域は **`docs/README.md` 運用ルール 6 に既にあった**（起票時の「規定が無い」は誤り）。**過去の記録を書き換えてよいのは「語彙の是正」のみ**とし、状態の進行は不可とする。語彙外 22 件を是正し、`review` 8 件は**推測しないため据え置き**、値域は検査器が閉じる。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

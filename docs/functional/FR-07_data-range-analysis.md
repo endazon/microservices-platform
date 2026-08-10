@@ -1,7 +1,7 @@
 ---
 title: 指定データ範囲での分析・比較・抽出 機能仕様書
 type: functional-spec
-status: implemented
+status: completed
 related_ids:
   - FR-07
   - UC-02

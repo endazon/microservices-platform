@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 裁定で確定した閲覧ロールと機密区分の表示名へ実装側の記述を追随させる（#553）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - SC-05
   - SC-06

@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — SLO アラートの暫定通知先を Grafana 内蔵アラートへ配線する（#665）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - NFR-21
   - ADR-0006

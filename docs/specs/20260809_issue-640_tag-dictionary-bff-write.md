@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — タグ辞書の追加・改名・削除を BFF へ通し、SC-09 の画面から操作できるようにする（#640）
 type: work-spec
-status: fixed
+status: done
 related_ids:
   - FR-06
   - FR-09

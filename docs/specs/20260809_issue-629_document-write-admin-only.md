@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 文書の書き込み口を管理者限定へ狭める（#629）
 type: spec
-status: fixed
+status: done
 related_ids: [FR-06, UC-03, SC-05, IADR-0044, IADR-0039, IADR-0127, IADR-0128]
 author: Claude
 created: 2026-08-09
