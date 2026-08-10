@@ -59,7 +59,7 @@ private readonly string _dbName = $"AuthzTest_{Guid.NewGuid()}";
 
 ## 決定 2: **同型 4 件すべてを直す**（発火した 1 件だけにしない）
 
-`UseInMemoryDatabase` を全数走査（19 箇所）して 3 群へ分類した。
+DB 名を与えている箇所を全数走査して 3 群へ分類した（走査の再現手順は作業仕様書 §軸 3）。
 **アセンブリ内で複数クラスが固定名を共有しているのは 4 件**である:
 
 | サービス | DB 名 | 共有するテストクラス数 |
@@ -67,13 +67,26 @@ private readonly string _dbName = $"AuthzTest_{Guid.NewGuid()}";
 | AuthorizationService | `"AuthzTest"` | 5 ← **発火した** |
 | **DocumentService** | `"DocumentTest"` | **7** |
 | WikiService | `"WikiTest"` | 2 |
-| **DataSourceService** | `"DataSourceTest"` | **7** |
+| **DataSourceService** | `"DataSourceTest"` | **9** |
 
 **発火したのが `AuthzTest` だけなのはクラス数と実行順の偶然にすぎない。**
-`DocumentTest` と `DataSourceTest` は 7 クラスが共有しており**より危ない**。
+`DataSourceTest` は 9 クラス・`DocumentTest` は 7 クラスが共有しており**より危ない**。
 **1 件だけ直すと「残り 3 件は安全」と読める記録が残る。**
 
-## 決定 3: 単一クラスに閉じた固定名 5 件は**触らない**（申し送る）
+> **［訂正 / 本 PR のレビュー指摘］初版は DataSourceService を 7・合計 21 と書いていた。正は 9・合計 23 である。**
+> **数え方が `IClassFixture<TestWebApplicationFactory>` の 1 本だけだった**のが原因で、
+> **ファクトリを `new` で直接作るクラスと、それを継承するクラスを落としていた**
+> （`DataSourceSyncHostedServiceTests` = 直接生成／`SyncScheduleTests` = 直接生成 ＋
+> ネストした `ScheduledFactory : TestWebApplicationFactory`）。
+> `.claude/rules/traceability.md` 規則 5「**軸を 1 本で終わらせない**」に反していた。
+> **コードの是正そのものは無傷である** —— `_dbName` はベースクラスのインスタンスフィールドなので
+> 継承先にも効く。**外れていたのは数だけである。**
+>
+> **指摘は「8（＝ +1）」だったが、引き直すと 9（＝ +2）だった。**
+> 指摘が挙げたのは `SyncScheduleTests` だけで、`DataSourceSyncHostedServiceTests` は
+> どちらの数えからも落ちていた。**指摘の数をそのまま採らず、走査し直したことで見つかった。**
+
+## 決定 3: 単一クラスに閉じた固定名 6 件は**触らない**（申し送る）
 
 `ConversionService` の `"IntrospectionTest"`／各アセンブリの
 `JsonbValueComparerContractTests`（`nameof(...)`）／`WikiService` の `nameof(PipelineRecomposeTests)`。
@@ -110,7 +123,7 @@ private readonly string _dbName = $"AuthzTest_{Guid.NewGuid()}";
 
 ### 検出しないこと（正直に書く）
 
-- **新しく固定名を書くことを止める検査器は置いていない。** 決定 3 の 5 件は現状安全だが、
+- **新しく固定名を書くことを止める検査器は置いていない。** 決定 3 の 6 件は現状安全だが、
   **同じアセンブリに 2 クラス目が現れれば同じ欠陥になる**。
   `CLAUDE.md`「検査器・規約の追加は**同型の事故が 2 回起きたら**」——
   **本件は 1 回目である**（4 件を直したが、**事故として発火したのは 1 件**）。**記録に留める。**
@@ -136,6 +149,6 @@ private readonly string _dbName = $"AuthzTest_{Guid.NewGuid()}";
 
 ## 申し送り
 
-- **単一クラスに閉じた固定名 5 件**（決定 3）。2 クラス目が現れたら一意名へ変えること。
+- **単一クラスに閉じた固定名 6 件**（決定 3）。2 クラス目が現れたら一意名へ変えること。
 - **2 回目が起きたら検査器を足す** —— `ReplaceDbContext`/`UseInMemoryDatabase` へ
   リテラル文字列を渡している箇所を落とす形が考えられる。
