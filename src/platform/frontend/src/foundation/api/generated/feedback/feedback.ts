@@ -61,12 +61,19 @@ export type bffSubmitFeedbackResponse201 = {
   status: 201
 }
 
+export type bffSubmitFeedbackResponse401 = {
+  data: void
+  status: 401
+}
+
 export type bffSubmitFeedbackResponseSuccess = (bffSubmitFeedbackResponse200 | bffSubmitFeedbackResponse201) & {
   headers: Headers;
 };
-;
+export type bffSubmitFeedbackResponseError = (bffSubmitFeedbackResponse401) & {
+  headers: Headers;
+};
 
-export type bffSubmitFeedbackResponse = (bffSubmitFeedbackResponseSuccess)
+export type bffSubmitFeedbackResponse = (bffSubmitFeedbackResponseSuccess | bffSubmitFeedbackResponseError)
 
 export const getBffSubmitFeedbackUrl = () => {
 
@@ -97,7 +104,7 @@ export const bffSubmitFeedback = async (feedbackRequest: FeedbackRequest, option
 
 
 
-export const getBffSubmitFeedbackMutationOptions = <TError = unknown,
+export const getBffSubmitFeedbackMutationOptions = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSubmitFeedback>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bffSubmitFeedback>>, TError,{data: FeedbackRequest}, TContext> => {
 
@@ -126,12 +133,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BffSubmitFeedbackMutationResult = NonNullable<Awaited<ReturnType<typeof bffSubmitFeedback>>>
     export type BffSubmitFeedbackMutationBody = FeedbackRequest
-    export type BffSubmitFeedbackMutationError = unknown
+    export type BffSubmitFeedbackMutationError = void
 
     /**
  * @summary FR-08, UC-01: 回答へのフィードバック送信（BFF 集約）
  */
-export const useBffSubmitFeedback = <TError = unknown,
+export const useBffSubmitFeedback = <TError = void,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffSubmitFeedback>>, TError,{data: FeedbackRequest}, TContext>, request?: SecondParameter<typeof bffFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bffSubmitFeedback>>,
@@ -146,12 +153,24 @@ export const useBffSubmitFeedback = <TError = unknown,
   status: 200
 }
 
+export type bffFeedbackStatsResponse401 = {
+  data: void
+  status: 401
+}
+
+export type bffFeedbackStatsResponse403 = {
+  data: void
+  status: 403
+}
+
 export type bffFeedbackStatsResponseSuccess = (bffFeedbackStatsResponse200) & {
   headers: Headers;
 };
-;
+export type bffFeedbackStatsResponseError = (bffFeedbackStatsResponse401 | bffFeedbackStatsResponse403) & {
+  headers: Headers;
+};
 
-export type bffFeedbackStatsResponse = (bffFeedbackStatsResponseSuccess)
+export type bffFeedbackStatsResponse = (bffFeedbackStatsResponseSuccess | bffFeedbackStatsResponseError)
 
 export const getBffFeedbackStatsUrl = (params?: BffFeedbackStatsParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -193,7 +212,7 @@ export const getBffFeedbackStatsQueryKey = (params?: BffFeedbackStatsParams,) =>
     }
 
 
-export const getBffFeedbackStatsQueryOptions = <TData = Awaited<ReturnType<typeof bffFeedbackStats>>, TError = unknown>(params?: BffFeedbackStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffFeedbackStats>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+export const getBffFeedbackStatsQueryOptions = <TData = Awaited<ReturnType<typeof bffFeedbackStats>>, TError = void>(params?: BffFeedbackStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffFeedbackStats>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -212,14 +231,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type BffFeedbackStatsQueryResult = NonNullable<Awaited<ReturnType<typeof bffFeedbackStats>>>
-export type BffFeedbackStatsQueryError = unknown
+export type BffFeedbackStatsQueryError = void
 
 
 /**
  * @summary FR-08: 満足率の集計取得（BFF 集約・品質可視化）
  */
 
-export function useBffFeedbackStats<TData = Awaited<ReturnType<typeof bffFeedbackStats>>, TError = unknown>(
+export function useBffFeedbackStats<TData = Awaited<ReturnType<typeof bffFeedbackStats>>, TError = void>(
  params?: BffFeedbackStatsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffFeedbackStats>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
