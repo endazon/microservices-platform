@@ -531,6 +531,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 - **アラートルール**: [`deploy/prometheus/alerts.yml`](../../deploy/prometheus/alerts.yml)（`prometheus.yml` の
   `rule_files` で読み込む）。**通知経路**は Alertmanager（`prometheus.yml` の `alerting`。受信先＝メール/チャットは
   運用環境ごとに配備・設定）。未配備でもルール評価は行われ Prometheus UI / Grafana から発火を確認できる。
+- **暫定のアラート（Grafana 統合アラート。#665 / 計画 決定 42）**:
+  [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
+  が同じ 5 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
+  `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
   スループット・5xx 率・p99・RAG レイテンシ）と
   [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の呼び出し回数。費用ではない**）。
@@ -543,11 +547,35 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
   展開は follow-up（下記「未決事項」）。本節のアラート定義・閾値は環境非依存に流用できる。
 
-> **★ 通知先の現状（#546 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価している**が、
-> **通知は誰にも届いていない** —— `prometheus.yml` の `alertmanagers.targets` が**空**だからである
+> **★ 通知先の現状（#546 / #665 / 計画 決定 40・42）**: 下表の**ルールは Prometheus が実際に評価している**が、
+> **push 通知は誰にも届いていない** —— `prometheus.yml` の `alertmanagers.targets` が**空**だからである
 > （compose・k8s の**2 か所とも**空。実測）。**「通知先」列は配備後の宛先であって、いま働いている経路ではない。**
-> 暫定の一次検知は **Prometheus UI / Grafana で発火を目視すること**である。
-> 計画は**暫定の通知先を Grafana の内蔵アラートとする**と定めた（決定 42）が、**その配線は未了**である（#665）。
+>
+> 計画が定めた**暫定の通知先＝ Grafana の内蔵アラート**（決定 42）は、**#665 で provisioning を配線した**
+> （[`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)。
+> compose・k8s の 2 か所。5 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
+>
+> - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
+>   読めてしまうため、**意図的に書いていない**（[IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 3）。
+> - **したがって暫定期間に人が気づく経路は「Grafana の Alerting 画面を見る」ことだけ**である。
+>   **NFR「障害検出 5 分以内」を満たしているのは評価の側だけ**であり、
+>   **人が気づくまでの時間は見に行く間隔に等しい。**
+> - **Grafana が provisioning を受理するかは未検証**である（実装環境で Grafana を起動できない。
+>   [IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 1）。機械で確かめたのは
+>   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
+>   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめる。**
+>
+> **★ 暫定経路を閉じる条件（併存させない）**: **ADR-0006 は改めない**（アラートは Alertmanager を用いる）。
+> 次の 3 つが揃った時点で、**`deploy/grafana/provisioning/alerting/` を削除する**。
+>
+> 1. `prometheus.yml`（compose・k8s の**両方**）の `alertmanagers.targets` に到達可能な Alertmanager がある
+> 2. Alertmanager 側に受信先（メール/チャット）が設定され、**テスト通知が実際に届いた**
+> 3. 下表 5 ルールの発火が Alertmanager 経由で通知されることを**1 件以上、実際に確かめた**
+>
+> **併存させない理由**: 同じ 5 ルールが 2 系統で評価されると**同じ事象に対して 2 通の通知が出る**。
+> 重複は「片方は既知の誤報だ」という運用習慣を生み、**本物の通知を握り潰す方向に働く。**
+> 削除の際は `scripts/check-grafana-alerting.js` も併せて削除する（対象ファイルが消えると門 A で fail するため、
+> **残したままにはできない** ——「暫定を消し忘れる」ことが CI で表面化する）。
 
 | 監視対象 | 指標（メトリクス） | 閾値 | 通知先（**配備後**。現状は未配線） | 対応 NFR |
 | --- | --- | --- | --- | --- |
@@ -640,7 +668,10 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 
 - **Alertmanager の受信先設定**: メール/チャット通知経路（`prometheus.yml` の `alerting.alertmanagers`）は
   運用環境ごとに配備・設定する（現状はターゲット未設定でルール評価のみ。**compose・k8s の 2 か所とも空**）。
-  **配備時期は実環境の判断**であり **#546 で追跡している**。**暫定の通知先（Grafana 内蔵アラート）の配線は #665**。
+  **配備時期は実環境の判断**であり **#546 で追跡している**。
+  **暫定の通知先（Grafana 内蔵アラート）は #665 で配線済み**だが、**push 配信の宛先は依然として無い**
+  （本書「監視・アラート」の★参照。気づく経路は Grafana の Alerting 画面を見ることだけ）。
+  **配備後は暫定経路を削除する**（併存させない。条件は同★）。
 - **LLM 費用の自動検知**: **無い**（Alertmanager 未配備）。**検知の遅れは最大 1 か月**であることを受け入れ、
   月次の手動確認を暫定の統制として置いた（計画 決定 39 / [Runbook](llm-cost-monthly-review-runbook.md)）。
   **月次予算の金額（しきい値）も未確定**であり、実測後に確定する（決定 41）。
