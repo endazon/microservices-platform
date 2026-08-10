@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-03, FR-04, FR-08, FR-09, FR-10, FR-11, FR-15, NFR, ADR-0031, IADR-0121, IADR-0122, IADR-0131, IADR-0135]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-08
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
 ---
@@ -184,8 +184,15 @@ BFF が契約違反の 200 を返せば `undefined` が入り、`??` を消し�
 - フォローアップ:
   1. **C# の非 null 性と OpenAPI の `required` を突合する検査**（[[IADR-0131]] フォローアップ 2 の一部）。
      いまは本 ADR の表が人手の突合結果でしかない。
+     **［2026-08-10 追記 / #525］配備した。** `scripts/check-openapi-dto-drift.js`（[[IADR-0159]] 決定 3・4）が
+     プロパティ集合と `required` を機械的に突き合わせる。**論点 A1 ＋ B1 をそのまま規則にしている。**
+     ただし**既存の不一致 20 件はラチェットで据え置き**であり（`scripts/openapi-dto-drift-allowlist.json`）、
+     新規混入だけを止める。**型の不一致は見ない**（表現が 1 対 1 でなく誤検出が保守コストを上回るため）。
   2. **`AccessScopeResponse` に `granted` が無い**（C# には在る）。フィールドの追加は本 issue の範囲外
      として申し送り、**独立の issue #525 として起票済み**である（作業仕様書 §未決事項 1）。
+     **［2026-08-10 追記 / #525］回収済み。** `granted` を `properties` と `required` の両方へ足した
+     （[[IADR-0159]] 決定 1）。**本 ADR の論点 B の B1 がそのまま適用された最初の例**である ——
+     既定値つき（`bool Granted = false`）だが応答本文には必ず出るため `required` に含める。
   3. **テストの fixture を生成型で型付けする**（作業仕様書 §未決事項 2）。現状 fixture は `unknown`
      を経由するため、`required` を増やしても fixture の欠落は検出されない。
 

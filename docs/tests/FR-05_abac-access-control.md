@@ -8,7 +8,7 @@ related_ids:
   - UC-05
 author: claude
 created: 2026-06-27
-updated: 2026-08-09
+updated: 2026-08-10
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05)"
 ---
@@ -54,16 +54,36 @@ plan_refs:
 | T-14 | 未知・空のキー（#540） | 同上 | 空集合へ縮退する | 例外フロー | 自動 |
 | T-15 | BFF 経由（#540） | `POST /bff/attribute-values` | **クライアント指定の Scope を信頼しない**。不許可なら後段を呼ばず空配列 | 権限昇格の防止 | 自動 |
 | T-16 | 後段が 500 / 400 を返す（#540） | 同上 | **そのステータスを透過する**（200 空配列へ**畳まない**）。縮退が守るのは権限外の存在を示さないことであって、**後段の障害を隠すことではない** | 例外フロー | 自動 |
+| T-17 | 全件遮断（マッチするポリシー 0 件）を**直列化する**（#525） | `AccessScopeResponse` の JSON | 本文に **`granted: false`** が載る。`allowedFilters` は空 | 権限外を出さない | 自動 |
+| T-18 | 条件なしの全件許可を直列化し、T-17 と**本文を比べる**（#525） | 同上 | `granted: true`。**`allowedFilters` は T-17 と同一（どちらも空）だが本文全体は異なる** | 権限外を出さない | 自動 |
+
+> **T-17 / T-18 は `T-01` / `T-04` と観点が違う。** あちらは `AbacEvaluator` が返す **C# オブジェクト**の
+> `Granted` を見ており、**シリアライズを通っていない**。#525 が言っているのは「**契約から**区別できない」
+> ことなので、T-17 / T-18 は**本文（JSON）を直接読む**。
+>
+> **`POST /authz/scope` の応答値は端点越しに固定していない。** `TestWebApplicationFactory` の
+> InMemory DB は固定名 `AuthzTest` でプロセス内共有であり、既存テストが**利用者条件の空なポリシー**を
+> 作るため（空条件は全利用者にマッチする）、`granted=false` を端点で固定すると実行順に依存して壊れる。
+> **端点では「`granted` が本文に在ること」だけを固定する**（値は主張しない）。
 
 ## テストデータ
 
 - `ChunkPayload`（`confidentiality`/`dept` 属性を変えた複数件、属性欠落 1 件）。
 - `AbacPolicy`（user/document 条件を変えた複数件）。
 
+## 対応するテストクラス
+
+| テストクラス | 担当するケース |
+| --- | --- |
+| `AbacEvaluatorTests` | T-01〜T-04（スコープ解決の意味論） |
+| `AccessScopeContractTests` | **T-17 / T-18**（本文に載る形。#525） |
+
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260627_FR-05_abac-deny-by-default.md`
-- 実装 ADR: `../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
+- 作業仕様書: `../specs/20260627_FR-05_abac-deny-by-default.md` ／
+  `../specs/20260810_issue-525_access-scope-granted.md`（#525）
+- 実装 ADR: `../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md` ／
+  `../adr/IADR-0159_openapi-dto-drift-checker.md`（#525）
 
 ## 未決事項
 
