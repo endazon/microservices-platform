@@ -74,9 +74,12 @@ docs/specs/20260811_issue-626_...:122, :147 同上
 ```console
 $ git ls-files -z ':!planning' ':!src/ai-stock-trading' | xargs -0 grep -ln 'rules/traceability' | wc -l
 114
-$ # うち Markdown リンク形 `](...traceability.md)` を持つもの
+$ # うち Markdown リンク形（角括弧＋丸括弧）で当該ファイルを指すもの
 32
 ```
+
+> **★ 上の行に Markdown リンクの書式そのものを書かないのは、`check-doc-links.js` が
+> コードブロックを読み飛ばさないためである**（実測。書いたら破損リンクとして落ちた）。
 
 | 区分 | ファイル数 | 書き換え可否 |
 | --- | ---: | --- |
