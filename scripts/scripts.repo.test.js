@@ -3978,6 +3978,51 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #587: ピン留めモデルの版数移行 Runbook（IADR-0112 決定 3） --------------------
+  //
+  // ★ **文書は消えても CI が赤くならない。** 受け入れ基準の 3 点が Runbook から落ちたら
+  //   気づけるようにする（#546 / #665 と同じ型）。**文言の丸写しではなく、
+  //   「その節が果たす役割」を固定する。**
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const RUNBOOK = 'docs/operations/llm-model-pin-runbook.md';
+
+    ok('ピン Runbook: 版数移行に Stage 0 再検証が前提だと読み取れる', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /Stage 0/, 'Stage 0 再検証への言及が無い');
+      assert.match(t, /ADR-0011/, 'ピン留めを定めた計画 ADR への言及が無い');
+    });
+
+    ok('ピン Runbook: 利用不能時は実行せず発注せず、かつ「障害ではない」と書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /発注もしない/, '「発注しない」が書かれていない');
+      // ★ 禁止だけでは足りない。**なぜ落とさないのか**が無いと善意で破られる（#382 の懸念）。
+      assert.match(t, /障害ではない/, '「障害ではない」（設計上の正常な結果）が書かれていない');
+      // レート制限と利用不能の区別（確定事項 3）。
+      assert.match(t, /429/, 'レート制限（429）と利用不能の区別が書かれていない');
+    });
+
+    ok('ピン Runbook: 監視対象を単一情報源で示し、値を複写していない', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /PurposeModels/, 'ピンの単一情報源（PurposeModels）を指していない');
+      assert.match(t, /appsettings\.json/, '単一情報源のファイルを指していない');
+      // ★★ 値そのものを書き写していないこと。#440 が analysis を変える予定であり、
+      //    複写すると本 PR の時点で既に古くなることが分かっている（[[IADR-0141]]）。
+      assert.doesNotMatch(
+        t,
+        /claude-fable-5/,
+        'ピンの値を Runbook へ複写している（単一情報源を指すだけにする。#440 で変わる値である）',
+      );
+    });
+
+    ok('ピン Runbook: 運用仕様書から辿れる（孤立していない）', () => {
+      const ops = fs.readFileSync(path.join(REPO, 'docs/operations/operations.md'), 'utf8');
+      assert.match(ops, /llm-model-pin-runbook/, 'operations.md から Runbook へ辿れない');
+    });
+  }
+
   // --- #626: 逆リンク義務の向き（IADR-0171） ------------------------------------
   //
   // ★ 裁定（2026-08-11・案 A）: 「相互リンク」の義務は**仕様書側の一方向**であり、
