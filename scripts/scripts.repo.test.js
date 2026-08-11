@@ -4079,6 +4079,89 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #684: 必読規約の減量計画（IADR-0172） ------------------------------------
+  //
+  // ★ **計画は文書にしか無い。消えても CI は赤くならない**（#546 / #665 / #587 と同じ型）。
+  //   固定するのは**計画の要 3 点**であって、文言の丸写しではない。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const PLAN_ADR = 'docs/adr/IADR-0172_required-rules-slimming-plan.md';
+    const RULES = '.claude/rules/traceability.md';
+
+    // ★★ 最重要。**入口のパスを変えられない**という制約が計画の土台である。
+    //   確定済みの記録（docs/specs/ 62 件・docs/adr/ 19 件）からリンクが張られており、
+    //   それらは IADR-0166 と .claude/rules/traceability.md 自身が書き換えを禁じている。
+    //   **この制約が落ちると「分割すればよい」という誤った計画へ戻る。**
+    ok('#684 計画: 入口ファイルのパスを変えないことが書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /パスは変えない/, '「パスは変えない」という決定が無い');
+      assert.match(t, /確定済み/, 'パスを変えられない理由（確定済み記録からのリンク）が無い');
+    });
+
+    // ★ 「機械が強制しているから読まなくてよい」は、**機械が止める範囲でしか成り立たない**。
+    //   採番衝突時の改番手順は機械が無い（check-adr-numbering.js は欠番・重複しか見ない）。
+    ok('#684 計画: 機械が強制していない規範を入口へ残すと書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /採番衝突時の改番手順/, '機械が無い規範（採番衝突時の改番手順）の特定が無い');
+      assert.match(t, /導線/, '別紙化する場合の導線への言及が無い');
+    });
+
+    // ★★ **区分を粗く取ると後段が索引更新まで避ける。**
+    //   `docs/adr/` には**確定済みの IADR 本体**と**都度更新する索引（README.md）**が混在する。
+    //   初版は `docs/adr/` を一律「不可」とし、確定済みリンクを 22 件（docs/specs/ の分だけ）と
+    //   過小に数えていた。**正しくは 22 ＋ IADR 本体 6 ＝ 28 件**であり、
+    //   **索引の 1 件は可変なので数に入れない**（レビュー指摘の「29 件」は索引を含めた数である）。
+    ok('#684 計画: 索引（docs/adr/README.md）が可変だと区別されている', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /README\.md/, '索引（docs/adr/README.md）への言及が無い');
+      assert.match(
+        t,
+        /索引[^\n]*可|可[^\n]*索引/,
+        '索引が「可変」であることが区別されていない。後段が索引更新まで避ける',
+      );
+      assert.match(t, /28 件/, '書き換えられないリンク数（28 件）が書かれていない');
+    });
+
+    // ★★ **索引の 1 行要約に件数を書かない。** 本体と索引の 2 箇所へ同じ数を書くと
+    //   **片方が黙って古くなる**（[[IADR-0141]]「参照点を 1 つに畳む」）。実際に起きた ——
+    //   本体と作業仕様書の「22 件」を「28 件」へ直したとき、**索引だけ 22 件のまま残った**。
+    //   `check-doc-links.js` はリンク切れしか見ないので機械では捕まらない。
+    //   **同期し直すのではなく、重複そのものを消した**（#679 で 3 回踏んだ末に採った手）。
+    ok('#684 計画: ADR 索引の要約が件数を持たない（本体と二重に持たない）', () => {
+      const idx = fs.readFileSync(path.join(REPO, 'docs/adr/README.md'), 'utf8');
+      const row = idx.split('\n').find((l) => l.includes('IADR-0172_required-rules-slimming-plan.md'));
+      assert.ok(row, 'IADR-0172 の索引行が無い');
+      assert.doesNotMatch(
+        row,
+        /\d+\s*件/,
+        '索引の要約が件数を持っている。本体と二重に持つと片方が古くなる（IADR-0141）',
+      );
+    });
+
+    // ★ 事実と違うことを書かないための門。別紙化は「読む量」を減らすのであって
+    //   「総量」は減らさない。**後続の PR がここを踏み外しやすい。**
+    ok('#684 計画: 「総量は減らない」という限界が明記されている', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /総量は減らない/, '別紙化の限界（総量は減らない）が明記されていない');
+    });
+
+    // ★ 入口が「常時適用」でなくなると、計画の前提（毎セッション必読の集合）が崩れる。
+    //   **本 PR は 1 行も移動しないので、ここは現状の固定である。**
+    ok('#684 計画: 入口ファイルが現状どおり常時適用である', () => {
+      const t = fs.readFileSync(path.join(REPO, RULES), 'utf8').replace(/\r\n/g, '\n');
+      assert.ok(t.startsWith('---\n'), 'frontmatter が無い');
+      const end = t.indexOf('\n---', 3);
+      assert.ok(end !== -1, 'frontmatter が閉じていない');
+      assert.match(
+        t.slice(0, end),
+        /paths:\s*\n\s*-\s*["']\*\*\/\*["']/,
+        '入口の paths が "**/*"（常時適用）でない。計画の前提が変わっている',
+      );
+    });
+  }
+
   // --- #626: 逆リンク義務の向き（IADR-0171） ------------------------------------
   //
   // ★ 裁定（2026-08-11・案 A）: 「相互リンク」の義務は**仕様書側の一方向**であり、
