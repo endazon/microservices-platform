@@ -6,6 +6,7 @@ related_ids:
   - NFR
   - IADR-0067
   - IADR-0141
+  - IADR-0179
   - IADR-0180
 author: claude
 created: 2026-08-11

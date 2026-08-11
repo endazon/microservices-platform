@@ -37,7 +37,7 @@ on:
     # reopened を含めるのは、この check を required status check に指定できるようにするため
     # （#705 / IADR-0182 決定 3）。再オープンされた PR で report されないと、必須指定した
     # 瞬間にその PR が永久 pending になる。本リポの他 8 ワークフローはすべて reopened を持ち、
-    # 本ファイルだけが例外だった（キットの .example から継承した欠陥。環流済み）。
+    # 本ファイルだけが例外だった（キットの .example から継承した欠陥。planning#313 として起票済み）。
     types: [opened, synchronize, reopened]
 
 # 連続 push でレビューが多重起動するのを防ぐ（古い実行はキャンセルする）。

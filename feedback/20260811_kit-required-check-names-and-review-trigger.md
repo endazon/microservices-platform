@@ -1,7 +1,7 @@
 ---
 title: キットの必須チェック名がワークフロー名になっており、そのとおり設定すると恒久 pending になる
 type: plan-feedback
-status: open
+status: triaged
 category: 手順の誤り
 related_ids: [NFR, IADR-0182]
 source_repo: microservices-platform
@@ -87,7 +87,7 @@ on:
 
 | | |
 | --- | --- |
-| 計画リポへの起票 | **未（本記録の作成まで）** |
+| 計画リポへの起票 | **planning#313 として起票済み（2026-08-11・`decision-needed`）** |
 
 > **★ 「環流した」と書けるのは、計画リポへのコピーまたは Issue 起票まで済んだときだけ**である
 > （`docs/README.md` 運用ルール 5）。
