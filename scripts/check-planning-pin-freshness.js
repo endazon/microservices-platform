@@ -24,7 +24,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { warn, notice } = require('./lib/ci-annotate.js');
+const { warn } = require('./lib/ci-annotate.js');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const PLANNING = 'planning';
@@ -35,11 +35,32 @@ const PLANNING = 'planning';
 // 実測（2026-08-11・pin 2cf0795 → planning HEAD 14aed71）では、3 コミット 22 ファイルの
 // 差分のうち、この規則で拾うのは ADR の status 変化 1 件と要求の変更 1 件である。
 
-/** ADR ファイル（status の変化を見る）。 */
-const ADR_RE = /^projects\/[^/]+\/07_adr\/ADR-\d+[^/]*\.md$/;
+/**
+ * ★★ **本リポジトリが実装するプロジェクトに限る。**
+ *
+ * 計画リポには**3 つのプロジェクト**が同居する（実測: `ai-stock-trading` 28 件 /
+ * `microservices-platform` 45 件 / `mondriq` 6 件の ADR）。**`projects/<any>/` で拾うと
+ * AST や mondriq の ADR まで「本リポの着手ゲート」として鳴る。**
+ *
+ * IADR-0119 / IADR-0142 が定めるのは **microservices-platform の FR-17〜21** の話であり、
+ * 他プロジェクトの ADR が `Accepted` になっても本リポの着手可否とは無関係である。
+ *
+ * ★ **これは `.claude/rules/traceability.md` が繰り返し記録している「AST / MSP の ID 名前空間衝突」
+ *   と同型である。** 初版はプロジェクトを絞っておらず、**実データで AST の ADR を 1 件拾っていた**
+ *   （`ADR-0003_ai-decision-guardrails.md`。`status` が変わっていなかったため鳴らなかっただけ）。
+ */
+const PLANNING_PROJECT = 'microservices-platform';
 
-/** 受け入れ基準が載る計画書（変更そのものを見る）。 */
-const GATE_DOC_RE = /^projects\/[^/]+\/(02_requirements|05_screens)\/[^/]+\.md$/;
+/** ADR ファイル（status の変化を見る）。 */
+const ADR_RE = new RegExp(`^projects/${PLANNING_PROJECT}/07_adr/ADR-\\d+[^/]*\\.md$`);
+
+/**
+ * 受け入れ基準が載る計画書（変更そのものを見る）。
+ *
+ * ★ **限界**: 直下の 1 階層だけを見る。実データでは両ディレクトリに `.md` は 1 件ずつしか無い
+ *   （`mockups/` 配下は `.html`）が、**将来ここに `.md` が増設されると無警告で `ignored` へ落ちる。**
+ */
+const GATE_DOC_RE = new RegExp(`^projects/${PLANNING_PROJECT}/(02_requirements|05_screens)/[^/]+\\.md$`);
 
 /**
  * 変更ファイル一覧を「着手可否に効くもの」と「効かないもの」へ仕分ける。純関数。
@@ -88,7 +109,9 @@ function adrStatusChanges(pairs) {
       after: a,
       // ★ **「Accepted になった」だけを言う。「着手できる」とは言わない。**
       //   IADR-0119 は「**前提 ADR が全部 Accepted になった**」ことと「**保留が全部外れた**」ことは
-      //   別だと明記している —— FR-19/20 は前提検証の完了も要り、FR-21 は計画側の確定（fixed）が要る。
+      //   別だと明記している —— FR-19/20 は **着手する範囲が「覆り得る範囲」の外である**ことも要り
+      //   （IADR-0142 が IADR-0119 決定 2 を部分改定した。範囲の正は計画 ADR-0037 の着手可否の注記）、
+      //   FR-21 は計画側の確定（fixed）が要る。
       //   同書はこの取り違えが**実際に起きた**とも記録している（一括りにした追記の是正）。
       //   検知器が「ゲートが外れた」と名乗ると、同じ取り違えを機械が量産する。
       becameAccepted: b === 'Proposed' && a === 'Accepted',
@@ -251,12 +274,12 @@ function selfTest() {
   // findIssues
   t(
     'pin == head なら乖離なし',
-    findIssues({ pin: 'x', head: 'x', files: ['projects/p/07_adr/ADR-1_a.md'], adrPairs: [] }).drifted === false,
+    findIssues({ pin: 'x', head: 'x', files: [`projects/${PLANNING_PROJECT}/07_adr/ADR-1_a.md`], adrPairs: [] }).drifted === false,
   );
   const r = findIssues({
     pin: 'a',
     head: 'b',
-    files: ['projects/p/02_requirements/01_requirements.md', 'draft/x.md'],
+    files: [`projects/${PLANNING_PROJECT}/02_requirements/01_requirements.md`, 'draft/x.md'],
     adrPairs: [],
   });
   t('要求の変更で鳴る', r.drifted && r.reasons.some((x) => x.kind === 'gate-doc-changed'));
@@ -287,6 +310,16 @@ function main() {
         '（PR CI は submodule を取得しない）。乖離が無いことを意味しません。',
     );
     process.exit(0);
+  }
+  // ★ 門: 対象プロジェクトが存在しないのに緑を返さない。**改名・移動が起きると
+  //   classifyChanges が全件を ignored へ落とし、「着手可否に効く変更はありません」と
+  //   静かに報告し続ける**（#664 / IADR-0130 の「0 件走査で緑を返さない」と同型）。
+  if (!fs.existsSync(path.join(REPO_ROOT, PLANNING, 'projects', PLANNING_PROJECT))) {
+    console.error(
+      `[check-planning-pin-freshness] planning に projects/${PLANNING_PROJECT} がありません。` +
+        ' 対象プロジェクトの改名・移動を疑ってください（黙って 0 件検査へ落ちないよう fail させています）。',
+    );
+    process.exit(1);
   }
   const pin = pinnedCommit();
   const head = remoteHead(REPO_ROOT, { fetch: !noFetch });
@@ -331,8 +364,8 @@ function main() {
     // ★ 「着手できる」とは書かない（上の becameAccepted のコメント参照）。
     lines.push(
       `  ★ ${accepted.length} 件の ADR が Proposed → Accepted になりました。` +
-        'IADR-0119 決定 2 の着手条件の**一部**です —— **前提検証や計画側の確定が別に要る要求があります**。' +
-        '保留が外れたかは IADR-0119 を読んで判断してください。',
+        'IADR-0119 決定 2 の着手条件の**一部**です —— **範囲基準（IADR-0142）や計画側の確定が' +
+        '別に要る要求があります**。保留が外れたかは IADR-0119 と IADR-0142 を読んで判断してください。',
     );
   }
   lines.push('  pin を進めるか判断してください（本検査は落としません）。');
@@ -356,6 +389,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  PLANNING_PROJECT,
   classifyChanges,
   statusOf,
   adrStatusChanges,

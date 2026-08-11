@@ -47,7 +47,10 @@ fi
 # 【必ず fail-open にする】ネットワーク・認証・submodule の populate 状態に依存するため、
 # ここで失敗してもセットアップは続ける。**pin 検査よりセットアップを壊さないことを優先する。**
 if command -v node >/dev/null 2>&1 && [ -f scripts/check-planning-pin-freshness.js ]; then
-  node scripts/check-planning-pin-freshness.js 2>&1 | sed 's/^/[setup] /' || log "pin 鮮度の確認でエラー（継続）"
+  # ★ `|| log` をパイプの後ろに置くと、`||` は最終段（sed）の終了コードを見るため
+  #   **node が落ちても発火しない**（死んだコードになる）。PIPESTATUS で先頭段を見る。
+  node scripts/check-planning-pin-freshness.js 2>&1 | sed 's/^/[setup] /'
+  [ "${PIPESTATUS[0]}" -eq 0 ] || log "pin 鮮度の確認でエラー（継続）"
 fi
 
 log "セットアップ完了"

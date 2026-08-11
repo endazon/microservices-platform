@@ -5,6 +5,8 @@ status: draft
 related_ids:
   - NFR
   - IADR-0119
+  - IADR-0142
+  - IADR-0170
 author: claude
 created: 2026-08-11
 updated: 2026-08-11
@@ -17,7 +19,10 @@ plan_refs:
 ## 起点
 
 - **NFR**（着手ゲートの検知）。起点 issue: **#589**（出所は #572 の施策 7。親 #454）
-- 制約: **[IADR-0119](../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md)**（着手条件の**一部**が「前提 ADR が `Accepted`」。**全部ではない**）／ IADR-0115 分類 A
+- 制約: **[IADR-0119](../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md)**（着手条件の**一部**が「前提 ADR が `Accepted`」。**全部ではない**）
+  ／ **[IADR-0142](../adr/IADR-0142_fr19-20-scoped-release-by-overturn-range.md)**（**IADR-0119 決定 2 の FR-19 / FR-20 を部分改定**。
+  「前提検証の完了」は着手条件から外れ、**範囲基準**へ変わった）／ IADR-0115 分類 A
+- 実装 ADR: **[IADR-0170](../adr/IADR-0170_planning-pin-freshness-detection.md)**
 - 先例: **#507**（ワークフローを触らず既存呼び出し口へ相乗りする経路）
 
 > **★ 件数・SHA の基準時点は develop（2026-08-11 実測）である。**
@@ -124,6 +129,7 @@ ce96eb8 chore(NFR): フロントエンドに prettier の format ゲートを新
 | --- | --- |
 | `07_adr/ADR-*.md` の **`status:` の変化**（とくに `Proposed` → `Accepted`） | 本文だけの変更 |
 | ★ ただし**「Accepted になった」は「着手できる」ではない** —— IADR-0119 は両者が別だと明記し、**一括りにした誤りが実際に起きた**と記録している。検知器は**事実だけを言い、判断はしない** | |
+| ★ **対象は `projects/microservices-platform/` に限る** —— 計画リポには AST・mondriq も同居する（[IADR-0170](../adr/IADR-0170_planning-pin-freshness-detection.md) 決定 5） | 他プロジェクトの ADR・要求 |
 | `02_requirements/*.md` / `05_screens/*.md` の変更 | `draft/` `tools/` `INDEX.md` `README.md` |
 
 **実測の差分（軸 a）はこの条件で 2 件鳴る**（ADR-0023 の status 変化・要求の変更）。

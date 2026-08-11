@@ -4048,10 +4048,10 @@ module.exports = ({ ok, assert }) => {
       const r = pin.findIssues({
         pin: 'a',
         head: 'b',
-        files: ['projects/p/07_adr/ADR-1_a.md', 'projects/p/07_adr/ADR-2_b.md'],
+        files: [`projects/${pin.PLANNING_PROJECT}/07_adr/ADR-1_a.md`, `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-2_b.md`],
         adrPairs: [
-          { file: 'projects/p/07_adr/ADR-1_a.md', before: 'status: Proposed\n', after: 'status: Accepted\n' },
-          { file: 'projects/p/07_adr/ADR-2_b.md', before: 'status: Accepted\n', after: 'status: Superseded\n' },
+          { file: `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-1_a.md`, before: 'status: Proposed\n', after: 'status: Accepted\n' },
+          { file: `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-2_b.md`, before: 'status: Accepted\n', after: 'status: Superseded\n' },
         ],
       });
       assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-accepted').length, 1);
@@ -4059,7 +4059,7 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('pin 鮮度: pin == head なら鳴らない（偽陽性の側）', () => {
-      const r = pin.findIssues({ pin: 'x', head: 'x', files: ['projects/p/02_requirements/a.md'], adrPairs: [] });
+      const r = pin.findIssues({ pin: 'x', head: 'x', files: [`projects/${pin.PLANNING_PROJECT}/02_requirements/a.md`], adrPairs: [] });
       assert.strictEqual(r.drifted, false);
     });
 
@@ -4081,8 +4081,55 @@ module.exports = ({ ok, assert }) => {
     ok('pin 鮮度: setup.sh がセッション開始時に検査器を呼ぶ（案 3）', () => {
       const text = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8');
       assert.match(text, /check-planning-pin-freshness\.js/, 'setup.sh から呼ばれていない');
-      // fail-open であること。**pin 検査よりセットアップを壊さないことを優先する。**
-      assert.match(text, /check-planning-pin-freshness\.js[^\n]*\|\||\|\| log/, 'setup.sh 側が fail-open でない');
+    });
+
+    // ★★ 初版のこのテストは**空振りだった**（PR #680 レビュー 🟡）。
+    //   `/A|\|\| log/` は選択の優先順位により右側だけで無条件に一致し、`setup.sh` の
+    //   別の行（`dotnet restore … || log …`）が常に当たっていた。**pin 検査の呼び出しから
+    //   fail-open を外してもテストは通り続けた**（変異試験で確認）。**対象の行を特定してから見る。**
+    ok('pin 鮮度: setup.sh の pin 検査呼び出しが fail-open（対象行を特定して見る）', () => {
+      const lines = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8').split('\n');
+      // **呼び出し行**を特定する（`if [ -f … ]` の存在確認行やコメント行と取り違えない）。
+      const i = lines.findIndex((l) => /^\s*node\s+scripts\/check-planning-pin-freshness\.js/.test(l));
+      assert.ok(i >= 0, 'setup.sh に pin 検査の呼び出し行（node …）が無い');
+      // 呼び出しの直後で終了コードを拾って握り潰していること。
+      // **パイプの後ろに `|| log` を置くと最終段（sed）の状態を見てしまい発火しない**ため、
+      // `PIPESTATUS` で先頭段を見る形であることを固定する。
+      const after = lines.slice(i, i + 3).join('\n');
+      assert.match(
+        after,
+        /PIPESTATUS\[0\]/,
+        `pin 検査の失敗が握り潰されている（パイプ後ろの \`|| log\` は発火しない）:\n${after}`,
+      );
+    });
+
+    // ★★ 計画リポには 3 プロジェクトが同居する（AST / MSP / mondriq）。
+    //   **初版はプロジェクトを絞っておらず、実データで AST の ADR を拾っていた**（レビュー 🔴）。
+    //   `.claude/rules/traceability.md` が繰り返し記録している名前空間衝突と同型である。
+    ok('pin 鮮度: 他プロジェクト（AST / mondriq）の ADR・要求を拾わない', () => {
+      const c = pin.classifyChanges([
+        'projects/ai-stock-trading/07_adr/ADR-0003_x.md',
+        'projects/mondriq/07_adr/ADR-0001_y.md',
+        'projects/ai-stock-trading/02_requirements/01_requirements.md',
+        'projects/mondriq/05_screens/01_screens.md',
+      ]);
+      assert.deepStrictEqual(c.adr, [], `他プロジェクトの ADR を拾った: ${c.adr.join(', ')}`);
+      assert.deepStrictEqual(c.gateDocs, [], `他プロジェクトの計画書を拾った: ${c.gateDocs.join(', ')}`);
+    });
+
+    ok('pin 鮮度: 自プロジェクト（microservices-platform）は拾う（絞りすぎていない）', () => {
+      const c = pin.classifyChanges([
+        `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-0023_z.md`,
+        `projects/${pin.PLANNING_PROJECT}/02_requirements/01_requirements.md`,
+      ]);
+      assert.strictEqual(c.adr.length, 1);
+      assert.strictEqual(c.gateDocs.length, 1);
+    });
+
+    ok('pin 鮮度: 対象プロジェクト名が実在する（planning 側の改名で静かに 0 件へ落ちない）', () => {
+      const dir = path.join(REPO, 'planning', 'projects', pin.PLANNING_PROJECT);
+      if (!fs.existsSync(path.join(REPO, 'planning', 'projects'))) return; // 未 populate なら対象外
+      assert.ok(fs.existsSync(dir), `planning に projects/${pin.PLANNING_PROJECT} が無い（改名・移動を疑う）`);
     });
   }
 };
