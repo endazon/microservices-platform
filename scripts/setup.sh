@@ -39,5 +39,19 @@ fi
 #   python3 -m pip install -e '.[test]' 2>/dev/null || python3 -m pip install -r requirements.txt || log "pip セットアップでエラー（継続）"
 # fi
 
+# --- 計画 pin の鮮度（issue #589 / IADR-0170） ---
+# 計画側で裁定が反映されても、pin を進めるまで実装側には何も伝わらない。**待ち時間の実体は
+# 「回答待ち」ではなく「回答に気づいていない時間」だった**（#572 施策 7）。セッション開始時に
+# 目へ入れる。
+#
+# 【必ず fail-open にする】ネットワーク・認証・submodule の populate 状態に依存するため、
+# ここで失敗してもセットアップは続ける。**pin 検査よりセットアップを壊さないことを優先する。**
+if command -v node >/dev/null 2>&1 && [ -f scripts/check-planning-pin-freshness.js ]; then
+  # ★ `|| log` をパイプの後ろに置くと、`||` は最終段（sed）の終了コードを見るため
+  #   **node が落ちても発火しない**（死んだコードになる）。PIPESTATUS で先頭段を見る。
+  node scripts/check-planning-pin-freshness.js 2>&1 | sed 's/^/[setup] /'
+  [ "${PIPESTATUS[0]}" -eq 0 ] || log "pin 鮮度の確認でエラー（継続）"
+fi
+
 log "セットアップ完了"
 exit 0

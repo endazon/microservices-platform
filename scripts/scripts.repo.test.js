@@ -3977,4 +3977,190 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #589: 計画 pin の鮮度検知（IADR-0170） -----------------------------------
+  //
+  // ★ 待ち時間の実体は「回答待ち」ではなく「回答に気づいていない時間」だった（#572 施策 7）。
+  //   #548 / #560 / #589 は 3 回とも「人が気づいて起票」で処理されている。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const pin = require('./check-planning-pin-freshness.js');
+
+    ok('check-planning-pin-freshness --self-test が通る', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--self-test'], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      assert.strictEqual(r.status, 0, `${r.stdout || ''}${r.stderr || ''}`);
+    });
+
+    // 判断 4: fail-open。**ただし「検査していない」と「乖離なし」を読み分けられること。**
+    ok('check-planning-pin-freshness: 実データで落ちない（fail-open）', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      assert.strictEqual(r.status, 0, `pin 検査が CI を落とした（fail-open が壊れている）:\n${out}`);
+      // 未 populate なら「検査していません」、populate 済みなら結果のいずれかを必ず出す。
+      // **黙って何も言わずに緑を返さない。**
+      assert.match(
+        out,
+        /検査していません|一致しています|着手可否に効く変更はありません|計画 pin が/,
+        `何も報告せずに緑を返した（「検査していない」と「乖離なし」が読み分けられない）:\n${out}`,
+      );
+    });
+
+    ok('check-planning-pin-freshness: 未 populate では「乖離なし」と書かない', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      if (!/検査していません/.test(out)) return; // populate 済みの環境では対象外
+      assert.match(out, /乖離が無いことを意味しません/, `未 populate で断定している:\n${out}`);
+    });
+
+    // 判断 3: 着手可否に効く差分だけを鳴らす。**鳴りすぎると読まれなくなる。**
+    ok('pin 鮮度: draft / tools / 索引だけの差分では理由が 0 件', () => {
+      const r = pin.findIssues({
+        pin: 'a',
+        head: 'b',
+        files: [
+          'draft/feedback/20260807_x.md',
+          'tools/impl-sync/sync-impl-adr.js',
+          'projects/microservices-platform/INDEX.md',
+          'projects/microservices-platform/07_adr/README.md',
+        ],
+        adrPairs: [],
+      });
+      assert.strictEqual(r.drifted, true, 'pin != head なのに乖離なしと判定した');
+      assert.strictEqual(r.reasons.length, 0, `鳴らすべきでない差分で鳴った: ${JSON.stringify(r.reasons)}`);
+    });
+
+    // ★ 着手条件に関わる遷移（Proposed → Accepted）を、他の status 変化と区別する。
+    //   **「Accepted になった」を「着手できる」と名乗らない** —— IADR-0119 は両者が別だと明記する。
+    ok('pin 鮮度: Proposed → Accepted だけを adr-accepted とする', () => {
+      const r = pin.findIssues({
+        pin: 'a',
+        head: 'b',
+        files: [`projects/${pin.PLANNING_PROJECT}/07_adr/ADR-1_a.md`, `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-2_b.md`],
+        adrPairs: [
+          { file: `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-1_a.md`, before: 'status: Proposed\n', after: 'status: Accepted\n' },
+          { file: `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-2_b.md`, before: 'status: Accepted\n', after: 'status: Superseded\n' },
+        ],
+      });
+      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-accepted').length, 1);
+      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-status-changed').length, 1);
+    });
+
+    ok('pin 鮮度: pin == head なら鳴らない（偽陽性の側）', () => {
+      const r = pin.findIssues({ pin: 'x', head: 'x', files: [`projects/${pin.PLANNING_PROJECT}/02_requirements/a.md`], adrPairs: [] });
+      assert.strictEqual(r.drifted, false);
+    });
+
+    // 決定 1・2: 配線が外れていないか。**「配線した」と書いて実体が無い状態を作らない。**
+    ok('pin 鮮度: 夜間ワークフローが検査器を呼び、issue 起票の導線を持つ', () => {
+      const wf = path.join(REPO, '.github/workflows/planning-pin-freshness.yml');
+      assert.ok(fs.existsSync(wf), '夜間ワークフローが無い');
+      const text = fs.readFileSync(wf, 'utf8');
+      assert.match(text, /node scripts\/check-planning-pin-freshness\.js/, '検査器を呼んでいない');
+      assert.match(text, /gh issue (create|comment)/, '気付き導線（issue 起票）が無い');
+      // ★ 「Accepted になった＝着手できる」と名乗らないこと（IADR-0119 が両者は別だと明記）。
+      assert.doesNotMatch(text, /着手ゲートが外れ/, '検知器が着手可否を断定してはならない');
+      assert.match(text, /submodules: recursive/, 'planning を populate していない（比較対象を取れない）');
+      assert.match(text, /PLANNING_REPO_TOKEN/, 'トークンを渡していない');
+      // ★ 「赤ではなく issue」の設計。continue-on-error や || true で握り潰していないこと。
+      assert.doesNotMatch(text, /continue-on-error/, '検査器は元々落ちない。握り潰しは不要で、誤解を招く');
+    });
+
+    ok('pin 鮮度: setup.sh がセッション開始時に検査器を呼ぶ（案 3）', () => {
+      const text = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8');
+      assert.match(text, /check-planning-pin-freshness\.js/, 'setup.sh から呼ばれていない');
+    });
+
+    // ★★ 初版のこのテストは**空振りだった**（PR #680 レビュー 🟡）。
+    //   `/A|\|\| log/` は選択の優先順位により右側だけで無条件に一致し、`setup.sh` の
+    //   別の行（`dotnet restore … || log …`）が常に当たっていた。**pin 検査の呼び出しから
+    //   fail-open を外してもテストは通り続けた**（変異試験で確認）。**対象の行を特定してから見る。**
+    ok('pin 鮮度: setup.sh の pin 検査呼び出しが fail-open（対象行を特定して見る）', () => {
+      const lines = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8').split('\n');
+      // **呼び出し行**を特定する（`if [ -f … ]` の存在確認行やコメント行と取り違えない）。
+      const i = lines.findIndex((l) => /^\s*node\s+scripts\/check-planning-pin-freshness\.js/.test(l));
+      assert.ok(i >= 0, 'setup.sh に pin 検査の呼び出し行（node …）が無い');
+      // 呼び出しの直後で終了コードを拾って握り潰していること。
+      // **パイプの後ろに `|| log` を置くと最終段（sed）の状態を見てしまい発火しない**ため、
+      // `PIPESTATUS` で先頭段を見る形であることを固定する。
+      const after = lines.slice(i, i + 3).join('\n');
+      assert.match(
+        after,
+        /PIPESTATUS\[0\]/,
+        `pin 検査の失敗が握り潰されている（パイプ後ろの \`|| log\` は発火しない）:\n${after}`,
+      );
+    });
+
+    // ★★ 計画リポには 3 プロジェクトが同居する（AST / MSP / mondriq）。
+    //   **初版はプロジェクトを絞っておらず、実データで AST の ADR を拾っていた**（レビュー 🔴）。
+    //   `.claude/rules/traceability.md` が繰り返し記録している名前空間衝突と同型である。
+    ok('pin 鮮度: 他プロジェクト（AST / mondriq）の ADR・要求を拾わない', () => {
+      const c = pin.classifyChanges([
+        'projects/ai-stock-trading/07_adr/ADR-0003_x.md',
+        'projects/mondriq/07_adr/ADR-0001_y.md',
+        'projects/ai-stock-trading/02_requirements/01_requirements.md',
+        'projects/mondriq/05_screens/01_screens.md',
+      ]);
+      assert.deepStrictEqual(c.adr, [], `他プロジェクトの ADR を拾った: ${c.adr.join(', ')}`);
+      assert.deepStrictEqual(c.gateDocs, [], `他プロジェクトの計画書を拾った: ${c.gateDocs.join(', ')}`);
+    });
+
+    ok('pin 鮮度: 自プロジェクト（microservices-platform）は拾う（絞りすぎていない）', () => {
+      const c = pin.classifyChanges([
+        `projects/${pin.PLANNING_PROJECT}/07_adr/ADR-0023_z.md`,
+        `projects/${pin.PLANNING_PROJECT}/02_requirements/01_requirements.md`,
+      ]);
+      assert.strictEqual(c.adr.length, 1);
+      assert.strictEqual(c.gateDocs.length, 1);
+    });
+
+    // ★★ `jq '.[0].field'` は**空配列に当てると文字列 "null" を出す**（実測）。
+    //   `EXISTING=$(… --jq '.[0].number')` は該当 issue が 1 件も無いとき "null" になり、
+    //   `[ -n "$EXISTING" ]` が**常に真**になる。**`gh issue create` へ到達せず、
+    //   `gh issue comment "null"` を叩いて失敗する** —— 気付き導線が最も要る「最初の 1 回」で壊れる。
+    //
+    //   **同型が 2 件あった**（新設した planning-pin-freshness.yml と、写し元の
+    //   doc-links-planning.yml）。`CLAUDE.md`「検査器・規約の追加は同型の事故が 2 回起きたら」
+    //   の条件を満たすため、回帰テストで固定する。
+    ok('ワークフロー: gh issue list の --jq が空配列で "null" を返す形になっていない', () => {
+      const wfDir = path.join(REPO, '.github/workflows');
+      const files = fs.readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
+      assert.ok(files.length > 0, 'ワークフローを 1 件も読めない（走査が壊れている）');
+      const bad = [];
+      for (const f of files) {
+        const text = fs.readFileSync(path.join(wfDir, f), 'utf8');
+        // `--jq` の引数を**引用符の 3 形すべて**で拾う。
+        // ★ 初版は単一引用符だけを見ており、`--jq ".[0].number"` を取り逃していた
+        //   —— **本 PR が「片方だけ直さない」と書いた直後に、門の側が片側だけだった。**
+        for (const m of text.matchAll(/--jq\s+(?:'([^']*)'|"([^"]*)"|(\S+))/g)) {
+          const expr = m[1] ?? m[2] ?? m[3] ?? '';
+          if (!expr.includes('.[0]')) continue;
+          if (!/\/\/\s*empty/.test(expr)) bad.push(`${f}: ${expr}`);
+        }
+      }
+      assert.deepStrictEqual(
+        bad,
+        [],
+        `空配列で "null" を返す --jq がある（\`// empty\` を付けること）:\n  ${bad.join('\n  ')}`,
+      );
+    });
+
+    ok('pin 鮮度: 対象プロジェクト名が実在する（planning 側の改名で静かに 0 件へ落ちない）', () => {
+      const dir = path.join(REPO, 'planning', 'projects', pin.PLANNING_PROJECT);
+      if (!fs.existsSync(path.join(REPO, 'planning', 'projects'))) return; // 未 populate なら対象外
+      assert.ok(fs.existsSync(dir), `planning に projects/${pin.PLANNING_PROJECT} が無い（改名・移動を疑う）`);
+    });
+  }
 };
