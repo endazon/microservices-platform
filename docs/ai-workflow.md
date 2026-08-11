@@ -104,29 +104,103 @@ bash scripts/apply-profile.sh copilot
 
 ### 必須チェックの有効化（人手の検証を最小化する要）
 
+> **★ 本節は「推奨設定」であって「現在そうなっている」ではない。**
+> **2026-08-11 時点で develop にブランチ保護は配備されていない**（本節までの全 PR が、承認レビュー
+> 無しでマージできている）。**配備されるまでの暫定手段は「マージ前に CI 結論と AI レビューを
+> 人（または実装セッション）が確認する」ことである。**
+> 「統制を定めた」と「統制が働いている」を読み分けられる書き方にすること（計画側の裁定 2026-08-08 /
+> planning#286）。
+>
+> **なぜ AI が設定しないのか**は後述「[設定は AI では完結しない](#設定は-ai-では完結しない2026-08-11-実測)」を参照。
+
 GitHub の **ブランチ保護ルール**（Settings → Branches → Add rule）で以下を推奨設定する。
 
 - Require a pull request before merging（直接 push 禁止）
-- Require status checks to pass before merging → `CI`・`image-build`（`images.yml`）・`pr-title`・`Security`・`CodeQL` を必須に
-  - `image-build` は **Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md)** の集約ジョブ。
-    サービスの Dockerfile（＝ ADR-0007 の配布物）がビルドできることを担保する。イメージのビルドに
-    影響しない PR ではビルドをスキップして即座に green を報告するため、必須に指定しても無関係な PR を
-    止めない（マトリクスの `build (<service>)` は対象増減で名前が変わるため必須チェックに指定しない）。
+- Require status checks to pass before merging → **下表の check 名**を必須に
 - Require review from Code Owners（`CODEOWNERS` を配置）
 - Require conversation resolution before merging
 
-これにより、AI が作成した PR も「機械チェック green ＋ 必要なレビュー承認」を満たさない限りマージされない。
+#### ★ 指定するのは「check の名前」であって「ワークフローの名前」ではない
+
+**ここを取り違えると develop が恒久的にマージ不能になる。**
+GitHub Actions が report する status check の context は**ジョブ側の名前**であり、
+`ci.yml` の `name: CI` のような**ワークフロー名は context として存在しない**。
+存在しない context を必須に指定すると、**永久に pending のままマージできなくなる。**
+
+| 必須にする check 名 | 出所 | 備考 |
+| --- | --- | --- |
+| `build-and-test` | `ci.yml` | ビルドとテスト。**全 PR で起動する** |
+| `lint` | `ci.yml` | `dotnet format --verify-no-changes` ほか |
+| `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
+| `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
+| `image-build` | `images.yml` | Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md) の集約ジョブ |
+| `CodeQL` | `codeql.yml` | **集約 check**。ジョブ名 `Analyze (csharp)` とは別物で、こちらを指定する |
+| `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
+
+> **★ `CI` / `Security` / `Images` / `PR Title` を指定してはならない。** いずれも**ワークフロー名**であり、
+> **check としては存在しない**（PR #704 が report した check 名 28 件を全数で突き合わせて確認・2026-08-11）。
+> `security.yml` を必須にしたい場合は、ジョブの表示名 `Secret scan (gitleaks)` /
+> `Dependency review` / `Vulnerable transitive dependencies` を個別に指定する。
+
+#### ★ `claude-review` を必須にする場合の注意
+
+- **担保できるのは「レビューが完走したこと」だけで、「指摘が無いこと」ではない。**
+  AI レビューは **🔴 の指摘があっても success を返す**（採否の判断は人が行う）。
+  **必須にしても 🔴 のままのマージは止まらない。**
+- **必須にする前に、`types:` に `reopened` があることを確認する。** 無いと、再オープンされた PR で
+  check が report されず**永久 pending**になる（#705 で是正済み。**回帰テストで固定している**）。
+- AI の実行基盤が落ちている間は**全 PR がマージ不能**になる。トークン失効・レート超過も同じで、
+  止めてよい範囲かを決めてから必須にすること。
 
 #### 必須チェックに指定する際の注意
 
-- **`paths:` フィルタを持つワークフローを必須チェックにしてはならない。** GitHub は必須チェックが
-  report されるまでマージを許さないが、対象パスに触れない PR ではそのチェックが**起動しない**ため、
-  **永久に pending のままマージ不能**になる。デプロイ用・フロントエンド用など特定ディレクトリだけを
-  対象にするワークフローが該当する。必須にするのは全 PR で起動するものに限る。
+- **「その PR で起動しないことがある」チェックを必須にしてはならない。** GitHub は必須チェックが
+  report されるまでマージを許さないため、**起動しなければ永久に pending のままマージ不能**になる。
+  実際に踏みうる原因は 2 つあり、**どちらも結果は同じ**である。
+  1. **`paths:` フィルタ** —— 対象パスに触れない PR では起動しない。デプロイ用・フロントエンド用など
+     特定ディレクトリだけを対象にするワークフローが該当する（`frontend.yml` 等は**意図してそう設定して
+     おり、必須にしないことで正しく運用されている**）。
+  2. **`types:` の取りこぼし** —— `reopened` が無いワークフローは、再オープンされた PR で起動しない。
+     **`pull_request` で起動する全ワークフローが `reopened` を含むことを回帰テストで固定している**（#705）。
 - **`pr-title.yml` は必須チェックに指定してよい。** 全 PR で起動し、かつスカッシュ後件名の唯一の
   予防線である（中間コミットは force push 禁止で事後修正できない）。
+- **マトリクスジョブ（`build (<service>)`）は指定しない。** 対象の増減で名前が変わる。
+  集約ジョブ（`image-build`）を指定する。
 - **bot 作成 PR で `if:` によりジョブごとスキップされたチェックは、必須チェック上「合格」として扱われる**
   ためマージは止まらない。bot を除外する条件を書いてもブランチ保護と矛盾しない。
+
+#### API から設定する場合
+
+UI と等価の設定は REST でも行える（`admin:repo` 相当の権限が要る）。
+
+```console
+$ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
+    --input protection.json
+```
+
+`protection.json` の `required_status_checks.contexts` に**上表の check 名をそのまま並べる**
+（ワークフロー名を書かないこと）。`strict: true` にすると base の最新化も要求する。
+
+#### 設定は AI では完結しない（2026-08-11 実測）
+
+**本リポの実装セッションからは設定を変更できない。** 内訳は 2 種類で、**性質が違う**。
+
+| 経路 | 実測 | 種別 |
+| --- | --- | --- |
+| MCP の GitHub ツール | branch protection / ruleset を扱うツールが**無い** | **能力の不在** |
+| `gh` / `hub` CLI | **どちらも入っていない** | **能力の不在** |
+| GitHub API を直接叩く | **セッション指示が禁じている**（GitHub 操作は MCP ツール経由に限る） | **規則による禁止** |
+
+**能力の不在は環境が変われば消えるが、規則の禁止は指示が変わらない限り残る。**
+**混ぜて「できない」と書かない**（[IADR-0180](adr/IADR-0180_blocked-judgments-expire.md) 決定 1）。
+
+**最後に測った時点: 2026-08-11 / #705。** **棚卸しのたびに測り直す**こと。再測定の手順:
+
+1. `ToolSearch` で `branch protection` / `ruleset` / `required status` を引き、**MCP ツールの有無を全数で確認**する
+2. `command -v gh hub` で CLI の有無を見る
+3. セッション指示が GitHub API の直接利用を許しているか読み直す
+
+**3 点とも塞がっている間は、設定は人が行う**（本節の手順をそのまま渡せばよい）。
 
 ## よくある詰まり（FAQ）
 

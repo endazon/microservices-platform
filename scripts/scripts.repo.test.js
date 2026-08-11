@@ -4218,6 +4218,91 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #705: required status check の設定手順（IADR-0182） -----------------------
+  //
+  // ★ 「必須にすると永久 pending になる」型の事故は 2 件目である。
+  //     1 件目 = paths: フィルタ（docs/ai-workflow.md が文書で警告していた）
+  //     2 件目 = types: に reopened が無い（本 issue の実測。claude-code-review.yml のみ）
+  //   CLAUDE.md「検査器・規約の追加は同型の事故が 2 回起きたら」の条件を満たすため検査器を足す。
+  //
+  // ★ paths: の側は検査器にしない —— frontend.yml 等は**意図して** paths: を持ち、
+  //   必須にしないことで正しく運用されている。機械的に禁じると正当な設定を壊す。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const WF = path.join(REPO, '.github/workflows');
+    const DOC = 'docs/ai-workflow.md';
+
+    ok('#705: pull_request で起動する全ワークフローが reopened を含む', () => {
+      const files = fs.readdirSync(WF).filter((f) => /\.ya?ml$/.test(f));
+      assert.ok(files.length > 0, 'ワークフローを 1 件も読めない（走査が壊れている）');
+      const missing = [];
+      let scanned = 0;
+      for (const f of files) {
+        const text = fs.readFileSync(path.join(WF, f), 'utf8');
+        // `on:` ブロック内の `pull_request:` に続く `types:` を見る。
+        // pull_request_target / issue_comment 等の別イベントの types は対象外。
+        const m = text.match(/^\s{2}pull_request:\s*$\n((?:\s{4}.*\n|\s*\n)*)/m);
+        if (!m) continue;
+        const block = m[1];
+        const types = block.match(/^\s{4}types:\s*\[([^\]]*)\]/m);
+        if (!types) continue; // types 省略時は既定に reopened が含まれる
+        scanned += 1;
+        if (!/\breopened\b/.test(types[1])) missing.push(`${f}: [${types[1].trim()}]`);
+      }
+      // 走査 0 件で静かに緑を返す形を塞ぐ（#664 / PR #672 の型）。
+      assert.ok(scanned >= 5, `types: を持つ pull_request ワークフローが ${scanned} 件（走査が壊れている）`);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        '再オープンで起動しないワークフローがある（required にすると永久 pending になる）:\n  ' +
+          missing.join('\n  '),
+      );
+    });
+
+    ok('#705: 手順書が check 名とワークフロー名の取り違えを止めている', () => {
+      const t = fs.readFileSync(path.join(REPO, DOC), 'utf8');
+      assert.match(t, /check の名前.*ワークフローの名前」?ではない/s, 'context の取り違えへの警告が消えた');
+      // 実在する check 名が**表の行として**挙がっていること（#623 基準 3 が名指しした 2 つを含む）。
+      // ★ 単なる包含（`t.includes('`claude-review`')`）だと、表から行を消しても
+      //   本文の別の言及（見出し「`claude-review` を必須にする場合の注意」など）が残るため
+      //   素通りする —— 変異試験で実測した。**行そのものを見る。**
+      for (const name of ['build-and-test', 'lint', 'commit-messages', 'pr-title', 'image-build', 'CodeQL', 'claude-review']) {
+        assert.match(
+          t,
+          new RegExp(`^\\| \`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\` \\|`, 'm'),
+          `必須にする check 名 ${name} の表の行が手順書から消えた`,
+        );
+      }
+      // 存在しない context を「指定してはならない」と明示していること。
+      assert.match(t, /`CI` \/ `Security`.*指定してはならない/s, 'ワークフロー名を禁じる記述が消えた');
+    });
+
+    ok('#705: claude-review の必須化が「完了」であって「指摘なし」でないと書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, DOC), 'utf8');
+      assert.match(t, /レビューが完走したこと/, '「完了を担保する」旨が消えた');
+      assert.match(t, /🔴 のままのマージは止まらない/, '必須化しても 🔴 を止めない旨が消えた');
+    });
+
+    ok('#705: blocked 判定が能力と規則を書き分け、最後に測った時点を持つ', () => {
+      const t = fs.readFileSync(path.join(REPO, DOC), 'utf8');
+      assert.match(t, /能力の不在/, '「能力の不在」の区分が消えた');
+      assert.match(t, /規則による禁止/, '「規則による禁止」の区分が消えた');
+      assert.match(t, /最後に測った時点: 2026-08-11/, '最後に測った時点が消えた');
+      assert.match(t, /棚卸しのたびに測り直す/, '再測定の規範が消えた');
+      assert.match(t, /ToolSearch/, '再測定の手順（MCP ツールの確認）が消えた');
+    });
+
+    ok('#705: 手順書が「推奨であって現状ではない」と読み分けさせている', () => {
+      const t = fs.readFileSync(path.join(REPO, DOC), 'utf8');
+      assert.match(t, /推奨設定」であって「現在そうなっている」ではない/, '推奨と現状の書き分けが消えた');
+      assert.match(t, /配備されるまでの暫定手段/, '暫定手段の併記が消えた');
+      // API 経路（UI だけにしない）。
+      assert.match(t, /required_status_checks\.contexts/, 'API 経路の記述が消えた');
+    });
+  }
+
   // --- feedback/ の frontmatter 語彙（#700 のレビュー 🟡） ----------------------
   //
   // ★ 同型 2 回目で足した検査（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。

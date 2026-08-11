@@ -1,7 +1,7 @@
 ---
 title: 「1 issue 400 行以内」と「1 PR ごとに仕様書＋実装 ADR 必須」が両立しない
 type: plan-feedback
-status: open
+status: triaged
 category: 規範どうしの衝突
 related_ids: [NFR, IADR-0181]
 source_repo: microservices-platform
@@ -80,7 +80,7 @@ PR 全体（生成物・lock を除く。キット `pr-size.yml` の既定 `EXCL
 
 | | |
 | --- | --- |
-| 計画リポへの起票 | **未（本記録の作成まで）** |
+| 計画リポへの起票 | **planning#312 として起票済み（2026-08-11・`decision-needed`）** |
 
 > **★ 「環流した」と書けるのは、計画リポへのコピーまたは Issue 起票まで済んだときだけ**である
 > （`docs/README.md` 運用ルール 5）。
