@@ -4127,6 +4127,30 @@ module.exports = ({ ok, assert }) => {
       assert.match(c, /IADR-0169/, '是正の根拠（IADR-0169）を指していない');
     });
 
+    // ★ レビュー 🟡 で判明した「記録から漏れた 2 件」。回帰テストが無かったため
+    //   書き戻されても検出できない状態だった（IADR-0178 決定 6）。
+    ok('#697: 認証の詳細が CLAUDE.md へ戻っていない（AI_SETUP.md が正本）', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      const setup = fs.readFileSync(path.join(REPO, 'AI_SETUP.md'), 'utf8');
+      assert.ok(
+        !c.includes('CLAUDE_CODE_OAUTH_TOKEN'),
+        'CLAUDE.md に認証シークレットの詳細が戻っている（AI_SETUP.md と重複する）',
+      );
+      assert.ok(
+        setup.includes('CLAUDE_CODE_OAUTH_TOKEN'),
+        'AI_SETUP.md から認証シークレットが消えた。正本を壊している',
+      );
+    });
+
+    ok('#697: 冒頭の規範（技術スタック別ルールへ追記）が残っている', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      assert.match(
+        c,
+        /技術スタックに依存する規約とフォルダ構成は、末尾の「技術スタック別ルール」へ追記する/,
+        '冒頭を圧縮した際に規範まで落ちている',
+      );
+    });
+
     ok('#697: 到達と予算維持が ADR に記録されている', () => {
       const t = fs.readFileSync(path.join(REPO, ADR), 'utf8');
       assert.match(t, /正本へ畳む/, '「正本へ畳む」方針が書かれていない');
