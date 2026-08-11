@@ -1,7 +1,7 @@
 ---
 title: NFR-01〜27 に「文書・規約の統制」を扱う番号が無い（メタ作業の起点 ID）
 type: feedback
-status: draft
+status: done
 created: 2026-08-11
 updated: 2026-08-11
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
 
 - **出所**: 実装リポ #688（PR #687 の AI レビューが起点）／ 実装 ADR: `IADR-0179`
 - **対象**: planning#295（`NFR-01`〜`NFR-27` の採番）／ planning#304（裁定: 新規参照から採番付きを使う）
-- **起票状態**: **未了**（本ファイルは記録であり、計画リポへの Issue 起票はこれから）
+- **起票状態**: **環流済み** —— 計画リポへ **planning#311** を起票した（2026-08-11。`decision-needed`）
 
 ## 事実（実装側の実測。走査基準: planning `2cf0795`）
 
