@@ -4079,6 +4079,135 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #695: 必読規約の減量 段 5（IADR-0177） ------------------------------------
+  //
+  // ★ 本段の対象節は**確定済み記録が節名で引く件数が全節中 最多（20 件）**であり、
+  //   `check-commit-messages.js` / `check-test-traceability.js` も節名で引いている。
+  // ★ 塊の内側に埋まっていた規範（着手条件は FR 単位 / CI は守っていない）は
+  //   1 行に畳んで入口へ残した。**これが消えると、経緯だけ別紙にあって規範が消える。**
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
+    const CMSG_ANNEX = 'docs/how-to/commit-message-rules-annex.md';
+    const RECAP_ADR = 'docs/adr/IADR-0177_entry-exhausted-claude-md-quota.md';
+    const HEADS = ['起点 ID の種別', 'コミットメッセージの機械チェック'];
+    const NORMS = [
+      'FR-01..22',                    // 現行 pin でのレンジ
+      'NFR-01`〜`NFR-27',             // NFR の採番
+      '`Proposed` でも ID としては実在する',
+      '着手条件は FR 単位で読む',      // 塊の内側から畳んだ規範
+      'CI は計画 ADR の実在性を守っていない', // 同上
+    ];
+    // 別紙へ出した塊（入口に残っていてはならない＝移動していない）
+    const MOVED_OUT = [
+      ['以下は前回の追随記録である', ANNEX],
+      ['5 件とも `Accepted` へ移った', ANNEX],
+      ['doc-links-planning.yml', ANNEX],
+      ['恒久履歴へ載れる状態だった', CMSG_ANNEX],
+      ['夜間の planning 系', CMSG_ANNEX],
+    ];
+
+    ok('#695 段 5: 対象節の見出しが 2 つともスタブとして入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
+      for (const h of HEADS) {
+        assert.ok(
+          headings.some((x) => x.startsWith(h)),
+          `見出し「${h}」が入口から消えた。確定済み引用（本節は 20 件で最多）とスクリプトの参照を壊す`,
+        );
+      }
+    });
+
+    ok('#695 段 5: 規範が入口に残っている（塊の内側から畳んだ 2 行を含む）', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of NORMS) {
+        assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
+      }
+    });
+
+    ok('#695 段 5: 5 塊が入口から別紙へ移っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const [needle, dest] of MOVED_OUT) {
+        assert.ok(!t.includes(needle), `「${needle}」が入口に残っている（別紙へ出ていない）`);
+        const a = fs.readFileSync(path.join(REPO, dest), 'utf8');
+        assert.ok(a.includes(needle), `「${needle}」が ${dest} に無い（移動ではなく削除になっている）`);
+      }
+      assert.match(t, /plan-id-range-history-annex\.md/, '新規別紙への導線が無い');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      assert.match(a, /参照時にだけ読む別紙/, '別紙に「いつ読むか」が無い');
+    });
+
+    // ★★ 総括の結論。落ちると「CLAUDE.md の必要量は未確定」へ戻り、
+    //    減量が必要量不明のまま進むか、止まったままになる。
+    ok('#695 段 5: 入口を尽くした総括が ADR に記録されている', () => {
+      const t = fs.readFileSync(path.join(REPO, RECAP_ADR), 'utf8');
+      assert.match(t, /入口は尽きた/, '「入口が尽きた」が書かれていない');
+      assert.match(t, /全節を塊単位で測る/, '塊単位の走査を全節へ広げたことが書かれていない');
+      assert.match(t, /CLAUDE\.md/, 'CLAUDE.md への言及が無い');
+      assert.match(t, /着手を解禁/, 'CLAUDE.md 減量の解禁が書かれていない');
+      assert.match(t, /曲げない/, '届かない場合も統制を弱めない旨が書かれていない');
+    });
+
+    // ★★ IADR-0177 決定 5。**同型 2 回目**なので検査器を置いた。
+    //   段 3 は行番号で切って文の途中を分断し、段 5 は文字列で切ったが行頭のインデントを残した
+    //   （`- **ADR / IADR の実在性**` が前の箇条の子項目として描画された）。
+    //   どちらも「切り出しの境界が行頭に揃っていない」型である。
+    //   ★ 捕まえるのは残骸だけで、インデントのずれ自体は捕まらない（正しい値は文脈依存）。
+    ok('#695 段 5: 入口と別紙に切り出しの残骸（空白のみの行・行末空白）が無い', () => {
+      const targets = [
+        '.claude/rules/traceability.md',
+        'docs/how-to/plan-id-range-history-annex.md',
+        'docs/how-to/commit-message-rules-annex.md',
+        'docs/how-to/adr-supersede-citation-annex.md',
+        'docs/how-to/cross-project-id-refs-annex.md',
+        'docs/how-to/changelog-overrides-annex.md',
+      ];
+      for (const rel of targets) {
+        const lines = fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n').split('\n');
+        const blank = [];
+        const trailing = [];
+        lines.forEach((l, i) => {
+          if (/^[ \t]+$/.test(l)) blank.push(i + 1);
+          else if (/[ \t]+$/.test(l)) trailing.push(i + 1);
+        });
+        assert.strictEqual(
+          blank.length,
+          0,
+          `${rel}: 空白のみの行が残っている（行 ${blank.join(',')}）。切り出しが行頭に揃っていない`,
+        );
+        assert.strictEqual(
+          trailing.length,
+          0,
+          `${rel}: 行末に空白が残っている（行 ${trailing.join(',')}）`,
+        );
+        // ★ 連続空行も同じ型の残骸である。**上の 2 つでは捕まらない**
+        //   （`/^[ \t]+$/` は空文字列の行に当たらない）——本 PR のレビュー 🟢 が
+        //   まさにこの穴を突いた。develop 側は 6 ファイルとも 0 件で、床は clean である。
+        const doubles = [];
+        for (let i = 1; i < lines.length; i += 1) {
+          if (lines[i] === '' && lines[i - 1] === '') doubles.push(i + 1);
+        }
+        assert.strictEqual(
+          doubles.length,
+          0,
+          `${rel}: 空行が 2 行以上連続している（行 ${doubles.join(',')}）。切り出しの残骸`,
+        );
+      }
+    });
+
+    ok('#695 段 5: 総括 ADR が可変の数値ではなく測り方を書いている', () => {
+      const t = fs.readFileSync(path.join(REPO, RECAP_ADR), 'utf8');
+      assert.match(t, /可変の数値を断定しない/, '数値を断定しない旨が書かれていない');
+      assert.match(t, /statSync/, '測り方（コマンド）が書かれていない');
+    });
+  }
+
   // --- #693: 必読規約の減量 段 4（IADR-0176） ------------------------------------
   //
   // ★ 本段の対象節は `##` と `###` の**両方**を確定済み記録が節名で引いている。

@@ -54,7 +54,7 @@ docs/
 | `error` | エラー・メッセージ仕様書 | `docs/errors/` |
 | `infra` | インフラ・構成仕様書 | `docs/infra/` |
 | `runbook` | 運用 Runbook（運用仕様書の**下位**にあたる手順書） | `docs/operations/` |
-| `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・[引継資料](how-to/session-handoff.md)）。**必読規約から出した別紙**（[コミットメッセージ規約](how-to/commit-message-rules-annex.md)・[CHANGELOG 補正](how-to/changelog-overrides-annex.md)・[ID 修飾](how-to/cross-project-id-refs-annex.md)・[Superseded な ADR の引用](how-to/adr-supersede-citation-annex.md)）は**参照時にだけ読む** |
+| `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・[引継資料](how-to/session-handoff.md)）。**必読規約から出した別紙**（[コミットメッセージ規約](how-to/commit-message-rules-annex.md)・[CHANGELOG 補正](how-to/changelog-overrides-annex.md)・[ID 修飾](how-to/cross-project-id-refs-annex.md)・[Superseded な ADR の引用](how-to/adr-supersede-citation-annex.md)・[計画 ID レンジの追随](how-to/plan-id-range-history-annex.md)）は**参照時にだけ読む** |
 
 > **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [IADR-0167](adr/IADR-0167_type-vocabulary-from-templates.md)）。
 > **`type` を書いているのはテンプレートだけ**である（引数 `work` → `spec_template.md` → `type: spec`）。
