@@ -62,7 +62,7 @@
 
 ## 仕様書（docs/）
 
-計画書（`project-planning` の上流ドキュメント）を実装向けに詳細化した仕様書を `docs/` に置く。`/new-spec <種別> <ID|topic>` で作成する。各仕様書には起点 ID（FR/UC/SC/ADR）と計画書リンク、関連仕様書への相互リンクを必ず記入する。
+計画書（`project-planning` の上流ドキュメント）を実装向けに詳細化した仕様書を `docs/` に置く。`/new-spec <種別> <ID|topic>` で作成する。各仕様書には起点 ID（FR/UC/SC/ADR）と計画書リンク、関連仕様書への相互リンクを必ず記入する（**リンクの義務は仕様書側の一方向。ADR 側に逆リンクを張る義務は無い**。正本は `docs/README.md` 運用ルール 4 / [IADR-0171](docs/adr/IADR-0171_backlink-obligation-one-way.md)）。
 
 **必須**（対象が存在する限り作成・維持する）:
 

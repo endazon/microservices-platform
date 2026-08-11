@@ -3978,6 +3978,36 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #626: 逆リンク義務の向き（IADR-0171） ------------------------------------
+  //
+  // ★ 裁定（2026-08-11・案 A）: 「相互リンク」の義務は**仕様書側の一方向**であり、
+  //   ADR 側に逆リンクを張る義務は無い。実測 283 対（広い軸で 606 対）は**欠陥ではない**。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const read = (rel) => fs.readFileSync(path.join(REPO, rel), 'utf8');
+
+    ok('逆リンク義務: 向きが docs/README.md（正本）に書かれている', () => {
+      const t = read('docs/README.md');
+      assert.match(t, /リンクの義務は仕様書側の一方向/, 'docs/README.md に向きが書かれていない');
+      assert.match(t, /IADR-0171/, '裁定の所在（IADR-0171）が示されていない');
+    });
+
+    ok('逆リンク義務: CLAUDE.md は正本を指すだけで、理由を複写していない', () => {
+      const t = read('CLAUDE.md');
+      assert.match(t, /一方向/, 'CLAUDE.md が向きに触れていない');
+      assert.match(t, /docs\/README\.md/, 'CLAUDE.md が正本を指していない');
+      // ★★ 理由（ADR が更新履歴の索引になる）は**正本にだけ**置く。
+      //   2 箇所へ同じ説明を書くと片方が黙って古くなる（[[IADR-0141]]。#583 で 3 回踏んだ）。
+      assert.doesNotMatch(
+        t,
+        /更新履歴の索引/,
+        'CLAUDE.md に理由が複写されている（説明の正本は docs/README.md 運用ルール 4 の 1 箇所に畳む）',
+      );
+    });
+  }
+
   // --- #589: 計画 pin の鮮度検知（IADR-0170） -----------------------------------
   //
   // ★ 待ち時間の実体は「回答待ち」ではなく「回答に気づいていない時間」だった（#572 施策 7）。
