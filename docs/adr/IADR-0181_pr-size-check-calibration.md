@@ -6,6 +6,8 @@ related_ids:
   - NFR
   - IADR-0115
   - IADR-0116
+  - IADR-0169
+  - IADR-0179
 author: claude
 created: 2026-08-11
 updated: 2026-08-11
@@ -39,6 +41,17 @@ plan_refs:
 > **取り込み元をコミット単位で控えていれば、`git show --stat` 一発で全数を追えた。**
 > 本リポは分類 A のバイト一致を「機械判定できる」と書いているが（IADR-0115 決定 1）、
 > **実際に判定している検査器は無い。** 今回も人が `find` を回して見つけた。
+
+### **本決定は [IADR-0169](./IADR-0169_cross-repo-ref-scan-beyond-markdown.md) 決定 1 に乗っている**
+
+`pr-size.yml` は `.github/workflows/` に置く。**`CLAUDE.md` は同ディレクトリを「GitHub App 権限では
+編集不可」と書いており、それが正なら本決定は成立しない。**
+IADR-0169 決定 1 は**その前提を実測で覆している**（同ディレクトリは繰り返し変更・マージされている）。
+
+> **★ 本 PR で、実際に push まで通ることを確かめた。**
+> **`.github/workflows/pr-size.yml` を含む push が成功し、`pr-size` ジョブが起動して
+> 追加行数 212 を出した。** —— IADR-0169 の主張に対する**新規実行での陽性確認**である。
+> [IADR-0180](./IADR-0180_blocked-judgments-expire.md) 決定 2 に従い、**測った時点を残す: 2026-08-11 / #703。**
 
 ## ★ 決定 1: **分類 B とし、固有デルタは `EXCLUDES` に限る**
 
