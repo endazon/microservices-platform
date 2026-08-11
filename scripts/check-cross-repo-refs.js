@@ -290,19 +290,62 @@ function findViolations(text, opts = {}) {
   return out;
 }
 
-/** git 管理下の *.md（submodule 配下を除く）を列挙する。git を使えなければ null。 */
-function trackedMarkdown(root = REPO_ROOT) {
+/**
+ * ★ `scripts/` の**非 Markdown**を走査から外す（#583 判断 2）。
+ *
+ * **`scripts/` は検査器・その自己試験フィクスチャ・baseline / overrides が住む場所であり、
+ * 違反の文字列を書くことが仕事である。** 実測すると `.md` 外の違反 64 件のうち **63 件**が
+ * `check-cross-repo-refs.js` / `scripts.repo.test.js` / `changelog-overrides.json` の
+ * フィクスチャや「違反を説明する文」だった。
+ *
+ * **名指しの除外リストにしない** —— 実測で 3 ファイルへ膨らみ、**次に検査器を足したら静かに
+ * 古くなる**（本リポが繰り返してきた型）。**ディレクトリ 1 本の規則にする。**
+ *
+ * ★★ **ただし `.md` は除外しない**（PR #679 のレビュー指摘で是正）。
+ *   初版は `scripts/` を丸ごと外し、**`scripts/README.md` を走査対象から落としていた** ——
+ *   **是正前に見ていたものを見なくなる回帰**である（実測: 落ちる `.md` はこの 1 件のみ、違反 0 件）。
+ *   `README.md` は**人が読む散文**であり、判断 2 が「対象に残す」と書いた側そのものである。
+ *   **`.md` では引用がインラインコード除外で守られる**ため、除外する理由がそもそも無い。
+ *
+ * ★ **限界**: `scripts/` の中の**コード中コメント**に本形が書かれても検出しない。
+ *   **「検査していない」と「違反 0 件」を読み分けられるよう、除外件数をログに出す**（#583 判断 3）。
+ */
+const EXCLUDED_DIRS = ['scripts/'];
+
+/**
+ * 走査から外すか。**`.md` は常に検査する**（上のコメント参照）。
+ *
+ * ★ 「ディレクトリ 1 本」の形は保つ。**例外は「拡張子 `.md` は常に対象」の 1 行**であり、
+ *   ファイルを名指ししない —— 名指しリストへ戻すと静かに古くなる（判断 2）。
+ */
+function isExcluded(file) {
+  if (/\.md$/i.test(file)) return false;
+  return EXCLUDED_DIRS.some((d) => file.startsWith(d));
+}
+
+/**
+ * git 管理下のテキストファイル（submodule 配下・`scripts/` の非 Markdown を除く）を列挙する。
+ * git を使えなければ null。
+ *
+ * ★ #583 まで対象は `*.md` だけだった（#507 決定 4）。**そのため
+ * `.github/workflows/doc-links-planning.yml` の `ai-stock-trading #104` を誰も見ていなかった。**
+ * 人が読む散文は `docs/`（`.md`）だけでなく `.github/` と `deploy/` にもある。
+ */
+function trackedFiles(root = REPO_ROOT) {
   let raw;
   try {
     raw = execFileSync(
       'git',
-      ['-C', root, 'ls-files', '--', '*.md', ':!planning', ':!src/ai-stock-trading'],
+      ['-C', root, 'ls-files', '--', ':!planning', ':!src/ai-stock-trading'],
       { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
     );
   } catch (e) {
     return null;
   }
-  return raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const all = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const kept = all.filter((f) => !isExcluded(f));
+  kept.excluded = all.length - kept.length;
+  return kept;
 }
 
 /** ファイル群を検査し、{file, violations} の配列を返す。 */
@@ -315,6 +358,8 @@ function checkFiles(files, root = REPO_ROOT) {
     } catch (e) {
       continue;
     }
+    // バイナリは読み飛ばす（NUL を含むものを非テキストとみなす）。
+    if (text.includes('\u0000')) continue;
     const violations = findViolations(text, { markdown: /\.md$/i.test(rel) });
     if (violations.length) report.push({ file: rel, violations });
   }
@@ -594,8 +639,10 @@ function main() {
   }
   const explicit = argv.filter((x) => !x.startsWith('--'));
   let files = explicit;
+  let excluded = 0;
   if (files.length === 0) {
-    files = trackedMarkdown();
+    files = trackedFiles();
+    excluded = files === null ? 0 : (files.excluded ?? 0);
     if (files === null) {
       // git を使えない環境（tarball 展開等）では検査をスキップする（fail-open）。
       // 黙って 0 件検査へ落ちたことが分かるよう理由を出す。
@@ -607,14 +654,19 @@ function main() {
   // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
   // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
   if (files.length === 0) {
-    console.error('[check-cross-repo-refs] 走査対象の Markdown を 1 件も見つけられませんでした。');
+    console.error('[check-cross-repo-refs] 走査対象のファイルを 1 件も見つけられませんでした。');
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
     process.exit(1);
   }
   const report = checkFiles(files);
   const total = report.reduce((n, r) => n + r.violations.length, 0);
   if (total === 0) {
-    console.log(`[check-cross-repo-refs] OK: ${files.length} 件の Markdown に他リポジトリ参照の表記違反はありません。`);
+    console.log(
+      `[check-cross-repo-refs] OK: ${files.length} 件に他リポジトリ参照の表記違反はありません` +
+        `（${EXCLUDED_DIRS.join(' / ')} の非 Markdown ${excluded} 件は検査していません —— ` +
+        '検査器のフィクスチャと baseline が住む場所であり、違反の文字列を書くのが仕事だからである。' +
+        'scripts/ の .md は人が読む散文なので検査対象に残している。#583 判断 2・3）。'
+    );
     process.exit(0);
   }
   console.error(`[check-cross-repo-refs] 他リポジトリ参照の表記違反 ${total} 件を検出しました:`);
@@ -631,12 +683,14 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  trackedFiles,
+  isExcluded,
+  EXCLUDED_DIRS,
   findViolations,
   checkFiles,
   formatReport,
   maskCode,
   unbalancedFenceLine,
-  trackedMarkdown,
   selfTest,
   LONG_RE,
   ENUM_RE,

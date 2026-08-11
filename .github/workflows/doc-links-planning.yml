@@ -3,7 +3,7 @@
 # 背景: 本体 CI の `doc-links` ジョブ（ci.yml）は actions/checkout を submodule なしで実行するため、
 # private な planning サブモジュール配下への破損リンクを検出できない（planning が未 populate だと
 # scripts/check-doc-links.js は planning リンクを検査対象外にする）。この隙間で破損リンクが蓄積した
-# 実例がある（microservices-platform #232 / IADR-0058、ai-stock-trading #104）。
+# 実例がある（microservices-platform #232 / IADR-0058、AST#104）。
 #
 # 対応（IADR-0058 の方式）: planning を含む全リンクの検査を、トークン付きで submodule を取得する
 # 専用の定期ジョブに分離する。本体 PR CI の doc-links は従来どおり高速・トークン不要のまま
