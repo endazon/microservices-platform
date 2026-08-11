@@ -222,6 +222,7 @@
 | [IADR-0166](./IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) | 仕様書 `status` の値域は **`docs/README.md` 運用ルール 6 に既にあった**（起票時の「規定が無い」は誤り）。**過去の記録を書き換えてよいのは「語彙の是正」のみ**とし、状態の進行は不可とする。語彙外 22 件を是正し、`review` 8 件は**推測しないため据え置き**、値域は検査器が閉じる。 | Accepted |
 | [IADR-0167](./IADR-0167_type-vocabulary-from-templates.md) | `type` の正本は**テンプレート**であり、値域は**実行時に読んで**組み立てる（写すと二重定義）。起票時の「三つ巴」は誤りで、**種別表は `/new-spec` の引数の語彙**だった。本当の欠陥は **1 枚のテンプレを 2 種別が共用**して `type` から種別が決まらないことで、これは **#667 の除外が手書きの値に依存していた**ことも意味する。 | Accepted |
 | [IADR-0168](./IADR-0168_grafana-provisioning-parity.md) | Grafana provisioning を経路間で同内容にする。**k8s にはダッシュボードが 1 枚も無く**、#546 の月次 LLM 費用確認 Runbook が指す `llm-usage.json` へ経路 B から辿り着けなかった。**#665 の検査器が `alerting/` だけを見ていた**ため誰も気づかず、突合を provisioning 全体へ広げる。 | Accepted |
+| [IADR-0169](./IADR-0169_cross-repo-ref-scan-beyond-markdown.md) | 他リポジトリ参照の検査を `.md` 外へ広げ、除外はディレクトリ 1 本にする。**IADR-0140 決定 4 を覆す** —— 対象外にした理由「編集不可」が誤りだった。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

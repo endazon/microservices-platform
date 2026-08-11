@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0115]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-08
+updated: 2026-08-11
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -299,3 +299,18 @@ CHANGELOG 上でのみ補正する」ための機構であり、まさにこの�
 `docs/adr/` の最大は `IADR-0138` だが、`IADR-0139` は並行 PR（#575）が予約しているため `IADR-0140` を
 採った。索引に一時的な欠番が生じるが、当該 PR のマージで埋まる（先着尊重。
 `.claude/rules/traceability.md`「採番衝突時の改番手順」）。
+
+## 追記（2026-08-11・Issue #583）— **決定 4 は [IADR-0169](./IADR-0169_cross-repo-ref-scan-beyond-markdown.md) が覆した**
+
+**決定 4（検査対象は追跡下の `*.md`）は維持されない。** 履歴不変の原則により本文は書き換えず、
+所在だけを示す（上の #595 追記と同型）。
+
+決定 4 は残存 7 件を「`.github/workflows/doc-links-planning.yml`（**編集不可**）1 件と、
+検査器の自己試験フィクスチャ 6 件」と説明していた。**「編集不可」が誤りである** ——
+`.github/workflows/` は実際には繰り返し変更されマージされている（#618 / #619 / #671）。
+**「直せないから対象外」で残した 1 件は、実際には直せた。**
+
+IADR-0169 は対象を追跡ファイル全体へ広げ、除外を **`scripts/` のディレクトリ 1 本**にした。
+**決定 4 の根拠 2（「除外の腐りは新たな穴になる」）は否定していない** ——
+腐りうる形（名指しの列挙）を採らず、増減しない形（ディレクトリ 1 本）を採ったうえで、
+**除外件数をログに出し、`EXCLUDED_DIRS` が 1 本のままであることを自動回帰テストで固定する。**

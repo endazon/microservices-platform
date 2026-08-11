@@ -290,19 +290,51 @@ function findViolations(text, opts = {}) {
   return out;
 }
 
-/** git 管理下の *.md（submodule 配下を除く）を列挙する。git を使えなければ null。 */
-function trackedMarkdown(root = REPO_ROOT) {
+/**
+ * ★ `scripts/` を走査から外す（#583 判断 2）。
+ *
+ * **`scripts/` は検査器・その自己試験フィクスチャ・baseline / overrides が住む場所であり、
+ * 違反の文字列を書くことが仕事である。** 実測すると `.md` 外の違反 64 件のうち **63 件**が
+ * `check-cross-repo-refs.js` / `scripts.repo.test.js` / `changelog-overrides.json` の
+ * フィクスチャや「違反を説明する文」だった。
+ *
+ * **名指しの除外リストにしない** —— 実測で 3 ファイルへ膨らみ、**次に検査器を足したら静かに
+ * 古くなる**（本リポが繰り返してきた型）。**ディレクトリ 1 本の規則にする。**
+ *
+ * ★ **限界**: `scripts/` の中の散文コメントに本形が書かれても検出しない。
+ *   **「検査していない」と「違反 0 件」を読み分けられるよう、除外件数をログに出す**（#583 判断 3）。
+ */
+const EXCLUDED_DIRS = ['scripts/'];
+
+/**
+ * git 管理下のテキストファイル（submodule 配下・`scripts/` を除く）を列挙する。
+ * git を使えなければ null。
+ *
+ * ★ #583 まで対象は `*.md` だけだった（#507 決定 4）。**そのため
+ * `.github/workflows/doc-links-planning.yml` の `ai-stock-trading #104` を誰も見ていなかった。**
+ * 人が読む散文は `docs/`（`.md`）だけでなく `.github/` と `deploy/` にもある。
+ */
+function trackedFiles(root = REPO_ROOT) {
   let raw;
   try {
     raw = execFileSync(
       'git',
-      ['-C', root, 'ls-files', '--', '*.md', ':!planning', ':!src/ai-stock-trading'],
+      ['-C', root, 'ls-files', '--', ':!planning', ':!src/ai-stock-trading'],
       { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
     );
   } catch (e) {
     return null;
   }
-  return raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const all = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+  const kept = all.filter((f) => !EXCLUDED_DIRS.some((d) => f.startsWith(d)));
+  kept.excluded = all.length - kept.length;
+  return kept;
+}
+
+/** 後方互換: 従来の `*.md` だけの列挙（自己試験が参照する）。 */
+function trackedMarkdown(root = REPO_ROOT) {
+  const all = trackedFiles(root);
+  return all === null ? null : all.filter((f) => /\.md$/i.test(f));
 }
 
 /** ファイル群を検査し、{file, violations} の配列を返す。 */
@@ -315,6 +347,8 @@ function checkFiles(files, root = REPO_ROOT) {
     } catch (e) {
       continue;
     }
+    // バイナリは読み飛ばす（NUL を含むものを非テキストとみなす）。
+    if (text.includes('\u0000')) continue;
     const violations = findViolations(text, { markdown: /\.md$/i.test(rel) });
     if (violations.length) report.push({ file: rel, violations });
   }
@@ -594,8 +628,10 @@ function main() {
   }
   const explicit = argv.filter((x) => !x.startsWith('--'));
   let files = explicit;
+  let excluded = 0;
   if (files.length === 0) {
-    files = trackedMarkdown();
+    files = trackedFiles();
+    excluded = files === null ? 0 : (files.excluded ?? 0);
     if (files === null) {
       // git を使えない環境（tarball 展開等）では検査をスキップする（fail-open）。
       // 黙って 0 件検査へ落ちたことが分かるよう理由を出す。
@@ -607,14 +643,18 @@ function main() {
   // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
   // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
   if (files.length === 0) {
-    console.error('[check-cross-repo-refs] 走査対象の Markdown を 1 件も見つけられませんでした。');
+    console.error('[check-cross-repo-refs] 走査対象のファイルを 1 件も見つけられませんでした。');
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
     process.exit(1);
   }
   const report = checkFiles(files);
   const total = report.reduce((n, r) => n + r.violations.length, 0);
   if (total === 0) {
-    console.log(`[check-cross-repo-refs] OK: ${files.length} 件の Markdown に他リポジトリ参照の表記違反はありません。`);
+    console.log(
+      `[check-cross-repo-refs] OK: ${files.length} 件に他リポジトリ参照の表記違反はありません` +
+        `（${EXCLUDED_DIRS.join(' / ')} の ${excluded} 件は検査していません —— ` +
+        '検査器のフィクスチャと baseline が住む場所であり、違反の文字列を書くのが仕事だからである。#583 判断 2・3）。'
+    );
     process.exit(0);
   }
   console.error(`[check-cross-repo-refs] 他リポジトリ参照の表記違反 ${total} 件を検出しました:`);
@@ -631,6 +671,8 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+  trackedFiles,
+  EXCLUDED_DIRS,
   findViolations,
   checkFiles,
   formatReport,

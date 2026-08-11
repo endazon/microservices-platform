@@ -3192,7 +3192,9 @@ module.exports = ({ ok, assert }) => {
     // 件数をリテラルで書くと契約が増えるたびに落ちる（#558 の教訓）。
     const scannedAtLeastOne = [
       ['check-doc-links.js', /OK: (\d+) 件の Markdown/],
-      ['check-cross-repo-refs.js', /OK: (\d+) 件の Markdown/],
+      // ★ #583 で走査対象が `.md` 外へ広がり、OK メッセージの文言が変わった
+      //   （「N 件の Markdown」→「N 件に」）。**兄弟の取り残しを作らない。**
+      ['check-cross-repo-refs.js', /OK: (\d+) 件に/],
       ['check-plan-id-qualification.js', /OK: (\d+) 件に/],
       ['check-unit-dependencies.js', /OK: csproj (\d+) 件/],
     ];
@@ -3852,6 +3854,83 @@ module.exports = ({ ok, assert }) => {
       });
       assert.strictEqual(code, 1, `inline 0 件で緑を返した。門 B が消えている:\n${out}`);
       assert.match(out, /0 件検査/, out);
+    });
+  }
+
+  // --- #583: 他リポジトリ参照の走査を .md 外へ広げる ------------------------------
+  //
+  // ★ #507 は対象を *.md に限っていた（決定 4）。そのため
+  //   `.github/workflows/doc-links-planning.yml` の空白区切り参照を誰も見ていなかった。
+  //   人が読む散文は docs/（.md）だけでなく .github/ と deploy/ にもある。
+  {
+    const { spawnSync, execFileSync } = require('child_process');
+    const path = require('path');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const xrepo = require('./check-cross-repo-refs.js');
+
+    const runXrepo = (args = []) => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-cross-repo-refs.js'), ...args], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+    };
+
+    ok('check-cross-repo-refs が実データで違反 0 件（.md 外を含む）', () => {
+      const { code, out } = runXrepo();
+      assert.strictEqual(code, 0, out);
+    });
+
+    ok('check-cross-repo-refs: 走査が .md だけに戻っていない（下限）', () => {
+      const { out } = runXrepo();
+      const m = out.match(/OK: (\d+) 件に/);
+      assert.ok(m, `OK メッセージから走査件数を読めない:\n${out}`);
+      // .md だけなら 619 件前後。広げた後は 1400 件を超える。**件数リテラルで固定しない**が、
+      // 「.md だけへ戻った」ことは検出できる下限を置く。
+      assert.ok(
+        Number(m[1]) > 1000,
+        `走査が ${m[1]} 件しかない。対象が *.md だけへ戻っていないか:\n${out}`,
+      );
+    });
+
+    ok('check-cross-repo-refs: 除外した件数をログに出す（黙って飛ばさない）', () => {
+      const { out } = runXrepo();
+      assert.match(out, /scripts\/ の \d+ 件は検査していません/, out);
+    });
+
+    // ★★ 直したものを捕まえるか、実データで確かめる（#675 の教訓）。
+    ok('check-cross-repo-refs: develop 時点の workflow へ当てると空白区切りを検出する（変異試験）', () => {
+      let before;
+      try {
+        before = execFileSync('git', ['show', 'origin/develop:.github/workflows/doc-links-planning.yml'], {
+          encoding: 'utf8',
+          cwd: REPO,
+        });
+      } catch {
+        return; // origin/develop が無い環境（tarball 展開等）では飛ばす
+      }
+      const v = xrepo.findViolations(before, { markdown: false });
+      // develop 側に既に是正が入っている（＝本 PR がマージ済み）なら前提が消える。
+      if (v.length === 0) return;
+      assert.ok(
+        v.some((x) => x.kind === 'spaced' && x.matched.includes('ai-stock-trading')),
+        `develop の空白区切りを検出できなかった: ${JSON.stringify(v)}`,
+      );
+    });
+
+    // 除外が効いていることの側（設計の根拠を固定する）。
+    ok('check-cross-repo-refs: scripts/ を除外しないと検査器自身が大量に落ちる（除外の根拠）', () => {
+      const self = require('fs').readFileSync(path.join(SCRIPTS, 'check-cross-repo-refs.js'), 'utf8');
+      const v = xrepo.findViolations(self, { markdown: false });
+      assert.ok(
+        v.length > 10,
+        `検査器自身のフィクスチャが ${v.length} 件しか当たらない。除外の根拠が消えていないか確認すること`,
+      );
+    });
+
+    ok('check-cross-repo-refs: 除外は scripts/ の 1 本（名指しリストへ戻っていない）', () => {
+      assert.deepStrictEqual(xrepo.EXCLUDED_DIRS, ['scripts/']);
     });
   }
 };
