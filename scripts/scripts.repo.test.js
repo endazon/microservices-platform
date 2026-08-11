@@ -4079,6 +4079,49 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #701: blocked 判定の再検証（IADR-0180） ---------------------------------
+  //
+  // ★ #617 の再発防止。#554 / #556 / #562 は「AI だけでは完結しない」として保留され
+  //   フェーズ B 打ち切りの根拠にされたが、3 件とも別環境で同日中に着地した。
+  // ★ 機械検査は置かない（環境固有か恒久制約かは意味の理解が要る）。
+  //   固定するのは「規範が消えないこと」だけである。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const HANDOFF = 'docs/how-to/session-handoff.md';
+    const ADR = 'docs/adr/IADR-0180_blocked-judgments-expire.md';
+
+    ok('#701: 棚卸しのたびに行 H を測り直す規範が引継資料にある', () => {
+      const t = fs.readFileSync(path.join(REPO, HANDOFF), 'utf8');
+      assert.match(
+        t,
+        /一度「できない」と書いた判定は、棚卸しのたびに測り直す/,
+        '再検証の規範が引継資料から消えた',
+      );
+      assert.match(t, /前回できなかった.*据え置かない/s, '「据え置かない」が消えた');
+    });
+
+    ok('#701: 判定に「最後に測った時点」を添える規範がある', () => {
+      const t = fs.readFileSync(path.join(REPO, HANDOFF), 'utf8');
+      assert.match(t, /最後に測った時点/, '「最後に測った時点」が消えた');
+    });
+
+    // ★ 恒久制約（§3）と環境依存（§4.5）の書き分けが崩れると #617 が再発する。
+    ok('#701: 恒久制約と環境固有の観測の書き分けが残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, HANDOFF), 'utf8');
+      assert.match(t, /環境に依らない制約は §3 に書いてある/, '§3 と §4.5 の対比が消えた');
+      assert.match(t, /本節は\*\*測れば変わりうる\*\*/, '「測れば変わりうる」が消えた');
+    });
+
+    ok('#701: 判定の賞味期限が ADR に記録されている', () => {
+      const t = fs.readFileSync(path.join(REPO, ADR), 'utf8');
+      assert.match(t, /賞味期限/, '「判定には賞味期限がある」が消えた');
+      assert.match(t, /#617/, '根拠（#617 の実測）が消えた');
+      assert.match(t, /機械検査は置かない/, '機械検査を置かない旨が消えた');
+    });
+  }
+
   // --- feedback/ の frontmatter 語彙（#700 のレビュー 🟡） ----------------------
   //
   // ★ 同型 2 回目で足した検査（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。
