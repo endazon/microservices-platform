@@ -4186,6 +4186,18 @@ module.exports = ({ ok, assert }) => {
           0,
           `${rel}: 行末に空白が残っている（行 ${trailing.join(',')}）`,
         );
+        // ★ 連続空行も同じ型の残骸である。**上の 2 つでは捕まらない**
+        //   （`/^[ \t]+$/` は空文字列の行に当たらない）——本 PR のレビュー 🟢 が
+        //   まさにこの穴を突いた。develop 側は 6 ファイルとも 0 件で、床は clean である。
+        const doubles = [];
+        for (let i = 1; i < lines.length; i += 1) {
+          if (lines[i] === '' && lines[i - 1] === '') doubles.push(i + 1);
+        }
+        assert.strictEqual(
+          doubles.length,
+          0,
+          `${rel}: 空行が 2 行以上連続している（行 ${doubles.join(',')}）。切り出しの残骸`,
+        );
       }
     });
 
