@@ -224,6 +224,7 @@
 | [IADR-0168](./IADR-0168_grafana-provisioning-parity.md) | Grafana provisioning を経路間で同内容にする。**k8s にはダッシュボードが 1 枚も無く**、#546 の月次 LLM 費用確認 Runbook が指す `llm-usage.json` へ経路 B から辿り着けなかった。**#665 の検査器が `alerting/` だけを見ていた**ため誰も気づかず、突合を provisioning 全体へ広げる。 | Accepted |
 | [IADR-0169](./IADR-0169_cross-repo-ref-scan-beyond-markdown.md) | 他リポジトリ参照の検査を `.md` 外へ広げ、除外はディレクトリ 1 本にする。**IADR-0140 決定 4 を覆す** —— 対象外にした理由「編集不可」が誤りだった。 | Accepted |
 | [IADR-0170](./IADR-0170_planning-pin-freshness-detection.md) | 計画 pin の鮮度を夜間に検知し、**通知は「赤」ではなく issue** で出す。#589 が置いた制約「workflows は編集不可」は誤りで、案 1〜3 はその前提の下に並んでいた。着手可否に効く差分だけを鳴らす。 | Accepted |
+| [IADR-0171](./IADR-0171_backlink-obligation-one-way.md) | 「相互リンク」の義務は**仕様書側の一方向**とし、ADR 側に逆リンクを求めない（利用者裁定）。監査の「IADR-0134 だけが欠く」は母集合で崩れ、実測は 283 対だった。**正本は `docs/README.md` 運用ルール 4** に畳み、`CLAUDE.md` は指すだけにする。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
