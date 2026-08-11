@@ -127,9 +127,12 @@ submodule で取り込む等）、**計画 ID はプロジェクトごとに独�
 （`src/ai-stock-trading`）を含む。上記規約の可変部分を次のとおり確定する。
 
 - **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`。例 `AST/FR-17`・`AST/SC-01`・`AST/UC-06`。
+  **AST 側が自前で採番しているレンジは `FR-01..20` / `UC-01..07` / `SC-01..03`**（submodule pin `655e2ed`
   時点で実測）。AST の文書に他の `SC` 番号も現れるが、いずれも MSP 画面への**参照**であって AST の採番ではない
   — `05_screens/01_screens.md` の `SC-13` / `SC-16`、`07_adr/ADR-0012_mcp-exposure-policy.md` の `SC-11`。
-  計画大改定（PR planning#144）で MSP のレンジが `FR-01..21` / `UC-01..11` / `SC-01..21` へ広がった結果、
+  裸の ID は必ず MSP を指す。
+- **issue / PR 番号の修飾**: **短縮形に寄せる**（フルパス形式と混在させない）。
+  `AST#NNN`（ai-stock-trading）・`planning#NNN`（project-planning）。GitHub の自動リンクを効かせたい
   箇所に限りフルパス形式（`endazon/ai-stock-trading#NNN`）を用いてよい。
   **列挙形でも各番号を修飾する**（先頭だけの修飾は後続の番号を本リポジトリへ誤リンクさせる）。
   誤: `planning#146 / #149 / #160`。正: `planning#146 / planning#149 / planning#160`。
@@ -153,10 +156,9 @@ submodule で取り込む等）、**計画 ID はプロジェクトごとに独�
     `.md` で自動リンクになるのはフルパス形式だけなので、**owner を誤ると死んだリンクが描画される**
     （型 1〜3 は `.md` では表記ゆれに留まる）。**第三者リポジトリへの参照はこの限りではない**
     （`anthropics/claude-code-action#723` は owner が `endazon` でないのが正しい）。
-  - **機械検査**: `scripts/check-cross-repo-refs.js`（`--self-test` あり）が上記の各型
-    （長い表記・列挙形の修飾漏れ・空白区切り・**フルパス形式の owner 誤り**）を検出する
+  - **意図的に誤例を書くときはインラインコードかコードフェンスに入れる**（上の「誤:」の行がその形）。
+    literal な引用は表記規約の対象外であり、検査器も対象外にする（自動リンクが効く面でも
     コード中は平文で描画される）。
-
 
 > **★ 経緯・実測の詳細は別紙 [`docs/how-to/cross-project-id-refs-annex.md`](../../docs/how-to/cross-project-id-refs-annex.md) へ移した。**
 > **読むのは「なぜこの規約があるのか」を確かめたいとき**（衝突が実際に起きた経緯／計画大改定で
