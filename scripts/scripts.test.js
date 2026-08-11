@@ -773,6 +773,81 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
   });
 }
 
+// --- check-feedback-dispatched: 計画へ未送付のまま滞留した環流記録を見逃さない ---
+// planning#217: 記録は作られるが起票されず、PR がマージされても検出されない事故が
+// 6 件・最長 1 か月近く滞留した。判定の穴（自リポの issue URL を起票の証拠と誤認する等）は
+// 「OK: n 件」の陰に隠れるため、境界だけは固定しておく。
+{
+  const {
+    inspect: inspectFb,
+    fmValue: fmValueFb,
+    foreignIssueLinks,
+    EXCLUDED: EXCLUDED_FB,
+  } = require('./check-feedback-dispatched.js');
+  const SELF_FB = 'endazon/ai-stock-trading';
+
+  ok('計画リポジトリの issue URL があれば起票済みと見なす', () => {
+    const r = inspectFb('---\nstatus: open\n---\nhttps://github.com/endazon/project-planning/issues/209', SELF_FB);
+    assert.deepStrictEqual(r.reasons, []);
+  });
+
+  ok('自リポジトリの issue URL は計画への起票の証拠にならない', () => {
+    const r = inspectFb('---\nstatus: open\n---\nhttps://github.com/endazon/ai-stock-trading/issues/375', SELF_FB);
+    assert.ok(r.reasons.length > 0, '自リポの issue を起票済みと誤認している');
+  });
+
+  ok('「未送付」は status に関わらず警告する', () => {
+    const r = inspectFb('---\nstatus: accepted\n---\n未送付。計画リポジトリへ issue として起票する', SELF_FB);
+    assert.ok(r.reasons.length > 0);
+  });
+
+  ok('空値の planning_issue は起票の証拠にならない', () => {
+    assert.strictEqual(fmValueFb('---\nstatus: open\nplanning_issue:\n---\n', 'planning_issue'), '');
+    const r = inspectFb('---\nstatus: open\nplanning_issue:\n---\n本文', SELF_FB);
+    assert.ok(r.reasons.length > 0);
+  });
+
+  ok('selfRepo 不明時は誤検出しない側へ倒す', () => {
+    const links = foreignIssueLinks('https://github.com/endazon/ai-stock-trading/issues/1', '');
+    assert.strictEqual(links.length, 1, 'selfRepo が空ならすべて他リポ扱いにする');
+  });
+
+  ok('TEMPLATE.md / README.md は検査対象から外す', () => {
+    assert.ok(EXCLUDED_FB.has('template.md'));
+    assert.ok(EXCLUDED_FB.has('readme.md'));
+  });
+
+  ok('check-feedback-dispatched の自己試験が通る', () => {
+    execSync(`node ${JSON.stringify(require('path').join(__dirname, 'check-feedback-dispatched.js'))} --self-test`, {
+      stdio: 'pipe',
+    });
+  });
+}
+
+// ci-annotate は GITHUB_ACTIONS の有無で書き込み先（stdout / 呼び出し側指定）を変える。
+// **片方の環境でしかテストしないと必ず見落とす**。実際 #138 は「ローカルで緑・CI で赤」
+// という最も気付きにくい形で入り、取り込んだ全リポジトリの scripts-tests を落とした。
+// 子プロセスで GITHUB_ACTIONS=true を与えて自分自身を回し、次の 2 点を確認する。
+//   (1) 全テストが通る（execSync は非 0 終了で throw する）
+//   (2) テストのフィクスチャが出した警告が本物のアノテーションとして漏れない
+//       （漏れると PR の Checks 画面に事実でない警告が毎回出て、アノテーションが読まれなくなる）
+// SCRIPTS_TEST_CHILD で再帰を止める。
+if (!process.env.SCRIPTS_TEST_CHILD) {
+  ok('GITHUB_ACTIONS=true でも全テストが通り、フィクスチャ由来のアノテーションが漏れない', () => {
+    const out = execSync(`node ${JSON.stringify(__filename)}`, {
+      env: { ...process.env, GITHUB_ACTIONS: 'true', SCRIPTS_TEST_CHILD: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    // フィクスチャ固有の値だけを対象にする。実リポジトリの正当な警告（companion 未追跡等）で
+    // 誤って落とさないため、件数ではなく**フィクスチャの目印**で判定する。
+    const leaked = out
+      .split('\n')
+      .filter((l) => /^::(warning|notice)::/.test(l) && /no-such-project|<project-name>/.test(l));
+    assert.deepStrictEqual(leaked, [], `フィクスチャ由来のアノテーションが漏れている:\n${leaked.join('\n')}`);
+  });
+}
+
 // --- リポジトリ固有テストの受け口 ------------------------------------------
 //
 // 本ファイルはキット（impl-handoff-kit）が配布する共通テストであり、キットの更新のたびに
