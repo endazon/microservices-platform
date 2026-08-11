@@ -4079,6 +4079,41 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- feedback/ の frontmatter 語彙（#700 のレビュー 🟡） ----------------------
+  //
+  // ★ 同型 2 回目で足した検査（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。
+  //   1 回目: 20260808_kit-plan-id-qualification-check.md が type: feedback（正: plan-feedback）
+  //   2 回目: 20260811_nfr-numbering-... が status: draft → done（docs/ 用の語彙で、feedback/ の語彙ではない）
+  // ★ check-doc-status-vocabulary.js は docs/ 配下しか走査しないため feedback/ は素通りする。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const DIR = path.join(REPO, 'feedback');
+    const TYPES = new Set(['plan-feedback']);
+    const STATUSES = new Set(['open', 'triaged', 'accepted', 'rejected']);
+
+    ok('feedback/: frontmatter の type / status が確立済みの語彙に収まる', () => {
+      const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== 'README.md');
+      assert.ok(files.length > 0, 'feedback/ に .md が 1 件も無い（走査対象の消失）');
+      const bad = [];
+      for (const f of files) {
+        const head = fs.readFileSync(path.join(DIR, f), 'utf8').split('---')[1] || '';
+        const ty = (head.match(/^type:\s*(\S+)/m) || [])[1];
+        const st = (head.match(/^status:\s*(\S+)/m) || [])[1];
+        // TEMPLATE.md は雛形なので値域のプレースホルダを許す
+        if (f === 'TEMPLATE.md') continue;
+        if (ty && !TYPES.has(ty)) bad.push(`${f}: type=${ty}`);
+        if (st && !STATUSES.has(st)) bad.push(`${f}: status=${st}`);
+      }
+      assert.deepStrictEqual(
+        bad,
+        [],
+        `feedback/ の語彙外の値:\n  ${bad.join('\n  ')}\n  type は ${[...TYPES].join(' / ')}、status は ${[...STATUSES].join(' / ')}`,
+      );
+    });
+  }
+
   // --- #688: メタ作業の NFR は無採番のまま（IADR-0179） -------------------------
   //
   // ★ 規範を 1 つ足しながら必読を 208B 減らした（IADR-0178 決定 4 の実行）。
