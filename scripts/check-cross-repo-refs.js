@@ -291,7 +291,7 @@ function findViolations(text, opts = {}) {
 }
 
 /**
- * ★ `scripts/` を走査から外す（#583 判断 2）。
+ * ★ `scripts/` の**非 Markdown**を走査から外す（#583 判断 2）。
  *
  * **`scripts/` は検査器・その自己試験フィクスチャ・baseline / overrides が住む場所であり、
  * 違反の文字列を書くことが仕事である。** 実測すると `.md` 外の違反 64 件のうち **63 件**が
@@ -301,13 +301,30 @@ function findViolations(text, opts = {}) {
  * **名指しの除外リストにしない** —— 実測で 3 ファイルへ膨らみ、**次に検査器を足したら静かに
  * 古くなる**（本リポが繰り返してきた型）。**ディレクトリ 1 本の規則にする。**
  *
- * ★ **限界**: `scripts/` の中の散文コメントに本形が書かれても検出しない。
+ * ★★ **ただし `.md` は除外しない**（PR #679 のレビュー指摘で是正）。
+ *   初版は `scripts/` を丸ごと外し、**`scripts/README.md` を走査対象から落としていた** ——
+ *   **是正前に見ていたものを見なくなる回帰**である（実測: 落ちる `.md` はこの 1 件のみ、違反 0 件）。
+ *   `README.md` は**人が読む散文**であり、判断 2 が「対象に残す」と書いた側そのものである。
+ *   **`.md` では引用がインラインコード除外で守られる**ため、除外する理由がそもそも無い。
+ *
+ * ★ **限界**: `scripts/` の中の**コード中コメント**に本形が書かれても検出しない。
  *   **「検査していない」と「違反 0 件」を読み分けられるよう、除外件数をログに出す**（#583 判断 3）。
  */
 const EXCLUDED_DIRS = ['scripts/'];
 
 /**
- * git 管理下のテキストファイル（submodule 配下・`scripts/` を除く）を列挙する。
+ * 走査から外すか。**`.md` は常に検査する**（上のコメント参照）。
+ *
+ * ★ 「ディレクトリ 1 本」の形は保つ。**例外は「拡張子 `.md` は常に対象」の 1 行**であり、
+ *   ファイルを名指ししない —— 名指しリストへ戻すと静かに古くなる（判断 2）。
+ */
+function isExcluded(file) {
+  if (/\.md$/i.test(file)) return false;
+  return EXCLUDED_DIRS.some((d) => file.startsWith(d));
+}
+
+/**
+ * git 管理下のテキストファイル（submodule 配下・`scripts/` の非 Markdown を除く）を列挙する。
  * git を使えなければ null。
  *
  * ★ #583 まで対象は `*.md` だけだった（#507 決定 4）。**そのため
@@ -326,15 +343,9 @@ function trackedFiles(root = REPO_ROOT) {
     return null;
   }
   const all = raw.split('\n').map((s) => s.trim()).filter(Boolean);
-  const kept = all.filter((f) => !EXCLUDED_DIRS.some((d) => f.startsWith(d)));
+  const kept = all.filter((f) => !isExcluded(f));
   kept.excluded = all.length - kept.length;
   return kept;
-}
-
-/** 後方互換: 従来の `*.md` だけの列挙（自己試験が参照する）。 */
-function trackedMarkdown(root = REPO_ROOT) {
-  const all = trackedFiles(root);
-  return all === null ? null : all.filter((f) => /\.md$/i.test(f));
 }
 
 /** ファイル群を検査し、{file, violations} の配列を返す。 */
@@ -652,8 +663,9 @@ function main() {
   if (total === 0) {
     console.log(
       `[check-cross-repo-refs] OK: ${files.length} 件に他リポジトリ参照の表記違反はありません` +
-        `（${EXCLUDED_DIRS.join(' / ')} の ${excluded} 件は検査していません —— ` +
-        '検査器のフィクスチャと baseline が住む場所であり、違反の文字列を書くのが仕事だからである。#583 判断 2・3）。'
+        `（${EXCLUDED_DIRS.join(' / ')} の非 Markdown ${excluded} 件は検査していません —— ` +
+        '検査器のフィクスチャと baseline が住む場所であり、違反の文字列を書くのが仕事だからである。' +
+        'scripts/ の .md は人が読む散文なので検査対象に残している。#583 判断 2・3）。'
     );
     process.exit(0);
   }
@@ -672,13 +684,13 @@ if (require.main === module) main();
 
 module.exports = {
   trackedFiles,
+  isExcluded,
   EXCLUDED_DIRS,
   findViolations,
   checkFiles,
   formatReport,
   maskCode,
   unbalancedFenceLine,
-  trackedMarkdown,
   selfTest,
   LONG_RE,
   ENUM_RE,
