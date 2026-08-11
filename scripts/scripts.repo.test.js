@@ -4141,9 +4141,13 @@ module.exports = ({ ok, assert }) => {
       const bad = [];
       for (const f of files) {
         const text = fs.readFileSync(path.join(wfDir, f), 'utf8');
-        // `--jq '.[0]…'` で `// empty`（既定値）を伴わないものを違反とする。
-        for (const m of text.matchAll(/--jq\s+'([^']*\.\[0\][^']*)'/g)) {
-          if (!/\/\/\s*empty/.test(m[1])) bad.push(`${f}: ${m[1]}`);
+        // `--jq` の引数を**引用符の 3 形すべて**で拾う。
+        // ★ 初版は単一引用符だけを見ており、`--jq ".[0].number"` を取り逃していた
+        //   —— **本 PR が「片方だけ直さない」と書いた直後に、門の側が片側だけだった。**
+        for (const m of text.matchAll(/--jq\s+(?:'([^']*)'|"([^"]*)"|(\S+))/g)) {
+          const expr = m[1] ?? m[2] ?? m[3] ?? '';
+          if (!expr.includes('.[0]')) continue;
+          if (!/\/\/\s*empty/.test(expr)) bad.push(`${f}: ${expr}`);
         }
       }
       assert.deepStrictEqual(
