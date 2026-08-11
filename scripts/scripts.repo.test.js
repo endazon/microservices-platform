@@ -4310,7 +4310,7 @@ module.exports = ({ ok, assert }) => {
   //       … PR #682 の事故（#683 が挙げた 1 本）
   //     クラス B（`git ls-files` を読む）= **untracked が見えない**
   //       … PR #708 の事故（**本セッションが実際に踏んだ**。#683 は挙げていなかった）
-  //   クラス C（作業ツリーを読む 28 本）には**何も足さない**。順序で結果が変わらないので嘘になる。
+  //   クラス C（作業ツリーを読む 29 本）には**何も足さない**。順序で結果が変わらないので嘘になる。
   //
   // ★ 到達可能性を静的に見積もらない。初回実装では、当時の 6 本中 **3 本**の呼び出しが
   //   `--self-test` ブロックの内側（`return;` の手前）にあり dead code だったが、
@@ -4450,7 +4450,7 @@ module.exports = ({ ok, assert }) => {
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
-        assert.strictEqual(scripts.length, 32, `検査器の母集合が 32 本から変わった（${scripts.length} 件）`);
+        assert.strictEqual(scripts.length, 33, `検査器の母集合が 33 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -4525,6 +4525,83 @@ module.exports = ({ ok, assert }) => {
       // 正本は DoD 1 箇所（IADR-0141 単一情報源 / IADR-0183 決定 6）。
       const wf = fs.readFileSync(path.join(REPO, 'docs/ai-workflow.md'), 'utf8');
       assert.doesNotMatch(wf, /検証の順序/, 'ai-workflow.md へ順序が重複した（正本は DoD）');
+    });
+  }
+
+  // --- #710: 未送付検査器の取り込み（IADR-0184） -------------------------------
+  //
+  // ★ この検査器は**キットとバイト一致（分類 A）で保つ**。判定を本リポ向けに書き換えると
+  //   IADR-0115 決定 2 により次の同期で消える。汎用の改善はキットへ環流する（planning#319）。
+  //
+  // ★ 警告 1 件は**既知の偽陽性**である。`feedback/README.md` は伝達の経路を 2 つ認めるが、
+  //   検査器は Issue 経路しか証拠と読まない。**記録に嘘を書いて消すことはしない**（IADR-0184 決定 2）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { spawnSync } = require('child_process');
+    const REPO = path.join(__dirname, '..');
+    const CHECKER = 'scripts/check-feedback-dispatched.js';
+    const KIT = 'planning/tools/impl-handoff-kit/repo-template';
+
+    ok('#710: 検査器がキットとバイト一致である（分類 A を保つ）', () => {
+      const kitPath = path.join(REPO, KIT, CHECKER);
+      if (!fs.existsSync(kitPath)) {
+        // planning submodule が未 populate の環境では比較できない。黙って通さず notice を残す。
+        assert.ok(fs.existsSync(path.join(REPO, CHECKER)), '検査器そのものが無い');
+        return;
+      }
+      assert.deepStrictEqual(
+        fs.readFileSync(path.join(REPO, CHECKER)),
+        fs.readFileSync(kitPath),
+        'キットとバイト一致でなくなった（IADR-0115 決定 2: 独自の書き換えは同期時に消える）',
+      );
+    });
+
+    ok('#710: 警告は既知の偽陽性 1 件だけで、終了コードは 0 のまま', () => {
+      const r = spawnSync(process.execPath, [path.join(REPO, CHECKER)], {
+        cwd: REPO,
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+        env: { ...process.env, GITHUB_REPOSITORY: 'endazon/microservices-platform' },
+      });
+      assert.strictEqual(r.status, 0, '警告で落ちてはならない（起票は人手の判断を伴う）');
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      // 件数を固定する。増えたら新しい滞留であり、気づけないと #707 の再発になる。
+      const m = out.match(/未送付の可能性がある環流記録が (\d+) 件/);
+      assert.ok(m, `警告の件数を読み取れない:\n${out}`);
+      assert.strictEqual(m[1], '1', '未送付の疑いが 1 件から変わった（新しい滞留か、偽陽性の解消）');
+      assert.match(
+        out,
+        /20260809_document-write-machine-client\.md/,
+        '鳴っているのが既知の偽陽性とは別の記録になった',
+      );
+    });
+
+    ok('#710: 既知の偽陽性の理由と環流先が記録に在る', () => {
+      const adr = fs.readFileSync(
+        path.join(REPO, 'docs/adr/IADR-0184_feedback-dispatch-checker-verbatim.md'),
+        'utf8',
+      );
+      assert.match(adr, /記録へ嘘を書かない/, '偽陽性を消さない判断が消えた');
+      assert.match(adr, /バイト一致/, 'キット原文のまま置く判断が消えた');
+      const fb = fs.readFileSync(
+        path.join(REPO, 'feedback/20260811_kit-feedback-dispatch-routes.md'),
+        'utf8',
+      );
+      // 「環流した」と書けるのは起票まで済んだときだけ（docs/README.md 運用ルール 5）。
+      assert.match(fb, /planning#319 として起票済み/, '環流先の issue 番号が消えた');
+      assert.match(fb, /^status: triaged$/m, '記録の status が実態と食い違っている');
+    });
+
+    ok('#710: CI が検査器を自己試験つきで呼ぶ', () => {
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      assert.match(ci, /^  feedback-dispatched:$/m, 'ジョブが消えた');
+      assert.match(ci, /check-feedback-dispatched\.js --self-test/, '自己試験のステップが消えた');
+      // 厳格化は opt-in のまま（ブロックにすると「記録を作らない」回避策を誘発する）。
+      // ★ **job 直下（4 字下げ）**であること。キットは steps: のリスト項目と同じ字下げに置いており、
+      //   コメントを外すと mapping キーが項目の並びに混じって YAML が壊れる（planning#319 知見 4）。
+      //   「外せば効く」と書いてある以上、外して効かないと opt-in が名ばかりになる。
+      assert.match(ci, /^ {4}# env:\n {4}#   STRICT_FEEDBACK_DISPATCH: "1"$/m, '厳格化の opt-in が job 直下から動いた');
     });
   }
 

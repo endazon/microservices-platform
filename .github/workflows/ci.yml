@@ -103,6 +103,29 @@ jobs:
       - name: Check doc links
         run: node scripts/check-doc-links.js
 
+  # NFR, IADR-0184: 計画リポジトリへ伝達されないまま滞留した環流記録を警告する（#710）。
+  #
+  # **警告のみでジョブは落とさない。** 起票は人手の判断を伴うため、ブロックにすると
+  # 回避策（記録を作らない）を誘発する。目的は「気付けること」であって「止めること」ではない。
+  # 厳格化したい場合は下の env を有効化する（他の検査器と同じ opt-in 方式。IADR-0184 決定 3）。
+  #
+  # ★ 既知の偽陽性が 1 件ある（IADR-0184 決定 2）。`feedback/README.md` は伝達の経路を 2 つ
+  #   （記録ファイルのコピー / Issue 起票）認めるが、検査器は Issue 経路しか証拠と読まない。
+  #   キットへ環流済みで、**それが反映されるまでこの 1 件は鳴り続ける**。
+  feedback-dispatched:
+    runs-on: ubuntu-latest
+    # env:
+    #   STRICT_FEEDBACK_DISPATCH: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test feedback dispatch checker
+        run: node scripts/check-feedback-dispatched.js --self-test
+      - name: Check feedback dispatched
+        run: node scripts/check-feedback-dispatched.js
+
   # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
   # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
   # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
