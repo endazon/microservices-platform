@@ -4126,6 +4126,33 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(c.gateDocs.length, 1);
     });
 
+    // ★★ `jq '.[0].field'` は**空配列に当てると文字列 "null" を出す**（実測）。
+    //   `EXISTING=$(… --jq '.[0].number')` は該当 issue が 1 件も無いとき "null" になり、
+    //   `[ -n "$EXISTING" ]` が**常に真**になる。**`gh issue create` へ到達せず、
+    //   `gh issue comment "null"` を叩いて失敗する** —— 気付き導線が最も要る「最初の 1 回」で壊れる。
+    //
+    //   **同型が 2 件あった**（新設した planning-pin-freshness.yml と、写し元の
+    //   doc-links-planning.yml）。`CLAUDE.md`「検査器・規約の追加は同型の事故が 2 回起きたら」
+    //   の条件を満たすため、回帰テストで固定する。
+    ok('ワークフロー: gh issue list の --jq が空配列で "null" を返す形になっていない', () => {
+      const wfDir = path.join(REPO, '.github/workflows');
+      const files = fs.readdirSync(wfDir).filter((f) => /\.ya?ml$/.test(f));
+      assert.ok(files.length > 0, 'ワークフローを 1 件も読めない（走査が壊れている）');
+      const bad = [];
+      for (const f of files) {
+        const text = fs.readFileSync(path.join(wfDir, f), 'utf8');
+        // `--jq '.[0]…'` で `// empty`（既定値）を伴わないものを違反とする。
+        for (const m of text.matchAll(/--jq\s+'([^']*\.\[0\][^']*)'/g)) {
+          if (!/\/\/\s*empty/.test(m[1])) bad.push(`${f}: ${m[1]}`);
+        }
+      }
+      assert.deepStrictEqual(
+        bad,
+        [],
+        `空配列で "null" を返す --jq がある（\`// empty\` を付けること）:\n  ${bad.join('\n  ')}`,
+      );
+    });
+
     ok('pin 鮮度: 対象プロジェクト名が実在する（planning 側の改名で静かに 0 件へ落ちない）', () => {
       const dir = path.join(REPO, 'planning', 'projects', pin.PLANNING_PROJECT);
       if (!fs.existsSync(path.join(REPO, 'planning', 'projects'))) return; // 未 populate なら対象外

@@ -71,7 +71,7 @@ jobs:
         run: |
           TITLE="chore(NFR): 計画 pin が古く、着手可否に効く変更が計画側に入っている"
           BODY="$(printf '%s\n\n実行ログ: %s\n\n`node scripts/check-planning-pin-freshness.js` をローカルで実行して内容を確認し、pin を進めるか判断すること（本検査は CI を落とさない）。\n' "$(cat "$RUNNER_TEMP/pin-freshness.txt")" "$RUN_URL")"
-          EXISTING=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number')
+          EXISTING=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING" ]; then
             gh issue comment "$EXISTING" --body "$BODY"
           else
