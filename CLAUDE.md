@@ -2,8 +2,7 @@
 
 このリポジトリは、上流工程リポジトリ（`project-planning`）で確定した計画書を**実装する**ための作業リポジトリである。Claude はこのファイルを毎セッション読み込む。指示は具体・簡潔に保つ。
 
-> 本ファイルは `impl-handoff-kit` のテンプレートから生成された。技術スタックに依存する規約は末尾の「技術スタック別ルール」に追記すること。
-> リポジトリ最上位のフォルダ構成（成果物の単位。例: 基盤ユニット＋可変機能ユニットのユニット第一構成）は計画 ADR で確定し、「技術スタック別ルール」へ反映すること。
+> **技術スタックに依存する規約とフォルダ構成は、末尾の「技術スタック別ルール」へ追記する**（本ファイルは `impl-handoff-kit` のテンプレート由来）。
 >
 > **最初に `AI_SETUP.md` を読む**。利用可能な AI（Claude Code サブスク / Anthropic API / GitHub Copilot）の宣言と、有効化するファイル・シークレットがそこで決まる。
 
@@ -47,7 +46,7 @@
 - **原則は 1 issue = 1 PR**（[IADR-0116](docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 1）。**束ねてよいのは「裁定済みの同型な契約追加」だけ**で、[IADR-0139](docs/adr/IADR-0139_domain-bundled-contract-prs.md) 決定 1 の **6 条件をすべて満たすとき**に限る。**判定の単位はドメインではなく資源**（同じ API 資源または同じ DTO 群に閉じること）、**束の上限は名目 3 件・実効 2 件**。条件を満たさないものは束ねない（上流ガイドの「同型・低リスクの変更は束ねる」を、本リポでは ADR が定めたこの範囲で読む。**範囲を広げるには IADR-0116 / IADR-0139 の改定 IADR が要る**）
 - **フェーズ末監査は書いたエージェントと別の、フレッシュな文脈のエージェント**に diff と受け入れ基準だけを渡して行い、**証跡（実行コマンドと出力）必須**。宣言だけの監査は不合格
 - **裁定依頼は小さく高頻度**に計画リポへ流す（`decision-needed` ラベル）。**blocked（AI だけでは完結しない）判定は棚卸しごとに再検証**する（恒久制約への誤分類が実測で 3 件）
-- **検査器・規約の追加は「同型の事故が 2 回起きたら」**を条件とする（1 回目は記録に留める）。**毎セッション必読の規約は総量 50KB 予算**（本リポは超過中。減量は #623）
+- **検査器・規約の追加は「同型の事故が 2 回起きたら」**を条件とする（1 回目は記録に留める）。**毎セッション必読の規約は総量 50KB 予算**（#623 で到達。**予算内に保つ**）
 - **人間の関与はフェーズ計画の承認・フェーズ末監査結果のサンプリング確認・裁定の 3 点**（＋レビュー完了の required check 配備までは**マージ操作**を加えた 4 点）
 
 ## トレーサビリティ規約
@@ -64,34 +63,10 @@
 
 計画書（`project-planning` の上流ドキュメント）を実装向けに詳細化した仕様書を `docs/` に置く。`/new-spec <種別> <ID|topic>` で作成する。各仕様書には起点 ID（FR/UC/SC/ADR）と計画書リンク、関連仕様書への相互リンクを必ず記入する（**リンクの義務は仕様書側の一方向。ADR 側に逆リンクを張る義務は無い**。正本は `docs/README.md` 運用ルール 4 / [IADR-0171](docs/adr/IADR-0171_backlink-obligation-one-way.md)）。
 
-**必須**（対象が存在する限り作成・維持する）:
-
-| 種別 | 文書 | 出力先 | 粒度 |
-| --- | --- | --- | --- |
-| `work` | 作業仕様書（横断） | `docs/specs/` | 作業/PR 単位（着手前に必須） |
-| `functional` | 機能仕様書 | `docs/functional/` | 機能（FR）単位 |
-| `screen` | 画面仕様書 | `docs/screens/` | 画面（SC）単位 |
-| `api` | 通信仕様書 | `docs/api/` | API/IF 単位 |
-| `data` | データ仕様書（DB） | `docs/data/` | エンティティ/集約単位 |
-| `tech` | 技術要件書 | `docs/tech/` | リポ単位（原則1つ） |
-| `test` | テスト仕様書 | `docs/tests/` | 機能（FR）単位 |
-| `operations` | 運用仕様書 | `docs/operations/` | リポ単位（原則1つ） |
-| `security` | セキュリティ仕様書 | `docs/security/` | リポ単位（原則1つ） |
-| `adr` | 実装ADR（`IADR-XXXX`） | `docs/adr/` | 決定単位（重要判断ごとに必須） |
-
-**任意**（必要に応じて作成）:
-
-| 種別 | 文書 | 出力先 |
-| --- | --- | --- |
-| `observability` | ログ・可観測性仕様書 | `docs/observability/` |
-| `authz` | 権限・認可仕様書 | `docs/authz/` |
-| `integration` | 外部連携仕様書 | `docs/integration/` |
-| `batch` | バッチ・ジョブ仕様書 | `docs/batch/` |
-| `migration` | 移行仕様書 | `docs/migration/` |
-| `error` | エラー・メッセージ仕様書 | `docs/errors/` |
-| `infra` | インフラ・構成仕様書 | `docs/infra/` |
-| `runbook` | 運用 Runbook（運用仕様書の下位の手順書。複数可） | `docs/operations/` |
-| `how-to` | 手順ガイド（環境起動・デプロイ等。起点 ID 任意） | `docs/how-to/` |
+**種別の一覧（必須 10 / 任意 9）と出力先・粒度は [`docs/README.md`](docs/README.md) が正本である。**
+**ここへ複写しない** —— 2 箇所に置くと片方が古くなる（[IADR-0141](docs/adr/IADR-0141_audit-rounds-and-population-drawing.md)。
+運用ルール 4 で既に採っている扱いと同じ。[IADR-0171](docs/adr/IADR-0171_backlink-obligation-one-way.md)）。
+**`type` の値域はテンプレート（`docs/templates/*.md`）が持ち、`node scripts/check-doc-type-vocabulary.js` が閉じる。**
 
 - 詳細・計画書との対応は `docs/README.md` を参照。実装着手前に少なくとも作業仕様書を作成する。
 - 重要な実装判断（内部設計・ライブラリ選定等）は**実装ADR（`docs/adr/`、`IADR-XXXX`）に必ず残す**。計画に影響する決定は `/plan-feedback` で計画側へ環流する（計画ADR `ADR-XXXX` と区別する）。
@@ -107,7 +82,6 @@
 
 - 実装・レビュー・テスト生成にサブエージェントとスラッシュコマンドを活用する。一覧は `.claude/agents/` `.claude/commands/` を参照。
 - GitHub 上では `@claude` メンションで Issue/PR に AI を呼び出せる（`.github/workflows/claude-coding.yml`。既定は `.example`。`AI_SETUP.md` のプロファイルで有効化する）。PR には自動 AI レビューが走る（`claude-code-review.yml`）。
-  - 認証は **サブスクリプション＝`CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` で発行）/ API＝`ANTHROPIC_API_KEY`** のいずれか一方を登録する。サブスクのみでも GitHub 上の自律実装が可能。
 - 他の AI（Cursor / Codex / GitHub Copilot）を使う場合も、本ファイルおよび `AGENTS.md` の方針（特にトレーサビリティ最優先）に従う。Copilot 固有の運用は `.github/copilot-instructions.md` と `AI_SETUP.md` を参照。
 - **実装を AI に任せる前提の運用全体（起票→実装→検証→レビュー→マージ）と推奨ツールは `docs/ai-workflow.md` を参照する。**
 
@@ -157,7 +131,7 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 
 ### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 
-- **スタック**: **React 19** + TypeScript 5.6 + **Vite 6**（ESM, `"type": "module"`）。テストは **Vitest 3**。Node は CI と揃え **22** を使う。ADR-0031 が確定したスタック（React 19 + Vite + TanStack）への移行は [IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が **5 段**に分割し、**第 2 段の項目まで消化済み**である（#490 = ルータ／共通シェル／旧画面のルート載せ替え、#496 = shadcn/ui 本移植／Lingui／Storybook）。ただし**第 2 段の完了条件（旧 13 画面の削除・再実装）は #452 が引き受けており、まだ満たされていない**。ルーティングは **TanStack Router**（[IADR-0124](docs/adr/IADR-0124_tanstack-router-unit-composition.md)。`react-router-dom` は platform / knowledge から撤去済みで、再混入は ESLint が止める）。
+- **スタック**: **React 19** + TypeScript 5.6 + **Vite 6**（ESM, `"type": "module"`）。テストは **Vitest 3**。Node は CI と揃え **22** を使う。ADR-0031 が確定したスタックへの移行は [IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が段に分割して管理する（**段の進捗は同 IADR が正本。ここへ書かない**——進捗は最も速く腐る）。ルーティングは **TanStack Router**（[IADR-0124](docs/adr/IADR-0124_tanstack-router-unit-composition.md)。`react-router-dom` は platform / knowledge から撤去済みで、再混入は ESLint が止める）。
 - **構成**: pnpm workspace（ルート = `src/`、`pnpm-workspace.yaml` = `'*/frontend'` + `'packages/*'`。IADR-0121）。`platform/frontend`（foundation + アプリホスト）と `knowledge/frontend`（画面 features）を分離する（[IADR-0121](docs/adr/IADR-0121_spa-stack-migration-staging.md) が [IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) を Superseded / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。import はエイリアス `@foundation` / `@features`（合成点） / `@knowledge` を使う。
 - **サーバー状態**: **TanStack Query** に一元化する（`foundation/api/queryClient.ts` が唯一の生成点）。**グローバルストア（Redux）は持たない**——`redux` / `@reduxjs/*` の import は ESLint が error にする（IADR-0121 決定 8）。
 - **UI / CSS**: **Tailwind CSS v4** ＋ 共有 UI パッケージ **`@platform/ui`**（[`src/packages/ui`](src/packages/ui/README.md)。IADR-0121 決定 4 / IADR-0125 決定 1）。入れてよいのはデザイントークン・`cn()`・shadcn/ui 派生プリミティブのみで、ドメイン・通信・ルーティング・認証・**表示文言**は入れない（文言を持つと i18n の入口が 2 つに割れる）。公開面は `src/index.ts` の 1 ファイルで、深い参照は ESLint が禁止する。**外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy。フォントはシステムフォント、アイコンは npm 同梱の lucide-react）。この禁止は**ビルド成果物を走査して機械検査する**（`node scripts/check-static-egress.js --require <dist>`）。状態表示は**色だけで意味を持たせない**（色 ＋ アイコン ＋ テキスト。INDEX 決定 21。`StatusBadge` / `Alert` / `notify` が API で強制する）。
@@ -173,4 +147,4 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 ### CI（GitHub Actions）
 
 - バックエンドは [`ci.yml`](.github/workflows/ci.yml)（ユニット毎に restore/build/test/format）、フロントは [`frontend.yml`](.github/workflows/frontend.yml)（typecheck/lint/build/e2e）と [`frontend-tests.yml`](.github/workflows/frontend-tests.yml)（単体テスト＋カバレッジ）に分離する。フロント用ジョブは `paths: ["src/*/frontend/**", ...]` で各ユニットの frontend 変更時のみ起動し、両スタックの CI を独立させる。
-- `.github/workflows/` は GitHub App 権限では編集不可。ワークフロー変更はローカル（`workflow` スコープを持つ認証）でコミット/プッシュする。
+- `.github/workflows/` は**編集できる**（[IADR-0169](docs/adr/IADR-0169_cross-repo-ref-scan-beyond-markdown.md) が `git log` で実測。従前ここには「GitHub App 権限では編集不可」と書いてあったが**誤りである**）。ワークフローを変更したら、**その変更で起動条件・必須チェックが変わらないか**を確かめること。

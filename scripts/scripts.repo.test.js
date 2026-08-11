@@ -4079,6 +4079,63 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #697: CLAUDE.md の減量と 50KB 到達（IADR-0178） --------------------------
+  //
+  // ★ 本件は「別紙化」ではなく「正本へ畳む」。種別表は docs/README.md と完全に重複していた。
+  //   3 箇所目（別紙）を作ると IADR-0141 に反するため、導線に置き換えた。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const CLAUDE = 'CLAUDE.md';
+    const README = 'docs/README.md';
+    const ADR = 'docs/adr/IADR-0178_claude-md-defers-to-docs-readme.md';
+
+    ok('#697: 種別表が CLAUDE.md から消え、docs/README.md に在る', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      const d = fs.readFileSync(path.join(REPO, README), 'utf8');
+      const rows = (s) => (s.match(/^\| `[\w-]+` \|/gm) || []).length;
+      assert.strictEqual(rows(c), 0, `CLAUDE.md に種別表の行が残っている（${rows(c)} 行）`);
+      assert.ok(rows(d) >= 19, `docs/README.md の種別表が痩せた（${rows(d)} 行）。正本を壊している`);
+      assert.match(c, /docs\/README\.md/, 'CLAUDE.md に正本への導線が無い');
+    });
+
+    // ★ 表は出しても規範は出さない（IADR-0173 決定 2）
+    ok('#697: 仕様書まわりの規範が CLAUDE.md に残っている', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      for (const n of ['docs/specs/', '実装ADR', 'plan-feedback', '起点 ID']) {
+        assert.ok(c.includes(n), `規範「${n}」が CLAUDE.md から消えた`);
+      }
+    });
+
+    ok('#697: SPA 移行の進捗が CLAUDE.md から消え、規範が残っている', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      assert.ok(!c.includes('第 2 段の項目まで消化済み'), '進捗ナラティブが残っている');
+      assert.match(c, /IADR-0121/, '進捗の正本（IADR-0121）への導線が無い');
+      for (const n of ['React 19', 'Vite 6', 'TanStack Router']) {
+        assert.ok(c.includes(n), `規範「${n}」が CLAUDE.md から消えた`);
+      }
+    });
+
+    // ★★ IADR-0169 が実測で否定した記述。落ちると誤りが必読ファイルへ戻る。
+    ok('#697: .github/workflows/ の記述が実測に合っている', () => {
+      const c = fs.readFileSync(path.join(REPO, CLAUDE), 'utf8');
+      assert.ok(
+        !/GitHub App 権限では編集不可。ワークフロー変更はローカル/.test(c),
+        'IADR-0169 が否定した「編集不可」の記述が残っている',
+      );
+      assert.match(c, /IADR-0169/, '是正の根拠（IADR-0169）を指していない');
+    });
+
+    ok('#697: 到達と予算維持が ADR に記録されている', () => {
+      const t = fs.readFileSync(path.join(REPO, ADR), 'utf8');
+      assert.match(t, /正本へ畳む/, '「正本へ畳む」方針が書かれていない');
+      assert.match(t, /誤りは「削る」のではなく「直す」/, '誤りの扱いが書かれていない');
+      assert.match(t, /予算内に保つ/, '到達後の維持責任が書かれていない');
+      assert.match(t, /余白を食う/, '予算記述の自己参照（決定 5）が書かれていない');
+    });
+  }
+
   // --- #695: 必読規約の減量 段 5（IADR-0177） ------------------------------------
   //
   // ★ 本段の対象節は**確定済み記録が節名で引く件数が全節中 最多（20 件）**であり、
@@ -4162,6 +4219,7 @@ module.exports = ({ ok, assert }) => {
     ok('#695 段 5: 入口と別紙に切り出しの残骸（空白のみの行・行末空白）が無い', () => {
       const targets = [
         '.claude/rules/traceability.md',
+        'CLAUDE.md', // ★ #697 で追加。必読 2 ファイルは同じ扱いにする
         'docs/how-to/plan-id-range-history-annex.md',
         'docs/how-to/commit-message-rules-annex.md',
         'docs/how-to/adr-supersede-citation-annex.md',
