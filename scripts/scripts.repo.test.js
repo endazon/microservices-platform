@@ -4154,6 +4154,41 @@ module.exports = ({ ok, assert }) => {
       assert.match(t, /曲げない/, '届かない場合も統制を弱めない旨が書かれていない');
     });
 
+    // ★★ IADR-0177 決定 5。**同型 2 回目**なので検査器を置いた。
+    //   段 3 は行番号で切って文の途中を分断し、段 5 は文字列で切ったが行頭のインデントを残した
+    //   （`- **ADR / IADR の実在性**` が前の箇条の子項目として描画された）。
+    //   どちらも「切り出しの境界が行頭に揃っていない」型である。
+    //   ★ 捕まえるのは残骸だけで、インデントのずれ自体は捕まらない（正しい値は文脈依存）。
+    ok('#695 段 5: 入口と別紙に切り出しの残骸（空白のみの行・行末空白）が無い', () => {
+      const targets = [
+        '.claude/rules/traceability.md',
+        'docs/how-to/plan-id-range-history-annex.md',
+        'docs/how-to/commit-message-rules-annex.md',
+        'docs/how-to/adr-supersede-citation-annex.md',
+        'docs/how-to/cross-project-id-refs-annex.md',
+        'docs/how-to/changelog-overrides-annex.md',
+      ];
+      for (const rel of targets) {
+        const lines = fs.readFileSync(path.join(REPO, rel), 'utf8').replace(/\r\n/g, '\n').split('\n');
+        const blank = [];
+        const trailing = [];
+        lines.forEach((l, i) => {
+          if (/^[ \t]+$/.test(l)) blank.push(i + 1);
+          else if (/[ \t]+$/.test(l)) trailing.push(i + 1);
+        });
+        assert.strictEqual(
+          blank.length,
+          0,
+          `${rel}: 空白のみの行が残っている（行 ${blank.join(',')}）。切り出しが行頭に揃っていない`,
+        );
+        assert.strictEqual(
+          trailing.length,
+          0,
+          `${rel}: 行末に空白が残っている（行 ${trailing.join(',')}）`,
+        );
+      }
+    });
+
     ok('#695 段 5: 総括 ADR が可変の数値ではなく測り方を書いている', () => {
       const t = fs.readFileSync(path.join(REPO, RECAP_ADR), 'utf8');
       assert.match(t, /可変の数値を断定しない/, '数値を断定しない旨が書かれていない');

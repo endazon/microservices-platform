@@ -226,11 +226,11 @@ PR で追加されるコミット（`base..HEAD`）の件名を `scripts/check-c
 - **FR / UC / SC の実在性**（#579）: スコープの `FR-xx` / `UC-xx` / `SC-xx` が上記「起点 ID の種別」節の
   計画レンジに実在することを検査する。レンジのパーサは `check-test-traceability.js` のものを再利用する
   （**同じ事実を 2 本のパーサで持たない**）。
-  - **ADR / IADR の実在性**: 書式に加え、スコープの `IADR-xxxx` は本リポ `docs/adr/` に、`ADR-xxxx` は
+- **ADR / IADR の実在性**: 書式に加え、スコープの `IADR-xxxx` は本リポ `docs/adr/` に、`ADR-xxxx` は
   planning submodule の `projects/<name>/07_adr/` に該当ファイルが実在することを検査する
   （PR コミットと PR タイトルの両方）。読めない環境（submodule 未 populate 等）では該当検査を
   skip する（`check-doc-links.js` と同じ扱い。ローカル環境差で CI を落とさない）。
-  
+
 
 ### 採番衝突時の改番手順
 
