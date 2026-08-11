@@ -3977,4 +3977,109 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #589: 計画 pin の鮮度検知（IADR-0170） -----------------------------------
+  //
+  // ★ 待ち時間の実体は「回答待ち」ではなく「回答に気づいていない時間」だった（#572 施策 7）。
+  //   #548 / #560 / #589 は 3 回とも「人が気づいて起票」で処理されている。
+  {
+    const { spawnSync } = require('child_process');
+    const path = require('path');
+    const fs = require('fs');
+    const SCRIPTS = __dirname;
+    const REPO = path.join(SCRIPTS, '..');
+    const pin = require('./check-planning-pin-freshness.js');
+
+    ok('check-planning-pin-freshness --self-test が通る', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--self-test'], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      assert.strictEqual(r.status, 0, `${r.stdout || ''}${r.stderr || ''}`);
+    });
+
+    // 判断 4: fail-open。**ただし「検査していない」と「乖離なし」を読み分けられること。**
+    ok('check-planning-pin-freshness: 実データで落ちない（fail-open）', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      assert.strictEqual(r.status, 0, `pin 検査が CI を落とした（fail-open が壊れている）:\n${out}`);
+      // 未 populate なら「検査していません」、populate 済みなら結果のいずれかを必ず出す。
+      // **黙って何も言わずに緑を返さない。**
+      assert.match(
+        out,
+        /検査していません|一致しています|着手可否に効く変更はありません|計画 pin が/,
+        `何も報告せずに緑を返した（「検査していない」と「乖離なし」が読み分けられない）:\n${out}`,
+      );
+    });
+
+    ok('check-planning-pin-freshness: 未 populate では「乖離なし」と書かない', () => {
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      if (!/検査していません/.test(out)) return; // populate 済みの環境では対象外
+      assert.match(out, /乖離が無いことを意味しません/, `未 populate で断定している:\n${out}`);
+    });
+
+    // 判断 3: 着手可否に効く差分だけを鳴らす。**鳴りすぎると読まれなくなる。**
+    ok('pin 鮮度: draft / tools / 索引だけの差分では理由が 0 件', () => {
+      const r = pin.findIssues({
+        pin: 'a',
+        head: 'b',
+        files: [
+          'draft/feedback/20260807_x.md',
+          'tools/impl-sync/sync-impl-adr.js',
+          'projects/microservices-platform/INDEX.md',
+          'projects/microservices-platform/07_adr/README.md',
+        ],
+        adrPairs: [],
+      });
+      assert.strictEqual(r.drifted, true, 'pin != head なのに乖離なしと判定した');
+      assert.strictEqual(r.reasons.length, 0, `鳴らすべきでない差分で鳴った: ${JSON.stringify(r.reasons)}`);
+    });
+
+    // ★ 着手ゲートが外れる遷移（Proposed → Accepted）を、他の status 変化と区別する。
+    ok('pin 鮮度: Proposed → Accepted だけを adr-unblocked とする', () => {
+      const r = pin.findIssues({
+        pin: 'a',
+        head: 'b',
+        files: ['projects/p/07_adr/ADR-1_a.md', 'projects/p/07_adr/ADR-2_b.md'],
+        adrPairs: [
+          { file: 'projects/p/07_adr/ADR-1_a.md', before: 'status: Proposed\n', after: 'status: Accepted\n' },
+          { file: 'projects/p/07_adr/ADR-2_b.md', before: 'status: Accepted\n', after: 'status: Superseded\n' },
+        ],
+      });
+      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-unblocked').length, 1);
+      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-status-changed').length, 1);
+    });
+
+    ok('pin 鮮度: pin == head なら鳴らない（偽陽性の側）', () => {
+      const r = pin.findIssues({ pin: 'x', head: 'x', files: ['projects/p/02_requirements/a.md'], adrPairs: [] });
+      assert.strictEqual(r.drifted, false);
+    });
+
+    // 決定 1・2: 配線が外れていないか。**「配線した」と書いて実体が無い状態を作らない。**
+    ok('pin 鮮度: 夜間ワークフローが検査器を呼び、issue 起票の導線を持つ', () => {
+      const wf = path.join(REPO, '.github/workflows/planning-pin-freshness.yml');
+      assert.ok(fs.existsSync(wf), '夜間ワークフローが無い');
+      const text = fs.readFileSync(wf, 'utf8');
+      assert.match(text, /node scripts\/check-planning-pin-freshness\.js/, '検査器を呼んでいない');
+      assert.match(text, /gh issue (create|comment)/, '気付き導線（issue 起票）が無い');
+      assert.match(text, /submodules: recursive/, 'planning を populate していない（比較対象を取れない）');
+      assert.match(text, /PLANNING_REPO_TOKEN/, 'トークンを渡していない');
+      // ★ 「赤ではなく issue」の設計。continue-on-error や || true で握り潰していないこと。
+      assert.doesNotMatch(text, /continue-on-error/, '検査器は元々落ちない。握り潰しは不要で、誤解を招く');
+    });
+
+    ok('pin 鮮度: setup.sh がセッション開始時に検査器を呼ぶ（案 3）', () => {
+      const text = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8');
+      assert.match(text, /check-planning-pin-freshness\.js/, 'setup.sh から呼ばれていない');
+      // fail-open であること。**pin 検査よりセットアップを壊さないことを優先する。**
+      assert.match(text, /check-planning-pin-freshness\.js[^\n]*\|\||\|\| log/, 'setup.sh 側が fail-open でない');
+    });
+  }
 };
