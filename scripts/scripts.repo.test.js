@@ -4598,7 +4598,10 @@ module.exports = ({ ok, assert }) => {
       assert.match(ci, /^  feedback-dispatched:$/m, 'ジョブが消えた');
       assert.match(ci, /check-feedback-dispatched\.js --self-test/, '自己試験のステップが消えた');
       // 厳格化は opt-in のまま（ブロックにすると「記録を作らない」回避策を誘発する）。
-      assert.match(ci, /#\s*STRICT_FEEDBACK_DISPATCH: "1"/, '厳格化が opt-in でなくなった');
+      // ★ **job 直下（4 字下げ）**であること。キットは steps: のリスト項目と同じ字下げに置いており、
+      //   コメントを外すと mapping キーが項目の並びに混じって YAML が壊れる（planning#319 知見 4）。
+      //   「外せば効く」と書いてある以上、外して効かないと opt-in が名ばかりになる。
+      assert.match(ci, /^ {4}# env:\n {4}#   STRICT_FEEDBACK_DISPATCH: "1"$/m, '厳格化の opt-in が job 直下から動いた');
     });
   }
 
