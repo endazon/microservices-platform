@@ -1,0 +1,98 @@
+# PR サイズの検査（警告のみ・マージは止めない）。
+#
+# 背景: 大きい PR はレビューが形骸化する。とくに AI に実装を委ねる運用では、1 PR に複数の
+# issue が混ざると「フェーズ末監査で diff と受け入れ基準だけを渡す」形が成立しなくなる
+# （何の受け入れ基準に対する diff なのかが 1 対 1 で言えなくなるため）。
+#
+# **失敗させない。** サイズは正しさの指標ではなく、束ね方を見直す契機にすぎない。生成物
+# （orval・Lingui カタログ・EF マイグレーション等）を含む PR は正当に大きくなるため、
+# 機械的にブロックすると「分割のために実装を歪める」圧力が生まれる（planning#296 の
+# 「検査器・規約の追加は同型の事故が 2 回起きたら」という統制と同じ理由で、まず警告に留める）。
+#
+# しきい値を厳しくする場合も、**まず実測してから**動かすこと。
+#
+# 除外するもの:
+#   - 生成物・ロックファイル（差分の大半を占めるが人が読む対象ではない）
+#   - 削除のみの行（消す作業を萎縮させない）
+#
+# このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
+
+name: PR Size
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-size-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pr-size:
+    name: pr-size
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Measure added lines (excluding generated files)
+        id: measure
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # 生成物・ロックファイルは人が読む対象ではないため除外する。
+          # プロジェクトに応じて追加すること（pathspec の除外構文）。
+          #
+          # ── 本リポジトリの固有デルタ（IADR-0115 決定 2 の種別 2・3。IADR-0181 決定 1）──
+          # キット既定の `**/orval/**` は本リポジトリでは **1 ファイルも当たらない**（直近 60 PR で実測）。
+          # orval の出力先は src/orval.config.ts が指すとおり foundation/api/generated/ である。
+          # Lingui のカタログも messages.po だけでなく messages.ts を持つため、ディレクトリで除く。
+          # 実パスへ直した効果は直近 60 PR で 18 件・計 2,080 行（単一 PR 最大 534 行。dc52156）。
+          #
+          # docs/ と feedback/ を除くのは、本リポジトリが CLAUDE.md で **1 PR ごとに作業仕様書と
+          # 実装 ADR を必須**にしており、必須文書だけで追加行数の中央値が 393 行（p75 = 443）に
+          # 達するためである（直近 30 PR の実測）。文書量は「複数 issue の混在」の指標にならず、
+          # キット既定のまま数えると 30 PR 中 23 件（76%）が警告に当たって読まれなくなる
+          # （本設定では 7 件 = 23%。60 PR では 31%）。除外した分もジョブログには残る。
+          # IADR-0181 決定 2。
+          EXCLUDES: >-
+            :(exclude)**/*.lock
+            :(exclude)**/package-lock.json
+            :(exclude)**/pnpm-lock.yaml
+            :(exclude)**/*.generated.*
+            :(exclude)**/Migrations/**
+            :(exclude)src/platform/frontend/src/foundation/api/generated/**
+            :(exclude)src/platform/frontend/src/foundation/i18n/locales/**
+            :(exclude)**/*.po
+            :(exclude)docs/**
+            :(exclude)feedback/**
+            :(exclude)CHANGELOG.md
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "${BASE_SHA}" "${HEAD_SHA}" 2>/dev/null || true
+          # 追加行のみを数える（削除は数えない）。
+          added=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" -- . ${EXCLUDES} \
+            | awk '$1 != "-" { s += $1 } END { print s + 0 }')
+          echo "added=${added}" >> "${GITHUB_OUTPUT}"
+          echo "追加行数（生成物を除く）: ${added}"
+
+      - name: Warn when the PR is large
+        if: steps.measure.outputs.added != '' && fromJSON(steps.measure.outputs.added) > 400
+        run: |
+          {
+            echo "## PR サイズの警告"
+            echo
+            echo "追加行数（生成物を除く）が **${{ steps.measure.outputs.added }} 行**で、目安の 400 行を超えている。"
+            echo
+            echo "**マージは止めていない。** 次のどれかに当たらないかだけ確認すること。"
+            echo
+            echo "- 複数の issue が 1 PR に混ざっていないか（フェーズ末監査で「diff と受け入れ基準」を 1 対 1 で渡せなくなる）"
+            echo "- 分割すると実装を歪める束ね（同一資源・同一契約に触れる変更）であれば、**そのままでよい**。理由を PR 本文へ書く"
+            echo "- 除外し損ねた生成物があれば、本ワークフローの EXCLUDES へ追加する"
+          } >> "${GITHUB_STEP_SUMMARY}"
