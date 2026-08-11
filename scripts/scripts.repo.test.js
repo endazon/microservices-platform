@@ -4079,6 +4079,77 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #686: 必読規約の減量 段 1（IADR-0173） ------------------------------------
+  //
+  // ★★ **機械はこの型を検出しない。** 節名ごと消してもリンクは切れず、
+  //   `check-doc-links.js` は緑のまま通る。**確定済み記録は「ファイル ＋ 節名」で規約を引いており**
+  //   （実測 43 件・うち確定済み 18 件）、**節名が消えると引用先が消える**が、
+  //   `IADR-0166` により**引用側は書き換えられない**。だからスタブを固定する。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/commit-message-rules-annex.md';
+    // 別紙へ出した節（見出しはスタブとして入口に残す）
+    const MOVED = ['PR タイトル（スカッシュ後件名）の検査', '検査対象から除外する自動コミット'];
+    // 入口に残す規範（別紙へ出すと「読まなかっただけで CI に落ちる」。IADR-0173 決定 2）
+    const KEPT = ['採番衝突時の改番手順', 'クロスリポジトリの issue / PR 番号の修飾'];
+
+    ok('#686 段 1: 入口のパスが変わっていない', () => {
+      assert.ok(fs.existsSync(path.join(REPO, ENTRY)), `${ENTRY} が無い（IADR-0172 決定 2 に反する）`);
+    });
+
+    // ★ 確定済み記録（IADR-0145:26 等）が節名で引いているため、見出しは消せない。
+    //
+    // ★★ **見出し行そのものを見る。全文検索では駄目である。**
+    //    スタブの本文に「§PR タイトル（スカッシュ後件名）の検査（再発防止）へ移した」と
+    //    **同じ文字列が入っている**ため、`t.includes(見出し)` だと**見出し行を消しても通る**
+    //    （変異試験 M1 が実際に緑のまま通り、この穴を捕まえた）。
+    ok('#686 段 1: 出した節の見出しがスタブとして入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
+      for (const h of MOVED) {
+        assert.ok(
+          headings.some((x) => x.startsWith(h)),
+          `見出し「${h}」が入口から消えた（確定済み記録の引用が指す先を壊す）。` +
+            `現在の見出し: ${JSON.stringify(headings)}`,
+        );
+      }
+    });
+
+    // ★ 導線が無いと統制が消える（IADR-0172 決定 4）。スタブが別紙を指していること。
+    ok('#686 段 1: スタブが別紙を指している（導線が残っている）', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const n = t.split('commit-message-rules-annex.md').length - 1;
+      assert.ok(n >= MOVED.length, `別紙への導線が ${n} 件しかない（出した節は ${MOVED.length} 件）`);
+      assert.ok(fs.existsSync(path.join(REPO, ANNEX)), `別紙 ${ANNEX} が無い`);
+    });
+
+    // ★ 規範を別紙へ出していないこと。出すと「別紙を読まなかった」だけで CI に落ちる。
+    ok('#686 段 1: 規範は入口に残っている（本文ごと）', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const h of KEPT) {
+        assert.ok(t.includes(h), `規範「${h}」が入口から消えた`);
+      }
+      // 前文の規範（起点 ID の書式）が本文として残っていること。
+      assert.match(t, /許可する種別/, '節の前文（許可する種別）が入口から消えた');
+    });
+
+    // ★ 別紙の本文が実際に移っていること（スタブだけ作って中身が無い、を防ぐ）。
+    ok('#686 段 1: 別紙に本文が移っている', () => {
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      for (const h of MOVED) {
+        assert.ok(a.includes(h), `別紙に「${h}」が無い`);
+      }
+      assert.match(a, /いつ読むか/, '別紙に「いつ読むか」が無い（参照時に読む別紙の要件）');
+      assert.ok(a.length > 5000, `別紙が小さすぎる（${a.length}）。本文が移っていない可能性`);
+    });
+  }
+
   // --- #684: 必読規約の減量計画（IADR-0172） ------------------------------------
   //
   // ★ **計画は文書にしか無い。消えても CI は赤くならない**（#546 / #665 / #587 と同じ型）。
