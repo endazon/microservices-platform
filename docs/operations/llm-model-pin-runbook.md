@@ -4,7 +4,6 @@ type: runbook
 status: fixed
 related_ids:
   - FR-11
-  - ADR-0011
   - IADR-0102
   - IADR-0112
 author: claude
@@ -12,6 +11,7 @@ created: 2026-08-11
 updated: 2026-08-11
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/ai-stock-trading/07_adr/ADR-0011_llm-model-pinning.md (取引判断の LLM モデル固定・Accepted。本 Runbook が手続きを書き下ろす対象)"
 ---
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い

@@ -3992,7 +3992,37 @@ module.exports = ({ ok, assert }) => {
     ok('ピン Runbook: 版数移行に Stage 0 再検証が前提だと読み取れる', () => {
       const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
       assert.match(t, /Stage 0/, 'Stage 0 再検証への言及が無い');
-      assert.match(t, /ADR-0011/, 'ピン留めを定めた計画 ADR への言及が無い');
+      assert.match(t, /AST\/ADR-0011/, 'ピン留めを定めた計画 ADR への言及が無い');
+    });
+
+    // ★★ `ADR-0011` は **両プロジェクトに実在し、意味が違う**（実測）:
+    //      AST/ADR-0011 = LLM モデルのピン留め   ← 本 Runbook が指したいもの
+    //      MSP/ADR-0011 = wiki エンジンの選定     ← 裸で書くとこちらへ解決される
+    //    `.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合の ID 修飾」の対象だが、
+    //    **同規約の適用箇所に frontmatter は挙がっておらず**、`check-plan-id-qualification.js` も
+    //    「AST 文脈で裸の ID」（型 B）は**偽陽性を避けるため意図的に検出しない**。つまり
+    //    **機械はこの取り違えを止めない。**
+    //
+    //    先例は一致している —— `IADR-0102` とその作業仕様書は、いずれも
+    //    **AST の計画 ADR を `related_ids` へ入れず、`plan_refs` の実パスで指す**。
+    //    実パスは曖昧さが無く、`check-doc-links.js` がリンク切れを検出できる。
+    ok('ピン Runbook: AST の計画 ADR を裸の ID で related_ids へ入れていない', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8').replace(/\r\n/g, '\n');
+      const end = t.indexOf('\n---', 3);
+      assert.ok(t.startsWith('---\n') && end !== -1, 'frontmatter を読めない');
+      const front = t.slice(4, end + 1);
+      const block = /^related_ids:\s*\n((?:[ \t]*-[ \t]*.*\n)+)/m.exec(front);
+      assert.ok(block, 'related_ids が無い');
+      const ids = [...block[1].matchAll(/-[ \t]*["']?([^"'\s]+)["']?/g)].map((m) => m[1]);
+      assert.ok(
+        !ids.includes('ADR-0011'),
+        '裸の ADR-0011 は MSP の wiki エンジン ADR へ解決される。AST の計画 ADR は plan_refs の実パスで指す',
+      );
+      assert.match(
+        front,
+        /plan_refs:[\s\S]*ai-stock-trading\/07_adr\/ADR-0011_llm-model-pinning\.md/,
+        'AST/ADR-0011 を plan_refs の実パスで指していない',
+      );
     });
 
     ok('ピン Runbook: 利用不能時は実行せず発注せず、かつ「障害ではない」と書いてある', () => {
