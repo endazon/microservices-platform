@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 「相互リンク」の義務は仕様書側の一方向と確定する（#626）
 type: spec
-status: draft
+status: done
 related_ids:
   - NFR
   - IADR-0171
