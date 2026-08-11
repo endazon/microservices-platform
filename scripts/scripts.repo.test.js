@@ -4079,6 +4079,66 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #691: 必読規約の減量 段 3（IADR-0175） ------------------------------------
+  //
+  // ★ 段 3 の対象節は **確定済み記録が節名で引く件数が全節中 最多（5 件）** である。
+  //   見出しを消すと 5 件の引用が指す先が消え、IADR-0166 により引用側は直せない。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/cross-project-id-refs-annex.md';
+    const PLAN_ADR = 'docs/adr/IADR-0175_slimming-requires-claude-md-reduction.md';
+    const MOVED = '複数プロジェクトを跨ぐ場合の ID 修飾';
+    // 入口に残す規範（別紙へ出すと「別紙を読まなかっただけで CI に落ちる」）
+    const NORMS = ['AST/FR-17', '短縮形に寄せる', '空白を入れない', 'endazon'];
+
+    ok('#691 段 3: 対象節の見出しがスタブとして入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
+      assert.ok(
+        headings.some((x) => x.startsWith(MOVED)),
+        `見出し「${MOVED}」が入口から消えた。確定済み引用 5 件が指す先を壊す`,
+      );
+    });
+
+    ok('#691 段 3: 規範が入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of NORMS) {
+        assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
+      }
+    });
+
+    ok('#691 段 3: スタブが別紙を指し、別紙に経緯が移っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      assert.match(t, /cross-project-id-refs-annex\.md/, '別紙への導線が無い');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      assert.match(a, /いつ読むか/, '別紙に「いつ読むか」が無い');
+      assert.match(a, /計画大改定/, '別紙に経緯（計画大改定の重なり方）が無い');
+      assert.match(a, /自動リンク/, '別紙に実測（自動リンクの効く面）が無い');
+    });
+
+    // ★★ 「入口だけでは 50KB に届かない」という結論。落ちると
+    //    「段 4 まででよい」という誤りへ戻り、CLAUDE.md の減量が計画から抜ける。
+    ok('#691 段 3: CLAUDE.md の減量が必須だと ADR に書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /CLAUDE\.md/, 'CLAUDE.md への言及が無い');
+      assert.match(t, /確定事項/, '「想定 → 確定事項」への格上げが書かれていない');
+      assert.match(t, /段 4 の総括/, '「段 4 の総括まで CLAUDE.md に手を付けない」が無い');
+    });
+
+    // ★ #690 の反省。ADR が可変の数値を断定すると、その ADR 自身の編集で古くなる。
+    ok('#691 段 3: ADR が可変の数値ではなく測り方を書いている', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /現在値の出し方/, '測り方（コマンド）が書かれていない');
+      assert.match(t, /基準コミット/, '数値を書くときの基準明記が書かれていない');
+    });
+  }
+
   // --- #689: 必読規約の減量 段 2（IADR-0174） ------------------------------------
   //
   // ★ 段 1（#686）と同じ型。**確定済み引用が 0 件でも見出しは残す**（IADR-0173 決定 1 に
