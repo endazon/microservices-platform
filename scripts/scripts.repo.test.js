@@ -4122,6 +4122,102 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #703: キット e0bc81c への追随（IADR-0181） -------------------------------
+  //
+  // ★ #623 の受け入れ基準 1・2 は「作る」ではなく「追随する」課題だった。
+  //   キット e0bc81c が repo-template へ加えた 5 ファイルのうち 3 つは #622 で着地し、
+  //   2 つ（pr-size.yml / ai-implementation.yml）が置き去りにされていた。
+  // ★ repo-template 全体のバイト一致検査は置かない（IADR-0181 決定 5）——
+  //   planning が未 populate の環境で**静かに緑を返す検査器**になるためである
+  //   （#664 / PR #672 で 5 本是正した型）。固定するのは本リポ側の到達状態だけとする。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const TEMPLATE = '.github/ISSUE_TEMPLATE/ai-implementation.yml';
+    const PRSIZE = '.github/workflows/pr-size.yml';
+
+    ok('#703: issue テンプレートが Given-When-Then とファイル領域の 2 欄を必須で持つ', () => {
+      const t = fs.readFileSync(path.join(REPO, TEMPLATE), 'utf8');
+      assert.match(t, /受け入れ基準（Given-When-Then）/, 'Given-When-Then の欄名が消えた');
+      assert.match(t, /Given <前提> \/ When <操作> \/ Then <期待結果>/, 'GWT の雛形が消えた');
+      assert.match(t, /id: file_scope/, 'ファイル領域の欄（file_scope）が消えた');
+      assert.match(t, /ファイル領域（並列判定に使う）/, 'ファイル領域の欄名が消えた');
+      // ★ 欄が在っても **任意**なら宣言は集まらない。必須であることまで見る。
+      //   `id:` から次の `- type:` までを 1 欄として切り、その中の validations を見る。
+      const blocks = t.split(/\n  - type: /).slice(1);
+      for (const id of ['acceptance', 'file_scope']) {
+        const b = blocks.find((x) => new RegExp(`^\\s*\\w+\\n\\s*id: ${id}\\b`, 'm').test(x));
+        assert.ok(b, `欄 ${id} を切り出せない（テンプレートの構造が変わった）`);
+        assert.match(b, /validations:\s*\n\s*required: true/, `欄 ${id} が必須ではない`);
+      }
+    });
+
+    ok('#703: キットが正本 —— issue テンプレートはキットとバイト一致（分類 A）', () => {
+      const kit = path.join(
+        REPO,
+        'planning/tools/impl-handoff-kit/repo-template',
+        TEMPLATE,
+      );
+      // planning が未 populate の環境では比較できない。**静かに緑を返さない**ため、
+      // populate 済みかどうかを先に確かめ、未 populate のときだけ明示して抜ける。
+      if (!fs.existsSync(path.join(REPO, 'planning/tools/impl-handoff-kit'))) {
+        console.log('    (planning 未 populate のためバイト一致比較を省略)');
+        return;
+      }
+      assert.ok(fs.existsSync(kit), `キット側に ${TEMPLATE} が無い（キットの改名を疑う）`);
+      const a = fs.readFileSync(path.join(REPO, TEMPLATE));
+      const b = fs.readFileSync(kit);
+      assert.ok(
+        a.equals(b),
+        `${TEMPLATE} がキットとバイト一致しない（IADR-0115 決定 1 分類 A）: ` +
+          `本リポ ${a.length}B / キット ${b.length}B`,
+      );
+    });
+
+    ok('#703: PR サイズ検査は warn 方式（マージを止めない）', () => {
+      const t = fs.readFileSync(path.join(REPO, PRSIZE), 'utf8');
+      assert.match(t, /name: PR Size/, 'ワークフロー名が変わった');
+      assert.doesNotMatch(t, /^\s*exit 1\s*$/m, 'PR サイズ検査が fail する形になっている');
+      assert.doesNotMatch(t, /continue-on-error/, 'warn 方式なら continue-on-error は要らない');
+      assert.match(t, /GITHUB_STEP_SUMMARY/, '警告の出力先（ジョブサマリ）が消えた');
+      // ★ `/> 400/` だと `> 4000` へ緩めた変異を素通りする（変異試験で実測）。
+      //   **部分一致で数値を見ない。** 末尾を \b で閉じる。
+      assert.match(t, /> 400\b/, 'しきい値 400 が消えた（キットの数値は動かさない）');
+      assert.match(t, /目安の 400 行/, '警告文のしきい値が本体の条件と食い違っている');
+    });
+
+    // ★ 除外は「効くこと」を実測して置く。キット既定の `**/orval/**` は本リポで 0 件しか
+    //   当たらない（直近 60 PR）。**実パスが消えると検査は静かに無意味になる。**
+    ok('#703: PR サイズ検査の除外が本リポの生成物の実パスを指している', () => {
+      const t = fs.readFileSync(path.join(REPO, PRSIZE), 'utf8');
+      const required = [
+        'src/platform/frontend/src/foundation/api/generated/**',
+        'src/platform/frontend/src/foundation/i18n/locales/**',
+        'docs/**',
+        'feedback/**',
+      ];
+      const missing = required.filter((p) => !t.includes(`:(exclude)${p}`));
+      assert.deepStrictEqual(missing, [], `除外から落ちた実パス: ${missing.join(', ')}`);
+      // ★ 除外先が実在することまで見る（パスの改名で静かに空振りしないため）。
+      for (const p of required) {
+        const dir = path.join(REPO, p.replace(/\/\*\*$/, ''));
+        assert.ok(fs.existsSync(dir), `除外先 ${p} が実在しない（改名・移動を疑う）`);
+      }
+    });
+
+    ok('#703: 較正の根拠（実測値）と環流が IADR に残っている', () => {
+      const t = fs.readFileSync(
+        path.join(REPO, 'docs/adr/IADR-0181_pr-size-check-calibration.md'),
+        'utf8',
+      );
+      // ★ `> 400` が `> 4000` を素通りしたのと同型。**数値は前後を \b で閉じる。**
+      assert.match(t, /\b23 \/ 30\b/, 'キット既定の警告率（実測）が消えた');
+      assert.match(t, /\b7 \/ 30\b/, '本設定の警告率（実測）が消えた');
+      assert.match(t, /両立しない/, '正本の 2 規範が両立しない旨が消えた');
+    });
+  }
+
   // --- feedback/ の frontmatter 語彙（#700 のレビュー 🟡） ----------------------
   //
   // ★ 同型 2 回目で足した検査（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。
