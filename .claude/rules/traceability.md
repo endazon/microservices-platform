@@ -202,10 +202,7 @@ by ADR-0027・注記は #580）` のように**注記そのものへ起票 ID �
 した時点の原文（例: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs`
 冒頭の `// IADR-0017（Superseded by IADR-0026）`。ファイル追加コミットから在る記述）は注記ではないので、
 遡って起票 ID を足す必要はない（足しても「いつ誰が差し込んだか」の情報は増えない）。ただし **frontmatter を持たないファイル（コード・設定）は注記 ID
-だけでよい**——`updated:` は前進させる先が無いので求めない。**コードを対象外にしない理由**:
-母集合を切る基準は「**書いた時点の記録か否か**」であり（下記のとおり `docs/specs/` 等はそれで外れる）、
-コードはその基準に当たらない。「`git blame` で辿れるから注記 ID は要らない」は `.md` にも等しく
-当てはまるので、コードだけを外す根拠にならない。
+だけでよい**——`updated:` は前進させる先が無いので求めない。
 
 **後継 ID は旧 ID の隣に置く**（#580 / クロス監査 G-c）。frontmatter の ID リストで `ADR-0003` の
 直後に `ADR-0027` を置くと番号順が崩れるが、**これは意図的**である——「この旧 ID の後継はこれ」と
@@ -217,23 +214,11 @@ by ADR-0027・注記は #580）` のように**注記そのものへ起票 ID �
 改竄にあたるので**書き換えない**。**作業中の PR 自身の作業仕様書は別**で、その PR の中で内容を
 更新してよい（まだ一時点の記録として確定していないため）。
 
-> **機械検査は置いていない**（#580 の測定）。計画 ADR の `status` を読むには planning submodule が
-> 必要だが、**PR で起動する決定的な検査ジョブ**（`ci.yml` の `doc-links` / `scripts-tests` /
-> `commit-messages` 等、`pr-title.yml`）は**どれも submodule を populate しない**ため、検査を作っても
-> 常に skip され緑のまま素通りする。よって本規約は人と AI が守るものであり、CI は守っていない。
->
-> **例外は 2 本あるが、いずれもゲートではない**（#580 の測定・実測日 2026-08-07）。どちらも
-> `PLANNING_REPO_TOKEN` を使って `git submodule update --init --recursive` を実行する。
->
-> | ワークフロー | トリガ | PR 文脈で起動するか |
-> | --- | --- | --- |
-> | `claude-code-review.yml` | `on: pull_request`（`opened` / `synchronize`） | する |
-> | `claude-coding.yml` | `issue_comment` / `pull_request_review_comment` / `pull_request_review` / `issues` | する（PR へのコメント・レビューで起動する） |
->
-> ただしどちらも **AI 実行系であってマージを止める決定的ゲートではない**（前者は AI レビュー、
-> 後者は `@claude` メンションでの対話実装）ので、これらに検査を載せても「PR で planning を読む
-> **検査**」にはならない。「**PR で planning は絶対に取れない**」と読み違えないこと——取れるジョブは
-> 在るが、ゲートではない、が正しい。
+> **機械検査は置いていない**（#580 の測定）。よって本規約は人と AI が守るものであり、CI は守っていない。
+
+**測定の詳細（検査を置けない理由・submodule を populate する例外 2 本とその限界）と「コードを対象外に
+しない理由」は別紙 [`docs/how-to/adr-supersede-citation-annex.md`](../../docs/how-to/adr-supersede-citation-annex.md) へ移した。**
+**読むのは「CI にこの検査を足せないか考えるとき」「書式の射程を変えたいとき」でよい**（[[IADR-0172]] 決定 3 ／ [[IADR-0173]] 決定 1）。
 
 ## 是正・追随の母集合の取り方（[[IADR-0141]] 決定 1）
 

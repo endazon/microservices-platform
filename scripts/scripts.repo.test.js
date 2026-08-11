@@ -4079,6 +4079,81 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #693: 必読規約の減量 段 4（IADR-0176） ------------------------------------
+  //
+  // ★ 本段の対象節は `##` と `###` の**両方**を確定済み記録が節名で引いている。
+  //   どちらを消しても引用先が消え、IADR-0166 により引用側は直せない。
+  // ★ 出した 3 塊は見出しを持たないため、**入口から消えたこと**を負の表明で固定する
+  //   （見出しスタブと違い「残っているか」だけでは移動を確かめられない）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/adr-supersede-citation-annex.md';
+    const RECAP_ADR = 'docs/adr/IADR-0176_entry-slimming-recap-block-level-classification.md';
+    const HEADS = ['残す箇所と書式', 'Superseded / Deprecated な ADR を引用するときの書式'];
+    // 入口に残す規範（別紙へ出すと「別紙を読まなかっただけで成果物が壊れる」）
+    const NORMS = [
+      'ID を後継へ付け替えてはならない',
+      '後継 ID は旧 ID の隣に置く',
+      '注記そのものへ起票 ID を書き',
+      'live な権威文書とコード',
+      '機械検査は置いていない',
+    ];
+    // 別紙へ出した塊（入口に残っていてはならない＝移動していない）
+    const MOVED_OUT = ['例外は 2 本あるが', 'コードを対象外にしない理由', 'submodule を populate しない'];
+
+    ok('#693 段 4: 対象節の見出しが 2 つともスタブとして入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
+      for (const h of HEADS) {
+        assert.ok(
+          headings.some((x) => x.startsWith(h)),
+          `見出し「${h}」が入口から消えた。確定済み引用が指す先を壊す（IADR-0173 決定 1）`,
+        );
+      }
+    });
+
+    ok('#693 段 4: 規範が入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of NORMS) {
+        assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
+      }
+    });
+
+    ok('#693 段 4: 説明・経緯が入口から別紙へ移っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      for (const m of MOVED_OUT) {
+        assert.ok(!t.includes(m), `「${m}」が入口に残っている（別紙へ出ていない）`);
+        assert.ok(a.includes(m), `「${m}」が別紙に無い（移動ではなく削除になっている）`);
+      }
+      assert.match(t, /adr-supersede-citation-annex\.md/, '別紙への導線が無い');
+      assert.match(a, /参照時にだけ読む別紙/, '別紙に「いつ読むか」が無い');
+    });
+
+    // ★★ 総括の結論。落ちると「段 4 で入口は尽きた」という誤りへ戻り、
+    //    段 5 が計画から抜けたまま CLAUDE.md を必要量不明のまま削ることになる。
+    ok('#693 段 4: 入口の総括が ADR に記録されている', () => {
+      const t = fs.readFileSync(path.join(REPO, RECAP_ADR), 'utf8');
+      assert.match(t, /段 4 は最終段ではなかった/, '「段 4 が最終段ではない」が書かれていない');
+      assert.match(t, /段 5 を追加する/, '段 5 の追加が書かれていない');
+      assert.match(t, /塊単位/, '分類を塊単位へ改めたことが書かれていない');
+      assert.match(t, /50,000 を下回らない/, '上限側の実測（入口だけでは届かない）が書かれていない');
+    });
+
+    // ★ IADR-0175 決定 0 の継承。ADR が可変の数値を断定すると自分の編集で古くなる。
+    ok('#693 段 4: 総括 ADR が可変の数値ではなく測り方を書いている', () => {
+      const t = fs.readFileSync(path.join(REPO, RECAP_ADR), 'utf8');
+      assert.match(t, /可変の数値を断定しない/, '数値を断定しない旨が書かれていない');
+      assert.match(t, /statSync/, '測り方（コマンド）が書かれていない');
+    });
+  }
+
   // --- #691: 必読規約の減量 段 3（IADR-0175） ------------------------------------
   //
   // ★ 段 3 の対象節は **確定済み記録が節名で引く件数が全節中 最多（5 件）** である。
