@@ -35,11 +35,14 @@ related_specs:
 | クラス | 見えないもの | 該当 | 件数 |
 | --- | --- | --- | ---: |
 | **A. HEAD（コミット済み）を読む** | **未コミットの変更** | `check-doc-updated.js` / `check-landed-subjects.js` | **2** |
-| **B. 追跡下のみ（`git ls-files`）** | **untracked の新規ファイル** | `check-cross-repo-refs.js` / `check-plan-id-qualification.js` / `check-action-versions.js` / `check-test-spec-coverage.js` | **4** |
-| C. 作業ツリーを読む | （順序に依存しない） | 残り | **26** |
+| **B. 走査母集合を `git ls-files` から引く** | **untracked の新規ファイル** | `check-cross-repo-refs.js` / `check-plan-id-qualification.js` | **2** |
+| C. 作業ツリーを読む | （順序に依存しない） | 残り | **28** |
 
 **#683 が挙げたのはクラス A の 1 本（`check-doc-updated.js`）だけ**である。
 「残りの 30 本が作業ツリーを読むのか HEAD を読むのかは未確認。この issue で全数を引く」と自ら書いており、**引いた結果が上表**である。
+
+> **★ 上表は 2 度引き直した。** 初回は**文字列 grep** で引いて **B を 4 本**としたが、**2 本は過大**だった（判断 7）。
+> **現在の値は PATH に置いた `git` の shim で実際の呼び出しを記録して引いたもの**である。
 
 ### ★★ 軸 b: **クラス B は本セッションで実際に踏んだ**
 
@@ -93,10 +96,17 @@ CI は**クリーンなチェックアウト**で走るので該当が 0 件に�
 > develop へ復元するため、**未コミットの変更が常に存在する**。**警告が出るのは正しい挙動**である
 > （その環境の結果は実 CI と一致しない、というのが事実だからである）。
 
-### 判断 4: **`check-planning-pin-freshness.js` は射程外**
+### ★ 判断 4: **境界の 3 本は対象にしない —— 理由はそれぞれ違う**
 
-git を使うが**軸が違う** —— **planning submodule の pin と planning の HEAD** を比べるものであり、
-**本リポの「作業ツリー vs HEAD」ではない**。**未コミットの有無で結果は変わらない。**
+**git を使う ＝ 対象、ではない。** 実測で git を呼ぶと分かった検査器のうち、**3 本は偽の緑を作らない**。
+
+| 検査器 | 本リポに対する git の使い方 | 対象にしない理由 |
+| --- | --- | --- |
+| `check-action-versions.js` | `ls-files --error-unmatch <1 ファイル>` | **走査母集合ではない**（母集合は `readdirSync`）。**追跡外なら専用の警告を自分で出す** |
+| `check-commit-messages.js` | `log origin/develop..HEAD` | **見落とす既存状態が無い**（コミット前に件名は存在しない） |
+| `check-planning-pin-freshness.js` | `ls-tree HEAD planning`（他は `-C planning`） | **偽の緑ではなく偽の赤**を作る。見落としの方向へ倒れない |
+
+**まとめて「射程外」と書かない** —— 理由が違うので、片方が変わったときにもう片方まで巻き添えになる。
 
 ### ★ 判断 5: **`paths:` 由来の偽陽性は作らない**
 
@@ -122,21 +132,55 @@ git を使うが**軸が違う** —— **planning submodule の pin と plannin
 **是正**: 3 本の呼び出しをブロックの**外**へ移し、**untracked のファイルを実際に作って 6 本を 1 本ずつ観測**した（下記）。
 **回帰テストも同じやり方で測る**（静的な位置検査にしない）。
 
-> **★ 規約にはしない。** 「同型の事故が 2 回起きたら」の**1 回目**である。**IADR-0183 決定 7 に記録するに留める。**
+> **★ この時点では規約にしなかった。** 「同型の事故が 2 回起きたら」の**1 回目**だったためである。
+
+### ★★ 判断 7: **分類も実挙動で測る（同型 2 回目 —— ここで検査器にする）**
+
+**AI レビューが「`check-test-spec-coverage.js` はクラス B ではない」と指摘した。指摘は正しい。**
+初回の分類は**文字列 grep** で行っており、当たったのは**エラーメッセージ中の `git ls-files`**（同ファイル 717 行）だった。
+**この検査器は `child_process` を一切 require しない。**
+
+**指摘は 1 本だったが、実挙動で測り直したら過大は 2 本**だった。
+
+| 検査器 | 初回（文字列 grep） | 実測（git shim） | 是正 |
+| --- | --- | --- | --- |
+| `check-test-spec-coverage.js` | B | **git を一切呼ばない** | **C へ** |
+| `check-action-versions.js` | B | `ls-files --error-unmatch <1 ファイル>` のみ | **C へ**（判断 4） |
+
+**是正の方法**: **PATH に `git` の shim を置き、母集合を実行して呼び出しを記録する。**
+
+> **★ これで「静的な見積もりが誤答した」型は 2 回目**である（1 回目は判断 6 の到達可能性）。
+> `CLAUDE.md`「**検査器・規約の追加は同型の事故が 2 回起きたら**」の条件を満たすので、**ここで検査器にする**。
+
+### ★ 判断 8: **突合は 2 方向とも掛ける**
+
+**宣言 → 実挙動**だけでは、**宣言し忘れた新設の検査器を素通りする**。**実挙動 → 宣言**も掛ける。
+
+| # | 実挙動（本リポ宛の呼び出しに限る） | 要求 |
+| ---: | --- | --- |
+| 1 | `ls-files` を **`--error-unmatch` 無しで**呼ぶ | `MODE.TRACKED` を宣言していること |
+| 2 | `show` / `diff` / `log` / `merge-base` / `rev-list` を呼ぶ | `MODE.HEAD` を宣言していること |
+
+規則 2 の名指しの例外は **`check-commit-messages.js` の 1 件だけ**で、**件数も固定する**（IADR-0169 決定 2）。
+
+> **★ この検査器は書いた直後に、私の手動分析が見落としていた `gen-changelog.js` を捕まえた。**
+> **生成器は履歴を読むのが本来の仕事**なので母集合から外し（**実行もしない**。成果物を書き得る）、
+> **検査器の母集合が 32 本であること自体を固定した** —— 新しい検査器が増えたらまずここが落ちる。
 
 ## テスト（受け入れ基準の写像）
 
 | # | 受け入れ基準（#683） | 確かめ方 |
 | --- | --- | --- |
 | 1 | 差分ベースの検査器を全数で列挙した | 軸 a ／ **回帰テスト①**（A・B の該当を**ファイル名の集合**で固定） |
-| 2 | 未コミットがあるとき警告する（失敗させない） | **回帰テスト②**（untracked を実際に作り、6 本が鳴る・**exit code が基準と一致**） |
-| 3 | 検証順序を **1 箇所だけ**に書く | **回帰テスト⑤**（DoD に在り、`ai-workflow.md` に重複が無い） |
+| 2 | 未コミットがあるとき警告する（失敗させない） | **回帰テスト②**（untracked を実際に作り、4 本が鳴る・**exit code が基準と一致**） |
+| 3 | 検証順序を **1 箇所だけ**に書く | **回帰テスト⑥**（DoD に在り、`ai-workflow.md` に重複が無い） |
 | 4 | **クラス B（untracked）も対象** | **回帰テスト①②**（#683 の母集合の拡張） |
 | 5 | クラス C へ足していない | **回帰テスト①**（`worktree-state` を参照するクラス C が 0 件） |
 | 6 | **注入が到達可能である** | **回帰テスト②**（判断 6。静的判定は誤答したので実挙動で測る） |
-| 7 | `check-doc-links.js` ほかが緑 | 検証 |
+| 7 | **分類が実装と一致している** | **回帰テスト⑤**（判断 7・8。git shim で**両方向**に突き合わせる） |
+| 8 | `check-doc-links.js` ほかが緑 | 検証 |
 
-### 変異試験（**7 件すべて検出**）
+### 変異試験（**12 件すべて検出**）
 
 | # | 変異 | 検出 |
 | ---: | --- | --- |
@@ -147,12 +191,20 @@ git を使うが**軸が違う** —— **planning submodule の pin と plannin
 | 5 | `MODE.TRACKED` 分岐を無条件で無警告にする | ✓ |
 | 6 | クラス A の促し文言（「コミットしてから再実行」）を消す | ✓ |
 | 7 | クラス C の検査器（`check-adr-numbering.js`）へ順序警告を混入させる | ✓ |
+| **8** | **実体の無い宣言を戻す**（`check-test-spec-coverage.js` を `MODE.TRACKED` へ再掲）**＝今回の誤分類そのもの** | ✓ |
+| **9** | **実挙動があるのに宣言から外す**（`check-cross-repo-refs.js` を落とす） | ✓ |
+| **10** | **名指しの例外を増やす**（`HISTORY_EXEMPT` を 2 件に） | ✓ |
+| **11** | **クラス C の検査器へ `git ls-files` 走査を足す**（新設の宣言し忘れ） | ✓ |
+| **12** | **母集合を水増しする**（`NOT_CHECKERS` へ検査器を紛れ込ませる） | ✓ |
+
+> **★ 変異 2 は初回の分類を前提にしていた。** `check-action-versions.js` はクラス C へ移したので、
+> **この変異はもはや同じ形では成立しない**（現在は変異 11 が同じ性質を受け持つ）。
 
 ## 着地の実測
 
 **commit 基準: develop `846d101` からの差分。**
 
-### 実挙動（**untracked のファイルを作って 6 本を 1 本ずつ観測**）
+### 実挙動 1: **untracked のファイルを作って該当 4 本を 1 本ずつ観測**
 
 | 検査器 | クラス | 警告 | 終了コード |
 | --- | --- | --- | --- |
@@ -160,30 +212,43 @@ git を使うが**軸が違う** —— **planning submodule の pin と plannin
 | `check-landed-subjects.js` | A | **鳴る** | **不変** |
 | `check-cross-repo-refs.js` | B | **鳴る** | **不変** |
 | `check-plan-id-qualification.js` | B | **鳴る** | **不変** |
-| `check-test-spec-coverage.js` | B | **鳴る** | **不変** |
-| `check-action-versions.js` | B | **鳴る** | **不変** |
 
-`scripts/scripts.test.js` は **472 件すべて緑**（新規 5 件を含む）。
+### 実挙動 2: **`git` の shim で、検査器 32 本の呼び出しを全数記録**
+
+`status` は本モジュール自身の呼び出しなので除く。`-C planning` の呼び出しは軸が違うので数えない。
+
+| 検査器 | 本リポ宛の git 呼び出し | 分類 |
+| --- | --- | --- |
+| `check-doc-updated.js` | `show`×8 / `merge-base` / `log` / `diff` | **A** |
+| `check-landed-subjects.js` | `merge-base`×10 / `log` / `rev-parse` | **A** |
+| `check-cross-repo-refs.js` | `ls-files` | **B** |
+| `check-plan-id-qualification.js` | `ls-files` | **B** |
+| `check-action-versions.js` | `ls-files --error-unmatch <1 ファイル>` | C（判断 4） |
+| `check-commit-messages.js` | `log origin/develop..HEAD` / `rev-parse` | C（判断 4） |
+| `check-planning-pin-freshness.js` | `ls-tree HEAD planning` のみ | C（判断 4） |
+| **残り 25 本** | **なし** | **C** |
+
+**32 本の実走に要した時間は約 3.5 秒**である。`scripts/scripts.test.js` は **473 件すべて緑**（新規 6 件を含む）。
 
 ### 変更の全数と実効（[IADR-0178](../adr/IADR-0178_claude-md-defers-to-docs-readme.md) 決定 6）
 
+**`check-test-spec-coverage.js` と `check-action-versions.js` は、判断 7 の是正で差分が 0 に戻った**（変更ファイルから外れる）。
+
 | # | 変更 | 旧 | 新 | 実効 |
 | ---: | --- | ---: | ---: | ---: |
-| 1 | `scripts/lib/worktree-state.js`（新規） | 0 | 6,511 | **＋6,511** |
+| 1 | `scripts/lib/worktree-state.js`（新規） | 0 | 7,242 | **＋7,242** |
 | 2 | `scripts/check-doc-updated.js`（クラス A） | 10,912 | 11,185 | **＋273** |
 | 3 | `scripts/check-landed-subjects.js`（クラス A） | 20,591 | 20,868 | **＋277** |
 | 4 | `scripts/check-cross-repo-refs.js`（クラス B） | 44,198 | 44,478 | **＋280** |
 | 5 | `scripts/check-plan-id-qualification.js`（クラス B） | 19,641 | 19,927 | **＋286** |
-| 6 | `scripts/check-test-spec-coverage.js`（クラス B） | 41,863 | 42,145 | **＋282** |
-| 7 | `scripts/check-action-versions.js`（クラス B） | 25,263 | 25,542 | **＋279** |
-| 8 | `scripts/scripts.repo.test.js`（回帰テスト 5 件） | 300,988 | 307,822 | **＋6,834** |
-| 9 | `docs/DEFINITION_OF_DONE.md`（検証の順序） | 4,769 | 6,170 | **＋1,401** |
-| 10 | `docs/adr/IADR-0183_...md`（新規） | 0 | 7,266 | **＋7,266** |
-| 11 | `docs/adr/README.md`（索引 1 行） | 216,744 | 217,172 | **＋428** |
-| 12 | `docs/specs/20260811_issue-683_...md`（本書・新規） | 0 | 11,981 | **＋11,981** |
-| | **計** | | | **＋36,098** |
+| 6 | `scripts/scripts.repo.test.js`（回帰テスト 6 件） | 300,988 | 313,290 | **＋12,302** |
+| 7 | `docs/DEFINITION_OF_DONE.md`（検証の順序） | 4,769 | 6,513 | **＋1,744** |
+| 8 | `docs/adr/IADR-0183_...md`（新規） | 0 | 10,751 | **＋10,751** |
+| 9 | `docs/adr/README.md`（索引 1 行） | 216,744 | 217,226 | **＋482** |
+| 10 | `docs/specs/20260811_issue-683_...md`（本書・新規） | 0 | 17,009 | **＋17,009** |
+| | **計** | | | **＋50,646** |
 
-> **★ 索引 1 行は 154 字**（上限 200 字）。**縮め直しは発生していない** —— 前 2 PR が `title-too-long` に
+> **★ 索引 1 行は 184 字**（上限 200 字）。**縮め直しは発生していない** —— 前 2 PR が `title-too-long` に
 > 計 3 回当たったのを受け、**書く前に測ってから置いた。**
 
 > **★ 必読 2 ファイルを 1 バイトも触っていない。必読合計 49,845B のまま**（50,000 まで 155B）。

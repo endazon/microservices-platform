@@ -61,7 +61,6 @@
 const fs = require('fs');
 const path = require('path');
 const { warn } = require('./lib/ci-annotate');
-const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
 const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -600,8 +599,6 @@ function selfTest() {
 
 function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
-  // #683 / IADR-0183: 走らせた順序で結果が CI と食い違う条件を警告する（失敗はさせない）。
-  warnIfResultMayDifferFromCi('check-test-spec-coverage.js', MODE.TRACKED);
 
   const classes = collectTestClasses();
   const docs = collectSpecDocs();

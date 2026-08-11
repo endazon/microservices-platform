@@ -4322,16 +4322,11 @@ module.exports = ({ ok, assert }) => {
     const { execFileSync, spawnSync } = require('child_process');
     const REPO = path.join(__dirname, '..');
     const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js'];
-    const TRACKED_CHECKERS = [
-      'check-action-versions.js',
-      'check-cross-repo-refs.js',
-      'check-plan-id-qualification.js',
-      'check-test-spec-coverage.js',
-    ];
+    const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-plan-id-qualification.js'];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=2 / B=4 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=2 / B=2 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -4356,7 +4351,7 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 6 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 4 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -4420,11 +4415,113 @@ module.exports = ({ ok, assert }) => {
       assert.match(r.stdout, /self-test OK/, '自己試験の結果表示が消えた');
     });
 
+    // ★★ 分類そのものを実挙動で突き合わせる（IADR-0183 決定 8・9）。
+    //
+    //   初回の分類は**文字列 grep** で行い、`check-test-spec-coverage.js` を誤ってクラス B に入れた。
+    //   当たったのは**エラーメッセージ中の `git ls-files`** で、この検査器は git を一切呼ばない。
+    //   AI レビューの指摘は 1 本だったが、**測り直したら過大は 2 本**だった（`check-action-versions.js` も）。
+    //
+    //   「静的な見積もりが誤答した」型はこれで 2 回目（1 回目は注入の到達可能性）なので、
+    //   `CLAUDE.md`「同型の事故が 2 回起きたら」に従い検査器にする。
+    //
+    // ★ 突合は 2 方向とも掛ける。**宣言 → 実挙動だけでは、宣言し忘れた新設の検査器を素通りする。**
+    ok('#683: クラス分類が実挙動の git 使用と一致する（両方向）', () => {
+      const os = require('os');
+      const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-shim-'));
+      const realGit = spawnSync('bash', ['-lc', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      assert.ok(realGit, 'git が見つからない（本検査は git の実挙動を測る）');
+      fs.writeFileSync(
+        path.join(shimDir, 'git'),
+        `#!/bin/bash\necho "$@" >> "$GIT_SHIM_LOG"\nexec ${realGit} "$@"\n`,
+        { mode: 0o755 },
+      );
+      try {
+        // 母集合は**検査器**である。生成器・投入スクリプトは対象外であり、**実行もしない**
+        // （`gen-changelog.js` は履歴を読むのが本来の仕事で、走らせれば成果物を書き得る）。
+        const all = fs
+          .readdirSync(path.join(REPO, 'scripts'))
+          .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
+          .sort();
+        const NOT_CHECKERS = [
+          'gen-changelog.js',
+          'gen-openapi-skeleton.js',
+          'measure-abac-combinations.js',
+          'seed-abac-policies.js',
+        ];
+        const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
+        // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
+        assert.strictEqual(scripts.length, 32, `検査器の母集合が 32 本から変わった（${scripts.length} 件）`);
+        assert.deepStrictEqual(
+          NOT_CHECKERS.filter((f) => !all.includes(f)),
+          [],
+          '検査器でないとして除外した名前が scripts/ に存在しない（リストが腐っている）',
+        );
+
+        // 本リポを対象とする呼び出しだけを数える（`-C planning` の呼び出しは軸が違う）。
+        const HISTORY = new Set(['show', 'diff', 'log', 'merge-base', 'rev-list']);
+        // 規則 2 の例外。コミット前に件名は存在しないので、見落とす既存状態が無い（決定 5）。
+        const HISTORY_EXEMPT = ['check-commit-messages.js'];
+        assert.strictEqual(
+          HISTORY_EXEMPT.length,
+          1,
+          '名指しの例外が増えた（黙って伸びる除外リストは腐る: IADR-0169 決定 2）',
+        );
+
+        const usesScanLsFiles = [];
+        const usesHistory = [];
+        for (const f of scripts) {
+          const log = path.join(shimDir, `${f}.log`);
+          fs.writeFileSync(log, '');
+          spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
+            cwd: REPO,
+            encoding: 'utf8',
+            maxBuffer: 64 * 1024 * 1024,
+            env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}`, GIT_SHIM_LOG: log },
+          });
+          for (const raw of fs.readFileSync(log, 'utf8').split('\n').filter(Boolean)) {
+            // `-C <path>` を剥がす。剥がした先が本リポ以外なら数えない。
+            let line = raw;
+            const m = /^-C (\S+) (.*)$/.exec(line);
+            if (m) {
+              if (path.resolve(m[1]) !== path.resolve(REPO)) continue;
+              line = m[2];
+            }
+            const [sub, ...rest] = line.split(/\s+/);
+            // `status` は本モジュール（worktree-state.js）自身の呼び出しなので数えない。
+            if (sub === 'status') continue;
+            if (sub === 'ls-files' && !rest.includes('--error-unmatch')) usesScanLsFiles.push(f);
+            if (HISTORY.has(sub)) usesHistory.push(f);
+          }
+        }
+
+        // 実挙動 → 宣言。
+        assert.deepStrictEqual(
+          [...new Set(usesScanLsFiles)].sort(),
+          TRACKED_CHECKERS,
+          '走査母集合を git ls-files から引く検査器と MODE.TRACKED の宣言が食い違う',
+        );
+        assert.deepStrictEqual(
+          [...new Set(usesHistory)].filter((f) => !HISTORY_EXEMPT.includes(f)).sort(),
+          HEAD_CHECKERS,
+          'コミット済みの履歴を読む検査器と MODE.HEAD の宣言が食い違う',
+        );
+        // 宣言 → 実挙動（宣言だけあって実体が無い＝今回の誤分類を止める）。
+        for (const f of TRACKED_CHECKERS) {
+          assert.ok(usesScanLsFiles.includes(f), `${f} は MODE.TRACKED を宣言するが git ls-files を呼ばない`);
+        }
+        for (const f of HEAD_CHECKERS) {
+          assert.ok(usesHistory.includes(f), `${f} は MODE.HEAD を宣言するが履歴を読まない`);
+        }
+      } finally {
+        fs.rmSync(shimDir, { recursive: true, force: true });
+      }
+    });
+
     ok('#683: 検証の順序が DoD にだけ書かれている', () => {
       const dod = fs.readFileSync(path.join(REPO, 'docs/DEFINITION_OF_DONE.md'), 'utf8');
       assert.match(dod, /^### 検証の順序/m, 'DoD から「検証の順序」の節が消えた');
       assert.match(dod, /`git add -A` → 検査器 → コミット/, '順序そのものが消えた');
-      assert.match(dod, /\*\*6 本\*\*/, '該当本数（6 本）が消えた');
+      assert.match(dod, /\*\*4 本\*\*/, '該当本数（4 本）が消えた');
       // 正本は DoD 1 箇所（IADR-0141 単一情報源 / IADR-0183 決定 6）。
       const wf = fs.readFileSync(path.join(REPO, 'docs/ai-workflow.md'), 'utf8');
       assert.doesNotMatch(wf, /検証の順序/, 'ai-workflow.md へ順序が重複した（正本は DoD）');
