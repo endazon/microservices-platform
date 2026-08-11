@@ -1,21 +1,21 @@
 ---
 title: NFR-01〜27 に「文書・規約の統制」を扱う番号が無い（メタ作業の起点 ID）
-type: feedback
-status: draft
+type: plan-feedback
+status: open
+category: 要求の不足
+related_ids: [NFR, IADR-0179]
+source_repo: microservices-platform
+source_ref: "claude/issue-688-nfr-unnumbered-meta / docs/specs/20260811_issue-688_nfr-unnumbered-meta.md（PR #699・実装側 issue #688）"
+author: Claude（実装）
 created: 2026-08-11
 updated: 2026-08-11
-related_ids:
-  - NFR
-  - IADR-0179
-plan_refs:
-  - "../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR-01〜27)"
 ---
 
 # 環流: `NFR` 採番に、メタ作業へ当たる番号が無い
 
 - **出所**: 実装リポ #688（PR #687 の AI レビューが起点）／ 実装 ADR: `IADR-0179`
 - **対象**: planning#295（`NFR-01`〜`NFR-27` の採番）／ planning#304（裁定: 新規参照から採番付きを使う）
-- **起票状態**: **未了**（本ファイルは記録であり、計画リポへの Issue 起票はこれから）
+- **起票状況**: 下記 §起票状況 を参照
 
 ## 事実（実装側の実測。走査基準: planning `2cf0795`）
 
@@ -58,3 +58,11 @@ planning#304 の裁定は「**新規参照から採番付きを使う**」と定
 - `.claude/rules/traceability.md`「起点 ID の種別」節へ**無採番の但し書きを明記済み**
 - 根拠（27 件の内訳）は `docs/how-to/plan-id-range-history-annex.md` §4
 - **既存参照の遡及書き換えはしない**（planning#304 の指示どおり）
+
+## 起票状況（**planning#311 として起票済み・裁定待ち**）
+
+| 手順 | 状態 |
+| --- | --- |
+| 1. 実装側で記録を作成 | **済**（PR #699） |
+| 2. 計画リポへ起票 | **済** —— [planning#311](https://github.com/endazon/project-planning/issues/311)（`decision-needed`） |
+| 3. 計画側の裁定 | **待ち** |
