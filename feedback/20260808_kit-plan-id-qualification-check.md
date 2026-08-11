@@ -1,11 +1,11 @@
 ---
 title: キット環流 計画 ID 修飾の機械検査（check-plan-id-qualification.js）
 type: plan-feedback
-status: open
+status: triaged
 related_ids: [NFR, IADR-0115, IADR-0140, IADR-0143]
 author: Claude
 created: 2026-08-08
-updated: 2026-08-08
+updated: 2026-08-11
 ---
 
 # 環流: 計画 ID 修飾の機械検査を `impl-handoff-kit` へ
@@ -47,5 +47,5 @@ updated: 2026-08-08
 
 | 送り先 | 状態 |
 | --- | --- |
-| `impl-handoff-kit` へのフィードバック | **未実施**（本ファイルが草稿） |
+| `impl-handoff-kit` へのフィードバック | **完了。planning#316 として起票済み**（2026-08-11・`decision-needed`） |
 | 計画リポ（`project-planning`）への裁定依頼 | **不要**（実装リポ内の規約であり計画の決定に触れない） |

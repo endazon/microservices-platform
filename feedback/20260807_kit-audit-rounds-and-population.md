@@ -1,14 +1,14 @@
 ---
 title: クロス監査の巡数・再走範囲の限定と「母集合の引き直し」の規約がキットに無い — IADR-0141 の環流提案
 type: plan-feedback
-status: open
+status: triaged
 category: ツールチェーン（impl-handoff-kit）
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0139, IADR-0141]
 source_repo: microservices-platform
 source_ref: "chore/NFR-594-audit-scope / docs/specs/20260807_issue-594_audit-scope-and-population.md（#594）"
 author: Claude（実装）
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-11
 ---
 
 # フィードバック: 監査の巡数と母集合の取り方に対応する規約がキットに無い
@@ -18,7 +18,7 @@ updated: 2026-08-07
 | 手順 | 状態 |
 | --- | --- |
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
-| 3. 計画リポ（`impl-handoff-kit`）への伝達 | **未実施。** 本セッションは計画リポへ書き込む権限を持たないため、**PR #598 のマージ後に人間または `/plan-feedback` が起票する**（先例 planning#249 と同じ形） |
+| 3. 計画リポ（`impl-handoff-kit`）への伝達 | **完了。planning#315 として起票済み**（2026-08-11・`decision-needed`）。記録作成時は「本セッションは計画リポへ書き込む権限を持たない」としていたが、**その観測は現在は成り立たない** |
 
 > **未伝達のまま放置しないこと。** 先例（`20260807_kit-cross-repo-issue-ref-check.md`）は記録作成から
 > 伝達まで空きがあり、計画側の定期突合で「未到達」として検出された。**本件は伝達されるまで

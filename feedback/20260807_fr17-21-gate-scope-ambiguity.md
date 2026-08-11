@@ -1,14 +1,14 @@
 ---
 title: 「FR-17〜21 の着手を止めていた条件は解消している」は FR-19〜21 について成り立たない —— 同じ文書内の注記 2・3 と矛盾する
 type: plan-feedback
-status: open
+status: triaged
 category: 要求の誤り
 related_ids: [FR-17, FR-18, FR-19, FR-20, FR-21, ADR-0036, ADR-0037, IADR-0119]
 source_repo: microservices-platform
 source_ref: "chore/NFR-586-planning-pin / docs/specs/20260807_issue-586_planning-pin-adr-accepted.md（#586）"
 author: Claude（実装）
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-11
 ---
 
 # フィードバック: FR-17〜21 の着手条件を一括りに「解消」と書くと FR-19〜21 で誤読される
@@ -18,7 +18,7 @@ updated: 2026-08-07
 | 手順 | 状態 |
 | --- | --- |
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
-| 3. 計画リポへの伝達 | **未実施**。本 PR は push しない運用のため、伝達は監査後に人間が行う |
+| 3. 計画リポへの伝達 | **完了。planning#314 として起票済み**（2026-08-11・`decision-needed`）。記録作成時は「本 PR は push しない運用」を理由に保留していたが、**その運用上の制約は現在は無い** |
 
 ## 起点となる計画書
 
