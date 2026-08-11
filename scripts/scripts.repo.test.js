@@ -4079,6 +4079,57 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #684: 必読規約の減量計画（IADR-0172） ------------------------------------
+  //
+  // ★ **計画は文書にしか無い。消えても CI は赤くならない**（#546 / #665 / #587 と同じ型）。
+  //   固定するのは**計画の要 3 点**であって、文言の丸写しではない。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const PLAN_ADR = 'docs/adr/IADR-0172_required-rules-slimming-plan.md';
+    const RULES = '.claude/rules/traceability.md';
+
+    // ★★ 最重要。**入口のパスを変えられない**という制約が計画の土台である。
+    //   確定済みの記録（docs/specs/ 62 件・docs/adr/ 19 件）からリンクが張られており、
+    //   それらは IADR-0166 と .claude/rules/traceability.md 自身が書き換えを禁じている。
+    //   **この制約が落ちると「分割すればよい」という誤った計画へ戻る。**
+    ok('#684 計画: 入口ファイルのパスを変えないことが書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /パスは変えない/, '「パスは変えない」という決定が無い');
+      assert.match(t, /確定済み/, 'パスを変えられない理由（確定済み記録からのリンク）が無い');
+    });
+
+    // ★ 「機械が強制しているから読まなくてよい」は、**機械が止める範囲でしか成り立たない**。
+    //   採番衝突時の改番手順は機械が無い（check-adr-numbering.js は欠番・重複しか見ない）。
+    ok('#684 計画: 機械が強制していない規範を入口へ残すと書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /採番衝突時の改番手順/, '機械が無い規範（採番衝突時の改番手順）の特定が無い');
+      assert.match(t, /導線/, '別紙化する場合の導線への言及が無い');
+    });
+
+    // ★ 事実と違うことを書かないための門。別紙化は「読む量」を減らすのであって
+    //   「総量」は減らさない。**後続の PR がここを踏み外しやすい。**
+    ok('#684 計画: 「総量は減らない」という限界が明記されている', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /総量は減らない/, '別紙化の限界（総量は減らない）が明記されていない');
+    });
+
+    // ★ 入口が「常時適用」でなくなると、計画の前提（毎セッション必読の集合）が崩れる。
+    //   **本 PR は 1 行も移動しないので、ここは現状の固定である。**
+    ok('#684 計画: 入口ファイルが現状どおり常時適用である', () => {
+      const t = fs.readFileSync(path.join(REPO, RULES), 'utf8').replace(/\r\n/g, '\n');
+      assert.ok(t.startsWith('---\n'), 'frontmatter が無い');
+      const end = t.indexOf('\n---', 3);
+      assert.ok(end !== -1, 'frontmatter が閉じていない');
+      assert.match(
+        t.slice(0, end),
+        /paths:\s*\n\s*-\s*["']\*\*\/\*["']/,
+        '入口の paths が "**/*"（常時適用）でない。計画の前提が変わっている',
+      );
+    });
+  }
+
   // --- #626: 逆リンク義務の向き（IADR-0171） ------------------------------------
   //
   // ★ 裁定（2026-08-11・案 A）: 「相互リンク」の義務は**仕様書側の一方向**であり、
