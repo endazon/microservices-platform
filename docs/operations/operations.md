@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-10
+updated: 2026-08-11
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
