@@ -3978,6 +3978,107 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #587: ピン留めモデルの版数移行 Runbook（IADR-0112 決定 3） --------------------
+  //
+  // ★ **文書は消えても CI が赤くならない。** 受け入れ基準の 3 点が Runbook から落ちたら
+  //   気づけるようにする（#546 / #665 と同じ型）。**文言の丸写しではなく、
+  //   「その節が果たす役割」を固定する。**
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const RUNBOOK = 'docs/operations/llm-model-pin-runbook.md';
+
+    ok('ピン Runbook: 版数移行に Stage 0 再検証が前提だと読み取れる', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /Stage 0/, 'Stage 0 再検証への言及が無い');
+      assert.match(t, /AST\/ADR-0011/, 'ピン留めを定めた計画 ADR への言及が無い');
+    });
+
+    // ★★ `ADR-0011` は **両プロジェクトに実在し、意味が違う**（実測）:
+    //      AST/ADR-0011 = LLM モデルのピン留め   ← 本 Runbook が指したいもの
+    //      MSP/ADR-0011 = wiki エンジンの選定     ← 裸で書くとこちらへ解決される
+    //    `.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合の ID 修飾」の対象だが、
+    //    **同規約の適用箇所に frontmatter は挙がっておらず**、`check-plan-id-qualification.js` も
+    //    「AST 文脈で裸の ID」（型 B）は**偽陽性を避けるため意図的に検出しない**。つまり
+    //    **機械はこの取り違えを止めない。**
+    //
+    //    先例は一致している —— `IADR-0102` とその作業仕様書は、いずれも
+    //    **AST の計画 ADR を `related_ids` へ入れず、`plan_refs` の実パスで指す**。
+    //    実パスは曖昧さが無く、`check-doc-links.js` がリンク切れを検出できる。
+    ok('ピン Runbook: AST の計画 ADR を裸の ID で related_ids へ入れていない', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8').replace(/\r\n/g, '\n');
+      const end = t.indexOf('\n---', 3);
+      assert.ok(t.startsWith('---\n') && end !== -1, 'frontmatter を読めない');
+      const front = t.slice(4, end + 1);
+      const block = /^related_ids:\s*\n((?:[ \t]*-[ \t]*.*\n)+)/m.exec(front);
+      assert.ok(block, 'related_ids が無い');
+      const ids = [...block[1].matchAll(/-[ \t]*["']?([^"'\s]+)["']?/g)].map((m) => m[1]);
+      assert.ok(
+        !ids.includes('ADR-0011'),
+        '裸の ADR-0011 は MSP の wiki エンジン ADR へ解決される。AST の計画 ADR は plan_refs の実パスで指す',
+      );
+      assert.match(
+        front,
+        /plan_refs:[\s\S]*ai-stock-trading\/07_adr\/ADR-0011_llm-model-pinning\.md/,
+        'AST/ADR-0011 を plan_refs の実パスで指していない',
+      );
+    });
+
+    ok('ピン Runbook: 利用不能時は実行せず発注せず、かつ「障害ではない」と書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /発注もしない/, '「発注しない」が書かれていない');
+      // ★ 禁止だけでは足りない。**なぜ落とさないのか**が無いと善意で破られる（#382 の懸念）。
+      assert.match(t, /障害ではない/, '「障害ではない」（設計上の正常な結果）が書かれていない');
+      // レート制限と利用不能の区別（確定事項 3）。
+      assert.match(t, /429/, 'レート制限（429）と利用不能の区別が書かれていない');
+    });
+
+    ok('ピン Runbook: 監視対象を単一情報源で示し、値を複写していない', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8');
+      assert.match(t, /PurposeModels/, 'ピンの単一情報源（PurposeModels）を指していない');
+      assert.match(t, /appsettings\.json/, '単一情報源のファイルを指していない');
+      // ★★ 値そのものを書き写していないこと。#440 が analysis を変える予定であり、
+      //    複写すると本 PR の時点で既に古くなることが分かっている（[[IADR-0141]]）。
+      assert.doesNotMatch(
+        t,
+        /claude-fable-5/,
+        'ピンの値を Runbook へ複写している（単一情報源を指すだけにする。#440 で変わる値である）',
+      );
+    });
+
+    // ★ **手順書のコマンドは、本リポの道具立て（Node.js / .NET）だけで動くこと。**
+    //   `python3` は `scripts/setup.sh` でコメントアウトされた opt-in であり**利用保証が無い**。
+    //   手順書は運用者が実行するものなので、手元に無い処理系へ依存させない。
+    //   **実測**: `docs/operations/` `docs/how-to/` の手順書 8 本のコードブロックが使う実行ファイルを
+    //   全数で引くと、`python3` はここ 1 件だけであった（他は git / node / pnpm / dotnet と、
+    //   kubectl / argocd / docker / psql / kcadm.sh のようにその手順が本来必要とする道具）。
+    //   **見るのはコードブロック内の実行行だけである。** 地の文は対象外 —— 本 Runbook は
+    //   「なぜ python を使わないか」を**説明するために `python3` の語を含む**。素の全文検索で
+    //   落とすと、説明を書いたことで落ちる（**禁止の理由を書けなくなる**）。
+    ok('ピン Runbook: 列挙コマンドが本リポの道具立て（node）で書かれている', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8').replace(/\r\n/g, '\n');
+      const cmds = [...t.matchAll(/```(?:console|bash|sh)\n([\s\S]*?)```/g)]
+        .flatMap((m) => m[1].split('\n'))
+        .map((l) => l.trim().replace(/^\$\s*/, ''))
+        .filter((l) => l && !l.startsWith('#'));
+      assert.ok(cmds.length > 0, 'コードブロックの実行行を 1 行も拾えていない（検査が空振りしている）');
+      assert.ok(
+        !cmds.some((l) => /^python3?\b/.test(l)),
+        '手順書のコマンドが python へ依存している（scripts/setup.sh で opt-in＝利用保証が無い）',
+      );
+      assert.ok(
+        cmds.some((l) => /^node\b/.test(l)),
+        '列挙コマンドが node で書かれていない',
+      );
+    });
+
+    ok('ピン Runbook: 運用仕様書から辿れる（孤立していない）', () => {
+      const ops = fs.readFileSync(path.join(REPO, 'docs/operations/operations.md'), 'utf8');
+      assert.match(ops, /llm-model-pin-runbook/, 'operations.md から Runbook へ辿れない');
+    });
+  }
+
   // --- #626: 逆リンク義務の向き（IADR-0171） ------------------------------------
   //
   // ★ 裁定（2026-08-11・案 A）: 「相互リンク」の義務は**仕様書側の一方向**であり、

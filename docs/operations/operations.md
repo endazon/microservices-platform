@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-10
+updated: 2026-08-11
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -545,6 +545,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   （計画 決定 39〜41 / #546）。手順・担当・記録は
   [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) が定める。
   **費用の金額は現状 1 円も出せない**（トークン消費量・金額換算とも未実装。[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §結果 フォローアップ 2）。
+- **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
+  （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
+  設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587 / [IADR-0112](../adr/IADR-0112_report-kind-purposes-and-trade-decision-sonnet-5.md) 決定 3）。
+  **提供終了の監視は月次の費用確認に相乗りする**（自動検知は無い。検知の遅れは最大 1 か月）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
   現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/microservices-platform/` 配下に Prometheus/
   Alertmanager リソースは無い）。stg/prod（k3s）への Prometheus（Operator/rule 配備）・Alertmanager 通知の
