@@ -4079,6 +4079,58 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #689: 必読規約の減量 段 2（IADR-0174） ------------------------------------
+  //
+  // ★ 段 1（#686）と同じ型。**確定済み引用が 0 件でも見出しは残す**（IADR-0173 決定 1 に
+  //   例外を作らない）。**「今は引かれていない」は「今後も引かれない」ではない。**
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/changelog-overrides-annex.md';
+    const PLAN_ADR = 'docs/adr/IADR-0174_slimming-projection-requires-stage4.md';
+    const MOVED = 'CHANGELOG 生成時の誤記補正・除外規定';
+
+    // ★ 見出し行だけを見る（#686 の M1 の教訓。スタブ本文が同じ文字列を含むため全文検索は空振る）。
+    ok('#689 段 2: CHANGELOG 節の見出しがスタブとして入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
+      assert.ok(
+        headings.some((x) => x.startsWith(MOVED)),
+        `見出し「${MOVED}」が入口から消えた。確定済み引用が 0 件でも残す（IADR-0173 決定 1）`,
+      );
+    });
+
+    // ★★ 規範は入口に残す。**一般則（CLAUDE.md の「破壊的な git 操作は行わない」）とは別物**で、
+    //    こちらは「誤記があっても直さない」という**例外の否定**である。
+    //    これが消えると「誤記の是正は正当な理由だ」と読まれうる。
+    ok('#689 段 2: 「履歴は書き換えない」の規範が入口に残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      assert.match(t, /既存の git 履歴を書き換えないこと/, '規範（履歴不変）が入口から消えた');
+      assert.match(t, /force push で修正してはならない/, '「誤記があっても直さない」が入口から消えた');
+    });
+
+    ok('#689 段 2: スタブが別紙を指し、別紙に本文が移っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      assert.match(t, /changelog-overrides-annex\.md/, '別紙への導線が無い');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      assert.match(a, /いつ読むか/, '別紙に「いつ読むか」が無い');
+      assert.match(a, /action.*remap/s, '別紙に仕組みの本文（remap）が無い');
+      assert.match(a, /exclude/, '別紙に仕組みの本文（exclude）が無い');
+    });
+
+    // ★ 計画の見込みを引き直した結論。落ちると「段 3 まででよい」という誤りへ戻る。
+    ok('#689 段 2: 段 3 まででは 50KB に届かないことが ADR に書いてある', () => {
+      const t = fs.readFileSync(path.join(REPO, PLAN_ADR), 'utf8');
+      assert.match(t, /段 4/, '段 4 への言及が無い');
+      assert.match(t, /届かない|あと約/, '「段 3 まででは届かない」という結論が無い');
+    });
+  }
+
   // --- #686: 必読規約の減量 段 1（IADR-0173） ------------------------------------
   //
   // ★★ **機械はこの型を検出しない。** 節名ごと消してもリンクは切れず、

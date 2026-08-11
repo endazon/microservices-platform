@@ -371,18 +371,6 @@ PR 番号とその裁定依頼 issue 番号のように、**同じ他リポジ�
 を生成する `scripts/gen-changelog.js` が生成時のみ補正／除外を適用する。補正内容は
 `scripts/changelog-overrides.json` の `overrides` 配列で宣言的に管理する（`hash` は短縮 SHA 前方一致）。
 
-- **誤記補正（`action: "remap"`）**: 誤った起点 ID・種別・要約を、CHANGELOG 上でのみ差し替える。
-  `type` / `scope` / `desc` を任意に指定でき、省略した項目は元コミットの値を保つ。
-  - 例: 件名の起点 ID が誤って `feat(FR-10)` となっているが、実体は基盤スケルトン（P0）である場合、
-    `scope` を `FR-10` → `P0` へ補正する。実体が大規模実装なら `type` は `feat` のまま保持し、
-    `docs` へは remap しない（実装をドキュメントとして過小計上する新たな誤帰属を避ける）。
-  - 配布時の `overrides` は空である。他リポジトリの SHA を引き継がないこと
-    （`hash` は前方一致のため、偶然一致した無関係なコミットを誤って差し替える）。
-- **除外（`action: "exclude"`）**: CHANGELOG に載せるべきでないコミット（試験的・巻き戻し前提の
-  作業等）を生成物から除外する。git 履歴には残るため追跡可能性は失われない。
-- 未知の `action`（タイプミス等）は `gen-changelog.js` が警告を出して補正を無視する（黙って
-  remap 扱いにしない）。許可値は `remap` / `exclude` の 2 種のみ。
-
-補正・除外はいずれも「履歴は不変・生成物のみ是正」という原則に従い、その根拠を各エントリの
-`reason` に必ず残す。CI（`changelog.yml`）は `develop` / `main` への push で `fetch-depth: 0` の
-全履歴から CHANGELOG を再生成し、本補正を含む差分を PR 経由で反映する。
+**補正・除外の仕組み（`scripts/changelog-overrides.json` の書式・`action` の値域・`reason` の必須）は
+別紙 [`docs/how-to/changelog-overrides-annex.md`](../../docs/how-to/changelog-overrides-annex.md) へ移した。**
+**読むのは「過去コミットの誤記に気づいたとき」でよい**（[[IADR-0172]] 決定 3 ／ [[IADR-0173]] 決定 1）。
