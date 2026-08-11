@@ -4079,6 +4079,47 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #688: メタ作業の NFR は無採番のまま（IADR-0179） -------------------------
+  //
+  // ★ 規範を 1 つ足しながら必読を 208B 減らした（IADR-0178 決定 4 の実行）。
+  //   経緯を別紙へ出し、機構の説明を圧縮した分で相殺している。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
+
+    ok('#688: メタ作業は無採番 NFR のままとする規範が入口にある', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      assert.match(
+        t,
+        /該当する `NFR-xx` が無いメタ作業（規約・検査器・文書統制）は無採番 `NFR` のままとする/,
+        'メタ作業の無採番規範が入口から消えた',
+      );
+    });
+
+    // ★ 既存 3 規範を巻き込んでいないこと。加筆のついでに落とすのが最も危ない。
+    ok('#688: NFR 採番の既存 3 規範が残っている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of [
+        '書式検査は採番付きも受理する',
+        '`NFR-99` は素通りする',
+        '遡及書き換えはしない',
+      ]) {
+        assert.ok(t.includes(n), `既存の規範「${n}」が入口から消えた`);
+      }
+    });
+
+    ok('#688: 採番の経緯が別紙へ移り、入口から消えている', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      assert.ok(!t.includes('直近 100 コミット中 50 件'), '採番導入の経緯が入口に残っている');
+      assert.ok(a.includes('直近 100 コミット中 50 件'), '経緯が別紙に無い（移動でなく削除になっている）');
+      assert.match(a, /稼働する製品の要件/, '無採番の根拠（27 件が製品の要件）が別紙に無い');
+    });
+  }
+
   // --- #697: CLAUDE.md の減量と 50KB 到達（IADR-0178） --------------------------
   //
   // ★ 本件は「別紙化」ではなく「正本へ畳む」。種別表は docs/README.md と完全に重複していた。
