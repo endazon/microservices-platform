@@ -66,6 +66,7 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { notice } = require('./lib/ci-annotate.js');
+const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
 const {
   validateSubject,
   validateIdExistence,
@@ -339,6 +340,9 @@ function main() {
     selfTest();
     return;
   }
+
+  // #683 / IADR-0183: 走らせた順序で結果が CI と食い違う条件を警告する（失敗はさせない）。
+  warnIfResultMayDifferFromCi('check-landed-subjects.js', MODE.HEAD);
   const refIdx = argv.indexOf('--ref');
   const ref = refIdx >= 0 ? argv[refIdx + 1] : 'HEAD';
 

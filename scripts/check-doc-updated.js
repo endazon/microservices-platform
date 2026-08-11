@@ -45,6 +45,7 @@
 
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');
+const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
 
 const DEFAULT_BASE = 'origin/develop';
 const TARGET_PREFIX = 'docs/';
@@ -182,6 +183,8 @@ function resolveBaseRef(argv) {
 }
 
 function main(argv = process.argv.slice(2), cwd = path.resolve(__dirname, '..')) {
+  // #683 / IADR-0183: 本検査は HEAD を読む。未コミットのまま走らせると「偽の緑」になる。
+  warnIfResultMayDifferFromCi('check-doc-updated.js', MODE.HEAD, cwd);
   const baseRef = resolveBaseRef(argv);
   const mergeBaseOut = gitOrNull(['merge-base', baseRef, 'HEAD'], cwd);
   if (mergeBaseOut === null) {

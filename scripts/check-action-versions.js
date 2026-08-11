@@ -59,6 +59,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { warn, notice } = require('./lib/ci-annotate.js');
+const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
 
 const REPO_ROOT = path.join(__dirname, '..');
 const DEFAULT_DIR = path.join(REPO_ROOT, '.github', 'workflows');
@@ -441,6 +442,8 @@ function selfTest() {
 async function main(argv) {
   const args = argv.slice(2);
   if (args.includes('--self-test')) process.exit(selfTest());
+  // #683 / IADR-0183: 走らせた順序で結果が CI と食い違う条件を警告する（失敗はさせない）。
+  warnIfResultMayDifferFromCi('check-action-versions.js', MODE.TRACKED);
 
   const manifest = loadManifest();
   if (!manifest) {

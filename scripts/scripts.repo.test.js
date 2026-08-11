@@ -4303,6 +4303,134 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #683: 差分ベースの検査器が返す「偽の緑」（IADR-0183） --------------------
+  //
+  // ★ 検査器に欠陥は無い。**走らせた順序**の問題である。
+  //     クラス A（`git show HEAD:` / `git diff …HEAD` を読む）= **未コミットが見えない**
+  //       … PR #682 の事故（#683 が挙げた 1 本）
+  //     クラス B（`git ls-files` を読む）= **untracked が見えない**
+  //       … PR #708 の事故（**本セッションが実際に踏んだ**。#683 は挙げていなかった）
+  //   クラス C（作業ツリーを読む 26 本）には**何も足さない**。順序で結果が変わらないので嘘になる。
+  //
+  // ★ 到達可能性を静的に見積もらない。初回実装では 6 本中 **3 本**の呼び出しが
+  //   `--self-test` ブロックの内側（`return;` の手前）にあり dead code だったが、
+  //   静的ヒューリスティックは 6 本すべて到達可能と誤答した（IADR-0183 決定 7）。
+  //   **本検査は untracked のファイルを実際に作り、実挙動を 1 本ずつ観測する。**
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { execFileSync, spawnSync } = require('child_process');
+    const REPO = path.join(__dirname, '..');
+    const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js'];
+    const TRACKED_CHECKERS = [
+      'check-action-versions.js',
+      'check-cross-repo-refs.js',
+      'check-plan-id-qualification.js',
+      'check-test-spec-coverage.js',
+    ];
+    const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
+    const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
+
+    ok('#683: 偽の緑を返しうる検査器が A=2 / B=4 で宣言されている', () => {
+      const all = fs
+        .readdirSync(path.join(REPO, 'scripts'))
+        .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
+        .sort();
+      // 走査 0 件・少数件で静かに緑を返す形を塞ぐ（#664 / PR #672 の型）。
+      assert.ok(all.length >= 30, `scripts/ の走査が壊れている（${all.length} 件）`);
+
+      const head = [];
+      const tracked = [];
+      for (const f of all) {
+        for (const m of readScript(f).matchAll(
+          /warnIfResultMayDifferFromCi\(\s*'[^']*'\s*,\s*MODE\.(HEAD|TRACKED)/g,
+        )) {
+          (m[1] === 'HEAD' ? head : tracked).push(f);
+        }
+      }
+      assert.deepStrictEqual(head, HEAD_CHECKERS, 'クラス A（HEAD を読む）の該当が変わった');
+      assert.deepStrictEqual(tracked, TRACKED_CHECKERS, 'クラス B（git ls-files）の該当が変わった');
+
+      // クラス C には足さない（順序に依存しないので、足せば嘘の警告になる）。
+      const strays = all.filter((f) => !GUARDED.includes(f) && /worktree-state/.test(readScript(f)));
+      assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
+    });
+
+    ok('#683: 6 本すべてが実際に警告を出し、終了コードを変えない', () => {
+      const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
+      const run = (f) =>
+        spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
+          cwd: REPO,
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024,
+        });
+      // 警告が出ていない状態の終了コードを先に採る（比較の基準）。
+      const baseline = new Map(GUARDED.map((f) => [f, run(f).status]));
+
+      fs.writeFileSync(probe, '#683 の到達可能性を実測する一時ファイル。テストが必ず消す。\n');
+      try {
+        // 前提: probe が本当に untracked として見えていること。
+        // 見えないまま「警告が出た」を測ると、何を測ったのか分からない検査になる。
+        const porcelain = execFileSync(
+          'git',
+          ['status', '--porcelain', '--untracked-files=normal'],
+          { cwd: REPO, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
+        );
+        assert.match(
+          porcelain,
+          /^\?\? \.tmp-worktree-state-probe-683$/m,
+          'probe が untracked として見えない（.gitignore 等に隠れている）',
+        );
+
+        for (const f of GUARDED) {
+          const r = run(f);
+          // warn は **stdout** へ書く（ci-annotate.js の注記）。取りこぼさないよう両方を見る。
+          const out = `${r.stdout || ''}${r.stderr || ''}`;
+          assert.match(
+            out,
+            /#683 \/ IADR-0183/,
+            `${f} が警告を出さない（呼び出しが到達不能になっている疑い）`,
+          );
+          assert.strictEqual(
+            r.status,
+            baseline.get(f),
+            `${f} の終了コードが警告で変わった（警告は失敗させない: IADR-0183 決定 1）`,
+          );
+        }
+      } finally {
+        fs.rmSync(probe, { force: true });
+      }
+    });
+
+    ok('#683: クラスごとに促す行動を書き分けている', () => {
+      const t = fs.readFileSync(path.join(REPO, 'scripts/lib/worktree-state.js'), 'utf8');
+      assert.match(t, /コミットしてから再実行/, 'クラス A の促し（コミット）が消えた');
+      assert.match(t, /`git add` してから再実行/, 'クラス B の促し（git add）が消えた');
+      // CI 用の環境分岐を書かない（決定 3）。条件と分岐の二重管理を避ける。
+      assert.doesNotMatch(t, /GITHUB_ACTIONS/, 'CI 用の環境分岐が足された（決定 3 に反する）');
+    });
+
+    ok('#683: worktree-state.js の自己試験が緑', () => {
+      const r = spawnSync(
+        process.execPath,
+        [path.join(REPO, 'scripts/lib/worktree-state.js'), '--self-test'],
+        { encoding: 'utf8' },
+      );
+      assert.strictEqual(r.status, 0, `自己試験が落ちた:\n${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /self-test OK/, '自己試験の結果表示が消えた');
+    });
+
+    ok('#683: 検証の順序が DoD にだけ書かれている', () => {
+      const dod = fs.readFileSync(path.join(REPO, 'docs/DEFINITION_OF_DONE.md'), 'utf8');
+      assert.match(dod, /^### 検証の順序/m, 'DoD から「検証の順序」の節が消えた');
+      assert.match(dod, /`git add -A` → 検査器 → コミット/, '順序そのものが消えた');
+      assert.match(dod, /\*\*6 本\*\*/, '該当本数（6 本）が消えた');
+      // 正本は DoD 1 箇所（IADR-0141 単一情報源 / IADR-0183 決定 6）。
+      const wf = fs.readFileSync(path.join(REPO, 'docs/ai-workflow.md'), 'utf8');
+      assert.doesNotMatch(wf, /検証の順序/, 'ai-workflow.md へ順序が重複した（正本は DoD）');
+    });
+  }
+
   // --- feedback/ の frontmatter 語彙（#700 のレビュー 🟡） ----------------------
   //
   // ★ 同型 2 回目で足した検査（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。

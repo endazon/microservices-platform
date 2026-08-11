@@ -47,6 +47,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
+const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -289,6 +290,9 @@ function main() {
     selfTest();
     return;
   }
+
+  // #683 / IADR-0183: 走らせた順序で結果が CI と食い違う条件を警告する（失敗はさせない）。
+  warnIfResultMayDifferFromCi('check-plan-id-qualification.js', MODE.TRACKED);
   const explicit = argv.filter((x) => !x.startsWith('--'));
   let files = explicit;
   if (files.length === 0) {
