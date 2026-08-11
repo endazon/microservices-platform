@@ -5,8 +5,8 @@
  * **実装の着手可否に効くもの**を検知する（issue #589 / IADR-0170）。
  *
  * 背景:
- *   IADR-0119 の着手条件は「前提 ADR が Accepted になること」である。計画側で裁定が
- *   反映されても、本リポの pin を進めるまで実装側には何も伝わらない。**待ち時間の実体は
+ *   IADR-0119 決定 2 の着手条件には「前提 ADR が Accepted になること」が含まれる。計画側で
+ *   裁定が反映されても、本リポの pin を進めるまで実装側には何も伝わらない。**待ち時間の実体は
  *   「回答待ち」ではなく「回答に気づいていない時間」だった**（#572 施策 7 の訂正）。
  *   同型は #548 / #560 / #589 の 3 回とも「人が気づいて起票」で処理されている。
  *   **自動化するのは検知ではなく、その手作業（起票）そのものである。**
@@ -70,8 +70,9 @@ function statusOf(text) {
  * ADR の status 変化を求める。純関数。
  *
  * ★ **「変化した」だけでなく「Proposed → Accepted」かどうかを別に持つ。**
- *   着手ゲートが外れるのはこの遷移であり、他の変化（Accepted → Superseded 等）とは
+ *   着手条件に関わるのはこの遷移であり、他の変化（Accepted → Superseded 等）とは
  *   意味が違う。まとめると、鳴らす理由が読めなくなる。
+ *   **ただし「Accepted になった」は「着手できる」ではない**（下の becameAccepted 参照）。
  *
  * @param {{file: string, before: string|null, after: string|null}[]} pairs
  */
@@ -85,8 +86,12 @@ function adrStatusChanges(pairs) {
       file,
       before: b,
       after: a,
-      // 着手ゲートが外れる遷移か
-      unblocks: b === 'Proposed' && a === 'Accepted',
+      // ★ **「Accepted になった」だけを言う。「着手できる」とは言わない。**
+      //   IADR-0119 は「**前提 ADR が全部 Accepted になった**」ことと「**保留が全部外れた**」ことは
+      //   別だと明記している —— FR-19/20 は前提検証の完了も要り、FR-21 は計画側の確定（fixed）が要る。
+      //   同書はこの取り違えが**実際に起きた**とも記録している（一括りにした追記の是正）。
+      //   検知器が「ゲートが外れた」と名乗ると、同じ取り違えを機械が量産する。
+      becameAccepted: b === 'Proposed' && a === 'Accepted',
     });
   }
   return out;
@@ -105,7 +110,7 @@ function findIssues(input) {
   const reasons = [];
   for (const c of statusChanges) {
     reasons.push({
-      kind: c.unblocks ? 'adr-unblocked' : 'adr-status-changed',
+      kind: c.becameAccepted ? 'adr-accepted' : 'adr-status-changed',
       file: c.file,
       detail: `${c.before} → ${c.after}`,
     });
@@ -235,13 +240,13 @@ function selfTest() {
     { file: 'c.md', before: 'status: Accepted\n', after: 'status: Accepted\n' },
   ]);
   t('status 変化を 2 件拾う（変化なしは拾わない）', ch.length === 2);
-  t('Proposed → Accepted だけを unblocks とする', ch.filter((x) => x.unblocks).length === 1);
-  t('Accepted → Superseded は unblocks ではない', ch.find((x) => x.file === 'b.md').unblocks === false);
+  t('Proposed → Accepted だけを becameAccepted とする', ch.filter((x) => x.becameAccepted).length === 1);
+  t('Accepted → Superseded は becameAccepted ではない', ch.find((x) => x.file === 'b.md').becameAccepted === false);
 
   // ★ 新規追加された ADR（before が null）でも落ちない
   const added = adrStatusChanges([{ file: 'n.md', before: null, after: 'status: Accepted\n' }]);
   t('新規 ADR: before が null でも拾う', added.length === 1 && added[0].before === null);
-  t('新規 ADR は unblocks ではない（Proposed からの遷移ではない）', added[0].unblocks === false);
+  t('新規 ADR は becameAccepted ではない（Proposed からの遷移ではない）', added[0].becameAccepted === false);
 
   // findIssues
   t(
@@ -321,9 +326,14 @@ function main() {
   for (const r of result.reasons) {
     lines.push(`  [${r.kind}] ${r.file} — ${r.detail}`);
   }
-  const unblocked = result.reasons.filter((r) => r.kind === 'adr-unblocked');
-  if (unblocked.length) {
-    lines.push(`  ★ ${unblocked.length} 件の ADR が Proposed → Accepted になっています（IADR-0119 の着手条件）。`);
+  const accepted = result.reasons.filter((r) => r.kind === 'adr-accepted');
+  if (accepted.length) {
+    // ★ 「着手できる」とは書かない（上の becameAccepted のコメント参照）。
+    lines.push(
+      `  ★ ${accepted.length} 件の ADR が Proposed → Accepted になりました。` +
+        'IADR-0119 決定 2 の着手条件の**一部**です —— **前提検証や計画側の確定が別に要る要求があります**。' +
+        '保留が外れたかは IADR-0119 を読んで判断してください。',
+    );
   }
   lines.push('  pin を進めるか判断してください（本検査は落としません）。');
   const message = lines.join('\n');

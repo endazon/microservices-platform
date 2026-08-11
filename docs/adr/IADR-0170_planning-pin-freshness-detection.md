@@ -23,7 +23,7 @@ plan_refs:
 
 - **NFR**（着手ゲートの検知）。実装 issue: **#589**（出所は #572 施策 7。親 #454）
 - 作業仕様書: [20260811_issue-589](../specs/20260811_issue-589_planning-pin-freshness.md)
-- 制約: **[IADR-0119](./IADR-0119_replan-execution-order.md)**（着手条件＝前提 ADR が `Accepted`）
+- 制約: **[IADR-0119](./IADR-0119_fr17-21-hold-until-adr-fixed.md)**（着手条件の**一部**が「前提 ADR が `Accepted`」）
 - 先例: **#507 / [IADR-0140](./IADR-0140_cross-repo-issue-ref-checker.md)**（既存の呼び出し口へ相乗りする経路）
 
 ## 文脈 —— **待っていたのではなく、気づいていなかった**
@@ -101,8 +101,29 @@ ce96eb8 chore(NFR): フロントエンドに prettier の format ゲートを新
 | `07_adr/ADR-*.md` の **`status:` の変化** | 本文だけの変更 |
 | `02_requirements/*.md` / `05_screens/*.md` の変更 | `draft/` `tools/` `INDEX.md` `07_adr/README.md` |
 
-**`Proposed` → `Accepted`（`adr-unblocked`）と、それ以外の status 変化を区別する。**
-着手ゲートが外れるのは前者だけであり、**まとめると鳴らす理由が読めなくなる。**
+**`Proposed` → `Accepted`（`adr-accepted`）と、それ以外の status 変化を区別する。**
+着手条件に関わるのは前者だけであり、**まとめると鳴らす理由が読めなくなる。**
+
+### ★★ 決定 3 の但し書き: **「Accepted になった」を「着手できる」と名乗らない**
+
+**初版は種別を `adr-unblocked` と名づけ、「着手ゲートが外れます」と出していた。誤りである。**
+
+**[IADR-0119](./IADR-0119_fr17-21-hold-until-adr-fixed.md) が明記している** ——
+「**前提 ADR が全部 `Accepted` になった**」ことと「**FR-17〜21 の保留が全部外れた**」ことは**別である**。
+
+| 要求 | 着手条件 |
+| --- | --- |
+| FR-17 / FR-18 | 前提 ADR が `Accepted`（**解除済み**） |
+| FR-19 / FR-20 | 上記に加え **Wiki.js の個人スコープ可視性の前提検証の完了**（**未了**） |
+| FR-21 | **計画側が当該要求を確定（`fixed` 扱い）させること**（ADR の状態ではない） |
+
+**しかも IADR-0119 は、この取り違えが実際に起きたことを記録している** ——
+2026-08-07 の追記が「FR-17〜21 の着手を止めていた条件は解消している」と**一括りに**書いた誤りである。
+
+> **★ 検知器が「ゲートが外れた」と名乗ると、同じ取り違えを機械が毎晩量産する。**
+> **種別を `adr-accepted` に改め、出力は「着手条件の一部です。保留が外れたかは IADR-0119 を
+> 読んで判断してください」と書く。** 検知器は**事実（status が変わった）だけを言い、判断はしない。**
+> **ワークフローが「着手ゲートが外れ」と書いていないことを回帰テストで固定する。**
 
 実測の差分では **22 件中 19 件が「鳴らさない」側**へ落ち、理由は 2 件に絞られた。
 
@@ -139,7 +160,7 @@ Actions 上の stdout は `::warning::…`（注釈の書式）であり、**そ
 
 | 確かめた | 方法 |
 | --- | --- |
-| 実データの乖離を検出する | populate 済みの木で実行し、`adr-unblocked` 1 件 ＋ `gate-doc-changed` 1 件を得た |
+| 実データの乖離を検出する | populate 済みの木で実行し、`adr-accepted` 1 件 ＋ `gate-doc-changed` 1 件を得た |
 | 未 populate で緑を返しつつ「検査していない」と出す | populate されていない worktree で実行 |
 | Actions 用の注釈と素のテキストを出し分ける | `GITHUB_ACTIONS=true` / `PIN_REPORT_PATH` を与えて実行 |
 | `GITHUB_OUTPUT` へ `drifted=true` を書く | 同上 |

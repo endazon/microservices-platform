@@ -4042,8 +4042,9 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(r.reasons.length, 0, `鳴らすべきでない差分で鳴った: ${JSON.stringify(r.reasons)}`);
     });
 
-    // ★ 着手ゲートが外れる遷移（Proposed → Accepted）を、他の status 変化と区別する。
-    ok('pin 鮮度: Proposed → Accepted だけを adr-unblocked とする', () => {
+    // ★ 着手条件に関わる遷移（Proposed → Accepted）を、他の status 変化と区別する。
+    //   **「Accepted になった」を「着手できる」と名乗らない** —— IADR-0119 は両者が別だと明記する。
+    ok('pin 鮮度: Proposed → Accepted だけを adr-accepted とする', () => {
       const r = pin.findIssues({
         pin: 'a',
         head: 'b',
@@ -4053,7 +4054,7 @@ module.exports = ({ ok, assert }) => {
           { file: 'projects/p/07_adr/ADR-2_b.md', before: 'status: Accepted\n', after: 'status: Superseded\n' },
         ],
       });
-      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-unblocked').length, 1);
+      assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-accepted').length, 1);
       assert.strictEqual(r.reasons.filter((x) => x.kind === 'adr-status-changed').length, 1);
     });
 
@@ -4069,6 +4070,8 @@ module.exports = ({ ok, assert }) => {
       const text = fs.readFileSync(wf, 'utf8');
       assert.match(text, /node scripts\/check-planning-pin-freshness\.js/, '検査器を呼んでいない');
       assert.match(text, /gh issue (create|comment)/, '気付き導線（issue 起票）が無い');
+      // ★ 「Accepted になった＝着手できる」と名乗らないこと（IADR-0119 が両者は別だと明記）。
+      assert.doesNotMatch(text, /着手ゲートが外れ/, '検知器が着手可否を断定してはならない');
       assert.match(text, /submodules: recursive/, 'planning を populate していない（比較対象を取れない）');
       assert.match(text, /PLANNING_REPO_TOKEN/, 'トークンを渡していない');
       // ★ 「赤ではなく issue」の設計。continue-on-error や || true で握り潰していないこと。
