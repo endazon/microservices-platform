@@ -37,9 +37,13 @@ src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
 **現在の割り当ては次のコマンドで列挙する。**
 
 ```console
-$ python3 -c "import json;d=json.load(open('src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json'));\
-[print(f'{k:18s} {v}') for k,v in d['Llm']['Routing']['PurposeModels'].items()]"
+$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json');\
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v)"
 ```
+
+> **★ `node` で書くのは本リポの前提に合わせるためである。** 本リポの道具立ては **Node.js / .NET** であり、
+> **`python3` は [`scripts/setup.sh`](../../scripts/setup.sh) でコメントアウトされた opt-in**（＝**利用保証が無い**）。
+> **手順書は運用者が実行するもの**であり、**手元に無い処理系へ依存させない。**
 
 **用途は 1 つではない。** `trade-decision` のほか `rag-answer` / `analysis` / `diagram-coding` /
 `report-monthly` / `report-weekly` / `report-daily` / `default` がそれぞれ独立にピンされている。

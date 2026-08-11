@@ -4047,6 +4047,32 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
+    // ★ **手順書のコマンドは、本リポの道具立て（Node.js / .NET）だけで動くこと。**
+    //   `python3` は `scripts/setup.sh` でコメントアウトされた opt-in であり**利用保証が無い**。
+    //   手順書は運用者が実行するものなので、手元に無い処理系へ依存させない。
+    //   **実測**: `docs/operations/` `docs/how-to/` の手順書 8 本のコードブロックが使う実行ファイルを
+    //   全数で引くと、`python3` はここ 1 件だけであった（他は git / node / pnpm / dotnet と、
+    //   kubectl / argocd / docker / psql / kcadm.sh のようにその手順が本来必要とする道具）。
+    //   **見るのはコードブロック内の実行行だけである。** 地の文は対象外 —— 本 Runbook は
+    //   「なぜ python を使わないか」を**説明するために `python3` の語を含む**。素の全文検索で
+    //   落とすと、説明を書いたことで落ちる（**禁止の理由を書けなくなる**）。
+    ok('ピン Runbook: 列挙コマンドが本リポの道具立て（node）で書かれている', () => {
+      const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8').replace(/\r\n/g, '\n');
+      const cmds = [...t.matchAll(/```(?:console|bash|sh)\n([\s\S]*?)```/g)]
+        .flatMap((m) => m[1].split('\n'))
+        .map((l) => l.trim().replace(/^\$\s*/, ''))
+        .filter((l) => l && !l.startsWith('#'));
+      assert.ok(cmds.length > 0, 'コードブロックの実行行を 1 行も拾えていない（検査が空振りしている）');
+      assert.ok(
+        !cmds.some((l) => /^python3?\b/.test(l)),
+        '手順書のコマンドが python へ依存している（scripts/setup.sh で opt-in＝利用保証が無い）',
+      );
+      assert.ok(
+        cmds.some((l) => /^node\b/.test(l)),
+        '列挙コマンドが node で書かれていない',
+      );
+    });
+
     ok('ピン Runbook: 運用仕様書から辿れる（孤立していない）', () => {
       const ops = fs.readFileSync(path.join(REPO, 'docs/operations/operations.md'), 'utf8');
       assert.match(ops, /llm-model-pin-runbook/, 'operations.md から Runbook へ辿れない');
