@@ -4101,10 +4101,23 @@ module.exports = ({ ok, assert }) => {
     });
 
     // ★ 確定済み記録（IADR-0145:26 等）が節名で引いているため、見出しは消せない。
+    //
+    // ★★ **見出し行そのものを見る。全文検索では駄目である。**
+    //    スタブの本文に「§PR タイトル（スカッシュ後件名）の検査（再発防止）へ移した」と
+    //    **同じ文字列が入っている**ため、`t.includes(見出し)` だと**見出し行を消しても通る**
+    //    （変異試験 M1 が実際に緑のまま通り、この穴を捕まえた）。
     ok('#686 段 1: 出した節の見出しがスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const headings = t
+        .split('\n')
+        .filter((l) => /^#{2,3}\s/.test(l))
+        .map((l) => l.replace(/^#{2,3}\s*/, '').trim());
       for (const h of MOVED) {
-        assert.ok(t.includes(h), `見出し「${h}」が入口から消えた（確定済み記録の引用が指す先を壊す）`);
+        assert.ok(
+          headings.some((x) => x.startsWith(h)),
+          `見出し「${h}」が入口から消えた（確定済み記録の引用が指す先を壊す）。` +
+            `現在の見出し: ${JSON.stringify(headings)}`,
+        );
       }
     });
 
