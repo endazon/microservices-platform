@@ -4685,14 +4685,31 @@ module.exports = ({ ok, assert }) => {
       assert.match(sec, /固有デルタ（IADR-0115 決定 2 の 2\. 技術スタックとその CI 配線）/, '固有デルタの根拠注記が消えた');
 
       // キットが取れる環境では、**その 1 行以外がキットと一致する**ことまで確かめる。
+      // ★ 取れない環境（planning が未 populate。**CI の `scripts-tests` ジョブがそれである** ——
+      //   checkout に submodule とトークンを付けていないため。`doc-links` と同じ既知の制約）では
+      //   この比較は走らない。**黙って飛ばすと「検査した」と読めてしまう**ので notice を出す
+      //   （[[IADR-0183]] の「偽の緑」と同じ理屈）。
+      if (!fs.existsSync(KIT_README)) {
+        console.log(
+          'notice: planning が未 populate のため、#712 のキット本文比較は実行していない（この範囲は検査されていない）。',
+        );
+      }
       if (fs.existsSync(KIT_README)) {
         const kitSec = sectionOf(fs.readFileSync(KIT_README, 'utf8'), HEAD);
         assert.ok(kitSec, 'キット側に節が無い（比較の前提が崩れた）');
+        // ★ コメントは**ブロックごと**落とす。行単位のフィルタだと**複数行コメントの中間行が
+        //   素通りする** —— 開始行（`<!--`）と終了行（`-->`）にしか当たらないためである。
+        //   **#712 のレビュー 🔴 で実測**: 3 行コメントの 2 行目が残り、キットとの比較が落ちて
+        //   `scripts.test.js` が 107/491 件で異常終了した。
+        // ★ 気づけなかったのは、この比較が `fs.existsSync(KIT_README)` の内側にあり、
+        //   **CI も手元も planning を populate していなかった**ため（下の notice を参照）。
+        //   分岐を書いたら、その分岐が実際に走る条件で 1 度は動かすこと。
         const strip = (s) =>
           s
+            .replace(/<!--[\s\S]*?-->/g, '')
             .split('\n')
-            .filter((l) => !/^\s*<!--/.test(l) && !/^\s+.*-->$/.test(l) && !/-->\s*$/.test(l))
             .filter((l) => !(l.includes('check-feedback-dispatched.js') && l.includes('ジョブ')))
+            .map((l) => l.trimEnd())
             .join('\n')
             .replace(/\n{3,}/g, '\n\n')
             .trim();

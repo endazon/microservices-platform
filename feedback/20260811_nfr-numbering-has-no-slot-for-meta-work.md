@@ -8,7 +8,7 @@ source_repo: microservices-platform
 source_ref: "claude/issue-688-nfr-unnumbered-meta / docs/specs/20260811_issue-688_nfr-unnumbered-meta.md（PR #699・実装側 issue #688）"
 author: Claude（実装）
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-13
 ---
 
 # 環流: `NFR` 採番に、メタ作業へ当たる番号が無い
@@ -67,5 +67,5 @@ planning#304 の裁定は「**新規参照から採番付きを使う**」と定
 | 2. 計画リポへ起票 | **済** —— [planning#311](https://github.com/endazon/project-planning/issues/311)（`decision-needed`） |
 | 3. 計画側の裁定 | **待ち** |
 
-> **［2026-08-13 追記］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
+> **［2026-08-13 追記 / #712］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
 > **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
