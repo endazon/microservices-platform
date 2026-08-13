@@ -1,7 +1,7 @@
 ---
 title: SC-06 の「手動同期」が破壊的操作の列挙に無く、ロールを実装側で決めることになっている
 type: plan-feedback
-status: open
+status: triaged
 category: 要求の不足
 related_ids: [SC-05, SC-06, SC-07, FR-01, FR-02, UC-04]
 source_repo: microservices-platform
@@ -21,6 +21,9 @@ created: 2026-08-09
 | 2. `feedback/` への記録作成 | **完了**（本ファイル） |
 | 3-a. `planning/draft/feedback/` へのコピー | **本件では実施しない**（3-b の Issue 経路を採ったため。いずれか一方で足りる） |
 | 3-b. `endazon/project-planning` への Issue 起票 | **完了**（[planning#299](https://github.com/endazon/project-planning/issues/299)。2026-08-09 に起票。**裁定待ち**） |
+
+> **［2026-08-13 追記 / #712］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
+> **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
 
 ## 種別
 
