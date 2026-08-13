@@ -1,7 +1,7 @@
 ---
 title: NFR-01〜27 に「文書・規約の統制」を扱う番号が無い（メタ作業の起点 ID）
 type: plan-feedback
-status: open
+status: triaged
 category: 要求の不足
 related_ids: [NFR, IADR-0179]
 source_repo: microservices-platform
@@ -66,3 +66,6 @@ planning#304 の裁定は「**新規参照から採番付きを使う**」と定
 | 1. 実装側で記録を作成 | **済**（PR #699） |
 | 2. 計画リポへ起票 | **済** —— [planning#311](https://github.com/endazon/project-planning/issues/311)（`decision-needed`） |
 | 3. 計画側の裁定 | **待ち** |
+
+> **［2026-08-13 追記］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
+> **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
