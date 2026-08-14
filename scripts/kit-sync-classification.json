@@ -95,7 +95,7 @@
       "AI_SETUP.md": "X. 4 種に当たらない（有効化プロファイルの宣言）。★ 4 種の側の不足の疑い。追跡: #736",
       "docs/DEFINITION_OF_DONE.md": "X. 4 種に当たらない（検証の順序・IADR-0183）。環流候補。追跡: #736",
       "docs/templates/screen_spec_template.md": "X. 4 種に当たらない（キット側の節を本リポが持たない）。追随漏れ。追跡: #735",
-      "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）",
+      "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）＋ 3. 本リポにしか存在しないスクリプト（check-feedback-status-sync.js の説明。IADR-0193。キットへの環流候補: #736）",
       "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流候補。追跡: #736",
       "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流候補。追跡: #736"
     },

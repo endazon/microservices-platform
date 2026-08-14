@@ -4456,7 +4456,8 @@ module.exports = ({ ok, assert }) => {
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
         // ★ #713 で `check-kit-sync.js` を足したため 33 → 34（ラチェットが設計どおり発火した）。
-        assert.strictEqual(scripts.length, 34, `検査器の母集合が 34 本から変わった（${scripts.length} 件）`);
+        // ★ #737 で `check-feedback-status-sync.js` を足したため 34 → 35（同上）。
+        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -5024,6 +5025,86 @@ module.exports = ({ ok, assert }) => {
       const { main } = require(path.join(REPO, 'scripts/check-kit-sync.js'));
       assert.strictEqual(typeof main, 'function', 'check-kit-sync.js が main を公開していない');
       assert.strictEqual(main(), 0, 'check-kit-sync.js が失敗した（分類 A の乖離か表の不整合）');
+    });
+
+    // --- #737: 環流記録の status を計画側の裁定へ追随させる（IADR-0193） -----------
+    //
+    // ★ #721 は `triaged` → `open` の移行前に「本当に伝達済みか」を全数で確かめたが、
+    //   確かめたのは `dispatched` の軸であって `status` の軸ではなかった。
+    //   裁定後の `status` は「計画側の裁定の進捗」なのだから、確かめるべきは
+    //   「計画側が既に裁定していないか」である。10 件が既に accepted だった。
+    ok('#737: status の計画側との突合が実際に回っている', () => {
+      const { main } = require(path.join(REPO, 'scripts/check-feedback-status-sync.js'));
+      assert.strictEqual(typeof main, 'function', 'check-feedback-status-sync.js が main を公開していない');
+      assert.strictEqual(main(), 0, 'check-feedback-status-sync.js が失敗した（status が計画側に追随していない）');
+    });
+
+    // ★ 実データに対して main() が 0 を返すことしか見ないと、**全記録が同期している限り
+    //   `!==` を `===` に取り違えても緑のまま**である（#738 レビュー 🟡）。
+    //   **比較そのものを、意図的に食い違わせた fixture で駆動する**（変異試験 R1〜R5 の恒久化）。
+    ok('#737: --self-test が比較ロジックを fixture で駆動する（exit 0）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/check-feedback-status-sync.js'), '--self-test'], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+      // 実データ非依存であること（fixture で駆動しているので planning 未 populate でも回る）
+      assert.match(r.stdout, /自己試験 \d+ 件 all passed/, 'self-test の件数報告が消えた');
+    });
+
+    // ★ 「変異試験で検出を確認した」と言えるのは、その変異を CI が拒むときだけである。
+    ok('#737: 自己試験が実際に比較の取り違えを拒む（!== → === を注入して確認）', () => {
+      const { spawnSync } = require('child_process');
+      const os = require('os');
+      const src = path.join(REPO, 'scripts/check-feedback-status-sync.js');
+      const text = fs.readFileSync(src, 'utf8');
+      assert.ok(text.includes('if (implStatus !== planStatus) {'), '比較式が見つからない（変異を注入できない）');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fbstatus-mutation-'));
+      const mutant = path.join(dir, 'mutant.js');
+      fs.writeFileSync(mutant, text.replace('if (implStatus !== planStatus) {', 'if (implStatus === planStatus) {'));
+      const r = spawnSync(process.execPath, [mutant, '--self-test'], { encoding: 'utf8' });
+      assert.notStrictEqual(r.status, 0, `比較を取り違えた変異体を自己試験が素通りさせた:\n${r.stdout}`);
+    });
+
+    // ★ 写しを持たない記録を不一致に数えると、恒久的な偽陽性が残る（実測 5 件）。
+    //   記録ファイル経路と GitHub Issue 経路は等価である（planning#319）。
+    ok('#737: 計画側に写しを持たない記録を不一致に数えない', () => {
+      const PLAN = path.join(REPO, 'planning/draft/feedback');
+      if (!fs.existsSync(PLAN)) {
+        console.log('notice: planning が未 populate のため、#737 の偽陽性回避は検査していない（この範囲は検査されていない）。');
+        return;
+      }
+      const unpaired = fs
+        .readdirSync(path.join(REPO, 'feedback'))
+        .filter((f) => f.endsWith('.md') && !['README.md', 'TEMPLATE.md'].includes(f))
+        .filter((f) => !fs.existsSync(path.join(PLAN, f)));
+      assert.ok(
+        unpaired.length > 0,
+        '写しを持たない記録が 0 件になった。偽陽性回避が実際に効いているかを、この検査が確かめられていない',
+      );
+      const { main } = require(path.join(REPO, 'scripts/check-feedback-status-sync.js'));
+      assert.strictEqual(
+        main(),
+        0,
+        `写しを持たない記録（${unpaired.length} 件）が不一致として数えられている。両経路は等価である`,
+      );
+    });
+
+    // ★ 0 件走査で静かに緑にならないこと（#664 の門）。
+    ok('#737: 0 件走査で緑にしない門が 2 つある', () => {
+      const src = fs.readFileSync(path.join(REPO, 'scripts/check-feedback-status-sync.js'), 'utf8');
+      for (const n of [
+        'feedback/ の記録が 0 件だった',
+        '計画側に写しを持つ記録が 0 件だった',
+      ]) {
+        assert.ok(src.includes(n), `#664 の門「${n}」が消えた`);
+      }
+    });
+
+    // ★ 索引と雛形は記録ではない（数に混ぜると突合が壊れる）。
+    ok('#737: 索引と雛形を記録として数えない', () => {
+      const src = fs.readFileSync(path.join(REPO, 'scripts/check-feedback-status-sync.js'), 'utf8');
+      assert.match(src, /NOT_A_RECORD[\s\S]{0,80}README\.md[\s\S]{0,40}TEMPLATE\.md/, '索引・雛形の除外が消えた');
     });
 
     // --- #717: 記録を書き換えてよい境界（IADR-0191） ------------------------------

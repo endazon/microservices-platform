@@ -1,7 +1,7 @@
 ---
 title: check-feedback-dispatched.js が記録ファイル経路を伝達の証拠と認めず、TEMPLATE.md に planning_issue が無い
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR]
 source_repo: microservices-platform

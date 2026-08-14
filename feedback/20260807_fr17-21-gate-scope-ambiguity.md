@@ -1,7 +1,7 @@
 ---
 title: 「FR-17〜21 の着手を止めていた条件は解消している」は FR-19〜21 について成り立たない —— 同じ文書内の注記 2・3 と矛盾する
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の誤り
 related_ids: [FR-17, FR-18, FR-19, FR-20, FR-21, ADR-0036, ADR-0037, IADR-0119]
 source_repo: microservices-platform

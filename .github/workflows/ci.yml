@@ -141,6 +141,24 @@ jobs:
       - name: Check kit sync classification
         run: node scripts/check-kit-sync.js
 
+  # NFR / planning#323 の裁定 / issue #737: 環流記録の status が計画側の裁定に追随しているかの検査。
+  # ★ 本ジョブも kit-sync と同じ理由で **skip（fail-open）になる**（planning を populate しないため）。
+  #   status の正は計画側にあり（IADR-0187 決定 1）、突合には計画側の記録が要る。
+  #   **skip したことは warn 行で見えるようにしてある** —— 静かに緑にしない（IADR-0193 決定 3）。
+  feedback-status-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      # ★ 自己試験は fixture で駆動するため planning が無くても実効する
+      #   —— skip する実データ走査と違い、**この 1 本だけは CI でも必ず何かを検査している**。
+      - name: Self-test the comparison logic
+        run: node scripts/check-feedback-status-sync.js --self-test
+      - name: Check feedback status sync
+        run: node scripts/check-feedback-status-sync.js
+
   # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
   # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
   # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。

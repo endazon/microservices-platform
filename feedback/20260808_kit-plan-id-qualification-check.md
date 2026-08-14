@@ -1,7 +1,7 @@
 ---
 title: キット環流 計画 ID 修飾の機械検査（check-plan-id-qualification.js）
 type: plan-feedback
-status: open
+status: accepted
 related_ids: [NFR, IADR-0115, IADR-0140, IADR-0143]
 author: Claude
 created: 2026-08-08

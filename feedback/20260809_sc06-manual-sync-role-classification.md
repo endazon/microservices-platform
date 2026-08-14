@@ -1,7 +1,7 @@
 ---
 title: SC-06 の「手動同期」が破壊的操作の列挙に無く、ロールを実装側で決めることになっている
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids: [SC-05, SC-06, SC-07, FR-01, FR-02, UC-04]
 source_repo: microservices-platform

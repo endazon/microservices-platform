@@ -1,7 +1,7 @@
 ---
 title: キットが feedback/ の status を既定値ごと配りながら、4 値の意味をどこにも定義していない
 type: plan-feedback
-status: open
+status: accepted
 category: 記述の不足
 related_ids: [NFR]
 source_repo: microservices-platform
