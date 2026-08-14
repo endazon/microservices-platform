@@ -2,10 +2,14 @@
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2）。",
     "A = バイト一致であるべき（check-kit-sync.js が機械検査する）。",
-    "B = キット土台＋固有デルタ。値は IADR-0115 決定 2 の固有デルタ 4 種のどれに当たるかと理由。",
+    "B = キット土台＋固有デルタ。値の先頭は IADR-0115 決定 2 の 4 種の番号、または X。",
+    "  1 リポジトリ構成（ユニット第一構成・submodule 取得ステップ）",
+    "  2 技術スタックとその CI 配線",
+    "  3 本リポにしか存在しない成果物・スクリプト",
+    "  4 Dependabot が更新した GitHub Actions のバージョン",
+    "  X 4 種のどれにも当たらない。環流するか期限つき暫定とする（IADR-0115 決定 3）。追跡先の issue 番号が必須。",
     "C = 本リポの中身そのもの（雛形から書き起こした実体）。同期しない。",
-    "不在 8 件は *.example.yml であり、本リポは有効化済みの実名を持つ（分類対象外）。",
-    "追随漏れ・環流候補の個別是正は本表の射程外（#713 が別 issue と定めた）。"
+    "不在 8 件は *.example.yml であり、本リポは有効化済みの実名を持つ（分類対象外）。"
   ],
   "classes": {
     "A": [
@@ -76,24 +80,24 @@
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
-      ".claude/agents/adr-guardian.md": "1. 監査の巡数・再走範囲（IADR-0141）。キットが後から同趣旨を採ったため差分が残る",
-      ".claude/agents/spec-implementer.md": "1. 母集合の引き直し規則（IADR-0141）。planning#315 で環流済み",
-      ".claude/agents/traceability-auditor.md": "1. 同上（IADR-0141 の巡数・再走範囲）",
-      ".claude/commands/adr-check.md": "1. 同上（打ち切り条件の明言）",
-      ".claude/commands/new-spec.md": "3. キット側の誤り（runbook / how-to のテンプレート名）の是正。環流候補",
-      ".claude/commands/trace-check.md": "1. 同上（打ち切り条件の明言）",
-      ".claude/settings.json": "2. 技術スタック（src/ai-stock-trading submodule）向けの許可コマンド追加",
-      ".github/workflows/openapi.yml": "2. paths を src/*/backend/** へ（API 契約はバックエンド由来）",
-      ".github/workflows/pr-size.yml": "2. 除外グロブ。ただし pull-requests: write の残置はキット追随漏れ",
-      ".github/workflows/pr-title.yml": "2. bot 除外の配線。ただしキット側の planning#202 の根拠コメントが未取込",
-      ".github/workflows/security.yml": "2. src/* submodule の fetch（未 populate だと restore が黙って飛ばす）",
-      ".gitmodules": "2. src/ai-stock-trading submodule の登録",
-      "AI_SETUP.md": "4. 有効化プロファイルの宣言（claude-code）",
-      "docs/DEFINITION_OF_DONE.md": "1. 検証の順序（IADR-0183）とテスト起点 ID。環流候補",
-      "docs/templates/screen_spec_template.md": "1. 計画との対応表。★ キット側の節を本リポが持たない（追随漏れの疑い）",
-      "feedback/README.md": "2. CI ジョブ名（doc-links → feedback-dispatched。IADR-0184 決定 3）",
-      "scripts/check-doc-links.js": "3. 同一ディレクトリのベアファイル名も相対リンクとする是正（#609）。環流候補",
-      "scripts/setup.sh": "1. 計画 pin の鮮度検査（IADR-0170）。環流候補"
+      ".claude/agents/adr-guardian.md": "X. 4 種に当たらない（監査の巡数・再走範囲）。planning#315 でキットが採用済み＝追随漏れ。追跡: #735",
+      ".claude/agents/spec-implementer.md": "X. 4 種に当たらない（母集合の規則）。planning#315 でキットが採用済み＝追随漏れ。追跡: #735",
+      ".claude/agents/traceability-auditor.md": "X. 4 種に当たらない（監査の巡数・再走範囲）。追随漏れ。追跡: #735",
+      ".claude/commands/adr-check.md": "X. 4 種に当たらない（打ち切り条件の明言）。追随漏れ。追跡: #735",
+      ".claude/commands/new-spec.md": "X. 4 種に当たらない（キット側のテンプレート名の誤りの是正）。環流候補。追跡: #736",
+      ".claude/commands/trace-check.md": "X. 4 種に当たらない（打ち切り条件の明言）。追随漏れ。追跡: #735",
+      ".claude/settings.json": "1. リポジトリ構成（src/ai-stock-trading submodule 向けの許可コマンド）",
+      ".github/workflows/openapi.yml": "1. リポジトリ構成（ユニット第一構成 src/*/backend/** へ paths を絞る）",
+      ".github/workflows/pr-size.yml": "X. 除外グロブは 2（CI 配線）だが、未使用権限 pull-requests: write の残置は追随漏れ。追跡: #735",
+      ".github/workflows/pr-title.yml": "X. bot 除外の根拠コメント（planning#202）が未取込＝追随漏れ。追跡: #735",
+      ".github/workflows/security.yml": "1. リポジトリ構成（src/* submodule の取得ステップ）",
+      ".gitmodules": "1. リポジトリ構成（src/ai-stock-trading submodule の登録）",
+      "AI_SETUP.md": "X. 4 種に当たらない（有効化プロファイルの宣言）。★ 4 種の側の不足の疑い。追跡: #736",
+      "docs/DEFINITION_OF_DONE.md": "X. 4 種に当たらない（検証の順序・IADR-0183）。環流候補。追跡: #736",
+      "docs/templates/screen_spec_template.md": "X. 4 種に当たらない（キット側の節を本リポが持たない）。追随漏れ。追跡: #735",
+      "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）",
+      "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流候補。追跡: #736",
+      "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流候補。追跡: #736"
     },
     "C": [
       ".claude/rules/traceability.md",

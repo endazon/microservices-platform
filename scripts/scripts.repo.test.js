@@ -4979,12 +4979,24 @@ module.exports = ({ ok, assert }) => {
       // 表の内部整合（populate に依存しない）
       assert.ok(t.classes.A.length > 0, '分類 A が空。検査が実質何も見ないことになる');
       assert.ok(Object.keys(t.classes.B).length > 0, '分類 B が空。固有デルタの記録が消えている');
+      // ★ #734 レビュー 🟡: 当初は `^[1-4]\. ` だけを強制していたが、4 種の**定義**を確かめずに
+      //   番号を振っていた。実際に照らすと大半は 4 種に当たらない（＝環流債務・追随漏れ）。
+      //   書式だけ強制しても「なんとなく 2」と書けてしまい、IADR-0115 決定 3 の規律がすり抜ける。
+      //   → X（4 種に当たらない）を明示させ、**X には追跡先の issue 番号を必須**にする。
       for (const [f, reason] of Object.entries(t.classes.B)) {
         assert.match(
           reason,
-          /^[1-4]\. /,
-          `分類 B「${f}」の理由が IADR-0115 決定 2 の 4 種のどれかを示していない（"N. …" で始めること）`,
+          /^([1-4]|X)\. /,
+          `分類 B「${f}」の理由が IADR-0115 決定 2 の 4 種または X を名乗っていない（"N. …" / "X. …" で始めること）`,
         );
+        if (reason.startsWith('X.')) {
+          assert.match(
+            reason,
+            /追跡: (planning)?#\d+/,
+            `分類 B「${f}」は X（4 種に当たらない）なのに追跡先が無い。` +
+              '環流するか期限つき暫定として記録し、issue 番号を書くこと（IADR-0115 決定 3）',
+          );
+        }
       }
       if (!fs.existsSync(KIT)) {
         console.log('notice: planning が未 populate のため、#713 のキット全数被覆は検査していない（この範囲は検査されていない）。');
