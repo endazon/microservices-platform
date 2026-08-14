@@ -134,7 +134,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
 | `image-build` | `images.yml` | Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md) の集約ジョブ |
-| `CodeQL` | `codeql.yml` | **集約 check**。ジョブ名 `Analyze (csharp)` とは別物で、こちらを指定する |
+| ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
 
 > **★ `CI` / `Security` / `Images` / `PR Title` を指定してはならない。** いずれも**ワークフロー名**であり、
