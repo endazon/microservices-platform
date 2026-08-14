@@ -242,6 +242,7 @@
 | [IADR-0186](./IADR-0186_sshnet-transitive-pin.md) | **［決定 5 の暫定は IADR-0188 が解消］** `Testcontainers` の推移依存 **`SSH.NET` を `2026.0.0` へピン**して High の脆弱性を解消（上流は 4.13.0 でも 2025.1.0 のまま）。**`ScpClient` の破壊的変更は踏まない**ことを型参照で実測。**AST へは届かず #722 で解消。** | Accepted |
 | [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) | **上流の裁定に従い** `status` を「**計画側の裁定の進捗**」へ差し替える（伝達は `dispatched:` 鍵へ）。**IADR-0185 決定 1 とは逆**の分割 —— **仰いだ側が結論を選べるなら裁定の意味が無い**。`triaged` 11 件は**全数の伝達を確かめてから** `open` ＋ `dispatched: true` へ移す。 | Accepted |
 | [IADR-0188](./IADR-0188_unnumbered-nfr-applies-to-all-work.md) | 無採番 `NFR` を**「該当する `NFR-xx` が無い作業」全般**へ広げる（メタ作業は代表例）。**覆すのではなく広げるので Supersede ではなく Amend**。**番号は実装側で作らない**歯止めを入口へ明記。あわせて**必読の予算超過（#718 以来 302B・6 コミット気づかれず）**を、入口と別紙の**重複を削って**解消し、CI で固定した。 | Accepted |
+| [IADR-0189](./IADR-0189_follow-upstream-adjudication-in-kit.md) | planning#311 の裁定（**無採番を許す 2 場合**）がキットに在るのに入口が追随していなかった。**規範 4 点を取り込む**（①は環流する／②は環流しない ほか）。**IADR-0188 は覆さず引用の欠落だけ是正**。**分類 B/C の追随漏れはバイト一致では捕まらない**。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

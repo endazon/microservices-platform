@@ -4926,6 +4926,33 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
+    // --- #728: planning#311 の裁定（無採番 NFR の 2 場合）への追随（IADR-0189） ---
+    //
+    // ★ 本リポの入口は分類 B/C であり、キットとのバイト一致では追随漏れを検出できない
+    //   （#721 は分類 A だったので回帰テストが落ちた）。ここで固定できるのは
+    //   「入った規範が後で消えること」までで、「上流に新しい規範が入ったこと」は捕まえられない。
+    ok('#728: 無採番 NFR の 2 場合（環流の要否）が入口にある', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of [
+        '無採番の `NFR` を許すのは 2 場合だけ',
+        '計画へ ID の付与を環流する',
+        '環流しない',
+        '「面倒だから無採番」は ② に当たらない',
+        '着手前に計画の ID 列を見て',
+      ]) {
+        assert.ok(t.includes(n), `planning#311 の規範「${n}」が入口から消えた`);
+      }
+    });
+
+    // ★ 上流が先に裁定していたことを IADR-0188 から辿れること（引用の欠落の是正）。
+    ok('#728: IADR-0188 が planning#311 を引用している', () => {
+      const a = fs.readFileSync(
+        path.join(REPO, 'docs/adr/IADR-0188_unnumbered-nfr-applies-to-all-work.md'),
+        'utf8',
+      );
+      assert.match(a, /planning#311/, 'IADR-0188 に planning#311 への参照が無い');
+    });
+
     // ★ 入口から重複を消した分が、別紙に在ること（削除ではなく重複解消であることの確認）。
     ok('#724: ADR-0023 の遷移の記述が入口から消え、別紙に在る', () => {
       const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
