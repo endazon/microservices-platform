@@ -10,7 +10,7 @@ related_ids:
   - IADR-0176
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-14
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -46,7 +46,7 @@ plan_refs:
 
 **入口に残っているのは規範だけ**である —— 現行 pin でのレンジ ／ `NFR` の採番 ／ `Proposed` でも ID
 としては実在すること ／ 着手条件は FR 単位で読むこと ／ CI は計画 ADR の実在性を守っていないこと ／
-ID 修飾の書式 ／ 残す箇所と書式 ／ **母集合の取り方の規則 1〜8 とその破れた実例** ／ 守ること。
+ID 修飾の書式 ／ 残す箇所と書式 ／ **母集合の取り方の規則 1〜8**〔**［2026-08-14 追記 / #730］破れた実例は入口から外し、規則 1〜6 は [[IADR-0141]] 決定 1、規則 7・8 は別紙 `population-drawing-annex.md` が持つ。規則そのものは入口に残っている**〕 ／ 守ること。
 
 ## ★★ 決定 2: **塊単位の走査を「全節」へ広げる**（[[IADR-0176]] 決定 2 の拡張）
 
