@@ -25,7 +25,7 @@ plan_refs:
 - **NFR**（文書統制。メタ作業なので無採番。[IADR-0179](./IADR-0179_unnumbered-nfr-for-meta-work.md) 決定 1）
 - 実装 issue: **#721**（出所: PR #723 の作業中に `planning` を populate して検出）
 - 作業仕様書: [20260814_issue-721](../specs/20260814_issue-721_kit-resync-status-vocabulary.md)
-- **Supersedes: [IADR-0185](./IADR-0185_feedback-status-vocabulary.md) 決定 1・決定 2・決定 4**
+- **Supersedes: [IADR-0185](./IADR-0185_feedback-status-vocabulary.md) 決定 1・決定 2・決定 4**（**同 ADR の決定は 1〜4**。残る決定 3 は有効）
 
 ## 文脈 —— **仰いだ裁定が、こちらの決定と逆で返ってきた**
 
@@ -77,6 +77,23 @@ plan_refs:
 > **★ `20260719_headlamp-k8s-management-ui.md` は、検査器の証拠も planning issue 番号も持たず
 > 「未伝達」に見えた。** **実際は写しが在り、計画側が `ADR-0040` / `ADR-0042` を起こしていた。**
 > **確かめずに移行していたら、伝達済みの記録を未伝達として扱うところだった。**
+
+### 決定 2 の補足: **本文へ追記ブロックを足すことについて**（#726 レビュー 🟡）
+
+**11 件の本文末尾へ `［2026-08-14 追記 / #721］` を足した。**
+[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md) は**日付つき追記ブロックの母集合から `feedback/` を除いている**ので、関係を明示する。
+
+**[IADR-0185](./IADR-0185_feedback-status-vocabulary.md) 決定 2 の補足で採った読みをそのまま用いる**（同補足は #715 のレビュー 🟡 への回答である）。
+
+| # | 理由 |
+| --- | --- |
+| 1 | 当該規約の射程は **`Superseded by <後継 ID>` の後付け注記**であり、`status` の移行はその書式の話ではない |
+| 2 | **`status` / `dispatched:` は遷移が前提の欄**である。凍結したら鍵が意味を持てない（キット自身が「誰が書き換えるか」を定めている） |
+| 3 | **本文の主張は 1 文字も変えていない。** 足したのは**日付・issue 番号つきの追記ブロック**だけで、これは同規約が「決定を変える追記」に**指定している形そのもの**である |
+
+> **★ 規約の射程が判然としない点は #717 として起票済みである**（本 ADR で新たに広げてはいない）。
+> **追記を足さない選択もあり得たが、それでは「なぜ `triaged` が消えたか」が記録から辿れなくなる** ——
+> **11 件は上流裁定で意味が変わった記録であり、変わった事実こそ残す価値がある。**
 
 ## ★★ 決定 3: **`awaiting-decision` / `accepted` / `rejected` は実装側が書かない**
 
@@ -144,5 +161,5 @@ plan_refs:
 
 ## 関連
 
-- Supersedes: **[IADR-0185](./IADR-0185_feedback-status-vocabulary.md) 決定 1・決定 2・決定 4**（決定 3・決定 5 は有効）
+- Supersedes: **[IADR-0185](./IADR-0185_feedback-status-vocabulary.md) 決定 1・決定 2・決定 4**（**同 ADR の決定は 1〜4 であり、残る決定 3 は有効**）
 - Superseded by: なし

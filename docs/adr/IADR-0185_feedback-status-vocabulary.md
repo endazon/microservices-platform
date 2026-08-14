@@ -23,8 +23,8 @@ plan_refs:
 > **［2026-08-14 追記 / #721］★ 決定 1・決定 2・決定 4 は [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) が差し替えた。**
 > **本 ADR が環流した planning#323 の裁定が下り、`status` は「伝達したか」ではなく
 > 「計画側の裁定がどこまで進んだか」を表すと確定した**（伝達は `dispatched:` / `planning_issue:` 鍵が担う）。
-> **`triaged` は廃され `awaiting-decision` になった。** **決定 3（キット原文＋CI ジョブ名の固有デルタ）と
-> 決定 5（無採番 NFR の援用）は引き続き有効である。**
+> **`triaged` は廃され `awaiting-decision` になった。**
+> **本 ADR の決定は 1〜4 であり、そのうち決定 3（キット原文の取り込み＋CI ジョブ名の固有デルタ）だけが引き続き有効である。**
 
 ## 起点・関連
 
