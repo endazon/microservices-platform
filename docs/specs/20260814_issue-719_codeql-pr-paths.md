@@ -36,3 +36,13 @@ docs のみの PR でも `Analyze (csharp)` が毎回 5〜10 分回っている�
 | 1 | pull_request へ paths 追加 | 本 PR の diff |
 | 2 | push / schedule は不変 | 本 PR の diff（トリガー節のみの変更） |
 | 3 | required check 非指定の注意を記録 | 本仕様書「判断の記録」と codeql.yml 内コメント |
+
+## 補記（2026-08-14・スコープ追加）: submodule `src/ai-stock-trading` の前進
+
+利用者指示（2026-08-14「Security / Vulnerable transitive dependencies が解消されていないが、720 のプルリクで対応してください」）により、本 PR のスコープへ Security 赤の解消を追加した。
+
+- **事象**: develop の SSH.NET ピン（`7a9e5e9`・IADR-0186）取り込み後も `Vulnerable transitive dependencies` が失敗（run 31797511121 で実測）。残る NU1903 の発生源は本リポではなく **submodule `src/ai-stock-trading` の `AiStockTrading.IntegrationTests`** だった
+- **対処**: submodule pin を `91d52c2` → `e4df308`（AST develop 先端）へ前進（コミット `84508a8`・独立コミット。AST pin bump の既存慣行と同型）
+- **根拠（実測）**: AST 側の対のピンは AST コミット `07bb9da`（AST PR #476 の一部）で導入済み — 同コミットの `Directory.Packages.props` diff が GHSA-q939-rpr3-3284 を名指しして `SSH.NET 2026.0.0` を追加している。`07bb9da` は前進範囲 `91d52c2..e4df308` に含まれる（`git merge-base --is-ancestor` で確認）。**コミット件名の grep ではヒットしない**（件名は借株料の機能実装であり、ピンは同 PR の diff に同乗している）
+- **効果（実測）**: 前進前 `b97ccbf` の Security run 31797511121 = failure、前進後 `84508a8` の run = success。緑化は本前進に帰属する
+- **IADR-0186 決定 3 との関係**: 「submodule 側は直さない・環流する」は **IADR-0186 起票時点で AST 側が未修正だった状況**での決定である。環流先の AST 側修正（#476）が着地したため、本 PR の pin 前進はその決定が予定していた「環流の回収」に当たり、矛盾しない
