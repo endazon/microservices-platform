@@ -5,7 +5,7 @@ status: active
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145]
 author: Claude
 created: 2026-08-08
-updated: 2026-08-11
+updated: 2026-08-14
 plan_refs: []
 related_specs:
   - ../specs/20260808_session-handoff.md
@@ -208,7 +208,7 @@ related_specs:
 ### 型 1: 母集合を引き直さない
 
 **issue 本文の一覧・監査の一覧・前の PR の表は、いずれも母集合ではない。**
-規則と破れた実例は [[IADR-0141]] 決定 1 と `.claude/rules/traceability.md`「是正・追随の母集合の取り方」が正。
+規則は `.claude/rules/traceability.md`「是正・追随の母集合の取り方」が正。**破れた実例は規則 1〜6 が [[IADR-0141]] 決定 1、規則 7・8 が別紙 [`population-drawing-annex.md`](./population-drawing-annex.md)**（#730 で入口から外した）。
 
 **本セッションで新たに踏んだ形**:
 - **`grep -l`（ファイル一覧）を母集合にした** —— #555 では 23 ファイルが該当するように見えたが、
