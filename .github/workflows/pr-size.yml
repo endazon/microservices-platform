@@ -27,9 +27,11 @@ concurrency:
   group: pr-size-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# 出力先は GITHUB_STEP_SUMMARY だけであり、PR へコメントを投稿しない。
+# したがって `pull-requests: write` は不要である（宣言だけ残った未使用権限を持たない）。
+# 将来コメント投稿を足すときに併せて付けること。
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   pr-size:
@@ -46,22 +48,30 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # 生成物・ロックファイルは人が読む対象ではないため除外する。
-          # プロジェクトに応じて追加すること（pathspec の除外構文）。
+          # 数えるのは**実装 diff だけ**である（planning 裁定 2026-08-11・planning#312）。
+          #
+          #   - 生成物・ロックファイル: 人が読む対象ではない。
+          #   - **必須文書**（`docs/` = 作業仕様書・実装 ADR ほか、`feedback/` = 環流記録）:
+          #     **issue を細かく割るほど 1 PR あたりの文書は増える**ため、
+          #     文書量は「複数 issue の混在」という本検査の目的に対して**逆向きに動く指標**である。
+          #     実測（MSP 直近 30 PR・2026-08-11）では**必須文書だけで中央値 393 行**であり、
+          #     含めて数えると**コードを 1 行も書かずに 4 回に 1 回しきい値を超えた**。
+          #
+          # 生成物のパターンはプロジェクトに応じて追加すること（pathspec の除外構文）。
+          # **生成物は「パターン」ではなく「設定ファイルが指す出力先」で決まる**ものがある。
+          # 例: orval の出力先は `orval.config.ts` が決めるため、`**/orval/**` は当たらないことが多い
+          # （実測: 少なくとも 1 リポジトリでは 1 ファイルも該当しなかった）。**自リポの設定を見て書く。**
           #
           # ── 本リポジトリの固有デルタ（IADR-0115 決定 2 の種別 2・3。IADR-0181 決定 1）──
           # キット既定の `**/orval/**` は本リポジトリでは **1 ファイルも当たらない**（直近 60 PR で実測）。
+          # 上のキット注記が「当たらないことが多い」と述べている当のケースであり、実パスへ直した。
           # orval の出力先は src/orval.config.ts が指すとおり foundation/api/generated/ である。
-          # Lingui のカタログも messages.po だけでなく messages.ts を持つため、ディレクトリで除く。
+          # Lingui のカタログは messages.po だけでなく messages.ts も持つため、ディレクトリで除く
+          # （`**/*.po` はキット既定のまま残す）。CHANGELOG.md は生成物である。
           # 実パスへ直した効果は直近 60 PR で 18 件・計 2,080 行（単一 PR 最大 534 行。dc52156）。
-          #
-          # docs/ と feedback/ を除くのは、本リポジトリが CLAUDE.md で **1 PR ごとに作業仕様書と
-          # 実装 ADR を必須**にしており、必須文書だけで追加行数の中央値が 393 行（p75 = 443）に
-          # 達するためである（直近 30 PR の実測）。文書量は「複数 issue の混在」の指標にならず、
-          # キット既定のまま数えると 30 PR 中 23 件（76%）が警告に当たって読まれなくなる
-          # （本設定では 7 件 = 23%。60 PR では 31%）。除外した分もジョブログには残る。
-          # IADR-0181 決定 2。
           EXCLUDES: >-
+            :(exclude)docs/**
+            :(exclude)feedback/**
             :(exclude)**/*.lock
             :(exclude)**/package-lock.json
             :(exclude)**/pnpm-lock.yaml
@@ -70,8 +80,6 @@ jobs:
             :(exclude)src/platform/frontend/src/foundation/api/generated/**
             :(exclude)src/platform/frontend/src/foundation/i18n/locales/**
             :(exclude)**/*.po
-            :(exclude)docs/**
-            :(exclude)feedback/**
             :(exclude)CHANGELOG.md
         run: |
           set -euo pipefail
@@ -79,8 +87,13 @@ jobs:
           # 追加行のみを数える（削除は数えない）。
           added=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" -- . ${EXCLUDES} \
             | awk '$1 != "-" { s += $1 } END { print s + 0 }')
+          # 除外前も併せて数える。**除外の妥当性をその場で確かめられるようにするため**であり、
+          # 両方を出さないと「何をどれだけ除いたのか」が読み手に見えない。
+          total=$(git diff --numstat "${BASE_SHA}...${HEAD_SHA}" -- . \
+            | awk '$1 != "-" { s += $1 } END { print s + 0 }')
           echo "added=${added}" >> "${GITHUB_OUTPUT}"
-          echo "追加行数（生成物を除く）: ${added}"
+          echo "total=${total}" >> "${GITHUB_OUTPUT}"
+          echo "追加行数: 除外後 ${added} / 除外前 ${total}"
 
       - name: Warn when the PR is large
         if: steps.measure.outputs.added != '' && fromJSON(steps.measure.outputs.added) > 400
@@ -88,7 +101,8 @@ jobs:
           {
             echo "## PR サイズの警告"
             echo
-            echo "追加行数（生成物を除く）が **${{ steps.measure.outputs.added }} 行**で、目安の 400 行を超えている。"
+            echo "**実装 diff の追加行数が ${{ steps.measure.outputs.added }} 行**で、目安の 400 行を超えている。"
+            echo "（除外前の全追加行数は ${{ steps.measure.outputs.total }} 行。差は生成物と必須文書〔\`docs/\` \`feedback/\`〕である）"
             echo
             echo "**マージは止めていない。** 次のどれかに当たらないかだけ確認すること。"
             echo

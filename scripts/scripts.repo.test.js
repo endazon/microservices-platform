@@ -5027,6 +5027,116 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(main(), 0, 'check-kit-sync.js が失敗した（分類 A の乖離か表の不整合）');
     });
 
+    // --- #735: キット追随漏れの取り込み（IADR-0194） ------------------------------
+    //
+    // ★ 未使用権限は「宣言だけ残る」形で静かに増える。キットが外した判断へ追随した以上、
+    //   戻っていないことを固定する（出力先は GITHUB_STEP_SUMMARY だけである）。
+    ok('#735: pr-size.yml が未使用権限 pull-requests: write を持たない', () => {
+      const src = fs.readFileSync(path.join(REPO, '.github/workflows/pr-size.yml'), 'utf8');
+      // コメント行を除いた実効の permissions だけを見る（散文の引用に引っかからないこと）
+      const lines = src.split('\n').filter((l) => !/^\s*#/.test(l));
+      const i = lines.findIndex((l) => /^permissions:/.test(l));
+      assert.ok(i >= 0, 'pr-size.yml から permissions ブロックが消えた');
+      const block = [];
+      for (let j = i; j < lines.length; j++) {
+        if (j > i && !/^\s+/.test(lines[j])) break;
+        block.push(lines[j]);
+      }
+      assert.ok(
+        !block.some((l) => /pull-requests/.test(l)),
+        `pr-size.yml に未使用権限が戻っている:\n${block.join('\n')}`,
+      );
+    });
+
+    // ★ 折りたたみスカラー（`>-`）の中では `#` はコメントではなく値の一部になる。
+    //   固有デルタの説明を EXCLUDES の中へ書くと、pathspec が壊れて黙って除外が効かなくなる。
+    ok('#735: pr-size.yml の EXCLUDES にコメントが混入していない', () => {
+      const src = fs.readFileSync(path.join(REPO, '.github/workflows/pr-size.yml'), 'utf8');
+      const m = src.match(/EXCLUDES: >-\n([\s\S]*?)\n {8}run:/);
+      assert.ok(m, 'pr-size.yml から EXCLUDES の折りたたみスカラーを読めない');
+      const value = m[1]
+        .split('\n')
+        .map((s) => s.trim())
+        .join(' ');
+      assert.ok(!value.includes('#'), `EXCLUDES にコメントが混入している（pathspec が壊れる）:\n${value}`);
+      // 本リポの実パス（IADR-0181 の固有デルタ）が残っていること
+      for (const p of [
+        'src/platform/frontend/src/foundation/api/generated/**',
+        'src/platform/frontend/src/foundation/i18n/locales/**',
+      ]) {
+        assert.ok(value.includes(p), `固有デルタの実パス「${p}」が EXCLUDES から消えた（IADR-0181 決定 1）`);
+      }
+    });
+
+    // ★ 上流裁定へ追随した 4 ファイルから、撤廃した数値上限が戻っていないこと（IADR-0194 決定 1）。
+    ok('#735: 監査の起動口から巡数の上限が消え、打ち切り条件は残っている', () => {
+      for (const f of [
+        '.claude/agents/adr-guardian.md',
+        '.claude/agents/traceability-auditor.md',
+        '.claude/commands/adr-check.md',
+        '.claude/commands/trace-check.md',
+      ]) {
+        const t = fs.readFileSync(path.join(REPO, f), 'utf8');
+        assert.ok(
+          !t.includes('全面巡回は 1 回まで'),
+          `${f} に巡数の上限が戻っている（IADR-0194 決定 1 が撤廃した）`,
+        );
+        // 打ち切り条件の明言は「本体」なので残っていること（決定 2）
+        assert.ok(
+          t.includes('これ以上の巡回'),
+          `${f} から打ち切り条件の明言が消えた（IADR-0194 決定 2。上限より強く効く）`,
+        );
+      }
+    });
+
+    // ★★ 上の 4 ファイルだけを見ていたのが #739 レビュー 🔴 の原因である。
+    //   `docs/DEFINITION_OF_DONE.md` に上限が残り、/verify が受け入れ基準として読む状態だった。
+    //   **撤廃した語で追跡下を全数走査し、「記録・引用」として残ってよいものだけを名指しで許す**
+    //   （母集合の規則 7 の機械化。規則 1「誤りの側から引く」＋ 規則 3「拡張子で絞らない」）。
+    ok('#735: 撤廃した巡数上限が、記録・引用以外のどこにも残っていない', () => {
+      const ABOLISHED = '全面巡回は 1 回まで';
+      // 残ってよい場所と、その理由。**live な規範文書は 1 つも入れない。**
+      const ALLOWED = new Map([
+        ['docs/adr/IADR-0141_audit-rounds-and-population-drawing.md', '撤廃された当の決定。日付つき追記で Superseded を明記済み'],
+        ['docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md', '同上（追記で撤廃を明記）'],
+        ['docs/adr/IADR-0194_audit-rounds-follow-upstream-no-numeric-cap.md', '新旧の対照表として引用している'],
+        ['docs/specs/20260814_issue-735_kit-catchup.md', '同上（本 PR の作業仕様書）'],
+        ['feedback/20260807_kit-audit-rounds-and-population.md', '書いた時点の記録。後から書き換えない'],
+        ['scripts/scripts.repo.test.js', '本テスト自身'],
+      ]);
+      // 拡張子で絞らない（規則 3）。パスの除外だけで取る（規則 4）。
+      const { execFileSync } = require('child_process');
+      const tracked = execFileSync(
+        'git',
+        ['-C', REPO, 'ls-files', '--', ':!planning', ':!src/ai-stock-trading', ':!CHANGELOG.md'],
+        { encoding: 'utf8', maxBuffer: 1 << 26 },
+      )
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const offenders = [];
+      let scanned = 0;
+      for (const rel of tracked) {
+        const abs = path.join(REPO, rel);
+        let text;
+        try {
+          text = fs.readFileSync(abs, 'utf8');
+        } catch {
+          continue; // バイナリ・削除済み
+        }
+        scanned += 1;
+        if (text.includes(ABOLISHED) && !ALLOWED.has(rel)) offenders.push(rel);
+      }
+      // ★ 0 件走査で静かに緑にしない（#664 の門）
+      assert.ok(scanned > 50, `走査対象が ${scanned} 件しかない。走査が空振りしている`);
+      assert.deepStrictEqual(
+        offenders,
+        [],
+        `撤廃した巡数上限（「${ABOLISHED}」）が live な文書に残っている。` +
+          'IADR-0194 決定 1 が撤廃したので、規範として書いてはならない（記録・引用なら ALLOWED へ理由つきで足すこと）',
+      );
+    });
+
     // --- #737: 環流記録の status を計画側の裁定へ追随させる（IADR-0193） -----------
     //
     // ★ #721 は `triaged` → `open` の移行前に「本当に伝達済みか」を全数で確かめたが、
