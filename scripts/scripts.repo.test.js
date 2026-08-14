@@ -4455,7 +4455,8 @@ module.exports = ({ ok, assert }) => {
         ];
         const scripts = all.filter((f) => !NOT_CHECKERS.includes(f));
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
-        assert.strictEqual(scripts.length, 33, `検査器の母集合が 33 本から変わった（${scripts.length} 件）`);
+        // ★ #713 で `check-kit-sync.js` を足したため 33 → 34（ラチェットが設計どおり発火した）。
+        assert.strictEqual(scripts.length, 34, `検査器の母集合が 34 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -4961,6 +4962,68 @@ module.exports = ({ ok, assert }) => {
           '#730 が節の別紙化で作った余白を食い潰している。' +
           '規範でない部分を別紙へ出してから加筆すること（IADR-0173 / IADR-0190 決定 2）',
       );
+    });
+
+    // --- #713: キット追随の分類表と機械検査（IADR-0192） --------------------------
+    //
+    // ★ 表が現実から離れると、検査は「見ているつもり」になる。件数と全数被覆を固定する。
+    ok('#713: 分類表がキットの全ファイルを被覆している', () => {
+      const KIT = path.join(REPO, 'planning/tools/impl-handoff-kit/repo-template');
+      const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));
+      const classified = new Set([
+        ...t.classes.A,
+        ...Object.keys(t.classes.B),
+        ...t.classes.C,
+        ...t.notApplicable,
+      ]);
+      // 表の内部整合（populate に依存しない）
+      assert.ok(t.classes.A.length > 0, '分類 A が空。検査が実質何も見ないことになる');
+      assert.ok(Object.keys(t.classes.B).length > 0, '分類 B が空。固有デルタの記録が消えている');
+      // ★ #734 レビュー 🟡: 当初は `^[1-4]\. ` だけを強制していたが、4 種の**定義**を確かめずに
+      //   番号を振っていた。実際に照らすと大半は 4 種に当たらない（＝環流債務・追随漏れ）。
+      //   書式だけ強制しても「なんとなく 2」と書けてしまい、IADR-0115 決定 3 の規律がすり抜ける。
+      //   → X（4 種に当たらない）を明示させ、**X には追跡先の issue 番号を必須**にする。
+      for (const [f, reason] of Object.entries(t.classes.B)) {
+        assert.match(
+          reason,
+          /^([1-4]|X)\. /,
+          `分類 B「${f}」の理由が IADR-0115 決定 2 の 4 種または X を名乗っていない（"N. …" / "X. …" で始めること）`,
+        );
+        if (reason.startsWith('X.')) {
+          assert.match(
+            reason,
+            /追跡: (planning)?#\d+/,
+            `分類 B「${f}」は X（4 種に当たらない）なのに追跡先が無い。` +
+              '環流するか期限つき暫定として記録し、issue 番号を書くこと（IADR-0115 決定 3）',
+          );
+        }
+      }
+      if (!fs.existsSync(KIT)) {
+        console.log('notice: planning が未 populate のため、#713 のキット全数被覆は検査していない（この範囲は検査されていない）。');
+        return;
+      }
+      const kitFiles = [];
+      (function walk(dir) {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (e.name === '.git') continue;
+          const p = path.join(dir, e.name);
+          if (e.isDirectory()) walk(p);
+          else kitFiles.push(path.relative(KIT, p));
+        }
+      })(KIT);
+      assert.ok(kitFiles.length > 0, 'キット配下が 0 件。走査が空振りしている');
+      const unclassified = kitFiles.filter((f) => !classified.has(f));
+      assert.deepStrictEqual(
+        unclassified,
+        [],
+        `分類表に無いキットファイルがある（キットに増えた可能性）: ${unclassified.join(' / ')}`,
+      );
+    });
+
+    ok('#713: 検査器が分類 A のバイト一致を実際に見ている', () => {
+      const { main } = require(path.join(REPO, 'scripts/check-kit-sync.js'));
+      assert.strictEqual(typeof main, 'function', 'check-kit-sync.js が main を公開していない');
+      assert.strictEqual(main(), 0, 'check-kit-sync.js が失敗した（分類 A の乖離か表の不整合）');
     });
 
     // --- #717: 記録を書き換えてよい境界（IADR-0191） ------------------------------
