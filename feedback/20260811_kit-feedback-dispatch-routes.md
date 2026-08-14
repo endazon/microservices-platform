@@ -1,13 +1,14 @@
 ---
 title: check-feedback-dispatched.js が記録ファイル経路を伝達の証拠と認めず、TEMPLATE.md に planning_issue が無い
 type: plan-feedback
-status: triaged
+status: open
 category: その他
 related_ids: [NFR]
 source_repo: microservices-platform
 source_ref: "claude/issue-710-feedback-dispatched-checker / docs/specs/20260811_issue-710_feedback-dispatched-checker.md（実装側 issue #710）"
 author: Claude（実装）
 created: 2026-08-11
+dispatched: true
 ---
 
 # フィードバック: 伝達漏れの検査器が README の定める 2 経路の片方しか読まない
@@ -127,3 +128,7 @@ mapping キーが混じる**ため、ワークフローが読めなくなる。
 **本リポでは検査器を書き換えない**（[[IADR-0115]] 決定 2 の固有デルタ 4 種に当たらず、
 書けば次の同期で消えるため）。**偽陽性 1 件は消さずに残し、理由と本記録を添える**
 （[[IADR-0184]] 決定 2）。**記録に嘘を書いて警告を消すことはしない。**
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

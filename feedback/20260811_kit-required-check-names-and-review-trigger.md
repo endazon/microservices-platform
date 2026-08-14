@@ -1,14 +1,15 @@
 ---
 title: キットの必須チェック名がワークフロー名になっており、そのとおり設定すると恒久 pending になる
 type: plan-feedback
-status: triaged
+status: open
 category: 手順の誤り
 related_ids: [NFR, IADR-0182]
 source_repo: microservices-platform
 source_ref: "claude/issue-705-required-checks-handbook / docs/specs/20260811_issue-705_required-checks-handbook.md（実装側 issue #705）"
 author: Claude（実装）
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-14
+dispatched: true
 ---
 
 # 環流: 必須チェックの手順が、そのとおりにすると壊れる（2 件）
@@ -91,3 +92,7 @@ on:
 
 > **★ 「環流した」と書けるのは、計画リポへのコピーまたは Issue 起票まで済んだときだけ**である
 > （`docs/README.md` 運用ルール 5）。
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。
