@@ -18,7 +18,9 @@ related_specs:
 
 ## 起点
 
-- **NFR**（セキュリティ。**メタ作業ではなく製品の依存**だが、該当する `NFR-xx` は無いため無採番。[IADR-0179](../adr/IADR-0179_unnumbered-nfr-for-meta-work.md) 決定 1）
+- **NFR**（セキュリティ。**メタ作業ではなく製品の依存**だが、該当する `NFR-xx` は無いため無採番。
+  [IADR-0179](../adr/IADR-0179_unnumbered-nfr-for-meta-work.md) 決定 1 は**文言上メタ作業に限定されており、本作業はその範囲外からの援用である** ——
+  **その旨を [IADR-0186](../adr/IADR-0186_sshnet-transitive-pin.md) 決定 5 に明記し、範囲の改定を #724 として起票した**）
 - 起点 issue: **#716**。実装 ADR: **[IADR-0186](../adr/IADR-0186_sshnet-transitive-pin.md)**
 - 出所: **PR #715 の CI** で `Vulnerable transitive dependencies` が赤になり、**本 PR の差分と無関係**と実測で確定した分
 
