@@ -92,7 +92,7 @@
 - **ガードレール（hooks）**: `.claude/hooks/` が破壊的コマンド（`guard-bash.js`）・秘密情報の混入（`guard-secrets.js`）をブロックし、仕様書なし実装やフロントマター欠如を警告（`check-impl.js`）する。
 - **完了前検証**: `/verify` でビルド・テスト・lint を実行し、受け入れ基準と `docs/DEFINITION_OF_DONE.md` を満たすことを確認してから PR を出す。
 - **再現可能な環境**: `.devcontainer/` と `scripts/setup.sh`（SessionStart hook が実行）で、AI がビルド・テストを実走できる環境を用意する。
-- **CI ゲート**: `ci`（lint/build/test/coverage）・`security`（gitleaks/dependency-review）・`codeql` を必須チェックにし、ブランチ保護でマージを制御する（手順は `docs/ai-workflow.md`）。
+- **CI ゲート**: `ci`（lint/build/test/coverage）・`security`（gitleaks/dependency-review）を必須チェックにし、ブランチ保護でマージを制御する（対象と check 名の正は `docs/ai-workflow.md` の表。`codeql` は #719 で `paths:` 付きになったため必須にしない）。
 
 ## Git 運用
 
