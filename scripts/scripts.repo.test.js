@@ -5668,4 +5668,93 @@ module.exports = ({ ok, assert }) => {
       assert.ok(fs.existsSync(dir), `planning に projects/${pin.PLANNING_PROJECT} が無い（改名・移動を疑う）`);
     });
   }
+
+  // --- #716: 脆弱な推移依存のピン（IADR-0186） ---------------------------------
+  //
+  // ★ 同型 2 回目なので検査にした（CLAUDE.md「検査器の追加は同型の事故が 2 回起きたら」）。
+  //   1 回目: Microsoft.OpenApi（#61 / #80。NU1903 GHSA-v5pm-xwqc-g5wc）
+  //   2 回目: SSH.NET（#716。GHSA-q939-rpr3-3284。Testcontainers の推移依存）
+  // ★ ピンが黙って消えると脆弱性が再混入する。**しかも再混入に気づけるかは advisory feed 次第**で、
+  //   `dotnet list package --vulnerable` が鳴るまで分からない。ピンの存在をここで固定する。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const PROPS = path.join(REPO, 'src/Directory.Packages.props');
+
+    /** `<PackageVersion Include="X" Version="Y" />` から Y を返す。無ければ null。 */
+    const pinnedVersion = (xml, id) => {
+      const re = new RegExp(
+        `<PackageVersion\\s+Include="${id.replace(/\./g, '\\.')}"\\s+Version="([^"]+)"`,
+      );
+      const m = re.exec(xml);
+      return m ? m[1] : null;
+    };
+
+    /** "2026.0.0" → [2026,0,0]。数値比較用（文字列比較だと 2026.0.0 < 2025.1.0 になり得る）。 */
+    const parts = (v) => v.split('.').map((n) => Number.parseInt(n, 10) || 0);
+    const gte = (a, b) => {
+      const [x, y] = [parts(a), parts(b)];
+      for (let i = 0; i < Math.max(x.length, y.length); i++) {
+        const d = (x[i] || 0) - (y[i] || 0);
+        if (d !== 0) return d > 0;
+      }
+      return true;
+    };
+
+    ok('#716: 推移ピンの前提（CentralPackageTransitivePinningEnabled）が有効である', () => {
+      const xml = fs.readFileSync(PROPS, 'utf8');
+      // ★ これが false になると、SSH.NET / Microsoft.OpenApi のピンが**黙って効かなくなる**
+      //   （PackageVersion は残るのに推移依存へ適用されない）。前提ごと固定する。
+      assert.match(
+        xml,
+        /<CentralPackageTransitivePinningEnabled>true<\/CentralPackageTransitivePinningEnabled>/,
+        '推移ピンが無効化された（脆弱な推移依存をパッチ版へ固定できなくなる）',
+      );
+    });
+
+    ok('#716: 脆弱な推移依存が修正版以上へピンされている', () => {
+      const xml = fs.readFileSync(PROPS, 'utf8');
+      // [パッケージ, 修正版の下限, 出所]
+      const PINS = [
+        ['SSH.NET', '2026.0.0', '#716 / GHSA-q939-rpr3-3284 (High)'],
+        ['Microsoft.OpenApi', '2.7.5', '#61 / #80 / GHSA-v5pm-xwqc-g5wc (High)'],
+      ];
+      const bad = [];
+      for (const [id, floor, src] of PINS) {
+        const v = pinnedVersion(xml, id);
+        if (v === null) {
+          bad.push(`${id}: ピンが消えた（${src}）`);
+        } else if (!gte(v, floor)) {
+          // ★ 下限は数値比較する。文字列比較だと "2026.0.0" < "2025.1.0" のような取り違えが起きる。
+          bad.push(`${id}: ${v} は修正版 ${floor} 未満（${src}）`);
+        }
+      }
+      assert.deepStrictEqual(
+        bad,
+        [],
+        `脆弱な推移依存のピンが失われた:\n  ${bad.join('\n  ')}`,
+      );
+    });
+
+    ok('#716: SSH.NET を直接参照するプロジェクトは無い（推移ピンである前提）', () => {
+      // ★ 直接参照が生まれたら、ピンではなく通常の依存として管理する話になる（前提が変わる）。
+      //   `Directory.Packages.props` 自身は版定義を持つので対象外。
+      const { execFileSync } = require('child_process');
+      let out = '';
+      try {
+        out = execFileSync('git', ['grep', '-l', 'SSH.NET', '--', '*.csproj'], {
+          cwd: REPO,
+          encoding: 'utf8',
+        });
+      } catch {
+        out = ''; // git grep はヒット 0 件で exit 1
+      }
+      assert.strictEqual(
+        out.trim(),
+        '',
+        `SSH.NET を直接参照する csproj ができた（推移ピンの前提が変わる）:\n${out}`,
+      );
+    });
+  }
 };
