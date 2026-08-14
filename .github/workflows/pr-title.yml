@@ -11,7 +11,12 @@
 # 本ファイルはその呼び出し配線のみを担う（規約の単一情報源を二重実装しない）。
 #
 # edited を含めることで、PR タイトルを後から編集した場合にも再検査する。
-# bot 作成 PR（dependabot 等）は commit-messages ジョブと同方針で除外する。
+#
+# bot 作成 PR（dependabot 等）の除外は **スクリプト側（BOT_AUTHORS への完全一致）** が担う。
+# ジョブ条件で `user.type != 'Bot'` により弾いてはならない —— GitHub App（`claude[bot]` 等）が
+# 作成した PR も `user.type == 'Bot'` になるため、**AI に実装を委ねる運用（本キットが前提と
+# する主要な経路）でだけ「最後の砦」が skipped になる**（planning#202）。除外の規約は
+# BOT_AUTHORS を単一情報源とし、ここで二重実装しない。
 #
 # このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
 
@@ -33,23 +38,15 @@ jobs:
   pr-title:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # #524: ジョブ条件で bot を除外しない。`user.type != 'Bot'` は dependabot だけでなく
-    # **GitHub App が人の代わりに作成した PR（claude[bot] 等）まで除外**し、この検査が
-    # skipped になっていた（PR #523 で実測）。スカッシュ後件名は develop に恒久的に残り、
-    # `check-commit-messages.js` の `base..HEAD` 検査にも含まれず、force push 禁止のため
-    # 事後修正もできない——つまり規約違反の件名が入る経路が 1 本空いていた。
-    # 除外は **作成者の名前**で行い、判定は check-commit-messages.js の BOT_AUTHORS
-    # （単一情報源）に委ねる。ここで名前の一覧を持つと規約を二重実装することになる。
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Check PR title (squash subject)
-        # タイトルは環境変数経由で渡し、シェル展開による注入を避ける。
-        # Revert / [skip ci] の除外と、空タイトル時の fail-open はスクリプト側が担う。
+        # タイトル・作成者は環境変数経由で渡し、シェル展開による注入を避ける。
+        # bot の除外・Revert / [skip ci] の除外・空タイトル時の fail-open はスクリプト側が担う。
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-          # #524: 作成者を渡し、除外（dependabot 等）の判定はスクリプト側の BOT_AUTHORS に委ねる。
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: node scripts/check-commit-messages.js

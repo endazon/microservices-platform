@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0117, IADR-0130, IADR-0139]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-14
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -138,6 +138,13 @@ related_specs:
 > **「置換した」は「置換された」ことを意味しない。**
 
 ### 決定 2: 監査は**1 対象あたり全面 1 巡を原則**とし、2 巡目以降は**是正差分のみ**（削る）
+
+> **［2026-08-14 追記 / #735］本決定は [[IADR-0194]] が差し替えた（Superseded by IADR-0194）。**
+> **巡数の上限（「1 対象あたり全面 1 回まで」）は撤廃した** —— 上流（planning#307・キット）が
+> **「測っていない数値を規約にすると、そちらを疑えなくなる」**として上限を定めない裁定を下し、
+> [[IADR-0187]] 決定 1 の型に従って上流へ寄せたためである。
+> **「1」は実測から出た数ではない**（本 ADR 自身が「同時化の効果は測っていない」と述べている）。
+> **2 巡目以降を是正差分のみとする点と、同時に走らせる点は残る。** **決定 1・3 は有効である。**
 
 - **`adr-guardian` と `traceability-auditor` は同時に走らせる**（実測では実質的に直列になっていた）
 - 是正後の再監査は**差分のみ**。全面再走はしない
