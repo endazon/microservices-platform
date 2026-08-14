@@ -4268,13 +4268,18 @@ module.exports = ({ ok, assert }) => {
       // ★ 単なる包含（`t.includes('`claude-review`')`）だと、表から行を消しても
       //   本文の別の言及（見出し「`claude-review` を必須にする場合の注意」など）が残るため
       //   素通りする —— 変異試験で実測した。**行そのものを見る。**
-      for (const name of ['build-and-test', 'lint', 'commit-messages', 'pr-title', 'image-build', 'CodeQL', 'claude-review']) {
+      for (const name of ['build-and-test', 'lint', 'commit-messages', 'pr-title', 'image-build', 'claude-review']) {
         assert.match(
           t,
           new RegExp(`^\\| \`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\` \\|`, 'm'),
           `必須にする check 名 ${name} の表の行が手順書から消えた`,
         );
       }
+      // CodeQL は #719 で pull_request に paths: が付いたため必須対象から除外した。
+      // 行そのものは取り消し線付きで残し、「必須にしない」の根拠が読める状態を固定する
+      // （行ごと消すと除外の経緯が追えなくなり、再び必須に足す退行を止められない）。
+      assert.match(t, /^\| ~~`CodeQL`~~ \|/m, 'CodeQL の除外行（取り消し線付き）が手順書から消えた');
+      assert.match(t, /~~`CodeQL`~~.*必須にしない/s, 'CodeQL を必須にしない旨の注記が消えた');
       // 存在しない context を「指定してはならない」と明示していること。
       assert.match(t, /`CI` \/ `Security`.*指定してはならない/s, 'ワークフロー名を禁じる記述が消えた');
     });
