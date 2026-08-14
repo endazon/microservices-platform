@@ -5069,7 +5069,7 @@ module.exports = ({ ok, assert }) => {
     });
 
     // ★ 上流裁定へ追随した 4 ファイルから、撤廃した数値上限が戻っていないこと（IADR-0194 決定 1）。
-    ok('#735: 監査の巡数の上限が復活していない', () => {
+    ok('#735: 監査の起動口から巡数の上限が消え、打ち切り条件は残っている', () => {
       for (const f of [
         '.claude/agents/adr-guardian.md',
         '.claude/agents/traceability-auditor.md',
@@ -5087,6 +5087,54 @@ module.exports = ({ ok, assert }) => {
           `${f} から打ち切り条件の明言が消えた（IADR-0194 決定 2。上限より強く効く）`,
         );
       }
+    });
+
+    // ★★ 上の 4 ファイルだけを見ていたのが #739 レビュー 🔴 の原因である。
+    //   `docs/DEFINITION_OF_DONE.md` に上限が残り、/verify が受け入れ基準として読む状態だった。
+    //   **撤廃した語で追跡下を全数走査し、「記録・引用」として残ってよいものだけを名指しで許す**
+    //   （母集合の規則 7 の機械化。規則 1「誤りの側から引く」＋ 規則 3「拡張子で絞らない」）。
+    ok('#735: 撤廃した巡数上限が、記録・引用以外のどこにも残っていない', () => {
+      const ABOLISHED = '全面巡回は 1 回まで';
+      // 残ってよい場所と、その理由。**live な規範文書は 1 つも入れない。**
+      const ALLOWED = new Map([
+        ['docs/adr/IADR-0141_audit-rounds-and-population-drawing.md', '撤廃された当の決定。日付つき追記で Superseded を明記済み'],
+        ['docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md', '同上（追記で撤廃を明記）'],
+        ['docs/adr/IADR-0194_audit-rounds-follow-upstream-no-numeric-cap.md', '新旧の対照表として引用している'],
+        ['docs/specs/20260814_issue-735_kit-catchup.md', '同上（本 PR の作業仕様書）'],
+        ['feedback/20260807_kit-audit-rounds-and-population.md', '書いた時点の記録。後から書き換えない'],
+        ['scripts/scripts.repo.test.js', '本テスト自身'],
+      ]);
+      // 拡張子で絞らない（規則 3）。パスの除外だけで取る（規則 4）。
+      const { execFileSync } = require('child_process');
+      const tracked = execFileSync(
+        'git',
+        ['-C', REPO, 'ls-files', '--', ':!planning', ':!src/ai-stock-trading', ':!CHANGELOG.md'],
+        { encoding: 'utf8', maxBuffer: 1 << 26 },
+      )
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const offenders = [];
+      let scanned = 0;
+      for (const rel of tracked) {
+        const abs = path.join(REPO, rel);
+        let text;
+        try {
+          text = fs.readFileSync(abs, 'utf8');
+        } catch {
+          continue; // バイナリ・削除済み
+        }
+        scanned += 1;
+        if (text.includes(ABOLISHED) && !ALLOWED.has(rel)) offenders.push(rel);
+      }
+      // ★ 0 件走査で静かに緑にしない（#664 の門）
+      assert.ok(scanned > 50, `走査対象が ${scanned} 件しかない。走査が空振りしている`);
+      assert.deepStrictEqual(
+        offenders,
+        [],
+        `撤廃した巡数上限（「${ABOLISHED}」）が live な文書に残っている。` +
+          'IADR-0194 決定 1 が撤廃したので、規範として書いてはならない（記録・引用なら ALLOWED へ理由つきで足すこと）',
+      );
     });
 
     // --- #737: 環流記録の status を計画側の裁定へ追随させる（IADR-0193） -----------
