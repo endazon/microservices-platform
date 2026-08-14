@@ -6,9 +6,10 @@ related_ids:
   - NFR
   - IADR-0173
   - IADR-0178
+  - IADR-0188
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-14
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR-01〜27 の全数)"
 ---
@@ -26,6 +27,11 @@ plan_refs:
 - 作業仕様書: [20260811_issue-688](../specs/20260811_issue-688_nfr-unnumbered-meta.md)
 
 ## ★★ 決定 1: **該当する `NFR-xx` が無いメタ作業は無採番 `NFR` のままとする**
+
+> **［2026-08-14 追記 / #724］★ 本決定の適用範囲を [IADR-0188](./IADR-0188_unnumbered-nfr-applies-to-all-work.md) 決定 1 が一般化した。**
+> **「該当する `NFR-xx` が無い作業は無採番 `NFR` を使う」** —— **メタ作業は限定条件ではなく代表例である。**
+> **本決定が覆ったのではない**（メタ作業が無採番であることは変わらない）。**広がっただけであり、
+> IADR-0188 決定 2 は Supersede ではなく Amend としている。** 以下の原文は当時のまま残す。
 
 **2026-08-09 の裁定（planning#304）は「新規参照から採番付きを使う」と定めたが、
 「該当する番号が在ること」を前提にしていた。その但し書きが無かった。**
