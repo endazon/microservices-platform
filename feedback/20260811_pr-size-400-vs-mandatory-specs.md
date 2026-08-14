@@ -1,7 +1,7 @@
 ---
 title: 「1 issue 400 行以内」と「1 PR ごとに仕様書＋実装 ADR 必須」が両立しない
 type: plan-feedback
-status: open
+status: accepted
 category: 規範どうしの衝突
 related_ids: [NFR, IADR-0181]
 source_repo: microservices-platform

@@ -1,7 +1,7 @@
 ---
 title: NFR-01〜27 に「文書・規約の統制」を扱う番号が無い（メタ作業の起点 ID）
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids: [NFR, IADR-0179]
 source_repo: microservices-platform

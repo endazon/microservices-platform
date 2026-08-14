@@ -1,7 +1,7 @@
 ---
 title: キットの必須チェック名がワークフロー名になっており、そのとおり設定すると恒久 pending になる
 type: plan-feedback
-status: open
+status: accepted
 category: 手順の誤り
 related_ids: [NFR, IADR-0182]
 source_repo: microservices-platform

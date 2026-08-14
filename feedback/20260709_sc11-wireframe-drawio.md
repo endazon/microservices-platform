@@ -1,15 +1,15 @@
 ---
 title: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加
 type: plan-feedback
-status: rejected
+status: accepted
 category: UC/画面の差異
-status_note: 計画側原典は open（planning 未追随。控えが #497 で先行）
+status_note: 計画側が 2026-08-14 に accepted と裁定（planning#329 の棚卸し。「drawio ではなく HTML モックアップという別形式で充足しており、形式の違いであって不足ではない」）。実装側は #504 で取り下げており、結論は一致する
 related_ids: [FR-15, SC-11, ADR-0018, IADR-0036]
 source_repo: microservices-platform
 source_ref: "docs/screens/SC-11_configuration-viewer.md（未決事項5）/ IADR-0036 /（履歴データ源は PR #189・#139 で導入予定の IADR-0046）"
 author: claude
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-14
 ---
 
 # フィードバック: SC-11 構成ビューアのワイヤーフレーム（sc-11.drawio）を計画リポジトリへ追加

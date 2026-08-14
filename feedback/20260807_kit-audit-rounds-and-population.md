@@ -1,7 +1,7 @@
 ---
 title: クロス監査の巡数・再走範囲の限定と「母集合の引き直し」の規約がキットに無い — IADR-0141 の環流提案
 type: plan-feedback
-status: open
+status: accepted
 category: ツールチェーン（impl-handoff-kit）
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0139, IADR-0141]
 source_repo: microservices-platform
