@@ -7,7 +7,7 @@ related_ids:
   - IADR-0186
 author: claude
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-08-14
 plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md (§6 裁定は小さく高頻度に流す)"
 related_specs:
