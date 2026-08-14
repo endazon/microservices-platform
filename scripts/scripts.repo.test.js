@@ -4842,12 +4842,14 @@ module.exports = ({ ok, assert }) => {
     const ENTRY = '.claude/rules/traceability.md';
     const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
 
-    ok('#688: メタ作業は無採番 NFR のままとする規範が入口にある', () => {
+    // ★ #724 / IADR-0188 が射程を「メタ作業」限定から一般化したので、固定する文字列も追随させた。
+    //   規範そのものは #688 のものである（覆っていない。広がっただけ）。
+    ok('#688: 当たる番号が無いなら無採番 NFR という規範が入口にある', () => {
       const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
       assert.match(
         t,
-        /該当する `NFR-xx` が無いメタ作業（規約・検査器・文書統制）は無採番 `NFR` のままとする/,
-        'メタ作業の無採番規範が入口から消えた',
+        /該当する `NFR-xx` が無い作業は無採番 `NFR` を使う/,
+        '無採番の規範が入口から消えた',
       );
     });
 
@@ -4869,6 +4871,70 @@ module.exports = ({ ok, assert }) => {
       assert.ok(!t.includes('直近 100 コミット中 50 件'), '採番導入の経緯が入口に残っている');
       assert.ok(a.includes('直近 100 コミット中 50 件'), '経緯が別紙に無い（移動でなく削除になっている）');
       assert.match(a, /稼働する製品の要件/, '無採番の根拠（27 件が製品の要件）が別紙に無い');
+    });
+  }
+
+  // --- #724: 無採番 NFR の射程の一般化と、必読予算（IADR-0188） -----------------
+  //
+  // ★ 予算は CLAUDE.md が既に定めている規範であり（IADR-0178 決定 4）、本 PR が足すのは
+  //   規範ではなく「守れたかを機械が読める形にした表明」である。#718 以来 302B 超過したまま
+  //   6 コミット・3 日間、誰にも気づかれなかった（人手だけでは守れていない）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const ENTRY = '.claude/rules/traceability.md';
+    const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
+    const REQUIRED = [ENTRY, 'CLAUDE.md'];
+    const BUDGET = 50000;
+
+    ok('#724: 毎セッション必読の 2 ファイルが 50,000B 予算に収まっている', () => {
+      const sizes = REQUIRED.map((p) => [p, fs.statSync(path.join(REPO, p)).size]);
+      const total = sizes.reduce((s, [, n]) => s + n, 0);
+      assert.ok(
+        total <= BUDGET,
+        `必読合計が予算を超えた（${total}B / 上限 ${BUDGET}B・超過 ${total - BUDGET}B）。` +
+          `内訳: ${sizes.map(([p, n]) => `${p}=${n}`).join(' / ')}。` +
+          '加筆するなら同量以上を削るか、重複を正本・別紙へ畳むこと（IADR-0178 決定 4 / IADR-0188 決定 4）',
+      );
+    });
+
+    ok('#724: 一般化の 3 要素が入口にある（代表例・製品も対象・実装側で作らない）', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of [
+        'メタ作業（規約・検査器・文書統制）は代表例',
+        '製品の作業にも当たる番号が無いことはある',
+        '無いことは「実装側で作ってよい」ではない',
+      ]) {
+        assert.ok(t.includes(n), `一般化の要素「${n}」が入口から消えた`);
+      }
+    });
+
+    // ★ #718 が別紙へ 1 世代足して入口の「4 世代分」を取り残した型（母集合の規則 8）。
+    //   同じ数を 2 箇所に持つ限り、機械で突き合わせないと必ずずれる。
+    ok('#724: 入口が言う世代数と、別紙が言う世代数が一致する', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      const e = t.match(/引き直しの記録（(\d+) 世代分）/);
+      const n = a.match(/それ以前の (\d+) 世代で引き直した記録/);
+      assert.ok(e, '入口から「引き直しの記録（N 世代分）」が消えた');
+      assert.ok(n, '別紙から「それ以前の N 世代で引き直した記録」が消えた');
+      assert.strictEqual(
+        e[1],
+        n[1],
+        `世代数が食い違う（入口 ${e[1]} / 別紙 ${n[1]}）。pin を進めたら両方を追随させること`,
+      );
+    });
+
+    // ★ 入口から重複を消した分が、別紙に在ること（削除ではなく重複解消であることの確認）。
+    ok('#724: ADR-0023 の遷移の記述が入口から消え、別紙に在る', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
+      assert.ok(
+        !t.includes('cert-manager'),
+        'ADR-0023 の遷移の記述が入口に残っている（別紙 §2 と重複する）',
+      );
+      assert.ok(a.includes('cert-manager'), '遷移の記述が別紙に無い（重複解消でなく削除になっている）');
     });
   }
 
