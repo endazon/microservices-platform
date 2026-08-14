@@ -4948,13 +4948,13 @@ module.exports = ({ ok, assert }) => {
     //
     // ★ 予算テスト（#724）は上限しか見ない。「余白が薄すぎて次の規範を足せない」状態は
     //   上限内でも起こるので、下限（＝確保した余白）の側もラチェットとして固定する。
+    // ★ 上限（BUDGET）とファイル一覧（REQUIRED）は #724 の定義を再利用する。
+    //   ここでリテラルを持つと、上限を変えたとき下限側だけ追随を忘れて静かにずれる
+    //   —— 本 PR が「同じ数値を 2 箇所に持つと必ずずれる」と書いている当のことである（#731 レビュー 🟡）。
     ok('#730: 必読の余白が確保した水準を割っていない', () => {
       const FLOOR = 1000;
-      const total = ['.claude/rules/traceability.md', 'CLAUDE.md'].reduce(
-        (s, p) => s + fs.statSync(path.join(REPO, p)).size,
-        0,
-      );
-      const margin = 50000 - total;
+      const total = REQUIRED.reduce((s, p) => s + fs.statSync(path.join(REPO, p)).size, 0);
+      const margin = BUDGET - total;
       assert.ok(
         margin >= FLOOR,
         `必読の余白が ${margin}B まで減った（下限 ${FLOOR}B）。` +
