@@ -102,5 +102,11 @@
     <PackageVersion Include="Testcontainers.RabbitMq" Version="4.12.0" />
     <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->
     <PackageVersion Include="Testcontainers.Minio" Version="4.12.0" />
+    <!-- NFR(セキュリティ): SSH.NET を直接ピンし GHSA-q939-rpr3-3284(High) を解消(#716, IADR-0186)。
+         Testcontainers の推移依存であり、直接参照しているプロジェクトは無い。
+         Testcontainers は 4.13.0 でも SSH.NET 2025.1.0 のままなので、上流の更新では直らない(実測)。
+         2026.0.0 は ScpClient の面を変えるが、Testcontainers は SshClient / ForwardedPortRemote
+         しか使っておらず踏まない(配布アセンブリの型参照を実測)。net10.0 資産も増える。 -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
   </ItemGroup>
 </Project>
