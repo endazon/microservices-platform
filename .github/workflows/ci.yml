@@ -152,6 +152,10 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
+      # ★ 自己試験は fixture で駆動するため planning が無くても実効する
+      #   —— skip する実データ走査と違い、**この 1 本だけは CI でも必ず何かを検査している**。
+      - name: Self-test the comparison logic
+        run: node scripts/check-feedback-status-sync.js --self-test
       - name: Check feedback status sync
         run: node scripts/check-feedback-status-sync.js
 

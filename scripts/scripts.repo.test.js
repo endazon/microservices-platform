@@ -5039,6 +5039,33 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(main(), 0, 'check-feedback-status-sync.js が失敗した（status が計画側に追随していない）');
     });
 
+    // ★ 実データに対して main() が 0 を返すことしか見ないと、**全記録が同期している限り
+    //   `!==` を `===` に取り違えても緑のまま**である（#738 レビュー 🟡）。
+    //   **比較そのものを、意図的に食い違わせた fixture で駆動する**（変異試験 R1〜R5 の恒久化）。
+    ok('#737: --self-test が比較ロジックを fixture で駆動する（exit 0）', () => {
+      const { spawnSync } = require('child_process');
+      const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/check-feedback-status-sync.js'), '--self-test'], {
+        encoding: 'utf8',
+      });
+      assert.strictEqual(r.status, 0, `self-test が失敗:\n${r.stdout}\n${r.stderr}`);
+      // 実データ非依存であること（fixture で駆動しているので planning 未 populate でも回る）
+      assert.match(r.stdout, /自己試験 \d+ 件 all passed/, 'self-test の件数報告が消えた');
+    });
+
+    // ★ 「変異試験で検出を確認した」と言えるのは、その変異を CI が拒むときだけである。
+    ok('#737: 自己試験が実際に比較の取り違えを拒む（!== → === を注入して確認）', () => {
+      const { spawnSync } = require('child_process');
+      const os = require('os');
+      const src = path.join(REPO, 'scripts/check-feedback-status-sync.js');
+      const text = fs.readFileSync(src, 'utf8');
+      assert.ok(text.includes('if (implStatus !== planStatus) {'), '比較式が見つからない（変異を注入できない）');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fbstatus-mutation-'));
+      const mutant = path.join(dir, 'mutant.js');
+      fs.writeFileSync(mutant, text.replace('if (implStatus !== planStatus) {', 'if (implStatus === planStatus) {'));
+      const r = spawnSync(process.execPath, [mutant, '--self-test'], { encoding: 'utf8' });
+      assert.notStrictEqual(r.status, 0, `比較を取り違えた変異体を自己試験が素通りさせた:\n${r.stdout}`);
+    });
+
     // ★ 写しを持たない記録を不一致に数えると、恒久的な偽陽性が残る（実測 5 件）。
     //   記録ファイル経路と GitHub Issue 経路は等価である（planning#319）。
     ok('#737: 計画側に写しを持たない記録を不一致に数えない', () => {
