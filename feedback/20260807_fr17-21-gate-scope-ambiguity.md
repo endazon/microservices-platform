@@ -1,14 +1,15 @@
 ---
 title: 「FR-17〜21 の着手を止めていた条件は解消している」は FR-19〜21 について成り立たない —— 同じ文書内の注記 2・3 と矛盾する
 type: plan-feedback
-status: triaged
+status: open
 category: 要求の誤り
 related_ids: [FR-17, FR-18, FR-19, FR-20, FR-21, ADR-0036, ADR-0037, IADR-0119]
 source_repo: microservices-platform
 source_ref: "chore/NFR-586-planning-pin / docs/specs/20260807_issue-586_planning-pin-adr-accepted.md（#586）"
 author: Claude（実装）
 created: 2026-08-07
-updated: 2026-08-11
+updated: 2026-08-14
+dispatched: true
 ---
 
 # フィードバック: FR-17〜21 の着手条件を一括りに「解消」と書くと FR-19〜21 で誤読される
@@ -104,3 +105,7 @@ FR-17 / FR-18 の保留が解けた今、この行を読んだ実装側は「SC-
   （FR-19/20・**保留継続**）／ microservices-platform#452 の SC-19 / SC-20 部分（**保留継続**）
 - 実装 `IADR-0119`（本フィードバックの内容を 2026-08-07 追補へ反映済み）
 - 計画 `05_screens/01_screens.md` §SC-19 の主要素 4「編集手段の裁定は前提検証中」も同じ前提に依存する
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

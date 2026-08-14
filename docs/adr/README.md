@@ -240,6 +240,7 @@
 | [IADR-0184](./IADR-0184_feedback-dispatch-checker-verbatim.md) | キット由来の未送付検査器を**バイト一致のまま**取り込む（判定を本リポ向けに書き換えない。IADR-0115 の固有デルタ 4 種に当たらず、書けば次の同期で消える）。**既知の偽陽性 1 件は消さない** —— README は伝達を 2 経路認めるのに検査器は Issue 経路しか読まないためで、**記録に嘘を書かず環流する**。 | Accepted |
 | [IADR-0185](./IADR-0185_feedback-status-vocabulary.md) | 環流記録の **`status` は「伝達したか」の 1 軸**とし、**`open` ＝ 未伝達**と定義する（`open` と `triaged` は実務で同義に崩れていた）。**伝達済みの 3 件を `triaged` へ是正**して既知の偽陽性が **1 → 0 件**になる —— IADR-0184 の「嘘を書かない」に反しない。**語彙の定義は暫定デルタ**として置き環流する。 | Accepted |
 | [IADR-0186](./IADR-0186_sshnet-transitive-pin.md) | `Testcontainers` の推移依存 **`SSH.NET` を `2026.0.0` へピン**して High の脆弱性を解消する（上流は 4.13.0 でも 2025.1.0 のまま＝更新では直らない）。**`ScpClient` の破壊的変更は踏まない**ことを配布アセンブリの型参照で実測。**submodule（AST）へは届かず赤は消えない** —— 環流する。 | Accepted |
+| [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) | **上流の裁定に従い** `status` を「**計画側の裁定の進捗**」へ差し替える（伝達は `dispatched:` 鍵へ）。**IADR-0185 決定 1 とは逆**の分割 —— **仰いだ側が結論を選べるなら裁定の意味が無い**。`triaged` 11 件は**全数の伝達を確かめてから** `open` ＋ `dispatched: true` へ移す。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

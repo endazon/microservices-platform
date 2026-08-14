@@ -781,7 +781,7 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
   const {
     inspect: inspectFb,
     fmValue: fmValueFb,
-    foreignIssueLinks,
+    foreignPlanRefs,
     EXCLUDED: EXCLUDED_FB,
   } = require('./check-feedback-dispatched.js');
   const SELF_FB = 'endazon/ai-stock-trading';
@@ -796,9 +796,15 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
     assert.ok(r.reasons.length > 0, '自リポの issue を起票済みと誤認している');
   });
 
-  ok('「未送付」は status に関わらず警告する', () => {
-    const r = inspectFb('---\nstatus: accepted\n---\n未送付。計画リポジトリへ issue として起票する', SELF_FB);
-    assert.ok(r.reasons.length > 0);
+  // ★ 暫定デルタ（#721 / IADR-0187。撤去先は #713 のキット全面追随）:
+  //   キット `cff0e7b` の検査器は**本文の「未送付」による判定を撤廃**し、自己申告を
+  //   フロントマターの `dispatched:` 鍵へ移した（planning#319 知見 3。本リポが環流した分である
+  //   —— 語の部分一致は、検査器そのものを論じた記録が自己発火するため）。
+  //   本ファイルは既にキットと 671 行乖離しており（#713）、全面追随は #713 が行う。
+  //   ここでは**テストの意図（自己申告は status を問わず尊重する）を新しい機構で保つ**。
+  ok('dispatched: false は他に証拠が無ければ status を問わず警告する', () => {
+    const r = inspectFb('---\nstatus: accepted\ndispatched: false\n---\n本文', SELF_FB);
+    assert.ok(r.reasons.length > 0, '記録自身の自己申告（dispatched: false）が無視されている');
   });
 
   ok('空値の planning_issue は起票の証拠にならない', () => {
@@ -807,9 +813,15 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
     assert.ok(r.reasons.length > 0);
   });
 
-  ok('selfRepo 不明時は誤検出しない側へ倒す', () => {
-    const links = foreignIssueLinks('https://github.com/endazon/ai-stock-trading/issues/1', '');
-    assert.strictEqual(links.length, 1, 'selfRepo が空ならすべて他リポ扱いにする');
+  // ★ 暫定デルタ（#721 / IADR-0187。撤去先は #713）: キット `cff0e7b` は `foreignIssueLinks` を
+  //   `foreignPlanRefs` へ改め、判定を「自リポ以外か」から「**計画リポ宛てか**」へ変えた。
+  //   あわせて **PR URL も証拠と認める**ようになった —— **本リポが環流した planning#319 知見 1**
+  //   （記録ファイル経路は issue を作らないので、証拠になり得るのは PR しかない）の反映である。
+  ok('計画リポの PR URL も伝達の証拠と認める（記録ファイル経路・planning#319 知見 1）', () => {
+    const refs = foreignPlanRefs('https://github.com/endazon/project-planning/pull/306');
+    assert.ok(refs.length > 0, '記録ファイル経路（PR）が証拠と認められていない');
+    const r = inspectFb('---\nstatus: open\n---\nhttps://github.com/endazon/project-planning/pull/306', SELF_FB);
+    assert.deepStrictEqual(r.reasons, [], 'PR 経路の記録が未伝達と誤判定されている');
   });
 
   ok('TEMPLATE.md / README.md は検査対象から外す', () => {

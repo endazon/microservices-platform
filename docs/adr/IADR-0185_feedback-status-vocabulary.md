@@ -9,7 +9,7 @@ related_ids:
   - IADR-0184
 author: claude
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-08-14
 plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md"
 ---
@@ -19,6 +19,12 @@ plan_refs:
 - 状態: Accepted
 - 日付: 2026-08-13
 - 決定者: claude（実装）
+
+> **［2026-08-14 追記 / #721］★ 決定 1・決定 2・決定 4 は [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) が差し替えた。**
+> **本 ADR が環流した planning#323 の裁定が下り、`status` は「伝達したか」ではなく
+> 「計画側の裁定がどこまで進んだか」を表すと確定した**（伝達は `dispatched:` / `planning_issue:` 鍵が担う）。
+> **`triaged` は廃され `awaiting-decision` になった。** **決定 3（キット原文＋CI ジョブ名の固有デルタ）と
+> 決定 5（無採番 NFR の援用）は引き続き有効である。**
 
 ## 起点・関連
 
@@ -204,4 +210,4 @@ AI レビューが実測で見つけた（`scripts.test.js` が **491 件中 107
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし
+- **Superseded by [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md)（決定 1・決定 2・決定 4）**

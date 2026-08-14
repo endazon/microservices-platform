@@ -1,13 +1,14 @@
 ---
 title: SC-06 の「手動同期」が破壊的操作の列挙に無く、ロールを実装側で決めることになっている
 type: plan-feedback
-status: triaged
+status: open
 category: 要求の不足
 related_ids: [SC-05, SC-06, SC-07, FR-01, FR-02, UC-04]
 source_repo: microservices-platform
 source_ref: "claude/handover-work-start-7g1vu3 / docs/specs/20260808_issue-534-537_datasource-contract-bundle.md（PR #627・実装側 issue #628）"
 author: Claude（実装）
 created: 2026-08-09
+dispatched: true
 ---
 
 # フィードバック: SC-06 の「手動同期」が破壊的操作の列挙に無い
@@ -108,3 +109,7 @@ created: 2026-08-09
 - 実装 ADR `IADR-0039`（BFF とロールゲート）・`IADR-0044`（多層防御）の適用先が 1 つ確定する。
 - **SC-05 / SC-07 にも同じ括りが効く**（管理系 3 画面は共通の裁定 Q19 で扱われている）。
 - 契約・DTO には影響しない（**認可の分類だけ**の論点である）。
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

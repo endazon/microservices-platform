@@ -4601,7 +4601,8 @@ module.exports = ({ ok, assert }) => {
       );
       // 「環流した」と書けるのは起票まで済んだときだけ（docs/README.md 運用ルール 5）。
       assert.match(fb, /planning#319 として起票済み/, '環流先の issue 番号が消えた');
-      assert.match(fb, /^status: triaged$/m, '記録の status が実態と食い違っている');
+      // ★ #721（IADR-0187）で `triaged` は廃された。伝達済みであることは `dispatched:` が担う。
+      assert.match(fb, /^dispatched: true$/m, '伝達済みの記録から dispatched: true が消えた');
     });
 
     ok('#710: CI が検査器を自己試験つきで呼ぶ', () => {
@@ -4661,7 +4662,8 @@ module.exports = ({ ok, assert }) => {
       assert.match(sec, /手順 2（記録の作成）と手順 3（計画リポジトリへの伝達）は別の作業/, '節の骨子が消えた');
       assert.match(sec, /6 件の記録が「未送付」のまま最長 1 か月近く/, '滞留の実績が消えた');
       assert.match(sec, /STRICT_FEEDBACK_DISPATCH=1/, '厳格化の逃げ道の説明が消えた');
-      assert.match(sec, /自リポジトリの issue URL は起票の証拠にならない/, '証拠の限定が消えた');
+      // ★ #721: キット `cff0e7b` で「issue / PR URL」「伝達の証拠」へ改まった（PR 経路を証拠と認めた分）。
+      assert.match(sec, /自リポジトリの issue \/ PR URL は伝達の証拠にならない/, '証拠の限定が消えた');
       assert.match(sec, /### CI による検出（警告のみ）/, '検出の小節が消えた');
     });
 
@@ -4721,107 +4723,71 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
-    ok('#712: status の 4 値の意味・遷移・主体が定義されている', () => {
+    ok('#721: status の語彙節がキット原文である（上流裁定の 4 値）', () => {
+      // ★ #712 は自前の語彙節を**暫定デルタ**として置いていた。planning#323 の裁定で
+      //   キット側に節が入ったので撤去し、キット原文へ戻した（IADR-0187 決定 4）。
+      //   したがってここで見るのは「キットの語彙がそのまま在るか」である。
       const md = fs.readFileSync(README, 'utf8');
-      const sec = sectionOf(md, '`status` の語彙');
-      assert.ok(sec, '`status` の語彙節が無い（#712 以前は status の語が 0 回だった）');
-
-      // 4 値それぞれが**表の行として**在ること。見出しや散文への巻き添えで通さない。
-      for (const v of ['open', 'triaged', 'accepted', 'rejected']) {
-        const row = sec.split('\n').find((l) => l.startsWith(`| \`${v}\``));
-        assert.ok(row, `\`${v}\` の行が表に無い`);
-        // 意味の列と主体の列が埋まっていること（`| 値 | 意味 | 主体 |` の 3 列）。
-        const cells = row.split('|').map((c) => c.trim());
-        assert.strictEqual(cells.length, 5, `\`${v}\` の行が 3 列になっていない: ${row}`);
-        assert.ok(cells[2].length > 0, `\`${v}\` の意味が空`);
-        assert.ok(cells[3].length > 0, `\`${v}\` の遷移主体が空`);
-      }
-
-      // 遷移の向きが書かれていること。
-      assert.match(sec, /`open` → `triaged` → `accepted` \/ `rejected` の一方向/, '遷移の順序が消えた');
-      // 判断の主体が実装側 / 計画側に割り振られていること。
-      assert.match(sec, /\*\*実装側\*\*が、伝達した事実を書く/, '`triaged` を実装側が付ける旨が消えた');
-      assert.match(sec, /\*\*計画側の裁定\*\*を実装側が転記する/, '`accepted` が計画側の裁定である旨が消えた');
-      // 根拠の IADR へ辿れること。
-      assert.match(sec, /IADR-0185_feedback-status-vocabulary\.md/, '根拠 IADR へのリンクが消えた');
-    });
-
-    ok('#712: 語彙の定義が検査器の読み（open ＝ 未伝達）と矛盾しない', () => {
-      const md = fs.readFileSync(README, 'utf8');
-      const sec = sectionOf(md, '`status` の語彙');
+      const sec = sectionOf(md, '`status` の語彙（4 値）');
       assert.ok(sec, '`status` の語彙節が無い');
 
-      const openRow = sec.split('\n').find((l) => l.startsWith('| `open`'));
-      assert.ok(openRow, '`open` の行が無い');
-      // ★ ここが本 issue の肝。`open` を「裁定待ち」と定義すると `triaged` と同義になり、
-      //   かつ検査器（`status: open` を未伝達の疑いと読む）と恒久的に食い違う。
-      assert.match(openRow, /まだ伝達していない/, '`open` が「未伝達」でなくなった（検査器の読みと割れる）');
+      // 上流裁定の 4 値。**`triaged` は廃された。**
+      for (const v of ['open', 'awaiting-decision', 'accepted', 'rejected']) {
+        const row = sec.split('\n').find((l) => l.startsWith(`| \`${v}\``));
+        assert.ok(row, `\`${v}\` の行が表に無い`);
+      }
       assert.ok(
-        !/裁定待ち|裁定を待/.test(openRow),
-        '`open` を「裁定待ち」と定義した（`triaged` と同義になり、検査器とも食い違う）',
+        !sec.split('\n').some((l) => l.startsWith('| `triaged`')),
+        '廃された `triaged` が語彙表へ戻っている（IADR-0187 決定 1）',
       );
-      const triagedRow = sec.split('\n').find((l) => l.startsWith('| `triaged`'));
-      assert.ok(triagedRow, '`triaged` の行が無い');
-      assert.match(triagedRow, /伝達済み/, '`triaged` が「伝達済み」でなくなった');
 
-      // 検査器の実挙動と突き合わせる —— 定義を書き換えても実装が追随しない、を落とす。
-      const { inspect } = require('./check-feedback-dispatched.js');
-      const SELF = 'endazon/microservices-platform';
-      assert.ok(
-        inspect('---\nstatus: open\n---\n本文', SELF).reasons.length > 0,
-        '検査器が `status: open` を未伝達の疑いと読まなくなった（定義の前提が崩れた）',
+      // ★ 上流裁定の要点: `status` は「裁定の進捗」であって「伝達したか」ではない。
+      assert.match(
+        sec,
+        /\*\*`status` は「計画側の裁定がどこまで進んだか」を表す。「伝達したか」は表さない\*\*/,
+        '`status` と「伝達したか」を分ける裁定の要点が消えた',
       );
-      assert.strictEqual(
-        inspect('---\nstatus: triaged\n---\n本文', SELF).reasons.length,
-        0,
-        '検査器が `triaged` を鳴らすようになった（伝達済みの定義と食い違う）',
-      );
+      assert.match(sec, /`open` → `awaiting-decision` → `accepted` \/ `rejected` の一方向/, '遷移の順序が消えた');
     });
 
-    ok('#712: 既存の記録が定義と矛盾しない（全数走査）', () => {
+    ok('#721: 伝達済みは status ではなく dispatched: が担う（全数走査）', () => {
+      // ★ 上流裁定の肝。`status` へ「伝達した」を載せると、計画側の「反映した」と衝突する
+      //   （実装側 7 件 vs 計画側で正反対の主体を指していた。planning#323）。
       const { inspect, listFeedbackFiles } = require('./check-feedback-dispatched.js');
       const SELF = 'endazon/microservices-platform';
       const files = listFeedbackFiles(REPO);
       assert.ok(files.length > 0, 'feedback/ の走査母集合が空（対象の消失）');
 
-      const contradictions = [];
+      const VALID = new Set(['open', 'awaiting-decision', 'accepted', 'rejected']);
+      const bad = [];
       for (const fp of files) {
         const text = fs.readFileSync(fp, 'utf8');
         const name = path.basename(fp);
         const status = (inspect(text, SELF).status || '').toLowerCase();
-        if (status !== 'open') continue;
-        // ★ `open` ＝ 未伝達。**伝達の跡がある `open` は定義に照らして誤り**である。
-        //   証拠は検査器の 3 条件だけでなく `## 起票状況` 節でも見る —— 記録ファイル経路を
-        //   採った記録は検査器の証拠を持てないため（planning#319 知見 1）。
-        const dispatched = inspect(text, SELF).dispatched || /^##\s*起票状況/m.test(text);
-        if (dispatched) contradictions.push(name);
+        if (!VALID.has(status)) bad.push(`${name}: status=${status || '(空)'}`);
       }
       assert.deepStrictEqual(
-        contradictions,
+        bad,
         [],
-        `伝達済みなのに \`status: open\` の記録がある（IADR-0185 決定 1 に照らして誤り）:\n  ${contradictions.join('\n  ')}`,
+        `上流裁定の語彙から外れた status がある（\`triaged\` は廃止）:\n  ${bad.join('\n  ')}`,
       );
     });
 
-    ok('#712: 暫定デルタに環流先の issue 番号が在る', () => {
-      const md = fs.readFileSync(README, 'utf8');
-      // ★ IADR-0115 が第 12〜13 ラウンドで確立した運用: 一時デルタは**環流先 issue を必ず参照**し、
-      //   キット側へ反映されたら撤去する。番号は `\b` で閉じる（`#3231` に当たらないように）。
-      assert.match(md, /暫定デルタ/, '暫定デルタである旨の注記が消えた');
-      assert.match(md, /planning#323\b/, '環流先の issue 番号が消えた（撤去の手掛かりが無くなる）');
-      assert.match(md, /撤去し/, 'キット反映後に撤去する旨が消えた');
-
-      // 「環流した」と書けるのは起票まで済んだときだけ（docs/README.md 運用ルール 5）。
-      const fb = fs.readFileSync(path.join(REPO, 'feedback/20260813_kit-feedback-status-vocabulary.md'), 'utf8');
-      assert.match(fb, /planning#323 として起票済み/, '環流記録に起票先が無い');
-      assert.match(fb, /^status: triaged$/m, '環流記録の status が実態（伝達済み）と食い違う');
-
-      const adr = fs.readFileSync(
-        path.join(REPO, 'docs/adr/IADR-0185_feedback-status-vocabulary.md'),
-        'utf8',
-      );
-      assert.match(adr, /planning#323\b/, 'IADR-0185 から環流先が消えた');
-      assert.match(adr, /未伝達/, 'IADR-0185 から `open` の定義が消えた');
+    ok('#721: 分類 A の 2 ファイルがキットとバイト一致である', () => {
+      // ★ `TEMPLATE.md` は #712 の時点ではバイト一致だったが、pin が進んで**黙って差分が生まれた**
+      //   （#721 の起点）。**「前回一致していたから今回も」は成り立たない**ので、検査器と並べて固定する。
+      const KIT_DIR = path.join(REPO, 'planning/tools/impl-handoff-kit/repo-template');
+      if (!fs.existsSync(KIT_DIR)) {
+        console.log('notice: planning が未 populate のため、#721 の分類 A 比較は実行していない（この範囲は検査されていない）。');
+        return;
+      }
+      for (const rel of ['feedback/TEMPLATE.md', 'scripts/check-feedback-dispatched.js']) {
+        assert.deepStrictEqual(
+          fs.readFileSync(path.join(REPO, rel)),
+          fs.readFileSync(path.join(KIT_DIR, rel)),
+          `${rel} がキットとバイト一致でなくなった（分類 A / IADR-0115 決定 2）`,
+        );
+      }
     });
   }
 
@@ -4837,7 +4803,7 @@ module.exports = ({ ok, assert }) => {
     const REPO = path.join(__dirname, '..');
     const DIR = path.join(REPO, 'feedback');
     const TYPES = new Set(['plan-feedback']);
-    const STATUSES = new Set(['open', 'triaged', 'accepted', 'rejected']);
+    const STATUSES = new Set(['open', 'awaiting-decision', 'accepted', 'rejected']);
 
     ok('feedback/: frontmatter の type / status が確立済みの語彙に収まる', () => {
       const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.md') && f !== 'README.md');

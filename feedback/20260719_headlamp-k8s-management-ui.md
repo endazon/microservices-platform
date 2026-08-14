@@ -1,7 +1,7 @@
 ---
 title: Kubernetes 管理 UI（Headlamp・Keycloak OIDC 認証）を運用設計へ明記し、本番導入是非を論点化する
 type: plan-feedback
-status: triaged
+status: open
 category: 新たな制約(ADR要)
 related_ids:
   - NFR
@@ -10,7 +10,8 @@ source_repo: microservices-platform
 source_ref: "Issue #271 / branch feat/issue-271-headlamp-oidc / docs/adr/IADR-0080_headlamp-k8s-management-ui.md"
 author: claude
 created: 2026-07-19
-updated: 2026-08-08
+updated: 2026-08-14
+dispatched: true
 ---
 
 # フィードバック: Kubernetes 管理 UI = Headlamp（Keycloak OIDC）を運用設計へ明記する
@@ -63,3 +64,7 @@ issuer/hostname 到達性（IADR-0066 の既知制約）を [[IADR-0076]] 手順
 - 運用設計・運用ツール選定（新規記述）。実装は dev 専用（`deploy/local/`）に閉じ、本番像（helm/argocd/compose）は不変。
 - 本番導入を進める場合、Headlamp の配備方式（Helm/GitOps）・OIDC apiserver 恒久配線・RBAC 権限分離が新たな設計対象。
 - トレーサビリティ: 本フィードバックのリンクを Issue #271 と `IADR-0080` に残す（相互参照）。
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

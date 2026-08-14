@@ -1,14 +1,15 @@
 ---
 title: クロス監査の巡数・再走範囲の限定と「母集合の引き直し」の規約がキットに無い — IADR-0141 の環流提案
 type: plan-feedback
-status: triaged
+status: open
 category: ツールチェーン（impl-handoff-kit）
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0139, IADR-0141]
 source_repo: microservices-platform
 source_ref: "chore/NFR-594-audit-scope / docs/specs/20260807_issue-594_audit-scope-and-population.md（#594）"
 author: Claude（実装）
 created: 2026-08-07
-updated: 2026-08-11
+updated: 2026-08-14
+dispatched: true
 ---
 
 # フィードバック: 監査の巡数と母集合の取り方に対応する規約がキットに無い
@@ -126,3 +127,7 @@ updated: 2026-08-11
 - 本リポジトリ: #594（起点）／ #572 施策 3（裁定元）／ PR #598
 - 先例: #507 の環流記録 `feedback/20260807_kit-cross-repo-issue-ref-check.md`
 - 規約: [[IADR-0115]] 決定 2（固有デルタ 4 種）・決定 3（汎用改善は環流する）
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

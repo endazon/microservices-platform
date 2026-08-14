@@ -1,14 +1,15 @@
 ---
 title: NFR-01〜27 に「文書・規約の統制」を扱う番号が無い（メタ作業の起点 ID）
 type: plan-feedback
-status: triaged
+status: open
 category: 要求の不足
 related_ids: [NFR, IADR-0179]
 source_repo: microservices-platform
 source_ref: "claude/issue-688-nfr-unnumbered-meta / docs/specs/20260811_issue-688_nfr-unnumbered-meta.md（PR #699・実装側 issue #688）"
 author: Claude（実装）
 created: 2026-08-11
-updated: 2026-08-13
+updated: 2026-08-14
+dispatched: true
 ---
 
 # 環流: `NFR` 採番に、メタ作業へ当たる番号が無い
@@ -69,3 +70,7 @@ planning#304 の裁定は「**新規参照から採番付きを使う**」と定
 
 > **［2026-08-13 追記 / #712］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
 > **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
+
+> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
+> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
+> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。
