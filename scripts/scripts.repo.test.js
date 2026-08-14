@@ -4963,6 +4963,33 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
+    // --- #717: 記録を書き換えてよい境界（IADR-0191） ------------------------------
+    //
+    // ★ 「書き換えない」が本文と frontmatter の両方に掛かると読めていた（#715 レビュー 🟡）。
+    //   キットが status の更新主体を定めている以上、一般禁止（読み B）は採れない。
+    ok('#717: 書き換え境界（本文は不可 / 状態欄は対象外）が入口にある', () => {
+      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      for (const n of [
+        '「書き換えない」の対象は本文への後付け注記である',
+        '日付つき追記ブロック',
+        'frontmatter の状態欄',
+        'は対象外',
+      ]) {
+        assert.ok(t.includes(n), `書き換え境界の規範「${n}」が入口から消えた`);
+      }
+    });
+
+    // ★ 根拠がキット側に在ること（本リポの理屈だけで組み直されないように固定する）。
+    ok('#717: 状態欄の更新主体をキットが定めている', () => {
+      const kit = path.join(REPO, 'planning/tools/impl-handoff-kit/repo-template/feedback/README.md');
+      if (!fs.existsSync(kit)) {
+        console.log('notice: planning が未 populate のため、#717 のキット根拠は検査していない。');
+        return;
+      }
+      const k = fs.readFileSync(kit, 'utf8');
+      assert.match(k, /誰が書き換えるか/, 'キットから status の更新主体の表が消えた（IADR-0191 決定 1 の根拠）');
+    });
+
     // ★ 母集合の規則は 8 つとも入口に残り、実例だけが出ていること。
     ok('#730: 母集合の規則 8 つが入口に残り、実例は入口に無い', () => {
       const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
