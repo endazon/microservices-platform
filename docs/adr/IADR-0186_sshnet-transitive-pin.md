@@ -5,6 +5,7 @@ status: Accepted
 related_ids:
   - NFR
   - IADR-0179
+  - IADR-0188
 author: claude
 created: 2026-08-13
 updated: 2026-08-14
