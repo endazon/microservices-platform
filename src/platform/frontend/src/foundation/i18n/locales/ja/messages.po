@@ -601,6 +601,10 @@ msgstr "例: smb://fs01/share/規程集"
 msgid "例: 経費精算"
 msgstr "例: 経費精算"
 
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "例: 開発"
+msgstr "例: 開発"
+
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
@@ -1085,6 +1089,10 @@ msgstr "文書編集"
 msgid "既定の機密区分"
 msgstr "既定の機密区分"
 
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "既定の部門"
+msgstr "既定の部門"
+
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "日付"
 msgstr "日付"
@@ -1105,6 +1113,10 @@ msgstr "有効化"
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "期間内の利用はありません。"
 msgstr "期間内の利用はありません。"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
+msgstr "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。"
 
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "未同期"

@@ -1,0 +1,225 @@
+---
+title: SC-06 の登録フォームに department の入力欄を足す（#767 / #754 の切り出し 1/3）
+type: spec
+status: done
+related_ids:
+  - FR-05
+  - FR-01
+  - UC-04
+  - SC-06
+  - ADR-0004
+  - ADR-0034
+  - ADR-0036
+  - IADR-0019
+  - IADR-0125
+  - IADR-0199
+author: claude
+created: 2026-08-15
+updated: 2026-08-15
+plan_refs:
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
+  - "../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md"
+  - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
+---
+
+# 仕様書: SC-06 登録フォームの `department` 入力欄
+
+> 本仕様書は実装着手前に作成した。親 issue は #754（供給源 3 つのうち ② のみを切り出したのが #767）。
+
+## 起点となる計画書（トレーサビリティ）
+
+- 機能要求（FR）: **FR-05**（ABAC によるアクセス制御。文書属性 `department` が判定の連言に入る）、FR-01（データソースの登録）
+- ユースケース（UC）: **UC-04** 基本フロー 1「管理者がソース（ファイルサーバー／Wiki／SaaS／業務DB）を登録する」
+- 画面（SC）: **SC-06** データソース管理画面（主要素「ソース登録ボタン」「コネクタ設定」）
+- 関連 ADR: `ADR-0004`（ABAC）、`ADR-0034`（グラフ探索でもホップごとに ABAC を強制する）、`ADR-0036`（所有者ベース裁量制御）。実装 ADR は [[IADR-0019]]（機密区分のフェイルセーフ既定）・[[IADR-0199]]（取り込み必須属性のフェイルセーフ）・[[IADR-0125]]（i18n カタログの網羅検査）
+- 計画書リンク:
+  - [`06_technical/09_datasource-connectors.md`](../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md) §システム投入経路での `owner` / `department` / `lifecycle`（確定・2026-08-15）
+  - [`06_technical/07_abac-attribute-model.md`](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md) §文書の基本属性（`department`＝所管部門・**必須**・部門コード）
+  - [`05_screens/01_screens.md`](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-06
+
+### 計画上の `department` の位置づけ（読み取り結果）
+
+計画は `department` を **3 段**で決めると定めている（09_datasource-connectors §システム投入経路の表）。
+
+| 段 | 供給源 | 本 issue の射程 |
+| --- | --- | --- |
+| 1 | 投入元（ソース）の所属を解決して入れる | **対象外**（フォルダ → 部門コードの写像規則が未裁定。planning#372） |
+| 2 | **データソースの既定属性から補う** | **本 issue の対象**（管理者が値を打つ経路） |
+| 3 | 解決できなければ予約値 `unassigned` | 実装済み（バックエンド。PR #753 / [[IADR-0199]]） |
+
+**2 段目に入力経路が無いため、画面から登録した全データソースが 3 段目へ落ちる。**
+計画は「`system` / `unassigned` は解決できなかったことの記録であり、既定ではない」「恒久的に積み上がるなら
+コネクタが更新者・部門を運んでいないという報告である」と明記しており、**2 段目を塞いだまま予約値が積み上がる
+状態は計画の意図に反する。** 本 issue はこの 2 段目だけを開ける。
+
+**ADR 制約に反しないこと**: 契約（`docs/api/openapi.yaml`）を変えない。`CreateDataSourceRequestDefaultAttributes`
+は `{ [key: string]: string } | null` の自由辞書であり、キーの追加に契約変更は要らない。`ADR-0034` が求める
+ホップごとの ABAC 強制は後段（AuthorizationService）の責務であり、本変更は判定軸へ値を供給する側だけを触る
+（判定規則には触れない）。
+
+## 母集合の引き直し（着手時に自分で引いた。issue 本文の一覧は転記していない）
+
+走査基準: worktree `feat/sc-06-department-input`（base `origin/develop` = `fde7252`）。
+除外パスは `node_modules` / `.git` / `planning`（submodule） / `ai-stock-trading`（submodule） / `dist` / `coverage` のみ。
+**拡張子では絞っていない**（規則 3）。**行フィルタで絞っていない**（規則 4）。
+
+### 軸ごとの実測
+
+| 軸 | 検索語 | 行 | ファイル | 読み |
+| --- | --- | --- | --- | --- |
+| 1 | `department`（**誤りの側＝不在の側から引く**。規則 1） | 333 | 87 | うち `src/knowledge/frontend/src/features/sc06-datasources/` は **0 行**（issue の実測を追試して一致） |
+| 2 | `DEPARTMENT`（大文字。定数名の形） | **0** | **0** | フロントに部門の語彙定数がまだ無い |
+| 3 | `defaultAttributes`（キャメル＝フロント側） | 71 | 19 | 非生成のフロントは **3 ファイル**（下記） |
+| 4 | `DefaultAttributes`（パスカル＝バックエンド側） | 102 | 21 | すべて `src/*/backend/**` と生成物。**本 PR では触らない** |
+| 5 | `CONFIDENTIALITY_KEY`（「語彙の単位」の置き方の手本） | 10 | 5 | `features/abac/confidentiality.ts` が単一情報源、利用は SC-05 2 ファイル・SC-06 1 ファイル・テスト 1 |
+| 6 | `unassigned`（予約値） | 41 | 12 | バックエンド 2・生成物 2・`scripts/` 2・`docs/` 6 |
+| 7 | `部門` | 106 | 57 | 大半は計画由来の記述・ABAC ポリシー例 |
+| 8 | `所管部門` | 2 | 2 | `07_abac-attribute-model` の語（バックエンド `DataSource.cs` のコメントに写っている） |
+| 9 | `既定の機密区分`（**SC-06 フォームの項目を列挙している側**から引く。規則 9） | — | **9** | 追随先の特定に用いた。下表 |
+
+軸 3 の非生成フロント 3 ファイル:
+`features/sc06-datasources/DataSourceForm.tsx` / `features/sc06-datasources/DataSourceManagementPage.test.tsx` /
+`features/adminFlow.test.tsx`。
+
+軸 9 の 9 ファイル:
+`i18n/locales/{ja,en}/messages.po`・`locales/ja/messages.ts`（カタログ。再生成で更新）／
+`features/sc06-datasources/DataSourceForm.tsx`・`features/abac/confidentiality.ts`（コード）／
+`docs/specs/20260805_issue-503_sc05-08-admin-screens.md`（**確定済みの作業仕様書**）／
+`docs/tests/SC-05_document-management.md`（SC-05 自身のフォームの記述で、SC-06 とは無関係）／
+`docs/tests/SC-06_datasource-management.md`・`docs/screens/SC-06_datasource-management.md`。
+
+### 変更したもの / 除外したものと理由（規則 6）
+
+| ファイル | 扱い | 理由 |
+| --- | --- | --- |
+| `features/abac/department.ts`（新規） | **追加** | 語彙の単位。`confidentiality.ts` と同じ置き方に揃える |
+| `features/abac/department.test.ts`（新規） | **追加** | 語彙が黙って変わらないことを固定する |
+| `features/sc06-datasources/DataSourceForm.tsx` | **変更** | 入力欄の追加（本体） |
+| `features/sc06-datasources/DataSourceManagementPage.test.tsx` | **変更** | 受け入れ基準の写像 |
+| `i18n/locales/{ja,en}/messages.{po,ts}` | **再生成** | `pnpm run i18n`。手では編集しない |
+| `features/adminFlow.test.tsx` | **除外** | 一覧応答のフィクスチャで `defaultAttributes` を持つだけで、登録フォームを送らない。宣言済みファイル領域の外でもある |
+| `docs/api/openapi.yaml` | **除外** | 自由辞書へのキー追加であり契約が変わらない（issue の判断を実測で追認した。`CreateDataSourceRequestDefaultAttributes = {[key: string]: string} \| null`） |
+| `src/*/backend/**`（軸 4 の 21 ファイル） | **除外** | 本セッションに dotnet が無く `build` / `test` / `format` を走らせられない。DoD を満たせない変更は入れない。**読むのは行った**（下記「未入力時の挙動」の判断根拠） |
+| `scripts/measure-abac-combinations.js` | **除外** | 予約値の減少の実測は DB / Keycloak 稼働が前提。issue のスコープ外 |
+| `docs/specs/20260805_issue-503_sc05-08-admin-screens.md` | **除外** | 確定済みの作業仕様書は後付けで書き換えない（`.claude/rules/traceability.repo.md`） |
+| `docs/tests/SC-05_document-management.md` | **除外** | SC-05 自身のフォームの記述で、SC-06 の項目ではない |
+| **`docs/screens/SC-06_datasource-management.md`** | **除外（未消化の追随。要対応）** | §表示・入力項目（L205-212）と L117「登録フォームの項目（名前・種別・接続先 URI・既定の機密区分）」が**本変更で古くなる**（規則 10 で検出）。**宣言済みファイル領域の外**であり、広げると並行作業の非重複判定を壊すため触らない。**別 issue で追随が要る** |
+| **`docs/tests/SC-06_datasource-management.md`** | **除外（未消化の追随。要対応）** | L61 / L75 が登録の送信内容を「名前・種別・接続先・既定の機密区分」と列挙しており、同じく古くなる。理由は上に同じ。**機械検査は掛かっていない**（`check-test-spec-coverage.js` は `.cs` のテストクラスだけを見る／`check-test-traceability.js` は SC-06 が 1 件でも参照されていれば緑）ため、**CI では捕まらない** |
+
+## 対象範囲
+
+- 対象: SC-06 登録フォームへの `department` 入力欄、`defaultAttributes` への積載、語彙定数、ja / en 文言、テスト
+- 対象外: フォルダ → 部門コードの写像（planning#372 の裁定待ち。**実装側で推定規則を決めない**）／ソース側権限情報のヒント取り込み（`src/*/backend/**`）／更新用 UI（SC-06 に更新経路が無い）／予約値の減少の実測
+
+## 設計
+
+### 語彙の単位（`features/abac/department.ts`）
+
+`confidentiality.ts` と同じ理由で**画面フォルダではなく語彙フォルダ**へ置く。`department` は SC-06（データソースの
+既定部門）だけでなく SC-01 / SC-08 の対象範囲軸（`scope-filter/scopeFilter.ts` の `SCOPE_AXES`）でも同じキーを
+使うためである。本 PR では **SC-06 が使う 2 つの値だけ**を置く（`scopeFilter.ts` の書き換えは射程外。既存の
+文字列リテラルを定数へ寄せる作業は別の変更である）。
+
+- `DEPARTMENT_KEY = 'department'` — ABAC 属性辞書のキー
+- `UNRESOLVED_DEPARTMENT = 'unassigned'` — 解決できなかったときの**予約値**（既定値ではない）
+
+**値集合は持たない。** `confidentiality` と違い、部門コードの値域は計画に列挙が無く（07_abac-attribute-model は
+「部門コード（人事/経理/開発 等）」と例示するのみ）、SC-09 の属性辞書が管理する。**実装が値集合を決めると
+事実上の用語定義になる**ため、自由入力にする。
+
+### フォーム（`DataSourceForm.tsx`）
+
+- `Input`（テキスト・**任意**）。`既定の機密区分` の直後に置く（どちらも「既定属性」であるため）。
+- **最大長を設けない。** 名前 200 / URI 500 は後段の検証に合わせた値だが、`department` には対応する後段の
+  制約が無い（`DefaultAttributes` は自由辞書）。無根拠な上限は入れない。
+- 送信時に `trim()` し、**非空のときだけ** `defaultAttributes` へキーを積む。
+- 未入力時の扱いを画面上でも伝える補助文を置く（予約値 `unassigned` は**翻訳しない**——機密区分の値を
+  翻訳しないのと同じ理由）。
+
+### 未入力時の挙動（**決定: キーを送らない**）
+
+**バックエンドのコードを実際に読んで決めた。**
+`src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs`
+の `FillIfBlank`（L136-140）は
+
+```csharp
+if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+    attributes[key] = fallback;
+```
+
+であり、`WithRequiredAttributeFailsafe`（L100-133）から `DepartmentKey` に対して呼ばれている（L117）。
+すなわち **`""`（空文字）も空白のみも `unassigned` へ倒れ、素通りしない**。`Create` / `Update` / `Patch` /
+`GetEffectiveAttributes` のいずれもこの 1 本を通る。
+
+したがって**今日の後段では、キーを送らない場合と空文字を送る場合の結果は同一である**。それでも
+**キーを送らない**を採る理由は 3 つ。
+
+1. **後段の空白判定に依存しない。** 空文字を送る形は「後段が `IsNullOrWhiteSpace` で潰してくれる」ことに
+   依存する。判定が `TryGetValue` の有無だけに変わった瞬間、**画面から登録した全ソースの部門が空文字**になり、
+   予約値との区別（＝環流債務の測定値。[[IADR-0199]] 決定 3）が壊れる。**壊れても静かである。**
+2. **「解決できなかった」と「指定しなかった」を辞書の形で区別できる。** 空文字は「管理者が明示的に空を指定した」
+   とも読め、計画が `unassigned` に持たせた意味（解決できなかったことの記録）を濁す。
+3. **既存の送信形と一貫する。** 現状の POST 本文は `defaultAttributes: { confidentiality }` だけを積んでおり、
+   送らない値はキーごと出さない形になっている。
+
+## 受け入れ基準（issue #767 より転記）
+
+- [x] SC-06 の登録フォームから `department` を送れる
+- [x] `department` 未入力時の挙動が明示的である（**キーを送らない**に固定した。上記）
+- [x] ja / en の文言が揃っている（`check-i18n-catalogs.js` が緑）
+- [x] `pnpm run typecheck` / `lint` / `format:check` / `test:coverage` が緑。カバレッジ床を割らない
+- [x] 変異試験の結果（何を壊すと何が落ちるか）を本仕様書に記録した（下記）
+
+## テスト方針
+
+| # | 受け入れ基準 / フロー | テスト |
+| --- | --- | --- |
+| T1 | UC-04 基本 1（値を入れて登録） | `registers a data source with a default department attribute`（POST 本文の**完全一致**で `defaultAttributes: { confidentiality, department }` を見る） |
+| T2 | 未入力時の挙動（キーを送らない） | 既存の `registers a data source with a default confidentiality attribute` が POST 本文を `toEqual` で見ており、**空文字を送ると落ちる**。追加で「`department` キーを持たないこと」を明示アサートする |
+| T3 | 前後の空白は落とす | T1 に空白つきの入力（`'  開発  '`）を混ぜる |
+| T4 | 語彙の固定 | `abac/department.test.ts`（キーと予約値の文字列を固定） |
+| T5 | en ロケール | 既存の `renders in English when the en locale is active` を拡張し、en で登録フォームを開いて `Default department` のラベルを見る |
+| T6 | 部門は**任意**（計画に無い必須化を実装が足さない） | `does not require a department to enable the register button`。あわせて未入力時の説明文（予約値 `unassigned`）が出ることを見る |
+
+## 変異試験（実施結果）
+
+6 件すべて実際に適用して測った（宣言だけの記録にしない）。走査範囲は
+`vitest run knowledge/frontend/src/features/sc06-datasources knowledge/frontend/src/features/abac`
+（クリーン時は **40 件すべて緑**）。
+
+| # | 変異 | 落ちた検査 | 実測 |
+| --- | --- | --- | --- |
+| M1 | `DataSourceForm.tsx` から `department` の `<Label>` / `<Input>` / 補助文を削除する | T1・T5・「任意であること」 | **3 件 fail**（`Unable to find a label with the text of: /既定の部門/`） |
+| M2 | 送信時の `defaultAttributes` から `department` を落とす（入力欄は残す） | T1 | **1 件 fail**（POST 本文の `toEqual` 差分） |
+| M3 | 未入力でもキーを送る（`[DEPARTMENT_KEY]: trimmedDepartment` を無条件に積む） | T2（既存テスト） | **1 件 fail** |
+| M4 | `ja/messages.po` の `既定の部門` の `msgstr` を空にする | `check-i18n-catalogs.js` | **fail**（`ja: 未翻訳（msgstr が空）: "既定の部門"`） |
+| M5 | `en/messages.po` の同じ `msgstr` を空にする | `check-i18n-catalogs.js` ＋ `lingui compile --strict` ＋ T5 | **fail**（下記の注意つき） |
+| M6 | `abac/department.ts` の `UNRESOLVED_DEPARTMENT` を `'unresolved'` へ変える | T4 ＋ 補助文のアサート | **2 件 fail** |
+
+**素通りした変異は無い。** 予測と実測がずれた点と、注意を要する点を開示する。
+
+1. **M2 / M3 は「2 件落ちる」と予測したが 1 件だった。** T1 と T3（trim）、T2 と追加アサートは
+   それぞれ**同じ `it` の中**にあるため、テストの件数としては 1 件に数えられる。アサートは両方落ちている。
+2. **M5 は「`.po` を空にしただけ」では単体テストが素通りする。** 実行時に読まれるのは**コンパイル済みの
+   `messages.ts`** であり、`.po` だけを壊しても古い `messages.ts` が残っていれば T5 は緑のままだった
+   （実測: 35 件すべて緑）。`npx lingui compile` で再生成して初めて T5 が落ちた（1 件 fail）。
+   **したがって en の未翻訳を止めているのは、実質 `check-i18n-catalogs.js` と `lingui compile --strict`
+   （`pnpm run i18n` が非ゼロ終了する）の 2 本であり、単体テストではない。** この事実は
+   [[IADR-0125]] 決定 4 が「再生成差分検査だけでは未翻訳を検出できない」と述べた穴の実測でもある。
+
+## 計画書との差異
+
+- 差異: **なし**。計画（09_datasource-connectors §システム投入経路）の 3 段のうち 2 段目だけを実装した。
+  1 段目（フォルダ → 部門コードの写像）は planning#372 の裁定待ちであり、**実装側で推定規則を決めていない**。
+
+## 未決事項
+
+1. **`docs/screens/SC-06_datasource-management.md` と `docs/tests/SC-06_datasource-management.md` の追随が未消化**
+   （上表参照）。本 PR の宣言済みファイル領域の外であるため触っていない。**別 issue で消化が要る。**
+2. **部門コードの値域と候補 UI**。現状は自由入力である。SC-09 の属性辞書が値集合を持ち、SC-01 / SC-08 は
+   権限内候補 API（`ADR-0043`）で候補を出しているが、**管理者が新しい既定部門を設定する場面で「到達できる
+   文書に実際に付与されている値のみ」を返す候補 API を使うのは誤り**である（まだ 1 件も無い部門を設定できない）。
+   属性辞書側の候補口が要るかは未確定。
+3. **フォルダ → 部門コードの写像**（planning#372）。裁定が下りるまで実装しない。
