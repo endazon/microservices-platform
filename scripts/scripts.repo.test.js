@@ -714,7 +714,7 @@ module.exports = ({ ok, assert }) => {
   // 節スコープを外した実装はここで AST のレンジを拾い、計画レンジを取り違える。
   const RULES_FIXTURE = [
     '---', 'paths:', '  - "**/*"', '---', '',
-    '## 起点 ID の種別', '',
+    '## 起点 ID の種別（固有）', '',
     '本リポジトリではそれが **MSP** であり、ID レンジは',
     '`FR-01..21` / `UC-01..11` / `SC-01..21` / `ADR-0001..0039`（`ADR-0035` は番号予約のみ）',
     'である。', '',
@@ -722,7 +722,7 @@ module.exports = ({ ok, assert }) => {
     '**AST 側が自前で採番しているレンジは `FR-01..20` / `UC-01..07` / `SC-01..03`**',
   ].join('\n');
 
-  ok('planRangeSection / parsePlanRanges: 「起点 ID の種別」節だけを見る（AST レンジを拾わない）', () => {
+  ok('planRangeSection / parsePlanRanges: 「起点 ID の種別（固有）」節だけを見る（AST レンジを拾わない）', () => {
     const section = trace.planRangeSection(RULES_FIXTURE);
     assert.ok(section !== null && !section.includes('AST 側'), '節スコープが後段まで伸びている');
     assert.deepStrictEqual(trace.parsePlanRanges(section), {
@@ -2826,10 +2826,11 @@ module.exports = ({ ok, assert }) => {
     // 「検査器がある」ことを規約側から辿れる状態を固定する（#507 の受け入れ基準）。
     ok('traceability.md が短縮形の統一と検査器への導線を持つ', () => {
       const fsX = require('fs');
-      const rules = fsX.readFileSync(
-        pathXrepo.join(__dirname, '..', '.claude', 'rules', 'traceability.md'),
-        'utf8'
-      );
+      // ★ #755: 入口はキット配布物 ＋ companion（本リポ固有）の 2 ファイル。連結で見る。
+      const rules =
+        fsX.readFileSync(pathXrepo.join(__dirname, '..', '.claude', 'rules', 'traceability.md'), 'utf8') +
+        '\n' +
+        fsX.readFileSync(pathXrepo.join(__dirname, '..', '.claude', 'rules', 'traceability.repo.md'), 'utf8');
       assert.match(rules, /check-cross-repo-refs\.js/, '規約から検査器へ辿れない');
       assert.match(rules, /列挙形でも各番号を修飾する/, '列挙形の規約が消えている');
       // 型 3（空白区切り）の規約。#507 クロス監査 R1 で追加した。
@@ -4530,7 +4531,8 @@ module.exports = ({ ok, assert }) => {
         // ★ #737 で `check-feedback-status-sync.js` を足したため 34 → 35（同上）。
         // ★ 計画 pin を ce9abd2 へ進めた際、キットが新規配布した `check-review-verdict.js` を
         //    採用したため 35 → 36（同上。planning#333 / AI レビューが判定を投稿しない形を止める）。
-        assert.strictEqual(scripts.length, 36, `検査器の母集合が 36 本から変わった（${scripts.length} 件）`);
+        // ★ #755 で `check-reading-budget.js`（必読規約の総量予算。IADR-0200）を足したため 36 → 37（同上）。
+        assert.strictEqual(scripts.length, 37, `検査器の母集合が 37 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -4915,33 +4917,41 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
 
     // ★ #724 / IADR-0188 が射程を「メタ作業」限定から一般化したので、固定する文字列も追随させた。
     //   規範そのものは #688 のものである（覆っていない。広がっただけ）。
     ok('#688: 当たる番号が無いなら無採番 NFR という規範が入口にある', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       assert.match(
         t,
-        /該当する `NFR-xx` が無い作業は無採番 `NFR` を使う/,
+        // ★ #755: 規範はキット配布物 traceability.md の文言（planning#311 の場合 2）で固定する。
+        /ID 列はあるが、その作業に当たる番号が無い場合/,
         '無採番の規範が入口から消えた',
       );
     });
 
     // ★ 既存 3 規範を巻き込んでいないこと。加筆のついでに落とすのが最も危ない。
     ok('#688: NFR 採番の既存 3 規範が残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of [
-        '書式検査は採番付きも受理する',
-        '`NFR-99` は素通りする',
-        '遡及書き換えはしない',
+        // ★ #755: companion へ畳んだ際に短くした（規範は同じ）。
+        '実在性は検査されない',
+        '既存の無採番 `NFR` は遡及書き換えしない',
+        'NFR-01`〜`NFR-27',
       ]) {
         assert.ok(t.includes(n), `既存の規範「${n}」が入口から消えた`);
       }
     });
 
     ok('#688: 採番の経緯が別紙へ移り、入口から消えている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       assert.ok(!t.includes('直近 100 コミット中 50 件'), '採番導入の経緯が入口に残っている');
       assert.ok(a.includes('直近 100 コミット中 50 件'), '経緯が別紙に無い（移動でなく削除になっている）');
@@ -4959,23 +4969,37 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
-    const REQUIRED = [ENTRY, 'CLAUDE.md'];
-    const BUDGET = 50000;
+    // ★ #755 / IADR-0200: 母集合と予算値の単一情報源は scripts/check-reading-budget.js に移した
+    //   （Claude Code の集合 = CLAUDE.md ＋ .claude/rules/*.md を走査。予算 51,200 の正本は計画リポ運用ガイド §8）。
+    //   ここでリテラルの一覧・値を持つと、companion を足したときに黙って母集合から落ちる（本 PR がまさに
+    //   traceability.repo.md を足した）。テストは検査器の measure() を呼ぶ。
+    const rbudget = require('./check-reading-budget.js');
+    const CLAUDE_SET = rbudget.AGENT_SETS.find((x) => x.name === 'Claude Code');
+    const BUDGET = rbudget.BUDGET_BYTES;
+    const measureClaude = () => rbudget.measure(CLAUDE_SET, REPO);
 
-    ok('#724: 毎セッション必読の 2 ファイルが 50,000B 予算に収まっている', () => {
-      const sizes = REQUIRED.map((p) => [p, fs.statSync(path.join(REPO, p)).size]);
-      const total = sizes.reduce((s, [, n]) => s + n, 0);
+    ok('#724: 毎セッション必読（Claude Code の集合）が 51,200B 予算に収まっている', () => {
+      const m = measureClaude();
+      assert.deepStrictEqual(m.missing, [], `母集合に欠落がある: ${m.missing.join(' / ')}`);
+      assert.ok(m.entries.some((e) => e.file === ENTRY), 'キット配布物 traceability.md が母集合に無い');
+      assert.ok(m.entries.some((e) => e.file === ENTRY_REPO), 'companion traceability.repo.md が母集合に無い（走査で拾えていない）');
       assert.ok(
-        total <= BUDGET,
-        `必読合計が予算を超えた（${total}B / 上限 ${BUDGET}B・超過 ${total - BUDGET}B）。` +
-          `内訳: ${sizes.map(([p, n]) => `${p}=${n}`).join(' / ')}。` +
-          '加筆するなら同量以上を削るか、重複を正本・別紙へ畳むこと（IADR-0178 決定 4 / IADR-0188 決定 4）',
+        m.total <= BUDGET,
+        `必読合計が予算を超えた（${m.total}B / 上限 ${BUDGET}B・超過 ${m.total - BUDGET}B）。` +
+          `内訳: ${m.entries.map((e) => `${e.file}=${e.bytes}`).join(' / ')}。` +
+          '加筆するなら同量以上を削るか、重複を正本・別紙へ畳むこと（IADR-0178 決定 4 / IADR-0188 決定 4 / IADR-0200）',
       );
     });
 
     ok('#724: 一般化の 3 要素が入口にある（代表例・製品も対象・実装側で作らない）', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of [
         'メタ作業（規約・検査器・文書統制）は代表例',
         '製品の作業にも当たる番号が無いことはある',
@@ -4988,7 +5012,7 @@ module.exports = ({ ok, assert }) => {
     // ★ #718 が別紙へ 1 世代足して入口の「4 世代分」を取り残した型（母集合の規則 8）。
     //   同じ数を 2 箇所に持つ限り、機械で突き合わせないと必ずずれる。
     ok('#724: 入口が言う世代数と、別紙が言う世代数が一致する', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       const e = t.match(/引き直しの記録（(\d+) 世代分）/);
       const n = a.match(/それ以前の (\d+) 世代で引き直した記録/);
@@ -5007,13 +5031,15 @@ module.exports = ({ ok, assert }) => {
     //   （#721 は分類 A だったので回帰テストが落ちた）。ここで固定できるのは
     //   「入った規範が後で消えること」までで、「上流に新しい規範が入ったこと」は捕まえられない。
     ok('#728: 無採番 NFR の 2 場合（環流の要否）が入口にある', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of [
-        '無採番の `NFR` を許すのは 2 場合だけ',
+        // ★ #755: この規範はキット配布物 traceability.md（分類 A）が持つ形になった。文言はキットの
+        //   ものに揃える（規範の内容は同じ。planning#311 の 2 場合）。
+        '無採番の `NFR` を許すのは次の 2 つの場合に限る',
         '計画へ ID の付与を環流する',
         '環流しない',
-        '「面倒だから無採番」は ② に当たらない',
-        '着手前に計画の ID 列を見て',
+        '「面倒だから無採番」は 2 に当たらない',
+        '作業を始める前に計画の ID 列を見て',
       ]) {
         assert.ok(t.includes(n), `planning#311 の規範「${n}」が入口から消えた`);
       }
@@ -5028,7 +5054,7 @@ module.exports = ({ ok, assert }) => {
     //   —— 本 PR が「同じ数値を 2 箇所に持つと必ずずれる」と書いている当のことである（#731 レビュー 🟡）。
     ok('#730: 必読の余白が確保した水準を割っていない', () => {
       const FLOOR = 1000;
-      const total = REQUIRED.reduce((s, p) => s + fs.statSync(path.join(REPO, p)).size, 0);
+      const total = measureClaude().total;
       const margin = BUDGET - total;
       assert.ok(
         margin >= FLOOR,
@@ -5085,7 +5111,9 @@ module.exports = ({ ok, assert }) => {
           if (e.name === '.git') continue;
           const p = path.join(dir, e.name);
           if (e.isDirectory()) walk(p);
-          else kitFiles.push(path.relative(KIT, p));
+          // ★ #755: 分類表は '/' 区切り。Windows では path.relative が '\\' 区切りを返し、
+          //   108 件すべてが偽の unclassified になった。'/' へ正規化する。
+          else kitFiles.push(path.relative(KIT, p).split(path.sep).join('/'));
         }
       })(KIT);
       assert.ok(kitFiles.length > 0, 'キット配下が 0 件。走査が空振りしている');
@@ -5332,8 +5360,9 @@ module.exports = ({ ok, assert }) => {
     // ★ 0 件走査で静かに緑にならないこと（#664 の門）。
     ok('#737: 0 件走査で緑にしない門が 2 つある', () => {
       const src = fs.readFileSync(path.join(REPO, 'scripts/check-feedback-status-sync.js'), 'utf8');
+      // ★ #755: キット版へ差し替えたため文言はキットのもの（「環流記録が 0 件だった」）。門の数は同じ 2 つ。
       for (const n of [
-        'feedback/ の記録が 0 件だった',
+        '環流記録が 0 件だった',
         '計画側に写しを持つ記録が 0 件だった',
       ]) {
         assert.ok(src.includes(n), `#664 の門「${n}」が消えた`);
@@ -5351,7 +5380,7 @@ module.exports = ({ ok, assert }) => {
     // ★ 「書き換えない」が本文と frontmatter の両方に掛かると読めていた（#715 レビュー 🟡）。
     //   キットが status の更新主体を定めている以上、一般禁止（読み B）は採れない。
     ok('#717: 書き換え境界（本文は不可 / 状態欄は対象外）が入口にある', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of [
         '「書き換えない」の対象は本文への後付け注記である',
         '日付つき追記ブロック',
@@ -5374,8 +5403,9 @@ module.exports = ({ ok, assert }) => {
     });
 
     // ★ 母集合の規則は 8 つとも入口に残り、実例だけが出ていること。
-    ok('#730: 母集合の規則 8 つが入口に残り、実例は入口に無い', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+    ok('#730: 母集合の規則（キット 1〜8 ＋ 本リポ 9・10）が入口に残り、実例は入口に無い', () => {
+      // ★ #755: 規則 1〜8 はキット配布物 traceability.md、旧 7・8（現 9・10）は companion に在る。
+      const t = readEntry();
       for (const n of [
         '誤りの側から引く',
         'あり得る形をすべて列挙してから引く',
@@ -5391,9 +5421,11 @@ module.exports = ({ ok, assert }) => {
       ]) {
         assert.ok(t.includes(n), `母集合の規範「${n}」が入口から消えた`);
       }
-      // 実例の issue 番号は 1 つも入口に残っていない
-      const sec = t.slice(t.indexOf('## 是正・追随の母集合の取り方'));
-      const body = sec.slice(0, sec.indexOf('\n## ', 3));
+      // 実例の issue 番号は 1 つも入口（本リポが書く companion 側）に残っていない
+      const rt = readRepoEntry();
+      const sec = rt.slice(rt.indexOf('## 是正・追随の母集合の取り方'));
+      const end = sec.indexOf('\n## ', 3);
+      const body = end < 0 ? sec : sec.slice(0, end);
       for (const n of ['#541', '#507', '#583', '#570', '#593', '#642', '#645', '#687', '#690']) {
         assert.ok(!body.includes(n), `実例「${n}」が入口に残っている（別紙・IADR-0141 と二重持ち）`);
       }
@@ -5410,7 +5442,7 @@ module.exports = ({ ok, assert }) => {
 
     // ★ 入口から重複を消した分が、別紙に在ること（削除ではなく重複解消であることの確認）。
     ok('#724: ADR-0023 の遷移の記述が入口から消え、別紙に在る', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       assert.ok(
         !t.includes('cert-manager'),
@@ -5512,6 +5544,12 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/plan-id-range-history-annex.md';
     const CMSG_ANNEX = 'docs/how-to/commit-message-rules-annex.md';
     const RECAP_ADR = 'docs/adr/IADR-0177_entry-exhausted-claude-md-quota.md';
@@ -5538,7 +5576,7 @@ module.exports = ({ ok, assert }) => {
     ];
 
     ok('#695 段 5: 対象節の見出しが 2 つともスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const t = readEntry().replace(/\r\n/g, '\n');
       const headings = t
         .split('\n')
         .filter((l) => /^#{2,3}\s/.test(l))
@@ -5552,14 +5590,16 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('#695 段 5: 規範が入口に残っている（塊の内側から畳んだ 2 行を含む）', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of NORMS) {
         assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
       }
     });
 
     ok('#695 段 5: 5 塊が入口から別紙へ移っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      // ★ #755: 否定（入口に残っていない）は本リポが書く companion で見る。キット配布物は
+      //   「夜間の planning 系」を一般規約として持つが、それは本リポの塊ではない。
+      const t = readRepoEntry();
       for (const [needle, dest] of MOVED_OUT) {
         assert.ok(!t.includes(needle), `「${needle}」が入口に残っている（別紙へ出ていない）`);
         const a = fs.readFileSync(path.join(REPO, dest), 'utf8');
@@ -5589,6 +5629,7 @@ module.exports = ({ ok, assert }) => {
     ok('#695 段 5: 入口と別紙に切り出しの残骸（空白のみの行・行末空白）が無い', () => {
       const targets = [
         '.claude/rules/traceability.md',
+        '.claude/rules/traceability.repo.md', // ★ #755 で追加。companion も必読
         'CLAUDE.md', // ★ #697 で追加。必読 2 ファイルは同じ扱いにする
         'docs/how-to/plan-id-range-history-annex.md',
         'docs/how-to/commit-message-rules-annex.md',
@@ -5647,6 +5688,12 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/adr-supersede-citation-annex.md';
     const RECAP_ADR = 'docs/adr/IADR-0176_entry-slimming-recap-block-level-classification.md';
     const HEADS = ['残す箇所と書式', 'Superseded / Deprecated な ADR を引用するときの書式'];
@@ -5662,7 +5709,7 @@ module.exports = ({ ok, assert }) => {
     const MOVED_OUT = ['例外は 2 本あるが', 'コードを対象外にしない理由', 'submodule を populate しない'];
 
     ok('#693 段 4: 対象節の見出しが 2 つともスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const t = readEntry().replace(/\r\n/g, '\n');
       const headings = t
         .split('\n')
         .filter((l) => /^#{2,3}\s/.test(l))
@@ -5676,14 +5723,14 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('#693 段 4: 規範が入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of NORMS) {
         assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
       }
     });
 
     ok('#693 段 4: 説明・経緯が入口から別紙へ移っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       for (const m of MOVED_OUT) {
         assert.ok(!t.includes(m), `「${m}」が入口に残っている（別紙へ出ていない）`);
@@ -5720,6 +5767,12 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/cross-project-id-refs-annex.md';
     const PLAN_ADR = 'docs/adr/IADR-0175_slimming-requires-claude-md-reduction.md';
     const MOVED = '複数プロジェクトを跨ぐ場合の ID 修飾';
@@ -5727,7 +5780,7 @@ module.exports = ({ ok, assert }) => {
     const NORMS = ['AST/FR-17', '短縮形に寄せる', '空白を入れない', 'endazon'];
 
     ok('#691 段 3: 対象節の見出しがスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const t = readEntry().replace(/\r\n/g, '\n');
       const headings = t
         .split('\n')
         .filter((l) => /^#{2,3}\s/.test(l))
@@ -5739,14 +5792,14 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('#691 段 3: 規範が入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const n of NORMS) {
         assert.ok(t.includes(n), `規範「${n}」が入口から消えた（IADR-0173 決定 2 に反する）`);
       }
     });
 
     ok('#691 段 3: スタブが別紙を指し、別紙に経緯が移っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       assert.match(t, /cross-project-id-refs-annex\.md/, '別紙への導線が無い');
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       assert.match(a, /いつ読むか/, '別紙に「いつ読むか」が無い');
@@ -5780,13 +5833,19 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/changelog-overrides-annex.md';
     const PLAN_ADR = 'docs/adr/IADR-0174_slimming-projection-requires-stage4.md';
     const MOVED = 'CHANGELOG 生成時の誤記補正・除外規定';
 
     // ★ 見出し行だけを見る（#686 の M1 の教訓。スタブ本文が同じ文字列を含むため全文検索は空振る）。
     ok('#689 段 2: CHANGELOG 節の見出しがスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const t = readEntry().replace(/\r\n/g, '\n');
       const headings = t
         .split('\n')
         .filter((l) => /^#{2,3}\s/.test(l))
@@ -5801,13 +5860,13 @@ module.exports = ({ ok, assert }) => {
     //    こちらは「誤記があっても直さない」という**例外の否定**である。
     //    これが消えると「誤記の是正は正当な理由だ」と読まれうる。
     ok('#689 段 2: 「履歴は書き換えない」の規範が入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       assert.match(t, /既存の git 履歴を書き換えないこと/, '規範（履歴不変）が入口から消えた');
       assert.match(t, /force push で修正してはならない/, '「誤記があっても直さない」が入口から消えた');
     });
 
     ok('#689 段 2: スタブが別紙を指し、別紙に本文が移っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       assert.match(t, /changelog-overrides-annex\.md/, '別紙への導線が無い');
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
       assert.match(a, /いつ読むか/, '別紙に「いつ読むか」が無い');
@@ -5834,6 +5893,12 @@ module.exports = ({ ok, assert }) => {
     const path = require('path');
     const REPO = path.join(__dirname, '..');
     const ENTRY = '.claude/rules/traceability.md';
+    // ★ #755 / IADR-0201: 入口はキット配布物（分類 A・バイト一致）と companion の 2 ファイルになった。
+    //   本リポ固有の規範は companion に在るため、「入口に残っている」は 2 ファイルの連結で見る。
+    //   「入口から出した」の否定は本リポが書く companion 側で見る（キット配布物の文言は本リポの管理外）。
+    const ENTRY_REPO = '.claude/rules/traceability.repo.md';
+    const readEntry = () => fs.readFileSync(path.join(REPO, ENTRY), 'utf8') + '\n' + fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
+    const readRepoEntry = () => fs.readFileSync(path.join(REPO, ENTRY_REPO), 'utf8');
     const ANNEX = 'docs/how-to/commit-message-rules-annex.md';
     // 別紙へ出した節（見出しはスタブとして入口に残す）
     const MOVED = ['PR タイトル（スカッシュ後件名）の検査', '検査対象から除外する自動コミット'];
@@ -5851,7 +5916,7 @@ module.exports = ({ ok, assert }) => {
     //    **同じ文字列が入っている**ため、`t.includes(見出し)` だと**見出し行を消しても通る**
     //    （変異試験 M1 が実際に緑のまま通り、この穴を捕まえた）。
     ok('#686 段 1: 出した節の見出しがスタブとして入口に残っている', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8').replace(/\r\n/g, '\n');
+      const t = readEntry().replace(/\r\n/g, '\n');
       const headings = t
         .split('\n')
         .filter((l) => /^#{2,3}\s/.test(l))
@@ -5867,7 +5932,7 @@ module.exports = ({ ok, assert }) => {
 
     // ★ 導線が無いと統制が消える（IADR-0172 決定 4）。スタブが別紙を指していること。
     ok('#686 段 1: スタブが別紙を指している（導線が残っている）', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       const n = t.split('commit-message-rules-annex.md').length - 1;
       assert.ok(n >= MOVED.length, `別紙への導線が ${n} 件しかない（出した節は ${MOVED.length} 件）`);
       assert.ok(fs.existsSync(path.join(REPO, ANNEX)), `別紙 ${ANNEX} が無い`);
@@ -5875,7 +5940,7 @@ module.exports = ({ ok, assert }) => {
 
     // ★ 規範を別紙へ出していないこと。出すと「別紙を読まなかった」だけで CI に落ちる。
     ok('#686 段 1: 規範は入口に残っている（本文ごと）', () => {
-      const t = fs.readFileSync(path.join(REPO, ENTRY), 'utf8');
+      const t = readEntry();
       for (const h of KEPT) {
         assert.ok(t.includes(h), `規範「${h}」が入口から消えた`);
       }
@@ -6366,6 +6431,117 @@ module.exports = ({ ok, assert }) => {
         .filter((x) => x.endsWith('.md'))
         .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('追記 / #721'));
       assert.deepStrictEqual(hits, [], `#721 の追記ブロックが残っている:\n  ${hits.join('\n  ')}`);
+    });
+  }
+
+  // --- #755: 計画 pin 4d6a7d6 の追随（IADR-0200 / IADR-0201。#751 を束ねた） ---------
+  //
+  // ★ 4 つの型を固定する。①キット版 check-kit-sync.js のパス正規化（Windows で 108 件の偽 unclassified）
+  //   ②必読規約の母集合の検査器（合算しない・出典つきの予算値）③companion 分離で traceability.md が
+  //   分類 A へ戻ったこと ④実データ走査が planning を populate するジョブへ移り --require-planning が付いたこと。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const { spawnSync } = require('child_process');
+    const REPO = path.join(__dirname, '..');
+    const KIT = path.join(REPO, 'planning/tools/impl-handoff-kit/repo-template');
+    const withoutComments = (yml) => yml.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+
+    // ① Windows パス正規化。path.relative は OS の区切りを返すため、分類表（'/' 区切り）と突合する前に
+    //    '/' へ揃えないと**全件が偽の unclassified になる**。キット版 listFiles が正規化していることを固定する。
+    ok('#755: check-kit-sync の listFiles は OS に依らず / 区切りの相対パスを返す', () => {
+      const ks = require('./check-kit-sync.js');
+      assert.strictEqual(typeof ks.listFiles, 'function', 'キット版の listFiles が公開されていない（キット版へ差し替わっていない）');
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'kitsync-'));
+      fs.mkdirSync(path.join(tmp, 'a', 'b'), { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'a', 'b', 'c.md'), 'x');
+      fs.writeFileSync(path.join(tmp, 'top.json'), 'y');
+      try {
+        const files = ks.listFiles(tmp).sort();
+        assert.deepStrictEqual(files, ['a/b/c.md', 'top.json']);
+        // 分類表の突合はこの形で行われる（inspect は文字列一致）。'/' 以外は unclassified になることを示す。
+        const table = { classes: { A: ['a/b/c.md'], B: {}, C: [] }, notApplicable: ['top.json'] };
+        const r = ks.inspect(table, files, () => true, () => true, () => true);
+        assert.deepStrictEqual(r.errors, [], '正規化済みのパスが分類表と突合できていない');
+        const rBad = ks.inspect(table, [['a', 'b', 'c.md'].join(String.fromCharCode(92)), 'top.json'], () => true, () => true, () => true);
+        assert.ok(rBad.errors.some((e) => e.startsWith('[unclassified]')), '区切りが違うと unclassified になる（＝正規化が要る）ことの再現');
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    ok('#755: check-kit-sync / check-feedback-status-sync は --require-planning を認識し、未知の引数を落とす', () => {
+      for (const f of ['check-kit-sync.js', 'check-feedback-status-sync.js']) {
+        const m = require('./' + f);
+        assert.deepStrictEqual(m.KNOWN_FLAGS, ['--require-planning', '--self-test'], `${f} の受け付ける引数がキット版と違う`);
+        assert.strictEqual(m.parseArgs(['node', 'x', '--require-planning']).requirePlanning, true, `${f} が --require-planning を認識しない`);
+        assert.deepStrictEqual(m.parseArgs(['node', 'x', '--requre-planning']).unknown, ['--requre-planning'], `${f} が未知の引数を黙って無視する`);
+      }
+    });
+
+    // ③ traceability.md は分類 A（キットとバイト一致）で、固有規範は companion に在る。
+    ok('#755: traceability.md は分類 A に在り、companion が固有規範を持つ', () => {
+      const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));
+      assert.ok(t.classes.A.includes('.claude/rules/traceability.md'), 'traceability.md が分類 A に無い（planning#363 の名指し 1 件目）');
+      assert.ok(!t.classes.C.includes('.claude/rules/traceability.md'), 'traceability.md が C に残っている');
+      assert.ok(!t.classes.C.includes('scripts/check-cross-repo-refs.js'), 'check-cross-repo-refs.js が C に残っている（planning#363 の名指し 2 件目）');
+      assert.ok(t.classes.A.includes('scripts/check-kit-sync.js'), 'check-kit-sync.js が分類 A に無い（キット版へ差し替えたはず）');
+      assert.ok(t.classes.A.includes('scripts/check-feedback-status-sync.js'), 'check-feedback-status-sync.js が分類 A に無い');
+      // C の新定義（planning#363）が $comment に入っている
+      const c = t.$comment.join('\n');
+      for (const n of ['置換点を埋めている', '置いた瞬間に検査が止まる', '(a) キットに対応物が無い', '(b) 雛形から書き起こし']) {
+        assert.ok(c.includes(n), `分類表の $comment に C の新定義「${n}」が無い`);
+      }
+      const repo = fs.readFileSync(path.join(REPO, '.claude/rules/traceability.repo.md'), 'utf8');
+      for (const n of ['走査基準: planning', 'FR-01..22', 'ai-stock-trading = `AST`', 'Superseded / Deprecated な ADR を引用するときの書式', '規則 9・10']) {
+        assert.ok(repo.includes(n), `companion に固有規範「${n}」が無い`);
+      }
+      if (fs.existsSync(KIT)) {
+        const kit = fs.readFileSync(path.join(KIT, '.claude/rules/traceability.md'));
+        const mine = fs.readFileSync(path.join(REPO, '.claude/rules/traceability.md'));
+        assert.ok(kit.equals(mine), 'traceability.md がキットとバイト一致でない');
+        // 届いていなかったキット是正 3 件（planning#349 表記是正 / planning#350 規則 8 / planning#354 IADR 誤引用）が入っている
+        const k = mine.toString('utf8');
+        assert.ok(!/planning issue #\d+/.test(k), 'planning#349 の表記是正が入っていない');
+        assert.ok(k.includes('走査対象に自分の記録が入るときは'), 'planning#350 の規則 8 が入っていない');
+        assert.ok(k.includes('他リポジトリの `ADR` / `IADR` を番号で引かない'), 'planning#354 の規範が入っていない');
+      } else {
+        console.log('notice: planning が未 populate のため、#755 のバイト一致は検査していない（この範囲は検査されていない）。');
+      }
+    });
+
+    // ② 必読規約の母集合の検査器。
+    ok('#755: check-reading-budget は集合ごとに判定し、予算値を出典つきで持つ', () => {
+      const rb = require('./check-reading-budget.js');
+      assert.strictEqual(rb.BUDGET_BYTES, 51200, '予算値が計画リポ運用ガイド §8 の 51,200 と違う（複製は正本と同じ値を持つ）');
+      const src = fs.readFileSync(path.join(REPO, 'scripts/check-reading-budget.js'), 'utf8');
+      assert.match(src, /ai-implementation-workflow-guide\.md/, '予算値の出典（計画リポ運用ガイド）がソースに無い');
+      const claude = rb.AGENT_SETS.find((x) => x.name === 'Claude Code');
+      assert.ok(claude && claude.globDirs.includes('.claude/rules'), 'Claude Code の集合が .claude/rules を走査していない');
+      assert.ok(!claude.files.includes('AGENTS.md'), 'AGENTS.md が Claude Code の集合に合算されている');
+      const r = spawnSync(process.execPath, [path.join(REPO, 'scripts/check-reading-budget.js'), '--self-test'], { encoding: 'utf8' });
+      assert.strictEqual(r.status, 0, `--self-test が失敗した:\n${r.stdout}\n${r.stderr}`);
+      // 実データ: warn 帯（90% 以上）でも exit 0（warn は失敗にしない）
+      const real = spawnSync(process.execPath, [path.join(REPO, 'scripts/check-reading-budget.js')], { encoding: 'utf8' });
+      assert.strictEqual(real.status, 0, `実データで落ちた:\n${real.stdout}\n${real.stderr}`);
+      assert.match(real.stdout, /Claude Code: [\d,]+ バイト/, '集合ごとの実測が出力に無い');
+    });
+
+    // ④ CI 配線。ci.yml は自己試験 ＋ reading-budget、実データ走査は doc-links-planning.yml（--require-planning）。
+    ok('#755 / #751: 実データ走査は planning を populate するジョブへ移り --require-planning が付いている', () => {
+      const ci = withoutComments(fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8'));
+      const dlp = withoutComments(fs.readFileSync(path.join(REPO, '.github/workflows/doc-links-planning.yml'), 'utf8'));
+      assert.match(ci, /node scripts\/check-reading-budget\.js --self-test/, 'ci.yml に reading-budget の自己試験が無い');
+      assert.match(ci, /run: node scripts\/check-reading-budget\.js\s*$/m, 'ci.yml に reading-budget の実走が無い');
+      assert.match(ci, /node scripts\/check-kit-sync\.js --self-test/, 'ci.yml に kit-sync の自己試験が無い');
+      assert.match(ci, /node scripts\/check-feedback-status-sync\.js --self-test/, 'ci.yml に feedback-status-sync の自己試験が無い');
+      // ci.yml で実データ走査（フラグ無し）を残すと、planning 未 populate のまま warn ＋ skip で常に緑になる（#751 の穴）
+      assert.ok(!/run: node scripts\/check-kit-sync\.js\s*$/m.test(ci), 'ci.yml に kit-sync の実データ走査（skip して緑になる形）が残っている');
+      assert.ok(!/run: node scripts\/check-feedback-status-sync\.js\s*$/m.test(ci), 'ci.yml に feedback-status-sync の実データ走査が残っている');
+      assert.match(dlp, /node scripts\/check-kit-sync\.js --require-planning/, 'doc-links-planning.yml に kit-sync の --require-planning 走査が無い');
+      assert.match(dlp, /node scripts\/check-feedback-status-sync\.js --require-planning/, 'doc-links-planning.yml に feedback-status-sync の --require-planning 走査が無い');
+      assert.match(dlp, /submodules: recursive/, 'doc-links-planning.yml が submodule を取得していない（--require-planning が常に fail する）');
     });
   }
 };

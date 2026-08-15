@@ -127,10 +127,11 @@ jobs:
         run: node scripts/check-feedback-dispatched.js
 
   # NFR / IADR-0115 決定 2 / issue #713: キット repo-template との分類（A/B/C）に基づく追随検査。
-  # ★ 本ジョブは planning を populate しないため **skip（fail-open）になる**。planning は private で
-  #   トークンが要るためであり、doc-links と同じ既知の制約である（IADR-0192 決定 4）。
-  #   **skip したことは warn 行で見えるようにしてある** —— 静かに緑にしない。
-  #   実効するのはローカル実行と、planning を populate して作業する AI である。
+  # ★ 本ジョブは planning を populate しない（private でトークンが要る）ため、**実データ走査はここでは走らせない**。
+  #   従前は実データ走査を置いて warn ＋ skip で緑にしていたが、「配線したのに一度も検査していない」状態が
+  #   緑で固定されるため、#751 / IADR-0201 決定 4 で **実データ走査は planning を populate する
+  #   doc-links-planning.yml へ移し、--require-planning を付けた**（planning#343 の裁定に追随）。
+  #   ここに残すのは自己試験だけである（planning 不要で必ず実効する）。
   kit-sync:
     runs-on: ubuntu-latest
     steps:
@@ -138,13 +139,12 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      - name: Check kit sync classification
-        run: node scripts/check-kit-sync.js
+      - name: Self-test kit sync checker
+        run: node scripts/check-kit-sync.js --self-test
 
   # NFR / planning#323 の裁定 / issue #737: 環流記録の status が計画側の裁定に追随しているかの検査。
-  # ★ 本ジョブも kit-sync と同じ理由で **skip（fail-open）になる**（planning を populate しないため）。
-  #   status の正は計画側にあり（IADR-0187 決定 1）、突合には計画側の記録が要る。
-  #   **skip したことは warn 行で見えるようにしてある** —— 静かに緑にしない（IADR-0193 決定 3）。
+  # ★ kit-sync と同じ理由で、実データ走査は doc-links-planning.yml（--require-planning 付き）が担う
+  #   （#751 / IADR-0201 決定 4 が IADR-0193 決定 3 を改定）。ここに残すのは自己試験だけである。
   feedback-status-sync:
     runs-on: ubuntu-latest
     steps:
@@ -152,12 +152,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
-      # ★ 自己試験は fixture で駆動するため planning が無くても実効する
-      #   —— skip する実データ走査と違い、**この 1 本だけは CI でも必ず何かを検査している**。
+      # ★ 自己試験は fixture で駆動するため planning が無くても実効する。
       - name: Self-test the comparison logic
         run: node scripts/check-feedback-status-sync.js --self-test
-      - name: Check feedback status sync
-        run: node scripts/check-feedback-status-sync.js
 
   # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
   # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて

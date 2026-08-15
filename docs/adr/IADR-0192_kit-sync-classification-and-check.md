@@ -9,7 +9,7 @@ related_ids:
   - IADR-0189
 author: claude
 created: 2026-08-14
-updated: 2026-08-14
+updated: 2026-08-16
 plan_refs:
   - "../../planning/tools/impl-handoff-kit/repo-template (突合の対象)"
 ---
@@ -95,6 +95,13 @@ plan_refs:
 
 **skip したことは `warn` 行で見えるようにし、ワークフローのコメントにも理由を書いた。**
 **実効するのはローカル実行と、`planning` を populate して作業する AI である。**
+
+> **［2026-08-16 追記 / #755・#751］本決定の「CI では skip する」は [[IADR-0201]] 決定 4 で改めた。**
+> planning#343 の裁定（fail-open のままだと「配線したのに一度も検査していない」状態が緑で固定される）に追随し、
+> **実データ走査は planning を populate する `doc-links-planning.yml` で `--require-planning` 付きに行い、`ci.yml` には
+> `--self-test` だけを残す**。「隠さない」は維持し、「skip する」を「populate するジョブで fail-closed に走らせる」へ置き換えた。
+> 検査器はキット版へ差し替えて分類 A にした（Windows の `` 区切りで 108 件が偽の unclassified になる欠陥も同時に解けた）。
+> あわせて決定 1 の分類表は planning#363 の C の新定義で再判定した（C 17 → 4。[[IADR-0201]] 決定 1）。
 
 ## 決定 5: **見つかった追随漏れ・環流候補は本 ADR では直さない**
 

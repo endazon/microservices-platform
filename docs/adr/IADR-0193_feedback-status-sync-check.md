@@ -9,7 +9,7 @@ related_ids:
   - IADR-0192
 author: claude
 created: 2026-08-14
-updated: 2026-08-14
+updated: 2026-08-16
 plan_refs:
   - "../../planning/draft/feedback/ (突合の対象)"
   - "../../planning/draft/feedback/20260814_planning-feedback-record-status-stale.md (計画側で観測された同型)"
@@ -83,6 +83,11 @@ plan_refs:
 
 **計画側も planning#329 の記録で「次に同じ形が出たら機械化を検討する」と述べており、本件がその「次」に当たる**
 （planning#329 へ回答済み）。
+
+> **［2026-08-16 追記 / #755・#751］本決定の配線（CI では skip し warn で見せる）は [[IADR-0201]] 決定 4 で改めた。**
+> 実データ走査は planning を populate する `doc-links-planning.yml` で `--require-planning` 付きに行い、`ci.yml` には
+> `--self-test` だけを残す（planning#343 の裁定に追随）。検査器はキット版へ差し替えて分類 A にした
+> （`--require-planning`・未知の引数の拒否・`PLANNING_FEEDBACK_DIR` と隣接クローンの探索を持つ。決定 5 の自己試験は 16 件で維持）。
 
 ## ★★ 決定 4: **写しを持たない記録を不一致にしない。ただし黙って捨てない**
 

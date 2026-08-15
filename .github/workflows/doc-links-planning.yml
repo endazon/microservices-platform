@@ -59,6 +59,15 @@ jobs:
       - name: Check doc links (including planning submodule)
         run: node scripts/check-doc-links.js --require-planning
 
+      # NFR / #751 / IADR-0201 決定 4（planning#343 の裁定に追随）: planning を populate する本ジョブで
+      # キット同期と環流記録 status の**実データ走査**を行う。ci.yml 側は自己試験だけを残した。
+      # --require-planning: 取得に失敗したとき skip ではなく fail する —— 「配線したのに一度も検査して
+      # いない」状態を緑で固定しないため（従前は ci.yml で warn ＋ skip のまま常に緑だった）。
+      - name: Check kit sync classification (requires planning)
+        run: node scripts/check-kit-sync.js --require-planning
+      - name: Check feedback status sync (requires planning)
+        run: node scripts/check-feedback-status-sync.js --require-planning
+
       # 失敗の気付き導線。夜間ジョブは PR に紐づかないため、通知が無いと「誰も見ない赤」が
       # 常態化する（実運用で 14 夜連続の失敗が放置された実績がある）。
       # 既に open の検知 issue があれば起票せず、無ければ 1 件だけ作る。
@@ -74,5 +83,5 @@ jobs:
             gh issue comment "$EXISTING" --body "夜間の doc-links (planning) が再び失敗した: $RUN_URL"
           else
             gh issue create --title "$TITLE" \
-              --body "$(printf 'planning submodule を含むリンク検査が失敗した。\n\n実行ログ: %s\n\n計画側のファイル改名に実装側の参照が未追随か、参照先ファイル名の誤り（存在しない計画書名）の可能性が高い。`node scripts/check-doc-links.js --require-planning` をローカルで実行して破損リンクを特定すること。' "$RUN_URL")"
+              --body "$(printf 'planning submodule を含むリンク検査、またはキット同期 / 環流記録 status の実データ走査（#751）が失敗した。\n\n実行ログ: %s\n\n計画側のファイル改名に実装側の参照が未追随か、参照先ファイル名の誤り（存在しない計画書名）、キット追随漏れ（分類 A の drift / unclassified）、status の追随漏れの可能性が高い。`node scripts/check-doc-links.js --require-planning` / `node scripts/check-kit-sync.js --require-planning` / `node scripts/check-feedback-status-sync.js --require-planning` をローカルで実行して特定すること。' "$RUN_URL")"
           fi
