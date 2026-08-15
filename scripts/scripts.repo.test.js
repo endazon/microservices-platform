@@ -6204,5 +6204,69 @@ module.exports = ({ ok, assert }) => {
         `SSH.NET を直接参照する csproj ができた（推移ピンの前提が変わる）:\n${out}`,
       );
     });
+
+    // --- #733: feedback/ 本文の日付つき追記ブロック（IADR-0191 決定 2）------------------
+    //
+    // IADR-0191 決定 2: feedback/ の frontmatter の状態欄は書き換え可、**本文（日付つき追記ブロックを
+    // 含む）は不可**。#721 が足した 11 件は #733 の利用者承認を得て撤去した。
+    //
+    // ★ 0 件は要求しない。残る 15 ブロックは同質ではなく、#497 由来の 10 件は「判定: accepted」という
+    //   **トリアージ結果**である。計画リポの CLAUDE.md が「裁定・決定の内容そのものは必ずリポジトリへ
+    //   残す」と定めており、消すとそちらに反する。よって baseline 付き ratchet とする
+    //   （backend-library-baseline.json / adr-index-title-baseline.json と同じ形）。
+    const feedbackAddendaCounts = () => {
+      const dir = path.join(__dirname, '..', 'feedback');
+      const out = {};
+      for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.md') && x !== 'README.md')) {
+        const raw = fs.readFileSync(path.join(dir, f), 'utf8');
+        // frontmatter は対象外（決定 2 で「可」の側）。--- で挟まれた先頭ブロックを落とす。
+        const body = raw.startsWith('---') ? raw.split('---').slice(2).join('---') : raw;
+        const n = (body.match(/［20\d\d-\d\d-\d\d\s*追記/g) || []).length;
+        if (n) out[f] = n;
+      }
+      return out;
+    };
+
+    ok('#733: feedback/ 本文の日付つき追記ブロックが baseline を超えていない（ラチェット）', () => {
+      const baseline = JSON.parse(
+        fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
+      ).files;
+      const current = feedbackAddendaCounts();
+
+      // 走査 0 件で緑になる fail-open を塞ぐ（baseline に行がある限り現状にも出るはず）。
+      assert.ok(
+        Object.keys(current).length > 0,
+        'feedback/ の走査が 0 件になった。パーサか対象ディレクトリが壊れている疑いがある',
+      );
+
+      const added = [];
+      const stale = [];
+      for (const f of new Set([...Object.keys(current), ...Object.keys(baseline)])) {
+        const cur = current[f] || 0;
+        const base = baseline[f] || 0;
+        if (cur > base) added.push(`${f}: ${base} → ${cur}`);
+        if (cur < base) stale.push(`${f}: ${base} → ${cur}`);
+      }
+      assert.deepStrictEqual(
+        added,
+        [],
+        'feedback/ の本文へ日付つき追記ブロックが新規に足された（IADR-0191 決定 2 は本文の書き換えを' +
+          '禁じている。状態の変化は frontmatter で表すこと）:\n  ' + added.join('\n  '),
+      );
+      assert.deepStrictEqual(
+        stale,
+        [],
+        'baseline の減らし忘れ（追記ブロックは消えているのに baseline に残っている）:\n  ' + stale.join('\n  '),
+      );
+    });
+
+    ok('#733: #721 が足した追記ブロックは feedback/ から消えている', () => {
+      const dir = path.join(__dirname, '..', 'feedback');
+      const hits = fs
+        .readdirSync(dir)
+        .filter((x) => x.endsWith('.md'))
+        .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('追記 / #721'));
+      assert.deepStrictEqual(hits, [], `#721 の追記ブロックが残っている:\n  ${hits.join('\n  ')}`);
+    });
   }
 };

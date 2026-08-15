@@ -105,7 +105,3 @@ FR-17 / FR-18 の保留が解けた今、この行を読んだ実装側は「SC-
   （FR-19/20・**保留継続**）／ microservices-platform#452 の SC-19 / SC-20 部分（**保留継続**）
 - 実装 `IADR-0119`（本フィードバックの内容を 2026-08-07 追補へ反映済み）
 - 計画 `05_screens/01_screens.md` §SC-19 の主要素 4「編集手段の裁定は前提検証中」も同じ前提に依存する
-
-> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
-> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
-> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

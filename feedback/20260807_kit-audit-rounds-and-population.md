@@ -127,7 +127,3 @@ dispatched: true
 - 本リポジトリ: #594（起点）／ #572 施策 3（裁定元）／ PR #598
 - 先例: #507 の環流記録 `feedback/20260807_kit-cross-repo-issue-ref-check.md`
 - 規約: [[IADR-0115]] 決定 2（固有デルタ 4 種）・決定 3（汎用改善は環流する）
-
-> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
-> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
-> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

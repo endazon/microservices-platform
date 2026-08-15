@@ -108,7 +108,3 @@ Q19 の趣旨（運用者に破壊的操作をさせない）は**画面の話�
 - 実装の判断の全文: [作業仕様書 §追補 1](../docs/specs/20260809_issue-629_document-write-admin-only.md)
 - **本件と対になる環流**: 公開・アーカイブが破壊的操作の列挙に無い件も同時に伝達した
   （planning `draft/feedback/20260809_destructive-operation-list-publish-archive.md`。同じ PR planning#306）
-
-> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
-> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
-> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

@@ -85,7 +85,3 @@ PR 全体（生成物・lock を除く。キット `pr-size.yml` の既定 `EXCL
 
 > **★ 「環流した」と書けるのは、計画リポへのコピーまたは Issue 起票まで済んだときだけ**である
 > （`docs/README.md` 運用ルール 5）。
-
-> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
-> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
-> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "feedback/ 本文に残る日付つき追記ブロックの baseline（NFR / #733）。",
+    "IADR-0191 決定 2: feedback/ の frontmatter は書き換え可、本文（日付つき追記ブロックを含む）は不可。",
+    "ratchet: 新規混入は fail、ここに載る残件は許容、消えたのに残っていれば fail（baseline を縮める）。",
+    "",
+    "★ 0 件を要求しない理由 —— 残る 15 ブロックは同質ではない。",
+    "  #497 由来の 10 件は『判定: accepted』というトリアージ結果であり、ADR-0012 の Accepted 化の根拠である。",
+    "  project-planning の CLAUDE.md は『裁定・決定の内容そのものは必ずリポジトリへ残す。環流記録の",
+    "  トリアージ結果…に記録し、送付物が手元から失われても決定の根拠を追える状態にする』と定めており、",
+    "  これらを消すと計画リポの規約に反する。frontmatter には無い情報でもある。",
+    "  IADR-0191 決定 2 と『裁定の記録は残す』の衝突そのものは本 baseline では解けない（issue で追跡する）。",
+    "",
+    "撤去済み: #721 由来の 11 件（#733 / 利用者承認 2026-08-15）。述べていた内容が frontmatter の値そのもので、",
+    "  理由は IADR-0187、経緯は git 履歴にあり、撤去しても情報が失われないことを確認したうえで消した。",
+    "値はファイル名 → 本文に残る追記ブロック数（frontmatter は数えない）。"
+  ],
+  "files": {
+    "20260703_conversion-retry-vs-image-fallback.md": 1,
+    "20260703_wiki-selfhosted-supersedes-adr-0011.md": 1,
+    "20260704_plan-status-reflux-fr-adr.md": 1,
+    "20260705_internal-service-auth-nfr-deviation.md": 1,
+    "20260705_wiki-js-deployment-follows-adr-0011.md": 1,
+    "20260709_composability-open-items-resolved.md": 1,
+    "20260709_composable-implementation-guide-upstream.md": 1,
+    "20260709_dotnet10-target-framework-deviation.md": 1,
+    "20260709_sc11-wireframe-drawio.md": 1,
+    "20260710_repo-positioning-and-unit-structure.md": 1,
+    "20260805_sc09-11-admin-ops-contract-gaps.md": 2,
+    "20260809_document-write-machine-client.md": 1,
+    "20260809_sc06-manual-sync-role-classification.md": 1,
+    "20260811_nfr-numbering-has-no-slot-for-meta-work.md": 1
+  }
+}
