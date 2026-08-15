@@ -60,6 +60,32 @@ grep -rn "record SourceItem\|record RawDocumentFetched" --include=*.cs src/
 | 5 | フロント属性辞書 | `knowledge/frontend/src/features/sc03-document/attributes.ts:34`<br>`known = ['confidentiality','department']` | `owner` / `lifecycle` はラベルも無い | **対象外**（除外理由 B） |
 | 6 | 既存 2,368 件 | — | 3 属性とも欠落 | **対象外**（除外理由 C。**裁定で明示**） |
 | 7 | 属性辞書（`AttributeDefinitions`） | AuthorizationService | **0 件** | **対象外**（除外理由 D） |
+| 8 | **★ AST が platform へ直接書き込む経路** | `src/ai-stock-trading/.../AiStockTrading.Shared.KnowledgeBase/Adapters/HttpKnowledgeBaseWriter.cs:83` `BuildAttributes`<br>（上流は `KnowledgeBaseWriterSink.cs:45` / `ReportKnowledgeMapper.cs:19`） | **`confidentiality` のみ補完**。`owner` / `department` / `lifecycle` は入らない | **対象外**（除外理由 **E**。**別リポジトリ。AST#520 を起票**） |
+| 9 | **`DocumentNormalized` の第 2 の発行元**（図の補正後の再投入） | `ConversionService/.../Services/FigureCorrectionService.cs:84`<br>`Attributes: source?.Attributes ?? new Dictionary<string, string>()` | **原本イベントから復元**するため経路 1 の補完が伝播する。ただし `GetSourceEventAsync` が `null` を返すと**属性 0 件で再発行**する | **対象外**（除外理由 **F**） |
+
+> ### ★★ 経路 8 は当初この表から落ちていた（**規則 1 の再発**）
+>
+> **`traceability-auditor` 監査（🔴-1）が検出した。** 本仕様書に書いた grep をそのまま実行すると
+> **AST 配下だけで 17 件ヒットする**。
+>
+> ```console
+> $ grep -rn "confidentiality" --include=*.cs --include=*.ts --include=*.tsx src/ | grep -c "src/ai-stock-trading/"
+> 17
+> ```
+>
+> **落とした機序**: 走査自体は当たっていたが、**出力を 40 件で打ち切って読んだ**ため
+> AST のヒットが視界に入らなかった。`git grep` が submodule へ降りない問題（既知）とは**別の失敗**で、
+> **「引いたが最後まで見なかった」**である。
+>
+> **これが最も重い漏れである理由**: **#516 が測った 2,368 件を作っているのがこの経路そのものである。**
+> #516 本文が「計画の属性体系に無い取り込み経路固有のメタデータ」として挙げた
+> `kind` / `symbol` / `publishedAt` / `periodKey` / `confirmedAt` / `assumptionsVersion` は、
+> 実測するとすべて AST 由来である（上記 2 ファイル）。
+>
+> **帰結（#516 のクローズ判断に直結する）**: 本 PR の修正は経路 1・2 に閉じており、
+> **経路 8 を一切通らない**。したがって **#516 の受け入れ基準 1（新規文書に必須属性 4 種）と
+> 2（`measure` の「必須だが実データに無い属性」が空になる）は本 PR では満たせない。**
+> 除外理由 C（既存分は破棄予定）は**新規に作られ続ける分を解決しない**。
 
 ### 除外理由
 
@@ -75,6 +101,15 @@ grep -rn "record SourceItem\|record RawDocumentFetched" --include=*.cs src/
   （「当該データは実装側で破棄が予定されており、移行を書いても破棄で失われる」。#457）。
 - **D（属性辞書 0 件）**: #516 本文が「**併せて検討する**」と書いた任意項目であり、
   ABAC ポリシー自体が 0 件の現状では**投入しても評価に効かない**。本作業では扱わない。
+- **F（図の補正後の再投入）**: **通常は経路 1 の補完が原本イベント経由で伝播する**ため、本作業の修正が効く。
+  `null` 分岐（`?? new Dictionary<string, string>()`）で属性 0 件になる経路は**本作業以前からの既存債務**であり、
+  同ファイル自身が「**空で再発行すると取り込み側が機密区分を読めず、文書の可視範囲が変わってしまう**」
+  （[[IADR-0154]] 決定 3）と警告している。**扱う属性が 1 → 3 に増えたぶん影響面は広がったが、
+  壊れ方の質は変わらない。**本作業では触れない（`traceability-auditor` 監査 🟡-1 が検出）。
+- **E（AST の書き込み経路）**: **別リポジトリ（`endazon/ai-stock-trading`）の実装**であり、
+  本リポジトリからは submodule の pin を通してしか変えられない。**AST#520 として起票した。**
+  **「射程外だから無視してよい」という意味ではない** —— 経路 8 が残る限り
+  #516 の受け入れ基準 1・2 は満たされないため、**#516 のクローズ条件に AST#520 の完了を含める。**
 
 ### ★ `lifecycle` は本作業の対象外である（**裁定が無いため**）
 
@@ -106,19 +141,27 @@ grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 `WithConfidentialityFailsafe` は既に **`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の
 4 箇所を一元化する先例**（IADR-0019）である。同じ関数へ `owner` / `department` を足す。
 
-| 属性 | 解決順 | 終端 |
-| --- | --- | --- |
-| `confidentiality` | 明示指定 | `internal`（現行のまま） |
-| `department` | 明示指定 → **データソース既定属性** | **`unassigned`** |
-| `owner` | 明示指定 → ソース側の更新者 | **`system`** |
+| 属性 | 計画が定めた解決順 | 実装での段 | 終端 |
+| --- | --- | --- | --- |
+| `confidentiality` | 明示指定 | 明示指定 | `internal`（現行のまま） |
+| `department` | 投入元（ソース）の所属 → データソース既定属性 | **`DefaultAttributes` の値のみ**（前段は**未実装**） | **`unassigned`** |
+| `owner` | ソース側の更新者 → 予約値 | **`DefaultAttributes` の値のみ**（前段は**器が無い**） | **`system`** |
 
 **明示指定は上書きしない**（現行の `confidentiality` と同じ規約）。
 
-### 決定 2: 取り込み経路の `owner` は**当面必ず `system` になる**。これは仕様である
+### 決定 2: `owner` / `department` とも、**明示指定が無い限り**予約値へ倒れる
 
-コネクタの契約 `SourceItem(string Path, DateTimeOffset ModifiedAt, long Size)`
-（`Ports/IDataSourceConnector.cs:25`）は **更新者を運ばない**。
-したがって「ソース側の更新者を利用者識別子へ解決する」段は**実装できる入力が無い**。
+**両属性とも実運用では事実上 100% が予約値になるが、理由が異なる。混同しない。**
+
+- **`owner`**: コネクタ契約 `SourceItem(string Path, DateTimeOffset ModifiedAt, long Size)`
+  （`Ports/IDataSourceConnector.cs:25`）に**更新者を運ぶフィールドが無い**。**器そのものが無い** → **#752**
+- **`department`**: **供給源はあるが写像が未実装。** `SourceItem.Path` はフォルダを運んでおり、
+  計画 L51 は「ソースのメタ（所在・**部門**・**フォルダ**・更新者等）を ABAC 基本属性へマッピングする」、
+  L34 は「**フォルダ単位の既定属性を継承**」と定めている。加えて **SC-06 の登録フォームに
+  `department` の入力欄が無い**（`DataSourceForm.tsx:64` は `confidentiality` だけを送る） → **#754**
+
+**「常に」とは書かない** —— `DefaultAttributes` に明示指定があれば保持される
+（テスト `Create_WithExplicitOwner_PreservesValue`）。**倒れるのは明示指定が無いときである。**
 
 計画はこの状態を**予期している**。
 
@@ -126,8 +169,7 @@ grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 > **恒久的に積み上がるなら、それはコネクタが更新者・部門を運んでいないという報告**であって、
 > 正常な状態ではない。**両方とも件数を観測し、環流債務の測定値として読む。**
 
-**`SourceItem` に更新者を足すのは本作業の射程外**（コネクタ 4 実装すべての契約変更を伴い、
-1 issue = 1 PR を超える）。**別 issue として切り出す。**
+いずれも本作業の射程外として**別 issue へ切り出す**（1 issue = 1 PR）。
 
 ### 決定 3: 予約値の件数を観測できるようにする
 
@@ -138,17 +180,29 @@ grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 
 ## 受け入れ基準
 
-- [ ] 新規に同期された文書に `confidentiality` / `owner` / `department` が**必ず**付与される
-- [ ] 明示指定がある場合は**上書きされない**（3 属性とも）
-- [ ] データソース既定属性に `department` があれば**それが使われ**、無い場合のみ `unassigned`
-- [ ] `owner` は解決できないとき `system`（**現状は常にこの経路**）
-- [ ] 予約値の件数が `measure-abac-combinations.js` の出力に現れる
-- [ ] `lifecycle` の裁定依頼を計画リポへ環流し、`feedback/` に記録した
-- [ ] `SourceItem` に更新者を載せる件を別 issue として起票した
+### 本作業で満たすもの
 
-> **#516 の受け入れ基準 3 番目**（「ADR-0036 の所有者判定が実データに対して機能することをテストで示す」）
-> は**本作業では満たせない**。動的束縛が未実装（計画側も「未着手」と明記）で、大玉 #451 の射程である。
-> **#516 のクローズ時にこの線引きを明記する。**
+- [x] **経路 1・2 で**同期された文書に `confidentiality` / `owner` / `department` が**必ず**付与される
+- [x] 明示指定がある場合は**上書きされない**（3 属性とも）
+- [x] データソース既定属性に `department` があれば**それが使われ**、無い場合のみ `unassigned`
+- [x] `owner` は解決できないとき `system`（**明示指定が無い限りこの経路**）
+- [x] 予約値の件数が `measure-abac-combinations.js` の出力に現れる
+- [x] `lifecycle` の裁定依頼を計画リポへ環流し、`feedback/` に記録した（planning#361）
+- [x] `SourceItem` に更新者を載せる件を **#752** として起票した
+- [x] `department` の供給源が塞がっている件を **#754** として起票した
+- [x] **AST の書き込み経路（経路 8）を母集合へ加え、AST#520 として起票した**
+
+### ★ #516 の受け入れ基準に対する線引き（**クローズ判断はこの表で行う**）
+
+| # | #516 の受け入れ基準 | 本作業で | 満たすのに要るもの |
+| --- | --- | --- | --- |
+| 1 | 新規に取り込まれた文書に必須属性 **4 種**がすべて付与されている | **満たせない** | `lifecycle` の裁定（planning#361）＋ **AST#520**（経路 8 が付けない） |
+| 2 | `measure-abac-combinations.js` の「必須とするが実データに無い属性」が**空**になる | **満たせない** | 同上。**#457 の破棄だけでは解決しない**（経路 8 が新規に作り続けるため） |
+| 3 | ADR-0036 の所有者判定が実データに対して機能することをテストで示す | **満たせない** | **大玉 #451**（動的束縛が未実装。計画側も「未着手」と明記） |
+
+> **3 件とも満たせないが、いずれも「やらなかった」のではなく「本作業の射程外に依存している」。**
+> **#516 は本 PR ではクローズしない。** 上表の依存が解けた時点で改めて判断する。
+> **クローズするならこの表を issue へ転記すること。**
 
 ## テスト方針
 

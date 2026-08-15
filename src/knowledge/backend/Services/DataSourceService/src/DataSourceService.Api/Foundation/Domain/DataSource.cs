@@ -96,11 +96,20 @@ public class DataSource
         // `department` はデータソース既定属性から補い、それも無ければ予約値を入れる。
         // **終端まで書く** —— 既定部門が必ず設定される保証はどこにも無く、終端が無いと
         // `owner` にだけ受け皿があって `department` は黙って欠落する非対称が残る（計画の理由書き）。
+        //
+        // **供給源は存在するが写像が未実装である。** `SourceItem.Path` はフォルダを運んでおり、計画は
+        // 「ソースのメタ（所在・部門・フォルダ・更新者等）を ABAC 基本属性へマッピングする」
+        // （09_datasource-connectors L51）・ファイルサーバーは「フォルダ単位の既定属性を継承」（同 L34）と
+        // 定めている。欠けているのは**フォルダ → 部門コードの写像規則**であり、加えて SC-06 の登録
+        // フォームに入力欄が無い。**したがって実運用では事実上ここへ倒れる。**追跡は #754。
         FillIfBlank(result, DepartmentKey, UnresolvedDepartment);
 
         // `owner` はソース側の更新者を解決して入れるのが正だが、**コネクタの契約
-        // `SourceItem(Path, ModifiedAt, Size)` は更新者を運ばない**。したがって現状この経路は
-        // **常に予約値へ倒れる**。これは仕様であり、解消は `SourceItem` の契約変更を要する（#752）。
+        // `SourceItem(Path, ModifiedAt, Size)` は更新者を運ばない**。`department` と違い
+        // **器そのものが無い**ため、解消は `SourceItem` の契約変更を要する（#752）。
+        //
+        // **ただし「常に」予約値になるわけではない** —— `DefaultAttributes` に明示指定があれば
+        // 上書きしない（テスト `Create_WithExplicitOwner_PreservesValue`）。API 経由なら現在も設定できる。
         FillIfBlank(result, OwnerKey, UnresolvedOwner);
 
         return result;

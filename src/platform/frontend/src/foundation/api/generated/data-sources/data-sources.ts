@@ -196,7 +196,7 @@ export const getBffDataSourceCreateUrl = () => {
 }
 
 /**
- * FR-05: `defaultAttributes` 未指定時は後段が機密区分 `internal` をフェイルセーフ補完する。
+ * FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned`）。明示指定は上書きしない。
  * **登録は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
  * 従前は運用者にも開いていた）。
  * @summary FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）
@@ -411,7 +411,7 @@ export const getBffDataSourceUpdateUrl = (id: string,) => {
  * 裁定 Q16（#534）: 従前は更新の口が無く、登録済みソースの変更が「削除→再登録」でしかできなかった。
  * **削除→再登録は ID と履歴を切る**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。
  * **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は更新の対象外**である（履歴を巻き戻さない）。
- * FR-05: `defaultAttributes` は後段が機密区分 `internal` をフェイルセーフ補完する。
+ * FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned`）。明示指定は上書きしない。
  * **無効（`disabled`）なソースも更新できる**（認証情報のローテーションは無効中にも起こる）。
  * **`config` / `defaultAttributes` の省略は 400 で拒否する**（#627 の AI レビュー 🟡）——
  * PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（`apiToken` 等）が黙って消える。

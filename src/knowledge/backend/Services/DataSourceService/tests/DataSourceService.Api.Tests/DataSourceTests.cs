@@ -173,21 +173,39 @@ public class DataSourceTests
         ds.DefaultAttributes["confidentiality"].Should().Be("internal");
     }
 
-    // #516: 本対応マージ前から登録済みで owner / department を持たないデータソースでも、
-    // 発行時に必ず補完される（最終防衛線。IADR-0019 と同じ役割）
+    // #516, IADR-0019: 本対応マージ前から登録済みで owner / department を持たないデータソースでも、
+    // 発行時に必ず補完される（最終防衛線）。
+    //
+    // **公開 API 経由では旧状態を作れない** —— `Create` / `Update` / `Patch` はいずれもフェイルセーフを
+    // 通るため、それらで組み立てた時点で属性は既に埋まっている。**それを読んでも本検査にならない**
+    // （`GetEffectiveAttributes` の補完を外しても緑のままになり、偽の安全網になる）。
+    // したがって **EF の materialize と同じ経路**（private ctor ＋ private setter）を反射で再現し、
+    // **補完を一度も通っていない旧行**を作って当てる。
     [Fact]
-    public void GetEffectiveAttributes_FillsRequiredAttributesForLegacySources()
+    public void GetEffectiveAttributes_FillsRequiredAttributesForLegacyRows()
     {
-        var ds = DataSource.Create("fs", "filesystem", "smb://share");
-        // 既存データを模して属性を機密区分だけへ差し戻す（Patch はフェイルセーフを通すため Update を使う）
-        ds.Update("fs", "filesystem", "smb://share",
-            defaultAttributes: new Dictionary<string, string> { ["confidentiality"] = "public" });
+        var ds = MaterializeLegacyRow(new Dictionary<string, string> { ["confidentiality"] = "public" });
+
+        // 前提を明示する: 旧行は補完を通っていない（この assert が落ちるなら再現方法が壊れている）
+        ds.DefaultAttributes.Should().NotContainKey("owner");
+        ds.DefaultAttributes.Should().NotContainKey("department");
 
         var effective = ds.GetEffectiveAttributes();
 
         effective["confidentiality"].Should().Be("public");
         effective["owner"].Should().Be("system");
         effective["department"].Should().Be("unassigned");
+    }
+
+    // EF Core が DB から復元するのと同じ形（private 既定コンストラクタ ＋ private setter）で
+    // DataSource を組み立てる。**フェイルセーフを一度も通さない**ことが目的。
+    private static DataSource MaterializeLegacyRow(Dictionary<string, string> defaultAttributes)
+    {
+        var ds = (DataSource)Activator.CreateInstance(typeof(DataSource), nonPublic: true)!;
+        typeof(DataSource)
+            .GetProperty(nameof(DataSource.DefaultAttributes))!
+            .SetValue(ds, defaultAttributes);
+        return ds;
     }
 
     // #516: lifecycle は**意図的に補完しない**（計画が取り込み経路での既定を裁定していない）。

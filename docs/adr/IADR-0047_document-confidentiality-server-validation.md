@@ -12,7 +12,7 @@ related_ids:
   - IADR-0019
 author: claude
 created: 2026-07-10
-updated: 2026-07-10
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/03_usecases (UC-03 例外フロー: 必須属性未設定は保存拒否)"
   - "../../planning/projects/microservices-platform/05_screens (SC-05: 機密区分は必須)"
@@ -71,7 +71,8 @@ admin/operator ロールを持つ API 直叩き・別クライアントからは
    [[IADR-0019]] のフェイルセーフ既定（`internal`）に揃えた一括バックフィルは任意の ops follow-up とし、
    本 PR には含めない。
    - **注意（欠落だけでなく非正準値も同じ「詰み」になる）**: 取り込み経路（`CreateNormalized`/`ApplyNormalized`）は
-     本 PR の検証対象外のため、データソース既定属性（[[IADR-0019]] `DataSource.WithConfidentialityFailsafe`）に
+     本 PR の検証対象外のため、データソース既定属性（[[IADR-0019]] `DataSource.WithConfidentialityFailsafe`。
+     **#516 で `WithRequiredAttributeFailsafe` へ改称し `owner` / `department` を追加した。[[IADR-0199]]**）に
      管理者が非正準値（誤字・別ケース、例 `"Confidential"`）を設定すると、取り込みでそのまま永続化され得る。
      この文書はその後の手動 `PUT`/`PATCH` が 400 で通らなくなる（＝欠落文書と同じ「修正要求」の袋小路）。
      取り込み側の値正準性チェックは follow-up（下記）で扱う。
