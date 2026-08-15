@@ -6256,6 +6256,216 @@ module.exports = ({ ok, assert }) => {
       if (!fs.existsSync(path.join(REPO, 'planning', 'projects'))) return; // 未 populate なら対象外
       assert.ok(fs.existsSync(dir), `planning に projects/${pin.PLANNING_PROJECT} が無い（改名・移動を疑う）`);
     });
+
+    // --- #749: 比較の向き（IADR-0202 案 B） ------------------------------------
+    //
+    // ★★ **分類器は正しく、入力が壊れていた。** submodule の `origin` が pin より後ろを指すと
+    //   `git diff <新しい pin> <古い比較元>` という逆方向の比較になり、出てくるのは
+    //   「pin にあって比較元に無いもの」だけ（実測 66 件＝ draft / tools / 索引）。
+    //   分類器はそれらを正しく「効かない」と判定し、**緑になった。**
+    //
+    // ★ **純関数だけでは再現できない型である。** 壊れているのは入力（gitlink と remote ref の
+    //   位置関係）であり、実物の git リポジトリが要る。fixture をプロセスに食わせる。
+    ok('pin 鮮度 #749: 比較元が pin より後ろなら「効く変更はありません」と報告しない（fixture ＋ 変異試験）', () => {
+      const { execFileSync } = require('child_process');
+      const os = require('os');
+      try {
+        execFileSync('git', ['--version'], { stdio: 'ignore' });
+      } catch (e) {
+        console.log('notice: git が無いため #749 の fixture 検査は実施していない（この範囲は検査されていない）。');
+        return;
+      }
+      // ローカル設定（init.defaultBranch 等）に左右されないよう、環境を固定する。
+      const ENV = {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_AUTHOR_NAME: 'fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+        GIT_COMMITTER_NAME: 'fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+      };
+      const g = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: ENV }).trim();
+      const init = (dir) => {
+        fs.mkdirSync(dir, { recursive: true });
+        execFileSync('git', ['init', '-q', '-b', 'main', dir], { env: ENV });
+      };
+      const write = (file, text) => {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, text);
+      };
+      const script = path.join(SCRIPTS, 'check-planning-pin-freshness.js');
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pin-freshness-'));
+      try {
+        // 上流 planning: A（ADR は Proposed）→ B（draft を足すだけ）→ C（ADR が Accepted）
+        const up = path.join(tmp, 'planning-upstream');
+        init(up);
+        const P = path.join(up, 'projects', pin.PLANNING_PROJECT);
+        write(path.join(P, '07_adr', 'ADR-0001_x.md'), '---\ntitle: x\nstatus: Proposed\n---\n');
+        write(path.join(P, '02_requirements', '01_requirements.md'), '# 要求\n');
+        g(up, 'add', '-A');
+        g(up, 'commit', '-qm', 'A');
+        const A = g(up, 'rev-parse', 'HEAD');
+        write(path.join(up, 'draft', 'feedback', '20260815_x.md'), '# draft\n');
+        g(up, 'add', '-A');
+        g(up, 'commit', '-qm', 'B');
+        const B = g(up, 'rev-parse', 'HEAD');
+        write(path.join(P, '07_adr', 'ADR-0001_x.md'), '---\ntitle: x\nstatus: Accepted\n---\n');
+        g(up, 'add', '-A');
+        g(up, 'commit', '-qm', 'C');
+        const C = g(up, 'rev-parse', 'HEAD');
+
+        // 実装リポを 2 本作る。pin（gitlink）と submodule 内の origin/HEAD を独立に置く。
+        const implRepo = (name, { pinAt, originAt }) => {
+          const repo = path.join(tmp, name);
+          init(repo);
+          execFileSync('git', ['clone', '-q', up, path.join(repo, 'planning')], { env: ENV });
+          const sub = path.join(repo, 'planning');
+          g(sub, 'checkout', '-q', pinAt);
+          g(sub, 'update-ref', 'refs/remotes/origin/main', originAt);
+          g(sub, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
+          write(path.join(repo, '.gitmodules'), `[submodule "planning"]\n\tpath = planning\n\turl = ${up}\n`);
+          g(repo, 'add', '-A');
+          g(repo, 'commit', '-qm', 'pin');
+          return repo;
+        };
+        // **逆方向**（#749 の再現）: pin = B、比較元 = A。B は draft を足しただけなので、
+        // 逆向きの diff は draft 1 件だけになり、旧実装は「効く変更はありません」と報告する。
+        const reverse = implRepo('impl-reverse', { pinAt: B, originAt: A });
+        // **正方向**（絞りすぎていないことの側）: pin = A、比較元 = C（ADR が Accepted になった）。
+        const forward = implRepo('impl-forward', { pinAt: A, originAt: C });
+
+        // `--no-fetch`: fetch すると origin/main が C へ戻り、仕込んだ位置関係が消える。
+        // 実際の #749 は「fetch は成功したが remote 自体が古い」形であり、位置関係としては同値。
+        const run = (repo, bin = script) =>
+          spawnSync(process.execPath, [bin, '--root', repo, '--no-fetch'], { encoding: 'utf8', env: ENV });
+
+        // ① 修正後: 逆方向で緑（＝「効く変更はありません」）を返さない。
+        const r = run(reverse);
+        const out = `${r.stdout || ''}${r.stderr || ''}`;
+        assert.strictEqual(r.status, 0, `fail-open が壊れている（#749 の受け入れ基準 2）:\n${out}`);
+        assert.doesNotMatch(out, /着手可否に効く変更はありません/, `逆方向の比較で緑を返した:\n${out}`);
+        assert.match(out, /比較できていません/, `「比較できていない」と言っていない:\n${out}`);
+        // 受け入れ基準 3: **比較元をどこから取ったか**が出力にあること。
+        assert.match(out, /比較元: planning の origin\/HEAD/, `比較元の ref が出力に無い:\n${out}`);
+        assert.ok(out.includes(A.slice(0, 7)), `比較元の commit が出力に無い:\n${out}`);
+        assert.ok(out.includes(up), `比較元の remote URL が出力に無い:\n${out}`);
+        assert.match(out, /ローカルパス/, `origin がローカルパスである注意が出ていない:\n${out}`);
+
+        // ② 正方向は従来どおり鳴る（門を厳しくしすぎて検知を殺していないことの側）。
+        const rf = run(forward);
+        const outF = `${rf.stdout || ''}${rf.stderr || ''}`;
+        assert.strictEqual(rf.status, 0, `正方向で落ちた:\n${outF}`);
+        assert.match(outF, /adr-accepted/, `正方向で ADR の Accepted 化を鳴らさなかった:\n${outF}`);
+        assert.match(outF, /比較元: planning の origin\/HEAD/, `正方向の出力に比較元が無い:\n${outF}`);
+
+        // ③ **変異試験**: 祖先判定を外した複製は、同じ fixture で緑になる（＝ #749 の修正前の挙動）。
+        //   **正例だけの緑は「門が効いている」ことを示さない。**
+        const mutDir = path.join(tmp, 'mutant');
+        fs.mkdirSync(path.join(mutDir, 'lib'), { recursive: true });
+        fs.copyFileSync(path.join(SCRIPTS, 'lib', 'ci-annotate.js'), path.join(mutDir, 'lib', 'ci-annotate.js'));
+        const src = fs.readFileSync(script, 'utf8');
+        // ★ 変異点は**呼び出し側**であること。`relationOf(root, pin, head)` だけで置換すると
+        //   関数**宣言**の側（同じ引数名）に当たり、構文エラーで「落ちたから赤」になる
+        //   —— それは門が効いた証拠ではない。**一意に当たる形で置換し、件数も確かめる。**
+        const target = 'const relation = relationOf(root, pin, head);';
+        assert.strictEqual(src.split(target).length - 1, 1, `変異点が一意でない: ${target}`);
+        const mutated = src.replace(target, 'const relation = RELATION.FORWARD;');
+        assert.notStrictEqual(mutated, src, '変異が当たっていない（祖先判定の呼び出し箇所が変わった）');
+        const mutBin = path.join(mutDir, 'check-planning-pin-freshness.js');
+        fs.writeFileSync(mutBin, mutated);
+        const rm = run(reverse, mutBin);
+        const outM = `${rm.stdout || ''}${rm.stderr || ''}`;
+        assert.match(
+          outM,
+          /着手可否に効く変更はありません/,
+          `変異版が緑にならなかった。fixture が #749 を再現できていない（この回帰テストは無意味）:\n${outM}`,
+        );
+      } finally {
+        fs.rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    // 決定 2（IADR-0202）: 壊れた比較にも気付き導線を通す。**警告注釈は緑のジョブに埋もれる。**
+    ok('pin 鮮度 #749: 夜間ワークフローが「比較できていない」でも issue を立てる', () => {
+      const text = fs.readFileSync(path.join(REPO, '.github/workflows/planning-pin-freshness.yml'), 'utf8');
+      assert.match(text, /outputs\.comparison == 'reverse'/, '壊れた比較の通知条件が無い');
+      assert.match(text, /outputs\.comparison == 'diverged'/, '分岐の通知条件が無い');
+      // **タイトルを分ける**（「pin が古い」と「比較できていない」は別の事象）。
+      const titles = [...text.matchAll(/^\s*TITLE="([^"]+)"/gm)].map((m) => m[1]);
+      assert.strictEqual(new Set(titles).size, titles.length, `issue タイトルが重複している: ${titles.join(' / ')}`);
+    });
+
+    // 決定 3（IADR-0202）: 比較元を **全経路** に出す。
+    //
+    // ★ この検査を置く理由: フェーズ末クロス監査が、決定 3 を定めた当の PR で
+    //   **0 件走査の fail 経路だけが sourceLine を落としている**のを見つけた。
+    //   「関数の出力先を増やしたとき、呼び出し口のうち 1 つにだけ配線し忘れる」型は
+    //   本リポで **4 度目**（#507 / #590 / #612 / 本件）であり、規約が定める
+    //   「同型の事故が 2 回起きたら検査器を足す」条件を満たしている。
+    //
+    // 期待値は**列挙を書き写さず、ソースから導出**する（判定を出す経路が増えても自動で捕まる）。
+    ok('pin 鮮度 #749: 判定を出す全経路が比較元（sourceLine）を含む', () => {
+      const src = fs.readFileSync(path.join(REPO, 'scripts/check-planning-pin-freshness.js'), 'utf8');
+      // **比較元が確定した後**の経路だけを対象にする。sourceLine の宣言より前で return する経路
+      // （submodule 未 populate / 対象プロジェクト不在）は、そもそも比較していないので対象外である。
+      const decl = src.indexOf('const sourceLine =');
+      assert.ok(decl > 0, 'sourceLine の宣言を見つけられない（走査が壊れている）');
+      const after = src.slice(decl);
+
+      // ★ 出口は `console.log` / `console.error` だけではない。**`warn(...)` ヘルパ経由の 2 経路**
+      //   （reverse/diverged の早期リターンと、乖離あり・理由ありの最終経路）を取りこぼすと、
+      //   この検査が守るはずの当の事故がその 2 経路で再発しても捕まらない（AI レビュー指摘）。
+      //
+      // 引数が変数名だけの経路があるため（`warn(broken, …)` / `warn(message, …)`）、引数の字面だけ見ても
+      // 足りない。**その出口のメッセージを組み立てているコード領域**を見る —— 直前の出口の終わりから
+      // 当の出口の終わりまでが、その出口のために走るコードである。
+      const emissions = [...after.matchAll(/(?:console\.(?:log|error)|warn)\(([\s\S]*?)\n?\s*\);/g)].map((m) => ({
+        arg: m[1],
+        head: m[0].slice(0, 120),
+      }));
+      assert.strictEqual(
+        emissions.length,
+        6,
+        `判定を出す経路が 6 件から変わった（${emissions.length} 件）。増減したら本検査の期待値も見直すこと。`,
+      );
+
+      // `const <id> = …;` の**宣言文だけ**を切り出す（`[` `{` `(` の深さを数えて終端の `;` を見つける）。
+      // 領域で切ると、間に別の出口を挟む変数（`lines` は `message` より前で宣言される）を誤判定する。
+      const declarationOf = (id) => {
+        const start = after.indexOf(`const ${id} = `);
+        if (start < 0) return '';
+        let depth = 0;
+        for (let i = start; i < after.length; i += 1) {
+          const ch = after[i];
+          if ('([{'.includes(ch)) depth += 1;
+          else if (')]}'.includes(ch)) depth -= 1;
+          else if (ch === ';' && depth === 0) return after.slice(start, i + 1);
+        }
+        return after.slice(start);
+      };
+
+      // 引数が変数名だけの出口は、**その変数の宣言**が比較元を含むことを要求する。
+      // 段数を増やして総当たりすると、無関係な変数の宣言に当たって黙って緑になる（実測した）。
+      // よって辿るのは 1 段だけとし、辿った先も明示する。
+      const VIA_VARIABLE = { broken: 'broken', message: 'lines' };
+
+      const missing = emissions
+        .filter((e) => {
+          if (e.arg.includes('sourceLine')) return false;
+          const named = e.arg.trim().match(/^([a-z][\w$]*)\s*,/);
+          if (!named) return true;
+          const via = VIA_VARIABLE[named[1]];
+          if (!via) return true;
+          return !declarationOf(via).includes('sourceLine');
+        })
+        .map((e) => e.head);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        `比較元を出さない経路が残っている（IADR-0202 決定 3）:\n${missing.join('\n---\n')}`,
+      );
+    });
   }
 
   // --- #716: 脆弱な推移依存のピン（IADR-0186） ---------------------------------
