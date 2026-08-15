@@ -5,11 +5,13 @@ status: done
 related_ids:
   - FR-19
   - FR-20
+  - SC-19
   - ADR-0011
   - ADR-0036
   - ADR-0037
   - IADR-0021
   - IADR-0119
+  - IADR-0142
 author: claude
 created: 2026-08-15
 updated: 2026-08-15
@@ -19,6 +21,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 related_specs:
   - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
+  - "../adr/IADR-0142_fr19-20-scoped-release-by-overturn-range.md"
   - "../../feedback/20260815_wikijs-personal-scope-verification.md"
 ---
 
@@ -77,15 +80,43 @@ related_specs:
 ページ属性へ突き合わせる。フィルタ間 AND・値集合内 OR・**属性欠落は不一致**（安全側）・
 `Granted=false` は deny-by-default。
 
-### 3.4 ★ 個人スコープに必要な 2 つの部品が**いずれも未実装**である
+### 3.4 ★ 個人スコープに必要な部品が **3 つとも未実装**である
 
-| 必要な部品 | 実測 |
-| --- | --- |
-| 文書の **`owner` 属性** | **0 件**（#456 / PR #515 が実データ 2,368 件で実測。#516 が追跡中） |
-| **`${current_user}` の動的束縛**（ADR-0036 の判定規則） | **バックエンド全体で 0 件**（`current_user` / `${current` の全走査） |
+| # | 必要な部品 | 実測 |
+| --- | --- | --- |
+| 1 | 文書の **`owner` 属性** | **0 件**（#456 / PR #515。**測定時点の値**であり、同日再実行では 2,428 件中 0 件） |
+| 2 | **`${current_user}` の動的束縛**（`ADR-0036` の判定規則） | **バックエンド全体で 0 件**（`current_user` / `${current` の全走査） |
+| 3 | **認可スコープ契約が `ADR-0036` の `read`（選言）を表現できること** | **表現できない**（下記） |
 
 `WikiAccessResolver.ExtractUserAttributes` が JWT から取り出すのも **`clearance` と `department` の 2 つだけ**で、
 所有者は見ていない。
+
+#### 部品 3 —— 契約が選言を運べない（当初 2 部品と数えていた誤り）
+
+計画 `06_technical/07_abac-attribute-model.md` の `read` 判定規則は **3 節の選言**である（原文）。
+
+> `read` 許可: 次の **いずれか** を満たす場合に許可する（OR）。
+> 1. **属性ベース**: `doc.confidentiality in …` かつ `doc.department in …` かつ `doc.lifecycle in …`（すべて AND）
+> 2. **所有者ベース**: `doc.owner ∈ { ${current_user} }`
+> 3. **共有先ベース**: `${current_user} ∈ doc.shared_with` または `doc.shared_with ∩ ${current_groups} ≠ ∅`
+
+対して実装の契約は**単一の連言**しか運べない。
+
+| 箇所 | 実測 |
+| --- | --- |
+| `AccessScopeDto.cs` の `AccessScopeResponse(UserId, List<AttributeFilter>, Granted)` | ポリシーの**選言を表す構造が無い** |
+| `AbacEvaluator` | 複数ポリシーがマッチしても**キー単位 union で 1 本の連言へ潰す** |
+| `AbacPageFilter.Matches` | `AllowedFilters.All(...)` ＝ **フィルタ間 AND**・**属性欠落は不一致** |
+
+**帰結**: 「個人資料（`owner=me`）」ポリシーと「組織文書（`confidentiality∈{internal}`）」ポリシーが同時にマッチすると、
+スコープは `[owner∈{me}, confidentiality∈{internal}]` の **AND** になり、**両方を満たす文書しか見えない**。
+`owner` を持たない既存文書は属性欠落で全滅する。**`${current_user}` を解決して `owner` を付けただけでは成立しない。**
+
+さらに第 3 節（`shared_with`）は、`page.Attributes` の値が**単一文字列**であるため（`TryGetValue(f.Key, out var v)`）、
+**複数値の共有先リストを表現すること自体ができない**。
+
+**部品 3 は 1・2 より射程が広い** —— `Platform.Shared.Contracts`（platform ユニットの共有契約）・
+`AbacEvaluator`・検索側フィルタに跨る。
 
 ## 4. 一次情報 —— Wiki.js の権限モデル
 
@@ -104,7 +135,7 @@ Wiki.js のフィードバックサイトには「Page ownership permissions」�
 
 | 経路 | 成否 | 理由 |
 | --- | --- | --- |
-| **閲覧（一覧・本文プロキシ）** | **構造としては成立する** | WikiService が ABAC を適用してから `GetRenderedContentAsync` を呼ぶ。**Wiki.js の権限モデルに依存しない**。ただし §3.4 の 2 部品が未実装のため、**いま動かしても個人スコープは効かない** |
+| **閲覧（一覧・本文プロキシ）** | **Wiki.js は障害にならない。ただし成立していない** | ゲートウェイが経路上にあり Wiki.js の権限モデルに依存しない（`IADR-0021`）。**しかし §3.4 の 3 部品が未実装**で、とくに**部品 3（契約が選言を運べない）は構造上の欠落**である。**「Wiki.js のせいではない」と「出し分けができる」は別である** |
 | **編集（`SC-19` の「本文を編集（Wiki.js）」導線）** | **成立しない** | 利用者を Wiki.js UI へ送った時点で **WikiService が経路から外れる**。Wiki.js はグループ単位・パス条件のみで、所有者本人だけに見せる手段を持たない |
 
 **したがって計画 決定 33 が想定した「出し分けが成立しない場合」に該当する。**
@@ -120,8 +151,42 @@ Wiki.js のフィードバックサイトには「Page ownership permissions」�
 | B. WikiService が編集も仲介する | 編集 UI をゲートウェイ側に置き、Wiki.js を描画エンジンとしてのみ使う | 認可は保てるが、**Wiki.js の編集体験（`ADR-0011` の採用理由）を失う**。実装量も大きい |
 | C. 利用者ごとに Wiki.js グループを作る | 1 利用者 = 1 グループ ＋ パス規約（`/private/<user>/…`）でページルールを当てる | 技術的には可能（ページルールはパス前方一致を持つ）。ただし**グループ数が利用者数に比例**し、参加・退職のたびに同期が要る。**Wiki.js 側に認可の一部が漏れる**ため `IADR-0021` の「持ち込まない」と衝突する |
 
-**なお案 A を採る場合も、閲覧側の個人スコープには §3.4 の 2 部品（`owner` 属性と動的束縛）が要る。**
-これは本 issue の範囲外であり、**#516 と planning#344 が扱っている**。
+**なお案 A を採る場合も、閲覧側の個人スコープには §3.4 の 3 部品が要る。**
+**部品 1・2 は #516 / planning#344 が扱っているが、部品 3（契約が選言を運べない）はどちらの射程にも入っていない。**
+planning#346 へ補足した（送付済み記録の本文は書き換えない —— `.claude/rules/traceability.md`）。
+
+## 6.1 母集合（`.claude/rules/traceability.md` §是正・追随の母集合の取り方）
+
+本作業は**条文上の事実（「前提検証は未了」）を反転させる**ものであり、規則 7・8 が掛かる。
+**誤りの側＝否定する語で追跡下を全数走査した**（submodule・`planning/`・`CHANGELOG.md` を除外）。
+
+### 走査語
+
+`前提検証` / `実環境が要る` / `未了` / `個人スコープ` / `本文を編集` / `編集導線` / `編集手段` / `覆り得る` / `SC-19`
+
+### 追随が要ったもの
+
+| 文書 | 追随 |
+| --- | --- |
+| **`docs/adr/IADR-0142`** | **要る。** 同 IADR §結果 フォローアップ 1 が「**#602 の結果を本 IADR へ追補する**」と明文で要求し、§未確認のまま残したこと が「#602 が実環境を要するかは未判定」と述べている。**日付つき追記ブロックを足した** |
+| `docs/adr/IADR-0119` | 要る（受け入れ基準⑤）。追補済み |
+| `docs/adr/README.md` の `IADR-0119` / `IADR-0142` 行 | 要る。先例（#593 / #601）が同一コミットで索引を更新している |
+
+### 追随不要と判定したものと理由（規則 6）
+
+| 文書 | 理由 |
+| --- | --- |
+| `docs/adr/IADR-0170:119,127-128` | 着手条件（覆り得る範囲の外か）は本検証で変わらない。`:127-128` は**同型事故の記録**であり、むしろ本作業の 🔴 の根拠になった |
+| `docs/adr/IADR-0121` / `IADR-0125` / `src/packages/ui/README.md` の `SC-19` 言及 | いずれも **`SC-19` / `SC-20` の確認ダイアログ**が対象で、「本文を編集（Wiki.js）」導線ではないと明記済み |
+| `docs/screens/SC-01_search-chat.md` | `SC-01` の個人資料要素は**閲覧**側で、編集導線の帰趨に依存しない |
+| `scripts/check-planning-pin-freshness.js` | 範囲基準の条件を正しく書いており変化なし |
+| 確定済み `docs/specs/*`・`feedback/20260807_*`・`docs/how-to/plan-id-range-history-annex.md` | **書いた時点の記録**（live な権威文書とコードに限る） |
+| `planning/` 配下 | 別リポジトリ。環流（planning#346）で扱う |
+
+> **この節は当初なかった。** #602 は「やること」の 1 行目で
+> **「作業仕様書を先に作る（IADR-0141 決定 1 に従い母集合を自分で引き直して記録する）」**と明示的に求めていたのに、
+> 書かずに進めた。**その結果 `IADR-0142` の追補義務を落とし、監査 2 本が独立に検出した。**
+> 規則 6 は記録の作法ではなく**検査そのもの**である、という #744 の教訓を、次の PR でそのまま繰り返した。
 
 ## 7. 成果物
 
