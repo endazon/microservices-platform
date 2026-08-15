@@ -26,6 +26,14 @@ on:
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
+      # NFR / issue #747: AST（可変ユニット）submodule のポインタ。SPA は @ai-stock-trading/features を
+      # **静的 import** しており AST のコードは初期ロードへ入るが、bump で変わるのは gitlink 1 エントリ
+      # （src/ai-stock-trading）だけで、src/*/frontend/** には一致しない。従前これが無く、**3 回の bump が
+      # build も check-chunk-budget も通らず素通りし、+35.51 kB が無関係な PR で表面化した**。
+      # 末尾に /** を付けない（gitlink そのものを指すため。src/ai-stock-trading/** では一致しない）。
+      # **src/ 配下へ submodule を足したらここへも足すこと**（checkout 側は .gitmodules を総なめする
+      # 汎用形だが、paths: は glob で gitlink を表現できない。scripts.repo.test.js が突合する）。
+      - "src/ai-stock-trading"
       - ".github/workflows/frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -47,6 +55,8 @@ on:
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
+      # NFR / issue #747: AST submodule のポインタ（push 側と同じ理由。末尾に /** を付けない）。
+      - "src/ai-stock-trading"
       - ".github/workflows/frontend.yml"
 
 defaults:
