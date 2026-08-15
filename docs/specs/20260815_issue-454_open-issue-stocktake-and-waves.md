@@ -164,17 +164,44 @@ related_specs:
 本波で交差する唯一の資産が `scripts/scripts.repo.test.js`（**1 ファイル・389,473 バイト**）である。
 **#748 / #749 / #756 が全部そこに書く。**
 
+> **［2026-08-15 追記 / #454］下の console ブロックは差し替えたものである。** 従前は `| head` と書きながら
+> 7 行だけを、しかも各行を `...` で縮めて貼っていた。**`head` は「見なかった行を見たことにする」事故**
+> であり（母集合の規則 7）、`...` での省略も同じである。**`head` を外して全 29 行を生のまま貼り直した。**
+
 ```console
-$ grep -n "check-test-traceability\|check-planning-pin-freshness\|check-commit-messages" \
-    scripts/scripts.repo.test.js | head
+$ grep -n "check-test-traceability\|check-planning-pin-freshness\|check-commit-messages" scripts/scripts.repo.test.js
+93:    const { isBotAuthorName, checkSingleTitle } = require('./check-commit-messages.js');
 676:  // --- check-test-traceability: 受け入れ基準 → テストの写像（Issue #453） ---------
+678:  const trace = require('./check-test-traceability.js');
 711:  // --- check-test-traceability: 逆方向検査（計画レンジ・Issue #472） --------------
-768:  ok('check-test-traceability --self-test は exit 0（逆方向検査の正例・負例を含む）', ...
+768:  ok('check-test-traceability --self-test は exit 0（逆方向検査の正例・負例を含む）', () => {
+770:    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js'), '--self-test'], { encoding: 'utf8' });
+854:    // check-coverage-floor.js / check-test-traceability.js の EXCLUDED_UNITS と同じ切り分け。
+1244:  const testTrace = require('./check-test-traceability.js');
+1265:      ['check-test-traceability', testTrace],
+1278:    for (const f of ['check-backend-libraries.js', 'check-test-traceability.js', 'check-coverage-floor.js']) {
 2815:        pathXrepo.join(__dirname, 'check-commit-messages.js')
+2821:        `check-commit-messages.js の CROSS_REPO_REF_LABELS に無い kind: ${missing.join(', ')}`
 2841:  // --- NFR / #579 / IADR-0145: check-commit-messages のレンジモードを実バイナリで通す ---
+2854:    const ccmScript = pathCcm.join(__dirname, 'check-commit-messages.js');
+2882:    ok('check-commit-messages レンジモード: 正当な件名は通る（正例）', () => {
+2887:    ok('check-commit-messages レンジモード: 実在しない画面 ID で exit 1（#612 レビュー 🔴 の回帰）', () => {
+2897:    ok('check-commit-messages レンジモード: 実在しない要求 ID / UC でも exit 1', () => {
+4545:        const HISTORY_EXEMPT = ['check-commit-messages.js'];
+5539:  //   `check-commit-messages.js` / `check-test-traceability.js` も節名で引いている。
 6085:    const pin = require('./check-planning-pin-freshness.js');
-6087:    ok('check-planning-pin-freshness --self-test が通る', ...
+6087:    ok('check-planning-pin-freshness --self-test が通る', () => {
+6088:      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--self-test'], {
+6096:    ok('check-planning-pin-freshness: 実データで落ちない（fail-open）', () => {
+6097:      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+6112:    ok('check-planning-pin-freshness: 未 populate では「乖離なし」と書かない', () => {
+6113:      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js')], {
+6165:      assert.match(text, /node scripts\/check-planning-pin-freshness\.js/, '検査器を呼んでいない');
+6177:      assert.match(text, /check-planning-pin-freshness\.js/, 'setup.sh から呼ばれていない');
+6187:      const i = lines.findIndex((l) => /^\s*node\s+scripts\/check-planning-pin-freshness\.js/.test(l));
 ```
+
+**全 29 行（省略なし）。** 3 本の検査器が同一ファイルの相異なる帯に散っていることが、この生出力から読める。
 
 | issue | 書き込む節（実測した行） |
 | --- | --- |
@@ -282,7 +309,7 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 | #441 | **×** | ○（ADR-0027〜0029） | **×**（#455） | #455 従属 |
 | #438 | **×** | ○（ADR-0036） | **×**（#455 / #442） | 隘路 2 本の合流点 |
 | #439 | **×** | ○（ADR-0032 / 0026） | **×**（#438） | **go-live ブロッカー。** #457 / #446 / #493 が従属 |
-| #440 | **×** | ○（ADR-0038 / 0025） | **×**（#455） | #448 が従属 |
+| #440 | **×** | **×**（**ADR-0038 は `Proposed`**。ADR-0025 は Accepted） | **×**（#455） | #448 が従属 |
 | #443 | **×** | ○（ADR-0006 / 0044） | **×**（#455 / #442） | **#546 / #380 のしきい値確定の前提** |
 | #444 | **×** | ○（ADR-0018） | **×**（#455） | — |
 | #445 | **×** | ○（ADR-0024） | **×**（#455） | — |
@@ -290,10 +317,19 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 | #447 | **×** | ○（ADR-0036 / 0012） | **×**（#455） | **#752 / #754 の器を作る側** |
 | #448 | **×** | ○（ADR-0017 / 0035） | **×**（#455 / #440） | — |
 | **#449** | **×** | ○（ADR-0011 / 0014 / 0015・**ADR-0046 で前提検証は決着**） | **×**（#455） | **★ 下敷きが「#450/#451 の凍結解除の前提」とした Wiki.js 検証は #602 で完了済み。もはや前提ではない** |
-| **#450** | **×** | ○（**ADR-0033 / 0034 は Accepted**。ADR-0039 のみ `Proposed`） | **×**（#455） | **★ IADR-0119 の保留は解除済み。残る × は dotnet だけ** |
+| **#450** | **×** | **×**（**ADR-0033 / 0034 は Accepted**。**ADR-0039 のみ `Proposed`**） | **×**（#455） | **★ [IADR-0119](../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md) 決定 2 の保留（前提 = ADR-0033〜0037）は解除済み。** ADR-0039（SC-18 の描画ライブラリ）はその前提 ADR に含まれないが、本列の判定基準では × に落ちる |
 | **#451** | **×** | ○（**ADR-0036 / 0037 は Accepted。ADR-0037 の着手可否注記は 2026-08-15 に「解消」**） | **×**（#455 / #447） | **★ 同上。ADR-0046 が編集手段を確定させた** |
 | #452 | **×**（読む契約が backend 側） | ○（ADR-0031・SC-01〜21） | **×**（#446 / #447〜#451） | **#446 第 2 段と #493 の完了条件** |
 | #453 | **×**（backend 床） | ○（NFR） | **×**（#466 → #442） | 子 8 件中 7 件は着地済み |
+
+> **［2026-08-15 追記 / #454］「関連 ADR が Accepted」列の判定基準を明示した。**
+> **列名のとおり、関連 ADR が 1 件でも `Accepted` でなければ ×** とする。基準を書かずに ○ × を打っていたため、
+> **#440（ADR-0038 が `Proposed`）を ○、#450（ADR-0039 が `Proposed`）を ○** と、同じ形を両方 ○ にしていた。
+> **両行とも × へ直した**（本追記の上の表が是正後である）。
+> なお ADR-0038 / ADR-0039 はいずれも冒頭に「`Proposed` は決定の効力を停止しない・実装 IADR との突合が未了なだけ」
+> と注記している。**それでも本列は「記録として `Accepted` か」で機械的に切る** —— 効力の有無を行ごとに読み替えると、
+> 着手ゲートが書き手の解釈で動いてしまうためである。**#450 が波 5 に居る実質的な理由が dotnet 不在であること
+> （§7 食い違い 2・3）は、この基準変更で変わらない。**
 
 ### 依存順序（要点）
 
@@ -325,26 +361,80 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 
 走らせたコマンドと結果（2026-08-15 実測）。
 
+> **［2026-08-15 追記 / #454］下の console ブロックは差し替えたものである。** 従前は各検査器の出力を
+> 「`OK: 584 件`」のように要約して貼っていたが、**実出力はいずれも件数のあとに対象外・据え置きの内訳を続けており、
+> 一致していなかった**（母集合の規則 7「走査の出力を加工して読まない」）。**再実行して生の出力をそのまま貼り直した。**
+> あわせて **`planning` submodule を populate した**（§7 食い違い 5 / 未決事項 4 は、記録として当時のまま残す）。
+> そのため `check-doc-links` の対象外件数が **1293 件（planning ＋ ai-stock-trading）→ 2 件（ai-stock-trading のみ）**
+> へ落ちている。
+
 ```console
 $ node scripts/check-doc-links.js
-[check-doc-links] OK: 624 件のリンクを検査し、破損はありません。
-（未 populate の submodule 配下 1293 件は対象外）
+notice: 未 populate の submodule 配下 2 件のリンクを検査対象外にした（src/ai-stock-trading: 2 件）。この範囲は本実行では検査されていない。PR 段階で検査するには checkout に submodules とトークンを付けるか、定期ジョブ（doc-links-planning）の結果を確認すること
+[check-doc-links] OK: 624 件の Markdown に破損した相対リンクはありません（未 populate の submodule 配下 2 件は対象外 — src/ai-stock-trading: 2 件）。
 
 $ node scripts/check-doc-status-vocabulary.js
-[check-doc-status-vocabulary] OK: 584 件
+[check-doc-status-vocabulary] OK: 584 件の仕様書の status が値域に収まっています（対象外の種別 14 件 / frontmatter 無し 7 件は検査していません）。据え置き: review 8 / docs/specs の completed 43。
 
 $ node scripts/check-doc-type-vocabulary.js
-[check-doc-type-vocabulary] OK: 598 件
+[check-doc-type-vocabulary] OK: 598 件の文書の type が、テンプレート 19 種類の値域に収まっています（type 無し 7 件は検査していません）。種別 19 個の衝突なし。据え置き: tech 2 / tech-note 1 / tech-architecture 1 / design 1。
 
 $ node scripts/check-cross-repo-refs.js
-[check-cross-repo-refs] OK: 1610 件
+[check-cross-repo-refs] OK: 1610 件に他リポジトリ参照の表記違反はありません（scripts/ の非 Markdown 70 件は検査していません —— 検査器のフィクスチャと baseline が住む場所であり、違反の文字列を書くのが仕事だからである。scripts/ の .md は人が読む散文なので検査対象に残している。#583 判断 2・3）。
 
 $ node scripts/check-plan-id-qualification.js
-[check-plan-id-qualification] OK: 1323 件
+[check-plan-id-qualification] OK: 1323 件に他プロジェクト ID の修飾違反はありません。
 
 $ node scripts/check-doc-updated.js
-[check-doc-updated] OK
+[check-doc-updated] OK: 変更された docs/ の Markdown 1 件に updated: の据え置きはありません。
 ```
+
+### ［2026-08-15 追記 / #454］引用 ADR の母集合を引き直した —— 15 件は取り違えである
+
+**直前のコミット `2ef73cf` は「本書が引用する ADR 15 件を全数実測した」と書いたが、これは誤りである。**
+**15 件は母集合の取り違えであり、正しくは 19 件**（本文に `ADR-NNNN` の形で現れる異なり数）である。
+**取りこぼしていた側に `ADR-0038` が入っており、§8 の #440 行が `Proposed` の ADR を ○ と書く原因になった。**
+**消して書き直さず、引き直しの過程をここに残す**（母集合の規則 9・10）。
+
+```console
+$ grep -oE '(^|[^I])ADR-[0-9]{4}' docs/specs/20260815_issue-454_open-issue-stocktake-and-waves.md \
+    | grep -oE 'ADR-[0-9]{4}' | sort -u
+ADR-0006  ADR-0011  ADR-0017  ADR-0018  ADR-0020  ADR-0021  ADR-0023  ADR-0024  ADR-0027  ADR-0031
+ADR-0032  ADR-0033  ADR-0034  ADR-0035  ADR-0036  ADR-0037  ADR-0038  ADR-0039  ADR-0046
+（19 件。`IADR-` を除くため直前 1 文字を捨てている）
+```
+
+**さらに 19 件でも足りない。** §8 の表は `ADR-0020 / 0027 / 0029 / 0030` のように **2 件目以降の接頭辞を省いた列挙**と、
+`ADR-0027〜0029` という**範囲表記**を使っており、**`ADR-` で引く限り省略側は永久に捕まらない**（規則 2）。
+省略と範囲を展開すると **§8 だけで 31 件**になる。**この 31 件すべてについて
+`planning/projects/microservices-platform/07_adr/ADR-<番号>*.md` の `- 状態:` 行を実読した**（pin `4d6a7d6`）。
+
+```console
+$ cd planning/projects/microservices-platform/07_adr
+$ for n in 0005 0006 0007 0008 0011 0012 0014 0015 0017 0018 0020 0021 0023 0024 0025 0026 \
+           0027 0028 0029 0030 0031 0032 0033 0034 0035 0036 0037 0038 0039 0044 0046; do
+    printf 'ADR-%s\t%s\n' "$n" "$(grep -m1 '^- 状態:' ADR-${n}_*.md)"; done
+ADR-0005  - 状態: Accepted    ADR-0006  - 状態: Accepted    ADR-0007  - 状態: Accepted
+ADR-0008  - 状態: Accepted    ADR-0011  - 状態: Accepted    ADR-0012  - 状態: Accepted
+ADR-0014  - 状態: Accepted    ADR-0015  - 状態: Accepted    ADR-0017  - 状態: Accepted
+ADR-0018  - 状態: Accepted    ADR-0020  - 状態: Accepted    ADR-0021  - 状態: Accepted
+ADR-0023  - 状態: Accepted    ADR-0024  - 状態: Accepted    ADR-0025  - 状態: Accepted
+ADR-0026  - 状態: Accepted    ADR-0027  - 状態: Accepted    ADR-0028  - 状態: Accepted
+ADR-0029  - 状態: Accepted    ADR-0030  - 状態: Accepted    ADR-0031  - 状態: Accepted
+ADR-0032  - 状態: Accepted    ADR-0033  - 状態: Accepted    ADR-0034  - 状態: Accepted
+ADR-0035  - 状態: Accepted    ADR-0036  - 状態: Accepted    ADR-0037  - 状態: Accepted
+ADR-0038  - 状態: Proposed    ADR-0039  - 状態: Proposed    ADR-0044  - 状態: Accepted
+ADR-0046  - 状態: Accepted
+```
+
+**`Proposed` は `ADR-0038` と `ADR-0039` の 2 件だけ**である（31 件中）。**残る 29 件はすべて `Accepted`。**
+**§8 の全 17 行を上表と突き合わせた結果、状態を偽って書いていたのは `ADR-0038`（#440 行）1 箇所**であり、
+`ADR-0039`（#450 行）は `Proposed` と書けてはいたが**○ × の打ち方が #440 と食い違っていた**。
+**両方を § 8 の追記で直した。**
+
+**教訓（規則 9・10 の実例として残す）**: 「15 件」がどう導かれたかは追えない —— **走査コマンドを残していない**
+からである。**再現できない数は、書いた本人にも検算できない。** 引用 ID の母集合は `ADR-` の付いた形だけでは
+閉じないため、**走査コマンドと、省略形・範囲表記をどう展開したかを併記する**こと。
 
 `CLAUDE.md` と `.claude/rules/` は 1 バイトも変更していない（`check-reading-budget.js` は
 50,193 / 51,200 = 98% の既存 warn のまま。本書に起因する増加はない）。
