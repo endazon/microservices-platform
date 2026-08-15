@@ -2735,6 +2735,83 @@ module.exports = ({ ok, assert }) => {
         fsPlanId.rmSync(dir, { recursive: true, force: true });
       }
     });
+
+    // --- NFR / #756: キット版へ差し替えたことで増えた検出力と、その退行の門 -----------------
+    //
+    // #756 で HOWTO（`planning/tools/impl-handoff-kit/HOWTO.md` §B-5）の手順どおり実走して
+    // 突合した結果、**この 1 本だけはキット版が優った**（`NFR` の検出・置換点・submodule 導出）ため
+    // キット版へ差し替えた。以下は「差し替えで増えた側」と「差し替えで失いやすい側」を対で固定する。
+
+    ok('check-plan-id-qualification: NFR も検出する（#756 の差し替えで増えた検出力）', () => {
+      const fsNfr = require('fs');
+      const osNfr = require('os');
+      const dir = fsNfr.mkdtempSync(pathPlanId.join(osNfr.tmpdir(), 'planid-nfr-'));
+      try {
+        // 違反文字列はリテラルで書かない（本検査は追跡下の全ファイルを走査するため）。
+        const ng = pathPlanId.join(dir, 'ng.md');
+        fsNfr.writeFileSync(ng, '# x\n\nAST' + ' NFR-01 の目標値。\n');
+        const r = runPlanId([ng]);
+        assert.strictEqual(r.status, 1, `NFR の空白区切りを検出できていない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stderr), /NFR-01/);
+        // 対の負例: 規約どおりの形は落とさない。
+        const okFile = pathPlanId.join(dir, 'ok.md');
+        fsNfr.writeFileSync(okFile, '# y\n\nAST/NFR-01 は規約どおり。\n');
+        assert.strictEqual(runPlanId([okFile]).status, 0, '規約どおりの NFR 形で落ちている（偽陽性）');
+      } finally {
+        fsNfr.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // **置換点が空へ戻る退行の門**（変異試験）。キット版は `PROJECT_PREFIXES` が空だと
+    // **skip して exit 0 を返す** —— 設定し忘れが「緑」で固定される、いちばん気付けない壊れ方である。
+    // よって (1) 実ファイルの既定が非空であることと、(2) 空にすると本当に skip へ落ちること（＝
+    // 門が守っている対象が実在すること）を対で主張する。**片方だけでは vacuous になる。**
+    ok('check-plan-id-qualification: 置換点 PROJECT_PREFIXES が空へ戻ると skip する（変異試験）', () => {
+      const fsMut = require('fs');
+      const osMut = require('os');
+      const planId = require('./check-plan-id-qualification.js');
+      assert.ok(
+        Array.isArray(planId.PROJECT_PREFIXES) && planId.PROJECT_PREFIXES.length > 0,
+        '置換点 PROJECT_PREFIXES が空である（この検査は skip して緑を返し続ける）',
+      );
+
+      const dir = fsMut.mkdtempSync(pathPlanId.join(osMut.tmpdir(), 'planid-mutate-'));
+      try {
+        // `check-cross-repo-refs.js`（maskCode）と `lib/worktree-state.js` を要するので scripts/ ごと写す。
+        const mutScripts = pathPlanId.join(dir, 'scripts');
+        fsMut.cpSync(__dirname, mutScripts, { recursive: true });
+        const target = pathPlanId.join(mutScripts, 'check-plan-id-qualification.js');
+        const src = fsMut.readFileSync(target, 'utf8');
+        const mutated = src.replace(/(splitList\(process\.env\.PLAN_ID_PREFIXES,\s*)\[[^\]]*\]/, '$1[]');
+        assert.notStrictEqual(mutated, src, '置換点の記述を見つけられない（変異を当てられていない）');
+        fsMut.writeFileSync(target, mutated);
+
+        const ng = pathPlanId.join(dir, 'ng.md');
+        fsMut.writeFileSync(ng, '# x\n\nAST' + ' FR-17。\n');
+        const r = spawnPlanId(process.execPath, [target, ng], { encoding: 'utf8' });
+        assert.strictEqual(r.status, 0, `空の置換点で exit 0（skip）にならない:\n${r.stdout}\n${r.stderr}`);
+        assert.match(String(r.stdout), /skip/, '空の置換点であることを述べていない');
+        // 同じ入力を実ファイルへ当てると落ちる（＝差は置換点だけである）。
+        assert.strictEqual(runPlanId([ng]).status, 1, '実ファイルが同じ入力を検出できていない');
+      } finally {
+        fsMut.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // 差し替えで失いやすいもう一方: 除外の維持。#576 版の `EXCLUDED_PATH_RE` が持っていた
+    // `docs/superpowers/`（外部由来の教材の写し）を、キット版の置換点 `EXTRA_EXCLUDES` で保つ。
+    ok('check-plan-id-qualification: 除外は submodule 導出 ＋ docs/superpowers/ を保つ', () => {
+      const planId = require('./check-plan-id-qualification.js');
+      const excluded = planId.createExcluder(['docs/superpowers/']);
+      assert.strictEqual(excluded('docs/superpowers/x.md'), true, 'docs/superpowers/ の除外が落ちている');
+      assert.strictEqual(excluded('planning/x.md'), true, 'submodule（planning）の除外が落ちている');
+      assert.strictEqual(
+        excluded('src/ai-stock-trading/x.md'),
+        true,
+        'submodule（src/ai-stock-trading）が .gitmodules から導出されていない',
+      );
+      assert.strictEqual(excluded('docs/adr/IADR-0000_x.md'), false, '除外が広すぎる');
+    });
   }
 
   {
