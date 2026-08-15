@@ -106,6 +106,23 @@ cwd = `src/` で prettier へ渡すだけで、除外は prettier が解決す�
 `semanticCommitScope: "NFR"`（bot 除外が効かなくてもコミット規約に適合する）だけに留め、
 グルーピング等の最適化は入れない（既定でも同一依存の全出現は 1 PR にまとまる）。
 
+**`ignorePaths` に `planning/**` を足した**（AI レビューの指摘を実測で裏取りした）。
+着手時の母集合走査では `planning/` を「未 populate の別リポ submodule」として除外していたが、
+**pin どおり populate して数え直すと `package.json` が 2 件実在する**。
+
+```console
+$ find planning -name package.json -not -path "*/node_modules/*"
+planning/tools/docs-site-kit/site-template/package.json
+planning/tools/impl-handoff-kit/generators/package.json
+```
+
+`enabledManagers: ["npm"]` は**エコシステムを絞るだけでパスは絞らない**ため、除外はパス側で明示する必要がある。
+Renovate の `cloneSubmodules` は既定 `false` なので**実害は低い**と見られるが、
+**本セッションでは Renovate を実走できず、この経路は検証できない**。検証できないものは安全側へ倒す。
+
+なお `src/ai-stock-trading/**` は着手時から除外していた（同じ理由）。**除外の 3 件は「本リポが所有しない
+package.json を持つ場所」で揃っている**。
+
 ### 4. 外部送信（egress）
 
 `08_data-egress-policy` が禁じるのは**成果物（SPA / Storybook）からの外部 CDN・Web フォント・analytics** で、

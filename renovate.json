@@ -17,6 +17,7 @@
   "ignorePaths": [
     "**/node_modules/**",
     "src/ai-stock-trading/**",
+    "planning/**",
     "templates/**"
   ]
 }
