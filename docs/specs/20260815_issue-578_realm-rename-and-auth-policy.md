@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — レルムを platform へ改名し、SC-14 / SC-15 の realm ポリシーを投入する（#578）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - SC-13
   - SC-14
@@ -80,7 +80,10 @@ k8s Namespace・イメージ接頭辞であり、改名対象ではない**（�
 
 | 区分 | 件数 | 扱い |
 | --- | --- | --- |
-| **live な機能資産と現行案内文書** | **57 ファイル** | **改名する** |
+| **live な機能資産と現行案内文書** | **57 ファイル** | うち **51 件を改名した**。残る **6 件は realm export の
+*ファイル名*しか参照しておらず、§3.1 のとおりファイル名は変えないため無変更**（`deploy/local/argocd/README.md` /
+`deploy/local/minio-oidc/README.md` / `docs/security/security.md` / `scripts/k8s-local-up.sh` /
+`scripts/k8s-local-up.test.js` / `scripts/scripts.repo.test.js`） |
 | 確定済み `docs/specs/` | 24 ファイル | **不変**（書いた時点の記録） |
 | `feedback/` | 1 ファイル | **不変**（計画リポへ送った内容の写し） |
 | `docs/adr/` 本体 | 12 ファイル | **不変**（後述 2.4） |
@@ -130,6 +133,12 @@ $ git grep -l -I 'knowledge-platform' -- . ':!planning' ':!src/ai-stock-trading'
 - `docs/tech/tech-requirements.md` の同記述（同上）
 - **`docs/screens/SC-04_wiki-access.md` ほか既存画面仕様書**に `spa-web` が無いことを確認済み（0 件）
 - 検査器 `scripts/check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` は **`wiki-js` だけを見ており `spa-web` を持たない**（実測）。したがって改名で stale にならない
+
+> **★ この列挙は不十分だった（監査 2 本が指摘）。** 規則 7 は「**『追随する文書』を記憶で挙げない。誤りの側の文字列で
+> 全文書を走査してから挙げる**」と定めているのに、私は `CLAUDE.md` と `docs/tech/tech-requirements.md` の 2 件を
+> **記憶で挙げた**。走査していれば **`README.md:179`**（「realm 名・… も `microservices-platform` へ改名済み」）が出た ——
+> **この PR によって新たに誤りになった live な記述**である。同 README は記録ではないので、
+> 日付つき追記（`［2026-08-15 追記 / #578］`）で現行値を併記した。
 
 ### 2.6 ★ 母集合の外にあるが影響が及ぶもの —— AST submodule（レビュー指摘で追加）
 
@@ -223,22 +232,28 @@ SC-13〜16 の**画面実装そのもの**（Keycloak テーマの実体）は #
 | realm | `deploy/keycloak/microservices-platform-realm.json`（レルム名・クライアント ID の改名 ＋ ポリシー投入。**ファイル名は不変**） |
 | deploy | `docker-compose.yml` / `helm/microservices-platform/values.yaml` / `local/values-local.yaml` / `local/argocd/oidc/argocd-cm-patch.yaml` / `local/headlamp/headlamp.yaml` / `local/observability/grafana.yaml` / `local/infra/keycloak.yaml` / `local/vault/oidc/bootstrap.sh` |
 | backend | 全サービスの `appsettings{,.Development}.json`（10 サービス × 2）／`Platform.Shared.Infrastructure/Foundation/Extensions/AuthExtensions.cs`（既定値）／`PlatformAuthJwtBearerOptionsTests.cs` |
+| **母集合に入るが無変更** | `deploy/local/argocd/README.md` / `deploy/local/minio-oidc/README.md` / `docs/security/security.md` / `scripts/k8s-local-up.sh` / `scripts/k8s-local-up.test.js` / `scripts/scripts.repo.test.js` —— **いずれも realm export のファイル名しか参照しておらず、ファイル名は変えないため** |
 | frontend | `public/config.js` / `docker-entrypoint.d/40-render-config.sh` / `foundation/config/runtimeConfig.ts` / `runtimeConfig.test.ts` |
-| scripts | `measure-abac-combinations.js` / `seed-abac-policies.js` / `verify-oidc-edge-flow.sh` / `k8s-local-up.sh` / `k8s-local-up.test.js` / `scripts.repo.test.js` |
+| scripts | `measure-abac-combinations.js` / `seed-abac-policies.js` / `verify-oidc-edge-flow.sh` |
 | perf | `k6/lib/config.js` / `k6/README.md` |
-| live docs | `CLAUDE.md` / `docs/operations/operations.md` / `docs/security/security.md` / `docs/how-to/local-development.md` / `docs/tech/tech-requirements.md` / `docs/tech/composable-component-guide.md` / `deploy/local/**/README.md` / `src/platform/frontend/README.md` |
+| live docs | `CLAUDE.md` / `docs/operations/operations.md` / `docs/how-to/local-development.md` / `docs/tech/tech-requirements.md` / `docs/tech/composable-component-guide.md` / `deploy/local/**/README.md` / `src/platform/frontend/README.md` / **`README.md`（§2.5 の追記）** |
 | 新規 | `docs/screens/SC-14_otp-mfa.md` / `SC-15_password-reset.md`／`docs/tests/SC-14_otp-mfa.md` / `SC-15_password-reset.md`／`docs/adr/IADR-0197_*.md` |
 
 ## 5. 受け入れ基準（#578 の 5 項目への写像）
 
-- [ ] `docs/screens/SC-14_*.md` / `SC-15_*.md` が存在する
-- [ ] `docs/tests/SC-14_*.md` / `SC-15_*.md` が存在する
-- [ ] realm 設定が ADR-0026 の確定要件を満たす（`smtpServer` は §3.3 のとおり**何が足りないかを明記して分離**）
-- [ ] `resetPasswordAllowed = True` が Keycloak の既定値であって SC-15 の実装ではないことを仕様書に記録する
-- [ ] #452 / #438 のどちらが何を引き受けるかが双方の本文から辿れる（**決定 30 により #438 が担当。#578 はその下位タスク**）
-- [ ] レルム名 `platform` / クライアント `platform-spa` へ改名され、`/realms/microservices-platform` の残存が live 側で 0 件
-- [ ] `node scripts/check-realm-constraints.js` が通る
-- [ ] バックエンド・フロントのテストが通る
+- [x] `docs/screens/SC-14_*.md` / `SC-15_*.md` が存在する
+- [x] `docs/tests/SC-14_*.md` / `SC-15_*.md` が存在する
+- [x] realm 設定が ADR-0026 の確定要件を満たす（`smtpServer` は §3.3 のとおり**何が足りないかを明記して分離**）
+- [x] `resetPasswordAllowed = True` が Keycloak の既定値であって SC-15 の実装ではないことを仕様書に記録する（[SC-15 画面仕様書](../screens/SC-15_password-reset.md) 冒頭節）
+- [x] #452 / #438 のどちらが何を引き受けるかが双方の本文から辿れる（**決定 30 により #438 が担当。#578 はその下位タスクとして GitHub 上でも紐づけた**）
+- [x] レルム名 `platform` / クライアント `platform-spa` へ改名され、**旧レルム名の残存が live 側で 0 件**（地の文形・シェル変数形を含む。§2.5 参照）
+- [x] `node scripts/check-realm-constraints.js` が通る（本体・`--self-test` 34 件とも exit=0）
+- [x] フロントのテストが通る（Vitest 922 件・typecheck・lint・format:check がいずれも exit=0）
+- [x] **バックエンド**: この環境に `dotnet` が無く未実行だったが、**PR #746 の AI レビューが実走して `AuthorizationService.Api.Tests` 7/7 passed** を確認済み
+
+> **本作業で「値の投入」と「統制の実効」を書き分けている。** MFA の実強制とリカバリーコードの表示フローは
+> **realm 設定だけでは成立せず #438 の射程**である（[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md) 決定 4 の注記・フォローアップ 5）。
+> **上のチェックは前者（値）についてのものである。**
 
 ## 6. この作業で扱わないこと
 

@@ -87,9 +87,14 @@ const AUTH_POLICY_SCALARS = {
   displayName: '汎用プラットフォーム',
   passwordPolicy: `length(12) and passwordHistory(5) and regexPattern(${PASSWORD_CLASS_REGEX})`,
   otpPolicyType: 'totp',
+  otpPolicyAlgorithm: 'HmacSHA1', // RFC 6238 既定。認証アプリの互換性が最も広い
   otpPolicyDigits: 6,
   otpPolicyPeriod: 30,        // 秒
-  otpPolicyLookAheadWindow: 1, // Keycloak は [-n, +n] の対称窓 ＝ 前後 1 ステップ（30 秒）
+  // ADR-0026「時刻ずれは前後 1 ステップ（30 秒）まで許容」に対応する値。
+  // ★ Keycloak の窓が [-n, +n] の対称であることは実装コードで確認していない（管理コンソールの
+  //    説明文は先読みのみとも読める）。片側だけなら要件未達になるため、対称性は実機で確かめる
+  //    —— docs/tests/SC-14_otp-mfa.md の T-07（1 ステップ前／後）と T-08（2 ステップ前）が担う。
+  otpPolicyLookAheadWindow: 1,
   otpPolicyCodeReusable: false,
   bruteForceProtected: true,
   permanentLockout: false,     // 15 分で解除される一時ロックであること

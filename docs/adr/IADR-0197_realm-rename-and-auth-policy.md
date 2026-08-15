@@ -49,7 +49,14 @@ plan_refs:
 `microservices-platform` という文字列はリポジトリ名・Helm チャート名・k8s Namespace・イメージ接頭辞としても
 広く使われているが、**決定 31 が改めるのはレルムと基盤 SPA クライアントの 2 つだけ**である。改名の母集合は
 **7 変種**（`/realms/microservices-platform` ／ `"realm": "microservices-platform"` ／ `microservices-platform-realm`（ファイル名）／
-`ABAC_REALM` `ABAC_SEED_REALM` `OIDC_REALM` の既定値 ／ `spa-web`）で引き、**57 ファイル**を対象とした。
+`ABAC_REALM` `ABAC_SEED_REALM` `OIDC_REALM` の既定値 ／ `spa-web`）で引き、**live 57 ファイル**を母集合とした。
+**うち改名したのは 51 件**で、残る **6 件は realm export の*ファイル名*しか参照していないため無変更**である（後述のとおりファイル名は変えない）。
+
+> **★ この 7 変種は足りなかった。** PR #746 の監査 2 本が、**散文・コメント中の `` realm `microservices-platform` `` と
+> シェル変数への代入 `R=microservices-platform` が漏れている**ことを指摘し、live に 5 箇所（＋ `README.md` の地の文 1 箇所）が
+> 残っていた。とくに `deploy/local/wiki-oidc/README.md` は**同じコードブロックの次の行だけが改名済み**で、
+> そのまま実行すると client secret が取れない状態だった。**変種の列挙は「値の形」だけでなく「地の文」と
+> 「変数への代入」まで並べる**（`.claude/rules/traceability.md` 規則 2・7）。
 
 **他の 8 クライアント**（`wiki-js` / `bff` / `ai-stock-trading-kb-writer` / `headlamp` / `grafana` / `argocd` / `minio` / `vault`）
 **の clientId は変えない。** 決定 31 の「9 クライアントの再設定を伴う」は、**レルム名変更に伴う issuer URL の追随**を指す。
