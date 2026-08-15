@@ -1001,7 +1001,7 @@ paths:
       tags: [DataSources]
       summary: "FR-01, UC-04, SC-06: データソース登録（**管理者のみ**）"
       description: |
-        FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned`）。明示指定は上書きしない。
+        FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned` / `lifecycle`→`active`）。明示指定は上書きしない。
         **登録は破壊的操作であり管理者限定である**（計画 §SC-06・裁定 Q19。#628 で是正。
         従前は運用者にも開いていた）。
       operationId: bff-data-source-create
@@ -1048,7 +1048,7 @@ paths:
         裁定 Q16（#534）: 従前は更新の口が無く、登録済みソースの変更が「削除→再登録」でしかできなかった。
         **削除→再登録は ID と履歴を切る**（認証情報のローテーションのたびに文書の出所の追跡が切れる）。
         **`id` / `createdAt` / `lastSyncedAt` / 同期健全性は更新の対象外**である（履歴を巻き戻さない）。
-        FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned`）。明示指定は上書きしない。
+        FR-05, #516: `defaultAttributes` は後段が必須属性のフェイルセーフを通る（`confidentiality`→`internal` / `owner`→`system` / `department`→`unassigned` / `lifecycle`→`active`）。明示指定は上書きしない。
         **無効（`disabled`）なソースも更新できる**（認証情報のローテーションは無効中にも起こる）。
         **`config` / `defaultAttributes` の省略は 400 で拒否する**（#627 の AI レビュー 🟡）——
         PUT は全置換なので、省略を受理すると「送り忘れ」で秘密（`apiToken` 等）が黙って消える。
@@ -2463,7 +2463,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない"
+          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
 
     UpdateDataSourceRequest:
       type: object
@@ -2489,7 +2489,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない"
+          description: "未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない"
 
     PatchDataSourceRequest:
       type: object
@@ -2508,7 +2508,7 @@ components:
           type: object
           nullable: true
           additionalProperties: { type: string }
-          description: "指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department）"
+          description: "指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）"
 
     DataSourceSyncResultDto:
       type: object

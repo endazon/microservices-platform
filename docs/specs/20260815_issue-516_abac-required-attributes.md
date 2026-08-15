@@ -1,5 +1,5 @@
 ---
-title: 取り込み経路が必須の文書属性 owner / department を付与していない件の是正（#516）
+title: 取り込み経路が必須の文書属性 owner / department / lifecycle を付与していない件の是正（#516）
 type: spec
 status: done
 related_ids:
@@ -18,7 +18,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0036_ownership-based-discretionary-access.md"
 ---
 
-# 仕様書: 取り込み経路の ABAC 必須属性（`owner` / `department`）の既定投入
+# 仕様書: 取り込み経路の ABAC 必須属性（`owner` / `department` / `lifecycle`）の既定投入
 
 > 本仕様書は実装着手前に作成する。計画書（`project-planning` の `projects/microservices-platform/`）を
 > 一次情報とし、本書は「この作業で何をどう実装するか」を確定するための作業仕様である。
@@ -39,7 +39,8 @@ plan_refs:
 付いているのは `confidentiality` のみで、**ABAC の判定軸が実質 1 本**になっている。
 
 2026-08-15 の裁定（planning#344）で**取り込み経路の `owner` / `department` の既定が確定した**ため、
-本作業でこれを実装する。
+本作業でこれを実装する。**作業中に `lifecycle` の追補裁定（planning#361）も下りた**ため、
+**必須 4 属性すべて**を対象に含めた（下記 §`lifecycle`）。
 
 ## ★ 母集合（規則 5。**引いた結果と除外理由をここに書く**）
 
@@ -111,41 +112,56 @@ grep -rn "record SourceItem\|record RawDocumentFetched" --include=*.cs src/
   **「射程外だから無視してよい」という意味ではない** —— 経路 8 が残る限り
   #516 の受け入れ基準 1・2 は満たされないため、**#516 のクローズ条件に AST#520 の完了を含める。**
 
-### ★ `lifecycle` は本作業の対象外である（**裁定が無いため**）
+### ★ `lifecycle` は着手時「未裁定」だったが、**作業中に裁定が下りた**
 
-**計画は `lifecycle` の既定を定めていない。** 確定節の見出しは
-「システム投入経路での **`owner` / `department`**」であり、既定表も 2 行しかない。
-一方**同節の前文**と #516 の受け入れ基準は `lifecycle` を含む 3 属性を対象にしている。
+**着手時点では計画が `lifecycle` の既定を定めていなかった。** 確定節の見出しは
+「システム投入経路での **`owner` / `department`**」であり、既定表も 2 行しかなかった。
+一方**同節の前文**と #516 の受け入れ基準は `lifecycle` を含む 3 属性を対象にしていた。
 
-計画書全体を走査しても初期値の定めは無い（`05_screens/01_screens.md:264` の SC-05 は
+計画書全体を走査しても初期値の定めは無かった（`05_screens/01_screens.md:264` の SC-05 は
 「状態の**表示と公開・アーカイブの操作**」であり作成時の初期値ではない）。
 
 ```
 grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 ```
 
-**推測で `draft` / `active` を選ばない** —— `owner` / `department` は「deny 側に倒れる」ことを
+**推測で `draft` / `active` を選ばなかった** —— `owner` / `department` は「deny 側に倒れる」ことを
 確認したうえで予約値が選ばれたが、`lifecycle` は**倒れる向きが有用性の側で問題になる**
-（`draft` にすると取り込んだ全文書が既定で不可視になる）。**裁定依頼として環流する**
-（`feedback/20260815_ingestion-lifecycle-default-unadjudicated.md`）。
+（`draft` にすると取り込んだ全文書が既定で不可視になる）。**裁定依頼として環流した**
+（planning#361 / `feedback/20260815_ingestion-lifecycle-default-unadjudicated.md`）。
+
+> **★ 2026-08-15 に裁定が下りた（案 C ＋ 終端 `active`）。** 本作業の途中で回答が届いたため、
+> **pin を `b640159` へ進めて実装まで含めた。** 否定形テストは
+> [[IADR-0199]] 決定 4 が定めたとおり**反転させた**（`Create_FillsLifecycleWithActive`）。
+>
+> | 属性 | 解決順 | 終端 |
+> | --- | --- | --- |
+> | `lifecycle` | データソースの既定属性で指定された値 | **`active`** |
+>
+> **`active` は予約値ではなく既定値である** —— 件数を環流債務として数えない。
+> **`active` にしても無制限に公開にはならない**（`read` は属性の連言で `confidentiality` と
+> `department` が同時にかかる）。
 
 ## 対象範囲
 
-- **対象**: 取り込み経路（経路 1・2）で `owner` / `department` を欠落させないこと。予約値の観測手段。
-- **対象外**: 上記 A〜D、`lifecycle`、ADR-0036 の動的束縛（#451）、既存データの遡及（#457）。
+- **対象**: 取り込み経路（経路 1・2）で **`owner` / `department` / `lifecycle`** を欠落させないこと。
+  予約値の観測手段。**計画 pin の `b640159` への追随**（`lifecycle` の裁定を読むため）。
+- **対象外**: 上記 A〜D・F、経路 8（AST#520）、ADR-0036 の動的束縛（#451）、既存データの遡及（#457）。
 
 ## 設計
 
-### 決定 1: `DataSource` のフェイルセーフを 3 属性へ広げる
+### 決定 1: `DataSource` のフェイルセーフを 4 属性へ広げる
 
 `WithConfidentialityFailsafe` は既に **`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の
-4 箇所を一元化する先例**（IADR-0019）である。同じ関数へ `owner` / `department` を足す。
+4 箇所を一元化する先例**（IADR-0019）である。同じ関数へ `owner` / `department` / `lifecycle` を足し、
+**`WithRequiredAttributeFailsafe` へ改称**する。
 
 | 属性 | 計画が定めた解決順 | 実装での段 | 終端 |
 | --- | --- | --- | --- |
 | `confidentiality` | 明示指定 | 明示指定 | `internal`（現行のまま） |
 | `department` | 投入元（ソース）の所属 → データソース既定属性 | **`DefaultAttributes` の値のみ**（前段は**未実装**） | **`unassigned`** |
 | `owner` | ソース側の更新者 → 予約値 | **`DefaultAttributes` の値のみ**（前段は**器が無い**） | **`system`** |
+| `lifecycle` | データソース既定属性 → 終端値 | `DefaultAttributes` の値（**1 段目が無い**） | **`active`**（**既定値**） |
 
 **明示指定は上書きしない**（現行の `confidentiality` と同じ規約）。
 
@@ -187,7 +203,8 @@ grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 - [x] データソース既定属性に `department` があれば**それが使われ**、無い場合のみ `unassigned`
 - [x] `owner` は解決できないとき `system`（**明示指定が無い限りこの経路**）
 - [x] 予約値の件数が `measure-abac-combinations.js` の出力に現れる
-- [x] `lifecycle` の裁定依頼を計画リポへ環流し、`feedback/` に記録した（planning#361）
+- [x] `lifecycle` の裁定依頼を環流し（planning#361）、**下りた裁定（終端 `active`）を実装した**
+- [x] **否定形テストを [[IADR-0199]] 決定 4 のとおり反転させた**
 - [x] `SourceItem` に更新者を載せる件を **#752** として起票した
 - [x] `department` の供給源が塞がっている件を **#754** として起票した
 - [x] **AST の書き込み経路（経路 8）を母集合へ加え、AST#520 として起票した**
@@ -196,8 +213,8 @@ grep -rn "lifecycle" --include=*.md planning/projects/microservices-platform/
 
 | # | #516 の受け入れ基準 | 本作業で | 満たすのに要るもの |
 | --- | --- | --- | --- |
-| 1 | 新規に取り込まれた文書に必須属性 **4 種**がすべて付与されている | **満たせない** | `lifecycle` の裁定（planning#361）＋ **AST#520**（経路 8 が付けない） |
-| 2 | `measure-abac-combinations.js` の「必須とするが実データに無い属性」が**空**になる | **満たせない** | 同上。**#457 の破棄だけでは解決しない**（経路 8 が新規に作り続けるため） |
+| 1 | 新規に取り込まれた文書に必須属性 **4 種**がすべて付与されている | **経路 1・2 では満たした**（`lifecycle` の裁定が下りたため 4 種が揃った）。**経路 8 では満たさない** | **AST#520** |
+| 2 | `measure-abac-combinations.js` の「必須とするが実データに無い属性」が**空**になる | **満たせない** | **AST#520**。**#457 の破棄だけでは解決しない**（経路 8 が新規に作り続けるため） |
 | 3 | ADR-0036 の所有者判定が実データに対して機能することをテストで示す | **満たせない** | **大玉 #451**（動的束縛が未実装。計画側も「未着手」と明記） |
 
 > **3 件とも満たせないが、いずれも「やらなかった」のではなく「本作業の射程外に依存している」。**
@@ -219,11 +236,11 @@ xUnit（`DataSourceService.Api.Tests`）。既存の `DataSourceUpdateEndpointTe
 
 ## 計画書との差異
 
-- 差異: **あり**。`lifecycle` の既定が未裁定（上記）。`feedback/` へ記録し裁定依頼として環流する。
-  **本作業は `owner` / `department` に限定して進め、`lifecycle` は裁定後に別途対応する。**
+- 差異: **あり（作業中に解消）**。`lifecycle` の既定が着手時は未裁定だったため環流し（planning#361）、
+  **裁定（案 C ＋ 終端 `active`）を受けて本作業に取り込んだ**。pin を `b640159` へ進めている。
 
 ## 未決事項
 
-1. **`lifecycle` の既定**（環流済み・裁定待ち）
+1. ~~**`lifecycle` の既定**~~ → **裁定済み**（planning#361・案 C ＋ 終端 `active`）。本作業で実装した
 2. **`SourceItem` へ更新者を載せるか**（別 issue。載せるまで `owner` は常に `system`）
 3. 人手経路の `owner`（**#451 の射程**。本作業では触れない）

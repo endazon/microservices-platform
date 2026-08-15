@@ -72,7 +72,7 @@ plan_refs:
 | T-28 | 例外メッセージが接続文字列（`Password=`）を含む | `SyncAsync` | **保存時点でマスク**され、平文の秘密が永続化されない | 直近エラーの秘密マスク（#537 / [[IADR-0148]] 決定 5 / IADR-0053） | 自動（単体） |
 | T-29 | キー=値／URI 資格情報／`Bearer` `Basic`／秘密を含まない文 | `SyncErrorRedactor.Redact` | 値だけを伏せキー名は残す・URI はユーザー名も伏せる・無関係な文は素通し・**切り詰めはマスクの後**（上限より後ろの秘密も伏せる） | マスク規則（#537 / [[IADR-0148]] 決定 5） | 自動（単体） |
 | T-30 | 登録済みソース | `PUT /datasources/{id}` | 200・項目が置換され **`id` / `createdAt` / `lastSyncedAt` は不変**（削除→再登録との違い） | 更新が ID と履歴を切らない（#534 / 裁定 Q16） | 自動（エンドポイント） |
-| T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | **必須属性 3 種**が補完される（`confidentiality`=`internal` / `owner`=`system` / `department`=`unassigned`） | 更新でも fail-closed を割らない（#534 / FR-05 / IADR-0019 / **#516・[[IADR-0199]]**） | 自動（エンドポイント） |
+| T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | **必須属性 4 種**が補完される（`internal` / `system` / `unassigned` / `active`） | 更新でも fail-closed を割らない（#534 / FR-05 / IADR-0019 / **#516・[[IADR-0199]]**） | 自動（エンドポイント） |
 | T-32 | 一部項目だけを送る | `PATCH /datasources/{id}` | 省略した項目が現状維持される | 部分更新の意味論（#534 / 裁定 Q16） | 自動（エンドポイント） |
 | T-33 | `config` を省略した `PATCH` | `PATCH /datasources/{id}` | 保存された `config` の秘密が `***` で潰れない | 読んで書き戻す往復事故の防止（#534 / IADR-0053） | 自動（エンドポイント） |
 | T-34 | 存在しない ID | `PUT` / `PATCH` | 404 | 更新の対象不在（#534） | 自動（エンドポイント） |
@@ -80,12 +80,13 @@ plan_refs:
 | T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画 §SC-06「登録・更新・無効化は管理者限定」（#534 / IADR-0044） | 自動（エンドポイント） |
 | T-37 | `config` / `defaultAttributes` を**省略**した `PUT` | `PUT /datasources/{id}` | **400**。実体は無傷（秘密が残る） | 全置換の省略を許すと送り忘れで秘密が消える（#627 レビュー 🟡 / [[IADR-0148]] 決定 6-b） | 自動（エンドポイント） |
 | T-38 | `config: {}` を**明示**した `PUT` | `PUT /datasources/{id}` | 200・`Config` が空になる | **明示的な消去は許す**（過剰に守らない。同上） | 自動（エンドポイント） |
-| T-39 | 既定属性が空 | `DataSource.Create` | 必須属性 3 種が終端値（`internal` / `system` / `unassigned`）で入る | 必須属性を欠落させない（#516 / [[IADR-0199]] 決定 1） | 自動（単体） |
+| T-39 | 既定属性が空 | `DataSource.Create` | **必須属性 4 種**が終端値（`internal` / `system` / `unassigned` / `active`）で入る | 必須属性を欠落させない（#516 / [[IADR-0199]] 決定 1） | 自動（単体） |
 | T-40 | `owner` / `department` を明示 | `DataSource.Create` | 明示値が保持され、予約値で**上書きされない** | 明示指定は上書きしない（計画確定 planning#344） | 自動（単体） |
 | T-41 | 値が空白のみ（`owner` / `department`） | `DataSource.Create` | 「未設定」と同じ扱いで予約値が入る | 空白を値とみなさない（現行 `confidentiality` と同一規約） | 自動（単体） |
 | T-42 | `Update` / `Patch` / `GetEffectiveAttributes` の各経路 | 同左 | **いずれも同じ補完結果**になる | 4 経路の一元化の退行防止。**1 箇所漏れると「登録時は付くが更新で消える」**（[[IADR-0199]] 決定 1） | 自動（単体） |
 | T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | 必須属性 3 種が補完される | **最終防衛線**（IADR-0019）。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
-| T-44 | 既定属性が空 | `DataSource.Create` | **`lifecycle` が付かない**（否定形） | 計画が取り込み経路の既定を**裁定していない**（planning#361）。**裁定後はこのテストを反転させる**（[[IADR-0199]] 決定 4） | 自動（単体） |
+| T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（裁定 planning#361・案 C ＋ 終端 active。[[IADR-0199]] 決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
+| T-45 | `lifecycle` を明示（`draft`） | `DataSource.Create` | 明示値が保持される | ソース単位で下書き扱いにできる（終端は指定が無いときだけ効く） | 自動（単体） |
 
 ## テストデータ
 
@@ -93,7 +94,7 @@ plan_refs:
 - 登録リクエスト: `{ name: "Sync テスト", sourceType: "SharePoint", connectionUri: "https://sp.example.com", config: {} }`（T-02）。
 - 同期時に発行される `RawDocumentFetched`（実コネクタ・#195/IADR-0051）: 実 `OriginalPath`（列挙ファイルの絶対パス）、
   `StorageUri`（`IObjectStorageClient` の格納 URI。未構成時は決定的 URI へ縮退）、拡張子由来の `ContentType`、
-  データソース既定 ABAC 属性（**必須属性 3 種のフェイルセーフ含む**・IADR-0019 / **[[IADR-0199]]**）、フォルダ名タグ。
+  データソース既定 ABAC 属性（**必須属性 4 種のフェイルセーフ含む**・IADR-0019 / **[[IADR-0199]]**）、フォルダ名タグ。
 - filesystem データソースのルート指定: `config.rootPath`（優先）または `connectionUri`（`file://`／素のパス）。
 - レスポンス DTO: `DataSourceResponse(Id, Name, SourceType, ConnectionUri, Status)`。`/sync` 応答: `{ fetched, failed, connectorAvailable, message }`。
 

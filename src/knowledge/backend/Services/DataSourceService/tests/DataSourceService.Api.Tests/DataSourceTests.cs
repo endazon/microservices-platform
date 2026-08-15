@@ -81,11 +81,11 @@ public class DataSourceTests
     }
 
     // ---------------------------------------------------------------------
-    // FR-05, UC-04, ADR-0036, #516: システム投入経路の owner / department
-    // 計画確定（planning#344・2026-08-15）。IADR-0199。
+    // FR-05, UC-04, ADR-0036, #516: システム投入経路の owner / department / lifecycle
+    // 計画確定（planning#344・2026-08-15。lifecycle は planning#361 で追補）。IADR-0199。
     // ---------------------------------------------------------------------
 
-    // #516: 既定属性が空でも、計画が必須と定める 3 属性がすべて付与される（欠落させない）
+    // #516: 既定属性が空でも、**計画が必須と定める 4 属性がすべて**付与される（欠落させない）
     [Fact]
     public void Create_WithoutAttributes_FillsAllRequiredAttributes()
     {
@@ -94,6 +94,7 @@ public class DataSourceTests
         ds.DefaultAttributes["confidentiality"].Should().Be("internal");
         ds.DefaultAttributes["owner"].Should().Be("system");
         ds.DefaultAttributes["department"].Should().Be("unassigned");
+        ds.DefaultAttributes["lifecycle"].Should().Be("active");
     }
 
     // #516: データソース既定属性に department があればそれが使われ、予約値で上書きしない
@@ -118,10 +119,11 @@ public class DataSourceTests
         ds.DefaultAttributes["owner"].Should().Be("alice");
     }
 
-    // #516: 空白のみの値は「未設定」と同じ扱いで予約値を入れる（confidentiality と同じ規約）
+    // #516: 空白のみの値は「未設定」と同じ扱いで終端値を入れる（confidentiality と同じ規約）
     [Theory]
     [InlineData("owner", "system")]
     [InlineData("department", "unassigned")]
+    [InlineData("lifecycle", "active")]
     public void Create_WithBlankRequiredAttribute_FallsBackToReservedValue(string key, string expected)
     {
         var ds = DataSource.Create("fs", "filesystem", "smb://share",
@@ -130,7 +132,7 @@ public class DataSourceTests
         ds.DefaultAttributes[key].Should().Be(expected);
     }
 
-    // #516: 3 属性すべて明示ならすべて素通しする
+    // #516: 4 属性すべて明示ならすべて素通しする
     [Fact]
     public void Create_WithAllRequiredAttributesExplicit_PreservesAll()
     {
@@ -140,11 +142,13 @@ public class DataSourceTests
                 ["confidentiality"] = "confidential",
                 ["owner"] = "alice",
                 ["department"] = "hr",
+                ["lifecycle"] = "archived",
             });
 
         ds.DefaultAttributes["confidentiality"].Should().Be("confidential");
         ds.DefaultAttributes["owner"].Should().Be("alice");
         ds.DefaultAttributes["department"].Should().Be("hr");
+        ds.DefaultAttributes["lifecycle"].Should().Be("archived");
     }
 
     // #516: Update / Patch / GetEffectiveAttributes でも同じ補完が働く（4 経路の一元化の退行防止）。
@@ -189,12 +193,14 @@ public class DataSourceTests
         // 前提を明示する: 旧行は補完を通っていない（この assert が落ちるなら再現方法が壊れている）
         ds.DefaultAttributes.Should().NotContainKey("owner");
         ds.DefaultAttributes.Should().NotContainKey("department");
+        ds.DefaultAttributes.Should().NotContainKey("lifecycle");
 
         var effective = ds.GetEffectiveAttributes();
 
         effective["confidentiality"].Should().Be("public");
         effective["owner"].Should().Be("system");
         effective["department"].Should().Be("unassigned");
+        effective["lifecycle"].Should().Be("active");
     }
 
     // EF Core が DB から復元するのと同じ形（private 既定コンストラクタ ＋ private setter）で
@@ -208,14 +214,26 @@ public class DataSourceTests
         return ds;
     }
 
-    // #516: lifecycle は**意図的に補完しない**（計画が取り込み経路での既定を裁定していない）。
-    // 裁定が下りたらこのテストは「補完する」へ**反転させる**こと。
-    // 環流: feedback/20260815_ingestion-lifecycle-default-unadjudicated.md
+    // #516: lifecycle の終端は `active`（裁定 2026-08-15・planning#361。案 C ＋ 終端 active）。
+    //
+    // **このテストは反転した。** 従前は `Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated`
+    // として「補完しないこと」を固定していた（裁定が無い間、推測で可視性を決めないため）。
+    // **[[IADR-0199]] 決定 4 が「裁定が下りたら反転させる」と定めたとおりに反転させた。**
     [Fact]
-    public void Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated()
+    public void Create_FillsLifecycleWithActive()
     {
         var ds = DataSource.Create("fs", "filesystem", "smb://share");
 
-        ds.DefaultAttributes.Should().NotContainKey("lifecycle");
+        ds.DefaultAttributes["lifecycle"].Should().Be("active");
+    }
+
+    // #516: ソース単位で下書き扱いにしたい場合は既定属性で指定できる（終端は指定が無いときだけ効く）
+    [Fact]
+    public void Create_WithExplicitLifecycle_PreservesValue()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["lifecycle"] = "draft" });
+
+        ds.DefaultAttributes["lifecycle"].Should().Be("draft");
     }
 }

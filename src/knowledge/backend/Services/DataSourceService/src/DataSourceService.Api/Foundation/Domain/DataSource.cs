@@ -48,11 +48,25 @@ public class DataSource
     // その文書は属性ベースの分岐で到達できない（「未設定は公開しない」と整合）。
     public const string OwnerKey = "owner";
     public const string DepartmentKey = "department";
+    public const string LifecycleKey = "lifecycle";
 
     // 解決できないときに入れる予約値。**欠落させない**（欠落と予約値は区別できる必要がある ——
     // 欠落は「計画が必須と定めた属性が無い」、予約値は「必須は満たしたが解決できなかった」）。
     public const string UnresolvedOwner = "system";
     public const string UnresolvedDepartment = "unassigned";
+
+    // FR-05, UC-04, #516: `lifecycle` の終端（裁定 2026-08-15・裁定依頼 planning#361。案 C ＋ 終端 active）。
+    //
+    // **これは「予約値」ではなく「既定値」である** —— `owner` / `department` の `system` / `unassigned` は
+    // 「解決できなかったことの記録」だが、`active` は**そう決めた値**である。件数を債務として数えない。
+    //
+    // **`active` にしても無制限に公開にはならない。** `read` は属性の連言であり、
+    // `confidentiality`（未指定は internal）と `department`（未解決は deny 側の unassigned）が同時にかかる。
+    // **可視性の統制を lifecycle 単独に負わせていない**（計画の理由書き）。
+    //
+    // **ソース単位で下書き扱いにしたい場合はデータソースの既定属性で `draft` を指定する。**
+    // 終端の `active` は指定が無いときだけ効く。
+    public const string DefaultLifecycle = "active";
 
     public static DataSource Create(string name, string sourceType, string connectionUri,
         Dictionary<string, string>? config = null,
@@ -81,10 +95,8 @@ public class DataSource
     //
     // **明示指定は上書きしない。** 補うのは「欠落・空白のみ」の場合に限る（従前の confidentiality と同じ規約）。
     //
-    // **`lifecycle` は意図的に扱わない。** 計画は同属性を必須と定めるが、**取り込み経路での既定を
-    // 裁定していない**（確定節の見出し・既定表とも `owner` / `department` の 2 つだけ）。
-    // draft/active のどちらを入れても副作用があり（draft は取り込んだ全文書を既定で不可視にする）、
-    // **推測で選ばない**。裁定依頼を環流済み（`feedback/20260815_ingestion-lifecycle-default-unadjudicated.md`）。
+    // **`lifecycle` は 2026-08-15 の追補裁定（planning#361）で終端 `active` が確定した。**
+    // 従前は「未裁定のため補完しない」としていたが、**裁定が下りたので補完する**。
     private static Dictionary<string, string> WithRequiredAttributeFailsafe(IReadOnlyDictionary<string, string>? attributes)
     {
         var result = attributes is null
@@ -111,6 +123,11 @@ public class DataSource
         // **ただし「常に」予約値になるわけではない** —— `DefaultAttributes` に明示指定があれば
         // 上書きしない（テスト `Create_WithExplicitOwner_PreservesValue`）。API 経由なら現在も設定できる。
         FillIfBlank(result, OwnerKey, UnresolvedOwner);
+
+        // `lifecycle` はデータソース既定属性で指定でき、指定が無ければ `active` へ倒す
+        // （裁定 planning#361。`department` と同じ 3 段の形だが、**ソース側から解決する対応物が無い**
+        // ためファイルの状態からは決まらず、1 段目が無い形になる）。
+        FillIfBlank(result, LifecycleKey, DefaultLifecycle);
 
         return result;
     }

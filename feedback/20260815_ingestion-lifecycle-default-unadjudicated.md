@@ -1,7 +1,7 @@
 ---
 title: システム投入経路の lifecycle 既定が未裁定である（owner / department だけが確定し 3 属性目が落ちている）
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids:
   - FR-05

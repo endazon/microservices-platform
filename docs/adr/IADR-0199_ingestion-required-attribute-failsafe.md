@@ -1,5 +1,5 @@
 ---
-title: IADR-0199 取り込み経路の必須属性フェイルセーフを owner / department へ広げ、lifecycle は裁定まで補完しない
+title: IADR-0199 取り込み経路の必須属性フェイルセーフを owner / department / lifecycle へ広げる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -18,22 +18,22 @@ related_specs:
   - "../specs/20260815_issue-516_abac-required-attributes.md"
 ---
 
-# IADR-0199: 必須属性フェイルセーフの拡張と、`lifecycle` を補完しない判断
+# IADR-0199: 必須属性フェイルセーフを 4 属性へ拡張する
 
 - 状態: Accepted（2026-08-15）
-- 決定者: 計画側の裁定（planning#344）＋ claude（実装）
+- 決定者: 計画側の裁定（planning#344 ＋ planning#361〔`lifecycle` の追補〕）＋ claude（実装）
 
 ## 起点・関連
 
 - Issue: #516（取り込み経路が必須の文書属性を付与していない）／#752（`SourceItem` が更新者を運ばない）
-- 計画: [`09_datasource-connectors.md`](../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md) §システム投入経路での `owner` / `department`（**確定・2026-08-15**）
+- 計画: [`09_datasource-connectors.md`](../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md) §システム投入経路での `owner` / `department` / `lifecycle`（**確定・2026-08-15。`lifecycle` は同日追補**）
 - 拡張対象: [[IADR-0019]]（機密区分のフェイルセーフ）
 - [作業仕様書](../specs/20260815_issue-516_abac-required-attributes.md)
 
-## 決定 1: フェイルセーフを 3 属性へ広げ、**補完点は 1 箇所に保つ**
+## 決定 1: フェイルセーフを 4 属性へ広げ、**補完点は 1 箇所に保つ**
 
 [[IADR-0019]] が置いた `WithConfidentialityFailsafe` を **`WithRequiredAttributeFailsafe`** へ改称し、
-`owner` / `department` を加えた。**`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の
+`owner` / `department` / `lifecycle` を加えた。**`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の
 4 経路が同じ関数を通る**という [[IADR-0019]] の構造は維持する。
 
 | 属性 | 計画が定めた解決順 | 実装での段 | 終端 |
@@ -41,9 +41,11 @@ related_specs:
 | `confidentiality` | 明示指定 | 明示指定 | `internal`（現行のまま） |
 | `department` | 投入元（ソース）の所属 → データソース既定属性 | **`DefaultAttributes` の値のみ**（前段は**未実装**） | **`unassigned`** |
 | `owner` | ソース側の更新者 → 予約値 | **`DefaultAttributes` の値のみ**（前段は**器が無い**） | **`system`** |
+| `lifecycle` | データソース既定属性 → 終端値 | `DefaultAttributes` の値（**1 段目が無い形**） | **`active`**（既定値。**予約値ではない**） |
 
 **前段が効かない理由は 2 属性で異なる**（詳細は決定 2）。`owner` は器そのものが無く、
 `department` は**供給源はあるが写像が未実装**である。**同じ扱いにしない。**
+`lifecycle` は**ソース側から解決する対応物が構造的に無い**ため 1 段目を持たない（決定 4）。
 
 **明示指定は上書きしない**（空白のみは「未設定」と同じ扱い。現行 `confidentiality` と同じ規約）。
 
@@ -110,13 +112,10 @@ API 経由なら現在も両属性を設定できる。**「常に予約値へ�
 既存の `scripts/measure-abac-combinations.js`（#456 / PR #515。読み取り専用）の出力へ
 `owner=system` / `department=unassigned` の件数を加える。
 
-## 決定 4: **`lifecycle` は補完しない**（裁定が無いため）
+## 決定 4: `lifecycle` の終端は **`active`**（裁定 planning#361・2026-08-15 追補）
 
-計画は `lifecycle` を**必須**と定めるが、**取り込み経路での既定を裁定していない** ——
-確定節の見出しも既定表も `owner` / `department` の 2 つだけである。
-一方**同節の前文**と #516 の受け入れ基準は `lifecycle` を含む 3 属性を挙げている。
-
-**推測で選ばない。**
+**当初この決定は「補完しない」だった。** 計画は `lifecycle` を必須と定めながら、
+確定節の見出しも既定表も `owner` / `department` の 2 つだけで、**取り込み経路での既定を裁定していなかった**。
 
 | 案 | 副作用 |
 | --- | --- |
@@ -124,17 +123,42 @@ API 経由なら現在も両属性を設定できる。**「常に予約値へ�
 | `draft` | **取り込んだ全文書が既定で不可視**になり、ナレッジベースとして機能しない |
 
 `owner` / `department` は「**どちらの予約値も deny 側に倒れる**」ことを確認して選ばれたが、
-**`lifecycle` は倒れる向きが有用性の側で問題になる**。したがって同じ形の解決にならない。
+`lifecycle` は**倒れる向きが有用性の側で問題になる**。**推測で選ばず planning#361 として環流し、
+裁定までの状態を否定形テストで固定した。**
 
-**裁定依頼を planning#361 として環流した**（記録: `feedback/20260815_ingestion-lifecycle-default-unadjudicated.md`）。
-裁定までの状態は**否定形テスト**として固定する。
+### 裁定の結果（**案 C ＋ 終端 `active`**）
+
+**2026-08-15 に裁定が下りたため、本決定を改定する。**
+
+| 属性 | 解決順 | 終端 |
+| --- | --- | --- |
+| `lifecycle` | **データソースの既定属性で指定された値** | **`active`** |
+
+計画が示した理由は次のとおりである。
+
+- **`department` が既に採っている 3 段の形**（ソースから解決 → データソース既定属性 → 終端値）**に揃える**。
+  `lifecycle` は**ソース側から解決する対応物が無い**ため、**3 段のうち 1 段目が無い形**になる
+- **`active` にしても「無制限に公開」にはならない。** `read` は**属性の連言**であり、
+  `confidentiality`（未指定は `internal`）と `department`（未解決は deny 側の `unassigned`）が同時にかかる。
+  **可視性の統制を `lifecycle` 単独に負わせていない**
+- **`draft`（案 B）は採らない。** 全文書が既定で不可視になり、SC-05 の管理者が 1 件ずつ公開操作をしない限り
+  ナレッジベースとして機能しない。**安全側に倒す判断は、運用が回らないところまで倒すと安全ではない**
+
+### **`active` は予約値ではなく既定値である**
+
+`system` / `unassigned` は「**解決できなかったことの記録**」だが、**`active` はそう決めた値**である。
+したがって**件数を環流債務として数えない**（決定 3 の観測対象に含めない）。
+
+### 否定形テストは**反転させた**
 
 ```
-Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated
+Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated   （削除）
+  → Create_FillsLifecycleWithActive                          （新設）
+  → Create_WithExplicitLifecycle_PreservesValue              （新設・ソース単位の draft 指定）
 ```
 
-**裁定が下りたらこのテストを「補完する」へ反転させる。** テスト名に理由を書いたのは、
-**将来の読み手が「補完し忘れ」と誤読して黙って直すのを防ぐため**である。
+**当初この ADR が「裁定が下りたら反転させる」と定めておいたとおりに反転した。**
+テスト名に理由を書いておいたことで、**反転すべき箇所が機械的に見つかった。**
 
 ## 決定 5: **保存前検証は強めない**（属性を入れる前に検証を強めると人手経路が壊れる）
 
@@ -164,14 +188,16 @@ Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated
   **情報が漏れる向きの変化は無い**。
 - **悪い影響 / トレードオフ**: `owner=system` の文書は**所有者ベースでは誰も書き込めない**
   （計画が明記した意図した状態。編集は SC-05 の管理者経路）。
-- **限界**: **判定軸は当面 `confidentiality` ＋ `department` の 2 本に留まる**
-  （`department` は多くが `unassigned` へ倒れるため実効 1 本に近い）。
-  `lifecycle` は裁定待ち、`owner` は #752 待ちである。
+- **限界**: **必須 4 属性は揃ったが、判定軸としての実効は上がっていない。**
+  `department` は多くが `unassigned`（#754）、`owner` は多くが `system`（#752）へ倒れ、
+  `lifecycle` は全件 `active` になるため**値のばらつきが無い**。
+  **さらに AST の書き込み経路（AST#520）は本 IADR の修正を通らず、4 属性のうち 3 つを付けないままである。**
   **ADR-0034 が求めるホップごとの強制は、依然として設計どおりには検証できない。**
 
 ## フォローアップ
 
-1. **planning#361**: `lifecycle` の既定の裁定（環流済み）。**下りたら決定 4 を改定する**
+1. ~~**planning#361**: `lifecycle` の既定の裁定~~ → **2026-08-15 に裁定済み**（案 C ＋ 終端 `active`）。
+   **決定 4 を改定し、否定形テストを反転させた。**
 2. **#752**: `SourceItem` へ更新者を載せ、`owner` の予約値を減らす
 3. **#754**: `department` の供給源（フォルダ → 部門の写像規則・SC-06 の入力欄）を塞ぐ
 4. **AST#520**: **AST の書き込み経路が必須属性を付けない。** `HttpKnowledgeBaseWriter.BuildAttributes` が
