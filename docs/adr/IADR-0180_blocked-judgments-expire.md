@@ -4,10 +4,11 @@ type: impl-adr
 status: Accepted
 related_ids:
   - NFR
+  - IADR-0120
   - IADR-0179
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -68,3 +69,11 @@ plan_refs:
 - **行 H の個々の issue の現在の可否** —— **本 ADR は観点を定めるだけ。**
   **#574 / #546 / #336 / #380 / #578 は現在も環境依存として据え置き**であり、各着手時に測る
 - **棚卸しが実際に行われること** —— **本リポに棚卸しの自動化は無い**（planning 側の `stocktake.js` 相当が無い）
+
+> **［2026-08-16 追記 / #454］本文の「行 H」は、いまの `session-handoff.md` では「波 5」である。**
+> §2 のフェーズ C〜H の表は**波の表へ差し替わり**、環境依存で保留していた issue は**波 5**に入った。
+> **決定そのものは変わらない**（規範は §4.5 に置き、スナップショットからは指す）。
+> **本文の「行 H」を書き換えず追記で示す** —— 決定当時の記録だからである。
+> あわせて、判定の**時点と根拠を書く先は §2 ではなく棚卸しの作業仕様書**になった
+> （[`docs/specs/20260815_issue-454_open-issue-stocktake-and-waves.md`](../specs/20260815_issue-454_open-issue-stocktake-and-waves.md)）。
+> §2 は**順序しか持たない**（[[IADR-0120]]「人が更新する台帳を持たない」）。
