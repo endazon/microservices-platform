@@ -105,7 +105,7 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 | `docs/templates/runbook_template.md` | **A** | 同上（差分 8 行） |
 | `scripts/check-kit-sync.js` | **B**（X） | **本リポが originate した**（#734）。キットが後追いで**別実装**を持った（`git diff --numstat` で +60 / -265） |
 | `scripts/check-planning-pin-freshness.js` | **B**（X） | **本リポが originate した**（#680 / [[IADR-0170]]）。**キット版は目的が別物**（pin の経過日数を見るオフライン方式。本リポ版は着手可否の分類を持つ）。+347 / -122 |
-| `scripts/check-feedback-status-sync.js` | **B**（3） | **本リポが originate した**（[[IADR-0193]]）。差分 302 行 |
+| `scripts/check-feedback-status-sync.js` | **B**（X） | **本リポが originate した**（#738 / [[IADR-0193]]）。キットが後追いで**別実装**を持った（+73 / -155）。追跡: #751 / #736 |
 | `scripts/check-review-verdict.js` | **A** | **キットの新規配布物。本 PR で採用する**（利用者裁定 2026-08-15）。CI 配線も行う |
 | `AI_SETUP.md`（既存 B の是正） | **B（5）** | **裁定 planning#339 が第 5 種の代表例として名指ししている。** 当初「第 5 種にも当たらない」と書いたのは 3 つの一次資料に反していた（[[IADR-0198]] 決定 1）。あわせて**キットの 2 ブロックの追随漏れ**も取り込み、残差を `- [x]` の 1 行だけにした |
 | `scripts/kit-sync-classification.example.json` | **notApplicable** | 本リポは実体 `kit-sync-classification.json` を持つ。`.example` は雛形であり対象外（既存の `*.example.yml` 8 件と同じ扱い） |
@@ -117,6 +117,12 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 > [[IADR-0115]] 決定 2 の 4 種にも、planning#339 が新設した第 5 種にも当たらない**新しい型**である。
 > したがって **`X`（4 種に当たらない）＋ 追跡先**とした。追跡先は **#751**（上流の `--require-planning` の追随）と **#749**。
 >
+> **★ この表と `kit-sync-classification.json` の分類値がずれたことがある**（PR #750 の AI レビューが検出）。
+> **3 件を X へ改める作業で、表の 1 行（`check-feedback-status-sync.js`）だけを取りこぼした。**
+> 実体は JSON 側であり CI は緑のままだったため、機械では出ない。
+> **是正後は目視ではなく、JSON の値と表の値を突合するスクリプトで確認した。**
+> **同型は今回が 1 回目なので検査器は置かない**（`CLAUDE.md`「同型の事故が 2 回起きたら」）。記録に留める。
+
 > **★ 「キット原文で上書きすると退行する」は `check-planning-pin-freshness.js` については弱い**（AI レビューの 🟡）。
 > **キット版は `origin/HEAD` 等のリモート参照に一切依存しない別設計**であり、**#749 が踏んだ不具合の型を構造的に持たない**。
 > **#749 の対応では、キット版への差し替えも比較検討の俎上に載せる**（同 issue へ追記済み）。
