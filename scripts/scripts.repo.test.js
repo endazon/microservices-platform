@@ -6251,20 +6251,10 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('#733: feedback/ 本文の日付つき追記ブロックが baseline を超えていない（ラチェット）', () => {
-      const raw = JSON.parse(
+      const baseline = JSON.parse(
         fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
-      );
-      const baseline = raw.files;
-      // originText はファイル新規作成時の原文であり「後から差し込んだ注記」ではない
-      // （.claude/rules/traceability.md の但し書き）。検査は形で拾うので計数から除く。
-      // ここへ積むと「既知の残存違反」と誤って分類することになる（PR #744 の ADR 監査 Y-3）。
-      const origin = raw.originText || {};
+      ).files;
       const current = feedbackAddendaCounts();
-      for (const [f, n] of Object.entries(origin)) {
-        if (current[f] === undefined) continue;
-        current[f] -= n;
-        if (current[f] <= 0) delete current[f];
-      }
 
       // 走査 0 件で緑になる fail-open を塞ぐ（baseline に行がある限り現状にも出るはず）。
       assert.ok(
@@ -6291,23 +6281,6 @@ module.exports = ({ ok, assert }) => {
         [],
         'baseline の減らし忘れ（追記ブロックは消えているのに baseline に残っている）:\n  ' + stale.join('\n  '),
       );
-    });
-
-    ok('#733: originText（ファイル原文の追記）は残存違反として数えない', () => {
-      const raw = JSON.parse(
-        fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
-      );
-      const origin = raw.originText || {};
-      assert.ok(Object.keys(origin).length > 0, 'originText が空になった（分離の意図が失われている）');
-      for (const f of Object.keys(origin)) {
-        assert.ok(
-          raw.files[f] === undefined,
-          `${f} が files と originText の両方にある（二重計上になる）`,
-        );
-        // 実データ側にも同数だけ存在していること（baseline だけ残る stale を防ぐ）。
-        const counts = feedbackAddendaCounts();
-        assert.strictEqual(counts[f], origin[f], `${f} の原文ブロック数が baseline と一致しない`);
-      }
     });
 
     ok('#733: #721 が足した追記ブロックは feedback/ から消えている', () => {
