@@ -4,8 +4,8 @@
 set -eu
 
 : "${BFF_BASE_URL:=/bff}"
-: "${OIDC_AUTHORITY:=http://localhost:8080/realms/microservices-platform}"
-: "${OIDC_CLIENT_ID:=spa-web}"
+: "${OIDC_AUTHORITY:=http://localhost:8080/realms/platform}"
+: "${OIDC_CLIENT_ID:=platform-spa}"
 # Issue #136 / SC-10: 外部ツール導線 URL（未設定は空文字＝画面に導線を出さない）。
 : "${GRAFANA_URL:=}"
 : "${JAEGER_URL:=}"

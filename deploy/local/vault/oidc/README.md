@@ -47,7 +47,7 @@ vault auth list | grep -q "^oidc/" || vault auth enable oidc'
 kubectl -n platform-infra exec deploy/vault -- sh -c "
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=\"\$VAULT_DEV_ROOT_TOKEN_ID\"
 vault write auth/oidc/config \
-  oidc_discovery_url='http://keycloak:8080/realms/microservices-platform' \
+  oidc_discovery_url='http://keycloak:8080/realms/platform' \
   oidc_client_id='vault' oidc_client_secret='$SEC' default_role='default'"
 
 # role default
@@ -85,7 +85,7 @@ curl -s --resolve vault.localhost:50000:127.0.0.1 \
 ```
 
 `bootstrap.sh` が行うこと:
-- `auth/oidc` を有効化し、`oidc_discovery_url=http://keycloak:8080/realms/microservices-platform`／`client_id=vault`／
+- `auth/oidc` を有効化し、`oidc_discovery_url=http://keycloak:8080/realms/platform`／`client_id=vault`／
   client secret（Secret 由来）で `config`。
 - OIDC role `default`（`groups_claim=groups`・`token_policies=default`＝**最小・secret アクセス無し**）。
 - policy `admin`（`policies/admin.hcl`）／`operator`（`policies/operator.hcl`）を作成。

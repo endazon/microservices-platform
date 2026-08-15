@@ -98,7 +98,7 @@ issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）
     **fail-safe の local admin（`admin`/`admin`）でログインする**（機密露出等のリスクは無い）。port-forward で OIDC を
     使いたい場合は `GF_SERVER_ROOT_URL` を `http://localhost:3000/` に戻す（realm の port-forward redirect は登録済み）。
 - **ArgoCD（#359 適用済み）** / これから足す **Vault** 等の OIDC client は最初から 50000 URL で登録する。
-- **platform フロント（SPA）/ Headlamp（#353 適用済み）**: realm `spa-web` client に集約後 origin
+- **platform フロント（SPA）/ Headlamp（#353 適用済み）**: realm `platform-spa` client に集約後 origin
   `http://localhost/*`（SPA は `redirect_uri=<origin>/callback` を送る。callback パス＝`/callback`）を
   `redirectUris`/`webOrigins`/`post.logout.redirect.uris` へ、`headlamp` client に `http://headlamp.localhost:50000/*`
   を `redirectUris`/`webOrigins` へ追加済み（IADR-0091/0033/0080 のフォローアップ。port-forward 用 URL は後方互換で残す）。

@@ -5,7 +5,7 @@ window.__APP_CONFIG__ = {
   bffBaseUrl: '/bff',
   // Keycloak OIDC（SPA public client + Authorization Code + PKCE）。
   oidc: {
-    authority: 'http://localhost:8080/realms/microservices-platform',
-    clientId: 'spa-web',
+    authority: 'http://localhost:8080/realms/platform',
+    clientId: 'platform-spa',
   },
 };

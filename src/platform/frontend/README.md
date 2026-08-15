@@ -56,4 +56,4 @@ pnpm run test:e2e   # Playwright スモーク（ブラウザ未取得なら `pnp
 ```
 
 Keycloak ログインには dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）と、
-realm の public client `spa-web`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
+realm の public client `platform-spa`（redirect `http://localhost:3100/*`。realm import 済み）が必要。

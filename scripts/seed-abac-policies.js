@@ -31,7 +31,7 @@
  *
  * 主な環境変数:
  *   ABAC_SEED_DIR（既定 deploy/local/abac-seed）/ ABAC_SEED_NS（既定 microservices-platform）
- *   ABAC_SEED_INFRA_NS（既定 platform-infra）/ ABAC_SEED_REALM（既定 microservices-platform）
+ *   ABAC_SEED_INFRA_NS（既定 platform-infra）/ ABAC_SEED_REALM（既定 platform）
  *   ABAC_SEED_CLIENT_ID（既定 bff）/ ABAC_SEED_USER・ABAC_SEED_PASSWORD（既定 admin/admin）
  *
  * 終了コード: 0=投入済み（no-op を含む） / 1=失敗 / 2=前提未整備（k8s へ到達できない等）
@@ -45,7 +45,7 @@ const env = (k, d) => process.env[k] || d;
 const SEED_DIR = env('ABAC_SEED_DIR', path.join(__dirname, '..', 'deploy', 'local', 'abac-seed'));
 const NS = env('ABAC_SEED_NS', 'microservices-platform');
 const INFRA_NS = env('ABAC_SEED_INFRA_NS', 'platform-infra');
-const REALM = env('ABAC_SEED_REALM', 'microservices-platform');
+const REALM = env('ABAC_SEED_REALM', 'platform');
 const CLIENT_ID = env('ABAC_SEED_CLIENT_ID', 'bff');
 const USER = env('ABAC_SEED_USER', 'admin');
 const PASSWORD = env('ABAC_SEED_PASSWORD', 'admin');

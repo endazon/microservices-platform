@@ -30,7 +30,7 @@ public static class AuthExtensions
         IConfiguration config)
     {
         var authority = config["Auth:Authority"]
-            ?? "http://keycloak:8080/realms/microservices-platform";
+            ?? "http://keycloak:8080/realms/platform";
 
         // NFR(運用性/セキュリティ), ADR-0004, IADR-0076 手順B, IADR-0086: OIDC metadata の取得先と issuer 検証値を
         // 分離できるようにする（単一エッジ host OIDC を CoreDNS/hosts 改変なしに成立させる）。既定（両キー未設定）は

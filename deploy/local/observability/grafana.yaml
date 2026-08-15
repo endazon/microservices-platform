@@ -439,7 +439,7 @@ spec:
           image: grafana/grafana:11.0.0
           # IADR-0090 (#353): Keycloak OIDC(generic OAuth) 認証。匿名 Admin は廃止（fail-safe: 認証未設定/失敗時は
           # 匿名フルアクセスへ倒さず、Grafana 組み込み local admin=admin/admin へフォールバックする）。issuer は
-          # http://keycloak:8080/realms/microservices-platform（headlamp 先例・#284 手順A で browser も keycloak:8080 解決）。
+          # http://keycloak:8080/realms/platform（headlamp 先例・#284 手順A で browser も keycloak:8080 解決）。
           env:
             # fail-safe: 匿名アクセスを無効化。ロックアウト回避の break-glass は local admin（dev 既定 admin/admin）。
             - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
@@ -462,9 +462,9 @@ spec:
                   key: client-secret
                   optional: true
             - { name: GF_AUTH_GENERIC_OAUTH_SCOPES, value: "openid profile email" }
-            - { name: GF_AUTH_GENERIC_OAUTH_AUTH_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/auth" }
-            - { name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/token" }
-            - { name: GF_AUTH_GENERIC_OAUTH_API_URL, value: "http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/userinfo" }
+            - { name: GF_AUTH_GENERIC_OAUTH_AUTH_URL, value: "http://keycloak:8080/realms/platform/protocol/openid-connect/auth" }
+            - { name: GF_AUTH_GENERIC_OAUTH_TOKEN_URL, value: "http://keycloak:8080/realms/platform/protocol/openid-connect/token" }
+            - { name: GF_AUTH_GENERIC_OAUTH_API_URL, value: "http://keycloak:8080/realms/platform/protocol/openid-connect/userinfo" }
             - { name: GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH, value: "preferred_username" }
             - { name: GF_AUTH_GENERIC_OAUTH_EMAIL_ATTRIBUTE_PATH, value: "email" }
             # role マッピング: platform-admin→Admin / platform-operator→Editor / それ以外→Viewer（最小権限・未知は Viewer）。

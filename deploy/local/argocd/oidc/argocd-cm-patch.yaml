@@ -7,7 +7,7 @@ data:
   url: http://argocd.localhost:50000
   oidc.config: |
     name: Keycloak
-    issuer: http://keycloak:8080/realms/microservices-platform
+    issuer: http://keycloak:8080/realms/platform
     clientID: argocd
     clientSecret: $oidc.keycloak.clientSecret
     requestedScopes:

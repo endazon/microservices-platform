@@ -250,6 +250,7 @@
 | [IADR-0194](./IADR-0194_audit-rounds-follow-upstream-no-numeric-cap.md) | 監査の**巡数の上限を撤廃**し、上流裁定（planning#307）へ従う（**IADR-0141 決定 2 を差し替え**）。**「1」は測って出した数ではない** —— 数を条文に書くとその数が疑われなくなる。**打ち切り条件の明言は残す**（こちらが本体）。 | Accepted |
 | [IADR-0195](./IADR-0195_coverage-exclude-source-generator-output.md) | **カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**。#574。[[IADR-0138]] 決定 1 の射程を拡張し、決定 4 を差し替える（`line 33 → 39` / `branch 17 → 27`）。 | Accepted |
 | [IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md) | 共有カーネルの Result ライブラリは「BANNED からの除外」ではなく**プロジェクト名で限定した許可リスト**で機械強制する。#500。計画 ADR-0041 が ADR-0030 選定基準 3 を「ゼロ」→「名指しの 1 つ」へ部分改定したことへの追随。許可リスト外は `BANNED` 非掲載でも違反。 | Accepted |
+| [IADR-0197](./IADR-0197_realm-rename-and-auth-policy.md) | レルムを `platform`・基盤 SPA クライアントを `platform-spa` へ改名し、ADR-0026 の認証ポリシー（12 文字/3 種以上/5 世代・TOTP 前後 1 ステップ・5 回で 15 分ロック・リンク 30 分・記憶 30 日）を realm へ投入。#578。記録側は書き換えず現行値は本 IADR が持つ。SMTP とテーマは #438。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

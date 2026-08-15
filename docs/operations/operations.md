@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-11
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -335,7 +335,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
-  realm `microservices-platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
+  realm `platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
 - **管理 UI への直接アクセス（dev のみ）**: 下記の初期セットアップ（OIDC 構成・ja ロケール導入・API キー発行）は
   ブラウザから Wiki.js 管理 UI（`http://localhost:3001`）へアクセスする。dev の compose は 3001 を公開している
   （[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
@@ -353,10 +353,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   追加し、以下を設定する。Keycloak 側クライアントは realm import 済み（`wiki-js`、confidential、
   redirect `http://localhost:3001/*`）。
   - Client ID: `wiki-js` / Client Secret: realm import の値（dev は `wiki-js-dev-secret-change-me`。**本番は必ず変更**）。
-  - Authorization Endpoint URL: `http://localhost:8080/realms/microservices-platform/protocol/openid-connect/auth`
-  - Token Endpoint URL: `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/token`
+  - Authorization Endpoint URL: `http://localhost:8080/realms/platform/protocol/openid-connect/auth`
+  - Token Endpoint URL: `http://keycloak:8080/realms/platform/protocol/openid-connect/token`
     （サーバ間はコンテナ名 `keycloak`、ブラウザ経路は `localhost:8080`）。
-  - **Issuer: `http://localhost:8080/realms/microservices-platform`**。issuer はブラウザ経路のホストに
+  - **Issuer: `http://localhost:8080/realms/platform`**。issuer はブラウザ経路のホストに
     固定される（compose の `KC_HOSTNAME_URL` で固定済み）。`keycloak:8080` を設定すると ID トークン
     検証と userinfo が失敗する（「Failed to fetch user profile」。Issue #88 実測）。
   - User Info / Logout: 同 realm の対応エンドポイント（User Info はコンテナ内経路 `keycloak:8080`）。

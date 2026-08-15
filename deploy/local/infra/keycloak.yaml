@@ -1,8 +1,8 @@
-# IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `microservices-platform` を import。
+# IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `platform` を import。
 # realm JSON は kustomization.yaml の configMapGenerator が実ファイル（deploy/keycloak/…）から生成し、
 # /opt/keycloak/data/import へマウントする（単一情報源＝既存 realm ファイル）。
 # 発行者(issuer)は in-cluster 正準名に固定する: MSP chart の Auth__Authority=
-# http://keycloak:8080/realms/microservices-platform（values.yaml global.auth.authority）と一致させ、
+# http://keycloak:8080/realms/platform（values.yaml global.auth.authority）と一致させ、
 # サービス間 JWT 検証を成立させる。ブラウザ OIDC（Wiki.js 等）は別途 hostname 設定が要る（README 参照）。
 apiVersion: apps/v1
 kind: Deployment

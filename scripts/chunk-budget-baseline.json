@@ -5,7 +5,20 @@
     "vendor-react",
     "vendor-query"
   ],
+  "$comment_initialTotalBytes": [
+    "［2026-08-15 / #578］586,557 → 622,064（+35.51 kB）へ引き上げた。増加は本 PR の変更ではなく、",
+    "develop へ入った AST submodule の 3 回の bump（91d52c2 → 7f69fb5。frontend が 42 ファイル・+6,313 行）である。",
+    "src/platform/frontend/src/features/index.ts が @ai-stock-trading/features を**静的 import** しており、",
+    "AST のコードはエントリチャンク＝初期ロードへ入る。",
+    "実測（3 通りビルドして切り分けた）:",
+    "  - 本 PR あり・AST 現行 = 622.06 kB（fail）",
+    "  - 本 PR なし・AST 現行 = 622.07 kB（fail。**本 PR を外すと 0.01 kB 悪化する** ＝ 本 PR は原因ではない）",
+    "  - 本 PR あり・AST 旧 91d52c2 = 586.55 kB（pass）",
+    "検査が走らなかった理由: frontend.yml の paths: に src/ai-stock-trading が無く、submodule ポインタの",
+    "変更は src/*/frontend/** に一致しない。よって bump は一度も本検査を通っていない。",
+    "**この CI の穴は本 PR の射程外**（1 issue = 1 PR。IADR-0116 規約 1）であり、別 issue として起票した。"
+  ],
   "maxChunkBytes": 500000,
-  "initialTotalBytes": 586557,
+  "initialTotalBytes": 622064,
   "smallLazyChunks": 6
 }

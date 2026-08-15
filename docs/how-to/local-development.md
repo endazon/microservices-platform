@@ -6,7 +6,7 @@ related_ids:
   - NFR
 author: claude
 created: 2026-07-09
-updated: 2026-07-10
+updated: 2026-08-15
 plan_refs: []
 related_specs:
   - ../operations/operations.md
@@ -72,7 +72,7 @@ pnpm run test:e2e     # Playwright（ブラウザ未取得なら pnpm exec playw
 ```
 
 Keycloak ログインを伴う開発には、dev スタック（`docker compose -f deploy/docker-compose.yml up -d keycloak bff`）
-と realm の public client `spa-web`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
+と realm の public client `platform-spa`（redirect `http://localhost:3100/*`。realm import 済み）が必要。
 詳細は [`src/platform/frontend/README.md`](../../src/platform/frontend/README.md)。
 
 ## 5. インフラ + 全サービスの起動（dev）
@@ -108,7 +108,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 | --- | --- | --- |
 | フロントエンド | http://localhost:3100 | `/bff` は nginx が BFF へプロキシ |
 | BFF | http://localhost:5000 | フロントエンドの唯一の入口（エッジ） |
-| Keycloak | http://localhost:8080 | realm `microservices-platform` を import 済み |
+| Keycloak | http://localhost:8080 | realm `platform` を import 済み |
 | Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）。本番系は非公開 |
 | Grafana | http://localhost:3000 | 匿名 Admin（dev 限定） |
 | Prometheus | http://localhost:9090 | |
@@ -129,7 +129,7 @@ Wiki.js を使う機能（FR-13 / UC-07）を試す場合、初回のみ管理 U
 | --- | --- |
 | `planning/` が空 | `git submodule update --init --recursive` を実行する |
 | Keycloak の healthcheck が unhealthy のまま | Keycloak 24 イメージは curl/wget 非搭載。compose の healthcheck は bash の `/dev/tcp` で検査するため数十秒〜1分程度は正常な起動待ち（`deploy/docker-compose.yml` のコメント参照） |
-| Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/microservices-platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
+| Wiki.js の OIDC ログインが `Failed to fetch user profile` | Issuer は `http://localhost:8080/realms/platform`（ブラウザ経路）で設定する。`keycloak:8080` を指定すると失敗する（`docs/operations/operations.md` 実測記録） |
 | フロントエンドから BFF に到達しない | dev は `pnpm run dev` の Vite プロキシ（`VITE_BFF_TARGET` で上書き可）または compose の nginx `/bff` プロキシ経由。BFF(5000) が起動しているか確認する |
 | LLM/埋め込み呼び出しが失敗する | `.env`（gitignore 済み）に `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` 等を設定する（`deploy/docker-compose.yml` の `llm-gateway` 環境変数を参照）。キー未設定でも起動はするが呼び出しは失敗する |
 
