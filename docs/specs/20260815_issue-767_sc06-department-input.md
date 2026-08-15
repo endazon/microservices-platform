@@ -301,3 +301,31 @@ if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(val
    文書に実際に付与されている値のみ」を返す候補 API を使うのは誤り**である（まだ 1 件も無い部門を設定できない）。
    属性辞書側の候補口が要るかは未確定。
 3. **フォルダ → 部門コードの写像**（planning#372）。裁定が下りるまで実装しない。
+
+## バンドル初期ロードの床を更新した（CI が検出。**手元の検証が漏らしていた**）
+
+`check-chunk-budget` が CI で fail した —— **初期ロード合計 622.36 kB > 床 622.06 kB（+0.30 kB）**。
+
+**増加の出どころを特定してから床を上げた**（「意図した増加」を確かめずに `--update` を打たない）。
+
+```console
+$ grep -lo "既定の部門\|Default department" src/platform/frontend/dist/assets/*.js
+src/platform/frontend/dist/assets/index-CoQ0WPnZ.js
+```
+
+**新しい文言は初期チャンク `index-*.js` に入っている。** Lingui のカタログ
+（`platform/frontend/src/foundation/i18n/locales/*/messages.ts`）は foundation が**即時 import** するため、
+遅延チャンクに逃がせない。一方 **UI 本体（`DataSourceForm` の入力欄と `features/abac/department.ts`）は
+遅延チャンク `DataSourceManagementPage-*.js`（8.49 kB）側にある**。
+
+つまり **+0.30 kB は「翻訳文言を 1 つ足したことの下限コスト」**であり、
+[[IADR-0134]] の分割境界を変えても消せない。したがって床を更新した（`scripts/chunk-budget-baseline.json`
+の `initialTotalBytes` を `622064` → `622363`）。**分割規則そのものは 1 行も変えていない。**
+
+### 手元の検証手順に穴があった（記録）
+
+**この検査器は `pnpm run build` の成果物を読む**ため、`typecheck` / `lint` / `format:check` / `test:coverage`
+だけを回した手元検証では**原理的に発火しない**。CI が最初の検出者になった。
+
+**次に i18n の文言を足す作業では、手元でも `pnpm run build` → `node scripts/check-chunk-budget.js --require`
+まで回すこと。** 文言追加は必ず初期ロードを増やすので、**毎回この床に当たり得る**。

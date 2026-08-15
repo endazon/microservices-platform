@@ -19,6 +19,6 @@
     "**この CI の穴は本 PR の射程外**（1 issue = 1 PR。IADR-0116 規約 1）であり、別 issue として起票した。"
   ],
   "maxChunkBytes": 500000,
-  "initialTotalBytes": 622064,
+  "initialTotalBytes": 622363,
   "smallLazyChunks": 6
 }
