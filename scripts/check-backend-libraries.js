@@ -315,12 +315,20 @@ function bannedListFor(projPath) {
  * これは BANNED の判定とは独立である —— BANNED に載っていない任意のパッケージ
  * （例: Npgsql）でも、SharedKernel へ入れば違反になる。
  */
-function sharedKernelViolations(relPath, content) {
-  if (!isSharedKernelProject(relPath)) return [];
+function sharedKernelViolations(relPath, content, owner = relPath) {
+  if (!isSharedKernelProject(owner)) return [];
   const out = [];
   for (const id of packageReferencesOf(content)) {
     if (SHARED_KERNEL_ALLOWED.includes(id)) continue;
     out.push({ kind: 'shared-kernel-package', project: toPosix(relPath), detail: id });
+  }
+  // 決定 3 は「**推移的に**持ち込んでよい外部パッケージは 1 つに限る」「静的解析は許可リストで
+  // **Domain の推移閉包**を検査する」と書いている。PackageReference だけを見ると 1 段しか見ておらず、
+  // Domain → Kernel → 任意のプロジェクト(Npgsql 等) という経路が素通りする（実測で再現。#500 監査）。
+  // 共有カーネルは Result / Error・共通基底を置く最下層であり（IADR-0117 決定 1）、
+  // 他プロジェクトを参照する理由が無い。よって ProjectReference は 0 件に固定する。
+  for (const ref of projectReferencesOf(content)) {
+    out.push({ kind: 'shared-kernel-project', project: toPosix(relPath), detail: ref });
   }
   return out;
 }
@@ -434,9 +442,16 @@ function scanTree(root = REPO_ROOT) {
 
   for (const proj of buildFiles) {
     const content = fs.readFileSync(path.join(root, proj), 'utf8');
-    add(proj, bannedInCsproj(content, bannedListFor(proj)));
+    // props / targets は「置かれた場所の所属プロジェクト」で判定する（.cs と同じ扱い。#500 / AI レビュー指摘）。
+    // csproj だけで判定すると、共有カーネルの PackageReference を隣の .props へ移すだけで
+    // (a) 許可パッケージが誤検出され、(b) 決定 3 の許可リスト検査が丸ごと素通りする（実測）。
+    // #471 が Directory.Build.props を実在の混入経路として実測しており、props は現実的な抜け道である。
+    // src/Directory.Build.props のようにどのプロジェクトにも属さないものは owner=自身となり、
+    // 共有カーネル扱いにならない（＝従来どおり BANNED 全量で判定される）。
+    const owner = /\.csproj$/i.test(proj) ? proj : (owningProject(proj, csprojPaths) || proj);
+    add(proj, bannedInCsproj(content, bannedListFor(owner)));
     domain.push(...domainViolations(proj, content));
-    domain.push(...sharedKernelViolations(proj, content));
+    domain.push(...sharedKernelViolations(proj, content, owner));
     domain.push(...xunitRunnerMismatch(proj, content, runnerVersion));
   }
   // templates/ は ci.yml のビルド対象外のため、ここで走査しないと雛形の版不整合が誰にも捕まらない。
@@ -733,6 +748,67 @@ function selfTest() {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 
+  // props / targets 経由の抜け道（#500 / AI レビュー指摘を実測して確認したもの）。
+  // csproj だけで共有カーネルを判定していたときは、隣に .props を置くだけで
+  // (a) 許可パッケージが誤検出され、(b) 決定 3 の検査が素通りした。両方を固定する。
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-libs-kernel-props-'));
+    const w = (rel, body) => {
+      const abs = path.join(tmp, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body);
+    };
+    const K = 'src/platform/backend/Shared/Platform.Shared.Kernel';
+    w(`${K}/Platform.Shared.Kernel.csproj`, '<Project></Project>');
+    // (a) 許可パッケージを .props 側で宣言する。
+    w(`${K}/Platform.Shared.Kernel.props`,
+      '<Project><ItemGroup><PackageReference Include="CSharpFunctionalExtensions" /></ItemGroup></Project>');
+    // (b) 許可リスト外を .props 側で持ち込む（BANNED 非掲載のもので試す）。
+    w(`${K}/Extra.props`, '<Project><ItemGroup><PackageReference Include="Npgsql" /></ItemGroup></Project>');
+    // (c) どのプロジェクトにも属さない props は共有カーネル扱いにしない（#471 の経路を殺さない）。
+    w('src/Directory.Build.props',
+      '<Project><ItemGroup><PackageReference Include="CSharpFunctionalExtensions" /></ItemGroup></Project>');
+    const { current, domain } = scanTree(tmp);
+    const kernelViolations = domain.filter((d) => d.kind === 'shared-kernel-package').map((d) => d.detail);
+
+    t('props(a): 共有カーネル配下の .props の許可パッケージは誤検出しない',
+      current[`${K}/Platform.Shared.Kernel.props`] === undefined,
+      current[`${K}/Platform.Shared.Kernel.props`]);
+    t('props(b): 共有カーネル配下の .props の許可リスト外は決定 3 違反になる',
+      JSON.stringify(kernelViolations) === '["Npgsql"]', kernelViolations);
+    t('props(c): どのプロジェクトにも属さない Directory.Build.props は免除しない（#471 の経路を残す）',
+      JSON.stringify(current['src/Directory.Build.props']) === '["CSharpFunctionalExtensions"]',
+      current['src/Directory.Build.props']);
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
+  // 決定 3 の「推移閉包」（#500 監査 🔴-1）。Domain → Kernel → 他プロジェクト の経路を塞ぐ。
+  // PackageReference だけを見ていたときは、この経路が違反 0 件で素通りした（監査が実測）。
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'backend-libs-kernel-transitive-'));
+    const w = (rel, body) => {
+      const abs = path.join(tmp, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, body);
+    };
+    const S = 'src/platform/backend/Shared';
+    w(`${S}/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj`,
+      '<Project><ItemGroup>'
+      + '<PackageReference Include="CSharpFunctionalExtensions" />'
+      + '<ProjectReference Include="../Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj" />'
+      + '</ItemGroup></Project>');
+    w(`${S}/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj`,
+      '<Project><ItemGroup><PackageReference Include="Npgsql" /></ItemGroup></Project>');
+    const { domain } = scanTree(tmp);
+    const refs = domain.filter((d) => d.kind === 'shared-kernel-project').map((d) => d.detail);
+    t('推移(ADR-0041 決定 3): SharedKernel の ProjectReference は違反になる（Domain の推移的依存を塞ぐ）',
+      refs.length === 1 && /Platform\.Shared\.Infrastructure/.test(refs[0]), refs);
+    t('推移(ADR-0041 決定 3): 許可された PackageReference は同時に違反にならない',
+      domain.filter((d) => d.kind === 'shared-kernel-package').length === 0,
+      domain.filter((d) => d.kind === 'shared-kernel-package'));
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -801,6 +877,13 @@ function main() {
         '雛形は新サービスの出発点であり、不採用ライブラリを持ち込ませてはならない（ADR-0030）。');
       continue;
     }
+    if (d.kind === 'shared-kernel-project') {
+      failures.push(`[SharedKernel 依存規律] ${d.project}\n    ProjectReference「${d.detail}」。` +
+        `${SHARED_KERNEL} は Result / Error・共通基底を置く最下層であり、他プロジェクトを参照しません。` +
+        '参照先が持つ外部パッケージはそのまま Domain の推移的な外部依存になり、' +
+        '計画 ADR-0041 決定 3（推移的に 1 つに限る）を破ります。');
+      continue;
+    }
     if (d.kind === 'shared-kernel-package') {
       failures.push(`[SharedKernel 依存規律] ${d.project}\n    PackageReference「${d.detail}」は許可リスト外です。` +
         `${SHARED_KERNEL} が持ち込んでよい外部パッケージは Result 型の実装 1 つ` +
@@ -830,6 +913,13 @@ if (require.main === module) main();
 
 module.exports = {
   BANNED,
+  // ADR-0041 / #500。scripts.repo.test.js から固定できるよう、既存の BANNED / isDomainProject と
+  // 同じく公開する（監査 🟢-13。自己試験だけで覆うと外から回帰を止められない）。
+  SHARED_KERNEL,
+  SHARED_KERNEL_ALLOWED,
+  isSharedKernelProject,
+  bannedListFor,
+  sharedKernelViolations,
   EXCLUDED_UNITS,
   isExcludedPath,
   centralVersionOf,

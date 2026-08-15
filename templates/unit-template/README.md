@@ -34,7 +34,7 @@
 ```
 
 - **アプリケーション層の標準は ADR-0030**（Vertical Slice / Minimal API / ローカルディスパッチも
-  Wolverine ハンドラ / Domain は外部依存ゼロ / 採用・不採用ライブラリ）。実装側の要点は
+  Wolverine ハンドラ / Domain は共有カーネルを除き外部依存ゼロ（ADR-0041。#500） / 採用・不採用ライブラリ）。実装側の要点は
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
   不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
   `scripts/check-backend-libraries.js` が CI で止める。

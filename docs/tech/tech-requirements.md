@@ -13,6 +13,7 @@ related_ids:
   - ADR-0027
   - ADR-0029
   - ADR-0030
+  - ADR-0041
   - ADR-0031
   - ADR-0032
   - IADR-0048
@@ -27,6 +28,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
   - "../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md"
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR)"
 ---
 
