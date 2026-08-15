@@ -5138,6 +5138,58 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
+    // --- #574: 「現在の床」を書いた文書が coverage-floor.json と食い違わない（IADR-0195） ---
+    //
+    // ★ 床の値は **2 度**置き直された（#571 で line 34 → 33、#574 で line 33 → 39 / branch 17 → 27）。
+    //   そのたびに追随が要る文書が複数あり、**追随漏れは「文書が古い床を現在値として述べる」**
+    //   という形で現れる。旧値の文字列を全数走査する形は使えない —— 置き直しの**経緯**を書いた
+    //   文書（IADR-0118 / IADR-0138 / IADR-0195 / TEST_STRATEGY・確定済みの作業仕様書）が
+    //   正当に旧値を含むため、ALLOWED が母集合とほぼ一致して検出力が消える。
+    //   そこで**「いま CI が判定に使う床」を述べている書き方だけ**を機械が拾い、JSON と突き合わせる。
+    //   拾うのは **同じ行に「未満」を含む**もの＝ゲートの言明に限る。
+    //   「据え置き」「置き直した」のような**経緯の記述は「未満」を伴わない**ので巻き込まない
+    //   （矢印形 `line 33` → `39` も並記形に当たらない）。
+    //   **限界を明記する**: 新しい文書がゲートの床を別の言い回しで書けば、この検査は素通りする。
+    //   下の 0 件走査の門は「既存の言い回しが消えたこと」しか見ない。
+    ok('#574: ゲートの床を述べた文書が coverage-floor.json と一致する', () => {
+      const floor = JSON.parse(fs.readFileSync(path.join(REPO, 'src', 'coverage-floor.json'), 'utf8')).backend;
+      // 「床」の近傍で `line N` / `branch M` が / で並記され、同じ行に「未満」がある形＝ゲートの言明。
+      const STATED = /床[^\n]{0,12}?`line (\d+)`\s*\/\s*`branch (\d+)`[^\n]*未満/g;
+      const { execFileSync } = require('child_process');
+      const tracked = execFileSync(
+        'git',
+        ['-C', REPO, 'ls-files', '--', ':!planning', ':!src/ai-stock-trading', ':!CHANGELOG.md'],
+        { encoding: 'utf8', maxBuffer: 1 << 26 },
+      )
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const offenders = [];
+      let stated = 0;
+      for (const rel of tracked) {
+        if (rel === 'scripts/scripts.repo.test.js') continue; // 本テスト自身（正規表現の literal）
+        let text;
+        try {
+          text = fs.readFileSync(path.join(REPO, rel), 'utf8');
+        } catch {
+          continue; // バイナリ・削除済み
+        }
+        for (const m of text.matchAll(STATED)) {
+          stated += 1;
+          if (Number(m[1]) !== floor.line || Number(m[2]) !== floor.branch) {
+            offenders.push(`${rel}: 「${m[0]}」（JSON は line ${floor.line} / branch ${floor.branch}）`);
+          }
+        }
+      }
+      // ★ 0 件走査で静かに緑にしない（#664 の門）。書き方を変えて検出対象が消えたら気付く。
+      assert.ok(stated >= 2, `「現在の床」を述べた箇所が ${stated} 件しか見つからない。走査が空振りしている`);
+      assert.deepStrictEqual(
+        offenders,
+        [],
+        '床の現在値を述べた文書が src/coverage-floor.json と食い違っている（値の正は同 JSON。IADR-0118 決定 2 / IADR-0195 決定 3）',
+      );
+    });
+
     // --- #737: 環流記録の status を計画側の裁定へ追随させる（IADR-0193） -----------
     //
     // ★ #721 は `triaged` → `open` の移行前に「本当に伝達済みか」を全数で確かめたが、

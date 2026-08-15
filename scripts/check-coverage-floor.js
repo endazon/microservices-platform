@@ -25,10 +25,15 @@
  *   （Platform.Bff → AiStockTrading.Bff.Endpoints）経由で src/platform/ 配下のレポートの**中身**に
  *   入り込む他ユニットの行に届かない。
  *
- *   **生成コードは集計から落とす**（#571 / IADR-0138）。EF Core が生成する Migrations/ 配下と
- *   *ModelSnapshot.cs は人が書くコードではなく、テストで被覆する対象でもない。含めると
- *   「マイグレーションを 1 本足しただけ」で床判定が動く（実際に PR #568 がそれで止まった）。
- *   判定は <class filename>（帰属で解決した経路）に対して行い、除外量は毎回診断へ出す。
+ *   **生成コードは集計から落とす**（#571 / IADR-0138、#574 / IADR-0195）。人が書くコードではなく、
+ *   テストで被覆する対象でもない。含めると「設計上まったく無関係な操作」で床判定が動く。
+ *   対象は 2 種類ある。
+ *     - **EF Core**（Migrations/ 配下・*ModelSnapshot.cs。IADR-0138 決定 1）
+ *       —— マイグレーションを 1 本足しただけで床が動く（実際に PR #568 がそれで止まった）。
+ *     - **source generator の出力**（obj/ 配下。IADR-0195 決定 1）
+ *       —— エンドポイントへ XML doc コメントを 1 つ足すだけで
+ *          OpenApiXmlCommentSupport.generated.cs が再生成され、床が動く。
+ *   判定は <class filename>（帰属で解決した経路）に対して行い、除外量は**種別ごとに**毎回診断へ出す。
  *
  *   **二重記載の扱い**（IADR-0123 決定 3）: coverlet の Cobertura は同じ行を <methods> 配下と
  *   class 直下の <lines> の両方に書く。集計は **行・分岐とも class 直下の <lines> を正**とし、
@@ -333,11 +338,50 @@ function unitOfFilename(filename, sources = []) {
 const GENERATED_DIR_RE = /(?:^|\/)Migrations\//;
 const GENERATED_FILE_RE = /(?:^|\/)[^/]*ModelSnapshot\.cs$/i;
 
-/** filename（帰属で解決した経路）が生成コードか。IADR-0138 決定 1。 */
-function isGeneratedFilename(filename) {
-  if (filename === null || filename === undefined || filename === '') return false;
+/**
+ * source generator の出力と判定するパスの規則（#574 / IADR-0195 決定 1）。
+ *
+ * これも実測で決めた。develop `1d7edce` のレポート（14 件・Release）の <class filename> を
+ * 重複除去して全数（1061 件）分類した結果は次のとおりで、**obj/ 配下は全て source generator の
+ * 出力であり、中間生成物の巻き込みは 0 件**だった。
+ *   obj/ を区切り付きで含む            : 14 件（OpenApiXmlCommentSupport.generated.cs 11 / RegexGenerator.g.cs 3）
+ *   obj/ の外の *.g.cs / *.generated.cs :  0 件
+ * `.dll` や `.cache` がレポートに現れないのは、コンパイラが <class filename> へ書くのが
+ * **ソースとして食わせたファイル**だけだからである。
+ *
+ * **サフィックス（*.g.cs / *.generated.cs）ではなくディレクトリで見る。** 上の実測では両者は
+ * 完全に一致するが、根拠の性質が違う——obj/ は MSBuild の中間出力ディレクトリで gitignore 済みであり
+ * 「人が書いたコードは定義上そこに無い」という**構造的**な根拠を持つ。サフィックスは各 generator が
+ * 選ぶ**規約**にすぎず、別の名前で出す generator が入れば黙って素通りする。壊れたときに無音になる
+ * 規則を選ばない（IADR-0123 / IADR-0138 が繰り返し名指しした失敗モード）。
+ */
+const GENERATED_INTERMEDIATE_RE = /(?:^|\/)obj\//;
+
+/**
+ * filename（帰属で解決した経路）が生成コードなら種別を、そうでなければ null を返す。
+ *
+ * 種別を分けて持つのは診断のためだけではない。**IADR-0138 決定 3 の notice は「除外量 0 = フィルタの
+ * 素通り」を可視化する仕組みであり、2 種を 1 つのカウンタに合算すると、片方が壊れてももう片方が
+ * 数を埋めて notice が出なくなる**（＝守っていたはずの穴が黙って開く）。種別ごとに数え、種別ごとに
+ * notice を出す（IADR-0195 決定 2）。
+ */
+function generatedKindOf(filename) {
+  if (filename === null || filename === undefined || filename === '') return null;
   const p = toPosix(filename);
-  return GENERATED_DIR_RE.test(p) || GENERATED_FILE_RE.test(p);
+  if (GENERATED_INTERMEDIATE_RE.test(p)) return 'sourcegen';
+  if (GENERATED_DIR_RE.test(p) || GENERATED_FILE_RE.test(p)) return 'ef';
+  return null;
+}
+
+/** 生成コードの種別の表示名（診断文の単一情報源）。 */
+const GENERATED_KIND_LABEL = {
+  ef: 'EF（Migrations/ 配下・*ModelSnapshot.cs）',
+  sourcegen: 'source generator（obj/ 配下）',
+};
+
+/** filename（帰属で解決した経路）が生成コードか。IADR-0138 決定 1 / IADR-0195 決定 1。 */
+function isGeneratedFilename(filename) {
+  return generatedKindOf(filename) !== null;
 }
 
 function addTotals(a, b) {
@@ -367,6 +411,7 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
   const generatedByUnit = new Map();
   const generatedSamples = [];
   let generatedClasses = 0;
+  const generatedByKind = new Map();
   const how = { relative: 0, absolute: 0, 'source-joined': 0, unattributed: 0 };
   const unitTotals = new Map();
   const filenameSamples = [];
@@ -404,14 +449,22 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
       continue;
     }
 
-    // 生成コード（EF Core の Migrations / ModelSnapshot）は集計から落とす（#571 / IADR-0138 決定 1）。
+    // 生成コード（EF の Migrations / ModelSnapshot と source generator の obj/ 配下）は集計から
+    // 落とす（#571 / IADR-0138 決定 1、#574 / IADR-0195 決定 1）。
     // 集計対象外ユニットの除外を先に通すのは、AST 由来の行を「生成コード」として二重計上させない
     // ため（既存の診断値〔IADR-0123 の 133 行〕の意味を変えない）。
-    if (isGeneratedFilename(attribution.resolved)) {
+    const generatedKind = generatedKindOf(attribution.resolved);
+    if (generatedKind !== null) {
       generatedClasses++;
       addTotals(generated, stats);
       if (!generatedByUnit.has(key)) generatedByUnit.set(key, zeroTotals());
       addTotals(generatedByUnit.get(key), stats);
+      if (!generatedByKind.has(generatedKind)) {
+        generatedByKind.set(generatedKind, { ...zeroTotals(), classCount: 0 });
+      }
+      const kindTotals = generatedByKind.get(generatedKind);
+      addTotals(kindTotals, stats);
+      kindTotals.classCount++;
       if (generatedSamples.length < MAX_SAMPLES) generatedSamples.push(c.filename);
       continue;
     }
@@ -430,6 +483,7 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
       ...generated,
       classCount: generatedClasses,
       byUnit: Object.fromEntries([...generatedByUnit.entries()]),
+      byKind: Object.fromEntries([...generatedByKind.entries()]),
       samples: generatedSamples,
     },
     diagnostics: {
@@ -472,6 +526,7 @@ function aggregateReports(parsedList) {
   const excluded = mergeTotals(parsedList.map((p) => p.excluded));
   const generated = mergeTotals(parsedList.map((p) => p.generated));
   const generatedByUnit = {};
+  const generatedByKind = {};
   const generatedSamples = [];
   let generatedClasses = 0;
   const excludedClasses = [];
@@ -496,6 +551,11 @@ function aggregateReports(parsedList) {
     for (const [unit, t] of Object.entries(p.generated.byUnit)) {
       if (!generatedByUnit[unit]) generatedByUnit[unit] = zeroTotals();
       addTotals(generatedByUnit[unit], t);
+    }
+    for (const [kind, t] of Object.entries(p.generated.byKind || {})) {
+      if (!generatedByKind[kind]) generatedByKind[kind] = { ...zeroTotals(), classCount: 0 };
+      addTotals(generatedByKind[kind], t);
+      generatedByKind[kind].classCount += t.classCount || 0;
     }
     for (const s of p.generated.samples) if (generatedSamples.length < MAX_SAMPLES) generatedSamples.push(s);
     for (const k of Object.keys(how)) how[k] += d.how[k] || 0;
@@ -526,7 +586,13 @@ function aggregateReports(parsedList) {
   return {
     totals,
     excluded: { ...excluded, classes: excludedClasses },
-    generated: { ...generated, classCount: generatedClasses, byUnit: generatedByUnit, samples: generatedSamples },
+    generated: {
+      ...generated,
+      classCount: generatedClasses,
+      byUnit: generatedByUnit,
+      byKind: generatedByKind,
+      samples: generatedSamples,
+    },
     // 生成コードだけを戻した値（#571 / IADR-0138 の前後比較用）。
     beforeGeneratedExclusion: mergeTotals([totals, generated]),
     // すべての除外の前（＝混入込み・生成コード込み）の値。coverlet の lines-valid との照合
@@ -600,17 +666,25 @@ function attributionMessages(agg) {
     });
   }
 
-  // NFR（#571 / IADR-0138 決定 3）: 生成コードのフィルタが何にもマッチしない状態は、床を静かに
-  // 元の定義へ戻す（＝マイグレーション 1 本で床判定が動く状態へ逆戻りする）。EF の出力先を変えれば
-  // 正常に 0 件になり得るため fail や warn にはせず notice で毎回可視化する（IADR-0118 決定 6 の段階ポリシー）。
-  if (d.classCount > 0 && agg.generated.lines === 0) {
-    msgs.push({
-      level: 'notice',
-      text:
-        '[check-coverage-floor] 生成コード（Migrations/ 配下・*ModelSnapshot.cs）由来の行は 0 行でした。' +
-        ' マイグレーションが 1 本も無いか、EF の出力先が想定と異なりフィルタが素通りしています' +
-        '（#571 / IADR-0138 決定 1）。',
-    });
+  // NFR（#571 / IADR-0138 決定 3、#574 / IADR-0195 決定 2）: 生成コードのフィルタが何にもマッチ
+  // しない状態は、床を静かに元の定義へ戻す（＝生成物を 1 本足しただけで床判定が動く状態へ逆戻り
+  // する）。出力先を変えれば正常に 0 件になり得るため fail や warn にはせず notice で毎回可視化する
+  // （IADR-0118 決定 6 の段階ポリシー）。
+  //
+  // **種別ごとに見る。** 合算 1 本で見ると、EF 側のフィルタが壊れても source generator 側の
+  // 4740 行が数を埋めてしまい、notice が出ない（守っていたはずの穴が黙って開く）。
+  if (d.classCount > 0) {
+    for (const kind of Object.keys(GENERATED_KIND_LABEL)) {
+      const t = agg.generated.byKind && agg.generated.byKind[kind];
+      if (t && t.lines > 0) continue;
+      msgs.push({
+        level: 'notice',
+        text:
+          `[check-coverage-floor] 生成コードのうち ${GENERATED_KIND_LABEL[kind]} 由来の行は 0 行でした。` +
+          ' 対象の生成物が 1 本も無いか、出力先が想定と異なりフィルタが素通りしています' +
+          '（#571 / IADR-0138 決定 1 ／ #574 / IADR-0195 決定 1）。',
+      });
+    }
   }
 
   if (d.fallbackClasses > 0) {
@@ -680,11 +754,21 @@ function formatDiagnostics(agg, floor = {}) {
       .sort((a, b) => b[1].lines - a[1].lines)
       .map(([unit, t]) => `${unit} ${t.lines} 行（被覆 ${t.covered}）`)
       .join(' / ');
+    // 種別ごとの内訳（#574 / IADR-0195 決定 2）。合計だけだと、片方の種別が増減しても
+    // もう片方の変化と打ち消し合って CI ログから読めない。
+    const byKind = Object.keys(GENERATED_KIND_LABEL)
+      .map((kind) => {
+        const t = (g.byKind && g.byKind[kind]) || { ...zeroTotals(), classCount: 0 };
+        return `${GENERATED_KIND_LABEL[kind]} ${t.classCount} クラス / ${t.lines} 行（被覆 ${t.covered}） / ` +
+          `分岐 ${t.branches}（被覆 ${t.coveredBranches}）`;
+      })
+      .join(' ／ ');
     out.push(
-      `除外（生成コード・#571）: Migrations/ 配下・*ModelSnapshot.cs 由来 ${g.classCount} クラス / ` +
+      `除外（生成コード・#571 / #574）: 計 ${g.classCount} クラス / ` +
         `${g.lines} 行（被覆 ${g.covered}） / 分岐 ${g.branches}（被覆 ${g.coveredBranches}）を落としました。` +
+        ` 種別内訳: ${byKind}。` +
         ` 生成コードを戻すと: ${formatTotals(agg.beforeGeneratedExclusion)}` +
-        `。内訳: ${byUnit || '（0 件）'}。filename 例: ${JSON.stringify(g.samples)}`,
+        `。ユニット内訳: ${byUnit || '（0 件）'}。filename 例: ${JSON.stringify(g.samples)}`,
     );
   }
 
@@ -1082,13 +1166,13 @@ function selfTest() {
       agg.beforeExclusion.lines === 6 && agg.beforeExclusion.covered === 4, agg.beforeExclusion);
     const text = formatDiagnostics(agg).join('\n');
     t('formatDiagnostics: 生成コードの除外量を出す（AST 除外と同じ作法）',
-      text.includes('除外（生成コード・#571）: Migrations/ 配下・*ModelSnapshot.cs 由来 2 クラス / 4 行（被覆 3）'), text);
+      text.includes('除外（生成コード・#571 / #574）: 計 2 クラス / 4 行（被覆 3）'), text);
     t('formatDiagnostics: 生成コードを戻した値も出す（前後比較が CI ログで読める）',
       text.includes('生成コードを戻すと: line 66.67%（4/6）'), text);
     t('formatDiagnostics: ユニット別の行数に生成の内訳を添える',
       /ユニット別の行数: \S+ 6 行（被覆 4・うち生成 4 行（被覆 3）を除外）/.test(text), text);
-    t('attributionMessages: 生成コードが落ちていれば notice を出さない',
-      attributionMessages(agg).every((m) => !/生成コード/.test(m.text)), attributionMessages(agg));
+    t('attributionMessages: EF 側が落ちていれば EF の notice は出さない',
+      attributionMessages(agg).every((m) => !/EF（Migrations\//.test(m.text)), attributionMessages(agg));
   }
   {
     // 生成コードが 1 行も落ちない＝フィルタが素通り。fail にはしないが notice で毎回可視化する。
@@ -1099,6 +1183,76 @@ function selfTest() {
     t('attributionMessages: 生成コード 0 行は notice（素通りに気付ける）',
       msgs.some((m) => m.level === 'notice' && /生成コード/.test(m.text))
         && msgs.every((m) => m.level !== 'warn'), msgs);
+    t('attributionMessages: 2 種とも 0 行なら notice も 2 本出る（種別ごとに見る）',
+      msgs.filter((m) => /生成コードのうち/.test(m.text)).length === 2, msgs);
+  }
+
+  // --- #574 / IADR-0195: source generator の出力（obj/ 配下）も集計から落とす ---
+
+  // 判定に使うパスの形は develop `1d7edce` の実レポートから採った（全数 1061 件を分類し、
+  // obj/ 配下 14 件が全て *.generated.cs / *.g.cs、手書きの巻き込み 0 件であることを確認した）。
+  t('generatedKindOf: OpenApiXmlCommentSupport.generated.cs（実レポートの形）',
+    generatedKindOf('knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/obj/Release/net10.0/Microsoft.AspNetCore.OpenApi.SourceGenerators/Microsoft.AspNetCore.OpenApi.SourceGenerators.XmlCommentGenerator/OpenApiXmlCommentSupport.generated.cs') === 'sourcegen');
+  t('generatedKindOf: RegexGenerator.g.cs（実レポートの形）',
+    generatedKindOf('platform/backend/Bff/Platform.Bff/obj/Release/net10.0/System.Text.RegularExpressions.Generator/System.Text.RegularExpressions.Generator.RegexGenerator/RegexGenerator.g.cs') === 'sourcegen');
+  t('generatedKindOf: <sources> が …/src/platform/backend/ のレポートの形（先頭が Services/…）',
+    generatedKindOf('Services/AuthorizationService/src/AuthorizationService.Api/obj/Release/net10.0/X.generated.cs') === 'sourcegen');
+  t('generatedKindOf: 絶対パスでも当たる',
+    generatedKindOf('/home/runner/work/msp/msp/src/knowledge/backend/X/obj/Debug/net10.0/Y.g.cs') === 'sourcegen');
+  t('generatedKindOf: Windows の区切りでも当たる',
+    generatedKindOf('C:\\work\\msp\\src\\knowledge\\backend\\X\\obj\\Release\\net10.0\\Y.g.cs') === 'sourcegen');
+  t('generatedKindOf: EF は ef と判定する（種別が混ざらない）',
+    generatedKindOf('knowledge/backend/X/Migrations/20260101_Init.cs') === 'ef');
+  t('generatedKindOf: 手書きコードは null',
+    generatedKindOf('src/platform/backend/Bff/Platform.Bff/HealthEndpoints.cs') === null);
+  t('generatedKindOf: objects/ は落とさない（区切りで見る）',
+    generatedKindOf('src/platform/backend/X/objects/Foo.cs') === null);
+  t('generatedKindOf: MyObj/ は落とさない（区切りで見る）',
+    generatedKindOf('src/platform/backend/X/MyObj/Foo.cs') === null);
+  t('generatedKindOf: obj という語を含むだけのファイル名は落とさない',
+    generatedKindOf('src/platform/backend/X/ObjectMapper.cs') === null);
+  t('generatedKindOf: filename が無ければ null（未帰属を巻き込まない）',
+    generatedKindOf(null) === null && generatedKindOf('') === null);
+
+  {
+    // 手書き 1 ・EF 1 ・source generator 1。種別ごとに数え、種別ごとに診断へ出す。
+    const xml = '<coverage><sources><source>/w/src/</source></sources>' +
+      '<packages><package name="WikiService.Api"><classes>' +
+      '<class name="Endpoints" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/Endpoints.cs">' +
+      '<lines><line number="1" hits="1" /><line number="2" hits="0" /></lines></class>' +
+      '<class name="InitialCreate" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/Migrations/20260626150858_InitialCreate.cs">' +
+      '<lines><line number="10" hits="3" /></lines></class>' +
+      '<class name="XmlComments" filename="knowledge/backend/Services/WikiService/src/WikiService.Api/obj/Release/net10.0/G/OpenApiXmlCommentSupport.generated.cs">' +
+      '<lines><line number="20" hits="0" branch="true" condition-coverage="0% (0/4)" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const p = parseCobertura(xml);
+    t('parseCobertura: source generator の出力も集計から落とす',
+      p.lines === 2 && p.covered === 1 && p.branches === 0, p);
+    t('parseCobertura: 種別ごとに数える（合算で埋め合わない）',
+      p.generated.byKind.ef.lines === 1 && p.generated.byKind.ef.classCount === 1
+        && p.generated.byKind.sourcegen.lines === 1 && p.generated.byKind.sourcegen.branches === 4,
+      p.generated.byKind);
+    const agg = aggregateReports([p]);
+    const text = formatDiagnostics(agg).join('\n');
+    t('formatDiagnostics: 種別内訳を出す（片方の増減がもう片方に埋もれない）',
+      text.includes('種別内訳: EF（Migrations/ 配下・*ModelSnapshot.cs） 1 クラス / 1 行（被覆 1）')
+        && text.includes('source generator（obj/ 配下） 1 クラス / 1 行（被覆 0） / 分岐 4（被覆 0）'), text);
+    t('attributionMessages: 2 種とも落ちていれば notice を出さない',
+      attributionMessages(agg).every((m) => !/生成コードのうち/.test(m.text)), attributionMessages(agg));
+  }
+  {
+    // ★ 種別を分けて持つ理由の固定。EF 側のフィルタが壊れても source generator 側が数を埋めるため、
+    //    合算 1 本で見ていると notice が出ない（守っていたはずの穴が黙って開く）。
+    const onlySourcegen = '<coverage><packages><package><classes>' +
+      '<class name="X" filename="src/platform/backend/X.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '<class name="G" filename="src/platform/backend/X/obj/Release/net10.0/G.generated.cs">' +
+      '<lines><line number="1" hits="0" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(onlySourcegen)]);
+    t('attributionMessages: 片方だけ 0 行でも notice が出る（合算では気付けない状態を検出する）',
+      agg.generated.lines > 0
+        && attributionMessages(agg).some((m) => m.level === 'notice' && /EF（Migrations\//.test(m.text)),
+      attributionMessages(agg));
   }
   {
     // 集計対象外ユニット配下の生成コードは「ユニット除外」として数える（二重計上しない）。
@@ -1251,6 +1405,7 @@ module.exports = {
   classLineStats,
   unitOfFilename,
   isGeneratedFilename,
+  generatedKindOf,
   parseCobertura,
   mergeTotals,
   aggregateReports,

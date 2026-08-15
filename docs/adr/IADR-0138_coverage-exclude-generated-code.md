@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0034, IADR-0115, IADR-0118, IADR-0120, IADR-0123]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 related_specs:
@@ -147,6 +147,14 @@ B は一見「正しい層」だが、**除外された行はレポートから�
    notice で毎回可視化する。
 
 4. **床を置き直す: `line 34` → `line 33`。`branch` は `17` のまま据え置く。**
+
+   > **［2026-08-15 追記 / #574］本決定 4 の値は
+   > [IADR-0195](IADR-0195_coverage-exclude-source-generator-output.md) 決定 3 が置き直した
+   > （`line 33` → `39` / `branch 17` → `27`）。以下の値は当時の記録として残す。**
+   > **とくに「branch を据え置くのは生成コードの分岐が 0 だから」は EF の生成コードについての実測であり、
+   > source generator の出力には当たらない**——そちらは**分岐 3970**（被覆 249）を持つ。
+   > **決定 1 の射程も IADR-0195 決定 1 が拡張した**（規則 2 本 → 3 本。`obj/` 配下を足した。
+   > 既存の 2 規則は変えていない）。**決定 2・3・5 は有効なままである。**
    - **これは ratchet の引き下げ（退行）ではなく、測定基準の変更に伴う置き直しである**
      （IADR-0123 決定 7 が #468 で行ったのと同じ性質の作業。あちらは値が同値だったため据え置きに
      なったが、今回は下がる）。
@@ -246,6 +254,14 @@ Testcontainers は使えない。代わりに **SDK コンテナ内へ PostgreSQ
       エンドポイントへ XML doc コメントを 1 つ足せば `OpenApiXmlCommentSupport.generated.cs` が再生成され、
       **PR #568 と同じ失敗モードが起こり得る。** 扱いを決めるには床の再導出が要るため本決定には含めず、
       **フォローアップ issue へ切り出した**（#574）。
+
+      > **［2026-08-15 追記 / #574］解消済み。**
+      > [IADR-0195](IADR-0195_coverage-exclude-source-generator-output.md) が `obj/` 配下を集計から
+      > 落とし、床を置き直した。**上記の懸念（XML doc コメント 1 つで床が動く）は変異試験で実証された**
+      > ——生成コードを 154 行 / 308 分岐だけ足すと、旧定義の分岐率は `19.3% → 18.72%` と **0.58pt** 動いた。
+      > 新定義では実測値がまったく動かない。なお上記の実測（175 クラス / 3866 行 / 分岐 3424）は
+      > 起票時（develop `3804511` 相当）の値であり、`1d7edce` での再実測は
+      > **197 クラス / 4740 行 / 分岐 3970（分岐分母の 40.1%）**である。**コミットが違うため両方正しい。**
     - **フロントのカバレッジ**（[IADR-0034](IADR-0034_frontend-coverage-gate.md) / `src/vitest.config.ts`）
       ——本決定はバックエンドの床にのみ効く。orval 生成物の扱いは別の決定である。
 - フォローアップ:
@@ -263,6 +279,9 @@ Testcontainers は使えない。代わりに **SDK コンテナ内へ PostgreSQ
 - Supersedes: なし（[IADR-0118](IADR-0118_backend-coverage-floor.md) 決定 1・2 と
   [IADR-0123](IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 1 を**補完**する。
   いずれも Accepted のまま）
-- Superseded by: なし
+- Superseded by: **[IADR-0195](IADR-0195_coverage-exclude-source-generator-output.md)（決定 4 のみ。
+  床の値を `line 33` / `branch 17` → `line 39` / `branch 27` へ置き直した）**。
+  決定 1 は同 IADR が**射程を拡張**（`obj/` 配下を足す。既存の 2 規則は不変）、
+  **決定 2・3・5 は有効なまま**であり、本 IADR は Accepted のまま残る。
 - 実装: [`scripts/check-coverage-floor.js`](../../scripts/check-coverage-floor.js)（`--self-test` 付き）／
   [`src/coverage-floor.json`](../../src/coverage-floor.json)（床の値の単一情報源）

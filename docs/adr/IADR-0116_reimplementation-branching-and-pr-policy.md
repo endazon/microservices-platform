@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0121, IADR-0142, IADR-0139, IADR-0141]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-14
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/INDEX.md"
 ---
@@ -107,7 +107,7 @@ plan_refs:
 > | ゲート | コマンド | しきい値 / 判定 |
 > | --- | --- | --- |
 > | 受け入れ基準 → テストの写像 | `node scripts/check-test-traceability.js` | `docs/tests/` に仕様書がある FR/SC にテストが 1 件も無ければ **fail**。`scripts/test-traceability-allowlist.json` にある未写像は warn、写像済みなのに allowlist へ残置は **fail**。加えて逆方向（#472）: 計画レンジにあって仕様書が無い ID は warn、うちテストが先行している ID は同 JSON の `specMissing` による ratchet で **fail**（判定の正は[テスト戦略](../tests/TEST_STRATEGY.md)のゲート一覧） |
-> | バックエンド カバレッジ床 | `node scripts/check-coverage-floor.js`（`ci.yml` の `build-and-test`） | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床 **`line 33` / `branch 17`** 未満は **fail**（[IADR-0118](IADR-0118_backend-coverage-floor.md)。ratchet のため引き上げ後は本表も追随させる。値の正は同 JSON。**`line` は #571 / [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) で 34 → 33 へ置き直した——生成コードを集計から落とす測定基準の変更に伴うもので、退行ではない**） |
+> | バックエンド カバレッジ床 | `node scripts/check-coverage-floor.js`（`ci.yml` の `build-and-test`） | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床 **`line 39` / `branch 27`** 未満は **fail**（[IADR-0118](IADR-0118_backend-coverage-floor.md)。ratchet のため引き上げ後は本表も追随させる。値の正は同 JSON。**測定基準の変更で 2 度置き直した——#571 / [IADR-0138](IADR-0138_coverage-exclude-generated-code.md) で `line 34 → 33`（EF の生成コードを落とした）、#574 / [IADR-0195](IADR-0195_coverage-exclude-source-generator-output.md) で `line 33 → 39` / `branch 17 → 27`（source generator の出力も落とした）。いずれも退行でも強化でもなく、分子・分母から同じものを抜いた結果である**） |
 > | ライブラリ標準（ADR-0030） | `node scripts/check-backend-libraries.js` | `scripts/backend-library-baseline.json` の **ratchet**。不採用ライブラリの新規混入・baseline の減らし忘れは **fail**（#455） |
 > | フロント カバレッジ ratchet | `pnpm run test:coverage`（`frontend-tests.yml`。**#591: 起案時は `npm` と書いていたが、パッケージ管理は [IADR-0121](IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済みであり、`npm` では打てない**） | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満は **fail**（[IADR-0034](IADR-0034_frontend-coverage-gate.md)） |
 >

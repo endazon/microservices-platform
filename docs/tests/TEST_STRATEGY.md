@@ -9,7 +9,7 @@ related_ids:
   - IADR-0116
 author: Claude
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
@@ -64,7 +64,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
 | **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | **`docs/tests/` の仕様書ファイル × `src/**/*Tests.cs` のクラス**（AST を除く）の対 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にある対が消えた → **fail**（節の消失。**他の仕様書に同じクラスの記載が残っていても落ちる**——落ちるのは節であり、節は仕様書に属するため）。床にある対のクラスが実在しない → **fail**。記載された対が床に無い → **fail**（`--update` で上げる）。どの仕様書にも載らず床にも無いクラス → warn。走査 0 件・床が読めない → **fail**（[IADR-0130](../adr/IADR-0130_test-spec-coverage-ratchet.md)） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)。**生成コード（`Migrations/` 配下・`*ModelSnapshot.cs`）も対象外**——[#571](https://github.com/endazon/microservices-platform/issues/571) / [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 33` / `branch 17`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / [IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md)。**生成コードも対象外**——EF（`Migrations/` 配下・`*ModelSnapshot.cs`）は [#571](https://github.com/endazon/microservices-platform/issues/571) / [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)、**source generator の出力（`obj/` 配下）は [#574](https://github.com/endazon/microservices-platform/issues/574) / [IADR-0195](../adr/IADR-0195_coverage-exclude-source-generator-output.md)**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 39` / `branch 27`）未満 → **fail**（[IADR-0118](../adr/IADR-0118_backend-coverage-floor.md)） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（[IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -239,9 +239,20 @@ IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除�
   切り下げたもの。基準の `9314/27280` は上記 run_number 1144 の実測、`2310` と `933〜969` は #571 の
   ローカル実測である（測定条件は [作業仕様書](../specs/20260807_issue-571_coverage-exclude-generated.md) を参照）。
 
+> **［2026-08-15 追記 / #574］上の 3 項は #571 時点の記録である。**
+> [IADR-0195](../adr/IADR-0195_coverage-exclude-source-generator-output.md) が
+> **source generator の出力**（`obj/` 配下）も集計から落とし、床を `line 33` → `39` /
+> `branch 17` → `27` へ置き直した。**「branch を据え置く」の根拠（生成コードの分岐が 0）は
+> EF の生成コードにしか当たらない**——source generator の出力は**分岐 3970**を持つ。
+> **床 39 / 27 は導出値ではなく実測値である**（develop `1d7edce` / SDK `10.0.400` / Release /
+> レポート **14 件** / 統合テスト **43/43 成功**。`line 39.92%（9486/23762）` /
+> `branch 28.01%（1663/5938）`）。**`branch` に切り下げの `28` を採らなかったのは、余裕が `0.01pt` しか
+> なく被覆分岐 1 本の喪失で割れるためである**（IADR-0195 決定 3）。
+
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
 > [IADR-0118](../adr/IADR-0118_backend-coverage-floor.md) を正とする（生成コードの除外と床の置き直しは
-> [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)。フロントは
+> [IADR-0138](../adr/IADR-0138_coverage-exclude-generated-code.md)〔EF〕と
+> [IADR-0195](../adr/IADR-0195_coverage-exclude-source-generator-output.md)〔source generator〕。フロントは
 > [IADR-0034](../adr/IADR-0034_frontend-coverage-gate.md)）。
 
 ## テスト種別と責務
