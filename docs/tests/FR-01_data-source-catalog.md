@@ -84,7 +84,7 @@ plan_refs:
 | T-40 | `owner` / `department` を明示 | `DataSource.Create` | 明示値が保持され、予約値で**上書きされない** | 明示指定は上書きしない（計画確定 planning#344） | 自動（単体） |
 | T-41 | 値が空白のみ（`owner` / `department`） | `DataSource.Create` | 「未設定」と同じ扱いで予約値が入る | 空白を値とみなさない（現行 `confidentiality` と同一規約） | 自動（単体） |
 | T-42 | `Update` / `Patch` / `GetEffectiveAttributes` の各経路 | 同左 | **いずれも同じ補完結果**になる | 4 経路の一元化の退行防止。**1 箇所漏れると「登録時は付くが更新で消える」**（[[IADR-0199]] 決定 1） | 自動（単体） |
-| T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | 必須属性 3 種が補完される | **最終防衛線**（IADR-0019）。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
+| T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | **必須属性 4 種**が補完される | **最終防衛線**（IADR-0019）。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
 | T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（裁定 planning#361・案 C ＋ 終端 active。[[IADR-0199]] 決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
 | T-45 | `lifecycle` を明示（`draft`） | `DataSource.Create` | 明示値が保持される | ソース単位で下書き扱いにできる（終端は指定が無いときだけ効く） | 自動（単体） |
 
