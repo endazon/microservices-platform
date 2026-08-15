@@ -1,7 +1,7 @@
 ---
 title: キット原文の誤り 2 件（new-spec.md のテンプレート名・pr-title.yml の他リポ番号の表記）
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115]
 source_repo: microservices-platform

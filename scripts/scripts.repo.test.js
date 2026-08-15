@@ -4457,7 +4457,9 @@ module.exports = ({ ok, assert }) => {
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
         // ★ #713 で `check-kit-sync.js` を足したため 33 → 34（ラチェットが設計どおり発火した）。
         // ★ #737 で `check-feedback-status-sync.js` を足したため 34 → 35（同上）。
-        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
+        // ★ 計画 pin を ce9abd2 へ進めた際、キットが新規配布した `check-review-verdict.js` を
+        //    採用したため 35 → 36（同上。planning#333 / AI レビューが判定を投稿しない形を止める）。
+        assert.strictEqual(scripts.length, 36, `検査器の母集合が 36 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -4984,11 +4986,14 @@ module.exports = ({ ok, assert }) => {
       //   番号を振っていた。実際に照らすと大半は 4 種に当たらない（＝環流債務・追随漏れ）。
       //   書式だけ強制しても「なんとなく 2」と書けてしまい、IADR-0115 決定 3 の規律がすり抜ける。
       //   → X（4 種に当たらない）を明示させ、**X には追跡先の issue 番号を必須**にする。
+      // ★ 計画 pin を ce9abd2 へ進めた際、planning#339 の裁定で **第 5 種**（キットが選択・追記を
+      //   委ねている欄）が新設されたため 4 → 5 へ広げた（[[IADR-0198]] 決定 1 が IADR-0115 決定 2 を改定）。
+      //   値域の正はキットの kit-sync-classification.example.json が持つ。
       for (const [f, reason] of Object.entries(t.classes.B)) {
         assert.match(
           reason,
-          /^([1-4]|X)\. /,
-          `分類 B「${f}」の理由が IADR-0115 決定 2 の 4 種または X を名乗っていない（"N. …" / "X. …" で始めること）`,
+          /^([1-5]|X)\. /,
+          `分類 B「${f}」の理由が IADR-0115 決定 2（IADR-0198 で 5 種へ改定）の種別または X を名乗っていない（"N. …" / "X. …" で始めること）`,
         );
         if (reason.startsWith('X.')) {
           assert.match(
