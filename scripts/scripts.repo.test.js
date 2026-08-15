@@ -6205,7 +6205,9 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
-    // --- #733: feedback/ 本文の日付つき追記ブロック（IADR-0191 決定 2）------------------
+    // ===== #733: feedback/ 本文の日付つき追記ブロック（IADR-0191 決定 2）=====================
+    // ★ 上の #716（SSH.NET ピン）とは独立した検査である。#716 を撤去するときに
+    //   ここまで巻き込まないこと（PR #744 の監査 🟢-6）。
     //
     // IADR-0191 決定 2: feedback/ の frontmatter の状態欄は書き換え可、**本文（日付つき追記ブロックを
     // 含む）は不可**。#721 が足した 11 件は #733 の利用者承認を得て撤去した。
@@ -6214,6 +6216,16 @@ module.exports = ({ ok, assert }) => {
     //   **トリアージ結果**である。計画リポの CLAUDE.md が「裁定・決定の内容そのものは必ずリポジトリへ
     //   残す」と定めており、消すとそちらに反する。よって baseline 付き ratchet とする
     //   （backend-library-baseline.json / adr-index-title-baseline.json と同じ形）。
+    // 日付つき追記ブロックの見出し行を判定する。
+    // ★ 語順を問わない —— 当初は `［YYYY-MM-DD 追記` だけを見ていたが、それでは
+    //   `## 追記 2（2026-08-03）:` のように**日付が「追記」の後ろに来る形**を取りこぼす
+    //   （PR #744 の ADR 監査が変異試験で発見し、実データにも 4 件あった）。
+    //   「見出し / 引用 / 強調で始まる行」かつ「追記 を含む」かつ「年月日を含む」で取る。
+    const isAddendumHeading = (line) =>
+      /^(\s*>|\s*#{1,6}\s|\s*\*\*)/.test(line)
+      && /追記/.test(line)
+      && /20\d\d[-/年]\s*\d{1,2}/.test(line);
+
     const feedbackAddendaCounts = () => {
       const dir = path.join(__dirname, '..', 'feedback');
       const out = {};
@@ -6221,17 +6233,38 @@ module.exports = ({ ok, assert }) => {
         const raw = fs.readFileSync(path.join(dir, f), 'utf8');
         // frontmatter は対象外（決定 2 で「可」の側）。--- で挟まれた先頭ブロックを落とす。
         const body = raw.startsWith('---') ? raw.split('---').slice(2).join('---') : raw;
-        const n = (body.match(/［20\d\d-\d\d-\d\d\s*追記/g) || []).length;
+        const n = body.split('\n').filter(isAddendumHeading).length;
         if (n) out[f] = n;
       }
       return out;
     };
 
+    ok('#733: 追記ブロックの判定は語順を問わない（日付が前でも後ろでも取る）', () => {
+      // 当初の実装は前者しか見ておらず、後者を素通りさせた（PR #744 の監査が変異試験で発見）。
+      assert.ok(isAddendumHeading('> **［2026-08-14 追記 / #721］状態を移した**'), '日付が前');
+      assert.ok(isAddendumHeading('## 追記 2（2026-08-03）: 拒否 7 件'), '日付が後ろ');
+      assert.ok(isAddendumHeading('## 追記（2026-08-03）: 初回実走'), '連番なし・日付が後ろ');
+      // 偽陽性を出さない境界: 見出しでも引用でもない地の文、日付の無い「追記」。
+      assert.ok(!isAddendumHeading('本節は 2026-08-03 の実測に基づく'), '追記 を含まない地の文');
+      assert.ok(!isAddendumHeading('## 追記の扱いについて'), '日付が無い見出し');
+      assert.ok(!isAddendumHeading('  追記（2026-08-03）: 地の文'), '見出し/引用/強調で始まらない');
+    });
+
     ok('#733: feedback/ 本文の日付つき追記ブロックが baseline を超えていない（ラチェット）', () => {
-      const baseline = JSON.parse(
+      const raw = JSON.parse(
         fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
-      ).files;
+      );
+      const baseline = raw.files;
+      // originText はファイル新規作成時の原文であり「後から差し込んだ注記」ではない
+      // （.claude/rules/traceability.md の但し書き）。検査は形で拾うので計数から除く。
+      // ここへ積むと「既知の残存違反」と誤って分類することになる（PR #744 の ADR 監査 Y-3）。
+      const origin = raw.originText || {};
       const current = feedbackAddendaCounts();
+      for (const [f, n] of Object.entries(origin)) {
+        if (current[f] === undefined) continue;
+        current[f] -= n;
+        if (current[f] <= 0) delete current[f];
+      }
 
       // 走査 0 件で緑になる fail-open を塞ぐ（baseline に行がある限り現状にも出るはず）。
       assert.ok(
@@ -6258,6 +6291,23 @@ module.exports = ({ ok, assert }) => {
         [],
         'baseline の減らし忘れ（追記ブロックは消えているのに baseline に残っている）:\n  ' + stale.join('\n  '),
       );
+    });
+
+    ok('#733: originText（ファイル原文の追記）は残存違反として数えない', () => {
+      const raw = JSON.parse(
+        fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
+      );
+      const origin = raw.originText || {};
+      assert.ok(Object.keys(origin).length > 0, 'originText が空になった（分離の意図が失われている）');
+      for (const f of Object.keys(origin)) {
+        assert.ok(
+          raw.files[f] === undefined,
+          `${f} が files と originText の両方にある（二重計上になる）`,
+        );
+        // 実データ側にも同数だけ存在していること（baseline だけ残る stale を防ぐ）。
+        const counts = feedbackAddendaCounts();
+        assert.strictEqual(counts[f], origin[f], `${f} の原文ブロック数が baseline と一致しない`);
+      }
     });
 
     ok('#733: #721 が足した追記ブロックは feedback/ から消えている', () => {
