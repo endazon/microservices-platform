@@ -23,6 +23,12 @@ on:
       - "docs/api/openapi.yaml"
       - "src/orval.config.ts"
       - "src/orval-bff-only.cjs"
+      # NFR / issue #747: AST（可変ユニット）submodule のポインタ。横断 vitest は AST の feature テストも
+      # 収集する（下の checkout コメント参照）のに、bump で変わる gitlink 1 エントリ（src/ai-stock-trading）は
+      # src/*/frontend/** に一致せず、**カバレッジ床の検査が素通りしていた**（frontend.yml と同型）。
+      # 末尾に /** を付けない（gitlink そのものを指すため）。
+      # **src/ 配下へ submodule を足したらここへも足すこと**（scripts.repo.test.js が .gitmodules と突合する）。
+      - "src/ai-stock-trading"
       - ".github/workflows/frontend-tests.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -41,6 +47,8 @@ on:
       - "docs/api/openapi.yaml"
       - "src/orval.config.ts"
       - "src/orval-bff-only.cjs"
+      # NFR / issue #747: AST submodule のポインタ（push 側と同じ理由。末尾に /** を付けない）。
+      - "src/ai-stock-trading"
       - ".github/workflows/frontend-tests.yml"
 
 defaults:
