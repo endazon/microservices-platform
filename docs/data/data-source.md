@@ -5,13 +5,18 @@ status: in-progress
 related_ids:
   - FR-01
   - FR-02
+  - FR-05
+  - UC-04
   - ADR-0003
   - ADR-0027
+  - ADR-0036
   - SC-06
+  - IADR-0019
   - IADR-0136
+  - IADR-0199
 author: claude
 created: 2026-07-04
-updated: 2026-08-07
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
@@ -52,7 +57,48 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
 | LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
+| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。[[IADR-0019]] / [[IADR-0199]]） | このデータソース由来の原本へ既定で付与する ABAC 文書属性（FR-05, UC-04） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
+
+#### `DefaultAttributes` の必須属性フェイルセーフ（FR-05, UC-04, #516, [[IADR-0199]]）
+
+計画が**必須**と定める文書属性 4 種を欠落させない。**明示指定は上書きしない**（空白のみは未設定と同じ扱い）。
+補完は **`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一**である
+（1 箇所でも漏れると「登録時は付くが更新すると消える」という気づきにくい壊れ方になる）。
+
+| 属性 | 計画が定めた解決順 | 実装での段 | 終端 |
+| --- | --- | --- | --- |
+| `confidentiality` | 明示指定 | 明示指定 | `internal`（[[IADR-0019]]） |
+| `department` | 投入元（ソース）の所属 → データソース既定属性 | **本欄の値のみ**（前段は**未実装**） | **`unassigned`** |
+| `owner` | ソース側の更新者 → 予約値 | **本欄の値のみ**（前段は**器が無い**） | **`system`** |
+| `lifecycle` | データソース既定属性 → 終端値 | 本欄の値（**1 段目が無い**） | **`active`**（**既定値。予約値ではない**） |
+
+> **前段が効かない理由は 2 属性で異なる。混同しないこと。**
+>
+> - **`owner`**: コネクタ契約 `SourceItem(Path, ModifiedAt, Size)` に**更新者を運ぶフィールドが無い**。
+>   **器そのものが存在しない**ため、契約変更（#752）まで前段は実装できない。
+> - **`department`**: **供給源は存在するが写像が未実装である。** `SourceItem.Path` はフォルダを運んでおり、
+>   計画は「ソースのメタ（所在・**部門**・**フォルダ**・更新者等）を ABAC 基本属性へマッピングする」
+>   （`09_datasource-connectors.md` L51）・ファイルサーバーは「**フォルダ単位の既定属性を継承**」（同 L34）と
+>   定めている。欠けているのは**フォルダ → 部門コードの写像規則**であり、
+>   加えて **SC-06 の登録フォームに `department` の入力欄が無い**。追跡は **#754**。
+>
+> **したがって `department` は「実装が見落としている」で正しい。** `owner` と同じ扱いにしない。
+
+> **`system` / `unassigned` は「既定」ではなく「解決できなかったことの記録」である**（計画確定・planning#344）。
+> **どちらも実運用では事実上 100% が予約値へ倒れる**（`owner` は #752、`department` は #754）。
+> 恒久的に積み上がるなら**コネクタが更新者・部門を運んでいないという報告**であり、正常な状態ではない。
+> 件数は `scripts/measure-abac-combinations.js` が**環流債務の測定値**として出力する。
+>
+> **ただし「常に」ではない。** `DefaultAttributes` に明示指定があればそれが保持される
+> （API 経由なら現在も可能）。予約値へ倒れるのは**明示指定が無いとき**である。
+
+> **`lifecycle` の終端 `active` は「予約値」ではなく「既定値」である**（裁定 planning#361・2026-08-15 追補）。
+> `system` / `unassigned` が「解決できなかったことの記録」であるのに対し、**`active` はそう決めた値**であり、
+> **件数を環流債務として数えない。**
+> **`active` にしても無制限に公開にはならない** —— `read` は属性の連言で、`confidentiality` と
+> `department`（未解決は deny 側の `unassigned`）が同時にかかる。
+> **ソース単位で下書き扱いにしたい場合は既定属性で `draft` を指定する**（終端は指定が無いときだけ効く）。
 
 > **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（SC-06 / #538 / [[IADR-0136]]）。
 > 定期同期は全ソース共通の間隔で回るため、次回実行時刻は**ワーカーの位相から導出できる値**であり、
@@ -90,6 +136,7 @@ erDiagram
         varchar LastSyncError
         timestamptz LastSyncErrorAt
         jsonb Config
+        jsonb DefaultAttributes
         timestamptz CreatedAt
     }
     VECTOR_CHUNK {
