@@ -40,14 +40,16 @@
 
 ## 実装作業の進め方（計画リポの運用ガイド）
 
-実装作業の運用標準（フェーズ分割・並列実装・監査・裁定・メタ作業の統制）は [`planning/docs/ai-implementation-workflow-guide.md`](planning/docs/ai-implementation-workflow-guide.md)（planning#294 で新設、planning#298 で 2026-08-08 に fixed へ確定）を正本とする。拘束点の要約:
+実装作業の運用標準（フェーズ分割・並列実装・監査・裁定・メタ作業の統制）は [`planning/docs/ai-implementation-workflow-guide.md`](planning/docs/ai-implementation-workflow-guide.md)（planning#294 で新設、planning#298 で 2026-08-08 に fixed へ確定。**更新日 2026-08-15**）を正本とする。拘束点の要約:
 
 - **並列作業は宣言済みファイル領域の非重複で機械的に判定**し、交差する issue は直列化する。**マージは FIFO で 1 本ずつ**（develop へ rebase → CI 通過 → マージ → 次の PR が rebase）
 - **原則は 1 issue = 1 PR**（[IADR-0116](docs/adr/IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 1）。**束ねてよいのは「裁定済みの同型な契約追加」だけ**で、[IADR-0139](docs/adr/IADR-0139_domain-bundled-contract-prs.md) 決定 1 の **6 条件をすべて満たすとき**に限る。**判定の単位はドメインではなく資源**（同じ API 資源または同じ DTO 群に閉じること）、**束の上限は名目 3 件・実効 2 件**。条件を満たさないものは束ねない（上流ガイドの「同型・低リスクの変更は束ねる」を、本リポでは ADR が定めたこの範囲で読む。**範囲を広げるには IADR-0116 / IADR-0139 の改定 IADR が要る**）
 - **フェーズ末監査は書いたエージェントと別の、フレッシュな文脈のエージェント**に diff と受け入れ基準だけを渡して行い、**証跡（実行コマンドと出力）必須**。宣言だけの監査は不合格
 - **裁定依頼は小さく高頻度**に計画リポへ流す（`decision-needed` ラベル）。**blocked（AI だけでは完結しない）判定は棚卸しごとに再検証**する（恒久制約への誤分類が実測で 3 件）
 - **検査器・規約の追加は「同型の事故が 2 回起きたら」**を条件とする（1 回目は記録に留める）。**毎セッション必読の規約は総量 50KB 予算**（#623 で到達。**予算内に保つ**）
+  - **母集合はエージェントごとに分けて測り、合算しない**（裁定 planning#364。Claude は `CLAUDE.md` ＋ `.claude/rules/*.md` を読み `AGENTS.md` は読まない）。**予算値 51,200 バイト**（正本: 運用ガイド §8。`scripts/check-reading-budget.js` が出典つきの複製を持ち 100% 超 fail / 90% 以上 warn）。`.claude/rules/` は列挙せず走査、submodule 配下は入れない。`AGENTS.md` 系は同値を暫定流用し超過は fail にしない。測定: `cat CLAUDE.md .claude/rules/*.md | wc -c`／`wc -c < AGENTS.md`（別枠）
 - **人間の関与はフェーズ計画の承認・フェーズ末監査結果のサンプリング確認・裁定の 3 点**（＋レビュー完了の required check 配備までは**マージ操作**を加えた 4 点）
+- **複数実装リポのパリティ維持**（§11）: **運用装備の配布点は kit に一本化**（直した装備は kit へ環流し他リポへ追随 issue）。**同時起票 issue は 7 日後に相互のクローズ状態を突合**し片側のみ完了なら追随 issue。**突合観点は 6 種**（強制化装備 / ラベル体系 / 必読規約の総量 / pin の鮮度 / kit 追随の未消化数 / 定期監査・レビュー基盤の稼働）。**定期監査は「最後に結果を産出した日時」で稼働を確認**する
 
 ## トレーサビリティ規約
 
@@ -57,7 +59,7 @@
 - **コミットメッセージ**: 先頭に種別と ID を付ける。例: `feat(FR-012): ログイン画面のバリデーションを実装`。
 - **コード**: 計画書由来の実装には、該当箇所のコメントに ID を残す。例: `// FR-012, UC-03: 入力バリデーション`。
 - **PR**: PR テンプレートの該当欄に実装した FR/UC・関連 ADR・受け入れ基準のチェックを記入する。
-- 詳細な書式は `.claude/rules/traceability.md` を参照（自動適用）。
+- 詳細な書式は `.claude/rules/traceability.md`（キット配布物）と `traceability.repo.md`（本リポ固有）を参照（自動適用）。
 
 ## 仕様書（docs/）
 
