@@ -115,14 +115,32 @@ issue 本文と全 6 コメントを REST API で実読した。
 走査は追跡下の全ファイルに対し、**拡張子で絞らず、行フィルタで絞らず、パスの除外だけ**で行った
 （除外: `planning` / `src/ai-stock-trading` の未 populate submodule）。
 
+> **［2026-08-15 追記 / #546］各軸の数を、走査がそのまま返す生の数から引き算を見せる形へ直した。**
+> 従前は **69 / 22 / 74 / 22** と、**本書を書く前に引いた数**をそのまま載せていた。
+> **本書自身が走査対象に入っており**（`docs/specs/` はどの軸のパス除外にも入っていない）、
+> **`alertmanager` を 15 行含む**ため、公開時点で同じコマンドを走らせても再現しない数になっていた。
+> 母集合の規則 8 は「**走査がそのまま返す数を先に出し、除外と時点を明示する**」と定める。
+> **以下はすべて 2026-08-15 に、コミット `0609de8` のツリー（本追記を書く前の状態）で再実行した生の数**である。
+> **自己参照の行数・ファイル数も同じコマンドを本書 1 ファイルへ当てて数えた。**
+> **本追記そのものが `alertmanager` を含むため、この追記の後に走らせると軸 1 の生の数はさらに増える** ——
+> だから**値は時点（`0609de8`）で固定し、引き算の形で残す**（規則 8 の「値はコミットで固定する」）。
+
 ### 軸 1: 誤りの側＝「Alertmanager」で引く
 
 ```console
 $ git grep -In -i "alertmanager" -- . ':!planning' ':!src/ai-stock-trading' | wc -l
-69
+84
+$ git grep -In -i "alertmanager" -- docs/specs/20260815_issue-546_llm-cost-monthly-manual-check.md | wc -l
+15
 $ git grep -Il -i "alertmanager" -- . ':!planning' ':!src/ai-stock-trading' | wc -l
-22
+23
+$ git grep -Il -i "alertmanager" -- docs/specs/20260815_issue-546_llm-cost-monthly-manual-check.md | wc -l
+1
 ```
+
+**行数: 84 行 → 自己参照（本書）15 行を引く → 69 行。**
+**ファイル数: 23 件 → 自己参照（本書）1 件を引く → 22 件。**
+下の内訳表（合計 22 件）はこの 22 件に対応する。
 
 | 群 | 件数 | 扱い |
 | --- | --- | --- |
@@ -137,8 +155,12 @@ $ git grep -Il -i "alertmanager" -- . ':!planning' ':!src/ai-stock-trading' | wc
 
 ```console
 $ git grep -Il -E "予算|上限アラート|LLM ?(コスト|費用)|llm.?cost" -- . ':!planning' ':!src/ai-stock-trading' | wc -l
-74
+75
+$ git grep -Il -E "予算|上限アラート|LLM ?(コスト|費用)|llm.?cost" -- docs/specs/20260815_issue-546_llm-cost-monthly-manual-check.md | wc -l
+1
 ```
+
+**75 件 → 自己参照（本書）1 件を引く → 74 件。**（2026-08-15・コミット済みツリー `0609de8`）
 
 **74 ファイル。** 大半は**必読規約の「50KB 予算」**という同音異義（`CLAUDE.md` / [[IADR-0190]] /
 [[IADR-0200]] / `check-reading-budget.js` 等）であり、**LLM 費用とは無関係**として除外した。
@@ -151,8 +173,12 @@ $ git grep -Il -E "予算|上限アラート|LLM ?(コスト|費用)|llm.?cost" 
 
 ```console
 $ git grep -Il -i -E "単価|pricing|price_table|月次確認|monthly.?review" -- . ':!planning' ':!src/ai-stock-trading' | wc -l
-22
+23
+$ git grep -Il -i -E "単価|pricing|price_table|月次確認|monthly.?review" -- docs/specs/20260815_issue-546_llm-cost-monthly-manual-check.md | wc -l
+1
 ```
+
+**23 件 → 自己参照（本書）1 件を引く → 22 件。**（2026-08-15・コミット済みツリー `0609de8`）
 
 **単価表の実体はリポジトリ内に存在しない。** 出てくるのは [[IADR-0101]] / [[IADR-0106]] / [[IADR-0112]] が
 **モデル選定の根拠として引いた外部の公開単価**であり、費用計算に使える単価表ではない。
@@ -163,6 +189,9 @@ $ git grep -Il -i -E "単価|pricing|price_table|月次確認|monthly.?review" -
 ```console
 $ git grep -In -E "月次|毎月" -- . ':!planning' ':!src/ai-stock-trading' ':!CHANGELOG.md' ':!docs/specs' ':!feedback'
 ```
+
+**この軸だけは自己参照の引き算が要らない** —— パス除外に `':!docs/specs'` が入っており、
+**本書が最初から母集合の外**だからである（軸 1〜3 との違いはここ 1 点。2026-08-15 に確認）。
 
 **この軸で新設を取り止めた。**
 
