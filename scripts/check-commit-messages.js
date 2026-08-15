@@ -142,7 +142,7 @@ function isBot(c) {
 // 突合先が "名前 <メール>" という連結文字列だからであって、こちらの突合先は**ログイン名そのもの**。
 // 部分一致にすると `the-renovate-guy` のような人間のログインまで「bot」と見なして
 // 最後の砦を無検査で素通りさせる（PR #527 のレビュー指摘）。除外は狭く取る。
-function isBotAuthorName(login) {
+function isBotLogin(login) {
   const name = String(login == null ? '' : login).trim().toLowerCase();
   if (!name) return false;
   return BOT_AUTHORS.some((b) => name === b.toLowerCase());
@@ -440,7 +440,7 @@ function checkSingleTitle(title, author) {
 
   // #524: 除外は **作成者の名前**で行う（`user.type == 'Bot'` ではない）。判定は BOT_AUTHORS の
   // 単一情報源を使い、ワークフロー側で規約を二重実装しない。
-  if (isBotAuthorName(author)) {
+  if (isBotLogin(author)) {
     process.stdout.write(`  skip(bot)    作成者 ${author} は規約対象外（BOT_AUTHORS）\n`);
     return 0;
   }
@@ -608,7 +608,7 @@ module.exports = {
   loadExistingPlanAdrIds,
   checkSingleTitle,
   isBot,
-  isBotAuthorName,
+  isBotLogin,
   BOT_AUTHORS,
   isSkippable,
   hashMatches,

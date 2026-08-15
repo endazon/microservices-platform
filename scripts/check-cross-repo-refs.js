@@ -78,44 +78,121 @@ const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js')
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
-// 短縮形（規約が正とする書き方）。
-const SHORT_NAMES = ['planning', 'AST'];
-// 長い表記（第 3 の表記＝型 1）。短縮形との対応は .claude/rules/traceability.md にある。
-const LONG_NAMES = { 'project-planning': 'planning', 'ai-stock-trading': 'AST' };
+// 【置換点】他リポジトリ（長い表記 → 短縮形）。**ここが名前の単一情報源**である。
+const CROSS_REPOS = { 'project-planning': 'planning', 'ai-stock-trading': 'AST' };
+// 【置換点】**本リポジトリ自身**を指す名前。裸の `#NNN` が本リポジトリを指すのは**正しい**ため、
+// これらは検査の修飾語集合へ入れてはならない。入れると正当な自リポ参照を 22 件止める（実測）。
+// 従前この不変条件は**コメントでしか守られていなかった** —— #757 でキット版の `createChecker`
+// 構造を取り込み、**設定エラーとして機械に守らせる**ようにした（#756 の突合で、キット版が本リポ版に
+// 優る唯一の点として挙がったのがこの設定の妥当性検査である。環流先 planning#374）。
+const SELF_NAMES = ['MSP', 'microservices-platform'];
 
-// 型 1: リポジトリ名の裸書き。直前が \w / - / `/` なら別物（`endazon/project-planning#50` は
-// 規約が許すフルパス形式、`my-ai-stock-trading#1` は別語）なので負の後読みで除く。
-const LONG_RE = /(?<![\w/-])(project-planning|ai-stock-trading)#(\d+)/g;
+/** 正規表現のメタ文字を無害化する（リポジトリ名に `.` を含む構成があるため）。 */
+function reEscape(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-// 修飾付き参照 1 個ぶん（短縮形・長い表記・フルパス形式のいずれか）。
-const QUALIFIED = String.raw`(?:[A-Za-z][\w.-]*\/)?(?:planning|AST|project-planning|ai-stock-trading)#\d+`;
 // 列挙の区切り（句読点）。**空白のみは採らない**（スカッシュ既定件名の ` (#123)` と衝突するため）。
 const SEP_PUNCT = String.raw`[/／,，、・･]`;
-// 列挙の区切り（注記括弧）。#586 が採った「PR 番号に裁定依頼 issue 番号を添える」記法
-//   `PR planning#244〔裁定依頼 planning#237〕`
-// の開き括弧である（.claude/rules/traceability.md「関連番号を添える注記」）。規約は
-// **`〔〕` の中の番号は先頭と同じ他リポジトリを指す**と定めるため、中を裸の `#NNN` にした形は
-// 型 2（先頭だけ修飾）として検出する。短い見出し語（`裁定依頼` 等）を挟む形も同じ扱いにする。
-//
-// **全角丸括弧 `（` は入れない。** 日本語の地の文で従属節を開く一般的な記号であり、その直後の
-// 裸 `#NNN` が**本リポジトリを指すのは正しい**（規約: 裸の `#NNN` は常に本リポジトリ）。
-// 実測すると偽陽性が出る —— `feedback/20260805_sc05-07-admin-contract-gaps.md:44` の
-// `planning#197（#502 由来）` の `#502` は本リポジトリの issue であり、止めてはならない。
-// 対して `〔` を入れた場合の追加検出は追跡下の *.md 全件で **0 件**（＝偽陽性なし）である。
-// 見出し語の長さ上限 16 は、節や文をまたいで拾わないための保険（超える形は検出しない側へ倒す）。
-//
-// **見出し語に修飾語（planning / AST / …）が現れたら区切りとして採らない。** 採らないと
-// 採用形 `〔裁定依頼 planning#237〕` の `〔裁定依頼 planning` までを区切りと読んで
-// **正しい書き方そのものを違反にしてしまう**（自己試験の負例で固定）。修飾語が現れる形は、
-// 詰まっていれば正（検出不要）、空白で離れていれば型 3 の担当である。
-const SEP_BRACKET =
-  String.raw`〔(?:(?!planning|AST|project-planning|ai-stock-trading)[^#〔〕\n]){0,16}`;
-const SEP = String.raw`[ \t]*(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*`;
-// 型 2: 修飾付き参照の直後に「区切り + 裸の #数字」が 1 個以上続く形。
-const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
-// 是正案を組み立てるときの「区切り + 裸の #数字」。**ENUM_RE と同じ区切り定義から作る**
-// （2 箇所に別々の文字集合を書くと、片方だけ足したときに是正案が黙って壊れる）。
-const ENUM_FIX_RE = new RegExp(String.raw`(^|(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*)#(\d+)`, 'g');
+
+/**
+ * 設定（他リポ名・自リポ名）から検査器を組み立てる。**純関数**である。
+ *
+ * NFR / #757: キット版 `check-cross-repo-refs.js` の `createChecker` 構造を移植したもの。
+ * **検出力は本リポ版のまま**（型 1〜4・`〔〕` 区切り・`.md` 外走査）で、キット版が持っていた
+ * 「置換点」と「設定の妥当性検査」だけを載せた。#756 が「環流の理想形」と書いた形である。
+ *
+ * @param {{crossRepos: Record<string,string>, selfNames?: string[]}} config
+ */
+function createChecker(config) {
+  const crossRepos = (config && config.crossRepos) || {};
+  const selfNames = (config && config.selfNames) || [];
+  const longNames = Object.keys(crossRepos);
+  const shortNames = [...new Set(Object.values(crossRepos))];
+
+  if (!longNames.length) {
+    throw new Error('[check-cross-repo-refs] 設定の誤り: CROSS_REPOS が空である。');
+  }
+  // ★ 自リポジトリの名前が他リポジトリ側に混ざると、正当な自リポ参照を止める。
+  const conflict = [...longNames, ...shortNames].filter((n) => selfNames.includes(n));
+  if (conflict.length) {
+    throw new Error(
+      `[check-cross-repo-refs] 設定の誤り: ${conflict.join(' / ')} が SELF_NAMES と ` +
+        'CROSS_REPOS の双方に現れている。自リポジトリを指す名前を CROSS_REPOS へ入れると、' +
+        '正当な自リポ参照（裸の #NNN）を違反として止める。'
+    );
+  }
+
+  // 長い名前を先に並べる（`project-planning` を `planning` より先に当てる）。
+  const alt = (names) => [...names].sort((a, b) => b.length - a.length).map(reEscape).join('|');
+  const longAlt = alt(longNames);
+  const allAlt = alt([...longNames, ...shortNames]);
+
+  // 型 1: リポジトリ名の裸書き。直前が \w / - / `/` なら別物（`endazon/project-planning#50` は
+  // 規約が許すフルパス形式、`my-ai-stock-trading#1` は別語）なので負の後読みで除く。
+  const LONG_RE = new RegExp(String.raw`(?<![\w/-])(${longAlt})#(\d+)`, 'g');
+
+  // 修飾付き参照 1 個ぶん（短縮形・長い表記・フルパス形式のいずれか）。
+  const QUALIFIED = String.raw`(?:[A-Za-z][\w.-]*\/)?(?:${allAlt})#\d+`;
+  // 列挙の区切り（注記括弧）。#586 が採った「PR 番号に裁定依頼 issue 番号を添える」記法
+  //   `PR planning#244〔裁定依頼 planning#237〕`
+  // の開き括弧である（.claude/rules/traceability.md「関連番号を添える注記」）。規約は
+  // **`〔〕` の中の番号は先頭と同じ他リポジトリを指す**と定めるため、中を裸の `#NNN` にした形は
+  // 型 2（先頭だけ修飾）として検出する。短い見出し語（`裁定依頼` 等）を挟む形も同じ扱いにする。
+  //
+  // **全角丸括弧 `（` は入れない。** 日本語の地の文で従属節を開く一般的な記号であり、その直後の
+  // 裸 `#NNN` が**本リポジトリを指すのは正しい**（規約: 裸の `#NNN` は常に本リポジトリ）。
+  // 実測すると偽陽性が出る —— `feedback/20260805_sc05-07-admin-contract-gaps.md:44` の
+  // `planning#197（#502 由来）` の `#502` は本リポジトリの issue であり、止めてはならない。
+  // 対して `〔` を入れた場合の追加検出は追跡下の *.md 全件で **0 件**（＝偽陽性なし）である。
+  // 見出し語の長さ上限 16 は、節や文をまたいで拾わないための保険（超える形は検出しない側へ倒す）。
+  //
+  // **見出し語に修飾語（planning / AST / …）が現れたら区切りとして採らない。** 採らないと
+  // 採用形 `〔裁定依頼 planning#237〕` の `〔裁定依頼 planning` までを区切りと読んで
+  // **正しい書き方そのものを違反にしてしまう**（自己試験の負例で固定）。修飾語が現れる形は、
+  // 詰まっていれば正（検出不要）、空白で離れていれば型 3 の担当である。
+  const SEP_BRACKET = String.raw`〔(?:(?!${allAlt})[^#〔〕\n]){0,16}`;
+  const SEP = String.raw`[ \t]*(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*`;
+  // 型 2: 修飾付き参照の直後に「区切り + 裸の #数字」が 1 個以上続く形。
+  const ENUM_RE = new RegExp(`(${QUALIFIED})((?:${SEP}#\\d+)+)`, 'g');
+  // 是正案を組み立てるときの「区切り + 裸の #数字」。**ENUM_RE と同じ区切り定義から作る**
+  // （2 箇所に別々の文字集合を書くと、片方だけ足したときに是正案が黙って壊れる）。
+  const ENUM_FIX_RE = new RegExp(String.raw`(^|(?:${SEP_PUNCT}|${SEP_BRACKET})[ \t]*)#(\d+)`, 'g');
+  // 型 3: 修飾語と番号が空白で離れた形（間に PR / issue の語が入る形も含む）。
+  // **自リポジトリを指す修飾語（MSP / microservices-platform）は入らない**——上の SELF_NAMES を
+  // CROSS_REPOS から排除する検証がそれを保証する。入ると正当な記述を 22 件止める（実測）。
+  const SPACED_RE = new RegExp(
+    String.raw`(?<![\w/-])(${allAlt})[ \t]+(?:PR[ \t]+|issue[ \t]+)?#(\d+)`,
+    'g'
+  );
+  // 列挙の先頭から修飾語を取り出す式（後続の裸番号へ配る短縮形を決める）。
+  const HEAD_RE = new RegExp(String.raw`(?:^|\/)(${allAlt})#`);
+
+  return {
+    crossRepos,
+    selfNames,
+    longNames,
+    shortNames,
+    LONG_RE,
+    ENUM_RE,
+    ENUM_FIX_RE,
+    SPACED_RE,
+    HEAD_RE,
+    SEP,
+    /** 長い表記なら短縮形へ寄せる。短縮形はそのまま。 */
+    toShort: (name) => crossRepos[name] || name,
+    /** 修飾語を取り出せなかったときに配る既定の短縮形。 */
+    fallbackShort: shortNames[0],
+  };
+}
+
+/** 置換点から作った既定の検査器。`findViolations` はこれを使う。 */
+const DEFAULT_CHECKER = createChecker({ crossRepos: CROSS_REPOS, selfNames: SELF_NAMES });
+// 短縮形（規約が正とする書き方）。
+const SHORT_NAMES = DEFAULT_CHECKER.shortNames;
+// 長い表記（第 3 の表記＝型 1）。短縮形との対応は .claude/rules/traceability.md にある。
+const LONG_NAMES = DEFAULT_CHECKER.crossRepos;
+const { LONG_RE, ENUM_RE, ENUM_FIX_RE, SEP } = DEFAULT_CHECKER;
 
 // 型 4: フルパス形式の owner。規約（.claude/rules/traceability.md「本リポジトリでの名前空間」）が
 // 定める既知の owner はただ 1 つ `endazon` である。**実測件数はここに書かない** —— 自己試験へ
@@ -148,11 +225,8 @@ const OWNER_RE = new RegExp(
   'g'
 );
 
-// 型 3: 修飾語と番号が空白で離れた形（間に PR / issue の語が入る形も含む）。
-// **自リポジトリを指す修飾語（MSP / microservices-platform）は入れない**——その直後の裸 `#NNN` は
-// 本リポジトリを指しており正しい。入れると正当な記述を 22 件止める（実測）。
-const SPACED_RE =
-  /(?<![\w/-])(planning|AST|project-planning|ai-stock-trading)[ \t]+(?:PR[ \t]+|issue[ \t]+)?#(\d+)/g;
+// 型 3: 修飾語と番号が空白で離れた形（`createChecker` が設定から組み立てる。上を参照）。
+const { SPACED_RE } = DEFAULT_CHECKER;
 
 // フェンス行（``` / ~~~ で始まる行）。maskCode の状態遷移と unbalancedFenceLine の単一情報源。
 const FENCE_LINE_RE = /^\s*(```|~~~)/;
@@ -233,8 +307,8 @@ function findViolations(text, opts = {}) {
   while ((m = ENUM_RE.exec(scan))) {
     // 先頭の修飾語（短縮形へ正規化した名前）を後続の裸番号へ配る。
     const head = m[1];
-    const nameMatch = head.match(/(?:^|\/)(planning|AST|project-planning|ai-stock-trading)#/);
-    const short = nameMatch ? LONG_NAMES[nameMatch[1]] || nameMatch[1] : 'planning';
+    const nameMatch = head.match(DEFAULT_CHECKER.HEAD_RE);
+    const short = nameMatch ? DEFAULT_CHECKER.toShort(nameMatch[1]) : DEFAULT_CHECKER.fallbackShort;
     ENUM_FIX_RE.lastIndex = 0;
     const fixed = m[0].replace(ENUM_FIX_RE, (whole, pre, num) =>
       pre === '' ? whole : `${pre}${short}#${num}`
@@ -696,6 +770,11 @@ module.exports = {
   maskCode,
   unbalancedFenceLine,
   selfTest,
+  // NFR / #757: キット版と同じ公開面（`scripts.test.js` が設定の妥当性検査を引く）。
+  createChecker,
+  DEFAULT_CHECKER,
+  CROSS_REPOS,
+  SELF_NAMES,
   LONG_RE,
   ENUM_RE,
   SPACED_RE,

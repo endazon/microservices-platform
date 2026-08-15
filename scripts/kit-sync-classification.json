@@ -22,7 +22,7 @@
     "  実測（planning#363）: 本リポは traceability.md / check-cross-repo-refs.js を誤って C に置き、キット側の是正 3 件（planning#349 表記是正・planning#350 規則 8・planning#354 IADR 誤引用）が届かなかった。#755 で再判定した。",
     "  判定の手がかり（どれかに当たれば C の根拠が無い）: キット版とバイト一致（固有デルタ 0）／置換点のプレースホルダが残っている／置換点を使わず環境変数などで注入している。",
     "  注意: 置換点の目印を文字列としてだけ引くと偽陽性が出る。キット版が置換点を宣言しているファイルに限定する。",
-    "notApplicable = キットには在るが本リポでは対象にならないもの（*.example.yml は有効化して実名へ改名済み。*.example.json は本リポが実体を持つ）。",
+    "notApplicable = キットには在るが本リポでは対象にならないもの（*.example.yml は有効化して実名へ改名済み）。**雛形（*.example.json）はここへ置かない** —— 本リポが実表を持つことは雛形を持たない理由にならず、キット版 scripts.test.js（分類 A）が雛形そのものを検査対象にするため、実体が無いとテストが落ちる（#757）。",
     "",
     "A / B / C / notApplicable のどこにも書かれていないキットのファイルがあると検査は fail する（キットに増えたファイルを黙って見逃さない門）。"
   ],
@@ -102,7 +102,9 @@
       "scripts/commit-allowlist.json",
       "scripts/gen-changelog.js",
       "scripts/gen-openapi-skeleton.js",
+      "scripts/kit-sync-classification.example.json",
       "scripts/lib/ci-annotate.js",
+      "scripts/scripts.test.js",
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
@@ -125,12 +127,11 @@
       "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）＋ 3. 本リポにしか存在しないスクリプト（check-feedback-status-sync.js の説明。IADR-0193。環流済み。追跡: #736 / planning#337）",
       "scripts/README.md": "3. 本リポにしか存在しないスクリプトの行（check-* の本リポ固有分）を追記。土台の表はキットが正",
       "scripts/changelog-overrides.json": "5. キットが追記を委ねている欄（overrides 配列。キットは空で配り、各リポジトリが実際に必要になった分だけ足す）",
-      "scripts/check-commit-messages.js": "X. 5 種に当たらない（本リポ originate）。#756 で HOWTO §B-5 の手順どおり実走突合し、本リポ版が優ると判定した —— キット版に無い機能は FR / UC / SC の実在性検査 #579・件名 / 本文 / PR タイトルへのクロスリポ参照検査 #507・コミット本文（%b）の収集で、逆にキット版だけが持つ機能は無い（差は関数名 isBotLogin と分岐順のみ）。よって差し替えず環流する。起票案は docs/specs/20260815_issue-756_kit-superiority-three-checkers.md の「環流の起票案 案 1」。追跡: #756 / 環流先 planning#373",
-      "scripts/check-cross-repo-refs.js": "X. 5 種に当たらない（本リポ originate #507。planning#363 の名指し 2 件目）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、本リポ版が優ると判定した —— 同じ fixture で本リポ版 6 件 / キット版 4 件（キット版は型 4 owner 誤り #590 と〔〕区切りの列挙 #586 を検出できず、走査も *.md のみで IADR-0169 の .md 外へ広がっていない）。キット版が優るのは置換点と設定の妥当性検査だけなので、キットの createChecker 構造へ本リポの検出力を載せる形で環流する。起票案は docs/specs/20260815_issue-756_kit-superiority-three-checkers.md の「環流の起票案 案 2」。追跡: #756 / 環流先 planning#374",
+      "scripts/check-commit-messages.js": "X. 5 種に当たらない（本リポ originate）。#756 で HOWTO §B-5 の手順どおり実走突合し、本リポ版が優ると判定した —— キット版に無い機能は FR / UC / SC の実在性検査 #579・件名 / 本文 / PR タイトルへのクロスリポ参照検査 #507・コミット本文（%b）の収集で、逆にキット版だけが持つ機能は無い。#757 で唯一の差であった関数名を キットの正準名 isBotLogin へ揃えたため、残る差は本リポの検出力だけである。追跡: #756 / 環流先 planning#373",
+      "scripts/check-cross-repo-refs.js": "X. 5 種に当たらない（本リポ originate #507。planning#363 の名指し 2 件目）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、本リポ版が優ると判定した —— 同じ fixture で本リポ版 6 件 / キット版 4 件（キット版は型 4 owner 誤り #590 と〔〕区切りの列挙 #586 を検出できず、走査も *.md のみで IADR-0169 の .md 外へ広がっていない）。#757 でキット版の createChecker 構造（置換点 CROSS_REPOS / SELF_NAMES ＋ 設定の妥当性検査）を本リポ版へ載せ、キット版が優っていた唯一の点を解消した。残る差は本リポの検出力そのものであり、環流が着地すればキット版へ戻せる。追跡: #756 / 環流先 planning#374",
       "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流済み。追跡: #736 / planning#337",
       "scripts/check-plan-id-qualification.js": "5. キットが選択・追記を委ねている欄（置換点 PROJECT_PREFIXES / EXTRA_EXCLUDES を埋めた）＋ 3. 本リポにしか存在しないスクリプト（lib/worktree-state.js の警告 IADR-0183 の 3 行）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、キット版が優ると判定してキット版へ差し替えた —— キット版だけが NFR を検出し（同じ fixture でキット 3 件 / 旧本リポ版 2 件）、置換点と環境変数・.gitmodules からの submodule 導出・設定の妥当性検査を持つ。これは feedback/20260808_kit-plan-id-qualification-check.md（起票 planning#316）で本リポ自身が要求した一般化がキットに着地したものである。",
-      "scripts/check-planning-pin-freshness.js": "X. 5 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物。#749 の補足のとおりキット版への差し替えも俎上に載せる）。追跡: #749",
-      "scripts/scripts.test.js": "X. 5 種に当たらない（設計上は A であるべき companion 方式の本体だが、キット版が +750 行先行し本リポ版が取り残されている。キット版テストはキット版検査器を前提にするため単独では追随できない）。追跡: #757",
+      "scripts/check-planning-pin-freshness.js": "X. 5 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物）。#757 でキット版の freshness / pinnedCommitDate を移植し、比較元を取れない fail-open 経路へ配線した（キット版自身が「ここが要るリポジトリは本スクリプトを土台に分類規則を足すこと」と述べており、差し替えではなく足すのが正しい向き）。追跡: #749",
       "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337"
     },
     "C": [
@@ -148,7 +149,6 @@
     ".github/workflows/copilot-setup-steps.example.yml",
     ".github/workflows/doc-links-planning.example.yml",
     ".github/workflows/frontend-tests.example.yml",
-    ".github/workflows/frontend.example.yml",
-    "scripts/kit-sync-classification.example.json"
+    ".github/workflows/frontend.example.yml"
   ]
 }

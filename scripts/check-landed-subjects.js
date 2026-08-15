@@ -113,7 +113,7 @@ function collectLanded(ref = 'HEAD') {
  */
 function reasonsFor(commit, ids) {
   // bot 判定は `isBot`（コミット著者用。`"名前 <メール>"` への部分一致）を使う。
-  // **`isBotAuthorName`（完全一致）は PR の作成者ログイン名用**であり、突合先が違う
+  // **`isBotLogin`（完全一致）は PR の作成者ログイン名用**であり、突合先が違う
   // ——dependabot のコミットのメールは `49699333+dependabot[bot]@users.noreply...` で、
   // 完全一致では当たらない（名前側で当たっていたので実データの結果は変わらないが、
   // **同じ「bot 除外」が 2 検査器で別ロジックになっているのは事故の芽**である。#612 レビュー 🟢）。

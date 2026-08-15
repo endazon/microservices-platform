@@ -183,6 +183,64 @@ function pinnedCommit(root = REPO_ROOT) {
 }
 
 /**
+ * pin されたコミットの日時を epoch 秒で返す。取れなければ null（fail-open）。
+ *
+ * NFR / #757: キット版 `check-planning-pin-freshness.js` から移植した。**キット版は
+ * 「pin が何日前か」だけを見る**のに対し、本リポ版は「その差分が着手可否に効くか」を見る
+ * ——キット版自身が「ここが要るリポジトリは本スクリプトを土台に分類規則を足すこと」と
+ * 述べており、**差し替えではなく足すのが正しい向き**である。
+ */
+function pinnedCommitDate(root = REPO_ROOT) {
+  try {
+    // stderr は捨てる（未 populate / 非 git の `fatal:` を CI ログへ漏らさない。fail-open の一部）。
+    const out = git(['-C', path.join(root, PLANNING), 'log', '-1', '--format=%ct'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const n = Number(out);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * pin の鮮度を判定する。**純関数**（時刻と pin 日時を受け取るだけ）。
+ *
+ * NFR / #757。**しきい値ちょうどでは鳴らさない**（毎回鳴ると読まれなくなる。判断 3 と同じ理由）。
+ * pin 日時が取れないときは黙って `fresh` にせず `unknown` を返す
+ * ——「検査していない」と「古くない」を読み分けるという本スクリプトの方針そのものである。
+ *
+ * @param {number|null} pinnedEpoch pin されたコミットの epoch 秒
+ * @param {number} nowEpoch 現在時刻の epoch 秒
+ * @param {number} maxAgeDays しきい値（日）
+ * @returns {{state:'unknown'|'fresh'|'stale', ageDays:number|null}}
+ */
+function freshness(pinnedEpoch, nowEpoch, maxAgeDays) {
+  if (!pinnedEpoch) return { state: 'unknown', ageDays: null };
+  const ageDays = Math.floor((nowEpoch - pinnedEpoch) / 86400);
+  return { state: ageDays > maxAgeDays ? 'stale' : 'fresh', ageDays };
+}
+
+/** 【置換点】pin の経過日数がこれを超えたら「古い」と添える。**0 にはしない**（毎回鳴る）。 */
+const DEFAULT_MAX_AGE_DAYS = 14;
+
+/**
+ * 比較できなかったときに添える一行。**#749 が塞ぎ残した形**を埋める。
+ *
+ * 比較元を取れない経路は planning が populate 済みでも通り、現状は **pin について何も言わずに
+ * 緑**を返す。ここで経過日数を添えれば、「比較できていない」ことと「pin が何日前か」を
+ * 読み分けられる（`unknown` のときは黙る —— 情報が無いことを情報のように書かない）。
+ */
+function ageNote(root = REPO_ROOT, now = Math.floor(Date.now() / 1000)) {
+  const maxAgeDays = Number(process.env.PLANNING_PIN_MAX_AGE_DAYS) || DEFAULT_MAX_AGE_DAYS;
+  const { state, ageDays } = freshness(pinnedCommitDate(root), now, maxAgeDays);
+  if (state === 'unknown') return '';
+  return state === 'stale'
+    ? `\n  なお pin 自体は ${ageDays} 日前のコミットです（しきい値 ${maxAgeDays} 日）。**着手前に pin を進めること。**`
+    : `\n  なお pin 自体は ${ageDays} 日前のコミットです（しきい値 ${maxAgeDays} 日以内）。`;
+}
+
+/**
  * 比較元（planning の既定ブランチ）を解決する。**「どこから取ったか」を必ず一緒に返す**（#749）。
  *
  * ★ 旧実装は commit の文字列だけを返しており、**出力を読んでも比較相手が分からなかった。**
@@ -410,6 +468,17 @@ function selfTest() {
   // ★ 乖離はあるが、着手可否に効く変更は無い ＝ 理由 0 件。
   t('draft / tools だけの差分では理由が 0 件', r2.drifted && r2.reasons.length === 0);
 
+  // NFR / #757: pin の経過日数（キット版から移植した純関数）。
+  const DAY = 86400;
+  const now = 1_700_000_000;
+  t('鮮度: しきい値以内は fresh', freshness(now - 3 * DAY, now, 14).state === 'fresh');
+  t('鮮度: しきい値ちょうどは fresh（境界で鳴らさない）', freshness(now - 14 * DAY, now, 14).state === 'fresh');
+  t('鮮度: しきい値を 1 日超えたら stale', freshness(now - 15 * DAY, now, 14).state === 'stale');
+  t('鮮度: 日数も返す', freshness(now - 3 * DAY, now, 14).ageDays === 3);
+  // ★ pin 日時が取れないときに黙って fresh へ倒さない。倒すと「検査していない」が「古くない」に化ける。
+  t('鮮度: 取得できなければ unknown', freshness(null, now, 14).state === 'unknown');
+  t('鮮度: unknown なら添え書きを出さない', ageNote('/no/such/repo', now) === '');
+
   console.log(failed === 0 ? '[check-planning-pin-freshness] self-test OK' : `NG ${failed} 件`);
   return failed === 0 ? 0 : 1;
 }
@@ -452,7 +521,9 @@ function main() {
   if (!pin || !head) {
     console.log(
       `[check-planning-pin-freshness] 比較対象を取得できないため検査していません（pin=${pin ?? '不明'} / HEAD=${head ?? '不明'}）。\n` +
-        `  ${sourceLine}`,
+        `  ${sourceLine}` +
+        // NFR / #757: 比較できなくても pin の経過日数だけは言える。**黙って緑を返さない。**
+        ageNote(root),
     );
     process.exit(0);
   }
@@ -557,6 +628,11 @@ module.exports = {
   findIssues,
   planningPopulated,
   pinnedCommit,
+  // NFR / #757: キット版と同じ公開面（`scripts.test.js` が引く）。
+  pinnedCommitDate,
+  freshness,
+  ageNote,
+  DEFAULT_MAX_AGE_DAYS,
   resolveComparisonSource,
   describeSource,
   isLocalPathRemote,
