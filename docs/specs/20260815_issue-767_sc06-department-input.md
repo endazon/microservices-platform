@@ -79,6 +79,48 @@ plan_refs:
 | 8 | `所管部門` | 2 | 2 | `07_abac-attribute-model` の語（バックエンド `DataSource.cs` のコメントに写っている） |
 | 9 | `既定の機密区分`（**SC-06 フォームの項目を列挙している側**から引く。規則 9） | — | **9** | 追随先の特定に用いた。下表 |
 
+### 追随先の引き直し（2 巡目。`docs/` 配下・規則 5「軸を 1 本で終わらせない」）
+
+1 巡目で挙げた 4 箇所（screens L117 / L205-212、tests L61 / L75）**をそのまま信じず**、`docs/` 全体を 6 軸で引き直した。
+**`docs/screens/` と `docs/tests/` の SC-06 以外のファイルも対象に入れた。**
+
+| 軸 | 検索語 | 行 | ファイル |
+| --- | --- | --- | --- |
+| a | `既定の機密区分` | 11 | 5 |
+| b | `登録フォーム` | 21 | 9 |
+| c | `入力項目` | 12 | 12 |
+| d | `defaultAttributes` | 29 | 8 |
+| e | `DataSourceForm` | 9 | 5 |
+| f | `接続先 URI` | 5 | 3 |
+
+**結果: 実際に古くなっていたのは 3 ファイル・9 箇所であり、1 巡目の 4 箇所では足りなかった。**
+
+| ファイル | 箇所 | 1 巡目で挙げたか |
+| --- | --- | --- |
+| `docs/screens/SC-06_…` | §モックに無いが実装する要素（項目の列挙） | ○ |
+| `docs/screens/SC-06_…` | §表示・入力項目（表に行が無い） | ○ |
+| `docs/screens/SC-06_…` | §i18n（翻訳しない値の列挙に予約値が無い） | **×（軸 c で発見）** |
+| `docs/screens/SC-06_…` | §関連仕様（本作業仕様書へのリンクが無い） | **×（軸 b で発見）** |
+| `docs/tests/SC-06_…` | §UC-04 のフロー写像 | ○ |
+| `docs/tests/SC-06_…` | §テストケース 4（送信内容の列挙） | ○ |
+| `docs/tests/SC-06_…` | §テストケース 14（en。テストを拡張した） | **×（軸 a で発見）** |
+| `docs/tests/SC-06_…` | §純関数（`department.test.ts` が載っていない） | **×（軸 a で発見）** |
+| `docs/adr/IADR-0199_…` | L63 / L90-91 / L202（**入力欄が無いと明言している**） | **×（軸 b・e で発見）** |
+
+**除外したもの（2 巡目）**
+
+| ファイル | 扱い | 理由 |
+| --- | --- | --- |
+| `docs/data/data-source.md` L84 / L89 | **除外（未消化。要対応）** | 「**加えて SC-06 の登録フォームに `department` の入力欄が無い**。追跡は #754」「どちらも実運用では事実上 100% が予約値へ倒れる（… `department` は #754）」が**本変更で誤りになる**。**`docs/data/` は宣言済みファイル領域に含まれていない**ため触っていない。**追随が要る**（軸 b・f で発見） |
+| `docs/screens/SC-05_document-management.md`（軸 b・c） | 除外 | SC-05 自身の文書登録フォームの記述で、SC-06 の項目ではない |
+| `docs/tests/SC-05_document-management.md`（軸 a） | 除外 | 機密区分の値集合が SC-05 / SC-06 で共有語彙であることの説明。`department` は SC-06 のみで、記述は古くならない |
+| `docs/tests/FR-01_data-source-catalog.md`（軸 d） | 除外 | T-39〜T-42 はバックエンド（`DataSource.Create` の予約値補完）の記述で、フロントの送信形とは独立。本変更で古くならない |
+| `docs/screens/` の他 8 ファイル（軸 c） | 除外 | 各画面自身の §表示・入力項目 であり SC-06 の列挙を持たない（**画面横断の一覧は存在しなかった**） |
+| `docs/templates/screen_spec_template.md`（軸 c） | 除外 | 雛形。特定画面の項目を持たない |
+| `docs/api/openapi.yaml`（軸 d） | 除外 | 契約は変わらない（宣言済み領域外でもある） |
+| `docs/specs/20260805_issue-503_…` / `20260709_issue-132_…` / `20260815_issue-516_…` / `20260705_FR-01_…` / `20260808_issue-534-537_…` / `20260810_issue-658_…`（軸 a・b・d・e） | **除外（確定済み。記録のみ）** | いずれも `docs/specs/` の**確定済み作業仕様書**であり、`.claude/rules/traceability.repo.md` が「本文への後付け注記で書き換えない」と定める。とくに `20260815_issue-516_…`（軸 b・e）と `20260805_issue-503_…`（軸 a・b・e）は SC-06 の登録フォームが `confidentiality` だけを送ると書いており、**内容としては古くなるが、当時の実測の記録として正しい**。**直さない** |
+| `docs/adr/IADR-0148` / `IADR-0162`（軸 d） | 除外 | `defaultAttributes` を契約・永続化の観点で扱っており、フォームの項目に触れていない |
+
 軸 3 の非生成フロント 3 ファイル:
 `features/sc06-datasources/DataSourceForm.tsx` / `features/sc06-datasources/DataSourceManagementPage.test.tsx` /
 `features/adminFlow.test.tsx`。
@@ -105,8 +147,9 @@ plan_refs:
 | `scripts/measure-abac-combinations.js` | **除外** | 予約値の減少の実測は DB / Keycloak 稼働が前提。issue のスコープ外 |
 | `docs/specs/20260805_issue-503_sc05-08-admin-screens.md` | **除外** | 確定済みの作業仕様書は後付けで書き換えない（`.claude/rules/traceability.repo.md`） |
 | `docs/tests/SC-05_document-management.md` | **除外** | SC-05 自身のフォームの記述で、SC-06 の項目ではない |
-| **`docs/screens/SC-06_datasource-management.md`** | **除外（未消化の追随。要対応）** | §表示・入力項目（L205-212）と L117「登録フォームの項目（名前・種別・接続先 URI・既定の機密区分）」が**本変更で古くなる**（規則 10 で検出）。**宣言済みファイル領域の外**であり、広げると並行作業の非重複判定を壊すため触らない。**別 issue で追随が要る** |
-| **`docs/tests/SC-06_datasource-management.md`** | **除外（未消化の追随。要対応）** | L61 / L75 が登録の送信内容を「名前・種別・接続先・既定の機密区分」と列挙しており、同じく古くなる。理由は上に同じ。**機械検査は掛かっていない**（`check-test-spec-coverage.js` は `.cs` のテストクラスだけを見る／`check-test-traceability.js` は SC-06 が 1 件でも参照されていれば緑）ため、**CI では捕まらない** |
+| **`docs/screens/SC-06_datasource-management.md`** | **変更（同 PR 内で消化）** | §表示・入力項目・§モックに無いが実装する要素・§i18n・§関連仕様が**本変更で古くなる**（規則 10 で検出）。**当初は「宣言済み領域外なので別 issue」と判断したが差し戻された** —— live な仕様書であり、古くなると分かっている記述を別 issue へ送るのは規則 10 が禁じる型そのものである。領域を広げて同 PR で直した |
+| **`docs/tests/SC-06_datasource-management.md`** | **変更（同 PR 内で消化）** | §UC-04 のフロー写像・§テストケース・§純関数が同じく古くなる。理由は上に同じ |
+| **`docs/adr/IADR-0199_ingestion-required-attribute-failsafe.md`** | **変更（日付つき追記）** | **3 箇所が本変更で事実として誤りになる** —— L63 の表「加えて SC-06 に入力欄が無い」・L90-91「`department` の入力欄も更新経路も無い／画面から登録した全データソースが `unassigned` になる」・L202「#754: … SC-06 の入力欄」。`Accepted` な ADR のため**本文は消さず、日付つき追記ブロック（`［2026-08-15 追記 / #767］`）で現状を併記**した（`.claude/rules/traceability.repo.md` §Superseded 引用の書式に倣う）。`updated:` は既に 2026-08-15 |
 
 ## 対象範囲
 
@@ -198,6 +241,14 @@ if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(val
 | M5 | `en/messages.po` の同じ `msgstr` を空にする | `check-i18n-catalogs.js` ＋ `lingui compile --strict` ＋ T5 | **fail**（下記の注意つき） |
 | M6 | `abac/department.ts` の `UNRESOLVED_DEPARTMENT` を `'unresolved'` へ変える | T4 ＋ 補助文のアサート | **2 件 fail** |
 
+**`check-test-spec-coverage.js` は本変更のテストを見ていない（裏取り済み）。** 同スクリプトを読むと、
+方向 (b) は `TEST_CLASS_FILE = /(^|\/)([A-Za-z0-9_]+Tests)\.cs$/`、方向 (a) は
+`CS_PATH = /(?<![\w./-])((?:src|deploy|scripts|tools|\.github|docs)\/[A-Za-z0-9_./-]+\.cs)/g` であり、
+**どちらも `.cs` で終わるパスしか見ない**（冒頭 L29「見るのは `.cs` で終わるパスだけである」・偽陽性 6 クラスの
+理由書き）。フロントの `*.test.tsx` / `*.test.ts` は原理的に対象外である。
+`check-test-traceability.js` も「SC-06 が 1 件でも参照されていれば緑」であるため止まらない。
+**したがって、テスト仕様書への記載漏れを止める機械は本変更の範囲には無く、書き手が守るしかない。**
+
 **素通りした変異は無い。** 予測と実測がずれた点と、注意を要する点を開示する。
 
 1. **M2 / M3 は「2 件落ちる」と予測したが 1 件だった。** T1 と T3（trim）、T2 と追加アサートは
@@ -216,8 +267,11 @@ if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(val
 
 ## 未決事項
 
-1. **`docs/screens/SC-06_datasource-management.md` と `docs/tests/SC-06_datasource-management.md` の追随が未消化**
-   （上表参照）。本 PR の宣言済みファイル領域の外であるため触っていない。**別 issue で消化が要る。**
+1. **`docs/data/data-source.md` の追随が未消化。** L84「加えて **SC-06 の登録フォームに `department` の
+   入力欄が無い**。追跡は **#754**」と L89「どちらも実運用では事実上 100% が予約値へ倒れる」が
+   本変更で誤りになる。**`docs/data/` は本 PR の宣言済みファイル領域に含まれていない**ため触っていない。
+   **領域を広げるか、追随 issue を起こすかの判断が要る。**
+   なお `docs/screens/SC-06_…` / `docs/tests/SC-06_…` / `docs/adr/IADR-0199_…` は**同 PR 内で消化した**。
 2. **部門コードの値域と候補 UI**。現状は自由入力である。SC-09 の属性辞書が値集合を持ち、SC-01 / SC-08 は
    権限内候補 API（`ADR-0043`）で候補を出しているが、**管理者が新しい既定部門を設定する場面で「到達できる
    文書に実際に付与されている値のみ」を返す候補 API を使うのは誤り**である（まだ 1 件も無い部門を設定できない）。
