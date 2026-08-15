@@ -470,7 +470,7 @@ export interface DataSourceDto {
 export type CreateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない
+ * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない
  */
 export type CreateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -479,7 +479,7 @@ export interface CreateDataSourceRequest {
   sourceType: string;
   connectionUri: string;
   config?: CreateDataSourceRequestConfig;
-  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない */
+  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
   defaultAttributes?: CreateDataSourceRequestDefaultAttributes;
 }
 
@@ -491,7 +491,7 @@ export interface CreateDataSourceRequest {
 export type UpdateDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない
+ * 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない
  */
 export type UpdateDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -511,14 +511,14 @@ export interface UpdateDataSourceRequest {
      * （IADR-0148 決定 6）。読んで書き戻す往復が資格情報を壊さない。
      */
   config: UpdateDataSourceRequestConfig;
-  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned）。明示指定は上書きしない */
+  /** 未指定時は後段が必須属性のフェイルセーフを通る（confidentiality=internal / owner=system / department=unassigned / lifecycle=active）。明示指定は上書きしない */
   defaultAttributes: UpdateDataSourceRequestDefaultAttributes;
 }
 
 export type PatchDataSourceRequestConfig = {[key: string]: string} | null;
 
 /**
- * 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department）
+ * 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle）
  */
 export type PatchDataSourceRequestDefaultAttributes = {[key: string]: string} | null;
 
@@ -531,7 +531,7 @@ export interface PatchDataSourceRequest {
   sourceType?: string | null;
   connectionUri?: string | null;
   config?: PatchDataSourceRequestConfig;
-  /** 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department） */
+  /** 指定したときのみ差し替える。差し替え時も必須属性のフェイルセーフを通す（confidentiality / owner / department / lifecycle） */
   defaultAttributes?: PatchDataSourceRequestDefaultAttributes;
 }
 
