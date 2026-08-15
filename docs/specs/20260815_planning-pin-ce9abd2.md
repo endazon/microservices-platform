@@ -9,6 +9,7 @@ related_ids:
   - IADR-0115
   - IADR-0170
   - IADR-0193
+  - IADR-0198
 author: claude
 created: 2026-08-15
 updated: 2026-08-15
@@ -18,6 +19,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
 related_specs:
   - "../adr/IADR-0115_impl-handoff-kit-as-single-source.md"
+  - "../adr/IADR-0198_kit-delta-fifth-kind-and-review-verdict.md"
 ---
 
 # 作業仕様書: 計画 pin を `ce9abd2` へ進め、キット同期を追随する
@@ -77,22 +79,23 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 ### 3.1 drift 4 件 —— **いずれもキット側が先に進んでいる**
 
 **本リポに意図した固有デルタがあるのではなく、キットの更新に追随できていなかった。** 原文を取り込む。
+**変化量は `git diff --numstat`（追加 / 削除）で数えた。**
 
 | ファイル | キット側の変化 |
 | --- | --- |
-| `.claude/hooks/check-impl.js` | **+11 行**（`docs/` 直下のフロントマター非保持ファイルの扱いを明文化） |
-| `scripts/check-feedback-dispatched.js` | **表記の是正**（`planning issue #217` → `planning#217`）。**planning#349 の依頼 1 がキット側で解決した** |
-| `scripts/check-permission-denials.js` | **+368 行**（引用符内の `\|` を判定する字句解析の追加） |
-| `scripts/commit-allowlist.json` | `_note` / `_schema` に**固有デルタ第 5 種**の説明が入った（裁定 planning#339） |
+| `.claude/hooks/check-impl.js` | **+12 / -1**（`docs/` 直下のフロントマター非保持ファイルの扱いを明文化） |
+| `scripts/check-feedback-dispatched.js` | **+1 / -1**（表記の是正）（`planning issue #217` → `planning#217`）。**planning#349 の依頼 1 がキット側で解決した** |
+| `scripts/check-permission-denials.js` | **+319 / -16**（引用符内の `\|` を判定する字句解析の追加） |
+| `scripts/commit-allowlist.json` | `_note` / `_categories` に**固有デルタ第 5 種**の説明が入った（裁定 planning#339） |
 
-**`commit-allowlist.json` だけは丸ごと取り込めない** —— 本リポの `allow` 配列には実在エントリがあり、
-キット原文は空である。**キットの `_note` / `_schema` を取り込み、`allow` は保持する。**
-その結果バイト不一致になるが、**キット新版の `_note` 自身が「この `allow` 配列は
-『キットが追記を委ねている欄』＝固有デルタ第 5 種であり、埋まっていること自体は追随漏れではない」
-と述べている**（裁定 planning#339）。したがって**分類 B へ移す**。
+**`commit-allowlist.json` は分類 A のまま丸ごと取り込んだ。**
+着手時は「本リポの `allow` には実在エントリがあるので `_note` だけ取り込んで B へ移す」と書いていたが、
+**実測すると `allow` は空だった**（[[IADR-0115]] の第 1 ラウンドで空へ戻し済み）。したがってキット原文と
+バイト一致し、**A のままで矛盾しない**。
 
-> **本リポの `AI_SETUP.md` は「4 種の側の不足として裁定依頼中。追跡: #736 / planning#339」と書いていた。
-> その裁定が出た**（第 5 種の新設）。理由欄を実態へ更新する。
+> **キット新版の `_note` は「この `allow` 配列は『キットが追記を委ねている欄』＝固有デルタ第 5 種であり、
+> 埋まっていること自体は追随漏れではない」と述べている**（裁定 planning#339）。
+> **将来 `allow` が埋まった時点で B へ移す**ことになる。いまは空なので A である。
 
 ### 3.2 unclassified 7 件
 
@@ -100,14 +103,23 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 | --- | --- | --- |
 | `docs/templates/how_to_template.md` | **A** | 差分は本リポが足した `#675 / [[IADR-0167]]` の出典注記 10 行のみ。**キット新版は `status` 値域検査に関する案内を持つ上位互換**であり、出典は `IADR-0167` 自身が保持する。原文を取り込む |
 | `docs/templates/runbook_template.md` | **A** | 同上（差分 8 行） |
-| `scripts/check-kit-sync.js` | **B**（3） | **本リポが originate した**（#713 / [[IADR-0115]]）。キットが後から取り込んだが実装が異なる（差分 371 行） |
-| `scripts/check-planning-pin-freshness.js` | **B**（3） | **本リポが originate した**（#589 / [[IADR-0170]]）。差分 539 行 |
+| `scripts/check-kit-sync.js` | **B**（X） | **本リポが originate した**（#734）。キットが後追いで**別実装**を持った（`git diff --numstat` で +60 / -265） |
+| `scripts/check-planning-pin-freshness.js` | **B**（X） | **本リポが originate した**（#680 / [[IADR-0170]]）。**キット版は目的が別物**（pin の経過日数を見るオフライン方式。本リポ版は着手可否の分類を持つ）。+347 / -122 |
 | `scripts/check-feedback-status-sync.js` | **B**（3） | **本リポが originate した**（[[IADR-0193]]）。差分 302 行 |
 | `scripts/check-review-verdict.js` | **A** | **キットの新規配布物。本 PR で採用する**（利用者裁定 2026-08-15）。CI 配線も行う |
+| `AI_SETUP.md`（既存 B の是正） | **B（5）** | **裁定 planning#339 が第 5 種の代表例として名指ししている。** 当初「第 5 種にも当たらない」と書いたのは 3 つの一次資料に反していた（[[IADR-0198]] 決定 1）。あわせて**キットの 2 ブロックの追随漏れ**も取り込み、残差を `- [x]` の 1 行だけにした |
 | `scripts/kit-sync-classification.example.json` | **notApplicable** | 本リポは実体 `kit-sync-classification.json` を持つ。`.example` は雛形であり対象外（既存の `*.example.yml` 8 件と同じ扱い） |
 
 > **B の 3 件は「追随漏れ」ではない。** 向きが逆で**本リポが先**であり、キットは後追いである。
-> **キット原文で上書きすると本リポの機能が退行する。** 分類 B の意味はまさにこれである。
+>
+> **★ ただし種別は `3`（本リポにしか存在しない）ではない**（PR #750 の ADR 監査が指摘）。
+> **3 件とも現キットに実在する**ため、第 3 種の定義に当たらない。「**本リポ originate ＋ キットが別実装で後追い**」は
+> [[IADR-0115]] 決定 2 の 4 種にも、planning#339 が新設した第 5 種にも当たらない**新しい型**である。
+> したがって **`X`（4 種に当たらない）＋ 追跡先**とした。追跡先は **#751**（上流の `--require-planning` の追随）と **#749**。
+>
+> **★ 「キット原文で上書きすると退行する」は `check-planning-pin-freshness.js` については弱い**（AI レビューの 🟡）。
+> **キット版は `origin/HEAD` 等のリモート参照に一切依存しない別設計**であり、**#749 が踏んだ不具合の型を構造的に持たない**。
+> **#749 の対応では、キット版への差し替えも比較検討の俎上に載せる**（同 issue へ追記済み）。
 
 ### 3.3 `check-review-verdict.js` の採用と CI 配線
 
@@ -167,7 +179,7 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 | --- | --- |
 | **検査器の母集合ラチェット** | 35 → **36 本**（`check-review-verdict.js` の採用。`scripts.repo.test.js`） |
 | **`check-feedback-status-sync`** | **6 件の `status: open` → `accepted`**。**pin が進んで計画側のトリアージ結果が見えるようになったため**（planning#342 が環流 5 件を、planning#347 が Wiki.js の 1 件を裁定した）。frontmatter の状態欄は書き換え対象である（[[IADR-0191]] ／ 規約 §#717） |
-| **必読 2 ファイルの予算** | ID レンジの注記を加筆したら**余白が 927B まで減り下限 1000B を割った**。**経緯を別紙 `plan-id-range-history-annex.md` へ出し、条文には規範だけを残した**（[[IADR-0173]] の設計どおり） |
+| **必読 2 ファイルの予算** | ID レンジの注記を加筆したら**余白が 927B まで減り下限 1000B を割った**。**条文の注記を短くし、経緯は条文へ書かず別紙へ書いた**（既存本文を別紙へ移したのではない。条文は正味 +14B で、余白は 1,005B へ回復した）。[[IADR-0173]] の設計どおり |
 
 ## 6. この作業で扱わないこと
 

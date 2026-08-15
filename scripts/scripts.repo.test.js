@@ -4986,11 +4986,14 @@ module.exports = ({ ok, assert }) => {
       //   番号を振っていた。実際に照らすと大半は 4 種に当たらない（＝環流債務・追随漏れ）。
       //   書式だけ強制しても「なんとなく 2」と書けてしまい、IADR-0115 決定 3 の規律がすり抜ける。
       //   → X（4 種に当たらない）を明示させ、**X には追跡先の issue 番号を必須**にする。
+      // ★ 計画 pin を ce9abd2 へ進めた際、planning#339 の裁定で **第 5 種**（キットが選択・追記を
+      //   委ねている欄）が新設されたため 4 → 5 へ広げた（[[IADR-0198]] 決定 1 が IADR-0115 決定 2 を改定）。
+      //   値域の正はキットの kit-sync-classification.example.json が持つ。
       for (const [f, reason] of Object.entries(t.classes.B)) {
         assert.match(
           reason,
-          /^([1-4]|X)\. /,
-          `分類 B「${f}」の理由が IADR-0115 決定 2 の 4 種または X を名乗っていない（"N. …" / "X. …" で始めること）`,
+          /^([1-5]|X)\. /,
+          `分類 B「${f}」の理由が IADR-0115 決定 2（IADR-0198 で 5 種へ改定）の種別または X を名乗っていない（"N. …" / "X. …" で始めること）`,
         );
         if (reason.startsWith('X.')) {
           assert.match(

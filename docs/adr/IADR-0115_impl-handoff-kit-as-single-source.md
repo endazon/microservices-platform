@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0056, IADR-0058]
 author: Claude
 created: 2026-08-01
-updated: 2026-08-01
+updated: 2026-08-15
 plan_refs: []
 ---
 
@@ -72,6 +72,11 @@ plan_refs: []
    （例: `docs/specs/20260712_issue-260_dependabot-submodule-token-fix.md` →
    `.github/dependabot.yml`）。この向きなら同期で失われない。
 5. 同期は `/sync-plan` で planning submodule を最新化した直後に行い、作業仕様書と本 IADR を起点とする。
+
+> **［2026-08-15 追記 / #516 の前段］本決定は [[IADR-0198]] 決定 1 で部分改定した。**
+> **planning#339 の裁定で第 5 種（キットが選択・追記を委ねている欄）が新設された。**
+> 本リポでは `AI_SETUP.md`（チェックボックス）と `scripts/commit-allowlist.json`（`allow` 配列）が該当する。
+> **値域の正はキットの `kit-sync-classification.example.json` が持つ**（ここへ複写しない）。
 
 ## 理由
 

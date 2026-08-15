@@ -96,13 +96,13 @@
       ".github/workflows/pr-title.yml": "X. 4 種に当たらない（キット原文の他リポ番号の表記違反を短縮形へ是正。check-cross-repo-refs.js が検出）。是正依頼済み。追跡: #736 / planning#338",
       ".github/workflows/security.yml": "1. リポジトリ構成（src/* submodule の取得ステップ）",
       ".gitmodules": "1. リポジトリ構成（src/ai-stock-trading submodule の登録）",
-      "AI_SETUP.md": "X. 4 種に当たらない（有効化プロファイルの宣言）。★ planning#339 で固有デルタ第 5 種が新設され裁定は出たが、本項は第 5 種にも当たらないため X のまま。追跡: #736",
+      "AI_SETUP.md": "5. キットが選択を委ねている欄（利用可能な AI のチェックボックス。裁定 planning#339）。キットは未選択で配り、どのリポジトリも必ず選択するため、選択済みであること自体は追随漏れではない。★ 説明文はキット側が正であり追随の対象",
       "docs/DEFINITION_OF_DONE.md": "X. 4 種に当たらない（検証の順序・IADR-0183）。環流済み。追跡: #736 / planning#337",
       "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）＋ 3. 本リポにしか存在しないスクリプト（check-feedback-status-sync.js の説明。IADR-0193。環流済み。追跡: #736 / planning#337）",
       "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流済み。追跡: #736 / planning#337",
-      "scripts/check-feedback-status-sync.js": "3. 本リポにしか存在しないスクリプト（[[IADR-0193]] が originate）。同上",
-      "scripts/check-kit-sync.js": "3. 本リポにしか存在しないスクリプト（#713 / [[IADR-0115]] が originate）。キットが後から取り込んだが実装が異なる。★ 向きは逆で本リポが先。キット原文で上書きすると退行する",
-      "scripts/check-planning-pin-freshness.js": "3. 本リポにしか存在しないスクリプト（#589 / [[IADR-0170]] が originate）。同上。★ 比較対象が submodule の origin を見る盲点があり別 issue で是正する",
+      "scripts/check-feedback-status-sync.js": "X. 4 種に当たらない（本リポ originate #738・キットが後追いで別実装）。同上。追跡: #751 / #736",
+      "scripts/check-kit-sync.js": "X. 4 種に当たらない（本リポ originate #734・キットが後追いで別実装）。★ 第 3 種「本リポにしか存在しない」は現状に反する —— キットにも実在する。追跡: #751（キット版の --require-planning の追随）/ #736",
+      "scripts/check-planning-pin-freshness.js": "X. 4 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物）。追跡: #749",
       "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337"
     },
     "C": [

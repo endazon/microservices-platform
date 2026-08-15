@@ -222,4 +222,3 @@ jobs:
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: node scripts/check-permission-denials.js "$EXECUTION_FILE"
-

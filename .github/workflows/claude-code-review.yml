@@ -458,7 +458,7 @@ jobs:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: node scripts/check-permission-denials.js "$EXECUTION_FILE"
 
-      # AI レビューの判定投稿チェック（キット配布・planning#333 / 本リポ採用は #578 後の pin 更新）。
+      # AI レビューの判定投稿チェック（キット配布・planning#333 / 本リポ採用は #516 の前段の pin 更新・[[IADR-0198]]）。
       #
       # claude-code-action は AI が判定（🔴 / 🟡 / 🟢）を投稿しないままターンを終えても
       # success で終わる。ジョブは緑になり「レビュー済み・指摘なし」と読まれるが、
