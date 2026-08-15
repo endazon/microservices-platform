@@ -253,6 +253,8 @@
 | [IADR-0197](./IADR-0197_realm-rename-and-auth-policy.md) | レルムを `platform`・基盤 SPA クライアントを `platform-spa` へ改名し、ADR-0026 の認証ポリシー（12 文字/3 種以上/5 世代・TOTP 前後 1 ステップ・5 回で 15 分ロック・リンク 30 分・記憶 30 日）を realm へ投入。#578。記録側は書き換えず現行値は本 IADR が持つ。SMTP とテーマは #438。 | Accepted |
 | [IADR-0198](./IADR-0198_kit-delta-fifth-kind-and-review-verdict.md) | 固有デルタに第 5 種（キットが選択・追記を委ねている欄）を認め IADR-0115 決定 2 を部分改定。裁定 planning#339 の追随。あわせて check-review-verdict の配線先を判定書式を prompt で強制するレビュー用ワークフローに限る。#516 の前段。 | Accepted |
 | [IADR-0199](./IADR-0199_ingestion-required-attribute-failsafe.md) | 必須属性フェイルセーフを owner・department・lifecycle へ拡張（#516。裁定 planning#344・planning#361）。owner は system、department は unassigned へ倒れる（#752 / #754）。lifecycle の終端は active。予約値の件数を測定へ追加。 | Accepted |
+| [IADR-0200](./IADR-0200_reading-budget-population-per-agent.md) | 必読規約の総量予算は**エージェントごとの母集合**で測り合算しない（裁定 planning#364）。予算値 51,200 の正本は計画リポ運用ガイド §8、`check-reading-budget.js` が出典つきの複製を持ち CI へ配線（100% fail・90% warn）。#755。IADR-0178 決定 4 の測り方を改定。 | Accepted |
+| [IADR-0201](./IADR-0201_class-c-rejudgement-and-fail-closed-kit-checks.md) | 分類 C を planning#363 の新定義で再判定（17 → 4）。`traceability.md` は companion 分離で分類 A へ。キット同期・status 突合の検査器はキット版へ差し替え、実データ走査は doc-links-planning.yml で `--require-planning` 付き（IADR-0192 決定 4 の配線を改定）。#755 / #751。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

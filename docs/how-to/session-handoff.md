@@ -5,7 +5,7 @@ status: active
 related_ids: [NFR, IADR-0115, IADR-0116, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145]
 author: Claude
 created: 2026-08-08
-updated: 2026-08-14
+updated: 2026-08-16
 plan_refs: []
 related_specs:
   - ../specs/20260808_session-handoff.md
