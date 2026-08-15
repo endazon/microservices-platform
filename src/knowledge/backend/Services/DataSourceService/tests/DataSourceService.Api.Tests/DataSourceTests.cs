@@ -79,4 +79,125 @@ public class DataSourceTests
 
         ds.GetEffectiveAttributes()["confidentiality"].Should().Be("internal");
     }
+
+    // ---------------------------------------------------------------------
+    // FR-05, UC-04, ADR-0036, #516: システム投入経路の owner / department
+    // 計画確定（planning#344・2026-08-15）。IADR-0199。
+    // ---------------------------------------------------------------------
+
+    // #516: 既定属性が空でも、計画が必須と定める 3 属性がすべて付与される（欠落させない）
+    [Fact]
+    public void Create_WithoutAttributes_FillsAllRequiredAttributes()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.DefaultAttributes["confidentiality"].Should().Be("internal");
+        ds.DefaultAttributes["owner"].Should().Be("system");
+        ds.DefaultAttributes["department"].Should().Be("unassigned");
+    }
+
+    // #516: データソース既定属性に department があればそれが使われ、予約値で上書きしない
+    [Fact]
+    public void Create_WithExplicitDepartment_DoesNotFallBackToReservedValue()
+    {
+        var ds = DataSource.Create("hr", "wiki", "https://wiki",
+            defaultAttributes: new Dictionary<string, string> { ["department"] = "hr" });
+
+        ds.DefaultAttributes["department"].Should().Be("hr");
+        // owner は解決できないので予約値へ倒れる（SourceItem が更新者を運ばない。#752）
+        ds.DefaultAttributes["owner"].Should().Be("system");
+    }
+
+    // #516: 明示指定した owner は保持する（予約値で上書きしない）
+    [Fact]
+    public void Create_WithExplicitOwner_PreservesValue()
+    {
+        var ds = DataSource.Create("hr", "wiki", "https://wiki",
+            defaultAttributes: new Dictionary<string, string> { ["owner"] = "alice" });
+
+        ds.DefaultAttributes["owner"].Should().Be("alice");
+    }
+
+    // #516: 空白のみの値は「未設定」と同じ扱いで予約値を入れる（confidentiality と同じ規約）
+    [Theory]
+    [InlineData("owner", "system")]
+    [InlineData("department", "unassigned")]
+    public void Create_WithBlankRequiredAttribute_FallsBackToReservedValue(string key, string expected)
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { [key] = "   " });
+
+        ds.DefaultAttributes[key].Should().Be(expected);
+    }
+
+    // #516: 3 属性すべて明示ならすべて素通しする
+    [Fact]
+    public void Create_WithAllRequiredAttributesExplicit_PreservesAll()
+    {
+        var ds = DataSource.Create("hr", "wiki", "https://wiki",
+            defaultAttributes: new Dictionary<string, string>
+            {
+                ["confidentiality"] = "confidential",
+                ["owner"] = "alice",
+                ["department"] = "hr",
+            });
+
+        ds.DefaultAttributes["confidentiality"].Should().Be("confidential");
+        ds.DefaultAttributes["owner"].Should().Be("alice");
+        ds.DefaultAttributes["department"].Should().Be("hr");
+    }
+
+    // #516: Update / Patch / GetEffectiveAttributes でも同じ補完が働く（4 経路の一元化の退行防止）。
+    // **1 箇所でも漏れると「登録時は付くが更新すると消える」という最も気づきにくい壊れ方になる。**
+    [Fact]
+    public void Update_FillsRequiredAttributes()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.Update("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["confidentiality"] = "internal" });
+
+        ds.DefaultAttributes["owner"].Should().Be("system");
+        ds.DefaultAttributes["department"].Should().Be("unassigned");
+    }
+
+    [Fact]
+    public void Patch_FillsRequiredAttributes()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.Patch(defaultAttributes: new Dictionary<string, string> { ["department"] = "sales" });
+
+        ds.DefaultAttributes["department"].Should().Be("sales");
+        ds.DefaultAttributes["owner"].Should().Be("system");
+        ds.DefaultAttributes["confidentiality"].Should().Be("internal");
+    }
+
+    // #516: 本対応マージ前から登録済みで owner / department を持たないデータソースでも、
+    // 発行時に必ず補完される（最終防衛線。IADR-0019 と同じ役割）
+    [Fact]
+    public void GetEffectiveAttributes_FillsRequiredAttributesForLegacySources()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+        // 既存データを模して属性を機密区分だけへ差し戻す（Patch はフェイルセーフを通すため Update を使う）
+        ds.Update("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["confidentiality"] = "public" });
+
+        var effective = ds.GetEffectiveAttributes();
+
+        effective["confidentiality"].Should().Be("public");
+        effective["owner"].Should().Be("system");
+        effective["department"].Should().Be("unassigned");
+    }
+
+    // #516: lifecycle は**意図的に補完しない**（計画が取り込み経路での既定を裁定していない）。
+    // 裁定が下りたらこのテストは「補完する」へ**反転させる**こと。
+    // 環流: feedback/20260815_ingestion-lifecycle-default-unadjudicated.md
+    [Fact]
+    public void Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.DefaultAttributes.Should().NotContainKey("lifecycle");
+    }
 }

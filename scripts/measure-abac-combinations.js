@@ -157,6 +157,48 @@ function countConfidentiality(rows, definitions) {
   };
 }
 
+// FR-05, UC-04, #516, IADR-0199: システム投入経路の予約値の件数。
+//
+// 計画（`09_datasource-connectors.md` §システム投入経路での `owner` / `department`）は
+// **「両方とも件数を観測し、環流債務の測定値として読む」**と明示している。
+//
+//   > `system` / `unassigned` は「解決できなかった」ことの記録であり、既定ではない。
+//   > 恒久的に積み上がるなら、それは**コネクタが更新者・部門を運んでいない**という報告であって、
+//   > 正常な状態ではない。
+//
+// **欠落（属性が無い）と予約値（属性はあるが解決できなかった）は別物**なので、別々に数える。
+// 前者は `missingRequiredDocumentAttributes` が、後者を本関数が担当する。
+const UNRESOLVED_RESERVED_VALUES = [
+  { key: 'owner', value: 'system' },
+  { key: 'department', value: 'unassigned' },
+];
+
+function countUnresolvedReservedValues(rows) {
+  const entries = UNRESOLVED_RESERVED_VALUES.map(({ key, value }) => {
+    let reserved = 0;
+    let resolved = 0;
+    let absent = 0;
+    for (const row of rows || []) {
+      const weight = Number(row.count ?? 1);
+      const actual = row.attributes ? row.attributes[key] : undefined;
+      if (actual === undefined || actual === null || String(actual).trim() === '') absent += weight;
+      else if (String(actual) === value) reserved += weight;
+      else resolved += weight;
+    }
+    // 予約値と実解決の合計に対する予約値の割合。分母 0 のときは null（0 除算を「0%」と偽らない）。
+    const denominator = reserved + resolved;
+    return {
+      key,
+      reservedValue: value,
+      reserved,
+      resolved,
+      absent,
+      reservedRatio: denominator > 0 ? reserved / denominator : null,
+    };
+  });
+  return entries;
+}
+
 // 利用者属性（clearance × department）の実在組み合わせ。
 function countUserAttributeCombinations(users) {
   const rows = (users || []).map((u) => ({
@@ -272,6 +314,8 @@ function summarize(data) {
     keyResolution,
     observedKeys,
     missingRequiredDocumentAttributes: missingRequiredDocumentAttributes(observedKeys, data.definitions),
+    // #516 / IADR-0199: 解決できずに予約値へ倒れた件数（環流債務の測定値）。
+    unresolvedReservedValues: countUnresolvedReservedValues(rows),
     // 粒度 1: 属性組み合わせ単位
     byAttributeCombination: countCombinations(rows, keyResolution.abacKeys),
     // 粒度 2: ロール単位
@@ -304,6 +348,17 @@ function renderText(r, topN = 10) {
   L.push(`  未使用の候補キー    : ${r.keyResolution.unusedCandidateKeys.join(', ') || '(なし)'}`);
   if (r.missingRequiredDocumentAttributes.length) {
     L.push(`  ⚠ 計画が必須とするが実データに無い属性: ${r.missingRequiredDocumentAttributes.join(', ')}`);
+  }
+  L.push('');
+  // #516 / IADR-0199: 予約値は「解決できなかったことの記録」であり、積み上がること自体が報告である。
+  L.push('システム投入経路の予約値（環流債務の測定値。#516 / IADR-0199）');
+  for (const e of r.unresolvedReservedValues || []) {
+    const pct = e.reservedRatio === null ? '—' : `${(e.reservedRatio * 100).toFixed(1)}%`;
+    L.push(
+      `  ${e.key.padEnd(11)} ${e.reservedValue.padEnd(11)} 予約値 ${String(e.reserved).padStart(6)} 件` +
+        ` / 解決済み ${String(e.resolved).padStart(6)} 件（予約値の割合 ${pct}）` +
+        (e.absent ? ` ※属性そのものが無い ${e.absent} 件` : ''),
+    );
   }
   L.push('');
   L.push(hr);
@@ -511,6 +566,8 @@ module.exports = {
   countUserAttributeCombinations,
   countRoleSets,
   missingRequiredDocumentAttributes,
+  UNRESOLVED_RESERVED_VALUES,
+  countUnresolvedReservedValues,
   resolveScope,
   scopeMatches,
   countReachablePairs,

@@ -11,7 +11,7 @@ related_ids:
   - IADR-0136
 author: claude
 created: 2026-07-04
-updated: 2026-08-07
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
@@ -52,7 +52,29 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
 | LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
+| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。[[IADR-0019]] / [[IADR-0199]]） | このデータソース由来の原本へ既定で付与する ABAC 文書属性（FR-05, UC-04） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
+
+#### `DefaultAttributes` の必須属性フェイルセーフ（FR-05, UC-04, #516, [[IADR-0199]]）
+
+計画が**必須**と定める文書属性を欠落させない。**明示指定は上書きしない**（空白のみは未設定と同じ扱い）。
+補完は **`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一**である
+（1 箇所でも漏れると「登録時は付くが更新すると消える」という気づきにくい壊れ方になる）。
+
+| 属性 | 解決順 | 終端 |
+| --- | --- | --- |
+| `confidentiality` | 明示指定 | `internal`（[[IADR-0019]]） |
+| `department` | 明示指定 → データソース既定属性 | **`unassigned`** |
+| `owner` | 明示指定 → ソース側の更新者 | **`system`** |
+
+> **`system` / `unassigned` は「既定」ではなく「解決できなかったことの記録」である**（計画確定・planning#344）。
+> 恒久的に積み上がるなら**コネクタが更新者・部門を運んでいないという報告**であり、正常な状態ではない。
+> 件数は `scripts/measure-abac-combinations.js` が**環流債務の測定値**として出力する。
+> **現状 `owner` は常に `system` へ倒れる** —— コネクタ契約 `SourceItem(Path, ModifiedAt, Size)` が
+> 更新者を運ばないため（#752）。
+>
+> **`lifecycle` は必須だが補完しない。** 計画が取り込み経路での既定を裁定していないため
+> （裁定依頼 planning#361）。**推測で入れると実装が可視性を決めてしまう。**
 
 > **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（SC-06 / #538 / [[IADR-0136]]）。
 > 定期同期は全ソース共通の間隔で回るため、次回実行時刻は**ワーカーの位相から導出できる値**であり、
@@ -90,6 +112,7 @@ erDiagram
         varchar LastSyncError
         timestamptz LastSyncErrorAt
         jsonb Config
+        jsonb DefaultAttributes
         timestamptz CreatedAt
     }
     VECTOR_CHUNK {

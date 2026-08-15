@@ -1843,6 +1843,77 @@ module.exports = ({ ok, assert }) => {
     { username: 'poc-user', attributes: { clearance: ['internal'], department: ['engineering'] }, realmRoles: [] },
   ];
 
+  // #516 / IADR-0199: システム投入経路の予約値の件数（環流債務の測定値）。
+  // 計画が「両方とも件数を観測し、環流債務の測定値として読む」と明示している。
+  ok('countUnresolvedReservedValues は予約値・解決済み・欠落を区別して数える', () => {
+    const rows = [
+      // 予約値へ倒れた分（重み付き）
+      { attributes: { owner: 'system', department: 'unassigned' }, count: 900 },
+      // 解決できた分
+      { attributes: { owner: 'alice', department: 'hr' }, count: 100 },
+      // 属性そのものが無い分（旧データ）。**予約値とは別に数える**
+      { attributes: { confidentiality: 'internal' }, count: 5 },
+      // 空白のみは「無い」と同じ扱い
+      { attributes: { owner: '   ', department: '' }, count: 2 },
+    ];
+    const r = abac.countUnresolvedReservedValues(rows);
+    const owner = r.find((e) => e.key === 'owner');
+    const dept = r.find((e) => e.key === 'department');
+
+    assert.strictEqual(owner.reserved, 900);
+    assert.strictEqual(owner.resolved, 100);
+    assert.strictEqual(owner.absent, 7, '空白のみと欠落を合算して absent に数えていない');
+    assert.strictEqual(owner.reservedValue, 'system');
+    // 割合は予約値 ÷（予約値＋解決済み）。欠落は分母に入れない
+    assert.ok(Math.abs(owner.reservedRatio - 0.9) < 1e-9, `予約値の割合が 0.9 でない: ${owner.reservedRatio}`);
+
+    assert.strictEqual(dept.reservedValue, 'unassigned');
+    assert.strictEqual(dept.reserved, 900);
+    assert.strictEqual(dept.resolved, 100);
+  });
+
+  // 0 除算を「0%」と偽らない —— 分母が 0 のときは null にする。
+  // **「予約値 0%」と「そもそも計測対象が無い」を読み分けられないと、債務が無いように見える。**
+  ok('countUnresolvedReservedValues は分母 0 のとき割合を null にする', () => {
+    const r = abac.countUnresolvedReservedValues([{ attributes: { confidentiality: 'internal' }, count: 3 }]);
+    for (const e of r) {
+      assert.strictEqual(e.reservedRatio, null, `${e.key} の割合が null でない`);
+      assert.strictEqual(e.reserved, 0);
+      assert.strictEqual(e.absent, 3);
+    }
+  });
+
+  // 空入力でも落ちない（rows が null / [] の経路）
+  ok('countUnresolvedReservedValues は空入力でも全キーを返す', () => {
+    for (const input of [null, []]) {
+      const r = abac.countUnresolvedReservedValues(input);
+      assert.strictEqual(r.length, abac.UNRESOLVED_RESERVED_VALUES.length);
+      assert.deepStrictEqual(
+        r.map((e) => e.key),
+        abac.UNRESOLVED_RESERVED_VALUES.map((e) => e.key)
+      );
+    }
+  });
+
+  // 予約値の語彙が実装（DataSource.cs）とずれていないこと。
+  // **ずれると「予約値 0 件」と報告され、債務が見えなくなる。**
+  ok('予約値の語彙が DataSource.cs の定数と一致する', () => {
+    const src = fs.readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        'src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/Foundation/Domain/DataSource.cs'
+      ),
+      'utf8'
+    );
+    for (const { key, value } of abac.UNRESOLVED_RESERVED_VALUES) {
+      const constName = key === 'owner' ? 'UnresolvedOwner' : 'UnresolvedDepartment';
+      const m = new RegExp(`public const string ${constName} = "([^"]+)";`).exec(src);
+      assert.ok(m, `${constName} が DataSource.cs に無い`);
+      assert.strictEqual(m[1], value, `${key} の予約値が実装（${m[1]}）と測定（${value}）でずれている`);
+    }
+  });
+
   ok('resolveDocumentAbacKeys は属性辞書を計画既定より優先する', () => {
     const observed = ['confidentiality', 'kind', 'publishedAt'];
     const withDict = abac.resolveDocumentAbacKeys(
