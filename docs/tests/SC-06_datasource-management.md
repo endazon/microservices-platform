@@ -7,14 +7,16 @@ related_ids:
   - UC-04
   - FR-01
   - FR-02
+  - FR-05
   - IADR-0039
   - IADR-0127
   - IADR-0136
   - IADR-0044
   - IADR-0128
+  - IADR-0199
 author: claude
 created: 2026-07-09
-updated: 2026-08-09
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -59,6 +61,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | UC-04 のフロー | 画面での現れ方 | テスト |
 | --- | --- | --- |
 | **基本 1. 管理者がソース（ファイルサーバー／Wiki／SaaS／業務DB）を登録する** | 登録フォーム → `POST /bff/datasources`（既定の機密区分つき） | `registers a data source with a default confidentiality attribute` |
+| **基本 1（既定の部門）** | **［2026-08-15 / #767］**同じ登録フォームに **既定の部門**の欄を足し、非空なら `defaultAttributes.department` として送る（09_datasource-connectors §システム投入経路の **2 段目**。[[IADR-0199]]） | `registers a data source with a default department attribute` ／ `does not require a department to enable the register button` |
 | **代替. 手動同期を実行する** | 行操作「手動同期」→ `POST /bff/datasources/{id}/sync` | `triggers a manual sync` |
 | **例外. 接続失敗時は再試行し、継続失敗はアラートする** | **［2026-08-08 / #537］注記に加えて状態そのものを表示する**（契約が同期健全性を持った。[[IADR-0148]]） | `states that credentials live in Vault and that repeated failures raise an alert` ／ `shows an amber sync-fault state with the redacted last error` ／ `shows an amber retrying state below the retry limit` |
 | 基本 2. システムが定期的に原本を取得し、変換へイベント送出する | **写像しない**（サーバ側の hosted service） | — |
@@ -72,7 +75,9 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 2-b | **継続失敗の表示** | **UC-04 例外** / SC-06 裁定 Q14 | 上限到達で「同期異常（n/limit）」を琥珀で出し、**マスク済みの直近エラー**を添える。異常時に「同期済み」を併記しない |
 | 2-c | **無効は健全性より優先** | [[IADR-0148]] | 失敗回数が残っていても `disabled` は中立（同期が回らない状態に ⚠ を付けない） |
 | 3 | 種別の写像 | SC-06 | 4 種（`filesystem` / `wiki` / `saas` / `db`）に表示名がある。**未知の種別は生値**を出す |
-| 4 | 登録 | UC-04 基本 1 | 名前・種別・接続先・既定の機密区分を送る |
+| 4 | 登録 | UC-04 基本 1 | 名前・種別・接続先・既定の機密区分を送る。**［2026-08-15 / #767］部門が未入力なら `department` キーを送らない**（`defaultAttributes` の完全一致で見る。空文字を送る形へ戻すと落ちる） |
+| 4-b | **既定の部門を送る** | **UC-04 基本 1** / FR-05 / [[IADR-0199]] | 部門を入力すると `defaultAttributes.department` に**前後空白を落とした値**が乗る。これが無いと画面から登録した全ソースが予約値 `unassigned` へ倒れ、ABAC の判定軸が実質 `confidentiality` 1 本になる |
+| 4-c | **部門は任意** | **UC-04** / SC-06 | 部門が空でも「登録する」が押せる（計画に無い必須化を実装が足さない）。未入力時に何が入るか（予約値 `unassigned`）を補助文が伝える |
 | 5 | 必須項目 | UC-04 | 名前と接続先が埋まるまで登録できない |
 | 6 | 手動同期 | **UC-04 代替** | `POST …/sync` を呼び、完了を伝える |
 | 6-b | **再取得** | [[IADR-0127]] 決定 5 | 手動同期の成功後に一覧を取り直す（`invalidateQueries` のみ） |
@@ -88,7 +93,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | 12-e | **管理者には 3 つとも出る** | SC-06 | 登録・手動同期・無効化がすべて出る |
 | 12-b | **SC-07 への導線** | 05_screens 遷移図 `SC06 → SC07` | 「変換ジョブの状況を見る →」が `/admin/conversions` を指す（画面単体でリンク先を固定する。実際に遷移することは §導線 A が見る） |
 | 13 | **未実装の要素** | 画面仕様書 §hi-fi 対応 #7・#9 | 「次回同期」列・「設定」操作が無い。**先に手動同期の操作が在ることを確かめてから**無いことを見る。**［2026-08-08 / #534・#537］2 件が動いた**——「再試行中」表示は**実装した**ので本ケースの対象から外れ（ケース 2-b が見る）、「設定」は**契約（`PUT` / `PATCH`）が揃って**残るのが画面実装だけになった。**3 件とも契約の不在ではなくなった** |
-| 14 | ロケール `en` | ADR-0031 | 見出しと種別が英語で描画される |
+| 14 | ロケール `en` | ADR-0031 | 見出しと種別が英語で描画される。**［2026-08-15 / #767］登録フォームを開いて「既定の部門」のラベルも英語で出ることを見る**（ja だけ足して en を空のまま残さない）。**ただし未翻訳そのものを止めているのは `scripts/check-i18n-catalogs.js` と `lingui compile --strict` である** —— 実行時に読まれるのはコンパイル済みの `messages.ts` であり、`.po` だけが未訳でも再コンパイルするまで本ケースは緑のままになる（変異試験で実測。作業仕様書 §変異試験 M5） |
 
 ## 純関数（`syncState.test.ts`）
 
@@ -107,6 +112,17 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 
 **機密区分の値集合**（登録フォームの「既定の機密区分」）は SC-05 と共有する語彙であり、
 `features/abac/confidentiality.test.ts` が固定する（[テスト仕様書 SC-05 §純関数](./SC-05_document-management.md)）。
+
+### 語彙（`features/abac/department.test.ts`。［2026-08-15 / #767］）
+
+| # | 観点 | 検証内容 |
+| --- | --- | --- |
+| D1 | 属性キー | `DEPARTMENT_KEY` が `department`（バックエンド `DataSource.DepartmentKey` と同値） |
+| D2 | 予約値 | `UNRESOLVED_DEPARTMENT` が `unassigned`（同 `DataSource.UnresolvedDepartment`。[[IADR-0199]]） |
+
+**どちらも後段と一致していなければ意味を失う文字列である。** キーがずれると属性辞書の別のキーへ書き込まれ、
+後段はフェイルセーフで `unassigned` を入れるため、**画面上は何も起きずに管理者の入力だけが消える**。
+画面テスト経由の間接被覆では文字列そのものを固定できないため、`confidentiality` と同じく直接固定する。
 
 ## 導線（`adminFlow.test.tsx`）
 

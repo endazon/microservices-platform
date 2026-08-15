@@ -7,6 +7,7 @@ related_ids:
   - UC-04
   - FR-01
   - FR-02
+  - FR-05
   - IADR-0039
   - IADR-0121
   - IADR-0124
@@ -15,9 +16,10 @@ related_ids:
   - IADR-0136
   - IADR-0044
   - IADR-0128
+  - IADR-0199
 author: claude
 created: 2026-07-09
-updated: 2026-08-10
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -114,7 +116,7 @@ related_specs:
 
 | 要素 | 計画上の根拠 |
 | --- | --- |
-| 登録フォームの項目（名前・種別・接続先 URI・既定の機密区分） | 05_screens §SC-06 主要素「ソース登録ボタン」「コネクタ設定」／ FR-01 ／ FR-05（既定機密区分は [[IADR-0019]] のフェイルセーフ） |
+| 登録フォームの項目（名前・種別・接続先 URI・既定の機密区分・**既定の部門**） | 05_screens §SC-06 主要素「ソース登録ボタン」「コネクタ設定」／ FR-01 ／ FR-05（既定機密区分は [[IADR-0019]] のフェイルセーフ）／ **既定の部門は FR-05・UC-04 基本 1 と 09_datasource-connectors §システム投入経路での `owner` / `department` / `lifecycle` の 2 段目（[[IADR-0199]]。#767）** |
 | 行操作: **無効化**（**管理者のみ**） | FR-01「データソースを**登録・同期し、カタログ化**する」のライフサイクル／ [[IADR-0039]]（Accepted）。**運用者へは出さない**（#628） |
 
 ### 同期状態の導出（[[IADR-0127]] 決定 2）
@@ -209,7 +211,8 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 | 名前 | `Input` | **必須** | 1 文字以上（前後空白を除く）・最大 200 文字 | 空では登録不可 |
 | 種別 | `Select` | **必須** | `filesystem` / `wiki` / `saas` / `db` | 表示名はファイルサーバー／Wiki／SaaS／業務DB |
 | 接続先 URI | `Input` | **必須** | 1 文字以上・最大 500 文字 | **認証情報は入力しない**（Vault 管理。注記で明示） |
-| 既定の機密区分 | `Select` | 任意 | `public` / `internal` / `confidential` / `restricted` | 既定 `internal`。未指定でもサーバが `internal` を補完（[[IADR-0019]]） |
+| 既定の機密区分 | `Select` | 任意 | `public` / `internal` / `confidential` / `restricted` | 既定 `internal`。**常に送る**（`Select` に既定値が入っているため空にできない）。未指定でもサーバが `internal` を補完（[[IADR-0019]]） |
+| **既定の部門** | `Input` | 任意 | **値域の制約なし**（部門コードの自由入力。最大長も設けない） | **［2026-08-15 / #767］** 前後空白を落とし、**非空のときだけ** `defaultAttributes.department` として送る。**未入力ならキーごと送らない**（空文字を送らない）。この場合サーバが予約値 `unassigned` を入れる（[[IADR-0199]]）。**機密区分とは挙動が異なる** —— あちらは常に値が乗るが、こちらは**キーの有無で「指定した／しなかった」を表す**。値域を実装が決めないのは、計画（07_abac-attribute-model）が「部門コード（人事/経理/開発 等）」と例示するのみで列挙を持たず、値集合は SC-09 の属性辞書が管理するためである |
 
 ## アクション・イベント
 
@@ -245,6 +248,7 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 
 - 文言はすべて Lingui のカタログ（ja / en）へ載せる。`eslint-plugin-lingui` の適用範囲に本 feature を含める。
 - **種別は表示名を翻訳する**（計画が 4 種の日本語名を与えているため）。機密区分の**値**は翻訳しない（SC-05 と同じ）。
+- **［2026-08-15 / #767］既定の部門の補助文に埋め込む予約値 `unassigned` も翻訳しない**（機密区分の値と同じ扱い。後段が入れる実際の値であり、訳すと画面と保存値が食い違う）。
 
 ## UI 部品（`@platform/ui`）
 
@@ -257,6 +261,7 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 - テスト仕様書: [SC-06_datasource-management.md](../tests/SC-06_datasource-management.md)
 - 作業仕様書（次回同期の契約）: [20260806_issue-538_next-sync-at.md](../specs/20260806_issue-538_next-sync-at.md)
 - 作業仕様書（同期健全性・更新 API）: [20260808_issue-534-537_datasource-contract-bundle.md](../specs/20260808_issue-534-537_datasource-contract-bundle.md)
+- 作業仕様書（既定の部門の入力欄）: [20260815_issue-767_sc06-department-input.md](../specs/20260815_issue-767_sc06-department-input.md)
 - 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) / [IADR-0136](../adr/IADR-0136_next-sync-at-from-worker-cadence.md) / [IADR-0148](../adr/IADR-0148_datasource-sync-health-persistence.md)
 - 計画への環流（**planning#198 として起票済み・2026-08-05 に裁定され planning#200 で計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
 

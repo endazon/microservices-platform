@@ -138,7 +138,58 @@ describe('DataSourceManagementPage (SC-06)', () => {
       connectionUri: 'smb://fs01/share',
       defaultAttributes: { confidentiality: 'internal' },
     });
+    // FR-05, UC-04, SC-06（#767）: 未入力の `department` は**キーごと送らない**。上の `toEqual` でも
+    // 落ちるが、意図を名指しで固定する（空文字を送る形へ戻したときに理由が読める）。
+    const attrs = JSON.parse(String((posted[1] as RequestInit).body)).defaultAttributes;
+    expect(Object.keys(attrs)).not.toContain('department');
     expect(await screen.findByText('データソースを登録しました。')).toBeInTheDocument();
+  });
+
+  // FR-05, UC-04, SC-06（#767）: 計画 09_datasource-connectors §システム投入経路の **2 段目**
+  // （データソースの既定属性から `department` を補う）を管理者が埋められること。
+  // これが無いと画面から登録した全ソースが 3 段目の予約値 `unassigned` へ倒れ、ABAC の判定軸が
+  // 実質 `confidentiality` 1 本になる。前後の空白は落とす（部門コードに空白は意味を持たない）。
+  it('registers a data source with a default department attribute', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: '＋ ソース登録' }));
+    await user.type(screen.getByLabelText(/名前/), '規程集');
+    await user.type(screen.getByLabelText(/接続先 URI/), 'smb://fs01/share');
+    await user.type(screen.getByLabelText(/既定の部門/), '  開発  ');
+    await user.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        '/datasources',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    const posted = mocks.apiRequest.mock.calls.find(
+      ([, init]) => (init as RequestInit).method === 'POST',
+    )!;
+    expect(JSON.parse(String((posted[1] as RequestInit).body))).toEqual({
+      name: '規程集',
+      sourceType: 'filesystem',
+      connectionUri: 'smb://fs01/share',
+      defaultAttributes: { confidentiality: 'internal', department: '開発' },
+    });
+  });
+
+  // 部門は**任意**である（必須にすると計画に無い入力必須を実装が足すことになる）。
+  it('does not require a department to enable the register button', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse([]));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(screen.getByRole('button', { name: '＋ ソース登録' }));
+    await user.type(screen.getByLabelText(/名前/), '規程集');
+    await user.type(screen.getByLabelText(/接続先 URI/), 'smb://fs01/share');
+
+    expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled();
+    // 未入力時に何が起きるかを画面が伝える（予約値そのものは翻訳しない）。
+    expect(screen.getByText(/未入力のときは予約値 unassigned が入ります。/)).toBeInTheDocument();
   });
 
   // 必須（名前・接続先）が埋まるまで登録できない。
@@ -362,10 +413,16 @@ describe('DataSourceManagementPage (SC-06)', () => {
   it('renders in English when the en locale is active', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse([ACTIVE_SOURCE]));
     activate('en');
+    const user = userEvent.setup();
     await renderPage();
 
     expect(await screen.findByRole('heading', { name: 'Data sources' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('File server')).toBeInTheDocument();
+
+    // #767: 登録フォームの項目にも訳が付いていること（ja だけ足して en を空のまま残さない）。
+    // 未翻訳キーそのものは `scripts/check-i18n-catalogs.js` が全ロケール横断で止める。
+    await user.click(screen.getByRole('button', { name: '+ Register source' }));
+    expect(screen.getByLabelText('Default department')).toBeInTheDocument();
   });
 
   // SC-06, IADR-0135 決定 7［2026-08-06 追記］: 一覧が**本文なし**（204）で返っても画面は落ちない。
