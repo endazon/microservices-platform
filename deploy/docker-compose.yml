@@ -77,7 +77,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:24.0
-    # ADR-0004, FR-13/UC-07, IADR-0020: realm `microservices-platform` を import して起動する。
+    # ADR-0004, FR-13/UC-07, IADR-0020: realm `platform` を import して起動する。
     # wiki-js クライアント（OIDC）と ABAC 属性クレーム（clearance/department/groups）を含む。
     command: ["start-dev", "--import-realm"]
     environment:

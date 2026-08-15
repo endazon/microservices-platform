@@ -84,6 +84,7 @@ const AUTH_POLICY_REALM = 'platform';
 
 // realm 直下のスカラー値の期待。値は ADR-0026 の確定値をそのまま置く（単位はコメントで示す）。
 const AUTH_POLICY_SCALARS = {
+  displayName: '汎用プラットフォーム',
   passwordPolicy: `length(12) and passwordHistory(5) and regexPattern(${PASSWORD_CLASS_REGEX})`,
   otpPolicyType: 'totp',
   otpPolicyDigits: 6,
@@ -106,7 +107,27 @@ const AUTH_POLICY_SCALARS = {
 const AUTH_POLICY_REQUIRED_ACTIONS = {
   CONFIGURE_TOTP: { enabled: true, defaultAction: true },
   UPDATE_PASSWORD: { enabled: true }, // ADR-0045 決定 9-b（メール停止時の代替）が要る
+  // ADR-0026「リカバリーコードは登録完了時に 1 回のみ表示し SC-16 から再発行できる」の実現手段。
+  // provider を realm に登録しないと管理コンソールの Required actions にも現れず、後から有効化できない。
+  CONFIGURE_RECOVERY_AUTHN_CODES: { enabled: true },
 };
+
+/*
+ * realm export に `requiredActions` を **書いた瞬間、Keycloak は既定の必須アクションを一切登録しない**
+ * （`RepresentationToModel.importRealm` は `rep.getRequiredActions() != null` のとき
+ * `DefaultRequiredActions.addActions(realm)` を呼ばない）。つまり「必要なものだけ書く」は
+ * **書かなかったものを黙って消す**ことを意味する。
+ *
+ * #578 の初版は 7 件しか列挙せず、**ADR-0026 が要求するリカバリーコード
+ * （`CONFIGURE_RECOVERY_AUTHN_CODES`）を落としていた**（PR #746 の ADR 監査が検出）。
+ * 同じ取りこぼしを防ぐため、**既定 13 件がすべて宣言されていること**を検査する
+ * （使わないものは `enabled: false` で明示する。省略は「消す」と同義だからである）。
+ */
+const AUTH_POLICY_REQUIRED_ACTION_ALIASES = [
+  'CONFIGURE_TOTP', 'TERMS_AND_CONDITIONS', 'UPDATE_PASSWORD', 'UPDATE_PROFILE', 'VERIFY_EMAIL',
+  'delete_account', 'webauthn-register', 'webauthn-register-passwordless', 'VERIFY_PROFILE',
+  'delete_credential', 'idp_link', 'CONFIGURE_RECOVERY_AUTHN_CODES', 'update_user_locale',
+];
 
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
@@ -214,7 +235,12 @@ function satisfiesPasswordClasses(password, pattern = PASSWORD_CLASS_REGEX) {
 // 対象 realm（既定 `platform`）以外は検査しない —— 別プロジェクトの realm は ADR-0026 の射程外。
 function collectPolicyDeviations(
   realm,
-  { scalars = AUTH_POLICY_SCALARS, actions = AUTH_POLICY_REQUIRED_ACTIONS, realmName = AUTH_POLICY_REALM } = {},
+  {
+    scalars = AUTH_POLICY_SCALARS,
+    actions = AUTH_POLICY_REQUIRED_ACTIONS,
+    aliases = AUTH_POLICY_REQUIRED_ACTION_ALIASES,
+    realmName = AUTH_POLICY_REALM,
+  } = {},
 ) {
   const out = [];
   if (!realm || realm.realm !== realmName) return out;
@@ -227,6 +253,19 @@ function collectPolicyDeviations(
   }
 
   const present = new Map(((realm.requiredActions) || []).map((a) => [a && a.alias, a]));
+
+  // 既定 13 件の宣言漏れ。`requiredActions` を書くと既定が一切登録されないため、
+  // 「書かなかった」＝「消した」になる（使わないものは enabled:false で明示する）。
+  for (const alias of aliases) {
+    if (!present.has(alias)) {
+      out.push({
+        path: `realm.requiredActions[${alias}]`,
+        expected: '宣言されていること（requiredActions を書くと Keycloak の既定は登録されない）',
+        actual: '«宣言なし»',
+      });
+    }
+  }
+
   for (const alias of Object.keys(actions)) {
     const entry = present.get(alias);
     if (!entry) {
@@ -362,10 +401,12 @@ function selfTest() {
   const conformingRealm = () => ({
     realm: AUTH_POLICY_REALM,
     ...AUTH_POLICY_SCALARS,
-    requiredActions: [
-      { alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: true },
-      { alias: 'UPDATE_PASSWORD', enabled: true, defaultAction: false },
-    ],
+    requiredActions: AUTH_POLICY_REQUIRED_ACTION_ALIASES.map((alias) => ({
+      alias,
+      enabled: alias === 'CONFIGURE_TOTP' || alias === 'UPDATE_PASSWORD'
+        || alias === 'CONFIGURE_RECOVERY_AUTHN_CODES',
+      defaultAction: alias === 'CONFIGURE_TOTP',
+    })),
   });
 
   cases.push({
@@ -394,21 +435,47 @@ function selfTest() {
     name: '変異: CONFIGURE_TOTP を enabled のみ（defaultAction=false）にすると検出する',
     pass: (() => {
       const r = conformingRealm();
-      r.requiredActions = [
-        { alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: false },
-        { alias: 'UPDATE_PASSWORD', enabled: true },
-      ];
+      // 13 件はそのまま残し、CONFIGURE_TOTP の defaultAction だけを倒す
+      // （alias の宣言漏れ検査と混ざらないようにする）。
+      r.requiredActions = r.requiredActions.map((a) => (
+        a.alias === 'CONFIGURE_TOTP' ? { ...a, defaultAction: false } : a
+      ));
       const d = collectPolicyDeviations(r);
       return d.length === 1 && d[0].path === 'realm.requiredActions[CONFIGURE_TOTP].defaultAction';
     })(),
   });
   cases.push({
-    name: '変異: UPDATE_PASSWORD が無いと検出する（ADR-0045 決定 9-b の代替が成立しない）',
+    name: '変異: UPDATE_PASSWORD を落とすと検出する（ADR-0045 決定 9-b の代替が成立しない）',
     pass: (() => {
       const r = conformingRealm();
-      r.requiredActions = [{ alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: true }];
+      r.requiredActions = r.requiredActions.filter((a) => a.alias !== 'UPDATE_PASSWORD');
       const d = collectPolicyDeviations(r);
-      return d.length === 1 && d[0].path === 'realm.requiredActions[UPDATE_PASSWORD]';
+      return d.some((x) => x.path === 'realm.requiredActions[UPDATE_PASSWORD]');
+    })(),
+  });
+  cases.push({
+    name: '変異: CONFIGURE_RECOVERY_AUTHN_CODES を落とすと検出する（ADR-0026 のリカバリーコード）',
+    pass: (() => {
+      const r = conformingRealm();
+      r.requiredActions = r.requiredActions.filter((a) => a.alias !== 'CONFIGURE_RECOVERY_AUTHN_CODES');
+      const d = collectPolicyDeviations(r);
+      return d.some((x) => x.path === 'realm.requiredActions[CONFIGURE_RECOVERY_AUTHN_CODES]');
+    })(),
+  });
+  cases.push({
+    name: '変異: 既定 13 件のうち 1 件（VERIFY_PROFILE）を書き忘れると検出する（省略＝削除であるため）',
+    pass: (() => {
+      const r = conformingRealm();
+      r.requiredActions = r.requiredActions.filter((a) => a.alias !== 'VERIFY_PROFILE');
+      const d = collectPolicyDeviations(r);
+      return d.length === 1 && d[0].path === 'realm.requiredActions[VERIFY_PROFILE]';
+    })(),
+  });
+  cases.push({
+    name: '変異: displayName を落とすと検出する',
+    pass: (() => {
+      const r = conformingRealm(); delete r.displayName;
+      return collectPolicyDeviations(r).length === 1;
     })(),
   });
   cases.push({
@@ -537,4 +604,5 @@ module.exports = {
   AUTH_POLICY_REALM,
   AUTH_POLICY_SCALARS,
   AUTH_POLICY_REQUIRED_ACTIONS,
+  AUTH_POLICY_REQUIRED_ACTION_ALIASES,
 };

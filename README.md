@@ -178,6 +178,11 @@ bash scripts/compose-up.sh up -d
 > （`Platform.*` / `Knowledge.*` / `@platform`・`@knowledge`）へ改名済み（#227 / IADR-0062）。
 > Helm チャート名・k8s Namespace・realm 名・イメージ接頭辞・OIDC issuer も `microservices-platform` へ
 > 改名済み（#228 / IADR-0061）。stg/prod 未構築のため移行は行わず、初回構築を新名称で行う（旧 `knowledge-platform` 資産は撤去）。
+>
+> **［2026-08-15 追記 / #578］realm 名だけはその後さらに改名した。** 計画 `ADR-0026` と裁定 決定 31 に従い、
+> **realm は `platform`、基盤 SPA のクライアント ID は `platform-spa`** である（IADR-0197）。
+> **Helm チャート名・k8s Namespace・イメージ接頭辞・OTEL service_name 接頭辞は `microservices-platform` のままである**
+> ——改名したのは realm と当該クライアント ID の 2 つだけであり、上の行の他の項目は変わっていない。
 
 ## Git 運用
 

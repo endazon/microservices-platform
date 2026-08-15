@@ -106,9 +106,23 @@ length(12) and passwordHistory(5) and regexPattern(^(?:(?=.*[a-z])(?=.*[A-Z])(?=
 （`AUTH_POLICY_SCALARS` / `AUTH_POLICY_REQUIRED_ACTIONS`）に集約し、逸脱を CI で止める。
 
 **`enabled` だけでは足りない点を明示的に検査する** —— 未登録者を初回セットアップへ誘導するのは
-`CONFIGURE_TOTP` の **`defaultAction`** であり、`enabled: true` / `defaultAction: false` は「MFA 必須」を満たさない。
+`CONFIGURE_TOTP` の **`defaultAction`** であり、`enabled: true` / `defaultAction: false` は誘導を止める。
 自己試験はこの**変異**を含む（変異なしの正例だけでは、走査対象に入っていなくても「逸脱なし」が成立してしまう）。
-自己試験は 12 件 → **31 件**。
+自己試験は 12 件 → **34 件**。
+
+> **★ ただし `defaultAction: true` は「MFA 必須」の十分条件ではない**（PR #746 の ADR 監査が指摘。**当初この決定は
+> それを十分条件のように書いていた。訂正する**）。**新規に作られる利用者**（ADR-0026 の人事連携プロビジョニング経由）には
+> 付与されるが、次の 2 つは素通りする。
+>
+> 1. **realm import で作られる dev 4 ユーザー**（`admin` / `poc-user` / `poc-operator` / `developer`）。
+>    `users[].requiredActions` は**全件未設定**であり（実測）、`defaultAction` は作成時にのみ付与されるため遡及しない。
+> 2. **Keycloak 既定の `browser` フローの OTP サブフローは Conditional（`Condition - user configured`）**である。
+>    本 realm は `authenticationFlows` も `browserFlow` も持たない（実測・いずれも未設定）ため既定フローが使われ、
+>    **OTP 未登録の利用者はパスワードのみでログインできる**。
+>
+> **したがって計画 決定 28「MFA なしでの稼働は採らない」は realm 設定だけでは未達である。**
+> Conditional OTP を REQUIRED 化するフローの改変は**認証フロー設計**であり、テーマ実装と同じく **#438 の射程**とする
+> （フォローアップ 5）。**実機で確かめること**（`kcadm.sh` で `developer` の実ログインを 1 回試せば決着する）。
 
 ### 決定 5: `smtpServer` とテーマは投入しない
 
@@ -117,8 +131,16 @@ length(12) and passwordHistory(5) and regexPattern(^(?:(?=.*[a-z])(?=.*[A-Z])(?=
 | **`smtpServer`** | 実環境の接続値が要る（利用者裁定 2026-08-15「実環境が要るものは触らない」）。**足りないもの 3 点は [SC-15 画面仕様書](../screens/SC-15_password-reset.md) に明記した** |
 | **`loginTheme` / `accountTheme`** | **参照先のテーマが存在しないと Keycloak が解決できない**ため、テーマ実体と同時に入れる。テーマ実装は #438 の射程（決定 30） |
 
-**ただし ADR-0045 決定 9-b の代替手順**（メール停止時の管理者による本人確認済みリセット）は
-**realm 設定だけで成立し SMTP を要さない**ため、`UPDATE_PASSWORD` を有効な必須アクションとして投入した。
+**ただし ADR-0045 決定 9-b の代替手順**（メール停止時の管理者による本人確認済みリセット）のうち
+**一時パスワードの初回変更強制は SMTP を要さない**ため、`UPDATE_PASSWORD` を有効な必須アクションとして投入した。
+
+> **★ 「決定 9-b は realm 設定だけで成立する」とは書けない**（PR #746 の ADR 監査が指摘。**訂正する**）。
+> 決定 9-b は **3 点構成**である —— ①上長承認による本人確認と**申請者・承認者・実行者を監査ログへ残すこと**／
+> ②一時パスワードの口頭伝達／③`UPDATE_PASSWORD` による初回変更の強制。
+> **本 IADR が投入したのは ③ の機構だけ**であり、**① の監査記録は成立していない** ——
+> realm は `eventsEnabled` / `adminEventsEnabled` / `adminEventsDetailsEnabled` / `eventsListeners` の
+> **いずれも未設定**である（実測）。②は運用手順であって realm の管轄外である。
+> **① は #438（または FR-11 の監査ログ側）で扱う**（フォローアップ 6）。
 
 ## 理由
 
@@ -131,13 +153,25 @@ length(12) and passwordHistory(5) and regexPattern(^(?:(?=.*[a-z])(?=.*[A-Z])(?=
 
 ## 結果
 
-- **良い影響**: SC-13〜16 の着手ブロッカー（決定 31）が外れた。ADR-0026 の 8 項目のうち **`smtpServer` を除く 7 群が投入され、CI で固定**された。
+- **良い影響**: SC-13〜16 の着手ブロッカー（決定 31）が外れた。ADR-0026 の 8 項目のうち
+  **`smtpServer` を除く 7 群の「値」が投入され、CI で固定**された。
+  **「値が入った」と「統制が働いている」は別である** —— MFA の実強制は決定 4 の注記のとおり未達であり、
+  リカバリーコードは provider を登録しただけで表示フローは未実装である（#438）。**本 IADR は前者だけを主張する。**
 - **悪い影響 / トレードオフ**: 旧名が記録側（37 ファイル）に残るため、**全文検索では新旧が混在して見える**。本 IADR の決定 2 を読まないと現行値が判断できない。
 - **リスク（未検証）**: **realm import 時にパスワードポリシーが dev ユーザーの資格情報へ適用されると、import が失敗し得る。**
   realm 内の dev ユーザーは平文 `value` を持ち、`admin`（5 文字・英小のみ）と `developer`（9 文字・英小のみ）は
   **新ポリシー（12 文字以上・3 種以上）を満たさない**。Keycloak のポリシー検証は REST 層（`UserResource.resetPassword`）と
   必須アクションで働き、**realm import の資格情報投入経路は通らない**と読んでいるが、**実機で確認していない**。
   **CI は Keycloak を起動しないため、この点は静的には検出できない**（`.github/workflows/` に Keycloak を起動するジョブは無い。実測）。
+- **リスク（こちらの方が確度が高い）**: **dev ユーザーのパスワードを以後変更できなくなる。**
+  上記は「import が失敗するか」という不確実な話だが、**import が成功した場合でも**、
+  `admin`（5 文字・1 種）と `developer`（9 文字・1 種）は新ポリシー非準拠のままである。
+  **ポリシー検証が確実に働く REST 層**（管理コンソール・Admin REST からのパスワード変更／リセット）では
+  **これらのユーザーのパスワード変更が弾かれる**。[[IADR-0103]] 決定 1（`admin` ユーザーの恒久化）と
+  [`docs/operations/local-sso-recovery-runbook.md`](../operations/local-sso-recovery-runbook.md) の復旧手順に直接効く。
+  **是正は dev ユーザーのパスワードをポリシー準拠へ変えることだが、`docs/` の複数箇所と同 runbook が現行値を
+  案内しているため、まとめて追随させる必要がある**（フォローアップ 1）。
+- **リスク**: 決定 4 の注記のとおり、**既存利用者と dev ユーザーは MFA を回避できる**（フォローアップ 5）。
 
 ## フォローアップ
 
@@ -174,7 +208,14 @@ length(12) and passwordHistory(5) and regexPattern(^(?:(?=.*[a-z])(?=.*[A-Z])(?=
 1. **上記リスクを実環境で確認する**（#438）。import が失敗する場合の是正は dev ユーザーのパスワードをポリシー準拠へ変えることだが、**`docs/` の複数箇所と `docs/operations/local-sso-recovery-runbook.md` が現行値を案内している**ため、まとめて追随させる必要がある。
 2. **テーマ実体（SC-13〜16）と `loginTheme` / `accountTheme` の投入**（#438）。
 3. **`smtpServer` の投入**（#438。足りないもの 3 点が供給されてから）。
-4. **リカバリーコードの実現方式**を Keycloak の版とあわせて確定する（#438）。
+4. **リカバリーコードの表示フロー**（登録完了時に 1 回のみ表示・SC-16 から再発行）を実装する（#438）。
+   **provider（`CONFIGURE_RECOVERY_AUTHN_CODES`）は本 IADR で realm へ登録済み**だが、
+   ADR-0026 が求める表示・再発行の導線はテーマ側の作り込みである。
+5. **`browser` フローの Conditional OTP を REQUIRED 化するか判断する**（#438）。決定 4 の注記のとおり、
+   **現状は OTP 未登録の利用者がパスワードのみでログインできる**ため、計画 決定 28 は未達である。
+   あわせて**既存ユーザーへ `CONFIGURE_TOTP` を遡及付与する手段**（Admin REST での一括付与）も要る。
+6. **ADR-0045 決定 9-b ① の監査記録**（申請者・承認者・実行者）を成立させる（#438 または FR-11 の監査ログ側）。
+   realm の `eventsEnabled` / `adminEventsEnabled` はいずれも未設定である。
 
 ## 関連
 

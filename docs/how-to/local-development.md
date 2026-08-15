@@ -108,7 +108,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 | --- | --- | --- |
 | フロントエンド | http://localhost:3100 | `/bff` は nginx が BFF へプロキシ |
 | BFF | http://localhost:5000 | フロントエンドの唯一の入口（エッジ） |
-| Keycloak | http://localhost:8080 | realm `microservices-platform` を import 済み |
+| Keycloak | http://localhost:8080 | realm `platform` を import 済み |
 | Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）。本番系は非公開 |
 | Grafana | http://localhost:3000 | 匿名 Admin（dev 限定） |
 | Prometheus | http://localhost:9090 | |

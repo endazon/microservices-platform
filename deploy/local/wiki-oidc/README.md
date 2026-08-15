@@ -69,7 +69,7 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 
 ```sh
 # client secret は realm から取得し、リポジトリにもログにも平文を残さない
-KCADM=http://localhost:8080; R=microservices-platform
+KCADM=http://localhost:8080; R=platform
 T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=password \
   -d client_id=admin-cli -d username=admin \
   -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" | jq -r .access_token)

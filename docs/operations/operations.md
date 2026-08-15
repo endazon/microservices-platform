@@ -335,7 +335,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 ### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
-  realm `microservices-platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
+  realm `platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
 - **管理 UI への直接アクセス（dev のみ）**: 下記の初期セットアップ（OIDC 構成・ja ロケール導入・API キー発行）は
   ブラウザから Wiki.js 管理 UI（`http://localhost:3001`）へアクセスする。dev の compose は 3001 を公開している
   （[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
