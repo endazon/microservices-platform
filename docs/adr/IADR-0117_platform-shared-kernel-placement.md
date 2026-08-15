@@ -2,12 +2,13 @@
 title: IADR-0117 共有カーネル Platform.Shared.Kernel の配置（IADR-0056 決定 3 の部分改定）
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0019, ADR-0030, IADR-0056, IADR-0057, IADR-0116]
+related_ids: [NFR, ADR-0019, ADR-0030, ADR-0041, IADR-0056, IADR-0057, IADR-0116, IADR-0196]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-03
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md"
   - "../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md"
 ---
 
@@ -85,6 +86,21 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
    「Domain 層は外部依存ゼロ」を成立させるための置き場であり、ここが汚れると各サービスの Domain も汚れる。
    `scripts/check-backend-libraries.js` は `*.Domain.csproj` の `ProjectReference` を
    `Platform.Shared.Kernel` のみ許可する形でこの規律を機械強制する。
+
+   > **［2026-08-04 改訂 / 追随 2026-08-15・#500］本決定 2 が引用する ADR-0030 選定基準 3 を、計画
+   > [ADR-0041](../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md)
+   > が部分改定した。上の本文は書き換えず残置する。現行値は ADR-0041 を正とする。**
+   >
+   > - 「**.NET 標準以外の `PackageReference` を持たない**」（ゼロ）は、「**Result 型の実装 1 つに限る**
+   >   （現行: `CSharpFunctionalExtensions`）」へ改まる。**この 1 つ以外を追加してはならない。**
+   > - 外部ライブラリは `Platform.Shared.Kernel` の**内部実装としてのみ**使う。`Domain` / `Application` /
+   >   `Api` / `Infrastructure` は同プロジェクトが公開する自前の型（`Result` / `Result<T>` / `Error`）だけを
+   >   参照し、外部ライブラリの型・名前空間を直接参照してはならない（ADR-0041 決定 2）。
+   > - 機械強制は本決定が挙げる `ProjectReference` の許可に加え、`SHARED_KERNEL_ALLOWED`（許可リスト）
+   >   による 2 系統になった。**許可リスト外が `Platform.Shared.Kernel` へ入れば fail する。**
+   > - **決定 2 の趣旨（ここが汚れると各サービスの Domain も汚れる）は変わっていない。** 変わったのは
+   >   汚れの許容量がゼロから「名指しの 1 つ」になった点だけである。詳細は
+   >   [IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md)。
 3. **改定範囲はこの 1 点に限る。** IADR-0056 の他の決定（1 振り分け・2 ビルド・4 フロントエンド合成・
    5 命名・6 submodule 境界）と、決定 3 のうち「**platform → 可変ユニットは禁止**」「統合テストの例外」は
    引き続き有効である。したがって IADR-0056 は `Accepted` のまま残置する（`Superseded` にはしない）。
@@ -92,7 +108,11 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
    サービス再実装 issue（#438〜#451）」が作る。#455 の範囲は標準の確立と機械的強制であり、
    使う当てのない空プロジェクトを先に置くのは [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md)
    規約 4（レビュー可能な変更単位）に反する。本 IADR はその配置先を先に確定しておくものである。
-5. 本決定は**計画 ADR との衝突ではない**。ADR-0030 の意図（Result を外部ライブラリに頼らず自前で持つ・
+5. 本決定は**計画 ADR との衝突ではない**。
+   **［2026-08-15 追記 / #500］本項が述べる「ADR-0030 の意図」のうち「Result を外部ライブラリに頼らず自前で持つ」は、
+   計画 ADR-0041 が改定した**（現在は「自前の公開型で包み、内部実装としてのみ外部ライブラリを使う」）。
+   **配置に関する本決定の結論は変わらない**——変わったのは Kernel の中身であって置き場所ではない。
+   ADR-0030 の意図（Result を外部ライブラリに頼らず自前で持つ・
    Domain を外部依存ゼロにする）はそのまま満たす。計画側の構成図はサービス内の**論理レイヤ**を示したもので
    あり、本決定はユニット第一構成における**物理配置の具体化**にあたる。この読み替えが妥当であることは
    `/plan-feedback`（「構成図はサービス内の論理レイヤであり物理配置は実装裁量」と明記する提案）で計画側へ環流する。
@@ -122,6 +142,9 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
 - 悪い影響・トレードオフ:
   - ユニット外参照の許容が 1 つ増え、`platform/backend/Shared/` に何を置いてよいかの線引きが 1 段ゆるむ。
     歯止めとして、決定 2（Kernel は .NET 標準以外の `PackageReference` を持たない）を機械検査で固定する。
+    **［2026-08-15 追記 / #500］現行の歯止めは「ゼロ」ではなく「許可リスト 1 件」である**——計画 ADR-0041 が
+    決定 2 の引用する選定基準 3 を改定したため。機械検査は `SHARED_KERNEL_ALLOWED` の許可リストと、
+    Kernel の `ProjectReference` を 0 件に固定する判定の 2 系統になった（[IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md)）。
   - 件数「2 プロジェクト」を書いた文書が複数あり、改定のたびに追随が要る
     （本 PR では `CLAUDE.md` / `src/README.md` / `templates/unit-template/README.md` /
     `docs/how-to/adding-a-unit-submodule.md` / `docs/tech/tech-requirements.md` を更新した）。

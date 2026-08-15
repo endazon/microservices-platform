@@ -254,7 +254,8 @@ jobs:
 
   # NFR / ADR-0030, Issue #455: バックエンドアプリケーション層のライブラリ標準を機械強制する。
   # 不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の
-  # PackageReference・using の新規混入を止め、Domain 層の外部依存ゼロを検査する。
+  # PackageReference・using の新規混入を止め、Domain 層の依存規律と共有カーネルの許可リストを検査する。
+  # Domain の「外部依存ゼロ」は計画 ADR-0041 が「Kernel 経由で名指しの 1 つ」へ改定した（#500 / IADR-0196）。
   # 既知の残件は scripts/backend-library-baseline.json で ratchet 管理（新規混入と減らし忘れは fail、
   # baseline 内は warn）。ai-stock-trading は別プロジェクトのため検査対象外。
   # submodule は取得しない（対象は platform / knowledge のみで、いずれも本リポジトリの実体）。
