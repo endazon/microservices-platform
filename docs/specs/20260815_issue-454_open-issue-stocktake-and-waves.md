@@ -10,6 +10,7 @@ related_ids:
   - IADR-0139
   - IADR-0141
   - IADR-0142
+  - IADR-0179
   - IADR-0180
 author: claude
 created: 2026-08-15
@@ -277,7 +278,7 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 | issue | dotnet が入っている | 関連 ADR が Accepted | 先行 issue が develop に着地 | 隘路との関係 |
 | --- | :---: | :---: | :---: | --- |
 | **#455** | **×** | ○（ADR-0020 / 0027 / 0029 / 0030） | ○（先行なし） | **隘路 1。** #441 / #438 / #440 / #443 / #444 / #445 / #447 / #448 / #449 / #450 / #451 の全部が従属 |
-| **#442** | **×** | △（ADR-0021 / 0005 / 0007 / 0008 は Accepted。**ADR-0023 は `Proposed`**） | ○（先行なし） | **隘路 2。** #466 / #388 / #271 / #458 / #443 が従属。**実クラスタも要る** |
+| **#442** | **×** | ○（ADR-0021 / 0005 / 0007 / 0008 / 0023 すべて Accepted。**ADR-0023 は 2026-08-10 に確定済み**） | ○（先行なし） | **隘路 2。** #466 / #388 / #271 / #458 / #443 が従属。**実クラスタも要る**（blocked の理由はこれ 1 本） |
 | #441 | **×** | ○（ADR-0027〜0029） | **×**（#455） | #455 従属 |
 | #438 | **×** | ○（ADR-0036） | **×**（#455 / #442） | 隘路 2 本の合流点 |
 | #439 | **×** | ○（ADR-0032 / 0026） | **×**（#438） | **go-live ブロッカー。** #457 / #446 / #493 が従属 |
@@ -322,13 +323,31 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 
 ## 11. 検証結果
 
+走らせたコマンドと結果（2026-08-15 実測）。
+
 ```console
 $ node scripts/check-doc-links.js
+[check-doc-links] OK: 624 件のリンクを検査し、破損はありません。
+（未 populate の submodule 配下 1293 件は対象外）
+
 $ node scripts/check-doc-status-vocabulary.js
+[check-doc-status-vocabulary] OK: 584 件
+
 $ node scripts/check-doc-type-vocabulary.js
+[check-doc-type-vocabulary] OK: 598 件
+
+$ node scripts/check-cross-repo-refs.js
+[check-cross-repo-refs] OK: 1610 件
+
+$ node scripts/check-plan-id-qualification.js
+[check-plan-id-qualification] OK: 1323 件
+
+$ node scripts/check-doc-updated.js
+[check-doc-updated] OK
 ```
 
-結果は §12 の「実行記録」に控える。
+`CLAUDE.md` と `.claude/rules/` は 1 バイトも変更していない（`check-reading-budget.js` は
+50,193 / 51,200 = 98% の既存 warn のまま。本書に起因する増加はない）。
 
 ## 計画書との差異
 
