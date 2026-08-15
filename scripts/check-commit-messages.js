@@ -289,7 +289,7 @@ function loadExistingPlanAdrIds(
  * `feat(SC-99)` / `feat(FR-77)` / `feat(UC-88)` はいずれも **exit 0 で受理**されていた。
  * これらはスカッシュ後件名として develop の恒久履歴へ載り、force push 禁止で事後修正できない。
  *
- * **レンジの正は `.claude/rules/traceability.md`「起点 ID の種別」節**であり、
+ * **レンジの正は `.claude/rules/traceability.repo.md`「起点 ID の種別（固有）」節**（#755 で companion へ移した）であり、
  * そのパーサは既に `check-test-traceability.js`（#472）に在る。**同じ事実を 2 本のパーサで
  * 持たない** —— 片方だけ直したとき、どちらが正か決められなくなる。
  *
@@ -297,7 +297,7 @@ function loadExistingPlanAdrIds(
  *   - **モジュールが無い**（キット派生リポで `check-test-traceability.js` を持たない構成）
  *     → `null` を返して**当該検査をスキップ**する（呼び出し側が notice で可視化する）。
  *   - **モジュールは在るが節をパースできない** → **例外を投げる**。本リポジトリでは
- *     `.claude/rules/traceability.md` は追跡下の必ず読めるファイルであり、読めない／拾えないのは
+ *     `.claude/rules/traceability.repo.md` は追跡下の必ず読めるファイルであり、読めない／拾えないのは
  *     環境差ではなく**規約側の破壊**（節の改名・書式変更）である。ここを黙って通すと、
  *     レンジの単一情報源が壊れたまま「違反 0 件」で緑になる。
  */
@@ -338,7 +338,7 @@ function validateIdExistence(subject, iadrIds, planAdrIds, planIds) {
       // #579: ここが無い間、`feat(SC-99)` は exit 0 で恒久履歴へ載れた。
       reasons.push(
         `起点 ID "${id}" が計画レンジに実在しない` +
-          `（.claude/rules/traceability.md「起点 ID の種別」節が正。誤記・別プロジェクトの ID の可能性）`
+          `（.claude/rules/traceability.repo.md「起点 ID の種別（固有）」節が正。誤記・別プロジェクトの ID の可能性）`
       );
     }
   }

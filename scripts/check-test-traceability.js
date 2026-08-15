@@ -14,7 +14,7 @@
  * 検査内容:
  *   1. 順方向（#453）: docs/tests/ に仕様書が在る起点 ID（FR-xx / UC-xx / SC-xx / NFR）のうち、
  *      src/ のテストから 1 件も参照されていないものを「未写像」として報告する。
- *   2. 逆方向（#472）: 計画レンジ（.claude/rules/traceability.md「起点 ID の種別」節）にあるのに
+ *   2. 逆方向（#472）: 計画レンジ（.claude/rules/traceability.repo.md「起点 ID の種別（固有）」節）にあるのに
  *      docs/tests/ に仕様書が無い ID を warn で列挙する。1 だけでは「仕様書を作らなければ何も
  *      言われない」fail-open が残り、着手時の取りこぼしが永久に沈黙するためである。
  *      さらにそのうち **src/ のテストが既に参照している ID**（＝実装先行）は allowlist の
@@ -75,8 +75,10 @@ const TEST_FILE = /(Tests?\.cs|\.(test|spec)\.(ts|tsx|js|jsx))$/i;
  * **節スコープの限定は必須**である——同ファイルの後段には AST（別プロジェクト）の採番レンジ
  * （FR-01..20 / UC-01..07 / SC-01..03）が書かれており、全文を舐めると混ざる。
  */
-const RULES_FILE = '.claude/rules/traceability.md';
-const PLAN_RANGE_HEADING = '## 起点 ID の種別';
+// #755: 計画レンジは companion `.claude/rules/traceability.repo.md`「起点 ID の種別（固有）」節が持つ
+// （`traceability.md` はキット配布物へ戻し分類 A にしたため、本リポの値はそこに書けない。IADR-0201）。
+const RULES_FILE = '.claude/rules/traceability.repo.md';
+const PLAN_RANGE_HEADING = '## 起点 ID の種別（固有）';
 
 /** 計画レンジを展開する ID 種別。NFR は連番を持たないためレンジの対象外（ADR はテスト仕様書の対象外）。 */
 const PLAN_KINDS = ['FR', 'UC', 'SC'];
@@ -145,7 +147,7 @@ function classifyAgainstAllowlist(unmapped, allowlist) {
 // --- 計画レンジ（逆方向検査の基準・#472） ---------------------------------------
 
 /**
- * `.claude/rules/traceability.md` から「起点 ID の種別」節の本文だけを切り出す。
+ * `.claude/rules/traceability.repo.md` から「起点 ID の種別（固有）」節の本文だけを切り出す。
  * 次の `## ` 見出しの直前まで。見つからなければ null。
  */
 function planRangeSection(md) {
@@ -340,7 +342,7 @@ function selfTest() {
   const RULES_FIXTURE = [
     '---', 'paths:', '  - "**/*"', '---', '',
     '# トレーサビリティ（追跡可能性）の規約', '',
-    '## 起点 ID の種別', '',
+    '## 起点 ID の種別（固有）', '',
     '- `FR-xx`: 機能要求（計画リポ `02_requirements/`）',
     '- `NFR`: 非機能要件',
     '本リポジトリではそれが **MSP（microservices-platform）** であり、ID レンジは',
@@ -351,7 +353,7 @@ function selfTest() {
   ].join('\n');
 
   const fixtureSection = planRangeSection(RULES_FIXTURE);
-  t('planRangeSection: 「起点 ID の種別」節だけを切り出す（次の ## の直前まで）',
+  t('planRangeSection: 「起点 ID の種別（固有）」節だけを切り出す（次の ## の直前まで）',
     fixtureSection !== null && fixtureSection.includes('`FR-01..21`') && !fixtureSection.includes('AST 側'));
   t('planRangeSection: 節が無ければ null（fail-loud の入口）',
     planRangeSection('# 見出しのみ\n\n本文') === null);
@@ -394,7 +396,7 @@ function selfTest() {
     const ids = readPlanIds();
     // #599: planning 891b199 で FR-22（通知）が新設され 53 → 54 になった。
     // この数は .claude/rules/traceability.md の ID レンジと 1:1 で連動する。
-    t('実ファイル: .claude/rules/traceability.md から計画 ID 54 件を読める',
+    t('実ファイル: .claude/rules/traceability.repo.md から計画 ID 54 件を読める',
       ids.length === 54 && ids.includes('FR-22') && ids.includes('UC-11') && ids.includes('SC-21'), ids.length);
   }
 

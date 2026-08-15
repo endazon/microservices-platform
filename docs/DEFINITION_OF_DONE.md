@@ -73,7 +73,7 @@
 [[IADR-0141]] が限定するのは**巡数と再走範囲だけ**であり、「監査を省略してよい」と読み替えない。
 
 - [ ] **着手時に母集合を自分で引き直し、結果と除外理由を作業仕様書へ書いた**
-      （[`.claude/rules/traceability.md`](../.claude/rules/traceability.md)「是正・追随の母集合の取り方」の規則）
+      （[`.claude/rules/traceability.md`](../.claude/rules/traceability.md)「是正・追随の母集合の取り方」の規則 1〜8 と、[`traceability.repo.md`](../.claude/rules/traceability.repo.md) の規則 9・10）
 - [ ] **2 本の監査を同時に走らせた**（互いの結果を待たせない）
 - [ ] 2 巡目以降は**是正差分のみ**を渡した（**巡数の上限は無い**。[[IADR-0194]] が撤廃した）
 - [ ] 監査が**打ち切り条件を明言**している（「これ以上の巡回は不要」または要る範囲の限定）

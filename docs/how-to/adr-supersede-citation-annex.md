@@ -11,7 +11,7 @@ related_ids:
   - IADR-0176
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -19,8 +19,8 @@ plan_refs:
 # 別紙: Superseded な ADR の引用 —— 経緯と測定
 
 > **★ これは「参照時にだけ読む別紙」である。** 毎セッション読む必要は無い。
-> **規約の入口は [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)
-> 「残す箇所と書式」節**であり、**規範（ID を付け替えない・旧 ID の隣に後継を置く・注記には起票 ID を
+> **規約の入口は companion [`.claude/rules/traceability.repo.md`](../../.claude/rules/traceability.repo.md)
+> 「Superseded / Deprecated な ADR を引用するときの書式」節**（2026-08-16 / #755 に `traceability.md` から移した。同ファイルはキット配布物へ戻した）であり、**規範（ID を付け替えない・旧 ID の隣に後継を置く・注記には起票 ID を
 > 添える・母集合は live な権威文書とコードに限る・frontmatter とコードでの書き分け）はそちらに在る。**
 >
 > **本別紙が持つのは「なぜその規約があるのか」の経緯と、機械検査の可否の実測だけ**である
@@ -53,6 +53,15 @@ plan_refs:
 
 > **★ 実効させたいなら**、`check-commit-messages.js` を走らせるジョブへ `submodules` ＋ `token` を
 > 付ける必要がある。**入口の「起点 ID の種別」節にある同趣旨の注も同じ測定に由来する。**
+
+## 1b. 入口から移した補足（2026-08-16 / #755）
+
+入口を companion へ畳むにあたり、規範ではない説明をここへ移した。
+
+- **付け替えが偽の主張になる理由**: ID を後継へ付け替えると「この実装は後継の決定に従っている」と読まれ、実装の由来（当時なぜそう作ったか）と移行の進み具合の記録が同時に消える。実際に移行したときは、決まった文字列 `Superseded by <後継 ID>` を後継 ID へ一括置換する（先に付け替えると移行の実施と記録の一致を後から検証できない）。
+- **注記に起票 ID を添える理由**（#580 / クロス監査 G-b）: 本文へ後から差し込んだ注記は原文と見分けが付かず、いつ誰が足したのか本文から辿れなくなる。**対象は「後から差し込んだ注記」に限る** —— ファイル新規作成時点の原文（例: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs` 冒頭の `// IADR-0017（Superseded by IADR-0026）`）は注記ではないので遡って起票 ID を足す必要は無い。**frontmatter を持たないファイル（コード・設定）は注記 ID だけでよい**（`updated:` を前進させる先が無い）。日付つき追記ブロックの形は #570 / #577 / #582 が採っている。
+- **後継 ID を旧 ID の隣に置く理由**（#580 / クロス監査 G-c）: 番号順は崩れるが「この旧 ID の後継はこれ」という対応を読み手に伝えることを優先する。機械照合は順序非依存なので実害はない。
+- **母集合を live な権威文書とコードに限る理由**: 確定済み（過去 PR の）`docs/specs/`（作業 / PR 単位の一時点記録）・`feedback/`（計画リポへ送った内容の写し）・`docs/superpowers/`（保管された旧計画）は書いた時点の記録であり、後から注記を足すのは記録の改竄にあたる。**［#717］「書き換えない」の対象は本文への後付け注記であり、frontmatter の状態欄（`status` / `dispatched:` 等）は対象外** —— キットが更新主体を定めている（[[IADR-0191]]）。
 
 ## 2. コードを対象外にしない理由
 
