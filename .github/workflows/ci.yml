@@ -159,6 +159,22 @@ jobs:
       - name: Check feedback status sync
         run: node scripts/check-feedback-status-sync.js
 
+  # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
+  # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて
+  # 測り、合算しない。予算値 51,200 の正本は planning/docs/ai-implementation-workflow-guide.md §8（検査器は出典つきの複製を持つ）。
+  # 100% 超で fail、90% 以上で warn（warn は失敗にしない）。AGENTS.md 系は実測が無いため観測のみ。
+  reading-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test reading budget checker
+        run: node scripts/check-reading-budget.js --self-test
+      - name: Check reading budget
+        run: node scripts/check-reading-budget.js
+
   # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
   # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
   # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
