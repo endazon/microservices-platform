@@ -77,3 +77,22 @@ jobs:
           else
             gh issue create --title "$TITLE" --label enhancement --body "$BODY"
           fi
+
+      # 比較そのものが壊れているとき（#749 / IADR-0202）。**乖離の有無は分からない。**
+      # 警告注釈は緑のジョブに埋もれるため、乖離と同じく issue で知らせる。
+      # **タイトルは分ける** ——「pin が古い」と「比較できていない」は別の事象であり、
+      # 同じ issue へ混ぜると対処が分からなくなる。
+      - name: Notify on broken comparison (open a tracking issue)
+        if: steps.check.outputs.comparison == 'reverse' || steps.check.outputs.comparison == 'diverged'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TITLE="fix(NFR): 計画 pin の鮮度検知が比較できていない（比較元が pin より後ろ／分岐）"
+          BODY="$(printf '%s\n\n実行ログ: %s\n\n比較元（submodule の origin）が pin より後ろにあるため、乖離の有無は判定できていない。**「効く変更が無い」ことを意味しない**（#749）。\n' "$(cat "$RUNNER_TEMP/pin-freshness.txt")" "$RUN_URL")"
+          EXISTING=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --label bug --body "$BODY"
+          fi
