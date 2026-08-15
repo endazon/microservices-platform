@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "NFR / issue #768（親 #493 / ADR-0031 / IADR-0121 第 5 段）: npm（src/ の pnpm workspace）の依存更新を Renovate が担当する。",
+    "担当範囲の棲み分けは IADR-0203。github-actions と gitsubmodule は .github/dependabot.yml が担当し、ここでは見ない。",
+    "設計と実測は docs/specs/20260815_issue-768_renovate-husky.md。"
+  ],
+  "extends": ["config:recommended"],
+  "enabledManagers": ["npm"],
+  "baseBranches": ["develop"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 9am on monday"],
+  "prConcurrentLimit": 3,
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "NFR",
+  "ignorePaths": [
+    "**/node_modules/**",
+    "src/ai-stock-trading/**",
+    "templates/**"
+  ]
+}
