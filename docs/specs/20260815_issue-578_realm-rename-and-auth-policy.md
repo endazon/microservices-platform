@@ -54,15 +54,33 @@ related_specs:
 **文字列 `microservices-platform` そのもので引くと 38KB 分の一致が出るが、その大半はリポジトリ名・Helm チャート名・
 k8s Namespace・イメージ接頭辞であり、改名対象ではない**（決定 31 が改めるのはレルムとクライアントの 2 つに限る）。
 
-引いた変種は次の 7 つである。
+引いた変種は次の **9 つ**である。**当初は 7 つで引き、下表の ★ 2 つを落としていた**（監査 2 本が指摘。経緯は下記）。
 
-| 変種 | 意味 |
-| --- | --- |
-| `/realms/microservices-platform` | OIDC issuer / エンドポイント URL |
-| `"realm": "microservices-platform"` | realm export の realm 名そのもの |
-| `microservices-platform-realm` | realm export の**ファイル名**（`deploy/keycloak/microservices-platform-realm.json`） |
-| `ABAC_REALM` / `ABAC_SEED_REALM` / `OIDC_REALM` | スクリプトの環境変数**既定値** |
-| `spa-web` | クライアント ID |
+| # | 変種 | 意味 |
+| --- | --- | --- |
+| 1 | `/realms/microservices-platform` | OIDC issuer / エンドポイント URL |
+| 2 | `"realm": "microservices-platform"` | realm export の realm 名そのもの |
+| 3 | `microservices-platform-realm` | realm export の**ファイル名**（`deploy/keycloak/microservices-platform-realm.json`） |
+| 4 | `ABAC_REALM` / `ABAC_SEED_REALM` / `OIDC_REALM` | スクリプトの環境変数**既定値** |
+| 5 | `spa-web` | クライアント ID |
+| 6 ★ | **`` realm `microservices-platform` ``（地の文・コメント）** | 散文が realm 名を名指す形。**値ではないので 1〜4 のどれにも掛からない** |
+| 7 ★ | **`R=microservices-platform`（シェル変数への代入）** | 手順書のスクリプトが realm 名を変数へ入れる形。**後段で `/realms/$R` として使われる** |
+| 8 | `レルム`（カタカナ）＋ 旧名 | 6 の表記ゆれ。走査すると `docs/security/security.md:54` が当たるが、**これは「Keycloak レルム（`…-realm.json`）」＝ ファイル名参照**であり変種 3 に含まれる。**改名対象は増えない** |
+| 9 | `microservices-platform realm`（英語語順） | 走査した結果 **0 件** |
+
+> **`README.md:179` は上のどの変種でも捕まらない** —— 「realm 名・イメージ接頭辞・OIDC issuer **も** `microservices-platform` へ」
+> という形で、**旧名と `realm` の間に他の語が挟まる**ためである。これは**規則 7 の走査（誤りの側の文字列で全文書を引く）**
+> でしか出ない。§2.5 参照。
+
+> **★ 6・7 を落として何が起きたか。** live に 5 箇所が残り、**うち 2 箇所は同じファイルの中で新旧が矛盾**した。
+> とくに `deploy/local/wiki-oidc/README.md` は、**同じコードブロックの次の行 `KC=…/realms/platform` だけが改名済み**で、
+> `R=microservices-platform` が取り残された。そのまま実行すると `"$KCADM/admin/realms/$R/clients?clientId=wiki-js"` が
+> 存在しない realm を引き、**client secret が空のまま後段の SQL が壊れた OIDC 設定を投入する**。
+> **文書の齟齬では済まない取りこぼしだった。**
+>
+> **教訓**: 変種の列挙は「**値がどう書かれるか**」（1〜5）だけでは足りない。
+> **「人が地の文でどう呼ぶか」（6・8）と「変数にどう入るか」（7）**まで並べる。
+> 前者は `grep` の対象が散文になるだけだが、**後者は実行される**。
 
 **空振りした変種も記録する**（規則 2 は「あり得る形をすべて列挙してから引く」であり、0 件の確認も引いた結果である）:
 `spa_web` = 0 件 ／ `spaWeb` = 0 件 ／ `realm: microservices-platform`（YAML 形式）= 0 件。
