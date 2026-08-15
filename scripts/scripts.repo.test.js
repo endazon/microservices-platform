@@ -4379,7 +4379,7 @@ module.exports = ({ ok, assert }) => {
     const HANDOFF = 'docs/how-to/session-handoff.md';
     const ADR = 'docs/adr/IADR-0180_blocked-judgments-expire.md';
 
-    ok('#701: 棚卸しのたびに行 H を測り直す規範が引継資料にある', () => {
+    ok('#701: 棚卸しのたびに波 5（旧 行 H）を測り直す規範が引継資料にある', () => {
       const t = fs.readFileSync(path.join(REPO, HANDOFF), 'utf8');
       assert.match(
         t,
