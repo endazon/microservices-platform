@@ -821,6 +821,38 @@ module.exports = ({ ok, assert }) => {
     fs.rmSync(dir, { recursive: true });
   });
 
+  // ★ **実装が完了して issue が閉じた ID を「無主」にしない**（NFR, #748）。
+  //
+  //   突合材料は **open issue だけ**を載せる（closed の絞り込みは生成側の責務）。したがって
+  //   母集合を計画レンジ全件にすると、**完了済みの FR/UC/SC が軒並み「担当 issue が無い」**
+  //   になり、CI が全 PR のマージ経路を塞ぐ。本 issue が解こうとしている「未着手と無主の混同」を
+  //   「完了済みと無主」の間で作り直すだけである。母集合は `missingSpec` に限る。
+  //
+  //   この形は **AI レビューが擬似 owners.json で実際に再現して見つけた**（実装済み 29 件が
+  //   丸ごと無主として fail した）。素通りしていた理由は、材料が無い間は skip されるため
+  //   **生成側が動き出すまで顕在化しない**ことにある。
+  ok('担当 issue の突合: テスト仕様書がある ID は無主に混ぜない（NFR, #748）', () => {
+    const { spawnSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-id-owners-closed-'));
+    const file = path.join(dir, 'owners.json');
+    // **どの ID も引き受けていない**材料（open issue が 1 件も無い状態に相当）。
+    fs.writeFileSync(file, JSON.stringify({ generatedAt: '2026-08-15T00:00:00Z', issues: [] }));
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+    const out = `${r.stdout}\n${r.stderr}`;
+    const unowned = ((out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '').split(' / ');
+    // テスト仕様書があるものは、引受先が空でも無主にならない（母集合が missingSpec だから）。
+    const specIds = trace.collectSpecIds();
+    assert.ok(specIds.size > 0, 'テスト仕様書の ID を 1 件も読めていない（走査が壊れている）');
+    const wrongly = [...specIds].filter((id) => unowned.includes(id));
+    assert.deepStrictEqual(
+      wrongly,
+      [],
+      `テスト仕様書がある ID を無主として出している（母集合が planIds になっている）:\n${wrongly.join(' / ')}`,
+    );
+    fs.rmSync(dir, { recursive: true });
+  });
+
   // NFR, #748: 突合材料は「あれば読む、無ければ skip」。**skip を黙って通さない**
   //（「無主 0 件」と「見ていない」が読み分けられないと、検査しているつもりの状態が残る）。
   ok('担当 issue の突合: 材料が無ければ skip し、skip したことを出力する（NFR, #748）', () => {

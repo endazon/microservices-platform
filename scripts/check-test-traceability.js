@@ -619,7 +619,12 @@ function main() {
       'これは「無主 0 件」ではなく「見ていない」状態です。');
   } else {
     const ownership = buildIssueOwnership(owners);
-    unowned = unownedPlanIds(planIds, ownership);
+    // ★ 母集合は `missingSpec`（テスト仕様書がまだ無い ID）であって `planIds`（全件）ではない。
+    //   突合材料は **open issue だけ**を載せる（closed の絞り込みは生成側の責務）ため、
+    //   全件を母集合にすると**実装が完了して issue が閉じた ID が軒並み「無主」になる**。
+    //   それは本 issue が解こうとしている「未着手と無主の混同」を、
+    //   「完了済みと無主」の間で作り直すだけである。
+    unowned = unownedPlanIds(missingSpec, ownership);
     const ownedInWarn = missingSpec.filter((id) => ownership.has(id));
     if (ownedInWarn.length) {
       notice(`テスト仕様書が無い ${missingSpec.length} 件のうち ${ownedInWarn.length} 件は担当 issue があります` +
