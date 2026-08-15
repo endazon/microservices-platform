@@ -6395,6 +6395,37 @@ module.exports = ({ ok, assert }) => {
       const titles = [...text.matchAll(/^\s*TITLE="([^"]+)"/gm)].map((m) => m[1]);
       assert.strictEqual(new Set(titles).size, titles.length, `issue タイトルが重複している: ${titles.join(' / ')}`);
     });
+
+    // 決定 3（IADR-0202）: 比較元を **全経路** に出す。
+    //
+    // ★ この検査を置く理由: フェーズ末クロス監査が、決定 3 を定めた当の PR で
+    //   **0 件走査の fail 経路だけが sourceLine を落としている**のを見つけた。
+    //   「関数の出力先を増やしたとき、呼び出し口のうち 1 つにだけ配線し忘れる」型は
+    //   本リポで **4 度目**（#507 / #590 / #612 / 本件）であり、規約が定める
+    //   「同型の事故が 2 回起きたら検査器を足す」条件を満たしている。
+    //
+    // 期待値は**列挙を書き写さず、ソースから導出**する（判定を出す経路が増えても自動で捕まる）。
+    ok('pin 鮮度 #749: 判定を出す全経路が比較元（sourceLine）を含む', () => {
+      const src = fs.readFileSync(path.join(REPO, 'scripts/check-planning-pin-freshness.js'), 'utf8');
+      // **比較元が確定した後**の経路だけを対象にする。sourceLine の宣言より前で return する経路
+      // （submodule 未 populate / 対象プロジェクト不在）は、そもそも比較していないので対象外である。
+      const decl = src.indexOf('const sourceLine =');
+      assert.ok(decl > 0, 'sourceLine の宣言を見つけられない（走査が壊れている）');
+      const after = src.slice(decl);
+      // console.log / console.error の呼び出しを丸ごと取り出す（引数の末尾まで）。
+      const calls = [...after.matchAll(/console\.(?:log|error)\(([\s\S]*?)\n\s*\);/g)].map((m) => m[1]);
+      assert.ok(calls.length >= 4, `判定を出す経路を抽出できていない（走査が壊れている）: ${calls.length} 件`);
+
+      const missing = calls
+        // 抽出できた呼び出しのうち、検査の結論（OK / 警告 / fail）を述べているものだけを対象にする。
+        .filter((c) => c.includes('[check-planning-pin-freshness]'))
+        .filter((c) => !c.includes('sourceLine'));
+      assert.deepStrictEqual(
+        missing,
+        [],
+        `比較元を出さない経路が残っている（IADR-0202 決定 3）:\n${missing.join('\n---\n')}`,
+      );
+    });
   }
 
   // --- #716: 脆弱な推移依存のピン（IADR-0186） ---------------------------------

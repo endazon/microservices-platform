@@ -496,9 +496,11 @@ function main() {
   // 0 件走査の門: pin != head なのに差分が 1 件も無いのは、配管が壊れている合図である
   // （#664 / IADR-0130 の作法。ここは fail-open の例外とし、黙って緑を返さない）。
   if (files.length === 0) {
+    // IADR-0202 決定 3: 比較元は全経路に出す。**配管が壊れたと告げるこの経路が最も要る**
+    // （どこと比べてこうなったかが分からなければ、読んだ人は原因を切り分けられない）。
     console.error(
       `[check-planning-pin-freshness] pin (${pin.slice(0, 7)}) と HEAD (${head.slice(0, 7)}) が異なるのに差分が 0 件でした。` +
-        ' 比較の配管が壊れている可能性があります。',
+        ` 比較の配管が壊れている可能性があります。\n  ${sourceLine}`,
     );
     process.exit(1);
   }
