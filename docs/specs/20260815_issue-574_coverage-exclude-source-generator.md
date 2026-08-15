@@ -155,6 +155,11 @@ source generator 出力だけを取り出すと **197 クラス / 4740 行（被
 **`coverage-floor.json` の `$comment` が既に「計測ゆらぎで赤にならない幅を確認してから上げること」と書いている。**
 **その確認を実際に行った結果が上の表である。**
 
+> **★★ この判断は仮定ではなく実証された（2026-08-15・CI 実測）。**
+> **CI の branch は `27.99%（1662/5938）`** —— ローカル（`1663`）より**ちょうど被覆分岐 1 本少ない**。
+> **切り下げの床 `28` を採っていたら、CI は初回から赤だった。**
+> **表の「被覆分岐 1 本の喪失で割れる」が、まさにその 1 本の差として現実に出た。**
+
 > **★ `line 33 → 39` / `branch 17 → 27` は ratchet の引き上げではなく、測定基準の変更に伴う置き直しである**
 > （[IADR-0123](../adr/IADR-0123_cobertura-class-attribution-and-line-dedup.md) 決定 7 ／ IADR-0138 決定 4 と同じ性質）。
 > **旧定義の床と新定義の床は比較できない**（分母・分子が違う）。
@@ -192,7 +197,8 @@ source generator 出力だけを取り出すと **197 クラス / 4740 行（被
 
 | | 値 |
 | --- | --- |
-| `check-coverage-floor`（実レポート 14 件） | **exit=0** / `line 39.92%（9486/23762）` / `branch 28.01%（1663/5938）` |
+| `check-coverage-floor`（ローカル・実レポート 14 件） | **exit=0** / `line 39.92%（9486/23762）` / `branch 28.01%（1663/5938）` |
+| **`check-coverage-floor`（CI 実測）**（PR #741 / run `31866326272`） | **exit=0** / **`line 39.92%（9485/23762）`** / **`branch 27.99%（1662/5938）`** |
 | `check-coverage-floor --self-test` | **80 件 OK**（改修前 65 件） |
 | `node scripts/scripts.test.js` | **516 件 OK** |
 | 文書検査 8 種（links / cross-repo-refs / plan-id / doc-type / kit-sync / feedback-dispatched / feedback-status-sync / action-versions） | **すべて exit=0** |
