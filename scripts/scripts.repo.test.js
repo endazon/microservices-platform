@@ -6412,14 +6412,54 @@ module.exports = ({ ok, assert }) => {
       const decl = src.indexOf('const sourceLine =');
       assert.ok(decl > 0, 'sourceLine の宣言を見つけられない（走査が壊れている）');
       const after = src.slice(decl);
-      // console.log / console.error の呼び出しを丸ごと取り出す（引数の末尾まで）。
-      const calls = [...after.matchAll(/console\.(?:log|error)\(([\s\S]*?)\n\s*\);/g)].map((m) => m[1]);
-      assert.ok(calls.length >= 4, `判定を出す経路を抽出できていない（走査が壊れている）: ${calls.length} 件`);
 
-      const missing = calls
-        // 抽出できた呼び出しのうち、検査の結論（OK / 警告 / fail）を述べているものだけを対象にする。
-        .filter((c) => c.includes('[check-planning-pin-freshness]'))
-        .filter((c) => !c.includes('sourceLine'));
+      // ★ 出口は `console.log` / `console.error` だけではない。**`warn(...)` ヘルパ経由の 2 経路**
+      //   （reverse/diverged の早期リターンと、乖離あり・理由ありの最終経路）を取りこぼすと、
+      //   この検査が守るはずの当の事故がその 2 経路で再発しても捕まらない（AI レビュー指摘）。
+      //
+      // 引数が変数名だけの経路があるため（`warn(broken, …)` / `warn(message, …)`）、引数の字面だけ見ても
+      // 足りない。**その出口のメッセージを組み立てているコード領域**を見る —— 直前の出口の終わりから
+      // 当の出口の終わりまでが、その出口のために走るコードである。
+      const emissions = [...after.matchAll(/(?:console\.(?:log|error)|warn)\(([\s\S]*?)\n?\s*\);/g)].map((m) => ({
+        arg: m[1],
+        head: m[0].slice(0, 120),
+      }));
+      assert.strictEqual(
+        emissions.length,
+        6,
+        `判定を出す経路が 6 件から変わった（${emissions.length} 件）。増減したら本検査の期待値も見直すこと。`,
+      );
+
+      // `const <id> = …;` の**宣言文だけ**を切り出す（`[` `{` `(` の深さを数えて終端の `;` を見つける）。
+      // 領域で切ると、間に別の出口を挟む変数（`lines` は `message` より前で宣言される）を誤判定する。
+      const declarationOf = (id) => {
+        const start = after.indexOf(`const ${id} = `);
+        if (start < 0) return '';
+        let depth = 0;
+        for (let i = start; i < after.length; i += 1) {
+          const ch = after[i];
+          if ('([{'.includes(ch)) depth += 1;
+          else if (')]}'.includes(ch)) depth -= 1;
+          else if (ch === ';' && depth === 0) return after.slice(start, i + 1);
+        }
+        return after.slice(start);
+      };
+
+      // 引数が変数名だけの出口は、**その変数の宣言**が比較元を含むことを要求する。
+      // 段数を増やして総当たりすると、無関係な変数の宣言に当たって黙って緑になる（実測した）。
+      // よって辿るのは 1 段だけとし、辿った先も明示する。
+      const VIA_VARIABLE = { broken: 'broken', message: 'lines' };
+
+      const missing = emissions
+        .filter((e) => {
+          if (e.arg.includes('sourceLine')) return false;
+          const named = e.arg.trim().match(/^([a-z][\w$]*)\s*,/);
+          if (!named) return true;
+          const via = VIA_VARIABLE[named[1]];
+          if (!via) return true;
+          return !declarationOf(via).includes('sourceLine');
+        })
+        .map((e) => e.head);
       assert.deepStrictEqual(
         missing,
         [],
