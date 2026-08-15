@@ -22,7 +22,7 @@ if [ -z "$CLIENT_SECRET" ]; then
 fi
 : "${CLIENT_SECRET:?vault-oidc secret も VAULT_OIDC_CLIENT_SECRET env も無い。k8s-local-up.sh を VAULT=1 で実行済みか確認}"
 
-ISSUER="${VAULT_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/microservices-platform}"
+ISSUER="${VAULT_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/platform}"
 REDIRECTS="http://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback"
 
 echo "==> auth/oidc を有効化（未有効時のみ・冪等）"

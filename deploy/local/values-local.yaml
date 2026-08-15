@@ -115,5 +115,5 @@ frontend:
 minio:
   oidc:
     enabled: true
-    configUrl: "http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration"
+    configUrl: "http://keycloak:8080/realms/platform/.well-known/openid-configuration"
     browserRedirectUrl: "http://minio.localhost:50000"

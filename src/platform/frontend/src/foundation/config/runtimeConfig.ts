@@ -40,10 +40,8 @@ function fromEnv(): AppConfig {
   return {
     bffBaseUrl: import.meta.env.VITE_BFF_BASE_URL ?? '/bff',
     oidc: {
-      authority:
-        import.meta.env.VITE_OIDC_AUTHORITY ??
-        'http://localhost:8080/realms/microservices-platform',
-      clientId: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'spa-web',
+      authority: import.meta.env.VITE_OIDC_AUTHORITY ?? 'http://localhost:8080/realms/platform',
+      clientId: import.meta.env.VITE_OIDC_CLIENT_ID ?? 'platform-spa',
     },
     opsLinks: {
       grafanaUrl: orUndef(import.meta.env.VITE_GRAFANA_URL),

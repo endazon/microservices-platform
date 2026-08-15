@@ -41,8 +41,8 @@ set -uo pipefail
 
 EDGE_URL="${EDGE_URL:-http://localhost}"
 KC_URL="${KC_URL:-http://keycloak:8080}"
-REALM="${OIDC_REALM:-microservices-platform}"
-CLIENT_ID="${OIDC_CLIENT_ID:-spa-web}"
+REALM="${OIDC_REALM:-platform}"
+CLIENT_ID="${OIDC_CLIENT_ID:-platform-spa}"
 REDIRECT_URI="${OIDC_REDIRECT_URI:-${EDGE_URL}/callback}"
 OIDC_USER="${OIDC_USER:-developer}"
 OIDC_PASSWORD="${OIDC_PASSWORD:-developer}"

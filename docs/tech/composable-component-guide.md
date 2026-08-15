@@ -8,7 +8,7 @@ related_ids:
   - ADR-0018
 author: claude
 created: 2026-07-09
-updated: 2026-08-06
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
@@ -173,7 +173,7 @@ related_specs:
    >
    > 本節の原典 IADR-0033 は [[IADR-0121]] が Superseded 済みであり、本文書（`status: fixed`）の
    > 全面改訂はこの追記の射程外である。ここでは**成果を次の実装者が壊す入口だけを塞ぐ**。
-4. 認証・ロールは foundation の OIDC（Keycloak `spa-web`）とロールベースナビゲーション
+4. 認証・ロールは foundation の OIDC（Keycloak `platform-spa`）とロールベースナビゲーション
    （IADR-0035）に従う。トークン・シークレットをコードに置かない。
 5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
    （`src/vitest.config.ts` の thresholds。全ユニット横断で計測）を割らないこと（IADR-0034）。

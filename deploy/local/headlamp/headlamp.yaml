@@ -37,7 +37,7 @@ spec:
           # issuer は in-cluster 正準名に固定（IADR-0066）。ブラウザからの到達性は IADR-0076 手順A で解く（README）。
           env:
             - { name: HEADLAMP_CONFIG_OIDC_CLIENT_ID, value: "headlamp" }
-            - { name: HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL, value: "http://keycloak:8080/realms/microservices-platform" }
+            - { name: HEADLAMP_CONFIG_OIDC_IDP_ISSUER_URL, value: "http://keycloak:8080/realms/platform" }
             - { name: HEADLAMP_CONFIG_OIDC_SCOPES, value: "openid,profile,email" }
             # client secret は manifest に平文で置かず Secret から注入（dev 既定は k8s-local-up.sh の HEADLAMP=1 が作成）。
             - name: HEADLAMP_CONFIG_OIDC_CLIENT_SECRET

@@ -10,7 +10,7 @@
 
 x-common-env: &common-env
   OTLP__ENDPOINT: http://otel-collector:4317
-  Auth__Authority: http://keycloak:8080/realms/microservices-platform
+  Auth__Authority: http://keycloak:8080/realms/platform
 
 x-db-env: &db-env
   ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Username=kp;Password=kp
@@ -634,8 +634,8 @@ services:
       BFF_UPSTREAM: http://bff:8080
       # 実行時 config（ブラウザ経路）。BFF は同一オリジンの /bff（nginx プロキシ）、Keycloak は host の 8080。
       BFF_BASE_URL: /bff
-      OIDC_AUTHORITY: http://localhost:8080/realms/microservices-platform
-      OIDC_CLIENT_ID: spa-web
+      OIDC_AUTHORITY: http://localhost:8080/realms/platform
+      OIDC_CLIENT_ID: platform-spa
       # Issue #136 / SC-10: 運用ダッシュボードの外部ツール導線。dev は既に host 公開済みの Grafana(3000) を
       # 注入し、compose 上で「詳細ツール」導線を目視確認できるようにする。Jaeger/Kiali は dev 未配備のため
       # 未設定（空文字）＝画面に導線を出さない（config.js.template / 40-render-config.sh の既定に追随）。

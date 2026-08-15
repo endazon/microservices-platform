@@ -13,7 +13,7 @@ namespace AuthorizationService.Api.Tests;
 // 既定（新キー未設定）は現行と等価・issuer 検証は弱めない（fail-safe）ことを確認する。
 public class PlatformAuthJwtBearerOptionsTests
 {
-    private const string DefaultAuthority = "http://keycloak:8080/realms/microservices-platform";
+    private const string DefaultAuthority = "http://keycloak:8080/realms/platform";
     private const string WellKnown = DefaultAuthority + "/.well-known/openid-configuration";
 
     private static JwtBearerOptions BuildOptions(params (string Key, string Value)[] settings)
@@ -92,10 +92,10 @@ public class PlatformAuthJwtBearerOptionsTests
         var options = BuildOptions(
             ("Auth:MetadataAddress", WellKnown),
             ("Auth:ValidIssuers",
-                "https://edge.example/realms/microservices-platform, " + DefaultAuthority));
+                "https://edge.example/realms/platform, " + DefaultAuthority));
 
         options.TokenValidationParameters.ValidIssuers.Should().BeEquivalentTo(
-            "https://edge.example/realms/microservices-platform",
+            "https://edge.example/realms/platform",
             DefaultAuthority);
         // 許可リストを足しても issuer 検証自体は有効のまま（fail-safe）。
         options.TokenValidationParameters.ValidateIssuer.Should().BeTrue();

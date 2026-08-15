@@ -7,7 +7,7 @@ describe('loadAppConfig', () => {
     const win = {
       __APP_CONFIG__: {
         bffBaseUrl: 'https://edge.example/bff',
-        oidc: { authority: 'https://kc.example/realms/kp', clientId: 'spa-web' },
+        oidc: { authority: 'https://kc.example/realms/kp', clientId: 'platform-spa' },
       },
     } as unknown as Window;
 
@@ -15,14 +15,14 @@ describe('loadAppConfig', () => {
 
     expect(cfg.bffBaseUrl).toBe('https://edge.example/bff');
     expect(cfg.oidc.authority).toBe('https://kc.example/realms/kp');
-    expect(cfg.oidc.clientId).toBe('spa-web');
+    expect(cfg.oidc.clientId).toBe('platform-spa');
   });
 
   it('falls back to env defaults when nothing is injected', () => {
     const cfg = loadAppConfig({} as unknown as Window);
 
     expect(cfg.bffBaseUrl).toBe('/bff');
-    expect(cfg.oidc.clientId).toBe('spa-web');
+    expect(cfg.oidc.clientId).toBe('platform-spa');
   });
 
   it('fills missing injected fields from env (partial injection)', () => {
@@ -34,7 +34,7 @@ describe('loadAppConfig', () => {
 
     expect(cfg.bffBaseUrl).toBe('https://edge.example/bff');
     // oidc は env 既定で補完される。
-    expect(cfg.oidc.clientId).toBe('spa-web');
+    expect(cfg.oidc.clientId).toBe('platform-spa');
   });
 
   // Issue #136 / SC-10: 外部ツール導線 URL は実行時 config から注入する。

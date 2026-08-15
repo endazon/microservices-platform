@@ -8,15 +8,15 @@ global:
   otel:
     endpoint: http://otel-collector:4317
   auth:
-    authority: http://keycloak:8080/realms/microservices-platform
+    authority: http://keycloak:8080/realms/platform
     # Issue #314, IADR-0076 手順B, IADR-0086: 単一エッジ host OIDC を CoreDNS/hosts 改変なしに成立させる任意配線。
     # 既定は空（未描画）＝手順A のまま authority 一本で metadata 取得＋issuer 検証を兼ねる（現行バイト等価・fail-safe）。
     # 手順B（edge.oidc.enabled=true で SPA/`/bff`/`/realms` を同一エッジ host に集約）では token の iss がエッジ host に
     # なるため、以下を設定して backend の metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する:
     #   metadataAddress: in-cluster から到達できる OIDC well-known（JWKS 取得先）。例:
-    #     http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+    #     http://keycloak:8080/realms/platform/.well-known/openid-configuration
     #   validIssuers: token の iss として追加で受理する issuer（エッジ host）。カンマ/空白区切りで複数可。例:
-    #     https://edge.example/realms/microservices-platform
+    #     https://edge.example/realms/platform
     # issuer 検証は弱めない（ValidateIssuer=true・JWKS は in-cluster metadata 由来）。metadata 由来 issuer は常に受理
     # されるため、in-cluster issuer（手順A token）と併存する。
     metadataAddress: ""
@@ -470,7 +470,7 @@ minio:
   # 経路B は values-local で enabled にする。root(minio-credentials) は break-glass として残る（fail-safe）。
   oidc:
     enabled: false
-    configUrl: ""            # 例: http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
+    configUrl: ""            # 例: http://keycloak:8080/realms/platform/.well-known/openid-configuration
     clientId: minio
     existingSecret: minio-oidc
     clientSecretKey: client-secret
@@ -566,8 +566,8 @@ frontend:
     # ブラウザが到達する OIDC issuer。本番は外部公開する Keycloak の URL（エッジ host 経由なら IADR-0076
     # 決定3 の /realms パススルー）を per-env で上書きする。既定はサービス間と同じ in-cluster 値だが、
     # ブラウザ到達性のため実運用では必ず外部到達可能な URL へ上書きすること（config.gitCommit 等と同じ placeholder）。
-    authority: http://keycloak:8080/realms/microservices-platform
-    clientId: spa-web
+    authority: http://keycloak:8080/realms/platform
+    clientId: platform-spa
   # 任意の追加 env（config.js の GRAFANA_URL / JAEGER_URL / KIALI_URL / WIKI_BASE_URL 等）。既定は空で、
   # 40-render-config.sh が未設定を空文字にフォールバックし SC-10 の外部ツール導線を画面に出さない。compose は
   # dev の Grafana(3000) を直挿しするが、k8s は可観測性/外部 UI を経路B の opt-in オーバーレイ（ADR-0006・

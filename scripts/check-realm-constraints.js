@@ -64,6 +64,50 @@ const REQUIRED_CLIENT_URLS = {
   },
 };
 
+/*
+ * 検査3: ADR-0026 が定める認証ポリシーの realm 実現値（Issue #578 / IADR-0197）。
+ * 背景: SC-14（OTP／多要素認証）・SC-15（パスワードリセット）は Keycloak テーマと realm 設定で実現する。
+ * ADR-0026 は具体値（12 文字以上・3 種以上・直近 5 世代／TOTP 6 桁・前後 1 ステップ／5 回失敗で 15 分ロック／
+ * リセットリンク 30 分／デバイス記憶 30 日）を確定しているが、**realm.json は 8 項目すべて未設定**であった（#578 の実測）。
+ * 値の一致は静的に検査できるため、確定要件からの逸脱を import 前に止める。
+ * 対象は本プロジェクトの realm（`platform`）に限る —— 別プロジェクトの realm（AST 等）は ADR-0026 の射程外。
+ */
+// 「英大文字／小文字／数字／記号のうち 3 種以上」。Keycloak の組み込みポリシー
+// （upperCase / lowerCase / digits / specialChars）はいずれも AND であり、「4 種のうち 3 種」という
+// **選言を表現できない**。4 通りの組み合わせを先読みの選言として書く（IADR-0197 決定 3）。
+// この定数が単一情報源であり、realm.json 側はこの文字列と一致していなければ違反とする。
+const PASSWORD_CLASS_REGEX =
+  '^(?:(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])|(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9])'
+  + '|(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9])|(?=.*[A-Z])(?=.*[0-9])(?=.*[^A-Za-z0-9])).*$';
+
+const AUTH_POLICY_REALM = 'platform';
+
+// realm 直下のスカラー値の期待。値は ADR-0026 の確定値をそのまま置く（単位はコメントで示す）。
+const AUTH_POLICY_SCALARS = {
+  passwordPolicy: `length(12) and passwordHistory(5) and regexPattern(${PASSWORD_CLASS_REGEX})`,
+  otpPolicyType: 'totp',
+  otpPolicyDigits: 6,
+  otpPolicyPeriod: 30,        // 秒
+  otpPolicyLookAheadWindow: 1, // Keycloak は [-n, +n] の対称窓 ＝ 前後 1 ステップ（30 秒）
+  otpPolicyCodeReusable: false,
+  bruteForceProtected: true,
+  permanentLockout: false,     // 15 分で解除される一時ロックであること
+  failureFactor: 5,
+  waitIncrementSeconds: 900,   // 15 分
+  maxFailureWaitSeconds: 900,  // 15 分（増分が頭打ちになる上限も 15 分）
+  actionTokenGeneratedByUserLifespan: 1800, // 30 分（リセットリンクの有効期限）
+  rememberMe: true,
+  ssoSessionIdleTimeoutRememberMe: 2592000, // 30 日
+  ssoSessionMaxLifespanRememberMe: 2592000, // 30 日
+};
+
+// requiredActions の期待（alias → 期待するフラグ）。
+// `enabled` だけでは未登録者は誘導されない —— **誘導は `defaultAction` が担う**。
+const AUTH_POLICY_REQUIRED_ACTIONS = {
+  CONFIGURE_TOTP: { enabled: true, defaultAction: true },
+  UPDATE_PASSWORD: { enabled: true }, // ADR-0045 決定 9-b（メール停止時の代替）が要る
+};
+
 // --- 純粋ロジック（scripts.test.js から単体テストする） -------------------------
 
 // 文字列の「文字数」（コードポイント数）を返す。null/undefined は 0。
@@ -159,6 +203,54 @@ function checkRealmUrlsText(text, required = REQUIRED_CLIENT_URLS) {
   return collectMissingUrls(JSON.parse(text), required);
 }
 
+// パスワードが「4 種のうち 3 種以上」を満たすかを返す（純粋関数）。
+// Keycloak の regexPattern は Java の Pattern.matches ＝ 全体一致なので、JS 側も全体一致で評価する。
+function satisfiesPasswordClasses(password, pattern = PASSWORD_CLASS_REGEX) {
+  // 全体一致（Java の Pattern.matches 相当）。pattern 自身が ^…$ を持つが、^/$ は零幅なので二重でも等価。
+  return new RegExp(`^(?:${pattern})$`).test(String(password ?? ''));
+}
+
+// realm から ADR-0026 の確定要件との差分を { path, expected, actual } で列挙する（純粋関数）。
+// 対象 realm（既定 `platform`）以外は検査しない —— 別プロジェクトの realm は ADR-0026 の射程外。
+function collectPolicyDeviations(
+  realm,
+  { scalars = AUTH_POLICY_SCALARS, actions = AUTH_POLICY_REQUIRED_ACTIONS, realmName = AUTH_POLICY_REALM } = {},
+) {
+  const out = [];
+  if (!realm || realm.realm !== realmName) return out;
+
+  for (const key of Object.keys(scalars)) {
+    const actual = realm[key];
+    if (actual !== scalars[key]) {
+      out.push({ path: `realm.${key}`, expected: scalars[key], actual: actual === undefined ? '«未設定»' : actual });
+    }
+  }
+
+  const present = new Map(((realm.requiredActions) || []).map((a) => [a && a.alias, a]));
+  for (const alias of Object.keys(actions)) {
+    const entry = present.get(alias);
+    if (!entry) {
+      out.push({ path: `realm.requiredActions[${alias}]`, expected: '存在すること', actual: '«未設定»' });
+      continue;
+    }
+    for (const flag of Object.keys(actions[alias])) {
+      if (entry[flag] !== actions[alias][flag]) {
+        out.push({
+          path: `realm.requiredActions[${alias}].${flag}`,
+          expected: actions[alias][flag],
+          actual: entry[flag] === undefined ? '«未設定»' : entry[flag],
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// realm JSON テキストから確定要件との差分を返す（パース失敗は throw）。
+function checkRealmPolicyText(text, opts) {
+  return collectPolicyDeviations(JSON.parse(text), opts);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -175,7 +267,12 @@ function checkFiles(relPaths) {
   for (const rel of relPaths) {
     const abs = path.isAbsolute(rel) ? rel : path.join(REPO_ROOT, rel);
     const text = fs.readFileSync(abs, 'utf8');
-    results.push({ file: rel, violations: checkRealmText(text), missing: checkRealmUrlsText(text) });
+    results.push({
+      file: rel,
+      violations: checkRealmText(text),
+      missing: checkRealmUrlsText(text),
+      deviations: checkRealmPolicyText(text),
+    });
   }
   return results;
 }
@@ -260,6 +357,103 @@ function selfTest() {
     })).length === 0,
   });
 
+  // --- ADR-0026 の確定要件からの逸脱検査（Issue #578 / IADR-0197）---
+  // 確定要件を満たす realm を定数から組み立てる。realm.json 側はこの形と一致していなければ違反になる。
+  const conformingRealm = () => ({
+    realm: AUTH_POLICY_REALM,
+    ...AUTH_POLICY_SCALARS,
+    requiredActions: [
+      { alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: true },
+      { alias: 'UPDATE_PASSWORD', enabled: true, defaultAction: false },
+    ],
+  });
+
+  cases.push({
+    name: '確定要件を満たす realm は逸脱なし',
+    pass: collectPolicyDeviations(conformingRealm()).length === 0,
+  });
+  // ↓ 以降は「変異させたら検出する」を確かめる。変異なしの正例だけでは、
+  //   走査対象に入っていなくても「逸脱なし」が成立してしまう（#742 で踏んだ型）。
+  cases.push({
+    name: '変異: passwordPolicy を落とすと検出する',
+    pass: (() => {
+      const r = conformingRealm(); delete r.passwordPolicy;
+      const d = collectPolicyDeviations(r);
+      return d.length === 1 && d[0].path === 'realm.passwordPolicy' && d[0].actual === '«未設定»';
+    })(),
+  });
+  cases.push({
+    name: '変異: otpPolicyLookAheadWindow を 2 にすると検出する（前後 1 ステップの境界）',
+    pass: (() => {
+      const r = conformingRealm(); r.otpPolicyLookAheadWindow = 2;
+      const d = collectPolicyDeviations(r);
+      return d.length === 1 && d[0].path === 'realm.otpPolicyLookAheadWindow' && d[0].actual === 2;
+    })(),
+  });
+  cases.push({
+    name: '変異: CONFIGURE_TOTP を enabled のみ（defaultAction=false）にすると検出する',
+    pass: (() => {
+      const r = conformingRealm();
+      r.requiredActions = [
+        { alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: false },
+        { alias: 'UPDATE_PASSWORD', enabled: true },
+      ];
+      const d = collectPolicyDeviations(r);
+      return d.length === 1 && d[0].path === 'realm.requiredActions[CONFIGURE_TOTP].defaultAction';
+    })(),
+  });
+  cases.push({
+    name: '変異: UPDATE_PASSWORD が無いと検出する（ADR-0045 決定 9-b の代替が成立しない）',
+    pass: (() => {
+      const r = conformingRealm();
+      r.requiredActions = [{ alias: 'CONFIGURE_TOTP', enabled: true, defaultAction: true }];
+      const d = collectPolicyDeviations(r);
+      return d.length === 1 && d[0].path === 'realm.requiredActions[UPDATE_PASSWORD]';
+    })(),
+  });
+  cases.push({
+    name: '変異: permanentLockout を true にすると検出する（15 分の一時ロックであること）',
+    pass: (() => {
+      const r = conformingRealm(); r.permanentLockout = true;
+      return collectPolicyDeviations(r).length === 1;
+    })(),
+  });
+  cases.push({
+    name: '別プロジェクトの realm（realm 名が違う）は検査しない',
+    pass: collectPolicyDeviations({ realm: 'ai-stock-trading' }).length === 0,
+  });
+  cases.push({
+    name: 'JSON パース→検査（checkRealmPolicyText）が通る',
+    pass: checkRealmPolicyText(JSON.stringify(conformingRealm())).length === 0,
+  });
+
+  // パスワードの「4 種のうち 3 種以上」の境界。2 種は拒否・3 種は受理。
+  const pwCases = [
+    ['Abcdefghij12', true, '小+大+数 ＝ 3 種'],
+    ['Abcdefghij!@', true, '小+大+記号 ＝ 3 種'],
+    ['ABCDEFGHIJ1!', true, '大+数+記号 ＝ 3 種'],
+    ['abcdefghi1!@', true, '小+数+記号 ＝ 3 種'],
+    ['Abcdefghi1!@', true, '4 種'],
+    ['abcdefghij12', false, '小+数 ＝ 2 種'],
+    ['abcdefghij!@', false, '小+記号 ＝ 2 種'],
+    ['ABCDEFGHIJ12', false, '大+数 ＝ 2 種'],
+    ['aaaaaaaaaaaa', false, '小のみ ＝ 1 種'],
+  ];
+  for (const [pw, want, note] of pwCases) {
+    cases.push({
+      name: `パスワード分類: ${note} → ${want ? '受理' : '拒否'}`,
+      pass: satisfiesPasswordClasses(pw) === want,
+    });
+  }
+  cases.push({
+    name: 'passwordPolicy の regexPattern 引数が PASSWORD_CLASS_REGEX と一致する（単一情報源）',
+    pass: AUTH_POLICY_SCALARS.passwordPolicy.endsWith(`regexPattern(${PASSWORD_CLASS_REGEX})`),
+  });
+  cases.push({
+    name: 'passwordPolicy に " and " 区切りを壊す文字列が正規表現へ混入していない（Keycloak のパーサ制約）',
+    pass: !PASSWORD_CLASS_REGEX.includes(' and ') && AUTH_POLICY_SCALARS.passwordPolicy.endsWith(')'),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -286,8 +480,9 @@ function main() {
   const results = checkFiles(files);
   const total = results.reduce((n, r) => n + r.violations.length, 0);
   const totalMissing = results.reduce((n, r) => n + r.missing.length, 0);
-  if (total === 0 && totalMissing === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落はありません。`);
+  const totalDeviations = results.reduce((n, r) => n + r.deviations.length, 0);
+  if (total === 0 && totalMissing === 0 && totalDeviations === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱はありません。`);
     process.exit(0);
   }
 
@@ -310,6 +505,17 @@ function main() {
     }
     console.error('\n当該経路の OIDC が invalid_redirect_uri で完了しなくなります。経路の対応は IADR-0095 の追記（#385）を参照してください。');
   }
+
+  if (totalDeviations > 0) {
+    console.error(`[check-realm-constraints] ADR-0026（認証UXとアカウント管理）の確定要件からの逸脱 ${totalDeviations} 件を検出しました:`);
+    for (const r of results) {
+      for (const d of r.deviations) {
+        console.error(`\n  ${r.file}\n    ${d.path}: 期待 ${JSON.stringify(d.expected)} / 実際 ${JSON.stringify(d.actual)}`);
+      }
+    }
+    console.error('\nSC-14（OTP／多要素認証）・SC-15（パスワードリセット）が計画の確定要件を満たさなくなります。'
+      + '\n確定値の正は planning の ADR-0026 であり、実装側の記録は IADR-0197（#578）です。');
+  }
   process.exit(1);
 }
 
@@ -322,6 +528,13 @@ module.exports = {
   checkRealmText,
   collectMissingUrls,
   checkRealmUrlsText,
+  collectPolicyDeviations,
+  checkRealmPolicyText,
+  satisfiesPasswordClasses,
   MAX_LEN,
   REQUIRED_CLIENT_URLS,
+  PASSWORD_CLASS_REGEX,
+  AUTH_POLICY_REALM,
+  AUTH_POLICY_SCALARS,
+  AUTH_POLICY_REQUIRED_ACTIONS,
 };

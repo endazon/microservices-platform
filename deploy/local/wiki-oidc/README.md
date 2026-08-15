@@ -27,11 +27,11 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 | --- | --- |
 | Client ID | `wiki-js` |
 | Client Secret | realm の `wiki-js` client secret（dev プレースホルダ `wiki-js-dev-secret-change-me`・**本番は変更**・**UI 入力＝リポジトリに平文コミットしない**） |
-| Authorization Endpoint URL | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/auth` |
-| Token Endpoint URL | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/token` |
-| User Info Endpoint URL | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/userinfo` |
-| Issuer | `http://keycloak:8080/realms/microservices-platform` |
-| Logout URL（任意） | `http://keycloak:8080/realms/microservices-platform/protocol/openid-connect/logout` |
+| Authorization Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/auth` |
+| Token Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/token` |
+| User Info Endpoint URL | `http://keycloak:8080/realms/platform/protocol/openid-connect/userinfo` |
+| Issuer | `http://keycloak:8080/realms/platform` |
+| Logout URL（任意） | `http://keycloak:8080/realms/platform/protocol/openid-connect/logout` |
 
 - **Site URL（重要・Administration → General）**: **利用する経路の到達 URL と一致させる**。値は下の
   **次節「Site URL は経路と一致させる」**を参照（edge=`http://wiki.localhost:50000` /
@@ -75,7 +75,7 @@ T=$(curl -s $KCADM/realms/master/protocol/openid-connect/token -d grant_type=pas
   -d password="$(kubectl -n platform-infra get secret keycloak-admin -o jsonpath='{.data.password}' | base64 -d)" | jq -r .access_token)
 WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?clientId=wiki-js" | jq -r '.[0].secret')
 
-KC=http://keycloak:8080/realms/microservices-platform
+KC=http://keycloak:8080/realms/platform
 # Site URL は経路と一致させる（#385）。既定＝edge 集約。port-forward 単独なら SITE_URL=http://localhost:3300
 SITE_URL="${SITE_URL:-http://wiki.localhost:50000}"
 CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{

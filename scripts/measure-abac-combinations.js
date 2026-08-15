@@ -34,7 +34,7 @@
  * 主な環境変数（既定は経路B の値）:
  *   ABAC_NS=platform-infra / ABAC_PG_LABEL=app=postgres / ABAC_KC_LABEL=app=keycloak
  *   ABAC_PG_USER=kp / ABAC_DOC_DB=document_svc / ABAC_AUTHZ_DB=authz_svc
- *   ABAC_REALM=microservices-platform / ABAC_KC_ADMIN_USER=admin / ABAC_KC_ADMIN_PASSWORD=admin
+ *   ABAC_REALM=platform / ABAC_KC_ADMIN_USER=admin / ABAC_KC_ADMIN_PASSWORD=admin
  *
  * 出力: 既定は人が読める要約。--json で機械可読、--dump <path> で収集した生データを保存する
  *       （保存した生データは --input で再集計できる＝測定機会を失った後も追試できる）。
@@ -454,7 +454,7 @@ function fetchUsersOverKcadm(realm) {
 }
 
 async function collect() {
-  const realm = env('ABAC_REALM', 'microservices-platform');
+  const realm = env('ABAC_REALM', 'platform');
   const docDsn = env('ABAC_DOC_DSN', '');
   const authzDsn = env('ABAC_AUTHZ_DSN', '');
   const kcUrl = env('ABAC_KC_URL', '');

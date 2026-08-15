@@ -220,13 +220,13 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 #   → http://localhost:8081/bff/...     （nginx が in-cluster bff-service:8080 へプロキシ。BFF port-forward 不要）
 ```
 
-> **ローカル port-forward のポートは realm の `spa-web` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
+> **ローカル port-forward のポートは realm の `platform-spa` に恒久登録済みの `8081` または `3100` を使う**（`redirectUris`=
 > `http://localhost:{8081,3100}/*`・`webOrigins` 同左。ログアウト後リダイレクト `post.logout.redirect.uris` も両ポートを
 > 登録済みで、値は Keycloak の複数値区切り `##` で連結する〔`http://localhost:3100/*##http://localhost:8081/*`〕・Issue #340）。
 > SPA は `redirect_uri=<origin>/callback` を送るため、
-> ブラウザで開く origin（＝上の port-forward のローカルポート）が `spa-web` に登録されている必要がある。両ポートとも
+> ブラウザで開く origin（＝上の port-forward のローカルポート）が `platform-spa` に登録されている必要がある。両ポートとも
 > 登録済みのため、**ブラウザ OIDC で Keycloak 管理コンソールへの redirect URI 手動追加は不要**。別のローカルポートを
-> 使いたい場合は、そのポートを `deploy/keycloak/microservices-platform-realm.json` の `spa-web` に追記する（realm.json の
+> 使いたい場合は、そのポートを `deploy/keycloak/microservices-platform-realm.json` の `platform-spa` に追記する（realm.json の
 > 変更は**新規クラスタ作成時の realm import で反映**される。**既存のローカル環境**では管理コンソールで一度追加するか、
 > `k3d cluster delete msp-ast-dev` → 再作成で realm を再 import して反映する。永続化 `PERSIST=1` 時の反映手順は上記
 > 「realm を更新したときの反映手順」を参照）。
@@ -234,7 +234,7 @@ kubectl -n microservices-platform port-forward svc/frontend-service 8081:8080
 frontend pod の nginx が `/bff/*` を in-cluster の `bff-service:8080` へ内部プロキシするため、上の BFF port-forward
 （5080）は SPA 経由では不要（`/bff` を直接叩いて確認したい場合のみ使う）。OIDC は下記 issuer 統一の**手順A**に
 従う（browser も cluster も `http://keycloak:8080` を issuer として共有する。`values-local` は OIDC を上書きせず
-base 既定 `http://keycloak:8080/realms/microservices-platform` のまま＝backend の `Auth__Authority` と一致）。
+base 既定 `http://keycloak:8080/realms/platform` のまま＝backend の `Auth__Authority` と一致）。
 
 > 本番像は `edge.enabled=true` で Istio VirtualService の catch-all（`/bff`・`/realms` の後）が SPA を
 > `frontend-service` へ流し、`allow-edge-ingress-to-frontend` NetworkPolicy が default-deny 下の到達を許可する。
@@ -280,15 +280,15 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   1. hosts に `127.0.0.1 keycloak` を追記（Windows: `C:\Windows\System32\drivers\etc\hosts`）。
   2. `kubectl -n platform-infra port-forward svc/keycloak 8080:8080`。
   3. これで browser も cluster も `http://keycloak:8080` を issuer として共有する。SPA は compose の frontend
-     （`http://localhost:3100`・既存 `spa-web` origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
-     （`http://localhost:5080`）へ、`OIDC_AUTHORITY` を `http://keycloak:8080/realms/microservices-platform` へ向ける。
+     （`http://localhost:3100`・既存 `platform-spa` origin）を使い、その `BFF_UPSTREAM` を上記 BFF port-forward
+     （`http://localhost:5080`）へ、`OIDC_AUTHORITY` を `http://keycloak:8080/realms/platform` へ向ける。
      k8s 配信（#313）で確認する場合は上記「SPA(/settings) 到達」の `frontend-service` port-forward（`8081` または
-     `3100`）を使う。**いずれのポートも `spa-web` に恒久登録済み**（`http://localhost:{8081,3100}/*`・#340）のため、
+     `3100`）を使う。**いずれのポートも `platform-spa` に恒久登録済み**（`http://localhost:{8081,3100}/*`・#340）のため、
      ブラウザ OIDC で管理コンソールへの redirect URI 手動追加は不要（手順A は per-session の realm 改変なしで成立する）。
   4. token 検証: 取得した access_token を base64url デコードし `iss` と `realm_access.roles`（`trading-owner`）を確認する。
 - **手順B（単一エッジ host に集約する場合・任意）**: chart の `edge.oidc.enabled=true` で SPA/`/bff`/`/realms` を
   同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
-  `spa-web` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
+  `platform-spa` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
   同 host を解決させる。(iii) は稼働環境依存＝live。(iii) には次の 2 択がある。
   - **(iii-a) backend の metadata/issuer 分離（推奨・Issue #314 / [IADR-0086](../../docs/adr/IADR-0086_oidc-issuer-metadata-split.md)）**:
     CoreDNS を触らず、backend の OIDC 検証で metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する。
@@ -296,8 +296,8 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
     ```yaml
     global:
       auth:
-        metadataAddress: http://keycloak:8080/realms/microservices-platform/.well-known/openid-configuration
-        validIssuers: https://<edge-host>/realms/microservices-platform
+        metadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
+        validIssuers: https://<edge-host>/realms/platform
     ```
     サービスは in-cluster の `metadataAddress` から署名鍵(JWKS)を取得し、エッジ host の `iss` を `validIssuers` で
     受理する。issuer 検証は弱めない（`ValidateIssuer=true` のまま・metadata 由来 issuer と併存＝手順A token も通る）。
@@ -306,7 +306,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
     環境ごとに壊れやすいため、(iii-a) が使えない構成向けの代替とする。
 
 > 実ブラウザログイン end-to-end・Playwright E2E・Pod 実起動ヘルス緑は稼働 k3d 依存（本 issue の live 分・#284）。
-> 手順B の単一エッジ host OIDC 実ログインも稼働環境（エッジ host 到達・`spa-web` redirectUris 追記）依存＝live（#314）。
+> 手順B の単一エッジ host OIDC 実ログインも稼働環境（エッジ host 到達・`platform-spa` redirectUris 追記）依存＝live（#314）。
 
 ## Headlamp（k8s 管理 UI・Keycloak OIDC・Issue #271）
 
@@ -340,7 +340,7 @@ backend（`Auth__Authority`）・ArgoCD・Grafana・MinIO・Vault・Wiki.js の 
 
 ```
 Error: invalid authentication configuration: jwt[0].issuer.url:
-  Invalid value: "http://keycloak:8080/realms/microservices-platform": URL scheme must be https
+  Invalid value: "http://keycloak:8080/realms/platform": URL scheme must be https
 ```
 
 で **19:46:33〜19:47:53 の間に 10 回連続で起動失敗し、クラスタが停止した**（ドロップインを外して再起動するまで

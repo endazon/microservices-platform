@@ -20,8 +20,8 @@ k6 は threshold 未達で**非ゼロ終了**するため、そのままゲー�
 - 実行対象の稼働環境（BFF エッジに到達可能）。**本番相当のデータ量**（検索は 1 万件規模のカタログ）を投入しておく。
 - 認証: BFF は Keycloak JWT を要求する。以下のいずれか。
   - `TOKEN=<事前取得済みアクセストークン>`（最優先）。
-  - Keycloak パスワードグラント: `KC_TOKEN_URL` / `KC_CLIENT_ID`（既定 `spa-web`）/ `KC_USERNAME` / `KC_PASSWORD`。
-    dev realm の `poc-user` を使う場合は、`spa-web` の direct access grants 有効化が前提。
+  - Keycloak パスワードグラント: `KC_TOKEN_URL` / `KC_CLIENT_ID`（既定 `platform-spa`）/ `KC_USERNAME` / `KC_PASSWORD`。
+    dev realm の `poc-user` を使う場合は、`platform-spa` の direct access grants 有効化が前提。
   - 秘密情報はスクリプトに埋め込まない（env 経由・コミット禁止。`docs/security/security.md`）。
 
 ## 実行
@@ -35,7 +35,7 @@ BASE_URL=http://localhost:5000 TOKEN=<jwt> k6 run perf/k6/rag-load.js
 
 # Keycloak パスワードグラント例
 BASE_URL=http://localhost:5000 \
-  KC_TOKEN_URL=http://localhost:8080/realms/microservices-platform/protocol/openid-connect/token \
+  KC_TOKEN_URL=http://localhost:8080/realms/platform/protocol/openid-connect/token \
   KC_USERNAME=poc-user KC_PASSWORD=*** \
   k6 run perf/k6/search-load.js
 ```

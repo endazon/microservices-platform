@@ -6,8 +6,8 @@
 // 認証（いずれか）:
 //   TOKEN      … 事前取得済みの Bearer アクセストークン（最優先）
 //   もしくは Keycloak パスワードグラント（dev realm の poc-user 等）:
-//     KC_TOKEN_URL  … 例 http://localhost:8080/realms/microservices-platform/protocol/openid-connect/token
-//     KC_CLIENT_ID  … 既定 spa-web（public client。direct access grants 有効化が前提）
+//     KC_TOKEN_URL  … 例 http://localhost:8080/realms/platform/protocol/openid-connect/token
+//     KC_CLIENT_ID  … 既定 platform-spa（public client。direct access grants 有効化が前提）
 //     KC_USERNAME / KC_PASSWORD … 例 poc-user / （dev シード）
 //
 // 秘密情報はスクリプトに埋め込まない（env 経由・コミット禁止。docs/security）。
@@ -31,7 +31,7 @@ export function obtainToken() {
     tokenUrl,
     {
       grant_type: 'password',
-      client_id: __ENV.KC_CLIENT_ID || 'spa-web',
+      client_id: __ENV.KC_CLIENT_ID || 'platform-spa',
       username: __ENV.KC_USERNAME || 'poc-user',
       password: __ENV.KC_PASSWORD || '',
     },
