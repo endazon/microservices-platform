@@ -765,6 +765,104 @@ module.exports = ({ ok, assert }) => {
     assert.deepStrictEqual(stale, [], `specMissing の減らし忘れ: ${stale.join(' / ')}`);
   });
 
+  // --- check-test-traceability: 担当 issue の突合（無主の区別・Issue #748） --------
+
+  // NFR, #748: warn の並び（未着手）と「引受先が未定（無主）」が区別できず、同型の誤判定が
+  // 3 回起きた。3 件とも issue 本文は**範囲表記**で ID を挙げており（#438 の本文に `SC-14` と
+  // いう文字列は無い）、素の文字列一致では捕まらない。原文（#748 本文の引用）で回帰させる。
+  const OWNER_FIXTURE = [
+    { number: 438, text: 'スコープ: Keycloak 統合: 認証画面テーマ（SC-13〜16）／起点 ID: SC-09, SC-13〜17' },
+    { number: 445, text: 'スコープ: MCP クライアント登録管理（SC-12 / UC-09）／起点 ID: FR-16 / UC-08, UC-09 / SC-12' },
+    { number: 450, text: '起点 ID: FR-17, FR-18 / UC-10 / SC-03, SC-09, SC-10, SC-18, SC-21' },
+  ];
+
+  ok('claimedIds: 範囲表記（〜 / ～ / .. / -）を展開し、根拠の表記を保つ（NFR, #748）', () => {
+    const claimed = trace.claimedIds(OWNER_FIXTURE[0].text);
+    for (const id of ['SC-13', 'SC-14', 'SC-15', 'SC-16', 'SC-17']) assert.ok(claimed.has(id), `${id} が展開されない`);
+    assert.strictEqual(claimed.get('SC-14'), 'SC-13〜17'); // 根拠は元の表記そのもの
+    assert.ok(trace.claimedIds('SC-13〜SC-17').has('SC-15')); // 両端に種別が付く形
+    assert.ok(trace.claimedIds('SC-13～17').has('SC-15'));
+    assert.ok(trace.claimedIds('FR-01..22').has('FR-10'));
+    assert.ok(trace.claimedIds('SC-09-11').has('SC-10'));
+    // 負例: 種別が食い違う形・修飾付き（別プロジェクト）は範囲として展開しない。
+    assert.strictEqual(trace.claimedIds('SC-13〜FR-17').has('SC-15'), false);
+    assert.strictEqual(trace.claimedIds('AST/SC-01〜03').has('SC-02'), false);
+  });
+
+  // NFR, #748: 過去 3 件（SC-14 / SC-15 → #438、UC-09 → #445、UC-10 → #450）の回帰。
+  ok('buildIssueOwnership: 過去 3 件の見落としを「担当あり」と判定し根拠を出す（NFR, #748）', () => {
+    const ownership = trace.buildIssueOwnership(OWNER_FIXTURE);
+    assert.strictEqual(trace.formatOwnership('SC-14', ownership), '#438「SC-13〜17」');
+    assert.strictEqual(trace.formatOwnership('SC-15', ownership), '#438「SC-13〜17」');
+    assert.match(trace.formatOwnership('UC-09', ownership), /^#445/);
+    assert.strictEqual(trace.formatOwnership('UC-10', ownership), '#450「UC-10」');
+    assert.deepStrictEqual(trace.unownedPlanIds(['SC-14', 'SC-15', 'UC-09', 'UC-10'], ownership), []);
+  });
+
+  // ★ **変異試験**（#748 受け入れ基準 3）。正例だけの緑では、突合対象に入っていなくても
+  //   「無主 0 件」が成立してしまう。**無主を仕込むと本当に fail するか**を spawn で実測する。
+  ok('担当 issue の突合: 無主を仕込むと exit 1（変異試験。NFR, #748）', () => {
+    const { spawnSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-id-owners-'));
+    const file = path.join(dir, 'owners.json');
+    fs.writeFileSync(file, JSON.stringify({ generatedAt: '2026-08-15T00:00:00Z', issues: OWNER_FIXTURE }));
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+    const out = `${r.stdout}\n${r.stderr}`;
+    assert.strictEqual(r.status, 1, `無主があるのに fail しない:\n${out}`);
+    assert.match(out, /担当 issue が無い計画 ID/);
+    // 無主として名指しされるのは 3 issue が引き受けていない ID だけである。
+    assert.match(out, /SC-20/);
+    // ★ 同じ 1 回の実行で、**過去 3 件が無主に混じらない**ことも確かめる（回帰と変異の同時固定）。
+    const unowned = (out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '';
+    for (const id of ['SC-14', 'SC-15', 'UC-09', 'UC-10']) {
+      assert.ok(!unowned.split(' / ').includes(id), `${id} が無主として出ている: ${unowned}`);
+    }
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  // ★ **実装が完了して issue が閉じた ID を「無主」にしない**（NFR, #748）。
+  //
+  //   突合材料は **open issue だけ**を載せる（closed の絞り込みは生成側の責務）。したがって
+  //   母集合を計画レンジ全件にすると、**完了済みの FR/UC/SC が軒並み「担当 issue が無い」**
+  //   になり、CI が全 PR のマージ経路を塞ぐ。本 issue が解こうとしている「未着手と無主の混同」を
+  //   「完了済みと無主」の間で作り直すだけである。母集合は `missingSpec` に限る。
+  //
+  //   この形は **AI レビューが擬似 owners.json で実際に再現して見つけた**（実装済み 29 件が
+  //   丸ごと無主として fail した）。素通りしていた理由は、材料が無い間は skip されるため
+  //   **生成側が動き出すまで顕在化しない**ことにある。
+  ok('担当 issue の突合: テスト仕様書がある ID は無主に混ぜない（NFR, #748）', () => {
+    const { spawnSync } = require('child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-id-owners-closed-'));
+    const file = path.join(dir, 'owners.json');
+    // **どの ID も引き受けていない**材料（open issue が 1 件も無い状態に相当）。
+    fs.writeFileSync(file, JSON.stringify({ generatedAt: '2026-08-15T00:00:00Z', issues: [] }));
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: file } });
+    const out = `${r.stdout}\n${r.stderr}`;
+    const unowned = ((out.match(/\[担当 issue が無い計画 ID\] ([^\n]*)/) || [])[1] || '').split(' / ');
+    // テスト仕様書があるものは、引受先が空でも無主にならない（母集合が missingSpec だから）。
+    const specIds = trace.collectSpecIds();
+    assert.ok(specIds.size > 0, 'テスト仕様書の ID を 1 件も読めていない（走査が壊れている）');
+    const wrongly = [...specIds].filter((id) => unowned.includes(id));
+    assert.deepStrictEqual(
+      wrongly,
+      [],
+      `テスト仕様書がある ID を無主として出している（母集合が planIds になっている）:\n${wrongly.join(' / ')}`,
+    );
+    fs.rmSync(dir, { recursive: true });
+  });
+
+  // NFR, #748: 突合材料は「あれば読む、無ければ skip」。**skip を黙って通さない**
+  //（「無主 0 件」と「見ていない」が読み分けられないと、検査しているつもりの状態が残る）。
+  ok('担当 issue の突合: 材料が無ければ skip し、skip したことを出力する（NFR, #748）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js')],
+      { encoding: 'utf8', env: { ...process.env, PLAN_ID_OWNERS: path.join(os.tmpdir(), 'no-such-owners.json') } });
+    assert.strictEqual(r.status, 0, `材料が無いのに落ちる:\n${r.stdout}\n${r.stderr}`);
+    assert.match(`${r.stdout}\n${r.stderr}`, /突合は skip しました/);
+  });
+
   ok('check-test-traceability --self-test は exit 0（逆方向検査の正例・負例を含む）', () => {
     const { spawnSync } = require('child_process');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'check-test-traceability.js'), '--self-test'], { encoding: 'utf8' });
