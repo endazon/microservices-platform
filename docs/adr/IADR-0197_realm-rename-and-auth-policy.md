@@ -141,6 +141,36 @@ length(12) and passwordHistory(5) and regexPattern(^(?:(?=.*[a-z])(?=.*[A-Z])(?=
 
 ## フォローアップ
 
+0. **AST（`src/ai-stock-trading`）側の消費者設定を追随させる。** 本リポジトリの母集合は
+   `src/ai-stock-trading` を除外している —— **AST は独自の計画リポジトリと ADR を持つ別プロジェクトであり、
+   submodule のため本リポジトリからは是正できない**（[[IADR-0120]]）。しかし `AST/IADR-0093`（KB writer の
+   クロスレルム s2s）により、**AST は MSP のレルムを Authority として消費する**。改名の影響が AST 側へ及ぶ。
+
+   > **`IADR-0093` は名前空間が衝突している。** 本リポジトリの [[IADR-0093]] は MinIO の OIDC 連携であり、
+   > **別の決定**である。`.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合の ID 修飾」に従い
+   > **`AST/IADR-0093` と修飾する**（裸の `IADR-0093` は常に本リポジトリを指す）。
+
+   **実測（AST pin `7f69fb5` 時点。7 ファイル）**:
+
+   | 区分 | 箇所 |
+   | --- | --- |
+   | **live な値**（実際に効く） | `deploy/helm/ai-stock-trading/values-local.yaml:106,141`（`KnowledgeBase__Auth__Authority`） |
+   | **テストの期待値** | `backend/Shared/AiStockTrading.Shared.KnowledgeBase.Tests/KnowledgeBaseAuthTests.cs:26,32,40,46,69` |
+   | **例・コメント** | `.env.example:149` ／ `values.yaml:275` ／ `InformationCollectionService.Api/appsettings.Development.json:29` |
+   | **記録（書き換えない）** | AST 側 `docs/adr/IADR-0093_kb-writer-cross-realm-s2s.md:90` ／ `docs/specs/20260719_kb-writer-cross-realm-s2s.md:80` |
+
+   **いま壊れてはいない** —— `KnowledgeBase:Auth:*` は既定空＝ no-op であり（`AST/IADR-0093` 決定 4）、
+   統合は無効のままだからである。**しかし #438 がこの統合を有効化した時点で、旧レルム名のままだと
+   401 になり fail-safe（未保存）へ倒れる。** 症状が「静かに保存されない」であるため気づきにくい。
+
+   **是正は AST 側のリポジトリで行う必要がある**（本リポジトリからは変更できない）。
+
+   > **［発見の経緯］** この抜けは PR #746 の AI レビューが指摘した。**最初の確認は偽陰性だった** ——
+   > superproject で `git grep -- src/ai-stock-trading` を実行すると **0 件**が返る。
+   > **`git grep` は submodule の中へ降りない**（エラーも警告も出ない）。submodule のディレクトリへ
+   > 入って実行し直して 7 件を確認した。**母集合をパスで絞るとき、submodule 境界は「除外した」のではなく
+   > 「最初から見えていない」** —— 規則 3（拡張子で絞らない）と同じ型の落とし穴である。
+
 1. **上記リスクを実環境で確認する**（#438）。import が失敗する場合の是正は dev ユーザーのパスワードをポリシー準拠へ変えることだが、**`docs/` の複数箇所と `docs/operations/local-sso-recovery-runbook.md` が現行値を案内している**ため、まとめて追随させる必要がある。
 2. **テーマ実体（SC-13〜16）と `loginTheme` / `accountTheme` の投入**（#438）。
 3. **`smtpServer` の投入**（#438。足りないもの 3 点が供給されてから）。

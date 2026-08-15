@@ -131,6 +131,26 @@ $ git grep -l -I 'knowledge-platform' -- . ':!planning' ':!src/ai-stock-trading'
 - **`docs/screens/SC-04_wiki-access.md` ほか既存画面仕様書**に `spa-web` が無いことを確認済み（0 件）
 - 検査器 `scripts/check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` は **`wiki-js` だけを見ており `spa-web` を持たない**（実測）。したがって改名で stale にならない
 
+### 2.6 ★ 母集合の外にあるが影響が及ぶもの —— AST submodule（レビュー指摘で追加）
+
+**`src/ai-stock-trading` は本作業の母集合から除外している。** 理由は「対象外だから」ではなく
+**本リポジトリからは是正できないから**である —— AST は独自の計画リポジトリと ADR を持つ別プロジェクトで、
+submodule として取り込まれている（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）。
+
+しかし `AST/IADR-0093`（KB writer の
+クロスレルム s2s）により、**AST は MSP のレルムを Authority として消費する**。したがって
+**改名の影響は母集合の外へ及ぶ**。実測すると AST pin `7f69fb5` 時点で **7 ファイル**が旧レルム名を持つ
+（内訳と是正先は [IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md) フォローアップ 0）。
+
+> **★ 最初の確認は偽陰性だった。** superproject で
+> `git grep -n 'realms/microservices-platform' -- src/ai-stock-trading` を実行すると **0 件**が返る。
+> **`git grep` は submodule の中へ降りない** —— エラーも警告も出ない。submodule のディレクトリへ入って
+> 実行し直して 7 件を確認した。
+> **パスで母集合を絞るとき、submodule 境界は「除外した」のではなく「最初から見えていない」。**
+> 規則 3（拡張子で絞らない）と同じ型であり、**除外したつもりの範囲が実は走査対象ですらなかった**という
+> 別の失敗である。本作業では結果的に判断は変わらなかった（AST は是正できないため除外が正しい）が、
+> **「0 件だから無い」と読んでいたら影響の存在ごと見落としていた。**
+
 ## 3. 変更内容
 
 ### 3.1 改名（決定 31 / ADR-0026）
