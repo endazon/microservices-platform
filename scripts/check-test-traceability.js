@@ -212,6 +212,89 @@ function readPlanIds(rulesPath = path.join(REPO_ROOT, RULES_FILE)) {
   return expandPlanIds(parsePlanRanges(section));
 }
 
+// --- 担当 issue の突合（無主の ID を warn の並びから区別する・#748） -------------
+
+/*
+ * NFR, #748: 逆方向検査の warn は「まだ着手していない ID」の並びであり、その中に
+ * 「引受先が未定の ID（無主）」が混じっていても見分けられない。この並びを見て
+ * 「担当 issue が無い」と結論する誤りが 3 回起きた（SC-14 / SC-15 → #438、UC-09 → #445、
+ * UC-10 → #450 が実際には引き受けていた）。**機械的な核心は範囲表記**で、#438 の本文には
+ * `SC-13〜17` とあり `SC-14` という文字列は存在しない——素の文字列一致では 3 件とも捕まらない。
+ *
+ * 突合材料（issue の起点 ID）は GitHub API でしか取れないため、本検査器の「外部依存ゼロ」を
+ * 保つべく **事前生成物の JSON があれば読み、無ければ skip** する（check-doc-links.js が
+ * submodule 未 populate で skip するのと同型）。生成側（定期ジョブ）は本作業の範囲外であり、
+ * open な issue だけを載せる責務も生成側にある。
+ */
+const OWNERS_FILE = 'plan-id-issue-owners.json';
+
+/**
+ * 範囲表記の区切り。**あり得る形を列挙してから引く**（.claude/rules/traceability.md 規則 2）。
+ * `〜`(U+301C) / `～`(U+FF5E) / `~` / `..` / `-` の 5 形を実測から採る。
+ */
+const CLAIM_RANGE_RE = /(?<!\w)(?<!\w\/)(FR|UC|SC)-(\d+)\s*(?:[〜～~]|\.\.|-)\s*(?:(FR|UC|SC)-)?(\d+)(?!\d)/g;
+
+/**
+ * issue の本文テキストから「引き受けている計画 ID」と**その根拠となった表記**を取り出す。
+ * 戻り値: Map<ID, 表記>。表記をそのまま持つことが判定結果の根拠出力になる。
+ * 修飾付き（AST/FR-17）の除外・ゼロ埋め正規化は idsInText と同じ規則に従う。
+ */
+function claimedIds(text) {
+  const out = new Map();
+  const t = String(text);
+  const re = new RegExp(CLAIM_RANGE_RE.source, 'g');
+  let m;
+  while ((m = re.exec(t)) !== null) {
+    const [notation, kind, from, rightKind, to] = m;
+    // `SC-13〜FR-17` は範囲ではない（種別が違う）。`to > from` でないものも範囲と読まない。
+    if (rightKind && rightKind !== kind) continue;
+    const a = Number(from);
+    const b = Number(to);
+    if (!(b > a)) continue;
+    for (let n = a; n <= b; n++) out.set(`${kind}-${String(n).padStart(2, '0')}`, notation);
+  }
+  // 単体表記は範囲の根拠を上書きしない（範囲のほうが情報量が多い）。
+  for (const id of idsInText(t)) if (!out.has(id)) out.set(id, id);
+  return out;
+}
+
+/** issues（{ number, text }）から ID → 引受先の一覧を作る。 */
+function buildIssueOwnership(issues) {
+  const map = new Map();
+  for (const it of issues || []) {
+    for (const [id, notation] of claimedIds(it.text || '')) {
+      if (!map.has(id)) map.set(id, []);
+      map.get(id).push({ issue: it.number, notation });
+    }
+  }
+  return map;
+}
+
+/** 引受先が 1 件も無い計画 ID（＝本当の無主）。 */
+function unownedPlanIds(planIds, ownership) {
+  return [...planIds].filter((id) => !ownership.has(id)).sort();
+}
+
+/** 根拠の整形。「どの issue の、どの表記で引き受けられているか」を出す（#748 受け入れ基準）。 */
+function formatOwnership(id, ownership) {
+  return (ownership.get(id) || []).map((e) => `#${e.issue}「${e.notation}」`).join(' / ');
+}
+
+/**
+ * 突合材料を読む。**無ければ null（skip）**——「無主 0 件」と「見ていない」を読み分けるため、
+ * 呼び出し側は null を必ず明示的に報告する。パスは PLAN_ID_OWNERS で差し替えられる（変異試験用）。
+ */
+function readIssueOwners(file = process.env.PLAN_ID_OWNERS || path.join(__dirname, OWNERS_FILE)) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch {
+    return null;
+  }
+  const data = JSON.parse(raw);
+  return Array.isArray(data.issues) ? data.issues : null;
+}
+
 /** 計画レンジにあるのに docs/tests/ に仕様書が無い ID（warn 対象）。 */
 function missingSpecIds(planIds, specIds) {
   return [...planIds].filter((id) => !specIds.has(id)).sort();
@@ -391,6 +474,55 @@ function selfTest() {
   t('implementedWithoutSpec: 負例 — 未着手（テスト参照も無い）は対象外',
     implementedWithoutSpec(['FR-16'], new Set(['FR-01'])).length === 0);
 
+  // --- 担当 issue の突合（#748）: 範囲表記の展開と無主の判定 -----------------------
+
+  // 過去 3 件の見落としの原文（#748 本文が引用した issue 本文の表記）。
+  const OWNER_FIXTURE = [
+    { number: 438, text: 'スコープ: Keycloak 統合: 認証画面テーマ（SC-13〜16）／起点 ID: SC-09, SC-13〜17' },
+    { number: 445, text: 'スコープ: MCP クライアント登録管理（SC-12 / UC-09）／起点 ID: FR-16 / UC-08, UC-09 / SC-12' },
+    { number: 450, text: '起点 ID: FR-17, FR-18 / UC-10 / SC-03, SC-09, SC-10, SC-18, SC-21' },
+  ];
+
+  t('claimedIds: 範囲表記 SC-13〜17 を展開する（SC-14 という文字列は原文に無い）',
+    ['SC-13', 'SC-14', 'SC-15', 'SC-16', 'SC-17'].every((id) => claimedIds(OWNER_FIXTURE[0].text).has(id)));
+  t('claimedIds: 展開の根拠として元の表記を持つ',
+    claimedIds(OWNER_FIXTURE[0].text).get('SC-14') === 'SC-13〜17');
+  t('claimedIds: 両端に種別が付く形（SC-13〜SC-17）も展開する', claimedIds('SC-13〜SC-17').has('SC-15'));
+  t('claimedIds: 全角チルダ・`..`・ハイフンの区切りも展開する',
+    claimedIds('SC-13～17').has('SC-15') && claimedIds('FR-01..22').has('FR-10') && claimedIds('SC-09-11').has('SC-10'));
+  t('claimedIds: 負例 — 種別が食い違う SC-13〜FR-17 は範囲として展開しない',
+    !claimedIds('SC-13〜FR-17').has('SC-15'));
+  t('claimedIds: 負例 — 修飾付き（AST/SC-01〜03）は他プロジェクトなので拾わない',
+    !claimedIds('AST/SC-01〜03').has('SC-02'));
+  t('claimedIds: 負例 — 逆順・同値は範囲として展開せず、左端の単体 ID だけになる',
+    claimedIds('SC-17〜13').size === 1 && claimedIds('SC-17〜13').has('SC-17'));
+
+  {
+    const ownership = buildIssueOwnership(OWNER_FIXTURE);
+    // 回帰: 過去 3 件はいずれも「担当あり」である（#748 の表 1〜3）。
+    // 同じ issue が複数の表記で同じ ID を挙げても根拠は 1 件（後勝ち）に畳む。
+    t('buildIssueOwnership: 回帰 — SC-14 / SC-15 は #438 が引き受けている',
+      formatOwnership('SC-14', ownership) === '#438「SC-13〜17」'
+      && ownership.has('SC-15'), formatOwnership('SC-14', ownership));
+    t('buildIssueOwnership: 回帰 — UC-09 は #445、UC-10 は #450 が引き受けている',
+      formatOwnership('UC-09', ownership).startsWith('#445') && formatOwnership('UC-10', ownership) === '#450「UC-10」');
+
+    // 変異: 実際に無主の ID（SC-20）を仕込むと、それだけが無主として出る。
+    t('unownedPlanIds: 変異 — 誰も引き受けていない SC-20 は無主として出る',
+      JSON.stringify(unownedPlanIds(['SC-14', 'UC-09', 'UC-10', 'SC-20'], ownership)) === '["SC-20"]');
+
+    // 変異: 範囲展開を外す（素の文字列一致に戻す）と、過去 3 件が無主に混じる。
+    // **この行が落ちなければ、範囲展開は結論に効いていない。**
+    const naive = buildIssueOwnership(OWNER_FIXTURE.map((i) => ({
+      number: i.number, text: [...idsInText(i.text)].join(' '),
+    })));
+    t('unownedPlanIds: 変異 — 範囲展開を外すと SC-14 / SC-15 が無主に混じる（見落としの再現）',
+      JSON.stringify(unownedPlanIds(['SC-14', 'SC-15', 'UC-09', 'UC-10'], naive)) === '["SC-14","SC-15"]');
+  }
+
+  t('readIssueOwners: 突合材料が無ければ null（skip。0 件検査を「無主 0 件」と偽らない）',
+    readIssueOwners(path.join(REPO_ROOT, 'no-such-owners.json')) === null);
+
   // 実ファイルでの固定。レンジが読めなくなる／数が変わることを検知する（数が変わったら本行を直す）。
   {
     const ids = readPlanIds();
@@ -478,7 +610,28 @@ function main() {
       'specMissing から削除すること。');
   }
 
+  // #748: warn の並び（未着手）から「本当に無主の ID」を区別する。突合材料が無ければ skip し、
+  // **skip したことを必ず出す**（「無主 0 件」と「見ていない」を読み分けられるようにするため）。
+  const owners = readIssueOwners();
+  let unowned = [];
+  if (owners === null) {
+    notice(`担当 issue の突合は skip しました（突合材料 scripts/${OWNERS_FILE} がありません）。` +
+      'これは「無主 0 件」ではなく「見ていない」状態です。');
+  } else {
+    const ownership = buildIssueOwnership(owners);
+    unowned = unownedPlanIds(planIds, ownership);
+    const ownedInWarn = missingSpec.filter((id) => ownership.has(id));
+    if (ownedInWarn.length) {
+      notice(`テスト仕様書が無い ${missingSpec.length} 件のうち ${ownedInWarn.length} 件は担当 issue があります` +
+        `（未着手であって無主ではない）: ${ownedInWarn.map((id) => `${id} ← ${formatOwnership(id, ownership)}`).join(' / ')}`);
+    }
+  }
+
   const failures = [];
+  if (unowned.length) {
+    failures.push(`[担当 issue が無い計画 ID] ${unowned.join(' / ')}\n    どの open issue も起点 ID として宣言していません（未着手ではなく引受先が未定）。` +
+      `\n    引き受ける issue を起票するか、既存 issue の起点 ID へ追記して scripts/${OWNERS_FILE} を再生成してください。`);
+  }
   if (blocked.length) {
     failures.push(`[未写像] ${blocked.join(' / ')}\n    docs/tests/ に仕様書があるのに、テスト側のコメントに当該 ID がありません。` +
       '\n    テストを書くか、段取り上どうしても後回しにするなら scripts/test-traceability-allowlist.json へ理由とともに追加してください。');
@@ -530,4 +683,10 @@ module.exports = {
   readPlanIds,
   missingSpecIds,
   implementedWithoutSpec,
+  OWNERS_FILE,
+  claimedIds,
+  buildIssueOwnership,
+  unownedPlanIds,
+  formatOwnership,
+  readIssueOwners,
 };
