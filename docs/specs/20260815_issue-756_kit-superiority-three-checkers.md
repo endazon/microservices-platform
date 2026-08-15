@@ -231,8 +231,8 @@ fixture: AST FR-17 / AST [[IADR-0080]] / AST NFR-01 / AST/FR-17（正しい形�
 - [x] `check-commit-messages.js` / `check-cross-repo-refs.js` は**環流先 planning issue 番号**が理由欄に入る
       → ［2026-08-15 追記 / #756］**起票され、達成した。** 当初は「本作業では起票しない」という
       作業指示のため未達としていたが、判定が確定した以上、環流先が無いままでは
-      `kit-sync-classification.json` の X が**追跡先の無い債務**として残る（[[IADR-0115]] 決定 3 は
-      X に追跡先 issue 番号を必須としている）。**planning#373**（`check-commit-messages.js`）と
+      `kit-sync-classification.json` の X が**追跡先の無い債務**として残る（[[IADR-0192]] 決定 2 が
+      X に追跡先を必須としている。**環流そのものの義務**は [[IADR-0115]] 決定 3 で、両者は別の決定である）。**planning#373**（`check-commit-messages.js`）と
       **planning#374**（`check-cross-repo-refs.js`）を起票し、両方の理由欄へ番号を入れた。
 - [x] `node scripts/check-kit-sync.js` が緑
 - [x] `node scripts/scripts.test.js` / `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が緑
