@@ -255,6 +255,7 @@
 | [IADR-0199](./IADR-0199_ingestion-required-attribute-failsafe.md) | 必須属性フェイルセーフを owner・department・lifecycle へ拡張（#516。裁定 planning#344・planning#361）。owner は system、department は unassigned へ倒れる（#752 / #754）。lifecycle の終端は active。予約値の件数を測定へ追加。 | Accepted |
 | [IADR-0200](./IADR-0200_reading-budget-population-per-agent.md) | 必読規約の総量予算は**エージェントごとの母集合**で測り合算しない（裁定 planning#364）。予算値 51,200 の正本は計画リポ運用ガイド §8、`check-reading-budget.js` が出典つきの複製を持ち CI へ配線（100% fail・90% warn）。#755。IADR-0178 決定 4 の測り方を改定。 | Accepted |
 | [IADR-0201](./IADR-0201_class-c-rejudgement-and-fail-closed-kit-checks.md) | 分類 C を planning#363 の新定義で再判定（17 → 4）。`traceability.md` は companion 分離で分類 A へ。キット同期・status 突合の検査器はキット版へ差し替え、実データ走査は doc-links-planning.yml で `--require-planning` 付き（IADR-0192 決定 4 の配線を改定）。#755 / #751。 | Accepted |
+| [IADR-0202](./IADR-0202_pin-freshness-comparison-source.md) | pin 鮮度検知は `merge-base --is-ancestor` で比較の向きを見て、逆方向・分岐では「効く変更なし」と報告しない（案 B）。比較元（ref・commit・remote URL・fetch の成否）を全経路の出力に必ず含める。**案 A（ネットワーク fetch）は採らない**。#749。IADR-0170 の決定は維持。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
