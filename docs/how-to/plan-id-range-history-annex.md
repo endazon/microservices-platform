@@ -11,7 +11,7 @@ related_ids:
   - IADR-0177
 author: claude
 created: 2026-08-11
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -19,12 +19,18 @@ plan_refs:
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
 
 > **★ これは「参照時にだけ読む別紙」である。** 毎セッション読む必要は無い。
-> **規約の入口は [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)
-> 「起点 ID の種別」節**であり、**規範（現行 pin でのレンジ・`NFR` の採番・`Proposed` でも ID としては
+> **規約の入口は companion [`.claude/rules/traceability.repo.md`](../../.claude/rules/traceability.repo.md)
+> 「起点 ID の種別（固有）」節**（2026-08-16 / #755 に `traceability.md` から移した。同ファイルはキット配布物へ戻した）であり、**規範（現行 pin でのレンジ・`NFR` の採番・`Proposed` でも ID としては
 > 実在すること・着手条件は FR 単位で読むこと・CI は計画 ADR の実在性を守っていないこと）はそちらに在る。**
 >
 > **本別紙が持つのは「過去の pin でどう引き直したか」「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れないか」の記録だけ**である（[[IADR-0172]] 決定 3 の段 5 ／ [[IADR-0173]] 決定 2）。
+
+### ［2026-08-16］pin `b640159` → `4d6a7d6`（走査基準は `b640159` → `4d6a7d6`）
+
+`FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0046` の**4 種とも不動**（`git -C planning diff --stat b640159 4d6a7d6 -- projects/microservices-platform` が空。46 ファイル・欠番なし）。
+取り込んだのは planning#363（分類 C の新定義）／planning#364（必読規約 budget の母集合）の裁定と運用ガイド §8 の追記であり、**MSP の計画書本体は動いていない**。作業仕様書は [`20260816_issue-755_planning-pin-4d6a7d6-catchup.md`](../specs/20260816_issue-755_planning-pin-4d6a7d6-catchup.md)。
+なお **1 つ前の `ce9abd2` → `b640159`（#753・planning#361 / planning#362）も 4 種不動**であった（当時は入口の走査基準行だけを更新し、本別紙には記録していなかった。同型 1 回目として記録に留める）。
 
 ### ［2026-08-15］pin `130a109` → `ce9abd2`（走査基準は `cff0e7b` → `ce9abd2`）
 
@@ -38,7 +44,7 @@ planning#344（ABAC の `owner` が実データ 0 件）と planning#346（Wiki.
 
 ## 1. 過去の pin での引き直しの記録
 
-**現行 pin（`ce9abd2`）でのレンジは入口にある。以下は、それ以前の 5 世代で引き直した記録である。**
+**現行 pin（`4d6a7d6`）でのレンジは入口にある。以下は、それ以前の 5 世代で引き直した記録である。**
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
 
 （**以下は前回の追随記録である。**［2026-08-09 / planning#304 の裁定］pin が `31a69c9` → `2cf0795`（planning#305）へ進んだときも 4 種を引き直したが、4 種とも動いていなかった——`FR-01..22`（22 件）／`UC-01..11`（11 件）／`SC-01..21`（21 件）／`ADR` 45 件で欠番なし、`Proposed` な 6 件と `Superseded` な `ADR-0003` も同一である。
@@ -135,7 +141,7 @@ planning#295 が**非機能要件へ `NFR-01`〜`NFR-27` の ID 列を付与し�
 
 ## 関連
 
-- 入口: [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」
+- 入口: [`.claude/rules/traceability.repo.md`](../../.claude/rules/traceability.repo.md)「起点 ID の種別（固有）」（キット配布物 [`traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」の companion）
 - 減量の計画: [[IADR-0172]] ／ 別紙化の方式: [[IADR-0173]] ／ 入口の総括: [[IADR-0177]]
 - 同じ方式の別紙: [`commit-message-rules-annex.md`](./commit-message-rules-annex.md) ／
   [`changelog-overrides-annex.md`](./changelog-overrides-annex.md) ／

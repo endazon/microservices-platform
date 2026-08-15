@@ -9,7 +9,7 @@ related_ids:
   - IADR-0175
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -18,7 +18,8 @@ plan_refs:
 
 > **★ これは「参照時にだけ読む別紙」である。** 毎セッション読む必要は無い。
 > **規約の入口は [`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)
-> 「複数プロジェクトを跨ぐ場合の ID 修飾」節**であり、**規範（`<PROJ>` の値・AST の採番レンジ・
+> 「複数プロジェクトを跨ぐ場合の ID 修飾」節（キット配布物・一般規約）と companion [`traceability.repo.md`](../../.claude/rules/traceability.repo.md)
+> 「複数プロジェクトを跨ぐ場合の ID 修飾（固有設定）」節（本リポの値。2026-08-16 / #755 に移した）**であり、**規範（`<PROJ>` の値・AST の採番レンジ・
 > 短縮形の書式・列挙形の修飾・空白を入れない・`endazon` owner・誤例の書き方）はそちらに在る。**
 >
 > **本別紙が持つのは「なぜその規約があるのか」の経緯と実測だけ**である
@@ -50,6 +51,14 @@ plan_refs:
   - **`FR-01`〜`FR-15` / `UC-01`〜`UC-07` / `SC-01`〜`SC-03`**: 改定前から双方に存在する（従来どおり誤帰属）。
   - **`FR-21` / `FR-22` / `UC-08`〜`UC-11` / `SC-04`〜`SC-21`**: MSP にしか無い（**`FR-22` は［2026-08-07 / #599］で追加**。AST の採番は `FR-01..20` なので衝突しない）。**`SC-18`〜`SC-21` は AST 側に対応 ID が
     存在しないため衝突しない**（将来 AST が採番を伸ばせば上の「誤帰属」型へ移る）。
+
+## 入口から移した補足（2026-08-16 / #755）
+
+- **`check-plan-id-qualification.js`（#576）が検出しないもの**: 「AST 文脈で裸の ID」（`AST リスク設定（SC-02）`）は近傍規則になり偽陽性が避けられないため検査しない —— 規約自身が「AST の `FR-17`」と誤帰属そのものを説明する地の文を持つ。列挙の後続 ID（`AST/SC-02/SC-03` の `SC-03`）も同様。**`check-cross-repo-refs.js` とは対象が違う** —— あちらは issue / PR 番号（`AST#24`）、こちらは計画 ID / ADR ID（`AST/FR-17`）。同じ `AST` で始まるので混同しないこと。
+- **AST の採番レンジは pin `655e2ed` 時点の実測**である。AST の文書に他の `SC` 番号も現れるが、いずれも MSP 画面への参照であって AST の採番ではない —— `05_screens/01_screens.md` の `SC-13` / `SC-16`、`07_adr/ADR-0012_mcp-exposure-policy.md` の `SC-11`。
+- **短縮形と長い表記**: `project-planning#NNN` / `ai-stock-trading#NNN`（リポジトリ名の裸書き）は短縮形でもフルパス形式でもない第 3 の表記であり使わない。Markdown の明示リンク（`[planning#197](https://github.com/endazon/project-planning/issues/197)`）は URL 側が自動リンクを担うのでテキストを短縮形にしても機能は落ちない（#507 の裁定）。空白が入ると（`AST #24` / `planning PR #144`）機械的突合に掛からず、自動リンクが効く面では番号が本リポジトリへ張り付く。
+- **#590 の owner**: フルパス形式の owner を誤ると `.md` でも死んだリンクが描画される（型 1〜3 は `.md` では表記ゆれに留まる）。実測値は走査基準つきで [作業仕様書 §母集合](../specs/20260807_issue-590_fullpath-owner-check.md) が正（数を条文へ埋めると自己試験へ正例を足しただけで黙って古くなる。#590 が実際にそれを踏んだ）。第三者リポジトリ（`anthropics/claude-code-action#723`）は owner が `endazon` でないのが正しい。
+- **`〔〕` 注記**（#586）: 先頭の番号を裸にする形（`PR #244〔裁定依頼 planning#237〕`）は機械では検出できない —— 裸の `#244` は規約上「本リポジトリの PR」を意味する正しい表記であり、意味の取り違えは構文から判定できない。書き手が責任を持つ。
 
 ## 機械検査の射程
 

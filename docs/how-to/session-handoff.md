@@ -208,7 +208,7 @@ related_specs:
 ### 型 1: 母集合を引き直さない
 
 **issue 本文の一覧・監査の一覧・前の PR の表は、いずれも母集合ではない。**
-規則は `.claude/rules/traceability.md`「是正・追随の母集合の取り方」が正。**破れた実例は規則 1〜6 が [[IADR-0141]] 決定 1、規則 7・8 が別紙 [`population-drawing-annex.md`](./population-drawing-annex.md)**（#730 で入口から外した）。
+規則は `.claude/rules/traceability.md`「是正・追随の母集合の取り方」（キット・規則 1〜8）と `traceability.repo.md`（本リポ固有・規則 9・10）が正。**破れた実例は規則 1〜6 が [[IADR-0141]] 決定 1、規則 9・10（旧 7・8）が別紙 [`population-drawing-annex.md`](./population-drawing-annex.md)**（#730 で入口から外した。#755 で改番）。
 
 **本セッションで新たに踏んだ形**:
 - **`grep -l`（ファイル一覧）を母集合にした** —— #555 では 23 ファイルが該当するように見えたが、
