@@ -116,13 +116,29 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 **「レビュー済み・指摘なし」と読まれるが実際には何も判定されていない**状態がマージを通過する。
 
 **`check-permission-denials.js` では捕まらない** —— あちらは「ツールを 1 つも実行できなかった」形を見る。
-本件は**ツールは動いており最後の投稿だけが無い**。入力（実行ログ）と配線は同じで `parseEvents` を借りるため、
-**2 本セットで配布される**。したがって配線先も同じ **2 ワークフロー**とする。
+本件は**ツールは動いており最後の投稿だけが無い**。入力（実行ログ）と配線は同じで `parseEvents` を借りる。
 
-| ワークフロー | 既存の行 |
-| --- | --- |
-| `.github/workflows/claude-code-review.yml` | `node scripts/check-permission-denials.js "$EXECUTION_FILE"` |
-| `.github/workflows/claude-coding.yml` | 同上 |
+### ★ 配線先は `claude-code-review.yml` の **1 本だけ**である（PR #750 の AI レビューが 🔴 で指摘）
+
+**当初は 2 本のワークフローへ配線した。誤りだったので撤去した。**
+
+根拠にしたのはキットのヘッダの「**2 本セットで配布すること**」だが、**これはスクリプト 2 本の配布**
+（`check-review-verdict.js` が `check-permission-denials.js` の `parseEvents` を借りるため単独では動かない）
+**を指しており、両方のワークフローへ配線せよという意味ではない。** 機械的に読み替えていた。
+
+**実測すると `claude-coding.yml` へ配線してはならない。**
+
+| | `claude-code-review.yml` | `claude-coding.yml` |
+| --- | --- | --- |
+| 用途 | **自動 AI レビュー** | **`@claude このタスクを実装してください` への応答**（`docs/ai-workflow.md` §2） |
+| `prompt:` | **持つ**（`:244`。判定 🔴 / 🟡 / 🟢 の形式を指示する） | **持たない**（本文駆動。`--append-system-prompt` にも判定を出す指示は無い） |
+| 判定見出しの有無 | 出る | **出ない**（実装タスクは判定を投稿しない） |
+
+`check-review-verdict.js` は判定見出しが無ければ `ALLOW_MISSING_VERDICT=1` が無い限り **exit 1** で落ちる（`:246-263`）。
+したがって配線したままだと、**正常に完了した実装タスクでもこのステップだけが恒常的に赤くなる。**
+
+`ALLOW_MISSING_VERDICT=1` を付けて黙らせる案は採らない —— **常に警告だけを出すステップは意味が無く、
+「検査している」という誤った印象だけを残す**（本検査器がまさに止めようとしている型である）。
 
 ## 4. 併せて起票すること —— pin 鮮度チェッカの盲点
 
@@ -142,7 +158,7 @@ $ git -C planning log --oneline 130a109..ce9abd2 | wc -l
 - [x] `node scripts/check-kit-sync.js` が exit=0（A 73 / B 16 / C 17 / 対象外 9）
 - [x] `node scripts/scripts.test.js` が exit=0（**519 passed**）
 - [x] `.claude/rules/traceability.md` の ADR レンジが `0001..0046`・走査基準が `ce9abd2` である
-- [x] `check-review-verdict.js` が 2 ワークフローへ配線され、`--self-test` が通る（12 件）
+- [x] `check-review-verdict.js` が **`claude-code-review.yml` の 1 本へ**配線され、`--self-test` が通る（12 件）
 - [x] pin 鮮度チェッカの盲点を別 issue として起票した（#749）
 
 ### 途中で追加で発火した追随（いずれも設計どおり）
