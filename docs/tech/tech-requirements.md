@@ -21,7 +21,7 @@ related_ids:
   - IADR-0134
 author: claude
 created: 2026-07-04
-updated: 2026-08-05
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
