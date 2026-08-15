@@ -6754,4 +6754,70 @@ module.exports = ({ ok, assert }) => {
       assert.match(dlp, /submodules: recursive/, 'doc-links-planning.yml が submodule を取得していない（--require-planning が常に fail する）');
     });
   }
+
+  // --- #747: submodule の bump でフロント CI が起動すること -----------------------
+  //
+  // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は **3 件目**である。
+  //     1 件目 = #558（frontend-tests.yml に契約と生成の設定が無く、契約だけの PR で
+  //              カバレッジ床の検査が起動しなかった）
+  //     2 件目 = #562（整形ゲートの設定 .prettierrc.json / .prettierignore が paths: に無く、
+  //              単独変更で CI が走らなかった）
+  //     3 件目 = #747（AST submodule の bump が src/*/frontend/** に一致せず、3 回素通りして
+  //              初期ロードが +35.51 kB 増えた）
+  //   CLAUDE.md「検査器・規約の追加は同型の事故が 2 回起きたら」の条件を満たす。
+  //
+  // ★ 期待値は .gitmodules から**導出**する（列挙を書き写さない）。src/ 配下へ submodule を
+  //   足したときも自動で赤くなる。paths: は glob で gitlink を表現できないため、checkout 側の
+  //   汎用形（.gitmodules の総なめ）と違い手で足す必要があるからである。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const REPO = path.join(__dirname, '..');
+    const FRONTEND_WORKFLOWS = ['frontend.yml', 'frontend-tests.yml'];
+
+    // `on:` 直下の push / pull_request それぞれの paths: ブロックの値を返す。
+    const pathsOf = (yml, event) => {
+      const m = yml.match(new RegExp(`^\\s{2}${event}:\\s*$\\n((?:\\s{4}.*\\n|\\s*\\n)*)`, 'm'));
+      if (!m) return null;
+      const block = m[1].match(/^\s{4}paths:\s*$\n((?:\s{6}.*\n|\s*\n)*)/m);
+      if (!block) return null;
+      return block[1]
+        .split('\n')
+        .map((l) => l.match(/^\s{6}-\s*"?([^"#]+?)"?\s*$/))
+        .filter(Boolean)
+        .map((m2) => m2[1]);
+    };
+
+    ok('#747: .gitmodules の src/ 配下 submodule がフロント CI の paths: に全て挙がっている', () => {
+      const gitmodules = fs.readFileSync(path.join(REPO, '.gitmodules'), 'utf8');
+      const submodules = [...gitmodules.matchAll(/^\s*path\s*=\s*(src\/\S+)\s*$/gm)].map((m) => m[1]);
+      // 走査 0 件で静かに緑を返す形を塞ぐ（#664 / PR #672 の型）。
+      assert.ok(submodules.length >= 1, `.gitmodules から src/ 配下の submodule を読めない（走査が壊れている）`);
+
+      const missing = [];
+      let checked = 0;
+      for (const f of FRONTEND_WORKFLOWS) {
+        const yml = fs.readFileSync(path.join(REPO, '.github/workflows', f), 'utf8');
+        for (const event of ['push', 'pull_request']) {
+          const paths = pathsOf(yml, event);
+          assert.ok(paths && paths.length > 0, `${f}: ${event}.paths を読めない（パーサが壊れている）`);
+          checked += 1;
+          for (const sub of submodules) {
+            // 末尾に /** を付けた形は gitlink 1 エントリに一致しない（bump を取りこぼす）。
+            if (!paths.includes(sub)) missing.push(`${f}: ${event}.paths に "${sub}" が無い`);
+            if (paths.includes(`${sub}/**`)) {
+              missing.push(`${f}: ${event}.paths の "${sub}/**" は gitlink に一致しない（/** を外す）`);
+            }
+          }
+        }
+      }
+      assert.strictEqual(checked, 4, `paths: を持つトリガが ${checked} 箇所（push / pull_request の 4 箇所のはず）`);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        'submodule の bump でフロント CI が起動しない（初期ロードの ratchet が素通りする。#747）:\n  ' +
+          missing.join('\n  '),
+      );
+    });
+  }
 };
