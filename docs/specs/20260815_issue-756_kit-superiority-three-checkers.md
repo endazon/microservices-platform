@@ -228,8 +228,12 @@ fixture: AST FR-17 / AST [[IADR-0080]] / AST NFR-01 / AST/FR-17（正しい形�
 
 - [x] 3 本の機能差の突合表が本書にある（上記 3 表。**実走の出力を根拠にした**）
 - [x] `scripts/check-plan-id-qualification.js` の分類が X 以外（**B 第 5 種**）へ確定した
-- [ ] `check-commit-messages.js` / `check-cross-repo-refs.js` は**環流先 planning issue 番号**が理由欄に入る
-      → **本作業では起票しないため未達**。起票案を下に残し、理由欄には判定結果と起票案を書いた（逸脱として報告する）
+- [x] `check-commit-messages.js` / `check-cross-repo-refs.js` は**環流先 planning issue 番号**が理由欄に入る
+      → ［2026-08-15 追記 / #756］**起票され、達成した。** 当初は「本作業では起票しない」という
+      作業指示のため未達としていたが、判定が確定した以上、環流先が無いままでは
+      `kit-sync-classification.json` の X が**追跡先の無い債務**として残る（[[IADR-0115]] 決定 3 は
+      X に追跡先 issue 番号を必須としている）。**planning#373**（`check-commit-messages.js`）と
+      **planning#374**（`check-cross-repo-refs.js`）を起票し、両方の理由欄へ番号を入れた。
 - [x] `node scripts/check-kit-sync.js` が緑
 - [x] `node scripts/scripts.test.js` / `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が緑
 
