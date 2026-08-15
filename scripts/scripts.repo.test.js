@@ -6545,7 +6545,11 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
-  // --- #747: submodule の bump でフロント CI が起動すること -----------------------
+  // --- NFR / #747: submodule の bump でフロント CI が起動すること -----------------
+  //
+  // ★ 起点 ID は**無採番の `NFR`** である（`.claude/rules/traceability.md` の例外 2）。
+  //   本件は CI の起動条件という**工程の統制**であり、計画側の非機能要件表（`NFR-01`〜`NFR-27`）に
+  //   当たる番号が無い。近い番号を無理に当てない。ワークフロー側のコメントと同じ ID を使う。
   //
   // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は **3 件目**である。
   //     1 件目 = #558（frontend-tests.yml に契約と生成の設定が無く、契約だけの PR で
@@ -6559,6 +6563,12 @@ module.exports = ({ ok, assert }) => {
   // ★ 期待値は .gitmodules から**導出**する（列挙を書き写さない）。src/ 配下へ submodule を
   //   足したときも自動で赤くなる。paths: は glob で gitlink を表現できないため、checkout 側の
   //   汎用形（.gitmodules の総なめ）と違い手で足す必要があるからである。
+  //
+  // ★ 上の #705（`:4300`）の「paths: の側は検査器にしない」とは**射程が違う**。あちらは
+  //   `paths:` を**持つこと自体を禁じない**（frontend.yml は意図して持ち、required にしない運用で
+  //   正しい）という宣言であり、本検査は `paths:` を持つ前提で**その列挙に src/ 配下の gitlink が
+  //   入っているか**だけを見る。存在の禁止 ≠ 列挙の要求であり、`paths:` の有無・required 化の
+  //   可否には一切触れない。
   {
     const fs = require('fs');
     const path = require('path');
@@ -6578,7 +6588,7 @@ module.exports = ({ ok, assert }) => {
         .map((m2) => m2[1]);
     };
 
-    ok('#747: .gitmodules の src/ 配下 submodule がフロント CI の paths: に全て挙がっている', () => {
+    ok('NFR / #747: .gitmodules の src/ 配下 submodule がフロント CI の paths: に全て挙がっている', () => {
       const gitmodules = fs.readFileSync(path.join(REPO, '.gitmodules'), 'utf8');
       const submodules = [...gitmodules.matchAll(/^\s*path\s*=\s*(src\/\S+)\s*$/gm)].map((m) => m[1]);
       // 走査 0 件で静かに緑を返す形を塞ぐ（#664 / PR #672 の型）。
