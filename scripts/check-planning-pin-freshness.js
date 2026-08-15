@@ -17,6 +17,11 @@
  *   - **「検査していない」と「乖離なし」を読み分けられるようにする。** planning が未 populate
  *     なら、その旨を出して exit 0 する。**黙って緑を返さない**（#546 / #664 / #674 の型）。
  *   - **鳴りすぎると読まれなくなる。** 着手可否に効く差分だけを鳴らす（判断 3）。
+ *   - **比較の向きを検査する（#749 / IADR-0202 案 B）。** submodule の `origin` が pin より
+ *     後ろにあると `git diff <新しい pin> <古い ref>` という逆方向の比較になり、
+ *     **分類器が正しく動いたまま「効く変更はありません」と報告する**。祖先判定で止める。
+ *   - **比較元をどこから取ったかを必ず出力する（#749 受け入れ基準 3）。** 出力を読んでも
+ *     比較相手が分からなければ、誤りに気づけない（実際に気づけなかった）。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ。scripts/ に依存解決の経路が無い）。
  */
@@ -177,29 +182,120 @@ function pinnedCommit(root = REPO_ROOT) {
   }
 }
 
-/** planning の既定ブランチ HEAD。fetch できなければ null（fail-open）。 */
-function remoteHead(root = REPO_ROOT, { fetch = true } = {}) {
+/**
+ * 比較元（planning の既定ブランチ）を解決する。**「どこから取ったか」を必ず一緒に返す**（#749）。
+ *
+ * ★ 旧実装は commit の文字列だけを返しており、**出力を読んでも比較相手が分からなかった。**
+ *   #749 では submodule の `origin` が GitHub ではなく隣接クローンを指していたが、
+ *   その事実が出力のどこにも現れず、誤りに気づけなかった。
+ *
+ * @returns {{commit: string, ref: string, remoteUrl: string|null, fetch: 'ok'|'failed'|'skipped'}|null}
+ */
+function resolveComparisonSource(root = REPO_ROOT, { fetch = true } = {}) {
   const dir = path.join(root, PLANNING);
-  try {
-    if (fetch) {
-      // 失敗しても続行する（オフライン・認証なしの環境がある）。
-      try {
-        git(['-C', dir, 'fetch', '--quiet', 'origin'], { timeout: 60_000 });
-      } catch (e) {
-        /* fail-open */
-      }
+  let fetchState = 'skipped';
+  if (fetch) {
+    // 失敗しても続行する（オフライン・認証なしの環境がある）。
+    try {
+      git(['-C', dir, 'fetch', '--quiet', 'origin'], { timeout: 60_000 });
+      fetchState = 'ok';
+    } catch (e) {
+      fetchState = 'failed';
     }
-    for (const ref of ['origin/HEAD', 'origin/main', 'origin/master']) {
-      try {
-        return git(['-C', dir, 'rev-parse', ref]);
-      } catch (e) {
-        /* 次の候補へ */
-      }
-    }
-    return null;
-  } catch (e) {
-    return null;
   }
+  let remoteUrl = null;
+  try {
+    remoteUrl = git(['-C', dir, 'remote', 'get-url', 'origin']);
+  } catch (e) {
+    /* remote 未設定。null のまま出力へ出す（黙って隠さない） */
+  }
+  for (const ref of ['origin/HEAD', 'origin/main', 'origin/master']) {
+    try {
+      return { commit: git(['-C', dir, 'rev-parse', ref]), ref, remoteUrl, fetch: fetchState };
+    } catch (e) {
+      /* 次の候補へ */
+    }
+  }
+  return null;
+}
+
+/** remote URL がネットワーク越しの upstream ではなくローカルパスを指しているか。純関数。 */
+function isLocalPathRemote(remoteUrl) {
+  if (!remoteUrl) return false;
+  return !/^(https?:|git:|ssh:|file:|[^/\\]+@)/.test(remoteUrl);
+}
+
+/**
+ * 比較元の説明を 1 行で組み立てる。純関数（受け入れ基準 3: どこから取ったかを出力に含める）。
+ */
+function describeSource(src) {
+  if (!src) {
+    return '比較元: 解決できません（planning に origin/HEAD・origin/main・origin/master のいずれもありません）';
+  }
+  const state =
+    { ok: 'fetch 成功', failed: 'fetch 失敗（ローカルの参照のまま）', skipped: 'fetch 省略' }[src.fetch] ?? src.fetch;
+  const url = src.remoteUrl ?? '不明（origin が未設定）';
+  const note = isLocalPathRemote(src.remoteUrl)
+    ? ' ★ origin が upstream ではなくローカルパスを指しています（更新されていない可能性）'
+    : '';
+  return `比較元: planning の ${src.ref} = ${src.commit.slice(0, 7)}（remote origin = ${url} / ${state}）${note}`;
+}
+
+// --- #749: 比較の向き（案 B: 祖先判定） --------------------------------------
+//
+// **逆方向の比較を「乖離なし」と報告しない。** submodule の `origin` が pin より後ろにあると、
+// `git diff <新しい pin> <古い ref>` は「pin にあって比較元に無いもの」しか返さない。
+// #749 ではそれが draft / tools / 索引 66 件となり、分類器が正しく「効かない」と判定して緑になった。
+// **分類器は正しく、入力が壊れていた。** 入力の妥当性はここで見る。
+
+const RELATION = {
+  /** pin == 比較元。 */
+  SAME: 'same',
+  /** pin が比較元の祖先＝比較元のほうが新しい。**正しい向き。** */
+  FORWARD: 'forward',
+  /** 比較元が pin の祖先＝比較元のほうが古い。**比較が成立しない**（#749）。 */
+  REVERSE: 'reverse',
+  /** どちらも祖先でない。比較元が別系統を指している。 */
+  DIVERGED: 'diverged',
+  /** 判定できない（浅いクローン等）。**従来どおり続行するが、その旨を出力へ添える。** */
+  UNKNOWN: 'unknown',
+};
+
+/**
+ * 祖先関係から pin と比較元の位置関係を決める。純関数。
+ *
+ * @param {{pin: string, head: string, pinIsAncestorOfHead: boolean|null, headIsAncestorOfPin: boolean|null}} input
+ */
+function classifyRelation({ pin, head, pinIsAncestorOfHead, headIsAncestorOfPin }) {
+  if (pin === head) return RELATION.SAME;
+  if (pinIsAncestorOfHead === null || headIsAncestorOfPin === null) return RELATION.UNKNOWN;
+  if (pinIsAncestorOfHead) return RELATION.FORWARD;
+  if (headIsAncestorOfPin) return RELATION.REVERSE;
+  return RELATION.DIVERGED;
+}
+
+/**
+ * `git merge-base --is-ancestor a b`。true / false / null（判定不能）。
+ * exit 1 は「祖先でない」、それ以外の失敗（オブジェクトが無い等）は判定不能として null を返す。
+ */
+function isAncestor(dir, a, b) {
+  try {
+    execFileSync('git', ['-C', dir, 'merge-base', '--is-ancestor', a, b], { stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return e && e.status === 1 ? false : null;
+  }
+}
+
+/** pin と比較元の位置関係を実際の git で求める。 */
+function relationOf(root, pin, head) {
+  const dir = path.join(root, PLANNING);
+  return classifyRelation({
+    pin,
+    head,
+    pinIsAncestorOfHead: isAncestor(dir, pin, head),
+    headIsAncestorOfPin: isAncestor(dir, head, pin),
+  });
 }
 
 /** pin..head の変更ファイル一覧と、ADR の前後本文を集める。 */
@@ -271,6 +367,28 @@ function selfTest() {
   t('新規 ADR: before が null でも拾う', added.length === 1 && added[0].before === null);
   t('新規 ADR は becameAccepted ではない（Proposed からの遷移ではない）', added[0].becameAccepted === false);
 
+  // #749: 比較の向き（案 B）
+  const rel = (a, b) => classifyRelation({ pin: 'p', head: 'h', pinIsAncestorOfHead: a, headIsAncestorOfPin: b });
+  t('向き: pin == head なら same', classifyRelation({ pin: 'x', head: 'x' }) === RELATION.SAME);
+  t('向き: pin が比較元の祖先なら forward（正しい向き）', rel(true, false) === RELATION.FORWARD);
+  t('向き: 比較元が pin の祖先なら reverse（#749 の型）', rel(false, true) === RELATION.REVERSE);
+  t('向き: どちらも祖先でなければ diverged', rel(false, false) === RELATION.DIVERGED);
+  t('向き: 判定不能なら unknown（黙って forward にしない）', rel(null, false) === RELATION.UNKNOWN);
+  t('向き: 逆側が判定不能でも unknown', rel(true, null) === RELATION.UNKNOWN);
+
+  // #749: 比較元の説明（受け入れ基準 3）
+  const src = { commit: 'a'.repeat(40), ref: 'origin/main', remoteUrl: 'https://github.com/e/p.git', fetch: 'ok' };
+  t('比較元: ref と commit と remote を出す', /origin\/main = aaaaaaa/.test(describeSource(src)) && describeSource(src).includes('https://github.com/e/p.git'));
+  t('比較元: fetch の状態を出す', describeSource({ ...src, fetch: 'failed' }).includes('fetch 失敗'));
+  t('比較元: 解決できないことを明示する', describeSource(null).includes('解決できません'));
+  t(
+    '比較元: origin がローカルパスなら注意を添える（#749 の根本原因）',
+    describeSource({ ...src, remoteUrl: '/home/user/project-planning' }).includes('ローカルパス'),
+  );
+  t('比較元: http(s) はローカルパス扱いしない', isLocalPathRemote('https://github.com/e/p.git') === false);
+  t('比較元: ssh 短縮形（git@…）もローカルパス扱いしない', isLocalPathRemote('git@github.com:e/p.git') === false);
+  t('比較元: 相対パスもローカルパス', isLocalPathRemote('../project-planning') === true);
+
   // findIssues
   t(
     'pin == head なら乖離なし',
@@ -302,9 +420,14 @@ function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--self-test')) process.exit(selfTest());
   const noFetch = argv.includes('--no-fetch');
+  // `--root <path>`: 検査対象のリポジトリルートを差し替える。**回帰テスト（fixture）が
+  // プロセスとして本体を走らせるために要る** —— gitlink の読み取りと祖先判定は実物の
+  // git リポジトリを要し、純関数だけでは #749 の型（入力が壊れている）を再現できない。
+  const rootArg = argv.indexOf('--root');
+  const root = rootArg >= 0 ? path.resolve(argv[rootArg + 1] || '.') : REPO_ROOT;
 
   // 判断 4: 「検査していない」と「乖離なし」を読み分ける。
-  if (!planningPopulated()) {
+  if (!planningPopulated(root)) {
     console.log(
       '[check-planning-pin-freshness] planning サブモジュールが未 populate のため検査していません' +
         '（PR CI は submodule を取得しない）。乖離が無いことを意味しません。',
@@ -314,27 +437,62 @@ function main() {
   // ★ 門: 対象プロジェクトが存在しないのに緑を返さない。**改名・移動が起きると
   //   classifyChanges が全件を ignored へ落とし、「着手可否に効く変更はありません」と
   //   静かに報告し続ける**（#664 / IADR-0130 の「0 件走査で緑を返さない」と同型）。
-  if (!fs.existsSync(path.join(REPO_ROOT, PLANNING, 'projects', PLANNING_PROJECT))) {
+  if (!fs.existsSync(path.join(root, PLANNING, 'projects', PLANNING_PROJECT))) {
     console.error(
       `[check-planning-pin-freshness] planning に projects/${PLANNING_PROJECT} がありません。` +
         ' 対象プロジェクトの改名・移動を疑ってください（黙って 0 件検査へ落ちないよう fail させています）。',
     );
     process.exit(1);
   }
-  const pin = pinnedCommit();
-  const head = remoteHead(REPO_ROOT, { fetch: !noFetch });
+  const pin = pinnedCommit(root);
+  const source = resolveComparisonSource(root, { fetch: !noFetch });
+  // 受け入れ基準 3（#749）: **比較元をどこから取ったかを、どの経路でも必ず出す。**
+  const sourceLine = describeSource(source);
+  const head = source ? source.commit : null;
   if (!pin || !head) {
     console.log(
-      `[check-planning-pin-freshness] 比較対象を取得できないため検査していません（pin=${pin ?? '不明'} / HEAD=${head ?? '不明'}）。`,
+      `[check-planning-pin-freshness] 比較対象を取得できないため検査していません（pin=${pin ?? '不明'} / HEAD=${head ?? '不明'}）。\n` +
+        `  ${sourceLine}`,
     );
     process.exit(0);
   }
   if (pin === head) {
-    console.log(`[check-planning-pin-freshness] OK: pin は planning の既定ブランチ HEAD と一致しています（${pin.slice(0, 7)}）。`);
+    console.log(
+      `[check-planning-pin-freshness] OK: pin は比較元と一致しています（${pin.slice(0, 7)}）。\n  ${sourceLine}`,
+    );
     process.exit(0);
   }
 
-  const { files, adrPairs } = collect(REPO_ROOT, pin, head);
+  // ★★ #749: 向きを見る。**逆方向の比較で「効く変更はありません」と報告しない。**
+  const relation = relationOf(root, pin, head); // ← 変異点（この判定を外すと #749 が再発する）
+  if (relation === RELATION.REVERSE || relation === RELATION.DIVERGED) {
+    const detail =
+      relation === RELATION.REVERSE
+        ? '比較元が pin より**後ろ**にあります（逆方向の比較）'
+        : '比較元と pin が**分岐**しています（別系統を指しています）';
+    const broken = [
+      `比較できていません: ${detail}。`,
+      `  ${sourceLine}`,
+      `  pin: ${pin.slice(0, 7)}`,
+      '  差分を取っても「pin にあって比較元に無いもの」しか出ず、計画側の新しい変更は 1 件も見えません。',
+      '  **よって乖離の有無は判定できていません。差分が draft だけに見えても、それは向きのせいです**（#749）。',
+      '  submodule の origin が古いローカルクローンを指していないか確認してください。',
+    ].join('\n');
+    warn(broken, { prefix: '[check-planning-pin-freshness] ' });
+    if (process.env.GITHUB_OUTPUT) {
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `comparison=${relation}\n`);
+    }
+    if (process.env.PIN_REPORT_PATH) {
+      fs.writeFileSync(process.env.PIN_REPORT_PATH, `${broken}\n`);
+    }
+    // fail-open は維持する（受け入れ基準 2。セッション開始・CI を止めない）。
+    process.exit(0);
+  }
+  // 向きを判定できない場合（浅いクローン等）は続行するが、断定しない。
+  const unknownNote =
+    relation === RELATION.UNKNOWN ? '\n  ★ 比較の向きを判定できませんでした（履歴が浅い可能性）。' : '';
+
+  const { files, adrPairs } = collect(root, pin, head);
   // 0 件走査の門: pin != head なのに差分が 1 件も無いのは、配管が壊れている合図である
   // （#664 / IADR-0130 の作法。ここは fail-open の例外とし、黙って緑を返さない）。
   if (files.length === 0) {
@@ -347,12 +505,13 @@ function main() {
 
   const result = findIssues({ pin, head, files, adrPairs });
   const lines = [
-    `計画 pin が ${pin.slice(0, 7)} のままで、planning の既定ブランチは ${head.slice(0, 7)} です。`,
+    `計画 pin が ${pin.slice(0, 7)} のままで、比較元は ${head.slice(0, 7)} です。`,
+    `  ${sourceLine}`,
   ];
   if (result.reasons.length === 0) {
     console.log(
       `[check-planning-pin-freshness] pin は古いですが、着手可否に効く変更はありません` +
-        `（${files.length} 件の差分はすべて draft / tools / 索引）。`,
+        `（${files.length} 件の差分はすべて draft / tools / 索引）。\n  ${sourceLine}${unknownNote}`,
     );
     process.exit(0);
   }
@@ -369,7 +528,7 @@ function main() {
     );
   }
   lines.push('  pin を進めるか判断してください（本検査は落としません）。');
-  const message = lines.join('\n');
+  const message = lines.join('\n') + unknownNote;
   // 落とさない。ただし GitHub Actions では注釈として出す（緑のログに埋もれさせない）。
   // `warn` が Actions / ローカルの出し分けを持つので、ここで二重に出さない。
   warn(message, { prefix: '[check-planning-pin-freshness] ' });
@@ -396,7 +555,12 @@ module.exports = {
   findIssues,
   planningPopulated,
   pinnedCommit,
-  remoteHead,
+  resolveComparisonSource,
+  describeSource,
+  isLocalPathRemote,
+  classifyRelation,
+  relationOf,
+  RELATION,
   collect,
   ADR_RE,
   GATE_DOC_RE,
