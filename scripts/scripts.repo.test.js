@@ -5102,6 +5102,7 @@ module.exports = ({ ok, assert }) => {
         ['docs/adr/IADR-0194_audit-rounds-follow-upstream-no-numeric-cap.md', '新旧の対照表として引用している'],
         ['docs/specs/20260814_issue-735_kit-catchup.md', '同上（本 PR の作業仕様書）'],
         ['feedback/20260807_kit-audit-rounds-and-population.md', '書いた時点の記録。後から書き換えない'],
+        ['feedback/20260814_audit-round-risk-branch-unmeasured.md', '同上（#736 の環流記録。撤廃の経緯を引用している）'],
         ['scripts/scripts.repo.test.js', '本テスト自身'],
       ]);
       // 拡張子で絞らない（規則 3）。パスの除外だけで取る（規則 4）。
