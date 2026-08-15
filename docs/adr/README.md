@@ -249,6 +249,7 @@
 | [IADR-0193](./IADR-0193_feedback-status-sync-check.md) | 環流記録の `status` は**計画側の裁定へ追随**させる（11 件を是正）。**#721 は `dispatched` の軸を確かめ、`status` の軸を確かめなかった**。突合を機械検査にし、**写しを持たない記録は対象外**（両経路は等価）。**frontmatter だけを直し本文へ追記しない**。**変異試験は `--self-test` で恒久化**。 | Accepted |
 | [IADR-0194](./IADR-0194_audit-rounds-follow-upstream-no-numeric-cap.md) | 監査の**巡数の上限を撤廃**し、上流裁定（planning#307）へ従う（**IADR-0141 決定 2 を差し替え**）。**「1」は測って出した数ではない** —— 数を条文に書くとその数が疑われなくなる。**打ち切り条件の明言は残す**（こちらが本体）。 | Accepted |
 | [IADR-0195](./IADR-0195_coverage-exclude-source-generator-output.md) | **カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**。#574。[[IADR-0138]] 決定 1 の射程を拡張し、決定 4 を差し替える（`line 33 → 39` / `branch 17 → 27`）。 | Accepted |
+| [IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md) | 共有カーネルの Result ライブラリは「BANNED からの除外」ではなく**プロジェクト名で限定した許可リスト**で機械強制する。#500。計画 ADR-0041 が ADR-0030 選定基準 3 を「ゼロ」→「名指しの 1 つ」へ部分改定したことへの追随。許可リスト外は `BANNED` 非掲載でも違反。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

@@ -85,6 +85,21 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
    「Domain 層は外部依存ゼロ」を成立させるための置き場であり、ここが汚れると各サービスの Domain も汚れる。
    `scripts/check-backend-libraries.js` は `*.Domain.csproj` の `ProjectReference` を
    `Platform.Shared.Kernel` のみ許可する形でこの規律を機械強制する。
+
+   > **［2026-08-04 改訂 / 追随 2026-08-15・#500］本決定 2 が引用する ADR-0030 選定基準 3 を、計画
+   > [ADR-0041](../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md)
+   > が部分改定した。上の本文は書き換えず残置する。現行値は ADR-0041 を正とする。**
+   >
+   > - 「**.NET 標準以外の `PackageReference` を持たない**」（ゼロ）は、「**Result 型の実装 1 つに限る**
+   >   （現行: `CSharpFunctionalExtensions`）」へ改まる。**この 1 つ以外を追加してはならない。**
+   > - 外部ライブラリは `Platform.Shared.Kernel` の**内部実装としてのみ**使う。`Domain` / `Application` /
+   >   `Api` / `Infrastructure` は同プロジェクトが公開する自前の型（`Result` / `Result<T>` / `Error`）だけを
+   >   参照し、外部ライブラリの型・名前空間を直接参照してはならない（ADR-0041 決定 2）。
+   > - 機械強制は本決定が挙げる `ProjectReference` の許可に加え、`SHARED_KERNEL_ALLOWED`（許可リスト）
+   >   による 2 系統になった。**許可リスト外が `Platform.Shared.Kernel` へ入れば fail する。**
+   > - **決定 2 の趣旨（ここが汚れると各サービスの Domain も汚れる）は変わっていない。** 変わったのは
+   >   汚れの許容量がゼロから「名指しの 1 つ」になった点だけである。詳細は
+   >   [IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md)。
 3. **改定範囲はこの 1 点に限る。** IADR-0056 の他の決定（1 振り分け・2 ビルド・4 フロントエンド合成・
    5 命名・6 submodule 境界）と、決定 3 のうち「**platform → 可変ユニットは禁止**」「統合テストの例外」は
    引き続き有効である。したがって IADR-0056 は `Accepted` のまま残置する（`Superseded` にはしない）。

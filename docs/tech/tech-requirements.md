@@ -116,7 +116,8 @@ flowchart TB
 - Pragmatic Clean Architecture ＋ **Vertical Slice**（Feature 単位。不要な Repository / Service 抽象を作らない）
 - API は **ASP.NET Core Minimal API**（.NET 10）
 - CQRS のローカルディスパッチも **Wolverine ハンドラに統一**する。独自 Dispatcher・**MediatR は使わない**
-- **Domain 層は外部ライブラリへ依存しない**（.NET 標準のみ）。Result 型は共有カーネルに自前実装する
+- **Domain 層は `Platform.Shared.Kernel` を除き外部ライブラリへ依存しない**。Result 型は共有カーネルに**自前の公開型**（`Result` / `Result<T>` / `Error`）として置き、**その内部実装としてのみ** `CSharpFunctionalExtensions` を使う。`Domain` / `Application` / `Api` / `Infrastructure` は共有カーネルが公開する型だけを参照し、外部ライブラリの型・名前空間を直接参照しない（計画 ADR-0041 決定 1・2。2026-08-04 に ADR-0030 選定基準 3 を改定）
+  - **共有カーネルが持ち込んでよい外部パッケージは Result 型の実装 1 つに限る**（同 決定 3）。`scripts/check-backend-libraries.js` が機械的に強制する（許可は `Platform.Shared.Kernel` プロジェクトに限定。許可リスト外が入れば fail）
 
 ### プロジェクト構成（サービス単位）
 
@@ -137,9 +138,11 @@ Result / Error はサービスをまたいで同一の型である必要があ�
 のみに限っていたが、[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が
 `Platform.Shared.Kernel` を加えて **3 プロジェクトへ改定**した（2026-08-03 / #455）。改定はこの 1 点に限り、
 「platform → 可変ユニットは禁止」「統合テストの例外」は引き続き有効である。
-`Platform.Shared.Kernel` は **.NET 標準以外の `PackageReference` を持たない**（ADR-0030 選定基準 3 を成立させる
-ための置き場であり、`scripts/check-backend-libraries.js` が `*.Domain.csproj` の許容 `ProjectReference` を
-同プロジェクトのみとして機械強制する）。**実体プロジェクトは未作成**で、最初にそれを必要とする
+`Platform.Shared.Kernel` が持てる .NET 標準以外の `PackageReference` は **Result 型の実装 1 つのみ**である
+（現行 `CSharpFunctionalExtensions`。2026-08-04 に計画 ADR-0041 が ADR-0030 選定基準 3 の「ゼロ」を
+「名指しの 1 つ」へ改定した）。ADR-0030 選定基準 3 を成立させるための置き場であり、
+`scripts/check-backend-libraries.js` が `*.Domain.csproj` の許容 `ProjectReference` を同プロジェクトのみ
+とし、あわせて**同プロジェクトの `PackageReference` を許可リストの 1 件に限る**形で機械強制する。**実体プロジェクトは未作成**で、最初にそれを必要とする
 サービス再実装 issue（#438〜#451）が作成する。
 
 ### ライブラリ標準（要点）
@@ -149,7 +152,7 @@ Result / Error はサービスをまたいで同一の型である必要があ�
 | ローカル/リモートハンドラ・Outbox | Wolverine | MediatR・独自 Dispatcher・MassTransit |
 | マッピング | Riok.Mapperly（ソースジェネレータ） | AutoMapper・Mapster |
 | 検証 | FluentValidation | — |
-| Result 表現 | `Platform.Shared.Kernel` の自前 Result / Error | OneOf・CSharpFunctionalExtensions |
+| Result 表現 | `Platform.Shared.Kernel` の自前 Result / Error（**内部実装のみ** CSharpFunctionalExtensions。ADR-0041） | OneOf |
 | エラー応答 | 標準 `AddProblemDetails()` + `IExceptionHandler` | Hellang.Middleware.ProblemDetails |
 | ロギング | 標準 `ILogger` + OpenTelemetry Logs | Serilog 系（Seq 含む） |
 | キャッシュ | HybridCache（L1）+ Redis（L2） | — |
