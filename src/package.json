@@ -9,6 +9,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "//prepare": "NFR / issue #768 / IADR-0203: husky v9 は cwd に .git が在ることを要求するが、git ルートに package.json は無く pnpm workspace ルートは src/ である。よって git ルート（..）へ移ってから husky を実行する（husky の実体は pnpm が PATH に通す src/node_modules/.bin/husky なので cd 後も解決できる）。core.hooksPath は .husky/_ になる。末尾の || true は、CI の pnpm install --frozen-lockfile を husky の失敗で落とさないための安全弁。",
+    "prepare": "cd .. && husky || true",
     "dev": "pnpm --filter @platform/frontend run dev",
     "build": "pnpm --filter @platform/frontend run build",
     "preview": "pnpm --filter @platform/frontend run preview",
@@ -63,6 +65,7 @@
     "eslint-plugin-react-refresh": "^0.4.12",
     "eslint-plugin-storybook": "^10.5.6",
     "globals": "^15.9.0",
+    "husky": "^9.1.7",
     "jsdom": "^25.0.1",
     "orval": "^8.23.0",
     "prettier": "^3.3.3",
