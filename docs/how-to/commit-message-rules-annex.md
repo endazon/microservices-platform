@@ -44,7 +44,7 @@ plan_refs:
 - `pull_request` の `opened/edited/reopened/synchronize` で起動し、タイトル後編集も再検査する。
 - **除外は「作成者の名前」で行う**（#524）。ワークフローは `PR_AUTHOR`
   （`github.event.pull_request.user.login`）を渡すだけで、`dependabot[bot]` 等かどうかの判定は
-  `check-commit-messages.js` の `BOT_AUTHORS`（`isBotAuthorName`）が担う。Revert・`[skip ci]` も
+  `check-commit-messages.js` の `BOT_AUTHORS`（`isBotLogin`）が担う。Revert・`[skip ci]` も
   同スクリプトが除外する。
   - **ジョブ条件で `user.type != 'Bot'` を使ってはならない。** それは dependabot だけでなく
     **GitHub App が人の代わりに作成した PR（`claude[bot]`）まで除外**し、この検査が `skipped` になる

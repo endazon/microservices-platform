@@ -52,9 +52,18 @@ planning#363 の裁定で分類 C は **(a) キットに対応物が無い／(b)
 | **C → A** | `.claude/rules/traceability.md` | 置換点なし。固有分は companion へ（決定 2） |
 | **C → B（X）** | `scripts/check-cross-repo-refs.js` | 値はソース直書きで、キットの置換点も環境変数注入も使っていない。型 4（#590）等の本リポ先行分を持つため A にできない。追跡 #756 |
 | C → B（X） | `scripts/check-commit-messages.js` / `scripts/check-plan-id-qualification.js` | 本リポ originate・キットが後追いで別実装。追跡 #756 |
-| C → B（X） | `scripts/scripts.test.js` | 設計上は A であるべきだがキット版が +750 行先行。追跡 #757 |
+| C → B（X） → **A** | `scripts/scripts.test.js` | 設計上は A であるべきだがキット版が +750 行先行。追跡 #757 → **#757 で解消し A へ戻した**（下の追記） |
 | C → B（1〜5） | `.gitignore` / `AGENTS.md` / `CHANGELOG.md` / `CLAUDE.md` / `docs/README.md` / `docs/ai-workflow.md` / `scripts/README.md` / `scripts/changelog-overrides.json` | いずれも「キット土台 ＋ 固有デルタ」。土台はキットが正で追随対象 |
 | **C のまま** | `docs/adr/README.md` / `docs/operations/operations.md` / `docs/security/security.md` / `docs/tech/tech-requirements.md` | (b) 雛形から書き起こし、`<作成者>` / `<YYYY-MM-DD>` / 索引の置換点を埋めている |
+
+> ［2026-08-15 追記 / #757］**`scripts/scripts.test.js` は A へ戻った**（キット pin `4d6a7d6` とバイト一致）。
+> 併せて **`scripts/kit-sync-classification.example.json` を `notApplicable` から A へ移した** ——
+> キット版のテストが**雛形そのもの**を検査対象にするため、「本リポが実表を持つ」ことは
+> 雛形を持たない理由にならない。追随の前提として `check-commit-messages.js` の
+> `isBotAuthorName` をキットの正準名 `isBotLogin` へ改名し、`check-planning-pin-freshness.js` へ
+> `freshness` を、`check-cross-repo-refs.js` へ `createChecker`（置換点 ＋ 設定の妥当性検査）を
+> 足した。**後 2 者は X のままである**（本リポの検出力が先行しているため。追跡 #749 / #756・
+> 環流先 planning#374）。集計は **A 78 / B 25 / C 4 / 対象外 8**。
 
 **`CLAUDE.md` は置換点（末尾「技術スタック別ルール」）を埋めているので C(b) も成立するが、B に置く。** 土台の規約文（§8 予算・§11 パリティ等）は運用ガイドの改定のたびにキットが正となって追随が要り、「同期しない」と宣言する C は実態に合わない。
 

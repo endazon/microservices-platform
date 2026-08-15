@@ -90,7 +90,7 @@ module.exports = ({ ok, assert }) => {
   {
     const fsGate = require('fs');
     const pathGate = require('path');
-    const { isBotAuthorName, checkSingleTitle } = require('./check-commit-messages.js');
+    const { isBotLogin } = require('./check-commit-messages.js');
     const WORKFLOW = pathGate.resolve(__dirname, '..', '.github', 'workflows', 'pr-title.yml');
 
     // YAML のコメント行を落とす。**経緯の説明で `user.type` に言及すること自体は禁じない**——
@@ -119,42 +119,28 @@ module.exports = ({ ok, assert }) => {
       assert.deepStrictEqual(offenders, [], `user.type 判定が残っている: ${offenders.join(', ')}`);
     });
 
+    // ★ NFR / #757: **キット版 scripts.test.js と重複する言明はここへ書かない。**
+    //   キット版が既に固定しているもの（本ブロックから削った分）:
+    //     - `isBotLogin` の dependabot[bot] / renovate / claude[bot] / 空 / null
+    //       → キット版「isBotLogin は大小文字を無視して完全一致する」
+    //     - `checkSingleTitle` の bot=skip / App=検査 / 規約適合 / 作成者未指定
+    //       → キット版「PR 作成者 …」6 件
+    //   ここに残すのは**キット版が見ていない形だけ**である（下の 4 群）。
     ok('#524: 除外は名前で判定する（App 代行 PR は検査対象に残る）', () => {
-      assert.strictEqual(isBotAuthorName('dependabot[bot]'), true);
-      assert.strictEqual(isBotAuthorName('renovate[bot]'), true);
-      assert.strictEqual(isBotAuthorName('github-actions[bot]'), true);
-      // ここが本 issue の核心。App が人の代わりに書いた PR は**除外しない**。
-      assert.strictEqual(isBotAuthorName('claude[bot]'), false);
-      assert.strictEqual(isBotAuthorName('endazon'), false);
-      assert.strictEqual(isBotAuthorName(''), false);
-      assert.strictEqual(isBotAuthorName(undefined), false);
-      // 照合は完全一致。部分一致だと BOT_AUTHORS の語を含む**人間のログイン**まで
+      // 群 1: BOT_AUTHORS の 3 番目。キット版は dependabot / renovate しか見ていない。
+      assert.strictEqual(isBotLogin('github-actions[bot]'), true);
+      // 群 2: 人間のログイン。キット版は claude[bot] だけを負例に持つ。
+      assert.strictEqual(isBotLogin('endazon'), false);
+      // 群 3: 未定義。キット版は null のみ（`== null` を `=== null` へ狭める変異を捕まえる）。
+      assert.strictEqual(isBotLogin(undefined), false);
+      // 群 4: 照合は完全一致。部分一致だと BOT_AUTHORS の語を含む**人間のログイン**まで
       // 除外され、最後の砦を無検査で素通りする（PR #527 のレビュー指摘）。
-      assert.strictEqual(isBotAuthorName('the-renovate-guy'), false);
-      assert.strictEqual(isBotAuthorName('dependabot-team'), false);
-      assert.strictEqual(isBotAuthorName('my-github-actions-fan'), false);
-      // 大小文字・前後の空白は無視する。
-      assert.strictEqual(isBotAuthorName('  Dependabot[Bot] '), true);
-    });
-
-    ok('#524: checkSingleTitle は作成者で分岐する（bot=skip / App=検査）', () => {
-      const silence = () => true;
-      const outOrig = process.stdout.write;
-      const errOrig = process.stderr.write;
-      process.stdout.write = silence;
-      process.stderr.write = silence;
-      try {
-        // dependabot は規約違反の件名でも 0（従来どおり除外）。
-        assert.strictEqual(checkSingleTitle('壊れた件名', 'dependabot[bot]'), 0);
-        // claude[bot] は検査され、規約違反なら 1（本 issue が塞いだ穴）。
-        assert.strictEqual(checkSingleTitle('壊れた件名', 'claude[bot]'), 1);
-        assert.strictEqual(checkSingleTitle('fix(NFR): 直った件名', 'claude[bot]'), 0);
-        // 作成者未指定（ローカル実行・イベント外）は従来どおり件名だけで判定する。
-        assert.strictEqual(checkSingleTitle('壊れた件名'), 1);
-      } finally {
-        process.stdout.write = outOrig;
-        process.stderr.write = errOrig;
-      }
+      // キット版は `not-dependabot-really` 1 件のみ。**前方・後方・中間の 3 方向**を残す。
+      assert.strictEqual(isBotLogin('the-renovate-guy'), false);
+      assert.strictEqual(isBotLogin('dependabot-team'), false);
+      assert.strictEqual(isBotLogin('my-github-actions-fan'), false);
+      // 大小文字・前後の空白は無視する（キット版は大小のみ）。
+      assert.strictEqual(isBotLogin('  Dependabot[Bot] '), true);
     });
   }
 
@@ -4223,6 +4209,60 @@ module.exports = ({ ok, assert }) => {
         '呼び出し元の無い関数を「後方互換」の名目で残さない（PR #679 レビュー 🟢）',
       );
     });
+
+    // --- NFR / #757: キット版の createChecker 構造を載せたことの門 -------------------
+    //
+    // キット版 scripts.test.js は「自リポ名を CROSS_REPOS へ入れたら設定エラーで止まる」
+    // だけを見る。ここでは**本リポの既定設定が実際にその不変条件を満たしていること**と、
+    // **載せ替えで検出力（型 1〜4・〔〕区切り）が 1 つも落ちていないこと**を固定する。
+    // 従前この不変条件はコメントでしか守られておらず、**SELF_NAMES を CROSS_REPOS へ
+    // 入れると正当な自リポ参照を 22 件止める**（#507 の実測）。
+
+    ok('check-cross-repo-refs #757: 既定設定が自リポ名を他リポ側へ混ぜていない', () => {
+      const names = [...Object.keys(xrepo.CROSS_REPOS), ...Object.values(xrepo.CROSS_REPOS)];
+      for (const self of xrepo.SELF_NAMES) {
+        assert.ok(!names.includes(self), `自リポ名 ${self} が CROSS_REPOS に混ざっている`);
+      }
+      // 自リポ名は空でない（空にすると検証が素通りする＝門が無効化される）。
+      assert.ok(xrepo.SELF_NAMES.length > 0, 'SELF_NAMES が空（設定の妥当性検査が効かない）');
+      assert.ok(xrepo.SELF_NAMES.includes('MSP'), '規約が定める自リポ短縮形 MSP が抜けている');
+    });
+
+    // ★ 変異試験。**「検証を入れた」と言えるのは、壊した設定を実際に拒むときだけである。**
+    ok('check-cross-repo-refs #757: 自リポ名を混ぜた設定は例外で止まる', () => {
+      assert.throws(
+        () => xrepo.createChecker({ crossRepos: { 'my-repo': 'MINE' }, selfNames: ['MINE'] }),
+        /SELF_NAMES/,
+      );
+      // 長い表記の側で衝突しても止まること（短縮形だけ見て素通りしない）。
+      assert.throws(
+        () => xrepo.createChecker({ crossRepos: { MSP: 'x' }, selfNames: ['MSP'] }),
+        /SELF_NAMES/,
+      );
+      // 空設定は「検査した」と誤認しない（0 件検査で緑を返さない）。
+      assert.throws(() => xrepo.createChecker({ crossRepos: {} }), /CROSS_REPOS が空/);
+    });
+
+    // ★ 非退行の門。設定から組み立てる形へ載せ替えたときに、**本リポにしか無い検出力**
+    //   （型 4 owner 誤り #590 / 〔〕区切りの列挙 #586 / 型 1・2・3）が落ちていないこと。
+    //   #756 の判定が「本リポ版が優る」根拠にした当の 2 型である。
+    ok('check-cross-repo-refs #757: 載せ替えで型 1〜4 と〔〕区切りの検出が落ちていない', () => {
+      const kinds = (t) => xrepo.findViolations(t).map((v) => v.kind).sort();
+      // 型 1（長い表記）。長い名前を先に当てるので `project-planning#1` 全体を拾う。
+      assert.deepStrictEqual(kinds('project-planning#1'), ['long']);
+      // 型 2（列挙の裸）。
+      assert.deepStrictEqual(kinds('planning#1・#2'), ['enum']);
+      // 型 2（〔〕で添える形の中を裸にしたもの。#586）。
+      assert.deepStrictEqual(kinds('PR planning#244〔裁定依頼 #237〕'), ['enum']);
+      // 型 3（空白区切り）。
+      assert.deepStrictEqual(kinds('planning #123'), ['spaced']);
+      // 型 4（owner 誤り。#590）。
+      assert.deepStrictEqual(kinds('acme/project-planning#50'), ['owner']);
+      // 偽陽性の側（規約どおりの形で鳴らない）。**片側だけ見ると検査器が外される。**
+      assert.deepStrictEqual(kinds('planning#1 と AST#2 と endazon/project-planning#50'), []);
+      assert.deepStrictEqual(kinds('PR planning#244〔裁定依頼 planning#237〕'), []);
+      assert.deepStrictEqual(kinds('本リポの #454 と #455'), []);
+    });
   }
 
   // --- #587: ピン留めモデルの版数移行 Runbook（IADR-0112 決定 3） --------------------
@@ -6259,13 +6299,11 @@ module.exports = ({ ok, assert }) => {
     const REPO = path.join(SCRIPTS, '..');
     const pin = require('./check-planning-pin-freshness.js');
 
-    ok('check-planning-pin-freshness --self-test が通る', () => {
-      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--self-test'], {
-        encoding: 'utf8',
-        cwd: REPO,
-      });
-      assert.strictEqual(r.status, 0, `${r.stdout || ''}${r.stderr || ''}`);
-    });
+    // ★ NFR / #757: `--self-test` の実走はキット版 scripts.test.js が同じ形で持つため
+    //   ここからは削った（同じ言明を 2 箇所に持たない）。**削った分が守っていたもの**は
+    //   「自己試験が exit 0 で通る」だけであり、キット版
+    //   `for (const s of [...]) ok(`${s} の自己試験が通る`)` が `execSync`（非 0 で throw）で
+    //   同じ経路を実走している。以下はキット版が見ていない**実データの挙動**である。
 
     // 判断 4: fail-open。**ただし「検査していない」と「乖離なし」を読み分けられること。**
     ok('check-planning-pin-freshness: 実データで落ちない（fail-open）', () => {
@@ -6330,6 +6368,53 @@ module.exports = ({ ok, assert }) => {
     ok('pin 鮮度: pin == head なら鳴らない（偽陽性の側）', () => {
       const r = pin.findIssues({ pin: 'x', head: 'x', files: [`projects/${pin.PLANNING_PROJECT}/02_requirements/a.md`], adrPairs: [] });
       assert.strictEqual(r.drifted, false);
+    });
+
+    // --- NFR / #757: キット版から移植した経過日数（freshness）の**配線**の門 ----------
+    //
+    // キット版 scripts.test.js が固定するのは純関数 `freshness` の境界だけである
+    // （しきい値ちょうど / 超過 / null）。**純関数だけ試験しても、それが実経路へ
+    // 繋がっていることは守れない** —— 本リポは同型の空振りを繰り返し実測している
+    // （#680 の setup.sh・planning#320 の 8 巡目）。**配線そのものを試験する。**
+
+    ok('pin 鮮度 #757: 比較元を取れない経路で pin の経過日数を添える（配線）', () => {
+      const os = require('os');
+      // 実物の git リポジトリを 2 つ作り、planning を gitlink として持たせる。
+      // **比較元（origin）を持たせない**ため resolveComparisonSource は null を返し、
+      // 「比較対象を取得できないため検査していません」の経路へ落ちる。
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pin757-'));
+      const g = (dir, ...args) =>
+        spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@e', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@e' } });
+      const plan = path.join(root, 'planning');
+      fs.mkdirSync(path.join(plan, 'projects', pin.PLANNING_PROJECT), { recursive: true });
+      g(root, 'init', '-q', '-b', 'main');
+      g(plan, 'init', '-q', '-b', 'main');
+      fs.writeFileSync(path.join(plan, 'projects', pin.PLANNING_PROJECT, 'INDEX.md'), 'x\n');
+      g(plan, 'add', '-A');
+      g(plan, 'commit', '-qm', 'init');
+      g(root, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', plan, 'planning');
+      g(root, 'add', '-A');
+      g(root, 'commit', '-qm', 'init');
+      // origin を持たないので比較元が解決できない。
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--no-fetch', '--root', root], {
+        encoding: 'utf8',
+        cwd: REPO,
+      });
+      const out = `${r.stdout || ''}${r.stderr || ''}`;
+      fs.rmSync(root, { recursive: true, force: true });
+      assert.strictEqual(r.status, 0, `fail-open が壊れている:\n${out}`);
+      assert.match(out, /比較対象を取得できないため検査していません/, `想定の経路へ落ちていない:\n${out}`);
+      // ★ 変異点: `ageNote(root)` の呼び出しを外すとここが落ちる。
+      assert.match(out, /なお pin 自体は \d+ 日前のコミットです/, `経過日数が添えられていない（配線が切れている）:\n${out}`);
+    });
+
+    // ★ 逆向き（黙らせる側）の門。日時が取れないのに「0 日前」と書くと、
+    //   **情報が無いことを情報のように書く**ことになる（本スクリプトが最も嫌う形）。
+    ok('pin 鮮度 #757: 日時を取れないときは添え書きを出さない（unknown を fresh に化けさせない）', () => {
+      assert.strictEqual(pin.freshness(null, 1_700_000_000, 14).state, 'unknown');
+      assert.strictEqual(pin.ageNote('/no/such/repo', 1_700_000_000), '');
+      // しきい値は 0 にしない（毎回鳴ると読まれなくなる）。
+      assert.ok(pin.DEFAULT_MAX_AGE_DAYS > 0, 'しきい値が 0 になっている');
     });
 
     // 決定 1・2: 配線が外れていないか。**「配線した」と書いて実体が無い状態を作らない。**
