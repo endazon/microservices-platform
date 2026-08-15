@@ -1,7 +1,7 @@
 ---
 title: 監査の巡数「risk 別の目安」にも実測が無い — planning#307 の論拠の射程を確認したい
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0141, IADR-0194]
 source_repo: microservices-platform

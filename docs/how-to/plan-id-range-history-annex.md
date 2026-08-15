@@ -11,7 +11,7 @@ related_ids:
   - IADR-0177
 author: claude
 created: 2026-08-11
-updated: 2026-08-14
+updated: 2026-08-15
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -25,6 +25,16 @@ plan_refs:
 >
 > **本別紙が持つのは「過去の pin でどう引き直したか」「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れないか」の記録だけ**である（[[IADR-0172]] 決定 3 の段 5 ／ [[IADR-0173]] 決定 2）。
+
+### ［2026-08-15］planning `cff0e7b` → `ce9abd2`（pin 更新）
+
+`FR-01..22` / `UC-01..11` / `SC-01..21` は**不動**。**`ADR` だけが `0001..0045` → `0001..0046` へ増えた**
+（`ADR-0046` = 個人資料を Wiki.js へ同期しない。planning#346 の裁定 / PR planning#347）。**欠番は無い**（46 ファイル・連番）。
+
+**この pin 更新は、実装側から出した裁定依頼 2 件への回答を取り込むために行った** ——
+planning#344（ABAC の `owner` が実データ 0 件）と planning#346（Wiki.js の個人スコープ）である。
+前者は `06_technical/09_datasource-connectors.md` に §システム投入経路での `owner` / `department` を新設し、
+**実装側 #516 の着手条件を確定させた**。作業仕様書は [`20260815_planning-pin-ce9abd2.md`](../specs/20260815_planning-pin-ce9abd2.md)。
 
 ## 1. 過去の pin での引き直しの記録
 

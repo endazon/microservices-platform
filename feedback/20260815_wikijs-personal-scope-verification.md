@@ -1,7 +1,7 @@
 ---
 title: Wiki.js の個人スコープ可視性制御は編集導線で成立しない — SC-19 の 1 導線について新 ADR の起案が要る
 type: plan-feedback
-status: open
+status: accepted
 category: 前提検証の結果
 related_ids: [FR-19, FR-20, SC-19, ADR-0011, ADR-0036, ADR-0037]
 source_repo: microservices-platform

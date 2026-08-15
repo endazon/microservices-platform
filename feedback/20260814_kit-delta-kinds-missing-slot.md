@@ -1,7 +1,7 @@
 ---
 title: 固有デルタ 4 種に「キットが空欄・空配列で配り各リポが埋める」型が無い（AI_SETUP.md / commit-allowlist.json）
 type: plan-feedback
-status: open
+status: accepted
 category: 新たな制約(ADR要)
 related_ids: [NFR, IADR-0115]
 source_repo: microservices-platform

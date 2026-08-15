@@ -1,7 +1,7 @@
 ---
 title: キットの検査器・規約の汎用改善 5 件を取り込みたい（リンク検査・pin 鮮度・検証順序・母集合の規則・status 突合）
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115, IADR-0170, IADR-0183, IADR-0193]
 source_repo: microservices-platform

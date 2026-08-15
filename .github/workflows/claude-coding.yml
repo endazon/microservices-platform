@@ -222,3 +222,16 @@ jobs:
         env:
           EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: node scripts/check-permission-denials.js "$EXECUTION_FILE"
+
+      # AI レビューの判定投稿チェック（キット配布・planning#333 / 本リポ採用は #578 後の pin 更新）。
+      #
+      # claude-code-action は AI が判定（🔴 / 🟡 / 🟢）を投稿しないままターンを終えても
+      # success で終わる。ジョブは緑になり「レビュー済み・指摘なし」と読まれるが、
+      # **実際には何も判定されていない**。上の check-permission-denials.js では捕まらない
+      # ——あちらは「ツールを 1 つも実行できなかった」形を見る。ここはツールが動いており
+      # **最後の投稿だけが無い**形を見る。2 本セットで配布される。
+      - name: Check review verdict
+        if: always()
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: node scripts/check-review-verdict.js "$EXECUTION_FILE"

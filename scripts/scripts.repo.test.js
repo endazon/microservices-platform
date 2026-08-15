@@ -4457,7 +4457,9 @@ module.exports = ({ ok, assert }) => {
         // 母集合の件数を固定する。**新しい検査器が増えたら、まずここが落ちて宣言を促す。**
         // ★ #713 で `check-kit-sync.js` を足したため 33 → 34（ラチェットが設計どおり発火した）。
         // ★ #737 で `check-feedback-status-sync.js` を足したため 34 → 35（同上）。
-        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
+        // ★ 計画 pin を ce9abd2 へ進めた際、キットが新規配布した `check-review-verdict.js` を
+        //    採用したため 35 → 36（同上。planning#333 / AI レビューが判定を投稿しない形を止める）。
+        assert.strictEqual(scripts.length, 36, `検査器の母集合が 36 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

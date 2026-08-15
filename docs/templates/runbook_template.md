@@ -11,11 +11,11 @@ plan_refs: []
 
 # 運用 Runbook: <対象>
 
-> **運用仕様書（`docs/operations/operations.md`）の下位にあたる手順書である。**
+> **運用仕様書（`docs/operations/`）の下位にあたる手順書である。**
 > 運用仕様書はリポジトリ単位で 1 つだが、**Runbook は手順ごとに複数あってよい**（`docs/README.md`）。
 > **状態の単一情報源は運用仕様書に置き、本書は手順に特化する。**
 >
-> **`type` は `runbook` である**（`operations-spec` ではない。#675 / [[IADR-0167]]）。
+> **`type` は `runbook` である**（`operations-spec` ではない）。
 > 運用仕様書と同じ `type` にすると、**「リポ単位で 1 つ」という規約と、複数ある実体が矛盾する。**
 
 ## 起点となる計画書（トレーサビリティ）

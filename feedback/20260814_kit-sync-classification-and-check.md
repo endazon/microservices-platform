@@ -1,7 +1,7 @@
 ---
 title: キット同期の分類表と突合検査をキットへ配りたい（AST は追随を機械が見ていない）
 type: plan-feedback
-status: open
+status: accepted
 category: その他
 related_ids: [NFR, IADR-0115, IADR-0192]
 source_repo: microservices-platform
