@@ -106,7 +106,3 @@ dispatched: true
 > **★ 知見 1（検査器が記録ファイル経路を証拠と認めない・planning#319）は未解決のままである。**
 > **本件は `status` 側だけを正した** —— `20260809_document-write-machine-client.md` は
 > **証拠を持たないまま `triaged`** であり、planning#319 が反映されるまでその状態が正しい。
-
-> **［2026-08-14 追記 / #721］`status: triaged` → `open` ＋ `dispatched: true` へ移行した**（[IADR-0187](../docs/adr/IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2）。
-> **planning#323 の裁定により `status` は「計画側の裁定の進捗」を表すことになり、`triaged` は廃された。**
-> **本記録が伝達済みであることは `planning/draft/feedback/` の写しで確認済み**であり、その事実は `dispatched: true` が担う。

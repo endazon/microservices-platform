@@ -5,11 +5,13 @@ status: Accepted
 related_ids:
   - NFR
   - IADR-0115
+  - IADR-0166
   - IADR-0179
   - IADR-0185
+  - IADR-0191
 author: claude
 created: 2026-08-14
-updated: 2026-08-14
+updated: 2026-08-15
 plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md"
 ---
@@ -94,6 +96,28 @@ plan_refs:
 > **★ 規約の射程が判然としない点は #717 として起票済みである**（本 ADR で新たに広げてはいない）。
 > **追記を足さない選択もあり得たが、それでは「なぜ `triaged` が消えたか」が記録から辿れなくなる** ——
 > **11 件は上流裁定で意味が変わった記録であり、変わった事実こそ残す価値がある。**
+
+> ## ★ ［2026-08-15 追記 / #733］**上の補足は誤りだった。11 件の追記ブロックは撤去した**
+>
+> **#717 の結論として [IADR-0191](./IADR-0191_rewrite-boundary-is-body-vs-frontmatter.md) 決定 2 が境界を確定した** ——
+> `feedback/` の **frontmatter の状態欄は書き換え可**、**本文（日付つき追記ブロックを含む）は不可**である。
+> **上の補足が採った「規約の射程外だから可」という読みは、この決定の下では成り立たない。**
+>
+> **誤りの所在は結論ではなく論拠の引き方である。** 上の 3 点は
+> **[IADR-0166](./IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 を一度も引用していない**
+> （`grep` で 0 件。#732 のレビューが独立に確認）。同決定は `docs/specs/` について
+> **「本文への注記追加 → 不可」**と、**先に同じ線を引いていた**。**着手前に既存の決定を確かめていれば分かった。**
+>
+> **「変わった事実が記録から辿れなくなる」という懸念は成り立たなかった**（撤去前に確認した）。
+>
+> | 追記が述べていたこと | 撤去後の在り処 |
+> | --- | --- |
+> | `triaged` → `open` ＋ `dispatched: true` へ移した事実 | **frontmatter の値そのもの** |
+> | 移行の理由（上流裁定 planning#323） | **本 ADR** ／ `docs/specs/20260814_issue-721_*.md` |
+> | いつ誰が変えたか | **git 履歴**（`git log -p feedback/`） |
+>
+> **決定 2 そのものは撤回しない。** 誤っていたのは本補足の論拠であり、`status` 語彙を上流裁定へ従わせる決定は有効である。
+> 撤去の作業と利用者承認の経緯は [作業仕様書 #733](../specs/20260815_issue-733_remove-feedback-body-addenda.md) にある。
 
 ## ★★ 決定 3: **`awaiting-decision` / `accepted` / `rejected` は実装側が書かない**
 
