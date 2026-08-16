@@ -1,7 +1,7 @@
 {
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2 / IADR-0192。#755 で planning#363 の新定義へ改めた）。",
-    "書式・値域の正はキットの kit-sync-classification.example.json（pin 4d6a7d6）である。分類表の中身はリポジトリ固有。",
+    "書式・値域の正はキットの kit-sync-classification.example.json（pin 8cae89d）である。分類表の中身はリポジトリ固有。",
     "",
     "A = キットとバイト一致であるべきファイル。check-kit-sync.js が機械検査する。",
     "B = キット土台 ＋ 固有デルタ。値の先頭は下の種の番号、または X。",
@@ -22,7 +22,7 @@
     "  実測（planning#363）: 本リポは traceability.md / check-cross-repo-refs.js を誤って C に置き、キット側の是正 3 件（planning#349 表記是正・planning#350 規則 8・planning#354 IADR 誤引用）が届かなかった。#755 で再判定した。",
     "  判定の手がかり（どれかに当たれば C の根拠が無い）: キット版とバイト一致（固有デルタ 0）／置換点のプレースホルダが残っている／置換点を使わず環境変数などで注入している。",
     "  注意: 置換点の目印を文字列としてだけ引くと偽陽性が出る。キット版が置換点を宣言しているファイルに限定する。",
-    "notApplicable = キットには在るが本リポでは対象にならないもの（*.example.yml は有効化して実名へ改名済み）。**雛形（*.example.json）はここへ置かない** —— 本リポが実表を持つことは雛形を持たない理由にならず、キット版 scripts.test.js（分類 A）が雛形そのものを検査対象にするため、実体が無いとテストが落ちる（#757）。",
+    "notApplicable = キットには在るが本リポでは対象にならないもの（*.example.yml は有効化して実名へ改名済み）。**雛形（*.example.json）はここへ置かない** —— 本リポが実表を持つことは雛形を持たない理由にならず、キット版 scripts.test.js が雛形そのものを検査対象にするため、実体が無いとテストが落ちる（#757）。",
     "",
     "A / B / C / notApplicable のどこにも書かれていないキットのファイルがあると検査は fail する（キットに増えたファイルを黙って見逃さない門）。"
   ],
@@ -42,7 +42,6 @@
       ".claude/hooks/check-impl.js",
       ".claude/hooks/guard-bash.js",
       ".claude/hooks/guard-secrets.js",
-      ".claude/rules/traceability.md",
       ".devcontainer/devcontainer.json",
       ".editorconfig",
       ".github/CODEOWNERS.example",
@@ -104,7 +103,6 @@
       "scripts/gen-openapi-skeleton.js",
       "scripts/kit-sync-classification.example.json",
       "scripts/lib/ci-annotate.js",
-      "scripts/scripts.test.js",
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
@@ -127,12 +125,14 @@
       "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）＋ 3. 本リポにしか存在しないスクリプト（check-feedback-status-sync.js の説明。IADR-0193。環流済み。追跡: #736 / planning#337）",
       "scripts/README.md": "3. 本リポにしか存在しないスクリプトの行（check-* の本リポ固有分）を追記。土台の表はキットが正",
       "scripts/changelog-overrides.json": "5. キットが追記を委ねている欄（overrides 配列。キットは空で配り、各リポジトリが実際に必要になった分だけ足す）",
-      "scripts/check-commit-messages.js": "X. 5 種に当たらない（本リポ originate）。#756 で HOWTO §B-5 の手順どおり実走突合し、本リポ版が優ると判定した —— キット版に無い機能は FR / UC / SC の実在性検査 #579・件名 / 本文 / PR タイトルへのクロスリポ参照検査 #507・コミット本文（%b）の収集で、逆にキット版だけが持つ機能は無い。#757 で唯一の差であった関数名を キットの正準名 isBotLogin へ揃えたため、残る差は本リポの検出力だけである。追跡: #756 / 環流先 planning#373",
-      "scripts/check-cross-repo-refs.js": "X. 5 種に当たらない（本リポ originate #507。planning#363 の名指し 2 件目）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、本リポ版が優ると判定した —— 同じ fixture で本リポ版 6 件 / キット版 4 件（キット版は型 4 owner 誤り #590 と〔〕区切りの列挙 #586 を検出できず、走査も *.md のみで IADR-0169 の .md 外へ広がっていない）。#757 でキット版の createChecker 構造（置換点 CROSS_REPOS / SELF_NAMES ＋ 設定の妥当性検査）を本リポ版へ載せ、キット版が優っていた唯一の点を解消した。残る差は本リポの検出力そのものであり、環流が着地すればキット版へ戻せる。追跡: #756 / 環流先 planning#374",
+      "scripts/check-commit-messages.js": "5. キットが選択・追記を委ねている欄（置換点 PLAN_PROJECT を microservices-platform で埋めている）。#790 で HOWTO §B-5 の手順どおり同一入力で実走突合し、**検出力は同値**と判定した —— planning#373 の環流受理でキット版が FR/UC/SC 実在性（拡張点 readPlanIds 経由）・件名/本文/PR タイトル 3 面のクロスリポ参照検査・%b 収集をすべて備えた。6 種の件名で exit と検出行数が完全一致し、本リポ版にしか無い機能は 0（export の BOT_AUTHORS だけが減るが利用側は 0 件）。よって #756 の「本リポ版が優る」は成り立たなくなり、キット版へ差し替えて X から外した。",
+      "scripts/check-cross-repo-refs.js": "X. 5 種に当たらない（置換点 6 つを埋める 第 5 種 ＋ 本リポ固有モジュールへの結線 種 3 ＋ **キットに無い門 1 つ**）。#790 で同一入力の実走突合を行い、**型 1〜4 と〔〕区切りの検出力はキット版と同値**と判定した（同一 fixture で 6 件 / 6 件、実データ 1626 件で 0 件 / 0 件、owner 誤りの提案文字列まで一致）。planning#374 の環流受理でキット版が型 4・〔〕・.md 外走査・NUL 読み飛ばしを備えたため、キット版を土台に採った。ただし**キット版は 0 件走査の門（#664 / IADR-0130）を持たない** —— 空リポジトリで exit 0・「OK: 0 件」を返す（実測。変異試験が検出した）。この門と worktree 警告（IADR-0183）を差し替え後に再付与しているため X のまま。環流が着地すれば第 5 種＋種 3 へ落ちる。追跡: planning#379",
       "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流済み。追跡: #736 / planning#337",
       "scripts/check-plan-id-qualification.js": "5. キットが選択・追記を委ねている欄（置換点 PROJECT_PREFIXES / EXTRA_EXCLUDES を埋めた）＋ 3. 本リポにしか存在しないスクリプト（lib/worktree-state.js の警告 IADR-0183 の 3 行）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、キット版が優ると判定してキット版へ差し替えた —— キット版だけが NFR を検出し（同じ fixture でキット 3 件 / 旧本リポ版 2 件）、置換点と環境変数・.gitmodules からの submodule 導出・設定の妥当性検査を持つ。これは feedback/20260808_kit-plan-id-qualification-check.md（起票 planning#316）で本リポ自身が要求した一般化がキットに着地したものである。",
       "scripts/check-planning-pin-freshness.js": "X. 5 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物）。#757 でキット版の freshness / pinnedCommitDate を移植し、比較元を取れない fail-open 経路へ配線した（キット版自身が「ここが要るリポジトリは本スクリプトを土台に分類規則を足すこと」と述べており、差し替えではなく足すのが正しい向き）。追跡: #749",
-      "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337"
+      "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337",
+      ".claude/rules/traceability.md": "X. 5 種に当たらない（**期限つきの暫定**）。キット版は 8cae89d で 21,590B → 24,592B（+3,002B）へ育った（本リポの環流 planning#373 / planning#374 が受理された結果で、内容そのものは正しい）。そのまま取り込むと必読規約の合計が予算 51,200B を超え、check-reading-budget.js と scripts.repo.test.js の予算試験が fail する（実測 #790）。★ 具体値はここへ書かない —— CLAUDE.md や companion が動くたびに変わるためである（実測で 3 回動いた: 53,195B → 53,184B → 53,063B。原因は自分の減量・別 PR のマージで、いずれも規則 10 の破れとして検出された）。超過しているかどうかは scripts.repo.test.js の #790 ラチェットが実ファイルからライブ計算して判定し、超えなくなったら fail して追随を促す。規範の空白は生じていない —— キット版が新たに書いた 3 点（FR/UC/SC 実在性の拡張点・修飾を 3 面で見ること・型 4 と〔〕区切りと .md 外走査）は companion traceability.repo.md が本リポ固有の形で既に持つ。減量が着地したら分類 A へ戻す。追跡: #793",
+      "scripts/scripts.test.js": "X. 5 種に当たらない。キット版 8cae89d の試験「拡張点を持たない構成では null を返して当該検査を skip する」は、**拡張点（check-test-traceability.js の readPlanIds）を埋めた配布先では原理的に通らない** —— loadExistingPlanIds() が Set を返すのが #579 の機能そのものだからである（実測 #790）。固有デルタは当該 1 か所のみで、構成を判定してから期待値を選ぶ形へ変え両方向を固定した（skip にはしていない）。キット側の是正が着地したらバイト一致へ戻す。追跡: planning#380"
     },
     "C": [
       "docs/adr/README.md",

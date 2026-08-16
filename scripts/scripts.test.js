@@ -6,7 +6,7 @@
  * 外部依存ゼロ（Node 標準 assert のみ）。実行: node scripts/scripts.test.js
  */
 const assert = require('assert');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const { warn, notice } = require('./lib/ci-annotate.js');
 const {
   validateSubject,
@@ -857,6 +857,92 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
   assert.ok(fsx.readFileSync(out, 'utf8').trim().length > 0, '生成された CHANGELOG が空');
 });
 
+// --- check-commit-messages: 計画レンジ（FR / UC / SC）の実在性 ---
+//
+// 実在性検査が ADR / IADR にしか無かった間、`feat(SC-99)` は **exit 0 で受理**され、
+// スカッシュ後件名として恒久履歴へ載れた（force push 禁止で事後修正できない面である）。
+
+{
+  const {
+    validateIdExistence,
+    normalizePlanId,
+    loadExistingPlanIds,
+  } = require('./check-commit-messages.js');
+
+  ok('計画レンジに無い FR / UC / SC を違反として上げる', () => {
+    const ids = new Set(['FR-01', 'UC-02', 'SC-03']);
+    assert.strictEqual(validateIdExistence('feat(SC-99): x', null, null, ids).length, 1);
+    assert.strictEqual(validateIdExistence('feat(FR-01): x', null, null, ids).length, 0);
+  });
+
+  // 桁数の違いで「実在しない」と誤検出しない（規約は `FR-\d+` を書式として許す）。
+  ok('ゼロ埋めの桁数が違っても同じ ID として突き合わせる', () => {
+    assert.strictEqual(normalizePlanId('FR-012'), 'FR-12');
+    assert.strictEqual(normalizePlanId('FR-1'), 'FR-01');
+    // ADR / IADR は正規化の対象外（別系統の採番である）。
+    assert.strictEqual(normalizePlanId('ADR-0001'), 'ADR-0001');
+    assert.strictEqual(validateIdExistence('feat(FR-012): x', null, null, new Set(['FR-12'])).length, 0);
+  });
+
+  // **キット既定は「持たない構成」である。** 拡張点（check-test-traceability.js）を置いた
+  // 配布先でのみ実効する。持たない側で throw せず null を返すことが配布物としての要件。
+  // ★★ 固有デルタ（分類 B 種 X・#790）: **キット版のこの試験は、拡張点を埋めた配布先では
+  //   原理的に通らない。** キット既定（`check-test-traceability.js` を配らない構成）だけを
+  //   前提に `loadExistingPlanIds() === null` を固定しているが、本リポは同モジュールを持ち
+  //   `readPlanIds()` を実装しているため Set が返る（それが #579 の機能そのものである）。
+  //   **すなわちキットは「自分が配った機能を採用したリポジトリで落ちる試験」を配っている。**
+  //   構成を判定してから期待値を選ぶ形へ変えた（**skip にはしない** —— 両方向を固定する）。
+  //   キット側の是正が着地したらバイト一致へ戻す。追跡は kit-sync-classification.json の理由欄。
+  ok('拡張点の有無で「skip する / 実効する」が切り替わる', () => {
+    let hasExtension = false;
+    try {
+      hasExtension = typeof require('./check-test-traceability.js').readPlanIds === 'function';
+    } catch (e) {
+      if (!e || e.code !== 'MODULE_NOT_FOUND') throw e;
+    }
+    if (hasExtension) {
+      const ids = loadExistingPlanIds();
+      assert.ok(ids instanceof Set && ids.size > 0, '拡張点が在るのに計画レンジを読めていない');
+      assert.strictEqual(validateIdExistence('feat(SC-99): x', null, null, ids).length, 1);
+    } else {
+      assert.strictEqual(loadExistingPlanIds(), null);
+    }
+    // 集合が null（＝持たない構成）なら当該検査を skip する、はどちらの構成でも成り立つ。
+    assert.strictEqual(validateIdExistence('feat(SC-99): x', null, null, null).length, 0);
+  });
+}
+
+// --- check-commit-messages: 他リポジトリ issue / PR 番号の修飾（件名・本文・PR タイトル） ---
+
+{
+  const { crossRepoRefReasons, CROSS_REPO_REF_LABELS } = require('./check-commit-messages.js');
+  const fsx = require('fs');
+
+  ok('本文の列挙形の修飾漏れを違反理由として返す', () => {
+    const reasons = crossRepoRefReasons('関連: planning#206 / #207', '本文');
+    assert.strictEqual(reasons.length, 1);
+    assert.match(reasons[0], /^本文の /);
+    assert.match(reasons[0], /planning#206 \/ planning#207/);
+  });
+
+  ok('空の本文は違反を出さない（body を取らないコミットで誤検出しない）', () => {
+    assert.deepStrictEqual(crossRepoRefReasons('', '本文'), []);
+    assert.deepStrictEqual(crossRepoRefReasons(null, '本文'), []);
+  });
+
+  // ラベルと kind の 1:1 対応。**実測で 2 度漏れた**（検査の型を足すたびに漏れる）。
+  // 3 度目を止めるため、`check-cross-repo-refs.js` の `kind:` リテラルを静的に走査して
+  // **全 kind がラベル表に在ること**を機械で固定する。
+  ok('CROSS_REPO_REF_LABELS が検査器の全 kind を網羅する', () => {
+    const src = fsx.readFileSync(require.resolve('./check-cross-repo-refs.js'), 'utf8');
+    const kinds = new Set([...src.matchAll(/kind:\s*'([a-z]+)'/g)].map((m) => m[1]));
+    assert.ok(kinds.size >= 4, `kind リテラルを拾えていない（${kinds.size} 件）`);
+    for (const k of kinds) {
+      assert.ok(CROSS_REPO_REF_LABELS[k], `kind "${k}" のラベルが CROSS_REPO_REF_LABELS に無い`);
+    }
+  });
+}
+
 // --- check-commit-messages: 計画 ADR の名前空間限定（他プロジェクトの ID を誤受理しない） ---
 
 {
@@ -1371,7 +1457,7 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
     // 警告が同じ stdout へ出るため、末尾の 1 行だけを見る。
     const probe =
       `const m=require(${JSON.stringify(bin)});process.stdout.write('\\nRESULT=' + JSON.stringify(m.PLANNING_REPO));`;
-    const got = execSync(`node -e ${JSON.stringify(probe)}`, {
+    const got = execFileSync(process.execPath, ['-e', probe], {
       env: { ...process.env, PLANNING_REPOSITORY: 'endazon/project-planning.git' },
       encoding: 'utf8',
     });
@@ -1451,17 +1537,28 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
   // planning#320 の 9 巡目監査で検出: 置換点が**主経路（inspect）へ配線されている**ことが
   // 未試験で、既定引数をリテラルへ固定する変異が全件緑のまま生き残った。
   // 既存の env テストは `foreignPlanRefs` を直接叩くため、この配線切断を検出できない。
+  // planning#367 の環流で判明: 上記 3 件の probe は `execSync` でシェルへ渡していたため、
+  // **Windows（cmd.exe）で `\n` を含む引数が壊れて落ちた**（Linux CI では通るため気付かない）。
+  // `execFileSync` ＋ 引数配列へ変え、シェルを経由しない形にした。**その機構をここで固定する** ——
+  // 起動の仕方を `execSync` へ戻すと、本試験が（Windows で）落ちる。
+  ok('改行・引用符を含む引数がシェルを介さず子プロセスへ渡る（OS 差の回帰）', () => {
+    const probe = 'process.stdout.write(JSON.stringify(process.argv[1]));';
+    const arg = 'a\nb"c\\d';
+    const out = execFileSync(process.execPath, ['-e', probe, arg], { encoding: 'utf8' });
+    assert.strictEqual(JSON.parse(out), arg, '改行・引用符・バックスラッシュを含む引数が壊れている');
+  });
+
   ok('置換点が主経路（inspect）へ配線されている', () => {
     const mod = require('path').join(__dirname, 'check-feedback-dispatched.js');
     const probe =
       `const m=require(${JSON.stringify(mod)});` +
       'const t="---\\nstatus: open\\n---\\nhttps://github.com/endazon/project-planning/issues/1";' +
       'process.stdout.write("\\nRESULT=" + m.inspect(t, "endazon/ai-stock-trading").reasons.length);';
-    const shifted = execSync(`node -e ${JSON.stringify(probe)}`, {
+    const shifted = execFileSync(process.execPath, ['-e', probe], {
       env: { ...process.env, PLANNING_REPOSITORY: 'acme/planning' },
       encoding: 'utf8',
     });
-    const normal = execSync(`node -e ${JSON.stringify(probe)}`, {
+    const normal = execFileSync(process.execPath, ['-e', probe], {
       env: { ...process.env, PLANNING_REPOSITORY: 'endazon/project-planning' },
       encoding: 'utf8',
     });
@@ -1506,11 +1603,11 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
     const mod = require('path').join(__dirname, 'check-feedback-dispatched.js');
     const probe = `const {foreignPlanRefs}=require(${JSON.stringify(mod)});` +
       'process.stdout.write(String(foreignPlanRefs("https://github.com/acme/plan/issues/7","o/r").length));';
-    const withEnv = execSync(`node -e ${JSON.stringify(probe)}`, {
+    const withEnv = execFileSync(process.execPath, ['-e', probe], {
       env: { ...process.env, PLANNING_REPOSITORY: 'acme/plan' },
       encoding: 'utf8',
     });
-    const without = execSync(`node -e ${JSON.stringify(probe)}`, {
+    const without = execFileSync(process.execPath, ['-e', probe], {
       env: { ...process.env, PLANNING_REPOSITORY: '' },
       encoding: 'utf8',
     });
@@ -1626,8 +1723,9 @@ if (!process.env.SCRIPTS_TEST_CHILD) {
 
 // --- check-cross-repo-refs: 他リポジトリ issue / PR 番号の修飾 ---
 //
-// 本体の網羅的な検査は当該スクリプトの `--self-test`（69 件）が持つ。ここではそれを
-// **この試験の一部として必ず走らせる**ことと、配布物として最低限守るべき 2 点を固定する。
+// 本体の網羅的な検査は当該スクリプトの `--self-test` が持つ。ここではそれを
+// **この試験の一部として必ず走らせる**ことと、配布物として最低限守るべき 3 点を固定する。
+// **件数はここに書かない** —— 自己試験へ 1 件足すたびに古くなる（現に古くなった）。
 // 規約に書くだけでは守られないことが実測で確かめられている（規約の書いてある当のファイルを
 // 編集する PR が同じ違反を犯し、CI を green で通過した）。
 
@@ -1636,7 +1734,7 @@ if (!process.env.SCRIPTS_TEST_CHILD) {
 
   ok('check-cross-repo-refs の自己試験が全件通る', () => {
     // selfTest は失敗時に process.exit(1) するため、通ればここへ戻る。
-    // 標準出力は握り潰す（本試験の出力を 69 行汚さない）。
+    // 標準出力は握り潰す（本試験の出力を自己試験 1 件 1 行で汚さない）。
     const write = process.stdout.write.bind(process.stdout);
     process.stdout.write = () => true;
     try {
@@ -1658,6 +1756,15 @@ if (!process.env.SCRIPTS_TEST_CHILD) {
       () => createChecker({ crossRepos: { 'my-repo': 'MINE' }, selfNames: ['MINE'] }),
       /SELF_NAMES/
     );
+  });
+
+  // 配布物としての要点 3: KNOWN_OWNERS はプレースホルダのままなら型 4 を**検査しない**。
+  // 検査してしまうと、**規約が許す正しいフルパス形式を全件違反として上げる** ——
+  // SELF_NAMES の書き忘れと同じ「検査そのものを外させる」事故になる。
+  ok('KNOWN_OWNERS が置換点のままなら型 4 を検査しない（正しい記述を止めない）', () => {
+    const C = createChecker({ crossRepos: { 'my-repo': 'MINE' }, knownOwners: ['<owner>'] });
+    assert.strictEqual(C.OWNER_RE, null);
+    assert.strictEqual(findViolations('acme/my-repo#1', { checker: C }).length, 0);
   });
 }
 // --- check-plan-id-qualification: 他プロジェクトの計画 ID 修飾 ---

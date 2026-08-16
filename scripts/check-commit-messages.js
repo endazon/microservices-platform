@@ -10,6 +10,17 @@
  *   - dependabot 等の自動コミット・マージコミット・自動生成コミットは除外する。
  *   - 規約違反があれば非ゼロ終了し、CI を失敗させる。
  *
+ * 見るもの:
+ *   1) 件名の書式 `種別(起点ID): 要約`
+ *   2) 起点 ID の実在性 —— `IADR`（本リポ `docs/adr/`）/ `ADR`（planning の `07_adr/`）/
+ *      **`FR` / `UC` / `SC`**（拡張点 `check-test-traceability.js` を持つ構成でのみ）
+ *   3) **他リポジトリ issue / PR 番号の修飾を 3 つの面で**——**件名・本文（`%b`）・PR タイトル**。
+ *      裸の `#NNN` は 3 面とも**本リポジトリの issue へ自動リンクする**ため、誤リンクという
+ *      実害が出る。判定器は `check-cross-repo-refs.js` から借りる（規約の単一情報源は向こう側）。
+ *      **本文を見るのは、列挙形の修飾漏れが本文にも出るためである**（件名だけでは足りない）。
+ *
+ * **読めない範囲は skip し、skip したことを notice で出す**（黙って 0 件検査へ落ちない）。
+ *
  * 検査範囲の決定（優先順）:
  *   1) 引数 `--range <base>..<head>`
  *   2) 環境変数 `COMMIT_RANGE`
@@ -23,11 +34,8 @@ const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { warn, notice } = require('./lib/ci-annotate.js');
-// 【固有デルタ】本リポジトリにしか存在しない検査器（IADR-0115 の固有デルタ種 3）。
-// NFR / #507 / IADR-0140: 他リポジトリ issue 番号の修飾（短縮形への統一・列挙形の修飾漏れ）を
-// **コミット件名 / 本文 / PR タイトル**でも検査する。`.github/workflows/` は編集できないため、
-// 既にワークフローから呼ばれている本スクリプトへ相乗りするのが CI へ載せる唯一の経路である。
-// PR #561 は件名・本文・PR タイトルの 3 面すべてで列挙形の修飾漏れを犯し、書式検査を素通りした。
+// 他リポジトリ issue / PR 番号の修飾検査を借りる（規約の単一情報源は向こう側）。
+// **2 本セットで配布する。**
 const { findViolations: findCrossRepoRefViolations } = require('./check-cross-repo-refs.js');
 
 // 規約導入前の既存コミットの恒久適用除外リスト（force push 禁止のため件名を書き換えられない）。
@@ -109,8 +117,9 @@ function resolveRange(explicit) {
 
 /** 範囲のコミットを {hash, subject, author, email, body} で返す（マージコミットは除外）。 */
 function collectCommits(range) {
-  // body（%b）は最後に置く。複数行を含むが、レコード境界は RS なのでフィールド分割は壊れない。
-  // #507: 列挙形の修飾漏れは**本文**にも出る（PR #561 の実例）ため件名だけでは足りない。
+  // body（`%b`）は**最後に置く**。複数行を含むが、レコード境界は RS なのでフィールド分割は
+  // 壊れない。本文を取るのは、**列挙形の修飾漏れが本文にも出る**ためである（件名だけでは
+  // 足りないことが実測で判明した。裸の `#NNN` は本文でも本リポジトリの issue へ自動リンクする）。
   const fmt = `%H${US}%s${US}%an${US}%ae${US}%b`;
   const raw = tryGit(`log ${range} --no-merges --pretty=format:${fmt}${RS}`);
   if (raw === null) {
@@ -133,19 +142,23 @@ function isBot(c) {
   return BOT_AUTHORS.some((b) => hay.includes(b.toLowerCase()));
 }
 
-// #524: PR の作成者ログイン名が「規約対象外の自動 PR」かを判定する（BOT_AUTHORS が単一情報源）。
-// ワークフロー側の `if: github.event.pull_request.user.type != 'Bot'` は **App が代行した PR まで
-// 除外してしまう**（`claude[bot]` は user.type == 'Bot'）ため、判定をここへ寄せて名前で除外する。
-// GitHub App が人の代わりに書いた PR は**検査対象に残す**——スカッシュ後件名は develop に恒久的に
-// 残り、force push 禁止のため事後修正できないため（pr-title.yml が「最後の砦」と自称する所以）。
-// 照合は **完全一致**（大小文字は無視）である。`isBot`（コミット著者）が部分一致なのは
-// 突合先が "名前 <メール>" という連結文字列だからであって、こちらの突合先は**ログイン名そのもの**。
-// 部分一致にすると `the-renovate-guy` のような人間のログインまで「bot」と見なして
-// 最後の砦を無検査で素通りさせる（PR #527 のレビュー指摘）。除外は狭く取る。
+/**
+ * PR 作成者のログイン名が除外対象かを判定する（PR タイトル検査用）。
+ *
+ * コミット著者向けの isBot() が「著者名＋メール」への**部分一致**なのに対し、
+ * こちらは**ログイン名の完全一致**である。PR 作成者は単一のログイン名として
+ * 得られ、部分一致にすると `dependabot` を含む無関係なログイン名（例:
+ * `not-dependabot-really`）まで除外され得るためである。
+ *
+ * とくに **GitHub App が作成した PR（`claude[bot]` 等）は除外しない**。
+ * ワークフロー側で `user.type != 'Bot'` により弾くと、AI に実装を委ねる運用
+ * （本キットが前提とする主要な経路）でだけ PR タイトル検査が skip され、
+ * 「最後の砦」が外れる（issue #202）。除外の判定は本関数へ一本化する。
+ */
 function isBotLogin(login) {
   const name = String(login == null ? '' : login).trim().toLowerCase();
   if (!name) return false;
-  return BOT_AUTHORS.some((b) => name === b.toLowerCase());
+  return BOT_AUTHORS.some((b) => b.toLowerCase() === name);
 }
 
 /** 短縮/完全 SHA を前方一致で照合する（changelog-overrides.json と同方針）。 */
@@ -225,6 +238,9 @@ function loadExistingIadrIds(dir = path.join(__dirname, '..', 'docs', 'adr')) {
 // 【置換点】本リポジトリが主に実装する計画プロジェクト名（`planning/projects/<name>/`）。
 // 裸（無修飾）の `ADR-xxxx` はこの名前空間を指す（.claude/rules/traceability.md の規約）。
 // 環境変数 PLAN_PROJECT で上書きできる（テスト・複数構成の検証用）。
+// ★ 固有デルタ（分類 B 種 5・#790）: 置換点を本リポの計画プロジェクト名で埋めている。
+//   **既定を空／プレースホルダのままにして CI 側で環境変数を渡す形は採らない** —— 未設定だと
+//   他プロジェクトにしか無い ADR まで「実在」として受理され、検査が静かに緩む（#756 と同じ判断）。
 const PLAN_PROJECT = process.env.PLAN_PROJECT || 'microservices-platform';
 
 /**
@@ -283,23 +299,22 @@ function loadExistingPlanAdrIds(
 }
 
 /**
- * 計画レンジ（`FR-xx` / `UC-xx` / `SC-xx`）の実在集合を返す（NFR / #579）。
+ * 計画レンジ（`FR-xx` / `UC-xx` / `SC-xx`）の実在集合を返す。持たない構成では null。
  *
- * **なぜ必要か（#579 の実測）**: 実在性検査は `IADR` と `ADR` にしか実装されておらず、
+ * **なぜ要るか（実測）**: 実在性検査が `IADR` と `ADR` にしか無かった間、
  * `feat(SC-99)` / `feat(FR-77)` / `feat(UC-88)` はいずれも **exit 0 で受理**されていた。
- * これらはスカッシュ後件名として develop の恒久履歴へ載り、force push 禁止で事後修正できない。
+ * これらはスカッシュ後件名として統合ブランチの恒久履歴へ載り、force push 禁止で事後修正できない。
  *
- * **レンジの正は `.claude/rules/traceability.repo.md`「起点 ID の種別（固有）」節**（#755 で companion へ移した）であり、
- * そのパーサは既に `check-test-traceability.js`（#472）に在る。**同じ事実を 2 本のパーサで
- * 持たない** —— 片方だけ直したとき、どちらが正か決められなくなる。
+ * **レンジの正はリポジトリ固有である**（配布先ごとに計画プロジェクトが違う）。よってキットは
+ * **パーサを持たず、拡張点として `./check-test-traceability.js` の `readPlanIds()` を探す**。
+ * 同じ事実を 2 本のパーサで持たないためである —— 片方だけ直したとき、どちらが正か決められなくなる。
  *
  * **fail の向きを 2 つに分ける**（「見つからないから素通り」を一律には採らない）:
- *   - **モジュールが無い**（キット派生リポで `check-test-traceability.js` を持たない構成）
+ *   - **モジュールが無い**（キット既定。当該検査器を持たない構成）
  *     → `null` を返して**当該検査をスキップ**する（呼び出し側が notice で可視化する）。
- *   - **モジュールは在るが節をパースできない** → **例外を投げる**。本リポジトリでは
- *     `.claude/rules/traceability.repo.md` は追跡下の必ず読めるファイルであり、読めない／拾えないのは
- *     環境差ではなく**規約側の破壊**（節の改名・書式変更）である。ここを黙って通すと、
- *     レンジの単一情報源が壊れたまま「違反 0 件」で緑になる。
+ *   - **モジュールは在るが節をパースできない** → **例外を投げる**。追跡下の必ず読めるファイルを
+ *     読めない／拾えないのは環境差ではなく**規約側の破壊**（節の改名・書式変更）である。
+ *     ここを黙って通すと、レンジの単一情報源が壊れたまま「違反 0 件」で緑になる。
  */
 function loadExistingPlanIds() {
   let traceability;
@@ -307,15 +322,24 @@ function loadExistingPlanIds() {
     traceability = require('./check-test-traceability.js');
   } catch (e) {
     // **「持っていない」だけを skip にする。** 種別を見ずに握ると、当該モジュールの構文エラーまで
-    // 「持たない構成」として素通りし、決定 2 が定めた fail の向き（節が壊れていれば fail）が崩れる
-    // ——コメントは「ここは『持っていない』の意味しかない」と断定していたが、実装はそうなっていなかった
-    // （2026-08-08 フェーズ末クロス監査 Y-4）。
+    // 「持たない構成」として素通りし、上の 2 つ目の向き（節が壊れていれば fail）が崩れる。
     if (e && e.code === 'MODULE_NOT_FOUND') return null;
     throw e;
   }
   if (typeof traceability.readPlanIds !== 'function') return null;
-  // 節が壊れていれば readPlanIds が投げる。**握り潰さない**（上記の 2 つ目の向き）。
+  // 節が壊れていれば readPlanIds が投げる。**握り潰さない。**
   return new Set(traceability.readPlanIds());
+}
+
+/**
+ * 計画レンジ側はゼロ埋め 2 桁（`FR-01`）で持つが、規約は `FR-012` のような表記も書式として許す
+ * （`ID_PATTERN` は `FR-\d+`）。**桁数の違いで「実在しない」と誤検出しない**よう、比較の前に
+ * 数値へ正規化して突き合わせる。
+ */
+function normalizePlanId(id) {
+  const m = String(id).match(/^(FR|UC|SC)-(\d+)$/);
+  if (!m) return id;
+  return `${m[1]}-${String(Number(m[2])).padStart(2, '0')}`;
 }
 
 /**
@@ -335,10 +359,9 @@ function validateIdExistence(subject, iadrIds, planAdrIds, planIds) {
     } else if (planAdrIds && /^ADR-\d{3,4}$/.test(id) && !planAdrIds.has(id)) {
       reasons.push(`起点 ID "${id}" が planning の 07_adr/ に実在しない（誤記・廃止の可能性）`);
     } else if (planIds && /^(FR|UC|SC)-\d+$/.test(id) && !planIds.has(normalizePlanId(id))) {
-      // #579: ここが無い間、`feat(SC-99)` は exit 0 で恒久履歴へ載れた。
+      // ここが無い間、`feat(SC-99)` は exit 0 で恒久履歴へ載れた。
       reasons.push(
-        `起点 ID "${id}" が計画レンジに実在しない` +
-          `（.claude/rules/traceability.repo.md「起点 ID の種別（固有）」節が正。誤記・別プロジェクトの ID の可能性）`
+        `起点 ID "${id}" が計画レンジに実在しない（誤記・別プロジェクトの ID の可能性）`
       );
     }
   }
@@ -346,18 +369,7 @@ function validateIdExistence(subject, iadrIds, planAdrIds, planIds) {
 }
 
 /**
- * 計画レンジ側はゼロ埋め 2 桁（`FR-01`）で持つが、規約は `FR-012` のような表記も書式として許す
- * （`ID_PATTERN` は `FR-\d+`）。**桁数の違いで「実在しない」と誤検出しない**よう、比較の前に
- * 数値へ正規化して突き合わせる。
- */
-function normalizePlanId(id) {
-  const m = String(id).match(/^(FR|UC|SC)-(\d+)$/);
-  if (!m) return id;
-  return `${m[1]}-${String(Number(m[2])).padStart(2, '0')}`;
-}
-
-/**
- * 他リポジトリ issue 番号の修飾違反（#507 / IADR-0140）を違反理由の配列で返す。
+ * 他リポジトリ issue / PR 番号の修飾違反を違反理由の配列で返す。
  * `validateSubject`（書式の単一情報源）とは**別関数**に保つ。書式規約と参照表記の規約は
  * 別物であり、allowlist の「規約に準拠した件名を無意味に除外していない」判定が
  * 表記の是非で揺れないようにするためである。
@@ -366,10 +378,8 @@ function normalizePlanId(id) {
  * 描画せず、`#NNN` の自動リンクは効く）ため、コードスパン除外を**しない**モードで見る。
  */
 // ラベルは kind と 1:1 で対応させる。分岐が足りないと、CI ログを読んで直す人が
-// 実際には存在しない「列挙」を探すことになる（#507 の AI レビュー指摘）。
-// **これは 2 度漏れた**（#507 で 1 度、型 4 を足した #590 でもう 1 度）。よって
-// `scripts.repo.test.js` が `check-cross-repo-refs.js` の `kind:` リテラルを静的に走査し、
-// **全 kind がここに在ること**を機械で固定する。3 度目は検査で止まる。
+// 実際には存在しない違反種別を探すことになる。**これは実測で 2 度漏れた**（検査の型を
+// 足すたびに漏れる）。**型を足したら必ずここへも足すこと。**
 const CROSS_REPO_REF_LABELS = {
   long: '他リポジトリ名の長い表記',
   enum: '列挙形の修飾漏れ（裸の #NNN が本リポの issue へ誤リンクする）',
@@ -438,16 +448,14 @@ function checkSingleTitle(title, author) {
   const subject = String(title == null ? '' : title).trim();
   process.stdout.write(`PR タイトル（スカッシュ後件名）チェック: "${subject}"\n`);
 
-  // #524: 除外は **作成者の名前**で行う（`user.type == 'Bot'` ではない）。判定は BOT_AUTHORS の
-  // 単一情報源を使い、ワークフロー側で規約を二重実装しない。
-  if (isBotLogin(author)) {
-    process.stdout.write(`  skip(bot)    作成者 ${author} は規約対象外（BOT_AUTHORS）\n`);
-    return 0;
-  }
-
   if (!subject) {
     // タイトル未取得（イベント外実行等）。CI をブロックしない（fail-open）。
     process.stderr.write('PR タイトルが空のため検査をスキップする。\n');
+    return 0;
+  }
+  if (isBotLogin(author)) {
+    // dependabot 等の自動 PR は規約対象外（BOT_AUTHORS へ完全一致した場合のみ）。
+    process.stdout.write(`  skip(bot)    作成者 ${String(author).trim()} は規約対象外\n`);
     return 0;
   }
   if (isSkippable(subject)) {
@@ -464,8 +472,8 @@ function checkSingleTitle(title, author) {
         loadExistingPlanIds()
       )
     )
-    // #507: PR タイトルはスカッシュ後件名として develop に恒久的に残る。裸の #NNN を含む
-    // 列挙が入ると事後修正できない（force push 禁止）ため、ここで止める。
+    // PR タイトルはスカッシュ後に**コミット件名として恒久履歴へ載る**面である。
+    // 裸の `#NNN` は本リポジトリの issue へ自動リンクするため、ここで止める。
     .concat(crossRepoRefReasons(subject, 'PR タイトル'));
   if (reasons.length) {
     process.stderr.write('\n✗ PR タイトルが規約違反:\n');
@@ -486,9 +494,8 @@ function main() {
 
   // 単一件名モード（PR タイトル検査）。git リポジトリ内外を問わず動作する。
   const title = args.title != null ? args.title : process.env.PR_TITLE;
+  const author = args.author != null ? args.author : process.env.PR_AUTHOR;
   if (title != null) {
-    // 作成者は PR_AUTHOR（ワークフローが github.event.pull_request.user.login を渡す）。
-    const author = args.author != null ? args.author : process.env.PR_AUTHOR;
     process.exit(checkSingleTitle(title, author));
   }
 
@@ -525,7 +532,7 @@ function main() {
     );
   }
   if (!planIds) {
-    // #579: モジュールを持たない構成（キット派生リポ）でのみここへ来る。節が壊れている場合は
+    // モジュールを持たない構成（キット既定）でのみここへ来る。節が壊れている場合は
     // loadExistingPlanIds が投げるので、ここは「持っていない」の意味しかない。
     notice(
       'check-test-traceability.js を持たない構成のため FR / UC / SC の実在性チェックをスキップした' +
@@ -558,15 +565,8 @@ function main() {
       continue;
     }
     const reasons = validateSubject(c.subject)
-      // #579 / #612 レビュー 🔴: **ここに planIds を渡し忘れていた。**
-      // `checkSingleTitle`（--title）へは渡していたので `--title` の変異試験は通り、
-      // 「検査が効いている」と誤って結論した。`ci.yml` の commit-messages ジョブが実行するのは
-      // **こちら（レンジモード）**であり、そこでは FR/UC/SC 実在性が無効のままだった。
-      // **同じ型（呼び出し口を 1 つだけ配線する）はこのリポジトリで 3 度目である。**
-      // 下の scripts.repo.test.js が実バイナリでレンジモードを通し、再発を止める。
       .concat(validateIdExistence(c.subject, iadrIds, planAdrIds, planIds))
-      // #507: 他リポジトリ issue 番号の修飾は件名だけでなく**本文**にも規約が及ぶ
-      // （`.claude/rules/traceability.md`「適用箇所: … コミット件名 / footer」）。
+      // **件名と本文の両方を見る。** 列挙形の修飾漏れは本文にも出る（実測）。
       .concat(crossRepoRefReasons(c.subject, '件名'))
       .concat(crossRepoRefReasons(c.body, '本文'));
     if (reasons.length) {
@@ -600,16 +600,15 @@ if (require.main === module) {
 module.exports = {
   validateSubject,
   validateIdExistence,
+  loadExistingIadrIds,
+  loadExistingPlanAdrIds,
   loadExistingPlanIds,
   normalizePlanId,
   crossRepoRefReasons,
   CROSS_REPO_REF_LABELS,
-  loadExistingIadrIds,
-  loadExistingPlanAdrIds,
   checkSingleTitle,
-  isBot,
   isBotLogin,
-  BOT_AUTHORS,
+  isBot,
   isSkippable,
   hashMatches,
   loadAllowlist,
