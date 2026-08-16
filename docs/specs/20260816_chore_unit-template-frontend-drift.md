@@ -232,8 +232,18 @@ range にする。
 ## 検証（実行コマンドと出力。宣言だけの監査は不合格）
 
 環境: Node 22.22.2 / pnpm 10.33.0 / ESLint 9.39.5 / TypeScript 5.9.3。
-**`planning` と `src/ai-stock-trading` の submodule はいずれも未 populate**（本セッションのリポジトリ
-スコープ外で clone が認証に失敗する）。この影響は下記の但し書きに明示する。
+`src/ai-stock-trading` は **populate 済み**（public のため `git submodule update --init` で取得できる）。
+`planning` は未 populate（private でスコープ外。`check-doc-links.js` が該当分を skip する）。
+
+> **［作業中に踏んだ事故］最初は `src/ai-stock-trading` が未 populate のまま `pnpm install` を実行した。**
+> pnpm は**存在しない workspace メンバの依存を lockfile から削る**ため、AST の 23 依存が消えた
+> lockfile をコミットしてしまい、CI（`pnpm install --frozen-lockfile`）が
+> `ERR_PNPM_OUTDATED_LOCKFILE … not up to date with <ROOT>/ai-stock-trading/frontend/package.json` で
+> 即座に落ちた（PR #777 の初回。frontend 系 5 ジョブが巻き添え）。
+> **ローカルは 5 プロジェクト、CI は 6 プロジェクト**という差が原因である。
+> 是正は「submodule を取得 → lockfile を develop 版へ戻す → `pnpm install` をやり直す」。
+> 結果、lockfile の差分は**追加 46 行のみ・削除ゼロ**になった。
+> **教訓: workspace メンバを増減させる変更では、submodule を取得してから lockfile を生成する。**
 
 ### 検証 1: 雛形が workspace メンバとして型検査される
 
@@ -283,8 +293,13 @@ error TS2307: Cannot find module 'axios' or its corresponding type declarations.
 
 ### 検証 5: 既存ゲートへの影響
 
+submodule を取得し lockfile を作り直したうえで、**全ゲートが緑**である。
+
 ```
-$ pnpm run lint          → ✖ 8 problems (0 errors, 8 warnings)   EXIT=0（warning は既存の react-refresh）
+$ pnpm install --frozen-lockfile → Lockfile is up to date   EXIT=0（CI と同条件）
+$ pnpm run typecheck     → platform / knowledge / templates すべて Done   EXIT=0
+$ pnpm run test          → Test Files 72 passed (72) / Tests 926 passed (926)
+$ pnpm run lint          → ✖ 9 problems (0 errors, 9 warnings)   EXIT=0（warning は既存の react-refresh）
 $ pnpm run format:check  → All matched files use Prettier code style!   EXIT=0
 $ pnpm run lint:templates    → EXIT=0
 $ pnpm run format:templates  → EXIT=0
@@ -296,13 +311,6 @@ $ node scripts/check-doc-type-vocabulary.js     → OK: 610 件
 $ node scripts/check-backend-libraries.js       → OK（新規混入 0 件）
 $ node scripts/check-cpm-versions.js            → OK（直書き 0 件）
 ```
-
-**但し書き（未 populate の submodule に起因する既存の赤）**: `pnpm run test` は
-`Test Files 3 failed | 51 passed` / `Tests 6 failed | 517 passed`、`pnpm run typecheck` は
-`platform/frontend` が失敗する。**いずれも原因は 1 つで、`@ai-stock-trading/features` が解決できないこと**
-である（`src/ai-stock-trading/` が空）。CI は `Fetch unit submodules (src/*)` ステップで取得するため
-該当しない。**本変更が作った赤ではない**——雛形を触る前の状態でも同じ 6 件が落ちる（原因の
-エラーメッセージが `platform/frontend/src/features/index.ts` の AST import 1 行を指している）。
 
 **`check-reading-budget.js` は warn（Claude Code 集合が予算の 98%）だが、これは既存の水準であり
 本変更は `CLAUDE.md` と `.claude/rules/*.md` を 1 バイトも触っていない**（母集合に変化なし）。
