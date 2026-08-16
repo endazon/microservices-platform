@@ -1,4 +1,4 @@
-# IADR-0205 (#779): エッジ TLS 資産（opt-in・LOCALEDGE=1）。k8s-local-up.sh が
+# IADR-0206 (#779): エッジ TLS 資産（opt-in・LOCALEDGE=1）。k8s-local-up.sh が
 # 「cert-manager 導入 → CRD Established 待ち → 本 overlay を apply → 証明書 Ready 待ち」の順で当てる。
 #
 # 親（deploy/local/edge/kustomization.yaml）に含めない理由:

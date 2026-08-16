@@ -364,14 +364,14 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     kubectl apply -f deploy/local/edge/argocd-ingress.yaml
   fi
 
-  # IADR-0205 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
+  # IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
   # ルート CA（Secret cert-manager/local-edge-root-ca）と葉証明書（Secret edge-tls）を作る。
   # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
   # 順序が要る: CRD が Established になる前に tls/ を apply すると "no matches for kind Certificate" で落ちる。
   # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。ESO と同じく
   # env で上書きできるが、既定は動作を実測した版を置く。上書き時も CRD の apiVersion 差に注意すること。
   CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.1}"
-  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0205)"
+  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0206)"
   kubectl apply --server-side --force-conflicts -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
   kubectl wait --for=condition=Established --timeout=120s \
     crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io

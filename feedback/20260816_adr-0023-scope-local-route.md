@@ -8,7 +8,7 @@ related_ids:
   - ADR-0021
   - NFR-11
 source_repo: microservices-platform
-source_ref: "PR #792 / docs/adr/IADR-0205_local-edge-tls-cert-manager.md / docs/specs/20260816_issue-779_edge-tls-termination.md"
+source_ref: "PR #792 / docs/adr/IADR-0206_local-edge-tls-cert-manager.md / docs/specs/20260816_issue-779_edge-tls-termination.md"
 author: claude
 created: 2026-08-16
 dispatched: true
@@ -19,7 +19,7 @@ planning_issue: 383
 
 ## 何が起きたか
 
-実装側で **経路B（ローカル k8s・`LOCALEDGE=1`）のエッジ TLS 終端**を入れた（#779 / `IADR-0205`）。
+実装側で **経路B（ローカル k8s・`LOCALEDGE=1`）のエッジ TLS 終端**を入れた（#779 / `IADR-0206`）。
 その際、`ADR-0023` の既定 CA（Let's Encrypt）を採れず **selfsigned CA** を選んだ。
 **この選択が同 ADR からの逸脱にあたるのかどうかが、本文からは判断できなかった。**
 
@@ -38,7 +38,7 @@ planning_issue: 383
 
 ## 実装側で採った扱い（暫定）
 
-`IADR-0205` 決定 2 で **「`ADR-0023` は経路B を含むと読んだうえで、消費側（Traefik）と CA（selfsigned）を
+`IADR-0206` 決定 2 で **「`ADR-0023` は経路B を含むと読んだうえで、消費側（Traefik）と CA（selfsigned）を
 局所的に外した」** という立場を明記した。同 ADR の**設計要件 3 点はそのまま踏襲**している。
 
 - CA 固有設定を `ClusterIssuer` に閉じ込める
@@ -60,7 +60,7 @@ planning_issue: 383
    selfsigned CA を使うことは許容されるか。** §結果 の 2 択に第 3 の選択肢を足す形になる。
 3. あわせて **`NFR-11`（全経路の HTTPS 化・平文 HTTP を残さない・運用系ツールを含む）の適用範囲**も
    同じ論点を持つ。実装側は「経路B は `LOCALEDGE=1` が loopback へ bind する閉域であり、
-   『外部から到達し得る』に当たらない」と読んで**適用外**として扱った（`IADR-0205` 決定 4）。
+   『外部から到達し得る』に当たらない」と読んで**適用外**として扱った（`IADR-0206` 決定 4）。
    **この読み方で正しいか。**
 
 ## 提案（実装側の案）
@@ -74,4 +74,4 @@ planning_issue: 383
   `secretName` / `dnsNames` の安定）は同じく守る」
 
 **実装側は案 B の形で先行実装している。**
-どちらでも `IADR-0205` の側を追随させるので、計画側の読み方を確定していただきたい。
+どちらでも `IADR-0206` の側を追随させるので、計画側の読み方を確定していただきたい。

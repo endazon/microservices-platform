@@ -44,9 +44,9 @@ const OPTIN_TOKENS = [
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
-  'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0205)
-  'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0205)
-  'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0205)
+  'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
+  'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
+  'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -324,7 +324,7 @@ ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort�
   assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'ABACSEED の投入失敗が best-effort になっていない');
 });
 
-// IADR-0205 (#779): エッジ TLS 終端。cert-manager を導入し selfsigned→CA の 2 段で edge-tls を発行する。
+// IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し selfsigned→CA の 2 段で edge-tls を発行する。
 // 既定オフは上の OPTIN_TOKENS（'cert-manager' / 'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み。
 ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待ってから tls overlay を当てる', () => {
   const { lines } = runUp({ LOCALEDGE: '1' });
@@ -341,7 +341,7 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
   assert.ok(waitCert !== -1, 'edge-tls 証明書の Ready を待っていない');
 
   // 順序が本質。CRD が Established になる前に tls/ を当てると
-  // "no matches for kind Certificate" で落ちる（IADR-0205 決定 5）。
+  // "no matches for kind Certificate" で落ちる（IADR-0206 決定 5）。
   assert.ok(install < waitCrd, 'CRD 待ちが install より前にある');
   assert.ok(waitCrd < applyTls, 'tls overlay の apply が CRD 待ちより前にある');
   assert.ok(applyTls < waitCert, '証明書 Ready 待ちが apply より前にある');
@@ -359,7 +359,7 @@ ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待
   );
 });
 
-// IADR-0205 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である
+// IADR-0206 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である
 // （再導入は #781）。上の OPTIN_TOKENS に 'kube-apiserver-arg' が在るので既定は固定済みだが、
 // **LOCALEDGE=1 でも現れない**ことを別に固定する —— https issuer ができた瞬間に配線したくなる場所だから。
 ok('LOCALEDGE=1: TLS を入れても apiserver の OIDC 引数は現れない（IADR-0105 の除去を維持）', () => {
@@ -863,7 +863,7 @@ ok('#398: Headlamp Pod の SA（headlamp）には権限を bind しない fail-s
   );
 });
 
-// --- IADR-0205 (#779): edge TLS overlay の静的検査 ------------------------------
+// --- IADR-0206 (#779): edge TLS overlay の静的検査 ------------------------------
 //
 // CI には `helm template` / `helm lint` / `kustomize build` / `kubeconform` を走らせるジョブが
 // **1 件も無い**（ci.yml の 20 ジョブを実測）。したがって新規 TLS マニフェストの整合は、
@@ -991,7 +991,7 @@ ok('#779: 葉証明書は CA Issuer（selfSigned ではない）が発行する'
   const ref = issuerRef(leaf);
   assert.ok(ref, '葉の Certificate に issuerRef が無い');
   // ★ 結線 3: ここが selfSigned Issuer を向くと **2 段が 1 段へ崩れ、ルート CA が Secret に残らない**。
-  // IADR-0205 の存在理由（oidc-ca-file と backend の信頼ストアへ渡せる CA）がそのまま消える。
+  // IADR-0206 の存在理由（oidc-ca-file と backend の信頼ストアへ渡せる CA）がそのまま消える。
   assert.strictEqual(ref.name, field(caIssuer, 'name'), '葉の issuerRef が CA Issuer を指していない（2 段が崩れる）');
   assert.strictEqual(ref.kind, 'ClusterIssuer', '葉の issuerRef.kind が ClusterIssuer でない');
   assert.strictEqual(ref.group, 'cert-manager.io', '葉の issuerRef.group が cert-manager.io でない');
@@ -1036,7 +1036,7 @@ ok('#779: Certificate の dnsNames が Ingress の spec.tls.hosts を覆う', ()
 
 ok('#779: admin:50000 の Ingress には spec.tls を足さない（その entrypoint に TLS が無い）', () => {
   // Traefik の args に --entryPoints.admin.http.tls は無い。足しても効かず、
-  // 「TLS になったつもり」の記述だけが残る。admin の TLS 化は #780 と同時（IADR-0205 スコープ外の表）。
+  // 「TLS になったつもり」の記述だけが残る。admin の TLS 化は #780 と同時（IADR-0206 スコープ外の表）。
   for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
     const yaml = fs.readFileSync(path.join(EDGE_DIR, f), 'utf8');
     assert.ok(/router\.entrypoints:\s*admin/.test(yaml), `${f} が admin entrypoint に載っていない（前提が変わった）`);
@@ -1052,7 +1052,7 @@ ok('#779: http(80) 経路を残している（追加のみ・恒久リダイレ�
   const upSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
   assert.ok(
     !/entryPoints\.web\.http\.redirections/.test(upSrc),
-    'http→https の恒久リダイレクトが入っている（IADR-0205 決定 4 のスコープ外）',
+    'http→https の恒久リダイレクトが入っている（IADR-0206 決定 4 のスコープ外）',
   );
 });
 

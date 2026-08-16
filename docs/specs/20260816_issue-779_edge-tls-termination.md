@@ -11,7 +11,7 @@ related_ids:
   - IADR-0086
   - IADR-0091
   - IADR-0105
-  - IADR-0205
+  - IADR-0206
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -20,7 +20,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md"
 related_specs:
-  - "../adr/IADR-0205_local-edge-tls-cert-manager.md"
+  - "../adr/IADR-0206_local-edge-tls-cert-manager.md"
   - "../adr/IADR-0091_local-edge-aggregation-traefik.md"
   - "../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md"
   - "../adr/IADR-0086_oidc-issuer-metadata-split.md"
@@ -154,7 +154,7 @@ ClusterIssuer(selfSigned)
 | mkcert | 可。ただし **CA が開発者マシン固有でリポジトリから再現できない**。`k8s-local-up.sh` の「冪等・fail-safe・env 未設定で既定動作」と CI の stub-on-PATH に噛み合わない | 却下（README に任意手順として残す） |
 
 **計画 `ADR-0023` との関係**: 同 ADR は `Accepted`（updated 2026-08-10。一次資料で確認）。
-**論拠の正本は [IADR-0205](../adr/IADR-0205_local-edge-tls-cert-manager.md) 決定 2 にあり、ここへ複写しない**
+**論拠の正本は [IADR-0206](../adr/IADR-0206_local-edge-tls-cert-manager.md) 決定 2 にあり、ここへ複写しない**
 （[IADR-0141](../adr/IADR-0141_audit-rounds-and-population-drawing.md)「参照点を 1 つに畳む」）。要点だけ:
 **既定 CA が Let's Encrypt である同 ADR から、ローカルの selfsigned は外れる**。
 消費側が Istio か Traefik かの違いと、`*.localhost` では同 ADR が示す DNS-01 / Vault PKI の
@@ -209,9 +209,9 @@ ClusterIssuer(selfSigned)
 > #779 が `Closes` で閉じると、決定 5 の Supersede が黙って消える）。#779 の受け入れ基準も訂正した。
 | `scripts/k8s-local-up.sh` | `LOCALEDGE=1` ブロックに cert-manager の導入・CRD Established 待ち・`tls/` の apply・証明書 Ready 待ちを足す。**出力メッセージを是正**。**既定経路は 1 バイトも変えない** |
 | `scripts/k8s-local-up.test.js` | `OPTIN_TOKENS` に追加 ＋ `LOCALEDGE=1` の適用固定 ＋ **edge overlay の静的検査** |
-| `docs/adr/IADR-0205_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3 のみを Supersede**（決定 5 と却下代替案は #780 の射程。下記） |
+| `docs/adr/IADR-0206_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3 のみを Supersede**（決定 5 と却下代替案は #780 の射程。下記） |
 | `docs/adr/IADR-0091_local-edge-aggregation-traefik.md` | **決定 3 のみ**に後継併記（**旧 ID を残す**。`traceability.repo.md` の Superseded 引用書式）。決定 5 の節は無変更 |
-| `docs/adr/README.md` | `IADR-0205` の索引行 |
+| `docs/adr/README.md` | `IADR-0206` の索引行 |
 | `deploy/local/edge/README.md` | 「実 TLS は対象外（Tier 3）」4 箇所の是正・CA の取り出し手順・mkcert の任意手順 |
 
 ### 4.1 なぜ `tls/` を別ディレクトリにするのか

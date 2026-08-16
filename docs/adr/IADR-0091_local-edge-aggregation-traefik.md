@@ -8,7 +8,7 @@ related_ids:
   - IADR-0076
   - IADR-0077
   - IADR-0087
-  - IADR-0205
+  - IADR-0206
 author: claude
 created: 2026-07-20
 updated: 2026-08-16
@@ -52,7 +52,7 @@ delete→再作成が必要（README のユーザー手順・破壊操作はユ�
 
 ### 3. platform フロントは 80/443（Traefik web/websecure）
 
-> **［2026-08-16 追記 / #779］本決定 3 の証明書に関する部分は [[IADR-0205]] が Supersede した。**
+> **［2026-08-16 追記 / #779］本決定 3 の証明書に関する部分は [[IADR-0206]] が Supersede した。**
 > ルーティング（`/bff`→bff-service・catch-all→frontend-service・rewrite 無し）は**そのまま有効**である。
 > **覆ったのは「443 は Traefik 既定の自己署名証明書（実 TLS は別途）」の 1 文だけ** ——
 > cert-manager の selfsigned→CA `ClusterIssuer` が発行する `edge-tls` で終端するようになった
@@ -96,7 +96,7 @@ Qdrant は SSO 非対応のため素通し公開（ネットワーク閉域前�
 
 - `LOCALEDGE` は既定オフのため既存環境に影響しない（smoke test で default バイト等価を固定）。
 - 80/443 はホスト権限・既存サービスとの衝突・443 自己署名の制約あり（README 明記。**［2026-08-16 追記 / #779］
-  自己署名の制約は [[IADR-0205]] が解いた** —— cert-manager の CA 発行証明書へ移行済み）。占有時は LOCALEDGE を使わず
+  自己署名の制約は [[IADR-0206]] が解いた** —— cert-manager の CA 発行証明書へ移行済み）。占有時は LOCALEDGE を使わず
   従来 port-forward を継続できる（フォールバック）。
 - 新ホストからの OIDC ログインは PR-2（redirect 追加）まで未成立。その間も port-forward + 既存 redirect で
   ログイン可（フォールバック維持）。

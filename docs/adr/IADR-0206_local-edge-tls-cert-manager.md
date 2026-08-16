@@ -1,5 +1,5 @@
 ---
-title: IADR-0205 経路B のエッジ TLS は cert-manager の selfsigned→CA ClusterIssuer で終端し、CA を k8s Secret として安定させる
+title: IADR-0206 経路B のエッジ TLS は cert-manager の selfsigned→CA ClusterIssuer で終端し、CA を k8s Secret として安定させる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -19,7 +19,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0023_edge-cert-automation-cert-manager-letsencrypt.md"
 ---
 
-# IADR-0205: 経路B のエッジ TLS 終端（cert-manager・selfsigned→CA ClusterIssuer・`edge-tls`）
+# IADR-0206: 経路B のエッジ TLS 終端（cert-manager・selfsigned→CA ClusterIssuer・`edge-tls`）
 
 - 状態: Accepted
 - 日付: 2026-08-16
