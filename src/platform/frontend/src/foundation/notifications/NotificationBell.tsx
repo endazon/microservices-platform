@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { i18n } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Bell } from 'lucide-react';
@@ -25,15 +25,41 @@ import { useMarkNotificationRead, useNotificationList } from './useNotifications
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const list = useNotificationList();
   const markRead = useMarkNotificationRead();
 
   const items = list.data?.items ?? [];
   const unreadCount = list.data?.unreadCount ?? 0;
 
+  // 開いているあいだだけ、Escape と外側クリックで閉じる（WAI-ARIA の disclosure の作法）。
+  // **閉じ手段がベルの再クリックだけだと、画面の他の場所へ移った利用者がパネルを残したままになる。**
+  // Escape のときは**ベルへフォーカスを戻す** —— 戻さないとキーボード利用者の位置が失われる。
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      // ベル自身のクリックは button の onClick が処理する（ここで閉じると二重で反転する）。
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}

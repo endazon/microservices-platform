@@ -201,4 +201,45 @@ describe('NotificationBell (FR-22)', () => {
     await user.click(bell());
     expect(screen.queryByRole('region', { name: '通知一覧' })).not.toBeInTheDocument();
   });
+
+  // Escape で閉じる（WAI-ARIA の disclosure の作法）。**フォーカスをベルへ戻す**ことまで見る ——
+  // 戻さないとキーボード利用者の位置が失われ、閉じた先が分からなくなる。
+  it('Escape で閉じ、フォーカスがベルへ戻る', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(LIST));
+    const user = userEvent.setup();
+    renderBell();
+    await user.click(await screen.findByRole('button', { name: /通知（未読/ }));
+    expect(panel()).toBeInTheDocument();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('region', { name: '通知一覧' })).not.toBeInTheDocument();
+    expect(bell()).toHaveFocus();
+  });
+
+  // 外側クリックで閉じる。**閉じ手段がベルの再クリックだけだと、画面の他の場所へ移った
+  // 利用者がパネルを残したままになる。**
+  it('パネルの外側を押すと閉じる', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(LIST));
+    const user = userEvent.setup();
+    renderBell();
+    await user.click(await screen.findByRole('button', { name: /通知（未読/ }));
+    expect(panel()).toBeInTheDocument();
+
+    await user.click(document.body);
+
+    expect(screen.queryByRole('region', { name: '通知一覧' })).not.toBeInTheDocument();
+  });
+
+  // 内側は閉じない —— 「既読にする」を押すたびに閉じると、複数件を続けて処理できない。
+  it('パネルの内側を押しても閉じたままにならない', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(LIST));
+    const user = userEvent.setup();
+    renderBell();
+    await user.click(await screen.findByRole('button', { name: /通知（未読/ }));
+
+    await user.click(within(panel()).getAllByRole('listitem')[0]);
+
+    expect(panel()).toBeInTheDocument();
+  });
 });
