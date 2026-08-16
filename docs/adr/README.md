@@ -257,6 +257,7 @@
 | [IADR-0201](./IADR-0201_class-c-rejudgement-and-fail-closed-kit-checks.md) | 分類 C を planning#363 の新定義で再判定（17 → 4）。`traceability.md` は companion 分離で分類 A へ。キット同期・status 突合の検査器はキット版へ差し替え、実データ走査は doc-links-planning.yml で `--require-planning` 付き（IADR-0192 決定 4 の配線を改定）。#755 / #751。 | Accepted |
 | [IADR-0202](./IADR-0202_pin-freshness-comparison-source.md) | pin 鮮度検知は `merge-base --is-ancestor` で比較の向きを見て、逆方向・分岐では「効く変更なし」と報告しない（案 B）。比較元（ref・commit・remote URL・fetch の成否）を全経路の出力に必ず含める。**案 A（ネットワーク fetch）は採らない**。#749。IADR-0170 の決定は維持。 | Accepted |
 | [IADR-0203](./IADR-0203_renovate-husky-hook-scope.md) | 依存更新は npm = Renovate（`enabledManagers` で重複を排除）／`github-actions`・`gitsubmodule` = Dependabot 継続（#260 を覆さない）。手元 git フックは **CI ゲートの厳密な部分集合**に限り fail-open。Commitlint・lint-staged は単一情報源が割れるため入れない。#768。 | Accepted |
+| [IADR-0204](./IADR-0204_kit-catchup-deferral-with-expiry-ratchet.md) | キット追随を「期限つきの暫定」で保留するときは**保留の根拠そのものを機械が検査する**（`traceability.md` はキット版 +3,002B が必読予算を超えるため分類 A → B（X）。予算内に収まったら fail して追随を促す）。分類 X の再判定は検出力の同値だけでは A へ戻さず、空入力時の終了コードの向きまで突合する。#790。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

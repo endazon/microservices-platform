@@ -76,7 +76,7 @@ const TEST_FILE = /(Tests?\.cs|\.(test|spec)\.(ts|tsx|js|jsx))$/i;
  * （FR-01..20 / UC-01..07 / SC-01..03）が書かれており、全文を舐めると混ざる。
  */
 // #755: 計画レンジは companion `.claude/rules/traceability.repo.md`「起点 ID の種別（固有）」節が持つ
-// （`traceability.md` はキット配布物へ戻し分類 A にしたため、本リポの値はそこに書けない。IADR-0201）。
+// （`traceability.md` はキット配布物であり、本リポの値はそこに書けない。IADR-0201 / #790）。
 const RULES_FILE = '.claude/rules/traceability.repo.md';
 const PLAN_RANGE_HEADING = '## 起点 ID の種別（固有）';
 

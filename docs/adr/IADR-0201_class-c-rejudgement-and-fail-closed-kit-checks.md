@@ -9,6 +9,7 @@ related_ids:
   - IADR-0192
   - IADR-0193
   - IADR-0198
+  - IADR-0204
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -65,9 +66,25 @@ planning#363 の裁定で分類 C は **(a) キットに対応物が無い／(b)
 > 足した。**後 2 者は X のままである**（本リポの検出力が先行しているため。追跡 #749 / #756・
 > 環流先 planning#374）。集計は **A 78 / B 25 / C 4 / 対象外 8**。
 
+> ［2026-08-16 追記 / #790］**上の 2 件はいずれも 1 世代で覆った。** 計画 pin を `8cae89d` へ進めた
+> 時点で、キットが planning#373 / planning#374 の環流を受理し、キット `traceability.md` が
+> +3,002B 育った。**実測の結果は次のとおり**（[[IADR-0204]] が正本）。
+>
+> - **`scripts/scripts.test.js` は A → B（X）へ戻した。** キット版の新試験が「拡張点を持たない構成」を
+>   断定しており、**拡張点を埋めた本リポでは原理的に通らない**（`loadExistingPlanIds()` が Set を返す）。
+>   固有デルタは 1 か所。追跡 planning#380。
+> - **`.claude/rules/traceability.md` も A → B（X）へ移した。** キット原文を取り込むと必読規約が
+>   予算 51,200B を 1,995B 超えて予算試験が fail する。**期限つきの暫定**であり、減量（#793）が
+>   着地すると `scripts.repo.test.js` のラチェットが落ちて追随を促す。**決定 2 の設計（companion 分離）は覆っていない。**
+> - **`scripts/check-commit-messages.js` は X → B（種 5）へ落ちた**（置換点 `PLAN_PROJECT` のみ）。
+>   **`scripts/check-cross-repo-refs.js` は X のまま**だが理由が変わった（検出力は同値。キットに
+>   0 件走査の門が無い。追跡 planning#379）。集計は **A 76 / B 27 / C 4 / 対象外 8**。
+
 **`CLAUDE.md` は置換点（末尾「技術スタック別ルール」）を埋めているので C(b) も成立するが、B に置く。** 土台の規約文（§8 予算・§11 パリティ等）は運用ガイドの改定のたびにキットが正となって追随が要り、「同期しない」と宣言する C は実態に合わない。
 
 ## ★★ 決定 2: **`traceability.md` はキット版とバイト一致にし、本リポ固有の規範は companion `.claude/rules/traceability.repo.md` へ置く**
+
+> ［2026-08-16 追記 / #790］**バイト一致は保留中である**（分類 B の X。上の追記）。**companion へ置く設計は不変。**
 
 - **companion 機構はキットが定めている**（キット `traceability.md` 冒頭「リポジトリ固有の規約は `traceability.repo.md`（同じディレクトリ）へ書く。同ディレクトリの `*.md` は自動適用される」）。ai-stock-trading は既に同じ形（`AST/IADR-0202`）である。
 - **入口のパスは変えない**（[[IADR-0172]] 決定 2）。確定済み記録が `traceability.md §Superseded…` の形で節名を引いているが、節見出しは companion に**同名で残した**（`### Superseded / Deprecated な ADR を引用するときの書式（#580）` 等）。キット `traceability.md` の冒頭が companion を指すので導線は切れない。
