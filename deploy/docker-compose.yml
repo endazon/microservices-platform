@@ -167,7 +167,16 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.52.0
-    command: ["--config.file=/etc/prometheus/prometheus.yml", "--web.enable-remote-write-receiver"]
+    # IADR-0210 (#787): 保持期間を args で明示する。経路B（deploy/local/observability/prometheus.yaml）と
+    # **同じ 2 引数**を置く —— 現状は両方とも retention 無指定で対称であり、片方だけ入れると新たな
+    # パリティ差を作るため。size(4GB) は経路B の PVC 容量(5Gi) 未満に取り、満杯→書き込み不能を形で塞ぐ。
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--web.enable-remote-write-receiver",
+        "--storage.tsdb.retention.time=7d",
+        "--storage.tsdb.retention.size=4GB",
+      ]
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       # NFR (#198): SLO アラートルール（rule_files で参照）。

@@ -61,11 +61,38 @@ kubectl -n platform-infra port-forward svc/grafana 3000:3000   # http://localhos
 - **realm 反映**: `grafana` クライアントは `deploy/keycloak/microservices-platform-realm.json` に定義。realm を
   再インポート（`PERSIST=1` で永続化済みなら管理コンソールで追加 or 再作成）すると有効になる。
 
+## 永続化（opt-in・`PERSIST=1` ＋ `OBSERVABILITY=1`・#787 / IADR-0210）
+
+既定では **4 つとも volume が無く、Pod 再起動でメトリクス / ログ / トレース / Grafana 設定が全消失する**。
+`PERSIST=1` を併用すると、対になるオーバーレイ
+[`deploy/local/observability-persistence`](../observability-persistence/) が本オーバーレイを**置換**し、
+`local-path` PVC を足す（`prometheus-data` 5Gi → `/prometheus` ／ `loki-data` 2Gi → `/tmp/loki` ／
+`tempo-data` 2Gi → `/tmp/tempo` ／ `grafana-data` 1Gi → `/var/lib/grafana`）。
+
+```sh
+PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
+# 直接当てるなら: kubectl apply -k deploy/local/observability-persistence
+```
+
+- **マウント先は上記 config の storage パスと一致させ、config は書き換えない**（IADR-0079 §3 の作法）。
+  一致は `node scripts/k8s-local-up.test.js` が**両側から読んで**突き合わせる。
+- **Loki / Tempo の Pod は root で動かす**（compose の `user: "0:0"` と同じ理由）。Prometheus / Grafana には付けない。
+- 詳細は [`deploy/local/README.md`](../README.md) の「永続化」節と
+  [IADR-0210](../../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)。
+
 ## 切り戻し
 
 `kubectl delete -k deploy/local/observability` で撤去し、`kubectl apply -k deploy/local/infra` ＋ collector
-rollout restart で debug-only（既定）へ戻す。
+rollout restart で debug-only（既定）へ戻す（永続化版を当てていたなら
+`kubectl delete -k deploy/local/observability-persistence`。PVC は残るので消したいなら別途 `delete pvc`）。
 
 ## Tier 境界
 
-本オーバーレイはローカル検証用。稼働率99%の実測・Alertmanager 実配線・本番相当のリテンションは **Tier 3**（対象外）。
+本オーバーレイはローカル検証用。稼働率99%の実測・Alertmanager 実配線・**本番相当の**リテンション設計は
+**Tier 3**（対象外）。
+
+> ★ 混同しないこと（#787 / [IADR-0210](../../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)）:
+> `prometheus.yaml` の `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` は
+> **dev ローカルの保持期間**であり、上の「本番相当のリテンション」ではない。本番像
+> （`deploy/helm/microservices-platform/templates/`）には Prometheus / Loki / Tempo / Grafana が
+> **1 つも存在せず**、本 overlay の設定はそこへ波及しない。**Tier 3 の対象外宣言はそのまま生きている。**

@@ -28,6 +28,11 @@ const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-d
 const OPTIN_TOKENS = [
   'deploy/local/infra-persistence', // PERSIST
   'deploy/local/observability', //     OBSERVABILITY
+  // IADR-0210 (#787): PERSIST=1 かつ OBSERVABILITY=1 のときだけ選ばれる可観測性の永続化 overlay。
+  // ★ 正直な注記: 直上の 'deploy/local/observability' は本トークンの **接頭辞**であり、既定経路検査は
+  //   本行が無くても新 overlay の混入を落とす。本行は「このゲートを列挙から落とさない」ための明示であって、
+  //   これ単独を外しても穴は開かない（#787 の変異試験 M2 が実測でそう出た）。
+  'deploy/local/observability-persistence', // PERSIST + OBSERVABILITY (IADR-0210)
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
@@ -274,6 +279,40 @@ ok('OBSERVABILITY=1: observability を apply・grafana-oidc secret を作成', (
   const res = runUp({ OBSERVABILITY: '1' });
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability'), 'observability が apply されない');
   // IADR-0090: Grafana generic OAuth の client secret は k8s Secret grafana-oidc 経由（平文コミットなし）。
+  assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
+});
+
+// --- IADR-0210 (#787): 可観測性スタックの永続化 overlay のゲート意味論 --------------------------
+//
+// `deploy/local/observability-persistence` は **PERSIST=1 かつ OBSERVABILITY=1** のときだけ選ばれる。
+// 既定オフは上の OPTIN_TOKENS が固定済み。ここでは「片肺では現れない」「両方立てたら *置換* であって併存でない」
+// の 2 点を固定する。素の overlay 名は永続化版の **接頭辞**なので、素の側は行末境界を見て判定する
+// （`includes` で見ると `-persistence` の行にマッチし、置換の検査が常に成功する静かな縮退になる）。
+const appliesBareObservability = (lines) =>
+  lines.some((l) => /apply -k deploy\/local\/observability(\s|$)/.test(l));
+
+ok('PERSIST=1 単独: observability-persistence は現れない（スタック自体が立たない）', () => {
+  const res = runUp({ PERSIST: '1' });
+  assert.ok(
+    !anyLineHas(res.lines, 'deploy/local/observability-persistence'),
+    'OBSERVABILITY 無効なのに可観測性の永続化 overlay が現れた',
+  );
+  assert.ok(!appliesBareObservability(res.lines), 'OBSERVABILITY 無効なのに素の observability が apply された');
+});
+
+ok('PERSIST=1 + OBSERVABILITY=1: observability-persistence へ置換される（素の overlay は現れない）', () => {
+  const res = runUp({ PERSIST: '1', OBSERVABILITY: '1' });
+  assert.strictEqual(res.status, 0, `PERSIST+OBSERVABILITY で異常終了した: ${res.stderr}`);
+  assert.ok(
+    anyLineHas(res.lines, 'apply -k deploy/local/observability-persistence'),
+    'observability-persistence が apply されない',
+  );
+  assert.ok(
+    !appliesBareObservability(res.lines),
+    'PERSIST=1 なのに素の deploy/local/observability も apply された（置換でなく併存になっている）',
+  );
+  // 永続化しても collector の forwarding 切替と Grafana OIDC secret は不変（ゲートの意味論を変えない）。
+  assert.ok(anyLineHas(res.lines, 'rollout restart deploy/otel-collector'), 'collector の rollout restart が消えた');
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
 });
 
@@ -1053,6 +1092,264 @@ ok('#779: http(80) 経路を残している（追加のみ・恒久リダイレ�
   assert.ok(
     !/entryPoints\.web\.http\.redirections/.test(upSrc),
     'http→https の恒久リダイレクトが入っている（IADR-0206 決定 4 のスコープ外）',
+  );
+});
+
+// --- IADR-0210 (#787): 永続化 overlay の静的検査 --------------------------------
+//
+// #779 と同じ事情である —— CI に `kustomize build` / `kubeconform` を走らせるジョブは **1 件も無い**。
+// さらに本件は「マウント先が config の storage パスと一致していること」が命であり、**ずれても Pod は起動し、
+// 静かに別の場所へ書いて再起動で消える**（一致していない方が壊れ方として悪質である）。
+// したがって **config と overlay を両側から読んで突き合わせる**。値をハードコードして写すと、
+// config を変えたときに検査が静かに嘘になる。YAML パーサは持ち込まない（このファイルの原則）。
+
+const OBS_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'observability');
+const OBS_PERSIST_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'observability-persistence');
+const INFRA_PERSIST_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'infra-persistence');
+const readAt = (...p) => fs.readFileSync(path.join(...p), 'utf8');
+
+const OBS_PERSIST_KUST = readAt(OBS_PERSIST_DIR, 'kustomization.yaml');
+const OBS_PERSIST_PVCS = readAt(OBS_PERSIST_DIR, 'pvcs.yaml');
+const INFRA_PERSIST_KUST = readAt(INFRA_PERSIST_DIR, 'kustomization.yaml');
+const INFRA_PERSIST_PVCS = readAt(INFRA_PERSIST_DIR, 'pvcs.yaml');
+const PROM_YAML = readAt(OBS_DIR, 'prometheus.yaml');
+const LOKI_YAML = readAt(OBS_DIR, 'loki.yaml');
+const TEMPO_YAML = readAt(OBS_DIR, 'tempo.yaml');
+const COMPOSE_YAML = readAt(REPO_ROOT, 'deploy', 'docker-compose.yml');
+
+// kustomization の `- target:` ごとにチャンクへ割る。チャンク内の最初の `name:` が対象ワークロード名
+// （target は kind / name / namespace の順）。ドキュメント境界を跨いだ取り違えを避けるための切り分けである。
+function overlayPatchChunks(kust) {
+  const out = {};
+  for (const chunk of kust.split(/^\s*-\s*target:\s*$/m).slice(1)) {
+    const name = (/^\s*name:\s*(\S+)/m.exec(chunk) || [])[1];
+    if (name) out[name] = chunk;
+  }
+  return out;
+}
+const OBS_PATCHES = overlayPatchChunks(OBS_PERSIST_KUST);
+const INFRA_PATCHES = overlayPatchChunks(INFRA_PERSIST_KUST);
+const one = (chunk, key) => (new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'm').exec(chunk) || [])[1] ?? null;
+
+// PVC ドキュメントを名前で引く。
+function pvcsByName(yaml) {
+  const out = {};
+  for (const doc of yamlDocs(yaml).filter((d) => field(d, 'kind') === 'PersistentVolumeClaim')) {
+    const name = field(doc, 'name');
+    if (name) out[name] = doc;
+  }
+  return out;
+}
+const OBS_PVCS = pvcsByName(OBS_PERSIST_PVCS);
+const INFRA_PVCS = pvcsByName(INFRA_PERSIST_PVCS);
+
+// 容量表記をバイトへ換算する。k8s（5Gi=binary / 5G=decimal）と Prometheus（4GB=decimal）の**両方**の
+// 書式を受ける。ここを揃えないと「size < PVC 容量」を数として比べられない。
+function toBytes(text) {
+  const m = /^(\d+(?:\.\d+)?)([KMGTP])?(i)?B?$/.exec(String(text).trim());
+  if (!m) return null;
+  const exp = { undefined: 0, K: 1, M: 2, G: 3, T: 4, P: 5 }[m[2]];
+  return Number(m[1]) * Math.pow(m[3] ? 1024 : 1000, exp);
+}
+
+// compose を「サービス名 → その定義ブロック」へ割る（2 スペース字下げのキーがサービス名）。
+// top-level の `volumes:` 配下の名前付きボリュームも同じ形なので拾われるが、名前が衝突しないので害は無い。
+function composeBlocks(yaml) {
+  const out = {};
+  let cur = null;
+  for (const line of yaml.split('\n')) {
+    const m = /^ {2}([A-Za-z][\w.-]*):\s*$/.exec(line);
+    if (m) {
+      cur = m[1];
+      out[cur] = [];
+      continue;
+    }
+    if (/^[A-Za-z]/.test(line)) {
+      cur = null;
+      continue;
+    }
+    if (cur) out[cur].push(line);
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.join('\n')]));
+}
+const COMPOSE = composeBlocks(COMPOSE_YAML);
+// `- <名前付きボリューム>:<コンテナ内パス>` だけを拾う（`./x.yml:/etc/...` のバインドは先頭が `.` なので外れる）。
+function composeNamedMount(serviceBlock, volumeName) {
+  const m = new RegExp(`^\\s*-\\s*${volumeName}:(/\\S*?)(?::[a-z,]+)?\\s*$`, 'm').exec(serviceBlock || '');
+  return m ? m[1] : null;
+}
+
+ok('#787: 永続化 overlay は base を resources に含み、PVC を同梱する', () => {
+  for (const r of ['../observability', 'pvcs.yaml']) {
+    assert.ok(
+      new RegExp(`^\\s*-\\s*${r.replace(/[./]/g, '\\$&')}\\s*$`, 'm').test(OBS_PERSIST_KUST),
+      `observability-persistence の resources に ${r} が無い`,
+    );
+  }
+  assert.deepStrictEqual(
+    Object.keys(OBS_PVCS).sort(),
+    ['grafana-data', 'loki-data', 'prometheus-data', 'tempo-data'],
+    'observability-persistence の PVC 集合が想定と違う',
+  );
+  assert.deepStrictEqual(
+    Object.keys(OBS_PATCHES).sort(),
+    ['grafana', 'loki', 'prometheus', 'tempo'],
+    'observability-persistence の patch 対象が想定と違う',
+  );
+});
+
+ok('#787: 全 PVC が local-path / ReadWriteOnce / 意図した容量を持つ', () => {
+  const expected = {
+    'prometheus-data': '5Gi',
+    'loki-data': '2Gi',
+    'tempo-data': '2Gi',
+    'grafana-data': '1Gi',
+    'qdrant-storage': '2Gi',
+  };
+  const all = { ...OBS_PVCS, 'qdrant-storage': INFRA_PVCS['qdrant-storage'] };
+  for (const [name, size] of Object.entries(expected)) {
+    const doc = all[name];
+    assert.ok(doc, `PVC ${name} が無い`);
+    assert.strictEqual(field(doc, 'namespace'), 'platform-infra', `${name} の namespace が platform-infra でない`);
+    assert.strictEqual(
+      field(doc, 'storageClassName'),
+      'local-path',
+      `${name} の storageClassName が local-path でない（k3s/Rancher Desktop 同梱の provisioner）`,
+    );
+    assert.deepStrictEqual(listValues(doc, 'accessModes'), ['ReadWriteOnce'], `${name} の accessModes が RWO でない`);
+    assert.strictEqual(field(doc, 'storage'), size, `${name} の容量が ${size} でない`);
+  }
+});
+
+ok('#787: qdrant の patch は postgres と同型（volumes/0 を replace・volumeMount は base のまま）', () => {
+  const chunk = INFRA_PATCHES['qdrant'];
+  assert.ok(chunk, 'infra-persistence に qdrant の patch が無い');
+  assert.ok(/op:\s*replace/.test(chunk), 'qdrant の patch が replace でない（base の emptyDir が残る）');
+  assert.ok(
+    /path:\s*\/spec\/template\/spec\/volumes\/0/.test(chunk),
+    'qdrant の patch が volumes/0 を指していない',
+  );
+  assert.strictEqual(one(chunk, 'claimName'), 'qdrant-storage', 'qdrant の claimName が qdrant-storage でない');
+  // volumeMount は base（deploy/local/infra/qdrant.yaml）が持つ。overlay で二重に足さない。
+  assert.ok(!/mountPath:/.test(chunk), 'qdrant の patch が volumeMount を足している（base に既にある＝二重）');
+  // ★ 置換対象の volume 名が base 側と一致していること（ここがずれると volumes に別名が生えて emptyDir が残る）。
+  const baseQdrant = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'qdrant.yaml');
+  const baseVolName = (/^\s*volumes:\s*\n\s*-\s*name:\s*(\S+)/m.exec(baseQdrant) || [])[1];
+  assert.strictEqual(one(chunk, 'name'), 'qdrant', 'patch チャンクの解釈がずれている');
+  assert.ok(
+    new RegExp(`value:\\s*\\n\\s*name:\\s*${baseVolName}\\b`).test(chunk),
+    `qdrant の patch の volume 名が base（${baseVolName}）と一致しない`,
+  );
+});
+
+// ★ 本件の中核。mountPath は「たまたま同じ文字列を書いた」では足りず、**config の実値から導かれている**
+//   ことを両側から読んで突き合わせる。config を動かせばこの検査が落ちる（＝静かに嘘にならない）。
+ok('#787: Loki の mountPath が config の path_prefix と一致し、storage パスを覆う', () => {
+  const pathPrefix = (/^\s*path_prefix:\s*(\S+)\s*$/m.exec(LOKI_YAML) || [])[1];
+  assert.ok(pathPrefix, 'loki-config の common.path_prefix が読み取れない（書式変更なら本検査も更新すること）');
+  const mountPath = one(OBS_PATCHES['loki'], 'mountPath');
+  assert.strictEqual(mountPath, pathPrefix, `loki の mountPath(${mountPath}) が path_prefix(${pathPrefix}) と違う`);
+
+  // index / index_cache / chunks が本当にその配下にあること（path_prefix だけ合わせても外れていたら意味が無い）。
+  const storagePaths = [
+    (/^\s*active_index_directory:\s*(\S+)/m.exec(LOKI_YAML) || [])[1],
+    (/^\s*cache_location:\s*(\S+)/m.exec(LOKI_YAML) || [])[1],
+    (/^\s*directory:\s*(\S+)/m.exec(LOKI_YAML) || [])[1],
+  ];
+  assert.ok(storagePaths.every(Boolean), `loki の storage_config パスが読み取れない: ${storagePaths}`);
+  for (const p of storagePaths) {
+    assert.ok(p.startsWith(mountPath + '/'), `loki の storage パス ${p} が mountPath(${mountPath}) の配下に無い`);
+  }
+});
+
+ok('#787: Tempo の mountPath が config の local.path / wal.path の親と一致する', () => {
+  const paths = [...TEMPO_YAML.matchAll(/^\s*path:\s*(\/\S+)\s*$/gm)].map((m) => m[1]);
+  assert.strictEqual(paths.length, 2, `tempo-config の storage パスは blocks と wal の 2 本のはず: ${paths}`);
+  const mountPath = one(OBS_PATCHES['tempo'], 'mountPath');
+  for (const p of paths) {
+    assert.ok(p.startsWith(mountPath + '/'), `tempo の storage パス ${p} が mountPath(${mountPath}) の配下に無い`);
+  }
+  // 親がもう 1 段上（/tmp）になっていないこと＝過剰に広いマウントを弾く。
+  assert.ok(
+    paths.every((p) => path.posix.dirname(p) === mountPath),
+    `tempo の mountPath(${mountPath}) が storage パスの直接の親でない: ${paths}`,
+  );
+});
+
+// ★ 「compose を鏡にする」という判断そのものを機械が見る（IADR-0210 決定 4）。
+//    どちらか一方だけを動かした瞬間に落ちる。
+ok('#787: データボリュームのマウント先が compose と k8s で一致する', () => {
+  const pairs = [
+    ['prometheus', 'prometheus-data', OBS_PATCHES['prometheus']],
+    ['loki', 'loki-data', OBS_PATCHES['loki']],
+    ['tempo', 'tempo-data', OBS_PATCHES['tempo']],
+    ['grafana', 'grafana-data', OBS_PATCHES['grafana']],
+  ];
+  for (const [svc, vol, chunk] of pairs) {
+    const composePath = composeNamedMount(COMPOSE[svc], vol);
+    assert.ok(composePath, `compose の ${svc} に ${vol} のマウントが無い（前提が変わった）`);
+    assert.strictEqual(
+      one(chunk, 'mountPath'),
+      composePath,
+      `${svc}: k8s(${one(chunk, 'mountPath')}) と compose(${composePath}) でマウント先が食い違う`,
+    );
+    assert.strictEqual(one(chunk, 'claimName'), vol, `${svc} の claimName が ${vol} でない`);
+  }
+  // qdrant は base が volumeMount を持つので、base 側の実値と compose を突き合わせる。
+  const baseQdrant = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'qdrant.yaml');
+  assert.strictEqual(
+    (/^\s*mountPath:\s*(\S+)/m.exec(baseQdrant) || [])[1],
+    composeNamedMount(COMPOSE['qdrant'], 'qdrant-data'),
+    'qdrant: k8s base と compose でマウント先が食い違う',
+  );
+});
+
+ok('#787: root 実行にするのは compose が user: "0:0" を付けているサービスだけ', () => {
+  for (const svc of ['prometheus', 'loki', 'tempo', 'grafana']) {
+    const composeRoot = /^\s*user:\s*["']?0:0["']?\s*$/m.test(COMPOSE[svc] || '');
+    const k8sRoot = /runAsUser:\s*0\b/.test(OBS_PATCHES[svc] || '');
+    assert.strictEqual(
+      k8sRoot,
+      composeRoot,
+      `${svc}: compose の user:"0:0"(${composeRoot}) と k8s の runAsUser:0(${k8sRoot}) が食い違う` +
+        '（IADR-0210 決定 4「compose を鏡にする」＝実測された先例だけに従い、推測で広げない）',
+    );
+    if (k8sRoot) {
+      assert.ok(/runAsGroup:\s*0\b/.test(OBS_PATCHES[svc]), `${svc}: runAsUser だけで runAsGroup が無い`);
+      assert.ok(
+        /path:\s*\/spec\/template\/spec\/securityContext\b/.test(OBS_PATCHES[svc]),
+        `${svc}: securityContext が Pod ではなく別の場所に足されている`,
+      );
+    }
+  }
+});
+
+// ★ 受け入れ基準 3 の静的側。「設定した」ではなく「**壊れない形にした**」を数として見る。
+ok('#787: Prometheus の保持期間が args で明示され、compose と同値である', () => {
+  const promBlock = /kind:\s*Deployment[\s\S]*?args:([\s\S]*?)\n\s{10}\w/.exec(PROM_YAML);
+  assert.ok(promBlock, 'prometheus Deployment の args ブロックが読み取れない');
+  const k8sArgs = [...promBlock[1].matchAll(/"(--[^"]+)"/g)].map((m) => m[1]);
+  const composeArgs = [...(COMPOSE['prometheus'] || '').matchAll(/"(--[^"]+)"/g)].map((m) => m[1]);
+  assert.ok(composeArgs.length > 0, 'compose の prometheus.command が読み取れない');
+
+  const retention = (args, key) => (args.find((a) => a.startsWith(`--storage.tsdb.retention.${key}=`)) || '').split('=')[1];
+  for (const key of ['time', 'size']) {
+    assert.ok(retention(k8sArgs, key), `k8s の prometheus args に --storage.tsdb.retention.${key} が無い`);
+    assert.strictEqual(
+      retention(composeArgs, key),
+      retention(k8sArgs, key),
+      `retention.${key} が compose(${retention(composeArgs, key)}) と k8s(${retention(k8sArgs, key)}) で食い違う` +
+        '（片方だけ入れると新たなパリティ差になる。#787 受け入れ基準 5）',
+    );
+  }
+
+  // size < PVC 容量。ここが逆転すると PVC 満杯 → 書き込み不能という壊れ方に戻る。
+  const sizeBytes = toBytes(retention(k8sArgs, 'size'));
+  const pvcBytes = toBytes(field(OBS_PVCS['prometheus-data'], 'storage'));
+  assert.ok(sizeBytes && pvcBytes, `容量を数へ換算できない: size=${retention(k8sArgs, 'size')} pvc=${field(OBS_PVCS['prometheus-data'], 'storage')}`);
+  assert.ok(
+    sizeBytes < pvcBytes,
+    `retention.size(${sizeBytes} B) が PVC 容量(${pvcBytes} B) 以上である（満杯で書き込み不能になりうる）`,
   );
 });
 

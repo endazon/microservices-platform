@@ -28,3 +28,22 @@ spec:
   resources:
     requests:
       storage: 1Gi
+---
+# IADR-0210 / Issue #787: Qdrant のベクトルストア（/qdrant/storage）を永続化する。
+# IADR-0082「却下した代替案」は qdrant を「embeddings は再生成可能な派生データ」として PVC 化しなかったが、
+# **再 ingest には LLM/埋め込みプロバイダへの再送と時間が要る**（dev で毎回の再起動ごとに払う代償として重い）。
+# IADR-0210 がその却下を覆す（IADR-0082 の 2026-08-16 追記も参照）。マウント先 /qdrant/storage は base
+# （deploy/local/infra/qdrant.yaml）の volumeMount と compose（qdrant-data:/qdrant/storage）が既に持つ実値で、
+# 本 PVC はその volume の中身だけを差し替える（config は書き換えない＝IADR-0079 §3 の作法）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-storage
+  namespace: platform-infra
+  labels: { app: qdrant }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi

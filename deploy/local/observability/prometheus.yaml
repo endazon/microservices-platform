@@ -89,9 +89,17 @@ spec:
         - name: prometheus
           image: prom/prometheus:v2.52.0
           # push（remote-write）モデル。collector が /api/v1/write へ送るため receiver を有効化する。
+          # IADR-0210 (#787): 保持期間を **args で明示**する（既定任せにしない）。compose
+          # （deploy/docker-compose.yml の prometheus.command）にも同じ 2 引数を置く＝パリティを崩さない。
+          #   - time=7d: dev ローカル用途。本番像（deploy/helm）に prometheus は存在しない（射程は経路B に閉じる）。
+          #   - size=4GB: time だけでは remote-write の流入量次第で PVC が満杯になり **書き込み不能**になる。
+          #     size(4.0e9 B) < PVC 容量(5Gi=5.37e9 B) にしておけば **構造的に溢れない**
+          #     （deploy/local/observability-persistence/pvcs.yaml と対。設定ではなく形で塞ぐ）。
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--web.enable-remote-write-receiver"
+            - "--storage.tsdb.retention.time=7d"
+            - "--storage.tsdb.retention.size=4GB"
           ports:
             - { containerPort: 9090, name: http }
           volumeMounts:

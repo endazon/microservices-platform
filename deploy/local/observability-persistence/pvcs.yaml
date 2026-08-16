@@ -1,0 +1,71 @@
+# IADR-0210 / Issue #787: 経路B（ローカル k8s dev）可観測性スタックの永続化 PVC。
+# クラスタの local-path provisioner（k3s/Rancher Desktop 同梱・RWO）で動的プロビジョニングする
+# （infra-persistence の 3 本と同じ StorageClass・同じ opt-in の性質）。
+# 適用は opt-in（scripts/k8s-local-up.sh の PERSIST=1 かつ OBSERVABILITY=1）。既定は base の
+# 「volume 無し＝コンテナ層」のまま（後方互換・fail-safe）。
+#
+# ★ マウント先はすべて **既存 config / 既存イメージの実値**であり、config は 1 行も書き換えない
+#   （IADR-0079 §3 が確立した作法。config を動かすとドリフト源が増える）。
+#   対応は kustomization.yaml の各 patch と scripts/k8s-local-up.test.js の静的検査が両側から突き合わせる。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      # ★ base の --storage.tsdb.retention.size（4GB = 4.0e9 B）より大きく取る（5Gi = 5.37e9 B）。
+      #   size を PVC 容量未満に置くことで、remote-write の流入が増えても **構造的に溢れない**
+      #   （満杯 → 書き込み不能という壊れ方を「設定」ではなく「形」で塞ぐ。IADR-0210 決定 3）。
+      storage: 5Gi
+---
+# Loki: ConfigMap loki-config の common.path_prefix（/tmp/loki）と一致させる。
+# index / index_cache / chunks はすべてその配下（storage_config）にあるため、親を 1 本マウントすれば足りる。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+  namespace: platform-infra
+  labels: { app: loki }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Tempo: ConfigMap tempo-config の storage.trace.local.path（/tmp/tempo/blocks）と wal.path（/tmp/tempo/wal）
+# の **親**（/tmp/tempo）をマウントする（compose の tempo-data:/tmp/tempo と同一）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data
+  namespace: platform-infra
+  labels: { app: tempo }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 2Gi
+---
+# Grafana: issue #787 は挙げていないが、**Prometheus/Loki/Tempo と同じ型のパリティ差**である
+# （compose は grafana-data:/var/lib/grafana を持ち、k8s 側は ConfigMap 3 本だけで未マウント）。
+# 経路B には provisioning されないダッシュボード（AST overview 等）を UI から import する運用が実在し
+# （deploy/local/observability/README.md）、再起動のたびにそれが消える。IADR-0210 決定 5 で本 overlay に含める。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: platform-infra
+  labels: { app: grafana }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
