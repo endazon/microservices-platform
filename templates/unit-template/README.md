@@ -24,8 +24,9 @@
       src/SampleService.Domain/              ← エンティティ・値オブジェクト（**外部依存ゼロ**）
       src/SampleService.Infrastructure/      ← EF Core・Redis 等の実装
       src/SampleService.Contracts/           ← 公開契約（proto・イベント・DTO）
-      tests/SampleService.UnitTests/         ← xUnit v2 + AwesomeAssertions + NSubstitute
-      tests/SampleService.IntegrationTests/  ← Testcontainers + Respawn + Mvc.Testing
+      tests/SampleService.Tests/             ← **テストは 1 プロジェクト**。中を 2 フォルダへ割る
+        Unit/                                ←   xUnit v2 + AwesomeAssertions + NSubstitute
+        Integration/                         ←   Testcontainers + Respawn + Mvc.Testing
   frontend/
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
     tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
@@ -68,6 +69,14 @@
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」。
   不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
   `scripts/check-backend-libraries.js` が CI で止める。
+- **サービスのテストは 1 プロジェクトにする。Unit / Integration はプロジェクトを分けず、
+  `Unit/` / `Integration/` のフォルダで分ける。**（計画
+  [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+  §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
+  参照管理のコストが増えるためである。1 プロジェクトに畳むので、`SampleService.Tests.csproj` は
+  単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の**和集合**を参照し、
+  `Application` と `Api` の両方を `ProjectReference` する。**テスト種別ごとに `.csproj` を割らないこと**
+  —— 実サービス（`src/**` の `<Name>.Api.Tests`）も全て 1 プロジェクトである。
 - **テストは xUnit v2 で書く**（ADR-0030 の標準は **v3** だが、本リポジトリの現行は v2 である）。
   `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ 1 バージョン
   しか持てない**ため、v3 へ移るには既存の全テストプロジェクトが同時に移る必要がある。この切替は

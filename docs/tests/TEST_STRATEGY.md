@@ -9,7 +9,7 @@ related_ids:
   - IADR-0116
 author: Claude
 created: 2026-08-03
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
 ---
@@ -259,12 +259,24 @@ IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除�
 
 | 種別 | 置き場所 | 使うもの | 責務 |
 | --- | --- | --- | --- |
-| 単体（バックエンド） | `Services/<Name>/tests/<Name>.UnitTests` | **xUnit v2**（ADR-0030 の標準は v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute（ADR-0030） | ドメイン規則・ハンドラの分岐 |
-| 統合（バックエンド） | `Services/<Name>/tests/<Name>.IntegrationTests` | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
+| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v2**（ADR-0030 の標準は v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute（ADR-0030） | ドメイン規則・ハンドラの分岐 |
+| 統合（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Integration`（同上。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
 | 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / [IADR-0122](../adr/IADR-0122_contract-schema-source-and-compat-gate.md)） |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
+
+### サービスのテストは 1 プロジェクト（Unit / Integration はフォルダで分ける）
+
+計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+§規範性・粒度・置き場（利用者裁定 2026-08-04 / planning#180）が **`Tests` は 1 プロジェクト**と定めている。
+種別ごとに `.csproj` を割らない（ビルド時間と参照管理のコストが増えるため）。したがって 1 つの
+`.csproj` が単体側（NSubstitute）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の
+`PackageReference` を**和集合**で持つ。実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests` であり、
+`.csproj` の実名はホスト種別に合わせてよい。**ユニット横断の統合テスト**
+（`src/knowledge/backend/Tests/Knowledge.IntegrationTests`）はサービス単位の `Tests` とは別の層であり、
+この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests`
+がこの形を示す。
 
 ### xUnit のバージョンは v2 のまま書く（v3 へ先走らない）
 

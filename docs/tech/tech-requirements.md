@@ -126,8 +126,14 @@ flowchart TB
 ```text
 src/<unit>/backend/Services/<Name>Service/
  ├── src/{<Name>.Api, <Name>.Application, <Name>.Domain, <Name>.Infrastructure, <Name>.Contracts}
- └── tests/{<Name>.UnitTests, <Name>.IntegrationTests}
+ └── tests/<Name>.Tests/{Unit, Integration}
 ```
+
+**`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**
+（計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+§規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
+参照管理のコストが増えるためである。`.csproj` の実名はサービスのホスト種別に合わせてよい
+（実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
 
 **共有カーネルはサービス単位に置かない**（[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md)）。
 本リポジトリはユニット第一構成（[[IADR-0056]]・ADR-0019）を採り、ユニット外から参照できるのは
