@@ -7,9 +7,11 @@ related_ids:
   - ADR-0008
   - ADR-0005
   - IADR-0056
+  - IADR-0082
+  - IADR-0210
 author: claude
 created: 2026-07-13
-updated: 2026-07-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md (k3s)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0007_cicd-gitops-argocd.md (GitOps/Helm/Harbor)"
@@ -93,3 +95,13 @@ plan_refs:
   割り切った。[[IADR-0082]] はこの割り切りを **opt-in（`PERSIST=1`）で部分的に見直し**、Keycloak（realm+runtime state）/
   Postgres を `local-path` PVC で永続化できる選択肢を追加した。**既定は本 ADR どおり `emptyDir` のまま不変**であり、
   本 ADR を Supersede するものではない（全面的な決定の覆しではなく、opt-in の追加）。
+
+  > ［2026-08-16 追記 / #787］ **同じ割り切りは 2 度目に広がった。** 後継は [[IADR-0210]]
+  > （[[IADR-0082]] と同じく **opt-in の追加**であり、本 ADR も IADR-0082 も Supersede しない）。
+  > 広がった範囲は **Qdrant**（`deploy/local/infra-persistence` へ相乗り。`PERSIST=1` だけで有効）と
+  > **可観測性 4 種（Prometheus / Loki / Tempo / Grafana）**（対になる別オーバーレイ
+  > `deploy/local/observability-persistence`。**`PERSIST=1` かつ `OBSERVABILITY=1`** のときだけ有効）である。
+  > **rabbitmq / redis / otel-collector は非永続のまま**（[[IADR-0082]] の却下理由が成り立つ）。
+  > **本 ADR 決定 2 の既定は依然として `emptyDir` であり、この記述は変わらない** ——
+  > 追記の目的は、**本 ADR だけを読む人が「現在 opt-in で永続化できる範囲」を取り違えない**ようにすることである
+  > （[[IADR-0082]] の 2 種 ＋ [[IADR-0210]] の 5 種 = 計 7 種）。

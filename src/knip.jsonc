@@ -39,7 +39,7 @@
     },
     "platform/frontend": {
       // ADR-0031 / IADR-0121 決定 3: orval の生成物はコミットし、CI が再生成差分を検査する。
-      // **`ignore` ではなく `entry` に置く**（IADR-0211 決定 4）。ignore にすると knip は生成物の中の
+      // **`ignore` ではなく `entry` に置く**（IADR-0211 決定 3）。ignore にすると knip は生成物の中の
       // import を辿らなくなるため、**生成物からしか使われていない本体の export とパッケージが
       // 「未使用」として大量に湧く**（＝偽陽性）。entry なら「外から使われる前提の起点」として扱われ、
       // 生成物自身の未使用 export は報告されず、生成物が使う依存（msw / @faker-js/faker）は使用済みになる。

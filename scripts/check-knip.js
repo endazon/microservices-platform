@@ -33,6 +33,13 @@
  *   - 引数なし: Knip の実行ファイルが無ければ warn を出して exit 0
  *     （`pnpm install` 前のローカル実行・バックエンドだけの PR を赤くしない）。
  *   - `--require`: 実行ファイルが無ければ **fail**。**CI はこちらを使う。**
+ *   - **`src/<unit>` submodule が未 populate だと床から外れて落ちる**
+ *     （波 7 末クロス監査の実測では `unlisted` が 1 件増える）。
+ *     **これは意図した向き**（fail-closed）である —— 走査対象が欠けたまま「床どおり」と報告しない。
+ *     `check-doc-links.js` / `check-commit-messages.js` が「未 populate は skip して notice を出す」
+ *     作法を持つのと**あえて違う**。あちらは読めない範囲を除いても残りの判定が正しいのに対し、
+ *     Knip は**全 workspace を 1 つのグラフとして解く**ため、欠けた状態の件数は床と比較できない。
+ *     CI では frontend.yml が submodule を取得する（`Fetch unit submodules`）ので実害は無い。
  *
  * ■ 検出しないこと（意図的な穴。本検査は網羅ではない）
  *   - **雛形（`templates` 配下の各ユニットの frontend）**。pnpm workspace のメンバだが Knip の project root
