@@ -140,6 +140,10 @@ issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）
 # ClusterIssuer は cluster-scoped なので、これを飛ばすと残留する。
 kubectl delete -k deploy/local/edge/tls
 
+# ★ Certificate を消しても Secret は消えない（下記）。CA 秘密鍵が残るので明示的に消す。
+kubectl -n cert-manager delete secret local-edge-root-ca
+kubectl -n microservices-platform delete secret edge-tls
+
 kubectl delete -k deploy/local/edge
 kubectl -n kube-system delete helmchartconfig traefik   # admin:50000 を撤去（Traefik が既定 values で再適用される）
 
@@ -153,6 +157,15 @@ kubectl delete -f "https://github.com/cert-manager/cert-manager/releases/downloa
 > 切り戻しでも**個別に消す必要がある** —— `ClusterIssuer`（`local-edge-selfsigned` /
 > `local-edge-ca`）は cluster-scoped、`Certificate`（`local-edge-root-ca` / `edge-tls`）は
 > それぞれ `cert-manager` / `microservices-platform` namespace に残る。
+
+> **★ さらに、`Certificate` を消しても `Secret` は消えない。** cert-manager は
+> `--enable-certificate-owner-ref`（既定 `false`）を付けない限り、発行した Secret へ
+> `Certificate` への `ownerReference` を張らない。**本オーバーレイはこのフラグを付けていない。**
+> **実測（2026-08-16）**: `kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.metadata.ownerReferences}'`
+> と `kubectl -n microservices-platform get secret edge-tls -o …` はいずれも**空**を返し、
+> `cert-manager` Deployment の args にも `--enable-certificate-owner-ref` は無い。
+> つまり **`local-edge-root-ca`（ルート CA の秘密鍵を含む）と `edge-tls` は cascade delete されず残る。**
+> 上のコマンドで明示的に消すこと。
 
 k3d のポートを元（8080/8443）へ戻すにはクラスタ再作成（`LOCALEDGE` 未設定で `k8s-local-up.sh`）。
 **クラスタを作り直すなら上の個別削除は要らない**（全部消える）。
