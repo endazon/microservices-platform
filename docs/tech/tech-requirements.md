@@ -171,8 +171,8 @@ Result / Error はサービスをまたいで同一の型である必要があ�
 `PackageReference` を一括注入できるため。[#471](https://github.com/endazon/microservices-platform/issues/471)）の
 `PackageReference`・`GlobalPackageReference` と `.cs` の `using` を走査して検出し、CI で止める。
 **CPM の `PackageVersion`（版の中央定義）は違反にしない** — 下記 ratchet の消化が終わるまで、
-[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit / FluentAssertions / Serilog を
-広範に使用中**（実測: `.csproj` 15 / 14 / 3、`.cs` 59 / 129 / 15）であるため、即時禁止では
+[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit / FluentAssertions を
+広範に使用中**（実測: `.csproj` 15 / 14、`.cs` 59 / 129）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
 壊すため、許容値までは警告に留める。planning#146・planning#160（前段の失敗モード）／
@@ -185,6 +185,13 @@ planning#161・planning#162（段階ポリシーの導入））。よって **ra
 
 各サービスの再実装 issue（#438〜#451）は、移行と同時に baseline から自プロジェクトを削除する。baseline が
 空になった時点で不採用パッケージを `Directory.Packages.props` から削除する。
+
+**`Serilog` は消化済みである**（[IADR-0216](../adr/IADR-0216_otel-logging-sdk-replaces-serilog.md)。#455）。
+ログの出口を `builder.Logging.AddOpenTelemetry()`（OTel Logging SDK）へ移し、`Serilog.AspNetCore` /
+`Serilog.Sinks.OpenTelemetry` の `PackageReference`・`PackageVersion`・baseline エントリ 13 件を削除した
+（実測 2026-08-16: `Serilog` の `.csproj` 3 → **0**、`using Serilog` を持つ `.cs` 13 → **0**）。
+**残件は 42 件 → 29 件**（`MassTransit` / `FluentAssertions`）。`Serilog` は不採用のまま `BANNED` に残るため、
+再混入は引き続き fail する。
 
 **xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
 別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 30 のテスト

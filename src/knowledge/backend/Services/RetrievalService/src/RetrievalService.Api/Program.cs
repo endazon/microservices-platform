@@ -6,14 +6,12 @@ using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Endpoints;
 using RetrievalService.Api.Composable.Adapters;
 using RetrievalService.Api.Foundation.Services;
-using Serilog;
 
 const string ServiceName = "microservices-platform.retrieval-service";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);

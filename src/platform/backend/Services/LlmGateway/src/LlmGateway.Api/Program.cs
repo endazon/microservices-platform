@@ -9,14 +9,12 @@ using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Routing;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
-using Serilog;
 
 const string ServiceName = "microservices-platform.llm-gateway";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 

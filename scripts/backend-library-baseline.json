@@ -10,8 +10,7 @@
       "FluentAssertions"
     ],
     "src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj": [
-      "MassTransit",
-      "Serilog"
+      "MassTransit"
     ],
     "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": [
       "FluentAssertions",
@@ -21,16 +20,14 @@
       "FluentAssertions"
     ],
     "src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj": [
-      "MassTransit",
-      "Serilog"
+      "MassTransit"
     ],
     "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": [
       "FluentAssertions",
       "MassTransit"
     ],
     "src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj": [
-      "MassTransit",
-      "Serilog"
+      "MassTransit"
     ],
     "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": [
       "FluentAssertions",
@@ -40,8 +37,7 @@
       "FluentAssertions"
     ],
     "src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj": [
-      "MassTransit",
-      "Serilog"
+      "MassTransit"
     ],
     "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": [
       "FluentAssertions",
@@ -51,8 +47,7 @@
       "FluentAssertions"
     ],
     "src/knowledge/backend/Services/WikiService/src/WikiService.Api/WikiService.Api.csproj": [
-      "MassTransit",
-      "Serilog"
+      "MassTransit"
     ],
     "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": [
       "FluentAssertions",
@@ -82,29 +77,7 @@
       "MassTransit"
     ],
     "src/platform/backend/Shared/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj": [
-      "MassTransit",
-      "Serilog"
-    ],
-    "src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/AiAnalysisService.Api.csproj": [
-      "Serilog"
-    ],
-    "src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/DashboardService.Api.csproj": [
-      "Serilog"
-    ],
-    "src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/FeedbackService.Api.csproj": [
-      "Serilog"
-    ],
-    "src/knowledge/backend/Services/RetrievalService/src/RetrievalService.Api/RetrievalService.Api.csproj": [
-      "Serilog"
-    ],
-    "src/platform/backend/Bff/Platform.Bff/Platform.Bff.csproj": [
-      "Serilog"
-    ],
-    "src/platform/backend/Services/AuthorizationService/src/AuthorizationService.Api/AuthorizationService.Api.csproj": [
-      "Serilog"
-    ],
-    "src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj": [
-      "Serilog"
+      "MassTransit"
     ]
   }
 }
