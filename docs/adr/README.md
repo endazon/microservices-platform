@@ -263,7 +263,7 @@
 | [IADR-0207](./IADR-0207_pr-title-trailing-number-must-be-own.md) | PR タイトル末尾の `(#NNN)` は **PR 自身の番号**に限る（形状だけの検査をやめる。実測 66/66 が起点 issue の番号で、二重付加が develop へ 58 件着地）。PR 番号が読めないときは形状のみ。`Closes` の担保は射程外。#799。 | Accepted |
 | [IADR-0208](./IADR-0208_companion-direct-run-guard.md) | companion `scripts.repo.test.js` の単体実行は**沈黙の exit 0** ではなく exit 1 にする（入口つき）。ガードの回帰試験を同ファイルに置く。静的検査は足さない。実体は本リポ・契約はキットへ環流。空の証跡 1 件は書き換えない。#797。 | Accepted |
 | [IADR-0209](./IADR-0209_vitest-include-subset-of-frontend-tests-paths.md) | `vitest` の **`test.include` ⊆ `frontend-tests.yml` の `paths:`**（対称性ではなく包含）を検査する。雛形 `templates/*/frontend/**` を push / pull_request の両方へ追加。代表パス合成・fail-closed。#801。 | Accepted |
-| [IADR-0210](./IADR-0210_local-persistence-scope-expansion.md) | 経路B の永続化（opt-in `PERSIST=1`）を **Qdrant ＋ 可観測性 4 種**へ広げる。従来 `PERSIST` は `INFRA_KUSTOMIZE` しか差し替えず **observability には効いていなかった**（新設 `observability-persistence` と `OBS_KUSTOMIZE` の分岐で解消）。**PVC を掴む Deployment は `Recreate`** —— RWO と RollingUpdate は両立せず、Prometheus は lockfile 有効を実測。**postgres / keycloak にも遡って付ける**。Prometheus の retention を明示。**IADR-0082 を Supersede せず、同 ADR が予告した拡張を行う**。#787。 | Accepted |
+| [IADR-0210](./IADR-0210_local-persistence-scope-expansion.md) | 経路B の永続化（opt-in `PERSIST=1`）を **Qdrant ＋ 可観測性 4 種**へ広げる。従来 `PERSIST` は observability に効いていなかった。**PVC を掴む Deployment は `Recreate`**（postgres / keycloak にも遡る）。**IADR-0082 は Supersede しない**。#787。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
