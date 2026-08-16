@@ -267,6 +267,7 @@
 | [IADR-0211](./IADR-0211_knip-scope-and-unused-ratchet.md) | Knip（Dead Code 検出）を導入する。**走査スコープ**は `src/knip.jsonc`（別プロジェクト submodule は `ignoreWorkspaces`、orval 生成物と入口は `ignore` ではなく `entry`）。ゲートは**未使用件数の baseline ラチェット**（増減とも fail・fail-closed）。1 件も削らない。#493。 | Accepted |
 | [IADR-0212](./IADR-0212_llm-output-token-histogram.md) | LLM の**出力トークンを Histogram** で計る（リポジトリ初）。バケットは **4096 付近を細かく刻む**（IADR-0101 の妥当性を分布で読むため）。属性は Counter から `llm.result` を落とした 5 つ。**送信が成立した経路だけに記録**し 0 で埋めない。#786 | Accepted |
 | [IADR-0213](./IADR-0213_optin-token-boundary-matching.md) | `OPTIN_TOKENS` の不在検査を **末尾境界一致**にする（`includes` は接頭辞を持つトークンの検出力を隠す。実測 3 組）。配下だけが発行されるものは末尾 `/` で綴る。**各トークンの単独検出力を毎回検査**。#817 | Accepted |
+| [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md) | **ゲートが読むファイル ⊆ そのゲートを走らせるワークフローの `paths:`** を不変条件にする。入力は検査器の `path.join` 定数から**導出**し列挙しない。対象ゲートは `run:` から導く。push / pull_request を別々に見る。fail-closed 3 門。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

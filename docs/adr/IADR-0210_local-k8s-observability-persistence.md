@@ -9,6 +9,8 @@ related_ids:
   - IADR-0077
   - IADR-0079
   - IADR-0082
+  - IADR-0168
+  - IADR-0179
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -27,6 +29,26 @@ plan_refs:
 ## 起点・関連
 
 - 関連する計画書 ID: NFR（運用性・可観測性・信頼性＝Pod 再起動でデータを失わない）／ADR-0006（可観測性）
+
+  > ［2026-08-16 追記 / #787］ **なぜ無採番の `NFR` で、`NFR-19` を当てなかったのか**（波 7 末クロス監査の指摘）。
+  > 本 ADR は判定根拠を書いていなかった。**判断は「無採番で妥当」で変わらないが、根拠を残す。**
+  >
+  > - 計画 `02_requirements/01_requirements.md` の `NFR-19` は
+  >   「**可観測性 / メトリクス・ログ・分散トレースを全サービスで収集**（Prometheus/Loki/Jaeger）」である。
+  >   同表の直前注記は「**本表の射程は「稼働する製品」の要件である**」と定める（確定 2026-08-11 / planning#311）。
+  > - **本 ADR の射程は dev 経路B に閉じる。** 本番像（`deploy/helm/microservices-platform/`）に
+  >   prometheus / loki / tempo / grafana / qdrant の**ワークロードは 1 つも無い**（実測。
+  >   `grep -rniE "prometheus|loki|tempo|grafana|qdrant" deploy/helm/microservices-platform/` が当たるのは
+  >   `values.yaml` のコメント 2 行だけで、`templates/` は 0 件）。したがって本 ADR の変更は
+  >   **稼働する製品の可観測性を 1 ミリも動かさない** —— `NFR-19` を当てると
+  >   「その NFR の実装」として監査に数えられ、**無採番より劣化する**（同注記の逐語）。
+  > - **同じ `deploy/local/observability/` を触った先行コミット `39d6973b`（#678 / [[IADR-0168]]）は
+  >   `fix(NFR-19,IADR-0168):` と採番付きを使っている。** これは**矛盾ではない** ——
+  >   あちらは **Grafana provisioning の経路間乖離**（compose と k8s でダッシュボード定義が食い違う）を
+  >   埋めるもので、**「収集した可観測性データが実際に読める」という製品側の要件に直結する**。
+  >   本件は**再起動をまたいで dev のデータが残るか**であり、収集そのものには触れていない。
+  > - 起点 ID は [[IADR-0179]] 決定 1 の無採番 `NFR`。**無いことは「実装側で採番してよい」ではない**
+  >   （同 決定 2）。**環流しない。**
 - 関連 ADR: [[IADR-0082]]（経路B 基盤インフラの永続化。**qdrant の PVC 化を明文で却下した決定＝本 ADR が覆す**）／
   [[IADR-0079]]（compose 側の永続化。§3 の「config を書き換えず既存 storage パスへマウント」が本 ADR の先例。
   **ただし同 §3 の `user: "0:0"` は docker の named volume 固有の対処であり、k8s へは転用しない**＝決定 6）／

@@ -7698,8 +7698,11 @@ module.exports = ({ ok, assert }) => {
     //   出ないため AST の include が空走査で静かに緑になる**（#664 / PR #672 が扱った fail-open の
     //   新設に当たる）。代表パスなら populate の有無に関わらず同じ判定になる。
     //
-    // ★ **fail-closed の門**を 2 つ置く（IADR-0183「偽の緑」）。include の抽出が 0 件でも、
-    //   paths: の抽出が 0 件でも throw する —— 正規表現が壊れたときに「0 件検査して緑」を返さない。
+    // ★ **fail-closed の門**を 3 つ置く（IADR-0183「偽の緑」。IADR-0209 決定 4 が正本）。
+    //   ① test.include 節を読めない ② include の抽出が 0 件 ③ paths: が読めない／0 件 ——
+    //   いずれも throw する。正規表現が壊れたときに「0 件検査して緑」を返さない。
+    //   ［2026-08-16 訂正 / 波 7 末クロス監査］本コメントは「2 つ」と書いていたが実装も
+    //   IADR-0209 決定 4 も **3 つ**である（門 ① を数え落としていた）。コメントだけが古かった。
     //
     // ★ glob → RegExp は素の Node で自作する。本リポには `package.json` も `node_modules` も無く
     //   `minimatch` 等を使えない。`**`（`/` を跨ぐ）/ `*`（跨がない）/ `{a,b}` を扱えれば足りる。
@@ -7802,6 +7805,221 @@ module.exports = ({ ok, assert }) => {
         [],
         'vitest が収集するのにテストを走らせる CI が起動しない（#801）。' +
           'frontend-tests.yml の push / pull_request の**両方**の paths: へ足すこと:\n  ' +
+          missing.join('\n  '),
+      );
+    });
+
+    // --- NFR / IADR-0214: ゲートが読むファイル ⊆ そのゲートを走らせる workflow の paths: -----
+    //
+    // ★ 起点 ID は**無採番の `NFR`**（上の #747 / #801 節と同じ理由。CI の起動条件という工程の
+    //   統制であり、計画側の非機能要件表〔`NFR-01`〜`NFR-27`〕に当たる番号が無い。IADR-0179 決定 1）。
+    //
+    // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は**着地日順に 5 件目**である。
+    //     1 件目 = #562（`ce96eb81` / 2026-08-08。整形ゲートの設定が paths: に無かった）
+    //     2 件目 = #558（`4dbd5010` / 2026-08-10。契約と生成の設定が frontend-tests.yml に無かった）
+    //     3 件目 = #747（`3cf2437a` / 2026-08-15。AST submodule の gitlink が一致せず 3 回素通りした）
+    //     4 件目 = #801（`49ec8e32` / 2026-08-16。test.include が拾う雛形を paths: が拾わなかった）
+    //     5 件目 = 本節（`f423ca4e` / 2026-08-16。Knip ゲートの**入力**——床 knip-baseline.json と
+    //              検査器本体 check-knip.js——が frontend.yml の paths: に無い。**4 件目と同じ波で
+    //              作り込んだ**。床だけを 18 → 60 に緩める PR では、ゲートが 1 度も起動しない）。
+    //   **上の 2 つの検査器は本件を素通りする** —— #747 は .gitmodules の gitlink しか見ず、
+    //   #801 は vitest の test.include しか見ない。よって同じ場所へ**3 本目の不変条件**を置く。
+    //
+    // ★★ **不変条件は「ゲートが読むファイル ⊆ そのゲートを走らせるワークフローの paths:」である。**
+    //   #801（IADR-0209）が「**走らせる対象**（テストファイル）」を見るのに対し、ここは
+    //   「**検査器が読む入力**（床・設定・検査器本体）」を見る。族は同じで対象が違う。
+    //
+    // ★ **対象ゲートも入力ファイルもハードコードしない。**
+    //   - ゲートの一覧は**ワークフローの run: から導く**（`node scripts/<name>.js`）。
+    //   - 入力ファイルは**検査器のソースから静的に導く**（`path.join` / `path.resolve` の
+    //     リテラルと既知の定数だけで組まれた式を解決し、実在するファイルだけを残す）。
+    //     検査器自身のパスも常に含める（本体を書き換える PR でゲートが起動しないのは同じ穴）。
+    //
+    // ★ **検出しないこと（意図的な穴。網羅ではない）**
+    //   - **`require()` の依存グラフは辿らない。** 辿ると `scripts/lib/ci-annotate.js` のような共有
+    //     ライブラリを引き込むが、それらは壊れれば**例外で落ちる**ので「静かに素通りする」型ではない
+    //     （回帰は ci.yml の scripts-tests が各検査器の --self-test で見ている）。
+    //   - **実行時引数で決まる入力は見えない**（`check-static-egress.js --require <dist>` の走査先等）。
+    //   - **変数・テンプレートリテラルで組まれたパスは解決できず、黙って落ちる。**
+    //     だから下の fail-closed の門 ② で「式を 1 件も切り出せない」形を止める。
+    //
+    // ★ **fail-closed の門を 3 つ置く**（IADR-0183「偽の緑」）。
+    //   ① ワークフローからゲートを 1 件も取れない ② 本文に path.join( が在るのに式を 1 件も
+    //   切り出せない ③ paths: が読めない／0 件 —— いずれも **throw** する。
+
+    /** YAML の行コメント（`#` 以降）を落とす。ゲート抽出がコメント中の例文を拾わないため。 */
+    const withoutYamlComments = (yml) =>
+      yml
+        .split('\n')
+        .map((l) => l.replace(/(^|\s)#.*$/, '$1'))
+        .join('\n');
+
+    /** ワークフローの `run:` に現れる `node scripts/<name>.js` を全部拾う。 */
+    const gateScriptsOf = (yml) => {
+      const found = new Set();
+      for (const m of withoutYamlComments(yml).matchAll(/\bnode\s+(scripts\/[\w.-]+\.js)\b/g)) {
+        found.add(m[1]);
+      }
+      return [...found].sort();
+    };
+
+    /** 引数リストを**トップレベルのカンマ**で割る（入れ子の括弧・文字列の中は割らない）。 */
+    const splitTopLevelArgs = (s) => {
+      const out = [];
+      let depth = 0;
+      let cur = '';
+      let quote = null;
+      for (let i = 0; i < s.length; i += 1) {
+        const c = s[i];
+        if (quote) {
+          cur += c;
+          if (c === '\\') {
+            cur += s[i + 1] ?? '';
+            i += 1;
+          } else if (c === quote) quote = null;
+          continue;
+        }
+        if (c === "'" || c === '"' || c === '`') {
+          quote = c;
+          cur += c;
+          continue;
+        }
+        if ('([{'.includes(c)) depth += 1;
+        else if (')]}'.includes(c)) depth -= 1;
+        else if (c === ',' && depth === 0) {
+          out.push(cur.trim());
+          cur = '';
+          continue;
+        }
+        cur += c;
+      }
+      if (cur.trim() !== '') out.push(cur.trim());
+      return out;
+    };
+
+    /**
+     * 検査器のソースから「**リポジトリ内の実ファイル**を指す path 定数」を静的に導く。
+     * 基点は `__dirname`（= `scripts`）。`const NAME = path.join(...)` は解決結果を記号表へ入れ、
+     * 後続の式から参照できるようにする（REPO_ROOT / SRC_DIR / BASELINE_PATH … の連鎖を辿るため）。
+     * 戻り値の `expressions` は**切り出せた式の数**で、fail-closed の門 ② が使う。
+     */
+    const repoFilesReadBy = (relScript) => {
+      const src = fs.readFileSync(path.join(REPO, relScript), 'utf8');
+      const symbols = new Map([['__dirname', path.posix.dirname(relScript)]]);
+      const candidates = new Set();
+      let expressions = 0;
+      const CALL = /(?:const\s+([A-Za-z_$][\w$]*)\s*=\s*)?path\.(?:join|resolve)\(/g;
+      let m;
+      while ((m = CALL.exec(src)) !== null) {
+        const name = m[1];
+        const open = CALL.lastIndex - 1;
+        // 対応する `)` を探す（文字列の中の括弧は数えない）。
+        let depth = 0;
+        let end = -1;
+        let quote = null;
+        for (let i = open; i < src.length; i += 1) {
+          const c = src[i];
+          if (quote) {
+            if (c === '\\') i += 1;
+            else if (c === quote) quote = null;
+            continue;
+          }
+          if (c === "'" || c === '"' || c === '`') quote = c;
+          else if (c === '(') depth += 1;
+          else if (c === ')') {
+            depth -= 1;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        if (end < 0) continue;
+        expressions += 1;
+        const args = splitTopLevelArgs(src.slice(open + 1, end));
+        const parts = [];
+        let resolvable = args.length > 0;
+        for (const arg of args) {
+          const lit = arg.match(/^'([^'\\]*)'$/) || arg.match(/^"([^"\\]*)"$/);
+          if (lit) {
+            parts.push(lit[1]);
+            continue;
+          }
+          if (symbols.has(arg)) {
+            parts.push(symbols.get(arg));
+            continue;
+          }
+          resolvable = false; // 変数・関数呼び出し等。**黙って落とす**（門 ② が全滅を止める）。
+          break;
+        }
+        if (!resolvable) continue;
+        const rel = path.posix.normalize(path.posix.join(...parts));
+        if (rel.startsWith('..')) continue; // リポジトリの外
+        if (name) symbols.set(name, rel);
+        candidates.add(rel);
+      }
+      // **検査器自身**も入力である（本体を書き換える PR でゲートが起動しないのは同じ穴）。
+      const files = new Set([relScript]);
+      for (const rel of candidates) {
+        if (rel.split('/').includes('node_modules')) continue; // 生成物。追跡下に無い
+        const abs = path.join(REPO, rel);
+        if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue; // ディレクトリ・実行時生成物
+        files.add(rel);
+      }
+      return { files: [...files].sort(), expressions, hasPathCall: /path\.(?:join|resolve)\(/.test(src) };
+    };
+
+    ok('NFR / IADR-0214: フロント CI のゲートが読むファイルが frontend.yml の paths: に全て載っている', () => {
+      const WORKFLOW = 'frontend.yml';
+      const yml = fs.readFileSync(path.join(REPO, '.github/workflows', WORKFLOW), 'utf8');
+
+      const gates = gateScriptsOf(yml);
+      // fail-closed の門 ①: ゲートを 1 件も取れない＝抽出が腐った。0 件検査で緑を返さない。
+      if (gates.length === 0) {
+        throw new Error(
+          `${WORKFLOW} から "node scripts/*.js" のゲートを 1 件も取れない（抽出が壊れている）。` +
+            '0 件検査で緑を返さないため fail させる',
+        );
+      }
+
+      const inputs = new Map();
+      for (const gate of gates) {
+        const r = repoFilesReadBy(gate);
+        // fail-closed の門 ②: 本文に path.join( が在るのに式を 1 件も切り出せない＝括弧の
+        // 対応取り・正規表現が腐った。ここで止めないと「入力が検査器自身だけ」で緑になる。
+        if (r.hasPathCall && r.expressions === 0) {
+          throw new Error(
+            `${gate}: path.join(/path.resolve( が在るのに式を 1 件も切り出せない（抽出が壊れている）`,
+          );
+        }
+        inputs.set(gate, r.files);
+      }
+
+      const missing = [];
+      let checked = 0;
+      // **push と pull_request を別々に見る**（片方だけ足す事故を止める）。
+      for (const event of ['push', 'pull_request']) {
+        const paths = pathsOf(yml, event);
+        // fail-closed の門 ③: paths: が読めない／0 件なら throw（#747 / #801 節と同じ扱い）。
+        if (!paths || paths.length === 0) {
+          throw new Error(`${WORKFLOW}: ${event}.paths を読めない（パーサが壊れている）`);
+        }
+        const matchers = paths.map(globToRegExp);
+        checked += 1;
+        for (const [gate, files] of inputs) {
+          for (const file of files) {
+            if (!matchers.some((re) => re.test(file))) {
+              missing.push(`${WORKFLOW}: ${event}.paths に "${file}" が無い（${gate} の入力）`);
+            }
+          }
+        }
+      }
+      assert.strictEqual(checked, 2, `paths: を持つトリガが ${checked} 箇所（push / pull_request の 2 箇所のはず）`);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        'ゲートの入力だけを変える PR でゲートが起動しない（床を緩める変更が静かに素通りする）。' +
+          `${WORKFLOW} の push / pull_request の**両方**の paths: へ足すこと:\n  ` +
           missing.join('\n  '),
       );
     });

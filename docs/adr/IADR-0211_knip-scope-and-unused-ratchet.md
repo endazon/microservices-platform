@@ -15,6 +15,8 @@ related_ids:
   - IADR-0179
   - IADR-0183
   - IADR-0203
+  - IADR-0209
+  - IADR-0214
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -161,6 +163,18 @@ Knip の設定はこの 4 つ目になるが、増分は「1 箇所増える」�
   **`frontend-tests.yml` は触らない**（[IADR-0209](./IADR-0209_vitest-include-subset-of-frontend-tests-paths.md)
   の `test.include` ⊆ `paths:` に `knip.jsonc` は一致せず、不変条件に影響しない）。
 
+  > ［2026-08-16 追記 / 波 7 末クロス監査］ **「`src/knip.jsonc` の 1 行だけ足す」は誤りだった。**
+  > 後継は [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md)
+  > （本決定 4 の**ラチェットの形は生きており**、IADR-0214 は起動条件だけを改める**追補**である）。
+  > **床 `scripts/knip-baseline.json` と検査器本体 `scripts/check-knip.js` が `paths:` に無いため、
+  > 床だけを緩める PR ではゲートが 1 度も起動しなかった。** 実測（床の `counts.exports` を 18 → 60）:
+  > `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は **EXIT=0 / 636 tests passed** で素通りし、
+  > `node scripts/check-knip.js --require` だけが **EXIT=1** になる。
+  > **「床側は `ci.yml` の `scripts-tests` が見る」という当時の想定も誤り**である ——
+  > `scripts-tests` が走らせるのは `--self-test` で、**純関数の振る舞い・`.gitmodules` と
+  > `ignoreWorkspaces` の突合・床の区分名という構造検査だけ**であり、**床と実測値の突合は行わない**。
+  > `frontend-tests.yml` を触らない判断は**不変**（同ワークフローは `node scripts/*.js` のゲートを持たない）。
+
 ### 決定 5: #452 を待たずに床を打つ（論点 E = E2）。**ただし本 PR では 1 件も削らない**
 
 先行仕様書 [`20260815_issue-768_renovate-husky.md`](../specs/20260815_issue-768_renovate-husky.md) §対象範囲は
@@ -205,7 +219,51 @@ Knip を「#452 待ち」としていた。待つ理由は「画面を作り直�
   - 床の 41 件の**片付け**（別 issue）。とくに `@lingui/conf` の宣言追加と、
     `packages/ui` の `@vitejs/plugin-react`（直接の参照 0 件）の精査。
 
+## 補足（後続の是正）
+
+### ［2026-08-16 追記 / 波 7 末クロス監査］作業仕様書の母集合 軸 2 の内訳に 1 件の取り違えがあった
+
+作業仕様書 [`20260816_issue-493_knip-unused-detection.md`](../specs/20260816_issue-493_knip-unused-detection.md)
+§母集合 の 軸 2（`git grep -ril "knip"` = **10 件**）は、**件数は合うが集合が 1 件入れ替わっている。**
+
+- 仕様書が挙げる `docs/specs/20260808_issue-562_frontend-format-gate.md` は **"knip" を含まない**
+  （同ファイルの `:122` は `#491 / #493（Husky）` の行であり、**Husky のヒットを取り違えたとみられる**）。
+- 実際に含むのに落ちているのは **`docs/specs/20260816_chore_unit-template-frontend-drift.md`** であり、
+  そこには **#493 の中心論点そのもの**が書かれている
+  （`| Knip / Plop.js | **Plop は「Feature 雛形生成」——本作業と直結する** |`）。
+
+**再実行（走査基準 = `14704442` ＝ #493 着地の直前）:**
+
+```console
+$ git grep -ril "knip" 14704442 -- . ':!planning' ':!src/ai-stock-trading'
+14704442:docs/adr/IADR-0121_spa-stack-migration-staging.md
+14704442:docs/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md
+14704442:docs/adr/IADR-0203_renovate-husky-hook-scope.md
+14704442:docs/specs/20260804_issue-446_spa-foundation-stack-migration.md
+14704442:docs/specs/20260804_issue-490_spa-router-shell.md
+14704442:docs/specs/20260804_issue-496_ui-i18n-storybook.md
+14704442:docs/specs/20260815_issue-454_open-issue-stocktake-and-waves.md
+14704442:docs/specs/20260815_issue-768_renovate-husky.md
+14704442:docs/specs/20260816_chore_unit-template-frontend-drift.md
+14704442:feedback/20260804_frontend-migration-staging-interpretation.md
+$ echo "EXIT=$?"
+EXIT=0
+$ grep -c "knip" docs/specs/20260808_issue-562_frontend-format-gate.md   # 仕様書が挙げた側
+0
+```
+
+**結論は不変である。** 入れ替わった 2 件はどちらも `status: done` の確定済み `docs/specs/` であり、
+「**書き換えない**」側に立つ（`.claude/rules/traceability.repo.md` §Superseded の項）。
+追随書き換え 0 件という判断も、決定 1〜6 も動かない。
+
+**それでも記録するのは、規則 6 の目的が「次の走査が同じ判断を再現できること」だからである。**
+内訳が違うと、次に同じ語で引いた人が「10 件のはずが集合が違う」で必ず止まる。
+**確定済み仕様書は触らず、live な本 ADR に実測を残す**（[IADR-0171](./IADR-0171_backlink-obligation-one-way.md)：
+リンクの義務は片方向であり、仕様書側へ逆リンクを張る義務は無い）。
+
 ## 関連
 
 - Supersedes: なし
-- Superseded by: なし
+- Superseded by: なし（決定 4 の `paths:` に関する部分は
+  [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md) が**追補**として改めた。
+  ラチェットの形そのものは生きているため Supersede ではない）
