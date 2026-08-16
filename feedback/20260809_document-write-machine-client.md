@@ -23,11 +23,6 @@ dispatched: true
 | 3-a. `planning/draft/feedback/` へのコピー | **完了**（`20260809_document-write-machine-client.md`。**PR [planning#306](https://github.com/endazon/project-planning/pull/306) でマージ済み**） |
 | 3-b. Issue 起票 | **本件では実施しない**（3-a のコピー経路を採ったため。いずれか一方で足りる） |
 
-> **［2026-08-13 追記 / #712］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
-> **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
-> これにより `check-feedback-dispatched.js` の**既知の偽陽性 1 件が解消した**（#710 / IADR-0184 決定 2）。
-> **ただし検査器が記録ファイル経路（3-a）を証拠と認めない件は未解決である**（planning#319 知見 1）。
-
 ## 種別
 
 **記述の不足**（確定した統制が、想定していなかった呼び出し元へ及ぶ）。

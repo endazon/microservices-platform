@@ -1,19 +1,33 @@
 {
   "$comment": [
-    "feedback/ 本文に残る日付つき追記ブロックの baseline（NFR / #733）。",
-    "IADR-0191 決定 2: feedback/ の frontmatter は書き換え可、本文（日付つき追記ブロックを含む）は不可。",
-    "ratchet: 新規混入は fail、files に載る残件は許容、消えたのに残っていれば fail（baseline を縮める）。",
+    "feedback/ 本文に残る日付つき追記ブロックの allowlist（NFR / #743。#733 で baseline として新設）。",
+    "",
+    "★ これは「まだ消せていない残件」ではない。**裁定 planning#369（案 A）により残すと決めた記録**である。",
+    "  裁定は IADR-0191 決定 2 の凍結の射程を『frontmatter の二重記述』に限定した ——",
+    "    ① frontmatter の状態欄の変更を本文で言い直した追記 …… 射程内（撤去する）",
+    "    ② トリアージ結果・裁定の記録 …………………………… 対象外（残す）",
+    "    ③ 自己是正の訂正（元の記述を消さないことが条件）… 対象外（残す）",
+    "    ＋ マージ前の同一 PR 内の推敲 ………………………… 対象外",
+    "  ①に当たる #712 の 3 ブロックは #743 で撤去した（#721 の 11 ブロックは #733 で撤去済み）。",
+    "  files に載る 16 ブロックは②③であり、**消すと計画リポ CLAUDE.md §中間成果物の",
+    "  『裁定・決定の内容そのものは必ずリポジトリへ残す』に反する**。",
+    "",
+    "★ verdict の値域は triage-record（②）と self-correction（③）の 2 語だけである。",
+    "  ①（frontmatter-duplicate）はここに載ってはならない —— 載れば撤去対象を allowlist で",
+    "  握り潰したことになる。検査器が値域外を fail にする。",
+    "",
+    "★ ratchet は弱めていない。新規混入は fail、files に載る記録は許容、消えたのに載っていれば fail",
+    "  （backend-library-baseline.json / adr-index-title-baseline.json と同じ形）。",
+    "  加えて count / verdict / reason の欠落も fail にする（理由の無い allowlist は残件表に戻る）。",
     "",
     "★ 判定は語順・括弧の種類を問わない。当初は「［YYYY-MM-DD 追記」だけを見ており、",
     "  「## 追記 2（2026-08-03）:」（日付が後ろ）・半角ブラケット・全角丸括弧を素通りさせた",
     "  （PR #744 の ADR 監査が変異試験で発見）。",
     "",
-    "★ files を 0 件にしない理由 —— 残る 19 ブロックはすべて本作業の承認範囲外だからである。",
-    "  #733 の利用者承認（2026-08-15）は #721 が足した 11 件に対して出ている。",
-    "  #497 の 10 件・#712 の 3 件・ID 無しの 2 件・20260803_ai-review-execution-permissions.md の 4 件は",
-    "  いずれも別のマージ済み判断であり、同じ承認で消してよいとは読めない。",
-    "  なお #497 の 10 件は計画側のトリアージ結果でもある（実測: 判定: accepted 8 / rejected 2）。",
-    "  規約どうしの衝突そのものは #743 で追跡する。",
+    "★ 述語の穴を開示する。判定は「追記」の語を要求するため、『［2026-08-04］反映済み』",
+    "  『取り下げ（2026-08-05 / #504）』のような後付け注記は掛からない（#743 の実測で 20 行）。",
+    "  ただし**そのどれも①ではない**ため撤去漏れにはならない。広げると②③を新たに載せることになり、",
+    "  検査器の形を変える決定は出ていないので広げていない（作業仕様書 20260816_issue-743 §2.3）。",
     "",
     "★ originText（原文は違反でない、という除外枠）は置かない。",
     "  20260803_ai-review-execution-permissions.md の 4 件を『ファイル追加時からある原文』として",
@@ -21,25 +35,71 @@
     "  まさに『後から差し込んだ注記』側である。shallow clone では git log --diff-filter=A が",
     "  境界コミットを返すため、どのファイルも『境界で追加された』ように見えることが原因",
     "  （PR #744 の AI レビューが git fetch --unshallow して発見）。",
+    "  #743 も unshallow して再測し、同じ結論を得た（237 insertions / 0 deletions）。",
     "",
-    "撤去済み: #721 由来の 11 件（#733 / 利用者承認 2026-08-15）。",
-    "値はファイル名 → 本文に残る追記ブロック数（frontmatter は数えない）。"
+    "撤去済み: #721 由来の 11 ブロック（#733 / 利用者承認 2026-08-15）、#712 由来の 3 ブロック（#743 / 裁定 planning#369）。",
+    "count はファイル本文に残る追記ブロック数（frontmatter は数えない）。"
   ],
   "files": {
-    "20260703_conversion-retry-vs-image-fallback.md": 1,
-    "20260703_wiki-selfhosted-supersedes-adr-0011.md": 1,
-    "20260704_plan-status-reflux-fr-adr.md": 1,
-    "20260705_internal-service-auth-nfr-deviation.md": 1,
-    "20260705_wiki-js-deployment-follows-adr-0011.md": 1,
-    "20260709_composability-open-items-resolved.md": 1,
-    "20260709_composable-implementation-guide-upstream.md": 1,
-    "20260709_dotnet10-target-framework-deviation.md": 1,
-    "20260709_sc11-wireframe-drawio.md": 1,
-    "20260710_repo-positioning-and-unit-structure.md": 1,
-    "20260803_ai-review-execution-permissions.md": 4,
-    "20260805_sc09-11-admin-ops-contract-gaps.md": 2,
-    "20260809_document-write-machine-client.md": 1,
-    "20260809_sc06-manual-sync-role-classification.md": 1,
-    "20260811_nfr-numbering-has-no-slot-for-meta-work.md": 1
+    "20260703_conversion-retry-vs-image-fallback.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、提案 (a)（再試行と縮退を分けて明記する）が反映された計画側 5 文書の確認表を持つ。本記録を根拠に ADR-0012 が Accepted 化されており、撤去すると確定の経緯が辿れなくなる。frontmatter の status は accepted としか言わず、どの提案がなぜ通ったかは持たない。"
+    },
+    "20260703_wiki-selfhosted-supersedes-adr-0011.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: rejected（取り下げ）」と、その理由（issue #66 で人間が Wiki.js 配備を選択したため Supersede が成立しない）、および ADR-0011 が Superseded ではないことの確認表を持つ。否認の理由は frontmatter の rejected からは復元できない。"
+    },
+    "20260704_plan-status-reflux-fr-adr.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted（一部は個別判断で据え置き）」と、提案 1〜7 のどれが反映されどれが据え置かれたかの確認表を持つ。部分採択の内訳は frontmatter に持てない。"
+    },
+    "20260705_internal-service-auth-nfr-deviation.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、提案 1（NFR のフェーズ分け）・4（暫定運用の明文化）の反映先、提案 2・3 が後続で達成された経緯を持つ。"
+    },
+    "20260705_wiki-js-deployment-follows-adr-0011.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、ADR-0011 が本記録の提案どおり ABAC 強制点を明確化したうえで Accepted 化された確認を持つ。"
+    },
+    "20260709_composability-open-items-resolved.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、提案 1〜3 が 10_composability-design.md へ反映され planning#15 も処理済みである確認を持つ。"
+    },
+    "20260709_composable-implementation-guide-upstream.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted（reflected ではない）」と、廃語 reflected を採らない判断の根拠を持つ。語彙をどちらに寄せたかという判断そのものが記録の中身であり、frontmatter の値だけでは失われる。"
+    },
+    "20260709_dotnet10-target-framework-deviation.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、ADR-0020 の Accepted 化・技術スタック表が .NET 10 へ是正済みであることの確認表を持つ。#497 が挙げた残渣が是正済みである根拠がここにしかない。"
+    },
+    "20260709_sc11-wireframe-drawio.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: rejected（別解で解消）」と、先行する #504 の取り下げが用いた一点物の語 closed を rejected へ揃えた経緯（取り下げの判断そのものは変えていない旨）を持つ。"
+    },
+    "20260710_repo-positioning-and-unit-structure.md": {
+      "count": 1,
+      "verdict": "triage-record",
+      "reason": "計画側のトリアージ結果。「判定: accepted」と、提案が同一 PR で計画へ反映され ADR-0019 として確定した確認を持つ。"
+    },
+    "20260803_ai-review-execution-permissions.md": {
+      "count": 4,
+      "verdict": "self-correction",
+      "reason": "同一記録に対する 4 ラウンドの自己是正。AI レビュー実走の権限拒否件数の実測（7 → 3 → 1 件）と、その都度キットへ送る追加提案（planning#168 へ追記する内容）であり、各ラウンドが直前のラウンドの不足（型の数え漏れ・対策の効果不足・未許可コマンド名指しリストの穴）を訂正する。元の記述は 1 行も消していない（git show --stat 1a16140a = 237 insertions / 0 deletions）。frontmatter の status には一言も触れておらず①ではない。なお『実測ラウンドの継続記録（＝新しい記録の追加）』とも読めるが、どちらの読みでも①ではないため帰結は変わらない（#743 で断定を避けた点）。"
+    },
+    "20260805_sc09-11-admin-ops-contract-gaps.md": {
+      "count": 2,
+      "verdict": "triage-record",
+      "reason": "裁定・決定の記録 2 件。(1) 提案 1 について『計画側は契約を定める側を選んだ』という選択の記録と、消化した実装 issue の対応（#634 / #635 / #640）、および残件が提案 3〜7 であることの確定。(2) 提案 7 が『運用者も含む』と裁定され（質問票 Q19 / Q28。リポジトリに実体を持たない）#544 で実装したこと、触っていない範囲の明示。frontmatter の accepted は 8 提案のどれがどう決まったかを持たない。"
+    }
   }
 }
