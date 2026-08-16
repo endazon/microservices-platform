@@ -16,7 +16,7 @@ related_ids:
   - IADR-0199
 author: claude
 created: 2026-07-04
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
@@ -117,6 +117,10 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 > **`active` にしても無制限に公開にはならない** —— `read` は属性の連言で、`confidentiality` と
 > `department`（未解決は deny 側の `unassigned`）が同時にかかる。
 > **ソース単位で下書き扱いにしたい場合は既定属性で `draft` を指定する**（終端は指定が無いときだけ効く）。
+> **［2026-08-16 / #796］この指定は SC-06 の登録フォームからも行える**（従前は API を直接叩くほかなかった）。
+> **未指定ならキーごと送らない** —— `department` の予約値と違い**終端が正規の値**なので、
+> 値では「指定しなかった」と「`active` を選んだ」を見分けられず、**キーの有無だけが区別を持つ**。
+> 理由書きの正は [[IADR-0199]] 決定 4 であり、ここへ複写しない。
 
 > **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（SC-06 / #538 / [[IADR-0136]]）。
 > 定期同期は全ソース共通の間隔で回るため、次回実行時刻は**ワーカーの位相から導出できる値**であり、
