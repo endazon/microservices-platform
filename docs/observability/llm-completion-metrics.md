@@ -13,13 +13,15 @@ related_ids:
   - IADR-0104
   - IADR-0109
   - IADR-0110
+  - IADR-0212
 author: claude
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
 related_specs:
+  - "../adr/IADR-0212_llm-output-token-histogram.md"
   - "../adr/IADR-0110_llm-completion-stop-reason-metrics.md"
   - "../adr/IADR-0104_llm-stop-reason-refusal.md"
   - "../functional/FR-11_llm-egress-routing.md"
