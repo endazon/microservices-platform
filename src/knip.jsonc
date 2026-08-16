@@ -1,0 +1,53 @@
+{
+  // ADR-0031（13_frontend-stack §採用技術一覧「Dead Code 検出 = Knip」）/ IADR-0121 決定 1（第 5 段 = 運用系）/
+  // IADR-0211（本設定の決定）。issue #493。設計と実測は docs/specs/20260816_issue-493_knip-unused-detection.md。
+  //
+  // ■ なぜ .jsonc なのか（.json でも .config.ts でもなく）
+  //   本リポジトリの設定ファイルは**設定の隣に理由を書く**（eslint.config.js / vite.config.ts /
+  //   lingui.config.ts / renovate.json の "description" 配列）。ところが knip は設定を厳格に検証し、
+  //   未知のキーを弾く（実測: `"description"` を足すと `ERROR: Invalid input (unrecognized_keys: description)`
+  //   で exit 2）。よって JSON では理由を同居させられない。`.jsonc` はコメントを許し（実測で確認）、
+  //   `knip.config.ts` と違って**設定を実行する必要が無い**（宣言だけで済む本設定に処理は要らない）。
+  //
+  // ■ 検出しないこと（意図的・構造的な穴。**網羅ではない**ことを明記する）
+  //   1. **`templates/*/frontend`（雛形）を走査しない。** pnpm workspace のメンバではあるが（pnpm-workspace.yaml
+  //      の 3 本目のグロブ）、**knip の project root である src/ の外**にあるため knip の射程に入らない。
+  //      実測: 雛形へ未使用 export を 1 つ足しても件数は 1 件も動かなかった。
+  //      雛形は typecheck / lint / format / 単体テストが別途見ている（frontend.yml / frontend-tests.yml）。
+  //   2. **バックエンド（C#）は対象外。** knip は JS/TS のツールである。
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // IADR-0120 / IADR-0056: `src/ai-stock-trading` は**別プロジェクトの submodule**であり、
+  // 本リポジトリの未使用判定の対象ではない（.prettierignore の `ai-stock-trading/`・
+  // eslint.config.js の `ignores`・scripts/lib/excluded-units.js と同じ判断）。
+  // **これを外すと素の走査へ戻る**（実測: 692 → 648 件。うち AST は 44 件）。
+  //
+  // ここが `src/.prettierignore` / `src/eslint.config.js` / `.gitmodules` と**同じ意図の 4 つ目の宣言**に
+  // なる（IADR-0211 決定 2 が二重管理を許容した箇所）。腐りは機械で見る ——
+  // `node scripts/check-knip.js --self-test` が `.gitmodules` の `src/<unit>` submodule と本キーを突き合わせ、
+  // **submodule を足したのにここへ足し忘れると落ちる。**
+  "ignoreWorkspaces": ["ai-stock-trading/**"],
+
+  "workspaces": {
+    ".": {
+      // knip が発見できない**実在する入口**。どちらも package.json の scripts から名指しで起動される
+      // （`pnpm run i18n` = `lingui extract/compile`／`pnpm run lint:templates` = `eslint --config`）が、
+      // knip は CLI の引数まで解釈しないため「誰も import しないファイル」に見える。
+      // **ignore ではなく entry にする** —— ignore にすると、この入口から辿れる依存
+      // （@lingui/format-po）が「未使用の依存」として湧く（実測: entry にした瞬間 5 → 4 件へ減った）。
+      "entry": ["lingui.config.ts", "eslint.templates.config.js"],
+    },
+    "platform/frontend": {
+      // ADR-0031 / IADR-0121 決定 3: orval の生成物はコミットし、CI が再生成差分を検査する。
+      // **`ignore` ではなく `entry` に置く**（IADR-0211 決定 4）。ignore にすると knip は生成物の中の
+      // import を辿らなくなるため、**生成物からしか使われていない本体の export とパッケージが
+      // 「未使用」として大量に湧く**（＝偽陽性）。entry なら「外から使われる前提の起点」として扱われ、
+      // 生成物自身の未使用 export は報告されず、生成物が使う依存（msw / @faker-js/faker）は使用済みになる。
+      // 実測: 648 → 44 件（Unused files 23 → 3・devDeps 7 → 5・exports 141 → 18・types 476 → 17）。
+      //
+      // public/config.js は index.html が `<script src="/config.js">` で読む**実行時 config** であり、
+      // どこからも import されないのが正しい（ビルドを環境非依存に保つための設計。issue #126）。
+      "entry": ["src/foundation/api/generated/**/*.ts", "public/config.js"],
+    },
+  },
+}

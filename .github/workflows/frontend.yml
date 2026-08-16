@@ -23,6 +23,10 @@ on:
       # CI が走らないと、範囲を広げすぎ／狭めすぎる変更を検出できない（eslint.config.js と同じ理由）。
       - "src/.prettierrc.json"
       - "src/.prettierignore"
+      # NFR / issue #493 / IADR-0211: 未使用検出（Knip）の**走査スコープの単一情報源**。
+      # 除外・entry を単独で広げ／狭めても CI が走らないと、検査を骨抜きにする変更を検出できない
+      # （.prettierignore と同じ理由）。床 scripts/knip-baseline.json 側は ci.yml の scripts-tests が見る。
+      - "src/knip.jsonc"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
@@ -58,6 +62,10 @@ on:
       # CI が走らないと、範囲を広げすぎ／狭めすぎる変更を検出できない（eslint.config.js と同じ理由）。
       - "src/.prettierrc.json"
       - "src/.prettierignore"
+      # NFR / issue #493 / IADR-0211: 未使用検出（Knip）の**走査スコープの単一情報源**。
+      # 除外・entry を単独で広げ／狭めても CI が走らないと、検査を骨抜きにする変更を検出できない
+      # （.prettierignore と同じ理由）。床 scripts/knip-baseline.json 側は ci.yml の scripts-tests が見る。
+      - "src/knip.jsonc"
       # IADR-0125: ロケール追加など lingui.config.ts 単独の変更でも i18n 検査を走らせる
       # （単独で変わることは稀だが、走らない経路を残すと「検査したつもり」になる）。
       - "src/lingui.config.ts"
@@ -124,6 +132,16 @@ jobs:
       # 射程に構造的に入らない。例外を許す 3 条件は IADR-0203 決定 3 の 2026-08-16 追記（#802）が定める。
       - name: Format check (prettier)
         run: pnpm run format:check
+      # NFR / ADR-0031（13_frontend-stack §採用技術一覧「Dead Code 検出 = Knip」）/ IADR-0121 決定 1 /
+      # IADR-0211 / issue #493: 未使用のファイル・export・依存の**ラチェット**。
+      # **素の `pnpm run knip` はゲートにしない** —— 着手時点の残件 41 件で必ず exit 1 になり常時赤になる。
+      # 区分ごとの件数を scripts/knip-baseline.json の床と突き合わせ、**増加も減少も fail** させる。
+      # --require は Knip が未インストールなら fail する（「入っていないから素通り」で検査が静かに
+      # 失効するのを防ぐ。check-chunk-budget.js / check-static-egress.js と同じ段階ポリシー）。
+      # 位置が Build の**前**なのは、Knip がソースの静的解析であり dist を要らないためである。
+      - name: Unused code and dependencies (knip ratchet)
+        working-directory: ${{ github.workspace }}
+        run: node scripts/check-knip.js --require
       # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
       # 再生成して差分が出るなら、OpenAPI と生成物が乖離している（＝手で触ったか、更新し忘れた）。
       - name: Codegen is up to date (orval)

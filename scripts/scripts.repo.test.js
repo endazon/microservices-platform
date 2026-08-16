@@ -1999,6 +1999,56 @@ module.exports = ({ ok, assert }) => {
     assert.match(String(r.stdout), /変異 M7/);
   });
 
+  // --- Issue #493 / ADR-0031 / IADR-0121 決定 1 / IADR-0211: 未使用コード・依存のラチェット ---
+  //
+  // **この経路（ci.yml の scripts-tests）には src/node_modules が無い。** 実データに対する
+  // 走査は frontend.yml の build-test へ `--require` 付きで結線している（Knip 本体は
+  // src/ の devDependency であり、pnpm install 済みのジョブでしか走らない）。
+  // ここで固定するのは自己試験——とくに次の 2 つは node_modules 無しで判定でき、
+  // かつ「外れても誰も気付かない」種類の不変条件である。
+  //   (1) `.gitmodules` の `src/<unit>` submodule が src/knip.jsonc の ignoreWorkspaces で外れていること
+  //       （別プロジェクトの未使用が本リポの床へ雪崩れ込むのを止める。IADR-0211 決定 2）
+  //   (2) Knip の JSON 出力が読めない形になったとき **0 件で緑にせず throw する**こと（IADR-0183）
+  ok('check-knip.js --self-test が通る（床の増減・新区分・fail-closed の変異を含む）', () => {
+    const { spawnSync } = require('child_process');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'check-knip.js'), '--self-test'], {
+      encoding: 'utf8',
+    });
+    assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    assert.match(String(r.stdout), /件すべて通過/);
+    // 件数だけを見ると、変異ケースを消しても「通過」しつづける。個々の変異が走っていることを見る。
+    assert.match(String(r.stdout), /変異 M1 相当/);
+    assert.match(String(r.stdout), /変異 M2 相当/);
+    assert.match(String(r.stdout), /変異 M3 相当/);
+    assert.match(String(r.stdout), /変異 M4 相当/);
+    // 整形（prettier の末尾カンマ）で検査器だけが設定を読めなくなる退行を固定する。
+    assert.match(String(r.stdout), /末尾カンマを許す/);
+  });
+
+  // 床の区分と src/knip.jsonc の存在は、検査器の自己試験とは別の面（設定の実在）である。
+  ok('check-knip: 床と設定ファイルが実在し、床が 0 件ではない', () => {
+    const knip = require('./check-knip.js');
+    const baseline = JSON.parse(
+      fs.readFileSync(path.join(__dirname, 'knip-baseline.json'), 'utf8'),
+    );
+    const configText = fs.readFileSync(path.join(__dirname, '..', 'src', 'knip.jsonc'), 'utf8');
+    // prettier（trailingComma: "all"）が .jsonc へ末尾カンマを足すため、コメントだけでなく
+    // 末尾カンマも落としてから読む（parseJsonc）。
+    const config = knip.parseJsonc(configText);
+    assert.ok(knip.total(baseline.counts) > 0, '床が 0 件だと fail-closed の門が効かない');
+    assert.ok(
+      Array.isArray(config.ignoreWorkspaces) && config.ignoreWorkspaces.length > 0,
+      'knip.jsonc の ignoreWorkspaces が空（別プロジェクトの submodule を走査してしまう）',
+    );
+    // 床に書いてよいのは既知の区分だけ（typo は判定を黙って外す）。
+    for (const name of Object.keys(baseline.counts)) {
+      assert.ok(
+        knip.KNOWN_ISSUE_TYPES.includes(name),
+        `knip-baseline.json に未知の区分 "${name}" がある`,
+      );
+    }
+  });
+
   ok('check-i18n-catalogs: 本リポのカタログに未翻訳が無い（実データ）', () => {
     const { spawnSync } = require('child_process');
     const r = spawnSync(
@@ -4966,7 +5016,9 @@ module.exports = ({ ok, assert }) => {
         // ★ 計画 pin を ce9abd2 へ進めた際、キットが新規配布した `check-review-verdict.js` を
         //    採用したため 35 → 36（同上。planning#333 / AI レビューが判定を投稿しない形を止める）。
         // ★ #755 で `check-reading-budget.js`（必読規約の総量予算。IADR-0200）を足したため 36 → 37（同上）。
-        assert.strictEqual(scripts.length, 37, `検査器の母集合が 37 本から変わった（${scripts.length} 件）`);
+        // ★ #493 で `check-knip.js`（未使用コード・依存のラチェット。IADR-0211）を足したため 37 → 38（同上）。
+        //    git を一切呼ばない検査器なので TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 38, `検査器の母集合が 38 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
