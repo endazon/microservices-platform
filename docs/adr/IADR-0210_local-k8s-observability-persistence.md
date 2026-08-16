@@ -28,10 +28,12 @@ plan_refs:
 
 - 関連する計画書 ID: NFR（運用性・可観測性・信頼性＝Pod 再起動でデータを失わない）／ADR-0006（可観測性）
 - 関連 ADR: [[IADR-0082]]（経路B 基盤インフラの永続化。**qdrant の PVC 化を明文で却下した決定＝本 ADR が覆す**）／
-  [[IADR-0079]]（compose 側の永続化。§3 の「config を書き換えず既存 storage パスへマウント」と `user: "0:0"` の
-  実測が本 ADR の先例）／[[IADR-0077]]（経路B の可観測性 opt-in オーバーレイ）／[[IADR-0066]]（経路B の `emptyDir` 割り切り）
+  [[IADR-0079]]（compose 側の永続化。§3 の「config を書き換えず既存 storage パスへマウント」が本 ADR の先例。
+  **ただし同 §3 の `user: "0:0"` は docker の named volume 固有の対処であり、k8s へは転用しない**＝決定 6）／
+  [[IADR-0077]]（経路B の可観測性 opt-in オーバーレイ）／[[IADR-0066]]（経路B の `emptyDir` 割り切り）
 - 関連仕様書: `docs/specs/20260816_issue-787_k8s-observability-persistence.md`
-- Issue: #787
+- Issue: #787（**同じ issue に PR #815 と #816 の 2 本が並走し、利用者の裁定で 1 本へ統合した**。
+  本 ADR は統合後の実装を記述する。経緯は仕様書 §12）
 
 ## コンテキストと課題
 
@@ -49,8 +51,9 @@ plan_refs:
 - **Grafana（経路B）**: issue は挙げていないが、compose が `grafana-data:/var/lib/grafana` を持つのに k8s 側は
   ConfigMap 3 本のみで未マウントという、**Prometheus/Loki/Tempo とまったく同じ型のパリティ差**である。
 
-決めるべきは 5 点: (1) ワークロードの形（StatefulSet 化するか）、(2) オーバーレイの置き場と有効化ゲート、
-(3) 保持期間の指定方法、(4) Loki/Tempo の書き込み権限、(5) Grafana を射程に入れるか。
+決めるべきは 7 点: (1) ワークロードの形（StatefulSet 化するか）、(2) オーバーレイの置き場と有効化ゲート、
+(3) 保持期間の指定方法、(4) compose とのパリティをどこまで鏡にするか、(5) Grafana を射程に入れるか、
+(6) Loki/Tempo の書き込み権限、(7) PVC を掴む Deployment の更新戦略。
 
 ## 検討した選択肢
 
@@ -59,8 +62,10 @@ plan_refs:
 | (1) 形 | StatefulSet 化して `volumeClaimTemplates` を使う | Deployment のまま別建て PVC を足す | **B** |
 | (2) 置き場 | 可観測性も `infra-persistence` へ相乗り | 対になる別オーバーレイ `observability-persistence` を新設 | **B** |
 | (3) 保持期間 | `retention.time` だけ指定 | `time` ＋ `size`（`size < PVC 容量`） | **B** |
-| (4) 権限 | 全 4 種へ `runAsUser: 0` を付けて安全側に倒す | compose が `user: "0:0"` を付けているものだけに付ける | **B** |
+| (4) パリティ | compose の設定を丸ごと鏡にする | **鏡にするのはマウント先と retention 引数まで**（プラットフォーム固有の対処は写さない） | **B** |
 | (5) Grafana | issue の逐語どおり 3 種に絞る | 同型のパリティ差として本 PR に含める | **B** |
+| (6) 権限 | compose が `user: "0:0"` を付けている loki / tempo へ `runAsUser: 0` を付ける | **4 種とも非 root のまま**（local-path は `0777` で作る） | **B** |
+| (7) 更新戦略 | base と同じ `RollingUpdate` のまま | PVC を掴む Deployment だけ `Recreate` へ落とす | **B** |
 
 ## 決定
 
@@ -105,24 +110,20 @@ JSON6902 `replace /spec/template/spec/volumes/0`。base に volumeMount が既�
   現状は両方とも retention 無指定で**対称**であり、片方だけ入れると**新たなパリティ差**を作るためである。
 - Tempo の `compactor.compaction.block_retention: 1h` は**別物**（Tempo 自身の圧縮設定）であり、触らない。
 
-### 4. Loki / Tempo にだけ root 実行を付ける —— 判断基準は「**compose を鏡にする**」
+### 4. compose を鏡にする —— ただし鏡にするのは**マウント先と retention 引数**までである
 
-`loki` / `tempo` の Pod へ `securityContext: {runAsUser: 0, runAsGroup: 0}` を足す。
-compose の `user: "0:0"` の等価物である。
+同じデータを持つサービスは、compose と k8s で**同じパスへマウントする**（`qdrant` = `/qdrant/storage` ／
+`prometheus` = `/prometheus` ／ `loki` = `/tmp/loki` ／ `tempo` = `/tmp/tempo` ／
+`grafana` = `/var/lib/grafana`）。Prometheus の retention 2 引数も両側へ同値で置く（決定 3）。
 
-**この判断の根拠は推測ではなく実測された先例である。** [[IADR-0079]] §3 は、空の名前付きボリュームが
-root:root 0755 で生成され、非 root イメージ（uid 10001）が直下に index/chunks/wal を作れず
-**起動時 permission denied で回帰した**ことを根拠に `user: "0:0"` を入れた。PVC（local-path provisioner）でも
-同じ性質があるため、同じ措置を採る。
-
-**Prometheus と Grafana には付けない。** compose も両者に `user:` を付けておらず、compose では
-`prometheus-data:/prometheus` と `grafana-data:/var/lib/grafana` が**現に動いている**。
-「安全側に倒して全部 root にする」は、**動いている実測を根拠なく広げる**ことであり採らない
-（root 実行は本来減らすべきものである）。
-
-**基準そのものを機械が見る** —— `scripts/k8s-local-up.test.js` は compose と k8s の**両側から読んで**、
-`user: "0:0"` を持つサービスの集合と `runAsUser: 0` を持つサービスの集合が**一致すること**を検査する。
+**鏡そのものを機械が見る** —— `scripts/k8s-local-up.test.js` は compose と k8s の**両側から読んで**、
+同名データボリュームのマウント先が一致することと、retention 2 引数が同値であることを検査する。
 片方だけ動かした瞬間に落ちる。
+
+**ただし「鏡にする」を無制限に適用しない。** compose 側の設定には**docker というプラットフォーム固有の
+対処**が混じっており、それを写すと k8s 側だけが不要な妥協を背負う。実際に `user: "0:0"` がそれに当たり、
+本 ADR は**写さない**と決めた（決定 6）。鏡にしてよいのは、**両プラットフォームで同じ意味を持つもの**
+（データの置き場所・保持期間）に限る。
 
 ### 5. Grafana も本 PR の射程に入れる
 
@@ -131,32 +132,86 @@ issue の逐語は 3 種だが、Grafana は**同型・同じ overlay・追加�
 （`deploy/local/observability/README.md`）、**再起動のたびにそれが消える**のは同じ実害である。
 落とすと同じ PR の中で「解消した」と「残した」が混在し、次に読む人が「なぜ Grafana だけ？」を毎回引き直す。
 
+**Grafana は機械判定で出てきた 5 件目である。** issue の逐語（Qdrant と可観測性 3 種）を母集合として扱わず、
+`deploy/local/` の Deployment 全 12 件を `volumes` / `volumeMounts` で機械的に判定した結果、
+永続化されていないものが 5 件出た（仕様書 §2.4）。**「5 件測って 4 件だけ直す」は母集合の規則 7 の破れ**であり、
+本リポで最も繰り返し起きている事故の型である。
+
+### 6. 可観測性 4 種を **root 実行へ落とさない**（compose の `user: "0:0"` は k8s へ写さない）
+
+`securityContext` は **4 種とも付けない**。compose の `user: "0:0"`（[[IADR-0079]] §3）は
+**docker の named volume が root:root 0755 で生成される**ことへの対処であり、**k8s へは転用できない**。
+
+- **local-path provisioner の setup は `mkdir -m 0777` でボリュームディレクトリを作る**
+  （`kube-system/local-path-config` を実読）。root:root 0755 という前提そのものが k8s 側では成り立たない。
+- **実測（2026-08-16・稼働中の k3s。PVC を当てた状態）**:
+
+| ワークロード | 実行 uid | 書き込み先（モード） | 実データ | 状態 |
+| --- | ---: | --- | ---: | --- |
+| `loki` | **10001** | `/tmp/loki`（`drwxrwxrwx`） | **4.7M**（`chunks` / `compactor` / `index` / `index_cache`） | READY・RESTARTS 0 |
+| `tempo` | **10001** | `/tmp/tempo`（`drwxrwxrwx`） | **5.0M**（`blocks` / `wal`） | READY・RESTARTS 0 |
+| `grafana` | **472** | `/var/lib/grafana`（`drwxrwxrwx`） | **1.0M**（`grafana.db` / `csv` / `pdf` / `plugins`） | READY・RESTARTS 0 |
+| `prometheus` | **65534** | `/prometheus`（`drwxrwxrwx`） | — | READY・RESTARTS 0 |
+
+**「compose を鏡にする」という基準そのものが、この点ではプラットフォーム差を無視していた。**
+compose の `user: "0:0"` は compose のままで正しく、[[IADR-0079]] §3 は**撤回しない** ——
+誤っていたのは「docker の named volume の性質が PVC にもあるはずだ」という**推測**のほうである
+（決定 4 が鏡の射程を限る理由でもある）。root 実行は本来減らすべきものであり、
+不要と実測できた以上は付けない。
+
+**機械が見る** —— `scripts/k8s-local-up.test.js` の
+`#787: 可観測性 overlay は root 実行へ落とさない（local-path は 0777 で作る）` が、
+4 種の patch に `runAsUser: 0` が**現れないこと**を検査する。
+
+### 7. PVC を掴む Deployment は `strategy: Recreate` にする
+
+`ReadWriteOnce` と `RollingUpdate` は両立しない。local-path は**単一ノードの hostPath** なので
+**スケジューリングでは詰まらず、アプリのロックで詰まる**（新旧 Pod が同じディレクトリを同時に開く）。
+
+- **Prometheus は `storage.tsdb.no-lockfile: false` を実測**（`/api/v1/status/flags`）。
+  再起動後の `/prometheus/data` に **`lock` ファイルが実在した**。
+- Postgres は `postmaster.pid`、Qdrant は RocksDB の LOCK、Grafana は SQLite。
+
+実装は両オーバーレイの `kustomization.yaml` へ `labelSelector: "app in (...)"` の JSON6902 パッチとして入れる。
+対象は **infra 側 = postgres / keycloak / qdrant**、**observability 側 = prometheus / loki / tempo / grafana** の
+**計 7 件**である。
+
+**[[IADR-0082]] の既存 2 件（postgres / keycloak）にも `Recreate` が無かったので遡って付けた。**
+新規だけ直して既存を残すのは**母集合の規則 7 の破れ**であり、同じ壊れ方を 2 か所に残すことになる。
+
+**base（`emptyDir`）側は `RollingUpdate` のままでよい**（奪い合うボリュームが無い）。
+オーバーレイだけに入れることで、既定経路はバイト等価のまま保たれる。
+
 ## 理由
 
 - **既存の形（Deployment ＋ 別建て PVC）に揃える**ことで churn を最小にし、IADR-0082 の却下理由を尊重する。
 - **ゲートの意味論を壊さない**（可観測性の PVC は可観測性ゲートの下にだけ現れる）。
 - **config を単一情報源に保つ**（マウント先は config から導かれ、両側から突き合わされる）。
 - **retention は「形」で塞ぐ**（設定値の善し悪しではなく、`size < PVC 容量` という不等式で壊れ方を消す）。
+- **パリティは意味の一致で取る**（プラットフォーム固有の対処までは写さない。**推測ではなく稼働クラスタの実測に従う**）。
+- **RWO と両立しない更新戦略を残さない**（`Recreate` は「詰まってから直す」のではなく、詰まる形を先に消す）。
 
 ## 結果
 
 - 良い影響: `PERSIST=1`（＋ `OBSERVABILITY=1`）で dev の embeddings・メトリクス・ログ・トレース・
   Grafana 設定が Pod 再起動を跨いで残る。compose とのパリティ差（Prometheus / Grafana の未マウント、
-  retention 無指定）が解消する。
+  retention 無指定）が解消する。**4 種とも非 root のまま**であり、root 実行を 1 つも増やさない。
 - 悪い影響・トレードオフ:
-  - **Loki / Tempo を root で動かす**（compose と同じ妥協。dev 専用オーバーレイに閉じ、本番像には及ばない）。
   - **PVC が 5 本増える**（qdrant-storage / prometheus-data / loki-data / tempo-data / grafana-data）。
     provisioner 不在クラスタでは Pending になりうるため、既定オフ（opt-in）を維持することが前提である。
+  - **`Recreate` は入れ替え中にダウンタイムが出る**（旧 Pod を落としてから新 Pod を立てる）。
+    単一レプリカの dev では実質差が無く、RWO で詰まる方が高くつく。
   - **`down` → `up` では PVC も消える**（IADR-0082 と同じ制約。namespace/クラスタごと消えるため）。
 - フォローアップ:
-  - **★ 稼働クラスタでの受け入れが未了である。** 実装環境に `kubectl` / `helm` / `k3d` / `kustomize` が
-    **いずれも無く**、クラスタも無い（実測）。したがって
-    **(a)「Pod 再起動でデータが残る」と (b)「保持期間が実効している」は測っていない**（[[IADR-0184]]）。
-    機械で確かめたのは `scripts/k8s-local-up.test.js` の範囲 —— ゲート分岐・PVC の属性・
-    **マウント先が config の実値と一致すること**・compose とのパリティ・`size < PVC 容量`、まで。
-    配備時に次を確かめること: 本 ADR が足した PVC がすべて `Bound`（`kubectl -n platform-infra get pvc`）、
-    `kubectl -n platform-infra delete pod -l app=qdrant` 後にコレクションが残る、
-    `curl prometheus:9090/api/v1/status/runtimeinfo` の `storageRetention` が `7d` を返す。
+  - **稼働クラスタでの受け入れは済んだ。** 本 ADR を書いた側の環境（PR #816）には
+    `kubectl` / `helm` / `k3d` / `kustomize` が**いずれも無く**、クラスタも無かった（実測）。
+    その時点では **(a)「Pod 再起動でデータが残る」と (b)「保持期間が実効している」を測っていなかった**
+    （[[IADR-0184]]）。**この事実は消さない。**
+    **［2026-08-16 追記 / #787］** 統合したもう 1 本（PR #815）は**稼働中の k3s** を持つ環境で書かれており、
+    そちらで (a)(b) とも実測できた —— PVC は **7 本すべて `Bound`**、`strategy` は **7 件すべて `Recreate`**、
+    Qdrant のコレクションは **Qdrant 再起動後も 2 件残存**、Prometheus の `numSeries` は
+    再起動前後で **8564 のまま**、非 root 書き込みは決定 6 の表のとおり。詳細と留保
+    （**実測時の PVC 容量は #815 側の 5Gi で、統合後の manifest は #816 側の 2Gi を採る**）は仕様書 §7.7。
   - rabbitmq / redis / otel-collector は引き続き非永続（IADR-0082 の却下理由が成り立つ）。
 
 ## 関連

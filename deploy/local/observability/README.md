@@ -76,7 +76,11 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
 
 - **マウント先は上記 config の storage パスと一致させ、config は書き換えない**（IADR-0079 §3 の作法）。
   一致は `node scripts/k8s-local-up.test.js` が**両側から読んで**突き合わせる。
-- **Loki / Tempo の Pod は root で動かす**（compose の `user: "0:0"` と同じ理由）。Prometheus / Grafana には付けない。
+- **Pod は root へ落とさない**（4 種とも `securityContext` を付けない）。compose の `user: "0:0"` は
+  **docker の named volume が root:root 0755 で生成される**ことへの対処で、**k8s へは転用できない** ——
+  local-path provisioner は `mkdir -m 0777` で作る。実測で loki（uid 10001）/ tempo（10001）/ grafana（472）が
+  非 root のまま書けている（IADR-0210 決定 6）。
+- **PVC を掴む Deployment は `strategy: Recreate`**（RWO と RollingUpdate は両立しない。IADR-0210 決定 7）。
 - 詳細は [`deploy/local/README.md`](../README.md) の「永続化」節と
   [IADR-0210](../../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)。
 

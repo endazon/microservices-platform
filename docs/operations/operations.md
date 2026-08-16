@@ -181,9 +181,16 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   args で明示する（[`deploy/local/observability/prometheus.yaml`](../../deploy/local/observability/prometheus.yaml) の base
   ＝ `PERSIST` の有無に関わらず効く）。**`size` を PVC 容量（5Gi）未満に置いてあるため、流入が増えても
   PVC 満杯で書き込み不能になることはない**（IADR-0210 決定 3）。compose にも同じ 2 引数がある（パリティ）。
-- **Loki / Tempo の Pod は root で動く**（`runAsUser: 0` / `runAsGroup: 0`）。compose の `user: "0:0"`
-  （IADR-0079 §3 の実測＝空ボリュームが root 所有で生成され非 root イメージが書けない）と同じ理由である。
-  **Prometheus / Grafana には付けない**（compose も付けておらず現に動いている）。
+- **Pod は root へ落とさない**（4 種とも `securityContext` を付けない）。compose の `user: "0:0"`
+  （IADR-0079 §3）は **docker の named volume が root:root 0755 で生成される**ことへの対処であり、
+  **k8s へは転用できない** —— local-path provisioner は `mkdir -m 0777` でボリュームディレクトリを作る。
+  実測（2026-08-16・稼働中の k3s）で loki（uid 10001）/ tempo（uid 10001）/ grafana（uid 472）が
+  非 root のまま PVC へ書き、4 件とも再起動 0 回で Ready だった（IADR-0210 決定 6）。
+- **PVC を掴む Deployment は `strategy: Recreate`** になる（postgres / keycloak / qdrant ＋ 可観測性 4 種の
+  計 7 件）。`ReadWriteOnce` と `RollingUpdate` は両立せず、local-path では**アプリのロックで詰まる**
+  （Prometheus は `storage.tsdb.no-lockfile=false`・再起動後に `lock` 実在を実測）。IADR-0210 決定 7。
+- **⚠️ PVC の要求容量は縮小できない。** 小さくして既存クラスタへ再 apply すると API サーバが拒否する
+  （実測: `spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`）。
 - **★ 稼働クラスタでの受け入れは未了**（#787 時点）。実装環境に `kubectl`/`helm`/`k3d`/`kustomize` が無く、
   「Pod 再起動でデータが残る」「保持期間が実効している」は**測っていない**。配備時に
   `kubectl -n platform-infra get pvc`（有効にしたゲートの PVC が**すべて** Bound であること）と
