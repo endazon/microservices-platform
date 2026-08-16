@@ -18,8 +18,15 @@ public sealed class SelfHostedEmbeddingProvider(IHttpClientFactory httpFactory, 
     // （"検索クエリ: " / "検索文書: "）を必須とするが、ADR-0017 が劣化時の代替に挙げる BGE-M3 は使わない。
     // したがってハードコードせず設定駆動にし、**既定は空**＝素の本文を送る（現行と同じ挙動）。
     // 付けっぱなしにすると、モデルを差し替えたときに今度は別の意味で埋め込みが歪む。
-    private readonly string _queryPrefix = config["Embedding:SelfHosted:QueryPrefix"] ?? string.Empty;
-    private readonly string _documentPrefix = config["Embedding:SelfHosted:DocumentPrefix"] ?? string.Empty;
+    //
+    // **appsettings.json の `Embedding:SelfHosted:QueryPrefix` / `:DocumentPrefix` が既定値を持つ。**
+    // モデルを差し替えるときは、そこを空にすること —— JSON にコメントを書く手段が無いため、
+    // 設定の意味はここに置く（`"//"` のようなダミーキーは、将来この節を POCO へバインドしたとき
+    // 未知キーとして問題化しうるので入れない）。
+    private const string QueryPrefixKey = "Embedding:SelfHosted:QueryPrefix";
+    private const string DocumentPrefixKey = "Embedding:SelfHosted:DocumentPrefix";
+    private readonly string _queryPrefix = config[QueryPrefixKey] ?? string.Empty;
+    private readonly string _documentPrefix = config[DocumentPrefixKey] ?? string.Empty;
 
     public async Task<float[]> EmbedAsync(
         string text, string model, int dimensions, EmbeddingRoutePurpose purpose, CancellationToken ct = default)
