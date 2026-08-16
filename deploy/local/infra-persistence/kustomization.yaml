@@ -1,5 +1,7 @@
-# IADR-0082 / Issue #324: 経路B 基盤インフラの永続化オーバーレイ（opt-in）。
-# base（deploy/local/infra）に PVC を足し、postgres/keycloak の Deployment の volume を PVC 参照へ差し替える。
+# IADR-0082 / Issue #324（＋ IADR-0210 / Issue #787 で qdrant を追加）: 経路B 基盤インフラの永続化
+# オーバーレイ（opt-in）。base（deploy/local/infra）に PVC を足し、postgres/keycloak/qdrant の Deployment の
+# volume を PVC 参照へ差し替える。可観測性スタック（Prometheus/Loki/Tempo/Grafana）は別ゲート
+# （OBSERVABILITY=1）に載るため、対になる別オーバーレイ deploy/local/observability-persistence が持つ。
 # 適用: kubectl apply -k deploy/local/infra-persistence （scripts/k8s-local-up.sh は PERSIST=1 で本ディレクトリを選ぶ）
 # 既定（PERSIST 未設定）は base（emptyDir）が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。
 #
@@ -43,3 +45,17 @@ patches:
         value:
           name: data
           mountPath: /opt/keycloak/data
+  # IADR-0210 (#787) qdrant: storage ボリューム（base volumes[0]・emptyDir）を PVC 参照へ置換。
+  # **postgres の patch と完全に同型**である（base の volume が 1 本しか無いので index 0 は安定）。
+  # volumeMount（/qdrant/storage）は base に既にあるため触らない＝純粋に volume の実体だけを差し替える。
+  - target:
+      kind: Deployment
+      name: qdrant
+      namespace: platform-infra
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-storage
