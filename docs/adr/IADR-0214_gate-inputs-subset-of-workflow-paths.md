@@ -1,5 +1,5 @@
 ---
-title: IADR-0212 ゲートが読むファイルは、そのゲートを走らせるワークフローの `paths:` にも載る（列挙ではなく検査器の実体から導く）
+title: IADR-0214 ゲートが読むファイルは、そのゲートを走らせるワークフローの `paths:` にも載る（列挙ではなく検査器の実体から導く）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -22,7 +22,7 @@ plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md"
 ---
 
-# IADR-0212: ゲートの入力 ⊆ そのゲートを走らせるワークフローの `paths:`
+# IADR-0214: ゲートの入力 ⊆ そのゲートを走らせるワークフローの `paths:`
 
 - 状態: Accepted
 - 日付: 2026-08-16

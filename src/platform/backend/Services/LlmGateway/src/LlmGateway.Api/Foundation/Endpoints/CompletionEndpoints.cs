@@ -69,7 +69,8 @@ public static class CompletionEndpoints
                 LogStopReason(logger, result.StopReason, decision);
                 // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
                 metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultSent, result.StopReason, decision, purpose, sensitivity);
+                    LlmCompletionMetrics.ResultSent, result.StopReason, decision, purpose, sensitivity,
+                    result.OutputTokens);
                 return Results.Ok(new CompletionApiResponse(
                     result.Text, decision.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
                     Sent: true, Endpoint: decision.EndpointName, RoutingReason: decision.Reason,
@@ -145,6 +146,9 @@ public static class CompletionEndpoints
             var inputTokens = 0;
             var outputTokens = 0;
             string? stopReason = null;
+            // IADR-0212 決定 3: Done を受け取れないまま終わった送信は「0 トークン」ではない。
+            // 記録するのは最終チャンクで実数を受け取れたときだけである（0 埋めをしない）。
+            var sawDone = false;
             var faulted = false;
             try
             {
@@ -158,6 +162,7 @@ public static class CompletionEndpoints
                         inputTokens = chunk.InputTokens;
                         outputTokens = chunk.OutputTokens;
                         stopReason = chunk.StopReason;
+                        sawDone = true;
                     }
                 }
                 LogStopReason(logger, stopReason, decision);
@@ -179,7 +184,8 @@ public static class CompletionEndpoints
             if (!faulted)
             {
                 metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity);
+                    LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity,
+                    sawDone ? outputTokens : null);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                     InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,

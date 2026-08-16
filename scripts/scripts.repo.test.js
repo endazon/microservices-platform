@@ -7809,7 +7809,7 @@ module.exports = ({ ok, assert }) => {
       );
     });
 
-    // --- NFR / IADR-0212: ゲートが読むファイル ⊆ そのゲートを走らせる workflow の paths: -----
+    // --- NFR / IADR-0214: ゲートが読むファイル ⊆ そのゲートを走らせる workflow の paths: -----
     //
     // ★ 起点 ID は**無採番の `NFR`**（上の #747 / #801 節と同じ理由。CI の起動条件という工程の
     //   統制であり、計画側の非機能要件表〔`NFR-01`〜`NFR-27`〕に当たる番号が無い。IADR-0179 決定 1）。
@@ -7969,7 +7969,7 @@ module.exports = ({ ok, assert }) => {
       return { files: [...files].sort(), expressions, hasPathCall: /path\.(?:join|resolve)\(/.test(src) };
     };
 
-    ok('NFR / IADR-0212: フロント CI のゲートが読むファイルが frontend.yml の paths: に全て載っている', () => {
+    ok('NFR / IADR-0214: フロント CI のゲートが読むファイルが frontend.yml の paths: に全て載っている', () => {
       const WORKFLOW = 'frontend.yml';
       const yml = fs.readFileSync(path.join(REPO, '.github/workflows', WORKFLOW), 'utf8');
 

@@ -25,13 +25,19 @@ const UP_SCRIPT = path.join('scripts', 'k8s-local-up.sh'); // REPO_ROOT 相対�
 const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-dev に依存しない）
 
 // opt-in ゲート由来のリソース識別トークン（既定オフ時にこれらが「不在」であることを固定する）。
+//
+// IADR-0213 (#817): 照合は素の部分文字列一致（`includes`）ではなく **末尾境界つき一致**（`matchesToken`）で行う。
+//   `includes` だと接頭辞関係にあるトークン（下の 3 組）で、短い側が長い側の混入まで拾ってしまい、
+//   長い側は**足しても検出力が増えない**（#816 の変異試験 M2 が実測）。
+//     deploy/local/observability ⊂ deploy/local/observability-persistence
+//     deploy/local/vault         ⊂ deploy/local/vault/eso/
+//     deploy/local/edge          ⊂ deploy/local/edge/tls
+//   末尾に `/` を付けたトークンは「そのディレクトリと配下すべて」を意味する（そのパス自体は単独では
+//   発行されず、配下のファイルだけが apply されるゲート用）。
+//   **各トークンが単独で検出力を持つことは、下の「単独検出力」テストが毎回検査する。**
 const OPTIN_TOKENS = [
   'deploy/local/infra-persistence', // PERSIST
   'deploy/local/observability', //     OBSERVABILITY
-  // IADR-0210 (#787): PERSIST=1 かつ OBSERVABILITY=1 のときだけ選ばれる可観測性の永続化 overlay。
-  // ★ 正直な注記: 直上の 'deploy/local/observability' は本トークンの **接頭辞**であり、既定経路検査は
-  //   本行が無くても新 overlay の混入を落とす。本行は「このゲートを列挙から落とさない」ための明示であって、
-  //   これ単独を外しても穴は開かない（#787 の変異試験 M2 が実測でそう出た）。
   'deploy/local/observability-persistence', // PERSIST + OBSERVABILITY (IADR-0210)
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
@@ -39,7 +45,7 @@ const OPTIN_TOKENS = [
   'vault-oidc', //                     VAULT (OIDC client secret, IADR-0094)
   'deploy/local/headlamp', //          HEADLAMP
   'headlamp-oidc', //                  HEADLAMP (secret)
-  'deploy/argocd', //                  ARGOCD
+  'deploy/argocd/', //                 ARGOCD（配下の appproject/application のみが apply される）
   'namespace argocd', //               ARGOCD (namespace)
   'argocd-cm-patch.yaml', //           ARGOCD OIDC (CM patch, IADR-0092)
   'oidc.keycloak.clientSecret', //     ARGOCD OIDC (secret patch, IADR-0092)
@@ -47,12 +53,41 @@ const OPTIN_TOKENS = [
   'deploy/local/edge', //              LOCALEDGE (edge overlay, IADR-0091)
   '50000', //                          LOCALEDGE (admin entrypoint port, IADR-0091)
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
-  'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
+  'deploy/local/vault/eso/', //        ESO (bootstrap/externalsecret, IADR-0096。配下のみが apply される)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
 ];
+
+// どのゲートも発行しない「負のトークン」＝ 実行ログからは検出力を測れないもの。
+// 対応する混入を合成して与え、他のトークンと同じ 2 条件（一致する／単独で一致する）を課す。
+// **例外はこの 1 件だけで、増やすなら理由をここへ書く**（IADR-0213 決定 5）。
+const SYNTHETIC_CONTAMINATION = {
+  // IADR-0105 (#399): apiserver 引数は「除去したままであること」の回帰固定であり、どの opt-in も発行しない。
+  'kube-apiserver-arg': 'k3d cluster create testcluster --agents 1 --k3s-arg --kube-apiserver-arg=foo@server:0',
+};
+
+// 識別子の継続文字。トークンの直後がこれらなら「別のより長い名前の一部」であって一致とみなさない。
+const IDENT_CHAR = /[A-Za-z0-9_./-]/;
+
+/**
+ * opt-in トークンが行に現れるかを **末尾境界**つきで判定する（IADR-0213 / #817）。
+ * 先頭側は見ない —— 接頭辞問題は末尾側にしか無く、先頭を縛ると `secret/msp/grafana-oidc` の類を落とす。
+ * @param {string} line  発行コマンド列の 1 行
+ * @param {string} token OPTIN_TOKENS の要素（末尾 `/` は「配下すべて」の意）
+ * @returns {boolean}
+ */
+function matchesToken(line, token) {
+  const dirMode = token.endsWith('/');
+  const needle = dirMode ? token.slice(0, -1) : token;
+  for (let i = line.indexOf(needle); i !== -1; i = line.indexOf(needle, i + 1)) {
+    const after = line[i + needle.length];
+    if (after === undefined || !IDENT_CHAR.test(after)) return true;
+    if (dirMode && after === '/') return true;
+  }
+  return false;
+}
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
 
@@ -186,8 +221,77 @@ ok('既定: k3d cluster create 引数がバイト等価', () => {
 // 既定: opt-in 由来のリソース/引数が一切現れない（副作用ゼロ・fail-safe の固定）。
 ok('既定: opt-in 由来リソースが一切現れない', () => {
   for (const tok of OPTIN_TOKENS) {
-    assert.ok(!anyLineHas(DEFAULT.lines, tok), `既定オフなのに "${tok}" が現れた`);
+    const hit = DEFAULT.lines.find((l) => matchesToken(l, tok));
+    assert.ok(!hit, `既定オフなのに "${tok}" が現れた: ${hit}`);
   }
+});
+
+// --- IADR-0213 (#817): 各トークンの「単独の検出力」を毎回測る ------------------
+//
+// 上の既定経路検査は列挙の中に**効いていないトークン**が混ざっても緑のままになる（#816 の M2 が実測）。
+// そこで「opt-in を立てたときに実際に発行される行」を母集合に取り、各トークンについて
+//   (1) 1 行以上に一致する（dead token でない）
+//   (2) **他のどのトークンも一致しない行**が 1 行以上ある（＝そのトークンだけが落とせる混入が実在する）
+// を検査する。冗長なトークンが混ざったらここが名指しで落ちる ——
+// 「足したのに守っていない」を人の注意力ではなく機械が持つ（issue #817 受け入れ基準 1・2）。
+//
+// 母集合は 2 通りの run の和を取る。PERSIST / ESO は他ゲートの出力を *置換* するため
+// （observability → observability-persistence / grafana-oidc の手動 apply → ExternalSecret 委譲）、
+// 全部立てた run だけでは素の側の行が採れない。
+const GATES_ALL = {
+  PERSIST: '1',
+  OBSERVABILITY: '1',
+  VAULT: '1',
+  ARGOCD: '1',
+  LOCALEDGE: '1',
+  ESO: '1',
+  ABACSEED: '1',
+  HEADLAMP: '1',
+};
+const { PERSIST: _p, ESO: _e, ...GATES_NO_REPLACEMENT } = GATES_ALL;
+const EMITTED_LINES = [
+  ...new Set([...runUp(GATES_ALL).lines, ...runUp(GATES_NO_REPLACEMENT).lines]),
+];
+
+ok('各 opt-in トークンが単独で検出力を持つ（冗長なトークンが無い）', () => {
+  const redundant = [];
+  const dead = [];
+  for (const tok of OPTIN_TOKENS) {
+    const synthetic = SYNTHETIC_CONTAMINATION[tok];
+    const pool = synthetic ? [synthetic] : EMITTED_LINES;
+    const hits = pool.filter((l) => matchesToken(l, tok));
+    if (hits.length === 0) {
+      dead.push(tok);
+      continue;
+    }
+    const others = OPTIN_TOKENS.filter((o) => o !== tok);
+    if (!hits.some((l) => others.every((o) => !matchesToken(l, o)))) redundant.push(tok);
+  }
+  assert.deepStrictEqual(
+    dead,
+    [],
+    `どのゲートも発行しないトークン（検出力を測れない）: ${dead.join(', ')}` +
+      ' —— 綴りが実際の発行と食い違っているか、SYNTHETIC_CONTAMINATION への登録が要る',
+  );
+  assert.deepStrictEqual(
+    redundant,
+    [],
+    `他のトークンが同じ行を拾うため単独の検出力が無い（足しても守りが増えていない）: ${redundant.join(', ')}`,
+  );
+});
+
+// 判定そのものの単体検査。境界判定は「接頭辞に一致しない」ことが本体なので、そこを直接固定する。
+ok('matchesToken: 末尾境界を見る（接頭辞トークンが長い側の混入を拾わない）', () => {
+  assert.ok(matchesToken('kubectl apply -k deploy/local/observability', 'deploy/local/observability'));
+  assert.ok(!matchesToken('kubectl apply -k deploy/local/observability-persistence', 'deploy/local/observability'));
+  assert.ok(!matchesToken('kubectl apply -k deploy/local/edge/tls', 'deploy/local/edge'));
+  assert.ok(!matchesToken('kubectl apply -f deploy/local/vault/eso/x.yaml', 'deploy/local/vault'));
+  // 末尾 `/` の付いたトークンは配下すべてに一致する（そのパス自体が単独では発行されないゲート）。
+  assert.ok(matchesToken('kubectl apply -f deploy/argocd/application.yaml', 'deploy/argocd/'));
+  assert.ok(!matchesToken('kubectl apply -f deploy/argocd-mirror/application.yaml', 'deploy/argocd/'));
+  // 行末・区切り文字はいずれも境界（ポート番号やクォートの直前で切れる）。
+  assert.ok(matchesToken('k3d cluster create c -p 127.0.0.1:50000:50000@loadbalancer', '50000'));
+  assert.ok(!matchesToken('k3d cluster create c -p 127.0.0.1:500001:1@loadbalancer', '50000'));
 });
 
 // IADR-0093 (#353): MinIO OIDC の client secret 用 app-secret `minio-oidc` は既定実行で作成される
@@ -286,10 +390,11 @@ ok('OBSERVABILITY=1: observability を apply・grafana-oidc secret を作成', (
 //
 // `deploy/local/observability-persistence` は **PERSIST=1 かつ OBSERVABILITY=1** のときだけ選ばれる。
 // 既定オフは上の OPTIN_TOKENS が固定済み。ここでは「片肺では現れない」「両方立てたら *置換* であって併存でない」
-// の 2 点を固定する。素の overlay 名は永続化版の **接頭辞**なので、素の側は行末境界を見て判定する
+// の 2 点を固定する。素の overlay 名は永続化版の **接頭辞**なので、素の側は末尾境界を見て判定する
 // （`includes` で見ると `-persistence` の行にマッチし、置換の検査が常に成功する静かな縮退になる）。
+// 境界判定は OPTIN_TOKENS と同じ `matchesToken` を使う（同じ規則の実装を 2 つ持たない・IADR-0213）。
 const appliesBareObservability = (lines) =>
-  lines.some((l) => /apply -k deploy\/local\/observability(\s|$)/.test(l));
+  lines.some((l) => l.includes('apply -k ') && matchesToken(l, 'deploy/local/observability'));
 
 ok('PERSIST=1 単独: observability-persistence は現れない（スタック自体が立たない）', () => {
   const res = runUp({ PERSIST: '1' });
@@ -1276,8 +1381,8 @@ ok('#787: Tempo の mountPath が config の local.path / wal.path の親と一�
   );
 });
 
-// ★ 「compose を鏡にする」という判断そのものを機械が見る（IADR-0210 決定 4）。
-//    どちらか一方だけを動かした瞬間に落ちる。
+// ★ マウント先を compose と k8s で揃える判断を機械が見る。どちらか一方だけを動かした瞬間に落ちる。
+//    （**書き込み権限は揃えない** —— docker の named volume と local-path で前提が違うため。決定 6 の実測を参照）
 ok('#787: データボリュームのマウント先が compose と k8s で一致する', () => {
   const pairs = [
     ['prometheus', 'prometheus-data', OBS_PATCHES['prometheus']],
@@ -1304,23 +1409,19 @@ ok('#787: データボリュームのマウント先が compose と k8s で一�
   );
 });
 
-ok('#787: root 実行にするのは compose が user: "0:0" を付けているサービスだけ', () => {
+// ★ compose の user: "0:0" を k8s へ写さない（IADR-0210 決定 6）。
+//   compose の root 実行は **docker の named volume が root:root 0755 で生成される**ことへの対処であり、
+//   local-path provisioner は `mkdir -m 0777` で作る（kube-system/local-path-config を実読）。
+//   実測（2026-08-16・稼働中の k3s）: loki=uid 10001 が /tmp/loki(drwxrwxrwx) へ 4.7M、
+//   tempo=uid 10001 が 5.0M、grafana=uid 472 が grafana.db を書き、**4 件とも再起動 0 回で Ready**。
+//   ここを「compose を鏡にする」で埋めると、**k8s 側だけ不要に root へ落ちる**。
+ok('#787: 可観測性 overlay は root 実行へ落とさない（local-path は 0777 で作る）', () => {
   for (const svc of ['prometheus', 'loki', 'tempo', 'grafana']) {
-    const composeRoot = /^\s*user:\s*["']?0:0["']?\s*$/m.test(COMPOSE[svc] || '');
-    const k8sRoot = /runAsUser:\s*0\b/.test(OBS_PATCHES[svc] || '');
-    assert.strictEqual(
-      k8sRoot,
-      composeRoot,
-      `${svc}: compose の user:"0:0"(${composeRoot}) と k8s の runAsUser:0(${k8sRoot}) が食い違う` +
-        '（IADR-0210 決定 4「compose を鏡にする」＝実測された先例だけに従い、推測で広げない）',
+    assert.ok(
+      !/runAsUser:\s*0\b/.test(OBS_PATCHES[svc] || ''),
+      `${svc}: runAsUser: 0 が入っている。compose の user:"0:0" は docker の named volume 固有の対処で、` +
+        'local-path（mkdir -m 0777）へは転用できない（IADR-0210 決定 6・実機で非 root 書き込みを実測）',
     );
-    if (k8sRoot) {
-      assert.ok(/runAsGroup:\s*0\b/.test(OBS_PATCHES[svc]), `${svc}: runAsUser だけで runAsGroup が無い`);
-      assert.ok(
-        /path:\s*\/spec\/template\/spec\/securityContext\b/.test(OBS_PATCHES[svc]),
-        `${svc}: securityContext が Pod ではなく別の場所に足されている`,
-      );
-    }
   }
 });
 
@@ -1351,6 +1452,69 @@ ok('#787: Prometheus の保持期間が args で明示され、compose と同値
     sizeBytes < pvcBytes,
     `retention.size(${sizeBytes} B) が PVC 容量(${pvcBytes} B) 以上である（満杯で書き込み不能になりうる）`,
   );
+});
+
+// ★ 以下 4 件は PR #815（同じ #787 を独立に実装したもう 1 本）から畳み込んだ検査である。
+//   同じ issue に 2 本の PR が並走したため、両者の検査の和を採った（IADR-0116 規約 1 へ戻す統合）。
+
+ok('#787: PVC を掴む Deployment は Recreate（RWO と RollingUpdate は両立しない）', () => {
+  for (const [label, kust, apps] of [
+    ['infra-persistence', INFRA_PERSIST_KUST, ['postgres', 'keycloak', 'qdrant']],
+    ['observability-persistence', OBS_PERSIST_KUST, ['prometheus', 'loki', 'tempo', 'grafana']],
+  ]) {
+    assert.ok(
+      /path:\s*\/spec\/strategy\b/.test(kust) && /type:\s*Recreate\b/.test(kust),
+      `${label}: /spec/strategy に Recreate を当てる patch が無い（新旧 Pod が同じ PVC を奪い合う）`,
+    );
+    // labelSelector に**全対象**が入っていること。1 件でも漏れるとその Deployment だけ RollingUpdate に残る。
+    const sel = (/labelSelector:\s*["']?app in \(([^)]*)\)/.exec(kust) || [])[1];
+    assert.ok(sel, `${label}: Recreate patch の labelSelector を読めない`);
+    assert.deepStrictEqual(
+      sel.split(',').map((s) => s.trim()).sort(),
+      [...apps].sort(),
+      `${label}: Recreate の対象集合が PVC を掴む Deployment 全件と一致しない`,
+    );
+  }
+});
+
+ok('#787: /tmp そのものはマウントしない（Loki / Tempo）', () => {
+  for (const svc of ['loki', 'tempo']) {
+    const mounts = [...(OBS_PATCHES[svc] || '').matchAll(/^\s*mountPath:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+    assert.ok(mounts.length > 0, `${svc}: mountPath が 1 つも無い`);
+    assert.ok(
+      !mounts.includes('/tmp'),
+      `${svc}: /tmp そのものを覆っている。Go の os.TempDir() が使う一時ファイルまで PVC に載り、` +
+        '/tmp のセマンティクスも壊れる（覆うのは /tmp/<svc> だけでよい）',
+    );
+  }
+});
+
+ok('#787: base（既定経路）は書き換えていない —— PVC はオーバーレイにしか無い', () => {
+  for (const dir of [OBS_DIR, path.join(REPO_ROOT, 'deploy', 'local', 'infra')]) {
+    for (const f of fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+      assert.ok(
+        !/persistentVolumeClaim:/.test(readAt(dir, f)),
+        `${path.basename(dir)}/${f} に persistentVolumeClaim がある。` +
+          'base に PVC を持ち込むと provisioner 不在のクラスタで既定経路が Pending になる（fail-safe が壊れる）',
+      );
+    }
+  }
+});
+
+ok('#787: 永続化オーバーレイの claimName がすべて同じ overlay の PVC を指す', () => {
+  for (const [label, kust, pvcs] of [
+    ['infra-persistence', INFRA_PERSIST_KUST, INFRA_PVCS],
+    ['observability-persistence', OBS_PERSIST_KUST, OBS_PVCS],
+  ]) {
+    const claims = [...kust.matchAll(/^\s*claimName:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+    assert.ok(claims.length > 0, `${label}: claimName が 1 つも無い`);
+    for (const c of claims) {
+      assert.ok(
+        pvcs[c],
+        `${label}: claimName ${c} に対応する PVC が同じ overlay に無い（apply しても Pod が Pending で止まる）`,
+      );
+    }
+  }
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

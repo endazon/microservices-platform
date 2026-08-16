@@ -15,7 +15,7 @@ related_ids:
   - IADR-0209
   - IADR-0210
   - IADR-0211
-  - IADR-0212
+  - IADR-0214
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -24,7 +24,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md (採用技術一覧: Dead Code 検出 = Knip)"
   - "../../planning/docs/ai-implementation-workflow-guide.md (フェーズ末監査は証跡必須)"
 related_specs:
-  - "../adr/IADR-0212_gate-inputs-subset-of-workflow-paths.md"
+  - "../adr/IADR-0214_gate-inputs-subset-of-workflow-paths.md"
   - "../adr/IADR-0211_knip-scope-and-unused-ratchet.md"
   - "../adr/IADR-0209_vitest-include-subset-of-frontend-tests-paths.md"
   - "../adr/IADR-0210_local-k8s-observability-persistence.md"
@@ -48,7 +48,7 @@ related_specs:
   **無いことは「実装側で採番してよい」ではない**（同 決定 2）。**環流しない。**
 - 関連 ADR:
   - 計画側: `ADR-0031`（SPA スタック。Knip の採用元）。**本作業では制約に触れない。**
-  - 実装側（新規）: [IADR-0212](../adr/IADR-0212_gate-inputs-subset-of-workflow-paths.md)
+  - 実装側（新規）: [IADR-0214](../adr/IADR-0214_gate-inputs-subset-of-workflow-paths.md)
   - 実装側（既存）: [IADR-0209](../adr/IADR-0209_vitest-include-subset-of-frontend-tests-paths.md)（同族の不変条件）／
     [IADR-0211](../adr/IADR-0211_knip-scope-and-unused-ratchet.md)（Knip ゲート本体）／
     [IADR-0183](../adr/IADR-0183_false-green-warning-on-worktree-state.md)（偽の緑は fail へ倒す）／
@@ -121,7 +121,7 @@ related_specs:
   - `scripts/scripts.repo.test.js`（回帰テスト 1 節の追加 ＋ #801 節のコメント是正）
   - `scripts/check-knip.js`（docstring 1 節の追加）
   - `src/knip.jsonc`（コメントの決定番号の是正）
-  - `docs/adr/IADR-0212_gate-inputs-subset-of-workflow-paths.md`（新規）
+  - `docs/adr/IADR-0214_gate-inputs-subset-of-workflow-paths.md`（新規）
   - `docs/adr/IADR-0066` / `IADR-0210` / `IADR-0211`（日付つき追記 ＋ `updated:` の前進）
   - `docs/adr/README.md`（索引 1 行）
   - 本仕様書
@@ -205,7 +205,7 @@ related_specs:
 
 ## 設計
 
-決定の正本は [IADR-0212](../adr/IADR-0212_gate-inputs-subset-of-workflow-paths.md)。ここには適用形だけを書く。
+決定の正本は [IADR-0214](../adr/IADR-0214_gate-inputs-subset-of-workflow-paths.md)。ここには適用形だけを書く。
 
 ### 設計 1: 不変条件は「**ゲートが読むファイル ⊆ そのゲートを走らせるワークフローの `paths:`**」
 

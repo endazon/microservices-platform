@@ -27,13 +27,13 @@ on:
       # 除外・entry を単独で広げ／狭めても CI が走らないと、検査を骨抜きにする変更を検出できない
       # （.prettierignore と同じ理由）。
       - "src/knip.jsonc"
-      # NFR / IADR-0212: **本ワークフローで走るゲートが読む入力**（検査器本体・床・突合先）。
+      # NFR / IADR-0214: **本ワークフローで走るゲートが読む入力**（検査器本体・床・突合先）。
       # ci.yml の scripts-tests は各検査器の `--self-test`（**構造検査のみ**——純関数の振る舞いと
       # 設定同士の突合）しか走らせず、**床と実測値の突合は本ワークフローの 1 箇所だけ**である。
       # したがってこれらが paths: に無いと、**床だけを緩める PR でゲートが 1 度も起動しない**
       # （実測: 床 counts.exports を 18 → 60 にすると scripts-tests は 636 件通過して EXIT=0、
       # `node scripts/check-knip.js --require` だけが EXIT=1 になる）。
-      # **列挙は手で書くが、腐りは機械が見る** —— scripts/scripts.repo.test.js の IADR-0212 節が
+      # **列挙は手で書くが、腐りは機械が見る** —— scripts/scripts.repo.test.js の IADR-0214 節が
       # 各ゲートのソースから `path.join` 定数を静的に導き、push / pull_request の両方と突合する。
       - ".gitmodules"
       - "scripts/check-knip.js"
@@ -81,7 +81,7 @@ on:
       # 除外・entry を単独で広げ／狭めても CI が走らないと、検査を骨抜きにする変更を検出できない
       # （.prettierignore と同じ理由）。
       - "src/knip.jsonc"
-      # NFR / IADR-0212: 本ワークフローで走るゲートが読む入力（push 側と同じ理由）。
+      # NFR / IADR-0214: 本ワークフローで走るゲートが読む入力（push 側と同じ理由）。
       # scripts-tests が走らせる `--self-test` は構造検査のみで、床と実測値の突合はここだけである。
       - ".gitmodules"
       - "scripts/check-knip.js"

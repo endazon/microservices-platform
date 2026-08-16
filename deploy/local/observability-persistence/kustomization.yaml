@@ -16,8 +16,7 @@ resources:
 
 patches:
   # prometheus: TSDB の既定パス /prometheus（compose の prometheus-data:/prometheus と同一）へ PVC を当てる。
-  # ★ securityContext は付けない —— compose も prometheus に user: を付けておらず、compose では
-  #   prometheus-data:/prometheus が現に動いている（IADR-0210 決定 4「compose を鏡にする」）。
+  # ★ securityContext は付けない（4 種とも。下の loki の注記に実測を書いた）。
   - target:
       kind: Deployment
       name: prometheus
@@ -35,19 +34,17 @@ patches:
           name: data
           mountPath: /prometheus
   # loki: ConfigMap loki-config の common.path_prefix（/tmp/loki）へ当てる。config は書き換えない。
-  # ★ securityContext runAsUser/runAsGroup=0 は compose の user: "0:0" の等価物である（IADR-0079 §3）。
-  #   空ボリュームは root:root 0755 で生成され、非 root イメージ（uid 10001）は直下に index/chunks を
-  #   作れず **起動時 permission denied で回帰する**（compose で実測済み）。推測ではなく実測された先例に従う。
+  # ★ securityContext（root 実行）は **付けない**。compose の user: "0:0"（IADR-0079 §3）は
+  #   **docker の named volume が root:root 0755 で生成される**ことへの対処であり、**k8s へは転用できない**。
+  #   local-path provisioner の setup は `mkdir -m 0777` でボリュームディレクトリを作る
+  #   （`kube-system/local-path-config` を実読）。実測（2026-08-16・稼働中の k3s）:
+  #   loki は **uid 10001 のまま** `/tmp/loki`（drwxrwxrwx）へ 4.7M を書き、**再起動 0 回**で Ready。
+  #   tempo（uid 10001・5.0M）/ grafana（uid 472・grafana.db）も同じ。推測ではなく実測に従う。
   - target:
       kind: Deployment
       name: loki
       namespace: platform-infra
     patch: |
-      - op: add
-        path: /spec/template/spec/securityContext
-        value:
-          runAsUser: 0
-          runAsGroup: 0
       - op: add
         path: /spec/template/spec/volumes/-
         value:
@@ -59,17 +56,13 @@ patches:
         value:
           name: data
           mountPath: /tmp/loki
-  # tempo: storage.trace.local.path(/tmp/tempo/blocks) と wal.path(/tmp/tempo/wal) の親へ当てる。loki と同理由で root 実行。
+  # tempo: storage.trace.local.path(/tmp/tempo/blocks) と wal.path(/tmp/tempo/wal) の親へ当てる。
+  # loki と同じ理由で root 実行にしない（上の実測）。
   - target:
       kind: Deployment
       name: tempo
       namespace: platform-infra
     patch: |
-      - op: add
-        path: /spec/template/spec/securityContext
-        value:
-          runAsUser: 0
-          runAsGroup: 0
       - op: add
         path: /spec/template/spec/volumes/-
         value:
@@ -82,7 +75,7 @@ patches:
           name: data
           mountPath: /tmp/tempo
   # grafana: /var/lib/grafana（compose の grafana-data:/var/lib/grafana と同一）。
-  # ★ securityContext は付けない —— compose も grafana に user: を付けておらず現に動いている（prometheus と同じ根拠）。
+  # ★ securityContext は付けない（実測で uid 472 のまま grafana.db を書けている）。
   - target:
       kind: Deployment
       name: grafana
@@ -99,3 +92,18 @@ patches:
         value:
           name: data
           mountPath: /var/lib/grafana
+  # ★ PVC を掴む Deployment は Recreate にする（IADR-0210 決定 7）。
+  #   ReadWriteOnce と RollingUpdate は両立しない。local-path は単一ノードの hostPath なので
+  #   **スケジューリングでは詰まらず、アプリのロックで詰まる** —— Prometheus は
+  #   storage.tsdb.no-lockfile=false を実測（/api/v1/status/flags）し、再起動後の
+  #   /prometheus/data に lock ファイルが実在した。Grafana は SQLite。
+  #   base（emptyDir）側は RollingUpdate のままでよい（奪い合うボリュームが無い）。
+  - target:
+      kind: Deployment
+      namespace: platform-infra
+      labelSelector: "app in (prometheus,loki,tempo,grafana)"
+    patch: |
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate

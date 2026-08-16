@@ -16,7 +16,7 @@ related_ids:
   - IADR-0183
   - IADR-0203
   - IADR-0209
-  - IADR-0212
+  - IADR-0214
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -164,8 +164,8 @@ Knip の設定はこの 4 つ目になるが、増分は「1 箇所増える」�
   の `test.include` ⊆ `paths:` に `knip.jsonc` は一致せず、不変条件に影響しない）。
 
   > ［2026-08-16 追記 / 波 7 末クロス監査］ **「`src/knip.jsonc` の 1 行だけ足す」は誤りだった。**
-  > 後継は [IADR-0212](./IADR-0212_gate-inputs-subset-of-workflow-paths.md)
-  > （本決定 4 の**ラチェットの形は生きており**、IADR-0212 は起動条件だけを改める**追補**である）。
+  > 後継は [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md)
+  > （本決定 4 の**ラチェットの形は生きており**、IADR-0214 は起動条件だけを改める**追補**である）。
   > **床 `scripts/knip-baseline.json` と検査器本体 `scripts/check-knip.js` が `paths:` に無いため、
   > 床だけを緩める PR ではゲートが 1 度も起動しなかった。** 実測（床の `counts.exports` を 18 → 60）:
   > `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` は **EXIT=0 / 636 tests passed** で素通りし、
@@ -265,5 +265,5 @@ $ grep -c "knip" docs/specs/20260808_issue-562_frontend-format-gate.md   # 仕�
 
 - Supersedes: なし
 - Superseded by: なし（決定 4 の `paths:` に関する部分は
-  [IADR-0212](./IADR-0212_gate-inputs-subset-of-workflow-paths.md) が**追補**として改めた。
+  [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md) が**追補**として改めた。
   ラチェットの形そのものは生きているため Supersede ではない）
