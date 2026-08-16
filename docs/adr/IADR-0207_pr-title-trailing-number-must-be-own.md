@@ -1,5 +1,5 @@
 ---
-title: IADR-0206 PR タイトル末尾の `(#NNN)` は PR 自身の番号に限る（形状だけの検査をやめる）
+title: IADR-0207 PR タイトル末尾の `(#NNN)` は PR 自身の番号に限る（形状だけの検査をやめる）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
 
-# IADR-0206: PR タイトル末尾の `(#NNN)` は PR 自身の番号に限る
+# IADR-0207: PR タイトル末尾の `(#NNN)` は PR 自身の番号に限る
 
 - 状態: Accepted
 - 日付: 2026-08-16

@@ -10,7 +10,7 @@ related_ids:
   - IADR-0145
   - IADR-0183
   - IADR-0192
-  - IADR-0206
+  - IADR-0207
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -19,7 +19,7 @@ plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md"
 related_specs:
   - "../how-to/commit-message-rules-annex.md"
-  - "../adr/IADR-0206_pr-title-trailing-number-must-be-own.md"
+  - "../adr/IADR-0207_pr-title-trailing-number-must-be-own.md"
   - "../adr/IADR-0192_kit-sync-classification-and-check.md"
   - "../adr/IADR-0145_landed-subject-check-scope.md"
 ---
@@ -147,7 +147,7 @@ issue 本文の案（`PR_NUMBER` を渡し、未設定なら形状のみ）を**
 | `scripts/scripts.repo.test.js` | 4 方向の変異試験＋ワークフロー配線の回帰テスト |
 | `scripts/kit-sync-classification.json` | `check-commit-messages.js` を **B 種 5 → B〔X〕** へ落とす（環流債務の可視化） |
 | `docs/how-to/commit-message-rules-annex.md` | 検査の説明（規約の入口は `traceability.md` のまま） |
-| `docs/adr/IADR-0206_*.md` ＋ `docs/adr/README.md` | 実装 ADR と索引 |
+| `docs/adr/IADR-0207_*.md` ＋ `docs/adr/README.md` | 実装 ADR と索引 |
 
 ### 起動条件・必須チェックが変わらないこと
 
@@ -272,7 +272,7 @@ PR 本文は**マージ後にも編集できる**が、着地したスカッシ�
 
 **したがって、下の草案を `feedback/20260816_kit-pr-title-number-mismatch.md` として置くのは、
 伝達を行うのと同じ変更でなければならない。** 分類表（`kit-sync-classification.json`）と
-[IADR-0206](../adr/IADR-0206_pr-title-trailing-number-must-be-own.md) は、環流先として
+[IADR-0207](../adr/IADR-0207_pr-title-trailing-number-must-be-own.md) は、環流先として
 **#799 を追跡 issue に置いている**（IADR-0192 決定 2 の「追跡先の issue 番号が必須」は満たす）。
 
 ### 草案本文
@@ -292,7 +292,7 @@ PR 本文は**マージ後にも編集できる**が、着地したスカッシ�
 - 機能要求（FR）: なし
 - ユースケース（UC）: なし
 - 画面（SC）: なし
-- 関連 ADR: 本リポの [IADR-0206](../adr/IADR-0206_pr-title-trailing-number-must-be-own.md)
+- 関連 ADR: 本リポの [IADR-0207](../adr/IADR-0207_pr-title-trailing-number-must-be-own.md)
 - 計画書リンク: `planning/tools/impl-handoff-kit/repo-template/.claude/rules/traceability.md`
   「コミットメッセージの機械チェック（CI・再発防止）」／同 `scripts/check-commit-messages.js`／
   同 `.github/workflows/pr-title.yml`
@@ -357,7 +357,7 @@ const s = subject.replace(/\s*\(#\d+\)\s*$/, '').trim();
 - 反映先候補: **キット配布物の是正**（`repo-template/.claude/rules/traceability.md` /
   `repo-template/scripts/check-commit-messages.js` / `repo-template/.github/workflows/pr-title.yml` /
   `repo-template/scripts/scripts.test.js`）
-- 提案内容: 本リポの実装（#799 / IADR-0206）をそのまま取り込む。
+- 提案内容: 本リポの実装（#799 / IADR-0207）をそのまま取り込む。
   - `validateTitlePrNumber(subject, prNumber)` を新設し、`checkSingleTitle(title, author, prNumber)`
     の 3 引数目として結線する（**既存の 2 引数呼び出しは挙動不変**）。
   - `normalizePrNumber()` は未設定を `null`（＝検査しない）、読めない値を `NaN` にし、
