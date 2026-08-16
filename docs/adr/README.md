@@ -265,6 +265,7 @@
 | [IADR-0209](./IADR-0209_vitest-include-subset-of-frontend-tests-paths.md) | `vitest` の **`test.include` ⊆ `frontend-tests.yml` の `paths:`**（対称性ではなく包含）を検査する。雛形 `templates/*/frontend/**` を push / pull_request の両方へ追加。代表パス合成・fail-closed。#801。 | Accepted |
 | [IADR-0210](./IADR-0210_local-k8s-observability-persistence.md) | 経路B の Qdrant と可観測性 4 種を **Deployment のまま** PVC 化する（`PERSIST=1` ＋ `OBSERVABILITY=1`）。Prometheus の保持は size < PVC 容量。**root へ落とさない**（local-path は 0777）。**PVC を掴む 7 件は `Recreate`**。#787 | Accepted |
 | [IADR-0211](./IADR-0211_knip-scope-and-unused-ratchet.md) | Knip（Dead Code 検出）を導入する。**走査スコープ**は `src/knip.jsonc`（別プロジェクト submodule は `ignoreWorkspaces`、orval 生成物と入口は `ignore` ではなく `entry`）。ゲートは**未使用件数の baseline ラチェット**（増減とも fail・fail-closed）。1 件も削らない。#493。 | Accepted |
+| [IADR-0212](./IADR-0212_llm-output-token-histogram.md) | LLM の**出力トークンを Histogram** で計る（リポジトリ初）。バケットは **4096 付近を細かく刻む**（IADR-0101 の妥当性を分布で読むため）。属性は Counter から `llm.result` を落とした 5 つ。**送信が成立した経路だけに記録**し 0 で埋めない。#786 | Accepted |
 | [IADR-0213](./IADR-0213_optin-token-boundary-matching.md) | `OPTIN_TOKENS` の不在検査を **末尾境界一致**にする（`includes` は接頭辞を持つトークンの検出力を隠す。実測 3 組）。配下だけが発行されるものは末尾 `/` で綴る。**各トークンの単独検出力を毎回検査**。#817 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
