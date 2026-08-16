@@ -343,6 +343,47 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         probe.Measurements.Should().ContainSingle().Which.Value.Should().Be(77);
     }
 
+    // T-786f: ストリームが Done を返さずに終わったら Histogram を記録しない（レビュー 🟢）。
+    //   決定 3 は「未送信では 0 を埋めない」だが、**送信は成立したが最終チャンクを受け取れなかった**
+    //   場合も 0 ではない。3 プロバイダは実際には Done を返すが、契約上は保証されていない。
+    [Fact]
+    public async Task PostCompleteStream_WhenNoDoneChunk_RecordsNoOutputTokens()
+    {
+        using var histogram = new OutputTokensProbe();
+        using var counter = new MetricsProbe();
+        var client = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+            {
+                s.RemoveAll<ILlmProvider>();
+                var provider = new DonelessStreamProvider();
+                s.AddKeyedSingleton<ILlmProvider>("claude", provider);
+                s.AddKeyedSingleton<ILlmProvider>("selfhosted", provider);
+                s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
+            })).CreateClient();
+
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"));
+
+        // Counter は計上する（送信は成立している）が、分布には 0 を積まない。
+        counter.Measurements.Should().ContainSingle()
+            .Which.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultSent);
+        histogram.Measurements.Should().BeEmpty();
+    }
+
+    // Done: true のチャンクを一度も返さずに終わるストリーム（契約上あり得る形）。
+    private sealed class DonelessStreamProvider : ILlmProvider
+    {
+        public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+            => Task.FromResult(new CompletionResult("本文", 11, 22, CompletionStopReasons.EndTurn));
+
+        public async IAsyncEnumerable<CompletionChunk> StreamAsync(
+            CompletionRequest request,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            yield return new CompletionChunk("本文");
+            await Task.CompletedTask;
+        }
+    }
+
     private sealed class FixedResultProvider(CompletionResult result) : ILlmProvider
     {
         public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)

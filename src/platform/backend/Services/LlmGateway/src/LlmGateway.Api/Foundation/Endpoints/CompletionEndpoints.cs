@@ -146,6 +146,9 @@ public static class CompletionEndpoints
             var inputTokens = 0;
             var outputTokens = 0;
             string? stopReason = null;
+            // IADR-0212 決定 3: Done を受け取れないまま終わった送信は「0 トークン」ではない。
+            // 記録するのは最終チャンクで実数を受け取れたときだけである（0 埋めをしない）。
+            var sawDone = false;
             var faulted = false;
             try
             {
@@ -159,6 +162,7 @@ public static class CompletionEndpoints
                         inputTokens = chunk.InputTokens;
                         outputTokens = chunk.OutputTokens;
                         stopReason = chunk.StopReason;
+                        sawDone = true;
                     }
                 }
                 LogStopReason(logger, stopReason, decision);
@@ -181,7 +185,7 @@ public static class CompletionEndpoints
             {
                 metrics.RecordCompletion(
                     LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity,
-                    outputTokens);
+                    sawDone ? outputTokens : null);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                     InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,

@@ -6,6 +6,7 @@ related_ids:
   - NFR-19
   - FR-11
   - ADR-0006
+  - ADR-0044
   - IADR-0101
   - IADR-0104
   - IADR-0110
@@ -14,6 +15,7 @@ created: 2026-08-16
 updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0044_llm-usage-metrics-and-pricing-table.md"
 ---
 
 # IADR-0212: LLM 出力トークンの Histogram（明示バケット・送信成立時のみ記録）
@@ -28,6 +30,16 @@ plan_refs:
 - 実装 ADR: [[IADR-0110]]（`llm.completion.total` を置いた決定・**本 ADR が同じ Meter へ計器を 1 本足す**）、
   [[IADR-0104]]（終了理由の語彙）、[[IADR-0101]]（既定 `max_tokens` = 4096）。
 - **[[IADR-0110]] を Supersede しない。** 決定はすべて生きており、本 ADR は計器を足すだけである。
+- 計画 ADR: **ADR-0044**（LLM 利用実績の計測と単価表）。同 ADR は「**未実装: トークン消費量・
+  金額換算・フォールバック発火回数・単価表**」と明記している（pin `8cae89d` で実読）。
+
+  | ADR-0044 の決定 | 本 ADR での状態 |
+  | --- | --- |
+  | 決定 1（用途別・モデル別の粒度で出す。総額のみは採らない） | **充足**（[[IADR-0110]] の Counter ＋ 本 ADR の Histogram。属性に `llm.purpose` / `llm.model` を持つ） |
+  | 決定 2 / 決定 3（有効期間つき単価表・**金額換算はゲートウェイ側で行う**） | **未着手**。本 ADR はトークン数までで、単価も金額換算も持たない |
+  | フォールバック発火回数 | **未着手** |
+
+  **次にこの領域へ着手する人は ADR-0044 決定 3 から読むこと。** 本 ADR はその前段を埋めただけである。
 
 ## コンテキストと課題
 

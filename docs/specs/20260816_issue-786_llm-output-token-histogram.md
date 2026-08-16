@@ -6,6 +6,7 @@ related_ids:
   - NFR-19
   - FR-11
   - ADR-0006
+  - ADR-0044
   - IADR-0101
   - IADR-0104
   - IADR-0110
@@ -123,6 +124,10 @@ POST /complete {"prompt":"Say OK","purpose":"default","maxTokens":16}
   `SelfHostedProvider` は OpenAI 互換の `usage.completion_tokens`）。取得側の実装は要らない
 - **`result=sent` の 2 箇所からそのまま渡せる**（応答組み立てが既に同じ変数を使っている）
 - #380 の受け入れ基準 ① は**出力トークンの実測**を求めており、Counter だけでは満たせない
+
+**計画 ADR-0044 との対応**: 同 ADR は「未実装: トークン消費量・金額換算・フォールバック発火回数・単価表」と
+明記している。本 PR が埋めるのは**トークン消費量まで**で、**単価表と金額換算（決定 2・決定 3）は未着手**である。
+対応表は [[IADR-0212]] の起点・関連に置いた。
 
 ## 5. 実装
 
