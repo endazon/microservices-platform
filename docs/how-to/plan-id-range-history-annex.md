@@ -26,6 +26,25 @@ plan_refs:
 > **本別紙が持つのは「過去の pin でどう引き直したか」「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れないか」の記録だけ**である（[[IADR-0172]] 決定 3 の段 5 ／ [[IADR-0173]] 決定 2）。
 
+### ［2026-08-16］pin `4d6a7d6` → `8cae89d`（走査基準は `4d6a7d6` → `8cae89d`）
+
+**5 種とも不動**（`FR-01..22` 22 件 / **`NFR-01..27` 27 件** / `UC-01..11` 11 件 / `SC-01..21` 21 件 / `ADR-0001..0046` 46 件・欠番なし）。
+**新旧両 pin で同じコマンドを走らせ、出力を並べて突き合わせた**（作業仕様書 [`20260816_issue-790_planning-pin-8cae89d-and-kit-rejudgement.md`](../specs/20260816_issue-790_planning-pin-8cae89d-and-kit-rejudgement.md) §2.2 に貼付）。
+
+```bash
+for SHA in 4d6a7d6 8cae89d; do
+  for KIND in FR NFR UC SC; do
+    git -C planning grep -h -o -E "\b$KIND-[0-9]{2}\b" $SHA -- projects/microservices-platform | sed "s/.*$KIND-//" | sort -u
+  done
+  git -C planning ls-tree -r --name-only $SHA -- projects/microservices-platform/07_adr/ | grep -oE 'ADR-[0-9]{4}' | sort -u
+done
+```
+
+**この世代から `NFR` も引き直しの対象に加えた**（従前は 4 種。`NFR-01..27` は入口の規範であり、他の 4 種と同じく計画側が動けば腐る）。
+**`ADR` の欠番は `seq 1 46` との `diff` で機械的に確かめた**（「46 件あるから連番」は連番の証明にならない）。
+取り込んだ 5 コミットのうち計画書本体（`projects/microservices-platform/`）が動いたのは `f279c69` だけで、
+変更は `05_screens/01_screens.md`（SC-06 の既定属性）・`06_technical/09_datasource-connectors.md`（既定属性の 2 段解決順）・`INDEX.md`（決定 47・48）の 3 ファイル 30 行であり、**ID の新設・廃止を含まない**。
+
 ### ［2026-08-16］pin `b640159` → `4d6a7d6`（走査基準は `b640159` → `4d6a7d6`）
 
 `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0046` の**4 種とも不動**（`git -C planning diff --stat b640159 4d6a7d6 -- projects/microservices-platform` が空。46 ファイル・欠番なし）。
@@ -44,7 +63,7 @@ planning#344（ABAC の `owner` が実データ 0 件）と planning#346（Wiki.
 
 ## 1. 過去の pin での引き直しの記録
 
-**現行 pin（`4d6a7d6`）でのレンジは入口にある。以下は、それ以前の 5 世代で引き直した記録である。**
+**現行 pin（`8cae89d`）でのレンジは入口にある。以下は、それ以前の 5 世代で引き直した記録である。**
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
 
 （**以下は前回の追随記録である。**［2026-08-09 / planning#304 の裁定］pin が `31a69c9` → `2cf0795`（planning#305）へ進んだときも 4 種を引き直したが、4 種とも動いていなかった——`FR-01..22`（22 件）／`UC-01..11`（11 件）／`SC-01..21`（21 件）／`ADR` 45 件で欠番なし、`Proposed` な 6 件と `Superseded` な `ADR-0003` も同一である。
