@@ -17,6 +17,9 @@
 | `admin-ingress-minio.yaml` | 50000（admin）: MinIO Console `minio.localhost`→9001（microservices-platform ns・IADR-0093。OIDC は [minio-oidc/README](../minio-oidc/README.md)） |
 | `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)） |
 | `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時のみスクリプトが条件付き apply） |
+| `tls/cert-manager-issuers.yaml` | エッジ TLS の CA（`ClusterIssuer(selfSigned)` → ルート CA `Certificate` → `ClusterIssuer(ca)`。IADR-0204） |
+| `tls/edge-certificate.yaml` | 葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`。IADR-0204） |
+| `tls/kustomization.yaml` | 上 2 つ。**親 kustomization には含めない** —— cert-manager の CRD が入る前に apply すると overlay 全体が落ちるため、スクリプトが「導入 → CRD Established 待ち → apply」の順で当てる |
 
 ## 有効化（opt-in・既定オフ）
 
@@ -57,7 +60,8 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
 ## アクセス
 
 - **platform フロント**: `http://localhost/`（SPA）・`http://localhost/bff/...`（BFF）。`https://localhost/` は
-  Traefik 既定の**自己署名証明書**（ブラウザ警告が出る。実 TLS 証明書は本オーバーレイのスコープ外）。
+  **cert-manager が発行する `edge-tls`** で終端する（IADR-0204・#779）。ルート CA を信頼ストアへ入れるまで
+  ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。http(80) はそのまま残してある。
 - **管理ツール（50000・ホスト名ベース）**:
   - `http://grafana.localhost:50000`（OBSERVABILITY=1）
   - `http://headlamp.localhost:50000`（HEADLAMP=1）
@@ -73,8 +77,34 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
 **`https://<tool>.localhost:50000` は 404 になる**（Traefik に https ルートが無いため）。管理ツールは必ず
 **`http://`** で開くこと。「到達不可」に見える事象の典型原因である（実際に Vault で発生）。
 
-platform フロントの 443（`https://localhost/`）は Traefik 既定の**自己署名証明書**で終端されるため別扱い
-（ブラウザ警告が出る）。実 TLS 証明書・admin entrypoint の TLS 化は本オーバーレイのスコープ外（Tier 3）。
+platform フロントの 443（`https://localhost/`）は別扱いで、**cert-manager 発行の `edge-tls` で終端する**
+（IADR-0204・#779）。**admin entrypoint の TLS 化は依然としてスコープ外**である —— 7 つの OIDC クライアントの
+redirectUris 追記に波及するため、Keycloak をエッジへ出す **#780 と同時に**扱う。
+
+### エッジ TLS（cert-manager・IADR-0204・#779）
+
+`LOCALEDGE=1` が cert-manager を導入し、`ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
+**2 段**で葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`）を発行する。
+**2 段にするのは、ルート CA を Secret として安定させるため**である —— これを apiserver の `--oidc-ca-file`（#781）と
+backend の信頼ストア（#780）へ渡す。Traefik 既定の自己署名は Secret 化されず再起動ごとに変わるので使えない。
+
+ルート CA の取り出しと検証:
+
+```bash
+kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+openssl s_client -connect 127.0.0.1:443 -servername localhost -CAfile ca.crt </dev/null 2>/dev/null \
+  | grep 'Verify return code'          # => 0 (ok)
+```
+
+**Windows の curl は schannel バックエンドで `--cacert` によるカスタム CA 検証ができない**（curl 側の制約）。
+検証は上の `openssl s_client` で行い、HTTP の疎通だけを見るなら `curl --ssl-no-revoke` を使う。
+
+ブラウザ警告を消したい場合は、取り出した `ca.crt` を OS / ブラウザの信頼ストアへ入れる（**任意**。
+自動化しない —— 目的は警告を消すことではなく、検証可能な CA を k8s 内に置くことである）。
+mkcert を使う手もあるが、**CA が開発者マシン固有でリポジトリから再現できない**ため既定にはしていない。
+
+`*.localhost` のワイルドカードは **1 段のサブドメインしか覆わない**（`a.b.localhost` は対象外）。
+現行のホストはすべて 1 段なので問題にならない。
 
 ### ホスト名解決の注意（`*.localhost` / CLI）
 
@@ -114,4 +144,9 @@ k3d のポートを元（8080/8443）へ戻すにはクラスタ再作成（`LOC
 
 ## Tier 境界
 
-本オーバーレイはローカル検証用。実 TLS 証明書・本番相当のエッジ（Istio）・稼働率は **Tier 3**（対象外）。
+本オーバーレイはローカル検証用。**本番相当のエッジ（Istio）・稼働率は Tier 3**（対象外）。
+
+**エッジ TLS は Tier 3 から外れた**（IADR-0204・#779）—— cert-manager 発行の `edge-tls` で 443 を終端する。
+ただし CA は selfsigned であり、**公的 CA（Let's Encrypt）による証明書は依然として Tier 3** である
+（`*.localhost` にはドメイン所有を検証できないため原理的に発行できない）。
+本番の CA 差し替えは計画 `ADR-0023` のとおり `ClusterIssuer` を足して `issuerRef` を変えるだけで済む。

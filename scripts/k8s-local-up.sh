@@ -363,7 +363,30 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   if kubectl get namespace argocd >/dev/null 2>&1; then
     kubectl apply -f deploy/local/edge/argocd-ingress.yaml
   fi
-  echo "    platform フロント: http://localhost/ (80) ・ https://localhost/ (443・Traefik 既定自己署名)"
+
+  # IADR-0204 (#779): エッジ TLS 終端。cert-manager を導入し、selfsigned→CA の 2 段で
+  # ルート CA（Secret cert-manager/local-edge-root-ca）と葉証明書（Secret edge-tls）を作る。
+  # --server-side は大 CRD の annotation 262144B 上限を避けるため（IADR-0088 が ArgoCD で是正した先例）。
+  # 順序が要る: CRD が Established になる前に tls/ を apply すると "no matches for kind Certificate" で落ちる。
+  # バージョンは固定する（IADR-0088: 浮動タグは再デプロイのたびに中身が変わり得る）。ESO と同じく
+  # env で上書きできるが、既定は動作を実測した版を置く。上書き時も CRD の apiVersion 差に注意すること。
+  CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.21.1}"
+  echo "    -> cert-manager ${CERT_MANAGER_VERSION} (edge TLS, IADR-0204)"
+  kubectl apply --server-side --force-conflicts -f "https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.yaml"
+  kubectl wait --for=condition=Established --timeout=120s \
+    crd/certificates.cert-manager.io crd/clusterissuers.cert-manager.io
+  kubectl -n cert-manager rollout status deploy/cert-manager --timeout=180s
+  kubectl -n cert-manager rollout status deploy/cert-manager-webhook --timeout=180s
+  # webhook が Ready でも数秒は TLS ハンドシェイクを拒むことがあるため、apply は数回試す（冪等）。
+  for attempt in 1 2 3 4 5; do
+    kubectl apply -k deploy/local/edge/tls && break
+    echo "    WARN: tls overlay の apply に失敗（cert-manager webhook 待ち・試行 ${attempt}/5）" >&2
+    sleep 5
+  done
+  kubectl -n "$MSP_NS" wait --for=condition=Ready --timeout=120s certificate/edge-tls
+
+  echo "    platform フロント: http://localhost/ (80) ・ https://localhost/ (443・cert-manager 発行 edge-tls)"
+  echo "    ルート CA の取り出し: kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d"
   echo "    管理ツール(50000): http://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 fi

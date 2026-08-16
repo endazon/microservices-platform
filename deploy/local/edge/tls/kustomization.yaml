@@ -1,0 +1,12 @@
+# IADR-0204 (#779): エッジ TLS 資産（opt-in・LOCALEDGE=1）。k8s-local-up.sh が
+# 「cert-manager 導入 → CRD Established 待ち → 本 overlay を apply → 証明書 Ready 待ち」の順で当てる。
+#
+# 親（deploy/local/edge/kustomization.yaml）に含めない理由:
+#   ここは cert-manager.io/v1 の CRD に依存する。CRD が入る前に `kubectl apply -k deploy/local/edge`
+#   （サーバ側検証あり）へ渡すと "no matches for kind Certificate" で**エッジ overlay 全体が落ちる**。
+#   分けておけば、cert-manager 未導入の環境でも既存のエッジ集約はそのまま適用できる（fail-safe）。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cert-manager-issuers.yaml
+  - edge-certificate.yaml

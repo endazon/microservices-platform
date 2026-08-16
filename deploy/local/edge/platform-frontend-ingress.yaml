@@ -2,7 +2,11 @@
 # ルーティングは prod の Istio エッジ（templates/edge.yaml）と同契約: /bff は rewrite せず bff-service へ、
 # 残り全パス（catch-all /）は frontend-service へ。SPA の history fallback は frontend pod の nginx が担う。
 # host 指定なし＝任意 host にマッチ（管理ツールは別 entrypoint admin:50000 のため 80/443 では衝突しない）。
-# 443 は Traefik 既定の自己署名証明書（ブラウザ警告・実 TLS は別途）。
+# IADR-0204 (#779): 443 は cert-manager が発行する `edge-tls`（Secret・同 namespace）で終端する。
+# ルート CA は Secret cert-manager/local-edge-root-ca の ca.crt として安定して存在し、apiserver の
+# --oidc-ca-file（#781）と backend の信頼ストア（#780）へ渡せる。ブラウザ警告は CA を信頼ストアへ
+# 入れるまで残る（消すことは目的ではない。目的は検証可能な CA を k8s 内に置くこと）。
+# http(80) は残す（追加のみ・後方互換）。http→https の恒久リダイレクトは足さない（IADR-0204 決定 4）。
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -15,6 +19,13 @@ metadata:
     # web(80)/websecure(443) の標準 entrypoint に載せる（admin:50000 には載せない）。
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
 spec:
+  # IADR-0204 (#779): websecure(443) の証明書。secretName は同 namespace の Secret を指す。
+  # hosts は Certificate の dnsNames と一致させる（静的検査が両者の一致を固定している）。
+  tls:
+    - hosts:
+        - localhost
+        - "*.localhost"
+      secretName: edge-tls
   rules:
     - http:
         paths:
