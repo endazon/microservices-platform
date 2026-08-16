@@ -136,11 +136,26 @@ issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）
 ## 切り戻し
 
 ```sh
+# TLS 資産は親 kustomization に含まれていないので個別に消す（IADR-0204 決定 5）。
+# ClusterIssuer は cluster-scoped なので、これを飛ばすと残留する。
+kubectl delete -k deploy/local/edge/tls
+
 kubectl delete -k deploy/local/edge
 kubectl -n kube-system delete helmchartconfig traefik   # admin:50000 を撤去（Traefik が既定 values で再適用される）
+
+# cert-manager 本体まで戻すなら（CRD・webhook・Deployment を撤去する。他の用途で使っていないことを確認してから）
+kubectl delete -f "https://github.com/cert-manager/cert-manager/releases/download/v1.21.1/cert-manager.yaml"
 ```
 
+> **`kubectl delete -k deploy/local/edge` だけでは TLS 資産が残る。**
+> `tls/kustomization.yaml` は**意図的に親へ含めていない**（cert-manager の CRD が入る前に
+> 親を apply すると overlay 全体が落ちるため。`IADR-0204` 決定 5）。その裏返しとして、
+> 切り戻しでも**個別に消す必要がある** —— `ClusterIssuer`（`local-edge-selfsigned` /
+> `local-edge-ca`）は cluster-scoped、`Certificate`（`local-edge-root-ca` / `edge-tls`）は
+> それぞれ `cert-manager` / `microservices-platform` namespace に残る。
+
 k3d のポートを元（8080/8443）へ戻すにはクラスタ再作成（`LOCALEDGE` 未設定で `k8s-local-up.sh`）。
+**クラスタを作り直すなら上の個別削除は要らない**（全部消える）。
 
 ## Tier 境界
 
