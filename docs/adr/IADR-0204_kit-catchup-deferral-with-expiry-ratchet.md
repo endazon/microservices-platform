@@ -48,7 +48,7 @@ pin `8cae89d` は、本リポが出した環流 2 件（planning#373 `check-comm
 
 | # | 副作用 | 実測 |
 | --- | --- | --- |
-| 1 | キット `.claude/rules/traceability.md` が **21,590B → 24,592B（+3,002B）** へ育った | 取り込むと必読規約が **50,193B → 53,195B（予算 51,200B の 103.9%）** で `check-reading-budget.js` が fail |
+| 1 | キット `.claude/rules/traceability.md` が **21,590B → 24,592B（+3,002B）** へ育った | 取り込むと必読規約が **50,182B → 53,184B（予算 51,200B の 103.9%・超過 1,984B）** で `check-reading-budget.js` が fail |
 | 2 | キット `scripts/scripts.test.js` の新試験が **「拡張点を持たない構成」を断定** | 拡張点を埋めた本リポでは `loadExistingPlanIds()` が `Set(54)` を返し `assert.strictEqual(…, null)` が必ず落ちる |
 
 いずれも**分類 A（キットとバイト一致）を成立させない**。従来の選択肢は「バイト一致を捨てて分類 B へ落とす」
