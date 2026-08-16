@@ -3,7 +3,7 @@ title: IADR-0204 経路B のエッジ TLS は cert-manager の selfsigned→CA C
 type: impl-adr
 status: Accepted
 related_ids:
-  - NFR
+  - NFR-11
   - ADR-0023
   - ADR-0021
   - ADR-0008
@@ -72,10 +72,26 @@ ClusterIssuer(selfSigned)
 中間に CA を挟むことで **ルート CA が `Secret` の `ca.crt` として安定して存在する**ようになり、
 `oidc-ca-file` にも backend の信頼ストアにも同じものを渡せる。**これが本 ADR の要点**である。
 
-`ADR-0023` の既定 CA は Let's Encrypt（ACME）だが、**`*.localhost` に ACME 証明書は発行できない**
-（公的 CA はドメイン所有を検証できない）。よってローカルは selfsigned を CA とする。
-**同 ADR に反しない** —— 同 ADR は prod の Istio Ingress Gateway を対象に書かれており、
-ローカルの Traefik については何も決めていない。
+**`ADR-0023` の既定 CA は Let's Encrypt（ACME）であり、ローカルの selfsigned はそこから外れる。**
+以下はその逸脱の根拠である。**「同 ADR は経路B を対象にしていない」とは書かない** ——
+同 ADR の本文に環境を限定する語は無く（`prod` は 0 回出現。pin `4d6a7d6` で実測）、
+そう書くのは**本文に無い限定を根拠にすること**になる。
+
+- **消費側が違う。** `ADR-0023` の決定は「Istio Ingress Gateway（Envoy）が Secret を参照して TLS 終端する」形で
+  書かれている。エッジを Istio と定めたのは `ADR-0021` であり、**経路B が Traefik なのは実装側の決定**
+  （[[IADR-0091]]）である。したがって本 ADR は `ADR-0023` の**配布層（cert-manager）と設計要件は踏襲し、
+  消費側だけが違う**という関係にある。
+- **`*.localhost` では同 ADR が示す 2 択のどちらも取れない。** 同 ADR の §結果 は
+  「当初から社内限定・閉域ドメインの場合、HTTP-01 は成立せず、**DNS-01 か Vault PKI 直行**を選ぶ必要がある」と述べるが、
+  **DNS-01 は `.localhost` を持つ DNS プロバイダが存在しないため成立せず**、
+  **Vault PKI は `VAULT=1` の opt-in であり `LOCALEDGE=1` の前提に置けない**（既定オフの資産に依存させると
+  fail-safe が壊れる）。残るのが selfsigned CA である。
+- **差し替えコストは上げていない。** 下記の設計要件 3 点を守っているため、
+  Let's Encrypt / Vault PKI への移行は `ClusterIssuer` の追加と `issuerRef` の差し替えに閉じる。
+
+> **★ `ADR-0023` の適用範囲（経路B を含むのか）は計画側で明示されていない。**
+> 本 ADR は「含むと読んだうえで、消費側と CA を局所的に外した」という立場を採る。
+> **範囲の明確化は `/plan-feedback` で計画へ環流する**（本 ADR では計画の決定を変えない）。
 
 ### 3. `ADR-0023` の設計要件をローカルでも守る
 
@@ -87,10 +103,28 @@ CA を将来 Let's Encrypt / Vault PKI へ差し替えられるように、同 A
 
 ### 4. TLS は追加のみ。http を残す
 
-Ingress 8 件へ `spec.tls`（`secretName: edge-tls`）を**追加**し、**http 経路は残す**。
+**443（websecure）に載る Ingress 1 件（`platform-frontend-edge`）へ** `spec.tls`（`secretName: edge-tls`）を
+**追加**し、**http 経路は残す**。
+
+**admin:50000 に載る 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）へは足さない。**
+その entrypoint に TLS が設定されていない（Traefik の args に `--entryPoints.admin.http.tls` が無い）ため、
+**足しても効かず、「TLS になったつもり」の記述だけが残る**。admin:50000 の TLS 化は
+[[IADR-0103]] の改定と 7 OIDC クライアントの redirect 追記に波及するので #780 と同時に扱う。
+この境界は静的検査で固定する（`admin:50000 の Ingress には spec.tls を足さない`）。
 `--entryPoints.web.http.redirections.*`（http→https の恒久リダイレクト）は**足さない**。
 足すと `http://*.localhost:50000` を前提にした既存 docs と realm の redirectUris が全部一段回り道になり、
 本 ADR のスコープ（TLS 基盤の新設）を越えて 7 クライアントの再設定を巻き込む。
+
+> **★ `NFR-11`（全経路の HTTPS 化）との関係を明示しておく。** 同要件は
+> 「**外部から到達し得るすべてのエンドポイントを HTTPS とし、平文 HTTP を残さない**。対象は…
+> **運用系ツール（Grafana・Kiali・ArgoCD UI・Headlamp）を含む**」と定めている。
+> 本決定（http を残す・admin:50000 は平文のまま）は、字面だけ見ると逆を向く。
+>
+> **本 ADR は `NFR-11` を満たしたと主張しない。** 経路B は `LOCALEDGE=1` が
+> **loopback（`127.0.0.1`）へ bind する閉域のローカル開発環境**であり（[[IADR-0091]] 決定 4 の公開範囲）、
+> `NFR-11` が言う「外部から到達し得る」に当たらない、という整理で**適用外**とする。
+> **`NFR-11` の充足先は本番像であり、#780（issuer の https 化）・#782（Istio Ingress Gateway）が担う。**
+> 本 ADR が担うのは、そこへ至るための**検証可能な CA を k8s 内に置く**ところまでである。
 
 ### 5. `tls/` を別 kustomization に切る
 

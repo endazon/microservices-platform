@@ -916,20 +916,83 @@ ok('#779: tls overlay は親 edge kustomization に含めない（CRD 未導入�
   }
 });
 
+// YAML を `---` で分割し、1 ドキュメントずつ見る。**ドキュメント境界を跨ぐ正規表現を書かないため。**
+// 跨がせると `kind: ClusterIssuer` が selfsigned 側にマッチしたまま別ドキュメントの値を拾い、
+// 種別や参照の取り違えを通してしまう（クロス監査 V2 の実測）。
+function yamlDocs(yaml) {
+  return yaml
+    .split(/^---\s*$/m)
+    .map((d) => d.trim())
+    .filter(Boolean);
+}
+const field = (doc, key) => {
+  const m = new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'm').exec(doc);
+  return m ? m[1] : null;
+};
+// `issuerRef:` ブロック直下の name / kind / group を取る（他所の name と混ざらないように範囲を切る）。
+function issuerRef(doc) {
+  const m = /^(\s*)issuerRef:\s*$/m.exec(doc);
+  if (!m) return null;
+  const block = doc.slice(m.index + m[0].length).split('\n').slice(0, 5).join('\n');
+  return {
+    name: (/^\s*name:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+    kind: (/^\s*kind:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+    group: (/^\s*group:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+  };
+}
+const docsOf = (yaml, kind) => yamlDocs(yaml).filter((d) => field(d, 'kind') === kind);
+
 ok('#779: CA は selfsigned → CA の 2 段（1 段では検証に使える CA が残らない）', () => {
-  assert.ok(/kind:\s*ClusterIssuer[\s\S]*?name:\s*local-edge-selfsigned/.test(ISSUERS_YAML), 'selfSigned ClusterIssuer が無い');
-  assert.ok(/selfSigned:\s*\{\}/.test(ISSUERS_YAML), 'selfSigned の指定が無い');
-  assert.ok(/isCA:\s*true/.test(ISSUERS_YAML), 'ルート CA の Certificate に isCA: true が無い');
-  assert.ok(
-    /kind:\s*ClusterIssuer[\s\S]*?name:\s*local-edge-ca[\s\S]*?ca:\s*\n\s*secretName:\s*local-edge-root-ca/.test(ISSUERS_YAML),
-    'CA ClusterIssuer が local-edge-root-ca を参照していない',
+  const issuers = docsOf(ISSUERS_YAML, 'ClusterIssuer');
+  const certs = docsOf(ISSUERS_YAML, 'Certificate');
+  assert.strictEqual(issuers.length, 2, `ClusterIssuer は 2 つ（selfSigned と ca）であるべき: ${issuers.length}`);
+  assert.strictEqual(certs.length, 1, `本ファイルの Certificate はルート CA の 1 つだけ: ${certs.length}`);
+
+  const selfSigned = issuers.find((d) => /^\s*selfSigned:\s*\{\}\s*$/m.test(d));
+  const caIssuer = issuers.find((d) => /^\s*ca:\s*$/m.test(d));
+  assert.ok(selfSigned, 'selfSigned ClusterIssuer が無い（1 段目）');
+  assert.ok(caIssuer, 'ca ClusterIssuer が無い（2 段目。これが無いと検証に使える CA が残らない）');
+
+  const rootCa = certs[0];
+  assert.ok(/^\s*isCA:\s*true\s*$/m.test(rootCa), 'ルート CA の Certificate に isCA: true が無い');
+
+  // ★ 結線 1: ルート CA は selfSigned Issuer が発行する。ここが CA Issuer を向くと 2 段が崩れる。
+  const rootRef = issuerRef(rootCa);
+  assert.ok(rootRef, 'ルート CA の Certificate に issuerRef が無い');
+  assert.strictEqual(rootRef.name, field(selfSigned, 'name'), 'ルート CA の issuerRef が selfSigned Issuer を指していない');
+  assert.strictEqual(rootRef.kind, 'ClusterIssuer', 'ルート CA の issuerRef.kind が ClusterIssuer でない');
+
+  // ★ 結線 2: CA Issuer はルート CA が作る Secret を読む。名前がずれると Issuer が Ready にならない。
+  const caSecret = (/^\s*ca:\s*\n\s*secretName:\s*(\S+)/m.exec(caIssuer) || [])[1] ?? null;
+  assert.strictEqual(
+    caSecret,
+    field(rootCa, 'secretName'),
+    `CA Issuer の ca.secretName(${caSecret}) がルート CA の secretName(${field(rootCa, 'secretName')}) と食い違う`,
   );
+
   // CA ClusterIssuer は cluster-scoped で、参照先 Secret を --cluster-resource-namespace（既定 cert-manager）
   // から読む。ルート CA の Certificate が別 namespace に居ると CA Issuer が Ready にならない。
-  assert.ok(
-    /name:\s*local-edge-root-ca\s*\n\s*namespace:\s*cert-manager/.test(ISSUERS_YAML),
-    'ルート CA の Certificate が cert-manager namespace に無い（CA ClusterIssuer が Secret を読めない）',
-  );
+  assert.strictEqual(field(rootCa, 'namespace'), 'cert-manager', 'ルート CA の Certificate が cert-manager namespace に無い');
+
+  // apiVersion の取り違え（v1alpha2 等）は apply の時点で落ちるが、CI に kustomize build が無いので静的に見る。
+  for (const d of [...issuers, ...certs]) {
+    assert.strictEqual(field(d, 'apiVersion'), 'cert-manager.io/v1', `apiVersion が cert-manager.io/v1 でない: ${field(d, 'kind')}`);
+  }
+});
+
+ok('#779: 葉証明書は CA Issuer（selfSigned ではない）が発行する', () => {
+  const leaf = docsOf(EDGE_CERT_YAML, 'Certificate')[0];
+  assert.ok(leaf, '葉の Certificate が無い');
+  assert.strictEqual(field(leaf, 'apiVersion'), 'cert-manager.io/v1', '葉の apiVersion が cert-manager.io/v1 でない');
+
+  const caIssuer = docsOf(ISSUERS_YAML, 'ClusterIssuer').find((d) => /^\s*ca:\s*$/m.test(d));
+  const ref = issuerRef(leaf);
+  assert.ok(ref, '葉の Certificate に issuerRef が無い');
+  // ★ 結線 3: ここが selfSigned Issuer を向くと **2 段が 1 段へ崩れ、ルート CA が Secret に残らない**。
+  // IADR-0204 の存在理由（oidc-ca-file と backend の信頼ストアへ渡せる CA）がそのまま消える。
+  assert.strictEqual(ref.name, field(caIssuer, 'name'), '葉の issuerRef が CA Issuer を指していない（2 段が崩れる）');
+  assert.strictEqual(ref.kind, 'ClusterIssuer', '葉の issuerRef.kind が ClusterIssuer でない');
+  assert.strictEqual(ref.group, 'cert-manager.io', '葉の issuerRef.group が cert-manager.io でない');
 });
 
 ok('#779: 葉証明書は Ingress と同じ namespace に居る（spec.tls は同 ns の Secret しか参照できない）', () => {

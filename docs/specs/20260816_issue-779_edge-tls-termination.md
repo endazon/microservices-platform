@@ -3,7 +3,7 @@ title: 作業仕様書 — 経路B のエッジ TLS 終端基盤を cert-manager
 type: spec
 status: done
 related_ids:
-  - NFR
+  - NFR-11
   - ADR-0023
   - ADR-0021
   - ADR-0008
@@ -43,7 +43,7 @@ related_specs:
 **本子が最初に来る理由**は、後続の全部がここに載るからである。
 
 - k8s 1.30+ は apiserver の OIDC 設定を構造化認証設定 `jwt[0]` へ変換し、**`issuer.url` に https を強制**する
-  （`IADR-0084` の 2026-07-25 追記が単一情報源。実測エラー `URL scheme must be https`。
+  （`IADR-0084`（Superseded by `IADR-0105`）の 2026-07-25 追記が単一情報源。実測エラー `URL scheme must be https`。
   `k3s v1.35.4+k3s1` で apiserver が 10 回連続起動失敗＝クラスタ停止を起こしている）
 - しかも **https にするだけでは足りない**。apiserver がその証明書を検証できる
   （`oidc-ca-file` に渡せる）**安定した CA が k8s の中に存在する**必要がある
@@ -95,16 +95,38 @@ related_specs:
 | --- | --- |
 | `docs/specs/20260720_issue-356_local-edge-aggregation.md:78` | **point-in-time の記録**。#356 着手時点の対象外を書いたもので、後から書き換えない（`traceability.repo.md` の Superseded 引用書式：確定済みの `docs/specs/` は書き換えない） |
 | `docs/specs/20260721_issue-353_grafana-edge-oidc-url.md:54` | 同上 |
-| 軸 2 のうち 16 件（`deploy/local/README.md:74`・`argocd/README.md:62`・`observability/README.md:71`・`vault/README.md:10,52`・`vault/eso/vault-auth-rbac.yaml:5`・`vault/oidc/policies/admin.hcl:2`・`IADR-0077:79,93`・`docs/adr/README.md:133`・`docs/security/security.md:184`・specs 4 件・`scripts/check-cross-repo-refs.js:534`） | **TLS と無関係の「Tier 3」**（Hetzner 実 stand-up・Vault 本番運用・可観測性の本番リテンション・検査器のフィクスチャ）。本子は**エッジ TLS の Tier 境界だけ**を動かす |
+| 軸 2 のうち **18 件**（`deploy/local/README.md:74`・`argocd/README.md:62`・`observability/README.md:71`・`vault/README.md:10,52`・`vault/eso/vault-auth-rbac.yaml:5`・`vault/oidc/policies/admin.hcl:2`・`IADR-0077:79,93`・`docs/adr/README.md:133`・`docs/security/security.md:184`・**specs 6 件**〔`20260719_issue-24:47,:68`・`20260720_issue-348:78`・`20260721_issue-353_vault-keycloak-oidc:68`・`20260807_issue-507:47`・`20260810_issue-583:165`〕・`scripts/check-cross-repo-refs.js:534`） | **TLS と無関係の「Tier 3」**（Hetzner 実 stand-up・Vault 本番運用・可観測性の本番リテンション・検査器のフィクスチャ）。本子は**エッジ TLS の Tier 境界だけ**を動かす |
+
+**軸 2 の引き算を見せる（規則 8）**: 生ヒット **20 件** − 是正 **2 件**（`edge/README.md:77` / `:117`）
+= 除外 **18 件**。
+> **［是正 / クロス監査］当初ここは「specs 4 件」＝除外 16 件と書いており、`20 − 2 = 18` に閉じていなかった。**
+> `git grep -nI "Tier 3" dca76ce -- docs/specs | wc -l` を引き直すと **6 件**である。
+> **除外の妥当性は変わらないが、引き算が合わない書き方は追試で再現しない。**
 | `deploy/helm/microservices-platform/**`（本番像） | **本子は経路B（`deploy/local/`）に閉じる**。本番は Istio Ingress Gateway が `edge-tls` を参照する形（`ADR-0023` の想定）で、子 4（#782）が扱う |
 | `docs/adr/IADR-0103`（admin entrypoint 平文 http の根拠） | admin:50000 の TLS 化を**本子のスコープに入れない**ため（下記 §3.2）。触らない |
 
 ### 2.4 規則 10 —— この是正で新たに誤りになる自分の記述
 
-**是正後の語（`cert-manager` / `edge-tls` / `ClusterIssuer`）で引き直したところ、
-本子が新設するもの以外に既存の記述は 0 件**であった。
-`deploy/` 配下の cert-manager 資産は 0 件であり（`cert-manager|certmanager|ClusterIssuer|letsencrypt|mkcert` で走査）、
-クラスタにも Namespace / CRD が無い。**したがって「新たに誤りになる自分の記述」は生じない。**
+是正後の語で base（`dca76ce`）を引き直し、**引き算を見せる**（規則 8）。
+
+```
+$ git grep -nIiE "cert-manager|certmanager|ClusterIssuer|letsencrypt|mkcert|edge-tls" dca76ce \
+    -- . ':!planning' ':!src/ai-stock-trading' | wc -l
+9
+```
+
+**生ヒット 9 件 − point-in-time 4 件 − 別紙とその自己試験 5 件 = 追随が要るもの 0 件。**
+
+| 除外 | 内訳 | 理由 |
+| --- | --- | --- |
+| point-in-time 4 件 | `IADR-0170:47`・`docs/specs/` 3 件 | 決定当時の記録。後から書き換えない |
+| 別紙 ＋ 自己試験 5 件 | `docs/how-to/plan-id-range-history-annex.md:108-109` ＋ `scripts/scripts.repo.test.js:5663,5666` | **計画 pin の鮮度検知の記述**（「cert-manager は未配備」は planning 側の記述の引用）であり、本子が変えるのは実装側の配備であって planning の記述ではない。**自己試験が同じ文字列を固定しているので、触ると検査が落ちる** |
+
+**`deploy/` 配下の cert-manager 資産は 0 件**で、クラスタにも Namespace / CRD が無い。
+**したがって「この是正で新たに誤りになる自分の記述」は生じない。**
+
+> **［是正 / クロス監査］当初ここは「引き直したところ 0 件」とだけ書いていた。**
+> 生の走査は 9 件を返すので、**そのまま追試すると再現しない**。引き算と除外理由を上に置いた。
 
 > **導出値は走査ではなく計算し直した**（規則 10）。上表の件数は本書の執筆前に引いた値であり、
 > **本書自身は追跡下に無い時点で数えている**（規則 8 の自己参照。本書が追跡下に入ると
