@@ -162,10 +162,18 @@ ClusterIssuer(selfSigned)
 > 443（websecure）に載っている Ingress は `platform-frontend-edge` の 1 件だけである。
 > admin:50000 の TLS 化は `IADR-0103` の改定と 7 OIDC クライアントの redirect 追記に波及するため #780 と同時に扱う。
 > **この誤りを固定するテストを足した**（`admin:50000 の Ingress には spec.tls を足さない`）。
+
+> **［着手中の訂正 2］`IADR-0091` の Supersede は決定 3 のみにした。**
+> #779 の受け入れ基準は当初「決定 3 と**決定 5**（issuer は最小案維持）と却下代替案を Supersede する」と
+> 書いていたが、**決定 5 は issuer の話であり、本子は issuer 文字列を 1 バイトも変えない**。
+> 動かさないものを Supersede と書くのは、記録として誤りである。
+> **ただし「決定 5 をいつか Supersede する」という約束が落ちてはいけない**ので、
+> **#780 の受け入れ基準へ明示的に移した**（AI レビューの指摘。約束の行き先が無いまま
+> #779 が `Closes` で閉じると、決定 5 の Supersede が黙って消える）。#779 の受け入れ基準も訂正した。
 | `scripts/k8s-local-up.sh` | `LOCALEDGE=1` ブロックに cert-manager の導入・CRD Established 待ち・`tls/` の apply・証明書 Ready 待ちを足す。**出力メッセージを是正**。**既定経路は 1 バイトも変えない** |
 | `scripts/k8s-local-up.test.js` | `OPTIN_TOKENS` に追加 ＋ `LOCALEDGE=1` の適用固定 ＋ **edge overlay の静的検査** |
-| `docs/adr/IADR-0204_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3・決定 5 と却下代替案を Supersede** |
-| `docs/adr/IADR-0091_local-edge-aggregation-traefik.md` | 決定 3・5 に後継併記（**旧 ID を残す**。`traceability.repo.md` の Superseded 引用書式） |
+| `docs/adr/IADR-0204_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3 のみを Supersede**（決定 5 と却下代替案は #780 の射程。下記） |
+| `docs/adr/IADR-0091_local-edge-aggregation-traefik.md` | **決定 3 のみ**に後継併記（**旧 ID を残す**。`traceability.repo.md` の Superseded 引用書式）。決定 5 の節は無変更 |
 | `docs/adr/README.md` | `IADR-0204` の索引行 |
 | `deploy/local/edge/README.md` | 「実 TLS は対象外（Tier 3）」4 箇所の是正・CA の取り出し手順・mkcert の任意手順 |
 
@@ -186,7 +194,7 @@ cert-manager の CRD は**クラスタに CRD が入る前に `kubectl apply -k`
 | 5 | `OPTIN_TOKENS` に `cert-manager` / `edge-tls` を追加 | 同上（**変異試験**: 既定経路に文字列を混ぜると落ちることを実測する） |
 | 6 | apiserver に触っていない | `IADR-0105` の 4 テストが緑 |
 | 7 | overlay の静的検査 | 新規テスト（`spec.tls.secretName` が `Certificate` の `secretName` と一致・`dnsNames` が Ingress のホスト集合を覆う） |
-| 8 | `IADR-0091` 決定 3・5 の Supersede | `check-adr-numbering.js` ＋ 索引行 |
+| 8 | `IADR-0091` **決定 3 のみ**の Supersede（決定 5 は #780 へ送り、同 issue の受け入れ基準に明記した） | `check-adr-numbering.js` ＋ 索引行 |
 | 9 | 「実 TLS は対象外」の是正 | §2.3 の 8 箇所を走査で確認 |
 
 ## 6. テスト方針
