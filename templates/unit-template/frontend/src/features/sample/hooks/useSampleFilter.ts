@@ -5,9 +5,9 @@ import type { SampleFilter } from '../types';
 //
 // **サーバー状態をここへ持ち込まない**（取得・キャッシュは `api/` の TanStack Query が持つ。ADR-0031）。
 // 画面をまたいで共有するクライアント状態が要る場合は、計画が採用した **Zustand** のストアを
-// feature の `stores/` へ置く（本雛形は Zustand が未導入のため `stores/` を持たない。
-// 空フォルダを置かない規約 = src/README.md「存在しない区分のフォルダは作らない」に従う。
-// 導入は SPA 移行第 4 段 / #493）。
+// feature の `stores/` へ置く。**枠は隣に `stores/`（`.gitkeep` のみ）として在る** ——
+// Zustand 自体は本リポジトリへ未導入のため中身が空なだけである（導入は SPA 移行第 4 段 / #788）。
+// フォルダを消さないこと。消すと次の複製者に「この区分は不要」と伝わる。
 //
 // **絞り込み条件は URL を単一情報源にするのが望ましい**（TanStack Router の `validateSearch` ＋
 // `useSearch({ from })`。IADR-0124 決定 3。共有・再読込・戻る操作で状態が失われない）。

@@ -168,6 +168,12 @@ dotnet build backend.slnx
    - `src/platform/frontend/vite.config.ts` の `resolve.alias`（`@knowledge` と同型）
    - `src/platform/frontend/tsconfig.app.json` の `paths`（型解決用）
 
+   さらに **i18n の抽出対象**（`src/lingui.config.ts` の `catalogs[0].include`）へ
+   `'<rootDir>/<unit>/frontend/src'` を足す。ここはハードコードの列挙で自動認識しない。
+   **足し忘れると、そのユニットの文言が抽出されず未翻訳検査（IADR-0125 決定 4）の外側になる**
+   ——「翻訳漏れ 0 件」に見えて実際は測っていない状態になる。詳細は
+   [how-to](../../docs/how-to/adding-a-unit-submodule.md) §4。
+
    なお本計画に属さないユニットは `group` を宣言せず、合成点の `unitNavGroups` へ**ユニットの機能名**を
    見出しとするグループを 1 要素足す（IADR-0125 決定 9。総称としての「その他」は使わない）。
 5. バージョン固定: submodule の pin を本体 PR で更新（Renovate `git-submodules` で自動化可）。

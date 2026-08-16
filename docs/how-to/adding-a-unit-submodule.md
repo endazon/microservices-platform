@@ -130,6 +130,24 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
     1 → 2 へ部分改定）。合成点以外からの `@<unit>` import は
     ESLint（`no-restricted-imports`、IADR-0057）で禁止される。
 
+- **i18n の抽出対象へ足す**（[`src/lingui.config.ts`](../../src/lingui.config.ts) の `catalogs[0].include`）。
+  ここは**ハードコードの列挙**（`platform/frontend/src` と `knowledge/frontend/src`）であり、pnpm workspace の
+  `'*/frontend'` のような自動認識をしない。**足し忘れると、そのユニットの `msg` / `Trans` が
+  `pnpm run i18n` の抽出対象に入らず、未翻訳キーの検査（`check-i18n-catalogs.js`。IADR-0125 決定 4）の
+  外側になる** —— カタログに現れないので「翻訳漏れが 0 件」と見えるが、実際は測っていない。
+
+  ```ts
+  include: [
+    '<rootDir>/platform/frontend/src',
+    '<rootDir>/knowledge/frontend/src',
+    '<rootDir>/<unit>/frontend/src', // ← 追加
+  ],
+  ```
+
+  **グロブ（`*/frontend/src`）へ置き換えないこと。** 抽出対象は「**本リポジトリが所有するユニット**」に
+  限る決まりで、別プロジェクトの submodule（`ai-stock-trading`。IADR-0120）は含めない
+  （同ファイル冒頭のコメントが理由を述べている）。グロブにすると AST を巻き込む。
+
 ## 5. 単独ビルド規約（submodule 配置時に共通設定を上書きしない）
 
 - 共通 MSBuild 設定（`src/Directory.Build.props` / `Directory.Packages.props`）は `src/` 直下の**単一情報源**で、
