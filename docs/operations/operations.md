@@ -12,7 +12,7 @@ related_ids:
   - ADR-0030
 author: claude
 created: 2026-07-04
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -165,13 +165,29 @@ docker compose -f deploy/docker-compose.yml up -d
 > 恒久化（Keycloak realm/runtime state の保持）は #324 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md)
 > で **opt-in（`PERSIST=1`）** を追加した（下記「経路B の永続化」節）。
 
-#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md) / #324）
+#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md) / #324、[IADR-0210](../adr/IADR-0210_local-k8s-observability-persistence.md) / #787）
 
 `PERSIST=1 bash scripts/k8s-local-up.sh` で [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
-オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）と Postgres
-（`/var/lib/postgresql/data`）を `local-path` PVC で永続化**する。realm + runtime state（追加ユーザー・シークレット・
-セッション）と全アプリ DB が Pod 再起動でも保持される。**既定（`PERSIST` 未設定）は従来どおり emptyDir（挙動不変・
-fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**。qdrant/rabbitmq/redis/otel は emptyDir 継続。
+オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）・Postgres
+（`/var/lib/postgresql/data`）・Qdrant（`/qdrant/storage`）を `local-path` PVC で永続化**する。realm + runtime state
+（追加ユーザー・シークレット・セッション）・全アプリ DB・コレクション/ベクトルが Pod 再起動でも保持される。
+**`OBSERVABILITY=1` を併用**すると [`deploy/local/observability-persistence`](../../deploy/local/observability-persistence/)
+が素の観測 overlay を**置換**し、**Prometheus（`/prometheus`）・Loki（`/tmp/loki`）・Tempo（`/tmp/tempo`）・
+Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 config の storage パスと一致させ、config は書き換えない）。
+**既定（`PERSIST` 未設定）は従来どおり emptyDir（挙動不変・fail-safe。provisioner 不在クラスタでも Pod Pending 化しない）**。
+**rabbitmq/redis/otel は emptyDir 継続**（queue/cache は揮発前提・otel は stateless。**qdrant は #787 で永続化対象へ移った**）。
+
+- **Prometheus の保持期間**は `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` を
+  args で明示する（[`deploy/local/observability/prometheus.yaml`](../../deploy/local/observability/prometheus.yaml) の base
+  ＝ `PERSIST` の有無に関わらず効く）。**`size` を PVC 容量（5Gi）未満に置いてあるため、流入が増えても
+  PVC 満杯で書き込み不能になることはない**（IADR-0210 決定 3）。compose にも同じ 2 引数がある（パリティ）。
+- **Loki / Tempo の Pod は root で動く**（`runAsUser: 0` / `runAsGroup: 0`）。compose の `user: "0:0"`
+  （IADR-0079 §3 の実測＝空ボリュームが root 所有で生成され非 root イメージが書けない）と同じ理由である。
+  **Prometheus / Grafana には付けない**（compose も付けておらず現に動いている）。
+- **★ 稼働クラスタでの受け入れは未了**（#787 時点）。実装環境に `kubectl`/`helm`/`k3d`/`kustomize` が無く、
+  「Pod 再起動でデータが残る」「保持期間が実効している」は**測っていない**。配備時に
+  `kubectl -n platform-infra get pvc`（有効にしたゲートの PVC が**すべて** Bound であること）と
+  `curl prometheus:9090/api/v1/status/runtimeinfo` の `storageRetention` を確認すること。
 
 - **realm 更新の反映**（compose 側と同じ運用差分）: 永続化後は `--import-realm` が既存 realm をスキップするため、
   `realm.json` の編集は自動反映されない。反映するには **(A 破壊的)** `keycloak-data` PVC を消して Pod 再作成で再 import
