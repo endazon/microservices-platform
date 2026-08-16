@@ -44,9 +44,13 @@ jobs:
         with:
           node-version: "20"
       - name: Check PR title (squash subject)
-        # タイトル・作成者は環境変数経由で渡し、シェル展開による注入を避ける。
+        # タイトル・作成者・PR 番号は環境変数経由で渡し、シェル展開による注入を避ける。
         # bot の除外・Revert / [skip ci] の除外・空タイトル時の fail-open はスクリプト側が担う。
+        #
+        # PR_NUMBER は末尾 `(#NNN)` が **PR 自身の番号**かを見るために渡す（#799）。
+        # 渡さない構成（コミット件名モード）では従来どおり形状だけを見る。判定はスクリプト側。
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/check-commit-messages.js
