@@ -1086,6 +1086,10 @@ msgid "文書編集"
 msgstr "Document editing"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "既定のライフサイクル状態"
+msgstr "Default lifecycle state"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "Default confidentiality"
 
@@ -1121,6 +1125,14 @@ msgstr "When left blank, the reserved value {UNRESOLVED_DEPARTMENT} is stored."
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "未同期"
 msgstr "Not synchronised"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "未指定"
+msgstr "Unspecified"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
+msgstr "The default value {DEFAULT_LIFECYCLE} is used when left unspecified."
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "本文"

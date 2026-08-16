@@ -4131,7 +4131,14 @@ module.exports = ({ ok, assert }) => {
       const { out } = runXrepo();
       // 文言そのものではなく「除外した対象と件数を名指ししている」ことを見る
       // （文言を固定すると、説明を足すたびに兄弟が取り残される。本 PR で 2 度踏んだ）。
-      assert.match(out, /scripts\/[^\d]*\d+ 件は検査していません/, out);
+      // ★ #790: キット版へ差し替えた際に文言が「除外 N 件（scripts/ の非 Markdown）」へ変わった。
+      //   **意図（対象と件数を名指しする）は同じ**なので、旧文言と新文言の両方を受ける形へ広げた
+      //   —— ここで新文言だけへ書き換えると、キットが元の言い回しへ戻ったときに黙って外れる。
+      assert.match(
+        out,
+        /除外 \d+ 件（scripts\/[^）]*）|scripts\/[^\d]*\d+ 件は検査していません/,
+        out,
+      );
     });
 
     // ★★ 直したものを捕まえるか、実データで確かめる（#675 の教訓）。
@@ -4165,7 +4172,12 @@ module.exports = ({ ok, assert }) => {
     });
 
     ok('check-cross-repo-refs: 除外は scripts/ の 1 本（名指しリストへ戻っていない）', () => {
-      assert.deepStrictEqual(xrepo.EXCLUDED_DIRS, ['scripts/']);
+      // ★ #790: キット版は EXCLUDED_DIRS を export しないため、**振る舞い**で同じ性質を固定する
+      //   （export を 1 行足す固有デルタより、振る舞いで見るほうがキット追随の摩擦が小さい）。
+      //   まだ存在しないファイル名が除外されることが「名指しリストではない」ことの証拠である。
+      assert.ok(xrepo.isExcluded('scripts/zz-not-yet-written-checker.js'), 'scripts/ 配下が除外されない');
+      assert.ok(!xrepo.isExcluded('scripts/README.md'), 'scripts/ の .md まで除外している');
+      assert.ok(!xrepo.isExcluded('docs/how-to/anything.yml'), 'scripts/ 以外まで除外している');
     });
 
     // ★★ 走査範囲を「広げた」はずが、以前見ていたものを落としていないか。
@@ -4202,12 +4214,20 @@ module.exports = ({ ok, assert }) => {
     });
 
     // 廃止した関数が戻っていないか（「後方互換」と書きながら誰も呼んでいなかった）。
-    ok('check-cross-repo-refs: 使われない trackedMarkdown を復活させていない', () => {
-      assert.strictEqual(
-        typeof xrepo.trackedMarkdown,
-        'undefined',
-        '呼び出し元の無い関数を「後方互換」の名目で残さない（PR #679 レビュー 🟢）',
+    //
+    // ★ #790: キット版へ差し替えたことで `trackedMarkdown` が戻った（キット側は内部で
+    //   一度も呼んでいない＝未使用の export である）。**本リポの都合で消すと固有デルタが
+    //   1 つ増える**ため、ここでは「戻っていない」ではなく **「主経路が使っていない」**
+    //   —— つまり走査が `*.md` だけへ縮んでいないこと —— を固定する形へ変えた。
+    //   未使用 export そのものはキットへ環流する（本 PR の作業仕様書「環流の起票案」）。
+    ok('check-cross-repo-refs: 走査の主経路が trackedMarkdown（.md だけ）へ戻っていない', () => {
+      const src = require('fs').readFileSync(path.join(SCRIPTS, 'check-cross-repo-refs.js'), 'utf8');
+      const main = src.slice(src.indexOf('function main('));
+      assert.ok(
+        !/trackedMarkdown\(/.test(main),
+        'main() が trackedMarkdown を呼んでいる（走査が *.md だけへ戻っている）',
       );
+      assert.ok(/trackedFiles\(/.test(main), 'main() が追跡下の全ファイル走査を使っていない');
     });
 
     // --- NFR / #757: キット版の createChecker 構造を載せたことの門 -------------------
@@ -4219,13 +4239,17 @@ module.exports = ({ ok, assert }) => {
     // 入れると正当な自リポ参照を 22 件止める**（#507 の実測）。
 
     ok('check-cross-repo-refs #757: 既定設定が自リポ名を他リポ側へ混ぜていない', () => {
-      const names = [...Object.keys(xrepo.CROSS_REPOS), ...Object.values(xrepo.CROSS_REPOS)];
-      for (const self of xrepo.SELF_NAMES) {
+      // ★ #790: キット版は CROSS_REPOS / SELF_NAMES を直接 export せず、
+      //   `LONG_NAMES`（= 既定の crossRepos）と `DEFAULT_CHECKER.selfNames` から取る。
+      const crossRepos = xrepo.LONG_NAMES;
+      const selfNames = xrepo.DEFAULT_CHECKER.selfNames;
+      const names = [...Object.keys(crossRepos), ...Object.values(crossRepos)];
+      for (const self of selfNames) {
         assert.ok(!names.includes(self), `自リポ名 ${self} が CROSS_REPOS に混ざっている`);
       }
       // 自リポ名は空でない（空にすると検証が素通りする＝門が無効化される）。
-      assert.ok(xrepo.SELF_NAMES.length > 0, 'SELF_NAMES が空（設定の妥当性検査が効かない）');
-      assert.ok(xrepo.SELF_NAMES.includes('MSP'), '規約が定める自リポ短縮形 MSP が抜けている');
+      assert.ok(selfNames.length > 0, 'SELF_NAMES が空（設定の妥当性検査が効かない）');
+      assert.ok(selfNames.includes('MSP'), '規約が定める自リポ短縮形 MSP が抜けている');
     });
 
     // ★ 変異試験。**「検証を入れた」と言えるのは、壊した設定を実際に拒むときだけである。**
@@ -7127,10 +7151,25 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
-    // ③ traceability.md は分類 A（キットとバイト一致）で、固有規範は companion に在る。
-    ok('#755: traceability.md は分類 A に在り、companion が固有規範を持つ', () => {
+    // ③ traceability.md は**キット土台**で、固有規範は companion に在る。
+    //
+    // ★★ #790: 分類 A（バイト一致）→ B（X・期限つき暫定）へ移した。キット版が 8cae89d で
+    //   +3,002B 育ち（本リポの環流 planning#373 / planning#374 が受理された結果）、そのまま
+    //   取り込むと必読規約の合計が予算 51,200B を超えて予算試験が fail するためである
+    //   （**超過量は母数が動くたびに変わるので書かない**。下の #790 ラチェットがライブ計算する）。
+    //   **「C に戻っていない」ことは引き続き固定する**（planning#363 の名指し 1 件目）。
+    ok('#790: traceability.md はキット土台のまま（C へ戻っていない）で、companion が固有規範を持つ', () => {
       const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));
-      assert.ok(t.classes.A.includes('.claude/rules/traceability.md'), 'traceability.md が分類 A に無い（planning#363 の名指し 1 件目）');
+      const inA = t.classes.A.includes('.claude/rules/traceability.md');
+      const inB = Object.prototype.hasOwnProperty.call(t.classes.B, '.claude/rules/traceability.md');
+      assert.ok(inA || inB, 'traceability.md が分類 A にも B にも無い（追随の対象から外れている）');
+      if (inB) {
+        assert.match(
+          t.classes.B['.claude/rules/traceability.md'],
+          /^X\. /,
+          '分類 B に置くなら X（5 種に当たらない）を名乗ること。恒久的に正しいデルタではない',
+        );
+      }
       assert.ok(!t.classes.C.includes('.claude/rules/traceability.md'), 'traceability.md が C に残っている');
       assert.ok(!t.classes.C.includes('scripts/check-cross-repo-refs.js'), 'check-cross-repo-refs.js が C に残っている（planning#363 の名指し 2 件目）');
       assert.ok(t.classes.A.includes('scripts/check-kit-sync.js'), 'check-kit-sync.js が分類 A に無い（キット版へ差し替えたはず）');
@@ -7147,7 +7186,7 @@ module.exports = ({ ok, assert }) => {
       if (fs.existsSync(KIT)) {
         const kit = fs.readFileSync(path.join(KIT, '.claude/rules/traceability.md'));
         const mine = fs.readFileSync(path.join(REPO, '.claude/rules/traceability.md'));
-        assert.ok(kit.equals(mine), 'traceability.md がキットとバイト一致でない');
+        if (inA) assert.ok(kit.equals(mine), 'traceability.md がキットとバイト一致でない');
         // 届いていなかったキット是正 3 件（planning#349 表記是正 / planning#350 規則 8 / planning#354 IADR 誤引用）が入っている
         const k = mine.toString('utf8');
         assert.ok(!/planning issue #\d+/.test(k), 'planning#349 の表記是正が入っていない');
@@ -7156,6 +7195,33 @@ module.exports = ({ ok, assert }) => {
       } else {
         console.log('notice: planning が未 populate のため、#755 のバイト一致は検査していない（この範囲は検査されていない）。');
       }
+    });
+
+    // ★★ #790 のラチェット: **保留の根拠が消えたら fail する。**
+    //
+    // 分類 B（X）に置いた理由は「キット版を取り込むと必読規約の予算を超える」という**実測**である。
+    // 減量（#793）が着地して超えなくなったら、保留の根拠はその瞬間に消える。**そのとき本試験が
+    // 落ちて追随を促す** —— 理由欄に「暫定」と書くだけでは、誰も期限を確かめない。
+    ok('#790: traceability.md の追随保留は「予算を超える」実測が支えている（消えたら追随する）', () => {
+      const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));
+      const deferred = Object.prototype.hasOwnProperty.call(t.classes.B, '.claude/rules/traceability.md');
+      if (!deferred) return; // 既に分類 A へ戻っている＝追随済み
+      if (!fs.existsSync(KIT)) {
+        console.log('notice: planning が未 populate のため、#790 の保留根拠は検査していない（この範囲は検査されていない）。');
+        return;
+      }
+      const { BUDGET_BYTES } = require('./check-reading-budget.js');
+      const size = (f) => fs.statSync(f).size;
+      // キット版へ差し替えた「もしも」の合計。母集合の定義は check-reading-budget.js が正。
+      const would =
+        size(path.join(REPO, 'CLAUDE.md')) +
+        size(path.join(KIT, '.claude/rules/traceability.md')) +
+        size(path.join(REPO, '.claude/rules/traceability.repo.md'));
+      assert.ok(
+        would > BUDGET_BYTES,
+        `キット版を取り込んでも予算内（${would}B <= ${BUDGET_BYTES}B）である。` +
+          '保留の根拠が消えたので .claude/rules/traceability.md をキット原文で上書きし、分類 A へ戻すこと（#793）',
+      );
     });
 
     // ② 必読規約の母集合の検査器。

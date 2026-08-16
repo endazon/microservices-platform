@@ -1,10 +1,10 @@
 # トレーサビリティ規約（本リポジトリ固有）
 
-`traceability.md`（キット配布物・分類 A）を補う **microservices-platform 固有**の規範を置く。配布物は直接編集しない。同ディレクトリの `*.md` は自動適用される（[[IADR-0201]]）。
+`traceability.md`（キット配布物）を補う **microservices-platform 固有**の規範を置く。配布物は直接編集しない。同ディレクトリの `*.md` は自動適用される（[[IADR-0201]]）。
 
 ## 起点 ID の種別（固有）
 
-- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0046`（**欠番なし**。**走査基準: planning `4d6a7d6`**。引き直しの記録（5 世代分）は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)）。
+- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0046`（**欠番なし**。**走査基準: planning `8cae89d`**。引き直しの記録（5 世代分）は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)）。
 - **`Proposed` でも ID としては実在する**（[[IADR-0119]] 決定 2）。
 - **着手条件は FR 単位で読む。** 範囲の正は計画 `ADR-0037` の「着手可否の注記」であり**ここへ転記しない**（[[IADR-0142]]）。
 - **CI は計画 ADR の実在性を守っていない**（別紙 §3）。
