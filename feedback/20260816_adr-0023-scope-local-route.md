@@ -11,8 +11,8 @@ source_repo: microservices-platform
 source_ref: "PR #792 / docs/adr/IADR-0205_local-edge-tls-cert-manager.md / docs/specs/20260816_issue-779_edge-tls-termination.md"
 author: claude
 created: 2026-08-16
-dispatched: false
-planning_issue:
+dispatched: true
+planning_issue: 383
 ---
 
 # ADR-0023 の適用範囲（経路B を含むか）が本文から読み取れない
