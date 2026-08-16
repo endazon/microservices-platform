@@ -5249,18 +5249,35 @@ module.exports = ({ ok, assert }) => {
     });
 
     // ★ #718 が別紙へ 1 世代足して入口の「4 世代分」を取り残した型（母集合の規則 8）。
-    //   同じ数を 2 箇所に持つ限り、機械で突き合わせないと必ずずれる。
-    ok('#724: 入口が言う世代数と、別紙が言う世代数が一致する', () => {
+    //   当初は「入口の数 == 別紙の数」を突き合わせていたが、**それでも腐った** ——
+    //   #795 が同じ括弧の中で pin だけ前進させ、「5 世代」を据え置いた。実体は 8 世代あり、
+    //   2 箇所が**揃って古い**ので一致検査は緑のままだった（波末クロス監査 🟡 / #793）。
+    // ★★ よって固定する性質を変える: **導出値（世代数）をどちらも持たないこと**。
+    //   数が無ければ「揃って古くなる」こともできない（[[IADR-0141]] 決定 1 の規則 10）。
+    //   導線（入口 → 別紙）と、別紙が実体を持つことは引き続き見る。
+    ok('#724 / #793: 世代数という導出値を入口も別紙も持たない（導線と実体は残る）', () => {
       const t = readEntry();
       const a = fs.readFileSync(path.join(REPO, ANNEX), 'utf8');
-      const e = t.match(/引き直しの記録（(\d+) 世代分）/);
-      const n = a.match(/それ以前の (\d+) 世代で引き直した記録/);
-      assert.ok(e, '入口から「引き直しの記録（N 世代分）」が消えた');
-      assert.ok(n, '別紙から「それ以前の N 世代で引き直した記録」が消えた');
-      assert.strictEqual(
-        e[1],
-        n[1],
-        `世代数が食い違う（入口 ${e[1]} / 別紙 ${n[1]}）。pin を進めたら両方を追随させること`,
+      // 1. 導出値が復活していないこと（入口・別紙とも）
+      for (const [label, text] of [['入口', t], ['別紙', a]]) {
+        const m = text.match(/(\d+)\s*世代(分|で引き直)/);
+        assert.strictEqual(
+          m,
+          null,
+          `${label}に世代数「${m && m[0]}」が戻っている。母数（別紙の記録）が増えるたびに腐る導出値であり、` +
+            '数を書かずに参照だけ残すこと（#793）',
+        );
+      }
+      // 2. 導線が残っていること（数を消したついでに参照ごと落とす事故を防ぐ）
+      assert.match(t, /引き直しの記録は別紙/, '入口から別紙への導線（引き直しの記録）が消えた');
+      assert.match(t, /plan-id-range-history-annex\.md/, '入口が別紙を指していない');
+      // 3. 別紙が実体を持っていること。**実体は「pin の遷移」の件数で測る**（宣言ではなく走査）。
+      const generations = new Set(
+        [...a.matchAll(/`[0-9a-f]{7}` → `[0-9a-f]{7}`/g)].map((m2) => m2[0]),
+      );
+      assert.ok(
+        generations.size >= 5,
+        `別紙の引き直し記録が ${generations.size} 世代しか無い（記録ごと消えている可能性）`,
       );
     });
 
@@ -7254,10 +7271,17 @@ module.exports = ({ ok, assert }) => {
     // 分類 B（X）に置いた理由は「キット版を取り込むと必読規約の予算を超える」という**実測**である。
     // 減量（#793）が着地して超えなくなったら、保留の根拠はその瞬間に消える。**そのとき本試験が
     // 落ちて追随を促す** —— 理由欄に「暫定」と書くだけでは、誰も期限を確かめない。
-    ok('#790: traceability.md の追随保留は「予算を超える」実測が支えている（消えたら追随する）', () => {
+    //
+    // ★★ #793: 減量が着地し、分類 A へ戻した。**この試験は消さない。**
+    //   消すと、次に保留するとき（B へ戻すとき）に**根拠を検査する装置ごと失われる**。
+    //   [[IADR-0204]] 決定 1 の「保留の根拠そのものを機械が検査する」は traceability.md 固有の
+    //   話ではなく、キット追随一般の規律だからである。
+    //   代わりに**分類 A の側でも空振りしない形へ**変えた ——「A に居るなら、キット原文を
+    //   取り込んだ状態で予算内であること」。これは B 側の言明の対偶であり、**将来の加筆で
+    //   予算を割ったとき「追随を維持できない」ことを先に鳴らす**（[[IADR-0205]] 決定 3）。
+    ok('#790 / #793: traceability.md の分類とキット原文の予算適合が一致している', () => {
       const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));
       const deferred = Object.prototype.hasOwnProperty.call(t.classes.B, '.claude/rules/traceability.md');
-      if (!deferred) return; // 既に分類 A へ戻っている＝追随済み
       if (!fs.existsSync(KIT)) {
         console.log('notice: planning が未 populate のため、#790 の保留根拠は検査していない（この範囲は検査されていない）。');
         return;
@@ -7269,11 +7293,22 @@ module.exports = ({ ok, assert }) => {
         size(path.join(REPO, 'CLAUDE.md')) +
         size(path.join(KIT, '.claude/rules/traceability.md')) +
         size(path.join(REPO, '.claude/rules/traceability.repo.md'));
-      assert.ok(
-        would > BUDGET_BYTES,
-        `キット版を取り込んでも予算内（${would}B <= ${BUDGET_BYTES}B）である。` +
-          '保留の根拠が消えたので .claude/rules/traceability.md をキット原文で上書きし、分類 A へ戻すこと（#793）',
-      );
+      if (deferred) {
+        // B（X・期限つき暫定）に居るなら、**保留の根拠が実測で生きている**こと。
+        assert.ok(
+          would > BUDGET_BYTES,
+          `キット版を取り込んでも予算内（${would}B <= ${BUDGET_BYTES}B）である。` +
+            '保留の根拠が消えたので .claude/rules/traceability.md をキット原文で上書きし、分類 A へ戻すこと（#793）',
+        );
+      } else {
+        // A に居るなら、**追随を維持できる**こと。割るのは他 2 ファイルの加筆だけである。
+        assert.ok(
+          would <= BUDGET_BYTES,
+          `分類 A（キット原文と同期）なのに、キット原文込みで予算を超える（${would}B > ${BUDGET_BYTES}B）。` +
+            'CLAUDE.md か companion の加筆が追随を維持できなくしている。' +
+            '正本・別紙へ畳んで捻出すること（[[IADR-0205]] 決定 3 / [[IADR-0190]] 決定 4）',
+        );
+      }
     });
 
     // ② 必読規約の母集合の検査器。
