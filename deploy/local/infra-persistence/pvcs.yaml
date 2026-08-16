@@ -28,3 +28,20 @@ spec:
   resources:
     requests:
       storage: 1Gi
+---
+# IADR-0210 / Issue #787: Qdrant のベクトルインデックス（/qdrant/storage）を永続化する。
+# IADR-0082 は「再生成可能な派生データ」として対象外にしていたが、**再生成の費用が無視できない**
+# （埋め込み生成は LLM/TEI 呼び出しを伴い、コーパス規模に比例して時間と API 費用がかかる）。
+# 加えて Pod は日次規模で再起動しており、そのたびに索引が消える（実測: コレクション 0 件）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-storage
+  namespace: platform-infra
+  labels: { app: qdrant }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

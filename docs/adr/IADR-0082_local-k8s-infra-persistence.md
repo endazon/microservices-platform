@@ -7,9 +7,10 @@ related_ids:
   - ADR-0004
   - IADR-0066
   - IADR-0079
+  - IADR-0210
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)"
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性)"
@@ -114,5 +115,18 @@ H2 永続化後は `--import-realm` が **既存 realm をスキップ**（既�
 - **qdrant / rabbitmq / redis / otel も PVC 化**: qdrant embeddings は再生成可能な派生データ（dev で再 ingest はまれ）、
   rabbitmq/redis は queue/cache で揮発前提、otel は stateless。損失影響が低く issue でも「必要に応じて」＝任意のため、
   スコープを Keycloak/Postgres に絞る（過剰実装を避ける）。qdrant は要すれば同型（PVC + patch）で拡張可能。
+
 - **StatefulSet 化**: Deployment のまま volumeClaim を PVC 参照へ差し替える方が変更が小さく、単一レプリカ dev では
   StatefulSet の順序保証・安定ネットワーク ID は不要。churn を避け Deployment を維持する。
+
+> **［2026-08-16 追記 / #787］上の「qdrant は要すれば同型で拡張可能」が予告した拡張を [[IADR-0210]] が行った。**
+> **qdrant は対象へ入った** —— 「再生成可能」という判断自体は正しいが、**再生成の費用が無視できない**
+> （埋め込み生成は LLM / TEI 呼び出しを伴い、コーパス規模に比例して時間と API 費用がかかる）。
+> 加えて Pod は日次規模で再起動しており、**実測でコレクションは 0 件**だった。
+> あわせて **Prometheus / Loki / Tempo / Grafana** も対象へ入った ——
+> 本 ADR の `PERSIST` は `INFRA_KUSTOMIZE` しか差し替えておらず、**`deploy/local/observability` には
+> 一切効いていなかった**（実測）。**rabbitmq / redis / otel は対象外のまま**である。
+>
+> **本 ADR の決定 1〜4 は有効。** [[IADR-0210]] が足したのは対象と、
+> **PVC を掴む Deployment の `strategy: Recreate`** である。本 ADR はこれを付けておらず、
+> postgres / keycloak が `ReadWriteOnce` + `RollingUpdate` のままだった（[[IADR-0210]] が遡って付けた）。

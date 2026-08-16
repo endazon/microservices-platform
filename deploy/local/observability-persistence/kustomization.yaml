@@ -1,0 +1,114 @@
+# IADR-0210 / Issue #787: 経路B 可観測性スタックの永続化オーバーレイ（opt-in）。
+# base（deploy/local/observability）に PVC を足し、Prometheus / Loki / Tempo / Grafana の
+# データディレクトリを PVC 参照へ差し替える。
+# 適用: kubectl apply -k deploy/local/observability-persistence
+#   （scripts/k8s-local-up.sh は OBSERVABILITY=1 かつ PERSIST=1 で本ディレクトリを選ぶ）
+# 既定（PERSIST 未設定）は base が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。
+#
+# **base の 4 つはいずれもデータ用 volume を持たない**（volumes は ConfigMap のみ）ため、
+# 差し替える対象が無い。したがって infra-persistence の keycloak と同型で
+# volume と volumeMount の**両方を末尾追加（`op: add ... /-`）**する。
+# インデックス依存が無いので、base の volumes 順序が変わっても壊れない。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../observability
+  - pvcs.yaml
+
+patches:
+  # Prometheus: TSDB は `--storage.tsdb.path` が既定の相対パス `data/` で、WORKDIR が /prometheus。
+  # 実効パスは /prometheus/data なので **/prometheus をマウントすれば覆える**（実測で確定）。
+  - target:
+      kind: Deployment
+      name: prometheus
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /prometheus
+      # 保持期間を明示する。base の args には retention 指定が無く（実測: retention.time=0s＝既定 15d）、
+      # PVC 無しでは実効しても意味が無かった。永続化して初めて上限が要る。
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: "--storage.tsdb.retention.time=15d"
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: "--storage.tsdb.retention.size=4GB"
+  # Loki: config の common.path_prefix が /tmp/loki で、index / index_cache / chunks も同配下（実測）。
+  # **/tmp ではなく /tmp/loki をマウントする** —— /tmp を覆うと Go の os.TempDir() が使う
+  # 一時ファイルまで PVC に載り、/tmp のセマンティクスも壊れる。config は 1 バイトも触らない
+  # （base の loki.yaml は compose の loki-config.yaml と同内容であると宣言しており、崩さない）。
+  - target:
+      kind: Deployment
+      name: loki
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: loki-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /tmp/loki
+  # Tempo: storage.trace.local.path（blocks）と wal.path がどちらも /tmp/tempo 配下なので
+  # PVC 1 本で両方を覆える（実測）。Loki と同じ理由で /tmp そのものは覆わない。
+  - target:
+      kind: Deployment
+      name: tempo
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: tempo-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /tmp/tempo
+  # Grafana: SQLite（/var/lib/grafana/grafana.db）。provisioning 由来（datasources / alerting /
+  # dashboards）は ConfigMap から復元されるが、利用者レコード・手動ダッシュボード・
+  # アラートの silence と state は再生成できない（IADR-0210 決定 2）。
+  - target:
+      kind: Deployment
+      name: grafana
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /var/lib/grafana
+  # IADR-0210 (#787): PVC を掴む Deployment は RollingUpdate では新旧 Pod が同じボリュームを奪い合う。
+  # local-path は単一ノードの hostPath なので **スケジューリングでは詰まらず、アプリのロックで詰まる**
+  # （Prometheus は storage.tsdb.no-lockfile=false を実測。Grafana の SQLite も同様）。
+  - target:
+      kind: Deployment
+      namespace: platform-infra
+      labelSelector: "app in (prometheus,loki,tempo,grafana)"
+    patch: |
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate

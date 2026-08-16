@@ -43,3 +43,30 @@ patches:
         value:
           name: data
           mountPath: /opt/keycloak/data
+  # IADR-0210 (#787): qdrant の storage（base volumes[0]・emptyDir）を PVC 参照へ置換。
+  # mountPath（/qdrant/storage）は base に既にあるので volumeMounts のパッチは不要（postgres と同型）。
+  - target:
+      kind: Deployment
+      name: qdrant
+      namespace: platform-infra
+    patch: |
+      - op: replace
+        path: /spec/template/spec/volumes/0
+        value:
+          name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-storage
+  # IADR-0210 (#787): PVC を掴む Deployment は RollingUpdate では新旧 Pod が同じボリュームを奪い合う。
+  # local-path は単一ノードの hostPath なので **スケジューリングでは詰まらず、アプリのロックで詰まる**
+  # （Prometheus は storage.tsdb.no-lockfile=false を実測。Postgres は postmaster.pid）。
+  # **既存の postgres / keycloak にも無かった**ので、ここで併せて付ける（同じ穴を新規 3 件へ持ち込まない）。
+  # base（emptyDir）側は RollingUpdate のままでよい —— 奪い合うボリュームが無いため。
+  - target:
+      kind: Deployment
+      namespace: platform-infra
+      labelSelector: "app in (postgres,keycloak,qdrant)"
+    patch: |
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate

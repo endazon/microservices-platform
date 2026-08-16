@@ -156,7 +156,16 @@ if [ "${OBSERVABILITY:-}" = "1" ]; then
     apply_secret "$INFRA_NS" grafana-oidc \
       "client-secret=${GRAFANA_OIDC_CLIENT_SECRET:-grafana-dev-secret-change-me}"
   fi
-  kubectl apply -k deploy/local/observability
+  # IADR-0210 (#787): PERSIST=1 なら可観測性側も永続化オーバーレイを選ぶ。
+  # 従来 PERSIST は INFRA_KUSTOMIZE しか差し替えておらず、**observability には一切効いていなかった**
+  # （Prometheus/Loki/Tempo/Grafana はデータ用 volume を持たず、コンテナ層に書いて再起動で全消失していた）。
+  # 既定（PERSIST 未設定）は base のままでコマンド列はバイト等価。
+  OBS_KUSTOMIZE="deploy/local/observability"
+  if [ "${PERSIST:-}" = "1" ]; then
+    OBS_KUSTOMIZE="deploy/local/observability-persistence"
+    echo "    [PERSIST=1] Prometheus/Loki/Tempo/Grafana を PVC 永続化（local-path）"
+  fi
+  kubectl apply -k "$OBS_KUSTOMIZE"
   # otel-collector を forwarding 構成（debug-only から切替）へ反映。
   kubectl -n "$INFRA_NS" rollout restart deploy/otel-collector
   echo "    Grafana: kubectl -n $INFRA_NS port-forward svc/grafana 3000:3000  # http://localhost:3000"

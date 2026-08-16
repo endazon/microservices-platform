@@ -100,8 +100,18 @@ PERSIST=1 bash scripts/k8s-local-up.sh
   （`keycloak-data`/`postgres-data`）も消える**（= realm/DB は再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
 - **既定（`PERSIST` 未設定）は従来どおり `emptyDir`**（挙動不変・後方互換・fail-safe）。`local-path` 等の
-  provisioner が無いクラスタでも既定経路は Pod Pending 化しない。qdrant / rabbitmq / redis / otel は emptyDir 継続
-  （embeddings は再生成可・queue/cache は揮発前提・stateless。詳細は IADR-0082）。
+  provisioner が無いクラスタでも既定経路は Pod Pending 化しない。**rabbitmq / redis / otel は emptyDir 継続**
+  （queue/cache は揮発前提・stateless。詳細は IADR-0082）。
+- **［2026-08-16 / #787・IADR-0210］`PERSIST=1` の対象が広がった。**
+  **qdrant**（`qdrant-storage`）に加え、**`OBSERVABILITY=1` と併用したとき** prometheus / loki / tempo / grafana も
+  PVC 化される（`deploy/local/observability-persistence`）。従来 `PERSIST` は infra 側しか差し替えておらず、
+  **可観測性 4 種はコンテナ書き込みレイヤに書いていて再起動で全消失していた**（Prometheus の実効保持は約 4.7 時間だった）。
+  - **PVC を掴む Deployment は `Recreate`** になる（`ReadWriteOnce` と `RollingUpdate` は両立しない。
+    Prometheus は lockfile が有効で、新旧 Pod が同居すると新 Pod が起動できない）。postgres / keycloak にも遡って付けた。
+  - **⚠️ qdrant を切り替えると既存のコレクションは失われる**（emptyDir → 空 PVC）。
+    残したい場合は切替前に Qdrant の snapshot API（`POST /collections/<name>/snapshots`）で退避する。
+    索引は取り込みパイプラインを回せば再生成できるが、**埋め込み生成には時間と API 費用がかかる**。
+  - リセットは `kubectl -n platform-infra delete pvc qdrant-storage prometheus-data loki-data tempo-data grafana-data`。
 - **⚠️ 既存環境の移行**: 途中から `PERSIST=1` に切り替えると Deployment の volume が差し替わりローリング更新が走る。
   **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
   データで、失う恒久データは無い）。以後の再起動では PVC のデータが保持される。リセットしたいときは PVC を消す:

@@ -1,0 +1,68 @@
+# IADR-0210 / Issue #787: 経路B の可観測性スタックの永続化 PVC。
+# クラスタの local-path provisioner（k3s / Rancher Desktop 同梱・RWO）で動的プロビジョニングする。
+# 適用は opt-in（scripts/k8s-local-up.sh の PERSIST=1 かつ OBSERVABILITY=1）。
+# 既定は base（deploy/local/observability）のまま＝データはコンテナ書き込みレイヤ（後方互換・fail-safe）。
+#
+# securityContext / fsGroup は付けない。local-path provisioner の setup が
+# `mkdir -m 0777` でボリュームディレクトリを作るため、非 root（nobody 65534 / loki 10001 /
+# tempo 10001 / grafana 472）でも書ける（既存 infra-persistence も付けていない）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: platform-infra
+  labels: { app: prometheus }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Loki のインデックスとチャンク。config の `common.path_prefix` が /tmp/loki で、
+# tsdb_shipper と filesystem のパスもすべてその配下（実測で確定）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+  namespace: platform-infra
+  labels: { app: loki }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Tempo のトレースブロックと WAL。config の `storage.trace.local.path` と `wal.path` が
+# どちらも /tmp/tempo 配下なので PVC 1 本で覆える（実測で確定）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data
+  namespace: platform-infra
+  labels: { app: tempo }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Grafana の SQLite（/var/lib/grafana/grafana.db）。
+# データソース・アラート規則・ダッシュボードは ConfigMap から provisioning されるため再生成されるが、
+# **OIDC ログインで作られた利用者レコード・手動作成のダッシュボード・アラートの silence と state は
+# 再生成できない**。IADR-0082 の「再生成可能な派生データは除外」に照らして境界だが、
+# 同じオーバーレイに 1 本足すだけなので含める（IADR-0210 決定 2）。
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: platform-infra
+  labels: { app: grafana }
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi

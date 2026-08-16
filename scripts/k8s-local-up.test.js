@@ -27,7 +27,7 @@ const CLUSTER = 'testcluster'; // 決定的なクラスタ名（既定 msp-ast-d
 // opt-in ゲート由来のリソース識別トークン（既定オフ時にこれらが「不在」であることを固定する）。
 const OPTIN_TOKENS = [
   'deploy/local/infra-persistence', // PERSIST
-  'deploy/local/observability', //     OBSERVABILITY
+  'deploy/local/observability', //     OBSERVABILITY（-persistence も部分一致で覆う）
   'grafana-oidc', //                   OBSERVABILITY (Grafana OIDC secret, IADR-0090)
   'deploy/local/vault', //             VAULT
   'vault-dev-token', //                VAULT (secret)
@@ -275,6 +275,33 @@ ok('OBSERVABILITY=1: observability を apply・grafana-oidc secret を作成', (
   assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/observability'), 'observability が apply されない');
   // IADR-0090: Grafana generic OAuth の client secret は k8s Secret grafana-oidc 経由（平文コミットなし）。
   assert.ok(anyLineHas(res.lines, 'grafana-oidc'), 'grafana-oidc secret が作られない');
+});
+
+// IADR-0210 (#787): PERSIST は従来 INFRA_KUSTOMIZE しか差し替えておらず、observability には効かなかった。
+ok('OBSERVABILITY=1 かつ PERSIST=1: observability-persistence を apply', () => {
+  const res = runUp({ OBSERVABILITY: '1', PERSIST: '1' });
+  assert.ok(
+    anyLineHas(res.lines, 'apply -k deploy/local/observability-persistence'),
+    'PERSIST=1 なのに observability-persistence が apply されない',
+  );
+  // infra 側も同時に永続化オーバーレイへ切り替わる（従来からの挙動）。
+  assert.ok(anyLineHas(res.lines, 'apply -k deploy/local/infra-persistence'), 'infra-persistence が apply されない');
+});
+
+// IADR-0210 (#787): PERSIST 単独では observability を触らない（OBSERVABILITY=1 が要る）。
+// 「PERSIST を付けたら勝手に可観測性まで立ち上がる」ことが無いのを固定する。
+ok('PERSIST=1 単独: observability には一切触れない', () => {
+  const res = runUp({ PERSIST: '1' });
+  assert.ok(!anyLineHas(res.lines, 'deploy/local/observability'), 'PERSIST 単独で observability が現れた');
+});
+
+// IADR-0210 (#787): OBSERVABILITY 単独（PERSIST 未設定）は base のままでバイト等価。
+ok('OBSERVABILITY=1 単独: base の observability を apply し persistence は現れない', () => {
+  const res = runUp({ OBSERVABILITY: '1' });
+  assert.ok(
+    !anyLineHas(res.lines, 'observability-persistence'),
+    'PERSIST 未設定なのに observability-persistence が現れた（既定のバイト等価が壊れる）',
+  );
 });
 
 // LOCALEDGE=1: k3d cluster create のポートを 80/443/50000 へ切替え、エッジ overlay を apply（IADR-0091・#356）。
@@ -1054,6 +1081,83 @@ ok('#779: http(80) 経路を残している（追加のみ・恒久リダイレ�
     !/entryPoints\.web\.http\.redirections/.test(upSrc),
     'http→https の恒久リダイレクトが入っている（IADR-0206 決定 4 のスコープ外）',
   );
+});
+
+// --- IADR-0210 (#787): 永続化オーバーレイの静的検査 --------------------------
+//
+// 既存の PERSIST テストは **`apply -k <path>` というコマンド文字列しか見ていない**。
+// つまり「PVC が本当に生えるか」は 1 行も検証されていなかった（`postgres-data` /
+// `keycloak-data` は OPTIN_TOKENS にも個別テストにも無い）。
+// CI には `kustomize build` を実行するジョブが無いので、**マニフェストを読んで固定する**
+// （#779 で edge overlay に置いたのと同じ型。本来の形は #783 が扱う）。
+
+const INFRA_PERSIST_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'infra-persistence');
+const OBS_PERSIST_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'observability-persistence');
+const readIf = (p) => fs.readFileSync(p, 'utf8');
+
+// PVC 名を pvcs.yaml から、claimName を kustomization.yaml から抜き出す。
+const pvcNames = (yaml) =>
+  [...yaml.matchAll(/^kind:\s*PersistentVolumeClaim[\s\S]*?^\s{2}name:\s*(\S+)/gm)].map((m) => m[1]);
+const claimNames = (yaml) => [...yaml.matchAll(/^\s*claimName:\s*(\S+)/gm)].map((m) => m[1]);
+
+ok('#787: 永続化オーバーレイの claimName がすべて同じ overlay の PVC を指す', () => {
+  for (const [label, dir] of [['infra', INFRA_PERSIST_DIR], ['observability', OBS_PERSIST_DIR]]) {
+    const declared = new Set(pvcNames(readIf(path.join(dir, 'pvcs.yaml'))));
+    const used = claimNames(readIf(path.join(dir, 'kustomization.yaml')));
+    assert.ok(used.length > 0, `${label}: claimName が 1 件も無い`);
+    for (const c of used) {
+      assert.ok(declared.has(c), `${label}: claimName "${c}" に対応する PVC が pvcs.yaml に無い（無言で Pending になる）`);
+    }
+  }
+});
+
+ok('#787: 可観測性 4 種すべてが PVC を持つ（測って 4 件・直して 3 件にしない）', () => {
+  const kust = readIf(path.join(OBS_PERSIST_DIR, 'kustomization.yaml'));
+  for (const app of ['prometheus', 'loki', 'tempo', 'grafana']) {
+    assert.ok(new RegExp(`claimName:\\s*${app}-data`).test(kust), `${app} の PVC 参照が無い`);
+  }
+  // Qdrant は infra 側（base に emptyDir があるため置換型）。
+  assert.ok(
+    /claimName:\s*qdrant-storage/.test(readIf(path.join(INFRA_PERSIST_DIR, 'kustomization.yaml'))),
+    'qdrant の PVC 参照が infra-persistence に無い',
+  );
+});
+
+ok('#787: PVC を掴む Deployment は Recreate（RWO と RollingUpdate は両立しない）', () => {
+  for (const [label, dir] of [['infra', INFRA_PERSIST_DIR], ['observability', OBS_PERSIST_DIR]]) {
+    const kust = readIf(path.join(dir, 'kustomization.yaml'));
+    assert.ok(/path:\s*\/spec\/strategy/.test(kust), `${label}: strategy のパッチが無い`);
+    assert.ok(/type:\s*Recreate/.test(kust), `${label}: Recreate になっていない`);
+  }
+});
+
+ok('#787: /tmp そのものはマウントしない（Loki / Tempo）', () => {
+  const kust = readIf(path.join(OBS_PERSIST_DIR, 'kustomization.yaml'));
+  // /tmp を覆うと Go の os.TempDir() が使う一時ファイルまで PVC に載り、/tmp の意味も壊れる。
+  assert.ok(!/mountPath:\s*\/tmp\s*$/m.test(kust), 'mountPath が /tmp そのものになっている');
+  assert.ok(/mountPath:\s*\/tmp\/loki/.test(kust), 'Loki の mountPath が /tmp/loki でない');
+  assert.ok(/mountPath:\s*\/tmp\/tempo/.test(kust), 'Tempo の mountPath が /tmp/tempo でない');
+});
+
+ok('#787: base（既定経路）は書き換えていない —— PVC はオーバーレイにしか無い', () => {
+  // 既定（PERSIST 未設定）で local-path provisioner 不在のクラスタでも Pod を Pending にしないための
+  // fail-safe。base に PVC が漏れると既定経路が壊れる。
+  for (const dir of ['infra', 'observability']) {
+    const base = path.join(REPO_ROOT, 'deploy', 'local', dir);
+    for (const f of fs.readdirSync(base).filter((n) => n.endsWith('.yaml'))) {
+      const y = readIf(path.join(base, f));
+      assert.ok(
+        !/persistentVolumeClaim:/.test(y),
+        `base の ${dir}/${f} に persistentVolumeClaim がある（既定経路に PVC を持ち込んでいる）`,
+      );
+    }
+  }
+});
+
+ok('#787: Prometheus の保持期間を明示している（永続化して初めて上限が要る）', () => {
+  const kust = readIf(path.join(OBS_PERSIST_DIR, 'kustomization.yaml'));
+  assert.ok(/--storage\.tsdb\.retention\.time=/.test(kust), 'retention.time の指定が無い');
+  assert.ok(/--storage\.tsdb\.retention\.size=/.test(kust), 'retention.size の指定が無い');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
