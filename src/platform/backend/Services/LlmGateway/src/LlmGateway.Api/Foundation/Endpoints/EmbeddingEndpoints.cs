@@ -54,7 +54,7 @@ public static class EmbeddingEndpoints
 
             try
             {
-                var vector = await provider.EmbedAsync(req.Text, decision.Model, decision.Dimensions, ct);
+                var vector = await provider.EmbedAsync(req.Text, decision.Model, decision.Dimensions, purpose, ct);
 
                 // FR-02: 次元不整合のベクトルはモデル別コレクションの次元と一致しないため索引しない（fail-closed）。
                 // 次元不整合はモデル/設定の不一致であり自動リトライで解消しないため恒久扱い（Retryable=false）。
