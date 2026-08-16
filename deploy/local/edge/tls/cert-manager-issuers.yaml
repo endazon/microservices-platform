@@ -1,0 +1,58 @@
+# IADR-0206 (#779): 経路B のエッジ TLS 終端に使う CA を cert-manager で用意する（opt-in・LOCALEDGE=1）。
+#
+# なぜ 2 段（selfSigned → CA）にするのか:
+#   1 段目の selfSigned が発行するのは葉証明書であり、**検証に使える CA が手元に残らない**。
+#   中間にルート CA を挟むと、その CA が Secret local-edge-root-ca の ca.crt として安定して存在する。
+#   これを apiserver の --oidc-ca-file（#781）と backend の HttpClient 信頼ストア（#780）へ渡す。
+#   Traefik 既定の自己署名は Secret 化されず（メモリ内生成）再起動ごとに変わり、SAN にホスト名も
+#   入らないため、どちらの用途にも使えない（IADR-0206 代替案の表）。
+#
+# 計画 ADR-0023 の設計要件を踏襲する: CA 固有設定は ClusterIssuer に閉じ込め、消費側は CA を知らない。
+# 将来 Let's Encrypt / Vault PKI へ移すときは ClusterIssuer を足して issuerRef を差し替えるだけにする。
+# （*.localhost には ACME 証明書を発行できない＝ローカルの既定 CA が selfsigned になる理由。）
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-edge-selfsigned
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  selfSigned: {}
+---
+# ルート CA。cert-manager 自身が selfSigned Issuer で発行し、ca.crt を含む Secret を作る。
+# Secret は cert-manager の名前空間に置く（CA ClusterIssuer は cluster-scoped で、参照先 Secret を
+# コントローラの名前空間から読むため。--cluster-resource-namespace の既定 = cert-manager）。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: local-edge-root-ca
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  isCA: true
+  commonName: microservices-platform local edge root CA
+  secretName: local-edge-root-ca
+  duration: 87600h # 10 年（ローカル開発用。更新の手間を避ける）
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-edge-selfsigned
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# 葉証明書を発行する CA Issuer。ここから先、消費側（Ingress）は CA の素性を知らない。
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-edge-ca
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  ca:
+    secretName: local-edge-root-ca
