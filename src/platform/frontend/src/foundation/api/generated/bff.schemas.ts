@@ -837,22 +837,6 @@ export interface FeedbackStatsDto {
 }
 
 /**
- * 通知の種別。①個人資料の削除通知（週次 / 7 日前 / 事後。ADR-0037 決定 6）
- * ②保存容量の警告（80% / 95% で各 1 回。ADR-0037 決定 17）
- * ③同期トークンの期限予告（7 日前。ADR-0037 決定 18）
- */
-export type NotificationDtoKind = typeof NotificationDtoKind[keyof typeof NotificationDtoKind];
-
-
-export const NotificationDtoKind = {
-  'private-note-purge-weekly': 'private-note-purge-weekly',
-  'private-note-purge-imminent': 'private-note-purge-imminent',
-  'private-note-purge-done': 'private-note-purge-done',
-  'storage-quota-warning': 'storage-quota-warning',
-  'sync-token-expiry': 'sync-token-expiry',
-} as const;
-
-/**
  * FR-22: 利用者本人へのアプリ内通知 1 件。**本文は件数と期限のみ**で構成され、資料のタイトル・
  * 本文・検索語・回答内容を含まない（ADR-0037 決定 6）。宛先は所有者本人のみである。
  * nullable な 3 項目（count / thresholdPercent / deadline）は種別によって現れ方が違う
@@ -865,7 +849,7 @@ export interface NotificationDto {
      * ②保存容量の警告（80% / 95% で各 1 回。ADR-0037 決定 17）
      * ③同期トークンの期限予告（7 日前。ADR-0037 決定 18）
      */
-  kind: NotificationDtoKind;
+  kind: string;
   /**
      * 件数。①では対象資料の件数、③では対象トークンの件数。②は持たない
      * @minimum 0

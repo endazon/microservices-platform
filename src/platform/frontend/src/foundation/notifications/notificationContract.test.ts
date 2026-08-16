@@ -105,6 +105,20 @@ describe('FR-22 通知の契約（IADR-0215 決定 2）', () => {
     expect(schemaProperties('NotificationReadResultDto').sort()).toEqual(['id', 'unreadCount']);
   });
 
+  // BFF_bff-surface.md §横断の規約 4: 種別の文字列を**閉じた `enum` にしない**。
+  // 閉じると、後段が種別を増やした瞬間に、まだ再デプロイされていない SPA が
+  // **既存の値も解釈できなくなる**（union に無い値は型の上で存在しないことになる）。
+  // 値集合は description が持ち、対応づけは notificationMessages.ts の既定枝つき純関数が持つ。
+  it('kind は閉じた enum ではない（後段が種別を増やしても壊れない）', () => {
+    const generated = GENERATED.slice(
+      GENERATED.indexOf('export interface NotificationDto {'),
+      GENERATED.indexOf('\n}', GENERATED.indexOf('export interface NotificationDto {')),
+    );
+    // 閉じていれば orval は union 型 `NotificationDtoKind` を作って kind へ充てる。
+    expect(generated).toContain('kind: string');
+    expect(GENERATED).not.toContain('NotificationDtoKind');
+  });
+
   // IADR-0132: required の無い応答スキーマは orval が全プロパティを省略可で生成し、型検査の網にならない。
   it('応答スキーマに required が付いている（nullable な 3 項目は入らない）', () => {
     expect(OPENAPI).toContain('required: [id, kind, occurredAt, read]');

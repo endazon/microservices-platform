@@ -2919,13 +2919,11 @@ components:
       properties:
         id: { type: string, format: uuid }
         kind:
+          # ★ **閉じた enum にしない**（BFF_bff-surface.md §横断の規約 4）。閉じると、後段が種別を
+          #   増やした瞬間に、まだ再デプロイされていない SPA が**既存の値も解釈できなくなる**。
+          #   値集合はこの description が持ち、画面側の対応づけは notificationMessages.ts の
+          #   純関数（既定枝つき）が持って単体テストで固定する —— 規約 4 が指示する置き方である。
           type: string
-          enum:
-            - private-note-purge-weekly
-            - private-note-purge-imminent
-            - private-note-purge-done
-            - storage-quota-warning
-            - sync-token-expiry
           description: |
             通知の種別。①個人資料の削除通知（週次 / 7 日前 / 事後。ADR-0037 決定 6）
             ②保存容量の警告（80% / 95% で各 1 回。ADR-0037 決定 17）

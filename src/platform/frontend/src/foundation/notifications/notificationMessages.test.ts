@@ -84,11 +84,15 @@ describe('notificationText (FR-22)', () => {
   });
 
   // 契約が種別を増やしても共通シェルが壊れないこと（クライアントは別々に配布される）。
-  it('未知の種別でも文言が成立する', () => {
-    const text = notificationText(
-      notification({ kind: 'future-kind' as NotificationDto['kind'], count: 4 }),
-    );
-    expect(text).toContain('4');
+  //
+  // ★ **キャストが要らないことに意味がある。** 契約の `kind` は閉じた `enum` ではなく `string`
+  //   である（BFF_bff-surface.md §横断の規約 4）。閉じていた頃はここに
+  //   `as NotificationDto['kind']` が要り、**型の上では到達不能な枝を試している**という
+  //   矛盾を抱えていた。開いたことで、この経路は型の上でも実際に起こり得るものになった。
+  it('未知の種別でも文言が成立し、tone は neutral へ落ちる', () => {
+    const unknown = notification({ kind: 'future-kind', count: 4 });
+    expect(notificationText(unknown)).toContain('4');
+    expect(notificationTone(unknown)).toBe('neutral');
   });
 
   // ★ FR-22 受け入れ基準: 資料のタイトル・本文・検索語・回答内容が文言へ入る余地が無い。
