@@ -3,8 +3,8 @@
  * Do not edit manually.
  * Platform API
  * 社内ナレッジ活用プラットフォーム — BFF + マイクロサービス統合仕様書
- * FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13,
- * UC-01, UC-02, UC-05
+ * FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13, FR-22,
+ * UC-01, UC-02, UC-05, UC-11
  *
  * OpenAPI spec version: 0.1.0
  */
