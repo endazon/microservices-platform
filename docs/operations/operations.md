@@ -191,10 +191,13 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   （Prometheus は `storage.tsdb.no-lockfile=false`・再起動後に `lock` 実在を実測）。IADR-0210 決定 7。
 - **⚠️ PVC の要求容量は縮小できない。** 小さくして既存クラスタへ再 apply すると API サーバが拒否する
   （実測: `spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`）。
-- **★ 稼働クラスタでの受け入れは未了**（#787 時点）。実装環境に `kubectl`/`helm`/`k3d`/`kustomize` が無く、
-  「Pod 再起動でデータが残る」「保持期間が実効している」は**測っていない**。配備時に
-  `kubectl -n platform-infra get pvc`（有効にしたゲートの PVC が**すべて** Bound であること）と
-  `curl prometheus:9090/api/v1/status/runtimeinfo` の `storageRetention` を確認すること。
+- **★ 稼働クラスタで受け入れ済み**（2026-08-16・#787）。**PR #816 を書いた環境には `kubectl`/`helm`/
+  `k3d`/`kustomize` が無く測れなかった**が、同じ #787 を並走実装した **PR #815 の環境（稼働中の k3s）で実測し、
+  PR #819 で書き戻した**。実測: **PVC 7 本すべて `Bound`** ／ **strategy 7 件すべて `Recreate`** ／
+  Qdrant のコレクションが **Qdrant 再起動後も残存** ／ Prometheus の `numSeries` が再起動前後で **8564 のまま**
+  （`/prometheus/data` に `chunks_head` / `wal` / `lock` が残存）。
+  配備先が変わったら `kubectl -n platform-infra get pvc`（有効にしたゲートの PVC が**すべて** Bound であること）と
+  `curl prometheus:9090/api/v1/status/runtimeinfo` の `storageRetention` で同じ確認を行うこと。
 
 - **realm 更新の反映**（compose 側と同じ運用差分）: 永続化後は `--import-realm` が既存 realm をスキップするため、
   `realm.json` の編集は自動反映されない。反映するには **(A 破壊的)** `keycloak-data` PVC を消して Pod 再作成で再 import
