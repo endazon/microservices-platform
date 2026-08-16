@@ -22,7 +22,7 @@ related_ids:
   - IADR-0134
 author: claude
 created: 2026-07-04
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
@@ -61,7 +61,7 @@ plan_refs:
 | ランタイム（バックエンド） | .NET | 10（`net10.0`） | ADR-0020（計画側も .NET 10 で確定）／[[IADR-0048]]（実装の先行採用）。`global.json` は SDK 8.0.0 + `rollForward: latestMajor` |
 | フレームワーク（バックエンド） | ASP.NET Core（Minimal API） | .NET 10 同梱 | アプリケーション層の標準は ADR-0030（後述「バックエンドアプリケーション層標準」）。ORM は EF Core |
 | パッケージ管理 | Central Package Management | — | バージョンは [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。ソリューションは `.slnx` |
-| 言語（フロントエンド） | TypeScript | 5.6 | `src/<unit>/frontend/` と `src/packages/*`（**pnpm workspace** ルート = `src/`。[[IADR-0121]] 決定 2）。Node は CI と揃え 22 |
+| 言語（フロントエンド） | TypeScript | 5.6 | **pnpm workspace** ルート = `src/`（メンバの正本は [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml) 自身。ユニット・共有パッケージのほか `src/` の外の**雛形**を含む。[[IADR-0121]] 決定 2）。Node は CI と揃え 22 |
 | フレームワーク（フロントエンド） | React + Vite | **React 19** / **Vite 6**（ESM） | SPA。ADR-0031 が確定したスタックへ移行中（[[IADR-0121]] が 5 段に分割）。**第 2 段の項目は消化済み**（#490 = ルータ／共通シェル／旧画面のルート載せ替え、#496 = shadcn/ui 本移植／Lingui／Storybook）。**第 2 段の完了条件は未達**——旧 13 画面の削除・再実装が #452 に残っている（項目の消化と完了条件は別である）。基盤(`platform/frontend`)/画面(`knowledge/frontend` の features)分離（[[IADR-0056]]）。BFF は `/bff/*` 経由 |
 | 状態管理（フロントエンド） | TanStack Query | 5 | ADR-0031。サーバー状態の唯一の入口（`foundation/api/queryClient.ts`）。**グローバルストア（Redux）は持たない**（ESLint で機械強制）。クライアント状態の Zustand は使う画面が出る段で導入 |
 | ルーティング（フロントエンド） | **TanStack Router** | 1.170 | ADR-0031。移行第 2 段（#490 / [[IADR-0124]]）で `react-router-dom` から差し替え済み（platform / knowledge から依存ごと撤去。ESLint で再混入を禁止）。ユニット合成は型付きルート factory のタプル、AST（submodule）だけ旧契約の実行時ブリッジが残る |

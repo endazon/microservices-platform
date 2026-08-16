@@ -44,6 +44,9 @@ const OPTIN_TOKENS = [
   'external-secrets', //               ESO (helm install / ns, IADR-0096)
   'deploy/local/vault/eso', //         ESO (bootstrap/externalsecret, IADR-0096)
   'seed-abac-policies.js', //          ABACSEED (ABAC 初期投入, IADR-0133)
+  'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
+  'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
+  'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
 ];
 
 // --- stub-on-PATH ハーネス ---------------------------------------------------
@@ -319,6 +322,51 @@ ok('ABACSEED=1: 投入が失敗しても up 全体は止めない（best-effort�
   const src = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
   const block = src.slice(src.indexOf('ABACSEED'));
   assert.ok(/\|\|\s*echo\s+"?\s*WARN/.test(block), 'ABACSEED の投入失敗が best-effort になっていない');
+});
+
+// IADR-0206 (#779): エッジ TLS 終端。cert-manager を導入し selfsigned→CA の 2 段で edge-tls を発行する。
+// 既定オフは上の OPTIN_TOKENS（'cert-manager' / 'deploy/local/edge/tls' / 'certificate/edge-tls'）で固定済み。
+ok('LOCALEDGE=1: cert-manager を server-side apply し、CRD Established を待ってから tls overlay を当てる', () => {
+  const { lines } = runUp({ LOCALEDGE: '1' });
+  const idx = (needle) => lines.findIndex((l) => l.includes(needle));
+
+  const install = idx('cert-manager/releases/download/');
+  const waitCrd = idx('condition=Established');
+  const applyTls = idx('apply -k deploy/local/edge/tls');
+  const waitCert = idx('certificate/edge-tls');
+
+  assert.ok(install !== -1, 'cert-manager の install manifest が apply されない');
+  assert.ok(waitCrd !== -1, 'CRD の Established を待っていない');
+  assert.ok(applyTls !== -1, 'deploy/local/edge/tls が apply されない');
+  assert.ok(waitCert !== -1, 'edge-tls 証明書の Ready を待っていない');
+
+  // 順序が本質。CRD が Established になる前に tls/ を当てると
+  // "no matches for kind Certificate" で落ちる（IADR-0206 決定 5）。
+  assert.ok(install < waitCrd, 'CRD 待ちが install より前にある');
+  assert.ok(waitCrd < applyTls, 'tls overlay の apply が CRD 待ちより前にある');
+  assert.ok(applyTls < waitCert, '証明書 Ready 待ちが apply より前にある');
+
+  // 大 CRD の annotation 262144B 上限を避ける（IADR-0088 が ArgoCD で是正した先例）。
+  assert.ok(
+    lines.some((l) => l.includes('cert-manager/releases/download/') && l.includes('--server-side')),
+    'cert-manager の apply が --server-side でない（大 CRD で 262144B 上限に当たる）',
+  );
+
+  // バージョンは固定する（IADR-0088: 浮動タグを使わない）。
+  assert.ok(
+    lines.some((l) => /cert-manager\/releases\/download\/v\d+\.\d+\.\d+\//.test(l)),
+    'cert-manager のバージョンが固定されていない',
+  );
+});
+
+// IADR-0206 (#779): apiserver には触らない。IADR-0105 の除去を維持することが本子の受け入れ基準である
+// （再導入は #781）。上の OPTIN_TOKENS に 'kube-apiserver-arg' が在るので既定は固定済みだが、
+// **LOCALEDGE=1 でも現れない**ことを別に固定する —— https issuer ができた瞬間に配線したくなる場所だから。
+ok('LOCALEDGE=1: TLS を入れても apiserver の OIDC 引数は現れない（IADR-0105 の除去を維持）', () => {
+  const { lines } = runUp({ LOCALEDGE: '1' });
+  for (const tok of ['kube-apiserver-arg', 'oidc-issuer-url', 'oidc-ca-file', '99-headlamp-oidc']) {
+    assert.ok(!anyLineHas(lines, tok), `LOCALEDGE=1 で apiserver 引数 "${tok}" が現れた（#781 の領分）`);
+  }
 });
 
 ok('LOCALEDGE=1 (argocd ns 無): argocd-ingress.yaml は apply しない（skip）', () => {
@@ -812,6 +860,199 @@ ok('#398: Headlamp Pod の SA（headlamp）には権限を bind しない fail-s
   assert.ok(
     !/kind:\s*ServiceAccount\s*\n\s*name:\s*headlamp\s*\n/.test(VIEWER_YAML),
     'headlamp-viewer-rbac.yaml が Pod の SA headlamp を subject にしている',
+  );
+});
+
+// --- IADR-0206 (#779): edge TLS overlay の静的検査 ------------------------------
+//
+// CI には `helm template` / `helm lint` / `kustomize build` / `kubeconform` を走らせるジョブが
+// **1 件も無い**（ci.yml の 20 ジョブを実測）。したがって新規 TLS マニフェストの整合は、
+// このファイルの既存の型（マニフェストを読んで正規表現で固定する・外部依存ゼロ）で担保する。
+// **本来の形（実際に build / lint するジョブ）は #783 が扱い、そのとき二重に持たない判断を明示する**
+// （IADR-0141「参照点を 1 つに畳む」）。
+
+const EDGE_DIR = path.join(REPO_ROOT, 'deploy', 'local', 'edge');
+const TLS_DIR = path.join(EDGE_DIR, 'tls');
+const TLS_KUST = fs.readFileSync(path.join(TLS_DIR, 'kustomization.yaml'), 'utf8');
+const ISSUERS_YAML = fs.readFileSync(path.join(TLS_DIR, 'cert-manager-issuers.yaml'), 'utf8');
+const EDGE_CERT_YAML = fs.readFileSync(path.join(TLS_DIR, 'edge-certificate.yaml'), 'utf8');
+const FRONTEND_ING_YAML = fs.readFileSync(path.join(EDGE_DIR, 'platform-frontend-ingress.yaml'), 'utf8');
+const EDGE_KUST = fs.readFileSync(path.join(EDGE_DIR, 'kustomization.yaml'), 'utf8');
+
+// `key: [a, b]` のフロー形と `- a` のブロック形の両方から値を拾う簡易パーサ。
+// 外部依存を入れない（このファイルの原則）ため YAML ライブラリは使わない。
+function listValues(yaml, key) {
+  const unquote = (s) => s.trim().replace(/^["']|["']$/g, '');
+  // `key: [a, b]`（フロー形）。`- key: [...]` のようにシーケンス項目の中にある場合も拾う。
+  const flow = new RegExp(`^\\s*(?:-\\s*)?${key}:\\s*\\[([^\\]]*)\\]`, 'm').exec(yaml);
+  if (flow) return flow[1].split(',').map(unquote).filter(Boolean);
+  // ブロック形。`  key:` と `  - key:` の両方を受ける（後者は spec.tls[].hosts の形）。
+  const block = new RegExp(`^\\s*(?:-\\s*)?${key}:[^\\S\\n]*$`, 'm').exec(yaml);
+  if (!block) return [];
+  const out = [];
+  for (const line of yaml.slice(block.index + block[0].length).split('\n')) {
+    if (line.trim() === '') {
+      // 先頭の改行由来の空要素は読み飛ばす。値が始まった後の空行は終端とみなす。
+      if (out.length === 0) continue;
+      break;
+    }
+    const m = /^\s*-\s*(.+?)\s*$/.exec(line);
+    if (!m) break;
+    out.push(unquote(m[1]));
+  }
+  return out;
+}
+
+ok('#779: tls overlay は親 edge kustomization に含めない（CRD 未導入で overlay 全体を落とさない）', () => {
+  assert.ok(
+    !/^\s*-\s*tls\/?\s*$/m.test(EDGE_KUST),
+    '親 kustomization が tls/ を含んでいる（cert-manager 未導入の環境で edge overlay 全体が落ちる）',
+  );
+  for (const f of ['cert-manager-issuers.yaml', 'edge-certificate.yaml']) {
+    assert.ok(
+      new RegExp(`^\\s*-\\s*${f.replace('.', '\\.')}\\s*$`, 'm').test(TLS_KUST),
+      `tls/kustomization.yaml の resources に ${f} が無い`,
+    );
+  }
+});
+
+// YAML を `---` で分割し、1 ドキュメントずつ見る。**ドキュメント境界を跨ぐ正規表現を書かないため。**
+// 跨がせると `kind: ClusterIssuer` が selfsigned 側にマッチしたまま別ドキュメントの値を拾い、
+// 種別や参照の取り違えを通してしまう（クロス監査 V2 の実測）。
+function yamlDocs(yaml) {
+  return yaml
+    .split(/^---\s*$/m)
+    .map((d) => d.trim())
+    .filter(Boolean);
+}
+const field = (doc, key) => {
+  const m = new RegExp(`^\\s*${key}:\\s*(\\S+)\\s*$`, 'm').exec(doc);
+  return m ? m[1] : null;
+};
+// `issuerRef:` ブロック直下の name / kind / group を取る（他所の name と混ざらないように範囲を切る）。
+function issuerRef(doc) {
+  const m = /^(\s*)issuerRef:\s*$/m.exec(doc);
+  if (!m) return null;
+  const block = doc.slice(m.index + m[0].length).split('\n').slice(0, 5).join('\n');
+  return {
+    name: (/^\s*name:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+    kind: (/^\s*kind:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+    group: (/^\s*group:\s*(\S+)/m.exec(block) || [])[1] ?? null,
+  };
+}
+const docsOf = (yaml, kind) => yamlDocs(yaml).filter((d) => field(d, 'kind') === kind);
+
+ok('#779: CA は selfsigned → CA の 2 段（1 段では検証に使える CA が残らない）', () => {
+  const issuers = docsOf(ISSUERS_YAML, 'ClusterIssuer');
+  const certs = docsOf(ISSUERS_YAML, 'Certificate');
+  assert.strictEqual(issuers.length, 2, `ClusterIssuer は 2 つ（selfSigned と ca）であるべき: ${issuers.length}`);
+  assert.strictEqual(certs.length, 1, `本ファイルの Certificate はルート CA の 1 つだけ: ${certs.length}`);
+
+  const selfSigned = issuers.find((d) => /^\s*selfSigned:\s*\{\}\s*$/m.test(d));
+  const caIssuer = issuers.find((d) => /^\s*ca:\s*$/m.test(d));
+  assert.ok(selfSigned, 'selfSigned ClusterIssuer が無い（1 段目）');
+  assert.ok(caIssuer, 'ca ClusterIssuer が無い（2 段目。これが無いと検証に使える CA が残らない）');
+
+  const rootCa = certs[0];
+  assert.ok(/^\s*isCA:\s*true\s*$/m.test(rootCa), 'ルート CA の Certificate に isCA: true が無い');
+
+  // ★ 結線 1: ルート CA は selfSigned Issuer が発行する。ここが CA Issuer を向くと 2 段が崩れる。
+  const rootRef = issuerRef(rootCa);
+  assert.ok(rootRef, 'ルート CA の Certificate に issuerRef が無い');
+  assert.strictEqual(rootRef.name, field(selfSigned, 'name'), 'ルート CA の issuerRef が selfSigned Issuer を指していない');
+  assert.strictEqual(rootRef.kind, 'ClusterIssuer', 'ルート CA の issuerRef.kind が ClusterIssuer でない');
+  // 葉と同じく group まで見る（監査 R9: 葉は name/kind/group を見るのにルートは name/kind だけで非対称だった）。
+  assert.strictEqual(rootRef.group, 'cert-manager.io', 'ルート CA の issuerRef.group が cert-manager.io でない');
+
+  // ★ 結線 2: CA Issuer はルート CA が作る Secret を読む。名前がずれると Issuer が Ready にならない。
+  const caSecret = (/^\s*ca:\s*\n\s*secretName:\s*(\S+)/m.exec(caIssuer) || [])[1] ?? null;
+  assert.strictEqual(
+    caSecret,
+    field(rootCa, 'secretName'),
+    `CA Issuer の ca.secretName(${caSecret}) がルート CA の secretName(${field(rootCa, 'secretName')}) と食い違う`,
+  );
+
+  // CA ClusterIssuer は cluster-scoped で、参照先 Secret を --cluster-resource-namespace（既定 cert-manager）
+  // から読む。ルート CA の Certificate が別 namespace に居ると CA Issuer が Ready にならない。
+  assert.strictEqual(field(rootCa, 'namespace'), 'cert-manager', 'ルート CA の Certificate が cert-manager namespace に無い');
+
+  // apiVersion の取り違え（v1alpha2 等）は apply の時点で落ちるが、CI に kustomize build が無いので静的に見る。
+  for (const d of [...issuers, ...certs]) {
+    assert.strictEqual(field(d, 'apiVersion'), 'cert-manager.io/v1', `apiVersion が cert-manager.io/v1 でない: ${field(d, 'kind')}`);
+  }
+});
+
+ok('#779: 葉証明書は CA Issuer（selfSigned ではない）が発行する', () => {
+  const leaf = docsOf(EDGE_CERT_YAML, 'Certificate')[0];
+  assert.ok(leaf, '葉の Certificate が無い');
+  assert.strictEqual(field(leaf, 'apiVersion'), 'cert-manager.io/v1', '葉の apiVersion が cert-manager.io/v1 でない');
+
+  const caIssuer = docsOf(ISSUERS_YAML, 'ClusterIssuer').find((d) => /^\s*ca:\s*$/m.test(d));
+  const ref = issuerRef(leaf);
+  assert.ok(ref, '葉の Certificate に issuerRef が無い');
+  // ★ 結線 3: ここが selfSigned Issuer を向くと **2 段が 1 段へ崩れ、ルート CA が Secret に残らない**。
+  // IADR-0206 の存在理由（oidc-ca-file と backend の信頼ストアへ渡せる CA）がそのまま消える。
+  assert.strictEqual(ref.name, field(caIssuer, 'name'), '葉の issuerRef が CA Issuer を指していない（2 段が崩れる）');
+  assert.strictEqual(ref.kind, 'ClusterIssuer', '葉の issuerRef.kind が ClusterIssuer でない');
+  assert.strictEqual(ref.group, 'cert-manager.io', '葉の issuerRef.group が cert-manager.io でない');
+});
+
+ok('#779: 葉証明書は Ingress と同じ namespace に居る（spec.tls は同 ns の Secret しか参照できない）', () => {
+  assert.ok(
+    /kind:\s*Certificate[\s\S]*?name:\s*edge-tls\s*\n\s*namespace:\s*microservices-platform/.test(EDGE_CERT_YAML),
+    'edge-tls の Certificate が microservices-platform namespace に無い',
+  );
+  assert.ok(
+    /kind:\s*Ingress[\s\S]*?namespace:\s*microservices-platform/.test(FRONTEND_ING_YAML),
+    'platform-frontend-edge が microservices-platform namespace に無い',
+  );
+});
+
+ok('#779: Ingress の spec.tls.secretName が Certificate の secretName と一致する', () => {
+  const certSecret = /^\s*secretName:\s*(\S+)/m.exec(EDGE_CERT_YAML);
+  const ingSecret = /^\s*secretName:\s*(\S+)/m.exec(FRONTEND_ING_YAML);
+  assert.ok(certSecret, 'Certificate に secretName が無い');
+  assert.ok(ingSecret, 'Ingress の spec.tls に secretName が無い');
+  assert.strictEqual(
+    ingSecret[1],
+    certSecret[1],
+    `Ingress(${ingSecret[1]}) と Certificate(${certSecret[1]}) の secretName が食い違う（TLS が張られない）`,
+  );
+  // 計画 ADR-0023 の設計要件: secretName を安定させ、CA 差し替えを issuerRef の変更だけに閉じる。
+  assert.strictEqual(certSecret[1], 'edge-tls', 'secretName は ADR-0023 が例示する edge-tls に固定する');
+});
+
+ok('#779: Certificate の dnsNames が Ingress の spec.tls.hosts を覆う', () => {
+  const dnsNames = listValues(EDGE_CERT_YAML, 'dnsNames');
+  const hosts = listValues(FRONTEND_ING_YAML, 'hosts');
+  assert.ok(dnsNames.length > 0, 'Certificate に dnsNames が無い');
+  assert.ok(hosts.length > 0, 'Ingress の spec.tls に hosts が無い');
+  for (const h of hosts) {
+    assert.ok(dnsNames.includes(h), `spec.tls.hosts の "${h}" が Certificate の dnsNames に無い（SNI 不一致）`);
+  }
+  // #780 で keycloak.localhost がエッジに出るときに証明書を作り直さずに済ませる。
+  assert.ok(dnsNames.includes('*.localhost'), 'dnsNames に *.localhost が無い（#780 で作り直しになる）');
+});
+
+ok('#779: admin:50000 の Ingress には spec.tls を足さない（その entrypoint に TLS が無い）', () => {
+  // Traefik の args に --entryPoints.admin.http.tls は無い。足しても効かず、
+  // 「TLS になったつもり」の記述だけが残る。admin の TLS 化は #780 と同時（IADR-0206 スコープ外の表）。
+  for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
+    const yaml = fs.readFileSync(path.join(EDGE_DIR, f), 'utf8');
+    assert.ok(/router\.entrypoints:\s*admin/.test(yaml), `${f} が admin entrypoint に載っていない（前提が変わった）`);
+    assert.ok(!/^\s*tls:\s*$/m.test(yaml), `${f} に spec.tls がある（admin entrypoint に TLS は無いので効かない）`);
+  }
+});
+
+ok('#779: http(80) 経路を残している（追加のみ・恒久リダイレクトを足さない）', () => {
+  assert.ok(
+    /router\.entrypoints:\s*web,websecure/.test(FRONTEND_ING_YAML),
+    'web(80) が entrypoints から外れている（http 経路が消えると既存 docs と realm redirect が全部回り道になる）',
+  );
+  const upSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
+  assert.ok(
+    !/entryPoints\.web\.http\.redirections/.test(upSrc),
+    'http→https の恒久リダイレクトが入っている（IADR-0206 決定 4 のスコープ外）',
   );
 });
 

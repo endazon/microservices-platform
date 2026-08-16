@@ -6,7 +6,7 @@ related_ids:
   - NFR
 author: claude
 created: 2026-07-09
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs: []
 related_specs:
   - ../operations/operations.md
@@ -60,7 +60,7 @@ dotnet test src/knowledge/backend/backend.slnx
 ## 4. フロントエンド（React + TypeScript + Vite）
 
 ```bash
-cd src   # pnpm workspace ルート（src/<unit>/frontend と packages/* を束ねる）
+cd src   # pnpm workspace ルート（メンバは pnpm-workspace.yaml が正。雛形 templates/*/frontend も含む）
 pnpm install
 pnpm run dev         # http://localhost:3100（/bff は BFF(5000) へプロキシ）
 pnpm run typecheck

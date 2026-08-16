@@ -256,9 +256,12 @@
 | [IADR-0200](./IADR-0200_reading-budget-population-per-agent.md) | 必読規約の総量予算は**エージェントごとの母集合**で測り合算しない（裁定 planning#364）。予算値 51,200 の正本は計画リポ運用ガイド §8、`check-reading-budget.js` が出典つきの複製を持ち CI へ配線（100% fail・90% warn）。#755。IADR-0178 決定 4 の測り方を改定。 | Accepted |
 | [IADR-0201](./IADR-0201_class-c-rejudgement-and-fail-closed-kit-checks.md) | 分類 C を planning#363 の新定義で再判定（17→4）。`traceability.md` は companion 分離で分類 A へ（**#790 で B〔X〕へ戻した。IADR-0204**）。キット同期・status 突合の検査器はキット版へ、実データ走査は doc-links-planning.yml へ（IADR-0192 決定 4 の改定）。#755 / #751。 | Accepted |
 | [IADR-0202](./IADR-0202_pin-freshness-comparison-source.md) | pin 鮮度検知は `merge-base --is-ancestor` で比較の向きを見て、逆方向・分岐では「効く変更なし」と報告しない（案 B）。比較元（ref・commit・remote URL・fetch の成否）を全経路の出力に必ず含める。**案 A（ネットワーク fetch）は採らない**。#749。IADR-0170 の決定は維持。 | Accepted |
-| [IADR-0203](./IADR-0203_renovate-husky-hook-scope.md) | 依存更新は npm = Renovate（`enabledManagers` で重複を排除）／`github-actions`・`gitsubmodule` = Dependabot 継続（#260 を覆さない）。手元 git フックは **CI ゲートの厳密な部分集合**に限り fail-open。Commitlint・lint-staged は単一情報源が割れるため入れない。#768。 | Accepted |
+| [IADR-0203](./IADR-0203_renovate-husky-hook-scope.md) | 依存更新は npm = Renovate／`github-actions`・`gitsubmodule` = Dependabot 継続（#260 を覆さない）。手元 git フックは **CI ゲートの厳密な部分集合**に限り fail-open。Commitlint・lint-staged は単一情報源が割れるため入れない（`src/` の外は例外。#768 / #802）。 | Accepted |
 | [IADR-0204](./IADR-0204_kit-catchup-deferral-with-expiry-ratchet.md) | キット追随を「期限つきの暫定」で保留するときは**保留の根拠そのものを機械が検査する**（`traceability.md` はキット版 +3,002B が必読予算を超えるため分類 A → B（X）。予算内に収まったら fail して追随を促す）。分類 X の再判定は検出力の同値だけでは A へ戻さず、空入力時の終了コードの向きまで突合する。#790。 | Accepted |
 | [IADR-0205](./IADR-0205_reading-budget-reduction-for-kit-catchup.md) | 必読規約の減量は**正本が他に在る複写**から原資を取り、規範は 1 つも落とさない（最大の原資は**同じ必読集合の中の二重持ち**＝起点 ID の種別と書式）。AI が行動しない記述は入口に置かない。保留のラチェットは消さず**分類 A / B の両側**で効かせる。導出値は直さず**書かない形**にする。#793。 | Accepted |
+| [IADR-0206](./IADR-0206_local-edge-tls-cert-manager.md) | 経路B のエッジ TLS を cert-manager で終端する（opt-in `LOCALEDGE=1`）。`selfSigned`→CA の 2 段にし、**ルート CA を k8s Secret として安定させる**（#781 の `oidc-ca-file`・#780 の信頼ストアが要る）。葉は `edge-tls`。**IADR-0091 決定 3 を Supersede**。#779 | Accepted |
+| [IADR-0207](./IADR-0207_pr-title-trailing-number-must-be-own.md) | PR タイトル末尾の `(#NNN)` は **PR 自身の番号**に限る（形状だけの検査をやめる。実測 66/66 が起点 issue の番号で、二重付加が develop へ 58 件着地）。PR 番号が読めないときは形状のみ。`Closes` の担保は射程外。#799。 | Accepted |
+| [IADR-0208](./IADR-0208_companion-direct-run-guard.md) | companion `scripts.repo.test.js` の単体実行は**沈黙の exit 0** ではなく exit 1 にする（入口つき）。ガードの回帰試験を同ファイルに置く。静的検査は足さない。実体は本リポ・契約はキットへ環流。空の証跡 1 件は書き換えない。#797。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
