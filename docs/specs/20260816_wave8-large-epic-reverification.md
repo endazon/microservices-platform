@@ -1,5 +1,5 @@
 ---
-title: 作業仕様書 — 大玉 17 件の着手可否をこの環境で測り直す（前回の棚卸しは別環境の値だった）
+title: 作業仕様書 — 大玉 17 件の着手可否を測り直す（「不在」を「入手不能」と取り違えた初版を撤回した）
 type: spec
 status: done
 related_ids:
@@ -62,10 +62,98 @@ $ docker info >/dev/null 2>&1 && echo "reachable" || echo "UNREACHABLE"
 UNREACHABLE
 ```
 
-**`docker` はバイナリが在るだけでデーモンが動いていない。** したがって Testcontainers も
-`docker compose up` も使えない。**フロントは実走する**（`pnpm run typecheck` が 5 ワークスペースで Done）。
+**`docker` はバイナリが在るだけでデーモンが動いていない。** **フロントは実走する**（`pnpm run typecheck` が 5 ワークスペースで Done）。
 
-## 4. 再検証の結果 —— **このコンテナでは 17 件すべて着手不可**
+## 3.5 ★★ 撤回 —— **「不在」は「入手不能」ではなかった**
+
+**本書は初版で「17 件すべて着手不可」と結論した。その結論は誤りである。**
+
+初版は `command -v` で**在るかどうか**を測っただけで、**入れられるかどうかを一度も試していなかった。**
+利用者の指摘（「外部からダウンロードして作業できるかも加味せよ」）を受けて実測した結果、**全部入った。**
+
+### dotnet —— 入るだけでなく、ビルドもテストも通った
+
+```console
+$ curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh && chmod +x dotnet-install.sh
+$ ./dotnet-install.sh --channel 10.0 --install-dir /home/user/.dotnet
+dotnet-install: Installed version is 10.0.400
+dotnet-install: Installation finished successfully.
+EXIT=0
+
+$ export DOTNET_ROOT=/home/user/.dotnet PATH=/home/user/.dotnet:$PATH
+$ dotnet --list-sdks
+10.0.400 [/home/user/.dotnet/sdk]
+
+$ dotnet restore platform/backend/backend.slnx     → EXIT=0
+$ dotnet build   platform/backend/backend.slnx --no-restore
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+EXIT=0
+
+$ dotnet test platform/backend/backend.slnx --no-build     → EXIT=0
+  AuthorizationService.Api.Tests   Failed: 0, Passed:  68
+  LlmGateway.Api.Tests             Failed: 0, Passed: 151
+  Platform.Bff.Tests               Failed: 0, Passed: 227, Skipped: 1
+
+$ dotnet test knowledge/backend/backend.slnx               → EXIT=0
+  11 アセンブリ / 合計 Failed=0 Passed=574
+```
+
+**`global.json` は SDK `8.0.0` ＋ `rollForward: latestMajor` なので 10.0.400 で解決する。**
+
+### k8s ツールと実クラスタ —— これも揃った
+
+```console
+$ curl -sSL https://dl.k8s.io/release/v1.31.0/bin/linux/amd64/kubectl -o bin/kubectl
+$ ./bin/kubectl version --client        → Client Version: v1.31.0
+$ curl -sSL https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz | tar xz
+$ ./bin/helm version --short            → v3.16.2+g13654a5
+
+$ nohup dockerd &                       # デーモンは起動できた（sudo 可・uid 0）
+$ docker info --format '{{.ServerVersion}} / driver={{.Driver}} / cgroup={{.CgroupVersion}}'
+29.3.1 / driver=overlayfs / cgroup=1
+EXIT=0
+
+$ ./bin/k3d cluster create probe --agents 0 --wait     → EXIT=0（23 秒）
+$ kubectl get nodes
+NAME                 STATUS   ROLES                  AGE   VERSION
+k3d-probe-server-0   Ready    control-plane,master   8s    v1.30.4+k3s1
+```
+
+**外向き HTTPS は agent proxy 経由で通り**（`HTTPS_PROXY=http://127.0.0.1:43711`）、**空きは 27G ある。**
+
+> probe クラスタは確認後に削除した（`k3d cluster delete probe` EXIT=0）。**再作成は 23 秒である。**
+> `dotnet` と `bin/{kubectl,helm,k3d}` は残してある。
+
+### したがって隘路は「環境」ではない
+
+| 初版の判定 | 正しい判定 |
+| --- | --- |
+| `dotnet` 不在 → **#455 とその先行 11 件は着手不可** | **環境は障害ではない。** 残る制約は**規模**と**先行 issue / ADR 状態 / 上流裁定** |
+| クラスタ不在 → **#442 系は着手不可** | **実クラスタを 23 秒で作れる。** 残る制約は規模と、統合スタックを実際に起こす手間 |
+
+**「無い」で止まらず「入れられるか」まで測ること。** 初版はここを飛ばした。
+
+### なぜ最初から無かったのか（付随して分かったこと）
+
+`.devcontainer/devcontainer.json` は環境を用意する建て付けを持っているが、**このセッションはそれを使っていない**。
+加えて**同ファイル自体が古い**:
+
+| 宣言 | 実際の要求 |
+| --- | --- |
+| `image: mcr.microsoft.com/devcontainers/dotnet:8.0` | `src/Directory.Build.props` は **`net10.0`**。**8.0 の image では `net10.0` をビルドできない** |
+| `features` の node `version: "20"` | `CLAUDE.md` は「**Node は CI と揃え 22 を使う**」 |
+
+`scripts/setup.sh` は `if command -v dotnet` で**在れば使う**だけで**入れない**（57 行・実測）。
+**これは別 issue に値する**（本書の射程外なので起票のみ提案する）。
+
+## 4. 再検証の結果 —— **環境ではなく、規模・先行・ADR 状態・上流裁定で止まっている**
+
+**［2026-08-16 撤回 / §3.5］ 下表の「環境」種別は誤りである。** ツールは全部入り、ビルドもテストも
+実クラスタも通った。**残る制約は規模・先行 issue・ADR 状態・上流裁定であって、環境ではない。**
+表は初版の判定として残す（消すと何を撤回したのか分からなくなる）が、**「環境」と書いた行は
+「規模」と読み替えること。**
 
 判定軸は 4 つ。**「何が無いから不可か」を必ず 1 つ以上挙げる**（挙げられないなら不可ではない）。
 
@@ -145,7 +233,13 @@ ADR-0038 Proposed   ADR-0039 Proposed
 ```
 
 **17 件のうち 13 件が、この 2 つのどちらかに従属する。** 残る 4 件（#446 / #452 / #453 / #442 自身）も
-自前の先行を持つ。**個別に崩す方法は無く、`dotnet` が使える環境とクラスタが要る。**
+自前の先行を持つ。
+
+**［2026-08-16 撤回 / §3.5］ 初版はここを「`dotnet` が使える環境とクラスタが要る」で締めていた。誤りである。**
+**ツールチェーンは実測で全部入った**（dotnet 10.0.400 でビルド 0 警告 0 エラー・テスト 1,020 件通過、
+k3d クラスタ 23 秒で Ready）。**従属関係そのものは変わらない** —— #455 が 11 件の先行であることは
+コードの依存であって環境ではない。**変わったのは「なぜ今すぐ着手しないのか」の理由**である:
+**環境が無いからではなく、規模が大きく、1 セッションで安全に着地させられないからである。**
 
 ## 8. やらなかったことと理由
 
@@ -261,7 +355,19 @@ EXIT=0
 
 ## 12. 次にこの判定を使う人へ
 
-**本書の判定は 2026-08-16 の「実装セッションのコンテナ」の値である。据え置かないこと**（[[IADR-0180]]）。
+**［最重要］ ツールが無くても止まらないこと。** 本書の初版は `command -v` が空だっただけで
+「着手不可」と結論し、**それは誤りだった**（§3.5）。**`dotnet` も `kubectl` も `helm` も `k3d` も入り、
+ビルド・テスト・実クラスタまで通った。**
 
-**着手するときは、まず §3 と §11 の両方のコマンドで自分のジョブを測り直し、本書との差分を書くこと。**
-`dotnet` とクラスタが揃うジョブでは、**#455 と #442 が先に崩せる**。そこが崩れれば 13 件の従属が解ける。
+着手するときの順序:
+
+1. **`command -v` で測る**（§3）——「今この瞬間に在るか」
+2. **無ければ入れてみる**（§3.5 のコマンドをそのまま使える）——「入れられるか」
+3. **入れたら実際に動かして確かめる**（`dotnet build` / `dotnet test` / `k3d cluster create`）——「動くか」
+4. **1〜3 の結果と時点を書く**（[[IADR-0180]]。前回値を据え置かない）
+
+**#455 と #442 は環境では止まっていない。** 止めているのは**規模**であり、
+**1 セッションで安全に着地させられるかという判断**である。そこが崩れれば 13 件の従属が解ける。
+
+**あわせて `.devcontainer/devcontainer.json` の陳腐化（`dotnet:8.0` image と `net10.0` の不一致・
+node 20 と 22 の不一致）を別 issue へ出すこと**（§3.5 末尾）。
