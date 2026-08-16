@@ -7024,10 +7024,15 @@ module.exports = ({ ok, assert }) => {
     // IADR-0191 決定 2: feedback/ の frontmatter の状態欄は書き換え可、**本文（日付つき追記ブロックを
     // 含む）は不可**。#721 が足した 11 件は #733 の利用者承認を得て撤去した。
     //
-    // ★ 0 件は要求しない。残る 15 ブロックは同質ではなく、#497 由来の 10 件は「判定: accepted」という
-    //   **トリアージ結果**である。計画リポの CLAUDE.md が「裁定・決定の内容そのものは必ずリポジトリへ
-    //   残す」と定めており、消すとそちらに反する。よって baseline 付き ratchet とする
-    //   （backend-library-baseline.json / adr-index-title-baseline.json と同じ形）。
+    // ★ #743（裁定 planning#369・案 A）で**凍結の射程が「frontmatter の二重記述」に絞られた**。
+    //   ① frontmatter の状態欄の変更を本文で言い直した追記 → 射程内（撤去）
+    //   ② トリアージ結果・裁定の記録 / ③ 自己是正の訂正（元の記述を消さないこと）→ 対象外（残す）
+    //   ①に当たる #712 の 3 ブロックは #743 で撤去し、残る 16 ブロックは②③として残した。
+    //
+    // ★ 0 件は要求しない。baseline は**「まだ消せていない残件」ではなく allowlist** である ——
+    //   計画リポの CLAUDE.md が「裁定・決定の内容そのものは必ずリポジトリへ残す」と定めており、
+    //   ②③を消すとそちらに反する。形は backend-library-baseline.json / adr-index-title-baseline.json
+    //   と同じ ratchet のままで、**各エントリに count / verdict / reason を持たせて弱めていない**。
     // 日付つき追記ブロックの見出し行を判定する。
     // ★ 語順を問わない —— 当初は `［YYYY-MM-DD 追記` だけを見ていたが、それでは
     //   `## 追記 2（2026-08-03）:` のように**日付が「追記」の後ろに来る形**を取りこぼす
@@ -7062,10 +7067,43 @@ module.exports = ({ ok, assert }) => {
       assert.ok(!isAddendumHeading('  追記（2026-08-03）: 地の文'), '見出し/引用/強調で始まらない');
     });
 
-    ok('#733: feedback/ 本文の日付つき追記ブロックが baseline を超えていない（ラチェット）', () => {
-      const baseline = JSON.parse(
+    // #743: allowlist の値は { count, verdict, reason } である。**理由の無いエントリを許すと
+    // 「残件表」へ逆戻りする**（裁定は「残すと決めた記録の明示リスト」として持つことを求めた）。
+    const ADDENDUM_VERDICTS = new Set(['triage-record', 'self-correction']);
+    const addendumAllowlist = () =>
+      JSON.parse(
         fs.readFileSync(path.join(__dirname, 'feedback-body-addendum-baseline.json'), 'utf8'),
       ).files;
+
+    ok('#743: allowlist の各エントリが count / verdict / reason を持つ（理由なしを許さない）', () => {
+      const bad = [];
+      for (const [f, v] of Object.entries(addendumAllowlist())) {
+        if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+          bad.push(`${f}: 値がオブジェクトでない（旧形式の数値のままか）`);
+          continue;
+        }
+        if (!Number.isInteger(v.count) || v.count < 1) bad.push(`${f}: count が正の整数でない`);
+        // ★ ①（frontmatter-duplicate）は allowlist に載ってはならない —— 載せた時点で
+        //   「撤去対象を allowlist で握り潰した」ことになる。値域を 2 語に閉じて機械で止める。
+        if (!ADDENDUM_VERDICTS.has(v.verdict)) {
+          bad.push(`${f}: verdict が値域外（${JSON.stringify(v.verdict)}。許可: ${[...ADDENDUM_VERDICTS].join(' / ')}）`);
+        }
+        if (typeof v.reason !== 'string' || v.reason.trim().length < 20) {
+          bad.push(`${f}: reason が無い / 短すぎる（残す理由を書くこと）`);
+        }
+      }
+      assert.deepStrictEqual(
+        bad,
+        [],
+        'feedback-body-addendum-baseline.json は「裁定 planning#369 により残すと決めた記録」の\n' +
+          'allowlist である。各エントリに残す理由が要る:\n  ' + bad.join('\n  '),
+      );
+    });
+
+    ok('#733: feedback/ 本文の日付つき追記ブロックが baseline を超えていない（ラチェット）', () => {
+      const baseline = Object.fromEntries(
+        Object.entries(addendumAllowlist()).map(([f, v]) => [f, v.count]),
+      );
       const current = feedbackAddendaCounts();
 
       // 走査 0 件で緑になる fail-open を塞ぐ（baseline に行がある限り現状にも出るはず）。
@@ -7102,6 +7140,20 @@ module.exports = ({ ok, assert }) => {
         .filter((x) => x.endsWith('.md'))
         .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('追記 / #721'));
       assert.deepStrictEqual(hits, [], `#721 の追記ブロックが残っている:\n  ${hits.join('\n  ')}`);
+    });
+
+    // #743: #712 の 3 ブロックは①（frontmatter の状態欄の変更を本文で言い直した追記）であり、
+    // 裁定の下でも射程内である。**同一コミット 62d8896f が frontmatter と本文の両方を変えていた**
+    // （-status: open / +status: triaged と、同じ内容の引用ブロックの追加）。
+    // ★ 二重記述が腐ることも実測できた —— その後 status は triaged → open → accepted と動いており、
+    //   本文の「triaged へ是正した」はどのファイルでも現在の frontmatter と一致しない。
+    ok('#743: #712 が足した追記ブロックは feedback/ から消えている', () => {
+      const dir = path.join(__dirname, '..', 'feedback');
+      const hits = fs
+        .readdirSync(dir)
+        .filter((x) => x.endsWith('.md'))
+        .filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes('追記 / #712'));
+      assert.deepStrictEqual(hits, [], `#712 の追記ブロックが残っている:\n  ${hits.join('\n  ')}`);
     });
   }
 
