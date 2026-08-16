@@ -9,7 +9,7 @@ related_ids:
   - IADR-0019
 author: claude
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md"
   - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
@@ -185,6 +185,13 @@ Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated   （削除）
 `known = ['confidentiality','department']` のとおり `owner` / `lifecycle` はラベルすら無い。
 ここで必須検証を足すと**人手経路の全登録が 400 になる**。
 
+> **［2026-08-16 追記 / #796］この節が言う「画面」は文書の人手経路（SC-03 / SC-05）であり、
+> そちらは依然として `owner` / `lifecycle` を送っていない。本決定は変わらない。**
+> ただし **SC-06（データソースの既定属性）は `lifecycle` を送るようになった**（#796）ので、
+> 「どの画面も送っていない」を**データソースの経路まで含めて読まないこと**。
+> **2 つは別の経路である** —— こちらは `Document` の属性検証、あちらは `DataSource.DefaultAttributes`
+> であり、後者は本 ADR 決定 1 のフェイルセーフを通る（明示指定は上書きしない）。
+
 人手経路で `owner` を認証主体から立てるのは **ADR-0036 の動的束縛の実装**であり、
 計画側が「**未着手**」と明記し（ADR-0036 L66）、`Document` エンティティに所有者フィールドが無く
 **スキーマ変更を伴う**（同 L209）。**大玉 #451 の射程**である。
@@ -207,6 +214,11 @@ Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated   （削除）
 - **限界**: **必須 4 属性は揃ったが、判定軸としての実効は上がっていない。**
   `department` は多くが `unassigned`（#754）、`owner` は多くが `system`（#752）へ倒れ、
   `lifecycle` は全件 `active` になるため**値のばらつきが無い**。
+  **［2026-08-16 追記 / #796］`lifecycle` の「全件 `active`」は解消の途上にある** ——
+  SC-06 の登録フォームから `draft` / `active` / `archived` を明示指定できるようになったため、
+  **管理者が指定したソース由来の文書はその値を持つ**（未指定なら従来どおり終端の `active`）。
+  **「もうばらつく」ではない** —— 開いたのは登録経路だけで、既存の登録済みソースは遡って値を得ず、
+  更新フォームもまだ無い（#754）。`department` / `owner` の限界は変わっていない。
   **さらに AST の書き込み経路（AST#520）は本 IADR の修正を通らず、4 属性のうち 3 つを付けないままである。**
   **ADR-0034 が求めるホップごとの強制は、依然として設計どおりには検証できない。**
 
@@ -217,6 +229,9 @@ Create_DoesNotFillLifecycle_BecauseDefaultIsNotAdjudicated   （削除）
 2. **#752**: `SourceItem` へ更新者を載せ、`owner` の予約値を減らす
 3. **#754**: `department` の供給源を塞ぐ。**［2026-08-15 追記 / #767］SC-06 の入力欄は消化した**（#767）。
    **残るのはフォルダ → 部門の写像規則（planning#372 の裁定待ち）と更新経路である**
+   （**［2026-08-16 追記 / #796］`lifecycle` の入力欄も消化した**〔#796〕。
+   **裁定 planning#372 が「登録・更新フォームは既定属性 3 つを持つ」と確定させ、登録側は 3 つとも揃った。**
+   **フォルダ写像と更新フォームは #754 に残る**）
 4. **AST#520**: **AST の書き込み経路が必須属性を付けない。** `HttpKnowledgeBaseWriter.BuildAttributes` が
    `confidentiality` だけを補完しており、**本 IADR の修正はこの経路を一切通らない。**
    **#516 が測った 2,368 件を作っているのはこの経路である**（`traceability-auditor` 監査 🔴-1 が検出）
