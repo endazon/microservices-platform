@@ -18,6 +18,9 @@
  *      裸の `#NNN` は 3 面とも**本リポジトリの issue へ自動リンクする**ため、誤リンクという
  *      実害が出る。判定器は `check-cross-repo-refs.js` から借りる（規約の単一情報源は向こう側）。
  *      **本文を見るのは、列挙形の修飾漏れが本文にも出るためである**（件名だけでは足りない）。
+ *   4) **PR タイトル末尾の `(#NNN)` が PR 自身の番号か**（`PR_NUMBER` / `--pr-number` を渡した
+ *      ときのみ。#799）。渡さないときは従来どおり形状だけを見る。**コミット件名モードでは
+ *      絶対に一致を要求しない**（スカッシュ後の履歴コミットが全滅するため）。
  *
  * **読めない範囲は skip し、skip したことを notice で出す**（黙って 0 件検査へ落ちない）。
  *
@@ -29,6 +32,7 @@
  *
  * 使い方:
  *   node scripts/check-commit-messages.js [--range base..head] [--verbose]
+ *   node scripts/check-commit-messages.js --title "<PR タイトル>" [--author <login>] [--pr-number <N>]
  */
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -69,7 +73,7 @@ const US = '\x1f'; // Unit Separator
 const RS = '\x1e'; // Record Separator
 
 function parseArgs(argv) {
-  const a = { range: null, verbose: false, title: null, author: null };
+  const a = { range: null, verbose: false, title: null, author: null, prNumber: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--range') a.range = argv[++i];
     else if (argv[i].startsWith('--range=')) a.range = argv[i].slice('--range='.length);
@@ -77,6 +81,8 @@ function parseArgs(argv) {
     else if (argv[i].startsWith('--title=')) a.title = argv[i].slice('--title='.length);
     else if (argv[i] === '--author') a.author = argv[++i];
     else if (argv[i].startsWith('--author=')) a.author = argv[i].slice('--author='.length);
+    else if (argv[i] === '--pr-number') a.prNumber = argv[++i];
+    else if (argv[i].startsWith('--pr-number=')) a.prNumber = argv[i].slice('--pr-number='.length);
     else if (argv[i] === '--verbose' || argv[i] === '-v') a.verbose = true;
   }
   return a;
@@ -440,11 +446,58 @@ function validateSubject(subject) {
 }
 
 /**
+ * ★ 固有デルタ（分類 B〔X〕・#799）: PR タイトル末尾の ` (#NNN)` が **PR 自身の番号**である
+ * ことを検証する。**キットには無い**（配布先すべてに同じ穴があるため環流する。環流は未了で、
+ * 記録の草案は `docs/specs/20260816_issue-799_pr-title-number-match.md` の付録に在る）。
+ *
+ * なぜ要るか: 規約は末尾の `(#123)` を「**スカッシュマージ既定件名として**許容」と書いており、
+ * **GitHub がその PR 自身の番号を自動付加する**挙動を前提にしている。ところが検査は形状しか
+ * 見ていなかったため、**起点 issue の番号をタイトルへ書いた PR** が素通りしていた。
+ * 実測（2026-08-16・全 PR 443 件）: **末尾に番号を持つ 66 件のうち、自番号と一致するものは 0 件**。
+ * GitHub の UI からマージすると自動付加が重なり **`… (#796) (#798)`** と二重になる
+ * （`develop` に既に **58 件**着地しており、force push 禁止で事後修正できない）。
+ *
+ * **番号一致を課すのは PR 番号が読めたときだけ**である。
+ *   - `prNumber` が null / undefined → **形状のみ**（従来どおり）。コミット件名モードには PR 番号が
+ *     無く、ここで一致を要求するとスカッシュ後の履歴コミット（`… (#794)`）が全滅する。
+ *   - 末尾に `(#NNN)` が無い → **合格**。末尾の番号は任意である（自番号を書く動機は本来無い）。
+ */
+function validateTitlePrNumber(subject, prNumber) {
+  if (prNumber == null) return [];
+  const m = String(subject == null ? '' : subject).match(/\(#(\d+)\)\s*$/);
+  if (!m) return [];
+  if (Number(m[1]) === Number(prNumber)) return [];
+  return [
+    `末尾の "(#${m[1]})" が PR 自身の番号（#${prNumber}）と一致しない。` +
+      '末尾の (#NNN) を外すか、PR 自身の番号にすること。' +
+      '起点 issue は本文の `Closes #NNN` で示す' +
+      '（GitHub はスカッシュ時に PR 番号を自動付加するため、通常はタイトルへ番号を書かない。' +
+      '書いたままマージすると "… (#796) (#798)" と二重に付く）',
+  ];
+}
+
+/**
+ * `PR_NUMBER` / `--pr-number` の生値を正の整数へ正規化する。
+ * 未設定・空文字は `null`（＝番号一致検査をしない）。**数値として読めない値は `NaN` を返す** ——
+ * 呼び出し側が「設定されているのに読めない」を notice で可視化するためである（黙って検査を消さない）。
+ */
+function normalizePrNumber(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  if (!/^\d+$/.test(s)) return NaN;
+  const n = Number(s);
+  return n > 0 ? n : NaN;
+}
+
+/**
  * 単一件名（PR タイトル = スカッシュ後件名の由来）を検査する（再発防止）。
  * git を使わず、渡された 1 件名のみを規約に照合する。Revert / [skip ci] はスキップ扱い。
  * 合格・スキップ時 0、違反時 1 を返す。
+ *
+ * `prNumber` は PR 自身の番号（省略時は末尾番号の一致を検査しない。#799）。
  */
-function checkSingleTitle(title, author) {
+function checkSingleTitle(title, author, prNumber) {
   const subject = String(title == null ? '' : title).trim();
   process.stdout.write(`PR タイトル（スカッシュ後件名）チェック: "${subject}"\n`);
 
@@ -474,7 +527,9 @@ function checkSingleTitle(title, author) {
     )
     // PR タイトルはスカッシュ後に**コミット件名として恒久履歴へ載る**面である。
     // 裸の `#NNN` は本リポジトリの issue へ自動リンクするため、ここで止める。
-    .concat(crossRepoRefReasons(subject, 'PR タイトル'));
+    .concat(crossRepoRefReasons(subject, 'PR タイトル'))
+    // 末尾の `(#NNN)` が PR 自身の番号かどうか（#799）。prNumber 未指定なら形状のみ。
+    .concat(validateTitlePrNumber(subject, prNumber));
   if (reasons.length) {
     process.stderr.write('\n✗ PR タイトルが規約違反:\n');
     process.stderr.write(`  ${subject}\n`);
@@ -496,7 +551,20 @@ function main() {
   const title = args.title != null ? args.title : process.env.PR_TITLE;
   const author = args.author != null ? args.author : process.env.PR_AUTHOR;
   if (title != null) {
-    process.exit(checkSingleTitle(title, author));
+    // PR 自身の番号（#799）。**コミット件名モードへは渡さない。**
+    // notice は呼び出し側でのみ出す（checkSingleTitle の中に置くと単体テストが
+    // 本物の CI アノテーションを漏らす。loadExisting* と同じ扱い）。
+    const rawPrNumber = args.prNumber != null ? args.prNumber : process.env.PR_NUMBER;
+    let prNumber = normalizePrNumber(rawPrNumber);
+    if (Number.isNaN(prNumber)) {
+      notice(
+        `PR_NUMBER="${rawPrNumber}" を正の整数として読めないため、PR タイトル末尾 (#NNN) の` +
+          '番号一致チェックをスキップした（形状のみ検査している）。' +
+          'pr-title.yml が github.event.pull_request.number を渡しているか確認すること'
+      );
+      prNumber = null;
+    }
+    process.exit(checkSingleTitle(title, author, prNumber));
   }
 
   if (tryGit('rev-parse --is-inside-work-tree') !== 'true') {
@@ -606,6 +674,8 @@ module.exports = {
   normalizePlanId,
   crossRepoRefReasons,
   CROSS_REPO_REF_LABELS,
+  validateTitlePrNumber,
+  normalizePrNumber,
   checkSingleTitle,
   isBotLogin,
   isBot,

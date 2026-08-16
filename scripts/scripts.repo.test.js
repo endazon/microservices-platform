@@ -144,6 +144,146 @@ module.exports = ({ ok, assert }) => {
     });
   }
 
+  // --- #799: PR タイトル末尾の (#NNN) が PR 自身の番号と一致すること ------------------
+  //
+  // 検査は形状（`\(#\d+\)$`）しか見ておらず、**起点 issue の番号をタイトルへ書いた PR** が
+  // 素通りしていた。実測（2026-08-16・全 PR 443 件）: 末尾に番号を持つ 66 件のうち
+  // **自番号と一致するものは 0 件**。GitHub の UI からマージすると自動付加が重なり
+  // `… (#796) (#798)` と二重になる（develop に既に 58 件着地しており、事後修正できない）。
+  //
+  // ★ キットには無いロジックである（分類 B〔X〕・追跡 #799 ＋
+  //   feedback/20260816_kit-pr-title-number-mismatch.md）。キット版 scripts.test.js は
+  //   `checkSingleTitle` を 2 引数でしか呼ばないため、ここでしか固定されない。
+
+  {
+    const fsNum = require('fs');
+    const pathNum = require('path');
+    const {
+      checkSingleTitle: checkTitle,
+      validateTitlePrNumber,
+      normalizePrNumber,
+    } = require('./check-commit-messages.js');
+
+    // stdout/stderr を抑止して戻り値（0=合格 / 1=違反）だけを見る。
+    const silent = (fn) => {
+      const so = process.stdout.write;
+      const se = process.stderr.write;
+      process.stdout.write = () => true;
+      process.stderr.write = () => true;
+      try {
+        return fn();
+      } finally {
+        process.stdout.write = so;
+        process.stderr.write = se;
+      }
+    };
+
+    // ── 変異試験 4 方向（受け入れ基準そのもの）
+    ok('#799: 末尾の番号が PR 自身の番号と違えば fail（方向 1）', () => {
+      // 実例: PR #798 のタイトルが起点 issue の番号 (#796) を末尾に持っていた。
+      assert.strictEqual(
+        silent(() => checkTitle('docs(NFR): 波 6 末クロス監査の指摘を追随させる (#796)', 'endazon', 798)),
+        1
+      );
+    });
+
+    ok('#799: 末尾の番号が PR 自身の番号と一致すれば pass（方向 2）', () =>
+      assert.strictEqual(
+        silent(() => checkTitle('docs(NFR): 波 6 末クロス監査の指摘を追随させる (#798)', 'endazon', 798)),
+        0
+      ));
+
+    ok('#799: 末尾に番号が無ければ pass（方向 3。番号は任意のまま）', () =>
+      assert.strictEqual(
+        silent(() => checkTitle('docs(NFR): 波 6 末クロス監査の指摘を追随させる', 'endazon', 798)),
+        0
+      ));
+
+    ok('#799: PR_NUMBER 未設定なら形状のみ（方向 4。コミット件名モードを全滅させない）', () => {
+      const subject = 'docs(NFR): 波 6 末クロス監査の指摘を追随させる (#796)';
+      // 3 引数目を渡さない＝コミット件名モードと同じ扱い。
+      assert.strictEqual(silent(() => checkTitle(subject, 'endazon')), 0);
+      assert.strictEqual(silent(() => checkTitle(subject, 'endazon', null)), 0);
+      assert.strictEqual(silent(() => checkTitle(subject, 'endazon', undefined)), 0);
+    });
+
+    // ── 判定器そのもの（理由文言まで固定する。CI ログを読んで直す人が要る情報）
+    ok('#799: 違反理由に「外すか、PR 自身の番号にする」直し方が書いてある', () => {
+      const reasons = validateTitlePrNumber('chore(NFR): 何か (#791)', 794);
+      assert.strictEqual(reasons.length, 1);
+      assert.match(reasons[0], /\(#791\)/);
+      assert.match(reasons[0], /#794/);
+      assert.match(reasons[0], /外すか/);
+      assert.match(reasons[0], /Closes/);
+    });
+
+    ok('#799: prNumber 未指定・末尾番号なしはいずれも違反 0', () => {
+      assert.deepStrictEqual(validateTitlePrNumber('chore(NFR): 何か (#791)', null), []);
+      assert.deepStrictEqual(validateTitlePrNumber('chore(NFR): 何か (#791)', undefined), []);
+      assert.deepStrictEqual(validateTitlePrNumber('chore(NFR): 何か', 794), []);
+      // 文字列で渡ってきても（環境変数経由の実運用）数値として突き合わせる。
+      assert.deepStrictEqual(validateTitlePrNumber('chore(NFR): 何か (#794)', '794'), []);
+      assert.strictEqual(validateTitlePrNumber('chore(NFR): 何か (#791)', '794').length, 1);
+    });
+
+    ok('#799: normalizePrNumber は未設定を null・読めない値を NaN にする', () => {
+      assert.strictEqual(normalizePrNumber(undefined), null);
+      assert.strictEqual(normalizePrNumber(null), null);
+      assert.strictEqual(normalizePrNumber(''), null);
+      assert.strictEqual(normalizePrNumber('   '), null);
+      assert.strictEqual(normalizePrNumber('798'), 798);
+      assert.strictEqual(normalizePrNumber(798), 798);
+      assert.strictEqual(normalizePrNumber(' 798 '), 798);
+      // 読めない値を黙って null（＝検査しない）へ落とさない。呼び出し側が notice を出す。
+      assert.ok(Number.isNaN(normalizePrNumber('abc')));
+      assert.ok(Number.isNaN(normalizePrNumber('0')));
+      assert.ok(Number.isNaN(normalizePrNumber('-1')));
+      assert.ok(Number.isNaN(normalizePrNumber('12x')));
+    });
+
+    // ── 既存履歴の回帰: **develop に実際に着地した件名**（二重付加を含む）を
+    //    コミット件名モードで通し、番号一致を要求していないことを固定する。
+    //    fixture は develop d121ee8c から採った実データである（git に依存させると
+    //    shallow clone で黙って 0 件検査になるため、実件名を焼き込む）。
+    ok('#799: 実際に着地した件名はコミット件名モードで 1 件も落ちない', () => {
+      const landed = [
+        'chore(NFR,IADR-0205): 必読規約を減量してキット traceability.md を追随し、分類を A へ戻す (#805)',
+        'refactor(FR-14,IADR-0063): BffScopeResolver を Shared.Infrastructure へ切り出す (#229) (#251)',
+        'ci(NFR,IADR-0058): planning submodule 込みの doc-links 検査を定期ジョブで追加する (#232) (#236)',
+        'docs(IADR-0139): 束ねの上限を 2 件から 4 件へ改定する (#791) (#794)',
+        'chore(NFR): 計画 pin を 8cae89d へ進め、キット追随の分類 X を再判定する (#790) (#795)',
+        'docs(NFR): 見送り条件が解消した 3 箇所を追随させる (#804)',
+      ];
+      for (const s of landed) {
+        assert.deepStrictEqual(
+          validateTitlePrNumber(s, null),
+          [],
+          `コミット件名モードで番号一致を要求している: ${s}`
+        );
+      }
+      // 反証（この試験が空回りしていないこと）: 同じ件名を PR タイトルとして
+      // 別番号で渡せば、必ず違反として上がる。
+      assert.strictEqual(validateTitlePrNumber(landed[0], 806).length, 1);
+    });
+
+    // ── ワークフロー配線。**起動条件・必須チェックの context を変えていないこと**も固定する。
+    ok('#799: pr-title.yml が PR_NUMBER を渡し、起動条件とジョブ ID は不変', () => {
+      const yml = fsNum.readFileSync(
+        pathNum.resolve(__dirname, '..', '.github', 'workflows', 'pr-title.yml'),
+        'utf8'
+      );
+      assert.match(
+        yml,
+        /PR_NUMBER:\s*\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/,
+        'PR_NUMBER（PR 自身の番号）が渡されていない'
+      );
+      // 必須チェックの context はジョブ ID である。改名すると保護設定が黙って外れる。
+      assert.match(yml, /^ {2}pr-title:$/m, 'ジョブ ID pr-title が変わっている');
+      // 起動条件（pull_request の 4 イベント）を狭めていないこと。
+      assert.match(yml, /types:\s*\[opened, edited, reopened, synchronize\]/);
+    });
+  }
+
   // --- check-doc-links: planning submodule の扱い（Issue #232） -----------------
 
   const { parseArgs: parseDocLinkArgs, planningPopulated } = require('./check-doc-links.js');
