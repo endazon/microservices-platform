@@ -1,0 +1,30 @@
+#!/bin/sh
+# NFR / issue #768 / IADR-0203: 整形ゲートの**前倒し**（CI の frontend.yml「Format check (prettier)」と同じゲート）。
+# CI に無いゲートはここへ作らない（#562）。見るのはステージ済みの src/ 配下だけで、全量は CI が見る。
+# 対象範囲の単一情報源は src/.prettierignore ただ 1 つ（#562）。**グロブをここへ複写しない** ——
+# src/ 配下のステージ済みファイルを cwd = src/ で prettier に渡し、除外の判断は prettier に任せる。
+
+root=$(git rev-parse --show-toplevel) || exit 0
+cd "$root" || exit 0
+
+# 安全弁: 依存が未インストールの環境（クローン直後・pnpm 不在）ではフックを素通りさせる。
+# フックはあくまで前倒しであり、最後の砦は CI である。ここで落とすと非対話で作業する AI の手が止まる。
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-commit: pnpm が無いため整形チェックを省略した（CI が全量で検査する）"
+  exit 0
+fi
+if [ ! -d src/node_modules ]; then
+  echo "pre-commit: src/node_modules が無いため整形チェックを省略した（cd src && pnpm install で有効になる）"
+  exit 0
+fi
+
+files=$(git diff --cached --name-only --diff-filter=ACMR -- src | sed -n 's|^src/||p')
+[ -z "$files" ] && exit 0
+
+if ! printf '%s\n' "$files" | tr '\n' '\0' |
+  (cd src && xargs -0 pnpm exec prettier --check --ignore-unknown --no-error-on-unmatched-pattern --); then
+  echo ""
+  echo "✗ pre-commit: 整形されていないファイルがある（CI の frontend.yml「Format check (prettier)」と同じゲート）"
+  echo "  直すには: cd src && pnpm run format"
+  exit 1
+fi

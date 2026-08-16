@@ -1,0 +1,27 @@
+#!/bin/sh
+# NFR / issue #768 / IADR-0203: コミット規約ゲートの**前倒し**（CI の ci.yml「commit-messages」と同じ検査器）。
+# 規約の正本は .claude/rules/traceability.md と scripts/check-commit-messages.js。
+# **Commitlint のような第 2 の規則表を置かない** —— 乖離するため、同じスクリプトを呼ぶ。
+# 見るのは**件名のみ**で、本文のクロスリポ参照検査は CI（レンジモード）が持つ。
+
+root=$(git rev-parse --show-toplevel) || exit 0
+cd "$root" || exit 0
+
+command -v node >/dev/null 2>&1 || exit 0
+[ -f scripts/check-commit-messages.js ] || exit 0
+
+# コメント行を除いた最初の非空行が件名。空ならこのフックでは判定しない（git 自身が空メッセージを止める）。
+subject=$(grep -v '^#' "$1" | sed -n '/./{p;q}')
+[ -z "$subject" ] && exit 0
+
+case "$subject" in
+  Merge\ * | Revert\ * | fixup!* | squash!*) exit 0 ;;
+esac
+
+if ! node scripts/check-commit-messages.js --title "$subject"; then
+  echo ""
+  echo "✗ commit-msg: コミット件名が規約 \`種別(起点ID): 要約\` に違反している"
+  echo "  （検査器は PR タイトル検査モードを流用しているため上の表示は「PR タイトル」だが、"
+  echo "    検査した対象はいま書いたコミット件名である）"
+  exit 1
+fi
