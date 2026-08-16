@@ -8,7 +8,6 @@ using IngestionService.Worker.Composable.Adapters;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Qdrant.Client;
-using Serilog;
 
 const string ServiceName = "microservices-platform.ingestion-service";
 
@@ -16,8 +15,7 @@ const string ServiceName = "microservices-platform.ingestion-service";
 // MassTransit コンシューマ（取り込みワーカー）は従来どおり IHostedService として稼働する。
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSerilog((sp, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(builder.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 

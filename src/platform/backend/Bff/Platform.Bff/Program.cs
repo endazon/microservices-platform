@@ -2,14 +2,12 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Bff.Composition;
-using Serilog;
 
 const string ServiceName = "microservices-platform.bff";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);

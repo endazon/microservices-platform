@@ -3,7 +3,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="MassTransit.RabbitMQ" />
-    <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <!-- IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。 -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

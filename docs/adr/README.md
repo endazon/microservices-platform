@@ -269,6 +269,7 @@
 | [IADR-0213](./IADR-0213_optin-token-boundary-matching.md) | `OPTIN_TOKENS` の不在検査を **末尾境界一致**にする（`includes` は接頭辞を持つトークンの検出力を隠す。実測 3 組）。配下だけが発行されるものは末尾 `/` で綴る。**各トークンの単独検出力を毎回検査**。#817 | Accepted |
 | [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md) | **ゲートが読むファイル ⊆ そのゲートを走らせるワークフローの `paths:`** を不変条件にする。入力は検査器の `path.join` 定数から**導出**し列挙しない。対象ゲートは `run:` から導く。push / pull_request を別々に見る。fail-closed 3 門。 | Accepted |
 | [IADR-0215](./IADR-0215_notification-service-and-in-app-delivery.md) | FR-22 の通知は **`NotificationService` を新設**して担う（送信上限は単一資源なので数える場所を割らない）。配信は**ポーリング 60 秒**（SSE は #788）。**スキーマにタイトル／本文を置かず**文言はカタログ側。メールは **outbox で従属させない**。上限超過は**繰り越し**。受け皿は `platform/frontend`。#600 | Accepted |
+| [IADR-0216](./IADR-0216_otel-logging-sdk-replaces-serilog.md) | ログの出口を Serilog から **`builder.Logging.AddOpenTelemetry()`（OTel Logging SDK）**へ移す（計画 ADR-0030 の消化）。ログ／トレース／メトリクスが**同一の `ResourceBuilder` と OTLP 先**を共有。`CorrelationId` は `LogContext` → **`BeginScope` ＋ `IncludeScopes`**。**変わる 5 点**（コンソール書式・イベント単位 `ServiceName`・重大度の写像・`ReadFrom.Configuration`・`LogContext` の全域性）を明示。ratchet **42 → 29**。#455 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

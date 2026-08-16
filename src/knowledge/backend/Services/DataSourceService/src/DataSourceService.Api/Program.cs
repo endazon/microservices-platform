@@ -9,14 +9,12 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Serilog;
 
 const string ServiceName = "microservices-platform.datasource-service";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);

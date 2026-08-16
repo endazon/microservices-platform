@@ -4,7 +4,6 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Serilog;
 using WikiService.Api.Composable.Steps;
 using WikiService.Api.Foundation.Endpoints;
 using WikiService.Api.Foundation.Persistence;
@@ -16,8 +15,7 @@ const string ServiceName = "microservices-platform.wiki-service";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);

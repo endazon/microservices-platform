@@ -3,14 +3,12 @@ using AiAnalysisService.Api.Foundation.Services;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using Serilog;
 
 const string ServiceName = "microservices-platform.aianalysis-service";
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Host.UseSerilog((ctx, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(ctx.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);

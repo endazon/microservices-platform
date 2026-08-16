@@ -12,7 +12,6 @@ using ConversionService.Worker.Composable.Adapters;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
-using Serilog;
 
 const string ServiceName = "microservices-platform.conversion-service";
 
@@ -20,8 +19,7 @@ const string ServiceName = "microservices-platform.conversion-service";
 // MassTransit コンシューマ（変換ワーカー）は従来どおり IHostedService として稼働する。
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSerilog((sp, logConfig) =>
-    logConfig.ConfigurePlatformSerilog(builder.Configuration, ServiceName));
+builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 

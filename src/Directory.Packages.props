@@ -18,9 +18,6 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.16.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
-    <!-- Logging -->
-    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageVersion Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
     <!-- MassTransit -->
     <PackageVersion Include="MassTransit" Version="8.4.1" />
     <PackageVersion Include="MassTransit.RabbitMQ" Version="8.4.1" />
@@ -63,7 +60,9 @@
          不採用ライブラリ（MediatR / AutoMapper / Mapster / MassTransit / FluentAssertions /
          Serilog 等）は scripts/check-backend-libraries.js が新規混入を止める。既存の参照は
          scripts/backend-library-baseline.json で ratchet 管理し、空になった時点で
-         上の MassTransit / Serilog / FluentAssertions の PackageVersion を削除する。
+         上の MassTransit / FluentAssertions の PackageVersion を削除する。
+         Serilog（Serilog.AspNetCore / Serilog.Sinks.OpenTelemetry）は消化済みのため削除した
+         （IADR-0216。ログの出口は builder.Logging.AddOpenTelemetry() へ移した）。
          ============================================================================ -->
     <!-- Application 層: ローカル/リモートハンドラ・Outbox（ADR-0027）・検証・マッピング・DI -->
     <PackageVersion Include="WolverineFx" Version="6.24.4" />

@@ -209,8 +209,11 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 ## 監査ログ
 
-機微な取得・管理操作を構造化ログ（`Audit=true` プロパティ付与）として記録し、可観測性基盤（Serilog→OTLP）で
+機微な取得・管理操作を構造化ログ（`Audit=true` プロパティ付与）として記録し、可観測性基盤
+（`ILogger` → OTel Logging SDK → OTLP。[IADR-0216](../adr/IADR-0216_otel-logging-sdk-replaces-serilog.md)）で
 監査として抽出可能にする（`IAuditLogger`・`Shared.Infrastructure/Foundation/Audit`。FR-15 / ADR-0004）。
+`Audit=true` を含む構造化プロパティが `LogRecord` の属性として保たれることは
+`Platform.Bff.Tests/PlatformLoggingTests.cs` が実測する（`ParseStateValues = true` による写像）。
 
 | 対象イベント | 記録項目 | 保管期間 |
 | --- | --- | --- |

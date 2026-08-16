@@ -15,7 +15,8 @@ public sealed class AuditLogger(ILogger<AuditLogger> logger) : IAuditLogger
 {
     public void Record(string action, string subject, string outcome, string? detail = null)
     {
-        // Audit=true を構造化プロパティに付与し、可観測性基盤（Serilog→OTLP）で監査として抽出可能にする。
+        // Audit=true を構造化プロパティに付与し、可観測性基盤（ILogger→OTel Logging SDK→OTLP。IADR-0216）で
+        // 監査として抽出可能にする。プロパティが LogRecord の属性になるのは ParseStateValues = true による。
         logger.LogInformation(
             "Audit: action={AuditAction} subject={AuditSubject} outcome={AuditOutcome} detail={AuditDetail} {Audit}",
             action, subject, outcome, detail ?? string.Empty, true);
