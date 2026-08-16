@@ -7,6 +7,7 @@ related_ids:
   - IADR-0115
   - IADR-0141
   - IADR-0183
+  - IADR-0184
   - IADR-0192
   - IADR-0198
   - IADR-0208
