@@ -65,7 +65,7 @@ UNREACHABLE
 **`docker` はバイナリが在るだけでデーモンが動いていない。** したがって Testcontainers も
 `docker compose up` も使えない。**フロントは実走する**（`pnpm run typecheck` が 5 ワークスペースで Done）。
 
-## 4. 再検証の結果 —— **17 件すべて着手不可**
+## 4. 再検証の結果 —— **このコンテナでは 17 件すべて着手不可**
 
 判定軸は 4 つ。**「何が無いから不可か」を必ず 1 つ以上挙げる**（挙げられないなら不可ではない）。
 
@@ -134,7 +134,7 @@ ADR-0038 Proposed   ADR-0039 Proposed
 完結する現存作業は **#785**（Bulletproof React の feature 内部分割）だが、**これは本書の射程外**である
 （利用者が別セッション向けとした表に含まれる）。
 
-## 7. 隘路は 1 つに集約される
+## 7. 隘路は 2 つに集約される
 
 ```
 #455（backend 層標準・dotnet 必須）
@@ -188,9 +188,60 @@ ADR-0038 Proposed   ADR-0039 Proposed
 
 **必読規約は 1 バイトも触っていない。** コードも触っていない（本書 1 ファイルのみ）。
 
-## 11. 次にこの判定を使う人へ
+## 11. ★ 同じコミット・同じ日に、別コンテナでは揃っていた（**本書の主張の実例**）
 
-**本書の判定は 2026-08-16 のこのコンテナの値である。据え置かないこと**（[[IADR-0180]]）。
+**本書のレビューが、本書の前提をその場で反証した。** これは本書を誤りにするものではなく、
+**[[IADR-0180]] が言う「環境依存の判定に賞味期限がある」ことの、最も強い実例**である。
 
-`dotnet` とクラスタを持つ環境では、**#455 と #442 が先に崩せる**。そこが崩れれば 13 件の従属が解ける。
-**着手するときは、まず §3 と同じコマンドで環境を測り直し、本書との差分を書くこと。**
+`origin/develop` = `90ba652a`・`planning` = `8cae89d`・**同じ 2026-08-16**。それでも:
+
+| ツール | 本書の実装コンテナ | **AI レビューの実行コンテナ** |
+| --- | --- | --- |
+| `dotnet` | **不在** | **在り**（`10.0.400` / `/usr/share/dotnet/dotnet`。`dotnet --info` と restore 成功まで確認） |
+| `kubectl` | 不在 | **在り**（`/usr/bin/kubectl`） |
+| `helm` | 不在 | **在り**（`/usr/local/bin/helm`） |
+| `kustomize` | 不在 | **在り**（`/usr/local/bin/kustomize`） |
+| `k3d` | 不在 | 不在 |
+| `pnpm` | **在り** | **不在** |
+
+**`pnpm` は逆向きである** —— 一方にしか無いのは片側だけではない。
+
+### 本書の測定は正しい（`command -v` の穴を潰して再確認した）
+
+レビューが `/usr/share/dotnet/dotnet` という**PATH 外の絶対パス**で見つけたため、
+**`command -v` が PATH しか見ないことによる見落としを疑って引き直した。**
+
+```console
+$ for p in /usr/share/dotnet/dotnet /usr/lib/dotnet/dotnet /usr/local/bin/dotnet /opt/dotnet/dotnet \
+           /usr/bin/kubectl /usr/local/bin/helm /usr/local/bin/kustomize; do
+    printf "%-32s " "$p"; [ -x "$p" ] && echo "EXISTS+EXEC" || echo "-"; done
+/usr/share/dotnet/dotnet         -
+/usr/lib/dotnet/dotnet           -
+/usr/local/bin/dotnet            -
+/opt/dotnet/dotnet               -
+/usr/bin/kubectl                 -
+/usr/local/bin/helm              -
+/usr/local/bin/kustomize         -
+
+$ ls -d /usr/share/dotnet /usr/lib/dotnet /opt/dotnet 2>/dev/null || echo "(no dotnet dirs)"
+(no dotnet dirs)
+
+$ find / -maxdepth 4 -name "dotnet" -type f 2>/dev/null | head -5
+（0 件）
+```
+
+**このコンテナには本当に無い。** 両方の測定が正しく、**違うのはジョブである。**
+
+### したがって判定の単位は「リポジトリ」でも「日付」でもなく **ジョブ**である
+
+- **`command -v` だけで「無い」と断じない。** PATH 外に置かれている構成があり得る（本節がその発見の経緯）
+- **CI の `build-and-test` は現に両ユニットの backend をビルドしている。** 「このリポジトリはビルドできない」ではない
+- **#455 / #442 は、レビュー実行コンテナ相当のツールチェーンを持つジョブなら現時点でも崩せる可能性がある。**
+  隘路は**リポジトリの性質ではなく、割り当てられたジョブの性質**である
+
+## 12. 次にこの判定を使う人へ
+
+**本書の判定は 2026-08-16 の「実装セッションのコンテナ」の値である。据え置かないこと**（[[IADR-0180]]）。
+
+**着手するときは、まず §3 と §11 の両方のコマンドで自分のジョブを測り直し、本書との差分を書くこと。**
+`dotnet` とクラスタが揃うジョブでは、**#455 と #442 が先に崩せる**。そこが崩れれば 13 件の従属が解ける。
