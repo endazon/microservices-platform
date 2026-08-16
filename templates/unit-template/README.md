@@ -29,20 +29,33 @@
   frontend/
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
     tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
-    src/features/                            ← 計画 13_frontend-stack §ディレクトリ構成（Bulletproof React）
-      index.ts                              ← ユニットの束ね（ルート factory ＋ ナビ項目の 2 本を公開）
-      sample/                                ← Feature 単位。**内部を api/components/hooks/routes/types へ割る**
-        index.ts                            ←   feature の公開面（ここが再輸出したものだけを外から使う）
-        api/                                ←   サーバー状態（TanStack Query / orval 生成フック）
-        components/                         ←   画面・部品（@platform/ui のプリミティブを使う）
-        hooks/                              ←   feature 固有のクライアント状態
-        routes/                             ←   ルート定義（createXxxRoute）とナビ項目
-        types/                              ←   表示用の型（BFF の DTO は orval 生成物を使う）
+    src/                                     ← 計画 13_frontend-stack §ディレクトリ構成（Bulletproof React）
+      app/          .gitkeep                ← providers / router / i18n / config（通常は platform 側が持つ）
+      assets/       .gitkeep                ← 自己ホストのフォント・画像（外部 CDN は禁止）
+      components/   .gitkeep                ← ユニット内の共通コンポーネント
+      hooks/ lib/ stores/ testing/ types/ utils/   .gitkeep
+      locales/      .gitkeep                ← ja / en（Lingui。カタログの実体は platform 側）
+      features/                              ← Feature 単位
+        index.ts                            ←   ユニットの束ね（ルート factory ＋ ナビ項目の 2 本を公開）
+        sample/                              ←   **内部を api/components/hooks/routes/stores/types へ割る**
+          index.ts                          ←     feature の公開面（再輸出したものだけを外から使う）
+          api/useSampleList.ts              ←     サーバー状態（TanStack Query / orval 生成フック）
+          components/SamplePage.tsx         ←     画面・部品（@platform/ui のプリミティブを使う）
+          components/SamplePage.test.tsx    ←     テストは実装と同居させる
+          hooks/useSampleFilter.ts          ←     feature 固有のクライアント状態
+          routes/sampleRoute.ts             ←     ルート定義（createXxxRoute）とナビ項目
+          stores/       .gitkeep            ←     Zustand ストア（第 4 段で導入。#788）
+          types/index.ts                    ←     表示用の型（BFF の DTO は orval 生成物を使う）
 ```
 
-> **`stores/`（Zustand）は雛形に置いていない。** 計画の Feature 単位には `stores/` も含まれるが、
-> Zustand は本リポジトリへ未導入である（SPA 移行第 4 段 / #493）。空フォルダを置かない規約
-> （[`src/README.md`](../../src/README.md)「存在しない区分のフォルダは作らない」）に従い、導入時に足す。
+> **中身が無い区分も、フォルダと `.gitkeep` だけは置いてある。** 何も無いと
+> **その構成要素が意図的に不在なのか単に作り忘れなのかが一見して分からない**ためである
+> （計画 `12_backend-application-stack` §規範性・粒度・置き場 がバックエンドについて同じ作法を
+> 定めており、フロントにも同じ理由が当てはまる）。**使わない区分のフォルダを消さないこと** ——
+> 消すと次の複製者に「その区分は不要」と伝わってしまう。
+>
+> `app/` と `locales/` は、ユニットでは通常空のままになる（アプリホストである
+> `platform/frontend` が持つ）。枠だけ残して「ユニット側には置かない」ことを見せている。
 
 > **雛形は実装（`src/knowledge/frontend`）ではなく計画に合わせてある。** knowledge の各 feature は
 > まだ内部を割っておらず 1 階層にファイルが並ぶが、計画 13_frontend-stack（`status: fixed`）は

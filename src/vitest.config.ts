@@ -27,6 +27,11 @@ export default defineConfig({
       ),
     },
   },
+  // FR-14 / IADR-0060: 雛形（`templates/*/frontend`）は Vite のルート（`src/`）の外にある。
+  // 既定では読み込みが拒否され「ファイルが在るのに Cannot find module」になる（実測）ため、
+  // 1 階層上まで許可する。**pnpm workspace のメンバでもあるので解決自体は通る**が、
+  // fs の許可は別の関門である。
+  server: { fs: { allow: ['..'] } },
   test: {
     environment: 'jsdom',
     globals: true,
@@ -37,6 +42,11 @@ export default defineConfig({
       'ai-stock-trading/frontend/src/**/*.{test,spec}.{ts,tsx}',
       // IADR-0121 決定 4: 共有 UI パッケージ（@platform/ui）も横断計測の対象にする。
       'packages/*/src/**/*.{test,spec}.{ts,tsx}',
+      // FR-14 / IADR-0060: 追加可変機能ユニットの**雛形**のテストも実行する。
+      // **走らないテストを雛形に置かない**——雛形は複製されるので、腐ったテストの型を
+      // 全新規ユニットへ配ることになる。カバレッジの母数には入れない（下の coverage.include に
+      // templates を含めない）ので、ラチェットの水準は動かさない。
+      '../templates/*/frontend/src/**/*.{test,spec}.{ts,tsx}',
     ],
     css: false,
     // IADR-0033/0034: カバレッジはしきい値ゲート（回帰防止のラチェット）。CI(frontend-tests.yml)
