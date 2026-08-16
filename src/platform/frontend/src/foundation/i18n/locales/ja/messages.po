@@ -1086,6 +1086,10 @@ msgid "文書編集"
 msgstr "文書編集"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "既定のライフサイクル状態"
+msgstr "既定のライフサイクル状態"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定の機密区分"
 msgstr "既定の機密区分"
 
@@ -1121,6 +1125,14 @@ msgstr "未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります�
 #: knowledge/frontend/src/features/sc06-datasources/syncState.ts
 msgid "未同期"
 msgstr "未同期"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "未指定"
+msgstr "未指定"
+
+#: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
+msgid "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
+msgstr "未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。"
 
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 msgid "本文"

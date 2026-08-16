@@ -16,6 +16,7 @@ import {
   DEFAULT_CONFIDENTIALITY,
 } from '../abac/confidentiality';
 import { DEPARTMENT_KEY, UNRESOLVED_DEPARTMENT } from '../abac/department';
+import { DEFAULT_LIFECYCLE, LIFECYCLE_KEY, LIFECYCLE_VALUES } from '../abac/lifecycle';
 import { i18n } from '@foundation/i18n';
 import { SOURCE_TYPES, sourceTypeLabel } from './syncState';
 import type { CreateDataSourceRequest } from '@foundation/api/generated/bff.schemas';
@@ -44,6 +45,13 @@ export function DataSourceForm({
   // FR-05, UC-04, SC-06: 既定の所管部門（#767）。計画 09_datasource-connectors §システム投入経路の
   // **2 段目**（データソースの既定属性）を開ける。1 段目（ソースから解決）は写像規則が未裁定である。
   const [department, setDepartment] = useState('');
+  // FR-05, UC-04, SC-06: 既定のライフサイクル状態（#796）。計画 09_datasource-connectors §システム投入経路の
+  // **2 段目**（データソースの既定属性）を開ける。1 段目（ソースから解決）は**構造的に存在しない**
+  // （ファイルの状態を `draft` / `active` / `archived` へ写像できない）。
+  //
+  // **初期値は空（未指定）である。** 終端の `active` は**指定が無いときだけ**効くと計画が定めるため、
+  // `DEFAULT_LIFECYCLE` を初期選択にすると「明示的に active を指定した」と「指定しなかった」の区別が消える。
+  const [lifecycle, setLifecycle] = useState('');
 
   const canSubmit = name.trim().length > 0 && connectionUri.trim().length > 0 && !submitting;
 
@@ -65,6 +73,11 @@ export function DataSourceForm({
             // 後段の `FillIfBlank` は空文字も予約値へ倒すので今日の結果は同じだが、空文字を送る形は
             // その空白判定に依存する。判定がキーの有無だけに変わった瞬間、画面から登録した全ソースの
             // 部門が空文字になり、予約値との区別（＝環流債務の測定値。IADR-0199）が静かに壊れる。
+            //
+            // FR-05, UC-04, SC-06: 未指定の `lifecycle` も**キーごと送らない**（#796）。理由は上に加えて
+            // もう 1 つある —— 計画は「終端の `active` は**指定が無いときだけ**効く」と定めており、
+            // `department` の予約値と違って**終端が正規の値**なので、値だけでは「指定しなかった」と
+            // 「`active` を選んだ」を見分けられない。**キーの有無だけが区別を持つ。**
             const trimmedDepartment = department.trim();
             onSubmit({
               name: name.trim(),
@@ -73,6 +86,7 @@ export function DataSourceForm({
               defaultAttributes: {
                 [CONFIDENTIALITY_KEY]: confidentiality,
                 ...(trimmedDepartment ? { [DEPARTMENT_KEY]: trimmedDepartment } : {}),
+                ...(lifecycle ? { [LIFECYCLE_KEY]: lifecycle } : {}),
               },
             });
           }}
@@ -154,6 +168,35 @@ export function DataSourceForm({
             />
             <p id="ds-dept-hint" className="text-xs text-[--color-fg-muted]">
               <Trans>未入力のときは予約値 {UNRESOLVED_DEPARTMENT} が入ります。</Trans>
+            </p>
+          </div>
+
+          <div>
+            {/* FR-05, UC-04, SC-06（#796）: 既定のライフサイクル状態。値域は計画
+                07_abac-attribute-model の `lifecycle` 属性（`draft` / `active` / `archived`）が正であり、
+                `department` と違って**列挙がある**ので選択式にする。**「未指定」を選べることが要件**
+                —— 終端の `active` は指定が無いときだけ効くためである（09_datasource-connectors）。
+                値そのものは翻訳しない（保存値。機密区分と同じ扱い）。 */}
+            <Label htmlFor="ds-lifecycle">
+              <Trans>既定のライフサイクル状態</Trans>
+            </Label>
+            <Select
+              id="ds-lifecycle"
+              value={lifecycle}
+              aria-describedby="ds-lifecycle-hint"
+              onChange={(e) => setLifecycle(e.target.value)}
+            >
+              <option value="">{t`未指定`}</option>
+              {LIFECYCLE_VALUES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </Select>
+            <p id="ds-lifecycle-hint" className="text-xs text-[--color-fg-muted]">
+              {/* **「予約値」と書かない** —— `active` は「解決できなかったことの記録」ではなく
+                  そう決めた既定値であり、件数を環流債務として数えない（IADR-0199 決定 4）。 */}
+              <Trans>未指定のときは既定値 {DEFAULT_LIFECYCLE} が入ります。</Trans>
             </p>
           </div>
 
