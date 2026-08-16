@@ -1,5 +1,6 @@
 using Anthropic.SDK;
 using LlmGateway.Api.Foundation.Ports;
+using LlmGateway.Api.Foundation.Routing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -51,6 +52,6 @@ file class StubLlmProvider : ILlmProvider
 // テスト用スタブ埋め込みプロバイダー（要求次元どおりのゼロベクトルを返す）。
 file class StubEmbeddingProvider : IEmbeddingProvider
 {
-    public Task<float[]> EmbedAsync(string text, string model, int dimensions, CancellationToken ct = default)
+    public Task<float[]> EmbedAsync(string text, string model, int dimensions, EmbeddingRoutePurpose purpose, CancellationToken ct = default)
         => Task.FromResult(new float[dimensions]);
 }
