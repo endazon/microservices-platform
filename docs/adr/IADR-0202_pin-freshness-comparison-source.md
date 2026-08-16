@@ -9,7 +9,7 @@ related_ids:
   - IADR-0170
 author: claude（実装）
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/README.md"
 ---
@@ -92,6 +92,21 @@ plan_refs:
   - **キット版との突合（案 C）を別 issue で起票する。** 本リポの是正をキットへ環流する（分類 B）。
   - 案 A が要ると判断される場合（例: 逆方向の検出が常態化した場合）は、**本 IADR を改定する**。
     実装側の判断だけで fetch を足さない。
+
+［2026-08-16 追記 / #773］**決定 4 に反して、実装は既定でネットワーク fetch していた**（本 IADR を
+起こした当の PR に入っていた）。`resolveComparisonSource` の既定が `{ fetch = true }` で、CLI は
+`--no-fetch` を opt-in にしていたため、**フラグを渡さない本番の 2 経路**（`scripts/setup.sh` の
+SessionStart hook ／ 夜間ワークフロー `planning-pin-freshness.yml`）が**そのまま案 A になっていた**。
+フェーズ末のクロス監査が検出した（#773）。
+
+**決定は変えていない。実装を決定へ合わせた**（新 IADR は立てない）。既定を `{ fetch = false }` とし、
+fetch は **`--fetch` の opt-in**（キット版の正準名に合わせた。旧 `--no-fetch` は既定が反転すると
+no-op になり、**逆の既定を読ませる**ため残さない）。再発は `scripts/scripts.repo.test.js` の
+`pin 鮮度 #773: …` 3 件が止める —— **CLI のフラグ解析**と**関数の既定引数**の 2 つが変異点であり、
+どちらを戻しても落ちる（本番経路が `--fetch` を渡さないことも固定した）。
+
+**この型は通常の CI では捕まらない。** 検査器は fetch の成否に関わらず続行し、`--self-test` も
+緑のままである。**ADR と実装の突き合わせでしか出ない。**
 
 ## 関連
 

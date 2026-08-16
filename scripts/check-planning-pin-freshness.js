@@ -22,6 +22,12 @@
  *     **分類器が正しく動いたまま「効く変更はありません」と報告する**。祖先判定で止める。
  *   - **比較元をどこから取ったかを必ず出力する（#749 受け入れ基準 3）。** 出力を読んでも
  *     比較相手が分からなければ、誤りに気づけない（実際に気づけなかった）。
+ *   - **既定はオフラインで完結する（#773 / IADR-0202 決定 4）。** ネットワーク fetch（案 A）は
+ *     **採らないと決めてある** —— SessionStart hook をネットワーク・認証へ依存させる代償が
+ *     根治に見合わない。**fetch は `--fetch` の opt-in** であり、既定では実行しない。
+ *
+ * 使い方:
+ *   node scripts/check-planning-pin-freshness.js [--fetch] [--root <path>] [--self-test]
  *
  * 外部依存ゼロ（Node 標準モジュールのみ。scripts/ に依存解決の経路が無い）。
  */
@@ -247,9 +253,15 @@ function ageNote(root = REPO_ROOT, now = Math.floor(Date.now() / 1000)) {
  *   #749 では submodule の `origin` が GitHub ではなく隣接クローンを指していたが、
  *   その事実が出力のどこにも現れず、誤りに気づけなかった。
  *
+ * ★★ **既定は fetch しない（#773 / IADR-0202 決定 4）。** 決定 4 は「案 A（比較前のネットワーク
+ *   fetch）は採らない」であり、**既定を `true` にすると SessionStart hook（`scripts/setup.sh`）と
+ *   夜間ワークフローがそのまま案 A になる**（どちらもフラグを渡さないため）。**この既定は
+ *   ADR の決定そのものである。変えるなら実装ではなく IADR を改める。**
+ *   `scripts/scripts.repo.test.js` の「#773: 既定でネットワーク fetch を実行しない」が門を持つ。
+ *
  * @returns {{commit: string, ref: string, remoteUrl: string|null, fetch: 'ok'|'failed'|'skipped'}|null}
  */
-function resolveComparisonSource(root = REPO_ROOT, { fetch = true } = {}) {
+function resolveComparisonSource(root = REPO_ROOT, { fetch = false } = {}) {
   const dir = path.join(root, PLANNING);
   let fetchState = 'skipped';
   if (fetch) {
@@ -488,7 +500,10 @@ function selfTest() {
 function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--self-test')) process.exit(selfTest());
-  const noFetch = argv.includes('--no-fetch');
+  // ★ **fetch は opt-in**（#773 / IADR-0202 決定 4）。旧実装は `--no-fetch` を opt-in にしており、
+  //   **フラグを渡さない本番の 2 経路（setup.sh・夜間ワークフロー）が既定で fetch していた。**
+  //   キット版も `--fetch` を opt-in とする（正準名を揃える）。
+  const doFetch = argv.includes('--fetch');
   // `--root <path>`: 検査対象のリポジトリルートを差し替える。**回帰テスト（fixture）が
   // プロセスとして本体を走らせるために要る** —— gitlink の読み取りと祖先判定は実物の
   // git リポジトリを要し、純関数だけでは #749 の型（入力が壊れている）を再現できない。
@@ -514,7 +529,7 @@ function main() {
     process.exit(1);
   }
   const pin = pinnedCommit(root);
-  const source = resolveComparisonSource(root, { fetch: !noFetch });
+  const source = resolveComparisonSource(root, { fetch: doFetch });
   // 受け入れ基準 3（#749）: **比較元をどこから取ったかを、どの経路でも必ず出す。**
   const sourceLine = describeSource(source);
   const head = source ? source.commit : null;
