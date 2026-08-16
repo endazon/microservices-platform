@@ -7155,7 +7155,8 @@ module.exports = ({ ok, assert }) => {
     //
     // ★★ #790: 分類 A（バイト一致）→ B（X・期限つき暫定）へ移した。キット版が 8cae89d で
     //   +3,002B 育ち（本リポの環流 planning#373 / planning#374 が受理された結果）、そのまま
-    //   取り込むと必読規約の合計が予算 51,200B を 1,995B 超えて予算試験が fail するためである。
+    //   取り込むと必読規約の合計が予算 51,200B を超えて予算試験が fail するためである
+    //   （**超過量は母数が動くたびに変わるので書かない**。下の #790 ラチェットがライブ計算する）。
     //   **「C に戻っていない」ことは引き続き固定する**（planning#363 の名指し 1 件目）。
     ok('#790: traceability.md はキット土台のまま（C へ戻っていない）で、companion が固有規範を持つ', () => {
       const t = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/kit-sync-classification.json'), 'utf8'));

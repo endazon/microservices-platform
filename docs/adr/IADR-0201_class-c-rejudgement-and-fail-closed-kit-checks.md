@@ -74,7 +74,8 @@ planning#363 の裁定で分類 C は **(a) キットに対応物が無い／(b)
 >   断定しており、**拡張点を埋めた本リポでは原理的に通らない**（`loadExistingPlanIds()` が Set を返す）。
 >   固有デルタは 1 か所。追跡 planning#380。
 > - **`.claude/rules/traceability.md` も A → B（X）へ移した。** キット原文を取り込むと必読規約が
->   予算 51,200B を 1,995B 超えて予算試験が fail する。**期限つきの暫定**であり、減量（#793）が
+>   予算 51,200B を約 2KB 超えて予算試験が fail する（**正確な超過量は母数が動くたびに変わるため書かない**。
+>   判定は `scripts.repo.test.js` のラチェットがライブ計算で持つ）。**期限つきの暫定**であり、減量（#793）が
 >   着地すると `scripts.repo.test.js` のラチェットが落ちて追随を促す。**決定 2 の設計（companion 分離）は覆っていない。**
 > - **`scripts/check-commit-messages.js` は X → B（種 5）へ落ちた**（置換点 `PLAN_PROJECT` のみ）。
 >   **`scripts/check-cross-repo-refs.js` は X のまま**だが理由が変わった（検出力は同値。キットに

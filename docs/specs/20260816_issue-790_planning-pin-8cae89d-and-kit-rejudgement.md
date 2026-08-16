@@ -145,22 +145,31 @@ X を名乗るのは **`check-commit-messages.js` / `check-cross-repo-refs.js` /
 
 ### 2.5 必読規約の母集合（[[IADR-0200]] 決定 1・`check-reading-budget.js` が正）
 
-| 集合 | pin 前進前 | 本 PR 完了時 | 判定 |
+| 集合 | pin 前進前 | 本 PR 完了時（develop `0e906f7` 取り込み後） | 判定 |
 | --- | --- | --- | --- |
-| **Claude Code**（`CLAUDE.md` ＋ `.claude/rules/*.md`） | **50,193B（98.0%）** | **50,182B（98.0%）** | warn・exit 0 |
-| AGENTS.md 系 | 4,710B（9.2%） | 4,710B | ok（観測のみ） |
+| **Claude Code**（`CLAUDE.md` ＋ `.claude/rules/*.md`） | **50,193B（98.0%）** | **50,061B（97.8%）** | warn・exit 0 |
+| AGENTS.md 系 | 4,710B（9.2%） | 4,836B（9.4%。#794 が +126B） | ok（観測のみ） |
 | Copilot | 2,850B（5.6%） | 2,850B | ok（観測のみ） |
 
-**−11B**（走査基準の sha 置換は ±0B。companion 冒頭の「（キット配布物・分類 A）」→「（キット配布物）」で −11B）。
-**もしキット版 `traceability.md` を取り込んでいれば 53,184B（103.9%・超過 1,984B）で fail** した（§4.1）。
+**本 PR 自身の寄与は −11B**（走査基準の sha 置換は ±0B。companion 冒頭の「（キット配布物・分類 A）」→
+「（キット配布物）」で −11B）。**残る −121B は #794 が `CLAUDE.md` へ加えた減量**である。
 
-**★［2026-08-16 追記 / #790］この行と `IADR-0204` 副作用表・`kit-sync-classification.json` の理由欄は、
-当初いずれも `50,193B → 53,195B` と書いていた。§4.1 の実測（下記 AssertionError）を採った値だが、
-その測定は companion を 11B 縮める前に行っている。** 完了時点で引き直すと **53,184B** であり、
-**「もし取り込んでいたら」という前向きの主張には完了時点の値を使うのが正しい**（PR #795 の
-レビュー 🟢 が検出）。**規則 10 の破れ**である —— 自分で 11B 減らしておきながら、その減量が
-自分の別の記述を誤りにしたことを引き直していない。**下の §4.1 の AssertionError 出力は
-測定時点の生の記録なので書き換えない**（時点つきで読む）。
+#### ★★［2026-08-16 追記 / #790］would-be の具体値を書くのをやめた
+
+**当初この節・`IADR-0204` 副作用表・`kit-sync-classification.json` の理由欄は、いずれも
+「取り込むと 50,193B → 53,195B」と具体値を書いていた。その値は 3 回動いた。**
+
+| 時点 | 合計 | would-be | 何が動かしたか | 検出者 |
+| --- | ---: | ---: | --- | --- |
+| 作業途中 | 50,193B | 53,195B | （最初の測定。§4.1 の AssertionError） | — |
+| コミット時 | 50,182B | 53,184B | **自分が** companion を 11B 縮めた | PR #795 の AI レビュー 🟢 |
+| develop 取り込み後 | 50,061B | 53,063B | **別 PR（#794）が** `CLAUDE.md` を 121B 縮めた | 取り込み時に自分で |
+
+**3 度とも同じ型である** —— 導出値を散文へ固定し、母数が動いたのに引き直していない。**3 回目で書くのを
+やめた。** 超過しているかは**ラチェットが実ファイルからライブ計算して判定する**のであり、散文の数値は
+判定に一切使われない。**書けば必ず腐り、腐っても誰も落ちない。** これが規則 10 の「導出値は走査ではなく
+計算し直す」の最も純粋な形である。**§4.1 の AssertionError 出力は測定時点の生の記録なので書き換えない**
+（内訳の `5405` が時点を示す）。
 
 ### 2.6 除外したものと理由（**黙って落とさない**）
 
@@ -197,7 +206,7 @@ X を名乗るのは **`check-commit-messages.js` / `check-cross-repo-refs.js` /
 | 4 | `check-kit-sync.js` が **exit 0** | A 76 / B 27 / C 4 / 対象外 8 | ✅ |
 | 5 | 分類 X 2 件の再判定を**実走突合の証跡つき**で | §4.2 / §4.3。結論は「1 本は B（種 5）へ／1 本は X 継続で理由を書き直し」 | ✅ |
 | 6 | `scripts.test.js` と `REQUIRE_REPO_TESTS=1` 版が緑 | 619 tests passed（両方） | ✅ |
-| 7 | 必読規約の総量が**増えていない** | 50,193B → **50,182B**（−11B） | ✅ |
+| 7 | 必読規約の総量が**増えていない** | 50,193B → **50,061B**（本 PR −11B ＋ develop 取り込みで #794 −121B） | ✅ |
 
 **基準 4 と 7 は、`traceability.md` をキット原文で上書きすると同時に満たせない**（§4.1）。
 issue 本文の「キット原文で上書きするのが分類 A の定義である」は、+3,002B が予算に入る前提で書かれていた。
@@ -219,10 +228,10 @@ node scripts/scripts.test.js                     → exit 1
 ```
 
 **この出力は測定時点（companion を 11B 縮める前。内訳の `5405` がその時点を示している）の生の記録である。**
-**完了時点で引き直すと 53,184B・超過 1,984B** で、以降の記述はそちらを使う（§2.5 の追記）。
+**この値は以降 2 度動いた。経緯と「もう値を書かない」という結論は §2.5 の追記を見ること。**
 
-**1,995B を空ける手段は `CLAUDE.md`（別 issue の領域）か companion の減量しかない**（キット配布物は削れない
-—— 削るとバイト一致が崩れ、同期のたびに手動マージが要る）。companion 5,405B から 1,995B（37%）を抜くのは
+**超過分（約 2KB）を空ける手段は `CLAUDE.md`（別 issue の領域）か companion の減量しかない**（キット配布物は削れない
+—— 削るとバイト一致が崩れ、同期のたびに手動マージが要る）。5.4KB 弱の companion から約 2KB を抜くのは
 **規約の減量作業そのもの**であり、`scripts.repo.test.js` が companion の文言リテラルを 10 箇所以上で
 固定しているため、pin 追随の PR で巻き込むと減量の判断が「予算を空けるため」に歪む。
 
@@ -371,7 +380,7 @@ $ node <kit版> …   # 走査対象 0 件の空リポジトリ
 | `node scripts/check-kit-sync.js` | **exit 0**（A 76 / B 27 / C 4 / 対象外 8 ＝ 115） |
 | `node scripts/scripts.test.js` | **exit 0** ✓ 619 tests passed |
 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **exit 0** ✓ 619 tests passed |
-| `node scripts/check-reading-budget.js` | **exit 0**（50,182B / 98%・warn 帯） |
+| `node scripts/check-reading-budget.js` | **exit 0**（50,061B / 97.8%・warn 帯。develop 取り込み後） |
 | `node scripts/check-cross-repo-refs.js` / `--self-test` | exit 0（1,626 件・違反 0）／自己試験 86 件 |
 | `check-doc-links` / `check-adr-numbering` / `check-plan-id-qualification` / `check-doc-type-vocabulary` / `check-doc-status-vocabulary` / `check-planning-pin-freshness` | 結果は PR 本文（[[IADR-0183]] の順序で `git add -A` の後に実行） |
 | `check-doc-updated` / `check-commit-messages` | **コミット後**に実行（HEAD を読むため） |
