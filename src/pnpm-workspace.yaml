@@ -2,6 +2,12 @@
 # - '*/frontend' は src/<unit>/frontend を自動認識する（FR-14 / IADR-0056 決定 6。ユニットを submodule で
 #   追加しても本ファイルの編集が要らない性質を npm workspaces から引き継ぐ）。
 # - 'packages/*' はユニットに属さない共有ワークスペースパッケージ（@platform/ui）。IADR-0121 決定 4。
+# - '../templates/*/frontend' は追加可変機能ユニットの**雛形**（templates/unit-template/frontend）を
+#   workspace メンバに含める。雛形は本体のビルド対象ではないが、メンバにしないと
+#   `pnpm -r run typecheck` の射程から外れ、**現行スタックからずれても誰も気付かない**。
+#   実際、雛形のフロントは旧ルータ契約（#490 以前）と依存宣言なし（#591 以前）のまま取り残されていた。
+#   バックエンド側は ci.yml が同じ理由で templates/ を走査対象に含めており、これはそのフロント版である。
 packages:
   - '*/frontend'
   - 'packages/*'
+  - '../templates/*/frontend'

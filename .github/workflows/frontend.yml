@@ -34,6 +34,12 @@ on:
       # **src/ 配下へ submodule を足したらここへも足すこと**（checkout 側は .gitmodules を総なめする
       # 汎用形だが、paths: は glob で gitlink を表現できない。scripts.repo.test.js が突合する）。
       - "src/ai-stock-trading"
+      # FR-14 / IADR-0060: 追加可変機能ユニットの雛形。src/ の外にあるため上の "src/*/frontend/**" に
+      # 一致せず、従前は**雛形をどう壊しても本 CI が起動しなかった**。実際、雛形のフロントは
+      # 旧ルータ契約（#490 以前）と依存宣言なし（#591 以前）のまま取り残されていた。
+      # 雛形は pnpm workspace メンバなので typecheck は既存ジョブが拾い、lint / format は下の専用ステップが見る。
+      - "templates/*/frontend/**"
+      - "src/eslint.templates.config.js"
       - ".github/workflows/frontend.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -57,6 +63,9 @@ on:
       - "src/lingui.config.ts"
       # NFR / issue #747: AST submodule のポインタ（push 側と同じ理由。末尾に /** を付けない）。
       - "src/ai-stock-trading"
+      # FR-14 / IADR-0060: 追加可変機能ユニットの雛形（push 側と同じ理由）。
+      - "templates/*/frontend/**"
+      - "src/eslint.templates.config.js"
       - ".github/workflows/frontend.yml"
 
 defaults:
@@ -91,10 +100,22 @@ jobs:
           cache: pnpm
           cache-dependency-path: src/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+      # 雛形（templates/*/frontend）もここで検査される——pnpm workspace のメンバであり
+      # `pnpm run typecheck` が `pnpm -r` で回るため（src/pnpm-workspace.yaml）。
+      # 旧契約へ戻すと TS2305 で赤くなることを実測済み（#591 以前の形は解決できない）。
       - name: Typecheck
         run: pnpm run typecheck
       - name: Lint
         run: pnpm run lint
+      # FR-14 / IADR-0060: 雛形の lint。ESLint の flat config は設定ファイルのあるディレクトリの外を
+      # 検査しないため、上の `pnpm run lint`（src/ が基準）は templates/ へ到達できない。
+      # 雛形専用の入口で検査する（禁止リストは eslint.config.js から import する＝単一情報源）。
+      - name: Lint (unit template)
+        run: pnpm run lint:templates
+      # 同上。prettier は各ファイルの位置から上へ設定を探すため、src/.prettierrc.json を
+      # 見つけられない（設定なしの既定で整形され、--check が自己矛盾なく通ってしまう）。--config で明示する。
+      - name: Format check (unit template)
+        run: pnpm run format:templates
       # NFR / issue #562: 整形ゲート。バックエンドは ci.yml の lint ジョブが
       # `dotnet format --verify-no-changes` で整形を強制しているのに対し、フロントには
       # 同等のゲートが無く、整形揺れは AI レビューの目でしか拾えなかった。

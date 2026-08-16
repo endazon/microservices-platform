@@ -27,11 +27,41 @@
       tests/SampleService.UnitTests/         ← xUnit v2 + AwesomeAssertions + NSubstitute
       tests/SampleService.IntegrationTests/  ← Testcontainers + Respawn + Mvc.Testing
   frontend/
-    package.json                            ← name: @<scope>/frontend-<unit>（workspaces で自動認識）
-    src/features/
-      index.ts                              ← ユニットの feature 束ね
-      sample/index.ts                       ← サンプル feature
+    package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
+    tsconfig.json                           ← paths で @foundation を解決（無いと typecheck が動かない）
+    src/                                     ← 計画 13_frontend-stack §ディレクトリ構成（Bulletproof React）
+      app/          .gitkeep                ← providers / router / i18n / config（通常は platform 側が持つ）
+      assets/       .gitkeep                ← 自己ホストのフォント・画像（外部 CDN は禁止）
+      components/   .gitkeep                ← ユニット内の共通コンポーネント
+      hooks/ lib/ stores/ testing/ types/ utils/   .gitkeep
+      locales/      .gitkeep                ← ja / en（Lingui。カタログの実体は platform 側）
+      features/                              ← Feature 単位
+        index.ts                            ←   ユニットの束ね（ルート factory ＋ ナビ項目の 2 本を公開）
+        sample/                              ←   **内部を api/components/hooks/routes/stores/types へ割る**
+          index.ts                          ←     feature の公開面（再輸出したものだけを外から使う）
+          api/useSampleList.ts              ←     サーバー状態（TanStack Query / orval 生成フック）
+          components/SamplePage.tsx         ←     画面・部品（@platform/ui のプリミティブを使う）
+          components/SamplePage.test.tsx    ←     テストは実装と同居させる
+          hooks/useSampleFilter.ts          ←     feature 固有のクライアント状態
+          routes/sampleRoute.ts             ←     ルート定義（createXxxRoute）とナビ項目
+          stores/       .gitkeep            ←     Zustand ストア（第 4 段で導入。#788）
+          types/index.ts                    ←     表示用の型（BFF の DTO は orval 生成物を使う）
 ```
+
+> **中身が無い区分も、フォルダと `.gitkeep` だけは置いてある。** 何も無いと
+> **その構成要素が意図的に不在なのか単に作り忘れなのかが一見して分からない**ためである
+> （計画 `12_backend-application-stack` §規範性・粒度・置き場 がバックエンドについて同じ作法を
+> 定めており、フロントにも同じ理由が当てはまる）。**使わない区分のフォルダを消さないこと** ——
+> 消すと次の複製者に「その区分は不要」と伝わってしまう。
+>
+> `app/` と `locales/` は、ユニットでは通常空のままになる（アプリホストである
+> `platform/frontend` が持つ）。枠だけ残して「ユニット側には置かない」ことを見せている。
+
+> **雛形は実装（`src/knowledge/frontend`）ではなく計画に合わせてある。** knowledge の各 feature は
+> まだ内部を割っておらず 1 階層にファイルが並ぶが、計画 13_frontend-stack（`status: fixed`）は
+> **Feature 単位を `api/ components/ hooks/ routes/ stores/ types/` に割る**と定めており、
+> 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定）が確定している。
+> **knowledge を真似て 1 階層へ戻さないこと**——これから作られる全ユニットが不適合を継承する。
 
 - **アプリケーション層の標準は ADR-0030**（Vertical Slice / Minimal API / ローカルディスパッチも
   Wolverine ハンドラ / Domain は共有カーネルを除き外部依存ゼロ（ADR-0041。#500） / 採用・不採用ライブラリ）。実装側の要点は
@@ -57,7 +87,19 @@
   部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
 - platform → 可変ユニットの参照は禁止（一方向依存）。
 - `Foundation/` は `Composable/` に依存しない。
-- フロントは `@foundation` のみ参照可。合成点以外からの `@<unit>` import は ESLint で禁止。
+- フロントが参照してよいのは **`@foundation`（platform の基盤）と `@platform/ui`（共有 UI パッケージ）の 2 つ**
+  （[IADR-0121](../../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が
+  [`src/README.md`](../../src/README.md) 依存規則 例外 2 を 1 → 2 へ部分改定した。`@platform/ui` は
+  ドメイン・通信・ルーティング・認証・表示文言を持たないため切り出し可能性を損なわない。
+  逆向き（`@platform/ui` → ユニット）は禁止）。**`@platform/ui` の深い参照
+  （`@platform/ui/src/...`）は ESLint が禁止する**——公開面は `src/index.ts` の 1 ファイルだけである。
+- フロントは platform の合成点（`@features`）を参照しない。合成点以外からの `@<unit>` import も
+  ESLint で禁止（IADR-0057）。
+- **BFF 呼び出しは orval 生成フックか `@foundation/api` 経由**（手書き HTTP クライアントは ESLint が
+  error にする）。画面（features）からの `apiFetch` / `bffFetch` 直呼びも禁止（IADR-0146）。
+
+> これらの禁止は雛形にも機械適用される（`src/eslint.templates.config.js`。禁止リストは
+> `src/eslint.config.js` から import しており二重管理にならない）。
 
 ## 単独リポジトリでビルドする場合（任意）
 
@@ -111,6 +153,27 @@ dotnet build backend.slnx
 2. `git submodule add <repo-url> src/<unit>`。
 3. バックエンド: CI は `src/*/backend/backend.slnx` を自動発見（編集不要）。private submodule は
    checkout に `submodules: recursive` + トークンを与える（[how-to](../../docs/how-to/adding-a-unit-submodule.md) §3）。
-4. フロント: 合成点 `src/platform/frontend/src/features/index.ts` へ import を 1 行追加。`@<unit>` エイリアスを
-   `platform/frontend/vite.config.ts` に追加。
+4. フロント: 雛形の `package.json` の `name` と `tsconfig.json` の `paths`（`@sample-unit` の行、および
+   テンプレート位置向けの 2 つ目の候補パス）を自ユニット名へ直す。そのうえで **3 か所**を追加する
+   （[IADR-0124](../../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
+   [IADR-0056](../../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
+   「import 1 行」はこれに部分改定された）。
+   - 合成点 `src/platform/frontend/src/features/index.ts` へ
+     `import { createXxxRoutes, xxxNavItems } from '@<unit>/features';`
+   - 同ファイルの `createUnitRoutes` へ `...createXxxRoutes(shell)` を 1 行
+   - 同ファイルの `planNavItems` へ `...xxxNavItems` を 1 行
+     — **ルートとナビは別経路である。**片方だけだと「画面は開けるのに左ナビに出ない」（逆も同様）。
+
+   併せてエイリアスを **2 か所**へ足す（片方だけだと「ビルドは通るが `tsc` が落ちる」等の食い違いになる）。
+   - `src/platform/frontend/vite.config.ts` の `resolve.alias`（`@knowledge` と同型）
+   - `src/platform/frontend/tsconfig.app.json` の `paths`（型解決用）
+
+   さらに **i18n の抽出対象**（`src/lingui.config.ts` の `catalogs[0].include`）へ
+   `'<rootDir>/<unit>/frontend/src'` を足す。ここはハードコードの列挙で自動認識しない。
+   **足し忘れると、そのユニットの文言が抽出されず未翻訳検査（IADR-0125 決定 4）の外側になる**
+   ——「翻訳漏れ 0 件」に見えて実際は測っていない状態になる。詳細は
+   [how-to](../../docs/how-to/adding-a-unit-submodule.md) §4。
+
+   なお本計画に属さないユニットは `group` を宣言せず、合成点の `unitNavGroups` へ**ユニットの機能名**を
+   見出しとするグループを 1 要素足す（IADR-0125 決定 9。総称としての「その他」は使わない）。
 5. バージョン固定: submodule の pin を本体 PR で更新（Renovate `git-submodules` で自動化可）。

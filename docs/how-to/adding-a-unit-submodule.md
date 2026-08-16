@@ -22,9 +22,17 @@
       tests/<Name>.Api.Tests/
     Shared/<Unit>.Contracts/    ← 任意: ユニット固有のイベント契約（段間連携イベント。契約階層化は #229/IADR-0059）
   frontend/
-    package.json                ← name: @<scope>/frontend-<unit>、workspaces で自動認識
-    src/features/               ← 画面 feature 群と合成用 index.ts
+    package.json                ← name: @<unit>/frontend、pnpm workspace で自動認識。**依存を明示宣言する**
+    tsconfig.json               ← paths で @foundation を解決（無いと typecheck が動かない）
+    src/features/               ← 画面 feature 群と合成用 index.ts。Feature 単位を
+                                ←   api/ components/ hooks/ routes/ types/ へ割る（Bulletproof React）
 ```
+
+- **フロントの依存は雛形の `package.json` に宣言済みのものを引き継ぐ。** pnpm は npm workspaces と違い
+  ユニットごとの宣言を厳密に守るため、宣言しない依存は解決できない（`src/package.json` の
+  `//overrides` 注釈）。雛形は React 19 / TanStack Router / TanStack Query / Lingui / `@platform/ui` を
+  宣言している。`oidc-client-ts` は計画 13_frontend-stack で**不採用**（ADR-0032 の BFF セッション方式へ
+  移行するため）なので、新ユニットへは入れない。
 
 - **命名**: 名前空間はフォルダ階層に一致させる（IADR-0027）。ユニット固有イベント契約は
   `Shared/<Unit>.Contracts/Events/` に置き、wire URN は移設時に `[MessageUrn]` で固定する（IADR-0059）。
@@ -86,17 +94,59 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 - pnpm workspace は `src/pnpm-workspace.yaml` の `'*/frontend'` により**自動認識**される
   （同ファイルの追記不要。#591: 従前ここは「npm workspaces（`package.json` 追記不要）」と書いていたが、
   パッケージ管理は [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済み）。
-- platform の合成点 [`src/platform/frontend/src/features/index.ts`](../../src/platform/frontend/src/features/index.ts) へ
-  **import を 1 行追加**して feature を束ねる:
+- ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル**と
+  **ナビ項目（`PlanNavItem[]`）**の 2 つである（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md)
+  決定 1）。platform の合成点
+  [`src/platform/frontend/src/features/index.ts`](../../src/platform/frontend/src/features/index.ts) へ
+  **import 1 行 ＋ スプレッド 2 行**を追加して束ねる:
 
   ```ts
-  import { features as <unit>Features } from '@<unit>/features';
-  export const features: FeatureModule[] = [...knowledgeFeatures, ...<unit>Features];
+  import { createXxxRoutes, xxxNavItems } from '@<unit>/features';
+
+  export const createUnitRoutes = (shell: ShellRoute) =>
+    [...createKnowledgeRoutes(shell), ...createXxxRoutes(shell)] as const;
+
+  export const planNavItems: readonly PlanNavItem[] = [...knowledgeNavItems, ...xxxNavItems];
   ```
 
-  - `@<unit>` エイリアスは `platform/frontend/vite.config.ts` に追加する（`@knowledge` と同型）。
-  - 依存規則: 可変ユニットは `@foundation` のみ参照可。合成点以外からの `@<unit>` import は
+  - **`createUnitRoutes` の戻り値へ型注釈を書かない。** `readonly AnyRoute[]` を注釈すると
+    ルート ID とパスの union が失われ、`useSearch({ from })` も `<Link to>` も静的検査されなくなる
+    （IADR-0124 §実測）。
+  - **ルートとナビは別経路である。** `planNavItems` への追加を忘れると、画面は開けるのに左ナビに出ない。
+  - ナビ項目の `group` は 05_screens §共通シェル の 4 グループ（`user` / `personal` / `admin` / `ops`）で、
+    **本リポジトリの計画に属するユニットは必ず宣言する**（型 `PlanNavItem` が `tsc` で強制する。
+    総称のフォールバックが無いため、宣言漏れは「どのグループにも属さず静かに消える」ことを意味する）。
+    計画に属さないユニットは `group` を宣言せず、合成点の `unitNavGroups` へ**ユニットの機能名**を
+    見出しとするグループを 1 要素足す（IADR-0125 決定 9）。
+  - **旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は使わない。** 本リポジトリから
+    変更できないユニット（`src/ai-stock-trading`。[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）
+    のための互換ブリッジであり、`src/README.md` §項 4 が「新規ユニットでは使わない」と定めている。
+  - `@<unit>` エイリアスは **2 か所**へ追加する（`@knowledge` と同型）。片方だけだと
+    「ビルドは通るが `tsc` が落ちる」等の食い違いになる。
+    - `src/platform/frontend/vite.config.ts` の `resolve.alias`
+    - `src/platform/frontend/tsconfig.app.json` の `paths`
+  - 依存規則: 可変ユニットが参照してよいのは `@foundation` と `@platform/ui` の 2 つ
+    （[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が `src/README.md` 例外 2 を
+    1 → 2 へ部分改定）。合成点以外からの `@<unit>` import は
     ESLint（`no-restricted-imports`、IADR-0057）で禁止される。
+
+- **i18n の抽出対象へ足す**（[`src/lingui.config.ts`](../../src/lingui.config.ts) の `catalogs[0].include`）。
+  ここは**ハードコードの列挙**（`platform/frontend/src` と `knowledge/frontend/src`）であり、pnpm workspace の
+  `'*/frontend'` のような自動認識をしない。**足し忘れると、そのユニットの `msg` / `Trans` が
+  `pnpm run i18n` の抽出対象に入らず、未翻訳キーの検査（`check-i18n-catalogs.js`。IADR-0125 決定 4）の
+  外側になる** —— カタログに現れないので「翻訳漏れが 0 件」と見えるが、実際は測っていない。
+
+  ```ts
+  include: [
+    '<rootDir>/platform/frontend/src',
+    '<rootDir>/knowledge/frontend/src',
+    '<rootDir>/<unit>/frontend/src', // ← 追加
+  ],
+  ```
+
+  **グロブ（`*/frontend/src`）へ置き換えないこと。** 抽出対象は「**本リポジトリが所有するユニット**」に
+  限る決まりで、別プロジェクトの submodule（`ai-stock-trading`。IADR-0120）は含めない
+  （同ファイル冒頭のコメントが理由を述べている）。グロブにすると AST を巻き込む。
 
 ## 5. 単独ビルド規約（submodule 配置時に共通設定を上書きしない）
 

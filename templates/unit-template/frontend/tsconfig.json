@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "baseUrl": ".",
+    // FR-14 / IADR-0056 / IADR-0057: 可変ユニットが参照してよいのは `@foundation`（platform の基盤）と
+    // `@platform/ui`（共有 UI パッケージ。node_modules 経由なので paths は不要）の 2 つだけである
+    // （IADR-0121 決定 4 が src/README.md 例外 2 を 1 → 2 へ部分改定した）。`@features` は platform の
+    // 合成点であり、ユニットからは参照しない（合成点以外からの参照は ESLint が禁止する）。
+    //
+    // **各エントリが 2 つの候補を持つのは意図的である。** 1 つ目は submodule 配置後の位置
+    // （`src/<unit>/frontend`）、2 つ目は本テンプレートが置かれている位置
+    // （`templates/unit-template/frontend`）を指す。TypeScript は先に解決できたほうを採るため、
+    // **同じ 1 つの設定が配置前後の双方で通る**。これにより CI が雛形をその場で型検査でき、
+    // 旧契約へ戻ると赤くなる（雛形が現行スタックから静かにずれるのを止める唯一の担保）。
+    // 複製したら 2 つ目の候補は消してよい。
+    "paths": {
+      "@foundation/*": [
+        "../../platform/frontend/src/foundation/*",
+        "../../../src/platform/frontend/src/foundation/*"
+      ],
+      "@sample-unit/*": ["src/*"]
+    }
+  },
+  "include": ["src"]
+}

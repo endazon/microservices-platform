@@ -1,10 +1,28 @@
 {
-  "name": "@<scope>/frontend-<unit>",
+  "name": "@sample-unit/frontend",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "テンプレート: 追加可変機能ユニットのフロントエンド（src/pnpm-workspace.yaml の '*/frontend' で自動認識される。#591 / IADR-0121 決定 2 で npm workspaces から pnpm workspace へ移行済み）。",
+  "description": "テンプレート: 追加可変機能ユニットのフロントエンド。複製したら name を @<unit>/frontend へ、tsconfig.json の paths の @sample-unit を @<unit> へ変える（src/pnpm-workspace.yaml の '*/frontend' が配置時に自動認識する。#591 / IADR-0121 決定 2 で npm workspaces から pnpm workspace へ移行済み）。",
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lingui/core": "^6.6.0",
+    "@lingui/react": "^6.6.0",
+    "@platform/ui": "workspace:*",
+    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-router": "^1.170.18",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.5.0",
+    "@testing-library/react": "^16.0.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.6.2",
+    "vite": "^6.4.3",
+    "vitest": "^3.2.7"
   }
 }

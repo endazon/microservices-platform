@@ -11,7 +11,9 @@ import tseslint from 'typescript-eslint';
 // 「走らせ忘れ」と二重メンテが増えるためである。
 // 各ユニットのブロックが no-restricted-imports を上書きしてしまうため（flat config は同一ルールを
 // 後勝ちで置換する）、共通パターンは定数にして各ブロックへ必ず展開する。
-const BANNED_IMPORT_PATTERNS = [
+// `export` しているのは `eslint.templates.config.js`（雛形用）が同じ配列を使い回すためである。
+// **雛形へ別立ての禁止リストを書かない**——2 本になった時点で必ず片方が古くなる。
+export const BANNED_IMPORT_PATTERNS = [
   {
     // 13_frontend-stack: クライアント状態は Zustand、サーバー状態は TanStack Query。
     // グローバルストア（Redux）は持たない。
@@ -52,7 +54,8 @@ const BANNED_IMPORT_PATTERNS = [
 // 実際 `knowledge/frontend/src/features/sc01-search/useAskStream.ts` が唯一の利用箇所である。
 // **禁止の対象を `apiFetch` に限ることが、そのまま例外の明示になっている**
 // ——「SSE だけ許可リストに載せる」形にすると、許可リストの保守という新しい手作業が増える。
-const NO_APIFETCH_IN_FEATURES = {
+// `export` の理由は BANNED_IMPORT_PATTERNS と同じ（雛形用 config が使い回す）。
+export const NO_APIFETCH_IN_FEATURES = {
   name: '@foundation/api/apiClient',
   importNames: ['apiFetch'],
   message:
@@ -68,7 +71,8 @@ const NO_APIFETCH_IN_FEATURES = {
 // 自体が例外の明示」と述べながら、`bffFetch` を「検出しないこと」へ挙げていなかった＝片側しか書いていない）。
 // **実測では features からの import は 0 件**（利用は `foundation/api/generated/` の 4 ファイルのみ）なので、
 // 禁止しても既存コードは壊れない。**生成物は features ではないため対象外である。**
-const NO_BFFFETCH_IN_FEATURES = {
+// `export` の理由は BANNED_IMPORT_PATTERNS と同じ（雛形用 config が使い回す）。
+export const NO_BFFFETCH_IN_FEATURES = {
   name: '@foundation/api/orvalMutator',
   importNames: ['bffFetch'],
   message:
@@ -83,7 +87,8 @@ const NO_BFFFETCH_IN_FEATURES = {
 // 別プロジェクトの submodule（IADR-0120）であり、本リポの規約を及ぼさない（旧契約ブリッジで動く）。
 // `patterns` ではなく `paths`（完全一致）で指定する——`patterns` は matchBase で照合するため、
 // `react-router` は `@tanstack/react-router` にも当たってしまう（実測）。
-const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((name) => ({
+// `export` の理由は BANNED_IMPORT_PATTERNS と同じ（雛形用 config が使い回す）。
+export const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((name) => ({
   name,
   message:
     'react-router は不採用（ADR-0031）。ルーティングは @tanstack/react-router を使う（IADR-0124）。',
