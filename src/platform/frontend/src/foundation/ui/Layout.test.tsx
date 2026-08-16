@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import type { User } from 'oidc-client-ts';
 import { AuthContext } from '@foundation/auth/AuthContext';
@@ -34,10 +35,22 @@ async function renderLayout(roles: string[], path = '/wiki') {
     logout: async () => {},
   };
   window.history.pushState({}, '', path);
+  // FR-22 / IADR-0215 決定 2: 共通シェルは通知ベル（`NotificationBell`）を持ち、TanStack Query を読む。
+  // 実アプリ（`App.tsx`）と同じく `QueryClientProvider` で包む——包まないとシェル全体が
+  // 「No QueryClient set」で落ち、ナビの検証まで巻き添えになる（実測）。
+  // 検査用クライアントは描画のたびに作り、再試行もキャッシュの持ち越しもさせない。
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, gcTime: 0, refetchOnWindowFocus: false },
+      mutations: { retry: false },
+    },
+  });
   const result = render(
-    <AuthContext.Provider value={value}>
-      <RouterProvider router={router} />
-    </AuthContext.Provider>,
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={value}>
+        <RouterProvider router={router} />
+      </AuthContext.Provider>
+    </QueryClientProvider>,
   );
   // TanStack Router の初期描画は非同期（マッチの解決を待つ）。
   await act(async () => {

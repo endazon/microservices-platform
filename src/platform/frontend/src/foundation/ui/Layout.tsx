@@ -8,6 +8,7 @@ import { useRoles, hasAnyRole } from '@foundation/auth/roles';
 import { navGroups } from '@foundation/routing/nav';
 import type { NavItemView } from '@foundation/routing/nav';
 import { appConfig } from '@foundation/config/runtimeConfig';
+import { NotificationBell } from '@foundation/notifications/NotificationBell';
 import { Notifications } from './notifications';
 
 // Issue #126 / 05_screens §共通シェル: 認証済み領域の共通シェル。features は Outlet に載る。
@@ -66,6 +67,9 @@ export function Layout() {
             05_screens §共通シェル ［2026-08-04 確定］「翻訳カタログの対象としない」による意図的な例外。 */}
         <span className="text-sm font-semibold text-[--color-fg]">汎用プラットフォーム</span>
         <div className="flex items-center gap-3">
+          {/* FR-22 / IADR-0215: アプリ内通知の受け皿。**永続する通知**であり、下の
+              `<Notifications />`（一過性のトースト）とは別物である。 */}
+          <NotificationBell />
           {/* 05_screens §共通シェル: ユーザーアイコンから SC-16（アカウント設定）へ遷移する。
               SC-16 は Keycloak テーマ＝別ホスト配信のため、SPA のルータではなく外部遷移で開く。 */}
           <a

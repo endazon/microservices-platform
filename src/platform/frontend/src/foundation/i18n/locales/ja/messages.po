@@ -179,6 +179,7 @@ msgstr "イベント接続はありません。"
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "エラー"
@@ -187,6 +188,10 @@ msgstr "エラー"
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "お探しのページは存在しないか、アクセスできません。"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "お知らせ"
+msgstr "お知らせ"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 msgid "キー"
@@ -615,9 +620,21 @@ msgstr "保存"
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 msgstr "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "保存容量が上限の {threshold}% に達しました"
+msgstr "保存容量が上限の {threshold}% に達しました"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
 msgstr "個人"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
+msgstr "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "個人資料 {count} 件を完全削除しました"
+msgstr "個人資料 {count} 件を完全削除しました"
 
 #: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
 msgid "候補を読み込み中…"
@@ -728,6 +745,10 @@ msgstr "利用者"
 msgid "削除"
 msgstr "削除"
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
+msgstr "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "原本"
@@ -748,6 +769,10 @@ msgstr "取り消す"
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "古い段の残留"
 msgstr "古い段の残留"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
+msgstr "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -1085,6 +1110,10 @@ msgstr "文書管理"
 msgid "文書編集"
 msgstr "文書編集"
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "新しいお知らせが {count} 件あります"
+msgstr "新しいお知らせが {count} 件あります"
+
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "既定のライフサイクル状態"
@@ -1096,6 +1125,18 @@ msgstr "既定の機密区分"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "既定の部門"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読"
+msgstr "既読"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読にする"
+msgstr "既読にする"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読にできませんでした"
+msgstr "既読にできませんでした"
 
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "日付"
@@ -1297,6 +1338,7 @@ msgstr "比較"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "注意"
@@ -1537,6 +1579,22 @@ msgstr "追加する"
 msgid "送信"
 msgstr "送信"
 
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知（未読 {unreadCount} 件）"
+msgstr "通知（未読 {unreadCount} 件）"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知はありません"
+msgstr "通知はありません"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知を取得できませんでした"
+msgstr "通知を取得できませんでした"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知一覧"
+msgstr "通知一覧"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "運用"
 msgstr "運用"
@@ -1593,6 +1651,10 @@ msgstr "選択してください"
 #: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "部門"
 msgstr "部門"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "重要"
+msgstr "重要"
 
 #: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
 msgid "閉じる"
