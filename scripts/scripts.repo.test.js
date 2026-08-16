@@ -7614,5 +7614,144 @@ module.exports = ({ ok, assert }) => {
           missing.join('\n  '),
       );
     });
+
+    // --- NFR / #801: vitest の test.include ⊆ frontend-tests.yml の paths: -----------
+    //
+    // ★ 起点 ID は**無採番の `NFR`**（上の #747 節と同じ理由。CI の起動条件という工程の統制であり、
+    //   計画側の非機能要件表に当たる番号が無い）。雛形そのものの根拠は `FR-14` / `IADR-0060`。
+    //
+    // ★ 「paths: の取りこぼしで検査が静かに素通りする」型は**着地日順に 4 件目**である
+    //     1 件目 = #562（`ce96eb81` / 2026-08-08。整形ゲートの設定が paths: に無く、単独変更で走らなかった）
+    //     2 件目 = #558（`4dbd5010` / 2026-08-10。契約と生成の設定が frontend-tests.yml に無かった）
+    //     3 件目 = #747（`3cf2437a` / 2026-08-15。AST submodule の gitlink が一致せず 3 回素通りした）
+    //     4 件目 = #801（本節。test.include が雛形のテストを収集するのに paths: が拾わない）
+    //   上の #747 節のコメントは同じ 3 件を **issue 番号順**（1=#558 / 2=#562）で並べている。
+    //   **集合は同一で、違うのは先頭 2 件の並びだけ**である（ここは是正が着地した日付順）。
+    //   CLAUDE.md「検査器・規約の追加は同型の事故が 2 回起きたら」の条件を満たす。
+    //   **#747 の検査器は .gitmodules の gitlink しか見ておらず、本件は素通りする**ので別の不変条件を置く。
+    //
+    // ★★ **不変条件は「test.include ⊆ frontend-tests.yml の paths:」であって、
+    //     2 本のワークフローの paths: の「対称性」ではない。**
+    //   `docs/specs/20260810_issue-558_carried-debt.md` が非対称を全数で測り、
+    //   **`src/.prettierrc.json` / `src/.prettierignore` / `src/lingui.config.ts` の 3 件を
+    //   理由つきで意図的に残している** —— `frontend.yml` は lint / format / build / e2e を担い、
+    //   `frontend-tests.yml` は **`pnpm run test:coverage` しか走らせない**。整形設定も
+    //   `lingui.config.ts` も `test:coverage` の結果を変えないので、足すと
+    //   **何も新しく確かめられないジョブが起動して CI 時間だけが伸びる**。
+    //   `src/eslint.templates.config.js` も同じ理由で `frontend-tests.yml` には無い。
+    //   **対称性を検査にすると、この 4 件を誤検出する。** だから包含だけを見る。
+    //
+    // ★ 方式は「**代表パス合成**」であり、実ファイル突合ではない。
+    //   実ファイル（`git ls-files`）に依存すると、**submodule の `src/ai-stock-trading` は 0 件しか
+    //   出ないため AST の include が空走査で静かに緑になる**（#664 / PR #672 が扱った fail-open の
+    //   新設に当たる）。代表パスなら populate の有無に関わらず同じ判定になる。
+    //
+    // ★ **fail-closed の門**を 2 つ置く（IADR-0183「偽の緑」）。include の抽出が 0 件でも、
+    //   paths: の抽出が 0 件でも throw する —— 正規表現が壊れたときに「0 件検査して緑」を返さない。
+    //
+    // ★ glob → RegExp は素の Node で自作する。本リポには `package.json` も `node_modules` も無く
+    //   `minimatch` 等を使えない。`**`（`/` を跨ぐ）/ `*`（跨がない）/ `{a,b}` を扱えれば足りる。
+
+    /** glob を RegExp へ変換する。`**` は `/` を跨ぎ、`*` は跨がない。`{a,b}` は選択。 */
+    const globToRegExp = (glob) => {
+      let re = '';
+      for (let i = 0; i < glob.length; i += 1) {
+        const c = glob[i];
+        if (c === '*') {
+          if (glob[i + 1] === '*') {
+            i += 1;
+            if (glob[i + 1] === '/') {
+              i += 1;
+              re += '(?:.*/)?'; // `**/` は 0 階層にも一致する
+            } else {
+              re += '.*';
+            }
+          } else {
+            re += '[^/]*';
+          }
+        } else if (c === '{') {
+          const end = glob.indexOf('}', i);
+          assert.ok(end > i, `glob の { が閉じていない: ${glob}`);
+          const alts = glob.slice(i + 1, end).split(',');
+          re += `(?:${alts.map((a) => a.replace(/[\\^$+?.()|[\]{}*]/g, '\\$&')).join('|')})`;
+          i = end;
+        } else if ('\\^$+?.()|[]'.includes(c)) {
+          re += `\\${c}`;
+        } else {
+          re += c;
+        }
+      }
+      return new RegExp(`^${re}$`);
+    };
+
+    /** glob から代表パスを機械合成する（`**` → `a/b`、`*` → `a`、`{x,y}` → `x`）。 */
+    const representativePath = (glob) =>
+      glob
+        .replace(/\{([^}]*)\}/g, (_m, alts) => alts.split(',')[0])
+        .replace(/\*\*/g, 'a/b')
+        .replace(/\*/g, 'a');
+
+    ok('NFR / #801: vitest の test.include が拾うパスは frontend-tests.yml の paths: にも載る', () => {
+      const cfg = fs.readFileSync(path.join(REPO, 'src/vitest.config.ts'), 'utf8');
+      // `  test: {` を起点に、**4 スペース**の `include: [` を非貪欲で取る。
+      // `coverage.include` は 6 スペース（1 段深い）なので取り違えない。
+      const block = cfg.match(/\n {2}test: \{\n[\s\S]*?\n {4}include: \[\n([\s\S]*?)\n {4}\],/);
+      // fail-closed の門 ①: 節が読めない＝正規表現が腐った。0 件検査で緑を返さない。
+      if (!block) {
+        throw new Error(
+          'src/vitest.config.ts の test.include 節を読めない（抽出の正規表現が壊れている）。' +
+            '0 件検査で緑を返さないため fail させる',
+        );
+      }
+      const includes = block[1]
+        .split('\n')
+        .map((l) => l.match(/^\s*'([^']+)',?\s*$/))
+        .filter(Boolean)
+        .map((m) => m[1]);
+      // fail-closed の門 ②: 1 件も取れないのは行の書式が変わった証拠である。
+      if (includes.length === 0) {
+        throw new Error('src/vitest.config.ts の test.include から glob を 1 件も取れない（走査が壊れている）');
+      }
+
+      // vite root は `src/` なので、リポジトリルート相対へ正規化する
+      // （`../templates/...` → `templates/...`、それ以外は `src/` を前置）。
+      const toRepoRelative = (glob) => {
+        const p = path.posix.normalize(path.posix.join('src', glob));
+        assert.ok(!p.startsWith('../'), `test.include がリポジトリ外を指している: ${glob}`);
+        return p;
+      };
+
+      const yml = fs.readFileSync(path.join(REPO, '.github/workflows/frontend-tests.yml'), 'utf8');
+      const missing = [];
+      let checked = 0;
+      // **push と pull_request を別々に見る**（片方だけ足す事故を止める）。
+      for (const event of ['push', 'pull_request']) {
+        const paths = pathsOf(yml, event);
+        // fail-closed の門 ③: paths: が読めない／0 件なら throw（#747 節と同じ扱い）。
+        if (!paths || paths.length === 0) {
+          throw new Error(`frontend-tests.yml: ${event}.paths を読めない（パーサが壊れている）`);
+        }
+        const matchers = paths.map(globToRegExp);
+        checked += 1;
+        for (const glob of includes) {
+          const rel = toRepoRelative(glob);
+          const sample = representativePath(rel);
+          if (!matchers.some((re) => re.test(sample))) {
+            missing.push(
+              `frontend-tests.yml: ${event}.paths が test.include "${glob}" を拾わない` +
+                `（代表パス "${sample}"）`,
+            );
+          }
+        }
+      }
+      assert.strictEqual(checked, 2, `paths: を持つトリガが ${checked} 箇所（push / pull_request の 2 箇所のはず）`);
+      assert.deepStrictEqual(
+        missing,
+        [],
+        'vitest が収集するのにテストを走らせる CI が起動しない（#801）。' +
+          'frontend-tests.yml の push / pull_request の**両方**の paths: へ足すこと:\n  ' +
+          missing.join('\n  '),
+      );
+    });
   }
 };

@@ -20,7 +20,7 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
     {
         public int Calls { get; private set; }
 
-        public Task<float[]> EmbedAsync(string text, string model, int dimensions, CancellationToken ct = default)
+        public Task<float[]> EmbedAsync(string text, string model, int dimensions, EmbeddingRoutePurpose purpose, CancellationToken ct = default)
         {
             Calls++;
             // returnDimensions>=0 なら指定サイズ、-1 は要求次元どおりを返す。

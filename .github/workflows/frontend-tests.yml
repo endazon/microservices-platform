@@ -29,6 +29,17 @@ on:
       # 末尾に /** を付けない（gitlink そのものを指すため）。
       # **src/ 配下へ submodule を足したらここへも足すこと**（scripts.repo.test.js が .gitmodules と突合する）。
       - "src/ai-stock-trading"
+      # NFR / issue #801: 追加可変機能ユニットの**雛形**（FR-14 / IADR-0060）。src/ の外にあるため
+      # 上の "src/*/frontend/**" に一致しない。**src/vitest.config.ts の test.include は
+      # '../templates/*/frontend/src/**/*.{test,spec}.{ts,tsx}' を収集する**のに、それを実際に走らせる
+      # 唯一の CI（本ファイル。pnpm run test:coverage）が起動しなかった——すなわち
+      # **雛形のテストだけを壊す変更が素通りする**（include・frontend.yml の paths:・雛形のテスト本体は
+      # すべて #777 の 1 コミットで入り、本ファイルだけ取り残された）。
+      # 「paths: の取りこぼしで検査が静かに素通りする」型は**着地日順に 4 件目**である
+      # （1: #562 / 2: #558 / 3: #747 / 4: 本件）。
+      # **push 側と pull_request 側の両方に置くこと**（片方だけでは片側の経路が素通りする）。
+      # scripts.repo.test.js が「test.include ⊆ 本ファイルの paths:」を機械で突合する。
+      - "templates/*/frontend/**"
       - ".github/workflows/frontend-tests.yml"
   pull_request:
     types: [opened, synchronize, reopened]
@@ -49,6 +60,9 @@ on:
       - "src/orval-bff-only.cjs"
       # NFR / issue #747: AST submodule のポインタ（push 側と同じ理由。末尾に /** を付けない）。
       - "src/ai-stock-trading"
+      # NFR / issue #801: 追加可変機能ユニットの雛形（FR-14 / IADR-0060。push 側と同じ理由）。
+      # **push 側と対で置くこと**——片方だけだとその経路が素通りする。
+      - "templates/*/frontend/**"
       - ".github/workflows/frontend-tests.yml"
 
 defaults:
