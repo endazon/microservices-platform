@@ -13,7 +13,7 @@
 1. `/plan-feedback <FR-xx|topic>` を実行する（`plan-feedbacker` エージェントが起票を補助）。
 2. `feedback/TEMPLATE.md` を雛形に、`feedback/<YYYYMMDD>_<概要>.md` に記録が作成される。
 3. 計画リポジトリへ伝達する（両経路に対応）。
-   - **記録ファイル経路**: 作成した記録を計画リポジトリの `draft/feedback/` にコピー（submodule/隣接クローン経由）。
+   - **記録ファイル経路**: 作成した記録を計画リポジトリの `draft/feedback/` にコピー（submodule `planning/` 経由）。
      計画側で `/triage-feedback` がトリアージする。
    - **GitHub Issue 経路**: `/plan-feedback` が生成した Issue 本文を、`endazon/project-planning` の
      「計画へのフィードバック」Issue テンプレートに貼り付けて起票する（GitHub MCP / `gh` でも可）。

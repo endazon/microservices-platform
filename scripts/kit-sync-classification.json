@@ -28,6 +28,7 @@
   ],
   "classes": {
     "A": [
+      ".claude/rules/traceability.md",
       ".claude/agents/adr-guardian.md",
       ".claude/agents/plan-feedbacker.md",
       ".claude/agents/test-author.md",
@@ -118,7 +119,7 @@
       "AGENTS.md": "3. 本リポにしか存在しない規範（束ねてよい範囲を IADR-0116 / IADR-0139 の 6 条件に限る 1 行）。土台（実装作業の進め方の要約）はキット版へ揃えた（#755）",
       "AI_SETUP.md": "5. キットが選択を委ねている欄（利用可能な AI のチェックボックス。裁定 planning#339）。キットは未選択で配り、どのリポジトリも必ず選択するため、選択済みであること自体は追随漏れではない。★ 説明文はキット側が正であり追随の対象",
       "CHANGELOG.md": "3. 本リポにしか存在しない成果物（gen-changelog.js が CI で生成する変更履歴。土台の見出し・注記はキット）",
-      "CLAUDE.md": "2. 技術スタックとその CI 配線（末尾「技術スタック別ルール」の置換点を埋めている）＋ 1. リポジトリ構成（ユニット構成・束ね範囲の IADR）。置換点を埋めているので C(b) も成立するが、土台の規約文（§8 予算・§11 パリティ等）はキットが正であり追随対象なので B に置く",
+      "CLAUDE.md": "2. 技術スタックとその CI 配線（末尾「技術スタック別ルール」の置換点を埋めている）＋ 1. リポジトリ構成（ユニット構成・束ね範囲の IADR）。置換点を埋めているので C(b) も成立するが、土台の規約文（§8 予算・§11 パリティ等）はキットが正であり追随対象なので B に置く。★ #793 でキット追随（traceability.md を A へ戻す）の原資を作るため、土台側でも『正本が他に在る複写』を落とした（起点 ID の種別と残す箇所の書式 = 同じ必読集合の traceability.md が正本 / 予算の測り方 = 運用ガイド §8 と check-reading-budget.js / パリティの手順 = 運用ガイド §11 / 仕様書の種別 = docs/README.md）。規範は 1 つも落としていない（正本への導線に置き換えた）。キット側の減量は planning へ環流する（IADR-0205 決定 4）",
       "docs/DEFINITION_OF_DONE.md": "X. 4 種に当たらない（検証の順序・IADR-0183）。環流済み。追跡: #736 / planning#337",
       "docs/README.md": "3. 本リポにしか存在しない運用ルール（status の値域・別紙の一覧・逆リンク一方向 IADR-0171 等）。キットの雛形（例）も docs/README.md を B に置く",
       "docs/ai-workflow.md": "2. 技術スタックとその CI 配線（必須チェックの表・claude 系ワークフローの実名）",
@@ -131,7 +132,6 @@
       "scripts/check-plan-id-qualification.js": "5. キットが選択・追記を委ねている欄（置換点 PROJECT_PREFIXES / EXTRA_EXCLUDES を埋めた）＋ 3. 本リポにしか存在しないスクリプト（lib/worktree-state.js の警告 IADR-0183 の 3 行）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、キット版が優ると判定してキット版へ差し替えた —— キット版だけが NFR を検出し（同じ fixture でキット 3 件 / 旧本リポ版 2 件）、置換点と環境変数・.gitmodules からの submodule 導出・設定の妥当性検査を持つ。これは feedback/20260808_kit-plan-id-qualification-check.md（起票 planning#316）で本リポ自身が要求した一般化がキットに着地したものである。",
       "scripts/check-planning-pin-freshness.js": "X. 5 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物）。#757 でキット版の freshness / pinnedCommitDate を移植し、比較元を取れない fail-open 経路へ配線した（キット版自身が「ここが要るリポジトリは本スクリプトを土台に分類規則を足すこと」と述べており、差し替えではなく足すのが正しい向き）。追跡: #749",
       "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337",
-      ".claude/rules/traceability.md": "X. 5 種に当たらない（**期限つきの暫定**）。キット版は 8cae89d で 21,590B → 24,592B（+3,002B）へ育った（本リポの環流 planning#373 / planning#374 が受理された結果で、内容そのものは正しい）。そのまま取り込むと必読規約の合計が予算 51,200B を超え、check-reading-budget.js と scripts.repo.test.js の予算試験が fail する（実測 #790）。★ 具体値はここへ書かない —— CLAUDE.md や companion が動くたびに変わるためである（実測で 3 回動いた: 53,195B → 53,184B → 53,063B。原因は自分の減量・別 PR のマージで、いずれも規則 10 の破れとして検出された）。超過しているかどうかは scripts.repo.test.js の #790 ラチェットが実ファイルからライブ計算して判定し、超えなくなったら fail して追随を促す。規範の空白は生じていない —— キット版が新たに書いた 3 点（FR/UC/SC 実在性の拡張点・修飾を 3 面で見ること・型 4 と〔〕区切りと .md 外走査）は companion traceability.repo.md が本リポ固有の形で既に持つ。減量が着地したら分類 A へ戻す。追跡: #793",
       "scripts/scripts.test.js": "X. 5 種に当たらない。キット版 8cae89d の試験「拡張点を持たない構成では null を返して当該検査を skip する」は、**拡張点（check-test-traceability.js の readPlanIds）を埋めた配布先では原理的に通らない** —— loadExistingPlanIds() が Set を返すのが #579 の機能そのものだからである（実測 #790）。固有デルタは当該 1 か所のみで、構成を判定してから期待値を選ぶ形へ変え両方向を固定した（skip にはしていない）。キット側の是正が着地したらバイト一致へ戻す。追跡: planning#380"
     },
     "C": [
