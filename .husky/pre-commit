@@ -3,6 +3,8 @@
 # CI に無いゲートはここへ作らない（#562）。見るのはステージ済みの src/ 配下だけで、全量は CI が見る。
 # 対象範囲の単一情報源は src/.prettierignore ただ 1 つ（#562）。**グロブをここへ複写しない** ——
 # src/ 配下のステージ済みファイルを cwd = src/ で prettier に渡し、除外の判断は prettier に任せる。
+# 雛形（templates/*/frontend）は src/ の外にあり本フックの射程外である（CI の
+# 「Format check (unit template)」が見る）。例外の 3 条件は IADR-0203 決定 3 の 2026-08-16 追記（#802）。
 
 root=$(git rev-parse --show-toplevel) || exit 0
 cd "$root" || exit 0

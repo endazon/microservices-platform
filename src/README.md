@@ -13,7 +13,7 @@ src/
   Directory.Build.props        ← バックエンド共通 MSBuild 設定（単一情報源。ユニットで上書きしない）
   Directory.Packages.props     ← パッケージ中央管理（CPM。csproj に Version= を書かない）
   package.json                 ← フロントエンド pnpm workspace ルート（pnpm-workspace.yaml が正）
-  pnpm-workspace.yaml          ← workspace メンバ（'*/frontend' と 'packages/*'。IADR-0121）
+  pnpm-workspace.yaml          ← workspace メンバの単一情報源（本ファイルが正。列挙を他所へ複写しない。IADR-0121 決定 2）
   vitest.config.ts             ← フロント単体テスト＋カバレッジ（全ユニット横断・しきい値ゲート）
   eslint.config.js             ← フロント lint（全ユニット横断）
   packages/                    ← ユニットに属さない共有ワークスペースパッケージ（IADR-0121 決定 4）
@@ -105,9 +105,12 @@ src/
   （`Directory.Build.props` / `Directory.Packages.props`）は `src/` に置き、ディレクトリ階層で
   全ユニット（submodule ユニット含む）へ自動継承される（ユニット単独リポジトリでのビルドには
   自前の同等設定が必要）。
-- **フロントエンド**: `src/` を pnpm workspace ルート（`pnpm-workspace.yaml` の `'*/frontend'` と
-  `'packages/*'`。[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
-  単一 lock（`pnpm-lock.yaml`）で管理する。開発コマンドは `src/` で実行する（詳細は
+- **フロントエンド**: `src/` を pnpm workspace ルート
+  （[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
+  単一 lock（`pnpm-lock.yaml`）で管理する。**メンバの正本は [`pnpm-workspace.yaml`](pnpm-workspace.yaml) 自身**
+  であり、ここへ列挙を複写しない。ユニットと共有パッケージのほかに**可変機能ユニットの雛形**
+  （`../templates/*/frontend`。`src/` の外にあるため `../` を跨ぐ唯一のメンバ）を含む
+  —— メンバにしないと `pnpm -r run typecheck` の射程から外れ、ずれても誰も気付かない（#784 が踏んだ）。開発コマンドは `src/` で実行する（詳細は
   [platform/frontend/README.md](platform/frontend/README.md)）。
 
 ## ユニットをサブモジュールとして追加する場合

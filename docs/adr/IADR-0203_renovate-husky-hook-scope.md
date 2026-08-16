@@ -5,11 +5,13 @@ status: Accepted
 related_ids:
   - NFR
   - ADR-0031
+  - IADR-0060
   - IADR-0115
   - IADR-0121
+  - IADR-0141
 author: claude
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs: []
 ---
 
@@ -55,6 +57,7 @@ plan_refs: []
 3. **Commitlint と lint-staged は入れない。** Commitlint は規約の第 2 の情報源になり（正本は
    `.claude/rules/traceability.md` と `check-commit-messages.js`）、lint-staged はグロブで対象を決めるため
    **整形範囲の単一情報源（`src/.prettierignore`。#562）を 2 本に割る**。フックは同じ実体を呼ぶ形にする。
+   **例外（`src/` の外に置く専用入口）を許す 3 条件は、下の 2026-08-16 追記が定める。**
 4. **husky は `src/package.json` の `prepare` から git ルートで実行する**（`cd .. && husky || true`。husky v9 は
    cwd に `.git` を要求するため）。`core.hooksPath` は相対 `.husky/_` となり、git が作業ツリーのトップ基準で
    解決するので worktree ごとに自然に切り替わる。`|| true` は CI の `--frozen-lockfile` install を
@@ -62,6 +65,36 @@ plan_refs: []
 5. **`.github/dependabot.yml` は編集しない。** キット配布物の**分類 A（バイト一致）**であり、棲み分けの
    注記を入れると `check-kit-sync.js` が落ちることを実測した。注記は `renovate.json` の `description` と
    本 ADR が持つ。キット側へ同じ注記を入れるかは**環流で判断する**。
+
+> **［2026-08-16 追記 / #802］却下されたのは「グロブを書くこと」ではなく「`src/` 内の対象選択を
+> 2 本目のグロブで行うこと」である。** #777 が `src/package.json` へ `format:templates` /
+> `lint:templates`（雛形 `templates/*/frontend` 専用の入口）を入れた。**これは本決定 3 の例外として
+> 許す。** 却下された lint-staged との線引きを、**この 1 箇所**に置く（却下理由と例外が離れると、
+> 片方だけを読んで「lint-staged 相当を足してよい」と読める。[[IADR-0141]]）。
+>
+> **2 本目の入口を許すのは、次の 3 条件をすべて満たすときだけである。**
+>
+> 1. **射程外であること。** 対象が `src/` の外にあり、`src/.prettierignore` /
+>    `src/.prettierrc.json` / `src/eslint.config.js` の**探索射程に構造的に入らない**こと。
+>    Prettier は各ファイルの位置から上へ設定を探し、ESLint flat config は設定ファイルのある
+>    ディレクトリの外を検査しない。**設定を移せば済む問題ではない**ことが条件である。
+> 2. **規則の情報源を増やさないこと。** 設定は同じ `src/.prettierrc.json` を `--config` で明示し、
+>    ESLint の禁止リストは `eslint.config.js` から import する（`src/eslint.templates.config.js`）。
+>    **入口は増えるが規則は 1 つ**であることが条件である。
+> 3. **入口ごとに対象が重ならないこと。** 同じファイルを 2 つの入口が別ルールで整形しない。
+>
+> **lint-staged が却下されたのは条件 1 を満たさないためである** —— 対象が `src/` 内であり、そこは
+> `.prettierignore` が既に単一情報源として働いている領域だからである。したがって
+> **`src/` 内の対象をグロブで選ぶ入口は、今後も入れない。**
+>
+> 例外を置かないと何が起きるかは実測されている: 設定が見つからない雛形は **Prettier の既定
+> （ダブルクォート）で整形され、`--check` は自己矛盾しないので通ってしまう** ——
+> **「検査しているのに何も守っていない」最悪の形**である。同じ理由で雛形は pnpm workspace の
+> メンバでもある（[[IADR-0121]] 決定 2 の 2026-08-16 追記 / [[IADR-0060]] / #784）。
+>
+> **手元フック（決定 2）の射程は `src/` 配下のままとする。** 雛形は CI の
+> `Format check (unit template)` / `Lint (unit template)` が見る。決定 2 の「CI ゲートの厳密な
+> 部分集合」は保たれており、本追記は決定 2・3 の他の内容を変えない（状態は `Accepted` のまま）。
 
 ## 理由
 

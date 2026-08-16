@@ -2,10 +2,10 @@
 title: IADR-0121 SPA 新スタック移行の内部設計 — pnpm workspace / orval の配置と出口 / @platform/ui の切り出し単位 / SSE チャットの状態管理 / 段階分割
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0116, IADR-0117, IADR-0119, IADR-0142, IADR-0120, IADR-0124, IADR-0125]
+related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0060, IADR-0116, IADR-0117, IADR-0119, IADR-0142, IADR-0120, IADR-0124, IADR-0125, IADR-0203, IADR-0205]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-07
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md"
@@ -174,6 +174,26 @@ related_specs:
   **Volta はローカル任意**、**CI は `pnpm/action-setup`**（13_frontend-stack §リスク・未決事項の指示どおり）。
 - `src/package-lock.json` は削除し `src/pnpm-lock.yaml` をコミットする。lockfile は 1 リポジトリ 1 本を保つ
   （AST は別プロジェクトのため自前の lock を持つ。IADR-0120）。
+
+> **［2026-08-16 追記 / #802］メンバのグロブは 3 本目 `'../templates/*/frontend'` を含む**
+> （#777 の `dca76ce` が追加。**本追記は既存の 2 本を消さない**——追加であって置換ではない）。
+> **現行値の正本は [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml) 自身**であり、
+> 本 ADR も含めて**どの散文もそれを複写しない**（複写は必ず片方が古くなる。[[IADR-0205]] が
+> `CLAUDE.md` で同型の複写を実測した）。
+>
+> **なぜ雛形だけ `../` を跨ぐのか。** 雛形（`templates/unit-template/frontend`）は `src/` の外にあり、
+> **pnpm workspace・ESLint flat config・Prettier の設定探索のどの射程にも構造的に入らない**。
+> workspace メンバに入れないと `pnpm -r run typecheck` の射程から外れ、**現行スタックからずれても
+> 誰も気付かない** —— 実際に雛形のフロントは旧ルータ契約（#490 以前）と依存宣言なし（#591 以前）の
+> まま取り残され、**#784 がこの事故を踏んだ**。バックエンドは `ci.yml` が同じ理由で `templates/` を
+> 走査対象に含めており（[[IADR-0060]]）、3 本目はそのフロント版である。
+> **`../` を跨ぐのは雛形 1 件に限る**（`src/` の中に置けるものを外から拾わない）。
+> 整形・lint 側の対応（`src/` の外に専用入口を置いてよい条件）は
+> [[IADR-0203]] 決定 3 の 2026-08-16 追記が定める。
+>
+> 決定 2 の他の内容（単一情報源を `src/` に置く／submodule 配置での自動認識／`packageManager` に
+> よる版固定／lock は 1 リポジトリ 1 本）は**すべてそのまま有効**であり、追加は射程の拡張であって
+> 反転ではない。したがって状態は `Accepted` のままとする。
 
 ### 決定 3: orval を導入し、生成物は「コミットする・`foundation/api` を出口にする・`/bff/*` だけ生成する」（論点 C = C2）
 

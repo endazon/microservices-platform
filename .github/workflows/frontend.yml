@@ -120,6 +120,8 @@ jobs:
       # `dotnet format --verify-no-changes` で整形を強制しているのに対し、フロントには
       # 同等のゲートが無く、整形揺れは AI レビューの目でしか拾えなかった。
       # 対象範囲の単一情報源は src/.prettierignore（グロブをここへ複写しない）。
+      # 上の「Format check (unit template)」は例外である —— 雛形は src/ の外にあり .prettierignore の
+      # 射程に構造的に入らない。例外を許す 3 条件は IADR-0203 決定 3 の 2026-08-16 追記（#802）が定める。
       - name: Format check (prettier)
         run: pnpm run format:check
       # ADR-0031 / IADR-0121 決定 3: BFF OpenAPI から生成した API クライアントはコミットしている。
