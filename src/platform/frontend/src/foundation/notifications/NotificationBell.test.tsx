@@ -231,6 +231,19 @@ describe('NotificationBell (FR-22)', () => {
     expect(screen.queryByRole('region', { name: '通知一覧' })).not.toBeInTheDocument();
   });
 
+  // Escape **以外**のキーでは閉じない。閉じる条件を `e.key` で絞っている以上、絞り忘れ
+  // （どのキーでも閉じる実装）は Escape のテストだけでは緑のまま通る。
+  it('Escape 以外のキーでは閉じない', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(LIST));
+    const user = userEvent.setup();
+    renderBell();
+    await user.click(await screen.findByRole('button', { name: /通知（未読/ }));
+
+    await user.keyboard('{Tab}{Enter}a');
+
+    expect(panel()).toBeInTheDocument();
+  });
+
   // 内側は閉じない —— 「既読にする」を押すたびに閉じると、複数件を続けて処理できない。
   it('パネルの内側を押しても閉じたままにならない', async () => {
     mocks.apiRequest.mockResolvedValue(jsonResponse(LIST));

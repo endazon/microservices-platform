@@ -898,7 +898,7 @@ export interface NotificationListDto {
 }
 
 /**
- * FR-22: 既読化の結果。更新後の未読件数を返すので、クライアントは一覧を取り直さずにバッジを更新できる
+ * FR-22: 既読化の結果。更新後の未読件数を返す。ただし本文（read フラグ）も同時に変わるため、既定のクライアントは一覧を取り直す（この値はバッジだけを更新したい呼び出し元のための補助である）
  */
 export interface NotificationReadResultDto {
   /** 既読にした通知の識別子 */
