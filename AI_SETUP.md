@@ -40,7 +40,7 @@
 
 ### 共通（どのプロファイルでも実施）
 
-1. 計画リポジトリ `project-planning` を参照可能にする（submodule か隣接クローン。既定パス `../project-planning`）。
+1. 計画リポジトリ `project-planning` を参照可能にする（**本リポは git submodule `planning/`**。`git submodule update --init planning`）。
 2. 技術スタックに合わせて `*.example` の CI 系（`ci.example.yml` / `codeql.example.yml`）を有効化する。
    - **注意: `.github/workflows/` 配下では `.example` を挟んでも無効にならない。** GitHub Actions は
      同ディレクトリ内の `*.yml` をファイル名に関わらず実行するため、`frontend.example.yml` のような

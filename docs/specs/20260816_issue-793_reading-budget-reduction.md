@@ -298,3 +298,35 @@ $ grep -noE "（必須 [0-9]+ / 任意 [0-9]+）|規則 [0-9]+〜[0-9]+|[0-9]+ �
 - キット `traceability.md` の減量そのもの（§5 の環流。他リポの裁定が要る）
 - 運用ガイド §8 への予算配分の追記（同上）
 - `AGENTS.md`（別枠。予算の合算をしない。[[IADR-0200]]）
+
+## 8. ★［2026-08-16 追記］「隣接クローン」を落としたことの波及（AI レビュー 🟡）
+
+**§7 の逸脱 3（`## 計画書の参照` から「隣接クローン」の選択肢を落とした）は、整合の確認先が足りていなかった。**
+`check-kit-sync.js` のコメントだけを見て「誤りにならない」と判断したが、**同じ事実を述べる他の文書を走査していない**
+—— 規則 10 の破れである。
+
+### 母集合（誤りの側の文字列で全走査）
+
+```console
+$ grep -rn "隣接クローン" --include=*.md . | grep -v "^./planning/" | grep -v "^./docs/specs/"
+AI_SETUP.md:43              AGENTS.md:8              feedback/README.md:16
+docs/ai-workflow.md:35      docs/ai-workflow.md:210  .claude/commands/sync-plan.md:15
+docs/adr/IADR-0201:98       docs/adr/IADR-0202:36    docs/adr/IADR-0193:90
+```
+
+**分類で扱いが割れる**（`kit-sync-classification.json` で実測）:
+
+| ファイル | 分類 | 扱い |
+| --- | --- | --- |
+| `AGENTS.md` / `AI_SETUP.md` / `docs/ai-workflow.md` / `feedback/README.md` | **B** | **事実（submodule 構成）へ揃えた** |
+| `.claude/commands/sync-plan.md` | **A（キット配布物）** | **編集しない。** かつ「隣接クローンの場合: …」は**条件分岐**であって「本リポがどちらか」を主張していないため矛盾しない |
+| `docs/adr/IADR-0201` / `IADR-0202` / `IADR-0193` | — | **別の話題**（`check-kit-sync.js` 等が隣接クローンを探索できるという**検査器の能力**の記述）。対象外 |
+
+### なぜ「CLAUDE.md へ戻す」を採らなかったか
+
+**実体が submodule ただ 1 つだから**である（`.gitmodules` で実測）。選択肢として書くと、**隣接クローンを設定した人が
+`check-planning-pin-freshness` 等の submodule 前提の検査器を壊す**。`AGENTS.md` にだけ「キットは隣接クローンにも
+対応するが本リポは採らない」と一文残し、**キット配布物との関係が読めるようにした**（Codex / Cursor の入口であり、
+`sync-plan.md` の条件分岐に出会うのはこちら側のため）。
+
+**必読規約への影響は 0 バイト**（`CLAUDE.md` は変更していない）。
