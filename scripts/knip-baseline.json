@@ -1,0 +1,50 @@
+{
+  "$comment": [
+    "check-knip.js の床（NFR / ADR-0031 / IADR-0121 決定 1 / IADR-0211 / issue #493）。",
+    "計測は `src/` で knip@6.32.2 を src/knip.jsonc の設定で走らせた実測値（2026-08-16 / origin/develop 49ec8e32）。",
+    "合計 41 件。**増えても減っても fail する**（減らしたら node scripts/check-knip.js --update で締め、差分を PR に載せる）。",
+    "0 件の区分はここへ書かない（床が全区分の羅列になるのを避ける）。1 件以上出た未記載の区分は「新区分」として fail する。",
+    "",
+    "★ 本 PR（#493 の切り出し 2/2）は**検出の導入**であって片付けではない。ここに載っている 41 件は 1 件も削っていない。",
+    "  片付けは別 issue とする —— 未使用 export の多くは画面の再実装（#452）が触る場所であり、先に消すと衝突する。"
+  ],
+  "$comment_dependencies": [
+    "1 件 = knowledge/frontend/package.json の oidc-client-ts。**真の未使用**である（knowledge/frontend/src に参照が 1 件も無い。",
+    "実測: grep で当たるのは platform/frontend 側のみ）。計画 ADR-0032（BFF セッション方式）への移行で platform 側ごと",
+    "消える見込みであり、IADR-0121 決定 6 が正本。**先に消さない** —— 移行の段取りは #439 / #446 が持つ。"
+  ],
+  "$comment_devDependencies": [
+    "4 件。いずれも**静的解析では追えない使われ方**をしている（削ってはならない）。",
+    "  - @lingui/babel-plugin-lingui-macro（src/package.json）: platform/frontend/vite.config.ts と src/vitest.config.ts が",
+    "    babel の plugins 配列へ**文字列で**渡す。Knip は文字列のプラグイン名を解決しない。",
+    "  - @vitejs/plugin-react（packages/ui/package.json）: .storybook/main.ts は @storybook/react-vite 経由で使い、",
+    "    直接 import していない。**先行コメントの「設定で現に使われている」は packages/ui については当たらない**",
+    "    （直接の参照は 0 件）。真に不要な可能性があり、精査は別 issue とする。",
+    "  - @tanstack/router-core（platform/frontend/package.json）: router.tsx の `declare module '@tanstack/router-core'`",
+    "    （型のモジュール拡張）でしか現れない。Knip は宣言のマージを利用と数えない。",
+    "  - tailwindcss（platform/frontend/package.json）: @tailwindcss/vite の peer であり、`@import 'tailwindcss'` は",
+    "    packages/ui/src/styles.css が書く。platform 側の宣言は直接 import されない。"
+  ],
+  "$comment_unlisted": [
+    "1 件 = lingui.config.ts が import する @lingui/conf（型のみ）が package.json に宣言されていない。",
+    "**真の欠落**である（pnpm の hoist で @lingui/cli の推移依存として解決できてしまい、今まで誰も気付かなかった）。",
+    "この指摘は knip.jsonc が lingui.config.ts を entry にした瞬間に**初めて**現れた。修正は別 issue（本 PR は検出の導入）。"
+  ],
+  "$comment_exports": [
+    "18 件。内訳は knowledge/frontend の features が 11 件（クエリキー定数・未配線のフック 2 件）、",
+    "platform/frontend の foundation が 7 件（authConfig の 2 件・nav の 3 件・router の routeTree・testing の 1 件）。",
+    "**大半は #452（knowledge 全画面の再実装）が触る場所**であり、先に消すと衝突する。",
+    "IADR-0125 は「Knip（第 5 段）の未使用検出は出る（利用者は #452）」と着手前から予告していた。"
+  ],
+  "$comment_types": [
+    "17 件。すべて `export type` / `export interface` で、knowledge features が 10 件・platform foundation が 7 件。",
+    "型は消しても実行時の挙動が変わらないぶん残りやすく、#452 の再実装が使う可能性が高い。exports と同じ理由で据え置く。"
+  ],
+  "counts": {
+    "dependencies": 1,
+    "devDependencies": 4,
+    "exports": 18,
+    "types": 17,
+    "unlisted": 1
+  }
+}
