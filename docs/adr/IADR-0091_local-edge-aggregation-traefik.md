@@ -8,9 +8,10 @@ related_ids:
   - IADR-0076
   - IADR-0077
   - IADR-0087
+  - IADR-0206
 author: claude
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ (ADR-0006 CI/CD・運用基盤)"
 ---
@@ -51,6 +52,13 @@ delete→再作成が必要（README のユーザー手順・破壊操作はユ�
 
 ### 3. platform フロントは 80/443（Traefik web/websecure）
 
+> **［2026-08-16 追記 / #779］本決定 3 の証明書に関する部分は [[IADR-0206]] が Supersede した。**
+> ルーティング（`/bff`→bff-service・catch-all→frontend-service・rewrite 無し）は**そのまま有効**である。
+> **覆ったのは「443 は Traefik 既定の自己署名証明書（実 TLS は別途）」の 1 文だけ** ——
+> cert-manager の selfsigned→CA `ClusterIssuer` が発行する `edge-tls` で終端するようになった
+> （`ADR-0023` が定めた `secretName` と `dnsNames` の安定という設計要件に合わせてある）。
+> **決定 4・決定 5 と [[IADR-0103]]（admin:50000 は平文 http）は動いていない。**
+
 Traefik 標準 entrypoint `web`(80)/`websecure`(443) に Ingress を張り、`/bff`→`bff-service:8080`、catch-all
 `/`→`frontend-service:8080`（rewrite 無し＝prod `edge.yaml` と同契約）。443 は Traefik 既定の自己署名証明書
 （ブラウザ警告・実 TLS は別途）。
@@ -87,7 +95,8 @@ Qdrant は SSO 非対応のため素通し公開（ネットワーク閉域前�
 ## 影響・トレードオフ
 
 - `LOCALEDGE` は既定オフのため既存環境に影響しない（smoke test で default バイト等価を固定）。
-- 80/443 はホスト権限・既存サービスとの衝突・443 自己署名の制約あり（README 明記）。占有時は LOCALEDGE を使わず
+- 80/443 はホスト権限・既存サービスとの衝突・443 自己署名の制約あり（README 明記。**［2026-08-16 追記 / #779］
+  自己署名の制約は [[IADR-0206]] が解いた** —— cert-manager の CA 発行証明書へ移行済み）。占有時は LOCALEDGE を使わず
   従来 port-forward を継続できる（フォールバック）。
 - 新ホストからの OIDC ログインは PR-2（redirect 追加）まで未成立。その間も port-forward + 既存 redirect で
   ログイン可（フォールバック維持）。

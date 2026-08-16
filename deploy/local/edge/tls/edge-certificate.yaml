@@ -1,0 +1,41 @@
+# IADR-0206 (#779): エッジの葉証明書。CA ClusterIssuer（local-edge-ca）が発行する。
+#
+# secretName / dnsNames は計画 ADR-0023 の設計要件どおり**安定させる**（CA を Let's Encrypt や
+# Vault PKI へ差し替えても Secret 名とドメインは変えない＝切り替えは issuerRef の差し替えのみ）。
+#
+# 名前空間: microservices-platform のみ。
+#   Ingress の spec.tls.secretName は**同じ名前空間の Secret しか参照できない**ため、証明書は
+#   「TLS を張る Ingress が居る名前空間」に要る。443（websecure entrypoint）に載っている Ingress は
+#   platform-frontend-edge の 1 件だけであり、それは microservices-platform に居る。
+#   管理ツール 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）は
+#   **admin:50000 entrypoint に載っており、その entrypoint に TLS は設定されていない**
+#   （Traefik の args に --entryPoints.admin.http.tls が無い）。したがって spec.tls を足しても効かない。
+#   admin:50000 の TLS 化は IADR-0103 の改定と 7 OIDC クライアントの redirect 追記に波及するため、
+#   #780（Keycloak をエッジへ出す）と同時に扱う（IADR-0206 決定 4・スコープ外の表）。
+#
+# dnsNames に *.localhost を含めるのは、#780 で Keycloak が keycloak.localhost として
+# エッジに出るときに証明書を作り直さずに済ませるため（= dnsNames を安定させる ADR-0023 の要件）。
+# なお *.localhost は 1 段のサブドメインしか覆わない（a.b.localhost は対象外）。現行ホストは全て 1 段。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls
+  namespace: microservices-platform
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  secretName: edge-tls
+  commonName: localhost
+  dnsNames:
+    - localhost
+    - "*.localhost"
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-edge-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

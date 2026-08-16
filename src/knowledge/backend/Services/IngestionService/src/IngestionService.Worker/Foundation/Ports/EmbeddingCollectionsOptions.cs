@@ -6,7 +6,13 @@ namespace IngestionService.Worker.Foundation.Ports;
 // 残存防止削除（全コレクション横断）のために全コレクションの一覧・次元を保持する。
 public sealed class EmbeddingCollectionsOptions
 {
-    public const string SectionName = "Embedding:Collections";
+    // #806: セクションは `Embedding` であって `Embedding:Collections` ではない。
+    // 後者にすると、バインダは配列そのものから更に `Collections` プロパティを探して
+    // `Embedding:Collections:Collections` を見にいき、**存在しないので空リストのままバインドが成功する**
+    // （例外は出ない）。結果、EnsureCollectionsAsync の foreach が 0 回まわってコレクションが作られず、
+    // DeleteByDocumentFromAllAsync も無言の no-op になる（機密区分の引き上げ時に旧コレクションへ残る）。
+    // 隣の EmbeddingRoutingOptions が `Embedding:Routing` ＋ プロパティ `Endpoints` で重複していないのと同じ形に揃える。
+    public const string SectionName = "Embedding";
 
     public List<EmbeddingCollectionOptions> Collections { get; set; } = [];
 }
