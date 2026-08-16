@@ -23,9 +23,6 @@ dispatched: true
 | 3-a. `planning/draft/feedback/` へのコピー | **本件では実施しない**（3-b の Issue 経路を採ったため。いずれか一方で足りる） |
 | 3-b. `endazon/project-planning` への Issue 起票 | **完了**（[planning#299](https://github.com/endazon/project-planning/issues/299)。2026-08-09 に起票。**裁定待ち**） |
 
-> **［2026-08-13 追記 / #712］`status` を `open` → `triaged` へ是正した**（#712 / [IADR-0185](../docs/adr/IADR-0185_feedback-status-vocabulary.md) 決定 2）。
-> **`open` ＝ 未伝達**と定義されたため、**伝達済みの本記録が `open` であるのは定義に照らして誤り**である。
-
 ## 種別
 
 **要求の不足**（判断が要る箇所が計画に書かれておらず、実装が決めることになっている）。

@@ -9,7 +9,7 @@ related_ids:
   - IADR-0184
 author: claude
 created: 2026-08-13
-updated: 2026-08-14
+updated: 2026-08-16
 plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md"
 ---
@@ -147,6 +147,23 @@ plan_refs:
 
 **なお #712 の受け入れ基準は「矛盾があれば**是正するか**、しない理由を記録する」と書いており、
 是正は起票時点で想定されていた選択肢である。**
+
+> ## ★ ［2026-08-16 追記 / #743］**理由 3（追記ブロックは「指定している形そのもの」）は成り立たない。3 件の追記は撤去した**
+>
+> **[IADR-0191](./IADR-0191_rewrite-boundary-is-body-vs-frontmatter.md) 決定 2 が境界を確定し、裁定 planning#369 が射程を
+> 「frontmatter の二重記述」に限定した。** 本補足が足した `［2026-08-13 追記 / #712］` 3 件は
+> **まさに①（`status` の変更を本文で言い直したもの）**であり、**#743 で撤去した**。
+>
+> **誤りの所在は結論ではなく理由 3 である。** 「日付つき追記ブロックは規約が指定している形そのもの」は
+> **`Superseded by` を引くときの書式**の話であり、**`feedback/` 本文へ状態変更を書き足してよい根拠にはならない**
+> （[IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) 決定 2 の補足が同じ論法で誤り、
+> [IADR-0166](./IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 を引いていなかったのと同型である）。
+>
+> **二重記述が腐ることは実測できた** —— その後 `status` は `triaged` → `open` → `accepted` と動き、
+> **本文の「`triaged` へ是正した」はどのファイルでも現在の frontmatter と一致しなくなった。**
+>
+> **理由 1・2（射程の読み / 状態欄は遷移が前提）は有効である。** 撤去したのは本文の追記だけで、
+> **`status` を是正した決定 2 そのものは覆らない**（決定 1・2・4 は [IADR-0187](./IADR-0187_status-vocabulary-follows-upstream-adjudication.md) が差し替え済み）。
 
 ## ★ 決定 3: **欠落節はキット原文で取り込む。ただし CI ジョブ名だけ実態へ直す**
 
