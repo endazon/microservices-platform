@@ -10,7 +10,7 @@ related_ids:
   - IADR-0202
 author: claude
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/README.md"
 related_specs:
@@ -194,3 +194,18 @@ fixture に対して**プロセスとして**走らせるため、`--root <path>
 - **案 A（fetch）は実装しない。** IADR-0202 で「採らない」を確定させる。
 - **キット版との突合**（issue コメント）は本作業の範囲外。分類 B のため、本リポの是正を先に確定させ、
   キットへの環流は別途起票する。
+
+---
+
+［2026-08-16 追記 / #773］**本作業が入れた実装は、同時に確定させた
+[IADR-0202](../adr/IADR-0202_pin-freshness-comparison-source.md) 決定 4（案 A =
+ネットワーク fetch は採らない）に反していた。** `resolveComparisonSource` の既定が
+`{ fetch = true }` で、CLI は `--no-fetch` を opt-in にしていたため、**フラグを渡さない本番の
+2 経路**（`scripts/setup.sh` ／ 夜間ワークフロー）が既定で `git fetch` していた。
+フェーズ末のクロス監査が検出し、#773 で是正した（**決定は変えず、実装を決定へ合わせた**）。
+
+**本文は当時の記録として書き換えない。** ただし上表「検証の証跡」の
+`node scripts/check-planning-pin-freshness.js --root <populate 済みツリー> --no-fetch` は、
+**現在は `--no-fetch` を受け付けない**（既定が fetch しないになり、fetch が `--fetch` の opt-in に
+なったため）。**現在の同等形はフラグなしの `--root <populate 済みツリー>` である。**
+是正の詳細は [20260815_issue-773](20260815_issue-773_pin-freshness-no-default-fetch.md)。

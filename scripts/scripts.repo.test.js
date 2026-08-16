@@ -6396,7 +6396,8 @@ module.exports = ({ ok, assert }) => {
       g(root, 'add', '-A');
       g(root, 'commit', '-qm', 'init');
       // origin を持たないので比較元が解決できない。
-      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--no-fetch', '--root', root], {
+      // ★ #773: fetch は `--fetch` の opt-in になったため、既定（フラグなし）で fetch しない。
+      const r = spawnSync(process.execPath, [path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--root', root], {
         encoding: 'utf8',
         cwd: REPO,
       });
@@ -6517,6 +6518,181 @@ module.exports = ({ ok, assert }) => {
       assert.ok(fs.existsSync(dir), `planning に projects/${pin.PLANNING_PROJECT} が無い（改名・移動を疑う）`);
     });
 
+    // --- #773: 既定でネットワーク fetch しない（IADR-0202 決定 4） --------------------
+    //
+    // ★★ **決定 4 は「案 A（比較前のネットワーク fetch）は採らない」である。** ところが実装は
+    //   `--no-fetch` を opt-in にしており、**フラグを渡さない本番の 2 経路（`scripts/setup.sh` の
+    //   SessionStart hook と夜間ワークフロー）が既定で `git fetch` していた**（#773）。
+    //
+    // ★ **この型は通常の CI では捕まらない。** 検査器は fetch が成功しても失敗しても続行する
+    //   設計（オフライン環境を壊さないため）で、`--self-test` も緑のまま通る。
+    //   **ADR と実装の突き合わせでしか出ない** —— だからここに門を置く。
+    //
+    // ★ 観測は**出力の文字列ではなく `git` の実行そのもの**で行う。PATH の先頭へ `git` の shim を
+    //   置いて引数を記録する。ネットワークが無くても「fetch を試みたこと」は捕捉できる。
+    const pinFetchFixture = () => {
+      const { execFileSync } = require('child_process');
+      const os = require('os');
+      if (process.platform === 'win32') return null; // shim が POSIX の実行可能スクリプト
+      let realGit;
+      try {
+        execFileSync('git', ['--version'], { stdio: 'ignore' });
+        realGit = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      } catch (e) {
+        return null;
+      }
+      if (!realGit) return null;
+      const ENV = {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_SYSTEM: '/dev/null',
+        GIT_AUTHOR_NAME: 'fixture',
+        GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+        GIT_COMMITTER_NAME: 'fixture',
+        GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+      };
+      const g = (cwd, ...args) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8', env: ENV }).trim();
+      const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pin773-'));
+      // 上流 planning（ローカルパス）。**fetch が実際に成功する**ため、既定が反転すれば
+      // `fetch 省略` ではなく `fetch 成功` になる —— 変異が観測できる形にしておく。
+      const up = path.join(tmp, 'planning-upstream');
+      fs.mkdirSync(path.join(up, 'projects', pin.PLANNING_PROJECT, '07_adr'), { recursive: true });
+      execFileSync('git', ['init', '-q', '-b', 'main', up], { env: ENV });
+      fs.writeFileSync(path.join(up, 'projects', pin.PLANNING_PROJECT, '07_adr', 'ADR-0001_x.md'), '---\nstatus: Proposed\n---\n');
+      g(up, 'add', '-A');
+      g(up, 'commit', '-qm', 'A');
+      // 実装リポ: planning を clone し gitlink としてコミットする。
+      const repo = path.join(tmp, 'impl');
+      fs.mkdirSync(repo, { recursive: true });
+      execFileSync('git', ['init', '-q', '-b', 'main', repo], { env: ENV });
+      execFileSync('git', ['clone', '-q', up, path.join(repo, 'planning')], { env: ENV });
+      fs.writeFileSync(path.join(repo, '.gitmodules'), `[submodule "planning"]\n\tpath = planning\n\turl = ${up}\n`);
+      g(repo, 'add', '-A');
+      g(repo, 'commit', '-qm', 'pin');
+      // `git` の shim。**引数を記録してから実 git へ委譲する。**
+      const bin = path.join(tmp, 'bin');
+      fs.mkdirSync(bin, { recursive: true });
+      const log = path.join(tmp, 'git-calls.log');
+      fs.writeFileSync(path.join(bin, 'git'), `#!/bin/sh\necho "$@" >> ${JSON.stringify(log)}\nexec ${JSON.stringify(realGit)} "$@"\n`);
+      fs.chmodSync(path.join(bin, 'git'), 0o755);
+      // 記録された `git fetch` の回数を返しつつ、記録を空にする。
+      const runAndCountFetch = (args, bin_ = null) => {
+        fs.writeFileSync(log, '');
+        const r = spawnSync(process.execPath, [bin_ || path.join(SCRIPTS, 'check-planning-pin-freshness.js'), '--root', repo, ...args], {
+          encoding: 'utf8',
+          env: { ...ENV, PATH: `${bin}${path.delimiter}${process.env.PATH}` },
+        });
+        const calls = fs.readFileSync(log, 'utf8').split('\n').filter((l) => /(^|\s)fetch(\s|$)/.test(l));
+        return { out: `${r.stdout || ''}${r.stderr || ''}`, status: r.status, fetches: calls };
+      };
+      return { tmp, repo, runAndCountFetch };
+    };
+
+    ok('pin 鮮度 #773: 既定でネットワーク fetch を実行しない（IADR-0202 決定 4・変異試験つき）', () => {
+      const fx = pinFetchFixture();
+      if (!fx) {
+        console.log('notice: git／POSIX shell が無いため #773 の fetch 検査は実施していない（この範囲は検査されていない）。');
+        return;
+      }
+      try {
+        // ① 本番と**同じ引数形**（フラグなし）。`scripts/setup.sh` と夜間ワークフローがこれである。
+        const r = fx.runAndCountFetch([]);
+        assert.strictEqual(r.status, 0, `fail-open が壊れている:\n${r.out}`);
+        assert.deepStrictEqual(
+          r.fetches,
+          [],
+          `既定でネットワーク fetch を実行した（IADR-0202 決定 4 は案 A を採らないと決めている）:\n${r.fetches.join('\n')}\n${r.out}`,
+        );
+        assert.match(r.out, /fetch 省略/, `比較元行が fetch を省略したと言っていない:\n${r.out}`);
+
+        // ② 関数の**既定引数**の側（プログラム経由の呼び出し）。CLI は常に明示で渡すため、
+        //   ここは CLI 経路では観測できない —— **変異点が 2 つある**（実測でそう分かった）。
+        assert.strictEqual(
+          pin.resolveComparisonSource(fx.repo).fetch,
+          'skipped',
+          'resolveComparisonSource の既定引数が fetch する側になっている（IADR-0202 決定 4）',
+        );
+
+        // ③ **変異試験**。**正例だけの緑は「門が効いている」ことを示さない。**
+        //   2 つの変異点それぞれについて、**戻すと実際に fetch する**ことを同じ fixture で実測する。
+        const script = path.join(SCRIPTS, 'check-planning-pin-freshness.js');
+        const src = fs.readFileSync(script, 'utf8');
+        const mutantOf = (name, from, to) => {
+          assert.strictEqual(src.split(from).length - 1, 1, `変異点が一意でない（書き方が変わった）: ${from}`);
+          const dir = path.join(fx.tmp, `mutant-${name}`);
+          fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
+          fs.copyFileSync(path.join(SCRIPTS, 'lib', 'ci-annotate.js'), path.join(dir, 'lib', 'ci-annotate.js'));
+          const mutated = src.replace(from, to);
+          assert.notStrictEqual(mutated, src, `変異が当たっていない: ${from}`);
+          const bin = path.join(dir, 'check-planning-pin-freshness.js');
+          fs.writeFileSync(bin, mutated);
+          return bin;
+        };
+
+        // 変異 A（**#773 の当の形**）: CLI を「fetch しないほうが opt-in」へ戻す。
+        const mutCli = mutantOf('cli', "const doFetch = argv.includes('--fetch');", "const doFetch = !argv.includes('--no-fetch');");
+        const rA = fx.runAndCountFetch([], mutCli);
+        assert.strictEqual(
+          rA.fetches.length,
+          1,
+          `変異版（CLI）が fetch しなかった。fixture が #773 を再現できていない（この回帰テストは無意味）:\n${rA.fetches.join('\n')}\n${rA.out}`,
+        );
+        assert.match(rA.out, /fetch 成功/, `変異版（CLI）の出力が fetch を実行したと言っていない:\n${rA.out}`);
+
+        // 変異 B: 関数の既定引数を `true` へ戻す。**CLI からは観測できない**ので require して見る。
+        const mutDefault = mutantOf(
+          'default',
+          'function resolveComparisonSource(root = REPO_ROOT, { fetch = false } = {}) {',
+          'function resolveComparisonSource(root = REPO_ROOT, { fetch = true } = {}) {',
+        );
+        assert.strictEqual(
+          require(mutDefault).resolveComparisonSource(fx.repo).fetch,
+          'ok',
+          '変異版（既定引数）が fetch しなかった。②の assert は門になっていない',
+        );
+      } finally {
+        fs.rmSync(fx.tmp, { recursive: true, force: true });
+      }
+    });
+
+    // ★ opt-in を**死なせない**側の門。既定を落としただけで `--fetch` が効かなくなると、
+    //   「fetch したい人が居ても手段が無い」形になり、いずれ既定へ戻す圧力になる。
+    ok('pin 鮮度 #773: --fetch を付けたときだけ fetch する（opt-in が死んでいない）', () => {
+      const fx = pinFetchFixture();
+      if (!fx) {
+        console.log('notice: git／POSIX shell が無いため #773 の opt-in 検査は実施していない（この範囲は検査されていない）。');
+        return;
+      }
+      try {
+        const r = fx.runAndCountFetch(['--fetch']);
+        assert.strictEqual(r.status, 0, `fail-open が壊れている:\n${r.out}`);
+        assert.strictEqual(r.fetches.length, 1, `--fetch を渡したのに fetch していない:\n${r.out}`);
+        assert.match(r.out, /fetch 成功/, `--fetch の結果が比較元行に出ていない:\n${r.out}`);
+      } finally {
+        fs.rmSync(fx.tmp, { recursive: true, force: true });
+      }
+    });
+
+    // ★★ **本番の呼び出し経路を固定する。** 既定の門（上）と合わせて 2 枚にする —— 経路が
+    //   増えても、その経路がフラグを渡さない限り既定（fetch しない）が効く。
+    //   ★ 呼び出し**行を特定してから**見る（`|| log` が別の行に当たっていた #680 の空振りと同型）。
+    ok('pin 鮮度 #773: 本番の 2 経路（setup.sh・夜間ワークフロー）が --fetch を渡していない', () => {
+      const setup = fs.readFileSync(path.join(REPO, 'scripts/setup.sh'), 'utf8').split('\n');
+      const i = setup.findIndex((l) => /^\s*node\s+scripts\/check-planning-pin-freshness\.js/.test(l));
+      assert.ok(i >= 0, 'setup.sh に pin 検査の呼び出し行（node …）が無い');
+      assert.doesNotMatch(
+        setup[i],
+        /--fetch/,
+        `SessionStart hook がネットワーク fetch を有効にしている（IADR-0202 決定 4 に反する）: ${setup[i]}`,
+      );
+
+      const wf = fs.readFileSync(path.join(REPO, '.github/workflows/planning-pin-freshness.yml'), 'utf8').split('\n');
+      // `run:` で検査器を起動している行だけを見る（BODY の中の実行例と取り違えない）。
+      const runs = wf.filter((l) => /^\s*run:\s*node\s+scripts\/check-planning-pin-freshness\.js/.test(l));
+      assert.strictEqual(runs.length, 1, `夜間ワークフローの検査器起動行が 1 件でない（${runs.length} 件）`);
+      assert.doesNotMatch(runs[0], /--fetch/, `夜間ワークフローがネットワーク fetch を有効にしている: ${runs[0]}`);
+    });
+
     // --- #749: 比較の向き（IADR-0202 案 B） ------------------------------------
     //
     // ★★ **分類器は正しく、入力が壊れていた。** submodule の `origin` が pin より後ろを指すと
@@ -6595,10 +6771,11 @@ module.exports = ({ ok, assert }) => {
         // **正方向**（絞りすぎていないことの側）: pin = A、比較元 = C（ADR が Accepted になった）。
         const forward = implRepo('impl-forward', { pinAt: A, originAt: C });
 
-        // `--no-fetch`: fetch すると origin/main が C へ戻り、仕込んだ位置関係が消える。
+        // fetch させない（＝ #773 以降は既定。フラグを渡さない）。fetch すると origin/main が C へ
+        // 戻り、仕込んだ位置関係が消えてしまう。
         // 実際の #749 は「fetch は成功したが remote 自体が古い」形であり、位置関係としては同値。
         const run = (repo, bin = script) =>
-          spawnSync(process.execPath, [bin, '--root', repo, '--no-fetch'], { encoding: 'utf8', env: ENV });
+          spawnSync(process.execPath, [bin, '--root', repo], { encoding: 'utf8', env: ENV });
 
         // ① 修正後: 逆方向で緑（＝「効く変更はありません」）を返さない。
         const r = run(reverse);
