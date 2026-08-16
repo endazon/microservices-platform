@@ -1,0 +1,101 @@
+# IADR-0210 / Issue #787: 経路B 可観測性スタックの永続化オーバーレイ（opt-in）。
+# base（deploy/local/observability）に PVC を足し、prometheus/loki/tempo/grafana の Deployment へ
+# データ用 volume と volumeMount を **append** する。
+# 適用: kubectl apply -k deploy/local/observability-persistence
+#   （scripts/k8s-local-up.sh は PERSIST=1 **かつ** OBSERVABILITY=1 で本ディレクトリを選ぶ）
+# 既定（PERSIST 未設定）は base が適用され、本オーバーレイは一切効かない（後方互換・fail-safe）。
+#
+# ★ base にはデータ用 volume が 1 本も無いため、infra-persistence の postgres（replace）ではなく
+#   keycloak と同型の **add（append）** を使う。config ボリュームの index に依存しない書き方である。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../observability
+  - pvcs.yaml
+
+patches:
+  # prometheus: TSDB の既定パス /prometheus（compose の prometheus-data:/prometheus と同一）へ PVC を当てる。
+  # ★ securityContext は付けない —— compose も prometheus に user: を付けておらず、compose では
+  #   prometheus-data:/prometheus が現に動いている（IADR-0210 決定 4「compose を鏡にする」）。
+  - target:
+      kind: Deployment
+      name: prometheus
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /prometheus
+  # loki: ConfigMap loki-config の common.path_prefix（/tmp/loki）へ当てる。config は書き換えない。
+  # ★ securityContext runAsUser/runAsGroup=0 は compose の user: "0:0" の等価物である（IADR-0079 §3）。
+  #   空ボリュームは root:root 0755 で生成され、非 root イメージ（uid 10001）は直下に index/chunks を
+  #   作れず **起動時 permission denied で回帰する**（compose で実測済み）。推測ではなく実測された先例に従う。
+  - target:
+      kind: Deployment
+      name: loki
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/securityContext
+        value:
+          runAsUser: 0
+          runAsGroup: 0
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: loki-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /tmp/loki
+  # tempo: storage.trace.local.path(/tmp/tempo/blocks) と wal.path(/tmp/tempo/wal) の親へ当てる。loki と同理由で root 実行。
+  - target:
+      kind: Deployment
+      name: tempo
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/securityContext
+        value:
+          runAsUser: 0
+          runAsGroup: 0
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: tempo-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /tmp/tempo
+  # grafana: /var/lib/grafana（compose の grafana-data:/var/lib/grafana と同一）。
+  # ★ securityContext は付けない —— compose も grafana に user: を付けておらず現に動いている（prometheus と同じ根拠）。
+  - target:
+      kind: Deployment
+      name: grafana
+      namespace: platform-infra
+    patch: |
+      - op: add
+        path: /spec/template/spec/volumes/-
+        value:
+          name: data
+          persistentVolumeClaim:
+            claimName: grafana-data
+      - op: add
+        path: /spec/template/spec/containers/0/volumeMounts/-
+        value:
+          name: data
+          mountPath: /var/lib/grafana

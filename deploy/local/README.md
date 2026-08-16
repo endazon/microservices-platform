@@ -62,7 +62,7 @@ bash scripts/k8s-local-down.sh
 OBSERVABILITY=1 bash scripts/k8s-local-up.sh   # Prometheus/Loki/Tempo/Grafana + collector forwarding
 VAULT=1         bash scripts/k8s-local-up.sh   # Vault dev + ClusterSecretStore(vault-backend)（要 ESO CRD）
 ARGOCD=1        bash scripts/k8s-local-up.sh   # ArgoCD install + Application 適用（MSP/AST）
-PERSIST=1       bash scripts/k8s-local-up.sh   # Keycloak(realm+runtime state)/Postgres を PVC 永続化（下記「永続化」節）
+PERSIST=1       bash scripts/k8s-local-up.sh   # Keycloak(realm+runtime state)/Postgres/Qdrant を PVC 永続化（OBSERVABILITY=1 併用で可観測性 4 種も。下記「永続化」節）
 LOCALEDGE=1     bash scripts/k8s-local-up.sh   # ローカルエッジ集約: platform フロント 80/443 ＋ 管理ツール 50000（下記 edge 節）
 ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動供給（要 VAULT=1・本番同等 k8s auth・IADR-0096・#310）
 ```
@@ -73,40 +73,60 @@ ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動�
 - [`deploy/local/edge/README.md`](edge/README.md) — **ローカルエッジ集約**（platform 80/443 ＋ 管理ツール 50000・ホスト名ベース・IADR-0091）。**k3d はポート再作成が必要**（同 README のユーザー手順）
 - Hetzner 実 stand-up・本番 NFR は **Tier 3**（対象外）。
 
-### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082）
+### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082、#787 / IADR-0210）
 
-> 起点: [IADR-0082](../../docs/adr/IADR-0082_local-k8s-infra-persistence.md) /
-> 作業仕様書 [`docs/specs/20260719_issue-324_infra-persistence-k8s.md`](../../docs/specs/20260719_issue-324_infra-persistence-k8s.md)
+> 起点: [IADR-0082](../../docs/adr/IADR-0082_local-k8s-infra-persistence.md)（Keycloak / Postgres）＋
+> [IADR-0210](../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)（Qdrant / 可観測性 4 種） /
+> 作業仕様書 [`docs/specs/20260719_issue-324_infra-persistence-k8s.md`](../../docs/specs/20260719_issue-324_infra-persistence-k8s.md) ・
+> [`docs/specs/20260816_issue-787_k8s-observability-persistence.md`](../../docs/specs/20260816_issue-787_k8s-observability-persistence.md)
 
 既定の経路B infra は [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) の割り切りで `emptyDir`
 （Pod 再起動で再 init）である。このため **Keycloak Pod が再起動するたびに realm が再 import され、管理コンソールで
 加えた runtime state（追加ユーザー・シークレット・セッション等）が失われる**。`PERSIST=1` を付けると
-[`deploy/local/infra-persistence`](infra-persistence/) オーバーレイが適用され、**Keycloak / Postgres を
+[`deploy/local/infra-persistence`](infra-persistence/) オーバーレイが適用され、**Keycloak / Postgres / Qdrant を
 `local-path` PVC で永続化**する（Pod 再起動でも状態を保持）。
+**`OBSERVABILITY=1` を併用すると**、可観測性スタックも [`deploy/local/observability-persistence`](observability-persistence/)
+へ切り替わり、**Prometheus / Loki / Tempo / Grafana** が永続化される。
 
 ```bash
 PERSIST=1 bash scripts/k8s-local-up.sh
-# → deploy/local/infra-persistence を適用（base infra + PVC 2 本 + volume パッチ）。
-#   PVC: keycloak-data(1Gi, /opt/keycloak/data=file H2) / postgres-data(2Gi, /var/lib/postgresql/data)。
+# → deploy/local/infra-persistence を適用（base infra + PVC + volume パッチ）。
+
+PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
+# → 上記に加えて deploy/local/observability-persistence を適用（素の deploy/local/observability の "置換"）。
 ```
 
-| サービス | PVC | マウント | 保持されるもの |
-| --- | --- | --- | --- |
-| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） |
-| Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） |
+| サービス | PVC | マウント | 保持されるもの | ゲート |
+| --- | --- | --- | --- | --- |
+| Keycloak | `keycloak-data`（1Gi・local-path） | `/opt/keycloak/data`（`start-dev` の file H2） | realm ＋ runtime state（追加ユーザー・シークレット・セッション） | `PERSIST=1` |
+| Postgres | `postgres-data`（2Gi・local-path） | `/var/lib/postgresql/data` | 全アプリ DB（MSP + AST） | `PERSIST=1` |
+| Qdrant | `qdrant-storage`（2Gi・local-path） | `/qdrant/storage` | コレクションとベクトル（再 ingest なしで検索を続けられる） | `PERSIST=1` |
+| Prometheus | `prometheus-data`（5Gi・local-path） | `/prometheus`（TSDB） | メトリクス（保持期間は下記 args で 7d / 4GB） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
+| Loki | `loki-data`（2Gi・local-path） | `/tmp/loki`（config の `path_prefix`） | ログ（index / chunks） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
+| Tempo | `tempo-data`（2Gi・local-path） | `/tmp/tempo`（`local.path` / `wal.path` の親） | トレース（blocks / wal） | `PERSIST=1` ＋ `OBSERVABILITY=1` |
+| Grafana | `grafana-data`（1Gi・local-path） | `/var/lib/grafana` | UI から import したダッシュボード・silences・ユーザー設定 | `PERSIST=1` ＋ `OBSERVABILITY=1` |
 
+- **Prometheus の保持期間**は base（[`observability/prometheus.yaml`](observability/prometheus.yaml)）の args
+  `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` で明示する。**`size` を PVC 容量（5Gi）
+  未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。
+  compose（`deploy/docker-compose.yml`）にも同じ 2 引数がある（パリティ）。
+- **Loki / Tempo は Pod を root で動かす**（`runAsUser: 0` / `runAsGroup: 0`）。空ボリュームは root 所有で
+  生成され、非 root イメージ（uid 10001）が書けず起動回帰するためである（compose の `user: "0:0"` と同じ理由・
+  IADR-0079 §3 の実測）。**Prometheus / Grafana には付けない**（compose も付けておらず現に動いているため）。
 - **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh` は k3d 経路ではクラスタごと、
   Rancher Desktop 経路では `platform-infra` namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
-  （`keycloak-data`/`postgres-data`）も消える**（= realm/DB は再生成）。PVC を残したまま作り直したいときは `down` を
+  （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
   使わず `kubectl -n platform-infra rollout restart deploy/keycloak deploy/postgres` 等で Pod のみ入れ替える。
 - **既定（`PERSIST` 未設定）は従来どおり `emptyDir`**（挙動不変・後方互換・fail-safe）。`local-path` 等の
-  provisioner が無いクラスタでも既定経路は Pod Pending 化しない。qdrant / rabbitmq / redis / otel は emptyDir 継続
-  （embeddings は再生成可・queue/cache は揮発前提・stateless。詳細は IADR-0082）。
+  provisioner が無いクラスタでも既定経路は Pod Pending 化しない。**rabbitmq / redis / otel は emptyDir 継続**
+  （queue/cache は揮発前提・otel は stateless。詳細は IADR-0082。**qdrant は #787 / IADR-0210 で永続化対象へ移した**）。
 - **⚠️ 既存環境の移行**: 途中から `PERSIST=1` に切り替えると Deployment の volume が差し替わりローリング更新が走る。
   **初回は空 PVC のため realm/DB は import/init で再生成**される（既存 emptyDir のデータは元々 Pod 生存期間のみの揮発
   データで、失う恒久データは無い）。以後の再起動では PVC のデータが保持される。リセットしたいときは PVC を消す:
   ```bash
-  kubectl -n platform-infra delete pvc keycloak-data postgres-data   # 次回 PERSIST=1 起動で空から再生成
+  kubectl -n platform-infra delete pvc keycloak-data postgres-data qdrant-storage   # 次回 PERSIST=1 起動で空から再生成
+  # 可観測性側（PERSIST=1 + OBSERVABILITY=1 で作られる分）:
+  kubectl -n platform-infra delete pvc prometheus-data loki-data tempo-data grafana-data
   ```
 
 #### ⚠️ realm（`microservices-platform-realm.json`）を更新したときの反映手順
@@ -421,7 +441,8 @@ subject を bind する等）は #388 で決める設計事項であり、本 PR
 - **観測 UI は非同梱**: otel-collector は dev では `debug` エクスポータのみ（Prometheus/Tempo/Loki/Grafana は
   立てない）。UI が要るなら compose（`deploy/docker-compose.yml`）を併用する。
 - **永続化は opt-in**: 既定の infra は emptyDir（Pod 再起動で再 init。dev 用途の割り切り）。`PERSIST=1` で
-  Keycloak/Postgres を PVC 永続化できる（上記「永続化」節・IADR-0082）。
+  Keycloak/Postgres/Qdrant を、`OBSERVABILITY=1` を併用すれば Prometheus/Loki/Tempo/Grafana も PVC 永続化できる
+  （上記「永続化」節・IADR-0082 / IADR-0210）。
 - **Istio/mTLS/NetworkPolicy/HPA/エッジ Gateway は無効**（values-local。`edge.enabled=false`）。本番像（STRICT mTLS・
   エッジ `/bff/*` ルーティング等）は不変。経路B の `/bff` 到達は BFF の port-forward で代替する（上記手順）。
 
