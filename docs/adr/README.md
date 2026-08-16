@@ -262,6 +262,7 @@
 | [IADR-0206](./IADR-0206_local-edge-tls-cert-manager.md) | 経路B のエッジ TLS を cert-manager で終端する（opt-in `LOCALEDGE=1`）。`selfSigned`→CA の 2 段にし、**ルート CA を k8s Secret として安定させる**（#781 の `oidc-ca-file`・#780 の信頼ストアが要る）。葉は `edge-tls`。**IADR-0091 決定 3 を Supersede**。#779 | Accepted |
 | [IADR-0207](./IADR-0207_pr-title-trailing-number-must-be-own.md) | PR タイトル末尾の `(#NNN)` は **PR 自身の番号**に限る（形状だけの検査をやめる。実測 66/66 が起点 issue の番号で、二重付加が develop へ 58 件着地）。PR 番号が読めないときは形状のみ。`Closes` の担保は射程外。#799。 | Accepted |
 | [IADR-0208](./IADR-0208_companion-direct-run-guard.md) | companion `scripts.repo.test.js` の単体実行は**沈黙の exit 0** ではなく exit 1 にする（入口つき）。ガードの回帰試験を同ファイルに置く。静的検査は足さない。実体は本リポ・契約はキットへ環流。空の証跡 1 件は書き換えない。#797。 | Accepted |
+| [IADR-0210](./IADR-0210_local-k8s-observability-persistence.md) | 経路B の Qdrant と可観測性 4 種を **Deployment のまま** PVC 化する（`PERSIST=1` ＋ `OBSERVABILITY=1`）。Prometheus の保持期間は `time` ＋ `size` で **size < PVC 容量**にし溢れない形にする。root 実行は compose を鏡にする。IADR-0082 の qdrant 却下を覆す。#787 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

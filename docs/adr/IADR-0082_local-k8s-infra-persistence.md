@@ -7,9 +7,10 @@ related_ids:
   - ADR-0004
   - IADR-0066
   - IADR-0079
+  - IADR-0210
 author: claude
 created: 2026-07-19
-updated: 2026-07-19
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md (認証＝Keycloak)"
   - "../../planning/projects/microservices-platform/02_requirements/ (NFR 運用性・信頼性)"
@@ -114,5 +115,14 @@ H2 永続化後は `--import-realm` が **既存 realm をスキップ**（既�
 - **qdrant / rabbitmq / redis / otel も PVC 化**: qdrant embeddings は再生成可能な派生データ（dev で再 ingest はまれ）、
   rabbitmq/redis は queue/cache で揮発前提、otel は stateless。損失影響が低く issue でも「必要に応じて」＝任意のため、
   スコープを Keycloak/Postgres に絞る（過剰実装を避ける）。qdrant は要すれば同型（PVC + patch）で拡張可能。
+
+  > ［2026-08-16 追記 / #787］ **本却下のうち qdrant の部分は覆した。** 後継は
+  > [[IADR-0210]]（本 IADR-0082 の決定 1〜4 は生きており、IADR-0210 は射程を広げる追補である）。
+  > 覆した理由は「再生成可能」が**コスト無しを意味しない**ことである —— 再 ingest には埋め込みプロバイダへの
+  > 再送と時間が要り、dev で再起動のたびに払う代償として重い。実装は本 ADR が予告したとおり
+  > **同型（PVC ＋ JSON6902 patch）** で、`deploy/local/infra-persistence` へ `qdrant-storage`（2Gi）を追加した。
+  > **rabbitmq / redis / otel は却下のまま**である（queue/cache は揮発前提・otel は stateless という理由が成り立つ）。
+  > **可観測性 4 種（Prometheus / Loki / Tempo / Grafana）は本 ADR の射程外**で、
+  > [[IADR-0210]] が別オーバーレイ `deploy/local/observability-persistence` として引き受けた。
 - **StatefulSet 化**: Deployment のまま volumeClaim を PVC 参照へ差し替える方が変更が小さく、単一レプリカ dev では
   StatefulSet の順序保証・安定ネットワーク ID は不要。churn を避け Deployment を維持する。
