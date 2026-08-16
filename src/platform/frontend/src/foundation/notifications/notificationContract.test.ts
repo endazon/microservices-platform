@@ -95,14 +95,14 @@ describe('FR-22 通知の契約（IADR-0215 決定 2）', () => {
   });
 
   // 封筒の側にも自由文を置かない（本文を「一覧の外」へ逃がす抜け道を塞ぐ）。
-  it('NotificationListDto / NotificationReadResultDto にも自由文のフィールドが無い', () => {
-    for (const schema of ['NotificationListDto', 'NotificationReadResultDto']) {
-      const properties = schemaProperties(schema);
-      expect(properties.length).toBeGreaterThan(0);
-      for (const forbidden of FREE_TEXT_PROPERTY_NAMES) {
-        expect(properties, `${schema}.${forbidden} は置いてはならない`).not.toContain(forbidden);
-      }
-    }
+  //
+  // ★ **禁止語の照合ではなく完全一致で閉じる**（[[IADR-0215]] 決定 2）。禁止語は列挙した語しか
+  //   止められず、`label` / `note` / `reason` / `caption` / `snippet` のような**列挙し忘れた語**が
+  //   素通りする。封筒は 2 項目しか持たないので、完全一致で「増えたら落ちる」形にできる。
+  //   `NotificationDto` 本体を 7 項目の完全一致で閉じているのと同じ守り方に揃える。
+  it('NotificationListDto / NotificationReadResultDto は宣言した項目だけを持つ', () => {
+    expect(schemaProperties('NotificationListDto').sort()).toEqual(['items', 'unreadCount']);
+    expect(schemaProperties('NotificationReadResultDto').sort()).toEqual(['id', 'unreadCount']);
   });
 
   // IADR-0132: required の無い応答スキーマは orval が全プロパティを省略可で生成し、型検査の網にならない。
