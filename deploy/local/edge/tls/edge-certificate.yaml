@@ -1,4 +1,4 @@
-# IADR-0204 (#779): エッジの葉証明書。CA ClusterIssuer（local-edge-ca）が発行する。
+# IADR-0205 (#779): エッジの葉証明書。CA ClusterIssuer（local-edge-ca）が発行する。
 #
 # secretName / dnsNames は計画 ADR-0023 の設計要件どおり**安定させる**（CA を Let's Encrypt や
 # Vault PKI へ差し替えても Secret 名とドメインは変えない＝切り替えは issuerRef の差し替えのみ）。
@@ -11,7 +11,7 @@
 #   **admin:50000 entrypoint に載っており、その entrypoint に TLS は設定されていない**
 #   （Traefik の args に --entryPoints.admin.http.tls が無い）。したがって spec.tls を足しても効かない。
 #   admin:50000 の TLS 化は IADR-0103 の改定と 7 OIDC クライアントの redirect 追記に波及するため、
-#   #780（Keycloak をエッジへ出す）と同時に扱う（IADR-0204 決定 4・スコープ外の表）。
+#   #780（Keycloak をエッジへ出す）と同時に扱う（IADR-0205 決定 4・スコープ外の表）。
 #
 # dnsNames に *.localhost を含めるのは、#780 で Keycloak が keycloak.localhost として
 # エッジに出るときに証明書を作り直さずに済ませるため（= dnsNames を安定させる ADR-0023 の要件）。

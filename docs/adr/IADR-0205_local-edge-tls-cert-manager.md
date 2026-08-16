@@ -1,5 +1,5 @@
 ---
-title: IADR-0204 経路B のエッジ TLS は cert-manager の selfsigned→CA ClusterIssuer で終端し、CA を k8s Secret として安定させる
+title: IADR-0205 経路B のエッジ TLS は cert-manager の selfsigned→CA ClusterIssuer で終端し、CA を k8s Secret として安定させる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -19,7 +19,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0023_edge-cert-automation-cert-manager-letsencrypt.md"
 ---
 
-# IADR-0204: 経路B のエッジ TLS 終端（cert-manager・selfsigned→CA ClusterIssuer・`edge-tls`）
+# IADR-0205: 経路B のエッジ TLS 終端（cert-manager・selfsigned→CA ClusterIssuer・`edge-tls`）
 
 - 状態: Accepted
 - 日付: 2026-08-16
@@ -91,7 +91,9 @@ ClusterIssuer(selfSigned)
 
 > **★ `ADR-0023` の適用範囲（経路B を含むのか）は計画側で明示されていない。**
 > 本 ADR は「含むと読んだうえで、消費側と CA を局所的に外した」という立場を採る。
-> **範囲の明確化は `/plan-feedback` で計画へ環流する**（本 ADR では計画の決定を変えない）。
+> **範囲の明確化は計画へ環流した** —— [`feedback/20260816_adr-0023-scope-local-route.md`](../../feedback/20260816_adr-0023-scope-local-route.md)
+> （本 ADR では計画の決定を変えない）。**約束の行き先を作らずに書くと黙って消える** ——
+> 本 PR 自身が `IADR-0091` 決定 5 について同じ型を指摘されている。
 
 ### 3. `ADR-0023` の設計要件をローカルでも守る
 

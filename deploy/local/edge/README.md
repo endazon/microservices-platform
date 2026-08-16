@@ -17,8 +17,8 @@
 | `admin-ingress-minio.yaml` | 50000（admin）: MinIO Console `minio.localhost`→9001（microservices-platform ns・IADR-0093。OIDC は [minio-oidc/README](../minio-oidc/README.md)） |
 | `admin-ingress-wiki.yaml` | 50000（admin）: Wiki.js `wiki.localhost`→3000（microservices-platform ns・IADR-0095。OIDC は [wiki-oidc/README](../wiki-oidc/README.md)） |
 | `argocd-ingress.yaml` | 50000（admin）: argocd-server（argocd ns 存在時のみスクリプトが条件付き apply） |
-| `tls/cert-manager-issuers.yaml` | エッジ TLS の CA（`ClusterIssuer(selfSigned)` → ルート CA `Certificate` → `ClusterIssuer(ca)`。IADR-0204） |
-| `tls/edge-certificate.yaml` | 葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`。IADR-0204） |
+| `tls/cert-manager-issuers.yaml` | エッジ TLS の CA（`ClusterIssuer(selfSigned)` → ルート CA `Certificate` → `ClusterIssuer(ca)`。IADR-0205） |
+| `tls/edge-certificate.yaml` | 葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`。IADR-0205） |
 | `tls/kustomization.yaml` | 上 2 つ。**親 kustomization には含めない** —— cert-manager の CRD が入る前に apply すると overlay 全体が落ちるため、スクリプトが「導入 → CRD Established 待ち → apply」の順で当てる |
 
 ## 有効化（opt-in・既定オフ）
@@ -60,7 +60,7 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
 ## アクセス
 
 - **platform フロント**: `http://localhost/`（SPA）・`http://localhost/bff/...`（BFF）。`https://localhost/` は
-  **cert-manager が発行する `edge-tls`** で終端する（IADR-0204・#779）。ルート CA を信頼ストアへ入れるまで
+  **cert-manager が発行する `edge-tls`** で終端する（IADR-0205・#779）。ルート CA を信頼ストアへ入れるまで
   ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。http(80) はそのまま残してある。
 - **管理ツール（50000・ホスト名ベース）**:
   - `http://grafana.localhost:50000`（OBSERVABILITY=1）
@@ -78,10 +78,10 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
 **`http://`** で開くこと。「到達不可」に見える事象の典型原因である（実際に Vault で発生）。
 
 platform フロントの 443（`https://localhost/`）は別扱いで、**cert-manager 発行の `edge-tls` で終端する**
-（IADR-0204・#779）。**admin entrypoint の TLS 化は依然としてスコープ外**である —— 7 つの OIDC クライアントの
+（IADR-0205・#779）。**admin entrypoint の TLS 化は依然としてスコープ外**である —— 7 つの OIDC クライアントの
 redirectUris 追記に波及するため、Keycloak をエッジへ出す **#780 と同時に**扱う。
 
-### エッジ TLS（cert-manager・IADR-0204・#779）
+### エッジ TLS（cert-manager・IADR-0205・#779）
 
 `LOCALEDGE=1` が cert-manager を導入し、`ClusterIssuer(selfSigned)` → ルート CA → `ClusterIssuer(ca)` の
 **2 段**で葉証明書 `edge-tls`（`dnsNames: localhost, *.localhost`）を発行する。
@@ -136,7 +136,7 @@ issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）
 ## 切り戻し
 
 ```sh
-# TLS 資産は親 kustomization に含まれていないので個別に消す（IADR-0204 決定 5）。
+# TLS 資産は親 kustomization に含まれていないので個別に消す（IADR-0205 決定 5）。
 # ClusterIssuer は cluster-scoped なので、これを飛ばすと残留する。
 kubectl delete -k deploy/local/edge/tls
 
@@ -153,7 +153,7 @@ kubectl delete -f "https://github.com/cert-manager/cert-manager/releases/downloa
 
 > **`kubectl delete -k deploy/local/edge` だけでは TLS 資産が残る。**
 > `tls/kustomization.yaml` は**意図的に親へ含めていない**（cert-manager の CRD が入る前に
-> 親を apply すると overlay 全体が落ちるため。`IADR-0204` 決定 5）。その裏返しとして、
+> 親を apply すると overlay 全体が落ちるため。`IADR-0205` 決定 5）。その裏返しとして、
 > 切り戻しでも**個別に消す必要がある** —— `ClusterIssuer`（`local-edge-selfsigned` /
 > `local-edge-ca`）は cluster-scoped、`Certificate`（`local-edge-root-ca` / `edge-tls`）は
 > それぞれ `cert-manager` / `microservices-platform` namespace に残る。
@@ -174,7 +174,7 @@ k3d のポートを元（8080/8443）へ戻すにはクラスタ再作成（`LOC
 
 本オーバーレイはローカル検証用。**本番相当のエッジ（Istio）・稼働率は Tier 3**（対象外）。
 
-**エッジ TLS は Tier 3 から外れた**（IADR-0204・#779）—— cert-manager 発行の `edge-tls` で 443 を終端する。
+**エッジ TLS は Tier 3 から外れた**（IADR-0205・#779）—— cert-manager 発行の `edge-tls` で 443 を終端する。
 ただし CA は selfsigned であり、**公的 CA（Let's Encrypt）による証明書は依然として Tier 3** である
 （`*.localhost` にはドメイン所有を検証できないため原理的に発行できない）。
 本番の CA 差し替えは計画 `ADR-0023` のとおり `ClusterIssuer` を足して `issuerRef` を変えるだけで済む。

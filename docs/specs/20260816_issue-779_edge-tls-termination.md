@@ -11,7 +11,7 @@ related_ids:
   - IADR-0086
   - IADR-0091
   - IADR-0105
-  - IADR-0204
+  - IADR-0205
 author: claude
 created: 2026-08-16
 updated: 2026-08-16
@@ -20,7 +20,7 @@ plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0021_edge-istio-gateway-caddy.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0008_runtime-kubernetes-k3s.md"
 related_specs:
-  - "../adr/IADR-0204_local-edge-tls-cert-manager.md"
+  - "../adr/IADR-0205_local-edge-tls-cert-manager.md"
   - "../adr/IADR-0091_local-edge-aggregation-traefik.md"
   - "../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md"
   - "../adr/IADR-0086_oidc-issuer-metadata-split.md"
@@ -115,12 +115,16 @@ $ git grep -nIiE "cert-manager|certmanager|ClusterIssuer|letsencrypt|mkcert|edge
 9
 ```
 
-**生ヒット 9 件 − point-in-time 4 件 − 別紙とその自己試験 5 件 = 追随が要るもの 0 件。**
+**生ヒット 9 件 − point-in-time 5 件 − 別紙とその自己試験 4 件 = 追随が要るもの 0 件。**
 
-| 除外 | 内訳 | 理由 |
+| 除外 | 内訳（**行まで書く**） | 理由 |
 | --- | --- | --- |
-| point-in-time 4 件 | `IADR-0170:47`・`docs/specs/` 3 件 | 決定当時の記録。後から書き換えない |
-| 別紙 ＋ 自己試験 5 件 | `docs/how-to/plan-id-range-history-annex.md:108-109` ＋ `scripts/scripts.repo.test.js:5663,5666` | **計画 pin の鮮度検知の記述**（「cert-manager は未配備」は planning 側の記述の引用）であり、本子が変えるのは実装側の配備であって planning の記述ではない。**自己試験が同じ文字列を固定しているので、触ると検査が落ちる** |
+| point-in-time **5 件** | `IADR-0170:47`・`20260811_issue-589_planning-pin-freshness.md:49`・`20260814_planning-pin-cff0e7b.md:11,42,43` | 決定・観測当時の記録（いずれも `ADR-0023` が `Proposed → Accepted` へ動いたことの記録）。後から書き換えない |
+| 別紙 ＋ 自己試験 **4 件** | `docs/how-to/plan-id-range-history-annex.md:108,109` ＋ `scripts/scripts.repo.test.js:5663,5666` | **計画 pin の鮮度検知の記述**（「cert-manager は未配備」は planning 側の記述の引用）であり、本子が変えるのは実装側の配備であって planning の記述ではない。**自己試験が同じ文字列を固定しているので、触ると検査が落ちる** |
+
+> **［是正 / クロス監査 D7］当初ここは「point-in-time 4 件・別紙 5 件」と書いていた。内訳が入れ替わっており、
+> 合計 9 だけが偶然合っていた。** 引き算を見せる目的で足した記述が追試で再現しない状態だったので、
+> **行番号まで書いて数え直した**（規則 8）。
 
 **`deploy/` 配下の cert-manager 資産は 0 件**で、クラスタにも Namespace / CRD が無い。
 **したがって「この是正で新たに誤りになる自分の記述」は生じない。**
@@ -149,9 +153,20 @@ ClusterIssuer(selfSigned)
 | **cert-manager + selfsigned → CA** | **可**。ルート CA が Secret の `ca.crt` として安定して存在する。`dnsNames` に `*.localhost` を入れられる | **採用** |
 | mkcert | 可。ただし **CA が開発者マシン固有でリポジトリから再現できない**。`k8s-local-up.sh` の「冪等・fail-safe・env 未設定で既定動作」と CI の stub-on-PATH に噛み合わない | 却下（README に任意手順として残す） |
 
-**計画 `ADR-0023` との関係**: 同 ADR は `Accepted`（updated 2026-08-10。pin `4d6a7d6` の一次資料で確認）で、
-**prod の Istio Ingress Gateway 前提。ローカルの Traefik については何も決めていない**。
-よって「ローカルは Traefik・CA は selfsigned」は反しない。ただし同 ADR の設計要件は踏襲する。
+**計画 `ADR-0023` との関係**: 同 ADR は `Accepted`（updated 2026-08-10。一次資料で確認）。
+**論拠の正本は [IADR-0205](../adr/IADR-0205_local-edge-tls-cert-manager.md) 決定 2 にあり、ここへ複写しない**
+（[IADR-0141](../adr/IADR-0141_audit-rounds-and-population-drawing.md)「参照点を 1 つに畳む」）。要点だけ:
+**既定 CA が Let's Encrypt である同 ADR から、ローカルの selfsigned は外れる**。
+消費側が Istio か Traefik かの違いと、`*.localhost` では同 ADR が示す DNS-01 / Vault PKI の
+2 択がどちらも取れないことが根拠である。
+
+> **［是正 / クロス監査 V4］当初ここは「同 ADR は prod の Istio Ingress Gateway 前提でローカルの
+> Traefik については何も決めていない」と書いていた。誤りである** —— 同 ADR の本文に環境を限定する語は無く、
+> `prod` は 0 回しか出現しない。**本文に無い限定を根拠にしていた。**
+> IADR 側は是正したが本書と PR 本文が追随しておらず、**同じ PR の中で論拠が正反対を向いていた**
+> （`traceability.repo.md` 規則 10「是正のたびに、この変更で新たに誤りになる自分の記述を引き直す」の破れ）。
+
+同 ADR の設計要件は踏襲する。
 
 - CA 固有設定は `ClusterIssuer` に閉じ込める（消費側は CA を知らない）
 - **`secretName` を `edge-tls` に固定**し、`dnsNames` を安定させる（ADR-0023 が例示している名前をそのまま使う）
@@ -194,9 +209,9 @@ ClusterIssuer(selfSigned)
 > #779 が `Closes` で閉じると、決定 5 の Supersede が黙って消える）。#779 の受け入れ基準も訂正した。
 | `scripts/k8s-local-up.sh` | `LOCALEDGE=1` ブロックに cert-manager の導入・CRD Established 待ち・`tls/` の apply・証明書 Ready 待ちを足す。**出力メッセージを是正**。**既定経路は 1 バイトも変えない** |
 | `scripts/k8s-local-up.test.js` | `OPTIN_TOKENS` に追加 ＋ `LOCALEDGE=1` の適用固定 ＋ **edge overlay の静的検査** |
-| `docs/adr/IADR-0204_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3 のみを Supersede**（決定 5 と却下代替案は #780 の射程。下記） |
+| `docs/adr/IADR-0205_local-edge-tls-cert-manager.md`（新規） | 方式決定。**`IADR-0091` の決定 3 のみを Supersede**（決定 5 と却下代替案は #780 の射程。下記） |
 | `docs/adr/IADR-0091_local-edge-aggregation-traefik.md` | **決定 3 のみ**に後継併記（**旧 ID を残す**。`traceability.repo.md` の Superseded 引用書式）。決定 5 の節は無変更 |
-| `docs/adr/README.md` | `IADR-0204` の索引行 |
+| `docs/adr/README.md` | `IADR-0205` の索引行 |
 | `deploy/local/edge/README.md` | 「実 TLS は対象外（Tier 3）」4 箇所の是正・CA の取り出し手順・mkcert の任意手順 |
 
 ### 4.1 なぜ `tls/` を別ディレクトリにするのか
@@ -230,7 +245,8 @@ cert-manager の CRD は**クラスタに CRD が入る前に `kubectl apply -k`
 ## 7. 実測（2026-08-16・稼働中の k3s）
 
 **変異試験**（`session-handoff.md` §5 型 4「変異試験をしていない検査を信用しない」）。
-追加した検査を 12 通りに壊し、**すべて RED（＝検査が効いた）**ことを確認した。
+追加した検査を **20 通り**に壊し、**すべて RED（＝検査が効いた）**ことを確認した。
+配線・スクリプト側が 12 通り（下表 M1〜M11）、**CA 鎖（決定 2）が 8 通り（MX1〜MX8）**である。
 
 | # | 壊し方 | 結果 |
 | --- | --- | :---: |
@@ -251,6 +267,34 @@ cert-manager の CRD は**クラスタに CRD が入る前に `kubectl apply -k`
 > `runUp().lines` は**スタブログ（記録されたコマンドの argv）**であって、スクリプトの `echo` 出力ではない。
 > `echo cert-manager` を混ぜても検査対象に入らない。**コマンド側で壊し直したら 4 件とも RED になった。**
 > 変異試験そのものが誤りうる、という実例として残す。
+
+### CA 鎖（決定 2）の変異 —— クロス監査 V2 が開けた穴
+
+**上の 12 通りは「決定 2 そのもの」を一度も壊していなかった。**
+クロス監査が独立に 4 通り当てたところ**全部すり抜けた**（`issuerRef` を CA→selfSigned・`kind` の取り違え・
+ルート `secretName` の改名・`apiVersion` の取り違え）。原因は 2 つ:
+
+1. 検査がリテラルの**存在**だけを見て、**結線**（`issuerRef.name` / `.kind` / `.group`、
+   ルート `Certificate.spec.secretName` ↔ CA Issuer の `ca.secretName`）を突き合わせていなかった
+2. 正規表現が **YAML ドキュメント境界（`---`）を跨ぐ lazy 一致**で、
+   先頭の `kind: ClusterIssuer` が selfsigned 側にマッチしたまま別ドキュメントの値を拾えた
+
+**是正**: `yamlDocs()` で `---` 分割してドキュメント単位に見るようにし、結線 3 本と `apiVersion` を突き合わせた。
+その結果を 8 通りで確かめた。
+
+| # | 壊し方 | 結果 |
+| --- | --- | :---: |
+| MX1 | 葉の `issuerRef` を CA→selfSigned へ（**2 段が 1 段へ崩れる＝本 ADR の存在理由が消える**） | RED |
+| MX2 | CA Issuer の `kind` を `ClusterIssuer`→`Issuer` | RED |
+| MX3 | ルート CA の `secretName` を改名（CA Issuer の `ca.secretName` と不整合） | RED |
+| MX4 | 葉の `apiVersion` を `v1alpha2` へ | RED |
+| MX5 | CA Issuer（2 段目）を丸ごと落とす | RED |
+| MX6 | ルート CA の `isCA: true` を落とす | RED |
+| MX7 | ルート CA を `platform-infra` namespace へ移す | RED |
+| MX8 | ルート CA の `issuerRef` を selfSigned→CA へ（循環） | RED |
+
+**教訓**: 変異は「検査が見ている場所」ではなく「**決定が主張している内容**」から作る。
+12 通りは前者に寄っていたので、決定 2 を一度も試していなかった。
 
 **実機の疎通**（稼働中の k3s・19 日稼働のスタックに対して適用）。
 

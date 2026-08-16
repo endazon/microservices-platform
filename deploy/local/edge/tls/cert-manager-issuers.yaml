@@ -1,11 +1,11 @@
-# IADR-0204 (#779): 経路B のエッジ TLS 終端に使う CA を cert-manager で用意する（opt-in・LOCALEDGE=1）。
+# IADR-0205 (#779): 経路B のエッジ TLS 終端に使う CA を cert-manager で用意する（opt-in・LOCALEDGE=1）。
 #
 # なぜ 2 段（selfSigned → CA）にするのか:
 #   1 段目の selfSigned が発行するのは葉証明書であり、**検証に使える CA が手元に残らない**。
 #   中間にルート CA を挟むと、その CA が Secret local-edge-root-ca の ca.crt として安定して存在する。
 #   これを apiserver の --oidc-ca-file（#781）と backend の HttpClient 信頼ストア（#780）へ渡す。
 #   Traefik 既定の自己署名は Secret 化されず（メモリ内生成）再起動ごとに変わり、SAN にホスト名も
-#   入らないため、どちらの用途にも使えない（IADR-0204 代替案の表）。
+#   入らないため、どちらの用途にも使えない（IADR-0205 代替案の表）。
 #
 # 計画 ADR-0023 の設計要件を踏襲する: CA 固有設定は ClusterIssuer に閉じ込め、消費側は CA を知らない。
 # 将来 Let's Encrypt / Vault PKI へ移すときは ClusterIssuer を足して issuerRef を差し替えるだけにする。
