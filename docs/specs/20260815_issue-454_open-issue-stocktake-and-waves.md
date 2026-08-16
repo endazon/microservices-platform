@@ -14,8 +14,9 @@ related_ids:
   - IADR-0180
 author: claude
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-16
 plan_refs:
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0023_edge-cert-automation-cert-manager-letsencrypt.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md"
 related_specs:
@@ -87,7 +88,29 @@ related_specs:
 | 隣接クローン `/home/user/microservices-platform/planning` | `4d6a7d6`（`origin` = `github.com/endazon/project-planning`） | 計画 ADR の状態はここで実測した |
 | 併走 worktree | `/home/user/wt-747`（`fix/nfr-ast-bump-frontend-ci-paths`）・`/home/user/wt-749`（`fix/nfr-pin-freshness-reverse-comparison`）— **いずれも作業差分ゼロ** | **波 1 の場は既に用意されている**（着手はまだ） |
 
-## 4. 棚卸し表（OPEN 38 件・全数）
+### ［2026-08-16 追記 / #778］別環境で測り直した（上の表は消さない）
+
+**上の表は 2026-08-15 の対話セッションのコンテナの値である。書き換えない。**
+別環境（Windows 端末 ＋ Rancher Desktop 内蔵 k3s）で測り直したら**大半が覆った**ので、
+値ではなく**環境ごとの実測**として併記する（[IADR-0180](../adr/IADR-0180_blocked-judgments-expire.md) 決定 1・2）。
+
+| 項目 | 2026-08-15（対話コンテナ） | **2026-08-16（Windows 端末）** | 判定への効き方 |
+| --- | --- | --- | --- |
+| `dotnet` | **無し** | **`10.0.301`** | **§8 の dotnet 軸が覆る。** 詳細は §8 の同日追記 |
+| `gh` CLI | 無し | **`2.95.0`** | 判定に効かない（MCP で代替できていた） |
+| `node` | v22.22.2 | v24.18.0 | `scripts/*.js` は実走できる（CI は 22） |
+| `pnpm` | 10.33.0 | **PATH に無し** | **こちらは逆に劣化している。** `packageManager` は `pnpm@10.33.0`。`session-handoff.md` §4.5 どおり `npx --yes pnpm@10.33.0 …` で代用する |
+| submodule `planning` | 未 populate（gitlink `4d6a7d6`） | **populate 済み `4d6a7d6`**（本追記で `git submodule update --init planning` を実行） | 計画 ADR を**一次資料で**引ける。§8 の ADR 軸を隣接クローンに頼らず測れる |
+| submodule `src/ai-stock-trading` | pin `7f69fb5`・populate 済み | pin `7f69fb5`・**本 worktree では未 populate**（親リポ側にはある） | `Platform.Bff` のビルドには init が要る |
+| **実クラスタ** | **測っていない** | **k3s `v1.35.4+k3s1`・28 日稼働・Ready** | **§8 の #442 行「実クラスタも要る」が覆る** |
+| **統合スタック** | **測っていない** | **platform 15 / ai-stock-trading 12 サービスが 19 日稼働。** ArgoCD・Keycloak・Prometheus・Loki・Tempo・Vault・External Secrets・Qdrant・MinIO・Wiki.js・Headlamp すべて 1/1 | 同上 |
+| `node scripts/k8s-local-up.test.js` | CI で緑 | **手元で exit 0 / 48 tests passed** | 配線の健全性を手元で確かめられる |
+
+> **★ 「測っていない」と「無い」は違う。** 2026-08-15 の表は実クラスタの行を持っていなかった。
+> **持っていない行は、値が × なのではなく、判定の根拠になっていなかった**ということである。
+> 本追記でその行を足した。
+
+## 4. 棚卸し表（OPEN 38 件・全数・**2026-08-15 時点の走査**）
 
 **列は 11 列である。`PR 番号` / `open|closed` / `CI 状態` の列は置かない** —— GitHub が正であり、
 書けば二重管理になる（[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）。
@@ -115,8 +138,8 @@ related_specs:
 | #271 | Headlamp を k8s 管理 UI として導入 | feat | **blocked** | 同上（issuer 到達性）。**dev クラスタの稼働が前提**で、#388 と資源が重なる | 2026-08-15 / #388 | `deploy/local/**`・`deploy/keycloak/*-realm.json` | **#388** | 5 | `feat/nfr-headlamp-k8s-ui` | — |
 | #380 | Opus 5 実運用値の確認 | track | **blocked** | 出力トークンの実測・レート制限枠の確認はいずれも**稼働環境でしか測れない** | 2026-08-15 / #380 | `src/platform/backend/**`（LlmGateway）・`docs/adr/IADR-0101_*.md` | 実環境 | 5 | `track/nfr-opus5-production-values` | — |
 | #336 | Ruri v3 実配備・nDCG@10 実測 | track | **blocked** | 実モデルの load・疎通・nDCG 実測・ゼロ保持認定がすべて**稼働環境依存** | 2026-08-15 / #336 | `deploy/helm/**`・`deploy/docker-compose.yml` | 実環境 | 5 | `track/nfr-selfhosted-embedding-rollout` | — |
-| #442 | エッジ・実行基盤・CI/CD の再構築 | feat | **blocked** | **隘路。** k3s／Istio／ArgoCD の実クラスタが要り、`/verify` を満たす手段が無い | 2026-08-15 / #442 | `deploy/**`・`.github/workflows/**`・`scripts/k8s-local-*.sh` | なし（**他が従属**） | 5 | `feat/nfr-edge-runtime-cicd` | — |
-| #455 | バックエンド層標準への全面移行 | feat | **blocked** | **隘路。** 両ユニットの全 backend に一律適用。**dotnet 不在で 1 行も検証できない** | 2026-08-15 / #455 | `src/platform/backend/**`・`src/knowledge/backend/**`・`src/Directory.Packages.props` | なし（**他が従属**） | 5 | `feat/nfr-backend-app-layer-standard` | — |
+| #442 | エッジ・実行基盤・CI/CD の再構築 | feat | ~~**blocked**~~ → **着手可**［08-16 / #778］ | **隘路。** ~~k3s／Istio／ArgoCD の実クラスタが要り、`/verify` を満たす手段が無い~~ → **3 軸すべて ○。実クラスタも統合スタックも稼働しており、`dotnet 10.0.301` も在る**（§8 の同日追記）。**子 5 件へ分割済み**（#779 / #780 / #781 / #782 / #783） | ~~2026-08-15 / #442~~ **2026-08-16 / #778** | `deploy/**`・`.github/workflows/**`・`scripts/k8s-local-*.sh` | なし（**他が従属**） | 5 | `feat/nfr-edge-runtime-cicd` | — |
+| #455 | バックエンド層標準への全面移行 | feat | ~~**blocked**~~ → **3 軸 ○・未着手**［08-16 / #778］ | **隘路。** 両ユニットの全 backend に一律適用。~~dotnet 不在で 1 行も検証できない~~ → **`dotnet 10.0.301` が在り 3 軸すべて ○**（§8 の同日追記）。**ただし本セッションでは着手していない**（利用者の方針決定は #442 側。「着手可になった」と「着手した」を混ぜない）。**子 issue へは分割していない** | ~~2026-08-15 / #455~~ **2026-08-16 / #778** | `src/platform/backend/**`・`src/knowledge/backend/**`・`src/Directory.Packages.props` | なし（**他が従属**） | 5 | `feat/nfr-backend-app-layer-standard` | — |
 | #441 | メッセージング・サービス間通信基盤 | feat | **blocked** | backend 全域（Wolverine＋RabbitMQ/Kafka）。dotnet 不在 | 2026-08-15 / #455 | `src/*/backend/**`・`src/platform/backend/Shared/**` | **#455** | 5 | `feat/nfr-messaging-inter-service` | — |
 | #438 | 認証認可（Keycloak＋ABAC）の再実装 | feat | **blocked** | backend 全域。SC-13〜16 のテーマも含む。dotnet 不在 | 2026-08-15 / #748 | `src/platform/backend/**`・`deploy/keycloak/**` | **#455** / **#442** | 5 | `feat/fr-05-authz-keycloak-abac` | — |
 | #439 | BFF セッション方式（Token Handler）移行 | feat | **blocked** | **go-live ブロッカー。** BFF 実装は backend であり dotnet 不在 | 2026-08-15 / #454 | `src/platform/backend/Bff/**`・`src/platform/frontend/src/foundation/auth/**` | **#438** | 5 | `feat/nfr-bff-session-token-handler` | — |
@@ -151,6 +174,18 @@ related_specs:
 > #439 / #440 / #443 / #444 / #445 / #446 / #447 / #448 / #449 / #450 / #451 / #452 / #453 のうち #453 を含め
 > 17 件。うち #453 は文書側が先行できるため下表で別扱いとする）。**残る 11 件は実環境待ち・別リポ依存・利用者承認待ち**である。
 > **判定の語彙は 5 値であり「XL」は判定ではなく波 5 の内訳**として扱う。
+
+> **［2026-08-16 追記 / #778］上の集計と表の根拠列は 2026-08-15 時点の記録として据え置く。**
+> 理由を書く（規則 7 は「数値を 1 つ直したら同じ値を持つ箇所を全走査し直す」と定めるので、
+> **据え置くなら据え置く理由が要る**）。
+>
+> - **判定が動いたのは #442 と #455 の 2 件だけである。** それぞれの行には取り消し線つきで併記した。
+>   集計を 27 → 25 へ書き換えると、**§2 の走査（38 件・2026-08-15）に対する集計という位置づけが崩れる** ——
+>   母集合そのものが §8 の再測で 35 件へ動いており、時点の違う数が 1 つの表に混ざる。
+> - **したがって数え直すのではなく、時点を明示して据え置く。** 生きた状態は GitHub が正である（[[IADR-0120]]）。
+> - **表の根拠列に残る「dotnet 不在」は 2026-08-15 時点の記述である。** dotnet 軸は 2026-08-16 に
+>   **全 17 行が ○ へ動いた**が、**残り 15 行の blocked を支えているのは先行 × のほう**であり判定は変わらない
+>   （§8 の同日追記）。13 行を個別に書き換えると、動いていない判定に時点だけ新しい根拠が付いて誤読を招く。
 
 ## 5. 波の割り当て
 
@@ -338,8 +373,12 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 | #452 | **×**（読む契約が backend 側） | ○（ADR-0031・SC-01〜21） | **×**（#446 / #447〜#451） | 2026-08-15（再測・変化なし） | **#446 第 2 段と #493 の完了条件** |
 | #453 | **×**（backend 床） | ○（NFR） | **×**（#466 → #442） | 2026-08-15（再測・変化なし） | 子 8 件中 7 件は着地済み |
 
-**3 軸が揃って ○ の XL は 1 件も無い。** dotnet 列が 17 行すべて × であり、**dotnet が入るまでこの表は動かない。**
+**（2026-08-15 時点）3 軸が揃って ○ の XL は 1 件も無い。** dotnet 列が 17 行すべて × であり、
+**dotnet が入るまでこの表は動かない。**
 `#455` と `#442` だけが残り 2 軸を満たしており、**dotnet が入った瞬間に着手可へ変わるのはこの 2 件だけ**である。
+
+> **［2026-08-16 追記 / #778］この 2 文はもう成り立たない。dotnet が入った。** 下の同日追記を見よ。
+> **上の表と 2 文は 2026-08-15 の記録として残す**（[IADR-0180](../adr/IADR-0180_blocked-judgments-expire.md) 決定 2）。
 
 > **★ dotnet 列の × は環境の値であって、リポジトリの性質ではない。**
 > **CI の `build-and-test` は現に両ユニットの backend をビルドしており、レビュー用サンドボックスにも dotnet がある**（§3）。
@@ -355,6 +394,69 @@ origin  https://github.com/endazon/microservices-platform (fetch)   ← 計画�
 > **同じ日付の 2 文書が逆を向いている。** 本書はどちらかを正と決めない —— **IADR-0119 の本文を動かすのは
 > 同 IADR 決定 6 が定める手続き（追補または改定 IADR）であり、棚卸しの追記が独断で行う作業ではない**。
 > **#451 の着手判断はこの 1 点の決着を待つ**（3 軸のうち dotnet が × である以上、いま急ぐ論点ではない）。
+
+### ［2026-08-16 追記 / #778］3 軸を別環境で測り直した —— **#442 の着手ゲートが開いた**
+
+**上の表は 2026-08-15 の対話セッションのコンテナで測った値である。書き換えない。**
+`IADR-0180` 決定 1 に従い、引き継ぎにあたって 3 軸を別環境（Windows 端末 ＋ Rancher Desktop 内蔵 k3s）で
+測り直した。**測定環境の実測は §3 の同日追記**に置き、ここへ複写しない（IADR-0141「参照点を 1 つに畳む」）。
+
+#### 軸ごとの結果
+
+| 軸 | 2026-08-15 | **2026-08-16** | 効き方 |
+| --- | --- | --- | --- |
+| dotnet が入っている | 17 行すべて **×** | **17 行すべて ○**（`dotnet --version` = `10.0.301`） | **この軸は環境の値であり、issue の性質ではない。** 環境が変われば 17 行が一斉に動く |
+| 関連 ADR が Accepted | 隣接クローンで測定 | **本 worktree の submodule を pin `4d6a7d6` へ populate して一次資料で再確認。変化なし** | `ADR-0023` が `Accepted`（updated 2026-08-10）であることを一次資料で確認した（従前は in-repo の二次記録に依っていた） |
+| 先行 issue が develop に着地 | 代理判定 | **`gh issue list` で再測。変化なし** | #442 / #438 / #443 / #451 / #439 は**すべて OPEN のまま** |
+
+#### 判定が動いた行
+
+| issue | 2026-08-15 | **2026-08-16** | 最後に測った時点 |
+| --- | --- | --- | --- |
+| **#442** | dotnet × ／ ADR ○ ／ 先行 ○ ＋「**実クラスタも要る**」 | **3 軸すべて ○。実クラスタも統合スタックも稼働している** | **2026-08-16 / #778** |
+| **#455** | dotnet × ／ ADR ○ ／ 先行 ○ | **3 軸すべて ○** | **2026-08-16 / #778** |
+| 残り 15 行 | dotnet × ／ 先行 × | dotnet ○ になったが**先行 × は動いていない** | 2026-08-16 / #778（dotnet 軸のみ） |
+
+**したがって、3 軸が揃って ○ の XL は 0 件から 2 件（#455 / #442）になった。**
+これは 2026-08-15 の表自身が予告していた通りの動き方である
+（「dotnet が入った瞬間に着手可へ変わるのはこの 2 件だけ」）。**残り 15 行は先行 × のままで動いていない。**
+
+#### 「実クラスタも要る」の内訳（#442 行の根拠を分解した）
+
+19 日稼働しているスタックに対して測ったところ、**#442 のスコープのうち成立している部分と
+手つかずの部分がはっきり分かれた**。「実クラスタが無い」は**もう根拠にならない**。
+
+| #442 のスコープ | 実測（2026-08-16） |
+| --- | --- |
+| k3s ＋ ArgoCD ＋ Helm | **成立**。argocd 名前空間に 6 コンポーネントが 27 日稼働・Application 2 件 |
+| Istio ＋ mTLS | **不在**。`istio-system` も Istio CRD も 0 件。`PeerAuthentication` というリソース自体が無い |
+| cert-manager ＋ エッジ TLS | **不在**。`deploy/` に資産 0 件・クラスタに Namespace / CRD 無し。Ingress 8 件はすべて `PORTS` が `80` のみ |
+| Harbor | 不在 |
+| chart 検証 CI | **不在**。`ci.yml` の 20 ジョブに `helm lint` / `helm template` / `kustomize build` / `kubeconform` は 1 件も無い |
+
+#### この追記が動かしたもの
+
+- **#442 の `blocked` ラベルを外した。** 他 9 件（#466 / #388 / #271 / #458 / #380 / #336 / #516 / #600 / #457）は
+  据え置く —— 根拠が変わったのは #442 だけである（覆らなかった観点の実測は #778 の本文）。
+- **#442 を子 5 件へ分割した。** 依存は次のとおり（**辺の出典は各子 issue 本文の「依存」欄**。
+  本書が依存を持つのはここ 1 箇所だけで、`session-handoff.md` §2 へは複写しない。[[IADR-0141]]）。
+
+  | 子 | 範囲 | 先行 | 開ける先 |
+  | --- | --- | --- | --- |
+  | **#779** | エッジ TLS 終端基盤（cert-manager ＋ 安定した CA ＋ `edge-tls`） | **なし** | #780 / #782 |
+  | **#780** | Keycloak をエッジへ出し issuer を https へ | #779 | #388 / #466 / #781 / #783 |
+  | **#781** | apiserver の OIDC 検証を再配線 | #780 | #388 → #271 |
+  | **#782** | Istio 導入と East-West mTLS の STRICT 化 | **#779**（#780 は不要） | #458 |
+  | **#783** | chart / overlay 検証 CI と統合スタックを CI で起こす経路 | **#779 と #780 の両方** | #466 |
+
+  段で言うと 段 0 = #779、段 1 = #780 / #782、段 2 = #781 / #783。
+  本書 §8「波 5 で子 issue を起票しない」理由 ① の**覆る条件**（「dotnet が入り #455 / #442 のどちらかに
+  着手できるようになった時点」）が満たされたためである。**#455 は分割していない**（着手しないため）。
+- **`#455` は 3 軸 ○ になったが、本セッションでは着手しない**（利用者の方針決定は #442 側）。
+  **「着手可になった」ことと「着手した」ことを混ぜない。**
+
+> **★ この追記の値も環境の値である。** 次に測る人は、本表を引き継がず自分の環境で測り直すこと。
+> **`pnpm` のように逆に劣化した項目もある**（§3 の同日追記）。「前回できた」も据え置きの根拠にならない。
 
 ### 依存の段と隘路の実測（2026-08-15）
 
