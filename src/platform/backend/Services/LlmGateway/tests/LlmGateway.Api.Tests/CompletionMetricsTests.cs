@@ -212,6 +212,137 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         m.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(CompletionStopReasons.Refusal);
     }
 
+    // --- IADR-0212 (#786): 出力トークンの Histogram ------------------------------------
+
+    // llm.completion.output_tokens の測定を収集する（Counter とは別の計器なので別プローブにする）。
+    private sealed class OutputTokensProbe : IDisposable
+    {
+        private readonly MeterListener _listener;
+        private readonly List<Measurement> _measurements = [];
+
+        public OutputTokensProbe()
+        {
+            _listener = new MeterListener
+            {
+                InstrumentPublished = (instrument, l) =>
+                {
+                    if (instrument.Meter.Name == LlmCompletionMetrics.MeterName
+                        && instrument.Name == LlmCompletionMetrics.OutputTokensHistogramName)
+                        l.EnableMeasurementEvents(instrument);
+                }
+            };
+            _listener.SetMeasurementEventCallback<int>((_, value, tags, _) =>
+            {
+                var dict = new Dictionary<string, string>();
+                foreach (var tag in tags)
+                    dict[tag.Key] = tag.Value?.ToString() ?? string.Empty;
+                lock (_measurements)
+                    _measurements.Add(new Measurement(value, dict));
+            });
+            _listener.Start();
+        }
+
+        public IReadOnlyList<Measurement> Measurements
+        {
+            get { lock (_measurements) return [.. _measurements]; }
+        }
+
+        public void Dispose() => _listener.Dispose();
+    }
+
+    // T-786a: 送信が成立したら出力トークン数を分布へ記録する（#380 の実測材料）。
+    [Fact]
+    public async Task PostComplete_WhenSent_RecordsOutputTokens()
+    {
+        using var probe = new OutputTokensProbe();
+        var client = ClientReturning(new CompletionResult("回答本文", 11, 222, CompletionStopReasons.EndTurn));
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+
+        var m = probe.Measurements.Should().ContainSingle().Subject;
+        m.Value.Should().Be(222);
+        m.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(CompletionStopReasons.EndTurn);
+        m.Tags[LlmCompletionMetrics.PurposeTag].Should().Be("rag-answer");
+        m.Tags[LlmCompletionMetrics.ModelTag].Should().NotBeNullOrWhiteSpace();
+    }
+
+    // T-786b: llm.result は Histogram の属性に載せない（常に sent で系列を分けないため。IADR-0212 決定 2）。
+    [Fact]
+    public async Task PostComplete_WhenSent_OmitsResultTagFromHistogram()
+    {
+        using var probe = new OutputTokensProbe();
+        var client = ClientReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+
+        probe.Measurements.Should().ContainSingle()
+            .Which.Tags.Should().NotContainKey(LlmCompletionMetrics.ResultTag);
+    }
+
+    // T-786c: ★ 送信していない経路は Histogram を記録しない（IADR-0212 決定 3）。
+    //   0 を積むと分布の最下段が「短い応答」と「応答が無かった」の混合になり、上限到達の判断が濁る。
+    //   Counter は逆に全経路で計上する（分母が欠けない）——この非対称が意図であることを固定する。
+    [Fact]
+    public async Task PostComplete_WhenEgressDenied_RecordsNoOutputTokensButStillCounts()
+    {
+        using var histogram = new OutputTokensProbe();
+        using var counter = new MetricsProbe();
+        // T-21d と同じ構成で越境が成立しない経路を通す（未承認のティア C しか無い状態）。
+        var client = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+                s.Configure<LlmRoutingOptions>(o =>
+                {
+                    o.AllowUnapprovedTierC = false;
+                    o.Endpoints =
+                    [
+                        new LlmEndpointOptions
+                        {
+                            Name = "standard-external", Tier = ProtectionTier.C,
+                            Provider = "claude", Enabled = true, Priority = 1,
+                            DefaultModel = "std", Models = ["std"]
+                        }
+                    ];
+                }))).CreateClient();
+
+        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"));
+
+        counter.Measurements.Should().ContainSingle()
+            .Which.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultEgressDenied);
+        histogram.Measurements.Should().BeEmpty();
+    }
+
+    // T-786d: upstream 例外も Histogram を記録しない（応答が返っていないのでトークン数が存在しない）。
+    [Fact]
+    public async Task PostComplete_WhenUpstreamError_RecordsNoOutputTokens()
+    {
+        using var probe = new OutputTokensProbe();
+        var client = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+            {
+                s.RemoveAll<ILlmProvider>();
+                var provider = new ThrowingProvider();
+                s.AddKeyedSingleton<ILlmProvider>("claude", provider);
+                s.AddKeyedSingleton<ILlmProvider>("selfhosted", provider);
+                s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
+            })).CreateClient();
+
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+
+        probe.Measurements.Should().BeEmpty();
+    }
+
+    // T-786e: ストリーミング経路も同じ値を記録する（経路によって観測が欠けない）。
+    [Fact]
+    public async Task PostCompleteStream_WhenSent_RecordsOutputTokens()
+    {
+        using var probe = new OutputTokensProbe();
+        var client = ClientReturning(new CompletionResult("回答本文", 11, 77, CompletionStopReasons.EndTurn));
+
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"));
+
+        probe.Measurements.Should().ContainSingle().Which.Value.Should().Be(77);
+    }
+
     private sealed class FixedResultProvider(CompletionResult result) : ILlmProvider
     {
         public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)

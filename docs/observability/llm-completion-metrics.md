@@ -93,6 +93,57 @@ sum(rate(llm_completion_total{llm_purpose="other"}[1h]))
 > **注意**: 分母 0 で `NaN` にならないよう `clamp_min` を用いる。Prometheus 側の属性名はドットが
 > アンダースコアへ変換される（`llm.stop_reason` → `llm_stop_reason`）。
 
+### ★ 系列が在っても `rate()` は 0 を返しうる（実測 2026-08-16・#786）
+
+**上のクエリは「トラフィックが流れていること」を前提にしている。** 稼働中の k3s で実測した結果:
+
+| 状況 | 結果 |
+| --- | --- |
+| `/complete` を 6 回呼んだ直後 | `count(llm_completion_total)` = **6**（系列は出る） |
+| 同時点の `sum(rate(...{llm_stop_reason="max_tokens"}[30m]))` | **0** |
+| `refusal` のクエリ | **空ベクタ** |
+| 上限到達率 | **NaN → 0** |
+
+理由は 2 つある。
+
+1. **6 回の呼び出しがすべて別のラベル組み合わせになり、各系列がサンプル 1 点しか持たなかった。**
+   `rate()` は同一系列に 2 点以上を要求する。
+2. **`refusal` は一度も起きていないため系列自体が存在しない。** Prometheus は
+   「起きていないラベル値」を 0 として持たない（`clamp_min` は分母 0 を救うが、**空ベクタは救わない**）。
+
+> **#380 の材料としてこれらのクエリを使うときは、「計器が在る」だけでは足りない。**
+> **同一ラベル組み合わせで反復するトラフィック**が保持期間のあいだ蓄積している必要がある。
+> 保持期間そのものは #787 / [[IADR-0210]] で永続化した。
+
+## 出力トークンの分布（`llm_completion_output_tokens`・[[IADR-0212]] / #786）
+
+`max_tokens` の妥当性（[[IADR-0101]] の 4096）は**回数ではなく分布**でしか読めない。
+バケット境界は **4096 付近を細かく刻んである**（`… 1024, 2048, 3072, 4096, 8192`）。
+
+**属性は Counter の 6 つから `llm.result` を落とした 5 つ**である
+（Histogram は**送信が成立した経路だけ**に記録するため、`result` は常に `sent` で系列を分けない）。
+
+```promql
+# 出力トークンの p95（用途別）。4096 に張り付いていれば max_tokens が足りていない
+histogram_quantile(0.95,
+  sum by (le, llm_purpose) (rate(llm_completion_output_tokens_bucket[1h])))
+
+# 上限のすぐ下に山があるか（3072 超の割合）。IADR-0101 の再調整の直接の材料
+1 - (
+  sum(rate(llm_completion_output_tokens_bucket{le="3072"}[1h]))
+    / clamp_min(sum(rate(llm_completion_output_tokens_count[1h])), 1e-9))
+
+# 平均出力トークン（モデル別）— 単価表の見積もりと突き合わせる（IADR-0164）
+sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
+  / clamp_min(sum by (llm_model) (rate(llm_completion_output_tokens_count[1h])), 1e-9)
+```
+
+> **`llm_completion_output_tokens_count` は `llm_completion_total{llm_result="sent"}` と一致しない。**
+> Counter は**未送信も計上する**（拒否率の分母が欠けないように。[[IADR-0110]]）が、
+> Histogram は**送信が成立した経路だけ**を数える（[[IADR-0212]] 決定 3）。
+> **この非対称は意図である** —— 送信していない呼び出しに出力トークン数は存在せず、
+> 0 で埋めると分布の最下段が「短い応答」と「応答が無かった」の混合になる。
+
 ## しきい値の方針（アラート）
 
 | 観点 | 目安 | 重大度 | 意図 |
