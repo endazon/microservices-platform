@@ -31,7 +31,9 @@
     "codegen": "orval --config ./orval.config.ts",
     "i18n:extract": "lingui extract --clean",
     "i18n:compile": "lingui compile --strict",
-    "i18n": "pnpm run i18n:extract && pnpm run i18n:compile"
+    "i18n": "pnpm run i18n:extract && pnpm run i18n:compile",
+    "//knip": "ADR-0031（13_frontend-stack §採用技術一覧「Dead Code 検出 = Knip」）/ IADR-0121 決定 1 / IADR-0211 / issue #493: 未使用のファイル・export・依存を検出する。設定は src/knip.jsonc（除外と生成物の扱いの理由はそこに書いてある）。**CI のゲートはこのスクリプトではなく `node scripts/check-knip.js --require`（区分ごとの件数を scripts/knip-baseline.json の床と突き合わせるラチェット）である** —— 素の knip は残件 41 件で必ず exit 1 になり、ゲートにすると常時赤になるため。こちらは人が内訳を読むための入口である。",
+    "knip": "knip"
   },
   "pnpm": {
     "//": "IADR-0121 決定 2: pnpm は既定でパッケージの postinstall を実行しない（サプライチェーン対策）。ビルドが必要な依存だけを明示的に許可する。esbuild は Vite/Vitest が使うネイティブバイナリの取得に postinstall を要する。",
@@ -72,6 +74,7 @@
     "globals": "^15.9.0",
     "husky": "^9.1.7",
     "jsdom": "^25.0.1",
+    "knip": "^6.32.2",
     "orval": "^8.23.0",
     "prettier": "^3.3.3",
     "react": "^19.2.0",

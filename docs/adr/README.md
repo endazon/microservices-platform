@@ -264,6 +264,7 @@
 | [IADR-0208](./IADR-0208_companion-direct-run-guard.md) | companion `scripts.repo.test.js` の単体実行は**沈黙の exit 0** ではなく exit 1 にする（入口つき）。ガードの回帰試験を同ファイルに置く。静的検査は足さない。実体は本リポ・契約はキットへ環流。空の証跡 1 件は書き換えない。#797。 | Accepted |
 | [IADR-0209](./IADR-0209_vitest-include-subset-of-frontend-tests-paths.md) | `vitest` の **`test.include` ⊆ `frontend-tests.yml` の `paths:`**（対称性ではなく包含）を検査する。雛形 `templates/*/frontend/**` を push / pull_request の両方へ追加。代表パス合成・fail-closed。#801。 | Accepted |
 | [IADR-0210](./IADR-0210_local-k8s-observability-persistence.md) | 経路B の Qdrant と可観測性 4 種を **Deployment のまま** PVC 化する（`PERSIST=1` ＋ `OBSERVABILITY=1`）。Prometheus の保持期間は **size < PVC 容量**にし溢れない形にする。root 実行は compose を鏡にする。IADR-0082 の qdrant 却下を覆す。#787 | Accepted |
+| [IADR-0211](./IADR-0211_knip-scope-and-unused-ratchet.md) | Knip（Dead Code 検出）を導入する。**走査スコープ**は `src/knip.jsonc`（別プロジェクト submodule は `ignoreWorkspaces`、orval 生成物と入口は `ignore` ではなく `entry`）。ゲートは**未使用件数の baseline ラチェット**（増減とも fail・fail-closed）。1 件も削らない。#493。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
