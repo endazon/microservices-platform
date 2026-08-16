@@ -232,6 +232,26 @@ $ find / -maxdepth 4 -name "dotnet" -type f 2>/dev/null | head -5
 
 **このコンテナには本当に無い。** 両方の測定が正しく、**違うのはジョブである。**
 
+### 同じことが検査器の挙動にも起きた（2 例目）
+
+レビューは `check-doc-updated` について、**自分の環境では skip した**と報告した。
+
+```console
+（レビュー実行コンテナ = shallow clone）
+[check-doc-updated] skip: origin/develop との merge-base を引けませんでした（shallow clone か base 未取得）
+EXIT=0
+
+（本書の実装コンテナ = full clone）
+[check-doc-updated] OK: 変更された docs/ の Markdown 1 件に updated: の据え置きはありません。
+EXIT=0
+```
+
+**終了コードは同じ 0 で、意味は違う。** 検査器は skip をちゃんと出しているので**検査器の欠陥ではない** ——
+**`EXIT=0` だけを転記した報告の側が、`pass` と `skip` を潰していた。**
+
+これは「ツールの有無」とは別の面だが、**同じ「判定はジョブに紐づく」型**である。
+**検査器の終了コードではなく、検査器が出した判定の行を読むこと。**
+
 ### したがって判定の単位は「リポジトリ」でも「日付」でもなく **ジョブ**である
 
 - **`command -v` だけで「無い」と断じない。** PATH 外に置かれている構成があり得る（本節がその発見の経緯）
