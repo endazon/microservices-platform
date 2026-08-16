@@ -1276,8 +1276,8 @@ ok('#787: Tempo の mountPath が config の local.path / wal.path の親と一�
   );
 });
 
-// ★ 「compose を鏡にする」という判断そのものを機械が見る（IADR-0210 決定 4）。
-//    どちらか一方だけを動かした瞬間に落ちる。
+// ★ マウント先を compose と k8s で揃える判断を機械が見る。どちらか一方だけを動かした瞬間に落ちる。
+//    （**書き込み権限は揃えない** —— docker の named volume と local-path で前提が違うため。決定 6 の実測を参照）
 ok('#787: データボリュームのマウント先が compose と k8s で一致する', () => {
   const pairs = [
     ['prometheus', 'prometheus-data', OBS_PATCHES['prometheus']],
@@ -1304,23 +1304,19 @@ ok('#787: データボリュームのマウント先が compose と k8s で一�
   );
 });
 
-ok('#787: root 実行にするのは compose が user: "0:0" を付けているサービスだけ', () => {
+// ★ compose の user: "0:0" を k8s へ写さない（IADR-0210 決定 6）。
+//   compose の root 実行は **docker の named volume が root:root 0755 で生成される**ことへの対処であり、
+//   local-path provisioner は `mkdir -m 0777` で作る（kube-system/local-path-config を実読）。
+//   実測（2026-08-16・稼働中の k3s）: loki=uid 10001 が /tmp/loki(drwxrwxrwx) へ 4.7M、
+//   tempo=uid 10001 が 5.0M、grafana=uid 472 が grafana.db を書き、**4 件とも再起動 0 回で Ready**。
+//   ここを「compose を鏡にする」で埋めると、**k8s 側だけ不要に root へ落ちる**。
+ok('#787: 可観測性 overlay は root 実行へ落とさない（local-path は 0777 で作る）', () => {
   for (const svc of ['prometheus', 'loki', 'tempo', 'grafana']) {
-    const composeRoot = /^\s*user:\s*["']?0:0["']?\s*$/m.test(COMPOSE[svc] || '');
-    const k8sRoot = /runAsUser:\s*0\b/.test(OBS_PATCHES[svc] || '');
-    assert.strictEqual(
-      k8sRoot,
-      composeRoot,
-      `${svc}: compose の user:"0:0"(${composeRoot}) と k8s の runAsUser:0(${k8sRoot}) が食い違う` +
-        '（IADR-0210 決定 4「compose を鏡にする」＝実測された先例だけに従い、推測で広げない）',
+    assert.ok(
+      !/runAsUser:\s*0\b/.test(OBS_PATCHES[svc] || ''),
+      `${svc}: runAsUser: 0 が入っている。compose の user:"0:0" は docker の named volume 固有の対処で、` +
+        'local-path（mkdir -m 0777）へは転用できない（IADR-0210 決定 6・実機で非 root 書き込みを実測）',
     );
-    if (k8sRoot) {
-      assert.ok(/runAsGroup:\s*0\b/.test(OBS_PATCHES[svc]), `${svc}: runAsUser だけで runAsGroup が無い`);
-      assert.ok(
-        /path:\s*\/spec\/template\/spec\/securityContext\b/.test(OBS_PATCHES[svc]),
-        `${svc}: securityContext が Pod ではなく別の場所に足されている`,
-      );
-    }
   }
 });
 
@@ -1351,6 +1347,69 @@ ok('#787: Prometheus の保持期間が args で明示され、compose と同値
     sizeBytes < pvcBytes,
     `retention.size(${sizeBytes} B) が PVC 容量(${pvcBytes} B) 以上である（満杯で書き込み不能になりうる）`,
   );
+});
+
+// ★ 以下 4 件は PR #815（同じ #787 を独立に実装したもう 1 本）から畳み込んだ検査である。
+//   同じ issue に 2 本の PR が並走したため、両者の検査の和を採った（IADR-0116 規約 1 へ戻す統合）。
+
+ok('#787: PVC を掴む Deployment は Recreate（RWO と RollingUpdate は両立しない）', () => {
+  for (const [label, kust, apps] of [
+    ['infra-persistence', INFRA_PERSIST_KUST, ['postgres', 'keycloak', 'qdrant']],
+    ['observability-persistence', OBS_PERSIST_KUST, ['prometheus', 'loki', 'tempo', 'grafana']],
+  ]) {
+    assert.ok(
+      /path:\s*\/spec\/strategy\b/.test(kust) && /type:\s*Recreate\b/.test(kust),
+      `${label}: /spec/strategy に Recreate を当てる patch が無い（新旧 Pod が同じ PVC を奪い合う）`,
+    );
+    // labelSelector に**全対象**が入っていること。1 件でも漏れるとその Deployment だけ RollingUpdate に残る。
+    const sel = (/labelSelector:\s*["']?app in \(([^)]*)\)/.exec(kust) || [])[1];
+    assert.ok(sel, `${label}: Recreate patch の labelSelector を読めない`);
+    assert.deepStrictEqual(
+      sel.split(',').map((s) => s.trim()).sort(),
+      [...apps].sort(),
+      `${label}: Recreate の対象集合が PVC を掴む Deployment 全件と一致しない`,
+    );
+  }
+});
+
+ok('#787: /tmp そのものはマウントしない（Loki / Tempo）', () => {
+  for (const svc of ['loki', 'tempo']) {
+    const mounts = [...(OBS_PATCHES[svc] || '').matchAll(/^\s*mountPath:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+    assert.ok(mounts.length > 0, `${svc}: mountPath が 1 つも無い`);
+    assert.ok(
+      !mounts.includes('/tmp'),
+      `${svc}: /tmp そのものを覆っている。Go の os.TempDir() が使う一時ファイルまで PVC に載り、` +
+        '/tmp のセマンティクスも壊れる（覆うのは /tmp/<svc> だけでよい）',
+    );
+  }
+});
+
+ok('#787: base（既定経路）は書き換えていない —— PVC はオーバーレイにしか無い', () => {
+  for (const dir of [OBS_DIR, path.join(REPO_ROOT, 'deploy', 'local', 'infra')]) {
+    for (const f of fs.readdirSync(dir).filter((n) => /\.ya?ml$/.test(n))) {
+      assert.ok(
+        !/persistentVolumeClaim:/.test(readAt(dir, f)),
+        `${path.basename(dir)}/${f} に persistentVolumeClaim がある。` +
+          'base に PVC を持ち込むと provisioner 不在のクラスタで既定経路が Pending になる（fail-safe が壊れる）',
+      );
+    }
+  }
+});
+
+ok('#787: 永続化オーバーレイの claimName がすべて同じ overlay の PVC を指す', () => {
+  for (const [label, kust, pvcs] of [
+    ['infra-persistence', INFRA_PERSIST_KUST, INFRA_PVCS],
+    ['observability-persistence', OBS_PERSIST_KUST, OBS_PVCS],
+  ]) {
+    const claims = [...kust.matchAll(/^\s*claimName:\s*(\S+)\s*$/gm)].map((m) => m[1]);
+    assert.ok(claims.length > 0, `${label}: claimName が 1 つも無い`);
+    for (const c of claims) {
+      assert.ok(
+        pvcs[c],
+        `${label}: claimName ${c} に対応する PVC が同じ overlay に無い（apply しても Pod が Pending で止まる）`,
+      );
+    }
+  }
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

@@ -59,3 +59,17 @@ patches:
           name: storage
           persistentVolumeClaim:
             claimName: qdrant-storage
+  # ★ PVC を掴む Deployment は Recreate にする（IADR-0210 決定 7）。
+  #   ReadWriteOnce と RollingUpdate は両立しない。local-path は単一ノードの hostPath なので
+  #   スケジューリングでは詰まらず、**アプリのロックで詰まる**（Postgres は postmaster.pid、
+  #   Qdrant は RocksDB の LOCK）。**IADR-0082 の既存 2 件（postgres / keycloak）にも無かった**ので
+  #   ここで遡って付ける —— 新規だけ直して既存を残すのは母集合の規則 7 の破れになる。
+  - target:
+      kind: Deployment
+      namespace: platform-infra
+      labelSelector: "app in (postgres,keycloak,qdrant)"
+    patch: |
+      - op: add
+        path: /spec/strategy
+        value:
+          type: Recreate

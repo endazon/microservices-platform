@@ -110,9 +110,18 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
   `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` で明示する。**`size` を PVC 容量（5Gi）
   未満に置いてあるので、流入が増えても PVC が満杯になって書き込み不能になることはない**（IADR-0210 決定 3）。
   compose（`deploy/docker-compose.yml`）にも同じ 2 引数がある（パリティ）。
-- **Loki / Tempo は Pod を root で動かす**（`runAsUser: 0` / `runAsGroup: 0`）。空ボリュームは root 所有で
-  生成され、非 root イメージ（uid 10001）が書けず起動回帰するためである（compose の `user: "0:0"` と同じ理由・
-  IADR-0079 §3 の実測）。**Prometheus / Grafana には付けない**（compose も付けておらず現に動いているため）。
+- **Pod は root へ落とさない**（`securityContext` は 4 種とも付けない）。compose の `user: "0:0"`（IADR-0079 §3）は
+  **docker の named volume が root:root 0755 で生成される**ことへの対処であって、**k8s へは転用できない** ——
+  local-path provisioner は `mkdir -m 0777` でボリュームディレクトリを作る（`kube-system/local-path-config`）。
+  実測（2026-08-16・稼働中の k3s）: loki（uid 10001）／tempo（uid 10001）／grafana（uid 472）が
+  いずれも非 root のまま `drwxrwxrwx` の PVC へ書き、**4 件とも再起動 0 回で Ready** だった（IADR-0210 決定 6）。
+- **PVC を掴む Deployment は `strategy: Recreate`** になる（postgres / keycloak / qdrant ＋ 可観測性 4 種の 7 件）。
+  `ReadWriteOnce` と `RollingUpdate` は両立しない。local-path は単一ノードの hostPath なので**スケジューリングでは
+  詰まらず、アプリのロックで詰まる** —— Prometheus は `storage.tsdb.no-lockfile=false`（`/api/v1/status/flags`）で、
+  再起動後の `/prometheus/data` に `lock` が実在した。**base（emptyDir）側は RollingUpdate のまま**である。
+- **⚠️ PVC の要求容量は縮小できない。** 上表の容量を小さくする変更を**既存クラスタへ再 apply すると API サーバが拒否する**
+  （実測: `spec.resources.requests.storage: Forbidden: field can not be less than status.capacity`）。
+  縮小したいときは対象 Deployment を `--replicas=0` にしてから PVC を消して作り直す（＝データは失われる）。
 - **保持されるのは Pod の再起動/再作成の範囲**。`bash scripts/k8s-local-down.sh` は k3d 経路ではクラスタごと、
   Rancher Desktop 経路では `platform-infra` namespace を削除するため、**`down`→`up` の再構築サイクルでは PVC
   （上表のすべて）も消える**（= realm/DB/embeddings/メトリクスは再生成）。PVC を残したまま作り直したいときは `down` を
