@@ -32,7 +32,7 @@ Pull Request
 **初回チェックリスト**（着手前に上から順に確認する）:
 
 - [ ] repo-template の中身をこのリポジトリ直下にコピー済みである（`.claude/` `.github/` `docs/` など）。
-- [ ] 計画リポ（`project-planning`）を参照できる（git submodule か隣接クローン。既定パス `../project-planning`）。`/sync-plan` または計画書の該当 ID を開いて確認する。
+- [ ] 計画リポ（`project-planning`）を参照できる（**本リポは git submodule `planning/`**。`git submodule update --init planning`）。`/sync-plan` または計画書の該当 ID を開いて確認する。
 - [ ] `AI_SETUP.md` で利用可能な AI を宣言し、`bash scripts/apply-profile.sh <profile>` を実行済みである。
 - [ ] CI 系を有効化済みである（`ci.example.yml` / `codeql.example.yml` の `.example` を外す）。
 - [ ] GitHub Secrets（`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY`）を登録済みである（Copilot 利用時はリポジトリで Copilot を有効化）。
@@ -207,7 +207,7 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | 症状 | 対処 |
 | --- | --- |
 | スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
-| 計画書（`projects/<name>`）を参照できない | git submodule か隣接クローンを設定する（既定パス `../project-planning`）。`/sync-plan` で `.ai-context/` に再生成して確認する。 |
+| 計画書（`projects/<name>`）を参照できない | `git submodule update --init planning` を実行する（**本リポは submodule 構成**）。`/sync-plan` で `.ai-context/` に再生成して確認する。 |
 | CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
 | `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
 | ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
