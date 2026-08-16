@@ -15,7 +15,62 @@
  *
  * 実行: node scripts/scripts.test.js（本ファイル単体では実行しない）
  */
+
+// NFR, #797, IADR-0208: 単体実行を fail-fast にする。
+// 本ファイルは companion であり、直接実行すると module.exports へ関数を代入するだけで
+// テストが 1 件も走らないまま出力ゼロで exit 0 になる。**沈黙の exit 0 は全件通過の exit 0 と
+// 区別できない** —— 実際に確定済み仕様書へ空の証跡が 1 件残り、別の作業でも緑と読みかけた。
+// require() 経由（受け口 loadCompanionTests）では require.main が本ファイルにならないため、
+// 本来の経路の挙動は一切変わらない。ガードの回帰テストは下の「companion の単体実行」節にある。
+if (require.main === module) {
+  process.stderr.write(
+    `✗ ${require('path').basename(__filename)} は companion であり、単体では 1 件も検査しない。\n` +
+      '  この呼び出しは「沈黙の exit 0」を返すだけで、検証の証跡にはならない。\n' +
+      '  正しい入口:\n' +
+      '    node scripts/scripts.test.js\n' +
+      '    REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js   # companion の消失も検出する\n'
+  );
+  process.exit(1);
+}
+
 module.exports = ({ ok, assert }) => {
+  // --- companion の単体実行: 沈黙の exit 0 を返さない（NFR / #797 / IADR-0208） -------
+
+  {
+    const { spawnSync } = require('child_process');
+
+    // ガードは「外れても誰も気づかない」種類の変更である（外れた状態＝元の沈黙）。
+    // よって CI が実際に叩く入口から、子プロセスで本ファイルを直接起動して固定する。
+    const runSelfDirectly = (env) =>
+      spawnSync(process.execPath, [__filename], {
+        encoding: 'utf8',
+        env: { ...process.env, ...env },
+      });
+
+    ok('companion: 単体で直接実行すると exit 1 になる（沈黙の exit 0 を返さない）', () => {
+      const r = runSelfDirectly({});
+      assert.strictEqual(
+        r.status,
+        1,
+        `単体実行が exit ${r.status} を返した。沈黙の exit 0 は「全件通過」と区別できない（#797）`
+      );
+    });
+
+    ok('companion: 単体実行の失敗メッセージが正しい入口を示す', () => {
+      const out = runSelfDirectly({}).stderr || '';
+      assert.match(out, /companion/, '何が起きたかを書くこと');
+      assert.match(out, /node scripts\/scripts\.test\.js/, '正しい入口を書くこと');
+      assert.match(out, /REQUIRE_REPO_TESTS=1/, '消失検出つきの入口も書くこと');
+    });
+
+    ok('companion: REQUIRE_REPO_TESTS=1 を付けた単体実行も exit 1 になる', () => {
+      // 環境変数は受け口（scripts.test.js）が読む。companion へ直接付けても効かないため、
+      // 「1 を付ければ走るはず」という誤解ごと止める。
+      const r = runSelfDirectly({ REQUIRE_REPO_TESTS: '1' });
+      assert.strictEqual(r.status, 1, 'REQUIRE_REPO_TESTS=1 でも単体実行は検査しない');
+    });
+  }
+
   // --- seed-abac-policies: 冪等性の核（#517 / IADR-0133） ---------------------------
 
   {

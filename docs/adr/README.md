@@ -261,6 +261,7 @@
 | [IADR-0205](./IADR-0205_reading-budget-reduction-for-kit-catchup.md) | 必読規約の減量は**正本が他に在る複写**から原資を取り、規範は 1 つも落とさない（最大の原資は**同じ必読集合の中の二重持ち**＝起点 ID の種別と書式）。AI が行動しない記述は入口に置かない。保留のラチェットは消さず**分類 A / B の両側**で効かせる。導出値は直さず**書かない形**にする。#793。 | Accepted |
 | [IADR-0206](./IADR-0206_local-edge-tls-cert-manager.md) | 経路B のエッジ TLS を cert-manager で終端する（opt-in `LOCALEDGE=1`）。`selfSigned`→CA の 2 段にし、**ルート CA を k8s Secret として安定させる**（#781 の `oidc-ca-file`・#780 の信頼ストアが要る）。葉は `edge-tls`。**IADR-0091 決定 3 を Supersede**。#779 | Accepted |
 | [IADR-0207](./IADR-0207_pr-title-trailing-number-must-be-own.md) | PR タイトル末尾の `(#NNN)` は **PR 自身の番号**に限る（形状だけの検査をやめる。実測 66/66 が起点 issue の番号で、二重付加が develop へ 58 件着地）。PR 番号が読めないときは形状のみ。`Closes` の担保は射程外。#799。 | Accepted |
+| [IADR-0208](./IADR-0208_companion-direct-run-guard.md) | companion `scripts.repo.test.js` の単体実行は**沈黙の exit 0** ではなく exit 1 にする（入口つき）。ガードの回帰試験を同ファイルに置く。静的検査は足さない。実体は本リポ・契約はキットへ環流。空の証跡 1 件は書き換えない。#797。 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
