@@ -3,8 +3,8 @@ info:
   title: Platform API
   description: |
     社内ナレッジ活用プラットフォーム — BFF + マイクロサービス統合仕様書
-    FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13,
-    UC-01, UC-02, UC-05
+    FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13, FR-22,
+    UC-01, UC-02, UC-05, UC-11
   version: "0.1.0"
   contact:
     name: Platform Team
@@ -47,6 +47,8 @@ tags:
     description: "FR-02, FR-05, ADR-0016, ADR-0017, IADR-0025: 埋め込み生成ゲートウェイ。機密区分でティア（セルフホスト/外部）を切替、高機密は fail-closed。IADR-0017: サービス間呼び出し専用"
   - name: Config
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
+  - name: Notifications
+    description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
 
 paths:
   # ── BFF ──────────────────────────────────────────
@@ -394,6 +396,77 @@ paths:
           description: 未認証
         "403":
           description: 管理系ロール以外（admin ＋ operator 以外。#544）
+
+  # ── FR-22 / UC-11: 利用者本人へのアプリ内通知（IADR-0215）─────────────
+  #
+  # ★ この 2 本のスキーマには **タイトル・本文に相当する項目が 1 つも無い**。
+  # 計画 FR-22 の受け入れ基準「本文が件数と期限のみで構成される。資料のタイトル・本文・検索語・
+  # 回答内容を含まない」を、**実装の規律ではなく契約の形**で守らせるためである（IADR-0215 決定 2）。
+  # 自由文のフィールドが 1 つでもあれば、いつか誰かがそこへタイトルを入れる。**項目そのものを置かない。**
+  # 表示文言はフロントが Lingui カタログ（ja / en）から `kind` と数値だけを使って組み立てる。
+  # この不変条件は契約テスト（platform/frontend の notificationContract.test.ts）が固定する。
+  #
+  # 配信は **SPA からのポーリング**（既定 60 秒）である。SSE は移行第 4 段（#788）の射程なので使わない
+  # ——したがってこの 2 本は orval の生成対象になる（orval-bff-only.cjs の SSE 除外規則に当たらない）。
+  #
+  # **実装（BFF 端点・NotificationService）は未着手である**（IADR-0215 決定 6 / #600）。契約が先に載っている。
+  # このため check-bff-authz-docs.js（実装 → 契約の一方向）は当面この 2 本を検査しない。
+  /bff/notifications:
+    get:
+      # 認証は要るがロールは問わない。**通知は主体（JWT の sub）で絞る**——役割ではない。
+      x-roles: []
+      tags: [Notifications]
+      summary: "FR-22, UC-11: 本人宛のアプリ内通知一覧（BFF 集約）"
+      description: |
+        呼び出した利用者**本人宛**の通知を新しい順に返す。宛先は所有者本人のみであり
+        （FR-22 / ADR-0037 決定 6）、他の利用者・管理者の通知は返らない。
+        本文は**件数と期限のみ**で構成され、資料のタイトル・本文・検索語・回答内容を含まない。
+      operationId: bff-notification-list
+      parameters:
+        - name: unreadOnly
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: "true のとき未読のみを返す"
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 50, minimum: 1, maximum: 100 }
+          description: "取得件数。既定 50、上限 100 にクランプする"
+      responses:
+        "200":
+          description: 本人宛の通知一覧と未読件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListDto"
+        "401": { description: 未認証 }
+
+  /bff/notifications/{id}/read:
+    post:
+      x-roles: []
+      tags: [Notifications]
+      summary: "FR-22, UC-11: 通知 1 件を既読にする（BFF 集約）"
+      description: |
+        冪等である（既読のものへもう一度呼んでも 200 を返す）。
+        **本人の通知でなければ 404** とし、「存在しない」と「本人のものでない」を区別しない
+        （存在秘匿。IADR-0009 / ADR-0004 の 404 原則）。
+      operationId: bff-notification-mark-read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+          description: "通知の識別子"
+      responses:
+        "200":
+          description: 既読化の結果（更新後の未読件数を含む）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationReadResultDto"
+        "401": { description: 未認証 }
+        "404": { description: 存在しない、または本人の通知でない（区別しない） }
 
   /bff/admin/config:
     get:
@@ -2829,6 +2902,68 @@ components:
         down: { type: integer }
         total: { type: integer }
         satisfactionRate: { type: number, format: double }
+
+    # ── FR-22 / UC-11: Notifications（IADR-0215）────────
+    #
+    # ★ **タイトル・本文に相当する項目を 1 つも持たない。** 種別・件数・閾値・期限・発生時刻・既読だけで
+    # 構成し、表示文言はフロントが Lingui カタログから組み立てる（IADR-0215 決定 2）。
+    # 契約テストがこの項目集合そのものを固定するので、`title` / `body` 等を足すと CI が落ちる。
+    NotificationDto:
+      type: object
+      description: |
+        FR-22: 利用者本人へのアプリ内通知 1 件。**本文は件数と期限のみ**で構成され、資料のタイトル・
+        本文・検索語・回答内容を含まない（ADR-0037 決定 6）。宛先は所有者本人のみである。
+        nullable な 3 項目（count / thresholdPercent / deadline）は種別によって現れ方が違う
+        （IADR-0132: nullable は required に入れない）。
+      required: [id, kind, occurredAt, read]
+      properties:
+        id: { type: string, format: uuid }
+        kind:
+          # ★ **閉じた enum にしない**（BFF_bff-surface.md §横断の規約 4）。閉じると、後段が種別を
+          #   増やした瞬間に、まだ再デプロイされていない SPA が**既存の値も解釈できなくなる**。
+          #   値集合はこの description が持ち、画面側の対応づけは notificationMessages.ts の
+          #   純関数（既定枝つき）が持って単体テストで固定する —— 規約 4 が指示する置き方である。
+          type: string
+          description: |
+            通知の種別。①個人資料の削除通知（週次 / 7 日前 / 事後。ADR-0037 決定 6）
+            ②保存容量の警告（80% / 95% で各 1 回。ADR-0037 決定 17）
+            ③同期トークンの期限予告（7 日前。ADR-0037 決定 18）
+        count:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: "件数。①では対象資料の件数、③では対象トークンの件数。②は持たない"
+        thresholdPercent:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 100
+          description: "②で到達した閾値（80 または 95）。①③は持たない"
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: "期限。①-a / ①-b は完全削除の実行時刻、③はトークンの失効時刻。①-c と②は持たない"
+        occurredAt: { type: string, format: date-time, description: "通知が発生した時刻" }
+        read: { type: boolean, description: "既読フラグ" }
+
+    NotificationListDto:
+      type: object
+      description: "FR-22: 本人宛の通知一覧と未読件数。未読件数は limit / unreadOnly の影響を受けない全体値である"
+      required: [items, unreadCount]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/NotificationDto" }
+        unreadCount: { type: integer, minimum: 0, description: "本人宛の未読通知の総数（絞り込みに影響されない）" }
+
+    NotificationReadResultDto:
+      type: object
+      description: "FR-22: 既読化の結果。更新後の未読件数を返す。ただし本文（read フラグ）も同時に変わるため、既定のクライアントは一覧を取り直す（この値はバッジだけを更新したい呼び出し元のための補助である）"
+      required: [id, unreadCount]
+      properties:
+        id: { type: string, format: uuid, description: "既読にした通知の識別子" }
+        unreadCount: { type: integer, minimum: 0, description: "更新後の未読件数" }
 
     # ── FR-10: Dashboard ──────────────────────────────
     UsageEventRequest:

@@ -179,6 +179,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/ConfigViewerPage.tsx
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "エラー"
@@ -187,6 +188,10 @@ msgstr "Error"
 #: platform/frontend/src/foundation/ui/NotFound.tsx
 msgid "お探しのページは存在しないか、アクセスできません。"
 msgstr "The page does not exist, or you do not have access to it."
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "お知らせ"
+msgstr "Notice"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 msgid "キー"
@@ -615,9 +620,21 @@ msgstr "Save"
 msgid "保存前に構文・矛盾を検証します。矛盾があれば保存できません。保存すると認可判定へ即時反映されます。"
 msgstr "Syntax and contradictions are validated before saving. A contradicting policy cannot be saved. Once saved, it takes effect on authorization decisions immediately."
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "保存容量が上限の {threshold}% に達しました"
+msgstr "Storage usage has reached {threshold}% of your limit"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "個人"
 msgstr "Personal"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "個人資料 {count} 件が {deadline} に完全削除されます（7 日前の通知）"
+msgstr "{count} personal note(s) will be permanently deleted on {deadline} (7-day notice)"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "個人資料 {count} 件を完全削除しました"
+msgstr "{count} personal note(s) have been permanently deleted"
 
 #: knowledge/frontend/src/features/scope-filter/ScopeFilter.tsx
 msgid "候補を読み込み中…"
@@ -728,6 +745,10 @@ msgstr "General"
 msgid "削除"
 msgstr "Delete"
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
+msgstr "{count} deleted personal note(s). The earliest permanent deletion is {deadline}"
+
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 msgid "原本"
@@ -748,6 +769,10 @@ msgstr "Cancel"
 #: knowledge/frontend/src/features/sc11-config/driftView.ts
 msgid "古い段の残留"
 msgstr "Stale stage left running"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "同期トークン {count} 件が {deadline} に期限切れになります（7 日前の通知）"
+msgstr "{count} sync token(s) will expire on {deadline} (7-day notice)"
 
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceManagementPage.tsx
 msgid "同期をトリガしました。"
@@ -1085,6 +1110,10 @@ msgstr "Documents"
 msgid "文書編集"
 msgstr "Document editing"
 
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "新しいお知らせが {count} 件あります"
+msgstr "You have {count} new notice(s)"
+
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定のライフサイクル状態"
 msgstr "Default lifecycle state"
@@ -1096,6 +1125,18 @@ msgstr "Default confidentiality"
 #: knowledge/frontend/src/features/sc06-datasources/DataSourceForm.tsx
 msgid "既定の部門"
 msgstr "Default department"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読"
+msgstr "Read"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読にする"
+msgstr "Mark as read"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "既読にできませんでした"
+msgstr "Could not mark as read"
 
 #: knowledge/frontend/src/features/sc10-operations/OperationsDashboardPage.tsx
 msgid "日付"
@@ -1297,6 +1338,7 @@ msgstr "Compare"
 #: knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/AttributeDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
 #: platform/frontend/src/foundation/ui/notifications.tsx
 msgid "注意"
 msgstr "Warning"
@@ -1537,6 +1579,22 @@ msgstr "Add"
 msgid "送信"
 msgstr "Send"
 
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知（未読 {unreadCount} 件）"
+msgstr "Notifications ({unreadCount} unread)"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知はありません"
+msgstr "No notifications"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知を取得できませんでした"
+msgstr "Could not load notifications"
+
+#: platform/frontend/src/foundation/notifications/NotificationBell.tsx
+msgid "通知一覧"
+msgstr "Notification list"
+
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "運用"
 msgstr "Operations"
@@ -1593,6 +1651,10 @@ msgstr "Select…"
 #: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
 msgid "部門"
 msgstr "Department"
+
+#: platform/frontend/src/foundation/notifications/notificationMessages.ts
+msgid "重要"
+msgstr "Important"
 
 #: knowledge/frontend/src/features/sc07-conversions/FigureCorrectionPanel.tsx
 msgid "閉じる"

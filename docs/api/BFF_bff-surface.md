@@ -2,10 +2,10 @@
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136]
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-11, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, FR-22, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0215]
 author: Claude
 created: 2026-08-05
-updated: 2026-08-10
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
   - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
@@ -28,7 +28,8 @@ related_specs:
 > 決定の根拠は [[IADR-0131]] を参照。
 
 > **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙: `draft` =
-> 着手前・記述途中／`in-progress` = 実装中）。BFF 境界は #506（PR #518）で全 27 パスが契約に載り、
+> 着手前・記述途中／`in-progress` = 実装中）。BFF 境界は #506（PR #518）で**当時の全 27 パス**が契約に載り
+> （**その後も端点は増える。現在数はここへ書かない**——下の一覧と `openapi.yaml` が正である）、
 > #520 で応答スキーマの `required` が確定し、**#519 で SPA 側の載せ替えが完了した**。
 > **着手前でも記述途中でもないので `draft` は外す。** 一方、次の 1 点が未了なので `completed` でもない。
 >
@@ -139,6 +140,8 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/conversion/jobs/{id}/figures` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigures` |
 | GET | `/bff/conversion/jobs/{id}/figures/{figureId}/image` | **admin のみ** | FR-12 / UC-06 / SC-07 | （画像。生成フックを使わない） |
 | POST | `/bff/conversion/jobs/{id}/figures/{figureId}/correction` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigureCorrection` |
+| GET | `/bff/notifications` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体**（JWT の `sub`）——本人宛だけを返し、管理者にも他人の通知は返らない（FR-22 / 計画 ADR-0037 決定 6。[[IADR-0215]] 決定 2） | FR-22 / UC-11 | `useBffNotificationList` |
+| POST | `/bff/notifications/{id}/read` | 同上。**本人の通知でなければ 404**（「存在しない」と「本人のものでない」を区別しない。[[IADR-0009]]） | FR-22 / UC-11 | `useBffNotificationMarkRead`（**冪等**。既読へもう一度呼んでも 200） |
 | GET | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzListPolicies` |
 | POST | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzCreatePolicy` |
 | POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | FR-05 / FR-09 / SC-09 | `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |

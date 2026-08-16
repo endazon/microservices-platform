@@ -3,8 +3,8 @@
  * Do not edit manually.
  * Platform API
  * 社内ナレッジ活用プラットフォーム — BFF + マイクロサービス統合仕様書
- * FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13,
- * UC-01, UC-02, UC-05
+ * FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-13, FR-22,
+ * UC-01, UC-02, UC-05, UC-11
  *
  * OpenAPI spec version: 0.1.0
  */
@@ -837,6 +837,64 @@ export interface FeedbackStatsDto {
 }
 
 /**
+ * FR-22: 利用者本人へのアプリ内通知 1 件。**本文は件数と期限のみ**で構成され、資料のタイトル・
+ * 本文・検索語・回答内容を含まない（ADR-0037 決定 6）。宛先は所有者本人のみである。
+ * nullable な 3 項目（count / thresholdPercent / deadline）は種別によって現れ方が違う
+ * （IADR-0132: nullable は required に入れない）。
+ */
+export interface NotificationDto {
+  id: string;
+  /**
+     * 通知の種別。①個人資料の削除通知（週次 / 7 日前 / 事後。ADR-0037 決定 6）
+     * ②保存容量の警告（80% / 95% で各 1 回。ADR-0037 決定 17）
+     * ③同期トークンの期限予告（7 日前。ADR-0037 決定 18）
+     */
+  kind: string;
+  /**
+     * 件数。①では対象資料の件数、③では対象トークンの件数。②は持たない
+     * @minimum 0
+     */
+  count?: number | null;
+  /**
+     * ②で到達した閾値（80 または 95）。①③は持たない
+     * @minimum 0
+     * @maximum 100
+     */
+  thresholdPercent?: number | null;
+  /** 期限。①-a / ①-b は完全削除の実行時刻、③はトークンの失効時刻。①-c と②は持たない */
+  deadline?: string | null;
+  /** 通知が発生した時刻 */
+  occurredAt: string;
+  /** 既読フラグ */
+  read: boolean;
+}
+
+/**
+ * FR-22: 本人宛の通知一覧と未読件数。未読件数は limit / unreadOnly の影響を受けない全体値である
+ */
+export interface NotificationListDto {
+  items: NotificationDto[];
+  /**
+     * 本人宛の未読通知の総数（絞り込みに影響されない）
+     * @minimum 0
+     */
+  unreadCount: number;
+}
+
+/**
+ * FR-22: 既読化の結果。更新後の未読件数を返す。ただし本文（read フラグ）も同時に変わるため、既定のクライアントは一覧を取り直す（この値はバッジだけを更新したい呼び出し元のための補助である）
+ */
+export interface NotificationReadResultDto {
+  /** 既読にした通知の識別子 */
+  id: string;
+  /**
+     * 更新後の未読件数
+     * @minimum 0
+     */
+  unreadCount: number;
+}
+
+/**
  * 検索実行（search）/ AI 回答生成（answer）
  */
 export type UsageEventRequestEventType = typeof UsageEventRequestEventType[keyof typeof UsageEventRequestEventType];
@@ -1136,6 +1194,19 @@ days?: number;
  * @maximum 50
  */
 top?: number;
+};
+
+export type BffNotificationListParams = {
+/**
+ * true のとき未読のみを返す
+ */
+unreadOnly?: boolean;
+/**
+ * 取得件数。既定 50、上限 100 にクランプする
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 
 export type BffConversionJobListParams = {
