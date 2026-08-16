@@ -40,7 +40,8 @@ src/                             # pnpm workspace ルート（lock・eslint・vi
 
 **新しい可変機能ユニットの追加**: ユニットのリポジトリ（`frontend/package.json` + `frontend/src/features/`）
 を `src/<unit>/` に submodule 配置し、`platform/frontend/src/features/index.ts`（合成点）へ
-import を 1 行追加する（workspaces は `"*/frontend"` のため自動認識される）。
+import を 1 行追加する（pnpm workspace の `'*/frontend'` により自動認識される。メンバの正本は
+`src/pnpm-workspace.yaml` 自身で、IADR-0121 決定 2）。
 
 ## 開発（ワークスペースルート = `src/` で実行）
 

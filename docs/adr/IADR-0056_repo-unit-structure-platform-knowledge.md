@@ -12,7 +12,7 @@ related_ids:
   - IADR-0124
 author: claude
 created: 2026-07-10
-updated: 2026-08-04
+updated: 2026-08-16
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0001_platform-reuse.md"
@@ -125,6 +125,15 @@ issue #210 で確定済み・選択肢なし。実装詳細は以下を検討し
 > そのまま維持されている**（`'*/frontend'` のパターンが (2) を、`'packages/*'` が共有パッケージを
 > 受け持つ）。したがって置換されたのはパッケージマネージャの名前と lock ファイルの形式だけであり、
 > 状態は `Accepted` のままとする。
+
+> **［2026-08-16 追記 / #802］上の「現行値は `'*/frontend'` ＋ `'packages/*'`」は 2 本目までである。**
+> 3 本目 `'../templates/*/frontend'`（可変機能ユニットの**雛形**）が #777 で加わった。
+> **現行値の正本は [`src/pnpm-workspace.yaml`](../../src/pnpm-workspace.yaml) 自身**とし、
+> 本 ADR は以後これを複写しない（複写は片方が必ず古くなる。本追記がその実例である）。
+> 雛形は `src/` の外にあり pnpm workspace・ESLint・Prettier のどの射程にも構造的に入らないため
+> 3 本目だけが `../` を跨ぐ（理由は [[IADR-0121]] 決定 2 の 2026-08-16 追記が正本）。
+> 決定 4 の趣旨 (1)〜(3) は引き続き維持され、3 本目は**本リポジトリが所有しない可変ユニット**を
+> 増やすものではない（雛形は複製元であり合成点へは載らない）。状態は `Accepted` のままとする。
 
 > **［2026-08-04 追記］決定 4 の趣旨 (2)「合成点へ import 1 行」は [[IADR-0124]] 決定 1（#490）で
 > 「合成点の 2 か所へ 1 行ずつ」へ部分改定された。**

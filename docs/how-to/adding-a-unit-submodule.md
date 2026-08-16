@@ -94,6 +94,8 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 - pnpm workspace は `src/pnpm-workspace.yaml` の `'*/frontend'` により**自動認識**される
   （同ファイルの追記不要。#591: 従前ここは「npm workspaces（`package.json` 追記不要）」と書いていたが、
   パッケージ管理は [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済み）。
+  **メンバの現行値は同ファイル自身が正本**である（`src/` の外にある雛形 `../templates/*/frontend` も
+  メンバに含む。#802 / #777。理由は同 決定 2 の 2026-08-16 追記）。
 - ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル**と
   **ナビ項目（`PlanNavItem[]`）**の 2 つである（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md)
   決定 1）。platform の合成点
