@@ -67,7 +67,25 @@ src/
 ```
 
 - 名前空間はフォルダ階層に一致させる（例: `IngestionService.Worker.Composable.Steps`）。
-- 存在しない区分のフォルダは作らない（空フォルダを置かない）。
+- 存在しない区分のフォルダは作らない（空フォルダを置かない）。**これは上図の
+  プロジェクトの内側**（`Foundation/` / `Composable/` / `Adapters/` / `Connectors/` 等）**に掛かる規則であり、
+  次に述べるサービス直下の 8 要素には掛からない。階層が違う。**
+
+### サービス直下の標準構成 8 要素と `.gitkeep`
+
+計画 [`12_backend-application-stack`](../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+§規範性・粒度・置き場 は、サービス直下に **8 要素**（`Api` / `Worker` / `Application` / `Domain` /
+`Infrastructure` / `Contracts` / `SharedKernel` / `Tests`）を全リポジトリ共通の標準構成と定める。
+**実体が無い要素は、空フォルダを作り `.gitkeep` だけを置く**（`.csproj` は作らない）。
+何も無いと、その要素が**意図的に不在なのか単に作り忘れなのかが一見して分からない**ためである。
+
+- **`Api` と `Worker` は排他**であり、**持たない側は空フォルダを作らない**
+  （実行入口は 1 サービスに 1 つで、「空の実行入口」という状態が存在しない。[IADR-0219](../docs/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
+- **`SharedKernel` の粒度はサービス単位**である。**境界をまたいで同一性が要る型**（契約に載る
+  `Result` / `Error`）は**ユニット単位**の `Platform.Shared.Kernel` へ置く。**両者は併存する**（同 決定 1）。
+- **★ 空フォルダは「コードが無い」ことを意味しない。** 層の実体は上図のとおり
+  `<ServiceName>.<Api|Worker>/Foundation/` 配下に**実在する**。空なのは
+  **プロジェクトとして分けていない**という意味であり、**その要素の実装が無いという意味ではない**。
 
 ## 依存規則
 
