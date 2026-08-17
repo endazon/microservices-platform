@@ -11,7 +11,7 @@
 
 `k8s-local-up.sh` が client secret 用 Secret `minio-oidc` を作成（dev 既定 `minio-dev-secret-change-me`・
 `MINIO_OIDC_CLIENT_SECRET` env で上書き可・平文コミットなし）。`templates/minio.yaml` は `minio.oidc.enabled` 時に
-`MINIO_IDENTITY_OPENID_*`＋`MINIO_BROWSER_REDIRECT_URL=http://minio.localhost:50000` を注入する（Secret 参照は
+`MINIO_IDENTITY_OPENID_*`＋`MINIO_BROWSER_REDIRECT_URL=https://minio.localhost:50000` を注入する（Secret 参照は
 `optional`＝未作成でも Pod 起動）。realm client `minio` は `deploy/keycloak/microservices-platform-realm.json`。
 
 ## RBAC ポリシー（runtime 手順・**fail-safe deny**）
@@ -47,7 +47,7 @@ mc admin policy create local platform-operator deploy/local/minio-oidc/policies/
 # edge 集約（ポート再作成が必要・破壊操作はユーザー実行）
 k3d cluster delete msp-ast-dev
 LOCALEDGE=1 bash scripts/k8s-local-up.sh
-#   → http://minio.localhost:50000 →「Login with SSO」→ realm ユーザー（例 developer/developer）
+#   → https://minio.localhost:50000 →「Login with SSO」→ realm ユーザー（例 developer/developer）
 ```
 
 - **issuer 整合（#284 手順A）**: browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。

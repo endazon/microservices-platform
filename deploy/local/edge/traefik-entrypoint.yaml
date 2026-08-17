@@ -7,6 +7,16 @@
 # ⚠️ `expose` の values スキーマは Traefik Helm chart バージョンで異なる。新しめ(chart v25+/Traefik v3)は
 # 下記のマップ形 `expose: { default: true }`。古い chart では真偽値 `expose: true` を使う。k3s の Traefik 版に
 # 追随して切替えること（`kubectl -n kube-system get helmchart traefik -o yaml` で版を確認できる）。
+#
+# IADR-0220 (#841): admin(50000) を TLS 終端にし、web(80) は websecure(443) へ恒久リダイレクトする。
+# 計画 NFR-11「外部から到達し得るすべてのエンドポイントを HTTPS とし、平文 HTTP を残さない」の適用範囲は
+# 利用者裁定 2026-08-16（裁定依頼 planning#383）で **環境を問わない**と確定し、経路B も適用内になった。
+# 証明書の発行方式は計画 ADR-0047（*.localhost では selfsigned CA を許容）が定め、実体は IADR-0206 の
+# cert-manager（ClusterIssuer local-edge-ca → Secret edge-tls）が既に持っている。
+#
+# ⚠️ TLS とリダイレクトを `additionalArguments`（＝Traefik のコマンドライン引数へそのまま流れる）で渡すのは、
+# 上の `expose` と同じ事情である —— `ports.<name>.tls.enabled` や `ports.web.redirectTo` の values スキーマは
+# chart バージョンで変わる。引数形なら chart 版に依存しない。
 apiVersion: helm.cattle.io/v1
 kind: HelmChartConfig
 metadata:
@@ -21,3 +31,10 @@ spec:
         expose:
           default: true
         protocol: TCP
+    additionalArguments:
+      # admin(50000) の TLS 終端。証明書は SNI に応じて Ingress の spec.tls（secretName: edge-tls）から選ばれる。
+      - "--entryPoints.admin.http.tls=true"
+      # web(80) は平文を残さず websecure(443) へ恒久リダイレクトする（NFR-11「平文 HTTP を残さない」）。
+      - "--entryPoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entryPoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entryPoints.web.http.redirections.entryPoint.permanent=true"

@@ -7,9 +7,10 @@ related_ids:
   - IADR-0024
   - IADR-0090
   - IADR-0091
+  - IADR-0220
 author: claude
 created: 2026-07-21
-updated: 2026-07-21
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ (ADR-0017 サービス間認証・エッジ)"
 ---
@@ -68,11 +69,27 @@ helm の OIDC 配線は `minio.oidc.enabled`（既定 false）でゲートし、
 ## 影響・トレードオフ
 
 - MinIO Console が Keycloak SSO でログイン可能になり、`minio.localhost:50000` で集約到達できる。root は break-glass。
+
 - 変更は opt-in（`minio.oidc.enabled`）と realm/edge への追加のみ。既定オフ時は本番 byte 等価（helm template で確認）。
 - MinIO policy 作成は runtime 手順（mc）。適用前は fail-safe に全 OIDC ユーザーが deny（安全側）。
 - `MINIO_BROWSER_REDIRECT_URL` を集約 URL に固定するため、port-forward 単独（edge 未起動）では OIDC redirect が
   集約 URL を指し完了しない→root で入る（[[IADR-0090]] PR-2 の Grafana と同じ性質・README 明記）。
 - Console のエッジ公開は **local 専用オーバーレイ**に閉じる。本番 chart の Console 非公開運用（IADR-0024）は不変。
+
+> **［2026-08-17 追記 / #841］本 ADR が前提にしていた「エッジ（`admin:50000`）は平文 http」は、もう成り立たない。**
+> [[IADR-0220]] が `--entryPoints.admin.http.tls=true` で **admin(50000) を TLS 終端**にした
+> （計画 `NFR-11`「平文 HTTP を残さない」の適用範囲が**環境を問わない**と確定したため。
+> 利用者裁定 2026-08-16 / 裁定依頼 planning#383、証明書の発行方式は計画 `ADR-0047`）。
+> **本文は当時の記録として書き換えない。** 読み替えは下記のとおり。
+>
+> | 本文の記述 | 現在 |
+> | --- | --- |
+> | `MINIO_BROWSER_REDIRECT_URL=http://minio.localhost:50000`（決定 2） | **`https://minio.localhost:50000`**（`deploy/local/values-local.yaml`。本番 `values.yaml` の例示コメントも合わせた） |
+> | redirect `http://minio.localhost:50000/oauth_callback` | **`https://minio.localhost:50000/oauth_callback`**（realm の `minio` client） |
+>
+> **決定（`policy` クレームによる fail-safe deny 既定・helm opt-in・本番バイト等価）は変えていない。**
+> 変わったのは URL の scheme だけであり、`status` は `Accepted` のままとする。
+> port-forward 用の `http://localhost:9001` は**エッジを経由しない別経路のため据え置き**である。
 
 ## 代替案
 

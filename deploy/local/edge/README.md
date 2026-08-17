@@ -59,27 +59,34 @@ kubectl get ns argocd >/dev/null 2>&1 && kubectl apply -f deploy/local/edge/argo
 
 ## アクセス
 
-- **platform フロント**: `http://localhost/`（SPA）・`http://localhost/bff/...`（BFF）。`https://localhost/` は
+- **platform フロント**: `https://localhost/`（SPA）・`https://localhost/bff/...`（BFF）。
   **cert-manager が発行する `edge-tls`** で終端する（IADR-0206・#779）。ルート CA を信頼ストアへ入れるまで
-  ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。http(80) はそのまま残してある。
+  ブラウザ警告は出るが、**CA を渡せば検証は通る**（下記「エッジ TLS」）。
+  **`http://localhost/`（80）は https へ恒久リダイレクトする**（IADR-0220・#841。平文は残さない）。
 - **管理ツール（50000・ホスト名ベース）**:
-  - `http://grafana.localhost:50000`（OBSERVABILITY=1）
-  - `http://headlamp.localhost:50000`（HEADLAMP=1）
-  - `http://vault.localhost:50000`（VAULT=1）
-  - `http://qdrant.localhost:50000`（dashboard は `/dashboard`。**SSO 非対応＝認証なし**・閉域前提）
-  - `http://argocd.localhost:50000`（ARGOCD=1。argocd-server の `server.insecure` は ArgoCD OIDC 実装 #353 で設定）
-  - `http://minio.localhost:50000`（MinIO Console。Keycloak OIDC＝IADR-0093。ポリシー適用は [minio-oidc/README](../minio-oidc/README.md)）
-  - `http://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
+  - `https://grafana.localhost:50000`（OBSERVABILITY=1）
+  - `https://headlamp.localhost:50000`（HEADLAMP=1）
+  - `https://vault.localhost:50000`（VAULT=1）
+  - `https://qdrant.localhost:50000`（dashboard は `/dashboard`。**SSO 非対応＝認証なし**・閉域前提）
+  - `https://argocd.localhost:50000`（ARGOCD=1。argocd-server の `server.insecure` は ArgoCD OIDC 実装 #353 で設定）
+  - `https://minio.localhost:50000`（MinIO Console。Keycloak OIDC＝IADR-0093。ポリシー適用は [minio-oidc/README](../minio-oidc/README.md)）
+  - `https://wiki.localhost:50000`（Wiki.js。Keycloak OIDC＝IADR-0095。管理UI 設定は [wiki-oidc/README](../wiki-oidc/README.md)）
 
-### ⚠️ admin entrypoint (50000) は **平文 http のみ**（IADR-0103）
+### admin entrypoint (50000) も TLS 終端である（IADR-0220・#841）
 
-`traefik-entrypoint.yaml` が足す `admin:50000` には **TLS 終端を設定していない**。したがって
-**`https://<tool>.localhost:50000` は 404 になる**（Traefik に https ルートが無いため）。管理ツールは必ず
-**`http://`** で開くこと。「到達不可」に見える事象の典型原因である（実際に Vault で発生）。
+`traefik-entrypoint.yaml` が `--entryPoints.admin.http.tls=true` を渡すため、**`admin:50000` は https である**。
+管理ツールは必ず **`https://`** で開くこと。**平文 `http://<tool>.localhost:50000` で叩くと TLS ハンドシェイクに
+失敗する**（「到達不可」に見える事象の典型原因である）。
 
-platform フロントの 443（`https://localhost/`）は別扱いで、**cert-manager 発行の `edge-tls` で終端する**
-（IADR-0206・#779）。**admin entrypoint の TLS 化は依然としてスコープ外**である —— 7 つの OIDC クライアントの
-redirectUris 追記に波及するため、Keycloak をエッジへ出す **#780 と同時に**扱う。
+計画 `NFR-11`（全経路の HTTPS 化・平文 HTTP を残さない）の適用範囲は利用者裁定 2026-08-16
+（裁定依頼 planning#383）で**環境を問わない**と確定し、経路B も適用内になった。証明書の発行方式は
+計画 `ADR-0047`（`*.localhost` では selfsigned CA を許容）が定める。**7 つの OIDC クライアントの
+redirectUris は https へ揃えてある**（realm・`values-local.yaml`・`grafana.yaml`・
+`argocd-cm-patch.yaml`・`vault/oidc/bootstrap.sh`）。
+
+証明書は namespace ごとに要る（`spec.tls.secretName` は同 namespace の Secret しか参照できない）——
+`microservices-platform` / `platform-infra` は `tls/edge-certificate.yaml`、`argocd` は
+`tls/argocd-certificate.yaml`（ns 存在時のみ apply）が持つ。**Secret 名はいずれも `edge-tls`** である。
 
 ### エッジ TLS（cert-manager・IADR-0206・#779）
 
@@ -119,8 +126,8 @@ mkcert を使う手もあるが、**CA が開発者マシン固有でリポジ�
 issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）を維持し、ツール UI のみ 50000 に集約する。
 
 - **Grafana（PR-2 適用済み）**: realm `grafana` client の `redirectUris`/`webOrigins` に集約後 URL
-  （`http://grafana.localhost:50000/login/generic_oauth` 等）を追加し、`GF_SERVER_ROOT_URL` を
-  `http://grafana.localhost:50000/` に設定済み。**Grafana は `root_url` から一意に `redirect_uri` を生成する**ため、
+  （`https://grafana.localhost:50000/login/generic_oauth` 等）を追加し、`GF_SERVER_ROOT_URL` を
+  `https://grafana.localhost:50000/` に設定済み。**Grafana は `root_url` から一意に `redirect_uri` を生成する**ため、
   OIDC ログインの実効経路は **edge（`grafana.localhost:50000`・`LOCALEDGE=1` 前提）**。
   - ⚠️ **`LOCALEDGE` を使わず `port-forward svc/grafana 3000:3000` 単独で開いた場合、Keycloak 認証後の redirect は
     `grafana.localhost:50000` を指すため edge 未起動だと到達できず、OIDC ログインは完了しない**（realm には旧
@@ -129,8 +136,9 @@ issuer は最小案（`http://keycloak:8080`・[README 手順A](../README.md)）
     使いたい場合は `GF_SERVER_ROOT_URL` を `http://localhost:3000/` に戻す（realm の port-forward redirect は登録済み）。
 - **ArgoCD（#359 適用済み）** / これから足す **Vault** 等の OIDC client は最初から 50000 URL で登録する。
 - **platform フロント（SPA）/ Headlamp（#353 適用済み）**: realm `platform-spa` client に集約後 origin
-  `http://localhost/*`（SPA は `redirect_uri=<origin>/callback` を送る。callback パス＝`/callback`）を
-  `redirectUris`/`webOrigins`/`post.logout.redirect.uris` へ、`headlamp` client に `http://headlamp.localhost:50000/*`
+  `https://localhost/*`（SPA は `redirect_uri=<origin>/callback` を送る。callback パス＝`/callback`。
+  **80 は https へ恒久リダイレクトするため origin は https である**・IADR-0220 / #841）を
+  `redirectUris`/`webOrigins`/`post.logout.redirect.uris` へ、`headlamp` client に `https://headlamp.localhost:50000/*`
   を `redirectUris`/`webOrigins` へ追加済み（IADR-0091/0033/0080 のフォローアップ。port-forward 用 URL は後方互換で残す）。
 
 ## 切り戻し
@@ -175,6 +183,7 @@ k3d のポートを元（8080/8443）へ戻すにはクラスタ再作成（`LOC
 本オーバーレイはローカル検証用。**本番相当のエッジ（Istio）・稼働率は Tier 3**（対象外）。
 
 **エッジ TLS は Tier 3 から外れた**（IADR-0206・#779）—— cert-manager 発行の `edge-tls` で 443 を終端する。
+**admin(50000) の TLS 化も Tier 3 から外れた**（IADR-0220・#841。計画 `NFR-11` の適用範囲が経路B にも及ぶと確定したため）。
 ただし CA は selfsigned であり、**公的 CA（Let's Encrypt）による証明書は依然として Tier 3** である
 （`*.localhost` にはドメイン所有を検証できないため原理的に発行できない）。
 本番の CA 差し替えは計画 `ADR-0023` のとおり `ClusterIssuer` を足して `issuerRef` を変えるだけで済む。

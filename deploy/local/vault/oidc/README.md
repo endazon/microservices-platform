@@ -55,7 +55,7 @@ kubectl -n platform-infra exec deploy/vault -- sh -c '
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN="$VAULT_DEV_ROOT_TOKEN_ID"
 vault write auth/oidc/role/default \
   bound_audiences="vault" \
-  allowed_redirect_uris="http://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback" \
+  allowed_redirect_uris="https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback" \
   user_claim="preferred_username" groups_claim="groups" \
   oidc_scopes="openid,profile,email" token_policies="default"'
 
@@ -80,8 +80,10 @@ vault auth tune -listing-visibility=unauth -description="Keycloak SSO (OIDC)" oi
 成功確認（UI のログイン画面に OIDC が出るか＝`listing_visibility`）:
 
 ```sh
-curl -s --resolve vault.localhost:50000:127.0.0.1 \
-  http://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'   # → ["oidc/"]
+# IADR-0220 (#841): admin(50000) は TLS 終端。selfsigned CA なので --cacert でルート CA を渡す:
+#   kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
+  https://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'   # → ["oidc/"]
 ```
 
 `bootstrap.sh` が行うこと:
@@ -105,12 +107,12 @@ k3d cluster delete msp-ast-dev
 LOCALEDGE=1 VAULT=1 bash scripts/k8s-local-up.sh
 # → 上の bootstrap を一度実行してから:
 
-# UI:  http://vault.localhost:50000 → Method=OIDC → role=default →「Sign in with Keycloak」→ developer/developer
+# UI:  https://vault.localhost:50000 → Method=OIDC → role=default →「Sign in with Keycloak」→ developer/developer
 # CLI: vault login -method=oidc role=default    # ブラウザが localhost:8250 の callback を開く
 ```
 
 - **issuer 整合（#284 手順A）**: browser も `keycloak:8080` を解決できるよう hosts 追記＋`port-forward svc/keycloak 8080:8080`。
   Vault server（platform-infra）は in-cluster の `keycloak:8080` で discovery する。
-- **redirect**: UI は `http(s)://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback`（edge admin:50000 は現状 http。
-  将来 TLS 化に備え http/https 両方を realm と Vault role に登録済み）。CLI は `http://localhost:8250/oidc/callback`。
+- **redirect**: UI は `https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback`（IADR-0220 / #841 で edge admin:50000 が
+  TLS 終端になったため、realm と Vault role の登録は https のみにした）。CLI は `http://localhost:8250/oidc/callback`。
 - CLI で `*.localhost` 未解決なら hosts 追記 or `*.nip.io`。**realm 反映**: `vault` client は realm 再インポートで有効化。

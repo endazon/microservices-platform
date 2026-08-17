@@ -40,10 +40,11 @@ kubectl apply -f src/ai-stock-trading/deploy/argocd/application.yaml
 
 - **client secret**: `argocd-secret` の `oidc.keycloak.clientSecret`（dev 既定 `argocd-dev-secret-change-me`・
   `ARGOCD_OIDC_CLIENT_SECRET` env で上書き可・平文コミットなし）。
-- **公開 URL（集約後・ホスト名ベース・#357/IADR-0091）**: `argocd-cm.url = http://argocd.localhost:50000`、redirect
-  `http://argocd.localhost:50000/auth/callback`（realm には port-forward 用 `http://localhost:8083/auth/callback` も併記）。
-  edge の平文 http のため `server.insecure=true`（`argocd-cmd-params-cm`）。`server.rootpath`（サブパス）は使わない。
-- **アクセス**: `LOCALEDGE=1` で edge を有効化し `http://argocd.localhost:50000` を開く（[edge README](../edge/README.md)）。
+- **公開 URL（集約後・ホスト名ベース・#357/IADR-0091）**: `argocd-cm.url = https://argocd.localhost:50000`、redirect
+  `https://argocd.localhost:50000/auth/callback`（realm には port-forward 用 `http://localhost:8083/auth/callback` も併記）。
+  `server.insecure=true`（`argocd-cmd-params-cm`）は据え置く —— TLS を終端するのは Traefik であり、
+  そこから argocd-server への in-cluster 転送は平文だからである（[[IADR-0220]] / #841）。`server.rootpath`（サブパス）は使わない。
+- **アクセス**: `LOCALEDGE=1` で edge を有効化し `https://argocd.localhost:50000` を開く（[edge README](../edge/README.md)）。
   port-forward で開く場合は `kubectl -n argocd port-forward svc/argocd-server 8083:80` → `http://localhost:8083`。
 - **RBAC**: `platform-admin`→`role:admin`、`platform-operator`→`role:readonly`、未マッピングは `policy.default=''`＝
   無権限（fail-safe・Admin へ昇格しない）。レルムロールは `argocd` client の protocolMapper が `groups` クレームへ発行。

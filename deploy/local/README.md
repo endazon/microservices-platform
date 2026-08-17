@@ -279,8 +279,8 @@ SPA の「Wiki 閲覧」画面（SC-04）は、ブラウザ向け実行時 confi
 edge overlay `deploy/local/edge`・`LOCALEDGE=1` で Wiki.js を `wiki.localhost:50000` に公開。realm `wiki-js` client も
 同 URL 登録済み。[edge/README](edge/README.md)「アクセス／OIDC（集約後 URL）」）:
 
-- **既定（`LOCALEDGE=1`）**: `values-local.yaml` は `WIKI_BASE_URL=http://wiki.localhost:50000` を供給する。SPA を
-  `http://localhost/`（edge のフロント）で開き、「Wiki 閲覧」→「Wiki を開く」で `http://wiki.localhost:50000` が開く。
+- **既定（`LOCALEDGE=1`）**: `values-local.yaml` は `WIKI_BASE_URL=https://wiki.localhost:50000` を供給する。SPA を
+  `https://localhost/`（edge のフロント）で開き、「Wiki 閲覧」→「Wiki を開く」で `https://wiki.localhost:50000` が開く。
 - **非 edge（`LOCALEDGE` 未使用・port-forward）で使う場合**: `values-local.yaml` の `WIKI_BASE_URL` を
   `http://localhost:3300` へ **override** し、`wiki-js` を port-forward する（値と port-forward を揃えること。
   不一致だと到達しない）:
@@ -292,7 +292,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 - **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
   **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。realm `wiki-js`
-  client は `http://wiki.localhost:50000/*`（edge 集約）と `http://localhost:3300/*`（**上記 k8s の port-forward 用**・#385）を
+  client は `https://wiki.localhost:50000/*`（edge 集約）と `http://localhost:3300/*`（**上記 k8s の port-forward 用**・#385）を
   登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
   であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
   揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
@@ -391,7 +391,7 @@ HEADLAMP=1 bash scripts/k8s-local-up.sh   # Rancher Desktop（内蔵 k3s）・k3
 #   OIDC client secret は Secret headlamp-oidc（platform-infra）へ dev 既定で作成（HEADLAMP_OIDC_CLIENT_SECRET で上書き可）。
 ```
 
-Headlamp UI へは `LOCALEDGE=1` なら `http://headlamp.localhost:50000`、単独なら port-forward で到達する:
+Headlamp UI へは `LOCALEDGE=1` なら `https://headlamp.localhost:50000`、単独なら port-forward で到達する:
 
 ```bash
 kubectl -n platform-infra port-forward svc/headlamp 4466:80   # http://localhost:4466
@@ -433,7 +433,7 @@ fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域
   [IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md)）。
 - ClusterRoleBinding **`headlamp-developer-cluster-admin`**（User `oidc:developer` → `cluster-admin`）＝
   [`deploy/local/headlamp/headlamp.yaml`](headlamp/headlamp.yaml)（#271 / IADR-0080）。
-- realm client `headlamp` の redirectUris（`http://localhost:4466/*` ＋ 集約後 `http://headlamp.localhost:50000/*`・#377）。
+- realm client `headlamp` の redirectUris（`http://localhost:4466/*` ＋ 集約後 `https://headlamp.localhost:50000/*`・#377）。
 
 **cluster-admin を得られるのは `developer` だけ**である点に注意する。上記 bind の subject は User `oidc:developer`
 のみで、`admin`（[IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md) で realm に追加した

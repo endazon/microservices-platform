@@ -15,7 +15,7 @@ realm には `wiki-js` client が既存（[IADR-0020](../../../docs/adr/IADR-002
 # edge 集約を有効化（k3d はポート再作成が必要・破壊操作はユーザー実行）
 k3d cluster delete msp-ast-dev
 LOCALEDGE=1 bash scripts/k8s-local-up.sh
-#   → http://wiki.localhost:50000  （admin-ingress-wiki.yaml が wiki-js:3000 へ）
+#   → https://wiki.localhost:50000  （admin-ingress-wiki.yaml が wiki-js:3000 へ）
 # 従来の port-forward も併用可: kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000 → http://localhost:3300
 ```
 
@@ -34,7 +34,7 @@ Wiki.js 管理コンソール（`/a`）→ **Authentication** → **+ Add Strate
 | Logout URL（任意） | `http://keycloak:8080/realms/platform/protocol/openid-connect/logout` |
 
 - **Site URL（重要・Administration → General）**: **利用する経路の到達 URL と一致させる**。値は下の
-  **次節「Site URL は経路と一致させる」**を参照（edge=`http://wiki.localhost:50000` /
+  **次節「Site URL は経路と一致させる」**を参照（edge=`https://wiki.localhost:50000` /
   port-forward 単独=`http://localhost:3300`）。
 - **claim / group マッピング（fail-safe）**: strategy の **Map Groups** を有効化し、`groups`（realm の abac-attributes /
   roles スコープ由来）を Wiki.js グループへ対応づける。**未マッピングのユーザーは最小権限グループ（Guests 相当）に割当**
@@ -50,7 +50,7 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 
 | 経路 | Site URL に設定する値 | realm `wiki-js` の対応 redirect |
 | --- | --- | --- |
-| **edge 集約（`LOCALEDGE=1`・既定の正規経路）** | `http://wiki.localhost:50000` | `http://wiki.localhost:50000/*` |
+| **edge 集約（`LOCALEDGE=1`・既定の正規経路）** | `https://wiki.localhost:50000` | `https://wiki.localhost:50000/*` |
 | **k8s の port-forward 単独（非 edge）** | `http://localhost:3300` | `http://localhost:3300/*`（#385） |
 
 以降の手順は **edge 経路を既定**として記述する。port-forward 単独で使う場合は Site URL を `http://localhost:3300` に
@@ -77,7 +77,7 @@ WSEC=$(curl -s -H "Authorization: Bearer $T" "$KCADM/admin/realms/$R/clients?cli
 
 KC=http://keycloak:8080/realms/platform
 # Site URL は経路と一致させる（#385）。既定＝edge 集約。port-forward 単独なら SITE_URL=http://localhost:3300
-SITE_URL="${SITE_URL:-http://wiki.localhost:50000}"
+SITE_URL="${SITE_URL:-https://wiki.localhost:50000}"
 CFG=$(jq -cn --arg s "$WSEC" --arg kc "$KC" '{
   clientId:"wiki-js", clientSecret:$s,
   authorizationURL:($kc+"/protocol/openid-connect/auth"),
@@ -114,11 +114,13 @@ kubectl -n microservices-platform rollout restart deploy/wiki-js
 ```sh
 kubectl -n microservices-platform logs deploy/wiki-js --tail=40 | grep "Authentication Strategy Keycloak"
 #   → Authentication Strategy Keycloak: [ OK ]
-curl -s --resolve wiki.localhost:50000:127.0.0.1 -X POST http://wiki.localhost:50000/graphql \
+# IADR-0220 (#841): admin(50000) は TLS 終端。selfsigned CA なので --cacert でルート CA を渡す:
+#   kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+curl -s --cacert ca.crt --resolve wiki.localhost:50000:127.0.0.1 -X POST https://wiki.localhost:50000/graphql \
   -H 'Content-Type: application/json' \
   -d '{"query":"{authentication{activeStrategies(enabledOnly:true){key strategy{key} displayName}}}"}' | jq -c '.data'
-curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.1 \
-  http://wiki.localhost:50000/login/7c1f6f2e-9d3a-4b5c-8e10-000000000001   # → 302（Keycloak へ）
+curl -s -o /dev/null -w '%{http_code}\n' --cacert ca.crt --resolve wiki.localhost:50000:127.0.0.1 \
+  https://wiki.localhost:50000/login/7c1f6f2e-9d3a-4b5c-8e10-000000000001   # → 302（Keycloak へ）
 ```
 
 ## 注意
@@ -129,7 +131,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --resolve wiki.localhost:50000:127.0.0.
   ＝上の**「Site URL は経路と一致させる」節**の表のとおり。realm の `wiki-js` client には
   `http://localhost:3300/*` を登録済み（#385）。
 - **redirect の port topology（取り違え注意・#385）**: `wiki-js` client に登録済みの redirect は経路ごとに別物。
-  **edge 集約＝`http://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
+  **edge 集約＝`https://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
   **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
   の `ports: 3001:3000`）/ in-cluster＝`http://wiki-js:3000/*`。k8s の port-forward に `3001` は使わない。
 - **realm 反映**: `wiki-js` client の redirect 追加は realm 再インポートで反映（永続化時は管理コンソール追加 or 再作成）。

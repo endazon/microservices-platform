@@ -1178,25 +1178,92 @@ ok('#779: Certificate の dnsNames が Ingress の spec.tls.hosts を覆う', ()
   assert.ok(dnsNames.includes('*.localhost'), 'dnsNames に *.localhost が無い（#780 で作り直しになる）');
 });
 
-ok('#779: admin:50000 の Ingress には spec.tls を足さない（その entrypoint に TLS が無い）', () => {
-  // Traefik の args に --entryPoints.admin.http.tls は無い。足しても効かず、
-  // 「TLS になったつもり」の記述だけが残る。admin の TLS 化は #780 と同時（IADR-0206 スコープ外の表）。
-  for (const f of ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml']) {
+// --- IADR-0220 (#841): admin(50000) の HTTPS 化 -------------------------------
+//
+// **この 2 件は #779 の期待値を反転したものである。** 反転の根拠は実装側の都合ではなく計画側にある ——
+// 計画 NFR-11（全経路の HTTPS 化・平文 HTTP を残さない）の適用範囲が利用者裁定 2026-08-16
+// （裁定依頼 planning#383）で **環境を問わない**と確定し、経路B（LOCALEDGE=1）も適用内になった。
+// 証明書の発行方式は計画 ADR-0047（*.localhost では selfsigned CA を許容）が定める。
+// 反転前の 2 件は「admin:50000 の Ingress に spec.tls を足さない」「http→https の恒久リダイレクトを足さない」で、
+// **平文であることを固定していた**。
+
+const TRAEFIK_YAML = fs.readFileSync(path.join(EDGE_DIR, 'traefik-entrypoint.yaml'), 'utf8');
+const ADMIN_ING_FILES = ['admin-ingress-infra.yaml', 'admin-ingress-minio.yaml', 'admin-ingress-wiki.yaml', 'argocd-ingress.yaml'];
+
+ok('#841: admin:50000 は TLS 終端で、そこに載る Ingress は spec.tls(edge-tls) を持つ', () => {
+  // entrypoint 側に TLS が無いまま Ingress へ spec.tls を足すと「TLS になったつもり」になる。
+  // 逆に entrypoint だけ TLS にして Ingress に証明書を指さないと Traefik 既定の自己署名へ落ちる
+  // （Secret 化されず再起動ごとに変わる＝IADR-0206 代替案の表）。**両側を同じ試験で見る。**
+  assert.ok(
+    /--entryPoints\.admin\.http\.tls=true/.test(TRAEFIK_YAML),
+    'traefik-entrypoint.yaml に --entryPoints.admin.http.tls=true が無い（admin:50000 が平文のまま）',
+  );
+  const dnsNames = listValues(EDGE_CERT_YAML, 'dnsNames');
+  let routers = 0;
+  for (const f of ADMIN_ING_FILES) {
     const yaml = fs.readFileSync(path.join(EDGE_DIR, f), 'utf8');
-    assert.ok(/router\.entrypoints:\s*admin/.test(yaml), `${f} が admin entrypoint に載っていない（前提が変わった）`);
-    assert.ok(!/^\s*tls:\s*$/m.test(yaml), `${f} に spec.tls がある（admin entrypoint に TLS は無いので効かない）`);
+    const ingresses = docsOf(yaml, 'Ingress');
+    assert.ok(ingresses.length > 0, `${f} に Ingress が無い（前提が変わった）`);
+    // ★ **ドキュメント単位で見る。** ファイル単位で `tls:` の有無だけを見ると、同じファイルの
+    // 別 Ingress が持つ tls にマッチして**1 件だけ平文へ戻しても検出できない**（変異試験で実測）。
+    for (const doc of ingresses) {
+      const name = field(doc, 'name');
+      routers += 1;
+      assert.ok(/router\.entrypoints:\s*admin/.test(doc), `${f} の ${name} が admin entrypoint に載っていない（前提が変わった）`);
+      assert.ok(/^\s*tls:\s*$/m.test(doc), `${f} の ${name} に spec.tls が無い（admin:50000 は TLS 終端になった・NFR-11）`);
+      // secretName は IADR-0206 が安定させた名前をそのまま使う（計画 ADR-0047 決定 2「名前の安定」）。
+      const secret = (/^\s*secretName:\s*(\S+)/m.exec(doc) || [])[1];
+      assert.strictEqual(secret, 'edge-tls', `${f} の ${name} の spec.tls.secretName が edge-tls でない（新しい名前を作らない）`);
+      // hosts が dnsNames に含まれないと SNI が一致せず、TLS が張られたつもりで警告だけが増える。
+      const hosts = listValues(doc, 'hosts');
+      assert.ok(hosts.length > 0, `${f} の ${name} の spec.tls に hosts が無い`);
+      for (const h of hosts) {
+        assert.ok(dnsNames.includes(h), `${f} の ${name} の spec.tls.hosts "${h}" が Certificate の dnsNames に無い（SNI 不一致）`);
+      }
+    }
   }
+  // 管理ツール 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）。
+  // 数が変わったら、増えたルータが TLS から漏れていないかを人が見る。
+  assert.strictEqual(routers, 7, `admin entrypoint のルータ数が 7 でない（実測 ${routers}）`);
 });
 
-ok('#779: http(80) 経路を残している（追加のみ・恒久リダイレクトを足さない）', () => {
+ok('#841: 管理ツールの namespace ごとに葉証明書が在る（spec.tls は同 ns の Secret しか参照できない）', () => {
+  // grafana/headlamp/vault/qdrant は platform-infra、minio/wiki は microservices-platform、argocd は argocd。
+  // どれか 1 つでも欠けると、その ns の Ingress だけ静かに TLS が張られない。
+  const ARGOCD_CERT_YAML = fs.readFileSync(path.join(TLS_DIR, 'argocd-certificate.yaml'), 'utf8');
+  const nsOf = (yaml) => docsOf(yaml, 'Certificate').map((d) => field(d, 'namespace'));
+  const namespaces = [...nsOf(EDGE_CERT_YAML), ...nsOf(ARGOCD_CERT_YAML)];
+  for (const ns of ['microservices-platform', 'platform-infra', 'argocd']) {
+    assert.ok(namespaces.includes(ns), `${ns} namespace の葉証明書が無い（その ns の Ingress で TLS が張られない）`);
+  }
+  // argocd ns は ARGOCD=1 の別 opt-in でのみ作られる。kustomization に含めると ns 不在で overlay 全体が落ちる。
   assert.ok(
-    /router\.entrypoints:\s*web,websecure/.test(FRONTEND_ING_YAML),
-    'web(80) が entrypoints から外れている（http 経路が消えると既存 docs と realm redirect が全部回り道になる）',
+    !/^\s*-\s*argocd-certificate\.yaml\s*$/m.test(TLS_KUST),
+    'tls/kustomization.yaml が argocd-certificate.yaml を含んでいる（argocd ns 不在の環境で tls overlay が落ちる）',
   );
   const upSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts', 'k8s-local-up.sh'), 'utf8');
   assert.ok(
-    !/entryPoints\.web\.http\.redirections/.test(upSrc),
-    'http→https の恒久リダイレクトが入っている（IADR-0206 決定 4 のスコープ外）',
+    /get namespace argocd[\s\S]*argocd-certificate\.yaml/.test(upSrc),
+    'k8s-local-up.sh が argocd-certificate.yaml を「argocd ns 存在時のみ」apply していない（fail-safe）',
+  );
+});
+
+ok('#841: web(80) は https へ恒久リダイレクトする（平文 HTTP を残さない・NFR-11）', () => {
+  assert.ok(
+    /router\.entrypoints:\s*web,websecure/.test(FRONTEND_ING_YAML),
+    'web(80) が entrypoints から外れている（80 を落とすとリダイレクト自体が返せない）',
+  );
+  assert.ok(
+    /--entryPoints\.web\.http\.redirections\.entryPoint\.to=websecure/.test(TRAEFIK_YAML),
+    'web→websecure の恒久リダイレクトが無い（平文 HTTP が残る・NFR-11 違反）',
+  );
+  assert.ok(
+    /--entryPoints\.web\.http\.redirections\.entryPoint\.scheme=https/.test(TRAEFIK_YAML),
+    'リダイレクト先の scheme=https が無い',
+  );
+  assert.ok(
+    /--entryPoints\.web\.http\.redirections\.entryPoint\.permanent=true/.test(TRAEFIK_YAML),
+    'リダイレクトが恒久（permanent=true）でない',
   );
 });
 

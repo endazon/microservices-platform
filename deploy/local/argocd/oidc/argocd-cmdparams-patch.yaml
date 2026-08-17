@@ -1,5 +1,7 @@
 # IADR-0092 (#353): argocd-cmd-params-cm への merge patch（既存キーは保持）。
-# edge(Traefik admin:50000) は平文 http で終端するため、argocd-server の https 強制を解く（server.insecure=true）。
+# IADR-0220 (#841): edge(Traefik admin:50000) は https で終端するが、そこから argocd-server への in-cluster 転送は
+# 平文である。したがって argocd-server 自身の https 強制は解いたまま据え置く（server.insecure=true）——
+# 外すと argocd-server が http→https リダイレクトを返し、エッジ経由が二重終端で壊れる。
 # 反映には argocd-server の再起動が必要（k8s-local-up.sh が rollout restart する）。本番は TLS 終端＋insecure 無効が前提。
 data:
   server.insecure: "true"

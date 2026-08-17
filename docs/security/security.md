@@ -15,7 +15,7 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
@@ -139,7 +139,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | 区分 | 対象 | 方式 |
 | --- | --- | --- |
 | 保存時暗号化 | PostgreSQL（業務 DB）・MinIO（本文/資産）・Qdrant（ベクトル） | **アプリ層の暗号化は未実装（現状=なし）**。保存時暗号化はインフラ層（ストレージ/ボリューム暗号化・k8s Secret 暗号化）に委ねる方針で、実クラスタでの有効化・鍵管理は運用整備（未決事項・#198 と連動）。機微文書の機密性は ABAC（取得段 fail-closed）＋ Wiki `isPrivate` で担保する |
-| 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端。ローカルは平文） |
+| 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端）。**ローカル検証環境（経路B）も含めて平文 HTTP を残さない** —— `NFR-11` の適用範囲は環境を問わない（利用者裁定 2026-08-16・裁定依頼 planning#383。証明書は計画 `ADR-0047` の selfsigned CA・[[IADR-0206]] / [[IADR-0220]]） |
 | 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化（ADR-0005 / IADR-0026）。NetworkPolicy を多層防御として併用 |
 | 個人情報 / 機微情報 | 文書本文・属性（機密区分）・利用者クレーム（clearance/department） | 文書の機密区分（`confidentiality`）は必須（サーバー側検証・[IADR-0047]）。ABAC で区分×利用者資格を deny-by-default 評価（[IADR-0012]）。高機密本文の外部 LLM への越境は egress ポリシーで遮断（confidential/restricted はセルフホスト固定・[IADR-0025]）。個人情報の専用マスキング/匿名化は現状スコープ外（本システムは社内文書が対象。取り込み対象データの PII 取り扱いは各データソース側の責務） |
 

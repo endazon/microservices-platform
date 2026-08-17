@@ -215,13 +215,13 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://wiki.localhost:50000/*",
+        "https://wiki.localhost:50000/*",
         "http://localhost:3300/*",
         "http://localhost:3001/*",
         "http://wiki-js:3000/*"
       ],
       "webOrigins": [
-        "http://wiki.localhost:50000",
+        "https://wiki.localhost:50000",
         "http://localhost:3300",
         "http://localhost:3001"
       ],
@@ -282,16 +282,16 @@
       "redirectUris": [
         "http://localhost:3100/*",
         "http://localhost:8081/*",
-        "http://localhost/*"
+        "https://localhost/*"
       ],
       "webOrigins": [
         "http://localhost:3100",
         "http://localhost:8081",
-        "http://localhost"
+        "https://localhost"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*##http://localhost/*##http://localhost"
+        "post.logout.redirect.uris": "http://localhost:3100/*##http://localhost:8081/*##https://localhost/*##https://localhost"
       },
       "defaultClientScopes": [
         "profile",
@@ -331,11 +331,11 @@
       "serviceAccountsEnabled": false,
       "redirectUris": [
         "http://localhost:4466/*",
-        "http://headlamp.localhost:50000/*"
+        "https://headlamp.localhost:50000/*"
       ],
       "webOrigins": [
         "http://localhost:4466",
-        "http://headlamp.localhost:50000"
+        "https://headlamp.localhost:50000"
       ],
       "protocolMappers": [
         {
@@ -372,11 +372,11 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://grafana.localhost:50000/login/generic_oauth",
+        "https://grafana.localhost:50000/login/generic_oauth",
         "http://localhost:3000/login/generic_oauth"
       ],
       "webOrigins": [
-        "http://grafana.localhost:50000",
+        "https://grafana.localhost:50000",
         "http://localhost:3000"
       ],
       "protocolMappers": [
@@ -413,11 +413,11 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://argocd.localhost:50000/auth/callback",
+        "https://argocd.localhost:50000/auth/callback",
         "http://localhost:8083/auth/callback"
       ],
       "webOrigins": [
-        "http://argocd.localhost:50000",
+        "https://argocd.localhost:50000",
         "http://localhost:8083"
       ],
       "protocolMappers": [
@@ -454,11 +454,11 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://minio.localhost:50000/oauth_callback",
+        "https://minio.localhost:50000/oauth_callback",
         "http://localhost:9001/oauth_callback"
       ],
       "webOrigins": [
-        "http://minio.localhost:50000",
+        "https://minio.localhost:50000",
         "http://localhost:9001"
       ],
       "protocolMappers": [
@@ -496,12 +496,10 @@
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "redirectUris": [
-        "http://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback",
         "https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback",
         "http://localhost:8250/oidc/callback"
       ],
       "webOrigins": [
-        "http://vault.localhost:50000",
         "https://vault.localhost:50000"
       ],
       "protocolMappers": [

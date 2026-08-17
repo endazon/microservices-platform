@@ -326,8 +326,11 @@ if [ "${ARGOCD:-}" = "1" ]; then
     kubectl apply -f src/ai-stock-trading/deploy/argocd/appproject.yaml -f src/ai-stock-trading/deploy/argocd/application.yaml
   fi
   # IADR-0092 (#353): ArgoCD を Keycloak OIDC(SSO) へ配線する。dex は使わず oidc.config を直接指定。
-  # 集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）で登録し、edge の平文 http のため
-  # server.insecure=true にする。fail-safe: local admin は残す（OIDC は追加・未マッピングは policy.default='' で
+  # 集約後 URL（argocd.localhost:50000・ホスト名ベース・#357/IADR-0091）で登録する。
+  # IADR-0220 (#841): エッジは https で終端する（NFR-11）。server.insecure=true は据え置く ——
+  # TLS を終端するのは Traefik であり、そこから argocd-server への in-cluster 転送は平文のままだからである
+  # （insecure を外すと argocd-server 自身が http→https リダイレクトを返し、エッジ経由が二重終端で壊れる）。
+  # fail-safe: local admin は残す（OIDC は追加・未マッピングは policy.default='' で
   # no-access）。install が作成した ConfigMap/Secret へ merge patch で「追加のみ」適用し既存キー（server.secretkey 等）
   # を保持する（apply による全置換はしない）。client secret は平文で置かず argocd-secret に merge patch。
   kubectl -n argocd patch configmap argocd-cm --type merge --patch-file deploy/local/argocd/oidc/argocd-cm-patch.yaml
@@ -337,7 +340,7 @@ if [ "${ARGOCD:-}" = "1" ]; then
     -p "{\"stringData\":{\"oidc.keycloak.clientSecret\":\"${ARGOCD_OIDC_CLIENT_SECRET:-argocd-dev-secret-change-me}\"}}"
   # server.insecure（cmd-params）と oidc の反映のため argocd-server を再起動する（CM は live 反映だが params は要再起動）。
   kubectl -n argocd rollout restart deploy/argocd-server >/dev/null 2>&1 || true
-  echo "    ArgoCD OIDC: http://argocd.localhost:50000 (LOCALEDGE=1) — Keycloak でログイン（local admin は break-glass）。"
+  echo "    ArgoCD OIDC: https://argocd.localhost:50000 (LOCALEDGE=1) — Keycloak でログイン（local admin は break-glass）。"
 fi
 
 # IADR-0080 (#271): Headlamp（k8s 管理 UI・Keycloak OIDC）。opt-in（既定オフ・fail-safe）。
@@ -392,11 +395,22 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
     echo "    WARN: tls overlay の apply に失敗（cert-manager webhook 待ち・試行 ${attempt}/5）" >&2
     sleep 5
   done
+  # IADR-0220 (#841): argocd namespace の葉証明書は ns 存在時のみ当てる（argocd-ingress.yaml と同じ fail-safe。
+  # tls/kustomization.yaml に含めると ns 不在の環境で tls overlay 全体が落ちる）。CRD は上で Established 済み。
+  if kubectl get namespace argocd >/dev/null 2>&1; then
+    kubectl apply -f deploy/local/edge/tls/argocd-certificate.yaml
+  fi
   kubectl -n "$MSP_NS" wait --for=condition=Ready --timeout=120s certificate/edge-tls
+  # IADR-0220 (#841): admin(50000) も TLS 終端になったため、そこに載る管理ツールの namespace にも葉証明書が要る
+  # （spec.tls.secretName は同 namespace の Secret しか参照できない）。
+  kubectl -n "$INFRA_NS" wait --for=condition=Ready --timeout=120s certificate/edge-tls
+  if kubectl get namespace argocd >/dev/null 2>&1; then
+    kubectl -n argocd wait --for=condition=Ready --timeout=120s certificate/edge-tls
+  fi
 
-  echo "    platform フロント: http://localhost/ (80) ・ https://localhost/ (443・cert-manager 発行 edge-tls)"
+  echo "    platform フロント: https://localhost/ (443・cert-manager 発行 edge-tls。80 は https へ恒久リダイレクト)"
   echo "    ルート CA の取り出し: kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d"
-  echo "    管理ツール(50000): http://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
+  echo "    管理ツール(50000・https): https://grafana.localhost:50000 / headlamp.localhost / vault.localhost / qdrant.localhost"
   echo "    ホスト名解決・TLS・k3d 再作成手順は deploy/local/edge/README.md 参照。"
 fi
 
@@ -416,6 +430,6 @@ echo "done. 状態確認:"
 echo "  kubectl get pods -A"
 echo "  kubectl -n $MSP_NS port-forward svc/bff-service 5080:8080   # http://localhost:5080/health"
 # IADR-0093 (#353): MinIO Console SSO は集約 URL 前提（LOCALEDGE=1）＋ポリシー適用が必要。
-echo "MinIO Console SSO(#353): http://minio.localhost:50000 (要 LOCALEDGE=1)。ポリシー適用と port-forward 単独時の"
+echo "MinIO Console SSO(#353): https://minio.localhost:50000 (要 LOCALEDGE=1)。ポリシー適用と port-forward 単独時の"
 echo "  制約（OIDC 未成立→root フォールバック）は deploy/local/minio-oidc/README.md を参照。"
 echo "AST 連結は AST chart(#122) 適用後に scripts/... で行う。"

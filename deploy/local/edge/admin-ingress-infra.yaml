@@ -13,6 +13,13 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: admin
 spec:
+  # IADR-0220 (#841): admin(50000) entrypoint の TLS 終端に使う証明書。secretName は IADR-0206 が
+  # 安定させた `edge-tls`（同 namespace の Secret）をそのまま使う（計画 ADR-0047 決定 2「名前の安定」）。
+  # hosts は葉証明書の dnsNames と一致させる（`*.localhost` は 1 段のサブドメインを覆う）。
+  tls:
+    - hosts:
+        - "*.localhost"
+      secretName: edge-tls
   rules:
     - host: grafana.localhost
       http:
@@ -34,6 +41,13 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: admin
 spec:
+  # IADR-0220 (#841): admin(50000) entrypoint の TLS 終端に使う証明書。secretName は IADR-0206 が
+  # 安定させた `edge-tls`（同 namespace の Secret）をそのまま使う（計画 ADR-0047 決定 2「名前の安定」）。
+  # hosts は葉証明書の dnsNames と一致させる（`*.localhost` は 1 段のサブドメインを覆う）。
+  tls:
+    - hosts:
+        - "*.localhost"
+      secretName: edge-tls
   rules:
     - host: headlamp.localhost
       http:
@@ -55,6 +69,13 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: admin
 spec:
+  # IADR-0220 (#841): admin(50000) entrypoint の TLS 終端に使う証明書。secretName は IADR-0206 が
+  # 安定させた `edge-tls`（同 namespace の Secret）をそのまま使う（計画 ADR-0047 決定 2「名前の安定」）。
+  # hosts は葉証明書の dnsNames と一致させる（`*.localhost` は 1 段のサブドメインを覆う）。
+  tls:
+    - hosts:
+        - "*.localhost"
+      secretName: edge-tls
   rules:
     - host: vault.localhost
       http:
@@ -77,6 +98,13 @@ metadata:
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: admin
 spec:
+  # IADR-0220 (#841): admin(50000) entrypoint の TLS 終端に使う証明書。secretName は IADR-0206 が
+  # 安定させた `edge-tls`（同 namespace の Secret）をそのまま使う（計画 ADR-0047 決定 2「名前の安定」）。
+  # hosts は葉証明書の dnsNames と一致させる（`*.localhost` は 1 段のサブドメインを覆う）。
+  tls:
+    - hosts:
+        - "*.localhost"
+      secretName: edge-tls
   rules:
     - host: qdrant.localhost
       http:

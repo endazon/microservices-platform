@@ -37,16 +37,16 @@ Grafana は **Keycloak OIDC(generic OAuth)** で認証する（匿名 Admin は�
 `GRAFANA_OIDC_CLIENT_SECRET` env で上書き可・平文コミットなし）。
 
 **OIDC ログインの実効経路は edge（`LOCALEDGE=1`・IADR-0091 PR-2）**。`GF_SERVER_ROOT_URL` を
-`http://grafana.localhost:50000/` にしているため、Grafana は `redirect_uri` を一意に edge URL で生成する。
+`https://grafana.localhost:50000/` にしているため、Grafana は `redirect_uri` を一意に edge URL で生成する。
 
 ```sh
 # 推奨: エッジ集約経由（LOCALEDGE=1 で起動しておく。deploy/local/edge/README.md）
-#   → http://grafana.localhost:50000
+#   → https://grafana.localhost:50000
 # 素の port-forward（下記）だけでは OIDC は完了しない（後述）:
 kubectl -n platform-infra port-forward svc/grafana 3000:3000   # http://localhost:3000
 ```
 
-- **SSO ログイン**: `http://grafana.localhost:50000` を開き「Sign in with Keycloak」→ realm ユーザー（例 `developer`/`developer`）。
+- **SSO ログイン**: `https://grafana.localhost:50000` を開き「Sign in with Keycloak」→ realm ユーザー（例 `developer`/`developer`）。
   role マッピングは realm ロール由来: `platform-admin`→Admin / `platform-operator`→Editor / それ以外→Viewer。
 - ⚠️ **port-forward 単独（`LOCALEDGE` 未使用）では OIDC は成立しない**: 認証後の redirect が `grafana.localhost:50000`
   を指すため edge 未起動だと到達できず、ログインは完了しない → **fail-safe の local admin へ落ちる**（下記）。

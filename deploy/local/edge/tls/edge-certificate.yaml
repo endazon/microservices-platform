@@ -3,15 +3,16 @@
 # secretName / dnsNames は計画 ADR-0023 の設計要件どおり**安定させる**（CA を Let's Encrypt や
 # Vault PKI へ差し替えても Secret 名とドメインは変えない＝切り替えは issuerRef の差し替えのみ）。
 #
-# 名前空間: microservices-platform のみ。
-#   Ingress の spec.tls.secretName は**同じ名前空間の Secret しか参照できない**ため、証明書は
-#   「TLS を張る Ingress が居る名前空間」に要る。443（websecure entrypoint）に載っている Ingress は
-#   platform-frontend-edge の 1 件だけであり、それは microservices-platform に居る。
-#   管理ツール 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）は
-#   **admin:50000 entrypoint に載っており、その entrypoint に TLS は設定されていない**
-#   （Traefik の args に --entryPoints.admin.http.tls が無い）。したがって spec.tls を足しても効かない。
-#   admin:50000 の TLS 化は IADR-0103 の改定と 7 OIDC クライアントの redirect 追記に波及するため、
-#   #780（Keycloak をエッジへ出す）と同時に扱う（IADR-0206 決定 4・スコープ外の表）。
+# 名前空間: Ingress の spec.tls.secretName は**同じ名前空間の Secret しか参照できない**ため、証明書は
+#   「TLS を張る Ingress が居る名前空間」ごとに要る。
+#
+#   IADR-0220 (#841): admin(50000) entrypoint も TLS 終端になった（NFR-11 の適用範囲が経路B にも及ぶ
+#   ことが利用者裁定 2026-08-16 で確定したため）。管理ツール 7 件は 3 つの名前空間に散っている:
+#     - microservices-platform … minio / wiki（＋ 443 の platform-frontend-edge）→ 本ファイル 1 つ目
+#     - platform-infra         … grafana / headlamp / vault / qdrant        → 本ファイル 2 つ目
+#     - argocd                 … argocd                                     → argocd-certificate.yaml
+#   argocd namespace は ARGOCD=1 の別 opt-in でのみ作られるため、そこだけ kustomization に含めず
+#   k8s-local-up.sh が「ns 存在時のみ」apply する（argocd-ingress.yaml と同じ fail-safe）。
 #
 # dnsNames に *.localhost を含めるのは、#780 で Keycloak が keycloak.localhost として
 # エッジに出るときに証明書を作り直さずに済ませるため（= dnsNames を安定させる ADR-0023 の要件）。
@@ -21,6 +22,34 @@ kind: Certificate
 metadata:
   name: edge-tls
   namespace: microservices-platform
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  secretName: edge-tls
+  commonName: localhost
+  dnsNames:
+    - localhost
+    - "*.localhost"
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-edge-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# IADR-0220 (#841): platform-infra の管理ツール（grafana / headlamp / vault / qdrant）が admin(50000) で
+# TLS 終端するための葉証明書。名前・dnsNames・issuerRef は上と同一である（CA 固有設定は ClusterIssuer に
+# 閉じたまま＝計画 ADR-0047 決定 2 の設計要件 3 点を崩さない）。Secret 名を namespace ごとに変えないのは、
+# 消費側（Ingress）が secretName しか知らない形を保つためである。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls
+  namespace: platform-infra
   labels:
     app.kubernetes.io/part-of: microservices-platform
     tier: local-edge

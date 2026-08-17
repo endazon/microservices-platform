@@ -51,13 +51,13 @@ const MAX_LEN = 255;
 const REQUIRED_CLIENT_URLS = {
   'wiki-js': {
     redirectUris: [
-      'http://wiki.localhost:50000/*', // edge 集約（IADR-0091・LOCALEDGE=1）
+      'https://wiki.localhost:50000/*', // edge 集約（IADR-0091・LOCALEDGE=1）
       'http://localhost:3300/*',       // k8s の port-forward（非 edge・svc/wiki-js 3300:3000）
       'http://localhost:3001/*',       // compose(dev) の host 公開（IADR-0032・ports 3001:3000）
       'http://wiki-js:3000/*',         // in-cluster
     ],
     webOrigins: [
-      'http://wiki.localhost:50000',
+      'https://wiki.localhost:50000',
       'http://localhost:3300',
       'http://localhost:3001',
     ],
