@@ -11,7 +11,7 @@ related_ids:
   - IADR-0176
 author: claude
 created: 2026-08-11
-updated: 2026-08-16
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -62,6 +62,7 @@ plan_refs:
 - **注記に起票 ID を添える理由**（#580 / クロス監査 G-b）: 本文へ後から差し込んだ注記は原文と見分けが付かず、いつ誰が足したのか本文から辿れなくなる。**対象は「後から差し込んだ注記」に限る** —— ファイル新規作成時点の原文（例: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/Deployment/NetworkIsolationTests.cs` 冒頭の `// IADR-0017（Superseded by IADR-0026）`）は注記ではないので遡って起票 ID を足す必要は無い。**frontmatter を持たないファイル（コード・設定）は注記 ID だけでよい**（`updated:` を前進させる先が無い）。日付つき追記ブロックの形は #570 / #577 / #582 が採っている。
 - **後継 ID を旧 ID の隣に置く理由**（#580 / クロス監査 G-c）: 番号順は崩れるが「この旧 ID の後継はこれ」という対応を読み手に伝えることを優先する。機械照合は順序非依存なので実害はない。
 - **母集合を live な権威文書とコードに限る理由**: 確定済み（過去 PR の）`docs/specs/`（作業 / PR 単位の一時点記録）・`feedback/`（計画リポへ送った内容の写し）・`docs/superpowers/`（保管された旧計画）は書いた時点の記録であり、後から注記を足すのは記録の改竄にあたる。**［#717］「書き換えない」の対象は本文への後付け注記であり、frontmatter の状態欄（`status` / `dispatched:` 等）は対象外** —— キットが更新主体を定めている（[[IADR-0191]]）。
+  - **［#803 追記 / 裁定 planning#387］凍結の射程は記録種ごとに違う。** 上の「一律に改竄」は改まった。`docs/specs/` は **`［YYYY-MM-DD 追記 / #NNN］` 書式での経過追記が可**（自分の計画がどうなったかを同じ場所で読めることに価値がある）、`feedback/` は**①（frontmatter の状態欄を本文で言い直した追記）だけ不可**、`docs/superpowers/` は**不可**である。**既存本文の書き換え・削除はどの記録でも不可。** 正本は [[IADR-0166]] 決定 2 の 2026-08-17 追記。
 
 ## 2. コードを対象外にしない理由
 
