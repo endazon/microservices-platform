@@ -7,6 +7,10 @@ related_ids:
   - ADR-0047
   - ADR-0023
   - IADR-0091
+  - IADR-0092
+  - IADR-0093
+  - IADR-0094
+  - IADR-0095
   - IADR-0103
   - IADR-0206
 author: claude
@@ -142,7 +146,9 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
 > 「エッジ（`admin:50000`）は平文 http」を前提にしたままだった ——
 > [[IADR-0092]]（ArgoCD）・[[IADR-0093]]（MinIO）・[[IADR-0094]]（Vault）・[[IADR-0095]]（Wiki.js）。
 > **4 件すべてへ同じ形の追記を入れた**（本文は書き換えない・`status` は `Accepted` のまま）。
-> 走査と除外理由は作業仕様書 §2.7 が持つ。
+> **この「4 件」は同じ形の追記を新規に入れたものの数であり、同型の前提崩れを持つ live な ADR の全数ではない**
+> —— [[IADR-0091]]（決定 3 の追記）と [[IADR-0206]]（決定 4 の追記）は**別扱いで是正済みであり、計 6 件**である。
+> 走査と除外理由は作業仕様書 §2.7 が持つ（**同 §が 6 件すべてを列挙している**）。
 
 ## 理由
 
@@ -155,8 +161,13 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
 
 ## 結果
 
-- **良い影響**: 経路B の全エンドポイントが https になり、`NFR-11` の「平文 HTTP を残さない」を経路B でも満たす。
+- **良い影響**: 経路B の**エッジ**（`web`:80 / `websecure`:443 / `admin`:50000 の 3 entrypoint）が
+  **すべて https になり**、そこに載るエンドポイントについて `NFR-11` の「平文 HTTP を残さない」を経路B でも満たす。
   **`NFR-11` の適用範囲について実装と計画が逆を向いた状態が解消する。**
+  **ただし「経路B の全エンドポイントが https になった」とは書かない。** `NFR-11` は対象に
+  **認証基盤（Keycloak）**を名指ししているが、**OIDC issuer は [[IADR-0091]] 決定 5
+  （`Accepted`・live・本 ADR は改めない）のまま `http://keycloak:8080` である** ——
+  **経路B に平文が 1 つ残っている。** 残件としての扱いは §検出しないこと（明示）に挙げる。
 - **悪い影響 / トレードオフ**:
   - **ブラウザ警告が管理ツール 7 件でも出る**（selfsigned CA。`ADR-0047` §結果 が「ローカル検証環境に限った受忍」と述べている）。
     消すにはルート CA を信頼ストアへ入れる（手順は `deploy/local/edge/README.md`）。
@@ -179,14 +190,32 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
   本 ADR が静的検査で固定するのは「entrypoint に TLS 引数が在る」「7 ルータすべてが `spec.tls(edge-tls)` を持つ」
   「3 つの namespace に葉証明書が在る」「`argocd` 分は kustomization に含まれず ns 条件付きで apply される」である。
 - **ブラウザが証明書を信頼するか**は検査しない（信頼ストアは環境の側にある。[[IADR-0206]] と同じ）。
+- **issuer（`http://keycloak:8080`）の https 化は、`NFR-11` の残件として開いている。** 本 ADR は検出も是正もしない。
+  `NFR-11` は対象に**認証基盤（Keycloak）**を名指ししているが、経路B の OIDC issuer は
+  [[IADR-0091]] **決定 5**（最小案 = `keycloak:8080` 維持。`Accepted`・live・**本 ADR は改めない**）のままであり、
+  **エッジを TLS 終端にしても平文のまま残る** —— issuer はエッジを経由しない in-cluster の正準名だからである。
+  **その解消は #780**（Keycloak をエッジへ出し OIDC issuer を https のエッジ host へ移す）**が担う。**
+  **したがって本 ADR は「`NFR-11` を経路B で満たし切った」とは主張しない。**
+  **後続の監査はこの残件を根拠に `NFR-11` を未達のまま開けておくこと**（閉じない）。
 
 ## 関連
 
-- Supersedes: **[[IADR-0206]] 決定 4 の 2 命題のみ** —— **P2**（admin:50000 の 7 件へは `spec.tls` を足さない）と
-  **P3**（`http` 経路を残す・`--entryPoints.web.http.redirections.*` を足さない）。
-  **P1**（443 の `platform-frontend-edge` へ `edge-tls` を追加する）と**決定 1・2・3・5・6 は改めない**ため、
-  同 ADR は `Accepted` のまま残置する（先例: [[IADR-0117]] が [[IADR-0056]] 決定 3 を部分改定した形）。
-  **対応する注記は同 ADR 決定 4 の `［2026-08-17 追記 / #841］` にある**（#843 マージ後に入れた）。
+- Supersedes: **2 本の ADR の、それぞれ一部**（**「`IADR-0206` だけ」ではない**）。
+  - **[[IADR-0206]] 決定 4 の 2 命題** —— **P2**（admin:50000 の 7 件へは `spec.tls` を足さない）と
+    **P3**（`http` 経路を残す・`--entryPoints.web.http.redirections.*` を足さない）。
+    **P1**（443 の `platform-frontend-edge` へ `edge-tls` を追加する）と**決定 1・2・3・5・6 は改めない**ため、
+    同 ADR は `Accepted` のまま残置する（先例: [[IADR-0117]] が [[IADR-0056]] 決定 3 を部分改定した形）。
+    **対応する注記は同 ADR 決定 4 の `［2026-08-17 追記 / #841］` にある**（#843 マージ後に入れた）。
+  - **[[IADR-0094]] 決定 2 の「http/https 両登録」** —— 同決定は「edge admin:50000 は現状 http だが、
+    **将来の TLS 化に備え http/https 両方**を realm と Vault role の `allowed_redirect_uris` に登録する」と
+    定めていたが、**本 ADR はその http 側を実際に削除し `https` のみにした**
+    （realm の `vault` client と `deploy/local/vault/oidc/bootstrap.sh` の `REDIRECTS`）。
+    **同 ADR の却下代替案「UI callback を https のみ登録」が、採用形へ反転している** ——
+    却下理由「不一致で OIDC が失敗するのを防ぐ」は、**エッジが http を受けなくなったことで消えた**。
+    **決定 1・3・4 は改めない**ため同 ADR も `Accepted` のまま残置する。
+    **対応する注記は同 ADR §代替案 の直後の `［2026-08-17 追記 / #841］` にある。**
+    （CLI の `http://localhost:8250/oidc/callback` は**エッジを経由しないローカル callback のため据え置き**であり、
+    Supersede の射程外である。）
 - Superseded by: なし
 - **[[IADR-0103]] は Supersede しない。** 本 ADR の初稿は「同 ADR が前提にしていた『admin entrypoint は平文 http』」と
   書いていたが、**実測すると同 ADR に `50000` も `entrypoint` も `平文` も 1 件も無い**
@@ -197,3 +226,17 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
   [`../operations/local-sso-recovery-runbook.md`](../operations/local-sso-recovery-runbook.md) の括弧書きの側で、
   **本 ADR の初稿はその誤帰属を出典に当たらずに引き写していた**。#841 で当該記述を書き換えた際に**帰属ごと解消した**。
   **同 ADR の本文は触っていない**（同 ADR は何も間違っていない）。`related_ids` に残しているのは関連するためである。
+
+> **［2026-08-17 追記 / 波 11 末クロス監査］本 ADR の「射程」の書き方を 3 点是正した。決定は 1 つも変えていない。**
+>
+> | 箇所 | 何が過大 / 過小だったか | 是正 |
+> | --- | --- | --- |
+> | §結果 §良い影響 | 「**経路B の全エンドポイントが https**」が**過大**。`NFR-11` は対象に**認証基盤（Keycloak）**を名指しするが、issuer は [[IADR-0091]] 決定 5 のまま `http://keycloak:8080` である | 射程を**エッジ 3 entrypoint**（80 / 443 / 50000）へ限定し、**残件を §検出しないこと（明示）へ挙げた**（解消は #780） |
+> | §関連 `Supersedes` | 「[[IADR-0206]] 決定 4 の 2 命題**のみ**」が**過小**。本 ADR は [[IADR-0094]] **決定 2**（http/https 両登録）も覆しており、**同 ADR の却下代替案を採用形へ反転させている** | **2 本立て**に書き直した |
+> | §決定 4 の ★ ブロック | 「live な ADR **4 件**」が母集合を狭く見せる（**同型の前提崩れを持つ live な ADR は計 6 件**） | 「4 件 = 新規に追記を入れた数」であることと、**[[IADR-0091]] / [[IADR-0206]] を含めて計 6 件**であることを明記 |
+>
+> **実作業に漏れは無い**（追記は 6 件すべてに入っており、`Supersede` した実体も正しい）。
+> **誤っていたのは、それを説明する記述の射程だけ**である。`related_ids` へ
+> [[IADR-0092]] / [[IADR-0093]] / [[IADR-0094]] / [[IADR-0095]] を追加して**相互リンクにした**
+> （それまでは 4 件の側だけが本 ADR を持つ片方向だった）。
+> 走査と除外理由は作業仕様書 [`../specs/20260817_wave11-audit-followup.md`](../specs/20260817_wave11-audit-followup.md) が持つ。
