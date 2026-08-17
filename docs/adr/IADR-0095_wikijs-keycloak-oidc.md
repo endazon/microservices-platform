@@ -9,9 +9,10 @@ related_ids:
   - IADR-0032
   - IADR-0091
   - IADR-0093
+  - IADR-0220
 author: claude
 created: 2026-07-21
-updated: 2026-07-26
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/ (FR-13 Wiki)"
   - "../../planning/projects/microservices-platform/03_usecases/ (UC-07)"
@@ -72,11 +73,31 @@ helm chart・`values.yaml`・Wiki.js Deployment は無改変（Ingress 既定 di
 ## 影響・トレードオフ
 
 - Wiki.js が `wiki.localhost:50000` で集約到達でき、Keycloak SSO でログインできる（管理UI 設定後）。
+
 - OIDC 設定は runtime（管理UI）＝適用前は既存の認証状態のまま（fail-safe）。dev の Wiki.js DB が消えれば再設定が必要。
 - client secret は Wiki.js が DB 保持で env 注入できないため、grafana/minio のような k8s Secret 注入は行わない（realm
+
   プレースホルダ＋管理UI 入力で非平文を担保）。
 - Site URL を集約 URL に設定するため、port-forward 単独では OIDC redirect が集約 URL を指す（edge 前提・grafana PR-2/
   MinIO と同性質・README 明記）。
+
+> **［2026-08-17 追記 / #841］本 ADR が前提にしていた「エッジ（`admin:50000`）は平文 http」は、もう成り立たない。**
+> [[IADR-0220]] が `--entryPoints.admin.http.tls=true` で **admin(50000) を TLS 終端**にした
+> （計画 `NFR-11`「平文 HTTP を残さない」の適用範囲が**環境を問わない**と確定したため。
+> 利用者裁定 2026-08-16 / 裁定依頼 planning#383、証明書の発行方式は計画 `ADR-0047`）。
+> **本文は当時の記録として書き換えない。** 読み替えは下記のとおり。
+>
+> | 本文の記述 | 現在 |
+> | --- | --- |
+> | realm `wiki-js` の `redirectUris`/`webOrigins` に `http://wiki.localhost:50000/*`（決定 1） | **`https://wiki.localhost:50000/*`** |
+> | **Site URL=`http://wiki.localhost:50000`**（決定 2・コールバック基準） | **Site URL=`https://wiki.localhost:50000`**（`deploy/local/wiki-oidc/README.md` の手順と `SITE_URL` 既定値も合わせた） |
+> | §経路と redirect の表（`edge 集約`の行） | 同じく **https** |
+>
+> **Wiki.js のコールバックは `{Site URL}/login/{strategyKey}/callback` で組まれる**ため、
+> **Site URL の scheme がずれると OIDC が成立しない**。エッジ経由で使う場合は必ず https にすること。
+> 決定（DB/管理UI 保持のため manifest 自動化しない・未マッピングは最小権限）は変えていないため、
+> `status` は `Accepted` のままとする。port-forward 用の `http://localhost:3300` と
+> compose(dev) の `http://localhost:3001` は**エッジを経由しない別経路のため据え置き**である。
 
 ## 代替案
 

@@ -8,9 +8,10 @@ related_ids:
   - IADR-0077
   - IADR-0090
   - IADR-0091
+  - IADR-0220
 author: claude
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ (ADR-0006 CI/CD・GitOps)"
 ---
@@ -82,6 +83,21 @@ realm export の secret はプレースホルダ `argocd-dev-secret-change-me`�
 - 変更は `ARGOCD=1` opt-in と realm への追加のみ。既定オフ時のスクリプト挙動はバイト等価（smoke test で固定）。
 - `server.insecure=true` は dev の edge（平文 http）前提。本番は TLS 終端＋insecure 無効が前提（本オーバーレイ非対象）。
 - 実ブラウザ SSO ログインは稼働 k3d/Keycloak・edge・手順A 依存＝live。
+
+> **［2026-08-17 追記 / #841］本 ADR が前提にしていた「エッジ（`admin:50000`）は平文 http」は、もう成り立たない。**
+> [[IADR-0220]] が `--entryPoints.admin.http.tls=true` で **admin(50000) を TLS 終端**にした
+> （計画 `NFR-11`「平文 HTTP を残さない」の適用範囲が**環境を問わない**と確定したため。
+> 利用者裁定 2026-08-16 / 裁定依頼 planning#383、証明書の発行方式は計画 `ADR-0047`）。
+> **本文は当時の記録として書き換えない。** 読み替えは下記のとおり。
+>
+> | 本文の記述 | 現在 |
+> | --- | --- |
+> | `argocd-cm.url = http://argocd.localhost:50000`（決定 2） | **`https://argocd.localhost:50000`**（realm の `redirectUris`/`webOrigins` も https へ揃えた） |
+> | 「edge は平文 http のため `server.insecure=true`」（決定 2・§影響） | **`server.insecure=true` は据え置く。ただし理由が変わった** —— TLS を終端するのは Traefik であり、**そこから `argocd-server` への in-cluster 転送が平文**だからである。`insecure` を外すと argocd-server 自身が http→https リダイレクトを返し、**エッジ経由が二重終端で壊れる** |
+>
+> **決定そのもの（`server.insecure=true`）は正しいままである。変わったのは前提の説明だけ**であり、
+> `status` は `Accepted` のままとする。port-forward 用の `http://localhost:8083/...` は
+> **エッジを経由しない別経路のため据え置き**である。
 
 ## 代替案
 

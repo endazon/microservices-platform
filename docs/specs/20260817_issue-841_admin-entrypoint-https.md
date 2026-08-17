@@ -121,7 +121,8 @@ related_specs:
 `20260721_issue-353_minio-keycloak-oidc.md` 2 / `20260721_issue-353_grafana-edge-oidc-url.md` 2 /
 `20260720_issue-356_local-edge-aggregation.md` 1。
 
-**区分 C の除外理由（5 ファイル・12 件）**: 過去の決定の記録である。
+**区分 C の除外理由（5 ファイル・12 件）**: 過去の決定の記録であり、**本文は書き換えない**
+（ただし **live な ADR には後継への導線として日付つき追記を入れた**。§2.7）。
 `docs/adr/README.md`（4 件）は各 ADR 本体の要約であり、**本体を書き換えない以上、索引も動かさない**
 （動かすと索引と本体が食い違う）。
 `IADR-0084`（1 件）は **`IADR-0105` が Superseded にした**もので live ではない。
@@ -151,7 +152,7 @@ related_specs:
 | `docs/operations/local-sso-recovery-runbook.md` | 「`https://<tool>.localhost:50000` は **404**（admin entrypoint は平文 http のみ）」 | **是正** |
 | `deploy/local/README.md` / `docs/operations/local-sso-recovery-runbook.md` | SPA/BFF の到達 URL が `http://localhost/` | **是正** |
 | `docs/adr/IADR-0091` §決定 3 の 2026-08-16 追記 | 「[[IADR-0103]]（admin:50000 は平文 http）は動いていない」 | **是正**（日付つき追記。**誤帰属＋陳腐化の 2 点**。下記 §2.5） |
-| `docs/adr/IADR-0094` §決定 / §代替案 | 「edge admin:50000 は**現状 http**・TLS 化に備え両登録」 | **除外**（区分 C。過去の決定の記録。後継は `IADR-0220`） |
+| `docs/adr/IADR-0094` §決定 / §代替案 | 「edge admin:50000 は**現状 http**・TLS 化に備え両登録」 | **追記**（本文は書き換えない。§2.7。当初は除外としていたが、扱いが `IADR-0091` / `IADR-0206` と一貫しなかったため揃えた） |
 | `docs/adr/IADR-0206` §決定 4 ほか | 「admin:50000 は平文のまま」「`NFR-11` は適用外」 | **是正済み**（**当初は #834 の領分として除外**。#843 が `848111cd` で develop へマージされたため、本 PR で決定 4 の部分 Supersede の注記を追加した。§2.6） |
 
 **導出値（件数）は走査せずに計算し直す**（規則 10）。本書の表の合計は上の引き算で閉じている。
@@ -233,6 +234,68 @@ $ grep -n -e '^## ' -e '^### ' -e 'Supersed' docs/adr/IADR-0206_local-edge-tls-c
 （`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` でしか走らない）に掛かる。
 **本 PR は既に 1 度 `title-too-long` で落ちている面**であり、注記の導線は追記ブロックで足りているため、
 **索引は動かさない**。
+
+### 2.7 同型の前提崩れ —— live な ADR 4 件へ追記（PR レビュー 🟡 を起点に全数走査）
+
+**起点は PR #844 の AI レビューの 🟡 推奨 1 件**である。
+[[IADR-0220]] §決定 5 が「[[IADR-0092]] の**理由の記述だけ**を改める」と宣言していたのに、
+**実際に書き換わったのは `argocd-cmdparams-patch.yaml` のコメントだけで、`IADR-0092` 本体は無改変**だった。
+**宣言と実体が食い違っていた**（規則 10 の破れ）。
+
+**レビュアー自身が「全数は走査していない」と申告していたため、こちらで全数を引いた。**
+`IADR-0092` は `server.insecure` という**今回触ったコードと直結する語**を持つから見つかっただけである。
+
+| 軸 | 走査コマンド（パス除外のみ・拡張子で絞らない） | 生のヒット |
+| --- | --- | ---: |
+| A | `git grep -I -n -e 'edge は平文' -e 'edge が平文' -e '平文の edge' -e 'edge（平文' -e 'edge(平文' -e 'edge の平文'` | 5 行 |
+| B | `git grep -I -n -e '平文のまま' -e '現状 http' -e '現状は http' -e 'TLS 化に備え' -e '将来 TLS' -e '将来の TLS'` | 11 行 |
+| C | `git grep -I -n -e 'insecure'` | 25 行 |
+| D | `git grep -I -n -e 'dev の edge' -e 'dev edge'` | 1 行 |
+| E | `git grep -I -n -e 'http 前提' -e 'プレーン http' -e 'http でプロキシ' -e 'http で配信' -e 'http でアクセス' -e 'http で開く'` | 1 行 |
+| F | `git grep -I -n -e '50000' \| grep '平文'` | 30 行 |
+| G | `git grep -I -n -e '404' \| grep -e 'https' -e '50000'` | 4 行 |
+
+（いずれも `-- . ':!planning' ':!src/ai-stock-trading'` を付す。**`head` / `sed` で加工していない**＝規則 7。
+軸 C は 25 行に収まったため組み替え不要だった。）
+
+**7 軸が返した「live な権威文書で、エッジが平文である前提のままのもの」は 4 件**である。
+**`IADR-0092` だけではなかった。**
+
+| ADR | 状態 | 陳腐化した記述 | 私が実際に変えたもの | 扱い |
+| --- | --- | --- | --- | --- |
+| [[IADR-0092]] | `Accepted` | 50 行「edge は平文 http のため `server.insecure=true`」/ 83 行「dev の edge（平文 http）前提」 | `argocd-cm.url` を https へ | **追記** |
+| [[IADR-0093]] | `Accepted` | 46 行 `MINIO_BROWSER_REDIRECT_URL=http://…` / 47 行 redirect `http://…/oauth_callback` | `values-local.yaml`・realm を https へ | **追記** |
+| [[IADR-0094]] | `Accepted` | 48 行「**現状 http** だが将来の TLS 化に備え http/https 両方を登録」/ 78 行 | realm と `bootstrap.sh` から **http 側を削除** | **追記** |
+| [[IADR-0095]] | `Accepted` | 50 行 redirect `http://wiki…/*` / 58 行 **Site URL=`http://wiki…`** / 104 行の表 | realm・`wiki-oidc/README.md` を https へ | **追記** |
+
+**追記の作法は [[IADR-0091]] / [[IADR-0206]] と同一である** —— `［2026-08-17 追記 / #841］` の
+日付つきブロックで**読み替え表**を示し、**本文は 1 行も書き換えない**（`git diff` の削除行は
+4 件とも frontmatter の `updated:` のみ）。`related_ids` へ `IADR-0220` を項目として併記し、
+`updated:` を `2026-08-17` へ前進させた。**決定は 4 件とも変えていない**ため `status` は `Accepted` のまま。
+
+> **★ 当初この 4 件を「区分 C＝過去の決定の記録」として除外していたのは、半分だけ正しかった。**
+> **本文を書き換えない**という判断は正しい（当時の決定の記録である）。
+> **しかし「後継への導線を置かない」ことまでは正当化できない** —— [[IADR-0091]] と [[IADR-0206]] には
+> 追記を入れたのに、**同型の前提崩れを持つ 4 件にだけ入れていなかった**。**扱いが一貫していなかった。**
+> §2.2 の区分 C は「**本文の書き換えは除外／追記は行う**」と読むのが正しい。
+
+**除外したもの（黙って落とさない）**
+
+| 対象 | 件数 | 除外理由 |
+| --- | ---: | --- |
+| `docs/specs/20260720_issue-353_argocd…` ほか確定済み仕様書 | 軸A 1・軸C 2・軸F 3・軸G 2 | **確定済みの作業仕様書**。当時の実装の記録であり書き換えない |
+| [[IADR-0084]] | 軸C 1 | **[[IADR-0105]] が Superseded にした非 live** |
+| `deploy/local/edge/argocd-ingress.yaml:4`「プレーン http でプロキシ配信するには `server.insecure: true` が必要」 | 軸E 1 | **いまも真である。** Traefik→`argocd-server` の in-cluster 転送は平文のままであり、陳腐化していない |
+| `deploy/local/observability/otel-collector-forward.yaml` / `deploy/otel-collector-config.yaml` の `insecure: true` | 軸C 2 | **OTLP エクスポータの設定**であり、エッジの話ではない（同名だが別物） |
+| `docs/superpowers/plans/…` の `insecure: true` | 軸C 1 | 確定済みの計画文書。かつ OTLP 設定 |
+| [[IADR-0103]] | — | **触らない**（何も間違っていない。§2.5） |
+
+**`docs/adr/README.md` の索引行 4 行（148-151）は触らない。** 理由は [[IADR-0206]] の索引行と同じである ——
+① 4 件とも `Superseded` ではなく **`Accepted` のまま**であり、状態列は動かない。
+② タイトル列を書き足すと **200 字上限・本体タイトルとの LCS 12 以上**の検査に掛かる
+（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` でしか走らない。**本 PR は既に 1 度
+`title-too-long` で落ちている面**である）。
+③ **索引は本体の要約**であり、本体に追記が入れば読み手はそこへ辿り着ける。導線は追記ブロックで足りている。
 
 ## 3. 対象範囲
 

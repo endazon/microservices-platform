@@ -7,9 +7,10 @@ related_ids:
   - IADR-0077
   - IADR-0090
   - IADR-0091
+  - IADR-0220
 author: claude
 created: 2026-07-21
-updated: 2026-07-21
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ (ADR-0006 運用基盤)"
 ---
@@ -76,3 +77,20 @@ realm export の client secret はプレースホルダ。OIDC client secret は
 - **role に直接 policy を固定（全 OIDC ユーザー同一）**: 粒度が無く role 踏襲・fail-safe に反するため却下。external group を採用。
 - **client secret を bootstrap に平文**: 非平文原則に反する。Secret + env 上書きに一元化。
 - **UI callback を https のみ登録**: edge admin:50000 は現状 http のため http も登録（不一致で OIDC が失敗するのを防ぐ）。
+
+> **［2026-08-17 追記 / #841］本 ADR が前提にしていた「エッジ（`admin:50000`）は平文 http」は、もう成り立たない。**
+> [[IADR-0220]] が `--entryPoints.admin.http.tls=true` で **admin(50000) を TLS 終端**にした
+> （計画 `NFR-11`「平文 HTTP を残さない」の適用範囲が**環境を問わない**と確定したため。
+> 利用者裁定 2026-08-16 / 裁定依頼 planning#383、証明書の発行方式は計画 `ADR-0047`）。
+> **本文は当時の記録として書き換えない。** 読み替えは下記のとおり。
+>
+> | 本文の記述 | 現在 |
+> | --- | --- |
+> | 「edge admin:50000 は**現状 http** だが、将来の TLS 化に備え http/https 両方を realm と Vault role へ登録」（決定 2） | **その「将来」が来た。** `admin:50000` は TLS 終端になったため、**http 側の登録を落とし https のみ**にした（realm の `vault` client と `deploy/local/vault/oidc/bootstrap.sh` の `REDIRECTS`） |
+> | §却下した代替案「**UI callback を https のみ登録**」＝当時は却下 | **現在はこちらが採用形である。**「不一致で OIDC が失敗するのを防ぐ」という却下理由は、**エッジが http を受けなくなったことで消えた** |
+>
+> **本 ADR の先読み（「TLS 化に備え両登録」）は正しかった** —— おかげで #841 では
+> **http 側を落とすだけ**で済み、https 側を新規に足す必要が無かった。
+> 決定（external group による fail-safe な policy マップ・runtime bootstrap）は変えていないため、
+> `status` は `Accepted` のままとする。CLI の `http://localhost:8250/oidc/callback` は
+> **エッジを経由しないローカル callback のため据え置き**である。
