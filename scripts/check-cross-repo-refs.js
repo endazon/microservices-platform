@@ -72,9 +72,30 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-// ★ 固有デルタ（分類 B 種 3・#790）: 本リポにしか無い scripts/lib/worktree-state.js への結線。
+// ★ 固有デルタ（分類 B 種 3・#790 / #836）: 本リポにしか無い scripts/lib/worktree-state.js への結線。
 //   キット版は持ち込んでいない（planning#374 の裁定文に明記）ため、差し替え後に再付与する（[[IADR-0183]]）。
-const { MODE, warnIfResultMayDifferFromCi } = require('./lib/worktree-state.js');
+//
+//   **require は遅延化する。** キット版 scripts.test.js の門試験は、**本ファイル 1 つだけ**を
+//   一時ディレクトリへコピーして子プロセスで実行する（0 件走査の門を CLI の終了コードで固定する
+//   ため、そうするしかない）。`lib/` が無いその環境では読み込みが MODULE_NOT_FOUND で落ち、
+//   **門そのものを試験できなくなる**。握るのは**本モジュールが見つからない場合だけ**であり、
+//   lib 側が別のモジュールを見失った場合や構文エラーは**握り潰さない**（結線が黙って切れる）。
+//
+//   **解決（require.resolve）と読み込み（require）を分けるのがその要点である。** try で囲うのを
+//   解決だけにすれば、lib 内部の例外は try の外で起きるので構造的に握れない。**エラーの
+//   メッセージで見分ける形にはしない** —— MODULE_NOT_FOUND の message は Require stack を含み、
+//   lib が別モジュールを見失った場合にも本モジュールのパスが載る（実測で握り潰した）。
+let MODE = {};
+let warnIfResultMayDifferFromCi = () => {};
+let worktreeStateModule = null;
+try {
+  worktreeStateModule = require.resolve('./lib/worktree-state.js');
+} catch (e) {
+  if (!e || e.code !== 'MODULE_NOT_FOUND') throw e;
+}
+if (worktreeStateModule) {
+  ({ MODE, warnIfResultMayDifferFromCi } = require(worktreeStateModule));
+}
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -433,21 +454,6 @@ function findViolations(text, opts = {}) {
 
   out.sort((a, b) => a.line - b.line || a.matched.localeCompare(b.matched));
   return out;
-}
-
-/** git 管理下の *.md（submodule 配下を除く）を列挙する。git を使えなければ null。 */
-function trackedMarkdown(root = REPO_ROOT) {
-  let raw;
-  try {
-    raw = execFileSync(
-      'git',
-      ['-C', root, 'ls-files', '--', '*.md', ...EXCLUDE_PATHSPECS],
-      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
-    );
-  } catch (e) {
-    return null;
-  }
-  return raw.split('\n').map((s) => s.trim()).filter(Boolean);
 }
 
 /**
@@ -829,10 +835,10 @@ function main() {
         `（${EXCLUDED_DIRS.join(' / ')} の非 Markdown）`
     );
   }
-  // ★ 固有デルタ（分類 B 種 X・#790）: #664 / IADR-0130 の作法「**0 件走査で緑を返さない**」。
-  //   キット版はこの門を持ち込んでいない（実測: 空リポで走らせると exit 0 で「OK: 0 件」と出る）。
-  //   走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
-  //   退行を止めているという記録だけが残る。**キットへ環流するまで本リポで保持する。**
+  // **0 件走査で緑を返さない**（fail-closed）。走査対象を 1 件も拾えないのは
+  // 「検査しているつもりで何も見ていない」状態であり、退行を止めているという記録だけが残る。
+  // **上の skip とは別物である** —— あちらは「git を使えない」（fail-open）、こちらは「拾えなかった」。
+  // 姉妹の検査器（`check-doc-links.js` / `check-plan-id-qualification.js`）と横並びの作法である。
   if (files.length === 0) {
     console.error('[check-cross-repo-refs] 走査対象のファイルを 1 件も見つけられませんでした。');
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
@@ -863,9 +869,13 @@ module.exports = {
   formatReport,
   maskCode,
   unbalancedFenceLine,
-  trackedMarkdown,
+  // **`trackedMarkdown` は置かない。** 走査を追跡下の全ファイルへ広げた時点で呼び出し元が
+  // 無くなった関数であり、「後方互換」の名目で残すと次に走査範囲を触る人が主経路と取り違える。
   trackedFiles,
   isExcluded,
+  // 置換点の値そのものを配布先の回帰テストが固定できるように出す
+  //（除外が「ディレクトリ 1 本の規則」のままか＝名指しリストへ戻っていないかを見るため）。
+  EXCLUDED_DIRS,
   selfTest,
   // 設定から検査器を組み立てる（呼び出し側が別構成で検査したい場合に使う）。
   createChecker,

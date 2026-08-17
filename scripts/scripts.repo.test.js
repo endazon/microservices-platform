@@ -206,9 +206,18 @@ module.exports = ({ ok, assert }) => {
   // **自番号と一致するものは 0 件**。GitHub の UI からマージすると自動付加が重なり
   // `… (#796) (#798)` と二重になる（develop に既に 58 件着地しており、事後修正できない）。
   //
-  // ★ キットには無いロジックである（分類 B〔X〕・追跡 #799 ＋
-  //   feedback/20260816_kit-pr-title-number-mismatch.md）。キット版 scripts.test.js は
-  //   `checkSingleTitle` を 2 引数でしか呼ばないため、ここでしか固定されない。
+  // ★ ［2026-08-17 追記 / #836］**環流が着地し、キット版 scripts.test.js も同じ 4 方向を
+  //   固定するようになった**（計画 pin 767a9d48。`checkSingleTitle` を 3 引数で呼ぶ）。
+  //   従前ここには「キット版は 2 引数でしか呼ばないため、ここでしか固定されない」と書いていたが、
+  //   **その前提は偽になった**。
+  //
+  //   **それでも本群は削らない。重複しているが、本リポ版が厳密に上位だからである。**
+  //   キット版に無い assert: ①違反理由の**文言**（`/外すか/`・`/Closes/`。CI ログを読んで直す人が
+  //   要る情報）②**文字列**で渡した PR 番号（`'794'`。実運用は環境変数経由＝必ず文字列である）
+  //   ③`normalizePrNumber('12x')`（数字で始まるが数値でない形）④**develop に実際に着地した
+  //   6 件名の回帰 fixture と反証** ⑤**ジョブ ID `^  pr-title:$` と起動条件 `types:` の不変性**
+  //   （必須チェックの context はジョブ ID であり、改名するとブランチ保護が黙って外れる）。
+  //   `scripts.test.js` は分類 A（バイト一致）なので、**上位の assert は companion にしか置けない**。
 
   {
     const fsNum = require('fs');
@@ -8021,6 +8030,93 @@ module.exports = ({ ok, assert }) => {
         'ゲートの入力だけを変える PR でゲートが起動しない（床を緩める変更が静かに素通りする）。' +
           `${WORKFLOW} の push / pull_request の**両方**の paths: へ足すこと:\n  ` +
           missing.join('\n  '),
+      );
+    });
+  }
+
+  // --- #836: check-cross-repo-refs の遅延 require が lib 側の例外を握り潰さない -------
+  //
+  // 固定する退行は **初版の「エラーメッセージで見分ける」形**である:
+  //     catch (e) { if (e.code !== 'MODULE_NOT_FOUND' || !/worktree-state/.test(e.message)) throw e; }
+  // MODULE_NOT_FOUND の message は `Require stack:` を含み、**lib が別モジュールを
+  // 見失った場合にも lib 自身のパスが載る**。よって上の判別は真になり、**結線が黙って
+  // 切れたまま検査器が走り続ける**（#840 の実装中に実測した）。現行は解決
+  // （require.resolve）と読み込み（require）を分け、lib 内部の例外を try の外で起こす。
+  //
+  // **判定は終了コードではない。** 握り潰した場合も 0 件走査の門が exit 1 を返すため、
+  // 状態コードだけでは両者を区別できない。**門のメッセージが出ていないこと**が
+  // 「握らずに伝播した」ことの証拠である。
+  //
+  // 置き場所が companion である理由: `scripts/scripts.test.js` は分類 A（キットとバイト
+  // 一致）へ戻したところであり 1 バイトも足せない。そして `lib/worktree-state.js` への
+  // 結線は分類 B 種 3（本リポ固有）で、キット版の検査器には存在しない。
+  {
+    const osX836 = require('os');
+    const fsX836 = require('fs');
+    const pathX836 = require('path');
+    const { execFileSync: execX836, spawnSync: spawnX836 } = require('child_process');
+
+    // 一時ディレクトリへ**検査器 1 本だけ**を写し、`scripts/lib/worktree-state.js` を
+    // libSource で作って CLI として走らせる。既存の「scripts/ を丸ごと cpSync する」
+    // ヘルパは使えない —— 本物の lib が入ってしまい、遅延 require の分岐を試験できない。
+    const runWithLibX836 = (libSource) => {
+      const dir = fsX836.mkdtempSync(pathX836.join(osX836.tmpdir(), 'xrepo-lib-'));
+      try {
+        fsX836.mkdirSync(pathX836.join(dir, 'scripts'));
+        fsX836.copyFileSync(
+          require.resolve('./check-cross-repo-refs.js'),
+          pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')
+        );
+        fsX836.mkdirSync(pathX836.join(dir, 'scripts', 'lib'));
+        fsX836.writeFileSync(pathX836.join(dir, 'scripts', 'lib', 'worktree-state.js'), libSource);
+        // git init は要る。無いと fail-open の分岐（git ls-files 不可）へ落ち、
+        // 握り潰しの有無を見る前に終わってしまう。
+        execX836('git', ['-C', dir, 'init', '-q'], { stdio: 'ignore' });
+        const r = spawnX836(
+          process.execPath,
+          [pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')],
+          { encoding: 'utf8' }
+        );
+        return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+      } finally {
+        fsX836.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    const GATE_X836 = /1 件も見つけられませんでした/;
+
+    ok('#836: lib が別モジュールを見失ったら握り潰さない（メッセージ判別への退行を止める）', () => {
+      const { status, out } = runWithLibX836(
+        "'use strict';\nrequire('./nonexistent-xyz.js');\nmodule.exports = {};\n"
+      );
+      assert.notStrictEqual(status, 0, `結線が切れているのに exit ${status} で続行した:\n${out}`);
+      assert.match(
+        out,
+        /nonexistent-xyz/,
+        `lib 側の MODULE_NOT_FOUND を握り潰している（伝播していない）:\n${out}`
+      );
+      assert.doesNotMatch(
+        out,
+        GATE_X836,
+        `0 件走査の門まで到達している＝例外を握って走り続けた（結線が黙って切れる）:\n${out}`
+      );
+    });
+
+    // **保険であって本命ではない。** 構文エラーの `SyntaxError` は `.code` を持たないため、
+    // 上の旧実装（`e.code === 'MODULE_NOT_FOUND' && ...`）でも条件が偽になって throw する。
+    // つまり**この試験は当のバグを検出しない**。効くのは `catch (e) {}` のように catch を
+    // 広げすぎる将来の退行に対してである。**「2 本あるから握り潰しは固定されている」と
+    // 読んではならない** —— 固定しているのは上の 1 本だけである。
+    ok('#836: lib が構文エラーでも握り潰さない（catch を広げすぎる退行への保険）', () => {
+      const { status, out } = runWithLibX836(
+        "'use strict';\nmodule.exports = { warnIfResultMayDifferFromCi: (\n"
+      );
+      assert.notStrictEqual(status, 0, `構文エラーの lib で exit ${status} で続行した:\n${out}`);
+      assert.match(out, /SyntaxError/, `SyntaxError が伝播していない:\n${out}`);
+      assert.doesNotMatch(
+        out,
+        GATE_X836,
+        `0 件走査の門まで到達している＝例外を握って走り続けた:\n${out}`
       );
     });
   }

@@ -53,6 +53,7 @@
       ".github/copilot-instructions.md",
       ".github/dependabot.yml",
       ".github/workflows/changelog.yml",
+      ".github/workflows/pr-title.yml",
       "docs/adr/IADR-0000_record-implementation-decisions.md",
       "docs/api/.gitkeep",
       "docs/authz/.gitkeep",
@@ -103,6 +104,7 @@
       "scripts/gen-openapi-skeleton.js",
       "scripts/kit-sync-classification.example.json",
       "scripts/lib/ci-annotate.js",
+      "scripts/scripts.test.js",
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
@@ -112,7 +114,6 @@
       ".claude/settings.json": "1. リポジトリ構成（src/ai-stock-trading submodule 向けの許可コマンド）",
       ".github/workflows/openapi.yml": "1. リポジトリ構成（ユニット第一構成 src/*/backend/** へ paths を絞る）",
       ".github/workflows/pr-size.yml": "2. 技術スタックとその CI 配線（orval / Lingui の実出力先・CHANGELOG.md を除外。IADR-0181 決定 1）",
-      ".github/workflows/pr-title.yml": "X. 4 種に当たらない（キット原文の他リポ番号の表記違反を短縮形へ是正。check-cross-repo-refs.js が検出）。是正依頼済み。追跡: #736 / planning#338。★ #799 で PR_NUMBER（github.event.pull_request.number）を渡す 1 行を足した（末尾 (#NNN) が PR 自身の番号かの検査へ結線。起動条件・ジョブ ID は不変）。同じく環流対象。追跡: #799",
       ".github/workflows/security.yml": "1. リポジトリ構成（src/* submodule の取得ステップ）",
       ".gitignore": "2. 技術スタックとその CI 配線（.NET / Node / pnpm / Playwright 等の無視パターン。キット土台 632B は全行保持）",
       ".gitmodules": "1. リポジトリ構成（src/ai-stock-trading submodule の登録）",
@@ -126,13 +127,12 @@
       "feedback/README.md": "2. 技術スタックとその CI 配線（ジョブ名 doc-links → feedback-dispatched。IADR-0184 決定 3）＋ 3. 本リポにしか存在しないスクリプト（check-feedback-status-sync.js の説明。IADR-0193。環流済み。追跡: #736 / planning#337）",
       "scripts/README.md": "3. 本リポにしか存在しないスクリプトの行（check-* の本リポ固有分）を追記。土台の表はキットが正",
       "scripts/changelog-overrides.json": "5. キットが追記を委ねている欄（overrides 配列。キットは空で配り、各リポジトリが実際に必要になった分だけ足す）",
-      "scripts/check-commit-messages.js": "X. 5 種に当たらない（置換点 PLAN_PROJECT を埋める 第 5 種 ＋ **キットに無い検査 1 つ**）。#790 で HOWTO §B-5 の手順どおり同一入力で実走突合し検出力は同値と判定して 種 5 へ落としたが、#799 で **PR タイトル末尾 (#NNN) が PR 自身の番号かの検査**（validateTitlePrNumber / normalizePrNumber / checkSingleTitle の 3 引数目）を足したため X へ戻る。キット版は形状しか見ておらず、実測（2026-08-16・全 PR 443 件）で末尾に番号を持つ 66 件の **66 件すべてが起点 issue の番号**、develop に二重付加が 58 件着地していた。**配布先すべてに同じ穴がある**ため環流する。環流は**未了**（記録の草案は docs/specs/20260816_issue-799_pr-title-number-match.md の付録。未送付記録を 0 件で固定するラチェットがあるため、feedback/ へ置くのは伝達と同じ変更で行う）。着地したら 種 5 へ戻す。追跡: #799",
-      "scripts/check-cross-repo-refs.js": "X. 5 種に当たらない（置換点 6 つを埋める 第 5 種 ＋ 本リポ固有モジュールへの結線 種 3 ＋ **キットに無い門 1 つ**）。#790 で同一入力の実走突合を行い、**型 1〜4 と〔〕区切りの検出力はキット版と同値**と判定した（同一 fixture で 6 件 / 6 件、実データ 1626 件で 0 件 / 0 件、owner 誤りの提案文字列まで一致）。planning#374 の環流受理でキット版が型 4・〔〕・.md 外走査・NUL 読み飛ばしを備えたため、キット版を土台に採った。ただし**キット版は 0 件走査の門（#664 / IADR-0130）を持たない** —— 空リポジトリで exit 0・「OK: 0 件」を返す（実測。変異試験が検出した）。この門と worktree 警告（IADR-0183）を差し替え後に再付与しているため X のまま。環流が着地すれば第 5 種＋種 3 へ落ちる。追跡: planning#379",
+      "scripts/check-commit-messages.js": "5. キットが選択・追記を委ねている欄（置換点 PLAN_PROJECT を本リポの計画プロジェクト名 microservices-platform で埋めている）。#799 で足した『PR タイトル末尾 (#NNN) が PR 自身の番号か』の検査は、計画 pin 767a9d48 でキットが完全実装した（validateTitlePrNumber / normalizePrNumber / checkSingleTitle の第 3 引数がすべてキット側に在る）ため、X の理由（キットに無い検査 1 つ）は消えた。#836 で diff 全数を突合し、**機能差は 1 つも残っていない**ことを確かめた —— 残差は置換点 1 つと、docstring / コメントの文言（本リポの実測値と #799 の引用を持つ）と module.exports の並び順だけである。**置換点を埋めているため分類 A にはならない**（バイト一致にすると検査が静かに緩む）。",
+      "scripts/check-cross-repo-refs.js": "3. 本リポにしか無いモジュール（scripts/lib/worktree-state.js）への結線 ＋ 置換点 6 つを埋める 種 5。#790 では『キット版が 0 件走査の門（#664 / IADR-0130）を持たない』ことを理由に X としていたが、環流 planning#379 が計画 pin 767a9d48 で着地し、**キット版が同じ門を持つようになった**ため X の理由は消えた。#836 で IADR-0204 決定 2 の 3 点を実測突合: (1) 同一フィクスチャで 5 件 / 5 件・提案文字列まで一致、(2) 追跡 0 件の git リポジトリで exit 1（fail-closed）・git 非管理下で exit 0（fail-open）が**両版とも一致**、(3) worktree 警告だけが本リポ版にしか無い（種 3）。あわせてキットと同型になった 3 点（worktree require の遅延化・EXCLUDED_DIRS の export・呼び出し元の無い trackedMarkdown の export 撤去）を追随させ、キット版 scripts.test.js の門試験（検査器 1 ファイルだけを子プロセス実行する）が本リポ版に対して通るようにした。",
       "scripts/check-doc-links.js": "X. 4 種に当たらない（#609 のベアファイル名も相対リンク）。環流済み。追跡: #736 / planning#337",
       "scripts/check-plan-id-qualification.js": "5. キットが選択・追記を委ねている欄（置換点 PROJECT_PREFIXES / EXTRA_EXCLUDES を埋めた）＋ 3. 本リポにしか存在しないスクリプト（lib/worktree-state.js の警告 IADR-0183 の 3 行）。#756 で HOWTO §B-5 の手順どおり同一入力で実走突合し、キット版が優ると判定してキット版へ差し替えた —— キット版だけが NFR を検出し（同じ fixture でキット 3 件 / 旧本リポ版 2 件）、置換点と環境変数・.gitmodules からの submodule 導出・設定の妥当性検査を持つ。これは feedback/20260808_kit-plan-id-qualification-check.md（起票 planning#316）で本リポ自身が要求した一般化がキットに着地したものである。",
       "scripts/check-planning-pin-freshness.js": "X. 5 種に当たらない（本リポ originate #680・キットが後追いで別実装。キット版は pin の経過日数を見るオフライン方式で、本リポ版は着手可否の分類を持つ ＝ 目的が別物）。#757 でキット版の freshness / pinnedCommitDate を移植し、比較元を取れない fail-open 経路へ配線した（キット版自身が「ここが要るリポジトリは本スクリプトを土台に分類規則を足すこと」と述べており、差し替えではなく足すのが正しい向き）。追跡: #749",
-      "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337",
-      "scripts/scripts.test.js": "X. 5 種に当たらない。キット版 8cae89d の試験「拡張点を持たない構成では null を返して当該検査を skip する」は、**拡張点（check-test-traceability.js の readPlanIds）を埋めた配布先では原理的に通らない** —— loadExistingPlanIds() が Set を返すのが #579 の機能そのものだからである（実測 #790）。固有デルタは当該 1 か所のみで、構成を判定してから期待値を選ぶ形へ変え両方向を固定した（skip にはしていない）。キット側の是正が着地したらバイト一致へ戻す。追跡: planning#380"
+      "scripts/setup.sh": "X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337"
     },
     "C": [
       "docs/adr/README.md",

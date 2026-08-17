@@ -12,11 +12,7 @@
 #
 # edited を含めることで、PR タイトルを後から編集した場合にも再検査する。
 #
-# bot 作成 PR（dependabot 等）の除外は **スクリプト側（BOT_AUTHORS への完全一致）** が担う。
-# ジョブ条件で `user.type != 'Bot'` により弾いてはならない —— GitHub App（`claude[bot]` 等）が
-# 作成した PR も `user.type == 'Bot'` になるため、**AI に実装を委ねる運用（本キットが前提と
-# する主要な経路）でだけ「最後の砦」が skipped になる**（planning#202）。除外の規約は
-# BOT_AUTHORS を単一情報源とし、ここで二重実装しない。
+# bot 作成 PR（dependabot 等）の除外はスクリプト側が担う（理由は下のジョブのコメント）。
 #
 # このファイルは実装リポジトリ直下の .github/workflows/ に配置されたときのみ有効。
 
@@ -38,19 +34,30 @@ jobs:
   pr-title:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # 【重要】bot 作成 PR の除外を、ここ（ワークフローの条件）で行ってはならない。
+    #
+    # `if: github.event.pull_request.user.type != 'Bot'` と書くと、**GitHub App が作成した PR
+    # （`claude[bot]` 等）も `user.type == 'Bot'` になるため一緒に落ちる**。本キットは AI に
+    # 実装を委ねる運用を前提としており、**その主要な経路でだけ「最後の砦」が skipped になる**
+    # （planning#202 が実測。人間の PR は success・GitHub App の PR は skipped という差が観測された）。
+    #
+    # 除外は**スクリプト側**（`isBotLogin()` が `BOT_AUTHORS` へ完全一致した場合のみ）が担い、
+    # `BOT_AUTHORS` を単一情報源とする。`claude[bot]` はそこに無いため**検査される**。それが意図である。
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Check PR title (squash subject)
-        # タイトル・作成者・PR 番号は環境変数経由で渡し、シェル展開による注入を避ける。
-        # bot の除外・Revert / [skip ci] の除外・空タイトル時の fail-open はスクリプト側が担う。
-        #
-        # PR_NUMBER は末尾 `(#NNN)` が **PR 自身の番号**かを見るために渡す（#799）。
-        # 渡さない構成（コミット件名モード）では従来どおり形状だけを見る。判定はスクリプト側。
+        # タイトル・作成者は環境変数経由で渡し、シェル展開による注入を避ける。
+        # Revert / [skip ci] の除外と、空タイトル時の fail-open はスクリプト側が担う。
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          # bot 判定は作成者の**ログイン名**で行う（`user.type` ではない。上のコメント参照）。
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          # 末尾 `(#NNN)` が **PR 自身の番号**かを見るために渡す。
+          # **渡さないと形状しか見られず、起点 issue の番号を書いた PR が素通りする。**
+          # スクリプト側は未設定なら従来どおり形状のみを見る（コミット件名モードには PR 番号が
+          # 無いため、必須にすると commit-messages ジョブが全滅する）。
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: node scripts/check-commit-messages.js
