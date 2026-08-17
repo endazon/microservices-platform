@@ -1,0 +1,31 @@
+# IADR-0220 (#841): argocd namespace の葉証明書。ArgoCD UI も admin(50000) で TLS 終端するため、
+# argocd ns にも Secret edge-tls が要る（spec.tls.secretName は同 namespace の Secret しか参照できない）。
+#
+# 本ファイルを tls/kustomization.yaml に含めない理由は argocd-ingress.yaml と同じである ——
+# argocd namespace は ARGOCD=1 の別 opt-in でのみ作られる。含めると ns 不在の環境で
+# tls overlay 全体が落ちる（fail-safe が壊れる）。k8s-local-up.sh が「ns 存在時のみ」apply する。
+#
+# 名前・dnsNames・issuerRef は edge-certificate.yaml と同一（CA 固有設定は ClusterIssuer に閉じたまま）。
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: edge-tls
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: microservices-platform
+    tier: local-edge
+spec:
+  secretName: edge-tls
+  commonName: localhost
+  dnsNames:
+    - localhost
+    - "*.localhost"
+  duration: 8760h # 1 年
+  renewBefore: 720h # 30 日
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: local-edge-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
