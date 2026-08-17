@@ -8,7 +8,7 @@ related_ids:
   - IADR-0191
 author: claude
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-18
 plan_refs:
   - "../../planning/CLAUDE.md (§中間成果物 —— 記録の種類ごとに別の射程を定めてよい)"
   - "../../planning/draft/feedback/20260816_record-freeze-scope-per-record-type.md"

@@ -10,7 +10,7 @@ related_ids:
   - IADR-0189
 author: claude
 created: 2026-08-14
-updated: 2026-08-17
+updated: 2026-08-18
 plan_refs:
   - "../../planning/tools/impl-handoff-kit/repo-template/feedback/README.md (status の「誰が書き換えるか」)"
 ---
