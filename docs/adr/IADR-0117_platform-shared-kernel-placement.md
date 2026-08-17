@@ -2,10 +2,10 @@
 title: IADR-0117 共有カーネル Platform.Shared.Kernel の配置（IADR-0056 決定 3 の部分改定）
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0019, ADR-0030, ADR-0041, IADR-0056, IADR-0057, IADR-0116, IADR-0196]
+related_ids: [NFR, ADR-0019, ADR-0030, ADR-0041, IADR-0056, IADR-0057, IADR-0116, IADR-0196, IADR-0219]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-15
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md"
@@ -117,6 +117,30 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
    あり、本決定はユニット第一構成における**物理配置の具体化**にあたる。この読み替えが妥当であることは
    `/plan-feedback`（「構成図はサービス内の論理レイヤであり物理配置は実装裁量」と明記する提案）で計画側へ環流する。
 
+> **［2026-08-17 追記 / #455］本決定 5 の読み替えは、利用者裁定（planning#390）で否定された。**
+> **現行値は [IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) を正とする。**
+> 上の本文は 2026-08-03 時点の判断としてそのまま残す。
+>
+> - 計画 [`12_backend-application-stack`](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+>   は 2026-08-17 に **§`SharedKernel` の粒度・`Worker` の追加**を新設し、**`SharedKernel` の粒度は
+>   サービス単位である（本書の構成図どおり）**と確定した。**構成図を「論理レイヤ」と読み替えることは
+>   採られていない。**
+> - **理由（裁定が示した見落とし）**: `SharedKernel` は計画の **3 箇所**（§基本方針・構成図・
+>   Application 層のライブラリ表）に載っており、**構成図だけを論理レイヤと読み替えると他の 2 箇所が宙に浮く**。
+> - **ただし本決定 1〜4 は有効である。** `Platform.Shared.Kernel`（ユニット単位）は
+>   **併存**として引き続き有効であり、[[IADR-0056]] 決定 3 の許容 3 プロジェクトも変わらない。
+>   改まったのは「**サービス単位の枠を認めない**」という点だけである。置き分けは
+>   **サービス単位 = 自サービスに閉じた共通基底 / ユニット単位 = 境界をまたいで同一性が要る型
+>   （契約に載る `Result` / `Error`）**（[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 1）。
+> - **§検討した選択肢 の列 B・§理由 第 1 項・§コンテキストと課題 1 の却下理由は書き換えない。**
+>   2026-08-03 時点でその判断をした記録であり、**消すとなぜ 11 分裂を恐れたのかが読めなくなる**。
+>   なお計画 [`ADR-0041`](../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md)
+>   を全文走査したところ、**同 ADR は「サービスをまたいで単一の `Result` 型」を求めていない**
+>   （配置への言及は 0 件）。11 分裂の懸念は計画の要求ではなく、**`SharedKernel` の型をそのまま契約へ
+>   載せる設計を採った場合の帰結**であった。裁定は**併存**でその懸念を解いている。
+> - **状態は `Accepted` のまま**とする（決定 1〜4 が生きているため）。**先例**: [[IADR-0056]] は
+>   決定 3 を本 IADR に部分改定された後も `Accepted` を維持している。
+
 ## 理由
 
 - 選択肢 B を採れないのは、Result 型の同一性がサービス境界をまたぐ要件だからである。11 個の
@@ -154,6 +178,9 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
   1. **`Platform.Shared.Kernel` の実体作成**（最初にそれを必要とするサービス再実装 issue。#438〜#451）。
      作成時に `platform/backend/backend.slnx` へ登録し、Domain 層からの参照を実地で確認する。
   2. `/plan-feedback` で計画側へ「構成図はサービス内の論理レイヤであり、物理配置は実装裁量」の明記を提案する。
+     - **［2026-08-17 / #455］決着した。「未達」ではなく、提案が却下されたことによる決着である。**
+       裁定（planning#390）は逆に**構成図を正**とし、`SharedKernel` の粒度をサービス単位と確定した
+       （[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 1）。**以後このフォローアップは再提案しない。**
   3. [IADR-0057](IADR-0057_unit-dependency-machine-check.md) の本文にある件数表記（「Shared 2 プロジェクト」）は
      Accepted の本文であり書き換えない。現行値は本 IADR を正とする。
 

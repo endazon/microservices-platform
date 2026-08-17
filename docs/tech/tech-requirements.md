@@ -18,11 +18,12 @@ related_ids:
   - ADR-0032
   - IADR-0048
   - IADR-0117
+  - IADR-0219
   - IADR-0121
   - IADR-0134
 author: claude
 created: 2026-07-04
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
@@ -123,11 +124,31 @@ flowchart TB
 
 ### プロジェクト構成（サービス単位）
 
+**標準構成は 8 要素である**（計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+§`SharedKernel` の粒度・`Worker` の追加。2026-08-17 に `Worker` を加えて 7 → 8 とした。
+実装側の追随は [IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
+
 ```text
 src/<unit>/backend/Services/<Name>Service/
- ├── src/{<Name>.Api, <Name>.Application, <Name>.Domain, <Name>.Infrastructure, <Name>.Contracts}
+ ├── src/
+ │    ├── <Name>.Api             # エンドポイント定義・DI 構成・ProblemDetails 変換
+ │    ├── <Name>.Worker          # 常駐処理を主とするサービスの実行入口（Api と排他）
+ │    ├── <Name>.Application     # ユースケース（Wolverine ハンドラ）・検証・マッピング
+ │    ├── <Name>.Domain          # エンティティ・値オブジェクト（外部依存なし）
+ │    ├── <Name>.Infrastructure  # EF Core・Redis・オブジェクトストレージ等の実装
+ │    ├── <Name>.Contracts       # 公開契約（proto・イベント・DTO）
+ │    └── <Name>.SharedKernel    # Result / Error・共通基底（過度な共通化は避ける）
  └── tests/<Name>.Tests/{Unit, Integration}
 ```
+
+**`Api` と `Worker` は同一サービス内で排他である。** いずれか一方のみを持ち、**持たない側は空フォルダを作らない**
+（実行入口は 1 サービスに 1 つであり、「空の実行入口」という状態が存在しないため）。実装の現況は
+`Api` 9 サービス / `Worker` 2 サービス（`ConversionService` / `IngestionService`）である。
+**`Worker` が HTTP 面を持つことは `Worker` であることと矛盾しない** —— 区別の軸はホストの主目的である。
+
+**実体が無い要素は、空フォルダ ＋ `.gitkeep` を置く**（`.csproj` は作らない。計画 §規範性・粒度・置き場）。
+**適用は未実施**であり、次の作業で行う（対象 55 件。件数の正は
+[IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 3）。
 
 **`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**
 （計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
@@ -135,11 +156,23 @@ src/<unit>/backend/Services/<Name>Service/
 参照管理のコストが増えるためである。`.csproj` の実名はサービスのホスト種別に合わせてよい
 （実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
 
-**共有カーネルはサービス単位に置かない**（[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md)）。
+**共有カーネルはサービス単位とユニット単位が併存する**（[IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 1。
+計画 §`SharedKernel` の粒度。利用者裁定 2026-08-17 / planning#390）。**置き分けは次のとおりである。**
+
+| 置き場 | 何を置くか |
+| --- | --- |
+| **サービス単位** `Services/<Name>Service/src/<Name>.SharedKernel/` | **自サービスに閉じた共通基底**。上の構成図の 1 要素であり、実体が無ければ `.gitkeep` を置く対象に含まれる |
+| **ユニット単位** `src/platform/backend/Shared/Platform.Shared.Kernel/` | **サービス境界をまたいで同一性が要る型** —— **契約に載る `Result` / `Error`**。BFF がサービスの結果を集約し、`Platform.Shared.Contracts` のイベント契約が失敗を表現するため、単一の型でなければならない |
+
 本リポジトリはユニット第一構成（[[IADR-0056]]・ADR-0019）を採り、ユニット外から参照できるのは
 `src/platform/backend/Shared/` のプロジェクトのみである（[`src/README.md`](../../src/README.md) の依存規則）。
-Result / Error はサービスをまたいで同一の型である必要があるため、**`Platform.Shared.Kernel` として 1 つに集約**する。
-計画書の構成図はサービス内の論理レイヤを示したものであり、物理配置の具体化として扱う。
+**`Platform.Shared.Kernel` は併存として引き続き有効であり、廃止しない。**
+**サービス単位の枠は「作ってよい」の意味ではない** —— 境界をまたぐ型をそちらへ置けば置き分けに反する。
+
+> **［2026-08-17 / #455］従前は「共有カーネルはサービス単位に置かない」と書いていた**
+> （[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が案 B を却下したことに従っていた）。
+> **裁定 planning#390 が計画の構成図を正とし、サービス単位を標準構成として認めたため、併存の形へ改めた。**
+> IADR-0117 の決定 1〜4（`Platform.Shared.Kernel` の新設・ユニット外参照 2 → 3）は有効である。
 
 この配置は [[IADR-0056]] §決定 3 の**部分改定**にあたる。同決定はユニット外参照を
 `src/platform/backend/Shared/` の **2 プロジェクト**（`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure`）
