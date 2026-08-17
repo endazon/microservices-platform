@@ -117,7 +117,13 @@ docs/
      増えたら落ちる**（ラチェット）。**新規に `review` を書くことはできない。**
    - **★ 過去の仕様書の `status` を書き換えてよい範囲**（#667 判断 0）:
      **語彙の是正のみ**（`fixed` → `done` のように、同じ状態を別の語で書いていたものを揃える）。
-     **状態の進行**（`draft` → `done` 等）と**本文への注記追加**は、
+     **状態の進行**（`draft` → `done` 等）は、
      `.claude/rules/traceability.md` の「記録の改竄」にあたるため**不可**である。
+   - **★ 本文への注記追加は `［YYYY-MM-DD 追記 / #NNN］` 書式に限り可**（#803 / 裁定 planning#387）。
+     **凍結の射程は記録種ごとに違う** —— `docs/specs/` は**その後の経過**を書式つきで足せる。
+     `feedback/` は①（frontmatter の状態欄を本文で言い直した追記）だけ不可、
+     `docs/superpowers/` は不可である。**既存本文の書き換え・削除はどの記録でも不可。**
+     正本は [`IADR-0166`](adr/IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 の
+     2026-08-17 追記と `.claude/rules/traceability.repo.md`。
 
 詳細な開発規約は `CLAUDE.md` を参照すること。
