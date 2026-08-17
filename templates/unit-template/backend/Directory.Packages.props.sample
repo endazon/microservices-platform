@@ -21,7 +21,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
-  <!-- 雛形の 7 プロジェクトが PackageReference する全パッケージ（本体 src/Directory.Packages.props と同値）。
+  <!-- 雛形の 6 プロジェクトが PackageReference する全パッケージ（本体 src/Directory.Packages.props と同値）。
        CPM では PackageReference に対応する PackageVersion が無いと NU1010 で復元が失敗するため、
        1 つでも欠けると単独ビルド経路が壊れる。プロジェクトが依存を増やしたらここへも追記すること。 -->
   <ItemGroup Condition="'$(ParentDirectoryPackagesProps)' == ''">
@@ -42,7 +42,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.9" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
-    <!-- テスト（SampleService.UnitTests / .IntegrationTests）。
+    <!-- テスト（SampleService.Tests。単体と統合を 1 プロジェクトに畳んでいるため、
+         単体側〔NSubstitute〕と統合側〔Mvc.Testing / Testcontainers / Respawn〕の和集合が要る）。
          xUnit は **v2**（ADR-0030 の標準は v3 だが CPM は runner を 1 バージョンしか持てず、
          切替は独立 issue。詳細は docs/tech/tech-requirements.md）。 -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />

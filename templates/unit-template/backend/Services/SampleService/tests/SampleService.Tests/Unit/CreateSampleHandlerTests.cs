@@ -1,7 +1,7 @@
 using AwesomeAssertions;
 using SampleService.Application;
 
-namespace SampleService.UnitTests;
+namespace SampleService.Tests.Unit;
 
 // テンプレート: 受け入れ基準 → テストの写像。テスト名またはコメントに起点 ID（FR/UC/SC）を残す
 // （.claude/rules/traceability.md）。写像規約の詳細は #453 のテスト戦略に従う。

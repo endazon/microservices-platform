@@ -2,11 +2,18 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <!-- ADR-0030 のテスト標準: AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）・
+  <!-- サービスのテストは **1 プロジェクト**にする。Unit / Integration はプロジェクトを分けず
+       フォルダ（Unit/ ・ Integration/）で分ける（計画 06_technical/12_backend-application-stack
+       §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。
+       プロジェクトを分けるとビルド時間と参照管理のコストが増えるためである。
+       したがって PackageReference は単体側（NSubstitute 等）と統合側（Mvc.Testing / Testcontainers /
+       Respawn）の**和集合**を持ち、ProjectReference は Application と Api の両方を持つ。
+
+       ADR-0030 のテスト標準: AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）・
        NSubstitute・Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）・Respawn。
        **xUnit だけは標準が v3 だが、雛形は現時点で v2 を使う。**
        CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 2.8.2（v2 用）に固定されており、
-       v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存 30 の
+       v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存の
        テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
        （docs/specs/20260803_issue-455_backend-application-standard.md 未決事項 2）。
        **雛形はコピーしてそのまま動くことを優先する。** ここで v3 を先取りすると、非互換の
@@ -18,9 +25,13 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Respawn" />
     <PackageReference Include="coverlet.collector" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\SampleService.Application\SampleService.Application.csproj" />
+    <ProjectReference Include="..\..\src\SampleService.Api\SampleService.Api.csproj" />
   </ItemGroup>
 </Project>

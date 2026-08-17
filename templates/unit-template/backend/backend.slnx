@@ -11,8 +11,9 @@
     <Project Path="Services/SampleService/src/SampleService.Infrastructure/SampleService.Infrastructure.csproj" />
     <Project Path="Services/SampleService/src/SampleService.Contracts/SampleService.Contracts.csproj" />
   </Folder>
+  <!-- テストは 1 プロジェクト。Unit / Integration はフォルダで分ける
+       （計画 12_backend-application-stack §規範性・粒度・置き場 / planning#180）。 -->
   <Folder Name="/Services/SampleService/tests/">
-    <Project Path="Services/SampleService/tests/SampleService.UnitTests/SampleService.UnitTests.csproj" />
-    <Project Path="Services/SampleService/tests/SampleService.IntegrationTests/SampleService.IntegrationTests.csproj" />
+    <Project Path="Services/SampleService/tests/SampleService.Tests/SampleService.Tests.csproj" />
   </Folder>
 </Solution>
