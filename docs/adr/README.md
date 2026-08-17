@@ -273,7 +273,7 @@
 | [IADR-0217](./IADR-0217_wolverine-runtime-compilation-standard.md) | Wolverine のコード生成は**実行時コンパイル**（`WolverineFx.RuntimeCompilation`）を標準とし、事前 codegen ＋ `TypeLoadMode.Static` は採らない（計画 ADR-0027 が確定済み）。`CSharpFunctionalExtensions` も CPM へ宣言（`PackageVersion` は違反にしない）。#455 | Accepted |
 | [IADR-0218](./IADR-0218_gitkeep-standard-components-scope.md) | 標準構成 7 要素の `.gitkeep` を **4 要素 × 11 サービス = 44 件**へ適用すると決めた（`Worker` は `Api` の別形・`SharedKernel` は集約先が持つ）。**[[IADR-0219]] が決定 1・2・3 を改定** —— 現行は **8 要素・5 要素 × 11 = 55 件**（`Api` と `Worker` は排他）。#455 | Accepted |
 | [IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) | `SharedKernel` の粒度は**サービス単位**とし、per-service の枠を標準構成として認める（**ユニット単位の `Platform.Shared.Kernel` と併存**。境界をまたぐ型はユニット側）。**`Worker` を加えて 8 要素**（`Api` と排他）。`.gitkeep` は **55 件**。裁定 planning#390。起票 #455 | Accepted |
-| [IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md) | 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする。葉証明書は namespace ごとに置き `secretName` は `edge-tls` のまま。**[[IADR-0206]] 決定 4 の後半を改定**。計画 `ADR-0047` / 裁定 planning#383。起票 #841 | Accepted |
+| [IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md) | 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする。葉証明書は namespace ごとに置き `secretName` は `edge-tls` のまま。**[[IADR-0206]] 決定 4 の P2・P3 を改定**。計画 `ADR-0047` / 裁定 planning#383。起票 #841 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

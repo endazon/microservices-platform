@@ -13,6 +13,7 @@ related_ids:
   - IADR-0091
   - IADR-0103
   - IADR-0105
+  - IADR-0220
 author: claude
 created: 2026-08-16
 updated: 2026-08-17
@@ -150,6 +151,35 @@ CA を将来 Let's Encrypt / Vault PKI へ差し替えられるように、同 A
 > **その解消は #841 が担う**（本追記は条文の追随のみで、実体は同 issue が実走で確かめる）。
 > **決定 4 の射程（http 経路を残す・http→https の恒久リダイレクトを足さない）が本裁定で変わるかの判断も
 > #841 に属する** —— 実体を触れない PR で先に決めない。
+
+> **［2026-08-17 追記 / #841］上の #834 が #841 へ預けた判断が出た。決定 4 のうち 2 点を
+> [[IADR-0220]] が Supersede した。決定 4 まるごとが死んだわけではない。**
+>
+> 本決定は 3 つの命題からなる。**生きているもの／覆ったものを命題ごとに書き分ける。**
+>
+> | # | 決定 4 の命題 | 現状 |
+> | --- | --- | --- |
+> | P1 | **443 に載る `platform-frontend-edge` へ `spec.tls`（`secretName: edge-tls`）を追加する** | **引き続き有効。** TLS 終端の形（cert-manager の `edge-tls` で終端し、`secretName` を安定させる）は [[IADR-0220]] もそのまま踏襲している |
+> | P2 | **admin:50000 に載る 7 件へは `spec.tls` を足さない** | **[[IADR-0220]] が Supersede した。** 7 件すべてへ `spec.tls`（`secretName` は本 ADR が安定させた `edge-tls` のまま）を足し、`--entryPoints.admin.http.tls=true` で entrypoint 側も TLS 終端にした |
+> | P3 | **`http` 経路を残す・`--entryPoints.web.http.redirections.*` を足さない** | **[[IADR-0220]] が Supersede した。** `web`(80) は `websecure`(443) へ恒久リダイレクトする（`NFR-11`「平文 HTTP を残さない」） |
+>
+> **P2・P3 が覆ったのは、本決定が挙げた「足しても効かない」「7 クライアントの再設定を巻き込む」という
+> 理由が解消したからである** —— [[IADR-0220]] は entrypoint 側の TLS を同時に入れ、7 クライアントの
+> redirect（realm・`values-local.yaml`・`grafana.yaml`・`argocd-cm-patch.yaml`・`vault/oidc/bootstrap.sh`）を
+> 実際に書き換えた。**避ける理由がなくなった以上、`NFR-11` の側が通る。**
+>
+> **決定 1・2・3・5・6 は改めない。** `ADR-0047` 決定 2 の設計要件 3 点（CA 固有設定の隔離・名前の安定・
+> 切り替えの局所化）は [[IADR-0220]] も守っており、**`secretName` は `edge-tls` のままである**
+> （葉証明書が namespace ごとに 3 本へ増えたが、消費側は `secretName` しか知らない形が保たれている）。
+> **覆ったのは決定 4 の 2 命題だけ**であるため、`status` は `Accepted` のままとする。
+>
+> **本決定が引く 2 つの記述は、いま実体と合わない。**
+> ① 「admin:50000 の TLS 化は [[IADR-0103]] の改定に波及する」 —— **同 ADR にその決定は無い**
+> （`50000` も `entrypoint` も `平文` も 0 件。同 ADR は `admin` という**ユーザー**の ADR である）。
+> **誤帰属であり、[[IADR-0220]] は同 ADR を Supersede していない。**
+> ② 「この境界は静的検査で固定する（`admin:50000 の Ingress には spec.tls を足さない`）」 ——
+> **その試験は #841 で期待値を反転した**（`#841: admin:50000 は TLS 終端で、そこに載る Ingress は
+> spec.tls(edge-tls) を持つ`）。**本文は当時の記録として残す。**
 
 ### 5. `tls/` を別 kustomization に切る
 

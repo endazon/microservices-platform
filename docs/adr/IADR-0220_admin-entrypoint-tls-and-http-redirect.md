@@ -114,13 +114,19 @@ Let's Encrypt / Vault PKI への差し替えは、いまも `issuerRef` の差�
 `--entryPoints.web.http.redirections.entryPoint.{to=websecure,scheme=https,permanent=true}` を渡す。
 **80 番を閉じない**のは、閉じるとリダイレクトを返す口が無くなり、平文で来た利用者に何も返せなくなるためである。
 
-**これは [[IADR-0206]] 決定 4 の後半（「`http` 経路は残す」「恒久リダイレクトは足さない」）を Supersede する。**
+**これは [[IADR-0206]] 決定 4 の 3 命題のうち 2 つ（P2「admin:50000 の 7 件へは `spec.tls` を足さない」・
+P3「`http` 経路は残す・恒久リダイレクトは足さない」）を Supersede する。**
+**P1（443 の `platform-frontend-edge` へ `edge-tls` を追加する＝ TLS 終端の形）は引き続き有効**であり、
+本 ADR もその形をそのまま踏襲している。
 同決定がリダイレクトを避けた理由は「`http://*.localhost:50000` を前提にした既存 docs と realm の
 redirectUris が全部一段回り道になり、7 クライアントの再設定を巻き込む」ことだった。
 **本 ADR はその 7 クライアントの再設定を実際に行う**（realm・`values-local.yaml`・`grafana.yaml`・
 `argocd-cm-patch.yaml`・`vault/oidc/bootstrap.sh`）ので、避ける理由が無くなっている。
 
-**条文の側（[[IADR-0206]] の「`NFR-11` 適用外」整理の撤回）は #834 が持つ。本 ADR はその本文を触らない。**
+**条文の側（[[IADR-0206]] の「`NFR-11` 適用外」という枠付けの撤回）は #834 が持ち、`848111cd` で
+develop へマージされた。** それを受けて、**同 ADR 決定 4 へ本 ADR による部分 Supersede の注記**
+（`［2026-08-17 追記 / #841］`）を入れてある —— **Supersede される側にも後継への導線を置く**ためである
+（`traceability.repo.md`「旧 ID を残し、後継を併記する」。先例は [[IADR-0117]]）。
 
 ### 5. ArgoCD の `server.insecure=true` は据え置く
 
@@ -153,7 +159,8 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
     書き換えにあたって**誤帰属も併せて解消した**。
   - **証明書が 3 本になる**（namespace ごと）。更新は cert-manager が担うため運用手数は増えない。
 - **フォローアップ**:
-  - **条文の追随（[[IADR-0206]] 決定 4 前半・`NFR-11` 適用外の整理の撤回）は #834 が持つ。**
+  - **条文の追随（[[IADR-0206]] の「`NFR-11` 適用外」という枠付けの撤回）は #834 が持ち、`848111cd` で
+    develop へマージされた。** それを受けて本 ADR による決定 4 の部分 Supersede の注記を同 ADR へ入れた。
   - 本番像（`deploy/helm/`）の HTTPS 化は #780 / #782 が持つ。**本 ADR は `deploy/helm/` の
     `browserRedirectUrl` の例示コメント 1 行以外を触らない。**
 
@@ -166,7 +173,11 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
 
 ## 関連
 
-- Supersedes: **[[IADR-0206]] 決定 4 の後半**（`http` 経路を残す・恒久リダイレクトを足さない）**のみ**。
+- Supersedes: **[[IADR-0206]] 決定 4 の 2 命題のみ** —— **P2**（admin:50000 の 7 件へは `spec.tls` を足さない）と
+  **P3**（`http` 経路を残す・`--entryPoints.web.http.redirections.*` を足さない）。
+  **P1**（443 の `platform-frontend-edge` へ `edge-tls` を追加する）と**決定 1・2・3・5・6 は改めない**ため、
+  同 ADR は `Accepted` のまま残置する（先例: [[IADR-0117]] が [[IADR-0056]] 決定 3 を部分改定した形）。
+  **対応する注記は同 ADR 決定 4 の `［2026-08-17 追記 / #841］` にある**（#843 マージ後に入れた）。
 - Superseded by: なし
 - **[[IADR-0103]] は Supersede しない。** 本 ADR の初稿は「同 ADR が前提にしていた『admin entrypoint は平文 http』」と
   書いていたが、**実測すると同 ADR に `50000` も `entrypoint` も `平文` も 1 件も無い**
