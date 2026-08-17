@@ -157,12 +157,11 @@ related_specs:
 | `check-plan-id-qualification.js` / `check-adr-numbering.js` / `check-landed-subjects.js` / `check-i18n-catalogs.js` / `check-test-spec-coverage.js` | **`scripts/scripts.repo.test.js` 経由**で `ci.yml` の `scripts-tests`（`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`） |
 | ESLint（`src/eslint.config.js`） | `frontend.yml` の `lint` |
 
-- **`scripts/scripts.test.js` は分類 B（X・期限つきの暫定）**（[[IADR-0204]]。従前ここには
-  「変更禁止（分類 A・キットとバイト一致）」と書いてあったが、**#790 で改まった**）。
-  キット版の試験が**拡張点を埋めた配布先では原理的に通らない**ため、固有デルタを 1 か所だけ持つ。
-  **足せるのはその 1 か所の追随だけで、それ以外は触らない。** テストを足すときは従来どおり
-  **companion の `scripts.repo.test.js`** へ書く。キット側の是正（planning#380）が着地したら
-  バイト一致へ戻す。
+- **`scripts/scripts.test.js` は分類 A（変更禁止・キットとバイト一致）である。**
+  **テストを足すときは必ず companion の `scripts.repo.test.js`** へ書く。
+  この行は 2 度動いた —— #790 で「拡張点を埋めた配布先では原理的に通らない」試験があったため
+  分類 B（X・期限つきの暫定）へ落ち、**#836 で環流 planning#380 が着地して A へ戻った**
+  （[[IADR-0204]] 決定 4）。**次に赤くなったら、まず「キットが配布先の構成を断定していないか」を疑う。**
 - **計画 ADR（`ADR-xxxx`）の実在性は CI で守られていない**（どの決定的ジョブも submodule を populate しない）。
 
 ## 4.5 ★ 環境によって変わること —— **着手前に自分で実測する**
