@@ -1,0 +1,168 @@
+---
+title: IADR-0220 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする（証明書は namespace ごとに置く）
+type: impl-adr
+status: Accepted
+related_ids:
+  - NFR-11
+  - ADR-0047
+  - ADR-0023
+  - IADR-0091
+  - IADR-0103
+  - IADR-0206
+author: claude
+created: 2026-08-17
+updated: 2026-08-17
+plan_refs:
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0047_edge-cert-scope-local-route.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0023_edge-cert-automation-cert-manager-letsencrypt.md"
+  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+---
+
+# IADR-0220: 経路B の admin(50000) を TLS 終端にし、web(80) は https へ恒久リダイレクトする
+
+- 状態: Accepted
+- 日付: 2026-08-17
+- 決定者: claude（実装）
+
+## 起点・関連
+
+- Issue: **#841**（#834 から切り出した**実体側**）。仕様書: [`../specs/20260817_issue-841_admin-entrypoint-https.md`](../specs/20260817_issue-841_admin-entrypoint-https.md)。
+- 計画: **`NFR-11`**（全経路の HTTPS 化。**適用範囲は環境を問わない** —— 利用者裁定 2026-08-16・裁定依頼 planning#383）、
+  **`ADR-0047`**（エッジ TLS 証明書の運用は経路B にも及ぶ。`*.localhost` では selfsigned CA を許容）、
+  `ADR-0023`（自動化・配布層は cert-manager）。
+- 実装 ADR: [[IADR-0206]]（経路B のエッジ TLS 終端＝ cert-manager の selfsigned→CA・`edge-tls`）、
+  [[IADR-0091]]（経路B のエッジは Traefik・admin:50000 へホスト名ベース集約）、
+  [[IADR-0103]]（経路B の SSO の恒久化）。
+
+## コンテキストと課題
+
+**証明書基盤は既に在る。残っていたのは適用範囲である。**
+
+[[IADR-0206]] は 443（websecure）に載る `platform-frontend-edge` 1 件だけへ `spec.tls` を付け、
+**admin(50000) に載る管理ツール 7 件（grafana / headlamp / vault / qdrant / minio / wiki / argocd）は
+平文 http のまま**にした。その判断の根拠は同 ADR 決定 4 の
+
+> 経路B は `LOCALEDGE=1` が **loopback（`127.0.0.1`）へ bind する閉域のローカル開発環境**であり、
+> `NFR-11` が言う「外部から到達し得る」に当たらない、という整理で**適用外**とする
+
+という読みである。**この読みは利用者裁定 2026-08-16 で明示的に否定された。**
+計画の非機能要件表 `NFR-11` は「**★ 適用範囲は環境を問わない**……**ローカル検証環境（経路B）も適用内である。**
+実装側は『loopback へ bind する閉域であり「外部から到達し得る」に当たらない』と読んで適用外として扱っていたが、
+**その読みは採らない**」と書き換わり、同日 `ADR-0047` が証明書の発行方式（selfsigned CA の許容）を確定した。
+
+したがって決めるべきは次の 3 点である。
+
+1. admin(50000) をどう TLS 終端にするか（chart の values か、Traefik の引数か）
+2. `spec.tls.secretName` は同 namespace の Secret しか参照できない。**管理ツールは 3 つの namespace に散っている**
+3. `NFR-11` の「**平文 HTTP を残さない**」は 80 番をどう扱えと言っているか
+
+**実測（走査基準 `5ed54b02`・`git grep -I -o`）**: `http://…localhost:50000` は **104 件 / 31 ファイル**。
+うち **65 件 / 16 ファイル**が live な設定・コード・手順書である（残りは確定済みの `docs/specs/` 27 件と
+過去の決定の記録 `docs/adr/` 12 件。母集合の引き方と除外理由は作業仕様書 §2）。
+
+## 検討した選択肢
+
+| # | 案 | admin の TLS 化 | chart 版依存 | 採否 |
+| --- | --- | --- | --- | --- |
+| 1 | Helm values（`ports.admin.tls.enabled` / `ports.web.redirectTo`） | 可 | **あり** —— 同ファイルは既に `expose` のスキーマ差で注意書きを持つ | 却下 |
+| 2 | **`additionalArguments` で Traefik の引数を直接渡す** | 可 | **無し**（引数はコマンドラインへそのまま流れる） | **採用** |
+| 3 | admin 用に別の `secretName` を作る | 可 | — | 却下（`ADR-0023` / `ADR-0047` の「名前の安定」に反する） |
+| 4 | 証明書を 1 namespace だけに置き、Secret を複製する | 不可に近い | — | 却下（複製の更新が cert-manager の外に出る＝失効に追随しない） |
+| 5 | 80 番を閉じる（`web` entrypoint を落とす） | — | — | 却下（**リダイレクトを返す口が無くなる**。平文で来た利用者が沈黙する） |
+| 6 | 80 番を平文のまま残す | — | — | 却下（`NFR-11`「平文 HTTP を残さない」に反する。**これが従来の姿である**） |
+
+## 決定
+
+### 1. `admin`(50000) を TLS 終端にする
+
+`deploy/local/edge/traefik-entrypoint.yaml` の `HelmChartConfig` に `additionalArguments` を足し、
+**`--entryPoints.admin.http.tls=true`** を渡す。証明書は SNI に応じて Ingress の `spec.tls` から選ばれる。
+
+**values ではなく引数にするのは、values のスキーマが chart バージョンで変わるからである。**
+同ファイルは既に `expose` について「新しめ(chart v25+/Traefik v3) はマップ形、古い chart では真偽値」と
+注意している。同じ罠を 2 つ増やさない。
+
+### 2. 管理系 Ingress 4 ファイル（7 ルータ）へ `spec.tls` を足す
+
+`secretName` は **[[IADR-0206]] が安定させた `edge-tls` をそのまま使う**（`ADR-0047` 決定 2 の設計要件
+「名前の安定」。**新しい名前を作らない**）。`hosts` は葉証明書の `dnsNames` と一致させるため
+**`"*.localhost"`** と書く。
+
+### 3. 葉証明書は **namespace ごと**に置き、Secret 名は変えない
+
+`spec.tls.secretName` は**同じ namespace の Secret しか参照できない**。管理ツールは 3 つの
+namespace に散っているため、葉証明書もそれぞれに要る。
+
+| namespace | ルータ | 置き場 |
+| --- | --- | --- |
+| `microservices-platform` | minio / wiki（＋ 443 の frontend） | `tls/edge-certificate.yaml`（既存） |
+| `platform-infra` | grafana / headlamp / vault / qdrant | `tls/edge-certificate.yaml`（本 ADR が追加） |
+| `argocd` | argocd | `tls/argocd-certificate.yaml`（本 ADR が追加・**kustomization に含めない**） |
+
+**3 件とも `issuerRef` は同じ `local-edge-ca`（`ClusterIssuer`）を指し、`secretName` は `edge-tls` である。**
+CA 固有設定は `ClusterIssuer` に閉じたままであり、`ADR-0047` 決定 2 の設計要件 3 点は崩れない ——
+Let's Encrypt / Vault PKI への差し替えは、いまも `issuerRef` の差し替えだけで済む。
+
+**`argocd` だけ別ファイルにするのは、その namespace が `ARGOCD=1` の別 opt-in でのみ作られるからである。**
+`tls/kustomization.yaml` へ含めると、ArgoCD を使わない環境で **tls overlay 全体が落ちる**
+（[[IADR-0206]] 決定 5 が親 kustomization について述べたのと同じ形の fail-safe）。
+`k8s-local-up.sh` が `argocd-ingress.yaml` と同じく「ns 存在時のみ」apply する。
+
+### 4. `web`(80) は `websecure`(443) へ**恒久リダイレクト**する
+
+`--entryPoints.web.http.redirections.entryPoint.{to=websecure,scheme=https,permanent=true}` を渡す。
+**80 番を閉じない**のは、閉じるとリダイレクトを返す口が無くなり、平文で来た利用者に何も返せなくなるためである。
+
+**これは [[IADR-0206]] 決定 4 の後半（「`http` 経路は残す」「恒久リダイレクトは足さない」）を Supersede する。**
+同決定がリダイレクトを避けた理由は「`http://*.localhost:50000` を前提にした既存 docs と realm の
+redirectUris が全部一段回り道になり、7 クライアントの再設定を巻き込む」ことだった。
+**本 ADR はその 7 クライアントの再設定を実際に行う**（realm・`values-local.yaml`・`grafana.yaml`・
+`argocd-cm-patch.yaml`・`vault/oidc/bootstrap.sh`）ので、避ける理由が無くなっている。
+
+**条文の側（[[IADR-0206]] の「`NFR-11` 適用外」整理の撤回）は #834 が持つ。本 ADR はその本文を触らない。**
+
+### 5. ArgoCD の `server.insecure=true` は据え置く
+
+TLS を終端するのは Traefik であり、そこから `argocd-server` への in-cluster 転送は平文である。
+`insecure` を外すと argocd-server 自身が http→https リダイレクトを返し、**エッジ経由が二重終端で壊れる**。
+[[IADR-0092]] が置いた設定は変えず、**理由の記述だけ**を「edge が平文だから」から
+「エッジで終端し in-cluster は平文だから」へ改める。
+
+## 理由
+
+- **計画が絶対的な正である。** `NFR-11` は「平文 HTTP を残さない」「適用範囲は環境を問わない」と書き、
+  `ADR-0047` は経路B での selfsigned CA を許容した。**実装側に選択の余地は無い。**
+- **設計要件 3 点を守れば、本番へ寄せるときの差分は `issuerRef` の差し替えに収まる**（`ADR-0047` §理由）。
+  namespace を増やしても `secretName` を `edge-tls` で揃えているため、消費側は CA を知らないままである。
+- **`additionalArguments` は「TLS になったつもり」を作らない。** 引数はそのまま Traefik へ渡るため、
+  chart 版の差で黙って無効化されることがない。**静的検査がこの文字列を直接見る。**
+
+## 結果
+
+- **良い影響**: 経路B の全エンドポイントが https になり、`NFR-11` の「平文 HTTP を残さない」を経路B でも満たす。
+  **`NFR-11` の適用範囲について実装と計画が逆を向いた状態が解消する。**
+- **悪い影響 / トレードオフ**:
+  - **ブラウザ警告が管理ツール 7 件でも出る**（selfsigned CA。`ADR-0047` §結果 が「ローカル検証環境に限った受忍」と述べている）。
+    消すにはルート CA を信頼ストアへ入れる（手順は `deploy/local/edge/README.md`）。
+  - **`curl` に `--cacert ca.crt` が要る。** 手順書の疎通確認コマンドをすべて書き換えた。
+  - **平文 `http://<tool>.localhost:50000` は TLS ハンドシェイクに失敗する。** 「404」ではなく
+    「ハンドシェイク失敗」に変わったため、**古い URL を控えている利用者には別の見え方になる**。
+    手順書の該当記述（[[IADR-0103]] を引いて「平文 http のみ・https は 404」と書いていた 2 箇所）を書き換えた。
+  - **証明書が 3 本になる**（namespace ごと）。更新は cert-manager が担うため運用手数は増えない。
+- **フォローアップ**:
+  - **条文の追随（[[IADR-0206]] 決定 4 前半・`NFR-11` 適用外の整理の撤回）は #834 が持つ。**
+  - 本番像（`deploy/helm/`）の HTTPS 化は #780 / #782 が持つ。**本 ADR は `deploy/helm/` の
+    `browserRedirectUrl` の例示コメント 1 行以外を触らない。**
+
+## 検出しないこと（明示）
+
+- **実際に TLS ハンドシェイクが通るか**は検査しない（CI に `kustomize build` / クラスタが無い。#783 の領分）。
+  本 ADR が静的検査で固定するのは「entrypoint に TLS 引数が在る」「7 ルータすべてが `spec.tls(edge-tls)` を持つ」
+  「3 つの namespace に葉証明書が在る」「`argocd` 分は kustomization に含まれず ns 条件付きで apply される」である。
+- **ブラウザが証明書を信頼するか**は検査しない（信頼ストアは環境の側にある。[[IADR-0206]] と同じ）。
+
+## 関連
+
+- Supersedes: **[[IADR-0206]] 決定 4 の後半**（`http` 経路を残す・恒久リダイレクトを足さない）と、
+  **[[IADR-0103]] が前提にしていた「admin entrypoint は平文 http」**。
+- Superseded by: なし
