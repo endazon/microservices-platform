@@ -273,9 +273,9 @@
 | [IADR-0217](./IADR-0217_wolverine-runtime-compilation-standard.md) | Wolverine のコード生成は**実行時コンパイル**（`WolverineFx.RuntimeCompilation`）を標準とし、事前 codegen ＋ `TypeLoadMode.Static` は採らない（計画 ADR-0027 が確定済み）。`CSharpFunctionalExtensions` も CPM へ宣言（`PackageVersion` は違反にしない）。#455 | Accepted |
 | [IADR-0218](./IADR-0218_gitkeep-standard-components-scope.md) | 標準構成 7 要素の `.gitkeep` を **4 要素 × 11 サービス = 44 件**へ適用すると決めた（`Worker` は `Api` の別形・`SharedKernel` は集約先が持つ）。**[[IADR-0219]] が決定 1・2・3 を改定** —— 現行は **8 要素・5 要素 × 11 = 55 件**（`Api` と `Worker` は排他）。#455 | Accepted |
 | [IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) | `SharedKernel` の粒度は**サービス単位**とし、per-service の枠を標準構成として認める（**ユニット単位の `Platform.Shared.Kernel` と併存**。境界をまたぐ型はユニット側）。**`Worker` を加えて 8 要素**（`Api` と排他）。`.gitkeep` は **55 件**。裁定 planning#390。起票 #455 | Accepted |
-| [IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md) | 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする。葉証明書は namespace ごとに置き `secretName` は `edge-tls` のまま。**[[IADR-0206]] 決定 4 の P2・P3 を改定**。計画 `ADR-0047` / 裁定 planning#383。起票 #841 | Accepted |
+| [IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md) | 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする。葉は ns ごと・`secretName` は `edge-tls`。**[[IADR-0206]] 決定 4 の P2・P3 と [[IADR-0094]] 決定 2 を改定**。計画 `ADR-0047` / 裁定 planning#383。起票 #841 | Accepted |
 | [IADR-0221](./IADR-0221_playwright-cli-vs-test-runner-scope.md) | Playwright を役割で棲み分ける —— CI の E2E は `@playwright/test` を継続、AI のブラウザ操作は `playwright-cli`、Playwright MCP は導入しない。`@playwright/cli` は package.json に加えない。計画 planning#399 | Accepted |
-| [IADR-0222](./IADR-0222_mcp-json-scope-and-github-server-collision.md) | `.mcp.json` は Context7 のみとし、GitHub MCP はユーザースコープへ置く（`github` は claude-code-action の組み込みと同名で、上書きすると CI の `mcp__github__*` が認証できず AI レビューが死ぬ）。暫定 B（種 X）。planning#402 | Accepted |
+| [IADR-0222](./IADR-0222_mcp-json-scope-and-github-server-collision.md) | `.mcp.json` は Context7 のみとし、GitHub MCP はユーザースコープへ置く（`github` は claude-code-action の組み込みと同名で、上書きすると CI の `mcp__github__*` が認証できず AI レビューが死ぬ）。分類は **A**（キット原本とバイト一致）。planning#402 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
