@@ -9,7 +9,7 @@ related_ids:
   - IADR-0096
 author: claude
 created: 2026-07-25
-updated: 2026-07-25
+updated: 2026-08-17
 related_specs:
   - "../adr/IADR-0103_local-sso-persistence-and-claim-design.md"
   - "../adr/IADR-0084_headlamp-oidc-apiserver-flags.md"

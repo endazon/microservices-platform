@@ -15,7 +15,7 @@ related_ids:
   - ADR-0011
 author: claude
 created: 2026-07-02
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
