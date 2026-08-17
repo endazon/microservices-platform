@@ -271,7 +271,8 @@
 | [IADR-0215](./IADR-0215_notification-service-and-in-app-delivery.md) | FR-22 の通知は **`NotificationService` を新設**して担う（送信上限は単一資源なので数える場所を割らない）。配信は**ポーリング 60 秒**（SSE は #788）。**スキーマにタイトル／本文を置かず**文言はカタログ側。メールは **outbox で従属させない**。上限超過は**繰り越し**。受け皿は `platform/frontend`。#600 | Accepted |
 | [IADR-0216](./IADR-0216_otel-logging-sdk-replaces-serilog.md) | ログの出口を Serilog から OTel Logging SDK へ移す（ADR-0030 の消化）。`CorrelationId` は `BeginScope` ＋ `IncludeScopes` へ。変わる 5 点は本体が持つ。ratchet 42 → 29 | Accepted |
 | [IADR-0217](./IADR-0217_wolverine-runtime-compilation-standard.md) | Wolverine のコード生成は**実行時コンパイル**（`WolverineFx.RuntimeCompilation`）を標準とし、事前 codegen ＋ `TypeLoadMode.Static` は採らない（計画 ADR-0027 が確定済み）。`CSharpFunctionalExtensions` も CPM へ宣言（`PackageVersion` は違反にしない）。#455 | Accepted |
-| [IADR-0218](./IADR-0218_gitkeep-standard-components-scope.md) | 標準構成 7 要素の `.gitkeep` は **4 要素 × 11 サービス = 44 件**へ適用する（`Tests` と `Api` は実体あり）。**`Worker` は `Api` の別形**（実測: Web SDK ＋ 経路を Map）。**`SharedKernel` は集約先が持つ**ため置かない。適用は次の作業。#455 | Accepted |
+| [IADR-0218](./IADR-0218_gitkeep-standard-components-scope.md) | 標準構成 7 要素の `.gitkeep` を **4 要素 × 11 サービス = 44 件**へ適用すると決めた（`Worker` は `Api` の別形・`SharedKernel` は集約先が持つ）。**[[IADR-0219]] が決定 1・2・3 を改定** —— 現行は **8 要素・5 要素 × 11 = 55 件**（`Api` と `Worker` は排他）。#455 | Accepted |
+| [IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) | `SharedKernel` の粒度は**サービス単位**とし、per-service の枠を標準構成として認める（**ユニット単位の `Platform.Shared.Kernel` と併存**。境界をまたぐ型はユニット側）。**`Worker` を加えて 8 要素**（`Api` と排他）。`.gitkeep` は **55 件**。裁定 planning#390。起票 #455 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
