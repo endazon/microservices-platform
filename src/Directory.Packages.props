@@ -63,14 +63,29 @@
          上の MassTransit / FluentAssertions の PackageVersion を削除する。
          Serilog（Serilog.AspNetCore / Serilog.Sinks.OpenTelemetry）は消化済みのため削除した
          （IADR-0216。ログの出口は builder.Logging.AddOpenTelemetry() へ移した）。
+         WolverineFx.RuntimeCompilation と CSharpFunctionalExtensions も同じ未参照エントリである
+         （IADR-0217。由来と参照を足す時期は各行のコメントを参照）。
          ============================================================================ -->
     <!-- Application 層: ローカル/リモートハンドラ・Outbox（ADR-0027）・検証・マッピング・DI -->
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.RabbitMQ" Version="6.24.4" />
     <PackageVersion Include="WolverineFx.Kafka" Version="6.24.4" />
+    <!-- IADR-0217: Wolverine のコード生成は実行時コンパイルを標準とする（事前 codegen ＋
+         TypeLoadMode.Static は採らない）。Wolverine 6 系はコア本体から Roslyn コンパイラを分離しており、
+         本パッケージが無いと既定の TypeLoadMode.Dynamic でホストが起動しない（計画 ADR-0027 §決定 の
+         2026-08-04 追記 / 12_backend-application-stack の移行チェックリスト手順 2）。
+         版は上の WolverineFx 系 3 つと必ず同値に保つ。PackageReference は各サービスの再実装
+         issue（#438〜#451 / #441）が移行と同時に足す。 -->
+    <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.24.4" />
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />
     <PackageVersion Include="Scrutor" Version="7.0.0" />
+    <!-- Result 型の実装（計画 ADR-0041 決定 1。IADR-0217 決定 2・3）。
+         Platform.Shared.Kernel の **内部実装としてのみ** 使う。他プロジェクトの直接参照は禁止で、
+         check-backend-libraries.js の BANNED に載ったままである（IADR-0196 の SHARED_KERNEL_ALLOWED が
+         共有カーネルのときだけ差し引く）。**PackageVersion は同検査の対象外**（同スクリプト冒頭が明示）
+         なので、BANNED 掲載と本宣言は衝突しない。Platform.Shared.Kernel は未作成。 -->
+    <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
     <!-- API 層: ドキュメント UI・バージョニング -->
     <PackageVersion Include="Scalar.AspNetCore" Version="2.16.17" />
     <PackageVersion Include="Asp.Versioning.Http" Version="10.0.1" />

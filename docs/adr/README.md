@@ -270,6 +270,7 @@
 | [IADR-0214](./IADR-0214_gate-inputs-subset-of-workflow-paths.md) | **ゲートが読むファイル ⊆ そのゲートを走らせるワークフローの `paths:`** を不変条件にする。入力は検査器の `path.join` 定数から**導出**し列挙しない。対象ゲートは `run:` から導く。push / pull_request を別々に見る。fail-closed 3 門。 | Accepted |
 | [IADR-0215](./IADR-0215_notification-service-and-in-app-delivery.md) | FR-22 の通知は **`NotificationService` を新設**して担う（送信上限は単一資源なので数える場所を割らない）。配信は**ポーリング 60 秒**（SSE は #788）。**スキーマにタイトル／本文を置かず**文言はカタログ側。メールは **outbox で従属させない**。上限超過は**繰り越し**。受け皿は `platform/frontend`。#600 | Accepted |
 | [IADR-0216](./IADR-0216_otel-logging-sdk-replaces-serilog.md) | ログの出口を Serilog から OTel Logging SDK へ移す（ADR-0030 の消化）。`CorrelationId` は `BeginScope` ＋ `IncludeScopes` へ。変わる 5 点は本体が持つ。ratchet 42 → 29 | Accepted |
+| [IADR-0217](./IADR-0217_wolverine-runtime-compilation-standard.md) | Wolverine のコード生成は**実行時コンパイル**（`WolverineFx.RuntimeCompilation`）を標準とし、事前 codegen ＋ `TypeLoadMode.Static` は採らない（計画 ADR-0027 が確定済み）。`CSharpFunctionalExtensions` も CPM へ宣言（`PackageVersion` は違反にしない）。#455 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
