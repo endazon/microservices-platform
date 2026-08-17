@@ -89,7 +89,94 @@
 | `.claude/` ＋ `claude*.yml` | 使わない（残しても無害。不要なら `--prune` で削除可） |
 | 起票 | Issue を Copilot にアサインすると自律実装が始まる |
 
-## 4. 自動適用（任意）
+## 4. MCP・プラグイン・ブラウザ操作（Claude Code 系プロファイルのみ）
+
+`claude-code` / `api` プロファイルで実施する（Copilot は対象外）。
+
+### 4-1. MCP の承認（必須・初回のみ）
+
+`.mcp.json`（Context7）はキットが配布する。ただし**クローンしただけでは有効にならない**。
+
+1. `claude` を**対話モードで起動**し、ワークスペースの信頼（trust）ダイアログを承諾する。
+2. `/mcp` で `context7` サーバの接続を承認・確認する。
+
+> ヘッドレス実行（`claude -p`・CI）は承認プロンプトを出せないため、先に対話モードで一度
+> 承認を済ませておくこと。Context7 は API キー不要（匿名モード）で動く。
+
+#### 🔴 `.mcp.json` に GitHub MCP を書かない（重要）
+
+**本リポの `.mcp.json` は Context7 のみを持ち、GitHub MCP サーバを定義しない。** 定義してはならない。
+
+- `claude-code-action` は **`github` という名前の GitHub MCP サーバを組み込みで供給する**。
+  同アクションの仕様は「**組み込みと同名のカスタムサーバを定義すると、カスタム側が組み込みを上書きする**」
+  と明記している。
+- Claude Code の非対話モードは **cwd の `.mcp.json` を読み、アクションは `enableAllProjectMcpServers`
+  を自動的に true にする**ため、リポジトリの `.mcp.json` は **CI で自動承認される**。
+- `.mcp.json` に `Bearer ${GITHUB_PAT}` を書いても、**CI に `GITHUB_PAT` は無い**。Claude Code は
+  「変数が無く既定値も無い場合、設定は読み込まれ、警告を出して**リテラル文字列をそのまま使う**」。
+- 結果、**`claude-coding.yml` / `claude-code-review.yml` の `mcp__github__*` が認証できなくなる**。
+  ジョブは success で終わるため、**AI レビューが静かに死ぬ**。
+
+**GitHub 操作は次のとおり手段が分かれている。**
+
+| 面 | 手段 |
+| --- | --- |
+| **CI**（`claude-coding.yml` / `claude-code-review.yml`） | アクションの**組み込み** GitHub MCP（`mcp__github__*`）。`.mcp.json` は関与しない |
+| **ローカルの Claude Code** | 各自の**ユーザー単位設定**で GitHub MCP を持つ。リポジトリでは配布しない |
+
+ユーザー単位で追加するときは、ツール定義数を減らすため toolset を絞ることを推奨する。
+
+```bash
+claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
+  -H "Authorization: Bearer <PAT>" \
+  -H "X-MCP-Toolsets: repos,issues,pull_requests,labels,actions" --scope user
+```
+
+> **【本リポの固有デルタ・種 X】** キット原本（pin `2c78212`）はまだ `github` を含んでいる。
+> 是正 PR は [planning#402](https://github.com/endazon/project-planning/pull/402)。**マージ後に pin を進め、
+> キット原文で上書きして分類 A へ戻す**（[IADR-0222](docs/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)）。
+
+### 4-2. プラグイン・スキルの各自導入（任意・推奨）
+
+プラグインの有効化は**ユーザー単位設定**のためリポジトリでは配布できない。各自 Claude Code 内で導入する。
+**開発規律系は superpowers に統一し、同種プラグイン（ECC / compound-engineering 等）を併用しない。
+UI 生成系も ui-ux-pro-max に統一する**（重複導入するとスキル発火が非決定的になる。採否の判断記録は
+計画リポ `draft/cross-project/20260817_skill-mcp-adoption-decision.md`）。
+
+```text
+# 開発規律（brainstorm → plan → TDD → review）
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+
+# UI 生成品質（フロントエンドを持つリポのみ）
+npx skills add nextlevelbuilder/ui-ux-pro-max-skill
+
+# UI・React の監査ルール（フロントエンドを持つリポのみ。生成系と補完関係）
+npx skills add vercel-labs/agent-skills
+
+# 実ブラウザでの動作確認スキル（公式）
+/plugin marketplace add anthropics/skills
+/plugin install example-skills@anthropic-agent-skills
+```
+
+### 4-3. ブラウザ操作は Playwright CLI + Skills に統一する
+
+E2E・UI 確認のブラウザ操作は **Playwright CLI**（`playwright-cli`）を使う。**Playwright MCP は導入しない**
+（公式がコーディングエージェントには CLI + Skills を推奨。両方入れるとツール選択が不定になる）。
+
+```bash
+npm i -D @playwright/cli@latest
+npx playwright-cli install --skills   # Claude Code 用スキルを配置
+```
+
+> **【本リポの固有デルタ・第 2 種】** 本リポは `src/platform/frontend` で `@playwright/test`（テストランナー）
+> による E2E を**既に CI で運用している**。上の「統一」は**AI エージェントのブラウザ操作**についてのもので
+> あり、**CI の検証資産である E2E テストを `playwright-cli` へ移すことは求めない**。両者の棲み分けは
+> [IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md) で確定した。
+> **`pnpm` workspace では導入階層に注意する** —— `src/` 直下での素の `pnpm exec playwright` は
+> バイナリを解決できず `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` で落ちる（`frontend.yml` に実測コメントあり）。
+
+## 5. 自動適用（任意）
 
 宣言したプロファイルのファイルをまとめて有効化するヘルパーを同梱する。
 

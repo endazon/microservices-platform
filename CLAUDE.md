@@ -68,6 +68,7 @@
 
 - 実装・レビュー・テスト生成にサブエージェントとスラッシュコマンドを活用する。一覧は `.claude/agents/` `.claude/commands/` を参照。
 - 他の AI（Cursor / Codex / GitHub Copilot）を使う場合も、本ファイルおよび `AGENTS.md` の方針（**特にトレーサビリティ最優先**）に従う。
+- **AI のブラウザ操作は `playwright-cli` に統一し、Playwright MCP は導入しない。CI の E2E は `@playwright/test` を継続する**（[IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)。手順は `AI_SETUP.md` §4）。
 - **運用全体（起票→実装→検証→レビュー→マージ）と推奨ツールは `docs/ai-workflow.md`、AI の有効化・認証は `AI_SETUP.md` が正本である**（GitHub 上の `@claude` 呼び出しと自動 AI レビューの配線もそちら）。
 
 ## 自動化・検証・安全
