@@ -67,6 +67,12 @@ const REPO = path.resolve(__dirname, '..');
 // 出典: planning/docs/ai-implementation-workflow-guide.md §8（50KB = 51,200。裁定 planning#364）。複製である。
 const BUDGET_BYTES = Number(process.env.READING_BUDGET_BYTES || 51200);
 const WARN_RATIO = Number(process.env.READING_BUDGET_WARN || 0.9);
+// ★ #730 / [[IADR-0190]] が確保した「恒久的な余白」の下限。**上限だけでは足りない** ——
+//   上限内でも「余白が薄すぎて次の規範を足せない」状態は起こる。
+//   ここに置くのは、**下限を読む場所が 2 つ以上あるため**である（scripts.repo.test.js の
+//   #730 と #790/#793）。リテラルを各所に持つと、片方だけ追随を忘れて静かにずれる
+//   —— 予算値（BUDGET_BYTES）を本ファイルへ集めたのと同じ理由である（#755 / [[IADR-0200]]）。
+const MARGIN_FLOOR_BYTES = Number(process.env.READING_BUDGET_FLOOR || 1000);
 
 /**
  * エージェントごとの自動読み込み集合。
@@ -156,6 +162,8 @@ function selfTest() {
 
   // --- 予算値の複製が正本と同じ値であること（出典の無い複製を認めない） ---
   t('予算の既定は 51,200（計画リポ運用ガイド §8 の複製）', BUDGET_BYTES === 51200 || process.env.READING_BUDGET_BYTES !== undefined);
+  // 🔴 下限を緩める（0 へ落とす）と、#730 と #790/#793 の**両方が同時に黙る**。値を固定する。
+  t('余白の下限の既定は 1,000（#730 / IADR-0190）', MARGIN_FLOOR_BYTES === 1000 || process.env.READING_BUDGET_FLOOR !== undefined);
 
   // --- 集合の展開 ---
   fs.mkdirSync(path.join(tmp, '.claude/rules'), { recursive: true });
@@ -265,4 +273,15 @@ function main(argv = process.argv) {
 }
 
 if (require.main === module) process.exit(main());
-module.exports = { main, measure, resolveSet, verdict, pct, selfTest, AGENT_SETS, BUDGET_BYTES, WARN_RATIO };
+module.exports = {
+  main,
+  measure,
+  resolveSet,
+  verdict,
+  pct,
+  selfTest,
+  AGENT_SETS,
+  BUDGET_BYTES,
+  WARN_RATIO,
+  MARGIN_FLOOR_BYTES,
+};

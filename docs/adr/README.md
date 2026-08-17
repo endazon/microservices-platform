@@ -276,6 +276,7 @@
 | [IADR-0220](./IADR-0220_admin-entrypoint-tls-and-http-redirect.md) | 経路B の admin(50000) entrypoint を TLS 終端にし、web(80) は https へ恒久リダイレクトする。葉は ns ごと・`secretName` は `edge-tls`。**[[IADR-0206]] 決定 4 の P2・P3 と [[IADR-0094]] 決定 2 を改定**。計画 `ADR-0047` / 裁定 planning#383。起票 #841 | Accepted |
 | [IADR-0221](./IADR-0221_playwright-cli-vs-test-runner-scope.md) | Playwright を役割で棲み分ける —— CI の E2E は `@playwright/test` を継続、AI のブラウザ操作は `playwright-cli`、Playwright MCP は導入しない。`@playwright/cli` は package.json に加えない。計画 planning#399 | Accepted |
 | [IADR-0222](./IADR-0222_mcp-json-scope-and-github-server-collision.md) | `.mcp.json` は Context7 のみとし、GitHub MCP はユーザースコープへ置く（`github` は claude-code-action の組み込みと同名で、上書きすると CI の `mcp__github__*` が認証できず AI レビューが死ぬ）。分類は **A**（キット原本とバイト一致）。planning#402 | Accepted |
+| [IADR-0223](./IADR-0223_deferral-ratchet-reads-both-budget-bounds.md) | キット追随の「保留の根拠」ラチェットは必読予算の**上限と下限の両方**を読む（上限だけだと、下限を割って取り込めない状態を「根拠が消えた」と誤判定する）。下限 `MARGIN_FLOOR_BYTES` は check-reading-budget.js が持つ。#853 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は
