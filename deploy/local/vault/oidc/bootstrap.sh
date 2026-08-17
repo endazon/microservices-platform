@@ -23,7 +23,9 @@ fi
 : "${CLIENT_SECRET:?vault-oidc secret も VAULT_OIDC_CLIENT_SECRET env も無い。k8s-local-up.sh を VAULT=1 で実行済みか確認}"
 
 ISSUER="${VAULT_OIDC_DISCOVERY_URL:-http://keycloak:8080/realms/platform}"
-REDIRECTS="http://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback"
+# IADR-0220 (#841): admin(50000) が TLS 終端になったため UI の redirect は https のみ（NFR-11「平文 HTTP を残さない」）。
+# CLI の localhost:8250 はエッジを経由しないローカル callback であり対象外。
+REDIRECTS="https://vault.localhost:50000/ui/vault/auth/oidc/oidc/callback,http://localhost:8250/oidc/callback"
 
 echo "==> auth/oidc を有効化（未有効時のみ・冪等）"
 # 既有効かを先に判定し、未有効のときだけ enable する（enable 失敗＝権限不足等は握りつぶさず set -e で止める）。
@@ -75,6 +77,6 @@ vault auth tune -listing-visibility=unauth -description="Keycloak SSO (OIDC)" oi
 
 echo ""
 echo "done. Vault OIDC ログイン:"
-echo "  UI : http://vault.localhost:50000 （LOCALEDGE=1・Method=OIDC・role=default）"
+echo "  UI : https://vault.localhost:50000 （LOCALEDGE=1・Method=OIDC・role=default）"
 echo "  CLI: vault login -method=oidc role=default"
 echo "  例: developer/developer（platform-admin/operator 保持）→ admin+operator policy。未マッピングは default のみ。"

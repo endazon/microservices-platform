@@ -97,8 +97,10 @@ ESO seed は STEP 0 で自動投入される。**OIDC 設定だけは手動**。
 成功確認:
 
 ```sh
-curl -s --resolve vault.localhost:50000:127.0.0.1 \
-  http://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'   # → ["oidc/"]
+# IADR-0220 (#841): admin(50000) は TLS 終端。selfsigned CA なので --cacert でルート CA を渡す:
+#   kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 \
+  https://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'   # → ["oidc/"]
 ```
 
 ## STEP 3: Wiki.js OIDC（**wikijs DB 再作成時のみ**）
@@ -115,10 +117,12 @@ kubectl -n microservices-platform logs deploy/wiki-js --tail=40 | grep "Authenti
 
 ```sh
 # 各ツールの auth 開始
-curl -s -o /dev/null -w 'argocd  %{http_code}\n' --resolve argocd.localhost:50000:127.0.0.1  http://argocd.localhost:50000/auth/login            # 303
-curl -s -o /dev/null -w 'grafana %{http_code}\n' --resolve grafana.localhost:50000:127.0.0.1 http://grafana.localhost:50000/login/generic_oauth  # 302
-curl -s --resolve minio.localhost:50000:127.0.0.1 http://minio.localhost:50000/api/v1/login | jq -r .loginStrategy                              # redirect
-curl -s --resolve vault.localhost:50000:127.0.0.1 http://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'               # ["oidc/"]
+# IADR-0220 (#841): admin(50000) は TLS 終端。selfsigned CA なので --cacert でルート CA を渡す:
+#   kubectl -n cert-manager get secret local-edge-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > ca.crt
+curl -s -o /dev/null -w 'argocd  %{http_code}\n' --cacert ca.crt --resolve argocd.localhost:50000:127.0.0.1  https://argocd.localhost:50000/auth/login            # 303
+curl -s -o /dev/null -w 'grafana %{http_code}\n' --cacert ca.crt --resolve grafana.localhost:50000:127.0.0.1 https://grafana.localhost:50000/login/generic_oauth  # 302
+curl -s --cacert ca.crt --resolve minio.localhost:50000:127.0.0.1 https://minio.localhost:50000/api/v1/login | jq -r .loginStrategy                              # redirect
+curl -s --cacert ca.crt --resolve vault.localhost:50000:127.0.0.1 https://vault.localhost:50000/v1/sys/internal/ui/mounts | jq -c '.data.auth|keys'               # ["oidc/"]
 
 # 実弾 OFF（最重要・不変であること）
 kubectl -n ai-stock-trading set env deploy/order-execution-service --list | grep Broker__Provider   # paper
@@ -129,7 +133,7 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 
 | ツール | URL | 資格情報 | 管理者への解決経路 |
 | --- | --- | --- | --- |
-| SPA/BFF | `http://localhost/` | `developer`/`developer` | `realm_access.roles` |
+| SPA/BFF | `https://localhost/` | `developer`/`developer` | `realm_access.roles` |
 | Grafana | `grafana.localhost:50000` | `admin`/`admin` | claim `roles` → `platform-admin` → Admin |
 | ArgoCD | `argocd.localhost:50000` | `admin`/`admin` | claim `groups` → `g, platform-admin, role:admin` |
 | MinIO | `minio.localhost:50000` | `admin`/`admin` | claim `policy` = `["consoleAdmin"]`（client ロール） |
@@ -140,7 +144,9 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 
 **ブラウザ側の前提（全 OIDC ツール共通）**: 各ツールは `http://keycloak:8080/...` へリダイレクトするため
 `hosts` に `127.0.0.1 keycloak` ＋ `kubectl -n platform-infra port-forward svc/keycloak 8080:8080` が必要（手順A）。
-`https://<tool>.localhost:50000` は **404**（admin entrypoint は平文 http のみ・IADR-0103）。
+**admin entrypoint (50000) は TLS 終端である**（[[IADR-0220]] / #841。計画 `NFR-11`・`ADR-0047`）ため、
+各ツールは **`https://`** で開く。平文 `http://<tool>.localhost:50000` は TLS ハンドシェイクに失敗する。
+ルート CA を信頼ストアへ入れるまでブラウザ警告が出る（取り出し手順は [edge README](../../deploy/local/edge/README.md)）。
 
 **Headlamp**（現行 k8s では OIDC 不可・token 方式が正式手順・[[IADR-0084]] 追記／#328 は wontfix・#388 へ統合）:
 

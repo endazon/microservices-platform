@@ -476,7 +476,7 @@ minio:
     clientSecretKey: client-secret
     scopes: "openid,profile,email"
     claimName: policy        # MinIO はこのクレーム値に一致する MinIO ポリシーを適用（未一致は deny＝fail-safe）
-    browserRedirectUrl: ""   # 例: http://minio.localhost:50000（Console 公開 URL・OIDC redirect の基準）
+    browserRedirectUrl: ""   # 例: https://minio.localhost:50000（Console 公開 URL・OIDC redirect の基準）
   persistence:
     enabled: true
     size: 20Gi

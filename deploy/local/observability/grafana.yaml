@@ -445,12 +445,12 @@ spec:
             - { name: GF_AUTH_ANONYMOUS_ENABLED, value: "false" }
             # IADR-0091 (#356) PR-2: redirect_uri 構築の基準を集約後 URL（ホスト名ベース・edge admin:50000）へ。
             # Grafana は root_url から redirect_uri=<root_url>login/generic_oauth を「一意に」生成するため、OIDC の
-            # 実効ログイン経路は edge（http://grafana.localhost:50000・LOCALEDGE=1 前提）になる。ホスト名ベース＝
+            # 実効ログイン経路は edge（https://grafana.localhost:50000・LOCALEDGE=1 前提）になる。ホスト名ベース＝
             # ルート配信のため serve_from_sub_path は使わない。集約 Ingress は deploy/local/edge（#357）。
             # ※ LOCALEDGE 未使用の port-forward(3000) 単独では redirect が edge URL を指すため OIDC は完了せず、
             #   fail-safe の local admin へ落ちる（realm には旧 redirect も残すが実効は root_url が決める。
             #   port-forward で OIDC したい場合は本値を http://localhost:3000/ に戻す）。deploy/local/edge/README.md 参照。
-            - { name: GF_SERVER_ROOT_URL, value: "http://grafana.localhost:50000/" }
+            - { name: GF_SERVER_ROOT_URL, value: "https://grafana.localhost:50000/" }
             - { name: GF_AUTH_GENERIC_OAUTH_ENABLED, value: "true" }
             - { name: GF_AUTH_GENERIC_OAUTH_NAME, value: "Keycloak" }
             - { name: GF_AUTH_GENERIC_OAUTH_CLIENT_ID, value: "grafana" }
