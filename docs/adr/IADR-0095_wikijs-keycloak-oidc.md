@@ -73,10 +73,8 @@ helm chart・`values.yaml`・Wiki.js Deployment は無改変（Ingress 既定 di
 ## 影響・トレードオフ
 
 - Wiki.js が `wiki.localhost:50000` で集約到達でき、Keycloak SSO でログインできる（管理UI 設定後）。
-
 - OIDC 設定は runtime（管理UI）＝適用前は既存の認証状態のまま（fail-safe）。dev の Wiki.js DB が消えれば再設定が必要。
 - client secret は Wiki.js が DB 保持で env 注入できないため、grafana/minio のような k8s Secret 注入は行わない（realm
-
   プレースホルダ＋管理UI 入力で非平文を担保）。
 - Site URL を集約 URL に設定するため、port-forward 単独では OIDC redirect が集約 URL を指す（edge 前提・grafana PR-2/
   MinIO と同性質・README 明記）。

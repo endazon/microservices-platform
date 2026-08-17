@@ -73,7 +73,6 @@ helm の OIDC 配線は `minio.oidc.enabled`（既定 false）でゲートし、
 - 変更は opt-in（`minio.oidc.enabled`）と realm/edge への追加のみ。既定オフ時は本番 byte 等価（helm template で確認）。
 - MinIO policy 作成は runtime 手順（mc）。適用前は fail-safe に全 OIDC ユーザーが deny（安全側）。
 - `MINIO_BROWSER_REDIRECT_URL` を集約 URL に固定するため、port-forward 単独（edge 未起動）では OIDC redirect が
-
   集約 URL を指し完了しない→root で入る（[[IADR-0090]] PR-2 の Grafana と同じ性質・README 明記）。
 - Console のエッジ公開は **local 専用オーバーレイ**に閉じる。本番 chart の Console 非公開運用（IADR-0024）は不変。
 
