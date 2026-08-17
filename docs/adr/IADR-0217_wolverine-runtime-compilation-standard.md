@@ -8,7 +8,7 @@ related_ids:
   - ADR-0041
 author: implementation-agent
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md (Wolverine 移行と移行時の必須設定)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (バックエンドライブラリ標準)"
