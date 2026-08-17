@@ -148,6 +148,7 @@ related_specs:
 | `deploy/local/edge/README.md` | 「**admin entrypoint の TLS 化は Tier 3**」 | **是正** |
 | `docs/operations/local-sso-recovery-runbook.md` | 「`https://<tool>.localhost:50000` は **404**（admin entrypoint は平文 http のみ）」 | **是正** |
 | `deploy/local/README.md` / `docs/operations/local-sso-recovery-runbook.md` | SPA/BFF の到達 URL が `http://localhost/` | **是正** |
+| `docs/adr/IADR-0091` §決定 3 の 2026-08-16 追記 | 「[[IADR-0103]]（admin:50000 は平文 http）は動いていない」 | **是正**（日付つき追記。**誤帰属＋陳腐化の 2 点**。下記 §2.5） |
 | `docs/adr/IADR-0094` §決定 / §代替案 | 「edge admin:50000 は**現状 http**・TLS 化に備え両登録」 | **除外**（区分 C。過去の決定の記録。後継は `IADR-0220`） |
 | `docs/adr/IADR-0206` §決定 4 ほか | 「admin:50000 は平文のまま」「`NFR-11` は適用外」 | **除外**（**#834 の領分**） |
 
@@ -161,6 +162,36 @@ related_specs:
   `platform-frontend-ingress.yaml` の **1 件のみ**（＝管理系 4 ファイルは 0 件）。
 - `git grep -I -n -e 'router.entrypoints' -- deploy/local/edge` → `admin` が **7 ルータ**、
   `web,websecure` が **1 ルータ**。
+
+### 2.5 誤帰属の是正 —— 「admin entrypoint は平文 http」は `IADR-0103` の決定ではない
+
+**`IADR-0103` を実測した。**
+
+```
+$ grep -n -e '50000' -e 'entrypoint' -e '平文' docs/adr/IADR-0103_*.md
+（0 件）
+```
+
+同 ADR が扱うのは **`admin` という「ユーザー」**（realm への恒久定義・ツール別 claim 設計・ESO 後の rollout・
+`argocd` DNS エイリアス・Vault の listing visibility）であって、**`admin` という「entrypoint」ではない**。
+**同じ語だが別物である。**
+
+**にもかかわらず、複数の文書が「admin entrypoint は平文 http」の根拠を同 ADR へ帰していた。**
+`IADR-0103` を全走査して母集合を引いた（規則 7。出力を加工せずに読んだ）。
+
+| 場所 | 扱い |
+| --- | --- |
+| `docs/adr/IADR-0220`（本 PR で新設） §関連 / §結果 / §起点 | **是正**（`Supersedes` は `IADR-0206` 決定 4 の後半だけにし、誤帰属の経緯を明記） |
+| `docs/adr/IADR-0091` §決定 3 の 2026-08-16 追記 | **是正**（日付つき追記で帰属と陳腐化の両方を訂正。本文は書き換えない） |
+| `docs/operations/local-sso-recovery-runbook.md` | **是正済み**（本 PR で当該行を書き換えた際に帰属ごと解消した。**ここが誤帰属の発生源**である） |
+| `docs/adr/IADR-0206` 2 箇所（34 行 / 158 行） | **除外** —— **#834（PR #843）が編集中**であり、本 PR は同ファイルに 1 バイトも触らない |
+| `docs/specs/20260816_issue-779_...` / `20260725_issue-354_...` | **除外**（確定済みの作業仕様書） |
+
+**`IADR-0103` の本文は触らない。同 ADR は何も間違っていない。**
+
+**教訓**: 誤帰属は**出典に当たらずに引き写す**ことで伝播する。本 PR の初稿は、書き換えた当の行から
+`IADR-0103` を `Supersedes` へ引き写していた。**`Supersede` すると書く前に、その ADR を開いて
+当該決定が実在することを確かめる。**
 
 ## 3. 対象範囲
 
@@ -254,6 +285,28 @@ namespace に散っている。
 `scripts/k8s-local-up.test.js` の既存の型（マニフェストを読んで正規表現で固定する・外部依存ゼロ）に従う。
 CI に `kustomize build` / `kubeconform` を走らせるジョブは無い（#783 の領分）ため、静的検査で担保する。
 `scripts/check-realm-constraints.js` の必須 URL 表も https へ揃え、realm 側と二重化しない。
+
+## 6.1 ★ 検証の限界 —— 実 TLS ハンドシェイクは確認していない
+
+**本作業の担保は静的検査（`k8s-local-up.test.js` 75 件・うち本件が 3 件）と変異試験 5 通りだけである。
+「HTTPS 化が動作することを検証した」とは読まないこと。**
+
+| 確かめたこと | 手段 |
+| --- | --- |
+| マニフェストに TLS 設定が在る | `k8s-local-up.test.js`（正規表現でマニフェストを読む） |
+| 7 ルータすべてが `spec.tls(edge-tls)` を持つ | 同上（**ドキュメント単位**で見る。ファイル単位では 1 件の平文化を見逃した） |
+| 3 つの namespace に葉証明書が在る | 同上 |
+| 壊すと試験が落ちる | 変異試験 5 通り（生ログは PR 本文） |
+
+| **確かめていないこと** | 理由 |
+| --- | --- |
+| **実 TLS ハンドシェイクが成立するか** | 作業環境に k8s / k3d が無く、クラスタを立てていない |
+| **CI が代わりに確かめてくれるか** | **確かめない。** CI の `k8s-local-up-smoke` ジョブは **15 秒で終わっており、実クラスタを立てていない**（静的検査である） |
+| ブラウザ・`curl` が証明書を検証できるか | 信頼ストアは環境の側にある（[[IADR-0206]] の「検出しないこと」と同じ） |
+| OIDC ラウンドトリップが https で最後まで通るか | 上と同じ。**realm の redirect を書き換えた以上、ここは実機で踏むまで未知である** |
+
+**つまりローカルでも CI でも実 TLS ハンドシェイクは未確認である。**
+実機確認は `LOCALEDGE=1 bash scripts/k8s-local-up.sh` を実走できる環境で行う必要がある。
 
 ## 7. 計画書との差異
 

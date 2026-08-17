@@ -32,7 +32,8 @@ plan_refs:
   `ADR-0023`（自動化・配布層は cert-manager）。
 - 実装 ADR: [[IADR-0206]]（経路B のエッジ TLS 終端＝ cert-manager の selfsigned→CA・`edge-tls`）、
   [[IADR-0091]]（経路B のエッジは Traefik・admin:50000 へホスト名ベース集約）、
-  [[IADR-0103]]（経路B の SSO の恒久化）。
+  [[IADR-0103]]（経路B の SSO の恒久化。**`admin` ユーザーの ADR であり entrypoint の ADR ではない**。
+  本 ADR は同 ADR を Supersede しない —— §関連 を参照）。
 
 ## コンテキストと課題
 
@@ -147,7 +148,9 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
   - **`curl` に `--cacert ca.crt` が要る。** 手順書の疎通確認コマンドをすべて書き換えた。
   - **平文 `http://<tool>.localhost:50000` は TLS ハンドシェイクに失敗する。** 「404」ではなく
     「ハンドシェイク失敗」に変わったため、**古い URL を控えている利用者には別の見え方になる**。
-    手順書の該当記述（[[IADR-0103]] を引いて「平文 http のみ・https は 404」と書いていた 2 箇所）を書き換えた。
+    手順書の該当記述（「平文 http のみ・https は 404」と書いていた 2 箇所）を書き換えた。
+    **その記述は前提を [[IADR-0103]] に帰していたが、同 ADR にその決定は無い**（上記 §関連）。
+    書き換えにあたって**誤帰属も併せて解消した**。
   - **証明書が 3 本になる**（namespace ごと）。更新は cert-manager が担うため運用手数は増えない。
 - **フォローアップ**:
   - **条文の追随（[[IADR-0206]] 決定 4 前半・`NFR-11` 適用外の整理の撤回）は #834 が持つ。**
@@ -163,6 +166,14 @@ TLS を終端するのは Traefik であり、そこから `argocd-server` へ�
 
 ## 関連
 
-- Supersedes: **[[IADR-0206]] 決定 4 の後半**（`http` 経路を残す・恒久リダイレクトを足さない）と、
-  **[[IADR-0103]] が前提にしていた「admin entrypoint は平文 http」**。
+- Supersedes: **[[IADR-0206]] 決定 4 の後半**（`http` 経路を残す・恒久リダイレクトを足さない）**のみ**。
 - Superseded by: なし
+- **[[IADR-0103]] は Supersede しない。** 本 ADR の初稿は「同 ADR が前提にしていた『admin entrypoint は平文 http』」と
+  書いていたが、**実測すると同 ADR に `50000` も `entrypoint` も `平文` も 1 件も無い**
+  （`grep -n -e '50000' -e 'entrypoint' -e '平文' docs/adr/IADR-0103_*.md` → 0 件）。
+  同 ADR が扱うのは **`admin` という「ユーザー」**（realm への恒久定義・ツール別 claim 設計・ESO 後の rollout・
+  `argocd` DNS エイリアス・Vault の listing visibility）であって、**`admin` という「entrypoint」ではない** ——
+  同じ語だが別物である。前提を同 ADR に帰していたのは
+  [`../operations/local-sso-recovery-runbook.md`](../operations/local-sso-recovery-runbook.md) の括弧書きの側で、
+  **本 ADR の初稿はその誤帰属を出典に当たらずに引き写していた**。#841 で当該記述を書き換えた際に**帰属ごと解消した**。
+  **同 ADR の本文は触っていない**（同 ADR は何も間違っていない）。`related_ids` に残しているのは関連するためである。

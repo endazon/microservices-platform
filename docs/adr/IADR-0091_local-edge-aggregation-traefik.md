@@ -11,7 +11,7 @@ related_ids:
   - IADR-0206
 author: claude
 created: 2026-07-20
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ (ADR-0006 CI/CD・運用基盤)"
 ---
@@ -57,7 +57,16 @@ delete→再作成が必要（README のユーザー手順・破壊操作はユ�
 > **覆ったのは「443 は Traefik 既定の自己署名証明書（実 TLS は別途）」の 1 文だけ** ——
 > cert-manager の selfsigned→CA `ClusterIssuer` が発行する `edge-tls` で終端するようになった
 > （`ADR-0023` が定めた `secretName` と `dnsNames` の安定という設計要件に合わせてある）。
-> **決定 4・決定 5 と [[IADR-0103]]（admin:50000 は平文 http）は動いていない。**
+> **決定 4・決定 5 は動いていない。**
+>
+> **［2026-08-17 追記 / #841］上の 1 文は当初「決定 4・決定 5 と [[IADR-0103]]（admin:50000 は平文 http）は
+> 動いていない」と書いていた。2 点を是正する。**
+> ① **`admin:50000` が平文であることの根拠を [[IADR-0103]] に帰していたのは誤りである** ——
+> 同 ADR に `50000` も `entrypoint` も `平文` も 1 件も無く、扱っているのは **`admin` という「ユーザー」**
+> （realm への恒久定義・ツール別 claim 設計）であって **entrypoint ではない**。
+> ② **`admin:50000` はもう平文ではない** —— [[IADR-0220]] が TLS 終端にした
+> （計画 `NFR-11` の適用範囲が経路B にも及ぶと確定したため。裁定 planning#383 / 計画 `ADR-0047`）。
+> **決定 4 のホスト名ベース集約そのものは引き続き有効である**（変わったのは scheme だけである）。
 
 Traefik 標準 entrypoint `web`(80)/`websecure`(443) に Ingress を張り、`/bff`→`bff-service:8080`、catch-all
 `/`→`frontend-service:8080`（rewrite 無し＝prod `edge.yaml` と同契約）。443 は Traefik 既定の自己署名証明書
