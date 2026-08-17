@@ -11,7 +11,7 @@ related_ids:
   - IADR-0177
 author: claude
 created: 2026-08-11
-updated: 2026-08-16
+updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
 ---
@@ -25,6 +25,28 @@ plan_refs:
 >
 > **本別紙が持つのは「過去の pin でどう引き直したか」「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れないか」の記録だけ**である（[[IADR-0172]] 決定 3 の段 5 ／ [[IADR-0173]] 決定 2）。
+
+### ［2026-08-17］pin `8cae89d` → `767a9d48`（走査基準は `8cae89d` → `767a9d48`）
+
+**`ADR` だけが `0001..0046` → `0001..0047` へ増えた**（`ADR-0047` = エッジ TLS 証明書の運用はローカル検証環境〔経路B〕にも及ぶ。`ADR-0023` §決定 の部分改定。裁定 planning#383 / PR planning#386）。
+**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件）。前世代と同じコマンドを新旧両 pin で走らせ、出力を並べて突き合わせた（作業仕様書 [`20260817_planning-pin-767a9d48.md`](../specs/20260817_planning-pin-767a9d48.md) §2 に貼付）。
+
+**`ADR` の欠番は `seq 1 47` との `diff` で機械的に確かめた**（EXIT=0）。「47 件あるから連番」は連番の証明にならない、という前世代の作法をそのまま踏襲している。
+
+```bash
+diff <(git -C planning ls-tree -r --name-only 767a9d48 -- projects/microservices-platform/07_adr/ \
+        | grep -oE 'ADR-[0-9]{4}' | sort -u) \
+     <(seq -f 'ADR-%04g' 1 47)
+```
+
+**状態も引き直した**（`Proposed` でも ID としては実在するが、着手条件の判断に効くため）。
+
+| 時点 | Accepted | Proposed | Superseded | 非 Accepted の内訳 |
+| --- | ---: | ---: | ---: | --- |
+| `8cae89d` | 40 | 5 | 1 | `ADR-0003`〔Superseded〕/ `ADR-0038` `ADR-0039` `ADR-0040` `ADR-0041` `ADR-0042`〔Proposed〕 |
+| `767a9d48` | 42 | 4 | 1 | `ADR-0003`〔Superseded〕/ `ADR-0039` `ADR-0040` `ADR-0041` `ADR-0042`〔Proposed〕 |
+
+差の内訳は **`ADR-0038` が `Proposed` → `Accepted` へ確定**（planning#392 / PR planning#394。MSP 分はこれ 1 件で、同 PR の残り 3 件は AST である）と、**`ADR-0047` の新設**（Accepted）の 2 つである。
 
 ### ［2026-08-16］pin `4d6a7d6` → `8cae89d`（走査基準は `4d6a7d6` → `8cae89d`）
 
@@ -63,7 +85,7 @@ planning#344（ABAC の `owner` が実データ 0 件）と planning#346（Wiki.
 
 ## 1. 過去の pin での引き直しの記録
 
-**現行 pin（`8cae89d`）でのレンジは入口にある。以下は、それ以前の各世代で引き直した記録である。**
+**現行 pin（`767a9d48`）でのレンジは入口にある。以下は、それ以前の各世代で引き直した記録である。**
 **世代数は書かない**——本節へ 1 世代足すたびに腐る導出値であり、実際に入口と本紙が
 「5 世代」で揃ったまま実体（`X → Y` の記録）だけが増えていた（#793 で是正。母集合の規則 10）。
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
