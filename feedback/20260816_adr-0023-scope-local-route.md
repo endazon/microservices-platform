@@ -1,7 +1,7 @@
 ---
 title: ADR-0023（エッジ TLS の cert-manager ＋ Let's Encrypt）の適用範囲に経路B が含まれるかが読み取れない
 type: plan-feedback
-status: open
+status: accepted
 category: 要求の不足
 related_ids:
   - ADR-0023

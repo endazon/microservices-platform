@@ -1,7 +1,7 @@
 {
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2 / IADR-0192。#755 で planning#363 の新定義へ改めた）。",
-    "書式・値域の正はキットの kit-sync-classification.example.json（pin 8cae89d）である。分類表の中身はリポジトリ固有。",
+    "書式・値域の正はキットの kit-sync-classification.example.json（pin 767a9d48）である。分類表の中身はリポジトリ固有。",
     "",
     "A = キットとバイト一致であるべきファイル。check-kit-sync.js が機械検査する。",
     "B = キット土台 ＋ 固有デルタ。値の先頭は下の種の番号、または X。",
@@ -28,7 +28,6 @@
   ],
   "classes": {
     "A": [
-      ".claude/rules/traceability.md",
       ".claude/agents/adr-guardian.md",
       ".claude/agents/plan-feedbacker.md",
       ".claude/agents/test-author.md",
@@ -107,6 +106,7 @@
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
+      ".claude/rules/traceability.md": "X. 5 種に当たらない（**期限つきの暫定**。IADR-0204 決定 1 のラチェットつき）。キット版が pin 767a9d48 で 24,592B → 25,963B（**+1,371B**）へ育ったが、必読規約の余白は **1,069B** しかなく、取り込むと合計 51,502B となって予算 51,200B を **302B 超過**する（実測 2026-08-17。値はここに書いても腐るだけなので判定に使わない —— 判定は scripts.repo.test.js の #790 / #793 ラチェットが実ファイルからライブ計算する）。**#790 とまったく同型の再来である**（あのときは +3,002B で、#793 の減量が着地してから A へ戻した）。育った中身は本リポが #799 で環流した『PR タイトル末尾 (#NNN) は PR 自身の番号である』の解説と PR_NUMBER の受け渡しであり、**規範としては本リポに既に在る**（companion と pr-title.yml と check-commit-messages.js が実装済み）。したがって取り込めないことで失う規範は無く、失うのはバイト一致だけである。**減量が着地したらキット原文で上書きし分類 A へ戻す。** 追跡: #793 系の減量（新規起票）",
       ".claude/agents/spec-implementer.md": "X. 4 種に当たらない（母集合の規則 1〜6 の表）。★ 向きは逆で本リポが先（キットは表を持たない）。環流済み。追跡: #736 / planning#337",
       ".claude/commands/new-spec.md": "X. 4 種に当たらない（キット側のテンプレート名の誤りの是正）。是正依頼済み。追跡: #736 / planning#338",
       ".claude/settings.json": "1. リポジトリ構成（src/ai-stock-trading submodule 向けの許可コマンド）",
