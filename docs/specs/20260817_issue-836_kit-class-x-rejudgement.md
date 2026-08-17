@@ -317,6 +317,62 @@ EXIT=1
 
 （初版はこの 3 行目が握り潰されて EXIT=1・`0 件検査…` を返していた。**規則 7 の「引き直す」で検出した。**）
 
+#### ★ 上の 3 方向のうち、CI で固定したのは 2 本である（判別力は非対称）
+
+**手で実走しただけでは退行を止められない。** 上の表は本書に残る実行ログでしかなく、
+**旧実装へ戻しても CI は緑を返す**（既存の 2 試験 —— `lib/` 不在の門と git 非管理下の
+fail-open —— は**キット版 `scripts.test.js` が元から持っていたもの**で、握り潰しそのものは
+1 件も見ていない）。よって `scripts/scripts.repo.test.js` の末尾へ**回帰試験 2 本**を足した。
+
+**置き場所が companion である理由**: `scripts/scripts.test.js` は本作業で**分類 A（バイト一致）**へ
+戻したところであり 1 バイトも足せない。そして `lib/worktree-state.js` への結線は**分類 B 種 3
+（本リポ固有）**で、キット版の検査器には存在しない —— **キットへ環流する筋のものではない。**
+
+| 試験 | 変異させる `lib/worktree-state.js` | 判別力 |
+| --- | --- | --- |
+| **1（本命）** | `require('./nonexistent-xyz.js')` を含む | **旧実装を捕まえる** |
+| **2（保険）** | 構文エラー | **旧実装を捕まえない**（下記） |
+
+**2 本は等価ではない。** 旧実装の条件は `e.code === 'MODULE_NOT_FOUND' && /worktree-state/.test(e.message)`
+であり、**`SyntaxError` は `.code` を持たない**ので条件が偽になって旧実装でも throw する。
+試験 2 が効くのは `catch (e) {}` のように catch を広げすぎる**将来の**退行に対してであって、
+**当のバグは検出しない。「2 本あるから握り潰しは固定されている」と読んではならない。**
+
+**判定は終了コードではない。** 握り潰した場合も 0 件走査の門が exit 1 を返すため、
+両者はどちらも EXIT=1 である。**門のメッセージが出ていないこと**（`assert.doesNotMatch`）が
+「握らずに伝播した」ことの証拠であり、これが 3 つ目の assert の役目である。
+
+**この 2 本自身に変異試験を当てた**（宣言だけでは不合格。検査器の 91-98 行を旧実装へ
+一時的に戻して実測し、**確認後に元へ戻した**。`git diff` で復元を確認済み）。
+
+```
+# 旧実装（メッセージ判別）へ戻して全件実行
+$ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js > t2.log 2>&1; echo "EXIT=$?"
+EXIT=1
+$ tail -12 t2.log
+AssertionError [ERR_ASSERTION]: lib 側の MODULE_NOT_FOUND を握り潰している（伝播していない）:
+[check-cross-repo-refs] 走査 0 件 / 除外 0 件（scripts/ の非 Markdown）
+[check-cross-repo-refs] 走査対象のファイルを 1 件も見つけられませんでした。
+  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。
+    at .../scripts/scripts.repo.test.js:8093:14      # ← 試験 1 の 2 つ目の assert
+```
+
+**試験 1 が落ちた**（＝退行を捕まえる）。走者は最初の失敗で中断するため試験 2 はこの実行では
+走らない。よって**試験 2 の 3 つの assert を同じ旧実装に対して個別に実測した**:
+
+```
+$ node mt2/scripts/check-cross-repo-refs.js; echo "EXIT=$?"
+SyntaxError: Unexpected end of input
+    ...
+    at Object.<anonymous> (.../mt2/scripts/check-cross-repo-refs.js:91:44)
+EXIT=1
+```
+
+`status !== 0`・`/SyntaxError/` に一致・**門のメッセージは出ていない** —— **3 つとも成立する。
+つまり試験 2 は旧実装でも通ってしまう。** 上に書いた非対称の実証である。
+
+**復元後の全件実行**: `EXIT=0` / **`✓ 651 tests passed`**（649 → 651。増分は上の 2 本）。
+
 ### キット原文とのバイト一致
 
 ```
