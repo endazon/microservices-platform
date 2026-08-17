@@ -5007,9 +5007,12 @@ module.exports = ({ ok, assert }) => {
       //
       //   `options.env.PATH` でも親の `process.env.PATH` でも素通りする。**Node は shell:false での
       //   `.cmd` / `.bat` 実行を拒否する**（CVE-2024-27980 対策）ため、PATH 解決がシムを飛ばして
-      //   実体の `git.exe` に当たる。**本リポの検査器は `execFileSync('git'` が 20 件・
-      //   `spawnSync('git'` が 3 件**であり、本テストが見る 2 本もそちらなので、
-      //   `.cmd` ラッパーを足しても永久に捕まらない。
+      //   実体の `git.exe` に当たる。**本テストの母集合（下の 38 検査器）で数えると
+      //   `execFileSync('git'` が 5 ファイル 7 件・`spawnSync('git'` が 0 件・
+      //   `execSync(\`git` が 2 ファイル 2 件**であり、**`TRACKED_CHECKERS` の 2 本は
+      //   どちらも `execFileSync`** である（`check-cross-repo-refs.js` 1 件 /
+      //   `check-plan-id-qualification.js` 2 件）。したがって `.cmd` ラッパーを足しても
+      //   永久に捕まらない。
       //
       //   したがって **`child_process` を JS レベルでフックする**。検査器の起動は
       //   `spawnSync(process.execPath, …)` なので `--require` を 1 つ足すだけでよい
@@ -5038,6 +5041,11 @@ module.exports = ({ ok, assert }) => {
           '  };',
           '}',
           // shell 経由（`execSync('git …')`）は文字列で来る。先頭の `git` を剥がして同じ書式にする。
+          //
+          // **検出しないこと（明示する）**: コマンド文字列の**先頭トークンが git** である形だけを見る。
+          // `cd x && git …` のような複合コマンド中の git は捕まえない（旧 PATH シムは PATH 解決
+          // 経由で捕まえた）。**現行の 2 件はいずれも `` `git ${args}` `` の単純形であり実害は無い**が、
+          // 複合形が増えたら本フックを広げること（#852 の AI レビュー 🟢）。
           "for (const name of ['execSync', 'exec']) {",
           '  const orig = cp[name];',
           '  cp[name] = function (cmd) {',

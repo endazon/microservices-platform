@@ -8,7 +8,7 @@ related_ids:
   - IADR-0183
 author: claude
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-18
 plan_refs:
   - "../../planning/docs/ai-implementation-workflow-guide.md (§8 メタ作業の統制)"
 related_specs:
@@ -59,10 +59,17 @@ Windows の区切り `;` に合わない。**ただしこれを直しても解�
 **Node は shell:false での `.cmd` / `.bat` 実行を拒否する**（CVE-2024-27980 対策）ため、
 PATH 解決がシムを飛ばして実体の `git.exe` に当たる。
 
-**本リポの検査器の git 起動は `execFileSync('git'` 20 件 / `spawnSync('git'` 3 件 /
-`execSync(\`git` 5 件**であり、**本テストが見る 2 本**
+**本テストの母集合（38 検査器）で数えると `execFileSync('git'` 5 ファイル 7 件 /
+`spawnSync('git'` 0 件 / `execSync(\`git` 2 ファイル 2 件**であり、**本テストが見る 2 本**
 （`check-cross-repo-refs.js` / `check-plan-id-qualification.js`）**も `execFileSync` である**。
 → **`.cmd` ラッパーでは永久に捕まらない。**
+
+> **［自己是正］起案時の数値（`execFileSync` 20 件 / `spawnSync` 3 件 / `execSync` 5 件）は誤りである。**
+> **母集合に `scripts.test.js` / `scripts.repo.test.js` を含めて数えていた** —— テストハーネス自身が
+> フィクスチャ構築で git を呼ぶため、その分が乗っていた。**とくに `spawnSync('git'` は検査器では 0 件**で、
+> 3 件はすべてテスト由来である。**母集合の規則（走査対象を先に確定する）を破った**。
+> **結論は変わらない** —— 本テストが見る 2 本はどちらも `execFileSync` であり、`.cmd` では捕まらない。
+> 検出は #852 の AI レビュー 🟡。**元の数値は消さず、誤りとして残す。**
 
 ## 4. 決めたこと
 
@@ -88,6 +95,14 @@ grep -lnE "(spawnSync|execFileSync|execSync)\((['\"`])?(bash|sh|process\.execPat
 ```
 
 → **旧シムと同じ範囲を覆う。**
+
+### 検出しないこと（明示する）
+
+**`execSync` フックはコマンド文字列の先頭トークンが `git` である形だけを見る。**
+`cd x && git …` のような**複合コマンド中の git は捕まえない**（旧 PATH シムは PATH 解決経由で
+捕まえた）。**現行の 2 件はいずれも `` `git ${args}` `` の単純形であり実害は無い**が、
+**「旧シムと同じ範囲を覆う」は複合形が無いことを前提とする条件つきの主張である**。
+複合形が増えたらフックを広げること（#852 の AI レビュー 🟢）。
 
 ### むしろ厳密になった点
 
