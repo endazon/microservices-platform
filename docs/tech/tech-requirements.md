@@ -147,7 +147,7 @@ src/<unit>/backend/Services/<Name>Service/
 **`Worker` が HTTP 面を持つことは `Worker` であることと矛盾しない** —— 区別の軸はホストの主目的である。
 
 **実体が無い要素は、空フォルダ ＋ `.gitkeep` を置く**（`.csproj` は作らない。計画 §規範性・粒度・置き場）。
-**適用は未実施**であり、次の作業で行う（対象 55 件。件数の正は
+**適用済みである**（#838。**55 件 ＋ 雛形 1 件**。件数の内訳の正は
 [IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 3）。
 
 **`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**

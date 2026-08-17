@@ -17,7 +17,7 @@ created: 2026-08-17
 updated: 2026-08-17
 plan_refs:
   - "../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md (§規範性・粒度・置き場。2026-08-04 確定・fixed)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (ライブラリ標準・選定基準 2)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (ライブラリ標準・選定基準 1〜4)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0019_unit-first-repo-structure.md (ユニット第一構成・決定 4)"
 ---
 
@@ -283,6 +283,12 @@ plan_refs:
   **フロント側にも検査器は置かれていない**（実測: `scripts/` に `.gitkeep` を検査するものは無い）。
   同じ規則の別の面で片方だけ検査器を持つのは筋が通らない。
 - **本 PR は適用しないので、いま検査器を置けば 44 件を即 fail させる**（fail-closed の意味が無い）。
+
+> **［2026-08-17 追記 / #455］決定 4 そのものは無傷だが、「置く条件」の前提は #838 で武装された。**
+> 上の「バックエンドはそもそも未適用」は**当時の実測**であり、**現在は適用済みである**（55 件 ＋ 雛形 1 件）。
+> したがって決定 4 が定める再評価条件——①既存 `.gitkeep` の削除 ②新規サービスで枠が置かれない——は
+> **これ以降、実際に起こり得る**。**「同型の事故が 2 回起きたら」の計数はここから始まる**（現時点で 0 回）。
+> **決定は変えない。** 変わったのは「まだ起こり得ない」から「起こり得るが、まだ起きていない」への状態である。
 
 **置く条件（先に書く）**: 適用 PR のマージ後に、次のいずれかが **2 回**起きたとき。
 ①既存の `.gitkeep` が削除される、②新規サービス追加時に枠が置かれない。
