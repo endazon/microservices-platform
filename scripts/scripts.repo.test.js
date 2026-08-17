@@ -4998,12 +4998,55 @@ module.exports = ({ ok, assert }) => {
     ok('#683: クラス分類が実挙動の git 使用と一致する（両方向）', () => {
       const os = require('os');
       const shimDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-shim-'));
-      const realGit = spawnSync('bash', ['-lc', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
-      assert.ok(realGit, 'git が見つからない（本検査は git の実挙動を測る）');
+      // ★★ PATH へ偽の `git` を置く方式はやめた（#851）。**Windows では原理的に効かない。**
+      //
+      //   実測（2026-08-17）:
+      //     execFileSync('git', args) / spawnSync('git', args)（shell:false） … **素通り**
+      //     execSync('git …')（shell 経由）                                   … 経由する
+      //     execFileSync(<絶対パス>/git.cmd, args)                            … **EINVAL**
+      //
+      //   `options.env.PATH` でも親の `process.env.PATH` でも素通りする。**Node は shell:false での
+      //   `.cmd` / `.bat` 実行を拒否する**（CVE-2024-27980 対策）ため、PATH 解決がシムを飛ばして
+      //   実体の `git.exe` に当たる。**本リポの検査器は `execFileSync('git'` が 20 件・
+      //   `spawnSync('git'` が 3 件**であり、本テストが見る 2 本もそちらなので、
+      //   `.cmd` ラッパーを足しても永久に捕まらない。
+      //
+      //   したがって **`child_process` を JS レベルでフックする**。検査器の起動は
+      //   `spawnSync(process.execPath, …)` なので `--require` を 1 つ足すだけでよい
+      //   （`NODE_OPTIONS` の引用符問題も避けられる）。**プラットフォーム分岐は作らない**
+      //   —— CI とローカルが同じものを測る状態を保つ。
+      //
+      //   **検査器は入れ子でプロセスを起動しない**（実測: `bash` / `node` / `process.execPath` の
+      //   起動は 0 件）ため、直接の子プロセスだけをフックすれば旧シムと同じ範囲を覆う。
+      const probe = path.join(shimDir, 'git-probe.js');
       fs.writeFileSync(
-        path.join(shimDir, 'git'),
-        `#!/bin/bash\necho "$@" >> "$GIT_SHIM_LOG"\nexec ${realGit} "$@"\n`,
-        { mode: 0o755 },
+        probe,
+        [
+          "'use strict';",
+          "const fs = require('fs');",
+          "const cp = require('child_process');",
+          'const LOG = process.env.GIT_SHIM_LOG;',
+          // 旧シムの `echo "$@"` と同じ書式（引数をスペース連結して 1 行）で追記する。
+          'const write = (parts) => { try { fs.appendFileSync(LOG, parts.join(" ") + "\\n"); } catch (_) {} };',
+          // `git` / `git.exe` / 絶対パスのいずれでも拾う。
+          'const isGit = (f) => /(^|[\\\\/])git(\\.exe)?$/i.test(String(f));',
+          "for (const name of ['execFileSync', 'spawnSync', 'execFile', 'spawn']) {",
+          '  const orig = cp[name];',
+          '  cp[name] = function (file, args) {',
+          '    if (isGit(file) && Array.isArray(args)) write(args);',
+          '    return orig.apply(this, arguments);',
+          '  };',
+          '}',
+          // shell 経由（`execSync('git …')`）は文字列で来る。先頭の `git` を剥がして同じ書式にする。
+          "for (const name of ['execSync', 'exec']) {",
+          '  const orig = cp[name];',
+          '  cp[name] = function (cmd) {',
+          '    const m = /^\\s*(?:"[^"]*git(?:\\.exe)?"|\\S*git(?:\\.exe)?)\\s+([\\s\\S]+)$/.exec(String(cmd));',
+          '    if (m) write([m[1]]);',
+          '    return orig.apply(this, arguments);',
+          '  };',
+          '}',
+        ].join('\n'),
       );
       try {
         // 母集合は**検査器**である。生成器・投入スクリプトは対象外であり、**実行もしない**
@@ -5049,11 +5092,11 @@ module.exports = ({ ok, assert }) => {
         for (const f of scripts) {
           const log = path.join(shimDir, `${f}.log`);
           fs.writeFileSync(log, '');
-          spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
+          spawnSync(process.execPath, ['--require', probe, path.join(REPO, 'scripts', f)], {
             cwd: REPO,
             encoding: 'utf8',
             maxBuffer: 64 * 1024 * 1024,
-            env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}`, GIT_SHIM_LOG: log },
+            env: { ...process.env, GIT_SHIM_LOG: log },
           });
           for (const raw of fs.readFileSync(log, 'utf8').split('\n').filter(Boolean)) {
             // `-C <path>` を剥がす。剥がした先が本リポ以外なら数えない。
