@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 雛形（`templates/unit-template/backend`）のテストプロジェクトを 2 本から 1 本へ畳む（#455 規範性 A-4）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-14
   - NFR
@@ -122,7 +122,7 @@ $ grep -n "フォルダで分け" projects/microservices-platform/06_technical/1
 | 除外対象 | 件数の目安 | 除外の理由 |
 | --- | --- | --- |
 | `src/**` の `Knowledge.IntegrationTests`（`src/knowledge/backend/Tests/`） | 軸 2 の大半（約 25 ファイル） | **ユニット横断の統合テストプロジェクト**であり、A-4 が言う「サービス単位の `Tests`」とは別の層である（`src/README.md` L37 が「ユニット横断」と明示）。加えて本作業は `src/` を 1 バイトも変更しない前提で走らせている |
-| `src/**` の各サービスの `<Name>.Api.Tests` | 14 プロジェクト | **すでに 1 プロジェクトで A-4 に準拠**（`git ls-files "src/*/backend/**/*Tests*.csproj"` で全数確認済み）。是正対象が無い |
+| `src/**` の各サービスの `<Name>.Api.Tests` | 14 プロジェクト | **A-4 の前段「1 プロジェクト」には準拠済み**（`git ls-files "src/*/backend/**/*Tests*.csproj"` で全数確認）。**ただし後段「Unit / Integration はフォルダで分ける」は 14 本すべて未達である** —— 実測: `git ls-files 'src/**' \| grep -E "Tests/(Unit\|Integration)/"` が **0 件**で、単体と統合がフラットに同居している。本作業は `src/` を 1 バイトも変更しない前提なので**射程外**だが、**「A-4 に準拠」と一括りにすると後段の未達が隠れる**ので分けて書く。後段の是正は #455 が引き続き追跡する |
 | `docs/specs/**`（23 ファイル） | 軸 2/9/10 の多数 | **確定済みの作業仕様書は書き換えない**（`.claude/rules/traceability.repo.md`）。過去の実測値・当時の構成を記録した歴史であり、現在形の規範ではない |
 | `docs/adr/**`（IADR-0061 / 0062 / 0130 / 0151 / 0163 / 0186） | 6 ファイル | 全数を目視した。**いずれも実在する `Knowledge.IntegrationTests`（および旧名 `KnowledgePlatform.IntegrationTests`）の改名・脆弱性ピン・パス実在検査の記録**であり、雛形のテストプロジェクト構成とは無関係 |
 | `scripts/check-unit-dependencies.js` / `backend-library-baseline.json` / `scripts.repo.test.js` / `check-cpm-versions.js` L358・L377 | 5 行 | 実在する `Knowledge.IntegrationTests` の**実パス**、または検査器の合成フィクスチャ（`templates/unit-template/backend/T/T.csproj` 等の架空パス）。雛形の実ファイルを指していない |
