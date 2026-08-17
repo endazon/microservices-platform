@@ -8,6 +8,7 @@ related_ids:
   - IADR-0192
   - IADR-0221
 plan_refs:
+  - "../../planning/draft/cross-project/20260817_mcp-json-github-server-collision.md"
   - "../../planning/draft/cross-project/20260817_skill-mcp-adoption-decision.md"
   - "../../planning/tools/impl-handoff-kit/repo-template/AI_SETUP.md (§4-1)"
 author: claude
@@ -25,16 +26,12 @@ updated: 2026-08-17
 
 - 関連する計画書 ID: **`NFR`（無採番）** —— 開発ツールの設定という**工程の統制**であり、
   計画側の非機能要件表に当たる番号が無い（[IADR-0179](./IADR-0179_unnumbered-nfr-for-meta-work.md) 決定 1）。
-- 計画側の是正 PR: [planning#402](https://github.com/endazon/project-planning/pull/402)（キット原本の修正）。
-  同 PR が計画側の記録 `draft/cross-project/20260817_mcp-json-github-server-collision.md` を追加する。
-  **現 pin（`2c78212`）にはまだ存在しないため `plan_refs` へは書かない** —— 書くと `check-doc-links` が
-  破損リンクとして落とす。**pin を進めたときに `plan_refs` へ加えること。**
-- 関連 IADR: [IADR-0221](./IADR-0221_playwright-cli-vs-test-runner-scope.md)（同じ配備で決めた Playwright の棲み分け）・
-  [IADR-0192](./IADR-0192_kit-sync-classification-and-check.md)（種 X は追跡 issue を必須にする）
+- 計画側の是正 PR: [planning#402](https://github.com/endazon/project-planning/pull/402)（キット原本の修正。**マージ済み**）
+- 関連 IADR: [IADR-0221](./IADR-0221_playwright-cli-vs-test-runner-scope.md)（同じ配備で決めた Playwright の棲み分け）
 
 ## コンテキストと課題
 
-キット（pin `2c78212`）が新たに配布する `.mcp.json` は、`github`（GitHub MCP）と `context7` の 2 つを持つ。
+キットが当初配布した `.mcp.json`（pin `2c78212`）は、`github`（GitHub MCP）と `context7` の 2 つを持っていた。
 
 **この `github` サーバを本リポへ置くと、CI の AI レビューが静かに死ぬ。** 4 つの事実が連鎖する。
 
@@ -78,13 +75,15 @@ updated: 2026-08-17
 **Context7 はプロジェクトスコープでよい。** 同名の組み込みが無く、API キー不要（匿名モード）で
 環境変数の展開に依存しないため、**上の連鎖はどの段も成立しない**。
 
-### 決定 2: 分類は暫定的に B（種 X）とし、キット是正後に A へ戻す
+### 決定 2: 分類は **A（キットとバイト一致）** とする
 
-キット原本（pin `2c78212`）はまだ `github` を含むため、**現時点でバイト一致にはできない**。
-[IADR-0192](./IADR-0192_kit-sync-classification-and-check.md) に従い**追跡先を必須で記録する**。
+**キット原本の是正（[planning#402](https://github.com/endazon/project-planning/pull/402)）がマージされたため、
+環流債務を作らずに済んだ。** 本 PR は pin を是正後の計画 main（`f216783`）へ進めており、
+`.mcp.json` はキット原本とバイト一致である（`cmp` で確認）。
 
-- 追跡: [planning#402](https://github.com/endazon/project-planning/pull/402)
-- **同 PR のマージ後に pin を進め、キット原文で上書きして分類 A へ戻す**
+> **起案時は分類 B（種 X）を予定していた。** キット原本がまだ `github` を含んでいたためである。
+> **計画側の是正が先に着地したので A で置けた** —— 暫定の分類 X は環流債務の測定値を汚すため、
+> 避けられるなら避けるのが望ましい（[IADR-0192](./IADR-0192_kit-sync-classification-and-check.md)）。
 
 ### 決定 3: ワークフローの許可リストへ `mcp__context7__*` を加えない
 
@@ -100,7 +99,7 @@ npm レジストリへの取得が走る**。AI レビューは外部ドキュ�
 - `.claude/settings.json` への `mcp__context7__*` 追加が**必要になる**（ローカル面）。
   同ファイルは `Edit` / `Write` とも deny のため、**利用者に適用を依頼する**
 - ワークフロー 2 本は**無変更**（決定 3）
-- `kit-sync-classification.json` の B へ 1 件追加（決定 2）
+- `kit-sync-classification.json` の A へ 1 件追加（決定 2）
 
 ## 未解決
 

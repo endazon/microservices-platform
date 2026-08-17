@@ -1,7 +1,7 @@
 {
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2 / IADR-0192。#755 で planning#363 の新定義へ改めた）。",
-    "書式・値域の正はキットの kit-sync-classification.example.json（pin 2c78212。767a9d48 から無変更）である。分類表の中身はリポジトリ固有。",
+    "書式・値域の正はキットの kit-sync-classification.example.json（pin 4d17a33）である。分類表の中身はリポジトリ固有。",
     "",
     "A = キットとバイト一致であるべきファイル。check-kit-sync.js が機械検査する。",
     "B = キット土台 ＋ 固有デルタ。値の先頭は下の種の番号、または X。",
@@ -54,6 +54,7 @@
       ".github/dependabot.yml",
       ".github/workflows/changelog.yml",
       ".github/workflows/pr-title.yml",
+      ".mcp.json",
       "docs/adr/IADR-0000_record-implementation-decisions.md",
       "docs/api/.gitkeep",
       "docs/authz/.gitkeep",
@@ -112,7 +113,6 @@
       ".claude/agents/spec-implementer.md": "X. 4 種に当たらない（母集合の規則 1〜6 の表）。★ 向きは逆で本リポが先（キットは表を持たない）。環流済み。追跡: #736 / planning#337",
       ".claude/commands/new-spec.md": "X. 4 種に当たらない（キット側のテンプレート名の誤りの是正）。是正依頼済み。追跡: #736 / planning#338",
       ".claude/settings.json": "1. リポジトリ構成（src/ai-stock-trading submodule 向けの許可コマンド）",
-      ".mcp.json": "X. 5 種に当たらない（**期限つきの暫定**。キット原本の是正待ち）。キット版（pin 2c78212）は github + context7 を持つが、**本リポは github を落として context7 のみにしている**。理由: claude-code-action は `github` という名前の GitHub MCP サーバを組み込みで供給し、同名のカスタムサーバがそれを上書きする。Claude Code の非対話モードは cwd の .mcp.json を読み、アクションは enableAllProjectMcpServers を自動的に true にするため CI でも自動承認される。CI に GITHUB_PAT は無く、Claude Code は未定義の ${VAR} をリテラルのまま使うため、上書きした瞬間に claude-coding.yml / claude-code-review.yml の mcp__github__* が認証できなくなる（**ジョブは success で終わるため気付けない**）。GitHub MCP はユーザースコープへ置く。**キット原本の是正 PR は planning#402。マージ後に pin を進め、キット原文で上書きして分類 A へ戻す。** 追跡: planning#402 / IADR-0222",
       ".github/workflows/openapi.yml": "1. リポジトリ構成（ユニット第一構成 src/*/backend/** へ paths を絞る）",
       ".github/workflows/pr-size.yml": "2. 技術スタックとその CI 配線（orval / Lingui の実出力先・CHANGELOG.md を除外。IADR-0181 決定 1）",
       ".github/workflows/security.yml": "1. リポジトリ構成（src/* submodule の取得ステップ）",

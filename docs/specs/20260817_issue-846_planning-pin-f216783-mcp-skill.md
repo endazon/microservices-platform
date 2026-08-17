@@ -1,5 +1,5 @@
 ---
-title: 作業仕様書 — 計画 pin を 2c78212 へ進め、スキル・MCP を配備して Playwright の棲み分けを決める
+title: 作業仕様書 — 計画 pin を f216783 へ進め、スキル・MCP を配備して Playwright の棲み分けを決める
 type: spec
 status: done
 related_ids:
@@ -26,7 +26,7 @@ related_specs:
   - "20260817_planning-pin-767a9d48.md"
 ---
 
-# 作業仕様書: 計画 pin `2c78212` の追随とスキル・MCP の配備
+# 作業仕様書: 計画 pin `f216783` の追随とスキル・MCP の配備
 
 ## 1. 起点となる ID（トレーサビリティ）
 
@@ -37,18 +37,19 @@ related_specs:
 
 ## 2. 母集合の引き方（実測）
 
-**走査基準コミット**: `develop` `7aa0976`（作業開始時）。**計画 pin**: `767a9d48` → `2c78212`。
-
-pin 間の計画リポ差分は 2 コミット（[planning#396](https://github.com/endazon/project-planning/pull/396) / [planning#399](https://github.com/endazon/project-planning/pull/399)）。
-このうち**キット配布物に触れたのは planning#399 のみ**である。
+**走査基準コミット**: `develop` `7aa0976`（作業開始時）。**計画 pin**: `767a9d48` → `f216783`。**当初は `2c78212` を予定していたが、キット原本の是正（planning#402）が着地したため最新 main まで進めた**（後述）。
 
 ```text
-git -C planning diff --stat 767a9d48 2c78212 -- tools/impl-handoff-kit/
-  HOWTO.md                            |  9 +
-  repo-template/.mcp.json             | 17 ++  ← 新規
-  repo-template/AI_SETUP.md           | 53 +++
+git -C planning diff --stat 767a9d48 f216783 -- tools/impl-handoff-kit/
+  HOWTO.md                            | 39 +++
+  generators/handoff.js               | 80 +++++   ← 承認ゲート（planning#405）。配布物ではない
+  repo-template/.mcp.json             |  9 +++     ← 新規（context7 のみ）
+  repo-template/AI_SETUP.md           | 73 ++++
   repo-template/CLAUDE.md             |  1 +
 ```
+
+**`generators/` は `repo-template/` の外であり、実装リポへは配布されない**（`check-kit-sync.js` の対象外）。
+配布物に効くのは `.mcp.json` / `AI_SETUP.md` / `CLAUDE.md` の 3 件である。
 
 **キットの `kit-sync-classification.example.json` と `.claude/rules/traceability.md` は pin 間で無変更である**
 （実測: `git -C planning diff --stat` が空 / `wc -c` が 25,963 B のまま）。したがって
@@ -69,8 +70,8 @@ node scripts/check-kit-sync.js
 
 ### 3-1. `.mcp.json` は Context7 のみとする（[IADR-0222](../adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)）
 
-🔴 **キット原本をバイト一致で採らなかった。** キット版（pin `2c78212`）は `github` という名前の
-GitHub MCP サーバを含むが、**これを置くと CI の AI レビューが静かに死ぬ**。
+🔴 **キットが当初配布した `.mcp.json`（pin `2c78212`）は `github` という名前の GitHub MCP サーバを
+含んでいた。これを置くと CI の AI レビューが静かに死ぬ。**
 
 | # | 事実 | 出典 |
 | --- | --- | --- |
@@ -86,9 +87,12 @@ GitHub MCP サーバを含むが、**これを置くと CI の AI レビュー�
 **事実 4 により、本 PR 自身のレビューは無事である**（ベース `develop` に `.mcp.json` がまだ無い）。
 **発火するのはマージ後の次の PR からである。**
 
-分類は暫定的に **B（種 X・環流債務）**。キット原本の是正 PR は
-[planning#402](https://github.com/endazon/project-planning/pull/402)。**マージ後に pin を進め、
-キット原文で上書きして分類 A へ戻す。**
+**分類は A（キットとバイト一致）である。** キット原本の是正
+（[planning#402](https://github.com/endazon/project-planning/pull/402)）が着地したため、
+pin をその後の計画 main（`f216783`）まで進めることで**環流債務を作らずに済んだ**。
+
+> **起案時は分類 B（種 X）を予定していた。** 暫定の X は環流債務の測定値を汚すため、
+> **計画側の是正を待って A で置く**ほうが望ましい。今回は待てた。
 
 ### 3-2. Playwright は役割で棲み分ける（[IADR-0221](../adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)）
 
@@ -110,19 +114,19 @@ GitHub MCP サーバを含むが、**これを置くと CI の AI レビュー�
 | ファイル | 変更 |
 | --- | --- |
 | `.mcp.json`（新規） | `context7` のみ |
-| `scripts/kit-sync-classification.json` | `.mcp.json` を **B（種 X）** へ登録。`AI_SETUP.md` の行へ種 1・種 2 のデルタを追記。`$comment` の pin 表記を `2c78212` へ |
+| `scripts/kit-sync-classification.json` | `.mcp.json` を **A（バイト一致）** へ登録。`AI_SETUP.md` の行へ種 1・種 2 のデルタを追記。`$comment` の pin 表記を `f216783` へ |
 | `AI_SETUP.md` | キット §4 を取り込み（旧 §4 → §5）。§4-1 は**是正版**（GitHub MCP を書かない理由）。§4-3 に本リポの固有デルタ注記 |
 | `CLAUDE.md` | §生成 AI の活用 へ 1 行（**実測 +261 B**） |
 | `docs/adr/IADR-0221_*.md`（新規） | Playwright の棲み分け |
 | `docs/adr/IADR-0222_*.md`（新規） | `.mcp.json` のスコープと同名衝突 |
 | `docs/adr/README.md` | 索引 2 行 |
-| `planning` | pin `767a9d48` → `2c78212` |
+| `planning` | pin `767a9d48` → `f216783` |
 
 ## 5. 検証（実測）
 
 ```text
 node scripts/check-kit-sync.js
-  OK: キット 116 件を分類表と突合しました（A 78 件 / B 26 件 / C 4 件 / 対象外 8 件）  exit=0
+  OK: キット 116 件を分類表と突合しました（A 79 件 / B 25 件 / C 4 件 / 対象外 8 件）  exit=0
 
 node scripts/check-kit-sync.js --self-test
   self-test OK（13 件）
@@ -165,8 +169,8 @@ AssertionError: 走査母集合を git ls-files から引く検査器と MODE.TR
 実データ検査を含む）。本 PR で 2 回落ちて 2 回とも直した:
 
 1. `docs/adr/README.md` の索引 2 行が **200 字上限**を超えた → 163 字 / 162 字へ縮めた
-2. `plan_refs` が **現 pin に存在しない計画リポのファイル**を指した（`20260817_mcp-json-github-server-collision.md`
-   は planning#402 の中身）→ `plan_refs` から外し、**PR URL での参照と「pin を進めたときに加える」注記**に替えた
+2. `plan_refs` が当時の pin に存在しない計画リポのファイルを指した（`20260817_mcp-json-github-server-collision.md`
+   は planning#402 の中身）→ 一度 `plan_refs` から外したが、**同 PR がマージされ pin を進めたため復帰させた**
 
 ### 🔴 読書予算 —— 余白は **807 B** しかない
 
@@ -181,7 +185,7 @@ AssertionError: 走査母集合を git ls-files から引く検査器と MODE.TR
 
 | # | 内容 | 理由 |
 | --- | --- | --- |
-| 1 | **`.claude/settings.json` への `mcp__context7__*` 追加** | 同ファイルは `Edit` / `Write` とも **deny**。**利用者に適用を依頼する** |
+| ~~1~~ | ~~`.claude/settings.json` への `mcp__context7__*` 追加~~ | **完了（利用者が適用）。** 同ファイルは `Edit` / `Write` とも deny のため代行できず依頼した。`mcp__context7__resolve-library-id` / `mcp__context7__query-docs` の 2 件が `permissions.allow` に入っていることを確認済み |
 | 2 | **`/mcp` での `context7` 接続の目視確認** | ヘッドレス実行では承認プロンプトを出せない。**利用者が対話モードで確認する** |
-| 3 | **`.mcp.json` を分類 A へ戻す** | [planning#402](https://github.com/endazon/project-planning/pull/402) のマージと pin 更新が要る |
+| ~~3~~ | ~~`.mcp.json` を分類 A へ戻す~~ | **完了。** planning#402 のマージ後に pin を `f216783` まで進め、**最初から分類 A で置いた**（暫定の種 X を作らずに済んだ） |
 | 4 | **`playwright-cli` の実導入と `--skills` の挙動確認** | ユーザー単位の導入であり CI で固定できない（`IADR-0221` §未解決） |

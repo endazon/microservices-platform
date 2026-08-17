@@ -132,9 +132,9 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
   -H "X-MCP-Toolsets: repos,issues,pull_requests,labels,actions" --scope user
 ```
 
-> **【本リポの固有デルタ・種 X】** キット原本（pin `2c78212`）はまだ `github` を含んでいる。
-> 是正 PR は [planning#402](https://github.com/endazon/project-planning/pull/402)。**マージ後に pin を進め、
-> キット原文で上書きして分類 A へ戻す**（[IADR-0222](docs/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)）。
+> **本節はキット原本とバイト一致である（分類 A）。** キット側も同じ判断で是正済みであり
+> （[planning#402](https://github.com/endazon/project-planning/pull/402)）、固有デルタは持たない。
+> 判断の記録は [IADR-0222](docs/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)。
 
 ### 4-2. プラグイン・スキルの各自導入（任意・推奨）
 

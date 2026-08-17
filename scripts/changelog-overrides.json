@@ -44,6 +44,12 @@
       "action": "remap",
       "scope": "FR-12,SC-07",
       "reason": "PR #568 のタイトルは `feat(FR-12,SC-07): ...` だったが、スカッシュマージ時に件名を書き直した際 SC-07 を落とした（API 実測で updated_at == merged_at であり、マージ後のタイトル編集ではない）。同 PR は docs/screens/SC-07_conversion-jobs.md / docs/tests/SC-07_conversion-jobs.md / src/knowledge/frontend/src/features/sc07-conversions/ConversionJobsPage.tsx を実際に改変しており、SC-07 は正しい起点 ID である。scope だけを補正し type（feat）と desc は元コミットの値を保つ——誤っているのは落ちた ID だけである。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。Issue #579（発見: 定期監査 traceability-auditor 2026-08-07）。"
+    },
+    {
+      "hash": "5ed54b02",
+      "action": "remap",
+      "scope": "NFR,IADR-0204",
+      "reason": "着地件名が chore(ADR-0030) を名乗っているが、当該コミットは ADR-0030（バックエンドアプリケーション層のライブラリ標準）の成果物を 1 つも触っていない。9 ファイルはすべて .github/workflows/pr-title.yml / docs/how-to/session-handoff.md / docs/specs/ / scripts/ であり、src/*/backend/ も src/Directory.Packages.props も scripts/backend-library-baseline.json も不変（git show --name-only 5ed54b02 で実測）。作業仕様書 docs/specs/20260817_issue-836_kit-class-x-rejudgement.md の related_ids は NFR（無採番）+ IADR-0115/0130/0169/0183/0192/0201/0204/0207/0208 であり ADR-0030 を持たず、件名だけがこの区別を潰していた。放置すると ADR-0030 を辿る読み手に、バックエンドライブラリ標準と無関係なキット同期・検査器・PR タイトル検査の作業がライブラリ標準の実装として計上される。これは 2cd8508 の reason と同じ論理（名乗っている ID の成果物を 1 つも触っていない）であり、b421761 の reason が『新たな誤帰属を生まない』として禁じている型でもある。scope のみを補正し type（chore）と desc は元コミットの値を保つ。NFR を無採番にするのは、着手前に計画の非機能要件表を実測した結果 NFR-01..27 がすべて製品品質の要件であり、キット同期・検査器・文書統制に当たる番号が無いためである（.claude/rules/traceability.md 場合 2。無理に近い番号を付けない。この場合は計画へ環流しない）。IADR-0204 は当該コミットが実際に適用した決定（キット分類 X を決定 2 の 3 点突合で再判定する）である。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。波 11 末クロス監査（adr-guardian / traceability-auditor・2026-08-17）。"
     }
   ]
 }
