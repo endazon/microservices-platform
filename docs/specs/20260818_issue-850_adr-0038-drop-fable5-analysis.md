@@ -10,6 +10,8 @@ related_ids:
   - UC-02
   - IADR-0022
   - IADR-0112
+  - IADR-0113
+  - IADR-0114
 author: claude
 created: 2026-08-18
 updated: 2026-08-18
@@ -231,6 +233,13 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
 
 - [x] `src/` 配下（`bin/` を除く）に `claude-fable-5` の**実効的な設定値**が 1 件も無い
       （合成 config・コメントは対象外。判定根拠は §3.2）。
+      **射程は `src/platform` である** —— #850 逐語の「`src/` 配下」をそのまま引いているが、
+      走査軸（§3 冒頭）は `':!src/ai-stock-trading'` で submodule を除外しており、達成もその範囲に限る。
+      **AST 側には実効的な設定値が今も在る**（例: `src/ai-stock-trading/deploy/helm/ai-stock-trading/values-local.yaml:182-183`
+      の `LlmPricing__PerModel__claude-fable-5__*`）。計画 `ADR-0038` の射程が基盤（MSP）であり、
+      AST の単価表は AST 側の別 ADR が持つ決定のため、**スコープ外として扱った**
+      （本リポから `src/ai-stock-trading` は編集しない）。字面が「`src/` 全体」と読めるため、
+      ここで射程を明示する（#859 のレビュー指摘）。
 - [x] `dotnet test src/platform/backend/backend.slnx` が緑。
 - [x] **ZDR 除外機構のテストが空振りになっていない** —— 合成 config で発火し続けることを
       **実測で示す**（§5.1）。
