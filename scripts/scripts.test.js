@@ -49,6 +49,30 @@ ok('複数 ID 併記は合格', () => assert.deepStrictEqual(validateSubject('fe
 ok('P0 フェーズ ID は合格', () => assert.deepStrictEqual(validateSubject('docs(P0): 骨格仕様'), []));
 ok('末尾 PR 番号は許容', () => assert.deepStrictEqual(validateSubject('fix(FR-01): 修正 (#123)'), []));
 
+// --- HTML エンティティ（planning#415。恒久履歴へ焼き付く事故の再発防止） ---
+//
+// GitHub は PR タイトルの素の `<` `>` を作成時点でエスケープして保存するため、
+// **検査対象はエスケープ済みの文字列**である。素の山括弧を検査しても素通りする。
+const entityReason = (subject) =>
+  validateSubject(subject).filter((r) => r.includes('HTML エンティティ'));
+
+ok('エスケープされた山括弧を含む件名は落ちる', () =>
+  assert.strictEqual(entityReason('ci(NFR): git -C &lt;submodule&gt; grep を足す').length, 1));
+ok('&amp; を含む件名は落ちる', () =>
+  assert.strictEqual(entityReason('docs(NFR): A &amp; B を整理').length, 1));
+ok('数値参照（&#60;）を含む件名は落ちる', () =>
+  assert.strictEqual(entityReason('fix(FR-01): &#60;path&gt; を直す').length, 1));
+// 偽陽性が 1 件でも出ると検査そのものが外される。通常の件名は必ず通す。
+ok('素の & を含むだけの件名は通る（エンティティではない）', () =>
+  assert.deepStrictEqual(validateSubject('docs(NFR): A & B を整理'), []));
+ok('素の山括弧は落とさない（GitHub がエスケープする前の形）', () =>
+  assert.deepStrictEqual(validateSubject('ci(NFR): git -C <submodule> grep を足す'), []));
+ok('セミコロンを含む通常の件名は通る', () =>
+  assert.deepStrictEqual(validateSubject('fix(FR-01): a; b を直す'), []));
+// 形式違反より先にエンティティを報告する（形式に適合したまま履歴へ載るため）。
+ok('末尾 PR 番号つきでもエンティティを検出する', () =>
+  assert.strictEqual(entityReason('ci(NFR): &lt;x&gt; を足す (#856)').length, 1));
+
 // 抜け穴防止: 内容変更の種別で起点 ID が無ければ違反として検出する。
 ok('feat（ID 無し）は違反', () => {
   const r = validateSubject('feat: 説明');
@@ -153,9 +177,9 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   ok('権限拒否でないツールエラー（File not found 等）は数えない', () =>
     assert.strictEqual(looksLikeDenial('File not found'), false));
 
-  // issue #146: 報告が「Bash（4 件）」で止まると、許可リストに何を足せばよいか決められない。
+  // issue planning#146: 報告が「Bash（4 件）」で止まると、許可リストに何を足せばよいか決められない。
   // 許可リストの粒度はコマンド単位（Bash(git diff:*)）なので、報告もそこへ揃える。
-  ok('Bash はコマンド名まで報告する（実障害 issue #146 の形）', () => {
+  ok('Bash はコマンド名まで報告する（実障害 issue planning#146 の形）', () => {
     const r = collectDenials([
       {
         type: 'result',
@@ -176,7 +200,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
 
   ok('Bash 以外はツール名のまま', () => assert.strictEqual(labelOf('Task', {}), 'Task'));
 
-  // issue #158: 旧実装は先頭セグメントだけを見て、許可済みの git show を名指しし、
+  // issue planning#158: 旧実装は先頭セグメントだけを見て、許可済みの git show を名指しし、
   // 実際の原因（未許可の cmp）を隠していた。報告が原因を指さないと塞ぎようがない。
   ok('パイプの全セグメントを列挙する（実障害 git show | cmp の形）', () =>
     assert.strictEqual(
@@ -187,7 +211,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   ok('フラグは 2 トークン目に採らない（head -5 は head）', () =>
     assert.strictEqual(labelOf('Bash', { command: 'git log | head -5' }), 'Bash(git log | head)'));
 
-  // issue #160: 2 トークン固定だと Bash(git -C) になり、対処に必要なサブコマンドが消える。
+  // issue planning#160: 2 トークン固定だと Bash(git -C) になり、対処に必要なサブコマンドが消える。
   ok('git -C <dir> <sub> は許可リストと同じ粒度で出す', () =>
     assert.strictEqual(
       labelOf('Bash', { command: 'git -C planning rev-parse HEAD' }),
@@ -237,7 +261,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
       /後段のコマンドかもしれない/
     ));
 
-  // issue #155: 内訳がジョブログにしか無いと、レビュー本文の「✅ 実測」との突き合わせができない。
+  // issue planning#155: 内訳がジョブログにしか無いと、レビュー本文の「✅ 実測」との突き合わせができない。
   ok('拒否の内訳を実行サマリ（人が読む場所）へ書く', () => {
     const { writeStepSummary } = require('./check-permission-denials.js');
     const fsw = require('fs');
@@ -269,7 +293,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   ok('NDJSON・壊れた行があっても読めた分で判断する', () =>
     assert.strictEqual(parseEvents('{"type":"result","permission_denials_count":3}\n{壊れ').length, 1));
 
-  // 6 巡目の実測（issue #158 の続報）: プロセス置換が壊れたラベルになっていた。
+  // 6 巡目の実測（issue planning#158 の続報）: プロセス置換が壊れたラベルになっていた。
   ok('プロセス置換 <(…) の中のコマンドを露出させる', () =>
     assert.strictEqual(
       labelOf('Bash', { command: 'diff <(git show a:f) <(git show b:f)' }),
@@ -457,7 +481,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   }
 }
 
-// --- check-action-versions: 配布テンプレートの Actions が巻き戻らないようにする（issue #148） ---
+// --- check-action-versions: 配布テンプレートの Actions が巻き戻らないようにする（issue planning#148） ---
 //
 // Dependabot は github-actions エコシステムではリポジトリ直下の .github/workflows/ しか
 // 走査しない。dependabot.yml に directory: エントリを足しても no-op であり、しかも
@@ -501,7 +525,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
     assert.deepStrictEqual(r.errors, []);
   });
 
-  // issue #153: キットの表を直接編集するとバイト一致が崩れる。companion で受ける。
+  // issue planning#153: キットの表を直接編集するとバイト一致が崩れる。companion で受ける。
   {
     const fsv = require('fs');
     const patv = require('path');
@@ -528,7 +552,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
       assert.match(loadIn(mkTmp(JSON.stringify({ expected: { 'actions/checkout': 5 } }))).warnings.join(' '), /下げている/));
   }
 
-  // issue #152: 表の下限だけでは、実装リポが下限より先へ進んでいる場合の同期退行を捉えられない。
+  // issue planning#152: 表の下限だけでは、実装リポが下限より先へ進んでいる場合の同期退行を捉えられない。
   ok('存在しない ref では null（fail-open の判断材料になる）', () => {
     const { scanRef } = require('./check-action-versions.js');
     assert.strictEqual(scanRef('refs/heads/__no_such_ref__', process.cwd()), null);
@@ -541,7 +565,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   });
 }
 
-// --- check-doc-links: 未 populate な submodule の除外を可視化する（issue #139） ---
+// --- check-doc-links: 未 populate な submodule の除外を可視化する（issue planning#139） ---
 
 {
   const { unpopulatedSubmoduleOf, underUnpopulatedSubmodule, collectBroken } = require('./check-doc-links.js');
@@ -575,7 +599,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   });
 
   // 除外を黙って行うと「破損リンクはありません」が検査していない範囲まで含んだ断定になる。
-  // 実際に ai-stock-trading で破損 20 件がこの隙間に蓄積した（issue #139）。
+  // 実際に ai-stock-trading で破損 20 件がこの隙間に蓄積した（issue planning#139）。
   ok('除外したリンクは onSkip で件数を数えられる（黙って消えない）', () => {
     const r = mkFixture();
     const prev = process.env.DOC_LINKS_ROOT;
@@ -623,7 +647,7 @@ ok('空スコープは違反', () => assert.strictEqual(validateSubject('feat():
   });
 }
 
-// --- lib/ci-annotate: CI 上の警告を GitHub アノテーションとして出す（issue #136 / #137） ---
+// --- lib/ci-annotate: CI 上の警告を GitHub アノテーションとして出す（issue planning#136 / planning#137） ---
 
 {
   const ann = require('./lib/ci-annotate.js');
@@ -821,7 +845,7 @@ ok('未知の action は補正を無視する（黙って remap 扱いにしな�
   const c = { hash: 'cccccccddd', type: 'feat', scope: 'FR-01', desc: 'x' };
   // stdout も抑止する。gen-changelog は現状 stderr へ直接書くが、ci-annotate へ移すと
   // Actions 上では stdout へ出るため、片方だけの抑止は警告をテスト実行中に漏らす
-  // （issue #140 / #142 と同型。silent() と同じく最初から両方を塞いでおく）。
+  // （issue planning#140 / planning#142 と同型。silent() と同じく最初から両方を塞いでおく）。
   const silencedErr = process.stderr.write;
   const silencedOut = process.stdout.write;
   process.stderr.write = () => true;
@@ -1046,7 +1070,7 @@ ok('gen-changelog: 実行して CHANGELOG を生成できる（呼び出し側�
   // workflow コマンドの要件から必ず stdout へ書くため、stderr だけを捕捉すると
   //   - Actions 上で警告文が取れず、このテストが落ちる（ローカルは緑・CI だけ赤）
   //   - テストのフィクスチャが出した警告が**本物のアノテーション**として PR に漏れる
-  // という 2 つの不具合が同時に起きる（issue #140。実際に #138 で発生させた）。
+  // という 2 つの不具合が同時に起きる（issue planning#140。実際に planning#138 で発生させた）。
   const captureOutput = (fn) => {
     const origErr = process.stderr.write;
     const origOut = process.stdout.write;
@@ -1287,7 +1311,7 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
   }
 }
 
-// --- 環境依存の出力先切り替えの回帰防止（issue #140） ---
+// --- 環境依存の出力先切り替えの回帰防止（issue planning#140） ---
 //
 // --- check-feedback-dispatched: 計画へ未送付のまま滞留した環流記録を見逃さない ---
 // planning#217: 記録は作られるが起票されず、PR がマージされても検出されない事故が
@@ -1755,7 +1779,7 @@ function loadCompanionTests(dir, { ok: okFn, assert: assertObj }) {
 }
 
 // ci-annotate は GITHUB_ACTIONS の有無で書き込み先（stdout / 呼び出し側指定）を変える。
-// **片方の環境でしかテストしないと必ず見落とす**。実際 #138 は「ローカルで緑・CI で赤」
+// **片方の環境でしかテストしないと必ず見落とす**。実際 planning#138 は「ローカルで緑・CI で赤」
 // という最も気付きにくい形で入り、取り込んだ全リポジトリの scripts-tests を落とした。
 // 子プロセスで GITHUB_ACTIONS=true を与えて自分自身を回し、次の 2 点を確認する。
 //   (1) 全テストが通る（execSync は非 0 終了で throw する）

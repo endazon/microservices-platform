@@ -2,6 +2,10 @@
 #
 # PR がオープン/更新されたときに、計画書との整合・トレーサビリティの観点で AI レビューを行う。
 #
+# 位置づけ: reviewer スロット（検証実走付きレビューの実行主体）の Claude 用実装である
+#   （配役は ai-roster.json、正本は docs/ai-orchestration.md）。reviewer の同時有効は常に
+#   1 実装であり、別エンジンのレビューを並走させない（AI レビューの多重化は品質を上げない）。
+#
 # 有効化（このファイルは .example。AI_SETUP.md のプロファイルに従って有効化する）:
 #   - 拡張子から .example を外す（git mv claude-code-review.example.yml claude-code-review.yml）。
 #   - 認証シークレットを「どちらか一方のみ」登録する:
@@ -242,21 +246,34 @@ jobs:
           claude_args: |
             --model ${{ steps.model.outputs.model }}
             --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C planning grep:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git -C src/ai-stock-trading/planning grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
+          # 【プロンプトの書き方】prompt: の中身は毎 PR そのまま送信され課金される。事故の経緯・
+          # 実測値の記録は送信されないこの YAML コメント側へ書き、prompt には AI が従う指示だけを
+          # 置く（監査 2026-08-18・planning#416 の追随。#869）。prompt が禁じる各項目の経緯:
+          #   - サブエージェント禁止: CI では起動が完了せず停止し、本文未投稿のままジョブが終わる。
+          #   - バックグラウンド待ち禁止: `dotnet test` を背景で走らせたまま「完了後にサマリを
+          #     投稿します」と書いて終わり、判定ゼロで success になった（planning#333。差分ゼロの
+          #     PR で全スイートを回した待ちが引き金）。
+          #   - 「検証の誠実性」節の由来: 権限拒否 12 件を伏せて「実測した ✅」と報告した事例。
+          #   - 3 段パイプ禁止の実測: 各コマンドが個別に許可済みでも拒否された（本リポ実測・原因
+          #     未特定のため、規則として 2 段までに制限している）。
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
             指摘を「重大 / 推奨 / 軽微」に分類してコメントせよ。
 
             【実行制約・最重要】
-            - このレビューは必ず単一セッション内で完結させること。サブエージェント（Task ツールに
-              よる spawn。`adr-guardian` / `traceability-auditor` / `general-purpose` などの
-              `.claude/agents/` 定義の起動を含む）を一切使用してはならない。CI 環境ではサブ
-              エージェントの起動が完了せず停止（ハング）し、レビュー本文が投稿されないまま
-              ジョブが終わる不具合が発生するためである。
-            - 「ADR 制約チェック」「トレーサビリティ監査」を含む全観点は、サブエージェントに委譲
-              せず、このセッション内で自分自身が Read / Bash(gh) 等の直接ツールで実施すること。
-            - レビューの最後に、下記フォーマットのサマリコメントを必ず自分で投稿してから終了する
-              こと。サブエージェントの結果待ちで停止したり、監査を委譲したまま終了してはならない。
+            - **単一セッション内で完結させる。** サブエージェント（Task ツール。`adr-guardian` /
+              `traceability-auditor` / `general-purpose` など `.claude/agents/` 定義の起動を含む）は
+              CI では停止するため一切使用しない。「ADR 制約チェック」「トレーサビリティ監査」を含む
+              全観点を、このセッション内で自分自身が Read / Bash 等の直接ツールで実施する。
+            - **サマリの投稿はどの検証よりも優先する。** レビューの最後に、下記フォーマットの
+              サマリコメントを必ず自分で投稿してから終了する。委譲したまま・**バックグラウンド実行の
+              結果を待ったまま**終了してはならない（判定ゼロのまま success になり「レビュー済み・
+              指摘なし」と読まれる。planning#333）。時間が足りなければ「未検証（理由）」と書いて
+              投稿すること。
+            - **変更範囲に応じて検証を絞る。** 実装ディレクトリの差分が空（docs のみの変更等）なら
+              ビルド・テストを実行しない。**実行しなかったことは「実行できなかったこと」節へ理由を
+              添えて書く**（黙って省略しない）。
 
             【使える Bash コマンドの一覧（正の一覧）・最重要】
             このレビューで実行できる Bash コマンドは**次で全部**である。**一覧に無いコマンドは
@@ -297,9 +314,6 @@ jobs:
               一覧に無いため**必ず拒否され、鎖全体が実行されない**（前段の結果も得られない）。
 
             【検証の誠実性・最重要】
-            実運用で、レビューが**自分が実行できなかった検証を「実測した」として ✅ で報告した**
-            事例がある（権限拒否 12 件が発生していたが、本文に言及が 1 行も無かった）。
-            読み手にはこれを見分ける手段が無い。以下を厳守すること。
             - 「実測」「確認済み」「✅」と書けるのは、**このセッション内で実際にコマンドを実行し、
               その出力を自分の目で見た項目だけ**である。
             - 実行できなかった項目を、推測・PR 本文の引き写し・「そうなっているはず」で
@@ -337,8 +351,7 @@ jobs:
             - **パイプは各コマンドが個別に許可判定される。** `git show X | cmp - Y` は `cmp` が
               未許可なら拒否される（前段が許可済みでも通らない）。バイト一致の確認には
               `cmp` / `diff` を許可してあるので、**2 段まで**ならそのまま使ってよい。
-            - **3 段以上のパイプ連鎖を組まないこと。** `git show | grep | diff` のような 3 段形は、
-              **各コマンドが個別には許可済みでも**拒否された実測がある（MSP 実測・原因未特定）。
+            - **3 段以上のパイプ連鎖を組まないこと**（各コマンドが個別に許可済みでも拒否される）。
               比較は `git show <ref>:<path> | diff - <path>` の**2 段**に収め、絞り込みが要るときは
               段を増やさず、**コマンドを分けて 2 回実行する**こと。
             - **CI の結果を読む手段には粒度の制限がある**（Bash は前方一致、MCP はツール名単位）。
@@ -437,7 +450,7 @@ jobs:
             `mcp__github__actions_list` の `list_workflow_runs` メソッド）と `Bash(gh run list:*)` で
             参照できる。**ローカル再現を始める前に、まず CI の結果を見ること。**
             計画書 submodule の**履歴**（pin の進み方・その差分・「変更が無いこと」）についても
-            `git -C planning log / show / diff / ls-tree` で検証できる。PR が submodule の pin に
+            `git -C planning log / show / diff / ls-tree / grep` で検証できる。PR が submodule の pin に
             言及している場合は、その主張を実際に確かめること。
 
             【.claude / CLAUDE.md を変更する PR での注意】

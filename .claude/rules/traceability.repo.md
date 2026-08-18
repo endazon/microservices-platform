@@ -35,3 +35,7 @@
 
 - **FR / UC / SC の実在性**（#579）: スコープの ID が上のレンジに実在することを検査する（パーサは `check-test-traceability.js` と共用。別紙 [`commit-message-rules-annex.md`](../../docs/how-to/commit-message-rules-annex.md) §実在性検査）。
 - PR タイトル検査・除外する自動コミットは同別紙 `commit-message-rules-annex.md`、CHANGELOG 補正は別紙 [`changelog-overrides-annex.md`](../../docs/how-to/changelog-overrides-annex.md)。
+
+### 検査対象から除外する自動コミット
+
+キット配布物（`traceability.md`）が pin 179a69a の別紙化で本見出しを持たなくなったため、**確定済み記録が節名で引く本見出しをここで保持する**（#686 段 1 / #869）。内容（bot 著者・マージコミット・Revert・`[skip ci]` の除外、`BOT_AUTHORS` の更新規則）は別紙 [`commit-message-rules-annex.md`](../../docs/how-to/commit-message-rules-annex.md) を参照。

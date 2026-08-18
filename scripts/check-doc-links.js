@@ -43,7 +43,7 @@ function parseArgs(argv) {
     const x = argv[i];
     if (x === '--dir') a.dir = argv[++i];
     else if (x.startsWith('--dir=')) a.dir = x.slice(6);
-    // --require-planning: planning サブモジュールが未チェックアウトなら fail する（microservices-platform #232 と同根）。
+    // --require-planning: planning サブモジュールが未チェックアウトなら fail する（endazon/microservices-platform#232 と同根）。
     // トークン付きで submodule を取得する定期ジョブから使い、取得漏れ（＝planning リンクの検査漏れ）を
     // 黙って通さず可視化する。
     else if (x === '--require-planning') a.requirePlanning = true;
@@ -84,7 +84,7 @@ function submodulePaths(root = REPO_ROOT) {
 // .gitmodules 由来の一般則へ拡張してある。
 //
 // 真偽値ではなく**対象を返す**のは、どの submodule を何件飛ばしたかを報告するためである。
-// 黙って除外すると「検査していない範囲があること」が出力から読み取れない（issue #139）。
+// 黙って除外すると「検査していない範囲があること」が出力から読み取れない（issue planning#139）。
 function unpopulatedSubmoduleOf(resolvedAbs, root = REPO_ROOT) {
   const rel = path.relative(root, resolvedAbs).replace(/\\/g, '/');
   for (const sub of submodulePaths(root)) {
@@ -127,16 +127,18 @@ function isBrokenRef(ref, baseDir, onSkip) {
   if (t.startsWith('<') || t.includes('${') || t.includes('{{')) return false; // テンプレ変数
   t = t.split('#')[0].split('?')[0].trim();
   if (!t) return false;
-  // **同一ディレクトリのベアファイル名も相対リンクである**（NFR / #609）。
-  // 従来は `./` `../` で始まるか `/` を含むものしか相対と見なさず、`IADR-0138_x.md` の形が
-  // **一切検査されていなかった**。実際、実在しないファイルを指すリンクを足しても緑のままだった。
-  // **`docs/adr/` の §関連 はほぼこの形で書かれている。**
-  // **実測値はここに書かない** —— 走査基準つきの数は作業仕様書
-  // `docs/specs/20260808_issue-609_bare-relative-links.md` §母集合 を正とする
-  // （数を条文へ埋めると、リンクを 1 本足しただけで黙って古くなる。#590 が実際にそれを踏んだ）。
+  // **同一ディレクトリのベアファイル名（`./` も `/` も無い形）も相対リンクである**（planning#337）。
+  // かつては `./` `../` で始まるか `/` を含むものしか相対と見なさず、`IADR-0118_xxx.md` の形が
+  // **一切検査されていなかった** —— 実在しないファイルを指すリンクを足しても
+  // `OK: … 破損した相対リンクはありません` で緑になった。**`docs/adr/` の §関連 はほぼこの形で
+  // 書かれる**ため、最も壊れやすい箇所がまるごと対象外だったことになる。
+  // **2 つの実装リポジトリが独立に同じ穴を踏んで同じ修正へ至った**（endazon/ai-stock-trading#399 /
+  // endazon/microservices-platform#609）。**実測件数はここに書かない** —— リンクを 1 本足しただけで
+  // 黙って古くなるためである。
   //
-  // 誤検出の抑えは `LINK_EXT`（直後）が担う —— 拡張子を持たない語（`README`）や、
-  // `Foo.Bar` のような識別子は `LINK_EXT` に掛からないので相対リンクとして扱われない。
+  // 誤検出の抑えは `LINK_EXT`（直後）が担う —— 拡張子を持たない語（`README`）や
+  // `Foo.Bar` のような識別子は `LINK_EXT` に掛からず、相対リンクとして扱われない。
+  // `!t.includes('/')` を明示して従来の節と互いに素にしてある（何が新たに対象へ入ったかを読めるように）。
   const bareFileName = !t.includes('/') && LINK_EXT.test(t);
   const looksRelative =
     t.startsWith('./') || t.startsWith('../') || (t.includes('/') && !t.startsWith('/')) || bareFileName;
@@ -149,7 +151,7 @@ function isBrokenRef(ref, baseDir, onSkip) {
   const skippedSub = unpopulatedSubmoduleOf(resolved);
   if (skippedSub) {
     // 除外したことを呼び出し側へ知らせる。件数を報告しないと「破損リンクはありません」が
-    // 検査していない範囲まで含んだ断定になる（issue #139）。
+    // 検査していない範囲まで含んだ断定になる（issue planning#139）。
     if (onSkip) onSkip(skippedSub);
     return false;
   }
@@ -223,23 +225,22 @@ function selfTest() {
   t('対象外: 拡張子が対象外なら実在しなくても検出しない',
     isBrokenRef('./__no_such__.txt', here) === false);
 
-  // --- NFR / #609: 同一ディレクトリのベアファイル名（`./` も `/` も無い形） -----------
+  // --- 同一ディレクトリのベアファイル名（`./` も `/` も無い形。planning#337） ----------------
   //
   // **この対が無かったことが穴を長く開けたままにした直接の原因である。**
-  // `docs/adr/` の §関連 はほぼこの形（`IADR-0118_backend-coverage-floor.md`）で書かれており、
-  // 実データに多数あるが（件数は作業仕様書 §母集合 を正とする）、`looksRelative` が `/` の
-  // 有無しか見ていなかったため**全件が無検査**だった。
-  // 実在しないファイルを指すリンクを足しても `OK: ... 破損した相対リンクはありません` で緑になる。
-  t('正例（#609）: 同一ディレクトリの実在ファイルをベア名で指しても破損でない',
+  // `docs/adr/` の §関連 はほぼこの形で書かれており、実データに多数あるが、`looksRelative` が
+  // `/` の有無しか見ていなかったため**全件が無検査**だった。
+  t('正例: 同一ディレクトリの実在ファイルをベア名で指しても破損でない',
     isBrokenRef('check-doc-links.js', here) === false);
-  t('負例（#609）: 同一ディレクトリの不在ファイルをベア名で指すと検出する',
+  t('負例: 同一ディレクトリの不在ファイルをベア名で指すと検出する',
     isBrokenRef('__no_such_script__.js', here) === true);
-  t('負例（#609）: .md も同じ（ADR の §関連 で実際に踏んだ型）',
+  t('負例: .md も同じ（ADR の §関連 で実際に踏んだ型）',
     isBrokenRef('__no_such_adr__.md', here) === true);
-  t('誤検出しない（#609）: 拡張子を持たない語はベア名でも相対リンクと見なさない',
-    isBrokenRef('README', here) === false && isBrokenRef('IADR-0138', here) === false);
-  t('誤検出しない（#609）: 対象外拡張子の識別子はベア名でも検出しない',
+  t('誤検出しない: 拡張子を持たない語はベア名でも相対リンクと見なさない',
+    isBrokenRef('README', here) === false && isBrokenRef('IADR-0118', here) === false);
+  t('誤検出しない: 対象外拡張子の識別子はベア名でも検出しない',
     isBrokenRef('Foo.Bar', here) === false && isBrokenRef('__no_such__.txt', here) === false);
+
   t('対象外: 外部 URL・アンカー・ルート絶対パスは検出しない',
     ['https://example.com/a.js', '#section', '/etc/a.js'].every((x) => isBrokenRef(x, here) === false));
   t('対象外: テンプレ変数を含む表記は検出しない',
@@ -293,9 +294,8 @@ function main() {
     process.exit(1);
   }
   const files = mdFiles(a.dir);
-  // #664 / IADR-0130 の作法: **0 件走査で緑を返さない**（fail-closed）。
-  // 走査対象を 1 件も拾えないのは「検査しているつもりで何も見ていない」状態であり、
-  // 退行を止めているという記録だけが残る（#592 の初版がこれで、変異試験で辛うじて捕まえた）。
+  // ★ 0 件走査で緑を返さない（fail-closed。planning#337）。走査対象を 1 件も拾えないのは
+  // 「検査しているつもりで何も見ていない」状態であり、**退行を止めているという記録だけが残る**。
   if (files.length === 0) {
     console.error(`[check-doc-links] ${a.dir} 配下に Markdown が 1 件もありません。`);
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
@@ -314,7 +314,7 @@ function main() {
     }
   }
 
-  // 検査対象外にした範囲を必ず知らせる（issue #139）。
+  // 検査対象外にした範囲を必ず知らせる（issue planning#139）。
   // これを黙っていると「破損した相対リンクはありません」が、実際には検査していない範囲まで
   // 含んだ断定になる。実際に ai-stock-trading では PR CI が planning 配下 753 件を毎回飛ばし、
   // その隙間で破損 20 件が蓄積した（夜間の doc-links-planning は PR に紐づかず、
