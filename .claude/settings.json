@@ -14,14 +14,17 @@
       "Bash(git -C planning show:*)",
       "Bash(git -C planning diff:*)",
       "Bash(git -C planning ls-tree:*)",
+      "Bash(git -C planning grep:*)",
       "Bash(git -C src/ai-stock-trading log:*)",
       "Bash(git -C src/ai-stock-trading show:*)",
       "Bash(git -C src/ai-stock-trading diff:*)",
       "Bash(git -C src/ai-stock-trading ls-tree:*)",
+      "Bash(git -C src/ai-stock-trading grep:*)",
       "Bash(git -C src/ai-stock-trading/planning log:*)",
       "Bash(git -C src/ai-stock-trading/planning show:*)",
       "Bash(git -C src/ai-stock-trading/planning diff:*)",
       "Bash(git -C src/ai-stock-trading/planning ls-tree:*)",
+      "Bash(git -C src/ai-stock-trading/planning grep:*)",
       "Bash(git ls-tree:*)",
       "Bash(git submodule status:*)",
       "Bash(git fetch:*)",
@@ -147,5 +150,5 @@
       }
     ]
   },
-  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude-coding.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する。【重要】許可リストは「本ファイル / claude-coding / claude-code-review」の3系統を手作業で同期する構造であり、実際に乖離した実績がある（レビュー側にビルド/テスト系が無く、AI レビューが検証できず静的読解へ退行した状態が2週間継続）。ビルド/テスト/フォーマットのコマンドを増減したときは必ず3系統すべてを更新すること。とくにレビュー側から実行系を落とすと、レビューは毎回「実行できませんでした」という無価値な指摘を返すようになる。読み取り専用の基本コマンド（grep / sort / which 等）も同様に3系統で揃える（planning#163 / planning#168。rg があるから grep 不要とは言えず、パイプは各コマンドが個別判定されるため後段の欠落で鎖全体が落ちる）。submodule が複数ある構成では git -C の許可を .gitmodules のパスごとに 4 サブコマンド（log / show / diff / ls-tree）で列挙する（前方一致のため親パスの許可は入れ子パスに当たらない。Bash(git -C:*) の一括許可は書き込み系まで通るため不可）。GitHub MCP のツール名はサーバの版に依存する（claude-code-action v1 が pin する github-mcp-server v0.17.1 には get_issue / get_pull_request / list_sub_issues が在り、統合名 issue_read / pull_request_read / pull_request_review_write は無い。統合名は v1.x 系で導入）。新旧を併記して許可しているのでどちらも削らないこと（planning#163）。deny は機密（.env / secrets.* / CLAUDE.local.md）の Read に加え Bash 読み取り・Edit/Write・本設定自体の書き換えも塞ぎ、すり抜け形は hooks/guard-bash.js が第 2 層でブロックする。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。【暫定デルタ】本コメント中の計画リポ issue 参照はキットでは裸の #NNN だが、本リポでは planning#NNN へ修飾してある（planning#146 / planning#149 / planning#155 / planning#160 / planning#163 / planning#168 は同じ番号の無関係な PR / issue が本リポジトリにも実在するため、裸で書くとそちらへ自動リンクしてしまう。.claude/rules/traceability.md「クロスリポジトリの issue / PR 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。"
+  "//": "このファイルはローカルの Claude Code 用。GitHub Actions（claude-coding.yml / claude-code-review.yml）はこの settings.json を自動読込しないため、CI のツール許可は各ワークフローの claude_args(--allowedTools) で指定する。【重要】許可リストは「本ファイル / claude-coding / claude-code-review」の3系統を手作業で同期する構造であり、実際に乖離した実績がある（レビュー側にビルド/テスト系が無く、AI レビューが検証できず静的読解へ退行した状態が2週間継続）。ビルド/テスト/フォーマットのコマンドを増減したときは必ず3系統すべてを更新すること。とくにレビュー側から実行系を落とすと、レビューは毎回「実行できませんでした」という無価値な指摘を返すようになる。読み取り専用の基本コマンド（grep / sort / which 等）も同様に3系統で揃える（planning#163 / planning#168。rg があるから grep 不要とは言えず、パイプは各コマンドが個別判定されるため後段の欠落で鎖全体が落ちる）。submodule が複数ある構成では git -C の許可を .gitmodules のパスごとに 5 サブコマンド（log / show / diff / ls-tree / grep）で列挙する（前方一致のため親パスの許可は入れ子パスに当たらない。Bash(git -C:*) の一括許可は書き込み系まで通るため不可）。GitHub MCP のツール名はサーバの版に依存する（claude-code-action v1 が pin する github-mcp-server v0.17.1 には get_issue / get_pull_request / list_sub_issues が在り、統合名 issue_read / pull_request_read / pull_request_review_write は無い。統合名は v1.x 系で導入）。新旧を併記して許可しているのでどちらも削らないこと（planning#163）。deny は機密（.env / secrets.* / CLAUDE.local.md）の Read に加え Bash 読み取り・Edit/Write・本設定自体の書き換えも塞ぎ、すり抜け形は hooks/guard-bash.js が第 2 層でブロックする。技術スタックに合わせ、ビルド/テスト/フォーマットのコマンドを allow に追記すること（既定は C#/.NET 例）。例: Bash(npm run:*) / Bash(pytest:*) / Bash(go test:*) など。SessionStart は scripts/setup.sh を実行する。【暫定デルタ】本コメント中の計画リポ issue 参照はキットでは裸の #NNN だが、本リポでは planning#NNN へ修飾してある（planning#146 / planning#149 / planning#155 / planning#160 / planning#163 / planning#168 は同じ番号の無関係な PR / issue が本リポジトリにも実在するため、裸で書くとそちらへ自動リンクしてしまう。.claude/rules/traceability.md「クロスリポジトリの issue / PR 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。"
 }
