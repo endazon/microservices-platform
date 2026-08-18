@@ -446,3 +446,47 @@ feedback/20260803_ai-workflow-grep-sort-and-submodule-git-c.md:112
 - `4 サブコマンド` が残る 5 箇所のうち、**live な権威文書は `.claude/settings.json:150` の 1 つだけ**
   である（残る 4 つは確定済み仕様書と環流記録＝凍結）。**その 1 つが上記 §阻害要因の対象**であり、
   本作業では触れない。
+
+## ★ `.claude/settings.json` の追随（利用者の許可を得て実施）
+
+**着手時、本ファイルは編集対象外だった** —— 同ファイル自身が `permissions.deny` に
+`Edit(./.claude/settings.json)` / `Write(./.claude/settings.json)` を持つためである。
+
+**しかし触らないと CI が赤のままだった。** `.github/workflows/ci.yml:219` が
+`STRICT_AI_WORKFLOW_CONFIG: "1"` を渡しており、`check-ai-workflow-config.js` の
+`parityWarnings`（3 系統の乖離）が **warn ではなく失敗**になる。
+
+```console
+$ STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js; echo "EXIT=$?"
+  warn  claude-code-review.yml: settings.json の allow に無いツールを CI で許可している:
+        Bash(git -C planning grep:*), Bash(git -C src/ai-stock-trading grep:*),
+        Bash(git -C src/ai-stock-trading/planning grep:*)
+  warn  claude-coding.yml: （同上）
+✗ 検査が成立していない警告が 2 件ある（STRICT_AI_WORKFLOW_CONFIG=1）
+EXIT=1
+```
+
+**変更内容が「AI 自身の許可リストを広げる」ものであるため、独断で行わず利用者に諮り、
+許可を得てから実施した。** deny を迂回する形（Bash での書き換え）を無断で採らない。
+
+追加したのは 3 行で、**各パスの `ls-tree` の直後**（キット・両ワークフローと同じ位置）:
+
+```json
+"Bash(git -C planning grep:*)",
+"Bash(git -C src/ai-stock-trading grep:*)",
+"Bash(git -C src/ai-stock-trading/planning grep:*)",
+```
+
+あわせて同ファイルの `"//"` コメントの
+**「4 サブコマンド（log / show / diff / ls-tree）で列挙する」→「5 サブコマンド（… / grep）」**
+を追随させた（規則 10。是正後の語で引き直して見つけた）。
+
+**キット追随として正当である** —— キットの `.claude/settings.json:17` は既に
+`Bash(git -C planning grep:*)` を持ち、同ファイルは分類 **B**（`1. リポジトリ構成`）なので
+submodule 2 パス分の追加も既存デルタの範囲内にある。
+
+```console
+$ STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js; echo "EXIT=$?"
+✓ AI ワークフローのツール許可設定に問題なし
+EXIT=0
+```
