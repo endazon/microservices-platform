@@ -110,6 +110,10 @@ executed < expected なら fail / expected == 0 でも fail（雛形のテスト
 この抽出条件を先に直すこと（本リポの `src/` 側のテストは対象外。本ジョブが読むのは
 `templates/*/backend/` のログだけである）。
 
+**追跡先: #865。** 記録だけでは、雛形にテストを足す人がこの条文を読むとは限らないため、
+是正（正規表現の Unicode 対応 / TRX 等の構造化出力への切り替え / 注記の強化）を issue で追う。
+**`Skip` を緑と読まない性質は、この判定の存在理由なので壊さないこと**（決定 4）。
+
 ### 6. `dotnet format` は本ジョブに含めない。`build-and-test` へも相乗りしない
 
 - **`dotnet format` を含めない**: `--artifacts-path` を解さず（`--no-restore` を付けても）
