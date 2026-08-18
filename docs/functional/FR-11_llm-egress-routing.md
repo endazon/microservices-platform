@@ -6,6 +6,8 @@ related_ids:
   - FR-11
   - UC-01
   - UC-02
+  - ADR-0038
+  - IADR-0225
 author: claude
 created: 2026-07-04
 updated: 2026-08-18
@@ -67,6 +69,32 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 - **既定 `max_tokens`（IADR-0101）**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正、#58 #1 / IADR-0007）。
 
+### 用途別フォールバック順序（`Llm:Routing:PurposeFallbackModels` / 計画 ADR-0038 決定 3・4・6 / IADR-0225・#863）
+
+**用途別モデル解決（前節）は「どのモデルへ投げるか」を決めるだけで、投げた先が失敗したときの
+振る舞いは含まない。** 呼び出し先が **HTTP 400 系**（モデル不可・コンテキスト超過等）を返したとき、
+**設定した順序に従って次の候補モデルへ切り替える**。
+
+| 項目 | 内容 |
+| --- | --- |
+| 設定 | `Llm:Routing:PurposeFallbackModels`（用途 → **第 2 候補以降**の順序つきモデル配列）。第 1 候補は `PurposeModels`（無ければ `DefaultModel`） |
+| 既定値 | **`analysis: ["claude-sonnet-5"]` のみ**（計画 ADR-0038 決定 3。第 1 候補 `claude-opus-5` の 1 段下位） |
+| 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
+| **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
+| 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
+| 鎖の適格性 | ルーターが `Models`（利用許可集合）と ZDR 除外（`NonZdrModels`）を第 1 候補と同じ規則で適用し、外れた候補は warn ログを出して鎖から落とす（ADR-0038 決定 5） |
+
+- **429 は再試行であってフォールバックではない**（計画 ADR-0038 決定 4）。429 を「モデルが利用不能」と
+  読んで別モデルへ逃がすと、[`llm-model-pin-runbook`](../operations/llm-model-pin-runbook.md) が定めた
+  「利用不能時に別モデルへ切り替えない」という禁止を実質的に破る経路になる。
+  **429 の再試行そのもの（回数・バックオフ・`Retry-After`）は未実装**である —— 計画側が方針を
+  定めておらず、決めていない方針を実装が発明しないため（[[IADR-0225]] §フォローアップ 1）。
+  現行の 429 の挙動は従来どおり `Sent=false` の縮退である。
+- **`trade-decision` は鎖を持たない。** 別モデルで下した取引判断は再現性・監査可能性を失った別物である
+  （`AST/ADR-0011` / [[IADR-0102]]）。設定に鎖が足されたら落ちるテストで固定する。
+- **`default` / `rag-answer` の第 2 候補は未確定**である（計画 ADR-0038 §未決事項）。実装側で補わない。
+- 鎖を持たない用途の挙動は従来と同一である（1 回試して失敗したら縮退する）。
+
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
 - 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, Models は `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 5 モデル。**`claude-fable-5` は計画 ADR-0038 決定 2 により除去済み**・#850）、`selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
@@ -89,7 +117,9 @@ flowchart TD
   J -->|未登録| K[Sent=false\nプロバイダ未登録]
   J -->|解決| L{CompleteAsync}
   L -->|成功| M[Sent=true\n回答+Endpoint+RoutingReason]
-  L -->|例外| N[Sent=false\n呼び出し先が利用不可・縮退]
+  L -->|例外| O{400系かつ429以外\nかつ次候補あり?}
+  O -->|はい| P[llm.result=fallback を計上\nwarn ログ\n次候補モデルへ] --> L
+  O -->|いいえ 429/5xx/鎖なし| N[Sent=false\n呼び出し先が利用不可・縮退]
 ```
 
 ## 例外・エラー処理
@@ -100,7 +130,9 @@ flowchart TD
 | 機密区分が未指定・未知 | `Restricted` へ倒し、ティアC を除外（安全側） | ティアA/B のみで判定（該当なければ上記拒否） |
 | `Internal × ティアC` かつ未承認（`AllowUnapprovedTierC=false`） | ティアC 候補を除外（要承認ゲート） | ティアA/B で判定、無ければ拒否 |
 | 選択プロバイダが keyed DI 未登録 | 送信せず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`, `Model=""`（未使用）（`Text` に未登録メッセージ） |
-| 呼び出し先が不調（例外, `OperationCanceledException` 以外） | 500 を伝播させず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`, `Model=実 route 結果`（`Text` に利用不可メッセージ） |
+| **呼び出し先が HTTP 400 系（429 を除く）を返し、用途に鎖がある**（ADR-0038 決定 3・4 / IADR-0225） | **次の候補モデルへ切り替えて再試行**。監査ログ warn（遷移と上流ステータス）、メトリクス `llm.result=fallback` | 成功すれば `Sent=true`, `Model=実際に使った候補` |
+| **呼び出し先が 429 を返した**（ADR-0038 決定 4） | **フォールバックしない**（429 は再試行の対象であってフォールバックの対象ではない）。下段の「呼び出し先が不調」へ合流 | `Sent=false`, `Model=第 1 候補のまま` |
+| 呼び出し先が不調（例外, `OperationCanceledException` 以外） | 500 を伝播させず縮退。監査ログ error | `Sent=false`, `Endpoint=採用EP`, `Model=実 route 結果`（鎖がある場合は**最後に試した候補**）（`Text` に利用不可メッセージ） |
 | セルフホスト `BaseUrl` 未設定 | `SelfHostedProvider` が `InvalidOperationException`。上記「呼び出し先不調」に集約し縮退 | `Sent=false` |
 | 送信は成立したがモデルが拒否（`stop_reason="refusal"`。ADR-0025 / IADR-0104） | 縮退させず送信成立として扱い、**本文（断片を含む）を破棄**。監査ログ warn | `Sent=true`, `StopReason="refusal"`, `Text=""` |
 | 送信は成立したが出力上限に到達（`stop_reason="max_tokens"`。IADR-0101 / IADR-0104） | 途中結果は破棄せず返す。監査ログ warn | `Sent=true`, `StopReason="max_tokens"`, `Text=途中結果` |
@@ -128,10 +160,13 @@ OpenAI 互換 API を呼ぶプロバイダ（`SelfHostedProvider`＝ティアA /
 ### 可観測性（終了理由のメトリクス）
 
 補完 1 回ごとにカウンタ `llm.completion.total` を計上する（[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) / #395）。
-送信可否（`llm.result` = `sent` / `egress_denied` / `provider_missing` / `upstream_error`）と終了理由
+送信可否（`llm.result` = `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback`）と終了理由
 （`llm.stop_reason`）を**別属性**として持つため、「送信していない」と「送ったがモデルが拒否した」を
 取り違えずに拒否率を求められる。**送信していない経路も計上する**（分母が欠けると拒否率が過大に見える）。
 属性値はすべて有限集合へ丸め、未知の終了理由・未定義の用途は `other` へ集約する（原文はログ側が保持する）。
+**`fallback` は前節のフォールバックが発火した呼び出し**（見送った候補）であり、
+**計器は増やしていない**（#863 / [[IADR-0225]] 決定 5）。フォールバックした 1 リクエストは
+`fallback` と `sent` の 2 件になるが、**拒否率の分母（`sent`）はリクエストあたり最大 1 件**のままである。
 定義・クエリ例・しきい値の方針は [`docs/observability/llm-completion-metrics.md`](../observability/llm-completion-metrics.md)。
 
 ### 縮退応答の `Model`（呼び出し側が名乗る「使用モデル」）
@@ -199,6 +234,10 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 終了理由がメトリクス（`llm.completion.total`）として継続的に観測でき、拒否・上限到達・正常終了・送信拒否・呼び出し失敗が相互に区別できる。属性のカーディナリティは有限（#395 / IADR-0110）。
 - [x] 縮退応答（未送信）が使用モデルを名乗らない。呼び出し側はゲートウェイ報告値を透過し、モデル名を自分で決めない（#403 / IADR-0111）。
 - [x] SDK が解釈できない content ブロック型（`thinking` 等）が含まれても応答全体を失わず、本文テキストと既知ブロックを取得できる。未知の将来型でも同様（AST#290 / IADR-0114）。
+- [x] 用途 `analysis` の第 1 候補（`claude-opus-5`）が HTTP 400 系で失敗したとき、`claude-sonnet-5` へフォールバックして応答が返る（#863 / 計画 ADR-0038 決定 3 / IADR-0225）。
+- [x] **429 ではフォールバックしない**（429 は再試行であってフォールバックではない。#863 / 計画 ADR-0038 決定 4）。5xx・ステータス不明の失敗も同様に従来の縮退へ落ちる。
+- [x] フォールバックの発火が `llm.completion.total{llm_result="fallback"}` として観測でき、見送った候補と実際に使った候補が `llm.model` で区別できる（#863 / 計画 ADR-0038 決定 6）。
+- [x] フォールバック先が `Models`（利用許可集合）に登録済みであることをガードが固定する（#863 / 計画 ADR-0038 決定 5。既存 T-19 の射程を拡大）。`trade-decision` は鎖を持たない。
 
 > 検証（#201）: `LlmRouterTests`（越境マトリクス・ティア除外・フォールバック・ZDR・縮退）／
 > `CompletionRoutingEndpointTests`／`EmbeddingRouterTests`・`EmbeddingEndpointTests`（埋め込み egress）。
@@ -213,13 +252,19 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - 作業仕様書: `../specs/20260702_FR-11_llm-egress-routing.md`、`../specs/20260704_FR-11_llm-routing-runtime-fixes.md`、`../specs/20260725_issue-379_llm-stop-reason-refusal.md`、`../specs/20260728_issue-394_openai-finish-reason.md`、`../specs/20260728_issue-403_degraded-answer-model.md`、`../specs/20260728_issue-395_refusal-metrics.md`
 - 通信仕様書: `../api/openapi.yaml`（`/complete`・`CompletionApiResponse.stopReason`）
 - セキュリティ仕様書: `../security/`（データ越境統制 / NFR）
-- 実装ADR: `../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
+- 実装ADR: `../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md`（用途別フォールバック順序・429 の境界・発火の可観測化）、`../adr/IADR-0007_llm-egress-routing-config-driven.md`（config 駆動ルーティング）、`../adr/IADR-0014_qdrant-attribute-payload-key.md`（属性ペイロード復元）、`../adr/IADR-0104_llm-stop-reason-refusal.md`（終了理由の判別と拒否の伝達）、`../adr/IADR-0109_openai-finish-reason-normalization.md`（OpenAI 互換 finish_reason の正規化）、`../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（終了理由のメトリクス）、`../adr/IADR-0111_degraded-answer-model-label.md`（縮退応答の「使用モデル」ラベル）
 - 可観測性仕様書: `../observability/llm-completion-metrics.md`（終了理由・拒否率のメトリクス）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
 - 関連機能仕様書: `./FR-04_ai-answer-citations.md`（`RagOrchestrator` が本ルーティングを利用）
 
 ## 未決事項
 
+- **429（レート制限）の再試行方針**（回数・バックオフ・`Retry-After` の尊重）。計画 `ADR-0038` 決定 4 は
+  「429 は再試行である」と述べるだけで再試行の形を定めていない。確定するまで実装しない
+  （[[IADR-0225]] §フォローアップ 1・#863）。
+- **`default` / `rag-answer` のフォールバック第 2 候補**（計画 `ADR-0038` §未決事項・同 §フォローアップ 5）。
+  確定したら `PurposeFallbackModels` へ足す。ストリーム経路の用途に鎖が付く場合は、
+  `/complete/stream` をフォールバックの射程に含めるかを見直す（[[IADR-0225]] 決定 4）。
 - ADR-0010 は `Accepted`（既定 Opus / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。**［2026-08-18 更新 / #850］最難関の割当は計画 `ADR-0038`（Accepted）が `claude-opus-5` へ部分改定した** —— ADR-0010 の他の決定（ゲートウェイを設ける決定・ルーティング機構・送信可否判定・トークン計測・監査ログの一元化）は有効である。既定 Opus の版数は ADR-0010 本文凍結後に ADR-0025 が `claude-opus-5` へ改定し、IADR-0101 で追従済み（利用モデルの最新 roster は ADR-0025 を正とする）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
 - GitHub Copilot（`copilot-managed`）の送信先ティアは 08_data-egress-policy の契約条件（ZDR/学習不使用/レジデンシー）確定待ち。確定まで安全側でティアC・既定無効とし、確定後に設定で有効化・ティア再判定する（IADR-0022 フォローアップ）。
 - **Sonnet 5 の実トークン消費の実測**（IADR-0106 フォローアップ）: `rag-answer` は ADR-0022 の確定値 `claude-sonnet-5` へ追随済み（IADR-0106）。Sonnet 5 は thinking が既定有効かつ新トークナイザ（同一テキストで約 +30% トークン）のため、既定 `max_tokens` 4096 は**実測前の出発値**である。実測と再調整は [#380](https://github.com/endazon/microservices-platform/issues/380)。あわせて新トークナイザ前提でのコスト試算・レート制限しきい値・プロンプトキャッシュ最小長を再測定する（ADR-0022 §結果）。

@@ -326,6 +326,10 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
     **本文は 1 文字も書き換えていない**（旧条文は原文のまま、追記ブロックで訂正した）。
 - 決定 3・4・6（フォールバック機構）の実装 issue。**新規 IADR の採番が要る見込みであり、
   本 PR では起こさない**（採番衝突の回避）。
+  - **［2026-08-18 追記 / #863・解決済み］issue は #863 として起票され、本追記の時点で実装された。**
+    採番した実装 ADR は [[IADR-0225]]（用途別フォールバック順序・429 の境界・発火の可観測化）である。
+    **429 の再試行そのもの**と **`default` / `rag-answer` の第 2 候補**は引き続き未確定で、
+    同 IADR §フォローアップ 1・2 が引き取っている。
 - `analysis` と `default` が同一モデル（`claude-opus-5`）になったため、
   `PostComplete_WithoutExplicitModel_SelectsPurposeModel` の `analysis` ケースは
   「用途別割当が発火したこと」と「`DefaultModel` へ落ちたこと」を**区別できない**。

@@ -7,6 +7,8 @@ related_ids:
   - FR-05
   - FR-02
   - UC-02
+  - ADR-0038
+  - IADR-0225
 author: claude
 created: 2026-07-04
 updated: 2026-08-18
@@ -18,6 +20,7 @@ related_specs:
   - ../specs/20260702_FR-11_llm-egress-routing.md
   - ../specs/20260704_FR-11_llm-routing-runtime-fixes.md
 related_adrs:
+  - ../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md
   - ../adr/IADR-0007_llm-egress-routing-config-driven.md
   - ../adr/IADR-0014_qdrant-attribute-payload-key.md
 ---
@@ -58,6 +61,7 @@ related_adrs:
 | T-22 | **報告書の種別別モデルと取引判断の改定（IADR-0112 / IADR-0113 / #420 #421 / AST#309）** | 報告書は方針階層（月報→週報→日報→取引。`AST/04_workflows/03_reporting-cycle`）をなす方針書であり、種別ごとに用途を分けて解決する（`report-monthly→claude-opus-5`〔IADR-0113 で `claude-fable-5` から改定〕 / `report-weekly→claude-opus-5` / `report-daily→claude-sonnet-5`）。3 種別が 1 モデルへ潰れない（日報は別モデル）。`report-weekly` は `default` と同値だが明示エントリで固定する（無いと `default` 改定で無音に失効する）。月報も週報と同値になったが、同じ理由で明示エントリを残す | 各用途が指定モデルを返す（検証区分は report-service の実運用値 `internal`） | FR-11 / `LlmRouterTests.Route_ReportKindPurpose_ResolvesKindSpecificModel`・`CompletionRoutingEndpointTests.PostComplete_ReportKindPurpose_SelectsKindSpecificModel` |
 | T-23 | **報告書の割当は機密区分で変わらない（IADR-0113 / AST#309）** | 旧割当 `claude-fable-5` は `NonZdrModels` に載る唯一の非 ZDR モデルであり、`confidential` 以上では `EligibleModels` から除外され `DefaultModel` へ**黙って**落ちていた。ZDR 対応モデルへ改定したことで、`report-*` の割当が呼び出し側の機密区分設定（report-service の `LlmGateway:Confidentiality`。既定 `internal`）に左右されないことを固定する。あわせて **割当モデルが `NonZdrModels` に含まれない**ことを集合として固定し、用途追加時の再発を防ぐ（T-19 と同じ発想の設定ガード）。**［2026-08-18 更新 / #850・計画 ADR-0038］射程を `report-*` から全 `PurposeModels` へ広げた** —— 旧: 「`analysis` は ZDR 非要件区分限定の意図的な例外〔IADR-0022〕のため対象外」。同 ADR 決定 2 でその例外が消滅したため、絞る理由が無くなった（IADR-0113 決定 4 の射程の改定にあたる旨は同 IADR の同日追記に記録）。**広げたことが効いていることは変異試験で実測した** —— `NonZdrModels` に `claude-haiku-4-5`（`diagram-coding` だけが使う＝旧射程では捕まらない）を入れると、157 本中**本ガード 1 本だけ**が落ちる | `internal`/`confidential`/`restricted` のいずれでも `Sent=true` かつ `Model="claude-opus-5"`（`claude-fable-5` でない）/ 全 `PurposeModels` 割当 ∉ `NonZdrModels` | FR-11 / `LlmRouterTests.Route_ReportKindPurpose_ResolvesSameModelAcrossSensitivities`・`CompletionRoutingEndpointTests.PostComplete_ReportMonthly_KeepsAssignedModelAcrossSensitivities`・`PurposeModels_AreNotListedAsNonZdr`（#850 で `ReportPurposeModels_...` から改名・射程拡大） |
 | T-24 | **未知 content ブロックで応答全体を失わない（IADR-0114 / AST#290）** | Anthropic.SDK 4.0.0 の content 判別子は `text`/`image`/`tool_use`/`tool_result` の 4 種しか知らず、`thinking`（Opus 5 / Sonnet 5 は既定有効・Fable 5 は常時有効）が 1 個混ざるだけで `JsonException: Unknown type thinking` により**応答全体**を失う。**既知型の許可リスト**で未知型（`thinking` / `redacted_thinking` / `server_tool_use` / 将来型）を除去し、本文テキスト・構造化出力・トークン数・`stopReason` を従来どおり取得する。既知型のみの応答は書き換えない／全ブロック未知なら content 空へ縮退（例外にしない）／非 2xx と SSE は素通し／除去した型名は WARN に残す。`refusal` の本文破棄（IADR-0104）は不変 | `CompleteAsync` が例外を投げず本文を返す。取引判断 JSON の `action` が Buy/Sell/Hold として読める。**変異テスト**: サニタイズを外すと同応答で `Unknown type thinking` になる | FR-11 / FR-04 / `AnthropicContentBlockSanitizerTests`（許可リスト・将来型・素通し・空縮退・非 JSON・非 2xx・SSE の 11 ケース）・`ClaudeProviderThinkingTests`（本文取得・Buy/Sell/Hold・未知型・変異・素通し・refusal の 8 ケース） |
+| T-25 | **用途別フォールバック順序・429 の境界・発火の可観測化（計画 ADR-0038 決定 3・4・6 / IADR-0225 / #863）** | ① `analysis` の第 1 候補（`claude-opus-5`）が HTTP 400 で失敗したら第 2 候補 `claude-sonnet-5` へ落ちて `Sent=true` になる。② **429 では落ちない**（再試行であってフォールバックではない）。5xx・ステータス不明も落ちない。③ 発火が `llm.completion.total{llm_result="fallback"}` として計上され、見送った候補と使った候補が `llm.model` で分かれる。④ 鎖の要素は `Models` 登録済み・ZDR 適格に限る（未登録は warn を出して落とす）。⑤ **`trade-decision` は鎖を持たない**（`AST/ADR-0011` / ピン Runbook の禁止）。⑥ `/complete/stream` は落ちない（射程外） | ①応答 `Model=claude-sonnet-5` ②`Sent=false` かつ `Model=claude-opus-5` ③計上 2 件（`fallback`＋`sent`）④鎖から除外 ⑤`PurposeFallbackModels` に `trade-decision` キーが無い ⑥SSE が `sent:false` | 計画 ADR-0038 決定 3・4・6 / `LlmFallbackPolicyTests`・`LlmRouterTests`・`CompletionFallbackEndpointTests`・`CompletionMetricsTests`・`CompletionRoutingEndpointTests` |
 
 ## 未確認・フォローアップ（#58 #3）
 

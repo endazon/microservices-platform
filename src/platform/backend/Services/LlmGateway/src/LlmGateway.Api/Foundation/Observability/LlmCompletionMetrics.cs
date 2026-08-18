@@ -34,6 +34,12 @@ public sealed class LlmCompletionMetrics
     public const string ResultEgressDenied = "egress_denied";    // 機密区分により送信しなかった
     public const string ResultProviderMissing = "provider_missing"; // 呼び出し先プロバイダ未登録
     public const string ResultUpstreamError = "upstream_error";  // 呼び出し先が不調（例外）
+    // ADR-0038 決定 6 (#863), IADR-0225: 上流が HTTP 400 系を返し、**次の候補モデルへ切り替えた**呼び出し。
+    // フォールバックが起きた 1 リクエストは 2 回計上される（見送った第 1 候補が fallback、
+    // 成功した第 2 候補が sent）。llm.model が候補ごとに違うため、用途別・モデル別の利用実績として読める。
+    // ★ upstream_error に混ぜない —— 混ぜると「回復した呼び出し」が呼び出し先障害の率へ入り、
+    //   upstream_error 率 > 10%（critical）のアラート方針が誤発火する。
+    public const string ResultFallback = "fallback";
 
     // 未知値の集約先と「該当なし」。
     public const string ValueOther = "other";

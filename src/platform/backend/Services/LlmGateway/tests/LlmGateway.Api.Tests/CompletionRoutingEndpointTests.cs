@@ -55,7 +55,8 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により最難関 analysis は claude-fable-5 → claude-opus-5 へ改定した。
     // これにより analysis は DefaultModel と同値になり、本ケースだけでは「用途別割当が発火した」ことと
     // 「DefaultModel へ黙って落ちた」ことを区別できない（ADR-0038 §結果 が受け入れたトレードオフ）。区別は
-    // PurposeModels_AreAllRegisteredInClaudeEndpointModels（T-19）と LlmRouterTests の合成 config 側が担う。
+    // PurposeModelsAndFallbacks_AreAllRegisteredInClaudeEndpointModels（T-19。#863 で改名）と
+    // LlmRouterTests の合成 config 側が担う。
     // 実運用経路（RagOrchestrator / LlmGatewayDiagramCoder）は Model=null で /complete を呼ぶため、この経路で用途別モデルが発火することを検証する。
     // purpose 値は呼び出し側が送る文字列（ConversionService は "diagram-coding"）と一致させる（設定キー統一のガード）。
     // 検証区分は public のまま据え置く（旧: ZDR 非対応の fable-5 が confidential/restricted で除外されるため。
@@ -165,8 +166,15 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     // Models 未登録の用途別モデルは例外もログも出さずに DefaultModel へフォールバックし、
     // 「追随したつもりで追随していない」状態が無音で成立する（#376 / IADR-0102 で実際に踏んだ罠）。
     // rag-answer 単体ではなく PurposeModels 全体を集合として守り、用途追加のたびの再発を防ぐ。
+    //
+    // ［2026-08-18 追記 / #863］**射程を PurposeFallbackModels（フォールバック順序）へも広げ、名前も改めた**
+    // （旧名 PurposeModels_AreAllRegisteredInClaudeEndpointModels）。計画 ADR-0038 決定 5 は
+    // 「フォールバック先は利用許可集合に残す。登録されていなければフォールバックはその場で失敗する」と
+    // 述べており、**本ガードが守るべき不変条件は第 1 候補と鎖の要素で同じ**である。
+    // **並行するガードを新設せず、既存の 1 本を広げた** —— 同じ不変条件を 2 本で守ると片方が古くなる
+    // （#850 が PurposeModels_AreNotListedAsNonZdr で採ったのと同じ形）。
     [Fact]
-    public void PurposeModels_AreAllRegisteredInClaudeEndpointModels()
+    public void PurposeModelsAndFallbacks_AreAllRegisteredInClaudeEndpointModels()
     {
         var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
         var claude = options.Endpoints.Single(e => e.Name == "claude-managed");
@@ -176,6 +184,32 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
             claude.Models.Should().Contain(model,
                 $"用途 {purpose} の割当モデル {model} が Models 未登録だと DefaultModel へ黙って落ちる");
         }
+
+        // ADR-0038 決定 3・5 (#863): 鎖の要素も同じ許可集合に無ければならない。
+        options.PurposeFallbackModels.Should().ContainKey("analysis",
+            "計画 ADR-0038 決定 3 が analysis のフォールバック順序を定めている（鎖が消えると決定が無音で失効する）");
+        foreach (var (purpose, fallbacks) in options.PurposeFallbackModels)
+        {
+            foreach (var model in fallbacks)
+            {
+                claude.Models.Should().Contain(model,
+                    $"用途 {purpose} のフォールバック先 {model} が Models 未登録だと、"
+                    + "フォールバックはその場で失敗する（ADR-0038 決定 5）");
+            }
+        }
+    }
+
+    // T-25, AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md:
+    // **取引判断はフォールバックの対象にしない。** 別モデルで下した判断は再現性・監査可能性を失った
+    // 別物であり、Runbook が「別のモデルへ切り替えて取引判断を続けてはならない」と明示している。
+    // 実設定に鎖が足されたら落ちる（禁止の記述だけでは破られる、という #382 の懸念への手当て）。
+    [Fact]
+    public void TradeDecision_HasNoFallbackChainInProductionConfig()
+    {
+        var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
+
+        options.PurposeFallbackModels.Should().NotContainKey("trade-decision",
+            "ピン留めしたモデルが使えないとき、取引判断は実行しない（別モデルへ逃がさない）");
     }
 
     // T-19, ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5 を選択し、既定（DefaultModel=claude-opus-5）へ

@@ -14,14 +14,17 @@ related_ids:
   - IADR-0109
   - IADR-0110
   - IADR-0212
+  - IADR-0225
+  - ADR-0038
 author: claude
 created: 2026-07-28
-updated: 2026-08-16
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
 related_specs:
   - "../adr/IADR-0212_llm-output-token-histogram.md"
+  - "../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md"
   - "../adr/IADR-0110_llm-completion-stop-reason-metrics.md"
   - "../adr/IADR-0104_llm-stop-reason-refusal.md"
   - "../functional/FR-11_llm-egress-routing.md"
@@ -50,7 +53,7 @@ related_specs:
 
 | 属性 | 値域 | 意味 |
 | --- | --- | --- |
-| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` | **送信可否の軸**（FR-11 の `Sent` に対応） |
+| `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / `fallback` | **送信可否の軸**（FR-11 の `Sent` に対応）。`fallback` は #863 で追加（下記） |
 | `llm.stop_reason` | `end_turn` / `max_tokens` / `refusal` / `stop_sequence` / `tool_use` / `other` / `none` | **モデル側の終了理由**（`Sent` とは独立した軸。[[IADR-0104]]） |
 | `llm.purpose` | `Llm:Routing:PurposeModels` のキー ＋ `default` ＋ `other` | 用途 |
 | `llm.model` | route 結果のモデル / `none` | 実際に選択されたモデル |
@@ -90,6 +93,13 @@ sum by (llm_provider) (rate(llm_completion_total{llm_result="upstream_error"}[30
 
 # 未定義 purpose の流入（ルーティングが既定へ落ちている状態の遅い警報。IADR-0102 / IADR-0106 の罠）
 sum(rate(llm_completion_total{llm_purpose="other"}[1h]))
+
+# フォールバックの発火（用途別・モデル別）。llm_model は「見送った候補」である（ADR-0038 決定 6 / #863）
+sum by (llm_purpose, llm_model) (rate(llm_completion_total{llm_result="fallback"}[30m]))
+
+# フォールバック率 = 見送った呼び出し ÷ 成立した呼び出し。恒常的に高いなら第 1 候補の割当を疑う
+sum(rate(llm_completion_total{llm_result="fallback"}[30m]))
+  / clamp_min(sum(rate(llm_completion_total{llm_result="sent"}[30m])), 1e-9)
 ```
 
 > **注意**: 分母 0 で `NaN` にならないよう `clamp_min` を用いる。Prometheus 側の属性名はドットが
@@ -146,6 +156,29 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 > **この非対称は意図である** —— 送信していない呼び出しに出力トークン数は存在せず、
 > 0 で埋めると分布の最下段が「短い応答」と「応答が無かった」の混合になる。
 
+## フォールバックの発火（`llm.result="fallback"`・[[IADR-0225]] / #863）
+
+計画 [`ADR-0038`](../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md)
+決定 6 が求める「フォールバック発火の可観測化」は、**新しい計器ではなく `llm.result` の 5 番目の値**で満たす。
+
+| 値 | 意味 | `llm.model` |
+| --- | --- | --- |
+| `fallback` | 上流が **HTTP 400 系**を返し、**次の候補モデルへ切り替えた**呼び出し | **見送った**候補 |
+| `sent` | 越境が成立した呼び出し | **実際に使った**候補 |
+
+**フォールバックが起きた 1 リクエストは 2 件計上される。** これは意図である ——
+上流を実際に 2 回叩いており、**用途別・モデル別の利用実績としては 2 回として読むのが正しい**。
+
+- **`llm_completion_total` の総和はリクエスト数より大きくなり得る。** 一方
+  **拒否率の分母（`llm_result="sent"`）はリクエストあたり最大 1 件**であり、上の拒否率の式は影響を受けない。
+- **`upstream_error` には混ぜていない。** 混ぜると「フォールバックで回復した呼び出し」が
+  呼び出し先障害の率へ入り、下表の `upstream_error` 率 > 10%（critical）が誤発火する。
+- **429（レート制限）ではフォールバックしない**（`ADR-0038` 決定 4）。429 は再試行の対象であり、
+  現行実装では従来どおり `upstream_error` として計上される（429 の再試行そのものは
+  [[IADR-0225]] §フォローアップ 1 として未実装である）。
+- **既存の Grafana パネル**（`sum by (llm_result) (increase(llm_completion_total[$__range]))`）に
+  新しい系列としてそのまま現れるため、**ダッシュボードの変更を要さない**。
+
 ## しきい値の方針（アラート）
 
 | 観点 | 目安 | 重大度 | 意図 |
@@ -174,4 +207,5 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 
 - アラートの実配線（Prometheus ルール／Alertmanager 通知先）と Grafana ダッシュボードへのパネル追加。
 - レイテンシ・トークン消費のヒストグラム（[[IADR-0110]] §フォローアップ 2。#380 のコスト実測と接続する）。
+- **フォールバック率のしきい値**（[[IADR-0225]] §フォローアップ 3）。**実測前に数値を置かない。**
 - 埋め込み経路（`/embeddings`）の同種メトリクス。

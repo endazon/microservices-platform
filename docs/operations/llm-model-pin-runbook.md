@@ -6,9 +6,11 @@ related_ids:
   - FR-11
   - IADR-0102
   - IADR-0112
+  - IADR-0225
+  - ADR-0038
 author: claude
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0011_llm-model-pinning.md (取引判断の LLM モデル固定・Accepted。本 Runbook が手続きを書き下ろす対象)"
@@ -29,8 +31,9 @@ plan_refs:
 
 ```
 src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
-  → Llm:Routing:PurposeModels        （用途 → モデル）
-  → Llm:Routing:Endpoints[].Models   （エンドポイントが許可するモデル）
+  → Llm:Routing:PurposeModels          （用途 → モデル）
+  → Llm:Routing:PurposeFallbackModels  （用途 → フォールバック順序。#863 で追加）
+  → Llm:Routing:Endpoints[].Models     （エンドポイントが許可するモデル）
 ```
 
 **本 Runbook へ値を書き写すと必ず古くなる**（[[IADR-0141]]「参照点を 1 つに畳む」）。
@@ -39,6 +42,14 @@ src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
 ```console
 $ node -e "const d=require('./src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json');\
 for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.padEnd(16), v)"
+```
+
+**［2026-08-18 追記 / #863］フォールバック順序も監視対象である。** 鎖に載ったモデルも
+**実際に利用されるモデル**であり、提供終了の監視から漏らせない。次のコマンドで併せて列挙する。
+
+```console
+$ node -e "const d=require('./src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json');\
+for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) console.log(k.padEnd(16), v.join(' -> '))"
 ```
 
 > **★ `node` で書くのは本リポの前提に合わせるためである。** 本リポの道具立ては **Node.js / .NET** であり、
@@ -116,6 +127,22 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeModels)) console.log(k.
 - **フォールバックを実装する issue は #440** である（`analysis` の改定と併せて持つ）。
 - Anthropic の `fallbacks` は **HTTP 400 を捕捉しない**ため、**LlmGateway のクライアント実装として持つ**
   （質問票 第 4〜5 回の確定事項）。
+
+> **［2026-08-18 追記 / #863］フォールバック機構は実装された。上の「実装されていない」は 2026-08-11 時点の実測であり、現在は当てはまらない。**
+>
+> 実装は [[IADR-0225]]（計画 `ADR-0038` 決定 3・4・6）による。**本 Runbook が定めた制約は 3 つとも守られている。**
+>
+> | 本 Runbook の制約 | 実装 |
+> | --- | --- |
+> | **`trade-decision` はフォールバックの対象にしない** | `Llm:Routing:PurposeFallbackModels` に `trade-decision` の**エントリを置かない**。設定に足されたら落ちるテスト（`TradeDecision_HasNoFallbackChainInProductionConfig`）で固定した |
+> | **429 は再試行。フォールバックではない**（§レート制限（429）は別物である） | `LlmFallbackPolicy` が 429 を発火条件から除外する。**除外を外すと落ちるテスト**を置き、変異試験で実測した |
+> | Anthropic の `fallbacks` に頼らず **LlmGateway のクライアント実装として持つ** | `CompletionEndpoints` の再試行ループとして実装した（SDK の機能は使っていない） |
+>
+> **鎖を持つのは `analysis` だけ**である（`claude-opus-5` → `claude-sonnet-5`。計画 `ADR-0038` 決定 3）。
+> **`trade-decision` を含む他の用途は従来どおり、失敗しても別モデルへ切り替えない。**
+> **429 の再試行そのものは未実装である** —— 計画側が回数・バックオフ・`Retry-After` の方針を
+> 定めていないためであり（[[IADR-0225]] §フォローアップ 1）、**429 で別モデルへ逃げないことだけが
+> 実装されている**。発火は `llm_completion_total{llm_result="fallback"}` で観測する。
 
 ---
 

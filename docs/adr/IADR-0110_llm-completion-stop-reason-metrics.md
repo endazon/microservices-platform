@@ -13,9 +13,11 @@ related_ids:
   - IADR-0022
   - IADR-0101
   - IADR-0104
+  - IADR-0225
+  - ADR-0038
 author: claude
 created: 2026-07-28
-updated: 2026-08-01
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md (OTel/Prometheus/Loki/Tempo への統一計装・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
@@ -81,6 +83,24 @@ plan_refs:
    終了理由の計上とは独立に決められるため、本 IADR では扱わない。
 
 ## 決定
+
+> **［2026-08-18 追記 / #863］`llm.result` の値域に `fallback` が加わり 5 値になった。**
+> 計画 `ADR-0038`（`Accepted`）決定 6「フォールバックの発火を可観測にする」の実装（[[IADR-0225]]）による。
+> **本 ADR の決定 1〜7 はいずれも覆っていない** —— 計器は `llm.completion.total` の 1 本のままであり
+> （新しい計器を足さない選択を [[IADR-0225]] が明示的に採った）、属性を有限集合へ丸める原則も、
+> `llm.result` と `llm.stop_reason` を独立した軸として扱う決定 4 も維持されている。
+> **下の決定 2 の表の `llm.result` 行は、当時の値域である**（原文は書き換えない）。現行値は次のとおり:
+>
+> | 属性 | 値域（現行） |
+> | --- | --- |
+> | `llm.result` | `sent` / `egress_denied` / `provider_missing` / `upstream_error` / **`fallback`** |
+>
+> `fallback` は「上流が HTTP 400 系を返し、次の候補モデルへ切り替えた呼び出し」を表す。
+> **フォールバックが起きた 1 リクエストは 2 件計上される**（見送った候補が `fallback`、
+> 成功した候補が `sent`）。**決定 3 の「分母が欠けて拒否率が歪む」は影響を受けない** ——
+> 拒否率の分母 `llm.result="sent"` は従来どおりリクエストあたり最大 1 件だからである。
+> **`upstream_error` へ混ぜなかった理由**は、回復した呼び出しを呼び出し先障害の率へ入れると
+> `upstream_error` 率 > 10%（critical）のしきい値方針が誤発火するためである（[[IADR-0225]] §検討した選択肢 C4）。
 
 1. **カウンタ `llm.completion.total`**（単位 `{completion}`）を LlmGateway に定義する。
    `Meter` 名は `microservices-platform.llm-gateway`（サービス名と一致）。`IMeterFactory` 経由で生成し、

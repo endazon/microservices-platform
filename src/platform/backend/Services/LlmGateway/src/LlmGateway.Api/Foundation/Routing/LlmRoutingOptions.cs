@@ -22,6 +22,21 @@ public sealed class LlmRoutingOptions
     // （IADR-0101 の既定改定が IADR-0102 のピンを必要にした実例。IADR-0112 決定1）。
     public Dictionary<string, string> PurposeModels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    // FR-11, ADR-0038 決定 3 (#863): 用途（purpose）→ フォールバック順序（第 2 候補以降・順序つき）。
+    // 第 1 候補は PurposeModels（無ければ DefaultModel）であり、ここには**第 1 候補より後ろ**だけを書く。
+    // 発火するのは上流が HTTP 400 系を返したときだけである（429 は再試行でありフォールバックではない。
+    // ADR-0038 決定 4 / LlmFallbackPolicy）。
+    //
+    // ⚠️ 3 つの制約:
+    //  1. 鎖の要素も当該エンドポイントの Models（利用許可集合）へ登録する（ADR-0038 決定 5）。
+    //     未登録の要素は LlmRouter が warn を出して鎖から落とす（黙って落とさない）。
+    //  2. 用途を書かなければ鎖は無く、その用途はフォールバックしない。**trade-decision は
+    //     意図的に鎖を持たない** —— 別モデルで下した取引判断は再現性・監査可能性を失った別物である
+    //     （AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md）。
+    //  3. default / rag-answer の第 2 候補は計画 ADR-0038 §未決事項で**未確定**である。根拠なく足さない。
+    public Dictionary<string, List<string>> PurposeFallbackModels { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
     // internal × ティアC（要承認）を自動許可するか。既定は安全側で false（承認が無ければ C を使わない）。
     public bool AllowUnapprovedTierC { get; set; }
 }
