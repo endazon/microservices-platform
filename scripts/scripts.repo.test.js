@@ -8190,4 +8190,184 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  // --- #830: 雛形（templates/*/backend）を CI が実際にコンパイル・テストしていること ----------
+  //
+  // 事故: 雛形のテストプロジェクトに GlobalUsings.cs が無く（ImplicitUsings は Xunit を含まない）、
+  // **配布中の雛形が一度もコンパイルできない状態のまま出荷されていた**。誰も気付けなかったのは
+  // 雛形 backend をコンパイルするジョブが 1 つも無かったためである（lint / build-and-test /
+  // codeql.yml は src/*/backend/backend.slnx を glob し、security.yml と copilot-setup-steps.yml は
+  // -not -path './templates/*' で明示除外する）。
+  //
+  // **本群が固定するのは「配線が在ること」であって「雛形がビルドできること」ではない。**
+  // 実際のコンパイルは ci.yml の template-backend-build ジョブが行う（node からは dotnet を
+  // 呼べないし、呼べても scripts-tests ジョブは setup-dotnet を持たない）。ここで固定するのは、
+  // **その配線が黙って外れないこと**と、**外れると空回りする各要素**である:
+  //   - .sample を複製先から外す（外し忘れると src/ の単一情報源を上書きする。IADR-0060 決定 4）
+  //   - --artifacts-path（無いと ProjectReference 先の src/platform/**/{bin,obj} が作業ツリーへ生える）
+  //   - 実行件数の下限判定（無いと「0 件実行の Test Run Successful」を緑と読む）
+  //   - 後片付けの実測ステップ（if: always()。ビルドが落ちた回にこそ残骸が出る）
+  // 併せて、**実際に出荷された欠陥そのもの**（GlobalUsings.cs の欠落）を静的にも固定する。
+  {
+    const fs830 = require('fs');
+    const path830 = require('path');
+    const REPO830 = path830.resolve(__dirname, '..');
+    const CI830 = fs830.readFileSync(path830.join(REPO830, '.github/workflows/ci.yml'), 'utf8');
+    // 行頭 # のコメントを落とす（配線の実体だけを見る。コメントに書いただけで緑にしない）。
+    const bare830 = CI830.split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .join('\n');
+
+    ok('#830: ci.yml に雛形ビルドのジョブ ID template-backend-build が在る', () => {
+      assert.match(
+        bare830,
+        /^ {2}template-backend-build:$/m,
+        'ジョブ ID template-backend-build が無い（雛形をコンパイルする経路が消えている）'
+      );
+    });
+
+    ok('#830: 雛形を src/ 配下へ複製してから build / test している', () => {
+      // 配置後の位置を模した複製先。templates/ 位置のままでは platform Shared への相対参照が
+      // 解決できず restore が MSB4181 で落ちる（IADR-0060 決定 3）。
+      assert.match(
+        bare830,
+        /stage="src\/\.template-buildcheck-\$\{name\}"/,
+        '複製先が src/ 配下でない（テンプレート位置のままではビルドできない）'
+      );
+      assert.match(
+        bare830,
+        /for slnx in templates\/\*\/backend\/backend\.slnx; do/,
+        '雛形の自動発見 glob が無い'
+      );
+      assert.match(
+        bare830,
+        /dotnet build "\$\{stage\}\/backend\/backend\.slnx"/,
+        '複製した雛形の dotnet build が無い'
+      );
+      assert.match(
+        bare830,
+        /dotnet test "\$\{stage\}\/backend\/backend\.slnx"/,
+        '複製した雛形の dotnet test が無い'
+      );
+      // glob が空振りしたまま緑になる形（雛形が消えた・移動した）を止めていること。
+      assert.match(bare830, /if \[ "\$found" -eq 0 \]/, 'glob 空振りの検出が無い');
+    });
+
+    ok('#830: 複製先から .sample を外している（src/ の単一情報源を上書きしない）', () => {
+      assert.match(
+        bare830,
+        /find "\$stage" -name '\*\.sample' -type f -delete/,
+        '.sample の除去が無い。置いたままだと src/Directory.Build.props より近い階層で発見され' +
+          '上書きする（IADR-0060 決定 4）'
+      );
+    });
+
+    ok('#830: --artifacts-path で obj/bin を作業ツリーの外へ逃がしている', () => {
+      const hits = bare830.match(/--artifacts-path "\$artifacts"/g) || [];
+      assert.ok(
+        hits.length >= 2,
+        `build と test の双方に --artifacts-path が要る（実測 ${hits.length} 件）。` +
+          '片方でも欠けると src/platform/backend/Shared/*/{bin,obj} が作業ツリーへ生える'
+      );
+    });
+
+    ok('#830: 実行されたテスト名を出し、件数の下限を [Fact]/[Theory] で押さえている', () => {
+      // 名前が出ないと「何が走ったか」を誰も確かめられない（#830 受け入れ基準）。
+      assert.match(bare830, /--verbosity normal/, 'dotnet test の --verbosity normal が無い');
+      assert.match(
+        bare830,
+        /expected=\$\(grep -rhE '\^\[\[:space:\]\]\*\\\[\(Fact\|Theory\)'/,
+        '[Fact]/[Theory] の数え上げが無い（0 件実行を緑と読む）'
+      );
+      assert.match(
+        bare830,
+        /if \[ "\$executed" -lt "\$expected" \]/,
+        '実行件数の下限判定が無い（1 件だけ動いて 1 件が拾われない、を見逃す）'
+      );
+    });
+
+    ok('#830: 後片付けの取りこぼしを if: always() で実測している', () => {
+      assert.match(bare830, /trap cleanup EXIT/, '複製の後片付け（trap）が無い');
+      assert.match(
+        bare830,
+        /git status --short --ignored -- src\//,
+        '残骸ゼロの実測が無い（#830 受け入れ基準）'
+      );
+      // ビルドが落ちた回にこそ残骸が出る。if: always() が無いとその回に検査されない。
+      const verify = bare830.slice(bare830.indexOf('Verify the staged copies left nothing behind'));
+      assert.match(verify.slice(0, 200), /if: always\(\)/, '後片付け検査に if: always() が無い');
+    });
+
+    // ── 起動条件と必須チェックの context を変えていないこと（CLAUDE.md「変更したら確かめる」）。
+    ok('#830: ci.yml の起動条件と既存の必須チェック名は不変', () => {
+      // ci.yml は paths: フィルタを持たない。持たせると「雛形だけを触る PR で起動しない」に戻り、
+      // かつ必須チェックが恒久 pending になる（docs/ai-workflow.md）。
+      assert.doesNotMatch(bare830, /^\s*paths:/m, 'ci.yml に paths: フィルタが入っている');
+      assert.match(bare830, /types: \[opened, synchronize, reopened\]/, 'pull_request の types が変わっている');
+      for (const job of ['build-and-test', 'lint', 'commit-messages']) {
+        assert.match(
+          bare830,
+          new RegExp(`^ {2}${job}:$`, 'm'),
+          `必須チェックの context であるジョブ ID ${job} が変わっている（docs/ai-workflow.md の表）`
+        );
+      }
+    });
+
+    // ── 実際に出荷された欠陥そのもの。テスト属性を持つ雛形のテストプロジェクトは
+    //    global using Xunit; を持たねばならない（ImplicitUsings は Xunit を含まない）。
+    ok('#830: 雛形のテストプロジェクトが global using Xunit; を持つ', () => {
+      const walk = (dir, acc) => {
+        for (const e of fs830.readdirSync(dir, { withFileTypes: true })) {
+          const full = path830.join(dir, e.name);
+          if (e.isDirectory()) {
+            if (e.name === 'bin' || e.name === 'obj' || e.name === 'node_modules') continue;
+            walk(full, acc);
+          } else if (e.name.endsWith('.cs')) {
+            acc.push(full);
+          }
+        }
+        return acc;
+      };
+      const roots = fs830
+        .readdirSync(path830.join(REPO830, 'templates'), { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => path830.join(REPO830, 'templates', e.name, 'backend'))
+        .filter((d) => fs830.existsSync(d));
+      assert.ok(roots.length > 0, 'templates/*/backend が 1 件も無い（走査が空回りしている）');
+
+      let checked = 0;
+      for (const root of roots) {
+        const files = walk(root, []);
+        // テスト属性を持つファイルが属するプロジェクト（.csproj のあるディレクトリ）を集める。
+        const projects = new Set();
+        for (const f of files) {
+          if (!/^[ \t]*\[(Fact|Theory)/m.test(fs830.readFileSync(f, 'utf8'))) continue;
+          let dir = path830.dirname(f);
+          while (dir.startsWith(root)) {
+            if (fs830.readdirSync(dir).some((n) => n.endsWith('.csproj'))) {
+              projects.add(dir);
+              break;
+            }
+            dir = path830.dirname(dir);
+          }
+        }
+        assert.ok(
+          projects.size > 0,
+          `${root} に [Fact]/[Theory] を持つテストプロジェクトが無い（雛形のテストが消えている）`
+        );
+        for (const proj of projects) {
+          const hasGlobalUsing = walk(proj, []).some((f) =>
+            /^\s*global\s+using\s+Xunit\s*;/m.test(fs830.readFileSync(f, 'utf8'))
+          );
+          assert.ok(
+            hasGlobalUsing,
+            `${path830.relative(REPO830, proj)} に global using Xunit; が無い。` +
+              'ImplicitUsings は Xunit を含まないため [Fact] が CS0246 で落ちる（#830 の実害）'
+          );
+          checked += 1;
+        }
+      }
+      assert.ok(checked > 0, '検査したテストプロジェクトが 0 件（試験が空回りしている）');
+    });
+  }
 };
