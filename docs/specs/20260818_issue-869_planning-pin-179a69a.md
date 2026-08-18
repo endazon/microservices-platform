@@ -57,7 +57,7 @@ git -C planning log --oneline 282c2d0..179a69a
 | 3 | `.claude/agents/traceability-auditor.md` | A | キット原文で上書き |
 | 4 | `.claude/commands/impl-feature.md` | A | キット原文で上書き |
 | 5 | `.claude/rules/traceability.md` | A | キット原文で上書き（🔴 別紙 #17 と同時） |
-| 6 | `.claude/settings.json` | B 1 | **利用者適用**（Edit/Write とも deny。§7 未了へ） |
+| 6 | `.claude/settings.json` | B 1 | **利用者適用**（Edit/Write とも deny。§7 未了へ）→ その後、利用者の明示依頼により適用済み（§7 の追記） |
 | 7 | `.github/workflows/ci.example.yml` | 対象外 | 実名 `ci.yml` へ差分を移植 |
 | 8 | `.github/workflows/claude-code-review.example.yml` | 対象外 | 実名 `claude-code-review.yml` へ差分を移植 |
 | 9 | `.github/workflows/claude-coding.example.yml` | 対象外 | 実名 `claude-coding.yml` へ差分を移植 |
@@ -131,7 +131,7 @@ python3 -c "yaml.safe_load(...)"  claude-coding / claude-code-review / ci       
 
 ## 7. 計画書との差異・未決事項
 
-- **`.claude/settings.json`（キット側の変更はコメント 1 行＝ 4→5 サブコマンド化と issue 参照の修飾）は本セッションから編集できない（Edit/Write とも deny）。** 本リポの実物は #856 で先行して 5 サブコマンド化・修飾済みであり、**実質差分は無い**。なおコメント末尾の【暫定デルタ】節（「キット側の是正を環流したら本デルタは撤去する」）は、planning#419 の着地により**撤去可能になった**。利用者の適用に委ねる（#847 から継続の扱い）。
+- **`.claude/settings.json`（キット側の変更はコメント 1 行＝ 4→5 サブコマンド化と issue 参照の修飾）**: 当初は deny（ローカルセッション向けガードレール）を尊重して利用者適用としたが、**利用者の明示依頼を受けて本セッションが適用した**（deny は本リモート環境の権限系には効いておらず、Edit で正面から適用できた）。内容は【暫定デルタ】節の撤去（planning#419 の着地で撤去条件が成立）と `issue` の語 2 箇所で、適用後の `//` コメントは**キット原文と同文**（機械確認済み）。`permissions` / `hooks` は不変。適用後も `scripts.test.js` ✓ 666・`check-ai-workflow-config` exit 0。
 - 実名ワークフロー 3 本への移植内容: `claude-coding.yml`＝位置づけヘッダ・既定モデルを `claude-sonnet-5` へ（裁定 2026-08-18）・モデル注記。`claude-code-review.yml`＝位置づけヘッダ・実行制約の凝縮（バックグラウンド待ち禁止と変更範囲絞りを含む——**旧文面はこの 2 弾を持っておらず、example 側の先行改善が届いていなかった**）・検証の誠実性の導入 3 行を YAML コメントへ移設・【プロンプトの書き方】コメント新設・`ls-tree / grep` の 2 箇所追随。`ci.yml`＝キット側変更（issue 修飾 1 行）は #866 で先行済みのため差分なし。
 
 ［2026-08-18 追記 / #869］計画側が planning#420 を即日是正した（planning#421・pin `479f4dd`）。追加還流として pin を `479f4dd` へ前進し、キット側変更 2 ファイルのうち `scripts/check-review-verdict.js`（分類 A・docstring 1 行）をキット原文で上書きした。もう 1 件の `claude-code-review.example.yml`（同一コメント行）は本リポの実名ワークフローに当該行が存在せず移植先なし（grep で実測）。§母集合・§3 の表は pin `179a69a` 時点の記録としてそのまま残す。検証は追記時点で再実走した（`check-kit-sync --require-planning` exit 0・`scripts.test.js` ✓ 666・予算 42,662B 不変）。上の「計画へのフィードバック planning#420」は**着地・取り込み済み**となった。
