@@ -89,7 +89,110 @@
 | `.claude/` ＋ `claude*.yml` | 使わない（残しても無害。不要なら `--prune` で削除可） |
 | 起票 | Issue を Copilot にアサインすると自律実装が始まる |
 
-## 4. 自動適用（任意）
+## 4. MCP・プラグイン・ブラウザ操作（Claude Code 系プロファイルのみ）
+
+`claude-code` / `api` プロファイルで実施する（Copilot は対象外）。
+
+### 4-1. MCP の承認（必須・初回のみ）
+
+`.mcp.json`（Context7）はキットが配布する。ただし**クローンしただけでは有効にならない**。
+
+1. `claude` を**対話モードで起動**し、ワークスペースの信頼（trust）ダイアログを承諾する。
+2. `/mcp` で `context7` サーバの接続を承認・確認する。
+
+> ヘッドレス実行（`claude -p`・CI）は承認プロンプトを出せないため、先に対話モードで一度
+> 承認を済ませておくこと。Context7 は API キー不要（匿名モード）で動く。
+
+#### 🔴 `.mcp.json` に GitHub MCP を書かない（重要）
+
+**本リポの `.mcp.json` は Context7 のみを持ち、GitHub MCP サーバを定義しない。** 定義してはならない。
+
+- `claude-code-action` は **`github` という名前の GitHub MCP サーバを組み込みで供給する**。
+  同アクションの仕様は「**組み込みと同名のカスタムサーバを定義すると、カスタム側が組み込みを上書きする**」
+  と明記している。
+- Claude Code の非対話モードは **cwd の `.mcp.json` を読み、アクションは `enableAllProjectMcpServers`
+  を自動的に true にする**ため、リポジトリの `.mcp.json` は **CI で自動承認される**。
+- `.mcp.json` に `Bearer ${GITHUB_PAT}` を書いても、**CI に `GITHUB_PAT` は無い**。Claude Code は
+  「変数が無く既定値も無い場合、設定は読み込まれ、警告を出して**リテラル文字列をそのまま使う**」。
+- 結果、**`claude-coding.yml` / `claude-code-review.yml` の `mcp__github__*` が認証できなくなる**。
+  ジョブは success で終わるため、**AI レビューが静かに死ぬ**。
+
+**GitHub 操作は次のとおり手段が分かれている。**
+
+| 面 | 手段 |
+| --- | --- |
+| **CI**（`claude-coding.yml` / `claude-code-review.yml`） | アクションの**組み込み** GitHub MCP（`mcp__github__*`）。`.mcp.json` は関与しない |
+| **ローカルの Claude Code** | 各自の**ユーザー単位設定**で GitHub MCP を持つ。リポジトリでは配布しない |
+
+ユーザー単位で追加するときは、ツール定義数を減らすため toolset を絞ることを推奨する。
+
+```bash
+claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
+  -H "Authorization: Bearer <PAT>" \
+  -H "X-MCP-Toolsets: repos,issues,pull_requests,labels,actions" --scope user
+```
+
+> **本節はキット原本とバイト一致である（分類 A）。** キット側も同じ判断で是正済みであり
+> （[planning#402](https://github.com/endazon/project-planning/pull/402)）、固有デルタは持たない。
+> 判断の記録は [IADR-0222](docs/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)。
+
+### 4-2. プラグイン・スキルの各自導入（任意・推奨）
+
+プラグインの有効化は**ユーザー単位設定**のためリポジトリでは配布できない。各自 Claude Code 内で導入する。
+**開発規律系は superpowers に統一し、同種プラグイン（ECC / compound-engineering 等）を併用しない。
+UI 生成系も ui-ux-pro-max に統一する**（重複導入するとスキル発火が非決定的になる。採否の判断記録は
+計画リポ `draft/cross-project/20260817_skill-mcp-adoption-decision.md`）。
+
+```text
+# 開発規律（brainstorm → plan → TDD → review）
+/plugin marketplace add obra/superpowers-marketplace
+/plugin install superpowers@superpowers-marketplace
+
+# UI 生成品質（フロントエンドを持つリポのみ）
+npx skills add nextlevelbuilder/ui-ux-pro-max-skill
+
+# UI・React の監査ルール（フロントエンドを持つリポのみ。生成系と補完関係）
+npx skills add vercel-labs/agent-skills
+
+# 実ブラウザでの動作確認スキル（公式）
+/plugin marketplace add anthropics/skills
+/plugin install example-skills@anthropic-agent-skills
+```
+
+### 4-3. AI のブラウザ操作は Playwright CLI + Skills に統一する
+
+**AI が対話的に**ブラウザを操作する手段は **Playwright CLI**（`playwright-cli`）に統一する。
+**Playwright MCP は導入しない**（公式がコーディングエージェントには CLI + Skills を推奨。両方入れると
+ツール選択が不定になる）。
+
+```bash
+npm i -D @playwright/cli@latest
+npx playwright-cli install --skills   # Claude Code 用スキルを配置
+```
+
+🔴 **CI の E2E テストランナーは別の関心事である。統一の対象に含めない。**
+
+| 用途 | 手段 |
+| --- | --- |
+| **CI の E2E テスト** | **リポジトリの既存選択を覆さない**（`@playwright/test` 等。ADR で確定していることが多い） |
+| **AI の対話的なブラウザ操作** | `playwright-cli` + Skills |
+| Playwright MCP | 導入しない |
+
+**両者は併存してよい。** 「ブラウザ操作の統一」を字義どおり読んで既存の E2E ランナーを捨てると、
+**確定済み ADR の無断逸脱になる**（実測: microservices-platform が `IADR-0033` との衝突を検出し、
+役割で棲み分ける `IADR-0221` を起こした。planning#409）。
+
+- **pnpm workspace では `@playwright/cli` をルートへ入れない。** 2 つ目の Playwright が入るうえ、
+  **どの CI ジョブも起動しない**。入れるならフロントエンドのワークスペースへ入れ、
+  `pnpm --filter <pkg> exec` で起動する（ルート導入は `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` を招く）。
+
+> **【本リポの固有デルタ・第 2 種】** 上表の「CI の E2E テスト」に当たるのは `src/platform/frontend` の
+> `@playwright/test` であり、[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) で確定している。
+> 役割の棲み分けは [IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)。
+> pnpm workspace の注意（上記）の具体形は `pnpm --filter @platform/frontend exec` である
+> （`src/` 直下での素の `pnpm exec playwright` が落ちる実測は `frontend.yml` にコメントで残っている）。
+
+## 5. 自動適用（任意）
 
 宣言したプロファイルのファイルをまとめて有効化するヘルパーを同梱する。
 

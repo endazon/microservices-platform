@@ -1,7 +1,7 @@
 {
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2 / IADR-0192。#755 で planning#363 の新定義へ改めた）。",
-    "書式・値域の正はキットの kit-sync-classification.example.json（pin 767a9d48）である。分類表の中身はリポジトリ固有。",
+    "書式・値域の正はキットの kit-sync-classification.example.json（pin 282c2d0）である。分類表の中身はリポジトリ固有。",
     "",
     "A = キットとバイト一致であるべきファイル。check-kit-sync.js が機械検査する。",
     "B = キット土台 ＋ 固有デルタ。値の先頭は下の種の番号、または X。",
@@ -42,6 +42,7 @@
       ".claude/hooks/check-impl.js",
       ".claude/hooks/guard-bash.js",
       ".claude/hooks/guard-secrets.js",
+      ".claude/rules/traceability.md",
       ".devcontainer/devcontainer.json",
       ".editorconfig",
       ".github/CODEOWNERS.example",
@@ -54,6 +55,7 @@
       ".github/dependabot.yml",
       ".github/workflows/changelog.yml",
       ".github/workflows/pr-title.yml",
+      ".mcp.json",
       "docs/adr/IADR-0000_record-implementation-decisions.md",
       "docs/api/.gitkeep",
       "docs/authz/.gitkeep",
@@ -89,6 +91,7 @@
       "docs/templates/tech_requirements_template.md",
       "docs/templates/test_spec_template.md",
       "docs/tests/.gitkeep",
+      "docs/traceability-appendix.md",
       "feedback/TEMPLATE.md",
       "scripts/action-versions.json",
       "scripts/apply-profile.sh",
@@ -108,7 +111,6 @@
       "scripts/validate-pipeline-config.js"
     ],
     "B": {
-      ".claude/rules/traceability.md": "X. 5 種に当たらない（**期限つきの暫定**。IADR-0204 決定 1 のラチェットつき）。キット版が pin 767a9d48 で 24,592B → 25,963B（**+1,371B**）へ育ったが、必読規約の余白は **1,069B** しかなく、取り込むと合計 51,502B となって予算 51,200B を **302B 超過**する（実測 2026-08-17。値はここに書いても腐るだけなので判定に使わない —— 判定は scripts.repo.test.js の #790 / #793 ラチェットが実ファイルからライブ計算する）。**#790 とまったく同型の再来である**（あのときは +3,002B で、#793 の減量が着地してから A へ戻した）。育った中身は本リポが #799 で環流した『PR タイトル末尾 (#NNN) は PR 自身の番号である』の解説と PR_NUMBER の受け渡しであり、**規範としては本リポに既に在る**（companion と pr-title.yml と check-commit-messages.js が実装済み）。したがって取り込めないことで失う規範は無く、失うのはバイト一致だけである。**減量が着地したらキット原文で上書きし分類 A へ戻す。** 追跡: #793 系の減量（新規起票）",
       ".claude/agents/spec-implementer.md": "X. 4 種に当たらない（母集合の規則 1〜6 の表）。★ 向きは逆で本リポが先（キットは表を持たない）。環流済み。追跡: #736 / planning#337",
       ".claude/commands/new-spec.md": "X. 4 種に当たらない（キット側のテンプレート名の誤りの是正）。是正依頼済み。追跡: #736 / planning#338",
       ".claude/settings.json": "1. リポジトリ構成（src/ai-stock-trading submodule 向けの許可コマンド）",
@@ -118,9 +120,9 @@
       ".gitignore": "2. 技術スタックとその CI 配線（.NET / Node / pnpm / Playwright 等の無視パターン。キット土台 632B は全行保持）",
       ".gitmodules": "1. リポジトリ構成（src/ai-stock-trading submodule の登録）",
       "AGENTS.md": "3. 本リポにしか存在しない規範（束ねてよい範囲を IADR-0116 / IADR-0139 の 6 条件に限る 1 行）。土台（実装作業の進め方の要約）はキット版へ揃えた（#755）",
-      "AI_SETUP.md": "5. キットが選択を委ねている欄（利用可能な AI のチェックボックス。裁定 planning#339）。キットは未選択で配り、どのリポジトリも必ず選択するため、選択済みであること自体は追随漏れではない。★ 説明文はキット側が正であり追随の対象",
+      "AI_SETUP.md": "5. キットが選択を委ねている欄（利用可能な AI のチェックボックス。裁定 planning#339）。キットは未選択で配り、どのリポジトリも必ず選択するため、選択済みであること自体は追随漏れではない。＋ 1. リポジトリ構成（計画リポの取得手順が submodule であること）。＋ 2. 技術スタックとその CI 配線（§4-3 の固有デルタ。**pin 282c2d0 で縮んだ** —— 役割の棲み分けの一般規範は planning#409 の環流でキット本文が持つようになり、本リポの注記は具体名（IADR-0033 / IADR-0221 / pnpm --filter @platform/frontend）だけになった）。★ 説明文はキット側が正であり追随の対象",
       "CHANGELOG.md": "3. 本リポにしか存在しない成果物（gen-changelog.js が CI で生成する変更履歴。土台の見出し・注記はキット）",
-      "CLAUDE.md": "2. 技術スタックとその CI 配線（末尾「技術スタック別ルール」の置換点を埋めている）＋ 1. リポジトリ構成（ユニット構成・束ね範囲の IADR）。置換点を埋めているので C(b) も成立するが、土台の規約文（§8 予算・§11 パリティ等）はキットが正であり追随対象なので B に置く。★ #793 でキット追随（traceability.md を A へ戻す）の原資を作るため、土台側でも『正本が他に在る複写』を落とした（起点 ID の種別と残す箇所の書式 = 同じ必読集合の traceability.md が正本 / 予算の測り方 = 運用ガイド §8 と check-reading-budget.js / パリティの手順 = 運用ガイド §11 / 仕様書の種別 = docs/README.md）。規範は 1 つも落としていない（正本への導線に置き換えた）。キット側の減量は planning へ環流する（IADR-0205 決定 4）",
+      "CLAUDE.md": "2. 技術スタックとその CI 配線（末尾「技術スタック別ルール」の置換点を埋めている）＋ 1. リポジトリ構成（ユニット構成・束ね範囲の IADR）。置換点を埋めているので C(b) も成立するが、土台の規約文（§8 予算・§11 パリティ等）はキットが正であり追随対象なので B に置く。★ #793 でキット追随（traceability.md を A へ戻す）の原資を作るため、土台側でも『正本が他に在る複写』を落とした（起点 ID の種別と残す箇所の書式 = 同じ必読集合の traceability.md が正本 / 予算の測り方 = 運用ガイド §8 と check-reading-budget.js / パリティの手順 = 運用ガイド §11 / 仕様書の種別 = docs/README.md）。規範は 1 つも落としていない（正本への導線に置き換えた）。キット側の減量は planning へ環流する（IADR-0205 決定 4）。★ pin 282c2d0 の土台追加 4 点のうち **1 点だけを取り込んだ** —— 取り込んだのは「git log / git blame を出典に引く前に shallow 判定を確かめる」（planning#410。本リポが 3 度踏んだ事故の作法であり、毎セッション効く）。**見送った 3 点と理由**: (a) Playwright の役割棲み分け＝本ファイルは元々この行を持たず、正本は AI_SETUP.md §4-3（IADR-0221 決定 3）。(b) 予算は上限と下限の両方に照らす＝正本は運用ガイド §8 で本ファイルは既にそこへ導線を張っており、かつ IADR-0223 決定 1 が機械で強制する。(c) 別紙移設 pin では移設元と移設先を同時に取り込む＝ IADR-0223 決定 3 がラチェットの失敗文へ埋め込み済み。**4 点すべてを入れると余白が 1,743B → 598B となり下限 1,000B を割る**（実測）。規範は 1 つも失っていない（正本と機械が持つ）",
       "docs/DEFINITION_OF_DONE.md": "X. 4 種に当たらない（検証の順序・IADR-0183）。環流済み。追跡: #736 / planning#337",
       "docs/README.md": "3. 本リポにしか存在しない運用ルール（status の値域・別紙の一覧・逆リンク一方向 IADR-0171 等）。キットの雛形（例）も docs/README.md を B に置く",
       "docs/ai-workflow.md": "2. 技術スタックとその CI 配線（必須チェックの表・claude 系ワークフローの実名）",
