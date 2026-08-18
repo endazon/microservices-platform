@@ -159,22 +159,38 @@ npx skills add vercel-labs/agent-skills
 /plugin install example-skills@anthropic-agent-skills
 ```
 
-### 4-3. ブラウザ操作は Playwright CLI + Skills に統一する
+### 4-3. AI のブラウザ操作は Playwright CLI + Skills に統一する
 
-E2E・UI 確認のブラウザ操作は **Playwright CLI**（`playwright-cli`）を使う。**Playwright MCP は導入しない**
-（公式がコーディングエージェントには CLI + Skills を推奨。両方入れるとツール選択が不定になる）。
+**AI が対話的に**ブラウザを操作する手段は **Playwright CLI**（`playwright-cli`）に統一する。
+**Playwright MCP は導入しない**（公式がコーディングエージェントには CLI + Skills を推奨。両方入れると
+ツール選択が不定になる）。
 
 ```bash
 npm i -D @playwright/cli@latest
 npx playwright-cli install --skills   # Claude Code 用スキルを配置
 ```
 
-> **【本リポの固有デルタ・第 2 種】** 本リポは `src/platform/frontend` で `@playwright/test`（テストランナー）
-> による E2E を**既に CI で運用している**。上の「統一」は**AI エージェントのブラウザ操作**についてのもので
-> あり、**CI の検証資産である E2E テストを `playwright-cli` へ移すことは求めない**。両者の棲み分けは
-> [IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md) で確定した。
-> **`pnpm` workspace では導入階層に注意する** —— `src/` 直下での素の `pnpm exec playwright` は
-> バイナリを解決できず `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` で落ちる（`frontend.yml` に実測コメントあり）。
+🔴 **CI の E2E テストランナーは別の関心事である。統一の対象に含めない。**
+
+| 用途 | 手段 |
+| --- | --- |
+| **CI の E2E テスト** | **リポジトリの既存選択を覆さない**（`@playwright/test` 等。ADR で確定していることが多い） |
+| **AI の対話的なブラウザ操作** | `playwright-cli` + Skills |
+| Playwright MCP | 導入しない |
+
+**両者は併存してよい。** 「ブラウザ操作の統一」を字義どおり読んで既存の E2E ランナーを捨てると、
+**確定済み ADR の無断逸脱になる**（実測: microservices-platform が `IADR-0033` との衝突を検出し、
+役割で棲み分ける `IADR-0221` を起こした。planning#409）。
+
+- **pnpm workspace では `@playwright/cli` をルートへ入れない。** 2 つ目の Playwright が入るうえ、
+  **どの CI ジョブも起動しない**。入れるならフロントエンドのワークスペースへ入れ、
+  `pnpm --filter <pkg> exec` で起動する（ルート導入は `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` を招く）。
+
+> **【本リポの固有デルタ・第 2 種】** 上表の「CI の E2E テスト」に当たるのは `src/platform/frontend` の
+> `@playwright/test` であり、[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) で確定している。
+> 役割の棲み分けは [IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)。
+> pnpm workspace の注意（上記）の具体形は `pnpm --filter @platform/frontend exec` である
+> （`src/` 直下での素の `pnpm exec playwright` が落ちる実測は `frontend.yml` にコメントで残っている）。
 
 ## 5. 自動適用（任意）
 
