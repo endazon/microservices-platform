@@ -2,6 +2,11 @@
   "_note": "check-landed-subjects.js のラチェット床。統合ブランチへ既に載っており、force push 禁止のため直せない着地件名を控える。新規混入だけを落とし、baseline は縮む向きにのみ動かす（backend-library-baseline.json と同じ作法）。--update で実測から置き直せるが、その差分は必ず PR に載せてレビューさせること。",
   "known": [
     {
+      "hash": "e3cb107",
+      "subject": "ci(NFR): AI ワークフローの許可リストへ git -C &lt;submodule&gt; grep を 3 パス分足す (#856)",
+      "reason": "HTML エンティティ &lt; &gt; を含む（PR タイトルの素の山括弧を GitHub が作成時点でエスケープし、スカッシュ後の恒久履歴へ焼き付いた。planning#415 と同型）。検査（キット pin 179a69a の HTML エンティティ検査）の導入前に着地しており force push 禁止で直せない。CHANGELOG は changelog-overrides.json の remap で是正済み。#869"
+    },
+    {
       "hash": "3d8852f",
       "subject": "Claude/issue 71 20260705 1545 (#95)",
       "reason": "形式が `種別(起点ID): 要約` に一致しない"

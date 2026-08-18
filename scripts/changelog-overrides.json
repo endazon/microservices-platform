@@ -12,6 +12,12 @@
   },
   "overrides": [
     {
+      "hash": "e3cb107",
+      "action": "remap",
+      "desc": "AI ワークフローの許可リストへ、.gitmodules の各 submodule パスに対する git -C grep を 3 パス分足す (#856)",
+      "reason": "着地件名が HTML エンティティ &lt; &gt; を含む（PR タイトルの素の山括弧を GitHub が作成時点でエスケープして保存し、スカッシュ後の恒久履歴へ焼き付いた。planning#415 で確定した検査の導入（キット pin 179a69a・#869）前に着地していた）。type（ci）と scope（NFR）は正しいため desc のみを山括弧を用いない書き方へ補正する。恒久履歴は force push 禁止で書き換えられないため CHANGELOG 生成時のみ補正する。landed-subject-baseline.json へも同コミットを追記した。#869"
+    },
+    {
       "hash": "b421761",
       "action": "remap",
       "type": "feat",

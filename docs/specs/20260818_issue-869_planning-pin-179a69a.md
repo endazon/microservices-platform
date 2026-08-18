@@ -127,6 +127,8 @@ python3 -c "yaml.safe_load(...)"  claude-coding / claude-code-review / ci       
 
 **固有テストの追随 1 件**: キットの別紙化で見出し「検査対象から除外する自動コミット」が配布物から消え、`scripts.repo.test.js` #686 段 1（確定済み記録の引用が指す先の保持）が fail した。companion `.claude/rules/traceability.repo.md` へスタブ見出しを追加して解消（配布物は編集しない）。
 
+**CI 初回実走での検出 1 件（是正済み）**: 取り込んだ HTML エンティティ検査（planning#417）が、検査導入前に develop へ着地済みの件名 `e3cb107`（`&lt;` を含む）を「baseline 外の違反」として検出し、`scripts-tests` が赤になった（本ローカルは当時 shallow clone のため skip されており、`git fetch --unshallow` 後に再現を確認した）。検査器の案内どおり `landed-subject-baseline.json` へ追記し、`changelog-overrides.json` の `remap` で生成物側を是正した（履歴は不変）。
+
 ## 7. 計画書との差異・未決事項
 
 - **`.claude/settings.json`（キット側の変更はコメント 1 行＝ 4→5 サブコマンド化と issue 参照の修飾）は本セッションから編集できない（Edit/Write とも deny）。** 本リポの実物は #856 で先行して 5 サブコマンド化・修飾済みであり、**実質差分は無い**。なおコメント末尾の【暫定デルタ】節（「キット側の是正を環流したら本デルタは撤去する」）は、planning#419 の着地により**撤去可能になった**。利用者の適用に委ねる（#847 から継続の扱い）。
