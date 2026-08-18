@@ -222,3 +222,27 @@ diff planning/tools/impl-handoff-kit/repo-template/.devcontainer/devcontainer.js
   ため本作業では触らない。**`ci.yml` の Node を 22 へ揃えるかは別途判断が要る**（親へ確認）。
 - キット側（`project-planning` の `tools/impl-handoff-kit/`）も `dotnet:8.0` / node 20 のままである。
   汎用雛形としてそれが妥当かは計画側の判断であり、本リポからは環流しない（種 2 の恒久デルタ）。
+
+## ★ レビュー指摘への対応 —— ダウンロードの停止も止める
+
+初版は `curl --max-time 120` だけを持っていたが、**それが守るのは `dotnet-install.sh`
+（数十 KB のスクリプト本体）の取得だけ**で、**実体の SDK（約 240MB）を落とす `bash "$installer"`
+には時間制限が無かった**。
+
+コメントは「ネットワーク不通・ダウンロード失敗でセットアップを止めない」を設計原則として
+掲げていたが、**不通・失敗ではなく「低速で止まらず流れ続ける」場合はこの対策の対象外**であり、
+SessionStart hook を無期限にハングさせ得た。**fail-open の主張が、この経路では成り立っていなかった。**
+
+`timeout 600s` で上限を切り、**打ち切られた場合も従来どおり継続する側へ落ちること**を実測した
+（installer を「永久に眠る」偽物へ差し替え、上限を 3 秒に縮めて確認）。
+
+```console
+$ bash probe.sh fake-installer.sh          # fake は sleep 3600
+[setup] fake installer: sleeping forever
+RESULT=not-installed（継続する側へ落ちる）
+EXIT=0
+経過 3 秒
+```
+
+**成否を終了コードで見ていないことがここでも効いている** —— `timeout` が 124 を返しても、
+判定は `$HOME/.dotnet/dotnet` の実在で行うため、fail-open の分岐がそのまま働く。

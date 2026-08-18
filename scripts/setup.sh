@@ -43,7 +43,11 @@ if ! command -v dotnet >/dev/null 2>&1; then
     log ".NET SDK $dotnet_channel の導入を試みます（失敗しても継続）"
     installer="$(mktemp)"
     if curl -fsSL --max-time 120 https://dot.net/v1/dotnet-install.sh -o "$installer" 2>/dev/null; then
-      bash "$installer" --channel "$dotnet_channel" --install-dir "$HOME/.dotnet" --no-path 2>&1 \
+      # 【停止も止める】curl --max-time が守るのは installer 本体（数十 KB）の取得だけで、
+      # 実体の SDK（約 240MB）を落とすのは下の bash である。**不通・失敗ではなく「低速で
+      # 止まらず流れ続ける」場合**は上の fail-open の対象外で、SessionStart hook を
+      # 無期限にハングさせ得る。timeout で上限を切る（GNU coreutils）。
+      timeout 600s bash "$installer" --channel "$dotnet_channel" --install-dir "$HOME/.dotnet" --no-path 2>&1 \
         | sed 's/^/[setup] /'
       if [ -x "$HOME/.dotnet/dotnet" ]; then
         export PATH="$HOME/.dotnet:$PATH"
