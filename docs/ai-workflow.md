@@ -202,6 +202,13 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 
 **3 点とも塞がっている間は、設定は人が行う**（本節の手順をそのまま渡せばよい）。
 
+### 検査器の配線・CHANGELOG の是正（別紙）
+
+**規約の本文は [`.claude/rules/traceability.md`](../.claude/rules/traceability.md)、配線と運用の詳細は
+[`docs/traceability-appendix.md`](traceability-appendix.md)（キット配布物・分類 A）が持つ。**
+本書は技術スタック固有の CI 配線を扱うため配布先ごとに差分を持ちうるが、**別紙は差分を持たない**
+（どの配布先でもバイト一致で取り込める）。
+
 ## よくある詰まり（FAQ）
 
 | 症状 | 対処 |

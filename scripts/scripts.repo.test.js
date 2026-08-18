@@ -5565,7 +5565,9 @@ module.exports = ({ ok, assert }) => {
     //   ここでリテラルを持つと、上限を変えたとき下限側だけ追随を忘れて静かにずれる
     //   —— 本 PR が「同じ数値を 2 箇所に持つと必ずずれる」と書いている当のことである（#731 レビュー 🟡）。
     ok('#730: 必読の余白が確保した水準を割っていない', () => {
-      const FLOOR = 1000;
+      // ★ #853: 下限は check-reading-budget.js が持つ（#790/#793 も同じ値を読むため）。
+      //   ここでリテラルを持つと、2 箇所で同じ数値を持つことになり必ずずれる。
+      const FLOOR = rbudget.MARGIN_FLOOR_BYTES;
       const total = measureClaude().total;
       const margin = BUDGET - total;
       assert.ok(
@@ -7542,25 +7544,40 @@ module.exports = ({ ok, assert }) => {
         console.log('notice: planning が未 populate のため、#790 の保留根拠は検査していない（この範囲は検査されていない）。');
         return;
       }
-      const { BUDGET_BYTES } = require('./check-reading-budget.js');
+      const { BUDGET_BYTES, MARGIN_FLOOR_BYTES } = require('./check-reading-budget.js');
       const size = (f) => fs.statSync(f).size;
       // キット版へ差し替えた「もしも」の合計。母集合の定義は check-reading-budget.js が正。
       const would =
         size(path.join(REPO, 'CLAUDE.md')) +
         size(path.join(KIT, '.claude/rules/traceability.md')) +
         size(path.join(REPO, '.claude/rules/traceability.repo.md'));
+      // ★★ #853: 「取り込めるか」は**上限と下限の両方**で決まる。
+      //   当初この試験は上限（would > BUDGET_BYTES）だけを保留の根拠として認めていたが、
+      //   #730 / [[IADR-0190]] が**下限（恒久的な余白）**を別に設けたため、根拠は 2 本になった。
+      //   計画 pin を b095b8f へ進めたときキット版が 25,963B → 25,207B へ純減し、
+      //   **上限は満たすが下限は割る**（would 50,747B <= 51,200B だが余白 453B < 1,000B）という
+      //   状態が実際に生まれ、上限しか見ないこの試験が「保留の根拠が消えた」と誤って赤くなった。
+      //   **根拠が消えていないのに消えたと言う**のは、[[IADR-0204]] 決定 1（保留の根拠そのものを
+      //   機械が検査する）の意図を外している。→ 判定を「取り込みが実際に可能か」へ揃えた。
+      const margin = BUDGET_BYTES - would;
+      const adoptable = would <= BUDGET_BYTES && margin >= MARGIN_FLOOR_BYTES;
+      const why =
+        would > BUDGET_BYTES
+          ? `上限超過（${would}B > ${BUDGET_BYTES}B）`
+          : `余白不足（${margin}B < 下限 ${MARGIN_FLOOR_BYTES}B・あと ${MARGIN_FLOOR_BYTES - margin}B の減量が要る）`;
       if (deferred) {
         // B（X・期限つき暫定）に居るなら、**保留の根拠が実測で生きている**こと。
         assert.ok(
-          would > BUDGET_BYTES,
-          `キット版を取り込んでも予算内（${would}B <= ${BUDGET_BYTES}B）である。` +
-            '保留の根拠が消えたので .claude/rules/traceability.md をキット原文で上書きし、分類 A へ戻すこと（#793）',
+          !adoptable,
+          `キット版を取り込める（${would}B <= ${BUDGET_BYTES}B かつ余白 ${margin}B >= 下限 ${MARGIN_FLOOR_BYTES}B）。` +
+            '保留の根拠が消えたので .claude/rules/traceability.md をキット原文で上書きし、分類 A へ戻すこと（#793）。' +
+            '**取り込みは docs/ai-workflow.md への転記と同時に行う**（キット版は移設先を相対リンクで参照するだけである）',
         );
       } else {
         // A に居るなら、**追随を維持できる**こと。割るのは他 2 ファイルの加筆だけである。
         assert.ok(
-          would <= BUDGET_BYTES,
-          `分類 A（キット原文と同期）なのに、キット原文込みで予算を超える（${would}B > ${BUDGET_BYTES}B）。` +
+          adoptable,
+          `分類 A（キット原文と同期）なのに、キット原文込みで取り込みを維持できない —— ${why}。` +
             'CLAUDE.md か companion の加筆が追随を維持できなくしている。' +
             '正本・別紙へ畳んで捻出すること（[[IADR-0205]] 決定 3 / [[IADR-0190]] 決定 4）',
         );
@@ -7571,6 +7588,8 @@ module.exports = ({ ok, assert }) => {
     ok('#755: check-reading-budget は集合ごとに判定し、予算値を出典つきで持つ', () => {
       const rb = require('./check-reading-budget.js');
       assert.strictEqual(rb.BUDGET_BYTES, 51200, '予算値が計画リポ運用ガイド §8 の 51,200 と違う（複製は正本と同じ値を持つ）');
+      // ★ #853: 下限を緩めると #730 と #790/#793 の両方が同時に黙るため、値をここでも固定する。
+      assert.strictEqual(rb.MARGIN_FLOOR_BYTES, 1000, '余白の下限が #730 / [[IADR-0190]] の 1,000 と違う');
       const src = fs.readFileSync(path.join(REPO, 'scripts/check-reading-budget.js'), 'utf8');
       assert.match(src, /ai-implementation-workflow-guide\.md/, '予算値の出典（計画リポ運用ガイド）がソースに無い');
       const claude = rb.AGENT_SETS.find((x) => x.name === 'Claude Code');

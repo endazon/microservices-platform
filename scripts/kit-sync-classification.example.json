@@ -42,6 +42,7 @@
     "A": [
       ".claude/agents/adr-guardian.md",
       ".claude/rules/traceability.md",
+      "docs/traceability-appendix.md",
       "docs/templates/adr_template.md"
     ],
     "B": {
