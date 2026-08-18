@@ -277,6 +277,7 @@
 | [IADR-0221](./IADR-0221_playwright-cli-vs-test-runner-scope.md) | Playwright を役割で棲み分ける —— CI の E2E は `@playwright/test` を継続、AI のブラウザ操作は `playwright-cli`、Playwright MCP は導入しない。`@playwright/cli` は package.json に加えない。計画 planning#399 | Accepted |
 | [IADR-0222](./IADR-0222_mcp-json-scope-and-github-server-collision.md) | `.mcp.json` は Context7 のみとし、GitHub MCP はユーザースコープへ置く（`github` は claude-code-action の組み込みと同名で、上書きすると CI の `mcp__github__*` が認証できず AI レビューが死ぬ）。分類は **A**（キット原本とバイト一致）。planning#402 | Accepted |
 | [IADR-0223](./IADR-0223_deferral-ratchet-reads-both-budget-bounds.md) | キット追随の「保留の根拠」ラチェットは必読予算の**上限と下限の両方**を読む（上限だけだと、下限を割って取り込めない状態を「根拠が消えた」と誤判定する）。下限 `MARGIN_FLOOR_BYTES` は check-reading-budget.js が持つ。#853 | Accepted |
+| [IADR-0224](./IADR-0224_template-backend-ci-build-by-staged-copy.md) | 雛形 backend は「配置後の位置への一時複製」をビルド・テストして CI で検証する（`templates/` 自体は依然どの slnx にも登録しない）。判定は終了コードではなく**実行件数の下限**。`.sample` は複製先へ置かず `--artifacts-path` で `src/` を汚さない。`dotnet format` は含めない。#830 | Accepted |
 
 > **索引 backfill に関する注記**: 本 PR は既存債務（0039–0046 未掲載）の解消と併せて索引を欠番なしに揃える。
 > 実体ファイルの所在は **0047＝PR #211（マージ済）／0050＝PR #213（マージ済）／0048・0049＝本 PR**。#211・#213 は

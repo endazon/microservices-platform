@@ -5,9 +5,10 @@ status: Accepted
 related_ids:
   - FR-14
   - IADR-0056
+  - IADR-0224
 author: claude
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14: 構成変更で完結する疎結合ユニット)"
 ---
@@ -52,6 +53,20 @@ plan_refs:
 3. **テンプレート**: 新ユニットの雛形を `templates/unit-template/`（backend slnx + サンプルサービス、frontend package.json + features 合成点）として提供する。テンプレートは本リポジトリのビルド対象ではない（`src/` 外・どの slnx にも含めない）。
 4. **単独ビルド規約**: ユニットは常設の `Directory.Build.props` を持たない。単独リポでのビルドが要る場合のみ、親を import-chain するフォールバック props を用いる（`templates/unit-template/README.md` に記載）。
 5. **バージョン固定**: submodule は gitlink（特定コミット）で固定し、更新は本体リポの PR で pin を進める。Renovate/Dependabot の `git-submodules` マネージャで更新 PR を自動化できる（有効化はメンテナ判断）。
+
+［2026-08-18 追記 / #830］**決定 3 の位置づけは [[IADR-0224]] により変わった。上の条文は書き換えていない。**
+
+- **括弧内の 2 条件は不変である** —— `templates/` は依然として `src/` の外に在り、**どの slnx にも登録しない**。
+- **変わったのは「ビルド対象ではない」という位置づけのほうである。** `ci.yml` の新ジョブ
+  `template-backend-build`（#830）が、雛形を**配置後の位置（`src/<一時ユニット>/backend/`）へ一時複製して**
+  `dotnet build` / `dotnet test` を走らせる。ビルドするのは複製であって `templates/` ではないが、
+  雛形 backend が CI の検証対象になったことは事実であり、**決定 3 だけを読むと現状を取り違える。**
+- 複製ビルド方式・`.sample` の除去・`--artifacts-path`・**実行件数の下限**での判定・
+  `dotnet format` を含めない判断・`build-and-test` へ相乗りしない理由、および
+  **件数下限の抽出がテスト名の ASCII 始まりを前提にする**という既知の限界は [[IADR-0224]] が持つ。
+- 同型の先行例は [[IADR-0209]]（雛形 frontend を `frontend-tests.yml` の `paths:` へ入れた。#801）。
+- **決定 4（`.sample` 付きの共通 props）は不変**であり、複製ビルドはむしろその前提を実際に検証する
+  （複製先へ `.sample` を置かないことで、`src/` の単一情報源が継承されることを確かめている）。
 
 ## 理由
 
