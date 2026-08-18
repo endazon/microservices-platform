@@ -8,6 +8,14 @@ set -u
 log() { printf '[setup] %s\n' "$1"; }
 
 # --- C# / .NET（例・既定） ---
+# NFR: 計画 06_technical/08_data-egress-policy.md（fixed）§非LLM外部送信の統制 が「.NET SDK / OSS
+# ツール類の既定テレメトリをオプトアウトする」を課す。.devcontainer/devcontainer.json の remoteEnv は
+# **devcontainer で起動したときだけ**効くのに対し、下のブロックは素のコンテナを狙って SDK を入れ
+# `dotnet --version` と restore を初回実行する（＝テレメトリの対象）。PATH 追加は 2 経路あり、
+# 素のコンテナに最初から dotnet が在る第 3 の経路では PATH 追加自体が起きないため、
+# **最初の dotnet 実行より前**へ 1 度だけ置いて 3 経路すべてを覆う。
+export DOTNET_CLI_TELEMETRY_OPTOUT=1
+
 # 【在れば使う → 無ければ入れる】(issue #824)
 # devcontainer の image 宣言が効くのは devcontainer で起動したときだけで、SessionStart hook から
 # 走る素のコンテナには dotnet が無いことがある。PR #823 は、それを「着手不可」の根拠に取り違えて
