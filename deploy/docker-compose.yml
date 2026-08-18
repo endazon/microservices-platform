@@ -429,7 +429,9 @@ services:
       <<: *common-env
       Llm__ApiKey: ${ANTHROPIC_API_KEY:-}
       # ADR-0010 / ADR-0025 / IADR-0022 / IADR-0101: 既定は claude-opus-5
-      # （定型 sonnet・haiku / 最難関 fable-5 は用途別ルーティング）
+      # （定型 sonnet・haiku は用途別ルーティング）
+      # ADR-0038 / #850: 最難関 analysis も claude-opus-5。claude-fable-5 は非 ZDR のため
+      # 基盤のいかなる用途でも用いず、利用許可集合（Models）からも外した。
       Llm__Model: claude-opus-5
       # FR-02 / ADR-0016 / IADR-0025: 埋め込み。既定はティアB=Voyage（voyage-3.5/1024次元）。
       # 契約時にゼロ保持（学習利用オプトアウト）を設定してから本番データを流す（運用仕様書 参照）。

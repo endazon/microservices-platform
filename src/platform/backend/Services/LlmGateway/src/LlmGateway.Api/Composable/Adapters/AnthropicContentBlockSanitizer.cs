@@ -9,8 +9,10 @@ namespace LlmGateway.Api.Composable.Adapters;
 // 課題: SDK の content 判別子は text / image / tool_use / tool_result の 4 種しか知らず、
 // それ以外（thinking / redacted_thinking / server_tool_use / 将来追加される型）が 1 個でも
 // 含まれると `JsonException: Unknown type <型>` で**応答全体**の解析に失敗する。
-// 用途別の割当モデル（Opus 5 / Sonnet 5 / Fable 5）はいずれも thinking が既定で有効なので、
+// 用途別の割当モデル（Opus 5 / Sonnet 5）はいずれも thinking が既定で有効なので、
 // 素の SDK では非ストリーミング /complete が全件失敗する。
+// ADR-0038 / #850: 割当から Fable 5 を外した（analysis は Opus 5 へ）。**本ハンドラの必要性は変わらない**
+// —— Opus 5 は thinking が既定で有効であり（ADR-0025 §結果 / IADR-0101）、analysis も Opus 5 になった。
 //
 // 方針: 型名の**許可リスト**で残す（拒否リストではない）。将来 API が新しいブロック型を
 // 追加しても、こちら側の更新なしに自動的に落ちる＝未知型で応答全体を失わない。

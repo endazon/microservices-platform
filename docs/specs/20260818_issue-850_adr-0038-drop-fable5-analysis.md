@@ -45,8 +45,9 @@ related_specs:
 ## 2. 対象範囲
 
 - 対象: `src/platform/backend/Services/LlmGateway/**`、`docs/adr/IADR-0022*`、`docs/adr/IADR-0112*`、
-  **`docs/adr/IADR-0113*`・`docs/functional/FR-11_llm-egress-routing.md`・`docs/tests/FR-11_llm-egress-routing.md`**、本仕様書。
-- 対象外（理由つきで §3.3 に列挙）: `docs/adr/README.md` / `deploy/` / `scripts/` / `.github/workflows/`。
+  **`docs/adr/IADR-0113*`・`docs/adr/IADR-0114*`・`docs/functional/FR-11_llm-egress-routing.md`・
+  `docs/tests/FR-11_llm-egress-routing.md`・`deploy/docker-compose.yml`**、本仕様書。
+- 対象外（理由つきで §3.3 に列挙）: `docs/adr/README.md` / `scripts/` / `.github/workflows/`。
 
 > **［2026-08-18 追記 / #850］作業途中で対象範囲を広げた。**
 > 当初の領域は `IADR-0022` / `IADR-0112` に限られており、`IADR-0113`・`docs/functional/`・`docs/tests/` は
@@ -56,6 +57,12 @@ related_specs:
 > 未達を解消済みと読む。以下、§3.3・§4.2・§6・§7 は広げた後の内容へ書き改めてある
 > （`docs/specs/` の凍結は**確定済み＝過去 PR の**仕様書が対象であり、
 > **作業中の PR の仕様書は別**である。`.claude/rules/traceability.repo.md`）。
+>
+> **［同日・2 回目の拡大］`docs/adr/IADR-0114*` と `deploy/docker-compose.yml` も対象へ加えた。**
+> 規則 10 の引き直しで、**`IADR-0114` が「現在の割当モデルは…`claude-fable-5`（`analysis`）」と現在形で
+> 誤った記述を持つ**ことが分かったためである。**#850 は「計画 ADR に実装が追随していない」を直す作業であり、
+> その過程で live な ADR に新しい誤りを残すのでは本末転倒になる。** 並行レーン 3 本がいずれも
+> 両者を触っていないことが確認され、衝突しない。
 
 ## 3. 母集合の引き方と結果（`.claude/rules/traceability.repo.md` 規則 2・6・9・10）
 
@@ -111,7 +118,9 @@ related_specs:
 | `docs/functional/FR-11_llm-egress-routing.md`（8 件） | 既定設定の割当表・受け入れ基準に `analysis→fable-5` | **本 PR で追随**。`status: in-progress` の **live な機能仕様書**であり凍結の射程外（§3.5） |
 | `docs/tests/FR-11_llm-egress-routing.md`（4 件） | T-02 / T-11 / T-13 / T-23 の記述 | **本 PR で追随**。`status: completed` の **live なテスト仕様書**であり凍結の射程外（§3.5） |
 | `docs/adr/README.md`（4 件） | ADR 索引行 | **領域外**（並行レーンと衝突しうるため触らない指示） |
-| `deploy/docker-compose.yml`（1 件） | 「最難関 fable-5」のコメント | **領域外**。§6 |
+| `docs/adr/IADR-0114*`（2 件） | §コンテキスト の「**現在の割当モデル**」列挙に `claude-fable-5`（`analysis`） | **本 PR で日付つき追記**（主題は無傷。§3.6） |
+| `deploy/docker-compose.yml`（1 件） | 「最難関 fable-5」のコメント | **本 PR で現行値へ是正**（コード内コメントなので起点 ID `#850` を残す） |
+| `src/.../AnthropicContentBlockSanitizer.cs`・`Program.cs`（各 1 件） | 「割当モデル（Opus 5 / Sonnet 5 / **Fable 5**）」 | **本 PR で是正**。**初回走査で挙げそこねた**（§3.6） |
 | `.github/workflows/claude-*.yml`（各 1 件） | `@claude fable` と書かれたときのレビュー用モデル選択 | **無関係**。基盤サービスの用途別ルーティングではなく、CI の補助 AI の選択である。ADR-0038 の射程外 |
 | `scripts/scripts.repo.test.js`（1 件） | Runbook に値を複写していないことの**否定表明**（`doesNotMatch`） | **無関係**。値が変わっても成立する |
 | `CHANGELOG.md`（1 件） | 過去リリースの履歴 | **自動生成物。手で書き足さない** |
@@ -154,6 +163,34 @@ related_specs:
    先に確かめてから出典に用いた）。
 
 したがって**新しい作業仕様書へ訂正を逃がす必要はなく**、両ファイルを直接更新し `updated:` を前進させた。
+
+
+### 3.6 2 回目の規則 10 —— 走査の取りこぼしを 1 件認める
+
+**［2026-08-18 追記 / #850］** `IADR-0114` と `deploy/` を対象へ加えたあと、**是正後の語で 3 度目の引き直し**を行った。
+そこで**初回走査の取りこぼし 2 件**が出た。**隠さず記録する。**
+
+| 取りこぼし | なぜ落ちたか |
+| --- | --- |
+| `src/.../AnthropicContentBlockSanitizer.cs:12` と `Program.cs:35` の「割当モデル（Opus 5 / Sonnet 5 / **Fable 5**）」 | **軸 2（`git grep -ci 'fable'`）はこの 2 件を検出していた**（初回報告の「fable（非 claude-fable-5）in src/deploy」に出ている）。にもかかわらず **§3.1 の表は軸 1（`claude-fable-5` 完全一致）の 6 ファイルだけで作られており、軸 2 の差分を表へ落とさなかった**。**軸を複数引いても、結果を 1 つの表へ合流させなければ意味が無い。** |
+
+**教訓（次に同型を起こさないため）**: 複数軸で引いたら、**軸ごとの差分を明示的に合流させた 1 枚の表**を作る。
+「軸 2 で見た」ことと「軸 2 の結果を判定した」ことは別である。
+
+**3 度目の走査コマンドと結果**（表記ゆれを拾うため `claude-` 接頭辞に依存しない形で引いた）:
+
+```
+$ git grep -nE 'Fable 5|Fable-5|fable-5' -- 'src' 'deploy' ':!*/bin/*' ':!src/ai-stock-trading' \
+    | grep -v 'claude-fable-5'
+```
+
+→ 是正対象 3 件（`deploy/docker-compose.yml:432` / `AnthropicContentBlockSanitizer.cs:12` / `Program.cs:35`）。
+残りは `LlmRouterTests` の合成 config 文脈と、`CompletionRoutingEndpointTests` の履歴・注記であり誤りにならない。
+
+**`claude-haiku-4-5` は書き足さない。** 現行の割当モデル集合は `claude-opus-5` / `claude-sonnet-5` /
+`claude-haiku-4-5` だが、上記コメントはもともと haiku を挙げていない。**haiku-4-5 の thinking 既定の有無を
+確かめた記録が本リポに無く、確かめずに書き足すと新しい未検証記述を作ることになる**（同じ理由で
+`IADR-0114` の追記にもその旨を明記した）。**消す（Fable 5）だけにとどめる。**
 
 ## 4. 設計（変更内容）
 
@@ -249,9 +286,9 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
   #850 の「やること」にも受け入れ基準にも含まれていない。**別 issue を要する**（§7）。
 - **本 PR で追随させた文書**（§2 の追記で範囲を広げた分）: `docs/adr/IADR-0113*`（決定 2・決定 4 の前提が覆った旨）、
   `docs/functional/FR-11_llm-egress-routing.md`（8 件）、`docs/tests/FR-11_llm-egress-routing.md`（4 件）。
-- **なお領域外に留めた文書**: `docs/adr/README.md`（索引行が並行レーンと衝突しうる）、
-  `deploy/docker-compose.yml`（「最難関 fable-5」のコメント 1 件。`deploy/` は本 PR の領域外）。
-  **後者は誤った記述が残るので、追随を別 issue として起票してもらう。**
+- **2 回目の拡大で追随させた文書**: `docs/adr/IADR-0114*`、`deploy/docker-compose.yml`、
+  および実装コメント 2 件（`AnthropicContentBlockSanitizer.cs` / `Program.cs`）。
+- **なお領域外に留めた文書**: `docs/adr/README.md` のみ（索引行が並行レーンと衝突しうるため）。
 
 ## 7. 未決事項
 
