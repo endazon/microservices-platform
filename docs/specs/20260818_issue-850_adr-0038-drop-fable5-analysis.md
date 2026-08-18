@@ -44,9 +44,18 @@ related_specs:
 
 ## 2. 対象範囲
 
-- 対象: `src/platform/backend/Services/LlmGateway/**`、`docs/adr/IADR-0022*`、`docs/adr/IADR-0112*`、本仕様書。
-- 対象外（理由つきで §3.3 に列挙）: `docs/functional/` / `docs/tests/` / `docs/adr/IADR-0113*` /
-  `docs/adr/README.md` / `deploy/` / `scripts/` / `.github/workflows/`。
+- 対象: `src/platform/backend/Services/LlmGateway/**`、`docs/adr/IADR-0022*`、`docs/adr/IADR-0112*`、
+  **`docs/adr/IADR-0113*`・`docs/functional/FR-11_llm-egress-routing.md`・`docs/tests/FR-11_llm-egress-routing.md`**、本仕様書。
+- 対象外（理由つきで §3.3 に列挙）: `docs/adr/README.md` / `deploy/` / `scripts/` / `.github/workflows/`。
+
+> **［2026-08-18 追記 / #850］作業途中で対象範囲を広げた。**
+> 当初の領域は `IADR-0022` / `IADR-0112` に限られており、`IADR-0113`・`docs/functional/`・`docs/tests/` は
+> §6・§7 に「要追随だが領域外」と書いて止めていた。**並行レーン 2 本がいずれもこれらを触っていないことが
+> 確認され、衝突しないため広げる判断が下りた**（`docs/adr/README.md` の索引行だけは引き続き触らない）。
+> **理由は「後回しにできないため」である** —— 条文が実装と食い違ったまま残ると、後続の監査が
+> 未達を解消済みと読む。以下、§3.3・§4.2・§6・§7 は広げた後の内容へ書き改めてある
+> （`docs/specs/` の凍結は**確定済み＝過去 PR の**仕様書が対象であり、
+> **作業中の PR の仕様書は別**である。`.claude/rules/traceability.repo.md`）。
 
 ## 3. 母集合の引き方と結果（`.claude/rules/traceability.repo.md` 規則 2・6・9・10）
 
@@ -98,9 +107,9 @@ related_specs:
 | --- | --- | --- |
 | `docs/adr/IADR-0022*` | `analysis` → `fable-5`・`NonZdrModels` 導入の決定 | **本 PR で日付つき追記**（旧条文は消さない） |
 | `docs/adr/IADR-0112*` | 決定 2「`Models` / `NonZdrModels` は変更しない」 | **本 PR で日付つき追記** |
-| `docs/adr/IADR-0113*` | 決定 2「`claude-fable-5` は `Models` に残す」／決定 4「`analysis` は意図的な例外」 | **要追随だが本 PR の領域外**（§6） |
-| `docs/functional/FR-11_llm-egress-routing.md`（8 件） | 既定設定の割当表・受け入れ基準に `analysis→fable-5` | **領域外**（他レーンの領分）。§6 に追随先として明記 |
-| `docs/tests/FR-11_llm-egress-routing.md`（4 件） | T-02 / T-11 / T-13 / T-23 の記述 | **領域外**。§6 |
+| `docs/adr/IADR-0113*` | 決定 2「`claude-fable-5` は `Models` に残す」／決定 4「`analysis` は意図的な例外」 | **本 PR で日付つき追記**（両決定の前提が覆った旨。`status` は `Accepted` 据え置き。理由は §7） |
+| `docs/functional/FR-11_llm-egress-routing.md`（8 件） | 既定設定の割当表・受け入れ基準に `analysis→fable-5` | **本 PR で追随**。`status: in-progress` の **live な機能仕様書**であり凍結の射程外（§3.5） |
+| `docs/tests/FR-11_llm-egress-routing.md`（4 件） | T-02 / T-11 / T-13 / T-23 の記述 | **本 PR で追随**。`status: completed` の **live なテスト仕様書**であり凍結の射程外（§3.5） |
 | `docs/adr/README.md`（4 件） | ADR 索引行 | **領域外**（並行レーンと衝突しうるため触らない指示） |
 | `deploy/docker-compose.yml`（1 件） | 「最難関 fable-5」のコメント | **領域外**。§6 |
 | `.github/workflows/claude-*.yml`（各 1 件） | `@claude fable` と書かれたときのレビュー用モデル選択 | **無関係**。基盤サービスの用途別ルーティングではなく、CI の補助 AI の選択である。ADR-0038 の射程外 |
@@ -115,6 +124,36 @@ related_specs:
 `ClaudeProviderThinkingTests.cs`・`EgressMatrix.cs`・`CompletionRoutingEndpointTests.cs` の
 コメント群である（いずれも本 PR で是正する）。`LlmRoutingOptions.cs` の
 「`NonZdrModels` に載るモデルを割り当てた用途は…」という警句は**機構の説明であり誤りにならない**ため触らない。
+
+**［2026-08-18 追記 / #850］対象範囲を広げた後に、もう一度引き直した**（§2 の追記）。
+**自分が本 PR で書いた記述のうち、範囲拡大によって偽になったもの**は次のとおりで、すべて是正した。
+
+| 偽になった記述 | 置き場所 | 是正 |
+| --- | --- | --- |
+| 「`IADR-0113` 決定 2・決定 4 への追随は本件の射程外として別途扱う」 | `IADR-0112` の 2026-08-18 追記 | 「本 PR で `IADR-0113` にも同日追記を入れた」へ書き改め |
+| 「本ガードの射程を `report-*` から全用途へ広げるかは…#850 では動かさない（追随は別 issue）」 | `CompletionRoutingEndpointTests.cs` のガード直前コメント | 射程を広げた旨と理由へ書き改め（テスト名も改名） |
+| 「`docs/functional/` / `docs/tests/` / `IADR-0113` は領域外」 | 本仕様書 §2・§3.3・§4.2・§6・§7 | 本追記群で書き改め |
+
+引き直しに使ったコマンドは §8 に生のまま残す（**記憶で挙げず、誤りの側の文字列で走査してから挙げた**）。
+
+### 3.5 `docs/functional/` `docs/tests/` が凍結の射程に当たるかの判定
+
+**当たらない。書き換えてよい。** 根拠は 3 つある。
+
+1. **凍結の射程は記録種ごとに定まっており、対象は `docs/specs/`（確定済み）・`feedback/`・`docs/superpowers/` である**
+   （[[IADR-0166]] 決定 2 の 2026-08-17 追記 / `.claude/rules/traceability.repo.md`）。
+   `functional-spec` / `test-spec` は**その仕様書が記述する実装の現状**を述べる live な仕様書であり、
+   「当時こう判断した」という point-in-time の記録ではない。
+2. **`status` は凍結フラグではない。** `docs/README.md` 運用ルール 6 が明示するとおり
+   `status` は「その仕様書が記述する**実装の状態**」であり、`completed` は「実装・テストが揃った」の意味である。
+   **書き換え禁止を表す値ではない**（禁止を表すのは記録種のほうである）。
+3. **直前例がある。** 同型の改定（[[IADR-0113]]・月報の割当変更）を入れた `404b1c3e`
+   `fix(FR-11,IADR-0113): 月報の割当モデルを ZDR 対応の claude-opus-5 へ改定する (#429)` は、
+   **両ファイルを同じ PR の中で直接書き換えている**（`git log -- docs/functional/FR-11_llm-egress-routing.md`
+   / `docs/tests/FR-11_llm-egress-routing.md` で確認。`git rev-parse --is-shallow-repository` = `false` を
+   先に確かめてから出典に用いた）。
+
+したがって**新しい作業仕様書へ訂正を逃がす必要はなく**、両ファイルを直接更新し `updated:` を前進させた。
 
 ## 4. 設計（変更内容）
 
@@ -137,9 +176,13 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
   「フォールバックする」という名前のまま残すと、通っている経路と名前が食い違い、
   **空振りしているのに緑**という最も悪い状態になる。`PostComplete_ConfidentialAnalysis_ResolvesZdrModel`
   へ改め、「機密区分を上げても割当が変わらない」ことの回帰として意味を持たせる。
-- `ReportPurposeModels_AreNotListedAsNonZdr`: **射程（`report-*`）は変えない。**
-  射程は [[IADR-0113]] 決定 4 が定めており、全用途へ広げるには同 IADR の改定が要る（本 PR の領域外・§6）。
-  末尾の「`analysis` は意図的な例外」という注記だけが誤りになるので、日付つきで是正する。
+- `ReportPurposeModels_AreNotListedAsNonZdr` → **`PurposeModels_AreNotListedAsNonZdr` へ改名し、
+  射程を `report-*` から全 `PurposeModels` へ広げる。**
+  射程を `report-*` に絞っていたのは [[IADR-0113]] 決定 4 の「`analysis` は ZDR 非要件区分限定の
+  意図的な例外なので対象に含めない」という前提による。**計画 `ADR-0038` 決定 2 でその例外が消滅した以上、
+  絞る理由も消えた** —— 絞ったままだと `report-*` 以外の用途に非 ZDR モデルを割り当てる再発を捕まえられない。
+  射程が覆った旨は [[IADR-0113]] §決定 の同日追記に記録した（**条文と実装を食い違わせたまま広げない**）。
+  **広げたことが効いていることは変異試験で実測する**（§5.2）。
 - `LlmRouterTests.cs`: **合成 config は 1 件も削らない**（§3.2）。注記のみ足す。
 
 ### 4.3 実装 ADR
@@ -180,7 +223,23 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
 `git diff` の削除行がコメント 1 行だけ（合成 config の 16 件は 1 件も削られていない）ことで確認した。
 **変異はコミットしていない。**
 
-## 6. 計画書との差異・追随先（本 PR の領域外）
+### 5.2 ガードの射程を広げたことの実測（§4.2）
+
+**広げたなら、広げたぶんが「壊すと落ちる」ことを示す。** 本番設定の `NonZdrModels` は空なので、
+広げた `PurposeModels_AreNotListedAsNonZdr` は素のままでは自明に通る。そこで
+**`appsettings.json` の `NonZdrModels` へ `claude-haiku-4-5` を一時的に入れる**変異を行った。
+**`claude-haiku-4-5` を使う用途は `diagram-coding` だけ**であり（`report-*` は `claude-opus-5` /
+`claude-sonnet-5`）、**旧射程（`report-*` のみ）では絶対に捕まらない**値である。
+
+| 観点 | 結果 |
+| --- | --- |
+| 広げたガード単体 | **Failed: 1 / Passed: 0** —— `Expected claude.NonZdrModels {"claude-haiku-4-5"} to not contain "claude-haiku-4-5" because 用途 diagram-coding の割当モデル…` |
+| LlmGateway 全 157 本 | **Failed: 1 / Passed: 156** —— **落ちたのは広げたガード 1 本だけ**。`report-*` 系のテスト（T-22 / T-23）は**すべて緑のまま**であり、**旧射程がこの再発に対して盲目であったこと**をそのまま示している |
+
+復元は `sha256sum -c`（変異前 `1ccc19fc…`）が `OK` を返すことと、
+`git diff -- …/appsettings.json` が空であることで確認した。**変異はコミットしていない。**
+
+## 6. 計画書との差異・追随先
 
 - **差異: なし。** 計画 ADR-0038 決定 1・2 に忠実である。
 - **決定 3・4・6（`analysis` のフォールバック順序 `claude-opus-5` → `claude-sonnet-5`、
@@ -188,18 +247,24 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
   現行 `LlmRouter` は「用途別モデル → `DefaultModel` → 適格モデルの先頭」という**解決順序**を持つだけで、
   **HTTP 400 系での実行時フォールバック機構そのものを持たない**。決定 3・4・6 は機構の新設を伴い、
   #850 の「やること」にも受け入れ基準にも含まれていない。**別 issue を要する**（§7）。
-- 追随が必要だが領域外の文書: `docs/adr/IADR-0113*`（決定 2・決定 4）、
-  `docs/functional/FR-11_llm-egress-routing.md`、`docs/tests/FR-11_llm-egress-routing.md`、
-  `docs/adr/README.md`、`deploy/docker-compose.yml`。
+- **本 PR で追随させた文書**（§2 の追記で範囲を広げた分）: `docs/adr/IADR-0113*`（決定 2・決定 4 の前提が覆った旨）、
+  `docs/functional/FR-11_llm-egress-routing.md`（8 件）、`docs/tests/FR-11_llm-egress-routing.md`（4 件）。
+- **なお領域外に留めた文書**: `docs/adr/README.md`（索引行が並行レーンと衝突しうる）、
+  `deploy/docker-compose.yml`（「最難関 fable-5」のコメント 1 件。`deploy/` は本 PR の領域外）。
+  **後者は誤った記述が残るので、追随を別 issue として起票してもらう。**
 
 ## 7. 未決事項
 
-- **[[IADR-0113]] へ追記すべきか**: **すべきである。** 同 IADR の決定 2 は
-  「`claude-fable-5` は `Models` に**残す**」、決定 4 は「`analysis` は ZDR 非要件区分限定の意図的な例外」
-  と述べており、**どちらも計画 ADR-0038 決定 2 が覆した**。同 IADR は「月報のみ」を改めたものだが、
-  本件で誤りになるのは月報の話ではなく**`Models` に残すという判断そのもの**である。
-  ただし `docs/adr/IADR-0113*` は**本 PR の領域外**（並行レーンとの衝突回避）であるため、
-  **本 PR では触らず、親へ報告して追随 issue の起票を仰ぐ**。
+- **［2026-08-18 追記 / #850・解決済み］[[IADR-0113]] へ追記すべきか**: **すべきであり、本 PR で追記した。**
+  同 IADR の決定 2 は「`claude-fable-5` は `Models` に**残す**」、決定 4 は
+  「`analysis` は ZDR 非要件区分限定の意図的な例外」と述べており、**どちらも計画 ADR-0038 決定 2 が覆した**。
+  同 IADR は「月報のみ」を改めたものだが、本件で誤りになるのは月報の話ではなく
+  **`Models` に残すという判断そのもの**である。当初は領域外として保留したが、
+  並行レーンが触っていないことが確認され範囲が広がったため、**§決定 の冒頭へ日付つき追記を入れた**。
+  - **`status` は `Accepted` に据え置いた。** 覆ったのは決定 2・4 であって全体ではなく、
+    **決定 1（月報 = `claude-opus-5`）・決定 3（機密区分を下げない）は現行の実装そのもの**である。
+    `Superseded` にすると「月報の割当を決めた記録」ごと無効に見え、後続が現行値を読み違える。
+    **本文は 1 文字も書き換えていない**（旧条文は原文のまま、追記ブロックで訂正した）。
 - 決定 3・4・6（フォールバック機構）の実装 issue。**新規 IADR の採番が要る見込みであり、
   本 PR では起こさない**（採番衝突の回避）。
 - `analysis` と `default` が同一モデル（`claude-opus-5`）になったため、

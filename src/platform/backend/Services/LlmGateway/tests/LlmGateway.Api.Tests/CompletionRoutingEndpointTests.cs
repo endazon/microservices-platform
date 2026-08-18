@@ -256,24 +256,22 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().NotBe("claude-fable-5");
     }
 
-    // T-23, IADR-0113 (#309): 報告書用途の割当モデルが NonZdrModels に載っていないことを**集合として**固定する。
-    // T-19（全 PurposeModels 値 ⊆ Models）と同じ発想の設定ガードで、種別が増えたときの再発を防ぐ。
-    // ［2026-08-18 追記 / #850］旧: 「analysis は ZDR 非要件区分に限って fable-5 を使う意図的な例外
-    // （IADR-0022）のため対象に含めない」。計画 ADR-0038 決定 2 により **その例外は消滅した**（基盤のいかなる
-    // 用途でも claude-fable-5 を用いない）。ただし本ガードの射程を report-* から全用途へ広げるかは
-    // IADR-0113 決定 4 が定めた射程の改定にあたるため、#850 では動かさない（追随は別 issue）。
+    // T-23, IADR-0113 (#309): 割当モデルが NonZdrModels に載っていないことを**集合として**固定する。
+    // T-19（全 PurposeModels 値 ⊆ Models）と同じ発想の設定ガードで、用途が増えたときの再発を防ぐ。
+    // ［2026-08-18 追記 / #850］**射程を report-* から全 PurposeModels へ広げ、名前も改めた**
+    // （旧名 ReportPurposeModels_AreNotListedAsNonZdr）。IADR-0113 決定 4 は「analysis は ZDR 非要件区分に
+    // 限って fable-5 を使う意図的な例外なので対象に含めない」として射程を report-* に絞っていたが、計画
+    // ADR-0038 決定 2（基盤のいかなる用途でも claude-fable-5 を用いない）により **その例外は消滅した**。
+    // 例外が無い以上、絞る理由も無い —— 絞ったままだと report-* 以外の用途に非 ZDR モデルを割り当てる
+    // 再発を捕まえられない。射程が覆った旨は IADR-0113 §決定 の同日追記に記録した。
     [Fact]
-    public void ReportPurposeModels_AreNotListedAsNonZdr()
+    public void PurposeModels_AreNotListedAsNonZdr()
     {
         var options = factory.Services.GetRequiredService<IOptions<LlmRoutingOptions>>().Value;
         var claude = options.Endpoints.Single(e => e.Name == "claude-managed");
 
-        var reportPurposes = options.PurposeModels
-            .Where(kv => kv.Key.StartsWith("report-", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        reportPurposes.Should().NotBeEmpty("報告書用途のエントリが消えるとガード自体が空振りする");
-        foreach (var (purpose, model) in reportPurposes)
+        options.PurposeModels.Should().NotBeEmpty("用途エントリが消えるとガード自体が空振りする");
+        foreach (var (purpose, model) in options.PurposeModels)
         {
             claude.NonZdrModels.Should().NotContain(model,
                 $"用途 {purpose} の割当モデル {model} が ZDR 非対応だと、機密区分を上げた時点で DefaultModel へ黙って落ちる");

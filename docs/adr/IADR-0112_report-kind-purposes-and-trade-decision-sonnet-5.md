@@ -148,8 +148,9 @@ AST/ADR-0011（Accepted）§決定:
 > 受け入れた構造は、[[IADR-0113]]（月報）に続き `analysis` についても解消した。**
 >
 > **決定 1 の種別別 purpose の仕組み・週報/日報の割当・決定 3・決定 4 は引き続き有効である。**
-> 本追記が改めるのは `Models` / `NonZdrModels` の中身だけであり、[[IADR-0113]] 決定 2・決定 4 への追随は
-> 本件の射程外として別途扱う（起点 [#850](https://github.com/endazon/microservices-platform/issues/850) §報告）。
+> 本追記が改めるのは `Models` / `NonZdrModels` の中身だけである。
+> **同じ改定は [[IADR-0113]] 決定 2・決定 4 の前提も覆すため、同 IADR にも同日の追記を入れた**
+> （起点 [#850](https://github.com/endazon/microservices-platform/issues/850)）。
 > 作業仕様書は [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md)。
 
 ### 決定 1: 報告書を種別ごとの用途へ分離する
