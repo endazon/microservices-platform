@@ -164,7 +164,7 @@ planning#112 で導入された固有テストの受け口（companion ファイ
 受け口自体の回帰テストも「companion が既に存在すると skip」するため、**この仕組みを実際に
 使っているリポジトリでは一度も実効しない**。
 
-#108（`scripts.test.js` が CI に載っていない）や PLAN_PROJECT の fail-open 可視化（#110）と
+planning#108（`scripts.test.js` が CI に載っていない）や PLAN_PROJECT の fail-open 可視化（planning#110）と
 同じ「ジョブは成功するのに検査が効いていない」型である。
 
 → [planning#114](https://github.com/endazon/project-planning/issues/114) として起票
@@ -259,7 +259,7 @@ planning#135 は「既定名のファイルはあるが `claude_args` を解析�
 （(1) GitHub Actions では `::warning::` で annotation として出す、
 (2) `REQUIRE_REPO_TESTS` と同じ形の厳格モード opt-in を設ける。どちらも fail-open の既定は変えない）。
 
-### 17. #138 の反映で `scripts.test.js` が GitHub Actions 上で失敗する（第 12 ラウンドで判明・不具合）
+### 17. planning#138 の反映で `scripts.test.js` が GitHub Actions 上で失敗する（第 12 ラウンドで判明・不具合）
 
 指摘 16（planning#136）は planning#138 で反映され、`scripts/lib/ci-annotate.js` による
 アノテーション化と `STRICT_AI_WORKFLOW_CONFIG` の opt-in が両方入った。動作は実ツリーで確認済み
@@ -287,8 +287,8 @@ planning#135 は「既定名のファイルはあるが `claude_args` を解析�
 
 **環流した 17 件のうち 17 件が決着した**（14 件がキットへ反映、1 件＝指摘 13 は前提誤りで取り下げ、
 指摘 16・17 も反映済み）。
-起票した planning issue のうち #96 / #104 / #108 / #111 / #114 / #117 / #121 / #126 / #130 は
-に加え #136 / #140 もクローズ済みで、**全件決着**である。
+起票した planning issue のうち planning#96 / planning#104 / planning#108 / planning#111 / planning#114 / planning#117 / planning#121 / planning#126 / planning#130 は
+に加え planning#136 / planning#140 もクローズ済みで、**全件決着**である。
 
 以後キット側に新たな不足を見つけた場合は、本記録に追記せず**別の記録として起こす**
 （計画側の `/sync-impl` は「記録 1 件 ↔ 環流 1 件」で到達を判定するため、

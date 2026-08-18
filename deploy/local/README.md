@@ -2,7 +2,7 @@
 
 > 起点: [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) /
 > 作業仕様書 [`docs/specs/20260713_issue-266_local-k8s-dev-env.md`](../../docs/specs/20260713_issue-266_local-k8s-dev-env.md) /
-> Issue #266（MSP）・AST#122（AST chart）・#121（K8s CronJob）
+> Issue #266（MSP）・AST#122（AST chart）・AST#121（K8s CronJob）
 
 本ディレクトリは **dev 専用**の資産である。本番像（[`deploy/helm`](../helm) 本体・
 [`deploy/docker-compose.yml`](../docker-compose.yml)・[`deploy/argocd`](../argocd)）は変更しない。

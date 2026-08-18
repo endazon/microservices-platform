@@ -52,7 +52,7 @@ Bash(grep | sort)（3 件） / Bash(git -C src/ai-stock-trading log)（1 件）
 
 キットのレビュー用 `--allowedTools`（planning `aeb97c4` 実測）には `cat` / `head` / `tail` /
 `cmp` / `diff` / `echo` / `rg` が既に在り、**`grep` と `sort` だけが無い**。planning#145 / planning#146 /
-#155 / #157 / #158 / #160 / #161 / #162 が繰り返し塞いできたのと同型の非対称である。
+planning#155 / planning#157 / planning#158 / planning#160 / planning#161 / planning#162 が繰り返し塞いできたのと同型の非対称である。
 
 `git -C` は `planning` の 4 サブコマンド（`log` / `show` / `diff` / `ls-tree`）だけが列挙されており、
 コメントに「【置換点】submodule のパスが `planning` でない場合は 4 か所とも書き換える」とある。
@@ -83,7 +83,7 @@ Bash の許可はコマンド文字列の**前方一致**であるため、`Bash
    `toolchainDrift` は `TOOLCHAINS`（スタック別の実行ツール）しか比較しないため、
    `grep` / `sort` / `git -C …` の片落ちは検出されない。planning#160 の反映時にも
    「手で揃えること」というコメントが足されただけで、機械化はされていない。同じ型の欠落が
-   **3 度目**（#155 の `cat`/`head`/`tail`、#160 の `cmp`/`diff`、本件の `grep`/`sort`）である以上、
+   **3 度目**（planning#155 の `cat`/`head`/`tail`、planning#160 の `cmp`/`diff`、本件の `grep`/`sort`）である以上、
    人手の規律ではなく検査で守るべきである。
 4. あるべき姿: キット配布時点で読み取り専用の基本コマンドが揃っており、submodule が複数ある
    構成でも `git -C` の列挙方法が明示され、両ワークフローの非対称が CI で止まること。
@@ -131,9 +131,9 @@ Bash の許可はコマンド文字列の**前方一致**であるため、`Bash
   提案 3 は新しい ERROR 条件であり、**既存リポジトリで非対称があれば CI が赤くなる**——
   受け入れ時は段階導入（まず warn、次のラウンドで ERROR）も選択肢である。
 - 本リポジトリ側: 暫定デルタを保持し、キット反映後の同期で撤去する（IADR-0115 の運用）。
-- 関連: planning#145 / planning#146（読み取り系 git の欠落）・#147（拒否報告をコマンド名まで出す）・
-  #155 / #157 / #158（整形パイプ・検証の誠実性）・#160（`git -C` の報告ラベル・`cmp` / `diff` 追加）・
-  #161 / #162（段階ポリシーと「成果物は正しいのに赤」の常態化）。本件はその系列の続きである。
+- 関連: planning#145 / planning#146（読み取り系 git の欠落）・planning#147（拒否報告をコマンド名まで出す）・
+  planning#155 / planning#157 / planning#158（整形パイプ・検証の誠実性）・planning#160（`git -C` の報告ラベル・`cmp` / `diff` 追加）・
+  planning#161 / planning#162（段階ポリシーと「成果物は正しいのに赤」の常態化）。本件はその系列の続きである。
 
 ## 追加の判明事項（2026-08-03・PR #461 のレビュー指摘から実測）
 
