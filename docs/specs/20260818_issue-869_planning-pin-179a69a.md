@@ -101,7 +101,7 @@ git -C planning log --oneline 282c2d0..179a69a
 - [x] `node scripts/check-kit-sync.js --require-planning` が exit 0（未分類 0・ドリフト 0）
 - [x] §3 の 33 件すべてが「上書き／移植／対象外（移植先を明記）／利用者適用」のいずれかで処理済み
 - [x] `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が全件 pass（666 件）
-- [x] `check-reading-budget.js` が予算内（42,171B / 51,200B・82.4%）
+- [x] `check-reading-budget.js` が予算内（42,662B / 51,200B・83.3%）
 - [x] その他ローカル検査（`check-adr-numbering` / `check-doc-links` / `check-cross-repo-refs` / `check-plan-id-qualification` / `check-doc-type-vocabulary` / `check-feedback-dispatched` / `check-action-versions --compare-with-ref origin/develop` / `check-ai-workflow-config`）が全て exit 0
 
 ## 6. 検証（実測）
@@ -117,7 +117,7 @@ node scripts/check-adr-numbering.js / check-doc-links.js / check-cross-repo-refs
   check-ai-workflow-config.js                                                        全て exit=0
 node scripts/check-action-versions.js --compare-with-ref origin/develop              exit=0
 node scripts/check-reading-budget.js
-  Claude Code: 42,171B / 51,200B（82.4%）……別紙化（planning#416）で 49,902B から純減   exit=0
+  Claude Code: 42,662B / 51,200B（83.3%）……別紙化（planning#416）で 49,902B から純減。42,171B は #686 スタブ追記前の中間測定であり、最終形を測り直した   exit=0
 REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js   ✓ 666 tests passed
 bash -n scripts/apply-profile.sh scripts/ai-adapters/*.sh                            ok
 python3 -c "yaml.safe_load(...)"  claude-coding / claude-code-review / ci            ok
