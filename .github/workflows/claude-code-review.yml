@@ -190,10 +190,11 @@ jobs:
           # 自動リンクしてしまう（`.claude/rules/traceability.md`「クロスリポジトリの issue / PR
           # 番号の修飾」）。キット側の是正を環流したら本デルタは撤去する。
           #
-          # 【置換点】`git -C` は **`.gitmodules` にあるパスごと**に 4 サブコマンド
-          # （log / show / diff / ls-tree）を列挙する（planning#163）。submodule が 1 つなら
-          # `planning` の 4 エントリを書き換えるだけでよいが、複数ある構成では**書き換えではなく
-          # パスごとの追加**が要る。入れ子の submodule も別パスとして列挙が要る
+          # 【置換点】`git -C` は **`.gitmodules` にあるパスごと**に 5 サブコマンド
+          # （log / show / diff / ls-tree / grep）を列挙する（planning#163。`grep` は #835 で
+          # 5 つ目として追加した）。submodule が 1 つなら `planning` の 5 エントリを書き換える
+          # だけでよいが、複数ある構成では**書き換えではなくパスごとの追加**が要る。
+          # 入れ子の submodule も別パスとして列挙が要る
           # （ワークフローは `git submodule update --init --recursive` で入れ子まで populate する
           # ため、読める範囲と許可の範囲が食い違う。前方一致のため
           # `Bash(git -C src/foo log:*)` は `git -C src/foo/planning log` には**当たらない**）。
@@ -240,7 +241,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C planning grep:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git -C src/ai-stock-trading/planning grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
           prompt: |
             このリポジトリは、上流工程リポジトリ project-planning の計画書を実装する作業リポジトリである。
             CLAUDE.md と AGENTS.md の方針に従い、この PR を以下の観点でレビューし、
@@ -265,7 +266,9 @@ jobs:
             - **git（読み取りのみ）**: `git diff` / `git log` / `git show` / `git status` /
               `git ls-tree` / `git submodule status` / `git fetch`。submodule 変種として
               `git -C planning` と `git -C src/ai-stock-trading`（および同 `/planning`）の
-              `log` / `show` / `diff` / `ls-tree` も使える。
+              `log` / `show` / `diff` / `ls-tree` / **`grep`** も使える
+              （`grep` は submodule の全文検索。`git -C <パス> show` でファイルを名指し
+              できない場合の基本の裏取り手段である）。
               **書き込み系の git（`add` / `commit` / `push` / `switch` / `checkout` / `branch`）は
               許可されていない**（レビューは読むだけである）。
             - **閲覧・検索**: `ls` / `rg` / `grep` / `sort` / `cat` / `head` / `tail` / `cmp` /
