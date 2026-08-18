@@ -8,7 +8,7 @@ related_ids:
   - UC-02
 author: claude
 created: 2026-07-04
-updated: 2026-07-31
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
   - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
@@ -57,19 +57,19 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 ### 用途別モデル解決（`ResolveModel`）
 
 - 優先順位: ① 明示 `Model` 要求が**適格モデル**なら採用 → ② `PurposeModels[purpose]` が適格なら採用 → ③ エンドポイントの `DefaultModel`（適格なら）→ ④ 適格モデル先頭。適格モデルが無ければ空文字を返し送信拒否へ縮退。
-- **ZDR（ゼロデータ保持）によるモデル除外（IADR-0022 / 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデル（既定で `claude-fable-5`）を候補から除外する。除外により fable-5 は ZDR 非要件の `public`/`internal` の analysis に限定され、`confidential`/`restricted` の analysis は ZDR 対応の既定モデル（opus）へフォールバックする。
-- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / ADR-0022 / ADR-0025 / IADR-0022 / IADR-0101 / IADR-0106 / IADR-0112 / IADR-0113）: 既定 `claude-opus-5`、定型 `rag-answer→claude-sonnet-5` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-fable-5`（ZDR 非要件区分のみ）、`default→claude-opus-5`、**報告書 `report-monthly→claude-opus-5`（IADR-0113 で `claude-fable-5` から改定）/ `report-weekly→claude-opus-5` / `report-daily→claude-sonnet-5`（IADR-0112）**、**取引判断 `trade-decision→claude-sonnet-5`（版数固定・IADR-0112 決定3）**。
-- **用途別モデルは `Models`（利用許可集合）にも登録する（IADR-0102 / IADR-0106）**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。`Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。全 `PurposeModels` 値が `Models` に含まれることは T-19 が恒久的に固定する。
+- **ZDR（ゼロデータ保持）によるモデル除外（IADR-0022 / 08_data-egress-policy）**: `EgressMatrix.RequiresZeroDataRetention` が真の機密区分（`confidential`/`restricted`、未知区分も安全側で真）では、エンドポイントの `NonZdrModels` に列挙された ZDR 非対応モデルを候補から除外する。**［2026-08-18 更新 / #850・計画 ADR-0038］既定の `NonZdrModels` は空である** —— 同 ADR 決定 2 により `claude-fable-5` を `Models`（利用許可集合）から外したため、列挙する対象が無くなった。**除外機構そのものは残す**（非 ZDR モデルを将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは `LlmRouterTests` の合成 config が持つ）。
+- 既定設定（`appsettings.json`, ADR-0010 `Accepted` / ADR-0022 / ADR-0025 / IADR-0022 / IADR-0101 / IADR-0106 / IADR-0112 / IADR-0113）: 既定 `claude-opus-5`、定型 `rag-answer→claude-sonnet-5` / `diagram-coding→claude-haiku-4-5`、最難関 `analysis→claude-opus-5`（**計画 ADR-0038 決定 1 で `claude-fable-5` から改定**。#850）、`default→claude-opus-5`、**報告書 `report-monthly→claude-opus-5`（IADR-0113 で `claude-fable-5` から改定）/ `report-weekly→claude-opus-5` / `report-daily→claude-sonnet-5`（IADR-0112）**、**取引判断 `trade-decision→claude-sonnet-5`（版数固定・IADR-0112 決定3）**。
+- **用途別モデルは `Models`（利用許可集合）にも登録する（IADR-0102 / IADR-0106）**: `ResolveModel` は `eligible.Contains(purposeModel)` を条件とするため、`PurposeModels` にのみ書いて `Models` へ登録し忘れると、例外もログも出さずに `DefaultModel` へフォールバックし割当が無音で失効する。`Models` は「割当」ではなく「利用を許可するモデル集合」であり、版数改定時は**追加**する（削除は明示 `Model` 要求をしている呼び出し側に対する破壊的変更）。**ただし計画 ADR（`ADR-0038` 決定 2）が利用そのものを禁じたモデルは例外で、`Models` から除去する** —— 破壊的変更であることを承知のうえで、非 ZDR モデルを基盤から無くすことを優先した（#850）。全 `PurposeModels` 値が `Models` に含まれることは T-19 が恒久的に固定する。
 - **取引判断のモデルピン留め（`AST/ADR-0011` / IADR-0102 / IADR-0112）**: 取引判断は再現性・監査可能性のため基盤の既定モデル改定に**自動追随させない**。`PurposeModels` に `trade-decision` を固定指定する。ピン留め対象はエンドポイントの `Models` 許可一覧にも含める必要がある（含めないと `ResolveModel` が黙って `DefaultModel` へフォールバックし、ピン留めが無効化される）。本エントリの更新には Stage 0 再検証を要する（設定値の書き換えだけで更新しない）。IADR-0112 決定3 でピンの値を `claude-opus-4-8` → `claude-sonnet-5` へ改定した際は、計画側 ADR の改定依頼（[planning#50](https://github.com/endazon/project-planning/issues/50)）を先行させ、`claude-sonnet-5` での Stage 0 再検証を**実弾解禁の必須ゲート**として追跡している（固定する仕組みは維持し、改定したのはピンの値のみ）。
-- **報告書の種別別ルーティング（IADR-0112 決定1 / IADR-0113・`AST/04_workflows/03_reporting-cycle`）**: 報告書は取引方針を **月報→週報→日報→取引** の階層で管理する方針書であり、上位ほど難度が高い。用途を種別ごとに分け `report-monthly` / `report-weekly` / `report-daily` を割り当てる。`report-weekly` は `default` と同値だが、**明示エントリが無いと `default` の改定で無音に失効する**ため省略しない。**`report-monthly` は IADR-0113 で `claude-opus-5` へ改定した結果 `report-weekly` と同値になるが、同じ理由で明示エントリを残す**（非 ZDR の `claude-fable-5` を除いた集合に opus-5 より上位が無いための制約下の最善であり、階層の意図はプロンプトと文脈量で表す）。旧来の単一用途 `report-narrative` はエントリを持たず `default` へ着地する（呼び出し側の移行が完了するまでの非破壊性のため維持）。
-- **`NonZdrModels` に載るモデルを割り当てた用途は機密区分で失効し得る（IADR-0112 決定2 / IADR-0113 決定4）**: `claude-fable-5` は ZDR 非対応であり、`confidential` / `restricted` では `EligibleModels` から除外され `DefaultModel` へ**黙って**落ちる。**現在該当するのは `analysis` のみ**（ZDR 非要件区分に限って fable-5 を使う意図的な設計・IADR-0022）。`report-monthly` は該当していたが IADR-0113 で ZDR 対応モデルへ改定し解消した。報告書用途（`report-*`）に非 ZDR モデルを割り当てないことは **T-23 の設定ガードが恒久的に固定する**。呼び出し側の機密区分設定（report-service の `LlmGateway:Confidentiality`。既定 `internal`）を上げても報告書の割当モデルは変わらない。
+- **報告書の種別別ルーティング（IADR-0112 決定1 / IADR-0113・`AST/04_workflows/03_reporting-cycle`）**: 報告書は取引方針を **月報→週報→日報→取引** の階層で管理する方針書であり、上位ほど難度が高い。用途を種別ごとに分け `report-monthly` / `report-weekly` / `report-daily` を割り当てる。`report-weekly` は `default` と同値だが、**明示エントリが無いと `default` の改定で無音に失効する**ため省略しない。**`report-monthly` は IADR-0113 で `claude-opus-5` へ改定した結果 `report-weekly` と同値になるが、同じ理由で明示エントリを残す**（非 ZDR の `claude-fable-5` を除いた集合に opus-5 より上位が無いための制約下の最善であり、階層の意図はプロンプトと文脈量で表す。**#850 以降 `claude-fable-5` は `Models` に無く、選べる集合そのものが ZDR 対応モデルだけになった**）。旧来の単一用途 `report-narrative` はエントリを持たず `default` へ着地する（呼び出し側の移行が完了するまでの非破壊性のため維持）。
+- **`NonZdrModels` に載るモデルを割り当てた用途は機密区分で失効し得る（IADR-0112 決定2 / IADR-0113 決定4）**: `claude-fable-5` は ZDR 非対応であり、`confidential` / `restricted` では `EligibleModels` から除外され `DefaultModel` へ**黙って**落ちる。**［2026-08-18 更新 / #850・計画 ADR-0038］現在該当する用途は無い。** `analysis` が唯一の該当（ZDR 非要件区分に限って fable-5 を使う意図的な設計・IADR-0022）であったが、決定 1・2 で `claude-opus-5` へ改め `claude-fable-5` を `Models` から外したため解消した（`report-monthly` は先行して IADR-0113 で解消済み）。**全 `PurposeModels` の割当が非 ZDR モデルでないことは T-23 の設定ガードが恒久的に固定する**（同ガードの射程は #850 で `report-*` から全用途へ広げた。IADR-0113 決定 4 の射程の改定にあたる旨は同 IADR の同日追記に記録）。呼び出し側の機密区分設定（report-service の `LlmGateway:Confidentiality`。既定 `internal`）を上げても報告書の割当モデルは変わらない。
 - **`Sent=false` は「越境拒否」だけを意味しない（IADR-0113）**: `/complete` が `Sent=false` を返す分岐は ①越境拒否（`decision.Allowed=false`）②プロバイダ未登録 ③プロバイダ呼び出しの例外 の 3 つである。区別は応答の `RoutingReason` / `Endpoint` に現れる（①は拒否理由、③は「呼び出し先 {Endpoint} が現在利用できません。」）。呼び出し側が `Sent=false` を機密区分による縮退と決め打つと原因を取り違える。なお **ZDR 除外は `internal` では効かない**（`RequiresZeroDataRetention` が真になるのは `confidential`/`restricted`/未知区分のみ）。
 - **既定 `max_tokens`（IADR-0101）**: Opus 5 / Sonnet 5 は thinking（拡張思考）が既定で有効であり、`max_tokens` は**思考トークンと本文の合算上限**になる。既定値は 4096（本文想定長＋思考の作業領域）とする。切り詰めると本文が途中で切れ、例外にならず短い回答へ静かに縮退する。
 - `PurposeModels` のキーは**呼び出し側が送る purpose 値と一致させる**（`StringComparer.OrdinalIgnoreCase`）。図コード化は契約値 `diagram-coding` に統一済み（旧 `diagram` の不一致を修正、#58 #1 / IADR-0007）。
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
-- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, Models に `claude-fable-5` を含む）、`selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
+- 既定 `claude-managed`（Tier=B, Provider=`claude`, Enabled=true, Priority=10, Models は `claude-opus-5` / `claude-opus-4-8` / `claude-sonnet-5` / `claude-sonnet-4-6` / `claude-haiku-4-5` の 5 モデル。**`claude-fable-5` は計画 ADR-0038 決定 2 により除去済み**・#850）、`selfhosted-oss`（Tier=A, Provider=`selfhosted`, Enabled=false, Priority=20）、`copilot-managed`（Tier=C, Provider=`copilot`, Enabled=false, Priority=30）。
 - セルフホスト（OpenAI 互換 `/v1/chat/completions`）は ADR-0010 のとおり**後付け可能**とし、既定は無効エンドポイント（`Llm:SelfHosted:BaseUrl` 未設定時は利用不可）。
 - GitHub Copilot（最難関の別経路, ADR-0010 / IADR-0022）は `CopilotProvider`（OpenAI 互換 `/chat/completions`）で追加。送信先ティア（08_data-egress-policy の契約条件）が未確定のため**安全側でティアC・既定無効**とし、確定後に設定で有効化・ティア再判定する。
 
@@ -166,7 +166,7 @@ ABAC 不許可でゲートウェイを呼ばない場合も空文字（＝モデ
 Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロックの判別子を列挙で分岐し、
 **`text` / `image` / `tool_use` / `tool_result` 以外**を受け取ると `JsonException: Unknown type <型>` を
 投げる。未知型が 1 個混ざるだけで配列全体＝**応答全体**が失われるため、拡張思考（`thinking`）が
-既定で有効な現行の割当モデル（`claude-opus-5` / `claude-sonnet-5` / `claude-fable-5`）では
+既定で有効な現行の割当モデル（`claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5`。**#850 以降 `claude-fable-5` は含まれない**）では
 非ストリーミング `/complete` が全件失敗する。
 
 そこで `AnthropicClient` へ渡す `HttpClient` に委譲ハンドラを挟み、**既知型の許可リスト**で
@@ -187,8 +187,8 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - [x] 機密区分→許容ティアが 08_data-egress-policy の越境マトリクスと一致する（`EgressMatrix.AllowedTiers`）。
 - [x] `Confidential` / `Restricted` の入力は外部標準API（ティアC）へ送信されない。ティアA/B のみ候補になる。
 - [x] 機密区分が未指定・未知の入力は `Restricted` 相当として扱われる（安全側フォールバック）。
-- [x] `Model` 未指定時、用途に応じてモデルが切り替わる（`analysis→fable-5` / `rag-answer→sonnet` / `diagram-coding→haiku`、既定 `opus`。ADR-0010 / IADR-0022）。
-- [x] ZDR を要件とする機密区分（`confidential`/`restricted`）では ZDR 非対応モデル（`claude-fable-5`）が選択されず、ZDR 対応モデル（opus）へフォールバックする。ZDR 非要件（`public`/`internal`）では fable-5 が選択できる（IADR-0022 / 08_data-egress-policy）。
+- [x] `Model` 未指定時、用途に応じてモデルが切り替わる（`analysis→opus` / `rag-answer→sonnet` / `diagram-coding→haiku`、既定 `opus`。ADR-0010 / IADR-0022。**`analysis` は計画 ADR-0038 決定 1 で `fable-5` から改定**・#850）。
+- [x] ZDR を要件とする機密区分（`confidential`/`restricted`）では `NonZdrModels` に載るモデルが選択されず、ZDR 対応モデルへフォールバックする（IADR-0022 / 08_data-egress-policy）。**［2026-08-18 更新 / #850・計画 ADR-0038］既定設定の `NonZdrModels` は空であり、本番経路でこの除外は発火しない**（`claude-fable-5` を `Models` から外したため）。**機構が生きていることは `LlmRouterTests` の合成 config が固定する** —— 合成 config から `NonZdrModels` を外すと除外系 5 本が落ちることを #850 で実測した。
 - [x] 許容ティアに送信可能な有効エンドポイントが無い場合、送信せず `Sent=false`（縮退）を返す。
 - [x] `Internal × ティアC` は既定（未承認）では選択されない。
 - [x] 送信判定（機密区分・用途・ティア・エンドポイント・モデル・許否・理由）が監査ログに記録される。
@@ -220,7 +220,7 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 
 ## 未決事項
 
-- ADR-0010 は `Accepted`（既定 Opus / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。既定 Opus の版数は ADR-0010 本文凍結後に ADR-0025 が `claude-opus-5` へ改定し、IADR-0101 で追従済み（利用モデルの最新 roster は ADR-0025 を正とする）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
+- ADR-0010 は `Accepted`（既定 Opus / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK, (b) 実装追従で確定, IADR-0022 で追従）。**［2026-08-18 更新 / #850］最難関の割当は計画 `ADR-0038`（Accepted）が `claude-opus-5` へ部分改定した** —— ADR-0010 の他の決定（ゲートウェイを設ける決定・ルーティング機構・送信可否判定・トークン計測・監査ログの一元化）は有効である。既定 Opus の版数は ADR-0010 本文凍結後に ADR-0025 が `claude-opus-5` へ改定し、IADR-0101 で追従済み（利用モデルの最新 roster は ADR-0025 を正とする）。08_data-egress-policy.md は `draft` であり、機密区分の値集合・越境マトリクスの最終確定（セキュリティ部門レビュー）待ち。確定時は `EgressMatrix` / `SensitivityClass` / `PurposeModels` を差分レビュー付きで追従する（IADR-0007 フォローアップ）。
 - GitHub Copilot（`copilot-managed`）の送信先ティアは 08_data-egress-policy の契約条件（ZDR/学習不使用/レジデンシー）確定待ち。確定まで安全側でティアC・既定無効とし、確定後に設定で有効化・ティア再判定する（IADR-0022 フォローアップ）。
 - **Sonnet 5 の実トークン消費の実測**（IADR-0106 フォローアップ）: `rag-answer` は ADR-0022 の確定値 `claude-sonnet-5` へ追随済み（IADR-0106）。Sonnet 5 は thinking が既定有効かつ新トークナイザ（同一テキストで約 +30% トークン）のため、既定 `max_tokens` 4096 は**実測前の出発値**である。実測と再調整は [#380](https://github.com/endazon/microservices-platform/issues/380)。あわせて新トークナイザ前提でのコスト試算・レート制限しきい値・プロンプトキャッシュ最小長を再測定する（ADR-0022 §結果）。
 - `Restricted × ティアB` の「追加統制下」（承認フラグ・特別監査マーカー・匿名化/最小化要件）は未具体化で、現状 `Confidential × B` と同等（送信可）に扱う。

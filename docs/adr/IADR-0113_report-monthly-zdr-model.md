@@ -10,15 +10,17 @@ related_ids:
   - IADR-0022
   - IADR-0101
   - IADR-0112
+  - ADR-0038
 author: claude
 created: 2026-07-31
-updated: 2026-07-31
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0014_llm-model-assignment-revision.md (取引判断・報告書生成の割当モデル改定・Accepted)"
   - "../../planning/projects/ai-stock-trading/04_workflows/03_reporting-cycle.md (報告サイクル: 月報→週報→日報→取引の方針階層)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted)"
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md (機密区分×ティア越境マトリクス・ZDR)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (analysis から fable-5 を外す・Accepted・本 IADR 決定 2・4 の前提を覆す)"
 ---
 
 # IADR-0113: 月報の割当モデルを ZDR 対応の最上位モデルへ改定する
@@ -104,6 +106,33 @@ plan_refs:
    方針階層の最上位に日報と同じモデルを割り当てることになり、階層の意図と逆行する。
 
 ## 決定
+
+> **［2026-08-18 追記 / #850］決定 2 と決定 4 の前提は計画 `ADR-0038`（`Accepted`）決定 2 により覆った。**
+> **旧条文は下に原文のまま残す。現行値は本追記が正である。**
+>
+> | 本 IADR の決定 | 現状 |
+> | --- | --- |
+> | **決定 2**「`claude-fable-5` は `Models` に**残す**」「`NonZdrModels` の `claude-fable-5` は契約事実であり不変（案 C の否定）」 | **覆った。** #850 で `claude-managed` の `Models` から `claude-fable-5` を**除去**し、`NonZdrModels` は**空**になった |
+> | **決定 4**「`analysis` は ZDR 非要件区分に限って fable-5 を使う意図的な例外のため（`ReportPurposeModels_AreNotListedAsNonZdr` の）対象に含めない」 | **前提が失効した。** `analysis` は `claude-opus-5` になり、**例外は存在しない** |
+>
+> **これは案 C（`NonZdrModels` から `claude-fable-5` を外す）を後から採ったのではない。** 案 C を退けた理由
+> （ZDR 提供の有無は契約事実であり、確認せずに外すのはデータ越境ポリシー違反になる）は**今も正しい**。
+> #850 が行ったのは**契約事実の書き換えではなく、非 ZDR モデルを利用許可集合そのものから外すこと**である。
+> `claude-fable-5` が非 ZDR であるという事実は変わらず、**その事実を持つモデルを基盤で使わない**という
+> 上位の決定（`ADR-0038` 決定 2・ZDR 有効化の優先）が下りた結果、`NonZdrModels` に列挙する対象が
+> 無くなっただけである。**除外機構は残っている**（`LlmRouter.EligibleModels` /
+> `EgressMatrix.RequiresZeroDataRetention` は未変更。単体カバレッジは `LlmRouterTests` の合成 config が持つ）。
+>
+> **決定 1（月報 `report-monthly` = `claude-opus-5`）・決定 3（report-service の機密区分は下げない）は
+> 引き続き有効である。** 本 IADR が「ZDR 対応の最上位を充てる」と定めた考え方は `ADR-0038` と同じ向きであり、
+> **`ADR-0038` は同じ論法を月報から基盤の全用途へ広げた**ものである（決定 2 は月報より広い）。
+>
+> **`status` は `Accepted` に据え置く。** 覆ったのは決定 2・4 であって本 IADR の全体ではなく、
+> 決定 1・3 は現行の実装そのものである。**`Superseded` にすると「月報の割当を決めた記録」ごと
+> 無効に見え、後続が現行値を読み違える。**
+>
+> 起点 issue: [#850](https://github.com/endazon/microservices-platform/issues/850)。
+> 作業仕様書: [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md)。
 
 ### 決定 1: `report-monthly` を `claude-opus-5` へ改定する
 

@@ -13,12 +13,14 @@ related_ids:
   - IADR-0104
   - IADR-0112
   - IADR-0113
+  - ADR-0038
 author: claude
 created: 2026-08-01
-updated: 2026-08-01
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (analysis から fable-5 を外す・Accepted・本 IADR が背景に引いた割当値を改定)"
 ---
 
 # IADR-0114: Anthropic 応答の未知 content ブロックを許可リストで除去する
@@ -61,6 +63,37 @@ plan_refs:
 `claude-fable-5`（`analysis`）であり、**いずれも thinking（拡張思考）が既定で有効**（fable-5 は常時有効で
 無効化不可）である。[[IADR-0101]] は `MaxTokens` を思考込みで見積もる対処を入れていたが、
 **応答の content に thinking ブロックが載ること自体**は誰も扱っていなかった。
+
+> **［2026-08-18 追記 / #850］上の「現在の割当モデル」の列挙は現行値ではない。**
+> **本文は書き換えず、ここで訂正する。**
+>
+> | 上の記述 | 現行値 |
+> | --- | --- |
+> | `claude-fable-5`（`analysis`） | **`claude-opus-5`（`analysis`）** |
+>
+> 計画 `ADR-0038`（`Accepted`）決定 1 が `analysis` の割当を `claude-fable-5` → `claude-opus-5` へ改定し、
+> 決定 2 が `claude-fable-5` を利用許可集合（`claude-managed` の `Models`）から外した（ZDR 有効化の優先）。
+> 追随の実装と経緯は [[IADR-0022]] / [[IADR-0112]] / [[IADR-0113]] の同日追記を参照。
+>
+> **★ 本 IADR の決定（未知 content ブロックを許可リストで除去する）は影響を受けない。**
+> 上の記述が根拠として挙げているのは「**割当モデルはいずれも thinking が既定で有効**」という性質であり、
+> **`claude-opus-5` も thinking が既定で有効である** —— 計画 [ADR-0025](../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md) §結果
+> 「Opus 4.8 は `thinking` を省略すると思考なしで動作したが、**Opus 5 は省略時に adaptive thinking が動く**」、
+> 計画 [ADR-0038](../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md) §結果
+> 「`claude-opus-5` は thinking が既定で有効であり、`max_tokens` は思考トークンと本文の合算上限である」、
+> および [[IADR-0101]]（`ClaudeProvider` の `MaxTokens` 見積り）。
+> **`analysis` が Opus 5 へ移ったことで、thinking ブロックが載る用途はむしろ増える方向である。**
+> よって**サニタイズが無ければ非ストリーミング `/complete` が全件失敗するという課題設定も、
+> 許可リストという方針も、そのまま有効である**。`status` は **`Accepted` に据え置く**
+> （覆ったのは背景として引いた割当値であって、決定そのものではない。`Superseded` にすると
+> 「未知 content ブロックへの対処を決めた記録」ごと無効に見え、後続が読み違える）。
+>
+> なお `claude-haiku-4-5`（`diagram-coding`）は上の列挙にもともと含まれていない。
+> **#850 はこの点を変えていないため、ここでは触れない**（thinking 既定の有無を確かめた記録が本リポに無く、
+> 確かめずに書き足すと新しい未検証記述を作ることになる）。
+>
+> 起点 issue: [#850](https://github.com/endazon/microservices-platform/issues/850)。
+> 作業仕様書: [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md)。
 
 結果として非ストリーミング `/complete` は**断続ではなく決定的に全件失敗**する。`CompletionEndpoints` が
 例外を握って縮退応答（`Sent=false`）を返す設計のため、500 にもならず「呼び出し先が現在利用できません」に

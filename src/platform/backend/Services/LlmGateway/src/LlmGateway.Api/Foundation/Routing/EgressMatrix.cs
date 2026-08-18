@@ -34,6 +34,9 @@ public static class EgressMatrix
     // FR-11, IADR-0022, 08_data-egress-policy(注意点): ゼロデータ保持（ZDR）を要件とする機密区分か。
     // confidential/restricted は「ZDR を要件とする用途」とみなし、ZDR 非対応モデル（例: claude-fable-5）を
     // 候補から除外する。未知区分は安全側（ZDR 要求）に倒す。public/internal は要求しない。
+    // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 2 により claude-fable-5 は Models から外れ、本番設定
+    // （appsettings.json）の NonZdrModels は**空**になった。除外機構そのものは残す —— 非 ZDR モデルを
+    // 将来再び許可集合へ入れるときの唯一の統制点であり、単体カバレッジは LlmRouterTests の合成 config が持つ。
     public static bool RequiresZeroDataRetention(SensitivityClass sensitivity) => sensitivity switch
     {
         SensitivityClass.Public => false,

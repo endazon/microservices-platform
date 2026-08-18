@@ -4,16 +4,18 @@ type: impl-adr
 status: Accepted
 related_ids:
   - ADR-0010
+  - ADR-0038
   - IADR-0007
   - FR-11
   - UC-02
 author: claude
 created: 2026-07-06
-updated: 2026-07-06
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (Accepted)"
   - "../../planning/draft/feedback/20260706_adr-0010-model-decision-b.md (triage: accepted)"
   - "../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (Accepted・本 IADR の analysis 割当と fable-5 の許可を部分改定)"
 related_specs:
   - ../specs/20260706_ADR-0010_default-model-and-fable5-copilot.md
   - ../specs/20260702_FR-11_llm-egress-routing.md
@@ -61,6 +63,31 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
    越境させる恐れがあり、安全側原則に反する。
 
 ## 決定
+
+> **［2026-08-18 追記 / #850］計画 `ADR-0038`（`Accepted`）が本 IADR の決定のうち 2 点を部分改定した。**
+> **旧条文は下に原文のまま残す**（当時の判断の記録である）。**現行値は本追記が正である。**
+>
+> | 本 IADR の決定 | 現行値（`ADR-0038` 決定 1・2） |
+> | --- | --- |
+> | `analysis` → `claude-fable-5`（最難関） | **`analysis` → `claude-opus-5`** |
+> | `claude-fable-5` を `claude-managed` の `Models` に追加する | **`Models` から除去する。基盤のいかなる用途でも用いない** |
+> | `NonZdrModels` に `["claude-fable-5"]` を列挙する | **`NonZdrModels` は空**（`Models` に非 ZDR モデルが無いため列挙する対象が無い） |
+>
+> **改定の理由は品質評価の変更ではなく ZDR（ゼロデータ保持）有効化の優先である。** 基盤は機密区分つきの
+> 組織文書を扱うため、非 ZDR モデルを最難関用途に据えると**機密区分を上げた瞬間にその用途が使えなくなる**。
+> 本 IADR が導入した「モデル単位の ZDR 除外」（`NonZdrModels` / `EgressMatrix.RequiresZeroDataRetention` /
+> `LlmRouter.EligibleModels`）が、まさにその構造的到達不能を可視化した——
+> [[IADR-0112]] / [[IADR-0113]] が実測した事実は `ADR-0038` の根拠を**裏づけている**。
+>
+> **改めないもの**: 設定駆動でモデル・プロバイダを切り替える方針（選択肢 2）、モデル単位の ZDR 除外機構
+> そのもの、候補エンドポイントのフォールバック走査、監査ログの log-forging 対策、GitHub Copilot 経路と
+> その安全側（ティアC・`Enabled=false`）の扱い。**機構は 1 つも覆っていない。変わったのは設定値である。**
+>
+> **除外機構は空振りさせない。** 本番設定の `NonZdrModels` が空になっても、機構の単体カバレッジは
+> `LlmRouterTests` の**合成 config**（`NonZdrModels = ["claude-fable-5"]`）が保ち続ける（#850 の明示指定）。
+>
+> 未追随の検出経路と実測は起点 issue [#850](https://github.com/endazon/microservices-platform/issues/850)、
+> 作業仕様書は [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md) を参照。
 
 選択肢2を採用する。
 
