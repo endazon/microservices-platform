@@ -1,7 +1,7 @@
 {
   "$comment": [
     "キット repo-template との分類表（NFR / #713 / IADR-0115 決定 2 / IADR-0192。#755 で planning#363 の新定義へ改めた）。",
-    "書式・値域の正はキットの kit-sync-classification.example.json（pin 479f4dd）である。分類表の中身はリポジトリ固有。",
+    "書式・値域の正はキットの kit-sync-classification.example.json（pin d5fa84b）である。分類表の中身はリポジトリ固有。",
     "",
     "A = キットとバイト一致であるべきファイル。check-kit-sync.js が機械検査する。",
     "B = キット土台 ＋ 固有デルタ。値の先頭は下の種の番号、または X。",
