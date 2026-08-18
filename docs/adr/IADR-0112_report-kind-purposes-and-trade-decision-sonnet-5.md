@@ -10,14 +10,16 @@ related_ids:
   - IADR-0101
   - IADR-0102
   - IADR-0106
+  - ADR-0038
 author: claude
 created: 2026-07-30
-updated: 2026-07-30
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/ai-stock-trading/07_adr/ADR-0011_llm-model-pinning.md (取引判断の LLM モデル固定・Accepted)"
   - "../../planning/projects/ai-stock-trading/04_workflows/03_reporting-cycle.md (報告サイクル: 月報→週報→日報→取引の方針階層)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (LLM ゲートウェイ設計・Accepted・本文凍結)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted)"
+  - "../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (analysis から fable-5 を外す・Accepted・本 IADR 決定 2 を改定)"
 ---
 
 # IADR-0112: 報告書の種別別用途と取引判断モデルの改定
@@ -134,6 +136,21 @@ AST/ADR-0011（Accepted）§決定:
 > 移したことで**解消した**（機密区分によらず同一モデルへ解決する。回帰は T-23）。
 > 決定1 の「種別ごとに用途を分ける」仕組み・週報/日報の割当・決定3・決定4 は有効である。
 > 以下の記述は改定前の point-in-time 記録として残置する。現行の割当は IADR-0113 を正とする。
+
+> **［2026-08-18 追記 / #850］決定 2（`Models` / `NonZdrModels` は変更しない）は計画 `ADR-0038`（`Accepted`）
+> 決定 2 により改定された。** `claude-fable-5` は **`claude-managed` の `Models` から除去**し、
+> **`NonZdrModels` は空**になった（列挙する対象が無くなったため）。`analysis` の割当も
+> 同 ADR 決定 1 により `claude-fable-5` → **`claude-opus-5`** である。**旧条文は原文のまま残す。**
+>
+> これに伴い、**論点 4 の「`analysis` = `claude-fable-5` が既に同じ性質を持っている（T-13）」という
+> 前提は成立しなくなった**。同論点が「新しい脆さを持ち込むのではない」根拠として挙げていた既存例は、
+> `ADR-0038` によって基盤から取り除かれたためである。**決定 2 が「安全側の正しい挙動だが無音である」と
+> 受け入れた構造は、[[IADR-0113]]（月報）に続き `analysis` についても解消した。**
+>
+> **決定 1 の種別別 purpose の仕組み・週報/日報の割当・決定 3・決定 4 は引き続き有効である。**
+> 本追記が改めるのは `Models` / `NonZdrModels` の中身だけであり、[[IADR-0113]] 決定 2・決定 4 への追随は
+> 本件の射程外として別途扱う（起点 [#850](https://github.com/endazon/microservices-platform/issues/850) §報告）。
+> 作業仕様書は [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md)。
 
 ### 決定 1: 報告書を種別ごとの用途へ分離する
 

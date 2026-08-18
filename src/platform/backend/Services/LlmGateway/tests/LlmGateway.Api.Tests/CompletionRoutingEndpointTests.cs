@@ -50,13 +50,18 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Text.Should().NotBeNullOrWhiteSpace();
     }
 
-    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→fable-5 / rag-answer→sonnet / diagram-coding→haiku）。
-    // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku / 最難関 analysis→fable-5。
+    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→opus / rag-answer→sonnet / diagram-coding→haiku）。
+    // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku。
+    // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により最難関 analysis は claude-fable-5 → claude-opus-5 へ改定した。
+    // これにより analysis は DefaultModel と同値になり、本ケースだけでは「用途別割当が発火した」ことと
+    // 「DefaultModel へ黙って落ちた」ことを区別できない（ADR-0038 §結果 が受け入れたトレードオフ）。区別は
+    // PurposeModels_AreAllRegisteredInClaudeEndpointModels（T-19）と LlmRouterTests の合成 config 側が担う。
     // 実運用経路（RagOrchestrator / LlmGatewayDiagramCoder）は Model=null で /complete を呼ぶため、この経路で用途別モデルが発火することを検証する。
     // purpose 値は呼び出し側が送る文字列（ConversionService は "diagram-coding"）と一致させる（設定キー統一のガード）。
-    // ZDR 非対応の fable-5 は confidential/restricted では除外されるため、用途別モデルの発火は public で検証する。
+    // 検証区分は public のまま据え置く（旧: ZDR 非対応の fable-5 が confidential/restricted で除外されるため。
+    // 現在その制約は無いが、区分を変えると本ケースの意味も変わるので #850 では動かさない）。
     [Theory]
-    [InlineData("analysis", "claude-fable-5")]
+    [InlineData("analysis", "claude-opus-5")]
     [InlineData("rag-answer", "claude-sonnet-5")]
     [InlineData("diagram-coding", "claude-haiku-4-5")]
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)
@@ -71,10 +76,15 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().Be(expectedModel);
     }
 
-    // IADR-0022 / 08_data-egress-policy: confidential の analysis は ZDR 非対応の fable-5 を除外し、
-    // ZDR 対応の既定モデル（opus）へフォールバックしたうえで送信する。
+    // IADR-0022 / 08_data-egress-policy: confidential の analysis は ZDR 対応モデルへ解決したうえで送信する。
+    // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1・2 の反映に伴い改名した（旧名
+    // PostComplete_ConfidentialAnalysis_FallsBackToZdrModel）。**この経路で ZDR 除外はもう発火しない** ——
+    // analysis の割当自体が ZDR 対応（claude-opus-5）になり、NonZdrModels も空になったためである。
+    // 「フォールバックする」という名前のまま残すと、通っている経路と名前が食い違い、空振りしているのに緑という
+    // 最も悪い状態になる。よって本テストは「機密区分を上げても analysis の割当が無音で変わらない」ことの回帰と
+    // して置き直す。ZDR 除外機構そのものの単体カバレッジは LlmRouterTests の合成 config が持つ。
     [Fact]
-    public async Task PostComplete_ConfidentialAnalysis_FallsBackToZdrModel()
+    public async Task PostComplete_ConfidentialAnalysis_ResolvesZdrModel()
     {
         var req = new { Prompt = "機密文書の分析", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
         var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
@@ -248,7 +258,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
 
     // T-23, IADR-0113 (#309): 報告書用途の割当モデルが NonZdrModels に載っていないことを**集合として**固定する。
     // T-19（全 PurposeModels 値 ⊆ Models）と同じ発想の設定ガードで、種別が増えたときの再発を防ぐ。
-    // analysis は ZDR 非要件区分に限って fable-5 を使う意図的な例外（IADR-0022）のため対象に含めない。
+    // ［2026-08-18 追記 / #850］旧: 「analysis は ZDR 非要件区分に限って fable-5 を使う意図的な例外
+    // （IADR-0022）のため対象に含めない」。計画 ADR-0038 決定 2 により **その例外は消滅した**（基盤のいかなる
+    // 用途でも claude-fable-5 を用いない）。ただし本ガードの射程を report-* から全用途へ広げるかは
+    // IADR-0113 決定 4 が定めた射程の改定にあたるため、#850 では動かさない（追随は別 issue）。
     [Fact]
     public void ReportPurposeModels_AreNotListedAsNonZdr()
     {

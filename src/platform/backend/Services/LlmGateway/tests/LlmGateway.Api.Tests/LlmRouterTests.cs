@@ -6,6 +6,13 @@ using Microsoft.Extensions.Options;
 namespace LlmGateway.Api.Tests;
 
 // FR-11, ADR-0010, 08_data-egress-policy: 機密区分×ティアの越境マトリクスと用途による呼び出し先切替を検証する。
+//
+// ［2026-08-18 追記 / #850］本ファイルの合成 config は **本番設定（appsettings.json）の写しではない**。
+// 計画 ADR-0038 決定 1・2 により本番の analysis は claude-opus-5 で、claude-fable-5 は Models からも
+// NonZdrModels からも外れた。それでも本ファイルは claude-fable-5 を合成 config に**意図的に残す** ——
+// 外すと ZDR 除外機構（LlmRouter.EligibleModels / EgressMatrix.RequiresZeroDataRetention）を発火させる
+// 唯一の単体カバレッジが失われ、除外系テストが空振りしたまま緑になるためである（#850 の明示指定）。
+// 実効の割当は appsettings.json を正とし、ここの値を本番値として読まないこと。
 public class LlmRouterTests
 {
     private static LlmEndpointOptions Claude(bool enabled = true, int priority = 10) => new()
@@ -66,7 +73,9 @@ public class LlmRouterTests
         Endpoints = [.. endpoints],
         PurposeModels = new(StringComparer.OrdinalIgnoreCase)
         {
-            // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku / 最難関 analysis→fable-5。
+            // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku。
+            // 最難関 analysis→fable-5 は **合成 config 固有の値**であり、本番は claude-opus-5 である
+            // （ADR-0038 決定 1 / #850）。ZDR 除外を発火させるためにここでは旧値を保つ（ファイル冒頭の追記を参照）。
             // ADR-0022 / IADR-0106: 定型 RAG 回答は Sonnet 5（計画側 Accepted の確定値）。
             ["rag-answer"] = "claude-sonnet-5",
             ["analysis"] = "claude-fable-5",

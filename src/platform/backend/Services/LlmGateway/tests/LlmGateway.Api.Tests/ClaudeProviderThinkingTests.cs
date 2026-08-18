@@ -14,10 +14,14 @@ namespace LlmGateway.Api.Tests;
 // ClaudeProvider が本文を取り出せることの回帰テスト。
 //
 // 背景: 用途別の割当モデル（trade-decision / report-daily = claude-sonnet-5、report-weekly /
-// report-monthly / default = claude-opus-5、analysis = claude-fable-5）はいずれも thinking が
+// report-monthly / analysis / default = claude-opus-5）はいずれも thinking が
 // 既定で有効であり、応答の content には必ず thinking ブロックが載る。Anthropic.SDK 4.0.0 は
 // 当該型を知らないため、サニタイズが無いと `JsonException: Unknown type thinking` で
 // **応答全体**が失われ、/complete は Sent=false へ縮退する（＝AI 自律取引が成立しない）。
+//
+// ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により analysis の割当を claude-fable-5 → claude-opus-5 へ
+// 改めたので、上の背景記述を現行値へ書き改めた。**本テストの挙動は変わらない** —— ここは背景の説明であって
+// テストが渡すモデル文字列ではない（本ファイルが実際に渡すのは claude-sonnet-5 と null だけである）。
 public class ClaudeProviderThinkingTests
 {
     private static string Envelope(string blocks, string stopReason = "end_turn") =>
