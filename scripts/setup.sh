@@ -20,7 +20,7 @@ log() { printf '[setup] %s\n' "$1"; }
 #
 # 【版を直書きしない】チャネルは src/Directory.Build.props の <TargetFramework> から導出する
 # （net10.0 -> 10.0）。ここへ版を直書きすると、それ自体が次の追随漏れ点になる
-# （.claude/rules/traceability.repo.md 規則 10）。**これは #830 が置く突合検査器ではない** ——
+# （.claude/rules/traceability.repo.md 規則 10）。**これは突合検査器ではない** ——
 # 不一致を検出して落とすのではなく、構成上そもそも不一致になりようがなくする導出である。
 # 導出できなければインストールしない（勝手な既定版を打たない）。
 if ! command -v dotnet >/dev/null 2>&1 && [ -x "$HOME/.dotnet/dotnet" ]; then

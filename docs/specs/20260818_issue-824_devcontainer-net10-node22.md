@@ -17,7 +17,6 @@ related_adrs:
   - ../adr/IADR-0180_blocked-judgments-expire.md
 issue: "#824"
 related_issues:
-  - "#830"
   - "#823"
 ---
 
@@ -50,7 +49,11 @@ related_issues:
 - 対象外（**他レーンの領分**。本作業では触らない）:
   - `.github/workflows/ci.yml` —— 並行レーンが編集中
   - `scripts/scripts.repo.test.js` —— 並行レーンが編集中
-  - **`Directory.Build.props` の `TargetFramework` と devcontainer image の突合検査（issue #824 「やること」4 番目の任意項目）は #830 へ委譲した。本作業では実装しない。**
+- **突合検査器は置かない（issue #824「やること」3 番目の任意項目への回答）。理由は領域の都合ではなく規約である** ——
+  `CLAUDE.md`「**検査器・規約の追加は『同型の事故が 2 回起きたら』を条件とする（1 回目は記録に留める）**」。
+  devcontainer が `net10.0` へ追随しなかった事故は**今回が 1 回目**であり、条件を満たさない。**本作業は記録に留める。**
+  同型（版の宣言がスタックへ追随しない）が**2 回目に起きたら**、そのとき `scripts/scripts.repo.test.js` へ置く。
+  なお `setup.sh` の版導出は突合検査器ではない（後述 §設計）。
 - 対象外（記録であり書き換えない）: `docs/adr/` / 確定済み `docs/specs/` / `docs/superpowers/` / `feedback/` に残る「.NET 8」「node 20」表記。これらは**過去の状態の記録**であり、遡及書き換えの対象ではない（`.claude/rules/traceability.repo.md` §Superseded / Deprecated な ADR を引用するときの書式）。
 
 ## 母集合の引き方と結果（規則 9・10）
@@ -162,7 +165,7 @@ diff planning/tools/impl-handoff-kit/repo-template/.devcontainer/devcontainer.js
 
 **チャネルは `src/Directory.Build.props` の `TargetFramework` から導出する**（`net10.0` → `10.0`）。
 版をここに直書きすると、それ自体が次の追随漏れ点になる（規則 10）。
-**これは #830 へ委譲した「突合検査器」ではない** —— 不一致を検出して落とすのではなく、
+**これは「突合検査器」ではない** —— 不一致を検出して落とすのではなく、
 **構成上そもそも不一致になりようがなくする**導出である。導出に失敗したときは
 インストールをスキップする（勝手な既定版を打たない）。
 
@@ -190,7 +193,7 @@ diff planning/tools/impl-handoff-kit/repo-template/.devcontainer/devcontainer.js
 
 ## テスト方針と実測結果
 
-版の突合そのものの機械検査は **#830 の領分**であり本作業では置かない。本作業の変更は
+版の突合そのものの機械検査は**上の理由（同型の事故 1 回目）で置かない**。本作業の変更は
 既存の `scripts.test.js` / `check-kit-sync.js` で回帰を見て、`setup.sh` は**実走**で確かめた。
 
 | 試験 | 条件 | 結果 |
