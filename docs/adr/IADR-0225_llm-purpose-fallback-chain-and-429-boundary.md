@@ -186,6 +186,20 @@ OpenAI 互換プロバイダ（`SelfHostedProvider` / `CopilotProvider`）は `E
 - **経路によって挙動が違う**（`/complete` は落ちる、`/complete/stream` は落ちない）。決定 4 の射程内で
   実運用の穴は無いが、読み手が取り違えうる。warn ログとテスト（`PostCompleteStream_Analysis_When400_DoesNotFallBack`）で明示した。
 - **429 は依然として縮退する。** レート制限が続く間 `analysis` は答えを返せない。下記フォローアップ 1。
+- **`StatusCodeOf` は例外の連鎖を単方向にしか辿らない**（`InnerException` を 1 本ずつ）。
+  **`AggregateException.InnerExceptions`（複数）は辿らない。** 複数例外が束ねられる経路が生まれると、
+  ステータスが取り出せず**判定が黙って外れる**（＝フォールバックしない側へ倒れる。fail-safe ではあるが無言である）。
+  **今これを実装しないのは、束ねる経路が実在しないためである**（`CLAUDE.md`「起こり得ないケースへの
+  防御的実装」の禁止）。実測（#867 のレビュー指摘を受けて引き直した）:
+
+  ```console
+  $ grep -rn 'Task.WhenAll\|\.Result\b\|\.Wait()\|AggregateException' \
+      src/platform/backend/Services/LlmGateway/src/ | grep -v '/obj/\|/bin/'
+  （出力なし。ヒットしたのは bin/ の依存 DLL だけである）
+  ```
+
+  **`Task.WhenAll` / `.Result` / `.Wait()` をプロバイダ呼び出しの周辺へ入れるときは、
+  ここを併せて直すこと。**
 
 ### フォローアップ
 
