@@ -9,12 +9,13 @@ related_ids:
   - ADR-0010
   - ADR-0022
   - ADR-0025
+  - ADR-0038
   - IADR-0022
   - IADR-0101
   - IADR-0102
 author: claude
 created: 2026-07-26
-updated: 2026-07-26
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0022_llm-model-sonnet-5.md (定型RAG回答を Claude Sonnet 5 へ改定・Accepted)"
   - "../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md (グローバル既定を Opus 5 へ改定・Accepted。§決定が他層=Sonnet 5 を明記)"
@@ -37,6 +38,14 @@ plan_refs:
 - [ADR-0025](../../planning/projects/microservices-platform/07_adr/ADR-0025_llm-model-opus-5.md) §決定も
   「他層（定型RAG回答=**Sonnet 5**、図のコード化=Haiku 4.5、最難関=Fable 5）は変更しない」と記述しており、
   計画側の確定状態は既に Sonnet 5。実装だけが取り残されていた。
+
+  ［2026-08-18 追記 / #859］**上の引用は `ADR-0025` §決定 の逐語であり、引用としては現在も正確である**
+  （同 ADR 本文は書き換えられていない）。**ただし「最難関=Fable 5」は現行値ではない。**
+  `ADR-0025` 自身が 2026-08-02 の改訂注記で、`ADR-0038`（`analysis` から `claude-fable-5` を外し
+  `claude-opus-5` へ寄せる）が当該部分を部分改定すると述べている。**引用当時の記述として読むこと。**
+  本 IADR の決定（`rag-answer` = Sonnet 5）はこの改定の影響を受けない —— 改定されたのは
+  最難関用途（`analysis`）の割当だけである。
+
 - ルーティング設計そのものは [[IADR-0022]]。本 IADR は**その用途別割当のモデル版数のみ**を更新し、
   ルーティング設計・ティア判定・ZDR 除外ロジックは変更しない。
 - 仕様書: `docs/specs/20260726_issue-381_rag-answer-sonnet-5.md`。
