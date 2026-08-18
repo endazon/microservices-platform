@@ -10,6 +10,9 @@ public interface ILlmRouter
 public record RoutingRequest(SensitivityClass Sensitivity, string Purpose, string? RequestedModel = null);
 
 // 判定結果: 送信可否・選択エンドポイント/ティア/モデル・要承認・理由（監査用）。
+// ADR-0038 決定 3 (#863): FallbackModels は「第 1 候補（Model）が HTTP 400 系で失敗したときに
+// 順に試すモデル」である。ルーター側で適格性（Models 登録・ZDR 除外）を通した後の値だけが載る。
+// 既定 null は「鎖なし＝フォールバックしない」を意味する（呼び出し側は Fallbacks で受け取る）。
 public record RoutingDecision(
     bool Allowed,
     string? EndpointName,
@@ -17,4 +20,9 @@ public record RoutingDecision(
     ProtectionTier? Tier,
     string? Model,
     bool RequiresApproval,
-    string Reason);
+    string Reason,
+    IReadOnlyList<string>? FallbackModels = null)
+{
+    // 呼び出し側に null と空の区別をさせない（鎖が無いことは異常ではなく既定である）。
+    public IReadOnlyList<string> Fallbacks => FallbackModels ?? [];
+}

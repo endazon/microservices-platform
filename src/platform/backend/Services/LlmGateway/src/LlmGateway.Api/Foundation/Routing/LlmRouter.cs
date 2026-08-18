@@ -59,6 +59,9 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
             return new RoutingDecision(false, null, null, null, null, false, denyReason);
         }
 
+        // ADR-0038 決定 3 (#863): 用途ごとのフォールバック順序を解決する（第 2 候補以降）。
+        var fallbacks = ResolveFallbackModels(endpoint, request, model, loggedPurpose);
+
         var requiresApproval = EgressMatrix.RequiresApproval(request.Sensitivity, endpoint.Tier);
         // CodeQL(log-forging)予防: Reason は現状 API レスポンス（RoutingReason）としてのみ返し ILogger には
         // 渡していないが、将来 Reason を監査ログ等へ出力する変更が入っても偽造経路が再発しないよう、
@@ -66,11 +69,52 @@ public sealed class LlmRouter(IOptions<LlmRoutingOptions> options, ILogger<LlmRo
         var reason = $"機密区分 {request.Sensitivity} / 用途 {loggedPurpose} → ティア{endpoint.Tier} {endpoint.Name}";
 
         // ADR-0010: 送信判定を監査ログへ記録する。
+        // ADR-0038 決定 6 (#863): フォールバック順序も判定の一部として残す（発火時のログと突き合わせる）。
         logger.LogInformation(
-            "LLM routing decision: sensitivity={Sensitivity} purpose={Purpose} endpoint={Endpoint} tier={Tier} model={Model} requiresApproval={RequiresApproval}",
-            request.Sensitivity, loggedPurpose, endpoint.Name, endpoint.Tier, model, requiresApproval);
+            "LLM routing decision: sensitivity={Sensitivity} purpose={Purpose} endpoint={Endpoint} tier={Tier} model={Model} requiresApproval={RequiresApproval} fallbackModels={FallbackModels}",
+            request.Sensitivity, loggedPurpose, endpoint.Name, endpoint.Tier, model, requiresApproval,
+            string.Join(",", fallbacks));
 
-        return new RoutingDecision(true, endpoint.Name, endpoint.Provider, endpoint.Tier, model, requiresApproval, reason);
+        return new RoutingDecision(
+            true, endpoint.Name, endpoint.Provider, endpoint.Tier, model, requiresApproval, reason, fallbacks);
+    }
+
+    // ADR-0038 決定 3・5 (#863): 用途のフォールバック順序を、実際に投げられる形へ落とす。
+    //  ① 適格モデル（EligibleModels＝ZDR 除外を通した集合）に含まれるものだけを残す。
+    //     **含まれないものは黙って落とさず warn を出す** —— 決定 5 は「フォールバック先が Models に
+    //     登録されていなければフォールバックはその場で失敗する」と述べており、平常時には表面化しない
+    //     （IADR-0102 / IADR-0106 が実際に踏んだ「無音失効」と同型の罠である）。
+    //  ② 第 1 候補と同じモデルは落とす（同じモデルへ 2 回投げない）。
+    //  ③ 重複を落とし、設定に書かれた順序を保つ。
+    private IReadOnlyList<string> ResolveFallbackModels(
+        LlmEndpointOptions endpoint, RoutingRequest request, string primaryModel, string loggedPurpose)
+    {
+        if (!_options.PurposeFallbackModels.TryGetValue(request.Purpose, out var configured)
+            || configured is not { Count: > 0 })
+            return [];
+
+        var eligible = EligibleModels(endpoint, request.Sensitivity);
+        var resolved = new List<string>();
+        foreach (var candidate in configured)
+        {
+            if (string.IsNullOrWhiteSpace(candidate)
+                || string.Equals(candidate, primaryModel, StringComparison.Ordinal)
+                || resolved.Contains(candidate, StringComparer.Ordinal))
+                continue;
+
+            if (!eligible.Contains(candidate))
+            {
+                logger.LogWarning(
+                    "LLM fallback candidate dropped: purpose={Purpose} endpoint={Endpoint} model={Model} "
+                    + "reason=not-eligible. フォールバック先は Models へ登録し、機密区分の ZDR 要件を満たす必要がある（ADR-0038 決定 5）。",
+                    loggedPurpose, endpoint.Name, candidate);
+                continue;
+            }
+
+            resolved.Add(candidate);
+        }
+
+        return resolved;
     }
 
     // CodeQL(cs/log-forging): ログに出力する利用者由来の文字列から改行・制御文字を除去する。

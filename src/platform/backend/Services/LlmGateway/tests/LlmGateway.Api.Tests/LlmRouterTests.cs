@@ -91,6 +91,13 @@ public class LlmRouterTests
             // IADR-0112 決定3: ピンの値を claude-sonnet-5 へ改定した（固定する仕組みは維持）。
             ["trade-decision"] = "claude-sonnet-5",
             ["default"] = "claude-opus-5"
+        },
+        // ADR-0038 決定 3 (#863): analysis のフォールバック順序（第 2 候補以降）。本番設定と同じ値である。
+        // **trade-decision は意図的に鎖を持たない**（AST/ADR-0011 / llm-model-pin-runbook）。
+        // default / rag-answer の第 2 候補は計画 ADR-0038 §未決事項で未確定のため置かない。
+        PurposeFallbackModels = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["analysis"] = ["claude-sonnet-5"]
         }
     };
 
@@ -475,6 +482,89 @@ public class LlmRouterTests
     [InlineData("PUBLIC", SensitivityClass.Public)]
     public void Parse_MapsToSafeSide(string? value, SensitivityClass expected)
         => SensitivityClasses.Parse(value).Should().Be(expected);
+
+    // --- ADR-0038 決定 3・5 (#863) / IADR-0225: 用途別フォールバック順序の解決 ------------------
+
+    // T-25, ADR-0038 決定 3: analysis の判定結果はフォールバック順序（第 2 候補 claude-sonnet-5）を伴う。
+    // 順序はルーターが決めるものであり、呼び出し側（CompletionEndpoints）はそれを順に試すだけである。
+    [Fact]
+    public void Route_Analysis_CarriesConfiguredFallbackChain()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
+
+        decision.Allowed.Should().BeTrue();
+        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+        decision.Fallbacks.Should().NotContain(decision.Model!, "第 1 候補と同じモデルへ 2 回投げない");
+    }
+
+    // T-25, ADR-0038 決定 5: 鎖の要素が Models（利用許可集合）に無ければ鎖から落とす。
+    // 落とさずに残すと「フォールバックしたつもりで、その場で失敗する」状態になる（決定 5 の警句）。
+    [Fact]
+    public void Route_DropsFallbackModelThatIsNotInEndpointModels()
+    {
+        var options = Opts(Claude());
+        options.PurposeFallbackModels["analysis"] = ["claude-not-registered", "claude-sonnet-5"];
+        var router = Build(options);
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "analysis"));
+
+        decision.Fallbacks.Should().Equal("claude-sonnet-5");
+        decision.Fallbacks.Should().NotContain("claude-not-registered");
+    }
+
+    // T-25, IADR-0022 / ADR-0038 決定 5: ZDR 要件区分では非 ZDR モデルは鎖からも落ちる。
+    // 第 1 候補と同じ適格性判定（EligibleModels）を通す —— 鎖だけ ZDR 除外を素通りすると、
+    // 400 系の失敗をきっかけに越境統制が破れる経路になる。
+    [Fact]
+    public void Route_Confidential_DropsNonZdrFallbackModel()
+    {
+        var options = Opts(Claude());
+        options.PurposeFallbackModels["rag-answer"] = ["claude-fable-5", "claude-haiku-4-5"];
+        var router = Build(options);
+
+        var confidential = router.Route(new RoutingRequest(SensitivityClass.Confidential, "rag-answer"));
+        var publicRoute = router.Route(new RoutingRequest(SensitivityClass.Public, "rag-answer"));
+
+        confidential.Fallbacks.Should().Equal("claude-haiku-4-5");   // 非 ZDR の fable-5 は落ちる
+        publicRoute.Fallbacks.Should().Equal("claude-fable-5", "claude-haiku-4-5"); // ZDR 非要件では残る
+    }
+
+    // T-25, AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md: **取引判断はフォールバックしない。**
+    // 別モデルで下した判断は再現性・監査可能性を失った別物であり、Runbook が明示的に禁じている。
+    // 鎖を「書いていない」ことが挙動として担保されていることを固定する（設定を足せば破れるため）。
+    [Fact]
+    public void Route_TradeDecision_HasNoFallbackChain()
+    {
+        var router = Build(Opts(Claude()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Public, "trade-decision"));
+
+        decision.Model.Should().Be("claude-sonnet-5");
+        decision.Fallbacks.Should().BeEmpty("ピン留めしたモデルが使えないとき別モデルへ切り替えてはならない");
+    }
+
+    // 鎖を持たない用途（既定）は空である。null と空を呼び出し側に区別させない。
+    [Fact]
+    public void Route_PurposeWithoutChain_HasEmptyFallbacks()
+    {
+        var router = Build(Opts(Claude()));
+
+        router.Route(new RoutingRequest(SensitivityClass.Public, "default")).Fallbacks.Should().BeEmpty();
+    }
+
+    // 送信拒否（縮退）でも鎖は空である（呼び出していないのだから落ちる先も無い）。
+    [Fact]
+    public void Route_WhenDenied_HasEmptyFallbacks()
+    {
+        var router = Build(Opts(StandardExternal()));
+
+        var decision = router.Route(new RoutingRequest(SensitivityClass.Confidential, "analysis"));
+
+        decision.Allowed.Should().BeFalse();
+        decision.Fallbacks.Should().BeEmpty();
+    }
 
     // 複数文書の最高機密区分で判定する。
     [Fact]

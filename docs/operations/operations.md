@@ -10,9 +10,11 @@ related_ids:
   - ADR-0006
   - ADR-0011
   - ADR-0030
+  - ADR-0038
+  - IADR-0225
 author: claude
 created: 2026-07-04
-updated: 2026-08-16
+updated: 2026-08-18
 plan_refs:
   - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
   - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
@@ -631,6 +633,12 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 - 監視観点の目安（初期値・実測前）: 全体の拒否率 > 5%（30 分・warning）／用途別の拒否率 > 20%（30 分・warning）／
   `upstream_error` 率 > 10%（10 分・critical）／`llm.purpose="other"` の出現（1 時間・warning。
   未定義 purpose＝ルーティングが既定へ無音で落ちている疑い）。
+- **［2026-08-18 追記 / #863］`llm.result` に `fallback` が加わった**（計画 `ADR-0038` 決定 6 /
+  [IADR-0225](../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md)）。
+  **上流が HTTP 400 系を返して次の候補モデルへ切り替えた呼び出し**を表す。
+  **`upstream_error` には含まれない** —— 回復した呼び出しを障害の率に入れると上の critical が誤発火する。
+  **429 ではフォールバックしない**（429 は再試行の対象。同決定 4）ため、429 は従来どおり
+  `upstream_error` に現れる。フォールバック率のしきい値は**実測前のため置かない**。
 - **アラートルールの実配線は未了**（`deploy/prometheus/alerts.yml` への追加と Alertmanager 通知先の設定）。
   本節はしきい値の方針までを定める（[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §フォローアップ 1）。
 

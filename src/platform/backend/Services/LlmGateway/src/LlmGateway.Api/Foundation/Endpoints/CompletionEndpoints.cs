@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using Platform.Shared.Contracts.Dtos;
@@ -62,32 +63,62 @@ public static class CompletionEndpoints
                     Sent: false, Endpoint: decision.EndpointName, RoutingReason: decision.Reason));
             }
 
-            try
+            // FR-11, ADR-0038 決定 3 (#863): 第 1 候補 → フォールバック順序 の順に試す。
+            // 鎖が空なら 1 回だけ回り、従来と同じ挙動になる（回帰なし）。
+            var chain = new List<string?> { decision.Model };
+            chain.AddRange(decision.Fallbacks);
+
+            for (var attemptIndex = 0; attemptIndex < chain.Count; attemptIndex++)
             {
-                var result = await provider.CompleteAsync(
-                    new CompletionRequest(req.Prompt, req.MaxTokens, decision.Model), ct);
-                LogStopReason(logger, result.StopReason, decision);
-                // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
-                metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultSent, result.StopReason, decision, purpose, sensitivity,
-                    result.OutputTokens);
-                return Results.Ok(new CompletionApiResponse(
-                    result.Text, decision.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
-                    Sent: true, Endpoint: decision.EndpointName, RoutingReason: decision.Reason,
-                    StopReason: result.StopReason));
+                // 実際に投げたモデルで応答・メトリクス・ログを名乗る（IADR-0111: 使用モデルを偽らない）。
+                var attempt = decision with { Model = chain[attemptIndex] };
+                try
+                {
+                    var result = await provider.CompleteAsync(
+                        new CompletionRequest(req.Prompt, req.MaxTokens, attempt.Model), ct);
+                    LogStopReason(logger, result.StopReason, attempt);
+                    // IADR-0110: 越境が成立した呼び出し（拒否率の分母）。終了理由は別属性で載せる。
+                    metrics.RecordCompletion(
+                        LlmCompletionMetrics.ResultSent, result.StopReason, attempt, purpose, sensitivity,
+                        result.OutputTokens);
+                    return Results.Ok(new CompletionApiResponse(
+                        result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
+                        Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
+                        StopReason: result.StopReason));
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // ADR-0038 決定 4 (#863): フォールバックするのは HTTP 400 系のときだけである。
+                    // **429 は再試行であってフォールバックではない**ため、ここでは落とさない。
+                    var hasNextCandidate = attemptIndex + 1 < chain.Count;
+                    if (hasNextCandidate && LlmFallbackPolicy.ShouldFallBack(ex))
+                    {
+                        // ADR-0038 決定 6: 発火を可観測にする。メトリクスは llm.result=fallback（llm.model は
+                        // 見送った候補）、ログには遷移と上流ステータスを残す。**利用者由来の purpose は
+                        // 載せない**（設定由来のモデル名・エンドポイント名だけを載せ、ログ行偽造の経路を作らない）。
+                        metrics.RecordCompletion(
+                            LlmCompletionMetrics.ResultFallback, null, attempt, purpose, sensitivity);
+                        logger.LogWarning(ex,
+                            "LLM falling back at endpoint {Endpoint}: {FromModel} -> {ToModel} (upstream status {Status})",
+                            attempt.EndpointName, attempt.Model, chain[attemptIndex + 1],
+                            LlmFallbackPolicy.StatusCodeOf(ex));
+                        continue;
+                    }
+
+                    // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
+                    logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model})",
+                        attempt.EndpointName, attempt.Model);
+                    metrics.RecordCompletion(
+                        LlmCompletionMetrics.ResultUpstreamError, null, attempt, purpose, sensitivity);
+                    return Results.Ok(new CompletionApiResponse(
+                        Text: $"呼び出し先 {attempt.EndpointName} が現在利用できません。",
+                        Model: attempt.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
+                        Sent: false, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason));
+                }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // 呼び出し先が不調な場合も 500 を伝播させず、縮退可能な応答を返す。
-                logger.LogError(ex, "LLM call failed at endpoint {Endpoint} ({Model})",
-                    decision.EndpointName, decision.Model);
-                metrics.RecordCompletion(
-                    LlmCompletionMetrics.ResultUpstreamError, null, decision, purpose, sensitivity);
-                return Results.Ok(new CompletionApiResponse(
-                    Text: $"呼び出し先 {decision.EndpointName} が現在利用できません。",
-                    Model: decision.Model ?? string.Empty, InputTokens: 0, OutputTokens: 0,
-                    Sent: false, Endpoint: decision.EndpointName, RoutingReason: decision.Reason));
-            }
+
+            // 到達しない（ループは必ず return する）。コンパイラの制御フロー解析のための保険。
+            throw new UnreachableException("completion attempt chain ended without a response");
         }).WithName("Complete").Produces<CompletionApiResponse>();
 
         // IADR-0037: SSE ストリーミング版。AiAnalysisService が POST /complete/stream で呼び出す。
@@ -142,6 +173,17 @@ public static class CompletionEndpoints
                     RoutingReason: decision.Reason));
                 return;
             }
+
+            // ADR-0038 決定 3 (#863): **ストリーム経路はフォールバックを実装していない。**
+            // 鎖を持つのは analysis だけで、analysis は非ストリーミング /complete を使う
+            // （RagOrchestrator.AnalyzeAsync）。ストリーム経路の用途 rag-answer は第 2 候補が
+            // 計画 ADR-0038 §未決事項で未確定であり、決めていない順序を実装が発明しない。
+            // ただし**設定でストリーム用途に鎖が置かれたとき無音の穴にならないよう**、その事実を残す。
+            if (decision.Fallbacks.Count > 0)
+                logger.LogWarning(
+                    "Fallback chain {FallbackModels} is configured for this route but /complete/stream does not "
+                    + "implement fallback (ADR-0038 決定 3 / IADR-0225 の射程外). endpoint={Endpoint} model={Model}",
+                    string.Join(",", decision.Fallbacks), decision.EndpointName, decision.Model);
 
             var inputTokens = 0;
             var outputTokens = 0;

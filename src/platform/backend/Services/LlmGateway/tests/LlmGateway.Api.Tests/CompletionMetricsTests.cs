@@ -198,6 +198,49 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         m.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(LlmCompletionMetrics.ValueNone);
     }
 
+    // T-25g, ADR-0038 決定 6 (#863), IADR-0225: **フォールバックの発火を可観測にする。**
+    // 見送った第 1 候補は llm.result=fallback、成功した第 2 候補は sent として計上され、
+    // llm.model が候補ごとに違う（＝用途別・モデル別の利用実績としてそのまま読める）。
+    //
+    // ★ 見送った呼び出しを upstream_error に混ぜないことが要点である。混ぜると
+    //   「フォールバックで回復した呼び出し」が呼び出し先障害の率へ入り、
+    //   upstream_error 率 > 10%（critical）のアラート方針が誤発火する。
+    [Fact]
+    public async Task PostComplete_WhenFallsBack_CountsFallbackThenSentWithDifferentModels()
+    {
+        using var probe = new MetricsProbe();
+        var client = factory.WithWebHostBuilder(b =>
+            b.ConfigureServices(s =>
+            {
+                s.RemoveAll<ILlmProvider>();
+                // 第 1 候補（claude-opus-5）だけを HTTP 400 で失敗させる。
+                var provider = new ModelFailingProvider("claude-opus-5", System.Net.HttpStatusCode.BadRequest);
+                s.AddKeyedSingleton<ILlmProvider>("claude", provider);
+                s.AddKeyedSingleton<ILlmProvider>("selfhosted", provider);
+                s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
+            })).CreateClient();
+
+        await client.PostAsJsonAsync("/complete", Request("analysis"));
+
+        probe.Measurements.Should().HaveCount(2, "見送った候補と成功した候補が別々に計上される");
+
+        var fallback = probe.Measurements.Should()
+            .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultFallback)
+            .Subject;
+        fallback.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-opus-5");
+        fallback.Tags[LlmCompletionMetrics.PurposeTag].Should().Be("analysis");
+        fallback.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(LlmCompletionMetrics.ValueNone);
+
+        var sent = probe.Measurements.Should()
+            .ContainSingle(m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultSent)
+            .Subject;
+        sent.Tags[LlmCompletionMetrics.ModelTag].Should().Be("claude-sonnet-5");
+
+        probe.Measurements.Should().NotContain(
+            m => m.Tags[LlmCompletionMetrics.ResultTag] == LlmCompletionMetrics.ResultUpstreamError,
+            "回復した呼び出しを呼び出し先障害として数えない");
+    }
+
     // T-21h: ストリーミング経路（IADR-0037）も同じ属性で計上する（経路によって観測が欠けない）。
     [Fact]
     public async Task PostCompleteStream_WhenRefusal_CountsSentWithRefusalStopReason()
@@ -394,5 +437,14 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
     {
         public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
             => throw new HttpRequestException("upstream is down");
+    }
+
+    // #863: 指定モデルへの呼び出しだけを HTTP ステータス付きで失敗させる（フォールバックの発火用）。
+    private sealed class ModelFailingProvider(string failingModel, System.Net.HttpStatusCode status) : ILlmProvider
+    {
+        public Task<CompletionResult> CompleteAsync(CompletionRequest request, CancellationToken ct = default)
+            => string.Equals(request.Model, failingModel, StringComparison.Ordinal)
+                ? throw new HttpRequestException($"upstream rejected {request.Model}", null, status)
+                : Task.FromResult(new CompletionResult("本文", 11, 22, CompletionStopReasons.EndTurn));
     }
 }
