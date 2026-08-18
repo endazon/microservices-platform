@@ -432,4 +432,4 @@ echo "  kubectl -n $MSP_NS port-forward svc/bff-service 5080:8080   # http://loc
 # IADR-0093 (#353): MinIO Console SSO は集約 URL 前提（LOCALEDGE=1）＋ポリシー適用が必要。
 echo "MinIO Console SSO(#353): https://minio.localhost:50000 (要 LOCALEDGE=1)。ポリシー適用と port-forward 単独時の"
 echo "  制約（OIDC 未成立→root フォールバック）は deploy/local/minio-oidc/README.md を参照。"
-echo "AST 連結は AST chart(#122) 適用後に scripts/... で行う。"
+echo "AST 連結は AST chart(AST#122) 適用後に scripts/... で行う。"
