@@ -86,6 +86,14 @@ ADR-0010（計画）は既定を `claude-opus-4-8`、定型を `claude-sonnet-4-
 > **除外機構は空振りさせない。** 本番設定の `NonZdrModels` が空になっても、機構の単体カバレッジは
 > `LlmRouterTests` の**合成 config**（`NonZdrModels = ["claude-fable-5"]`）が保ち続ける（#850 の明示指定）。
 >
+> **［2026-08-18 追記 / #859］「合成 config」は 1 箇所ではなく 3 箇所である（変異試験の再現条件）。**
+> `LlmRouterTests.cs` の `NonZdrModels = ["claude-fable-5"]` は **30 行（共有ヘルパ `Claude()`）・
+> 253 行・278 行**の 3 箇所に在り、後 2 者は個々のテストが自前で組む合成 config である。
+> **除外系 5 本が落ちるのは 3 箇所すべてを空にしたときであり、共有ヘルパの 1 箇所だけを空にすると
+> 実測 3 本しか落ちない**（253 / 278 行を使うテストは自前の値で除外分岐を通り続けるため）。
+> 上の記述は「合成 config」を単数形で書いており、**手順どおり追試すると数が合わない**。
+> 落ちるテスト名の列挙（`docs/tests/FR-11_llm-egress-routing.md` の T-13）自体は正確である。
+>
 > 未追随の検出経路と実測は起点 issue [#850](https://github.com/endazon/microservices-platform/issues/850)、
 > 作業仕様書は [20260818_issue-850_adr-0038-drop-fable5-analysis.md](../specs/20260818_issue-850_adr-0038-drop-fable5-analysis.md) を参照。
 
