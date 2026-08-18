@@ -299,6 +299,19 @@ Llm:Routing:Endpoints[claude-managed].NonZdrModels: ["claude-fable-5"] → []
   および実装コメント 2 件（`AnthropicContentBlockSanitizer.cs` / `Program.cs`）。
 - **なお領域外に留めた文書**: `docs/adr/README.md` のみ（索引行が並行レーンと衝突しうるため）。
 
+［2026-08-18 追記 / #859］**領域外に留めたものが `docs/adr/README.md` の 1 件だけというのは、
+引いた母集合に対して不足している**（規則 6:「黙って除外した」ことでも事故は起きる）。
+**追随せず、かつ理由も残していなかったものが 2 件ある。** 本追記で理由を残す。
+
+| 除外したもの | 実測 | 除外の理由 |
+| --- | --- | --- |
+| `.github/workflows/claude-code-review.yml:118` | `if printf '%s' "$BODY" \| grep -qiE '@claude[[:space:]]+fable'; then MODEL="claude-fable-5"` | **逸脱ではない。** 計画 `ADR-0038` 決定 2 の射程は**実装の `claude-managed` プロバイダの `Models`**（＝基盤が利用者の文書を送る経路）であり、**開発時の AI レビュー経路ではない**。#850 の受け入れ基準も対象を `src/` 配下に限っている |
+| `.github/workflows/claude-coding.yml:111` | 同上（同じ `@claude fable` トリガの分岐） | 同上 |
+
+**両ファイルは `MODEL="claude-fable-5"` を持つため、誤りの側の文字列（`claude-fable-5`）で引けば
+必ず母集合に入る。** 入ったうえで外す判断自体は正しいが、**外した記録が無いと、次に同じ走査を
+した人が「引き漏らし」と「意図的な除外」を区別できない。** 波 12 末クロス監査（2026-08-18）が指摘した。
+
 ## 7. 未決事項
 
 - **［2026-08-18 追記 / #850・解決済み］[[IADR-0113]] へ追記すべきか**: **すべきであり、本 PR で追記した。**

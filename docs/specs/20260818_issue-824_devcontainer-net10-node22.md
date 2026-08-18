@@ -246,3 +246,64 @@ EXIT=0
 
 **成否を終了コードで見ていないことがここでも効いている** —— `timeout` が 124 を返しても、
 判定は `$HOME/.dotnet/dotnet` の実在で行うため、fail-open の分岐がそのまま働く。
+
+
+---
+
+## ［2026-08-18 追記 / #859］計画書リンク・無採番 NFR の場合判定・規則 10 の取りこぼし
+
+波 12 末クロス監査の指摘を受けた追記である。**本節より上の本文は書き換えていない**
+（確定済み `docs/specs/` の本文不改変。`.claude/rules/traceability.repo.md`）。
+
+### A. `plan_refs` が計画リポを 1 つも指していない
+
+frontmatter の `plan_refs` は `../../CLAUDE.md`（**本リポの規約ファイル**）だけを指しており、
+**計画リポの文書を 1 つも指していない**。`docs/README.md` 運用ルール 4 は
+「すべての仕様書に起点 ID（FR/UC/SC/ADR）と**計画書リンク**を記入し」と定める。
+frontmatter は書き換えず、**正しい計画書リンクをここに補う**:
+
+- [`planning/projects/microservices-platform/02_requirements/01_requirements.md`](../../planning/projects/microservices-platform/02_requirements/01_requirements.md)
+  —— 非機能要件表（`NFR-01`〜`NFR-27`）。本作業が**どの番号にも当たらない**ことの確認先である（下記 B）。
+- [`planning/docs/ai-implementation-workflow-guide.md`](../../planning/docs/ai-implementation-workflow-guide.md)
+  —— 実装作業の運用標準。「AI がビルド・テストを実走できる環境を用意する」という本作業の目的が属する軸。
+
+### B. 無採番 `NFR` の場合判定（記録が無かった）
+
+`related_ids` は `NFR`（無採番）だが、**場合 1（計画側が ID 列を持たない）か場合 2（ID 列はあるが
+当たる番号が無い）かの判定記録が無い**。`.claude/rules/traceability.md` は
+「**どちらの場合かは、作業を始める前に計画の ID 列を見て判断する**」と定めており、
+判定の**記録**が無いと後から追試できない（レーン A / D の仕様書は [[IADR-0179]] を引いて場合 2 と明記している）。
+
+**計画の `NFR-01`〜`NFR-27` を読み直して判定した結果は「場合 2」である。** 根拠:
+
+- 27 件の内訳は 性能(01-04) / 可用性(05,06) / スケーラビリティ(07,08,27) / セキュリティ(09-18) /
+  運用・保守(19-21) / 拡張性(22-26) であり、**27 件とも稼働する製品の要件**である。
+- 最も近い `NFR-20`（運用・保守 / デプロイ）は「サービス単位で独立デプロイ、ロールバック可能／
+  GitOps（ArgoCD）、週1回以上」であり、**動いている製品のデプロイ**を指す。
+  本作業（devcontainer と `setup.sh` ＝ **開発環境の再現性**）とは軸が違う。
+- **無理に近い番号を付けない** —— 実在しない対応づけを作ると監査が「その NFR の実装」として
+  数えてしまい、無採番より劣化する（[[IADR-0179]] 決定 2）。
+
+→ **場合 2 のため、計画へは環流しない**（計画側に不足があるわけではない）。
+
+### C. 規則 10 の取りこぼし —— `scripts/setup.sh` のキット分類を引き直していなかった
+
+本作業は `scripts/setup.sh` へ **54 行の .NET SDK 自動導入デルタ**を新設したが、
+**同ファイルのキット分類（`scripts/kit-sync-classification.json`）を引き直していない**。
+規則 10 は「**是正のたびに『この変更で新たに誤りになる自分の記述』を引き直す**」と定める。
+
+当時の分類の値は `"X. 4 種に当たらない（計画 pin の鮮度検査・IADR-0170）。環流済み。追跡: #736 / planning#337"`
+であり、**新設した 54 行に一切触れていない**うえ、「環流済み」が新デルタについては**偽**であった。
+`check-kit-sync.js` は**分類 B の理由文の中身を検査しない**ため、この陳腐化は機械に見えない。
+
+**是正は #859 の是正 PR で行った**（[[IADR-0204]] 決定 2 の 3 点で再判定し **X → 種 2** へ改めた。
+判定の根拠は [20260818_wave12-audit-followup](./20260818_wave12-audit-followup.md) §3）。
+
+### D. あわせて是正したもの: テレメトリのオプトアウト
+
+本作業が足した SDK 導入ブロックは**素のコンテナ**を明示的に狙っており、そこでは
+`.devcontainer/devcontainer.json` の `remoteEnv`（`DOTNET_CLI_TELEMETRY_OPTOUT`）が**効かない**。
+そのうえで SDK を入れて `dotnet --version` と restore を初回実行する（＝テレメトリの対象）。
+計画 [`06_technical/08_data-egress-policy.md`](../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md)（**`status: fixed`**）が
+既定テレメトリのオプトアウトを課しているため、#859 の是正 PR で `scripts/setup.sh` に
+`export DOTNET_CLI_TELEMETRY_OPTOUT=1` を足した（確定制約への**追随**であり逸脱ではないので新 ADR は無い）。

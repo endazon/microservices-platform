@@ -490,3 +490,98 @@ $ STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js; echo "EX
 ✓ AI ワークフローのツール許可設定に問題なし
 EXIT=0
 ```
+
+
+---
+
+## ［2026-08-18 追記 / #859］前半の記述と着地内容の食い違い（既存本文は書き換えていない）
+
+波 12 末クロス監査（`adr-guardian` / `traceability-auditor`）の指摘を受け、**自分で引き直して**確かめた。
+**本節より上の本文は 1 文字も書き換えていない**（確定済み `docs/specs/` の本文不改変。
+`.claude/rules/traceability.repo.md`）。**上を読むときは、本節を併せて読むこと。**
+
+### A. 「`.claude/settings.json` を編集していない」は着地では偽である
+
+本仕様書は着手時点で書かれ、**同じ PR の終盤で方針が変わった**。末尾の
+「★ `.claude/settings.json` の追随（利用者の許可を得て実施）」節だけが着地内容を正しく記録している。
+**前半の次の 6 箇所は、その変更が入る前の記述のまま残っている。**
+
+| 箇所 | 前半の記述 | 着地の事実 |
+| --- | --- | --- |
+| `:303` 受け入れ基準 3 | 「`STRICT_AI_WORKFLOW_CONFIG=1` は **warn 2 件で exit 1**」 | **EXIT=0・warn 0 件** |
+| `:313` §未解決の阻害要因 | 見出しが「**未解決**」／「本作業では `.claude/settings.json` を編集していない」 | **解決済み。同ファイルは `e3cb1075` に含まれる** |
+| `:382` 検証結果表 | `STRICT… \| 1 \| ✗ 検査が成立していない警告が 2 件ある` | **EXIT=0 / `✓ AI ワークフローのツール許可設定に問題なし`** |
+| `:256` 除外表 | `.claude/settings.json` は「**本作業では編集しない**」 | **編集した**（3 行追加 ＋ `"//"` コメントの 4→5 サブコマンド追随） |
+| `:436-448` 規則 10 の引き直し | 「`4 サブコマンド` が残る 5 箇所のうち live なのは `.claude/settings.json:150` の 1 つだけ…**本作業では触れない**」 | **触れて是正した**。live な 1 箇所は残っていない |
+| `:294` 見送り事項 | 「キットへの環流。向きが逆であり、**キットは既に正しい**」 | **許可リスト本体については真、コメント面については偽**（下記 C） |
+
+再現に使った実測（生の出力）:
+
+```console
+$ STRICT_AI_WORKFLOW_CONFIG=1 node scripts/check-ai-workflow-config.js; echo "EXIT=$?"
+AI ワークフロー設定チェック: 2 件を検査
+✓ AI ワークフローのツール許可設定に問題なし
+EXIT=0
+
+$ git show --stat e3cb1075
+ .claude/settings.json                              |   5 +-
+ .github/workflows/claude-code-review.yml           |  15 +-
+ .github/workflows/claude-coding.yml                |  13 +-
+ ...260818_issue-835_claude-review-planning-grep.md | 492 +++++++++++++++++++++
+ 4 files changed, 512 insertions(+), 13 deletions(-)
+```
+
+### B. 母集合の時点が軸ごとに混在していた（規則 8）
+
+規則 8 は「走査対象に自分の記録が入るときは、**走査がそのまま返す数を先に出し、除外と時点を明示する**」
+と定める。§母集合 の 4 軸は**時点が混ざっていた**。4 軸を `3ad5ad15`（着手前の develop）と
+`e3cb1075`（着地）の**両方**で引き直した:
+
+```console
+$ for rev in 3ad5ad15 e3cb1075; do for pat in 'git -C planning' 'ls-tree' 'allowedTools' 'notApplicable'; do
+    echo "$rev [$pat] = $(git grep -Il "$pat" $rev -- ':!planning' ':!src/ai-stock-trading' | wc -l)"; done; done
+```
+
+| 軸 | 走査文字列 | 着手前 `3ad5ad15` | 自己参照 | 着地 `e3cb1075` | 本仕様書の記載 | 時点 |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | `git -C planning` | 28 | +1 | **29** | 29 | **着地** |
+| 2 | `ls-tree` | 21 | +1 | **22** | 22 | **着地** |
+| 3 | `allowedTools` | 22 | +1 | **23** | 22 | **着手前** |
+| 4 | `notApplicable` | 10 | +1 | **11** | 10 | **着手前** |
+
+**4 軸とも増分は本仕様書自身の 1 件（自己参照）だけ**であることを差分で確かめた:
+
+```console
+$ diff <(git grep -Il "<軸>" 3ad5ad15 -- …) <(git grep -Il "<軸>" e3cb1075 -- …)
+> docs/specs/20260818_issue-835_claude-review-planning-grep.md      # 4 軸とも同じ 1 件
+```
+
+したがって規則 8 が求める形は **「着手前 N → 自己参照 1 件 → 着地 N+1」** であり、
+**上の表がその引き算である**（本仕様書はこの引き算を示さず、しかも軸ごとに違う時点の数を並べていた）。
+
+### C. 「キットは既に正しい」の射程 —— **コメント面は今も 4 サブコマンドである**
+
+自分で引き直した結果、**キットの許可リスト本体は既に `grep` を持つ**（真）が、
+**コメント・散文は今も「4 サブコマンド（log / show / diff / ls-tree）」のままである**（偽の側）。
+
+```console
+$ grep -rlo "4 サブコマンド" planning/tools/impl-handoff-kit/
+planning/tools/impl-handoff-kit/HOWTO.md
+planning/tools/impl-handoff-kit/repo-template/.github/workflows/claude-coding.example.yml
+planning/tools/impl-handoff-kit/repo-template/.github/workflows/claude-code-review.example.yml
+planning/tools/impl-handoff-kit/repo-template/.claude/settings.json
+
+$ grep -rno "log / show / diff / ls-tree" planning/tools/impl-handoff-kit/ | wc -l
+7
+
+$ grep -rn "git -C planning grep" planning/tools/impl-handoff-kit/repo-template/.claude/settings.json
+17:      "Bash(git -C planning grep:*)",
+```
+
+**4 ファイル・7 箇所**である（`claude-coding.example.yml:201` の `--append-system-prompt` 本文に 2 回、
+`claude-code-review.example.yml:458` にも 1 回ある）。**環流の向きは逆ではなく、コメント面については
+本リポが先へ進んでいる。** 環流は本 PR の射程外とし、起票を申し送る
+（本 PR の作業仕様書 [20260818_wave12-audit-followup](./20260818_wave12-audit-followup.md) §起票を申し送る issue の 2）。
+
+**なお波 12 末監査およびブリーフは「3 箇所」としていたが、引き直すと 4 ファイル / 7 箇所である**
+（`HOWTO.md:262` が数えられていなかった）。**他人の数えを検証せず転記しない**（規則 6・母集合の作法）。
