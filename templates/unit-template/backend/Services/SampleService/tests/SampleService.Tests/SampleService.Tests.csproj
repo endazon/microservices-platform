@@ -17,7 +17,11 @@
        テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
        （docs/specs/20260803_issue-455_backend-application-standard.md 未決事項 2）。
        **雛形はコピーしてそのまま動くことを優先する。** ここで v3 を先取りすると、非互換の
-       runner と組み合わさった雛形が配置されるまで誰も気付けない（templates/ は CI のビルド対象外）。
+       runner と組み合わさった雛形が出荷される。**［2026-08-18 追記 / #830］「配置されるまで誰も
+       気付けない」ではなくなった** —— ci.yml の template-backend-build ジョブが、本雛形を
+       配置後の位置（src/<一時ユニット>/backend/）へ複製して build / test する。それでも
+       CPM が 1 パッケージ 1 バージョンしか持てない事情は変わらないため、切替 issue の完了まで
+       xunit.v3 を参照するプロジェクトを作ってはならない。
        切替 issue の完了時に本ファイルの xunit → xunit.v3 を併せて更新すること。 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />

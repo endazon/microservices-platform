@@ -1,6 +1,9 @@
 <Solution>
   <!-- 追加可変機能ユニットの集約ソリューション（配置時は src/<unit>/backend/backend.slnx）。
        CI（ci.yml）は src/*/backend/backend.slnx を自動発見して restore/build/test/format する（IADR-0060）。
+       この glob は templates/ に当たらないため、本雛形そのものは ci.yml の template-backend-build
+       ジョブが配置後の位置へ複製して build / test する（#830。テンプレート位置のままではビルド
+       できない —— platform Shared への相対参照が配置後を前提にしているため）。
        プロジェクト構成は ADR-0030 の標準（Api / Application / Domain / Infrastructure / Contracts ＋ Tests）。
        詳細は docs/tech/tech-requirements.md「バックエンドアプリケーション層標準」を参照。 -->
   <Folder Name="/Services/SampleService/" />

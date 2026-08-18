@@ -289,7 +289,11 @@ jobs:
   # バージョンを書かない」を検査する。着手時点の実測が違反 0 件のため ratchet / baseline を持たず
   # 最初から fail で強制する。VersionOverride は CPM 公式の回避口のため許可し、使用箇所のみ
   # 実行サマリへ警告として出す（終了コードは変えない）。templates/ も走査する（雛形の直書きは
-  # 全新規サービスへ伝播し、templates/ は上の build-and-test のビルド対象外のため他で捕まらない）。
+  # 全新規サービスへ伝播する。上の build-and-test は src/*/backend/backend.slnx を glob するため
+  # 雛形に当たらない）。**［2026-08-18 追記 / #830］「他で捕まらない」ではなくなった** ——
+  # 下の template-backend-build が雛形を複製してビルドするため、直書きは NU1008 でも落ちる（実測）。
+  # それでも本検査は残す: 落ちるのは復元段であり、どのファイルのどの行が違反かを名指しするのは
+  # 本検査だけである。
   # backend-libraries（#455）とは関心が異なるため別スクリプト（どのライブラリか / 版をどこに書くか）。
   # submodule は取得しない（対象は platform / knowledge / templates で、いずれも本リポジトリの実体）。
   cpm-versions:
@@ -509,3 +513,128 @@ jobs:
       #   - run: pip install -e .[test]
       #   - run: ruff check .
       #   - run: pytest --cov
+
+  # NFR, Issue #830: 雛形（templates/*/backend）を CI で実際にコンパイルし、テストを走らせる。
+  #
+  # 経緯: 雛形のテストプロジェクトに GlobalUsings.cs が無く（ImplicitUsings は Xunit を含まない）、
+  # **配布中の雛形が一度もコンパイルできない状態のまま出荷されていた**（#830。[Fact] / IClassFixture<>
+  # が CS0246 で落ちる）。誰も気付けなかったのは、雛形 backend をコンパイルするジョブが 1 つも
+  # 無かったためである: 上の lint / build-and-test は src/*/backend/backend.slnx を glob するため
+  # templates/ に当たらず、codeql.yml のビルド手順も同じ glob、security.yml と
+  # copilot-setup-steps.yml は -not -path './templates/*' で明示除外している。
+  # **雛形を触る PR は ci.yml が起動するのに、コンパイルする経路が無かった。**
+  #
+  # #801（雛形 frontend）と違い「paths: へ 1 行足す」では直らない。雛形はテンプレート位置のままでは
+  # ビルドできない（IADR-0060 決定 3 / 決定 4・IADR-0064。実測は
+  # docs/specs/20260818_issue-830_template-backend-ci-build.md）:
+  #   - SampleService.Api.csproj の platform Shared への相対参照（..\ × 6）は **配置後**の
+  #     src/<unit>/backend/... を前提とする。templates/ 位置では templates/platform/... を探して
+  #     見つからず、restore が MSB4181 で失敗する。
+  #   - 共通 props は .sample 付きで配布される（配置時は src/Directory.Build.props / .Packages.props
+  #     を継承させ、ユニット側に常設の props を置かないため。IADR-0060 決定 4）。
+  # したがって **配置後の位置（src/<一時ユニット>/backend/）へ複製してからビルドする**。
+  #
+  # 設計の要点（いずれも外すと検査が空回りする）:
+  #   - .sample は複製先へ置かない。置くと src/ の単一情報源より近い階層で発見され上書きしてしまう。
+  #   - --artifacts-path で obj/bin を作業ツリーの外へ逃がす。これが無いと ProjectReference 先の
+  #     src/platform/backend/Shared/*/{bin,obj} まで作業ツリーへ生えて src/ が汚れる（#830 受け入れ基準）。
+  #   - trap で複製を必ず片付け、後段ステップ（if: always()）が git status で残骸ゼロを実測する。
+  #   - dotnet test は --verbosity normal で **実行されたテスト名**をログへ出し、実行件数が
+  #     [Fact]/[Theory] の数を下回ったら fail する（「1 件だけ動いて 1 件が拾われない」を捕まえる。
+  #     [Theory] は InlineData で件数が増えうるため下限で判定する）。
+  #
+  # templates/ 自体は依然としてどの slnx にも登録しない（IADR-0060 決定 3 は不変）。ビルドするのは
+  # 一時的な複製であって templates/ ではない。
+  #
+  # dotnet format はここで走らせない。--artifacts-path を解さず（--no-restore を付けても）
+  # src/platform/backend/Shared/*/obj を作業ツリーへ書き出し、上の「src/ を汚さない」を破るためである
+  # （実測は上記仕様書。lint 側の同型の穴は別 issue へ回す）。
+  #
+  # submodule は取得しない（複製先が参照するのは src/platform/backend/Shared/ で本リポジトリの実体）。
+  # 本ジョブは新設のジョブ ID であり、既存の必須チェック名（build-and-test / lint / commit-messages）
+  # は 1 つも変えていない（docs/ai-workflow.md の表）。
+  template-backend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Stage, build and test unit templates (as placed under src/)
+        run: |
+          set -euo pipefail
+          artifacts="$(mktemp -d)"
+          stages=""
+          cleanup() {
+            for s in ${stages}; do
+              if [ -d "$s" ]; then rm -r "$s"; fi
+            done
+            if [ -d "$artifacts" ]; then rm -r "$artifacts"; fi
+            return 0
+          }
+          trap cleanup EXIT
+          shopt -s nullglob
+          found=0
+          for slnx in templates/*/backend/backend.slnx; do
+            found=$((found + 1))
+            name="$(basename "$(dirname "$(dirname "$slnx")")")"
+            stage="src/.template-buildcheck-${name}"
+            stages="${stages} ${stage}"
+
+            echo "::group::stage ${slnx} -> ${stage}/backend"
+            if [ -e "$stage" ]; then
+              echo "::error::${stage} が既に在る。前回の後片付けが効いていない。"
+              exit 1
+            fi
+            mkdir -p "$stage"
+            cp -R "$(dirname "$slnx")" "${stage}/backend"
+            # 作業ツリーに残っていたビルド生成物を複製へ持ち込まない。
+            find "$stage" -type d \( -name bin -o -name obj \) -prune -exec rm -r {} +
+            # .sample は「単独リポジトリでビルドするときだけ」置くもの（IADR-0060 決定 4）。
+            # 配置後を模す本ジョブでは置かない —— 置くと src/ の単一情報源を上書きする。
+            find "$stage" -name '*.sample' -type f -delete
+            echo "::endgroup::"
+
+            echo "::group::dotnet build ${stage}/backend/backend.slnx"
+            dotnet build "${stage}/backend/backend.slnx" --configuration Release \
+              --artifacts-path "$artifacts"
+            echo "::endgroup::"
+
+            echo "::group::dotnet test ${stage}/backend/backend.slnx"
+            log="${artifacts}/test-${name}.log"
+            dotnet test "${stage}/backend/backend.slnx" --no-build --configuration Release \
+              --artifacts-path "$artifacts" --verbosity normal | tee "$log"
+            echo "::endgroup::"
+
+            # 実行件数の下限を [Fact]/[Theory] の数で押さえる。「Test Run Successful」だけを見ると
+            # 0 件実行や 1 件取りこぼしを緑と読む。属性は行頭（インデントのみ）に限って数え、
+            # 注釈中の [Fact] という文字列を拾わない。
+            expected=$(grep -rhE '^[[:space:]]*\[(Fact|Theory)' "$stage" --include='*.cs' | wc -l)
+            executed=$(grep -cE '^[[:space:]]+Passed[[:space:]]+[A-Za-z]' "$log" || true)
+            echo "template=${name} expected_test_attributes=${expected} executed_passed=${executed}"
+            if [ "$expected" -eq 0 ]; then
+              echo "::error::${slnx} に [Fact]/[Theory] が 1 件も無い。雛形のテストが消えている。"
+              exit 1
+            fi
+            if [ "$executed" -lt "$expected" ]; then
+              echo "::error::${slnx} の実行件数 ${executed} が [Fact]/[Theory] の ${expected} を下回った。"
+              exit 1
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::templates/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
+            exit 1
+          fi
+          echo "OK: ${found} 件の雛形をビルド・テストした。"
+      # 後片付けの取りこぼしを実測する（#830 受け入れ基準）。ビルドが落ちても走らせる。
+      - name: Verify the staged copies left nothing behind under src/
+        if: always()
+        run: |
+          set -euo pipefail
+          leftovers="$(git status --short --ignored -- src/)"
+          if [ -n "$leftovers" ]; then
+            echo "::error::複製ビルドの後片付けが効いていない:"
+            echo "$leftovers"
+            exit 1
+          fi
+          echo "OK: src/ に残骸なし（git status --short --ignored -- src/ が空）。"
