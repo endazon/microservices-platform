@@ -9,15 +9,15 @@ author: claude
 <!-- trace:
 ids: [FR-11]
 adrs: [ADR-0038]
-iadrs: [IADR-0102, IADR-0112, IADR-0225]
+iadrs: [IADR-0102, IADR-0112, IADR-0141, IADR-0225]
 specs: [01_requirements, 20260811_issue-587_pin-migration-runbook, ADR-0011_llm-model-pinning]
-issues: [#587, AST#296]
+issues: [#382, #587, AST#296, planning#50]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
 
 > **運用仕様書（[`operations.md`](operations.md)）の下位にあたる手順書である。**
-> 起点: **#587**（#382 の後継）／ **IADR-0112: 報告書の種別別用途と取引判断モデルの改定 決定 3**
+> 起点: **#587**（#382 の後継）／ **報告書を種別ごとの用途へ分離してモデルを割り当てる実装 ADR の決定 3**
 
 ## 対象
 
@@ -34,7 +34,7 @@ src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/appsettings.json
   → Llm:Routing:Endpoints[].Models     （エンドポイントが許可するモデル）
 ```
 
-**本 Runbook へ値を書き写すと必ず古くなる**（[[IADR-0141]]「参照点を 1 つに畳む」）。
+**本 Runbook へ値を書き写すと必ず古くなる**（「参照点を 1 つに畳む」）。
 **現在の割り当ては次のコマンドで列挙する。**
 
 ```console
@@ -67,7 +67,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 ### 1. AST 側で Stage 0 の 7 条件を再実行し、合格を確認する
 
 **これは省略できない。** 計画 `AST/ADR-0011` の「**版数を上げる際は Stage 0 の再検証が必要**」は
-改定後も**維持されている**（planning#50 決定 1「バージョン固定の原則は維持する」）。
+改定後も**維持されている**（計画側の裁定「バージョン固定の原則は維持する」）。
 **手順の必要性はピンの値が変わっても変わらない。**
 
 > **★ 実行はこのリポジトリではできない。** Stage 0 は **AST リポジトリ**側の手続きである。
@@ -84,7 +84,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 
 ### 3. 実装 ADR に版数変更と再検証結果を記録する
 
-**設定だけ書き換えて手続きを踏まない運用は [[IADR-0102]] §結果が明示的に禁じている。**
+**設定だけ書き換えて手続きを踏まない運用は、取引判断用途のピン留めを定めた実装 ADR の §結果が明示的に禁じている。**
 新しい実装 ADR（`IADR-XXXX`）へ次を残す。
 
 - 変更前 → 変更後の版数
@@ -128,7 +128,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 
 > **［2026-08-18 追記 / #863］フォールバック機構は実装された。上の「実装されていない」は 2026-08-11 時点の実測であり、現在は当てはまらない。**
 >
-> 実装は [[IADR-0225]]（計画 `ADR-0038` 決定 3・4・6）による。**本 Runbook が定めた制約は 3 つとも守られている。**
+> 実装は、用途別フォールバック順序を設定駆動の鎖として持つ実装 ADR（計画 `ADR-0038` 決定 3・4・6）による。**本 Runbook が定めた制約は 3 つとも守られている。**
 >
 > | 本 Runbook の制約 | 実装 |
 > | --- | --- |
@@ -139,7 +139,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > **鎖を持つのは `analysis` だけ**である（`claude-opus-5` → `claude-sonnet-5`。計画 `ADR-0038` 決定 3）。
 > **`trade-decision` を含む他の用途は従来どおり、失敗しても別モデルへ切り替えない。**
 > **429 の再試行そのものは未実装である** —— 計画側が回数・バックオフ・`Retry-After` の方針を
-> 定めていないためであり（[[IADR-0225]] §フォローアップ 1）、**429 で別モデルへ逃げないことだけが
+> 定めていないためであり（同実装 ADR §フォローアップ 1）、**429 で別モデルへ逃げないことだけが
 > 実装されている**。発火は `llm_completion_total{llm_result="fallback"}` で観測する。
 
 ---
@@ -175,6 +175,6 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 
 - [`operations.md`](operations.md)（上位の運用仕様書）
 - [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md)（月次棚卸しの契機）
-- IADR-0102: 取引判断用途のモデルピン留め（ピン留めの決定）
-- IADR-0112: 報告書の種別別用途と取引判断モデルの改定 決定 3（現行ピンと Stage 0 ゲート）
+- 取引判断用途のモデルピン留め（ピン留めの決定）
+- 報告書の種別別用途と取引判断モデルの改定（決定 3。現行ピンと Stage 0 ゲート）
 - 作業仕様書: 作業仕様書: ピン版数移行手順と利用不能時の振る舞い

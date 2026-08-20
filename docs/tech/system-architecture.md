@@ -7,11 +7,11 @@ updated: 2026-08-21
 author: endazon (with Claude Code)
 ---
 <!-- trace:
-ids: []
-adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0027]
-iadrs: [IADR-0017, IADR-0026, IADR-0056]
+ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
+adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027]
+iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121]
 specs: [01_architecture-overview, 02_service-decomposition, ADR-0019_unit-first-repo-structure]
-issues: []
+issues: [#497, #580, #591]
 -->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
@@ -20,14 +20,14 @@ issues: []
 > （knowledge ユニット）を俯瞰するシステム構成図である。上流計画書
 > `01_architecture-overview.md`（計画リポ）（fixed）
 > と `02_service-decomposition.md`（計画リポ）
-> を、現時点の実装（**11 サービス + BFF**・ユニット第一構成 ADR-0019/IADR-0056・.NET 10）に合わせて詳細化した。
+> を、現時点の実装（**11 サービス + BFF**・ユニット第一のリポジトリ構成・.NET 10）に合わせて詳細化した。
 
 ## 起点となる計画書（トレーサビリティ）
 
 - 技術検討: `06_technical/01_architecture-overview.md`、`02_service-decomposition.md`、`10_composability-design.md`
-- ADR: ADR-0001（マイクロサービス採用）、ADR-0002（サービス境界・Database per Service。実装で 11 サービス確定）、ADR-0003（MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580）、ADR-0004（ABAC 認可）、ADR-0009（ベクトル DB=Qdrant）、ADR-0010（LLM ゲートウェイ）、ADR-0011（Wiki エンジン）、ADR-0018（コンポーザブル）、ADR-0019（ユニット第一構成）
-- 実装 ADR: IADR-0026（Istio STRICT mTLS をサービス間認証の第一防御とする。IADR-0017「内部サービス認証・ネットワーク隔離」を Superseded し、ネットワーク隔離は多層防御へ格下げ）、IADR-0056（ユニット構成）
-- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（03_tech-stack-selection.md（計画リポ） 確定スタック一覧・ADR-0020（計画リポ）（Accepted・2026-07-23））。実装が先行していた経緯は [[IADR-0048]] と draft/feedback/20260709_dotnet10-target-framework-deviation（計画リポ） に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
+- 計画 ADR: マイクロサービス採用、サービス境界・Database per Service（実装で 11 サービス確定）、メッセージング（MassTransit/RabbitMQ。後継の Wolverine 採用により Superseded・注記は #580）、ABAC 認可、ベクトル DB=Qdrant、LLM ゲートウェイ、Wiki エンジン、コンポーザブルアーキテクチャ、ユニット第一のリポジトリ構成
+- 実装 ADR: Istio STRICT mTLS をサービス間認証の第一防御とする（先行していた「内部サービス認証・ネットワーク隔離」を Superseded し、ネットワーク隔離は多層防御へ格下げ）、ユニット構成
+- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（03_tech-stack-selection.md（計画リポ）の確定スタック一覧と、.NET 10 アップグレードの計画 ADR〔Accepted・2026-07-23〕）。実装が先行していた経緯は、バックエンドの .NET 10 採用を決めた実装 ADR と draft/feedback/20260709_dotnet10-target-framework-deviation（計画リポ） に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
 
 ## 読み方（凡例）
 
@@ -206,7 +206,7 @@ sequenceDiagram
 | knowledge | `FeedbackService` | AI 回答へのフィードバック収集 | REST / イベント |
 | knowledge | `DashboardService` | 利用状況・検索傾向のダッシュボード集計 | REST |
 
-> knowledge フロントエンドは画面 SC-01..11（検索・結果・文書・Wiki・データソース・変換・分析・ABAC 管理・
+> knowledge フロントエンドは 11 画面（検索・結果・文書・Wiki・データソース・変換・分析・ABAC 管理・
 > 運用・構成）を features として持ち、platform の SPA 基盤（合成点）へ登録する。
 
 ## デプロイ構成
@@ -214,11 +214,11 @@ sequenceDiagram
 - **ローカル（dev）**: docker-compose（`deploy/docker-compose.yml`・`scripts/compose-up.sh`）。内部サービスは
   `expose` のみでホスト非公開。公開は frontend(:3100) / BFF(:5000) / Keycloak(:8080) /
   Wiki.js(:3001) / Grafana(:3000)。
-- **stg / prod**: Kubernetes（k3s・ADR-0008）＋ Helm / ArgoCD（GitOps・ADR-0007）、Istio サービスメッシュ
-  （STRICT mTLS をサービス間認証の第一防御とする・ADR-0005 / IADR-0026）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
+- **stg / prod**: Kubernetes（k3s）＋ Helm / ArgoCD（GitOps）、Istio サービスメッシュ
+  （サービスメッシュの決定に基づき、STRICT mTLS をサービス間認証の第一防御とする）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
 - **ビルド**: ユニット別 slnx（`dotnet build src/platform/backend/backend.slnx` /
   `src/knowledge/backend/backend.slnx`・.NET 10）、フロントは pnpm workspace（`src/`・Node 22。
-  #591: 従前は「npm workspaces」と書いていたが [[IADR-0121]] 決定 2 で移行済み）。
+  #591: 従前は「npm workspaces」と書いていたが、SPA 新スタック移行の実装 ADR により pnpm workspace へ移行済み）。
 
 ## 関連仕様
 

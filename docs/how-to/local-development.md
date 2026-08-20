@@ -7,10 +7,10 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-13, UC-07]
+ids: [FR-13, FR-14, UC-07]
 adrs: []
 iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056]
-specs: [README, operations, tech-requirements]
+specs: [operations, README, tech-requirements]
 issues: []
 -->
 
@@ -49,7 +49,7 @@ dotnet test src/platform/backend/backend.slnx
 dotnet test src/knowledge/backend/backend.slnx
 ```
 
-- ソリューションは新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない。FR-14 / IADR-0056: リポジトリ最上位のユニット構成（src/<unit>/{backend,frontend} = platform / knowledge））。
+- ソリューションは新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない。コンポーザビリティ要求に基づくユニット第一のリポジトリ構成による）。
 - パッケージバージョンは Central Package Management で [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。
 - フォーマット確認（CI と同じ検査）: `dotnet format <ユニットの backend.slnx> --verify-no-changes`。
 - devcontainer 経由（Codespaces 等）では `scripts/setup.sh` が `postCreateCommand` として自動実行され、
@@ -81,7 +81,7 @@ Keycloak ログインを伴う開発には、dev スタック（`docker compose 
 
 推奨は `scripts/compose-up.sh`（`docker compose` の薄いラッパ）で起動すること。実行中の Git コミット
 ID・日時・作成者を環境変数として自動注入し、BFF の構成情報 API（`/bff/admin/config`）が dev でも
-実バージョンを返せるようにする（IADR-0046: 構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する 参照）。
+実バージョンを返せるようにする（構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する）。
 
 ```bash
 bash scripts/compose-up.sh up -d
@@ -98,8 +98,8 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 ### 起動後のエンドポイント（dev の host 公開ポート）
 
 内部サービス（DocumentService・RetrievalService 等）は `expose` のみでホスト非公開
-（IADR-0017: mesh 導入までのサービス間認証はネットワーク分離を第一防御とする。サービス間認証の第一防御は
-IADR-0026: Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017 を解消する の Istio STRICT mTLS に移行済みで、
+（mesh 導入までの暫定措置としてネットワーク分離を第一防御としていたもの。サービス間認証の第一防御は
+すでに Istio STRICT mTLS に移行済みで、
 ネットワーク分離は多層防御として存続している）。外部から到達できるのは以下のみである。
 
 | サービス | URL | 備考 |
@@ -107,7 +107,7 @@ IADR-0026: Istio STRICT mTLS をサービス間認証の第一防御とし、IAD
 | フロントエンド | http://localhost:3100 | `/bff` は nginx が BFF へプロキシ |
 | BFF | http://localhost:5000 | フロントエンドの唯一の入口（エッジ） |
 | Keycloak | http://localhost:8080 | realm `platform` を import 済み |
-| Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（IADR-0032: Wiki.js の dev ホスト公開は残し、本番系(Helm)の非公開を回帰ガードで保証する）。本番系は非公開 |
+| Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（dev ホスト公開は残し、本番系〔Helm〕の非公開は回帰ガードで保証する）。本番系は非公開 |
 | Grafana | http://localhost:3000 | 匿名 Admin（dev 限定） |
 | Prometheus | http://localhost:9090 | |
 | RabbitMQ 管理UI | http://localhost:15672 | guest/guest |

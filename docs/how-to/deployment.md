@@ -10,8 +10,8 @@ author: claude
 ids: [FR-15]
 adrs: []
 iadrs: [IADR-0017, IADR-0026, IADR-0034, IADR-0046, IADR-0069]
-specs: [IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0046_config-version-history-source, README, operations, security]
-issues: []
+specs: [IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0046_config-version-history-source, operations, README, security]
+issues: [#192]
 -->
 
 # how-to: デプロイ手順（環境ごと）と GitOps 運用
@@ -89,7 +89,7 @@ kubectl apply -f deploy/argocd/application.yaml
 
 BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成のバージョン（`Version.GitCommit` /
 `AppliedAt` / `AppliedBy`）と適用履歴（`GET /bff/admin/config/history`）を返す。**正データ源は GitOps
-層**であり（IADR-0046: 構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する）、API はプラットフォーム側に
+層**であり（構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する）、API はプラットフォーム側に
 履歴ストアを新設せず、GitOps から注入されたスライスをそのまま返す。
 
 - **k8s（共有/stg/prod）**: 実際の適用リビジョン・日時は CD 側が同期時に上書きする。
@@ -104,7 +104,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
   自動注入する（[local-development.md](local-development.md) 参照）。
 - **保持範囲**は GitOps 側（Git 履歴 / ArgoCD の保持リビジョン数）が決定し、API 側は二重に保持しない。
   履歴が未注入の環境では現在バージョンの単一エントリへ縮退する。
-- **履歴（複数エントリ）の注入配線**（IADR-0069: 構成バージョン履歴は現在バージョンと同一注入経路で Helm から env 配列供給する・#192）:
+- **履歴（複数エントリ）の注入配線**（履歴は現在バージョンと同一の注入経路で Helm から env 配列として供給する・#192）:
   現在バージョンと同じ経路で Helm values `config.history`（既定 `[]`）を
   `Config__History__<i>__{GitCommit,AppliedAt,AppliedBy,HadDrift}` として BFF へ注入する。CD が各適用を
   新しい順の要素として供給する（例: `--helm-set config.history[0].gitCommit=$(git rev-parse HEAD)
@@ -121,10 +121,10 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成の�
 
 ## サービス間通信（STRICT mTLS）
 
-サービス間認証の第一防御は Istio STRICT mTLS（IADR-0026: Istio STRICT mTLS をサービス間認証の第一防御とし、IADR-0017 を解消する）で、
+サービス間認証の第一防御は Istio STRICT mTLS（先行していたネットワーク分離を第一防御とする暫定判断を解消したもの）で、
 `PeerAuthentication` / `DestinationRule` を Helm がレンダリングし ArgoCD が同期する。旧来のネットワーク分離
-（IADR-0017: mesh 導入までのサービス間認証はネットワーク分離を第一防御とする、compose の `expose` / k8s の NetworkPolicy）は
-IADR-0026 に Supersede され、多層防御として存続している。検証コマンド（`istioctl authn tls-check` 等）は
+（mesh 導入までの暫定措置。compose の `expose` / k8s の NetworkPolicy）は
+mTLS の決定に Supersede され、多層防御として存続している。検証コマンド（`istioctl authn tls-check` 等）は
 [`deploy/istio/README.md`](../../deploy/istio/README.md) を参照。
 
 ## CI ゲート（マージ前の必須チェック）
@@ -136,7 +136,7 @@ IADR-0026 に Supersede され、多層防御として存続している。検�
 | --- | --- |
 | `ci.yml` | コミット規約検査・`doc-links`（相対リンク切れ検査）・宣言的パイプライン構成のスキーマ検証・`dotnet format --verify-no-changes`・`dotnet build` / `dotnet test`（カバレッジ収集） |
 | `frontend.yml` | フロントエンドの typecheck / lint / build / Playwright スモーク（`frontend/**` 変更時のみ） |
-| `frontend-tests.yml` | フロントエンド単体テスト＋カバレッジ閾値（IADR-0034: フロントエンド カバレッジゲート） |
+| `frontend-tests.yml` | フロントエンド単体テスト＋カバレッジ閾値（ラチェット型のカバレッジゲート） |
 | `security.yml` | gitleaks（秘密情報混入検査）・dependency-review（PR 差分の既知脆弱性）・推移依存の定期脆弱性スキャン |
 | `codeql.yml` | CodeQL（SAST） |
 | `pr-title.yml` | PR タイトルの `種別(起点ID): 要約` 規約検査 |

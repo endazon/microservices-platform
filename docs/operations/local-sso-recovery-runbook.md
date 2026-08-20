@@ -9,25 +9,25 @@ author: claude
 <!-- trace:
 ids: []
 adrs: []
-iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103]
+iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103, IADR-0220]
 specs: [IADR-0084_headlamp-oidc-apiserver-flags, IADR-0103_local-sso-persistence-and-claim-design, README]
-issues: [AST#245]
+issues: [#328, #388, #841, AST#245]
 -->
 
 # 経路B SSO 復旧 Runbook
 
-[[IADR-0103]] で realm・スクリプト側は恒久化したため、**通常は STEP 0 のみで全 SSO が成立する**。
+経路 B の SSO を再構築後も自動復旧させる実装 ADR により realm・スクリプト側は恒久化したため、**通常は STEP 0 のみで全 SSO が成立する**。
 本 runbook は「それでも揮発する残りの設定」を復旧するための手順書である。
 
 ## 揮発マトリクス（何が・いつ消えるか）
 
 | 設定 | 消える条件 | 復旧 |
 | --- | --- | --- |
-| Keycloak realm 全体（`admin` ユーザー・mapper・client ロール・redirect） | **realm 再インポート**（`keycloak-data` PVC 削除／新規クラスタ） | **STEP 0 で自動**（`realm.json` に恒久化済み・IADR-0103） |
+| Keycloak realm 全体（`admin` ユーザー・mapper・client ロール・redirect） | **realm 再インポート**（`keycloak-data` PVC 削除／新規クラスタ） | **STEP 0 で自動**（`realm.json` に恒久化済み） |
 | Vault dev の全状態（ESO seed・`auth/oidc`・policy・external group） | **vault Pod 再起動**（インメモリ）・クラスタ再構築 | STEP 0 で seed は自動。**OIDC は STEP 2 が手動** |
 | Wiki.js の OIDC ストラテジ・Site URL | **`postgres-data` PVC 削除**／wikijs DB 再作成 | **STEP 3**（手動・DB seed） |
-| Pod の env に載った secret 値 | ESO が Secret を作る前に Pod が起動 | **STEP 0 で自動**（`ESO=1` 末尾の rollout・IADR-0103） |
-| `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用・IADR-0103） |
+| Pod の env に載った secret 値 | ESO が Secret を作る前に Pod が起動 | **STEP 0 で自動**（`ESO=1` 末尾の rollout） |
+| `argocd` ns の `keycloak` エイリアス | クラスタ再構築 | **STEP 0 で自動**（`ARGOCD=1` が適用） |
 | `ast-secrets` の実鍵 | `k8s-local-deploy.sh` を鍵未 export で実行 | STEP 1（鍵を export して再実行） |
 
 `PERSIST=1` を維持し vault Pod を再起動していなければ、**STEP 2・3 はスキップ可**。
@@ -140,11 +140,11 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 
 **ブラウザ側の前提（全 OIDC ツール共通）**: 各ツールは `http://keycloak:8080/...` へリダイレクトするため
 `hosts` に `127.0.0.1 keycloak` ＋ `kubectl -n platform-infra port-forward svc/keycloak 8080:8080` が必要（手順A）。
-**admin entrypoint (50000) は TLS 終端である**（[[IADR-0220]] / #841。計画 `NFR-11`・`ADR-0047`）ため、
+**admin entrypoint (50000) は TLS 終端である**（#841。計画 `NFR-11`・`ADR-0047`）ため、
 各ツールは **`https://`** で開く。平文 `http://<tool>.localhost:50000` は TLS ハンドシェイクに失敗する。
 ルート CA を信頼ストアへ入れるまでブラウザ警告が出る（取り出し手順は [edge README](../../deploy/local/edge/README.md)）。
 
-**Headlamp**（現行 k8s では OIDC 不可・token 方式が正式手順・[[IADR-0084]] 追記／#328 は wontfix・#388 へ統合）:
+**Headlamp**（現行 k8s では OIDC 不可・token 方式が正式手順。apiserver の OIDC 配線を定めた実装 ADR の追記／#328 は wontfix・#388 へ統合）:
 
 ```sh
 kubectl -n platform-infra create token headlamp-viewer --duration=24h

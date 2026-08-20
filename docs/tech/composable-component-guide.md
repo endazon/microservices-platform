@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-11, FR-14, FR-15]
-adrs: [ADR-0018]
-iadrs: [IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056]
-specs: [09_datasource-connectors, 10_composability-design, 20260709_composable-component-implementation-guide, ADR-0018_composable-architecture, IADR-0027_composability-folder-structure, IADR-0028_declarative-pipeline-config, composability-classification]
-issues: [#195, #217, #218, #219]
+adrs: [ADR-0002, ADR-0018]
+iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135]
+specs: [09_datasource-connectors, 10_composability-design, 20260709_composable-component-implementation-guide, ADR-0018_composable-architecture, composability-classification, IADR-0027_composability-folder-structure, IADR-0028_declarative-pipeline-config]
+issues: [#195, #206, #217, #218, #219, #519]
 -->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
@@ -29,8 +29,8 @@ issues: [#195, #217, #218, #219]
 | **可変（Composable）** | パイプライン段・イベントバインディング・ポート実装（アダプタ）・プロバイダ・コネクタ・フロント feature | 構成変更＋プラグイン追加（本書の手順） |
 
 現状の棚卸しは[固定/可変区分表](./composability-classification.md)を参照。
-コード配置規約は IADR-0027: 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）、
-宣言的構成は IADR-0028: 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する が原典である。
+コード配置規約は「固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）」、
+宣言的構成は「宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する」が原典である。
 
 ## 1. 基盤が可変部品に提供するもの（接続仕様）
 
@@ -43,7 +43,7 @@ issues: [#195, #217, #218, #219]
   `events` への列挙が必要。
   - 注記: 上流仕様（`10_composability-design` §3）が定める共通エンベロープと CI 契約テストは
     未実装であり、現状はイベントごとの個別 record ＋運用ルール（PR レビュー）で代替している
-    （繰延の経緯は IADR-0028、追跡は issue #206）。
+    （繰延の経緯は宣言的構成の実装 ADR、追跡は issue #206）。
 - **同期 DTO**: サービス間同期 API の契約。経路自体は固定（[区分表 §1](./composability-classification.md)）
   であり、契約は [docs/api/openapi.yaml](../api/openapi.yaml) でバージョン管理される。
 
@@ -55,7 +55,7 @@ issues: [#195, #217, #218, #219]
 | 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep`・`AddPlatformPipelineConfig`・`AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
 | 認証 | JWT/Keycloak・ロール変換 | 自動適用（サービス側 Program.cs の基盤登録で有効） |
 | 可観測性 | OTel・相関 ID・ヘルスチェック | 自動適用。独自計装を追加する場合も OTel API に統一 |
-| ストレージポート | `IObjectStorageClient`（S3/Null 実装, IADR-0024） | アダプタから委譲先として利用可 |
+| ストレージポート | `IObjectStorageClient`（S3/Null 実装。バケット/キー設計は実装 ADR が定める） | アダプタから委譲先として利用可 |
 
 ### 1.3 実行時構成
 
@@ -85,7 +85,7 @@ issues: [#195, #217, #218, #219]
 - 段が依存してよいのは `Shared.Contracts` のイベント型・自プロジェクトの `Foundation/Ports/`・
   `Foundation/Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
 - 段は**ステートレス**を原則とし、ジョブ状態は自サービスの専用 DB に閉じる
-  （Database per Service。上流 `10_composability-design` §2・ADR-0002）。
+  （Database per Service。上流 `10_composability-design` §2 とサービス境界の決定による）。
 - 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IConsumer<TIn>` の不一致）は
   **起動失敗**する。`enabled: false` は購読・キューを生成しない。
 - **入力イベント型の変更は構成のみでは行えない**。プラグイン改版（コード変更＋宣言更新）として扱う
@@ -102,7 +102,7 @@ issues: [#195, #217, #218, #219]
    依存は**アダプタ内に閉じる**（ポート迂回の直接依存は禁止。[区分表 §3](./composability-classification.md)）。
 3. 合成ルート（`Program.cs`）で DI 登録する。構成による実装選択（例: 接続文字列の有無で
    Qdrant/InMemory を切替）を行う場合、その選択ヘルパは `Composable/` 側に置く
-   （`Foundation/Extensions/` に置くと依存方向規則違反。IADR-0027）。
+   （`Foundation/Extensions/` に置くと依存方向規則違反）。
 
 既存アダプタ（`QdrantVectorStore`・`S3ObjectStorageClient`・`WikiJsGraphQlClient`・
 `PandocConversionService` 等）を実装例として参照すること（一覧は[区分表 §3](./composability-classification.md)）。
@@ -112,7 +112,7 @@ issues: [#195, #217, #218, #219]
 配置: `LlmGateway` の `Composable/` 配下。
 
 1. `ILlmProvider` / `IEmbeddingProvider`（LlmGateway のポート）を実装する。
-2. ルーティング表（構成駆動。IADR-0007/0022/0025）にプロバイダとモデル経路を追加する。
+2. ルーティング表（構成駆動。設定駆動のエンドポイント定義・モデル追加・埋め込みの機密区分ルーティング）にプロバイダとモデル経路を追加する。
    エグレス統制（どの外部先へ出てよいか）は**固定**であり、統制の変更は新 ADR が必要。
 3. 呼び出し側サービスは変更しない（各サービスは `IEmbeddingService` / `IDiagramCoder` 等の
    ポート経由で LlmGateway を利用しており、プロバイダ追加の影響は LlmGateway 内に閉じる）。
@@ -133,7 +133,7 @@ issues: [#195, #217, #218, #219]
 原典は [src/README.md](../../src/README.md)（ユニット規約: レイアウト・依存規則・サブモジュール手順）。要点:
 
 1. `src/knowledge/backend/Services/<Name>/`（`src/` + `tests/`）を規約レイアウトで作成し、各プロジェクト内を
-   `Foundation/` / `Composable/` に二分する（IADR-0027。空フォルダは作らない）。
+   `Foundation/` / `Composable/` に二分する（固定/可変分離の規約。空フォルダは作らない）。
 2. 所属ユニットの `src/knowledge/backend/backend.slnx` に csproj を登録する。ビルド設定・パッケージ版は
    `Directory.Build.props` / `Directory.Packages.props` の中央管理に従う（csproj に `Version=` を書かない）。
 3. ユニット外参照は `src/platform/backend/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
@@ -144,7 +144,7 @@ issues: [#195, #217, #218, #219]
 
 ### 2.6 フロントエンド feature（画面）
 
-原典は IADR-0033: フロントエンド SPA 基盤。要点:
+原典は「フロントエンド SPA 基盤（React + TS + Vite・foundation/features 分離・BFF 境界・OIDC〔PKCE〕）」の実装 ADR である。要点:
 
 1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は
    `src/platform/frontend/src/foundation/`（config/auth/api/routing/ui）であり、feature から基盤へは
@@ -158,14 +158,14 @@ issues: [#195, #217, #218, #219]
    > **［2026-08-06 追記］この項はかつて「必ず `@foundation/api` の `apiFetch` を使う」と
    > 指示していた。いまは逆である。** 既定は **orval 生成フック／生成された操作関数**
    > （`@foundation/api/generated`。`pnpm run codegen` の生成物はコミットする）であり、
-   > **画面から `apiFetch` を呼ぶ箇所は 0 件**である（#519 / [[IADR-0135]] 決定 1・2）。
+   > **画面から `apiFetch` を呼ぶ箇所は 0 件**である（#519。生成クライアントへの載せ替えによる）。
    > 契約（`docs/api/openapi.yaml`）を変えたときに画面の型検査が落ちる、という保証を
-   > 得るためである（[[IADR-0131]] 決定 1）。
+   > 得るためである（OpenAPI を BFF 契約の単一情報源とする決定）。
    > `foundation/api` を直接使ってよいのは **SSE の `apiStream`** だけで、これは orval が
-   > 扱えないため恒久的な例外である（[[IADR-0131]] 決定 4）。生成物が無い面を新設するときは、
+   > 扱えないため恒久的な例外である（同決定 4）。生成物が無い面を新設するときは、
    > **`apiFetch` を書く前に OpenAPI へ宣言を足す**。
    >
-   > 本節の原典 IADR-0033 は [[IADR-0121]] が Superseded 済みであり、本文書（`status: fixed`）の
+   > 本節の原典であるフロントエンド SPA 基盤の実装 ADR は、SPA 新スタック移行の実装 ADR に Superseded 済みであり、本文書（`status: fixed`）の
    > 全面改訂はこの追記の射程外である。ここでは**成果を次の実装者が壊す入口だけを塞ぐ**。
 4. 認証・ロールは foundation の OIDC（Keycloak `platform-spa`）とロールベースナビゲーション
    に従う。トークン・シークレットをコードに置かない。

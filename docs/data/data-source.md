@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-05, SC-06, UC-04]
-adrs: [ADR-0003, ADR-0009, ADR-0027, ADR-0036]
-iadrs: [IADR-0019, IADR-0136, IADR-0199]
+adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036]
+iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199]
 specs: [01_requirements, ADR-0003_messaging-masstransit-rabbitmq, ADR-0027_messaging-wolverine]
-issues: [#537, #752]
+issues: [#516, #537, #538, #580, #752, #754, #767, #796, planning#344, planning#361, planning#372]
 -->
 
 # データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
@@ -20,10 +20,10 @@ issues: [#537, #752]
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-01（データソースの登録・接続・同期カタログ化）、FR-02（取り込み＝チャンク分割・埋め込み・ベクトルストア upsert）
+- **関連機能要求**: データソースの登録・接続・同期カタログ化、および取り込み（チャンク分割・埋め込み・ベクトルストア upsert）
 - **技術検討(06_technical)・ADR**:
-  - ADR-0003 メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携。Superseded by ADR-0027・注記は #580）
-  - 関連: ADR-0002 DB per Service（DataSourceService 専用 DB）、ADR-0009 ベクトルストア Qdrant、ADR-0013 埋め込みモデル
+  - メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携。後継の Wolverine 採用により Superseded・注記は #580）
+  - 関連: DB per Service（DataSourceService 専用 DB）、ベクトルストア Qdrant、埋め込みモデル
 - **計画書リンク**: `01_requirements.md`（計画リポ）、`09_datasource-connectors.md`（計画リポ）
 
 ## 概要
@@ -44,14 +44,14 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | ConnectionUri | string (varchar(2048)) | ○ | 最大長 2048 | 接続先 URI |
 | Status | string (varchar(50)) | ○ | 最大長 50。既定 `active`。値: `active` / `disabled` | 稼働状態 |
 | LastSyncedAt | DateTimeOffset? (timestamptz) | - | NULL 可（未同期）。`RecordSync()` で更新 | 最終同期時刻 |
-| ConsecutiveFailureCount | int | ○ | 既定 `0`。`RecordSyncFailure()` で増え、完全成功の `ClearSyncFailures()` で `0` へ戻る | 連続同期失敗回数（SC-06 / Q14 / #537。[[IADR-0148]]） |
+| ConsecutiveFailureCount | int | ○ | 既定 `0`。`RecordSyncFailure()` で増え、完全成功の `ClearSyncFailures()` で `0` へ戻る | 連続同期失敗回数（データソース管理画面 / 裁定 Q14 / #537。健全性はエンティティへ永続化する実装判断） |
 | LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
 | LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
-| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。[[IADR-0019]] / [[IADR-0199]]） | このデータソース由来の原本へ既定で付与する ABAC 文書属性 |
+| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。データソースが原本へ既定 ABAC 属性を付与する方針と、その必須属性フェイルセーフの拡張による） | このデータソース由来の原本へ既定で付与する ABAC 文書属性 |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
 
-#### `DefaultAttributes` の必須属性フェイルセーフ（FR-05, UC-04, #516, [[IADR-0199]]）
+#### `DefaultAttributes` の必須属性フェイルセーフ（ABAC アクセス制御／データソース登録・同期／#516）
 
 計画が**必須**と定める文書属性 4 種を欠落させない。**明示指定は上書きしない**（空白のみは未設定と同じ扱い）。
 補完は **`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一**である
@@ -59,7 +59,7 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 
 | 属性 | 計画が定めた解決順 | 実装での段 | 終端 |
 | --- | --- | --- | --- |
-| `confidentiality` | 明示指定 | 明示指定 | `internal`（[[IADR-0019]]） |
+| `confidentiality` | 明示指定 | 明示指定 | `internal`（既定 ABAC 属性の付与規則による） |
 | `department` | 投入元（ソース）の所属 → データソース既定属性 | **本欄の値のみ**（前段は**未実装**） | **`unassigned`** |
 | `owner` | ソース側の更新者 → 予約値 | **本欄の値のみ**（前段は**器が無い**） | **`system`** |
 | `lifecycle` | データソース既定属性 → 終端値 | 本欄の値（**1 段目が無い**） | **`active`**（**既定値。予約値ではない**） |
@@ -72,29 +72,29 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 >   計画は「ソースのメタ（所在・**部門**・**フォルダ**・更新者等）を ABAC 基本属性へマッピングする」
 >   （`09_datasource-connectors.md` L51）・ファイルサーバーは「**フォルダ単位の既定属性を継承**」（同 L34）と
 >   定めている。欠けているのは**フォルダ → 部門コードの写像規則**であり、
->   加えて **SC-06 の登録フォームに `department` の入力欄が無い**。追跡は **#754**。
->   **［2026-08-15 追記 / #767］入力欄は足した。** SC-06 の登録フォームから
+>   加えて **データソース管理画面の登録フォームに `department` の入力欄が無い**。追跡は **#754**。
+>   **［2026-08-15 追記 / #767］入力欄は足した。** データソース管理画面の登録フォームから
 >   `defaultAttributes.department` を送れるようになった（**非空のときだけ送る**。未入力なら
 >   キーごと送らないため、この欄の値は「管理者が明示的に指定した」ことだけを意味する）。
->   **残るのは①フォルダ → 部門コードの写像規則**（planning#372 の裁定待ち。**実装側で
->   推定規則を決めない**）**と②更新経路**（SC-06 に編集フォームが無く、登録時にしか指定できない）
+>   **残るのは①フォルダ → 部門コードの写像規則**（計画側の裁定待ち。**実装側で
+>   推定規則を決めない**）**と②更新経路**（データソース管理画面に編集フォームが無く、登録時にしか指定できない）
 >   **の 2 つであり、#754 はこれらを引き受けたまま open である。**
 >   **したがって上表「実装での段」は変わらない** —— 前段（ソースからの解決）は依然として未実装で、
 >   本欄の値だけが効く。**変わったのは「本欄に値を入れる経路が画面にもある」ことである。**
->   理由書きの正は [[IADR-0199]] §`department` —— 供給源がある の追記であり、ここへ複写しない。
+>   理由書きの正は、必須属性フェイルセーフを広げた実装 ADR の §`department` —— 供給源がある の追記であり、ここへ複写しない。
 >
 > **したがって `department` は「実装が見落としている」で正しい。** `owner` と同じ扱いにしない。
 
-> **`system` / `unassigned` は「既定」ではなく「解決できなかったことの記録」である**（計画確定・planning#344）。
+> **`system` / `unassigned` は「既定」ではなく「解決できなかったことの記録」である**（計画側で確定）。
 > **どちらも実運用では予約値へ倒れる。ただし［2026-08-15 / #767］以降、2 属性で度合いが違う。**
 >
 > | 属性 | 倒れる度合い | 逃れる手段 |
 > | --- | --- | --- |
 > | `owner` | **事実上 100%** | API から明示指定するほかない（コネクタは更新者を運ばない。#752） |
-> | `department` | **管理者が SC-06 で値を入れなければ倒れる** | **画面（SC-06 の登録フォーム）または API から明示指定する**（#767 で画面の経路が開いた） |
+> | `department` | **管理者がデータソース管理画面で値を入れなければ倒れる** | **画面（同登録フォーム）または API から明示指定する**（#767 で画面の経路が開いた） |
 >
 > **`department` は「もう倒れない」のではない。** 開いたのは供給源 3 つのうち**登録フォームの 1 つだけ**で、
-> フォルダ写像（planning#372 の裁定待ち）とソース側権限情報の取り込みは入っていない。
+> フォルダ写像（計画側の裁定待ち）とソース側権限情報の取り込みは入っていない。
 > **入力しなければ従来どおり `unassigned` へ倒れる**（既存の登録済みソースも遡って値を得ることはない）。
 > 恒久的に積み上がるなら**コネクタが更新者・部門を運んでいないという報告**であり、正常な状態ではない。
 > 件数は `scripts/measure-abac-combinations.js` が**環流債務の測定値**として出力する。
@@ -102,18 +102,18 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 > **どちらも「常に」ではない。** `DefaultAttributes` に明示指定があればそれが保持される。
 > 予約値へ倒れるのは**明示指定が無いとき**である。
 
-> **`lifecycle` の終端 `active` は「予約値」ではなく「既定値」である**（裁定 planning#361・2026-08-15 追補）。
+> **`lifecycle` の終端 `active` は「予約値」ではなく「既定値」である**（計画側の裁定・2026-08-15 追補）。
 > `system` / `unassigned` が「解決できなかったことの記録」であるのに対し、**`active` はそう決めた値**であり、
 > **件数を環流債務として数えない。**
 > **`active` にしても無制限に公開にはならない** —— `read` は属性の連言で、`confidentiality` と
 > `department`（未解決は deny 側の `unassigned`）が同時にかかる。
 > **ソース単位で下書き扱いにしたい場合は既定属性で `draft` を指定する**（終端は指定が無いときだけ効く）。
-> **［2026-08-16 / #796］この指定は SC-06 の登録フォームからも行える**（従前は API を直接叩くほかなかった）。
+> **［2026-08-16 / #796］この指定はデータソース管理画面の登録フォームからも行える**（従前は API を直接叩くほかなかった）。
 > **未指定ならキーごと送らない** —— `department` の予約値と違い**終端が正規の値**なので、
 > 値では「指定しなかった」と「`active` を選んだ」を見分けられず、**キーの有無だけが区別を持つ**。
-> 理由書きの正は [[IADR-0199]] 決定 4 であり、ここへ複写しない。
+> 理由書きの正は、必須属性フェイルセーフを広げた実装 ADR の決定 4 であり、ここへ複写しない。
 
-> **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（SC-06 / #538 / [[IADR-0136]]）。
+> **`NextSyncAt`（応答 `DataSourceDto.nextSyncAt`）は列ではない**（データソース管理画面 / #538。ワーカーの位相から導出する実装判断）。
 > 定期同期は全ソース共通の間隔で回るため、次回実行時刻は**ワーカーの位相から導出できる値**であり、
 > 状態として持たない（永続化するとプロセス再起動のたびに実体とずれる）。全ソース同値で、
 > 定期同期が無効なときは `null` を返す。したがって本テーブルにマイグレーションは生じない。
@@ -132,7 +132,7 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | payload `markdown_uri` | string | 本文 Markdown の URI（未設定時は空文字） |
 | payload `chunk_index` | integer | 文書内のチャンク並び順 |
 | payload `tags` | list&lt;string&gt; | タグ（存在時のみ。絞り込み・表示用） |
-| payload `attributes.<key>` | string | ABAC 属性（キーごとに `attributes.` 接頭辞で展開。検索時フィルタ用、FR-05） |
+| payload `attributes.<key>` | string | ABAC 属性（キーごとに `attributes.` 接頭辞で展開。検索時のアクセス制御フィルタ用） |
 
 ## ER 図
 
@@ -183,16 +183,16 @@ erDiagram
   **同期健全性は状態と直交する**——`Status` は設定状態（`active` / `disabled`）だけを表し、
   健全性は `ConsecutiveFailureCount` が表す。**再試行上限（＝継続失敗のしきい値）は列ではない**
   ——`DataSourceSyncHealth.DefaultRetryLimit` の定数であり、応答（`DataSourceDto.retryLimit`）にだけ載る
-  （画面が「3/5」の分母を契約から得るため。[[IADR-0148]] 決定 4）。
+  （画面が「3/5」の分母を契約から得るため。同健全性の実装判断による）。
   **更新（`Update()` / `Patch()`。#534）は健全性・`LastSyncedAt`・`CreatedAt` を変えない**
   ——更新で履歴を巻き戻さないためである。
 - **設定の NULL 非許容**: `Config` はカラム上 NOT NULL。未設定時は空 JSON（`{}`）。
 
 ## 永続化方針
 
-- **DataSource**: PostgreSQL、EF Core（`DataSourceDbContext`）。ADR-0002 に従い DataSourceService 専用 DB。`Config` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み）。
+- **DataSource**: PostgreSQL、EF Core（`DataSourceDbContext`）。DB per Service の方針に従い DataSourceService 専用 DB。`Config` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み）。
 - **ベクトルチャンク**: Qdrant。IngestionService は RDB を持たず、埋め込み結果を Qdrant コレクションへ直接 upsert。
-- **越境**: 両者は別ストアのため、整合はイベント（ADR-0003 メッセージング。Superseded by ADR-0027・注記は #580）と決定的 ID で担保する。
+- **越境**: 両者は別ストアのため、整合はイベント（メッセージング基盤。後継の Wolverine 採用により Superseded・注記は #580）と決定的 ID で担保する。
 
 ## マイグレーション・初期データ
 
