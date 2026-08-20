@@ -3,7 +3,7 @@ title: 回答フィードバック（AnswerFeedback） データ仕様書
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

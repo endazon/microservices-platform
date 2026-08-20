@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
 created: 2026-06-27
-updated: 2026-08-09
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

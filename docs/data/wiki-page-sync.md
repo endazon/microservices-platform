@@ -3,7 +3,7 @@ title: Wiki ページ同期メタデータ（WikiPage） データ仕様書
 type: data-spec
 status: draft
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

@@ -3,7 +3,7 @@ title: システム構成図（microservices-platform 基盤 + knowledge ユニ�
 type: tech-architecture
 status: draft
 created: 2026-07-16
-updated: 2026-08-08
+updated: 2026-08-21
 author: endazon (with Claude Code)
 ---
 <!-- trace:

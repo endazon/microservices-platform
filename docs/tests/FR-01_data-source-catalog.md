@@ -3,7 +3,7 @@ title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-15
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

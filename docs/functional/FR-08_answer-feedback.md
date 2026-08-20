@@ -3,7 +3,7 @@ title: 機能仕様書 — FR-08 回答へのフィードバック収集
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

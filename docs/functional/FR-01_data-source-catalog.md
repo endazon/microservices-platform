@@ -3,7 +3,7 @@ title: データソース登録・同期・カタログ化 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-08-07
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

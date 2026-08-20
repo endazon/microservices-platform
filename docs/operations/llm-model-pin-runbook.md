@@ -3,7 +3,7 @@ title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不�
 type: runbook
 status: fixed
 created: 2026-08-11
-updated: 2026-08-18
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

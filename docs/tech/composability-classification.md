@@ -3,7 +3,7 @@ title: 固定/可変 区分表（実装版）— コンポーザビリティ対�
 type: tech
 status: completed
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

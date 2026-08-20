@@ -3,7 +3,7 @@ title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-05
-updated: 2026-08-16
+updated: 2026-08-21
 author: Claude
 ---
 <!-- trace:

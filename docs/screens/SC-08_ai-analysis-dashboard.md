@@ -3,7 +3,7 @@ title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

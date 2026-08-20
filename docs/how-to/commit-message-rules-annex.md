@@ -3,7 +3,7 @@ title: 別紙 — コミットメッセージ規約の詳細（PR タイトル�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-16
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

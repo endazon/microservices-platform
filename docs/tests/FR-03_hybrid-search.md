@@ -3,7 +3,7 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-09
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

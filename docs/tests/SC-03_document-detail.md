@@ -3,7 +3,7 @@ title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-05
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

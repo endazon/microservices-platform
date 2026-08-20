@@ -3,7 +3,7 @@ title: テストの分離（InMemory DB）テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

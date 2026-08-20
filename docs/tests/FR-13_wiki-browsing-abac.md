@@ -3,7 +3,7 @@ title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-07-03
-updated: 2026-07-07
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

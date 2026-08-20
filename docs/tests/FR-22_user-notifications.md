@@ -3,7 +3,7 @@ title: FR-22 利用者本人への通知 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-21
 author: Claude
 ---
 <!-- trace:

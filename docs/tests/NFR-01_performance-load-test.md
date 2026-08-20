@@ -3,7 +3,7 @@ title: 性能（NFR）負荷試験 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-10
-updated: 2026-08-05
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

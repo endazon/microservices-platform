@@ -3,7 +3,7 @@ title: SC-07 変換ジョブ テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

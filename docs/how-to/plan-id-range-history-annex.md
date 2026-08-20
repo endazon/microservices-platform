@@ -3,7 +3,7 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-17
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

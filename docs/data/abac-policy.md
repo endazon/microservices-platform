@@ -3,7 +3,7 @@ title: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy） �
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-07-04
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

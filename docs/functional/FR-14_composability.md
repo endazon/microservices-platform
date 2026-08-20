@@ -3,7 +3,7 @@ title: コンポーザビリティ（宣言的パイプライン構成による�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

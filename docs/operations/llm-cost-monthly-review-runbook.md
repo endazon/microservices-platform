@@ -3,7 +3,7 @@ title: 運用 Runbook — LLM 費用の月次確認（Alertmanager 配備まで�
 type: runbook
 status: fixed
 created: 2026-08-10
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

@@ -3,7 +3,7 @@ title: データソース・取り込みチャンク（DataSource / Vector Chunk
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-16
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

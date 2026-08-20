@@ -3,7 +3,7 @@ title: 別紙 — 母集合の規則が破れた実例（規則 9・10。旧 7�
 type: how-to
 status: fixed
 created: 2026-08-14
-updated: 2026-08-16
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

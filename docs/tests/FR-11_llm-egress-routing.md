@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-11 用途別・機密度別 LLM ルーティン
 type: test-spec
 status: completed
 created: 2026-07-04
-updated: 2026-08-18
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

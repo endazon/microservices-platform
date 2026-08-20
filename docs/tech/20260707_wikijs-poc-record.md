@@ -3,7 +3,7 @@ title: Wiki.js 稼働 PoC 実測記録（OIDC / GraphQL 同期）
 type: tech-note
 status: fixed
 created: 2026-07-07
-updated: 2026-07-07
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

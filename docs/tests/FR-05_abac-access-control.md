@@ -3,7 +3,7 @@ title: ABAC 文書アクセス制御 テスト仕様書
 type: test-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

@@ -3,7 +3,7 @@ title: Wiki 閲覧画面 画面仕様書
 type: screen-spec
 status: draft
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

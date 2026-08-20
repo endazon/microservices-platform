@@ -3,7 +3,7 @@ title: パスワードリセット テスト仕様書
 type: test-spec
 status: draft
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

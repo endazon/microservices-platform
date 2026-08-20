@@ -3,7 +3,7 @@ title: 別紙 — CHANGELOG 生成時の誤記補正・除外の仕組み
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

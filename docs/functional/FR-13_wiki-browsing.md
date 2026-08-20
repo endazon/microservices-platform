@@ -3,7 +3,7 @@ title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ�
 type: functional-spec
 status: draft
 created: 2026-07-03
-updated: 2026-08-10
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

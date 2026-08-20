@@ -3,7 +3,7 @@ title: LLM 呼び出し先ルーティング 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-18
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

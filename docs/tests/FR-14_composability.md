@@ -3,7 +3,7 @@ title: FR-14 コンポーザビリティ（宣言的パイプライン構成） 
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

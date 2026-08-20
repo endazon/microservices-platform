@@ -3,7 +3,7 @@ title: ABAC 文書アクセス制御 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-06-27
-updated: 2026-08-09
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

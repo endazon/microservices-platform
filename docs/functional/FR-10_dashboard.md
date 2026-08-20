@@ -3,7 +3,7 @@ title: 機能仕様書 — FR-10 利用状況・検索傾向・回答品質ダ�
 type: functional-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-09
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

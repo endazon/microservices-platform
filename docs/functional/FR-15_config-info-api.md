@@ -3,7 +3,7 @@ title: 構成情報 API（実効構成の可視化・ドリフト検出） 機�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

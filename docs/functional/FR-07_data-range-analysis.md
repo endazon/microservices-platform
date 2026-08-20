@@ -3,7 +3,7 @@ title: 指定データ範囲での分析・比較・抽出 機能仕様書
 type: functional-spec
 status: completed
 created: 2026-06-27
-updated: 2026-06-29
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

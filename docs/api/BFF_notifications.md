@@ -3,7 +3,7 @@ title: BFF 通知（/bff/notifications）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-21
 author: Claude
 ---
 <!-- trace:

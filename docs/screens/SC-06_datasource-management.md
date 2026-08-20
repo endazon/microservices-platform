@@ -3,7 +3,7 @@ title: データソース管理 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-16
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:

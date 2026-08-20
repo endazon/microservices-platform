@@ -3,7 +3,7 @@ title: 別紙 — 他プロジェクトの ID / issue 番号を修飾する規�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-17
+updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
