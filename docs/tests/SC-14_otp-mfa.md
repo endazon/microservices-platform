@@ -7,24 +7,24 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [SC-14]
+ids: [SC-13, SC-14, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197]
 specs: [01_screens, ADR-0026_authentication-ux-and-account-management, IADR-0197_realm-rename-and-auth-policy, SC-14_otp-mfa]
-issues: []
+issues: [#438]
 -->
 
 # テスト仕様書: ワンタイムコード（OTP／多要素認証）
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: SC-14
-- ユースケース（UC）: UC-05
-- 受け入れ基準の所在: `ADR-0026`（計画リポ） §多要素認証／`05_screens/01_screens.md` §SC-14（計画リポ）
+- 画面: ワンタイムコード（OTP）
+- ユースケース: ABAC 権限を管理する
+- 受け入れ基準の所在: 認証 UX とアカウント管理の計画 ADR §多要素認証／計画側の画面設計 §ワンタイムコード（OTP）
 
 ## テスト対象・範囲
 
-**対象**: `deploy/keycloak/microservices-platform-realm.json` が ADR-0026 の OTP 要件を満たすこと（**静的検査**）。
+**対象**: `deploy/keycloak/microservices-platform-realm.json` が認証 UX の計画 ADR が定める OTP 要件を満たすこと（**静的検査**）。
 
 **対象外（実環境が要る）**: 実際の TOTP 検証・初回セットアップ画面・リカバリーコード表示。
 **Keycloak を起動しないと検証できない**（CI は Keycloak を起動しない。実測: `.github/workflows/` に Keycloak を
@@ -40,15 +40,15 @@ issues: []
 
 | ID | 前提条件 | 手順 | 期待結果 | 対応受け入れ基準 | 区分 |
 | --- | --- | --- | --- | --- | --- |
-| T-01 | realm export が存在する | `node scripts/check-realm-constraints.js` | `otpPolicyType = "totp"` | ADR-0026「TOTP による MFA を必須とする」 | 自動 |
-| T-02 | 同上 | 同上 | `otpPolicyDigits = 6` | ADR-0026「6桁」 | 自動 |
-| T-03 | 同上 | 同上 | `otpPolicyPeriod = 30` かつ `otpPolicyLookAheadWindow = 1` | ADR-0026「時刻ずれは前後1ステップ〔30秒〕まで許容」 | 自動 |
-| T-04 | 同上 | 同上 | `requiredActions` に `CONFIGURE_TOTP` があり **`enabled: true` かつ `defaultAction: true`** | ADR-0026「未登録者はログイン時に初回セットアップへ誘導する」 | 自動 |
+| T-01 | realm export が存在する | `node scripts/check-realm-constraints.js` | `otpPolicyType = "totp"` | 計画 ADR「TOTP による MFA を必須とする」 | 自動 |
+| T-02 | 同上 | 同上 | `otpPolicyDigits = 6` | 計画 ADR「6桁」 | 自動 |
+| T-03 | 同上 | 同上 | `otpPolicyPeriod = 30` かつ `otpPolicyLookAheadWindow = 1` | 計画 ADR「時刻ずれは前後1ステップ〔30秒〕まで許容」 | 自動 |
+| T-04 | 同上 | 同上 | `requiredActions` に `CONFIGURE_TOTP` があり **`enabled: true` かつ `defaultAction: true`** | 計画 ADR「未登録者はログイン時に初回セットアップへ誘導する」 | 自動 |
 | T-05 | 同上 | 同上 | `otpPolicyCodeReusable = false` | 同一コードの再利用を許さない（TOTP の前提） | 自動 |
-| T-06 | Keycloak 稼働・TOTP 未登録の利用者 | SC-13 でログインする | `CONFIGURE_TOTP` の初回セットアップへ誘導される | ADR-0026「未登録者は…誘導する」 | **手動（実環境・#438）** |
-| T-07 | Keycloak 稼働・TOTP 登録済 | 1 ステップ前／後のコードを入力する | いずれも受理される | ADR-0026「前後1ステップまで許容」 | **手動（実環境・#438）** |
+| T-06 | Keycloak 稼働・TOTP 未登録の利用者 | ログイン画面からログインする | `CONFIGURE_TOTP` の初回セットアップへ誘導される | 計画 ADR「未登録者は…誘導する」 | **手動（実環境・#438）** |
+| T-07 | Keycloak 稼働・TOTP 登録済 | 1 ステップ前／後のコードを入力する | いずれも受理される | 計画 ADR「前後1ステップまで許容」 | **手動（実環境・#438）** |
 | T-08 | 同上 | 2 ステップ前のコードを入力する | 拒否される | 同上（**境界の外**） | **手動（実環境・#438）** |
-| T-09 | 初回登録を完了する | 登録完了画面を確認する | リカバリーコードが **1 回のみ**表示される | `01_screens.md` §SC-14 | **手動（実環境・#438）** |
+| T-09 | 初回登録を完了する | 登録完了画面を確認する | リカバリーコードが **1 回のみ**表示される | 計画側の画面設計 §ワンタイムコード（OTP） | **手動（実環境・#438）** |
 
 ## テストデータ
 
@@ -56,8 +56,8 @@ issues: []
 
 ## 関連仕様
 
-- 画面仕様書: [SC-14](../screens/SC-14_otp-mfa.md)
-- 実装 ADR: IADR-0197: レルムを `platform` へ改名し、ADR-0026 の認証ポリシーを realm へ投入する
+- 画面仕様書: [ワンタイムコード（OTP）](../screens/SC-14_otp-mfa.md)
+- 実装 ADR: レルムを `platform` へ改名し、計画 ADR の認証ポリシーを realm へ投入する
 
 ## 未決事項
 

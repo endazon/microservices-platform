@@ -7,21 +7,21 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-01, FR-05, UC-04]
-adrs: []
-iadrs: [IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055]
+ids: [FR-01, FR-05, SC-06, UC-04]
+adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
+iadrs: [IADR-0001, IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148, IADR-0199]
 specs: [01_requirements, 01_usecases]
-issues: [#195, #217, #218, #219, #534, #537]
+issues: [#195, #217, #218, #219, #516, #534, #537, #580, #627, planning#344, planning#361]
 -->
 
 # テスト仕様書: データソース登録・同期・カタログ化
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-01
-- ユースケース（UC）: UC-04
-- 関連 ADR: ADR-0002（DB per Service）、ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027・注記は #580）
-- 実装 ADR: IADR-0001（カタログ正本は DocumentService が所有）
+- 機能要求: 社内データソースの登録・同期とカタログ化
+- ユースケース: データソースを登録・同期する
+- 関連 ADR: DB per Service、メッセージング（MassTransit + RabbitMQ。後継の Wolverine 採用により Superseded・注記は #580）
+- 実装 ADR: カタログ正本は DocumentService が所有する
 - 計画書リンク: `02_requirements/01_requirements.md`, `07_adr/ADR-0003`（Superseded by `07_adr/ADR-0027`・注記は #580）
 
 ## テスト対象・範囲
@@ -29,7 +29,7 @@ issues: [#195, #217, #218, #219, #534, #537]
 - 対象: `DataSourceService` のデータソース CRUD（`/datasources`）、手動同期トリガ（`POST /datasources/{id}/sync`）、同期時の `RawDocumentFetched` 発行。
 - 対象: 登録エンティティのライフサイクル（`DataSource.Create` / `RecordSync` / 既定 `Status=active`）。
 - 対象: filesystem/wiki/saas/db 各コネクタの列挙・取得・増分・縮退（単体・fake HTTP／ADO.NET。T-05〜T-25。#195/#217/#218/#219）。
-- 対象外: 製品固有アダプタ（Confluence/Salesforce/Notion 等）と実 API/コンテナ統合、実オブジェクトストレージ（ADR-0014 製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end。
+- 対象外: 製品固有アダプタ（Confluence/Salesforce/Notion 等）と実 API/コンテナ統合、実オブジェクトストレージ（製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end。
 - 対象外: 正規化文書→カタログ登録の連鎖（`DocumentService` の `DocumentNormalizedConsumer` 側で検証）、ABAC による権限外文書の非表示（AuthorizationService 側）、負荷/p95。
 
 ## テスト観点
@@ -56,46 +56,46 @@ issues: [#195, #217, #218, #219, #534, #537]
 | T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分 | 自動（単体・fake HTTP） |
 | T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得 | 自動（単体・fake HTTP） |
 | T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動 | 自動（単体・fake HTTP） |
-| T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
+| T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217。コネクタのポート分離と同期基盤の決定 3a） | 自動（単体・fake HTTP） |
 | T-15 | SaaS 一覧 API が nextCursor で複数ページを返す | `SaaSConnector.DiscoverAsync` | 全ページをカーソルで集約・`updatedAt>since` で増分 | SaaS ページング・増分 | 自動（単体・fake HTTP） |
 | T-16 | SaaS 一覧 API が 429（Retry-After:0）→200 | `DiscoverAsync` | Retry-After に従い再試行して成功（2 リクエスト） | SaaS レート制限バックオフ | 自動（単体・fake HTTP） |
-| T-17 | SaaS 一覧 API が 429 継続（maxRetries=1） | `DiscoverAsync` | 上限超過で例外送出（watermark 非前進） | SaaS 上限超過（#218/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
+| T-17 | SaaS 一覧 API が 429 継続（maxRetries=1） | `DiscoverAsync` | 上限超過で例外送出（watermark 非前進） | SaaS 上限超過（#218。同決定 3a） | 自動（単体・fake HTTP） |
 | T-18 | SaaS 本文 API が Markdown／`Config.apiToken`／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／`Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退 | 自動（単体・fake HTTP） |
 | T-19 | 業務DB クエリが行を返す（fake ADO.NET） | `DatabaseConnector.DiscoverAsync`（since=null / watermark / ISO8601文字列） | 全行を id/updated へマッピング・`updated>since` で増分・文字列日時も正規化 | DB 行→文書・増分 | 自動（単体・fake ADO.NET） |
 | T-20 | 業務DB 本文スカラを返す | `DatabaseConnector.FetchAsync` | 本文バイト＋content-type・id は `@id` パラメータで渡す | DB 取得・パラメータ化 | 自動（単体・fake ADO.NET） |
 | T-21 | `Config.query`／`ConnectionUri` 未設定 | `DiscoverAsync` | 空列挙で縮退（接続しない） | DB 縮退 | 自動（単体・fake ADO.NET） |
-| T-22 | 業務DB がエラーを返す | `DiscoverAsync` | 例外送出（watermark 非前進） | DB 失敗時挙動（#219/IADR-0051 決定3a） | 自動（単体・fake ADO.NET） |
+| T-22 | 業務DB がエラーを返す | `DiscoverAsync` | 例外送出（watermark 非前進） | DB 失敗時挙動（#219。同決定 3a） | 自動（単体・fake ADO.NET） |
 | T-23 | `updated` 列が NULL の行を含む | `DiscoverAsync` | 当該行のみスキップ＋警告・同期全体は成功 | DB 不正行の縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-24 | Fetch 対象 id が存在しない（消えた行） | `FetchAsync` | 例外にせず空本文へ縮退 | DB 該当なしの縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-25 | `Config.password` に `;`/`'` を含む | `DiscoverAsync` | 接続文字列がクオート合成され特殊文字が往復 | DB パスワードエスケープ（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
-| T-26 | 連続して discover が失敗する（再試行上限まで） | `SyncAsync` | **再試行上限に達した時点**で継続失敗となり、連続失敗回数がエンティティに載る。しきい値と再試行上限は同一定数 | 継続失敗のしきい値（#537 / UC-04 例外 / [[IADR-0148]] 決定 3） | 自動（単体） |
-| T-27 | 失敗の後に完全成功する | `SyncAsync` | 連続失敗回数が 0 へ戻り、**直近エラーも消える** | 健全性の回復（#537 / [[IADR-0148]]） | 自動（単体） |
-| T-28 | 例外メッセージが接続文字列（`Password=`）を含む | `SyncAsync` | **保存時点でマスク**され、平文の秘密が永続化されない | 直近エラーの秘密マスク（#537 / [[IADR-0148]] 決定 5 / IADR-0053） | 自動（単体） |
-| T-29 | キー=値／URI 資格情報／`Bearer` `Basic`／秘密を含まない文 | `SyncErrorRedactor.Redact` | 値だけを伏せキー名は残す・URI はユーザー名も伏せる・無関係な文は素通し・**切り詰めはマスクの後**（上限より後ろの秘密も伏せる） | マスク規則（#537 / [[IADR-0148]] 決定 5） | 自動（単体） |
+| T-26 | 連続して discover が失敗する（再試行上限まで） | `SyncAsync` | **再試行上限に達した時点**で継続失敗となり、連続失敗回数がエンティティに載る。しきい値と再試行上限は同一定数 | 継続失敗のしきい値（#537 / データソース同期の例外フロー / 健全性の永続化・決定 3） | 自動（単体） |
+| T-27 | 失敗の後に完全成功する | `SyncAsync` | 連続失敗回数が 0 へ戻り、**直近エラーも消える** | 健全性の回復（#537 / 健全性の永続化） | 自動（単体） |
+| T-28 | 例外メッセージが接続文字列（`Password=`）を含む | `SyncAsync` | **保存時点でマスク**され、平文の秘密が永続化されない | 直近エラーの秘密マスク（#537 / 健全性の永続化・決定 5 / Wiki コネクタの汎用 REST 契約） | 自動（単体） |
+| T-29 | キー=値／URI 資格情報／`Bearer` `Basic`／秘密を含まない文 | `SyncErrorRedactor.Redact` | 値だけを伏せキー名は残す・URI はユーザー名も伏せる・無関係な文は素通し・**切り詰めはマスクの後**（上限より後ろの秘密も伏せる） | マスク規則（#537 / 健全性の永続化・決定 5） | 自動（単体） |
 | T-30 | 登録済みソース | `PUT /datasources/{id}` | 200・項目が置換され **`id` / `createdAt` / `lastSyncedAt` は不変**（削除→再登録との違い） | 更新が ID と履歴を切らない（#534 / 裁定 Q16） | 自動（エンドポイント） |
-| T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | **必須属性 4 種**が補完される（`internal` / `system` / `unassigned` / `active`） | 更新でも fail-closed を割らない（#534 / FR-05 / IADR-0019 / **#516・[[IADR-0199]]**） | 自動（エンドポイント） |
+| T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | **必須属性 4 種**が補完される（`internal` / `system` / `unassigned` / `active`） | 更新でも fail-closed を割らない（#534 / ABAC アクセス制御 / 既定 ABAC 属性の付与規則 / **#516・必須属性フェイルセーフの拡張**） | 自動（エンドポイント） |
 | T-32 | 一部項目だけを送る | `PATCH /datasources/{id}` | 省略した項目が現状維持される | 部分更新の意味論（#534 / 裁定 Q16） | 自動（エンドポイント） |
 | T-33 | `config` を省略した `PATCH` | `PATCH /datasources/{id}` | 保存された `config` の秘密が `***` で潰れない | 読んで書き戻す往復事故の防止 | 自動（エンドポイント） |
 | T-34 | 存在しない ID | `PUT` / `PATCH` | 404 | 更新の対象不在 | 自動（エンドポイント） |
 | T-35 | `disabled` なソース | `PATCH /datasources/{id}` | 更新できる（`status` は変わらない） | 無効中の認証情報ローテーション | 自動（エンドポイント） |
-| T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画 §SC-06「登録・更新・無効化は管理者限定」 | 自動（エンドポイント） |
-| T-37 | `config` / `defaultAttributes` を**省略**した `PUT` | `PUT /datasources/{id}` | **400**。実体は無傷（秘密が残る） | 全置換の省略を許すと送り忘れで秘密が消える（#627 レビュー 🟡 / [[IADR-0148]] 決定 6-b） | 自動（エンドポイント） |
+| T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画側のデータソース管理画面「登録・更新・無効化は管理者限定」 | 自動（エンドポイント） |
+| T-37 | `config` / `defaultAttributes` を**省略**した `PUT` | `PUT /datasources/{id}` | **400**。実体は無傷（秘密が残る） | 全置換の省略を許すと送り忘れで秘密が消える（#627 レビュー 🟡 / 健全性の永続化・決定 6-b） | 自動（エンドポイント） |
 | T-38 | `config: {}` を**明示**した `PUT` | `PUT /datasources/{id}` | 200・`Config` が空になる | **明示的な消去は許す**（過剰に守らない。同上） | 自動（エンドポイント） |
-| T-39 | 既定属性が空 | `DataSource.Create` | **必須属性 4 種**が終端値（`internal` / `system` / `unassigned` / `active`）で入る | 必須属性を欠落させない（#516 / [[IADR-0199]] 決定 1） | 自動（単体） |
-| T-40 | `owner` / `department` を明示 | `DataSource.Create` | 明示値が保持され、予約値で**上書きされない** | 明示指定は上書きしない（計画確定 planning#344） | 自動（単体） |
+| T-39 | 既定属性が空 | `DataSource.Create` | **必須属性 4 種**が終端値（`internal` / `system` / `unassigned` / `active`）で入る | 必須属性を欠落させない（#516 / 必須属性フェイルセーフの拡張・決定 1） | 自動（単体） |
+| T-40 | `owner` / `department` を明示 | `DataSource.Create` | 明示値が保持され、予約値で**上書きされない** | 明示指定は上書きしない（計画側で確定） | 自動（単体） |
 | T-41 | 値が空白のみ（`owner` / `department`） | `DataSource.Create` | 「未設定」と同じ扱いで予約値が入る | 空白を値とみなさない（現行 `confidentiality` と同一規約） | 自動（単体） |
-| T-42 | `Update` / `Patch` / `GetEffectiveAttributes` の各経路 | 同左 | **いずれも同じ補完結果**になる | 4 経路の一元化の退行防止。**1 箇所漏れると「登録時は付くが更新で消える」**（[[IADR-0199]] 決定 1） | 自動（単体） |
+| T-42 | `Update` / `Patch` / `GetEffectiveAttributes` の各経路 | 同左 | **いずれも同じ補完結果**になる | 4 経路の一元化の退行防止。**1 箇所漏れると「登録時は付くが更新で消える」**（必須属性フェイルセーフの拡張・決定 1） | 自動（単体） |
 | T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | **必須属性 4 種**が補完される | **最終防衛線**。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
-| T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（裁定 planning#361・案 C ＋ 終端 active。[[IADR-0199]] 決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
+| T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（計画側の裁定・案 C ＋ 終端 active。必須属性フェイルセーフの拡張・決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
 | T-45 | `lifecycle` を明示（`draft`） | `DataSource.Create` | 明示値が保持される | ソース単位で下書き扱いにできる（終端は指定が無いときだけ効く） | 自動（単体） |
 
 ## テストデータ
 
 - 登録リクエスト: `{ name: "社内 Confluence", sourceType: "Confluence", connectionUri: "https://confluence.example.com", config: { spaceKey: "PROJ" } }`（T-01）。
 - 登録リクエスト: `{ name: "Sync テスト", sourceType: "SharePoint", connectionUri: "https://sp.example.com", config: {} }`（T-02）。
-- 同期時に発行される `RawDocumentFetched`（実コネクタ・#195/IADR-0051）: 実 `OriginalPath`（列挙ファイルの絶対パス）、
+- 同期時に発行される `RawDocumentFetched`（実コネクタ・#195。コネクタのポート分離と同期基盤）: 実 `OriginalPath`（列挙ファイルの絶対パス）、
   `StorageUri`（`IObjectStorageClient` の格納 URI。未構成時は決定的 URI へ縮退）、拡張子由来の `ContentType`、
-  データソース既定 ABAC 属性（**必須属性 4 種のフェイルセーフ含む**・IADR-0019 / **[[IADR-0199]]**）、フォルダ名タグ。
+  データソース既定 ABAC 属性（**必須属性 4 種のフェイルセーフ含む**。既定属性の付与規則とその拡張による）、フォルダ名タグ。
 - filesystem データソースのルート指定: `config.rootPath`（優先）または `connectionUri`（`file://`／素のパス）。
 - レスポンス DTO: `DataSourceResponse(Id, Name, SourceType, ConnectionUri, Status)`。`/sync` 応答: `{ fetched, failed, connectorAvailable, message }`。
 
@@ -119,4 +119,4 @@ issues: [#195, #217, #218, #219, #534, #537]
 
 - 存在しないデータソースへの同期（404）・無効化（`DELETE /datasources/{id}` → `disabled`）のケースは実装済みだが統合テスト未整備。
 - 正規化文書→カタログ登録の end-to-end 検証は `DocumentService` の統合テスト（`DocumentNormalizedSyncTests`）で担保。
-- 実オブジェクトストレージ（ADR-0014 製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end 検証、製品固有アダプタの実 API 統合、同期ジョブ進捗管理、負荷試験による p95 レイテンシは後続タスク。
+- 実オブジェクトストレージ（製品未確定）経由の pandoc 実変換・Markdown 本文取得の end-to-end 検証、製品固有アダプタの実 API 統合、同期ジョブ進捗管理、負荷試験による p95 レイテンシは後続タスク。
