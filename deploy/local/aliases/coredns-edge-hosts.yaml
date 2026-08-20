@@ -1,0 +1,53 @@
+# IADR-0227 / #780: エッジ host（`*.localhost`）を **pod からも**解決できるようにする。
+#
+# 背景: OIDC issuer をエッジの https host（`keycloak.localhost`）へ移すと、Grafana / ArgoCD / Vault /
+# MinIO / Headlamp / Wiki.js は **pod から issuer を実際に引いて discovery を叩く**。
+# IADR-0086 の metadata / issuer 分離は .NET 側しか救わないため、非 .NET のツールには名前解決が要る。
+#
+# ★ なぜ ExternalName ではないか: `keycloak.localhost` は**ドットを含むため Service 名にできない**
+#   （DNS-1035 label 制約）。`deploy/local/aliases/*-externalnames.yaml`（IADR-0103）の方式は
+#   素の `keycloak` にしか使えない。
+#
+# ★ なぜ hostAliases ではないか: OIDC クライアント 7 つ＋今後増える pod すべてに書く必要があり、
+#   書き忘れた pod だけが静かに誤解決する（母集合の規則 7 が破れる形）。
+#
+# ★ なぜ coredns ConfigMap の直接編集ではないか: `kube-system/coredns` は **k3s の管理物**で、
+#   再適用で失われる。k3s の Corefile は末尾に拡張点を持つ:
+#       import /etc/coredns/custom/*.override      （サーバブロックの内側）
+#       import /etc/coredns/custom/*.server        （トップレベル）
+#   そして `coredns` Deployment は `coredns-custom` ConfigMap を **optional で既にマウントしている**
+#   （`custom-config-volume` @ `/etc/coredns/custom`）。**置けば効き、消せば元に戻る**（fail-safe）。
+#
+# ★ 塞いでいる誤解決（IADR-0103 が記録した事故と同型）:
+#   CoreDNS が答えを持たないと、クラスタ外の名前としてノードのリゾルバへフォールスルーする。
+#   `*.localhost` は手順 A の hosts 追記や OS の既定で **127.0.0.1 に解決されるのが普通**であり、
+#   その場合 pod は **自分自身**へ discovery を投げて 404 になる（argocd-server で実際に起きた形）。
+#   本 ConfigMap は「解決できるようにする」だけでなく、**この誤解決を塞ぐため**にも要る。
+#
+# 解決先は Traefik の Service である。**ClusterIP はハードコードしない** ——
+# 再作成でアドレスが変わっても壊れないよう、正準名への CNAME で返す。
+#
+# 適用: kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
+#      （scripts/k8s-local-up.sh の LOCALEDGE=1 ブロックが適用する）
+# 撤去: kubectl -n kube-system delete cm coredns-custom  → CoreDNS は元の挙動へ戻る
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: platform-infra-alias
+data:
+  # `*.server` はトップレベルへ import される＝独立したサーバブロックになる。
+  # ここでは `localhost` ゾーンだけを預かり、他の名前解決には一切影響しない。
+  edge.server: |
+    localhost:53 {
+        errors
+        # エッジ host はすべて Traefik（kube-system/traefik）へ向ける。
+        # rewrite は問い合わせ名を書き換えてから kubernetes プラグインへ渡す。
+        rewrite name regex (.*)\.localhost traefik.kube-system.svc.cluster.local
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+          pods insecure
+        }
+        cache 30
+    }

@@ -370,6 +370,16 @@ fi
 if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "==> [opt-in] local edge aggregation (Traefik admin:50000 + Ingress, IADR-0091)"
   kubectl apply -k deploy/local/edge
+
+  # IADR-0227 (#780): エッジ host（*.localhost）を **pod からも** 解決できるようにする。
+  # k3s の CoreDNS は Corefile 末尾に import /etc/coredns/custom/*.server を持ち、coredns Deployment は
+  # coredns-custom ConfigMap を optional で既にマウントしている。置けば効き、消せば元に戻る（fail-safe）。
+  # 非 .NET の OIDC クライアント（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は IADR-0086 の
+  # metadata/issuer 分離が使えず、pod から issuer host を実際に引く必要がある。
+  # ★ import 先の追加は Corefile 自体の変更ではないため reload プラグインが拾わない。rollout restart で確実に反映する。
+  kubectl apply -f deploy/local/aliases/coredns-edge-hosts.yaml
+  kubectl -n kube-system rollout restart deploy/coredns
+  kubectl -n kube-system rollout status deploy/coredns --timeout=120s
   # argocd namespace が存在するときのみ、argocd 用の管理ツール Ingress を追加適用する
   # （ns 不在時に失敗させない fail-safe。ArgoCD は ARGOCD=1 の別 opt-in で作成される）。
   if kubectl get namespace argocd >/dev/null 2>&1; then

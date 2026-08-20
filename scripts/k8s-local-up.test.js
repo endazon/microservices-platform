@@ -58,6 +58,8 @@ const OPTIN_TOKENS = [
   'cert-manager', //                   LOCALEDGE (エッジ TLS 終端, IADR-0206)
   'deploy/local/edge/tls', //          LOCALEDGE (TLS overlay, IADR-0206)
   'certificate/edge-tls', //           LOCALEDGE (証明書 Ready 待ち, IADR-0206)
+  'coredns-edge-hosts.yaml', //        LOCALEDGE (エッジ host の pod 側名前解決, IADR-0227)
+  'deploy/coredns', //                 LOCALEDGE (coredns の rollout restart/status, IADR-0227)
 ];
 
 // どのゲートも発行しない「負のトークン」＝ 実行ログからは検出力を測れないもの。
@@ -1582,6 +1584,92 @@ ok('#787: 永続化オーバーレイの claimName がすべて同じ overlay �
       );
     }
   }
+});
+
+// --- IADR-0227 (#780): Keycloak のエッジ公開と、エッジ host の pod 側名前解決 --------------------
+//
+// #779 と同じ事情である —— CI に `kustomize build` を走らせるジョブは 1 件も無い。
+// さらに本件は「issuer と同じ host 名で、pod からも到達できること」が命であり、
+// **ずれても Pod は起動し、静かに別の場所へ discovery を投げる**（IADR-0103 が argocd-server で実測した形）。
+
+
+const KEYCLOAK_INGRESS = readAt(EDGE_DIR, 'keycloak-ingress.yaml');
+const COREDNS_CUSTOM = readAt(REPO_ROOT, 'deploy', 'local', 'aliases', 'coredns-edge-hosts.yaml');
+
+ok('#780: Keycloak の Ingress が edge overlay に含まれている', () => {
+  assert.ok(
+    /^\s*-\s*keycloak-ingress\.yaml\s*$/m.test(EDGE_KUST),
+    'edge の kustomization に keycloak-ingress.yaml が無い（ファイルだけ在って適用されない）',
+  );
+});
+
+ok('#780: Keycloak は websecure(443) の keycloak.localhost へ出る（admin:50000 ではない）', () => {
+  const doc = docsOf(KEYCLOAK_INGRESS, 'Ingress')[0];
+  assert.ok(doc, 'Ingress ドキュメントが無い');
+  assert.strictEqual(field(doc, 'namespace'), 'platform-infra', 'Keycloak の実体と同じ namespace でない');
+  assert.ok(/host:\s*keycloak\.localhost\s*$/m.test(doc), 'host が keycloak.localhost でない');
+  // ★ admin(50000) に置くと redirect URI が全クライアントで :50000 付きになり、
+  //   IADR-0220 の改定と 7 クライアントの追記に波及する（#780 が意図的にスコープ外にした）。
+  assert.ok(
+    /router\.entrypoints:\s*websecure\s*$/m.test(doc),
+    'entrypoint が websecure でない（admin:50000 に置くと 7 クライアントの redirect に波及する）',
+  );
+  const ep = (/router\.entrypoints:\s*(\S+)/.exec(doc) || [])[1] ?? '';
+  assert.ok(ep !== '', 'entrypoints の注釈を読めない（検査が素通りする形になっている）');
+  assert.ok(!ep.includes('admin'), `entrypoints に admin が混ざっている: ${ep}`);
+});
+
+ok('#780: Keycloak の Ingress は同 namespace の edge-tls を使い、後段は keycloak:8080', () => {
+  const doc = docsOf(KEYCLOAK_INGRESS, 'Ingress')[0];
+  // spec.tls.secretName は同じ namespace の Secret しか参照できない。platform-infra 側の
+  // edge-tls は IADR-0220 (#841) が edge-certificate.yaml で宣言済みである（本 PR は作らない）。
+  assert.ok(/secretName:\s*edge-tls\s*$/m.test(doc), 'secretName が edge-tls でない');
+  const infraCert = docsOf(EDGE_CERT_YAML, 'Certificate')
+    .find((d) => field(d, 'namespace') === 'platform-infra');
+  assert.ok(infraCert, 'platform-infra の edge-tls 証明書が tls overlay に無い（Ingress が TLS を張れない）');
+  assert.ok(/name:\s*keycloak\s*$/m.test(doc) && /number:\s*8080\s*$/m.test(doc),
+    '後段が keycloak:8080 でない');
+});
+
+ok('#780: coredns-custom は k3s の import 先へ置き、coredns ConfigMap 自体は触らない', () => {
+  const cm = docsOf(COREDNS_CUSTOM, 'ConfigMap')[0];
+  assert.ok(cm, 'ConfigMap ドキュメントが無い');
+  assert.strictEqual(field(cm, 'name'), 'coredns-custom', 'ConfigMap 名が coredns-custom でない');
+  assert.strictEqual(field(cm, 'namespace'), 'kube-system', 'namespace が kube-system でない');
+  // k3s の Corefile は末尾で *.server / *.override を import する。キー名がその glob に合わないと
+  // **置いても一切読まれない**（何も起きないので気づけない）。
+  const keys = [...COREDNS_CUSTOM.matchAll(/^\s{2}([\w.-]+):\s*\|/gm)].map((m) => m[1]);
+  assert.ok(keys.length > 0, 'data のキーが無い');
+  for (const k of keys) {
+    assert.ok(/\.(server|override)$/.test(k),
+      `data のキー ${k} が .server / .override で終わらない（k3s の import glob に合わず読まれない）`);
+  }
+});
+
+ok('#780: エッジ host の解決先は Traefik の正準名で、ClusterIP をハードコードしない', () => {
+  assert.ok(
+    COREDNS_CUSTOM.includes('traefik.kube-system.svc.cluster.local'),
+    '解決先が Traefik の正準名でない',
+  );
+  // ★ ClusterIP を焼き込むと Service 再作成で静かに壊れる（引けるが誰も居ないアドレスを返す）。
+  assert.ok(
+    !/\b10\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(COREDNS_CUSTOM),
+    'ClusterIP らしきアドレスがハードコードされている',
+  );
+});
+
+ok('LOCALEDGE=1: coredns-custom を当ててから rollout restart する（import は reload では拾われない）', () => {
+  const { lines } = runUp({ LOCALEDGE: '1' });
+  const idx = (needle) => lines.findIndex((l) => l.includes(needle));
+  const applyEdge = idx('apply -k deploy/local/edge');
+  const applyCoredns = idx('coredns-edge-hosts.yaml');
+  const restart = idx('rollout restart deploy/coredns');
+  assert.ok(applyCoredns !== -1, 'coredns-custom を apply していない');
+  assert.ok(restart !== -1, 'coredns の rollout restart をしていない');
+  // Corefile 自体は変わらないため reload プラグインが拾わない。restart が無いと
+  // 「置いたのに効かない」状態になり、名前解決だけが静かに失敗する。
+  assert.ok(applyCoredns < restart, 'restart が apply より前にある（古い ConfigMap で再起動する）');
+  assert.ok(applyEdge !== -1 && applyEdge < applyCoredns, 'edge overlay の apply より前に coredns を触っている');
 });
 
 process.stdout.write(`\n✓ ${passed} tests passed\n`);

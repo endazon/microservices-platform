@@ -11,3 +11,5 @@ resources:
   - admin-ingress-minio.yaml
   # IADR-0095 (#353): Wiki.js（microservices-platform ns）の集約 route（既存 route は無改変・追加のみ）。
   - admin-ingress-wiki.yaml
+  # IADR-0227 (#780): Keycloak を websecure(443) の keycloak.localhost へ出す（platform-infra ns）。
+  - keycloak-ingress.yaml
