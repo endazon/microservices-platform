@@ -10,3 +10,5 @@ kind: Kustomization
 resources:
   - cert-manager-issuers.yaml
   - edge-certificate.yaml
+  # #780: platform-infra 側の edge-tls（Ingress は同一名前空間の Secret しか参照できない）
+  - keycloak-certificate.yaml

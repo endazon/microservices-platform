@@ -1,0 +1,44 @@
+# IADR-0076 / #780: Keycloak をエッジ（Traefik `websecure`）へ出す。
+#
+# これまで Keycloak は ClusterIP のみで Traefik に一切露出しておらず、到達手段は port-forward だけだった
+# （IADR-0076 手順 A）。issuer を https のエッジ host へ移すには、まずエッジに出ている必要がある。
+#
+# ★ ホスト名は `keycloak.localhost`。`edge-tls` 証明書（IADR-0206）の SAN は `localhost` と `*.localhost` で、
+#   これを覆う。証明書は新規に発行しない。
+#
+# ★ `admin` entrypoint（:50000）ではなく `websecure`（:443）へ出す。
+#   Keycloak は「管理ツール」ではなく**認証の基盤**であり、7 つの OIDC クライアントと SPA が
+#   ブラウザ経由で叩く。50000 に置くと redirect URI が全クライアントで :50000 付きになり、
+#   IADR-0103 の改定と 7 クライアントの redirect 追記に波及する（issue が意図的にスコープ外にした）。
+#
+# ★ パスは絞らない。`/realms` と `/resources` だけを通すと、ログイン画面の
+#   `/login-actions/*`・`/auth`・アカウント管理が 404 になる。issuer の一致だけが目的なら
+#   `/realms` で足りるが、**ブラウザ OIDC を成立させる**のが受け入れ基準である。
+#   管理コンソール（`/admin`）はエッジに出さない —— そこだけは path で除外する余地があるが、
+#   Traefik の Ingress では「除外」を書けないため、**別 issue（admin:50000 の TLS 化）で扱う**。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: keycloak-edge
+  namespace: platform-infra
+  labels:
+    app.kubernetes.io/part-of: platform-edge
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - keycloak.localhost
+      secretName: edge-tls
+  rules:
+    - host: keycloak.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
