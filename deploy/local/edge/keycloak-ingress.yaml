@@ -1,4 +1,4 @@
-# IADR-0076 / #780: Keycloak をエッジ（Traefik `websecure`）へ出す。
+# IADR-0227 / #780: Keycloak をエッジ（Traefik `websecure`）へ出す。
 #
 # これまで Keycloak は ClusterIP のみで Traefik に一切露出しておらず、到達手段は port-forward だけだった
 # （IADR-0076 手順 A）。issuer を https のエッジ host へ移すには、まずエッジに出ている必要がある。

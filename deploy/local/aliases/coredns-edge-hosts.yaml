@@ -1,4 +1,4 @@
-# IADR-0076 / #780: エッジ host（`*.localhost`）を **pod からも**解決できるようにする。
+# IADR-0227 / #780: エッジ host（`*.localhost`）を **pod からも**解決できるようにする。
 #
 # 背景: OIDC issuer をエッジの https host（`keycloak.localhost`）へ移すと、Grafana / ArgoCD / Vault /
 # MinIO / Headlamp / Wiki.js は **pod から issuer を実際に引いて discovery を叩く**。

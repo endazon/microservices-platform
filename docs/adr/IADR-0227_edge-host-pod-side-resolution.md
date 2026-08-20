@@ -4,7 +4,6 @@ type: impl-adr
 status: Accepted
 related_ids:
   - NFR-09
-  - FR-05
   - ADR-0004
   - ADR-0023
   - IADR-0076
@@ -15,7 +14,7 @@ related_ids:
   - IADR-0220
 author: claude
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-08-21
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 ---

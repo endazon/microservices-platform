@@ -4,7 +4,6 @@ type: spec
 status: in-progress
 related_ids:
   - NFR-09
-  - FR-05
   - ADR-0004
   - ADR-0023
   - IADR-0076
