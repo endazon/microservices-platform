@@ -21,11 +21,11 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-14（システム構成をコア改修なしに宣言的な構成定義の変更とプラグイン追加のみで組み替えられる）
+- 機能要求: システム構成をコア改修なしに宣言的な構成定義の変更とプラグイン追加のみで組み替えられること
 - ユースケース（UC）: —（運用・保守要求）
 - 計画書リンク: `02_requirements/01_requirements.md`、`06_technical/10_composability-design.md`、`07_adr/ADR-0018`
-- 実装 ADR: IADR-0027: 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）（Foundation/Composable フォルダ構造）、
-  IADR-0028: 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する（宣言的パイプライン構成）
+- 実装 ADR: 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）、
+  宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する
 
 ## 概要
 
@@ -45,7 +45,7 @@ issues: []
 | --- | --- |
 | 入力 | `pipeline.json`（Git 管理。events / sources / steps）。Helm ConfigMap（`pipeline-config.yaml`）が `{"Pipeline": {...}}` 形のオーバレイへ変換し、`Pipeline__ConfigPath` で各サービスへ供給 |
 | 処理 | 起動時に `AddKnowledgePlatformPipelineConfig()` が宣言を読み込み、`AddKnowledgePlatformPipelineStep<TConsumer>()` が宣言に従いコンシューマを登録（`enabled: false` は購読・キューを生成しない） |
-| 出力 | 宣言どおりの MassTransit トポロジ（購読・キュー）。実効構成は FR-15 の構成情報 API で可視化 |
+| 出力 | 宣言どおりの MassTransit トポロジ（購読・キュー）。実効構成は読み取り専用の構成情報 API で可視化 |
 | 業務ルール | 宣言と実装の不整合は起動時 fail-fast（下記） |
 
 ### 誤構成対策（起動時 fail-fast。10_composability-design §5 安全弁）

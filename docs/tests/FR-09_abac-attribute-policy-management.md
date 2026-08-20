@@ -8,18 +8,18 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-09, SC-05, SC-09, UC-05]
-adrs: []
+adrs: [ADR-0043]
 iadrs: [IADR-0006, IADR-0152, IADR-0153]
 specs: [01_requirements, 01_usecases]
-issues: []
+issues: [#634, #635]
 -->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-09
-- ユースケース（UC）: UC-05
+- 機能要求: 文書属性・タグおよび ABAC ポリシーの管理
+- ユースケース: ABAC 権限を管理する
 - 関連仕様: `../../.ai-context/specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
 
 ## テスト対象
@@ -108,12 +108,12 @@ issues: []
 実装は 3 経路が同じ関数を呼ぶことで守っているが、**将来それが割れたらここが落ちる**。
 空同士の一致で通してしまわないよう、**`errors` が空でないこと**も併せて固定している。
 
-## タグ辞書（#634 / [[IADR-0152]]）
+## タグ辞書
 
 | # | 確かめること | 実装 |
 | --- | --- | --- |
 | T-20 | 辞書の値集合を**管理者・運用者**が引ける | `List_AdminOrOperator_IsAllowed`（`[Theory]`） |
-| T-21 | **一般利用者は辞書を引けない**（ADR-0043 決定 1） | `List_GeneralUser_IsForbidden` |
+| T-21 | **一般利用者は辞書を引けない**（スコープ付き属性値ルックアップの決定による） | `List_GeneralUser_IsForbidden` |
 | T-22 | 追加は**システム管理者のみ**（運用者は読めるが書けない） | `Create_NonAdmin_IsForbidden`（`[Theory]`） |
 | T-23 | 追加直後の使用件数は 0 である | `Create_Admin_AddsTagWithZeroUsage` |
 | T-24 | 名前の重複は 409。**前後の空白だけの違いは同一とみなす** | `Create_DuplicateName_Returns409_IgnoringSurroundingWhitespace` |
@@ -130,7 +130,7 @@ issues: []
 **T-27 / T-28 はエンドポイント経由では作れない状態を検証するため、DB を直接組み立てている**
 （版履歴だけが参照する状態は、API からは作れない）。
 
-## タグの識別子保持・改名・削除（#635 / [[IADR-0153]]）
+## タグの識別子保持・改名・削除
 
 **実装は `DocumentService.Api.Tests/TagIdentityTests.cs`。**
 

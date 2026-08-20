@@ -1,3 +1,7 @@
+<!-- trace:
+issues: [planning#202, planning#354, planning#395, planning#415]
+-->
+
 # トレーサビリティ規約の別紙（該当作業のときだけ読む）
 
 > **本書は [`.claude/rules/traceability.md`](../.claude/rules/traceability.md) の別紙である。**
@@ -29,7 +33,7 @@
 - **配布物（`.claude/rules/traceability.md`・`scripts/` 等）には「自リポジトリ」が無く、裸の番号は
   配布先ごとに別の決定を指す。** 出典を示すなら**決定の内容を 1 行で書く**か `<PROJ>/<ID>` で修飾する。
 - **機械検査は無い** —— 配布先では裸の `IADR-NNNN` が正しい参照であり、区別できない（実測:
-  planning#354。キットの docstring が引いた `IADR-0140` は、配布先では無関係な ADR を指し、
+  キットの docstring が引いた `IADR-0140` は、配布先では無関係な ADR を指し、
   それを裏取りせず引き写した記述が 2 ファイルへ入った）。
 
 ### コミットメッセージ検査（`check-commit-messages.js`）の詳細
@@ -85,7 +89,7 @@
 - 🔴 **ワークフローの条件で `pull_request.user.type != 'Bot'` により弾いてはならない。** GitHub App が
   作成した PR（`claude[bot]` 等）も `user.type == 'Bot'` になるため、**AI に実装を委ねる運用（本キットが
   前提とする主要な経路）でだけ「最後の砦」が skipped になる**。実際に、人間が作った PR は success・
-  GitHub App が作った PR は skipped という差が観測された（planning#202）。
+  GitHub App が作った PR は skipped という差が観測された。
 - 判定は `PR_AUTHOR` 環境変数（`github.event.pull_request.user.login`）を渡し、`isBotLogin()` が
   `BOT_AUTHORS` へ**完全一致**した場合のみ除外する。コミット著者向けの `isBot()` が「著者名＋メール」への
   部分一致であるのと異なる —— PR 作成者は単一のログイン名で得られ、部分一致にすると `dependabot` を
@@ -113,7 +117,7 @@
 4. **PR タイトル**（= スカッシュ後にコミット件名として統合ブランチへ載る。ここだけが人手の追随に
    依存するため最も漏れやすい。ブランチ名は既 push なら変更不要だが、タイトルは必ず直す）
 5. **計画リポジトリが引く自番号**（`projects/<name>/07_adr/*.md` の地の文）。**ここは fail-open で
-   ある** —— 探さなければ何も起きない。**主たる担保は計画側の機械検査**（planning#395）。
+   ある** —— 探さなければ何も起きない。**主たる担保は計画側の機械検査**である。
 
 ## クロスリポジトリの issue / PR 番号 —— 面ごとの壊れ方と書き方
 
@@ -131,7 +135,7 @@
   正しく読めるが、**issue 本文へ転記した時点で GitHub が HTML タグとみなして黙って除去する**
   （実際に起票済みの issue 本文が意味の通らない記述になった）。バッククォートで囲むか、
   山括弧を使わない書き方にする。**転記先の面ごとに壊れ方が違うことを前提に書くこと。**
-  - 🔴 **PR タイトルでは「除去」ではなく「エスケープ」になり、恒久履歴へ残る**（planning#415）。
+  - 🔴 **PR タイトルでは「除去」ではなく「エスケープ」になり、恒久履歴へ残る。**
     実測: `git -C <submodule> grep` と書いた PR タイトルが、スカッシュ後件名へ
     `git -C &lt;submodule&gt; grep` として焼き付いた。生成物（CHANGELOG）は
     `changelog-overrides.json` の `remap` で是正できるが、**履歴は残る**。

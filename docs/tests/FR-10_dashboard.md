@@ -14,7 +14,7 @@ specs: [01_requirements, 01_usecases, 20260703_FR-10_usage-dashboard, FR-10_dash
 issues: []
 -->
 
-# テスト仕様書: FR-10 利用状況・検索傾向・回答品質ダッシュボード
+# テスト仕様書: 利用状況・検索傾向・回答品質ダッシュボード
 
 ## 対象・方針
 

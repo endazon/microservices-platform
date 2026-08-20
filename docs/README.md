@@ -1,3 +1,9 @@
+<!-- trace:
+adrs: [ADR-0048]
+iadrs: [IADR-0166, IADR-0167, IADR-0171]
+issues: [#675, #803, planning#387]
+-->
+
 # docs — 実装リポジトリのドキュメント
 
 この実装リポジトリの仕様書置き場である。計画リポジトリ（`project-planning`）の上流ドキュメント（要求・UC・画面設計・技術検討・ADR）を、実装向けに**詳細化**した仕様書を管理する。**作業着手前に仕様書を作成し、それに沿って実装する**運用とする。
@@ -21,7 +27,7 @@ docs/
 │                                     └── how-to/        # 手順ガイド（任意）
 ```
 
-作業仕様書（`work`）と実装ADR（`adr`）は `docs/` の外、ルート直下 `.ai-context/`（AI 向け文脈資料・凍結記録。`docs/` = 人が読む生きた文書との主従は [`.ai-context/README.md`](../.ai-context/README.md) を参照）に置く（ADR-0048 決定 1）:
+作業仕様書（`work`）と実装ADR（`adr`）は `docs/` の外、ルート直下 `.ai-context/`（AI 向け文脈資料・凍結記録。`docs/` = 人が読む生きた文書との主従は [`.ai-context/README.md`](../.ai-context/README.md) を参照）に置く（実装リポジトリの資料再編の裁定による）:
 
 ```text
 .ai-context/
@@ -63,7 +69,7 @@ docs/
 | `runbook` | 運用 Runbook（運用仕様書の**下位**にあたる手順書） | `docs/operations/` |
 | `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・[引継資料](how-to/session-handoff.md)）。**必読規約から出した別紙**（[コミットメッセージ規約](how-to/commit-message-rules-annex.md)・[CHANGELOG 補正](how-to/changelog-overrides-annex.md)・[ID 修飾](how-to/cross-project-id-refs-annex.md)・[Superseded な ADR の引用](how-to/adr-supersede-citation-annex.md)・[計画 ID レンジの追随](how-to/plan-id-range-history-annex.md)）は**参照時にだけ読む** |
 
-> **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [IADR-0167](../.ai-context/adr/IADR-0167_type-vocabulary-from-templates.md)）。
+> **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない。**
 > **`type` を書いているのはテンプレートだけ**である（引数 `work` → `spec_template.md` → `type: spec`）。
 > **`type` の値域は `docs/templates/*.md` が書く値**であり、
 > `node scripts/check-doc-type-vocabulary.js` が**テンプレートを実行時に読んで**閉じる
@@ -89,13 +95,13 @@ docs/
 2. 必須の仕様書は対象が存在する限り作成・維持する。任意の仕様書は必要に応じて作成する。
 3. 重要な実装判断は**実装ADR（`.ai-context/adr/`、`IADR-XXXX`）に残す**。計画ADR（計画リポ `ADR-XXXX`）とは別系統。
 4. すべての仕様書に起点 ID（FR/UC/SC/ADR）と計画書リンクを記入し、関連仕様書を相互リンクする。
-   **リンクの義務は仕様書側の一方向である**（利用者裁定 2026-08-11 / [IADR-0171](../.ai-context/adr/IADR-0171_backlink-obligation-one-way.md)）——
+   **リンクの義務は仕様書側の一方向である**（利用者裁定 2026-08-11）——
    **仕様書から ADR（`IADR-XXXX`）を指せば足り、ADR 側に「この決定を引いた仕様書」を列挙し返す義務は無い。**
    ADR は「決定」の記録であり、参照した作業をすべて列挙し続けると **ADR が更新履歴の索引になってしまう**
    （1 ADR = 1 意思決定という形と合わない）。逆引きは `grep` で足りる。
    **ADR 側に逆リンクが無いことは欠陥ではない**（本ルールの正本はここ。`CLAUDE.md` は本項を指すだけである）。
 5. 計画書の誤り・不足・新たな制約は `/plan-feedback` で計画リポジトリへ **GitHub Issue** として環流する
-   （本リポジトリはファイルによる環流記録を持たない。ADR-0048 決定 5）。
+   （本リポジトリはファイルによる環流記録を持たない）。
    **「環流した」と書いてよいのは Issue を実際に起票し終えたときだけ**である。起票前の下書き段階は
    「環流の下書きを作成した・起票は未了」と書く。裁定の完了記録は計画側 `projects/<name>/10_feedback/` に残る。
 6. **`status` は「その仕様書が記述する実装の状態」を表す。計画側（`05_screens` 等）の `status` には追随しない。**
@@ -126,10 +132,10 @@ docs/
      **語彙の是正のみ**（`fixed` → `done` のように、同じ状態を別の語で書いていたものを揃える）。
      **状態の進行**（`draft` → `done` 等）は、
      `.claude/rules/traceability.md` の「記録の改竄」にあたるため**不可**である。
-   - **★ 本文への注記追加は `［YYYY-MM-DD 追記 / #NNN］` 書式に限り可**（#803 / 裁定 planning#387）。
+   - **★ 本文への注記追加は `［YYYY-MM-DD 追記 / #NNN］` 書式に限り可**である（利用者裁定）。
      **凍結の射程は記録種ごとに違う** —— `.ai-context/specs/` は**その後の経過**を書式つきで足せる。
      `.ai-context/superpowers/` は不可である。**既存本文の書き換え・削除はどの記録でも不可。**
-     正本は [`IADR-0166`](../.ai-context/adr/IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 の
-     2026-08-17 追記と `.claude/rules/traceability.repo.md`。
+     正本は**仕様書の `status` 語彙と記録の書き換え境界を定めた実装 ADR**の
+     2026-08-17 追記と `.claude/rules/traceability.repo.md` である。
 
 詳細な開発規約は `CLAUDE.md` を参照すること。

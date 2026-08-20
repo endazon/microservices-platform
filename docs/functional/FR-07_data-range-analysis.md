@@ -8,7 +8,7 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-07, UC-02]
-adrs: []
+adrs: [ADR-0004, ADR-0010]
 iadrs: []
 specs: [01_requirements]
 issues: []
@@ -18,9 +18,9 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-07
-- ユースケース（UC）: UC-02
-- 関連 ADR: ADR-0010、ADR-0004（ABAC）
+- 機能要求: 指定データ範囲での AI 分析・比較・抽出
+- ユースケース: AI 分析を依頼する
+- 関連 ADR: LLM ゲートウェイ、認可＝ABAC
 - 計画書リンク: `02_requirements/01_requirements.md`
 
 ## 概要

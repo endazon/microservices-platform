@@ -14,13 +14,13 @@ specs: [01_screens, 20260708_issue-130_sc04-wiki-access, SC-04_wiki-access]
 issues: []
 -->
 
-# テスト仕様書: SC-04 Wiki 閲覧導線
+# テスト仕様書: Wiki 閲覧導線
 
 > 導線・実行時 config・認証ガードを写像する。Wiki.js 本体の SSO/ABAC は Wiki.js/ゲートウェイ側（#118 実測）で担保。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-13 ／ ユースケース（UC）: UC-07
+- 機能要求: 正規化文書を Wiki サービスで閲覧できること ／ ユースケース: Wiki で閲覧する
 - 受け入れ基準の所在: Issue #130 ／ `docs/specs/20260708_issue-130_sc04-wiki-access.md`
 
 ## テスト対象・範囲

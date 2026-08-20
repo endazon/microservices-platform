@@ -8,7 +8,7 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-08]
-adrs: []
+adrs: [ADR-0002]
 iadrs: [IADR-0010]
 specs: [01_requirements]
 issues: []
@@ -20,10 +20,10 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-08（AI 回答へのフィードバック＝👍/👎・コメント）
+- **関連機能要求**: AI 回答へのフィードバック（👍/👎・コメント）の収集
 - **技術検討(06_technical)・ADR**:
-  - ADR-0002 DB per Service（FeedbackService 専用 DB）
-  - 関連: IADR-0010（同一 (AnswerId, UserId) を 1 行に upsert し二重計上しない）
+  - DB per Service（FeedbackService 専用 DB）
+  - 関連: 同一 (AnswerId, UserId) を 1 行に upsert し二重計上しない（実装判断）
 - **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
@@ -68,7 +68,7 @@ erDiagram
 | 種別 | 対象 | 定義 |
 | --- | --- | --- |
 | 主キー | `Feedback.Id` | `HasKey(f => f.Id)` |
-| 一意インデックス | `Feedback (AnswerId, UserId)` | `IX_Feedback_AnswerId_UserId` — 1 ユーザー 1 回答 1 フィードバック（upsert 基盤、IADR-0010） |
+| 一意インデックス | `Feedback (AnswerId, UserId)` | `IX_Feedback_AnswerId_UserId` — 1 ユーザー 1 回答 1 フィードバック（upsert 基盤） |
 | 外部キー | なし | AnswerId は越境参照（FK なし） |
 
 ## 整合性・制約ルール
@@ -79,7 +79,7 @@ erDiagram
 
 ## 永続化方針
 
-- **DB**: PostgreSQL、EF Core（`FeedbackDbContext`）。ADR-0002 に従い FeedbackService 専用 DB。
+- **DB**: PostgreSQL、EF Core（`FeedbackDbContext`）。DB per Service の方針に従い FeedbackService 専用 DB。
 - JSON カラムなし（全カラムがスカラ／文字列）。
 - upsert は一意インデックスを基盤に、アプリ層（サービス）で「取得 → 更新 or 新規」を行う。
 

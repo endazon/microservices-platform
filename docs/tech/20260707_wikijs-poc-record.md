@@ -29,7 +29,7 @@ issues: []
 | `pages.singleByPath` → `create`/`update` スキーマ整合 | ✅ 整合（下記の実測差異を実装へ反映済み） |
 | `isPrivate=true` ページの API キー本文取得 | ✅ **取得可能**（fullAccess キーで `singleByPath` が content/render を返す。fail-closed 調整不要） |
 | エラー時再送 | ✅ GraphQL errors／`responseResult.succeeded=false` は例外化 → MassTransit リトライで再送（E2E で確認） |
-| レイテンシ（FR-13 p95 の参考値） | ✅ `singleByPath` p95 ≈ **5ms**、`update` p95 ≈ **0.74s**、`create` ≈ 1.0s、`delete` ≈ 0.32s（ローカル・30 回計測） |
+| レイテンシ（Wiki 閲覧の p95 参考値） | ✅ `singleByPath` p95 ≈ **5ms**、`update` p95 ≈ **0.74s**、`create` ≈ 1.0s、`delete` ≈ 0.32s（ローカル・30 回計測） |
 
 ## 実測で判明し実装へ反映した差異（重要）
 

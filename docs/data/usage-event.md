@@ -8,7 +8,7 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-10]
-adrs: [ADR-0006]
+adrs: [ADR-0002, ADR-0006]
 iadrs: []
 specs: [01_requirements, ADR-0006_observability-otel-prom-loki]
 issues: []
@@ -20,10 +20,10 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-10（利用状況ダッシュボード＝利用状況・検索傾向・回答品質）
+- **関連機能要求**: 利用状況ダッシュボード（利用状況・検索傾向・回答品質の可視化）
 - **技術検討(06_technical)・ADR**:
-  - ADR-0006 可観測性（OpenTelemetry / Prometheus / Loki）
-  - 関連: ADR-0002 DB per Service（DashboardService 専用 DB）
+  - 可観測性（OpenTelemetry / Prometheus / Loki）
+  - 関連: DB per Service（DashboardService 専用 DB）
 - **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
@@ -74,10 +74,10 @@ erDiagram
 
 ## 永続化方針
 
-- **DB**: PostgreSQL、EF Core（`DashboardDbContext`）。ADR-0002 に従い DashboardService 専用 DB。
+- **DB**: PostgreSQL、EF Core（`DashboardDbContext`）。DB per Service の方針に従い DashboardService 専用 DB。
 - JSON カラムなし（全カラムがスカラ／文字列）。
 - 事前集計（マテビュー等）は未導入。集計は API 呼び出し時にクエリで実施する方針。
-- メトリクス・トレースは ADR-0006（OTel/Prometheus/Loki）の可観測性基盤で別途扱い、本テーブルは業務的な利用イベントを保持する。
+- メトリクス・トレースは OTel / Prometheus / Loki の可観測性基盤で別途扱い、本テーブルは業務的な利用イベントを保持する。
 
 ## マイグレーション・初期データ
 

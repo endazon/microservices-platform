@@ -8,7 +8,7 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09]
-adrs: [ADR-0004]
+adrs: [ADR-0002, ADR-0004]
 iadrs: []
 specs: [01_requirements, 07_abac-attribute-model, ADR-0004_authz-abac]
 issues: []
@@ -20,11 +20,11 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-05（ABAC によるアクセス制御・検索フィルタ）、FR-09（ABAC 属性・ポリシーの管理）
+- **関連機能要求**: ABAC によるアクセス制御・検索フィルタ、ABAC 属性・ポリシーの管理
 - **技術検討(06_technical)・ADR**:
-  - ADR-0004 認可＝ABAC（属性ベースアクセス制御）
+  - 認可＝ABAC（属性ベースアクセス制御）
   - 技術検討 `06_technical/07_abac-attribute-model.md`（属性モデル）
-  - 関連: ADR-0002 DB per Service（AuthorizationService 専用 DB）
+  - 関連: DB per Service（AuthorizationService 専用 DB）
 - **計画書リンク**: `01_requirements.md`（計画リポ）、`07_abac-attribute-model.md`（計画リポ）
 
 ## 概要
@@ -105,11 +105,11 @@ erDiagram
 - **条件の NULL を保存しない**: `UserConditions` / `DocumentConditions` は `Create` / `Update` で `?? []` により空辞書化。評価エンジンが null を foreach して落ちるのを防ぐ（「条件なし」＝空辞書＝無制約）。
 - **有効／無効の分離**: ポリシーは物理削除せず `IsActive` で一時停止できる。
 - **アクション・スコープの妥当性**: `PolicyAction.IsValid` / `AttributeScope.IsValid` で列挙値を検証（`read`/`analyze`/`manage`、`document`/`user`）。
-- **文書属性との整合**: `DocumentConditions` のキーは `Document.Attributes` のキー、検索時は Qdrant payload `attributes.<key>` と突き合わせる（越境整合、FR-05）。
+- **文書属性との整合**: `DocumentConditions` のキーは `Document.Attributes` のキー、検索時は Qdrant payload `attributes.<key>` と突き合わせる（越境整合。ABAC によるアクセス制御の前提）。
 
 ## 永続化方針
 
-- **DB**: PostgreSQL、EF Core（`AuthorizationDbContext`）。ADR-0002 に従い AuthorizationService 専用 DB。
+- **DB**: PostgreSQL、EF Core（`AuthorizationDbContext`）。DB per Service の方針に従い AuthorizationService 専用 DB。
 - **JSON カラム**: `AllowedValues`（List）、`UserConditions` / `DocumentConditions`（Dictionary&lt;string,List&lt;string&gt;&gt;）は `ValueConverter` で JSON 文字列化し `jsonb` 格納。`ValueComparer`（listComparer / dictListComparer）を設定。
 - **時刻の DB 既定**: `AddAbacManagementFields` マイグレーションで追加した `CreatedAt`/`UpdatedAt` は `defaultValueSql: "now()"`。
 
