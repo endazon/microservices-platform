@@ -5,7 +5,7 @@
 # 初めて LlmGateway（MSB1009）・BFF（CS0246・IADR-0063 の合成点参照）のビルド不能が露見した。
 # 本ワークフローは同種の破綻をマージ前に落とす。
 #
-# 設計（詳細は docs/adr/IADR-0067_service-image-build-ci-gate.md）:
+# 設計（詳細は .ai-context/adr/IADR-0067_service-image-build-ci-gate.md）:
 #   - 対象は deploy/docker-compose.yml の build 定義から動的に導出する（単一情報源。サービス追加時に
 #     本ファイルの編集は不要）。compose 自身をパーサに使うため、補間・既定値の解釈が実ビルドと一致する。
 #   - サービスごとに 1 ジョブのマトリクス（fail-fast: false）。赤の所在がサービス単位で分かる。
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/checkout@v7
       # Issue #283, IADR-0070: 可変ユニット（src/*）の submodule を取得してからビルドする。frontend は
       # @ai-stock-trading を合成し、configuration-service は AST バックエンドを build context にするため、
-      # 未取得だとビルドできない（ci.yml と同型。public ユニットはトークン不要・private planning は巻き込まない）。
+      # 未取得だとビルドできない（ci.yml と同型。public ユニットはトークン不要）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \

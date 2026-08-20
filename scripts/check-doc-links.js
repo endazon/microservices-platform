@@ -2,7 +2,7 @@
 'use strict';
 /*
  * check-doc-links.js
- * docs/ 配下の Markdown 仕様書に含まれる相対リンクの実在を検査する（リンク切れ再発防止）。
+ * docs/ と .ai-context/ 配下の Markdown に含まれる相対リンクの実在を検査する（リンク切れ再発防止）。
  * 検査対象:
  *   - フロントマター（先頭 --- ... ---）のリスト項目パス（plan_refs / related_specs / related など）
  *   - 本文の Markdown リンク [text](path)
@@ -10,12 +10,24 @@
  * 対象外（誤検知回避）:
  *   - 外部 URL（http/https/mailto ほかスキーム付き）・アンカー(#...)・ルート絶対パス(/...)
  *   - テンプレ変数（${...} / {{...}} / <...>）
- *   - planning/ サブモジュール未チェックアウト時の planning/ 配下リンク
+ *   - 未チェックアウトの submodule（`.gitmodules` から導出。src/ai-stock-trading 等）配下のリンク
+ *
+ * **本リポジトリは planning に依存しない**（ADR-0048 決定 2）。かつて持っていた
+ * planning submodule 未 populate 時の分岐（`--require-planning` / `planningPopulated()`）は
+ * submodule そのものを撤去したため退役した（in-repo 完結化）。
+ *
+ * 走査ルートは既定で **`docs/` と `.ai-context/`（AI 向け文脈資料・凍結記録）の両方**。
+ * `.ai-context/` は名前がドットで始まるが、本スクリプトの再帰（`fs.readdirSync`）は
+ * 隠しディレクトリを暗黙にスキップしない。**既定のルート一覧に明示で加えていること自体**が
+ * 「glob ベースのツールは隠しディレクトリを既定で無視し得る」という落とし穴への備えである
+ * （ADR-0048 の実装メモ）。
+ *
  * 外部依存ゼロ（Node 標準モジュールのみ）。破損リンクがあれば終了コード 1。
  *
  * 使い方:
- *   node scripts/check-doc-links.js [--dir docs]
- *   node scripts/check-doc-links.js --self-test  # 検査ロジック自体の自己試験。
+ *   node scripts/check-doc-links.js               # 既定: docs と .ai-context の両方を走査
+ *   node scripts/check-doc-links.js --dir docs     # 走査ルートを明示指定（複数回指定可）
+ *   node scripts/check-doc-links.js --self-test    # 検査ロジック自体の自己試験。
  *   # CI 例: - run: node scripts/check-doc-links.js
  */
 const fs = require('fs');
@@ -37,29 +49,18 @@ const REPO_ROOT = process.env.DOC_LINKS_ROOT
 // 増減するときは self-test の正例・負例を必ず対で更新すること。
 const LINK_EXT = /\.(md|ya?ml|json|puml|mmd|png|jpe?g|svg|drawio|js|mjs|cjs|ts|tsx|cs|csproj|props|targets|slnx|sh)$/i;
 
+// 既定の走査ルート（リポジトリルートからの相対パス）。
+const DEFAULT_DIRS = ['docs', '.ai-context'];
+
 function parseArgs(argv) {
-  const a = { dir: 'docs', requirePlanning: false };
+  const a = { dirs: [] };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
-    if (x === '--dir') a.dir = argv[++i];
-    else if (x.startsWith('--dir=')) a.dir = x.slice(6);
-    // --require-planning: planning サブモジュールが未チェックアウトなら fail する（endazon/microservices-platform#232 と同根）。
-    // トークン付きで submodule を取得する定期ジョブから使い、取得漏れ（＝planning リンクの検査漏れ）を
-    // 黙って通さず可視化する。
-    else if (x === '--require-planning') a.requirePlanning = true;
+    if (x === '--dir') a.dirs.push(argv[++i]);
+    else if (x.startsWith('--dir=')) a.dirs.push(x.slice(6));
   }
+  if (a.dirs.length === 0) a.dirs = DEFAULT_DIRS.slice();
   return a;
-}
-
-// planning サブモジュールが populate 済みか（projects/ の実在で判定）。CI が submodule なしで
-// checkout した場合は planning/ が空プレースホルダになるため、存在チェックだけでは判別できない。
-// `--require-planning` 用の判定であり、リンク検査の対象外判定は下の一般則を使う。
-function planningPopulated(root = REPO_ROOT) {
-  try {
-    return fs.existsSync(path.join(root, 'planning', 'projects'));
-  } catch (e) {
-    return false;
-  }
 }
 
 // .gitmodules から submodule の path 一覧を得る。
@@ -125,12 +126,18 @@ function isBrokenRef(ref, baseDir, onSkip) {
   if (!t) return false;
   if (/^(https?:|mailto:|#|\/|[a-z]+:\/\/)/i.test(t)) return false; // 外部/アンカー/絶対
   if (t.startsWith('<') || t.includes('${') || t.includes('{{')) return false; // テンプレ変数
+  // `.ai-context/` frontmatter の `plan_refs` は `planning:<計画リポ相対パス>` という非パス表記へ
+  // 変換済み（ADR-0048 決定 3(c)）。パスではなく識別子なので実在検査の対象外とする。
+  if (/^planning:/.test(t)) return false;
+  // 同様に、旧 feedback/（ADR-0048 決定 5 で撤去。環流は planning の GitHub issue へ一本化）を
+  // 指していた frontmatter リスト項目は `feedback:<basename>` という非パス表記へ変換済み。
+  if (/^feedback:/.test(t)) return false;
   t = t.split('#')[0].split('?')[0].trim();
   if (!t) return false;
   // **同一ディレクトリのベアファイル名（`./` も `/` も無い形）も相対リンクである**（planning#337）。
   // かつては `./` `../` で始まるか `/` を含むものしか相対と見なさず、`IADR-0118_xxx.md` の形が
   // **一切検査されていなかった** —— 実在しないファイルを指すリンクを足しても
-  // `OK: … 破損した相対リンクはありません` で緑になった。**`docs/adr/` の §関連 はほぼこの形で
+  // `OK: … 破損した相対リンクはありません` で緑になった。**`.ai-context/adr/` の §関連 はほぼこの形で
   // 書かれる**ため、最も壊れやすい箇所がまるごと対象外だったことになる。
   // **2 つの実装リポジトリが独立に同じ穴を踏んで同じ修正へ至った**（endazon/ai-stock-trading#399 /
   // endazon/microservices-platform#609）。**実測件数はここに書かない** —— リンクを 1 本足しただけで
@@ -228,7 +235,7 @@ function selfTest() {
   // --- 同一ディレクトリのベアファイル名（`./` も `/` も無い形。planning#337） ----------------
   //
   // **この対が無かったことが穴を長く開けたままにした直接の原因である。**
-  // `docs/adr/` の §関連 はほぼこの形で書かれており、実データに多数あるが、`looksRelative` が
+  // `.ai-context/adr/` の §関連 はほぼこの形で書かれており、実データに多数あるが、`looksRelative` が
   // `/` の有無しか見ていなかったため**全件が無検査**だった。
   t('正例: 同一ディレクトリの実在ファイルをベア名で指しても破損でない',
     isBrokenRef('check-doc-links.js', here) === false);
@@ -245,6 +252,10 @@ function selfTest() {
     ['https://example.com/a.js', '#section', '/etc/a.js'].every((x) => isBrokenRef(x, here) === false));
   t('対象外: テンプレ変数を含む表記は検出しない',
     isBrokenRef('${DIR}/a.js', here) === false && isBrokenRef('<path>/a.js', here) === false);
+  t('対象外: plan_refs の非パス表記 planning:... は検出しない（ADR-0048 決定 3c）',
+    isBrokenRef('planning:projects/microservices-platform/07_adr/ADR-0001_x.md', here) === false);
+  t('対象外: 旧 feedback/ の非パス表記 feedback:... は検出しない（ADR-0048 決定 5）',
+    isBrokenRef('feedback:20260101_example.md', here) === false);
   t('アンカー・クエリ付きでも本体パスで判定する',
     isBrokenRef('./check-doc-links.js#L30', here) === false
       && isBrokenRef('./__no_such_script__.js#L1', here) === true);
@@ -269,6 +280,26 @@ function selfTest() {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // --- 走査ルート: ドット始まりのディレクトリを既定で拾う（.ai-context/ 対策） -------------
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'doclinks-dotdir-'));
+    const hidden = path.join(dir, '.ai-context', 'adr');
+    fs.mkdirSync(hidden, { recursive: true });
+    fs.writeFileSync(path.join(hidden, 'IADR-0001_x.md'), '# X\n');
+    const found = mdFiles(path.join(dir, '.ai-context'));
+    t('mdFiles: ドット始まりディレクトリの配下も走査する（隠しディレクトリをスキップしない）',
+      found.length === 1 && found[0].endsWith('IADR-0001_x.md'), found);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // --- parseArgs: 既定は docs と .ai-context の両方（ADR-0048 決定 1） ----------------------
+  {
+    t('parseArgs: 引数無しは既定で docs と .ai-context の両方',
+      JSON.stringify(parseArgs([]).dirs) === JSON.stringify(['docs', '.ai-context']));
+    t('parseArgs: --dir を複数回渡すとその通りに走査ルートを積む',
+      JSON.stringify(parseArgs(['--dir', 'docs', '--dir', '.ai-context']).dirs) === JSON.stringify(['docs', '.ai-context']));
+  }
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -284,26 +315,23 @@ function selfTest() {
 function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
   const a = parseArgs(process.argv.slice(2));
-  // 定期ジョブでは planning が populate されている前提を検証する。未 populate なら
-  // planning リンクは（isBrokenRef により）検査対象外となり破損を見逃すため、ここで明示的に fail する。
-  if (a.requirePlanning && !planningPopulated()) {
-    console.error(
-      '[check-doc-links] --require-planning: planning サブモジュールが未チェックアウトです。\n' +
-        '  submodules を取得（例: actions/checkout の submodules: recursive + PLANNING_REPO_TOKEN）してから実行してください。',
-    );
-    process.exit(1);
+  const seen = new Set();
+  const files = [];
+  for (const d of a.dirs) {
+    for (const fp of mdFiles(path.isAbsolute(d) ? d : path.join(REPO_ROOT, d))) {
+      if (!seen.has(fp)) { seen.add(fp); files.push(fp); }
+    }
   }
-  const files = mdFiles(a.dir);
   // ★ 0 件走査で緑を返さない（fail-closed。planning#337）。走査対象を 1 件も拾えないのは
   // 「検査しているつもりで何も見ていない」状態であり、**退行を止めているという記録だけが残る**。
   if (files.length === 0) {
-    console.error(`[check-doc-links] ${a.dir} 配下に Markdown が 1 件もありません。`);
+    console.error(`[check-doc-links] ${a.dirs.join(', ')} 配下に Markdown が 1 件もありません。`);
     console.error('  0 件検査は「検査しているつもりで何も見ていない」状態なので fail させています。');
     process.exit(1);
   }
   let total = 0;
   const report = [];
-  // 未 populate な submodule 配下として除外したリンクを submodule 別に数える。
+  // 未 populate な submodule（src/ai-stock-trading 等）配下として除外したリンクを submodule 別に数える。
   const skipped = new Map();
   const onSkip = (sub) => skipped.set(sub, (skipped.get(sub) || 0) + 1);
   for (const fp of files) {
@@ -316,9 +344,7 @@ function main() {
 
   // 検査対象外にした範囲を必ず知らせる（issue planning#139）。
   // これを黙っていると「破損した相対リンクはありません」が、実際には検査していない範囲まで
-  // 含んだ断定になる。実際に ai-stock-trading では PR CI が planning 配下 753 件を毎回飛ばし、
-  // その隙間で破損 20 件が蓄積した（夜間の doc-links-planning は PR に紐づかず、
-  // PLANNING_REPO_TOKEN 未登録なら動かない）。
+  // 含んだ断定になる。
   const skippedTotal = [...skipped.values()].reduce((n, v) => n + v, 0);
   let skipNote = '';
   if (skippedTotal > 0) {
@@ -326,14 +352,13 @@ function main() {
     skipNote = `（未 populate の submodule 配下 ${skippedTotal} 件は対象外 — ${detail}）`;
     notice(
       `未 populate の submodule 配下 ${skippedTotal} 件のリンクを検査対象外にした（${detail}）。` +
-        'この範囲は本実行では検査されていない。PR 段階で検査するには checkout に ' +
-        'submodules とトークンを付けるか、定期ジョブ（doc-links-planning）の結果を確認すること'
+        'この範囲は本実行では検査されていない。PR 段階で検査するには checkout に submodules を付けること'
     );
   }
 
   if (total === 0) {
     console.log(
-      `[check-doc-links] OK: ${files.length} 件の Markdown に破損した相対リンクはありません${skipNote}。`
+      `[check-doc-links] OK: ${files.length} 件の Markdown（走査ルート: ${a.dirs.join(', ')}）に破損した相対リンクはありません${skipNote}。`
     );
     process.exit(0);
   }
@@ -342,7 +367,7 @@ function main() {
     console.error(`\n  ${r.fp}`);
     for (const l of r.links) console.error(`    - ${l}`);
   }
-  console.error('\n相対パスの綴り・階層（例: docs/functional/ からは ../../planning/... ）を確認してください。');
+  console.error('\n相対パスの綴り・階層（例: docs/functional/ からは ../../.ai-context/adr/... ）を確認してください。');
   process.exit(1);
 }
 
@@ -350,12 +375,13 @@ if (require.main === module) main();
 
 module.exports = {
   parseArgs,
-  planningPopulated,
   submodulePaths,
   underUnpopulatedSubmodule,
   unpopulatedSubmoduleOf,
   isBrokenRef,
   collectBroken,
+  mdFiles,
   selfTest,
   LINK_EXT,
+  DEFAULT_DIRS,
 };

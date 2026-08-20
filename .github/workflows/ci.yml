@@ -85,10 +85,10 @@ jobs:
           REQUIRE_REPO_TESTS: "1"
         run: node scripts/scripts.test.js
 
-  # スタック非依存: docs/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
+  # スタック非依存: docs/ と .ai-context/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
-  # 注: private な planning サブモジュール配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
-  #     planning 込みの検査は doc-links-planning.yml（夜間・トークン付き）が担う（Issue #232 / IADR-0058）。
+  # 本リポジトリは planning に依存しない（ADR-0048 決定 2）。未取得の submodule（src/ai-stock-trading）
+  # 配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
   doc-links:
     runs-on: ubuntu-latest
     steps:
@@ -103,62 +103,9 @@ jobs:
       - name: Check doc links
         run: node scripts/check-doc-links.js
 
-  # NFR, IADR-0184: 計画リポジトリへ伝達されないまま滞留した環流記録を警告する（#710）。
-  #
-  # **警告のみでジョブは落とさない。** 起票は人手の判断を伴うため、ブロックにすると
-  # 回避策（記録を作らない）を誘発する。目的は「気付けること」であって「止めること」ではない。
-  # 厳格化したい場合は下の env を有効化する（他の検査器と同じ opt-in 方式。IADR-0184 決定 3）。
-  #
-  # ★ 既知の偽陽性が 1 件ある（IADR-0184 決定 2）。`feedback/README.md` は伝達の経路を 2 つ
-  #   （記録ファイルのコピー / Issue 起票）認めるが、検査器は Issue 経路しか証拠と読まない。
-  #   キットへ環流済みで、**それが反映されるまでこの 1 件は鳴り続ける**。
-  feedback-dispatched:
-    runs-on: ubuntu-latest
-    # env:
-    #   STRICT_FEEDBACK_DISPATCH: "1"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test feedback dispatch checker
-        run: node scripts/check-feedback-dispatched.js --self-test
-      - name: Check feedback dispatched
-        run: node scripts/check-feedback-dispatched.js
-
-  # NFR / IADR-0115 決定 2 / issue #713: キット repo-template との分類（A/B/C）に基づく追随検査。
-  # ★ 本ジョブは planning を populate しない（private でトークンが要る）ため、**実データ走査はここでは走らせない**。
-  #   従前は実データ走査を置いて warn ＋ skip で緑にしていたが、「配線したのに一度も検査していない」状態が
-  #   緑で固定されるため、#751 / IADR-0201 決定 4 で **実データ走査は planning を populate する
-  #   doc-links-planning.yml へ移し、--require-planning を付けた**（planning#343 の裁定に追随）。
-  #   ここに残すのは自己試験だけである（planning 不要で必ず実効する）。
-  kit-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test kit sync checker
-        run: node scripts/check-kit-sync.js --self-test
-
-  # NFR / planning#323 の裁定 / issue #737: 環流記録の status が計画側の裁定に追随しているかの検査。
-  # ★ kit-sync と同じ理由で、実データ走査は doc-links-planning.yml（--require-planning 付き）が担う
-  #   （#751 / IADR-0201 決定 4 が IADR-0193 決定 3 を改定）。ここに残すのは自己試験だけである。
-  feedback-status-sync:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      # ★ 自己試験は fixture で駆動するため planning が無くても実効する。
-      - name: Self-test the comparison logic
-        run: node scripts/check-feedback-status-sync.js --self-test
-
   # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
   # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて
-  # 測り、合算しない。予算値 51,200 の正本は planning/docs/ai-implementation-workflow-guide.md §8（検査器は出典つきの複製を持つ）。
+  # 測り、合算しない。予算値 51,200 の正本は project-planning の docs/ai-implementation-workflow-guide.md §8（検査器は出典つきの複製を持つ）。
   # 100% 超で fail、90% 以上で warn（warn は失敗にしない）。AGENTS.md 系は実測が無いため観測のみ。
   reading-budget:
     runs-on: ubuntu-latest
@@ -251,7 +198,7 @@ jobs:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule を非再帰で取得し、
       # 追加ユニット（AST 等）の csproj 依存方向も継続的に機械検査する（未取得だと空の gitlink となり
-      # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため）。private planning は巻き込まない。
+      # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
@@ -415,7 +362,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # public な src/* ユニットのみ非再帰で取得する（private planning を巻き込まない。lint ジョブと同型）。
+      # public な src/* ユニットのみ非再帰で取得する（lint ジョブと同型）。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
@@ -435,9 +382,8 @@ jobs:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
-      # 検査対象外になる。checkout の submodules: recursive/true は private な planning（IADR-0058）まで
-      # 取得しようとして失敗するため使わない。public ユニットはトークン不要（private ユニットは別途
-      # IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      # 検査対象外になる。public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが
+      # 要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
@@ -463,9 +409,8 @@ jobs:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
       # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
-      # restore/build/test の対象外になる。checkout の submodules: recursive/true は private な planning
-      # （IADR-0058）まで取得しようとして失敗するため使わない。public ユニットはトークン不要（private
-      # ユニットは別途 IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      # restore/build/test の対象外になる。public ユニットはトークン不要（private ユニットは別途
+      # IADR-0058 型トークンが要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
       - name: Fetch unit submodules (src/*, public, non-recursive)
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
@@ -526,7 +471,7 @@ jobs:
   #
   # #801（雛形 frontend）と違い「paths: へ 1 行足す」では直らない。雛形はテンプレート位置のままでは
   # ビルドできない（IADR-0060 決定 3 / 決定 4・IADR-0064。実測は
-  # docs/specs/20260818_issue-830_template-backend-ci-build.md）:
+  # .ai-context/specs/20260818_issue-830_template-backend-ci-build.md）:
   #   - SampleService.Api.csproj の platform Shared への相対参照（..\ × 6）は **配置後**の
   #     src/<unit>/backend/... を前提とする。templates/ 位置では templates/platform/... を探して
   #     見つからず、restore が MSB4181 で失敗する。

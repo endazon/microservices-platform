@@ -59,13 +59,14 @@ const ID_KINDS = splitList(process.env.PLAN_ID_KINDS, ['IADR', 'ADR', 'FR', 'NFR
 
 // 【置換点】走査から外す追加パス（先頭一致の正規表現の断片）。
 // **submodule は `.gitmodules` から自動で導出する**ので、ここへ書かなくてよい。
-// 【本リポの値・#756】`docs/superpowers/` は外部由来の教材の写しであり、本リポの表記規約の対象外。
+// 【本リポの値・#756】`.ai-context/superpowers/`（旧 docs/superpowers/）は外部由来の教材の写しであり、本リポの表記規約の対象外。
 // 差し替え前（#576 版）の `EXCLUDED_PATH_RE` が持っていた除外をここで保つ（退行を作らない）。
-const EXTRA_EXCLUDES = splitList(process.env.PLAN_ID_EXCLUDES, ['docs/superpowers/']);
+const EXTRA_EXCLUDES = splitList(process.env.PLAN_ID_EXCLUDES, ['.ai-context/superpowers/']);
 
 // 生成物・記録は既定で外す。**CHANGELOG は履歴の写しであり書き換えない**（生成時に是正する）。
-// **作業仕様書と環流記録は point-in-time の記録**であり、後から表記だけ直すと当時の記述と食い違う。
-const DEFAULT_EXCLUDES = ['planning/', 'CHANGELOG.md', 'docs/specs/', 'feedback/'];
+// **作業仕様書は point-in-time の記録**であり、後から表記だけ直すと当時の記述と食い違う。
+// planning submodule と feedback/ は ADR-0048 決定 2・決定 5 で撤去済みのため除外を持たない。
+const DEFAULT_EXCLUDES = ['CHANGELOG.md', '.ai-context/specs/'];
 
 /**
  * `.gitmodules` から submodule のパスを引く。**除外リストを手で保守しない**ため。

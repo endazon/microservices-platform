@@ -117,7 +117,7 @@ export default defineConfig({
       //   計測ゆらぎで「成果物は正しいのに赤」にならない余裕だけを残す）。AST 側の実測が高いため
       //   横断値はこれより高く出るが、**床を横断値に合わせない**——AST は独自の計画と ADR を持つ
       //   別プロジェクト（submodule）であり、そこに床を依存させると AST の pin 更新だけで本リポの
-      //   ゲートが動く（[IADR-0118](../docs/adr/IADR-0118_backend-coverage-floor.md) 決定 4 が
+      //   ゲートが動く（[IADR-0118](../.ai-context/adr/IADR-0118_backend-coverage-floor.md) 決定 4 が
       //   バックエンドの床で名指しした「他プロジェクトのカバレッジを合算した濁り」と同じ失敗）。
       //   MSP 所有分を基準にすれば、AST が抜けても床は満たされる。
       //

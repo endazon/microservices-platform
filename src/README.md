@@ -4,7 +4,7 @@
 `frontend/` を持つ）である。本リポジトリの主たる成果物は **platform（プラットフォーム基盤）** であり、
 **knowledge（ナレッジ活用機能）** は基盤に付随する必須の可変機能ユニットである。
 追加の可変機能ユニットは、本規約に従うことで Git サブモジュール（別リポジトリ）として
-`src/<unit>/` へそのまま配置できる（issue #210 / [IADR-0056](../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
+`src/<unit>/` へそのまま配置できる（issue #210 / [IADR-0056](../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
 ## ユニット構成
 
@@ -43,7 +43,7 @@ src/
 
 `<unit>/backend/Services/<ServiceName>/` は従来どおりの**サービスユニット**（自己完結した実装単位）である。
 区分の背景は [固定/可変区分表](../docs/tech/composability-classification.md) と
-[IADR-0027](../docs/adr/IADR-0027_composability-folder-structure.md) を参照。
+[IADR-0027](../.ai-context/adr/IADR-0027_composability-folder-structure.md) を参照。
 
 ```
 <unit>/backend/Services/<ServiceName>/
@@ -73,14 +73,14 @@ src/
 
 ### サービス直下の標準構成 8 要素と `.gitkeep`
 
-計画 [`12_backend-application-stack`](../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+計画 project-planning の `projects/microservices-platform/06_technical/12_backend-application-stack.md`
 §規範性・粒度・置き場 は、サービス直下に **8 要素**（`Api` / `Worker` / `Application` / `Domain` /
 `Infrastructure` / `Contracts` / `SharedKernel` / `Tests`）を全リポジトリ共通の標準構成と定める。
 **実体が無い要素は、空フォルダを作り `.gitkeep` だけを置く**（`.csproj` は作らない）。
 何も無いと、その要素が**意図的に不在なのか単に作り忘れなのかが一見して分からない**ためである。
 
 - **`Api` と `Worker` は排他**であり、**持たない側は空フォルダを作らない**
-  （実行入口は 1 サービスに 1 つで、「空の実行入口」という状態が存在しない。[IADR-0219](../docs/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
+  （実行入口は 1 サービスに 1 つで、「空の実行入口」という状態が存在しない。[IADR-0219](../.ai-context/adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
 - **`SharedKernel` の粒度はサービス単位**である。**境界をまたいで同一性が要る型**（契約に載る
   `Result` / `Error`）は**ユニット単位**の `Platform.Shared.Kernel` へ置く。**両者は併存する**（同 決定 1）。
 - **★ 空フォルダは「コードが無い」ことを意味しない。** 層の実体は上図のとおり
@@ -99,7 +99,7 @@ src/
 3. **ユニット外への参照は `src/platform/backend/Shared/` の 3 プロジェクトのみ許可**する
    （`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure` / `Platform.Shared.Kernel`。
    IADR-0056 決定 3 の「2 プロジェクト」を
-   [IADR-0117](../docs/adr/IADR-0117_platform-shared-kernel-placement.md) が 3 へ部分改定した。
+   [IADR-0117](../.ai-context/adr/IADR-0117_platform-shared-kernel-placement.md) が 3 へ部分改定した。
    `Platform.Shared.Kernel` は ADR-0030 の共有カーネル（Result / Error）で、実体は未作成）。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
@@ -107,7 +107,7 @@ src/
    - 例外1: 統合テスト（`Tests/`）は検証対象サービスへの ProjectReference を許可する
      （例: IntegrationTests → AuthorizationService.Api）。
    - 例外2: フロントエンドの可変ユニットは `@foundation`（platform/frontend の基盤）と
-     `@platform/ui`（共有 UI パッケージ）を参照してよい（[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md)
+     `@platform/ui`（共有 UI パッケージ）を参照してよい（[IADR-0121](../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md)
      決定 4 が本例外の許可先を 1 → 2 へ部分改定した。`@platform/ui` はドメイン・通信・ルーティング・認証を
      持たないため、ユニットの切り出し可能性を損なわない。逆向き（`@platform/ui` → ユニット）の参照は禁止）。
      platform/frontend 側から可変ユニットを参照するのは合成点（`platform/frontend/src/features/index.ts`）のみとする。
@@ -124,7 +124,7 @@ src/
   全ユニット（submodule ユニット含む）へ自動継承される（ユニット単独リポジトリでのビルドには
   自前の同等設定が必要）。
 - **フロントエンド**: `src/` を pnpm workspace ルート
-  （[IADR-0121](../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
+  （[IADR-0121](../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2）とし、
   単一 lock（`pnpm-lock.yaml`）で管理する。**メンバの正本は [`pnpm-workspace.yaml`](pnpm-workspace.yaml) 自身**
   であり、ここへ列挙を複写しない。ユニットと共有パッケージのほかに**可変機能ユニットの雛形**
   （`../templates/*/frontend`。`src/` の外にあるため `../` を跨ぐ唯一のメンバ）を含む
@@ -145,8 +145,8 @@ src/
    追加ユニットが private submodule の場合は checkout の `submodules: recursive` + トークンを有効化する。
 4. フロントエンド: pnpm workspace のパターンが `'*/frontend'` のため自動認識される。platform の合成点
    （`platform/frontend/src/features/index.ts`）へ **import 1 行 ＋ 2 か所へのスプレッド 1 行ずつ**を追加する
-   （[IADR-0124](../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
-   [IADR-0056](../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
+   （[IADR-0124](../.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
+   [IADR-0056](../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
    「import 1 行」はこれに部分改定された）。
    ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル**と
    **ナビ項目（`NavItem[]`）**の 2 つである。
@@ -164,9 +164,9 @@ src/
    グループを 1 要素足す（例: `ai-stock-trading` → 「株式自動売買」）。
    **総称としての「その他」は使わない**（05_screens §共通シェル ［2026-08-04 確定］。
    左ナビのグループ名は利用者が機能を探す唯一の手掛かりであり、何が入っているか分からない名前を
-   置くと導線が失われる。[IADR-0125](../docs/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) 決定 9）。
+   置くと導線が失われる。[IADR-0125](../.ai-context/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) 決定 9）。
    旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は本リポジトリから変更できないユニット
-   （`src/ai-stock-trading`。[IADR-0120](../docs/adr/IADR-0120_excluded-units-from-gitmodules.md)）のための
+   （`src/ai-stock-trading`。[IADR-0120](../.ai-context/adr/IADR-0120_excluded-units-from-gitmodules.md)）のための
    互換ブリッジであり、新規ユニットでは使わない。
 5. パッケージバージョンは中央管理（CPM）に従い、csproj に `Version=` を書かない。ユニットは常設の
    `Directory.Build.props` を持たない（配置時に単一情報源を上書きするため。単独ビルドは how-to 参照）。

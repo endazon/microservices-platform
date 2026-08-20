@@ -1,7 +1,7 @@
 # 経路B ローカルエッジ集約（opt-in・Traefik）
 
-> 起点: [IADR-0091](../../../docs/adr/IADR-0091_local-edge-aggregation-traefik.md) /
-> 作業仕様書 [`docs/specs/20260720_issue-356_local-edge-aggregation.md`](../../../docs/specs/20260720_issue-356_local-edge-aggregation.md) / Issue #356
+> 起点: [IADR-0091](../../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) /
+> 作業仕様書 [`.ai-context/specs/20260720_issue-356_local-edge-aggregation.md`](../../../.ai-context/specs/20260720_issue-356_local-edge-aggregation.md) / Issue #356
 
 経路B（k3d / Rancher Desktop 内蔵 k3s）で、**platform フロント（SPA/BFF）を 80/443**、**管理ツール群を単一ポート
 50000** に集約する **opt-in オーバーレイ**。ローカルは Istio 未導入（`values-local` は `edge.enabled=false`）のため、

@@ -1,7 +1,7 @@
 # dev Vault の Keycloak OIDC(SSO)（IADR-0094・#353）
 
-> 起点: [IADR-0094](../../../../docs/adr/IADR-0094_vault-keycloak-oidc.md) /
-> 作業仕様書 [`docs/specs/20260721_issue-353_vault-keycloak-oidc.md`](../../../../docs/specs/20260721_issue-353_vault-keycloak-oidc.md)
+> 起点: [IADR-0094](../../../../.ai-context/adr/IADR-0094_vault-keycloak-oidc.md) /
+> 作業仕様書 [`.ai-context/specs/20260721_issue-353_vault-keycloak-oidc.md`](../../../../.ai-context/specs/20260721_issue-353_vault-keycloak-oidc.md)
 
 経路B の dev Vault（`VAULT=1` の opt-in・`-dev`・インメモリ・unseal 不要）を Keycloak OIDC でログインできるようにする。
 Vault の OIDC 設定は **runtime**（`vault write auth/oidc/*`）のため、`vault-dev.yaml` は無改変で **bootstrap 手順**で入れる

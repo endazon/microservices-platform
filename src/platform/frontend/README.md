@@ -3,8 +3,8 @@
 マイクロサービスプラットフォーム基盤の SPA フロントエンド。pnpm workspace（ルート = `src/`）で
 **platform/frontend（基盤: アプリホスト + foundation）** と
 **knowledge/frontend（付随する可変機能: ナレッジ画面群）** を分離する
-（FR-14 / [IADR-0033](../../../docs/adr/IADR-0033_frontend-spa-foundation.md) /
-[IADR-0056](../../../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
+（FR-14 / [IADR-0033](../../../.ai-context/adr/IADR-0033_frontend-spa-foundation.md) /
+[IADR-0056](../../../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
 ## スタック
 

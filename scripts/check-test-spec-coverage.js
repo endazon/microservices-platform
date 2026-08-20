@@ -51,7 +51,7 @@
  *   走査結果が 0 件（テストクラス 0 / 仕様書 0）、baseline が読めない・壊れている、のいずれも fail。
  *   「見つからないから素通り」は本検査が塞ごうとしている穴と同型である。
  *
- * 対象をバックエンドに限る理由は docs/adr/IADR-0130_test-spec-coverage-ratchet.md を正とする。
+ * 対象をバックエンドに限る理由は .ai-context/adr/IADR-0130_test-spec-coverage-ratchet.md を正とする。
  *
  * 使い方:
  *   node scripts/check-test-spec-coverage.js
@@ -75,10 +75,10 @@ const TEST_CLASS_FILE = /(^|\/)([A-Za-z0-9_]+Tests)\.cs$/;
 // ── [#592 / IADR-0163] `.cs` パスの実在検査 ─────────────────────────────
 //
 // **対象は「現在を記述する必須仕様書」に限る。** 作業当時の事実を記録した文書
-// （`docs/specs/` の作業仕様書・`docs/adr/` の決定記録・`docs/superpowers/plans/` の旧計画）は
+// （`.ai-context/specs/` の作業仕様書・`.ai-context/adr/` の決定記録・`.ai-context/superpowers/plans/` の旧計画）は
 // **追随させてはならない** —— 改定前の構造を説明している箇所が多数あり（実測 458 件）、
 // 書き換えると「当時こう決めた」という記録として壊れる。
-// #592 は `docs/specs/` だけを対象外と書いていたが、**同じ理屈が `docs/adr/` にも当たる**。
+// #592 は `docs/specs/`（現 `.ai-context/specs/`）だけを対象外と書いていたが、**同じ理屈が `docs/adr/`（現 `.ai-context/adr/`）にも当たる**。
 const SOURCE_PATH_SPEC_DIRS = [
   'docs/tests',
   'docs/functional',
@@ -571,8 +571,8 @@ function selfTest() {
         { exists: never, isExcluded: makeIsExcludedPath(new Set(['vendor-unit'])) }).length === 0);
 
     // 走査対象のディレクトリに履歴文書を含めていないこと（判断 3）。
-    t('SOURCE_PATH_SPEC_DIRS: docs/specs ・docs/adr ・docs/superpowers を含まない',
-      !SOURCE_PATH_SPEC_DIRS.some((d) => /^docs\/(specs|adr|superpowers)/.test(d)),
+    t('SOURCE_PATH_SPEC_DIRS: docs/specs ・docs/adr ・docs/superpowers（.ai-context/ 移設後の現行含む）を含まない',
+      !SOURCE_PATH_SPEC_DIRS.some((d) => /^(docs\/(specs|adr|superpowers)|\.ai-context\/(specs|adr|superpowers))/.test(d)),
       SOURCE_PATH_SPEC_DIRS);
 
     // 実データでの固定。**0 件へ退行したら検査が静かに失効する**
@@ -659,7 +659,7 @@ function main() {
       `- 記載が消えた（**fail**）: **${r.regressed.length}**${r.regressed.length ? ` — ${r.regressed.join(' / ')}` : ''}`,
       `- 未記載（warn）: **${r.undocumented.length}**${r.undocumented.length ? ` — ${r.undocumented.join(' / ')}` : ''}`,
       '',
-      '規約は `docs/tests/TEST_STRATEGY.md`、設計は `docs/adr/IADR-0130_test-spec-coverage-ratchet.md`。',
+      '規約は `docs/tests/TEST_STRATEGY.md`、設計は `.ai-context/adr/IADR-0130_test-spec-coverage-ratchet.md`。',
     ];
     try { fs.appendFileSync(summary, lines.join('\n') + '\n'); } catch { /* サマリ不可でも検査は続ける */ }
   }
@@ -713,7 +713,7 @@ function main() {
       '\n    必須仕様書が指す `.cs` が実在しません（改名・移動に追随していない。#592 の再発）。' +
       '\n    実体の場所は `git ls-files | grep <ファイル名>` で確かめ、**推測で書き換えないこと**。' +
       `\n    対象は「現在を記述する必須仕様書」（${SOURCE_PATH_SPEC_DIRS.join(' / ')}）に限ります —— ` +
-      'docs/specs/ ・docs/adr/ ・docs/superpowers/ は**作業当時の記録**なので追随させません。');
+      '.ai-context/specs/ ・.ai-context/adr/ ・.ai-context/superpowers/ は**作業当時の記録**なので追随させません。');
   }
 
   if (failures.length === 0) {
@@ -726,7 +726,7 @@ function main() {
   }
   console.error(`[check-test-spec-coverage] 違反 ${failures.length} 件を検出しました:`);
   for (const f of failures) console.error(`\n  ${f}`);
-  console.error('\n設計と限界は docs/adr/IADR-0130_test-spec-coverage-ratchet.md を参照してください。');
+  console.error('\n設計と限界は .ai-context/adr/IADR-0130_test-spec-coverage-ratchet.md を参照してください。');
   process.exit(1);
 }
 

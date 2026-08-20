@@ -1,6 +1,6 @@
 # 経路B ローカル可観測性スタック（opt-in）
 
-> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
+> 起点: [ADR-0006](../../../.ai-context/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
 
 経路B（k8s）で Prometheus / Loki / Tempo / Grafana を `platform-infra` に立てる **opt-in オーバーレイ**。
 既定（`deploy/local/infra` のみ）は otel-collector が **debug exporter のみ**＝外部送信なし（fail-safe）。
@@ -82,7 +82,7 @@ PERSIST=1 OBSERVABILITY=1 bash scripts/k8s-local-up.sh
   非 root のまま書けている（IADR-0210 決定 6）。
 - **PVC を掴む Deployment は `strategy: Recreate`**（RWO と RollingUpdate は両立しない。IADR-0210 決定 7）。
 - 詳細は [`deploy/local/README.md`](../README.md) の「永続化」節と
-  [IADR-0210](../../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)。
+  [IADR-0210](../../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)。
 
 ## 切り戻し
 
@@ -95,7 +95,7 @@ rollout restart で debug-only（既定）へ戻す（永続化版を当てて�
 本オーバーレイはローカル検証用。稼働率99%の実測・Alertmanager 実配線・**本番相当の**リテンション設計は
 **Tier 3**（対象外）。
 
-> ★ 混同しないこと（#787 / [IADR-0210](../../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)）:
+> ★ 混同しないこと（#787 / [IADR-0210](../../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)）:
 > `prometheus.yaml` の `--storage.tsdb.retention.time=7d` / `--storage.tsdb.retention.size=4GB` は
 > **dev ローカルの保持期間**であり、上の「本番相当のリテンション」ではない。本番像
 > （`deploy/helm/microservices-platform/templates/`）には Prometheus / Loki / Tempo / Grafana が

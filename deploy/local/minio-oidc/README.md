@@ -1,7 +1,7 @@
 # MinIO Console の Keycloak OIDC(SSO)（IADR-0093・#353）
 
-> 起点: [IADR-0093](../../../docs/adr/IADR-0093_minio-keycloak-oidc.md) /
-> 作業仕様書 [`docs/specs/20260721_issue-353_minio-keycloak-oidc.md`](../../../docs/specs/20260721_issue-353_minio-keycloak-oidc.md)
+> 起点: [IADR-0093](../../../.ai-context/adr/IADR-0093_minio-keycloak-oidc.md) /
+> 作業仕様書 [`.ai-context/specs/20260721_issue-353_minio-keycloak-oidc.md`](../../../.ai-context/specs/20260721_issue-353_minio-keycloak-oidc.md)
 
 経路B の MinIO Console を Keycloak OIDC でログインできるようにする。OIDC 配線は helm の opt-in
 （`minio.oidc.enabled`・`values-local.yaml` で有効化）で自動、**MinIO ポリシー作成のみ runtime 手順**（下記）。

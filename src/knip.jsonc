@@ -1,6 +1,6 @@
 {
   // ADR-0031（13_frontend-stack §採用技術一覧「Dead Code 検出 = Knip」）/ IADR-0121 決定 1（第 5 段 = 運用系）/
-  // IADR-0211（本設定の決定）。issue #493。設計と実測は docs/specs/20260816_issue-493_knip-unused-detection.md。
+  // IADR-0211（本設定の決定）。issue #493。設計と実測は .ai-context/specs/20260816_issue-493_knip-unused-detection.md。
   //
   // ■ なぜ .jsonc なのか（.json でも .config.ts でもなく）
   //   本リポジトリの設定ファイルは**設定の隣に理由を書く**（eslint.config.js / vite.config.ts /

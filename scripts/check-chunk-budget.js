@@ -242,7 +242,7 @@ function main(argv) {
     process.stderr.write('✗ [check-chunk-budget] バンドル分割の検査に失敗しました:\n');
     for (const f of failures) process.stderr.write(`  - ${f}\n`);
     process.stderr.write(
-      '\n規則は vite.config.ts の manualChunks と docs/adr/IADR-0134_spa-route-code-splitting-boundaries.md を参照。\n'
+      '\n規則は vite.config.ts の manualChunks と .ai-context/adr/IADR-0134_spa-route-code-splitting-boundaries.md を参照。\n'
     );
     return 1;
   }

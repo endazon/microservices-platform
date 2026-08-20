@@ -40,6 +40,9 @@ const path = require('path');
 const REPO = path.join(__dirname, '..');
 const DOCS = path.join(REPO, 'docs');
 const TEMPLATES = path.join(DOCS, 'templates');
+// ADR-0048 決定 1: IADR・作業仕様書・superpowers は `.ai-context/` へ移設された。
+// `docs/` と両方を走査しないと、移設後は IADR / 作業仕様書 / superpowers の type が検査されなくなる。
+const AI_CONTEXT = path.join(REPO, '.ai-context');
 
 // frontmatter の切り出しは #667 の検査器と共有する（同じ解析器であることを明示的に担保する）。
 const { frontMatter } = require('./check-doc-status-vocabulary.js');
@@ -52,7 +55,7 @@ const BASELINE = {
   tech: 2,
   'tech-note': 1,
   'tech-architecture': 1,
-  // docs/superpowers は #59 / #72 由来の旧構造で、docs/README.md の種別表に無い。
+  // .ai-context/superpowers（旧 docs/superpowers）は #59 / #72 由来の旧構造で、docs/README.md の種別表に無い。
   design: 1,
 };
 
@@ -305,7 +308,7 @@ function main(argv) {
     return 1;
   }
 
-  const docs = walk(DOCS).map((abs) => ({
+  const docs = [...walk(DOCS), ...walk(AI_CONTEXT)].map((abs) => ({
     relPath: path.relative(REPO, abs).split(path.sep).join('/'),
     text: fs.readFileSync(abs, 'utf8'),
   }));

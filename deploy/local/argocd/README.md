@@ -1,6 +1,6 @@
 # 経路B ローカル GitOps（ArgoCD）ブートストラップ（opt-in）
 
-> 起点: [ADR-0006](../../../docs/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
+> 起点: [ADR-0006](../../../.ai-context/adr/IADR-0077_local-observability-vault-gitops-overlays.md) / IADR-0077（AST#24）
 
 ArgoCD 本体は大きな公式 install manifest を URL 適用するため、ここでは**ブートストラップ手順**のみを置く
 （既存の [`deploy/argocd`](../../argocd/README.md) の `Application`/`AppProject` を再 vendoring しない）。

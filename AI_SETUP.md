@@ -57,7 +57,7 @@ worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設
 
 ### 共通（どのプロファイルでも実施）
 
-1. 計画リポジトリ `project-planning` を参照可能にする（**本リポは git submodule `planning/`**。`git submodule update --init planning`）。
+1. 計画リポジトリ `project-planning` を参照可能にする（**本リポは planning に依存しない**。ADR-0048 決定 2。GitHub 上の URL または隣接クローンで参照する）。
 2. 技術スタックに合わせて `*.example` の CI 系（`ci.example.yml` / `codeql.example.yml`）を有効化する。
    - **注意: `.github/workflows/` 配下では `.example` を挟んでも無効にならない。** GitHub Actions は
      同ディレクトリ内の `*.yml` をファイル名に関わらず実行するため、`frontend.example.yml` のような
@@ -151,7 +151,7 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
 
 > **本節はキット原本とバイト一致である（分類 A）。** キット側も同じ判断で是正済みであり
 > （[planning#402](https://github.com/endazon/project-planning/pull/402)）、固有デルタは持たない。
-> 判断の記録は [IADR-0222](docs/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)。
+> 判断の記録は [IADR-0222](.ai-context/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)。
 
 ### 4-2. プラグイン・スキルの各自導入（任意・推奨）
 
@@ -204,8 +204,8 @@ npx playwright-cli install --skills   # Claude Code 用スキルを配置
   `pnpm --filter <pkg> exec` で起動する（ルート導入は `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` を招く）。
 
 > **【本リポの固有デルタ・第 2 種】** 上表の「CI の E2E テスト」に当たるのは `src/platform/frontend` の
-> `@playwright/test` であり、[IADR-0033](docs/adr/IADR-0033_frontend-spa-foundation.md) で確定している。
-> 役割の棲み分けは [IADR-0221](docs/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)。
+> `@playwright/test` であり、[IADR-0033](.ai-context/adr/IADR-0033_frontend-spa-foundation.md) で確定している。
+> 役割の棲み分けは [IADR-0221](.ai-context/adr/IADR-0221_playwright-cli-vs-test-runner-scope.md)。
 > pnpm workspace の注意（上記）の具体形は `pnpm --filter @platform/frontend exec` である
 > （`src/` 直下での素の `pnpm exec playwright` が落ちる実測は `frontend.yml` にコメントで残っている）。
 

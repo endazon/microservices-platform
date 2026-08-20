@@ -5,7 +5,7 @@
 ## このリポジトリの位置付け
 
 - 上流工程リポジトリ `project-planning` で確定した計画書を**実装する**作業リポジトリ。
-- 計画書は `project-planning` の `projects/<name>/00_vision 〜 07_adr` にある（**本リポは git submodule `planning/`**。キットは隣接クローンにも対応するが本リポは採らない）。
+- 計画書は `project-planning` の `projects/<name>/00_vision 〜 07_adr` にある（**本リポは planning に依存しない**。ADR-0048 決定 2。参照は GitHub 上の URL または隣接クローンで行う）。
 - 利用可能な AI（Claude Code サブスク / Anthropic API / GitHub Copilot）と有効化するファイルは `AI_SETUP.md` で宣言する。AI 機能の一部はプロファイル依存である。
 - 成果物の主従（主たる成果物と付随成果物）は README 冒頭・`CLAUDE.md` に明示し、計画書と一致させ続ける。
 
@@ -13,14 +13,14 @@
 
 実装の起点となる計画書の ID を必ず残す。
 
-- 起点 ID の種別: `FR-xx`（機能要求）/ `UC-xx`（ユースケース）/ `SC-xx`（画面）/ `ADR-xxxx`（計画ADR）/ `IADR-xxxx`（実装ADR・本リポ `docs/adr/`）。
+- 起点 ID の種別: `FR-xx`（機能要求）/ `UC-xx`（ユースケース）/ `SC-xx`（画面）/ `ADR-xxxx`（計画ADR）/ `IADR-xxxx`（実装ADR・本リポ `.ai-context/adr/`）。
 - 残す箇所: ブランチ名（`feat/FR-012-...`）、コミットメッセージ先頭（`feat(FR-012): ...`）、コード内コメント、PR 本文。
 
 ## 実装の基本フロー
 
 1. 対象の計画書（要求・UC・画面）を読み、受け入れ基準を把握する。
 2. 関連 ADR を読み、確定済み制約に違反しないことを確認する。曖昧なら実装を止めて人間に確認する。
-3. **作業着手前に必ず `docs/specs/<YYYYMMDD>_<概要>.md` に作業仕様書を作成する**。該当する必須仕様書（機能/画面/通信/データ/技術/テスト/運用/セキュリティ、`docs/` 配下）も作成・更新する。重要な実装判断は実装ADR（`docs/adr/`、`IADR-XXXX`）に残す。仕様書一覧は `docs/README.md` 参照。
+3. **作業着手前に必ず `.ai-context/specs/<YYYYMMDD>_<概要>.md` に作業仕様書を作成する**。該当する必須仕様書（機能/画面/通信/データ/技術/テスト/運用/セキュリティ、`docs/` 配下）も作成・更新する。重要な実装判断は実装ADR（`.ai-context/adr/`、`IADR-XXXX`）に残す。仕様書一覧は `docs/README.md` 参照。
 4. 仕様書・計画書に忠実に実装する。計画外の機能追加・過剰な抽象化を避ける。
 5. 受け入れ基準をテストに写像する。
 6. **完了前に `/verify` でビルド・テスト・lint を実行し、`docs/DEFINITION_OF_DONE.md` を満たすことを確認する。**
@@ -31,7 +31,7 @@
 
 ## 守ること
 
-- **仕様書（`docs/specs/`）を作成せずに実装へ着手しない**。
+- **仕様書（`.ai-context/specs/`）を作成せずに実装へ着手しない**。
 - 1 コミット = 1 論理変更。コミットメッセージ先頭に種別（`feat:` `fix:` `refactor:` `test:` `docs:` `chore:`）と起点 ID。
 - `main` への直接コミット禁止。作業ブランチ → PR 経由。
 - 破壊的 git 操作（force push, `reset --hard`）禁止。
@@ -43,7 +43,7 @@
 本リポジトリは役割スロット制（orchestrator / worker / reviewer。配役は `ai-roster.json`、正本は `docs/ai-orchestration.md`）を採る。Claude 以外のエージェントが **worker**（実装担当）として起動された場合、上の「守ること」に加えて次に従う。
 
 - **割り当てられた git worktree の中だけで作業する**。worktree の外に書かない。
-- 上の基本フローどおり、**作業仕様書（`docs/specs/`）を作成してから実装する**。仕様書なしの着手は禁止。
+- 上の基本フローどおり、**作業仕様書（`.ai-context/specs/`）を作成してから実装する**。仕様書なしの着手は禁止。
 - **帰属を機械可読に残す**: コミットに `Co-Authored-By: <エンジン名> <モデル名>` トレーラを付け、PR には `agent:<engine>` / `model:<model>` ラベルを付ける。
 - **中間成果物（質問票・作業指示書）をコミットしない**。force push しない。
 - `.claude/hooks/` のガード（破壊的操作・秘密混入の遮断）は **Claude 専用であり、あなたには効いていない**。同等の抑止（サンドボックス・破壊的コマンドの自制）は自分と起動元アダプタの責務である。

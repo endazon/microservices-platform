@@ -1,9 +1,9 @@
 # Wiki.js の Keycloak OIDC(SSO)（IADR-0095・#353）
 
-> 起点: [IADR-0095](../../../docs/adr/IADR-0095_wikijs-keycloak-oidc.md) /
-> 作業仕様書 [`docs/specs/20260721_issue-353_wikijs-keycloak-oidc.md`](../../../docs/specs/20260721_issue-353_wikijs-keycloak-oidc.md)
+> 起点: [IADR-0095](../../../.ai-context/adr/IADR-0095_wikijs-keycloak-oidc.md) /
+> 作業仕様書 [`.ai-context/specs/20260721_issue-353_wikijs-keycloak-oidc.md`](../../../.ai-context/specs/20260721_issue-353_wikijs-keycloak-oidc.md)
 
-realm には `wiki-js` client が既存（[IADR-0020](../../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）。
+realm には `wiki-js` client が既存（[IADR-0020](../../../.ai-context/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）。
 **集約後 URL `wiki.localhost:50000`（#357/edge）への redirect は realm に登録済み**で、edge にも wiki route がある
 （#353。非 edge の port-forward 用 `http://localhost:3300/*` も登録済み＝#385/PR #401）。
 **Wiki.js の OIDC 設定は DB/管理UI 保持**（"Generic OpenID Connect" ストラテジ）で manifest 自動化できないため、下記の
@@ -56,7 +56,7 @@ Wiki.js は **コールバックを `{Site URL}/login/{strategyKey}/callback`** 
 以降の手順は **edge 経路を既定**として記述する。port-forward 単独で使う場合は Site URL を `http://localhost:3300` に
 読み替える（他の項目＝endpoint / issuer は in-cluster 名のままで変わらない）。`values-local.yaml` の
 `WIKI_BASE_URL`（SPA の「Wiki を開く」導線）とは**別物**なので両方を揃えること。経路別の port topology は
-[IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../docs/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
+[IADR-0095 の「追記（2026-07-26・Issue #385）」](../../../.ai-context/adr/IADR-0095_wikijs-keycloak-oidc.md)が単一情報源。
 
 ## DB seed で入れる（管理UI を使わない手順・IADR-0103）
 
@@ -132,7 +132,7 @@ curl -s -o /dev/null -w '%{http_code}\n' --cacert ca.crt --resolve wiki.localhos
   `http://localhost:3300/*` を登録済み（#385）。
 - **redirect の port topology（取り違え注意・#385）**: `wiki-js` client に登録済みの redirect は経路ごとに別物。
   **edge 集約＝`https://wiki.localhost:50000/*`** / **k8s の port-forward＝`http://localhost:3300/*`** /
-  **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
+  **compose(dev) の host 公開＝`http://localhost:3001/*`**（[IADR-0032](../../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)
   の `ports: 3001:3000`）/ in-cluster＝`http://wiki-js:3000/*`。k8s の port-forward に `3001` は使わない。
 - **realm 反映**: `wiki-js` client の redirect 追加は realm 再インポートで反映（永続化時は管理コンソール追加 or 再作成）。
 - **dev の Wiki.js DB**: OIDC ストラテジは DB 保持。DB を作り直すと再設定が必要（realm import と同様の runtime 手順）。
