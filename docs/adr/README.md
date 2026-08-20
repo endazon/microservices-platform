@@ -300,3 +300,4 @@
 
 > **採番に関する注記（#507）**: 本 PR は `IADR-0140` を採った。着手時点では `IADR-0139` を並行 PR（#575）が予約していたため避けたもので、**その #575 は PR #582 でマージ済み**（`0139` が着地）。したがって `0136`〜`0140` は欠番なく揃う。
 | [IADR-0226](./IADR-0226_settings-deny-effectiveness-is-environment-dependent.md) | settings.json の自己書き換え防止 deny の実効性は実行環境依存（ローカル第 1 層と位置づけ直し、AI による変更は利用者の明示依頼に限る。環流: planning#422） | Accepted |
+| [IADR-0227](./IADR-0227_edge-host-pod-side-resolution.md) | エッジ host（`*.localhost`）の **pod 側の名前解決**を `coredns-custom` で与える（k3s が optional でマウント済み・`coredns` 本体は触らない）。**ドット入り名は ExternalName 不可**。Keycloak は **websecure(443)** へ出す。**issuer は移さない**。#780 | Accepted |

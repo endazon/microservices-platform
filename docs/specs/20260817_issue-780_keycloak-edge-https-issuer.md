@@ -12,19 +12,30 @@ related_ids:
   - IADR-0091
   - IADR-0197
   - IADR-0206
+  - IADR-0220
+  - IADR-0227
 author: claude
 created: 2026-08-17
-updated: 2026-08-17
+updated: 2026-08-21
 plan_refs:
   - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
 related_specs:
+  - "../adr/IADR-0227_edge-host-pod-side-resolution.md"
   - "../adr/IADR-0206_local-edge-tls-cert-manager.md"
   - "../adr/IADR-0086_oidc-issuer-metadata-split.md"
 ---
 
 # 作業仕様書: Keycloak のエッジ公開と https issuer（#780 ＝ #442 の子 2）
 
-> **本書は着手前の設計固めである。** 実装は #821 の着地後に始める（`scripts/k8s-local-up.*` が交差するため）。
+> **本書は #780 を 2 段に分けて進める。第 1 段（土台）を [[IADR-0227]] として PR にした。**
+>
+> | 段 | 内容 | 状態 |
+> | --- | --- | --- |
+> | **1（本 PR）** | Keycloak をエッジへ出す ＋ エッジ host の pod 側解決を与える。**追加のみ・issuer は移さない** | **実装済み** |
+> | 2 | `KC_HOSTNAME_URL` の変更・realm 作り直し・7 クライアントの redirect・[[IADR-0091]] 決定 5 の Supersede | 未着手 |
+>
+> 分けた理由は [[IADR-0227]]「射程」。第 1 段は**既存の挙動を 1 つも変えない**（issuer は旧値のまま動く）ため、
+> 第 2 段は設定値の変更に集中できる。
 
 ## 1. 起点
 
@@ -223,28 +234,67 @@ scripts/verify-oidc-edge-flow.sh
 - **実装の着手は #821 の着地後**。`scripts/k8s-local-up.*` が交差する（ゲート追加が要る）
 - 開ける先: #388 ／ #466 ／ #781
 
-## 8. セッション終了時点の状態（2026-08-17・引き継ぎ用）
+## 8. 第 1 段（本 PR）の受け入れ基準と検証
 
-**本仕様書とマニフェストは作成済み・未 PR である。** 実装（issuer の切り替え）はここから。
+- [x] Keycloak が `keycloak.localhost` の **websecure(443)** でエッジに出る（admin:50000 ではない）
+- [x] エッジ host が **pod からも解決できる**（`coredns-custom`・`coredns` 本体は無改変）
+- [x] 解決先は Traefik の**正準名**で、ClusterIP を焼き込まない
+- [x] `apply` → `rollout restart` → `rollout status` の順序を検査で固定した
+- [x] **既定（`LOCALEDGE` 未設定）はバイト等価**（`OPTIN_TOKENS` に 2 件追加）
+- [x] **issuer は 1 バイトも変えていない**（`KC_HOSTNAME_URL` 不変・7 クライアントは現状のまま動く）
 
-### 稼働クラスタに当たっているが、まだ develop に無いもの
+### 変異試験（10 通り・全件 RED）
 
-次の 3 つは**実機で検証するために当てた**。いずれも**追加のみで、既存の挙動を壊していない**
-（回帰は §4c の表で確認済み）。撤去したいときは下のコマンドで元に戻る。
+| # | 壊し方 | 結果 |
+| --- | --- | :---: |
+| M1 | Ingress を kustomization から外す（ファイルだけ在って適用されない） | RED |
+| M2 | entrypoint を `admin` へ変える | RED |
+| M3 | host を素の `keycloak` にする | RED |
+| M4 | 後段ポートを 8443 にする | RED |
+| M5 | ConfigMap のキーを `.conf` にする（k3s の import glob に合わない＝置いても読まれない） | RED |
+| M6 | 解決先を ClusterIP で焼き込む | RED |
+| M7 | ConfigMap の namespace を変える | RED |
+| M8 | `rollout restart` を落とす（置いたのに効かない状態） | RED |
+| M9 | `coredns` の apply を落とす | RED |
+| M10 | `restart` を `apply` より前へ動かす（古い ConfigMap で再起動する） | RED |
+| — | 変異なし | GREEN（81 件） |
 
-| 実機の状態 | リポジトリ側 | 撤去 |
-| --- | --- | --- |
-| `kube-system/coredns-custom` ConfigMap | `deploy/local/aliases/coredns-edge-hosts.yaml` | `kubectl -n kube-system delete cm coredns-custom` |
-| `platform-infra/edge-tls` Certificate | `deploy/local/edge/tls/keycloak-certificate.yaml` | `kubectl -n platform-infra delete certificate edge-tls` |
-| `platform-infra/keycloak-edge` Ingress | `deploy/local/edge/keycloak-ingress.yaml` | `kubectl -n platform-infra delete ingress keycloak-edge` |
+> **★ 検査が素通りする形を 1 度作った。** `sed` で正規表現を書き換えた際にバックスラッシュが落ち、
+> `/router.entrypoints:s*(S+)/` という**何にも一致しない正規表現**になっていた。
+> 一致しないので変数は空文字になり、`includes('admin')` は常に false ＝ **常に通るテスト**である。
+> 気づけたのは変異試験ではなく**書いた直後に置換結果を目視した**からで、
+> 変異試験（M2）は「別の検査」が拾っていた。**置換で正規表現を作らない**（ファイルへ書いて `node` で実行する）。
 
-### まだ当てていない（＝ issuer は今も `http://keycloak:8080`）
+> **★ 変異試験の 1 度目はタイムアウトで中断し、変異が 1 つ作業ツリーに残った**（M7 の namespace 差し替え）。
+> **変異試験は必ず復元を確認する** —— `git status` で確かめ、残っていたら戻す。
 
-`KC_HOSTNAME_URL` は 1 バイトも変えていない。**discovery が返す issuer は旧値のまま**であり、
-7 つの OIDC クライアントは**すべて従来どおり動いている**。切り替えは §4c「残っている作業」の 1〜6 を
-まとめて行う必要がある（issuer だけ変えて realm と redirect が追随していない状態は、ログインが全滅する）。
+### ★ 着手中に develop が先行し、証明書が重複した
 
-### ★ 採番はここでは決めない
+当初は `platform-infra` 側の `edge-tls` を本 PR で発行するつもりで書いていた。
+develop を取り込んだ時点で、**[[IADR-0220]]（#841）が `edge-certificate.yaml` の中で既に同じものを
+宣言していた**（`secretName` / `dnsNames` / `issuerRef` まで同一）ことが分かり、撤去した。
+**着手前に引いた母集合は、着地までに腐る** —— 取り込みのたびに引き直すこと。
 
-**develop は本セッション中に `IADR-0226` まで進んだ**（着手時は `0213`）。
-並行セッションが速いため、**採番は実装に着手する直前に引き直すこと**（過去に 3 回衝突している）。
+### 実機（2026-08-17・稼働中の k3s）
+
+§4c の表のとおり。**その後クラスタが停止したため、本 PR の最終形での再実測はできていない**
+（撤去した証明書 1 件を除き、検証時と同じマニフェストである）。
+
+### 稼働クラスタに残っている状態
+
+`kube-system/coredns-custom` ／ `platform-infra/keycloak-edge` Ingress が当たっている
+（`platform-infra/edge-tls` は develop 由来）。撤去するなら:
+
+```bash
+kubectl -n kube-system delete cm coredns-custom
+kubectl -n platform-infra delete ingress keycloak-edge
+```
+
+## 9. 第 2 段（#780 の残り）
+
+1. `deploy/local/infra/keycloak.yaml` の **`KC_HOSTNAME_URL`** を `https://keycloak.localhost` へ
+2. **realm の作り直し**（§3 手順 A。稼働 realm は旧名 `microservices-platform` のまま）
+3. 7 クライアントの redirect / logout URI（`platform-spa` は `##` 区切り）
+4. `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版
+5. [[IADR-0091]] 決定 5 と却下代替案の Supersede
+6. **admin:50000 の TLS 化は [[IADR-0220]] が済ませた** —— #780 の該当基準は既に満たされている
