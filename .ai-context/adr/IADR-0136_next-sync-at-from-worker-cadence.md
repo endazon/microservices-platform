@@ -1,0 +1,122 @@
+---
+title: IADR-0136 NextSyncAt はワーカーの位相から導出し、無効時は null にする
+type: impl-adr
+status: Accepted
+related_ids: [SC-06, UC-04, FR-01, FR-02, IADR-0051, IADR-0074, IADR-0083, IADR-0122, IADR-0132]
+author: Claude
+created: 2026-08-06
+updated: 2026-08-06
+plan_refs:
+  - planning:projects/microservices-platform/05_screens/01_screens.md
+  - planning:projects/microservices-platform/03_usecases/01_usecases.md
+---
+
+# IADR-0136: `NextSyncAt` はワーカーの位相から導出し、定期同期が無効なら `null` にする
+
+- 状態: Accepted
+- 日付: 2026-08-06
+- 決定者: 実装担当（Claude）
+
+## 起点・関連
+
+- 計画 ID: **SC-06**（05_screens §SC-06「同期健全性・次回同期・更新 API の確定」の **Q15**。planning#200）／
+  **UC-04**（基本 2: システムが**定期的に**原本を取得する）／**FR-01**・**FR-02**
+- 実装仕様書: [作業仕様書 #538](../specs/20260806_issue-538_next-sync-at.md)／
+  [画面仕様書 SC-06](../../docs/screens/SC-06_datasource-management.md)／[データ仕様書](../../docs/data/data-source.md)
+- 関連 IADR: [IADR-0051](./IADR-0051_datasource-connector-port-and-filesystem.md)（定期同期ワーカー）・[IADR-0074](./IADR-0074_datasource-periodic-sync-helm-wiring.md)（Helm 配線）・[IADR-0083](./IADR-0083_datasource-sync-single-writer-advisory-lock.md)（単一書き手化）・
+  [IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md)（契約スナップショット）・[IADR-0132](./IADR-0132_openapi-required-from-csharp-nullability.md)（`required` は C# の非 null 性から）
+- 本リポジトリの起点: **#538**
+
+## コンテキストと課題
+
+計画は裁定（planning#200 Q15）で次を確定した。
+
+> **「次回同期」列は残すが、ソース別スケジュールは持たない**。`NextSyncAt` は**共通間隔の次回実行時刻**として
+> 全ソース同じ値を返す。
+
+実装側の実測はこうだった（数え方は作業仕様書 §着手時の実測）。
+
+| 事実 | 出所 |
+| --- | --- |
+| 間隔は設定に**ある**（既定 300 秒 / 実効は 30 秒床） | `DataSourceSyncOptions.IntervalSeconds` ／ `DataSourceSyncHostedService.StartSchedule()` |
+| **位相（いつ回るか）はどこにも無い** | `PeriodicTimer` はワーカー起動時刻から刻むだけで、次回時刻を持つ場所が無い |
+| 既定は**無効**（compose は有効化しない。k8s の values だけが `enabled: true`） | `DataSourceSyncOptions.Enabled` / `deploy/helm/.../values.yaml` |
+
+「間隔だけ」では次回時刻は決まらない。**位相をどこから取るか**が本 ADR の論点である。
+
+## 検討した選択肢
+
+### 論点 A: 次回実行時刻を何から計算するか
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| A1 | **現在時刻 ＋ 間隔** | 要求のたびに値が動き、**「次回同期」が永遠に来ない**表示になる。運用者が見たいのは「いつ取り込まれるか」であって「あと何分か」ではない |
+| A2 | `LastSyncedAt` ＋ 間隔 | **ソースごとに違う値**になり裁定に反する。さらに同期失敗時は `LastSyncedAt` が前進しない（[IADR-0051](./IADR-0051_datasource-connector-port-and-filesystem.md) 決定 3a）ため、**過去の時刻を「次回」として出す** |
+| A3 | 固定エポック（例: 00:00 UTC）からの切り上げ | 全ソース同値にはなるが、**実際に回るワーカーの位相と無関係な数**。表示された時刻に何も起こらない |
+| **A4（採用）** | **ワーカー起動時刻を起点に共通間隔で刻んだ、現在より真に後の最初の境界** | `PeriodicTimer` の刻みと一致する。全ソース同値。読み出し時計算なので古びない |
+
+### 論点 B: 位相をどこに置くか
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| B1 | DB 列（`DataSources` へ `NextSyncAt`） | **導出値を状態として持つ**ことになる。プロセス再起動で位相が変わるのに列は古いままになり、嘘が永続化される。ソース別列は裁定にも反する |
+| B2 | ワーカーがサイクルごとに「次回」を書き換える | サイクルが間隔より長引くと**過去の値**が残る。書き込み点が増える |
+| **B3（採用）** | **インメモリ singleton（`SyncSchedule`）に起点＋間隔を 1 回だけ記録し、読み出し時に境界を計算** | 書き込みは起動時の 1 回。`SyncFailureTracker` と同じ「プロセスローカルの運用状態」の置き方に揃う |
+
+### 論点 C: 定期同期が無効なときの値
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| C1 | 「間隔の設定値から算出した架空の時刻」を返す | **無効なのに次回があると偽る**。dev / compose では常に嘘になる |
+| C2 | 0 / `DateTimeOffset.MinValue` などの番兵 | 型で表せる `null` を捨てて、画面側に「番兵の意味」を知らせる別チャネルが要る |
+| **C3（採用）** | **`null`** | 「次回は無い」を型で表す。`LastSyncedAt`（未同期＝null）と同じ作法。OpenAPI も `nullable: true`・`required` に入れない（[IADR-0132](./IADR-0132_openapi-required-from-csharp-nullability.md) 論点 A） |
+
+## 決定
+
+1. **`NextSyncAt` はワーカー起動時刻を起点とする共通間隔の次回境界**とする（A4 / B3）。
+   `SyncSchedule.NextRunAt` = `起点 + 間隔 × (経過 ÷ 間隔 + 1)`（現在時刻より**真に後**の最初の境界）。
+   境界ちょうどの瞬間は「その回」が走っている時刻なので、次回は 1 つ先になる。
+2. **定期同期が無効（`DataSourceSync:Enabled=false`）なら `null`**（C3）。ワーカーは位相を記録しない。
+3. **全ソース同値**。一覧は `SyncSchedule` を**1 回だけ読み**、その値を全行へ配る。
+   行ごとに読むと境界を跨いだ瞬間に列内で値が割れ、**持たないはずの「ソース別」の意味**が生まれる。
+4. **永続化しない**（B1 却下）。導出値であって状態ではない。DB スキーマは変更しない。
+5. **時計は BCL の `TimeProvider`**（`SyncSchedule` が受け取る）。テストは固定時計を注入して決定的にする。
+   自前の時刻抽象（`IClock` 等）は作らない——本リポジトリの既存実装（`ConfigInspectionService`）も
+   `TimeProvider` を使っており、抽象を 2 つ持つ理由が無い。
+6. **ソース別スケジュール（cron / ソース単位 interval）は作らない**（裁定の写し）。要求が具体化したら
+   計画側が FR を起こす。
+
+## 結果
+
+### 良くなること
+
+- SC-06 の「次回同期」列に**答えられる**（契約の不在という繰り延べ理由が消えた）。
+- 表示は安定する（要求のたびに動かない）。無効な環境では「次回なし」と正しく出せる。
+- DB スキーマ・マイグレーションが不要。契約変更も**非破壊**（既定値つきメンバーの追加。[IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md) 判定）。
+
+### 限界（承知のうえで受け入れる）
+
+- **マルチレプリカでは位相がレプリカごとに異なる。** 応答するレプリカ自身の位相を返すため、
+  実際に同期を行うレプリカ（advisory lock を取った側・[IADR-0083](./IADR-0083_datasource-sync-single-writer-advisory-lock.md)）とは**最大 1 間隔ずれ得る**。
+  運用者への意味（「次に取り込まれるのはいつ頃か」）は保たれるため許容する。
+  厳密化するには位相を共有ストアへ置く必要があり、要求に対して重い。
+- **プロセス再起動で位相が変わる**（起点が再起動時刻になる）。これは実体どおりであって誤差ではない。
+- **サイクルが間隔より長引いた場合**、`PeriodicTimer` の刻みは詰まる（ティックは溜まらない）。
+  計算上の境界と実際の実行が最大 1 間隔ずれる。
+- 「一覧で 1 回だけ読む」規則は**機械では守られていない**（境界跨ぎを注入できる時計をエンドポイント越しに
+  動かす必要があるため。作業仕様書 §変異試験 M5 で素通りを開示した）。規則はコード注釈と本 ADR で残す。
+- **`null` の意味は 1 つではない。** 決定 2 は `null` に「定期同期が無効」という意味を与えたが、
+  **起動直後のごく短い間は `Enabled=true` でも `null` を返し得る**。位相を記録するのは
+  `DataSourceSyncHostedService.ExecuteAsync` → `StartSchedule()` であり、
+  `builder.Services.AddHostedService<DataSourceSyncHostedService>()`（`Program.cs`）は
+  `WebApplication.CreateBuilder` が先に登録する `GenericWebHostService`（Kestrel）**より後**に起動する。
+  したがって「Kestrel が受け付けを開始してから位相が記録されるまで」の窓で `/datasources` を叩くと
+  `nextSyncAt: null` が返る。**この窓では `null` が「無効」ではなく「まだ起動していない」を意味する。**
+  窓は実運用上ほぼ無視できる長さであり、番兵値や第 3 の状態を足すほうが害が大きいため実装は変えない。
+  ただし**画面が `null` を「同期は行われません」と断定して表示すると、起動直後だけ嘘になる**——
+  表示側は「未定」相当の中立な文言にすること（SC-06 の表示作業への申し送り）。
+
+## フォローアップ
+
+1. **SC-06 画面への「次回同期」列の表示**（本 ADR は契約のみ。表示は画面作業で行う）。
+2. 同期健全性（裁定 Q14）・データソース更新 API（裁定 Q16）は別作業。

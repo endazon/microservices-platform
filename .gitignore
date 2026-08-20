@@ -451,9 +451,6 @@ Thumbs.db
 *.local
 CLAUDE.local.md
 
-# AI 生成の参照サマリ（生成物）
-.ai-context/
-
 # エディタ / IDE
 .vscode/*
 !.vscode/extensions.json

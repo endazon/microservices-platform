@@ -1,0 +1,209 @@
+---
+title: IADR-0132 応答スキーマの required は C# の非 null 性から起こし、`?? 既定値` は残す
+type: impl-adr
+status: Accepted
+related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, FR-03, FR-04, FR-08, FR-09, FR-10, FR-11, FR-15, NFR, ADR-0031, IADR-0121, IADR-0122, IADR-0131, IADR-0135]
+author: Claude
+created: 2026-08-05
+updated: 2026-08-10
+plan_refs:
+  - planning:projects/microservices-platform/06_technical/13_frontend-stack.md
+---
+
+# IADR-0132: 応答スキーマの `required` は C# の非 null 性から起こし、`?? 既定値` は残す
+
+- 状態: Accepted
+- 日付: 2026-08-05
+- 決定者: 実装担当（Claude）
+
+## 起点・関連
+
+- 関連する計画書 ID: ADR-0031（Accepted）／FR-03・FR-04・FR-08〜FR-11・FR-15／SC-01〜SC-11／NFR（保守性）
+- 関連する実装仕様書:
+  [作業仕様書 #520](../specs/20260805_issue-520_openapi-response-required.md)／
+  [通信仕様書 BFF 境界](../../docs/api/BFF_bff-surface.md)
+- 関連 IADR: **[IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md)（本 ADR は §結果 フォローアップ 1 の**前提**を消化する。項番 1 本体である
+  画面の載せ替え = #519 は未消化。**§未決事項 2 は [IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) ではなく
+  [作業仕様書 #506](../specs/20260805_issue-506_openapi-bff-groups.md) の節である**）・
+  [IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md)（契約スキーマの正本と互換ゲート）・[IADR-0121](./IADR-0121_spa-stack-migration-staging.md) 決定 3（BFF 境界）
+- 本リポジトリの起点: **#520**（親 #454。出所は #506 / PR #518 の変異試験 M2 / M2b）
+
+## コンテキストと課題
+
+**orval は `required` の無いスキーマの全プロパティを省略可（`?`）で生成する。**
+その結果、[IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) 決定 1 が与えると宣言した保証——「**OpenAPI を変えると SPA の型検査が落ちる**」
+——が、`required` を書いていない面では**成立しない**。PR #518 の変異試験がこれを実測した。
+
+| 変異 | 条件 | 実測 |
+| --- | --- | --- |
+| M2 | `AiAnswerDto.citations` を誤った型（`SearchResultDto[]`）へ戻す。`required` **なし** | **素通り**（`typecheck exit=0`）。全プロパティが `?` のため構造的部分型で代入できてしまう |
+| M2b | 同じ変異。`CitationDto` に `required` **あり** | **落ちた**（`TS2739: missing properties: number, snippet`） |
+
+PR #518 は自分が追加した 11 個にだけ `required` を入れた。**既存の応答スキーマは手つかず**であり、
+「契約に載っているのに型検査の網にならない面」が残っている。本 ADR はその埋め方を確定する。
+
+着手時の実測（数え方とコマンドは作業仕様書 §着手時の実測）:
+
+- `components.schemas` は **53 個**。うち**応答から到達できるのは 36 個**、
+  そのうち **`required` を持つのは 11 個**（すべて #518 が追加した分）。**残り 25 個が母集合**である。
+- **応答と要求の両方に使われるスキーマは `AbacConditionMap` の 1 個だけ**で、
+  それは `properties` を持たない写像である（＝要求側の必須化という副作用は起こり得ない）。
+- 生成型を import しているのは **SC-08 の 3 ファイルだけ**（残り 9 ファイルは #519 で載せ替え予定）。
+
+## 検討した選択肢
+
+### 論点 A: `required` の値を何から起こすか
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| A1 | **C# DTO の非 null 性から起こす**（`?` の付かないメンバーを `required` に入れる） | 正本（C# 契約。[IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md)）と一致する。**メンバーを 1 つずつ開いて確認する手間が要る** |
+| A2 | 画面が実際に読んでいるフィールドだけを `required` にする | 手間は小さい。**契約が「画面の都合」で歪む**。画面が増えるたびに契約が変わる |
+| A3 | 全プロパティを `required` にする（nullable も含める） | 最も厳しい。**嘘になる**——`string?` は実際に null で来る。`?? 既定値` を消せなくなるどころか、生成型が「必ず来る」と偽る |
+
+### 論点 B: 既定値つきメンバー（`bool Sent = true` 等）を `required` に入れるか
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| B1 | **入れる**（既定値は「非 null」の話であって「省略可」の話ではない） | `System.Text.Json` は既定でプロパティを省略しないため、**JSON には必ず出る**。実体と一致する |
+| B2 | 入れない（既定値があるものは省略され得ると読む） | C# の既定値は**呼び出し側の引数の既定**であり、シリアライズの省略とは無関係。**実体と食い違う** |
+
+### 論点 C: `?` が外れたあとの `?? 既定値` / optional chaining をどうするか
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| C1 | **残す** | 契約違反の応答が来ても画面が壊れない。**冗長なコードが残る**（型の上では到達しない枝） |
+| C2 | 消す（型が保証するのだから不要） | 行数が減る。**サーバが契約違反の本文を返した瞬間に画面が白くなる**。しかも本 issue は「挙動を変えない」ことを受け入れ基準にしている |
+| C3 | 消したうえで実行時バリデーション（zod 等）を入れる | 「契約上必須」と「実行時に必ず来る」を本当に一致させられる。**依存が 1 つ増え、生成物の全面的な作り直しになる**。本 issue の射程を大きく超える |
+
+### 論点 D: `required` を入れられない／入れるべきでないスキーマの扱い
+
+| 案 | 内容 | 評価 |
+| --- | --- | --- |
+| D1 | 黙って飛ばす | 差分は小さい。**「書き忘れ」と区別が付かない**。次に読む人が同じ調査をやり直す |
+| D2 | **YAML のコメント（`description`）に理由を書く** | 契約ファイル 1 か所で読める。#518 が SSE の扱いで採ったのと同じ考え方 |
+
+## 決定
+
+**決定 1（論点 A）: A1 を採る。`required` は C# DTO の非 null 性から機械的に起こす。**
+`?` の付かないメンバー（値型・コレクションを含む）だけを `required` に入れ、`?` の付くものは入れない。
+`src/Directory.Build.props` で `Nullable` は既定 ON であり、`?` の有無が意味を持つ。
+**母集合 25 個のうち 22 個は対応する C# を開いて `ファイル:行` で出所を残し、残り 3 個は
+「C# に出所が無い」ことを明記した**（`AbacConditionMap` は写像そのもの、`ProblemDetails` /
+`ValidationProblemDetails` は RFC7807 で対応 `record` が存在しない。作業仕様書 §設計 1）。
+契約 `record` を持たないもの（匿名型が JSON になる `UsageEventCreatedDto`）は
+**実装のその行**を出所とする——推測で決めない。
+
+**決定 2（論点 B）: B1 を採る。既定値つきメンバーも `required` に入れる。**
+`CompletionApiResponse.Sent = true` / `EmbedApiResponse.Retryable = false` などが該当する。
+C# の既定値は**呼び出し側が引数を省いたときの値**であって、シリアライズ時の省略ではない。
+
+**系: `required` に入れたプロパティから OpenAPI の `default` を落とす。**
+OpenAPI（JSON Schema）の `default` は応答側では「**欠けていたらこの値と読め**」を意味する。
+本決定は「既定値つきメンバーは必ず出力される（欠けない）」と言っているので、
+**同じプロパティに `required` と `default` が同居すると契約が自己矛盾する。**
+該当は 3 プロパティ（`CompletionApiResponse.sent` / `EmbedApiResponse.embedded` /
+`EmbedApiResponse.retryable`）で、いずれも C# の**引数既定**を写しただけであり契約上の情報を持たない。
+orval は `default` を読まないため生成物への影響は無い（実測: 除去しても再生成差分は出ない）。
+**要求スキーマの `default` は落とさない**——`AnalysisAskRequest.topK` 等は「送らなければこの値になる」
+という本来の意味で機能しており、応答側とは別の話である。
+
+**決定 3（論点 C）: C1 を採る。`?? 既定値` と optional chaining は残す。**
+**「契約上は必須」と「実行時に必ず来る」は別である。** 生成型は OpenAPI の写しにすぎず、
+実行時に本文を検証する層は無い（`bffFetch` は `JSON.parse` するだけである）。
+BFF が契約違反の 200 を返せば `undefined` が入り、`??` を消していれば画面が落ちる。
+**いま消して得られるのは行数の減少だけで、失うのは縮退時の耐性である。**
+本リポジトリは型情報を使う lint（`@typescript-eslint/no-unnecessary-condition`）を有効化していないため、
+**残しても警告は出ない**——「lint が消せと言うから消す」という強制力も無い。
+結果として**本 PR のプロダクションコード差分は 0 行**であり、挙動が変わらないことが差分で示される。
+
+**決定 4（論点 D）: D2 を採る。`required` を入れない 5 個は、理由を `description` に書く。**
+
+| スキーマ | 入れない理由 |
+| --- | --- |
+| `AbacConditionMap` | `properties` を持たない写像（`additionalProperties` のみ）で `required` を適用できない |
+| `ProblemDetails` / `ValidationProblemDetails` | RFC7807 はどのメンバーも省略され得る（`Results.Problem` は未指定項目を出力しない） |
+| `ConfigVersionDto` | C# の 3 メンバーがすべて nullable |
+| `ConfigVersionEntryDto` | C# の 4 メンバーがすべて nullable（#518 の判断を再確認した） |
+
+**決定 5: `/bff/` から到達しない 5 個（`AccessScopeResponse` / `UsageEventCreatedDto` /
+`DashboardUsageDto` / `CompletionApiResponse` / `EmbedApiResponse`）にも `required` を入れる。**
+契約ファイルは SPA だけのものではなく、「C# の非 null 性を写した記述」という一貫性を面ごとに崩すと、
+後任が「ここは入っていないから入れなくてよいのだ」と読む。
+
+> **［着手時の想定と、実測でどう変わったか］** 着手時は「`orval-bff-only.cjs` が `/bff/` 以外を
+> 落とすのだから、この 5 個は生成されない」と想定していた。**実測は逆である**——前処理が落とすのは
+> **`paths` だけ**で `components.schemas` はそのまま渡り、**53 スキーマすべてが `bff.schemas.ts` へ
+> 出力されている**（`grep -c '^export interface '` = 53）。気付いた経路も実測で、変異試験 M8
+> （`EmbedApiResponse.model` の削除）で**生成物に差分が出た**ことによる。
+> **したがって網の有無を決めるのは「生成されるか」ではなく「その型を画面が読んでいるか」である。**
+> いま読まれているのは `AiAnswerDto` と `CitationDto` だけで、残り 24 個は #519 待ちである
+> ——`/bff/` 到達性はこの点について何も意味しない。
+
+> **［2026-08-08 追記・事実の更新 / #591］画面の載せ替え（#519 / [IADR-0135](./IADR-0135_generated-client-adoption-and-cache-keys.md)）は済んだ。**
+> したがって本 ADR が「いま」として書いた**網の範囲は古い**——生成型を読むのは
+> `AiAnswerDto` / `CitationDto` だけではなく、**`sc04-wiki` を除く各画面**が読んでいる（`sc04-wiki` は生成型を 1 つも import していない。2026-08-08 フェーズ末クロス監査が実測。件数の正は作業仕様書 §母集合）
+> （実測は[作業仕様書 §実測](../specs/20260808_issue-591_adr-text-vs-implementation-drift.md)）。
+> **決定 1〜5 は 1 つも変わらない**——決定 5 の但し書きが置いた基準
+> （網の有無を決めるのは「その型を画面が読んでいるか」）はそのままで、**その条件が満たされた**だけである。
+> 契約側の数（`components.schemas` / 応答から到達する数 / `required` を持つ数 / 決定 4 の除外）も動いていない。
+
+## 理由
+
+- **決定 1・2** は [IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md) の思想（C# ソースが契約の正本）と整合する。OpenAPI は正本ではなく
+  「正本を写した記述」であり、写しの厳しさは正本から決めるほかない。A2（画面の都合で決める）を採ると、
+  契約が画面の実装詳細に従属し、**#519 の載せ替えのたびに契約が動く**。
+- **決定 3** の要点は「冗長なコードを許す」ことではなく、**保証の出所を取り違えないこと**である。
+  [IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) 決定 1 の但し書きが明言するとおり、この契約が与えるのは
+  「OpenAPI を変えると型検査が落ちる」であって「サーバが契約どおりに応答する」ではない。
+  **後者を保証していないのに前者を根拠に防御を外すのは、保証の読み違えである。**
+- **決定 4** は「宣言ではなく成果物・記述で固定する」という [IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) 決定 4 と同じ作法である。
+
+## 結果
+
+- 良い影響:
+  - 応答から到達する **36 スキーマのうち 31 個**が `required` を持つ状態になった
+    （残る 5 個は決定 4 の明示的な除外）。**新旧で厳しさが揃った**——#518 が自覚的に残した非対称
+    （作業仕様書 #506 §M2 の末尾）が解消した。
+  - 生成型の省略可プロパティが **153 → 72** に減り（`grep -c '?:' bff.schemas.ts`）、
+    **#519 が載せ替える時点で型検査の網が張られている**。載せ替え後に `required` を入れると
+    載せ替えたコードを再び触ることになる（issue #520 の順序判断）。
+- 悪い影響・トレードオフ:
+  - **`?? 既定値` が型の上で到達しない枝として残る**（決定 3）。読み手が「なぜ残っているのか」を
+    毎回問い直さずに済むよう、本 ADR と作業仕様書 §設計 3 に一覧を残した。
+  - **C# → OpenAPI の追随は依然として人手である**（[IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) 決定 1 の但し書き）。
+    C# のメンバーに `?` を足しても OpenAPI の `required` は自動では外れない。
+    **むしろ本 ADR で `required` を増やしたぶん、追随漏れが「嘘の必須」として残る面が増えた。**
+  - **型検査の網が実際に張られているのは `AiAnswerDto` / `CitationDto` だけである**（決定 5 の但し書き）。
+    残り 24 個（**うち生成型として必須化されたのは 19 個。5 個は決定 4 の意図的な除外**）は、
+    **それを読むコードが無いため変異試験では素通りする**
+    （作業仕様書 §変異試験 M6〜M8）。#519 が載せ替えて初めて網になる。
+    **［2026-08-08 / #591］この範囲は #519 の着地で広がった。事実は決定 5 の追記を正とする**
+    （ここには写さない —— 同じ事実を 2 か所に置くと片方が腐る）。
+    **ただし `required` を消す退行そのものは、生成物の再生成差分検査が全スキーマについて捕まえる**
+    （M4 で実測: `typecheck exit=0` だが生成物に差分が出る）。
+- フォローアップ:
+  1. **C# の非 null 性と OpenAPI の `required` を突合する検査**（[IADR-0131](./IADR-0131_openapi-as-bff-contract-source.md) フォローアップ 2 の一部）。
+     いまは本 ADR の表が人手の突合結果でしかない。
+     **［2026-08-10 追記 / #525］配備した。** `scripts/check-openapi-dto-drift.js`（[IADR-0159](./IADR-0159_openapi-dto-drift-checker.md) 決定 3・4）が
+     プロパティ集合と `required` を機械的に突き合わせる。**論点 A1 ＋ B1 をそのまま規則にしている。**
+     ただし**既存の不一致 10 件はラチェットで据え置き**であり（`scripts/openapi-dto-drift-allowlist.json`。是正は #658）、
+     新規混入だけを止める。**型の不一致は見ない**（表現が 1 対 1 でなく誤検出が保守コストを上回るため）。
+     **［2026-08-10 追記 / #658・[IADR-0162](./IADR-0162_openapi-required-request-vs-response.md)］据え置き 10 件を片づけた。ラチェットは撤去済みである。**
+     内訳は**是正 3（応答側の `ConversionJobDto`）・偽陽性 5・意図的な差 2** だった。
+     **偽陽性 5 は「A1＋B1 を要求スキーマへも当てていた」ことによる** ——
+     本 ADR の表題と決定 2 の系（「要求スキーマの `default` は落とさない。応答側とは別の話である」）が
+     示すとおり、**B1 は応答側の規則である**。[IADR-0162](./IADR-0162_openapi-required-request-vs-response.md) が検査器を要求側／応答側で分けた。
+     **決定 1〜5 は 1 つも変わらない**（射程を読み直しただけで、規則を改めていない）。
+  2. **`AccessScopeResponse` に `granted` が無い**（C# には在る）。フィールドの追加は本 issue の範囲外
+     として申し送り、**独立の issue #525 として起票済み**である（作業仕様書 §未決事項 1）。
+     **［2026-08-10 追記 / #525］回収済み。** `granted` を `properties` と `required` の両方へ足した
+     （[IADR-0159](./IADR-0159_openapi-dto-drift-checker.md) 決定 1）。**本 ADR の論点 B の B1 がそのまま適用された最初の例**である ——
+     既定値つき（`bool Granted = false`）だが応答本文には必ず出るため `required` に含める。
+  3. **テストの fixture を生成型で型付けする**（作業仕様書 §未決事項 2）。現状 fixture は `unknown`
+     を経由するため、`required` を増やしても fixture の欠落は検出されない。
+
+## 関連
+
+- Supersedes: なし
+- Superseded by: なし
+</content>
