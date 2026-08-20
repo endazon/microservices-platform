@@ -159,7 +159,7 @@ function isBot(c) {
  * とくに **GitHub App が作成した PR（`claude[bot]` 等）は除外しない**。
  * ワークフロー側で `user.type != 'Bot'` により弾くと、AI に実装を委ねる運用
  * （本キットが前提とする主要な経路）でだけ PR タイトル検査が skip され、
- * 「最後の砦」が外れる（issue #202）。除外の判定は本関数へ一本化する。
+ * 「最後の砦」が外れる（issue planning#202）。除外の判定は本関数へ一本化する。
  */
 function isBotLogin(login) {
   const name = String(login == null ? '' : login).trim().toLowerCase();
@@ -404,10 +404,32 @@ function crossRepoRefReasons(text, where) {
 }
 
 /** 件名を検証し、違反理由の配列を返す（空なら合格）。 */
+// 件名に現れてはならない HTML エンティティ。
+//
+// **GitHub は PR タイトルの素の `<` `>` `&` `"` を作成時点でエスケープして保存する。**
+// スカッシュ後の件名は PR タイトルがそのまま載るため、`git -C <submodule> grep` と書くと
+// 恒久履歴へ `git -C &lt;submodule&gt; grep` が焼き付く。**force push 禁止のため直せない**
+// （実測: planning#415。生成物は changelog-overrides.json の remap で是正したが履歴は残る）。
+//
+// **エスケープ済みの文字列を検査するのが要点である。** 書いた側は素の山括弧を書いており、
+// 素の `<` を検査しても素通りする —— **エスケープは GitHub 側で起きる**。
+// `pr-title.yml` は `pull_request.title`（＝エスケープ済み）を渡すため、マージ前に止まる。
+const HTML_ENTITY_PATTERN = /&(?:lt|gt|amp|quot|#\d+|#x[0-9a-fA-F]+);/;
+
 function validateSubject(subject) {
   const reasons = [];
   // 末尾の PR 番号 " (#123)" は除去して判定する。
   const s = subject.replace(/\s*\(#\d+\)\s*$/, '').trim();
+
+  // 形式検査より先に見る。エンティティは形式に適合したまま恒久履歴へ載るためである。
+  const entity = s.match(HTML_ENTITY_PATTERN);
+  if (entity) {
+    reasons.push(
+      `HTML エンティティ "${entity[0]}" を含む（GitHub が PR タイトルの < > & " を` +
+        'エスケープして保存し、スカッシュ後の件名へ焼き付く。素の山括弧を使わず、' +
+        'バッククォートで囲むか山括弧を用いない書き方にする）'
+    );
+  }
 
   const m = s.match(/^(\w+)(?:\(([^)]*)\))?(!)?:\s+(.+)$/);
   if (!m) {
@@ -585,7 +607,7 @@ function main() {
   const iadrIds = loadExistingIadrIds();
   const planAdrIds = loadExistingPlanAdrIds();
   const planIds = loadExistingPlanIds();
-  // 検査を skip したことは notice で可視化する（issue #139）。素の stderr 行は緑ジョブの
+  // 検査を skip したことは notice で可視化する（issue planning#139）。素の stderr 行は緑ジョブの
   // ログに埋もれて読まれず、「検査していない範囲があること」が CI の UI から読み取れない。
   // 終了コードは変えない（fail-open。ローカル環境差で CI を落とさない）。
   // 注: notice はここ（実行時の呼び出し側）でのみ出す。loadExisting* の内部に置くと、

@@ -5,6 +5,23 @@
 
 `CLAUDE.md` / `AGENTS.md` / `.github/copilot-instructions.md` は、いずれも最初に本ファイルを参照する。
 
+## 0. 役割スロット（プロファイルとロースターの区別）
+
+AI の使い方は 2 つの宣言で決まる。**混同しないこと。**
+
+| 宣言 | ファイル | 意味 |
+| --- | --- | --- |
+| **プロファイル**（能力） | 本ファイル §1 → `.ai-profile` | **何が使えるか**（ライセンス・シークレット） |
+| **ロースター**（配役） | `ai-roster.json` | **どの役割スロット（orchestrator / worker / reviewer）にどのエンジンを挿すか**と、失敗時のフォールバック連鎖 |
+
+既定はどのスロットも Claude であり、**Claude だけを使うならロースターを触る必要はない**。
+worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設計する場合に
+[`docs/ai-orchestration.md`](docs/ai-orchestration.md)（スロットの正本）を読む。
+
+🔴 **ロースターは宣言であって実装ではない。** 各割当の `implemented_by` 欄（必須）が現在の実現手段で
+あり、実体（アダプタ・ワークフロー）の無い割当は無効である。差し替えたことにするには、
+アダプタ（`scripts/ai-adapters/`）またはワークフローの実体と、プロファイル側の能力（本ファイル §1）が要る。
+
 ## 1. 使える AI を宣言する
 
 該当するものを `[x]` にする（複数選択可）。少なくとも 1 つを選ぶ。
@@ -210,3 +227,8 @@ bash scripts/apply-profile.sh claude-code copilot
 - 既定は**非破壊**（必要な `.example` を外すだけ）。`--prune` 指定時のみ、宣言しなかったプロファイルの
   ベンダー固有ファイルを削除する。
 - 適用したプロファイルは `.ai-profile` に記録される。
+- **既知プロファイル以外の引数はエンジン名**とみなし、`.github/workflows/<engine>-*.example.yml` の
+  有効化を試みる（役割スロットの他エンジン実装。対象が無ければ skip・exit 0）。例:
+  `bash scripts/apply-profile.sh claude-code codex`。配役は別途 `ai-roster.json` で宣言する
+  （正本 [`docs/ai-orchestration.md`](docs/ai-orchestration.md)）。
+- 🔴 **他エンジンを主とする場合も、Claude 系を `--prune` で削除しない**（フォールバックの切り戻し先を失う）。
