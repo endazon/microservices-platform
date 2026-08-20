@@ -2,23 +2,17 @@
 title: 変換ジョブ（ConversionJob） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-12
-  - UC-06
-  - SC-07
-  - ADR-0002
-  - IADR-0042
-  - IADR-0043
-  - IADR-0137
-  - IADR-0154
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md (SC-07)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-12, SC-07, UC-06]
+adrs: [ADR-0002]
+iadrs: [IADR-0042, IADR-0043, IADR-0137, IADR-0154]
+specs: [01_requirements, 01_screens, 01_usecases]
+issues: []
+-->
 
 # データ仕様書: 変換ジョブ（ConversionJob）
 
@@ -182,8 +176,8 @@ erDiagram
 
 ## 関連仕様
 
-- 実装ADR: `../adr/IADR-0042_conversion-job-read-model.md`、`../adr/IADR-0043_conversion-job-persistence.md`、
-  `../adr/IADR-0137_conversion-dead-letter-marker.md`
+- 実装ADR: `../../.ai-context/adr/IADR-0042_conversion-job-read-model.md`、`../../.ai-context/adr/IADR-0043_conversion-job-persistence.md`、
+  `../../.ai-context/adr/IADR-0137_conversion-dead-letter-marker.md`
 - 画面仕様書: `../screens/SC-07_conversion-jobs.md`
 - テスト仕様書: `../tests/SC-07_conversion-jobs.md`
 - 通信仕様書: `../api/openapi.yaml`

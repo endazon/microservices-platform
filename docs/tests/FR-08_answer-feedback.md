@@ -2,18 +2,17 @@
 title: テスト仕様書 — FR-08 回答へのフィードバック収集
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-08
-  - UC-01
-author: claude
 created: 2026-07-03
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-08)"
-related_specs:
-  - ../specs/20260703_FR-08_answer-feedback-collection.md
-  - ../functional/FR-08_answer-feedback.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-08, UC-01]
+adrs: []
+iadrs: []
+specs: [01_requirements, 20260703_FR-08_answer-feedback-collection, FR-08_answer-feedback]
+issues: []
+-->
 
 # テスト仕様書: FR-08 回答へのフィードバック収集
 
@@ -43,7 +42,7 @@ related_specs:
 > planning `3e58b97`（PR planning#244〔裁定依頼 planning#236〕）で計画 FR-08 に
 > 「**フィードバックの投稿端点が無認証で 401 を返す。統計の取得端点は、認証済みでも運用者・管理者以外には
 > 403 を返す**」が受け入れ基準として加わった
-> （[02_requirements](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) `:202`）。
+> （02_requirements（計画リポ） `:202`）。
 > `CLAUDE.md` は「受け入れ基準をテストケースへ写像する」を必須としているため、**基準が増えた時点で
 > T- 番号を採番して置く**（テストの実装は挙動の変更と同じ PR に属する）。
 > **［2026-08-10 消化 / #521・[[IADR-0158]]］T-15 / T-16 を実装した。** 4 端点への

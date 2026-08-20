@@ -2,16 +2,17 @@
 title: 利用イベント（UsageEvent） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-10
-  - ADR-0006
-author: claude
 created: 2026-07-04
 updated: 2026-07-04
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-10)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-10]
+adrs: [ADR-0006]
+iadrs: []
+specs: [01_requirements, ADR-0006_observability-otel-prom-loki]
+issues: []
+-->
 
 # データ仕様書: 利用イベント（UsageEvent）
 
@@ -23,7 +24,7 @@ plan_refs:
 - **技術検討(06_technical)・ADR**:
   - ADR-0006 可観測性（OpenTelemetry / Prometheus / Loki）
   - 関連: ADR-0002 DB per Service（DashboardService 専用 DB）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`
+- **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
 
@@ -61,7 +62,7 @@ erDiagram
 | 種別 | 対象 | 定義 |
 | --- | --- | --- |
 | 主キー | `UsageEvents.Id` | `HasKey(u => u.Id)` |
-| インデックス | `UsageEvents (OccurredAt, EventType)` | `IX_UsageEvents_OccurredAt_EventType`（非一意）— 期間フィルタ・種別集計を効率化（FR-10） |
+| インデックス | `UsageEvents (OccurredAt, EventType)` | `IX_UsageEvents_OccurredAt_EventType`（非一意）— 期間フィルタ・種別集計を効率化 |
 | 外部キー | なし | UserId は越境参照（FK なし） |
 
 ## 整合性・制約ルール

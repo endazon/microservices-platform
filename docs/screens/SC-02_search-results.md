@@ -2,45 +2,30 @@
 title: 検索結果一覧 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-02
-  - UC-01
-  - FR-03
-  - FR-05
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0126
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-related_specs:
-  - "./SC-01_search-chat.md"
-  - "./SC-03_document-detail.md"
-  - "../adr/IADR-0038_bff-document-read-abac-gating.md"
-  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
-  - "../adr/IADR-0121_spa-stack-migration-staging.md"
-  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
-  - "../tests/SC-02_search-results.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, FR-05, SC-02, SC-03, UC-01]
+adrs: []
+iadrs: [IADR-0121, IADR-0124, IADR-0125, IADR-0126]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260804_issue-502_sc01-03-search-flow, 20260809_issue-642_qdrant-tag-restoration, IADR-0038_bff-document-read-abac-gating, IADR-0121_spa-stack-migration-staging, IADR-0126_sse-answer-state-and-search-url-state, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
+issues: [#519, #534, #536, #538, #642]
+-->
 
-# 画面仕様書: 検索結果一覧（SC-02）
+# 画面仕様書: 検索結果一覧
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6。計画側 `05_screens` の `status` には追随しない）。
 > **未実装のまま残っている要素がある**——**並び順**（#532。**契約に載る先がまだ無い**）と、
 > 共通シェルのパンくず・右レール。詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
 > **［2026-08-09 訂正 / #532］検索モード切替は「契約が揃った」だけで、画面は未実装である。**
-> 直前の版（#536）が「実装済み」と書いたのは誤りだった —— #531 が解消したのは**契約側**
+> 直前の版が「実装済み」と書いたのは誤りだった —— #531 が解消したのは**契約側**
 > （`SearchRequest.Mode` の 3 値と RetrievalService の分岐）であり、**画面に切替の UI は無い**
 > （実測: `sc02-results/` に `mode` を送る経路が無く、`useSearchQuery` は `{ query, topK }` しか送らない）。
 > **繰り延べの理由が「契約に無い」から「表示が未実装」へ変わっただけである**——SC-06 の「次回同期」列
-> （#538）・行操作「設定」（#534）と同じ型であり、そちらは正しくそう書かれている。
+> ・行操作「設定」と同じ型であり、そちらは正しくそう書かれている。
 > **［2026-08-09 / #536］更新日時列は実装した**（契約が裁定 Q6 を受けて `updatedAt` を持ち、
 > 索引〔Qdrant のペイロード〕へも取り込むようにした。[[IADR-0149]]）。
 
@@ -49,10 +34,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-02 検索結果一覧**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-02）
+- 画面（SC）: **SC-02 検索結果一覧**（05_screens/01_screens.md（計画リポ） §SC-02）
 - 関連ユースケース（UC）: **UC-01**（検索・質問する。**代替フロー**「キーワード検索のみで結果一覧を返し、AI回答を省略する」の受け皿）
 - 関連機能要求（FR）: **FR-03**（ハイブリッド検索）・**FR-05**（ABAC）
-- モックアップ（**実装の正**）: [hi-fi/sc-02.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-02.html) ／ [wireframe/sc-02.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-02.html)
+- モックアップ（**実装の正**）: hi-fi/sc-02.html（計画リポ） ／ wireframe/sc-02.html（計画リポ）
 - 関連 IADR: [[IADR-0126]]（検索条件を URL に置く）・[[IADR-0038]]（BFF 読み取りの ABAC ゲート）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
@@ -65,7 +50,7 @@ SC-01 が AI 回答を主とするのに対し、本画面は**一覧と内部�
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-02.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-02.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-02.html（計画リポ） に対するものである。
 **粒度の規則は [SC-01 §hi-fi モックアップとの対応](./SC-01_search-chat.md) と共通である**——
 (a) メイン領域の要素は個別に 1 行、(b) 共通シェルはまとめて 1 行（引き受け先を書く）、
 (c) モックに無い状態は本表に入れず §エラー・状態 で扱う。
@@ -84,7 +69,7 @@ SC-01 が AI 回答を主とするのに対し、本画面は**一覧と内部�
 | 1 | 検索ボックス ＋「検索」（416） | **する** | `Input` ＋ `Button`。初期値は `?q=` |
 | 2 | 「← チャットに戻る」（416 右） | **する** | 入力中の語を保って `/ask` へ |
 | 3 | 「24件（権限内のみ表示）」（417 左） | **する** | `totalHits` ＋「（権限内のみ表示）」。**存在秘匿の説明そのもの**であり省略しない |
-| 4 | 結果テーブル：**文書**列のタイトル（421-423） | **する** | `Table`。タイトルは `/docs/$id`（SC-03）への内部リンク |
+| 4 | 結果テーブル：**文書**列のタイトル（421-423） | **する** | `Table`。タイトルは `/docs/$id`への内部リンク |
 | 5 | 結果テーブル：**文書**列のスニペット（421-423） | **する** | タイトルの下に抜粋（計画 §SC-02 主要素「スニペット抜粋付き」） |
 | 6 | 結果テーブル：**タグ**列（419・421-423） | **する** | `Tag`（分類）。0 件のときは空欄。**［2026-08-09 追記 / #642］本番経路ではタグが渡っていなかった**（§タグ列の表示元） |
 | 7 | **並び順「並び: 関連度 ▾」**（417 右） | **しない** | **契約は #532 で追加済み**（`SearchRequest.SortBy` の 2 値）。**切替 UI の画面実装が未了**なので判定は「しない」である（#531 の検索モードと同じ状態）。同上 (a) |
@@ -112,7 +97,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 1 画面のために**カタログ全件**を取りに行くことになり、件数に比例して重くなる。
 計画にない性能特性を実装の都合で持ち込まないため採らない。
 
-3 件はまとめて環流の記録に載せ、計画へ環流した（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)。
+3 件はまとめて環流の記録に載せ、計画へ環流した（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
 **planning#197 として起票済みであり、計画側の裁定を待っている**）。
 
 > **★［2026-08-10 追記 / #553］3 件とも裁定が出て、契約はすべて解消済みである。**
@@ -126,7 +111,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
-| 横断検索 | `POST /bff/search` | TanStack Query `useQuery` ＋ **生成された操作関数 `bffSearch`**（#519） | 認証・**サーバ側で ABAC スコープ解決** | `SearchResponse { results, totalHits, elapsedMs }` |
+| 横断検索 | `POST /bff/search` | TanStack Query `useQuery` ＋ **生成された操作関数 `bffSearch`** | 認証・**サーバ側で ABAC スコープ解決** | `SearchResponse { results, totalHits, elapsedMs }` |
 
 - 要求本文は `{ query, topK: 20 }` のみ。**クライアントは ABAC スコープを送らない**（送っても BFF は使わない＝権限昇格の防止）。
 - キャッシュキーは `['bff', 'search', query]`。同じ語での再訪・戻る操作は `staleTime`（30 秒）内なら再要求しない。
@@ -145,7 +130,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
   結果一覧と入力欄の両方が新しい語になる。未確定の編集値はそこで破棄される——
   URL が外から変わったということは、利用者が別の検索語を選んだということだからである。
   実装は**レンダー中の調整**（`useEffect` を使わない。理由は
-  [作業仕様書 §AI レビューを受けた是正](../specs/20260804_issue-502_sc01-03-search-flow.md)）。
+  仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線））。
 - これにより、旧実装が持っていた「送信時の直接実行」と「`?q=` 変化の `useEffect`」の**二重発火**と、
   それを抑えるための `lastSearched` ガードが不要になる。
 - 共有・ブックマーク・ブラウザの戻る／進むがそのまま再現される。
@@ -171,7 +156,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 | --- | --- | --- | --- | --- |
 | キーワード・意味検索 | `Input` | 必須 | 1 文字以上（前後の空白を除く）・最大 1000 文字 | 空では送信不可 |
 | 件数 | 表示 | — | `{totalHits} 件（権限内のみ表示）` | 表示件数が総数より少ない場合は「（表示 N 件）」を添える |
-| 文書 | 表示／リンク | — | タイトル ＋ スニペット | `/docs/$id`（SC-03）へ内部遷移 |
+| 文書 | 表示／リンク | — | タイトル ＋ スニペット | `/docs/$id`へ内部遷移 |
 | タグ | 表示 | — | `Tag` の並び | 検索応答の `tags`（§タグ列の表示元） |
 
 ### タグ列の表示元（［2026-08-09 追記 / #642］）
@@ -185,7 +170,7 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
   [[IADR-0014]] が記録した「テストは緑・本番は空」と同型である。
 - **#642 で是正した。** 書き込みと復元を取り込み側（`IngestionService`）と同じ表現
   （`tags -> ListValue[StringValue]`）へ揃え、両面を純関数として単体テストで固定した
-  （作業仕様書 [20260809_issue-642_qdrant-tag-restoration.md](../specs/20260809_issue-642_qdrant-tag-restoration.md)／
+  （作業仕様書 仕様書: Qdrant 検索結果のタグ復元／
   テスト仕様書 [FR-03_hybrid-search.md](../tests/FR-03_hybrid-search.md) の T-30〜T-36）。
 - **既存データは再取込まで空欄のままである**（[[IADR-0014]] の属性と同じ扱い。誤ったタグは出ない）。
 
@@ -224,9 +209,9 @@ UI だけ置くと「押しても結果が変わらない操作」「常に空�
 
 ## 関連仕様
 
-- 作業仕様書: [20260804_issue-502_sc01-03-search-flow.md](../specs/20260804_issue-502_sc01-03-search-flow.md)
+- 作業仕様書: 仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線）
 - テスト仕様書: [SC-02_search-results.md](../tests/SC-02_search-results.md)
-- 計画への環流: [feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)
+- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
 
 ## 未決事項
 

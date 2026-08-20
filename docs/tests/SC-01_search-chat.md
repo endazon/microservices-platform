@@ -2,27 +2,17 @@
 title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-01
-  - UC-01
-  - FR-03
-  - FR-04
-  - FR-05
-  - FR-08
-  - FR-11
-  - IADR-0126
-author: claude
 created: 2026-07-08
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-related_specs:
-  - "../screens/SC-01_search-chat.md"
-  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
-  - "../adr/IADR-0037_llm-sse-streaming.md"
-  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, FR-04, FR-05, FR-08, FR-11, SC-01, UC-01]
+adrs: []
+iadrs: [IADR-0126]
+specs: [01_screens, 01_usecases, 20260804_issue-502_sc01-03-search-flow, IADR-0037_llm-sse-streaming, IADR-0126_sse-answer-state-and-search-url-state, SC-01_search-chat]
+issues: []
+-->
 
 # テスト仕様書: SC-01 検索／チャット質問画面
 
@@ -35,11 +25,11 @@ related_specs:
 - 機能要求（FR）: FR-03 / FR-04 / FR-05 / FR-08 / FR-11
 - ユースケース（UC）: **UC-01**（検索・質問する）
 - 画面（SC）: SC-01
-- 受け入れ基準の所在: Issue #502 ／ [作業仕様書](../specs/20260804_issue-502_sc01-03-search-flow.md) §受け入れ基準
+- 受け入れ基準の所在: Issue #502 ／ 仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線） §受け入れ基準
 
-## UC-01 のフロー → テストの写像（**本書の核**）
+## のフロー → テストの写像（**本書の核**）
 
-[03_usecases UC-01](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) の
+03_usecases UC-01（計画リポ） の
 基本・代替・例外フローを、画面側で観測できる形へ写像する。
 
 | UC-01 のフロー | 画面での現れ方 | テスト（`SearchChatPage.test.tsx` ほか） |
@@ -50,7 +40,7 @@ related_specs:
 | 基本 5. 出典（Wiki／原本リンク）付きで結果を返す | 出典行を SC-03 / SC-04 への導線として描く | `renders document citations linking to SC-03` ／ `renders wiki citations linking to SC-04` ／ `does not infer wiki citations when no wiki base url is configured` |
 | **代替. キーワード検索のみで結果一覧を返し、AI回答を省略する** | 「キーワード検索のみ →」が入力中の語を `?q=` に載せて SC-02 へ | `offers a keyword-only search link carrying the current question` |
 | **例外. LLM が不調な場合は検索結果のみを返す（縮退運転）** | SSE の `error` で警告を出し、**検索結果一覧への導線**を示す | `degrades to keyword search when the answer stream reports an error event` ＋ `degrades to keyword search when the request itself fails`（**2 本に分かれている**） |
-| （FR-08）回答へのフィードバック | `done` 後に 👍/👎 が有効。`answerId` を添えて送信 | `sends feedback with the answer id after the stream completes` |
+| 回答へのフィードバック | `done` 後に 👍/👎 が有効。`answerId` を添えて送信 | `sends feedback with the answer id after the stream completes` |
 
 ## フロント（Vitest + Testing Library）
 
@@ -65,8 +55,8 @@ related_specs:
 | 7 | SSE の `error` イベント | `role="alert"` ＋ 検索結果一覧への導線 | **UC-01 例外フロー（縮退運転）** |
 | 8 | 通信失敗（`apiStream` が throw） | 同上 | UC-01 例外フロー |
 | 9 | 中断（`AbortError`） | エラー表示を出さない | [[IADR-0126]] 決定 1 |
-| 10 | 👍 押下 | `POST /bff/feedback` に `answerId` ＋ `rating='up'` | FR-08 |
-| 11 | フィードバック送信失敗 | 押下状態を戻す（楽観的更新の取り消し） | FR-08 |
+| 10 | 👍 押下 | `POST /bff/feedback` に `answerId` ＋ `rating='up'` | —|
+| 11 | フィードバック送信失敗 | 押下状態を戻す（楽観的更新の取り消し） | —|
 | 12 | 連投（送信 → 送信） | 前のストリームを中断し、本文・出典・`answerId` をリセットする | [[IADR-0126]] 決定 1 |
 | 13 | ロケール `en` | 見出し・ボタンが英語で描画される | ADR-0031（i18n） |
 
@@ -83,13 +73,13 @@ related_specs:
 
 | ID | レイヤ | 前提 | 期待結果 | 対応 |
 | --- | --- | --- | --- | --- |
-| T-01 | LlmGateway | 許可（public/rag-answer） | SSE デルタ＋`done(sent=true, tokens)` | FR-04 |
-| T-02 | LlmGateway | 拒否（confidential・ティア C のみ） | プロバイダ未呼出・`sent=false`・理由（越境なし） | FR-11 |
-| T-03 | AiAnalysis | 質問 | SSE `citations`→`token`→`done`（出典先行・`answerId` 付き） | FR-04 |
-| T-04 | BFF | スコープ許可 | 集約検索結果 | FR-03 |
-| T-05 | BFF | スコープ不許可 | 空（deny-by-default・存在秘匿） | FR-05 |
-| T-06 | BFF | クライアントが Scope 偽装 | サーバ解決を優先し空（権限昇格防止） | FR-05 |
-| T-07 | BFF | `ask/stream` ＋ Authorization | 上流 SSE 中継・Authorization 伝播 | FR-04 |
+| T-01 | LlmGateway | 許可（public/rag-answer） | SSE デルタ＋`done(sent=true, tokens)` | —|
+| T-02 | LlmGateway | 拒否（confidential・ティア C のみ） | プロバイダ未呼出・`sent=false`・理由（越境なし） | —|
+| T-03 | AiAnalysis | 質問 | SSE `citations`→`token`→`done`（出典先行・`answerId` 付き） | —|
+| T-04 | BFF | スコープ許可 | 集約検索結果 | —|
+| T-05 | BFF | スコープ不許可 | 空（deny-by-default・存在秘匿） | —|
+| T-06 | BFF | クライアントが Scope 偽装 | サーバ解決を優先し空（権限昇格防止） | —|
+| T-07 | BFF | `ask/stream` ＋ Authorization | 上流 SSE 中継・Authorization 伝播 | —|
 | T-08 | front | SSE parser | `event` / `data` 解析・複数 `data` 連結・非データは `null` | [[IADR-0037]] |
 
 ## E2E（Playwright）
@@ -127,6 +117,18 @@ SC-08 と共有する部品なので、テストも 1 か所に置く。**
 
 ## 未決事項
 
-- なし（画面要素の不足は [作業仕様書 §2](../specs/20260804_issue-502_sc01-03-search-flow.md) と
+- なし（画面要素の不足は 仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線） と
   `feedback/20260804_sc01-03-bff-contract-gaps.md` に集約した。
   **対象範囲フィルタは #539 で実装した**）
+
+<!-- trace-table:
+row1: FR-08
+row2: FR-08
+row3: FR-04
+row4: FR-11
+row5: FR-04
+row6: FR-03
+row7: FR-05
+row8: FR-05
+row9: FR-04
+-->

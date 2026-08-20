@@ -2,17 +2,17 @@
 title: コンポーザビリティ（宣言的パイプライン構成による組み替え） 機能仕様書
 type: functional-spec
 status: draft
-related_ids:
-  - FR-14
-  - FR-15
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14)"
-  - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-14, FR-15]
+adrs: []
+iadrs: [IADR-0027, IADR-0028]
+specs: [01_requirements, 10_composability-design, 20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config, ADR-0018_composable-architecture]
+issues: []
+-->
 
 # 機能仕様書: コンポーザビリティ（宣言的パイプライン構成による組み替え）
 
@@ -24,18 +24,18 @@ plan_refs:
 - 機能要求（FR）: FR-14（システム構成をコア改修なしに宣言的な構成定義の変更とプラグイン追加のみで組み替えられる）
 - ユースケース（UC）: —（運用・保守要求）
 - 計画書リンク: `02_requirements/01_requirements.md`、`06_technical/10_composability-design.md`、`07_adr/ADR-0018`
-- 実装 ADR: [IADR-0027](../adr/IADR-0027_composability-folder-structure.md)（Foundation/Composable フォルダ構造）、
-  [IADR-0028](../adr/IADR-0028_declarative-pipeline-config.md)（宣言的パイプライン構成）
+- 実装 ADR: IADR-0027: 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）（Foundation/Composable フォルダ構造）、
+  IADR-0028: 宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する（宣言的パイプライン構成）
 
 ## 概要
 
 取り込み〜正規化〜索引〜Wiki 同期の処理パイプライン（段構成・イベント接続）を、コード改修なしに
 **宣言的構成定義（`deploy/helm/microservices-platform/files/pipeline.json`）** の変更だけで組み替え可能にする。
 
-- **固定部（Foundation）／可変部（Composable）の分離**（IADR-0027）: 各サービスは `Foundation/`
+- **固定部（Foundation）／可変部（Composable）の分離**: 各サービスは `Foundation/`
   （認証・永続化・可観測性等の固定基盤）と `Composable/`（差し替え・組み替え対象の段・ポート実装）に
   フォルダを分離する。Foundation → Composable の参照は禁止（一方向依存）。
-- **宣言的段構成**（IADR-0028）: パイプライン段（MassTransit コンシューマ）は `IPipelineStep` を実装し、
+- **宣言的段構成**: パイプライン段（MassTransit コンシューマ）は `IPipelineStep` を実装し、
   `pipeline.json` の `steps[]` 宣言（name / service / consumer / input / outputs / enabled / queue）に
   従って登録される。
 
@@ -87,12 +87,12 @@ flowchart LR
 - [x] pipeline.json の変更のみで段の有効/無効・キュー名を組み替えられる（コード改修不要）
 - [x] 宣言と実装の不整合が起動時に fail-fast で検出される
 - [x] CI が宣言のスキーマ・接続性・循環を検証する
-- [x] Foundation → Composable の参照が存在しない（IADR-0027）
+- [x] Foundation → Composable の参照が存在しない
 
 ## 関連仕様
 
-- 作業仕様書: [20260708_issue-102](../specs/20260708_issue-102_composability-fixed-variable-separation.md) /
-  [20260708_issue-111](../specs/20260708_issue-111_declarative-pipeline-config.md)
+- 作業仕様書: 作業仕様書: 既存実装の固定部分と可変部分の分離（フォルダ構成再編） /
+  作業仕様書: 宣言的パイプライン構成
 - 技術文書: [composability-classification](../tech/composability-classification.md)
 - 機能仕様書: [FR-15_config-info-api](FR-15_config-info-api.md)（構成の可視化・ドリフト検出）
 - テスト仕様書: [FR-14_composability](../tests/FR-14_composability.md)

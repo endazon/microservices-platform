@@ -2,31 +2,17 @@
 title: 機能仕様書 — FR-12 原本の正規化変換（pandoc＋LLMコード化＋画像保持）
 type: functional-spec
 status: in-progress
-related_ids:
-  - IADR-0154
-  - FR-12
-  - UC-06
-  - SC-07
-  - IADR-0137
-author: claude
 created: 2026-07-03
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
-  - "../../planning/projects/microservices-platform/04_workflows/03_conversion-flow.md"
-related_specs:
-  - ../specs/20260703_FR-12_document-normalization-pipeline.md
-  - ../tests/FR-12_document-normalization.md
-  - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
-  - ../adr/IADR-0007_llm-egress-routing-config-driven.md
-  - ../adr/IADR-0137_conversion-dead-letter-marker.md
-  - ../data/conversion-job.md
-related_adrs:
-  - ADR-0012
-  - ADR-0014
-  - ADR-0010
+author: claude
 ---
+<!-- trace:
+ids: [FR-02, FR-12, SC-07, UC-06]
+adrs: [ADR-0010, ADR-0012, ADR-0014]
+iadrs: [IADR-0007, IADR-0137, IADR-0154]
+specs: [01_requirements, 01_usecases, 03_conversion-flow, 20260703_FR-12_document-normalization-pipeline, FR-12_document-normalization, IADR-0007_llm-egress-routing-config-driven, IADR-0008_conversion-ports-deny-by-default-and-idempotent-id, IADR-0137_conversion-dead-letter-marker, conversion-job]
+issues: []
+-->
 
 # 機能仕様書: FR-12 原本の正規化変換
 
@@ -41,7 +27,7 @@ related_adrs:
 `ConversionService.Worker` が `RawDocumentFetched` イベントを購読し、取得済みの原本を
 正規化形式（本文 Markdown＋資産）へ変換する。本文は **pandoc** で Markdown 化し、図は
 **LLM（LLMゲートウェイ `/complete` 経由）** で PlantUML/Mermaid にコード化する。コード化できない図は
-**画像として保持**し（ADR-0012、段階的に全面コード化）、本文・資産は **オブジェクトストレージ**（ADR-0014）へ
+**画像として保持**し（ADR-0012、段階的に全面コード化）、本文・資産は **オブジェクトストレージ**へ
 保管する。完了時に `DocumentNormalized` を発行し、文書管理・取り込みへ連鎖する。
 
 ## 入力 / 出力
@@ -63,7 +49,7 @@ related_adrs:
 ### 出力イベント: `DocumentNormalized`
 
 `DocumentId`（冪等）/ `SourceId` / `Title` / `MarkdownUri` / `AssetUris` / `Attributes` / `Tags` /
-`NormalizedAt` を発行し、DocumentService の登録 → 取り込み（FR-02）→ Wiki 同期へ連鎖する。
+`NormalizedAt` を発行し、DocumentService の登録 → 取り込み→ Wiki 同期へ連鎖する。
 
 ## 処理フロー（基本フロー / UC-06）
 
@@ -109,13 +95,13 @@ related_adrs:
   [データ仕様書](../data/conversion-job.md)。E3（図コード化の縮退）は再試行を発火させないため
   **標識の対象にならない**。
 
-## 機密制御（ADR-0012 / ADR-0010）
+## 機密制御
 
-- 図コード化の LLM 呼び出しは FR-11 の `/complete`（越境マトリクス、[IADR-0007](../adr/IADR-0007_llm-egress-routing-config-driven.md)）へ委譲し、
+- 図コード化の LLM 呼び出しは FR-11 の `/complete`（越境マトリクス、IADR-0007: LLM 呼び出し先の切替は設定駆動のエンドポイント定義＋越境マトリクスで行う）へ委譲し、
   変換固有の送信可否ロジックを二重実装しない。
 - 応答 `Sent=false`（機密区分による送信拒否）は画像保持へ縮退する。
 
-## 冪等性（ADR-0012）
+## 冪等性
 
 - `DocumentId = DeterministicGuid.ForDocument(SourceId, OriginalPath)`（RFC4122 v5 相当）。
   再変換・イベント再投入でも同一 `DocumentId` となり、文書管理側で重複登録を避けられる。

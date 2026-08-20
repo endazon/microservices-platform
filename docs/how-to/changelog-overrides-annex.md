@@ -2,17 +2,17 @@
 title: 別紙 — CHANGELOG 生成時の誤記補正・除外の仕組み
 type: how-to
 status: fixed
-related_ids:
-  - NFR
-  - IADR-0172
-  - IADR-0173
-  - IADR-0174
-author: claude
 created: 2026-08-11
 updated: 2026-08-11
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0172, IADR-0173, IADR-0174]
+specs: [01_requirements]
+issues: []
+-->
 
 # 別紙: CHANGELOG 生成時の誤記補正・除外の仕組み
 

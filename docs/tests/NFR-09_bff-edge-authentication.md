@@ -2,34 +2,19 @@
 title: エッジ（BFF）認証の担保 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - NFR-09
-  - FR-03
-  - FR-04
-  - FR-06
-  - FR-07
-  - UC-01
-  - UC-02
-  - UC-03
-  - SC-01
-  - SC-03
-  - SC-05
-  - SC-08
-  - ADR-0004
-  - IADR-0009
-  - IADR-0039
-  - IADR-0044
-  - IADR-0156
-  - IADR-0160
-author: claude
 created: 2026-08-10
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR-09: 認証・認可)"
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md (SC-05 の閲覧ロール)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, FR-04, FR-06, FR-07, NFR-09, SC-01, SC-03, SC-05, SC-08, UC-01, UC-02, UC-03]
+adrs: [ADR-0004]
+iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160]
+specs: [01_requirements, 01_screens]
+issues: [#458, #656]
+-->
 
-# テスト仕様書: エッジ（BFF）認証の担保（#656）
+# テスト仕様書: エッジ（BFF）認証の担保
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -65,8 +50,8 @@ plan_refs:
 | T-20 | 認証済み・**非特権ロール**（`viewer`） | `POST /bff/search` | **200** | 利用者グループは全利用者が使える | 自動 |
 | T-20 | 同上 | `POST /bff/attribute-values` | **200** | 同上 | 自動 |
 | T-20 | 同上 | `POST /bff/analysis/ask` | **200** | 同上 | 自動 |
-| T-20 | 同上 | `GET /bff/documents/{id}`・`/content`・`/versions`（SC-03） | **200** | 出典クリックの導線を壊さない | 自動 |
-| T-21 | 認証済み・非特権ロール | `GET /bff/documents`（SC-05） | **403** | SC-05 の閲覧ロール | 自動 |
+| T-20 | 同上 | `GET /bff/documents/{id}`・`/content`・`/versions` | **200** | 出典クリックの導線を壊さない | 自動 |
+| T-21 | 認証済み・非特権ロール | `GET /bff/documents` | **403** | SC-05 の閲覧ロール | 自動 |
 | T-21 | 認証済み・**運用者** | 同上 | **200** | 狭めすぎていない側 | 自動 |
 | T-21 | 認証済み・**管理者** | 同上 | **200** | 同上 | 自動 |
 | T-22 | — | `node scripts/check-bff-authz-docs.js` | `/bff/*` に**無認証の端点が 0 件** | 不変条件 | 自動（CI） |
@@ -103,12 +88,12 @@ plan_refs:
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260810_issue-656_bff-endpoint-authentication.md`
-- 実装 ADR: `../adr/IADR-0160_bff-edge-authentication.md` ／ `../adr/IADR-0156_bff-authz-contract-checker.md`
+- 作業仕様書: `../../.ai-context/specs/20260810_issue-656_bff-endpoint-authentication.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0160_bff-edge-authentication.md` ／ `../../.ai-context/adr/IADR-0156_bff-authz-contract-checker.md`
 
 ## 未決事項
 
-- **後段サービスの認可は本仕様の対象外**（#458）。BFF を塞いでも**クラスタ内から後段へ直接到達する
+- **後段サービスの認可は本仕様の対象外**。BFF を塞いでも**クラスタ内から後段へ直接到達する
   経路は残る**。「塞いだので安全になった」と読まないこと。
 - **検査器は「認証を要求するか」までしか見ない。** 「**正しい**ロールが付いているか」は人が計画を読んで決める
   ——`x-roles` と実効ロールが**どちらも同じように間違っていれば通る**（[[IADR-0156]] の既知の限界）。

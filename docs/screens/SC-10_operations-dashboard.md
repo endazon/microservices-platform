@@ -2,39 +2,19 @@
 title: 運用ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-10
-  - UC-05
-  - FR-10
-  - NFR
-  - IADR-0009
-  - IADR-0035
-  - IADR-0119, IADR-0142
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0129
-author: claude
 created: 2026-07-08
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "./SC-11_configuration-viewer.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
-  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
-  - "../adr/IADR-0011_dashboard-service-usage-aggregation.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
-  - "../tests/SC-10_operations-dashboard.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-10, SC-04, SC-10, SC-11, UC-05]
+adrs: []
+iadrs: [IADR-0009, IADR-0035, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0142]
+specs: [01_requirements, 01_screens, 01_usecases, 05_observability-ops, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, IADR-0011_dashboard-service-usage-aggregation, IADR-0035_frontend-role-based-nav-and-existence-hiding, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0129_sc09-11-admin-ops-screen-composition, INDEX, SC-10_operations-dashboard, SC-11_configuration-viewer]
+issues: [#10, #17, #3, #5, #586]
+-->
 
-# 画面仕様書: 運用ダッシュボード（SC-10）
+# 画面仕様書: 運用ダッシュボード
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**本画面はモックの見た目に最も遠い**——
@@ -49,15 +29,15 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-10 運用ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-10・別掲）
+- 画面（SC）: **SC-10 運用ダッシュボード**（05_screens/01_screens.md（計画リポ） §SC-10・別掲）
 - 関連ユースケース（UC）: **UC-05**（計画の画面一覧 `:56`。hi-fi のバッジも `UC-05`）
 - 関連機能要求（FR）: **FR-10**（利用状況・検索傾向・回答品質の可視化）＋ **非機能要件（運用・可観測性）**
   - **issue #504 §スコープ の表は SC-10 を「UC-07」と書くが、計画とは一致しない**——
-    計画で UC-07 は「Wiki で閲覧する」（SC-04）である。**本書は計画を正とした。**
+    計画で UC-07 は「Wiki で閲覧する」である。**本書は計画を正とした。**
 - モックアップ（**実装の正**）:
-  [hi-fi/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-10.html) ／
-  [wireframe/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-10.html)
-- 計画の運用設計: [06_technical/05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)
+  hi-fi/sc-10.html（計画リポ） ／
+  wireframe/sc-10.html（計画リポ）
+- 計画の運用設計: 06_technical/05_observability-ops.md（計画リポ）
   （Grafana / Kiali / Jaeger・Tempo は専用ツールで提供し、SC-10 はその入口）
 - 関連 IADR: [[IADR-0129]]（本作業の設計判断）・[[IADR-0035]]（ロール別ナビ・存在秘匿）・
   [[IADR-0119]]（FR-17〜21 の着手保留）・[[IADR-0009]]（存在秘匿）・[[IADR-0011]]（ダッシュボード集約）
@@ -65,7 +45,7 @@ related_specs:
 ## 画面概要・目的
 
 SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（Grafana / Kiali / Jaeger・Tempo）への入口**となる画面。
-本画面から設定を変更する操作は無い（参照専用）。構成ビューア（SC-11）への遷移導線も提供する。
+本画面から設定を変更する操作は無い（参照専用）。構成ビューアへの遷移導線も提供する。
 
 - ルート: **`/admin/ops`**（05_screens §共通シェル「ルートパス」）
 - 左ナビ: 「運用」グループの **「ダッシュボード」**（hi-fi の左レール表記に合わせた。従前の実装は「運用ダッシュボード」だった）
@@ -74,7 +54,7 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-10.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-10.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-10.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である（(a) メイン領域は個別に 1 行、
 (b) 共通シェルはまとめて 1 行、(c) モックに無い状態は表外）。
 
@@ -102,7 +82,7 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
 | 11 | 外部ツール「**Grafana ↗**」（442） | **する** | 実行時 config `opsLinks.grafanaUrl`。**未設定なら出さない**。副題「メトリクス・コスト」（計画 §主要素 / wireframe） |
 | 12 | 外部ツール「**Kiali ↗**」（443） | **する** | `opsLinks.kialiUrl`。副題「サービスメッシュ」 |
 | 13 | 外部ツール「**Jaeger / Tempo ↗**」（444） | **する** | `opsLinks.jaegerUrl`。副題「分散トレース」 |
-| 14 | 「**構成ビューア →**」（445） | **する** | `/admin/config-viewer`（SC-11）への内部リンク。**権限で出し分けない**（[[IADR-0129]] 決定 4） |
+| 14 | 「**構成ビューア →**」（445） | **する** | `/admin/config-viewer`への内部リンク。**権限で出し分けない**（[[IADR-0129]] 決定 4） |
 | 15 | 注記「運用面は専用ツールで提供: Grafana（メトリクス・コスト）・Kiali（メッシュ）・Jaeger/Tempo（トレース）…」（447） | **する** | `Alert`（`info`） |
 | 16 | **共通シェル**: 右レール「AIチャットパネル」（449-454） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
 | 17 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくず・権限バッジは #452 系。他は `foundation/ui/Layout` が既に持つ |
@@ -110,7 +90,7 @@ SLO・利用状況・コストの運用 KPI を一覧し、**専用ツール（G
 **対応表の行数は 17 行**（数え方は**行数**であって要素名ではない）。内訳は
 **する 6 行**（#1・#11〜#15）／**一部する 2 行**（#2・#4）／
 **しない 8 行**（**A: FR の着手保留 5 行** = #6〜#10 ／ **B: 契約の不在 2 行** = #3・#5 ／ 右レール 1 行 = #16）／
-**—（射程外）1 行**（#17）である。
+**—（射程外）1 行**である。
 
 > **［2026-08-10 / #552］この内訳は 3 値化で書き換えた。**
 > **従前は #2・#4 を「する」に数えていた**（する 8 / しない 8 / 本画面では作らない 1）。
@@ -221,7 +201,7 @@ flowchart LR
 孤立文書・解決できないリンク・未要約クラスタ・陳腐化文書は **FR-17 / FR-18** の指標である。
 [[IADR-0119]] 決定 2 の着手条件（前提 ADR の `Accepted`）を満たさなかったため実装しない。
 
-**注記の固定文言（#10）だけを先に置くこともしない**——注記は「その節の件数の読み方」を説明するものであり、
+**注記の固定文言だけを先に置くこともしない**——注記は「その節の件数の読み方」を説明するものであり、
 節が無い画面に置くと**何の件数の話か分からない**。
 
 > **［2026-08-07 追記 / #586］この保留は解除された。** `ADR-0033` は planning `3e58b97`
@@ -230,9 +210,9 @@ flowchart LR
 > **したがって上記 (a) の理由はもう成立しない。** ナレッジ健全性節（対応表 #6〜#10）を実装するかどうかは
 > **#504 / #452 の作業仕様書で判断する**。#586 は planning pin の更新と事実の追随に限り、
 > **本画面の実装は変更していない**（根拠: [[IADR-0129]] の 2026-08-07 追記・
-> [作業仕様書 #586](../specs/20260807_issue-586_planning-pin-adr-accepted.md)）。
+> 作業仕様書 — planning pin を `3e58b97` へ進め、IADR-0119 の着手ゲートを追随させる）。
 
-**(b) 契約の不在 — SLO（#3）・LLM コスト（#5）・一意利用者数（#4 の部分）**
+**(b) 契約の不在 — SLO・LLM コスト・一意利用者数（#4 の部分）**
 
 | 要素 | 契約の実測 |
 | --- | --- |

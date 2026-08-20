@@ -2,14 +2,17 @@
 title: 回答フィードバック（AnswerFeedback） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-08
-author: claude
 created: 2026-07-04
 updated: 2026-07-04
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-08)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-08]
+adrs: []
+iadrs: [IADR-0010]
+specs: [01_requirements]
+issues: []
+-->
 
 # データ仕様書: 回答フィードバック（AnswerFeedback）
 
@@ -21,7 +24,7 @@ plan_refs:
 - **技術検討(06_technical)・ADR**:
   - ADR-0002 DB per Service（FeedbackService 専用 DB）
   - 関連: IADR-0010（同一 (AnswerId, UserId) を 1 行に upsert し二重計上しない）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`
+- **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
 
@@ -70,7 +73,7 @@ erDiagram
 
 ## 整合性・制約ルール
 
-- **1 ユーザー 1 回答 1 フィードバック（FR-08 / IADR-0010）**: `(AnswerId, UserId)` 一意制約。再送信は `Update()` で上書きし、`CreatedAt` を保持・`UpdatedAt` のみ更新（二重計上しない）。
+- **1 ユーザー 1 回答 1 フィードバック**: `(AnswerId, UserId)` 一意制約。再送信は `Update()` で上書きし、`CreatedAt` を保持・`UpdatedAt` のみ更新（二重計上しない）。
 - **Rating 正規化**: `up` / `down` に小文字正規化してから保存（カラム長 4 と整合）。
 - **長さ制限**: `Question` は保存前に 1000 文字へ切り詰め（`Truncate`）。`Comment` は 2000 文字（バリデーションとカラム長を一致）。
 

@@ -2,33 +2,17 @@
 title: FR-22 利用者本人への通知 テスト仕様書
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-22
-  - FR-19
-  - FR-20
-  - UC-11
-  - ADR-0037
-  - ADR-0045
-  - IADR-0119
-  - IADR-0125
-  - IADR-0132
-  - IADR-0135
-  - IADR-0142
-  - IADR-0215
-author: Claude
 created: 2026-08-16
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - ../adr/IADR-0215_notification-service-and-in-app-delivery.md
-  - ../functional/FR-22_user-notifications.md
-  - ../specs/20260816_issue-600_fr22-in-app-notifications.md
-  - ../api/BFF_notifications.md
+author: Claude
 ---
+<!-- trace:
+ids: [FR-19, FR-20, FR-22, UC-11]
+adrs: [ADR-0037, ADR-0045]
+iadrs: [IADR-0119, IADR-0125, IADR-0132, IADR-0135, IADR-0142, IADR-0215]
+specs: [01_requirements, 01_usecases, 20260816_issue-600_fr22-in-app-notifications, ADR-0037_obsidian-sync-method, ADR-0045_mail-delivery-smtp-relay, BFF_notifications, FR-22_user-notifications, IADR-0215_notification-service-and-in-app-delivery]
+issues: [#451, #600]
+-->
 
 # テスト仕様書: FR-22 利用者本人への通知
 
@@ -41,9 +25,9 @@ related_specs:
 - 機能要求（FR）: **FR-22**
 - ユースケース（UC）: **UC-11** 例外フロー
 - 受け入れ基準の所在（02_requirements）:
-  [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) FR-22 行
-  および [ADR-0037](../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md) 決定 6・17・18 ／
-  [ADR-0045](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md) 決定 3・8
+  02_requirements/01_requirements.md（計画リポ） FR-22 行
+  および ADR-0037（計画リポ） 決定 6・17・18 ／
+  ADR-0045（計画リポ） 決定 3・8
 - 計画書リンク: 上記
 
 ## 受け入れ基準 5 つの写像（**この節が本書の主眼である**）
@@ -115,5 +99,5 @@ related_specs:
 
 ## 未決事項
 
-1. **AC-3〜AC-5 の `[Fact]` / `[Theory]` を書く時期**は、`dotnet` が実走できる環境が用意できたときである（#600）。
-2. **E2E（Playwright）は置いていない。** 発火源が結線されるまで、通知が実際に出る筋道が無いためである（#451）。
+1. **AC-3〜AC-5 の `[Fact]` / `[Theory]` を書く時期**は、`dotnet` が実走できる環境が用意できたときである。
+2. **E2E（Playwright）は置いていない。** 発火源が結線されるまで、通知が実際に出る筋道が無いためである。

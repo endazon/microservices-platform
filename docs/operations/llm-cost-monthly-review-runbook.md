@@ -2,24 +2,17 @@
 title: 運用 Runbook — LLM 費用の月次確認（Alertmanager 配備までの暫定統制）
 type: runbook
 status: fixed
-related_ids:
-  - NFR
-  - SC-10
-  - FR-11
-  - ADR-0006
-  - ADR-0044
-  - IADR-0110
-author: claude
 created: 2026-08-10
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-related_specs:
-  - ../specs/20260810_issue-546_llm-cost-monthly-review.md
-  - ../adr/IADR-0164_llm-cost-monthly-review-interim-control.md
-  - ../observability/llm-completion-metrics.md
-  - operations.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-11, SC-10]
+adrs: [ADR-0006, ADR-0038, ADR-0044]
+iadrs: [IADR-0110]
+specs: [05_observability-ops, 20260810_issue-546_llm-cost-monthly-review, IADR-0164_llm-cost-monthly-review-interim-control, llm-completion-metrics, operations]
+issues: [#440]
+-->
 
 # Runbook: LLM 費用の月次確認
 
@@ -80,7 +73,7 @@ related_specs:
 | --- | --- |
 | 特定の用途が急増した | その用途の呼び出し元を調べる（`llm_purpose` の値と `appsettings` の `PurposeModels` が対応） |
 | `llm_purpose="other"` が増えた | **定義していない purpose が来ている**＝ルーティングが既定へ落ちている（[[IADR-0110]]）。設定の追随漏れを疑う |
-| 上位モデルの比率が上がった | 用途別モデル割当の見直し（ADR-0038 / #440） |
+| 上位モデルの比率が上がった | 用途別モデル割当の見直し |
 | 拒否率・打ち切り率が上がった | [`docs/observability/llm-completion-metrics.md`](../observability/llm-completion-metrics.md) §監視観点 |
 | **費用の実額を知る必要がある** | **現状では出せない。** #443 / [[IADR-0110]] §結果 フォローアップ 2 の完了を待つ |
 

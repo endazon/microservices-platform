@@ -2,19 +2,17 @@
 title: FR-14 コンポーザビリティ（宣言的パイプライン構成） テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-14
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-14)"
-related_specs:
-  - ../functional/FR-14_composability.md
-  - ../specs/20260708_issue-111_declarative-pipeline-config.md
-related_adrs:
-  - ADR-0018 / IADR-0027 / IADR-0028
+author: claude
 ---
+<!-- trace:
+ids: [FR-14]
+adrs: [ADR-0018]
+iadrs: [IADR-0027, IADR-0028]
+specs: [01_requirements, 20260708_issue-111_declarative-pipeline-config, FR-14_composability]
+issues: []
+-->
 
 # テスト仕様書: FR-14 コンポーザビリティ（宣言的パイプライン構成）
 
@@ -46,7 +44,7 @@ related_adrs:
 | 2 | fail-fast | 宣言に段が無い/型名不一致で起動失敗 | 同上 |
 | 3 | 組み替え | enabled: false で購読が生成されない / queue 上書き | `WikiService.Api.Tests/PipelineRecomposeTests` |
 | 4 | 宣言検証 | スキーマ・接続性・循環・型名形式（V1〜V6） | `scripts/validate-pipeline-config.js --self-test`（CI: `ci.yml`） |
-| 5 | 参照方向 | Foundation → Composable 参照なし（IADR-0027） | レビュー・grep による検査（Issue #118 監査で確認済み） |
+| 5 | 参照方向 | Foundation → Composable 参照なし | レビュー・grep による検査（Issue #118 監査で確認済み） |
 
 ## 合否判定
 

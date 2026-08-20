@@ -2,26 +2,17 @@
 title: 機能仕様書 — FR-02 取り込み（パース・チャンク化・埋め込み・索引登録）
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-02
-  - UC-04
-author: claude
 created: 2026-06-27
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-related_specs:
-  - ../specs/20260627_FR-02_ingestion-pipeline.md
-  - ../specs/20260809_issue-536_search-result-updated-at.md
-  - ../tests/FR-02_ingestion.md
-  - ../adr/IADR-0002_ingestion-pipeline-and-qdrant-bootstrap.md
-  - ../adr/IADR-0149_search-result-updated-at-indexing.md
-related_adrs:
-  - ADR-0003
-  - ADR-0027
-  - ADR-0009
-  - ADR-0013
+author: claude
 ---
+<!-- trace:
+ids: [FR-02, FR-03, FR-05, UC-04]
+adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027]
+iadrs: []
+specs: [01_requirements, 20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, FR-02_ingestion, IADR-0002_ingestion-pipeline-and-qdrant-bootstrap, IADR-0149_search-result-updated-at-indexing]
+issues: [#536]
+-->
 
 # 機能仕様書: FR-02 取り込み
 
@@ -32,7 +23,7 @@ related_adrs:
 
 ## 機能概要
 
-`IngestionService.Worker` が `DocumentUpdated` イベントを購読し、文書本文を検索可能なチャンクへ変換して Qdrant に登録する。これにより横断検索（FR-05）と AI 回答（FR-03）が文書を参照できるようになる。
+`IngestionService.Worker` が `DocumentUpdated` イベントを購読し、文書本文を検索可能なチャンクへ変換して Qdrant に登録する。これにより横断検索と AI 回答が文書を参照できるようになる。
 
 ## 入力 / 出力
 
@@ -83,7 +74,7 @@ related_adrs:
 - コレクション名: `Qdrant:CollectionName`（既定 `knowledge_chunks`）。後方互換で `Qdrant:Collection` もフォールバックで解決する。
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
-- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`**（#536）。
+- ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`**。
 - **`updated_at` は Unix epoch ミリ秒の整数**である（[[IADR-0149]] 決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。**本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
 
 ## トレーサビリティ

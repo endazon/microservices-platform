@@ -2,16 +2,17 @@
 title: ABAC 文書アクセス制御 機能仕様書
 type: functional-spec
 status: draft
-related_ids:
-  - FR-05
-  - UC-01
-  - UC-05
-author: claude
 created: 2026-06-27
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, UC-01, UC-05]
+adrs: []
+iadrs: []
+specs: [01_requirements]
+issues: []
+-->
 
 # 機能仕様書: ABAC 文書アクセス制御
 
@@ -75,9 +76,9 @@ SC-01 / SC-08 の対象範囲フィルタ「**権限内のタグ／部門／プ�
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260627_FR-05_abac-deny-by-default.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-05_abac-deny-by-default.md`
 - テスト仕様書: `../tests/FR-05_abac-access-control.md`
-- 実装 ADR: `../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
 
 ## 未決事項
 

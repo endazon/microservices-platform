@@ -1,12 +1,12 @@
 # 追加可変機能ユニットを submodule として組み込む手順（FR-14 / IADR-0056 / IADR-0060 / IADR-0064）
 
 本リポジトリは **platform（基盤）** を主成果物とし、**可変機能ユニット**（knowledge 等）を
-`src/<unit>/`（`backend/` + `frontend/`）として持つ（[IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
+`src/<unit>/`（`backend/` + `frontend/`）として持つ（[IADR-0056](../../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 追加の可変機能ユニットは**別リポジトリの git submodule** として `src/<unit>/` にリンクする。本書はその
 組み込み手順の運用ガイドである。規約の要点は [`src/README.md`](../../src/README.md) を参照。
 
 > 状態: 本手順の CI 自動発見・テンプレート・単独ビルド規約は整備済み。**サンプルユニットでの end-to-end
-> 通し検証（別リポジトリ作成が必要）は未実施**（[IADR-0060](../adr/IADR-0060_submodule-unit-operations.md) フォローアップ、Issue #230）。
+> 通し検証（別リポジトリ作成が必要）は未実施**（[IADR-0060](../../.ai-context/adr/IADR-0060_submodule-unit-operations.md) フォローアップ、Issue #230）。
 
 ## 1. ユニットリポジトリをテンプレートから作成する
 
@@ -38,7 +38,7 @@
   `Shared/<Unit>.Contracts/Events/` に置き、wire URN は移設時に `[MessageUrn]` で固定する（IADR-0059）。
 - **依存規則**（[`src/README.md`](../../src/README.md) §依存規則、機械検査は IADR-0057）:
   - ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure /
-    Kernel）のみ（[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を
+    Kernel）のみ（[IADR-0117](../../.ai-context/adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を
     2 → 3 へ部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
   - platform → 可変ユニットの参照は禁止（一方向依存）。
   - `Foundation/` は `Composable/` に依存しない。
@@ -93,11 +93,11 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 
 - pnpm workspace は `src/pnpm-workspace.yaml` の `'*/frontend'` により**自動認識**される
   （同ファイルの追記不要。#591: 従前ここは「npm workspaces（`package.json` 追記不要）」と書いていたが、
-  パッケージ管理は [IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済み）。
+  パッケージ管理は [IADR-0121](../../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 2 で pnpm へ移行済み）。
   **メンバの現行値は同ファイル自身が正本**である（`src/` の外にある雛形 `../templates/*/frontend` も
   メンバに含む。#802 / #777。理由は同 決定 2 の 2026-08-16 追記）。
 - ユニットが公開する契約は **`(shell: ShellRoute) => Route` のルート factory を束ねたタプル**と
-  **ナビ項目（`PlanNavItem[]`）**の 2 つである（[IADR-0124](../adr/IADR-0124_tanstack-router-unit-composition.md)
+  **ナビ項目（`PlanNavItem[]`）**の 2 つである（[IADR-0124](../../.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md)
   決定 1）。platform の合成点
   [`src/platform/frontend/src/features/index.ts`](../../src/platform/frontend/src/features/index.ts) へ
   **import 1 行 ＋ スプレッド 2 行**を追加して束ねる:
@@ -121,14 +121,14 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
     計画に属さないユニットは `group` を宣言せず、合成点の `unitNavGroups` へ**ユニットの機能名**を
     見出しとするグループを 1 要素足す（IADR-0125 決定 9）。
   - **旧契約（`FeatureModule { id, routes: {path, element}[], nav }`）は使わない。** 本リポジトリから
-    変更できないユニット（`src/ai-stock-trading`。[IADR-0120](../adr/IADR-0120_excluded-units-from-gitmodules.md)）
+    変更できないユニット（`src/ai-stock-trading`。[IADR-0120](../../.ai-context/adr/IADR-0120_excluded-units-from-gitmodules.md)）
     のための互換ブリッジであり、`src/README.md` §項 4 が「新規ユニットでは使わない」と定めている。
   - `@<unit>` エイリアスは **2 か所**へ追加する（`@knowledge` と同型）。片方だけだと
     「ビルドは通るが `tsc` が落ちる」等の食い違いになる。
     - `src/platform/frontend/vite.config.ts` の `resolve.alias`
     - `src/platform/frontend/tsconfig.app.json` の `paths`
   - 依存規則: 可変ユニットが参照してよいのは `@foundation` と `@platform/ui` の 2 つ
-    （[IADR-0121](../adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が `src/README.md` 例外 2 を
+    （[IADR-0121](../../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が `src/README.md` 例外 2 を
     1 → 2 へ部分改定）。合成点以外からの `@<unit>` import は
     ESLint（`no-restricted-imports`、IADR-0057）で禁止される。
 
@@ -162,7 +162,7 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   スニペットのコピペではなく実ファイル複製を使う（コピペ時の引用符取りこぼしで **MSB4092** を招かないため。
   Condition に `GetPathOfFileAbove` を直接書かず、パスをプロパティへ束ねて単純参照にするのが要点。詳細は
   [`templates/unit-template/README.md`](../../templates/unit-template/README.md) と
-  [IADR-0064](../adr/IADR-0064_standalone-build-props-fallback.md)）。
+  [IADR-0064](../../.ai-context/adr/IADR-0064_standalone-build-props-fallback.md)）。
 
 ## 6. バージョン固定・更新
 
@@ -187,9 +187,9 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
 
 ## 参照
 
-- [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md) ユニット第一構成
-- [IADR-0057](../adr/IADR-0057_unit-dependency-machine-check.md) 依存方向の機械検査
+- [IADR-0056](../../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) ユニット第一構成
+- [IADR-0057](../../.ai-context/adr/IADR-0057_unit-dependency-machine-check.md) 依存方向の機械検査
 - IADR-0059 契約階層化（ユニット固有イベント契約） — #229 で導入予定
-- [IADR-0060](../adr/IADR-0060_submodule-unit-operations.md) submodule 運用（本書の決定）
-- [IADR-0064](../adr/IADR-0064_standalone-build-props-fallback.md) 単独ビルド用フォールバック props の MSB4092 回避・実ファイル同梱
+- [IADR-0060](../../.ai-context/adr/IADR-0060_submodule-unit-operations.md) submodule 運用（本書の決定）
+- [IADR-0064](../../.ai-context/adr/IADR-0064_standalone-build-props-fallback.md) 単独ビルド用フォールバック props の MSB4092 回避・実ファイル同梱
 - [`src/README.md`](../../src/README.md) ユニット規約・依存規則

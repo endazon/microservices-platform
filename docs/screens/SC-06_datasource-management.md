@@ -2,42 +2,19 @@
 title: データソース管理 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-06
-  - UC-04
-  - FR-01
-  - FR-02
-  - FR-05
-  - IADR-0039
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0127
-  - IADR-0136
-  - IADR-0044
-  - IADR-0128
-  - IADR-0199
-author: claude
 created: 2026-07-09
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "./SC-05_document-management.md"
-  - "./SC-07_conversion-jobs.md"
-  - "../adr/IADR-0039_datasource-management-bff-and-role-gating.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
-  - "../adr/IADR-0136_next-sync-at-from-worker-cadence.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../specs/20260806_issue-538_next-sync-at.md"
-  - "../tests/SC-06_datasource-management.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-01, FR-02, FR-05, SC-06, SC-07, UC-04]
+adrs: []
+iadrs: [IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0136, IADR-0148, IADR-0199]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, IADR-0039_datasource-management-bff-and-role-gating, IADR-0127_sc07-retry-admin-only-and-derived-states, IADR-0136_next-sync-at-from-worker-cadence, INDEX, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
+issues: [#519, #538, #628, planning#198, planning#299]
+-->
 
-# 画面仕様書: データソース管理（SC-06）
+# 画面仕様書: データソース管理
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——hi-fi の「次回同期」列
@@ -51,10 +28,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-06 データソース管理画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-06・遷移図 `SC06 → SC07`）
+- 画面（SC）: **SC-06 データソース管理画面**（05_screens/01_screens.md（計画リポ） §SC-06・遷移図 `SC06 → SC07`）
 - 関連ユースケース（UC）: **UC-04**（データソースを登録・同期する。基本 1・**代替「手動同期を実行する」**・**例外「接続失敗時は再試行し、継続失敗はアラートする」**）
 - 関連機能要求（FR）: **FR-01**（データソースの登録・同期・カタログ化）・**FR-02**（取り込み）
-- モックアップ（**実装の正**）: [hi-fi/sc-06.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-06.html) ／ [wireframe/sc-06.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-06.html)
+- モックアップ（**実装の正**）: hi-fi/sc-06.html（計画リポ） ／ wireframe/sc-06.html（計画リポ）
 - 関連 IADR: [[IADR-0039]]（BFF とロールゲート）・[[IADR-0127]]（本作業の設計判断）・[[IADR-0019]]（機密区分のフェイルセーフ既定）
 
 ## 画面概要・目的
@@ -84,7 +61,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-06.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-06.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-06.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
 
 > **［対応表の凡例］「実装」列は 3 値である**（利用者裁定 2026-08-05・質問票 第12回 **Q21**。計画 `01_screens.md:408`）。
@@ -105,9 +82,9 @@ related_specs:
 | 5 | 一覧の**同期状態**列（418・420-423） | **一部する** | **満たしていない条件**: 契約から導出できる範囲に限る。 `StatusBadge`。**色 ＋ アイコン ＋ テキスト**（INDEX 決定 21）。導出規則は §同期状態の導出 |
 | 6 | 同期状態の**「⚠ 再試行中（3/5）」**（422） | **する** | **［2026-08-08 / #537］契約が同期健全性を持ったため実装した**（裁定 Q14）。`StatusBadge tone="warning"`（琥珀）。導出規則は §同期状態の導出 |
 | 7 | 一覧の**次回同期**列（418・420-423） | **しない** | **契約は #538 で追加済み**（`DataSourceDto.nextSyncAt`）。**表示が未実装**なので判定は「しない」である。繰り延べの理由が「契約に無い」から「表示が未実装」へ変わっただけで、画面としては出ていない。§実装しない要素 (b) |
-| 8 | 行操作「**手動同期**」（420-421） | **する** | **管理者・運用者。** `POST /bff/datasources/{id}/sync`（UC-04 **代替フロー**）。**破壊的操作に含めない**（planning#299） |
+| 8 | 行操作「**手動同期**」（420-421） | **する** | **管理者・運用者。** `POST /bff/datasources/{id}/sync`（UC-04 **代替フロー**）。**破壊的操作に含めない** |
 | 9 | 行操作「**設定**」（422-423） | **しない** | **契約は #534 で追加済み**（`PUT` / `PATCH`）。**編集フォームの画面実装が未了**なので判定は「しない」である（#538 と同じく、繰り延べの理由が「契約に無い」から「表示が未実装」へ変わった）。§実装しない要素 (c) |
-| 10 | 「変換ジョブの状況を見る →」（426） | **する** | `/admin/conversions`（SC-07）への内部リンク。計画の遷移図 `SC06 → SC07` |
+| 10 | 「変換ジョブの状況を見る →」（426） | **する** | `/admin/conversions`への内部リンク。計画の遷移図 `SC06 → SC07` |
 | 11 | 注記「接続情報（認証情報）は Vault 管理。接続の継続失敗はアラート（UC-04 例外フロー）。」（427） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
 | 12 | **共通シェル**: 右レール「AIチャットパネル」（429-434） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
 | 13 | **共通シェル**: パンくず（413）・ブランド／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくずは #452 系。他は `foundation/ui/Layout` が既に持つ |
@@ -117,7 +94,7 @@ related_specs:
 | 要素 | 計画上の根拠 |
 | --- | --- |
 | 登録フォームの項目（名前・種別・接続先 URI・既定の機密区分・**既定の部門**・**既定のライフサイクル状態**） | 05_screens §SC-06 主要素「ソース登録ボタン」「コネクタ設定」／ FR-01 ／ FR-05（既定機密区分は [[IADR-0019]] のフェイルセーフ）／ **既定の部門は FR-05・UC-04 基本 1 と 09_datasource-connectors §システム投入経路での `owner` / `department` / `lifecycle` の 2 段目（[[IADR-0199]]。#767）**／ **［2026-08-16 / #796］既定のライフサイクル状態も同じ 2 段目である**（裁定 planning#372 が「登録・更新フォームは**データソースの既定属性 3 つ**を持つ」と確定させた。**これでモックに無い 3 項目が揃った**） |
-| 行操作: **無効化**（**管理者のみ**） | FR-01「データソースを**登録・同期し、カタログ化**する」のライフサイクル／ [[IADR-0039]]（Accepted）。**運用者へは出さない**（#628） |
+| 行操作: **無効化**（**管理者のみ**） | FR-01「データソースを**登録・同期し、カタログ化**する」のライフサイクル／ [[IADR-0039]]（Accepted）。**運用者へは出さない** |
 
 ### 同期状態の導出（[[IADR-0127]] 決定 2）
 
@@ -162,7 +139,7 @@ related_specs:
 `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/DataSourceBffEndpoints.cs`（対象コミット `de55761`）。
 
 **「押しても結果が変わらないボタン」「常に空の列」を置かない**（#502 が確立した規則）。
-3 件は環流の記録に載せ（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)）、
+3 件は環流の記録に載せ（feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設））、
 planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て計画本文へ反映済みである**（planning#200。
 (a) = Q14 同期健全性を契約へ追加／(b) = Q15 次回同期は共通間隔・ソース別スケジュールは持たない／
 (c) = Q16 更新 API を定める）。**3 件とも契約は揃った** —— (b) は #538（[[IADR-0136]]）、
@@ -173,7 +150,7 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧 | `GET /bff/datasources` | **orval 生成フック `useBffDataSourceList`**（#519） | admin / operator | `DataSourceDto[]` |
+| 一覧 | `GET /bff/datasources` | **orval 生成フック `useBffDataSourceList`** | admin / operator | `DataSourceDto[]` |
 | 登録 | `POST /bff/datasources` | `useMutation` | 同上 | `DataSourceDto`（201） |
 | 更新（全置換） | `PUT /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
 | 更新（部分） | `PATCH /bff/datasources/{id}` | **未使用**（契約のみ。#534） | **admin のみ** | `DataSourceDto`（200） |
@@ -259,14 +236,14 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
 
 ## 関連仕様
 
-- 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
+- 作業仕様書: 仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析）
 - テスト仕様書: [SC-06_datasource-management.md](../tests/SC-06_datasource-management.md)
-- 作業仕様書（次回同期の契約）: [20260806_issue-538_next-sync-at.md](../specs/20260806_issue-538_next-sync-at.md)
-- 作業仕様書（同期健全性・更新 API）: [20260808_issue-534-537_datasource-contract-bundle.md](../specs/20260808_issue-534-537_datasource-contract-bundle.md)
-- 作業仕様書（既定の部門の入力欄）: [20260815_issue-767_sc06-department-input.md](../specs/20260815_issue-767_sc06-department-input.md)
-- 作業仕様書（既定のライフサイクル状態の入力欄）: [20260816_issue-796_sc06-lifecycle-input.md](../specs/20260816_issue-796_sc06-lifecycle-input.md)
-- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0039](../adr/IADR-0039_datasource-management-bff-and-role-gating.md) / [IADR-0136](../adr/IADR-0136_next-sync-at-from-worker-cadence.md) / [IADR-0148](../adr/IADR-0148_datasource-sync-health-persistence.md)
-- 計画への環流（**planning#198 として起票済み・2026-08-05 に裁定され planning#200 で計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 作業仕様書（次回同期の契約）: 仕様書: SC-06「次回同期」を共通間隔の次回実行時刻として返す
+- 作業仕様書（同期健全性・更新 API）: 仕様書: データソース契約の束（#534 ＋ #537）
+- 作業仕様書（既定の部門の入力欄）: 仕様書: SC-06 登録フォームの `department` 入力欄
+- 作業仕様書（既定のライフサイクル状態の入力欄）: 仕様書: SC-06 登録フォームの `lifecycle` 入力欄
+- 実装 ADR: IADR-0127: 管理画面（SC-05〜08）の実装方針 — 再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る / IADR-0039: データソース管理の BFF 集約と管理系画面のロールゲーティング / IADR-0136: `NextSyncAt` はワーカーの位相から導出し、定期同期が無効なら `null` にする / IADR-0148: 同期健全性はエンティティへ永続化する
+- 計画への環流（**planning#198 として起票済み・2026-08-05 に裁定され planning#200 で計画本文へ反映済み**）: feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）
 
 ## 未決事項
 
@@ -286,7 +263,7 @@ planning#198 として起票した。**2026-08-05 に 3 件とも裁定が出て
    すべて載せる** —— 計画（裁定 planning#372）は「**登録・更新**フォームは既定属性 3 つを持つ」と定めており、
    本 issue が足したのは**登録側だけ**である（更新フォームがまだ存在しないため）。追跡は **#754**。
 4. ~~**閲覧ロール**（admin/operator か admin のみか）~~ —— **［2026-08-09 / #628］解消済み。**
-   裁定 Q19（planning#198）が「**閲覧は管理者・運用者に開く**」と定め、計画側が改訂された。
+   裁定 Q19が「**閲覧は管理者・運用者に開く**」と定め、計画側が改訂された。
    [[IADR-0039]] 決定 1（admin **または** operator）が計画と一致した状態になっている。
 5. ~~**書き込みロールの計画との差異**~~ —— **［2026-08-09 / #628］解消済み。**
    計画 §SC-06 §アクセス制御「**登録・更新・無効化は管理者限定**」に対し、`POST` と `DELETE` が

@@ -2,28 +2,19 @@
 title: パスワードリセット 画面仕様書
 type: screen-spec
 status: draft
-related_ids:
-  - SC-15
-  - SC-13
-  - SC-10
-  - NFR
-  - ADR-0026
-  - ADR-0045
-  - IADR-0197
-author: claude
 created: 2026-08-15
 updated: 2026-08-15
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - "../adr/IADR-0197_realm-rename-and-auth-policy.md"
-  - "../tests/SC-15_password-reset.md"
-  - "./SC-14_otp-mfa.md"
+author: claude
 ---
+<!-- trace:
+ids: [SC-10, SC-13, SC-15]
+adrs: [ADR-0026, ADR-0045]
+iadrs: [IADR-0197]
+specs: [01_screens, ADR-0026_authentication-ux-and-account-management, ADR-0045_mail-delivery-smtp-relay, IADR-0197_realm-rename-and-auth-policy, SC-14_otp-mfa, SC-15_password-reset]
+issues: [#438]
+-->
 
-# 画面仕様書: パスワードリセット（SC-15）
+# 画面仕様書: パスワードリセット
 
 > **本仕様書は realm 設定の側だけが実装済みである。** 画面（Keycloak テーマ）とメール送出は未実装であり、
 > **担当は #438**（計画 決定 30）。本書は #578 が引き受けた下位タスク＝「realm 設定と画面仕様書の作成」の成果物である。
@@ -43,7 +34,7 @@ SC-15 の実装ではない。**この 1 つの真を見て「リセットは実
 - 画面（SC）: **SC-15**（パスワードリセット）。戻り先は SC-13（ログイン）、送信失敗の観測は [SC-10](./SC-10_operations-dashboard.md)（運用ダッシュボード）
 - 関連ユースケース（UC）: UC-05
 - 関連機能要求（FR）: 非機能要件「セキュリティ: 認証・認可」
-- 計画書リンク: [`05_screens/01_screens.md` §SC-15](../../planning/projects/microservices-platform/05_screens/01_screens.md)／[`ADR-0026`](../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md)／[`ADR-0045`](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md)
+- 計画書リンク: `05_screens/01_screens.md` §SC-15（計画リポ）／`ADR-0026`（計画リポ）／`ADR-0045`（計画リポ）
 
 ## 画面概要・目的
 
@@ -76,7 +67,7 @@ SC-15 の実装ではない。**この 1 つの真を見て「リセットは実
 | リセットリンク | **有効期限 30 分** | 期限切れは再申請を促す |
 | 新パスワード | 12 文字以上・3 種以上・直近 5 世代と不一致 | ポリシー違反の内容を表示 |
 
-**realm 側の実装値**（`deploy/keycloak/microservices-platform-realm.json`。[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md)）:
+**realm 側の実装値**（`deploy/keycloak/microservices-platform-realm.json`。IADR-0197: レルムを `platform` へ改名し、ADR-0026 の認証ポリシーを realm へ投入する）:
 
 | キー | 値 | 対応する ADR-0026 の確定要件 |
 | --- | --- | --- |
@@ -90,7 +81,7 @@ SC-15 の実装ではない。**この 1 つの真を見て「リセットは実
 
 > **「3 種以上」は Keycloak の組み込みポリシーでは表せない。** `upperCase(n)` / `lowerCase(n)` / `digits(n)` /
 > `specialChars(n)` はいずれも **AND** であり、「4 種のうち 3 種」という選言を表現できない。
-> **`regexPattern` の先読みで 4 通りの組み合わせを選言として書いている**（[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md) 決定 3）。
+> **`regexPattern` の先読みで 4 通りの組み合わせを選言として書いている**（IADR-0197: レルムを `platform` へ改名し、ADR-0026 の認証ポリシーを realm へ投入する 決定 3）。
 
 ## アクション・イベント
 
@@ -98,7 +89,7 @@ SC-15 の実装ではない。**この 1 つの真を見て「リセットは実
 | --- | --- | --- |
 | 申請（メールアドレス送信） | リセットメールを送信。**登録有無によらず同一表示** | 送信完了表示 |
 | メール内リンク | 新パスワード設定フォーム（有効期限 30 分） | 新パスワード設定 |
-| 設定完了 | **既存の全セッションを即時失効させる** | SC-13 |
+| 設定完了 | **既存の全セッションを即時失効させる** | —|
 
 ## 画面遷移
 
@@ -150,11 +141,11 @@ Keycloak 管理コンソールでの一時パスワード発行と `UPDATE_PASSW
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
 | 12 文字以上・3 種以上・直近 5 世代と不一致（**強制**） | **する** | `passwordPolicy` に投入済み（`regexPattern` の選言で 3 種以上を表現） | `01_screens.md` §SC-15 |
-| **新パスワード設定画面のポリシー表示**（主要素「ポリシー表示付き」） | **しない** | **テーマ未実装**（#438）。計画は文言まで規範化している —— **§モック間相違の確定 ⑤ は本項のみ wireframe を正とし、文字種を「英大文字・小文字・数字・記号のうち3種以上」と列挙せよ**と定める。**強制（realm）と表示（画面）は別物であり、前者が済んでも後者は残る** | `01_screens.md` §モック間相違の確定 ⑤ ／ §SC-15 |
+| **新パスワード設定画面のポリシー表示**（主要素「ポリシー表示付き」） | **しない** | **テーマ未実装**。計画は文言まで規範化している —— **§モック間相違の確定 ⑤ は本項のみ wireframe を正とし、文字種を「英大文字・小文字・数字・記号のうち3種以上」と列挙せよ**と定める。**強制（realm）と表示（画面）は別物であり、前者が済んでも後者は残る** | `01_screens.md` §モック間相違の確定 ⑤ ／ §SC-15 |
 | リセットリンクの有効期限 30 分 | **する** | `actionTokenGeneratedByUserLifespan = 1800` | 同上 |
 | 5 回失敗で 15 分ロック | **する** | `bruteForceProtected` / `failureFactor` / `waitIncrementSeconds` | `ADR-0026` §パスワード・ロックアウト |
 | メール経由の自己リセット | **しない** | **`smtpServer` 未設定**（実環境の値が要る。上記 3 点） | `01_screens.md` §SC-15 |
-| 存在秘匿（常に「メールを送信しました」） | **一部する** | **Keycloak の `reset-credentials` フローは既定で存在秘匿である**が、**文言のブランド適用はテーマ未実装**（#438） | 同上 |
+| 存在秘匿（常に「メールを送信しました」） | **一部する** | **Keycloak の `reset-credentials` フローは既定で存在秘匿である**が、**文言のブランド適用はテーマ未実装** | 同上 |
 | 完了時に全セッションを失効 | **しない** | Keycloak の標準挙動に依存する部分と作り込みの境界が未確定。**#438 で実環境確認が要る** | 同上 |
 | 送信失敗を監査ログへ記録し SC-10 で観測 | **しない** | 送信経路そのものが未設定のため成立しない。ADR-0045 決定 8 | `01_screens.md` §SC-15 |
 | メール本文はリンクと有効期限のみ | **しない** | 同上（テンプレートはテーマの一部）。ADR-0045 決定 7 | 同上 |
@@ -162,7 +153,7 @@ Keycloak 管理コンソールでの一時パスワード発行と `UPDATE_PASSW
 
 ## 関連仕様
 
-- 実装 ADR: [IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md)
+- 実装 ADR: IADR-0197: レルムを `platform` へ改名し、ADR-0026 の認証ポリシーを realm へ投入する
 - テスト仕様書: [SC-15](../tests/SC-15_password-reset.md)
 - 画面仕様書: [SC-14 ワンタイムコード](./SC-14_otp-mfa.md)
 
@@ -170,3 +161,7 @@ Keycloak 管理コンソールでの一時パスワード発行と `UPDATE_PASSW
 
 - **`smtpServer` の投入時期**。実環境の値が供給されてから。#438 の射程。
 - **全セッション失効の実現方式**（Keycloak の標準挙動で足りるか、作り込みが要るか）。実環境での確認が要る。
+
+<!-- trace-table:
+row1: SC-13
+-->

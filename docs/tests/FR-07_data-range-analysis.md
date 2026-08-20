@@ -2,16 +2,17 @@
 title: 指定データ範囲AI分析 テスト仕様書
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-07
-  - UC-02
-author: claude
 created: 2026-07-04
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-07, UC-02]
+adrs: []
+iadrs: []
+specs: [01_requirements, 01_usecases]
+issues: []
+-->
 
 # テスト仕様書: 指定データ範囲での分析・比較・抽出
 
@@ -71,8 +72,8 @@ plan_refs:
 ## 関連仕様
 
 - 機能仕様書: `../functional/FR-07_data-range-analysis.md`
-- 作業仕様書: `../specs/20260627_FR-07_data-range-analysis.md`
-- 実装 ADR: `../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`, `../adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-07_data-range-analysis.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`, `../../.ai-context/adr/IADR-0004_abac-multivalue-allowlist-deny-by-default.md`
 - 関連テスト仕様: `./FR-04_ai-answer-citations.md`（出典付与）、`./FR-05_abac-access-control.md`（ABAC）
 - テストコード: `src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/DataRangeScopeResolverTests.cs`, `AnalysisPromptBuilderTests.cs`, `AnalysisEndpointTests.cs`, `RagOrchestratorScopeTests.cs`, `src/knowledge/backend/Tests/Knowledge.IntegrationTests/AiAnalysisService/RagOrchestratorTests.cs`
 

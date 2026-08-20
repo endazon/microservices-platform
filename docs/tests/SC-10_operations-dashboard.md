@@ -2,28 +2,17 @@
 title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-10
-  - UC-05
-  - FR-10
-  - NFR
-  - IADR-0009
-  - IADR-0035
-  - IADR-0129
-author: claude
 created: 2026-07-08
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-related_specs:
-  - "../screens/SC-10_operations-dashboard.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
-  - "../adr/IADR-0011_dashboard-service-usage-aggregation.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-10, SC-10, SC-11, UC-05]
+adrs: [ADR-0031]
+iadrs: [IADR-0009, IADR-0035, IADR-0129]
+specs: [01_screens, 01_usecases, 05_observability-ops, 20260805_issue-504_sc09-11-admin-ops-screens, IADR-0011_dashboard-service-usage-aggregation, IADR-0035_frontend-role-based-nav-and-existence-hiding, IADR-0129_sc09-11-admin-ops-screen-composition, SC-10_operations-dashboard]
+issues: []
+-->
 
 # テスト仕様書: SC-10 運用ダッシュボード
 
@@ -48,7 +37,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 - 画面（SC）: SC-10 ／ ユースケース（UC）: **UC-05** ／
   機能要求（FR）: **FR-10**（利用状況・検索傾向・回答品質の可視化）＋ **非機能要件（運用・可観測性）**
 - 受け入れ基準の所在: issue #504 §受け入れ基準 ／ 作業仕様書
-  [20260805_issue-504](../specs/20260805_issue-504_sc09-11-admin-ops-screens.md) §受け入れ基準
+  仕様書: SC-09〜11 の新スタックでの再実装（管理者設定・運用ダッシュボード・構成ビューア） §受け入れ基準
 
 ## 計画の要素 → 実装／テストの対応
 
@@ -58,11 +47,11 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | KPI カード（利用状況〔人/日〕） | **部分**（件数を出す）。同上（KPI カードの集合を固定する） |
 | KPI カード（**LLM コスト**） | **実装しない**（契約の不在）。同上 |
 | 外部ツールリンク（Grafana / Kiali / Jaeger・Tempo） | `renders only the observability tools that runtime config injects` ／ 純関数 P1〜P4 |
-| 構成ビューア（SC-11）への導線 | `always offers the link to SC-11 for anyone who can open this screen` ／ 導線テスト A |
+| 構成ビューアへの導線 | `always offers the link to SC-11 for anyone who can open this screen` ／ 導線テスト A |
 | **ナレッジ健全性**（4 KPI ＋ 辺の型の使用件数 ＋ フォールバック警告 ＋ 注記） | **実装しない**（着手保留・[[IADR-0119]]）。`does not render the knowledge-health section` |
 | アクセス制御（計画は運用者・管理者） | **管理者 ＋ 運用者**（**#544** で計画と一致）。`grants access to platform-admin` / `grants access to platform-operator` / `hides existence (NotFound) for a plain user` |
 
-## FR-10 → テストの写像
+## → テストの写像
 
 | FR-10 の要素 | テスト |
 | --- | --- |
@@ -75,7 +64,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
-| 1 | サマリ表示 | FR-10 | 検索総数・回答総数・満足率と、日次・上位語の 2 表。`?days=7` を送る |
+| 1 | サマリ表示 | —| 検索総数・回答総数・満足率と、日次・上位語の 2 表。`?days=7` を送る |
 | 2 | 集計期間 | 契約（`?days=`） | 既定 7。選択で `?days=30` を送る（キャッシュキーに期間を含む） |
 | 3 | **未知のイベント種別** | 契約の 2 値 | 生値をそのまま出す（`—`・「不明」へ丸めない） |
 | 4 | 0 件 | — | 「期間内の利用はありません。」「検索傾向はまだありません。」 |
@@ -87,7 +76,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 | 10 | SC-11 導線 | 遷移図 `SC10 --> SC11` | `/admin/config-viewer` へのリンク。**権限で出し分けない**（[[IADR-0129]] 決定 4） |
 | 11 | **着手保留**（実装しない要素） | [[IADR-0119]] | ナレッジ健全性の語（節見出し・4 KPI・辺の型・フォールバック・個人資料の注記）が無い。**先にサマリが在ることを確かめてから**無いことを見る |
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #3・#5 | **KPI カードの見出しの集合**が 3 枚に固定される（「SLO」の語は副題にも出るため、テキスト検索ではなく**カードが在るか**で見る） |
-| 13 | ロケール `en` | ADR-0031 | 見出しが英語で描画される |
+| 13 | ロケール `en` | —| 見出しが英語で描画される |
 
 ## アクセス制御・存在秘匿（画面）
 
@@ -131,7 +120,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
-| 1 | 集約 | FR-10 | `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
+| 1 | 集約 | —| `DashboardService`（利用状況・検索傾向）と `FeedbackService`（回答品質）を 1 応答へ集約する | `GetSummary_AggregatesUsageAndQuality` |
 | 2 | 資格情報の伝播 | [[IADR-0011]] | 後段の**管理系ロール要求**（admin ＋ operator。**#544**）を満たすため `Authorization` を引き継ぐ | `GetSummary_PropagatesAuthorizationHeader` |
 | 3 | **ロール制限**（広げすぎない） | [[IADR-0011]] | **管理系ロール**（admin ＋ operator）が無ければ **403**（**#544** で名称と趣旨を実態へ） | `GetSummary_WithoutPrivilegedRole_Returns403` |
 | 3-b | **ロール開放**（**#544**） | 計画 §SC-10・裁定 Q19 / Q28 | **運用者は 200**。**この対が無いと「広げる」作業は検査にならない**（権限を全開にしても 3 は緑のまま） | `GetSummary_AsOperator_IsAllowed` |
@@ -183,3 +172,9 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
   （planning `3e58b97` = PR planning#244〔裁定依頼 planning#237〕）。**待っていた条件は成立している。**
   節を実装するか、したがって観点を書くかは **#504 / #452** が判断する（#586 は pin 更新と事実の追随に限る）。
   画面仕様書側の対の追記は [SC-10](../screens/SC-10_operations-dashboard.md) §実装しない要素の理由 (a)・§未決事項 5。
+
+<!-- trace-table:
+row1: FR-10
+row2: ADR-0031
+row3: FR-10
+-->

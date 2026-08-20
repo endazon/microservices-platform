@@ -2,26 +2,17 @@
 title: データソース・取り込みチャンク（DataSource / Vector Chunk） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-01
-  - FR-02
-  - FR-05
-  - UC-04
-  - ADR-0003
-  - ADR-0027
-  - ADR-0036
-  - SC-06
-  - IADR-0019
-  - IADR-0136
-  - IADR-0199
-author: claude
 created: 2026-07-04
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-01, FR-02)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0003_messaging-masstransit-rabbitmq.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-01, FR-02, FR-05, SC-06, UC-04]
+adrs: [ADR-0003, ADR-0009, ADR-0027, ADR-0036]
+iadrs: [IADR-0019, IADR-0136, IADR-0199]
+specs: [01_requirements, ADR-0003_messaging-masstransit-rabbitmq, ADR-0027_messaging-wolverine]
+issues: [#537, #752]
+-->
 
 # データ仕様書: データソース・取り込みチャンク（DataSource / Vector Chunk）
 
@@ -33,7 +24,7 @@ plan_refs:
 - **技術検討(06_technical)・ADR**:
   - ADR-0003 メッセージング（MassTransit + RabbitMQ。同期／正規化イベントの非同期連携。Superseded by ADR-0027・注記は #580）
   - 関連: ADR-0002 DB per Service（DataSourceService 専用 DB）、ADR-0009 ベクトルストア Qdrant、ADR-0013 埋め込みモデル
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`、`../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md`
+- **計画書リンク**: `01_requirements.md`（計画リポ）、`09_datasource-connectors.md`（計画リポ）
 
 ## 概要
 
@@ -57,7 +48,7 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 | LastSyncError | string? (varchar(500)) | - | NULL 可。**保存時点でマスク済み**（`SyncErrorRedactor`。接続文字列・資格情報つき URI・HTTP 認証スキームを伏せ、500 字で丸める） | 直近の同期エラー |
 | LastSyncErrorAt | DateTimeOffset? (timestamptz) | - | NULL 可 | 直近の同期エラーの発生時刻 |
 | Config | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可 | 接続・同期設定（コネクタ固有） |
-| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。[[IADR-0019]] / [[IADR-0199]]） | このデータソース由来の原本へ既定で付与する ABAC 文書属性（FR-05, UC-04） |
+| DefaultAttributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | 既定 空辞書。NULL 不可。**必須属性のフェイルセーフを必ず通す**（下表。`Create` / `Update` / `Patch` / `GetEffectiveAttributes` の 4 経路で同一。[[IADR-0019]] / [[IADR-0199]]） | このデータソース由来の原本へ既定で付与する ABAC 文書属性 |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
 
 #### `DefaultAttributes` の必須属性フェイルセーフ（FR-05, UC-04, #516, [[IADR-0199]]）
@@ -76,7 +67,7 @@ IngestionService はリレーショナル DB を持たない Worker で、`Docum
 > **前段が効かない理由は 2 属性で異なる。混同しないこと。**
 >
 > - **`owner`**: コネクタ契約 `SourceItem(Path, ModifiedAt, Size)` に**更新者を運ぶフィールドが無い**。
->   **器そのものが存在しない**ため、契約変更（#752）まで前段は実装できない。
+>   **器そのものが存在しない**ため、契約変更まで前段は実装できない。
 > - **`department`**: **供給源は存在するが写像が未実装である。** `SourceItem.Path` はフォルダを運んでおり、
 >   計画は「ソースのメタ（所在・**部門**・**フォルダ**・更新者等）を ABAC 基本属性へマッピングする」
 >   （`09_datasource-connectors.md` L51）・ファイルサーバーは「**フォルダ単位の既定属性を継承**」（同 L34）と
@@ -185,11 +176,11 @@ erDiagram
 
 ## 整合性・制約ルール
 
-- **冪等な再取り込み（FR-02）**: チャンク ID を `documentId + chunkIndex` から決定的に導出。旧チャンク削除に失敗しても upsert が上書きとなり重複を防ぐ。
+- **冪等な再取り込み**: チャンク ID を `documentId + chunkIndex` から決定的に導出。旧チャンク削除に失敗しても upsert が上書きとなり重複を防ぐ。
 - **コレクション名の解決**: `Qdrant:CollectionName` を正とし、後方互換で `Qdrant:Collection`、既定 `knowledge_chunks` の順（RetrievalService と整合）。
 - **コレクション自動作成**: `EnsureCollectionAsync` で未作成なら `VectorParams { Size, Distance = Cosine }` で作成。
 - **状態遷移**: DataSource は `active` →（`Disable()`）→ `disabled`。`RecordSync()` で `LastSyncedAt` を更新。
-  **同期健全性は状態と直交する**（SC-06 / #537）——`Status` は設定状態（`active` / `disabled`）だけを表し、
+  **同期健全性は状態と直交する**——`Status` は設定状態（`active` / `disabled`）だけを表し、
   健全性は `ConsecutiveFailureCount` が表す。**再試行上限（＝継続失敗のしきい値）は列ではない**
   ——`DataSourceSyncHealth.DefaultRetryLimit` の定数であり、応答（`DataSourceDto.retryLimit`）にだけ載る
   （画面が「3/5」の分母を契約から得るため。[[IADR-0148]] 決定 4）。
@@ -200,7 +191,7 @@ erDiagram
 ## 永続化方針
 
 - **DataSource**: PostgreSQL、EF Core（`DataSourceDbContext`）。ADR-0002 に従い DataSourceService 専用 DB。`Config` は `ValueConverter` で `jsonb` に格納（`ValueComparer` 設定済み）。
-- **ベクトルチャンク**: Qdrant（ADR-0009）。IngestionService は RDB を持たず、埋め込み結果を Qdrant コレクションへ直接 upsert（ADR-0009）。
+- **ベクトルチャンク**: Qdrant。IngestionService は RDB を持たず、埋め込み結果を Qdrant コレクションへ直接 upsert。
 - **越境**: 両者は別ストアのため、整合はイベント（ADR-0003 メッセージング。Superseded by ADR-0027・注記は #580）と決定的 ID で担保する。
 
 ## マイグレーション・初期データ

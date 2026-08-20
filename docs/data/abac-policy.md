@@ -2,18 +2,17 @@
 title: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-05
-  - FR-09
-  - ADR-0004
-author: claude
 created: 2026-07-04
 updated: 2026-07-04
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05, FR-09)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
-  - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-09]
+adrs: [ADR-0004]
+iadrs: []
+specs: [01_requirements, 07_abac-attribute-model, ADR-0004_authz-abac]
+issues: []
+-->
 
 # データ仕様書: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy）
 
@@ -26,7 +25,7 @@ plan_refs:
   - ADR-0004 認可＝ABAC（属性ベースアクセス制御）
   - 技術検討 `06_technical/07_abac-attribute-model.md`（属性モデル）
   - 関連: ADR-0002 DB per Service（AuthorizationService 専用 DB）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`、`../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md`
+- **計画書リンク**: `01_requirements.md`（計画リポ）、`07_abac-attribute-model.md`（計画リポ）
 
 ## 概要
 
@@ -97,12 +96,12 @@ erDiagram
 | --- | --- | --- |
 | 主キー | `AttributeDefinitions.Id` | `HasKey(a => a.Id)` |
 | 主キー | `Policies.Id` | `HasKey(p => p.Id)` |
-| 一意インデックス | `AttributeDefinitions (Key, Scope)` | `IX_AttributeDefinitions_Key_Scope` — 同一スコープ内でキー一意（FR-09） |
+| 一意インデックス | `AttributeDefinitions (Key, Scope)` | `IX_AttributeDefinitions_Key_Scope` — 同一スコープ内でキー一意 |
 | 外部キー | なし | 2 エンティティ間に FK 関連なし（論理的整合のみ） |
 
 ## 整合性・制約ルール
 
-- **属性キーの一意性（FR-09）**: `(Key, Scope)` 一意制約により、同一スコープ内での属性キー重複を DB で防止。`Key` / `Scope` はエンティティ上も不変。
+- **属性キーの一意性**: `(Key, Scope)` 一意制約により、同一スコープ内での属性キー重複を DB で防止。`Key` / `Scope` はエンティティ上も不変。
 - **条件の NULL を保存しない**: `UserConditions` / `DocumentConditions` は `Create` / `Update` で `?? []` により空辞書化。評価エンジンが null を foreach して落ちるのを防ぐ（「条件なし」＝空辞書＝無制約）。
 - **有効／無効の分離**: ポリシーは物理削除せず `IsActive` で一時停止できる。
 - **アクション・スコープの妥当性**: `PolicyAction.IsValid` / `AttributeScope.IsValid` で列挙値を検証（`read`/`analyze`/`manage`、`document`/`user`）。
@@ -117,7 +116,7 @@ erDiagram
 ## マイグレーション・初期データ
 
 - `20260626150853_InitialCreate` — `AttributeDefinitions` / `Policies` テーブル作成。
-- `20260702133000_AddAbacManagementFields` — `Policies.UpdatedAt`、`AttributeDefinitions.CreatedAt`/`UpdatedAt`（既定 `now()`）を追加し、`IX_AttributeDefinitions_Key_Scope` 一意インデックスを作成（FR-09）。
+- `20260702133000_AddAbacManagementFields` — `Policies.UpdatedAt`、`AttributeDefinitions.CreatedAt`/`UpdatedAt`（既定 `now()`）を追加し、`IX_AttributeDefinitions_Key_Scope` 一意インデックスを作成。
 - 初期データ（シード）はマイグレーションでは定義していない。
 
 ## 関連仕様

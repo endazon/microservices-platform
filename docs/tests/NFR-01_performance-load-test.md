@@ -2,21 +2,19 @@
 title: 性能（NFR）負荷試験 テスト仕様書
 type: test-spec
 status: in-progress
-related_ids:
-  - NFR
-  - FR-02
-  - FR-03
-  - IADR-0052
-  - ADR-0031
-  - IADR-0134
-author: claude
 created: 2026-07-10
 updated: 2026-08-05
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 性能・受け入れ基準)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-02, FR-03]
+adrs: [ADR-0031]
+iadrs: [IADR-0052, IADR-0134]
+specs: [01_requirements, 20260805_issue-512_spa-route-code-splitting]
+issues: [#196, #512]
+-->
 
-# テスト仕様書: 性能（NFR）負荷試験（#196）
+# テスト仕様書: 性能（NFR）負荷試験
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -29,7 +27,7 @@ plan_refs:
 
 - 対象: `/bff/search`（検索 p95）、`/bff/analysis/ask`（RAG p95）、取り込みパイプライン（スループット・反映時間）。
 - 対象外: 個別ロジックの単体性能、外部 LLM プロバイダ自体の SLA。
-- **§フロントエンドの初期ロード（#512）は別ハーネスである**——k6 ではなくビルド成果物の実測と
+- **§フロントエンドの初期ロードは別ハーネスである**——k6 ではなくビルド成果物の実測と
   Vitest / Playwright で見る（サーバ側の p95 とは指標も測り方も違うので節を分ける）。
 
 ## ハーネス
@@ -60,7 +58,7 @@ plan_refs:
 | P-08 | 分割成果物で実ブラウザから起動できること | `playwright test e2e/bundle-splitting.smoke.spec.ts` | 要求した資産がすべて 200・`pageerror` なし・`/assets/*.js` を 2 本以上読む・ログイン画面が描画される | E2E |
 | P-09 | 外部 egress が**全チャンク**に無いこと | `node scripts/check-static-egress.js --require src/platform/frontend/dist` | 検出 0 件（走査対象は分割で 4 → 20 ファイルへ増えた。**判定は「検出 0 件」であってファイル数ではない**——ファイル数は画面やチャンク規則が変われば動く環境依存の値であり、参考値として書いている） | 成果物（CI） |
 
-**実測（#512 時点。測定条件は[作業仕様書](../specs/20260805_issue-512_spa-route-code-splitting.md#計測実測推測で分割しないための一次資料)）**:
+**実測（#512 時点。測定条件は仕様書: SPA のバンドルをルート単位で分割する）**:
 
 | | 分割前（`68d91ce`） | 分割後 |
 | --- | --- | --- |
@@ -89,5 +87,5 @@ plan_refs:
 - ハーネス: `perf/k6/README.md`
 - 機能: `../functional/FR-03_hybrid-search.md`、`../tests/FR-02_ingestion.md`、`../tests/FR-03_hybrid-search.md`
 - 監視: `../operations/operations.md`（監視・アラート）、`deploy/prometheus/alerts.yml`
-- スケール: `../adr/IADR-0050_hpa-pdb-scaling-scope.md`、#197
-- フロントの分割境界: `../adr/IADR-0134_spa-route-code-splitting-boundaries.md`、`../specs/20260805_issue-512_spa-route-code-splitting.md`
+- スケール: `../../.ai-context/adr/IADR-0050_hpa-pdb-scaling-scope.md`、#197
+- フロントの分割境界: `../../.ai-context/adr/IADR-0134_spa-route-code-splitting-boundaries.md`、`../../.ai-context/specs/20260805_issue-512_spa-route-code-splitting.md`

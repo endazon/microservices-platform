@@ -2,28 +2,19 @@
 title: SC-08 AI分析ダッシュボード テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-08
-  - UC-02
-  - FR-05
-  - FR-07
-  - FR-11
-  - IADR-0005
-  - IADR-0111
-  - IADR-0127
-author: claude
 created: 2026-07-08
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-related_specs:
-  - "../screens/SC-08_ai-analysis-dashboard.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-07, FR-11, SC-08, UC-02]
+adrs: [ADR-0031]
+iadrs: [IADR-0005, IADR-0111, IADR-0127]
+specs: [01_screens, 01_usecases, 20260805_issue-503_sc05-08-admin-screens, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-08_ai-analysis-dashboard]
+issues: []
+-->
 
-# テスト仕様書: AI分析ダッシュボード（SC-08）
+# テスト仕様書: AI分析ダッシュボード
 
 > **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
 
@@ -38,7 +29,7 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
     SC-08 を **UC-02** に対応づけている。**計画を正とした**（作業仕様書 §計画書との差異）。
     **issue 本文は 2026-08-05 に UC-02 へ訂正済みである。**
 
-## UC-02 のフロー → テストの写像
+## のフロー → テストの写像
 
 | UC-02 のフロー | 画面での現れ方 | テスト |
 | --- | --- | --- |
@@ -54,15 +45,15 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
 | 1 | 分析実行と出典 | UC-02 基本 3・4 | `POST /bff/analysis/analyze` を呼び、回答と出典（`/docs/$id`）を表示する |
-| 2 | 要求の組み立て | FR-07 | タスク種別と検索条件が `{ instruction, taskType, range: { query } }` として載る |
+| 2 | 要求の組み立て | —| タスク種別と検索条件が `{ instruction, taskType, range: { query } }` として載る |
 | 3 | **存在秘匿（3 経路）** | **UC-02 例外** / [[IADR-0009]] | 空回答・403・404 のいずれでも同じ中立文言。`role="alert"` を出さない |
 | 4 | **中立へ寄せない異常系** | — | 5xx はエラー（`role="alert"`）として出し、「該当なし」へ寄せない（誤解して再試行しなくなるため） |
 | 5 | **縮退の可視化** | FR-11 / [[IADR-0111]] | `model` が空なら「未使用（AI へ送信なし）」 |
-| 6 | モデル・トークン | FR-11 | `model` があればそれとトークン数を出す |
+| 6 | モデル・トークン | —| `model` があればそれとトークン数を出す |
 | 7 | 未入力 | — | 指示が空では実行できず、要求も出ない |
 | 8 | 注記 | UC-02 代替・例外 | データ越境ポリシーと存在秘匿を明示する |
 | 9 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #4 | タグ／フォルダのチップが無い。**先に「分析対象（権限内に限定）」の見出しと検索条件の欄が在ることを確かめてから**無いことを見る |
-| 10 | ロケール `en` | ADR-0031 | 見出し・実行ボタンが英語で描画される |
+| 10 | ロケール `en` | —| 見出し・実行ボタンが英語で描画される |
 
 ## 純関数（`analysisRange.test.ts`）
 
@@ -105,3 +96,9 @@ E2E は `src/platform/frontend/e2e/sc08-analysis.smoke.spec.ts`
 
 - `pnpm run test -- knowledge/frontend/src/features/sc08-analysis`（純関数 **5** ＋ 画面 **14** ケース）
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
+
+<!-- trace-table:
+row1: FR-07
+row2: FR-11
+row3: ADR-0031
+-->

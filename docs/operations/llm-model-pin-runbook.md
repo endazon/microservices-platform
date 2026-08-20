@@ -2,24 +2,22 @@
 title: 運用 Runbook — ピン留め LLM モデルの版数移行と利用不能時の振る舞い
 type: runbook
 status: fixed
-related_ids:
-  - FR-11
-  - IADR-0102
-  - IADR-0112
-  - IADR-0225
-  - ADR-0038
-author: claude
 created: 2026-08-11
 updated: 2026-08-18
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/ai-stock-trading/07_adr/ADR-0011_llm-model-pinning.md (取引判断の LLM モデル固定・Accepted。本 Runbook が手続きを書き下ろす対象)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-11]
+adrs: [ADR-0038]
+iadrs: [IADR-0102, IADR-0112, IADR-0225]
+specs: [01_requirements, 20260811_issue-587_pin-migration-runbook, ADR-0011_llm-model-pinning]
+issues: [#587, AST#296]
+-->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
 
 > **運用仕様書（[`operations.md`](operations.md)）の下位にあたる手順書である。**
-> 起点: **#587**（#382 の後継）／ **[IADR-0112](../adr/IADR-0112_report-kind-purposes-and-trade-decision-sonnet-5.md) 決定 3**
+> 起点: **#587**（#382 の後継）／ **IADR-0112: 報告書の種別別用途と取引判断モデルの改定 決定 3**
 
 ## 対象
 
@@ -72,7 +70,7 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 改定後も**維持されている**（planning#50 決定 1「バージョン固定の原則は維持する」）。
 **手順の必要性はピンの値が変わっても変わらない。**
 
-> **★ 実行はこのリポジトリではできない。** Stage 0 は **AST リポジトリ**側の手続きである（AST#296）。
+> **★ 実行はこのリポジトリではできない。** Stage 0 は **AST リポジトリ**側の手続きである。
 > **合格の確認を取らずに次段へ進まない。**
 
 ### 2. 設定を更新する
@@ -177,6 +175,6 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 
 - [`operations.md`](operations.md)（上位の運用仕様書）
 - [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md)（月次棚卸しの契機）
-- [IADR-0102](../adr/IADR-0102_trade-decision-model-pinning.md)（ピン留めの決定）
-- [IADR-0112](../adr/IADR-0112_report-kind-purposes-and-trade-decision-sonnet-5.md) 決定 3（現行ピンと Stage 0 ゲート）
-- 作業仕様書: [20260811_issue-587](../specs/20260811_issue-587_pin-migration-runbook.md)
+- IADR-0102: 取引判断用途のモデルピン留め（ピン留めの決定）
+- IADR-0112: 報告書の種別別用途と取引判断モデルの改定 決定 3（現行ピンと Stage 0 ゲート）
+- 作業仕様書: 作業仕様書: ピン版数移行手順と利用不能時の振る舞い

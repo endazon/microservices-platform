@@ -2,20 +2,17 @@
 title: テスト仕様書 — FR-10 利用状況・検索傾向・回答品質ダッシュボード
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-10
-  - UC-05
-author: claude
 created: 2026-07-03
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-10)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
-related_specs:
-  - ../specs/20260703_FR-10_usage-dashboard.md
-  - ../functional/FR-10_dashboard.md
-  - ../adr/IADR-0011_dashboard-service-usage-aggregation.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-10, UC-05]
+adrs: []
+iadrs: []
+specs: [01_requirements, 01_usecases, 20260703_FR-10_usage-dashboard, FR-10_dashboard, IADR-0011_dashboard-service-usage-aggregation]
+issues: []
+-->
 
 # テスト仕様書: FR-10 利用状況・検索傾向・回答品質ダッシュボード
 

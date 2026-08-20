@@ -2,42 +2,19 @@
 title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-01
-  - UC-01
-  - FR-03
-  - FR-04
-  - FR-05
-  - FR-08
-  - IADR-0119, IADR-0142
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0126
-  - IADR-0131
-author: claude
 created: 2026-07-08
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "../adr/IADR-0037_llm-sse-streaming.md"
-  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
-  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
-  - "../adr/IADR-0121_spa-stack-migration-staging.md"
-  - "../adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md"
-  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
-  - "../specs/20260806_issue-541_citation-confidentiality.md"
-  - "../tests/SC-01_search-chat.md"
-  - "./SC-02_search-results.md"
-  - "./SC-03_document-detail.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, FR-04, FR-05, FR-08, FR-19, FR-21, SC-01, SC-03, SC-08, UC-01]
+adrs: []
+iadrs: [IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, IADR-0037_llm-sse-streaming, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0121_spa-stack-migration-staging, IADR-0125_ui-primitives-i18n-catalog-and-storybook, IADR-0126_sse-answer-state-and-search-url-state, INDEX, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
+issues: [#519, #539, #540, #541]
+-->
 
-# 画面仕様書: 検索／チャット質問画面（SC-01）
+# 画面仕様書: 検索／チャット質問画面
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6。計画側 `05_screens` の `status` には追随しない）。
@@ -53,10 +30,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-01 検索／チャット質問画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-01。**本システムの主入口**）
+- 画面（SC）: **SC-01 検索／チャット質問画面**（05_screens/01_screens.md（計画リポ） §SC-01。**本システムの主入口**）
 - 関連ユースケース（UC）: **UC-01**（検索・質問する）
 - 関連機能要求（FR）: **FR-03**（ハイブリッド検索）・**FR-04**（根拠付き AI 回答）・**FR-05**（ABAC）・**FR-08**（フィードバック）
-- モックアップ（**実装の正**）: [hi-fi/sc-01.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-01.html) ／ [wireframe/sc-01.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-01.html)
+- モックアップ（**実装の正**）: hi-fi/sc-01.html（計画リポ） ／ wireframe/sc-01.html（計画リポ）
 - 関連 IADR: [[IADR-0037]]（SSE ストリーミング）・[[IADR-0126]]（SSE の状態管理と URL 状態）・[[IADR-0119]]（**FR-17〜21 の着手保留**）・[[IADR-0121]] / [[IADR-0124]] / [[IADR-0125]]（新スタック）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
@@ -71,7 +48,7 @@ related_specs:
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
 **「モックに描かれているのに実装しない」箇所は、後から「作り忘れ」と誤解されないよう本表で名指しする。**
-行番号は planning `d980a01` の [hi-fi/sc-01.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-01.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-01.html（計画リポ） に対するものである。
 
 **粒度の規則（SC-01〜03 の 3 表で共通）**: (a) メイン領域の要素は**個別に 1 行**とする（同じ行に複数の
 要素があっても、実装可否が分かれるなら分ける）、(b) **共通シェル**（ブランド・アバター・左ナビ・
@@ -93,14 +70,14 @@ related_specs:
 | 2 | 質問／キーワード入力＋「送信」（418） | **する** | `Input` ＋ `Button`。空文字は送信不可（計画 §入力/バリデーション「1文字以上」） |
 | 3 | 「キーワード検索のみ →」（419 右端） | **する** | 入力中の語を保ったまま `/search?q=` へ（UC-01 **代替フロー**の実体） |
 | 4 | AI回答（ストリーミング）パネル（420-424） | **する** | `Card`。token を逐次連結して表示 |
-| 5 | 👍 / 👎 ＋「フィードバック」（423） | **する** | `done` で `answerId` を得てから有効化（FR-08） |
+| 5 | 👍 / 👎 ＋「フィードバック」（423） | **する** | `done` で `answerId` を得てから有効化 |
 | 6 | 出典パネル（425-434） | **する** | `Card`。`📄`＋タグ「組織文書」／`📖`＋タグ「組織文書」（Wiki 由来） |
 | 6-b | **出典行の機密区分チップ**（`社内限`。428-429） | **しない** | **本画面の作業ではない**（引き受け先は別 issue）。**契約側の欠落は #541 で解消した**（`CitationDto.Confidentiality`）。残るのは表示だけで、別 issue で足す。§実装しない要素の理由 (c) |
-| 7 | 「範囲を指定してAI分析を依頼 →」（435） | **する** | `/analyze`（SC-08）へのリンク |
+| 7 | 「範囲を指定してAI分析を依頼 →」（435） | **する** | `/analyze`へのリンク |
 | 8 | 注記「LLM不調時は検索結果のみ返す縮退運転」（436） | **一部する** | 静的な注記ではなく**実際の縮退**として実装する（LLM 不調時に検索結果一覧への導線へ落とす。§エラー・状態）。**満たしていない条件: モックの注記そのものは画面へ出さない** —— 他画面の注記行（SC-05 #13・SC-06 #11・SC-08 #10・SC-10 #15・SC-11 #17）は**いずれも `Alert` として描いており、本行だけが描いていない**。**［2026-08-10 / #552］本行は従前「する（挙動として）」だった** —— 挙動で満たしたことは事実だが、**モックの要素が画面に無いことは「する」では表せない** |
 | 9 | **対象範囲フィルタ**（タグ／部門／プロジェクトのチップ・権限内のみ）（419） | **する** | **［2026-08-09 / #539］裁定 Q1・Q3・Q9 と #540 の候補口で解けた。§実装しない要素の理由 (a) の追記を参照。「フォルダ」は計画から削除された** |
 | 10 | **「個人資料を含める: ON ⬤」**（419） | **しない** | FR-19 / FR-21。[[IADR-0119]] 決定 1 の着手保留 |
-| 11 | **出典行の `👤` ＋「個人資料（自分のみ）」**（431） | **しない** | 同上（FR-19 / FR-21） |
+| 11 | **出典行の `👤` ＋「個人資料（自分のみ）」**（431） | **しない** | 同上 |
 | 12 | **共通シェル**: 右レール「AIチャットパネル」（438-453） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 5） |
 | 13 | **共通シェル**: パンくず「ホーム / 検索・チャット質問」（413） | **しない** | #452 系の共通シェル作業（`foundation/ui/Layout` の責務） |
 | 14 | **共通シェル**: ブランド・アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない。既に実装済み）。** `foundation/ui/Layout` が既に持つ。ただし左ナビの「文書詳細」項目は無い（[SC-03 §左ナビに出さない理由](./SC-03_document-detail.md)） |
@@ -137,7 +114,7 @@ related_specs:
 
 候補を出せないまま入力欄だけ置くと、**利用者が「権限内のみ提示」という計画の保証を受けられない**。
 押しても何も変わらないチップを置くのはさらに悪い。よって本 issue では置かず、
-**契約の不足として計画へ環流した**（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)。
+**契約の不足として計画へ環流した**（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
 **planning#197 として起票済みであり、計画側の裁定を待っている**）。
 
 **(b) 個人資料まわり（モック #10・#11）— [[IADR-0119]] 決定 1 による着手保留。**
@@ -161,7 +138,7 @@ related_specs:
 hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`社内限`（機密区分）と `組織文書`（種別）である。
 本画面の実装は後者だけを出している。
 
-> **［2026-08-06 更新（#541）］前者を出せなかった理由（`CitationDto` が属性フィールドを持たない）は
+> **［2026-08-06 更新］前者を出せなかった理由（`CitationDto` が属性フィールドを持たない）は
 > 解消した。** 契約は
 > `(Number, DocumentId, DocumentTitle, ChunkId, SourceUri, Score, Snippet, **Confidentiality**)` になり、
 > 値は `SearchResultDto.Attributes` の `confidentiality` から供給される（欠落・空・未知値は安全側の
@@ -177,7 +154,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 **これは SC-03 の「機密区分の表示名が計画に無い」（[SC-03 §属性の表示](./SC-03_document-detail.md)）とは
 別の論点である**——SC-03 は**値は取れるが表示名が計画に無い**、本件は**値そのものが取れない**、という
 違いだった。**いずれも計画側で解消している**——表示名は planning#200（裁定 Q7・Q30）で確定し、
-値は #541 で契約へ載った。両方を [feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)
+値は #541 で契約へ載った。両方を feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
 の表へ別行（#6 と #7）で載せた。あわせて「**出典の機密区分を利用者に見せるか**」自体が
 判断事項である旨も同記録へ書いた（**見せる**と裁定された。Q10）。
 
@@ -192,7 +169,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
 | AI 回答（ストリーミング） | `POST /bff/analysis/ask/stream` | `apiStream`（`foundation/api`） | 認証・ABAC（後段） | SSE: `citations` → `token`* → `done`（失敗時 `error`） |
-| フィードバック | `POST /bff/feedback` | **orval 生成フック `useBffSubmitFeedback`**（#519） | 認証 | `FeedbackDto` |
+| フィードバック | `POST /bff/feedback` | **orval 生成フック `useBffSubmitFeedback`** | 認証 | `FeedbackDto` |
 
 - **手書き HTTP クライアントは使わない**（生成フック、または `foundation/api` の `apiStream`）。
 - **SSE は orval 生成フックに載らない**（生成器は `text/event-stream` を扱わない）。状態の持ち方は [[IADR-0126]] 決定 1・2 を正とする。
@@ -224,8 +201,8 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | --- | --- | --- | --- | --- |
 | 質問・キーワード | `Input` | 必須 | **1 文字以上**（前後の空白を除く）。最大 **1000 文字** | 空・空白のみでは送信ボタンを無効化する |
 | AI 回答 | 表示 | — | ストリーミング | `token` を連結。生成中は `role="status"` で通知 |
-| 出典 | 表示／リンク | — | 記号 ＋ タイトル ＋ 種別タグ | 文書は `/docs/$id`（SC-03）へ**内部遷移**。Wiki 由来は SC-04 へ |
-| 👍 / 👎 | 操作 | — | `up` / `down` | `done` 後のみ有効。`answerId` に紐付ける（FR-08） |
+| 出典 | 表示／リンク | — | 記号 ＋ タイトル ＋ 種別タグ | 文書は `/docs/$id`へ**内部遷移**。Wiki 由来は SC-04 へ |
+| 👍 / 👎 | 操作 | — | `up` / `down` | `done` 後のみ有効。`answerId` に紐付ける |
 
 > **最大長について**: 計画 §SC-01 の入力表は「1文字以上、**最大長制限**」とだけ書き、値を定めていない。
 > 実装は `maxLength=1000` を置く。根拠は BFF ではなく画面側の暴発防止であり、
@@ -252,7 +229,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 
 - 判定に用いる `wikiBaseUrl` は**実行時 config**（`platform/frontend/public/config.js`）であり、ビルドへ焼き込まない。
 - `wikiBaseUrl` が未設定の環境では全件が `📄` になる（Wiki 由来かどうかを推測しない）。
-- **色では区別しない**（[INDEX 決定 21](../../planning/projects/microservices-platform/INDEX.md)）。記号は装飾（`aria-hidden`）とし、意味はタグの文字が担う。
+- **色では区別しない**（INDEX 決定 21（計画リポ））。記号は装飾（`aria-hidden`）とし、意味はタグの文字が担う。
 
 ## 権限・表示条件・存在秘匿
 
@@ -265,11 +242,11 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | 状態 | 表示 | 起点 |
 | --- | --- | --- |
 | `idle` | 回答・出典パネルを描画しない | — |
-| `streaming` | 「回答を生成中…」（`role="status"`）＋ 逐次本文 | FR-04 |
-| `done` | 本文確定・👍/👎 有効 | FR-04 / FR-08 |
+| `streaming` | 「回答を生成中…」（`role="status"`）＋ 逐次本文 | —|
+| `done` | 本文確定・👍/👎 有効 | —|
 | `error`（SSE の `error` イベント／通信失敗） | `Alert tone="warning"` `role="alert"`：AI 回答を生成できない旨と、**キーワード検索へ切り替える導線**（`/search?q=…`） | **UC-01 例外フロー「LLMが不調な場合は検索結果のみを返す（縮退運転）」** |
 | 中断（連投・離脱） | 何も表示しない（`AbortError` は失敗ではない） | — |
-| フィードバック送信失敗 | 押下状態を戻す（楽観的更新の取り消し）＋ `Alert tone="danger"` | FR-08 |
+| フィードバック送信失敗 | 押下状態を戻す（楽観的更新の取り消し）＋ `Alert tone="danger"` | —|
 
 **縮退運転の実装形**: 本画面は AI 回答だけを担い、検索結果一覧は SC-02 が担う（モックの導線と同じ）。
 したがって「検索結果のみを返す」は、**AI が使えないときに検索結果一覧へ 1 クリックで到達させる**ことで満たす。
@@ -291,7 +268,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 | 縮退・失敗の通知 | `Alert` | 同上 |
 | 出典の種別ラベル | **`Tag`（新規）** | 下記 |
 
-**`Tag` を新設した判定**（計画 [13_frontend-stack §shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md) の 4 基準）:
+**`Tag` を新設した判定**（計画 13_frontend-stack §shadcn/ui 派生の範囲（計画リポ） の 4 基準）:
 
 | 基準 | 該当 | 理由 |
 | --- | --- | --- |
@@ -308,18 +285,24 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 
 ## 関連仕様
 
-- 作業仕様書: [20260804_issue-502_sc01-03-search-flow.md](../specs/20260804_issue-502_sc01-03-search-flow.md)
+- 作業仕様書: 仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線）
 - テスト仕様書: [SC-01_search-chat.md](../tests/SC-01_search-chat.md)
 - 実装 ADR: [[IADR-0037]]（SSE）／[[IADR-0126]]（SSE の状態管理・URL 状態）
-- 計画への環流: [feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)
+- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）
 
 ## 未決事項
 
 1. ~~**対象範囲フィルタ**（§実装しない要素 (a)）。BFF 契約の拡張が要る。**planning#197 として起票済み・裁定待ち。**~~
-   **［2026-08-09 / #539］解決した。** 裁定（Q1・Q3・Q9）が着地し、契約（#539）と候補口（#540）が揃った。
+   **［2026-08-09 / #539］解決した。** 裁定（Q1・Q3・Q9）が着地し、契約と候補口が揃った。
 1-b. **出典行の機密区分チップ**（§実装しない要素 (c)）。**契約は #541 で載った**（`CitationDto.Confidentiality`）。
    残るのは表示——表示名の写像（正は計画リポジトリの用語集。`restricted`＝**取扱制限**）、Lingui カタログ、
    「色だけで意味を持たせない」、および SSE 手書き型 `AskCitation` への項目追加である。**別 issue で行う。**
-2. **個人資料の出典表示・フィルタ**（FR-19 / FR-21）。[[IADR-0119]] の保留解除後に着手（**［2026-08-07 / #599］FR-19 側の保留は解除された**が、**FR-21 は保留継続**のため本項の結論は変わらない。[[IADR-0142]]）する。
+2. **個人資料の出典表示・フィルタ**。[[IADR-0119]] の保留解除後に着手（**［2026-08-07 / #599］FR-19 側の保留は解除された**が、**FR-21 は保留継続**のため本項の結論は変わらない。[[IADR-0142]]）する。
 3. **質問の最大長**。計画は「最大長制限」とだけ書き、値を定めていない（暫定 1000 文字）。
 4. **右レール AI チャットパネル**（移行第 4 段。[[IADR-0121]] 決定 5）と**パンくず**（共通シェル）。
+
+<!-- trace-table:
+row1: FR-04
+row2: FR-04, FR-08
+row3: FR-08
+-->

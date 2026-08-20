@@ -2,28 +2,17 @@
 title: SC-03 文書詳細／プレビュー テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-03
-  - UC-01
-  - UC-02
-  - UC-07
-  - FR-05
-  - FR-06
-  - FR-12
-  - IADR-0119
-  - IADR-0126
-author: claude
 created: 2026-07-09
 updated: 2026-08-05
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-related_specs:
-  - "../screens/SC-03_document-detail.md"
-  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
-  - "../adr/IADR-0038_bff-document-read-abac-gating.md"
-  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-06, FR-12, SC-03, UC-01, UC-02, UC-07]
+adrs: [ADR-0031]
+iadrs: [IADR-0119, IADR-0126]
+specs: [01_screens, 01_usecases, 20260804_issue-502_sc01-03-search-flow, IADR-0038_bff-document-read-abac-gating, IADR-0119_fr17-21-hold-until-adr-fixed, SC-03_document-detail]
+issues: []
+-->
 
 # テスト仕様書: SC-03 文書詳細／プレビュー
 
@@ -55,9 +44,9 @@ related_specs:
 
 | # | ケース | 期待 | 起点 |
 | --- | --- | --- | --- |
-| 1 | 正常 | タイトル・状態・版・本文（Markdown 原文）・属性・タグ・版履歴 | FR-06 / FR-12 |
+| 1 | 正常 | タイトル・状態・版・本文（Markdown 原文）・属性・タグ・版履歴 | —|
 | 2 | 属性ラベル | `confidentiality` → 「機密区分」、`department` → 「部門」、未知キーはそのまま。**値は変換しない** | 計画 §SC-03 主要素 |
-| 3 | Wiki 導線 | `wikiBaseUrl` 設定時のみ `/wiki` へのリンク | UC-07 |
+| 3 | Wiki 導線 | `wikiBaseUrl` 設定時のみ `/wiki` へのリンク | —|
 | 4 | 原本リンク | `http(s)` はリンク、`storage://` 等は等幅表記（リンクにしない） | 計画 §SC-03 主要素 |
 | 5 | 404 | 中立「文書が見つかりませんでした。」 | **UC-02 例外** / [[IADR-0009]] |
 | 6 | 5xx | `role="alert"`（404 とは別表示。サーバの状態であって文書の有無ではない） | — |
@@ -65,7 +54,7 @@ related_specs:
 | 8 | 版履歴の取得抑止 | 詳細が 404 のとき、**版履歴を要求しない** | [[IADR-0126]] 決定 4 |
 | 9 | 版履歴の失敗 | 版履歴パネルを出さず、本体表示は継続 | — |
 | 10 | **保留対象の不在** | 「AI 提案」「知識グラフ」の語が画面に無い | **[[IADR-0119]] 決定 1** |
-| 11 | ロケール `en` | 見出しが英語で描画される | ADR-0031 |
+| 11 | ロケール `en` | 見出しが英語で描画される | —|
 
 ### 純関数（`attributes.ts` ／ `attributes.test.ts`）
 
@@ -99,3 +88,9 @@ related_specs:
 ## 手動確認（任意）
 
 - 実 MinIO 配備時に `storage://` から実本文が取得されること（未配備時はプレースホルダ）。
+
+<!-- trace-table:
+row1: FR-06, FR-12
+row2: UC-07
+row3: ADR-0031
+-->

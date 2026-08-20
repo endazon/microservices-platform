@@ -2,28 +2,23 @@
 title: FR-13 Wiki 閲覧の ABAC 適用 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-13
-  - FR-05
-  - UC-07
-author: claude
 created: 2026-07-03
 updated: 2026-07-07
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
-related_specs:
-  - ../specs/20260703_FR-13_wiki-browsing-abac.md
-  - ./FR-05_abac-access-control.md
-related_adrs:
-  - ADR-0011 / ADR-0004
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-13, UC-07]
+adrs: [ADR-0004, ADR-0011]
+iadrs: [IADR-0023]
+specs: [01_requirements, 01_usecases, 20260703_FR-13_wiki-browsing-abac, FR-05_abac-access-control]
+issues: []
+-->
 
 # テスト仕様書: FR-13 Wiki 閲覧の ABAC 適用
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-13（FR-05）
+- 機能要求（FR）: FR-13
 - ユースケース（UC）: UC-07（Wikiで閲覧する）
 - 関連 ADR: ADR-0011（Wiki 採用・ABAC は本システムが真実源）/ ADR-0004（ABAC deny-by-default）
 
@@ -58,7 +53,7 @@ related_adrs:
 | T-12 | status=normalized の更新イベント | 発行→消費 | ページ作成・属性保持 | 更新反映 | 自動 |
 | T-13 | status=draft の更新イベント | 発行→消費 | 同期されない | 更新反映 | 自動 |
 | T-14 | 同一 DocumentId で 2 回発行 | 発行→消費 | 1 ページに更新（タイトル/属性が最新） | 更新反映 | 自動 |
-| T-15 | 同期済みページ・status=archived 受信 | 発行→消費 | Wiki.js 非公開化＋メタデータ Archived | 削除/アーカイブ伝播（IADR-0023） | 自動 |
+| T-15 | 同期済みページ・status=archived 受信 | 発行→消費 | Wiki.js 非公開化＋メタデータ Archived | 削除/アーカイブ伝播 | 自動 |
 | T-16 | 未同期 ID の archived 受信 | 発行→消費 | 例外なし（冪等）・Wiki.js 非公開化のみ試行 | 同上 | 自動 |
 | T-17 | アーカイブ後に published 再受信 | 発行→消費 | メタデータ Active へ復帰（可逆） | 同上 | 自動 |
 | T-18 | 同期済みページ・DocumentDeleted 受信 | 発行→消費 | Wiki.js 実体撤去＋メタデータ行削除 | 同上 | 自動 |

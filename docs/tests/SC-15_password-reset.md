@@ -2,31 +2,25 @@
 title: パスワードリセット テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - SC-15
-  - NFR
-  - ADR-0026
-  - ADR-0045
-  - IADR-0197
-author: claude
 created: 2026-08-15
 updated: 2026-08-15
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - "../screens/SC-15_password-reset.md"
-  - "../adr/IADR-0197_realm-rename-and-auth-policy.md"
+author: claude
 ---
+<!-- trace:
+ids: [SC-15]
+adrs: [ADR-0026, ADR-0045]
+iadrs: [IADR-0197]
+specs: [01_screens, ADR-0026_authentication-ux-and-account-management, ADR-0045_mail-delivery-smtp-relay, IADR-0197_realm-rename-and-auth-policy, SC-15_password-reset]
+issues: []
+-->
 
-# テスト仕様書: パスワードリセット（SC-15）
+# テスト仕様書: パスワードリセット
 
 ## 起点となる計画書（トレーサビリティ）
 
 - 画面（SC）: SC-15
 - ユースケース（UC）: UC-05
-- 受け入れ基準の所在: [`ADR-0026`](../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md) §パスワード・ロックアウト／[`ADR-0045`](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md)／[`05_screens/01_screens.md` §SC-15](../../planning/projects/microservices-platform/05_screens/01_screens.md)
+- 受け入れ基準の所在: `ADR-0026`（計画リポ） §パスワード・ロックアウト／`ADR-0045`（計画リポ）／`05_screens/01_screens.md` §SC-15（計画リポ）
 
 ## テスト対象・範囲
 
@@ -71,7 +65,7 @@ related_specs:
 ## 関連仕様
 
 - 画面仕様書: [SC-15](../screens/SC-15_password-reset.md)
-- 実装 ADR: [IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md)
+- 実装 ADR: IADR-0197: レルムを `platform` へ改名し、ADR-0026 の認証ポリシーを realm へ投入する
 
 ## 未決事項
 

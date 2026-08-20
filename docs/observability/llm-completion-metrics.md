@@ -2,34 +2,17 @@
 title: LLM 補完メトリクス（終了理由・拒否率）ログ・可観測性仕様書
 type: observability-spec
 status: in-progress
-related_ids:
-  - FR-11
-  - NFR
-  - UC-01
-  - UC-02
-  - ADR-0006
-  - ADR-0010
-  - ADR-0025
-  - IADR-0104
-  - IADR-0109
-  - IADR-0110
-  - IADR-0212
-  - IADR-0225
-  - ADR-0038
-author: claude
 created: 2026-07-28
 updated: 2026-08-18
-plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-related_specs:
-  - "../adr/IADR-0212_llm-output-token-histogram.md"
-  - "../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md"
-  - "../adr/IADR-0110_llm-completion-stop-reason-metrics.md"
-  - "../adr/IADR-0104_llm-stop-reason-refusal.md"
-  - "../functional/FR-11_llm-egress-routing.md"
-  - "../operations/operations.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-11, UC-01, UC-02]
+adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038]
+iadrs: [IADR-0104, IADR-0109, IADR-0110, IADR-0212, IADR-0225]
+specs: [05_observability-ops, ADR-0006_observability-otel-prom-loki, FR-11_llm-egress-routing, IADR-0104_llm-stop-reason-refusal, IADR-0110_llm-completion-stop-reason-metrics, IADR-0212_llm-output-token-histogram, IADR-0225_llm-purpose-fallback-chain-and-429-boundary, operations]
+issues: []
+-->
 
 # 可観測性仕様書: LLM 補完の終了理由（拒否率）
 
@@ -46,7 +29,7 @@ related_specs:
 | Meter 名 | `microservices-platform.llm-gateway`（サービス名と一致） |
 | 計器 | `llm.completion.total`（`Counter<long>`・単位 `{completion}`） |
 | 発行元 | `LlmGateway` の `/complete`・`/complete/stream`（**全終了経路**） |
-| 収集経路 | OTel SDK → OTLP（`Otlp:Endpoint`）→ Collector → Prometheus（ADR-0006） |
+| 収集経路 | OTel SDK → OTLP（`Otlp:Endpoint`）→ Collector → Prometheus |
 | Prometheus 側の名前 | `llm_completion_total`（OTel の Prometheus 変換規則による） |
 
 ### 属性（すべて有限集合）
@@ -158,7 +141,7 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 
 ## フォールバックの発火（`llm.result="fallback"`・[[IADR-0225]] / #863）
 
-計画 [`ADR-0038`](../../planning/projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md)
+計画 `ADR-0038`（計画リポ）
 決定 6 が求める「フォールバック発火の可観測化」は、**新しい計器ではなく `llm.result` の 5 番目の値**で満たす。
 
 | 値 | 意味 | `llm.model` |
@@ -194,14 +177,14 @@ sum by (llm_model) (rate(llm_completion_output_tokens_sum[1h]))
 
 ## 関連仕様
 
-- 実装 ADR: `../adr/IADR-0110_llm-completion-stop-reason-metrics.md`（本メトリクスの決定）、
-  `../adr/IADR-0104_llm-stop-reason-refusal.md`（`Sent` と `StopReason` の軸の分離）、
-  `../adr/IADR-0109_openai-finish-reason-normalization.md`（正準語彙への正規化。**#394 / PR #415 で追加**。
+- 実装 ADR: `../../.ai-context/adr/IADR-0110_llm-completion-stop-reason-metrics.md`（本メトリクスの決定）、
+  `../../.ai-context/adr/IADR-0104_llm-stop-reason-refusal.md`（`Sent` と `StopReason` の軸の分離）、
+  `../../.ai-context/adr/IADR-0109_openai-finish-reason-normalization.md`（正準語彙への正規化。**#394 / PR #415 で追加**。
   本 PR が先に develop へ入る場合、当該ファイルが揃うまでこのリンクは一時的に未解決になる）
 - 機能仕様書: `../functional/FR-11_llm-egress-routing.md`
 - テスト仕様書: `../tests/FR-11_llm-egress-routing.md`（T-21）
 - 運用仕様書: `../operations/operations.md`（監視・アラート）
-- 作業仕様書: `../specs/20260728_issue-395_refusal-metrics.md`
+- 作業仕様書: `../../.ai-context/specs/20260728_issue-395_refusal-metrics.md`
 
 ## 未決事項
 

@@ -2,20 +2,17 @@
 title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-09
-  - SC-05
-  - SC-09
-  - UC-05
-  - IADR-0152
-  - IADR-0153
-author: claude
 created: 2026-07-02
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-09, SC-05, SC-09, UC-05]
+adrs: []
+iadrs: [IADR-0006, IADR-0152, IADR-0153]
+specs: [01_requirements, 01_usecases]
+issues: []
+-->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
 
@@ -23,7 +20,7 @@ plan_refs:
 
 - 機能要求（FR）: FR-09
 - ユースケース（UC）: UC-05
-- 関連仕様: `../specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
+- 関連仕様: `../../.ai-context/specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
 
 ## テスト対象
 
@@ -83,7 +80,7 @@ plan_refs:
 | 13 | 管理者ロール無しで管理系呼び出し | 403 |
 | 14 | ポリシー参照中の属性辞書削除 | 409 |
 
-## 受け入れ基準の写像（UC-05）
+## 受け入れ基準の写像
 
 - 管理者が属性・タグ・ポリシーを設定できる → 結合 #1・#4・#5・#6。管理者のみ許可 → 結合 #13＋単体 R1〜R4
   （実 Keycloak トークンでロールが `RequireRole` に届くことの担保）。
@@ -175,5 +172,5 @@ plan_refs:
   必須属性の累積で結果が揺れないよう文書属性検証は許可値整合で確認する（必須欠落は単体で網羅）。
 - 統合テスト（`AbacScopeTests`, 実 PostgreSQL）は管理系（`/authz/policies`）が `AdminOnly` を要求するため、
   `IntegrationTestAuthHandler` で `platform-admin` として認証して DB 挙動を検証する。実 Keycloak トークンでの
-  E2E 認可検証は環境依存のためフォローアップ（IADR-0006）。
+  E2E 認可検証は環境依存のためフォローアップ。
 - ビルド・テストの実走は CI（`dotnet test`）で行う。本実装環境では `dotnet` が承認制のため未実走。

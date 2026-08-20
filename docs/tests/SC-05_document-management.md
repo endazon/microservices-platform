@@ -2,26 +2,19 @@
 title: SC-05 文書管理 テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-05
-  - UC-03
-  - FR-06
-  - FR-09
-  - IADR-0041
-  - IADR-0127
-author: claude
 created: 2026-07-09
 updated: 2026-08-05
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-related_specs:
-  - "../screens/SC-05_document-management.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-06, FR-09, SC-05, UC-03]
+adrs: [ADR-0031]
+iadrs: [IADR-0041, IADR-0127]
+specs: [01_screens, 01_usecases, 20260805_issue-503_sc05-08-admin-screens, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-05_document-management]
+issues: []
+-->
 
-# テスト仕様書: 文書管理（SC-05）
+# テスト仕様書: 文書管理
 
 > **［2026-08-05 / #503］新スタックでの再実装に合わせて全面改訂した。**
 >
@@ -45,7 +38,7 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 - 画面（SC）: SC-05 ／ ユースケース（UC）: **UC-03**（文書を管理する）／ 機能要求（FR）: FR-06・FR-09
 
-## UC-03 のフロー → テストの写像
+## のフロー → テストの写像
 
 | UC-03 のフロー | 画面での現れ方 | テスト |
 | --- | --- | --- |
@@ -57,21 +50,21 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 |
 | --- | --- | --- | --- |
-| 1 | 一覧 | SC-05 / FR-06 | `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（**生値**）・版（`v{n}`）を表示する |
+| 1 | 一覧 | —| `GET /bff/documents` を呼び、タイトル（`/docs/$id` へのリンク）・機密区分（**生値**）・版（`v{n}`）を表示する |
 | 2 | 登録 | UC-03 基本 1 / FR-09 | タイトル・機密区分・タグを送る（`{ title, attributes: { confidentiality }, tags }`） |
 | 3 | **必須属性** | **UC-03 例外** | 空・空白のみでは保存できず、要求も出ない。注記が画面に出ている |
-| 4 | 更新（楽観ロック） | FR-06 | 現在版を `expectedVersion` として送る。**既存の属性（部門）を落とさない** |
+| 4 | 更新（楽観ロック） | —| 現在版を `expectedVersion` として送る。**既存の属性（部門）を落とさない** |
 | 4-b | **再取得** | [[IADR-0127]] 決定 5 | 保存の成功後に一覧を **1 回だけ**取り直す（`invalidateQueries` のみ。手書きの再取得を持たない） |
-| 5 | **版競合（409）** | FR-06 | 「版が変わっています」と読める文言を `role="alert"` で出す |
+| 5 | **版競合（409）** | —| 「版が変わっています」と読める文言を `role="alert"` で出す |
 | 6 | 状態遷移 | FR-06 / [[IADR-0041]] | 公開は未公開（`draft`/`normalized`）の行のみ・アーカイブは `archived` 以外の行のみ |
-| 7 | 削除 | FR-06 | `DELETE /bff/documents/{id}` を呼び、完了を伝える |
+| 7 | 削除 | —| `DELETE /bff/documents/{id}` を呼び、完了を伝える |
 | 8 | **存在秘匿（404）** | [[IADR-0009]] / [[IADR-0041]] | スコープ外・不在をいずれも中立に扱い、「権限がありません」を示唆しない |
 | 8-b | **直近の操作結果だけを出す** | [[IADR-0127]] 決定 7 | 削除が 409 で失敗した後に別の操作（編集 → 保存）が成功したとき、**成功バナーの隣に古い失敗バナーが残らない** |
 | 9 | 異常系 | — | 一覧の取得失敗で `role="alert"` |
 | 10 | 0 件 | — | 「文書はありません。」 |
 | 11 | **権限別の出し分け** | [[IADR-0035]] / [[IADR-0009]] | ロールを持たない利用者には画面が無い（`NotFound`）。**要求も出さない** |
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #6 | 「変換」列が無い。**先に「機密区分」「版」の列が在ることを確かめてから**無いことを見る |
-| 13 | ロケール `en` | ADR-0031 | 見出し・保存ボタンが英語で描画される |
+| 13 | ロケール `en` | —| 見出し・保存ボタンが英語で描画される |
 
 ## 純関数（`src/knowledge/frontend/src/features/abac/confidentiality.test.ts`）
 
@@ -100,16 +93,16 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
-| 1 | 作成 | FR-06 | admin で 201 | `Create_AsAdmin_Returns201` |
+| 1 | 作成 | —| admin で 201 | `Create_AsAdmin_Returns201` |
 | 2 | ロール制限 | [[IADR-0041]] | 非特権ロール（`viewer`）は 403 | `Create_AsNonPrivilegedRole_IsForbidden` |
 | 3 | 無認証 | [[IADR-0041]] | 匿名は 401（認証欠如と権限不足を取り違えない） | `Create_WhenAnonymous_IsUnauthorized` |
 | 4 | 作成の deny-by-default | [[IADR-0041]] | ABAC スコープが与えられていなければ 403 | `Create_WhenScopeNotGranted_IsForbidden_DenyByDefault` |
-| 5 | 検証の透過 | FR-06 | 後段の 400（タイトル必須）を素通しする | `Create_WhenTitleMissing_Passes400Through` |
-| 6 | 更新 | FR-06 | スコープ内で 200 | `Update_AsAdminInScope_Returns200` |
+| 5 | 検証の透過 | —| 後段の 400（タイトル必須）を素通しする | `Create_WhenTitleMissing_Passes400Through` |
+| 6 | 更新 | —| スコープ内で 200 | `Update_AsAdminInScope_Returns200` |
 | 7 | スコープ外の更新 | [[IADR-0041]] / [[IADR-0009]] | スコープ外は **404 秘匿**（403 にしない） | `Update_WhenOutOfScope_Returns404` |
-| 8 | 楽観ロック | FR-06 | 後段の 409（版競合）を素通しする | `Update_WhenVersionConflict_Passes409Through` |
-| 9 | 公開 | FR-06 | スコープ内で 200 | `Publish_AsAdminInScope_Returns200` |
-| 10 | 削除 | FR-06 | スコープ内で 204 | `Delete_AsAdminInScope_Returns204` |
+| 8 | 楽観ロック | —| 後段の 409（版競合）を素通しする | `Update_WhenVersionConflict_Passes409Through` |
+| 9 | 公開 | —| スコープ内で 200 | `Publish_AsAdminInScope_Returns200` |
+| 10 | 削除 | —| スコープ内で 204 | `Delete_AsAdminInScope_Returns204` |
 | 11 | スコープ外の削除 | [[IADR-0041]] | スコープ外は 404 秘匿 | `Delete_WhenOutOfScope_Returns404` |
 
 **画面のテスト（§テストケース 8・11）だけでは境界は塞げない。** UI の出し分けはサーバ側の実効境界の
@@ -123,9 +116,9 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
-| 1 | 不正遷移（ドメイン） | UC-03 | `archived` からの公開は例外・**状態は変わらない** | `Publish_FromArchived_Throws` |
-| 2 | 許可遷移（ドメイン） | FR-06 | `normalized`（pipeline 由来）からの公開は許可（`draft` へ絞りすぎない） | `Publish_FromNormalized_IsAllowed` |
-| 3 | 不正遷移（API） | UC-03 | archive 後の再公開は 409 | `Publish_AfterArchive_Returns409` |
+| 1 | 不正遷移（ドメイン） | —| `archived` からの公開は例外・**状態は変わらない** | `Publish_FromArchived_Throws` |
+| 2 | 許可遷移（ドメイン） | —| `normalized`（pipeline 由来）からの公開は許可（`draft` へ絞りすぎない） | `Publish_FromNormalized_IsAllowed` |
+| 3 | 不正遷移（API） | —| archive 後の再公開は 409 | `Publish_AfterArchive_Returns409` |
 
 **§テストケース 6（画面は `archived` の行に公開を出さない）と対である。** 画面が出さないことと
 サーバが拒むことは別の担保であり、片方だけでは実効境界にならない。
@@ -146,3 +139,20 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 - `pnpm run test:coverage`（カバレッジ・ラチェット維持）
 - `dotnet test src/platform/backend/Bff/Platform.Bff.Tests --filter BffDocumentWriteEndpointTests`
 - `dotnet test src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests --filter Publish`
+
+<!-- trace-table:
+row1: SC-05, FR-06
+row2: FR-06
+row3: FR-06
+row4: FR-06
+row5: ADR-0031
+row6: FR-06
+row7: FR-06
+row8: FR-06
+row9: FR-06
+row10: FR-06
+row11: FR-06
+row12: UC-03
+row13: FR-06
+row14: UC-03
+-->

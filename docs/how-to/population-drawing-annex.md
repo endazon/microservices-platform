@@ -2,18 +2,17 @@
 title: 別紙 — 母集合の規則が破れた実例（規則 9・10。旧 7・8）
 type: how-to
 status: fixed
-related_ids:
-  - NFR
-  - IADR-0141
-  - IADR-0172
-  - IADR-0173
-  - IADR-0190
-author: claude
 created: 2026-08-14
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/docs/ai-implementation-workflow-guide.md"
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0141, IADR-0172, IADR-0173, IADR-0190]
+specs: [ai-implementation-workflow-guide]
+issues: [planning#317, planning#318, planning#350]
+-->
 
 # 別紙: 母集合の規則が破れた実例（規則 9・10。旧 7・8）
 
@@ -25,7 +24,7 @@ plan_refs:
 > **★ 実例は 1 箇所にしか置かない。**
 > **規則 1〜6 の実例は [[IADR-0141]] 決定 1 の表**にある。**ここへ複写しない** ——
 > 2 箇所に置くと片方が古くなる（[[IADR-0141]] 自身が定めた扱い）。
-> **本別紙が持つのは、[[IADR-0141]] より後に本リポが足した規則 9・10（旧 7・8）の実例だけ**である。キットの規則 7・8 の実例はキット配布物の表（planning#317 / planning#318 / planning#350）が持つ。
+> **本別紙が持つのは、[[IADR-0141]] より後に本リポが足した規則 9・10（旧 7・8）の実例だけ**である。キットの規則 7・8 の実例はキット配布物の表が持つ。
 
 **読むのは「規則の意味を確かめたいとき」「新しい規則を足すか考えるとき」でよい。**
 

@@ -2,37 +2,19 @@
 title: 文書詳細／プレビュー 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-03
-  - UC-01
-  - UC-02
-  - UC-07
-  - FR-05
-  - FR-06
-  - FR-12
-  - IADR-0119
-  - IADR-0121
-  - IADR-0124
-  - IADR-0126
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
-related_specs:
-  - "./SC-01_search-chat.md"
-  - "./SC-02_search-results.md"
-  - "../adr/IADR-0038_bff-document-read-abac-gating.md"
-  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
-  - "../adr/IADR-0126_sse-answer-state-and-search-url-state.md"
-  - "../specs/20260804_issue-502_sc01-03-search-flow.md"
-  - "../tests/SC-03_document-detail.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-06, FR-12, FR-17, FR-18, SC-03, SC-04, SC-18, UC-01, UC-02, UC-07]
+adrs: []
+iadrs: [IADR-0119, IADR-0121, IADR-0124, IADR-0126]
+specs: [01_requirements, 01_screens, 01_usecases, 07_abac-attribute-model, 20260804_issue-502_sc01-03-search-flow, IADR-0038_bff-document-read-abac-gating, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0126_sse-answer-state-and-search-url-state, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
+issues: [#12, #519, #553]
+-->
 
-# 画面仕様書: 文書詳細／プレビュー（SC-03）
+# 画面仕様書: 文書詳細／プレビュー
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6。計画側 `05_screens` の `status` には追随しない）。
@@ -43,7 +25,7 @@ related_specs:
 >
 > **［2026-08-10 訂正 / #553］(2) の理由書き「計画が 4 値中 2 値しか持たない」は失効した。**
 > 4 値すべての表示名は裁定（2026-08-05 **Q7 / Q8 / 派生 Q30**）で確定しており、正は
-> [`planning/docs/glossary.md`](../../planning/docs/glossary.md) である（`restricted`＝**取扱制限**）。
+> `planning/docs/glossary.md`（計画リポ） である（`restricted`＝**取扱制限**）。
 > **未実装なのは写像であって、決まっていないのではない。引き受け先は #541。**
 > **(4) は裁定 Q11 で「置かない」が確定した**ので、未実装ではなく**確定した設計**である
 > （§左ナビに出さない理由 の追記）。
@@ -53,13 +35,13 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-03 文書詳細／プレビュー**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-03）
+- 画面（SC）: **SC-03 文書詳細／プレビュー**（05_screens/01_screens.md（計画リポ） §SC-03）
 - 関連ユースケース（UC）: **UC-01**（検索・質問する。出典から到達する終点）・**UC-07**（Wiki で閲覧する）
   - issue #502 は本画面を **UC-02** に対応づけている。UC-02（AI 分析）の**出典クリックの遷移先**が本画面であるため
-    （[03_usecases](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) UC-02 基本フロー 4「結果と出典を返す」／
+    （03_usecases（計画リポ） UC-02 基本フロー 4「結果と出典を返す」／
     05_screens §画面遷移図 `SC08 -- 出典 --> SC03`）。計画の画面一覧が SC-03 に挙げる関連 UC は **UC-01・UC-07** である。
 - 関連機能要求（FR）: **FR-05**（ABAC）・**FR-06**（文書管理）・**FR-12**（正規化変換の閲覧面）
-- モックアップ（**実装の正**）: [hi-fi/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-03.html) ／ [wireframe/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-03.html)
+- モックアップ（**実装の正**）: hi-fi/sc-03.html（計画リポ） ／ wireframe/sc-03.html（計画リポ）
 - 関連 IADR: [[IADR-0038]]（BFF 読み取りの ABAC ゲート）・[[IADR-0009]]（存在秘匿）・**[[IADR-0119]]（FR-17〜21 の着手保留）**
 
 ## 画面概要・目的
@@ -72,7 +54,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-03.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-03.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-03.html（計画リポ） に対するものである。
 **粒度の規則は [SC-01 §hi-fi モックアップとの対応](./SC-01_search-chat.md) と共通である**——
 (a) メイン領域の要素は個別に 1 行、(b) 共通シェルはまとめて 1 行（引き受け先を書く）、
 (c) モックに無い状態は本表に入れず §エラー・状態 で扱う。
@@ -90,11 +72,11 @@ related_specs:
 | --- | --- | --- | --- |
 | 1 | タイトル ＋ 副題「正規化文書（Markdown）プレビュー」（417-418） | **する** | |
 | 2 | 本文プレビューのパネル（419-421） | **する** | `Card`。Markdown **原文**を等幅・改行保持で表示（§本文の描画） |
-| 3 | 「📖 Wikiで閲覧」（422） | **する** | `/wiki`（SC-04）へ。`wikiBaseUrl` 未設定なら出さない |
+| 3 | 「📖 Wikiで閲覧」（422） | **する** | `/wiki`へ。`wikiBaseUrl` 未設定なら出さない |
 | 4 | 「原本（ファイルサーバー）↗」（422） | **する** | `http(s)` のときだけリンク。`storage://` 等は等幅表記 |
-| 5 | 属性・タグのパネル（432-433） | **一部する** | 機密区分・部門・タグを出す（§属性の表示）。**満たしていない条件: 機密区分の値を表示名へ写像していない** —— モックが「社内限」と描く箇所へ `internal` を**生値のまま**出す。4 値の表示名は裁定 **Q7 / Q8 / 派生 Q30** で確定済み（正は [`planning/docs/glossary.md`](../../planning/docs/glossary.md)）であり、**決まっていないのではなく写像が未実装**である。**引き受け先は #541**（`attributes.ts` が「写像を入れる先は #541」と明記）。**［2026-08-10 / #552］本行は従前「する」だった** —— SC-05 は同じ論点を別行（#7「しない」）へ切り出しているのに、本画面は 1 行へ畳んでいたため判定に現れていなかった |
+| 5 | 属性・タグのパネル（432-433） | **一部する** | 機密区分・部門・タグを出す（§属性の表示）。**満たしていない条件: 機密区分の値を表示名へ写像していない** —— モックが「社内限」と描く箇所へ `internal` を**生値のまま**出す。4 値の表示名は裁定 **Q7 / Q8 / 派生 Q30** で確定済み（正は `planning/docs/glossary.md`（計画リポ））であり、**決まっていないのではなく写像が未実装**である。**引き受け先は #541**（`attributes.ts` が「写像を入れる先は #541」と明記）。**［2026-08-10 / #552］本行は従前「する」だった** —— SC-05 は同じ論点を別行（#7「しない」）へ切り出しているのに、本画面は 1 行へ畳んでいたため判定に現れていなかった |
 | 6 | バージョンのパネル（434） | **する** | 版番号 ＋ 作成日時 ＋ 変更メモ |
-| 7 | **「◉ 知識グラフで見る（SC-18）」**（422 右） | **しない** | **FR-17**。[[IADR-0119]] 決定 1 の着手保留。§実装しない要素の理由 |
+| 7 | **「◉ 知識グラフで見る」**（422 右） | **しない** | **FR-17**。[[IADR-0119]] 決定 1 の着手保留。§実装しない要素の理由 |
 | 8 | **「AI 提案 — この文書に対するリンク・タグ候補」パネル**（423-429） | **しない** | **FR-18**。同上 |
 | 9 | **SC-21（AI 提案一覧）への導線**（428 内） | **しない** | 同上（SC-21 自体が保留対象） |
 | 10 | **共通シェル**: 右レール「AIチャットパネル」（437-442） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 5） |
@@ -103,7 +85,7 @@ related_specs:
 
 ### 実装しない要素の理由（#7・#8・#9。**繰り延べであって放棄ではない**）
 
-- **AI 提案の承認欄は FR-18、知識グラフ（SC-18）への導線は FR-17 に属する。**
+- **AI 提案の承認欄は FR-18、知識グラフへの導線は FR-17 に属する。**
   [[IADR-0119]] 決定 1 は「**FR-17〜FR-21 の実装には着手しない。**保留の対象は当該 FR を実現する
   プロダクトコードと、**その受け入れを担う画面**・API・データモデルである」と定めている。
   AI 提案の承認欄はまさに「FR-18 の受け入れを担う画面」であり、SC-18 への導線は
@@ -126,7 +108,7 @@ related_specs:
   述べているのは、**バックリンク欄・ローカルグラフを SC-04 側に置く**という分界の説明であり、
   本画面の他の要素（本文・属性・版履歴）を否定するものではない。本改訂はその 2 つだけを保留する。
 
-### 左ナビに出さない理由（#12）
+### 左ナビに出さない理由
 
 05_screens §共通シェル の左ナビ 4 グループは「利用者」に **SC-03 文書詳細**を含めており、
 hi-fi モックの左レールにも「文書詳細」がある。しかし**本画面のルートは文書 ID を必須とする**
@@ -138,7 +120,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 「ID を持たない入口」が必要なら、それは SC-02（一覧）が既に担っている。
 
 ただし**グループ分けの解釈自体は計画側の判断事項**であるため、
-[環流の記録 §付-2](../../feedback/20260804_sc01-03-bff-contract-gaps.md) に載せ、
+環流の記録 §付-2（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設） に載せ、
 **planning#197 §付随の論点 として起票済み**である。**裁定が出るまで実装は変えない。**
 
 > **★［2026-08-10 追記 / #553］裁定が出た。実装は変えないままで正しい。**
@@ -155,7 +137,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 
 | 用途 | エンドポイント | 呼び出し方 | 認可 | 応答 |
 | --- | --- | --- | --- | --- |
-| 詳細（メタデータ） | `GET /bff/documents/{id}` | **orval 生成フック `useBffDocumentDetail`**（#519） | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
+| 詳細（メタデータ） | `GET /bff/documents/{id}` | **orval 生成フック `useBffDocumentDetail`** | ABAC（BFF 集約・404 秘匿） | `DocumentDto` |
 | 本文（Markdown） | `GET /bff/documents/{id}/content` | 同上 | 同上 | `DocumentContentDto` |
 | 版履歴 | `GET /bff/documents/{id}/versions` | 同上（詳細の成功後に有効化） | 同上 | `DocumentVersionDto[]` |
 
@@ -188,7 +170,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 | タイトル | 表示 | `<h1>` |
 | 状態・版・更新日時 | 表示 | `status` / `v{version}` / `updatedAt`（ロケール表記） |
 | 本文 | 表示 | Markdown 原文（§本文の描画） |
-| Wiki で閲覧 | リンク | `/wiki`（SC-04）。`wikiBaseUrl` 未設定時は出さない |
+| Wiki で閲覧 | リンク | `/wiki`。`wikiBaseUrl` 未設定時は出さない |
 | 原本 | 表示／リンク | `content.sourceUri ?? doc.markdownUri`。`http(s)` はリンク、それ以外は等幅表記 |
 | 属性 | 表示 | §属性の表示 |
 | タグ | 表示 | `Tag` の並び |
@@ -197,7 +179,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 ### 属性の表示
 
 計画 §SC-03 主要素は「属性・タグパネル（**機密区分・部門・タグ**）」と定める。
-[07_abac-attribute-model](../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md) の
+07_abac-attribute-model（計画リポ） の
 基本属性に合わせ、**キーは既知のものだけ日本語ラベルへ写像**する。
 
 | 属性キー | 画面ラベル | 出所 |
@@ -211,13 +193,13 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 モックに現れるのは**そのうち 2 値だけ**である（実測: `grep -n "社内限\|秘" mockups/hi-fi/sc-05.html sc-09.html`）。
 残る 2 値の表示名は計画のどこにも無く、実装が決めれば**それが事実上の用語定義になってしまう**。
 機密区分は取り違えると影響が大きい情報であるため、推測で名前を与えず生値を出す。
-表示名は環流の記録に載せ、計画へ環流した（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)。
+表示名は環流の記録に載せ、計画へ環流した（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）。
 **planning#197 として起票済みであり、計画側の裁定を待っている**）。
 
 > **★［2026-08-10 追記 / #553］裁定が出た。上の「2 値しか無い」という前提はもう成り立たない。**
 >
 > 利用者裁定 2026-08-05（質問票 第12回 **Q7 / Q8 および派生 Q30**）で **4 値すべての表示名が確定**した。
-> **正は [`planning/docs/glossary.md`](../../planning/docs/glossary.md)** であり、計画側は
+> **正は `planning/docs/glossary.md`（計画リポ）** であり、計画側は
 > 「同じ表を 2 か所に置くと片方が古くなる」として `01_screens.md` にも `07_abac-attribute-model` にも置いていない（`01_screens.md:224`）。
 >
 > | 値 | 表示名 |
@@ -227,7 +209,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 > | `confidential` | 秘 |
 > | `restricted` | **取扱制限**（**「極秘」ではない** —— 個人資料が既定で `restricted` であり、すべて「極秘」表示にすると本当に極秘の組織文書を見分けられなくなるため） |
 >
-> **写像の実装先は #541 である。** 本 PR（#553）は記述の追随だけを行い、写像そのものは実装しない。
+> **写像の実装先は #541 である。** 本 PRは記述の追随だけを行い、写像そのものは実装しない。
 > 上の本文は**当時の記録**として残す。
 
 ### 本文の描画
@@ -237,7 +219,7 @@ SC-01 の出典・SC-02 の一覧・SC-05 の文書管理から到達する。**
 - 理由 1（**セキュリティ**）: 文書本文は外部データソース由来である。HTML 化は
   サニタイズ方針・許可タグの決定を伴い、誤ると保存型 XSS になる。
 - 理由 2（**スタック**）: ADR-0031 の採用技術一覧に Markdown レンダラは無い。依存の追加は
-  [08_data-egress-policy](../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md) の
+  08_data-egress-policy（計画リポ） の
   検査対象を増やす。
 - **繰り延べであって放棄ではない**——レンダリングが必要なら、ライブラリ選定とサニタイズ方針を
   IADR で決めてから入れる（§未決事項）。旧実装からの継続であり、本改訂で変えていない。
@@ -254,7 +236,7 @@ flowchart LR
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| 「Wikiで閲覧」 | 内部ルート `/wiki` へ（閲覧範囲はゲートウェイの ABAC が制御） | SC-04 |
+| 「Wikiで閲覧」 | 内部ルート `/wiki` へ（閲覧範囲はゲートウェイの ABAC が制御） | —|
 | 「原本」 | `http(s)` のときだけ新規タブで開く（`rel="noopener noreferrer"`） | 出典元 |
 
 ## 権限・表示条件・存在秘匿
@@ -286,17 +268,21 @@ flowchart LR
 
 ## 関連仕様
 
-- 作業仕様書: [20260804_issue-502_sc01-03-search-flow.md](../specs/20260804_issue-502_sc01-03-search-flow.md)
+- 作業仕様書: 仕様書: SC-01〜03 の新スタックでの再実装（利用者の主導線）
 - テスト仕様書: [SC-03_document-detail.md](../tests/SC-03_document-detail.md)
 - 実装 ADR: [[IADR-0038]]（BFF 側 ABAC ゲーティング・本文取得）／[[IADR-0126]]（新スタックでのデータ取得）
 
 ## 未決事項
 
-1. **AI 提案の承認欄・SC-18 への導線**（FR-17 / FR-18）。[[IADR-0119]] の保留解除後に着手する。
+1. **AI 提案の承認欄・SC-18 への導線**。[[IADR-0119]] の保留解除後に着手する。
    **［2026-08-07 / #586］ADR-0033・0034・0035 は `Accepted` へ移り保留は解除された。着手は #452 が引き受ける。**
 2. **Markdown のレンダリング**。必要になった時点でライブラリ選定とサニタイズ方針を IADR で決める。
 3. ~~**機密区分の表示名**（4 値のうち 2 値しか計画に現れない）。**planning#197 として起票済み・裁定待ち。**~~
    **［2026-08-10 / #553］裁定で決着した。** 4 値の表示名は **Q7 / Q8 / 派生 Q30** で確定し、
-   正は [`planning/docs/glossary.md`](../../planning/docs/glossary.md)（`restricted`＝**取扱制限**）。
+   正は `planning/docs/glossary.md`（計画リポ）（`restricted`＝**取扱制限**）。
    **残るのは写像の実装だけで、引き受け先は #541** である（§属性の表示 の追記を参照）。
 4. **Wiki の文書別ディープリンク**。現状は SC-04 の `/wiki` までで、ページ単位では飛べない。
+
+<!-- trace-table:
+row1: SC-04
+-->

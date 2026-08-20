@@ -2,19 +2,17 @@
 title: 別紙 — Superseded な ADR を引用する書式の経緯と、機械検査を置けない理由の測定
 type: how-to
 status: fixed
-related_ids:
-  - NFR
-  - ADR-0003
-  - ADR-0027
-  - IADR-0172
-  - IADR-0173
-  - IADR-0176
-author: claude
 created: 2026-08-11
-updated: 2026-08-18
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: [ADR-0003, ADR-0027]
+iadrs: [IADR-0172, IADR-0173, IADR-0176]
+specs: [01_requirements]
+issues: []
+-->
 
 # 別紙: Superseded な ADR の引用 —— 経緯と測定
 
@@ -53,6 +51,13 @@ plan_refs:
 
 > **★ 実効させたいなら**、`check-commit-messages.js` を走らせるジョブへ `submodules` ＋ `token` を
 > 付ける必要がある。**入口の「起点 ID の種別」節にある同趣旨の注も同じ測定に由来する。**
+
+> **［2026-08-21 追記 / ADR-0048］上表の「例外は 2 本」は撤去済みで、現在は 0 本である。**
+> 本リポジトリは planning submodule に依存しない（ADR-0048 決定 2）。`claude-code-review.yml` /
+> `claude-coding.yml` から planning submodule の fetch ステップと `PLANNING_REPO_TOKEN` の参照を
+> 撤去した。**「PR 文脈で起動する 2 本の非ゲート例外」は存在しない**——結論（機械検査を置いていない
+> 理由）はむしろ強化される（PR 文脈で planning を読む経路が一切無くなったため）。上の測定
+> （実測日 2026-08-07）は撤去前の点時点記録として残す。
 
 ## 1b. 入口から移した補足（2026-08-16 / #755）
 

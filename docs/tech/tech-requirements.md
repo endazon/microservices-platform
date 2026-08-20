@@ -2,36 +2,17 @@
 title: 技術要件書
 type: tech-requirements
 status: in-progress
-related_ids:
-  - NFR
-  - FR-14
-  - ADR-0004
-  - ADR-0005
-  - ADR-0007
-  - ADR-0008
-  - ADR-0020
-  - ADR-0027
-  - ADR-0029
-  - ADR-0030
-  - ADR-0041
-  - ADR-0031
-  - ADR-0032
-  - IADR-0048
-  - IADR-0117
-  - IADR-0219
-  - IADR-0121
-  - IADR-0134
-author: claude
 created: 2026-07-04
 updated: 2026-08-17
-plan_refs:
-  - "../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md"
-  - "../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0041_result-type-external-library.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-14]
+adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0020, ADR-0027, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
+iadrs: [IADR-0048, IADR-0056, IADR-0117, IADR-0121, IADR-0134, IADR-0216, IADR-0219]
+specs: [01_requirements, 03_tech-stack-selection, 12_backend-application-stack, 20260803_issue-455_backend-application-standard, ADR-0020_dotnet-10-upgrade, ADR-0030_backend-application-libraries, ADR-0041_result-type-external-library]
+issues: [#184, #196, #198, #441, #455]
+-->
 
 # 技術要件書
 
@@ -40,7 +21,7 @@ plan_refs:
 >
 > **リポジトリの位置づけ**: 主たる成果物は**マイクロサービスプラットフォーム基盤（platform ユニット）**。
 > ナレッジ活用機能（knowledge ユニット）は基盤に付随する必須の可変機能セットである
-> （issue #209 / [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)。
+> （issue #209 / IADR-0056: リポジトリ最上位のユニット構成（src/<unit>/{backend,frontend} = platform / knowledge）。
 > フォルダ構成・依存規則は [`src/README.md`](../../src/README.md)）。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -50,7 +31,7 @@ plan_refs:
 - 関連 ADR / 非機能要件（NFR）: ADR-0004（Keycloak OIDC）／ADR-0005（Istio mTLS）／ADR-0007（ArgoCD+Helm）／
   ADR-0008（k3s）／NFR（性能・可用性・セキュリティ・運用・拡張性）
 - 計画制約との差異: **なし（解消済み）**。実装は **.NET 10 / C# 13** で、計画側も
-  [ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md)（Accepted・2026-07-23）で
+  ADR-0020（計画リポ）（Accepted・2026-07-23）で
   実装フレームワークを **.NET 10（LTS）** に確定した。実装が先行していた経緯は [[IADR-0048]] と
   `feedback/20260709_dotnet10-target-framework-deviation.md` に記録している（旧「計画 fixed は .NET 8」との乖離は ADR-0020 で解消）。
 
@@ -71,10 +52,10 @@ plan_refs:
 | i18n（フロントエンド） | **Lingui**（ja / en） | 6 | ADR-0031（コンパイル時抽出）。カタログは `platform/frontend/src/foundation/i18n/locales/<locale>/messages.{po,ts}` にコミットし、`pnpm run i18n` の再生成差分と `scripts/check-i18n-catalogs.js`（全ロケールの `msgstr` 非空）と `lingui compile --strict` の 3 段で未翻訳を止める（[[IADR-0125]] 決定 3・4）。**切替 UI は持たない**（計画の §共通シェル に要素が無い）。適用は platform の foundation のみで、画面文言は #452 |
 | コンポーネントカタログ | **Storybook** | 10 | ADR-0031。`src/packages/ui/.storybook/`。対象は `@platform/ui` のプリミティブのみ。テレメトリ／クラッシュレポートは無効化し、外部 egress はビルド成果物の走査で検査する（[[IADR-0125]] 決定 5） |
 | 認証（利用者） | Keycloak（OIDC / Authorization Code + PKCE） | — | ADR-0004。SPA は public client `platform-spa`（`oidc-client-ts`）。**ADR-0032 の BFF セッション方式へ移行予定**（#439・[[IADR-0121]] 決定 6。それまで現行方式を維持する） |
-| データストア（業務） | PostgreSQL | — | DB per Service（ADR-0002）。jsonb 属性は EF Core の ValueComparer で content 比較（#184） |
+| データストア（業務） | PostgreSQL | — | DB per Service。jsonb 属性は EF Core の ValueComparer で content 比較 |
 | データストア（ベクトル） | Qdrant | — | モデル別コレクション・決定的チャンク ID（[[IADR-0002]]） |
 | オブジェクトストレージ | MinIO（S3 互換） | RELEASE.2025-04-08 | 正規化本文・資産。ClusterIP のみ（[[IADR-0024]]）。資格情報は k8s Secret |
-| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | ADR-0027 / ADR-0028。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は MassTransit で、Wolverine への置き換えは各サービスの再実装 issue（#438〜#451）で行う**（#455 / #441） |
+| メッセージング | RabbitMQ / Kafka（**Wolverine**） | — | ADR-0027 / ADR-0028。イベント駆動パイプライン。契約は `Shared.Contracts`。**現行実装は MassTransit で、Wolverine への置き換えは各サービスの再実装 issue（#438〜#451）で行う** |
 | 実行基盤 | k3s（Kubernetes） | — | ADR-0008。Helm `deploy/helm/microservices-platform`、Namespace `microservices-platform` |
 | サービスメッシュ | Istio（Envoy mTLS） | — | ADR-0005 / [[IADR-0026]]。STRICT mTLS（`PeerAuthentication`/`DestinationRule`） |
 | CI/CD・GitOps | ArgoCD + Helm | — | ADR-0007。Git を単一の真実源に宣言的同期（`deploy/argocd/`） |
@@ -86,7 +67,7 @@ plan_refs:
 マイクロサービス（DB per Service）＋ BFF 集約＋イベント駆動パイプライン。フロント（SPA）は BFF のみを叩き、
 BFF が ABAC スコープ解決（AuthorizationService）と各サービス呼び出しを集約する。取り込みは
 DataSource→Conversion→Ingestion→（Document/Wiki）のイベントパイプラインで、段の有効/無効・購読は宣言的
-構成（`pipeline.json`・[[IADR-0028]]）で組み替える（FR-14）。
+構成（`pipeline.json`・[[IADR-0028]]）で組み替える。
 
 ```mermaid
 flowchart TB
@@ -106,13 +87,13 @@ flowchart TB
   AI --> LLM[LlmGateway] -->|egress matrix| External[(外部/自ホスト LLM)]
 ```
 
-## バックエンドアプリケーション層標準（ADR-0030）
+## バックエンドアプリケーション層標準
 
-計画側が [ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md)（Accepted）と
-[12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)（`fixed`）で
+計画側が ADR-0030（計画リポ）（Accepted）と
+12_backend-application-stack（計画リポ）（`fixed`）で
 アプリケーション層のライブラリ標準と設計様式を確定した。棚卸し表の**全量は計画書が正**であり、本節は
 実装リポジトリで守る要点と本リポ固有の具体化のみを記す（作業仕様書:
-[20260803_issue-455_backend-application-standard.md](../specs/20260803_issue-455_backend-application-standard.md)）。
+仕様書: バックエンドアプリケーション層標準の確立と機械的強制）。
 
 ### 設計様式
 
@@ -124,9 +105,9 @@ flowchart TB
 
 ### プロジェクト構成（サービス単位）
 
-**標準構成は 8 要素である**（計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+**標準構成は 8 要素である**（計画 12_backend-application-stack（計画リポ）
 §`SharedKernel` の粒度・`Worker` の追加。2026-08-17 に `Worker` を加えて 7 → 8 とした。
-実装側の追随は [IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 2）。
+実装側の追随は IADR-0219: `SharedKernel` の粒度はサービス単位（ユニット単位と併存）・`Worker` を標準構成へ加えて 8 要素とする 決定 2）。
 
 ```text
 src/<unit>/backend/Services/<Name>Service/
@@ -148,15 +129,15 @@ src/<unit>/backend/Services/<Name>Service/
 
 **実体が無い要素は、空フォルダ ＋ `.gitkeep` を置く**（`.csproj` は作らない。計画 §規範性・粒度・置き場）。
 **適用済みである**（#838。**55 件 ＋ 雛形 1 件**。件数の内訳の正は
-[IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 3）。
+IADR-0219: `SharedKernel` の粒度はサービス単位（ユニット単位と併存）・`Worker` を標準構成へ加えて 8 要素とする 決定 3）。
 
 **`Tests` は 1 プロジェクトである。Unit / Integration はプロジェクトを分けず、フォルダで分ける**
-（計画 [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+（計画 12_backend-application-stack（計画リポ）
 §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
 参照管理のコストが増えるためである。`.csproj` の実名はサービスのホスト種別に合わせてよい
 （実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests`）。
 
-**共有カーネルはサービス単位とユニット単位が併存する**（[IADR-0219](../adr/IADR-0219_sharedkernel-granularity-and-worker-standard-component.md) 決定 1。
+**共有カーネルはサービス単位とユニット単位が併存する**（IADR-0219: `SharedKernel` の粒度はサービス単位（ユニット単位と併存）・`Worker` を標準構成へ加えて 8 要素とする 決定 1。
 計画 §`SharedKernel` の粒度。利用者裁定 2026-08-17 / planning#390）。**置き分けは次のとおりである。**
 
 | 置き場 | 何を置くか |
@@ -170,13 +151,13 @@ src/<unit>/backend/Services/<Name>Service/
 **サービス単位の枠は「作ってよい」の意味ではない** —— 境界をまたぐ型をそちらへ置けば置き分けに反する。
 
 > **［2026-08-17 / #455］従前は「共有カーネルはサービス単位に置かない」と書いていた**
-> （[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が案 B を却下したことに従っていた）。
+> （IADR-0117: 共有カーネル `Platform.Shared.Kernel` の配置（IADR-0056 決定 3 の部分改定） が案 B を却下したことに従っていた）。
 > **裁定 planning#390 が計画の構成図を正とし、サービス単位を標準構成として認めたため、併存の形へ改めた。**
 > IADR-0117 の決定 1〜4（`Platform.Shared.Kernel` の新設・ユニット外参照 2 → 3）は有効である。
 
 この配置は [[IADR-0056]] §決定 3 の**部分改定**にあたる。同決定はユニット外参照を
 `src/platform/backend/Shared/` の **2 プロジェクト**（`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure`）
-のみに限っていたが、[IADR-0117](../adr/IADR-0117_platform-shared-kernel-placement.md) が
+のみに限っていたが、IADR-0117: 共有カーネル `Platform.Shared.Kernel` の配置（IADR-0056 決定 3 の部分改定） が
 `Platform.Shared.Kernel` を加えて **3 プロジェクトへ改定**した（2026-08-03 / #455）。改定はこの 1 点に限り、
 「platform → 可変ユニットは禁止」「統合テストの例外」は引き続き有効である。
 `Platform.Shared.Kernel` が持てる .NET 標準以外の `PackageReference` は **Result 型の実装 1 つのみ**である
@@ -225,7 +206,7 @@ planning#161・planning#162（段階ポリシーの導入））。よって **ra
 各サービスの再実装 issue（#438〜#451）は、移行と同時に baseline から自プロジェクトを削除する。baseline が
 空になった時点で不採用パッケージを `Directory.Packages.props` から削除する。
 
-**`Serilog` は消化済みである**（[IADR-0216](../adr/IADR-0216_otel-logging-sdk-replaces-serilog.md)。#455）。
+**`Serilog` は消化済みである**（IADR-0216: ログの出口を Serilog から OTel Logging SDK へ移す。#455）。
 ログの出口を `builder.Logging.AddOpenTelemetry()`（OTel Logging SDK）へ移し、`Serilog.AspNetCore` /
 `Serilog.Sinks.OpenTelemetry` の `PackageReference`・`PackageVersion`・baseline エントリ 13 件を削除した
 （実測 2026-08-16: `Serilog` の `.csproj` 3 → **0**、`using Serilog` を持つ `.cs` 13 → **0**）。
@@ -245,11 +226,11 @@ planning#161・planning#162（段階ポリシーの導入））。よって **ra
 
 | 区分 | 目標 | 実現方針 |
 | --- | --- | --- |
-| 性能 | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1万件・時 / 更新 15 分以内反映 | ハイブリッド検索＋ベクトル索引（Qdrant）、SSE ストリーミング（[[IADR-0037]]）。**負荷試験は未実施（#196）** で目標達成の実測が未追跡。フロントの初期ロードは**計画に上限値が無い**ため、判定はビルドツールの既定予算（500 kB/チャンク）と前後の実測差で行う（[[IADR-0134]]。#512 時点の実測: 最大チャンク 274.33 kB / 初期ロード 577.54 kB・gzip 177.94 kB） |
+| 性能 | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1万件・時 / 更新 15 分以内反映 | ハイブリッド検索＋ベクトル索引（Qdrant）、SSE ストリーミング（[[IADR-0037]]）。**負荷試験は未実施** で目標達成の実測が未追跡。フロントの初期ロードは**計画に上限値が無い**ため、判定はビルドツールの既定予算（500 kB/チャンク）と前後の実測差で行う（[[IADR-0134]]。#512 時点の実測: 最大チャンク 274.33 kB / 初期ロード 577.54 kB・gzip 177.94 kB） |
 | 可用性 | 99.9%（月間ダウンタイム約 43 分以内） | HPA + PodDisruptionBudget（#197・`scaling`）、readiness/liveness プローブ、RollingUpdate、GitOps ロールバック（Git revert） |
-| セキュリティ | 認証・認可・データ越境統制・監査ログ | Keycloak OIDC（ADR-0004）＋ ABAC fail-closed（[[IADR-0012]]）、Istio STRICT mTLS（[[IADR-0026]]）＋ NetworkPolicy、deny-by-default／存在秘匿（[[IADR-0009]]）、LLM egress マトリクス（[[IADR-0025]]）。詳細は `docs/security/security.md` |
-| 運用・保守 | 検出 5 分以内 / MTTR 30 分以内 | OTel 可観測性、ArgoCD GitOps、構成ドリフト検出（[[IADR-0029]]）、起動時 fail-fast（[[IADR-0028]]）。**監視アラート・バックアップ・Runbook は整備中（#198）** |
-| 拡張性 | 段の挿抜・購入部品の差し替え（FR-14） | 宣言的パイプライン構成（`pipeline.json`・[[IADR-0028]]）＋ Foundation/Composable 構造（[[IADR-0027]]）。契約は `Shared.Contracts`。共通エンベロープ・契約テストは条件付き繰延（[[IADR-0049]]） |
+| セキュリティ | 認証・認可・データ越境統制・監査ログ | Keycloak OIDC＋ ABAC fail-closed（[[IADR-0012]]）、Istio STRICT mTLS（[[IADR-0026]]）＋ NetworkPolicy、deny-by-default／存在秘匿（[[IADR-0009]]）、LLM egress マトリクス（[[IADR-0025]]）。詳細は `docs/security/security.md` |
+| 運用・保守 | 検出 5 分以内 / MTTR 30 分以内 | OTel 可観測性、ArgoCD GitOps、構成ドリフト検出（[[IADR-0029]]）、起動時 fail-fast（[[IADR-0028]]）。**監視アラート・バックアップ・Runbook は整備中** |
+| 拡張性 | 段の挿抜・購入部品の差し替え | 宣言的パイプライン構成（`pipeline.json`・[[IADR-0028]]）＋ Foundation/Composable 構造（[[IADR-0027]]）。契約は `Shared.Contracts`。共通エンベロープ・契約テストは条件付き繰延（[[IADR-0049]]） |
 
 ## 開発・ビルド・テスト・デプロイ
 
@@ -269,18 +250,18 @@ planning#161・planning#162（段階ポリシーの導入））。よって **ra
 - **CI**: バックエンド [`ci.yml`](../../.github/workflows/ci.yml)、フロント [`frontend.yml`](../../.github/workflows/frontend.yml) /
   [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml)。セキュリティ（gitleaks/dependency-review）・CodeQL。
   コミット/PR 件名はトレーサビリティ規約を機械検査（`check-commit-messages.js` / `pr-title.yml`）。
-- **デプロイ**: ArgoCD が `deploy/helm/microservices-platform` を宣言的同期（ADR-0007）。構成変更のみで段の組み替え・
+- **デプロイ**: ArgoCD が `deploy/helm/microservices-platform` を宣言的同期。構成変更のみで段の組み替え・
   スケール調整が完結する（GitOps）。
 
 ## 未決事項
 
-- 性能目標の負荷試験・実測（#196）。達成状況に応じ HPA しきい値（#197 `scaling.hpa`）を調整する。
-- 監視アラート閾値・バックアップ/リストア・Runbook の整備（#198）。
+- 性能目標の負荷試験・実測。達成状況に応じ HPA しきい値（#197 `scaling.hpa`）を調整する。
+- 監視アラート閾値・バックアップ/リストア・Runbook の整備。
 - ~~計画制約「.NET 8」の更新 or 是正の計画側判断（[[IADR-0048]] / plan-feedback）。~~
-  **決着済み（2026-07-23）**: 計画側が [ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md)（Accepted）で
+  **決着済み（2026-07-23）**: 計画側が ADR-0020（計画リポ）（Accepted）で
   .NET 10（LTS）に確定し、乖離は解消した。残る作業は同 ADR のフォローアップ
   （個別プロセス文書に残る「.NET 8」表記の順次追随）で、計画側の担当である。
-- ADR-0030 標準への移行残件（#455）: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
+- ADR-0030 標準への移行残件: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
   空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。xUnit v2 → v3 の切替時期と
   `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は各サービス側で確定する。
 - サービス間 HTTP の `Refit` は棚卸し表に記載が無い。ADR-0029（内部同期は gRPC）との関係は #441 で決着する。

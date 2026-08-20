@@ -2,22 +2,17 @@
 title: AI 回答・出典提示 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-04
-  - FR-05
-  - FR-11
-  - UC-01
-  - UC-02
-  - SC-01
-  - SC-08
-  - IADR-0111
-  - IADR-0131
-author: claude
 created: 2026-06-27
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
+adrs: []
+iadrs: [IADR-0111, IADR-0131]
+specs: [01_requirements]
+issues: [#540]
+-->
 
 # テスト仕様書: AI 回答・出典提示
 
@@ -65,7 +60,7 @@ plan_refs:
 | T-14 | 送信成立（`sent=true`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | 実 route 結果をそのまま返す（回帰防止） | 使用モデルの正確性 | 自動 |
 | T-15 | 呼び出し先不調（`sent=false`・`model=claude-sonnet-5`） | `AskAsync` / `AskStreamAsync` | route 結果を透過（空へ潰さない） | 使用モデルの正確性 | 自動 |
 | T-16 | ゲートウェイが 2xx で本文 JSON `null`（逆シリアル化結果が null） | `AskAsync` | `Model` が空（`null` を応答契約へ載せない） | 使用モデルの正確性 | 自動 |
-| T-15f | 分析結果の補足表示（SC-08） | `AnalysisDashboardPage` | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空ならモデル名 | 使用モデルの正確性 | 自動 |
+| T-15f | 分析結果の補足表示 | `AnalysisDashboardPage` | `model` 空なら「モデル: 未使用（AI へ送信なし）」、非空ならモデル名 | 使用モデルの正確性 | 自動 |
 | T-17 | 文書属性に機密区分あり（4 値） | `ToCitations` | `Confidentiality` に当該値が載る | 出典への機密区分 | 自動 |
 | T-18 | 機密区分が欠落 / 空文字 / 空白 / 未知値 | `ToCitations` | `restricted` へ縮退（安全側） | 出典への機密区分 | 自動 |
 | T-19 | 機密区分が `Internal`（大小文字違い） | `ToCitations` | `internal`（正準の小文字）へ正規化 | 出典への機密区分 | 自動 |
@@ -107,7 +102,7 @@ plan_refs:
 
 ### タグで絞れること（#539 の中心的な是正）
 
-**着手時の実測では、候補（#540）は `tags` を返すのに、絞り込みは `tags` を見ていなかった**
+**着手時の実測では、候補は `tags` を返すのに、絞り込みは `tags` を見ていなかった**
 ——両ストアとも `attributes.{key}` しか参照していなかった。
 **「候補には出るのに、その候補で絞れない」状態は、利用者から見て壊れている。**
 
@@ -132,8 +127,8 @@ plan_refs:
 ## 関連仕様
 
 - 機能仕様書: `../functional/FR-04_ai-answer-citations.md` / `../functional/FR-11_llm-egress-routing.md`
-- 作業仕様書: `../specs/20260627_FR-04_ai-answer-citations.md` / `../specs/20260728_issue-403_degraded-answer-model.md` / `../specs/20260806_issue-541_citation-confidentiality.md`
-- 実装 ADR: `../adr/IADR-0111_degraded-answer-model-label.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-04_ai-answer-citations.md` / `../../.ai-context/specs/20260728_issue-403_degraded-answer-model.md` / `../../.ai-context/specs/20260806_issue-541_citation-confidentiality.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0111_degraded-answer-model-label.md`
 - 画面仕様書: `../screens/SC-08_ai-analysis-dashboard.md`
 - 通信仕様書: `../api/openapi.yaml`
 

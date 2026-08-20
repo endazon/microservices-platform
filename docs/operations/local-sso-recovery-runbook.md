@@ -2,21 +2,17 @@
 title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
-related_ids:
-  - IADR-0103
-  - IADR-0084
-  - IADR-0091
-  - IADR-0096
-author: claude
 created: 2026-07-25
 updated: 2026-08-17
-related_specs:
-  - "../adr/IADR-0103_local-sso-persistence-and-claim-design.md"
-  - "../adr/IADR-0084_headlamp-oidc-apiserver-flags.md"
-  - "../../deploy/local/README.md"
-  - "../../deploy/local/vault/oidc/README.md"
-  - "../../deploy/local/wiki-oidc/README.md"
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103]
+specs: [IADR-0084_headlamp-oidc-apiserver-flags, IADR-0103_local-sso-persistence-and-claim-design, README]
+issues: [AST#245]
+-->
 
 # 経路B SSO 復旧 Runbook
 
@@ -50,7 +46,7 @@ LOCALEDGE=1 ESO=1 VAULT=1 OBSERVABILITY=1 HEADLAMP=1 PERSIST=1 ARGOCD=1 \
 ```
 
 > `ESO=1` は `VAULT=1` 必須（未併記なら fail-fast）。この起動で ①ESO seed 投入 ②ESO 供給後の rollout
-> ③`argocd` ns の keycloak エイリアス が自動で入る（IADR-0103）。
+> ③`argocd` ns の keycloak エイリアス が自動で入る。
 
 成功確認:
 
@@ -85,7 +81,7 @@ done                                                                          # 
 ```
 
 > Discord の環境固有 ID（GuildId/ChannelId/AllowedUserIds/UserMapping）を `kubectl set env` で入れると、
-> 次回の `helm upgrade` が `conflict with "kubectl-set"` で失敗する（AST#245）。復旧時は**先に当該 env を
+> 次回の `helm upgrade` が `conflict with "kubectl-set"` で失敗する。復旧時は**先に当該 env を
 > `KEY-` で削除**してから helm を通す。
 
 ## STEP 2: Vault OIDC（**vault Pod 再起動時のみ**）

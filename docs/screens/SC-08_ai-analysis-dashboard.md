@@ -2,37 +2,19 @@
 title: AI分析ダッシュボード 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-08
-  - UC-02
-  - FR-05
-  - FR-07
-  - FR-11
-  - IADR-0005
-  - IADR-0111
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0127
-author: claude
 created: 2026-07-08
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-related_specs:
-  - "./SC-01_search-chat.md"
-  - "./SC-03_document-detail.md"
-  - "../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md"
-  - "../adr/IADR-0111_degraded-answer-model-label.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../tests/SC-08_ai-analysis-dashboard.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-07, FR-11, SC-03, SC-08, UC-02]
+adrs: []
+iadrs: [IADR-0005, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0127]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, IADR-0005_data-range-intersect-abac-narrowing-only, IADR-0111_degraded-answer-model-label, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-01_search-chat, SC-03_document-detail, SC-08_ai-analysis-dashboard]
+issues: []
+-->
 
-# 画面仕様書: AI分析ダッシュボード（SC-08）
+# 画面仕様書: AI分析ダッシュボード
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——共通シェルのパンくず・右レール。
@@ -48,11 +30,11 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-08 AI分析ダッシュボード**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-08・遷移図 `SC01 → SC08`・`SC08 -- 出典 --> SC03`）
+- 画面（SC）: **SC-08 AI分析ダッシュボード**（05_screens/01_screens.md（計画リポ） §SC-08・遷移図 `SC01 → SC08`・`SC08 -- 出典 --> SC03`）
 - 関連ユースケース（UC）: **UC-02**（AI 分析を依頼する。基本 1・3・4／**代替「機密区分の高いデータはセルフホスト LLM で処理する」**／**例外「対象が権限外の場合は対象から除外する。権限の有無は開示しない」**）
   - 着手時点の issue #503 の表は SC-08 の対応を「UC-05」と書いていたが、**計画（05_screens 画面一覧・UC-02 §関連画面）は UC-02 に対応づけている**。本書は計画を正とした。**issue 本文は 2026-08-05 に UC-02 へ訂正済みである。**
 - 関連機能要求（FR）: **FR-07**（指定データ範囲での分析・比較・抽出）・**FR-11**（LLM の呼び出し先の切り替え）・**FR-05**（ABAC）
-- モックアップ（**実装の正**）: [hi-fi/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-08.html) ／ [wireframe/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-08.html)
+- モックアップ（**実装の正**）: hi-fi/sc-08.html（計画リポ） ／ wireframe/sc-08.html（計画リポ）
 - 関連 IADR: [[IADR-0005]]（指定範囲は ABAC と narrowing-only で交差する）・[[IADR-0111]]（空 `model` ＝ AI へ未送信の縮退）・[[IADR-0127]]（本作業の設計判断）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
@@ -66,7 +48,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-08.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-08.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-08.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
 
 > **［対応表の凡例］「実装」列は 3 値である**（利用者裁定 2026-08-05・質問票 第12回 **Q21**。計画 `01_screens.md:408`）。
@@ -88,7 +70,7 @@ related_specs:
 | 6 | パネル「分析内容」＋ 入力欄（421） | **する** | `Textarea`。必須（1 文字以上・最大 2000 文字） |
 | 7 | 「分析実行」（422） | **する** | `Button variant="primary"` |
 | 8 | パネル「結果」＋ 回答本文（424-425） | **する** | 改行を保持して表示（`whitespace-pre-wrap`） |
-| 9 | 「出典: 〈文書名〉／〈文書名〉…」（426） | **する** | 各文書名が `/docs/$id`（SC-03）への内部リンク。計画の遷移図 `SC08 -- 出典 --> SC03` |
+| 9 | 「出典: 〈文書名〉／〈文書名〉…」（426） | **する** | 各文書名が `/docs/$id`への内部リンク。計画の遷移図 `SC08 -- 出典 --> SC03` |
 | 10 | 注記「機密区分の高いデータは外部APIへ送信せずセルフホストLLMで処理（UC-02 代替フロー・データ越境ポリシー）。権限外データは黙って対象外（存在秘匿）。」（428） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
 | 11 | **共通シェル**: 右レール「AIチャットパネル」（430-435） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
 | 12 | **共通シェル**: パンくず（413）・ブランド／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくずは #452 系。他は `foundation/ui/Layout` が既に持つ |
@@ -114,7 +96,7 @@ related_specs:
 
 **環流先は planning#197 とする**（新しい記録は作らない）。SC-01 の対象範囲フィルタで挙げた
 「①絞り込み条件を要求へ載せる口が無い ②**権限内**候補を得る口が無い」と**同型の論点**であり、
-同じ裁定で解ける（[feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md) #1・#2）。
+同じ裁定で解ける（feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設） #1・#2）。
 **重複起票を避ける。**
 
 **「押しても結果が変わらない操作」を置かない**（#502 が確立した規則）。候補を出せないまま
@@ -167,7 +149,7 @@ related_specs:
 | 分析内容（指示） | `Textarea` | **必須** | 1 文字以上（前後空白を除く）・**最大 2000 文字** | 上限はバックエンド `AnalysisPromptBuilder.MaxInstructionLength` と揃える（超過は 400） |
 | タスク種別 | `Select` | **必須** | `Analyze` / `Compare` / `Extract` | 既定は `Analyze`。表示名は 分析 / 比較 / 抽出 |
 | 結果 | 表示 | — | 改行保持 | |
-| 出典 | 表示／リンク | — | 文書名の並び | `/docs/$id`（SC-03）へ内部遷移 |
+| 出典 | 表示／リンク | — | 文書名の並び | `/docs/$id`へ内部遷移 |
 | モデル・トークン | 表示 | — | 脚注 | `model` が空なら「未使用（AI へ送信なし）」（[[IADR-0111]]） |
 
 ## アクション・イベント
@@ -209,10 +191,10 @@ related_specs:
 
 ## 関連仕様
 
-- 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
+- 作業仕様書: 仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析）
 - テスト仕様書: [SC-08_ai-analysis-dashboard.md](../tests/SC-08_ai-analysis-dashboard.md)
-- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0005](../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md) / [IADR-0111](../adr/IADR-0111_degraded-answer-model-label.md)
-- 計画への環流: [feedback/20260804_sc01-03-bff-contract-gaps.md](../../feedback/20260804_sc01-03-bff-contract-gaps.md)（**planning#197**。本画面のチップは同記録 #1・#2 と同型）
+- 実装 ADR: IADR-0127: 管理画面（SC-05〜08）の実装方針 — 再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る / IADR-0005: 指定データ範囲は ABAC スコープと交差させ権限を広げない（narrowing-only） / IADR-0111: 縮退応答の「使用モデル」ラベル
+- 計画への環流: feedback/20260804_sc01-03-bff-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260804_sc01-03-bff-contract-gaps.md` へ移設）（**planning#197**。本画面のチップは同記録 #1・#2 と同型）
 
 ## 未決事項
 

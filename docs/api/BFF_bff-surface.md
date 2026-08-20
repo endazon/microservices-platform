@@ -2,24 +2,17 @@
 title: BFF 境界（/bff/*）通信仕様書
 type: api-spec
 status: in-progress
-related_ids: [SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-11, FR-01, FR-03, FR-04, FR-06, FR-08, FR-09, FR-10, FR-12, FR-15, FR-22, ADR-0031, IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0215]
-author: Claude
 created: 2026-08-05
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-related_specs:
-  - ../adr/IADR-0135_generated-client-adoption-and-cache-keys.md
-  - ../adr/IADR-0131_openapi-as-bff-contract-source.md
-  - ../adr/IADR-0132_openapi-required-from-csharp-nullability.md
-  - ../adr/IADR-0121_spa-stack-migration-staging.md
-  - ../specs/20260805_issue-506_openapi-bff-groups.md
-  - ../specs/20260805_issue-520_openapi-response-required.md
-  - ../specs/20260805_issue-519_orval-hook-migration.md
-  - ../specs/20260806_issue-538_next-sync-at.md
-  - ../adr/IADR-0136_next-sync-at-from-worker-cadence.md
+author: Claude
 ---
+<!-- trace:
+ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-11]
+adrs: [ADR-0031]
+iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0215]
+specs: [01_screens, 13_frontend-stack, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, IADR-0121_spa-stack-migration-staging, IADR-0131_openapi-as-bff-contract-source, IADR-0132_openapi-required-from-csharp-nullability, IADR-0135_generated-client-adoption-and-cache-keys, IADR-0136_next-sync-at-from-worker-cadence]
+issues: [#519, #629]
+-->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
 
@@ -46,8 +39,8 @@ related_specs:
 - 関連機能要求（FR）: FR-01 / FR-03 / FR-04 / FR-06 / FR-08 / FR-09 / FR-10 / FR-12 / FR-15
 - 関連ユースケース（UC）: UC-01〜UC-06
 - 技術検討 / ADR:
-  [13_frontend-stack](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)（基本方針）／
-  [ADR-0031](../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md)（Accepted）
+  13_frontend-stack（計画リポ）（基本方針）／
+  ADR-0031（計画リポ）（Accepted）
 
 ## 概要
 
@@ -106,57 +99,57 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 | メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
 | --- | --- | --- | --- | --- |
-| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（[[IADR-0044]] 多層防御） | FR-04 / FR-05 / FR-09 / SC-01 / SC-05 / SC-08 / SC-09 | `useBffAttributeValues` |
-| GET | `/bff/tags` | **admin ＋ operator**（辞書の読み取り。裁定 Q18・[[IADR-0152]] 決定 5） | FR-09 / UC-05 / SC-09 | `useBffTagList`（**#640**） |
-| POST | `/bff/tags` | **AdminOnly**（運用者も不可。SC-09 はシステム管理者ロール限定） | FR-09 / UC-05 / SC-09 | `useBffTagCreate`（**#640**。名前の重複は 409） |
-| PUT | `/bff/tags/{id}` | **AdminOnly** | FR-09 / UC-05 / SC-09 | `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。[[IADR-0153]] 決定 1。応答の `republishedDocuments` は射影の再発行件数） |
-| DELETE | `/bff/tags/{id}` | **AdminOnly** | FR-09 / UC-05 / SC-09 | `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。SC-09「削除前に使用件数を示す」のため**本文ごと透過する**） |
-| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | FR-03 / UC-01 / SC-02 | `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
-| POST | `/bff/analysis/ask` | 同上 | FR-04 / UC-01 / SC-01 | `useBffAnalysisAsk`（**画面は呼んでいない**） |
-| POST | `/bff/analysis/ask/stream` | 同上 | FR-04 / UC-01 / SC-01 | **無し（SSE。`apiStream`）** |
-| POST | `/bff/analysis/analyze` | 同上 | FR-07 / UC-02 / SC-08 | `useBffAnalysisAnalyze` |
-| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521 / [[IADR-0158]]） | FR-08 / UC-01 / SC-01 | `useBffSubmitFeedback` |
-| GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521 / [[IADR-0158]]） | FR-08 / SC-10 | `useBffFeedbackStats` |
-| GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画 §SC-10「運用者・管理者ロール限定」。従前は admin のみ） | FR-10 / UC-05 / SC-10 | `useBffDashboardSummary` |
-| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | FR-06 / SC-05 | `useBffDocumentList` |
-| POST | `/bff/documents` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentCreate` |
-| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / SC-03 | `useBffDocumentDetail` |
-| PUT | `/bff/documents/{id}` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentUpdate` |
-| DELETE | `/bff/documents/{id}` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentDelete` |
-| GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / SC-03 | `useBffDocumentContent` |
-| GET | `/bff/documents/{id}/versions` | **端点認可なし**（ABAC ＋ 404 秘匿） | FR-06 / UC-03 / SC-03 | `useBffDocumentVersions` |
-| POST | `/bff/documents/{id}/publish` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentPublish` |
-| POST | `/bff/documents/{id}/archive` | **admin のみ**（#629） | FR-06 / UC-03 / SC-05 | `useBffDocumentArchive` |
-| GET | `/bff/datasources` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceList` |
-| POST | `/bff/datasources` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceCreate` |
-| GET | `/bff/datasources/{id}` | **admin / operator** | FR-01 / SC-06 | `useBffDataSourceGet` |
-| PUT | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourceUpdate` |
-| PATCH | `/bff/datasources/{id}` | **admin のみ** | FR-01 / UC-04 / SC-06 | `useBffDataSourcePatch` |
-| DELETE | `/bff/datasources/{id}` | **admin のみ** | FR-01 / SC-06 | `useBffDataSourceDelete` |
-| POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。planning#299） | FR-01 / UC-04 / SC-06 | `useBffDataSourceSync` |
-| GET | `/bff/conversion/jobs` | **admin / operator** | FR-12 / UC-06 / SC-07 | `useBffConversionJobList` |
-| GET | `/bff/conversion/jobs/{id}` | **admin / operator** | FR-12 / SC-07 | `useBffConversionJobGet` |
-| POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobRetry` |
-| GET | `/bff/conversion/jobs/{id}/figures` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigures` |
-| GET | `/bff/conversion/jobs/{id}/figures/{figureId}/image` | **admin のみ** | FR-12 / UC-06 / SC-07 | （画像。生成フックを使わない） |
-| POST | `/bff/conversion/jobs/{id}/figures/{figureId}/correction` | **admin のみ** | FR-12 / UC-06 / SC-07 | `useBffConversionJobFigureCorrection` |
-| GET | `/bff/notifications` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体**（JWT の `sub`）——本人宛だけを返し、管理者にも他人の通知は返らない（FR-22 / 計画 ADR-0037 決定 6。[[IADR-0215]] 決定 2） | FR-22 / UC-11 | `useBffNotificationList` |
-| POST | `/bff/notifications/{id}/read` | 同上。**本人の通知でなければ 404**（「存在しない」と「本人のものでない」を区別しない。[[IADR-0009]]） | FR-22 / UC-11 | `useBffNotificationMarkRead`（**冪等**。既読へもう一度呼んでも 200） |
-| GET | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzListPolicies` |
-| POST | `/bff/admin/authz/policies` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzCreatePolicy` |
-| POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | FR-05 / FR-09 / SC-09 | `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |
-| GET | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzGetPolicy` |
-| PUT | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzUpdatePolicy` |
-| DELETE | `/bff/admin/authz/policies/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzDeletePolicy` |
-| PATCH | `/bff/admin/authz/policies/{id}/active` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzSetPolicyActive` |
-| GET | `/bff/admin/authz/attributes` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzListAttributes` |
-| POST | `/bff/admin/authz/attributes` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzCreateAttribute` |
-| GET | `/bff/admin/authz/attributes/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzGetAttribute` |
-| PUT | `/bff/admin/authz/attributes/{id}` | **admin のみ** | FR-09 / UC-05 / SC-09 | `useBffAuthzUpdateAttribute` |
-| DELETE | `/bff/admin/authz/attributes/{id}` | **admin のみ** | FR-09 / SC-09 | `useBffAuthzDeleteAttribute` |
-| GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | FR-15 / SC-11 | `useBffConfigEffective` |
-| GET | `/bff/admin/config/drift` | 同上 | FR-15 / SC-11 | `useBffConfigDrift` |
-| GET | `/bff/admin/config/history` | 同上 | FR-15 / SC-11 | `useBffConfigHistory` |
+| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（[[IADR-0044]] 多層防御） | —| `useBffAttributeValues` |
+| GET | `/bff/tags` | **admin ＋ operator**（辞書の読み取り。裁定 Q18・[[IADR-0152]] 決定 5） | —| `useBffTagList`（**#640**） |
+| POST | `/bff/tags` | **AdminOnly**（運用者も不可。SC-09 はシステム管理者ロール限定） | —| `useBffTagCreate`（**#640**。名前の重複は 409） |
+| PUT | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。[[IADR-0153]] 決定 1。応答の `republishedDocuments` は射影の再発行件数） |
+| DELETE | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。SC-09「削除前に使用件数を示す」のため**本文ごと透過する**） |
+| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | —| `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
+| POST | `/bff/analysis/ask` | 同上 | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
+| POST | `/bff/analysis/ask/stream` | 同上 | —| **無し（SSE。`apiStream`）** |
+| POST | `/bff/analysis/analyze` | 同上 | —| `useBffAnalysisAnalyze` |
+| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521 / [[IADR-0158]]） | —| `useBffSubmitFeedback` |
+| GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521 / [[IADR-0158]]） | —| `useBffFeedbackStats` |
+| GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画 §SC-10「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
+| GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | —| `useBffDocumentList` |
+| POST | `/bff/documents` | **admin のみ** | —| `useBffDocumentCreate` |
+| GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿） | —| `useBffDocumentDetail` |
+| PUT | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentUpdate` |
+| DELETE | `/bff/documents/{id}` | **admin のみ** | —| `useBffDocumentDelete` |
+| GET | `/bff/documents/{id}/content` | **端点認可なし**（ABAC ＋ 404 秘匿） | —| `useBffDocumentContent` |
+| GET | `/bff/documents/{id}/versions` | **端点認可なし**（ABAC ＋ 404 秘匿） | —| `useBffDocumentVersions` |
+| POST | `/bff/documents/{id}/publish` | **admin のみ** | —| `useBffDocumentPublish` |
+| POST | `/bff/documents/{id}/archive` | **admin のみ** | —| `useBffDocumentArchive` |
+| GET | `/bff/datasources` | **admin / operator** | —| `useBffDataSourceList` |
+| POST | `/bff/datasources` | **admin のみ** | —| `useBffDataSourceCreate` |
+| GET | `/bff/datasources/{id}` | **admin / operator** | —| `useBffDataSourceGet` |
+| PUT | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceUpdate` |
+| PATCH | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourcePatch` |
+| DELETE | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceDelete` |
+| POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。planning#299） | —| `useBffDataSourceSync` |
+| GET | `/bff/conversion/jobs` | **admin / operator** | —| `useBffConversionJobList` |
+| GET | `/bff/conversion/jobs/{id}` | **admin / operator** | —| `useBffConversionJobGet` |
+| POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | —| `useBffConversionJobRetry` |
+| GET | `/bff/conversion/jobs/{id}/figures` | **admin のみ** | —| `useBffConversionJobFigures` |
+| GET | `/bff/conversion/jobs/{id}/figures/{figureId}/image` | **admin のみ** | —| （画像。生成フックを使わない） |
+| POST | `/bff/conversion/jobs/{id}/figures/{figureId}/correction` | **admin のみ** | —| `useBffConversionJobFigureCorrection` |
+| GET | `/bff/notifications` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体**（JWT の `sub`）——本人宛だけを返し、管理者にも他人の通知は返らない（FR-22 / 計画 ADR-0037 決定 6。[[IADR-0215]] 決定 2） | —| `useBffNotificationList` |
+| POST | `/bff/notifications/{id}/read` | 同上。**本人の通知でなければ 404**（「存在しない」と「本人のものでない」を区別しない。[[IADR-0009]]） | —| `useBffNotificationMarkRead`（**冪等**。既読へもう一度呼んでも 200） |
+| GET | `/bff/admin/authz/policies` | **admin のみ** | —| `useBffAuthzListPolicies` |
+| POST | `/bff/admin/authz/policies` | **admin のみ** | —| `useBffAuthzCreatePolicy` |
+| POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | —| `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |
+| GET | `/bff/admin/authz/policies/{id}` | **admin のみ** | —| `useBffAuthzGetPolicy` |
+| PUT | `/bff/admin/authz/policies/{id}` | **admin のみ** | —| `useBffAuthzUpdatePolicy` |
+| DELETE | `/bff/admin/authz/policies/{id}` | **admin のみ** | —| `useBffAuthzDeletePolicy` |
+| PATCH | `/bff/admin/authz/policies/{id}/active` | **admin のみ** | —| `useBffAuthzSetPolicyActive` |
+| GET | `/bff/admin/authz/attributes` | **admin のみ** | —| `useBffAuthzListAttributes` |
+| POST | `/bff/admin/authz/attributes` | **admin のみ** | —| `useBffAuthzCreateAttribute` |
+| GET | `/bff/admin/authz/attributes/{id}` | **admin のみ** | —| `useBffAuthzGetAttribute` |
+| PUT | `/bff/admin/authz/attributes/{id}` | **admin のみ** | —| `useBffAuthzUpdateAttribute` |
+| DELETE | `/bff/admin/authz/attributes/{id}` | **admin のみ** | —| `useBffAuthzDeleteAttribute` |
+| GET | `/bff/admin/config` | **ConfigViewer**（非権限は 404） | —| `useBffConfigEffective` |
+| GET | `/bff/admin/config/drift` | 同上 | —| `useBffConfigDrift` |
+| GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |
 
 > **［2026-08-07 追記 / #586］`/bff/feedback` 系の 2 行は計画と食い違う。**
 > planning `3e58b97`（PR planning#244。裁定依頼 planning#236 の反映）で計画 FR-08 に
@@ -302,7 +295,7 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 1. **OpenAPI は手書きであり、C# の DTO からは生成されていない**（`scripts/generate-openapi.sh` は無い）。
    したがって本書と `openapi.yaml` が与える保証は「**OpenAPI を変えると SPA の型検査が落ちる**」であって、
    「**C# の DTO を変えると型検査が落ちる**」ではない。C# → OpenAPI の追随は人手である。
-2. **［2026-08-05 解消］SPA の載せ替えは #519 で完了した**（[作業仕様書 #519](../specs/20260805_issue-519_orval-hook-migration.md)）。
+2. **［2026-08-05 解消］SPA の載せ替えは #519 で完了した**（仕様書: 画面の通信を orval 生成物へ載せ替える）。
    残るのは **SSE の 1 本だけ**で、これは恒久的に `apiStream` である。
 3. **`/bff/feedback`・`/bff/feedback/stats` は BFF に端点認可が無い**（実測）。ABAC も通らないため、
    BFF 単体では無認証の投稿・集計取得を拒まない。これを意図とみなすか（エッジで塞ぐ）、
@@ -314,3 +307,57 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
      > 権限外は 403／同一利用者の 2 回投稿でも集計は 1 件**）。**したがって本項はもう「未決」ではない。**
      > **［2026-08-10 解消 / #521・[[IADR-0158]]］実装も揃った。** BFF と後段の両層へ認可を足し、
      > 上表の認可列も実装へ揃えた（従前は実測＝現状のままだった）。
+
+<!-- trace-table:
+row1: FR-04, FR-05, FR-09, SC-01, SC-05, SC-08, SC-09
+row2: FR-09, UC-05, SC-09
+row3: FR-09, UC-05, SC-09
+row4: FR-09, UC-05, SC-09
+row5: FR-09, UC-05, SC-09
+row6: FR-03, UC-01, SC-02
+row7: FR-04, UC-01, SC-01
+row8: FR-04, UC-01, SC-01
+row9: FR-07, UC-02, SC-08
+row10: FR-08, UC-01, SC-01
+row11: FR-08, SC-10
+row12: FR-10, UC-05, SC-10
+row13: FR-06, SC-05
+row14: FR-06, UC-03, SC-05
+row15: FR-06, SC-03
+row16: FR-06, UC-03, SC-05
+row17: FR-06, UC-03, SC-05
+row18: FR-06, SC-03
+row19: FR-06, UC-03, SC-03
+row20: FR-06, UC-03, SC-05
+row21: FR-06, UC-03, SC-05
+row22: FR-01, SC-06
+row23: FR-01, UC-04, SC-06
+row24: FR-01, SC-06
+row25: FR-01, UC-04, SC-06
+row26: FR-01, UC-04, SC-06
+row27: FR-01, SC-06
+row28: FR-01, UC-04, SC-06
+row29: FR-12, UC-06, SC-07
+row30: FR-12, SC-07
+row31: FR-12, UC-06, SC-07
+row32: FR-12, UC-06, SC-07
+row33: FR-12, UC-06, SC-07
+row34: FR-12, UC-06, SC-07
+row35: FR-22, UC-11
+row36: FR-22, UC-11
+row37: FR-09, UC-05, SC-09
+row38: FR-09, UC-05, SC-09
+row39: FR-05, FR-09, SC-09
+row40: FR-09, SC-09
+row41: FR-09, UC-05, SC-09
+row42: FR-09, SC-09
+row43: FR-09, SC-09
+row44: FR-09, UC-05, SC-09
+row45: FR-09, UC-05, SC-09
+row46: FR-09, SC-09
+row47: FR-09, UC-05, SC-09
+row48: FR-09, SC-09
+row49: FR-15, SC-11
+row50: FR-15, SC-11
+row51: FR-15, SC-11
+-->

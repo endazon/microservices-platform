@@ -2,42 +2,19 @@
 title: 構成ビューア 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-11
-  - FR-15
-  - ADR-0018
-  - NFR
-  - IADR-0009
-  - IADR-0029
-  - IADR-0030
-  - IADR-0036
-  - IADR-0046
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0129
-author: claude
 created: 2026-07-07
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-  - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
-related_specs:
-  - "./SC-10_operations-dashboard.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md"
-  - "../adr/IADR-0030_operator-role-and-config-viewer-policy.md"
-  - "../adr/IADR-0036_sc11-config-viewer-visualization.md"
-  - "../adr/IADR-0046_config-version-history-source.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
-  - "../tests/SC-11_configuration-viewer.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-15, SC-11]
+adrs: [ADR-0018]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0121, IADR-0124, IADR-0125, IADR-0129]
+specs: [01_requirements, 01_screens, 05_observability-ops, 10_composability-design, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, ADR-0018_composable-architecture, IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0030_operator-role-and-config-viewer-policy, IADR-0036_sc11-config-viewer-visualization, IADR-0046_config-version-history-source, IADR-0129_sc09-11-admin-ops-screen-composition, SC-10_operations-dashboard, SC-11_configuration-viewer]
+issues: [#14, #19]
+-->
 
-# 画面仕様書: 構成ビューア（SC-11）
+# 画面仕様書: 構成ビューア
 
 > **［実装状態］`status: completed`。3 画面のうち本画面だけは、hi-fi の要素が
 > **すべて契約に載っている**（未実装として残るのは共通シェルの 2 行だけである）。**
@@ -52,16 +29,16 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-11 構成ビューア**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-11・遷移図 `SC10 → SC11`）
+- 画面（SC）: **SC-11 構成ビューア**（05_screens/01_screens.md（計画リポ） §SC-11・遷移図 `SC10 → SC11`）
 - 関連機能要求（FR）: **FR-15**（現在有効なシステム構成・構成バージョンの読み取り専用取得、
   宣言との不一致検出・警告、管理者・運用者限定）
 - 関連ユースケース（UC）: **—（運用・保守要求）**。計画の画面一覧が「—」とする（issue #504 の表も一致）
 - モックアップ（**実装の正**）:
-  [hi-fi/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-11.html) ／
-  [wireframe/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html)
+  hi-fi/sc-11.html（計画リポ） ／
+  wireframe/sc-11.html（計画リポ）
 - 関連 ADR（計画）: **ADR-0018**（Composable Architecture、Accepted）
-- 計画技術検討: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6（構成情報 API）／
-  [05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md) §構成変更の監査ログと適用履歴
+- 計画技術検討: 10_composability-design.md（計画リポ） §設計要素 6（構成情報 API）／
+  05_observability-ops.md（計画リポ） §構成変更の監査ログと適用履歴
 - 関連 IADR: [[IADR-0129]]（本作業の設計判断）・[[IADR-0029]]（API 配置・ドリフト粒度）・
   [[IADR-0030]]（`platform-operator` と `ConfigViewer` ポリシー）・[[IADR-0036]]（可視化方式）・
   [[IADR-0046]]（構成バージョン履歴の正データ源）・[[IADR-0009]]（存在秘匿）
@@ -81,7 +58,7 @@ related_specs:
 
 ## 構成バージョン履歴の正データ源（**計画は 2026-08-04 に確定済み**）
 
-[05_observability-ops.md](../../planning/projects/microservices-platform/06_technical/05_observability-ops.md)
+05_observability-ops.md（計画リポ）
 （`:94-96`。planning#190 の裁定）:
 
 - **正データ源は GitOps 層**（Git のコミット履歴・ArgoCD のリビジョン履歴）。
@@ -95,7 +72,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-11.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-11.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
 
 > **［対応表の凡例］「実装」列は 3 値である**（利用者裁定 2026-08-05・質問票 第12回 **Q21**。計画 `01_screens.md:408`）。
@@ -125,13 +102,13 @@ related_specs:
 | 14 | ドリフト明細の表（435-436。種別 / 深刻度 / 対象 / 説明） | **一部する** | 種別は 5 値を表示名へ、深刻度は 2 値を `StatusBadge` へ写す（§状態表示）。0 件は「ドリフトなし（OK）」＋確認時刻。**モックの明細行（436）は 3 セルとも契約の値域外**（種別「パラメータ差異」・深刻度「中」・対象 `embed.batch_size`）であり、実装とテストは `BindingMismatch` / `Warning` / `embed` へ**読み替えて**再現している（後述）。**満たしていない条件: モックの明細行の値をそのまま出せない** —— **モック側が契約の値域外**であり、**裁定 Q29 は「契約の不在ではなくモック側の是正」と判定した**。**引き受け先はモックの更新**であり実装側の繰り延べではない |
 | 15 | 折りたたみ「**(3) 構成バージョン履歴（新しい順）**」（438） | **する** | `<details>`（**既定は閉**。モックが `open` を付けていない） |
 | 16 | 履歴の表（439-441。コミット / 適用日時 / 適用者 / ドリフト） | **する** | `hadDrift` は あり／なし／**—（不明）**。0 件は「適用履歴はありません。」 |
-| 17 | 注記「**参照のみ — 構成変更は Git 経由（GitOps）に限る。閲覧は監査ログに記録。可視化は CSS 縦チェーン＋表（IADR-0036）**」（443） | **する** | `Alert`（`info`）。**IADR 番号は画面に出さない**（利用者向けの文言ではない） |
+| 17 | 注記「**参照のみ — 構成変更は Git 経由（GitOps）に限る。閲覧は監査ログに記録。可視化は CSS 縦チェーン＋表**」（443） | **する** | `Alert`（`info`）。**IADR 番号は画面に出さない**（利用者向けの文言ではない） |
 | 18 | **共通シェル**: 右レール「AIチャットパネル」（445-450） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
 | 19 | **共通シェル**: パンくず（413。`ホーム / 運用 / ダッシュボード / 構成ビューア`）・ブランド／ロールバッジ／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくず・権限バッジは #452 系。他は `foundation/ui/Layout` が既に持つ |
 
 **対応表の行数は 19 行**（数え方は**行数**であって要素名ではない）。内訳は
-**する 16 行**（#1〜#13・#15〜#17）／**一部する 1 行**（#14）／
-**しない 1 行**（右レール = #18）／**—（射程外）1 行**（#19）である。
+**する 16 行**（#1〜#13・#15〜#17）／**一部する 1 行**／
+**しない 1 行**（右レール = #18）／**—（射程外）1 行**である。
 
 > **［2026-08-10 / #552］この内訳は 3 値化で書き換えた。**
 > **従前は #14 を「する 17 行」に数えていた** —— 直後の散文が
@@ -153,7 +130,7 @@ hi-fi `436`（および wireframe `133`）が描く 1 行は **3 セルすべて
 
 これは **SC-10 #4**（利用状況カードは「する」だが指標の意味が違う）と**同じ類型**——
 **二値判定の外側にある部分未実装**——であり、同じ基準を当てる。是正を求める先は**画面ではなくモック**である:
-計画 [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md)
+計画 10_composability-design.md（計画リポ）
 `:180` は既に 5 分類を確定しており、**hi-fi / wireframe だけがそれ以前の粒度で残っている**
 （**計画の内部矛盾**。planning#198 §「計画の内部で食い違っている可能性」と同型）。
 環流記録の**提案 8** として渡した。
@@ -188,7 +165,7 @@ hi-fi `436`（および wireframe `133`）が描く 1 行は **3 セルすべて
 ```
 
 **`<details>` / `<summary>` はネイティブを使う**（[[IADR-0129]] 決定 7）。計画
-[13_frontend-stack §shadcn/ui 派生の範囲](../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+13_frontend-stack §shadcn/ui 派生の範囲（計画リポ）
 の 4 基準（フォーカストラップ／複合キーボード操作／ポータル配置計算／`aria-*` の動的同期）の
 **いずれにも該当しない**ため、`@platform/ui` へは入れない。
 
@@ -308,7 +285,7 @@ BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限�
 
 - 機能仕様書: [FR-15_config-info-api](../functional/FR-15_config-info-api.md)
 - 通信仕様書: [openapi.yaml](../api/openapi.yaml)（`/bff/admin/config`・`/bff/admin/config/drift`）
-- 技術検討（計画）: [10_composability-design.md](../../planning/projects/microservices-platform/06_technical/10_composability-design.md) §設計要素 6
+- 技術検討（計画）: 10_composability-design.md（計画リポ） §設計要素 6
 
 ## 未決事項
 
@@ -323,14 +300,14 @@ BFF の `DenyAsync`（`ConfigBffEndpoints.cs`）は無認証を含む非権限�
 >   **旧 3 は計画側でも 2026-08-04 に確定した**（planning#190。保持範囲 = Git 無期限 ＋ ArgoCD 10 世代）。
 > - **旧 5（ワイヤーフレーム `sc-11.drawio` の作成）は取り下げる。** 計画は
 >   **HTML モックアップを正とし draw.io を作成しない**方針であり（§HTMLモックアップ が hi-fi / wireframe の
->   HTML を挙げ、SC-11 にも [wireframe/sc-11.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-11.html) が揃っている。
+>   HTML を挙げ、SC-11 にも wireframe/sc-11.html（計画リポ） が揃っている。
 >   **`.drawio` は計画リポジトリに 1 件も存在しない**）、計画側へ送る作業自体が成立しない。
 >
 > > **［2026-08-05 追記 / #497］根拠を間接証拠から直接の明文へ差し替える。** 上の旧 5 は
 > > 「モックアップの表に HTML が並ぶ」「`.drawio` が 1 件も無い」という**間接証拠**で結論していたが、
-> > 計画側には**直接の明文**がある——[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) `:39`
+> > 計画側には**直接の明文**がある——05_screens/01_screens.md（計画リポ） `:39`
 > > は「ワイヤーフレームは HTML モックアップ〔`mockups/wireframe/`〕を正とし、**draw.io ワイヤーフレームは
 > > 作成しない**」と書いている（pin `d980a01` で実測。行番号は pin が動くとずれるため内容で特定する）。
 > > これにより旧 5 は「未着手の作業」ではなく「**方針として作らないと決まっている**」ものとして畳まれる。
-> > 環流記録 [feedback/20260709_sc11-wireframe-drawio.md](../../feedback/20260709_sc11-wireframe-drawio.md) も
+> > 環流記録 feedback/20260709_sc11-wireframe-drawio.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_sc11-wireframe-drawio.md` へ移設） も
 > > 同日 `status: rejected`（別解で解消）へ揃えた。

@@ -2,18 +2,17 @@
 title: Wiki 文書閲覧（Wiki.js 委譲・WikiService ABAC ゲートウェイ）機能仕様書
 type: functional-spec
 status: draft
-related_ids:
-  - FR-13
-  - UC-07
-  - FR-05
-author: claude
 created: 2026-07-03
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-07)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-13, UC-07]
+adrs: []
+iadrs: [IADR-0009, IADR-0020, IADR-0021]
+specs: [01_requirements, 01_usecases, 20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, ADR-0011_wiki-engine]
+issues: []
+-->
 
 # 機能仕様書: Wiki 文書閲覧
 
@@ -22,10 +21,10 @@ plan_refs:
 - 機能要求（FR）: FR-13（正規化文書を Wiki サービスで閲覧。ABAC・横断検索・AI 回答と統合）
 - ユースケース（UC）: UC-07（Wiki で閲覧する）, FR-05（ABAC アクセス制御）
 - 計画書リンク: `02_requirements/01_requirements.md`、`03_usecases/01_usecases.md`、`07_adr/ADR-0011`
-- 実装 ADR: [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)（Wiki.js 配備・WikiService を
+- 実装 ADR: IADR-0020: Wiki.js を配備し WikiService を「同期・ABAC ゲートウェイ」へ縮退する（Wiki.js 配備・WikiService を
   ABAC ゲートウェイへ縮退。IADR-0013 を Supersede）、
-  [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)（同期方式 GraphQL push）、
-  [IADR-0009](../adr/IADR-0009_wiki-browsing-404-hides-existence.md)（404 存在秘匿・メモリ内 ABAC）
+  IADR-0021: Wiki.js への同期は GraphQL API push を採用する（同期方式 GraphQL push）、
+  IADR-0009: Wiki 閲覧の権限外アクセスは 404 で存在を秘匿し、ABAC はメモリ内で後段評価する（404 存在秘匿・メモリ内 ABAC）
 
 ## 概要
 
@@ -95,8 +94,8 @@ plan_refs:
 
 ## 関連仕様
 
-- 作業仕様書: [20260705_ADR-0011-wiki-js-deployment](../specs/20260705_ADR-0011-wiki-js-deployment.md)（本 Issue #66）、
-  [20260703_FR-13_wiki-browsing-abac](../specs/20260703_FR-13_wiki-browsing-abac.md)、
-  [20260703_ADR-0011-normalization-wiki-selfhosted](../specs/20260703_ADR-0011-normalization-wiki-selfhosted.md)（(b)、Superseded）
+- 作業仕様書: 作業仕様書: Wiki.js 配備（Issue #66）（本 Issue #66）、
+  作業仕様書: FR-13 Wiki 閲覧の ABAC 適用、
+  作業仕様書: ADR-0011 逸脱の正規化（(b)、Superseded）
 - セキュリティ: [security](../security/security.md)（Wiki.js 前段 ABAC 強制点）、運用: [operations](../operations/operations.md)（Wiki.js 配備・OIDC）
 - ABAC: [FR-05_abac-access-control](./FR-05_abac-access-control.md)

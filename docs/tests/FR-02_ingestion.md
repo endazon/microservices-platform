@@ -2,18 +2,17 @@
 title: テスト仕様書 — FR-02 取り込み
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-02
-  - UC-04
-author: claude
 created: 2026-06-27
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-related_specs:
-  - ../specs/20260627_FR-02_ingestion-pipeline.md
-  - ../functional/FR-02_ingestion.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-02, UC-04]
+adrs: []
+iadrs: []
+specs: [01_requirements, 20260627_FR-02_ingestion-pipeline, FR-02_ingestion]
+issues: [#536]
+-->
 
 # テスト仕様書: FR-02 取り込み
 
@@ -33,10 +32,10 @@ related_specs:
 | T-06 | 完了イベント | 取り込み後に `IngestionCompleted` が発行される | Published = true、ChunkCount > 0 | FR-02 連鎖 |
 | T-07 | チャンク化 | overlap 指定時に隣接チャンクが文脈を共有する | 末尾文字が次チャンク先頭に出現 | FR-02 chunk |
 | T-08 | チャンク化 | 見出しで分割される | 見出し数に応じたチャンク | FR-02 chunk |
-| T-09 | **更新日時の索引**（#536） | `BuildChunkPayload` が `updated_at` を **Unix epoch ミリ秒の整数**で書く | キーが整数型で存在し `ToUnixTimeMilliseconds()` と一致（`QdrantIngestionVectorStoreTests`） | FR-03 / SC-02 裁定 Q6 / [[IADR-0149]] 決定 1 |
-| T-09b | **表記非依存**（#536） | 同じ瞬間を `+09:00` と `Z` で渡す | **同じ値になる**（整数で持つ目的そのもの。文字列だと辞書順が実時刻順と一致しない） | [[IADR-0149]] 決定 1 |
-| T-09c | **日時が無い場合**（#536） | `updatedAt` を渡さない | **キーを置かない**（既定値で埋めない。「知らない」を「とても古い」に化けさせない） | [[IADR-0149]] 決定 3 |
-| T-10 | **取り込み時刻を書かない**（#536） | 過去日時を持つ `DocumentUpdated` を消費させる | 索引に載るのは**イベントの `UpdatedAt`**（`DocumentUpdatedConsumerTests`）。**再索引のたびに「今」へ書き換わらない** | [[IADR-0149]] 決定 5 |
+| T-09 | **更新日時の索引** | `BuildChunkPayload` が `updated_at` を **Unix epoch ミリ秒の整数**で書く | キーが整数型で存在し `ToUnixTimeMilliseconds()` と一致（`QdrantIngestionVectorStoreTests`） | FR-03 / SC-02 裁定 Q6 / [[IADR-0149]] 決定 1 |
+| T-09b | **表記非依存** | 同じ瞬間を `+09:00` と `Z` で渡す | **同じ値になる**（整数で持つ目的そのもの。文字列だと辞書順が実時刻順と一致しない） | [[IADR-0149]] 決定 1 |
+| T-09c | **日時が無い場合** | `updatedAt` を渡さない | **キーを置かない**（既定値で埋めない。「知らない」を「とても古い」に化けさせない） | [[IADR-0149]] 決定 3 |
+| T-10 | **取り込み時刻を書かない** | 過去日時を持つ `DocumentUpdated` を消費させる | 索引に載るのは**イベントの `UpdatedAt`**（`DocumentUpdatedConsumerTests`）。**再索引のたびに「今」へ書き換わらない** | [[IADR-0149]] 決定 5 |
 
 ## 補足
 

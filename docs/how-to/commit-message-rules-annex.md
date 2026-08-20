@@ -2,17 +2,17 @@
 title: 別紙 — コミットメッセージ規約の詳細（PR タイトル検査・検査対象の除外）
 type: how-to
 status: fixed
-related_ids:
-  - NFR
-  - IADR-0172
-  - IADR-0173
-  - IADR-0207
-author: claude
 created: 2026-08-11
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0172, IADR-0173, IADR-0207]
+specs: [01_requirements]
+issues: [#524, #579, #612]
+-->
 
 # 別紙: コミットメッセージ規約の詳細
 
@@ -44,7 +44,7 @@ plan_refs:
 - 検査ロジックは `check-commit-messages.js` の単一件名モード（`--title` / `--author` 引数、
   `PR_TITLE` / `PR_AUTHOR` 環境変数）で、`validateSubject` を再利用する（規約の単一情報源）。
 - `pull_request` の `opened/edited/reopened/synchronize` で起動し、タイトル後編集も再検査する。
-- **除外は「作成者の名前」で行う**（#524）。ワークフローは `PR_AUTHOR`
+- **除外は「作成者の名前」で行う**。ワークフローは `PR_AUTHOR`
   （`github.event.pull_request.user.login`）を渡すだけで、`dependabot[bot]` 等かどうかの判定は
   `check-commit-messages.js` の `BOT_AUTHORS`（`isBotLogin`）が担う。Revert・`[skip ci]` も
   同スクリプトが除外する。
@@ -54,7 +54,7 @@ plan_refs:
     force push 禁止で事後修正もできないため、規約違反の件名が入る経路が空く。
     `scripts/scripts.repo.test.js` が全ワークフローを走査してこの判定の再混入を止める。
 
-#### ★ スカッシュ件名を書き直すときは、スコープの ID を 1 つも落とさない（#579）
+#### ★ スカッシュ件名を書き直すときは、スコープの ID を 1 つも落とさない
 
 **上記の検査は「PR タイトル ＝ スカッシュ後件名」を前提にしているが、その前提は破れる。**
 マージダイアログ（GitHub UI・API の `commit_title`）で件名を**書き直せる**からである。
@@ -95,7 +95,7 @@ plan_refs:
 > **［2026-08-08 追記 / フェーズ末クロス監査］★ 対になる規則: 実体を伴わない ID をスコープへ足さない。**
 >
 > 上の条文は「**落とすな**」しか書いておらず、**逆向きの誤り（足す）を止めていなかった。**
-> **その穴を、この節を書いた PR 自身（#612）が踏んだ。**
+> **その穴を、この節を書いた PR 自身が踏んだ。**
 >
 > | | |
 > | --- | --- |
@@ -158,7 +158,7 @@ plan_refs:
 
 > **キットには無い検査である**（`scripts/kit-sync-classification.json` で **B〔X〕**＝環流債務）。
 > 配布先すべてに同じ穴があるため環流する（**未了**。草案は作業仕様書
-> [`20260816_issue-799_pr-title-number-match.md`](../specs/20260816_issue-799_pr-title-number-match.md)
+> [`20260816_issue-799_pr-title-number-match.md`](../../.ai-context/specs/20260816_issue-799_pr-title-number-match.md)
 > §付録）。着地したら分類を 種 5 へ戻す。
 
 **事前防止と事後補正の使い分け**: `pr-title.yml` は**マージ前**の予防（規約外件名を止める）。
@@ -174,7 +174,7 @@ plan_refs:
 
 除外リストは `scripts/check-commit-messages.js` の `BOT_AUTHORS` と同時に更新する。
 
-## 起点 ID の実在性検査（#579）—— 是正ではなく予防である
+## 起点 ID の実在性検査—— 是正ではなく予防である
 
 **入口の規範は「スコープの `FR-xx` / `UC-xx` / `SC-xx` が計画レンジに実在することを検査する」である。**
 **以下は、その検査を入れた理由の測定である。**

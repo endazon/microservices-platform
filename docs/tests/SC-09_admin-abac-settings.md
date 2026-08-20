@@ -2,29 +2,19 @@
 title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-09
-  - UC-05
-  - FR-05
-  - FR-09
-  - IADR-0009
-  - IADR-0040
-  - IADR-0129
-author: claude
 created: 2026-07-09
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "../screens/SC-09_admin-abac-settings.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0040_admin-abac-bff-passthrough-and-admin-only.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-09, SC-09, UC-05]
+adrs: [ADR-0031]
+iadrs: [IADR-0009, IADR-0040, IADR-0129]
+specs: [01_screens, 01_usecases, 20260805_issue-504_sc09-11-admin-ops-screens, IADR-0040_admin-abac-bff-passthrough-and-admin-only, IADR-0129_sc09-11-admin-ops-screen-composition, INDEX, SC-09_admin-abac-settings]
+issues: []
+-->
 
-# テスト仕様書: 管理者設定（ABAC）（SC-09）
+# テスト仕様書: 管理者設定（ABAC）
 
 > **［2026-08-05 / #504］新スタックでの再実装に合わせて画面側を全面改訂した。**
 > **§バックエンド（BFF・xUnit）と §foundation は落とさずに残す**——当該テストは実在し続けており
@@ -42,9 +32,9 @@ related_specs:
 - 画面（SC）: SC-09 ／ ユースケース（UC）: **UC-05**（ABAC 権限を管理する）／
   機能要求（FR）: **FR-09**（ABAC 属性・ポリシー管理）・**FR-05**（ABAC）
 - 受け入れ基準の所在: issue #504 §受け入れ基準 ／ 作業仕様書
-  [20260805_issue-504](../specs/20260805_issue-504_sc09-11-admin-ops-screens.md) §受け入れ基準
+  仕様書: SC-09〜11 の新スタックでの再実装（管理者設定・運用ダッシュボード・構成ビューア） §受け入れ基準
 
-## UC-05 のフロー → テストの写像
+## のフロー → テストの写像
 
 | UC-05 のフロー | 画面での現れ方 | テスト |
 | --- | --- | --- |
@@ -75,8 +65,8 @@ related_specs:
 | 1 | 既定タブ | hi-fi 417（ポリシー定義が選択中） | `Tabs` の既定が「ポリシー定義」であり、条件・状態・アクションが出る |
 | 2 | 条件の要約 | 契約 | `利用者 dept = 経理` の形。**条件なしは「条件なし（すべてに一致）」**と明示する（空欄にしない） |
 | 3 | 状態表示 | INDEX 決定 21 | 有効／無効を `StatusBadge`（色 ＋ アイコン ＋ テキスト）で示す |
-| 4 | 属性辞書 | FR-09 | タブ切替で一覧が出る。スコープは `Tag`（分類名） |
-| 5 | 属性追加 | FR-09 | 許可値のカンマ区切りを配列へ。ペイロードを固定する |
+| 4 | 属性辞書 | —| タブ切替で一覧が出る。スコープは `Tag`（分類名） |
+| 5 | 属性追加 | —| 許可値のカンマ区切りを配列へ。ペイロードを固定する |
 | 6 | **参照中削除の 409** | [[IADR-0006]] / [[IADR-0040]] | 理由（固定文言）と**サーバが返す参照元ポリシー名**（`ApiError.details`）の両方を出し、**tone に合わせてラベルも「注意」**にする（琥珀に「エラー」と書かない）。fixture は**実サーバ応答の形**（`details` 非空）を再現する |
 | 7 | **条件エディタ** | 計画の入力表 | 選択肢は属性辞書由来。積んだ条件がチップで見え、保存のペイロードへ入る |
 | 8 | **保存前検証（400）** | 計画 §アクション | サーバの矛盾検証の詳細を**検証結果パネル**に `role="alert"` で出す |
@@ -91,7 +81,7 @@ related_specs:
 | 15-b | ★ **検証は保存しない** | 裁定 Q23「保存せず検証だけ行う」 | 「検証」を押すと `/admin/authz/policies/validate` だけを呼び、登録の口を呼ばない。「まだ保存していません」と明示する |
 | 15-c | 矛盾は**エラーではなく検証結果** | 同上（200 ＋ `valid: false`） | 矛盾の理由が一覧表示される |
 | 16 | **他 issue の射程** | 同 #5 | MCP クライアント管理へのリンクが無い（遷移先が未実装） |
-| 17 | ロケール `en` | ADR-0031 | 見出しが英語で描画される |
+| 17 | ロケール `en` | —| 見出しが英語で描画される |
 
 ## アクセス制御・存在秘匿（画面）
 
@@ -123,15 +113,15 @@ related_specs:
 
 | # | 観点 | 起点 | 検証内容 | ケース |
 | --- | --- | --- | --- | --- |
-| 1 | ポリシー一覧 | FR-09 | admin で一覧が返る | `ListPolicies_AsAdmin_ReturnsPolicies` |
-| 2 | 属性一覧 | FR-09 | admin で属性辞書が返る | `ListAttributes_AsAdmin_ReturnsAttributes` |
+| 1 | ポリシー一覧 | —| admin で一覧が返る | `ListPolicies_AsAdmin_ReturnsPolicies` |
+| 2 | 属性一覧 | —| admin で属性辞書が返る | `ListAttributes_AsAdmin_ReturnsAttributes` |
 | 3 | ロール制限 | [[IADR-0040]] | **operator も 403**（admin 専用） | `ListPolicies_AsNonAdmin_IsForbidden` |
 | 4 | 無認証 | [[IADR-0040]] | 匿名は 401 | `ListPolicies_WhenAnonymous_IsUnauthorized` |
-| 5 | ポリシー登録 | FR-09 | 201 で登録 | `CreatePolicy_AsAdmin_Returns201` |
+| 5 | ポリシー登録 | —| 201 で登録 | `CreatePolicy_AsAdmin_Returns201` |
 | 6 | 検証透過 | FR-09 / [[IADR-0040]] | 保存前検証 400 を透過 | `CreatePolicy_WhenValidationFails_Passes400Through` |
-| 7 | 属性登録 | FR-09 | 201 で登録 | `CreateAttribute_AsAdmin_Returns201` |
+| 7 | 属性登録 | —| 201 で登録 | `CreateAttribute_AsAdmin_Returns201` |
 | 8 | 競合透過 | [[IADR-0006]] | 参照中削除 409 を透過 | `DeleteAttribute_WhenReferenced_Passes409Through` |
-| 9 | 有効切替 | FR-09 | PATCH で有効／無効切替 | `SetPolicyActive_AsAdmin_Succeeds` |
+| 9 | 有効切替 | —| PATCH で有効／無効切替 | `SetPolicyActive_AsAdmin_Succeeds` |
 | 10 | 後段不達 | [[IADR-0040]] | 後段ダウン時に 502 へ縮退（例外フロー・レビュー #170） | `ListPolicies_WhenBackendUnreachable_Returns502` |
 
 ## foundation（Vitest）
@@ -183,3 +173,14 @@ related_specs:
 - 契約の不在は**残り 1 件（条件式の表現力）**である。
   `feedback/20260805_sc09-11-admin-ops-contract-gaps.md`。裁定までテストも書かない。
   **タグ辞書は #640 で、dry-run 検証は #535 で解消した。**
+
+<!-- trace-table:
+row1: FR-09
+row2: FR-09
+row3: ADR-0031
+row4: FR-09
+row5: FR-09
+row6: FR-09
+row7: FR-09
+row8: FR-09
+-->

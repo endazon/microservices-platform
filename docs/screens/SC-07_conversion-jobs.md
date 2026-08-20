@@ -2,43 +2,24 @@
 title: 変換ジョブ 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-07
-  - UC-06
-  - FR-12
-  - IADR-0042
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0127
-  - IADR-0128
-  - IADR-0154
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "./SC-03_document-detail.md"
-  - "./SC-06_datasource-management.md"
-  - "../adr/IADR-0042_conversion-job-read-model.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
-  - "../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../specs/20260805_issue-501_retry-admin-only.md"
-  - "../tests/SC-07_conversion-jobs.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-12, SC-03, SC-07, UC-06]
+adrs: []
+iadrs: [IADR-0042, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0154]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-533_conversion-dead-letter, IADR-0042_conversion-job-read-model, IADR-0127_sc07-retry-admin-only-and-derived-states, IADR-0128_conversion-retry-admin-only-and-downstream-posture, INDEX, SC-03_document-detail, SC-06_datasource-management, SC-07_conversion-jobs]
+issues: [#501, #533]
+-->
 
-# 画面仕様書: 変換ジョブ（SC-07）
+# 画面仕様書: 変換ジョブ
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**未実装のまま残っている要素がある**——hi-fi の
 > 「デッドレター」の内訳表示と、共通シェルのパンくず・右レール。
-> **契約は載っており（#533）、残っているのは画面側の作業だけである。**
+> **契約は載っており、残っているのは画面側の作業だけである。**
 > 詳細と引き受け先は §hi-fi モックアップとの対応 と §未決事項 を見ること。
 >
 > **［2026-08-10 / #651］人手補正の 2 ペイン編集を実装した（Phase 1）。** 契約（#543 / [[IADR-0154]]）に
@@ -49,7 +30,7 @@ related_specs:
 >
 > **［2026-08-06 / #533］「デッドレター」の内訳表示について、契約の不在は解消した。**
 > `ConversionJobDto` に `deadLettered`（標識）と `maxAttempts`（試行上限）が載った
-> （planning#198 の裁定 Q13。作業仕様書 [20260806_issue-533](../specs/20260806_issue-533_conversion-dead-letter.md)）。
+> （planning#198 の裁定 Q13。作業仕様書 仕様書: 変換ジョブのデッドレター標識と試行上限（issue #533））。
 > **本画面の表示は依然として未実装である**——理由が「契約に載る先が無い」から
 > 「画面側の作業がまだ」へ変わった。**人手補正（(a)）の契約も #543 で載った**〔上記〕。
 
@@ -76,10 +57,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-07 変換ジョブ画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-07・**§データソース〔2026-08-04 確定〕**・遷移図 `SC06 → SC07 → SC03`）
+- 画面（SC）: **SC-07 変換ジョブ画面**（05_screens/01_screens.md（計画リポ） §SC-07・**§データソース〔2026-08-04 確定〕**・遷移図 `SC06 → SC07 → SC03`）
 - 関連ユースケース（UC）: **UC-06**（文書を正規化変換する。**代替「変換ジョブの状況を照会する」「失敗した変換を再実行する」**〔2026-08-04 追記〕・**例外「恒久失敗はデッドレターへ送る」**）
 - 関連機能要求（FR）: **FR-12**（正規化変換）
-- モックアップ（**実装の正**）: [hi-fi/sc-07.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-07.html) ／ [wireframe/sc-07.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-07.html)
+- モックアップ（**実装の正**）: hi-fi/sc-07.html（計画リポ） ／ wireframe/sc-07.html（計画リポ）
 - 関連 IADR: [[IADR-0042]]（変換ジョブの読み取りモデル・API）・[[IADR-0127]]（**画面側の再変換の管理者限定**ほか #503 の設計判断）・
   [[IADR-0128]]（**API 側の再変換の管理者限定**・照会の据え置き・下流の代償統制）
 - 連携 issue: **#501**（API 側の管理者ロール強制の突合。**解消済み**）
@@ -115,7 +96,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-07.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-07.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-07.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である。
 
 > **［対応表の凡例］「実装」列は 3 値である**（利用者裁定 2026-08-05・質問票 第12回 **Q21**。計画 `01_screens.md:408`）。
@@ -139,7 +120,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 | 8 | 一覧の**備考**列（418・420-422） | **する** | **`diagramsCoded > 0` なら「Mermaid n図」**（hi-fi:422 の導出。#651）。無ければ `error`、それも無ければ `—` |
 | 9 | 行操作「**再実行**」（421） | **する** | **管理者のみ。** `failed` の行にだけ。**`platform-admin` を持たない利用者には理由つきの注記**を出す（[[IADR-0127]] 決定 1） |
 | 10 | 行操作「**人手補正**」（420） | **する** | **管理者のみ。** **［2026-08-10 / #651］** `diagramsRetained > 0` の行にだけ。**`platform-admin` を持たない利用者には理由つきの注記**を出す（[[IADR-0127]] 決定 1。3 口とも admin のみ＝[[IADR-0154]] 決定 6） |
-| 11 | 行操作「**結果 →**」（422） | **する** | `succeeded` かつ `documentId` があれば `/docs/$id`（SC-03）への内部リンク。計画の遷移図 `SC07 -- 変換結果 --> SC03` |
+| 11 | 行操作「**結果 →**」（422） | **する** | `succeeded` かつ `documentId` があれば `/docs/$id`への内部リンク。計画の遷移図 `SC07 -- 変換結果 --> SC03` |
 | 12 | **人手補正パネル**「図コード（編集可）／元の図画像」＋「補正して再登録」（425-430） | **する** | **［2026-08-10 / #651］** `FigureCorrectionPanel.tsx`。左＝コード編集（Mermaid / PlantUML）・右＝`/image` から取った元画像。**対象は `coded === false` の図だけ**。**Markdown 全体の編集欄は置かない**（Phase 2。`05_screens:330`） |
 | 13 | **共通シェル**: 右レール「AIチャットパネル」（433-438） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
 | 14 | **共通シェル**: パンくず（413。`ホーム / 管理 / データソース管理 / 変換ジョブ`）・ブランド／アバター（412）・左ナビ（414） | — | **対象外（本画面の作業ではない）。** パンくずは #452 系。他は `foundation/ui/Layout` が既に持つ |
@@ -184,7 +165,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 **「動かない UI を置く」形は採らない**（#502 が確立した規則）。保存先の無い 2 ペイン編集を置くと、
 管理者は補正したつもりで何も反映されない——UC-06 代替フロー「変換結果を管理者が補正して再登録する」を
 **満たしたように見せて満たさない**のが最も悪い。2 件は環流の記録に載せた
-（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**planning#198 として起票済み・裁定待ち**）。
+（feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）。**planning#198 として起票済み・裁定待ち**）。
 
 ## データソース（BFF 境界）
 
@@ -194,7 +175,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 | 再変換 | `POST /bff/conversion/jobs/{id}/retry` | `useMutation` | **admin のみ**（operator は 403・無認証 401。#501 / [[IADR-0128]] 決定 1） | 202 / 404 / **409 `not_retryable`** |
 
 > **［2026-08-05 追記・再変換は API 側も管理者ロール限定（#501 / [[IADR-0128]]）］**
-> 計画 [05_screens §SC-07 §データソース](../../planning/projects/microservices-platform/05_screens/01_screens.md)（**2026-08-04 確定**）の
+> 計画 05_screens §SC-07 §データソース（計画リポ）（**2026-08-04 確定**）の
 > 「**再変換の実行権限は管理者ロールに限る**。本画面のアクセス制御と API の権限を揃える」に追随し、
 > `retry` の認可を `platform-admin` のみへ絞った（[[IADR-0128]] 決定 1・[[IADR-0042]] 決定 3 への［追記］）。
 > 実装はグループの認可（admin または operator）へ `PlatformAuthPolicies.AdminOnly` を**重ね**、
@@ -293,11 +274,11 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
 
 ## 関連仕様
 
-- 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
+- 作業仕様書: 仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析）
 - テスト仕様書: [SC-07_conversion-jobs.md](../tests/SC-07_conversion-jobs.md)
-- 作業仕様書（API 側）: [20260805_issue-501_retry-admin-only.md](../specs/20260805_issue-501_retry-admin-only.md)
-- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0128](../adr/IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) / [IADR-0042](../adr/IADR-0042_conversion-job-read-model.md)
-- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 作業仕様書（API 側）: 仕様書: SC-07 再変換 API を管理者ロール限定へ揃える
+- 実装 ADR: IADR-0127: 管理画面（SC-05〜08）の実装方針 — 再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る / IADR-0128: 変換ジョブの再変換は BFF で管理者限定に絞り、照会は据え置き、下流は代償統制を機械検査で固定する / IADR-0042: 変換ジョブ読み取りモデル（インメモリ）と状況照会・人手補正 API
+- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）
 
 ## 未決事項
 
@@ -321,7 +302,7 @@ SC-06（データソース管理）からの遷移先であり、完了ジョブ
    **残るのは Phase 2（変換結果 Markdown 全体の編集）**であり、計画が繰り延べている（`01_screens.md:330`）。
 2. **デッドレターの内訳表示**（同 (b)）。**契約は解消済み**（2026-08-06 / #533。`deadLettered` /
    `maxAttempts`）。残るのは**画面へ出す作業**であり、別 issue の起票が要る。
-3. ~~**API 側の管理者ロール強制**（#501）~~ **解消済み**（2026-08-05 / #501。[[IADR-0128]] 決定 1）。
+3. ~~**API 側の管理者ロール強制**~~ **解消済み**（2026-08-05 / #501。[[IADR-0128]] 決定 1）。
    `POST /bff/conversion/jobs/{id}/retry` は `platform-admin` のみとなり、
    **運用者は API を直接叩いても再変換できない**（403）。計画確定事項（`01_screens.md:257`）は満たされた。
 4. ~~**閲覧ロール**（admin/operator か admin のみか）。計画 §共通シェル（`:115`）と §SC-05（`:234`）・

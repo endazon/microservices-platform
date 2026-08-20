@@ -2,18 +2,19 @@
 title: テストの分離（InMemory DB）テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - NFR
-  - IADR-0130
-  - IADR-0161
-author: claude
 created: 2026-08-10
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0130, IADR-0161]
+specs: [01_requirements]
+issues: [#660]
+-->
 
-# テスト仕様書: テストの分離（InMemory DB）（#660）
+# テスト仕様書: テストの分離（InMemory DB）
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -56,8 +57,8 @@ plan_refs:
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260810_issue-660_test-db-isolation.md`
-- 実装 ADR: `../adr/IADR-0161_test-inmemory-db-isolation.md`
+- 作業仕様書: `../../.ai-context/specs/20260810_issue-660_test-db-isolation.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0161_test-inmemory-db-isolation.md`
 
 ## 未決事項
 

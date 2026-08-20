@@ -2,36 +2,19 @@
 title: 管理者設定（ABAC） 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-09
-  - UC-05
-  - FR-05
-  - FR-09
-  - IADR-0009
-  - IADR-0040
-  - IADR-0119, IADR-0142
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0129
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-  - "../../planning/projects/microservices-platform/INDEX.md"
-related_specs:
-  - "../adr/IADR-0040_admin-abac-bff-passthrough-and-admin-only.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0119_fr17-21-hold-until-adr-fixed.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
-  - "../tests/SC-09_admin-abac-settings.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-09, SC-04, SC-09, SC-12, UC-05]
+adrs: []
+iadrs: [IADR-0009, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0142]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, IADR-0040_admin-abac-bff-passthrough-and-admin-only, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0129_sc09-11-admin-ops-screen-composition, INDEX, SC-09_admin-abac-settings]
+issues: [#535, #586]
+-->
 
-# 画面仕様書: 管理者設定（ABAC）（SC-09）
+# 画面仕様書: 管理者設定（ABAC）
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6）。**計画の 4 区画のうち 1 区画は実装していない**——
@@ -46,7 +29,7 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-09 管理者設定画面（ABAC）**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-09）
+- 画面（SC）: **SC-09 管理者設定画面（ABAC）**（05_screens/01_screens.md（計画リポ） §SC-09）
 - 関連ユースケース（UC）: **UC-05**（ABAC 権限を管理する）
 - 関連機能要求（FR）: **FR-09**（ABAC 属性・ポリシー管理）・**FR-05**（ABAC アクセス制御）
   - 計画の画面一覧（`01_screens.md:55`）は SC-09 の関連要求を **`FR-05, FR-09, FR-17`** とする。
@@ -57,11 +40,11 @@ related_specs:
     `related_ids` に持たない）。**一方 [[IADR-0129]] は `related_ids` に FR-17 を持つ**——
     IADR が記録するのは「**FR-17 を実装しない**」という決定そのものであり、その決定の起点は FR-17 だからである。
   - **issue #504 §スコープ の表は SC-09 を「FR-13・UC-08」と書くが、計画とは一致しない**——
-    計画で FR-13 は「Wiki サービスでの閲覧」（SC-04）、UC-08 は「外部 AI エージェントからナレッジを
-    利用する」（SC-12）である。**本書は計画を正とした。**
+    計画で FR-13 は「Wiki サービスでの閲覧」、UC-08 は「外部 AI エージェントからナレッジを
+    利用する」である。**本書は計画を正とした。**
 - モックアップ（**実装の正**）:
-  [hi-fi/sc-09.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-09.html) ／
-  [wireframe/sc-09.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-09.html)
+  hi-fi/sc-09.html（計画リポ） ／
+  wireframe/sc-09.html（計画リポ）
 - 関連 IADR: [[IADR-0129]]（本作業の設計判断）・[[IADR-0040]]（BFF 透過中継・AdminOnly）・
   [[IADR-0119]]（FR-17 の着手保留）・[[IADR-0009]]（存在秘匿）・[[IADR-0035]]（ロール別ナビ）
 
@@ -78,7 +61,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-09.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-09.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-09.html（計画リポ） に対するものである。
 粒度の規則は [SC-05](./SC-05_document-management.md) と共通である（(a) メイン領域は個別に 1 行、
 (b) 共通シェルはまとめて 1 行、(c) モックに無い状態は表外）。
 
@@ -171,7 +154,7 @@ related_specs:
 | 対象アクション | 必須 | 選択 | **`read` / `analyze` / `manage` の 3 値**（同上） |
 | **対象属性**（条件） | 任意 | 選択 | **定義済み属性のみ**（属性辞書の `key` を選択肢にする。計画の入力表 2 行目） |
 | **条件の値** | 任意 | 選択 | **選択した属性の `allowedValues` のみ**。許可値を持たない属性は値の選択肢が無く、条件を足せない |
-| **ポリシー条件（矛盾）** | — | — | **サーバ検証**。保存時の 400 に加え、**保存せず検証だけ行う dry-run（#535）**を持つ。**両者は後段で同じ検証関数を通る** |
+| **ポリシー条件（矛盾）** | — | — | **サーバ検証**。保存時の 400 に加え、**保存せず検証だけ行う dry-run**を持つ。**両者は後段で同じ検証関数を通る** |
 
 **条件は「属性 → 許可値」の組をチップとして積む。** スコープ（`document` / `user`）は属性側が持つため、
 利用者条件・文書条件への振り分けは自動である（`buildConditions()`。純関数）。
@@ -224,7 +207,7 @@ TanStack Query は「別のミューテーションが成功した」ことで�
 > **したがって上記 (a) の理由はもう成立しない。** 辺の型辞書（対応表 #3・#16・#17）を実装するかどうかは
 > **#504 / #452 の作業仕様書で判断する**。#586 は planning pin の更新と事実の追随に限り、
 > **本画面の実装は変更していない**（根拠: [[IADR-0129]] の 2026-08-07 追記・
-> [作業仕様書 #586](../specs/20260807_issue-586_planning-pin-adr-accepted.md)）。
+> 作業仕様書 — planning pin を `3e58b97` へ進め、IADR-0119 の着手ゲートを追随させる）。
 
 **(b) 契約の不在**
 

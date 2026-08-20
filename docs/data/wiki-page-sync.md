@@ -2,14 +2,17 @@
 title: Wiki ページ同期メタデータ（WikiPage） データ仕様書
 type: data-spec
 status: draft
-related_ids:
-  - FR-13
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-13)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-13]
+adrs: []
+iadrs: [IADR-0021]
+specs: [01_requirements]
+issues: []
+-->
 
 # データ仕様書: Wiki ページ同期メタデータ（WikiPage）
 
@@ -24,7 +27,7 @@ plan_refs:
   - IADR-0020（WikiService は同期・統合・ABAC ゲートウェイに縮退。閲覧本文の実体は Wiki.js）
   - IADR-0021（Wiki.js への GraphQL push 同期。WikiPath は DocumentId 由来の正準パス）
   - IADR-0009（404 存在秘匿 — 本メタデータが ABAC 判定の根拠）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`
+- **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
 
@@ -48,7 +51,7 @@ IADR-0020 により閲覧本文の実体は Wiki.js が保持し、本エンテ�
 | Attributes | jsonb | ○ | 既定 `{}` | ABAC 属性（clearance / department 等）。deny-by-default 判定の根拠 |
 | Tags | jsonb | ○ | 既定 `[]` | 文書タグ |
 | SyncedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。同期・アーカイブで更新 | 最終同期時刻 |
-| WikiPath | —（計算値・非永続） | — | `doc/{DocumentId}`（`PathFor` と同一導出） | Wiki.js 上の正準パス。列として保持しない（IADR-0021） |
+| WikiPath | —（計算値・非永続） | — | `doc/{DocumentId}`（`PathFor` と同一導出） | Wiki.js 上の正準パス。列として保持しない |
 
 ## ER 図
 

@@ -2,25 +2,17 @@
 title: 運用仕様書
 type: operations-spec
 status: in-progress
-related_ids:
-  - NFR
-  - FR-13
-  - FR-15
-  - UC-07
-  - ADR-0006
-  - ADR-0011
-  - ADR-0030
-  - ADR-0038
-  - IADR-0225
-author: claude
 created: 2026-07-04
 updated: 2026-08-18
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (採用ライブラリの年次点検 / #455)"
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, FR-15, SC-02, UC-07]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0030, ADR-0038]
+iadrs: [IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0032, IADR-0049, IADR-0066, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0165, IADR-0168, IADR-0210, IADR-0225]
+specs: [01_requirements, 05_observability-ops, ADR-0006_observability-otel-prom-loki, ADR-0030_backend-application-libraries]
+issues: [#192, #196, #197, #207, #455, #532, #546, #665, #674]
+-->
 
 # 運用仕様書
 
@@ -41,16 +33,16 @@ plan_refs:
 | 項目 | 内容 |
 | --- | --- |
 | 環境 | dev（docker-compose） / stg・prod（k3s + Istio + ArgoCD） |
-| 実行基盤 | k3s（ADR-0008）。Helm チャート `deploy/helm/microservices-platform`。Namespace `microservices-platform`（Istio 注入有効） |
-| 配備方式 | GitOps（ADR-0007）。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
-| サービス間通信 | Istio STRICT mTLS（ADR-0005 / IADR-0026）。手順 `deploy/istio/README.md` |
+| 実行基盤 | k3s。Helm チャート `deploy/helm/microservices-platform`。Namespace `microservices-platform`（Istio 注入有効） |
+| 配備方式 | GitOps。ArgoCD が Git を単一の真実源として同期（`deploy/argocd/`）。レジストリは Harbor（`harbor.internal`） |
+| サービス間通信 | Istio STRICT mTLS。手順 `deploy/istio/README.md` |
 | 手順 | ① Secret 投入（`deploy/bootstrap/README.md`）② Istio 導入（`deploy/istio/README.md`）③ ArgoCD 登録（`deploy/argocd/README.md`）。以降は Git 更新で自動同期 |
 | デプロイ（サービス単位） | `values.yaml` の `services.<name>.tag` を Git 更新 → ArgoCD 自動同期（NFR: 独立デプロイ） |
 | ロールバック | `argocd app rollback microservices-platform <revision>` もしくは Git revert（GitOps 原則） |
 
-### イメージ参照と再デプロイ安全性（NFR 運用性/信頼性/再現性 / [IADR-0088](../adr/IADR-0088_image-reference-redeploy-safety.md) / #320）
+### イメージ参照と再デプロイ安全性（NFR 運用性/信頼性/再現性 / IADR-0088: イメージ参照の再デプロイ安全性（自製=CD 一意タグ/digest 契約・third-party=具体版固定） / #320）
 
-配布物であるコンテナイメージ（ADR-0007）は、**浮動タグ（`:latest` 等）＋ `imagePullPolicy: IfNotPresent`**
+配布物であるコンテナイメージは、**浮動タグ（`:latest` 等）＋ `imagePullPolicy: IfNotPresent`**
 の組合せだと、同名タグで再ビルド・再 push しても既存 Pod/Node のキャッシュにより再 pull されず
 **古いイメージが配信され続ける**。区分ごとに次の方針で再デプロイの確実性を担保する。
 
@@ -94,11 +86,11 @@ plan_refs:
   （`2.5` は `2.5.x` 系列内の自動パッチを受ける。実測 PoC は `2.5.314`＝`docs/tech/20260707_wikijs-poc-record.md`）。
   完全固定が要るなら CD 層で digest ピンする。
 - 最上位の再現性は **digest ピン**（`image: <repo>@sha256:...`）である。per-arch・per-registry の digest 解決と
-  ミラー（`mirror.gcr.io`・[IADR-0081](../adr/IADR-0081_frontend-base-registry-mirror.md)/#325）整合の検証が要るため、
+  ミラー（`mirror.gcr.io`・IADR-0081: frontend base イメージの非 docker.io 化（mirror.gcr.io 既定 + ARG 上書き）/#325）整合の検証が要るため、
   稼働環境の CD 自動化（ArgoCD image updater / kustomize digest 運用）で段階導入するのが望ましい。
   infra の `-alpine` major タグはセキュリティ自動パッチの利点があり、固定と自動パッチはトレードオフで評価する。
 
-### 基盤インフラの永続化（compose・NFR 運用性/可観測性/信頼性 / [IADR-0079](../adr/IADR-0079_infra-persistence-compose.md) / #282）
+### 基盤インフラの永続化（compose・NFR 運用性/可観測性/信頼性 / IADR-0079: compose 基盤インフラの永続化（Keycloak=共有 Postgres／Loki・Tempo=名前付きボリューム） / #282）
 
 `deploy/docker-compose.yml` のステートフル infra はすべて名前付きボリューム等で永続化し、`docker compose down`
 （`-v` なし）→ `up -d` を跨いで状態を保持する。#282 で欠落していた 3 サービスを補完した。
@@ -162,12 +154,12 @@ docker compose -f deploy/docker-compose.yml up -d
 # 追加ユーザーが残存し、Loki/Tempo の過去データが参照できることを確認
 ```
 
-> ローカル k8s dev 環境（`deploy/local/`＝経路B）は [IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md) の
+> ローカル k8s dev 環境（`deploy/local/`＝経路B）は IADR-0066: ローカル k8s dev 環境は k3d ＋ dev 専用 in-cluster インフラ資産で構成する の
 > 割り切りで infra が既定 `emptyDir`（Pod 再起動で再 init）であり、本節の compose 永続化とは別レイヤ。経路B の
-> 恒久化（Keycloak realm/runtime state の保持）は #324 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md)
+> 恒久化（Keycloak realm/runtime state の保持）は #324 / IADR-0082: 経路B 基盤インフラの永続化（opt-in オーバーレイ・Keycloak/Postgres を local-path PVC 化）
 > で **opt-in（`PERSIST=1`）** を追加した（下記「経路B の永続化」節）。
 
-#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / [IADR-0082](../adr/IADR-0082_local-k8s-infra-persistence.md) / #324、[IADR-0210](../adr/IADR-0210_local-k8s-observability-persistence.md) / #787）
+#### 経路B（ローカル k8s dev）の永続化（opt-in・NFR 運用性 / IADR-0082: 経路B 基盤インフラの永続化（opt-in オーバーレイ・Keycloak/Postgres を local-path PVC 化） / #324、IADR-0210: 経路B の Qdrant／可観測性 4 種の永続化と Prometheus 保持期間 / #787）
 
 `PERSIST=1 bash scripts/k8s-local-up.sh` で [`deploy/local/infra-persistence`](../../deploy/local/infra-persistence/)
 オーバーレイが適用され、**Keycloak（`/opt/keycloak/data`＝`start-dev` の file H2）・Postgres
@@ -210,9 +202,9 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 - **保持範囲**: 保持されるのは Pod の再起動/再作成まで。`scripts/k8s-local-down.sh` はクラスタ／`platform-infra`
   namespace を削除するため PVC も消える（`down`→`up` では realm/DB は再生成）。PVC を残すなら `down` を使わず Pod のみ再作成する。
 
-### Headlamp（k8s 管理 UI・dev opt-in）（NFR 運用性 / [IADR-0080](../adr/IADR-0080_headlamp-k8s-management-ui.md) / #271）
+### Headlamp（k8s 管理 UI・dev opt-in）（NFR 運用性 / IADR-0080: Headlamp（k8s 管理 UI）の dev 導入・Keycloak OIDC 連携 / #271）
 
-ローカル k8s dev（経路B・[IADR-0066](../adr/IADR-0066_local-k8s-dev-environment.md)）に [Headlamp](https://headlamp.dev/)
+ローカル k8s dev（経路B・IADR-0066: ローカル k8s dev 環境は k3d ＋ dev 専用 in-cluster インフラ資産で構成する）に [Headlamp](https://headlamp.dev/)
 （CNCF Sandbox の k8s 管理 UI）を **opt-in** で導入し、Pod / Deployment / Service / ログ等をブラウザから閲覧・
 操作できる。認証は既存 Keycloak（OIDC）に一元化し、`developer` / `developer` を流用する（新規資格情報を作らない）。
 本番像（`deploy/helm` / `deploy/argocd` / compose）は不変で、資産は `deploy/local/headlamp/`（dev 専用）に閉じる。
@@ -226,14 +218,14 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 - **認証モデル / RBAC**: OIDC token passthrough（Headlamp が利用者 id_token を API server へ委譲）。fail-safe として
   Headlamp の ServiceAccount には広域権限を与えず、OIDC ログイン無しではクラスタ可視化不可。`developer` の OIDC
   アイデンティティ `oidc:developer` に `cluster-admin` を bind する（`headlamp-developer-cluster-admin`）。
-- **ブラウザ OIDC 到達性 / live 前提**: issuer 到達性は [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md)
+- **ブラウザ OIDC 到達性 / live 前提**: issuer 到達性は IADR-0076: AST 統合スタック疎通のためのエッジ /bff/* ルーティングとブラウザ OIDC issuer 統一
   手順A（hosts＋port-forward で `http://keycloak:8080` を共有）で解く。加えて **k8s API server の OIDC 検証フラグ**
   （`--oidc-issuer-url` 等をクラスタ (再)作成時に付与）が実ログイン・リソース閲覧の前提（稼働 k3d 依存＝live）。
   手順の全文は [`deploy/local/README.md`](../../deploy/local/README.md) の「Headlamp」節を参照。
 - **本番導入は非スコープ**（本書の範囲では dev のみ）: 公開範囲・アクセス制御・RBAC 設計が別問題のため、まず dev で確立し本番導入は別 issue／
   計画フィードバック（`feedback/20260719_headlamp-k8s-management-ui.md`）で論点化する。
   - **［2026-08-04 追記］計画側で方針が起案された**——
-    [ADR-0042](../../planning/projects/microservices-platform/07_adr/ADR-0042_ops-management-ui-production.md)
+    ADR-0042（計画リポ）
     「Kubernetes 管理 UI を本番へ導入し、**内部限定（VPN／踏み台経由）・閲覧専用**で公開する」
     （planning `d980a01` / planning#196。状態 `Proposed`）。
     ADR-0040（k8s 管理 UI の選定。`Proposed`）と対で読む。
@@ -242,8 +234,8 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 
 ### サービス構成に関する運用注記
 
-- **WikiService と Wiki.js**（FR-13 / UC-07 / [IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)、
-  [IADR-0021](../adr/IADR-0021_wiki-js-sync-graphql-push.md)）:
+- **WikiService と Wiki.js**（FR-13 / UC-07 / IADR-0020: Wiki.js を配備し WikiService を「同期・ABAC ゲートウェイ」へ縮退する、
+  IADR-0021: Wiki.js への同期は GraphQL API push を採用する）:
   閲覧・編集 UI の実体は **Wiki.js**（`ghcr.io/requarks/wiki:2.5`、専用 DB `wikijs`）が担う。`WikiService` は
   「**同期・統合・ABAC ゲートウェイ**」に責務を縮退する。認可（ABAC）は本システムが単一の真実源であり、
   WikiService が Wiki.js の**前段**で deny-by-default の属性フィルタと 404 存在秘匿（[IADR-0009]）を強制する。
@@ -251,7 +243,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
   （旧 [IADR-0013] の「Wiki.js 非配備・自前閲覧 API」は Issue #66 の (a) 選択により Superseded。）
   - **ネットワーク分離**: Wiki.js への ABAC は WikiService ゲートウェイに集約するため、共有/stg/prod では
     Wiki.js を host 公開せず、到達を WikiService 経由に限定する（[IADR-0017]。k8s の Ingress 無効・NetworkPolicy）。
-    **dev の compose は管理 UI セットアップ便宜のため 3001 を公開する（[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）**が、
+    **dev の compose は管理 UI セットアップ便宜のため 3001 を公開する（IADR-0032: Wiki.js の dev ホスト公開は残し、本番系(Helm)の非公開を回帰ガードで保証する・#124）**が、
     **本番系（Helm）は `wikijs.ingress.enabled: false` で公開しない**。
     「本番系構成では 3001（ゲートウェイ迂回の外部到達）が公開されない」ことは `NetworkIsolationTests`
     （Helm `wikijs.ingress.enabled: false` の検証＋dev 公開が wiki-js に限定され他内部サービスへ波及しないこと）が回帰ガードする。
@@ -261,7 +253,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
     限定した。フォロー作業（Issue #88）は**完了**: 稼働 Wiki.js での GraphQL PoC 実測・OIDC ローカルログイン
     無効化の稼働検証は [PoC 実測記録](../tech/20260707_wikijs-poc-record.md)、API キーの発行/投入手順は
     後述「Wiki.js 同期シークレットの発行・投入」を参照。削除・アーカイブの同期経路は
-    [IADR-0023](../adr/IADR-0023_document-delete-archive-wikijs-propagation.md) で実装済み。
+    IADR-0023: 文書の削除・アーカイブを Wiki.js へ伝播する で実装済み。
 
 ### データソース定期同期の有効化と監視（FR-01 / UC-04 / NFR / [IADR-0051] / [IADR-0074] / #299）
 
@@ -274,7 +266,7 @@ config（Helm values）で行う。UC-04 基本フロー「システムが定期
   `DataSourceSync__IntervalSeconds` を描画する（ASP.NET の `__`→`:` 規約で `DataSourceSyncOptions` へバインド）。
 - **間隔の根拠（300 秒＝5 分）**: 反映総遅延 = 検出遅延（≤ 間隔）＋ 下流パイプライン遅延（fetch→convert→ingest→
   index）。間隔 300 秒で検出 ≤5 分・下流に ≥10 分の予算を残し NFR 15 分を余裕充足する。実効間隔はワーカーが
-  最短 30 秒へ丸める（過負荷防止）。下流実測（#196）後に調整可。
+  最短 30 秒へ丸める（過負荷防止）。下流実測後に調整可。
 - **経路B（ローカル k8s / k3d）**: `deploy/local/values-local.yaml` で明示有効化＋間隔 60 秒（反映確認を高速化。
   本番像は不変）。`scaling.enabled=false`＝replicas 1 で多重実行なし。active データソース／実ファイル共有が無い
   環境では sync 対象ゼロで安全に空回りする（fail-safe。実データ疎通の live 部分は別手順・実コネクタと SMB/NFS
@@ -324,7 +316,7 @@ BFF の構成情報 API（`GET /bff/admin/config`）は、適用中の構成定�
 
 - **k8s（stg/prod）**: Helm values `config.gitCommit` / `config.appliedAt` / `config.appliedBy` を
   BFF Deployment へ注入する（`bff.configVersion: true`）。既定は `appliedBy: argocd`、gitCommit/appliedAt は空。
-  **実値の供給**は GitOps（ADR-0007）側で行う:
+  **実値の供給**は GitOps側で行う:
   - ArgoCD Application（`deploy/argocd/application.yaml`）の `helm.parameters` が `config.appliedBy=argocd` を固定。
   - **適用リビジョン（コミット ID）と適用日時**は、ArgoCD ネイティブ Helm がビルド変数をパラメータへ
     自動展開しないため、CD が同期時に上書きする:
@@ -358,15 +350,15 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 - **縮退（後方互換）**: `config.history` が空（dev/compose・既定）なら履歴 env を一切出さず、
   API は**現在バージョン単一エントリへ縮退**する（現在バージョンも空なら空一覧）。dev/compose に追加設定は不要。
 - **残作業**: 実 ArgoCD リビジョン／Git ログからの**自動**履歴生成（ライブ CD 供給）は稼働 CD・環境に依存する。
-  上記は配線（Helm→env→Options→API）と手動／自動供給手順であり、CD 自動化の実装は環境整備後に行う（#192）。
+  上記は配線（Helm→env→Options→API）と手動／自動供給手順であり、CD 自動化の実装は環境整備後に行う。
 
-### Wiki.js の起動・初期セットアップ・ヘルスチェック（FR-13 / UC-07 / IADR-0020）
+### Wiki.js の起動・初期セットアップ・ヘルスチェック
 
 - **起動**: `docker compose -f deploy/docker-compose.yml up -d` で `postgres` → `keycloak`（`--import-realm` で
   realm `platform` と `wiki-js` クライアントを取り込む）→ `wiki-js` の順に起動する。
 - **管理 UI への直接アクセス（dev のみ）**: 下記の初期セットアップ（OIDC 構成・ja ロケール導入・API キー発行）は
   ブラウザから Wiki.js 管理 UI（`http://localhost:3001`）へアクセスする。dev の compose は 3001 を公開している
-  （[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
+  （IADR-0032: Wiki.js の dev ホスト公開は残し、本番系(Helm)の非公開を回帰ガードで保証する・#124）。**本番系（Helm）は Wiki.js を公開しない**ため、
   管理 UI の直接操作は dev でのみ行う（本番系の到達は ABAC ゲートウェイ経由に限定）。
 - **ヘルスチェック**: Wiki.js は `GET /healthz`（コンテナ内 3000）を返す。compose の healthcheck は node で
   `/healthz` を叩く。dev では `http://localhost:3001/healthz`。
@@ -501,9 +493,9 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   コレクションの作り直しは要らない —— 決定的チャンク ID により同じ点が上書きされる。
   - **直近の該当**: **`updated_at`**（文書の更新日時。Unix epoch ミリ秒の整数）を #536 で追加した。
   - **再索引が済むまでの振る舞いは縮退であって障害ではない。** 当該項目を持たないチャンクは
-    検索応答で `updatedAt` が `null` になり、画面（SC-02）は `—` を描く。**検索そのものは従来どおり
+    検索応答で `updatedAt` が `null` になり、画面は `—` を描く。**検索そのものは従来どおり
     ヒットする**（項目の欠落で結果から落とすことはしない）。
-  - **急ぐ必要は無いが、放置すると「更新日時の新しい順」（#532）が実質的に使えない**
+  - **急ぐ必要は無いが、放置すると「更新日時の新しい順」が実質的に使えない**
     （日時を知らないチャンクが混ざり続けるため）。並び順の提供時期に合わせて実施すること。
 
 ## 可用性・水平スケール（HPA / PDB）（NFR / #197）
@@ -534,7 +526,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | ステートフル | minio / wikijs / postgres / qdrant | 対象外（各自の可用性方針） |
 
 - ワーカー（conversion/ingestion）は RabbitMQ 競合コンシューマで水平化自体は可能だが、CPU ベース HPA が
-  不適（キュー滞留がスケール指標）なため本段では対象外とし、負荷実測（#196）後に KEDA 等のキュー長ベース
+  不適（キュー滞留がスケール指標）なため本段では対象外とし、負荷実測後に KEDA 等のキュー長ベース
   スケールを別途検討する。
 - 対象の増減は `values.yaml` の `scaling.services` リストの変更（＋ GitOps 適用）のみで行う。
 
@@ -546,9 +538,9 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   HPA の `metrics` は `type: Resource`（Pod 内**全コンテナ横断**の平均使用率）である。そのため Envoy サイドカーの
   CPU request/使用量も利用率計算の分母・分子に混入し、目標 70% の判定精度がアプリコンテナ実使用率からずれ得る
   （過小/過大スケール）。必要に応じて `autoscaling/v2` の `ContainerResource` 型でアプリコンテナ（`<name>-service`）
-  のみを対象にする選択肢がある。この妥当性は負荷試験（#196）の確認項目とし、乖離が大きければ `ContainerResource`
+  のみを対象にする選択肢がある。この妥当性は負荷試験の確認項目とし、乖離が大きければ `ContainerResource`
   への切替を検討する（[IADR-0050] フォローアップ）。
-- 実クラスタでの HPA スケール挙動・目標 CPU 値の妥当性は負荷試験（#196）で検証し、`scaling.hpa` を調整する。
+- 実クラスタでの HPA スケール挙動・目標 CPU 値の妥当性は負荷試験で検証し、`scaling.hpa` を調整する。
 
 ## 監視・アラート（NFR / #198）
 
@@ -563,7 +555,7 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   [`deploy/grafana/provisioning/alerting/slo-alerts.yaml`](../../deploy/grafana/provisioning/alerting/slo-alerts.yaml)
   が同じ 5 ルールを Grafana 側でも評価し、**Alerting 画面に発火を表示する**。**通知は送らない**（下記★）。
   `alerts.yml` との対応は `node scripts/check-grafana-alerting.js` が CI で突合する。
-- **★ 経路間のパリティ（#674 / [IADR-0168](../adr/IADR-0168_grafana-provisioning-parity.md)）**: provisioning（datasources / dashboards / alerting）は
+- **★ 経路間のパリティ（#674 / IADR-0168: Grafana provisioning の経路間パリティ）**: provisioning（datasources / dashboards / alerting）は
   **compose と k8s の両方に同内容で置く**。`node scripts/check-grafana-provisioning-parity.js` が突合する。
   **是正前は k8s 側にダッシュボードが 1 枚も無く、下記 `llm-usage.json` へ経路 B から辿り着けなかった。**
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
@@ -572,10 +564,10 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 - **LLM 費用の統制（暫定）**: **上限アラートは Alertmanager 配備後に有効となる。配備までは月次の手動確認である**
   （計画 決定 39〜41 / #546）。手順・担当・記録は
   [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) が定める。
-  **費用の金額は現状 1 円も出せない**（トークン消費量・金額換算とも未実装。[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §結果 フォローアップ 2）。
+  **費用の金額は現状 1 円も出せない**（トークン消費量・金額換算とも未実装。IADR-0110: 補完の終了理由メトリクス §結果 フォローアップ 2）。
 - **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
   （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
-  設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587 / [IADR-0112](../adr/IADR-0112_report-kind-purposes-and-trade-decision-sonnet-5.md) 決定 3）。
+  設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587 / IADR-0112: 報告書の種別別用途と取引判断モデルの改定 決定 3）。
   **提供終了の監視は月次の費用確認に相乗りする**（自動検知は無い。検知の遅れは最大 1 か月）。
 - **適用範囲（現状）**: Prometheus/アラートルール（`deploy/prometheus/alerts.yml`）と可観測性スタックは
   現状 **dev（docker-compose）にのみ配線**されている（`deploy/helm/microservices-platform/` 配下に Prometheus/
@@ -591,12 +583,12 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 > compose・k8s の 2 か所。5 ルールは `alerts.yml` と 1 対 1）。**ただし、配線したのは検知と可視化までである。**
 >
 > - **push 配信の宛先（contactPoints / policies）は設定していない。** 届かない宛先を書くと「配線した」と
->   読めてしまうため、**意図的に書いていない**（[IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 3）。
+>   読めてしまうため、**意図的に書いていない**（IADR-0165: SLO の暫定通知先を Grafana 統合アラートへどう配線するか 決定 3）。
 > - **したがって暫定期間に人が気づく経路は「Grafana の Alerting 画面を見る」ことだけ**である。
 >   **NFR-21「障害検出 5 分以内」を満たしているのは評価の側だけ**であり、
 >   **人が気づくまでの時間は見に行く間隔に等しい。**
 > - **Grafana が provisioning を受理するかは未検証**である（実装環境で Grafana を起動できない。
->   [IADR-0165](../adr/IADR-0165_grafana-interim-alerting.md) 決定 1）。機械で確かめたのは
+>   IADR-0165: SLO の暫定通知先を Grafana 統合アラートへどう配線するか 決定 1）。機械で確かめたのは
 >   `node scripts/check-grafana-alerting.js` の範囲（ルール数・名前の 1 対 1・`datasourceUid` の実在・
 >   compose と k8s の同内容・必須キー）まで。**配備時に `/api/v1/provisioning/alert-rules` が 5 件返すことを確かめる。**
 >
@@ -620,12 +612,12 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
 | 検索レイテンシ | retrieval-service p95（`http_server_duration_milliseconds_bucket`） | > 1.5s が 10 分 | Alertmanager（warning） | 検索 p95 1.5s |
 | RAG レイテンシ | aianalysis `/analysis/ask` p95 | > 5s が 10 分 | Alertmanager（warning） | RAG 初回 5s |
 
-### LLM 拒否率の監視（FR-11 / NFR / [IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) / #395）
+### LLM 拒否率の監視（FR-11 / NFR / IADR-0110: 補完の終了理由メトリクス / #395）
 
 LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `llm_completion_total`）を計上する。
 **送信可否（`llm.result`）とモデル側の終了理由（`llm.stop_reason`）は独立した属性**であり、
 「機密区分により送信しなかった（`egress_denied`）」と「送ったがモデルが拒否した（`refusal`）」を
-取り違えずに集計できる（[IADR-0104](../adr/IADR-0104_llm-stop-reason-refusal.md)）。
+取り違えずに集計できる（IADR-0104: `stop_reason` の判別と拒否の伝達）。
 
 - **拒否率** = `sum(rate(llm_completion_total{llm_stop_reason="refusal"}[30m])) / sum(rate(llm_completion_total{llm_result="sent"}[30m]))`
 - 属性・値域・クエリ例・しきい値の方針は
@@ -634,13 +626,13 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
   `upstream_error` 率 > 10%（10 分・critical）／`llm.purpose="other"` の出現（1 時間・warning。
   未定義 purpose＝ルーティングが既定へ無音で落ちている疑い）。
 - **［2026-08-18 追記 / #863］`llm.result` に `fallback` が加わった**（計画 `ADR-0038` 決定 6 /
-  [IADR-0225](../adr/IADR-0225_llm-purpose-fallback-chain-and-429-boundary.md)）。
+  IADR-0225: 用途別フォールバック順序は設定駆動の鎖として持ち、発火は 400 系に限り 429 を除外する）。
   **上流が HTTP 400 系を返して次の候補モデルへ切り替えた呼び出し**を表す。
   **`upstream_error` には含まれない** —— 回復した呼び出しを障害の率に入れると上の critical が誤発火する。
   **429 ではフォールバックしない**（429 は再試行の対象。同決定 4）ため、429 は従来どおり
   `upstream_error` に現れる。フォールバック率のしきい値は**実測前のため置かない**。
 - **アラートルールの実配線は未了**（`deploy/prometheus/alerts.yml` への追加と Alertmanager 通知先の設定）。
-  本節はしきい値の方針までを定める（[IADR-0110](../adr/IADR-0110_llm-completion-stop-reason-metrics.md) §フォローアップ 1）。
+  本節はしきい値の方針までを定める（IADR-0110: 補完の終了理由メトリクス §フォローアップ 1）。
 
 - **push モデルの制約**: メトリクスは remote write（push）のため、古典的な per-service `up` は無い。サービスダウンは
   「直近まで受信していたリクエストメトリクスの途絶」で近似検知する（アイドル時の誤検知を避けるため `for` を長めに設定）。
@@ -665,29 +657,29 @@ LlmGateway は補完 1 回ごとに `llm.completion.total`（Prometheus では `
 - **リストア手順（概略）**: ①対象データストアを停止/隔離 → ②該当バックアップからリストア（Postgres は
   `pg_restore`、MinIO は mirror 復元、Qdrant はスナップショット復元）→ ③依存サービスを再起動しヘルス確認 →
   ④整合確認（Qdrant/Wiki は必要なら `DocumentUpdated` 再発行で再構築。埋め込み再索引は本書「埋め込みプロバイダ」節参照）。
-- **リストア演習**: ステージング整備（IADR-0049 / #207）後に定期実施し、RTO の実測と手順の妥当性を検証する（follow-up）。
+- **リストア演習**: ステージング整備後に定期実施し、RTO の実測と手順の妥当性を検証する（follow-up）。
 
 ## 障害対応（Runbook）（NFR / #198）
 
 | 事象 | 検知 | 一次対応 | エスカレーション |
 | --- | --- | --- | --- |
-| LLM ゲートウェイ/外部 LLM 不調 | RAG レイテンシ/5xx アラート、`LlmGateway` 縮退ログ | RAG は縮退応答（送信せず縮退・fail-closed）。検索（非 LLM）は継続。エンドポイント設定/疎通確認 | 外部プロバイダ障害なら egress 設定でセルフホスト/別ティアへ切替（IADR-0025） |
+| LLM ゲートウェイ/外部 LLM 不調 | RAG レイテンシ/5xx アラート、`LlmGateway` 縮退ログ | RAG は縮退応答（送信せず縮退・fail-closed）。検索（非 LLM）は継続。エンドポイント設定/疎通確認 | 外部プロバイダ障害なら egress 設定でセルフホスト/別ティアへ切替 |
 | 埋め込みプロバイダ停止 | 取り込み失敗ログ、`EmbeddingEndpointTests` 相当の縮退 | 高機密はセルフホスト固定・未有効なら索引スキップ（fail-closed。IADR-0025）。プロバイダ復旧後に再索引（本書「埋め込み」節） | セルフホスト基盤の起動、モデル/次元整合の確認 |
 | RabbitMQ 停止 | サービス接続エラー、パイプライン滞留 | ブローカ再起動。MassTransit は再接続。未処理は再配信（冪等消費のため重複安全） | 永続化ボリューム/ディスク確認。デッドレター滞留は原因メッセージを調査 |
 | Qdrant 停止 | 検索 5xx/エラーログ | Qdrant 再起動。索引は再取り込みで再構築可能（決定的チャンク ID） | ボリューム障害時はスナップショットからリストア（バックアップ節） |
 | PostgreSQL 停止 | サービス起動失敗/DB 接続エラー | DB 再起動・接続確認。書き込み不可の間は該当サービスを縮退 | データ破損時はバックアップからリストア（RPO/RTO 節） |
-| サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し（#197） |
-| 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ。IADR-0029） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fast（IADR-0028）で不整合構成の反映は阻止済み。恒常化は宣言の是正 |
+| サービス 5xx スパイク | `HighHttp5xxRate` アラート | 対象サービスのログ/トレース（Tempo）で原因特定。必要ならロールバック（Git revert → ArgoCD 同期） | 依存（DB/ブローカ/外部）起因の切り分け。HPA 上限到達なら `scaling` 見直し |
+| 構成ドリフト検出 | ドリフト検出 Warning（監査/警告ログ。IADR-0029） | 宣言（`pipeline.json`）と実効の差分を確認。意図せぬ差分は Git を正として再同期 | 起動時 fail-fastで不整合構成の反映は阻止済み。恒常化は宣言の是正 |
 
 - **エスカレーション/通知**: **Alertmanager の配備後**に受信先（メール/チャット）と担当・当番を運用体制に応じて定める（環境ごと）。
-  **配備までは自動通知が無い** —— 一次検知は Prometheus UI / Grafana の目視である（#546 / #665）。
+  **配備までは自動通知が無い** —— 一次検知は Prometheus UI / Grafana の目視である。
 - **MTTR 目標（30 分）**: アラート（検出 5 分以内）→ Runbook 一次対応 → 復旧、の各段を Grafana/Tempo/Loki で追跡する。
 
 ## 定期点検（年次）
 
 ### 採用ライブラリのライセンス・保守状況の点検（ADR-0030 フォローアップ / #455）
 
-計画 [ADR-0030](../../planning/projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md) は
+計画 ADR-0030（計画リポ） は
 **年 1 回、採用ライブラリのライセンス・保守状況を点検し、同 ADR の選定基準で再評価する**ことを求めている。
 2025〜2026 年に MediatR / AutoMapper / MassTransit / FluentAssertions が相次いで商用化し、Mapster が保守停滞に
 陥った経緯があり、**ライセンス変更は予告なく起こる**という前提で点検する。

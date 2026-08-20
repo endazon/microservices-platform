@@ -2,35 +2,19 @@
 title: 文書管理 画面仕様書
 type: screen-spec
 status: completed
-related_ids:
-  - SC-05
-  - UC-03
-  - FR-06
-  - FR-09
-  - IADR-0041
-  - IADR-0121
-  - IADR-0124
-  - IADR-0125
-  - IADR-0127
-author: claude
 created: 2026-07-09
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md"
-related_specs:
-  - "./SC-03_document-detail.md"
-  - "./SC-06_datasource-management.md"
-  - "./SC-07_conversion-jobs.md"
-  - "../adr/IADR-0041_document-write-bff-abac-scoped.md"
-  - "../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md"
-  - "../specs/20260805_issue-503_sc05-08-admin-screens.md"
-  - "../tests/SC-05_document-management.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-06, FR-09, SC-03, SC-05, UC-03]
+adrs: []
+iadrs: [IADR-0041, IADR-0121, IADR-0124, IADR-0125, IADR-0127]
+specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, IADR-0041_document-write-bff-abac-scoped, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-03_document-detail, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
+issues: [#502, #519, #629, #7]
+-->
 
-# 画面仕様書: 文書管理（SC-05）
+# 画面仕様書: 文書管理
 
 > **［実装状態］`status: completed` は「本仕様書が記述する範囲の実装とテストが揃った」ことを表す**
 > （`docs/README.md` 運用ルール 6。計画側 `05_screens` の `status` には追随しない）。
@@ -42,10 +26,10 @@ related_specs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-05 文書管理画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md) §SC-05・遷移図 `SC05 → SC03`）
+- 画面（SC）: **SC-05 文書管理画面**（05_screens/01_screens.md（計画リポ） §SC-05・遷移図 `SC05 → SC03`）
 - 関連ユースケース（UC）: **UC-03**（文書を管理する。基本 1・**例外「必須属性が未設定の場合は保存を拒否する」**）
 - 関連機能要求（FR）: **FR-06**（文書の CRUD・バージョン管理・メタデータ管理）・**FR-09**（文書属性・タグの設定）
-- モックアップ（**実装の正**）: [hi-fi/sc-05.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-05.html) ／ [wireframe/sc-05.html](../../planning/projects/microservices-platform/05_screens/mockups/wireframe/sc-05.html)
+- モックアップ（**実装の正**）: hi-fi/sc-05.html（計画リポ） ／ wireframe/sc-05.html（計画リポ）
 - 関連 IADR: [[IADR-0041]]（書き込みのロール ＋ ABAC スコープゲート）・[[IADR-0039]]（管理系のロール）・[[IADR-0127]]（本作業の設計判断）・[[IADR-0009]]（存在秘匿）
 
 ## 画面概要・目的
@@ -65,7 +49,7 @@ related_specs:
     [[IADR-0044]] の多層防御）であり、画面は表示制御にすぎない（[[IADR-0039]] 決定 2）。
   - **`publish` / `archive` は計画の破壊的操作の列挙に名前が無い**が、planning#299 の基準
     （「実行系だが破壊的ではない」操作だけを運用者へ開く）を当てはめて**管理者限定と判断した**。
-    根拠は [作業仕様書 §判断 1](../specs/20260809_issue-629_document-write-admin-only.md)。
+    根拠は 仕様書: 文書の書き込み口を管理者限定へ狭める。
   - **従前は「`platform-admin` または `platform-operator`」で書き込みまで開いており、計画との乖離だった**
     （planning#198 提案 8 の「どちらが正かは計画側の裁定を要する」は **Q19 で決着した**）。
   - **★ 後段 `DocumentService` の `POST /documents` だけは admin ＋ operator のまま据え置いている。**
@@ -76,7 +60,7 @@ related_specs:
 
 ## hi-fi モックアップとの対応（実装する要素／実装しない要素）
 
-行番号は planning `d980a01` の [hi-fi/sc-05.html](../../planning/projects/microservices-platform/05_screens/mockups/hi-fi/sc-05.html) に対するものである。
+行番号は planning `d980a01` の hi-fi/sc-05.html（計画リポ） に対するものである。
 **粒度の規則は #502 の 3 画面と共通である**——(a) メイン領域の要素は個別に 1 行、
 (b) 共通シェルはまとめて 1 行（引き受け先を書く）、(c) **モックに無い状態（0 件表示・読み込み中・エラー表示）は
 本表に入れず §エラー・状態 で扱う**（本表はモックとの対応表であって実装要素の一覧ではない）。
@@ -94,15 +78,15 @@ related_specs:
 | --- | --- | --- | --- |
 | 1 | 見出し「文書一覧」（417 左） | **する** | `<h1>` |
 | 2 | 「＋ 新規登録」（417 右） | **する** | `Button variant="primary"`。押すと右ペインが新規登録フォームになる |
-| 3 | 一覧の**タイトル**列（419・421-423） | **する** | `Table`。タイトルは `/docs/$id`（SC-03）への内部リンク |
+| 3 | 一覧の**タイトル**列（419・421-423） | **する** | `Table`。タイトルは `/docs/$id`への内部リンク |
 | 4 | 一覧の**機密区分**列（419・421-423） | **する** | `Tag`（分類名）。値は `attributes.confidentiality` の**生値**（理由は #7） |
 | 5 | 一覧の**版**列（419・421-423） | **する** | `v{version}`。05_screens §SC-05「版列＝現行版の表示」 |
 | 6 | **一覧の「変換」列**（419・421-423） | **しない** | **契約の不在**。§実装しない要素の理由 (a) |
-| 7 | 機密区分の**日本語表示名**（421「社内限」/ 422「秘」） | **しない** | **生値を出す。** **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は **Q7 / Q8 / 派生 Q30** で確定し、正は [`planning/docs/glossary.md`](../../planning/docs/glossary.md)（公開 / 社内限 / 秘 / **取扱制限**）。**写像の実装先は #541** であり、本行の「しない」は**その実装までの現状**である。〔当時の理由〕値集合は 4 値だが計画に表示名があるのは 2 値だけ。SC-03（#502）と同じ扱い |
+| 7 | 機密区分の**日本語表示名**（421「社内限」/ 422「秘」） | **しない** | **生値を出す。** **［2026-08-10 追記 / #553］裁定は着地している** —— 4 値の表示名は **Q7 / Q8 / 派生 Q30** で確定し、正は `planning/docs/glossary.md`（計画リポ）（公開 / 社内限 / 秘 / **取扱制限**）。**写像の実装先は #541** であり、本行の「しない」は**その実装までの現状**である。〔当時の理由〕値集合は 4 値だが計画に表示名があるのは 2 値だけ。SC-03と同じ扱い |
 | 8 | 編集フォームの見出し（428） | **する** | `Card` ＋ 見出し。新規登録時は「文書を登録」、編集時は「文書を編集（v{n}）」 |
 | 9 | 「タイトル *」（430） | **する** | `Input`。必須（1 文字以上） |
 | 10 | 「機密区分（ABAC属性）*」（431） | **する** | `Select`。**定義済み区分のみ**（`public` / `internal` / `confidential` / `restricted`） |
-| 11 | 「タグ（既定辞書に整合）」（432。`経理 ✕　規程 ✕　＋`） | **一部する** | 追加欄 ＋ 削除可能な `Tag` チップ。**辞書からの補完・整合検査は行わない**（自由入力。§実装しない要素の理由 (b)）。**本行は「する」と数えているが、計画が同じ行で課す「既定タグ辞書に整合」は満たしていない**——二値の判定では表せない部分未実装であり、[作業仕様書 §計画書との差異](../specs/20260805_issue-503_sc05-08-admin-screens.md) に行を立てた |
+| 11 | 「タグ（既定辞書に整合）」（432。`経理 ✕　規程 ✕　＋`） | **一部する** | 追加欄 ＋ 削除可能な `Tag` チップ。**辞書からの補完・整合検査は行わない**（自由入力。§実装しない要素の理由 (b)）。**本行は「する」と数えているが、計画が同じ行で課す「既定タグ辞書に整合」は満たしていない**——二値の判定では表せない部分未実装であり、仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析） に行を立てた |
 | 12 | 「保存」＋「→ 取り込み・Wiki同期をトリガ」（433） | **する** | `Button` ＋ 補助文。保存（作成 / 更新）は後段で `DocumentUpdated` を発行し取り込み・Wiki 同期が走る |
 | 13 | 注記「必須属性未設定は保存拒否（UC-03 例外フロー）」（435） | **する** | `Alert tone="info"`（静的な注記のため `role` を付けない） |
 | 14 | **共通シェル**: 右レール「AIチャットパネル」（439-444） | **しない** | 移行**第 4 段**（[[IADR-0121]] 決定 1・5） |
@@ -138,7 +122,7 @@ related_specs:
 **なお計画自身が SC-05 と FR-12 の関係を一度是正している**——02_requirements トレーサビリティ表（2026-07-24）は
 FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR バッジ準拠で対象外**」と明記した。
 05_screens §SC-05 主要素の「変換状況」だけが旧い記述として残っている可能性がある。この点も環流の記録へ含めた
-（[feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)。**planning#198 として起票済み・裁定待ち**）。
+（feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）。**planning#198 として起票済み・裁定待ち**）。
 
 > **★［2026-08-10 追記 / #553］この推測は当たっていた。** 裁定 **Q17**（2026-08-05）で
 > **計画側が §SC-05 主要素から「変換状況」を削除した**（`01_screens.md:276`。
@@ -150,8 +134,8 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 
 | 用途 | エンドポイント | 呼び出し方 | 認可（サーバ側） | 応答 |
 | --- | --- | --- | --- | --- |
-| 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`**（#519） | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
-| 登録 | `POST /bff/documents` | `useMutation` | **admin のみ**（#629）＋ スコープ解決 | `DocumentDto`（201） |
+| 一覧 | `GET /bff/documents` | **orval 生成フック `useBffDocumentList`** | 認証。**ABAC スコープ内のみ**返る | `DocumentDto[]` |
+| 登録 | `POST /bff/documents` | `useMutation` | **admin のみ**＋ スコープ解決 | `DocumentDto`（201） |
 | 更新 | `PUT /bff/documents/{id}` | `useMutation` | 同上。**版不一致は 409** | 204 |
 | 公開 | `POST /bff/documents/{id}/publish` | `useMutation` | 同上。不正遷移は 409 | 204 |
 | アーカイブ | `POST /bff/documents/{id}/archive` | `useMutation` | 同上 | 204 |
@@ -238,14 +222,14 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 ## UI 部品（`@platform/ui`）
 
 `Table` 一式 / `Button` / `Input` / `Select` / `Label` / `Card` 一式 / `Alert` / `Tag`。**新規プリミティブは追加しない**
-（タグ編集の 4 基準判定は [作業仕様書 §4](../specs/20260805_issue-503_sc05-08-admin-screens.md)）。
+（タグ編集の 4 基準判定は 仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析））。
 
 ## 関連仕様
 
-- 作業仕様書: [20260805_issue-503_sc05-08-admin-screens.md](../specs/20260805_issue-503_sc05-08-admin-screens.md)
+- 作業仕様書: 仕様書: SC-05〜08 の新スタックでの再実装（管理者の運用導線 ＋ AI 分析）
 - テスト仕様書: [SC-05_document-management.md](../tests/SC-05_document-management.md)
-- 実装 ADR: [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) / [IADR-0041](../adr/IADR-0041_document-write-bff-abac-scoped.md)
-- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: [feedback/20260805_sc05-07-admin-contract-gaps.md](../../feedback/20260805_sc05-07-admin-contract-gaps.md)
+- 実装 ADR: IADR-0127: 管理画面（SC-05〜08）の実装方針 — 再変換は画面側で管理者限定、状態表示は契約から導出できる値だけで作る / IADR-0041: 文書管理（書き込み）の BFF 集約とスコープ内限定・楽観ロック透過
+- 計画への環流（**planning#198 として起票済み。［2026-08-10 / #553］2026-08-05 に裁定され計画本文へ反映済み**）: feedback/20260805_sc05-07-admin-contract-gaps.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260805_sc05-07-admin-contract-gaps.md` へ移設）
 
 ## 未決事項
 
@@ -264,6 +248,6 @@ FR-12 の関連画面を SC-07 / SC-03 とし、「**SC-05 はモックの FR �
 
 1. **変換列**（§実装しない要素 (a)）。文書 → 変換ジョブの対応を返す契約が要る。**環流の記録を作成済み・planning#198 として起票済み（裁定待ち）。**
 2. **タグ辞書との整合**（同 (b)）。管理系ロールが引けるタグ辞書の照会口が要る。同上。
-3. **機密区分の表示名**（#7）。**planning#197 の裁定待ち**（#502 から継続）。
+3. **機密区分の表示名**。**planning#197 の裁定待ち**（#502 から継続）。
 4. **閲覧ロール**（admin/operator か admin のみか）。計画 §共通シェル と [[IADR-0039]] の差異。同上の環流記録に含めた。
 5. **ページング**。計画が送り方を定めていない（SC-02 と同じ）。実装は BFF が返す一覧をそのまま表示する。

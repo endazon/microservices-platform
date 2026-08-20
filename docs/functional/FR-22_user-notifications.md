@@ -2,42 +2,24 @@
 title: FR-22 利用者本人への通知 機能仕様書
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-22
-  - FR-19
-  - FR-20
-  - UC-11
-  - ADR-0037
-  - ADR-0045
-  - ADR-0046
-  - IADR-0056
-  - IADR-0119
-  - IADR-0121
-  - IADR-0125
-  - IADR-0132
-  - IADR-0142
-  - IADR-0215
-author: Claude
 created: 2026-08-16
 updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - ../adr/IADR-0215_notification-service-and-in-app-delivery.md
-  - ../specs/20260816_issue-600_fr22-in-app-notifications.md
-  - ../tests/FR-22_user-notifications.md
-  - ../api/BFF_notifications.md
+author: Claude
 ---
+<!-- trace:
+ids: [FR-19, FR-20, FR-22, UC-11]
+adrs: [ADR-0037, ADR-0045, ADR-0046]
+iadrs: [IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215]
+specs: [01_requirements, 01_usecases, 20260816_issue-600_fr22-in-app-notifications, ADR-0037_obsidian-sync-method, ADR-0045_mail-delivery-smtp-relay, BFF_notifications, FR-22_user-notifications, IADR-0215_notification-service-and-in-app-delivery]
+issues: [#600]
+-->
 
 # 機能仕様書: FR-22 利用者本人への通知
 
 > **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙）。
 > 本書が記述する実装のうち、**アプリ内通知の契約と受け皿（フロント）は入っている**が、
 > **送出側（`NotificationService`・メール outbox・レート制御・発火の結線）は入っていない**。
-> 線引きの正本は [[IADR-0215]] 決定 6、経緯は [作業仕様書 #600](../specs/20260816_issue-600_fr22-in-app-notifications.md) である。
+> 線引きの正本は [[IADR-0215]] 決定 6、経緯は 仕様書: FR-22 利用者本人への通知 である。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -45,10 +27,10 @@ related_specs:
 - ユースケース（UC）: **UC-11** 例外フロー（削除通知・容量警告）
 - 業務フロー（04_workflows）: 該当なし（通知は画面遷移を伴わない）
 - 計画書リンク:
-  [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) FR-22 ／
-  [03_usecases/01_usecases.md](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) UC-11 ／
-  [ADR-0037](../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md) 決定 6・17・18 ／
-  [ADR-0045](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md) 決定 3・8
+  02_requirements/01_requirements.md（計画リポ） FR-22 ／
+  03_usecases/01_usecases.md（計画リポ） UC-11 ／
+  ADR-0037（計画リポ） 決定 6・17・18 ／
+  ADR-0045（計画リポ） 決定 3・8
 
 ## 概要
 
@@ -169,7 +151,7 @@ flowchart TD
 ## 受け入れ基準
 
 計画 `02_requirements` の受け入れ基準を実装可能な粒度へ落としたものである。
-**本 PR で満たした／backend 待ちの別は [作業仕様書 #600](../specs/20260816_issue-600_fr22-in-app-notifications.md) §受け入れ基準 が正本である**（ここへ複写しない）。
+**本 PR で満たした／backend 待ちの別は 仕様書: FR-22 利用者本人への通知 §受け入れ基準 が正本である**（ここへ複写しない）。
 
 - [ ] **通知が所有者本人にのみ届く**（他の利用者・管理者へは届かない）
 - [x] **通知の本文が件数と期限のみで構成される**（**契約にタイトル／本文の項目が無い**ことで守る）

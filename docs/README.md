@@ -9,18 +9,25 @@ docs/
 ├── templates/    # 各仕様書のひな形（spec / functional / screen / api / data / tech / test /
 │                 #   operations / security / adr / observability / authz / integration /
 │                 #   batch / migration / error / infra）
-├── specs/        # 作業仕様書（作業/PR 単位の横断仕様）
 ├── functional/   # 機能仕様書        ├── operations/    # 運用仕様書
 ├── screens/      # 画面仕様書        ├── security/      # セキュリティ仕様書
-├── api/          # 通信仕様書        ├── adr/           # 実装ADR（IADR-XXXX）
-├── data/         # データ仕様書      ├── observability/ # ログ・可観測性（任意）
-├── tech/         # 技術要件書        ├── authz/         # 権限・認可（任意）
-├── tests/        # テスト仕様書      ├── integration/   # 外部連携（任意）
-│                                     ├── batch/         # バッチ・ジョブ（任意）
+├── api/          # 通信仕様書        ├── observability/ # ログ・可観測性（任意）
+├── data/         # データ仕様書      ├── authz/         # 権限・認可（任意）
+├── tech/         # 技術要件書        ├── integration/   # 外部連携（任意）
+├── tests/        # テスト仕様書      ├── batch/         # バッチ・ジョブ（任意）
 │                                     ├── migration/     # 移行（任意）
 │                                     ├── errors/        # エラー・メッセージ（任意）
 │                                     ├── infra/         # インフラ・構成（任意）
 │                                     └── how-to/        # 手順ガイド（任意）
+```
+
+作業仕様書（`work`）と実装ADR（`adr`）は `docs/` の外、ルート直下 `.ai-context/`（AI 向け文脈資料・凍結記録。`docs/` = 人が読む生きた文書との主従は [`.ai-context/README.md`](../.ai-context/README.md) を参照）に置く（ADR-0048 決定 1）:
+
+```text
+.ai-context/
+├── adr/          # 実装ADR（IADR-XXXX）
+├── specs/        # 作業仕様書（作業/PR 単位の横断仕様）
+└── superpowers/  # superpowers（旧 docs/superpowers/）
 ```
 
 ## 必須の仕様書
@@ -29,7 +36,7 @@ docs/
 
 | 種別 | 文書 | 出力先 | 粒度 | 計画書の一次情報 |
 | --- | --- | --- | --- | --- |
-| `work` | 作業仕様書 | `docs/specs/` | 作業/PR 単位 | 該当する FR/UC/SC |
+| `work` | 作業仕様書 | `.ai-context/specs/` | 作業/PR 単位 | 該当する FR/UC/SC |
 | `functional` | 機能仕様書 | `docs/functional/` | 機能（FR）単位 | 02_requirements / 03_usecases / 04_workflows |
 | `screen` | 画面仕様書 | `docs/screens/` | 画面（SC）単位 | 05_screens |
 | `api` | 通信仕様書 | `docs/api/` | API/IF 単位 | 03_usecases / 04_workflows / 06_technical |
@@ -38,7 +45,7 @@ docs/
 | `test` | テスト仕様書 | `docs/tests/` | 機能（FR）単位 | 02_requirements（受け入れ基準）/ 03_usecases |
 | `operations` | 運用仕様書 | `docs/operations/` | リポ単位（1つ） | NFR（運用・保守） |
 | `security` | セキュリティ仕様書 | `docs/security/` | リポ単位（1つ） | NFR（セキュリティ）/ 07_adr |
-| `adr` | 実装ADR（`IADR-XXXX`） | `docs/adr/` | 決定単位 | 06_technical / 07_adr（実装に閉じた判断） |
+| `adr` | 実装ADR（`IADR-XXXX`） | `.ai-context/adr/` | 決定単位 | 06_technical / 07_adr（実装に閉じた判断） |
 
 ## 任意の仕様書
 
@@ -56,7 +63,7 @@ docs/
 | `runbook` | 運用 Runbook（運用仕様書の**下位**にあたる手順書） | `docs/operations/` |
 | `how-to` | 手順ガイド（開発環境の起動・デプロイ・submodule 追加など） | `docs/how-to/`（[ローカル開発](how-to/local-development.md)・[デプロイ](how-to/deployment.md)・[ユニット submodule の追加](how-to/adding-a-unit-submodule.md)・[引継資料](how-to/session-handoff.md)）。**必読規約から出した別紙**（[コミットメッセージ規約](how-to/commit-message-rules-annex.md)・[CHANGELOG 補正](how-to/changelog-overrides-annex.md)・[ID 修飾](how-to/cross-project-id-refs-annex.md)・[Superseded な ADR の引用](how-to/adr-supersede-citation-annex.md)・[計画 ID レンジの追随](how-to/plan-id-range-history-annex.md)）は**参照時にだけ読む** |
 
-> **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [IADR-0167](adr/IADR-0167_type-vocabulary-from-templates.md)）。
+> **★ この表の「種別」は `/new-spec` の引数の語彙であり、frontmatter の `type` の値ではない**（#675 / [IADR-0167](../.ai-context/adr/IADR-0167_type-vocabulary-from-templates.md)）。
 > **`type` を書いているのはテンプレートだけ**である（引数 `work` → `spec_template.md` → `type: spec`）。
 > **`type` の値域は `docs/templates/*.md` が書く値**であり、
 > `node scripts/check-doc-type-vocabulary.js` が**テンプレートを実行時に読んで**閉じる
@@ -80,20 +87,20 @@ docs/
 
 1. **作業着手前に必ず作業仕様書を作成する**（`/new-spec`）。
 2. 必須の仕様書は対象が存在する限り作成・維持する。任意の仕様書は必要に応じて作成する。
-3. 重要な実装判断は**実装ADR（`docs/adr/`、`IADR-XXXX`）に残す**。計画ADR（計画リポ `ADR-XXXX`）とは別系統。
+3. 重要な実装判断は**実装ADR（`.ai-context/adr/`、`IADR-XXXX`）に残す**。計画ADR（計画リポ `ADR-XXXX`）とは別系統。
 4. すべての仕様書に起点 ID（FR/UC/SC/ADR）と計画書リンクを記入し、関連仕様書を相互リンクする。
-   **リンクの義務は仕様書側の一方向である**（利用者裁定 2026-08-11 / [IADR-0171](adr/IADR-0171_backlink-obligation-one-way.md)）——
+   **リンクの義務は仕様書側の一方向である**（利用者裁定 2026-08-11 / [IADR-0171](../.ai-context/adr/IADR-0171_backlink-obligation-one-way.md)）——
    **仕様書から ADR（`IADR-XXXX`）を指せば足り、ADR 側に「この決定を引いた仕様書」を列挙し返す義務は無い。**
    ADR は「決定」の記録であり、参照した作業をすべて列挙し続けると **ADR が更新履歴の索引になってしまう**
    （1 ADR = 1 意思決定という形と合わない）。逆引きは `grep` で足りる。
    **ADR 側に逆リンクが無いことは欠陥ではない**（本ルールの正本はここ。`CLAUDE.md` は本項を指すだけである）。
-5. 計画書の誤り・不足・新たな制約は `/plan-feedback` で計画リポジトリへ環流する。
-   **「環流した」と書いてよいのは `feedback/README.md` の手順 3（計画リポへのコピー、または Issue 起票）まで
-   済んだときだけ**である。記録（`feedback/*.md`）を作った段階は「環流の記録を作成した・起票は未了」と書く。
-   手順 2 で止まったものを「環流済み」と書くと、計画側が受け取っていない指摘を受け取ったことにしてしまう。
+5. 計画書の誤り・不足・新たな制約は `/plan-feedback` で計画リポジトリへ **GitHub Issue** として環流する
+   （本リポジトリはファイルによる環流記録を持たない。ADR-0048 決定 5）。
+   **「環流した」と書いてよいのは Issue を実際に起票し終えたときだけ**である。起票前の下書き段階は
+   「環流の下書きを作成した・起票は未了」と書く。裁定の完了記録は計画側 `projects/<name>/10_feedback/` に残る。
 6. **`status` は「その仕様書が記述する実装の状態」を表す。計画側（`05_screens` 等）の `status` には追随しない。**
    - 値: `draft`（着手前・記述途中）／`in-progress`（実装中）／`completed`（実装・テストが揃った）／
-     `done`（作業仕様書の完了。`docs/specs/`）／`superseded`（別の仕様書が置き換えた）。
+     `done`（作業仕様書の完了。`.ai-context/specs/`）／`superseded`（別の仕様書が置き換えた）。
    - **計画側と独立にする理由**: 計画の `status` は「計画としての確定度」であり、実装の進み方とは別の軸である。
      例えば計画 `05_screens/01_screens.md` は**再実装が終わるまで `draft` を維持する**と自ら宣言している
      （実装が動いている途中で計画を `fixed` に近づけると、計画が実装を追認する形になるため）。
@@ -102,7 +109,7 @@ docs/
    - **画面の一部が未実装でも `completed` にしてよい。** ただし**何が残っているかを本文の冒頭に明記する**
      （例: 着手保留中の FR に属する要素）。`status` は粒度の粗い目印であり、残件の所在は本文が持つ。
    - **★ 値域は `node scripts/check-doc-status-vocabulary.js` が閉じる**（#667）。
-     上の 5 値以外を書くと CI が落ちる。**ADR（`docs/adr/`）は別系統**で
+     上の 5 値以外を書くと CI が落ちる。**ADR（`.ai-context/adr/`）は別系統**で
      `Proposed / Accepted / Deprecated / Superseded`（正本は [`docs/templates/adr_template.md`](templates/adr_template.md) の
      状態欄。**本リポに `.claude/rules/adr.md` は無い** —— 同名の規約は計画リポ側にあり、
      実装 ADR（IADR）には適用されない）。
@@ -120,10 +127,9 @@ docs/
      **状態の進行**（`draft` → `done` 等）は、
      `.claude/rules/traceability.md` の「記録の改竄」にあたるため**不可**である。
    - **★ 本文への注記追加は `［YYYY-MM-DD 追記 / #NNN］` 書式に限り可**（#803 / 裁定 planning#387）。
-     **凍結の射程は記録種ごとに違う** —— `docs/specs/` は**その後の経過**を書式つきで足せる。
-     `feedback/` は①（frontmatter の状態欄を本文で言い直した追記）だけ不可、
-     `docs/superpowers/` は不可である。**既存本文の書き換え・削除はどの記録でも不可。**
-     正本は [`IADR-0166`](adr/IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 の
+     **凍結の射程は記録種ごとに違う** —— `.ai-context/specs/` は**その後の経過**を書式つきで足せる。
+     `.ai-context/superpowers/` は不可である。**既存本文の書き換え・削除はどの記録でも不可。**
+     正本は [`IADR-0166`](../.ai-context/adr/IADR-0166_status-vocabulary-and-record-rewrite-boundary.md) 決定 2 の
      2026-08-17 追記と `.claude/rules/traceability.repo.md`。
 
 詳細な開発規約は `CLAUDE.md` を参照すること。

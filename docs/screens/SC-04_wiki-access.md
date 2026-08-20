@@ -2,25 +2,23 @@
 title: Wiki 閲覧画面 画面仕様書
 type: screen-spec
 status: draft
-related_ids:
-  - SC-04
-  - UC-07
-  - FR-13
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-related_specs:
-  - "../adr/IADR-0020_wiki-js-deployment-abac-gateway.md"
-  - "../specs/20260708_issue-130_sc04-wiki-access.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, SC-04, UC-07]
+adrs: []
+iadrs: []
+specs: [01_screens, 20260708_issue-130_sc04-wiki-access, IADR-0020_wiki-js-deployment-abac-gateway]
+issues: []
+-->
 
-# 画面仕様書: Wiki 閲覧画面（SC-04）
+# 画面仕様書: Wiki 閲覧画面
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-04 Wiki 閲覧画面**（[05_screens/01_screens.md](../../planning/projects/microservices-platform/05_screens/01_screens.md)）
+- 画面（SC）: **SC-04 Wiki 閲覧画面**（05_screens/01_screens.md（計画リポ））
 - 関連ユースケース（UC）: **UC-07** ／ 関連機能要求（FR）: **FR-13**
 - 関連 ADR: [[IADR-0020]]（Wiki.js デプロイ・ABAC ゲートウェイ）
 

@@ -2,22 +2,24 @@
 title: システム構成図（microservices-platform 基盤 + knowledge ユニット）
 type: tech-architecture
 status: draft
-related_ids: [ADR-0001, ADR-0002, ADR-0003, ADR-0027, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, IADR-0026, IADR-0056]
-author: endazon (with Claude Code)
 created: 2026-07-16
 updated: 2026-08-08
-plan_refs:
-  - ../../planning/projects/microservices-platform/06_technical/01_architecture-overview.md
-  - ../../planning/projects/microservices-platform/06_technical/02_service-decomposition.md
-  - ../../planning/projects/microservices-platform/07_adr/ADR-0019_unit-first-repo-structure.md
+author: endazon (with Claude Code)
 ---
+<!-- trace:
+ids: []
+adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0027]
+iadrs: [IADR-0017, IADR-0026, IADR-0056]
+specs: [01_architecture-overview, 02_service-decomposition, ADR-0019_unit-first-repo-structure]
+issues: []
+-->
 
 # システム構成図: microservices-platform（基盤 + knowledge ユニット）
 
 > 本書はマイクロサービスプラットフォーム基盤（platform ユニット）と、それに付随する可変機能
 > （knowledge ユニット）を俯瞰するシステム構成図である。上流計画書
-> [`01_architecture-overview.md`](../../planning/projects/microservices-platform/06_technical/01_architecture-overview.md)（fixed）
-> と [`02_service-decomposition.md`](../../planning/projects/microservices-platform/06_technical/02_service-decomposition.md)
+> `01_architecture-overview.md`（計画リポ）（fixed）
+> と `02_service-decomposition.md`（計画リポ）
 > を、現時点の実装（**11 サービス + BFF**・ユニット第一構成 ADR-0019/IADR-0056・.NET 10）に合わせて詳細化した。
 
 ## 起点となる計画書（トレーサビリティ）
@@ -25,7 +27,7 @@ plan_refs:
 - 技術検討: `06_technical/01_architecture-overview.md`、`02_service-decomposition.md`、`10_composability-design.md`
 - ADR: ADR-0001（マイクロサービス採用）、ADR-0002（サービス境界・Database per Service。実装で 11 サービス確定）、ADR-0003（MassTransit/RabbitMQ。Superseded by ADR-0027・注記は #580）、ADR-0004（ABAC 認可）、ADR-0009（ベクトル DB=Qdrant）、ADR-0010（LLM ゲートウェイ）、ADR-0011（Wiki エンジン）、ADR-0018（コンポーザブル）、ADR-0019（ユニット第一構成）
 - 実装 ADR: IADR-0026（Istio STRICT mTLS をサービス間認証の第一防御とする。IADR-0017「内部サービス認証・ネットワーク隔離」を Superseded し、ネットワーク隔離は多層防御へ格下げ）、IADR-0056（ユニット構成）
-- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（[03_tech-stack-selection.md](../../planning/projects/microservices-platform/06_technical/03_tech-stack-selection.md) 確定スタック一覧・[ADR-0020](../../planning/projects/microservices-platform/07_adr/ADR-0020_dotnet-10-upgrade.md)（Accepted・2026-07-23））。実装が先行していた経緯は [[IADR-0048]] と [draft/feedback/20260709_dotnet10-target-framework-deviation](../../planning/draft/feedback/20260709_dotnet10-target-framework-deviation.md) に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
+- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（03_tech-stack-selection.md（計画リポ） 確定スタック一覧・ADR-0020（計画リポ）（Accepted・2026-07-23））。実装が先行していた経緯は [[IADR-0048]] と draft/feedback/20260709_dotnet10-target-framework-deviation（計画リポ） に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
 
 ## 読み方（凡例）
 
@@ -33,7 +35,7 @@ plan_refs:
   SPA 基盤・共有契約/横断基盤を、機能ドメインから独立した再利用可能な土台として提供する。
 - **knowledge ユニット（付随する可変機能）** = 社内ナレッジの横断検索・AI 回答・Wiki 連携を提供する 9 サービス。
   基盤の上で組み替え可能な一機能ユニットであり、追加の可変機能ユニット（例: ai-stock-trading）と同じ枠組みで載る。
-- **依存規則**（ADR-0019）: 可変ユニット → platform は共有契約・横断基盤のみ参照可。platform → 可変ユニットは
+- **依存規則**: 可変ユニット → platform は共有契約・横断基盤のみ参照可。platform → 可変ユニットは
   合成点（フロント features 合成点・BFF エンドポイント合成点）のみ。
 - 実線 = 同期 API / 実装済みの連携。破線 = イベント・認可判定・エグレス等の非同期/横断連携。
 
@@ -210,7 +212,7 @@ sequenceDiagram
 ## デプロイ構成
 
 - **ローカル（dev）**: docker-compose（`deploy/docker-compose.yml`・`scripts/compose-up.sh`）。内部サービスは
-  `expose` のみでホスト非公開（IADR-0017）。公開は frontend(:3100) / BFF(:5000) / Keycloak(:8080) /
+  `expose` のみでホスト非公開。公開は frontend(:3100) / BFF(:5000) / Keycloak(:8080) /
   Wiki.js(:3001) / Grafana(:3000)。
 - **stg / prod**: Kubernetes（k3s・ADR-0008）＋ Helm / ArgoCD（GitOps・ADR-0007）、Istio サービスメッシュ
   （STRICT mTLS をサービス間認証の第一防御とする・ADR-0005 / IADR-0026）、NGINX Ingress。秘匿は Vault。イメージレジストリは Harbor。
@@ -220,7 +222,7 @@ sequenceDiagram
 
 ## 関連仕様
 
-- 上流計画（fixed）: [アーキテクチャ概要](../../planning/projects/microservices-platform/06_technical/01_architecture-overview.md)、[サービス分割設計](../../planning/projects/microservices-platform/06_technical/02_service-decomposition.md)
+- 上流計画（fixed）: アーキテクチャ概要（計画リポ）、サービス分割設計（計画リポ）
 - ユニット規約: [`src/README.md`](../../src/README.md)
 - 拡張ユニットの例: ai-stock-trading（`src/ai-stock-trading/` へ submodule リンク）の
-  [システム構成図](../../planning/projects/ai-stock-trading/06_technical/01_architecture-overview.md)
+  システム構成図（計画リポ）

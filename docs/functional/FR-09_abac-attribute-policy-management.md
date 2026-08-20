@@ -2,20 +2,17 @@
 title: 文書属性・タグ／ABAC ポリシー管理 機能仕様書
 type: functional-spec
 status: draft
-related_ids:
-  - FR-09
-  - SC-05
-  - SC-09
-  - UC-05
-  - IADR-0152
-  - IADR-0153
-author: claude
 created: 2026-07-02
 updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-09, SC-05, SC-09, UC-05]
+adrs: []
+iadrs: [IADR-0152, IADR-0153]
+specs: [01_requirements, ADR-0004_authz-abac]
+issues: []
+-->
 
 # 機能仕様書: 文書属性・タグ／ABAC ポリシー管理
 
@@ -128,9 +125,9 @@ BFF は `/bff/admin/authz/policies/validate`）。
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260702_FR-09_abac-attribute-policy-management.md`
+- 作業仕様書: `../../.ai-context/specs/20260702_FR-09_abac-attribute-policy-management.md`
 - テスト仕様書: `../tests/FR-09_abac-attribute-policy-management.md`
-- 実装 ADR: `../adr/IADR-0006_abac-management-validation.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0006_abac-management-validation.md`
 - 関連: `./FR-05_abac-access-control.md`（スコープ評価は本辞書・ポリシーを消費する）
 
 ## 未決事項

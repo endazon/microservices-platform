@@ -2,30 +2,17 @@
 title: セキュリティ仕様書
 type: security-spec
 status: in-progress
-related_ids:
-  - FR-05
-  - FR-09
-  - FR-11
-  - FR-13
-  - FR-15
-  - UC-07
-  - NFR
-  - ADR-0004
-  - ADR-0005
-  - ADR-0011
-author: claude
 created: 2026-07-02
 updated: 2026-08-17
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: セキュリティ・データ越境統制・監査ログ保持)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0005_service-mesh-istio.md"
-related_adrs:
-  - ../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md
-  - ../adr/IADR-0017_internal-service-auth-network-isolation.md
-  - ../adr/IADR-0020_wiki-js-deployment-abac-gateway.md
-  - ../adr/IADR-0009_wiki-browsing-404-hides-existence.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, SC-11, UC-07]
+adrs: [ADR-0004, ADR-0005, ADR-0011, ADR-0016]
+iadrs: [IADR-0017, IADR-0020, IADR-0021, IADR-0025, IADR-0026, IADR-0030, IADR-0216]
+specs: [01_requirements, ADR-0004_authz-abac, ADR-0005_service-mesh-istio, IADR-0009_wiki-browsing-404-hides-existence, IADR-0017_internal-service-auth-network-isolation, IADR-0020_wiki-js-deployment-abac-gateway, IADR-0026_mesh-mtls-supersedes-network-isolation]
+issues: [#100, #55, #629]
+-->
 
 # セキュリティ仕様書
 
@@ -42,18 +29,18 @@ related_adrs:
 
 ## 認証・認可
 
-- **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証（ADR-0004）。各サービスは `AddPlatformAuth` で JWT を検証する。
+- **認証**: Keycloak（OIDC/JWT）による Bearer トークン認証。各サービスは `AddPlatformAuth` で JWT を検証する。
 - **認可（サービス内 RBAC）**: FR-09 の管理系エンドポイント（属性辞書・ABAC ポリシーの CRUD／有効無効切替／削除）は
   `AdminOnly` ポリシー（`platform-admin` ロール必須）で保護する。ロール未保持は 403。ロール名・ポリシー名は
   `PlatformAuthPolicies` に定義。サービス間呼び出しの `POST /authz/scope`・`POST /authz/attributes/validate`
   は本ポリシーの対象外（認証のみ）。
-- **運用者ロール（FR-15, SC-11, IADR-0030）**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
+- **運用者ロール**: 構成情報の閲覧（構成情報 API `/bff/admin/config`・
   構成ビューア #113）は `ConfigViewer` ポリシー（`platform-admin` **または** `platform-operator`）で
   保護する。非権限（無認証を含む）には 404 で応答自体を秘匿する（IADR-0029・IADR-0009 の存在秘匿）。
   運用者（`platform-operator`）は構成閲覧のみ可能で、管理系操作（`AdminOnly`）は不可。ロールは
   Keycloak レルム（`deploy/keycloak/microservices-platform-realm.json`）に定義し、実ユーザーへの割当は
   運用作業とする。ポリシー判定は単体テスト（`ConfigViewerPolicyTests`）で検証（詳細:
-  [IADR-0030](../adr/IADR-0030_operator-role-and-config-viewer-policy.md)）。
+  IADR-0030: 運用者ロールは platform-operator を新設し ConfigViewer ポリシーで判定する）。
 - **ロールクレームの取得経路**: Keycloak はレルムロールを JWT の `realm_access.roles`（ネストした JSON クレーム）に
   格納する。標準の `JwtBearerHandler` はこれを `ClaimTypes.Role` へ展開しないため、`KeycloakRolesClaimsTransformation`
   （`IClaimsTransformation`）でトークン検証後に展開し、`RequireRole("platform-admin")` を成立させる。展開ロジックは
@@ -64,20 +51,20 @@ related_adrs:
   読み取りと手動同期は `platform-admin` または `platform-operator`。IADR-0039／IADR-0041）が、
   BFF 迂回のメッシュ内部直呼びに備え、**後段サービスにも同一のロール要件を二重化**する（サービスが最終防衛線）。
   - `DataSourceService` `/datasources`（一覧・登録・sync・無効化）: admin/operator 必須。
-  - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**（#629）。
+  - `DocumentService` 書き込み: **更新・メタデータ・公開・アーカイブ・削除は admin 必須**。
     **作成（`POST`）だけ admin/operator のまま据え置く** —— `ai-stock-trading` の KB 書き込みが
     BFF を経由せず直接叩いており、その service-account は `platform-operator` しか持たないためである
     （IADR-0075。計画へ裁定を依頼中）。**人間に対する境界は BFF 側（`AdminOnly`）で閉じている。**
     読み取り（GET）は一般利用者の文書閲覧のため据え置き（機密制御は取得段の ABAC が担う）。
   - 利用者トークンは BFF が後段へ伝播する（各 *BffEndpoints の `CreateForwardingClient`）。非権限は 403。
     否定テストは各サービスの `*AuthorizationTests` で検証。
-- **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う（FR-05, ADR-0004）。
+- **認可（ABAC 本体）**: 文書アクセスの属性ベース認可は `AbacEvaluator`（deny-by-default）が担う。
 - 未対応（フォローアップ, IADR-0044）: `ConversionService` `/jobs` の後段認可（認証基盤未導入・ingress 非公開で緩和。
   IADR-0042 §決定3）、文書作成時の付与属性が呼び出し者 ABAC スコープ内かの厳密検証（IADR-0041 見送り分）。
 
-### Wiki.js 前段の ABAC 強制点（FR-13 / UC-07 / IADR-0020）— ⚠️ 機密性の要点
+### Wiki.js 前段の ABAC 強制点— ⚠️ 機密性の要点
 
-閲覧・編集 UI の実体を **Wiki.js** に委譲する（[IADR-0020](../adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）。
+閲覧・編集 UI の実体を **Wiki.js** に委譲する（IADR-0020: Wiki.js を配備し WikiService を「同期・ABAC ゲートウェイ」へ縮退する）。
 Wiki.js の権限モデルは**ページ／グループ単位**であり、属性ベース（ABAC）の細粒度判定・deny-by-default・
 存在秘匿を代替できない（ADR-0011 も明記）。したがって ABAC は**本システムが単一の真実源**とし、
 **WikiService を Wiki.js の前段ゲートウェイ**として強制点を集約する。
@@ -106,14 +93,14 @@ Wiki.js の権限モデルは**ページ／グループ単位**であり、属�
   Wiki.js 本文を取得し、権限外・不存在・Wiki.js 未反映はいずれも 404 で存在秘匿する。稼働 Wiki.js を要する
   結合検証（GraphQL PoC）はフォローとして残る。
 
-### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする（IADR-0026 / #100）
+### サービス間（内部 API）の認証 — Istio STRICT mTLS を第一防御とする
 
 内部サービス API（例: DocumentService `/documents`、LlmGateway `/complete`・`/embed`、
 DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz/attributes/validate`）は
-「サービス間呼び出しのため認証対象外」として無認証で提供されている。これは **Istio mTLS（ADR-0005）を前提**にした
+「サービス間呼び出しのため認証対象外」として無認証で提供されている。これは **Istio mTLSを前提**にした
 設計であり、ADR-0005 の確定（2026-07-06）と Issue #100 の本番実行基盤配備により mTLS が実体化した。
 
-**方針（IADR-0026）**: サービス間認証の**第一防御は Istio STRICT mTLS**（ADR-0005）とする。
+**方針**: サービス間認証の**第一防御は Istio STRICT mTLS**とする。
 
 - `PeerAuthentication`（`mtls.mode: STRICT`）と `DestinationRule`（`ISTIO_MUTUAL`）を Helm で宣言し、
   ArgoCD が継続的に同期する（`deploy/helm/microservices-platform/templates/istio-mtls.yaml`）。
@@ -140,7 +127,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 | --- | --- | --- |
 | 保存時暗号化 | PostgreSQL（業務 DB）・MinIO（本文/資産）・Qdrant（ベクトル） | **アプリ層の暗号化は未実装（現状=なし）**。保存時暗号化はインフラ層（ストレージ/ボリューム暗号化・k8s Secret 暗号化）に委ねる方針で、実クラスタでの有効化・鍵管理は運用整備（未決事項・#198 と連動）。機微文書の機密性は ABAC（取得段 fail-closed）＋ Wiki `isPrivate` で担保する |
 | 通信時暗号化（外部→BFF） | クライアント〜エッジ | TLS（リバースプロキシ/Ingress で終端）。**ローカル検証環境（経路B）も含めて平文 HTTP を残さない** —— `NFR-11` の適用範囲は環境を問わない（利用者裁定 2026-08-16・裁定依頼 planning#383。証明書は計画 `ADR-0047` の selfsigned CA・[[IADR-0206]] / [[IADR-0220]]） |
-| 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化（ADR-0005 / IADR-0026）。NetworkPolicy を多層防御として併用 |
+| 通信時暗号化（サービス間） | 内部サービス間 | Istio STRICT mTLS で相互認証＋暗号化。NetworkPolicy を多層防御として併用 |
 | 個人情報 / 機微情報 | 文書本文・属性（機密区分）・利用者クレーム（clearance/department） | 文書の機密区分（`confidentiality`）は必須（サーバー側検証・[IADR-0047]）。ABAC で区分×利用者資格を deny-by-default 評価（[IADR-0012]）。高機密本文の外部 LLM への越境は egress ポリシーで遮断（confidential/restricted はセルフホスト固定・[IADR-0025]）。個人情報の専用マスキング/匿名化は現状スコープ外（本システムは社内文書が対象。取り込み対象データの PII 取り扱いは各データソース側の責務） |
 
 > **注（ADR 参照）**: 上表が参照する **[IADR-0047]（文書の機密区分のサーバー側検証）は PR #211（Issue #199）で新設され
@@ -210,7 +197,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 ## 監査ログ
 
 機微な取得・管理操作を構造化ログ（`Audit=true` プロパティ付与）として記録し、可観測性基盤
-（`ILogger` → OTel Logging SDK → OTLP。[IADR-0216](../adr/IADR-0216_otel-logging-sdk-replaces-serilog.md)）で
+（`ILogger` → OTel Logging SDK → OTLP。IADR-0216: ログの出口を Serilog から OTel Logging SDK へ移す）で
 監査として抽出可能にする（`IAuditLogger`・`Shared.Infrastructure/Foundation/Audit`。FR-15 / ADR-0004）。
 `Audit=true` を含む構造化プロパティが `LogRecord` の属性として保たれることは
 `Platform.Bff.Tests/PlatformLoggingTests.cs` が実測する（`ParseStateValues = true` による写像）。
@@ -227,19 +214,19 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
 
 | 脅威 | 影響 | 対策 |
 | --- | --- | --- |
-| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない（IADR-0017）。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保 |
+| 内部 API へのホストからの無認証到達 | 全文書メタデータ＋ABAC 属性の列挙、無認証 LLM 呼び出し | 内部サービスを host 公開しない。エッジ(BFF)で JWT 認証。回帰は `NetworkIsolationTests` で担保 |
 | 同一ネットワーク内からの内部 API 無認証到達（残余リスク） | ネットワーク内の侵害があれば内部 API へ到達可能 | **Istio STRICT mTLS 配備済み**（ADR-0005 Accepted / IADR-0026 / #100）でサイドカー未注入クライアントの平文到達を拒否し相互認証。k8s NetworkPolicy を多層防御として併用。残課題は内部 API での OIDC/JWT 検証（別 Issue で追跡） |
-| NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与（IADR-0021）。稼働 Wiki.js での分離検証は PoC フォロー |
+| NetworkPolicy 退行・誤設定による Wiki.js への直接到達 | 機密文書が Wiki.js 上で無条件閲覧可能に | ABAC ゲートウェイ＋ネットワーク分離に加え、機密区分由来の `isPrivate`（public 以外は非公開）を多層防御として付与。稼働 Wiki.js での分離検証は PoC フォロー |
 | 削除・非公開化された文書が Wiki.js に残存 | 撤回済み社内文書が外部システム（Wiki.js）に残り続ける | **削除・アーカイブ同期経路を実装済み**（[IADR-0023]）。`DocumentDeleted` 新設と `status=archived` 拡張で下流 WikiService が Wiki.js ページの撤去・非公開化・メタデータ Archived 化を伝播する。加えて `isPrivate`（public 以外は非公開・[IADR-0021]）を多層防御として維持 |
-| 高機密文書本文の外部埋め込み API への送信（FR-02 / ADR-0016 / IADR-0025） | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保 |
+| 高機密文書本文の外部埋め込み API への送信 | 取り込み時は本文全量を送るため露出が最大。confidential/restricted が外部（Voyage）へ出ると越境統制を破る | 埋め込み専用の越境ポリシー `EmbeddingEgress` で confidential/restricted を**ティアA（セルフホスト）固定**とし、外部（ティアB）を候補から除外。セルフホスト未有効なら**送信せず索引もしない（fail-closed）**。回帰は `EmbeddingEndpointTests`（外部プロバイダ未呼び出し）/ `DocumentUpdatedConsumerTests`（索引スキップ）で担保 |
 | 機密区分変更時の旧コレクション残存（ABAC バイパス） | 例 public→confidential 変更後、旧 voyage コレクションに本文が残り機密扱いの文書が低区分コレクションで検索ヒット | 取り込み冒頭で全モデル別コレクションから当該文書を削除してから再索引する（`DeleteByDocumentFromAllAsync`）。回帰は `DocumentUpdatedConsumerTests` で担保 |
 | Voyage AI のデータ保持・学習利用 | 送信本文が外部で保持・学習に利用される | 契約でゼロ保持（学習利用オプトアウト）を設定・確認してから本番データを流す（運用仕様書に記録）。未認定の間は Voyage 経路を無効化できる |
-| 検索クエリ文の外部埋め込み API への送信（FR-02 / FR-03 / ADR-0016 / IADR-0025） | 検索クエリの埋め込みは機密区分に依らず既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索は FR-03 の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
+| 検索クエリ文の外部埋め込み API への送信 | 検索クエリの埋め込みは機密区分に依らず既定外部経路（Voyage/1024次元）へ固定される（`Purpose=Query`）。検索対象コレクション（voyage/1024）と整合させるための意図的設計だが、利用者が入力するクエリ文自体に機密情報が含まれ得る | クエリ文は本文全量ではなく利用者入力の短文に限られ、Voyage 側のゼロ保持（学習利用オプトアウト）契約が本文と同じく適用される。高機密（ruri/768）コレクションの横断検索は FR-03 の後続課題であり、その設計時にクエリ側の機密区分ルーティング要否を再評価する（下記「未決事項」）。ゼロ保持未認定の間は Voyage 経路自体を無効化して受容する |
 
 ## 未決事項
 
 > **解消済み（2026-07-10 追従・#201）**: 以下は本節から解消した。
-> - サービス間 mTLS の導入（ADR-0005）→ **STRICT mTLS 配備済み**（[IADR-0026] / #100）。ADR-0004/0005 も **Accepted 確定**（2026-07-06）。
+> - サービス間 mTLS の導入→ **STRICT mTLS 配備済み**（[IADR-0026] / #100）。ADR-0004/0005 も **Accepted 確定**（2026-07-06）。
 > - Helm/k8s の NetworkPolicy（デフォルト拒否）追補 → **配備済み**（`templates/networkpolicy.yaml`）。
 > - Wiki.js 同期の削除・アーカイブ経路 → **実装済み**（[IADR-0023]）。
 
@@ -248,12 +235,12 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   別 Issue で追跡（[IADR-0026] §4）。暫定運用と NFR 草案の相違・フェーズ分けは
   `feedback/20260705_internal-service-auth-nfr-deviation.md` で計画側へ環流済み。
 - インフラ系（postgres/rabbitmq/keycloak/qdrant/grafana 等）の公開は開発環境限定。共有・ステージング・本番では公開しない運用の明文化。
-- RetrievalService `/search` の ABAC 取り扱い（#55）。
+- RetrievalService `/search` の ABAC 取り扱い。
 - 稼働 Wiki.js での GraphQL PoC（スキーマ整合・`isPrivate` ページのサービスアカウント本文取得可否・
   ネットワーク分離の CI/E2E 検証）。[IADR-0021] フォロー。
 - 保存時暗号化（PostgreSQL/MinIO/Qdrant）のインフラ層有効化・鍵管理（データ保護表参照。運用整備・#198 連動）。
 - コネクタ資格情報の Vault / External Secrets 移行（現状は DB 平文保存＋API 応答マスクの暫定。上記「§データソースのコネクタ資格情報」参照）。**一元追跡: #310**。
 - 監査ログの保管期間・改ざん防止・エクスポートの運用設定（可観測性基盤側。#198 連動）。NFR「監査ログ保持」の具体化。
-- 検索クエリ側の機密区分ルーティング（FR-02 / FR-03 / IADR-0025）。現状クエリ埋め込みは既定外部
+- 検索クエリ側の機密区分ルーティング。現状クエリ埋め込みは既定外部
   （Voyage/1024）へ固定。高機密（ruri/768）コレクションの横断検索を FR-03 で実装する際に、クエリ文の
   機密区分に応じたセルフホスト経路への切り替え要否（クエリ文自体の越境抑止）を再評価する。

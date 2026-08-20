@@ -2,16 +2,17 @@
 title: 文書CRUD・バージョン管理 機能仕様書
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-06
-  - UC-03
-author: claude
 created: 2026-07-04
 updated: 2026-07-04
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-06, UC-03]
+adrs: []
+iadrs: []
+specs: [01_requirements, 01_usecases]
+issues: [#201]
+-->
 
 # 機能仕様書: 文書CRUD・バージョン管理
 
@@ -93,17 +94,17 @@ stateDiagram-v2
 - [x] 作成・更新・公開・正規化取込のいずれでも `DocumentUpdated` を発行する。
 - [x] タイトル空白の作成は 400 を返す。
 
-> 検証（#201）: `DocumentVersioningTests`（ドメイン版管理）／`DocumentEndpointVersioningTests`（版・メタ・公開・
+> 検証: `DocumentVersioningTests`（ドメイン版管理）／`DocumentEndpointVersioningTests`（版・メタ・公開・
 > 409・400）／`DocumentLifecycleEventTests`（`DocumentUpdated`/`DocumentDeleted` 発行）／統合
 > `DocumentVersioningTests`。テスト仕様は `../tests/FR-06_document-crud-versioning.md`。
 
 ## 関連仕様
 
 - テスト仕様書: `../tests/FR-06_document-crud-versioning.md`
-- 作業仕様書: `../specs/20260627_FR-06_document-versioning-metadata.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-06_document-versioning-metadata.md`
 - 通信仕様書: `../api/openapi.yaml`（`/documents` 系）
 - データ仕様書: `../data/document-and-version.md`（`Document` / `DocumentVersion` エンティティ）
-- 実装ADR: `../adr/IADR-0001_document-service-owns-catalog.md`
+- 実装ADR: `../../.ai-context/adr/IADR-0001_document-service-owns-catalog.md`
 
 ## 未決事項
 

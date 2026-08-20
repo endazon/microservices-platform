@@ -2,20 +2,17 @@
 title: Wiki.js 稼働 PoC 実測記録（OIDC / GraphQL 同期）
 type: tech-note
 status: fixed
-related_ids:
-  - FR-13
-  - UC-07
-  - ADR-0011
-  - IADR-0021
-  - IADR-0023
-author: claude
 created: 2026-07-07
 updated: 2026-07-07
-plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md"
-related_specs:
-  - ../specs/20260707_issue-88-wikijs-verification-and-delete-sync.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, UC-07]
+adrs: [ADR-0011]
+iadrs: [IADR-0021, IADR-0023]
+specs: [20260707_issue-88-wikijs-verification-and-delete-sync, ADR-0011_wiki-engine]
+issues: []
+-->
 
 # Wiki.js 稼働 PoC 実測記録（Issue #88 スコープ1・2）
 

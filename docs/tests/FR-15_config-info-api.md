@@ -2,21 +2,17 @@
 title: FR-15 構成情報 API（実効構成・ドリフト検出） テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-15
-  - SC-11
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-15)"
-related_specs:
-  - ../functional/FR-15_config-info-api.md
-  - ../specs/20260707_FR-15_config-info-api-introspection-drift.md
-  - ../specs/20260708_issue-113_sc11-open-items-operator-role.md
-related_adrs:
-  - ADR-0018 / IADR-0029 / IADR-0030 / IADR-0009
+author: claude
 ---
+<!-- trace:
+ids: [FR-15, SC-11]
+adrs: [ADR-0018]
+iadrs: [IADR-0009, IADR-0029, IADR-0030]
+specs: [01_requirements, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, FR-15_config-info-api]
+issues: []
+-->
 
 # テスト仕様書: FR-15 構成情報 API（実効構成・ドリフト検出）
 

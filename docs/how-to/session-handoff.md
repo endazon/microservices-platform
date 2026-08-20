@@ -2,23 +2,21 @@
 title: 引継資料 — issue 消化フェーズ運用の現在地と、繰り返し起きる事故の型
 type: how-to
 status: active
-related_ids: [NFR, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0180]
-author: Claude
 created: 2026-08-08
 updated: 2026-08-17
-plan_refs: []
-related_specs:
-  - ../specs/20260808_session-handoff.md
-  - ../specs/20260815_issue-454_open-issue-stocktake-and-waves.md
-  - ../adr/IADR-0120_excluded-units-from-gitmodules.md
-  - ../adr/IADR-0180_blocked-judgments-expire.md
-  - ../adr/IADR-0141_audit-rounds-and-population-drawing.md
-  - ../adr/IADR-0116_reimplementation-branching-and-pr-policy.md
+author: Claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0180]
+specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, IADR-0116_reimplementation-branching-and-pr-policy, IADR-0120_excluded-units-from-gitmodules, IADR-0141_audit-rounds-and-population-drawing, IADR-0180_blocked-judgments-expire]
+issues: [#454, #572, #617, #701, #743, #752, #779, #780, #781, #782, #783]
+-->
 
 # 引継資料 — issue 消化フェーズ運用の現在地
 
-> **この文書の位置づけ**: 全面再実装（#454）の issue 消化を引き継ぐ人／AI が、**最初に読む 1 枚**である。
+> **この文書の位置づけ**: 全面再実装の issue 消化を引き継ぐ人／AI が、**最初に読む 1 枚**である。
 > 規約の正は `CLAUDE.md` と `.claude/rules/traceability.md`、決定の正は `docs/adr/` にある。
 > **ここへ規約や決定を転記しない** —— 転記すると正が動いたとき黙って腐る（[[IADR-0141]]「参照点を 1 つに畳む」）。
 > 本書が持つのは**現在地と、繰り返し起きている事故の型**だけである。
@@ -85,7 +83,7 @@ related_specs:
 > **★ #554 / #556 / #562 は、いったん「AI だけでは完結しない」として保留された。**
 > 根拠は当時の §4.5（`build` / E2E が動かない・`workflow` スコープが無い）だったが、
 > **それは環境固有の観測であって、リポジトリの制約ではなかった** —— 別環境では 3 件とも実施でき、
-> **同日中に着地した**。§4.5 はこの反省を受けて全面改稿してある（#617）。
+> **同日中に着地した**。§4.5 はこの反省を受けて全面改稿してある。
 > **「できない」と書かれていても、まず自分で実測すること。**
 
 > **★ #555 が採番で足止めされた記録**: 新設した `IADR-0146` に対し `IADR-0145` が **#612 の中にあり
@@ -100,16 +98,16 @@ related_specs:
 > **列を足さないこと** —— 人が更新する台帳を作れば、更新漏れという同じ失敗が別の場所で再発する（[[IADR-0120]]）。
 >
 > **層 a（判定・根拠・除外理由の正・不変）**:
-> [`docs/specs/20260815_issue-454_open-issue-stocktake-and-waves.md`](../specs/20260815_issue-454_open-issue-stocktake-and-waves.md)
+> [`docs/specs/20260815_issue-454_open-issue-stocktake-and-waves.md`](../../.ai-context/specs/20260815_issue-454_open-issue-stocktake-and-waves.md)
 
 | 波 | issue |
 | --- | --- |
-| **波 0** | 環境準備・blocked の測り直し・`decision-needed` の起票（#743 / #572 / #752） |
+| **波 0** | 環境準備・blocked の測り直し・`decision-needed` の起票 |
 | **波 1** | #747 / #749 |
 | **波 2** | #748 |
 | **波 3** | #756 → #757（直列） |
 | **波 4** | #754 / #493 |
-| **波 5** | XL 群（**依存順序と着手ゲートは層 a を見よ**）。うち **#442 は子 5 件へ分割済み**（#779 / #780 / #781 / #782 / #783）。**それ以外は子 issue を起票しない** |
+| **波 5** | XL 群（**依存順序と着手ゲートは層 a を見よ**）。うち **#442 は子 5 件へ分割済み**。**それ以外は子 issue を起票しない** |
 
 - **波は §1 の「フェーズ」と同じ単位である**（呼称だけを変えた）。
 - **上の行に現れない OPEN issue は波 5 に属する。** 親から切り出した子 issue は**親と同じ波**に属する。
@@ -205,7 +203,7 @@ related_specs:
 §3（履歴不変・`planning/` は pin のみ・`src/ai-stock-trading` を変更しない）は
 **どの環境でも破らない**。本節は**測れば変わりうる**。
 
-### ★★ 一度「できない」と書いた判定は、棚卸しのたびに測り直す（#701）
+### ★★ 一度「できない」と書いた判定は、棚卸しのたびに測り直す
 
 **判定は環境に依り、環境は変わる。したがって判定には賞味期限がある。**
 
@@ -333,7 +331,6 @@ ESLint flat config は**同一ルールを後勝ちで置換する**。新しい
 > - **能力の言明には、必ず「どう実測するか」を添える**（旧 §4.5 には実測コマンドが無かった）。
 > - **環境に依る制約と、リポジトリの制約を同じ表に混ぜない**（前者は §4.5・後者は §3）。
 > - **「できない」と書かれているものを見たら、まず自分で実測する。**
-
 
 ## 6. 裁定・方針決定が要る論点（実装側では決められない）
 

@@ -2,16 +2,17 @@
 title: データソース登録・同期・カタログ化 テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - FR-01
-  - UC-04
-author: claude
 created: 2026-07-04
 updated: 2026-08-15
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-01, FR-05, UC-04]
+adrs: []
+iadrs: [IADR-0019, IADR-0044, IADR-0051, IADR-0053, IADR-0054, IADR-0055]
+specs: [01_requirements, 01_usecases]
+issues: [#195, #217, #218, #219, #534, #537]
+-->
 
 # テスト仕様書: データソース登録・同期・カタログ化
 
@@ -46,23 +47,23 @@ plan_refs:
 | T-02 | 同上 | `POST /datasources`（sourceType=SharePoint, config={}）で登録後、`POST /datasources/{id}/sync` | 同期が 202 Accepted・`LastSyncedAt` 記録（未対応 SourceType は縮退。発行は行われない） | 同期トリガ（配線） | 自動 |
 | T-03 | サービス起動（実バックエンド不要、TestWebApplicationFactory） | `GET /datasources` | 200 OK（一覧取得の配線確認） | データソース一覧 | 自動 |
 | T-04 | 同上 | `GET /health/live` | 200 OK（稼働性・個別デプロイの前提） | 個別デプロイ・稼働性 | 自動 |
-| T-05 | 一時ディレクトリに対応ファイル（.md/.txt/.docx）＋非対応（.bin/.png） | `FileSystemConnector.DiscoverAsync`（since=null） | 対応形式のみ列挙・非対応は除外（フルスキャン） | 実コネクタ列挙（#195/IADR-0051） | 自動（単体） |
-| T-06 | 一時ディレクトリに新旧ファイル（更新日時差） | `DiscoverAsync(since=watermark)` | watermark 以前（含む同時刻）を除外し差分のみ返す | 増分同期（#195） | 自動（単体） |
-| T-07 | 列挙済み対象 | `FetchAsync` | 原本バイト列と content-type を返す | 原本取得（#195） | 自動（単体） |
-| T-08 | ルート未存在／smb:// で rootPath 未指定 | `DiscoverAsync` | 例外にせず空列挙で縮退 | 縮退（#195） | 自動（単体） |
-| T-09 | filesystem データソース＋一時 dir に実ファイル | `POST /{id}/sync` | 202・実 `OriginalPath`/`ContentType`・既定属性（confidentiality）付き `RawDocumentFetched` 発行 | 実同期・属性 Map（#195/FR-05） | 自動（エンドポイント） |
-| T-10 | 未登録 SourceType（架空種別 `unknown-source`。filesystem/wiki/saas/db は登録済みのため恒久的に未登録の値を用いる） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未登録型の縮退（#195） | 自動（エンドポイント） |
-| T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分（#217/IADR-0053） | 自動（単体・fake HTTP） |
-| T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得（#217） | 自動（単体・fake HTTP） |
-| T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動（#217） | 自動（単体・fake HTTP） |
+| T-05 | 一時ディレクトリに対応ファイル（.md/.txt/.docx）＋非対応（.bin/.png） | `FileSystemConnector.DiscoverAsync`（since=null） | 対応形式のみ列挙・非対応は除外（フルスキャン） | 実コネクタ列挙 | 自動（単体） |
+| T-06 | 一時ディレクトリに新旧ファイル（更新日時差） | `DiscoverAsync(since=watermark)` | watermark 以前（含む同時刻）を除外し差分のみ返す | 増分同期 | 自動（単体） |
+| T-07 | 列挙済み対象 | `FetchAsync` | 原本バイト列と content-type を返す | 原本取得 | 自動（単体） |
+| T-08 | ルート未存在／smb:// で rootPath 未指定 | `DiscoverAsync` | 例外にせず空列挙で縮退 | 縮退 | 自動（単体） |
+| T-09 | filesystem データソース＋一時 dir に実ファイル | `POST /{id}/sync` | 202・実 `OriginalPath`/`ContentType`・既定属性（confidentiality）付き `RawDocumentFetched` 発行 | 実同期・属性 Map | 自動（エンドポイント） |
+| T-10 | 未登録 SourceType（架空種別 `unknown-source`。filesystem/wiki/saas/db は登録済みのため恒久的に未登録の値を用いる） | `POST /{id}/sync` | 202・`connectorAvailable=false`・`fetched=0`・発行なし（縮退） | 未登録型の縮退 | 自動（エンドポイント） |
+| T-11 | Wiki（汎用契約）一覧 API がページ配列を返す | `WikiConnector.DiscoverAsync`（since=null / since=watermark） | 全件列挙／`updatedAt>since` で増分 | Wiki 列挙・増分 | 自動（単体・fake HTTP） |
+| T-12 | Wiki 本文 API が Markdown を返す | `WikiConnector.FetchAsync` | 本文バイト＋content-type（応答ヘッダ） | Wiki 取得 | 自動（単体・fake HTTP） |
+| T-13 | `Config.apiToken` 設定・`listPath` 設定 | `DiscoverAsync` | `Authorization: Bearer` 送出／設定パスへ GET | Wiki 認証・設定駆動 | 自動（単体・fake HTTP） |
 | T-14 | 一覧 API が 5xx／ConnectionUri 未設定 | `DiscoverAsync` | 5xx は例外送出（watermark 非前進）／未設定は空列挙で縮退 | Wiki 失敗時挙動（#217/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
-| T-15 | SaaS 一覧 API が nextCursor で複数ページを返す | `SaaSConnector.DiscoverAsync` | 全ページをカーソルで集約・`updatedAt>since` で増分 | SaaS ページング・増分（#218/IADR-0054） | 自動（単体・fake HTTP） |
-| T-16 | SaaS 一覧 API が 429（Retry-After:0）→200 | `DiscoverAsync` | Retry-After に従い再試行して成功（2 リクエスト） | SaaS レート制限バックオフ（#218） | 自動（単体・fake HTTP） |
+| T-15 | SaaS 一覧 API が nextCursor で複数ページを返す | `SaaSConnector.DiscoverAsync` | 全ページをカーソルで集約・`updatedAt>since` で増分 | SaaS ページング・増分 | 自動（単体・fake HTTP） |
+| T-16 | SaaS 一覧 API が 429（Retry-After:0）→200 | `DiscoverAsync` | Retry-After に従い再試行して成功（2 リクエスト） | SaaS レート制限バックオフ | 自動（単体・fake HTTP） |
 | T-17 | SaaS 一覧 API が 429 継続（maxRetries=1） | `DiscoverAsync` | 上限超過で例外送出（watermark 非前進） | SaaS 上限超過（#218/IADR-0051 決定3a） | 自動（単体・fake HTTP） |
-| T-18 | SaaS 本文 API が Markdown／`Config.apiToken`／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／`Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退（#218） | 自動（単体・fake HTTP） |
-| T-19 | 業務DB クエリが行を返す（fake ADO.NET） | `DatabaseConnector.DiscoverAsync`（since=null / watermark / ISO8601文字列） | 全行を id/updated へマッピング・`updated>since` で増分・文字列日時も正規化 | DB 行→文書・増分（#219/IADR-0055） | 自動（単体・fake ADO.NET） |
-| T-20 | 業務DB 本文スカラを返す | `DatabaseConnector.FetchAsync` | 本文バイト＋content-type・id は `@id` パラメータで渡す | DB 取得・パラメータ化（#219） | 自動（単体・fake ADO.NET） |
-| T-21 | `Config.query`／`ConnectionUri` 未設定 | `DiscoverAsync` | 空列挙で縮退（接続しない） | DB 縮退（#219） | 自動（単体・fake ADO.NET） |
+| T-18 | SaaS 本文 API が Markdown／`Config.apiToken`／未設定 | `FetchAsync`/`DiscoverAsync` | 本文＋content-type／`Bearer` 送出／未設定は空列挙 | SaaS 取得・認証・縮退 | 自動（単体・fake HTTP） |
+| T-19 | 業務DB クエリが行を返す（fake ADO.NET） | `DatabaseConnector.DiscoverAsync`（since=null / watermark / ISO8601文字列） | 全行を id/updated へマッピング・`updated>since` で増分・文字列日時も正規化 | DB 行→文書・増分 | 自動（単体・fake ADO.NET） |
+| T-20 | 業務DB 本文スカラを返す | `DatabaseConnector.FetchAsync` | 本文バイト＋content-type・id は `@id` パラメータで渡す | DB 取得・パラメータ化 | 自動（単体・fake ADO.NET） |
+| T-21 | `Config.query`／`ConnectionUri` 未設定 | `DiscoverAsync` | 空列挙で縮退（接続しない） | DB 縮退 | 自動（単体・fake ADO.NET） |
 | T-22 | 業務DB がエラーを返す | `DiscoverAsync` | 例外送出（watermark 非前進） | DB 失敗時挙動（#219/IADR-0051 決定3a） | 自動（単体・fake ADO.NET） |
 | T-23 | `updated` 列が NULL の行を含む | `DiscoverAsync` | 当該行のみスキップ＋警告・同期全体は成功 | DB 不正行の縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
 | T-24 | Fetch 対象 id が存在しない（消えた行） | `FetchAsync` | 例外にせず空本文へ縮退 | DB 該当なしの縮退（#219・claude-review #224） | 自動（単体・fake ADO.NET） |
@@ -74,17 +75,17 @@ plan_refs:
 | T-30 | 登録済みソース | `PUT /datasources/{id}` | 200・項目が置換され **`id` / `createdAt` / `lastSyncedAt` は不変**（削除→再登録との違い） | 更新が ID と履歴を切らない（#534 / 裁定 Q16） | 自動（エンドポイント） |
 | T-31 | `defaultAttributes` を省略した更新 | `PUT /datasources/{id}` | **必須属性 4 種**が補完される（`internal` / `system` / `unassigned` / `active`） | 更新でも fail-closed を割らない（#534 / FR-05 / IADR-0019 / **#516・[[IADR-0199]]**） | 自動（エンドポイント） |
 | T-32 | 一部項目だけを送る | `PATCH /datasources/{id}` | 省略した項目が現状維持される | 部分更新の意味論（#534 / 裁定 Q16） | 自動（エンドポイント） |
-| T-33 | `config` を省略した `PATCH` | `PATCH /datasources/{id}` | 保存された `config` の秘密が `***` で潰れない | 読んで書き戻す往復事故の防止（#534 / IADR-0053） | 自動（エンドポイント） |
-| T-34 | 存在しない ID | `PUT` / `PATCH` | 404 | 更新の対象不在（#534） | 自動（エンドポイント） |
-| T-35 | `disabled` なソース | `PATCH /datasources/{id}` | 更新できる（`status` は変わらない） | 無効中の認証情報ローテーション（#534） | 自動（エンドポイント） |
-| T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画 §SC-06「登録・更新・無効化は管理者限定」（#534 / IADR-0044） | 自動（エンドポイント） |
+| T-33 | `config` を省略した `PATCH` | `PATCH /datasources/{id}` | 保存された `config` の秘密が `***` で潰れない | 読んで書き戻す往復事故の防止 | 自動（エンドポイント） |
+| T-34 | 存在しない ID | `PUT` / `PATCH` | 404 | 更新の対象不在 | 自動（エンドポイント） |
+| T-35 | `disabled` なソース | `PATCH /datasources/{id}` | 更新できる（`status` は変わらない） | 無効中の認証情報ローテーション | 自動（エンドポイント） |
+| T-36 | 運用者ロール／非権限ロール | `PUT` / `PATCH` | **403**（閲覧は許可されるが更新は管理者限定） | 計画 §SC-06「登録・更新・無効化は管理者限定」 | 自動（エンドポイント） |
 | T-37 | `config` / `defaultAttributes` を**省略**した `PUT` | `PUT /datasources/{id}` | **400**。実体は無傷（秘密が残る） | 全置換の省略を許すと送り忘れで秘密が消える（#627 レビュー 🟡 / [[IADR-0148]] 決定 6-b） | 自動（エンドポイント） |
 | T-38 | `config: {}` を**明示**した `PUT` | `PUT /datasources/{id}` | 200・`Config` が空になる | **明示的な消去は許す**（過剰に守らない。同上） | 自動（エンドポイント） |
 | T-39 | 既定属性が空 | `DataSource.Create` | **必須属性 4 種**が終端値（`internal` / `system` / `unassigned` / `active`）で入る | 必須属性を欠落させない（#516 / [[IADR-0199]] 決定 1） | 自動（単体） |
 | T-40 | `owner` / `department` を明示 | `DataSource.Create` | 明示値が保持され、予約値で**上書きされない** | 明示指定は上書きしない（計画確定 planning#344） | 自動（単体） |
 | T-41 | 値が空白のみ（`owner` / `department`） | `DataSource.Create` | 「未設定」と同じ扱いで予約値が入る | 空白を値とみなさない（現行 `confidentiality` と同一規約） | 自動（単体） |
 | T-42 | `Update` / `Patch` / `GetEffectiveAttributes` の各経路 | 同左 | **いずれも同じ補完結果**になる | 4 経路の一元化の退行防止。**1 箇所漏れると「登録時は付くが更新で消える」**（[[IADR-0199]] 決定 1） | 自動（単体） |
-| T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | **必須属性 4 種**が補完される | **最終防衛線**（IADR-0019）。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
+| T-43 | 補完を一度も通っていない旧行（EF の materialize を反射で再現） | `GetEffectiveAttributes` | **必須属性 4 種**が補完される | **最終防衛線**。公開 API 経由では旧状態を作れないため反射で作る | 自動（単体） |
 | T-44 | 既定属性が空 | `DataSource.Create` | `lifecycle` が **`active`** になる | 終端の既定（裁定 planning#361・案 C ＋ 終端 active。[[IADR-0199]] 決定 4）。**従前は「付かない」ことを固定する否定形だったが、裁定が下りたので反転させた** | 自動（単体） |
 | T-45 | `lifecycle` を明示（`draft`） | `DataSource.Create` | 明示値が保持される | ソース単位で下書き扱いにできる（終端は指定が無いときだけ効く） | 自動（単体） |
 
@@ -101,18 +102,18 @@ plan_refs:
 ## 関連仕様
 
 - 機能仕様書: `../functional/FR-01_data-source-catalog.md`
-- 作業仕様書: `../specs/20260627_FR-01_data-source-catalog-pipeline.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-01_data-source-catalog-pipeline.md`
 - データ仕様書: `../data/data-source.md`
-- 実装 ADR: `../adr/IADR-0001_document-service-owns-catalog.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0001_document-service-owns-catalog.md`
 - テストコード: `src/knowledge/backend/Tests/Knowledge.IntegrationTests/DataSourceService/DataSourceTests.cs`, `src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/HealthEndpointTests.cs`
-- コネクタ/同期テスト（#195）: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
-- Wiki コネクタテスト（#217）: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
-- SaaS コネクタテスト（#218）: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
-- 業務DB コネクタテスト（#219）: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
-- 同期健全性（#537）: `.../DataSourceService.Api.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
-- 更新 API（#534）: `.../DataSourceService.Api.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
-- BFF の中継（#534 / #537）: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
-- 実装 ADR（追加）: `../adr/IADR-0051_datasource-connector-port-and-filesystem.md`
+- コネクタ/同期テスト: `.../DataSourceService.Api.Tests/FileSystemConnectorTests.cs`（T-05〜T-08）、`.../DataSourceSyncEndpointTests.cs`（T-09〜T-10）、`.../DataSourceSyncServiceTests.cs`（watermark 非前進）
+- Wiki コネクタテスト: `.../DataSourceService.Api.Tests/WikiConnectorTests.cs`（T-11〜T-14・fake HttpMessageHandler）
+- SaaS コネクタテスト: `.../DataSourceService.Api.Tests/SaaSConnectorTests.cs`（T-15〜T-18・fake HttpMessageHandler）
+- 業務DB コネクタテスト: `.../DataSourceService.Api.Tests/DatabaseConnectorTests.cs`（T-19〜T-25・ハンドロール ADO.NET フェイク）
+- 同期健全性: `.../DataSourceService.Api.Tests/DataSourceSyncServiceTests.cs`（T-26〜T-28）、`.../SyncErrorRedactorTests.cs`（T-29）
+- 更新 API: `.../DataSourceService.Api.Tests/DataSourceUpdateEndpointTests.cs`（T-30〜T-35）、`.../DataSourceAuthorizationTests.cs`（T-36）
+- BFF の中継: `src/platform/backend/Bff/Platform.Bff.Tests/BffDataSourceEndpointTests.cs`（健全性の透過・`PUT` / `PATCH` の転送・運用者の 403）
+- 実装 ADR（追加）: `../../.ai-context/adr/IADR-0051_datasource-connector-port-and-filesystem.md`
 
 ## 未決事項
 

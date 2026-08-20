@@ -2,21 +2,17 @@
 title: テスト仕様書 — FR-12 原本の正規化変換
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-12
-  - UC-06
-author: claude
 created: 2026-07-03
 updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-12)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-06)"
-related_specs:
-  - ../specs/20260703_FR-12_document-normalization-pipeline.md
-  - ../functional/FR-12_document-normalization.md
-  - ../adr/IADR-0008_conversion-ports-deny-by-default-and-idempotent-id.md
-  - ../adr/IADR-0162_openapi-required-request-vs-response.md
+author: claude
 ---
+<!-- trace:
+ids: [FR-12, UC-06]
+adrs: []
+iadrs: [IADR-0104, IADR-0162]
+specs: [01_requirements, 01_usecases, 20260703_FR-12_document-normalization-pipeline, FR-12_document-normalization, IADR-0008_conversion-ports-deny-by-default-and-idempotent-id, IADR-0162_openapi-required-request-vs-response]
+issues: [#118, #379, #506, #520, #525, #658]
+-->
 
 # テスト仕様書: FR-12 原本の正規化変換
 
@@ -39,9 +35,9 @@ related_specs:
 | T-09 | pandoc 変換 | pandoc 導入環境でローカル Markdown 原本を実変換し本文を返す | 本文に原本タイトルが出現、図0件 | FR-12 本文変換 / `PandocConversionServiceTests` |
 | T-10 | pandoc デグレード | pandoc 未導入／原本がローカル解決不能ならプレースホルダ本文（図0件） | 本文にファイル名が出現、`Figures` 空 | FR-12 例外 E1 |
 | T-11 | 完了イベント | 変換後に `DocumentNormalized` が発行され後続へ連鎖する | Published = true、`MarkdownUri` 非空 | FR-12 連鎖 / `RawDocumentFetchedConsumerTests` |
-| T-12 | **画像保持（モデル拒否）（IADR-0104 / #379）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | FR-11・FR-12 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
+| T-12 | **画像保持（モデル拒否）** | `stopReason="refusal"`（送信は成立したがモデルが拒否）は本文が空で返るためフェンスも無いが、T-02 の「コード化不能」と混同せず拒否として記録する。縮退先（画像保持）は不変 | `Coded=false`、`Reason="llm-refused"`（`not-codeable` でない） | FR-11・FR-12 / `LlmGatewayDiagramCoderTests.Retains_with_refusal_reason_when_model_refuses` |
 
-| T-13 | **契約の必須性（#658 / IADR-0162）** | `ConversionJobDto` の `diagramsCoded` / `diagramsRetained` / `hasCorrection` は C# が非 null（既定値つき）であり、応答本文には必ず出る。契約の `required` がこれと一致すること | `check-openapi-dto-drift` が違反 0。`required` から 1 つ外すと**落ちる**（変異 M1） | FR-12 / IADR-0132 決定 1・2 / `scripts/check-openapi-dto-drift.js` |
+| T-13 | **契約の必須性** | `ConversionJobDto` の `diagramsCoded` / `diagramsRetained` / `hasCorrection` は C# が非 null（既定値つき）であり、応答本文には必ず出る。契約の `required` がこれと一致すること | `check-openapi-dto-drift` が違反 0。`required` から 1 つ外すと**落ちる**（変異 M1） | FR-12 / IADR-0132 決定 1・2 / `scripts/check-openapi-dto-drift.js` |
 
 ## 補足
 
@@ -50,6 +46,6 @@ related_specs:
 - `PandocConversionServiceTests` は pandoc の導入有無が環境依存のため、前提を満たさないケースはソフトスキップする。
 - **T-13 は C# のテストではなく検査器で持つ**（`scripts.repo.test.js` が CI から起動する）。
   契約と C# の一致は**個々の実行時挙動ではなく静的な突合**で確かめるのが確実であり、
-  同型の事故（#118 / #506 / #520 / #525）はいずれも実行時テストでは捕まっていない。
+  同型の事故はいずれも実行時テストでは捕まっていない。
 - 実 pandoc 変換（docx 等の実原本・実図抽出）、実オブジェクトストレージ、Vision 画像入力に対する結合試験は
   別タスク（フォローアップ、IADR-0008「スコープ外」参照）で扱う。

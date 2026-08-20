@@ -2,19 +2,17 @@
 title: SC-04 Wiki 閲覧導線 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - SC-04
-  - UC-07
-  - FR-13
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-related_specs:
-  - "../screens/SC-04_wiki-access.md"
-  - "../specs/20260708_issue-130_sc04-wiki-access.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, SC-04, UC-07]
+adrs: []
+iadrs: []
+specs: [01_screens, 20260708_issue-130_sc04-wiki-access, SC-04_wiki-access]
+issues: []
+-->
 
 # テスト仕様書: SC-04 Wiki 閲覧導線
 

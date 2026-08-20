@@ -2,27 +2,23 @@
 title: 固定/可変 区分表（実装版）— コンポーザビリティ対応の棚卸し
 type: tech
 status: completed
-related_ids:
-  - FR-14
-  - FR-15
-  - ADR-0018
-author: claude
 created: 2026-07-08
 updated: 2026-07-08
-plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
-  - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
-related_specs:
-  - ../specs/20260708_issue-102_composability-fixed-variable-separation.md
-  - ../adr/IADR-0027_composability-folder-structure.md
-  - ../api/openapi.yaml
+author: claude
 ---
+<!-- trace:
+ids: [FR-14, FR-15]
+adrs: [ADR-0018]
+iadrs: [IADR-0023, IADR-0027]
+specs: [10_composability-design, 20260708_issue-102_composability-fixed-variable-separation, ADR-0018_composable-architecture, IADR-0027_composability-folder-structure, openapi.yaml]
+issues: []
+-->
 
 # 固定/可変 区分表（実装版）
 
-Issue #102（FR-14/FR-15, ADR-0018）の作業項目 1「棚卸し」の成果物である。
+Issue #102の作業項目 1「棚卸し」の成果物である。
 FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定（土台）/ 可変（組み替え可能）」区分へ分類する。
-コード上の配置規約（`Foundation/` / `Composable/`）は [IADR-0027](../adr/IADR-0027_composability-folder-structure.md) を参照。
+コード上の配置規約（`Foundation/` / `Composable/`）は IADR-0027: 固定/可変分離のフォルダ・名前空間規約（Foundation / Composable） を参照。
 
 ## 1. 同期呼び出し関係（すべて固定）
 
@@ -51,7 +47,7 @@ FR-01〜13 実装済みコードの依存を洗い出し、ADR-0018 の「固定
 | RawDocumentFetched | DataSourceService（同期 API 内） | ConversionService.RawDocumentFetchedConsumer | パイプライン起点 |
 | DocumentNormalized | ConversionService | DocumentService.DocumentNormalizedConsumer | 正規化完了 |
 | DocumentUpdated | DocumentService | IngestionService.DocumentUpdatedConsumer / WikiService.DocumentSyncConsumer | ファンアウト |
-| DocumentDeleted | DocumentService | WikiService.DocumentDeletedConsumer | 削除伝播（IADR-0023） |
+| DocumentDeleted | DocumentService | WikiService.DocumentDeletedConsumer | 削除伝播 |
 | IngestionCompleted | IngestionService | （現在購読者なし） | 完了通知 |
 | IngestionRequested | （現在発行者なし） | — | 契約のみ定義済み |
 

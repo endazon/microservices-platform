@@ -2,32 +2,17 @@
 title: SC-11 構成ビューア テスト仕様書
 type: test-spec
 status: completed
-related_ids:
-  - SC-11
-  - FR-15
-  - IADR-0009
-  - IADR-0029
-  - IADR-0030
-  - IADR-0036
-  - IADR-0046
-  - IADR-0129
-author: claude
 created: 2026-07-08
 updated: 2026-08-05
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-related_specs:
-  - "../screens/SC-11_configuration-viewer.md"
-  - "../adr/IADR-0129_sc09-11-admin-ops-screen-composition.md"
-  - "../adr/IADR-0009_wiki-browsing-404-hides-existence.md"
-  - "../adr/IADR-0029_config-info-api-placement-and-drift-granularity.md"
-  - "../adr/IADR-0030_operator-role-and-config-viewer-policy.md"
-  - "../adr/IADR-0035_frontend-role-based-nav-and-existence-hiding.md"
-  - "../adr/IADR-0036_sc11-config-viewer-visualization.md"
-  - "../adr/IADR-0046_config-version-history-source.md"
-  - "../specs/20260805_issue-504_sc09-11-admin-ops-screens.md"
+author: claude
 ---
+<!-- trace:
+ids: [FR-15, SC-11]
+adrs: [ADR-0031]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0129]
+specs: [01_screens, 05_observability-ops, 20260805_issue-504_sc09-11-admin-ops-screens, IADR-0009_wiki-browsing-404-hides-existence, IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0030_operator-role-and-config-viewer-policy, IADR-0035_frontend-role-based-nav-and-existence-hiding, IADR-0036_sc11-config-viewer-visualization, IADR-0046_config-version-history-source, IADR-0129_sc09-11-admin-ops-screen-composition, SC-11_configuration-viewer]
+issues: []
+-->
 
 # テスト仕様書: SC-11 構成ビューア
 
@@ -52,7 +37,7 @@ E2E は `src/platform/frontend/e2e/sc11-config.smoke.spec.ts`
 - 画面（SC）: SC-11 ／ 機能要求（FR）: **FR-15**（構成の可視化・ドリフト検出・管理者/運用者限定）／
   ユースケース（UC）: **—（運用・保守要求）**
 - 受け入れ基準の所在: issue #504 §受け入れ基準 ／ 作業仕様書
-  [20260805_issue-504](../specs/20260805_issue-504_sc09-11-admin-ops-screens.md) §受け入れ基準／
+  仕様書: SC-09〜11 の新スタックでの再実装（管理者設定・運用ダッシュボード・構成ビューア） §受け入れ基準／
   旧 issue #137（グラフ）・#138（ドリフト）・#139（履歴）・#140（アクセス制御）
 
 ## 旧テストケース（T-01〜T-18）との対応
@@ -99,7 +84,7 @@ E2E は `src/platform/frontend/e2e/sc11-config.smoke.spec.ts`
 | 13 | **実効構成が無ければ他も出さない** | [[IADR-0129]] 決定 5 | 構成が取れないとき、ドリフト・履歴の領域を描かず、**ヘッダのドリフトバッジも出さない**（何に対する差分か読めないため）。**404〔秘匿〕と 5xx〔障害〕の両方**で見る（**観点 13 だけはテスト 2 本**） |
 | 14 | **参照専用** | 計画 §入力 | 画面上のボタンは**再取得の 1 つだけ**。**先に再取得ボタンと注記が在ることを確かめてから**構成変更の操作が無いことを見る |
 | 15 | 再取得 | — | 3 本を取り直す（`invalidateQueries` のみ。手書きの再取得を持たない） |
-| 16 | ロケール `en` | ADR-0031 | 見出しが英語で描画される |
+| 16 | ロケール `en` | —| 見出しが英語で描画される |
 
 ## アクセス制御・存在秘匿（`access.test.tsx`。**#140 の観点を引き継ぐ**）
 
@@ -186,3 +171,7 @@ E2E は `src/platform/frontend/e2e/sc11-config.smoke.spec.ts`
 
 - なし（**ドリフト判定の粒度**は [[IADR-0029]] の既定を据え置く。
   `docs/api/openapi.yaml` への `/bff/admin/config` 群の追加は #506 の射程）。
+
+<!-- trace-table:
+row1: ADR-0031
+-->
