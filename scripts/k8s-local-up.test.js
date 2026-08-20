@@ -1609,7 +1609,7 @@ ok('#780: Keycloak は websecure(443) の keycloak.localhost へ出る（admin:5
   assert.strictEqual(field(doc, 'namespace'), 'platform-infra', 'Keycloak の実体と同じ namespace でない');
   assert.ok(/host:\s*keycloak\.localhost\s*$/m.test(doc), 'host が keycloak.localhost でない');
   // ★ admin(50000) に置くと redirect URI が全クライアントで :50000 付きになり、
-  //   IADR-0103 の改定と 7 クライアントの追記に波及する（#780 が意図的にスコープ外にした）。
+  //   IADR-0220 の改定と 7 クライアントの追記に波及する（#780 が意図的にスコープ外にした）。
   assert.ok(
     /router\.entrypoints:\s*websecure\s*$/m.test(doc),
     'entrypoint が websecure でない（admin:50000 に置くと 7 クライアントの redirect に波及する）',
