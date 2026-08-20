@@ -7,11 +7,11 @@ updated: 2026-08-21
 author: Claude
 ---
 <!-- trace:
-ids: []
-adrs: [ADR-0030]
+ids: [SC-05, SC-06, SC-07, SC-08]
+adrs: [ADR-0027, ADR-0030]
 iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195]
 specs: [01_requirements, 20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated]
-issues: [#454, #568, #571, #580]
+issues: [#454, #503, #510, #568, #571, #580, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -63,14 +63,14 @@ it('0 件のとき空状態を表示する', () => { ... })
 | --- | --- | --- | --- |
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
-| **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | **`docs/tests/` の仕様書ファイル × `src/**/*Tests.cs` のクラス**（AST を除く）の対 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にある対が消えた → **fail**（節の消失。**他の仕様書に同じクラスの記載が残っていても落ちる**——落ちるのは節であり、節は仕様書に属するため）。床にある対のクラスが実在しない → **fail**。記載された対が床に無い → **fail**（`--update` で上げる）。どの仕様書にも載らず床にも無いクラス → warn。走査 0 件・床が読めない → **fail**（IADR-0130: テスト仕様書の「節ごと落ちる」を、テストクラス単位の被覆 ratchet で機械検査する） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / IADR-0123: カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する。**生成コードも対象外**——EF（`Migrations/` 配下・`*ModelSnapshot.cs`）は [#571](https://github.com/endazon/microservices-platform/issues/571) / IADR-0138: カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す、**source generator の出力（`obj/` 配下）は [#574](https://github.com/endazon/microservices-platform/issues/574) / IADR-0195: カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 39` / `branch 27`）未満 → **fail**（IADR-0118: バックエンドのカバレッジ床 — 単一情報源・実測からの切り下げ・ratchet） |
-| **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（IADR-0034: フロントエンド カバレッジゲート） |
+| **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | **`docs/tests/` の仕様書ファイル × `src/**/*Tests.cs` のクラス**（AST を除く）の対 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にある対が消えた → **fail**（節の消失。**他の仕様書に同じクラスの記載が残っていても落ちる**——落ちるのは節であり、節は仕様書に属するため）。床にある対のクラスが実在しない → **fail**。記載された対が床に無い → **fail**（`--update` で上げる）。どの仕様書にも載らず床にも無いクラス → warn。走査 0 件・床が読めない → **fail**（テスト仕様書の「節ごと落ちる」を、テストクラス単位の被覆 ratchet で機械検査するという実装判断による） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する。**生成コードも対象外**——EF（`Migrations/` 配下・`*ModelSnapshot.cs`）は [#571](https://github.com/endazon/microservices-platform/issues/571) / カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す、**source generator の出力（`obj/` 配下）は [#574](https://github.com/endazon/microservices-platform/issues/574) / カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 39` / `branch 27`）未満 → **fail**（バックエンドのカバレッジ床（単一情報源・実測からの切り下げ・ratchet）の実装 ADR） |
+| **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（フロントエンドのカバレッジゲート） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
 | **ライブラリ標準** | `.csproj` ・`.props` / `.targets` の `PackageReference`（`PackageVersion` は対象外）/ `using` ・Domain 層の依存 | [`check-backend-libraries.js`](../../scripts/check-backend-libraries.js) | 新規混入・baseline 減らし忘れ → **fail**（#455 / [#471](https://github.com/endazon/microservices-platform/issues/471)）。**測定範囲＝参照の有無のみ。結合の深さは見ない**（下記「※ ライブラリ標準 ratchet が検出しないこと」） |
 | **CPM バージョン直書き禁止** | `src/`（AST を除く）と `templates/` の `.csproj` の `PackageReference`（`.props` / `.targets` は正当な版記述があるため対象外） | [`check-cpm-versions.js`](../../scripts/check-cpm-versions.js) | `Version` 属性 / `<Version>` 子要素 → **fail**（着手時点の違反 0 件を実測したため ratchet 無しで最初から fail）。`VersionOverride` は**許可**し使用箇所を warn ＋実行サマリへ（[#467](https://github.com/endazon/microservices-platform/issues/467)） |
-| **契約の後方互換（`Shared.Contracts`）** | `src/<unit>/backend/Shared/*.Contracts`（AST を除く）の public 型・メンバー・enum 値・`const` 値・属性 | [`check-contract-schema.js`](../../scripts/check-contract-schema.js) | 削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・既定値の無いメンバーの追加 → **破壊的・fail**。非破壊の追加でも [`contract-schema-baseline.json`](../../scripts/contract-schema-baseline.json) と差分があれば **fail**（`--update` で更新し差分を PR の diff に載せる）。破壊的変更は [`contract-breaking-allowlist.json`](../../scripts/contract-breaking-allowlist.json) の承認エントリで通す（[#465](https://github.com/endazon/microservices-platform/issues/465) / IADR-0122: 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
+| **契約の後方互換（`Shared.Contracts`）** | `src/<unit>/backend/Shared/*.Contracts`（AST を除く）の public 型・メンバー・enum 値・`const` 値・属性 | [`check-contract-schema.js`](../../scripts/check-contract-schema.js) | 削除・型変更・必須化・位置引数の並べ替え・enum/`const` 値の変更・属性の変更・既定値の無いメンバーの追加 → **破壊的・fail**。非破壊の追加でも [`contract-schema-baseline.json`](../../scripts/contract-schema-baseline.json) と差分があれば **fail**（`--update` で更新し差分を PR の diff に載せる）。破壊的変更は [`contract-breaking-allowlist.json`](../../scripts/contract-breaking-allowlist.json) の承認エントリで通す（[#465](https://github.com/endazon/microservices-platform/issues/465) / 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
 
 ### ※ ライブラリ標準 ratchet が検出しないこと
 
@@ -83,13 +83,13 @@ it('0 件のとき空状態を表示する', () => { ... })
 `src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/Composable/Steps/RawDocumentFetchedConsumer.cs:81`
 へ `context.GetRetryAttempt() + 1 >= MassTransitExtensions.MaxAttempts` を追加し、production の判定
 ロジックが MassTransit の再試行セマンティクスに依存するようになったが、`using MassTransit;` は既存・
-`PackageReference` は baseline 済みのため ratchet は動かない（IADR-0137: 変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする
+`PackageReference` は baseline 済みのため ratchet は動かない（変換ジョブのデッドレターは導出せず記録し、試行上限は再試行設定を単一情報源にする実装 ADR
 が自己開示している）。
 
-**危ういのはこの緑を「結合が増えていない証拠」として読むことである**（ADR-0027 Wolverine への移行
+**危ういのはこの緑を「結合が増えていない証拠」として読むことである**（Wolverine への移行
 コストの見積りにこの緑を使ってはならない）。移行コストは baseline の**件数**ではなく、
 MassTransit の API を直接呼んでいる箇所を都度数えて評価する。
-この節は IADR-0138: カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す §結果「検出しないこと」と同じ作法である。
+この節は、生成コードをカバレッジ集計から落とす実装 ADR の §結果「検出しないこと」と同じ作法である。
 
 ※ `scripts/check-backend-libraries.js` と `scripts/backend-library-baseline.json` は **#455（PR #463）で導入済み**。
 未マージ成果物への前方参照は live link ではなくバッククォート表記で書く
@@ -102,7 +102,7 @@ MassTransit の API を直接呼んでいる箇所を都度数えて評価する
 
 写像検査・カバレッジ床・ライブラリ標準はいずれも **`ai-stock-trading` を対象外**とする。AST は独自の
 計画リポジトリ・ADR・ID 体系を持つ**別プロジェクト**（submodule）であり、本リポジトリの計画 ID や
-ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合」）。
+バックエンド標準ライブラリの決定を適用するのは誤りである（`.claude/rules/traceability.md`「複数プロジェクトを跨ぐ場合」）。
 
 カバレッジ床でとくに重要なのは、`ci.yml` の `build-and-test` が**全ユニットの `backend.slnx` を自動発見
 して test する**ため、除外しないと AST のカバレッジが合算されることである。合算すると双方向に濁る
@@ -118,13 +118,13 @@ ADR-0030 の標準を適用するのは誤りである（`.claude/rules/traceabi
 よる除外はここに届かず、AST の submodule pin を更新するだけで床の実測値が動く状態だった
 （混入行はすべて被覆済みのため、実測値を押し上げる方向にしか働かない）。
 
-[#468](https://github.com/endazon/microservices-platform/issues/468) /
-IADR-0123: カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する で
-[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替え、次の 2 点の
+[#468](https://github.com/endazon/microservices-platform/issues/468) では、Cobertura の class 直下 `<lines>` を
+正とし、`<class filename>` でユニットへ帰属させて除外する方式を採り、
+[`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) を class 単位走査へ作り替えて、次の 2 点の
 機構を導入した。
 
-1. **行の帰属**: 各 `<class filename>` を `src/<unit>/` へ帰属させ、集計対象外ユニット（IADR-0120: 検査対象外ユニットの単一情報源を .gitmodules（src/ 直下 1 階層の submodule）とし、読めなければ停止する
-   の単一情報源から導出）の行を集計から落とす。`filename` は相対・絶対・`<sources>` との結合の順に
+1. **行の帰属**: 各 `<class filename>` を `src/<unit>/` へ帰属させ、集計対象外ユニット（単一情報源は `.gitmodules`〔`src/` 直下 1 階層の
+   submodule〕であり、読めなければ停止する）の行を集計から落とす。`filename` は相対・絶対・`<sources>` との結合の順に
    多段で解釈する（coverlet は base path で始まらないファイルを絶対パスのまま書くとみられ、片方に決め打つと
    フィルタが何にもマッチせず「除外したつもりで素通り」になる）。**帰属が 1 件も成立しなければ warn**、
    帰属できなかったクラス・`<class>` の外にある行は集計に残して可視化する。
@@ -174,7 +174,7 @@ Release 構成 / レポート **14 件** / submodule populate 済み。**測定�
 > `1536 ÷ (9356 − 50) = 16.51%` で、いずれも床 17 を下回る（定義を変えれば分子も変わるため、これは
 > 「coverlet 定義での実際の分岐率」ではなく分母差の影響を測る試算である）。よって
 > **分岐の定義変更は床の置き直しとセットでしか行えない**
-> （IADR-0123: カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する 決定 4 の［2026-08-04 追記］）。
+> （カバレッジ床集計の実装 ADR の決定 4 の［2026-08-04 追記］）。
 
 > **注**: 上記 2 により集計の**絶対数**（`covered/lines`）の意味が変わった。旧値は新方式の**厳密に 2 倍**
 > だった——`18894 = 9447 × 2` / `54826 = 27413 × 2` / `3154 = 1577 × 2` / `17896 = 8948 × 2`。
@@ -185,11 +185,11 @@ Release 構成 / レポート **14 件** / submodule populate 済み。**測定�
 
 上記のうち写像検査・カバレッジ床・ライブラリ標準・契約の後方互換はいずれも **ratchet**（床は下げられるが
 上げっぱなしにできない）で設計している。これは impl-handoff-kit の段階ポリシー設計
-（[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節、planning#146・planning#160
-（前段の失敗モード）／planning#161・planning#162（段階ポリシーの導入））が
+（[`scripts/README.md`](../../scripts/README.md) の `check-permission-denials.js` 節と、計画側で記録された
+前段の失敗モードおよび段階ポリシーの導入）が
 示した「**成果物は正しいのに赤**」の常態化——拒否の赤を無視する学習を生み、検査の目的を逆から壊す
 ——を避けるためである（キットの同期規約そのものは
-IADR-0115: impl-handoff-kit を足場の単一情報源とし、固有デルタを 4 種に限定する）。既知の残件を
+impl-handoff-kit を足場の単一情報源とし固有デルタを 4 種に限定する、という実装 ADR が定める）。既知の残件を
 明示（allowlist / baseline / floor）したうえで、**新規の悪化だけを止める**。あわせて「残件が消えたのに
 明示が残っている」ことも fail にする。契約の後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465)）だけは
 「既知の残件」ではなく「**意図した破壊的変更の承認**」を明示の対象にするが、3 判定（新規は fail /
@@ -215,17 +215,17 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 > ~~**余裕は薄い**: line は **+0.14pt**、branch は **+0.26pt** しかない。~~ 上記の薄さが実害になった
 > ——[PR #568](https://github.com/endazon/microservices-platform/pull/568) は EF マイグレーションを
 > 1 本追加しただけで床を割った。対処は [#571](https://github.com/endazon/microservices-platform/issues/571) /
-> IADR-0138: カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す（下記）。
+> 生成コード（EF の Migrations / ModelSnapshot）を集計から落として床を置き直した（下記）。
 
 ##### 生成コードの除外と床の置き直し
 
 **`Migrations/` 配下と `*ModelSnapshot.cs` は集計から落とす。** 人が書いていないコードの被覆率が床判定を
 動かす状態（マイグレーションを 1 本足すだけで割れる）を塞ぐためである。判定は `<class filename>` を
-IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除外量は毎回診断へ出す。
+カバレッジ床集計の実装 ADR の決定 2 が定める多段解釈で解決した経路に対して行い、除外量は毎回診断へ出す。
 
 これに伴い**床を置き直した: `line 34` → `line 33`。`branch` は `17` のまま据え置く。**
 
-- **引き下げ（退行）ではなく、測定基準の変更に伴う置き直しである**（IADR-0123 決定 7 が #468 で行ったのと
+- **引き下げ（退行）ではなく、測定基準の変更に伴う置き直しである**（同 ADR の決定 7 が #468 で行ったのと
   同じ性質の作業）。**旧定義の 34 と新定義の 33 は分母・分子が違うため直接比較できない。**
 - **下がるのは、生成コードが平均より厚く被覆されているためである。** 統合テストが起動時 `MigrateAsync()`
   を通ると migration の `Up()` と Designer の `BuildTargetModel()`、`ModelSnapshot` の `BuildModel()` が
@@ -233,43 +233,41 @@ IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除�
   統合テストを 35/39 通した測定）で **生成コード 2310 行のうち 933 行が被覆**＝ 40.4% となり、全体（約 34%）を
   上回った。分子・分母の両方から同じものを抜いた結果として比率は下がる。
 - **branch を据え置くのは生成コードの分岐が 0 だからである**（除外前後で分岐率は同値）。分岐の定義は
-  変えていないため、IADR-0123 決定 4 の追記が課した「定義変更は床の置き直しとセット」には該当しない。
+  変えていないため、同 ADR の決定 4 の追記が課した「定義変更は床の置き直しとセット」には該当しない。
 - **床 33 は CI ログを直接読んだ実測値ではなく、CI が通ることで検証される下限である。** 導出は
   `(9314 − 933) / (27280 − 2310) = 33.56%`（上限側 `(9314 − 969) / (27280 − 2310) = 33.42%`）を整数へ
   切り下げたもの。基準の `9314/27280` は上記 run_number 1144 の実測、`2310` と `933〜969` は #571 の
   ローカル実測である（測定条件は 仕様書: EF 生成コードをカバレッジ集計から除外し、床を置き直す を参照）。
 
 > **［2026-08-15 追記 / #574］上の 3 項は #571 時点の記録である。**
-> IADR-0195: カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す が
-> **source generator の出力**（`obj/` 配下）も集計から落とし、床を `line 33` → `39` /
+> その後の実装 ADR が **source generator の出力**（`obj/` 配下）も集計から落とし、床を `line 33` → `39` /
 > `branch 17` → `27` へ置き直した。**「branch を据え置く」の根拠（生成コードの分岐が 0）は
 > EF の生成コードにしか当たらない**——source generator の出力は**分岐 3970**を持つ。
 > **床 39 / 27 は導出値ではなく実測値である**（develop `1d7edce` / SDK `10.0.400` / Release /
 > レポート **14 件** / 統合テスト **43/43 成功**。`line 39.92%（9486/23762）` /
 > `branch 28.01%（1663/5938）`）。**`branch` に切り下げの `28` を採らなかったのは、余裕が `0.01pt` しか
-> なく被覆分岐 1 本の喪失で割れるためである**（IADR-0195 決定 3）。
+> なく被覆分岐 1 本の喪失で割れるためである**（source generator 出力の除外を定めた実装 ADR の決定 3）。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
-> IADR-0118: バックエンドのカバレッジ床 — 単一情報源・実測からの切り下げ・ratchet を正とする（生成コードの除外と床の置き直しは
-> IADR-0138: カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す〔EF〕と
-> IADR-0195: カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す〔source generator〕。フロントは
-> IADR-0034: フロントエンド カバレッジゲート）。
+> バックエンドのカバレッジ床（単一情報源・実測からの切り下げ・ratchet）を定めた実装 ADR を正とする
+> （生成コードの除外と床の置き直しは、EF の Migrations / ModelSnapshot を落とす実装 ADR と
+> source generator の出力を落とす実装 ADR がそれぞれ定める。フロントはラチェット型のカバレッジゲートである）。
 
 ## テスト種別と責務
 
 | 種別 | 置き場所 | 使うもの | 責務 |
 | --- | --- | --- | --- |
-| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v2**（ADR-0030 の標準は v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
+| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v2**（バックエンド標準ライブラリの決定では v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
 | 統合（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Integration`（同上。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
-| 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / IADR-0122: 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
+| 契約 | `scripts/contract-schema-baseline.json`（スナップショット） | [`check-contract-schema.js`](../../scripts/check-contract-schema.js)（C# ソース構文解析。外部依存ゼロ Node） | `Shared.Contracts` のイベント/API スキーマの後方互換（[#465](https://github.com/endazon/microservices-platform/issues/465) / 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート） |
 | 性能（NFR） | [`NFR-01_performance-load-test.md`](NFR-01_performance-load-test.md) | — | 検索 p95 1.5s / RAG 初回 5s / 取り込み 1 万件・時（[#196](https://github.com/endazon/microservices-platform/issues/196)） |
 
 ### サービスのテストは 1 プロジェクト（Unit / Integration はフォルダで分ける）
 
 計画 12_backend-application-stack（計画リポ）
-§規範性・粒度・置き場（利用者裁定 2026-08-04 / planning#180）が **`Tests` は 1 プロジェクト**と定めている。
+§規範性・粒度・置き場（利用者裁定 2026-08-04）が **`Tests` は 1 プロジェクト**と定めている。
 種別ごとに `.csproj` を割らない（ビルド時間と参照管理のコストが増えるため）。したがって 1 つの
 `.csproj` が単体側（NSubstitute）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の
 `PackageReference` を**和集合**で持つ。実装の現況は `<Name>.Api.Tests` / `<Name>.Worker.Tests` であり、
@@ -280,7 +278,7 @@ IADR-0123 決定 2 の多段解釈で解決した経路に対して行い、除�
 
 ### xUnit のバージョンは v2 のまま書く（v3 へ先走らない）
 
-ADR-0030 の標準は xUnit v3 だが、**CPM（[`src/Directory.Packages.props`](../../src/Directory.Packages.props)）の
+バックエンド標準ライブラリの決定では xUnit v3 だが、**CPM（[`src/Directory.Packages.props`](../../src/Directory.Packages.props)）の
 `xunit.runner.visualstudio` は v2 用の 2.8.2 に固定**されている。#455（PR #463）で入る
 `check-backend-libraries.js` の `xunitRunnerMismatch` 検査は「`xunit.v3` を参照しているのに runner が 2.x」を
 **CI で fail** させるため、各ドメイン issue が v3 で新規テストを書くと赤くなる。v3 への切替は runner の
@@ -289,12 +287,12 @@ ADR-0030 の標準は xUnit v3 だが、**CPM（[`src/Directory.Packages.props`]
 ## 本基盤の未整備部分（後続 issue へ切り出し）
 
 #453 のスコープのうち、以下は独立した設計判断を伴うため別 issue とする
-（IADR-0116: 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合 規約 4: 大きくなる場合は
-PR ではなく issue を分割する）。
+（全面再実装の進行方式〔子 issue 単位のブランチ / PR と develop 直接統合〕の規約 4「大きくなる場合は
+PR ではなく issue を分割する」）。
 
 | 項目 | 切り出す理由 |
 | --- | --- |
-| ~~契約テスト基盤（`Shared.Contracts` のスキーマ後方互換）~~ | [#465](https://github.com/endazon/microservices-platform/issues/465) として切り出し、**実装済み**（上の「ゲート一覧」を参照）。抽出方式は C# ソース構文解析を採り、IADR-0049: コンポーザビリティ標準の段階適用と繰延条件 決定 1 のうち「CI 契約テスト」だけを繰延解除した（IADR-0122: 契約スキーマの抽出方式（C# ソース構文解析）と後方互換ゲート。共通エンベロープの繰延は継続） |
+| ~~契約テスト基盤（`Shared.Contracts` のスキーマ後方互換）~~ | [#465](https://github.com/endazon/microservices-platform/issues/465) として切り出し、**実装済み**（上の「ゲート一覧」を参照）。抽出方式は C# ソース構文解析を採り、コンポーザビリティ標準の段階適用を定めた実装 ADR の決定 1 のうち「CI 契約テスト」だけを繰延解除した（共通エンベロープの繰延は継続） |
 | E2E スモークセット（Istio・Keycloak・BFF の統合スタック） | 実行環境の CI 上での起こし方が主題であり #442（エッジ・実行基盤）と密結合する |
 | NFR 性能試験の枠組み | [#196](https://github.com/endazon/microservices-platform/issues/196) が担当。再実装後の受け入れゲートとして接続するのは各サービス完成後 |
 | ~~CPM バージョン直書き禁止の機械検査~~ | [#467](https://github.com/endazon/microservices-platform/issues/467) として切り出し、**実装済み**（上の「ゲート一覧」を参照） |
@@ -307,21 +305,21 @@ PR ではなく issue を分割する）。
 2. 実装する FR/UC/SC の**受け入れ基準をテストへ写像**し、テストの直前コメントに起点 ID を書く。
 3. カバレッジ床を下回らない。テストを増やしたら**床を引き上げる**（`src/coverage-floor.json` /
    `src/vitest.config.ts`）。
-4. ADR-0030 の不採用ライブラリを増やさない。移行したら `scripts/backend-library-baseline.json` から
+4. バックエンド標準ライブラリの決定で不採用となったライブラリを増やさない。移行したら `scripts/backend-library-baseline.json` から
    自プロジェクトを削除する。
 5. 後回しにする場合は `scripts/test-traceability-allowlist.json` へ**理由とともに**追加し、解消した PR で
    削除する。未写像（仕様書はあるがテストが無い）は `pending`、実装先行（テストはあるが仕様書が無い）は
    `specMissing` に書く。
 6. **テスト仕様書を「全面改訂」するときは、既存の節を落としていないか確かめる**
    （[#510](https://github.com/endazon/microservices-platform/issues/510) の再発防止）。
-   #503 は SC-05〜08 をフロントエンドの構造で置き換え、**バックエンド試験の節を落とした**
+   #503 は文書管理・データソース管理・変換ジョブ・AI 分析の各画面をフロントエンドの構造で置き換え、**バックエンド試験の節を落とした**
    ——テストは消えていないのに記載だけが消え、レビューでも当時の CI でも捕まらなかった。
    **本項は注意書きではなく、上記「記載の被覆」ゲートの説明である**——記載を落とすと
    `check-test-spec-coverage.js` がクラス名とパスを挙げて fail する。記載を増やしたら
    `node scripts/check-test-spec-coverage.js --update` で床を上げ、差分を PR に載せること。
    **ただし fail するのは、当該クラス名が仕様書ファイルから**（節の中だけでなく改訂ノート・
    §対象・§実行 も含めて）**消えたときである。表と見出しだけを落として他所に名前が残っていれば
-   緑になる**（IADR-0130: テスト仕様書の「節ごと落ちる」を、テストクラス単位の被覆 ratchet で機械検査する §限界 2 の追記で実測）。
+   緑になる**（被覆 ratchet の実装 ADR §限界 2 の追記で実測）。
    **検査に頼り切らず、全面改訂のときは落とした節を自分で読み直すこと。**
 
 > **未着手の FR/UC/SC が仕様書を持たないのは正当**であり、fail にはしない。計画レンジ
