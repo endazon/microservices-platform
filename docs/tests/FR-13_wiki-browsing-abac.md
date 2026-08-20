@@ -7,32 +7,32 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, FR-13, UC-07]
+ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07]
 adrs: [ADR-0004, ADR-0011]
 iadrs: [IADR-0023]
 specs: [01_requirements, 01_usecases, 20260703_FR-13_wiki-browsing-abac, FR-05_abac-access-control]
 issues: []
 -->
 
-# テスト仕様書: FR-13 Wiki 閲覧の ABAC 適用
+# テスト仕様書: Wiki 閲覧の ABAC 適用
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-13
-- ユースケース（UC）: UC-07（Wikiで閲覧する）
-- 関連 ADR: ADR-0011（Wiki 採用・ABAC は本システムが真実源）/ ADR-0004（ABAC deny-by-default）
+- 機能要求: 正規化文書を Wiki サービスで閲覧できること
+- ユースケース: Wiki で閲覧する
+- 関連 ADR: Wiki エンジンの採用（ABAC は本システムが真実源）／認可＝ABAC（deny-by-default）
 
 ## テスト対象・範囲
 
 - 対象: `AbacPageFilter`（許可スコープの評価意味論）、`WikiEndpoints`（一覧・個別の ABAC 適用）、
   `DocumentSyncConsumer`（更新イベント → ページ同期）。
-- 対象外: 横断検索・AI 回答本体（FR-03/04/07 で検証済み）、負荷/p95、Wiki.js 本体・OIDC 連携。
+- 対象外: 横断検索・AI 回答本体（それぞれの機能のテスト仕様で検証済み）、負荷/p95、Wiki.js 本体・OIDC 連携。
 
 ## テスト観点
 
 - deny-by-default: `Granted=false` で一覧が空・個別が 404。
 - 評価意味論: フィルタ間 AND・値集合内 OR・属性欠落は不一致。
-- セキュリティ: 権限外文書が一覧・本文のいずれにも現れない（受け入れ基準②・UC-07 例外フロー）。
+- セキュリティ: 権限外文書が一覧・本文のいずれにも現れない（受け入れ基準②・Wiki 閲覧ユースケースの例外フロー）。
 - 反映: `DocumentUpdated` の受信で作成・更新される（受け入れ基準③）。
 
 ## テストケース一覧

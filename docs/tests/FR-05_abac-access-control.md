@@ -7,9 +7,9 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-05, UC-01, UC-05]
-adrs: []
-iadrs: []
+ids: [FR-02, FR-03, FR-05, UC-01, UC-05]
+adrs: [ADR-0004, ADR-0043]
+iadrs: [IADR-0004, IADR-0151]
 specs: [01_requirements]
 issues: [#525, #540]
 -->
@@ -18,16 +18,16 @@ issues: [#525, #540]
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-05
-- ユースケース（UC）: UC-01（横断検索）, UC-05（権限管理）
+- 機能要求: 利用者属性と文書属性に基づく ABAC アクセス制御
+- ユースケース: 検索・質問する（横断検索）／ABAC 権限を管理する
 - 受け入れ基準の所在（02_requirements）: `02_requirements/01_requirements.md`
-- 関連 ADR: ADR-0004 / 実装 ADR: IADR-0004
+- 関連 ADR: 認可＝ABAC（計画）／多値 allow-list ＋ deny-by-default（実装）
 
 ## テスト対象・範囲
 
 - 対象: `AbacEvaluator`（スコープ解決・Granted 判定）、`HybridSearchService`／`IVectorStore`
   （多値 allow-list フィルタ・deny-by-default）、検索エンドポイント `/search`。
-- 対象外: 反映時間（FR-02/03）、負荷/p95、画面、Keycloak 連携の実装。
+- 対象外: 反映時間（取り込み・検索側の関心事）、負荷/p95、画面、Keycloak 連携の実装。
 
 ## テスト観点
 
@@ -46,11 +46,11 @@ issues: [#525, #540]
 | T-05 | confidentiality ∈ {public,internal} の文書群 | `POST /search` with Scope | public/internal のみ返り confidential 除外 | 権限外を出さない | 自動 |
 | T-06 | スコープ属性キーを持たない文書混在 | 同上 | 当該文書は除外される | 権限外を出さない | 自動 |
 | T-07 | `GrantsAccess=false` | 同上 | 結果 0 件（deny-by-default） | 権限外を出さない | 自動 |
-| T-08 | 単値 `AttributeFilters`（FR-03 後方互換） | `POST /search` | 既存の権限フィルタが従来どおり機能 | 横断検索 | 自動 |
-| T-09 | 権限内／権限外の文書にそれぞれ別のタグ | `POST /search/attribute-values` | **到達できる文書に付いた値だけ**が返る（辞書の全値ではない。ADR-0043 決定 1） | 権限外を出さない | 自動 |
-| T-10 | 同じタグが複数文書に付く | 同上 | **応答に件数が現れない**（生の本文で確認。ADR-0043 決定 2） | 権限外を出さない | 自動 |
-| T-11 | 同一スコープで検索と照会を両方引く | `POST /search` ＋ `POST /search/attribute-values` | **候補は検索に現れる集合と一致**（[[IADR-0151]] 決定 1） | 横断検索 | 自動 |
-| T-12 | `GrantsAccess=false` / `Scope=null` | `POST /search/attribute-values` | **空配列**（404 / 403 にしない。[[IADR-0151]] 決定 5） | 権限外を出さない | 自動 |
+| T-08 | 単値 `AttributeFilters`（横断検索との後方互換） | `POST /search` | 既存の権限フィルタが従来どおり機能 | 横断検索 | 自動 |
+| T-09 | 権限内／権限外の文書にそれぞれ別のタグ | `POST /search/attribute-values` | **到達できる文書に付いた値だけ**が返る（辞書の全値ではない。スコープ付き属性値ルックアップの決定 1） | 権限外を出さない | 自動 |
+| T-10 | 同じタグが複数文書に付く | 同上 | **応答に件数が現れない**（生の本文で確認。同決定 2） | 権限外を出さない | 自動 |
+| T-11 | 同一スコープで検索と照会を両方引く | `POST /search` ＋ `POST /search/attribute-values` | **候補は検索に現れる集合と一致**（検索段の facet で数える実装判断） | 横断検索 | 自動 |
+| T-12 | `GrantsAccess=false` / `Scope=null` | `POST /search/attribute-values` | **空配列**（404 / 403 にしない。同実装判断） | 権限外を出さない | 自動 |
 | T-13 | タグと ABAC 属性の両方 | 同上 | `tags` と `attributes.<key>` の**両方を同じ口から**引ける | 横断検索 | 自動 |
 | T-14 | 未知・空のキー | 同上 | 空集合へ縮退する | 例外フロー | 自動 |
 | T-15 | BFF 経由 | `POST /bff/attribute-values` | **クライアント指定の Scope を信頼しない**。不許可なら後段を呼ばず空配列 | 権限昇格の防止 | 自動 |

@@ -7,9 +7,9 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-07, UC-02]
-adrs: []
-iadrs: []
+ids: [FR-04, FR-07, UC-02]
+adrs: [ADR-0004, ADR-0010]
+iadrs: [IADR-0004, IADR-0005]
 specs: [01_requirements, 01_usecases]
 issues: []
 -->
@@ -18,16 +18,16 @@ issues: []
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-07
-- ユースケース（UC）: UC-02
-- 関連 ADR: ADR-0010、ADR-0004（ABAC / deny-by-default）
-- 実装 ADR: IADR-0004（多値 allow-list + deny-by-default）、IADR-0005（データ範囲×ABAC の narrowing-only 交差）
+- 機能要求: 指定データ範囲での AI 分析・比較・抽出
+- ユースケース: AI 分析を依頼する
+- 関連 ADR: LLM ゲートウェイ、認可＝ABAC（deny-by-default）
+- 実装 ADR: 多値 allow-list ＋ deny-by-default、データ範囲×ABAC の narrowing-only 交差
 - 計画書リンク: `02_requirements/01_requirements.md` / `07_adr/ADR-0010`
 
 ## テスト対象・範囲
 
 - 対象: データ範囲×ABAC 交差ロジック（`DataRangeScopeResolver.Resolve`）、種別別プロンプト生成（`AnalysisPromptBuilder.Build`）、`/analysis/analyze`・`/analysis/ask` エンドポイント配線、ABAC 通信失敗時の deny-by-default 縮退（`RagOrchestrator`）。
-- 対象外: 実 LLM 生成・実検索（`RetrievalService` / `LlmGateway` はスタブ差し替え）、BFF の Authorization 伝播網羅（FR-04 側で検証）、負荷/p95、画面。
+- 対象外: 実 LLM 生成・実検索（`RetrievalService` / `LlmGateway` はスタブ差し替え）、BFF の Authorization 伝播網羅（AI 回答・出典側で検証）、負荷/p95、画面。
 
 ## テスト観点
 
@@ -55,7 +55,7 @@ issues: []
 | T-13 | 指示が最大長 +50 文字 | 同上 | 最大長で切り詰められ、超過分は含まれない | 防御的入力処理 | 自動 |
 | T-14 | ABAC サービスへの HTTP が例外（connection refused） | `RagOrchestrator.AskAsync` | 例外を伝播せず空回答（`Citations` 空）へ縮退 | deny-by-default 縮退 | 自動 |
 | T-15 | ABAC サービスがタイムアウト（TaskCanceledException） | 同上 | 同様に空回答へ縮退 | deny-by-default 縮退 | 自動 |
-| T-16 | スタブ RagOrchestrator でサービス起動 | `POST /analysis/ask`（question） | 200 OK、`Answer` 非空 | 質問回答（FR-04 共通経路） | 自動 |
+| T-16 | スタブ RagOrchestrator でサービス起動 | `POST /analysis/ask`（question） | 200 OK、`Answer` 非空 | 質問回答（AI 回答の共通経路） | 自動 |
 | T-17 | 同上 | `POST /analysis/analyze`（instruction, taskType=Compare, range.attributeFilters.year=[2025]） | 200 OK、`Answer` 非空 | 範囲・種別指定の分析 | 自動 |
 | T-18 | 実 CitationMapper 経路（TestWebApplicationFactory） | `POST /analysis/analyze`（同上） | 200 OK、`Answer` 非空、`Citations` 非空 | 出典付与 | 自動 |
 | T-19 | 同上 | `POST /analysis/analyze`（instruction 空） | 400 Bad Request | instruction 必須 | 自動 |
@@ -80,5 +80,5 @@ issues: []
 ## 未決事項
 
 - タグ（`Tags`）による範囲指定は未対応（現状は属性キーのみ）。
-- BFF（`/bff/analysis/analyze`）集約と Authorization 伝播の網羅検証は FR-04 テスト仕様と共通化。
+- BFF（`/bff/analysis/analyze`）集約と Authorization 伝播の網羅検証は AI 回答・出典のテスト仕様と共通化。
 - 実 LLM・実検索での性能/p95 検証は負荷試験タスクで別途実施。

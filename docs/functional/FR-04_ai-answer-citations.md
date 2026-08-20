@@ -9,17 +9,17 @@ author: claude
 <!-- trace:
 ids: [FR-04, FR-05, FR-11, SC-01, SC-08, UC-01, UC-02]
 adrs: []
-iadrs: [IADR-0037, IADR-0111, IADR-0131, IADR-0132]
+iadrs: [IADR-0009, IADR-0037, IADR-0111, IADR-0131, IADR-0132]
 specs: [01_requirements]
-issues: [#201]
+issues: [#201, #403, #541]
 -->
 
 # 機能仕様書: AI 回答・出典提示
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-04
-- ユースケース（UC）: UC-01, UC-02
+- 機能要求: 検索結果を根拠にした AI 要約・回答の生成と出典提示
+- ユースケース: 検索・質問する／AI 分析を依頼する
 - 業務フロー（04_workflows）: 横断検索 → 根拠提示付き AI 回答
 - 計画書リンク: `02_requirements/01_requirements.md`、`07_adr/ADR-0010`
 
@@ -48,13 +48,13 @@ issues: [#201]
 | `SourceUri` | 元文書へのリンク（Markdown URI もしくは `/documents/{id}`） |
 | `Score` | 検索スコア |
 | `Snippet` | 該当箇所の抜粋（240 文字で丸め） |
-| `Confidentiality` | **その文書の機密区分**（ABAC 文書属性 `confidentiality`）。値集合は `public` / `internal` / `confidential` / `restricted`（**`enum` にしない**。[[IADR-0131]] 決定 5）。#541 |
+| `Confidentiality` | **その文書の機密区分**（ABAC 文書属性 `confidentiality`）。値集合は `public` / `internal` / `confidential` / `restricted`（**`enum` にしない**——OpenAPI を BFF 契約の単一情報源とする決定に従う）。#541 |
 
-**`Confidentiality` の供給と縮退（#541・FR-04「出典には機密区分を含める」）**
+**`Confidentiality` の供給と縮退（#541・「出典には機密区分を含める」という要求）**
 
 - 供給元は `SearchResultDto.Attributes` の `confidentiality`（実在の ABAC 属性キー）である。
 - **属性の欠落・空文字・未知値は安全側（`restricted`）へ縮退する**（`08_data-egress-policy`「既定は安全側」/
-  FR-05 deny-by-default）。過剰公開は「社外資料へ引用してよいか」の判断を誤らせるため、過剰制限へ倒す。
+  ABAC の deny-by-default）。過剰公開は「社外資料へ引用してよいか」の判断を誤らせるため、過剰制限へ倒す。
 - 出典に載る区分と、LLM ゲートウェイへ渡す最高機密区分は**同じ規則**
   （`ConfidentialityLevels`）から導く。画面に「公開」と出ているのにゲートウェイは `restricted` として
   扱う、という食い違いを作らない。
@@ -79,8 +79,8 @@ flowchart TD
 | --- | --- | --- |
 | 検索結果 0 件 | 出典空・該当なしメッセージ | 「関連する情報が見つかりませんでした。」 |
 | LLM 不調 | 検索結果（出典）のみ提示する縮退。`Model` は空（未到達） | 「LLM が現在利用できないため、関連文書の一覧を返します。」 |
-| 機密区分により送信拒否（FR-11 `Sent=false`） | 外部送信せず出典のみ提示する縮退。`Model` はゲートウェイ報告値（未呼出なら空、呼び出しを試みて失敗した場合は実 route 結果） | 「機密区分により AI 送信を行わなかったため、関連文書の一覧を返します。」 |
-| 閲覧可能文書なし（FR-05 deny-by-default） | 検索・LLM を呼ばず空回答へ縮退。`Model` は空 | 「閲覧権限のある文書が見つかりませんでした。」（存在秘匿。IADR-0009） |
+| 機密区分により LLM への送信を拒否（`Sent=false`） | 外部送信せず出典のみ提示する縮退。`Model` はゲートウェイ報告値（未呼出なら空、呼び出しを試みて失敗した場合は実 route 結果） | 「機密区分により AI 送信を行わなかったため、関連文書の一覧を返します。」 |
+| 閲覧可能文書なし（ABAC の deny-by-default） | 検索・LLM を呼ばず空回答へ縮退。`Model` は空 | 「閲覧権限のある文書が見つかりませんでした。」（存在秘匿） |
 | 権限スコープ解決失敗 | フィルタ無し扱いを避け空スコープで継続 | （権限外文書は後段検索フィルタで除外） |
 | BFF→後段が非 2xx | 後段ステータスを透過 | 後段ステータスコード |
 
@@ -90,8 +90,8 @@ flowchart TD
 - [x] 出典番号が回答本文・LLM 文脈と一致する。
 - [x] 権限の無い文書は ABAC フィルタにより検索・回答のいずれにも現れない（後段で担保）。
 - [x] `/bff/analysis/ask` から単一窓口で回答＋出典を取得できる。
-- [x] 応答の `Model` が実際に使用したモデルと一致する。LLM を呼んでいない縮退応答はモデル名を名乗らない（空）。（#403 / IADR-0111。T-10〜T-15・T-15f）
-- [x] **出典に機密区分が載る**（FR-04 追加・2026-08-05／SC-01 裁定 Q10）。属性の欠落・空・未知値は安全側（`restricted`）へ縮退する。（#541。T-17〜T-21）
+- [x] 応答の `Model` が実際に使用したモデルと一致する。LLM を呼んでいない縮退応答はモデル名を名乗らない（空）。（#403。T-10〜T-15・T-15f）
+- [x] **出典に機密区分が載る**（要求への追加・2026-08-05／検索・チャット画面の裁定 Q10）。属性の欠落・空・未知値は安全側（`restricted`）へ縮退する。（#541。T-17〜T-21）
 
 > 検証: `CitationMapperTests`（出典番号↔本文整合）／`RagOrchestratorScopeTests`（ABAC スコープ適用）／
 > 統合 `RagOrchestratorTests` で担保。実装は `RagOrchestrator` ＋ BFF `/bff/analysis/ask`。

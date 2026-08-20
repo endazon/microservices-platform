@@ -9,17 +9,17 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-03, FR-05, UC-04]
 adrs: [ADR-0003, ADR-0009, ADR-0013, ADR-0027]
-iadrs: []
+iadrs: [IADR-0149]
 specs: [01_requirements, 20260627_FR-02_ingestion-pipeline, 20260809_issue-536_search-result-updated-at, FR-02_ingestion, IADR-0002_ingestion-pipeline-and-qdrant-bootstrap, IADR-0149_search-result-updated-at-indexing]
-issues: [#536]
+issues: [#532, #536, #580]
 -->
 
-# 機能仕様書: FR-02 取り込み
+# 機能仕様書: 取り込み
 
 ## 起点
 
-- FR-02 / UC-04
-- 関連 ADR: ADR-0003（MassTransit + RabbitMQ。Superseded by ADR-0027・注記は #580）、ADR-0009（Qdrant 直接書き込み）、ADR-0013（LLM Gateway 経由の埋め込み）
+- 機能要求: 文書のパース・チャンク化・埋め込み生成と検索インデックスへの登録 ／ ユースケース: データソースを登録・同期する
+- 関連 ADR: メッセージング基盤（MassTransit + RabbitMQ。後継の Wolverine 採用により Superseded・注記は #580）、ベクトルストア Qdrant への直接書き込み、LLM Gateway 経由の埋め込み生成
 
 ## 機能概要
 
@@ -37,13 +37,13 @@ issues: [#536]
 | `MarkdownUri` | string? | 本文の所在。null の場合は取り込みをスキップ。 |
 | `Attributes` | Dictionary<string,string> | ABAC 属性。ペイロード `attributes.<key>`。 |
 | `Tags` | List<string> | タグ。ペイロード `tags`。 |
-| `UpdatedAt` | DateTimeOffset | 更新時刻。**ペイロード `updated_at`（Unix epoch ミリ秒の整数）としてそのまま索引へ載せる**（#536 / [[IADR-0149]] 決定 5）。**取り込み時刻を書かない** —— 書くと再索引のたびに全文書の「更新日時」が今になる。 |
+| `UpdatedAt` | DateTimeOffset | 更新時刻。**ペイロード `updated_at`（Unix epoch ミリ秒の整数）としてそのまま索引へ載せる**（#536。更新日時は索引ペイロードへ epoch ミリ秒で持つという実装判断）。**取り込み時刻を書かない** —— 書くと再索引のたびに全文書の「更新日時」が今になる。 |
 
 ### 出力イベント: `IngestionCompleted`
 
 `DocumentId` / `ChunkCount` / `CompletedAt` を発行し、後続の検索反映へ連鎖する。
 
-## 処理フロー（基本フロー / UC-04）
+## 処理フロー（データソース登録・同期の基本フロー）
 
 1. `DocumentUpdated` を受信する。
 2. `MarkdownUri` が null なら警告ログを残しスキップする（例外フロー E1）。
@@ -75,7 +75,7 @@ issues: [#536]
 - ベクトル: 次元 = `Qdrant:VectorSize`（既定 1536）、距離 = Cosine。
 - 起動時に `QdrantBootstrapHostedService` が存在保証（無ければ作成）する。
 - ペイロード: `document_id` / `document_title` / `text` / `markdown_uri` / `chunk_index` / `tags` / `attributes.<key>` / **`updated_at`**。
-- **`updated_at` は Unix epoch ミリ秒の整数**である（[[IADR-0149]] 決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。**本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
+- **`updated_at` は Unix epoch ミリ秒の整数**である（同実装判断の決定 1）。ISO-8601 文字列にすると同じ時刻を `+09:00` とも `Z` とも書けるため、辞書順が実時刻順と一致しない（並び順は #532 が使う）。**本項目より前に索引されたチャンクはキーを持たない** —— 検索側は `null` で返す（縮退。再索引で解消する）。
 
 ## トレーサビリティ
 

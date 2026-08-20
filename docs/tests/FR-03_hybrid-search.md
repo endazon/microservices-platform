@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-03, SC-02, UC-01]
 adrs: []
-iadrs: []
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150]
 specs: [01_requirements, 01_usecases]
 issues: [#532, #536, #642]
 -->
@@ -18,8 +18,8 @@ issues: [#532, #536, #642]
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-03
-- ユースケース（UC）: UC-01
+- 機能要求: キーワードと自然文の双方による横断検索（ベクトル＋全文のハイブリッド）
+- ユースケース: 検索・質問する
 - 受け入れ基準の所在（02_requirements）: `02_requirements/01_requirements.md`
 - 計画書リンク: 同上 / `07_adr/ADR-0009`（Qdrant ベクトルDB）
 
@@ -53,27 +53,27 @@ issues: [#532, #536, #642]
 | T-13 | ネスト構造体 `attributes` を持つペイロード | 同上 | ネストから属性を復元 | 権限制御の前提（属性復元） | 自動 |
 | T-14 | 属性を持たないペイロード | 同上 | 空辞書を返す | 権限制御の前提（属性復元） | 自動 |
 | T-15 | フラットキーとネストで同一キーが競合 | 同上 | フラットキー値を尊重（ネストで上書きしない） | 権限制御の前提（属性復元） | 自動 |
-| T-16 | `updated_at`（epoch ミリ秒）を持つペイロード | `QdrantVectorStore.ExtractUpdatedAt` | 元の `DateTimeOffset` を復元する | SC-02 裁定 Q6 | 自動 |
-| T-17 | `updated_at` を**持たない**ペイロード（未再索引） | 同上 | **`null`**（`0001-01-01` で埋めない。[[IADR-0149]] 決定 3） | SC-02 裁定 Q6 | 自動 |
+| T-16 | `updated_at`（epoch ミリ秒）を持つペイロード | `QdrantVectorStore.ExtractUpdatedAt` | 元の `DateTimeOffset` を復元する | 検索結果一覧の裁定 Q6 | 自動 |
+| T-17 | `updated_at` を**持たない**ペイロード（未再索引） | 同上 | **`null`**（`0001-01-01` で埋めない。更新日時の索引表現の実装判断による） | 検索結果一覧の裁定 Q6 | 自動 |
 | T-18 | `updated_at` が整数でない（文字列で書かれた混入） | 同上 | **`null`**（黙って誤った日時にしない） | 縮退 | 自動 |
-| T-19 | 両系統に同一チャンク（更新日時あり） | `ReciprocalRankFusion` | 融合後も **`UpdatedAt` が残る**（RRF はスコアだけを差し替える） | SC-02 裁定 Q6 | 自動 |
+| T-19 | 両系統に同一チャンク（更新日時あり） | `ReciprocalRankFusion` | 融合後も **`UpdatedAt` が残る**（RRF はスコアだけを差し替える） | 検索結果一覧の裁定 Q6 | 自動 |
 | T-20 | 片方だけ日時を持つ（再索引済みと未再索引の混在） | 同上 | 再索引済みは値を保ち、未再索引は `null` のまま | 縮退 | 自動 |
-| T-21 | 後段が `updatedAt` を返す | `POST /bff/search` | **BFF が欠落させずに透過**する（`BffSearchEndpointTests`） | SC-02 裁定 Q6 | 自動 |
-| T-22 | `SortBy` 未指定 | `SearchAsync` | **取得順（関連度順）のまま**＝現行の振る舞いを変えない | SC-02 裁定 Q5 | 自動 |
-| T-23 | `SortBy = updated` | 同上 | 更新日時の**降順**になる | SC-02 裁定 Q5 | 自動 |
-| T-24 | 日時を持たないチャンクが混ざる | 同上 | **末尾へ置く**（`MinValue` 扱いにしない。[[IADR-0150]] 決定 4） | 縮退 | 自動 |
-| T-25 | 同着（同じ日時・日時なし同士） | 同上 | **元の順序＝関連度の順**を保つ（安定ソート） | [[IADR-0150]] 決定 4 | 自動 |
-| T-26 | 未知値・空・`null` の `SortBy` | 同上 | 既定（relevance）へ縮退する（大文字小文字も問わない） | [[IADR-0131]] 決定 5 | 自動 |
-| T-27 | `SortBy = updated` かつ単系統 | 同上 | **候補を `topK*4` まで広げる**（関連度順では広げない）。[[IADR-0150]] 決定 3 | —| 自動 |
+| T-21 | 後段が `updatedAt` を返す | `POST /bff/search` | **BFF が欠落させずに透過**する（`BffSearchEndpointTests`） | 検索結果一覧の裁定 Q6 | 自動 |
+| T-22 | `SortBy` 未指定 | `SearchAsync` | **取得順（関連度順）のまま**＝現行の振る舞いを変えない | 検索結果一覧の裁定 Q5 | 自動 |
+| T-23 | `SortBy = updated` | 同上 | 更新日時の**降順**になる | 検索結果一覧の裁定 Q5 | 自動 |
+| T-24 | 日時を持たないチャンクが混ざる | 同上 | **末尾へ置く**（`MinValue` 扱いにしない。並び順は取得後に適用するという実装判断による） | 縮退 | 自動 |
+| T-25 | 同着（同じ日時・日時なし同士） | 同上 | **元の順序＝関連度の順**を保つ（安定ソート） | 並び順の実装判断 | 自動 |
+| T-26 | 未知値・空・`null` の `SortBy` | 同上 | 既定（relevance）へ縮退する（大文字小文字も問わない） | 契約で `enum` にしない方針 | 自動 |
+| T-27 | `SortBy = updated` かつ単系統 | 同上 | **候補を `topK*4` まで広げる**（関連度順では広げない）。並び順の実装判断による | —| 自動 |
 | T-28 | `SortBy = updated` で候補を広げた | 同上 | **返すのは `topK` 件**（広げた分をそのまま返さない） | —| 自動 |
 | T-29 | 画面が `sortBy` を送る | `POST /bff/search` | **BFF は縮退させず後段へそのまま渡す**（正規化は RetrievalService の 1 か所。`BffSearchEndpointTests`） | —| 自動 |
-| T-30 | `tags` を持つペイロード（`ListValue` の文字列） | `QdrantVectorStore.ExtractTags` | `["経理","規程"]` を順序どおり復元 | 結果一覧のタグ表示（SC-02・#642） | 自動 |
+| T-30 | `tags` を持つペイロード（`ListValue` の文字列） | `QdrantVectorStore.ExtractTags` | `["経理","規程"]` を順序どおり復元 | 結果一覧のタグ表示（#642） | 自動 |
 | T-31 | `tags` を持たないペイロード | 同上 | 空リスト（画面はタグ列を空欄にする） | 同上 | 自動 |
 | T-32 | `tags` がリストでない（手投入・旧データ） | 同上 | 空リスト（検索全体を失敗させない） | 例外フロー | 自動 |
 | T-33 | `tags` に数値・真偽値・構造体が混在 | 同上 | スカラーは文字列化（`"42"`/`"true"`）、構造体は読み飛ばす | 例外フロー | 自動 |
-| T-34 | タグを持つ `ChunkPayload` | `QdrantVectorStore.BuildPayload` | `payload["tags"]` が `ListValue[StringValue]`（**取り込み側 `QdrantIngestionVectorStore.BuildChunkPayload` と同じ表現**） | 表現の一致（[[IADR-0014]]・#642） | 自動 |
+| T-34 | タグを持つ `ChunkPayload` | `QdrantVectorStore.BuildPayload` | `payload["tags"]` が `ListValue[StringValue]`（**取り込み側 `QdrantIngestionVectorStore.BuildChunkPayload` と同じ表現**） | 表現の一致（属性ペイロードの表現統一・#642） | 自動 |
 | T-35 | タグ 0 件の `ChunkPayload` | 同上 | `tags` キー自体を書かない（`attributes` と同じ扱い） | 表現の一致 | 自動 |
-| T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込みと復元の表現の一致**を往復で固定する。本番の欠陥は復元側だけで、書き込み側に呼び出し元は無い） | 表現の一致（SC-02・#642） | 自動 |
+| T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込みと復元の表現の一致**を往復で固定する。本番の欠陥は復元側だけで、書き込み側に呼び出し元は無い） | 表現の一致（検索結果一覧・#642） | 自動 |
 
 ## テストデータ
 
@@ -92,7 +92,7 @@ issues: [#532, #536, #642]
 
 ## 未決事項
 
-- 実 Qdrant を用いた全文 Match・full-text index 未作成時の graceful degradation は統合テスト（IADR-0014 で確認予定）で別途検証する。
+- 実 Qdrant を用いた全文 Match・full-text index 未作成時の graceful degradation は統合テスト（属性ペイロードの実機検証で確認予定）で別途検証する。
 - E2E（実埋め込み・実ベクトルDB）での精度/p95 検証は負荷試験タスク（**#196**）で別途実施。ハーネスは
   `perf/k6/`（`search-load.js` p95<1500）、テスト仕様は `NFR-01_performance-load-test.md`。実測は環境準備後。
 </content>

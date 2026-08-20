@@ -17,22 +17,22 @@ issues: []
 # 機能仕様書: 構成情報 API（実効構成の可視化・ドリフト検出）
 
 > Issue #118 監査で欠落が判明したため後追いで作成（実装は Issue #112 / #113 → PR #116 で完了済み）。
-> SC-11 画面仕様書が「#112 実装時に作成」と定めていた機能仕様書に相当する。
+> 構成ビューアの画面仕様書が「#112 実装時に作成」と定めていた機能仕様書に相当する。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-15（現在有効なシステム構成と構成バージョンを読み取り専用 API で取得。宣言と実効の不一致を検出・警告。閲覧は管理者・運用者ロールに限定）
-- 画面（SC）: SC-11（構成ビューア。画面実装は後続フェーズ）
+- 機能要求: 現在有効なシステム構成と構成バージョンを読み取り専用 API で取得する。宣言と実効の不一致を検出・警告する。閲覧は管理者・運用者ロールに限定する
+- 画面: 構成ビューア（画面実装は後続フェーズ）
 - 計画書リンク: `02_requirements/01_requirements.md`、`05_screens/01_screens.md`、`07_adr/ADR-0018`
-- 実装 ADR: IADR-0029: 構成情報 API の実装配置・申告規約・ドリフト判定粒度（BFF 配下への配置・ドリフト粒度）、
-  IADR-0030: 運用者ロールは platform-operator を新設し ConfigViewer ポリシーで判定する（運用者ロール `platform-operator` と ConfigViewer ポリシー）、
-  IADR-0009: Wiki 閲覧の権限外アクセスは 404 で存在を秘匿し、ABAC はメモリ内で後段評価する（存在秘匿の整合）
+- 実装 ADR: 構成情報 API は BFF 配下の管理 API へ同居させ、自己申告集約＋宣言突合でドリフトを検出する、
+  運用者ロールは `platform-operator` を新設し ConfigViewer ポリシーで判定する、
+  権限外アクセスは 404 で存在を秘匿する（存在秘匿の整合）
 
 ## 概要
 
-FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に有効な構成**（実効構成）を集約して返す
+コンポーザビリティ要求が定める宣言的構成（`pipeline.json`）に対し、**実行時に実際に有効な構成**（実効構成）を集約して返す
 読み取り専用 API。宣言（Git）と実効の**ドリフト検出**を含む。独立サービス化せず **BFF 配下の管理 API**
-として同居させる（IADR-0029。過剰分割回避）。
+として同居させる（過剰分割の回避。実装 ADR による）。
 
 ## 機能詳細
 
@@ -59,7 +59,7 @@ FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に
 ### 構成バージョン・履歴
 
 - `Config__GitCommit / AppliedAt / AppliedBy` を GitOps（ArgoCD）適用時に環境変数で注入する
-  （未注入時は空。注入配線は IADR-0029 フォローアップ）。
+  （未注入時は空。注入配線は構成情報 API の実装 ADR のフォローアップ）。
 - **適用履歴**（`GET /bff/admin/config/history`）の正データ源は **GitOps 層**（Git のコミット履歴 /
   ArgoCD リビジョン履歴）。現在バージョンと同じ注入経路で供給する `Config__History__N__{GitCommit,AppliedAt,AppliedBy,HadDrift}`
   を、API は永続化せず新しい順で surfacing する（保持範囲は GitOps 側が決定）。履歴未注入（dev/compose）時は
@@ -85,11 +85,11 @@ FR-14 の宣言的構成（`pipeline.json`）に対し、**実行時に実際に
 
 - 画面仕様書: [SC-11_configuration-viewer](../screens/SC-11_configuration-viewer.md)
 - 通信仕様書: [openapi.yaml](../api/openapi.yaml)（`/bff/admin/config`・`/bff/admin/config/drift`）
-- 機能仕様書: [FR-14_composability](FR-14_composability.md)
-- テスト仕様書: [FR-15_config-info-api](../tests/FR-15_config-info-api.md)
+- 機能仕様書: [コンポーザビリティ](FR-14_composability.md)
+- テスト仕様書: [構成情報 API](../tests/FR-15_config-info-api.md)
 - 作業仕様書: 作業仕様書: 構成情報 API・イントロスペクション・ドリフト検出 /
-  作業仕様書: SC-11 未決事項の対応（運用者ロール新設）
+  作業仕様書: 構成ビューアの未決事項の対応（運用者ロール新設）
 
 ## 未決事項
 
-- GitOps 構成バージョン注入と conversion / ingestion ワーカーの自己申告は IADR-0029 フォローアップとして追跡
+- GitOps 構成バージョン注入と conversion / ingestion ワーカーの自己申告は構成情報 API の実装 ADR のフォローアップとして追跡

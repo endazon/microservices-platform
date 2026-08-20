@@ -7,11 +7,11 @@ updated: 2026-08-21
 author: claude
 ---
 <!-- trace:
-ids: [FR-02, FR-03]
+ids: [FR-02, FR-03, NFR-01]
 adrs: [ADR-0031]
 iadrs: [IADR-0052, IADR-0134]
 specs: [01_requirements, 20260805_issue-512_spa-route-code-splitting]
-issues: [#196, #512]
+issues: [#196, #197, #512]
 -->
 
 # テスト仕様書: 性能（NFR）負荷試験
@@ -20,7 +20,7 @@ issues: [#196, #512]
 
 - 非機能要件（NFR）: 性能目標（検索 p95 ≤ 1.5s／RAG 初回 p95 ≤ 5s／取り込み ≥ 1 万件・時／更新 15 分以内反映）と
   受け入れ基準「主要画面・API で p95 レイテンシ目標を満たす（負荷試験で確認）」
-- 関連 FR: FR-03（横断検索）／FR-02（取り込み）
+- 関連する機能要求: ハイブリッド横断検索／取り込み
 - Issue: #196
 
 ## テスト対象・範囲
@@ -45,14 +45,14 @@ issues: [#196, #512]
 | P-03 | 取り込みスループット | N 件投入→`IngestionCompleted`/Qdrant points が N に達する時間 T を計測 | `N/T` ≥ 1 万件/時（必要ワーカー数を記録） | 負荷（手動/環境） |
 | P-04 | 反映時間 | 一意語文書を投入→`/bff/search` ポーリングでヒットまで計測 | ≤ 15 分 | 負荷（手動/環境） |
 
-## フロントエンドの初期ロード（#512 / [[IADR-0134]]）
+## フロントエンドの初期ロード（#512）
 
 **計画は初期バンドルの上限値を定めていない。** よって合否は (a) ビルドツールの既定予算
 （Vite の 500 kB/チャンク）と (b) 前後の実測差で判定する。**目標値ではなく退行の検出**が目的である。
 
 | ID | 指標 | 手順 | 合格条件 | 区分 |
 | --- | --- | --- | --- | --- |
-| P-05 | 1 チャンクの上限 | `pnpm run build`（**警告は stderr に出る**ので `2>&1`） | `Some chunks are larger than 500 kB` が出ない | ビルド（手動。**機械検査は未整備**——[[IADR-0134]] 決定 4 の但し書き） |
+| P-05 | 1 チャンクの上限 | `pnpm run build`（**警告は stderr に出る**ので `2>&1`） | `Some chunks are larger than 500 kB` が出ない | ビルド（手動。**機械検査は未整備**——バンドル分割境界の実装判断が置いた但し書き） |
 | P-06 | 画面が遅延側にあること | `pnpm vitest run knowledge/frontend/src/features/routeSplitting.test.ts` | 画面 11 本が feature index の静的 import に無く、遅延境界（`.preload` / `wrapInSuspense`）が宣言されている | 単体（CI） |
 | P-07 | 共通シェル・認証・UI プリミティブが初期側にあること | `pnpm vitest run platform/frontend/src/foundation/routing/initialChunk.test.ts` | `Layout` / `NotFound` / `RequireAuth` / `RequireRole` / `AuthProvider` / `@platform/ui` が初期側で読まれる | 単体（CI） |
 | P-08 | 分割成果物で実ブラウザから起動できること | `playwright test e2e/bundle-splitting.smoke.spec.ts` | 要求した資産がすべて 200・`pageerror` なし・`/assets/*.js` を 2 本以上読む・ログイン画面が描画される | E2E |
@@ -78,8 +78,8 @@ issues: [#196, #512]
 
 ## 追随（実測後に更新する）
 
-- FR-03 受け入れ基準の未チェック 2 項（p95・15 分反映）を実測で更新する。
-- HPA しきい値（#197 `scaling.hpa`）・リソース requests/limits・RRF k 値/候補数（FR-03 未決事項）を実測で調整する。
+- 横断検索の受け入れ基準の未チェック 2 項（p95・15 分反映）を実測で更新する。
+- HPA しきい値（#197 `scaling.hpa`）・リソース requests/limits・RRF k 値/候補数（横断検索の未決事項）を実測で調整する。
 - 目標未達は改善タスクを分割起票する。
 
 ## 関連仕様
