@@ -8,17 +8,17 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-11]
-adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0215]
+adrs: [ADR-0031, ADR-0032, ADR-0037, ADR-0043]
+iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215]
 specs: [01_screens, 13_frontend-stack, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, IADR-0121_spa-stack-migration-staging, IADR-0131_openapi-as-bff-contract-source, IADR-0132_openapi-required-from-csharp-nullability, IADR-0135_generated-client-adoption-and-cache-keys, IADR-0136_next-sync-at-from-worker-cadence]
-issues: [#519, #629]
+issues: [#439, #506, #519, #520, #521, #538, #544, #586, #629, #634, #640, planning#200, planning#236, planning#244, planning#299]
 -->
 
 # 通信仕様書: BFF 境界（`/bff/*`）
 
 > 個々のエンドポイントの要求・応答・ステータスは **[`openapi.yaml`](openapi.yaml) を正**とする。
 > 本書はその上位にある**境界の規約**（誰が何をどう呼ぶか／何が生成対象で何が対象外か）を定める。
-> 決定の根拠は [[IADR-0131]] を参照。
+> 決定の根拠は、OpenAPI を BFF 契約の単一情報源とする実装 ADR を参照。
 
 > **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙: `draft` =
 > 着手前・記述途中／`in-progress` = 実装中）。BFF 境界は #506（PR #518）で**当時の全 27 パス**が契約に載り
@@ -27,25 +27,27 @@ issues: [#519, #629]
 > **着手前でも記述途中でもないので `draft` は外す。** 一方、次の 1 点が未了なので `completed` でもない。
 >
 > 1. ~~**`/bff/feedback`・`/bff/feedback/stats` の端点認可が未裁定である**~~
->    **［2026-08-10 解消 / #521・[[IADR-0158]]］裁定（2026-08-07）と実装の双方が揃った。**
+>    **［2026-08-10 解消 / #521］裁定（2026-08-07）と実装の双方が揃った。**
 >    投稿は認証必須（無認証 401）、統計は運用者・管理者のみ（権限外 403）を
 >    **BFF と後段の両層**で実装し、テストで固定した。
 >
 > **［2026-08-05 追記］#519 で載せ替えが済み、`apiFetch` を使う画面は 0 になった**
-> （残る `foundation/api` 直接利用は **SSE の `apiStream` だけ**である。[[IADR-0135]]）。
+> （残る `foundation/api` 直接利用は **SSE の `apiStream` だけ**である）。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 関連機能要求（FR）: FR-01 / FR-03 / FR-04 / FR-06 / FR-08 / FR-09 / FR-10 / FR-12 / FR-15
-- 関連ユースケース（UC）: UC-01〜UC-06
+- 関連機能要求: データソースのカタログ化／ハイブリッド横断検索／根拠付き AI 回答と出典／文書 CRUD・版管理／
+  回答フィードバック／属性・ポリシー管理／利用状況ダッシュボード／正規化変換／構成情報 API
+- 関連ユースケース: 検索・質問する／AI 分析を依頼する／文書を管理する／データソースを登録・同期する／
+  ABAC 権限を管理する／文書を正規化変換する
 - 技術検討 / ADR:
   13_frontend-stack（計画リポ）（基本方針）／
-  ADR-0031（計画リポ）（Accepted）
+  フロントエンドスタックの計画 ADR（Accepted）
 
 ## 概要
 
 - **プロトコル**: REST / JSON（＋ SSE が 1 本）。すべて `/bff/` 接頭辞の下に置く。
-- **SPA からの到達経路は 2 つだけである**（ADR-0031 / [[IADR-0121]] 決定 3）。
+- **SPA からの到達経路は 2 つだけである**（フロントエンドスタックの計画 ADR と、SPA 新スタック移行の決定 3）。
   1. **orval 生成フック**（`foundation/api/generated/*`）——既定。
   2. **`foundation/api` の `apiStream`**——**生成できない面（SSE）だけ**。
      **［2026-08-05 追記］#519 の載せ替え後、画面が `apiFetch` を使う箇所は無い。**
@@ -87,30 +89,30 @@ issues: [#519, #629]
 
 `ExcludeFromDescription()` が付いており、**メッシュ内部限定**（ingress へ公開しない。ClusterIP ＋
 NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。応答は 202 のみで構成情報を返さない
-（存在秘匿・[[IADR-0009]]）。**SPA から呼ぶ面ではない**ため契約に載せない。
+（存在秘匿）。**SPA から呼ぶ面ではない**ため契約に載せない。
 
 ## エンドポイント一覧
 
 **`operationId` は例外なく C# の `WithName` のケバブケースである**（#519 で既存 2 本
-〔`analysis-ask` / `analysis-analyze`〕を規約へ揃えた。[[IADR-0131]] 決定 3 の改定＝[[IADR-0135]] 決定 5）。
+〔`analysis-ask` / `analysis-analyze`〕を規約へ揃えた。契約の単一情報源の決定 3 を、生成クライアント採用の決定 5 が改定した）。
 
 **認可の列は BFF 実装の実測である。** 「404（秘匿）」は「不在」と「権限外」を区別しないことを指す
-（[[IADR-0009]]）。詳細（要求・応答スキーマ・全ステータス）は [`openapi.yaml`](openapi.yaml) を正とする。
+（存在秘匿の方針）。詳細（要求・応答スキーマ・全ステータス）は [`openapi.yaml`](openapi.yaml) を正とする。
 
-| メソッド | パス | 認可 | 関連 FR/UC/SC | 生成される関数 |
+| メソッド | パス | 認可 | 関連する要求・画面 | 生成される関数 |
 | --- | --- | --- | --- | --- |
-| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。ADR-0043）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（[[IADR-0044]] 多層防御） | —| `useBffAttributeValues` |
-| GET | `/bff/tags` | **admin ＋ operator**（辞書の読み取り。裁定 Q18・[[IADR-0152]] 決定 5） | —| `useBffTagList`（**#640**） |
-| POST | `/bff/tags` | **AdminOnly**（運用者も不可。SC-09 はシステム管理者ロール限定） | —| `useBffTagCreate`（**#640**。名前の重複は 409） |
-| PUT | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。[[IADR-0153]] 決定 1。応答の `republishedDocuments` は射影の再発行件数） |
-| DELETE | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。SC-09「削除前に使用件数を示す」のため**本文ごと透過する**） |
-| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | —| `useBffSearch`（**mutation**。SC-02 は操作関数 `bffSearch` を `useQuery` に据える。[[IADR-0135]] 決定 2） |
+| POST | `/bff/attribute-values` | **端点認可なし**（**候補は ABAC で絞る**。スコープ付き属性値ルックアップの決定）。**［#634］辞書（`dictionary`）が付くのは管理者・運用者かつ `key=tags` のときだけ**——実効境界は DocumentService の `/tags` 側である（書き込み・管理 API への認可強制＝多層防御） | —| `useBffAttributeValues` |
+| GET | `/bff/tags` | **admin ＋ operator**（辞書の読み取り。裁定 Q18・タグ辞書の実装判断・決定 5） | —| `useBffTagList`（**#640**） |
+| POST | `/bff/tags` | **AdminOnly**（運用者も不可。管理者設定画面はシステム管理者ロール限定） | —| `useBffTagCreate`（**#640**。名前の重複は 409） |
+| PUT | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagRename`（**#640**。**文書は 1 件も書き換わらない**——正本が識別子を参照する。タグの正本を識別子とする実装判断・決定 1。応答の `republishedDocuments` は射影の再発行件数） |
+| DELETE | `/bff/tags/{id}` | **AdminOnly** | —| `useBffTagDelete`（**#640**。**参照 1 件以上は 409 ＋ `usageCount`**。管理者設定画面「削除前に使用件数を示す」のため**本文ごと透過する**） |
+| POST | `/bff/search` | **端点認可なし**（結果は ABAC で絞る） | —| `useBffSearch`（**mutation**。検索結果一覧は操作関数 `bffSearch` を `useQuery` に据える。生成クライアント採用の決定 2） |
 | POST | `/bff/analysis/ask` | 同上 | —| `useBffAnalysisAsk`（**画面は呼んでいない**） |
 | POST | `/bff/analysis/ask/stream` | 同上 | —| **無し（SSE。`apiStream`）** |
 | POST | `/bff/analysis/analyze` | 同上 | —| `useBffAnalysisAnalyze` |
-| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521 / [[IADR-0158]]） | —| `useBffSubmitFeedback` |
-| GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521 / [[IADR-0158]]） | —| `useBffFeedbackStats` |
-| GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画 §SC-10「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
+| POST | `/bff/feedback` | **認証必須**（ロールは問わない。無認証は 401。#521） | —| `useBffSubmitFeedback` |
+| GET | `/bff/feedback/stats` | **`platform-admin` ＋ `platform-operator`**（無認証 401 / 権限外 403。#521） | —| `useBffFeedbackStats` |
+| GET | `/bff/dashboard/summary` | **admin ＋ operator**（**#544**。計画側の運用ダッシュボード「運用者・管理者ロール限定」。従前は admin のみ） | —| `useBffDashboardSummary` |
 | GET | `/bff/documents` | **端点認可なし**（ABAC で絞る） | —| `useBffDocumentList` |
 | POST | `/bff/documents` | **admin のみ** | —| `useBffDocumentCreate` |
 | GET | `/bff/documents/{id}` | **端点認可なし**（ABAC ＋ 404 秘匿） | —| `useBffDocumentDetail` |
@@ -126,15 +128,15 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | PUT | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceUpdate` |
 | PATCH | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourcePatch` |
 | DELETE | `/bff/datasources/{id}` | **admin のみ** | —| `useBffDataSourceDelete` |
-| POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。planning#299） | —| `useBffDataSourceSync` |
+| POST | `/bff/datasources/{id}/sync` | **admin / operator**（破壊的操作に含めない。計画側の裁定による） | —| `useBffDataSourceSync` |
 | GET | `/bff/conversion/jobs` | **admin / operator** | —| `useBffConversionJobList` |
 | GET | `/bff/conversion/jobs/{id}` | **admin / operator** | —| `useBffConversionJobGet` |
 | POST | `/bff/conversion/jobs/{id}/retry` | **admin のみ** | —| `useBffConversionJobRetry` |
 | GET | `/bff/conversion/jobs/{id}/figures` | **admin のみ** | —| `useBffConversionJobFigures` |
 | GET | `/bff/conversion/jobs/{id}/figures/{figureId}/image` | **admin のみ** | —| （画像。生成フックを使わない） |
 | POST | `/bff/conversion/jobs/{id}/figures/{figureId}/correction` | **admin のみ** | —| `useBffConversionJobFigureCorrection` |
-| GET | `/bff/notifications` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体**（JWT の `sub`）——本人宛だけを返し、管理者にも他人の通知は返らない（FR-22 / 計画 ADR-0037 決定 6。[[IADR-0215]] 決定 2） | —| `useBffNotificationList` |
-| POST | `/bff/notifications/{id}/read` | 同上。**本人の通知でなければ 404**（「存在しない」と「本人のものでない」を区別しない。[[IADR-0009]]） | —| `useBffNotificationMarkRead`（**冪等**。既読へもう一度呼んでも 200） |
+| GET | `/bff/notifications` | **認証必須・ロールは問わない**（`x-roles: []`）。**絞るのは役割ではなく主体**（JWT の `sub`）——本人宛だけを返し、管理者にも他人の通知は返らない（利用者通知の要求／Obsidian 同期方式の計画 ADR 決定 6。通知サービスの実装 ADR 決定 2） | —| `useBffNotificationList` |
+| POST | `/bff/notifications/{id}/read` | 同上。**本人の通知でなければ 404**（「存在しない」と「本人のものでない」を区別しない。存在秘匿の方針） | —| `useBffNotificationMarkRead`（**冪等**。既読へもう一度呼んでも 200） |
 | GET | `/bff/admin/authz/policies` | **admin のみ** | —| `useBffAuthzListPolicies` |
 | POST | `/bff/admin/authz/policies` | **admin のみ** | —| `useBffAuthzCreatePolicy` |
 | POST | `/bff/admin/authz/policies/validate` | **AdminOnly** | —| `useBffAuthzValidatePolicy`（**#535**。保存せず検証だけ行う。**矛盾は 200 ＋ `{ valid, errors }`** で、保存の 400 とは別。後段は登録・更新と**同じ検証関数**を通る） |
@@ -152,15 +154,15 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | GET | `/bff/admin/config/history` | 同上 | —| `useBffConfigHistory` |
 
 > **［2026-08-07 追記 / #586］`/bff/feedback` 系の 2 行は計画と食い違う。**
-> planning `3e58b97`（PR planning#244。裁定依頼 planning#236 の反映）で計画 FR-08 に
+> 計画リポジトリのコミット `3e58b97`（裁定依頼への回答を反映したもの）で、フィードバック収集の要求に
 > **「投稿には認証を要する（匿名投稿は許さない）／統計は運用者・管理者に限って参照できる」**が確定し、
 > 受け入れ基準として **無認証で 401 / 認証済みでも権限外は 403** が置かれた。
-> **［2026-08-10 是正 / #521・[[IADR-0158]]］上表を実装へ揃えた。** 従前の「端点認可なし」は
+> **［2026-08-10 是正 / #521］上表を実装へ揃えた。** 従前の「端点認可なし」は
 > 当時の実測としては正しかったが、**BFF と後段の両層へ認可を足した**ので現在は誤りである。
 > 投稿は `RequireAuthorization()`（ロールは問わない——計画が定めていない制限を足さない）、
 > 統計は群の認証と `RequireRole(Admin, Operator)` の **AND 合成**で実効 admin ＋ operator。
-> 同型の記述も同じ PR で揃えた: [機能仕様書 FR-08](../functional/FR-08_answer-feedback.md)・
-> [テスト仕様書 FR-08](../tests/FR-08_answer-feedback.md)・[[IADR-0010]]・[[IADR-0131]]・§未決事項 3。
+> 同型の記述も同じ PR で揃えた: [機能仕様書](../functional/FR-08_answer-feedback.md)・
+> [テスト仕様書](../tests/FR-08_answer-feedback.md)・関連する 2 件の実装 ADR・§未決事項 3。
 
 ## 横断の規約
 
@@ -168,7 +170,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 
 | 面 | 未認証 | 権限不足 | 理由 |
 | --- | --- | --- | --- |
-| `/bff/admin/config` 群 | **404** | **404** | **存在秘匿**（[[IADR-0009]]）。`RequireAuthorization` を**使わず**ハンドラ内で `ConfigViewer` を評価する——付けると無認証が 404 到達前に 401 で短絡して存在が漏れる |
+| `/bff/admin/config` 群 | **404** | **404** | **存在秘匿**の方針による。`RequireAuthorization` を**使わず**ハンドラ内で `ConfigViewer` を評価する——付けると無認証が 404 到達前に 401 で短絡して存在が漏れる |
 | `/bff/documents/{id}`（読み） | **404** | **404** | 同上。スコープ外と不在を区別しない。無認証は `userId="anonymous"` として ABAC スコープ解決へ渡り、許可が無ければ null＝404 になる |
 | その他の管理系 | 401 | 403 | 管理 API の存在自体は秘匿しない（画面側が `RequireRole` で導線を隠す） |
 
@@ -180,12 +182,12 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 >   なる（`BffScopeResolver`。無認証は `userId="anonymous"`）。許可ポリシーが無ければ deny-by-default で
 >   null＝空応答または 404 になる。**「認証不要」ではなく「認証の有無を認可の入力として扱う」設計である。**
 > - `/bff/feedback`・`/bff/feedback/stats`: ABAC を通らない。送信者は後段が JWT から特定し、
->   **開発・テスト環境では `anonymous`** として記録される（IADR-0010 の二重計上防止はこの ID で行う）。
+>   **開発・テスト環境では `anonymous`** として記録される（upsert による二重計上防止はこの ID で行う）。
 >   **BFF 自身は無認証の投稿を拒まない**——この面をどこで塞ぐか（エッジか BFF か）は本書では未確認である
 >   （§未決事項 3）。
 
 **SPA 側はこの差を吸収する**——403 と 404 をどちらも同じ中立表示へ寄せ、5xx とは区別して
-`role="alert"` を出す（[[IADR-0129]] 決定 3）。「権限が無い」と「存在しない」を利用者に見分けさせない。
+`role="alert"` を出す（管理画面 3 種の再実装・決定 3）。「権限が無い」と「存在しない」を利用者に見分けさせない。
 
 ### 2. エラー本文の形が 3 種類ある（**統一されていない。実装がそうなっている**）
 
@@ -206,7 +208,7 @@ NetworkPolicy / mTLS が防御）で ArgoCD の PostSync フックが叩く。�
 | 面 | 後段不達・不調のとき | 理由 |
 | --- | --- | --- |
 | `/bff/search`・`/bff/documents`（一覧） | **空応答へ縮退**（200） | 権限外の存在を示さない（deny-by-default） |
-| `/bff/attribute-values` | **空配列へ縮退**（200） | **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを区別させない（ADR-0043 決定 3 の趣旨・[[IADR-0151]] 決定 5） |
+| `/bff/attribute-values` | **空配列へ縮退**（200） | **404 にも 403 にもしない** —— 候補が無いことと権限が無いことを区別させない（スコープ付き属性値ルックアップの決定 3 の趣旨と、facet 実装の決定 5） |
 | `/bff/datasources`・`/bff/conversion/jobs`（一覧） | **502** | 運用画面。「未登録」「ジョブ無し」と誤認させると重複登録・見落としを誘発する |
 | `/bff/analysis/ask/stream` | `event: error` の SSE イベント | ヘッダ送出済みで HTTP ステータスを変えられない |
 
@@ -227,7 +229,7 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
 画面が値集合を持つ必要があるときは、feature 側の純関数（`jobStatus.ts` / `abacVocabulary.ts` /
 `driftView.ts` 等）に置き、そこを単体テストで固定する。
 
-### 5. 応答スキーマの `required` は **C# の非 null 性**から起こす（#520 / [[IADR-0132]]）
+### 5. 応答スキーマの `required` は **C# の非 null 性**から起こす（#520）
 
 **orval は `required` の無いスキーマの全プロパティを省略可（`?`）で生成する。**
 `required` を書き忘れた面は、契約に載っていても**型検査の網にならない**
@@ -240,11 +242,11 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   `AbacConditionMap`（`properties` を持たない写像）／`ProblemDetails`・`ValidationProblemDetails`（RFC7807）／
   `ConfigVersionDto`・`ConfigVersionEntryDto`（C# の全メンバーが nullable）。
   **「入れない判断」は `description` に理由を書く**（「書き忘れ」と区別が付くようにする）。
-- **`required` に入れたプロパティに `default` を書かない**（[[IADR-0132]] 決定 2 の系）。
+- **`required` に入れたプロパティに `default` を書かない**（`required` を非 null 性から起こす決定 2 の系）。
   応答側の `default` は「**欠けていたらこの値と読め**」の意味であり、「必ず出る」と言う `required` と
   同居させると契約が自己矛盾する。C# の引数既定（`bool Sent = true` 等）は契約の情報ではない。
   **要求スキーマの `default` は別である**——「送らなければこの値になる」という本来の意味で機能する。
-- **`required` を入れても `?? 既定値` は消さない**（[[IADR-0132]] 決定 3）。
+- **`required` を入れても `?? 既定値` は消さない**（同決定 3）。
   **「契約上は必須」と「実行時に必ず来る」は別**であり、応答本文を実行時に検証する層は無い。
 - **`/bff/` 外のスキーマにも `required` を入れる。** 生成の前処理 `src/orval-bff-only.cjs` が
   入力から落とすのは **`paths` だけ**で、**`components.schemas` は素通りする**
@@ -263,31 +265,31 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
   ——したがって「応答を厳しくしたら要求も必須になった」という事故は現時点では起こり得ない。
   **両用スキーマを新設するときはこの前提が崩れるので、要求側への影響を必ず確認すること。**
 
-### 6. 応答項目の一部は**エンティティの列ではなく導出値**である（#538 / [[IADR-0136]]）
+### 6. 応答項目の一部は**エンティティの列ではなく導出値**である（#538）
 
-`DataSourceDto.nextSyncAt`（SC-06「次回同期」）は DB の列ではない。定期同期は**全ソース共通の間隔**で
+`DataSourceDto.nextSyncAt`（データソース管理画面の「次回同期」）は DB の列ではない。定期同期は**全ソース共通の間隔**で
 回る hosted service であり、次回実行時刻は**ワーカーの位相から導出される**。契約上の性質は次のとおりで、
 これを知らずに読むと「ソースごとに時刻を設定できる」と誤読する。
 
-- **全ソースで同じ値**を返す（ソース別スケジュールは持たない。planning#200 の裁定 Q15）。
+- **全ソースで同じ値**を返す（ソース別スケジュールは持たない。計画側の裁定 Q15）。
 - **定期同期が無効なら `null`**（compose / dev の既定。`nullable: true`・`required` に入れない）。
 - 保存されないため、**同じソースでも時間が経てば別の値**になる（キャッシュの鮮度と混同しない）。
 
 ## 非機能・運用
 
-- **冪等性**: `POST /bff/feedback` は `(answerId, userId)` の upsert（新規 201 / 更新 200。IADR-0010）。
+- **冪等性**: `POST /bff/feedback` は `(answerId, userId)` の upsert（新規 201 / 更新 200。upsert による冪等化）。
   `POST /bff/conversion/jobs/{id}/retry` は状態で直列化される（`failed` 以外は 409）。
 - **認証**: 現在は Keycloak の JWT を `Authorization: Bearer` で付与する。
-  **ADR-0032 の BFF セッション方式へ移行予定**（移行第 3 段 / #439）。移行時に直すのは
+  **計画側が定める BFF セッション方式へ移行予定**（移行第 3 段 / #439）。移行時に直すのは
   `foundation/api/apiClient` の 1 箇所で、生成コードは `orvalMutator` 経由なので影響を受けない。
-- **バージョニング**: 契約の破壊的変更は `scripts/check-contract-schema.js`（[[IADR-0122]]）が
+- **バージョニング**: 契約の破壊的変更は `scripts/check-contract-schema.js`（契約スキーマの抽出方式と後方互換ゲート）が
   C# ソース側で検出する。**OpenAPI 側には同等のゲートが無い**（§未決事項 1）。
 
 ## 関連仕様
 
 - 契約本体: [`openapi.yaml`](openapi.yaml)
-- 実装 ADR: [[IADR-0131]]（本書の決定の根拠）・**[[IADR-0135]]（SPA 側の載せ替えとキャッシュキー）**・
-  [[IADR-0121]]（BFF 境界）・[[IADR-0122]]（契約スキーマ）
+- 実装 ADR: OpenAPI を BFF 契約の単一情報源とする（本書の決定の根拠）・**生成クライアントの採用とキャッシュキー**・
+  SPA 新スタック移行（BFF 境界）・契約スキーマの後方互換ゲート
 - 画面仕様書: `docs/screens/SC-*.md`
 
 ## 未決事項
@@ -302,10 +304,10 @@ OpenAPI で閉じた `enum` にすると、**後段が値を増やした瞬間�
    BFF へ `RequireAuthorization` を足すかは**本作業では判断していない**——#506 は契約の記述を
    揃える作業であり、認可の変更は挙動の変更だからである。**セキュリティ仕様書側での裁定が要る**——
    **#521** として起票済みである。
-   - > **［2026-08-07 追記・裁定は下りた / #586］計画側が FR-08 の認可を確定した**
-     > （planning `3e58b97` = PR planning#244〔裁定依頼 planning#236〕。**投稿は認証必須で無認証は 401／統計は運用者・管理者のみで
+   - > **［2026-08-07 追記・裁定は下りた / #586］計画側がフィードバック収集の認可を確定した**
+     > （計画リポジトリのコミット `3e58b97`。裁定依頼への回答を反映したもの。**投稿は認証必須で無認証は 401／統計は運用者・管理者のみで
      > 権限外は 403／同一利用者の 2 回投稿でも集計は 1 件**）。**したがって本項はもう「未決」ではない。**
-     > **［2026-08-10 解消 / #521・[[IADR-0158]]］実装も揃った。** BFF と後段の両層へ認可を足し、
+     > **［2026-08-10 解消 / #521］実装も揃った。** BFF と後段の両層へ認可を足し、
      > 上表の認可列も実装へ揃えた（従前は実測＝現状のままだった）。
 
 <!-- trace-table:
