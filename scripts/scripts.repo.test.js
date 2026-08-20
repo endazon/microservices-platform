@@ -5042,6 +5042,7 @@ module.exports = ({ ok, assert }) => {
         const NOT_CHECKERS = [
           'gen-changelog.js',
           'gen-openapi-skeleton.js',
+          'gen-knowledge-graph.js',
           'measure-abac-combinations.js',
           'seed-abac-policies.js',
         ];
@@ -5057,7 +5058,13 @@ module.exports = ({ ok, assert }) => {
         // ★ ADR-0048 決定 2・決定 6（planning 依存の全撤去・kit 同期検査の退役）で
         //    `check-planning-pin-freshness.js` / `check-kit-sync.js` / `check-feedback-dispatched.js` /
         //    `check-feedback-status-sync.js` の 4 本を退役させたため 38 → 34（同上）。
-        assert.strictEqual(scripts.length, 34, `検査器の母集合が 34 本から変わった（${scripts.length} 件）`);
+        // ★ ADR-0048 決定 4（trace ブロックの文法・値域検査）で `check-trace-blocks.js` を新設した
+        //    ため 34 → 35（同上。git を一切呼ばず fs のみで走査するため TRACKED_CHECKERS /
+        //    HEAD_CHECKERS のどちらにも載らない）。同じ PR で新設した `gen-knowledge-graph.js` は
+        //    `gen-changelog.js` / `gen-openapi-skeleton.js` と同じ生成器であり（既定 `--json` は
+        //    stdoutへ書くだけで副作用は無いが、役割は「検査」ではなく「生成」）、NOT_CHECKERS へ
+        //    加えて母集合に数えない。
+        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -6989,6 +6996,102 @@ module.exports = ({ ok, assert }) => {
         }
       }
       assert.ok(checked > 0, '検査したテストプロジェクトが 0 件（試験が空回りしている）');
+    });
+  }
+
+  // --- 計画 ADR-0048 決定 4: check-trace-blocks.js / gen-knowledge-graph.js -----------
+  //
+  // trace ブロック（`<!-- trace: ... -->`）・trace-table ブロックの文法・値域検査（新設）と、
+  // それを元にしたナレッジグラフ生成（新設）。純関数の網羅は各スクリプト自身の --self-test が
+  // 持つ（lib/trace-blocks.js 58 件・check-trace-blocks.js 28 件・gen-knowledge-graph.js 26 件）。
+  // ここでは他の検査器と同じ流儀で「自己試験が子プロセスで実際に緑であること」と
+  // 「実データに対して例外を投げずに完走すること」を固定する。**実データの違反件数は固定しない**
+  // ——docs/ は本 PR と並行して trace ブロックへの移行が進行中であり、件数は移行の進捗で
+  // 変わり続ける（違反 0 件を固定すると移行完了までこのテストが赤いままになる）。
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const { spawnSync } = require('child_process');
+    const runSelf = (f) =>
+      spawnSync(process.execPath, [path.join(__dirname, f), '--self-test'], { encoding: 'utf8' });
+
+    ok('lib/trace-blocks.js --self-test は exit 0', () => {
+      const r = runSelf('lib/trace-blocks.js');
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}${r.stderr}`);
+      assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+    });
+
+    ok('check-trace-blocks.js --self-test は exit 0（実データからの値域読み出しを含む）', () => {
+      const r = runSelf('check-trace-blocks.js');
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}${r.stderr}`);
+      assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+    });
+
+    ok('gen-knowledge-graph.js --self-test は exit 0（実データでのグラフ構築を含む）', () => {
+      const r = runSelf('gen-knowledge-graph.js');
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}${r.stderr}`);
+      assert.match(String(r.stdout), /自己試験 \d+ 件 OK/);
+    });
+
+    ok('check-trace-blocks.js: docs/ の実データ走査が例外を投げずに終了コード 0/1 で終わる', () => {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'check-trace-blocks.js')], { encoding: 'utf8' });
+      assert.ok([0, 1].includes(r.status), `想定外の終了コード ${r.status}:\n${r.stdout}${r.stderr}`);
+      const out = `${r.stdout}${r.stderr}`;
+      assert.match(out, r.status === 0 ? /OK: \d+ 件の Markdown/ : /違反 \d+ 件を検出しました/, out);
+    });
+
+    ok('gen-knowledge-graph.js --json: 実データからノード・エッジを構築する（形の検査）', () => {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'gen-knowledge-graph.js'), '--json'], {
+        encoding: 'utf8',
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      assert.strictEqual(r.status, 0, `--json が失敗した:\n${r.stdout}${r.stderr}`);
+      const graph = JSON.parse(r.stdout);
+      assert.ok(Array.isArray(graph.nodes) && graph.nodes.length > 0, 'nodes が空');
+      assert.ok(Array.isArray(graph.edges) && graph.edges.length > 0, 'edges が空');
+      const byKind = { doc: 0, iadr: 0, spec: 0 };
+      for (const n of graph.nodes) byKind[n.kind] = (byKind[n.kind] || 0) + 1;
+      assert.ok(byKind.doc > 0 && byKind.iadr > 0 && byKind.spec > 0, `ノード種別が揃っていない: ${JSON.stringify(byKind)}`);
+      const ids = graph.nodes.map((n) => n.id);
+      assert.strictEqual(new Set(ids).size, ids.length, 'ノード ID が重複している（doc/iadr/spec の正規化衝突の疑い）');
+    });
+
+    ok('gen-knowledge-graph.js --mermaid --scope: スコープ配下だけの flowchart を出す', () => {
+      const r = spawnSync(
+        process.execPath,
+        [path.join(__dirname, 'gen-knowledge-graph.js'), '--mermaid', '--scope', 'docs/tech'],
+        { encoding: 'utf8' },
+      );
+      assert.strictEqual(r.status, 0, `--mermaid が失敗した:\n${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /^flowchart LR/, 'Mermaid の先頭行が flowchart LR でない');
+      assert.doesNotMatch(r.stdout, /docs_screens_/, '--scope docs/tech なのに docs/screens 配下のノードが混入している');
+    });
+
+    ok('gen-knowledge-graph.js --check: 終了コード 0/1 でノード・エッジ件数を報告する', () => {
+      const r = spawnSync(process.execPath, [path.join(__dirname, 'gen-knowledge-graph.js'), '--check'], {
+        encoding: 'utf8',
+      });
+      assert.ok([0, 1].includes(r.status), `想定外の終了コード ${r.status}:\n${r.stdout}${r.stderr}`);
+      assert.match(r.stdout, /ノード \d+ 件、エッジ \d+ 件/);
+    });
+
+    // ci.yml への配線（宣言 → 実挙動）。scripts/README.md の記述と対で、
+    // 「新設した検査器が CI から呼ばれていない」事故（他の check-*.js と同型）を防ぐ。
+    ok('ci.yml の doc-links ジョブが check-trace-blocks.js / gen-knowledge-graph.js --check を呼ぶ', () => {
+      const ciText = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
+      const m = /doc-links:\n([\s\S]*?)\n {2}\S/.exec(`${ciText}\n  $`);
+      assert.ok(m, 'doc-links ジョブが見つからない');
+      const job = m[1];
+      assert.match(job, /node scripts\/check-trace-blocks\.js --self-test/);
+      assert.match(job, /node scripts\/check-trace-blocks\.js\s*$/m);
+      assert.match(job, /node scripts\/gen-knowledge-graph\.js --self-test/);
+      assert.match(job, /node scripts\/gen-knowledge-graph\.js --check/);
+    });
+
+    ok('scripts/README.md に check-trace-blocks.js / gen-knowledge-graph.js が載っている', () => {
+      const readme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
+      assert.match(readme, /\| `check-trace-blocks\.js` \|/);
+      assert.match(readme, /\| `gen-knowledge-graph\.js` \|/);
     });
   }
 };

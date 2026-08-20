@@ -89,6 +89,14 @@ jobs:
   # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
   # 本リポジトリは planning に依存しない（ADR-0048 決定 2）。未取得の submodule（src/ai-stock-trading）
   # 配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
+  #
+  # 計画 ADR-0048 決定 4（trace ブロック）: docs/ の trace / trace-table ブロックの文法・値域は
+  # check-trace-blocks.js が、ナレッジグラフのエッジ先実在は gen-knowledge-graph.js --check が
+  # 検査する。いずれも fs のみで走査するため（git を呼ばない）checkout に fetch-depth や
+  # submodule 取得は要らない。本ジョブに寄せるのは「docs/ 系ジョブ」を 1 本にまとめる既存方針に
+  # 合わせるためであり、ワークフロー自体に paths: フィルタは無く（on: が push/pull_request の
+  # イベント種別のみを絞る既定構成）scripts/ の変更も含め毎回全ジョブが走るため、
+  # 「docs/** ・.ai-context/** ・scripts/ の変更時に走ること」は自動的に満たされている。
   doc-links:
     runs-on: ubuntu-latest
     steps:
@@ -102,6 +110,14 @@ jobs:
         run: node scripts/check-doc-links.js --self-test
       - name: Check doc links
         run: node scripts/check-doc-links.js
+      - name: Self-test trace blocks checker
+        run: node scripts/check-trace-blocks.js --self-test
+      - name: Check trace blocks (ADR-0048 決定 4)
+        run: node scripts/check-trace-blocks.js
+      - name: Self-test knowledge graph generator
+        run: node scripts/gen-knowledge-graph.js --self-test
+      - name: Check knowledge graph edge existence
+        run: node scripts/gen-knowledge-graph.js --check
 
   # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
   # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて
