@@ -220,6 +220,26 @@ src/<unit>/backend/Services/<Name>Service/
 > **残りは移行と無関係に古くなっていた** —— `MassTransit` の `.cs` は **59 と書いてあったが実測 36**、
 > `FluentAssertions` の `.cs` は **129 と書いてあったが（移行前の時点で）150** だった。
 > **導出値は走査ではなく計算し直す**（規則 7）。
+>
+> 🔴 **数え方を書き残す。** 単位（**ファイル数**であって行数ではない）とパターンが変わると値が変わり、
+> 次に読む人が再現できない（実際に AI レビューが再現を試みて一致せず、指摘として挙がった）。
+>
+> ```
+> # .csproj（不採用ライブラリを PackageReference で参照するプロジェクト数）
+> git grep -l 'PackageReference Include="MassTransit'    -- '*.csproj' ':!src/ai-stock-trading' | wc -l
+> git grep -l 'PackageReference Include="FluentAssertions"' -- '*.csproj' ':!src/ai-stock-trading' | wc -l
+>
+> # .cs（using を持つ**ファイル数**。-l はファイル、-n は行なので値が変わる）
+> git grep -l '^using MassTransit'      -- '*.cs' ':!src/ai-stock-trading' | wc -l
+> git grep -l '^using FluentAssertions' -- '*.cs' ':!src/ai-stock-trading' | wc -l
+>
+> # v3 移行の対象テストプロジェクト数
+> git grep -l 'Microsoft.NET.Test.Sdk' -- '*.csproj' ':!src/ai-stock-trading' | wc -l
+> ```
+>
+> **`^using MassTransit` は末尾を固定していない**ので `using MassTransit.Testing;` などのサブ名前空間も拾う。
+> 完全一致（`^using MassTransit;`）にすると **30** になる。差の 6 は**サブ名前空間だけを使うファイル**であり、
+> **依存の実態としては 36 が正しい**（`MassTransit` パッケージへの参照であることに変わりはない）。
 
 **xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
 別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 **16** のテスト
