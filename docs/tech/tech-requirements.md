@@ -279,6 +279,7 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 - **アナライザ `xUnit1051` は `src/Directory.Build.props` でテストプロジェクトのみ抑止**した。
   `TestContext.Current.CancellationToken` の採用は全テストの呼び出し側を書き換える別作業であり、
   切替そのものの射程を超える（抑止しないと **1,886 件**の助言警告が実害のある警告を埋める）。
+  **抑止は恒久ではなく、段階採用の完了時に外す。**
 
 **年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（バックエンド標準ライブラリの計画 ADR のフォローアップ）。
 手順は[運用仕様書](../operations/)に記載する。

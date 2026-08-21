@@ -69,7 +69,8 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
 目的そのものを壊す**」と記録している。1,886 件の助言警告を出し続ければ、同じ理由で `CS0618` の
 ような実害のある警告が埋もれる。**段階採用へ回すのが同じ判断である。**
 
-`TreatWarningsAsErrors` は `false` であり、この抑止はビルドの成否を変えない。採用は別 issue で行う。
+`TreatWarningsAsErrors` は `false` であり、この抑止はビルドの成否を変えない。
+🔴 **この抑止は恒久ではない。** 採用は **#882** で ratchet により段階的に行い、完了時に `NoWarn` を削除する。
 
 なお **`xUnit3003`**（`FactAttribute` 派生は呼び出し元のソース位置を受け取るべき）は 1 ファイル
 （`DockerFactAttribute`）だけなので**抑止せず直した**。抑止と是正の線は件数と改修範囲で引いている。
@@ -85,7 +86,7 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
   - `xUnit1051` を抑止したぶん、キャンセル応答性の助言は当面働かない（決定 4。別 issue）
   - `Knowledge.IntegrationTests` の 9 ファイルが `ValueTask` へ変わった（v3 の破壊的変更）
 - **フォローアップ**
-  - `TestContext.Current.CancellationToken` の段階採用（別 issue）
+  - `TestContext.Current.CancellationToken` の段階採用（**#882**）
 
 ## 棄却した案
 

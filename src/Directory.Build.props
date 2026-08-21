@@ -21,7 +21,8 @@
     そのものを壊す**」と記録している。1,886 件の助言警告を出し続けると、同じ理由で
     CS0618 のような実害のある警告が埋もれる。**段階採用へ回すのが同じ判断である。**
 
-    採用は別 issue で行う（TestContext.Current.CancellationToken への移行）。
+    採用は別 issue #882 で段階的に行う（TestContext.Current.CancellationToken への移行）。
+    🔴 この抑止は恒久ではなく、#882 の完了時にこの PropertyGroup ごと削除する。
     TreatWarningsAsErrors は false であり、この抑止はビルドの成否を変えない。
   -->
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
