@@ -10,7 +10,7 @@ author: claude
 ids: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15]
 adrs: [ADR-0015, ADR-0018]
 iadrs: [IADR-0002, IADR-0007, IADR-0014, IADR-0021, IADR-0022, IADR-0023, IADR-0024, IADR-0025, IADR-0027, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0059]
-specs: [20260708_issue-102_composability-fixed-variable-separation, openapi.yaml]
+specs: [20260708_issue-102_composability-fixed-variable-separation]
 issues: [#102, #195, #217, #218, #219, #229]
 -->
 

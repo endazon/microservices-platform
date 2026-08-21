@@ -15,7 +15,7 @@ related_specs:
   - ../../docs/tech/tech-requirements.md
   - ../../docs/operations/operations.md
 related_adrs:
-  - ../adr/IADR-0011_dashboard-service-usage-aggregation.md
+  - IADR-0011
 issue: "#63"
 parent_issue: "#48"
 related_issues:

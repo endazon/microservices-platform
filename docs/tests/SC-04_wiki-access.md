@@ -10,7 +10,7 @@ author: claude
 ids: [FR-13, SC-04, UC-07]
 adrs: []
 iadrs: []
-specs: [20260708_issue-130_sc04-wiki-access, SC-04_wiki-access]
+specs: [20260708_issue-130_sc04-wiki-access]
 issues: []
 -->
 

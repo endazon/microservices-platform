@@ -13,7 +13,7 @@ related_specs:
   - ../../docs/security/security.md
   - ../../docs/operations/operations.md
 related_adrs:
-  - ../adr/IADR-0018_transitive-vulnerability-scan.md
+  - IADR-0018
 related_prs:
   - "#61"
 # 注: IADR-0016（PR #61・OpenApi 推移ピン）は未マージのため develop に未存在。相互参照は prose 内で #61 として記載。

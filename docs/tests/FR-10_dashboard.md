@@ -10,7 +10,7 @@ author: claude
 ids: [FR-10, UC-05]
 adrs: []
 iadrs: [IADR-0011]
-specs: [20260703_FR-10_usage-dashboard, FR-10_dashboard]
+specs: [20260703_FR-10_usage-dashboard]
 issues: []
 -->
 

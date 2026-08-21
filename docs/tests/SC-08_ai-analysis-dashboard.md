@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-08, UC-02, UC-05]
 adrs: [ADR-0031]
 iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0127, IADR-0131, IADR-0135]
-specs: [20260805_issue-503_sc05-08-admin-screens, SC-08_ai-analysis-dashboard]
+specs: [20260805_issue-503_sc05-08-admin-screens]
 issues: [#503, #519, #539]
 -->
 

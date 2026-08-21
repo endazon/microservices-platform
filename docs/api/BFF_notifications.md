@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-22, UC-11]
 adrs: [ADR-0037, ADR-0045]
 iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0215]
-specs: [20260816_issue-600_fr22-in-app-notifications, BFF_bff-surface, FR-22_user-notifications]
+specs: [20260816_issue-600_fr22-in-app-notifications]
 issues: [#600, #788]
 -->
 

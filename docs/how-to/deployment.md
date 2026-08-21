@@ -10,7 +10,7 @@ author: claude
 ids: [FR-15]
 adrs: []
 iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069]
-specs: [operations, README, security]
+specs: []
 issues: [#192]
 -->
 

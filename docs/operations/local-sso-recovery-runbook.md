@@ -10,7 +10,7 @@ author: claude
 ids: []
 adrs: []
 iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103, IADR-0220]
-specs: [README]
+specs: []
 issues: [#328, #388, #841, AST#245]
 -->
 

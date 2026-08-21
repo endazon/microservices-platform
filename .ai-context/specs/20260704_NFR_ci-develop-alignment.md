@@ -13,7 +13,7 @@ related_specs:
   - ../../docs/operations/operations.md
   - ../../docs/tech/tech-requirements.md
 related_adrs:
-  - ../adr/IADR-0015_ci-develop-alignment-and-changelog-overrides.md
+  - IADR-0015
 issue: "#60"
 parent_issue: "#48"
 related_issues:

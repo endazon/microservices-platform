@@ -10,7 +10,7 @@ author: claude
 ids: [FR-11, FR-14, FR-15]
 adrs: [ADR-0002, ADR-0018]
 iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135]
-specs: [20260709_composable-component-implementation-guide, composability-classification]
+specs: [20260709_composable-component-implementation-guide]
 issues: [#195, #206, #217, #218, #219, #519]
 -->
 

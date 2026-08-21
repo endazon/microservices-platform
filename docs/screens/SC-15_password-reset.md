@@ -10,7 +10,7 @@ author: claude
 ids: [SC-10, SC-13, SC-14, SC-15, UC-05]
 adrs: [ADR-0026, ADR-0045]
 iadrs: [IADR-0197]
-specs: [SC-14_otp-mfa, SC-15_password-reset]
+specs: []
 issues: [#438]
 -->
 

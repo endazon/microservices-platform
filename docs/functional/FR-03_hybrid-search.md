@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, UC-01]
 adrs: [ADR-0009]
 iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, FR-03_hybrid-search, SC-02_search-results]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at]
 issues: [#536]
 -->
 

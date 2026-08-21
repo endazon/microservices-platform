@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-06, FR-12, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-05, SC-18, SC-21, UC-01, UC-02, UC-07]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035]
 iadrs: [IADR-0009, IADR-0038, IADR-0119, IADR-0121, IADR-0124, IADR-0126]
-specs: [20260804_issue-502_sc01-03-search-flow, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
+specs: [20260804_issue-502_sc01-03-search-flow]
 issues: [#12, #452, #490, #502, #519, #541, #553, #586, planning#197, planning#237, planning#244]
 -->
 

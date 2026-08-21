@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, FR-04, FR-05, FR-07, FR-13, UC-07]
 adrs: [ADR-0004, ADR-0011]
 iadrs: [IADR-0023]
-specs: [20260703_FR-13_wiki-browsing-abac, FR-05_abac-access-control]
+specs: [20260703_FR-13_wiki-browsing-abac]
 issues: []
 -->
 

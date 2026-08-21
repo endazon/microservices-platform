@@ -10,7 +10,7 @@ author: claude
 ids: [FR-15, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11]
 adrs: [ADR-0031]
 iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0046, IADR-0129]
-specs: [20260805_issue-504_sc09-11-admin-ops-screens, SC-11_configuration-viewer]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens]
 issues: [#137, #138, #139, #140, #503, #504, #506, #510]
 -->
 

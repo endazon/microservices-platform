@@ -10,7 +10,7 @@ author: claude
 ids: [SC-13, SC-14, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197]
-specs: [SC-14_otp-mfa]
+specs: []
 issues: [#438]
 -->
 

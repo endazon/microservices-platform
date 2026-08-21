@@ -10,7 +10,7 @@ author: claude
 ids: [FR-06, FR-09, SC-03, SC-05, SC-06, SC-07, UC-03]
 adrs: [ADR-0031]
 iadrs: [IADR-0009, IADR-0019, IADR-0035, IADR-0041, IADR-0127]
-specs: [20260805_issue-503_sc05-08-admin-screens, SC-05_document-management]
+specs: [20260805_issue-503_sc05-08-admin-screens]
 issues: [#501]
 -->
 

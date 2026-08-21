@@ -13,8 +13,8 @@ related_specs:
   - ../../docs/how-to/local-development.md
   - ../../docs/tech/tech-requirements.md
 related_adrs:
-  - ../adr/IADR-0048_dotnet10-target-framework.md
-  - ../adr/IADR-0180_blocked-judgments-expire.md
+  - IADR-0048
+  - IADR-0180
 issue: "#824"
 related_issues:
   - "#823"

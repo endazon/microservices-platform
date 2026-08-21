@@ -29,11 +29,11 @@ related_specs:
   - "./20260818_issue-824_devcontainer-net10-node22.md"
   - "./20260818_issue-830_template-backend-ci-build.md"
 related_adrs:
-  - "../adr/IADR-0224_template-backend-ci-build-by-staged-copy.md"
-  - "../adr/IADR-0060_submodule-unit-operations.md"
-  - "../adr/IADR-0204_kit-catchup-deferral-with-expiry-ratchet.md"
-  - "../adr/IADR-0141_audit-rounds-and-population-drawing.md"
-  - "../adr/IADR-0179_unnumbered-nfr-for-meta-work.md"
+  - IADR-0224
+  - IADR-0060
+  - IADR-0204
+  - IADR-0141
+  - IADR-0179
 ---
 
 # 作業仕様書: 波 12 末クロス監査の是正

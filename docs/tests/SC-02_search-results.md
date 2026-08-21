@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, FR-05, SC-01, SC-02, SC-03, UC-01]
 adrs: [ADR-0031]
 iadrs: [IADR-0009, IADR-0014, IADR-0126]
-specs: [20260804_issue-502_sc01-03-search-flow, SC-02_search-results]
+specs: [20260804_issue-502_sc01-03-search-flow]
 issues: [#519]
 -->
 
