@@ -44,8 +44,22 @@
  *
  * 発行の検出は `Publish(new X(...))` / `Publish<X>(...)` の形しか拾わない。
  * **`Publish(変数)` や `Publish(メソッド呼び出し())` の形は見えない**（型解析が要るため）。
- * 実測では本番 13 呼び出しのうち 6 がこの形である。表が正しく出ているのは、同じイベントを
- * 拾える別の呼び出しが存在するためであって、網羅しているからではない。
+ *
+ * 実測（2026-08-21。本番のみ。テストは走査対象外）:
+ *
+ *     # bus.Publish の総数（doc.Publish() のようなドメインメソッドは除く）。
+ *     # パス指定は src 配下の本番コード（グロブは実行時に補う。ここへ書くと
+ *     # ブロックコメントの終端記号と衝突するため省いている）。
+ *     git grep -nE 'bus\.Publish[A-Za-z]*\s*\(' | grep -vE '\.Tests|/tests/'   # → 13
+ *     # うち検出できる形（Publish(new X( / Publish<X>）
+ *     git grep -nE 'bus\.Publish[A-Za-z]*\s*(<|\(\s*new\s)'                 # → 6
+ *
+ * **総数 13 / 見える形 6 / 見えない形 7。** 見えない 7 件は
+ * `ConversionJobEndpoints.cs:70`（`Publish(ev, ct)`）・`DocumentEndpoints.cs` の 5 箇所
+ * （`Publish(ToEvent(...))`）・`TagDictionaryEndpoints.cs:136` である。
+ * 🔴 **`DocumentUpdated` の業務上の主経路（`DocumentEndpoints.cs`）は 1 件も見えていない。**
+ * 表に `knowledge/DocumentService` が発行元として出るのは、`DocumentNormalizedConsumer.cs:61` の
+ * `Publish(new DocumentUpdated(` が拾えているからであって、網羅しているからではない。
  * **発行元が減ったときに検出できない可能性がある**ことを承知して使うこと。
  */
 
