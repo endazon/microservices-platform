@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Foundation.Routing;
 
 namespace LlmGateway.Api.Tests;

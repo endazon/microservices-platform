@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Authz;

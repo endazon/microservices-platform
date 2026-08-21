@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Composable.Adapters;
 using Platform.Shared.Contracts.Dtos;
 

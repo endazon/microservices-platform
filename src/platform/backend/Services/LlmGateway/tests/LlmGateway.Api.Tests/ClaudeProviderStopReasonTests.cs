@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using Anthropic.SDK;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Ports;
 using Platform.Shared.Contracts.Dtos;

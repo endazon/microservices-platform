@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using System.Net.Http.Json;
 
 namespace Platform.Bff.Tests;

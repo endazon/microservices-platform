@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Ports;
 using Microsoft.Extensions.Configuration;

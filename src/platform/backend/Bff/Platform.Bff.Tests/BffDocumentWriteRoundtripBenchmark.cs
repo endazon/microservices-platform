@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;

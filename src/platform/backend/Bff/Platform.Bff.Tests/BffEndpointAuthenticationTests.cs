@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Bff.Endpoints;
 using Knowledge.Contracts.Dtos;
 using System.Net;

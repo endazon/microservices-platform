@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using System.Net;
