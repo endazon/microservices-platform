@@ -352,11 +352,22 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 > した瞬間に消える。** 危険が本当に発現するのは**その後**である。したがって
 > **トランスポート認識の検査を、型制約を緩める作業より先に入れる**（着手順の拘束）。
 
-**統合テストは現状この判定に使えない。** `Knowledge.IntegrationTests` の
-`IntegrationTestFactory` は、サービス自身のメッセージング配線をアセンブリ単位で除去してから
-**テスト自前のバスへ差し替えている**。したがってキュー名・`pipeline.json` の段宣言・
-リトライ設定のいずれも通っておらず、**`DocumentUpdated` の 2 購読者が同時に生きている状態を
-作るテストが存在しない**（手順 3 の退行を試験できない）。本番配線を通す作り替えが先に要る。
+**統合テストは本番配線を通るようになった**（2026-08-21。#455 Phase 0 / U0a）。従前
+`IntegrationTestFactory` はサービス自身のメッセージング配線をアセンブリ単位で除去してから
+テスト自前のバスへ差し替えており、**本番の配線が 1 行も通っていなかった**。除去をやめ、
+`AddMassTransit` / `AddPlatformPipelineStep` / `UsePlatformRetry` /
+`AddPlatformIntrospection` をそのまま通すようにした（**43 / 43 通過・件数不変**）。
+
+🔴 **ただし手順 3 の退行はまだ試験できない。残る穴は 2 つある。**
+
+1. **`Pipeline:ConfigPath` を設定していない。** よって `pipeline.json` の**段宣言と
+   `queue` 上書きは依然として通っていない**。通ったのは配線コードまでである
+   （段の宣言が無い環境では `AddPlatformPipelineStep` が既定で登録する）
+2. **`DocumentUpdated` の 2 購読者が同時に生きている状態を作るテストが無い。**
+   2 購読者は **IngestionService と WikiService** に分かれており、前者は Worker である。
+   Worker を統合テストへ載せるには、`IntegrationTestFactoryBase<TProgram, TDbContext>` が
+   要求する `TDbContext` を持たない Worker（`IngestionService.Worker` は DbContext を
+   持たない）のために**基底の切り出し**が要る
 
 **一斉性の下限はイベントグラフの連結成分である。** メッセージングを行う 5 サービスは
 `RawDocumentFetched` → `DocumentNormalized` → `DocumentUpdated` / `DocumentDeleted` で

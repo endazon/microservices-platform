@@ -48,30 +48,26 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
             // DbContext: Npgsql で TestContainers Postgres を使う
             ReplaceDbContextWithNpgsql<TDbContext>(services, _postgres.ConnectionString ?? "Host=localhost");
 
-            // MassTransit: Program.cs が AddMassTransit() 済みのためアセンブリ単位で全削除してから再登録
-            // AddMassTransit() is idempotent-blocked by IBus presence check; remove all MT services first
-            RemoveAllMassTransitServices(services);
-
-            if (_rabbit is not null)
-            {
-                services.AddMassTransit(x =>
-                {
-                    RegisterConsumers(x);
-                    x.UsingRabbitMq((ctx, cfg) =>
-                    {
-                        cfg.Host(_rabbit.ConnectionString);
-                        cfg.ConfigureEndpoints(ctx);
-                    });
-                });
-            }
-            else
-            {
-                services.AddMassTransit(x =>
-                {
-                    RegisterConsumers(x);
-                    x.UsingInMemory((ctx, cfg) => cfg.ConfigureEndpoints(ctx));
-                });
-            }
+            // ［2026-08-21 / #455 Phase 0 U0］**サービス自身の配線をそのまま使う。**
+            //
+            // 従前ここは RemoveAllMassTransitServices() で Program.cs の AddMassTransit() を
+            // アセンブリ単位で全削除し、テストが自前でバスを組み直していた。その結果
+            // AddPlatformPipelineStep（段の宣言照合）・UsePlatformRetry（リトライ / DLQ）・
+            // AddPlatformIntrospection が **1 行も通っていなかった**。
+            //
+            // 🔴 最も重い帰結: 登録される Consumer が RegisterConsumers の明示列挙だけになるため、
+            // DocumentUpdated の 2 購読者（IngestionService + WikiService）が同時に生きている
+            // 状態を作れなかった。移行手順 3（リスニングキュー名にサービス名を前置する）を誤って
+            // competing consumer 化しても、**試験する場所が無い**。
+            //
+            // 接続先は Program.cs が Configuration["RabbitMq:ConnectionString"] から読むので、
+            // 上の ConfigureAppConfiguration の上書きだけで Testcontainers を向く。
+            // 段の宣言（pipeline.json）が無い環境では AddPlatformPipelineStep が
+            // 「Pipeline config absent; step enabled by default」で登録するため、
+            // 本番配線のままコンシューマが有効になる（PipelineExtensions.cs）。
+            //
+            // ⚠️ Pipeline:ConfigPath は依然として設定していない。したがって pipeline.json の
+            // 段宣言・queue 上書きは**まだ通っていない**。残る穴として別作業で塞ぐ。
 
             // Issue #33: Bus 起動レース対策。既定では MassTransitHostedService が Bus を
             // バックグラウンド起動するため、CreateClient() 直後の Publish が Consumer の
@@ -96,27 +92,9 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
         });
     }
 
-    protected virtual void RegisterConsumers(IBusRegistrationConfigurator x) { }
     protected virtual void AdditionalServices(IServiceCollection services) { }
 
-    private static void RemoveAllMassTransitServices(IServiceCollection services)
-    {
-        var toRemove = services
-            .Where(d =>
-                IsFromMassTransitAssembly(d.ServiceType) ||
-                IsFromMassTransitAssembly(d.ImplementationType) ||
-                (d.ImplementationInstance is not null &&
-                 IsFromMassTransitAssembly(d.ImplementationInstance.GetType())))
-            .ToList();
-        foreach (var d in toRemove) services.Remove(d);
-    }
 
-    private static bool IsFromMassTransitAssembly(Type? type)
-    {
-        if (type is null) return false;
-        var name = type.Assembly.GetName().Name;
-        return name is not null && name.StartsWith("MassTransit", StringComparison.Ordinal);
-    }
 
     private static void ReplaceDbContextWithNpgsql<T>(IServiceCollection services, string connStr)
         where T : DbContext
@@ -142,9 +120,6 @@ public sealed class DocumentServiceFactory : IntegrationTestFactoryBase<
     global::DocumentService.Api.DocumentServiceTestMarker, DocumentDbContext>
 {
     public DocumentServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
-    // FR-01, UC-04: DocumentNormalized 購読 Consumer
-    protected override void RegisterConsumers(IBusRegistrationConfigurator x)
-        => x.AddConsumer<global::DocumentService.Api.Composable.Steps.DocumentNormalizedConsumer>();
 }
 
 public sealed class DataSourceServiceFactory : IntegrationTestFactoryBase<
@@ -166,6 +141,4 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
     global::WikiService.Api.WikiServiceTestMarker, WikiDbContext>
 {
     public WikiServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
-    protected override void RegisterConsumers(IBusRegistrationConfigurator x)
-        => x.AddConsumer<global::WikiService.Api.Composable.Steps.DocumentSyncConsumer>();
 }
