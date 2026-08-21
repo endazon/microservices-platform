@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Knowledge.IntegrationTests.Fixtures;
 
 namespace Knowledge.IntegrationTests.Deployment;
 
@@ -82,19 +83,7 @@ public sealed class HpaPdbScalingTests
 
     // --- helpers ---------------------------------------------------------
 
-    private static string ReadChartFile(string relative)
-    {
-        var rel = Path.Combine("deploy", "helm", "microservices-platform", relative);
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, rel);
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"{rel} をリポジトリルートから解決できませんでした。");
-    }
+    private static string ReadChartFile(string relative) => RepoFile.ReadChart(relative);
 
     // values.yaml のトップレベル `scaling:` ブロック本文を、次のトップレベルキーまで返す。
     private static string ScalingBlock(string values)

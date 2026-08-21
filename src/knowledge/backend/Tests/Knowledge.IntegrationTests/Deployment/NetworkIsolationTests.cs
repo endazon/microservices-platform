@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Knowledge.IntegrationTests.Fixtures;
 
 namespace Knowledge.IntegrationTests.Deployment;
 
@@ -150,18 +151,7 @@ public sealed class NetworkIsolationTests
         return string.Join("\n", buf);
     }
 
-    private static string ResolveRepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(candidate))
-                return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"{relative} をリポジトリルートから解決できませんでした。");
-    }
+    private static string ResolveRepoFile(string relative) => RepoFile.Find(relative);
 
     // `services:` 配下の各サービス（2 スペースインデントの `name:`）を、次のサービスまでの本文へ分割する。
     private static Dictionary<string, string> SplitServiceBlocks(string compose)

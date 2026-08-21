@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Knowledge.IntegrationTests.Fixtures;
 
 namespace Knowledge.IntegrationTests.Deployment;
 
@@ -47,18 +48,7 @@ public sealed class PipelineDeclarationMountTests
 
     // --- helpers ---------------------------------------------------------
 
-    private static string ReadRepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"{relative} をリポジトリルートから解決できませんでした。");
-    }
+    private static string ReadRepoFile(string relative) => RepoFile.Read(relative);
 
     // docker-compose.yml の `services:` 配下 `bff:`（2 スペース）ブロックを抽出する。
     private static string BffBlock(string compose) => TwoSpaceBlock(compose, "services", "bff");

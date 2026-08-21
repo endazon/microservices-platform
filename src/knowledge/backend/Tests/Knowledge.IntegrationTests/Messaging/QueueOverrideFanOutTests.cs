@@ -171,9 +171,8 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     // 書き写せば本番の宣言が変わったときに腐る（U0d で確立した原則）。
     private static string WriteSharedQueueFixture()
     {
-        var source = IntegrationTestFactoryBase<global::WikiService.Api.WikiServiceTestMarker>
-            .FindRepoFileForTests(Path.Combine(
-                "deploy", "helm", "microservices-platform", "files", "pipeline.json"));
+        var source = RepoFile.Find(Path.Combine(
+            "deploy", "helm", "microservices-platform", "files", "pipeline.json"));
 
         var root = JsonNode.Parse(File.ReadAllText(source))!.AsObject();
         var steps = root["steps"]!.AsArray();

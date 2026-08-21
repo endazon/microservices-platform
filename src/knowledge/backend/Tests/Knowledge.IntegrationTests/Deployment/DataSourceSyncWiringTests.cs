@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Knowledge.IntegrationTests.Fixtures;
 
 namespace Knowledge.IntegrationTests.Deployment;
 
@@ -47,7 +48,7 @@ public sealed class DataSourceSyncWiringTests
     [Fact]
     public void LocalValues_Datasource_EnablesSync_WithShortInterval()
     {
-        var svc = ServiceBlock(ReadRepoFile(Path.Combine("deploy", "local", "values-local.yaml")), "datasource");
+        var svc = ServiceBlock(RepoFile.Read(Path.Combine("deploy", "local", "values-local.yaml")), "datasource");
         svc.Should().MatchRegex(@"(?m)^\s*dataSourceSync:\s*$",
             "#299: 経路B でも datasource.dataSourceSync を明示する");
 
@@ -60,21 +61,7 @@ public sealed class DataSourceSyncWiringTests
 
     // --- helpers ---------------------------------------------------------
 
-    private static string ReadChartFile(string relative) =>
-        ReadRepoFile(Path.Combine("deploy", "helm", "microservices-platform", relative));
-
-    private static string ReadRepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException($"{relative} をリポジトリルートから解決できませんでした。");
-    }
+    private static string ReadChartFile(string relative) => RepoFile.ReadChart(relative);
 
     // 与えられたブロック本文から `<key>:` のネストしたサブブロック（より深いインデントの行）を返す。
     // サービスレベルの兄弟キー（例: サービス自体の enabled）を混ぜず、サブブロックにスコープして検証するため。

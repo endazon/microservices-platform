@@ -47,8 +47,19 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         // **「統合テストの config 上書きは効く」を一般化してはならない —— 読まれる時点で決まる。**
         //
         // UseSetting はホスト構成へ書くので、CreateBuilder が構成を組む時点から見える。
-        builder.UseSetting("Pipeline:ConfigPath", FindRepoFile(
-            Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json")));
+        //
+        // 🔴 **解決できなければ RepoFile.Find が例外で止める（fail-closed）。** これは
+        // Pipeline:ConfigPath 固有の理由による —— AddPlatformPipelineConfig は
+        // `if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return builder;` と
+        // **黙って何もせずに返る**ため、存在しないパスを渡すと**宣言が 1 行も読まれないまま
+        // 全テストが緑になる**。「設定したつもりで何も検査していない」状態が成功と見分けられなくなる。
+        // （#891 で解決処理を RepoFile へ集約した。この理由は deploy/ の YAML を読む 5 箇所には
+        //   当てはまらないので、共通メッセージへ混ぜず呼び出し側に残している。）
+        builder.UseSetting("Pipeline:ConfigPath", RepoFile.Find(
+            Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json"),
+            because: "Pipeline:ConfigPath に存在しないパスを渡すと AddPlatformPipelineConfig が黙って何もせず、"
+                + " 段宣言が読まれないまま全テストが緑になる（検査したつもりで何も検査していない状態）。"
+                + " ここで止めるのはそれを防ぐためである。"));
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             var overrides = new Dictionary<string, string?>
@@ -144,43 +155,6 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     }
 
     protected virtual void AdditionalServices(IServiceCollection services) { }
-
-    /// <summary>
-    /// テストから呼ぶための公開口（<see cref="FindRepoFile"/> と同一実装）。
-    /// 🔴 **7 つ目の複製を作らないためにこれを足した。** #891 が 6 箇所の集約を扱っており、
-    /// テスト側で walk を書き直せば集約対象が増える。集約時にここも 1 つへ寄せる。
-    /// </summary>
-    public static string FindRepoFileForTests(string relative) => FindRepoFile(relative);
-
-    /// <summary>リポジトリ内のファイルを、テストアセンブリの位置から親へ辿って解決する。</summary>
-    /// <remarks>
-    /// 🔴 **解決できなければ例外で止める。** AddPlatformPipelineConfig は
-    /// <c>if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return builder;</c> と
-    /// **黙って何もせずに返る**ため、ここで null や存在しないパスを返すと
-    /// **宣言が 1 行も読まれないまま全テストが緑になる**。「設定したつもりで何も検査していない」状態が
-    /// 成功と見分けられなくなるので、fail-closed にする。
-    ///
-    /// 🔴 **この「親へ辿る」ループは本アセンブリに実測 6 箇所ある**（本メソッドと
-    /// Deployment/ の 5 テストクラス）。**統合していない。** 返り値がパス文字列と
-    /// ファイル内容に分かれており、統合には小さな設計判断が要るためで、
-    /// **U0d（段宣言を通す）の射程外だからである。**
-    /// 集約は #891 で行う。**「作法を揃えた」であって「重複を無くした」ではない。**
-    /// </remarks>
-    protected static string FindRepoFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir.FullName, relative);
-            if (File.Exists(candidate)) return candidate;
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException(
-            $"{relative} をリポジトリルートから解決できなかった。"
-            + " Pipeline:ConfigPath に存在しないパスを渡すと AddPlatformPipelineConfig が黙って何もせず、"
-            + " 段宣言が読まれないまま全テストが緑になる（検査したつもりで何も検査していない状態）。"
-            + " ここで止めるのはそれを防ぐためである。", relative);
-    }
 
     /// <summary>DbContext を Testcontainers の Postgres へ差し替える。既定は何もしない。</summary>
     /// <remarks>

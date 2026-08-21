@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using AwesomeAssertions;
+using Knowledge.IntegrationTests.Fixtures;
 
 namespace Knowledge.IntegrationTests.Deployment;
 
@@ -65,18 +66,5 @@ public sealed class MeshMtlsTests
     private static string ReadHelmTemplate(string fileName) =>
         ReadHelmFile(Path.Combine("templates", fileName));
 
-    private static string ReadHelmFile(string relative)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(
-                dir.FullName, "deploy", "helm", "microservices-platform", relative);
-            if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
-            dir = dir.Parent;
-        }
-        throw new FileNotFoundException(
-            $"deploy/helm/microservices-platform/{relative} をリポジトリルートから解決できませんでした。");
-    }
+    private static string ReadHelmFile(string relative) => RepoFile.ReadChart(relative);
 }
