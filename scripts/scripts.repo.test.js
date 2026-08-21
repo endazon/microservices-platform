@@ -5095,7 +5095,11 @@ module.exports = ({ ok, assert }) => {
         // ★ #455 子 C で `check-event-topology.js`（イベント型 → 発行元 / 購読先の対応表を
         //    baseline と突合）を新設したため 36 → 37（同上）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
-        assert.strictEqual(scripts.length, 37, `検査器の母集合が 37 本から変わった（${scripts.length} 件）`);
+        // ★ IADR-0232 決定 8 で `check-ci-latency.js`（CI の「逆転」——build-and-test が
+        //    claude-review の下限を追い越したことの検知）を新設したため 37 → 38（同上）。
+        //    GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 38, `検査器の母集合が 38 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

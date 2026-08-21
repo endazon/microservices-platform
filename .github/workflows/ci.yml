@@ -481,6 +481,12 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # 🔴 キャッシュは**ブランチ単位でスコープされる**（実測 2026-08-21）。
+      # ブランチは**自分の base ブランチのキャッシュを読める**ので、develop が温まっていれば
+      # **新規 PR ブランチは初回からヒットする**。逆に **develop へマージ直後の初回 run は miss** する
+      # （PR ブランチが書いたキャッシュは develop から見えない）。**miss を見たら壊れたと決めつけず、
+      # どのブランチのスコープを見ているかを先に確かめること。**
+      #
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする。着手前の実測では
       # setup-dotnet が本リポジトリで 8 箇所使われて 1 つも cache: を設定しておらず、毎 run
       # 全パッケージを取り直していた。packages.lock.json を持たないため setup-dotnet の
