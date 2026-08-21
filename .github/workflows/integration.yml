@@ -1,0 +1,143 @@
+# 全テスト（実コンテナ含む）の回収実行 —— IADR-0232 決定 3（改定 3）
+#
+# ■ 🔴 これは「PR から外した検証の回収先」である
+# **PR（ci.yml）は --filter "Category!=Integration" で Testcontainers を起動するテストを外す。**
+# 外したぶんをここで回収する。利用者裁定（2026-08-22）:
+# 「PR の精度低下は、どこかで回収できるならある程度許容する。ループ効率を上げよ」。
+# **回収先が無ければ「PR から外した」は「やめた」と同義になる。**
+#
+# ■ 🔴 --filter を付けずに全量で回す
+# 統合テストだけを選ぶのではなく**全テストを 1 回**走らせる。理由は 3 つある（下の run ステップに詳述）。
+#   1. カバレッジ床（line 39 / branch 27）は全量の実測から置かれているので置き直さずに済む
+#   2. 同じテストプロジェクトを 2 回実行しないので二重集計が起きない
+#   3. フィルタに依存しないので fail-closed の門が要らない
+#
+# ■ いつ走るか
+#   - develop への push: マージのたびに回収する（朝まで待たずに原因を切り分けられる）
+#   - 日次 schedule:     PR では原理的に見えない壊れ方（flaky・環境ドリフト）を拾う
+#   - workflow_dispatch: 手動確認と、自動起票の動作確認（force_failure）
+#
+# ■ 自動起票の検証入口
+# 自動起票は失敗時にしか走らないため**平時は常に skip で緑**であり、
+# 「動かないことに誰も気付かない」種類の仕組みである。
+# workflow_dispatch の force_failure で意図的に落として実測できるようにしてある。
+#
+# GitHub の ubuntu ランナーは Docker 同梱のため Testcontainers が動作する。
+name: Integration
+
+on:
+  # 🔴 develop へのマージ時に回収する（IADR-0232 改定 3）。日次だけだと、朝までの間に
+  # 別の PR が積み上がって原因の切り分けが難しくなる。
+  push:
+    branches: [develop]
+  schedule:
+    # 毎日 UTC 18:00（JST 03:00）。AST の integration.yml と同じ時刻に揃えてある。
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      force_failure:
+        description: "自動起票の動作確認用に、テストを走らせず必ず失敗させる（IADR-0232 残余リスク）"
+        type: boolean
+        required: false
+        default: false
+
+# 同時実行は 1 本に制限（ランナー上の Docker リソース競合回避）。
+# cancel-in-progress: false。日次の走査結果は「その日に走った」ことに意味があるため捨てない。
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 未取得だと追加ユニットが src/*/backend/backend.slnx 自動発見に現れず対象外になる。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（ci.yml と同じキー）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      # 自動起票が本当に動くかを実測するための入口（IADR-0232 残余リスク）。
+      # 自動起票は失敗時にしか走らないため、平時は常に skip で緑になる ——
+      # 意図的に失敗させない限り「壊れていること」に永久に気付けない。
+      - name: Force failure (自動起票の動作確認用)
+        if: ${{ inputs.force_failure }}
+        run: |
+          echo "::error::force_failure=true が指定された。自動起票の経路を確認するための意図的な失敗である。"
+          exit 1
+      # ユニットは ci.yml と同じく src/*/backend/backend.slnx から自動発見する
+      # （ユニット名をここへ書かない。書くと次にユニットが増えたとき静かに対象から外れる）。
+      #
+      # 🔴 **--filter を付けない。全テストを 1 回だけ走らせる**（IADR-0232 改定 3）。
+      # ここが本ワークフローの設計の要であり、3 つの問題が同時に消える。
+      #
+      #   1. **カバレッジ床を置き直さずに済む。** 床 line 39 / branch 27 は
+      #      **統合テストを含む全量 43/43 の実測**から置かれている（src/coverage-floor.json）。
+      #      全量で回すなら床はそのまま使える。
+      #   2. **二重集計が起きない。** 同じテストプロジェクトを 1 回しか実行しないため
+      #      Cobertura は 15 件のまま。**2 回実行すると行の分母が 2 倍になり床が割れる**
+      #      —— 実測 レポート 30 件 / 49894 行 / line 20.22%（本来 15 件 / 24947 行 / 39.92%）。
+      #      **割れ方は fail なので気付けるが「テストが減った」と取り違えやすい。**
+      #   3. **fail-closed の門が要らなくなる。** フィルタが無いので「Trait の付け忘れで
+      #      0 件実行のまま緑」が起こり得ない。**門は「フィルタに依存するなら併設する」もの**
+      #      であり、依存自体を無くしたので不要になった（諦めたのではない）。
+      #
+      # 🔴 **ここに --filter を足すなら、fail-closed の門を必ず併設すること。**
+      # 足すと ci.yml 側（Category!=Integration）と対になり、**Trait を付け忘れたテストが
+      # どこでも走らない**形に倒れる。現在は付け忘れても ci.yml 側に残る（fail-safe）。
+      - name: All tests including real containers (all units, with coverage)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=0
+          for slnx in src/*/backend/backend.slnx; do
+            found=$((found + 1))
+            echo "::group::$slnx"
+            dotnet restore "$slnx"
+            dotnet build "$slnx" --no-restore --configuration Release
+            dotnet test "$slnx" --no-build --configuration Release \
+              --collect:"XPlat Code Coverage" --verbosity normal
+            echo "::endgroup::"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
+            exit 1
+          fi
+      # 🔴 カバレッジ床を強制するのはここだけである（IADR-0232 改定 3）。
+      # PR 側（ci.yml）は統合テストぶんが無いため --report-only で報告のみ行う。
+      # **門を 2 つ置かない** —— 床が 2 つ並ぶとどちらが本物か分からなくなる。
+      #
+      # 期待値: レポート 15 件 / line 39.92%（9958〜9960 / 24947） / branch 28.36%。
+      # 🔴 **レポート件数が 15 から増えていたら、同じテストプロジェクトが 2 回実行されている。**
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test coverage floor checker
+        run: node scripts/check-coverage-floor.js --self-test
+      - name: Check backend coverage floor (床の強制はここだけ)
+        run: node scripts/check-coverage-floor.js
+
+  # 🔴 PR から外した分の担保が落ちたことを issue として残す（IADR-0232 決定 1）。
+  # これが無ければ「PR から外した」は「やめた」と同義になる。
+  report-failure:
+    needs: [integration]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/ci-failure-issue.yml
+    permissions:
+      contents: read
+      issues: write

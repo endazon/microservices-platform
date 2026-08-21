@@ -7,11 +7,16 @@ using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Testcontainers.Minio;
+using Xunit;
 
 namespace Knowledge.IntegrationTests.Storage;
 
 // FR-06, FR-12, UC-03/UC-06, ADR-0014/ADR-0015, IADR-0024: MinIO 実体への保存→取得ラウンドトリップ、
 // 冪等な再変換（同一キー上書き）、バージョニング有効化を検証する（受け入れ基準: 実本文の永続化）。
+// 🔴 IADR-0232 決定 3: Trait が無いと integration.yml（日次）の --filter "Category=Integration" に
+// 拾われず、日次の走査から静かに落ちる（着手前の実測で見つかった欠落）。ci.yml は --filter を
+// 持たないので PR は緑のままであり、成功と見分けが付かない。同プロジェクトの他 11 クラスと同じ形に揃える。
+[Trait("Category", "Integration")]
 public sealed class ObjectStorageRoundTripTests
 {
     private const string AccessKey = "minioadmin";

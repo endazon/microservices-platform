@@ -104,6 +104,12 @@ defaults:
   run:
     working-directory: src
 
+# NFR / IADR-0232 決定 1: 連続 push で古い実行を捨てる（PR のみ）。
+# develop / main への push は完走させる。
+concurrency:
+  group: frontend-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -243,6 +249,16 @@ jobs:
       # 「ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "playwright" not found」で落ちる（PR #489 の CI で実測）。
       # 後続の Build / E2E も同じく src/ から --filter でパッケージへ委譲する（ルートの package.json の
       # スクリプト経由）ため、working-directory は src/ のまま揃える。
+      # NFR / IADR-0232: Playwright のブラウザをキャッシュする。--with-deps は apt-get も叩くため、
+      # 未キャッシュ時は 1〜2 分掛かる（AST 側の同じステップは実測 31 秒）。
+      # キーは pnpm-lock.yaml のハッシュ（= @playwright/test の版が変われば取り直す）。
+      - uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('src/pnpm-lock.yaml') }}
+      # ヒット時もシステム依存（apt）の導入だけは要るため --with-deps は落とさない。
+      # ブラウザ本体はキャッシュから復元され、ダウンロードが省かれる。
       - name: Install Playwright browser
         run: pnpm --filter @platform/frontend exec playwright install --with-deps chromium
       - name: Build
