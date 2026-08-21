@@ -5,9 +5,11 @@
 ## このリポジトリの位置付け
 
 - 上流工程リポジトリ `project-planning` で確定した計画書を**実装する**作業リポジトリ。
-- 計画書は `project-planning` の `projects/<name>/00_vision 〜 07_adr` にある（**本リポは planning に依存しない**。ADR-0048 決定 2。参照は GitHub 上の URL または隣接クローンで行う）。
+- 計画書・裁定の記録は `project-planning` の `projects/<name>/00_vision 〜 07_adr` にある。**本リポジトリは planning に依存しない（submodule は張らない。ADR-0048 決定 2 / IADR-0228）。** 参照は GitHub 上の URL か隣接クローン（既定パス `../project-planning`。**読み取り専用・pin 固定なし**）で行う。
+- 計画書への指摘は project-planning へ GitHub issue（`feedback.yml` テンプレート・`feedback` / `decision-needed` ラベル）で起票する（ADR-0048 決定 5）。**起票前に同件の既存 issue を必ず検索する。** 裁定の完了記録は planning 側 `projects/<name>/10_feedback/` に残る（本リポジトリには残さない）。
 - 利用可能な AI（Claude Code サブスク / Anthropic API / GitHub Copilot）と有効化するファイルは `AI_SETUP.md` で宣言する。AI 機能の一部はプロファイル依存である。
 - 成果物の主従（主たる成果物と付随成果物）は README 冒頭・`CLAUDE.md` に明示し、計画書と一致させ続ける。
+- **資料の主従**: `docs/` ＝人が読む生きた文書、`.ai-context/` ＝ AI 向け文脈資料・凍結記録（実装ADR・作業仕様書・superpowers。ここで起草を続ける）。詳細は `.ai-context/README.md`（ADR-0048 決定 1・7）。
 
 ## 最優先原則：トレーサビリティ
 
@@ -15,6 +17,7 @@
 
 - 起点 ID の種別: `FR-xx`（機能要求）/ `UC-xx`（ユースケース）/ `SC-xx`（画面）/ `ADR-xxxx`（計画ADR）/ `IADR-xxxx`（実装ADR・本リポ `.ai-context/adr/`）。
 - 残す箇所: ブランチ名（`feat/FR-012-...`）、コミットメッセージ先頭（`feat(FR-012): ...`）、コード内コメント、PR 本文。
+- 🔴 **`docs/` 配下だけは別扱い**: 計画 ID・IADR・仕様書名・修飾付き issue 参照を表示テキストへ書かず、frontmatter 直後・H1 の直前の **trace ブロック**（HTML コメント。1 文書 1 個）へ持つ（ADR-0048 決定 4。検査は `scripts/check-trace-blocks.js`）。`.ai-context/` の凍結記録には適用しない。
 
 ## 実装の基本フロー
 
@@ -25,7 +28,7 @@
 5. 受け入れ基準をテストに写像する。
 6. **完了前に `/verify` でビルド・テスト・lint を実行し、`docs/DEFINITION_OF_DONE.md` を満たすことを確認する。**
 7. トレーサビリティを残してコミット・PR を作成する。
-8. 実装中に計画書の誤り・不足・新たな制約を見つけたら、計画リポジトリへフィードバックする（`/plan-feedback`）。
+8. 実装中に計画書の誤り・不足・新たな制約を見つけたら、project-planning へ GitHub issue で起票する（上記「このリポジトリの位置付け」）。
 
 > 破壊的操作・秘密情報の混入は `.claude/hooks/` がブロックする。運用全体は `docs/ai-workflow.md` を参照。
 
@@ -36,7 +39,9 @@
 - `main` への直接コミット禁止。作業ブランチ → PR 経由。
 - 破壊的 git 操作（force push, `reset --hard`）禁止。
 - 機密情報をコミットしない。
-- 計画書（fixed / Accepted）に反する実装をしない。差異が必要なら根拠（新 ADR 等）を残し、`/plan-feedback` で計画へ環流する。
+- 計画書（fixed / Accepted）に反する実装をしない。差異が必要なら根拠（新 IADR 等）を残し、planning へ issue で環流する。
+- **planning への依存を再導入しない**（submodule 化・pin 固定・計画書をビルド／CI の前提にすること）。
+- **`docs/` 配下の表示テキストへ計画 ID・IADR・修飾付き issue 参照を書かない**（trace ブロックへ入れる）。
 
 ## worker スロットとして動く場合の契約
 
@@ -51,7 +56,7 @@
 
 ## 実装作業の進め方（要約）
 
-正本は計画リポの `docs/ai-implementation-workflow-guide.md`。詳細は `CLAUDE.md` §実装作業の進め方 を読む。
+正本は project-planning の `docs/ai-implementation-workflow-guide.md`（上記の参照手段で開く）。詳細は `CLAUDE.md` §実装作業の進め方 を読む。
 
 - **並列判定はファイル領域の非重複**。マージは **FIFO で 1 本ずつ**。同型の変更は束ねる。
   - **本リポの固有デルタ**: 束ねてよいのは IADR-0139 決定 1 の 6 条件をすべて満たす同型の契約追加のみ（資源単位・**上限 4 件**。IADR-0116 規約 1）。**上限は planning#370 の裁定 2026-08-15 で 2 件 → 4 件へ改まった**（射程の正は上流ガイド §2。本リポで広げるには改定 IADR が要る）。
@@ -59,6 +64,7 @@
 - **検査器・規約の追加は「同型の事故が 2 回起きたら」**。必読規約は **50KB 目安**で、足すなら同量を削るか別紙へ落とす。
 - **裁定依頼は小さく高頻度に**。**blocked 判定は棚卸しごとに再検証**する。
 - **人間に委ねるのは 3 点**（フェーズ計画の承認／監査のサンプリング確認／裁定）。
+- **kit は bootstrap 専用**であり、既存リポジトリに追随義務は無い（ADR-0048 決定 6）。乖離は受容として記録する。
 
 ## 技術スタック別ルール
 

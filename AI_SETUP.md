@@ -33,10 +33,10 @@ worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設
 > `claude-code` と `api` は配置ファイルが同一で、**設定するシークレットと課金方式だけ**が異なる。
 > Copilot は別系統（`.claude/` を読まない。専用の指示ファイルと環境セットアップを使う）。
 >
-> **このチェックボックスは「キットが選択を委ねている欄」＝固有デルタ第 5 種である**（裁定 planning#339）。
+> **このチェックボックスは「キットが選択を委ねている欄」である**（裁定 planning#339）。
 > **キットは未選択の状態で配り、どのリポジトリも必ず選択する** —— したがって**選択済みであること自体は
-> キットへの追随漏れではない**。`scripts/check-kit-sync.js` の分類表では第 5 種として記録し、
-> 是正対象にしない。ただし**この節の説明文はキット側が正**であり、追随の対象からは外れない。
+> キットとの差ではない**。なお**キットは bootstrap 専用であり、既存リポジトリに追随義務は無い**
+> （ADR-0048 決定 6。バイト一致の kit 同期検査は退役済みで、乖離は受容として記録する）。
 
 ## 2. 能力マトリクス
 
@@ -57,7 +57,7 @@ worker を Codex 等へ差し替える場合や、失敗時の切り戻しを設
 
 ### 共通（どのプロファイルでも実施）
 
-1. 計画リポジトリ `project-planning` を参照可能にする（**本リポは planning に依存しない**。ADR-0048 決定 2。GitHub 上の URL または隣接クローンで参照する）。
+1. 計画リポジトリ `project-planning` を参照できる状態にする。**submodule は張らない**（ADR-0048 決定 2 / IADR-0228）。GitHub 上の URL を直接開くか、**隣接クローン**（既定パス `../project-planning`。読み取り専用・pin 固定なし）を用意する。参照専用のトークン・シークレットは不要である。
 2. 技術スタックに合わせて `*.example` の CI 系（`ci.example.yml` / `codeql.example.yml`）を有効化する。
    - **注意: `.github/workflows/` 配下では `.example` を挟んでも無効にならない。** GitHub Actions は
      同ディレクトリ内の `*.yml` をファイル名に関わらず実行するため、`frontend.example.yml` のような
@@ -149,8 +149,9 @@ claude mcp add --transport http github https://api.githubcopilot.com/mcp/ \
   -H "X-MCP-Toolsets: repos,issues,pull_requests,labels,actions" --scope user
 ```
 
-> **本節はキット原本とバイト一致である（分類 A）。** キット側も同じ判断で是正済みであり
-> （[planning#402](https://github.com/endazon/project-planning/pull/402)）、固有デルタは持たない。
+> **本節はキット原本と同じ判断である。** キット側も同じ形へ是正済みであり
+> （[planning#402](https://github.com/endazon/project-planning/pull/402)）、固有の差は持たない
+> （**バイト一致の突合は退役済み**。ADR-0048 決定 6）。
 > 判断の記録は [IADR-0222](.ai-context/adr/IADR-0222_mcp-json-scope-and-github-server-collision.md)。
 
 ### 4-2. プラグイン・スキルの各自導入（任意・推奨）
