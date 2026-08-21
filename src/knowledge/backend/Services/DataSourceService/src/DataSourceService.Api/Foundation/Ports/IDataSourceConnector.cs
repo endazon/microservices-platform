@@ -21,8 +21,23 @@ public interface IDataSourceConnector
     Task<RawContent> FetchAsync(DataSource source, SourceItem item, CancellationToken ct);
 }
 
-// 列挙された 1 対象（所在・更新日時・サイズ）。変更検知と Map の基礎メタ。
-public sealed record SourceItem(string Path, DateTimeOffset ModifiedAt, long Size);
+// 列挙された 1 対象（所在・更新日時・サイズ・更新者）。変更検知と Map の基礎メタ。
+//
+// FR-05, UC-04, #752: `UpdatedBy` は**ソース側の更新者**である。計画
+// 09_datasource-connectors §システム投入経路は `owner` の既定を
+// 「ソース側の更新者・作成者を利用者識別子へ解決して入れる」と定めるが、**従前の契約は
+// 所在・更新日時・サイズの 3 つしか運んでおらず、器そのものが無かった**。
+//
+// 🔴 **null 許容である。運べないコネクタは null を返す。** 現に `filesystem` / `wiki` / `saas` の
+// 3 本は構造上取れない（前者は Linux でファイル所有者を取る自明な手段が無く、かつ
+// 「ファイル所有者」は「最終更新者」ではない。後 2 者は REST 契約に更新者フィールドが無い）。
+// **取れないものを取れたことにしない** —— null なら `owner` は予約値 `system` へ倒れる
+// （計画「解決できないとき」）。
+//
+// 🔴 **本段（#752 段 1）では、どのコネクタもこの値を載せない。** 器と経路だけを作る。
+// 値を載せるには**別の名前空間の識別子を利用者識別子として扱ってよいか**の裁定が要る
+// （OS ユーザー名・DB の列値をそのまま入れると「偽の識別子」になりうる）。
+public sealed record SourceItem(string Path, DateTimeOffset ModifiedAt, long Size, string? UpdatedBy = null);
 
 // 取得した原本の中身（バイト列と content-type）。
 public sealed record RawContent(byte[] Bytes, string ContentType);

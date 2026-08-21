@@ -35,6 +35,20 @@ public sealed class DataSourceSyncService(
         return result;
     }
 
+    // FR-05, UC-04, #752 段 1: `SourceItem` が運んできたアイテム単位のメタを ABAC 属性キーへ写す。
+    //
+    // 🔴 **運んでこなければ null を返す**（＝上書きが 1 件も無い＝挙動不変）。
+    // 現時点でコネクタ 4 実装はいずれも `UpdatedBy` を載せないため、常に null である。
+    //
+    // 🔴 **`UpdatedBy` をそのまま `owner` へ入れてよいかは未裁定である。** 計画は
+    // 「ソース側の更新者・作成者を**利用者識別子へ解決して**入れる」と定めており、
+    // OS ユーザー名や DB の列値のような**別の名前空間の識別子**をそのまま入れると
+    // 「偽の識別子」になりうる。**解決の規則が確定するまでコネクタ側は値を載せない。**
+    private static Dictionary<string, string>? PerItemAttributes(SourceItem item)
+        => string.IsNullOrWhiteSpace(item.UpdatedBy)
+            ? null
+            : new Dictionary<string, string> { [DataSource.OwnerKey] = item.UpdatedBy };
+
     private async Task<SyncResult> RunAsync(DataSource source, CancellationToken ct)
     {
         var connector = registry.Resolve(source.SourceType);
@@ -63,8 +77,6 @@ public sealed class DataSourceSyncService(
                 Message: "discover failed: " + ex.Message);
         }
 
-        // Map: データソースの既定 ABAC 属性（機密区分フェイルセーフ含む・IADR-0019）を原本へ付与する。
-        var attributes = source.GetEffectiveAttributes();
         var fetched = 0;
         var failed = 0;
 
@@ -84,19 +96,35 @@ public sealed class DataSourceSyncService(
                 // `06_technical/09_datasource-connectors.md` §取り込み経路はタグを生成しない）。
                 //
                 // **ソースのメタ（所在・部門・フォルダ・更新者等）の写像先は ABAC 基本属性であり、
-                // タグではない。** それらは上の `attributes` に載っている。
+                // タグではない。**
+                //
+                // ［2026-08-21 追記 / #752］**従前ここには「それらは上の `attributes` に載っている」と
+                // 書いていたが、更新者は載っていなかった。** 属性は `foreach` の**外**でソース単位に
+                // 1 回だけ計算されており、全アイテムが同じ辞書の複製を受け取っていた。つまり
+                // **アイテムごとに違う更新者を載せる経路が構造上存在しなかった。**
+                // 本コミットで属性の解決を**アイテム単位**へ移した（下の `GetEffectiveAttributes(perItem)`）。
                 //
                 // 従前ここは**親フォルダ名をタグへ写していた**（`BuildTags`）。**削除した。**
                 // フォルダ名をタグにすると**ファイルサーバーのディレクトリ名がそのまま辞書になる**うえ、
                 // 使用件数が登録の瞬間に 1 件以上となるため、SC-09 の削除拒否により
                 // **管理者は増えた値を一切消せなくなる**（[[IADR-0153]] 決定 5）。
                 //
-                // **コネクタは構造上タグを運べない**（`SourceItem` は所在・更新日時・サイズのみ）。
+                // **コネクタは構造上タグを運べない**（`SourceItem` が運ぶのは所在・更新日時・サイズと、
+                // #752 段 1 で足した更新者だけであり、**タグは含まない**）。
                 // 将来コネクタがソース側のタグを運ぶようになったら**計画へ改めて裁定を仰ぐ**。
+
+                // Map: データソースの既定 ABAC 属性（機密区分フェイルセーフ含む・IADR-0019）に
+                // **アイテム単位の上書き**を重ねて原本へ付与する（#752 段 1）。優先順位は
+                // 明示指定 > アイテム単位 > 予約値（`DataSource.GetEffectiveAttributes` を参照）。
+                //
+                // 🔴 **本段ではどのコネクタも `UpdatedBy` を載せないため、`perItem` は常に null であり
+                // 挙動は 1 バイトも変わらない。** 器と経路だけを先に作っている。
+                var attributes = source.GetEffectiveAttributes(PerItemAttributes(item));
+
                 await bus.Publish(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
-                    new Dictionary<string, string>(attributes), [],
+                    attributes, [],
                     DateTimeOffset.UtcNow), ct);
                 fetched++;
             }
