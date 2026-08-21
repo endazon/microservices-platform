@@ -4534,35 +4534,44 @@ module.exports = ({ ok, assert }) => {
     //    「AST 文脈で裸の ID」（型 B）は**偽陽性を避けるため意図的に検出しない**。つまり
     //    **機械はこの取り違えを止めない。**
     //
-    //    先例は一致している —— `IADR-0102` とその作業仕様書は、いずれも
-    //    **AST の計画 ADR を trace ブロックの `adrs`/`iadrs`（裸 ID 解決の対象）へ入れず、
-    //    `specs` の実体名で指す**。実体名は曖昧さが無く、`check-doc-links.js` が
-    //    リンク切れを検出できる。
+    //    ［2026-08-21 追記 / specs キー是正］ 旧版は「`specs:` へ実体名 `ADR-0011_llm-model-pinning`
+    //    を書く」を代替手段としていたが、この文字列は `.ai-context/specs/` に実在せず
+    //    `check-trace-blocks.js`（specs キーの実在性検査）の違反そのものだった。正しい代替は
+    //    ADR-0048 決定 9 の一般修飾子（`<英数の短縮名>:<ID>`）を `adrs:` へ書くことである
+    //    （AST 側の同型是正 commit e5dbf4f が確立した方式と同じ）。**qualifier 付きトークンは
+    //    external として実在検査を skip する**ため、機械はこちらも取り違えを止めないが、
+    //    `specs:` の実在性検査とは矛盾しない。
     //    ★ frontmatter の `related_ids:` は、docs/ trace-ification（ADR-0048 決定 4。
     //    `migrate-remaining.js` の Class T）により本文直後の `<!-- trace: ... -->`
     //    コメントブロックへ移設済み（レンダリングされない・5 キー固定）。本テストも
     //    移設後の形で読む。
-    ok('ピン Runbook: AST の計画 ADR を裸の ID で adrs/iadrs へ入れていない（trace ブロック）', () => {
+    ok('ピン Runbook: AST の計画 ADR を裸の ID で adrs/iadrs へ入れず、AST: 修飾で adrs へ入れている（trace ブロック）', () => {
       const t = fs.readFileSync(path.join(REPO, RUNBOOK), 'utf8').replace(/\r\n/g, '\n');
       const traceMatch = /<!--\s*trace:\s*\n([\s\S]*?)-->/m.exec(t);
       assert.ok(traceMatch, 'trace ブロックが無い');
       const trace = traceMatch[1];
       const adrsLine = /^adrs:\s*\[([^\]]*)\]/m.exec(trace);
       const iadrsLine = /^iadrs:\s*\[([^\]]*)\]/m.exec(trace);
+      const specsLine = /^specs:\s*\[([^\]]*)\]/m.exec(trace);
       assert.ok(adrsLine, 'trace ブロックに adrs: が無い');
       assert.ok(iadrsLine, 'trace ブロックに iadrs: が無い');
+      assert.ok(specsLine, 'trace ブロックに specs: が無い');
       const adrIds = [
         ...adrsLine[1].split(',').map((s) => s.trim()).filter(Boolean),
         ...iadrsLine[1].split(',').map((s) => s.trim()).filter(Boolean),
       ];
+      const specIds = specsLine[1].split(',').map((s) => s.trim()).filter(Boolean);
       assert.ok(
         !adrIds.includes('ADR-0011'),
         '裸の ADR-0011 は MSP の wiki エンジン ADR へ解決される。AST の計画 ADR は adrs/iadrs へ入れない',
       );
-      assert.match(
-        trace,
-        /ADR-0011_llm-model-pinning/,
-        'AST/ADR-0011 への参照が trace ブロック（specs:）から読み取れない',
+      assert.ok(
+        adrIds.includes('AST:ADR-0011'),
+        'AST/ADR-0011 への参照が trace ブロック（adrs: の AST: 修飾）から読み取れない',
+      );
+      assert.ok(
+        !specIds.some((s) => s.startsWith('ADR-0011')),
+        '.ai-context/specs/ に実在しない実体名 ADR-0011_llm-model-pinning が specs: に残っている（check-trace-blocks.js 違反）',
       );
     });
 
