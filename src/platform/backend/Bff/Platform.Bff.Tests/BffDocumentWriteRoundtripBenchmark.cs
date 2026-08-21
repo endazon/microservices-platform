@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
-using Xunit.Abstractions;
 
 namespace Platform.Bff.Tests;
 
@@ -144,11 +143,16 @@ public sealed class BffDocumentWriteRoundtripBenchmark(ITestOutputHelper output)
     }
 
     // レイテンシ・スイープ。RUN_BFF_BENCH=1 のときのみ実行。
-    // 未設定時は Skip.IfNot で真の Skipped 扱いにする（no-op の passed 表示を避ける）。
-    [SkippableFact]
+    // 未設定時は **真の Skipped** 扱いにする（no-op の passed 表示を避ける）。
+    // #455 A-2: xUnit v3 標準の Assert.SkipUnless へ移した。従前は Xunit.SkippableFact の
+    // [SkippableFact] + Skip.IfNot を使っていたが、同パッケージに v3 対応版が無い
+    // （最新 1.5.61 も xunit.extensibility.execution v2 に依存する）。
+    // 🔴 v2 のうちに外してはならなかった —— v2 には動的スキップが無く、先に外すと
+    // 「真の Skipped」が「何もしない Passed」へ退化する。
+    [Fact]
     public async Task Benchmark_write_latency_by_backend_rtt()
     {
-        Skip.IfNot(BenchEnabled, "set RUN_BFF_BENCH=1 to run the latency sweep.");
+        Assert.SkipUnless(BenchEnabled, "set RUN_BFF_BENCH=1 to run the latency sweep.");
 
         var n = int.TryParse(Environment.GetEnvironmentVariable("BENCH_N"), out var envN) ? envN : 200;
         var rtts = (Environment.GetEnvironmentVariable("BENCH_RTTS") ?? "0,5,20")

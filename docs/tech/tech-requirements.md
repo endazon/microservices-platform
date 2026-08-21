@@ -181,7 +181,7 @@ src/<unit>/backend/Services/<Name>Service/
 | ロギング | 標準 `ILogger` + OpenTelemetry Logs | Serilog 系（Seq 含む） |
 | キャッシュ | HybridCache（L1）+ Redis（L2） | — |
 | レジリエンス | Polly（`Microsoft.Extensions.Http.Resilience` 経由） | — |
-| テスト | xUnit **v3**（※現行は v2。後述）・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化） |
+| テスト | xUnit **v3**・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化）・`Xunit.SkippableFact`（v3 対応版が無い。`Assert.Skip` を使う） |
 | API ドキュメント / バージョニング | Microsoft.AspNetCore.OpenApi + Scalar / Asp.Versioning.Http | Kiota・NSwag |
 
 バージョンの単一情報源は [`src/Directory.Packages.props`](../../src/Directory.Packages.props)（CPM）である。
@@ -254,14 +254,31 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 > 上の測定コマンドは残す（`FluentAssertions` の 2 本は現在 **0** を返すのが正しい姿であり、
 > 非 0 が出たら再混入である）。
 
-**xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
-別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 **16** のテスト
-プロジェクトが同時に移らざるを得ない（実測 2026-08-21。**従前ここには 30 と書いていたが根拠が無い** ——
-`Microsoft.NET.Test.Sdk` を参照する `.csproj` を数えると 16 である。
-🔴 **`src/ai-stock-trading` は自前の `Directory.Packages.props` を持ち本リポと CPM を共有しないため、
-同時移行の対象に入らない**。同 submodule は既に v3 へ移行済みである）。この切替は独立した issue で行う。それまで **`xunit.v3` を参照する
-プロジェクトを作ってはならない**（非互換の runner と組み合わさる）。`check-backend-libraries.js` が
-`templates/` を含めて検査し、混入を止める。
+**xUnit は標準どおり v3 である**（`xunit.v3` 3.2.2 ＋ `xunit.runner.visualstudio` 3.1.5）。
+`xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ
+1 バージョンしか持てない**ため、**16** のテストプロジェクトを**同時に**切り替えた
+（実測 2026-08-21。`Microsoft.NET.Test.Sdk` を参照する `.csproj` の数。**従前ここには 30 と
+書いていたが根拠が無かった**。🔴 **`src/ai-stock-trading` は自前の `Directory.Packages.props` を持ち
+本リポと CPM を共有しないため対象外**。同 submodule は先に v3 へ移行済みで、本切替の参照実装になった）。
+
+以後は逆に **`xunit`（v2 本体）を参照するプロジェクトを作ってはならない**（非互換の runner と
+組み合わさる）。`check-backend-libraries.js` の `xunitRunnerMismatch` は `templates/` を含めて
+**両方向**を検査する —— 「`xunit.v3` ＋ runner 2.x」も「`xunit` ＋ runner 3.x」も fail させ、
+**一斉切替でしか成立しないという性質そのものを機械が担保する**。
+
+付随して次を撤去・置換した。
+
+- **`Xunit.SkippableFact` を撤去**（v3 対応版が無い。1.5.61 も `xunit.extensibility.execution` v2 に依存）。
+  動的スキップは v3 標準の **`Assert.Skip` / `Assert.SkipUnless` / `Assert.SkipWhen`** を使う。
+  🔴 **v2 のうちに外してはならなかった** —— v2 には動的スキップが無く、先に外すと
+  「真の Skipped」が「何もしない Passed」へ退化する。
+- **`if (cond) return;` のソフトスキップを `Assert.Skip*` へ改めた**（`PandocConversionServiceTests` の
+  3 箇所）。従前は pandoc 未導入の CI で **走らなかったケースが Passed として報告されていた**。
+- **`IAsyncLifetime` の戻り値型が `Task` → `ValueTask`**（v3 の破壊的変更。9 ファイル）。
+- **`ITestOutputHelper` が `Xunit.Abstractions` → `Xunit` へ移動**（1 ファイル）。
+- **アナライザ `xUnit1051` は `src/Directory.Build.props` でテストプロジェクトのみ抑止**した。
+  `TestContext.Current.CancellationToken` の採用は全テストの呼び出し側を書き換える別作業であり、
+  切替そのものの射程を超える（抑止しないと **1,886 件**の助言警告が実害のある警告を埋める）。
 
 **年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（バックエンド標準ライブラリの計画 ADR のフォローアップ）。
 手順は[運用仕様書](../operations/)に記載する。
@@ -278,7 +295,7 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 
 ## 開発・ビルド・テスト・デプロイ
 
-- **バックエンド**: `dotnet build` / `dotnet test`（xUnit。標準は v3・現行は v2 で各サービス再実装時に切替）/
+- **バックエンド**: `dotnet build` / `dotnet test`（xUnit **v3**）/
   `dotnet format --verify-no-changes`（CI lint ゲート）を
   ユニット別ソリューション（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) /
   [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)）毎に実行する。
@@ -306,6 +323,8 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   .NET 10（LTS）に確定し、乖離は解消した。残る作業は同 ADR のフォローアップ
   （個別プロセス文書に残る「.NET 8」表記の順次追随）で、計画側の担当である。
 - バックエンド標準ライブラリ標準への移行残件: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
-  空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。xUnit v2 → v3 の切替時期と
-  `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は各サービス側で確定する。
+  空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。**残るのは `MassTransit`
+  のみ**である（Wolverine 移行。🔴 部分移行は禁止——「MT 発行 → Wolverine 購読」の組が 1 つでもできると、
+  ビルドもユニットテストもトポロジ検査も通ったまま業務イベントが消える）。
+  **xUnit v2 → v3 と `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は決着済みである**（上記）。
 - サービス間 HTTP の `Refit` は棚卸し表に記載が無い。gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）との関係は #441 で決着する。

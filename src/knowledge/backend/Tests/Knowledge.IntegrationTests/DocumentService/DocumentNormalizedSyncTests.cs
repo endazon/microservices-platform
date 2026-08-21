@@ -15,7 +15,7 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
     private DocumentServiceFactory _factory = null!;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
         _factory = new DocumentServiceFactory(postgres, rabbit);
@@ -25,7 +25,7 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();

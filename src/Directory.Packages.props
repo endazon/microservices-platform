@@ -45,9 +45,14 @@
     <PackageVersion Include="Anthropic.SDK" Version="4.0.0" />
     <!-- Test -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageVersion Include="Xunit.SkippableFact" Version="1.4.13" />
+    <!-- xUnit v3（ADR-0030 のテスト標準。#455 A-2 で v2 から一斉に切り替えた）。
+         v3 の本体パッケージ ID は `xunit.v3` であり下の ADR-0030 ブロックが持つ。`xunit`（v2 系）の
+         版定義はここから削除した —— 参照が 0 件になったためである。
+         runner は v2 用（2.x）と v3 用（3.x）で別系列で、**CPM は 1 パッケージ 1 バージョン**しか
+         持てない。だから段階移行が成立せず 16 プロジェクトを同時に動かした。
+         `Xunit.SkippableFact` も削除した。v3 対応版が存在せず（1.5.61 も xunit.extensibility.execution
+         v2 に依存する）、v3 標準の Assert.Skip / Assert.SkipUnless で置き換えられるためである。 -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <!-- ============================================================================

@@ -11,21 +11,19 @@
 
        ADR-0030 のテスト標準: AwesomeAssertions（FluentAssertions v8 は商用化のため使わない）・
        NSubstitute・Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）・Respawn。
-       **xUnit だけは標準が v3 だが、雛形は現時点で v2 を使う。**
-       CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 2.8.2（v2 用）に固定されており、
-       v3 には 3.x が要る。CPM は 1 パッケージ 1 バージョンしか持てないため、v3 へ移ると既存の
-       テストプロジェクトが同時に移らざるを得ない。この切替は独立した issue として扱う
-       （.ai-context/specs/20260803_issue-455_backend-application-standard.md 未決事項 2）。
-       **雛形はコピーしてそのまま動くことを優先する。** ここで v3 を先取りすると、非互換の
-       runner と組み合わさった雛形が出荷される。**［2026-08-18 追記 / #830］「配置されるまで誰も
-       気付けない」ではなくなった** —— ci.yml の template-backend-build ジョブが、本雛形を
-       配置後の位置（src/<一時ユニット>/backend/）へ複製して build / test する。それでも
-       CPM が 1 パッケージ 1 バージョンしか持てない事情は変わらないため、切替 issue の完了まで
-       xunit.v3 を参照するプロジェクトを作ってはならない。
-       切替 issue の完了時に本ファイルの xunit → xunit.v3 を併せて更新すること。 -->
+       xUnit は **v3**（本体パッケージ ID は xunit.v3。xunit は v2 系のまま更新されない別 ID）。
+       CPM（src/Directory.Packages.props）の xunit.runner.visualstudio は 3.1.5（v3 用）である。
+       ［2026-08-21 更新 / #455 A-2］従前ここは「雛形は現時点で v2 を使う」だった。runner は
+       v2 用（2.x）と v3 用（3.x）で別系列で、CPM は 1 パッケージ 1 バージョンしか持てないため
+       段階移行が成立せず、16 のテストプロジェクトを一斉に切り替えて解消した。
+       **雛形はコピーしてそのまま動くことを優先する。** 逆向きの取り残し（xunit（v2 本体）を
+       参照したまま runner 3.x と組み合わさる）も scripts/check-backend-libraries.js が
+       CI で fail させる（同検査は両方向を見る）。
+       ［2026-08-18 追記 / #830］ci.yml の template-backend-build ジョブが、本雛形を
+       配置後の位置（src/<一時ユニット>/backend/）へ複製して build / test する。 -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="AwesomeAssertions" />
     <PackageReference Include="NSubstitute" />

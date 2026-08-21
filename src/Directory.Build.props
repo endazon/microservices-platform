@@ -7,4 +7,24 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
+
+  <!--
+    テストプロジェクトのみ: xUnit1051 を抑止する（#455 A-2）。
+
+    v3 のアナライザは「CancellationToken を受ける呼び出しには TestContext.Current.CancellationToken を
+    渡せ」と勧告する（テストのキャンセル応答性の助言であって、正しさの検査ではない）。
+    v2 → v3 の切替直後の本リポジトリでは **1,886 件**発生する。採用には全テストの呼び出し側を
+    書き換える大規模改修が要り、A-2（切替そのもの）の射程を大きく超える。
+
+    抑止する理由は「面倒だから」ではない。本リポジトリは
+    scripts/check-backend-libraries.js に「**赤の常態化は『赤を無視する学習』を生み、検査の目的
+    そのものを壊す**」と記録している。1,886 件の助言警告を出し続けると、同じ理由で
+    CS0618 のような実害のある警告が埋もれる。**段階採用へ回すのが同じ判断である。**
+
+    採用は別 issue で行う（TestContext.Current.CancellationToken への移行）。
+    TreatWarningsAsErrors は false であり、この抑止はビルドの成否を変えない。
+  -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
 </Project>
