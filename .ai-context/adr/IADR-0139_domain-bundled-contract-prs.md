@@ -2,10 +2,10 @@
 title: IADR-0139 同型の契約追加はドメイン単位（判定は資源単位）で 1 PR に束ねてよい — IADR-0116 規約 1 の限定例外
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0043, IADR-0115, IADR-0116, IADR-0119, IADR-0122, IADR-0130, IADR-0140, IADR-0141]
+related_ids: [NFR, ADR-0043, IADR-0115, IADR-0116, IADR-0119, IADR-0122, IADR-0130, IADR-0140, IADR-0141, IADR-0230]
 author: Claude
 created: 2026-08-07
-updated: 2026-08-18
+updated: 2026-08-21
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
   - planning:docs/ai-implementation-workflow-guide.md
@@ -618,6 +618,14 @@ ADR-0043（計画リポ）
 - Amends: [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 1（相互リンクは
   同 IADR の［2026-08-07 追記］にある）
 - Superseded by: なし
+- **［2026-08-21 追記 / #877］射程が交わらない隣接決定として [IADR-0230](IADR-0230_meta-work-bundled-prs.md) が
+  できた。** 同 IADR は [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) 規約 1 の
+  **第 2 の**限定例外（**メタ作業＝変更ファイルが検査器領域に閉じるもの**）を定める。
+  **本 ADR の対象・判定単位・条件は 1 つも変わらない** —— こちらは**製品の契約追加を資源単位で**
+  束ねる決定であり、あちらの条件 M-A が `src/` 配下を排除する以上、**両方に当たる束は原理的に存在しない。**
+  **上限だけは同じ 4 件に揃えてある**（覚えるべき上限を 2 つ作らないため。理由の正本は
+  [IADR-0230](IADR-0230_meta-work-bundled-prs.md) 決定 2 であり、ここへ写さない）。
+  **本 ADR の上限が将来動いたら、あちらも同じ数へ追随する**（同 決定 2 のフォローアップ）。
 - **［2026-08-16 / #791］決定 1 の上限を 2 件 → 4 件へ改めた**（利用者裁定 2026-08-15 / planning#370。
   反映 PR は planning#375〔裁定依頼 planning#370〕、環流記録は planning の
   `draft/feedback/20260815_bundling-scope-for-contract-additions.md`。**pin `4d6a7d6` には未収録の

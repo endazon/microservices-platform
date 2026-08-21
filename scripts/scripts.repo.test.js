@@ -6769,7 +6769,10 @@ module.exports = ({ ok, assert }) => {
     // 一時ディレクトリへ**検査器 1 本だけ**を写し、`scripts/lib/worktree-state.js` を
     // libSource で作って CLI として走らせる。既存の「scripts/ を丸ごと cpSync する」
     // ヘルパは使えない —— 本物の lib が入ってしまい、遅延 require の分岐を試験できない。
-    const runWithLibX836 = (libSource) => {
+    // 一時ディレクトリの `scripts/lib/` を `populateLib(libDir)` に作らせてから検査器を走らせる。
+    // lib の中身を差し替えられる形にしてあるのは、**壊れた lib（#836）と本物の lib（#842）の
+    // 両方**を同じ経路で走らせるためである。
+    const runCheckerWithLibX836 = (populateLib) => {
       const dir = fsX836.mkdtempSync(pathX836.join(osX836.tmpdir(), 'xrepo-lib-'));
       try {
         fsX836.mkdirSync(pathX836.join(dir, 'scripts'));
@@ -6777,8 +6780,9 @@ module.exports = ({ ok, assert }) => {
           require.resolve('./check-cross-repo-refs.js'),
           pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')
         );
-        fsX836.mkdirSync(pathX836.join(dir, 'scripts', 'lib'));
-        fsX836.writeFileSync(pathX836.join(dir, 'scripts', 'lib', 'worktree-state.js'), libSource);
+        const libDir = pathX836.join(dir, 'scripts', 'lib');
+        fsX836.mkdirSync(libDir);
+        populateLib(libDir, dir);
         // git init は要る。無いと fail-open の分岐（git ls-files 不可）へ落ち、
         // 握り潰しの有無を見る前に終わってしまう。
         execX836('git', ['-C', dir, 'init', '-q'], { stdio: 'ignore' });
@@ -6787,11 +6791,16 @@ module.exports = ({ ok, assert }) => {
           [pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')],
           { encoding: 'utf8' }
         );
-        return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+        return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, dir };
       } finally {
         fsX836.rmSync(dir, { recursive: true, force: true });
       }
     };
+
+    const runWithLibX836 = (libSource) =>
+      runCheckerWithLibX836((libDir) =>
+        fsX836.writeFileSync(pathX836.join(libDir, 'worktree-state.js'), libSource)
+      );
 
     const GATE_X836 = /1 件も見つけられませんでした/;
 
@@ -6827,6 +6836,50 @@ module.exports = ({ ok, assert }) => {
         out,
         GATE_X836,
         `0 件走査の門まで到達している＝例外を握って走り続けた:\n${out}`
+      );
+    });
+
+    // --- #842: 結線が「生きている」ことを実挙動で固定する（#836 の対の欠け） ---------------
+    //
+    // **上の 2 本が固定しているのは「壊れた lib を握り潰さない」ことだけ**で、
+    // **「正しい lib を置いたときに結線が実際に働く」ことは 1 本も見ていなかった。**
+    // `check-cross-repo-refs.js` の遅延 require は、`require.resolve` が MODULE_NOT_FOUND を
+    // 返すと `MODE = {}` ＋ no-op のまま**警告を 1 行も出さずに**走り続ける（意図された
+    // fail-open。キット版の門試験が `lib/` の無い一時ディレクトリで走るため）。
+    // その fail-open は「正常な一時 dir」と「本リポで結線が壊れた」を区別しない ——
+    // 例えば結線のブロックを丸ごと消しても、上の 2 本は**どちらも緑のまま**になる。
+    //
+    // **他 3 本（check-doc-updated / check-landed-subjects / check-plan-id-qualification）には
+    // 遅延 require が無いので、この穴は本ファイル固有である。** それらの実挙動は上の
+    // 「#683: 該当 4 本すべてが実際に警告を出し…」が本リポジトリのツリー上で見ているが、
+    // **本リポジトリのツリーには当然 `lib/` が在る**ため、遅延 require の分岐は通らない。
+    //
+    // **判定は終了コードではない**（#836 の 2 本と同じ理由。lib が正しくても 0 件走査の門が
+    // exit 1 を返すため、状態コードでは両者を区別できない）。**判定行の有無で見る** ——
+    // 文言は #683 群（4884 / 4909 行あたり）と同じ `#683 / IADR-0183` を使う。
+    ok('#842: 正しい lib を置くと結線が実際に働く（警告行が出る。黙って no-op へ落ちない）', () => {
+      const { out } = runCheckerWithLibX836((libDir, dir) => {
+        // **本物を 2 ファイル写す。** `lib/worktree-state.js` は `./ci-annotate` を require するので、
+        // 1 ファイルだけでは MODULE_NOT_FOUND になり #836 の「握り潰さない」側の試験になってしまう。
+        for (const f of ['worktree-state.js', 'ci-annotate.js']) {
+          fsX836.copyFileSync(
+            require.resolve(`./lib/${f}`),
+            pathX836.join(libDir, f)
+          );
+        }
+        // untracked を 1 件は確実に作る（MODE.TRACKED の警告条件）。
+        // `scripts/` 自体も untracked だが、条件を偶然に頼らず明示で満たす。
+        fsX836.writeFileSync(pathX836.join(dir, '.tmp-untracked-probe-842'), 'probe\n');
+      });
+      assert.match(
+        out,
+        /#683 \/ IADR-0183/,
+        '本物の lib を置いても警告が出ない＝遅延 require の結線が死んでいる（no-op のまま exit する）:\n' + out
+      );
+      assert.match(
+        out,
+        /untracked のファイルが \d+ 件ある/,
+        'MODE.TRACKED が渡っていない（MODE = {} のまま呼ばれると mode が undefined になる）:\n' + out
       );
     });
   }

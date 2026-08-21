@@ -2,10 +2,10 @@
 title: IADR-0116 全面再実装の進行方式 — 子 issue 単位のブランチ / PR と develop 直接統合
 type: impl-adr
 status: Accepted
-related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0121, IADR-0142, IADR-0139, IADR-0141]
+related_ids: [NFR, ADR-0030, ADR-0031, ADR-0032, IADR-0034, IADR-0115, IADR-0118, IADR-0119, IADR-0121, IADR-0142, IADR-0139, IADR-0141, IADR-0230]
 author: Claude
 created: 2026-08-02
-updated: 2026-08-16
+updated: 2026-08-21
 plan_refs:
   - planning:projects/microservices-platform/INDEX.md
 ---
@@ -174,6 +174,29 @@ plan_refs:
 >   **［2026-08-07 追記 / #594］この一文は「監査の *対象* の数」を指す。** 1 対象あたりの
 >   **巡数**は [IADR-0141](IADR-0141_audit-rounds-and-population-drawing.md) が限定した（下記）。
 
+> **［2026-08-21 追記・規約 1 の第 2 の限定例外（#877。改定は
+> [IADR-0230](IADR-0230_meta-work-bundled-prs.md)）］**
+>
+> **規約 1（子 issue 1 件 = ブランチ 1 本 = PR 1 本）に、条件つきの例外をもう 1 つ加えた。**
+> 利用者裁定（2026-08-21「メタ作業に限り PR の束ねを緩和してよい」）により、
+> **変更ファイルが検査器領域に閉じるメタ作業は 1 PR に束ねてよい**。例外が働くのは
+> [IADR-0230](IADR-0230_meta-work-bundled-prs.md) 決定 1 の **5 条件（M-A〜M-E）をすべて満たすとき**に
+> 限る。条件を満たさないものは本規約 1 のままである。
+>
+> - **判定の単位は「メタ作業かどうか」ではなく「変更ファイル領域」である**（同 決定 1 条件 M-A）。
+>   `scripts/` 配下・`.ai-context/adr/` 配下・`.ai-context/specs/` 配下・`docs/how-to/` 配下に**全件が**収まること。
+>   **`src/` 配下・`.github/` 配下・`CLAUDE.md`・`.claude/rules/` 配下が 1 件でも入れば束ねられない。**
+> - **束の上限は 4 件**（同 決定 2。[IADR-0139](IADR-0139_domain-bundled-contract-prs.md) と同じ数に
+>   揃えてある。**覚えるべき上限を 2 つ作らないため**であり、ここへ理由を写さない）。
+> - **[IADR-0139](IADR-0139_domain-bundled-contract-prs.md) の例外とは対象が交わらない** ——
+>   あちらは**製品の契約追加**、こちらは**検査器領域**であり、M-A が `src/` 配下を排除するため
+>   両方に当たる束は原理的に存在しない。
+> - **本 IADR は `Superseded` にしない。** 原則（1 issue = 1 branch = 1 PR）は残り、限定例外が
+>   もう 1 つ増えるだけである（第 1 の例外＝[IADR-0139](IADR-0139_domain-bundled-contract-prs.md) と同じ扱い）。
+> - **規約 4（PR ではなく issue を分割する）は変わらない。** 上限 4 件を超えるなら分ける。
+> - **機械検査は置いていない**（同 決定 4。`CLAUDE.md`「同型の事故が 2 回起きたら」に従い、
+>   破られた実例が 2 度出るまでは検査器を足さない）。
+
 > **［2026-08-07 追記・マージ前クロス監査の巡数と再走範囲（#594。改定は
 > [IADR-0141](IADR-0141_audit-rounds-and-population-drawing.md)）］**
 >
@@ -231,6 +254,9 @@ plan_refs:
 - Supersedes: なし
 - Superseded by: なし（[IADR-0139](IADR-0139_domain-bundled-contract-prs.md) が**規約 1 に限定例外を追加**するが、
   本 IADR は `Accepted` のまま。決定本体は変わらない）
+- **Amended by: [IADR-0230](IADR-0230_meta-work-bundled-prs.md)**（#877・2026-08-21。
+  規約 1 に第 2 の限定例外「変更ファイルが検査器領域に閉じるメタ作業は 1 PR に束ねてよい」を足す。
+  条件（M-A〜M-E）・上限 4 件・機械検査を置かない理由は同 IADR にある。**本 IADR は `Accepted` のまま**）
 - **Amended by: [IADR-0139](IADR-0139_domain-bundled-contract-prs.md)**（#575・2026-08-07。
   規約 1 に「同型の契約追加はドメイン単位で最大 3 件まで 1 PR に束ねてよい」という限定例外を足す。
   上記［2026-08-07 追記］が本 IADR 側の記載であり、条件・棄却案・検出しないことは同 IADR にある。
