@@ -145,6 +145,13 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
 
     protected virtual void AdditionalServices(IServiceCollection services) { }
 
+    /// <summary>
+    /// テストから呼ぶための公開口（<see cref="FindRepoFile"/> と同一実装）。
+    /// 🔴 **7 つ目の複製を作らないためにこれを足した。** #891 が 6 箇所の集約を扱っており、
+    /// テスト側で walk を書き直せば集約対象が増える。集約時にここも 1 つへ寄せる。
+    /// </summary>
+    public static string FindRepoFileForTests(string relative) => FindRepoFile(relative);
+
     /// <summary>リポジトリ内のファイルを、テストアセンブリの位置から親へ辿って解決する。</summary>
     /// <remarks>
     /// 🔴 **解決できなければ例外で止める。** AddPlatformPipelineConfig は
@@ -159,13 +166,6 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     /// **U0d（段宣言を通す）の射程外だからである。**
     /// 集約は #891 で行う。**「作法を揃えた」であって「重複を無くした」ではない。**
     /// </remarks>
-    /// <summary>
-    /// テストから呼ぶための公開口（<see cref="FindRepoFile"/> と同一実装）。
-    /// 🔴 **7 つ目の複製を作らないためにこれを足した。** #891 が 6 箇所の集約を扱っており、
-    /// テスト側で walk を書き直せば集約対象が増える。集約時にここも 1 つへ寄せる。
-    /// </summary>
-    public static string FindRepoFileForTests(string relative) => FindRepoFile(relative);
-
     protected static string FindRepoFile(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

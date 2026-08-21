@@ -134,11 +134,17 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
             await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt);
         }
 
-        // どちらかが受信するまで待つ。
-        var ingested = await _probe.IngestionUpserts.WaitAsync(docId, TimeSpan.FromSeconds(30));
-        var synced = ingested || await WaitForWikiPageAsync(docId, TimeSpan.FromSeconds(30));
+        // **どちらかが受信するまで**待つ。
+        //
+        // 🔴 短絡評価で書かない。`var synced = ingested || await Wait...` と書くと、
+        // ingested が真のとき Wiki 側を**一度も見ていない**のに synced == true になり、
+        // 変数名が「Wiki を確認した結果」だと嘘をつく。**測っていないものに名前を付けない。**
+        var ingestedFirst = await _probe.IngestionUpserts.WaitAsync(docId, TimeSpan.FromSeconds(30));
+        var syncedFirst = ingestedFirst
+            ? false // 取り込み側が先に受けた。この時点で Wiki 側は見ていない（下の最終判定で見る）
+            : await WaitForWikiPageAsync(docId, TimeSpan.FromSeconds(30));
 
-        (ingested || synced).Should().BeTrue(
+        (ingestedFirst || syncedFirst).Should().BeTrue(
             "同一キューでも「どちらか」は受信する。両方とも受信しないならキュー共有ではなく"
             + "ブローカ接続や宣言の読み込みを疑う");
 
