@@ -12,7 +12,7 @@
  *
  * 見るもの:
  *   1) 件名の書式 `種別(起点ID): 要約`
- *   2) 起点 ID の実在性 —— `IADR`（本リポ `.ai-context/adr/`）/ `ADR`（planning の `07_adr/`）/
+ *   2) 起点 ID の実在性 —— `IADR`（本リポ `.ai-context/adr/`）/ `ADR`（宣言レンジ。下記）/
  *      **`FR` / `UC` / `SC`**（拡張点 `check-test-traceability.js` を持つ構成でのみ）
  *   3) **他リポジトリ issue / PR 番号の修飾を 3 つの面で**——**件名・本文（`%b`）・PR タイトル**。
  *      裸の `#NNN` は 3 面とも**本リポジトリの issue へ自動リンクする**ため、誤リンクという
@@ -214,7 +214,7 @@ function isSkippable(subject) {
 
 /**
  * 指定ディレクトリのファイル名から実在する ADR/IADR 番号の集合を返す。ディレクトリを
- * 読めない環境（チェックアウト無しの単独実行・planning submodule 未 populate 等）では
+ * 読めない環境（チェックアウト無しの単独実行・テストの明示パス等）では
  * null を返し、実在性検査をスキップする（fail-open。check-doc-links.js と同じ扱い）。
  *
  * 背景: 並行実装では ADR 番号の採番衝突が起こり、後発が改番を強いられる。改番はファイル名・
@@ -250,8 +250,11 @@ function loadExistingIadrIds(dir = path.join(__dirname, '..', '.ai-context', 'ad
 const PLAN_PROJECT = process.env.PLAN_PROJECT || 'microservices-platform';
 
 /**
- * 計画 ADR（planning submodule の `projects/<name>/07_adr/`）の実在番号集合。
- * submodule 未 populate なら null（skip）。
+ * 計画 ADR の実在番号集合。
+ * 一次情報は `.claude/rules/traceability.repo.md` の宣言レンジ（`ADR-0001..NNNN` の形。
+ * `check-trace-blocks.js` の `planAdrRange()` 経由）である —— 資料再編（計画 ADR-0048 決定 2）で
+ * planning submodule を撤去したため、ファイルシステム走査は**テスト・別構成向けの引数指定時のみ**
+ * 意味を持つ（既定パスは実在せず、宣言レンジへ進む）。どちらも読めなければ null（skip）。
  *
  * **自プロジェクトの名前空間に限定する**こと。計画 ID はプロジェクトごとに独立採番のため
  * 番号帯が丸ごと重複する。全プロジェクトの和集合を実在集合にすると、他プロジェクトにしか
@@ -259,15 +262,29 @@ const PLAN_PROJECT = process.env.PLAN_PROJECT || 'microservices-platform';
  * 漏れて実体と別内容の ADR を名乗る事故の検出）が働かなくなる。
  * 自プロジェクトを解決できない構成では、従来どおり全走査へ退避する（fail-open）。
  */
+const DEFAULT_PLAN_PROJECTS_DIR = path.join(__dirname, '..', 'planning', 'projects');
+
 function loadExistingPlanAdrIds(
-  projectsDir = path.join(__dirname, '..', 'planning', 'projects'),
+  projectsDir = DEFAULT_PLAN_PROJECTS_DIR,
   project = PLAN_PROJECT
 ) {
   let entries;
   try {
     entries = fs.readdirSync(projectsDir);
   } catch (e) {
-    return null;
+    // 明示パス指定（テスト・別構成）で読めない場合は従来どおり null（skip）。
+    if (projectsDir !== DEFAULT_PLAN_PROJECTS_DIR) return null;
+    // 既定パス（旧 submodule）は資料再編で実在しない。宣言レンジから実在集合を構築する。
+    try {
+      const { planAdrRange } = require('./check-trace-blocks.js');
+      const range = planAdrRange();
+      if (!range) return null;
+      const set = new Set();
+      for (let n = range.from; n <= range.to; n++) set.add(`ADR-${String(n).padStart(4, '0')}`);
+      return set;
+    } catch (e2) {
+      return null;
+    }
   }
   // 自プロジェクトの名前空間だけを実在集合とする（規約どおりの厳密な検査）。
   const own = loadExistingAdrIds('ADR', path.join(projectsDir, project, '07_adr'));
@@ -617,9 +634,10 @@ function main() {
   }
   if (!planAdrIds) {
     notice(
-      'planning submodule が未 populate のため計画 ADR 実在性チェックをスキップした' +
+      '計画 ADR の宣言レンジを読めないため計画 ADR 実在性チェックをスキップした' +
         '（この範囲は検査されていない。実効しているのは IADR 検査のみである）。' +
-        'PR 段階で検査するには checkout に submodules とトークンを付けること'
+        '.claude/rules/traceability.repo.md「起点 ID の種別（固有）」節の ADR レンジ宣言' +
+        '（`ADR-0001..NNNN` の形）を確認すること'
     );
   }
   if (!planIds) {

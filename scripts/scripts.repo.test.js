@@ -5671,11 +5671,13 @@ module.exports = ({ ok, assert }) => {
     const RECAP_ADR = '.ai-context/adr/IADR-0177_entry-exhausted-claude-md-quota.md';
     const HEADS = ['起点 ID の種別', 'コミットメッセージの機械チェック'];
     const NORMS = [
-      'FR-01..22',                    // 現行 pin でのレンジ
+      'FR-01..22',                    // 現行レンジ（pin は資料再編 IADR-0228 で撤去）
       'NFR-01`〜`NFR-27',             // NFR の採番
       '`Proposed` でも ID としては実在する',
       '着手条件は FR 単位で読む',      // 塊の内側から畳んだ規範
-      'CI は計画 ADR の実在性を守っていない', // 同上
+      // 同上。旧規範「CI は計画 ADR の実在性を守っていない」は資料再編（IADR-0228）で
+      // 宣言レンジ検査へ置き換わった（経緯は別紙 §3 の 2026-08-21 追記）。
+      '計画 ADR の実在性は本節の宣言レンジで検査する',
     ];
     // 別紙へ出した塊（入口に残っていてはならない＝移動していない）
     const POP_ANNEX = 'docs/how-to/population-drawing-annex.md';

@@ -96,7 +96,14 @@ plan_refs:
 ## 結果
 
 - `git submodule status` に `planning` は現れない（`src/ai-stock-trading` のみ）。
-- `scripts/` の検査器総数は 38 → 34（4 本撤去）。`scripts.test.js` の母集合ラチェットが追随する。
+- `scripts/` の検査器総数は 37 → 34（本 IADR の 4 本撤去に加え、trace ブロック検査
+  `check-trace-blocks.js` 1 本の新設が同一 PR に含まれる。37 − 4 + 1 = 34）。
+  `scripts.test.js` の母集合ラチェットが追随する。
+- `check-commit-messages.js` の計画 ADR 実在集合は、ファイル走査（旧 submodule の
+  `projects/<name>/07_adr/`）から **`.claude/rules/traceability.repo.md` の宣言レンジ**（`check-trace-blocks.js`
+  の `planAdrRange()` を再利用）へ切り替えた。submodule を populate しない CI でも計画 ADR 検査が
+  実効する（旧規範「CI は計画 ADR の実在性を守っていない」は解消。経緯は
+  `docs/how-to/plan-id-range-history-annex.md` §3 の 2026-08-21 追記）。
 - `docs/adr/` → `.ai-context/adr/`、`docs/specs/` → `.ai-context/specs/` の移設（ADR-0048 決定 1）と
   合わせて、`CLAUDE.md` / `AGENTS.md` / `AI_SETUP.md` / `README.md` / `src/README.md` /
   `deploy/local/**/README.md` / `templates/unit-template/README.md` 等の相対リンクを実在パスへ

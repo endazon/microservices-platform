@@ -8,21 +8,37 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047]
-iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179]
+adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048]
+iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#449, #450, #451, #620, #624, #688, #753, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394]
+issues: [#449, #450, #451, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
 
 > **★ これは「参照時にだけ読む別紙」である。** 毎セッション読む必要は無い。
 > **規約の入口は companion [`.claude/rules/traceability.repo.md`](../../.claude/rules/traceability.repo.md)
-> 「起点 ID の種別（固有）」節**（2026-08-16 / #755 に `traceability.md` から移した。同ファイルはキット配布物へ戻した）であり、**規範（現行 pin でのレンジ・`NFR` の採番・`Proposed` でも ID としては
-> 実在すること・着手条件は FR 単位で読むこと・CI は計画 ADR の実在性を守っていないこと）はそちらに在る。**
+> 「起点 ID の種別（固有）」節**（2026-08-16 / #755 に `traceability.md` から移した。同ファイルはキット配布物へ戻した）であり、**規範（現行のレンジ・`NFR` の採番・`Proposed` でも ID としては
+> 実在すること・着手条件は FR 単位で読むこと・計画 ADR の実在性は宣言レンジで検査すること）はそちらに在る。**
 >
-> **本別紙が持つのは「過去の pin でどう引き直したか」「計画 ADR の状態がいつどう動いたか」
-> 「なぜ CI で守れないか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+> **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
+> 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-08-21］ADR `0001..0047` → `0001..0048`（pin 撤去後の初回。隣接クローンで直接確認）
+
+**`ADR` だけが `0001..0047` → `0001..0048` へ増えた**（`ADR-0048` = 実装リポジトリ資料の再編（`.ai-context/` 移設・planning 依存の撤去・環流の issue 一本化）。本再編そのものの裁定 ADR であり `Accepted`。`planning#424` で起案）。**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件）。宣言レンジの前進はコミット `18f2bc3`。前進の契機は trace ブロック規約（計画 `ADR-0048` 決定 4）の値域検査 —— `check-trace-blocks.js` の実データ走査が `ADR-0048` への参照を旧レンジ外として検出した。
+
+**この世代から突合の方法が変わった。** planning submodule と pin（走査基準のコミット SHA）は資料再編で撤去されたため（[IADR-0228](../../.ai-context/adr/IADR-0228_planning-dependency-removal.md)）、**隣接クローン（`../project-planning`・読み取り専用）を直接確認する**（入口の規範どおり。確認時点は `ADR-0048` の起案ブランチ＝`planning#424` マージ前。マージ順は `planning#424` → 本リポの #872 と定めてあり、本レンジが効く時点では計画側に `ADR-0048` が実在する）。
+
+**`ADR` の欠番は `seq 1 48` との `diff` で機械的に確かめた**（EXIT=0。作法は前世代と同じ）。
+
+```bash
+diff <(ls ../project-planning/projects/microservices-platform/07_adr/ \
+        | grep -oE 'ADR-[0-9]{4}' | sort -u) \
+     <(seq -f 'ADR-%04g' 1 48)
+```
+
+**走査の母集合も動いた。** 資料再編で planning 側に `projects/microservices-platform/10_feedback/`（環流の完了記録 84 件）が新設され、これを含めて走査すると `SC-99` が 1 件現れる。**これは凍結記録が引用するテストフィクスチャの実在しない ID であり**（`20260816_kit-test-asserts-kit-default-configuration.md` の表中）、実在集合へ入れない。上の 4 種の件数は `10_feedback/` を除外した計画書本体（`00_vision`〜`07_adr`）の実測である。
 
 ### ［2026-08-17］pin `8cae89d` → `767a9d48`（走査基準は `8cae89d` → `767a9d48`）
 
@@ -83,7 +99,7 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 
 ## 1. 過去の pin での引き直しの記録
 
-**現行 pin（`767a9d48`）でのレンジは入口にある。以下は、それ以前の各世代で引き直した記録である。**
+**現行レンジは入口にある。pin（submodule の走査基準 SHA）は資料再編（`IADR-0228`）で撤去され、以後の引き直しは隣接クローンの直接確認で行う（最新の記録は本別紙の冒頭エントリ）。以下は、pin 時代の各世代で引き直した記録である。**
 **世代数は書かない**——本節へ 1 世代足すたびに腐る導出値であり、実際に入口と本紙が
 「5 世代」で揃ったまま実体（`X → Y` の記録）だけが増えていた（#793 で是正。母集合の規則 10）。
 **「動かなかった」ことも実測の結果**であり、引き直しを省いてよい根拠にはならない。
@@ -153,8 +169,15 @@ ABAC の `owner` が実データ 0 件である件と、Wiki.js の個人スコ�
 
 ## 3. なぜ CI が計画 ADR の実在性を守れないか
 
-**入口の規範は「CI は計画 ADR の実在性を守っていない。効くのはローカル実行と、本ファイルを読んで作業する AI だけ」である。**
-**以下がその測定と、実効させたい場合の方法である。**
+> **［2026-08-21 追記 / #872］本節の測定は資料再編（`IADR-0228`・計画 `ADR-0048`）以前のものである。**
+> planning submodule の撤去に伴い、`check-commit-messages.js` の計画 ADR 実在集合は
+> **入口の宣言レンジ（`ADR-0001..NNNN` の形）から構築する**形へ切り替えた（`check-trace-blocks.js` の
+> `planAdrRange()` を再利用）。submodule を populate しない CI（`pr-title.yml`・`ci.yml` の
+> `commit-messages`）でも宣言レンジによる検査が実効する。計画側ファイルの有無との突合はもうできないため、
+> **レンジ宣言の鮮度が検査の鮮度である**（引き直しの記録は本別紙の冒頭エントリ）。
+
+**入口の規範は「CI は計画 ADR の実在性を守っていない。効くのはローカル実行と、本ファイルを読んで作業する AI だけ」であった（上記追記の切替まで）。**
+**以下が当時の測定と、当時検討した実効化の方法である。**
 
 > **このレンジが実際に効く場所**（PR #550 のレビュー指摘・2026-08-06 に実測して確定）:
 > **計画 ADR の実在性検査は、どのワークフローからも submodule を populate した状態で実行されない。**
