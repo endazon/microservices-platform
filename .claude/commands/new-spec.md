@@ -46,11 +46,14 @@ allowed-tools: Read, Grep, Glob, Write, Bash(ls:*), Bash(mkdir:*)
    - 通常: `<出力先>/<YYYYMMDD>_<概要のケバブケース>.md`。
    - リポ単位（`tech`/`operations`/`security`/`error`）: 既存があればそれを更新、無ければ既定名（例 `docs/operations/operations.md`）で作成。
    - `adr`: `.ai-context/adr/` の既存 `IADR-\d{4}` から最大連番を調べ、次の連番（4桁ゼロ埋め）で `IADR-XXXX_<タイトルのケバブケース>.md` を作成する。欠番・重複を作らない。作成後 `.ai-context/adr/README.md` の一覧に追記する。
-5. メタ情報（`type`・`related_ids`・`plan_refs`・`created`/`updated`=本日・`status`=`draft`（ADR は `Proposed`））を埋める。
+5. メタ情報（`type`・`created`/`updated`=本日・`status`=`draft`（ADR は `Proposed`））を埋める。
+   `docs/` 配下のテンプレートは `related_ids`/`plan_refs` を**持たない**（trace ブロックへ一本化済み。手順 6 参照）。
+   `.ai-context/` 配下（`work`/`adr`）は従来どおり `related_ids`/`plan_refs` を埋める。
 6. 🔴 **起点 ID の書き方は出力先で違う**（ADR-0048 決定 4）。
-   - **`docs/` 配下**: frontmatter 終端の直後・H1 の直前へ **trace ブロック**（HTML コメント）を自分で挿入し、
-     起点 ID・計画 ADR・実装ADR・作業仕様書・issue 番号をそこへ入れる。**テンプレートは trace ブロックを
-     持たないので、作成時に足す。** 可視の「起点となる計画書」欄には**番号を書かず**、必要なら文章で書く
+   - **`docs/` 配下**: テンプレートに frontmatter 終端の直後・H1 の直前の **trace ブロック**（HTML コメント。
+     `ids`/`adrs`/`iadrs`/`specs`/`issues` の各キーが空配列 `[]` で用意済み）が**既に入っている**ので、
+     自分で挿入する必要はなく、該当キーへ起点 ID・計画 ADR・実装ADR・作業仕様書・issue 番号を追記する。
+     「起点となる計画書」欄はテンプレートから撤去済みであり、**可視本文（他の節も含め）には番号を書かない**
      （計画書へのリンクも張らない）。書式は [`docs/traceability-appendix.md`](../../docs/traceability-appendix.md) §trace ブロック。
    - **`.ai-context/` 配下**（作業仕様書・実装ADR）: 従来どおり「起点となる計画書」欄へ起点 ID と
      計画書の所在を、「関連仕様」欄へ関連仕様書を記入する。
