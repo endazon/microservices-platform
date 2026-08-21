@@ -16,6 +16,15 @@ issues: [#454, #503, #510, #568, #571, #580, planning#146, planning#160, plannin
 
 # テスト戦略 — 再実装の退行防止基盤
 
+## 目次
+
+- [なぜ要るか](#なぜ要るか)
+- [受け入れ基準 → テストの写像規約](#受け入れ基準--テストの写像規約)
+- [ゲート一覧](#ゲート一覧)
+- [テスト種別と責務](#テスト種別と責務)
+- [本基盤の未整備部分（後続 issue へ切り出し）](#本基盤の未整備部分後続-issue-へ切り出し)
+- [各ドメイン issue が守ること](#各ドメイン-issue-が守ること)
+
 > リポジトリ単位の横断ドキュメント。個別の FR/SC のテスト仕様書は同ディレクトリの
 > `FR-xx_*.md` / `SC-xx_*.md` に置く。作業仕様書:
 > 仕様書: 再実装の退行防止テスト基盤
@@ -133,7 +142,7 @@ MassTransit の API を直接呼んでいる箇所を都度数えて評価する
    `<line>` カウントは**実際の 2 倍を報告する**——PR #464 のレビューが記録した混入量 266 行 / 230 行は、
    いずれも 2 倍が効いた値である（**266 と 230 の差そのものはスコープ差**＝全プロジェクト実行と
    `Platform.Bff.Tests` 単体実行の違いであり、二重記載とは別の要因。出典:
-   [`docs/specs/20260803_issue-453_regression-test-foundation.md`](../../.ai-context/specs/20260803_issue-453_regression-test-foundation.md)
+   [`.ai-context/specs/20260803_issue-453_regression-test-foundation.md`](../../.ai-context/specs/20260803_issue-453_regression-test-foundation.md)
    の「既知の限界」節）。
 
 除外した行数・除外前後の実測値・`filename` の解釈の内訳・除外したクラス名は、**CI ログと実行サマリへ

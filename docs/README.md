@@ -12,19 +12,25 @@ issues: [#675, #803, planning#387]
 
 ```text
 docs/
-├── templates/    # 各仕様書のひな形（spec / functional / screen / api / data / tech / test /
-│                 #   operations / security / adr / observability / authz / integration /
-│                 #   batch / migration / error / infra）
-├── functional/   # 機能仕様書        ├── operations/    # 運用仕様書
-├── screens/      # 画面仕様書        ├── security/      # セキュリティ仕様書
-├── api/          # 通信仕様書        ├── observability/ # ログ・可観測性（任意）
-├── data/         # データ仕様書      ├── authz/         # 権限・認可（任意）
-├── tech/         # 技術要件書        ├── integration/   # 外部連携（任意）
-├── tests/        # テスト仕様書      ├── batch/         # バッチ・ジョブ（任意）
-│                                     ├── migration/     # 移行（任意）
-│                                     ├── errors/        # エラー・メッセージ（任意）
-│                                     ├── infra/         # インフラ・構成（任意）
-│                                     └── how-to/        # 手順ガイド（任意）
+├── templates/      # 各仕様書のひな形（spec / functional / screen / api / data / tech / test /
+│                   #   operations / security / adr / observability / authz / integration /
+│                   #   batch / migration / error / infra）
+├── functional/     # 機能仕様書
+├── screens/        # 画面仕様書
+├── api/            # 通信仕様書
+├── data/           # データ仕様書
+├── tech/           # 技術要件書
+├── tests/          # テスト仕様書
+├── operations/     # 運用仕様書
+├── security/       # セキュリティ仕様書
+├── observability/  # ログ・可観測性（任意）
+├── authz/          # 権限・認可（任意）
+├── integration/    # 外部連携（任意）
+├── batch/          # バッチ・ジョブ（任意）
+├── migration/      # 移行（任意）
+├── errors/         # エラー・メッセージ（任意）
+├── infra/          # インフラ・構成（任意）
+└── how-to/         # 手順ガイド（任意）
 ```
 
 作業仕様書（`work`）と実装ADR（`adr`）は `docs/` の外、ルート直下 `.ai-context/`（AI 向け文脈資料・凍結記録。`docs/` = 人が読む生きた文書との主従は [`.ai-context/README.md`](../.ai-context/README.md) を参照）に置く（実装リポジトリの資料再編の裁定による）:
