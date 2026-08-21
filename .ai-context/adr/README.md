@@ -306,3 +306,4 @@
 | [IADR-0230](./IADR-0230_meta-work-bundled-prs.md) | メタ作業（検査器領域に閉じる変更）は 1 PR に束ねてよい — IADR-0116 規約 1 の第 2 の限定例外。判定はファイル領域（M-A〜M-E の 5 条件）、上限 4 件。#877 / #842 / #826 | Accepted |
 | [IADR-0231](./IADR-0231_xunit-v3-simultaneous-switch.md) | xUnit を v2 から v3 へ **16 プロジェクト一斉**に切り替える（CPM は 1 パッケージ 1 バージョンのため段階移行が成立しない）。版整合の検査を**両方向**へ対称化し、`Xunit.SkippableFact` を `Assert.Skip*` へ置換、`xUnit1051` はテストのみ抑止。#455 | Accepted |
 | [IADR-0232](./IADR-0232_ci-pr-latency-reduction.md) | PR は速さを採り、落とした精度は回収先（develop への push・日次・週次）で必ず取り戻す。統合テスト・CodeQL の全量解析・vulnerable-scan を PR から外し、回収先の失敗は自動起票する。回収先は --filter を付けず全量で回す（床を置き直さずに済み、二重集計も起きない）。必須 check 名は集約ジョブで維持 | Accepted |
+| [IADR-0233](./IADR-0233_wolverine-shared-helper-confinement.md) | Wolverine 共通ヘルパはブローカ固有 API まで抱え、封じ込め検査は「他所で書けない」と「本拠に在り続ける」の両方を見る。許可はファイル単位。部分移行の安全弁の存在をテストで固定する。#455 | Accepted |

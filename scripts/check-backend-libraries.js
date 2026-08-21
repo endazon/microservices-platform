@@ -123,6 +123,8 @@ const BANNED = [
  * 計画 ADR-0027 手順 3 が名指しで禁じた API。**「使ってはならない」ものだけを置く。**
  * `DisableConventionalLocalRouting`（手順 4）・`ServiceLocationPolicy`（手順 5）は**逆で、
  * 共通ヘルパに在るべきもの**なので、ここへ入れてはならない（極性が違う）。
+ * それらは下の CONFINED_APIS（規則 5）が「1 箇所でだけ使ってよい」として扱う。
+ * 2 つのリストにシンボルが重複しないことは自己試験が固定する。
  */
 const FORBIDDEN_APIS = [
   {
@@ -152,6 +154,81 @@ function forbiddenApiViolations(relPath, content, list = FORBIDDEN_APIS) {
     }
   }
   return out;
+}
+
+/**
+ * 計画 ADR-0027 手順 6 が「共通ヘルパへ封じ込め、**個別サービスでの逸脱を静的検査で禁止**する」と
+ * 定めた 3 手順の API。規則 4（禁止 API）とは**極性が逆**である —— これらは使ってよい。
+ * ただし **使ってよい場所が 1 箇所しかない**。
+ */
+const CONFINED_API_HOME =
+  'src/platform/backend/Shared/Platform.Shared.Infrastructure/Foundation/Extensions/WolverineExtensions.cs';
+
+/**
+ * 封じ込め API を書いてよいファイル。**本拠と、その本拠のふるまいを試験するファイルだけ**である。
+ * 試験は「個別サービスでの逸脱」ではないので許可するが、**プロジェクト単位ではなくファイル単位**で
+ * 許可する（`*.Tests` を丸ごと許すと、サービス側のテストが逸脱した配線を組めてしまう）。
+ */
+const CONFINED_API_ALLOWED = [
+  CONFINED_API_HOME,
+  'src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Foundation/Extensions/WolverineExtensionsTests.cs',
+];
+
+const CONFINED_APIS = [
+  {
+    symbol: 'ListenToRabbitQueue',
+    step: '手順 3',
+    why: 'リスニングキュー名にサービス名を前置する適用点。前置を怠ると、同一イベントを購読する'
+      + '2 サービスが同じキューを共有して competing consumer へ退行し、丁度 1 つだけが受信する。'
+      + ' WolverineExtensions.ListenToPlatformQueue を使うこと。',
+  },
+  {
+    symbol: 'DisableConventionalLocalRouting',
+    step: '手順 4',
+    why: '発行元プロセスに同じ型のハンドラがあると発行がプロセス内へ閉じる。'
+      + ' WolverineExtensions.UsePlatformMessagingDefaults を使うこと。',
+  },
+  {
+    symbol: 'ServiceLocationPolicy',
+    step: '手順 5',
+    why: 'internal 実装型に依存するハンドラが**最初のメッセージ受信時に**落ちる（既定は NotAllowed）。'
+      + ' WolverineExtensions.UsePlatformMessagingDefaults を使うこと。',
+  },
+];
+
+/**
+ * 規則 5(a): 封じ込め API が**許可ファイルの外**で使われていないか。
+ *
+ * 照合は規則 4 と同じく識別子の境界で行う。コメント中の言及も拾うのは規則 4 と同じ理由である
+ * （「コメントに書いてから外す」経路を許すと、次に読む人が有効な選択肢だと受け取る）。
+ */
+function confinedApiViolations(
+  relPath, content, list = CONFINED_APIS, allowed = CONFINED_API_ALLOWED,
+) {
+  const rel = toPosix(relPath);
+  if (allowed.includes(rel)) return [];
+  const out = [];
+  for (const f of list) {
+    if (new RegExp(`\\b${f.symbol}\\b`).test(String(content))) {
+      out.push({ kind: 'confined-api', project: rel, detail: f.symbol });
+    }
+  }
+  return out;
+}
+
+/**
+ * 規則 5(b): 封じ込め API が**本拠から消えていない**か。
+ *
+ * 🔴 **これが無いと規則 5 は静かに no-op になる。** (a) だけなら「どこにも書かれていない」状態が
+ * 満点になり、共通ヘルパから手順 4 の 1 行を削っても検査は緑を返す。封じ込めは
+ * 「他所で書けない」だけでは半分で、「ここに在り続ける」が要る。
+ * #883（NaN で門が開いた）・#889（自己試験が評価されていなかった）と同型の fail-open を、
+ * 検査器を足す時点で塞いでおく。
+ */
+function confinedApiHomeGaps(homeContent, list = CONFINED_APIS) {
+  return list
+    .filter((f) => !new RegExp(`\\b${f.symbol}\\b`).test(String(homeContent)))
+    .map((f) => f.symbol);
 }
 
 const SHARED_KERNEL = 'Platform.Shared.Kernel';
@@ -543,6 +620,16 @@ function scanTree(root = REPO_ROOT) {
     // 規則 4: 禁止 API シンボル。**プロジェクトではなくファイルを名指しする**
     // （1 行の混入であり、どのファイルかが分からないと直せない）。
     domain.push(...forbiddenApiViolations(cs, content));
+    // 規則 5(a): 封じ込め API が許可ファイルの外で使われていないか（ADR-0027 手順 6）。
+    domain.push(...confinedApiViolations(cs, content));
+  }
+
+  // 規則 5(b): 封じ込め API が本拠から消えていないか。**(a) だけでは静かに no-op になる。**
+  // 本拠のファイルごと消えた場合も、全シンボルが欠けた扱いで報告される（fail-closed）。
+  const homeAbs = path.join(root, CONFINED_API_HOME);
+  const homeContent = fs.existsSync(homeAbs) ? fs.readFileSync(homeAbs, 'utf8') : '';
+  for (const missing of confinedApiHomeGaps(homeContent)) {
+    domain.push({ kind: 'confined-api-missing', project: CONFINED_API_HOME, detail: missing });
   }
   return { current, domain };
 }
@@ -905,6 +992,43 @@ function selfTest() {
   t('禁止 API には理由が必ず付く（メッセージだけ見て直せるように）',
     FORBIDDEN_APIS.every((f) => typeof f.why === 'string' && f.why.length > 0));
 
+  // --- 規則 5: 封じ込め API（ADR-0027 手順 3・4・5 を手順 6 に従って 1 箇所へ閉じる。#455 U4） ---
+  const HOME = CONFINED_API_HOME;
+  const ALLOWED_TEST_FILE = CONFINED_API_ALLOWED[1];
+  t('許可ファイルの外での使用を検出する',
+    confinedApiViolations('src/knowledge/x/Program.cs',
+      'opts.Policies.DisableConventionalLocalRouting();').length === 1);
+  t('検出はファイルを名指しする',
+    confinedApiViolations('src/knowledge/x/Program.cs', 'cfg.ListenToRabbitQueue("q");')[0]
+      .project === 'src/knowledge/x/Program.cs');
+  t('★ 本拠（共通ヘルパ）では検出しない',
+    confinedApiViolations(HOME,
+      'options.Policies.DisableConventionalLocalRouting();').length === 0);
+  t('★ 本拠の試験ファイルでは検出しない',
+    confinedApiViolations(ALLOWED_TEST_FILE, 'ServiceLocationPolicy.AlwaysAllowed').length === 0);
+  t('★ 許可はファイル単位である（同じ Tests プロジェクトの別ファイルは許可しない）',
+    confinedApiViolations(
+      'src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Other.cs',
+      'ServiceLocationPolicy.AlwaysAllowed').length === 1);
+  t('★ 部分一致では検出しない（識別子の境界で照合する）',
+    confinedApiViolations('src/k/x.cs', 'var myServiceLocationPolicyX = 1;').length === 0
+      && confinedApiViolations('src/k/x.cs', 'XListenToRabbitQueue();').length === 0);
+  t('封じ込め API を含まなければ 0 件',
+    confinedApiViolations('src/k/x.cs', 'cfg.UsePlatformRetry();').length === 0);
+  t('★ 本拠から消えたら消失として報告する（(a) だけでは静かに no-op になる）',
+    confinedApiHomeGaps('options.Policies.DisableConventionalLocalRouting();')
+      .sort().join(',') === 'ListenToRabbitQueue,ServiceLocationPolicy');
+  t('★ 本拠が空（ファイルごと消失）なら全シンボルを報告する',
+    confinedApiHomeGaps('').length === CONFINED_APIS.length);
+  t('本拠に全シンボルが在れば消失 0 件',
+    confinedApiHomeGaps(CONFINED_APIS.map((f) => f.symbol).join('\n')).length === 0);
+  t('★ 禁止側（規則 4）と封じ込め側（規則 5）でシンボルが重複しない（極性の混同防止）',
+    !CONFINED_APIS.some((c) => FORBIDDEN_APIS.some((f) => f.symbol === c.symbol)));
+  t('封じ込め API には手順と理由が必ず付く（メッセージだけ見て直せるように）',
+    CONFINED_APIS.every((f) => typeof f.why === 'string' && f.why.length > 0
+      && typeof f.step === 'string' && f.step.length > 0));
+  t('許可リストの先頭は本拠である', CONFINED_API_ALLOWED[0] === CONFINED_API_HOME);
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -974,6 +1098,22 @@ function main() {
       failures.push(`[禁止 API] ${d.project}\n    「${d.detail}」は計画 ADR-0027 が名指しで禁じています。`
         + ` ${f ? f.why : ''}`
         + ' この退行は例外もログも出さず、業務イベントが黙って消えます。');
+      continue;
+    }
+    if (d.kind === 'confined-api') {
+      const f = CONFINED_APIS.find((x) => x.symbol === d.detail);
+      failures.push(`[封じ込め API] ${d.project}\n    「${d.detail}」（ADR-0027 ${f ? f.step : ''}）は`
+        + `共通ヘルパ ${CONFINED_API_HOME} の中でしか呼べません。`
+        + ` ${f ? f.why : ''}`
+        + ' 手順 6 が「個別サービスでの逸脱を静的検査で禁止する」と定めています。');
+      continue;
+    }
+    if (d.kind === 'confined-api-missing') {
+      const f = CONFINED_APIS.find((x) => x.symbol === d.detail);
+      failures.push(`[封じ込め API の消失] ${d.project}\n    「${d.detail}」（ADR-0027 ${f ? f.step : ''}）が`
+        + '共通ヘルパから消えています。封じ込めは「他所で書けない」だけでは半分で、'
+        + '「ここに在り続ける」が要ります —— 本拠から消えると、どこにも設定が無い状態が'
+        + '検査を素通りします。削除ではなく、手順そのものを見直すなら ADR-0027 の改定が要ります。');
       continue;
     }
     if (d.kind === 'template-banned') {
