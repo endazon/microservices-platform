@@ -104,25 +104,33 @@ node scripts/k8s-local-up.test.js                  # k8s-local-up.sh の opt-in 
 
 `ci.yml` が PR ごとに以下を実行する。**`scripts.test.js` は `scripts-tests` ジョブで走る**。
 
+> 🔴 **Node の軽量検査は `static-checks` / `static-checks-units` の 2 ジョブへ束ねてある**（IADR-0232 決定 6）。
+> 1 検査 = 1 ジョブだった頃のジョブ名（`doc-links` / `realm-constraints` 等）は**もう存在しない**。
+> **CI が落ちたときはジョブ名ではなくステップ名で探すこと。**
+> 束ねても**検査の本数と対象は 1 つも減っていない**（各ステップに `if: ${{ !cancelled() }}` を付け、
+> 最初の失敗で以降が走らなくなる形も避けてある）。
+> ⚠️ **この表と `ci.yml` を突合する機械検査は無い。** ジョブを再編したら手で追随させること
+> （追随漏れが実際に 1 度起きている）。
+
 | ジョブ | 実行内容 |
 | --- | --- |
 | `scripts-tests` | `node scripts/scripts.test.js`（本 README のスクリプト群の横断テスト。`fetch-depth: 0` が必要） |
 | `commit-messages` | `check-commit-messages.js`（コミット件名の規約と **FR/UC/SC・ADR/IADR の実在性**、および `check-cross-repo-refs.js` 経由の**件名・本文**の他リポジトリ参照表記。#507 / #579 / IADR-0140 / IADR-0145）。**FR/UC/SC のレンジは `check-test-traceability.js` の `readPlanIds()` を再利用する**（同じ事実を 2 本のパーサで持たない） |
 | `pr-title`（**`ci.yml` ではなく [`pr-title.yml`](../.github/workflows/pr-title.yml)**） | `check-commit-messages.js` の**単一件名モード**（`PR_TITLE`）。PR タイトル＝スカッシュ後件名を検査する。**`PR_NUMBER` を渡すこと** —— 渡すと末尾の `(#NNN)` が **PR 自身の番号**かまで見る（#799 / IADR-0207）。**渡さないと形状しか見られず、起点 issue の番号を書いた PR が素通りする**。**未設定なら従来どおり形状のみ**（コミット件名モードには PR 番号が無く、必須にすると履歴コミットが全滅する）。数値でない値は `::notice::` を出して skip（fail-open）。**ジョブ ID `pr-title` は必須チェックの context である**（改名するとブランチ保護が黙って外れる） |
-| `doc-links` | `check-doc-links.js`（相対リンクの実在） |
-| `ai-workflow-config` | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。`fetch-depth: 0` が必要） |
-| `pipeline-config` | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
-| `test-traceability` | `check-test-traceability.js --self-test` と本検査（受け入れ基準 → テストの写像）、および `check-test-spec-coverage.js --self-test` と本検査（#510 / IADR-0130。実在するテスト → テスト仕様書の記載） |
-| `unit-dependencies` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057） |
-| `realm-constraints` | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
-| `bff-downstreams` | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
-| `unit-service-ownership` | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107） |
-| `cpm-versions` | `check-cpm-versions.js --self-test` と本検査（#467。CPM のバージョン直書き禁止） |
-| `contract-schema` | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
+| `static-checks` | `check-doc-links.js`（相対リンクの実在）／`check-trace-blocks.js`（trace ブロック規約）／`gen-knowledge-graph.js --check`（参照の in-repo 実在）／`check-reading-budget.js` |
+| `static-checks`（再掲） | `check-ai-workflow-config.js --self-test` と本検査、および `check-action-versions.js`（Actions のバージョン退行。**ジョブが `fetch-depth: 0` を持つ**） |
+| `static-checks`（再掲） | `validate-pipeline-config.js --self-test`（任意コンポーネント。採否は HOWTO Part B-6） |
+| `static-checks`（再掲） | `check-test-traceability.js --self-test` と本検査（受け入れ基準 → テストの写像）、および `check-test-spec-coverage.js --self-test` と本検査（#510 / IADR-0130。実在するテスト → テスト仕様書の記載） |
+| `static-checks-units` | `check-unit-dependencies.js --self-test` と本検査（#231 / IADR-0057）。**submodule 取得が要る組**（helm / kubectl も導入する） |
+| `static-checks`（再掲） | `check-realm-constraints.js --self-test` と本検査（#18 / #307 / #385） |
+| `static-checks`（再掲） | `check-bff-downstreams.js --self-test` と本検査（#342 / IADR-0089） |
+| `static-checks-units`（再掲） | `check-unit-service-ownership.js --self-test` と本検査（#407 / IADR-0107）／`check-deploy-manifests.js`（chart / overlay のレンダリング） |
+| `static-checks`（再掲） | `check-cpm-versions.js --self-test` と本検査（#467。CPM のバージョン直書き禁止）／`check-backend-libraries.js`／`check-event-topology.js` |
+| `static-checks`（再掲） | `check-contract-schema.js --self-test` と本検査（#465 / IADR-0122。`Shared.Contracts` の後方互換） |
 | `frontend.yml` の `build-test` | `check-i18n-catalogs.js`（＋ `pnpm run i18n` の再生成差分）と `check-static-egress.js --require …`（#496 / IADR-0125）。`ci.yml` の `scripts-tests` は両者の `--self-test` と実データ検査を `scripts.repo.test.js` 経由で走らせる |
 | `frontend.yml` の `build-test`（再掲） | `check-knip.js --require`（#493 / IADR-0211）。**Knip 本体は `src/` の devDependency** なので、`pnpm install` 済みのジョブでなければ走らない。`ci.yml` の `scripts-tests` は `--self-test` を `scripts.repo.test.js` 経由で走らせる（実データ走査はしない） |
 | `frontend.yml` の `build-test`（再掲） | `check-chunk-budget.js --require`（#556 / IADR-0147）。**`dist` が在る唯一のジョブ**なのでここに置く。`ci.yml` の `scripts-tests` は `--self-test` と変異試験（M6 / M7）を `scripts.repo.test.js` 経由で走らせる |
-| `k8s-local-up-smoke` | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
+| `static-checks`（再掲） | `k8s-local-up.test.js`（#334 / IADR-0087・要 bash） |
 | `scripts-tests`（再掲） | `check-test-spec-coverage.js` の `--self-test` と**実データの本走**（#510 / IADR-0130）。上の `test-traceability` の専用ステップと**二重に走る**——専用ステップは失敗をジョブ名で見せ、companion 側は `.github/workflows/` が編集できない環境（GitHub App 権限）でも検査が外れないことを担保する（`check-i18n-catalogs.js` の実データ検査と同じ結線） |
 | `scripts-tests`（再掲 3） | `check-adr-numbering.js` / `check-landed-subjects.js` の `--self-test`・**実データの本走**・実バイナリでの検出力確認（欠番ツリーで exit 1／baseline を 1 件緩めると exit 1）。#581 / #579 |
 | `scripts-tests`（再掲 2） | `check-cross-repo-refs.js` の `--self-test`・**実データの本走**・違反フィクスチャでの検出力確認（#507 / IADR-0140）。**`.github/workflows/` を編集できない（GitHub App 権限）ため、新しい検査器を CI へ載せる経路はこの companion 相乗りと `check-commit-messages.js` からの `require` の 2 つしかない** |
