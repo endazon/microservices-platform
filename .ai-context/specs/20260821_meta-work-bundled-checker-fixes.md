@@ -166,8 +166,9 @@ related_specs:
       （同じ frontmatter の `related_specs` を壊して実測。対照として **submodule 配下**の壊れた値を
       足すと fail-open ＋ notice 2 件で `EXIT=0` になることも実測した）
 - [x] 4. `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が緑
-      （**本作業由来の失敗は 0 件**。並行作業が着地させた `Platform.Shared.Kernel.Tests` により
-      `scripts/scripts.repo.test.js` のテストプロジェクト数 ratchet が 14 → 15 で赤のまま。下記「未決事項」）
+      （**本作業由来の失敗は 0 件**。執筆時点では `Platform.Shared.Kernel.Tests` の追加により
+      テストプロジェクト数 ratchet が 14 → 15 で赤だったが、**PR が open になる前に当の
+      `feat(ADR-0041)` コミット自身が 15 へ進めて解消している**。下記「未決事項」の 2026-08-21 追記）
 - [x] 5. 変異試験: `scripts/lib/worktree-state.js` を退避／無効化すると **#842 のテストが fail** する
       （no-op スタブへ差し替えると **#842 だけが fail し #836 の 2 本は緑**。退避（ファイル削除）では
       `check-doc-updated.js` の即時 require が先に落ちて companion 全体が止まる）
@@ -195,10 +196,32 @@ related_specs:
 - ~~**`IADR-0229` は並行作業が予約している。**~~ → **解消（2026-08-21）**。並行作業が
   `IADR-0229_shared-kernel-result-surface.md` を着地させたため欠番は消え、
   `node scripts/check-adr-numbering.js` は緑（重複・欠番なし・索引と双方向一致・昇順）。
-- **テストプロジェクト数 ratchet（`scripts/scripts.repo.test.js` の `found.length, 14`）が 15 と食い違う。**
-  並行作業が `src/platform/backend/Shared/Platform.Shared.Kernel.Tests/` を着地させたことによるもので、
-  **本作業の変更とは無関係**である。**`src/` を触った側の PR が同じ PR 内で ratchet を 15 へ進めるのが
-  筋であり**（[IADR-0230](../adr/IADR-0230_meta-work-bundled-prs.md) 決定 1 M-A: `src/` 配下は束の外）、
-  本 PR では触らない。新プロジェクトは `coverlet.collector` を参照済みなので、数字を 15 にすれば緑になる。
-- **`scripts/README.md` 9 行目の追随**（上記「母集合の引き方」軸 1）。本 PR の編集許可範囲外のため
-  未実施。**fail-open が 2 種類あることを同行へ書き足す**必要がある。
+- ~~**テストプロジェクト数 ratchet（`scripts/scripts.repo.test.js` の `found.length, 14`）が 15 と食い違う。**~~
+- ~~**`scripts/README.md` 9 行目の追随。** 本 PR の編集許可範囲外のため未実施。~~
+
+  **［2026-08-21 追記 / #877］上の未決事項 2 件は、本 PR が open になる前に**
+  **どちらも解消していた。記録が実態に追いついていなかった。**
+
+  AI レビューの 🟢 指摘（PR #878）が「仕様書の記述が実際の diff と食い違っている」と挙げたもので、
+  **指摘は正しい**。ただし**同レビューが挙げたコミットは誤り**である。実測:
+
+  ```console
+  $ for c in 167be72 1da80ad dd6c867 517c8b9; do
+      printf "%s: " "$c"; git show "$c" -- scripts/scripts.repo.test.js | grep -c "found.length, 15"; done
+  167be72: 1      ← feat(ADR-0041) 共有カーネル。**ここに在る**
+  1da80ad: 0
+  dd6c867: 0      ← レビューはこの fix(NFR,IADR-0230) に在ると述べたが、無い
+  517c8b9: 0
+  ```
+
+  **`14 → 15` は `Platform.Shared.Kernel.Tests` を足したコミット自身が持っている。**
+  これは本仕様書が「`src/` を触った側が同じ PR 内で進めるのが筋」と書いた形そのものであり、
+  [IADR-0230](../adr/IADR-0230_meta-work-bundled-prs.md) 決定 1 M-A（`src/` 配下は束の外）にも適合する。
+  **「本 PR では触らない」という記述だけが、書いた時点の見込みのまま残っていた。**
+
+  `scripts/README.md` 9 行目も同様に `dd6c867` で追随済みである（`fail-open は 2 種類ある` の記述が
+  同コミットの diff に含まれることを実測）。
+
+  **教訓**: 未決事項は「解消したら消す」ではなく「**解消したことを日付つきで残す**」。
+  消すと、なぜ未決だったのかと誰が解いたのかが失われる。逆に書きっぱなしにすると、
+  **記録が実態と逆を向いたまま監査を通ってしまう** —— 本件がその実例である。
