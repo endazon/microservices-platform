@@ -576,7 +576,7 @@ jobs:
         run: node scripts/check-coverage-floor.js --self-test
       # 🔴 PR では床を強制しない（--report-only。IADR-0232 改定 3）。
       #
-      # 床 line 39 / branch 27 は**統合テストを含む全量 43/43 の実測**から置かれている
+      # 床 line 38 / branch 27 は**統合テストを含む全量の実測**から置かれている
       # （src/coverage-floor.json の根拠欄）。統合テストを PR から外した以上、この床を PR へ
       # 当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
       # **どちらが本物か分からなくなる**。
