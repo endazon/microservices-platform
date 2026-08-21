@@ -9,7 +9,7 @@
  *   AuthorizationService はポリシーが 1 件も無いと deny-by-default で縮退する（AbacEvaluator）。
  *   これは仕様どおりだが、投入経路が一度も実行されていない環境では **認証を通しても文書一覧・
  *   横断検索が常に空**になり、「壊れている」のと区別が付かない（#517。実測は
- *   docs/specs/20260805_issue-466_oidc-edge-flow-verification.md）。本スクリプトは dev の初期値を
+ *   .ai-context/specs/20260805_issue-466_oidc-edge-flow-verification.md）。本スクリプトは dev の初期値を
  *   宣言的ファイル（deploy/local/abac-seed/）から投入し、その状態を再現可能にする。
  *
  * 方式（IADR-0133）:

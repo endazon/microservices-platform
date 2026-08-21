@@ -94,7 +94,7 @@ function buildVocabulary(templates) {
 
 /**
  * `.claude/commands/new-spec.md` の対応表から「種別（引数） → テンプレート」を読む。
- * 表は `| \`work\` | 作業仕様書 | \`spec_template.md\` | \`docs/specs/\` | … |` の形。
+ * 表は `| \`work\` | 作業仕様書 | \`spec_template.md\` | \`.ai-context/specs/\` | … |` の形。
  */
 function parseKindTable(commandText) {
   return [...commandText.matchAll(/^\|\s*`([a-z][a-z-]*)`\s*\|[^|]*\|\s*`([a-z_]+\.md)`\s*\|/gm)].map(
@@ -188,7 +188,7 @@ function selfTest() {
   });
 
   t('種別表を読める（引数 → テンプレートの対応）', () => {
-    const table = '| `work` | 作業仕様書 | `spec_template.md` | `docs/specs/` | 単位 |\n' +
+    const table = '| `work` | 作業仕様書 | `spec_template.md` | `.ai-context/specs/` | 単位 |\n' +
       '| `how-to` | 手順ガイド | `how_to_template.md` | `docs/how-to/` | 単位 |\n';
     assert.deepStrictEqual(parseKindTable(table), [
       { kind: 'work', template: 'spec_template.md' },

@@ -11,7 +11,7 @@
 #   frontend だけが唯一の docker.io 依存だったため本 issue が顕在化した。
 # mirror.gcr.io は Docker Hub 公式イメージのプルスルーキャッシュで、同一 digest（byte 等価）を返す。
 # BASE_REGISTRY は上書き可（docker.io/library や社内 Harbor 等）。既定を渡さないため compose/MAPPING に
-# build args は不要＝#275 ドリフト検査は 2 フィールドのまま緑。詳細は docs/adr/IADR-0081。
+# build args は不要＝#275 ドリフト検査は 2 フィールドのまま緑。詳細は .ai-context/adr/IADR-0081。
 ARG BASE_REGISTRY=mirror.gcr.io/library
 FROM ${BASE_REGISTRY}/node:22-alpine AS build
 WORKDIR /app

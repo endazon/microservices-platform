@@ -402,7 +402,7 @@ function main(argv) {
     process.stderr.write(
       '\n内訳は `cd src && pnpm run knip` で確認できる。' +
         '設計と残件の理由は scripts/knip-baseline.json の $comment と' +
-        ' docs/adr/IADR-0211_knip-scope-and-unused-ratchet.md を参照。\n'
+        ' .ai-context/adr/IADR-0211_knip-scope-and-unused-ratchet.md を参照。\n'
     );
     return 1;
   }

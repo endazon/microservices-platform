@@ -233,7 +233,7 @@ function main() {
   console.error('\n同一サービスが 2 つの namespace に並ぶと、共有 RabbitMQ の同名キューを奪い合い（Issue #407）、');
   console.error('共有 DB への二重 writer になります。MSP 側は enabled: false（fail-safe 既定）に戻し、');
   console.error('BFF からの到達は deploy/local/aliases/ の ExternalName alias で AST namespace へ向けてください。');
-  console.error('根拠は docs/adr/IADR-0107_ast-owned-service-single-deployment.md を参照してください。');
+  console.error('根拠は .ai-context/adr/IADR-0107_ast-owned-service-single-deployment.md を参照してください。');
   process.exit(1);
 }
 

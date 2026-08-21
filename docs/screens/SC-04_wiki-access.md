@@ -62,7 +62,7 @@ flowchart LR
 
 ## 関連仕様
 
-- 作業仕様書: `docs/specs/20260708_issue-130_sc04-wiki-access.md`
+- 作業仕様書: `.ai-context/specs/20260708_issue-130_sc04-wiki-access.md`
 - テスト仕様書: `docs/tests/SC-04_wiki-access.md`
 - 実装 ADR: Wiki.js を配備し `WikiService` を同期・ABAC ゲートウェイへ縮退する
 

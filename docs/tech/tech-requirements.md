@@ -17,7 +17,7 @@ issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, planning#146, pla
 # 技術要件書
 
 > 必須ドキュメント（リポジトリ単位）。本リポジトリの技術要件を定める。雛形は `docs/templates/tech_requirements_template.md`。
-> 確定判断は実装ADR（`docs/adr/`）に残す。単一情報源は各設定ファイル（`src/Directory.Build.props` 等）。
+> 確定判断は実装ADR（`.ai-context/adr/`）に残す。単一情報源は各設定ファイル（`src/Directory.Build.props` 等）。
 >
 > **リポジトリの位置づけ**: 主たる成果物は**マイクロサービスプラットフォーム基盤（platform ユニット）**。
 > ナレッジ活用機能（knowledge ユニット）は基盤に付随する必須の可変機能セットである

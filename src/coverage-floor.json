@@ -1,7 +1,7 @@
 {
   "$comment": [
     "バックエンドのカバレッジ床（Issue #453）。フロントは src/vitest.config.ts の thresholds が担う（IADR-0034）。",
-    "方式・床の置き方・除外・fail-open の決定と根拠は docs/adr/IADR-0118_backend-coverage-floor.md を正とする。",
+    "方式・床の置き方・除外・fail-open の決定と根拠は .ai-context/adr/IADR-0118_backend-coverage-floor.md を正とする。",
     "ratchet: テストを増やしたら床を引き上げる。下回る変更は ci.yml の coverage-floor ステップで止まる。",
     "初期値は PR #464 の CI 実行（commit 8bfe639）で得た実測値に基づく。",
     "実測: レポート 14 件（platform + knowledge のテストプロジェクト全件。ai-stock-trading は対象外）",

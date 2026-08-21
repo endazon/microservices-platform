@@ -184,7 +184,7 @@ git commit -m "chore(FR-14): add <unit> unit as submodule"
   各ユニット）を対象にする。ユニットを追加しても `dependabot.yml` の追記は不要（`.gitmodules` への
   submodule 追加だけで自動的に対象になる）。既定は週次スケジュール・**自動マージなし**（pin 更新は
   必ず PR 経由・人手レビュー必須）。private submodule（`planning`）の更新には Dependabot が当該リポを
-  read できる権限が要る（詳細は `docs/specs/20260712_issue-260_dependabot-gitsubmodule.md`）。
+  read できる権限が要る（詳細は `.ai-context/specs/20260712_issue-260_dependabot-gitsubmodule.md`）。
 
 ## 7. 通し検証（サンプルユニット）
 

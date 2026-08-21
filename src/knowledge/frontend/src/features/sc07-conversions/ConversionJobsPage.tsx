@@ -46,7 +46,7 @@ import type { ConversionJobDto } from '@foundation/api/generated/bff.schemas';
 //   - **「デッドレター」の内訳表示**: **契約は #533 で載った**（`ConversionJobDto.deadLettered` /
 //     `maxAttempts`。planning#198 の裁定 Q13）。**画面へ出す作業は本ファイルではまだ行っていない**——
 //     契約の追加とは別の作業単位であり、**人手補正とは別の資源**なので #651 でも束ねなかった
-//     （[[IADR-0139]] の判定単位は資源。作業仕様書 docs/specs/20260806_issue-533_*.md §未決事項 1）。
+//     （[[IADR-0139]] の判定単位は資源。作業仕様書 .ai-context/specs/20260806_issue-533_*.md §未決事項 1）。
 //   もとの記録は feedback/20260805_sc05-07-admin-contract-gaps.md（planning#198 で裁定済み）。
 
 /** 絞り込みの選択肢。**既定は「すべて」**（理由は画面仕様書 §絞り込みの既定値）。 */

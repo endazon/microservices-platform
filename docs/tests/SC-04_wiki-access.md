@@ -21,7 +21,7 @@ issues: []
 ## 起点となる計画書（トレーサビリティ）
 
 - 機能要求: 正規化文書を Wiki サービスで閲覧できること ／ ユースケース: Wiki で閲覧する
-- 受け入れ基準の所在: Issue #130 ／ `docs/specs/20260708_issue-130_sc04-wiki-access.md`
+- 受け入れ基準の所在: Issue #130 ／ `.ai-context/specs/20260708_issue-130_sc04-wiki-access.md`
 
 ## テスト対象・範囲
 

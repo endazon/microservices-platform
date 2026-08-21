@@ -561,7 +561,7 @@ function main() {
   }
   console.error(
     `\n${SCRIPT_PATH} の MAPPING と ${COMPOSE_PATH} の build 定義を突き合わせてください。` +
-      '\n設計の根拠は docs/adr/IADR-0068_image-mapping-drift-check.md を参照。',
+      '\n設計の根拠は .ai-context/adr/IADR-0068_image-mapping-drift-check.md を参照。',
   );
   process.exit(1);
 }
