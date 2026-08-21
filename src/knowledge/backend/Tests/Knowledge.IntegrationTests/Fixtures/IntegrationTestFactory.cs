@@ -110,8 +110,6 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
 
     protected virtual void AdditionalServices(IServiceCollection services) { }
 
-
-
     private static void ReplaceDbContextWithNpgsql<T>(IServiceCollection services, string connStr)
         where T : DbContext
     {
