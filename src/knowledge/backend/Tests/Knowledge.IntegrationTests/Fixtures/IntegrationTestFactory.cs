@@ -56,7 +56,10 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         // （#891 で解決処理を RepoFile へ集約した。この理由は deploy/ の YAML を読む 5 箇所には
         //   当てはまらないので、共通メッセージへ混ぜず呼び出し側に残している。）
         builder.UseSetting("Pipeline:ConfigPath", RepoFile.Find(
-            Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json")));
+            Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json"),
+            because: "Pipeline:ConfigPath に存在しないパスを渡すと AddPlatformPipelineConfig が黙って何もせず、"
+                + " 段宣言が読まれないまま全テストが緑になる（検査したつもりで何も検査していない状態）。"
+                + " ここで止めるのはそれを防ぐためである。"));
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             var overrides = new Dictionary<string, string?>

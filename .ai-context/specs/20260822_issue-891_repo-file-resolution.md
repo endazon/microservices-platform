@@ -108,7 +108,7 @@ Passed! - Failed: 0, Passed: 21, Skipped: 26, Total: 47
 | --- | --- |
 | `new DirectoryInfo(AppContext.BaseDirectory)` | **6 → 1**（`Fixtures/RepoFile.cs:28` のみ） |
 | 撤去した重複 | 5 テストクラスのローカル実装 ＋ `FindRepoFile` ＋ `FindRepoFileForTests`（**計 7**） |
-| 統合テスト | **Total 47 / Failed 0**（21 passed / 26 skipped。**件数不変**） |
+| 統合テスト | **Total 47 → 55 / Failed 0**（`RepoFileTests` 8 件を追加。**既存は 1 件も減らない**） |
 | 両ユニット build / test / format | **すべて EXIT=0** |
 
 ### 🔴 受け入れ基準 1 の測り方を 1 度間違えた
@@ -129,7 +129,66 @@ Passed! - Failed: 0, Passed: 21, Skipped: 26, Total: 47
 | A2 | 空白のみの相対パス | `ArgumentException` | ✅ |
 | A3 | `Read` の未解決 | `FileNotFoundException` | ✅ |
 | A4 | `ReadChart` の未解決 | `FileNotFoundException`（**前置つきパス**） | ✅ `deploy/helm/microservices-platform/…` |
-| B | `ReadChart` の前置を落とす | chart を読む試験が落ちる | ✅ **Build succeeded のうえで** `MeshMtlsTests` / `DataSourceSyncWiringTests` が Failed |
+| B | `ReadChart` の前置を落とす | chart を読む試験が落ちる | ✅ **Build succeeded のうえで 3 クラス 10 件**が Failed（`MeshMtlsTests` 4 / `HpaPdbScalingTests` 4 / `DataSourceSyncWiringTests` 2） |
 
 **変異 B はビルド成功を先に確認してから判定した**（ビルドが落ちては検出力を証明できない）。
 **復旧は `cmp` でバイト一致を確認した。**
+
+### 🔴 ［2026-08-22 追記 / #898］変異 B の母集合を `head -6` で切って報告していた
+
+当初この表には **「`MeshMtlsTests` / `DataSourceSyncWiringTests` が Failed」**（2 クラス）と書いた。
+**実際は 3 クラス 10 件**である。`HpaPdbScalingTests` の 4 件が抜けていた。
+
+原因は判定に使ったコマンドである。
+
+```
+dotnet test ... | grep -E "^  Failed |Passed!|Failed!" | head -6      ← head -6 で切っていた
+```
+
+`head -6` が 7 行目以降を落とし、**`HpaPdbScalingTests` の 4 件が表示されなかった**。
+出力の最後にある `Failed! - Failed: 10` の行は読めていたのに、**10 という数と、
+自分が挙げた 2 クラス（6 件）が合わないことに気づかなかった。**
+
+🔴 **これは `traceability.md` 規則 7 が名指しで禁じている形そのものである** ——
+「走査の出力を加工して読まない。`head` で切る・`sed` で潰すのいずれも
+**見なかった行を見たことにする**同じ事故である」。**同じ規則の違反が本リポジトリで 3 度目**
+（planning#317 の `head` 切り／planning#318 の `sed` 潰し／本件）。
+
+切らずに測り直した結果:
+
+```
+$ dotnet test ... | grep -E "^  Failed " | sed 's/.*Deployment\.\([A-Za-z]*\)\..*/\1/' | sort | uniq -c
+      2 DataSourceSyncWiringTests
+      4 HpaPdbScalingTests
+      4 MeshMtlsTests
+```
+
+**結論（変異が検出される）は変わらないが、証跡として記録した母集合が誤っていた。**
+
+## 🔴 ［2026-08-22 追記 / #898］レビューと監査の指摘 3 件を是正した
+
+| # | 指摘 | 是正 |
+| --- | --- | --- |
+| 🟡 | **`RepoFile` の永続的な単体テストが無い。** 変異試験 A1〜A4・B は**一度きりのローカル実測**でありコミットされた回帰試験になっていない | `Fixtures/RepoFileTests.cs` を新設（**8 件**）。**この 8 件だけで**前置欠落と fail-open の両方を検出することを実測した（前置欠落 → Failed 2 / fail-open → Failed 6） |
+| F2 | `RepoFile` のクラスコメントが「**挙動の変更ではない**」と無条件に書いていたが、`ArgumentException.ThrowIfNullOrWhiteSpace` は**集約前の 6 実装のいずれにも無かった** | 「未解決時については」と限定し、増えた 1 点を明記した |
+| F3 | **診断メッセージの後退。** 集約前は「`AddPlatformPipelineConfig` が黙って返る」理由が**例外メッセージに載って**いたが、集約でソースコメントへ移した。**赤い CI ログを読む人が見るのは例外メッセージだけ**である | `Find(relative, because:)` で呼び出し側固有の理由を例外へ載せられるようにした |
+
+**🟢 の 2 件**（本節の NFR 判断の記録・委譲メソッドの不統一）も下記のとおり対応した。
+
+### 起点 ID の判断（無採番 `NFR` を採った根拠）
+
+`.claude/rules/traceability.md` は無採番 `NFR` を許す条件 2（メタ作業）を採るとき
+「**作業を始める前に計画の ID 列を見て判断する**」ことを求めている。
+
+本作業は**テスト基盤の重複解消**であり、計画側 `02_requirements/` の非機能要件は
+**稼働する製品**の要件である。**当たる番号は無い**と判断し、無理に近い番号を付けなかった
+（付けると監査が「その NFR の実装」として数えてしまい、無採番より劣化する）。
+**条件 2 に当たるため環流もしない。**
+
+### 委譲メソッドの方針（1 箇所だけ直接呼びに見える件）
+
+`DataSourceSyncWiringTests.cs` は `ReadChartFile`（委譲）と `RepoFile.Read`（直接）を
+**両方**使っている。不統一に見えるが規則がある ——
+**委譲を残すのは「意味を足す」場合だけ**（`ReadChartFile` / `ReadHelmFile` は chart 前置という
+意味を足す）。**根からの素直な読み出しは `RepoFile.Read` を直接呼ぶ**（素通しの委譲を挟んでも
+名前が増えるだけで何も足さない）。`values-local.yaml` は chart 配下に無いため後者である。
