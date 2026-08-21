@@ -10,7 +10,7 @@ author: claude
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -359,11 +359,29 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 `AddPlatformIntrospection` をそのまま通すようにした（**43 / 43 通過・件数不変**）。
 
 🔴 **手順 3 の退行は試験できるようになった**（2026-08-21 / U0c。下記 2）。
-**残る穴は 1 つである。**
+**残る穴は `queue` 上書きの経路だけである。**
 
-1. **`Pipeline:ConfigPath` を設定していない。** よって `pipeline.json` の**段宣言と
-   `queue` 上書きは依然として通っていない**。通ったのは配線コードまでである
-   （段の宣言が無い環境では `AddPlatformPipelineStep` が既定で登録する）
+1. ~~**`Pipeline:ConfigPath` を設定していない。**~~
+   ✅ **塞いだ**（2026-08-21 / U0d）。統合テストは**本番が読む正本の `pipeline.json`** を
+   `Pipeline:ConfigPath` に指して起動する（テストへ複製していない —— 複製は本番の宣言から
+   必ず遅れ、「宣言と実装の一致」を検査するはずのテストが**古い宣言との一致**を検査するようになる）。
+   これにより `AddPlatformPipelineStep` の起動時 fail-fast（未宣言の段・`consumer` 完全名の不一致・
+   `input` の不一致・`enabled:false`）が**初めて試験されるようになった**。従前はコンシューマの
+   クラス名や namespace を変えると**本番は起動時に落ちるのにテストは緑のまま**だった。
+   **変異試験で実測済み** —— 宣言の `consumer` 完全名を 1 文字変えると
+   「段 'wiki-sync' の consumer 宣言 '…ConsumerX' が実装 '…Consumer' と一致しません」で起動が落ちる。
+   ⚠️ **`queue` 上書きの経路だけは依然として通っていない。** 正本の 5 段はいずれも `queue` を
+   持たないためである（実測）。この経路を試験するには `queue` を設定したフィクスチャが別途要る。
+
+   🔴 **この作業には、成功と見分けのつかない失敗の形があった。**
+   `AddPlatformPipelineConfig` はパスが解決できないと**黙って何もせずに返る**ため、
+   設定に失敗しても例外は出ず、**宣言が 1 行も読まれないまま全テストが緑**になる。
+   実際に最初の実装はこの状態に陥っていた（`ConfigureAppConfiguration` で足した値は
+   **読まれる時点に間に合わない** —— `Program.cs` はビルダ構築中に即座に読む）。
+   **「宣言が実際に載っていること」を assert するテスト**を置いてあり、これが検出した。
+   🔴 **統合テストの config 上書きが効くかどうかは、値が読まれる時点で決まる。**
+   `RabbitMq:ConnectionString` が `ConfigureAppConfiguration` で効くのは遅延して読まれるからであり、
+   **一般化してはならない。**
 2. ~~**`DocumentUpdated` の 2 購読者が同時に生きている状態を作るテストが無い。**~~
    ✅ **塞いだ**（2026-08-21 / U0c）。器（DbContext を要求しない基底 ＋ 両 Worker の `TestMarker`）
    を用意したうえで、**2 購読者ホストを同時に立て、1 回だけ発行し、両方が終端の副作用まで

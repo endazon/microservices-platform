@@ -34,6 +34,21 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Integration");
+
+        // ［2026-08-21 / #455 Phase 0 U0d］**ここは ConfigureAppConfiguration では効かない。**
+        //
+        // Program.cs は builder.AddPlatformPipelineConfig() で
+        // builder.Configuration["Pipeline:ConfigPath"] を**ビルダ構築中に即座に読む**。一方
+        // ConfigureAppConfiguration で足した値が見えるのはもっと後であり、**読み取りに間に合わない**。
+        // 実測: overrides へ入れた版では pipeline.Steps が空のままだった（＝宣言が 1 行も読まれない）。
+        //
+        // 🔴 RabbitMq:ConnectionString が ConfigureAppConfiguration で効いていたのは、
+        // あちらが UsingRabbitMq のラムダ内で**遅延して**読まれるからである。
+        // **「統合テストの config 上書きは効く」を一般化してはならない —— 読まれる時点で決まる。**
+        //
+        // UseSetting はホスト構成へ書くので、CreateBuilder が構成を組む時点から見える。
+        builder.UseSetting("Pipeline:ConfigPath", FindRepoFile(
+            Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json")));
         builder.ConfigureAppConfiguration((_, cfg) =>
         {
             var overrides = new Dictionary<string, string?>
@@ -51,6 +66,21 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // 従前は cfg.Host(null) が即座に例外で落ちていたので、失敗の分かりやすさが退行していた。
             //
             // フィクスチャを渡された以上、繋ぎ先はそのコンテナでなければならない。無ければ止める。
+            // ［2026-08-21 / #455 Phase 0 U0d］**段宣言（pipeline.json）を本番と同じ経路で通す。**
+            //
+            // 従前ここは Pipeline:ConfigPath を設定しておらず、AddPlatformPipelineStep は
+            // pipeline.Steps.Count == 0 の経路（「宣言が無いので既定で登録」）しか通っていなかった。
+            // その結果、同メソッドが持つ 4 つの起動時 fail-fast——
+            //   規則 2: 宣言があるのに段が未宣言 → 起動失敗
+            //   規則 3: 宣言の consumer 完全名が実装と不一致 → 起動失敗
+            //   規則 4: 宣言の input が IConsumer<TIn> の TIn と不一致 → 起動失敗
+            //   規則 5: enabled:false → 購読・キューを作らない
+            // を**検査するテストが 1 件も無かった**。コンシューマのクラス名や namespace を変えると
+            // 本番は起動時に落ちるのに、テストは緑のままだった。
+            //
+            // 🔴 **本番が読む正本を指す。テストへ複製しない。** 複製すると本番の宣言を変えても
+            // テストの複製は古いままになり、「宣言と実装の一致」を検査するはずのテストが
+            // **古い宣言との一致**を検査するようになる（検査しているつもりで何も守らない）。
             if (_rabbit is not null)
             {
                 overrides["RabbitMq:ConnectionString"] = _rabbit.ConnectionString
@@ -82,12 +112,13 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             //
             // 接続先は Program.cs が Configuration["RabbitMq:ConnectionString"] から読むので、
             // 上の ConfigureAppConfiguration の上書きだけで Testcontainers を向く。
-            // 段の宣言（pipeline.json）が無い環境では AddPlatformPipelineStep が
-            // 「Pipeline config absent; step enabled by default」で登録するため、
-            // 本番配線のままコンシューマが有効になる（PipelineExtensions.cs）。
+            // ［2026-08-21 / U0d］段宣言（pipeline.json）も通るようになった。上の
+            // ConfigureAppConfiguration が Pipeline:ConfigPath を本番の正本へ向けているため、
+            // AddPlatformPipelineStep は宣言のある経路（規則 2〜5）を通る。
             //
-            // ⚠️ Pipeline:ConfigPath は依然として設定していない。したがって pipeline.json の
-            // 段宣言・queue 上書きは**まだ通っていない**。残る穴として別作業で塞ぐ。
+            // ⚠️ **`queue` 上書きの経路だけは依然として通っていない。** 正本 pipeline.json の
+            // 5 段はいずれも `queue` を持たないためである（実測）。宣言経由でキュー名を
+            // 上書きする経路を試験するには、`queue` を設定したフィクスチャが別途要る。
 
             // Issue #33: Bus 起動レース対策。既定では MassTransitHostedService が Bus を
             // バックグラウンド起動するため、CreateClient() 直後の Publish が Consumer の
@@ -113,6 +144,32 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     }
 
     protected virtual void AdditionalServices(IServiceCollection services) { }
+
+    /// <summary>リポジトリ内のファイルを、テストアセンブリの位置から親へ辿って解決する。</summary>
+    /// <remarks>
+    /// 🔴 **解決できなければ例外で止める。** AddPlatformPipelineConfig は
+    /// <c>if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return builder;</c> と
+    /// **黙って何もせずに返る**ため、ここで null や存在しないパスを返すと
+    /// **宣言が 1 行も読まれないまま全テストが緑になる**。「設定したつもりで何も検査していない」状態が
+    /// 成功と見分けられなくなるので、fail-closed にする。
+    ///
+    /// 解決の作法は Deployment/PipelineDeclarationMountTests.ReadRepoFile と同じ（同じ作法を 2 つ持たない）。
+    /// </remarks>
+    protected static string FindRepoFile(string relative)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, relative);
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+        throw new FileNotFoundException(
+            $"{relative} をリポジトリルートから解決できなかった。"
+            + " Pipeline:ConfigPath に存在しないパスを渡すと AddPlatformPipelineConfig が黙って何もせず、"
+            + " 段宣言が読まれないまま全テストが緑になる（検査したつもりで何も検査していない状態）。"
+            + " ここで止めるのはそれを防ぐためである。", relative);
+    }
 
     /// <summary>DbContext を Testcontainers の Postgres へ差し替える。既定は何もしない。</summary>
     /// <remarks>
