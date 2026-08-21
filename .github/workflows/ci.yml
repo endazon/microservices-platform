@@ -39,6 +39,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# NFR / IADR-0232 決定 1: 連続 push で古い実行を捨てる。実測（2026-08-21）では PR ブランチへ
+# 5〜10 分間隔の push が続き、キャンセルされない旧 run が約 40 ランナーを占有し続けていた。
+#
+# 🔴 develop / main への push はキャンセルしない。PR から外した検証（統合テスト・全量 CodeQL・
+# vulnerable-scan）の担保がそちらに載るため、途中で捨てると担保そのものが失われる（IADR-0232 決定 1）。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # コミットメッセージ規約（種別(起点ID): 要約）の機械チェック（Issue #60・再発防止）。
   # PR で追加されるコミット（base..HEAD）のみ検査し、bot・マージ・[skip ci] は除外する。
@@ -85,80 +94,29 @@ jobs:
           REQUIRE_REPO_TESTS: "1"
         run: node scripts/scripts.test.js
 
-  # スタック非依存: docs/ と .ai-context/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
-  # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
-  # 本リポジトリは planning に依存しない（ADR-0048 決定 2）。未取得の submodule（src/ai-stock-trading）
-  # 配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
+  # NFR / IADR-0232 決定 6: 依存ゼロの Node 検査を 1 ジョブへ束ねる（統合前は 12 の独立ジョブ）。
   #
-  # 計画 ADR-0048 決定 4（trace ブロック）: docs/ の trace / trace-table ブロックの文法・値域は
-  # check-trace-blocks.js が、ナレッジグラフのエッジ先実在は gen-knowledge-graph.js --check が
-  # 検査する。いずれも fs のみで走査するため（git を呼ばない）checkout に fetch-depth や
-  # submodule 取得は要らない。本ジョブに寄せるのは「docs/ 系ジョブ」を 1 本にまとめる既存方針に
-  # 合わせるためであり、ワークフロー自体に paths: フィルタは無く（on: が push/pull_request の
-  # イベント種別のみを絞る既定構成）scripts/ の変更も含め毎回全ジョブが走るため、
-  # 「docs/** ・.ai-context/** ・scripts/ の変更時に走ること」は自動的に満たされている。
-  doc-links:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      # 検査器自体の自己試験を先に走らせる（planning#167）。拡張子の追加漏れ・検出経路の退行を
-      # 「OK: n 件」の陰に隠さないための歯止め（他の check-*.js の --self-test と同じ運用）。
-      - name: Self-test doc links checker
-        run: node scripts/check-doc-links.js --self-test
-      - name: Check doc links
-        run: node scripts/check-doc-links.js
-      - name: Self-test trace blocks checker
-        run: node scripts/check-trace-blocks.js --self-test
-      - name: Check trace blocks (ADR-0048 決定 4)
-        run: node scripts/check-trace-blocks.js
-      - name: Self-test knowledge graph generator
-        run: node scripts/gen-knowledge-graph.js --self-test
-      - name: Check knowledge graph edge existence
-        run: node scripts/gen-knowledge-graph.js --check
-
-  # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
-  # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて
-  # 測り、合算しない。予算値 51,200 の正本は project-planning の docs/ai-implementation-workflow-guide.md §8（検査器は出典つきの複製を持つ）。
-  # 100% 超で fail、90% 以上で warn（warn は失敗にしない）。AGENTS.md 系は実測が無いため観測のみ。
-  reading-budget:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test reading budget checker
-        run: node scripts/check-reading-budget.js --self-test
-      - name: Check reading budget
-        run: node scripts/check-reading-budget.js
-
-  # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
-  # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
-  # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
-  pipeline-config:
+  # 束ねた理由は「ジョブが多いと遅いから」ではない。ci.yml は needs: を 1 つも持たず全並列なので
+  # 待ち時間はほとんど作っていなかった（実測: 各ジョブ 10〜17 秒）。問題は 2 つある。
+  #   - 1 ジョブあたり約 13 秒（checkout 2s ＋ setup-node 5s ＋ 起動 3s）が実処理 1 秒未満の検査に掛かる
+  #   - 同時実行スロットを 12 個占有し、本命の backend-build の開始を遅らせる
+  #     （実測: run 作成から最大 53 秒後に開始したジョブがあった）
+  #
+  # 🔴 検査は 1 本も減らしていない。ジョブが減っただけで、走る検査器の本数と対象は統合前と同一である。
+  #
+  # 🔴 各ステップに `if: ${{ !cancelled() }}` を付けてある。これが無いと最初の失敗で以降が走らず、
+  # 1 回の CI で 1 件しか分からなくなって往復が増える（束ねたことで可読性が落ちる形）。
+  # 付けてあるので、落ちた検査が複数あれば一度に全部出る。ジョブの合否は従来どおり
+  # 「どれか 1 つでも失敗すれば赤」である。
+  #
+  # 🔴 各検査の直前のコメントは統合前のジョブのものをそのまま移した。ADR 番号・事故の経緯・
+  # 「これを外すと検査が空回りする」という設計要点を持つため、1 行も捨てない。
+  #
+  # submodule は取得しない。取得が要る検査は下の static-checks-units にある。
+  static-checks:
     runs-on: ubuntu-latest
     env:
       PIPELINE_CONFIG: "deploy/helm/microservices-platform/files/pipeline.json"
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      # 検証器自体の試験。構成ファイルの有無に関わらず毎回走らせ、検証ロジックの退行を防ぐ。
-      - name: Validate pipeline config (self-test)
-        run: node scripts/validate-pipeline-config.js --self-test
-      - name: Validate pipeline config
-        if: env.PIPELINE_CONFIG != ''
-        run: node scripts/validate-pipeline-config.js "$PIPELINE_CONFIG"
-
-  # Claude 系ワークフローのツール許可設定を検査する（安全弁）。
-  # claude_args の記法誤りは CI を失敗させずに「AI が検証できない」状態を作るため、
-  # 人間にもジョブ結果にも現れない。ここで機械的に止める。
-  ai-workflow-config:
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -168,7 +126,67 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
+
+      # スタック非依存: docs/ と .ai-context/ 配下 Markdown の相対リンク切れを検査（Issue #59 再発防止）。
+      # scripts/check-doc-links.js は Node 標準モジュールのみで動作し、依存インストール不要。
+      # 本リポジトリは planning に依存しない（ADR-0048 決定 2）。未取得の submodule（src/ai-stock-trading）
+      # 配下のリンクは submodule 未取得のため本ジョブでは検査対象外。
+      #
+      # 計画 ADR-0048 決定 4（trace ブロック）: docs/ の trace / trace-table ブロックの文法・値域は
+      # check-trace-blocks.js が、ナレッジグラフのエッジ先実在は gen-knowledge-graph.js --check が
+      # 検査する。いずれも fs のみで走査するため（git を呼ばない）checkout に fetch-depth や
+      # submodule 取得は要らない。本ジョブに寄せるのは「docs/ 系ジョブ」を 1 本にまとめる既存方針に
+      # 合わせるためであり、ワークフロー自体に paths: フィルタは無く（on: が push/pull_request の
+      # イベント種別のみを絞る既定構成）scripts/ の変更も含め毎回全ジョブが走るため、
+      # 「docs/** ・.ai-context/** ・scripts/ の変更時に走ること」は自動的に満たされている。
+      # 検査器自体の自己試験を先に走らせる（planning#167）。拡張子の追加漏れ・検出経路の退行を
+      # 「OK: n 件」の陰に隠さないための歯止め（他の check-*.js の --self-test と同じ運用）。
+      - name: Self-test doc links checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-doc-links.js --self-test
+      - name: Check doc links
+        if: ${{ !cancelled() }}
+        run: node scripts/check-doc-links.js
+      - name: Self-test trace blocks checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trace-blocks.js --self-test
+      - name: Check trace blocks (ADR-0048 決定 4)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trace-blocks.js
+      - name: Self-test knowledge graph generator
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-knowledge-graph.js --self-test
+      - name: Check knowledge graph edge existence
+        if: ${{ !cancelled() }}
+        run: node scripts/gen-knowledge-graph.js --check
+
+      # NFR / #755 / IADR-0200（裁定 planning#364）: 毎セッション必読の規約の総量予算。
+      # 母集合はエージェントごと（Claude Code = CLAUDE.md ＋ .claude/rules/*.md ／ AGENTS.md 系 ／ Copilot）に分けて
+      # 測り、合算しない。予算値 51,200 の正本は project-planning の docs/ai-implementation-workflow-guide.md §8（検査器は出典つきの複製を持つ）。
+      # 100% 超で fail、90% 以上で warn（warn は失敗にしない）。AGENTS.md 系は実測が無いため観測のみ。
+      - name: Self-test reading budget checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-reading-budget.js --self-test
+      - name: Check reading budget
+        if: ${{ !cancelled() }}
+        run: node scripts/check-reading-budget.js
+
+      # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
+      # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
+      # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
+      # 検証器自体の試験。構成ファイルの有無に関わらず毎回走らせ、検証ロジックの退行を防ぐ。
+      - name: Validate pipeline config (self-test)
+        if: ${{ !cancelled() }}
+        run: node scripts/validate-pipeline-config.js --self-test
+      - name: Validate pipeline config
+        if: ${{ !cancelled() && (env.PIPELINE_CONFIG != '') }}
+        run: node scripts/validate-pipeline-config.js "$PIPELINE_CONFIG"
+
+      # Claude 系ワークフローのツール許可設定を検査する（安全弁）。
+      # claude_args の記法誤りは CI を失敗させずに「AI が検証できない」状態を作るため、
+      # 人間にもジョブ結果にも現れない。ここで機械的に止める。
       - name: Check AI workflow config (self-test)
+        if: ${{ !cancelled() }}
         run: node scripts/check-ai-workflow-config.js --self-test
       # 警告（検査そのものが成立していない状態）は GitHub のアノテーションとして出るため、
       # ジョブログを開かなくても PR の Checks 画面で気付ける。
@@ -178,6 +196,7 @@ jobs:
       # claude_args のキー名やインデントが崩れて検査が丸ごと無効になる状態を失敗として止める
       # （scripts-tests の REQUIRE_REPO_TESTS と同じ opt-in 方式。planning#136）。
       - name: Check AI workflow config
+        if: ${{ !cancelled() }}
         env:
           STRICT_AI_WORKFLOW_CONFIG: "1"
         run: node scripts/check-ai-workflow-config.js
@@ -200,112 +219,70 @@ jobs:
       # 本リポジトリの統合ブランチは develop（キット既定の origin/main から置換）。
       # ref を読めない場合（shallow clone 等）は warn を出して素通りする（fail-open）。
       - name: Check action versions
+        if: ${{ !cancelled() }}
         run: |
           node scripts/check-action-versions.js \
             --dir .github/workflows \
             --compare-with-ref origin/develop
 
-  # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
-  # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
-  # 外部依存ゼロの Node スクリプト。--self-test で検査器自体も毎回試験する。
-  unit-dependencies:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule を非再帰で取得し、
-      # 追加ユニット（AST 等）の csproj 依存方向も継続的に機械検査する（未取得だと空の gitlink となり
-      # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため）。
-      - name: Fetch unit submodules (src/*, public, non-recursive)
-        run: |
-          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
-            | awk '$2 ~ /^src\// { print $2 }' \
-            | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test unit dependency checker
-        run: node scripts/check-unit-dependencies.js --self-test
-      - name: Check unit dependency direction
-        run: node scripts/check-unit-dependencies.js
-
-  # NFR / ADR-0030, Issue #455: バックエンドアプリケーション層のライブラリ標準を機械強制する。
-  # 不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の
-  # PackageReference・using の新規混入を止め、Domain 層の依存規律と共有カーネルの許可リストを検査する。
-  # Domain の「外部依存ゼロ」は計画 ADR-0041 が「Kernel 経由で名指しの 1 つ」へ改定した（#500 / IADR-0196）。
-  # 既知の残件は scripts/backend-library-baseline.json で ratchet 管理（新規混入と減らし忘れは fail、
-  # baseline 内は warn）。ai-stock-trading は別プロジェクトのため検査対象外。
-  # submodule は取得しない（対象は platform / knowledge のみで、いずれも本リポジトリの実体）。
-  backend-libraries:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # NFR / ADR-0030, Issue #455: バックエンドアプリケーション層のライブラリ標準を機械強制する。
+      # 不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の
+      # PackageReference・using の新規混入を止め、Domain 層の依存規律と共有カーネルの許可リストを検査する。
+      # Domain の「外部依存ゼロ」は計画 ADR-0041 が「Kernel 経由で名指しの 1 つ」へ改定した（#500 / IADR-0196）。
+      # 既知の残件は scripts/backend-library-baseline.json で ratchet 管理（新規混入と減らし忘れは fail、
+      # baseline 内は warn）。ai-stock-trading は別プロジェクトのため検査対象外。
+      # submodule は取得しない（対象は platform / knowledge のみで、いずれも本リポジトリの実体）。
       - name: Self-test backend library checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-backend-libraries.js --self-test
       - name: Check backend application library standard
+        if: ${{ !cancelled() }}
         run: node scripts/check-backend-libraries.js
 
-  # NFR, Issue #467: CPM（Central Package Management）のバージョン直書き禁止を機械強制する。
-  # CLAUDE.md の「バージョンは src/Directory.Packages.props に集約し、.csproj の PackageReference には
-  # バージョンを書かない」を検査する。着手時点の実測が違反 0 件のため ratchet / baseline を持たず
-  # 最初から fail で強制する。VersionOverride は CPM 公式の回避口のため許可し、使用箇所のみ
-  # 実行サマリへ警告として出す（終了コードは変えない）。templates/ も走査する（雛形の直書きは
-  # 全新規サービスへ伝播する。上の build-and-test は src/*/backend/backend.slnx を glob するため
-  # 雛形に当たらない）。**［2026-08-18 追記 / #830］「他で捕まらない」ではなくなった** ——
-  # 下の template-backend-build が雛形を複製してビルドするため、直書きは NU1008 でも落ちる（実測）。
-  # それでも本検査は残す: 落ちるのは復元段であり、どのファイルのどの行が違反かを名指しするのは
-  # 本検査だけである。
-  # backend-libraries（#455）とは関心が異なるため別スクリプト（どのライブラリか / 版をどこに書くか）。
-  # submodule は取得しない（対象は platform / knowledge / templates で、いずれも本リポジトリの実体）。
-  cpm-versions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # NFR, Issue #467: CPM（Central Package Management）のバージョン直書き禁止を機械強制する。
+      # CLAUDE.md の「バージョンは src/Directory.Packages.props に集約し、.csproj の PackageReference には
+      # バージョンを書かない」を検査する。着手時点の実測が違反 0 件のため ratchet / baseline を持たず
+      # 最初から fail で強制する。VersionOverride は CPM 公式の回避口のため許可し、使用箇所のみ
+      # 実行サマリへ警告として出す（終了コードは変えない）。templates/ も走査する（雛形の直書きは
+      # 全新規サービスへ伝播する。上の build-and-test は src/*/backend/backend.slnx を glob するため
+      # 雛形に当たらない）。**［2026-08-18 追記 / #830］「他で捕まらない」ではなくなった** ——
+      # 下の template-backend-build が雛形を複製してビルドするため、直書きは NU1008 でも落ちる（実測）。
+      # それでも本検査は残す: 落ちるのは復元段であり、どのファイルのどの行が違反かを名指しするのは
+      # 本検査だけである。
+      # backend-libraries（#455）とは関心が異なるため別スクリプト（どのライブラリか / 版をどこに書くか）。
+      # submodule は取得しない（対象は platform / knowledge / templates で、いずれも本リポジトリの実体）。
       - name: Self-test CPM version checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-cpm-versions.js --self-test
       - name: Check CPM version pinning
+        if: ${{ !cancelled() }}
         run: node scripts/check-cpm-versions.js
 
-  # NFR, Issue #465: サービス間契約（Shared.Contracts のイベント/API スキーマ）の後方互換を検査する。
-  # 全面再実装（#454）で 11 サービスを作り直す間、契約は両側同時更新で気付かれずに壊れ得る
-  # （発行側と購読側を同じ PR で直せばコンパイルもテストも通る）。C# ソースを構文解析して
-  # 正規化スナップショット（scripts/contract-schema-baseline.json）と突き合わせ、後方互換を壊す
-  # 変更を止める。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・
-  # proto（.proto 0 件）を採らない理由は IADR-0122。破壊的変更は
-  # scripts/contract-breaking-allowlist.json の承認エントリで通す（手順は scripts/README.md）。
-  # submodule は取得しない（対象は platform / knowledge の Shared.Contracts で本リポジトリの実体）。
-  contract-schema:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # NFR, Issue #465: サービス間契約（Shared.Contracts のイベント/API スキーマ）の後方互換を検査する。
+      # 全面再実装（#454）で 11 サービスを作り直す間、契約は両側同時更新で気付かれずに壊れ得る
+      # （発行側と購読側を同じ PR で直せばコンパイルもテストも通る）。C# ソースを構文解析して
+      # 正規化スナップショット（scripts/contract-schema-baseline.json）と突き合わせ、後方互換を壊す
+      # 変更を止める。抽出方式にリフレクション（.NET SDK 依存）・OpenAPI（イベント 0 件）・
+      # proto（.proto 0 件）を採らない理由は IADR-0122。破壊的変更は
+      # scripts/contract-breaking-allowlist.json の承認エントリで通す（手順は scripts/README.md）。
+      # submodule は取得しない（対象は platform / knowledge の Shared.Contracts で本リポジトリの実体）。
       - name: Self-test contract schema checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-contract-schema.js --self-test
       - name: Check contract backward compatibility
+        if: ${{ !cancelled() }}
         run: node scripts/check-contract-schema.js
 
-  # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
-  # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
-  # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。
-  # 「仕様書が先・テストは次の PR」という段取りは scripts/test-traceability-allowlist.json で明示する
-  # （ratchet: allowlist に無い未写像と、写像済みなのに allowlist に残る行の双方を fail にする）。
-  test-traceability:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # NFR, Issue #453: 受け入れ基準 → テストの写像を機械検査する（退行防止テスト基盤）。
+      # docs/tests/ に仕様書がある FR/SC が src/ のテストから参照されているかを見る。
+      # 着手時点の実測が 27/27 写像済みだったため warn 開始ではなく fail で強制する。
+      # 「仕様書が先・テストは次の PR」という段取りは scripts/test-traceability-allowlist.json で明示する
+      # （ratchet: allowlist に無い未写像と、写像済みなのに allowlist に残る行の双方を fail にする）。
       - name: Self-test traceability checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-test-traceability.js --self-test
       - name: Check acceptance-criteria to test mapping
+        if: ${{ !cancelled() }}
         run: node scripts/check-test-traceability.js
       # Issue #510, IADR-0130: 「実在するテストがテスト仕様書に載っているか」を ratchet で検査する。
       # #503 の「全面改訂」が SC-05〜07 のバックエンド試験の節を落とし、テスト自体は残っているのに
@@ -313,161 +290,184 @@ jobs:
       # 突合の単位が違う（あちらは起点 ID の集合、こちらはテストの実体）ため別の検査器にしている。
       # scripts.repo.test.js からも呼ばれるが、専用ステップにすると失敗がジョブ名で見える。
       - name: Self-test test-spec coverage checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-test-spec-coverage.js --self-test
       - name: Check tests are covered by test specs
+        if: ${{ !cancelled() }}
         run: node scripts/check-test-spec-coverage.js
 
-  # Issue #18 再発防止: Keycloak realm export の文字列フィールド長が import 先 RDB の
-  # varchar(255) を超えていないかを機械検査する（#307 で description が 364 文字となり import が
-  # SQLSTATE 22001 で失敗し pod がクラッシュした）。外部依存ゼロ。--self-test で検査器も毎回試験する。
-  realm-constraints:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # Issue #18 再発防止: Keycloak realm export の文字列フィールド長が import 先 RDB の
+      # varchar(255) を超えていないかを機械検査する（#307 で description が 364 文字となり import が
+      # SQLSTATE 22001 で失敗し pod がクラッシュした）。外部依存ゼロ。--self-test で検査器も毎回試験する。
       - name: Self-test realm constraint checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-realm-constraints.js --self-test
       - name: Check realm field lengths
+        if: ${{ !cancelled() }}
         run: node scripts/check-realm-constraints.js
 
-  # NFR, ADR-0007 / ADR-0021, Issue #783（#442 子 5）: deploy/ の chart と overlay が
-  # レンダリングできることを検査する。CI に helm / kustomize の検証が 1 つも無く、
-  # chart や overlay が壊れてもマージまで気づけなかった。
-  #
-  # **overlay 名をここへ書かないこと。** 検査器が deploy/ を走査して発見する。書くと次に
-  # overlay が増えたとき静かに検査対象から外れる（`paths:` の片側取りこぼしを 4 回踏んでいる。
-  # #558 / #562 / #747 / #801）。実測でも、事前調査が 6 件と数えた overlay は実際には 8 件だった。
-  #
-  # **DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS をここで立てないこと。** 立てると helm / kubectl の
-  # 導入が失敗しても検査が notice を出して素通りする。scripts/scripts.repo.test.js が突合する。
-  deploy-manifests:
+      # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1。手順 6 は check-backend-libraries の規則 4）:
+      # イベント型 → 発行元 / 購読先の対応表を baseline と突き合わせる。
+      #
+      # **移行より先に要る検査である。** 計画は Wolverine 移行の 8 手順のうち
+      # 「2 つの退行はビルド・ユニットテスト・トポロジ検査をすべて通過したまま、例外もログも出さずに
+      # 業務イベントを失う」と警告している。**赤で分からない種類の退行**なので、移行前に正解表を
+      # 凍結しておかないと、移行後に「これで合っているのか」を判定する基準が無い。
+      #
+      # 最重要の固定対象は **DocumentUpdated の購読が 2 件である**こと（IngestionService + WikiService）。
+      # 手順 3（キュー名にサービス名を前置する）を誤ると 2 つの購読者が同一キューを競合し、
+      # 片方だけがメッセージを受け取る。本検査はその減少を exit 1 で止める。
+      - name: Self-test event topology checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-event-topology.js --self-test
+      - name: Check event topology against baseline
+        if: ${{ !cancelled() }}
+        run: node scripts/check-event-topology.js
+
+      # NFR（運用性/信頼性）, IADR-0087, Issue #334: scripts/k8s-local-up.sh の opt-in ゲート
+      # （PERSIST / OBSERVABILITY / VAULT / ARGOCD / HEADLAMP / LOCALEDGE / ESO）を横断で固定する
+      # smoke test。IADR-0105（#399）以降は「どの env でも apiserver 引数・ドロップインを書かない」ことも
+      # 回帰として固定する（旧ゲート HEADLAMP_OIDC_APISERVER は除去済み・指定しても no-op）。
+      # 外部バイナリ（k3d/kubectl/helm/docker）を PATH 上の記録スタブへ差し替え、副作用ゼロで
+      # スクリプトを実行し発行コマンド列へアサートする（実クラスタは作らない）。外部依存ゼロ（Node + bash のみ）。
+      # submodule は取得しない（AST 分岐が決定的に skip され、テストの前提と一致する。IADR-0087 参照）。
+      - name: Smoke-test k8s-local-up opt-in gates (stub-on-PATH, no cluster)
+        if: ${{ !cancelled() }}
+        run: node scripts/k8s-local-up.test.js
+
+      # FR-01/FR-02 ほか, IADR-0089, Issue #342 再発防止: BFF が集約する各 downstream の「実効の上流 URL」
+      # （Program.cs のコード既定 ?? デプロイ manifest の Services__<Name> 上書き）が、メッシュ規約のポート
+      # （:8080）に解決されることを機械検査する。DataSourceService の :8080 上書き漏れがコード既定 5002 のまま
+      # live へ出て 21 秒タイムアウト→502 を起こした（#342）。同種の上書き漏れ・ポート違いを止める。
+      # in-repo ファイル（Program.cs / values.yaml / docker-compose.yml）のみ参照＝submodule 取得不要。
+      # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
+      - name: Self-test BFF downstream port checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-bff-downstreams.js --self-test
+      - name: Check BFF downstream upstream ports
+        if: ${{ !cancelled() }}
+        run: node scripts/check-bff-downstreams.js
+
+  # NFR / IADR-0232 決定 6: submodule（src/*）の取得が要る検査を 1 ジョブへ束ねる。
+  # static-checks と分けてあるのは、submodule 取得と helm / kubectl の導入がここだけに要るためで、
+  # 全部を 1 ジョブにすると取得の要らない検査までその時間を待つことになる。
+  # 検査の本数と対象は統合前と同一（各ステップの `if: ${{ !cancelled() }}` の意図は static-checks と同じ）。
+  static-checks-units:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 既定 checkout は submodule 未取得で、追加ユニット（AST 等）の csproj 依存方向が
+      # 検査対象外＝pin 更新時に platform 直参照の混入を見落とすため（未取得だと空の gitlink となる）。
+      # public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが要る）。
+      # 詳細は docs/how-to/adding-a-unit-submodule.md。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
+
+      # FR-14, IADR-0027 / IADR-0056 / IADR-0057, Issue #231: ユニット依存方向の機械検査。
+      # csproj の ProjectReference（ユニット外参照）と Foundation→Composable の using を静的走査する。
+      # 外部依存ゼロの Node スクリプト。--self-test で検査器自体も毎回試験する。
+      - name: Self-test unit dependency checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-unit-dependencies.js --self-test
+      - name: Check unit dependency direction
+        if: ${{ !cancelled() }}
+        run: node scripts/check-unit-dependencies.js
+
+      # NFR, ADR-0007 / ADR-0021, Issue #783（#442 子 5）: deploy/ の chart と overlay が
+      # レンダリングできることを検査する。CI に helm / kustomize の検証が 1 つも無く、
+      # chart や overlay が壊れてもマージまで気づけなかった。
+      #
+      # **overlay 名をここへ書かないこと。** 検査器が deploy/ を走査して発見する。書くと次に
+      # overlay が増えたとき静かに検査対象から外れる（`paths:` の片側取りこぼしを 4 回踏んでいる。
+      # #558 / #562 / #747 / #801）。実測でも、事前調査が 6 件と数えた overlay は実際には 8 件だった。
+      #
+      # **DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS をここで立てないこと。** 立てると helm / kubectl の
+      # 導入が失敗しても検査が notice を出して素通りする。scripts/scripts.repo.test.js が突合する。
       - name: Self-test deploy manifest checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-deploy-manifests.js --self-test
       - name: Check charts and overlays render
+        if: ${{ !cancelled() }}
         run: node scripts/check-deploy-manifests.js
 
-  # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1。手順 6 は check-backend-libraries の規則 4）:
-  # イベント型 → 発行元 / 購読先の対応表を baseline と突き合わせる。
-  #
-  # **移行より先に要る検査である。** 計画は Wolverine 移行の 8 手順のうち
-  # 「2 つの退行はビルド・ユニットテスト・トポロジ検査をすべて通過したまま、例外もログも出さずに
-  # 業務イベントを失う」と警告している。**赤で分からない種類の退行**なので、移行前に正解表を
-  # 凍結しておかないと、移行後に「これで合っているのか」を判定する基準が無い。
-  #
-  # 最重要の固定対象は **DocumentUpdated の購読が 2 件である**こと（IngestionService + WikiService）。
-  # 手順 3（キュー名にサービス名を前置する）を誤ると 2 つの購読者が同一キューを競合し、
-  # 片方だけがメッセージを受け取る。本検査はその減少を exit 1 で止める。
-  event-topology:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test event topology checker
-        run: node scripts/check-event-topology.js --self-test
-      - name: Check event topology against baseline
-        run: node scripts/check-event-topology.js
-
-  # NFR（運用性/信頼性）, IADR-0087, Issue #334: scripts/k8s-local-up.sh の opt-in ゲート
-  # （PERSIST / OBSERVABILITY / VAULT / ARGOCD / HEADLAMP / LOCALEDGE / ESO）を横断で固定する
-  # smoke test。IADR-0105（#399）以降は「どの env でも apiserver 引数・ドロップインを書かない」ことも
-  # 回帰として固定する（旧ゲート HEADLAMP_OIDC_APISERVER は除去済み・指定しても no-op）。
-  # 外部バイナリ（k3d/kubectl/helm/docker）を PATH 上の記録スタブへ差し替え、副作用ゼロで
-  # スクリプトを実行し発行コマンド列へアサートする（実クラスタは作らない）。外部依存ゼロ（Node + bash のみ）。
-  # submodule は取得しない（AST 分岐が決定的に skip され、テストの前提と一致する。IADR-0087 参照）。
-  k8s-local-up-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Smoke-test k8s-local-up opt-in gates (stub-on-PATH, no cluster)
-        run: node scripts/k8s-local-up.test.js
-
-  # FR-01/FR-02 ほか, IADR-0089, Issue #342 再発防止: BFF が集約する各 downstream の「実効の上流 URL」
-  # （Program.cs のコード既定 ?? デプロイ manifest の Services__<Name> 上書き）が、メッシュ規約のポート
-  # （:8080）に解決されることを機械検査する。DataSourceService の :8080 上書き漏れがコード既定 5002 のまま
-  # live へ出て 21 秒タイムアウト→502 を起こした（#342）。同種の上書き漏れ・ポート違いを止める。
-  # in-repo ファイル（Program.cs / values.yaml / docker-compose.yml）のみ参照＝submodule 取得不要。
-  # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
-  bff-downstreams:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
-      - name: Self-test BFF downstream port checker
-        run: node scripts/check-bff-downstreams.js --self-test
-      - name: Check BFF downstream upstream ports
-        run: node scripts/check-bff-downstreams.js
-
-  # FR-14, IADR-0107, Issue #407 再発防止: 可変ユニット（AST）が所有するサービスを MSP 側の values でも
-  # 有効化する「重複デプロイ」を機械検査する。経路B で risk-management / market-monitor が 2 namespace に
-  # 並び、ExternalName 経由で同一の platform-infra RabbitMQ を共有した結果、同名キュー TradeDecisionMade を
-  # consumers=4 で奪い合い、取引判断（OrderApproved/OrderRejected）を無言で取りこぼした。
-  # AST 所有サービス一覧は submodule の chart values から読み、未取得なら既知の一覧へ縮退する（fail-safe）。
-  # ここでは submodule を取得して実 chart で突合する（pin 更新で AST にサービスが増えても追随できる）。
-  # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
-  unit-service-ownership:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      # public な src/* ユニットのみ非再帰で取得する（lint ジョブと同型）。
-      - name: Fetch unit submodules (src/*, public, non-recursive)
-        run: |
-          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
-            | awk '$2 ~ /^src\// { print $2 }' \
-            | xargs -r -n1 git submodule update --init
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "20"
+      # FR-14, IADR-0107, Issue #407 再発防止: 可変ユニット（AST）が所有するサービスを MSP 側の values でも
+      # 有効化する「重複デプロイ」を機械検査する。経路B で risk-management / market-monitor が 2 namespace に
+      # 並び、ExternalName 経由で同一の platform-infra RabbitMQ を共有した結果、同名キュー TradeDecisionMade を
+      # consumers=4 で奪い合い、取引判断（OrderApproved/OrderRejected）を無言で取りこぼした。
+      # AST 所有サービス一覧は submodule の chart values から読み、未取得なら既知の一覧へ縮退する（fail-safe）。
+      # ここでは submodule を取得して実 chart で突合する（pin 更新で AST にサービスが増えても追随できる）。
+      # 外部依存ゼロ（Node のみ）。--self-test で検査器自体も毎回試験する。
       - name: Self-test unit service ownership checker
+        if: ${{ !cancelled() }}
         run: node scripts/check-unit-service-ownership.js --self-test
       - name: Check unit service ownership (no duplicate deployment)
+        if: ${{ !cancelled() }}
         run: node scripts/check-unit-service-ownership.js
 
-  lint:
+
+  # ───────────────────────────────────────────────────────────────────────────────
+  # NFR / IADR-0232 決定 2: バックエンドのビルド・テスト・整形。
+  #
+  # 🔴 **matrix のジョブと、必須チェック名を持つ集約ジョブを分けてある。** ブランチ保護の
+  # 必須 check 名はジョブ ID そのものであり、matrix 化すると `build-and-test (platform)` へ
+  # 改名されて **PR が恒久的にマージ不能**になる。そこで matrix は別 ID（backend-build /
+  # backend-format）へ切り出し、build-and-test / lint は needs: ＋ if: always() で結果を
+  # 判定するだけの集約ジョブとして名前を維持する。
+  #
+  # この形は本リポジトリの images.yml が先に実装している（changes → build（16 並列 matrix）→
+  # image-build（集約）。IADR-0067）。**新しい発明ではなく既存パターンの横展開**であり、
+  # ブランチ保護の手動更新は発生しない。必須 check 名の正本は docs/ai-workflow.md の表。
+  # ───────────────────────────────────────────────────────────────────────────────
+
+  # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニットを restore → build → test する。
+  # 統合前は 1 ジョブで `for slnx in src/*/backend/backend.slnx` の **直列ループ**だったため、
+  # ユニットが増えるほど線形に伸びていた（実測 462 秒）。ユニットを matrix の軸にして並列化する。
+  #
+  # FR-14, IADR-0056 / IADR-0060, Issue #230: ルート集約ソリューションは置かず、全バックエンドユニット
+  # （src/*/backend/backend.slnx）を自動発見して restore → build → test する。ユニット追加時に CI の
+  # 編集は不要。この性質は分割後も維持する —— matrix の値は下の discover-units ジョブが同じ glob で
+  # 導出するため、ここへユニット名を書かない。
+  # （**ユニット名をここへ書かないこと。** 書くと次にユニットが増えたとき静かに検査対象から
+  # 外れる。deploy-manifests の overlay 名と同じ型の事故である。）
+  discover-units:
     runs-on: ubuntu-latest
+    outputs:
+      units: ${{ steps.discover.outputs.units }}
     steps:
       - uses: actions/checkout@v7
-      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
-      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
-      # 検査対象外になる。public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが
-      # 要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
-      - name: Fetch unit submodules (src/*, public, non-recursive)
+      - name: Discover backend units from src/*/backend/backend.slnx
+        id: discover
         run: |
-          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
-            | awk '$2 ~ /^src\// { print $2 }' \
-            | xargs -r -n1 git submodule update --init
-      # --- スタック別に書き換え（例: C#/.NET） ---
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: "10.0.x"
-      # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
-      # 自動発見して検査する。ユニット追加時に CI の編集は不要（チェックアウト済みなら自動的に対象になる）。
-      - name: Format check (all backend units)
-        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          units=()
           for slnx in src/*/backend/backend.slnx; do
-            echo "::group::dotnet format $slnx"
-            dotnet format "$slnx" --verify-no-changes
-            echo "::endgroup::"
+            units+=("$(basename "$(dirname "$(dirname "$slnx")")")")
           done
+          if [ ${#units[@]} -eq 0 ]; then
+            echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
+            exit 1
+          fi
+          json="$(printf '%s\n' "${units[@]}" | sort | jq -R . | jq -sc .)"
+          echo "units=${json}" >> "$GITHUB_OUTPUT"
+          echo "discovered: ${json}"
 
-  build-and-test:
+  backend-build:
     runs-on: ubuntu-latest
+    needs: discover-units
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
     steps:
       - uses: actions/checkout@v7
       # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
@@ -479,26 +479,78 @@ jobs:
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
+      # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする。着手前の実測では
+      # setup-dotnet が本リポジトリで 8 箇所使われて 1 つも cache: を設定しておらず、毎 run
+      # 全パッケージを取り直していた。packages.lock.json を持たないため setup-dotnet の
+      # cache: true は使えない（ロックファイルのハッシュをキーにする実装のため）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       # --- スタック別に書き換え（例: C#/.NET） ---
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-      # FR-14, IADR-0056 / IADR-0060, Issue #230: ルート集約ソリューションは置かず、全バックエンドユニット
-      # （src/*/backend/backend.slnx）を自動発見して restore → build → test する。ユニット追加時に CI の
-      # 編集は不要。bash -eo pipefail 既定によりいずれか失敗で job も失敗する。
-      - name: Restore, build and test (all backend units, with coverage)
+      # 🔴 --filter "Category!=Integration" が本 PR の主眼のひとつである（IADR-0232 決定 3）。
+      # Testcontainers で実 RabbitMQ / Postgres / MinIO を起動するテストは PR の既定から外し、
+      # integration.yml（develop への push ＋ 日次）で全件を回して担保する。AST の IADR-0049 と同型。
+      #
+      # 除外されるのは Category=Integration だけである。同じ Knowledge.IntegrationTests に居る
+      # Category=Deployment（helm manifest 検証）と Category=EndpointRouting（インプロセス）は
+      # Docker を使わず速いため **PR に残す**。「遅いから外す」のであって「同じディレクトリに
+      # 居るから外す」のではない。
+      - name: Restore, build and test (${{ matrix.unit }}, unit tests only, with coverage)
         run: |
-          for slnx in src/*/backend/backend.slnx; do
-            echo "::group::$slnx"
-            dotnet restore "$slnx"
-            dotnet build "$slnx" --no-restore --configuration Release
-            dotnet test "$slnx" --no-build --configuration Release --collect:"XPlat Code Coverage" --verbosity normal
-            echo "::endgroup::"
-          done
-      # NFR, Issue #453: カバレッジ床の強制。上のステップが出力する Cobertura を直接集計するため
-      # reportgenerator のインストールを要さない（CI が速く、オフラインでも動く）。
-      # 床は src/coverage-floor.json。未設定（null）の間は集計と報告のみ行う。
-      # フロント側の同等ゲートは frontend-tests.yml（vitest thresholds・IADR-0034）。
+          set -euo pipefail
+          slnx="src/${{ matrix.unit }}/backend/backend.slnx"
+          dotnet restore "$slnx"
+          dotnet build "$slnx" --no-restore --configuration Release
+          dotnet test "$slnx" --no-build --configuration Release \
+            --filter "Category!=Integration" \
+            --collect:"XPlat Code Coverage" --verbosity normal
+      # カバレッジ床は全ユニット横断で 1 回だけ集計する（IADR-0123 決定 3〜5 の前提）。
+      # matrix の各脚では集計せず、Cobertura を artifact で集約ジョブへ渡す。
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.unit }}
+          path: "**/coverage.cobertura.xml"
+          retention-days: 1
+          if-no-files-found: error
+
+  # 🔴 必須チェック名を維持する集約ジョブ（上のブロックコメント参照）。ここを改名・削除しないこと。
+  # NFR, Issue #453: カバレッジ床の強制。上のステップが出力する Cobertura を直接集計するため
+  # reportgenerator のインストールを要さない（CI が速く、オフラインでも動く）。
+  # 床は src/coverage-floor.json。未設定（null）の間は集計と報告のみ行う。
+  # フロント側の同等ゲートは frontend-tests.yml（vitest thresholds・IADR-0034）。
+  build-and-test:
+    runs-on: ubuntu-latest
+    needs: [discover-units, backend-build]
+    if: always()
+    steps:
+      - name: Report build/test result
+        env:
+          DISCOVER_RESULT: ${{ needs.discover-units.result }}
+          BUILD_RESULT: ${{ needs.backend-build.result }}
+        run: |
+          echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT"
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::ビルド対象ユニットの導出に失敗した。"
+            exit 1
+          fi
+          if [ "$BUILD_RESULT" != "success" ]; then
+            echo "::error::いずれかのユニットで restore / build / test が失敗した（backend-build の各脚を見ること）。"
+            exit 1
+          fi
+          echo "✓ 全ユニットの restore / build / test が成立した。"
+      - uses: actions/checkout@v7
+      - name: Download coverage reports from all units
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+          path: .
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
@@ -507,20 +559,76 @@ jobs:
       - name: Check backend coverage floor
         run: node scripts/check-coverage-floor.js
 
-      # 参考: 他スタックの例
-      # Node.js:
-      #   - uses: actions/setup-node@v7
-      #     with: { node-version: "20" }
-      #   - run: npm ci
-      #   - run: npm run lint --if-present
-      #   - run: npm run build --if-present
-      #   - run: npm test -- --coverage
-      # Python:
-      #   - uses: actions/setup-python@v7
-      #     with: { python-version: "3.12" }
-      #   - run: pip install -e .[test]
-      #   - run: ruff check .
-      #   - run: pytest --cov
+  # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
+  # 自動発見して検査する。ユニット追加時に CI の編集は不要（discover-units が導出する）。
+  # 統合前は 1 ジョブの直列ループで 2 分 42 秒掛かっていた（実測）。ユニットを matrix の軸にする。
+  backend-format:
+    runs-on: ubuntu-latest
+    needs: discover-units
+    strategy:
+      fail-fast: false
+      matrix:
+        unit: ${{ fromJSON(needs.discover-units.outputs.units) }}
+    steps:
+      - uses: actions/checkout@v7
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 既定 checkout は submodule 未取得で、追加ユニットは src/*/backend/backend.slnx 自動発見に現れず
+      # 検査対象外になる。public ユニットはトークン不要（private ユニットは別途 IADR-0058 型トークンが
+      # 要る）。詳細は docs/how-to/adding-a-unit-submodule.md。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      # dotnet format は内部で MSBuild ワークスペースをロードするため、NuGet キャッシュが効く。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      # --- スタック別に書き換え（例: C#/.NET） ---
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Format check (${{ matrix.unit }})
+        run: dotnet format "src/${{ matrix.unit }}/backend/backend.slnx" --verify-no-changes
+
+  # 🔴 必須チェック名を維持する集約ジョブ。ここを改名・削除しないこと。
+  lint:
+    runs-on: ubuntu-latest
+    needs: [discover-units, backend-format]
+    if: always()
+    steps:
+      - name: Report format result
+        env:
+          DISCOVER_RESULT: ${{ needs.discover-units.result }}
+          FORMAT_RESULT: ${{ needs.backend-format.result }}
+        run: |
+          echo "discover-units=$DISCOVER_RESULT / backend-format=$FORMAT_RESULT"
+          if [ "$DISCOVER_RESULT" != "success" ]; then
+            echo "::error::検査対象ユニットの導出に失敗した。"
+            exit 1
+          fi
+          if [ "$FORMAT_RESULT" != "success" ]; then
+            echo "::error::いずれかのユニットで dotnet format --verify-no-changes が失敗した（backend-format の各脚を見ること）。"
+            exit 1
+          fi
+          echo "✓ 全ユニットの整形検査が成立した。"
+
+  # 参考: 他スタックの例
+  # Node.js:
+  #   - uses: actions/setup-node@v7
+  #     with: { node-version: "20" }
+  #   - run: npm ci
+  #   - run: npm run lint --if-present
+  #   - run: npm run build --if-present
+  #   - run: npm test -- --coverage
+  # Python:
+  #   - uses: actions/setup-python@v7
+  #     with: { python-version: "3.12" }
+  #   - run: pip install -e .[test]
+  #   - run: ruff check .
+  #   - run: pytest --cov
 
   # NFR, Issue #830: 雛形（templates/*/backend）を CI で実際にコンパイルし、テストを走らせる。
   #
@@ -565,6 +673,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（backend-build と同じキー）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"

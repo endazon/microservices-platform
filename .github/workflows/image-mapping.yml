@@ -16,6 +16,12 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# NFR / IADR-0232 決定 1: 連続 push で古い実行を捨てる（PR のみ）。
+# develop / main への push は完走させる。
+concurrency:
+  group: image-mapping-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

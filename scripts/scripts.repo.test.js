@@ -7163,10 +7163,17 @@ module.exports = ({ ok, assert }) => {
 
     // ci.yml への配線（宣言 → 実挙動）。scripts/README.md の記述と対で、
     // 「新設した検査器が CI から呼ばれていない」事故（他の check-*.js と同型）を防ぐ。
-    ok('ci.yml の doc-links ジョブが check-trace-blocks.js / gen-knowledge-graph.js --check を呼ぶ', () => {
+    // ［2026-08-21 追記 / IADR-0232 決定 6］旧 doc-links ジョブは static-checks へ統合された。
+    // 見るのは「どのジョブに居るか」ではなく「CI から呼ばれているか」なので、
+    // ジョブ名を追随させるだけでよい（検査器の本数と対象は統合前と同一）。
+    //
+    // ★ ジョブの切り出しに `\n {2}\S` を使わないこと。統合後のジョブは 2 空白のコメント行
+    //   （移設した各検査の由来コメント）を含むため、最初のコメントで切れて中身を見落とす。
+    //   次の**ジョブキー**（2 空白 ＋ 英小文字 ＋ `:`）までを取る。
+    ok('ci.yml の static-checks ジョブが check-trace-blocks.js / gen-knowledge-graph.js --check を呼ぶ', () => {
       const ciText = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
-      const m = /doc-links:\n([\s\S]*?)\n {2}\S/.exec(`${ciText}\n  $`);
-      assert.ok(m, 'doc-links ジョブが見つからない');
+      const m = /\n {2}static-checks:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n)/.exec(`${ciText}\n  zzz:\n`);
+      assert.ok(m, 'static-checks ジョブが見つからない');
       const job = m[1];
       assert.match(job, /node scripts\/check-trace-blocks\.js --self-test/);
       assert.match(job, /node scripts\/check-trace-blocks\.js\s*$/m);
@@ -7194,18 +7201,28 @@ module.exports = ({ ok, assert }) => {
       const ci = fs.readFileSync(ciPath, 'utf8');
       const { ALLOW_MISSING_TOOLS_ENV } = require('./check-deploy-manifests.js');
 
+      // ［2026-08-21 追記 / IADR-0232 決定 6］旧 deploy-manifests ジョブは static-checks-units へ
+      // 統合された（submodule 取得と helm / kubectl を要する検査をまとめたジョブ）。
+      // 本試験の主眼は「検査が CI で走っているか」と「fail-open の抜け道を立てていないか」で
+      // あって「専用ジョブが在るか」ではないため、ジョブ名だけ追随させる。
       assert.ok(
-        /\n {2}deploy-manifests:\n/.test(ci),
-        'ci.yml に deploy-manifests ジョブが無い（#783 の検査が CI で走らない）',
+        /\n {2}static-checks-units:\n/.test(ci),
+        'ci.yml に static-checks-units ジョブが無い（#783 の検査が CI で走らない）',
       );
       assert.ok(
         ci.includes('node scripts/check-deploy-manifests.js --self-test'),
-        'deploy-manifests ジョブが検査器の --self-test を呼んでいない',
+        'static-checks-units ジョブが検査器の --self-test を呼んでいない',
       );
       assert.ok(
         ci.includes('node scripts/check-deploy-manifests.js\n'),
-        'deploy-manifests ジョブが本走査を呼んでいない',
+        'static-checks-units ジョブが本走査を呼んでいない',
       );
+      // helm / kubectl の導入が同じジョブに在ること（別ジョブへ離れると検査が動かない）。
+      const unitsJob = /\n {2}static-checks-units:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n)/
+        .exec(`${ci}\n  zzz:\n`);
+      assert.ok(unitsJob, 'static-checks-units ジョブを切り出せない');
+      assert.match(unitsJob[1], /azure\/setup-helm/, 'static-checks-units に helm の導入が無い');
+      assert.match(unitsJob[1], /azure\/setup-kubectl/, 'static-checks-units に kubectl の導入が無い');
 
       // 抜け道を「立てている」行だけを違反にする。注意書きとして名前に言及するのは許す
       // （コメント行は行頭が `#`）。
@@ -7229,9 +7246,10 @@ module.exports = ({ ok, assert }) => {
       // fail-closed の門: 走査が 0 件なら、この試験は何も見ていない。
       assert.ok(overlays.length > 0, 'overlay が 0 件（走査が壊れている）');
 
-      // deploy-manifests ジョブの本文に overlay パスが直書きされていないこと。
-      const job = ci.match(/\n {2}deploy-manifests:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n|$)/);
-      assert.ok(job, 'deploy-manifests ジョブの本文を読めない');
+      // ［2026-08-21 追記 / IADR-0232 決定 6］旧 deploy-manifests ジョブは static-checks-units へ統合。
+      // 検査の主眼（overlay パスをワークフローへ直書きしていないこと）は変わらない。
+      const job = ci.match(/\n {2}static-checks-units:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n|$)/);
+      assert.ok(job, 'static-checks-units ジョブの本文を読めない');
       const hardcoded = overlays.filter((o) => job[1].includes(o));
       assert.deepStrictEqual(
         hardcoded,

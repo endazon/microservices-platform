@@ -24,6 +24,13 @@ on:
   schedule:
     - cron: "0 3 * * 1"
 
+# NFR / IADR-0232 決定 1: 連続 push で古い実行を捨てる。
+# 🔴 develop / main への push と週次 schedule はキャンセルしない —— PR で落とした精度を
+# 担保しているのはそちら（build-mode: manual の全量解析）であり、捨てると担保が失われる。
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   security-events: write
   contents: read
@@ -43,18 +50,46 @@ jobs:
       # BFF エンドポイント（ai-stock-trading/backend/Bff/AiStockTrading.Bff.Endpoints）を参照する。未取得だと
       # platform/backend/backend.slnx のトレースビルドが CS0246 で失敗する。ci.yml / images.yml と同型
       # （public ユニットはトークン不要・private planning は巻き込まない）。ユニット追加時も編集不要。
+      #
+      # 🔴 submodule 取得・setup-dotnet・トレースビルドの 3 つは build-mode: manual のときだけ要る。
+      # PR は build-mode: none（ビルドしない）なので走らせない —— これが 11 分の大半である。
       - name: Fetch unit submodules (src/*, public, non-recursive)
+        if: github.event_name != 'pull_request'
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       - uses: actions/setup-dotnet@v6
+        if: github.event_name != 'pull_request'
         with:
           dotnet-version: "10.0.x"
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.37.7
         with:
           languages: ${{ matrix.language }}
+          # NFR / IADR-0232 決定 4: **PR だけ** ビルド不要の build-mode: none にする。
+          #
+          # 着手前の実測（2026-08-21）で本ワークフローは 11 分 24 秒掛かり、PR で最も長かった。
+          # 中身は ci.yml と重複する「両ユニットのトレース付き dotnet build」＋解析である。
+          # build-mode は none / autobuild / manual の 3 値を取る文字列入力なので、
+          # イベントで切り替えられる。
+          #
+          # 🔴 **PR と後段で精度が違う。** ここが最も誤解しやすい点なので明記する。
+          #   - PR: build-mode: none。ビルドせず解析する（PR ではインクリメンタル解析が効く）。
+          #     **生成コード（EF Migrations・source generator 出力）は解析対象外になる。**
+          #     カバレッジログの実測でその量は 270 クラス / 8990 行であり、無視できない。
+          #   - push（develop/main）・週次 schedule: build-mode: manual ＋ 下のトレースビルド。
+          #     **従来と同じ精度**であり、PR で落とした分をここで担保する（IADR-0232 決定 1）。
+          #
+          # したがって **PR が緑でも push で赤くなることがあり得る。それは退行ではなく設計どおり**である。
+          build-mode: ${{ github.event_name == 'pull_request' && 'none' || 'manual' }}
+      # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（ci.yml と同じキー）。
+      - uses: actions/cache@v6
+        if: github.event_name != 'pull_request'
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
       # FR-14, IADR-0056 / IADR-0060, Issue #230: autobuild はリポジトリ全体を走査し templates/（src/ 外・
       # 共通 props 非継承のためビルド不可の雛形）まで拾って失敗する。ci.yml と同じく実ユニット
       # （src/*/backend/backend.slnx）のみを明示ビルドして CodeQL のトレーサに載せる。ユニット追加時も編集不要。
@@ -62,6 +97,7 @@ jobs:
       # とおり差し替えたものである（planning#111）。同種のトラップは scripts/setup.sh・security.yml（2 か所）・
       # copilot-setup-steps.yml にもあるが、あちらは find の除外で対処している（autobuild は find を使わない）。
       - name: Build backend units (traced)
+        if: github.event_name != 'pull_request'
         run: |
           for slnx in src/*/backend/backend.slnx; do
             echo "::group::$slnx"
@@ -72,3 +108,14 @@ jobs:
         uses: github/codeql-action/analyze@v4.37.7
         with:
           category: "/language:${{ matrix.language }}"
+
+  # 🔴 PR から落とした精度の担保（build-mode: manual の全量解析）が落ちたことを issue に残す
+  # （IADR-0232 決定 1）。PR 経路（build-mode: none）では起票しない —— PR は自身の check が
+  # 赤くなるので気付けるためである。
+  report-failure:
+    needs: [analyze]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/ci-failure-issue.yml
+    permissions:
+      contents: read
+      issues: write
