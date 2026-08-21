@@ -42,7 +42,8 @@ issues: []
 | --- | --- | --- | --- |
 | 1 | 既定互換 | 宣言なし（Steps 空）で段が既定登録される | `ConversionService.Worker.Tests/PipelineStepRegistrationTests` |
 | 2 | fail-fast | 宣言に段が無い/型名不一致で起動失敗 | 同上 |
-| 3 | 組み替え | enabled: false で購読が生成されない / queue 上書き | `WikiService.Api.Tests/PipelineRecomposeTests` |
+| 3 | 組み替え | enabled: false で購読が生成されない | `WikiService.Api.Tests/PipelineRecomposeTests` |
+| 3b | 組み替え | **queue 上書き** —— 🔴 **未実装**（この行は従前 3 に「/ queue 上書き」と併記されていたが、当該テストは `enabled: false` しか見ていない。実測: テストコードに `Queue = ` の設定は 0 件） | — |
 | 4 | 宣言検証 | スキーマ・接続性・循環・型名形式（V1〜V6） | `scripts/validate-pipeline-config.js --self-test`（CI: `ci.yml`） |
 | 5 | 参照方向 | Foundation → Composable 参照なし | レビュー・grep による検査（Issue #118 監査で確認済み） |
 
