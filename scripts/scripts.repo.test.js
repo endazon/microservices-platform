@@ -5078,7 +5078,10 @@ module.exports = ({ ok, assert }) => {
         //    レンダリングできるかを検査）を新設したため 35 → 36（同上）。git を一切呼ばず
         //    fs と外部コマンド（helm / kubectl）で走るため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 36, `検査器の母集合が 36 本から変わった（${scripts.length} 件）`);
+        // ★ #455 子 C で `check-event-topology.js`（イベント型 → 発行元 / 購読先の対応表を
+        //    baseline と突合）を新設したため 36 → 37（同上）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 37, `検査器の母集合が 37 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

@@ -356,6 +356,29 @@ jobs:
       - name: Check charts and overlays render
         run: node scripts/check-deploy-manifests.js
 
+  # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1・6）:
+  # イベント型 → 発行元 / 購読先の対応表を baseline と突き合わせる。
+  #
+  # **移行より先に要る検査である。** 計画は Wolverine 移行の 8 手順のうち
+  # 「2 つの退行はビルド・ユニットテスト・トポロジ検査をすべて通過したまま、例外もログも出さずに
+  # 業務イベントを失う」と警告している。**赤で分からない種類の退行**なので、移行前に正解表を
+  # 凍結しておかないと、移行後に「これで合っているのか」を判定する基準が無い。
+  #
+  # 最重要の固定対象は **DocumentUpdated の購読が 2 件である**こと（IngestionService + WikiService）。
+  # 手順 3（キュー名にサービス名を前置する）を誤ると 2 つの購読者が同一キューを競合し、
+  # 片方だけがメッセージを受け取る。本検査はその減少を exit 1 で止める。
+  event-topology:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test event topology checker
+        run: node scripts/check-event-topology.js --self-test
+      - name: Check event topology against baseline
+        run: node scripts/check-event-topology.js
+
   # NFR（運用性/信頼性）, IADR-0087, Issue #334: scripts/k8s-local-up.sh の opt-in ゲート
   # （PERSIST / OBSERVABILITY / VAULT / ARGOCD / HEADLAMP / LOCALEDGE / ESO）を横断で固定する
   # smoke test。IADR-0105（#399）以降は「どの env でも apiserver 引数・ドロップインを書かない」ことも
