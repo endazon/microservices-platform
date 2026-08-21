@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using WikiService.Api.Foundation.Domain;
 using WikiService.Api.Foundation.Ports;

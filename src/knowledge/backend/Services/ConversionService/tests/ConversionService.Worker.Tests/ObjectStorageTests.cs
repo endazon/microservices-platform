@@ -3,7 +3,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 

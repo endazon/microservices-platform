@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using System.Net;
 using System.Net.Http.Json;
@@ -13,7 +13,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
     private DataSourceServiceFactory _factory = null!;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
         _factory = new DataSourceServiceFactory(postgres, rabbit);
@@ -23,7 +23,7 @@ public sealed class DataSourceTests(PostgresFixture postgres, RabbitMqFixture ra
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();

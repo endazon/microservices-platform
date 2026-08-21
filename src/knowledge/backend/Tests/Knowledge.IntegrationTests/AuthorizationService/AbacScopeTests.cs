@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Contracts.Dtos;
 using System.Net;
@@ -14,7 +14,7 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
     private AuthorizationServiceFactory _factory = null!;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable) return;
         _factory = new AuthorizationServiceFactory(postgres);
@@ -24,7 +24,7 @@ public sealed class AbacScopeTests(PostgresFixture postgres)
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();

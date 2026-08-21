@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;

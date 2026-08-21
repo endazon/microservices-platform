@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Knowledge.Contracts.Events;
 using MassTransit;
@@ -15,7 +15,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
     private WikiServiceFactory _factory = null!;
     private HttpClient _client = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         if (!postgres.IsAvailable || !rabbit.IsAvailable) return;
         _factory = new WikiServiceFactory(postgres, rabbit);
@@ -25,7 +25,7 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
         await db.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _client?.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();

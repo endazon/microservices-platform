@@ -1,5 +1,5 @@
 using WikiService.Api.Composable.Adapters;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
 using System.Text;

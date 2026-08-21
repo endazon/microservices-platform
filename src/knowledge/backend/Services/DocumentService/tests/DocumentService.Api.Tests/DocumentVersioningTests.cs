@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using DocumentService.Api.Foundation.Domain;
 
 namespace DocumentService.Api.Tests;

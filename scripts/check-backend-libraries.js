@@ -12,7 +12,7 @@
  *      **PackageVersion（CPM のバージョン定義）は違反にしない**。baseline を消化するまで不採用パッケージの
  *      版定義は src/Directory.Packages.props に正当に残る設計であり、違反にすると残件と同数の偽陽性が出る
  *      （#455 の Serilog 消化後は 29 件。IADR-0216）。
- *      現行実装は MassTransit / FluentAssertions を広範に使用中のため、即時に全件 fail
+ *      現行実装は MassTransit を広範に使用中のため（FluentAssertions は #455 A-3 で消化済み・残件 0）、即時に全件 fail
  *      させると「成果物は正しいのに赤」が常態化する。同じ判断の先例は scripts/README.md の
  *      check-permission-denials.js の段階ポリシーである（赤の常態化は「赤を無視する学習」を生み、
  *      検査の目的そのものを壊す。planning#146・planning#160（前段の失敗モード）／
@@ -136,14 +136,16 @@ const SHARED_KERNEL_ALLOWED = ['CSharpFunctionalExtensions'];
  * xUnit v3 と runner の版整合を検査する対象。
  *
  * xunit.runner.visualstudio は v2 用（2.x）と v3 用（3.x）で別系列である。**CPM は 1 パッケージに
- * 1 バージョンしか持てない**ため、CPM の runner が 2.x に固定されている状態で xunit.v3 を参照する
- * プロジェクトを作ると、非互換の runner と組み合わさる。
+ * 1 バージョンしか持てない**ため、系列の食い違ったプロジェクトは非互換の runner と組み合わさる。
+ * **両方向を見る**（#455 A-2 で対称化）—— runner 2.x に対する xunit.v3 参照も、runner 3.x に対する
+ * xunit（v2 本体）参照も、同じく非互換である。
  *
  * この誤りは通常の CI では捕まらない。ci.yml のビルド対象は src/<unit>/backend/backend.slnx のみで
  * **templates/ は対象外**であり、雛形をコピーして最初のサービスを作った人が dotnet test を走らせて
  * 初めて表面化する（PR #463 のレビューで実際に指摘された）。よって templates/ も走査する。
  */
 const XUNIT_V3 = 'xunit.v3';
+const XUNIT_V2 = 'xunit';
 const XUNIT_RUNNER = 'xunit.runner.visualstudio';
 const TEMPLATE_DIR = 'templates';
 
@@ -244,20 +246,40 @@ function majorOf(version) {
 }
 
 /**
- * xunit.v3 を参照しているのに CPM の xunit.runner.visualstudio が v3 系（3.x）でない場合を違反として返す。
+ * xUnit 本体と CPM の runner の系列が食い違う場合を違反として返す（**両方向**）。
+ *
  * runnerVersion が null（CPM に定義が無い＝各 csproj が版を持つ）のときは判定しない。
+ * runner を参照しないプロジェクトも判定しない。
+ *
+ * **両方向を見る理由**（#455 A-2）。当初は「xunit.v3 参照 ＋ runner 2.x」の一方向しか見ていなかった。
+ * それは runner が 2.x に固定されていた時代には十分だったが、A-2 で runner を 3.x へ上げた結果、
+ * **逆向きの取り残し**——`xunit`（v2 本体）を参照したままのプロジェクト——が同じく非互換になるのに
+ * 検出されなくなった。CPM は 1 パッケージ 1 バージョンしか持てないため v2 と v3 は共存できず、
+ * **一斉切替でしか成立しない**。その「一斉である」という性質自体をここで機械が担保する。
+ * 新しい検査の追加ではなく、既存の検査に欠けていた対称な半分である。
  */
 function xunitRunnerMismatch(relPath, csprojContent, runnerVersion) {
   const refs = packageReferencesOf(csprojContent);
-  if (!refs.includes(XUNIT_V3)) return [];
   if (!refs.includes(XUNIT_RUNNER)) return [];
   const major = majorOf(runnerVersion);
-  if (major === null || major >= 3) return [];
-  return [{
-    kind: 'xunit-runner-mismatch',
-    project: toPosix(relPath),
-    detail: `${XUNIT_V3} を参照していますが CPM の ${XUNIT_RUNNER} は ${runnerVersion}（v2 系）です`,
-  }];
+  if (major === null) return [];
+
+  if (refs.includes(XUNIT_V3) && major < 3) {
+    return [{
+      kind: 'xunit-runner-mismatch',
+      project: toPosix(relPath),
+      detail: `${XUNIT_V3} を参照していますが CPM の ${XUNIT_RUNNER} は ${runnerVersion}（v2 系）です`,
+    }];
+  }
+  if (refs.includes(XUNIT_V2) && major >= 3) {
+    return [{
+      kind: 'xunit-runner-mismatch',
+      project: toPosix(relPath),
+      detail: `${XUNIT_V2}（v2 本体）を参照していますが CPM の ${XUNIT_RUNNER} は ${runnerVersion}（v3 系）です。`
+        + ` v3 の本体は ${XUNIT_V3} です（v2 と v3 は CPM 上共存できないため一斉に切り替える）`,
+    }];
+  }
+  return [];
 }
 
 /**
@@ -603,6 +625,7 @@ function selfTest() {
 
   // xUnit v3 と CPM の runner 版の整合（PR #463 レビュー指摘の回帰防止）。
   const V3_PROJ = '<PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio" />';
+  const V2_PROJ = '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />';
   t('centralVersionOf: CPM から版を取り出す',
     centralVersionOf('<PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />', 'xunit.runner.visualstudio') === '2.8.2');
   t('centralVersionOf: 未定義は null',
@@ -613,8 +636,13 @@ function selfTest() {
   t('xunit.v3 ＋ runner 3.x は適合',
     xunitRunnerMismatch('templates/x/X.Tests.csproj', V3_PROJ, '3.1.5').length === 0);
   t('xunit（v2）＋ runner 2.x は適合',
-    xunitRunnerMismatch('templates/x/X.Tests.csproj',
-      '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />', '2.8.2').length === 0);
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V2_PROJ, '2.8.2').length === 0);
+  t('★ xunit（v2）＋ runner 3.x は違反（#455 A-2 で対称化。一斉切替の取り残しを捕まえる）',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V2_PROJ, '3.1.5').length === 1);
+  t('xunit（v2）で runner を参照しなければ判定しない',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', '<PackageReference Include="xunit" />', '3.1.5').length === 0);
+  t('xunit.v3 の前方一致で v2 を誤検出しない（v3 のみ参照 ＋ runner 3.x は適合）',
+    xunitRunnerMismatch('templates/x/X.Tests.csproj', V3_PROJ, '3.1.5').length === 0);
   t('runner を参照しなければ判定しない（v3 単体は自己実行できる）',
     xunitRunnerMismatch('templates/x/X.Tests.csproj', '<PackageReference Include="xunit.v3" />', '2.8.2').length === 0);
   t('CPM に runner 定義が無ければ判定しない',
@@ -871,8 +899,9 @@ function main() {
   for (const d of domain) {
     if (d.kind === 'xunit-runner-mismatch') {
       failures.push(`[xUnit 版不整合] ${d.project}\n    ${d.detail}。` +
-        'v3 へ移るには CPM の runner も 3.x にする必要があり、CPM は 1 パッケージ 1 バージョンのため' +
-        '全テストプロジェクトが同時に移る。切替は独立した issue で行うこと。');
+        'CPM は 1 パッケージ 1 バージョンしか持てず v2 と v3 は共存できない。本リポジトリは ' +
+        '#455 A-2 で 16 プロジェクトを v3 へ一斉に切り替え済みである。' +
+        '本体は xunit.v3、CPM の xunit.runner.visualstudio は 3.x に揃えること。');
       continue;
     }
     if (d.kind === 'template-banned') {

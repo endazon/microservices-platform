@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using MassTransit;

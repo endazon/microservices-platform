@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using DataSourceService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;

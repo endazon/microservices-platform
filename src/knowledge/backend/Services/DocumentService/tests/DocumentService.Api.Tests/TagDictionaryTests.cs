@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 

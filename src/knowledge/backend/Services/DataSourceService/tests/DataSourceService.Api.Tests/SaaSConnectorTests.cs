@@ -4,7 +4,7 @@ using System.Text;
 using DataSourceService.Api.Composable.Adapters;
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Ports;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DataSourceService.Api.Tests;

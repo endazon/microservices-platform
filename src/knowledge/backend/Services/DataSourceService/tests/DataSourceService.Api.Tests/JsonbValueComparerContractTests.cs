@@ -1,5 +1,5 @@
 using DataSourceService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DataSourceService.Api.Tests;

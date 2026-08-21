@@ -9,7 +9,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public bool IsAvailable { get; private set; }
     public string? ConnectionString => _container?.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -27,7 +27,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_container is not null)
             await _container.DisposeAsync();

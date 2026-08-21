@@ -9,9 +9,9 @@ author: claude
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219]
-specs: [20260803_issue-455_backend-application-standard]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration]
+issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
 # 技術要件書
@@ -181,7 +181,7 @@ src/<unit>/backend/Services/<Name>Service/
 | ロギング | 標準 `ILogger` + OpenTelemetry Logs | Serilog 系（Seq 含む） |
 | キャッシュ | HybridCache（L1）+ Redis（L2） | — |
 | レジリエンス | Polly（`Microsoft.Extensions.Http.Resilience` 経由） | — |
-| テスト | xUnit **v3**（※現行は v2。後述）・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化） |
+| テスト | xUnit **v3**・**AwesomeAssertions**・NSubstitute・Testcontainers・Respawn | FluentAssertions（v8 商用化）・`Xunit.SkippableFact`（v3 対応版が無い。`Assert.Skip` を使う） |
 | API ドキュメント / バージョニング | Microsoft.AspNetCore.OpenApi + Scalar / Asp.Versioning.Http | Kiota・NSwag |
 
 バージョンの単一情報源は [`src/Directory.Packages.props`](../../src/Directory.Packages.props)（CPM）である。
@@ -193,8 +193,8 @@ src/<unit>/backend/Services/<Name>Service/
 `PackageReference` を一括注入できるため。[#471](https://github.com/endazon/microservices-platform/issues/471)）の
 `PackageReference`・`GlobalPackageReference` と `.cs` の `using` を走査して検出し、CI で止める。
 **CPM の `PackageVersion`（版の中央定義）は違反にしない** — 下記 ratchet の消化が終わるまで、
-[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit / FluentAssertions を
-広範に使用中**（実測 2026-08-21: `.csproj` **15 / 11**、`.cs` **36 / 96**）であるため、即時禁止では
+[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit を
+広範に使用中**（実測 2026-08-21: `.csproj` **15**、`.cs` **36**）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
 壊すため、許容値までは警告に留める。計画側に記録された前段の失敗モードと段階ポリシーの導入経緯を参照）。
@@ -212,8 +212,13 @@ src/<unit>/backend/Services/<Name>Service/
 ログの出口を `builder.Logging.AddOpenTelemetry()`（OTel Logging SDK）へ移し、`Serilog.AspNetCore` /
 `Serilog.Sinks.OpenTelemetry` の `PackageReference`・`PackageVersion`・baseline エントリ 13 件を削除した
 （実測 2026-08-16: `Serilog` の `.csproj` 3 → **0**、`using Serilog` を持つ `.cs` 13 → **0**）。
-**残件は 42 件 → 29 件 → 26 件**（`MassTransit` / `FluentAssertions`）。`Serilog` は不採用のまま `BANNED` に残るため、
-再混入は引き続き fail する。
+**`FluentAssertions` も消化済みである**（表明を v7 互換フォークの `AwesomeAssertions` へ移す。#455 A-3）。
+platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段 2）を移し、`PackageReference` と baseline
+エントリ 14 件、および `PackageVersion` を削除した（実測 2026-08-21: `FluentAssertions` の `.csproj` 14 → **0**、
+`using FluentAssertions` を持つ `.cs` 150 → **0**）。
+
+**残件は 42 件 → 29 件 → 26 件 → 15 件**（`MassTransit` **のみ**）。`Serilog` と `FluentAssertions` は
+不採用のまま `BANNED` に残るため、再混入は引き続き fail する。
 
 > **［2026-08-21 更新］本節の実測値を数え直した。** 直前の値のうち、`FluentAssertions` の
 > `.csproj` **14 → 11**・残件 **29 → 26** は platform ユニット 3 プロジェクトの移行によるものである。
@@ -241,14 +246,40 @@ src/<unit>/backend/Services/<Name>Service/
 > 完全一致（`^using MassTransit;`）にすると **30** になる。差の 6 は**サブ名前空間だけを使うファイル**であり、
 > **依存の実態としては 36 が正しい**（`MassTransit` パッケージへの参照であることに変わりはない）。
 
-**xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
-別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 **16** のテスト
-プロジェクトが同時に移らざるを得ない（実測 2026-08-21。**従前ここには 30 と書いていたが根拠が無い** ——
-`Microsoft.NET.Test.Sdk` を参照する `.csproj` を数えると 16 である。
-🔴 **`src/ai-stock-trading` は自前の `Directory.Packages.props` を持ち本リポと CPM を共有しないため、
-同時移行の対象に入らない**。同 submodule は既に v3 へ移行済みである）。この切替は独立した issue で行う。それまで **`xunit.v3` を参照する
-プロジェクトを作ってはならない**（非互換の runner と組み合わさる）。`check-backend-libraries.js` が
-`templates/` を含めて検査し、混入を止める。
+> **［2026-08-21 追記 / #455 A-3 段 2］同じ節をこの日のうちに二度直した。** 上の更新は
+> platform ユニットだけを移した時点（段 1）の値であり、knowledge ユニット 11 プロジェクトを移した
+> 段 2 で **`FluentAssertions` の系列がすべて 0 になった**ため、`.csproj` **11 → 0**・`.cs` **96 → 0**・
+> 残件 **26 → 15** へ再び書き換えた。**是正のたびに「この変更で新たに誤りになる自分の記述」を
+> 引き直す**（規則 10）——「残件がある」「広範に使用中」と書いた直前の文がまさにそれである。
+> 上の測定コマンドは残す（`FluentAssertions` の 2 本は現在 **0** を返すのが正しい姿であり、
+> 非 0 が出たら再混入である）。
+
+**xUnit は標準どおり v3 である**（`xunit.v3` 3.2.2 ＋ `xunit.runner.visualstudio` 3.1.5）。
+`xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ
+1 バージョンしか持てない**ため、**16** のテストプロジェクトを**同時に**切り替えた
+（実測 2026-08-21。`Microsoft.NET.Test.Sdk` を参照する `.csproj` の数。**従前ここには 30 と
+書いていたが根拠が無かった**。🔴 **`src/ai-stock-trading` は自前の `Directory.Packages.props` を持ち
+本リポと CPM を共有しないため対象外**。同 submodule は先に v3 へ移行済みで、本切替の参照実装になった）。
+
+以後は逆に **`xunit`（v2 本体）を参照するプロジェクトを作ってはならない**（非互換の runner と
+組み合わさる）。`check-backend-libraries.js` の `xunitRunnerMismatch` は `templates/` を含めて
+**両方向**を検査する —— 「`xunit.v3` ＋ runner 2.x」も「`xunit` ＋ runner 3.x」も fail させ、
+**一斉切替でしか成立しないという性質そのものを機械が担保する**。
+
+付随して次を撤去・置換した。
+
+- **`Xunit.SkippableFact` を撤去**（v3 対応版が無い。1.5.61 も `xunit.extensibility.execution` v2 に依存）。
+  動的スキップは v3 標準の **`Assert.Skip` / `Assert.SkipUnless` / `Assert.SkipWhen`** を使う。
+  🔴 **v2 のうちに外してはならなかった** —— v2 には動的スキップが無く、先に外すと
+  「真の Skipped」が「何もしない Passed」へ退化する。
+- **`if (cond) return;` のソフトスキップを `Assert.Skip*` へ改めた**（`PandocConversionServiceTests` の
+  3 箇所）。従前は pandoc 未導入の CI で **走らなかったケースが Passed として報告されていた**。
+- **`IAsyncLifetime` の戻り値型が `Task` → `ValueTask`**（v3 の破壊的変更。9 ファイル）。
+- **`ITestOutputHelper` が `Xunit.Abstractions` → `Xunit` へ移動**（1 ファイル）。
+- **アナライザ `xUnit1051` は `src/Directory.Build.props` でテストプロジェクトのみ抑止**した。
+  `TestContext.Current.CancellationToken` の採用は全テストの呼び出し側を書き換える別作業であり、
+  切替そのものの射程を超える（抑止しないと **1,886 件**の助言警告が実害のある警告を埋める）。
+  **抑止は恒久ではなく、段階採用の完了時に外す。**
 
 **年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（バックエンド標準ライブラリの計画 ADR のフォローアップ）。
 手順は[運用仕様書](../operations/)に記載する。
@@ -265,7 +296,7 @@ src/<unit>/backend/Services/<Name>Service/
 
 ## 開発・ビルド・テスト・デプロイ
 
-- **バックエンド**: `dotnet build` / `dotnet test`（xUnit。標準は v3・現行は v2 で各サービス再実装時に切替）/
+- **バックエンド**: `dotnet build` / `dotnet test`（xUnit **v3**）/
   `dotnet format --verify-no-changes`（CI lint ゲート）を
   ユニット別ソリューション（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) /
   [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)）毎に実行する。
@@ -293,6 +324,8 @@ src/<unit>/backend/Services/<Name>Service/
   .NET 10（LTS）に確定し、乖離は解消した。残る作業は同 ADR のフォローアップ
   （個別プロセス文書に残る「.NET 8」表記の順次追随）で、計画側の担当である。
 - バックエンド標準ライブラリ標準への移行残件: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
-  空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。xUnit v2 → v3 の切替時期と
-  `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は各サービス側で確定する。
+  空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。**残るのは `MassTransit`
+  のみ**である（Wolverine 移行。🔴 部分移行は禁止——「MT 発行 → Wolverine 購読」の組が 1 つでもできると、
+  ビルドもユニットテストもトポロジ検査も通ったまま業務イベントが消える）。
+  **xUnit v2 → v3 と `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は決着済みである**（上記）。
 - サービス間 HTTP の `Refit` は棚卸し表に記載が無い。gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）との関係は #441 で決着する。

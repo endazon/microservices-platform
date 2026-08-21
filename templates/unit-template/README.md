@@ -25,7 +25,7 @@
       src/SampleService.Infrastructure/      ← EF Core・Redis 等の実装
       src/SampleService.Contracts/           ← 公開契約（proto・イベント・DTO）
       tests/SampleService.Tests/             ← **テストは 1 プロジェクト**。中を 2 フォルダへ割る
-        Unit/                                ←   xUnit v2 + AwesomeAssertions + NSubstitute
+        Unit/                                ←   xUnit v3 + AwesomeAssertions + NSubstitute
         Integration/                         ←   Testcontainers + Respawn + Mvc.Testing
   frontend/
     package.json                            ← name: @<unit>/frontend（pnpm workspace で自動認識）
@@ -77,12 +77,13 @@
   単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の**和集合**を参照し、
   `Application` と `Api` の両方を `ProjectReference` する。**テスト種別ごとに `.csproj` を割らないこと**
   —— 実サービス（`src/**` の `<Name>.Api.Tests`）も全て 1 プロジェクトである。
-- **テストは xUnit v2 で書く**（ADR-0030 の標準は **v3** だが、本リポジトリの現行は v2 である）。
+- **テストは xUnit v3 で書く**（ADR-0030 の標準どおり。**［2026-08-21 更新］** 従前ここは
+  「v2 で書く」だった。16 プロジェクトの一斉切替が完了したため v3 が現行である）。
+  本体パッケージ ID は **`xunit.v3`** である（`xunit` は v2 系のまま更新されない別 ID）。
   `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ 1 バージョン
-  しか持てない**ため、v3 へ移るには既存の全テストプロジェクトが同時に移る必要がある。この切替は
-  **独立した issue** で行う。それまで **`xunit.v3` を参照するプロジェクトを作ってはならない**
-  （非互換の runner と組み合わさる）。`scripts/check-backend-libraries.js` が本テンプレートを含めて検査し
-  混入を止める。経緯と切替方針は
+  しか持てない**ため、v2 と v3 は共存できない。それゆえ **`xunit`（v2 本体）を参照するプロジェクトを
+  作ってはならない**（非互換の runner と組み合わさる）。`scripts/check-backend-libraries.js` が
+  本テンプレートを含めて**両方向**を検査し混入を止める。経緯は
   [`docs/tech/tech-requirements.md`](../../docs/tech/tech-requirements.md)「バックエンドアプリケーション層標準」を参照。
 - 実サービスの標準レイアウト（`Foundation/` / `Composable/` の区分）は
   [`src/README.md`](../../src/README.md) の「サービスユニットの標準レイアウト」に従う。

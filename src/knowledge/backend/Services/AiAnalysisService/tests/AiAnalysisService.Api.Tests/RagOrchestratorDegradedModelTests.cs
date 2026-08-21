@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 using AiAnalysisService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace AiAnalysisService.Api.Tests;
 

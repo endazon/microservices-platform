@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030]
-iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195]
-specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated]
-issues: [#454, #503, #510, #568, #571, #580, planning#146, planning#160, planning#161, planning#162, planning#180]
+iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231]
+specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration]
+issues: [#454, #503, #510, #568, #571, #580, #882, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -266,7 +266,7 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 
 | 種別 | 置き場所 | 使うもの | 責務 |
 | --- | --- | --- | --- |
-| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v2**（バックエンド標準ライブラリの決定では v3。切替は独立 issue——[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` が v2 用の 2.8.2 固定のため）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
+| 単体（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Unit`（**テストは 1 プロジェクト**。下記） | **xUnit v3**（バックエンド標準ライブラリの決定どおり。[`src/Directory.Packages.props`](../../src/Directory.Packages.props) の `xunit.runner.visualstudio` は v3 用の 3.1.5）＋ AwesomeAssertions ＋ NSubstitute | ドメイン規則・ハンドラの分岐 |
 | 統合（バックエンド） | `Services/<Name>/tests/<Name>.Tests/Integration`（同上。ユニット横断の統合は `src/<unit>/backend/Tests/<Unit>.IntegrationTests`） | Testcontainers（PostgreSQL / RabbitMQ / Redis / Qdrant）＋ Respawn ＋ `Mvc.Testing` | 実依存を伴う往復・イベント連鎖 |
 | 単体（フロント） | 実装と同居（`*.test.tsx`） | Vitest（jsdom）＋ Testing Library | 画面要素・状態遷移 |
 | E2E | `src/*/frontend/e2e` | Playwright | 主要導線（**統合スタックでの拡充は後続 issue**） |
@@ -285,13 +285,23 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 この規則の対象外である。雛形は `templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests`
 がこの形を示す。
 
-### xUnit のバージョンは v2 のまま書く（v3 へ先走らない）
+### xUnit は v3 で書く
 
-バックエンド標準ライブラリの決定では xUnit v3 だが、**CPM（[`src/Directory.Packages.props`](../../src/Directory.Packages.props)）の
-`xunit.runner.visualstudio` は v2 用の 2.8.2 に固定**されている。#455（PR #463）で入る
-`check-backend-libraries.js` の `xunitRunnerMismatch` 検査は「`xunit.v3` を参照しているのに runner が 2.x」を
-**CI で fail** させるため、各ドメイン issue が v3 で新規テストを書くと赤くなる。v3 への切替は runner の
-更新を伴う独立 issue とし、本基盤の期間中は **v2（`xunit` 2.9.3）で書く**。
+バックエンド標準ライブラリの決定どおり **xUnit v3** で書く。本体パッケージ ID は **`xunit.v3`** である
+（`xunit` は v2 系のまま更新されない別 ID）。CPM（[`src/Directory.Packages.props`](../../src/Directory.Packages.props)）の
+`xunit.runner.visualstudio` は v3 用の **3.1.5** である。
+
+**［2026-08-21 更新］従前ここは「v2 のまま書く（v3 へ先走らない）」だった。** `xunit.runner.visualstudio`
+は v2 用（2.x）と v3 用（3.x）で別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため
+段階移行が成立しない。16 のテストプロジェクトを一斉に切り替えて解消した。
+
+`check-backend-libraries.js` の `xunitRunnerMismatch` 検査は **両方向**を見る —— 「`xunit.v3` 参照 ＋
+runner 2.x」に加え、切替後に取り残された「`xunit`（v2 本体）参照 ＋ runner 3.x」も **CI で fail** させる。
+**一斉切替でしか成立しないという性質そのものを機械が担保する。**
+
+動的スキップは v3 標準の **`Assert.Skip` / `Assert.SkipUnless` / `Assert.SkipWhen`** を使う
+（`Xunit.SkippableFact` は v3 対応版が無いため撤去した）。🔴 **`if (cond) return;` で済ませないこと**
+—— 走らなかったケースが **Passed として報告される**。
 
 ## 本基盤の未整備部分（後続 issue へ切り出し）
 

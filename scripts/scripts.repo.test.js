@@ -1421,6 +1421,20 @@ module.exports = ({ ok, assert }) => {
     assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, null).length, 0);
   });
 
+  ok('xunitRunnerMismatch: 逆方向も検出する —— xunit（v2）と CPM の runner 3.x の同居（#455 A-2）', () => {
+    // A-2 で runner を 3.x へ上げた。以後は「v2 のまま取り残されたプロジェクト」が非互換になる。
+    // CPM は 1 パッケージ 1 バージョンしか持てず v2/v3 は共存できないため、一斉切替でしか成立しない。
+    // その「一斉である」性質を機械で担保する半分がこれである。
+    const v2 = '<PackageReference Include="xunit" /><PackageReference Include="xunit.runner.visualstudio" />';
+    const v3 = '<PackageReference Include="xunit.v3" /><PackageReference Include="xunit.runner.visualstudio" />';
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v2, '3.1.5').length, 1);
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v2, '2.8.2').length, 0);
+    // runner を参照しなければ判定しない（両方向とも）
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', '<PackageReference Include="xunit" />', '3.1.5').length, 0);
+    // 前方一致の取り違え防止: xunit.v3 だけを参照するプロジェクトを v2 と誤認しない
+    assert.strictEqual(backendLibs.xunitRunnerMismatch('t/X.Tests.csproj', v3, '3.1.5').length, 0);
+  });
+
   // --- check-backend-libraries: 検出漏れの是正（Issue #471） ---
 
   ok('BANNED: Kiota は実在 ID（Microsoft.Kiota.*）で登録され、旧 "Kiota" の死にエントリが残っていない', () => {

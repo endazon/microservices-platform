@@ -1,7 +1,7 @@
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace ConversionService.Worker.Tests;
 

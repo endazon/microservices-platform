@@ -4,7 +4,7 @@ using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.AspNetCore.Hosting;

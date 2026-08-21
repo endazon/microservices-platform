@@ -3,7 +3,7 @@ using DocumentService.Api.Composable.Steps;
 using DocumentService.Api.Foundation.Domain;
 using DocumentService.Api.Foundation.Observability;
 using DocumentService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 

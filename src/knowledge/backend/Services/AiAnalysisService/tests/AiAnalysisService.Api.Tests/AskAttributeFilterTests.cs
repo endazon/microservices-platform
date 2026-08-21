@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using AiAnalysisService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 using Platform.Shared.Contracts.Dtos;

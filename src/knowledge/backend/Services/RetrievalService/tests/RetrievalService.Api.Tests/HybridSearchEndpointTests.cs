@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.DependencyInjection;
