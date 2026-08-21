@@ -10,8 +10,8 @@ author: claude
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests]
-issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test]
+issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
 # 技術要件書
@@ -342,7 +342,7 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 | **ビルド** | ✅ **現在は止まる** | `PipelineExtensions.cs` / `IntrospectionExtensions.cs` の `where TConsumer : class, IConsumer, IPipelineStep` が、`IConsumer<T>` を捨てたコンシューマの登録をコンパイルエラーにする |
 | ユニットテスト | ⚠️ 半分 | 購読側を差し替えるとテストは落ちるが、**それは追随漏れの検出であって転送互換性の検証ではない** |
 | **トポロジ検査** | ❌ **素通りする** | `check-event-topology.js` は `IConsumer<T>` と `Handle(T)` を**同じ集合へ入れ**、発行側もレシーバ型を見ない。baseline に**トランスポートの欄が無い**。バグではなく射程外である |
-| 統合テスト | ❌ 検出できない | 後述 |
+| 統合テスト | ⚠️ **fan-out の退行（手順 3）だけは捕まえる** | 2 購読者同時受信テストを置いた（後述）。トランスポートの取り違え（MT 発行 → Wolverine 購読）そのものは依然として射程外である |
 
 > **［2026-08-21 訂正］従前ここには「ビルドもユニットテストもトポロジ検査も通ったまま
 > 業務イベントが消える」と書いていた。ビルドについては誤りである。** 上表の型制約が
@@ -358,17 +358,22 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 `AddMassTransit` / `AddPlatformPipelineStep` / `UsePlatformRetry` /
 `AddPlatformIntrospection` をそのまま通すようにした（**43 / 43 通過・件数不変**）。
 
-🔴 **ただし手順 3 の退行はまだ試験できない。残る穴は 2 つある。**
+🔴 **手順 3 の退行は試験できるようになった**（2026-08-21 / U0c。下記 2）。
+**残る穴は 1 つである。**
 
 1. **`Pipeline:ConfigPath` を設定していない。** よって `pipeline.json` の**段宣言と
    `queue` 上書きは依然として通っていない**。通ったのは配線コードまでである
    （段の宣言が無い環境では `AddPlatformPipelineStep` が既定で登録する）
-2. **`DocumentUpdated` の 2 購読者が同時に生きている状態を作るテストが無い。**
-   ✅ **器は用意した**（2026-08-21 / U0b）—— `IntegrationTestFactoryBase<TProgram>`（DbContext を
-   要求しない基底）を切り出し、両 Worker に `TestMarker` を置いて統合テストから
-   `IngestionServiceFactory` / `ConversionServiceFactory` としてホストできるようにした。
-   🔴 **テストそのものはまだ書いていない**（2 購読者を同時に立てて両方が受信することを
-   assert する新規テストが要る）。器があっても書かなければ試験されない。
+2. ~~**`DocumentUpdated` の 2 購読者が同時に生きている状態を作るテストが無い。**~~
+   ✅ **塞いだ**（2026-08-21 / U0c）。器（DbContext を要求しない基底 ＋ 両 Worker の `TestMarker`）
+   を用意したうえで、**2 購読者ホストを同時に立て、1 回だけ発行し、両方が終端の副作用まで
+   実行したことを assert する統合テスト**を置いた。観測点は Wiki 側が実 Postgres への行 upsert、
+   取り込み側がベクトルストアへの upsert である。
+   **変異試験で実測済み** —— 2 購読者を同一キュー名へ寄せると（＝手順 3 を怠った状態）
+   **このテストだけが落ち、既存 43 件は全て緑のまま**だった（Failed 1 / Passed 43 / Total 44）。
+   落ち方も期待どおりで、**片方は受信し、もう片方が受信しなかった**（競合コンシューマの形）。
+   ⚠️ Qdrant・LLM ゲートウェイ・Wiki.js はコンテナで立てていないため、**外向きのポートは
+   フェイクである**。差し替えていないのはメッセージングの配線であり、試験の対象もそこである。
 
 **一斉性の下限はイベントグラフの連結成分である。** メッセージングを行う 5 サービスは
 `RawDocumentFetched` → `DocumentNormalized` → `DocumentUpdated` / `DocumentDeleted` で
