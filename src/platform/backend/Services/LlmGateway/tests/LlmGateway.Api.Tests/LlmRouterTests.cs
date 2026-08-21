@@ -13,6 +13,11 @@ namespace LlmGateway.Api.Tests;
 // 外すと ZDR 除外機構（LlmRouter.EligibleModels / EgressMatrix.RequiresZeroDataRetention）を発火させる
 // 唯一の単体カバレッジが失われ、除外系テストが空振りしたまま緑になるためである（#850 の明示指定）。
 // 実効の割当は appsettings.json を正とし、ここの値を本番値として読まないこと。
+//
+// ［2026-08-21 追記 / #440・planning#426］**意図的な乖離は PurposeModels に限る。**
+// PurposeFallbackModels は本番と**同じキー集合・同じ値**に揃える（下の該当箇所を参照）——
+// 揃えない運用にした結果、diagram-coding の鎖を写し忘れたまま緑だった実例がある。
+// **この 2 つの扱いの違いを混同しないこと。**
 public class LlmRouterTests
 {
     private static LlmEndpointOptions Claude(bool enabled = true, int priority = 10) => new()
