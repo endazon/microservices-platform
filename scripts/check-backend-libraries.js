@@ -132,6 +132,15 @@ const FORBIDDEN_APIS = [
     why: 'exchange 名まで前置され、fan-out の宛先が「誰にも届かない」形になる（ADR-0027 手順 3）。'
       + ' キュー名はサービス名を前置して衝突を避け、exchange 名は既定（メッセージ型の fanout）のままにすること。',
   },
+  {
+    // #897 の監査（フレッシュ文脈）が「手順 3 を潰す最も現実的な経路」として実測で挙げた。
+    // 封じ込め側（規則 5）ではなく禁止側（規則 4）に置く —— 共通ヘルパも含めて**誰も使わない**ためである。
+    symbol: 'UseConventionalRouting',
+    why: 'Wolverine の規約ルーティングはリスニングキュー名を**メッセージ型名だけ**から導くため、'
+      + '同じイベントを購読する別サービスが**必ず**同一キューを共有し、pub/sub が competing consumer へ'
+      + '退行する（ADR-0027 手順 3 が防ごうとしているもの）。'
+      + ' WolverineExtensions.ListenToPlatformQueue で明示的に配線すること。',
+  },
 ];
 
 /**
@@ -177,6 +186,8 @@ const CONFINED_API_ALLOWED = [
 const CONFINED_APIS = [
   {
     symbol: 'ListenToRabbitQueue',
+    // 規則 5(b) 用。**実際に呼ばれている形**でしか一致しない（下の confinedApiHomeGaps を参照）。
+    usage: /\.\s*ListenToRabbitQueue\s*\(/,
     step: '手順 3',
     why: 'リスニングキュー名にサービス名を前置する適用点。前置を怠ると、同一イベントを購読する'
       + '2 サービスが同じキューを共有して competing consumer へ退行し、丁度 1 つだけが受信する。'
@@ -184,12 +195,15 @@ const CONFINED_APIS = [
   },
   {
     symbol: 'DisableConventionalLocalRouting',
+    usage: /\.\s*DisableConventionalLocalRouting\s*\(/,
     step: '手順 4',
     why: '発行元プロセスに同じ型のハンドラがあると発行がプロセス内へ閉じる。'
       + ' WolverineExtensions.UsePlatformMessagingDefaults を使うこと。',
   },
   {
     symbol: 'ServiceLocationPolicy',
+    // 代入されていること。参照（右辺の enum 名）だけでは満たさない。
+    usage: /\.\s*ServiceLocationPolicy\s*=/,
     step: '手順 5',
     why: 'internal 実装型に依存するハンドラが**最初のメッセージ受信時に**落ちる（既定は NotAllowed）。'
       + ' WolverineExtensions.UsePlatformMessagingDefaults を使うこと。',
@@ -217,17 +231,80 @@ function confinedApiViolations(
 }
 
 /**
+ * .cs からコメントを取り除く。行コメント（行頭・行末とも）とブロックコメントを空白へ潰す。
+ *
+ * 文字列リテラル中の `//` を誤ってコメントと見なさないよう、素朴だが状態を持って走る。
+ * **誤って消しすぎる方向は安全である**（規則 5(b) が「実装が無い」と判定して fail するため、
+ * 静かに通ることはない）。逆に消し足りないと F1 の穴が残るので、迷ったら消す側へ倒す。
+ */
+function stripCsharpComments(text) {
+  const src = String(text);
+  let out = '';
+  let i = 0;
+  let state = 'code'; // code | line | block | string | verbatim | char
+  while (i < src.length) {
+    const c = src[i];
+    const d = src[i + 1];
+    if (state === 'code') {
+      if (c === '/' && d === '/') { state = 'line'; i += 2; continue; }
+      if (c === '/' && d === '*') { state = 'block'; i += 2; continue; }
+      if (c === '@' && d === '"') { state = 'verbatim'; out += '  '; i += 2; continue; }
+      if (c === '"') { state = 'string'; out += ' '; i += 1; continue; }
+      if (c === '\'') { state = 'char'; out += ' '; i += 1; continue; }
+      out += c; i += 1; continue;
+    }
+    if (state === 'line') {
+      if (c === '\n') { state = 'code'; out += '\n'; }
+      i += 1; continue;
+    }
+    if (state === 'block') {
+      if (c === '*' && d === '/') { state = 'code'; i += 2; continue; }
+      if (c === '\n') out += '\n';
+      i += 1; continue;
+    }
+    if (state === 'string') {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '"') { state = 'code'; }
+      i += 1; continue;
+    }
+    if (state === 'verbatim') {
+      if (c === '"' && d === '"') { i += 2; continue; }
+      if (c === '"') { state = 'code'; }
+      i += 1; continue;
+    }
+    // char
+    if (c === '\\') { i += 2; continue; }
+    if (c === '\'') { state = 'code'; }
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * 規則 5(b): 封じ込め API が**本拠から消えていない**か。
  *
  * 🔴 **これが無いと規則 5 は静かに no-op になる。** (a) だけなら「どこにも書かれていない」状態が
  * 満点になり、共通ヘルパから手順 4 の 1 行を削っても検査は緑を返す。封じ込めは
  * 「他所で書けない」だけでは半分で、「ここに在り続ける」が要る。
- * #883（NaN で門が開いた）・#889（自己試験が評価されていなかった）と同型の fail-open を、
- * 検査器を足す時点で塞いでおく。
+ *
+ * 🔴 **(a) と (b) は照合の仕方が違う。極性が逆だからである。**
+ *   - (a)「ここに書くな」→ **コメントも含めた全文**をバレ識別子で見る（規則 4 と同じ。
+ *     「コメントに書いてから外す」経路を塞ぐ）。見落としは fail 側へ倒れるので安全である。
+ *   - (b)「ここに在れ」→ **コメントを除いたコード**を**呼び出し構文**で見る。
+ *     全文をバレ識別子で見ると、**本拠の説明コメントが実装の消失を覆い隠す**。
+ *
+ * 🔴 **当初の実装は (a) のロジックを (b) へ流用しており、まさにその穴を持っていた。**
+ * `PR #897` の AI レビューとフレッシュ文脈監査が独立に同じ穴を指摘し、実測で確認した ——
+ * 本拠の説明コメントが `ListenToRabbitQueue` と `ServiceLocationPolicy` に言及しているため、
+ * **実コード 1 行だけを消すと EXIT=0 になっていた**（当初の変異試験はコメントごと消していたので
+ * 当たっていなかった）。fail-open を塞ぐつもりで足した門が、それ自体 fail-open だった。
  */
 function confinedApiHomeGaps(homeContent, list = CONFINED_APIS) {
+  const code = stripCsharpComments(homeContent);
   return list
-    .filter((f) => !new RegExp(`\\b${f.symbol}\\b`).test(String(homeContent)))
+    .filter((f) => !(f.usage instanceof RegExp
+      ? f.usage.test(code)
+      : new RegExp(`\\b${f.symbol}\\b`).test(code)))
     .map((f) => f.symbol);
 }
 
@@ -611,17 +688,31 @@ function scanTree(root = REPO_ROOT) {
       domain.push({ kind: 'template-banned', project: toPosix(proj), detail: banned.join(' / ') });
     }
   }
-  for (const cs of walk(SRC_DIR, (p) => /\.cs$/i.test(p) && !isExcludedPath(p), [], root)) {
-    const proj = owningProject(cs, csprojPaths);
-    if (!proj) continue;
-    const content = fs.readFileSync(path.join(root, cs), 'utf8');
-    // using の許否は「その .cs がどのプロジェクトに属するか」で決まる（ADR-0041 決定 2。#500）。
-    add(proj, bannedInSource(content, bannedListFor(proj)));
-    // 規則 4: 禁止 API シンボル。**プロジェクトではなくファイルを名指しする**
-    // （1 行の混入であり、どのファイルかが分からないと直せない）。
-    domain.push(...forbiddenApiViolations(cs, content));
-    // 規則 5(a): 封じ込め API が許可ファイルの外で使われていないか（ADR-0027 手順 6）。
-    domain.push(...confinedApiViolations(cs, content));
+  // 規則 4・5(a) は**ファイル単位**の規律であり、プロジェクトの所属を問わない。
+  // 規則 1（不採用ライブラリの using）だけが「その .cs がどのプロジェクトに属するか」を要する。
+  //
+  // 🔴 **走査範囲は src/ と templates/ の両方である。**（#897 の監査が実測で 2 つの穴を挙げた）
+  //   - `templates/` は新サービスの出発点であり、**複製される**。規則 1 が既に
+  //     「雛形へ不採用ライブラリを持ち込ませない」を強制しているのと同じ理由で、
+  //     禁止 API・封じ込め API も雛形で止める。
+  //   - `.csproj` にオーナーが無い `.cs`（孤児）も規則 4・5(a) の対象にする。
+  //     従来は `if (!proj) continue;` で規則 1 と一緒に飛ばしており、
+  //     「検査対象はプロジェクトグラフが偶然拾ったファイル」になっていた。
+  const csRoots = [SRC_DIR, TEMPLATE_DIR];
+  for (const dir of csRoots) {
+    for (const cs of walk(dir, (p) => /\.cs$/i.test(p) && !isExcludedPath(p), [], root)) {
+      const content = fs.readFileSync(path.join(root, cs), 'utf8');
+      const proj = owningProject(cs, csprojPaths);
+      if (proj) {
+        // using の許否は「その .cs がどのプロジェクトに属するか」で決まる（ADR-0041 決定 2。#500）。
+        add(proj, bannedInSource(content, bannedListFor(proj)));
+      }
+      // 規則 4: 禁止 API シンボル。**プロジェクトではなくファイルを名指しする**
+      // （1 行の混入であり、どのファイルかが分からないと直せない）。
+      domain.push(...forbiddenApiViolations(cs, content));
+      // 規則 5(a): 封じ込め API が許可ファイルの外で使われていないか（ADR-0027 手順 6）。
+      domain.push(...confinedApiViolations(cs, content));
+    }
   }
 
   // 規則 5(b): 封じ込め API が本拠から消えていないか。**(a) だけでは静かに no-op になる。**
@@ -1018,16 +1109,83 @@ function selfTest() {
   t('★ 本拠から消えたら消失として報告する（(a) だけでは静かに no-op になる）',
     confinedApiHomeGaps('options.Policies.DisableConventionalLocalRouting();')
       .sort().join(',') === 'ListenToRabbitQueue,ServiceLocationPolicy');
+  t('★ 本拠に手順 4 だけが在る場合、残り 2 つが消失として挙がる（順序非依存）',
+    confinedApiHomeGaps('x.DisableConventionalLocalRouting();').length === 2);
   t('★ 本拠が空（ファイルごと消失）なら全シンボルを報告する',
     confinedApiHomeGaps('').length === CONFINED_APIS.length);
-  t('本拠に全シンボルが在れば消失 0 件',
-    confinedApiHomeGaps(CONFINED_APIS.map((f) => f.symbol).join('\n')).length === 0);
+  t('本拠に全シンボルが**呼び出し構文で**在れば消失 0 件',
+    confinedApiHomeGaps(
+      'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).length === 0);
+  t('★ シンボル名を並べただけ（宣言・言及）では「在る」と見なさない',
+    confinedApiHomeGaps(CONFINED_APIS.map((f) => f.symbol).join('\n')).length
+      === CONFINED_APIS.length);
   t('★ 禁止側（規則 4）と封じ込め側（規則 5）でシンボルが重複しない（極性の混同防止）',
     !CONFINED_APIS.some((c) => FORBIDDEN_APIS.some((f) => f.symbol === c.symbol)));
   t('封じ込め API には手順と理由が必ず付く（メッセージだけ見て直せるように）',
     CONFINED_APIS.every((f) => typeof f.why === 'string' && f.why.length > 0
       && typeof f.step === 'string' && f.step.length > 0));
   t('許可リストの先頭は本拠である', CONFINED_API_ALLOWED[0] === CONFINED_API_HOME);
+
+  // --- 規則 5 の F1 是正: (b) はコメントに覆い隠されない（#897 の監査・AI レビューが実測した穴） ---
+  t('★ (b) 本拠の説明コメントだけが言及していても「在る」と見なさない（F1 の回帰試験）',
+    confinedApiHomeGaps(
+      '// 手順 5: 既定は ServiceLocationPolicy.NotAllowed である\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).join(',') === 'ServiceLocationPolicy');
+  t('★ (b) 実際に代入されていれば「在る」と見なす',
+    confinedApiHomeGaps(
+      'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n'
+      + 'options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;\n',
+    ).length === 0);
+  t('★ (b) 行末コメントでも覆い隠されない',
+    confinedApiHomeGaps(
+      'var x = 1; // options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).join(',') === 'ServiceLocationPolicy');
+  t('★ (b) ブロックコメントでも覆い隠されない',
+    confinedApiHomeGaps(
+      '/* options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed; */\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).join(',') === 'ServiceLocationPolicy');
+  t('★ (b) 文字列リテラル中の言及でも覆い隠されない',
+    confinedApiHomeGaps(
+      'var s = "options.ServiceLocationPolicy = x";\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).join(',') === 'ServiceLocationPolicy');
+  t('★ (b) 全 API に呼び出し構文（usage）が定義されている（1 つでも欠けると全文一致へ落ちる）',
+    CONFINED_APIS.every((f) => f.usage instanceof RegExp));
+
+  // コメント除去そのもの。
+  t('stripCsharpComments: 行コメントを消す',
+    !stripCsharpComments('a(); // ListenToRabbitQueue(').includes('ListenToRabbitQueue'));
+  t('stripCsharpComments: ブロックコメントを消す',
+    !stripCsharpComments('/* ListenToRabbitQueue( */ a();').includes('ListenToRabbitQueue'));
+  t('stripCsharpComments: コードは残す',
+    stripCsharpComments('x.ListenToRabbitQueue("q");').includes('ListenToRabbitQueue'));
+  t('★ stripCsharpComments: 文字列中の // をコメント扱いしない（消しすぎでコードを失わない）',
+    stripCsharpComments('var u = "http://x"; y.DisableConventionalLocalRouting();')
+      .includes('DisableConventionalLocalRouting'));
+
+  // --- F4: 許可リストは「ちょうど 2 件」で固定する ---
+  // 「2 件以上」にすると、許可リストを増やす変更が自己試験を素通りする。
+  // scripts.repo.test.js のテストプロジェクト数 ratchet と同じ作法である
+  // （「N 件以上」にすると走査が壊れて空振りしたときに緑になる）。
+  t('★ 許可リストはちょうど 2 件である（本拠とその試験ファイル。増やすときはここも直す）',
+    CONFINED_API_ALLOWED.length === 2);
+
+  // --- F3: 規約ルーティングは禁止側（規則 4）にある ---
+  t('★ UseConventionalRouting は禁止 API である（手順 3 を潰す最も現実的な経路）',
+    FORBIDDEN_APIS.some((f) => f.symbol === 'UseConventionalRouting'));
+  t('UseConventionalRouting の呼び出しを検出する',
+    forbiddenApiViolations('a/B.cs', 'opts.UseRabbitMq().UseConventionalRouting();').length === 1);
 
   let failed = 0;
   for (const c of cases) {

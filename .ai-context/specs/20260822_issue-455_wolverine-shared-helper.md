@@ -182,8 +182,8 @@ git grep -n '\bDisableConventionalLocalRouting\b\|\bServiceLocationPolicy\b\|\bL
 | 項目 | 実測 |
 | --- | --- |
 | 新設した共通ヘルパ | `Foundation/Extensions/WolverineExtensions.cs`（手順 3・4・5 の唯一の実装箇所） |
-| 新設した試験プロジェクト | `Platform.Shared.Infrastructure.Tests`（**13 件**すべて Passed） |
-| `check-backend-libraries` 自己試験 | **78 → 91 件**（規則 5 の 13 件を**評価ループより前**へ置いたことを変異 F で実測） |
+| 新設した試験プロジェクト | `Platform.Shared.Infrastructure.Tests`（**15 件**すべて Passed） |
+| `check-backend-libraries` 自己試験 | **78 → 106 件**（規則 5 の分を**評価ループより前**へ置いたことを変異 F で実測） |
 | 不採用ライブラリ残件 | **13 件のまま**（増やしていない。下記「自分の作り込みを検査器に捕まえられた」参照） |
 | 安全弁（型制約 2 箇所） | **無改変**（`git diff --stat` が空であることで証明） |
 | テストプロジェクト数の ratchet | `scripts.repo.test.js` **15 → 16** |
@@ -216,7 +216,7 @@ git grep -n '\bDisableConventionalLocalRouting\b\|\bServiceLocationPolicy\b\|\bL
 | # | 変異 | 期待 | 実測 |
 | --- | --- | --- | --- |
 | A | 許可外の実ファイル（`WikiService.Api/Program.cs`）へ `DisableConventionalLocalRouting` を 1 行 | 規則 5(a) が fail | ✅ **EXIT=1** — `[封じ込め API] src/knowledge/.../WikiService.Api/Program.cs` |
-| B | 本拠から `ServiceLocationPolicy` を消す | 規則 5(b) が fail | ✅ **EXIT=1** — `[封じ込め API の消失]` |
+| B | 本拠から `ServiceLocationPolicy` を消す | 規則 5(b) が fail | ⚠️ **EXIT=1 だが当たっていなかった**（下記「🔴 変異 B は証明したい命題を証明していなかった」） |
 | C | 本拠から手順 4 の呼び出しを削る | テストが落ちる | ✅ **Failed 1 / Passed 12** — 落ちたのは `手順4_…` のみ |
 | D | 手順 5 を `AllowedButWarn` に変える | テストが落ちる | ✅ **Failed 1 / Passed 12** — 落ちたのは `手順5_…` のみ |
 | E | 安全弁から `IPipelineStep` を外す（U5 の模擬） | 安全弁テストが落ちる | ✅ **ビルド EXIT=0 を確認したうえで** Failed 1（`AddPlatformPipelineStep_は…`） |
@@ -229,6 +229,54 @@ git grep -n '\bDisableConventionalLocalRouting\b\|\bServiceLocationPolicy\b\|\bL
 
 **復旧確認**: 変異した 4 ファイルすべてを `cmp` でバイト一致確認した（本拠の 1 件のみ、
 規則 4 の是正を挟んだため意図した差分あり）。`git status` に変異残骸なし。
+
+## 🔴 変異 B は証明したい命題を証明していなかった（#897 のレビューと監査が独立に検出）
+
+**変異 B は実コード行とコメント行を*まとめて*消していた。** そのため EXIT=1 は出たが、
+証明したかった命題（**実装が静かに消えたら検出する**）は証明できていなかった。
+
+`confinedApiHomeGaps` は当初、規則 5(a) と同じ「コメントを含む全文をバレ識別子で照合」を
+流用していた。本拠の説明コメントは `ListenToRabbitQueue` と `ServiceLocationPolicy` に
+言及しているため、**実コード 1 行だけを消すと EXIT=0 になっていた**。
+
+実測（是正前）:
+
+```
+# L63 の代入だけを消し、L59 のコメントを残す
+実コード代入: 0 / コメント言及: 1
+$ node scripts/check-backend-libraries.js  → EXIT=0   ← 期待は 1
+```
+
+3 つのうち検出できていたのは `DisableConventionalLocalRouting` だけで、それは**たまたま
+周辺コメントがその名前を書いていなかったから**である。**最も条件の良い 1 件を見て
+「塞いだ」と一般化した。**
+
+### 是正と再変異（実測）
+
+(b) は**コメントと文字列リテラルを除いたコード**へ**呼び出し構文**で照合するようにした。
+
+```
+# 同じ変異（実コードだけ消し、コメントは残す）
+$ node scripts/check-backend-libraries.js
+  [封じ込め API の消失] …/WolverineExtensions.cs
+    「ServiceLocationPolicy」（ADR-0027 手順 5）が共通ヘルパから消えています。
+EXIT=1
+```
+
+🔴 **本拠のコメントは意図的に残した。** 実リポジトリの状態そのものが、この穴に対する
+恒常的な回帰試験になる。
+
+## 🔴 監査が挙げた残り 5 件も是正した
+
+| # | 指摘 | 是正 | 再変異の実測 |
+| --- | --- | --- | --- |
+| F2 | **適用点 `ListenToPlatformQueue` に試験が無い** —— 前置を外してもビルド・13 件・検査器すべて緑 | Wolverine の公開 API から実際のキュー名を読む試験を 2 件追加 | 前置を外すと **Build succeeded のうえで Failed 2** |
+| F3 | `UseConventionalRouting`（**手順 3 を潰す最も現実的な経路**）がどの規則にも無い | **規則 4（禁止側）**へ追加。極性が `PrefixIdentifiers` と同じで、共通ヘルパも使わない | 実サービスへ 1 行 → **EXIT=1** |
+| F4 | 許可リストへ 3 件目を足しても自己試験が全て通る | 自己試験で**ちょうど 2 件**に固定 | 3 件目を足すと **EXIT=1** |
+| F5 | `templates/**/*.cs` が規則 4・5 の対象外（雛形は**複製される**） | 走査範囲へ `templates/` を追加 | 雛形へ 2 行 → **EXIT=1**（禁止 API ＋ 封じ込め API） |
+| F6 | `.csproj` に属さない `.cs` が `if (!proj) continue;` で飛ばされる | 規則 4・5 は**ファイル単位**なので所属を問わない形へ | `src/Orphan.cs` → **EXIT=1** |
+
+**F7（`唯一の実装箇所` という語が submodule の同名ファイルを含意し得る）** は語を限定した。
 
 ## 検証（ローカル実測）
 

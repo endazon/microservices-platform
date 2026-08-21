@@ -6,10 +6,11 @@ namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
 // ADR-0027 移行チェックリスト 手順 3・4・5 を全サービス共通で満たすための Wolverine 設定拡張。
 //
-// 🔴 **本ファイルは 3 手順の唯一の実装箇所である。** 手順 6 が「3〜5 を共通ヘルパへ封じ込め、
-// 個別サービスでの逸脱を静的検査で禁止する」と定めるため、scripts/check-backend-libraries.js の
-// 規則 5 が (a) 本ファイル以外での使用を fail させ、(b) **本ファイルから消えたことも** fail させる。
-// 封じ込めは「他所で書けない」だけでは半分で、「ここに在り続ける」が要る（IADR-0233 決定 2）。
+// 🔴 **本ファイルは 3 手順の唯一の実装箇所である**（submodule の別プロジェクトは射程外）。
+// 手順 6 が「3〜5 を共通ヘルパへ封じ込め、個別サービスでの逸脱を静的検査で禁止する」と定めるため、
+// scripts/check-backend-libraries.js の規則 5 が (a) 本ファイル以外での使用を fail させ、
+// (b) **本ファイルから消えたことも** fail させる。封じ込めは「他所で書けない」だけでは半分で、
+// 「ここに在り続ける」が要る（IADR-0233 決定 2）。
 //
 // 手順 3〜5 はいずれも「怠っても起動し、ビルドもテストも通り、実行時に静かに壊れる」種類の設定である。
 // 手順 3 を怠ると pub/sub が competing consumer へ退行して片方だけが受信し、手順 4 を怠ると発行が
@@ -26,20 +27,28 @@ public static class WolverineExtensions
     // キュー名が同じになると RabbitMQ は competing consumer となり **丁度 1 つだけが受信する**。
     // サービス名を前置すればキューは必ず分かれ、両方が受信する。
     //
-    // 🔴 **前置は「キュー名だけ」に留める。** ADR-0027 手順 3 は、exchange 名まで前置する
-    // ブローカ側の一括前置 API を名指しで禁じている（発行側が前置していない exchange へ publish して
-    // 「誰にも届かない」形になるため）。その API 名は本ファイルには書かない ——
-    // check-backend-libraries.js 規則 4 が **.cs 中のコメントも含めて** 名前の出現自体を fail させる
-    // （「コメントに書いてから外す」経路を塞ぐ設計）。名前と経緯は docs/tech/tech-requirements.md にある。
+    // 区切りは "." である（"-" ではない）。サービス名自体が kebab-case（wiki-service）であり、
+    // "-" で繋ぐと "wiki-service-DocumentUpdated" のどこまでがサービス名か読めない。
+    // 隣接プロジェクト ai-stock-trading も同じ問題に対して "." を採っている（同 IADR-0129 決定 1）。
+    //
+    // 🔴 **exchange 名には前置しない。** 前置すると発行側の exchange と食い違い「誰にも届かない」形になる。
+    // ブローカ側の一括前置 API と規約ルーティングはいずれも ADR-0027 手順 3 が名指しで禁じており、
+    // その 2 つの API 名は本ファイルに書かない —— check-backend-libraries.js 規則 4 が
+    // **.cs 中のコメントも含めて**名前の出現自体を fail させる（「コメントに書いてから外す」経路を塞ぐ設計）。
+    // 名前と経緯は docs/tech/tech-requirements.md にある。
     public static string PlatformQueueName(string serviceName, string queueName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(serviceName);
         ArgumentException.ThrowIfNullOrWhiteSpace(queueName);
-        return $"{serviceName}-{queueName}";
+        return $"{serviceName}.{queueName}";
     }
 
     // 手順 3 の適用点。個別サービスは ListenToRabbitQueue を直接呼ばず、必ずこれを通す
-    // （直接呼び出しは規則 5 が fail させる）。
+    // （直接呼び出しは規則 5(a) が fail させる）。
+    //
+    // ⚠️ この行のシンボル名はコメントにも本文にも現れるが、規則 5(b) は**コメントを除いたコードに対して
+    // 呼び出し構文で**照合するため、実装が消えれば検出される。**この二重の出現は意図的に残している** ——
+    // 実リポジトリの状態そのものが「コメント越しのすり抜け」に対する恒常的な回帰試験になる。
     public static RabbitMqListenerConfiguration ListenToPlatformQueue(
         this WolverineOptions options, string serviceName, string queueName)
     {

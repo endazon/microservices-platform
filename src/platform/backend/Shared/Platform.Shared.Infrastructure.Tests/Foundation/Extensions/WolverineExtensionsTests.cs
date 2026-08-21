@@ -3,6 +3,7 @@ using AwesomeAssertions;
 using JasperFx.CodeGeneration.Model;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Wolverine;
+using Wolverine.RabbitMQ;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Extensions;
 
@@ -63,7 +64,45 @@ public class WolverineExtensionsTests
     public void 手順3_リスニングキュー名にサービス名を前置する()
     {
         WolverineExtensions.PlatformQueueName("wiki-service", "DocumentUpdated")
-            .Should().Be("wiki-service-DocumentUpdated");
+            .Should().Be("wiki-service.DocumentUpdated");
+    }
+
+    // 実際に設定されたキュー名を Wolverine の公開 API から読む。
+    //
+    // 🔴 **純粋関数（PlatformQueueName）の試験だけでは足りない。** #897 の監査が実測で示したとおり、
+    // 適用点が `ListenToRabbitQueue(queueName)` へ退化しても——つまり前置が丸ごと消えても——
+    // ビルドも 13 件のテストも検査器もすべて緑のままだった。**封じ込めるべきは名前の作り方ではなく
+    // 適用点である**（IADR-0233 決定 1）以上、適用点そのものを観測しなければ守れていない。
+    private static string[] RabbitQueueNamesOf(WolverineOptions options) =>
+        [.. options.Transports
+            .Single(t => t.Protocol == "rabbitmq")
+            .Endpoints()
+            .Select(e => e.EndpointName)];
+
+    [Fact]
+    public void 手順3_適用点が実際に前置つきのキューを購読する()
+    {
+        var options = new WolverineOptions();
+        options.UseRabbitMq();
+
+        options.ListenToPlatformQueue("wiki-service", "DocumentUpdated");
+
+        RabbitQueueNamesOf(options).Should().Contain("wiki-service.DocumentUpdated");
+    }
+
+    [Fact]
+    public void 手順3_適用点を通せば同一イベントの2購読者が別々のキューになる()
+    {
+        // 手順 3 が防ぐ退行そのもの。キューが 1 つに潰れると competing consumer になり、
+        // 丁度 1 つだけが受信する（＝業務イベントが片方へ届かない）。
+        var options = new WolverineOptions();
+        options.UseRabbitMq();
+
+        options.ListenToPlatformQueue("ingestion-service", "DocumentUpdated");
+        options.ListenToPlatformQueue("wiki-service", "DocumentUpdated");
+
+        RabbitQueueNamesOf(options).Should().Contain(
+            ["ingestion-service.DocumentUpdated", "wiki-service.DocumentUpdated"]);
     }
 
     [Fact]
