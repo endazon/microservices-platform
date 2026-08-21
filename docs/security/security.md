@@ -11,7 +11,7 @@ ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016]
 iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0206, IADR-0216, IADR-0220]
 specs: [01_requirements, ADR-0004_authz-abac, ADR-0005_service-mesh-istio, IADR-0009_wiki-browsing-404-hides-existence, IADR-0017_internal-service-auth-network-isolation, IADR-0020_wiki-js-deployment-abac-gateway, IADR-0026_mesh-mtls-supersedes-network-isolation]
-issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #628, #629, planning#383]
+issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #628, #629, AST#18, AST#24, planning#383]
 -->
 
 # セキュリティ仕様書
@@ -151,7 +151,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   全ロールと clearance=`restricted` を束ねた dev 用スーパーユーザー。1 アカウントで全機能の疎通確認を行う
   ための便宜であり、**権限分離（ロール別挙動）の検証には使わない**（それは `poc-*` の役割）。
   他の dev ユーザーと同様、共有／ステージング／本番の realm には含めない。
-- **`ai-stock-trading-kb-writer`（AST#18 のクロスユニット s2s 用）**: AST ユニットが本レルムの
+- **`ai-stock-trading-kb-writer`（ai-stock-trading からのクロスユニット s2s 用）**: AST ユニットが本レルムの
   DocumentService へ KB 書き込み（`POST /documents`）を行うための機密クライアント（service-account に
   `platform-operator`・client_credentials のみ）。realm import 内の `ai-stock-trading-kb-writer-dev-secret-change-me`
   は **dev 専用**で、本番シークレットは環境変数／Secret（Vault）経由で AST 環境へ注入し、realm import へは
@@ -163,7 +163,7 @@ DataSourceService `/datasources`、AuthorizationService `/authz/scope`・`/authz
   で上書き可・manifest に平文で置かない）。Headlamp 資産は `deploy/local/`（dev 専用・opt-in・既定オフ）に閉じ、
   本番像へは同梱しない。ログインは `developer` を流用し新規資格情報を増やさず、認可は OIDC token passthrough で
   API server の RBAC が担う（Headlamp SA には広域権限を bind しない＝fail-safe）。
-- **Vault dev root トークン（AST#24 の経路B opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
+- **Vault dev root トークン（経路B の opt-in）**: 可観測性/Vault オーバーレイを opt-in で立てる際、
   Vault **dev モード**の root トークンを Secret `vault-dev-token`（`platform-infra`）へ入れる。既定は dev 値 `devroot`
   （`VAULT_DEV_ROOT_TOKEN` 環境変数で上書き可）で、**manifest に平文で置かず** `k8s-local-up.sh` の `VAULT=1` が
   `apply_secret` で生成する（postgres/rabbitmq の dev secret と同位置づけ）。Vault dev はインメモリで再起動で揮発する
