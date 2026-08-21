@@ -50,7 +50,7 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
         body.Text.Should().NotBeNullOrWhiteSpace();
     }
 
-    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→opus / rag-answer→sonnet / diagram-coding→haiku）。
+    // FR-11: Model 未指定なら用途（purpose）に応じてモデルを切り替える（analysis→opus / rag-answer→sonnet / diagram-coding→sonnet）。
     // ADR-0010 / IADR-0022: 既定 opus / 定型 sonnet・haiku。
     // ［2026-08-18 追記 / #850］計画 ADR-0038 決定 1 により最難関 analysis は claude-fable-5 → claude-opus-5 へ改定した。
     // これにより analysis は DefaultModel と同値になり、本ケースだけでは「用途別割当が発火した」ことと
@@ -64,7 +64,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     [Theory]
     [InlineData("analysis", "claude-opus-5")]
     [InlineData("rag-answer", "claude-sonnet-5")]
-    [InlineData("diagram-coding", "claude-haiku-4-5")]
+    // ［2026-08-21 追記 / #440］計画 06_technical/04_ai-rag-stack（fixed）§変更履歴 2026-08-02 と INDEX 決定 6 により
+    // diagram-coding のピンを claude-haiku-4-5 → claude-sonnet-5 へ改定した（質問票 第4回 Q12 =(あ)・planning#83。
+    // **単価 3 倍**を受け入れた裁定である）。claude-haiku-4-5 はフォールバック先として利用許可集合に残る。
+    [InlineData("diagram-coding", "claude-sonnet-5")]
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)
     {
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = purpose };
