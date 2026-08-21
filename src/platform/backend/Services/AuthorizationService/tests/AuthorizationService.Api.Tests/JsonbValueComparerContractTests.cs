@@ -1,5 +1,5 @@
 using AuthorizationService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuthorizationService.Api.Tests;

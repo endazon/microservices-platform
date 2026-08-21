@@ -2,7 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Anthropic.SDK;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Ports;
 using Microsoft.Extensions.Configuration;

@@ -1,6 +1,6 @@
 using System.Diagnostics.Metrics;
 using System.Net.Http.Json;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Foundation.Observability;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Foundation.Routing;

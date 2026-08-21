@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Foundation.Ports;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Mvc.Testing;

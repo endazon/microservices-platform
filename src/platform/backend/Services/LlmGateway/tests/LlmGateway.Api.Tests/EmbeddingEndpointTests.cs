@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Foundation.Routing;

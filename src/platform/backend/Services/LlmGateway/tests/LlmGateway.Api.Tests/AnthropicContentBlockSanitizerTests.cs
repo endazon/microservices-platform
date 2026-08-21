@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Composable.Adapters;
 using Microsoft.Extensions.Logging.Abstractions;
 

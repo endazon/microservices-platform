@@ -64,15 +64,6 @@
       "FluentAssertions",
       "MassTransit"
     ],
-    "src/platform/backend/Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj": [
-      "FluentAssertions"
-    ],
-    "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": [
-      "FluentAssertions"
-    ],
-    "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": [
-      "FluentAssertions"
-    ],
     "src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj": [
       "MassTransit"
     ],

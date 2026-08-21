@@ -1,6 +1,6 @@
 using AuthorizationService.Api.Foundation.Domain;
 using AuthorizationService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 
 namespace AuthorizationService.Api.Tests;

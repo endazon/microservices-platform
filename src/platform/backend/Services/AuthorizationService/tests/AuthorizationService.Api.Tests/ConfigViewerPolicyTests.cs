@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;

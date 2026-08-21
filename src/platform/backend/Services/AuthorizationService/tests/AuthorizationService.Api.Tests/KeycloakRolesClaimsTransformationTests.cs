@@ -1,5 +1,5 @@
 using System.Security.Claims;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 
 namespace AuthorizationService.Api.Tests;

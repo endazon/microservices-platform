@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using LlmGateway.Api.Foundation.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
