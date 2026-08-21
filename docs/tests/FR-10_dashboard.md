@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-10, UC-05]
 adrs: []
-iadrs: []
-specs: [01_requirements, 01_usecases, 20260703_FR-10_usage-dashboard, FR-10_dashboard, IADR-0011_dashboard-service-usage-aggregation]
+iadrs: [IADR-0011]
+specs: [20260703_FR-10_usage-dashboard, FR-10_dashboard]
 issues: []
 -->
 

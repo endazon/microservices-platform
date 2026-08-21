@@ -10,7 +10,7 @@ author: claude
 ids: [FR-01, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0014, ADR-0027]
 iadrs: [IADR-0001, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0148]
-specs: [01_requirements, 20260627_FR-01_data-source-catalog-pipeline]
+specs: [20260627_FR-01_data-source-catalog-pipeline]
 issues: [#195, #217, #218, #219, #537, #546, #580, planning#200]
 -->
 

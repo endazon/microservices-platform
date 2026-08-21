@@ -10,7 +10,7 @@ author: claude
 ids: [FR-01, FR-02, FR-03, FR-05, FR-09, FR-11, FR-13, FR-15, NFR-11, SC-05, SC-11, UC-07]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0011, ADR-0016]
 iadrs: [IADR-0009, IADR-0012, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0029, IADR-0030, IADR-0039, IADR-0041, IADR-0042, IADR-0044, IADR-0047, IADR-0048, IADR-0049, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0066, IADR-0075, IADR-0077, IADR-0080, IADR-0206, IADR-0216, IADR-0220]
-specs: [01_requirements, ADR-0004_authz-abac, ADR-0005_service-mesh-istio, IADR-0009_wiki-browsing-404-hides-existence, IADR-0017_internal-service-auth-network-isolation, IADR-0020_wiki-js-deployment-abac-gateway, IADR-0026_mesh-mtls-supersedes-network-isolation]
+specs: []
 issues: [#55, #100, #198, #199, #201, #211, #212, #222, #271, #310, #628, #629, AST#18, AST#24, planning#383]
 -->
 

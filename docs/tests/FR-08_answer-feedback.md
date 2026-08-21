@@ -10,7 +10,7 @@ author: claude
 ids: [FR-08, SC-10, UC-01]
 adrs: []
 iadrs: [IADR-0010, IADR-0039, IADR-0044, IADR-0131, IADR-0158]
-specs: [01_requirements, 20260703_FR-08_answer-feedback-collection, FR-08_answer-feedback]
+specs: [20260703_FR-08_answer-feedback-collection, FR-08_answer-feedback]
 issues: [#521, #586, planning#236, planning#244]
 -->
 

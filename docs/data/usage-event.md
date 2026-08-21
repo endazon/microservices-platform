@@ -10,7 +10,7 @@ author: claude
 ids: [FR-10]
 adrs: [ADR-0002, ADR-0006]
 iadrs: []
-specs: [01_requirements, ADR-0006_observability-otel-prom-loki]
+specs: []
 issues: []
 -->
 

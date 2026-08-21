@@ -10,7 +10,7 @@ author: endazon (with Claude Code)
 ids: [SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11]
 adrs: [ADR-0001, ADR-0002, ADR-0003, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0018, ADR-0019, ADR-0020, ADR-0027]
 iadrs: [IADR-0017, IADR-0026, IADR-0048, IADR-0056, IADR-0121]
-specs: [01_architecture-overview, 02_service-decomposition, ADR-0019_unit-first-repo-structure]
+specs: []
 issues: [#497, #580, #591]
 -->
 

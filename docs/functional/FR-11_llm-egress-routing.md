@@ -10,7 +10,7 @@ author: claude
 ids: [FR-11, UC-01, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
 iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225]
-specs: [01_requirements, 01_usecases]
+specs: []
 issues: [#201, #379, #380, #394, #395, #403, #850, #863, AST#290, planning#50]
 -->
 

@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-22, UC-11]
 adrs: [ADR-0037, ADR-0045]
 iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0215]
-specs: [01_requirements, 01_usecases, 20260816_issue-600_fr22-in-app-notifications, ADR-0037_obsidian-sync-method, ADR-0045_mail-delivery-smtp-relay, BFF_bff-surface, FR-22_user-notifications, IADR-0215_notification-service-and-in-app-delivery]
+specs: [20260816_issue-600_fr22-in-app-notifications, BFF_bff-surface, FR-22_user-notifications]
 issues: [#600, #788]
 -->
 

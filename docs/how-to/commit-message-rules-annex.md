@@ -10,7 +10,7 @@ author: claude
 ids: [FR-12, SC-07]
 adrs: []
 iadrs: [IADR-0145, IADR-0172, IADR-0173, IADR-0207]
-specs: [01_requirements]
+specs: []
 issues: [#524, #568, #579, #612, #799]
 -->
 

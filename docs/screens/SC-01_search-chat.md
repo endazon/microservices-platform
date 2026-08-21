@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, FR-04, FR-05, FR-08, FR-17, FR-18, FR-19, FR-20, FR-21, SC-01, SC-02, SC-03, SC-04, SC-08, SC-18, SC-19, UC-01]
 adrs: [ADR-0031, ADR-0036, ADR-0037, ADR-0043]
 iadrs: [IADR-0009, IADR-0037, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0131, IADR-0142, IADR-0151]
-specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, IADR-0037_llm-sse-streaming, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0121_spa-stack-migration-staging, IADR-0125_ui-primitives-i18n-catalog-and-storybook, IADR-0126_sse-answer-state-and-search-url-state, INDEX, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
+specs: [20260804_issue-502_sc01-03-search-flow, 20260806_issue-541_citation-confidentiality, SC-01_search-chat, SC-02_search-results, SC-03_document-detail]
 issues: [#490, #502, #519, #539, #540, #541, #586, #599, planning#197, planning#200, planning#237, planning#244]
 -->
 

@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-12, SC-07]
 adrs: []
 iadrs: [IADR-0061, IADR-0115, IADR-0116, IADR-0120, IADR-0139, IADR-0140, IADR-0141, IADR-0144, IADR-0145, IADR-0146, IADR-0147, IADR-0180, IADR-0204]
-specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves, IADR-0116_reimplementation-branching-and-pr-policy, IADR-0120_excluded-units-from-gitmodules, IADR-0141_audit-rounds-and-population-drawing, IADR-0180_blocked-judgments-expire]
+specs: [20260808_session-handoff, 20260815_issue-454_open-issue-stocktake-and-waves]
 issues: [#454, #555, #556, #562, #572, #612, #614, #617, #618, #701, #743, #752, #779, #780, #781, #782, #783, #791, #836, planning#380]
 -->
 

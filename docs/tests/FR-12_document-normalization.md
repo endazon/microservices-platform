@@ -10,7 +10,7 @@ author: claude
 ids: [FR-11, FR-12, UC-06]
 adrs: [ADR-0010, ADR-0012]
 iadrs: [IADR-0008, IADR-0104, IADR-0132, IADR-0162]
-specs: [01_requirements, 01_usecases, 20260703_FR-12_document-normalization-pipeline, FR-12_document-normalization, IADR-0008_conversion-ports-deny-by-default-and-idempotent-id, IADR-0162_openapi-required-request-vs-response]
+specs: [20260703_FR-12_document-normalization-pipeline, FR-12_document-normalization]
 issues: [#118, #379, #506, #520, #525, #658]
 -->
 

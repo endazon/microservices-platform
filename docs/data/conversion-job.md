@@ -10,7 +10,7 @@ author: claude
 ids: [FR-12, SC-07, UC-06]
 adrs: [ADR-0002, ADR-0003, ADR-0027]
 iadrs: [IADR-0042, IADR-0043, IADR-0127, IADR-0137, IADR-0154]
-specs: [01_requirements, 01_screens, 01_usecases]
+specs: []
 issues: [#533, #543, #580]
 -->
 

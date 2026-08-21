@@ -10,7 +10,7 @@ author: claude
 ids: [FR-01, FR-02, FR-05, SC-06, UC-04]
 adrs: [ADR-0002, ADR-0003, ADR-0009, ADR-0013, ADR-0027, ADR-0036]
 iadrs: [IADR-0019, IADR-0136, IADR-0148, IADR-0199]
-specs: [01_requirements, ADR-0003_messaging-masstransit-rabbitmq, ADR-0027_messaging-wolverine]
+specs: []
 issues: [#516, #537, #538, #580, #752, #754, #767, #796, planning#344, planning#361, planning#372]
 -->
 

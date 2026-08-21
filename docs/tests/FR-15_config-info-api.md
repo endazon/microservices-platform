@@ -10,7 +10,7 @@ author: claude
 ids: [FR-15, SC-11]
 adrs: [ADR-0018]
 iadrs: [IADR-0009, IADR-0029, IADR-0030]
-specs: [01_requirements, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, FR-15_config-info-api]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, FR-15_config-info-api]
 issues: []
 -->
 

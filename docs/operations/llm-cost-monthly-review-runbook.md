@@ -10,7 +10,7 @@ author: claude
 ids: [FR-11, SC-10]
 adrs: [ADR-0006, ADR-0038, ADR-0044]
 iadrs: [IADR-0110, IADR-0164]
-specs: [05_observability-ops, 20260810_issue-546_llm-cost-monthly-review, IADR-0164_llm-cost-monthly-review-interim-control, llm-completion-metrics, operations]
+specs: [20260810_issue-546_llm-cost-monthly-review, llm-completion-metrics, operations]
 issues: [#440, #443]
 -->
 

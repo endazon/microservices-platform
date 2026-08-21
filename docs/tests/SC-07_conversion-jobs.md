@@ -10,7 +10,7 @@ author: claude
 ids: [FR-12, SC-03, SC-06, SC-07, UC-06]
 adrs: [ADR-0031]
 iadrs: [IADR-0009, IADR-0035, IADR-0042, IADR-0044, IADR-0127, IADR-0128, IADR-0132, IADR-0154, IADR-0157, IADR-0162]
-specs: [01_screens, 01_usecases, 20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, IADR-0127_sc07-retry-admin-only-and-derived-states, IADR-0128_conversion-retry-admin-only-and-downstream-posture, INDEX, SC-07_conversion-jobs]
+specs: [20260805_issue-501_retry-admin-only, 20260805_issue-503_sc05-08-admin-screens, SC-07_conversion-jobs]
 issues: [#533, #543, #553, #651, #658, planning#198]
 -->
 

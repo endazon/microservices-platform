@@ -10,7 +10,7 @@ author: claude
 ids: [FR-11, UC-01, UC-02]
 adrs: [ADR-0006, ADR-0010, ADR-0025, ADR-0038]
 iadrs: [IADR-0101, IADR-0104, IADR-0109, IADR-0110, IADR-0210, IADR-0212, IADR-0225]
-specs: [05_observability-ops, ADR-0006_observability-otel-prom-loki, FR-11_llm-egress-routing, IADR-0104_llm-stop-reason-refusal, IADR-0110_llm-completion-stop-reason-metrics, IADR-0212_llm-output-token-histogram, IADR-0225_llm-purpose-fallback-chain-and-429-boundary, operations]
+specs: [FR-11_llm-egress-routing, operations]
 issues: [#380, #786, #787, #863]
 -->
 

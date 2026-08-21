@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-09]
 adrs: [ADR-0002, ADR-0004]
 iadrs: []
-specs: [01_requirements, 07_abac-attribute-model, ADR-0004_authz-abac]
+specs: []
 issues: []
 -->
 

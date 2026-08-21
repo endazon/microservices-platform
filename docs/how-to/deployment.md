@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-15]
 adrs: []
-iadrs: [IADR-0017, IADR-0026, IADR-0034, IADR-0046, IADR-0069]
-specs: [IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0046_config-version-history-source, operations, README, security]
+iadrs: [IADR-0017, IADR-0026, IADR-0029, IADR-0034, IADR-0046, IADR-0069]
+specs: [operations, README, security]
 issues: [#192]
 -->
 

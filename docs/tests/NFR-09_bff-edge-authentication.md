@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, FR-04, FR-06, FR-07, NFR-09, SC-01, SC-02, SC-03, SC-04, SC-05, SC-06, SC-07, SC-08, UC-01, UC-02, UC-03]
 adrs: [ADR-0004]
 iadrs: [IADR-0009, IADR-0039, IADR-0044, IADR-0156, IADR-0160]
-specs: [01_requirements, 01_screens]
+specs: []
 issues: [#458, #656]
 -->
 

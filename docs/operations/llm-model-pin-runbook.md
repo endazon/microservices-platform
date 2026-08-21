@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-11]
-adrs: [ADR-0038]
+adrs: [ADR-0038, AST:ADR-0011]
 iadrs: [IADR-0102, IADR-0112, IADR-0141, IADR-0225]
-specs: [01_requirements, 20260811_issue-587_pin-migration-runbook, ADR-0011_llm-model-pinning]
+specs: [20260811_issue-587_pin-migration-runbook]
 issues: [#382, #587, AST#296, planning#50]
 -->
 

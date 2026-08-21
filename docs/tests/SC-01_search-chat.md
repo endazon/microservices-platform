@@ -10,7 +10,7 @@ author: claude
 ids: [FR-03, FR-04, FR-05, FR-08, FR-11, SC-01, SC-02, SC-03, SC-04, SC-08, UC-01]
 adrs: [ADR-0031]
 iadrs: [IADR-0009, IADR-0037, IADR-0126]
-specs: [01_screens, 01_usecases, 20260804_issue-502_sc01-03-search-flow, IADR-0037_llm-sse-streaming, IADR-0126_sse-answer-state-and-search-url-state, SC-01_search-chat]
+specs: [20260804_issue-502_sc01-03-search-flow, SC-01_search-chat]
 issues: [#502, #539]
 -->
 

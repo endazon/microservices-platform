@@ -10,7 +10,7 @@ author: claude
 ids: [FR-13, SC-03, SC-04, UC-07]
 adrs: []
 iadrs: [IADR-0009, IADR-0020]
-specs: [01_screens, 20260708_issue-130_sc04-wiki-access, IADR-0020_wiki-js-deployment-abac-gateway]
+specs: [20260708_issue-130_sc04-wiki-access]
 issues: [#129]
 -->
 

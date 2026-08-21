@@ -10,7 +10,7 @@ author: claude
 ids: []
 adrs: [ADR-0003, ADR-0027, ADR-0048]
 iadrs: [IADR-0166, IADR-0172, IADR-0173, IADR-0176, IADR-0191]
-specs: [01_requirements]
+specs: []
 issues: [#717, #803, planning#387]
 -->
 

@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-15, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11]
 adrs: [ADR-0031]
-iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0129]
-specs: [01_screens, 05_observability-ops, 20260805_issue-504_sc09-11-admin-ops-screens, IADR-0009_wiki-browsing-404-hides-existence, IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0030_operator-role-and-config-viewer-policy, IADR-0035_frontend-role-based-nav-and-existence-hiding, IADR-0036_sc11-config-viewer-visualization, IADR-0046_config-version-history-source, IADR-0129_sc09-11-admin-ops-screen-composition, SC-11_configuration-viewer]
+iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0035, IADR-0036, IADR-0046, IADR-0129]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, SC-11_configuration-viewer]
 issues: [#137, #138, #139, #140, #503, #504, #506, #510]
 -->
 

@@ -10,7 +10,7 @@ author: claude
 ids: [SC-13, SC-14, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197]
-specs: [01_screens, ADR-0026_authentication-ux-and-account-management, IADR-0197_realm-rename-and-auth-policy, SC-14_otp-mfa]
+specs: [SC-14_otp-mfa]
 issues: [#438]
 -->
 

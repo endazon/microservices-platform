@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-07, FR-11, SC-01, SC-03, SC-05, SC-08, UC-02, UC-05]
 adrs: []
 iadrs: [IADR-0005, IADR-0009, IADR-0111, IADR-0121, IADR-0124, IADR-0125, IADR-0126, IADR-0127, IADR-0131, IADR-0135]
-specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, IADR-0005_data-range-intersect-abac-narrowing-only, IADR-0111_degraded-answer-model-label, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-01_search-chat, SC-03_document-detail, SC-08_ai-analysis-dashboard]
+specs: [20260805_issue-503_sc05-08-admin-screens, SC-01_search-chat, SC-03_document-detail, SC-08_ai-analysis-dashboard]
 issues: [#490, #503, #506, #519, #539, #540, #553, planning#197]
 -->
 

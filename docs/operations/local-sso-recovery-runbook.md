@@ -10,7 +10,7 @@ author: claude
 ids: []
 adrs: []
 iadrs: [IADR-0084, IADR-0091, IADR-0096, IADR-0103, IADR-0220]
-specs: [IADR-0084_headlamp-oidc-apiserver-flags, IADR-0103_local-sso-persistence-and-claim-design, README]
+specs: [README]
 issues: [#328, #388, #841, AST#245]
 -->
 

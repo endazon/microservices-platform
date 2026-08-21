@@ -10,7 +10,7 @@ author: claude
 ids: [FR-02, FR-03, NFR-01]
 adrs: [ADR-0031]
 iadrs: [IADR-0052, IADR-0134]
-specs: [01_requirements, 20260805_issue-512_spa-route-code-splitting]
+specs: [20260805_issue-512_spa-route-code-splitting]
 issues: [#196, #197, #512]
 -->
 

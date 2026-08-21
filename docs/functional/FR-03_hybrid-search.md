@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-03, UC-01]
 adrs: [ADR-0009]
-iadrs: [IADR-0012, IADR-0014, IADR-0149]
-specs: [01_requirements, 01_usecases, 20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, FR-03_hybrid-search, IADR-0149_search-result-updated-at-indexing, IADR-0150_search-sort-after-retrieval, SC-02_search-results]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, FR-03_hybrid-search, SC-02_search-results]
 issues: [#536]
 -->
 

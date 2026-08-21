@@ -10,7 +10,7 @@ author: claude
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-18, SC-19, SC-20]
 adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179]
-specs: [01_requirements]
+specs: []
 issues: [#449, #450, #451, #620, #624, #688, #753, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394]
 -->
 

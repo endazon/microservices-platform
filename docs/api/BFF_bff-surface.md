@@ -10,7 +10,7 @@ author: Claude
 ids: [FR-01, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08, FR-09, FR-10, FR-12, FR-15, FR-22, SC-01, SC-02, SC-03, SC-05, SC-06, SC-07, SC-08, SC-09, SC-10, SC-11, UC-01, UC-02, UC-03, UC-04, UC-05, UC-06, UC-11]
 adrs: [ADR-0031, ADR-0032, ADR-0037, ADR-0043]
 iadrs: [IADR-0009, IADR-0010, IADR-0044, IADR-0121, IADR-0122, IADR-0129, IADR-0131, IADR-0132, IADR-0135, IADR-0136, IADR-0151, IADR-0152, IADR-0153, IADR-0158, IADR-0215]
-specs: [01_screens, 13_frontend-stack, 20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at, IADR-0121_spa-stack-migration-staging, IADR-0131_openapi-as-bff-contract-source, IADR-0132_openapi-required-from-csharp-nullability, IADR-0135_generated-client-adoption-and-cache-keys, IADR-0136_next-sync-at-from-worker-cadence]
+specs: [20260805_issue-506_openapi-bff-groups, 20260805_issue-519_orval-hook-migration, 20260805_issue-520_openapi-response-required, 20260806_issue-538_next-sync-at]
 issues: [#439, #506, #519, #520, #521, #538, #544, #586, #629, #634, #640, planning#200, planning#236, planning#244, planning#299]
 -->
 

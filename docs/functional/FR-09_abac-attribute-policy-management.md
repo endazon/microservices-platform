@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-09, SC-05, SC-09, UC-05]
-adrs: [ADR-0043]
+adrs: [ADR-0004, ADR-0043]
 iadrs: [IADR-0006, IADR-0040, IADR-0044, IADR-0129, IADR-0152, IADR-0153]
-specs: [01_requirements, ADR-0004_authz-abac]
+specs: []
 issues: [#634, #635, planning#304]
 -->
 

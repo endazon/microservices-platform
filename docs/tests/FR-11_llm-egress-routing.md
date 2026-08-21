@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-02, FR-04, FR-05, FR-11, FR-12, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
-iadrs: [IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225]
-specs: [01_requirements, 01_usecases, 08_data-egress-policy, 20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes, IADR-0007_llm-egress-routing-config-driven, IADR-0014_qdrant-attribute-payload-key, IADR-0225_llm-purpose-fallback-chain-and-429-boundary]
+iadrs: [IADR-0007, IADR-0014, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0112, IADR-0113, IADR-0114, IADR-0225]
+specs: [20260702_FR-11_llm-egress-routing, 20260704_FR-11_llm-routing-runtime-fixes]
 issues: [#1, #2, #3, #58, #376, #379, #381, #394, #395, #420, #421, #850, #859, #863, AST#290, AST#309]
 -->
 

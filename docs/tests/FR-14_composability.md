@@ -10,7 +10,7 @@ author: claude
 ids: [FR-14]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028]
-specs: [01_requirements, 20260708_issue-111_declarative-pipeline-config, FR-14_composability]
+specs: [20260708_issue-111_declarative-pipeline-config, FR-14_composability]
 issues: []
 -->
 

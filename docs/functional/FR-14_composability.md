@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15]
-adrs: []
+adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028]
-specs: [01_requirements, 10_composability-design, 20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config, ADR-0018_composable-architecture]
+specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config]
 issues: []
 -->
 

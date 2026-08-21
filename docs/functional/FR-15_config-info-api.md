@@ -8,9 +8,9 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-14, FR-15, SC-11]
-adrs: []
+adrs: [ADR-0018]
 iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0046, IADR-0069]
-specs: [01_requirements, 01_screens, 20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role, ADR-0018_composable-architecture]
+specs: [20260707_FR-15_config-info-api-introspection-drift, 20260708_issue-113_sc11-open-items-operator-role]
 issues: []
 -->
 

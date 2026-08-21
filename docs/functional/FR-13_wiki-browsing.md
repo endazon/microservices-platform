@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-13, UC-03, UC-07]
 adrs: [ADR-0011]
 iadrs: [IADR-0009, IADR-0013, IADR-0020, IADR-0021]
-specs: [01_requirements, 01_usecases, 20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment, ADR-0011_wiki-engine]
+specs: [20260703_ADR-0011-normalization-wiki-selfhosted, 20260703_FR-13_wiki-browsing-abac, 20260705_ADR-0011-wiki-js-deployment]
 issues: [#66]
 -->
 

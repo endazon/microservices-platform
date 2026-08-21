@@ -10,7 +10,7 @@ author: claude
 ids: [FR-01, FR-02, FR-05, SC-05, SC-06, SC-07, SC-09, UC-04]
 adrs: []
 iadrs: [IADR-0019, IADR-0039, IADR-0044, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0128, IADR-0135, IADR-0136, IADR-0139, IADR-0148, IADR-0199]
-specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, IADR-0039_datasource-management-bff-and-role-gating, IADR-0127_sc07-retry-admin-only-and-derived-states, IADR-0136_next-sync-at-from-worker-cadence, INDEX, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260806_issue-538_next-sync-at, 20260808_issue-534-537_datasource-contract-bundle, 20260815_issue-767_sc06-department-input, 20260816_issue-796_sc06-lifecycle-input, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
 issues: [#490, #502, #506, #519, #534, #537, #538, #628, #754, #767, #796, planning#198, planning#200, planning#299, planning#372]
 -->
 

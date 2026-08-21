@@ -10,7 +10,7 @@ author: Claude
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030]
 iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195]
-specs: [01_requirements, 20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated]
+specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated]
 issues: [#454, #503, #510, #568, #571, #580, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 

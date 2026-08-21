@@ -10,7 +10,7 @@ author: claude
 ids: [SC-10, SC-15, UC-05]
 adrs: [ADR-0026, ADR-0045]
 iadrs: [IADR-0197]
-specs: [01_screens, ADR-0026_authentication-ux-and-account-management, ADR-0045_mail-delivery-smtp-relay, IADR-0197_realm-rename-and-auth-policy, SC-15_password-reset]
+specs: [SC-15_password-reset]
 issues: [#438]
 -->
 

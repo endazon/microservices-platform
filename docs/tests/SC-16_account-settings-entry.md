@@ -10,7 +10,7 @@ author: Claude
 ids: [SC-01, SC-12, SC-13, SC-14, SC-15, SC-16, SC-17, SC-21]
 adrs: [ADR-0031, ADR-0032]
 iadrs: [IADR-0124]
-specs: [01_screens, 20260804_issue-490_spa-router-shell, IADR-0124_tanstack-router-unit-composition]
+specs: [20260804_issue-490_spa-router-shell]
 issues: [#439]
 -->
 

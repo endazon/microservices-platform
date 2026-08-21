@@ -10,7 +10,7 @@ author: claude
 ids: [FR-15, SC-05, SC-10, SC-11]
 adrs: [ADR-0018, ADR-0031]
 iadrs: [IADR-0009, IADR-0029, IADR-0030, IADR-0036, IADR-0046, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135]
-specs: [01_requirements, 01_screens, 05_observability-ops, 10_composability-design, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, ADR-0018_composable-architecture, IADR-0029_config-info-api-placement-and-drift-granularity, IADR-0030_operator-role-and-config-viewer-policy, IADR-0036_sc11-config-viewer-visualization, IADR-0046_config-version-history-source, IADR-0129_sc09-11-admin-ops-screen-composition, SC-10_operations-dashboard, SC-11_configuration-viewer]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, SC-10_operations-dashboard, SC-11_configuration-viewer]
 issues: [#14, #19, #504, #506, #519, #544, #552, planning#190, planning#198]
 -->
 

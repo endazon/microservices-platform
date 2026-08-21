@@ -10,7 +10,7 @@ author: claude
 ids: [FR-02, FR-03, FR-05, SC-02, UC-04]
 adrs: []
 iadrs: [IADR-0149]
-specs: [01_requirements, 20260627_FR-02_ingestion-pipeline, FR-02_ingestion]
+specs: [20260627_FR-02_ingestion-pipeline, FR-02_ingestion]
 issues: [#536]
 -->
 

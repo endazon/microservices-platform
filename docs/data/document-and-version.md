@@ -10,7 +10,7 @@ author: claude
 ids: [FR-06, FR-09, FR-12, SC-05, SC-09, UC-04]
 adrs: [ADR-0002, ADR-0014]
 iadrs: [IADR-0001, IADR-0152, IADR-0153]
-specs: [01_requirements, ADR-0002_service-boundaries-db-per-service, ADR-0014_object-storage]
+specs: []
 issues: [#634, #635, #637]
 -->
 

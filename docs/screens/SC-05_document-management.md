@@ -10,7 +10,7 @@ author: claude
 ids: [FR-06, FR-09, FR-12, SC-02, SC-03, SC-05, SC-07, UC-03]
 adrs: []
 iadrs: [IADR-0009, IADR-0039, IADR-0041, IADR-0044, IADR-0075, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0135]
-specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, IADR-0041_document-write-bff-abac-scoped, IADR-0127_sc07-retry-admin-only-and-derived-states, SC-03_document-detail, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
+specs: [20260805_issue-503_sc05-08-admin-screens, 20260809_issue-629_document-write-admin-only, SC-03_document-detail, SC-05_document-management, SC-06_datasource-management, SC-07_conversion-jobs]
 issues: [#7, #490, #502, #506, #519, #553, #629, #634, #640, planning#197, planning#198, planning#199, planning#299]
 -->
 

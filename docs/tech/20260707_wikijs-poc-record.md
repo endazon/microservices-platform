@@ -10,7 +10,7 @@ author: claude
 ids: [FR-13, UC-07]
 adrs: [ADR-0011]
 iadrs: [IADR-0021, IADR-0023]
-specs: [20260707_issue-88-wikijs-verification-and-delete-sync, ADR-0011_wiki-engine]
+specs: [20260707_issue-88-wikijs-verification-and-delete-sync]
 issues: []
 -->
 

@@ -10,7 +10,7 @@ author: claude
 ids: []
 adrs: []
 iadrs: [IADR-0140, IADR-0172, IADR-0173, IADR-0175]
-specs: [01_requirements, 20260807_issue-590_fullpath-owner-check]
+specs: [20260807_issue-590_fullpath-owner-check]
 issues: [#576, #586, #590, planning#144]
 -->
 

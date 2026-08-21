@@ -10,7 +10,7 @@ author: claude
 ids: []
 adrs: []
 iadrs: [IADR-0039, IADR-0041, IADR-0044, IADR-0141, IADR-0172, IADR-0173, IADR-0188, IADR-0190]
-specs: [ai-implementation-workflow-guide]
+specs: []
 issues: [planning#317, planning#318, planning#350]
 -->
 

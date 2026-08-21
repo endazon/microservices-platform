@@ -10,7 +10,7 @@ author: claude
 ids: [FR-05, FR-09, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-02, SC-04, SC-05, SC-09, SC-10, SC-12, UC-05, UC-08]
 adrs: [ADR-0031, ADR-0033, ADR-0037]
 iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142]
-specs: [01_requirements, 01_screens, 01_usecases, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, IADR-0040_admin-abac-bff-passthrough-and-admin-only, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0129_sc09-11-admin-ops-screen-composition, INDEX, SC-09_admin-abac-settings]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, SC-09_admin-abac-settings]
 issues: [#445, #452, #496, #504, #506, #519, #535, #586, #599, #640, planning#237, planning#244]
 -->
 

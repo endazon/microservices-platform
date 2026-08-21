@@ -10,7 +10,7 @@ author: claude
 ids: [FR-08, FR-10, FR-17, FR-18, FR-19, FR-20, FR-21, SC-04, SC-05, SC-06, SC-07, SC-10, SC-11, UC-05, UC-07]
 adrs: [ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0037]
 iadrs: [IADR-0009, IADR-0011, IADR-0035, IADR-0036, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0129, IADR-0135, IADR-0142]
-specs: [01_requirements, 01_screens, 01_usecases, 05_observability-ops, 13_frontend-stack, 20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, IADR-0011_dashboard-service-usage-aggregation, IADR-0035_frontend-role-based-nav-and-existence-hiding, IADR-0119_fr17-21-hold-until-adr-fixed, IADR-0129_sc09-11-admin-ops-screen-composition, INDEX, SC-10_operations-dashboard, SC-11_configuration-viewer]
+specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted, SC-10_operations-dashboard, SC-11_configuration-viewer]
 issues: [#3, #5, #10, #17, #452, #503, #504, #519, #544, #586, #599, planning#198, planning#237, planning#244]
 -->
 
