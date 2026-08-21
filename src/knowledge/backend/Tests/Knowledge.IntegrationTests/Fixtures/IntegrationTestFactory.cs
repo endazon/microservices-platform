@@ -178,6 +178,10 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
 }
 
 // ── Worker（#455 Phase 0 U0b） ────────────────────────────
+//
+// 🔴 **この 2 つは本 PR の時点でどのテストからも参照されていない。器だけを用意している。**
+// 使うのは #887（DocumentUpdated の 2 購読者が同時に受信することを固定する）である。
+// **#887 を消化しないと器が死蔵される。** 消化されたらこの注記を消すこと。
 
 // IngestionService は DocumentUpdated の購読者 2 つのうちの 1 つである（もう 1 つは WikiService）。
 // 移行手順 3 を誤って competing consumer 化すると片方だけが受け取るので、2 つを同時に

@@ -75,7 +75,9 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext>
 ### スコープ外（別 PR）
 
 - **U0c**（`DocumentUpdated` の 2 購読者同時受信テスト）—— 本 PR は**器を用意するところまで**。
-  テストの新設は独立したレビュー単位にする
+  テストの新設は独立したレビュー単位にする。
+  🔴 **#887 として起票した**（AI レビューの 🟢 指摘への対応）。器だけが在って使われない状態は
+  **セッションが終われば追跡が消える**ので、issue として残す。コード側にも参照を書いた
 - **U0d**（`Pipeline:ConfigPath` を実 `pipeline.json` へ向ける）
 
 ## 受け入れ基準
