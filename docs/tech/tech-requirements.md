@@ -3,14 +3,14 @@ title: 技術要件書
 type: tech-requirements
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-22
 author: claude
 ---
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -341,16 +341,27 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 | --- | --- | --- |
 | **ビルド** | ✅ **現在は止まる** | `PipelineExtensions.cs` / `IntrospectionExtensions.cs` の `where TConsumer : class, IConsumer, IPipelineStep` が、`IConsumer<T>` を捨てたコンシューマの登録をコンパイルエラーにする |
 | ユニットテスト | ⚠️ 半分 | 購読側を差し替えるとテストは落ちるが、**それは追随漏れの検出であって転送互換性の検証ではない** |
-| **トポロジ検査** | ❌ **素通りする** | `check-event-topology.js` は `IConsumer<T>` と `Handle(T)` を**同じ集合へ入れ**、発行側もレシーバ型を見ない。baseline に**トランスポートの欄が無い**。バグではなく射程外である |
+| **トポロジ検査** | ✅ **止まる** | `check-event-topology.js` はトランスポートを記録し、同一イベントで発行側と購読側のトランスポートが食い違ったら fail する。従前は `IConsumer<T>` と `Handle(T)` を同じ集合へ入れて素通りしていた（射程外だった） |
+| **封じ込め検査** | ✅ **止まる** | `check-backend-libraries.js` 規則 5 が、キュー名前置・規約ローカルルーティング無効化・サービスロケーション許可の適用点を共通ヘルパ 1 ファイルへ閉じ込める。許可外での使用に加え、**本拠から消えたこと**も fail させる |
 | 統合テスト | ⚠️ **fan-out の退行（手順 3）だけは捕まえる** | 2 購読者同時受信テストを置いた（後述）。トランスポートの取り違え（MT 発行 → Wolverine 購読）そのものは依然として射程外である |
 
 > **［2026-08-21 訂正］従前ここには「ビルドもユニットテストもトポロジ検査も通ったまま
 > 業務イベントが消える」と書いていた。ビルドについては誤りである。** 上表の型制約が
 > **現存する唯一の実効的な安全弁**であり、実際に止まる。
 >
-> 🔴 **ただしこの安全弁は、共通ヘルパ（`Platform.Shared.Infrastructure`）を Wolverine 対応に
-> した瞬間に消える。** 危険が本当に発現するのは**その後**である。したがって
-> **トランスポート認識の検査を、型制約を緩める作業より先に入れる**（着手順の拘束）。
+> 🔴 **ただしこの安全弁は、上記 2 つの登録経路の型制約を緩めた瞬間に消える。** 危険が本当に
+> 発現するのは**その後**である。したがって **トランスポート認識の検査を、型制約を緩める作業より
+> 先に入れる**（着手順の拘束）。前者は 2026-08-21 に入った（上表・#883）。
+>
+> ［2026-08-22 追記 / #455 U4］**「共通ヘルパを Wolverine 対応にした瞬間に消える」と書いていたが、
+> より正確には「型制約を緩めた瞬間に消える」である。** 共通ヘルパ
+> （`Foundation/Extensions/WolverineExtensions.cs`）は Wolverine 対応になったが、
+> **安全弁は無傷のまま残っている** —— 新ヘルパは既存の MassTransit 登録経路と併存する別 API で
+> あり、`PipelineExtensions` / `IntrospectionExtensions` を 1 行も変えていないためである。
+> 消えるのは型制約を緩める作業（U5）であって、ヘルパの新設ではない。
+>
+> 🔴 **この着手順は散文から機械へ移した。** `PartialMigrationSafetyValveTests` が型制約の存在を
+> assert するため、**U5 はこのテストを落とさずに制約を緩められない**（判断の記録は実装ADRにある）。
 
 **統合テストは本番配線を通るようになった**（2026-08-21。#455 Phase 0 / U0a）。従前
 `IntegrationTestFactory` はサービス自身のメッセージング配線をアセンブリ単位で除去してから
@@ -409,6 +420,21 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
    落ち方も期待どおりで、**片方は受信し、もう片方が受信しなかった**（競合コンシューマの形）。
    ⚠️ Qdrant・LLM ゲートウェイ・Wiki.js はコンテナで立てていないため、**外向きのポートは
    フェイクである**。差し替えていないのはメッセージングの配線であり、試験の対象もそこである。
+
+**手順 3・4・5 は共通ヘルパへ入った**（2026-08-22。#455 U4）。
+`Platform.Shared.Infrastructure/Foundation/Extensions/WolverineExtensions.cs` が
+リスニングキュー名へのサービス名前置（`ListenToPlatformQueue`）と、規約ローカルルーティングの
+無効化・サービスロケーションの常時許可（`UsePlatformMessagingDefaults`）を提供する。
+**リポジトリ内で唯一の実装箇所**であり、手順 6 に従って `check-backend-libraries.js` 規則 5 が
+他ファイルでの使用を fail させる。
+
+🔴 **手順 5 の既定値は `NotAllowed` である**（実測）。設定しなければ `internal` 実装型に依存する
+ハンドラは最初のメッセージ受信時に落ちる。実行時コンパイル（Wolverine のコード生成方式）と組み合わさるため
+**起動時には現れない**。手順 3〜5 はいずれも「怠っても起動し、ビルドもテストも通り、実行時に
+静かに壊れる」種類の設定であり、だからこそ計画 ADR が封じ込めを要求している。
+
+⚠️ **本ヘルパはまだどのサービスからも呼ばれていない**（器だけを作った）。5 コンシューマの
+移し替えは別 PR の射程である。
 
 **一斉性の下限はイベントグラフの連結成分である。** メッセージングを行う 5 サービスは
 `RawDocumentFetched` → `DocumentNormalized` → `DocumentUpdated` / `DocumentDeleted` で

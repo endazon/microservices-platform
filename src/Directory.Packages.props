@@ -59,8 +59,12 @@
          ADR-0030 バックエンドアプリケーション層標準（Issue #455）。
          計画 06_technical/12_backend-application-stack.md の棚卸し表が正。実装側の要点は
          docs/tech/tech-requirements.md「バックエンドアプリケーション層標準」を参照。
-         以下は各サービスの再実装 issue（#438〜#451）が参照するための中央定義であり、
-         この時点ではまだどの .csproj からも参照されていない（CPM の未参照エントリは無害）。
+         以下は各サービスの再実装 issue（#438〜#451）が参照するための中央定義である。
+         ［2026-08-22 更新 / #455 U4］従前ここは「この時点ではまだどの .csproj からも参照されて
+         いない」と書いていた。**WolverineFx と WolverineFx.RabbitMQ は参照された**（ADR-0027
+         手順 3〜5 の共通ヘルパ = Platform.Shared.Infrastructure/Foundation/Extensions/
+         WolverineExtensions.cs。IADR-0233）。残りは依然として未参照であり、CPM の未参照
+         エントリは無害である。
          不採用ライブラリ（MediatR / AutoMapper / Mapster / MassTransit / FluentAssertions /
          Serilog 等）は scripts/check-backend-libraries.js が新規混入を止める。既存の参照は
          scripts/backend-library-baseline.json で ratchet 管理し、空になった時点で
@@ -70,8 +74,10 @@
          FluentAssertions も消化済みのため削除した（#455 A-3。表明は AwesomeAssertions へ移した。
          v8 の商用ライセンス化が理由で、AwesomeAssertions は v7 系のフォークである）。
          残る ratchet 対象は MassTransit だけである（Wolverine 移行 = 別作業の射程）。
-         WolverineFx.RuntimeCompilation と CSharpFunctionalExtensions も同じ未参照エントリである
-         （IADR-0217。由来と参照を足す時期は各行のコメントを参照）。
+         WolverineFx.RuntimeCompilation と CSharpFunctionalExtensions は**引き続き**未参照エントリ
+         である（IADR-0217 決定 4。由来と参照を足す時期は各行のコメントを参照）。前者は移行
+         チェックリスト手順 2 の射程であり、**ホストを起こす各サービス**が足す —— 共通ヘルパは
+         ホストを起こさないため参照しない。
          ============================================================================ -->
     <!-- Application 層: ローカル/リモートハンドラ・Outbox（ADR-0027）・検証・マッピング・DI -->
     <PackageVersion Include="WolverineFx" Version="6.24.4" />

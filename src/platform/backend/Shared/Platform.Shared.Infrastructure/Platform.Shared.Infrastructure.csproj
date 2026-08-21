@@ -17,6 +17,14 @@
     <!-- ADR-0003（Superseded by ADR-0027・注記は #580）: 全サービス共通の MassTransit リトライ設定（MassTransitExtensions）を提供する。
          RabbitMQ 依存は各サービス側（*.Worker/*.Api）が持つため、ここはブローカ非依存の core のみ参照する。 -->
     <PackageReference Include="MassTransit" />
+    <!-- ADR-0027 移行チェックリスト 手順 3・4・5: Wolverine の共通ヘルパ（WolverineExtensions）を提供する。
+         🔴 MassTransit 側と違い **ブローカ固有の RabbitMQ パッケージも参照する**。手順 3（リスニング
+         キュー名の前置）は ListenToRabbitQueue というブローカ固有 API の上でしか適用できず、
+         手順 6 が「個別サービスでの逸脱を静的検査で禁止する」と定める以上、適用点そのものを
+         共通ヘルパへ入れないと封じ込めが成立しないためである（IADR-0233 決定 1）。
+         手順 2 の WolverineFx.RuntimeCompilation はホストを起こす各サービスの射程であり、ここには入れない。 -->
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RabbitMQ" />
     <!-- FR-06/FR-12, ADR-0015: S3 互換オブジェクトストレージ（MinIO）クライアント（Storage/*） -->
     <PackageReference Include="AWSSDK.S3" />
     <!-- NU1510 (Issue #33): Microsoft.Extensions.Diagnostics.HealthChecks は

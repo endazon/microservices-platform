@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable></PropertyGroup>
+  <!-- NFR / #455: Tests は 1 プロジェクト（計画 ADR-0030。Unit / Integration はフォルダで分ける）。
+       xUnit は v3、表明は AwesomeAssertions（ADR-0030。#455 A-2 / A-3）。
+       ［2026-08-22 / #455 U4］Platform.Shared.Infrastructure は従前テストプロジェクトを持たず、
+       PipelineExtensions などは knowledge 側のサービステストから間接的に試験されていた。
+       ADR-0027 手順 3〜5 の共通ヘルパは **platform ユニットに閉じた** 責務であり、
+       試験も同ユニットに置く（knowledge → platform の依存方向を試験のために逆走させない）。 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <ProjectReference Include="..\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
