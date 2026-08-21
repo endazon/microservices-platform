@@ -166,6 +166,111 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
             "ソースのメタは ABAC 基本属性として運ばれ続ける");
     }
 
+    // FR-05, UC-04, #752 段 1: **配管を入れても挙動が変わらないこと**を固定する。
+    //
+    // 本段は属性の解決を「ソース単位で 1 回」から「アイテムごと」へ移した。**どのコネクタも
+    // `UpdatedBy` を載せないので、発行される属性は移行前と同一でなければならない。**
+    // これが崩れると、値を載せる前の段階で既に退行していることになる。
+    [Fact]
+    public async Task Sync_WhenConnectorCarriesNoUpdater_AttributesAreUnchanged()
+    {
+        using var scope = factory.Services.CreateScope();
+        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: null));
+        var source = DataSource.Create("share", "filesystem", "");
+
+        await svc.SyncAsync(source);
+
+        var published = harness.Published.Select<RawDocumentFetched>()
+            .Select(p => p.Context.Message)
+            .Where(m => m.SourceId == source.Id)
+            .ToList();
+
+        published.Should().HaveCount(2);
+        // 予約値へ倒れる（コネクタが更新者を運ばないため。計画「解決できないとき」）。
+        published.Should().OnlyContain(m => m.Attributes[DataSource.OwnerKey] == DataSource.UnresolvedOwner,
+            "更新者を運ばないコネクタでは owner は予約値のままである（配管を入れても変わらない）");
+        // アイテムごとに解決するようになっても、2 件が同じ内容を受け取ることは変わらない。
+        published[0].Attributes.Should().BeEquivalentTo(published[1].Attributes,
+            "アイテム単位の上書きが 1 件も無いなら、全アイテムが同じ属性を受け取る");
+    }
+
+    // FR-05, UC-04, #752 段 1: アイテムが更新者を運んできたら、**予約値より優先**して載る。
+    //
+    // 🔴 現時点でこれを満たすコネクタは無い（4 実装のうち 3 本は構造上取れず、1 本は識別子の
+    // 名前空間が未裁定）。**経路が生きていることだけ**をスタブで固定する。
+    [Fact]
+    public async Task Sync_WhenItemCarriesUpdater_OwnerBeatsReservedValue()
+    {
+        using var scope = factory.Services.CreateScope();
+        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
+        var source = DataSource.Create("share", "filesystem", "");
+
+        await svc.SyncAsync(source);
+
+        var published = harness.Published.Select<RawDocumentFetched>()
+            .Select(p => p.Context.Message)
+            .Where(m => m.SourceId == source.Id)
+            .ToList();
+
+        published.Should().HaveCount(2);
+        published.Should().OnlyContain(m => m.Attributes[DataSource.OwnerKey] == "alice",
+            "アイテムが運んできた更新者は予約値 system より優先する");
+    }
+
+    // FR-05, UC-04, #752 段 1: **明示指定はアイテム単位の値にも負けない。**
+    //
+    // 既存規約「明示指定は上書きしない」（`Create_WithExplicitOwner_PreservesValue`）を、
+    // 新しい経路が破っていないことを固定する。**優先順位は 明示 > アイテム > 予約値**である。
+    [Fact]
+    public async Task Sync_WhenSourceHasExplicitOwner_ItemUpdaterDoesNotOverrideIt()
+    {
+        using var scope = factory.Services.CreateScope();
+        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
+        // 🔴 名前付き引数で渡す。4 番目の位置引数は `config` であり `defaultAttributes` ではない
+        // （位置で渡して 1 度取り違えた。属性ではなく接続設定に入り、テストが誤って落ちた）。
+        var source = DataSource.Create("share", "filesystem", "",
+            defaultAttributes: new Dictionary<string, string> { [DataSource.OwnerKey] = "explicit-owner" });
+
+        await svc.SyncAsync(source);
+
+        var published = harness.Published.Select<RawDocumentFetched>()
+            .Select(p => p.Context.Message)
+            .Where(m => m.SourceId == source.Id)
+            .ToList();
+
+        published.Should().HaveCount(2);
+        published.Should().OnlyContain(m => m.Attributes[DataSource.OwnerKey] == "explicit-owner",
+            "データソースの明示指定はアイテム単位の更新者より強い");
+    }
+
+    // FR-05, UC-04, #752 段 1: **アイテムごとに違う更新者が、混ざらずにそれぞれへ載る。**
+    //
+    // これが「ソース単位で 1 回だけ計算していた」構造では原理的に不可能だった振る舞いであり、
+    // 本段が解いた問題そのものである。
+    [Fact]
+    public async Task Sync_WhenItemsCarryDifferentUpdaters_EachKeepsItsOwn()
+    {
+        using var scope = factory.Services.CreateScope();
+        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var svc = BuildService(scope, new PerItemUpdaterConnector());
+        var source = DataSource.Create("share", "filesystem", "");
+
+        await svc.SyncAsync(source);
+
+        var published = harness.Published.Select<RawDocumentFetched>()
+            .Select(p => p.Context.Message)
+            .Where(m => m.SourceId == source.Id)
+            .OrderBy(m => m.OriginalPath)
+            .ToList();
+
+        published.Should().HaveCount(2);
+        published[0].Attributes[DataSource.OwnerKey].Should().Be("alice");
+        published[1].Attributes[DataSource.OwnerKey].Should().Be("bob");
+    }
+
     private static DataSourceSyncService BuildService(
         IServiceScope scope, IDataSourceConnector connector)
     {
@@ -213,6 +318,34 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
             => Task.FromResult<IReadOnlyList<SourceItem>>([new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1)]);
         public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
             => throw new IOException("fetch boom");
+    }
+
+    // 2 件を返し、両方に同じ更新者（または null）を載せるスタブ。
+    private sealed class TwoItemConnector(string? updatedBy) : IDataSourceConnector
+    {
+        public string SourceType => "filesystem";
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SourceItem>>(
+            [
+                new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1, updatedBy),
+                new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1, updatedBy),
+            ]);
+        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+            => Task.FromResult(new RawContent([1], "text/markdown"));
+    }
+
+    // アイテムごとに**違う**更新者を載せるスタブ（ソース単位の計算では表現できない状態）。
+    private sealed class PerItemUpdaterConnector : IDataSourceConnector
+    {
+        public string SourceType => "filesystem";
+        public Task<IReadOnlyList<SourceItem>> DiscoverAsync(DataSource s, DateTimeOffset? since, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SourceItem>>(
+            [
+                new SourceItem("/x/a.md", DateTimeOffset.UtcNow, 1, "alice"),
+                new SourceItem("/x/b.md", DateTimeOffset.UtcNow, 1, "bob"),
+            ]);
+        public Task<RawContent> FetchAsync(DataSource s, SourceItem item, CancellationToken ct)
+            => Task.FromResult(new RawContent([1], "text/markdown"));
     }
 
     public void Dispose()

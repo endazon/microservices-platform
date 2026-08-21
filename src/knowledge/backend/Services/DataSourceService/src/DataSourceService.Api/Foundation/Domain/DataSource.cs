@@ -88,7 +88,55 @@ public class DataSource
     // 欠落・空でも既定値・予約値を補完した属性辞書を返す。sync が本アクセサ経由で属性を組み立てることで、
     // 本対応マージ前から登録済みで confidentiality を持たない既存データソースでも、fail-closed 除外
     // （IADR-0012）を再発させない最終防衛線となる。呼び出しごとに新しい辞書を返す（防御的コピー）。
-    public Dictionary<string, string> GetEffectiveAttributes() => WithRequiredAttributeFailsafe(DefaultAttributes);
+    public Dictionary<string, string> GetEffectiveAttributes() => GetEffectiveAttributes(null);
+
+    // FR-05, UC-04, #752 段 1: **アイテム単位の上書きを受け取る解決口。**
+    //
+    // 従前は本メソッドの引数なし版しか無く、取り込み経路は**ソース単位で 1 回だけ**属性を計算して
+    // 全アイテムへ同じ辞書を配っていた。計画 09_datasource-connectors が `owner` の既定を
+    // 「**ソース側の更新者**・作成者を利用者識別子へ解決して入れる」と定める以上、
+    // **アイテムごとに違う値が入りうる**のだから、ソース単位の計算では原理的に載せられない。
+    //
+    // 🔴 **優先順位は 3 段で、上ほど強い。**
+    //   1. `DefaultAttributes` の明示指定 —— **上書きしない**（既存規約。`Create_WithExplicitOwner_PreservesValue`）
+    //   2. `perItem`（アイテム単位。コネクタが運んできた更新者など）
+    //   3. 予約値（`system` / `unassigned`）—— 計画「解決できないとき」
+    //
+    // `perItem` が null・空・空白値なら**何も起きない**（1 バイトも挙動が変わらない）。
+    // 本段ではどのコネクタも値を載せないため、実際に変わるのは段 2 以降である。
+    public Dictionary<string, string> GetEffectiveAttributes(IReadOnlyDictionary<string, string>? perItem)
+    {
+        if (perItem is null || perItem.Count == 0)
+            return WithRequiredAttributeFailsafe(DefaultAttributes);
+
+        var merged = DefaultAttributes is null
+            ? new Dictionary<string, string>()
+            : new Dictionary<string, string>(DefaultAttributes);
+
+        foreach (var (key, value) in perItem)
+        {
+            // 空白の上書きは**何も足さない**（「運んでこなかった」と同じ扱い）。
+            if (string.IsNullOrWhiteSpace(value)) continue;
+
+            // 🔴 **空白だけでなく「予約値が入っている」ときも上書きする。**
+            //
+            // `Create` / `Update` / `Patch` は登録・更新の時点で失敗安全を通すため、
+            // `DefaultAttributes` には**既に予約値が焼き込まれている**。したがって
+            // 「空白のときだけ埋める」規則では、アイテム単位の値は**永久に載らない**
+            // （実測して発見した。#752 段 1）。
+            //
+            // 予約値を上書きしてよい根拠は計画にある —— 「**`system` / `unassigned` は
+            // 『解決できなかった』ことの記録であり、既定ではない**」。**記録は、解決できたら
+            // 置き換わるべきものである。**
+            //
+            // **利用者が明示的に `system` を指定した場合も上書きされる。** 予約値は
+            // 「主体を指す値」ではなく「未解決の印」なので、それでよい。
+            if (!IsUnresolved(merged, key)) continue;
+            merged[key] = value;
+        }
+
+        return WithRequiredAttributeFailsafe(merged);
+    }
 
     // FR-05, UC-04, ADR-0036, #516: 計画が**必須**と定める文書属性の欠落・空を補う。`Create`（登録時）・
     // `Update` / `Patch`（更新時）・`GetEffectiveAttributes`（発行時）で挙動が乖離しないよう一元化する。
@@ -116,9 +164,14 @@ public class DataSource
         // フォームに入力欄が無い。**したがって実運用では事実上ここへ倒れる。**追跡は #754。
         FillIfBlank(result, DepartmentKey, UnresolvedDepartment);
 
-        // `owner` はソース側の更新者を解決して入れるのが正だが、**コネクタの契約
-        // `SourceItem(Path, ModifiedAt, Size)` は更新者を運ばない**。`department` と違い
-        // **器そのものが無い**ため、解消は `SourceItem` の契約変更を要する（#752）。
+        // `owner` はソース側の更新者を解決して入れるのが正である。
+        //
+        // ［2026-08-21 追記 / #752 段 1］**器は作った。** 従前ここには「コネクタの契約
+        // `SourceItem(Path, ModifiedAt, Size)` は更新者を運ばない」「器そのものが無い」と
+        // 書いていたが、`SourceItem.UpdatedBy` と `GetEffectiveAttributes(perItem)` を足したので
+        // **経路は通っている**。**まだ倒れる理由は変わった** —— 器が無いからではなく、
+        // **どのコネクタも値を載せていない**からである（4 実装のうち 3 本は構造上取れず、
+        // 残る 1 本は識別子の名前空間が未裁定）。追跡は引き続き #752。
         //
         // **ただし「常に」予約値になるわけではない** —— `DefaultAttributes` に明示指定があれば
         // 上書きしない（テスト `Create_WithExplicitOwner_PreservesValue`）。API 経由なら現在も設定できる。
@@ -133,6 +186,23 @@ public class DataSource
     }
 
     // 欠落・空白のみのときだけ埋める。既に値があれば触らない。
+    // #752 段 1: そのキーが「まだ解決できていない」状態かを判定する。
+    // 空白（未設定）に加え、**そのキーの予約値**も未解決とみなす（上の理由書きを参照）。
+    private static bool IsUnresolved(IReadOnlyDictionary<string, string> attributes, string key)
+    {
+        if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+            return true;
+
+        return key switch
+        {
+            OwnerKey => value == UnresolvedOwner,
+            DepartmentKey => value == UnresolvedDepartment,
+            // 予約値の概念を持たないキー（confidentiality / lifecycle 等）は、
+            // 値がある時点で解決済みとみなす。**明示指定を上書きしない。**
+            _ => false,
+        };
+    }
+
     private static void FillIfBlank(Dictionary<string, string> attributes, string key, string fallback)
     {
         if (!attributes.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))

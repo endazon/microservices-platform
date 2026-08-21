@@ -105,7 +105,10 @@ public class DataSourceTests
             defaultAttributes: new Dictionary<string, string> { ["department"] = "hr" });
 
         ds.DefaultAttributes["department"].Should().Be("hr");
-        // owner は解決できないので予約値へ倒れる（SourceItem が更新者を運ばない。#752）
+        // owner は解決できないので予約値へ倒れる。［2026-08-21 追記 / #752］従前ここには
+        // 「SourceItem が更新者を運ばない」と書いていたが、**器は #752 段 1 で作った**。
+        // 倒れる理由は「載せるコネクタが 1 本も無い」ことへ変わった（本テストは登録時の
+        // 失敗安全を見ており、コネクタ経路を通らないので結果は変わらない）。
         ds.DefaultAttributes["owner"].Should().Be("system");
     }
 
