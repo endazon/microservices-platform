@@ -10,7 +10,7 @@ author: claude
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -364,10 +364,11 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
    `queue` 上書きは依然として通っていない**。通ったのは配線コードまでである
    （段の宣言が無い環境では `AddPlatformPipelineStep` が既定で登録する）
 2. **`DocumentUpdated` の 2 購読者が同時に生きている状態を作るテストが無い。**
-   2 購読者は **IngestionService と WikiService** に分かれており、前者は Worker である。
-   Worker を統合テストへ載せるには、`IntegrationTestFactoryBase<TProgram, TDbContext>` が
-   要求する `TDbContext` を持たない Worker（`IngestionService.Worker` は DbContext を
-   持たない）のために**基底の切り出し**が要る
+   ✅ **器は用意した**（2026-08-21 / U0b）—— `IntegrationTestFactoryBase<TProgram>`（DbContext を
+   要求しない基底）を切り出し、両 Worker に `TestMarker` を置いて統合テストから
+   `IngestionServiceFactory` / `ConversionServiceFactory` としてホストできるようにした。
+   🔴 **テストそのものはまだ書いていない**（2 購読者を同時に立てて両方が受信することを
+   assert する新規テストが要る）。器があっても書かなければ試験されない。
 
 **一斉性の下限はイベントグラフの連結成分である。** メッセージングを行う 5 サービスは
 `RawDocumentFetched` → `DocumentNormalized` → `DocumentUpdated` / `DocumentDeleted` で

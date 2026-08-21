@@ -14,9 +14,13 @@ namespace Knowledge.IntegrationTests.Fixtures;
 
 // UC-03, UC-04, UC-05: 統合テスト用 WebApplicationFactory 基底クラス
 // TestContainers の Postgres/RabbitMQ を使いサービスを実際に起動する
-public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebApplicationFactory<TProgram>
+//
+// ［2026-08-21 / #455 Phase 0 U0b］**DbContext を要求しない基底**である。
+// Worker には DbContext を持たないものがある（IngestionService.Worker）ため、
+// 「DbContext を差し替える」責務を派生（IntegrationTestFactoryBase<TProgram, TDbContext>）へ
+// 分けた。DbContext を持つサービスはそちらを使う。既存の 5 ファクトリの宣言は変わらない。
+public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFactory<TProgram>
     where TProgram : class
-    where TDbContext : DbContext
 {
     private readonly PostgresFixture _postgres;
     private readonly RabbitMqFixture? _rabbit;
@@ -61,8 +65,8 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
 
         builder.ConfigureServices(services =>
         {
-            // DbContext: Npgsql で TestContainers Postgres を使う
-            ReplaceDbContextWithNpgsql<TDbContext>(services, _postgres.ConnectionString ?? "Host=localhost");
+            // DbContext: Npgsql で TestContainers Postgres を使う（持たないサービスでは何もしない）
+            ReplaceDbContext(services, _postgres.ConnectionString ?? "Host=localhost");
 
             // ［2026-08-21 / #455 Phase 0 U0］**サービス自身の配線をそのまま使う。**
             //
@@ -110,20 +114,36 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
 
     protected virtual void AdditionalServices(IServiceCollection services) { }
 
-    private static void ReplaceDbContextWithNpgsql<T>(IServiceCollection services, string connStr)
-        where T : DbContext
+    /// <summary>DbContext を Testcontainers の Postgres へ差し替える。既定は何もしない。</summary>
+    /// <remarks>
+    /// DbContext を持たないサービス（IngestionService.Worker）でも同じ基底を使えるようにするため、
+    /// 差し替えは派生の責務にしている。持つサービスは
+    /// <see cref="IntegrationTestFactoryBase{TProgram, TDbContext}"/> を使う。
+    /// </remarks>
+    protected virtual void ReplaceDbContext(IServiceCollection services, string connStr) { }
+}
+
+// DbContext を持つサービス用の基底。差し替えの実装だけを足す。
+public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : IntegrationTestFactoryBase<TProgram>
+    where TProgram : class
+    where TDbContext : DbContext
+{
+    protected IntegrationTestFactoryBase(PostgresFixture postgres, RabbitMqFixture? rabbit = null)
+        : base(postgres, rabbit) { }
+
+    protected override void ReplaceDbContext(IServiceCollection services, string connStr)
     {
         var toRemove = services
-            .Where(d => d.ServiceType == typeof(DbContextOptions<T>)
+            .Where(d => d.ServiceType == typeof(DbContextOptions<TDbContext>)
                      || (d.ServiceType.IsGenericType
                          && d.ServiceType.GetGenericTypeDefinition().FullName?
                                 .Contains("IDbContextOptionsConfiguration") == true
                          && d.ServiceType.GenericTypeArguments.Length == 1
-                         && d.ServiceType.GenericTypeArguments[0] == typeof(T)))
+                         && d.ServiceType.GenericTypeArguments[0] == typeof(TDbContext)))
             .ToList();
         foreach (var d in toRemove) services.Remove(d);
 
-        services.AddDbContext<T>(opt => opt.UseNpgsql(connStr));
+        services.AddDbContext<TDbContext>(opt => opt.UseNpgsql(connStr));
     }
 }
 
@@ -155,4 +175,29 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
     global::WikiService.Api.WikiServiceTestMarker, WikiDbContext>
 {
     public WikiServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
+}
+
+// ── Worker（#455 Phase 0 U0b） ────────────────────────────
+//
+// 🔴 **この 2 つは本 PR の時点でどのテストからも参照されていない。器だけを用意している。**
+// 使うのは #887（DocumentUpdated の 2 購読者が同時に受信することを固定する）である。
+// **#887 を消化しないと器が死蔵される。** 消化されたらこの注記を消すこと。
+
+// IngestionService は DocumentUpdated の購読者 2 つのうちの 1 つである（もう 1 つは WikiService）。
+// 移行手順 3 を誤って competing consumer 化すると片方だけが受け取るので、2 つを同時に
+// 立てられることが試験の前提になる。
+//
+// 🔴 **DbContext を持たないので 1 引数版の基底を使う**（AddDbContext は 0 件。実測）。
+public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
+    global::IngestionService.Worker.IngestionServiceTestMarker>
+{
+    public IngestionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
+}
+
+// ConversionService は ConversionJobDbContext を持つので 2 引数版を使う。
+public sealed class ConversionServiceFactory : IntegrationTestFactoryBase<
+    global::ConversionService.Worker.ConversionServiceTestMarker,
+    global::ConversionService.Worker.Foundation.Persistence.ConversionJobDbContext>
+{
+    public ConversionServiceFactory(PostgresFixture pg, RabbitMqFixture rabbit) : base(pg, rabbit) { }
 }
