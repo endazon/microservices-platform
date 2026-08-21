@@ -1,16 +1,21 @@
-# 統合テスト（実コンテナ）の定期実行 —— IADR-0232 決定 3
+# 全テスト（実コンテナ含む）の回収実行 —— IADR-0232 決定 3（改定 3）
 #
-# ■ 🔴 PR の統合テストを肩代わりするものではない
-# **統合テストは ci.yml の backend-build ジョブが PR でも全件走らせる**（--filter は付けていない）。
-# 当初は「PR から外して日次へ回す」設計だったが、利用者裁定（2026-08-22）
-# 「なるべく精度は落とさない方向で」により**並列化で速くする**方へ改めた。
-# したがって PR の検出力は変更前と同じである。
+# ■ 🔴 これは「PR から外した検証の回収先」である
+# **PR（ci.yml）は --filter "Category!=Integration" で Testcontainers を起動するテストを外す。**
+# 外したぶんをここで回収する。利用者裁定（2026-08-22）:
+# 「PR の精度低下は、どこかで回収できるならある程度許容する。ループ効率を上げよ」。
+# **回収先が無ければ「PR から外した」は「やめた」と同義になる。**
 #
-# ■ それでも本ワークフローを残す理由
-# 本ワークフローが担うのは PR では見えないもの、すなわち**時間軸で現れる壊れ方**である。
-#   - 非決定な失敗（flaky）: 同じコミットを日をまたいで繰り返し走らせないと現れない
-#   - 環境ドリフト: ランナー側の Docker・ベースイメージ・外部レジストリの変化
-#   - そして **report-failure（自動起票）の実働経路**（下記）
+# ■ 🔴 --filter を付けずに全量で回す
+# 統合テストだけを選ぶのではなく**全テストを 1 回**走らせる。理由は 3 つある（下の run ステップに詳述）。
+#   1. カバレッジ床（line 39 / branch 27）は全量の実測から置かれているので置き直さずに済む
+#   2. 同じテストプロジェクトを 2 回実行しないので二重集計が起きない
+#   3. フィルタに依存しないので fail-closed の門が要らない
+#
+# ■ いつ走るか
+#   - develop への push: マージのたびに回収する（朝まで待たずに原因を切り分けられる）
+#   - 日次 schedule:     PR では原理的に見えない壊れ方（flaky・環境ドリフト）を拾う
+#   - workflow_dispatch: 手動確認と、自動起票の動作確認（force_failure）
 #
 # ■ 自動起票の検証入口
 # 自動起票は失敗時にしか走らないため**平時は常に skip で緑**であり、
@@ -21,8 +26,10 @@
 name: Integration
 
 on:
-  # push: は持たない。develop へのマージ時は ci.yml の backend-build が同じテストを走らせる
-  # （二重に回してもランナーを食うだけで、新しく分かることが無い）。
+  # 🔴 develop へのマージ時に回収する（IADR-0232 改定 3）。日次だけだと、朝までの間に
+  # 別の PR が積み上がって原因の切り分けが難しくなる。
+  push:
+    branches: [develop]
   schedule:
     # 毎日 UTC 18:00（JST 03:00）。AST の integration.yml と同じ時刻に揃えてある。
     - cron: "0 18 * * *"
@@ -76,47 +83,54 @@ jobs:
       # ユニットは ci.yml と同じく src/*/backend/backend.slnx から自動発見する
       # （ユニット名をここへ書かない。書くと次にユニットが増えたとき静かに対象から外れる）。
       #
-      # 🔴 fail-closed の門を置いてある。**全ユニット合わせて 1 件も走らなければ落とす。**
-      # 本ワークフローは --filter "Category=Integration" に依存しており、`dotnet test` は
-      # フィルタに 1 件も一致しなくても exit 0 で終わる。したがって新しい統合テストへ
-      # [Trait("Category","Integration")] を付け忘れると、**0 件実行のまま緑**で通り続け、
-      # 「日次で統合テストが走っている」という記録だけが残る（本リポジトリが繰り返し踏んできた型）。
-      # ci.yml 側は --filter を捨てたのでこのリスクを持たないが、ここは持つ。
-      # 着手前の走査でも Trait を持たない Testcontainers テストが実際に 1 件見つかっている。
-      - name: Integration tests (real containers, all units)
+      # 🔴 **--filter を付けない。全テストを 1 回だけ走らせる**（IADR-0232 改定 3）。
+      # ここが本ワークフローの設計の要であり、3 つの問題が同時に消える。
+      #
+      #   1. **カバレッジ床を置き直さずに済む。** 床 line 39 / branch 27 は
+      #      **統合テストを含む全量 43/43 の実測**から置かれている（src/coverage-floor.json）。
+      #      全量で回すなら床はそのまま使える。
+      #   2. **二重集計が起きない。** 同じテストプロジェクトを 1 回しか実行しないため
+      #      Cobertura は 15 件のまま。**2 回実行すると行の分母が 2 倍になり床が割れる**
+      #      —— 実測 レポート 30 件 / 49894 行 / line 20.22%（本来 15 件 / 24947 行 / 39.92%）。
+      #      **割れ方は fail なので気付けるが「テストが減った」と取り違えやすい。**
+      #   3. **fail-closed の門が要らなくなる。** フィルタが無いので「Trait の付け忘れで
+      #      0 件実行のまま緑」が起こり得ない。**門は「フィルタに依存するなら併設する」もの**
+      #      であり、依存自体を無くしたので不要になった（諦めたのではない）。
+      #
+      # 🔴 **ここに --filter を足すなら、fail-closed の門を必ず併設すること。**
+      # 足すと ci.yml 側（Category!=Integration）と対になり、**Trait を付け忘れたテストが
+      # どこでも走らない**形に倒れる。現在は付け忘れても ci.yml 側に残る（fail-safe）。
+      - name: All tests including real containers (all units, with coverage)
         run: |
           set -euo pipefail
           shopt -s nullglob
           found=0
-          ran=0
           for slnx in src/*/backend/backend.slnx; do
             found=$((found + 1))
             echo "::group::$slnx"
             dotnet restore "$slnx"
             dotnet build "$slnx" --no-restore --configuration Release
-            log="$(mktemp)"
-            if dotnet test "$slnx" --no-build --configuration Release \
-                 --filter "Category=Integration" --verbosity normal 2>&1 | tee "$log"; then
-              :
-            elif grep -q 'No test matches the given testcase filter' "$log"; then
-              # そのユニットに統合テストが無いだけ。失敗にしない（下の門が全体で担保する）。
-              echo "（$slnx に Category=Integration のテストは無い）"
-            else
-              echo "::endgroup::"
-              exit 1
-            fi
-            if grep -qE '^[[:space:]]*(Passed|Failed)[[:space:]]+[A-Za-z]' "$log"; then ran=1; fi
+            dotnet test "$slnx" --no-build --configuration Release \
+              --collect:"XPlat Code Coverage" --verbosity normal
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
             echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
             exit 1
           fi
-          # 🔴 fail-closed: 0 件実行のまま緑にしない。
-          if [ "$ran" -eq 0 ]; then
-            echo "::error::Category=Integration のテストが 1 件も実行されなかった。Trait の付け忘れかフィルタの誤りである。"
-            exit 1
-          fi
+      # 🔴 カバレッジ床を強制するのはここだけである（IADR-0232 改定 3）。
+      # PR 側（ci.yml）は統合テストぶんが無いため --report-only で報告のみ行う。
+      # **門を 2 つ置かない** —— 床が 2 つ並ぶとどちらが本物か分からなくなる。
+      #
+      # 期待値: レポート 15 件 / line 39.92%（9958〜9960 / 24947） / branch 28.36%。
+      # 🔴 **レポート件数が 15 から増えていたら、同じテストプロジェクトが 2 回実行されている。**
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - name: Self-test coverage floor checker
+        run: node scripts/check-coverage-floor.js --self-test
+      - name: Check backend coverage floor (床の強制はここだけ)
+        run: node scripts/check-coverage-floor.js
 
   # 🔴 PR から外した分の担保が落ちたことを issue として残す（IADR-0232 決定 1）。
   # これが無ければ「PR から外した」は「やめた」と同義になる。

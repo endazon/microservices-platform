@@ -51,34 +51,38 @@ jobs:
       # platform/backend/backend.slnx のトレースビルドが CS0246 で失敗する。ci.yml / images.yml と同型
       # （public ユニットはトークン不要・private planning は巻き込まない）。ユニット追加時も編集不要。
       - name: Fetch unit submodules (src/*, public, non-recursive)
+        # build-mode: none の PR ではトレースビルドを行わないため不要（IADR-0232 改定 3）。
+        if: github.event_name != 'pull_request'
         run: |
           git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
             | awk '$2 ~ /^src\// { print $2 }' \
             | xargs -r -n1 git submodule update --init
       - uses: actions/setup-dotnet@v6
+        if: github.event_name != 'pull_request'
         with:
           dotnet-version: "10.0.x"
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4.37.7
         with:
           languages: ${{ matrix.language }}
-          # NFR / IADR-0232 決定 4: **PR でも精度を落とさない。常に build-mode: manual である。**
+          # NFR / IADR-0232 決定 4（改定 3）: **PR だけ build-mode: none にする。**
           #
-          # 着手前の実測（2026-08-21）で本ワークフローは 11 分 24 秒掛かり PR で最も長かったため、
-          # 当初は「PR だけ build-mode: none にしてビルドを省く」案を採っていた。
-          # **利用者裁定（2026-08-22）「なるべく精度は落とさない方向で」により取り下げた。**
+          # 着手前の実測（2026-08-21）で本ワークフローは 11 分 24 秒掛かり、PR で最も長かった。
+          # 利用者裁定（2026-08-22）「PR の精度低下は、どこかで回収できるならある程度許容する。
+          # ループ効率を上げよ」に従い、PR ではビルドを省く。
           #
-          # none にすると**生成コード（EF Migrations・source generator 出力）が解析対象外**になる。
-          # カバレッジログの実測でその量は 270 クラス / 8990 行であり、無視できない。
-          # 「PR は緑だが push で赤」という読み分けの難しい状態を作るのも避ける。
+          # 🔴 **PR と push / schedule で精度が違う。同じ check 名なので最も誤解されやすい点である。**
+          #   - PR:                build-mode: none。**生成コード（EF Migrations・source generator 出力。
+          #                        カバレッジログの実測で 270 クラス / 8990 行）は解析対象外になる。**
+          #                        これが落とす精度である。
+          #   - push（develop/main）/ 週次 schedule: build-mode: manual ＋ トレースビルドで**全量解析**。
+          #                        **PR で落とした精度はここで回収する。** 失敗は report-failure が自動起票する。
           #
-          # 代わりに速さは次の 2 つで取る。どちらも**解析の中身を 1 行も削らない**。
-          #   - concurrency（上）: 連続 push で古い実行を捨てる
-          #   - NuGet キャッシュ（下）: トレースビルドの restore を効かせる
-          # 本ワークフローは**必須チェックではない**ため、残る所要はマージを止めない。
-          build-mode: manual
+          # 本ワークフローは**必須チェックではない**ため、PR で軽くしてもマージ判定は変わらない。
+          build-mode: ${{ github.event_name == 'pull_request' && 'none' || 'manual' }}
       # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（ci.yml と同じキー）。
       - uses: actions/cache@v6
+        if: github.event_name != 'pull_request'
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
@@ -90,6 +94,9 @@ jobs:
       # とおり差し替えたものである（planning#111）。同種のトラップは scripts/setup.sh・security.yml（2 か所）・
       # copilot-setup-steps.yml にもあるが、あちらは find の除外で対処している（autobuild は find を使わない）。
       - name: Build backend units (traced)
+        # 🔴 build-mode: manual のときだけ走らせる。PR（none）で走らせると時間だけ食う。
+        # 逆にここを push で落とすと、manual なのにトレース対象が無く analyze が失敗する。
+        if: github.event_name != 'pull_request'
         run: |
           for slnx in src/*/backend/backend.slnx; do
             echo "::group::$slnx"

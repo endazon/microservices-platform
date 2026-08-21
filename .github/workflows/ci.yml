@@ -494,27 +494,32 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-      # 🔴 テストは 1 件も外していない（IADR-0232 決定 3・利用者裁定 2026-08-22
-      # 「なるべく精度は落とさない方向で」）。Testcontainers で実 RabbitMQ / Postgres / MinIO を
-      # 起動する Category=Integration も、変更前と同じくここで走る。--filter は付けない。
+      # 🔴 Testcontainers（実 RabbitMQ / Postgres / MinIO）を起動するテストは PR から外す
+      # （IADR-0232 決定 3・改定 3。利用者裁定 2026-08-22「PR の精度低下は、どこかで回収できるなら
+      # ある程度許容する。AI コーディング→PR→CI→AI コーディングのループ効率を上げよ」）。
       #
-      # 速くしたのは走り方だけである。直列ループ（2 ユニットを順番に restore→build→test）を
-      # ユニット並列（matrix）へ組み替え、クリティカルパスを「合計」から「最長の 1 本」へ変えた。
+      # 着手前の実測で、このジョブの knowledge 脚 2 分 44 秒の大半がコンテナ起動だった。
+      # ループ 1 周の待ち時間に最も効くのがここである。
       #
-      # 🔴 統合テストを別ジョブへ切り出してはならない（実測で 1 度踏んだ）。
-      # 同じテストプロジェクトを 2 回（--filter "Category!=Integration" と "Category=Integration"）
-      # 実行すると、coverlet が**同じクラスを 2 つのレポートに書く**。
-      # check-coverage-floor.js はレポートを単純合算する（クラス単位の重複排除は無い）ため、
-      # 行の分母が 2 倍になり床が割れる —— 実測 レポート 30 件 / 49894 行、line 20.22%（本来は
-      # 15 件 / 24947 行、line 39.92%）。**「テストが減った」ように見えるが、減ったのは被覆率の
-      # 分母側の正しさである。** 1 テストプロジェクト = 1 レポート の不変条件を壊さないこと。
-      - name: Restore, build and test (${{ matrix.unit }}, with coverage)
+      # 🔴 **回収先は integration.yml**（push: develop ＋ 日次 ＋ 手動）。**全量（--filter 無し）で
+      # 走らせ、カバレッジ床もそちらで強制する。** 落ちたら ci-failure-issue.yml が自動起票する。
+      # 回収先が無ければ「PR から外した」は「やめた」と同義になる。
+      #
+      # 🔴 除外されるのは Category=Integration だけである。同じ Knowledge.IntegrationTests に居る
+      # Category=Deployment（helm manifest 検証）と Category=EndpointRouting（インプロセス）は
+      # Docker を使わず速いため、ここで走る。
+      #
+      # 🔴 Trait の付け忘れは fail-safe に倒れる —— 付け忘れたテストは除外されず**ここに残る**
+      # （PR が少し遅くなるだけで、検証は 1 件も失われない）。回収先が --filter を使わないのは
+      # このためでもある（あちらでフィルタすると、付け忘れがどこでも走らない形に倒れる）。
+      - name: Restore, build and test (${{ matrix.unit }}, unit tests only, with coverage)
         run: |
           set -euo pipefail
           slnx="src/${{ matrix.unit }}/backend/backend.slnx"
           dotnet restore "$slnx"
           dotnet build "$slnx" --no-restore --configuration Release
           dotnet test "$slnx" --no-build --configuration Release \
+            --filter "Category!=Integration" \
             --collect:"XPlat Code Coverage" --verbosity normal
       # カバレッジ床は全ユニット横断で 1 回だけ集計する（IADR-0123 決定 3〜5 の前提）。
       # matrix の各脚では集計せず、Cobertura を artifact で集約ジョブへ渡す。
@@ -550,7 +555,7 @@ jobs:
             echo "::error::いずれかのユニットで restore / build / test が失敗した（backend-build の各脚を見ること）。"
             exit 1
           fi
-          echo "✓ 全ユニットの restore / build / test（統合テストを含む）が成立した。"
+          echo "✓ 全ユニットの restore / build / 単体テストが成立した（統合テストは integration.yml が回す）。"
       - uses: actions/checkout@v7
       - name: Download coverage reports from all units
         uses: actions/download-artifact@v7
@@ -563,8 +568,19 @@ jobs:
           node-version: "20"
       - name: Self-test coverage floor checker
         run: node scripts/check-coverage-floor.js --self-test
-      - name: Check backend coverage floor
-        run: node scripts/check-coverage-floor.js
+      # 🔴 PR では床を強制しない（--report-only。IADR-0232 改定 3）。
+      #
+      # 床 line 39 / branch 27 は**統合テストを含む全量 43/43 の実測**から置かれている
+      # （src/coverage-floor.json の根拠欄）。統合テストを PR から外した以上、この床を PR へ
+      # 当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
+      # **どちらが本物か分からなくなる**。
+      #
+      # したがって PR は**数値を報告するだけ**にし、**門は回収先（integration.yml）に 1 つだけ置く**。
+      # 集計値はログに出るので、退行の傾向は PR でも読める。
+      #
+      # 🔴 --report-only を外すな。外すと PR が床割れで恒久的に赤くなる。
+      - name: Report backend coverage (床の強制は integration.yml が行う)
+        run: node scripts/check-coverage-floor.js --report-only
 
   # FR-14, IADR-0056 / IADR-0060, Issue #230: 全バックエンドユニット（src/*/backend/backend.slnx）を
   # 自動発見して検査する。ユニット追加時に CI の編集は不要（discover-units が導出する）。
