@@ -153,7 +153,11 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     /// **宣言が 1 行も読まれないまま全テストが緑になる**。「設定したつもりで何も検査していない」状態が
     /// 成功と見分けられなくなるので、fail-closed にする。
     ///
-    /// 解決の作法は Deployment/PipelineDeclarationMountTests.ReadRepoFile と同じ（同じ作法を 2 つ持たない）。
+    /// 🔴 **この「親へ辿る」ループは本アセンブリに実測 6 箇所ある**（本メソッドと
+    /// Deployment/ の 5 テストクラス）。**統合していない。** 返り値がパス文字列と
+    /// ファイル内容に分かれており、統合には小さな設計判断が要るためで、
+    /// **U0d（段宣言を通す）の射程外だからである。**
+    /// 集約は #891 で行う。**「作法を揃えた」であって「重複を無くした」ではない。**
     /// </remarks>
     protected static string FindRepoFile(string relative)
     {
