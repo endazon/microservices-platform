@@ -179,13 +179,15 @@ public sealed class WikiServiceFactory : IntegrationTestFactoryBase<
 
 // ── Worker（#455 Phase 0 U0b） ────────────────────────────
 //
-// 🔴 **この 2 つは本 PR の時点でどのテストからも参照されていない。器だけを用意している。**
-// 使うのは #887（DocumentUpdated の 2 購読者が同時に受信することを固定する）である。
-// **#887 を消化しないと器が死蔵される。** 消化されたらこの注記を消すこと。
+// ［2026-08-21 / #887］**IngestionServiceFactory は使われるようになった**
+// （Messaging/DocumentUpdatedFanOutTests.cs が WikiServiceFactory と同時に立てる）。
+// 🔴 **ConversionServiceFactory は依然としてどのテストからも参照されていない。**
+// 死蔵していることが見えなくなるので、この注記は残す。使うテストを書いたら消すこと。
 
 // IngestionService は DocumentUpdated の購読者 2 つのうちの 1 つである（もう 1 つは WikiService）。
 // 移行手順 3 を誤って competing consumer 化すると片方だけが受け取るので、2 つを同時に
-// 立てられることが試験の前提になる。
+// 立てられることが試験の前提になる。**その試験は #887 で書いた**
+// （Messaging/DocumentUpdatedFanOutTests.cs）。
 //
 // 🔴 **DbContext を持たないので 1 引数版の基底を使う**（AddDbContext は 0 件。実測）。
 public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
@@ -195,6 +197,7 @@ public sealed class IngestionServiceFactory : IntegrationTestFactoryBase<
 }
 
 // ConversionService は ConversionJobDbContext を持つので 2 引数版を使う。
+// 🔴 **未使用**（上の注記を参照）。
 public sealed class ConversionServiceFactory : IntegrationTestFactoryBase<
     global::ConversionService.Worker.ConversionServiceTestMarker,
     global::ConversionService.Worker.Foundation.Persistence.ConversionJobDbContext>
