@@ -13,7 +13,7 @@
 ## 複数プロジェクトを跨ぐ場合の ID 修飾（固有設定）
 
 - **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`（`AST/FR-17`）。AST の採番は `FR-01..21` / `UC-01..07` / `SC-01..03`。
-- `check-plan-id-qualification.js`（#576）の対象は追跡下の全ファイル（submodule（`src/ai-stock-trading`）・`CHANGELOG.md`・`.ai-context/specs/` を除く）。「AST 文脈で裸の ID」と列挙の後続 ID は検出しない（人と AI が守る）。
+- `check-plan-id-qualification.js`（#576）の対象は追跡下の全ファイル（submodule（`src/ai-stock-trading`）・`CHANGELOG.md`・`.ai-context/specs/`・`.ai-context/superpowers/` を除く）。「AST 文脈で裸の ID」と列挙の後続 ID は検出しない（人と AI が守る）。
 - **issue / PR 番号は短縮形に寄せる**: `AST#NNN` / `planning#NNN`。フルパス形式は自動リンクが要る箇所だけ。**列挙形でも各番号を修飾する**。**Markdown の明示リンクもテキストは短縮形**（#507）。**修飾語と番号の間に空白を入れない**（誤: `AST #24`。自リポを指す `MSP #266` は裸でよい）。**フルパス形式の owner は `endazon` ただ 1 つ**（#590。第三者リポは除く）。経緯は別紙 [`cross-project-id-refs-annex.md`](../../docs/how-to/cross-project-id-refs-annex.md)。
 
 ### Superseded / Deprecated な ADR を引用するときの書式（#580）

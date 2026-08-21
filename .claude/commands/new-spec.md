@@ -39,14 +39,22 @@ allowed-tools: Read, Grep, Glob, Write, Bash(ls:*), Bash(mkdir:*)
 
 1. 先頭トークンを種別として解決する。既知の種別でなければ `work`（作業仕様書）とみなし、全体を起点 ID/概要として扱う。
 2. 対応テンプレート（`docs/templates/<...>`）を読む。
-3. 計画リポジトリ（既定 `../project-planning`。本リポジトリは planning に依存しない。ADR-0048 決定 2）から、起点 ID に対応する計画書
+3. 計画リポジトリ `project-planning`（GitHub URL または隣接クローン `../project-planning`。**読み取り専用**。
+   本リポジトリは planning に依存しない。ADR-0048 決定 2）から、起点 ID に対応する計画書
    （要求・UC・画面・技術検討・ADR）を読み、各セクションの素案を埋める。
 4. ファイル名を決めて作成する。
    - 通常: `<出力先>/<YYYYMMDD>_<概要のケバブケース>.md`。
    - リポ単位（`tech`/`operations`/`security`/`error`）: 既存があればそれを更新、無ければ既定名（例 `docs/operations/operations.md`）で作成。
    - `adr`: `.ai-context/adr/` の既存 `IADR-\d{4}` から最大連番を調べ、次の連番（4桁ゼロ埋め）で `IADR-XXXX_<タイトルのケバブケース>.md` を作成する。欠番・重複を作らない。作成後 `.ai-context/adr/README.md` の一覧に追記する。
-5. メタ情報（`type`・`related_ids`・`plan_refs`・`created`/`updated`=本日・`status`=`draft`（ADR は `Proposed`））を埋める。起点 ID（FR/UC/SC/ADR）と計画書リンクを「起点となる計画書」欄に、関連仕様書へのリンクを「関連仕様」欄に記入する。
-6. 作成したパスと未決事項を報告する。
+5. メタ情報（`type`・`related_ids`・`plan_refs`・`created`/`updated`=本日・`status`=`draft`（ADR は `Proposed`））を埋める。
+6. 🔴 **起点 ID の書き方は出力先で違う**（ADR-0048 決定 4）。
+   - **`docs/` 配下**: frontmatter 終端の直後・H1 の直前へ **trace ブロック**（HTML コメント）を自分で挿入し、
+     起点 ID・計画 ADR・実装ADR・作業仕様書・issue 番号をそこへ入れる。**テンプレートは trace ブロックを
+     持たないので、作成時に足す。** 可視の「起点となる計画書」欄には**番号を書かず**、必要なら文章で書く
+     （計画書へのリンクも張らない）。書式は [`docs/traceability-appendix.md`](../../docs/traceability-appendix.md) §trace ブロック。
+   - **`.ai-context/` 配下**（作業仕様書・実装ADR）: 従来どおり「起点となる計画書」欄へ起点 ID と
+     計画書の所在を、「関連仕様」欄へ関連仕様書を記入する。
+7. 作成したパスと未決事項を報告する。**`docs/` 配下を作った場合は `node scripts/check-trace-blocks.js` を通す。**
 
 注意:
 

@@ -10,7 +10,7 @@ model: inherit
 ## 作業開始前（必須）
 
 1. 対象の ID（FR-xx / UC-xx）を確認する。
-2. 計画リポジトリ（既定 `../project-planning`）から根拠を読む。
+2. 計画リポジトリ（GitHub URL または隣接クローン `../project-planning`。**読み取り専用**）から根拠を読む。
    - 受け入れ基準・機能要求: `projects/<name>/02_requirements/`
    - ユースケースの基本/代替/例外フロー: `projects/<name>/03_usecases/`
 3. `CLAUDE.md` 末尾の「技術スタック別ルール」でテストフレームワーク・配置規約を確認する。

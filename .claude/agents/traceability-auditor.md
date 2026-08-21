@@ -11,10 +11,12 @@ model: inherit
 
 規約（`CLAUDE.md`・`.claude/rules/traceability.md`）は**自動で読み込まれている。改めて Read しない。**
 
-1. 計画リポジトリ（既定 `../project-planning`）の `projects/<name>/` から ID を収集する。
+1. 計画リポジトリ（GitHub URL または隣接クローン `../project-planning`。**読み取り専用**。本リポジトリは planning に依存しない）の `projects/<name>/` から ID を収集する。
    - 機能要求 `FR-\d+`、ユースケース `UC-\d+`、画面 `SC-\d+`、ADR `ADR-\d{4}`。
    - **収集は `rg -o` によるパターン抽出で行い、ファイル全文の Read は要求表・トレーサビリティ表・索引（README）に留める**。計画書の本文全読は検査に不要である。
 2. 実装リポジトリのコード・コミットログ・PR から ID 参照を収集する（`rg` で `FR-\d+` 等を検索、`git log` でコミットメッセージを走査）。
+   - 🔴 **`docs/` 配下の ID は表示テキストに無い。** frontmatter 直後の **trace ブロック**（HTML コメント）に入っている（ADR-0048 決定 4）。`rg` は本文と同じく拾えるが、**「表示テキストに ID が無い」ことを参照切れ・実装漏れと誤判定しない**。参照グラフを機械で得るなら `node scripts/gen-knowledge-graph.js --json` を使う。
+   - `.ai-context/{adr,specs}/` は凍結記録であり、ID は本文と frontmatter の両方にある。
 3. 双方向で突き合わせる。
 
 ## 複数プロジェクトを跨ぐ場合の除外規則
