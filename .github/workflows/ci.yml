@@ -356,7 +356,7 @@ jobs:
       - name: Check charts and overlays render
         run: node scripts/check-deploy-manifests.js
 
-  # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1・6）:
+  # NFR, ADR-0027 / ADR-0030, Issue #455（子 C・Wolverine 移行 手順 1。手順 6 は check-backend-libraries の規則 4）:
   # イベント型 → 発行元 / 購読先の対応表を baseline と突き合わせる。
   #
   # **移行より先に要る検査である。** 計画は Wolverine 移行の 8 手順のうち

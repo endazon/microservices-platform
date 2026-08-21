@@ -24,6 +24,15 @@
  *      各サービスの再実装 issue（#438〜#451）は移行と同時に baseline から自プロジェクトを削除する。
  *   2) Domain 層の外部依存ゼロ: *.Domain.csproj は PackageReference を持てない
  *      （ProjectReference は共有カーネル Platform.Shared.Kernel のみ許可）。ADR-0030 選定基準 3 の機械化。
+ *   4) 禁止 API シンボル（計画 ADR-0027 移行チェックリスト 手順 3・手順 6。#455）:
+ *      Wolverine の `PrefixIdentifiers` は **exchange 名まで前置する**ため、fan-out の宛先が
+ *      誰にも束ねられず「**誰にも届かない**」形になる（キュー名の衝突＝competing consumer より悪い）。
+ *      計画は手順 3 で「使わない」と明示し、手順 6 で「3〜5 を共通ヘルパへ封じ込め、
+ *      **個別サービスでの逸脱を静的検査で禁止する**」と定めている。本規則はその静的検査である。
+ *      🔴 **現在 0 件であり、これが正解の状態である**（未実装ではない）。ratchet は要らず、
+ *      新規混入をそのまま fail にする（規則 3 と同じく既知違反ゼロで開始できる）。
+ *      🔴 **移行を始める前に置くことに意味がある** —— 誤用が起きるのは Wolverine を配線する
+ *      まさにその瞬間であり、そのとき既に仕掛けが在る必要がある。
  *   3) 共有カーネルの依存規律（計画 ADR-0041 が選定基準 3 を部分改定。#500）:
  *      Platform.Shared.Kernel が持てる外部パッケージは Result 型の実装 1 つ（SHARED_KERNEL_ALLOWED）に限る。
  *      その 1 つは共有カーネルの**内部実装としてのみ**許され、他プロジェクトでの直接参照は 2) と同じく違反。
@@ -110,6 +119,41 @@ const BANNED = [
 ];
 
 /** 共有カーネル（Domain が唯一 ProjectReference を許される先）。 */
+/**
+ * 計画 ADR-0027 手順 3 が名指しで禁じた API。**「使ってはならない」ものだけを置く。**
+ * `DisableConventionalLocalRouting`（手順 4）・`ServiceLocationPolicy`（手順 5）は**逆で、
+ * 共通ヘルパに在るべきもの**なので、ここへ入れてはならない（極性が違う）。
+ */
+const FORBIDDEN_APIS = [
+  {
+    symbol: 'PrefixIdentifiers',
+    why: 'exchange 名まで前置され、fan-out の宛先が「誰にも届かない」形になる（ADR-0027 手順 3）。'
+      + ' キュー名はサービス名を前置して衝突を避け、exchange 名は既定（メッセージ型の fanout）のままにすること。',
+  },
+];
+
+/**
+ * .cs 本文から禁止 API シンボルの使用を拾う。
+ *
+ * 🔴 **識別子の境界で照合する。** 部分一致で拾うと `PrefixIdentifiersFoo` のような別の識別子や、
+ * 将来 `MyPrefixIdentifiers` のような命名が生まれたときに偽陽性になる。偽陽性は「検査を無視する学習」
+ * を生むため、禁止側の検査ほど境界を厳密にする。
+ *
+ * コメント内の記述も拾う。**この API は名前を書くこと自体が誤りの兆候**であり、
+ * 「コメントに書いてから外す」経路を許すと、次に読む人が有効な選択肢だと受け取る。
+ * 意図的に言及する必要がある文書は `.cs` ではなく `docs/` / `.ai-context/` に置く（走査対象外）。
+ */
+function forbiddenApiViolations(relPath, content, list = FORBIDDEN_APIS) {
+  const out = [];
+  for (const f of list) {
+    const re = new RegExp(`\\b${f.symbol}\\b`);
+    if (re.test(String(content))) {
+      out.push({ kind: 'forbidden-api', project: toPosix(relPath), detail: f.symbol });
+    }
+  }
+  return out;
+}
+
 const SHARED_KERNEL = 'Platform.Shared.Kernel';
 
 /**
@@ -496,6 +540,9 @@ function scanTree(root = REPO_ROOT) {
     const content = fs.readFileSync(path.join(root, cs), 'utf8');
     // using の許否は「その .cs がどのプロジェクトに属するか」で決まる（ADR-0041 決定 2。#500）。
     add(proj, bannedInSource(content, bannedListFor(proj)));
+    // 規則 4: 禁止 API シンボル。**プロジェクトではなくファイルを名指しする**
+    // （1 行の混入であり、どのファイルかが分からないと直せない）。
+    domain.push(...forbiddenApiViolations(cs, content));
   }
   return { current, domain };
 }
@@ -840,6 +887,24 @@ function selfTest() {
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 
+  // --- 規則 4: 禁止 API シンボル（ADR-0027 手順 3・手順 6。#455） ---
+  t('PrefixIdentifiers の呼び出しを検出する',
+    forbiddenApiViolations('a/B.cs', 'cfg.PrefixIdentifiers();').length === 1);
+  t('検出はファイルを名指しする（プロジェクトではなく）',
+    forbiddenApiViolations('a/B.cs', 'cfg.PrefixIdentifiers();')[0].project === 'a/B.cs');
+  t('★ 部分一致では検出しない（識別子の境界で照合する。偽陽性は検査を無視する学習を生む）',
+    forbiddenApiViolations('a/B.cs', 'var myPrefixIdentifiersFoo = 1;').length === 0
+      && forbiddenApiViolations('a/B.cs', 'XPrefixIdentifiers();').length === 0);
+  t('コメント中の言及も検出する（「書いてから外す」経路を許さない）',
+    forbiddenApiViolations('a/B.cs', '// TODO: PrefixIdentifiers を検討').length === 1);
+  t('禁止 API を含まなければ 0 件',
+    forbiddenApiViolations('a/B.cs', 'cfg.UsePlatformRetry();').length === 0);
+  t('★ 手順 4・5 の API は禁止側に入れない（極性が逆。共通ヘルパに在るべきもの）',
+    !FORBIDDEN_APIS.some((f) => f.symbol === 'DisableConventionalLocalRouting')
+      && !FORBIDDEN_APIS.some((f) => f.symbol === 'ServiceLocationPolicy'));
+  t('禁止 API には理由が必ず付く（メッセージだけ見て直せるように）',
+    FORBIDDEN_APIS.every((f) => typeof f.why === 'string' && f.why.length > 0));
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -902,6 +967,13 @@ function main() {
         'CPM は 1 パッケージ 1 バージョンしか持てず v2 と v3 は共存できない。本リポジトリは ' +
         '#455 A-2 で 16 プロジェクトを v3 へ一斉に切り替え済みである。' +
         '本体は xunit.v3、CPM の xunit.runner.visualstudio は 3.x に揃えること。');
+      continue;
+    }
+    if (d.kind === 'forbidden-api') {
+      const f = FORBIDDEN_APIS.find((x) => x.symbol === d.detail);
+      failures.push(`[禁止 API] ${d.project}\n    「${d.detail}」は計画 ADR-0027 が名指しで禁じています。`
+        + ` ${f ? f.why : ''}`
+        + ' この退行は例外もログも出さず、業務イベントが黙って消えます。');
       continue;
     }
     if (d.kind === 'template-banned') {
