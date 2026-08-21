@@ -29,28 +29,69 @@ public class EncapsulationTests
     {
         var leaks = new List<string>();
 
+        // ［2026-08-21 / #455］走査面を広げた（クロス監査 C-2 の指摘）。当初は
+        // メソッド・プロパティ・フィールド・コンストラクタだけを見ており、次が抜けていた:
+        // 基底型 / 実装インターフェース / イベント / ジェネリック型パラメータ制約 / protected メンバ。
+        // **現時点で実害は無かったが、型が増えたときに静かに抜ける穴だった。**
+        //
+        // protected を含めるのは、非 sealed の公開型では派生者から見える＝公開面の一部だからである。
+        // DeclaredOnly を外して継承メンバも見る（外部基底から継承した公開メンバを取りこぼさない）。
+        const BindingFlags surface = BindingFlags.Public | BindingFlags.NonPublic
+            | BindingFlags.Instance | BindingFlags.Static;
+
+        static bool IsVisibleOutside(MethodBase? m) =>
+            m is not null && (m.IsPublic || m.IsFamily || m.IsFamilyOrAssembly);
+
         foreach (var type in KernelAssembly.GetExportedTypes())
         {
-            foreach (var m in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            Collect(leaks, $"{type.Name} の基底型", type.BaseType ?? typeof(object));
+            foreach (var i in type.GetInterfaces())
+            {
+                Collect(leaks, $"{type.Name} が実装するインターフェース", i);
+            }
+
+            foreach (var arg in type.GetGenericArguments())
+            {
+                foreach (var c in arg.GetGenericParameterConstraints())
+                {
+                    Collect(leaks, $"{type.Name} の型引数 {arg.Name} の制約", c);
+                }
+            }
+
+            foreach (var m in type.GetMethods(surface).Where(x => IsVisibleOutside(x)))
             {
                 Collect(leaks, $"{type.Name}.{m.Name} の戻り値", m.ReturnType);
                 foreach (var p in m.GetParameters())
                 {
                     Collect(leaks, $"{type.Name}.{m.Name} の引数 {p.Name}", p.ParameterType);
                 }
+
+                foreach (var arg in m.GetGenericArguments())
+                {
+                    foreach (var c in arg.GetGenericParameterConstraints())
+                    {
+                        Collect(leaks, $"{type.Name}.{m.Name} の型引数 {arg.Name} の制約", c);
+                    }
+                }
             }
 
-            foreach (var p in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            foreach (var p in type.GetProperties(surface)
+                         .Where(x => IsVisibleOutside(x.GetMethod) || IsVisibleOutside(x.SetMethod)))
             {
                 Collect(leaks, $"{type.Name}.{p.Name} プロパティ", p.PropertyType);
             }
 
-            foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly))
+            foreach (var f in type.GetFields(surface).Where(x => x.IsPublic || x.IsFamily || x.IsFamilyOrAssembly))
             {
                 Collect(leaks, $"{type.Name}.{f.Name} フィールド", f.FieldType);
             }
 
-            foreach (var c in type.GetConstructors(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+            foreach (var e in type.GetEvents(surface).Where(x => IsVisibleOutside(x.AddMethod)))
+            {
+                Collect(leaks, $"{type.Name}.{e.Name} イベント", e.EventHandlerType ?? typeof(object));
+            }
+
+            foreach (var c in type.GetConstructors(surface).Where(x => IsVisibleOutside(x)))
             {
                 foreach (var p in c.GetParameters())
                 {
