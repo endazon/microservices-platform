@@ -16,7 +16,7 @@ related_ids:
   - IADR-0164
 author: claude
 created: 2026-08-18
-updated: 2026-08-18
+updated: 2026-08-21
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0038_analysis-purpose-drop-fable-5.md (Accepted・決定 3・4・6 の実装)
   - planning:projects/microservices-platform/07_adr/ADR-0010_llm-gateway.md (Accepted・ルーティング機構)
@@ -207,6 +207,27 @@ OpenAI 互換プロバイダ（`SelfHostedProvider` / `CopilotProvider`）は `E
    `ADR-0038` 決定 4 は「429 は再試行である」と述べるだけで、再試行の形を定めていない。
 2. **`default` / `rag-answer` の第 2 候補の確定**（`ADR-0038` §未決事項・同 §フォローアップ 5）。
    確定したら鎖へ足す。ストリーム経路（`rag-answer`）に鎖が付く場合は、決定 4 の射程を見直す。
+
+   > **［2026-08-21 追記 / #440・planning#426］解決した。** 計画側の裁定 (a) により
+   > **`default` → `claude-sonnet-5`、`rag-answer` → `claude-haiku-4-5`** が確定し、
+   > `appsettings.json` の `PurposeFallbackModels` へ登録した。
+   >
+   > **`ADR-0038` §未決事項が「未確定」と書いていたのは追随漏れであった** —— 計画
+   > `06_technical/04_ai-rag-stack`（`fixed`）が **2026-08-07 の利用者裁定として同じ 2 値を確定させており**、
+   > `ADR-0038` の側だけが古いまま残っていた。裁定はこれを実測で確認し、計画側 3 箇所を
+   > 打ち消し線＋日付つき追記で是正した（planning#427）。
+   > **本 ADR の「補わない」という判断（§理由の最後から 2 つ目の項）は、当時の典拠に照らせば正しく、
+   > 典拠そのものが誤っていた。** 実装が発明しなかったこと自体は誤りではない。
+   >
+   > **決定 1 の「本 ADR 時点の値は `analysis: ["claude-sonnet-5"]` のみ」は本 ADR 時点の記述として
+   > 保存する**（凍結記録は本文を書き換えない）。**現在の値は `appsettings.json` が正本**であり、
+   > 2026-08-21 時点で `analysis` / `diagram-coding` / `default` / `rag-answer` の 4 用途が鎖を持つ。
+   >
+   > **決定 4（ストリーム経路をフォールバックの射程に含めない）は維持する。**
+   > 前提であった「ストリーム経路の用途 `rag-answer` は鎖を持たない」は**崩れた** —— 鎖を持つ用途が
+   > ストリーム経路へ来ることが現に起きる。それでも射程を広げないのは、**途中まで流した本文の扱い**という
+   > 別の決定を要するためである。決定 4 が置いた warn が唯一の可観測点であり、これを外さない。
+   > **射程を広げるには新しい ADR / IADR が要る。**
 3. フォールバック率のしきい値（アラート）。**実測前に数値を置かない** ——
    [IADR-0110](./IADR-0110_llm-completion-stop-reason-metrics.md) のしきい値と同じく運用開始後の実測で決める。
 

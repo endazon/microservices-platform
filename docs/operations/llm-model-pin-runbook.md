@@ -11,7 +11,7 @@ ids: [FR-11]
 adrs: [ADR-0038, AST:ADR-0011]
 iadrs: [IADR-0102, IADR-0112, IADR-0141, IADR-0225]
 specs: [20260811_issue-587_pin-migration-runbook]
-issues: [#382, #587, AST#296, planning#50]
+issues: [#382, #440, #587, AST#296, planning#50, planning#426]
 -->
 
 # 運用 Runbook: ピン留め LLM モデルの版数移行と利用不能時の振る舞い
@@ -136,8 +136,14 @@ for (const [k, v] of Object.entries(d.Llm.Routing.PurposeFallbackModels ?? {})) 
 > | **429 は再試行。フォールバックではない**（§レート制限（429）は別物である） | `LlmFallbackPolicy` が 429 を発火条件から除外する。**除外を外すと落ちるテスト**を置き、変異試験で実測した |
 > | Anthropic の `fallbacks` に頼らず **LlmGateway のクライアント実装として持つ** | `CompletionEndpoints` の再試行ループとして実装した（SDK の機能は使っていない） |
 >
-> **鎖を持つのは `analysis` だけ**である（`claude-opus-5` → `claude-sonnet-5`。計画 `ADR-0038` 決定 3）。
-> **`trade-decision` を含む他の用途は従来どおり、失敗しても別モデルへ切り替えない。**
+> **［2026-08-21 更新］鎖を持つのは 4 用途である** —— `analysis`（`claude-opus-5` → `claude-sonnet-5`）・
+> `diagram-coding`（`claude-sonnet-5` → `claude-haiku-4-5`）・`default`（`claude-opus-5` → `claude-sonnet-5`）・
+> `rag-answer`（`claude-sonnet-5` → `claude-haiku-4-5`）。
+> 従前ここには「鎖を持つのは `analysis` だけ」と書いていたが、**`diagram-coding` を数え落としており、
+> `default` / `rag-answer` は計画側の裁定で確定した**。**いずれも安価側への 1 段下位**である。
+> **`trade-decision` と報告書系（`report-monthly` / `report-weekly` / `report-daily`）は鎖を持たず、
+> 失敗しても別モデルへ切り替えない。** 本 Runbook の制約はこの 4 用途の鎖によって破られていない
+> —— **`trade-decision` に鎖が付かないことが制約の本体**である。
 > **429 の再試行そのものは未実装である** —— 計画側が回数・バックオフ・`Retry-After` の方針を
 > 定めていないためであり（同実装 ADR §フォローアップ 1）、**429 で別モデルへ逃げないことだけが
 > 実装されている**。発火は `llm_completion_total{llm_result="fallback"}` で観測する。

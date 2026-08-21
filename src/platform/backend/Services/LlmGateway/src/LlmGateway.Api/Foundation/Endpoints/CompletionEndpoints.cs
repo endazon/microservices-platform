@@ -174,11 +174,15 @@ public static class CompletionEndpoints
                 return;
             }
 
-            // ADR-0038 決定 3 (#863): **ストリーム経路はフォールバックを実装していない。**
-            // 鎖を持つのは analysis だけで、analysis は非ストリーミング /complete を使う
-            // （RagOrchestrator.AnalyzeAsync）。ストリーム経路の用途 rag-answer は第 2 候補が
-            // 計画 ADR-0038 §未決事項で未確定であり、決めていない順序を実装が発明しない。
-            // ただし**設定でストリーム用途に鎖が置かれたとき無音の穴にならないよう**、その事実を残す。
+            // ADR-0038 決定 3 (#863): **ストリーム経路はフォールバックを実装していない**（IADR-0225 の射程外）。
+            // ［2026-08-21 / #440・planning#426 裁定 (a)］従前ここには「鎖を持つのは analysis だけで、
+            // ストリーム経路の用途 rag-answer は第 2 候補が計画 ADR-0038 §未決事項で未確定」と書いていた。
+            // **どちらも現状と合わない** —— 鎖は analysis / diagram-coding / default / rag-answer の 4 用途が
+            // 持ち、rag-answer の第 2 候補は裁定で claude-haiku-4-5 に確定した。
+            // **したがって鎖を持つ用途がストリーム経路へ来ることは現に起きる。**
+            // それでも実装を広げないのは、ストリームのフォールバックが「途中まで流した本文の扱い」という
+            // 別の決定を要するためである（IADR-0225 が射程外と明示した理由）。下の warn が唯一の可観測点で
+            // あり、**無音の穴にしないためにここで残す**。射程を広げるなら新しい ADR / IADR が要る。
             if (decision.Fallbacks.Count > 0)
                 logger.LogWarning(
                     "Fallback chain {FallbackModels} is configured for this route but /complete/stream does not "

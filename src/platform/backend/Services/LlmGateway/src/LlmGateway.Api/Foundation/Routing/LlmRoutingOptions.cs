@@ -33,7 +33,15 @@ public sealed class LlmRoutingOptions
     //  2. 用途を書かなければ鎖は無く、その用途はフォールバックしない。**trade-decision は
     //     意図的に鎖を持たない** —— 別モデルで下した取引判断は再現性・監査可能性を失った別物である
     //     （AST/ADR-0011 / docs/operations/llm-model-pin-runbook.md）。
-    //  3. default / rag-answer の第 2 候補は計画 ADR-0038 §未決事項で**未確定**である。根拠なく足さない。
+    //  3. ［2026-08-21 / #440・planning#426 裁定 (a)］**全 4 用途の鎖が確定した。**
+    //     従前ここには「default / rag-answer の第 2 候補は計画 ADR-0038 §未決事項で未確定である。
+    //     根拠なく足さない」と書いていたが、**その典拠は根拠を失った** —— 計画
+    //     06_technical/04_ai-rag-stack（fixed）が 2026-08-07 の利用者裁定として
+    //     default → claude-sonnet-5 / rag-answer → claude-haiku-4-5 を確定させており、
+    //     ADR-0038 §未決事項の行は**はじめから追随が漏れていた**（裁定が実測で確認）。
+    //     計画側は 3 箇所を打ち消し線＋日付つき追記で是正済み（planning#427）。
+    //     **すべての用途で鎖は安価側へ向かう**（opus-5 $5/$25 → sonnet-5 $3/$15 → haiku-4-5 $1/$5 per 1M）。
+    //     発火によって費用が上振れすることはない。
     public Dictionary<string, List<string>> PurposeFallbackModels { get; set; } =
         new(StringComparer.OrdinalIgnoreCase);
 
