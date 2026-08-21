@@ -9,6 +9,13 @@
        これは Result 型の**内部実装**としてのみ使い、公開面には出さない（決定 2）。
        許可リストは scripts/check-backend-libraries.js の SHARED_KERNEL_ALLOWED が持ち、
        リスト外のパッケージが入ると CI が落ちる。**差し替えるときは増やさず入れ替える。** -->
+  <!-- 🔴 **PrivateAssets="all" を付けてはならない。実測でビルドが落ちる**（#455 / IADR-0229 追記）。
+       Result / Result<T> は readonly struct であり、private フィールドの型が
+       **値型のレイアウト＝ABI の一部**として消費側のコンパイルに要る。付けると消費側が
+       CS0012「The type 'Result<,>' is defined in an assembly that is not referenced」で落ちる。
+       **つまり推移参照は構造では断てない。** 封じ込めは検査器（check-backend-libraries.js の
+       `using` 検査）と EncapsulationTests のリフレクション走査で担保する。
+       詳細と限界は IADR-0229 の 2026-08-21 追記を参照。 -->
   <ItemGroup>
     <PackageReference Include="CSharpFunctionalExtensions" />
   </ItemGroup>

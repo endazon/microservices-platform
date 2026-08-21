@@ -196,3 +196,42 @@ SharedKernel に自前実装する**と定めた（選定基準 3）。その構
   標準構成として認められた**。**決定 1〜4 は引き続き有効**なため `Accepted` を維持する。
   **却下理由（§検討した選択肢 列 B・§理由 第 1 項）は記録として残してある** —— 消すと
   なぜ 11 分裂を恐れたのかが読めなくなるためである）
+
+
+---
+
+## ［2026-08-21 追記 / #455］`Platform.Shared.Kernel` は実体を持った
+
+本 IADR は配置だけを確定させ、**「実体は未作成」**を現況として各所に記録していた。
+**その現況は解消された。** `src/platform/backend/Shared/Platform.Shared.Kernel/` が
+`Result` / `Result<T>` / `Error` を公開する実体を持ち、`backend.slnx` へ登録されている。
+公開する操作面と `default` の扱いは
+[IADR-0229](./IADR-0229_shared-kernel-result-surface.md) が正本である。
+
+**決定 1〜4 は引き続き有効**（配置・許可先 3 プロジェクト・依存の向きは変わらない）。
+変わったのは**現況記述だけ**なので `Accepted` を維持する。
+
+### 追随させた live 文書・コード（母集合を「未作成」「実体は無い」「配置のみ確定」の 3 軸で引いた）
+
+| ファイル | 面 |
+| --- | --- |
+| `CLAUDE.md` §技術スタック別ルール | 必読規約 |
+| `src/README.md` §依存規則 | 依存規則の正本 |
+| `src/Directory.Packages.props` | CPM のコメント |
+| `src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/Knowledge.Bff.Endpoints.csproj` | csproj のコメント |
+| `scripts/check-unit-dependencies.js` | 検査器のヘッダ |
+| `scripts/check-backend-libraries.js` | 自己試験のコメント |
+| `templates/unit-template/README.md` | 雛形の依存規則 |
+| `docs/how-to/adding-a-unit-submodule.md` | 手順書の依存規則 |
+
+**`.ai-context/specs/` と、本追記以外の `.ai-context/adr/`（[IADR-0056](./IADR-0056_repo-unit-structure-platform-knowledge.md) /
+[IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md) /
+[IADR-0219](./IADR-0219_sharedkernel-granularity-and-worker-standard-component.md)）は書き換えない。**
+いずれも「実体は未作成」を**本 IADR の現況として引いている**だけであり、
+[IADR-0141](./IADR-0141_audit-rounds-and-population-drawing.md)「参照点を 1 つに畳む」に従い、
+訂正はこの 1 箇所に置く。
+
+**この追随は当初漏れていた**（クロス監査が検出）。`.claude/rules/traceability.repo.md` 規則 10
+「**是正のたびに『この変更で新たに誤りになる自分の記述』を引き直す。是正前の語で引いても捕まらない**」
+の実例である —— 本作業は「`Platform.Shared.Kernel` を作る」ことばかりを見て、
+**「作ったことで誤りになる記述」を引いていなかった。**

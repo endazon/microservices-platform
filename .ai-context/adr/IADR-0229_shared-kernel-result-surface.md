@@ -112,3 +112,86 @@ v3 へ移ると既存の全テストプロジェクトが同時に移らざる�
 - Supersedes: なし
 - 部分改定: なし（[IADR-0117](./IADR-0117_platform-shared-kernel-placement.md) の「実体は未作成」という現況記述が本作業で解消される）
 - 関連: [IADR-0196](./IADR-0196_shared-kernel-result-library-allowlist.md)（許可リスト）／ #797（沈黙の exit 0。決定 2 の考え方）
+
+
+---
+
+## ［2026-08-21 追記 / #455］決定 1 の「8 種」は実装と合わない。数と一覧を実測へ揃える
+
+**クロス監査の指摘により訂正する。表の中身は実装と一致しており、誤っていたのは見出しの数と、
+状態参照面の欠落である。**
+
+### 同期の操作は 8 ではなく 9 名（メソッド実数 14）
+
+実測した公開メソッド名: `Success` / `Failure` / `Map` / `Bind` / `Tap` / `Ensure` / `Match` /
+`Combine` / `Discard` の **9 名**。オーバーロードを数えると `Result` 6 ＋ `Result<T>` 8 の **14 本**。
+ファクトリ 2 件（`Success` / `Failure`）を除いても 7 で、**8 には落ちない。**
+
+**非同期 3 種は一致している**（`Result.BindAsync` / `Result<T>.MapAsync` / `Result<T>.BindAsync`）。
+
+### 決定 1 の表に無かった公開面（状態参照・等価性）
+
+`ADR-0041` フォローアップは「**公開する操作の一覧を確定する**」を求めている。操作だけを挙げて
+状態参照面を落とすと、**「選別した」ことにならない。** 次を一覧へ加える。
+
+| 型 | 追加で公開しているもの |
+| --- | --- |
+| `Result` / `Result<T>` | `IsSuccess` / `IsFailure` / `Error`（＋ `Result<T>` は `Value`） |
+| 同上 | `Equals` / `GetHashCode` / `ToString` / `operator ==` / `operator !=`（`IEquatable<T>` 実装） |
+
+**これらを増やす予定は無い。** 決定 1 の趣旨（外部ライブラリが持っているからという理由で操作を
+増やさない）はそのまま有効である。
+
+### 併せて: 作業仕様書の記述が過大だった
+
+`.ai-context/specs/20260821_issue-455_platform-shared-kernel.md` は
+「`Map` / `Bind` / `Tap` / `Match` / `Ensure` / `Combine` **と、それぞれの `Task` 版**」と書いているが、
+**`TapAsync` / `MatchAsync` / `EnsureAsync` / `CombineAsync` は存在しない。**
+**実装は本 IADR（正本）に合っており、仕様書側が過大に書いていた。**
+仕様書は凍結記録のため書き換えず、正本である本 IADR にこの追記を置く。
+
+---
+
+## ［2026-08-21 追記 / #455］封じ込めの限界 —— **推移参照は構造では断てない**（実測）
+
+クロス監査（C-3）が「`Platform.Shared.Kernel.csproj` の `PackageReference` に
+`PrivateAssets="all"` を付けて、推移参照をコンパイラ段で断つべきだ」と提案した。
+**もっともな提案であり、実際に試した。落ちた。**
+
+```console
+$ # Platform.Shared.Kernel.csproj に PrivateAssets="all" を付けて
+$ dotnet build src/platform/backend/backend.slnx
+CSC : error CS0012: The type 'Result<,>' is defined in an assembly that is not referenced.
+      You must add a reference to assembly 'CSharpFunctionalExtensions, Version=3.7.0.0, …'
+      [Platform.Shared.Kernel.Tests.csproj]
+CSC : error CS0012: The type 'UnitResult<>' is defined in an assembly that is not referenced. …
+```
+
+### なぜ落ちるのか
+
+`Result` / `Result<T>` は **`readonly struct`** である。**値型の private フィールドの型は
+レイアウト＝ABI の一部**であり、その構造体を**使うだけ**の消費側にもアセンブリ参照が要る。
+参照型（class）ならフィールド型を解決せずに使えるが、本設計は
+[決定 2 の理由](#決定-2-default-は成功として扱わない)（ホットパスの割り当てを避ける）で struct を採っている。
+
+### したがって、封じ込めの担保は次の 2 段である。構造ではない
+
+| 段 | 何を止めるか | 限界 |
+| --- | --- | --- |
+| `scripts/check-backend-libraries.js` の `using` 検査 | 消費側が `using CSharpFunctionalExtensions;` を書くこと | **完全修飾（`CSharpFunctionalExtensions.Result.Success<…>()`）は素通りする**（同スクリプト冒頭が二次防衛と自認） |
+| `EncapsulationTests` のリフレクション走査 | SharedKernel の**公開面**へ外部型が出ること | 消費側の書き方は見ない |
+
+**「消費側が外部アセンブリを参照できてしまう」状態そのものは残る。**
+`ADR-0041` 決定 2 が求めるのは「外部ライブラリの**型・名前空間を直接参照してはならない**」であり、
+**その規律は上の 2 段で担保している**が、**参照可能性そのものを構造で断ててはいない。**
+本 IADR が決定 3 で「機械的に固定する」と書いた射程は**ここまで**である。
+
+### 断ちたくなったときの選択肢（採らない理由つき）
+
+| 案 | 採らない理由 |
+| --- | --- |
+| `Result` を class にする | `default` 問題は消えるが、ホットパスの割り当てが増える。決定 2 の初期化フラグで同じ安全性が得られている |
+| CFE を捨てて完全自前実装にする | `ADR-0041` 決定 1 が明示的に `CSharpFunctionalExtensions` を採ると定めた。覆すには計画 ADR の改定が要る |
+| フィールドを自前の値（`bool` ＋ `T` ＋ `Error`）にして CFE をメソッド本体でのみ使う | **CFE が実質的に何もしなくなる。** 採用の意味が失われ、`ADR-0041` 決定 1 の趣旨（自前実装の保守コストを避ける）に反する |
+
+**現時点では受け入れる。** 断つ必要が生じたら `ADR-0041` の改定として扱う。
