@@ -36,16 +36,10 @@
     "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj": [
-      "MassTransit"
-    ],
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj": [
-      "MassTransit"
-    ],
-    "src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj": [
       "MassTransit"
     ],
     "src/platform/backend/Shared/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj": [
