@@ -905,7 +905,6 @@ function selfTest() {
   t('禁止 API には理由が必ず付く（メッセージだけ見て直せるように）',
     FORBIDDEN_APIS.every((f) => typeof f.why === 'string' && f.why.length > 0));
 
-
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
