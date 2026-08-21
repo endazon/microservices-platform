@@ -75,22 +75,46 @@ jobs:
           exit 1
       # ユニットは ci.yml と同じく src/*/backend/backend.slnx から自動発見する
       # （ユニット名をここへ書かない。書くと次にユニットが増えたとき静かに対象から外れる）。
+      #
+      # 🔴 fail-closed の門を置いてある。**全ユニット合わせて 1 件も走らなければ落とす。**
+      # 本ワークフローは --filter "Category=Integration" に依存しており、`dotnet test` は
+      # フィルタに 1 件も一致しなくても exit 0 で終わる。したがって新しい統合テストへ
+      # [Trait("Category","Integration")] を付け忘れると、**0 件実行のまま緑**で通り続け、
+      # 「日次で統合テストが走っている」という記録だけが残る（本リポジトリが繰り返し踏んできた型）。
+      # ci.yml 側は --filter を捨てたのでこのリスクを持たないが、ここは持つ。
+      # 着手前の走査でも Trait を持たない Testcontainers テストが実際に 1 件見つかっている。
       - name: Integration tests (real containers, all units)
         run: |
           set -euo pipefail
           shopt -s nullglob
           found=0
+          ran=0
           for slnx in src/*/backend/backend.slnx; do
             found=$((found + 1))
             echo "::group::$slnx"
             dotnet restore "$slnx"
             dotnet build "$slnx" --no-restore --configuration Release
-            dotnet test "$slnx" --no-build --configuration Release \
-              --filter "Category=Integration" --verbosity normal
+            log="$(mktemp)"
+            if dotnet test "$slnx" --no-build --configuration Release \
+                 --filter "Category=Integration" --verbosity normal 2>&1 | tee "$log"; then
+              :
+            elif grep -q 'No test matches the given testcase filter' "$log"; then
+              # そのユニットに統合テストが無いだけ。失敗にしない（下の門が全体で担保する）。
+              echo "（$slnx に Category=Integration のテストは無い）"
+            else
+              echo "::endgroup::"
+              exit 1
+            fi
+            if grep -qE '^[[:space:]]*(Passed|Failed)[[:space:]]+[A-Za-z]' "$log"; then ran=1; fi
             echo "::endgroup::"
           done
           if [ "$found" -eq 0 ]; then
             echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
+            exit 1
+          fi
+          # 🔴 fail-closed: 0 件実行のまま緑にしない。
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::Category=Integration のテストが 1 件も実行されなかった。Trait の付け忘れかフィルタの誤りである。"
             exit 1
           fi
 
