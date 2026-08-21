@@ -96,7 +96,8 @@
     ],
     "docs/tests/FR-14_composability.md": [
       "PipelineRecomposeTests",
-      "PipelineStepRegistrationTests"
+      "PipelineStepRegistrationTests",
+      "QueueOverrideFanOutTests"
     ],
     "docs/tests/FR-15_config-info-api.md": [
       "ConfigBffEndpointTests",

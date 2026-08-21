@@ -116,9 +116,9 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // ConfigureAppConfiguration が Pipeline:ConfigPath を本番の正本へ向けているため、
             // AddPlatformPipelineStep は宣言のある経路（規則 2〜5）を通る。
             //
-            // ⚠️ **`queue` 上書きの経路だけは依然として通っていない。** 正本 pipeline.json の
-            // 5 段はいずれも `queue` を持たないためである（実測）。宣言経由でキュー名を
-            // 上書きする経路を試験するには、`queue` を設定したフィクスチャが別途要る。
+            // ［2026-08-21 / U0e］`queue` 上書きの経路も試験するようになった。正本 pipeline.json の
+            // 5 段はいずれも `queue` を持たないため（実測）、QueueOverrideFanOutTests が
+            // **本番ファイルから実行時に派生**させたフィクスチャを使う（本ファクトリの既定は正本のまま）。
 
             // Issue #33: Bus 起動レース対策。既定では MassTransitHostedService が Bus を
             // バックグラウンド起動するため、CreateClient() 直後の Publish が Consumer の
@@ -159,6 +159,13 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
     /// **U0d（段宣言を通す）の射程外だからである。**
     /// 集約は #891 で行う。**「作法を揃えた」であって「重複を無くした」ではない。**
     /// </remarks>
+    /// <summary>
+    /// テストから呼ぶための公開口（<see cref="FindRepoFile"/> と同一実装）。
+    /// 🔴 **7 つ目の複製を作らないためにこれを足した。** #891 が 6 箇所の集約を扱っており、
+    /// テスト側で walk を書き直せば集約対象が増える。集約時にここも 1 つへ寄せる。
+    /// </summary>
+    public static string FindRepoFileForTests(string relative) => FindRepoFile(relative);
+
     protected static string FindRepoFile(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

@@ -10,7 +10,7 @@ author: claude
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
 iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -358,8 +358,8 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 `AddMassTransit` / `AddPlatformPipelineStep` / `UsePlatformRetry` /
 `AddPlatformIntrospection` をそのまま通すようにした（**43 / 43 通過・件数不変**）。
 
-🔴 **手順 3 の退行は試験できるようになった**（2026-08-21 / U0c。下記 2）。
-**残る穴は `queue` 上書きの経路だけである。**
+🔴 **手順 3 の退行は試験できるようになった**（2026-08-21 / U0c・U0e）。
+**Phase 0 の穴は塞がった** —— コード経路（U0c）と**宣言経路**（U0e）の両方で試験する。
 
 1. ~~**`Pipeline:ConfigPath` を設定していない。**~~
    ✅ **塞いだ**（2026-08-21 / U0d）。統合テストは**本番が読む正本の `pipeline.json`** を
@@ -379,8 +379,16 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
    コンシューマのクラス名や namespace を変えたときに**正本の宣言が古くなったこと**を検出する。
    **変異試験で実測済み** —— 宣言の `consumer` 完全名を 1 文字変えると
    「段 'wiki-sync' の consumer 宣言 '…ConsumerX' が実装 '…Consumer' と一致しません」で起動が落ちる。
-   ⚠️ **`queue` 上書きの経路だけは依然として通っていない。** 正本の 5 段はいずれも `queue` を
-   持たないためである（実測）。この経路を試験するには `queue` を設定したフィクスチャが別途要る。
+   ✅ **`queue` 上書きの経路も塞いだ**（2026-08-21 / U0e）。正本の 5 段はいずれも `queue` を
+   持たないため（実測）、**本番ファイルから実行時に派生**させ `ingest` と `wiki-sync` へ
+   **同一の queue 名**を入れたフィクスチャで試験する（手で書き写さない —— 書き写せば腐る）。
+   🔴 **この試験は自己検証的である** —— 上書きが効けば競合コンシューマになり丁度 1 つが受信し、
+   上書きが無視されれば既定キューが別々になり両方受信して**落ちる**。
+   **変異試験で実測済み**: `registration.Endpoint(...)` を無効化すると `received = 2` で落ちる。
+
+   🔴 **宣言経路のほうが危険である。** `pipeline.json` は GitOps で配送される運用物であり、
+   **コードレビューを経ずに変わり得る**（「設定変更」として扱われやすい）。U0c が塞いだコード経路は
+   実装者の誤りをレビューで止められる可能性があるが、宣言経路にはその機会が無い。
 
    🔴 **この作業には、成功と見分けのつかない失敗の形があった。**
    `AddPlatformPipelineConfig` はパスが解決できないと**黙って何もせずに返る**ため、
