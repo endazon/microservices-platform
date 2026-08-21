@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using System.Net;
 using System.Net.Http.Json;
 using Knowledge.Contracts.Dtos;

@@ -12,7 +12,7 @@
  *      **PackageVersion（CPM のバージョン定義）は違反にしない**。baseline を消化するまで不採用パッケージの
  *      版定義は src/Directory.Packages.props に正当に残る設計であり、違反にすると残件と同数の偽陽性が出る
  *      （#455 の Serilog 消化後は 29 件。IADR-0216）。
- *      現行実装は MassTransit / FluentAssertions を広範に使用中のため、即時に全件 fail
+ *      現行実装は MassTransit を広範に使用中のため（FluentAssertions は #455 A-3 で消化済み・残件 0）、即時に全件 fail
  *      させると「成果物は正しいのに赤」が常態化する。同じ判断の先例は scripts/README.md の
  *      check-permission-denials.js の段階ポリシーである（赤の常態化は「赤を無視する学習」を生み、
  *      検査の目的そのものを壊す。planning#146・planning#160（前段の失敗モード）／

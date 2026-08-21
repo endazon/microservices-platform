@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using IngestionService.Worker.Foundation.Ports;
 using Microsoft.Extensions.Configuration;
 

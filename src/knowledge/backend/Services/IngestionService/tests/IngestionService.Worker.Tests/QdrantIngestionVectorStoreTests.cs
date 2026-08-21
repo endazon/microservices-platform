@@ -1,5 +1,5 @@
 using IngestionService.Worker.Composable.Adapters;
-using FluentAssertions;
+using AwesomeAssertions;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;
 using Qdrant.Client.Grpc;

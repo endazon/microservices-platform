@@ -6,7 +6,7 @@ using System.Text.Json;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.Extensions.Logging.Abstractions;
 

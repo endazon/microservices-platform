@@ -2,7 +2,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using System.Text;
 using Amazon.Runtime;
 using Amazon.S3;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Microsoft.Extensions.Logging.Abstractions;

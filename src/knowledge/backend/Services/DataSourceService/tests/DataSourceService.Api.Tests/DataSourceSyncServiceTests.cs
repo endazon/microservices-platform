@@ -2,7 +2,7 @@ using DataSourceService.Api.Composable.Adapters;
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Ports;
 using DataSourceService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;

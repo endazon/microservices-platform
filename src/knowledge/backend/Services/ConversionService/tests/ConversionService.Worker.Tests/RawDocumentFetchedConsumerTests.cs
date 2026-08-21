@@ -4,7 +4,7 @@ using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using ConversionService.Worker.Foundation.Domain;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;

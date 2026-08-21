@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using System.Net;
 using System.Net.Http.Json;
@@ -80,7 +80,9 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
 
         var list = await resp.Content.ReadFromJsonAsync<List<DocumentResponse>>();
         list.Should().NotBeNull();
-        list!.Count.Should().BeGreaterOrEqualTo(2);
+        // ［2026-08-21 / #455 A-3］BeGreaterOrEqualTo は FluentAssertions v7 の非推奨エイリアスで、
+        // AwesomeAssertions（v7 系フォーク）には**存在しない**。新名 BeGreaterThanOrEqualTo を使う。
+        list!.Count.Should().BeGreaterThanOrEqualTo(2);
     }
 
     [DockerFact]

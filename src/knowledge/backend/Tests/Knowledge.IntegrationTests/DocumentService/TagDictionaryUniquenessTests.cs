@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using System.Net;
 using System.Net.Http.Json;

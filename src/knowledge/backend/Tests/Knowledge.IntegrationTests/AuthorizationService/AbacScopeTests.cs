@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Platform.Shared.Contracts.Dtos;
 using System.Net;

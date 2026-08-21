@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Microsoft.AspNetCore.Hosting;

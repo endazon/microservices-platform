@@ -48,7 +48,6 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.4.13" />
-    <PackageVersion Include="FluentAssertions" Version="7.2.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <!-- ============================================================================
@@ -60,9 +59,12 @@
          不採用ライブラリ（MediatR / AutoMapper / Mapster / MassTransit / FluentAssertions /
          Serilog 等）は scripts/check-backend-libraries.js が新規混入を止める。既存の参照は
          scripts/backend-library-baseline.json で ratchet 管理し、空になった時点で
-         上の MassTransit / FluentAssertions の PackageVersion を削除する。
+         上の PackageVersion を削除する。
          Serilog（Serilog.AspNetCore / Serilog.Sinks.OpenTelemetry）は消化済みのため削除した
          （IADR-0216。ログの出口は builder.Logging.AddOpenTelemetry() へ移した）。
+         FluentAssertions も消化済みのため削除した（#455 A-3。表明は AwesomeAssertions へ移した。
+         v8 の商用ライセンス化が理由で、AwesomeAssertions は v7 系のフォークである）。
+         残る ratchet 対象は MassTransit だけである（Wolverine 移行 = 別作業の射程）。
          WolverineFx.RuntimeCompilation と CSharpFunctionalExtensions も同じ未参照エントリである
          （IADR-0217。由来と参照を足す時期は各行のコメントを参照）。
          ============================================================================ -->

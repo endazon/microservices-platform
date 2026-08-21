@@ -98,6 +98,11 @@ v3 へ移ると既存の全テストプロジェクトが同時に移らざる�
 
 表明は `AwesomeAssertions` を使う（`FluentAssertions` は商用化のため不採用・ratchet 管理下）。
 
+> ［2026-08-21 追記 / #455 A-3］**`FluentAssertions` は ratchet 管理下ではなくなった。** 段 1（platform）・
+> 段 2（knowledge）で全 14 プロジェクトを `AwesomeAssertions` へ移し、baseline エントリと
+> `src/Directory.Packages.props` の `PackageVersion` を削除した。`BANNED` 一覧には残るため、
+> 再混入は引き続き検査器が fail させる。
+
 ## 棄却した案
 
 | 案 | 棄却の理由 |

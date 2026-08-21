@@ -2,7 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;

@@ -6,62 +6,43 @@
     "baseline が空になったら Directory.Packages.props から不採用パッケージを削除する。"
   ],
   "projects": {
-    "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": [
-      "FluentAssertions"
-    ],
     "src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
-    ],
-    "src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj": [
-      "FluentAssertions"
     ],
     "src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
     ],
     "src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
-    ],
-    "src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj": [
-      "FluentAssertions"
     ],
     "src/knowledge/backend/Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
-    ],
-    "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": [
-      "FluentAssertions"
     ],
     "src/knowledge/backend/Services/WikiService/src/WikiService.Api/WikiService.Api.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
     ],
     "src/knowledge/backend/Shared/Knowledge.Contracts/Knowledge.Contracts.csproj": [
       "MassTransit"
     ],
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": [
-      "FluentAssertions",
       "MassTransit"
     ],
     "src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj": [
-      "FluentAssertions",
       "MassTransit"
     ],
     "src/platform/backend/Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj": [

@@ -193,8 +193,8 @@ src/<unit>/backend/Services/<Name>Service/
 `PackageReference` を一括注入できるため。[#471](https://github.com/endazon/microservices-platform/issues/471)）の
 `PackageReference`・`GlobalPackageReference` と `.cs` の `using` を走査して検出し、CI で止める。
 **CPM の `PackageVersion`（版の中央定義）は違反にしない** — 下記 ratchet の消化が終わるまで、
-[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit / FluentAssertions を
-広範に使用中**（実測 2026-08-21: `.csproj` **15 / 11**、`.cs` **36 / 96**）であるため、即時禁止では
+[`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit を
+広範に使用中**（実測 2026-08-21: `.csproj` **15**、`.cs` **36**）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
 壊すため、許容値までは警告に留める。計画側に記録された前段の失敗モードと段階ポリシーの導入経緯を参照）。
@@ -212,8 +212,13 @@ src/<unit>/backend/Services/<Name>Service/
 ログの出口を `builder.Logging.AddOpenTelemetry()`（OTel Logging SDK）へ移し、`Serilog.AspNetCore` /
 `Serilog.Sinks.OpenTelemetry` の `PackageReference`・`PackageVersion`・baseline エントリ 13 件を削除した
 （実測 2026-08-16: `Serilog` の `.csproj` 3 → **0**、`using Serilog` を持つ `.cs` 13 → **0**）。
-**残件は 42 件 → 29 件 → 26 件**（`MassTransit` / `FluentAssertions`）。`Serilog` は不採用のまま `BANNED` に残るため、
-再混入は引き続き fail する。
+**`FluentAssertions` も消化済みである**（表明を v7 互換フォークの `AwesomeAssertions` へ移す。#455 A-3）。
+platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段 2）を移し、`PackageReference` と baseline
+エントリ 14 件、および `PackageVersion` を削除した（実測 2026-08-21: `FluentAssertions` の `.csproj` 14 → **0**、
+`using FluentAssertions` を持つ `.cs` 150 → **0**）。
+
+**残件は 42 件 → 29 件 → 26 件 → 15 件**（`MassTransit` **のみ**）。`Serilog` と `FluentAssertions` は
+不採用のまま `BANNED` に残るため、再混入は引き続き fail する。
 
 > **［2026-08-21 更新］本節の実測値を数え直した。** 直前の値のうち、`FluentAssertions` の
 > `.csproj` **14 → 11**・残件 **29 → 26** は platform ユニット 3 プロジェクトの移行によるものである。
@@ -240,6 +245,14 @@ src/<unit>/backend/Services/<Name>Service/
 > **`^using MassTransit` は末尾を固定していない**ので `using MassTransit.Testing;` などのサブ名前空間も拾う。
 > 完全一致（`^using MassTransit;`）にすると **30** になる。差の 6 は**サブ名前空間だけを使うファイル**であり、
 > **依存の実態としては 36 が正しい**（`MassTransit` パッケージへの参照であることに変わりはない）。
+
+> **［2026-08-21 追記 / #455 A-3 段 2］同じ節をこの日のうちに二度直した。** 上の更新は
+> platform ユニットだけを移した時点（段 1）の値であり、knowledge ユニット 11 プロジェクトを移した
+> 段 2 で **`FluentAssertions` の系列がすべて 0 になった**ため、`.csproj` **11 → 0**・`.cs` **96 → 0**・
+> 残件 **26 → 15** へ再び書き換えた。**是正のたびに「この変更で新たに誤りになる自分の記述」を
+> 引き直す**（規則 10）——「残件がある」「広範に使用中」と書いた直前の文がまさにそれである。
+> 上の測定コマンドは残す（`FluentAssertions` の 2 本は現在 **0** を返すのが正しい姿であり、
+> 非 0 が出たら再混入である）。
 
 **xUnit は標準が v3 だが現行は v2 である。** `xunit.runner.visualstudio` は v2 用（2.x）と v3 用（3.x）で
 別系列であり、**CPM は 1 パッケージ 1 バージョンしか持てない**ため、v3 へ移ると既存 **16** のテスト

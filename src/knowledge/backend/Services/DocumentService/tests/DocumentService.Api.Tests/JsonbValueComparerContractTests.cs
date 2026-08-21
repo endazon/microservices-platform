@@ -1,5 +1,5 @@
 using DocumentService.Api.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 
 namespace DocumentService.Api.Tests;

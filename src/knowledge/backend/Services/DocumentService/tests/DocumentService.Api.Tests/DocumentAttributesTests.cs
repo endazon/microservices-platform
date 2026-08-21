@@ -1,5 +1,5 @@
 using DocumentService.Api.Foundation.Domain;
-using FluentAssertions;
+using AwesomeAssertions;
 
 namespace DocumentService.Api.Tests;
 

@@ -1,5 +1,5 @@
 using DataSourceService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace DataSourceService.Api.Tests;

@@ -1,5 +1,5 @@
 using IngestionService.Worker.Composable.Adapters;
-using FluentAssertions;
+using AwesomeAssertions;
 using IngestionService.Worker.Composable.Steps;
 using IngestionService.Worker.Foundation.Ports;
 using IngestionService.Worker.Foundation.Domain;

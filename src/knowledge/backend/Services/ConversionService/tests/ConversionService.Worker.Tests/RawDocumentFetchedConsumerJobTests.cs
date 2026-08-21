@@ -3,7 +3,7 @@ using ConversionService.Worker.Foundation.Domain;
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
 using ConversionService.Worker.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using MassTransit;

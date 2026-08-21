@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using ConversionService.Worker.Foundation.Persistence;
-using FluentAssertions;
+using AwesomeAssertions;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;

@@ -7,7 +7,7 @@ related_ids:
   - ADR-0030
 author: implementation-agent
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-21
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0006_observability-otel-prom-loki.md (可観測性スタック)
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (ロギング = ILogger + OTel Logs、Serilog 不採用)
@@ -110,6 +110,11 @@ plan_refs:
 - フォローアップ:
   - 残る ratchet 残件は `MassTransit` / `FluentAssertions` の 29 件。別 issue で消化する。
   - `src/Directory.Packages.props` の「移行完了時に削除する」対象は `MassTransit` / `FluentAssertions` の 2 群になる。
+
+> ［2026-08-21 追記 / #455 A-3］**上の 2 行は本 IADR 時点の観測であり、その後変わった。**
+> `FluentAssertions` は `AwesomeAssertions` への移行で全 14 プロジェクトを消化し、
+> ratchet 残件は **15 件（`MassTransit` のみ）**、`Directory.Packages.props` の削除対象も
+> `MassTransit` の 1 群になった。数値の正本は `docs/tech/tech-requirements.md` である。
 
 ## 関連
 

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.IntegrationTests.Fixtures;
 using Knowledge.Contracts.Events;
 using MassTransit;

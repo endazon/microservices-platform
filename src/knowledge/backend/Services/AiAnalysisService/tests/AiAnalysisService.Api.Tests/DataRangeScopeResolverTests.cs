@@ -1,5 +1,5 @@
 using AiAnalysisService.Api.Foundation.Services;
-using FluentAssertions;
+using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
 

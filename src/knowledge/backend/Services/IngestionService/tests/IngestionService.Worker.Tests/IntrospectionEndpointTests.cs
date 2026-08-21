@@ -1,6 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
+using AwesomeAssertions;
 using IngestionService.Worker.Composable.Adapters;
 using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Hosting;
