@@ -93,7 +93,8 @@
 
 - ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure / Kernel）のみ
   （[IADR-0117](../../.ai-context/adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を 2 → 3 へ
-  部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
+  部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネルで、
+  [IADR-0229](../../.ai-context/adr/IADR-0229_shared-kernel-result-surface.md) が Result / Error を公開する実体を与えた）。
 - platform → 可変ユニットの参照は禁止（一方向依存）。
 - `Foundation/` は `Composable/` に依存しない。
 - フロントが参照してよいのは **`@foundation`（platform の基盤）と `@platform/ui`（共有 UI パッケージ）の 2 つ**

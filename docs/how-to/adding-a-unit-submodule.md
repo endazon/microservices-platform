@@ -46,7 +46,8 @@ issues: [#229, #230, #245]
 - **依存規則**（[`src/README.md`](../../src/README.md) §依存規則。機械検査は軽量スクリプト＋フロント ESLint で行う）:
   - ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure /
     Kernel）のみ（共有カーネルの配置を定めた実装 ADR が、ユニット構成の決定 3 を
-    2 → 3 へ部分改定した。`Platform.Shared.Kernel` は計画側が定める共有カーネルであり、実体は未作成）。
+    2 → 3 へ部分改定した。`Platform.Shared.Kernel` は計画側が定める共有カーネルであり、
+    2026-08-21 に Result / Error を公開する実体を持った）。
   - platform → 可変ユニットの参照は禁止（一方向依存）。
   - `Foundation/` は `Composable/` に依存しない。
 

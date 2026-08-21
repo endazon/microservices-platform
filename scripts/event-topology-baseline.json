@@ -1,0 +1,48 @@
+{
+  "$comment": "NFR / #455 子 C: Wolverine 移行 手順 1 の対応表。移行前の正解表であり、移行後もこの表が変わらないことが移行の正しさの証拠になる。増減の両方向を違反にする。",
+  "topology": {
+    "DocumentDeleted": {
+      "publishers": [
+        "knowledge/DocumentService"
+      ],
+      "subscribers": [
+        "knowledge/WikiService"
+      ]
+    },
+    "DocumentNormalized": {
+      "publishers": [
+        "knowledge/ConversionService"
+      ],
+      "subscribers": [
+        "knowledge/DocumentService"
+      ]
+    },
+    "DocumentUpdated": {
+      "publishers": [
+        "knowledge/DocumentService"
+      ],
+      "subscribers": [
+        "knowledge/IngestionService",
+        "knowledge/WikiService"
+      ]
+    },
+    "IngestionCompleted": {
+      "publishers": [
+        "knowledge/IngestionService"
+      ],
+      "subscribers": []
+    },
+    "IngestionRequested": {
+      "publishers": [],
+      "subscribers": []
+    },
+    "RawDocumentFetched": {
+      "publishers": [
+        "knowledge/DataSourceService"
+      ],
+      "subscribers": [
+        "knowledge/ConversionService"
+      ]
+    }
+  }
+}

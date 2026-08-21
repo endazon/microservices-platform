@@ -117,7 +117,7 @@ knowledge ユニット（ナレッジ機能）は付随する可変機能セッ�
 - **命名規約**: 公開メンバは PascalCase、ローカル変数・引数は camelCase、private フィールドは `_camelCase`。
 - **ビルド/テスト**: `dotnet build <unit>/backend/backend.slnx` / `dotnet test <unit>/backend/backend.slnx` が両ユニットで通ること。テストは **xUnit**。受け入れ基準は `[Fact]`/`[Theory]` に写像する。
 - **フォーマット**: `dotnet format <slnx>` で整形（CI の `lint` ジョブが両ユニットに `--verify-no-changes` を強制）。
-- **サービス境界**: サービス間は直接参照せず、`Shared.Contracts` の契約と HTTP（Refit）/ メッセージング（**Wolverine**。ADR-0027 / ADR-0030。**MassTransit は不採用**で、新規混入は `scripts/backend-library-baseline.json` の ratchet が CI で fail させる）で疎結合に保つ。ユニット外参照は `src/platform/backend/Shared/` の 3 プロジェクトのみ許可（IADR-0117 で 2 → 3 へ改定。`Platform.Shared.Kernel` は未作成。platform → 可変ユニットは禁止）。
+- **サービス境界**: サービス間は直接参照せず、`Shared.Contracts` の契約と HTTP（Refit）/ メッセージング（**Wolverine**。ADR-0027 / ADR-0030。**MassTransit は不採用**で、新規混入は `scripts/backend-library-baseline.json` の ratchet が CI で fail させる）で疎結合に保つ。ユニット外参照は `src/platform/backend/Shared/` の 3 プロジェクトのみ許可（IADR-0117 で 2 → 3 へ改定。`Platform.Shared.Kernel` は Result / Error を公開する（IADR-0229）。platform → 可変ユニットは禁止）。
 
 ### TypeScript / React（フロントエンド `src/<unit>/frontend/`）
 

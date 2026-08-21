@@ -101,19 +101,40 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
         body.Model.Should().Be("claude-sonnet-5", "鎖の最後の候補まで試したことが応答から読める");
     }
 
-    // T-25e: 鎖を持たない用途は 400 でもフォールバックしない（従来の挙動が変わっていないこと）。
-    // rag-answer の第 2 候補は計画 ADR-0038 §未決事項で未確定であり、実装が勝手に補わない。
+    // T-25e: rag-answer は第 1 候補 claude-sonnet-5 が 400 で失敗したら claude-haiku-4-5 へ落ちる。
+    // ［2026-08-21 / planning#426 裁定 (a)］それまで「第 2 候補は計画側で未確定であり実装が勝手に
+    // 補わない」としてフォールバックしないことを固定していたが、裁定により鎖の登録が認められた。
+    // 旧テスト名は PostComplete_RagAnswer_When400_DoesNotFallBack。
     [Fact]
-    public async Task PostComplete_RagAnswer_When400_DoesNotFallBack()
+    public async Task PostComplete_RagAnswer_When400_FallsBackToHaiku45()
     {
         var client = ClientFailing("claude-sonnet-5", HttpStatusCode.BadRequest);
 
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
         var response = await client.PostAsJsonAsync("/complete", req);
 
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（ADR-0038 決定 4）");
+        body.Model.Should().Be("claude-haiku-4-5");
+        body.Endpoint.Should().Be("claude-managed");
+    }
+
+    // T-25e2: **鎖を持たない用途は 400 でもフォールバックしない**（従来の挙動が変わっていないこと）。
+    // planning#426 裁定 (a) が鎖を足したのは default / rag-answer の 2 つだけであり、
+    // report-weekly 等は依然として鎖を持たない。「鎖が無い用途は落ちない」という分岐そのものが
+    // 生きていることを、鎖を得た rag-answer から別の用途へ移して固定し直す。
+    [Fact]
+    public async Task PostComplete_ReportWeekly_When400_DoesNotFallBack()
+    {
+        var client = ClientFailing(ModelScriptedProvider.AnyModel, HttpStatusCode.BadRequest);
+
+        var req = new { Prompt = "週報", MaxTokens = 100, Confidentiality = "public", Purpose = "report-weekly" };
+        var response = await client.PostAsJsonAsync("/complete", req);
+
         var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
         body!.Sent.Should().BeFalse();
-        body.Model.Should().Be("claude-sonnet-5");
+        body.Model.Should().Be("claude-opus-5", "鎖が無いので第 1 候補のまま縮退する");
     }
 
     // T-25f: **ストリーム経路はフォールバックしない**（IADR-0225 の射程外）。

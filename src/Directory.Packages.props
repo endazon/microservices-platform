@@ -84,7 +84,8 @@
          Platform.Shared.Kernel の **内部実装としてのみ** 使う。他プロジェクトの直接参照は禁止で、
          check-backend-libraries.js の BANNED に載ったままである（IADR-0196 の SHARED_KERNEL_ALLOWED が
          共有カーネルのときだけ差し引く）。**PackageVersion は同検査の対象外**（同スクリプト冒頭が明示）
-         なので、BANNED 掲載と本宣言は衝突しない。Platform.Shared.Kernel は未作成。 -->
+         なので、BANNED 掲載と本宣言は衝突しない。
+         **［2026-08-21 / #455］Platform.Shared.Kernel は実体を持った**（Result / Error を公開）。 -->
     <PackageVersion Include="CSharpFunctionalExtensions" Version="3.7.0" />
     <!-- API 層: ドキュメント UI・バージョニング -->
     <PackageVersion Include="Scalar.AspNetCore" Version="2.16.17" />

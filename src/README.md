@@ -100,7 +100,10 @@ src/
    （`Platform.Shared.Contracts` / `Platform.Shared.Infrastructure` / `Platform.Shared.Kernel`。
    IADR-0056 決定 3 の「2 プロジェクト」を
    [IADR-0117](../.ai-context/adr/IADR-0117_platform-shared-kernel-placement.md) が 3 へ部分改定した。
-   `Platform.Shared.Kernel` は ADR-0030 の共有カーネル（Result / Error）で、実体は未作成）。
+   `Platform.Shared.Kernel` は ADR-0030 の共有カーネルで、**Result / Error を公開する実体を持つ**
+   （#455。公開する操作面と `default` の扱いは
+   [IADR-0229](../.ai-context/adr/IADR-0229_shared-kernel-result-surface.md) が正本。
+   外部ライブラリは内部実装としてのみ使い公開面へ出さない —— ADR-0041 決定 2）。
    platform → 可変機能ユニットの参照は禁止（一方向依存）。サービス間のコード参照
    （ProjectReference・型共有）も従来どおり禁止し、連携は同期 API（契約管理）または
    イベントに限る。この規則がユニットのサブモジュール切り出し可能性を担保する。

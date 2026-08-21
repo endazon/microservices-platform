@@ -10,7 +10,7 @@
  *      第 1 セグメント）が異なる場合、
  *        - 参照先が platform/backend/Shared/ の 3 プロジェクト（Platform.Shared.Contracts /
  *          Platform.Shared.Infrastructure / Platform.Shared.Kernel）なら許可。2 → 3 の改定は
- *          IADR-0117（Platform.Shared.Kernel は配置のみ確定で実体は未作成）、
+ *          IADR-0117（配置を確定）。**Platform.Shared.Kernel は 2026-08-21 に実体を持った**（#455 / IADR-0229）、
  *        - 参照元が Tests プロジェクトで参照先が platform サービス（統合テスト例外）なら許可、
  *        - 参照元が BFF 合成点（platform/backend/Bff/Platform.Bff/）で参照先が可変ユニットの BFF
  *          エンドポイント（<unit>/backend/Bff/）なら許可（例外3・IADR-0063）、

@@ -1122,8 +1122,9 @@ module.exports = ({ ok, assert }) => {
 
     // ratchet: テストプロジェクトを増やしたらこの実数を更新する。「N 件以上」にすると
     // 走査が壊れて 0 件になったときにテストが空振りで green になる（穴を塞ぐのが本テストの目的）。
+    // ［2026-08-21 / #455］Platform.Shared.Kernel.Tests の新設で 14 → 15。
     assert.strictEqual(
-      found.length, 14,
+      found.length, 15,
       `テストプロジェクトの検出数が想定と異なる（走査の破損 or 増減。増えたなら本数を更新する）: ${found.length} 件\n` +
         found.map((f) => path.relative(repoRoot, f)).join('\n'),
     );
@@ -5073,7 +5074,14 @@ module.exports = ({ ok, assert }) => {
         //    `gen-changelog.js` / `gen-openapi-skeleton.js` と同じ生成器であり（既定 `--json` は
         //    stdoutへ書くだけで副作用は無いが、役割は「検査」ではなく「生成」）、NOT_CHECKERS へ
         //    加えて母集合に数えない。
-        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
+        // ★ #783（#442 子 5）で `check-deploy-manifests.js`（deploy/ の chart / overlay が
+        //    レンダリングできるかを検査）を新設したため 35 → 36（同上）。git を一切呼ばず
+        //    fs と外部コマンド（helm / kubectl）で走るため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        // ★ #455 子 C で `check-event-topology.js`（イベント型 → 発行元 / 購読先の対応表を
+        //    baseline と突合）を新設したため 36 → 37（同上）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない。
+        assert.strictEqual(scripts.length, 37, `検査器の母集合が 37 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -6768,7 +6776,10 @@ module.exports = ({ ok, assert }) => {
     // 一時ディレクトリへ**検査器 1 本だけ**を写し、`scripts/lib/worktree-state.js` を
     // libSource で作って CLI として走らせる。既存の「scripts/ を丸ごと cpSync する」
     // ヘルパは使えない —— 本物の lib が入ってしまい、遅延 require の分岐を試験できない。
-    const runWithLibX836 = (libSource) => {
+    // 一時ディレクトリの `scripts/lib/` を `populateLib(libDir)` に作らせてから検査器を走らせる。
+    // lib の中身を差し替えられる形にしてあるのは、**壊れた lib（#836）と本物の lib（#842）の
+    // 両方**を同じ経路で走らせるためである。
+    const runCheckerWithLibX836 = (populateLib) => {
       const dir = fsX836.mkdtempSync(pathX836.join(osX836.tmpdir(), 'xrepo-lib-'));
       try {
         fsX836.mkdirSync(pathX836.join(dir, 'scripts'));
@@ -6776,8 +6787,9 @@ module.exports = ({ ok, assert }) => {
           require.resolve('./check-cross-repo-refs.js'),
           pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')
         );
-        fsX836.mkdirSync(pathX836.join(dir, 'scripts', 'lib'));
-        fsX836.writeFileSync(pathX836.join(dir, 'scripts', 'lib', 'worktree-state.js'), libSource);
+        const libDir = pathX836.join(dir, 'scripts', 'lib');
+        fsX836.mkdirSync(libDir);
+        populateLib(libDir, dir);
         // git init は要る。無いと fail-open の分岐（git ls-files 不可）へ落ち、
         // 握り潰しの有無を見る前に終わってしまう。
         execX836('git', ['-C', dir, 'init', '-q'], { stdio: 'ignore' });
@@ -6786,11 +6798,16 @@ module.exports = ({ ok, assert }) => {
           [pathX836.join(dir, 'scripts', 'check-cross-repo-refs.js')],
           { encoding: 'utf8' }
         );
-        return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}` };
+        return { status: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, dir };
       } finally {
         fsX836.rmSync(dir, { recursive: true, force: true });
       }
     };
+
+    const runWithLibX836 = (libSource) =>
+      runCheckerWithLibX836((libDir) =>
+        fsX836.writeFileSync(pathX836.join(libDir, 'worktree-state.js'), libSource)
+      );
 
     const GATE_X836 = /1 件も見つけられませんでした/;
 
@@ -6826,6 +6843,50 @@ module.exports = ({ ok, assert }) => {
         out,
         GATE_X836,
         `0 件走査の門まで到達している＝例外を握って走り続けた:\n${out}`
+      );
+    });
+
+    // --- #842: 結線が「生きている」ことを実挙動で固定する（#836 の対の欠け） ---------------
+    //
+    // **上の 2 本が固定しているのは「壊れた lib を握り潰さない」ことだけ**で、
+    // **「正しい lib を置いたときに結線が実際に働く」ことは 1 本も見ていなかった。**
+    // `check-cross-repo-refs.js` の遅延 require は、`require.resolve` が MODULE_NOT_FOUND を
+    // 返すと `MODE = {}` ＋ no-op のまま**警告を 1 行も出さずに**走り続ける（意図された
+    // fail-open。キット版の門試験が `lib/` の無い一時ディレクトリで走るため）。
+    // その fail-open は「正常な一時 dir」と「本リポで結線が壊れた」を区別しない ——
+    // 例えば結線のブロックを丸ごと消しても、上の 2 本は**どちらも緑のまま**になる。
+    //
+    // **他 3 本（check-doc-updated / check-landed-subjects / check-plan-id-qualification）には
+    // 遅延 require が無いので、この穴は本ファイル固有である。** それらの実挙動は上の
+    // 「#683: 該当 4 本すべてが実際に警告を出し…」が本リポジトリのツリー上で見ているが、
+    // **本リポジトリのツリーには当然 `lib/` が在る**ため、遅延 require の分岐は通らない。
+    //
+    // **判定は終了コードではない**（#836 の 2 本と同じ理由。lib が正しくても 0 件走査の門が
+    // exit 1 を返すため、状態コードでは両者を区別できない）。**判定行の有無で見る** ——
+    // 文言は #683 群（4884 / 4909 行あたり）と同じ `#683 / IADR-0183` を使う。
+    ok('#842: 正しい lib を置くと結線が実際に働く（警告行が出る。黙って no-op へ落ちない）', () => {
+      const { out } = runCheckerWithLibX836((libDir, dir) => {
+        // **本物を 2 ファイル写す。** `lib/worktree-state.js` は `./ci-annotate` を require するので、
+        // 1 ファイルだけでは MODULE_NOT_FOUND になり #836 の「握り潰さない」側の試験になってしまう。
+        for (const f of ['worktree-state.js', 'ci-annotate.js']) {
+          fsX836.copyFileSync(
+            require.resolve(`./lib/${f}`),
+            pathX836.join(libDir, f)
+          );
+        }
+        // untracked を 1 件は確実に作る（MODE.TRACKED の警告条件）。
+        // `scripts/` 自体も untracked だが、条件を偶然に頼らず明示で満たす。
+        fsX836.writeFileSync(pathX836.join(dir, '.tmp-untracked-probe-842'), 'probe\n');
+      });
+      assert.match(
+        out,
+        /#683 \/ IADR-0183/,
+        '本物の lib を置いても警告が出ない＝遅延 require の結線が死んでいる（no-op のまま exit する）:\n' + out
+      );
+      assert.match(
+        out,
+        /untracked のファイルが \d+ 件ある/,
+        'MODE.TRACKED が渡っていない（MODE = {} のまま呼ばれると mode が undefined になる）:\n' + out
       );
     });
   }
@@ -7103,6 +7164,67 @@ module.exports = ({ ok, assert }) => {
       const readme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
       assert.match(readme, /\| `check-trace-blocks\.js` \|/);
       assert.match(readme, /\| `gen-knowledge-graph\.js` \|/);
+    });
+
+    // NFR / #783（#442 子 5）: chart / overlay の検証ジョブが CI に在り、かつ fail-open の
+    // 抜け道を使っていないことを固定する。
+    //
+    // **なぜ「ジョブが在る」だけでは足りないか。** check-deploy-manifests.js は helm / kubectl が
+    // 無いとき `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS=1` で notice を出して skip する経路を持つ。
+    // CI がこれを立てると、ツール導入が失敗しても検査が緑を返し、**壊れた overlay がマージされる**。
+    // 「検査がある」と「検査が働いている」を読み分けられない状態であり、本リポジトリが
+    // 繰り返し踏んできた型である（#558 / #562 / #747 / #801 / IADR-0209）。
+    ok('NFR / #783: ci.yml に deploy-manifests ジョブが在り、fail-open の抜け道を立てていない', () => {
+      const REPO = path.join(__dirname, '..');
+      const ciPath = path.join(REPO, '.github/workflows/ci.yml');
+      const ci = fs.readFileSync(ciPath, 'utf8');
+      const { ALLOW_MISSING_TOOLS_ENV } = require('./check-deploy-manifests.js');
+
+      assert.ok(
+        /\n {2}deploy-manifests:\n/.test(ci),
+        'ci.yml に deploy-manifests ジョブが無い（#783 の検査が CI で走らない）',
+      );
+      assert.ok(
+        ci.includes('node scripts/check-deploy-manifests.js --self-test'),
+        'deploy-manifests ジョブが検査器の --self-test を呼んでいない',
+      );
+      assert.ok(
+        ci.includes('node scripts/check-deploy-manifests.js\n'),
+        'deploy-manifests ジョブが本走査を呼んでいない',
+      );
+
+      // 抜け道を「立てている」行だけを違反にする。注意書きとして名前に言及するのは許す
+      // （コメント行は行頭が `#`）。
+      const armed = ci
+        .split('\n')
+        .filter((line) => line.includes(ALLOW_MISSING_TOOLS_ENV))
+        .filter((line) => !/^\s*#/.test(line));
+      assert.deepStrictEqual(
+        armed,
+        [],
+        `ci.yml が ${ALLOW_MISSING_TOOLS_ENV} を立てている。立てると helm / kubectl の導入が` +
+          '失敗しても検査が素通りする:\n' + armed.join('\n'),
+      );
+    });
+
+    ok('NFR / #783: overlay の列挙をワークフローへ書いていない（走査で発見する）', () => {
+      const REPO = path.join(__dirname, '..');
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      const { discoverOverlays } = require('./check-deploy-manifests.js');
+      const overlays = discoverOverlays(REPO);
+      // fail-closed の門: 走査が 0 件なら、この試験は何も見ていない。
+      assert.ok(overlays.length > 0, 'overlay が 0 件（走査が壊れている）');
+
+      // deploy-manifests ジョブの本文に overlay パスが直書きされていないこと。
+      const job = ci.match(/\n {2}deploy-manifests:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n|$)/);
+      assert.ok(job, 'deploy-manifests ジョブの本文を読めない');
+      const hardcoded = overlays.filter((o) => job[1].includes(o));
+      assert.deepStrictEqual(
+        hardcoded,
+        [],
+        'deploy-manifests ジョブに overlay のパスが直書きされている。書くと次に overlay が' +
+          '増えたとき静かに検査対象から外れる:\n' + hardcoded.join('\n'),
+      );
     });
   }
 };

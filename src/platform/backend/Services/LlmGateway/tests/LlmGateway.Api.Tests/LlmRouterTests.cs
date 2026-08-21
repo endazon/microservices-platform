@@ -13,6 +13,11 @@ namespace LlmGateway.Api.Tests;
 // 外すと ZDR 除外機構（LlmRouter.EligibleModels / EgressMatrix.RequiresZeroDataRetention）を発火させる
 // 唯一の単体カバレッジが失われ、除外系テストが空振りしたまま緑になるためである（#850 の明示指定）。
 // 実効の割当は appsettings.json を正とし、ここの値を本番値として読まないこと。
+//
+// ［2026-08-21 追記 / #440・planning#426］**意図的な乖離は PurposeModels に限る。**
+// PurposeFallbackModels は本番と**同じキー集合・同じ値**に揃える（下の該当箇所を参照）——
+// 揃えない運用にした結果、diagram-coding の鎖を写し忘れたまま緑だった実例がある。
+// **この 2 つの扱いの違いを混同しないこと。**
 public class LlmRouterTests
 {
     private static LlmEndpointOptions Claude(bool enabled = true, int priority = 10) => new()
@@ -92,12 +97,18 @@ public class LlmRouterTests
             ["trade-decision"] = "claude-sonnet-5",
             ["default"] = "claude-opus-5"
         },
-        // ADR-0038 決定 3 (#863): analysis のフォールバック順序（第 2 候補以降）。本番設定と同じ値である。
+        // ADR-0038 決定 3 (#863): 用途別のフォールバック順序（第 2 候補以降）。**本番 appsettings.json と
+        // 同じキー集合・同じ値である**（PurposeModels と違い、ここは意図的な乖離を置かない）。
         // **trade-decision は意図的に鎖を持たない**（AST/ADR-0011 / llm-model-pin-runbook）。
-        // default / rag-answer の第 2 候補は計画 ADR-0038 §未決事項で未確定のため置かない。
+        // ［2026-08-21 / #440・planning#426 裁定 (a)］default / rag-answer の鎖が確定したため追加した。
+        // 従前は「計画 ADR-0038 §未決事項で未確定のため置かない」としており、その典拠は根拠を失った。
+        // なお diagram-coding は本番に鎖があるのにここへ写し忘れていた（同時に是正）。
         PurposeFallbackModels = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["analysis"] = ["claude-sonnet-5"]
+            ["analysis"] = ["claude-sonnet-5"],
+            ["diagram-coding"] = ["claude-haiku-4-5"],
+            ["default"] = ["claude-sonnet-5"],
+            ["rag-answer"] = ["claude-haiku-4-5"]
         }
     };
 
@@ -545,13 +556,15 @@ public class LlmRouterTests
         decision.Fallbacks.Should().BeEmpty("ピン留めしたモデルが使えないとき別モデルへ切り替えてはならない");
     }
 
-    // 鎖を持たない用途（既定）は空である。null と空を呼び出し側に区別させない。
+    // 鎖を持たない用途は空である。null と空を呼び出し側に区別させない。
+    // ［2026-08-21 / #440・planning#426 裁定 (a)］題材を default から report-weekly へ移した
+    // —— default に鎖が確定したため、default のままでは「鎖が無い用途」の題材にならない。
     [Fact]
     public void Route_PurposeWithoutChain_HasEmptyFallbacks()
     {
         var router = Build(Opts(Claude()));
 
-        router.Route(new RoutingRequest(SensitivityClass.Public, "default")).Fallbacks.Should().BeEmpty();
+        router.Route(new RoutingRequest(SensitivityClass.Public, "report-weekly")).Fallbacks.Should().BeEmpty();
     }
 
     // 送信拒否（縮退）でも鎖は空である（呼び出していないのだから落ちる先も無い）。

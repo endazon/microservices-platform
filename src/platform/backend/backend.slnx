@@ -21,5 +21,7 @@
   <Folder Name="/Shared/">
     <Project Path="Shared/Platform.Shared.Contracts/Platform.Shared.Contracts.csproj" />
     <Project Path="Shared/Platform.Shared.Infrastructure/Platform.Shared.Infrastructure.csproj" />
+    <Project Path="Shared/Platform.Shared.Kernel/Platform.Shared.Kernel.csproj" />
+    <Project Path="Shared/Platform.Shared.Kernel.Tests/Platform.Shared.Kernel.Tests.csproj" />
   </Folder>
 </Solution>

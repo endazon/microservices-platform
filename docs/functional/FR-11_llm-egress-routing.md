@@ -11,7 +11,7 @@ ids: [FR-11, UC-01, UC-02]
 adrs: [ADR-0010, ADR-0022, ADR-0025, ADR-0038]
 iadrs: [IADR-0007, IADR-0022, IADR-0037, IADR-0101, IADR-0102, IADR-0104, IADR-0106, IADR-0109, IADR-0110, IADR-0111, IADR-0112, IADR-0113, IADR-0114, IADR-0225]
 specs: []
-issues: [#201, #379, #380, #394, #395, #403, #850, #863, AST#290, planning#50]
+issues: [#201, #379, #380, #394, #395, #403, #440, #850, #863, AST#290, planning#50, planning#426]
 -->
 
 # 機能仕様書: LLM 呼び出し先ルーティング（用途・機密度別）
@@ -96,7 +96,7 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
 | 項目 | 内容 |
 | --- | --- |
 | 設定 | `Llm:Routing:PurposeFallbackModels`（用途 → **第 2 候補以降**の順序つきモデル配列）。第 1 候補は `PurposeModels`（無ければ `DefaultModel`） |
-| 既定値 | **`analysis: ["claude-sonnet-5"]` のみ**（分析用途のモデル割当の計画 ADR 決定 3。第 1 候補 `claude-opus-5` の 1 段下位） |
+| 既定値 | `analysis: ["claude-sonnet-5"]` / `diagram-coding: ["claude-haiku-4-5"]` / `default: ["claude-sonnet-5"]` / `rag-answer: ["claude-haiku-4-5"]` の 4 用途。**いずれも第 1 候補より安価側の 1 段下位**であり、発火で費用が上振れすることはない |
 | 発火条件 | **上流が HTTP 400〜499（429 を除く）** |
 | **発火しない** | **429（レート制限）**・5xx・通信断・ステータスの取れない失敗 |
 | 適用範囲 | **非ストリーミング `/complete` のみ**（`/complete/stream` は実装しない） |
@@ -110,8 +110,11 @@ LLM 呼び出しを **LlmGateway（`/complete`）で一元化**し、呼び出�
   現行の 429 の挙動は従来どおり `Sent=false` の縮退である。
 - **`trade-decision` は鎖を持たない。** 別モデルで下した取引判断は再現性・監査可能性を失った別物である
   （`AST/ADR-0011` と取引判断のピン留めの実装 ADR）。設定に鎖が足されたら落ちるテストで固定する。
-- **`default` / `rag-answer` の第 2 候補は未確定**である（分析用途のモデル割当の計画 ADR §未決事項）。実装側で補わない。
-- 鎖を持たない用途の挙動は従来と同一である（1 回試して失敗したら縮退する）。
+- **`default` / `rag-answer` の第 2 候補は 2026-08-21 に確定した**（計画側の裁定。分析用途のモデル割当の計画 ADR §未決事項の行は、
+  AI・RAG スタックの技術検討書（`fixed`）が 2026-08-07 に確定させていた値への追随が漏れていたものであり、
+  計画側で打ち消し線＋日付つき追記により是正済み）。`default` → `claude-sonnet-5`、`rag-answer` → `claude-haiku-4-5`。
+- 鎖を持たない用途（`report-monthly` / `report-weekly` / `report-daily` / `trade-decision`）の挙動は従来と同一である
+  （1 回試して失敗したら縮退する）。**「鎖が無い用途は落ちない」という分岐が生きていることを、鎖を持たない用途で固定し続ける。**
 
 ### エンドポイント定義（`LlmEndpointOptions` / `Llm:Routing:Endpoints`）
 
@@ -286,9 +289,12 @@ Claude プロバイダが使う `Anthropic.SDK` 4.0.0 は content ブロック�
 - **429（レート制限）の再試行方針**（回数・バックオフ・`Retry-After` の尊重）。計画 `ADR-0038` 決定 4 は
   「429 は再試行である」と述べるだけで再試行の形を定めていない。確定するまで実装しない
   （用途別フォールバックの実装 ADR §フォローアップ 1・#863）。
-- **`default` / `rag-answer` のフォールバック第 2 候補**（計画 `ADR-0038` §未決事項・同 §フォローアップ 5）。
-  確定したら `PurposeFallbackModels` へ足す。ストリーム経路の用途に鎖が付く場合は、
-  `/complete/stream` をフォールバックの射程に含めるかを見直す（用途別フォールバックの実装 ADR 決定 4）。
+- ~~**`default` / `rag-answer` のフォールバック第 2 候補**~~ **［2026-08-21 解決］計画側の裁定により確定し、
+  `PurposeFallbackModels` へ登録済みである**（上の「用途別フォールバック」節）。
+  **残るのは 1 点** —— `rag-answer` はストリーム経路（`/complete/stream`）の用途であり、
+  **鎖を持つ用途がストリーム経路へ来ることが現に起きるようになった**。ストリーム経路をフォールバックの射程に
+  含めるかは、途中まで流した本文の扱いという別の決定を要するため未確定である（用途別フォールバックの実装 ADR 決定 4）。
+  現状はフォールバックせず、鎖が設定されている事実を warn ログで残すに留める。
 - LLM ゲートウェイの計画 ADR は `Accepted` である（既定 Opus / 定型 sonnet・haiku / 最難関 `claude-fable-5`／GitHub Copilot SDK。(b) 実装追従で確定し、既定モデル改定の実装 ADR が追従した）。
   **［2026-08-18 更新 / #850］最難関の割当は計画 `ADR-0038`（Accepted）が `claude-opus-5` へ部分改定した** —— 同計画 ADR の他の決定（ゲートウェイを設ける決定・ルーティング機構・送信可否判定・トークン計測・監査ログの一元化）は有効である。
   既定 Opus の版数は同 ADR 本文の凍結後に Opus 5 採用の計画 ADR が `claude-opus-5` へ改定し、実装側も追従済みである（利用モデルの最新 roster は Opus 5 採用の計画 ADR を正とする）。
