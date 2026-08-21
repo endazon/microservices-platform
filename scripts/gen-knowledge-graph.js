@@ -35,7 +35,14 @@
  *                        前方一致でフィルタする。エッジはソースがスコープ内のものだけを描く）
  *   --check              エッジ先の in-repo 実在検査（doc / iadr / spec の 3 ノード種別のみ判定
  *                        できる。plan の FR/UC/SC/ADR・修飾付き・issue は external として件数のみ
- *                        報告し実在検査しない——本リポジトリは planning に依存しないため）
+ *                        報告し実在検査しない——本リポジトリは planning に依存しないため）。
+ *                        `.ai-context/{adr,specs}/` の related_specs 値は 3 つに分岐する
+ *                        （AST 版と同思想。利用者裁定 2026-08-21）:
+ *                          (a) `<英数短縮名>:` / `/` 修飾付き（`feedback:...` 等）→ external
+ *                          (b) 実在する repo 相対パス（`.github/*.yml` 等の非 .md 実ファイル）→ resolved
+ *                          (c) それでも解決しない値 → fail にせず情報表示（件数＋一覧）のみ
+ *                        docs/ の trace ブロック specs キーの実在性検査は対象外（`check-trace-blocks.js`
+ *                        が担う。厳格 fail のまま変えない）。
  *
  * 実装ノート（AST 側への差分吸収ポイント）:
  *   - ノード種別・走査ルート（docs/ ＋ .ai-context/{adr,specs}/）は本リポジトリと同じ想定。
@@ -43,6 +50,11 @@
  *   - `related_adrs` の値は「ADR（計画）」と「IADR（実装）」が**フィールド名によらず**混在する
  *     （実測: `.ai-context/adr/IADR-0014_*.md` の related_adrs は IADR-0004 等の IADR を指す）。
  *     値そのものの接頭辞（ADR- / IADR-）で判別すること。フィールド名で決め打たない。
+ *   - `.ai-context/` は凍結記録であり、related_specs の post-hoc 訂正はしない運用
+ *     （`.claude/rules/traceability.repo.md`「Superseded / Deprecated な ADR」節と同じ考え方）。
+ *     解決できない値を fail にすると凍結記録の書き換えを強制してしまうため、(c) は常に
+ *     情報表示に留める——AST 版 `gen-knowledge-graph.js` の `--check` が unresolved を
+ *     「この検査では失敗として扱いません」としているのと同じ理由。
  *
  * 使い方:
  *   node scripts/gen-knowledge-graph.js --json
@@ -178,11 +190,20 @@ function collectNodes() {
 /**
  * `related_specs` のような相対パス参照を、ノード ID 空間（doc はリポ相対パス、IADR は
  * "IADR-XXXX"、spec はベース名）へ正規化する。`fromAbsPath` は参照元ファイルの絶対パス。
- * 戻り値は { id, kind } または（.ai-context/adr・specs・docs のいずれでもない場合）
- * { id: リポ相対パス, kind: 'other' }。
+ * 戻り値は { id, kind }。kind は次のいずれか（利用者裁定 2026-08-21・AST 版と同思想）:
+ *   - 'iadr' / 'spec' / 'doc'  : 既存どおり ID 空間へ正規化（実在はノード登録簿と突合）
+ *   - 'external'  : (a) `<英数短縮名>:` / `/` 修飾付き（`feedback:...` 等）の値。パスとして
+ *                   解決せず raw のまま返す——具体的な短縮名はハードコードしない
+ *                   （`isQualifiedToken` と同じ規則）
+ *   - 'file'      : (b) 上のいずれでもないが、リポジトリ上に実在する相対パス（`.github/*.yml` 等の
+ *                   非 .md 実ファイル）。resolved 扱いとし、以降の実在検査を要さない
+ *   - 'unresolved': (c) それでも解決しない値。凍結記録（`.ai-context/`）の post-hoc 訂正はしない
+ *                   運用のため、fail ではなく情報表示（件数＋一覧）に落とす（checkEdges 側の責務）
  */
 function resolveTargetId(fromAbsPath, rawPath) {
-  const resolved = path.resolve(path.dirname(fromAbsPath), String(rawPath).trim());
+  const raw = String(rawPath).trim();
+  if (isQualifiedToken(raw)) return { id: raw, kind: 'external' };
+  const resolved = path.resolve(path.dirname(fromAbsPath), raw);
   const rel = repoRel(resolved);
   const m = /^\.ai-context\/adr\/(IADR-\d{4})_/.exec(rel);
   if (m) return { id: m[1], kind: 'iadr' };
@@ -190,7 +211,13 @@ function resolveTargetId(fromAbsPath, rawPath) {
     return { id: path.basename(rel, '.md'), kind: 'spec' };
   }
   if (rel.startsWith('docs/') && rel.endsWith('.md')) return { id: rel, kind: 'doc' };
-  return { id: rel, kind: 'other' };
+  let existsAsFile = false;
+  try {
+    existsAsFile = fs.statSync(resolved).isFile();
+  } catch {
+    existsAsFile = false;
+  }
+  return { id: rel, kind: existsAsFile ? 'file' : 'unresolved' };
 }
 
 // --- doc の trace / trace-table ブロックからエッジを作る -----------------------------
@@ -255,7 +282,7 @@ function edgesFromFrontmatter(sourceId, sourceAbsPath, fm) {
   }
   for (const raw of yamlListField(fm, 'related_specs')) {
     const target = resolveTargetId(sourceAbsPath, raw);
-    edges.push({ from: sourceId, to: target.id, kind: 'frontmatter-related' });
+    edges.push({ from: sourceId, to: target.id, kind: 'frontmatter-related', targetKind: target.kind });
   }
   return edges;
 }
@@ -318,13 +345,45 @@ function classifyEdgeTarget(to) {
   return { checkable: true, nodeKind: 'spec' };
 }
 
-/** グラフの edges を検査する。戻り値: { missing: [...], externalCount, checkedCount }。 */
+/**
+ * グラフの edges を検査する。
+ * 戻り値: { missing: [...], unresolved: [...], externalCount, checkedCount }。
+ *
+ * `e.targetKind`（`resolveTargetId` が related_specs 用に付けた分類。利用者裁定 2026-08-21）を
+ * 持つエッジは、`classifyEdgeTarget`（ID トークン向けの汎用分類）より先にこちらで判定する:
+ *   - 'external'   : external として件数のみ数える（実在検査しない）
+ *   - 'file'        : resolveTargetId が既に fs 実在を確認済み。checkedCount に数えて合格扱い
+ *   - 'unresolved'  : 凍結 frontmatter の値が解決しない場合。**fail にせず** unresolved へ積む
+ *                     （main() が件数＋一覧を情報表示するだけで exit code に影響させない）
+ *   - 'iadr'/'spec'/'doc' : 既存どおりノード登録簿（graph.nodes）と突合する
+ * `targetKind` を持たないエッジ（trace ブロック由来・related_ids/related_adrs の ID トークン）は
+ * 従来どおり `classifyEdgeTarget` で判定する。
+ */
 function checkEdges(graph) {
   const nodeIds = new Set(graph.nodes.map((n) => n.id));
   const missing = [];
+  const unresolved = [];
   let externalCount = 0;
   let checkedCount = 0;
   for (const e of graph.edges) {
+    if (e.targetKind) {
+      if (e.targetKind === 'external') {
+        externalCount++;
+        continue;
+      }
+      if (e.targetKind === 'file') {
+        checkedCount++;
+        continue;
+      }
+      if (e.targetKind === 'unresolved') {
+        unresolved.push(e);
+        continue;
+      }
+      // 'iadr' / 'spec' / 'doc' はノード登録簿と突合する。
+      checkedCount++;
+      if (!nodeIds.has(e.to)) missing.push(e);
+      continue;
+    }
     const c = classifyEdgeTarget(e.to);
     if (!c.checkable) {
       externalCount++;
@@ -333,7 +392,7 @@ function checkEdges(graph) {
     checkedCount++;
     if (!nodeIds.has(e.to)) missing.push(e);
   }
-  return { missing, externalCount, checkedCount };
+  return { missing, unresolved, externalCount, checkedCount };
 }
 
 // --- Mermaid 出力 -----------------------------------------------------------------
@@ -382,11 +441,17 @@ function main() {
   const graph = buildGraph();
 
   if (a.check) {
-    const { missing, externalCount, checkedCount } = checkEdges(graph);
+    const { missing, unresolved, externalCount, checkedCount } = checkEdges(graph);
     console.log(
       `[gen-knowledge-graph] ノード ${graph.nodes.length} 件、エッジ ${graph.edges.length} 件。` +
         `\n  in-repo 実在検査対象: ${checkedCount} 件、external（件数のみ）: ${externalCount} 件。`
     );
+    if (unresolved.length) {
+      // 情報表示のみ（fail にしない）。凍結記録（.ai-context/）の related_specs は post-hoc に
+      // 訂正しない運用のため、解決できない値があっても検査全体を失敗させない（利用者裁定 2026-08-21）。
+      console.log(`[gen-knowledge-graph] 参考: related_specs で解決できない値が ${unresolved.length} 件あります（fail にはしません）:`);
+      for (const e of unresolved) console.log(`  ${e.from} --(${e.kind})--> ${e.to}`);
+    }
     if (missing.length === 0) {
       console.log('[gen-knowledge-graph] OK: in-repo エッジ先の実在に違反はありません。');
       process.exit(0);
@@ -440,6 +505,22 @@ function selfTest() {
       resolveTargetId(from, '../../docs/tech/tech-requirements.md').id === 'docs/tech/tech-requirements.md');
   }
 
+  // resolveTargetId の 3 分岐（related_specs。利用者裁定 2026-08-21・AST 版と同思想） -------
+  {
+    const from = path.join(ADR_DIR, 'dummy.md');
+    // (a) 修飾付き（<英数短縮名>: / <英数短縮名>/）は external。パスとして解決しない。
+    t('resolveTargetId: (a) 正例 — 修飾付き（feedback:...）は external として raw のまま返す',
+      JSON.stringify(resolveTargetId(from, 'feedback:20260804_x.md')) ===
+        JSON.stringify({ id: 'feedback:20260804_x.md', kind: 'external' }));
+    // (b) doc/iadr/spec のいずれでもないが repo 上に実在する相対パスは file（resolved）。
+    t('resolveTargetId: (b) 正例 — 実在する非 .md 相対パスは file として resolved 扱い',
+      JSON.stringify(resolveTargetId(from, '../../.github/dependabot.yml')) ===
+        JSON.stringify({ id: '.github/dependabot.yml', kind: 'file' }));
+    // (c) それでも解決しない値は unresolved（fail にしない。checkEdges/main が情報表示に落とす）。
+    t('resolveTargetId: (c) 正例 — 実在しない相対パスは unresolved',
+      resolveTargetId(from, '../../no/such/file.yml').kind === 'unresolved');
+  }
+
   // edgesFromTraceBlock / edgesFromTraceTable -----------------------------------------
   {
     const edges = edgesFromTraceBlock('docs/a.md', 'ids: [FR-01, UC-02]\nadrs: [ADR-0004]\niadrs: [IADR-0001]\nspecs: [20260627_x]\nissues: [#100]\n');
@@ -475,6 +556,16 @@ function selfTest() {
     t('edgesFromFrontmatter: 正例 — related_adrs は接頭辞（ADR- / IADR-）で種別が混在してよい',
       edges.some((e) => e.to === 'ADR-0001') && edges.some((e) => e.to === 'IADR-0004'), edges);
   }
+  {
+    // related_specs は resolveTargetId の判定結果（3 分岐）を targetKind としてエッジへ持たせる。
+    const fm = 'related_specs:\n  - feedback:20260804_x.md\n  - ../../.github/dependabot.yml\n  - ../../no/such/file.yml\n';
+    const from = path.join(ADR_DIR, 'dummy.md');
+    const edges = edgesFromFrontmatter('IADR-9000', from, fm);
+    t('edgesFromFrontmatter: 正例 — related_specs の各値に targetKind（external/file/unresolved）が付く',
+      edges.find((e) => e.to === 'feedback:20260804_x.md').targetKind === 'external'
+        && edges.find((e) => e.to === '.github/dependabot.yml').targetKind === 'file'
+        && edges.find((e) => e.to === 'no/such/file.yml').targetKind === 'unresolved', edges);
+  }
 
   // classifyEdgeTarget / checkEdges -----------------------------------------------------
   t('classifyEdgeTarget: 正例 — doc パス・IADR-XXXX は checkable',
@@ -500,6 +591,27 @@ function selfTest() {
       r.externalCount === 1 && r.checkedCount === 2);
     t('checkEdges: 負例 — in-repo checkable で実在しないものは missing に入る',
       r.missing.length === 1 && r.missing[0].to === 'IADR-9999', r.missing);
+  }
+
+  // checkEdges: targetKind（related_specs の 3 分岐）の扱い ------------------------------
+  {
+    const graph = {
+      nodes: [{ id: 'docs/a.md' }],
+      edges: [
+        { from: '.ai-context/adr/x.md', to: 'feedback:20260804_x.md', kind: 'frontmatter-related', targetKind: 'external' },
+        { from: '.ai-context/adr/x.md', to: '.github/dependabot.yml', kind: 'frontmatter-related', targetKind: 'file' },
+        { from: '.ai-context/adr/x.md', to: 'no/such/file.yml', kind: 'frontmatter-related', targetKind: 'unresolved' },
+      ],
+    };
+    const r = checkEdges(graph);
+    t('checkEdges: (a) targetKind=external は missing に入らず externalCount だけ増える',
+      r.externalCount === 1 && !r.missing.some((e) => e.to === 'feedback:20260804_x.md')
+        && !r.unresolved.some((e) => e.to === 'feedback:20260804_x.md'));
+    t('checkEdges: (b) targetKind=file は resolved 扱い（missing にも unresolved にも入らず checkedCount が増える）',
+      r.checkedCount === 1 && !r.missing.some((e) => e.to === '.github/dependabot.yml')
+        && !r.unresolved.some((e) => e.to === '.github/dependabot.yml'));
+    t('checkEdges: (c) targetKind=unresolved は fail（missing）にせず unresolved へ積む',
+      r.missing.length === 0 && r.unresolved.length === 1 && r.unresolved[0].to === 'no/such/file.yml', r);
   }
 
   // toMermaid ---------------------------------------------------------------------------
