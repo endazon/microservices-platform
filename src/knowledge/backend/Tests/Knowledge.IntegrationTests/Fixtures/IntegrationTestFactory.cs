@@ -38,8 +38,24 @@ public abstract class IntegrationTestFactoryBase<TProgram, TDbContext> : WebAppl
                 ["Otlp:Endpoint"] = "http://localhost:4317",
                 ["Auth:Authority"] = "https://localhost/realms/test"
             };
-            if (_rabbit?.ConnectionString is { } rabbitCs)
-                overrides["RabbitMq:ConnectionString"] = rabbitCs;
+            // ［2026-08-21 / #455 Phase 0 U0a］🔴 **繋ぎ先が無いことを黙って許さない。**
+            //
+            // RabbitMqFixture はコンテナ起動失敗を catch して IsAvailable=false にするだけなので、
+            // ConnectionString は null のまま残る。本番配線を使うようにした結果、上書きを省くと
+            // Program.cs の既定値 amqp://guest:guest@rabbitmq:5672（compose 前提のホスト名）へ
+            // **静かにフォールバック**し、原因不明の DNS / 接続タイムアウトとして現れる。
+            // 従前は cfg.Host(null) が即座に例外で落ちていたので、失敗の分かりやすさが退行していた。
+            //
+            // フィクスチャを渡された以上、繋ぎ先はそのコンテナでなければならない。無ければ止める。
+            if (_rabbit is not null)
+            {
+                overrides["RabbitMq:ConnectionString"] = _rabbit.ConnectionString
+                    ?? throw new InvalidOperationException(
+                        "RabbitMqFixture の接続文字列が null である（コンテナの起動に失敗した可能性が高い）。"
+                        + " 本番配線は RabbitMq:ConnectionString を読むため、ここで止めないと"
+                        + " 既定の amqp://guest:guest@rabbitmq:5672 へ繋ぎに行き、"
+                        + " 原因の分からない接続タイムアウトになる。dockerd と Testcontainers を確認すること。");
+            }
             cfg.AddInMemoryCollection(overrides);
         });
 
