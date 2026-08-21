@@ -187,6 +187,57 @@ public class ResultTests
         (Result.Success() == Result.Success()).Should().BeTrue();
     }
 
+    // ［2026-08-21 追記 / #455］公開面のガード（ArgumentNullException.ThrowIfNull）を固定する。
+    // AI レビュー（PR #878 の 🟢 指摘）が「ガード自体を検証するテストが無い」と挙げたもの。
+    // BCL の定型ではあるが、**ガードを外しても既存 23 本は 1 本も落ちなかった**（＝素通りする面だった）。
+    // null が素通りすると、失敗は「渡した場所」ではなく「使った場所」で出る。
+
+    [Fact]
+    public void 公開メソッドは_null_のコールバックを受け取らない()
+    {
+        var ok = Result<int>.Success(1);
+        var ng = Result<int>.Failure(Error.Validation("v", "不正"));
+
+        // 成功・失敗のどちらでもガードが先に働く（失敗時に「どうせ呼ばないから」で素通りさせない）。
+        foreach (var r in new[] { ok, ng })
+        {
+            ((Action)(() => r.Map<int>(null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Bind((Func<int, Result<int>>)null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Bind((Func<int, Result>)null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Tap(null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Ensure(null!, Error.Validation("v", "不正")))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Ensure(_ => true, null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Match<int>(null!, _ => 0))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Match<int>(_ => 0, null!))).Should().Throw<ArgumentNullException>();
+        }
+
+        foreach (var r in new[] { Result.Success(), Result.Failure(Error.Validation("v", "不正")) })
+        {
+            ((Action)(() => r.Bind((Func<Result>)null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Bind((Func<Result<int>>)null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Tap(null!))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Match<int>(null!, _ => 0))).Should().Throw<ArgumentNullException>();
+            ((Action)(() => r.Match<int>(() => 0, null!))).Should().Throw<ArgumentNullException>();
+        }
+    }
+
+    [Fact]
+    public void ファクトリと_Combine_も_null_を受け取らない()
+    {
+        ((Action)(() => Result<int>.Failure(null!))).Should().Throw<ArgumentNullException>();
+        ((Action)(() => Result.Failure(null!))).Should().Throw<ArgumentNullException>();
+        ((Action)(() => Result.Combine(null!))).Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task 非同期の公開メソッドも_null_を受け取らない()
+    {
+        var r = Result<int>.Success(1);
+        await ((Func<Task>)(() => r.MapAsync<int>(null!))).Should().ThrowAsync<ArgumentNullException>();
+        await ((Func<Task>)(() => r.BindAsync<int>(null!))).Should().ThrowAsync<ArgumentNullException>();
+        await ((Func<Task>)(() => Result.Success().BindAsync(null!))).Should().ThrowAsync<ArgumentNullException>();
+    }
+
     [Fact]
     public void Result_の_Match_と_Tap_が両経路で働く()
     {
