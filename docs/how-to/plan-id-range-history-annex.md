@@ -26,9 +26,13 @@ issues: [#449, #450, #451, #620, #624, #688, #753, #872, planning#74, planning#1
 
 ### ［2026-08-21］ADR `0001..0047` → `0001..0048`（pin 撤去後の初回。隣接クローンで直接確認）
 
-**`ADR` だけが `0001..0047` → `0001..0048` へ増えた**（`ADR-0048` = 実装リポジトリ資料の再編（`.ai-context/` 移設・planning 依存の撤去・環流の issue 一本化）。本再編そのものの裁定 ADR であり `Accepted`。`planning#424` で起案）。**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件）。宣言レンジの前進はコミット `18f2bc3`。前進の契機は trace ブロック規約（計画 `ADR-0048` 決定 4）の値域検査 —— `check-trace-blocks.js` の実データ走査が `ADR-0048` への参照を旧レンジ外として検出した。
+**`ADR` だけが `0001..0047` → `0001..0048` へ増えた**（`ADR-0048` = 実装リポジトリ資料の再編（`.ai-context/` 移設・planning 依存の撤去・環流の issue 一本化）。本再編そのものの裁定 ADR であり `Accepted`。`planning#424` で起案）。
+**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件）。宣言レンジの前進はコミット `18f2bc3`。
+前進の契機は trace ブロック規約（計画 `ADR-0048` 決定 4）の値域検査 —— `check-trace-blocks.js` の実データ走査が `ADR-0048` への参照を旧レンジ外として検出した。
 
-**この世代から突合の方法が変わった。** planning submodule と pin（走査基準のコミット SHA）は資料再編で撤去されたため（[IADR-0228](../../.ai-context/adr/IADR-0228_planning-dependency-removal.md)）、**隣接クローン（`../project-planning`・読み取り専用）を直接確認する**（入口の規範どおり。確認時点は `ADR-0048` の起案ブランチ＝`planning#424` マージ前。マージ順は `planning#424` → 本リポの #872 と定めてあり、本レンジが効く時点では計画側に `ADR-0048` が実在する）。
+**この世代から突合の方法が変わった。** planning submodule と pin（走査基準のコミット SHA）は資料再編で撤去されたため（[IADR-0228](../../.ai-context/adr/IADR-0228_planning-dependency-removal.md)）、
+**隣接クローン（`../project-planning`・読み取り専用）を直接確認する**（入口の規範どおり。確認時点は `ADR-0048` の起案ブランチ＝`planning#424` マージ前。
+マージ順は `planning#424` → 本リポの #872 と定めてあり、本レンジが効く時点では計画側に `ADR-0048` が実在する）。
 
 **`ADR` の欠番は `seq 1 48` との `diff` で機械的に確かめた**（EXIT=0。作法は前世代と同じ）。
 
@@ -38,7 +42,9 @@ diff <(ls ../project-planning/projects/microservices-platform/07_adr/ \
      <(seq -f 'ADR-%04g' 1 48)
 ```
 
-**走査の母集合も動いた。** 資料再編で planning 側に `projects/microservices-platform/10_feedback/`（環流の完了記録 84 件）が新設され、これを含めて走査すると `SC-99` が 1 件現れる。**これは凍結記録が引用するテストフィクスチャの実在しない ID であり**（`20260816_kit-test-asserts-kit-default-configuration.md` の表中）、実在集合へ入れない。上の 4 種の件数は `10_feedback/` を除外した計画書本体（`00_vision`〜`07_adr`）の実測である。
+**走査の母集合も動いた。** 資料再編で planning 側に `projects/microservices-platform/10_feedback/`（環流の完了記録 84 件）が新設され、これを含めて走査すると `SC-99` が 1 件現れる。
+**これは凍結記録が引用するテストフィクスチャの実在しない ID であり**（`20260816_kit-test-asserts-kit-default-configuration.md` の表中）、実在集合へ入れない。
+上の 4 種の件数は `10_feedback/` を除外した計画書本体（`00_vision`〜`07_adr`）の実測である。
 
 ### ［2026-08-17］pin `8cae89d` → `767a9d48`（走査基準は `8cae89d` → `767a9d48`）
 

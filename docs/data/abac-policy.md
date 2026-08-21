@@ -31,7 +31,9 @@ issues: []
 
 AttributeDefinition は管理者が定義する**属性辞書エントリ**で、属性キー・ラベル・取りうる値（AllowedValues）・必須有無・スコープ（`document` / `user`）を保持する。文書側の属性（`Document.Attributes`）と利用者側の属性の両方の語彙を定義する。
 
-AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。条件は「キー → 許容値リスト」の辞書で、評価エンジン（AbacEvaluator）がこれを突き合わせて許可判定を行う。文書の属性は `document-and-version.md` の `Document.Attributes`、検索フィルタは `data-source.md` の payload `attributes.<key>` と対応する。
+AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。
+条件は「キー → 許容値リスト」の辞書で、評価エンジン（AbacEvaluator）がこれを突き合わせて許可判定を行う。
+文書の属性は `document-and-version.md` の `Document.Attributes`、検索フィルタは `data-source.md` の payload `attributes.<key>` と対応する。
 
 ## エンティティ定義
 

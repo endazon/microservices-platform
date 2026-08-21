@@ -25,7 +25,8 @@ issues: [#532, #536, #642]
 
 ## テスト対象・範囲
 
-- 対象: RRF 融合ロジック（`HybridSearchService.ReciprocalRankFusion`）、`/search` エンドポイント結合（`InMemoryVectorStore`）、ABAC フィルタ適用（両系統）、Qdrant ペイロードからの ABAC 属性復元（`QdrantVectorStore.ExtractAttributes`）、**Qdrant ペイロードへのタグ書き込みと復元（`QdrantVectorStore.BuildPayload` / `QdrantVectorStore.ExtractTags`。［2026-08-09 追記 / #642］）**。
+- 対象: RRF 融合ロジック（`HybridSearchService.ReciprocalRankFusion`）、`/search` エンドポイント結合（`InMemoryVectorStore`）、ABAC フィルタ適用（両系統）、
+  Qdrant ペイロードからの ABAC 属性復元（`QdrantVectorStore.ExtractAttributes`）、**Qdrant ペイロードへのタグ書き込みと復元（`QdrantVectorStore.BuildPayload` / `QdrantVectorStore.ExtractTags`。［2026-08-09 追記 / #642］）**。
 - 対象外: 実 Qdrant の full-text Match 挙動・実埋め込みモデルの精度、反映時間（インジェスト責務）、負荷/p95、画面。
 
 ## テスト観点

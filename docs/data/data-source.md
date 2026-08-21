@@ -30,7 +30,8 @@ issues: [#516, #537, #538, #580, #752, #754, #767, #796, planning#344, planning#
 
 DataSource は登録済みデータソースのカタログエントリで、名前・種別・接続 URI・状態・最終同期時刻・接続設定（Config）を保持する。DataSourceService が専用 DB（PostgreSQL）で永続化する。
 
-IngestionService はリレーショナル DB を持たない Worker で、`DocumentUpdated` 相当のイベント受信時に本文を取得・チャンク分割・埋め込みし、結果を **Qdrant のコレクション**（既定 `knowledge_chunks`）へ upsert する。チャンクはリレーショナルエンティティではなくベクトルポイント（＋ payload）として保持される。
+IngestionService はリレーショナル DB を持たない Worker で、`DocumentUpdated` 相当のイベント受信時に本文を取得・チャンク分割・埋め込みし、結果を **Qdrant のコレクション**（既定 `knowledge_chunks`）へ upsert する。
+チャンクはリレーショナルエンティティではなくベクトルポイント（＋ payload）として保持される。
 
 ## エンティティ定義
 

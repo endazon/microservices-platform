@@ -25,9 +25,11 @@ issues: [#497, #580, #591]
 ## 起点となる計画書（トレーサビリティ）
 
 - 技術検討: `06_technical/01_architecture-overview.md`、`02_service-decomposition.md`、`10_composability-design.md`
-- 計画 ADR: マイクロサービス採用、サービス境界・Database per Service（実装で 11 サービス確定）、メッセージング（MassTransit/RabbitMQ。後継の Wolverine 採用により Superseded・注記は #580）、ABAC 認可、ベクトル DB=Qdrant、LLM ゲートウェイ、Wiki エンジン、コンポーザブルアーキテクチャ、ユニット第一のリポジトリ構成
+- 計画 ADR: マイクロサービス採用、サービス境界・Database per Service（実装で 11 サービス確定）、メッセージング（MassTransit/RabbitMQ。後継の Wolverine 採用により Superseded・注記は #580）、ABAC 認可、
+  ベクトル DB=Qdrant、LLM ゲートウェイ、Wiki エンジン、コンポーザブルアーキテクチャ、ユニット第一のリポジトリ構成
 - 実装 ADR: Istio STRICT mTLS をサービス間認証の第一防御とする（先行していた「内部サービス認証・ネットワーク隔離」を Superseded し、ネットワーク隔離は多層防御へ格下げ）、ユニット構成
-- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（03_tech-stack-selection.md（計画リポ）の確定スタック一覧と、.NET 10 アップグレードの計画 ADR〔Accepted・2026-07-23〕）。実装が先行していた経緯は、バックエンドの .NET 10 採用を決めた実装 ADR と draft/feedback/20260709_dotnet10-target-framework-deviation（計画リポ） に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
+- 補足: 実装は `.NET 10 / C# 13` に統一済みで、**計画側の制約も `.NET 10` である**（03_tech-stack-selection.md（計画リポ）の確定スタック一覧と、.NET 10 アップグレードの計画 ADR〔Accepted・2026-07-23〕）。
+  実装が先行していた経緯は、バックエンドの .NET 10 採用を決めた実装 ADR と draft/feedback/20260709_dotnet10-target-framework-deviation（計画リポ） に残る（**旧「計画は `.NET 8`」の記述は 2026-08-05 / #497 で是正した**。[tech-requirements.md](tech-requirements.md) の「差異: なし（解消済み）」と一致させた）。
 
 ## 読み方（凡例）
 
