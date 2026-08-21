@@ -5074,7 +5074,11 @@ module.exports = ({ ok, assert }) => {
         //    `gen-changelog.js` / `gen-openapi-skeleton.js` と同じ生成器であり（既定 `--json` は
         //    stdoutへ書くだけで副作用は無いが、役割は「検査」ではなく「生成」）、NOT_CHECKERS へ
         //    加えて母集合に数えない。
-        assert.strictEqual(scripts.length, 35, `検査器の母集合が 35 本から変わった（${scripts.length} 件）`);
+        // ★ #783（#442 子 5）で `check-deploy-manifests.js`（deploy/ の chart / overlay が
+        //    レンダリングできるかを検査）を新設したため 35 → 36（同上）。git を一切呼ばず
+        //    fs と外部コマンド（helm / kubectl）で走るため、TRACKED_CHECKERS / HEAD_CHECKERS の
+        //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 36, `検査器の母集合が 36 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -7157,6 +7161,67 @@ module.exports = ({ ok, assert }) => {
       const readme = fs.readFileSync(path.join(__dirname, 'README.md'), 'utf8');
       assert.match(readme, /\| `check-trace-blocks\.js` \|/);
       assert.match(readme, /\| `gen-knowledge-graph\.js` \|/);
+    });
+
+    // NFR / #783（#442 子 5）: chart / overlay の検証ジョブが CI に在り、かつ fail-open の
+    // 抜け道を使っていないことを固定する。
+    //
+    // **なぜ「ジョブが在る」だけでは足りないか。** check-deploy-manifests.js は helm / kubectl が
+    // 無いとき `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS=1` で notice を出して skip する経路を持つ。
+    // CI がこれを立てると、ツール導入が失敗しても検査が緑を返し、**壊れた overlay がマージされる**。
+    // 「検査がある」と「検査が働いている」を読み分けられない状態であり、本リポジトリが
+    // 繰り返し踏んできた型である（#558 / #562 / #747 / #801 / IADR-0209）。
+    ok('NFR / #783: ci.yml に deploy-manifests ジョブが在り、fail-open の抜け道を立てていない', () => {
+      const REPO = path.join(__dirname, '..');
+      const ciPath = path.join(REPO, '.github/workflows/ci.yml');
+      const ci = fs.readFileSync(ciPath, 'utf8');
+      const { ALLOW_MISSING_TOOLS_ENV } = require('./check-deploy-manifests.js');
+
+      assert.ok(
+        /\n {2}deploy-manifests:\n/.test(ci),
+        'ci.yml に deploy-manifests ジョブが無い（#783 の検査が CI で走らない）',
+      );
+      assert.ok(
+        ci.includes('node scripts/check-deploy-manifests.js --self-test'),
+        'deploy-manifests ジョブが検査器の --self-test を呼んでいない',
+      );
+      assert.ok(
+        ci.includes('node scripts/check-deploy-manifests.js\n'),
+        'deploy-manifests ジョブが本走査を呼んでいない',
+      );
+
+      // 抜け道を「立てている」行だけを違反にする。注意書きとして名前に言及するのは許す
+      // （コメント行は行頭が `#`）。
+      const armed = ci
+        .split('\n')
+        .filter((line) => line.includes(ALLOW_MISSING_TOOLS_ENV))
+        .filter((line) => !/^\s*#/.test(line));
+      assert.deepStrictEqual(
+        armed,
+        [],
+        `ci.yml が ${ALLOW_MISSING_TOOLS_ENV} を立てている。立てると helm / kubectl の導入が` +
+          '失敗しても検査が素通りする:\n' + armed.join('\n'),
+      );
+    });
+
+    ok('NFR / #783: overlay の列挙をワークフローへ書いていない（走査で発見する）', () => {
+      const REPO = path.join(__dirname, '..');
+      const ci = fs.readFileSync(path.join(REPO, '.github/workflows/ci.yml'), 'utf8');
+      const { discoverOverlays } = require('./check-deploy-manifests.js');
+      const overlays = discoverOverlays(REPO);
+      // fail-closed の門: 走査が 0 件なら、この試験は何も見ていない。
+      assert.ok(overlays.length > 0, 'overlay が 0 件（走査が壊れている）');
+
+      // deploy-manifests ジョブの本文に overlay パスが直書きされていないこと。
+      const job = ci.match(/\n {2}deploy-manifests:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n|$)/);
+      assert.ok(job, 'deploy-manifests ジョブの本文を読めない');
+      const hardcoded = overlays.filter((o) => job[1].includes(o));
+      assert.deepStrictEqual(
+        hardcoded,
+        [],
+        'deploy-manifests ジョブに overlay のパスが直書きされている。書くと次に overlay が' +
+          '増えたとき静かに検査対象から外れる:\n' + hardcoded.join('\n'),
+      );
     });
   }
 };

@@ -1,0 +1,158 @@
+---
+title: 作業仕様書 — chart / overlay の検証を CI ジョブ化し、走査漏れと沈黙の緑を機械で止める
+type: spec
+status: done
+related_ids:
+  - NFR
+author: claude
+created: 2026-08-21
+updated: 2026-08-21
+plan_refs:
+  - "ADR-0007（CI/CD）"
+  - "ADR-0021（エッジ・実行基盤）"
+related_adrs:
+  - IADR-0130
+  - IADR-0209
+  - IADR-0169
+issue: "#783"
+related_issues:
+  - "#442"
+  - "#466"
+---
+
+# 作業仕様書: chart / overlay の検証を CI ジョブ化する
+
+## 起点となる計画書（トレーサビリティ）
+
+- 機能要求: 該当なし（**NFR**。CI 基盤。`traceability.md`「場合 2」＝メタ作業に当たる番号が計画側に無い）
+- 関連計画 ADR: `ADR-0007`（CI/CD）／ `ADR-0021`（エッジ・実行基盤）
+- 親 issue: **#442**（エッジ・実行基盤・CI/CD の再構築）の子 5
+
+## 着手前の再検証（実測）
+
+**#783 の現況記述は正しかった。** `.github/workflows/` 全 14 本に helm / kustomize / kubeconform の
+検証ジョブは 1 つも無い。
+
+一方、**ブロック理由「helm / kustomize が手元にも CI にも無い」は成り立たなくなった**。
+2026-08-21 にこのコンテナで実測した結果:
+
+```console
+$ helm lint deploy/helm/microservices-platform
+[INFO] Chart.yaml: icon is recommended
+1 chart(s) linted, 0 chart(s) failed
+
+$ find deploy -name kustomization.yaml | sed 's#/kustomization.yaml##' | while read d; do
+    kubectl kustomize "$d" >/dev/null && echo "OK  $d" || echo "FAIL $d"; done
+OK  deploy/local/edge
+OK  deploy/local/edge/tls
+OK  deploy/local/headlamp
+OK  deploy/local/infra
+OK  deploy/local/infra-persistence
+OK  deploy/local/observability
+OK  deploy/local/observability-persistence
+OK  deploy/local/vault
+```
+
+**overlay は 8 件である。** 事前調査は 6 件と報告していたが、実際に `find` で引いたら 8 件だった
+（`infra-persistence` / `observability-persistence` が漏れていた）。**この 2 件の差が本作業の設計を
+決める** —— 列挙をワークフローへ書くと、次に overlay が増えたとき静かに検査対象から外れる。
+本リポジトリが 4 回踏んだ「`paths:` の片側取りこぼし」（#558 / #562 / #747 / #801）と同じ型である。
+
+## スコープ
+
+- `scripts/check-deploy-manifests.js` を新設し、**overlay と chart を走査で発見**して検証する
+- `.github/workflows/ci.yml` に `deploy-manifests` ジョブを追加する
+- `scripts/scripts.repo.test.js` に「ジョブが fail-open の抜け道を使っていない」突合を足す
+
+### スコープ外
+
+- **統合スタックを CI で起こす経路**（#783 のやること④）。これは **#466** の射程であり、
+  GitHub Actions の実行時間予算（全 PR ゲートか nightly か）という**利用者判断**が要る
+- `helm template` のスナップショット比較。**まず「壊れていたら落ちる」を作る**のが先で、
+  スナップショットは差分の意味を読む仕組みが要る（別 issue）
+- Istio / cert-manager 等の CRD を要する検証（`kubeconform` の schema 追加）。CRD スキーマの
+  供給元を決める判断が要る
+
+## 設計
+
+### 1. 列挙を持たない —— 走査で発見する
+
+`deploy/` 配下の `kustomization.yaml` と `deploy/helm/*/Chart.yaml` を**走査で集める**。
+ワークフローにも script にも overlay 名を書かない。
+
+### 2. 0 件走査で緑を返さない
+
+overlay が 0 件、または chart が 0 件なら **exit 1**。走査が壊れて 0 件になったときに
+「違反ありません」で緑を返すのが、本リポジトリが繰り返し踏んできた「**沈黙の exit 0**」（#797）である。
+
+### 3. ツール不在は fail-closed。抜け道は 1 つだけ、CI では使わせない
+
+`helm` / `kubectl` が PATH に無いとき、**既定は exit 1**（何を入れればよいかを表示する）。
+`DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS=1` のときだけ notice を出して skip する。
+
+**この抜け道を CI が使っていないことを機械で固定する**（`scripts.repo.test.js`）。
+[IADR-0209](../adr/IADR-0209_vitest-include-subset-of-frontend-tests-paths.md) の
+`include ⊆ paths` 突合と同じ型で、「片方に足してもう片方に足し忘れる」を先回りで塞ぐ。
+
+## 受け入れ基準
+
+1. `node scripts/check-deploy-manifests.js` が **exit 0** で、**発見した overlay 数と chart 数を出力**する
+2. `--self-test` があり、CI が本走査の前に呼ぶ
+3. **変異試験 A**: overlay の 1 つを壊す（存在しない resource を足す）と **exit 1** する
+4. **変異試験 B**: chart を壊す（`Chart.yaml` の必須項目を削る）と **exit 1** する
+5. **変異試験 C**: 走査ルートを空にすると（0 件）**exit 1** する
+6. **変異試験 D**: `ci.yml` から `deploy-manifests` ジョブを消す、または
+   `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS` を CI で立てると、`scripts.repo.test.js` の突合が **fail** する
+7. `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が緑
+8. **新しい overlay を足しても検査対象に自動で入る**（ハードコードした列挙が無いことの確認）
+
+## 実行結果（証跡）
+
+環境（[[IADR-0180]] に従い本セッションで測り直した）: dotnet 10.0.400 / dockerd v29.3.1（再起動後 2 秒で READY）/
+helm v3.21.4 / kubectl / k3d v5.7.4 / node v22.22.2。`src/ai-stock-trading` は populate 済み。
+🔴 **このワークツリーは shallow clone**（`git rev-parse --is-shallow-repository` = `true`）であり、
+`git log` / `git blame` を出典に引いていない（planning#410）。
+
+### 受け入れ基準
+
+| # | 基準 | 実行したコマンド | 結果 |
+| --- | --- | --- | --- |
+| 1 | 本走査が exit 0 で件数を出す | `node scripts/check-deploy-manifests.js` | **EXIT=0**「chart 1 件 / overlay 8 件がレンダリングできる」 |
+| 2 | `--self-test` があり CI が本走査の前に呼ぶ | `node scripts/check-deploy-manifests.js --self-test` | **self-test OK: 5 件**。`ci.yml` の `deploy-manifests` ジョブが本走査の前に呼ぶ |
+| 7 | 伴走テストが緑 | `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` | **✓ 575 tests passed**（新規 2 本を含む） |
+| 8 | 新しい overlay が自動で入る | 走査で発見する設計。変異 D-3 が直書きを禁止する | 下記 D-3 |
+
+### 変異試験（**6 本すべて実測。素通りは無い**）
+
+| # | 変異 | 期待 | 実測 |
+| --- | --- | --- | --- |
+| A | `deploy/local/vault/kustomization.yaml` へ存在しない resource を足す | exit 1 | **EXIT=1**「kubectl kustomize が失敗した: deploy/local/vault」 |
+| B | `deploy/helm/microservices-platform/Chart.yaml` から `name:` を削る | exit 1 | **EXIT=1**「helm lint が失敗した」＋「helm template が失敗した」の 2 件 |
+| C | 走査ルートを空のディレクトリにする | exit 1 | **failures 2 件**（overlay 0 件 / chart 0 件をそれぞれ検出） |
+| D-1 | `ci.yml` から `deploy-manifests` ジョブを消す | 突合テストが fail | **AssertionError**「ci.yml に deploy-manifests ジョブが無い」 |
+| D-2 | `ci.yml` で `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS: "1"` を立てる | 同上 | **AssertionError**「ci.yml が … を立てている。立てると helm / kubectl の導入が失敗しても検査が素通りする」 |
+| D-3 | ジョブ本文へ overlay パス（`deploy/local/vault`）を直書きする | 同上 | **AssertionError**「deploy-manifests ジョブに overlay のパスが直書きされている」。スイート EXIT=1 |
+
+各変異のあと**必ず復旧を確認**した（A/B/C は本走査 EXIT=0、D-1〜D-3 は `✓ 575 tests passed`）。
+
+### 追随した母集合
+
+- `scripts/scripts.repo.test.js` の**検査器の母集合ラチェット**を `35` → **`36`** へ。
+  **これはラチェットが設計どおり発火したもの**であり、新設時にまず落ちて宣言を促す仕組みである。
+  `TRACKED_CHECKERS` / `HEAD_CHECKERS` には**載せない** —— 本検査器は git を一切呼ばず
+  `fs` と外部コマンドで走る（`check-trace-blocks.js` と同じ扱い）。
+- `scripts/README.md` に 1 行追加（`check-image-mapping.js` の直後。インフラ系の並び）。
+
+### 引いた母集合と除外理由
+
+| 軸 | コマンド | 結果 |
+| --- | --- | --- |
+| overlay | `find deploy -name kustomization.yaml` | **8 件**。事前調査は 6 件と報告していたが、`infra-persistence` / `observability-persistence` が漏れていた |
+| chart | `find deploy/helm -name Chart.yaml` | 1 件（`deploy/helm/microservices-platform`） |
+
+**除外したもの**: 依存 chart の展開先 `charts/`（上流の chart であり本リポジトリの成果物ではない）。
+`node_modules` / `bin` / `obj` / `dist` / `coverage` / `.git`（走査の一般的な除外）。
+`src/ai-stock-trading`（submodule。`deploy/` 配下に無いため走査に入らない）。
+
+**この 6 → 8 の差が本作業の設計を決めた。** 列挙をワークフローへ書くと、次に overlay が
+増えたとき静かに検査対象から外れる。だから走査で発見し、直書きを D-3 の突合で禁止した。

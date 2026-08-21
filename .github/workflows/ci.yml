@@ -332,6 +332,30 @@ jobs:
       - name: Check realm field lengths
         run: node scripts/check-realm-constraints.js
 
+  # NFR, ADR-0007 / ADR-0021, Issue #783（#442 子 5）: deploy/ の chart と overlay が
+  # レンダリングできることを検査する。CI に helm / kustomize の検証が 1 つも無く、
+  # chart や overlay が壊れてもマージまで気づけなかった。
+  #
+  # **overlay 名をここへ書かないこと。** 検査器が deploy/ を走査して発見する。書くと次に
+  # overlay が増えたとき静かに検査対象から外れる（`paths:` の片側取りこぼしを 4 回踏んでいる。
+  # #558 / #562 / #747 / #801）。実測でも、事前調査が 6 件と数えた overlay は実際には 8 件だった。
+  #
+  # **DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS をここで立てないこと。** 立てると helm / kubectl の
+  # 導入が失敗しても検査が notice を出して素通りする。scripts/scripts.repo.test.js が突合する。
+  deploy-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - uses: azure/setup-helm@v4
+      - uses: azure/setup-kubectl@v4
+      - name: Self-test deploy manifest checker
+        run: node scripts/check-deploy-manifests.js --self-test
+      - name: Check charts and overlays render
+        run: node scripts/check-deploy-manifests.js
+
   # NFR（運用性/信頼性）, IADR-0087, Issue #334: scripts/k8s-local-up.sh の opt-in ゲート
   # （PERSIST / OBSERVABILITY / VAULT / ARGOCD / HEADLAMP / LOCALEDGE / ESO）を横断で固定する
   # smoke test。IADR-0105（#399）以降は「どの env でも apiserver 引数・ドロップインを書かない」ことも
