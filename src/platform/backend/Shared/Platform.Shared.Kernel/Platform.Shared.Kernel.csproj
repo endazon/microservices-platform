@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+  <!-- NFR / #455 / 計画 ADR-0030・ADR-0041: 共有カーネル。Domain が唯一 ProjectReference を
+       許される先である（src/README.md 依存規則 3・IADR-0117）。
+
+       PackageReference は **CSharpFunctionalExtensions ただ 1 つ**に限る（ADR-0041 決定 3）。
+       これは Result 型の**内部実装**としてのみ使い、公開面には出さない（決定 2）。
+       許可リストは scripts/check-backend-libraries.js の SHARED_KERNEL_ALLOWED が持ち、
+       リスト外のパッケージが入ると CI が落ちる。**差し替えるときは増やさず入れ替える。** -->
+  <ItemGroup>
+    <PackageReference Include="CSharpFunctionalExtensions" />
+  </ItemGroup>
+</Project>

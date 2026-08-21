@@ -1122,8 +1122,9 @@ module.exports = ({ ok, assert }) => {
 
     // ratchet: テストプロジェクトを増やしたらこの実数を更新する。「N 件以上」にすると
     // 走査が壊れて 0 件になったときにテストが空振りで green になる（穴を塞ぐのが本テストの目的）。
+    // ［2026-08-21 / #455］Platform.Shared.Kernel.Tests の新設で 14 → 15。
     assert.strictEqual(
-      found.length, 14,
+      found.length, 15,
       `テストプロジェクトの検出数が想定と異なる（走査の破損 or 増減。増えたなら本数を更新する）: ${found.length} 件\n` +
         found.map((f) => path.relative(repoRoot, f)).join('\n'),
     );
