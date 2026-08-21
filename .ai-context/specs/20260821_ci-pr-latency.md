@@ -15,7 +15,7 @@ related_ids:
   - IADR-0232
 author: claude
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 plan_refs:
   - planning:docs/ai-implementation-workflow-guide.md
   - planning:projects/microservices-platform/07_adr/ADR-0048_impl-docs-restructure.md
@@ -102,11 +102,32 @@ restore → build → 単体テストし、Cobertura を artifact へ上げる�
 
 `lint` も同型に分割する（`backend-format` matrix ＋ 集約 `lint`）。
 
-### 3. Testcontainers 統合テストを PR 既定から外す
+### 3. 統合テストは PR に残し、直列を「ユニット並列 × 単体／統合の分離」へ組み替える
 
-`--filter "Category!=Integration"` を付け、新規 `integration.yml`
-（`push: [develop]` ＋ 日次 schedule ＋ `workflow_dispatch`）で全件を回す。
-AST が IADR-0049 で先行実施済みの型をそのまま採る。
+> **［2026-08-22 追記］利用者裁定が更新された。**「なるべく精度は落とさない方向で」。
+> 当初は AST の IADR-0049 に倣い「PR から外して日次へ」だったが、**取り下げた**。
+> 以下は改定後の設計である。
+
+変更前は 1 ジョブが `for slnx in ...; do restore; build; test; done` と**直列**に回しており、
+クリティカルパスは「全ユニットの合計」だった（実測 462 秒）。次へ組み替える。
+
+- `backend-build`（matrix: ユニット）— restore → build → **単体テスト**（`Category!=Integration`）
+- `backend-integration` — 全ユニットの**統合テスト**（`Category=Integration`）を実コンテナで
+- `build-and-test`（集約・必須 check 名）— 両方を判定し、カバレッジを 1 回で集計
+
+**PR で走るテストの集合は変更前と同一である。** 変わったのは走り方だけで、
+クリティカルパスが「合計」から「最長の 1 本」になった。
+
+🔴 `backend-integration` に **fail-closed の門**を置いた。どのユニットでも 1 件も走らなければ落とす。
+これが無いと Trait の付け忘れやフィルタの綴り誤りで **0 件実行のまま緑**になる。
+
+🔴 **カバレッジは両ジョブが artifact で上げ、集約ジョブが 1 回で集計する。**
+統合ジョブ側の `--collect` を外すと統合テストぶんの被覆が落ちて床が割れる。
+
+`integration.yml`（日次 ＋ `workflow_dispatch`）は残すが、**PR の肩代わりではない**。
+担うのは PR では原理的に見えないもの —— 非決定な失敗（flaky）・環境ドリフト・
+自動起票の実働経路 —— である。`push: [develop]` は持たせない
+（マージ時は `ci.yml` の `backend-integration` が同じテストを走らせるため二重になる）。
 
 🔴 **着手前に Trait を全数走査したところ、穴が 1 件あった。**
 
@@ -127,24 +148,24 @@ MinIO の Testcontainer を起動するのに `[Trait("Category", ...)]` を持�
 「Testcontainers を起動するテスト」であって「`Knowledge.IntegrationTests` プロジェクト全体」ではない。
 Docker 不要で速く、manifest 配線の退行を PR 時点で捕まえる価値がある。
 
-### 4. CodeQL は **PR だけ** `build-mode: none` にする
+### 4. CodeQL の `build-mode` は常に `manual`（PR でも精度を落とさない）
 
-`codeql.yml` は `ci.yml` と重複する「両ユニットのトレース付き `dotnet build`」を
-毎 PR で行っており、これが 11分24秒の主因である。
+> **［2026-08-22 追記］**当初は「PR だけ `build-mode: none`」だった。**取り下げた。**
 
-`build-mode` は式を受け付ける文字列入力（`none` / `autobuild` / `manual`）なので、
-**PR は `none`・push と週次 schedule は `manual`** に切り替える。
-ビルド 3 ステップには `if: github.event_name != 'pull_request'` を付ける。
+`none` にすると生成コード（EF Migrations・source generator 出力。カバレッジログの実測で
+**270 クラス / 8990 行**）が解析対象外になる。加えて「PR は緑だが push で赤」という
+**読み分けの難しい状態**を作る。速さは `concurrency` と NuGet キャッシュで取る ——
+どちらも**解析の中身を 1 行も削らない**。本ワークフローは必須チェックではないため、
+残る所要はマージを止めない。
 
-- **PR**: 生成コード（EF Migrations・source generator 出力。カバレッジログの実測で
-  270 クラス / 8990 行）が解析対象外になり精度が落ちる。代わりに 11 分がほぼ消える。
-- **push / 週次**: **現状と同じ精度**。ここで担保する。
+### 5. `security.yml` の `vulnerable-scan` は PR に残す
 
-### 5. `security.yml` の `vulnerable-scan` を PR から外す
+> **［2026-08-22 追記］**当初は PR から外していた。**取り下げた。**
 
-`find` ＋ 全ソリューション restore ＋ `dotnet list --vulnerable` を毎 PR で回していた。
-**必須チェックではなく**、PR 差分の依存レビューは `dependency-review` が既にカバーしている。
-push / 週次 schedule のみにする。
+外した根拠は「PR 差分は `dependency-review` がカバーしている」だったが、
+**`dependency-review` は依存グラフの差分を見るのに対し、本ジョブは実際に restore した
+推移閉包を `--include-transitive` で見る。見ている面が違う以上「重複だから外してよい」と
+言い切れない。** 迷ったら残す。`security.yml` は CI と並列で**クリティカルパスではない**。
 
 ### 6. Node 検査ジョブ 17 個 → 2 個へ統合
 
@@ -180,14 +201,18 @@ Playwright のブラウザをキャッシュする（`--with-deps` は apt も�
 重複の解消は別 issue（依存させずに `dist` を共有する形が要る）へ切り出す。
 着手前の見立てを実装時に測り直した結果であり、判断の変更として残す。
 
-### 9. 落とした精度の担保 ＋ 失敗時の自動 issue 起票
+### 9. 失敗時の自動 issue 起票
 
-利用者の裁定: **「毎 PR の精度は下がってもよいが、develop マージ時か日次実行で
-どこかで担保する。そこで失敗したら自動で issue を起票する」。**
+利用者裁定は 2 段階で入った。**後が前を狭めている。**
 
-3・4・5 はいずれも「検証をやめる」のではなく**「PR から後段へ移す」**である。
-後段が黙って赤いまま放置されれば、移しただけで失っているのと同じになる。
-したがって `report-failure` ジョブを担保ワークフローの末尾へ置く。
+- **［08-21］**「毎 PR の精度は下がってもよいが、develop マージ時か日次実行でどこかで担保する。
+  そこで失敗したら自動で issue を起票する」
+- **［08-22］**「なるべく精度は落とさない方向で」
+
+後者により **3・4・5 の「PR から外す」案はすべて取り下げた**。
+一方 **`report-failure` は残す** —— 外すのをやめても、日次（`integration.yml`）・
+週次（`codeql.yml` / `security.yml`）の実行は**誰も見ていない**ためである。
+落ちたまま何日も気付かれない形を塞ぐ。
 
 ## 受け入れ基準
 
@@ -196,8 +221,8 @@ Playwright のブラウザをキャッシュする（`--with-deps` は apt も�
    check 名を全数列挙して `docs/ai-workflow.md` の表と突合する。
 2. `build-and-test` の所要が **7分42秒から半分以下**になる。
 3. 走る検査器の本数と対象が統合前後で**一致する**。
-4. 既定 CI のログに Testcontainers のコンテナ起動が**1 件も残っていない**。
-5. 既定 CI のテスト件数 ＋ nightly のテスト件数 ＝ 分割前の件数。
+4. **PR で走るテストの総数が変更前と一致する**（`backend-build` の各脚 ＋ `backend-integration`）。
+5. `backend-integration` の fail-closed の門が効く（0 件実行なら落ちる）。
 6. NuGet キャッシュが 2 回目の run で**ヒットする**（`Cache restored from key:` を実測）。
 7. CodeQL が **PR / push の両経路**で意図どおりのモードで走る。
 8. `report-failure` が **① 失敗時に issue を立て ② 2 回目はコメントを足すだけ**である。
@@ -216,6 +241,8 @@ Playwright のブラウザをキャッシュする（`--with-deps` は apt も�
 
 ## 未決事項
 
-- 統合テストを外すぶんカバレッジ床（現在 line 39 / branch 27、実測 line 39.92% /
-  branch 28.36%・レポート 15 件）が割れる可能性がある。
-  **実測してから**、必要なら同じ PR で床を下げ、理由を IADR へ書く（黙って下げない）。
+- カバレッジ床（現在 line 39 / branch 27、実測 line 39.92% / branch 28.36%・レポート 15 件）は
+  **両ジョブの artifact を合わせて 1 回で集計する**ことで維持する設計である。
+  **改定後は統合テストを PR から外さないため、床が割れる理由は無い** ——
+  割れたら集計の配線（artifact 名・`--collect`）が壊れている。**「テストが減った」と
+  取り違えないこと。**

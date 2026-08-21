@@ -1,30 +1,28 @@
-# 実コンテナ統合テスト（IADR-0232 決定 3。AST の integration.yml / IADR-0049 と同型）
+# 統合テスト（実コンテナ）の定期実行 —— IADR-0232 決定 3
 #
-# ■ なぜ分離したか
-# 着手前の実測（2026-08-21・run 32487460689）で、ci.yml の build-and-test は 7 分 42 秒掛かり
-# CI 全体（8 分 03 秒）のクリティカルパスを 1 本で占めていた。その中身は 2 ユニットの直列ループと、
-# Testcontainers で実 RabbitMQ / Postgres / MinIO を起動する統合テストの同居である。
-# 既定 CI（ci.yml）は --filter "Category!=Integration" で同トレイトを除外し、本ワークフローが全件を回す。
+# ■ 🔴 PR の統合テストを肩代わりするものではない
+# **統合テストは ci.yml の backend-integration ジョブが PR でも全件走らせる。**
+# 当初は「PR から外して日次へ回す」設計だったが、利用者裁定（2026-08-22）
+# 「なるべく精度は落とさない方向で」により**並列化で速くする**方へ改めた。
+# したがって PR の検出力は変更前と同じである。
 #
-# ■ 🔴 ここが「PR から外した分の担保」である（IADR-0232 決定 1・利用者裁定 2026-08-21）
-# 「毎 PR の精度は下がってよいが、develop マージ時か日次実行でどこかで担保する。
-# そこで失敗したら自動で issue を起票する」。したがって:
-#   - push: [develop]  … マージした瞬間に回す（退行の混入を当日中に知る）
-#   - schedule         … 日次で回す（マージが無い日も担保する）
-#   - report-failure   … 落ちたら issue を立てる。これが無ければ「外した」は「やめた」と同義になる。
+# ■ それでも本ワークフローを残す理由
+# 本ワークフローが担うのは PR では見えないもの、すなわち**時間軸で現れる壊れ方**である。
+#   - 非決定な失敗（flaky）: 同じコミットを日をまたいで繰り返し走らせないと現れない
+#   - 環境ドリフト: ランナー側の Docker・ベースイメージ・外部レジストリの変化
+#   - そして **report-failure（自動起票）の実働経路**（下記）
 #
-# ■ 除外の射程
-# 外すのは Category=Integration だけである。同じ Knowledge.IntegrationTests に居る
-# Category=Deployment（helm manifest 検証）と Category=EndpointRouting（インプロセス）は
-# Docker を使わず速いため PR に残してある。「遅いから外す」のであって「同じディレクトリに
-# 居るから外す」のではない。
+# ■ 自動起票の検証入口
+# 自動起票は失敗時にしか走らないため**平時は常に skip で緑**であり、
+# 「動かないことに誰も気付かない」種類の仕組みである。
+# workflow_dispatch の force_failure で意図的に落として実測できるようにしてある。
 #
 # GitHub の ubuntu ランナーは Docker 同梱のため Testcontainers が動作する。
 name: Integration
 
 on:
-  push:
-    branches: [develop]
+  # push: は持たない。develop へのマージ時は ci.yml の backend-integration が同じテストを走らせる
+  # （二重に回してもランナーを食うだけで、新しく分かることが無い）。
   schedule:
     # 毎日 UTC 18:00（JST 03:00）。AST の integration.yml と同じ時刻に揃えてある。
     - cron: "0 18 * * *"
@@ -37,8 +35,7 @@ on:
         default: false
 
 # 同時実行は 1 本に制限（ランナー上の Docker リソース競合回避）。
-# 🔴 cancel-in-progress: false。ここは担保そのものなので、後続の push で捨ててはならない
-# （ci.yml の PR 側とは意図が逆である）。
+# cancel-in-progress: false。日次の走査結果は「その日に走った」ことに意味があるため捨てない。
 concurrency:
   group: integration-${{ github.ref }}
   cancel-in-progress: false

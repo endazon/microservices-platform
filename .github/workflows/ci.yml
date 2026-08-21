@@ -492,14 +492,18 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
-      # 🔴 --filter "Category!=Integration" が本 PR の主眼のひとつである（IADR-0232 決定 3）。
-      # Testcontainers で実 RabbitMQ / Postgres / MinIO を起動するテストは PR の既定から外し、
-      # integration.yml（develop への push ＋ 日次）で全件を回して担保する。AST の IADR-0049 と同型。
+      # 🔴 --filter "Category!=Integration" は「PR から外す」ためではなく「並列化して待たない」ためである
+      # （IADR-0232 決定 3・利用者裁定 2026-08-22「なるべく精度は落とさない方向で」）。
+      #
+      # Testcontainers で実 RabbitMQ / Postgres / MinIO を起動するテストは、同じ PR の
+      # backend-integration ジョブが**並列に全件走らせる**。**PR で走るテストの集合は変えていない。**
+      # 直列ループ（restore→build→test を 2 ユニット順番に）だったものを、
+      #   ユニット並列 × 単体／統合の分離
+      # へ組み替えて、クリティカルパスを「合計」から「最長の 1 本」へ変えただけである。
       #
       # 除外されるのは Category=Integration だけである。同じ Knowledge.IntegrationTests に居る
       # Category=Deployment（helm manifest 検証）と Category=EndpointRouting（インプロセス）は
-      # Docker を使わず速いため **PR に残す**。「遅いから外す」のであって「同じディレクトリに
-      # 居るから外す」のではない。
+      # Docker を使わず速いため、こちら（単体側）で走る。
       - name: Restore, build and test (${{ matrix.unit }}, unit tests only, with coverage)
         run: |
           set -euo pipefail
@@ -519,6 +523,86 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # 🔴 Testcontainers で実インフラを起動する統合テストを **PR でも全件走らせる**（IADR-0232 決定 3）。
+  #
+  # 当初案は「PR から外して nightly へ回す」だったが、利用者裁定（2026-08-22）
+  # 「なるべく精度は落とさない方向で」により**並列化で速くする**方へ改めた。
+  # **PR で走るテストの集合は変更前と同じである。** 変わったのは走り方だけで、
+  # 直列（2 ユニット順番に restore→build→test）から「ユニット並列 × 単体／統合の分離」になった。
+  #
+  # ユニット名をここへ書かない（src/*/backend/backend.slnx を走査して発見する）。
+  # 統合テストを持たないユニットは「フィルタに一致するテストが無い」で終わるが、それは失敗ではない。
+  #
+  # 🔴 fail-closed の門を置いてある。**どのユニットでも 1 件も走らなければ落とす。**
+  # これが無いと、Trait の付け忘れやフィルタの綴り誤りで**0 件実行のまま緑**になり、
+  # 「統合テストが走っている」という記録だけが残る（本リポジトリが繰り返し踏んできた型）。
+  backend-integration:
+    runs-on: ubuntu-latest
+    # 実インフラのコンテナ起動を含むため、単体側より長い。
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+      # NFR / IADR-0232: NuGet のグローバルパッケージをキャッシュする（backend-build と同じキー）。
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+      # --- スタック別に書き換え（例: C#/.NET） ---
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "10.0.x"
+      - name: Integration tests (real containers, all units, with coverage)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ran=0
+          found=0
+          for slnx in src/*/backend/backend.slnx; do
+            found=$((found + 1))
+            echo "::group::$slnx"
+            dotnet restore "$slnx"
+            dotnet build "$slnx" --no-restore --configuration Release
+            log="$(mktemp)"
+            if dotnet test "$slnx" --no-build --configuration Release \
+                 --filter "Category=Integration" \
+                 --collect:"XPlat Code Coverage" --verbosity normal 2>&1 | tee "$log"; then
+              :
+            elif grep -q 'No test matches the given testcase filter' "$log"; then
+              # そのユニットに統合テストが無いだけ。失敗にしない。
+              echo "（$slnx に Category=Integration のテストは無い）"
+            else
+              echo "::endgroup::"
+              exit 1
+            fi
+            if grep -qE '^[[:space:]]*(Passed|Failed)[[:space:]]+[A-Za-z]' "$log"; then ran=1; fi
+            echo "::endgroup::"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::src/*/backend/backend.slnx が 1 件も無い。glob が空振りしている。"
+            exit 1
+          fi
+          # 🔴 fail-closed: 0 件実行のまま緑にしない。
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::Category=Integration のテストが 1 件も実行されなかった。Trait の付け忘れかフィルタの誤りである。"
+            exit 1
+          fi
+      # カバレッジは単体側と合わせて 1 回で集計する（IADR-0123 決定 3〜5 の前提を保つ）。
+      # ここを外すと統合テストぶんの被覆が集計から落ち、床が割れる。
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-integration
+          path: "**/coverage.cobertura.xml"
+          retention-days: 1
+          if-no-files-found: error
+
   # 🔴 必須チェック名を維持する集約ジョブ（上のブロックコメント参照）。ここを改名・削除しないこと。
   # NFR, Issue #453: カバレッジ床の強制。上のステップが出力する Cobertura を直接集計するため
   # reportgenerator のインストールを要さない（CI が速く、オフラインでも動く）。
@@ -526,24 +610,29 @@ jobs:
   # フロント側の同等ゲートは frontend-tests.yml（vitest thresholds・IADR-0034）。
   build-and-test:
     runs-on: ubuntu-latest
-    needs: [discover-units, backend-build]
+    needs: [discover-units, backend-build, backend-integration]
     if: always()
     steps:
       - name: Report build/test result
         env:
           DISCOVER_RESULT: ${{ needs.discover-units.result }}
           BUILD_RESULT: ${{ needs.backend-build.result }}
+          INTEGRATION_RESULT: ${{ needs.backend-integration.result }}
         run: |
-          echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT"
+          echo "discover-units=$DISCOVER_RESULT / backend-build=$BUILD_RESULT / backend-integration=$INTEGRATION_RESULT"
           if [ "$DISCOVER_RESULT" != "success" ]; then
             echo "::error::ビルド対象ユニットの導出に失敗した。"
             exit 1
           fi
           if [ "$BUILD_RESULT" != "success" ]; then
-            echo "::error::いずれかのユニットで restore / build / test が失敗した（backend-build の各脚を見ること）。"
+            echo "::error::いずれかのユニットで restore / build / 単体テストが失敗した（backend-build の各脚を見ること）。"
             exit 1
           fi
-          echo "✓ 全ユニットの restore / build / test が成立した。"
+          if [ "$INTEGRATION_RESULT" != "success" ]; then
+            echo "::error::統合テスト（実コンテナ）が失敗した（backend-integration を見ること）。"
+            exit 1
+          fi
+          echo "✓ 全ユニットの restore / build / 単体テスト ＋ 統合テストが成立した。"
       - uses: actions/checkout@v7
       - name: Download coverage reports from all units
         uses: actions/download-artifact@v7
