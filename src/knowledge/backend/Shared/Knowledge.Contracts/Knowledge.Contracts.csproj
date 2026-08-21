@@ -3,7 +3,6 @@
     <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit" />
     <!-- FR-05, IADR-0063 (#229): SearchRequest.Scope が platform 横断の ABAC 契約 AccessScope
          （Platform.Shared.Contracts）を内包するため参照する。knowledge→platform Shared は許可（例外の Shared 参照）。 -->
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />

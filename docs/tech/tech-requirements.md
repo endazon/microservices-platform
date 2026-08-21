@@ -194,7 +194,7 @@ src/<unit>/backend/Services/<Name>Service/
 `PackageReference`・`GlobalPackageReference` と `.cs` の `using` を走査して検出し、CI で止める。
 **CPM の `PackageVersion`（版の中央定義）は違反にしない** — 下記 ratchet の消化が終わるまで、
 [`src/Directory.Packages.props`](../../src/Directory.Packages.props) は不採用パッケージの版定義を正当に持つ。ただし**現行実装は MassTransit を
-広範に使用中**（実測 2026-08-21: `.csproj` **15**、`.cs` **36**）であるため、即時禁止では
+広範に使用中**（実測 2026-08-21: `.csproj` **13**、`.cs` **36**）であるため、即時禁止では
 「成果物は正しいのに赤」が常態化する（同じ判断の先例は [`scripts/README.md`](../../scripts/README.md) の
 `check-permission-denials.js` の**段階ポリシー**——赤の常態化は「赤を無視する学習」を生み検査の目的そのものを
 壊すため、許容値までは警告に留める。計画側に記録された前段の失敗モードと段階ポリシーの導入経緯を参照）。
@@ -217,7 +217,9 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 エントリ 14 件、および `PackageVersion` を削除した（実測 2026-08-21: `FluentAssertions` の `.csproj` 14 → **0**、
 `using FluentAssertions` を持つ `.cs` 150 → **0**）。
 
-**残件は 42 件 → 29 件 → 26 件 → 15 件**（`MassTransit` **のみ**）。`Serilog` と `FluentAssertions` は
+**残件は 42 件 → 29 件 → 26 件 → 15 件 → 13 件**（`MassTransit` **のみ**。最後の 2 件は
+`Knowledge.Contracts` / `Platform.Shared.Contracts` の**参照だけがあり実コードで使っていなかった**
+分の撤去である）。`Serilog` と `FluentAssertions` は
 不採用のまま `BANNED` に残るため、再混入は引き続き fail する。
 
 > **［2026-08-21 更新］本節の実測値を数え直した。** 直前の値のうち、`FluentAssertions` の
@@ -325,7 +327,39 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
   （個別プロセス文書に残る「.NET 8」表記の順次追随）で、計画側の担当である。
 - バックエンド標準ライブラリ標準への移行残件: 不採用ライブラリの baseline を各サービス再実装 issue で解消し、
   空になった時点で `Directory.Packages.props` から不採用パッケージを削除する。**残るのは `MassTransit`
-  のみ**である（Wolverine 移行。🔴 部分移行は禁止——「MT 発行 → Wolverine 購読」の組が 1 つでもできると、
-  ビルドもユニットテストもトポロジ検査も通ったまま業務イベントが消える）。
+  のみ**である（Wolverine 移行。射程と分割は下記「Wolverine 移行の前提」を参照）。
   **xUnit v2 → v3 と `Xunit.SkippableFact` の v3 代替（`Assert.Skip`）は決着済みである**（上記）。
 - サービス間 HTTP の `Refit` は棚卸し表に記載が無い。gRPC / REST の使い分け基準を定めた計画 ADR（内部同期は gRPC）との関係は #441 で決着する。
+
+### Wolverine 移行の前提（射程の実測。#455 / #441）
+
+🔴 **「MT 発行 → Wolverine 購読」の組を作ってはならない。** RabbitMQ の exchange / queue 名の
+導出規則が両者で異なるため、binding の無い exchange へ publish した結果**メッセージが黙って
+捨てられる**（publisher confirms は成功を返す）。**どの検査がこれを止めるかを正確に把握しておく。**
+
+| 防壁 | 現状 | 備考 |
+| --- | --- | --- |
+| **ビルド** | ✅ **現在は止まる** | `PipelineExtensions.cs` / `IntrospectionExtensions.cs` の `where TConsumer : class, IConsumer, IPipelineStep` が、`IConsumer<T>` を捨てたコンシューマの登録をコンパイルエラーにする |
+| ユニットテスト | ⚠️ 半分 | 購読側を差し替えるとテストは落ちるが、**それは追随漏れの検出であって転送互換性の検証ではない** |
+| **トポロジ検査** | ❌ **素通りする** | `check-event-topology.js` は `IConsumer<T>` と `Handle(T)` を**同じ集合へ入れ**、発行側もレシーバ型を見ない。baseline に**トランスポートの欄が無い**。バグではなく射程外である |
+| 統合テスト | ❌ 検出できない | 後述 |
+
+> **［2026-08-21 訂正］従前ここには「ビルドもユニットテストもトポロジ検査も通ったまま
+> 業務イベントが消える」と書いていた。ビルドについては誤りである。** 上表の型制約が
+> **現存する唯一の実効的な安全弁**であり、実際に止まる。
+>
+> 🔴 **ただしこの安全弁は、共通ヘルパ（`Platform.Shared.Infrastructure`）を Wolverine 対応に
+> した瞬間に消える。** 危険が本当に発現するのは**その後**である。したがって
+> **トランスポート認識の検査を、型制約を緩める作業より先に入れる**（着手順の拘束）。
+
+**統合テストは現状この判定に使えない。** `Knowledge.IntegrationTests` の
+`IntegrationTestFactory` は、サービス自身のメッセージング配線をアセンブリ単位で除去してから
+**テスト自前のバスへ差し替えている**。したがってキュー名・`pipeline.json` の段宣言・
+リトライ設定のいずれも通っておらず、**`DocumentUpdated` の 2 購読者が同時に生きている状態を
+作るテストが存在しない**（手順 3 の退行を試験できない）。本番配線を通す作り替えが先に要る。
+
+**一斉性の下限はイベントグラフの連結成分である。** メッセージングを行う 5 サービスは
+`RawDocumentFetched` → `DocumentNormalized` → `DocumentUpdated` / `DocumentDeleted` で
+**1 つの連結成分**を成す。素朴な一斉切替は起票規格（400 行）に収まらない。
+**先に両トランスポートで購読させておけば、発行側の切替は 1 イベント単位に縮む** ——
+二重購読の期間は手間ではなく、レビュー可能な単位に割るための必須条件である。

@@ -3,6 +3,5 @@
     <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MassTransit" />
   </ItemGroup>
 </Project>

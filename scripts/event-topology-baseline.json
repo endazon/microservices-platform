@@ -1,48 +1,68 @@
 {
-  "$comment": "NFR / #455 子 C: Wolverine 移行 手順 1 の対応表。移行前の正解表であり、移行後もこの表が変わらないことが移行の正しさの証拠になる。増減の両方向を違反にする。",
+  "$comment": "NFR / #455 子 C: Wolverine 移行 手順 1 の対応表。移行前の正解表であり、移行後もこの表が変わらないことが移行の正しさの証拠になる。増減の両方向を違反にする。 各 owner の値は**トランスポート**（masstransit / wolverine）である。購読者が発行側と 1 つもトランスポートを共有していなければ、その購読者は 1 通も受け取れないため違反にする（部分移行の検出。#455 Phase 0 / U2）。二重購読（両方で待つ）は移行手順なので違反にしない。",
   "topology": {
     "DocumentDeleted": {
-      "publishers": [
-        "knowledge/DocumentService"
-      ],
-      "subscribers": [
-        "knowledge/WikiService"
-      ]
+      "publishers": {
+        "knowledge/DocumentService": [
+          "masstransit"
+        ]
+      },
+      "subscribers": {
+        "knowledge/WikiService": [
+          "masstransit"
+        ]
+      }
     },
     "DocumentNormalized": {
-      "publishers": [
-        "knowledge/ConversionService"
-      ],
-      "subscribers": [
-        "knowledge/DocumentService"
-      ]
+      "publishers": {
+        "knowledge/ConversionService": [
+          "masstransit"
+        ]
+      },
+      "subscribers": {
+        "knowledge/DocumentService": [
+          "masstransit"
+        ]
+      }
     },
     "DocumentUpdated": {
-      "publishers": [
-        "knowledge/DocumentService"
-      ],
-      "subscribers": [
-        "knowledge/IngestionService",
-        "knowledge/WikiService"
-      ]
+      "publishers": {
+        "knowledge/DocumentService": [
+          "masstransit"
+        ]
+      },
+      "subscribers": {
+        "knowledge/IngestionService": [
+          "masstransit"
+        ],
+        "knowledge/WikiService": [
+          "masstransit"
+        ]
+      }
     },
     "IngestionCompleted": {
-      "publishers": [
-        "knowledge/IngestionService"
-      ],
-      "subscribers": []
+      "publishers": {
+        "knowledge/IngestionService": [
+          "masstransit"
+        ]
+      },
+      "subscribers": {}
     },
     "IngestionRequested": {
-      "publishers": [],
-      "subscribers": []
+      "publishers": {},
+      "subscribers": {}
     },
     "RawDocumentFetched": {
-      "publishers": [
-        "knowledge/DataSourceService"
-      ],
-      "subscribers": [
-        "knowledge/ConversionService"
-      ]
+      "publishers": {
+        "knowledge/DataSourceService": [
+          "masstransit"
+        ]
+      },
+      "subscribers": {
+        "knowledge/ConversionService": [
+          "masstransit"
+        ]
+      }
     }
   }
 }
