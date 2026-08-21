@@ -4,7 +4,6 @@ type: spec
 status: draft
 related_ids:
   - NFR
-  - IADR-0049
   - IADR-0056
   - IADR-0060
   - IADR-0067
@@ -102,51 +101,67 @@ restore → build → 単体テストし、Cobertura を artifact へ上げる�
 
 `lint` も同型に分割する（`backend-format` matrix ＋ 集約 `lint`）。
 
-### 3. 統合テストは PR に残し、直列を「ユニット並列 × 単体／統合の分離」へ組み替える
+### 3. 統合テストは PR に残し、直列ループをユニット並列（matrix）へ組み替える
 
-> **［2026-08-22 追記］利用者裁定が更新された。**「なるべく精度は落とさない方向で」。
+> **［2026-08-22 追記 1］利用者裁定が更新された。**「なるべく精度は落とさない方向で」。
 > 当初は AST の IADR-0049 に倣い「PR から外して日次へ」だったが、**取り下げた**。
-> 以下は改定後の設計である。
+>
+> **［2026-08-22 追記 2］追記 1 の実装（`backend-build` ＋ `backend-integration` の
+> 2 ジョブ分割）は実機で床を割ったため、統合ジョブを畳んだ。** 実測は下記。
+> 以下は畳んだ後の設計である。
 
 変更前は 1 ジョブが `for slnx in ...; do restore; build; test; done` と**直列**に回しており、
 クリティカルパスは「全ユニットの合計」だった（実測 462 秒）。次へ組み替える。
 
-- `backend-build`（matrix: ユニット）— restore → build → **単体テスト**（`Category!=Integration`）
-- `backend-integration` — 全ユニットの**統合テスト**（`Category=Integration`）を実コンテナで
-- `build-and-test`（集約・必須 check 名）— 両方を判定し、カバレッジを 1 回で集計
+- `backend-build`（matrix: ユニット）— restore → build → **test（`--filter` 無し・全件）**
+- `build-and-test`（集約・必須 check 名）— 結果を判定し、カバレッジを 1 回で集計
 
 **PR で走るテストの集合は変更前と同一である。** 変わったのは走り方だけで、
 クリティカルパスが「合計」から「最長の 1 本」になった。
 
-🔴 `backend-integration` に **fail-closed の門**を置いた。どのユニットでも 1 件も走らなければ落とす。
-これが無いと Trait の付け忘れやフィルタの綴り誤りで **0 件実行のまま緑**になる。
+#### 🔴 実測: 統合テストを別ジョブへ切り出すと床が割れる（1 度踏んだ）
 
-🔴 **カバレッジは両ジョブが artifact で上げ、集約ジョブが 1 回で集計する。**
-統合ジョブ側の `--collect` を外すと統合テストぶんの被覆が落ちて床が割れる。
+追記 1 の実装は同じテストプロジェクトを 2 回実行していた
+（`--filter "Category!=Integration"` と `--filter "Category=Integration"`）。
+**coverlet はテスト実行ごとに Cobertura を出すため、0 件一致の実行でも
+「そのプロジェクトの全クラス・被覆 0」のレポートが出る。**
+`check-coverage-floor.js` はレポートを単純合算する（`aggregateReports` にクラス単位の
+重複排除は無い）ため、行の分母だけが 2 倍になった。
+
+| | レポート | 行（被覆/全体） | line | branch | 床 |
+| --- | --- | --- | --- | --- | --- |
+| 変更前（ベースライン） | 15 件 | 9958 / 24947 | 39.92% | 28.36% | 39 / 27 |
+| 分割実装（run `32496937488`） | **30 件** | 10087 / **49894** | **20.22%** | **14.27%** | 39 / 27 → **fail** |
+
+診断出力が同じクラスを 2 行（被覆 0 と被覆 15）並べていたのが証拠である。
+
+🔴 **不変条件: 1 テストプロジェクト = 1 Cobertura レポート。**
+`check-coverage-floor.js` がレポート間の重複排除を持たない限り、
+**同じテストプロジェクトを 1 つの PR の中で 2 回実行してはならない。**
 
 `integration.yml`（日次 ＋ `workflow_dispatch`）は残すが、**PR の肩代わりではない**。
 担うのは PR では原理的に見えないもの —— 非決定な失敗（flaky）・環境ドリフト・
 自動起票の実働経路 —— である。`push: [develop]` は持たせない
-（マージ時は `ci.yml` の `backend-integration` が同じテストを走らせるため二重になる）。
+（マージ時は `ci.yml` の `backend-build` が同じテストを走らせるため二重になる）。
 
 🔴 **着手前に Trait を全数走査したところ、穴が 1 件あった。**
 
-| Trait | クラス数 | `[DockerFact]` | 扱い |
+| Trait | クラス数 | `[DockerFact]` | `integration.yml`（日次）で走るか |
 | --- | --- | --- | --- |
-| `Category=Integration` | 11 | あり | nightly へ |
-| `Category=Deployment` | 5 | なし | **PR に残す**（helm manifest 検証・高速） |
-| `Category=EndpointRouting` | 1 | なし | **PR に残す**（インプロセス・高速） |
+| `Category=Integration` | 11 | あり | 走る |
+| `Category=Deployment` | 5 | なし | 走らない（helm manifest 検証・Docker 不要） |
+| `Category=EndpointRouting` | 1 | なし | 走らない（インプロセス） |
 | **Trait なし** | **1** | **2 件** | 🔴 **穴** |
 
 `Storage/ObjectStorageRoundTripTests.cs` は `MinioBuilder().WithImage(...)` で
 MinIO の Testcontainer を起動するのに `[Trait("Category", ...)]` を持たない。
-**フィルタだけ足していたら、このクラスは既定 CI に残り、コンテナ起動も残っていた。**
-「分離したのに速くならない」という、成功と見分けの付きにくい失敗の形である。
-先に Trait を付けてから分離する。
+**`ci.yml` が `--filter` を捨てた後もこの是正は要る** —— `integration.yml`（日次）は
+`--filter "Category=Integration"` で走るため、Trait が無いと**日次から静かに落ちる**
+（PR 側は `--filter` を持たないので緑のまま。成功と見分けの付きにくい失敗の形である）。
+同プロジェクトの他 11 クラスと同じ形に揃えた。
 
-**`Deployment` / `EndpointRouting` は PR に残す。** 射程は
-「Testcontainers を起動するテスト」であって「`Knowledge.IntegrationTests` プロジェクト全体」ではない。
-Docker 不要で速く、manifest 配線の退行を PR 時点で捕まえる価値がある。
+**PR ではこの表の 4 種すべてが走る**（`ci.yml` に `--filter` を付けていないため）。
+表は「日次が何を拾うか」の母集合であって、PR の出し分けではない。
 
 ### 4. CodeQL の `build-mode` は常に `manual`（PR でも精度を落とさない）
 
@@ -221,8 +236,9 @@ Playwright のブラウザをキャッシュする（`--with-deps` は apt も�
    check 名を全数列挙して `docs/ai-workflow.md` の表と突合する。
 2. `build-and-test` の所要が **7分42秒から半分以下**になる。
 3. 走る検査器の本数と対象が統合前後で**一致する**。
-4. **PR で走るテストの総数が変更前と一致する**（`backend-build` の各脚 ＋ `backend-integration`）。
-5. `backend-integration` の fail-closed の門が効く（0 件実行なら落ちる）。
+4. **PR で走るテストの総数が変更前と一致する**（`backend-build` の各脚の合計）。
+5. **カバレッジ集計が レポート 15 件 / line 39.92%（9958/24947）/ branch 28.36% と一致する**
+   （変更前のベースラインと同値。ずれたら「1 テストプロジェクト = 1 レポート」が壊れている）。
 6. NuGet キャッシュが 2 回目の run で**ヒットする**（`Cache restored from key:` を実測）。
 7. CodeQL が **PR / push の両経路**で意図どおりのモードで走る。
 8. `report-failure` が **① 失敗時に issue を立て ② 2 回目はコメントを足すだけ**である。

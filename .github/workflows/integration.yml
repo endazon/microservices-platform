@@ -1,7 +1,7 @@
 # 統合テスト（実コンテナ）の定期実行 —— IADR-0232 決定 3
 #
 # ■ 🔴 PR の統合テストを肩代わりするものではない
-# **統合テストは ci.yml の backend-integration ジョブが PR でも全件走らせる。**
+# **統合テストは ci.yml の backend-build ジョブが PR でも全件走らせる**（--filter は付けていない）。
 # 当初は「PR から外して日次へ回す」設計だったが、利用者裁定（2026-08-22）
 # 「なるべく精度は落とさない方向で」により**並列化で速くする**方へ改めた。
 # したがって PR の検出力は変更前と同じである。
@@ -21,7 +21,7 @@
 name: Integration
 
 on:
-  # push: は持たない。develop へのマージ時は ci.yml の backend-integration が同じテストを走らせる
+  # push: は持たない。develop へのマージ時は ci.yml の backend-build が同じテストを走らせる
   # （二重に回してもランナーを食うだけで、新しく分かることが無い）。
   schedule:
     # 毎日 UTC 18:00（JST 03:00）。AST の integration.yml と同じ時刻に揃えてある。
