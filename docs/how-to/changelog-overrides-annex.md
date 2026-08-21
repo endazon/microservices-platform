@@ -2,17 +2,17 @@
 title: 別紙 — CHANGELOG 生成時の誤記補正・除外の仕組み
 type: how-to
 status: fixed
-related_ids:
-  - NFR
-  - IADR-0172
-  - IADR-0173
-  - IADR-0174
-author: claude
 created: 2026-08-11
-updated: 2026-08-11
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (NFR: 運用・保守)"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0172, IADR-0173, IADR-0174]
+specs: []
+issues: []
+-->
 
 # 別紙: CHANGELOG 生成時の誤記補正・除外の仕組み
 
@@ -22,7 +22,7 @@ plan_refs:
 > `rebase` / force push で直さない）はそちらに在る。**
 >
 > **本別紙が持つのは「では、どう直すか」の仕組みだけ**である
-> （[[IADR-0172]] 決定 3 の段 2 ／ [[IADR-0173]] 決定 2）。
+> （必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
 
 ## いつ読むか
 

@@ -2,40 +2,33 @@
 title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
 status: draft
-related_ids:
-  - SC-14
-  - SC-13
-  - SC-16
-  - NFR
-  - ADR-0026
-  - IADR-0197
-author: claude
 created: 2026-08-15
-updated: 2026-08-15
-plan_refs:
-  - "../../planning/projects/microservices-platform/05_screens/01_screens.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md"
-related_specs:
-  - "../adr/IADR-0197_realm-rename-and-auth-policy.md"
-  - "../tests/SC-14_otp-mfa.md"
-  - "./SC-15_password-reset.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
+adrs: [ADR-0026]
+iadrs: [IADR-0197]
+specs: []
+issues: [#438]
+-->
 
-# 画面仕様書: ワンタイムコード（OTP／多要素認証）（SC-14）
+# 画面仕様書: ワンタイムコード（OTP／多要素認証）
 
 > **本仕様書は realm 設定の側だけが実装済みである。** 画面（Keycloak テーマ）の実体は未実装であり、
 > **担当は #438**（計画 決定 30）。本書は #578 が引き受けた下位タスク＝「realm 設定と画面仕様書の作成」の成果物である。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 画面（SC）: **SC-14**（ワンタイムコード／多要素認証）。前段は [SC-13](../../planning/projects/microservices-platform/05_screens/01_screens.md)（ログイン）、デバイス管理は [SC-16](../../planning/projects/microservices-platform/05_screens/01_screens.md)（アカウント設定）
-- 関連ユースケース（UC）: UC-05（認証・認可を伴う利用）
+- 画面: **ワンタイムコード／多要素認証**。前段はログイン画面（計画リポ）、デバイス管理はアカウント設定（計画リポ）
+- 関連ユースケース: ABAC 権限を管理する（認証・認可を伴う利用）
 - 関連機能要求（FR）: 非機能要件「セキュリティ: 認証・認可」
-- 計画書リンク: [`05_screens/01_screens.md` §SC-14](../../planning/projects/microservices-platform/05_screens/01_screens.md)／[`ADR-0026`](../../planning/projects/microservices-platform/07_adr/ADR-0026_authentication-ux-and-account-management.md)
+- 計画書リンク: 計画側の画面設計 §ワンタイムコード（OTP）／認証 UX とアカウント管理の計画 ADR
 
 ## 画面概要・目的
 
-TOTP による多要素認証。**Keycloak の OTP フォームおよび必須アクション `CONFIGURE_TOTP` で実現する**（自前 SPA では実装しない。ADR-0026 選択肢 1）。
+TOTP による多要素認証。**Keycloak の OTP フォームおよび必須アクション `CONFIGURE_TOTP` で実現する**（自前 SPA では実装しない。認証 UX の計画 ADR の選択肢 1）。
 **MFA は必須であり、未登録者はログイン時に初回セットアップへ誘導される。**
 
 - 共通シェル: **適用外**（Keycloak テーマ。左ナビ・AI チャットパネル・パンくずは適用しない）
@@ -48,7 +41,7 @@ TOTP による多要素認証。**Keycloak の OTP フォームおよび必須�
 | 6 桁コード入力 | TOTP コードの入力欄 |
 | デバイス選択 | 複数の TOTP デバイスを登録している場合の選択 |
 | リカバリーコード導線 | TOTP デバイスを失った場合の代替入口 |
-| SC-13 へ戻る導線 | ログイン画面へ戻る |
+| ログイン画面へ戻る導線 | ログイン画面へ戻る |
 | 初回セットアップ | QR コード・手動入力キー・デバイス名・確認コード |
 
 TOTP アプリは Google Authenticator / Microsoft Authenticator 等に対応する（標準の `otpauth://` URI で足りる）。
@@ -68,9 +61,9 @@ TOTP アプリは Google Authenticator / Microsoft Authenticator 等に対応す
 | ワンタイムコード | TOTP 検証。**時刻ずれは前後 1 ステップ（30 秒）まで許容** | 不一致は再入力を促す |
 | 確認コード | 登録デバイスの生成コードと一致 | 不一致は再入力を促す |
 
-**realm 側の実装値**（`deploy/keycloak/microservices-platform-realm.json`。[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md)）:
+**realm 側の実装値**（`deploy/keycloak/microservices-platform-realm.json`。レルム改名と認証ポリシー投入の実装 ADR による）:
 
-| キー | 値 | 対応する ADR-0026 の確定要件 |
+| キー | 値 | 対応する計画 ADR の確定要件 |
 | --- | --- | --- |
 | `otpPolicyType` | `totp` | TOTP による MFA |
 | `otpPolicyDigits` | `6` | 6 桁 |
@@ -84,10 +77,10 @@ TOTP アプリは Google Authenticator / Microsoft Authenticator 等に対応す
 
 | 操作 | 挙動 | 遷移先 |
 | --- | --- | --- |
-| コード入力→送信（検証成功） | 認証完了 | SC-01（または認証前に要求された元の URL） |
-| 初回登録の完了 | **リカバリーコードを 1 回のみ表示する** | SC-01（または元の URL） |
-| 「ログインに戻る」 | 認証セッションを破棄 | SC-13 |
-| リカバリーコード導線 | リカバリーコードによる検証 | SC-01（または元の URL） |
+| コード入力→送信（検証成功） | 認証完了 | 検索／チャット質問画面（または認証前に要求された元の URL） |
+| 初回登録の完了 | **リカバリーコードを 1 回のみ表示する** | 検索／チャット質問画面（または元の URL） |
+| 「ログインに戻る」 | 認証セッションを破棄 | —|
+| リカバリーコード導線 | リカバリーコードによる検証 | 検索／チャット質問画面（または元の URL） |
 
 ## 画面遷移
 
@@ -104,7 +97,7 @@ flowchart LR
 
 ## 権限・表示条件
 
-**全利用者が対象**（MFA 必須。ロールによる例外を設けない。ADR-0026「MFA なしでの稼働は採らない」）。
+**全利用者が対象**（MFA 必須。ロールによる例外を設けない。計画 ADR「MFA なしでの稼働は採らない」）。
 
 ## ルート
 
@@ -113,11 +106,11 @@ flowchart LR
 | OTP 検証 | `auth.example.co.jp` の `/realms/platform/login-actions/authenticate` |
 | 初回登録 | `auth.example.co.jp` の `/realms/platform/login-actions/required-action?execution=CONFIGURE_TOTP` |
 
-**レルムは `platform` である**（[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md) で `microservices-platform` から改名済み）。
+**レルムは `platform` である**（レルム改名の実装 ADR により `microservices-platform` から改名済み）。
 
 ## 計画（モックアップ・画面設計）との対応
 
-> **判定基準（本表と [SC-15](./SC-15_password-reset.md) で共通）**:
+> **判定基準（本表と [パスワードリセット](./SC-15_password-reset.md) で共通）**:
 > **Keycloak の既定テーマで機能するが、ブランド適用・共通シェル要件・計画が規範化した文言を満たさないものは
 > 「一部する」とする。** 「しない」は**要素そのものが存在しない**場合に限る。
 > **「計画側の該当箇所」は行番号ではなく節見出しで指す** —— 計画書は追記が多く行番号が腐りやすいためである
@@ -125,21 +118,25 @@ flowchart LR
 
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
-| TOTP による MFA を必須とする | **一部する** | **realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）は投入済み。画面（Keycloak テーマ）が未実装**のため、利用者から見た体験は成立しない。テーマは #438 の射程 | `01_screens.md` §SC-14 |
+| TOTP による MFA を必須とする | **一部する** | **realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）は投入済み。画面（Keycloak テーマ）が未実装**のため、利用者から見た体験は成立しない。テーマは #438 の射程 | 計画側の画面設計 §ワンタイムコード（OTP） |
 | 6 桁・前後 1 ステップ許容 | **する** | — | 同上 |
-| 6 桁コード入力・デバイス選択・戻る導線 | **一部する** | **Keycloak 既定テーマが 3 要素とも提供する**ため要素は存在する。**ブランド適用（テーマ）が未実装**（#438） | 同上 |
-| 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **一部する** | `CONFIGURE_TOTP` を `defaultAction` にしたため**既定テーマでは誘導が働き、QR・手動キー・デバイス名・確認コードも既定で提供される**。**ブランド適用のみが欠ける**（#438） | 同上 |
-| リカバリーコードを登録完了時に 1 回のみ表示 | **一部する** | **必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` を realm へ登録済み**（[IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md) 決定 4）。**「登録完了時に 1 回のみ表示」する導線はテーマ側の作り込みで未実装**（#438） | 同上 |
-| リカバリーコードを SC-16 から再発行 | **一部する** | provider は登録済みだが、**SC-16（アカウントコンソールのテーマ）が未実装**のため再発行の導線が無い。#438 の射程 | `01_screens.md` §SC-16 |
+| 6 桁コード入力・デバイス選択・戻る導線 | **一部する** | **Keycloak 既定テーマが 3 要素とも提供する**ため要素は存在する。**ブランド適用（テーマ）が未実装** | 同上 |
+| 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **一部する** | `CONFIGURE_TOTP` を `defaultAction` にしたため**既定テーマでは誘導が働き、QR・手動キー・デバイス名・確認コードも既定で提供される**。**ブランド適用のみが欠ける** | 同上 |
+| リカバリーコードを登録完了時に 1 回のみ表示 | **一部する** | **必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` を realm へ登録済み**（レルム改名と認証ポリシー投入の実装 ADR の決定 4）。**「登録完了時に 1 回のみ表示」する導線はテーマ側の作り込みで未実装** | 同上 |
+| リカバリーコードをアカウント設定から再発行 | **一部する** | provider は登録済みだが、**アカウント設定（アカウントコンソールのテーマ）が未実装**のため再発行の導線が無い。#438 の射程 | 計画側の画面設計 §アカウント設定 |
 
 ## 関連仕様
 
-- 実装 ADR: [IADR-0197](../adr/IADR-0197_realm-rename-and-auth-policy.md)（レルム改名と認証ポリシーの投入）
-- テスト仕様書: [SC-14](../tests/SC-14_otp-mfa.md)
-- 画面仕様書: [SC-15 パスワードリセット](./SC-15_password-reset.md)
+- 実装 ADR: レルムを `platform` へ改名し、計画 ADR の認証ポリシーを realm へ投入する
+- テスト仕様書: [ワンタイムコード（OTP）](../tests/SC-14_otp-mfa.md)
+- 画面仕様書: [パスワードリセット](./SC-15_password-reset.md)
 
 ## 未決事項
 
-- **リカバリーコードの表示・再発行の導線**。**provider（`CONFIGURE_RECOVERY_AUTHN_CODES`）は realm へ登録済み**であり、ピン留めしている `quay.io/keycloak/keycloak:24.0` に存在する。残るのはテーマ側の作り込み（#438）。
+- **リカバリーコードの表示・再発行の導線**。**provider（`CONFIGURE_RECOVERY_AUTHN_CODES`）は realm へ登録済み**であり、ピン留めしている `quay.io/keycloak/keycloak:24.0` に存在する。残るのはテーマ側の作り込み。
 - **★ `requiredActions` を書くと Keycloak の既定は一切登録されない。** 本作業の初版は 7 件しか列挙せず、**この provider を落としていた**（PR #746 の ADR 監査が検出）。現在は既定 13 件を全列挙し、`check-realm-constraints.js` が宣言漏れを検出する。
 - **テーマの実体**（`loginTheme`）。参照先のテーマが存在しないと Keycloak が解決できないため、**テーマ実体と同時に `realm.json` へ入れる**（本作業では投入しない）。
+
+<!-- trace-table:
+row1: SC-13
+-->

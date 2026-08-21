@@ -2,30 +2,24 @@
 title: ハイブリッド検索 機能仕様書
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-03
-  - UC-01
-author: claude
 created: 2026-07-04
-updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-related_specs:
-  - ../specs/20260809_issue-536_search-result-updated-at.md
-  - ../specs/20260809_issue-532_search-sort-order.md
-  - ../adr/IADR-0150_search-sort-after-retrieval.md
-  - ../tests/FR-03_hybrid-search.md
-  - ../screens/SC-02_search-results.md
-  - ../adr/IADR-0149_search-result-updated-at-indexing.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, UC-01]
+adrs: [ADR-0009]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at]
+issues: [#536]
+-->
 
 # 機能仕様書: ハイブリッド検索
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-03「キーワードと自然文の双方で横断検索できる（ベクトル検索＋全文検索のハイブリッド）」
-- ユースケース（UC）: UC-01
+- 機能要求: 「キーワードと自然文の双方で横断検索できる（ベクトル検索＋全文検索のハイブリッド）」
+- ユースケース: 検索・質問する
 - 業務フロー（04_workflows）: 横断検索 → 根拠提示付き AI 回答
 - 計画書リンク: `02_requirements/01_requirements.md`、`07_adr/ADR-0009`（Qdrant ベクトルDB）
 
@@ -35,7 +29,7 @@ related_specs:
 双方で権限内データを横断検索できるようにする。ベクトル検索は型番・固有名詞・略語など埋め込みが苦手な語に弱く、
 全文検索は同義・言い換えに弱いため、両系統を並行実行し **Reciprocal Rank Fusion（RRF）** で統合して双方の長所を併せ持つ。
 権限制御は ABAC 属性フィルタを両系統に適用し、権限外の文書は候補にも融合結果にも一切現れない（deny-by-default）。
-実装は `RetrievalService`（`HybridSearchService` / `IVectorStore`）に閉じ、ベクトルDB は Qdrant（ADR-0009）を用いる。
+実装は `RetrievalService`（`HybridSearchService` / `IVectorStore`）に閉じ、ベクトルDB は Qdrantを用いる。
 
 ## 機能詳細
 
@@ -57,7 +51,7 @@ related_specs:
 | `MarkdownUri` | 正規化 Markdown へのリンク（出典。無い場合あり） |
 | `Attributes` | ABAC 属性（`confidentiality`/`department` 等。Qdrant ペイロードから復元） |
 | `Tags` | タグ |
-| `UpdatedAt` | 文書の更新日時（Qdrant ペイロード `updated_at` から復元。#536 / 裁定 Q6）。**未再索引のチャンクは `null`**（[[IADR-0149]] 決定 3。`0001-01-01` で埋めない） |
+| `UpdatedAt` | 文書の更新日時（Qdrant ペイロード `updated_at` から復元。#536 / 裁定 Q6）。**未再索引のチャンクは `null`** とし、`0001-01-01` で埋めない |
 
 ## 処理フロー / 状態遷移
 
@@ -85,7 +79,7 @@ flowchart TD
 | 条件 | 振る舞い | 備考 |
 | --- | --- | --- |
 | `Query` が空/空白 | 空結果（`[]`） | 防御。埋め込み・検索を呼ばない |
-| `Scope` 未指定（null） | 空結果 | fail-closed。呼び出し側 Scope を無検証で信任しない（IADR-0012） |
+| `Scope` 未指定（null） | 空結果 | fail-closed。呼び出し側 Scope を無検証で信任しない |
 | `Scope.GrantsAccess=false` | 空結果 | 許可ポリシー無し＝閲覧可能文書なし |
 | 全文インデックス未作成（`RpcException`） | 全文 0 件へ縮退しベクトルのみで融合 | `LogWarning` を出力、検索全体は成功 |
 | 両系統 0 件 | 空結果（HTTP 200） | エラーにしない |
@@ -100,7 +94,7 @@ flowchart TD
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260627_FR-03_hybrid-search.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-03_hybrid-search.md`
 - テスト仕様書: `../tests/FR-03_hybrid-search.md`
 - 通信仕様書: `../api/openapi.yaml`（`/search`）
 - データ仕様書: `../data/document-and-version.md`（未整備の場合あり）
@@ -110,5 +104,5 @@ flowchart TD
 
 - 全文インデックスのブートストラップ位置（インジェスト側コレクション作成時）の確定 → 別 Issue。
 - RRF の k 値（現状 60）・候補数（`TopK*4`）の最終チューニングは負荷/精度試験の結果で見直す。
-- Qdrant ペイロードのドット表現（フラット／ネスト構造体）の実機格納形は統合テスト（IADR-0014）で確認する。
+- Qdrant ペイロードのドット表現（フラット／ネスト構造体）の実機格納形は統合テストで確認する。
 </content>

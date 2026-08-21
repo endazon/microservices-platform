@@ -2,28 +2,25 @@
 title: 文書属性・タグ／ABAC ポリシー管理 テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - FR-09
-  - SC-05
-  - SC-09
-  - UC-05
-  - IADR-0152
-  - IADR-0153
-author: claude
 created: 2026-07-02
-updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-09)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-09, SC-05, SC-09, UC-05]
+adrs: [ADR-0043]
+iadrs: [IADR-0006, IADR-0152, IADR-0153]
+specs: []
+issues: [#634, #635]
+-->
 
 # テスト仕様書: 文書属性・タグ／ABAC ポリシー管理
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-09
-- ユースケース（UC）: UC-05
-- 関連仕様: `../specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
+- 機能要求: 文書属性・タグおよび ABAC ポリシーの管理
+- ユースケース: ABAC 権限を管理する
+- 関連仕様: `../../.ai-context/specs/20260702_FR-09_abac-attribute-policy-management.md`、`../functional/FR-09_abac-attribute-policy-management.md`
 
 ## テスト対象
 
@@ -83,7 +80,7 @@ plan_refs:
 | 13 | 管理者ロール無しで管理系呼び出し | 403 |
 | 14 | ポリシー参照中の属性辞書削除 | 409 |
 
-## 受け入れ基準の写像（UC-05）
+## 受け入れ基準の写像
 
 - 管理者が属性・タグ・ポリシーを設定できる → 結合 #1・#4・#5・#6。管理者のみ許可 → 結合 #13＋単体 R1〜R4
   （実 Keycloak トークンでロールが `RequireRole` に届くことの担保）。
@@ -111,12 +108,12 @@ plan_refs:
 実装は 3 経路が同じ関数を呼ぶことで守っているが、**将来それが割れたらここが落ちる**。
 空同士の一致で通してしまわないよう、**`errors` が空でないこと**も併せて固定している。
 
-## タグ辞書（#634 / [[IADR-0152]]）
+## タグ辞書
 
 | # | 確かめること | 実装 |
 | --- | --- | --- |
 | T-20 | 辞書の値集合を**管理者・運用者**が引ける | `List_AdminOrOperator_IsAllowed`（`[Theory]`） |
-| T-21 | **一般利用者は辞書を引けない**（ADR-0043 決定 1） | `List_GeneralUser_IsForbidden` |
+| T-21 | **一般利用者は辞書を引けない**（スコープ付き属性値ルックアップの決定による） | `List_GeneralUser_IsForbidden` |
 | T-22 | 追加は**システム管理者のみ**（運用者は読めるが書けない） | `Create_NonAdmin_IsForbidden`（`[Theory]`） |
 | T-23 | 追加直後の使用件数は 0 である | `Create_Admin_AddsTagWithZeroUsage` |
 | T-24 | 名前の重複は 409。**前後の空白だけの違いは同一とみなす** | `Create_DuplicateName_Returns409_IgnoringSurroundingWhitespace` |
@@ -133,7 +130,7 @@ plan_refs:
 **T-27 / T-28 はエンドポイント経由では作れない状態を検証するため、DB を直接組み立てている**
 （版履歴だけが参照する状態は、API からは作れない）。
 
-## タグの識別子保持・改名・削除（#635 / [[IADR-0153]]）
+## タグの識別子保持・改名・削除
 
 **実装は `DocumentService.Api.Tests/TagIdentityTests.cs`。**
 
@@ -175,5 +172,5 @@ plan_refs:
   必須属性の累積で結果が揺れないよう文書属性検証は許可値整合で確認する（必須欠落は単体で網羅）。
 - 統合テスト（`AbacScopeTests`, 実 PostgreSQL）は管理系（`/authz/policies`）が `AdminOnly` を要求するため、
   `IntegrationTestAuthHandler` で `platform-admin` として認証して DB 挙動を検証する。実 Keycloak トークンでの
-  E2E 認可検証は環境依存のためフォローアップ（IADR-0006）。
+  E2E 認可検証は環境依存のためフォローアップ。
 - ビルド・テストの実走は CI（`dotnet test`）で行う。本実装環境では `dotnet` が承認制のため未実走。

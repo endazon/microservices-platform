@@ -2,19 +2,17 @@
 title: how-to — ローカル開発フロー
 type: how-to
 status: published
-related_ids:
-  - NFR
-author: claude
 created: 2026-07-09
-updated: 2026-08-16
-plan_refs: []
-related_specs:
-  - ../operations/operations.md
-  - ../tech/tech-requirements.md
-  - ../../scripts/README.md
-  - ../../src/platform/frontend/README.md
-  - ../../src/README.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, FR-14, UC-07]
+adrs: []
+iadrs: [IADR-0017, IADR-0026, IADR-0032, IADR-0046, IADR-0056]
+specs: []
+issues: []
+-->
 
 # how-to: ローカル開発フロー
 
@@ -51,7 +49,7 @@ dotnet test src/platform/backend/backend.slnx
 dotnet test src/knowledge/backend/backend.slnx
 ```
 
-- ソリューションは新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない。FR-14 / [IADR-0056](../adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
+- ソリューションは新形式 `.slnx` をユニット毎に持つ（[`src/platform/backend/backend.slnx`](../../src/platform/backend/backend.slnx) / [`src/knowledge/backend/backend.slnx`](../../src/knowledge/backend/backend.slnx)。ルート集約ソリューションは置かない。コンポーザビリティ要求に基づくユニット第一のリポジトリ構成による）。
 - パッケージバージョンは Central Package Management で [`src/Directory.Packages.props`](../../src/Directory.Packages.props) に集約。
 - フォーマット確認（CI と同じ検査）: `dotnet format <ユニットの backend.slnx> --verify-no-changes`。
 - devcontainer 経由（Codespaces 等）では `scripts/setup.sh` が `postCreateCommand` として自動実行され、
@@ -83,7 +81,7 @@ Keycloak ログインを伴う開発には、dev スタック（`docker compose 
 
 推奨は `scripts/compose-up.sh`（`docker compose` の薄いラッパ）で起動すること。実行中の Git コミット
 ID・日時・作成者を環境変数として自動注入し、BFF の構成情報 API（`/bff/admin/config`）が dev でも
-実バージョンを返せるようにする（[IADR-0046](../adr/IADR-0046_config-version-history-source.md) 参照）。
+実バージョンを返せるようにする（構成バージョン履歴の正データ源は GitOps 層とし、API は注入スライスを surfacing する）。
 
 ```bash
 bash scripts/compose-up.sh up -d
@@ -100,8 +98,8 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 ### 起動後のエンドポイント（dev の host 公開ポート）
 
 内部サービス（DocumentService・RetrievalService 等）は `expose` のみでホスト非公開
-（[IADR-0017](../adr/IADR-0017_internal-service-auth-network-isolation.md)。サービス間認証の第一防御は
-[IADR-0026](../adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の Istio STRICT mTLS に移行済みで、
+（mesh 導入までの暫定措置としてネットワーク分離を第一防御としていたもの。サービス間認証の第一防御は
+すでに Istio STRICT mTLS に移行済みで、
 ネットワーク分離は多層防御として存続している）。外部から到達できるのは以下のみである。
 
 | サービス | URL | 備考 |
@@ -109,7 +107,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 | フロントエンド | http://localhost:3100 | `/bff` は nginx が BFF へプロキシ |
 | BFF | http://localhost:5000 | フロントエンドの唯一の入口（エッジ） |
 | Keycloak | http://localhost:8080 | realm `platform` を import 済み |
-| Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（[IADR-0032](../adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）。本番系は非公開 |
+| Wiki.js（管理UI直接） | http://localhost:3001 | **dev限定**の公開（dev ホスト公開は残し、本番系〔Helm〕の非公開は回帰ガードで保証する）。本番系は非公開 |
 | Grafana | http://localhost:3000 | 匿名 Admin（dev 限定） |
 | Prometheus | http://localhost:9090 | |
 | RabbitMQ 管理UI | http://localhost:15672 | guest/guest |
@@ -118,7 +116,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD) docker compose -f deploy/docker-compose
 
 ### Wiki.js の初期セットアップ（初回のみ）
 
-Wiki.js を使う機能（FR-13 / UC-07）を試す場合、初回のみ管理 UI（`http://localhost:3001`）で
+Wiki.js を使う機能を試す場合、初回のみ管理 UI（`http://localhost:3001`）で
 管理者アカウント作成・ja ロケール導入・OIDC 連携・ローカルログイン無効化・同期用 API キー発行が
 必要。手順は [`docs/operations/operations.md`](../operations/operations.md) の
 「Wiki.js の起動・初期セットアップ・ヘルスチェック」「Wiki.js 同期シークレットの発行・投入」を参照。

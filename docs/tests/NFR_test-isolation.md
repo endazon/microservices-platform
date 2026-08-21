@@ -2,30 +2,31 @@
 title: テストの分離（InMemory DB）テスト仕様書
 type: test-spec
 status: draft
-related_ids:
-  - NFR
-  - IADR-0130
-  - IADR-0161
-author: claude
 created: 2026-08-10
-updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: []
+adrs: []
+iadrs: [IADR-0130, IADR-0161]
+specs: []
+issues: [#660]
+-->
 
-# テスト仕様書: テストの分離（InMemory DB）（#660）
+# テスト仕様書: テストの分離（InMemory DB）
 
 ## 起点となる計画書（トレーサビリティ）
 
 - **NFR**（品質・退行防止テスト基盤）。**計画はテストの実装方式を定めていない**ため、
-  本仕様は実装側の判断（[[IADR-0161]]）に閉じる。
+  本仕様は実装側の判断に閉じる。
 - Issue: **#660**（出所は #656 / PR #659 の検証中に発火した）
 
 ## テスト対象・範囲
 
 - 対象: `TestWebApplicationFactory` が張る **InMemory DB のクラス間分離**。
 - **対象外**: InMemory プロバイダ自体の限界（一意インデックスを強制しない。#634 が記録済み）。
-- **対象外**: 単一クラスに閉じた固定名 6 件（[[IADR-0161]] 決定 3）。
+- **対象外**: 単一クラスに閉じた固定名 6 件。
 
 ## テスト観点
 
@@ -56,11 +57,11 @@ plan_refs:
 
 ## 関連仕様
 
-- 作業仕様書: `../specs/20260810_issue-660_test-db-isolation.md`
-- 実装 ADR: `../adr/IADR-0161_test-inmemory-db-isolation.md`
+- 作業仕様書: `../../.ai-context/specs/20260810_issue-660_test-db-isolation.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0161_test-inmemory-db-isolation.md`
 
 ## 未決事項
 
-- **新しく固定名を書くことを止める検査器は無い**（[[IADR-0161]] §検出しないこと）。
+- **新しく固定名を書くことを止める検査器は無い**（同判断の「検出しないこと」節を参照）。
   単一クラスに閉じた固定名 6 件は、**同じアセンブリに 2 クラス目が現れれば同じ欠陥になる**。
   `CLAUDE.md`「同型の事故が 2 回起きたら」に従い、**2 回目で検査器を足す**。

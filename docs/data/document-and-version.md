@@ -2,24 +2,17 @@
 title: 文書・版履歴（Document / DocumentVersion） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-06
-  - FR-09
-  - FR-12
-  - SC-05
-  - SC-09
-  - ADR-0002
-  - ADR-0014
-  - IADR-0152
-  - IADR-0153
-author: claude
 created: 2026-07-04
-updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0002_service-boundaries-db-per-service.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0014_object-storage.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-06, FR-09, FR-12, SC-05, SC-09, UC-04]
+adrs: [ADR-0002, ADR-0014]
+iadrs: [IADR-0001, IADR-0152, IADR-0153]
+specs: []
+issues: [#634, #635, #637]
+-->
 
 # データ仕様書: 文書・版履歴（Document / DocumentVersion）
 
@@ -27,18 +20,21 @@ plan_refs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-06（正規化文書の CRUD・版管理・メタデータ／ABAC 属性付与）、FR-12（文書正規化。変換パイプラインが採番した DocumentId でカタログ文書を生成）
+- **関連機能要求**: 正規化文書の CRUD・版管理・メタデータ／ABAC 属性付与、および文書正規化（変換パイプラインが採番した `DocumentId` でカタログ文書を生成）
 - **技術検討(06_technical)・ADR**:
-  - ADR-0002 サービス境界／DB per Service（DocumentService 専用 DB・専用 `DocumentDbContext`）
-  - ADR-0014 オブジェクトストレージ（本文 Markdown・原本は URI 参照で保持し、本文実体は DB に置かない）
-  - 関連: IADR-0001（変換側採番の DocumentId をパイプライン全体で一貫させる）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`
+  - サービス境界／DB per Service（DocumentService 専用 DB・専用 `DocumentDbContext`）
+  - オブジェクトストレージ（本文 Markdown・原本は URI 参照で保持し、本文実体は DB に置かない）
+  - 関連: 変換側で採番した `DocumentId` をパイプライン全体で一貫させる（実装判断）
+- **計画書リンク**: `01_requirements.md`（計画リポ）
 
 ## 概要
 
 Document はカタログ化された正規化文書の集約ルートである。タイトル・状態・本文（Markdown）URI・原本 URI・コンテンツ種別に加え、ABAC 判定に用いる**属性（Attributes）**とタグ（Tags）を保持する。
 
-**［2026-08-09 追記 / #635］タグは表示名ではなく識別子で持つ**（[[IADR-0153]] 決定 1。計画確定「辺は型の識別子を参照して保持し、表示名を複写しない」）。表示名を複写すると、SC-09 が定めた「改名は既存文書へ追随する」を満たすために全文書を書き換える経路が別に要り、取りこぼした文書が古い名前のまま残る。**表示名への解決は `DocumentEndpoints`（`TagResolver`）が行い、DTO・イベントは従来どおり表示名を運ぶ**（同 決定 2。下流サービスと画面の契約は変わらない）。本文実体は保持せず、`MarkdownUri` / `OriginalUri` によりオブジェクトストレージ（ADR-0014）を参照する。
+**［2026-08-09 追記 / #635］タグは表示名ではなく識別子で持つ**（タグの正本は識別子とする実装判断。計画確定「辺は型の識別子を参照して保持し、表示名を複写しない」）。
+表示名を複写すると、管理者設定画面が定めた「改名は既存文書へ追随する」を満たすために全文書を書き換える経路が別に要り、取りこぼした文書が古い名前のまま残る。
+**表示名への解決は `DocumentEndpoints`（`TagResolver`）が行い、DTO・イベントは従来どおり表示名を運ぶ**（同判断。下流サービスと画面の契約は変わらない）。
+本文実体は保持せず、`MarkdownUri` / `OriginalUri` によりオブジェクトストレージを参照する。
 
 DocumentVersion は Document 集約配下の**確定版スナップショット**で、作成・各更新のたびに現在状態を追記する append-only コレクションである（`Snapshot()`）。任意時点のタイトル・状態・本文 URI・メタデータを「DocumentId ＋版番号」で再構成できる。
 
@@ -62,14 +58,14 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 
 ### Tag（テーブル `Tags`。#634 / #635）
 
-**タグ辞書のエントリ。所有は DocumentService である**（使用件数が文書の局所クエリになるため。[[IADR-0152]] 決定 1）。
+**タグ辞書のエントリ。所有は DocumentService である**（使用件数が文書の局所クエリになるため。タグ辞書の所有に関する実装判断）。
 
 | 属性 | 型 | 必須 | 制約（一意/既定値/範囲） | 説明 |
 | --- | --- | --- | --- | --- |
-| Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | 識別子。**改名で変わらない**（SC-09「改名は既存文書へ追随する」の土台） |
+| Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | 識別子。**改名で変わらない**（管理者設定画面「改名は既存文書へ追随する」の土台） |
 | Name | string (varchar(200)) | ○ | 最大長 200。**一意**（`IX_Tags_Name`）。正規化（`Trim`）後の値で比較 | 表示名。**改名で変わるのはこちらだけである** |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow` | 登録時刻 |
-| UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。改名ごとに更新（#635） | 最終改名時刻 |
+| UpdatedAt | DateTimeOffset (timestamptz) | ○ | 既定 `UtcNow`。改名ごとに更新 | 最終改名時刻 |
 
 ### DocumentVersion（テーブル `DocumentVersions`）
 
@@ -82,7 +78,7 @@ DocumentVersion は Document 集約配下の**確定版スナップショット*
 | Status | string (varchar(50)) | ○ | 最大長 50 | 版の状態 |
 | MarkdownUri | string? (varchar(2048)) | - | 最大長 2048 | 版時点の本文 URI |
 | Attributes | Dictionary&lt;string,string&gt; (jsonb) | ○ | NULL 不可。防御的コピーで保持 | 版時点の ABAC 属性 |
-| Tags | List&lt;Guid&gt; (jsonb) | ○ | NULL 不可。要素は `Tags.Id` を指す | 版時点のタグの**識別子**（#635） |
+| Tags | List&lt;Guid&gt; (jsonb) | ○ | NULL 不可。要素は `Tags.Id` を指す | 版時点のタグの**識別子** |
 | ChangeNote | string? (varchar(500)) | - | 最大長 500 | 変更理由（例: `created`, `normalized`, `published`, `updated`, `metadata-updated`, `re-normalized`） |
 | CreatedAt | DateTimeOffset (timestamptz) | ○ | 文書の `UpdatedAt` を写像 | 版確定時刻 |
 
@@ -126,12 +122,12 @@ erDiagram
 | 主キー | `DocumentVersions.Id` | `HasKey(v => v.Id)`、EF 採番 |
 | 外部キー | `DocumentVersions.DocumentId` → `Documents.Id` | `HasMany(Versions).WithOne().HasForeignKey(DocumentId)`、`OnDelete(Cascade)` |
 | 一意インデックス | `DocumentVersions (DocumentId, Version)` | `IX_DocumentVersions_DocumentId_Version` — 同一文書内で版番号が重複しない |
-| 一意インデックス | `Tags.Name` | `IX_Tags_Name` — 表示名は一意（SC-09「新しい名前は既存値と重複しない」。#634） |
+| 一意インデックス | `Tags.Name` | `IX_Tags_Name` — 表示名は一意（管理者設定画面「新しい名前は既存値と重複しない」。#634） |
 
 **［#635］`Documents.Tags` / `DocumentVersions.Tags` から `Tags.Id` への外部キーは張っていない。**
 jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単位に及ばない）ためである。
 **代わりに削除側で守る**——`DELETE /tags/{id}` は使用件数が 0 件のときだけ許し、1 件以上なら件数を添えて 409 を返す
-（[[IADR-0153]] 決定 6）。
+（タグの正本を識別子とする実装判断）。
 
 **穴は 2 つ残る。どちらも FK を張らない以上避けられない。**
 
@@ -150,28 +146,30 @@ jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単�
 
 - **版は append-only**: 更新系メソッド（`Update` / `UpdateMetadata` / `ApplyNormalized` / `SetMarkdownUri` / `Publish`）は必ず `Touch()`（Version++・UpdatedAt 更新）と `Snapshot()` を行い、履歴を書き換えない。
 - **版番号の一意性**: `(DocumentId, Version)` 一意制約により、集約内で版番号が単調増加・重複なしを DB でも担保。
-- **正規化の冪等性**: 同一文書の `DocumentNormalized` 再配信時は `ApplyNormalized()` で内容を反映し、`re-normalized` の版を追記（FR-12, UC-04）。
+- **正規化の冪等性**: 同一文書の `DocumentNormalized` 再配信時は `ApplyNormalized()` で内容を反映し、`re-normalized` の版を追記。
 - **状態遷移**: `draft` →（正規化）→ `normalized` →（`Publish`）→ `published`。
 - **NULL 非許容の JSON**: `Attributes` / `Tags` はカラム上 NOT NULL。未設定時は空 JSON（`{}` / `[]`）を保存。
-- **［#635］タグは辞書に在る識別子しか入らない**: 画面・API からの入力は表示名で受け、`TagResolver.ToIdsAsync` が辞書を引いて識別子へ解決する。**辞書に無い名前は 400 で拒否する**（SC-05「既定タグ辞書に整合」。**黙って落とさない**——落とすと「保存できたのにタグが付いていない」という説明のつかない結果になる）。**取り込み経路はタグを生成しない**（[[IADR-0153]] 決定 5・#637）。
+- **［#635］タグは辞書に在る識別子しか入らない**: 画面・API からの入力は表示名で受け、`TagResolver.ToIdsAsync` が辞書を引いて識別子へ解決する。
+  **辞書に無い名前は 400 で拒否する**（文書管理画面「既定タグ辞書に整合」。**黙って落とさない**——落とすと「保存できたのにタグが付いていない」という説明のつかない結果になる）。
+  **取り込み経路はタグを生成しない**（同実装判断・#637）。
 
 ## 永続化方針
 
-- **DB**: PostgreSQL、EF Core（`DocumentDbContext`）。ADR-0002 に従い DocumentService 専用データベース（DB per Service）。
+- **DB**: PostgreSQL、EF Core（`DocumentDbContext`）。DB per Service の方針に従い DocumentService 専用データベース。
 - **JSON カラム**: `Attributes`（Dictionary）・`Tags`（List）は `ValueConverter` で JSON 文字列化し、`jsonb` 型として格納。変更検知のため `ValueComparer` を設定。
   - **［#635］変換器の型を列の型と合わせること自体が守りである。** `HasConversion` には非ジェネリックの多重定義があり、`List<string>` 用の変換器を `List<Guid>` の列へ渡しても**コンパイルは通ってしまう**（実測）。壊れるのは実行時なので、ズレると気づくのがずっと後になる。
-- **本文の非保持**: Markdown 本文・原本ファイル実体は DB に格納せず、`MarkdownUri` / `OriginalUri` でオブジェクトストレージ（ADR-0014）を参照する。
+- **本文の非保持**: Markdown 本文・原本ファイル実体は DB に格納せず、`MarkdownUri` / `OriginalUri` でオブジェクトストレージを参照する。
 - **削除連動**: 文書削除時、`OnDelete(Cascade)` により版履歴も連動削除。
 
 ## マイグレーション・初期データ
 
 - `20260626150838_InitialCreate` — `Documents` テーブル作成。
 - `20260627130000_AddDocumentVersions` — `DocumentVersions` テーブル・一意インデックス作成、`Documents` への FK（Cascade）追加。
-- `20260809092529_AddTagDictionary`（#634）— `Tags` テーブルと `Name` の一意インデックス作成。
-- `20260809123339_MigrateTagsToIdentifiers`（#635）— `Tags.UpdatedAt` 列追加 ＋ **データ移行**（後述）。
+- `20260809092529_AddTagDictionary`— `Tags` テーブルと `Name` の一意インデックス作成。
+- `20260809123339_MigrateTagsToIdentifiers`— `Tags.UpdatedAt` 列追加 ＋ **データ移行**（後述）。
 - 初期データ（シード）は定義していない。文書は API 作成（`Document.Create`）または正規化イベント（`CreateNormalized`）で生成される。
 
-### `MigrateTagsToIdentifiers` のデータ移行（#635）
+### `MigrateTagsToIdentifiers` のデータ移行
 
 **本リポジトリで最初のデータ移行つきマイグレーションである**（着手時の実測: `grep "Sql(" Migrations/*.cs` は 0 件）。
 **列の型は変わらない**——`Tags` は前後とも `jsonb` の配列であり、変わるのは中身
@@ -180,7 +178,7 @@ jsonb 配列の要素に FK は張れない（PostgreSQL の制約が要素単�
 1. `Tags.UpdatedAt` を足し、既存行を `CreatedAt` と同じ値にする（未改名のタグが「西暦 1 年に改名された」ように見えないようにする）。
 2. `Documents` と **`DocumentVersions` の双方**から表示名を集め、辞書に無いものを登録する。
    版履歴にしか現れない名前（付け外しされたタグ）も登録しないと、過去版が参照先を失う。
-   **登録しても使用件数は 0 件である**（現行版だけを数えるため。[[IADR-0152]] 決定 2）ので、直後に削除できる。
+   **登録しても使用件数は 0 件である**（現行版だけを数えるため。タグ辞書の実装判断による）ので、直後に削除できる。
 3. 両テーブルの配列を識別子へ書き換える。**並びと重複はそのまま保つ**（並びは画面の表示順である）。
 
 **正規化は C# の `string.Trim()` と同じ集合で行う**（`btrim` の既定は半角空白しか落とさない）。

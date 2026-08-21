@@ -1,7 +1,7 @@
 # Vault＋ESO による secret 自動供給（本番同等・k8s auth）— PR-1（IADR-0096・#310）
 
-> 起点: [IADR-0096](../../../../docs/adr/IADR-0096_vault-eso-secret-supply-k8s-auth.md) /
-> 作業仕様書 [`docs/specs/20260721_issue-310_vault-eso-secret-supply.md`](../../../../docs/specs/20260721_issue-310_vault-eso-secret-supply.md)
+> 起点: [IADR-0096](../../../../.ai-context/adr/IADR-0096_vault-eso-secret-supply-k8s-auth.md) /
+> 作業仕様書 [`.ai-context/specs/20260721_issue-310_vault-eso-secret-supply.md`](../../../../.ai-context/specs/20260721_issue-310_vault-eso-secret-supply.md)
 
 手動 `kubectl create secret`（`apply_secret`）を廃し、**Vault＋External Secrets Operator(ESO)** で secret を Pod へ
 自動供給する本番同等構成の**第一歩（PR-1）**。`ESO=1`（`VAULT=1` 併用）で **`llm-provider-credentials` 1本を

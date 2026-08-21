@@ -1,0 +1,185 @@
+---
+title: IADR-0154 人手補正 Phase 1 は図の記録を残し、本文の図ブロック置換として実装する
+type: impl-adr
+status: Accepted
+related_ids:
+  - FR-12
+  - UC-06
+  - SC-07
+  - ADR-0012
+  - IADR-0029
+  - IADR-0042
+  - IADR-0043
+  - IADR-0122
+  - IADR-0127
+  - IADR-0128
+  - IADR-0137
+author: claude
+created: 2026-08-10
+updated: 2026-08-10
+plan_refs:
+  - planning:projects/microservices-platform/05_screens/01_screens.md
+  - planning:projects/microservices-platform/03_usecases/01_usecases.md
+---
+
+# IADR-0154: 人手補正 Phase 1 は図の記録を残し、本文の図ブロック置換として実装する
+
+- 状態: Accepted
+- 日付: 2026-08-10
+- 決定者: claude（実装）
+- **[IADR-0042](./IADR-0042_conversion-job-read-model.md) の後継**（同 ADR の表題に残る「人手補正 API」の実体を本 ADR が定める）
+
+## 起点・関連
+
+- 計画: `05_screens/01_screens.md` §SC-07「人手補正の契約とその範囲」（**確定・2026-08-05**。
+  利用者裁定〔質問票 第12回 Q12・Q20 および派生 Q31・Q33〕）／ `03_usecases/01_usecases.md` UC-06 代替フロー
+- 実装 issue: **#543**（作業本体）／ **#545**（[IADR-0042](./IADR-0042_conversion-job-read-model.md) の表題と実体のずれ。**本 ADR で解消**）
+- 作業仕様書: [20260810_issue-543](../specs/20260810_issue-543_manual-correction-api.md)
+
+## コンテキストと課題
+
+[IADR-0042](./IADR-0042_conversion-job-read-model.md) は表題に「状況照会・**人手補正 API**」を掲げているが、**決定 3 が列挙する口は
+`GET /jobs`・`GET /jobs/{id}`・`POST /jobs/{id}/retry` の 3 本**である。後続の [IADR-0127](./IADR-0127_sc07-retry-admin-only-and-derived-states.md) /
+[IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) も実際に作る範囲を照会と再変換に絞っており、**補正済みの内容を受け取る口も、
+本文を返す口も存在しなかった**（2026-08-05 の実測。#545）。
+
+計画は 2026-08-05 に人手補正の契約と範囲を確定させた。**Phase 1 は「図のコード化のやり直し」に限り**、
+Phase 2 で変換結果 Markdown 全体の編集を扱う。**補正版を正**とし、再変換は補正を破棄する前に
+明示確認を求める（**マージは採らない**）。
+
+着手時に母集合を引いたところ、**より手前の問題**が見つかった:
+
+> **補正の対象（画像保持へ縮退した図）が、どこにも記録されていない。**
+> `NormalizationService` は図ごとの結果を返していたが、`RawDocumentFetchedConsumer` が
+> `SucceedAsync` へ渡さず**ログ行へ出して捨てて**いた。
+
+決めること: (1) 図をどう記録するか。(2) 画像をどう配るか。(3) 補正をどう本文へ反映するか。
+(4) 補正版を正とする統制をどこに置くか。(5) 「人手補正」と「再変換」の関係。(6) 認可。
+
+## 決定
+
+### 決定 1: 図は `ConversionJobFigure` としてジョブの子に永続化する
+
+`NormalizationResult` に `Figures`（図 1 つ 1 つの記録）を足し、`SucceedAsync` が受け取って
+**成功のたびに洗い替える**（再変換は図を作り直すため、前回の図を残すと「どの図が今の本文に居るか」が割れる）。
+
+**本文 Markdown からの再抽出は採らない。** 理由:
+
+- 本文はオブジェクトストレージにあり、**一覧のたびに全ジョブ分の Markdown を読む**ことになる
+- コード化に成功した図（```` ```mermaid ```` ブロック）と、**利用者が原本に書いた Mermaid ブロック**は
+  本文の形だけからは**見分けが付かない**
+- **補正の有無は本文からは分からない**（「補正あり」の標識が出せない）
+
+`NormalizationResult.Figures` は**既定値を持たせない**。既定値を付けると、これまでと同じように
+**黙って落とせてしまう**——本 ADR が直している事故がまさにそれである。
+
+### 決定 2: 画像のバイト列は **BFF がオブジェクトストレージから解決して返す**
+
+先例に合わせる —— `DocumentBffEndpoints` の `GET /bff/documents/{id}/content` は BFF が
+`IObjectStorageClient` で本文を解決して返している。図も同型で
+`GET /bff/conversion/jobs/{id}/figures/{figureId}/image` を置く。
+
+ワーカー側へ画像配信を足さないのは [IADR-0029](./IADR-0029_config-info-api-placement-and-drift-granularity.md)（ワーカーは最小 HTTP サーフェス）に従うためである。
+**ワーカーが返すのは図のメタデータ（`imageUri` を含む）だけ**である。
+バイト列を図の一覧に載せない（data URI 等）のは、応答が図の枚数だけ膨らむためである。
+
+### 決定 3: 補正は **本文の図ブロック 1 つの置換**であり、原本からの再変換ではない
+
+`NormalizationService` が埋め込む形は `![{figureId}]({uri})` で**決定的**である。
+補正投稿はこの 1 箇所をコードブロックへ置換して本文を保存し直し、`DocumentNormalized` を
+**再発行**する（`DocumentId` は決定的なので文書は同一。取り込みへ再投入される）。
+
+**原本からやり直さない**のは、やり直すと LLM が再び失敗して縮退へ戻り、**補正が消える**ためである。
+計画が「マージを採らない」と決めた理由（`01_screens.md:334`）と同じ種類の危険である。
+
+埋め込み形は **`FigureMarkdown` を単一情報源**にする。埋め込む側と置換する側が別々に形を書くと、
+片方だけ変えたときに置換が静かに空振りし、**本文は変わらないのに補正は保存済み**という
+**壊れたと分かりにくい失敗**になる。よって**置換に失敗したら補正を保存しない**（409 `body_unavailable`）。
+
+再発行する `DocumentNormalized` には、**原本イベントから復元した ABAC 属性とタグを載せる。**
+空で再発行すると取り込み側が機密区分を読めず、**文書の可視範囲が変わる**。
+
+### 決定 4: 補正版を正とする統制は **API 側で強制する**（確認ダイアログだけに置かない）
+
+`POST /jobs/{id}/retry` は、そのジョブに補正があるとき **409 `corrections_would_be_lost`**
+（本文に `correctedFigures` を載せる）を返す。破棄してよい場合だけ `?discardCorrections=true` を
+付けて再送する。
+
+既存の同エンドポイントは既に「**UI 制御だけに頼らず API 側でも状態を強制し**、処理中の二重発行・
+成功済みの不要な再処理を防ぐ」と書いている（レビュー #172 指摘対応）。**補正の破棄も同じ扱いにする。**
+確認をダイアログだけに置くと、**生成クライアントや別経路の呼び出しが素通りする。**
+
+> **［同時に直した欠陥］** BFF の `retry` は `Results.StatusCode` で**状態コードだけを返しており**、
+> 後段が載せた理由・件数が画面まで届かなかった。**#640 で `usageCount` が届かなかったのと同型**で、
+> あのとき直したのは解析層（`ApiError.parseProblemDetails`）だけで、**中継層はここに残っていた**。
+> [IADR-0040](./IADR-0040_admin-abac-bff-passthrough-and-admin-only.md) の透過中継へ改め、変異試験で当該テストのみ落ちることを確認している。
+
+### 決定 5: 「人手補正」と「再変換」を同じ語で呼ばない
+
+| | 人手補正（Phase 1） | 再変換（retry） |
+| --- | --- | --- |
+| 対象のジョブ状態 | **`succeeded`** | **`failed`** |
+| 対象 | 画像保持へ縮退した図 | ジョブ全体 |
+| 動作 | 本文の図ブロックを置換 | 原本イベントを再発行 |
+
+**縮退は例外ではなく正常な収束である。** UC-06 は「図コード化（LLM）の失敗は画像保持へ縮退し、
+**後日の人手補正・再登録でコード化する**」と定めており、実装も縮退を例外にせず本文を完成させて
+`SucceedAsync` する。**つまり補正の対象は成功ジョブである。**
+
+いっぽう既存コードは `ConversionJob.TryRequeue` のコメントに「**UC-06: 人手補正は失敗ジョブに限る**」と
+書いていた。これは**再変換**の説明としては正しいが、**人手補正の説明としては誤り**である。
+同じ語で 2 つの操作を指したまま実装すると混ざるため、コメントを実態へ揃えた。
+
+**SC-07 hi-fi の「✕ 図コード化失敗（画像保持へ縮退済み）」は状態の 5 値目ではない。**
+`01_screens.md:320`「ジョブ状態モデルは 4 値である」に従い、`DiagramsRetained > 0` から
+**導出する表示**とする（デッドレター標識を独立した真偽値にした [IADR-0137](./IADR-0137_conversion-dead-letter-marker.md) 決定 1 と同じ扱い。
+[IADR-0127](./IADR-0127_sc07-retry-admin-only-and-derived-states.md)「状態表示は契約から導出できる値だけで作る」）。
+
+### 決定 6: 人手補正の 3 本はすべて `AdminOnly`
+
+計画は「**閲覧は管理者・運用者。再変換の実行と人手補正は管理者限定**」（`01_screens.md:314`）と定める。
+**図の一覧・画像の取得も「人手補正」の一部**である（2 ペインを開く操作そのもの）。
+
+群の既定（admin ＋ operator）を残して個々の端点へ `AdminOnly` を積む **AND 合成**
+（[IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 1）で揃える。**ジョブの照会（`GET /` `GET /{id}`）は据え置く**
+（[IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 2）。ワーカー自身に認可を課さない点も変えない（[IADR-0029](./IADR-0029_config-info-api-placement-and-drift-granularity.md) /
+[IADR-0128](./IADR-0128_conversion-retry-admin-only-and-downstream-posture.md) 決定 3。代償統制は `NetworkIsolationTests`）。
+
+## 契約への追加（[IADR-0122](./IADR-0122_contract-schema-source-and-compat-gate.md) 決定 2: 末尾に既定値つき）
+
+- `ConversionFigureDto` / `FigureCorrectionRequest` / `FigureCorrectionResultDto`（新規）
+- `ConversionJobDto` の末尾へ `DiagramsCoded = 0` / `DiagramsRetained = 0` / `HasCorrection = false`
+
+## 根拠 / 代替案
+
+- **本文からの再抽出**（決定 1 の代替）: 追加の永続化が要らない代わり、自動コード化と利用者の
+  手書きブロックを区別できず、補正の有無も分からない。**画面が要求する表示を作れない。**
+- **補正をマージする**（決定 3 の代替）: 計画が明示的に退けている。自動変換の出力は毎回変わり得るため
+  補正箇所を当てる規則（アンカー）が要り、**壊れたときに壊れたと分かりにくい**。
+- **確認をダイアログだけに置く**（決定 4 の代替）: 画面は守れるが API は守れない。本リポは
+  同じ判断を過去に 2 回している（`retry` の状態強制・タグ削除の使用件数チェック）。
+
+## 影響
+
+- `Knowledge.Contracts` に図の DTO 3 種。`ConversionJobDto` へ 3 項目。
+- ConversionService に `ConversionJobFigure`・`FigureCorrectionService`・`FigureMarkdown`、
+  マイグレーション `AddConversionJobFigures`、口 2 本、`retry` のゲート。
+- `IObjectStore` へ `TryGetMarkdownAsync`（本文の読み戻し）。
+- BFF に `/figures`・`/figures/{id}/image`・`/figures/{id}/correction` の 3 本（**AdminOnly**）と
+  `retry` の透過中継化。
+
+## フォローアップ
+
+- **SC-07 画面（2 ペイン編集・「補正あり」標識・再変換の確認ダイアログ）は別 issue**。
+  本 ADR は契約までを定める。
+- **Phase 2**（変換結果 Markdown 全体の編集）は計画が繰り延べている。
+- `01_screens.md:289,298` が「**人手補正（Phase 2）の導入時に SC-06 手動同期の分類を再確認する**」と
+  予告している。Phase 1 では補正を守るゲートを API に置いたが、**手動同期がトリガする再変換にも
+  同じゲートが及ぶかは未確定**である（手動同期は再取り込み → 新しい `FetchId` の変換であり、
+  `retry` を通らない）。**計画へ環流する。**
+
+## 変更履歴
+
+| 日付 | 変更 | 根拠 |
+| --- | --- | --- |
+| 2026-08-10 | **参照先の行番号を是正した**（`01_screens.md:317` → `:320`）。「ジョブ状態モデルは 4 値である」は 320 行にあり、317 行は表の区切り行である。**決定の中身は変えていない** | #651 の着手時に引用を照合して発見した。planning の pin は本 IADR の作成時（#543）から動いていない（現 pin `2cf0795`）ので、**書いた時点で既に誤っていた**——pin のずれではない。作業仕様書 [20260810_issue-651](../specs/20260810_issue-651_sc07-manual-correction-ui.md) §決定 2 に撒いた先の一覧がある |

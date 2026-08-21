@@ -2,32 +2,17 @@
 title: BFF 通知（/bff/notifications）通信仕様書
 type: api-spec
 status: in-progress
-related_ids:
-  - FR-22
-  - UC-11
-  - ADR-0037
-  - ADR-0045
-  - IADR-0009
-  - IADR-0121
-  - IADR-0131
-  - IADR-0132
-  - IADR-0135
-  - IADR-0215
-author: Claude
 created: 2026-08-16
-updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - ../adr/IADR-0215_notification-service-and-in-app-delivery.md
-  - ../functional/FR-22_user-notifications.md
-  - ../tests/FR-22_user-notifications.md
-  - ../specs/20260816_issue-600_fr22-in-app-notifications.md
-  - ./BFF_bff-surface.md
+updated: 2026-08-21
+author: Claude
 ---
+<!-- trace:
+ids: [FR-22, UC-11]
+adrs: [ADR-0037, ADR-0045]
+iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0215]
+specs: [20260816_issue-600_fr22-in-app-notifications]
+issues: [#600, #788]
+-->
 
 # 通信仕様書: BFF 通知（`/bff/notifications`）
 
@@ -35,34 +20,34 @@ related_specs:
 > 設計の意図（**なぜこの形なのか**）を記す。境界の横断規約は [`BFF_bff-surface.md`](BFF_bff-surface.md)。
 
 > **`status: in-progress` の理由**: **契約は載っているが、後段（`NotificationService`）と BFF 端点の
-> 実装は入っていない。** 線引きの正本は [[IADR-0215]] 決定 6。**追跡は #600。**
+> 実装は入っていない。** 線引きの正本は、通知サービス新設を定めた実装 ADR の決定 6 である。**追跡は #600。**
 > **契約先行である**——受け入れ基準「本文が件数と期限のみ」を、実装ではなく契約で守らせるため
-> （[[IADR-0215]] 決定 2）、契約を先に置いた。
+> （同実装 ADR の決定 2）、契約を先に置いた。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 関連機能要求（FR）: **FR-22**
-- 関連ユースケース（UC）: **UC-11** 例外フロー
-- 技術検討 / ADR: [ADR-0037](../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md) 決定 6・17・18 ／
-  [ADR-0045](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md) 決定 3 ／ [[IADR-0215]]
+- 関連機能要求: **利用者本人への通知配信**
+- 関連ユースケース: **自分の資料を作成・管理し、公開範囲を自ら設定する**（例外フロー）
+- 技術検討 / ADR: Obsidian 同期方式（計画リポ）決定 6・17・18 ／
+  メール配信の SMTP リレー（計画リポ）決定 3 ／ 通知サービス新設の実装 ADR
 - 計画書リンク:
-  [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) FR-22
+  02_requirements/01_requirements.md（計画リポ）の通知要求
 
 ## 概要
 
-- **プロトコル**: REST / JSON。`/bff/` 接頭辞の下に置く（BFF 境界。[[IADR-0121]] 決定 3）。
-- **配信は SPA からのポーリング**（既定 60 秒）。**SSE は使わない**——移行第 4 段（#788）の射程である（[[IADR-0215]] 決定 2）。
+- **プロトコル**: REST / JSON。`/bff/` 接頭辞の下に置く（BFF 境界。SPA からの到達経路を定めた実装判断）。
+- **配信は SPA からのポーリング**（既定 60 秒）。**SSE は使わない**——移行第 4 段の射程である。
   したがって**この 2 本はいずれも orval の生成対象である**（SSE 除外規則に当たらない）。
 - **認可は「認証必須・ロールは問わない」**（`x-roles: []`）。**通知は本人のものだけを返す**ため、
   役割ではなく**主体（JWT の `sub`）で絞る**。
-- **存在秘匿**: 他人の通知の ID を指定した既読化は **404** を返す（「権限が無い」を出さない。[[IADR-0009]]）。
+- **存在秘匿**: 他人の通知の ID を指定した既読化は **404** を返す（「権限が無い」を出さない。権限外は 404 とする存在秘匿の方針）。
 
 ## エンドポイント一覧
 
 | メソッド | パス | 概要 | 関連 FR/UC | 生成される関数 |
 | --- | --- | --- | --- | --- |
-| GET | `/bff/notifications` | 本人宛のアプリ内通知一覧（＋未読件数） | FR-22 / UC-11 | `useBffNotificationList` |
-| POST | `/bff/notifications/{id}/read` | 通知 1 件を既読にする（＋更新後の未読件数） | FR-22 / UC-11 | `useBffNotificationMarkRead` |
+| GET | `/bff/notifications` | 本人宛のアプリ内通知一覧（＋未読件数） | —| `useBffNotificationList` |
+| POST | `/bff/notifications/{id}/read` | 通知 1 件を既読にする（＋更新後の未読件数） | —| `useBffNotificationMarkRead` |
 
 ## エンドポイント詳細
 
@@ -106,8 +91,8 @@ related_specs:
 
 ## **★ スキーマにタイトル／本文の項目を作らない**
 
-FR-22 の受け入れ基準「**本文が件数と期限のみで構成される。資料のタイトル・本文・検索語・回答内容を
-含まない**」を、**実装の規律ではなく契約の形で守らせる**（[[IADR-0215]] 決定 2）。
+通知要求の受け入れ基準「**本文が件数と期限のみで構成される。資料のタイトル・本文・検索語・回答内容を
+含まない**」を、**実装の規律ではなく契約の形で守らせる**（通知サービスの実装 ADR による）。
 
 `NotificationDto` の項目は次の 7 つだけである。**自由文のフィールドは 1 つも無い。**
 
@@ -125,7 +110,7 @@ FR-22 の受け入れ基準「**本文が件数と期限のみで構成される
 - **表示文言はフロントが Lingui カタログから組み立てる。**
 - **この不変条件は契約テストが固定する**（テスト仕様書 T-01。`docs/api/openapi.yaml` を読んで
   項目集合を突き合わせる）。**「入れないよう気をつける」ではなく「入れられない」形にした。**
-- `required` は応答スキーマに必ず付ける（[[IADR-0132]]。`required` の無いスキーマは orval が全プロパティを
+- `required` は応答スキーマに必ず付ける（C# の非 null 性から起こす方針。`required` の無いスキーマは orval が全プロパティを
   省略可で生成し、型検査の網にならない）。**nullable な項目は `required` に入れない**（既存の作法どおり）。
 
 ## シーケンス
@@ -157,10 +142,10 @@ sequenceDiagram
 
 ## 関連仕様
 
-- 機能仕様書: [FR-22](../functional/FR-22_user-notifications.md)
-- テスト仕様書: [FR-22](../tests/FR-22_user-notifications.md)
+- 機能仕様書: [利用者通知](../functional/FR-22_user-notifications.md)
+- テスト仕様書: [利用者通知](../tests/FR-22_user-notifications.md)
 - データ仕様書: **未作成**（送出側の永続化は本 PR の射程外）
-- 実装 ADR: [[IADR-0215]]
+- 実装 ADR: 通知は NotificationService を新設して担い、アプリ内通知はポーリングで配信する
 
 ## 未決事項
 
@@ -169,3 +154,8 @@ sequenceDiagram
    **実装の無い端点は検査対象に入らない**（実測）。**この穴をここに開示しておく。**
 2. **未読件数だけを返す軽い端点（`/unread-count`）は置いていない。** 一覧が `unreadCount` を返すため、
    面を 2 つに増やす理由が現時点で無い。ポーリングの負荷が問題になったら足す。
+
+<!-- trace-table:
+row1: FR-22, UC-11
+row2: FR-22, UC-11
+-->

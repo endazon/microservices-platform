@@ -125,7 +125,8 @@ const SELF_NAMES = splitList(process.env.CROSS_REPO_SELF_NAMES, ['MSP', 'microse
 
 // 【置換点】走査から外すパス（git pathspec の除外形）。サブモジュール・ベンダー配下を書く。
 // 環境変数 `CROSS_REPO_EXCLUDES` で上書きできる（カンマ区切り）。
-const EXCLUDE_PATHSPECS = splitList(process.env.CROSS_REPO_EXCLUDES, [':!planning', ':!src/ai-stock-trading']);
+// planning submodule は ADR-0048 決定 2 で撤去済みのため `:!planning` を持たない。
+const EXCLUDE_PATHSPECS = splitList(process.env.CROSS_REPO_EXCLUDES, [':!src/ai-stock-trading']);
 
 // 【置換点】走査から外すディレクトリ（**非 Markdown に限る**。`.md` は常に検査する）。
 //

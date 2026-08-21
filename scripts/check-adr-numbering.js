@@ -11,12 +11,12 @@
  *   1. 番号の重複が無い
  *   2. 欠番が無い（`0000` から始まり最大番号まで連続）
  *   3. ファイル名の番号 = 本文の自称番号
- *   4. 索引（docs/adr/README.md）⇔ 実ファイルが**双方向**で過不足なし
+ *   4. 索引（.ai-context/adr/README.md）⇔ 実ファイルが**双方向**で過不足なし
  *   5. 索引の並びが昇順
  *   6. 索引行の「形」（ID セルがリンク形式か／リンク先ファイル名が当該 ID で始まるか／行末の閉じ `|`）
  *
  * **判定 6 は #580 から統合したものである**（#580 作業仕様書
- * `docs/specs/20260807_issue-580_adr-records-drift.md` の「#581 への申し送り」）。#580 は同じ検査を
+ * `.ai-context/specs/20260807_issue-580_adr-records-drift.md` の「#581 への申し送り」）。#580 は同じ検査を
  * `scripts/scripts.repo.test.js` の `inspectAdrIndex` ブロックに置き、「#581 が索引行をパースする
  * 時点で統合し、そちらからは削除する。**同じ不変条件の検査を 2 本残さない**」と申し送っていた。
  * 本検査が判定 4・5 のために索引行をパースするので、ここが統合先である。あわせて #580 が置いていた
@@ -40,12 +40,12 @@
  *   - **索引タイトル列**（`scripts.repo.test.js` のラチェット。字義一致は方向が合わない）。
  *
  * **計画 ADR（`ADR-xxxx`）は対象外**——計画リポの所有物であり、本リポは pin を進めるだけで採番しない。
- * **`docs/superpowers/` も対象外**（保管された旧計画であり live な採番空間ではない）。
+ * **`.ai-context/superpowers/` も対象外**（保管された旧計画であり live な採番空間ではない）。
  *
  * 外部依存ゼロ（Node 標準モジュールのみ）。違反があれば終了コード 1。
  *
  * 使い方:
- *   node scripts/check-adr-numbering.js              # docs/adr/ を検査
+ *   node scripts/check-adr-numbering.js              # .ai-context/adr/ を検査
  *   node scripts/check-adr-numbering.js --self-test  # 検査ロジック自体の自己試験
  *   node scripts/check-adr-numbering.js --dir <path> # 別ディレクトリを検査（自己試験が使う）
  *
@@ -56,7 +56,7 @@ const fs = require('fs');
 const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-const DEFAULT_DIR = path.join(REPO_ROOT, 'docs', 'adr');
+const DEFAULT_DIR = path.join(REPO_ROOT, '.ai-context', 'adr');
 
 /** ファイル名から番号を取る。`IADR-0143_xxx.md` → 143。 */
 const FILE_RE = /^IADR-(\d{4})_.*\.md$/;

@@ -270,7 +270,7 @@ function main() {
   }
   console.error(`[check-bff-downstreams] BFF downstream の上流ポートに ${violations.length} 件のドリフトを検出しました:`);
   for (const v of violations) console.error(`\n  [${v.env}] ${v.name}: ${v.detail}`);
-  console.error('\n設計の根拠は docs/adr/IADR-0089_bff-datasource-upstream-port.md を参照。');
+  console.error('\n設計の根拠は .ai-context/adr/IADR-0089_bff-datasource-upstream-port.md を参照。');
   process.exit(1);
 }
 

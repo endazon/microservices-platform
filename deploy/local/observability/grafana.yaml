@@ -243,7 +243,7 @@ data:
     #     「SLO の一次検知 = Grafana の内蔵アラートを暫定の通知先とする。欠けているのは
     #      検知そのものではなく通知の送り先だけである」
     #   **ADR-0006（アラートは Alertmanager を用いる）は改めない。**
-    #   判断の経緯: docs/adr/IADR-0165_grafana-interim-alerting.md（**閉じる条件は docs/operations/operations.md**）
+    #   判断の経緯: .ai-context/adr/IADR-0165_grafana-interim-alerting.md（**閉じる条件は docs/operations/operations.md**）
     #
     # ★★ 限界を先に書く（#546 / 計画 決定 40。「統制を定めた」と「統制が働いている」を読み分けられるように）
     #

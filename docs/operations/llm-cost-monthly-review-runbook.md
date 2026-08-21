@@ -2,24 +2,17 @@
 title: 運用 Runbook — LLM 費用の月次確認（Alertmanager 配備までの暫定統制）
 type: runbook
 status: fixed
-related_ids:
-  - NFR
-  - SC-10
-  - FR-11
-  - ADR-0006
-  - ADR-0044
-  - IADR-0110
-author: claude
 created: 2026-08-10
-updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/06_technical/05_observability-ops.md"
-related_specs:
-  - ../specs/20260810_issue-546_llm-cost-monthly-review.md
-  - ../adr/IADR-0164_llm-cost-monthly-review-interim-control.md
-  - ../observability/llm-completion-metrics.md
-  - operations.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-11, SC-10]
+adrs: [ADR-0006, ADR-0038, ADR-0044]
+iadrs: [IADR-0110, IADR-0164]
+specs: [20260810_issue-546_llm-cost-monthly-review]
+issues: [#440, #443]
+-->
 
 # Runbook: LLM 費用の月次確認
 
@@ -35,7 +28,7 @@ related_specs:
 | 事実 | 状態 |
 | --- | --- |
 | **自動検知** | **無い。** Alertmanager が未配備で、`prometheus.yml` の `alertmanagers.targets` は空である。**超過してもアラートは飛ばない** |
-| **費用そのもの（金額）** | **見えない。** トークン消費量・金額換算・単価表はいずれも**未実装**（[[IADR-0110]] §結果 フォローアップ 2 / #443） |
+| **費用そのもの（金額）** | **見えない。** トークン消費量・金額換算・単価表はいずれも**未実装**（補完メトリクスの設計を定めた実装 ADR §結果 フォローアップ 2 / #443） |
 | **月次予算の金額（しきい値）** | **未確定。** 実測を待って確定する（計画 決定 41）。**本書は絶対額で判定しない** |
 | **見えるもの** | **`llm_completion_total`＝補完の呼び出し回数**（用途別・モデル別・送信可否別）。**費用の代理指標**である |
 | **検知の遅れ** | **最大 1 か月。** 月初に確認した直後から月末までに超過した場合、気づくのは翌月である（計画が受け入れた帰結） |
@@ -54,8 +47,8 @@ related_specs:
 
 ## 手順
 
-1. **Grafana を開く。** SC-10（運用ダッシュボード）の **Grafana 導線カード**から入る
-   （SC-10 に費用の KPI カードは無い。2026-08-05 裁定 Q26 により意図的に外してある）。
+1. **Grafana を開く。** 運用ダッシュボードの **Grafana 導線カード**から入る
+   （同ダッシュボードに費用の KPI カードは無い。2026-08-05 裁定 Q26 により意図的に外してある）。
 2. ダッシュボード **`LLM Usage (proxy for cost — NOT cost)`**（uid: `llm-usage`）を開く。
    実体は [`deploy/grafana/provisioning/dashboards/llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)。
 3. **時間範囲を前月 1 か月に合わせる。** ダッシュボードの既定は直近 30 日であり、**前月とは一致しない**。
@@ -79,10 +72,10 @@ related_specs:
 | 兆候 | 引き渡し先 |
 | --- | --- |
 | 特定の用途が急増した | その用途の呼び出し元を調べる（`llm_purpose` の値と `appsettings` の `PurposeModels` が対応） |
-| `llm_purpose="other"` が増えた | **定義していない purpose が来ている**＝ルーティングが既定へ落ちている（[[IADR-0110]]）。設定の追随漏れを疑う |
-| 上位モデルの比率が上がった | 用途別モデル割当の見直し（ADR-0038 / #440） |
+| `llm_purpose="other"` が増えた | **定義していない purpose が来ている**＝ルーティングが既定へ落ちている（補完メトリクスの設計を参照）。設定の追随漏れを疑う |
+| 上位モデルの比率が上がった | 用途別モデル割当の見直し |
 | 拒否率・打ち切り率が上がった | [`docs/observability/llm-completion-metrics.md`](../observability/llm-completion-metrics.md) §監視観点 |
-| **費用の実額を知る必要がある** | **現状では出せない。** #443 / [[IADR-0110]] §結果 フォローアップ 2 の完了を待つ |
+| **費用の実額を知る必要がある** | **現状では出せない。** #443（補完メトリクスの実装 ADR §結果 フォローアップ 2）の完了を待つ |
 
 ## 記録
 
@@ -105,6 +98,6 @@ related_specs:
 ## 関連
 
 - 計画: `06_technical/05_observability-ops.md` §LLM 費用の上限アラートと暫定の統制 ／ §リスク・未決事項
-- 実装 ADR: [[IADR-0164]]（本書の決定）／ [[IADR-0110]]（メトリクスの設計と限界）
+- 実装 ADR: LLM 費用の暫定統制は「代理指標の月次確認」として置く（本書の決定）／ 補完の終了理由をカウンタ 1 本で計上し属性は有限集合へ丸める（メトリクスの設計と限界）
 - 運用仕様書: [`operations.md`](operations.md) §監視・アラート
 - issue: **#546**（本件）／ #443（可観測性・LLM 計測の再実装）

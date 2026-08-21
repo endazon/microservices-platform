@@ -1,7 +1,7 @@
 # ローカル k8s(k3d) dev 環境（MSP + AST 連結）
 
-> 起点: [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) /
-> 作業仕様書 [`docs/specs/20260713_issue-266_local-k8s-dev-env.md`](../../docs/specs/20260713_issue-266_local-k8s-dev-env.md) /
+> 起点: [IADR-0066](../../.ai-context/adr/IADR-0066_local-k8s-dev-environment.md) /
+> 作業仕様書 [`.ai-context/specs/20260713_issue-266_local-k8s-dev-env.md`](../../.ai-context/specs/20260713_issue-266_local-k8s-dev-env.md) /
 > Issue #266（MSP）・AST#122（AST chart）・AST#121（K8s CronJob）
 
 本ディレクトリは **dev 専用**の資産である。本番像（[`deploy/helm`](../helm) 本体・
@@ -75,12 +75,12 @@ ESO=1           bash scripts/k8s-local-up.sh   # Vault＋ESO で secret 自動�
 
 ### 永続化（opt-in・PERSIST=1・Issue #324 / IADR-0082、#787 / IADR-0210）
 
-> 起点: [IADR-0082](../../docs/adr/IADR-0082_local-k8s-infra-persistence.md)（Keycloak / Postgres）＋
-> [IADR-0210](../../docs/adr/IADR-0210_local-k8s-observability-persistence.md)（Qdrant / 可観測性 4 種） /
-> 作業仕様書 [`docs/specs/20260719_issue-324_infra-persistence-k8s.md`](../../docs/specs/20260719_issue-324_infra-persistence-k8s.md) ・
-> [`docs/specs/20260816_issue-787_k8s-observability-persistence.md`](../../docs/specs/20260816_issue-787_k8s-observability-persistence.md)
+> 起点: [IADR-0082](../../.ai-context/adr/IADR-0082_local-k8s-infra-persistence.md)（Keycloak / Postgres）＋
+> [IADR-0210](../../.ai-context/adr/IADR-0210_local-k8s-observability-persistence.md)（Qdrant / 可観測性 4 種） /
+> 作業仕様書 [`.ai-context/specs/20260719_issue-324_infra-persistence-k8s.md`](../../.ai-context/specs/20260719_issue-324_infra-persistence-k8s.md) ・
+> [`.ai-context/specs/20260816_issue-787_k8s-observability-persistence.md`](../../.ai-context/specs/20260816_issue-787_k8s-observability-persistence.md)
 
-既定の経路B infra は [IADR-0066](../../docs/adr/IADR-0066_local-k8s-dev-environment.md) の割り切りで `emptyDir`
+既定の経路B infra は [IADR-0066](../../.ai-context/adr/IADR-0066_local-k8s-dev-environment.md) の割り切りで `emptyDir`
 （Pod 再起動で再 init）である。このため **Keycloak Pod が再起動するたびに realm が再 import され、管理コンソールで
 加えた runtime state（追加ユーザー・シークレット・セッション等）が失われる**。`PERSIST=1` を付けると
 [`deploy/local/infra-persistence`](infra-persistence/) オーバーレイが適用され、**Keycloak / Postgres / Qdrant を
@@ -192,12 +192,12 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）
 
-> 起点: [IADR-0076](../../docs/adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) /
-> 作業仕様書 [`docs/specs/20260719_issue-284-live-integration-wiring.md`](../../docs/specs/20260719_issue-284-live-integration-wiring.md)
+> 起点: [IADR-0076](../../.ai-context/adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) /
+> 作業仕様書 [`.ai-context/specs/20260719_issue-284-live-integration-wiring.md`](../../.ai-context/specs/20260719_issue-284-live-integration-wiring.md)
 
 ### AST 3 画面系（AST/SC-01・AST/SC-02・AST/SC-03）の到達
 
-> **AST chart の適用が前提**（Issue #407 / [IADR-0107](../../docs/adr/IADR-0107_ast-owned-service-single-deployment.md)）
+> **AST chart の適用が前提**（Issue #407 / [IADR-0107](../../.ai-context/adr/IADR-0107_ast-owned-service-single-deployment.md)）
 
 AST の 3 画面系サービス（`configuration` / `risk-management` / `market-monitor`）は
 **AST chart（`ai-stock-trading` namespace）が単一の所有者**であり、MSP namespace には実体を置かない。
@@ -216,8 +216,8 @@ kubectl -n ai-stock-trading get pods -l app=risk-management-service
 ```
 
 **AST chart 未適用時**: alias の解決先に Service が無いため、BFF は不達→**502 へ縮退**する（fail-safe。
-[IADR-0071](../../docs/adr/IADR-0071_ast-risk-controls-bff-integration.md) /
-[IADR-0072](../../docs/adr/IADR-0072_ast-monitor-bff-integration.md) の既存設計どおり、readiness の
+[IADR-0071](../../.ai-context/adr/IADR-0071_ast-risk-controls-bff-integration.md) /
+[IADR-0072](../../.ai-context/adr/IADR-0072_ast-monitor-bff-integration.md) の既存設計どおり、readiness の
 `UriHealthCheck` には含めないため BFF 自体の可用性は落ちない）。3 画面を使うには AST chart を適用すること。
 
 > **なぜ MSP 側に置かないか**: 以前は `values-local.yaml` が同 3 サービスを MSP namespace にも重複デプロイして
@@ -275,7 +275,7 @@ SPA の「Wiki 閲覧」画面（SC-04）は、ブラウザ向け実行時 confi
 社内 Wiki（Wiki.js）を**新規タブで直接開く**導線である（BFF 経由ではない）。`WIKI_BASE_URL` が未設定（空文字）だと
 画面は「**Wiki の接続先が未設定です**」と表示してリンクを出さない。経路B は `values-local.yaml` の
 `frontend.extraEnv` で `WIKI_BASE_URL` を供給する。到達は他の管理ツール（grafana/minio/vault 等）と同じく
-**edge 集約後の正規 URL** に整合させる（[IADR-0091](../../docs/adr/IADR-0091_local-edge-aggregation-traefik.md) の
+**edge 集約後の正規 URL** に整合させる（[IADR-0091](../../.ai-context/adr/IADR-0091_local-edge-aggregation-traefik.md) の
 edge overlay `deploy/local/edge`・`LOCALEDGE=1` で Wiki.js を `wiki.localhost:50000` に公開。realm `wiki-js` client も
 同 URL 登録済み。[edge/README](edge/README.md)「アクセス／OIDC（集約後 URL）」）:
 
@@ -293,12 +293,12 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 - **Wiki.js の SSO（Keycloak OIDC）ログイン**: Wiki.js は開いた後 Keycloak へリダイレクトするため、issuer 到達性は
   **手順A**（`hosts` に `127.0.0.1 keycloak` ＋ `port-forward svc/keycloak 8080:8080`）と同じく解く。realm `wiki-js`
   client は `https://wiki.localhost:50000/*`（edge 集約）と `http://localhost:3300/*`（**上記 k8s の port-forward 用**・#385）を
-  登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../docs/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
+  登録済み。`http://localhost:3001/*` は compose(dev) の host 公開用（[IADR-0032](../../.ai-context/adr/IADR-0032_wikijs-dev-exposure-opt-in.md)）
   であり k8s の port-forward では使わない。非 edge で SSO を使う場合は Wiki.js の **Site URL も `http://localhost:3300`** に
   揃える（コールバックは `{Site URL}/login/{strategyKey}/callback`・[wiki-oidc/README](wiki-oidc/README.md)）。
   実ブラウザでの SSO ログイン疎通は稼働 k3d・edge 設定依存＝**live**（本 issue の live 分）。
 - 本番像 `values.yaml` の `frontend.extraEnv` は空のまま不変。本番は実 Wiki URL を per-env の `extraEnv` で供給する
-  （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../docs/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
+  （opt-in・後方互換）。Wiki.js への直接到達は既定で塞ぐ運用（Ingress 既定 disabled・[IADR-0020](../../.ai-context/adr/IADR-0020_wiki-js-deployment-abac-gateway.md)）に従う。
 
 ### ブラウザ OIDC の issuer 統一（原則と 2 手順）
 
@@ -319,7 +319,7 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
   同一エッジ host に集約できる（`edge.oidc.host/port` で Keycloak を指す）。この場合のみ運用者が (i) その host を
   `platform-spa` の redirectUris/webOrigins へ追記、(ii) `global.auth.authority` を同 host へ上書き、(iii) in-cluster から
   同 host を解決させる。(iii) は稼働環境依存＝live。(iii) には次の 2 択がある。
-  - **(iii-a) backend の metadata/issuer 分離（推奨・Issue #314 / [IADR-0086](../../docs/adr/IADR-0086_oidc-issuer-metadata-split.md)）**:
+  - **(iii-a) backend の metadata/issuer 分離（推奨・Issue #314 / [IADR-0086](../../.ai-context/adr/IADR-0086_oidc-issuer-metadata-split.md)）**:
     CoreDNS を触らず、backend の OIDC 検証で metadata 取得先（in-cluster）と issuer 検証値（エッジ host）を分離する。
     `global.auth.authority` は上書きせず（in-cluster 名のまま）、代わりに次を設定する:
     ```yaml
@@ -339,10 +339,10 @@ kubectl -n microservices-platform port-forward svc/wiki-js 3300:3000
 
 ## Headlamp（k8s 管理 UI・Keycloak OIDC・Issue #271）
 
-> 起点: [IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md) /
-> 作業仕様書 [`docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md`](../../docs/specs/20260719_issue-271_headlamp-k8s-management-ui.md)
-> ／apiserver OIDC 配線の結論（**適用不能**）: [IADR-0084](../../docs/adr/IADR-0084_headlamp-oidc-apiserver-flags.md)
-> の「⚠️ 2026-07-25 追記」／本節の根拠: [`docs/specs/20260726_issue-328_headlamp-token-login-docs.md`](../../docs/specs/20260726_issue-328_headlamp-token-login-docs.md)（#328・#388）
+> 起点: [IADR-0080](../../.ai-context/adr/IADR-0080_headlamp-k8s-management-ui.md) /
+> 作業仕様書 [`.ai-context/specs/20260719_issue-271_headlamp-k8s-management-ui.md`](../../.ai-context/specs/20260719_issue-271_headlamp-k8s-management-ui.md)
+> ／apiserver OIDC 配線の結論（**適用不能**）: [IADR-0084](../../.ai-context/adr/IADR-0084_headlamp-oidc-apiserver-flags.md)
+> の「⚠️ 2026-07-25 追記」／本節の根拠: [`.ai-context/specs/20260726_issue-328_headlamp-token-login-docs.md`](../../.ai-context/specs/20260726_issue-328_headlamp-token-login-docs.md)（#328・#388）
 
 [Headlamp](https://headlamp.dev/)（CNCF Sandbox の k8s UI）を **opt-in** で導入し、Pod / Deployment / Service /
 ログ等をブラウザから閲覧・操作できる。
@@ -378,7 +378,7 @@ Error: invalid authentication configuration: jwt[0].issuer.url:
 
 - **k3d 経路（対処済み）**: かつて `scripts/k8s-local-up.sh` は `HEADLAMP_OIDC_APISERVER` 未設定時に `HEADLAMP` の値へ
   追従して同じ 4 フラグを `k3d cluster create` へ付与しており、`HEADLAMP=1` だけで上記の起動失敗を踏んだ。
-  この経路は [IADR-0105](../../docs/adr/IADR-0105_remove-apiserver-oidc-flag-wiring.md)（#399）で**除去済み**で、
+  この経路は [IADR-0105](../../.ai-context/adr/IADR-0105_remove-apiserver-oidc-flag-wiring.md)（#399）で**除去済み**で、
   現在は `HEADLAMP=1` のみで安全に実行できる（回避用の `HEADLAMP_OIDC_APISERVER=0` の併記は**不要**。
   指定しても no-op）。Rancher Desktop 経路（内蔵 k3s）はスクリプトがクラスタを作らないため元々対象外。
 
@@ -406,7 +406,7 @@ kubectl -n platform-infra create token headlamp-viewer --duration=24h
 ```
 
 `headlamp-viewer` は overlay に収録済みのため（[`headlamp-viewer-rbac.yaml`](headlamp/headlamp-viewer-rbac.yaml)・
-#398 / [IADR-0108](../../docs/adr/IADR-0108_headlamp-viewer-readonly-rbac.md)）、`HEADLAMP=1` で up した直後から
+#398 / [IADR-0108](../../.ai-context/adr/IADR-0108_headlamp-viewer-readonly-rbac.md)）、`HEADLAMP=1` で up した直後から
 **手動作成なしに**トークンを発行できる。
 
 **権限は閲覧専用**（`get`/`list`/`watch` のみ）である。内訳は組み込み ClusterRole `view`（全 namespace の
@@ -420,7 +420,7 @@ RBAC 等のクラスタスコープ資源の読み取り）。UI からの scale
 > `kubectl delete clusterrolebinding headlamp-viewer --ignore-not-found`
 
 fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域権限を bind していないため、トークンを
-貼らない限りクラスタは可視化できない（[IADR-0080](../../docs/adr/IADR-0080_headlamp-k8s-management-ui.md)）。
+貼らない限りクラスタは可視化できない（[IADR-0080](../../.ai-context/adr/IADR-0080_headlamp-k8s-management-ui.md)）。
 `headlamp-viewer` は Pod に割り当てず、トークンは Secret として常駐しない都度発行の短命トークンである。
 
 ### #388 で OIDC 化するときにそのまま効く資産（現状は inert・無害）
@@ -430,13 +430,13 @@ fail-safe: Headlamp **Pod** が使う ServiceAccount（`headlamp`）には広域
 
 - realm client `headlamp` の claim mapper **`headlamp-realm-roles`**（realm ロールを `groups` クレームへ発行）＝
   [`deploy/keycloak/microservices-platform-realm.json`](../keycloak/microservices-platform-realm.json)（#389 /
-  [IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md)）。
+  [IADR-0103](../../.ai-context/adr/IADR-0103_local-sso-persistence-and-claim-design.md)）。
 - ClusterRoleBinding **`headlamp-developer-cluster-admin`**（User `oidc:developer` → `cluster-admin`）＝
   [`deploy/local/headlamp/headlamp.yaml`](headlamp/headlamp.yaml)（#271 / IADR-0080）。
 - realm client `headlamp` の redirectUris（`http://localhost:4466/*` ＋ 集約後 `https://headlamp.localhost:50000/*`・#377）。
 
 **cluster-admin を得られるのは `developer` だけ**である点に注意する。上記 bind の subject は User `oidc:developer`
-のみで、`admin`（[IADR-0103](../../docs/adr/IADR-0103_local-sso-persistence-and-claim-design.md) で realm に追加した
+のみで、`admin`（[IADR-0103](../../.ai-context/adr/IADR-0103_local-sso-persistence-and-claim-design.md) で realm に追加した
 管理者ユーザー）に対応する bind は**存在しない**。`admin` でも入れるようにするか（`groups` クレーム由来の Group
 subject を bind する等）は #388 で決める設計事項であり、本 PR 時点では未決である。
 

@@ -1,7 +1,7 @@
 # 経路B ABAC 初期投入（opt-in）
 
-> 起点: [IADR-0133](../../../docs/adr/IADR-0133_abac-dev-seed.md) /
-> 作業仕様書 [`docs/specs/20260805_issue-517_abac-dev-seed.md`](../../../docs/specs/20260805_issue-517_abac-dev-seed.md) / Issue #517
+> 起点: [IADR-0133](../../../.ai-context/adr/IADR-0133_abac-dev-seed.md) /
+> 作業仕様書 [`.ai-context/specs/20260805_issue-517_abac-dev-seed.md`](../../../.ai-context/specs/20260805_issue-517_abac-dev-seed.md) / Issue #517
 
 経路B（dev）へ **ABAC の属性辞書とポリシーの初期値**を投入するための宣言的データ。
 
@@ -26,7 +26,7 @@
 
 | ファイル | 役割 |
 | --- | --- |
-| `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 [`07_abac-attribute-model`](../../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md) に合わせる |
+| `attributes.json` | 属性辞書（`document` / `user` スコープ）。値集合は計画 project-planning の `projects/microservices-platform/06_technical/07_abac-attribute-model.md` に合わせる |
 | `policies.json` | ABAC ポリシー。`clearance` が高いほど読める `confidentiality` が広がる階段 |
 
 `required` は**すべて `false`** にしてある。`/authz/attributes/validate` を呼ぶ取り込み経路は現時点で
@@ -50,7 +50,7 @@ node scripts/seed-abac-policies.js --dry-run # 何が入るかだけ見る（副
 ## 実運用との関係
 
 本ファイルは **dev の初期値**である。実運用の属性辞書・ポリシーは **SC-09（管理者設定画面）から編集する**
-（[FR-09](../../../planning/projects/microservices-platform/02_requirements/01_requirements.md) / UC-05）。
+（FR-09（計画 project-planning の `projects/microservices-platform/02_requirements/01_requirements.md`）/ UC-05）。
 本番環境へ同じ値を入れる意図はない。
 
 ## 切り戻し

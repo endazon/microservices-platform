@@ -2,31 +2,28 @@
 title: 機能仕様書 — FR-10 利用状況・検索傾向・回答品質ダッシュボード
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-10
-  - UC-05
-author: claude
 created: 2026-07-03
-updated: 2026-08-09
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-10)"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md (UC-05)"
-related_specs:
-  - ../specs/20260703_FR-10_usage-dashboard.md
-  - ../tests/FR-10_dashboard.md
-  - ../functional/FR-08_answer-feedback.md
-  - ../adr/IADR-0011_dashboard-service-usage-aggregation.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-08, FR-10, UC-05]
+adrs: [ADR-0002, ADR-0006]
+iadrs: [IADR-0011]
+specs: [20260703_FR-10_usage-dashboard]
+issues: []
+-->
 
-# 機能仕様書: FR-10 利用状況・検索傾向・回答品質ダッシュボード
+# 機能仕様書: 利用状況・検索傾向・回答品質ダッシュボード
 
 ## 概要
 
 運用・分析の担当者が、**利用状況**（検索・回答の件数推移）、**検索傾向**（よく検索される語）、
 **回答品質**（👍/👎 の満足率）を 1 つのダッシュボードで把握できる。業務指標のドメイン集計は
-`DashboardService`（専用マイクロサービス、ADR-0002）が担い、回答品質は FR-08 の `FeedbackService`
-（`/feedback/stats`）を単一の出所として BFF が集約する（[IADR-0011](../adr/IADR-0011_dashboard-service-usage-aggregation.md)）。
-ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指標はアプリ側 API で提供）。
+`DashboardService`（専用マイクロサービス。DB per Service の方針による）が担い、回答品質は
+フィードバック収集機能の `FeedbackService`（`/feedback/stats`）を単一の出所として BFF が集約する
+（実装判断: 業務指標は専用サービスで集計し、回答品質は `FeedbackService` を単一の出所とする）。
+可観測性基盤の Grafana（インフラ指標）とは責務が異なる（業務指標はアプリ側 API で提供）。
 
 ## データモデル（`UsageEvent`）
 
@@ -92,4 +89,4 @@ ADR-0006 の Grafana（インフラ指標）とは責務が異なる（業務指
 
 - 画面（SC）実装本体・グラフ描画（UI）。
 - 検索・回答経路からの利用イベント自動送信の配線。
-- LLM API コストの可視化（ADR-0006 フォローアップ）。
+- LLM API コストの可視化（可観測性基盤側のフォローアップ）。

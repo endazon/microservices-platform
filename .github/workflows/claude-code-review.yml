@@ -84,22 +84,6 @@ jobs:
           # 後段の git push もそのトークンで実行されるため、実装リポへの書き込み
           # 権限が無い PAT だと 403（Permission denied）になる。
 
-      # 計画リポジトリ(project-planning)を submodule 参照している場合のみ有効。
-      # PLANNING_REPO_TOKEN は organization の secret に登録した fine-grained PAT で、
-      # project-planning への Contents: Read 権限のみを付与する。実装リポの push 認証
-      # (GITHUB_TOKEN) とは分離するため、submodule 取得の間だけ一時的に PAT を使い、
-      # 直後に解除して push へ漏れないようにする（.gitmodules が無ければ何もしない）。
-      - name: Fetch planning submodule (read-only PAT)
-        env:
-          SUBMODULE_PAT: ${{ secrets.PLANNING_REPO_TOKEN }}
-        run: |
-          if [ -f .gitmodules ]; then
-            git config --global url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf "https://github.com/"
-            git submodule sync --recursive
-            git submodule update --init --recursive
-            git config --global --unset-all url."https://x-access-token:${SUBMODULE_PAT}@github.com/".insteadOf
-          fi
-
       # 検証(build/test)を @claude セッション内で実走するための SDK 準備。
       # 技術スタックに合わせて書き換える（既定は C#/.NET 10。ci.example.yml と揃える。
       # 他スタックは actions/setup-node / actions/setup-python 等に置き換える）。
@@ -155,7 +139,8 @@ jobs:
           # 既定モデル: 変更可（厳密さ優先なら claude-opus-5）。
           # GitHub MCP ツールはここで許可する（mcp__github__pull_request_review_write 等の
           # 権限拒否はこれで解消する。additional_permissions は使わない）。
-          # Read は計画書（../project-planning）の参照に必要。
+          # Read はリポジトリ内の docs/ 仕様書・.ai-context/adr/ の実装 ADR の参照に必要
+          # （本リポジトリは planning submodule を持たない。ADR-0048 決定 2）。
           # 安全性の注記: 下のビルド/テスト許可は PR のコードを**実行**する。fork からの
           # pull_request では secrets が渡らずアクションの認証自体が成立しない（＝実質
           # 同一リポの PR のみが対象）ため既定では許容範囲だが、公開リポジトリで fork の
@@ -245,7 +230,7 @@ jobs:
           # 他スタック例: Bash(npm run:*) / Bash(npx vitest:*) / Bash(pytest:*) / Bash(go test:*)
           claude_args: |
             --model ${{ steps.model.outputs.model }}
-            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C planning log:*),Bash(git -C planning show:*),Bash(git -C planning diff:*),Bash(git -C planning ls-tree:*),Bash(git -C planning grep:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git -C src/ai-stock-trading/planning grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*),Bash(git ls-tree:*),Bash(git submodule status:*),Bash(git fetch:*),Bash(git -C src/ai-stock-trading log:*),Bash(git -C src/ai-stock-trading show:*),Bash(git -C src/ai-stock-trading diff:*),Bash(git -C src/ai-stock-trading ls-tree:*),Bash(git -C src/ai-stock-trading grep:*),Bash(git -C src/ai-stock-trading/planning log:*),Bash(git -C src/ai-stock-trading/planning show:*),Bash(git -C src/ai-stock-trading/planning diff:*),Bash(git -C src/ai-stock-trading/planning ls-tree:*),Bash(git -C src/ai-stock-trading/planning grep:*),Bash(ls:*),Bash(rg:*),Bash(grep:*),Bash(sort:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(cmp:*),Bash(diff:*),Bash(echo:*),Bash(which:*),Bash(gh issue create:*),Bash(gh issue view:*),Bash(gh pr view:*),Bash(gh run list:*),mcp__github__pull_request_read,mcp__github__get_file_contents,mcp__github__issue_read,mcp__github__get_issue,mcp__github__get_pull_request,mcp__github__list_pull_requests,mcp__github__list_sub_issues,mcp__github__list_workflow_runs,mcp__github__actions_list,mcp__github__pull_request_review_write,mcp__github__add_comment_to_pending_review,mcp__github__add_issue_comment,mcp__github__push_files,Bash(node:*),Bash(dotnet restore:*),Bash(dotnet build:*),Bash(dotnet test:*),Bash(dotnet format:*),Bash(dotnet --version),Bash(dotnet --info)"
           # 【プロンプトの書き方】prompt: の中身は毎 PR そのまま送信され課金される。事故の経緯・
           # 実測値の記録は送信されないこの YAML コメント側へ書き、prompt には AI が従う指示だけを
           # 置く（監査 2026-08-18・planning#416 の追随。#869）。prompt が禁じる各項目の経緯:
@@ -282,10 +267,12 @@ jobs:
             （claude-coding.yml）とは中身が違う。**実装用の記憶で判断しないこと。**
             - **git（読み取りのみ）**: `git diff` / `git log` / `git show` / `git status` /
               `git ls-tree` / `git submodule status` / `git fetch`。submodule 変種として
-              `git -C planning` と `git -C src/ai-stock-trading`（および同 `/planning`）の
+              `git -C src/ai-stock-trading`（および同 `/planning`）の
               `log` / `show` / `diff` / `ls-tree` / **`grep`** も使える
               （`grep` は submodule の全文検索。`git -C <パス> show` でファイルを名指し
-              できない場合の基本の裏取り手段である）。
+              できない場合の基本の裏取り手段である）。**本リポジトリは planning submodule を
+              持たない**（ADR-0048 決定 2）ため `git -C planning` は使えない。計画書・裁定は
+              CLAUDE.md「計画リポジトリとの関係」の参照手段（GitHub URL・隣接クローン）に従うこと。
               **書き込み系の git（`add` / `commit` / `push` / `switch` / `checkout` / `branch`）は
               許可されていない**（レビューは読むだけである）。
             - **閲覧・検索**: `ls` / `rg` / `grep` / `sort` / `cat` / `head` / `tail` / `cmp` /
@@ -416,13 +403,13 @@ jobs:
                - 仕様の表面的充足（テストを通すためだけの空実装・空テスト）。
                - 秘密情報のハードコードや不適切な扱い。
 
-            【計画書の場所】この順で探すこと:
-            1. `planning/projects/<name>/` — **CI ではこちら**。checkout 直後のステップで
-               submodule を populate 済みであり、ワークスペース内なので Read が届く。
-            2. `../project-planning/projects/<name>/` — 隣接クローン運用のローカル環境のみ。
-               CI ではワークスペース外のため Read が届かない。
-            **1 を試さずに「計画リポジトリは参照不可」と結論してはならない。**
-            両方とも存在しない場合に限り、その旨を明記したうえで PR 内の情報のみでレビューする。
+            【計画書の場所】本リポジトリは planning submodule を持たない（ADR-0048 決定 2）。
+            計画書・裁定の直接参照は CI のワークスペース内からは届かない
+            （CLAUDE.md「計画リポジトリとの関係」の GitHub URL・隣接クローンはいずれも CI 環境の
+            外を指す）。**計画書に直接当たれないことを理由に検証を止めない**——PR 本文・コミット
+            メッセージが引用する計画 ID（FR/UC/SC/ADR）や、リポジトリ内の `docs/` 仕様書・
+            `.ai-context/adr/` の実装 ADR に書かれた根拠を基準にレビューする。計画書原文の確認が
+            必須な指摘は「計画書原文で要確認」と明記して報告に含める。
 
             【他リポジトリ・issue 参照の扱い】
             - GitHub の issue / PR を読む MCP ツール名は**サーバの版に依存する**。CI が固定する
@@ -449,9 +436,10 @@ jobs:
             PR の CI ジョブの結果は `mcp__github__list_workflow_runs`（新しいサーバ版では
             `mcp__github__actions_list` の `list_workflow_runs` メソッド）と `Bash(gh run list:*)` で
             参照できる。**ローカル再現を始める前に、まず CI の結果を見ること。**
-            計画書 submodule の**履歴**（pin の進み方・その差分・「変更が無いこと」）についても
-            `git -C planning log / show / diff / ls-tree / grep` で検証できる。PR が submodule の pin に
-            言及している場合は、その主張を実際に確かめること。
+            `src/ai-stock-trading` submodule の**履歴**（pin の進み方・その差分・「変更が無いこと」）に
+            ついても `git -C src/ai-stock-trading log / show / diff / ls-tree / grep`（入れ子の
+            `/planning` も同様）で検証できる。PR が同 submodule の pin に言及している場合は、
+            その主張を実際に確かめること。
 
             【.claude / CLAUDE.md を変更する PR での注意】
             アクションはセキュリティ上、`.claude` / `CLAUDE.md` / `.mcp.json` 等を統合ブランチ版へ

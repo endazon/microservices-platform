@@ -3,7 +3,7 @@
 /*
  * check-contract-schema.js
  * サービス間契約（Shared.Contracts のイベント・API スキーマ）の後方互換検査（NFR, Issue #465）。
- * 外部依存ゼロ（Node 標準モジュールのみ）。方式の決定と根拠は docs/adr/IADR-0122。
+ * 外部依存ゼロ（Node 標準モジュールのみ）。方式の決定と根拠は .ai-context/adr/IADR-0122。
  *
  * 何を守るか:
  *   全面再実装（#454）では 11 サービスを作り直すため、`Shared.Contracts` の契約が**両側同時更新で
@@ -13,7 +13,7 @@
  * 抽出方式（IADR-0122 決定 1）:
  *   **C# ソースの構文解析**を正本とする。リフレクション（.NET SDK が要る）・OpenAPI
  *   （north-south の REST のみでイベントを含まない）・proto（本リポジトリに 0 件）はいずれも
- *   現時点で全契約を覆えない。限界は docs/specs/20260804_issue-465_*.md「限界」に明記する。
+ *   現時点で全契約を覆えない。限界は .ai-context/specs/20260804_issue-465_*.md「限界」に明記する。
  *
  * 判定（IADR-0122 決定 2）:
  *   - 削除・型変更・必須化・位置変更・enum 値変更・const 値変更・属性変更 = **破壊的（fail）**

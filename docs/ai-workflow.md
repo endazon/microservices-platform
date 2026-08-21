@@ -1,3 +1,9 @@
+<!-- trace:
+adrs: [ADR-0048]
+iadrs: [IADR-0067, IADR-0180]
+issues: [#268, planning#286]
+-->
+
 # AI 駆動の実装ワークフロー（Runbook）
 
 このリポジトリは **実装の大半を生成 AI に任せる**前提で構成している。本書は、計画書から実装・マージまでを AI 中心で回すための運用手順と、全自動化に有用なツールをまとめる。
@@ -32,13 +38,15 @@ Pull Request
 **初回チェックリスト**（着手前に上から順に確認する）:
 
 - [ ] repo-template の中身をこのリポジトリ直下にコピー済みである（`.claude/` `.github/` `docs/` など）。
-- [ ] 計画リポ（`project-planning`）を参照できる（**本リポは git submodule `planning/`**。`git submodule update --init planning`）。`/sync-plan` または計画書の該当 ID を開いて確認する。
+- [ ] 計画リポ（`project-planning`）を参照できる（**本リポは planning に依存しない**）。GitHub 上の URL または隣接クローン（既定 `../project-planning`）で計画書の該当 ID を開いて確認する。
 - [ ] `AI_SETUP.md` で利用可能な AI を宣言し、`bash scripts/apply-profile.sh <profile>` を実行済みである。
 - [ ] CI 系を有効化済みである（`ci.example.yml` / `codeql.example.yml` の `.example` を外す）。
 - [ ] GitHub Secrets（`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY`）を登録済みである（Copilot 利用時はリポジトリで Copilot を有効化）。
 - [ ] 環境セットアップ（`scripts/setup.sh`）が通り、ビルド・テストが実走できる。
 
-**最初に `AI_SETUP.md` で利用可能な AI（プロファイル）を宣言する。** プロファイルにより有効化するファイルとシークレットが変わる。本書の Claude 系ワークフローは役割スロット（orchestrator / worker / reviewer）の**既定エンジン実装**であり、エンジンの差し替え・フォールバックは `ai-roster.json` と [`docs/ai-orchestration.md`](ai-orchestration.md)（正本）に従う。`*.example` ファイルは拡張子から `.example` を外すと有効になる（GitHub Actions は `.github/workflows/*.yml` のみ実行する）。`scripts/apply-profile.sh` で自動化できる。
+**最初に `AI_SETUP.md` で利用可能な AI（プロファイル）を宣言する。** プロファイルにより有効化するファイルとシークレットが変わる。
+本書の Claude 系ワークフローは役割スロット（orchestrator / worker / reviewer）の**既定エンジン実装**であり、エンジンの差し替え・フォールバックは `ai-roster.json` と [`docs/ai-orchestration.md`](ai-orchestration.md)（正本）に従う。
+`*.example` ファイルは拡張子から `.example` を外すと有効になる（GitHub Actions は `.github/workflows/*.yml` のみ実行する）。`scripts/apply-profile.sh` で自動化できる。
 
 技術非依存の CI 系は全プロファイル共通で有効化する。
 
@@ -100,7 +108,8 @@ bash scripts/apply-profile.sh copilot
 | 脆弱性 | dependency-review（`security.yml`）＋ CodeQL ＋ Dependabot | 供給網・SAST |
 | 完了の定義 | `docs/DEFINITION_OF_DONE.md` ＋ `/verify` | AI 自身の完了前検証 |
 | トレーサビリティ | `/trace-check`・`/adr-check`・`.claude/rules/traceability.md` | 計画と実装の整合 |
-| 計画への環流 | `/plan-feedback`（実装→計画） | 計画書の誤り・不足を戻す |
+| `docs/` の非表示メタデータ | `scripts/check-trace-blocks.js`・`scripts/gen-knowledge-graph.js` | trace ブロックの文法・値域・可視本文への ID 残存（CI の `doc-links` ジョブ） |
+| 計画への環流 | `/plan-feedback`（実装→計画） | 計画リポジトリへ GitHub issue で起票する（本リポジトリに記録ファイルは残さない） |
 
 ### 必須チェックの有効化（人手の検証を最小化する要）
 
@@ -108,8 +117,7 @@ bash scripts/apply-profile.sh copilot
 > **2026-08-11 時点で develop にブランチ保護は配備されていない**（本節までの全 PR が、承認レビュー
 > 無しでマージできている）。**配備されるまでの暫定手段は「マージ前に CI 結論と AI レビューを
 > 人（または実装セッション）が確認する」ことである。**
-> 「統制を定めた」と「統制が働いている」を読み分けられる書き方にすること（計画側の裁定 2026-08-08 /
-> planning#286）。
+> 「統制を定めた」と「統制が働いている」を読み分けられる書き方にすること（計画側の裁定 2026-08-08）。
 >
 > **なぜ AI が設定しないのか**は後述「[設定は AI では完結しない](#設定は-ai-では完結しない2026-08-11-実測)」を参照。
 
@@ -133,7 +141,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | `lint` | `ci.yml` | `dotnet format --verify-no-changes` ほか |
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
-| `image-build` | `images.yml` | Issue #268 / [IADR-0067](adr/IADR-0067_service-image-build-ci-gate.md) の集約ジョブ |
+| `image-build` | `images.yml` | サービスイメージのビルド検証（compose を単一情報源とする独立ワークフロー）の集約ジョブ |
 | ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
 
@@ -192,7 +200,7 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 | GitHub API を直接叩く | **セッション指示が禁じている**（GitHub 操作は MCP ツール経由に限る） | **規則による禁止** |
 
 **能力の不在は環境が変われば消えるが、規則の禁止は指示が変わらない限り残る。**
-**混ぜて「できない」と書かない**（[IADR-0180](adr/IADR-0180_blocked-judgments-expire.md) 決定 1）。
+**混ぜて「できない」と書かない。**
 
 **最後に測った時点: 2026-08-11 / #705。** **棚卸しのたびに測り直す**こと。再測定の手順:
 
@@ -205,16 +213,17 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 ### 検査器の配線・CHANGELOG の是正（別紙）
 
 **規約の本文は [`.claude/rules/traceability.md`](../.claude/rules/traceability.md)、配線と運用の詳細は
-[`docs/traceability-appendix.md`](traceability-appendix.md)（キット配布物・分類 A）が持つ。**
-本書は技術スタック固有の CI 配線を扱うため配布先ごとに差分を持ちうるが、**別紙は差分を持たない**
-（どの配布先でもバイト一致で取り込める）。
+[`docs/traceability-appendix.md`](traceability-appendix.md) が持つ。**
+本書は技術スタック固有の CI 配線を扱うため配布先ごとに差分を持つ。**［2026-08-21 変更］別紙も
+キットとのバイト一致を前提としない** —— 資料再編の計画 ADR 決定 6 でキットは bootstrap 専用となり、
+バイト一致の同期検査は退役した。別紙は本リポジトリ固有の節（`docs/` の trace ブロック等）を持つ。
 
 ## よくある詰まり（FAQ）
 
 | 症状 | 対処 |
 | --- | --- |
 | スラッシュコマンド（`/new-spec` 等）が出ない | repo-template の `.claude/` をリポ直下にコピーしたか確認し、Claude Code を再起動して読み直す。 |
-| 計画書（`projects/<name>`）を参照できない | `git submodule update --init planning` を実行する（**本リポは submodule 構成**）。`/sync-plan` で `.ai-context/` に再生成して確認する。 |
+| 計画書（`projects/<name>`）を参照できない | 本リポは planning に依存しない。隣接クローン（既定 `../project-planning`）を用意するか、GitHub 上の URL で該当ページを開いて確認する。 |
 | CI / AI ワークフローが起動しない | `.example` を外して有効化したか（`scripts/apply-profile.sh`）、必要な Secrets を登録したか確認する。Actions のログでトリガ条件を確認する。 |
 | `@claude` が反応しない | `claude-coding.yml` が有効化済みか、`CLAUDE_CODE_OAUTH_TOKEN` か `ANTHROPIC_API_KEY` のいずれかが登録済みかを確認する。 |
 | ビルド・テストが C#/.NET 前提で合わない | 技術スタック別の差し替え対象（`ci.yml` / `setup.sh` / `.devcontainer/` / `settings.json` の permissions）を使用言語へ直す。一覧は計画リポの `tools/impl-handoff-kit/README.md`「技術スタック別の差し替え対象」。 |
@@ -224,4 +233,4 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 - AI は**着手前に作業仕様書を作成**し、それに沿って実装する（hook が警告）。
 - 破壊的操作・秘密情報コミットは hook と権限設定でブロックする。
 - マージ前に **CI ゲート ＋ 人間の最終レビュー** を必ず通す（全自動でも最後の人間ゲートは残す）。
-- 計画書に反する判断は実装で押し通さず、`/plan-feedback` で計画側へ戻す。
+- 計画書に反する判断は実装で押し通さず、計画リポジトリへ GitHub issue で戻す（`/plan-feedback`）。

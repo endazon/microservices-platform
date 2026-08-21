@@ -4,24 +4,24 @@
 
 ## 起点 ID の種別（固有）
 
-- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0047`（**欠番なし**。**走査基準: planning `767a9d48`**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
+- 裸の ID は **MSP** を指す。レンジは `FR-01..22` / `UC-01..11` / `SC-01..21` / `ADR-0001..0048`（**欠番なし**。引き直しの記録は別紙 [`plan-id-range-history-annex.md`](../../docs/how-to/plan-id-range-history-annex.md)。**世代数は書かない**——別紙が増えるたびに腐る導出値である）。
 - **`Proposed` でも ID としては実在する**（[[IADR-0119]] 決定 2）。
 - **着手条件は FR 単位で読む。** 範囲の正は計画 `ADR-0037` の「着手可否の注記」であり**ここへ転記しない**（[[IADR-0142]]）。
-- **CI は計画 ADR の実在性を守っていない**（別紙 §3）。
+- **計画 ADR の実在性は本節の宣言レンジで検査する**（`check-commit-messages.js`・`check-trace-blocks.js` とも本節が一次情報。ファイル有無の突合は submodule 撤去により不可。CI が守れていなかった経緯は別紙 §3）。
 - **`NFR` の採番は `NFR-01`〜`NFR-27`**（内訳は別紙 §4）。**実在性は検査されない**（書き手が守る）。既存の無採番 `NFR` は遡及書き換えしない。**メタ作業（規約・検査器・文書統制）は代表例で、製品の作業にも当たる番号が無いことはある**（#716）。**無いことは「実装側で作ってよい」ではない**（[[IADR-0179]] 決定 2）。
 
 ## 複数プロジェクトを跨ぐ場合の ID 修飾（固有設定）
 
-- **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`（`AST/FR-17`）。AST の採番は `FR-01..21` / `UC-01..07` / `SC-01..03`（pin `767a9d48`）。
-- `check-plan-id-qualification.js`（#576）の対象は追跡下の全ファイル（submodule・`CHANGELOG.md`・`docs/specs/`・`feedback/` を除く）。「AST 文脈で裸の ID」と列挙の後続 ID は検出しない（人と AI が守る）。
+- **計画 ID の `<PROJ>`**: ai-stock-trading = `AST`（`AST/FR-17`）。AST の採番は `FR-01..21` / `UC-01..07` / `SC-01..03`。
+- `check-plan-id-qualification.js`（#576）の対象は追跡下の全ファイル（submodule（`src/ai-stock-trading`）・`CHANGELOG.md`・`.ai-context/specs/`・`.ai-context/superpowers/` を除く）。「AST 文脈で裸の ID」と列挙の後続 ID は検出しない（人と AI が守る）。
 - **issue / PR 番号は短縮形に寄せる**: `AST#NNN` / `planning#NNN`。フルパス形式は自動リンクが要る箇所だけ。**列挙形でも各番号を修飾する**。**Markdown の明示リンクもテキストは短縮形**（#507）。**修飾語と番号の間に空白を入れない**（誤: `AST #24`。自リポを指す `MSP #266` は裸でよい）。**フルパス形式の owner は `endazon` ただ 1 つ**（#590。第三者リポは除く）。経緯は別紙 [`cross-project-id-refs-annex.md`](../../docs/how-to/cross-project-id-refs-annex.md)。
 
 ### Superseded / Deprecated な ADR を引用するときの書式（#580）
 
 - **旧 ID を残し、後継を併記する。ID を後継へ付け替えてはならない。** frontmatter の ID リスト: 旧 ID を残し**後継 ID を項目として併記**（説明を混ぜない）。散文・コード / 設定のコメント: `ADR-0003（Superseded by ADR-0027）`。
 - **注記そのものへ起票 ID を書き**、`updated:` を前進させる（決定を変える追記は日付つき追記ブロック `［YYYY-MM-DD 追記 / #NNN］`）。**後継 ID は旧 ID の隣に置く。**
-- 適用先は **live な権威文書とコード**（`docs/adr/` に限らない）。確定済みの `docs/specs/`・`docs/superpowers/` は**書き換えない**（作業中の PR の仕様書は別）。「書き換えない」の対象は本文への後付け注記である。frontmatter の状態欄は対象外（#717 / [[IADR-0191]] 決定 2）。
-- **凍結の射程は記録種ごとに違う**（planning#387 / [[IADR-0166]] 決定 2 の 2026-08-17 追記が正本）。①＝状態欄を本文で言い直した追記。**`feedback/` は①だけ不可**（トリアージ結果・裁定・自己是正は残す。planning#369）／**`docs/specs/` は `［YYYY-MM-DD 追記 / #NNN］` 書式の経過追記が可**／**`docs/superpowers/` は不可**。
+- 適用先は **live な権威文書とコード**（`.ai-context/adr/` に限らない）。確定済みの `.ai-context/specs/`・`.ai-context/superpowers/` は**書き換えない**（作業中の PR の仕様書は別）。「書き換えない」の対象は本文への後付け注記である。frontmatter の状態欄は対象外（#717 / [[IADR-0191]] 決定 2）。
+- **凍結の射程は記録種ごとに違う**（planning#387 / [[IADR-0166]] 決定 2 の 2026-08-17 追記が正本）。①＝状態欄を本文で言い直した追記。**`.ai-context/specs/` は `［YYYY-MM-DD 追記 / #NNN］` 書式の経過追記が可**／**`.ai-context/superpowers/` は不可**。環流記録（旧 `feedback/`）は ADR-0048 決定 5 により本リポジトリから撤去済みで、以後の環流は計画リポジトリの GitHub issue で行う（本節の対象外）。
 - **機械検査は置いていない**（別紙 [`adr-supersede-citation-annex.md`](../../docs/how-to/adr-supersede-citation-annex.md)）。
 
 ## 是正・追随の母集合の取り方（固有の追加）

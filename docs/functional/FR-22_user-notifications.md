@@ -2,53 +2,35 @@
 title: FR-22 利用者本人への通知 機能仕様書
 type: functional-spec
 status: in-progress
-related_ids:
-  - FR-22
-  - FR-19
-  - FR-20
-  - UC-11
-  - ADR-0037
-  - ADR-0045
-  - ADR-0046
-  - IADR-0056
-  - IADR-0119
-  - IADR-0121
-  - IADR-0125
-  - IADR-0132
-  - IADR-0142
-  - IADR-0215
-author: Claude
 created: 2026-08-16
-updated: 2026-08-16
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md"
-related_specs:
-  - ../adr/IADR-0215_notification-service-and-in-app-delivery.md
-  - ../specs/20260816_issue-600_fr22-in-app-notifications.md
-  - ../tests/FR-22_user-notifications.md
-  - ../api/BFF_notifications.md
+updated: 2026-08-21
+author: Claude
 ---
+<!-- trace:
+ids: [FR-19, FR-20, FR-22, SC-10, UC-11]
+adrs: [ADR-0037, ADR-0045, ADR-0046]
+iadrs: [IADR-0056, IADR-0119, IADR-0121, IADR-0125, IADR-0132, IADR-0142, IADR-0215]
+specs: [20260816_issue-600_fr22-in-app-notifications]
+issues: [#600]
+-->
 
-# 機能仕様書: FR-22 利用者本人への通知
+# 機能仕様書: 利用者本人への通知
 
 > **`status: in-progress` の理由と、いま残っているもの**（`docs/README.md` の語彙）。
 > 本書が記述する実装のうち、**アプリ内通知の契約と受け皿（フロント）は入っている**が、
 > **送出側（`NotificationService`・メール outbox・レート制御・発火の結線）は入っていない**。
-> 線引きの正本は [[IADR-0215]] 決定 6、経緯は [作業仕様書 #600](../specs/20260816_issue-600_fr22-in-app-notifications.md) である。
+> 線引きの正本は通知サービス新設の実装 ADR の決定 6 であり、経緯は同名の作業仕様書にある。
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: **FR-22**（優先度 Should）。発火源として **FR-19**（個人資料・保存容量）・**FR-20**（同期トークン）
-- ユースケース（UC）: **UC-11** 例外フロー（削除通知・容量警告）
+- 機能要求: **利用者本人への通知配信**（優先度 Should）。発火源は**個人資料の作成・公開範囲設定**（保存容量）と**Obsidian 双方向同期**（同期トークン）
+- ユースケース: **自分の資料を作成・管理し、公開範囲を自ら設定する**の例外フロー（削除通知・容量警告）
 - 業務フロー（04_workflows）: 該当なし（通知は画面遷移を伴わない）
 - 計画書リンク:
-  [02_requirements/01_requirements.md](../../planning/projects/microservices-platform/02_requirements/01_requirements.md) FR-22 ／
-  [03_usecases/01_usecases.md](../../planning/projects/microservices-platform/03_usecases/01_usecases.md) UC-11 ／
-  [ADR-0037](../../planning/projects/microservices-platform/07_adr/ADR-0037_obsidian-sync-method.md) 決定 6・17・18 ／
-  [ADR-0045](../../planning/projects/microservices-platform/07_adr/ADR-0045_mail-delivery-smtp-relay.md) 決定 3・8
+  02_requirements/01_requirements.md（計画リポ）の通知要求 ／
+  03_usecases/01_usecases.md（計画リポ）の個人資料ユースケース ／
+  Obsidian 同期方式（計画リポ）決定 6・17・18 ／
+  メール配信の SMTP リレー（計画リポ）決定 3・8
 
 ## 概要
 
@@ -57,7 +39,7 @@ related_specs:
 
 計画が確定させているのは「**何を・いつ・誰へ**通知するか」までであり、
 **アプリ内通知の実体（保持・既読・配信）と送出主体は実装設計に委ねられている**。
-その実装設計は [[IADR-0215]] が持つ（**ここへ複写しない**）。
+その実装設計は通知サービス新設の実装 ADR が持つ（**ここへ複写しない**）。
 
 ## 機能詳細
 
@@ -65,11 +47,11 @@ related_specs:
 
 | # | `kind` | 契機 | 含める値 | 宛先 | 根拠 |
 | --- | --- | --- | --- | --- | --- |
-| ① -a | `private-note-purge-weekly` | 論理削除済み資料の**週次通知** | **件数** ＋ **完全削除までの期限**（最短のもの） | 所有者本人のみ | ADR-0037 決定 6 |
-| ① -b | `private-note-purge-imminent` | 完全削除の **7 日前** | **件数** ＋ **期限** | 所有者本人のみ | ADR-0037 決定 6 |
-| ① -c | `private-note-purge-done` | 完全削除の**事後** | **件数**（実行済み） | 所有者本人のみ | ADR-0037 決定 6 |
-| ② | `storage-quota-warning` | 保存容量が **80% / 95%** に達した時点で**各 1 回** | **到達した閾値**（80 または 95） | 本人のみ | FR-19 / ADR-0037 決定 17 |
-| ③ | `sync-token-expiry` | 同期トークンの期限の **7 日前** | **件数**（対象トークン）＋ **期限** | 所有者本人のみ | ADR-0037 決定 18（**期限切れ当日の追加通知は設けない**） |
+| ① -a | `private-note-purge-weekly` | 論理削除済み資料の**週次通知** | **件数** ＋ **完全削除までの期限**（最短のもの） | 所有者本人のみ | Obsidian 同期方式の決定 6 |
+| ① -b | `private-note-purge-imminent` | 完全削除の **7 日前** | **件数** ＋ **期限** | 所有者本人のみ | Obsidian 同期方式の決定 6 |
+| ① -c | `private-note-purge-done` | 完全削除の**事後** | **件数**（実行済み） | 所有者本人のみ | Obsidian 同期方式の決定 6 |
+| ② | `storage-quota-warning` | 保存容量が **80% / 95%** に達した時点で**各 1 回** | **到達した閾値**（80 または 95） | 本人のみ | 個人資料の要求 / Obsidian 同期方式の決定 17 |
+| ③ | `sync-token-expiry` | 同期トークンの期限の **7 日前** | **件数**（対象トークン）＋ **期限** | 所有者本人のみ | Obsidian 同期方式の決定 18（**期限切れ当日の追加通知は設けない**） |
 
 ### 入力・処理・出力
 
@@ -82,7 +64,7 @@ related_specs:
 
 ### **本文が「件数と期限のみ」であることを、契約の形で守らせる**
 
-**`NotificationDto` に自由文のフィールドを 1 つも置かない**（[[IADR-0215]] 決定 2）。
+**`NotificationDto` に自由文のフィールドを 1 つも置かない**（通知サービスの実装 ADR 決定 2）。
 
 | 項目 | 型 | 必須 | 説明 |
 | --- | --- | --- | --- |
@@ -96,7 +78,7 @@ related_specs:
 
 - **`title` / `body` / `message` に相当する項目は存在しない。**
 - **表示文言はクライアントが Lingui カタログ（ja / en）から組み立てる。**
-  `@platform/ui` には表示文言を入れない（[[IADR-0125]] 決定 1）。
+  `@platform/ui` には表示文言を入れない（共有 UI プリミティブの実装 ADR 決定 1）。
 - **メールの本文も同じ組み立て規則で作る**（送出側の文言テンプレート）。
   **メールは本システムの ABAC の外側へ出る**ため、この境界が最も重要である。
 
@@ -162,29 +144,29 @@ flowchart TD
 | 通知一覧の取得に失敗した | **共通シェルは壊れない**。ベルは未読件数を出さず、開いた一覧に取得失敗を示す | `Alert`（色 ＋ アイコン ＋ テキスト） |
 | 通知が 0 件 | 「通知はありません」を出す（**空であることを明示する**。無言で何も描かない形にしない） | 通常表示 |
 | 既読化に失敗した | 一覧はそのまま。失敗を伝えて再試行できる | `Alert` |
-| メール送信が失敗した | **アプリ内通知には影響しない**。`failed` として記録し、監査ログと SC-10 へ出す | 利用者には出さない（補助経路の失敗である） |
-| 日次の送信上限に達した | **繰り越す**（`deferred`）。期限を過ぎるものは `dropped` として**記録して**破棄する | 利用者には出さない。**運用者は SC-10 で観測できる** |
+| メール送信が失敗した | **アプリ内通知には影響しない**。`failed` として記録し、監査ログと運用ダッシュボードへ出す | 利用者には出さない（補助経路の失敗である） |
+| 日次の送信上限に達した | **繰り越す**（`deferred`）。期限を過ぎるものは `dropped` として**記録して**破棄する | 利用者には出さない。**運用者は運用ダッシュボードで観測できる** |
 | 未認証 | `401`。SPA は既存の 401 導線（再認証）へ倒す | 既存の共通処理 |
 
 ## 受け入れ基準
 
 計画 `02_requirements` の受け入れ基準を実装可能な粒度へ落としたものである。
-**本 PR で満たした／backend 待ちの別は [作業仕様書 #600](../specs/20260816_issue-600_fr22-in-app-notifications.md) §受け入れ基準 が正本である**（ここへ複写しない）。
+**本 PR で満たした／backend 待ちの別は、同名の作業仕様書 §受け入れ基準 が正本である**（ここへ複写しない）。
 
 - [ ] **通知が所有者本人にのみ届く**（他の利用者・管理者へは届かない）
 - [x] **通知の本文が件数と期限のみで構成される**（**契約にタイトル／本文の項目が無い**ことで守る）
 - [ ] **アプリ内通知が主・メールが補助である**（メールが送れない場合もアプリ内通知は届く）
-- [ ] **送信上限を超える通知が静かに落ちない**（監査ログと SC-10 で観測できる）
+- [ ] **送信上限を超える通知が静かに落ちない**（監査ログと運用ダッシュボードで観測できる）
 - [x] **状態表示が色だけで意味を持たない**（色 ＋ アイコン ＋ テキスト）
 - [x] **文言が ja / en の両方で揃っている**（未翻訳キーは `check-i18n-catalogs.js` が止める）
 
 ## 関連仕様
 
-- 画面仕様書: **なし**（通知は共通シェル横断の要素であり、計画に固有の SC 番号が無い。[[IADR-0215]] フォローアップ 4）
+- 画面仕様書: **なし**（通知は共通シェル横断の要素であり、計画に固有の画面 ID が無い。通知サービスの実装 ADR のフォローアップ 4）
 - 通信仕様書: [BFF 通知](../api/BFF_notifications.md) ／ [BFF 境界](../api/BFF_bff-surface.md)
-- データ仕様書: **未作成**（送出側の永続化は本 PR の射程外。[[IADR-0215]] 決定 6）
-- テスト仕様書: [FR-22](../tests/FR-22_user-notifications.md)
-- 実装 ADR: [[IADR-0215]]
+- データ仕様書: **未作成**（送出側の永続化は本 PR の射程外。通知サービスの実装 ADR 決定 6）
+- テスト仕様書: [利用者通知](../tests/FR-22_user-notifications.md)
+- 実装 ADR: 通知は NotificationService を新設して担い、アプリ内通知はポーリングで配信する
 
 ## 未決事項
 
@@ -192,4 +174,4 @@ flowchart TD
    必要になったら計画へ環流して SC を起こす（**実装側で画面番号を作らない**）。
 2. **メールの宛先アドレスの解決元**（Keycloak のユーザ属性か、独自の連絡先か）は送出側の設計であり、
    本 PR の射程外である。
-3. **保持期間 90 日・ポーリング 60 秒は計画に根拠が無い実装側の判断である**（[[IADR-0215]] 決定 2）。
+3. **保持期間 90 日・ポーリング 60 秒は計画に根拠が無い実装側の判断である**（通知サービスの実装 ADR 決定 2）。

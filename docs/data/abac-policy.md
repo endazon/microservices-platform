@@ -2,18 +2,17 @@
 title: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy） データ仕様書
 type: data-spec
 status: in-progress
-related_ids:
-  - FR-05
-  - FR-09
-  - ADR-0004
-author: claude
 created: 2026-07-04
-updated: 2026-07-04
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md (FR-05, FR-09)"
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0004_authz-abac.md"
-  - "../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-09]
+adrs: [ADR-0002, ADR-0004]
+iadrs: []
+specs: []
+issues: []
+-->
 
 # データ仕様書: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy）
 
@@ -21,18 +20,20 @@ plan_refs:
 
 ## 起点となる計画書（トレーサビリティ）
 
-- **関連機能要求(FR)**: FR-05（ABAC によるアクセス制御・検索フィルタ）、FR-09（ABAC 属性・ポリシーの管理）
+- **関連機能要求**: ABAC によるアクセス制御・検索フィルタ、ABAC 属性・ポリシーの管理
 - **技術検討(06_technical)・ADR**:
-  - ADR-0004 認可＝ABAC（属性ベースアクセス制御）
+  - 認可＝ABAC（属性ベースアクセス制御）
   - 技術検討 `06_technical/07_abac-attribute-model.md`（属性モデル）
-  - 関連: ADR-0002 DB per Service（AuthorizationService 専用 DB）
-- **計画書リンク**: `../../planning/projects/microservices-platform/02_requirements/01_requirements.md`、`../../planning/projects/microservices-platform/06_technical/07_abac-attribute-model.md`
+  - 関連: DB per Service（AuthorizationService 専用 DB）
+- **計画書リンク**: `01_requirements.md`（計画リポ）、`07_abac-attribute-model.md`（計画リポ）
 
 ## 概要
 
 AttributeDefinition は管理者が定義する**属性辞書エントリ**で、属性キー・ラベル・取りうる値（AllowedValues）・必須有無・スコープ（`document` / `user`）を保持する。文書側の属性（`Document.Attributes`）と利用者側の属性の両方の語彙を定義する。
 
-AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。条件は「キー → 許容値リスト」の辞書で、評価エンジン（AbacEvaluator）がこれを突き合わせて許可判定を行う。文書の属性は `document-and-version.md` の `Document.Attributes`、検索フィルタは `data-source.md` の payload `attributes.<key>` と対応する。
+AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。
+条件は「キー → 許容値リスト」の辞書で、評価エンジン（AbacEvaluator）がこれを突き合わせて許可判定を行う。
+文書の属性は `document-and-version.md` の `Document.Attributes`、検索フィルタは `data-source.md` の payload `attributes.<key>` と対応する。
 
 ## エンティティ定義
 
@@ -97,27 +98,27 @@ erDiagram
 | --- | --- | --- |
 | 主キー | `AttributeDefinitions.Id` | `HasKey(a => a.Id)` |
 | 主キー | `Policies.Id` | `HasKey(p => p.Id)` |
-| 一意インデックス | `AttributeDefinitions (Key, Scope)` | `IX_AttributeDefinitions_Key_Scope` — 同一スコープ内でキー一意（FR-09） |
+| 一意インデックス | `AttributeDefinitions (Key, Scope)` | `IX_AttributeDefinitions_Key_Scope` — 同一スコープ内でキー一意 |
 | 外部キー | なし | 2 エンティティ間に FK 関連なし（論理的整合のみ） |
 
 ## 整合性・制約ルール
 
-- **属性キーの一意性（FR-09）**: `(Key, Scope)` 一意制約により、同一スコープ内での属性キー重複を DB で防止。`Key` / `Scope` はエンティティ上も不変。
+- **属性キーの一意性**: `(Key, Scope)` 一意制約により、同一スコープ内での属性キー重複を DB で防止。`Key` / `Scope` はエンティティ上も不変。
 - **条件の NULL を保存しない**: `UserConditions` / `DocumentConditions` は `Create` / `Update` で `?? []` により空辞書化。評価エンジンが null を foreach して落ちるのを防ぐ（「条件なし」＝空辞書＝無制約）。
 - **有効／無効の分離**: ポリシーは物理削除せず `IsActive` で一時停止できる。
 - **アクション・スコープの妥当性**: `PolicyAction.IsValid` / `AttributeScope.IsValid` で列挙値を検証（`read`/`analyze`/`manage`、`document`/`user`）。
-- **文書属性との整合**: `DocumentConditions` のキーは `Document.Attributes` のキー、検索時は Qdrant payload `attributes.<key>` と突き合わせる（越境整合、FR-05）。
+- **文書属性との整合**: `DocumentConditions` のキーは `Document.Attributes` のキー、検索時は Qdrant payload `attributes.<key>` と突き合わせる（越境整合。ABAC によるアクセス制御の前提）。
 
 ## 永続化方針
 
-- **DB**: PostgreSQL、EF Core（`AuthorizationDbContext`）。ADR-0002 に従い AuthorizationService 専用 DB。
+- **DB**: PostgreSQL、EF Core（`AuthorizationDbContext`）。DB per Service の方針に従い AuthorizationService 専用 DB。
 - **JSON カラム**: `AllowedValues`（List）、`UserConditions` / `DocumentConditions`（Dictionary&lt;string,List&lt;string&gt;&gt;）は `ValueConverter` で JSON 文字列化し `jsonb` 格納。`ValueComparer`（listComparer / dictListComparer）を設定。
 - **時刻の DB 既定**: `AddAbacManagementFields` マイグレーションで追加した `CreatedAt`/`UpdatedAt` は `defaultValueSql: "now()"`。
 
 ## マイグレーション・初期データ
 
 - `20260626150853_InitialCreate` — `AttributeDefinitions` / `Policies` テーブル作成。
-- `20260702133000_AddAbacManagementFields` — `Policies.UpdatedAt`、`AttributeDefinitions.CreatedAt`/`UpdatedAt`（既定 `now()`）を追加し、`IX_AttributeDefinitions_Key_Scope` 一意インデックスを作成（FR-09）。
+- `20260702133000_AddAbacManagementFields` — `Policies.UpdatedAt`、`AttributeDefinitions.CreatedAt`/`UpdatedAt`（既定 `now()`）を追加し、`IX_AttributeDefinitions_Key_Scope` 一意インデックスを作成。
 - 初期データ（シード）はマイグレーションでは定義していない。
 
 ## 関連仕様

@@ -2,24 +2,25 @@
 title: 指定データ範囲での分析・比較・抽出 機能仕様書
 type: functional-spec
 status: completed
-related_ids:
-  - FR-07
-  - UC-02
-  - FR-05
-author: claude
 created: 2026-06-27
-updated: 2026-06-29
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-05, FR-07, UC-02]
+adrs: [ADR-0004, ADR-0010]
+iadrs: []
+specs: []
+issues: []
+-->
 
 # 機能仕様書: 指定データ範囲での分析・比較・抽出
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-07
-- ユースケース（UC）: UC-02
-- 関連 ADR: ADR-0010、ADR-0004（ABAC）
+- 機能要求: 指定データ範囲での AI 分析・比較・抽出
+- ユースケース: AI 分析を依頼する
+- 関連 ADR: LLM ゲートウェイ、認可＝ABAC
 - 計画書リンク: `02_requirements/01_requirements.md`
 
 ## 概要
@@ -89,8 +90,8 @@ flowchart TD
 ## 関連仕様
 
 - 通信仕様書: `../api/openapi.yaml`（`/analysis/analyze`, `/bff/analysis/analyze`）
-- 実装 ADR: `../adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`
-- 作業仕様書: `../specs/20260627_FR-07_data-range-analysis.md`
+- 実装 ADR: `../../.ai-context/adr/IADR-0005_data-range-intersect-abac-narrowing-only.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-07_data-range-analysis.md`
 - 関連機能: `./FR-04_ai-answer-citations.md`（出典付与）、`./FR-05_abac-access-control.md`（ABAC）
 
 ## 未決事項

@@ -8,7 +8,7 @@ allowed-tools: Read, Grep, Glob, Edit, Write, Bash(git switch:*), Bash(git branc
 
 手順:
 
-1. 計画リポジトリ（既定 `../project-planning`、submodule の場合 `planning/`）から該当 ID の計画書を読む。
+1. 計画リポジトリ（既定 `../project-planning`。本リポジトリは planning に依存しない。ADR-0048 決定 2）から該当 ID の計画書を読む。
    - `FR-xx` → `projects/<name>/02_requirements/`（要求・受け入れ基準）と、トレーサビリティ表から関連 UC/画面/ADR を辿る。
    - `UC-xx` → `projects/<name>/03_usecases/`（基本/代替/例外フロー）と関連要求・画面。
 2. 関連 ADR（`07_adr/`）を読み、確定済み制約を確認する。曖昧なら実装を止めて確認する。

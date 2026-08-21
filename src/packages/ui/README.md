@@ -1,11 +1,11 @@
 # `@platform/ui` — 共有 UI パッケージ
 
 2 ユニット（`platform/frontend` / `knowledge/frontend`）と将来の可変ユニットが共用する UI の共通部。
-切り出し単位の決定は [IADR-0121](../../../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 と
-[IADR-0125](../../../docs/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) 決定 1・2、
-計画側の根拠は
-[ADR-0031](../../../planning/projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md) と
-[13_frontend-stack](../../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)。
+切り出し単位の決定は [IADR-0121](../../../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 と
+[IADR-0125](../../../.ai-context/adr/IADR-0125_ui-primitives-i18n-catalog-and-storybook.md) 決定 1・2、
+計画側の根拠は project-planning の
+`projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md` と
+`projects/microservices-platform/06_technical/13_frontend-stack.md`。
 
 ## 何を入れるか / 入れないか
 
@@ -24,8 +24,8 @@
 
 移植の根拠（計画のどこが要求しているか）は、**同じ 3 情報源の突き合わせ**（計画の明示・hi-fi モックの語彙・
 既存実装の DOM 要素数。IADR-0125 決定 1）で示す。選定表は
-[#496 作業仕様書 §1](../../../docs/specs/20260804_issue-496_ui-i18n-storybook.md)（8 部品）と
-[#502 作業仕様書 §3](../../../docs/specs/20260804_issue-502_sc01-03-search-flow.md)（`Tag`）にある。
+[#496 作業仕様書 §1](../../../.ai-context/specs/20260804_issue-496_ui-i18n-storybook.md)（8 部品）と
+[#502 作業仕様書 §3](../../../.ai-context/specs/20260804_issue-502_sc01-03-search-flow.md)（`Tag`）にある。
 **現行の収録物は本表と [`src/index.ts`](src/index.ts) を正とする。**
 
 | 部品 | 主な用途（計画上の根拠） |
@@ -43,7 +43,7 @@
 前者は「定義済みの値を選ぶ」以上のことを計画が求めていないため、後者はロービングタブインデックスと
 `aria-*` の整合を自前で書くと誤りやすいためである。
 
-**判定の正は計画である**——[13_frontend-stack §shadcn/ui 派生の範囲](../../../planning/projects/microservices-platform/06_technical/13_frontend-stack.md)
+**判定の正は計画である**——project-planning の `projects/microservices-platform/06_technical/13_frontend-stack.md` §shadcn/ui 派生の範囲
 （2026-08-04 確定）が Radix を使ってよい 4 基準（フォーカストラップ／複合キーボード操作／
 ポータルの配置計算／`aria-*` の動的な同期）と**部品ごとの判定表**を定めた。
 **本パッケージの部品は判定表と一致する。** 判定表に載る 8 部品はそのままで、
@@ -68,7 +68,7 @@ import '@platform/ui/styles.css';
 
 ## 制約
 
-- **外部 CDN・Web フォント・analytics を使わない**（[08_data-egress-policy](../../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md)）。
+- **外部 CDN・Web フォント・analytics を使わない**（計画 project-planning の `projects/microservices-platform/06_technical/08_data-egress-policy.md`）。
   フォントは OS のシステムフォントスタック、アイコンは npm パッケージ同梱のものを使う。
 - **色だけで意味を持たせない**（INDEX 決定 21）。状態表現は色 ＋ アイコン ＋ テキストの 3 点セットにする。
   `StatusBadge` はこれを API で強制する実例である（テキストは必須、アイコンは tone ごとに固定）。
@@ -81,7 +81,7 @@ pnpm --filter @platform/ui run build-storybook  # 静的ビルド（storybook-st
 ```
 
 テレメトリとクラッシュレポートの外部送信は `.storybook/main.ts` で無効化している
-（[08_data-egress-policy](../../../planning/projects/microservices-platform/06_technical/08_data-egress-policy.md)
+（計画 project-planning の `projects/microservices-platform/06_technical/08_data-egress-policy.md`
 §非LLM外部送信の統制「既定テレメトリをオプトアウトする」）。**設定だけに頼らない**——
 ビルド成果物に外部オリジンへの参照が無いことを
 [`scripts/check-static-egress.js`](../../../scripts/check-static-egress.js) が機械検査する。
@@ -93,7 +93,7 @@ node scripts/check-static-egress.js --require src/packages/ui/storybook-static
 ## 未了（引き受け先を明記する）
 
 - **`Dialog` の移植 → #452**（FR-19 / FR-20 の着手保留が解けたあと。**［2026-08-07 / #599］保留は範囲基準へ変わった（[[IADR-0142]]。範囲の正は計画 `ADR-0037` の着手可否の注記）**）。計画が確認ダイアログを要求するのは
-  SC-19 / SC-20 だけであり、両画面は [IADR-0119](../../../docs/adr/IADR-0119_fr17-21-hold-until-adr-fixed.md)
+  SC-19 / SC-20 だけであり、両画面は [IADR-0119](../../../.ai-context/adr/IADR-0119_fr17-21-hold-until-adr-fixed.md)
   決定 1 が着手を保留している。**繰り延べであって放棄ではない**（IADR-0125 決定 2）。
 - **ダークテーマのトークン → #452**。画面が確定してから追加する。
 - **プリミティブの画面への適用 → #452**。本パッケージの利用者は現時点で Storybook と単体テストだけである。

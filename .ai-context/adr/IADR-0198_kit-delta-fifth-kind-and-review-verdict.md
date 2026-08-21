@@ -1,0 +1,125 @@
+---
+title: IADR-0198 固有デルタに第 5 種（キットが委ねている欄）を認め、check-review-verdict をレビュー用ワークフローだけへ配線する
+type: impl-adr
+status: Accepted
+related_ids:
+  - NFR
+  - IADR-0115
+  - IADR-0192
+  - IADR-0193
+author: claude
+created: 2026-08-15
+updated: 2026-08-15
+plan_refs:
+  - planning:tools/impl-handoff-kit/repo-template/scripts/kit-sync-classification.example.json
+  - planning:tools/impl-handoff-kit/repo-template/AI_SETUP.md
+related_specs:
+  - "../specs/20260815_planning-pin-ce9abd2.md"
+---
+
+# IADR-0198: 固有デルタの第 5 種を認め、`check-review-verdict` の配線先を限定する
+
+- 状態: Accepted（2026-08-15）
+- 決定者: 計画側の裁定（planning#339）＋ 利用者（`check-review-verdict.js` の採用）＋ claude（実装）
+
+## 起点・関連
+
+- 計画 pin を `130a109` → `ce9abd2` へ進めた作業（[作業仕様書](../specs/20260815_planning-pin-ce9abd2.md)）
+- 改定対象: [IADR-0115](./IADR-0115_impl-handoff-kit-as-single-source.md) 決定 2（分類 B で許容する固有デルタの種別）
+- Issue: #516 の前段。#751（上流の `--require-planning` の追随）
+
+## 決定 1: 固有デルタに**第 5 種**を認める（[IADR-0115](./IADR-0115_impl-handoff-kit-as-single-source.md) 決定 2 の改定）
+
+[IADR-0115](./IADR-0115_impl-handoff-kit-as-single-source.md) 決定 2 は「分類 B で許容する固有デルタは**次の 4 種のみ**」と定めていた。
+**planning#339 の裁定で第 5 種が新設されたため、これを改定する。**
+
+> **5. キットが選択・追記を委ねている欄**
+> キットが**未選択・空の状態で配り、どのリポジトリも必ず埋める**欄。
+> **埋まっていること自体はキットへの追随漏れではない。**
+
+**該当するのは本リポでは 2 件**である（裁定の環流記録が名指ししている）。
+
+| ファイル | 委ねられている欄 |
+| --- | --- |
+| `AI_SETUP.md` | 利用可能な AI の**チェックボックス**（キットは `- [ ]` 3 行で配る） |
+| `scripts/commit-allowlist.json` | **`allow` 配列**（キットは空で配る） |
+
+**ただし土台（説明文・規約文）はキット側が正であり、追随の対象から外れない。**
+第 5 種が免除するのは「委ねられた欄が埋まっていること」だけである。
+
+> **★ 本リポは当初これを取り違えた。** `AI_SETUP.md` の分類理由を
+> 「planning#339 で第 5 種が新設されたが、**本項は第 5 種にも当たらない**ため X のまま」と書いていた。
+> **3 つの一次資料すべてに反していた** —— 裁定の環流記録（`AI_SETUP.md` を代表例として名指し）、
+> キット原文の `AI_SETUP.md`（「このチェックボックスは…第 5 種である」）、
+> 語彙の単一情報源 `kit-sync-classification.example.json`（`"AI_SETUP.md": "5. キットが選択を委ねている欄…"`）。
+> **PR #750 のトレーサビリティ監査が検出した。**
+>
+> **同時に、土台の追随漏れも見落としていた** —— 本リポの `AI_SETUP.md` はキットの 2 ブロック
+> （第 5 種の説明／`.github/workflows/` 配下では `.example` を挟んでも無効にならないという注意）を
+> 欠いていた。**分類 B はバイト比較されないため `check-kit-sync.js` では出ない。**
+> 現在は残差が `- [x]` の 1 行だけになっている。
+
+### 値域の正はキットが持つ
+
+種別の値域は **キットの `scripts/kit-sync-classification.example.json` の `$comment`** が持つ。
+**本リポの ADR へ複写しない** —— 2 箇所に置くと片方が古くなる（[IADR-0141](./IADR-0141_audit-rounds-and-population-drawing.md)）。
+本 IADR が記録するのは「4 種 → 5 種へ広げた」という改定の事実である。
+
+機械検査（`scripts/scripts.repo.test.js` の分類値の書式検査）は `^([1-4]|X)\. ` を
+**`^([1-5]|X)\. `** へ広げた。**広げなければ第 5 種を名乗った時点で落ちる**（実際に落ちて気づいた）。
+
+## 決定 2: `check-review-verdict.js` の配線先は**レビュー用ワークフローに限る**
+
+キットが新規配布した `check-review-verdict.js` を採用する（利用者裁定 2026-08-15）。
+**配線先は `claude-code-review.yml` の 1 本だけ**とする。
+
+**`claude-coding.yml` へ配線してはならない。**
+
+| | `claude-code-review.yml` | `claude-coding.yml` |
+| --- | --- | --- |
+| 用途 | 自動 AI レビュー | **`@claude このタスクを実装してください` への応答**（`docs/ai-workflow.md` §2） |
+| `prompt:` | **持つ**（判定 🔴 / 🟡 / 🟢 の書式を指示する） | **持たない**（本文駆動） |
+| 判定見出し | 出る | **出ない** |
+
+`check-review-verdict.js` は判定見出しが無ければ `ALLOW_MISSING_VERDICT=1` が無い限り exit 1 で落ちる。
+配線すると**正常に完了した実装タスクでもこのステップだけが恒常的に赤くなる**。
+
+> **★ 当初は 2 本へ配線した。** 根拠にしたキットのヘッダ「**2 本セットで配布すること**」は
+> **スクリプト 2 本の配布**（`check-review-verdict.js` は `check-permission-denials.js` の `parseEvents` を
+> 借りるので単独では動かない）を指しており、**配線先の指示ではない**。機械的に読み替えていた。
+> **キット自身は `claude-code-review.example.yml` の 1 本だけに配っている。** PR #750 の AI レビューが 🔴 で検出した。
+> **同じ誤読を他リポでも防ぐため、文言の明確化を planning#355 として環流した。**
+
+`ALLOW_MISSING_VERDICT=1` を付けて黙らせる案は採らない —— **常に警告だけを出すステップは意味が無く、
+「検査している」という誤った印象だけを残す**。本検査器がまさに止めようとしている型である。
+
+## 理由
+
+- **決定 1**: 裁定が明示的に「実装側は `IADR-0115` 決定 2 の改定と、分類表の `X` のうち第 5 種に当たるものの
+  振り直しが要る」と述べている。**`X` は「4 種に当たらない＝環流債務」の測定値**であり、
+  第 5 種に当たるものを `X` に置くと**債務の件数が汚れる**。
+- **決定 2**: 検査器は**偽陽性へ倒す設計**である（落ちれば人が気づくが、緑の素通りは誰も気づかない）。
+  しかし**恒常的な偽陽性は検査器そのものを外させる** —— キットのヘッダ自身が
+  「両者が離れると恒久的な偽陽性になり、**検査器そのものが外される**」と警告している。
+
+## 結果
+
+- **良い影響**: 第 5 種が名乗れるようになり、`X` の件数が環流債務の測定値として読めるようになった。
+  `AI_SETUP.md` の土台の追随漏れも解消した。
+- **悪い影響 / トレードオフ**: 分類の種別が 5 つに増え、判断の余地が広がった。
+  **第 5 種を「便利な逃げ道」にしないこと** —— **キットが未選択・空で配っている欄**に限る。
+- **限界**: **分類 B はバイト比較されない**ため、土台の追随漏れは機械では出ない。
+  今回は監査が見つけた。**同型が 2 回起きたら検査器を置く**（`CLAUDE.md`）。
+
+## フォローアップ
+
+1. **#751**: 上流裁定 planning#343 の `--require-planning` を追随する（`kit-sync` / `feedback-status-sync` が
+   CI で永続的に skip したまま緑になっている）。**[IADR-0192](./IADR-0192_kit-sync-classification-and-check.md) 決定 4 / [IADR-0193](./IADR-0193_feedback-status-sync-check.md) 決定 3 の改定を伴う。**
+2. **planning#355**: 「2 本セットで配布する」の文言に配線先の限定を添えてもらう（環流済み）。
+3. **分類 B の土台の追随漏れを機械で捕まえられるか**を検討する（第 5 種のように「欄だけが違う」ものは、
+   欄を除いた残差がゼロかを見れば検査できる可能性がある）。**1 回目なので記録に留める。**
+
+## 関連
+
+- Supersedes: なし（[IADR-0115](./IADR-0115_impl-handoff-kit-as-single-source.md) 決定 2 を**部分改定**する）
+- Superseded by: なし

@@ -70,8 +70,8 @@
   不採用ライブラリ（MediatR / AutoMapper / MassTransit / FluentAssertions / Serilog 等）の混入は
   `scripts/check-backend-libraries.js` が CI で止める。
 - **サービスのテストは 1 プロジェクトにする。Unit / Integration はプロジェクトを分けず、
-  `Unit/` / `Integration/` のフォルダで分ける。**（計画
-  [12_backend-application-stack](../../planning/projects/microservices-platform/06_technical/12_backend-application-stack.md)
+  `Unit/` / `Integration/` のフォルダで分ける。**（計画 project-planning の
+  `projects/microservices-platform/06_technical/12_backend-application-stack.md`
   §規範性・粒度・置き場。利用者裁定 2026-08-04 / planning#180）。プロジェクトを分けるとビルド時間と
   参照管理のコストが増えるためである。1 プロジェクトに畳むので、`SampleService.Tests.csproj` は
   単体側（NSubstitute 等）と統合側（`Mvc.Testing` / Testcontainers / Respawn）の**和集合**を参照し、
@@ -92,12 +92,12 @@
 ## 依存規則（機械検査は IADR-0057）
 
 - ユニット外参照は `platform/backend/Shared/` の 3 プロジェクト（Contracts / Infrastructure / Kernel）のみ
-  （[IADR-0117](../../docs/adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を 2 → 3 へ
+  （[IADR-0117](../../.ai-context/adr/IADR-0117_platform-shared-kernel-placement.md) が IADR-0056 決定 3 を 2 → 3 へ
   部分改定。`Platform.Shared.Kernel` = ADR-0030 の共有カーネル・実体は未作成）。
 - platform → 可変ユニットの参照は禁止（一方向依存）。
 - `Foundation/` は `Composable/` に依存しない。
 - フロントが参照してよいのは **`@foundation`（platform の基盤）と `@platform/ui`（共有 UI パッケージ）の 2 つ**
-  （[IADR-0121](../../docs/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が
+  （[IADR-0121](../../.ai-context/adr/IADR-0121_spa-stack-migration-staging.md) 決定 4 が
   [`src/README.md`](../../src/README.md) 依存規則 例外 2 を 1 → 2 へ部分改定した。`@platform/ui` は
   ドメイン・通信・ルーティング・認証・表示文言を持たないため切り出し可能性を損なわない。
   逆向き（`@platform/ui` → ユニット）は禁止）。**`@platform/ui` の深い参照
@@ -132,7 +132,7 @@ cp Directory.Packages.props.sample Directory.Packages.props
 dotnet build backend.slnx
 ```
 
-フォールバックの要点（詳細は各 `.sample` のヘッダコメントと [IADR-0064](../../docs/adr/IADR-0064_standalone-build-props-fallback.md)）:
+フォールバックの要点（詳細は各 `.sample` のヘッダコメントと [IADR-0064](../../.ai-context/adr/IADR-0064_standalone-build-props-fallback.md)）:
 
 ```xml
 <!-- Directory.Build.props.sample（抜粋）。パスをプロパティへ束ね、Condition は単純参照にして MSB4092 を避ける。 -->
@@ -164,8 +164,8 @@ dotnet build backend.slnx
    checkout に `submodules: recursive` + トークンを与える（[how-to](../../docs/how-to/adding-a-unit-submodule.md) §3）。
 4. フロント: 雛形の `package.json` の `name` と `tsconfig.json` の `paths`（`@sample-unit` の行、および
    テンプレート位置向けの 2 つ目の候補パス）を自ユニット名へ直す。そのうえで **3 か所**を追加する
-   （[IADR-0124](../../docs/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
-   [IADR-0056](../../docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
+   （[IADR-0124](../../.ai-context/adr/IADR-0124_tanstack-router-unit-composition.md) 決定 1。
+   [IADR-0056](../../.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md) 決定 4 の
    「import 1 行」はこれに部分改定された）。
    - 合成点 `src/platform/frontend/src/features/index.ts` へ
      `import { createXxxRoutes, xxxNavItems } from '@<unit>/features';`

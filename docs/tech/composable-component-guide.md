@@ -2,23 +2,17 @@
 title: 可変部品（Composable コンポーネント）共通実装ガイド — 基盤への接続仕様と実装指示
 type: tech
 status: completed
-related_ids:
-  - FR-14
-  - FR-15
-  - ADR-0018
-author: claude
 created: 2026-07-09
-updated: 2026-08-15
-plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0018_composable-architecture.md"
-  - "../../planning/projects/microservices-platform/06_technical/10_composability-design.md"
-  - "../../planning/projects/microservices-platform/06_technical/09_datasource-connectors.md"
-related_specs:
-  - ../specs/20260709_composable-component-implementation-guide.md
-  - ../adr/IADR-0027_composability-folder-structure.md
-  - ../adr/IADR-0028_declarative-pipeline-config.md
-  - ./composability-classification.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-11, FR-14, FR-15]
+adrs: [ADR-0002, ADR-0018]
+iadrs: [IADR-0007, IADR-0022, IADR-0024, IADR-0025, IADR-0027, IADR-0028, IADR-0033, IADR-0034, IADR-0035, IADR-0051, IADR-0053, IADR-0054, IADR-0055, IADR-0056, IADR-0121, IADR-0131, IADR-0135]
+specs: [20260709_composable-component-implementation-guide]
+issues: [#195, #206, #217, #218, #219, #519]
+-->
 
 # 可変部品（Composable コンポーネント）共通実装ガイド
 
@@ -27,7 +21,7 @@ related_specs:
 実装指示書である。個別の規約はそれぞれの原典（IADR 等）が正であり、本書は入口と手順を提供する。
 矛盾がある場合は原典を優先し、本書を修正すること。
 
-## 0. 前提 — 固定と可変の境界（ADR-0018）
+## 0. 前提 — 固定と可変の境界
 
 | 区分 | 対象 | 変更手段 |
 | --- | --- | --- |
@@ -35,8 +29,8 @@ related_specs:
 | **可変（Composable）** | パイプライン段・イベントバインディング・ポート実装（アダプタ）・プロバイダ・コネクタ・フロント feature | 構成変更＋プラグイン追加（本書の手順） |
 
 現状の棚卸しは[固定/可変区分表](./composability-classification.md)を参照。
-コード配置規約は [IADR-0027](../adr/IADR-0027_composability-folder-structure.md)、
-宣言的構成は [IADR-0028](../adr/IADR-0028_declarative-pipeline-config.md) が原典である。
+コード配置規約は「固定/可変分離のフォルダ・名前空間規約（Foundation / Composable）」、
+宣言的構成は「宣言的パイプライン構成は JSON 単一宣言＋起動時 fail-fast 照合で実現する」が原典である。
 
 ## 1. 基盤が可変部品に提供するもの（接続仕様）
 
@@ -49,7 +43,7 @@ related_specs:
   `events` への列挙が必要。
   - 注記: 上流仕様（`10_composability-design` §3）が定める共通エンベロープと CI 契約テストは
     未実装であり、現状はイベントごとの個別 record ＋運用ルール（PR レビュー）で代替している
-    （繰延の経緯は IADR-0028、追跡は issue #206）。
+    （繰延の経緯は宣言的構成の実装 ADR、追跡は issue #206）。
 - **同期 DTO**: サービス間同期 API の契約。経路自体は固定（[区分表 §1](./composability-classification.md)）
   であり、契約は [docs/api/openapi.yaml](../api/openapi.yaml) でバージョン管理される。
 
@@ -61,7 +55,7 @@ related_specs:
 | 宣言的パイプライン構成 | `Foundation/Pipeline/`（`IPipelineStep`・`AddPlatformPipelineConfig`・`AddPlatformPipelineStep<T>`） | 段が実装・利用する（§2.1） |
 | 認証 | JWT/Keycloak・ロール変換 | 自動適用（サービス側 Program.cs の基盤登録で有効） |
 | 可観測性 | OTel・相関 ID・ヘルスチェック | 自動適用。独自計装を追加する場合も OTel API に統一 |
-| ストレージポート | `IObjectStorageClient`（S3/Null 実装, IADR-0024） | アダプタから委譲先として利用可 |
+| ストレージポート | `IObjectStorageClient`（S3/Null 実装。バケット/キー設計は実装 ADR が定める） | アダプタから委譲先として利用可 |
 
 ### 1.3 実行時構成
 
@@ -74,7 +68,7 @@ related_specs:
 
 ### 2.1 パイプライン段（Step）— イベント購読→処理→発行
 
-配置: `<Service>/Composable/Steps/`。段はコア改修なしで追加できる（FR-14）。
+配置: `<Service>/Composable/Steps/`。段はコア改修なしで追加できる。
 
 1. `IConsumer<TIn>`（MassTransit）と `IPipelineStep`（`Shared.Infrastructure.Foundation.Pipeline`）を
    実装する。`static abstract string StepName` は `pipeline.json` の `steps[].name` と一致させる。
@@ -91,11 +85,11 @@ related_specs:
 - 段が依存してよいのは `Shared.Contracts` のイベント型・自プロジェクトの `Foundation/Ports/`・
   `Foundation/Domain/` のみ。**段どうしの直接参照は禁止**（連携はイベント経由のみ）。
 - 段は**ステートレス**を原則とし、ジョブ状態は自サービスの専用 DB に閉じる
-  （Database per Service。上流 `10_composability-design` §2・ADR-0002）。
+  （Database per Service。上流 `10_composability-design` §2 とサービス境界の決定による）。
 - 宣言と実装の不整合（段の宣言漏れ・`consumer` 型名不一致・`input` と `IConsumer<TIn>` の不一致）は
   **起動失敗**する。`enabled: false` は購読・キューを生成しない。
 - **入力イベント型の変更は構成のみでは行えない**。プラグイン改版（コード変更＋宣言更新）として扱う
-  （IADR-0028）。
+  。
 
 ### 2.2 ポートアダプタ（Adapter）— 外部コンポーネント接続
 
@@ -108,7 +102,7 @@ related_specs:
    依存は**アダプタ内に閉じる**（ポート迂回の直接依存は禁止。[区分表 §3](./composability-classification.md)）。
 3. 合成ルート（`Program.cs`）で DI 登録する。構成による実装選択（例: 接続文字列の有無で
    Qdrant/InMemory を切替）を行う場合、その選択ヘルパは `Composable/` 側に置く
-   （`Foundation/Extensions/` に置くと依存方向規則違反。IADR-0027）。
+   （`Foundation/Extensions/` に置くと依存方向規則違反）。
 
 既存アダプタ（`QdrantVectorStore`・`S3ObjectStorageClient`・`WikiJsGraphQlClient`・
 `PandocConversionService` 等）を実装例として参照すること（一覧は[区分表 §3](./composability-classification.md)）。
@@ -118,8 +112,8 @@ related_specs:
 配置: `LlmGateway` の `Composable/` 配下。
 
 1. `ILlmProvider` / `IEmbeddingProvider`（LlmGateway のポート）を実装する。
-2. ルーティング表（構成駆動。IADR-0007/0022/0025）にプロバイダとモデル経路を追加する。
-   エグレス統制（どの外部先へ出てよいか）は**固定**であり、統制の変更は新 ADR が必要（FR-11）。
+2. ルーティング表（構成駆動。設定駆動のエンドポイント定義・モデル追加・埋め込みの機密区分ルーティング）にプロバイダとモデル経路を追加する。
+   エグレス統制（どの外部先へ出てよいか）は**固定**であり、統制の変更は新 ADR が必要。
 3. 呼び出し側サービスは変更しない（各サービスは `IEmbeddingService` / `IDiagramCoder` 等の
    ポート経由で LlmGateway を利用しており、プロバイダ追加の影響は LlmGateway 内に閉じる）。
 
@@ -127,11 +121,11 @@ related_specs:
 
 配置: `DataSourceService` の `Composable/Adapters/`（ポートは `Foundation/Ports/IDataSourceConnector`）。計画は
 `06_technical/09_datasource-connectors.md`。`/sync` は実コネクタ経由で原本を取得・格納し `RawDocumentFetched`
-を発行する（IADR-0051）。`filesystem`（#195/IADR-0051）・`wiki`（#217/IADR-0053）・`saas`（#218/IADR-0054）・
-`db`（#219/IADR-0055）の 4 コネクタが実装済みで、`DataSourceService.Api/Program.cs` に DI 登録される
+を発行する。`filesystem`・`wiki`・`saas`・
+`db`の 4 コネクタが実装済みで、`DataSourceService.Api/Program.cs` に DI 登録される
 （`ConnectorRegistry` が `SourceType` で解決。未登録の SourceType は縮退）。定期同期は `DataSourceSyncHostedService`
 （既定無効）。**新規コネクタは `IDataSourceConnector` を実装して DI 登録するだけ**でコア改修なく追加できる
-（[feedback 20260709_fr01](../../feedback/20260709_fr01-connector-and-nfr-verification-status.md) の当時状況から進捗）。
+（feedback 20260709_fr01（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_fr01-connector-and-nfr-verification-status.md` へ移設） の当時状況から進捗）。
 **着手時は作業仕様書＋（設計判断があれば）IADR を先に作成する**こと。
 
 ### 2.5 新サービスユニットの追加
@@ -139,7 +133,7 @@ related_specs:
 原典は [src/README.md](../../src/README.md)（ユニット規約: レイアウト・依存規則・サブモジュール手順）。要点:
 
 1. `src/knowledge/backend/Services/<Name>/`（`src/` + `tests/`）を規約レイアウトで作成し、各プロジェクト内を
-   `Foundation/` / `Composable/` に二分する（IADR-0027。空フォルダは作らない）。
+   `Foundation/` / `Composable/` に二分する（固定/可変分離の規約。空フォルダは作らない）。
 2. 所属ユニットの `src/knowledge/backend/backend.slnx` に csproj を登録する。ビルド設定・パッケージ版は
    `Directory.Build.props` / `Directory.Packages.props` の中央管理に従う（csproj に `Version=` を書かない）。
 3. ユニット外参照は `src/platform/backend/Shared/` のみ。サービス間連携は同期 API（openapi.yaml 管理）または
@@ -150,13 +144,13 @@ related_specs:
 
 ### 2.6 フロントエンド feature（画面）
 
-原典は [IADR-0033](../adr/IADR-0033_frontend-spa-foundation.md)。要点:
+原典は「フロントエンド SPA 基盤（React + TS + Vite・foundation/features 分離・BFF 境界・OIDC〔PKCE〕）」の実装 ADR である。要点:
 
 1. `src/knowledge/frontend/src/features/<scXX-name>/` に画面 feature を追加する。基盤は
    `src/platform/frontend/src/foundation/`（config/auth/api/routing/ui）であり、feature から基盤へは
    import エイリアス `@foundation` を用いる。feature どうしの直接依存は避け、共有は foundation へ昇格させる。
 2. feature は `FeatureModule`（`routes`）を公開し、合成点 `src/platform/frontend/src/features/index.ts`
-   （IADR-0056）へ 1 行登録する。
+   へ 1 行登録する。
    登録により認証済みレイアウト配下へマウントされる（**登録しないと画面へ到達できない**）。
 3. バックエンド呼び出しは必ず **`/bff/*` 経由**にする。各サービスの直接呼び出し・接続先の
    ビルド焼き込みは禁止（実行時 config `public/config.js`）。
@@ -164,26 +158,26 @@ related_specs:
    > **［2026-08-06 追記］この項はかつて「必ず `@foundation/api` の `apiFetch` を使う」と
    > 指示していた。いまは逆である。** 既定は **orval 生成フック／生成された操作関数**
    > （`@foundation/api/generated`。`pnpm run codegen` の生成物はコミットする）であり、
-   > **画面から `apiFetch` を呼ぶ箇所は 0 件**である（#519 / [[IADR-0135]] 決定 1・2）。
+   > **画面から `apiFetch` を呼ぶ箇所は 0 件**である（#519。生成クライアントへの載せ替えによる）。
    > 契約（`docs/api/openapi.yaml`）を変えたときに画面の型検査が落ちる、という保証を
-   > 得るためである（[[IADR-0131]] 決定 1）。
+   > 得るためである（OpenAPI を BFF 契約の単一情報源とする決定）。
    > `foundation/api` を直接使ってよいのは **SSE の `apiStream`** だけで、これは orval が
-   > 扱えないため恒久的な例外である（[[IADR-0131]] 決定 4）。生成物が無い面を新設するときは、
+   > 扱えないため恒久的な例外である（同決定 4）。生成物が無い面を新設するときは、
    > **`apiFetch` を書く前に OpenAPI へ宣言を足す**。
    >
-   > 本節の原典 IADR-0033 は [[IADR-0121]] が Superseded 済みであり、本文書（`status: fixed`）の
+   > 本節の原典であるフロントエンド SPA 基盤の実装 ADR は、SPA 新スタック移行の実装 ADR に Superseded 済みであり、本文書（`status: fixed`）の
    > 全面改訂はこの追記の射程外である。ここでは**成果を次の実装者が壊す入口だけを塞ぐ**。
 4. 認証・ロールは foundation の OIDC（Keycloak `platform-spa`）とロールベースナビゲーション
-   （IADR-0035）に従う。トークン・シークレットをコードに置かない。
+   に従う。トークン・シークレットをコードに置かない。
 5. テスト（Vitest + Testing Library）を実装と同居させ、カバレッジのラチェット
-   （`src/vitest.config.ts` の thresholds。全ユニット横断で計測）を割らないこと（IADR-0034）。
+   （`src/vitest.config.ts` の thresholds。全ユニット横断で計測）を割らないこと。
 
 ## 3. 全部品共通のルール
 
 1. **依存方向**: `Foundation/` → `Composable/` の参照は禁止。可変実装へのアクセスは必ずポート
    （抽象）経由。束ねるのは `Program.cs`（合成ルート）のみ。
 2. **契約の不変**: イベント契約・同期 API 契約は後方互換の追加のみ。破壊的変更は新 ADR。
-3. **仕様書**: 着手前に作業仕様書（`docs/specs/`）を作成する。対象があれば機能/通信/データ/テスト
+3. **仕様書**: 着手前に作業仕様書（`.ai-context/specs/`）を作成する。対象があれば機能/通信/データ/テスト
    仕様書を更新し、重要な設計判断（ポート新設・共通抽象の導入等）は IADR に残す。
 4. **トレーサビリティ**: 起点 ID（FR/UC/SC/ADR）をブランチ・コミット・コードコメント・PR に残す
    （`.claude/rules/traceability.md`）。
@@ -194,7 +188,7 @@ related_specs:
 
 ## 4. 受け入れチェックリスト（PR 前の自己点検）
 
-- [ ] 作業仕様書（`docs/specs/`）があり、起点 ID・計画書リンクを備えている
+- [ ] 作業仕様書（`.ai-context/specs/`）があり、起点 ID・計画書リンクを備えている
 - [ ] 新規コードは `Composable/`（または `features/`）配下にあり、名前空間がフォルダと一致している
 - [ ] `Foundation/` 内に `using *.Composable.*` が現れていない
 - [ ] 外部 SDK への依存がアダプタ（ポート実装）内に閉じている
@@ -211,5 +205,5 @@ related_specs:
   追随して更新する。原典と本書が矛盾したら**原典が正**。
 - 計画側（`project-planning`）の `10_composability-design` §2〜§5（プラグイン規約・イベント契約の
   標準化・差し替えポイント・安全弁）が本書 §1〜§2 の上流仕様に相当する。相互参照の追加と詳細照合は
-  [feedback/20260709_composable-implementation-guide-upstream.md](../../feedback/20260709_composable-implementation-guide-upstream.md)
+  feedback/20260709_composable-implementation-guide-upstream.md（環流記録。計画リポ `projects/microservices-platform/10_feedback/20260709_composable-implementation-guide-upstream.md` へ移設）
   で環流中。上流が改版されたら本書 §1（接続仕様）を照合すること。

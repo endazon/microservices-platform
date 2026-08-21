@@ -3,7 +3,7 @@
 #
 # 背景: images.yml（#268 / IADR-0067）は compose を単一情報源にイメージ「ビルド可否」を担保するが、
 # k8s-local-images.sh の MAPPING は別のビルド対象リストで、両者のドリフトは未検査だった。本ワークフローは
-# 対応表の整合をマージ前に落とす。設計は docs/adr/IADR-0068_image-mapping-drift-check.md を参照。
+# 対応表の整合をマージ前に落とす。設計は .ai-context/adr/IADR-0068_image-mapping-drift-check.md を参照。
 #
 # ci.yml には足さない（共有ファイルの競合回避。images.yml / frontend*.yml と同じ独立ワークフロー方針）。
 # 検査は軽量（Node のみ・docker 不要）なため paths フィルタを使わず全 PR/push で常に結果を報告する

@@ -40,6 +40,9 @@ const path = require('path');
 const REPO = path.join(__dirname, '..');
 const DOCS = path.join(REPO, 'docs');
 const TEMPLATES = path.join(DOCS, 'templates');
+// ADR-0048 決定 1: IADR・作業仕様書・superpowers は `.ai-context/` へ移設された。
+// `docs/` と両方を走査しないと、移設後は IADR / 作業仕様書 / superpowers の type が検査されなくなる。
+const AI_CONTEXT = path.join(REPO, '.ai-context');
 
 // frontmatter の切り出しは #667 の検査器と共有する（同じ解析器であることを明示的に担保する）。
 const { frontMatter } = require('./check-doc-status-vocabulary.js');
@@ -52,7 +55,7 @@ const BASELINE = {
   tech: 2,
   'tech-note': 1,
   'tech-architecture': 1,
-  // docs/superpowers は #59 / #72 由来の旧構造で、docs/README.md の種別表に無い。
+  // .ai-context/superpowers（旧 docs/superpowers）は #59 / #72 由来の旧構造で、docs/README.md の種別表に無い。
   design: 1,
 };
 
@@ -91,7 +94,7 @@ function buildVocabulary(templates) {
 
 /**
  * `.claude/commands/new-spec.md` の対応表から「種別（引数） → テンプレート」を読む。
- * 表は `| \`work\` | 作業仕様書 | \`spec_template.md\` | \`docs/specs/\` | … |` の形。
+ * 表は `| \`work\` | 作業仕様書 | \`spec_template.md\` | \`.ai-context/specs/\` | … |` の形。
  */
 function parseKindTable(commandText) {
   return [...commandText.matchAll(/^\|\s*`([a-z][a-z-]*)`\s*\|[^|]*\|\s*`([a-z_]+\.md)`\s*\|/gm)].map(
@@ -185,7 +188,7 @@ function selfTest() {
   });
 
   t('種別表を読める（引数 → テンプレートの対応）', () => {
-    const table = '| `work` | 作業仕様書 | `spec_template.md` | `docs/specs/` | 単位 |\n' +
+    const table = '| `work` | 作業仕様書 | `spec_template.md` | `.ai-context/specs/` | 単位 |\n' +
       '| `how-to` | 手順ガイド | `how_to_template.md` | `docs/how-to/` | 単位 |\n';
     assert.deepStrictEqual(parseKindTable(table), [
       { kind: 'work', template: 'spec_template.md' },
@@ -305,7 +308,7 @@ function main(argv) {
     return 1;
   }
 
-  const docs = walk(DOCS).map((abs) => ({
+  const docs = [...walk(DOCS), ...walk(AI_CONTEXT)].map((abs) => ({
     relPath: path.relative(REPO, abs).split(path.sep).join('/'),
     text: fs.readFileSync(abs, 'utf8'),
   }));

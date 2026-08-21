@@ -9,7 +9,7 @@ namespace Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 
 // FR-06, FR-12, ADR-0014/ADR-0015, IADR-0024: MinIO（S3 互換 API）への保存・取得の本実装。
 // 参照 URI は storage://<bucket>/<key>。保存は既定バケットへ行い、取得は URI 内のバケットを尊重する。
-// バケット・キー設計、バージョニング、アクセス制御方針は docs/adr/IADR-0024 を参照。
+// バケット・キー設計、バージョニング、アクセス制御方針は .ai-context/adr/IADR-0024 を参照。
 public sealed class S3ObjectStorageClient(
     IAmazonS3 s3,
     ObjectStorageOptions options,

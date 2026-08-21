@@ -2,23 +2,24 @@
 title: 文書CRUD・バージョン管理 テスト仕様書
 type: test-spec
 status: in-progress
-related_ids:
-  - FR-06
-  - UC-03
-author: claude
 created: 2026-07-04
-updated: 2026-08-10
-plan_refs:
-  - "../../planning/projects/microservices-platform/02_requirements/01_requirements.md"
-  - "../../planning/projects/microservices-platform/03_usecases/01_usecases.md"
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-03, FR-04, FR-05, FR-06, SC-05, UC-03]
+adrs: []
+iadrs: []
+specs: []
+issues: [#199]
+-->
 
 # テスト仕様書: 文書CRUD・バージョン管理
 
 ## 起点となる計画書（トレーサビリティ）
 
-- 機能要求（FR）: FR-06
-- ユースケース（UC）: UC-03
+- 機能要求: 文書の CRUD・バージョン管理・メタデータ管理
+- ユースケース: 文書を管理する
 - 受け入れ基準の所在（02_requirements）: `02_requirements/01_requirements.md`
 - 計画書リンク: 同上 / `07_adr/ADR-0002`, `07_adr/ADR-0014`
 
@@ -26,7 +27,7 @@ plan_refs:
 
 - 対象: `Document` 集約の版管理ドメインロジック（`Create` / `Update` / `UpdateMetadata` / `Publish` とスナップショット追記）、
   文書 CRUD・版・メタデータエンドポイント（`/documents` 系）、`DocumentNormalized` 購読によるカタログ登録（冪等 upsert）。
-- 対象外: 横断検索・出典付与（FR-03/FR-04）、ABAC 権限フィルタの網羅（FR-05）、更新反映時間・p95 レイテンシ・負荷試験、画面。
+- 対象外: 横断検索・出典付与、ABAC 権限フィルタの網羅、更新反映時間・p95 レイテンシ・負荷試験、画面。
 
 ## テスト観点
 
@@ -57,11 +58,11 @@ plan_refs:
 | T-16 | 実 PostgreSQL | `PUT` に `expectedVersion=99` | 409 Conflict | 並行制御 | 自動（統合） |
 | T-17 | 実 PostgreSQL / RabbitMQ | `DocumentNormalized` を発行 | カタログに `status=normalized`・タイトル/URI 一致で登録 | 正規化取込 | 自動（統合） |
 | T-18 | 実 PostgreSQL / RabbitMQ | 同一 `DocumentId` を 2 回発行 | 件数 1 件・タイトルが更新（冪等 upsert） | 正規化取込冪等 | 自動（統合） |
-| T-19 | 起動済み API（admin） | `POST /documents` に `attributes` 未指定／`confidentiality` 欠落 | 400 BadRequest | 機密区分必須（UC-03/SC-05, #199） | 自動（エンドポイント） |
-| T-20 | 起動済み API（admin） | `POST /documents` に未知の `confidentiality`（例 `secret`・空・大文字） | 400 BadRequest | 機密区分の正準値検証（#199） | 自動（エンドポイント） |
-| T-21 | 起動済み API（admin） | `POST /documents` に正準値 `public`/`internal`/`confidential`/`restricted` | 201・属性が保存される | 機密区分受理（#199） | 自動（エンドポイント） |
-| T-22 | 作成済み文書 | `PUT`／`PATCH metadata` に `confidentiality` 欠落 | 400／正準値なら 200 | 更新経路も必須検証（#199） | 自動（エンドポイント） |
-| T-23 | — | `DocumentAttributes.ValidateConfidentiality`（null／欠落／未知／正準値） | 欠落・未知は NG、正準値は OK | 検証ヘルパー単体（#199） | 自動（単体） |
+| T-19 | 起動済み API（admin） | `POST /documents` に `attributes` 未指定／`confidentiality` 欠落 | 400 BadRequest | 機密区分必須 | 自動（エンドポイント） |
+| T-20 | 起動済み API（admin） | `POST /documents` に未知の `confidentiality`（例 `secret`・空・大文字） | 400 BadRequest | 機密区分の正準値検証 | 自動（エンドポイント） |
+| T-21 | 起動済み API（admin） | `POST /documents` に正準値 `public`/`internal`/`confidential`/`restricted` | 201・属性が保存される | 機密区分受理 | 自動（エンドポイント） |
+| T-22 | 作成済み文書 | `PUT`／`PATCH metadata` に `confidentiality` 欠落 | 400／正準値なら 200 | 更新経路も必須検証 | 自動（エンドポイント） |
+| T-23 | — | `DocumentAttributes.ValidateConfidentiality`（null／欠落／未知／正準値） | 欠落・未知は NG、正準値は OK | 検証ヘルパー単体 | 自動（単体） |
 
 対応テスト実装:
 
@@ -80,7 +81,7 @@ plan_refs:
 ## 関連仕様
 
 - 機能仕様書: `../functional/FR-06_document-crud-versioning.md`
-- 作業仕様書: `../specs/20260627_FR-06_document-versioning-metadata.md`
+- 作業仕様書: `../../.ai-context/specs/20260627_FR-06_document-versioning-metadata.md`
 - 通信仕様書: `../api/openapi.yaml`
 - データ仕様書: `../data/document-and-version.md`
 

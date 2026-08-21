@@ -8,7 +8,7 @@
 **ナレッジ活用機能（knowledge ユニット）は、この基盤に付随する必須の可変機能セット**である。
 社内ナレッジ（文書・Wiki）の横断検索、AI による回答・出典提示・データ分析を提供するが、
 位置づけはあくまで「基盤の上で組み替え可能な一機能ユニット」であり、本リポジトリの主目的ではない
-（issue #209 / [IADR-0056](docs/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
+（issue #209 / [IADR-0056](.ai-context/adr/IADR-0056_repo-unit-structure-platform-knowledge.md)）。
 
 このリポジトリは、上流の計画リポジトリ（`project-planning`、`planning/` に git submodule として
 参照）で確定した計画書（要求・ユースケース・画面・ADR）を実装する。**実装の進め方・トレーサビリティ
@@ -148,18 +148,18 @@ bash scripts/compose-up.sh up -d
 #   - Grafana:        http://localhost:3000
 ```
 
-内部サービス（DocumentService 等）は `expose` のみでホスト非公開（[IADR-0017](docs/adr/IADR-0017_internal-service-auth-network-isolation.md)。
-サービス間認証の第一防御は [IADR-0026](docs/adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の Istio STRICT mTLS に移行済みで、
+内部サービス（DocumentService 等）は `expose` のみでホスト非公開（[IADR-0017](.ai-context/adr/IADR-0017_internal-service-auth-network-isolation.md)。
+サービス間認証の第一防御は [IADR-0026](.ai-context/adr/IADR-0026_mesh-mtls-supersedes-network-isolation.md) の Istio STRICT mTLS に移行済みで、
 ネットワーク分離は多層防御として存続している）。外部からの入口は BFF とフロントエンドのみである。
 
 ## 仕様書・ドキュメントの入口
 
 - **仕様書の全体像**: [`docs/README.md`](docs/README.md)（作業仕様書・機能/画面/API/データ/技術/テスト/運用/セキュリティ仕様書・実装ADR の配置規約）
 - **ユニット規約（フォルダ構成・依存規則・submodule 追加手順）**: [`src/README.md`](src/README.md)
-- **作業仕様書**（作業/PR 単位）: [`docs/specs/`](docs/specs/)
+- **作業仕様書**（作業/PR 単位）: [`.ai-context/specs/`](.ai-context/specs/)
 - **機能仕様書**（FR 単位）: [`docs/functional/`](docs/functional/)
 - **画面仕様書**（SC 単位）: [`docs/screens/`](docs/screens/)
-- **実装ADR**（`IADR-XXXX`、重要な実装判断の記録）: [`docs/adr/`](docs/adr/)
+- **実装ADR**（`IADR-XXXX`、重要な実装判断の記録）: [`.ai-context/adr/`](.ai-context/adr/)
 - **技術要件書**: [`docs/tech/tech-requirements.md`](docs/tech/tech-requirements.md)
 - **運用仕様書**（デプロイ・監視・障害対応）: [`docs/operations/operations.md`](docs/operations/operations.md)
 - **セキュリティ仕様書**（認証・認可・データ保護）: [`docs/security/security.md`](docs/security/security.md)

@@ -7,7 +7,7 @@
  *
  * 値域の正本は **`docs/README.md` の運用ルール 6**（本ファイルではない）:
  *   draft / in-progress / completed / done / superseded
- * ADR（`docs/adr/`）は別系統で `docs/templates/adr_template.md` の状態欄が定める:
+ * ADR（`.ai-context/adr/`）は別系統で `docs/templates/adr_template.md` の状態欄が定める:
  *   Proposed / Accepted / Deprecated / Superseded
  *
  * ★ 起点（#667）: 規約は最初から存在したが、**誰も追随していなかった**。
@@ -24,7 +24,7 @@
  *
  * ★ 据え置き（ラチェット）:
  *   - `review` …… 2026-07 の作業仕様書 8 件。**状態の進行を推測しないため触らない**（#667 判断 2）
- *   - `docs/specs/` の `completed` …… 43 件。README 6 は `docs/specs/` を `done` と名指しているが、
+ *   - `.ai-context/specs/` の `completed` …… 43 件。README 6 は `docs/specs/`（現 `.ai-context/specs/`）を `done` と名指しているが、
  *     **`completed` も値域内の語**であり、書き換えは語彙の是正ではなく好みの統一になる
  *   いずれも **件数を固定し、増えたら落ちる**（減るのは可）。
  *
@@ -35,6 +35,9 @@ const path = require('path');
 
 const REPO = path.join(__dirname, '..');
 const DOCS = path.join(REPO, 'docs');
+// ADR-0048 決定 1: IADR・作業仕様書・superpowers は `.ai-context/` へ移設された。
+// `docs/` と両方を走査しないと、移設後は IADR / 作業仕様書の status が一切検査されなくなる。
+const AI_CONTEXT = path.join(REPO, '.ai-context');
 
 /** 仕様書の値域（正本は docs/README.md 運用ルール 6）。 */
 const SPEC_STATUSES = new Set(['draft', 'in-progress', 'completed', 'done', 'superseded']);
@@ -122,10 +125,10 @@ function findIssues(docs) {
     }
     scanned++;
 
-    const isAdr = relPath.startsWith('docs/adr/');
+    const isAdr = relPath.startsWith('.ai-context/adr/');
     const allowed = isAdr ? ADR_STATUSES : SPEC_STATUSES;
     if (allowed.has(status)) {
-      if (!isAdr && status === 'completed' && relPath.startsWith('docs/specs/')) {
+      if (!isAdr && status === 'completed' && relPath.startsWith('.ai-context/specs/')) {
         counts['specs-completed']++;
       }
       continue;
@@ -172,38 +175,38 @@ function selfTest() {
 
   t('値域内なら違反 0 件', () => {
     const r = findIssues([
-      d('docs/specs/a.md', 'type: work-spec\nstatus: done'),
+      d('.ai-context/specs/a.md', 'type: work-spec\nstatus: done'),
       d('docs/functional/b.md', 'type: functional-spec\nstatus: completed'),
-      d('docs/adr/IADR-0001_x.md', 'type: impl-adr\nstatus: Accepted'),
+      d('.ai-context/adr/IADR-0001_x.md', 'type: impl-adr\nstatus: Accepted'),
     ]);
     assert.deepStrictEqual(r.violations, []);
     assert.strictEqual(r.scanned, 3);
   });
 
   t('値域外の語を検出する（変異試験）', () => {
-    const r = findIssues([d('docs/specs/a.md', 'type: work-spec\nstatus: fixed')]);
+    const r = findIssues([d('.ai-context/specs/a.md', 'type: work-spec\nstatus: fixed')]);
     assert.strictEqual(r.violations.length, 1, JSON.stringify(r.violations));
     assert.strictEqual(r.violations[0].status, 'fixed');
   });
 
   t('ADR に仕様書の語を書くと検出する（語彙の取り違え・変異試験）', () => {
-    const r = findIssues([d('docs/adr/IADR-0001_x.md', 'type: impl-adr\nstatus: done')]);
+    const r = findIssues([d('.ai-context/adr/IADR-0001_x.md', 'type: impl-adr\nstatus: done')]);
     assert.strictEqual(r.violations.length, 1, JSON.stringify(r.violations));
   });
 
   t('仕様書に ADR の語を書くと検出する（逆向き・変異試験）', () => {
-    const r = findIssues([d('docs/specs/a.md', 'type: work-spec\nstatus: Accepted')]);
+    const r = findIssues([d('.ai-context/specs/a.md', 'type: work-spec\nstatus: Accepted')]);
     assert.strictEqual(r.violations.length, 1, JSON.stringify(r.violations));
   });
 
   t('大小文字だけ違う語を素通ししない（superseded と Superseded を混ぜない）', () => {
     // 仕様書側は小文字 superseded、ADR 側は大文字 Superseded。取り違えは違反である。
     assert.strictEqual(
-      findIssues([d('docs/specs/a.md', 'type: work-spec\nstatus: Superseded')]).violations.length,
+      findIssues([d('.ai-context/specs/a.md', 'type: work-spec\nstatus: Superseded')]).violations.length,
       1,
     );
     assert.strictEqual(
-      findIssues([d('docs/adr/IADR-1_x.md', 'type: impl-adr\nstatus: superseded')]).violations.length,
+      findIssues([d('.ai-context/adr/IADR-1_x.md', 'type: impl-adr\nstatus: superseded')]).violations.length,
       1,
     );
   });
@@ -233,12 +236,12 @@ function selfTest() {
 
   t('★ 本文中の status: を frontmatter と取り違えない（#667 起票文の誤り）', () => {
     const text = '---\ntype: work-spec\nstatus: done\n---\n\n```\nstatus: fixed\n```\n';
-    const r = findIssues([{ relPath: 'docs/specs/a.md', text }]);
+    const r = findIssues([{ relPath: '.ai-context/specs/a.md', text }]);
     assert.deepStrictEqual(r.violations, [], 'コードブロック中の status を拾っている');
   });
 
   t('据え置きは違反にせず数える', () => {
-    const r = findIssues([d('docs/specs/a.md', 'type: work-spec\nstatus: review')]);
+    const r = findIssues([d('.ai-context/specs/a.md', 'type: work-spec\nstatus: review')]);
     assert.deepStrictEqual(r.violations, []);
     assert.strictEqual(r.counts.review, 1);
   });
@@ -262,7 +265,7 @@ function main(argv) {
     return 0;
   }
 
-  const docs = walk(DOCS).map((abs) => ({
+  const docs = [...walk(DOCS), ...walk(AI_CONTEXT)].map((abs) => ({
     relPath: path.relative(REPO, abs).split(path.sep).join('/'),
     text: fs.readFileSync(abs, 'utf8'),
   }));
@@ -281,7 +284,7 @@ function main(argv) {
     console.log(
       `[check-doc-status-vocabulary] OK: ${scanned} 件の仕様書の status が値域に収まっています` +
         `（対象外の種別 ${exempt} 件 / frontmatter 無し ${noFrontMatter} 件は検査していません）。` +
-        `据え置き: review ${counts.review} / docs/specs の completed ${counts['specs-completed']}。`,
+        `据え置き: review ${counts.review} / .ai-context/specs の completed ${counts['specs-completed']}。`,
     );
     return 0;
   }

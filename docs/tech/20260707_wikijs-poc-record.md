@@ -2,20 +2,17 @@
 title: Wiki.js 稼働 PoC 実測記録（OIDC / GraphQL 同期）
 type: tech-note
 status: fixed
-related_ids:
-  - FR-13
-  - UC-07
-  - ADR-0011
-  - IADR-0021
-  - IADR-0023
-author: claude
 created: 2026-07-07
-updated: 2026-07-07
-plan_refs:
-  - "../../planning/projects/microservices-platform/07_adr/ADR-0011_wiki-engine.md"
-related_specs:
-  - ../specs/20260707_issue-88-wikijs-verification-and-delete-sync.md
+updated: 2026-08-21
+author: claude
 ---
+<!-- trace:
+ids: [FR-13, UC-07]
+adrs: [ADR-0011]
+iadrs: [IADR-0021, IADR-0023]
+specs: [20260707_issue-88-wikijs-verification-and-delete-sync]
+issues: []
+-->
 
 # Wiki.js 稼働 PoC 実測記録（Issue #88 スコープ1・2）
 
@@ -32,7 +29,7 @@ related_specs:
 | `pages.singleByPath` → `create`/`update` スキーマ整合 | ✅ 整合（下記の実測差異を実装へ反映済み） |
 | `isPrivate=true` ページの API キー本文取得 | ✅ **取得可能**（fullAccess キーで `singleByPath` が content/render を返す。fail-closed 調整不要） |
 | エラー時再送 | ✅ GraphQL errors／`responseResult.succeeded=false` は例外化 → MassTransit リトライで再送（E2E で確認） |
-| レイテンシ（FR-13 p95 の参考値） | ✅ `singleByPath` p95 ≈ **5ms**、`update` p95 ≈ **0.74s**、`create` ≈ 1.0s、`delete` ≈ 0.32s（ローカル・30 回計測） |
+| レイテンシ（Wiki 閲覧の p95 参考値） | ✅ `singleByPath` p95 ≈ **5ms**、`update` p95 ≈ **0.74s**、`create` ≈ 1.0s、`delete` ≈ 0.32s（ローカル・30 回計測） |
 
 ## 実測で判明し実装へ反映した差異（重要）
 
