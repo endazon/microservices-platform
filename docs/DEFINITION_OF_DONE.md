@@ -10,11 +10,15 @@ issues: [#683]
 
 ## 仕様・トレーサビリティ
 
-- [ ] 着手前に作業仕様書（`docs/specs/`）を作成し、それに沿って実装した
-- [ ] 該当する必須仕様書（機能/画面/通信/データ/技術/テスト/運用/セキュリティ）を作成・更新した
-- [ ] 重要な実装判断を実装ADR（`docs/adr/`、`IADR-XXXX`）に記録した
+- [ ] 着手前に作業仕様書（`.ai-context/specs/`）を作成し、それに沿って実装した
+- [ ] 該当する必須仕様書（機能/画面/通信/データ/技術/テスト/運用/セキュリティ。`docs/` 配下）を作成・更新した
+- [ ] 重要な実装判断を実装ADR（`.ai-context/adr/`、`IADR-XXXX`）に記録した
 - [ ] 起点 ID（FR/UC/SC/ADR）をブランチ名・コミット・コード・PR に残した
-- [ ] 計画書（fixed/Accepted）に反していない。差異があれば `/plan-feedback` で環流した
+- [ ] **`docs/` に文書を追加・更新した場合、計画 ID・実装ADR・仕様書・他リポジトリの issue 番号を表示テキストへ
+      書かず trace ブロックへ入れた**（`scripts/check-trace-blocks.js` が CI の `doc-links` ジョブで検査する。
+      `.ai-context/` の凍結記録は本文にそのまま書く）
+- [ ] 計画書（fixed/Accepted）に反していない。差異があれば計画リポジトリの GitHub issue
+      （`feedback.yml` テンプレート・`decision-needed` ラベル）で環流した
 
 ## 品質・検証
 

@@ -106,7 +106,8 @@ bash scripts/apply-profile.sh copilot
 | 脆弱性 | dependency-review（`security.yml`）＋ CodeQL ＋ Dependabot | 供給網・SAST |
 | 完了の定義 | `docs/DEFINITION_OF_DONE.md` ＋ `/verify` | AI 自身の完了前検証 |
 | トレーサビリティ | `/trace-check`・`/adr-check`・`.claude/rules/traceability.md` | 計画と実装の整合 |
-| 計画への環流 | `/plan-feedback`（実装→計画） | 計画書の誤り・不足を戻す |
+| `docs/` の非表示メタデータ | `scripts/check-trace-blocks.js`・`scripts/gen-knowledge-graph.js` | trace ブロックの文法・値域・可視本文への ID 残存（CI の `doc-links` ジョブ） |
+| 計画への環流 | `/plan-feedback`（実装→計画） | 計画リポジトリへ GitHub issue で起票する（本リポジトリに記録ファイルは残さない） |
 
 ### 必須チェックの有効化（人手の検証を最小化する要）
 
@@ -210,9 +211,10 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 ### 検査器の配線・CHANGELOG の是正（別紙）
 
 **規約の本文は [`.claude/rules/traceability.md`](../.claude/rules/traceability.md)、配線と運用の詳細は
-[`docs/traceability-appendix.md`](traceability-appendix.md)（キット配布物・分類 A）が持つ。**
-本書は技術スタック固有の CI 配線を扱うため配布先ごとに差分を持ちうるが、**別紙は差分を持たない**
-（どの配布先でもバイト一致で取り込める）。
+[`docs/traceability-appendix.md`](traceability-appendix.md) が持つ。**
+本書は技術スタック固有の CI 配線を扱うため配布先ごとに差分を持つ。**［2026-08-21 変更］別紙も
+キットとのバイト一致を前提としない** —— 資料再編の計画 ADR 決定 6 でキットは bootstrap 専用となり、
+バイト一致の同期検査は退役した。別紙は本リポジトリ固有の節（`docs/` の trace ブロック等）を持つ。
 
 ## よくある詰まり（FAQ）
 
@@ -229,4 +231,4 @@ $ gh api -X PUT repos/<owner>/<repo>/branches/develop/protection \
 - AI は**着手前に作業仕様書を作成**し、それに沿って実装する（hook が警告）。
 - 破壊的操作・秘密情報コミットは hook と権限設定でブロックする。
 - マージ前に **CI ゲート ＋ 人間の最終レビュー** を必ず通す（全自動でも最後の人間ゲートは残す）。
-- 計画書に反する判断は実装で押し通さず、`/plan-feedback` で計画側へ戻す。
+- 計画書に反する判断は実装で押し通さず、計画リポジトリへ GitHub issue で戻す（`/plan-feedback`）。
