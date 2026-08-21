@@ -137,3 +137,44 @@ related_issues:
   #455 本文の「雛形だけが Tests 2 本で違反」は解消済みである（`find` で 1 件）
 - `#500`（ADR-0041 への検査改定）は**着地済み**。`check-backend-libraries.js` が
   `SHARED_KERNEL` / `SHARED_KERNEL_ALLOWED` / `bannedListFor()` / `sharedKernelViolations()` を持つ
+
+---
+
+## ［2026-08-21 追記 / #455］検証欄の 2 箇所を実測へ訂正する
+
+クロス監査の指摘を受けて数え直したところ、**上の検証表に 2 つの誤りがあった**。凍結記録の本文は
+書き換えず、ここに訂正を置く。
+
+### 1. `Kernel.Tests` の件数は **23 ではなく 26** である
+
+表の項目 2・7・8 は `Passed 23` と書くが、これは**執筆時点の値**であり、その後の
+`test(ADR-0041) 公開面の null ガードを固定`（+3 本）と
+`test(ADR-0041) 封じ込めの走査面を広げる`（既存テストの拡張。本数は増やさない）で **26** になった。
+
+```
+$ dotnet test src/platform/backend/backend.slnx
+Passed!  - Failed: 0, Passed: 26, Total: 26 - Platform.Shared.Kernel.Tests.dll
+```
+
+**「23」は当時の実測として正しく、現在の値として読むと誤りである。** 導出値は走査ではなく
+計算し直す（規則 7）—— 本数は**テストを足すたびに腐る値**であり、仕様書へ書いた時点で
+追随義務が生まれる。**次からは件数を仕様書へ固定せず、コマンドと出力の置き場所だけを書く。**
+
+### 2. 項目 8「両経路の写像」の非同期の射程を狭く読み直す
+
+表は「Map / Bind / Tap / Match / Ensure / Combine / Discard / **非同期**の成功・失敗の両方を通過」と
+書くが、**非同期版が在るのは `MapAsync` / `BindAsync` の 2 つだけ**である。
+
+```
+$ grep -oE "\b(Map|Bind|Tap|Match|Ensure|Combine|Discard)(Async)?\b" \
+    src/platform/backend/Shared/Platform.Shared.Kernel/*.cs | sed 's/.*://' | sort | uniq -c
+      5 Bind      2 BindAsync   1 Combine   1 Discard
+      1 Ensure    2 Map         1 MapAsync  2 Match     2 Tap
+```
+
+**`TapAsync` / `MatchAsync` / `EnsureAsync` / `CombineAsync` は存在しない。** 表の書き方は
+「列挙した全操作に非同期版がある」と読めてしまう。**正しくは「同期 7 操作 ＋ 非同期 2 操作」である。**
+
+非同期版を 2 つに絞ったのは [IADR-0229](../adr/IADR-0229_shared-kernel-result-surface.md) 決定 2 の
+「**呼び出し側が実際に要る形だけを公開する**」に従った結果であり、**不足ではなく設計である**。
+足すときは同 ADR の追記で根拠を残す。

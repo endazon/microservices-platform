@@ -225,3 +225,92 @@ related_specs:
   **教訓**: 未決事項は「解消したら消す」ではなく「**解消したことを日付つきで残す**」。
   消すと、なぜ未決だったのかと誰が解いたのかが失われる。逆に書きっぱなしにすると、
   **記録が実態と逆を向いたまま監査を通ってしまう** —— 本件がその実例である。
+
+---
+
+## ［2026-08-21 追記 / #877・#842］母集合の数えと受け入れ基準 5 を実測へ訂正する
+
+クロス監査が **§母集合の引き方の数値 2 件**と**受け入れ基準 5 の記述**を指摘した。**3 件とも正しい指摘**であり、
+凍結記録の本文は書き換えずここに訂正を置く。**母集合の規則を書いた当の仕様書が、その規則を破っていた。**
+
+### 訂正 1 — 軸 1 は「212 ファイル」ではない
+
+`git grep -l "check-doc-links" -- ':!src/ai-stock-trading'` を PR head（`7833bf7`）で引き直した:
+
+```
+232 ファイル   ＝ .ai-context/specs 191 ＋ .ai-context/adr 17 ＋ scripts 16 ＋ scripts/lib 2
+                  ＋ docs/how-to 2 ＋ docs/tests 1 ＋ .github/workflows 1 ＋ CHANGELOG.md 1
+                  ＋ src/.prettierignore 1
+```
+
+**規則 8 の引き算を出し直す**（時点を明示する）:
+
+| 時点 | 値 | 内訳 |
+| --- | ---: | --- |
+| 本仕様書の執筆時点で**申告した**値 | 212 | **再現しない。誤り。** |
+| 監査が同時点で実測した値 | 230 | 正しい |
+| 本 PR head `7833bf7` での実測 | **232** | 230 ＋ 本 PR の後続コミットが足した 2 件 |
+
+**「212」がどう出た値かは再構成できない。** 走査の生の出力を読まずに、内訳の側を足し上げて
+逆算した数だと考えられる（下の訂正 2 と同じ壊れ方である）。**規則 7 の「走査の出力を加工して読まない」を
+破っていた。**
+
+### 訂正 2 — 軸 1 の内訳が **17 ファイルを黙って落としていた**
+
+本文の内訳は `.ai-context/` の凍結記録・`CHANGELOG.md`・`ci.yml`・`TEST_STRATEGY.md` /
+`session-handoff.md` / `.prettierignore`・`plan-id-range-history-annex.md`・`scripts/README.md` を挙げるが、
+**`scripts/` 配下の残り 17 ファイルを 1 つも挙げていない**（`check-adr-numbering.js` /
+`check-ai-workflow-config.js` / `check-bff-authz-docs.js` / `check-commit-messages.js` /
+`check-cross-repo-refs.js` / `check-doc-links.js` / `check-doc-status-vocabulary.js` /
+`check-doc-updated.js` / `check-knip.js` / `check-test-spec-coverage.js` /
+`check-test-traceability.js` / `check-trace-blocks.js` / `gen-knowledge-graph.js` /
+`lib/excluded-units.js` / `lib/trace-blocks.js` / `scripts.repo.test.js` / `scripts.test.js`）。
+
+**追随判定（今回引き直した結果。除外の理由をここで残す）**: 17 件はいずれも
+**検査器どうしの相互参照・自己登録リスト・実行順の記述**であり、**`check-doc-links` の fail-open の
+挙動を説明していない**。よって追随は不要である。**結論は変わらないが、「黙って除外した」ことが
+規則 6 の違反である** —— 規則 6 は「除外したものとその理由を書く」であって、
+「除外の結論が正しければよい」ではない。
+
+> 🔴 **本仕様書は §母集合の引き方で規則 1〜10 を引用し、「黙って除外しない」と明記している。
+> その節自身が規則 6 と規則 7 を破った。** キット配布物の但し書き「**規則として書くだけでは
+> 守られない。作業仕様書のレビューで人が見る前提で運用する**」の 2 例目である
+> （1 例目は規則 6 を提案した PR 自身）。
+
+### 訂正 3 — 軸 2 の「3」も誤り
+
+`git grep -n "pin 検査\|pin 鮮度" -- ':!src/ai-stock-trading'` は PR head で **36 行 / 20 ファイル**である
+（`.ai-context/specs` 12 ファイル・`.ai-context/adr` 5 ファイル・`CLAUDE.md` / `CHANGELOG.md` /
+`scripts/setup.sh` 各 1）。監査が執筆時点で実測した値は 31 行だった。
+
+**申告した「3」は、凍結記録・生成物を除いた残り（`CLAUDE.md` / `CHANGELOG.md` / `setup.sh`）の
+ファイル数である。** すなわち**除外後の数を「生の件数」欄に書いていた** ——
+表の列は「**生の件数**」と「**追随が要るもの**」の 2 つしかなく、**除外の過程が表から消えていた**。
+追随先が `scripts/setup.sh` 1 件であるという結論は変わらない。
+
+### 訂正 4 — 受け入れ基準 5「#842 だけが fail し #836 の 2 本は緑」は**観測されていない**
+
+`scripts/lib/worktree-state.js` を no-op スタブ（`module.exports = {}`）へ差し替えて再実測した:
+
+```
+AssertionError [ERR_ASSERTION]: updated: の据え置きがある:
+TypeError: Cannot read properties of undefined (reading 'HEAD')
+```
+
+**スタブは `worktreeState.HEAD` を `undefined` にするため、#842 のテストへ到達する前に
+より手前のテストが TypeError で落ち、ランナーごと止まる。** したがって
+「**#842 だけが fail し #836 の 2 本は緑**」という状態は**一度も観測できていない**。
+
+**退避（ファイル削除）でも同じである** —— 本文が正しく書いているとおり `check-doc-updated.js` の
+即時 require が先に落ちる。**つまり「lib を無効化する」型の変異では、#842 のテストの検出力を
+単独で示せない。**
+
+**#842 のテストが穴を塞いでいること自体は疑っていない。** 疑うべきは
+**「変異試験で示した」という記述**である。示せていない。**変異が入ったことは確かめたが、
+変異が「狙ったテストだけを落としたこと」を確かめていなかった** —— 本 PR が別途記録した
+「変異試験は変異が実際に入ったことを確かめてから判定する」の**片割れ**にあたる作法であり、
+**入ったことの確認だけでは足りない**。
+
+**追随作業（本 PR では未実施）**: #842 の検出力を単独で示すには、`lib` を丸ごと無効化するのではなく
+**当該テストが読む 1 つの戻り値だけを変える**変異（例: `require.resolve` が投げる経路のみを模す）が要る。
+**受け入れ基準 5 は「未達」として扱う。**
