@@ -183,7 +183,7 @@ git grep -n '\bDisableConventionalLocalRouting\b\|\bServiceLocationPolicy\b\|\bL
 | --- | --- |
 | 新設した共通ヘルパ | `Foundation/Extensions/WolverineExtensions.cs`（手順 3・4・5 の唯一の実装箇所） |
 | 新設した試験プロジェクト | `Platform.Shared.Infrastructure.Tests`（**15 件**すべて Passed） |
-| `check-backend-libraries` 自己試験 | **78 → 106 件**（規則 5 の分を**評価ループより前**へ置いたことを変異 F で実測） |
+| `check-backend-libraries` 自己試験 | **78 → 108 件**（規則 5 の分を**評価ループより前**へ置いたことを変異 F で実測） |
 | 不採用ライブラリ残件 | **13 件のまま**（増やしていない。下記「自分の作り込みを検査器に捕まえられた」参照） |
 | 安全弁（型制約 2 箇所） | **無改変**（`git diff --stat` が空であることで証明） |
 | テストプロジェクト数の ratchet | `scripts.repo.test.js` **15 → 16** |

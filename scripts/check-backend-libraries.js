@@ -202,8 +202,11 @@ const CONFINED_APIS = [
   },
   {
     symbol: 'ServiceLocationPolicy',
-    // 代入されていること。参照（右辺の enum 名）だけでは満たさない。
-    usage: /\.\s*ServiceLocationPolicy\s*=/,
+    // 🔴 **代入**されていること。参照（右辺の enum 名）でも**比較**でも満たさない。
+    // `(?!=)` が無いと `if (o.ServiceLocationPolicy == X)` のような読み取り専用の参照に一致し、
+    // 手順 5 の適用が消えていても「在る」と誤判定する（#897 の 2 巡目レビューの指摘。実測で再現した）。
+    // 呼び出し構文へ絞る是正それ自体に、同じ「広く拾いすぎる」穴が残っていた。
+    usage: /\.\s*ServiceLocationPolicy\s*=(?!=)/,
     step: '手順 5',
     why: 'internal 実装型に依存するハンドラが**最初のメッセージ受信時に**落ちる（既定は NotAllowed）。'
       + ' WolverineExtensions.UsePlatformMessagingDefaults を使うこと。',
@@ -1162,6 +1165,18 @@ function selfTest() {
     ).join(',') === 'ServiceLocationPolicy');
   t('★ (b) 全 API に呼び出し構文（usage）が定義されている（1 つでも欠けると全文一致へ落ちる）',
     CONFINED_APIS.every((f) => f.usage instanceof RegExp));
+  t('★ (b) == 比較だけでは「在る」と見なさない（代入のみを認める）',
+    confinedApiHomeGaps(
+      'if (options.ServiceLocationPolicy == ServiceLocationPolicy.NotAllowed) { }\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).join(',') === 'ServiceLocationPolicy');
+  t('★ (b) 代入は == 除外を入れても引き続き一致する',
+    confinedApiHomeGaps(
+      'options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;\n'
+      + 'options.Policies.DisableConventionalLocalRouting();\n'
+      + 'return options.ListenToRabbitQueue(name);\n',
+    ).length === 0);
 
   // コメント除去そのもの。
   t('stripCsharpComments: 行コメントを消す',
