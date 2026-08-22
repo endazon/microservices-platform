@@ -51,6 +51,17 @@ if [ "$RUNTIME" = "k3d" ]; then
   else
     CREATE_ARGS=(--agents 1 -p "8080:80@loadbalancer" -p "8443:443@loadbalancer")
   fi
+  # NFR, Issue #783 (#442 子 5): K3S_IMAGE で k3s のイメージを固定できるようにする（opt-in・既定は不変）。
+  # **理由は「バージョンを揃えたいから」ではない。揃っていないことが静かに素通りするからである。**
+  # k3d の既定 k3s（5.7.4 では v1.30.4）が同梱する traefik chart は 25.0.3 で、そこでは `expose` が bool
+  # であり、deploy/local/edge/traefik-entrypoint.yaml の map 形式（chart 26 以降）は型不一致で reconcile に
+  # 失敗する。ところが `kubectl apply` は成功するため **admin(50000) が立たないまま本スクリプトは EXIT=0 で
+  # 返る**（実測: GitHub ホストランナー / run 32554867883）。構造そのもの（reconcile 失敗が伝わらない）は
+  # #953 で別途扱う。ここは「pin が外れたことに気づける」ための口である。
+  # 未設定なら引数を 1 バイトも足さない（既定はバイト等価・fail-safe）。
+  if [ -n "${K3S_IMAGE:-}" ]; then
+    CREATE_ARGS+=(--image "$K3S_IMAGE")
+  fi
   if ! k3d cluster list "$CLUSTER" >/dev/null 2>&1; then
     k3d cluster create "$CLUSTER" "${CREATE_ARGS[@]}"
   else

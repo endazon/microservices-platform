@@ -5166,7 +5166,11 @@ module.exports = ({ ok, assert }) => {
         //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
         //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 39, `検査器の母集合が 39 本から変わった（${scripts.length} 件）`);
+        // ★ #783（#442 子 5）後半で `check-stack-ready.js`（統合スタックが**実際に起きている**ことの
+        //    判定 —— `k8s-local-up.sh` の EXIT=0 は readiness の証明にならないため）を新設したため
+        //    39 → 40（同上）。git を一切呼ばず kubectl / curl を外部コマンドとして叩くため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-deploy-manifests.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 40, `検査器の母集合が 40 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -7350,6 +7354,83 @@ module.exports = ({ ok, assert }) => {
         [],
         'deploy-manifests ジョブに overlay のパスが直書きされている。書くと次に overlay が' +
           '増えたとき静かに検査対象から外れる:\n' + hardcoded.join('\n'),
+      );
+    });
+  }
+
+  //
+  // NFR / #783（#442 子 5）後半: 統合スタックを CI で起こす経路（integration-stack.yml）。
+  //
+  // 🔴 **ここで固定するのは「ジョブが在ること」ではなく「門が外れていないこと」である。**
+  // ワークフローが `k8s-local-up.sh` を呼ぶだけで `check-stack-ready.js` を呼ばなければ、
+  // **立ち上がっていないスタックに緑を返すジョブ**になる（up は EXIT=0 で戻るため無音で起きる）。
+  // 検査器の側は `--self-test` が守るので、ここは**配線**だけを見る。
+  //
+  {
+    const REPO_IS = path.join(__dirname, '..');
+    const WF_PATH = '.github/workflows/integration-stack.yml';
+    const wf = fs.existsSync(path.join(REPO_IS, WF_PATH))
+      ? fs.readFileSync(path.join(REPO_IS, WF_PATH), 'utf8')
+      : null;
+
+    ok('NFR / #783 後半: integration-stack.yml が在る', () => {
+      assert.ok(wf, `${WF_PATH} が無い（統合スタックを CI で起こす経路が失われている）`);
+    });
+
+    ok('NFR / #783 後半: 門（check-stack-ready.js）を self-test ＋ 本走査の両方で呼んでいる', () => {
+      assert.ok(wf.includes('node scripts/check-stack-ready.js --self-test'), '門の --self-test を呼んでいない');
+      assert.ok(
+        /node scripts\/check-stack-ready\.js\s*\n/.test(wf),
+        '門の本走査を呼んでいない（--self-test だけでは実際のクラスタを見ていない）',
+      );
+    });
+
+    ok('NFR / #783 後半: up を呼ぶなら必ず門も呼ぶ（up だけのジョブを作らせない）', () => {
+      assert.ok(wf.includes('scripts/k8s-local-up.sh'), 'k8s-local-up.sh を呼んでいない');
+      const upAt = wf.indexOf('scripts/k8s-local-up.sh');
+      const gateAt = wf.indexOf('node scripts/check-stack-ready.js\n');
+      assert.ok(gateAt > upAt, '門が up より前に在る（起動前の状態を判定してしまう）');
+    });
+
+    ok('NFR / #783 後半: k3s イメージが pin されている（latest 追従にしない）', () => {
+      assert.match(
+        wf,
+        /K3S_IMAGE:\s*rancher\/k3s:v\d+\.\d+\.\d+-k3s\d+/,
+        'K3S_IMAGE が pin されていない。**揃っていないことが静かに素通りする**（#953）ため、' +
+          'ここは好みではなく検査の前提である',
+      );
+      assert.match(wf, /K3D_VERSION:\s*v\d+\.\d+\.\d+/, 'K3D_VERSION が pin されていない');
+    });
+
+    ok('NFR / #783 後半: PR では起動しない（必須チェックにできない形を保つ）', () => {
+      // pull_request で起動するようにすると「必須にできるが 8〜10 分かかる」形になり、
+      // docs/ai-workflow.md の必須チェック表との整合が崩れる。起動条件を変えたらここが落ちる。
+      const onBlock = /\non:\n([\s\S]*?)\n[a-z]/.exec(wf);
+      assert.ok(onBlock, 'on: ブロックを切り出せない');
+      assert.ok(!/pull_request/.test(onBlock[1]), 'pull_request で起動している（必須チェック表との整合が崩れる）');
+      assert.match(onBlock[1], /schedule:/, 'schedule が無い（nightly の回収先にならない）');
+      assert.match(onBlock[1], /workflow_dispatch:/, 'workflow_dispatch が無い（手で確かめられない）');
+    });
+
+    ok('NFR / #783 後半: 失敗を issue として残す配線が在る', () => {
+      assert.ok(
+        wf.includes('./.github/workflows/ci-failure-issue.yml'),
+        'nightly の失敗が issue にならない（見ていなければ無かったことになる）',
+      );
+    });
+
+    ok('NFR / #783 後半: 門に fail-open の抜け道を作っていない', () => {
+      // check-deploy-manifests.js の DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS に相当する抜け道を、
+      // 本検査器は**そもそも持たない**。ワークフロー側で ALLOW / SKIP を立てていないことも見る。
+      const armed = wf
+        .split('\n')
+        .filter((l) => /(ALLOW_MISSING|SKIP_STACK|STACK_READY_ALLOW)/.test(l))
+        .filter((l) => !/^\s*#/.test(l));
+      assert.deepStrictEqual(armed, [], `integration-stack.yml が抜け道を立てている:\n${armed.join('\n')}`);
+      const src = fs.readFileSync(path.join(REPO_IS, 'scripts/check-stack-ready.js'), 'utf8');
+      assert.ok(
+        !/process\.env\.[A-Z_]*ALLOW[A-Z_]*/.test(src),
+        'check-stack-ready.js が環境変数で検査を飛ばせるようになっている（fail-closed を崩している）',
       );
     });
   }

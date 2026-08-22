@@ -1,0 +1,151 @@
+# 統合スタックを CI で起こす経路 —— NFR / #783（#442 子 5）のやること②
+#
+# ■ 🔴 このワークフローが存在する理由は「起こすこと」ではなく「起きていないのに緑にしないこと」である
+#
+# `scripts/k8s-local-up.sh` は `[6/7]` で `helm upgrade --install` を **`--wait` 無しで**呼ぶ。
+# したがって**アプリ pod の起動を待たずに EXIT=0 で戻る**。実測（run 32554340800）では、
+# 戻った時点で bff-service は `0/1 Running`（liveness probe 失敗中）で、導線を叩くと 502 が並んだ。
+#
+# **`k8s-local-up.sh` の EXIT=0 は readiness の証明にならない。**
+# だから本ワークフローは up の成否だけを見ず、`scripts/check-stack-ready.js` を門として置く。
+# 門が無ければ「立ち上がっていないスタックに緑を返すジョブ」になり、#783 が最も避けたい形になる。
+#
+# ■ 🔴 各ステップの合否を「末尾コマンドの終了コード」に委ねない
+#
+# 方式調査の probe で、ステップ末尾の `grep` が非 0 を返したせいでジョブが落ち、
+# その後の assert に到達しないまま「対照群も落ちた」と誤読しかけた（run 32555313631）。
+# **判定は check-stack-ready.js に集約し、他のステップは情報の採取に徹する。**
+#
+# ■ なぜ PR ゲートではないのか（#783「実行時間が PR ゲートの上限を超えるなら nightly へ分離する」）
+#
+# 実測 8〜10 分（up 400 秒 ＋ readiness 33 秒 ＋ 検査）。`ci.yml` の `build-and-test` の数分に対して
+# 2〜3 倍であり、全 PR に載せると待ち時間が支配的になる。**「上限」は本作業の IADR で定義した。**
+# 契機は `integration.yml`（IADR-0232 決定 3 改定 3）と同型に揃える —— 日次だけだと、朝までの間に
+# 別の PR が積み上がって原因の切り分けが難しくなる。
+#
+# ■ 必須チェックにはしない
+#
+# PR で起動しないチェックを必須にすると**恒久 pending でマージ不能**になる
+# （docs/ai-workflow.md「必須チェックに指定する際の注意」）。`docs/ai-workflow.md` の表は変更しない。
+name: Integration Stack
+
+on:
+  schedule:
+    # 毎日 UTC 18:30（JST 03:30）。integration.yml（UTC 18:00）と 30 分ずらし、
+    # 同時刻に 2 本の重いジョブがランナーを取り合わないようにする。
+    - cron: "30 18 * * *"
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+# 同時実行は 1 本。cancel-in-progress: false —— 走査結果は「その時点で走った」ことに意味がある。
+concurrency:
+  group: integration-stack-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # 🔴 pin する理由は「バージョンを揃えたいから」ではない。**揃っていないことが静かに素通りするから**である。
+  # k3d 5.7.4 の既定 k3s（v1.30.4）が同梱する traefik chart 25.0.3 では `expose` が bool であり、
+  # deploy/local/edge/traefik-entrypoint.yaml の map 形式（chart 26 以降）は型不一致で reconcile に失敗する。
+  # ところが `kubectl apply` は成功するため **admin(50000) が立たないまま up は EXIT=0 で返る**（#953）。
+  # v1.35.4-k3s1 は**手元の Rancher Desktop と同じ k3s** であり、ローカルと CI の乖離そのものを消す。
+  # 実測（run 32555313631）: v1.30.4 は不可 / v1.31.5・v1.35.4 は admin=50000 が立つ。
+  K3D_VERSION: v5.8.3
+  K3S_IMAGE: rancher/k3s:v1.35.4-k3s1
+  CLUSTER: integration-stack
+
+jobs:
+  stack:
+    # 必須チェックにしないため、ジョブ名は表示用途のみ。
+    name: integration-stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      # FR-14, IADR-0060 / IADR-0065, Issue #245: ユニット（src/*）の submodule のみ非再帰で取得する。
+      # 🔴 **これが無いと bff と frontend のイメージビルドが落ちる**（実測 run 32554145102:
+      # `COPY src/ai-stock-trading/backend/Bff/` → not found）。integration.yml と同じ形で取る。
+      - name: Fetch unit submodules (src/*, public, non-recursive)
+        run: |
+          git config --file .gitmodules --get-regexp '^submodule\..*\.path$' \
+            | awk '$2 ~ /^src\// { print $2 }' \
+            | xargs -r -n1 git submodule update --init
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - uses: azure/setup-helm@v4
+
+      # 🔴 門そのものが壊れていないことを、**高価な起動の前に**確かめる。
+      # 検査器が壊れていれば以降は何を測っても意味がないので、ここで落とす。
+      - name: Self-test the readiness gate
+        run: node scripts/check-stack-ready.js --self-test
+
+      - name: Install k3d (pinned)
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="${K3D_VERSION}" bash
+          k3d version
+          kubectl version --client
+          helm version
+
+      # k8s-local-up.sh 自身が k3d cluster create を行う（ポートは LOCALEDGE=1 が決める）。
+      # K3S_IMAGE で k3s のイメージだけを pin する（scripts/k8s-local-up.test.js が既定バイト等価を固定）。
+      - name: Bring up the integration stack (LOCALEDGE=1)
+        run: |
+          set -euo pipefail
+          LOCALEDGE=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
+
+      # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
+      # **待つだけで、判定はしない** —— `kubectl wait --all` は対象が 0 件のとき成功してしまうため、
+      # 「待てたこと」を成功の根拠にはできない。判定は次のステップの検査器が行う。
+      - name: Wait for pods to become Ready (待つだけ。判定はしない)
+        run: |
+          set -euo pipefail
+          for ns in platform-infra microservices-platform; do
+            kubectl -n "$ns" wait --for=condition=Ready pods --all --timeout=600s
+          done
+
+      # 🔴 ここが門である。G1（readiness）/ G2（0 件で緑にしない）/ G3（ツール不在は失敗）/
+      # G4（エッジと issuer の完全一致）/ G5（admin=50000）をすべて fail-closed で判定する。
+      - name: 🔴 Gate — the stack is actually up
+        run: node scripts/check-stack-ready.js
+
+      # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
+      - name: Dump cluster state (診断用・失敗時のみ)
+        if: failure()
+        run: |
+          set +e
+          echo "::group::pods"; kubectl get pods -A -o wide; echo "::endgroup::"
+          echo "::group::not running"; kubectl get pods -A --field-selector=status.phase!=Running; echo "::endgroup::"
+          echo "::group::ingress"; kubectl get ingress -A; echo "::endgroup::"
+          echo "::group::traefik svc"; kubectl -n kube-system get svc traefik -o yaml; echo "::endgroup::"
+          echo "::group::warnings"; kubectl get events -A --field-selector type=Warning --sort-by=.lastTimestamp | tail -60; echo "::endgroup::"
+          echo "::group::not-ready container logs"
+          for p in $(kubectl get pods -A -o jsonpath='{range .items[?(@.status.phase!="Succeeded")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'); do
+            ns="${p%%/*}"; name="${p##*/}"
+            ready="$(kubectl -n "$ns" get pod "$name" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}')"
+            [ "$ready" = "True" ] && continue
+            echo "=== $ns/$name"; kubectl -n "$ns" logs "$name" --all-containers --tail=60
+          done
+          echo "::endgroup::"
+
+      - name: Tear down
+        if: always()
+        run: k3d cluster delete "${CLUSTER}" || true
+
+  # 🔴 nightly の失敗は、見ていなければ無かったことになる。issue として残す
+  # （integration.yml と同じ再利用ワークフロー。IADR-0232 決定 1）。
+  report-failure:
+    needs: [stack]
+    if: always() && github.event_name != 'pull_request' && contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/ci-failure-issue.yml
+    with:
+      marker_key: integration-stack
+    permissions:
+      contents: read
+      issues: write
