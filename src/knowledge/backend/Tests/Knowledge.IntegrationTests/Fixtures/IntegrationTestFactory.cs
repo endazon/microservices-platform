@@ -86,8 +86,18 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             //   規則 3: 宣言の consumer 完全名が実装と不一致 → 起動失敗
             //   規則 4: 宣言の input が IConsumer<TIn> の TIn と不一致 → 起動失敗
             //   規則 5: enabled:false → 購読・キューを作らない
-            // を**検査するテストが 1 件も無かった**。コンシューマのクラス名や namespace を変えると
-            // 本番は起動時に落ちるのに、テストは緑のままだった。
+            // を**出荷される pipeline.json に対して検査するテストが無かった**。コンシューマの
+            // クラス名や namespace を変えると、本番は起動時に落ちるのに、テストは緑のままだった。
+            //
+            // 🔴 **［2026-08-22 訂正 / #892］従前ここには「4 つの fail-fast を検査するテストが
+            // 1 件も無かった」と書いていた。誤りである。** 規則 2〜5 は ConversionService.Worker.Tests の
+            // PipelineStepRegistrationTests が**合成した宣言に対して**既に検査していた（2026-07-08 の
+            // #111 で追加。本コメントを書いた時点で 6 週間前から存在した）。無かったのは
+            // 「**出荷される pipeline.json に対する**検査」である。
+            //
+            // docs 側（tech-requirements.md / docs/tests/FR-14_composability.md）は #892 で訂正済み
+            // だったが、**本コメントだけが引き直されずに残っていた**。規則 10 の破れである ——
+            // 是正のたびに、その変更で新たに誤りになる自分の記述を**全走査で**引き直すこと。
             //
             // 🔴 **本番が読む正本を指す。テストへ複製しない。** 複製すると本番の宣言を変えても
             // テストの複製は古いままになり、「宣言と実装の一致」を検査するはずのテストが
