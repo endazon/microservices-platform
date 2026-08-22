@@ -1,5 +1,5 @@
 ---
-title: IADR-0234 trace ブロックの網羅性検査器は追加しない —— 候補 A は精度 2.6%、偽陽性の主因は束ね PR の直積という構造であり、「過去 2 件の再現」と「偽陽性の許容」は両立しない。規約自体が未裁定であり、裁定が機械化に先行する
+title: IADR-0235 trace ブロックの網羅性検査器は追加しない —— 候補 A は精度 2.6%、偽陽性の主因は束ね PR の直積という構造であり、「過去 2 件の再現」と「偽陽性の許容」は両立しない。規約自体が未裁定であり、裁定が機械化に先行する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -18,7 +18,7 @@ related_specs:
   - IADR-0141_audit-rounds-and-population-drawing.md
 ---
 
-# IADR-0234: trace ブロックの網羅性検査器は追加しない
+# IADR-0235: trace ブロックの網羅性検査器は追加しない
 
 ## 状況
 

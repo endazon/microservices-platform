@@ -1,5 +1,5 @@
 ---
-title: IADR-0235 カバレッジ集計はレポートを跨いで行を重複排除し、被覆は OR で畳む
+title: IADR-0236 カバレッジ集計はレポートを跨いで行を重複排除し、被覆は OR で畳む
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-standards.md
 ---
 
-# IADR-0235 カバレッジ集計のレポート跨ぎ重複排除
+# IADR-0236 カバレッジ集計のレポート跨ぎ重複排除
 
 ## 状況
 

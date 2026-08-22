@@ -233,7 +233,7 @@ function zeroTotals() {
  * テキスト中の <line> を数える（重複排除しない）。
  *
  * collect: true のときは行そのものも entries として返す（レポート跨ぎの重複排除に使う。#900 /
- * IADR-0235）。既定で集めないのは、診断用の raw（<methods> 配下の重複込みで実測 5 万行規模）まで
+ * IADR-0236）。既定で集めないのは、診断用の raw（<methods> 配下の重複込みで実測 5 万行規模）まで
  * 行の配列を持つのが無駄だからである。
  */
 function countLines(text, { collect = false } = {}) {
@@ -331,7 +331,7 @@ function unitOfFilename(filename, sources = []) {
 }
 
 /**
- * レポート間の重複排除に使うファイルキー（#900 / IADR-0235 決定 2）。
+ * レポート間の重複排除に使うファイルキー（#900 / IADR-0236 決定 2）。
  *
  * 🔴 **生の `filename` をキーにしてはならない。** `unitOfFilename` は同じファイルをレポートごとに
  * 違う文字列で返す（`relative` / `absolute` / `source-joined`）。IADR-0123 決定 4 の CI 実測は
@@ -462,7 +462,7 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
   const unattributedSamples = [];
   let fallbackClasses = 0;
   let emptyClasses = 0;
-  // #900 / IADR-0235: 集計対象として残った行の同一性。aggregateReports がレポート間で畳む。
+  // #900 / IADR-0236: 集計対象として残った行の同一性。aggregateReports がレポート間で畳む。
   const includedEntries = [];
   const includedUnkeyed = zeroTotals();
   let unnormalizedLines = 0;
@@ -519,7 +519,7 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
     }
     addTotals(totals, stats);
 
-    // #900 / IADR-0235: 集計に残った行へ (class name, 正規化 filename, 行番号) のキーを与える。
+    // #900 / IADR-0236: 集計に残った行へ (class name, 正規化 filename, 行番号) のキーを与える。
     //
     // 🔴 **同一レポート内の同キーは畳まない。** 出現順の連番をキーへ足して衝突させないことで、
     // **レポート 1 件のときは重複排除が恒等になる**（IADR-0123 決定 3・決定 4 の非退行が
@@ -556,7 +556,7 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
 
   return {
     ...totals,
-    // #900 / IADR-0235: レポート間の重複排除の材料。totals は「このレポート単体の集計値」のままで、
+    // #900 / IADR-0236: レポート間の重複排除の材料。totals は「このレポート単体の集計値」のままで、
     // 意味を変えない（aggregateReports が畳んだ値を別に作る）。
     // 不変条件: totals.lines === included.entries.length + included.unkeyed.lines
     included: { entries: includedEntries, unkeyed: includedUnkeyed, unnormalizedLines },
@@ -600,7 +600,7 @@ function mergeTotals(totalsList) {
 }
 
 /**
- * レポート間で行を重複排除して畳む（#900 / IADR-0235 決定 1）。
+ * レポート間で行を重複排除して畳む（#900 / IADR-0236 決定 1）。
  *
  * 共有ライブラリ（Platform.Shared.Infrastructure 等）の行は、それを参照するテストプロジェクトの
  * 数だけ各レポートに載る。従来はレポート単位の集計値を単純加算していたため、**分母が参照数だけ
@@ -613,7 +613,7 @@ function mergeTotals(totalsList) {
  * 各レポートで coveredBranches <= branches なので max(coveredBranches) <= max(branches) が成り立ち、
  * 分子が分母を超えることはない。
  *
- * 🔴 **分岐の max は「測定定義の変更」である**（IADR-0235 決定 3）。Cobertura の <line> が分岐に
+ * 🔴 **分岐の max は「測定定義の変更」である**（IADR-0236 決定 3）。Cobertura の <line> が分岐に
  * ついて持つのは condition-coverage="50% (1/2)" という**個数だけ**で、どの分岐が通ったかの識別子が
  * 無い。レポート A が分岐 1 を、B が分岐 2 を被覆していても（真の和集合は 2/2）合成できず 1/2 に
  * とどまる。max は真の和集合の**下界**であり、誤差は常に「実際より低く見える」方向にしか出ない
@@ -668,7 +668,7 @@ function foldLineEntries(parsedList) {
  * parseCobertura の結果（レポート単位）を合算する。
  * 集計対象（totals）・除外分（excluded）・診断（diagnostics）をまとめて返す。
  *
- * 🔴 **重複排除するのは totals だけである**（#900 / IADR-0235 決定 4）。
+ * 🔴 **重複排除するのは totals だけである**（#900 / IADR-0236 決定 4）。
  * excluded / generated / beforeExclusion / beforeGeneratedExclusion / unitTotals は**単純和のまま**。
  * とくに beforeExclusion は IADR-0123 決定 4 の「coverlet の lines-valid との照合」に使われ、
  * 照合相手（diagnostics.reported）は**レポートごとの lines-valid を単純加算した値**である
@@ -756,7 +756,7 @@ function aggregateReports(parsedList) {
     // （IADR-0123 決定 4）はこの値で行う——除外を足し戻さないと突合が成立しない。
     // 🔴 **summed（重複排除前）から組む。** 畳んだ totals から組むと照合が恒常的に割れる。
     beforeExclusion: mergeTotals([summed, excluded, generated]),
-    // レポート跨ぎの重複排除の**前**の集計値（#900 / IADR-0235。前後比較の観測点）。
+    // レポート跨ぎの重複排除の**前**の集計値（#900 / IADR-0236。前後比較の観測点）。
     beforeCrossReportDedup: summed,
     diagnostics: {
       sources: [...sources],
@@ -769,7 +769,7 @@ function aggregateReports(parsedList) {
       reported: reportsWithReported ? reported : null,
       reportsWithReported,
       reportCount: parsedList.length,
-      // #900 / IADR-0235: レポート跨ぎの重複排除の観測点。
+      // #900 / IADR-0236: レポート跨ぎの重複排除の観測点。
       dedup: {
         droppedLines: summed.lines - totals.lines,
         droppedCovered: summed.covered - totals.covered,
@@ -859,7 +859,7 @@ function attributionMessages(agg) {
     }
   }
 
-  // NFR（#900 / IADR-0235 決定 5）: レポートが 2 件以上あるのに重複排除で 1 行も落ちない状態は、
+  // NFR（#900 / IADR-0236 決定 5）: レポートが 2 件以上あるのに重複排除で 1 行も落ちない状態は、
   // 「共有ライブラリを参照するテストが重なっていない」か「<class name> や正規化キーがレポート間で
   // 揃わず畳めていない（＝分母が二重計上のまま）」かのどちらかである。**<class name> がレポート跨ぎで
   // 安定していることは未確認**（実装時に手元へ実レポートが 0 件だった）ため、素通りに毎回気付ける
@@ -874,7 +874,7 @@ function attributionMessages(agg) {
       text:
         `[check-coverage-floor] レポート跨ぎの重複排除で落ちた行は 0 行でした（${d.reportCount} レポート）。` +
         ' 共有プロジェクトを参照するテストが重なっていないか、<class name> や正規化キーが' +
-        'レポート間で揃わず畳めていない（＝分母が二重計上のまま）状態です（#900 / IADR-0235 決定 2）。',
+        'レポート間で揃わず畳めていない（＝分母が二重計上のまま）状態です（#900 / IADR-0236 決定 2）。',
     });
   }
 
@@ -885,7 +885,7 @@ function attributionMessages(agg) {
         `[check-coverage-floor] 重複排除キーを src/<unit>/ 経路へ正規化できなかった行が ` +
         `${d.dedup.unnormalizedLines} 行あります（未帰属クラス由来）。生の filename をキーにしているため、` +
         '同じファイルでもレポート間で表記が違うと畳まれず、分母が二重計上のまま残ります' +
-        `（#900 / IADR-0235 決定 2）。filename 例: ${JSON.stringify(d.unattributedSamples)}`,
+        `（#900 / IADR-0236 決定 2）。filename 例: ${JSON.stringify(d.unattributedSamples)}`,
     });
   }
 
@@ -942,7 +942,7 @@ function formatDiagnostics(agg, floor = {}) {
   const out = [];
   const units = [...EXCLUDED_UNITS].join(', ') || '（なし）';
 
-  // NFR（#900 / IADR-0235 決定 5）: レポート跨ぎの重複排除を毎回出す。共有ライブラリの行が
+  // NFR（#900 / IADR-0236 決定 5）: レポート跨ぎの重複排除を毎回出す。共有ライブラリの行が
   // 参照するテストプロジェクトの数だけ分母に載る状態を、CI ログからそのまま読めるようにする。
   {
     const dd = d.dedup || {};
@@ -966,7 +966,7 @@ function formatDiagnostics(agg, floor = {}) {
     `除外（filename 帰属・#468）: 集計対象外ユニット（${units}）由来 ${agg.excluded.classes.length} クラス / ` +
       `${agg.excluded.lines} 行（被覆 ${agg.excluded.covered}） / 分岐 ${agg.excluded.branches}（被覆 ${agg.excluded.coveredBranches}）を落としました。` +
       ` 除外前: ${formatTotals(agg.beforeExclusion)}（生成コードも戻した値）` +
-      // #900 / IADR-0235 決定 4: 除外量と「除外前」はレポート跨ぎの重複を**含んだ単純和**である。
+      // #900 / IADR-0236 決定 4: 除外量と「除外前」はレポート跨ぎの重複を**含んだ単純和**である。
       // 床が判定に使う値（重複排除後）と桁が違うため、混同されないよう毎回書く。
       '。※ この行の値はレポート跨ぎの重複込み・単純和（coverlet の lines-valid と突き合わせるため）',
   );
@@ -1507,7 +1507,7 @@ function selfTest() {
       p.excluded.lines === 1 && p.diagnostics.how.unattributed === 0, p.diagnostics);
   }
 
-  // --- #900 / IADR-0235: レポート跨ぎの行重複排除 ---------------------------------
+  // --- #900 / IADR-0236: レポート跨ぎの行重複排除 ---------------------------------
   //
   // 🔴 **受け入れ基準を rate で書いてはならない。** 「同じレポートを 2 部与えても集計値が変わらない」
   // は正しいが、**同じレポート 2 部では被覆率は動かない**（分子分母が等倍で増えるため 50% のまま）。

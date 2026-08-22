@@ -7,7 +7,7 @@ related_ids:
   - IADR-0118
   - IADR-0123
   - IADR-0232
-  - IADR-0235
+  - IADR-0236
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -282,8 +282,8 @@ M-A 外なので使えず、**単独 PR** である。
 
 ## 採番とマージ順の制約
 
-- 本作業は **`IADR-0235`** を使う（現在の最大は `IADR-0233`。`IADR-0234` は並行の `#885` が予約）
+- 本作業は **`IADR-0236`** を使う（現在の最大は `IADR-0233`。`IADR-0235` は並行の `#885` が予約）
 - `check-adr-numbering.js` は**欠番なし**を fail で見るため、
-  🔴 **`#885`（`IADR-0234`）が develop に着地するまで本 PR の `scripts-tests` は赤い。**
+  🔴 **`#885`（`IADR-0235`）が develop に着地するまで本 PR の `scripts-tests` は赤い。**
   マージは `#885` の後に行う（PR を出すのは先でよい）
 - `.github/workflows/ci.yml` は `#882` PR1 も触る予定がある。本作業が触るのは `:579` のコメント 1 行のみ。
