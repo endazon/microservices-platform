@@ -55,6 +55,24 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
         // 全テストが緑になる**。「設定したつもりで何も検査していない」状態が成功と見分けられなくなる。
         // （#891 で解決処理を RepoFile へ集約した。この理由は deploy/ の YAML を読む 5 箇所には
         //   当てはまらないので、共通メッセージへ混ぜず呼び出し側に残している。）
+        // 🔴 ADR-0027（#441 E1 のマージ後に integration.yml が検出）:
+        // **Wolverine は接続先をホスト構築時に読む。** MassTransit は `UsingRabbitMq` のラムダ内で
+        // **遅延して**読むため、下の ConfigureAppConfiguration の上書きで間に合っていた。
+        // Wolverine のオプション構成は `builder.Build()` の時点で走るので**間に合わず**、
+        // 既定の amqp://guest:guest@rabbitmq:5672 へ繋ぎに行って
+        // `BrokerInitializationException: Unable to initialize the Broker rabbitmq in time` になる。
+        //
+        // **`UseSetting` はホスト構成へ書くので、CreateBuilder が構成を組む時点から見える** ——
+        // Pipeline:ConfigPath と同じ理由である。ConfigureAppConfiguration 側の上書きは
+        // 残したまま（MassTransit 経路のサービスがまだ在るため）、**両方の読み取り時点を満たす。**
+        //
+        // 🔴 **これは「統合テストの config 上書きは効く」を一般化できない実例が 2 件目である。**
+        // 1 件目は Pipeline:ConfigPath（下記）。**読まれる時点で決まる。**
+        if (_rabbit?.ConnectionString is { Length: > 0 } rabbitConnection)
+        {
+            builder.UseSetting("RabbitMq:ConnectionString", rabbitConnection);
+        }
+
         builder.UseSetting("Pipeline:ConfigPath", RepoFile.Find(
             Path.Combine("deploy", "helm", "microservices-platform", "files", "pipeline.json"),
             because: "Pipeline:ConfigPath に存在しないパスを渡すと AddPlatformPipelineConfig が黙って何もせず、"
