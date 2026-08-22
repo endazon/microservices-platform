@@ -324,3 +324,4 @@
 | [IADR-0248](./IADR-0248_integration-stack-ci-readiness-gate.md) | **`k8s-local-up.sh` の EXIT=0 は readiness の証明にならない**。統合スタックは nightly で起こし、6 門を fail-closed で判定。k3s は pin。#783 | Accepted |
 | [IADR-0249](./IADR-0249_upstream-port-check-population.md) | **上流ポート検査の母集合はサービス間 named client まで含める**。判定は実効値で「上書きの有無」ではない（後発サービスはコード既定が 8080）。上書きの探索は呼び出し元のブロック内で行う。#958 | Accepted |
 | [IADR-0250](./IADR-0250_ai-review-trace-followthrough-observation.md) | **記録と文書の追随は AI レビューの観点として宣言する**。ただし「機能している防護の格上げ」ではない —— 63 PR を引くと本物の漏れ 16 件に対し指摘は 1 件で**検出率は約 6%**、n=2 の根拠は生存者バイアスだった。効果は主張せず再測定の手順を残す。#906 | Accepted |
+| [IADR-0251](./IADR-0251_bff-session-token-handler.md) | BFF セッションの内部設計。**CSRF は SameSite+ヘッダ**（同一オリジン・CORS 0 件の実測が前提。再検討条件を明記）。`ResponseMode=query`。**失効は TicketStore の削除**。#439 | Accepted |

@@ -2,6 +2,7 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Bff.Composition;
+using Platform.Bff.Foundation.Session;
 
 const string ServiceName = "microservices-platform.bff";
 
@@ -107,9 +108,19 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
+// NFR, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッション（Token Handler）の受け皿。
+// **既定の認証スキームは JwtBearer のままである。**本段は受け皿を足すだけで切り替えない
+// （切り替えは 3b。SPA 側の置き換えと oidc-client-ts の撤去と同時に行う）。
+builder.Services.AddBffSession(builder.Configuration);
+
 var app = builder.Build();
 
 app.UsePlatformMiddleware();
+
+// ADR-0032 §決定 / IADR-0251 決定 1: CSRF 対策の 2 枚目の壁。
+// **セッション Cookie を運ぶ状態変更リクエストにだけ**カスタムヘッダを要求する
+// （Bearer 呼び出しは対象外 —— ブラウザが自動で付ける資格情報ではないため CSRF が成立しない）。
+app.UseMiddleware<CsrfHeaderMiddleware>();
 app.MapPlatformHealthChecks();
 app.MapOpenApi();
 

@@ -39,6 +39,10 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConfigBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
+        // NFR, SC-16, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッションの入口
+        // （ログイン開始・ログアウト・現在の身元）。コールバックは OIDC ハンドラが
+        // `/bff/auth/callback` で受けるため、ここには現れない。
+        new DelegateBffEndpointModule(a => a.MapAuthBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapDataSourceBffEndpoints()),
         // Issue #640, FR-09, SC-09, IADR-0152/0153: タグ辞書の管理（追加・改名・削除）。
         // 後段は DocumentService（knowledge ユニット）なので Knowledge.Bff.Endpoints に置く

@@ -2743,6 +2743,65 @@ ${r.stderr}`);
       assert.ok(!out.includes('omment'), 'コメントが残っている');
     });
 
+    // ── NFR, ADR-0032 / IADR-0251 / #439: 「認証チャレンジの発行しかしない端点」だけ無認証を許す。
+    //
+    // 🔴 **これは allowlist の追加ではなく、判定条件の精密化である。**
+    // 本検査器は「allowlist は事故を隠し、検査器が形骸化する」という設計判断で allowlist を
+    // 持たない（#647）。**その設計判断は変えていない** —— 経路名を列挙するのではなく、
+    // **ハンドラが資料を返さないこと**で判定する。以下の負例がその境界を固定する。
+
+    // ★ 正例: ログイン開始。チャレンジを出すだけで何も返さない。
+    ok('check-bff-authz-docs: チャレンジ発行だけの端点は無認証でよい', () => {
+      const stmt =
+        'g.MapGet("/login", (string? returnUrl) => Results.Challenge(props, [Scheme]))' +
+        '.WithName("BffAuthLogin").AllowAnonymous()';
+      assert.strictEqual(authz.isChallengeOnly(stmt), true);
+    });
+
+    // 🔴 ★ **負例（抜け道になっていないことの証明）**: チャレンジ**に加えて**データを返す形。
+    // これを許すと、無認証で資料が出る端点が「ログイン扱い」で素通りする。
+    ok('check-bff-authz-docs: チャレンジに加えてデータを返す端点は依然として違反', () => {
+      const stmt =
+        'g.MapGet("/leak", (HttpContext http) => http.User.Identity!.IsAuthenticated' +
+        ' ? Results.Ok(secrets) : Results.Challenge(props, [Scheme]))' +
+        '.WithName("Leak").AllowAnonymous()';
+      assert.strictEqual(
+        authz.isChallengeOnly(stmt),
+        false,
+        'データを返すハンドラが「チャレンジのみ」と判定された（抜け道）',
+      );
+    });
+
+    // ★ 負例: `AllowAnonymous` を書いていない暗黙の無認証は、従来どおり違反である。
+    ok('check-bff-authz-docs: AllowAnonymous の明示が無ければ例外にしない', () => {
+      const stmt = 'g.MapGet("/x", () => Results.Challenge(props, [Scheme])).WithName("X")';
+      assert.strictEqual(authz.isChallengeOnly(stmt), false);
+    });
+
+    // ★ 負例: 何も返さない（Results を 1 つも持たない）形は例外にしない。
+    ok('check-bff-authz-docs: Results を持たない端点は例外にしない', () => {
+      const stmt = 'g.MapGet("/x", () => "plain").WithName("X").AllowAnonymous()';
+      assert.strictEqual(authz.isChallengeOnly(stmt), false);
+    });
+
+    // ★ 既存の検出が消えていないこと: challengeOnly でない無認証端点は違反のまま。
+    ok('check-bff-authz-docs: 条件拡張後も無認証端点は違反として報告される', () => {
+      const anon = [{ method: 'get', path: '/bff/x', file: 'f.cs', roles: null, requiresAuth: false }];
+      const v = authz.findViolations(anon, new Map());
+      assert.strictEqual(v.length, 1);
+      assert.strictEqual(v[0].kind, 'anonymous');
+    });
+
+    // ★ 逆向き: challengeOnly なら anonymous 違反にならない（ただし契約の突合は続く）。
+    ok('check-bff-authz-docs: challengeOnly の端点は anonymous 違反にならない', () => {
+      const login = [{
+        method: 'get', path: '/bff/auth/login', file: 'f.cs',
+        roles: null, requiresAuth: false, challengeOnly: true,
+      }];
+      const contract = new Map([['get /bff/auth/login', { roles: [], line: 1 }]]);
+      assert.deepStrictEqual(authz.findViolations(login, contract), []);
+    });
+
     // 実装の経路制約を openapi の表記へ揃える。
     ok('check-bff-authz-docs: {id:guid} を {id} へ正規化する', () => {
       assert.strictEqual(authz.normalizePath('/bff/documents/{id:guid}/x'), '/bff/documents/{id}/x');
@@ -2910,7 +2969,14 @@ ${r.stderr}`);
         walkBff(pathD.join(__dirname, '..', r));
       }
       const eps = authz.collectImplementation(bffFiles.sort(), real.consts, real.policies);
-      const anon = eps.filter((e) => !e.requiresAuth).map((e) => `${e.method} ${e.path}`);
+      // NFR, ADR-0032 / IADR-0251 / #439: **認証チャレンジの発行しかしない端点は除く。**
+      // ログイン開始は本質的に無認証である（ログインするために認証は要求できない）。
+      // 🔴 **allowlist ではない** —— 経路名を列挙するのではなく、`isChallengeOnly` が
+      // 「ハンドラが資料を返さないこと」で判定する。データも返す形は依然として違反である
+      // （負例を上のブロックで固定した）。
+      const anon = eps
+        .filter((e) => !e.requiresAuth && !e.challengeOnly)
+        .map((e) => `${e.method} ${e.path}`);
       assert.deepStrictEqual(anon, [], '無認証で到達できる端点が在る（NFR-09 暫定運用）');
     });
 
