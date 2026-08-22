@@ -7,7 +7,7 @@ updated: 2026-08-22
 author: claude
 ---
 <!-- trace:
-ids: [NFR, SC-13, SC-14, SC-15, SC-16]
+ids: [NFR, SC-16]
 adrs: [ADR-0024, ADR-0026, ADR-0031, ADR-0032]
 iadrs: [IADR-0033, IADR-0121, IADR-0248, IADR-0249]
 specs: [20260822_issue-439_bff-session-token-handler]

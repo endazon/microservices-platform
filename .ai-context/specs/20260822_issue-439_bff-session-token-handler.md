@@ -2,7 +2,7 @@
 title: SPA 認証を BFF セッション方式（Token Handler）へ移行し oidc-client-ts を撤去する — 第 3 段
 type: spec
 status: draft
-related_ids: [NFR, SC-13, SC-14, SC-15, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0121]
+related_ids: [NFR, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0121]
 author: claude
 created: 2026-08-22
 updated: 2026-08-22

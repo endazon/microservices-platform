@@ -46,6 +46,8 @@ public class BffEndpointCompositionTests
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
+            // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口。
+            app.MapAuthBffEndpoints();
         });
 
         viaComposition.Should().BeGreaterThan(0);
@@ -55,11 +57,12 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 全 14 モジュール。ナレッジ 9 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary/Graph）は
+        // 全 15 モジュール。ナレッジ 9 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary/Graph）は
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
         // platform 同居。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
         // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
-        BffEndpointComposition.Modules.Should().HaveCount(14);
+        // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口（Auth）を追加した。
+        BffEndpointComposition.Modules.Should().HaveCount(15);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -68,13 +71,18 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 14 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 15 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             "/bff/admin/authz",
             "/bff/admin/config",
             "/bff/analysis",
             "/bff/assumptions",
+            // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口。
+            // ログイン開始・ログアウト・現在の身元。**トークンはここからも出さない。**
+            // OIDC のコールバック（/bff/auth/callback）はハンドラが直接受けるため、
+            // 端点として登録されず本一覧にも現れない。
+            "/bff/auth",
             // FR-04, FR-05, SC-01, SC-08, #540: 権限内属性値の照会（ADR-0043）。
             "/bff/attribute-values",
             "/bff/conversion/jobs",

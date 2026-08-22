@@ -1,9 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <!-- ADR-0032 / IADR-0249 / #439: セッションの判定ロジック（戻り先の検証・CSRF の適用条件）を
+         テストから直接叩く。公開 API を広げずに済ませる（リポジトリの既存慣習と同じ形）。 -->
+    <InternalsVisibleTo Include="Platform.Bff.Tests" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Refit.HttpClientFactory" />
     <PackageReference Include="AspNetCore.HealthChecks.Uris" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
+    <!-- ADR-0032 / IADR-0249 / #439: BFF セッション（Token Handler）。 -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
     <!-- FR-14, IADR-0063: BFF 合成点（例外3）。可変ユニットの BFF エンドポイントを合成点で束ねる。 -->

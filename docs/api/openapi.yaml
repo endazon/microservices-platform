@@ -47,11 +47,64 @@ tags:
     description: "FR-02, FR-05, ADR-0016, ADR-0017, IADR-0025: 埋め込み生成ゲートウェイ。機密区分でティア（セルフホスト/外部）を切替、高機密は fail-closed。IADR-0017: サービス間呼び出し専用"
   - name: Config
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
+  - name: Auth
+    description: "NFR, SC-16, ADR-0032, IADR-0249: BFF セッション（Token Handler）。トークンはブラウザへ出さず BFF 側の Redis セッションにのみ保持する"
   - name: Notifications
     description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
 
 paths:
   # ── BFF ──────────────────────────────────────────
+  /bff/auth/login:
+    get:
+      x-roles: []
+      tags: [Auth]
+      summary: "NFR, ADR-0032: ログイン開始（BFF セッション）"
+      description: |
+        認可サーバへ Authorization Code + PKCE のフローを開始させる。
+        **本端点は意図的に無認証である**（ログインするために認証を要求できない）。
+        トークンはブラウザへ出さず、BFF 側のセッション（Redis）にのみ保持する。
+      operationId: bff-auth-login
+      parameters:
+        - name: returnUrl
+          in: query
+          required: false
+          schema: { type: string }
+          description: "ログイン後の戻り先。**自サイト内のパスに限る**（オープンリダイレクト防止）"
+      responses:
+        "302": { description: 認可サーバへのリダイレクト }
+  /bff/auth/logout:
+    post:
+      x-roles: []
+      tags: [Auth]
+      summary: "NFR, ADR-0032: ログアウト（ブラウザと認可サーバの双方）"
+      operationId: bff-auth-logout
+      parameters:
+        - name: returnUrl
+          in: query
+          required: false
+          schema: { type: string }
+          description: "ログアウト後の戻り先。**自サイト内のパスに限る**"
+      responses:
+        "302": { description: 認可サーバのログアウト経路へのリダイレクト }
+        "401": { description: 未認証 }
+  /bff/auth/me:
+    get:
+      x-roles: []
+      tags: [Auth]
+      summary: "SC-16, ADR-0032: 現在の身元（**トークンは返さない**）"
+      description: |
+        SPA が「誰としてログインしているか」を知る唯一の口。
+        **アクセストークン・リフレッシュトークンは一切含めない**（含めた時点で
+        ADR-0032 の「ブラウザにトークンを出さない」が崩れる）。
+      operationId: bff-auth-me
+      responses:
+        "200":
+          description: 現在の身元
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BffIdentityDto"
+        "401": { description: 未認証 }
   /bff/search:
     post:
       x-roles: []
@@ -3028,6 +3081,22 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    BffIdentityDto:
+      type: object
+      description: |
+        SC-16: 現在ログインしている利用者。**トークンを含めない**（ADR-0032）。
+      required: [name, subject, roles]
+      properties:
+        name:
+          type: string
+          description: "表示名（Keycloak の preferred_username）"
+        subject:
+          type: string
+          description: "認可サーバ上の一意な識別子（sub）"
+        roles:
+          type: array
+          items: { type: string }
+          description: "実効ロール"
     FeedbackStatsDto:
       type: object
       description: "フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）"
