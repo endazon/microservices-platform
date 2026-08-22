@@ -59,9 +59,17 @@ public static class FeedbackBffEndpoints
         g.MapGet("/stats", async (
             Guid? answerId,
             IHttpClientFactory httpFactory,
+            HttpContext http,
             CancellationToken ct) =>
         {
             var client = httpFactory.CreateClient("FeedbackService");
+
+            // #948: 後段 `/feedback/stats` は RequireRole(admin, operator) を持つ（#521 / IADR-0158）。
+            // **資格情報を渡さないと challenge され、下の非 2xx 透過が 401 をそのまま返す。**
+            // 同型の取り残しがダッシュボード集約（DashboardBffEndpoints）にもあった。
+            var auth = http.Request.Headers.Authorization.ToString();
+            if (!string.IsNullOrEmpty(auth))
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
             var path = answerId is { } aid && aid != Guid.Empty
                 ? $"/feedback/stats?answerId={aid}"
                 : "/feedback/stats";

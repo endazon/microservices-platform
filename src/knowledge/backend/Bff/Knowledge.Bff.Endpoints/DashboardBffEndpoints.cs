@@ -47,7 +47,13 @@ public static class DashboardBffEndpoints
             if (!string.IsNullOrEmpty(auth))
                 dashClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
 
+            // #948: **FeedbackService へも同じく引き継ぐ。** `/feedback/stats` は 2026-08-10 に
+            // RequireRole(admin, operator) を獲得した（#521 / IADR-0158）が、**この呼び出しだけが
+            // 取り残された**。無資格の呼び出しは challenge され、その 401 を下の非 2xx 透過が
+            // そのまま返すため、利用者には「有効なトークンなのに 401」として現れていた。
             var feedbackClient = httpFactory.CreateClient("FeedbackService");
+            if (!string.IsNullOrEmpty(auth))
+                feedbackClient.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", auth);
 
             // 利用側サマリと回答品質を並行取得する（互いに独立）。満足率も同じ days で期間を絞る。
             var usageTask = dashClient.GetAsync($"/dashboard/summary{qs}", ct);

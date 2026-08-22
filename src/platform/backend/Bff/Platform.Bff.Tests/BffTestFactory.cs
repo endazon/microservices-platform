@@ -43,6 +43,12 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-10 BFF テスト: 後段が返すステータスの差し替え・null 応答の再現（非 2xx 透過・502 分岐の検証用）。
     public HttpStatusCode DashboardStubStatusCode { get; set; } = HttpStatusCode.OK;
     public HttpStatusCode FeedbackStatsStubStatusCode { get; set; } = HttpStatusCode.OK;
+
+    // #948: FeedbackService の実体は `/feedback/stats` に RequireRole(admin, operator) を持つ
+    // （#521 / IADR-0158「判断軸は PII の有無ではなく権限で絞るか」）。**スタブが常に成功を返す作りだと、
+    // 「BFF が資格情報を渡し忘れた」が緑を通る**——実際に通っていた（#948）。この knob を立てると、
+    // スタブは実体と同じく「Authorization が無ければ 401」を返す。既定 false は既存テストの挙動を変えない。
+    public bool FeedbackRequiresAuthorization { get; set; }
     public bool DashboardReturnsNullBody { get; set; }
 
     // FR-03/FR-05 BFF テスト（SC-01 横断検索）: ABAC スコープ解決の許可可否と検索結果をスタブ制御する。
@@ -392,6 +398,11 @@ public class BffTestFactory : WebApplicationFactory<Program>
             HttpResponseMessage response;
             if (path.Contains("/stats"))
             {
+                // #948: 実体（FeedbackService）は資格情報が無ければ 401 で challenge する。
+                if (owner.FeedbackRequiresAuthorization && request.Headers.Authorization is null)
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+                }
                 response = new HttpResponseMessage(owner.FeedbackStatsStubStatusCode)
                 {
                     Content = JsonContent.Create(new FeedbackStatsDto(3, 1, 4, 0.75))

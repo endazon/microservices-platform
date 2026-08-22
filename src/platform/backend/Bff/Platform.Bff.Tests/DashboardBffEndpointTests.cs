@@ -129,4 +129,49 @@ public class DashboardBffEndpointTests(BffTestFactory factory)
             factory.DashboardReturnsNullBody = false;
         }
     }
+
+    // T-15 / #948: ★ **FeedbackService へも資格情報を伝播する。**
+    //
+    // `/feedback/stats` は 2026-08-10 に RequireRole(admin, operator) を獲得した（#521 / IADR-0158）。
+    // ところが BFF のダッシュボード集約は **DashboardService にだけ Authorization を転送し、
+    // FeedbackService には転送していなかった。** 無資格の呼び出しは challenge され、その 401 を
+    // BFF が字義どおり中継するため、**利用者には「有効なトークンなのに 401」として現れる**（#948）。
+    //
+    // **ロール不足（403）ではない。** 資格情報がそもそも付いていないリクエストへの 401 である。
+    [Fact]
+    public async Task GetSummary_PropagatesAuthorizationHeaderToFeedbackService()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", "feedback-token");
+
+        await client.GetAsync("/bff/dashboard/summary");
+
+        factory.LastFeedbackForwardedAuthorization.Should().Be("Bearer feedback-token");
+    }
+
+    // T-16 / #948: ★ **後段が実体どおり認可を要求しても 200 になる**（利用者から見た症状の再現）。
+    //
+    // T-15 は「転送したか」を直接見る。こちらは**症状の側**から固定する——後段スタブに実体と同じ
+    // 「Authorization が無ければ 401」を持たせると、転送漏れがあれば `/bff/dashboard/summary` は 401 を返す。
+    // **スタブが常に成功を返す作りだったために、この欠落は緑を通っていた。**
+    [Fact]
+    public async Task GetSummary_WhenFeedbackRequiresAuth_StillSucceeds()
+    {
+        try
+        {
+            factory.FeedbackRequiresAuthorization = true;
+            var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", "feedback-token");
+
+            var resp = await client.GetAsync("/bff/dashboard/summary");
+
+            resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+        finally
+        {
+            factory.FeedbackRequiresAuthorization = false;
+        }
+    }
 }
