@@ -40,7 +40,7 @@ public class WikiJsGraphQlClientTests
             PageNotFoundEnvelope,
             """{"data":{"pages":{"create":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""");
 
-        await Build(handler).UpsertPageAsync(Page());
+        await Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
 
         handler.Requests.Should().HaveCount(2);
         handler.Requests[1].Should().Contain("create");
@@ -52,7 +52,7 @@ public class WikiJsGraphQlClientTests
     {
         var handler = new RecordingHandler(PageNotFoundEnvelope);
 
-        var content = await Build(handler).GetRenderedContentAsync("doc/x");
+        var content = await Build(handler).GetRenderedContentAsync("doc/x", TestContext.Current.CancellationToken);
 
         content.Should().BeNull();
     }
@@ -64,7 +64,7 @@ public class WikiJsGraphQlClientTests
         var handler = new RecordingHandler(
             """{"errors":[{"message":"Forbidden","extensions":{"exception":{"code":1}}}],"data":null}""");
 
-        var act = () => Build(handler).UpsertPageAsync(Page());
+        var act = () => Build(handler).UpsertPageAsync(Page(), TestContext.Current.CancellationToken);
 
         await act.Should().ThrowAsync<WikiJsSyncException>();
     }
@@ -77,7 +77,7 @@ public class WikiJsGraphQlClientTests
             """{"data":{"pages":{"singleByPath":{"id":3,"content":"# 本文","title":"規程","tags":[{"tag":"poc"}]}}}}""",
             """{"data":{"pages":{"update":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""");
 
-        await Build(handler).ArchivePageAsync("doc/x");
+        await Build(handler).ArchivePageAsync("doc/x", TestContext.Current.CancellationToken);
 
         handler.Requests.Should().HaveCount(2);
         var update = JsonDocument.Parse(handler.Requests[1]).RootElement;
@@ -95,7 +95,7 @@ public class WikiJsGraphQlClientTests
     {
         var handler = new RecordingHandler(PageNotFoundEnvelope);
 
-        await Build(handler).ArchivePageAsync("doc/x");
+        await Build(handler).ArchivePageAsync("doc/x", TestContext.Current.CancellationToken);
 
         handler.Requests.Should().HaveCount(1);
     }
@@ -108,7 +108,7 @@ public class WikiJsGraphQlClientTests
             """{"data":{"pages":{"singleByPath":{"id":7}}}}""",
             """{"data":{"pages":{"delete":{"responseResult":{"succeeded":true,"errorCode":0,"message":"ok"}}}}}""");
 
-        await Build(handler).DeletePageAsync("doc/x");
+        await Build(handler).DeletePageAsync("doc/x", TestContext.Current.CancellationToken);
 
         handler.Requests.Should().HaveCount(2);
         handler.Requests[1].Should().Contain("delete");
@@ -119,7 +119,7 @@ public class WikiJsGraphQlClientTests
     {
         var handler = new RecordingHandler(PageNotFoundEnvelope);
 
-        await Build(handler).DeletePageAsync("doc/x");
+        await Build(handler).DeletePageAsync("doc/x", TestContext.Current.CancellationToken);
 
         handler.Requests.Should().HaveCount(1);
     }
