@@ -45,7 +45,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("refusal")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"));
+        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.Refusal);
         result.Text.Should().BeEmpty();
@@ -59,7 +59,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("refusal", "途中まで書きかけ")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"));
+        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.Refusal);
         result.Text.Should().BeEmpty();                       // 断片は破棄する
@@ -73,7 +73,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("max_tokens")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"));
+        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.MaxTokens);
         CompletionStopReasons.IsRefusal(result.StopReason).Should().BeFalse();
@@ -86,7 +86,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("max_tokens", "途中まで")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"));
+        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.MaxTokens);
         result.Text.Should().Be("途中まで");
@@ -98,7 +98,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("end_turn", "回答本文")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.EndTurn);
         result.Text.Should().Be("回答本文");
@@ -113,7 +113,7 @@ public class ClaudeProviderStopReasonTests
     {
         var provider = Provider(new StubHandler(MessageJson("some_future_reason", "本文")));
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be("some_future_reason");
         result.Text.Should().Be("本文");   // 未知理由では本文を破棄しない（refusal のみ破棄）
@@ -142,7 +142,7 @@ public class ClaudeProviderStopReasonTests
         var provider = Provider(new StubHandler(sse, "text/event-stream"));
 
         var chunks = new List<CompletionChunk>();
-        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("危険な要求")))
+        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken))
             chunks.Add(chunk);
 
         var done = chunks.Should().ContainSingle(c => c.Done).Subject;
@@ -171,7 +171,7 @@ public class ClaudeProviderStopReasonTests
         var provider = Provider(new StubHandler(sse, "text/event-stream"));
 
         var chunks = new List<CompletionChunk>();
-        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("要約して")))
+        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken))
             chunks.Add(chunk);
 
         chunks.Should().Contain(c => c.TextDelta == "回答");

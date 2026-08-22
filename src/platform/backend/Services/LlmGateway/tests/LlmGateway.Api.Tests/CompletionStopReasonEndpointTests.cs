@@ -41,10 +41,10 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
         var req = new { Prompt = "危険な要求", MaxTokens = 100, Confidentiality = "public", Purpose = "default" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.StopReason.Should().Be("refusal");
         body.Sent.Should().BeTrue();      // 越境は成立している（監査上の意味を変えない）
         body.Text.Should().BeEmpty();     // 未改修の呼び出し側は空本文で安全側へ倒れる
@@ -57,9 +57,9 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
         var client = ClientReturning(new CompletionResult("", 11, 100, CompletionStopReasons.MaxTokens));
 
         var req = new { Prompt = "長文の要約", MaxTokens = 100, Confidentiality = "public", Purpose = "default" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.StopReason.Should().Be("max_tokens");
         body.Sent.Should().BeTrue();
     }
@@ -71,9 +71,9 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
         var client = ClientReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
 
         var req = new { Prompt = "要約して", MaxTokens = 100, Confidentiality = "public", Purpose = "default" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.StopReason.Should().Be("end_turn");
         body.Text.Should().Be("回答本文");
         body.OutputTokens.Should().Be(22);
@@ -101,9 +101,9 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
                 }))).CreateClient();
 
         var req = new { Prompt = "機密文書の要約", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
         body.StopReason.Should().BeNull();
     }
@@ -116,10 +116,10 @@ public class CompletionStopReasonEndpointTests(TestWebApplicationFactory factory
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
         var req = new { Prompt = "危険な要求", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
-        var response = await client.PostAsJsonAsync("/complete/stream", req);
+        var response = await client.PostAsJsonAsync("/complete/stream", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var text = await response.Content.ReadAsStringAsync();
+        var text = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         text.Should().Contain("\"done\":true");
         text.Should().Contain("\"stopReason\":\"refusal\"");
         text.Should().Contain("\"sent\":true");

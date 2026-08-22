@@ -103,7 +103,7 @@ public class AnthropicContentBlockSanitizerTests
         const string sse = "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\"}}\n\n";
         var response = await SendAsync(sse, "text/event-stream", HttpStatusCode.OK);
 
-        (await response.Content.ReadAsStringAsync()).Should().Be(sse);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be(sse);
     }
 
     // 非 2xx（API エラー）は SDK 側の例外整形に委ねるため触らない。
@@ -113,7 +113,7 @@ public class AnthropicContentBlockSanitizerTests
         var body = Envelope($"{ThinkingBlock},{TextBlock}");
         var response = await SendAsync(body, "application/json", HttpStatusCode.TooManyRequests);
 
-        (await response.Content.ReadAsStringAsync()).Should().Be(body);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be(body);
     }
 
     // JSON 応答は書き換わり、Content-Type は保持される（SDK が媒体型で分岐しても壊さない）。
@@ -122,7 +122,7 @@ public class AnthropicContentBlockSanitizerTests
     {
         var response = await SendAsync(Envelope($"{ThinkingBlock},{TextBlock}"), "application/json", HttpStatusCode.OK);
 
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().NotContain("thinking").And.Contain("本文");
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
     }
@@ -134,7 +134,7 @@ public class AnthropicContentBlockSanitizerTests
             InnerHandler = new StubHandler(body, mediaType, status),
         };
         using var client = new HttpClient(handler);
-        return await client.GetAsync("https://api.anthropic.test/v1/messages");
+        return await client.GetAsync("https://api.anthropic.test/v1/messages", TestContext.Current.CancellationToken);
     }
 
     private sealed class StubHandler(string body, string mediaType, HttpStatusCode status) : HttpMessageHandler

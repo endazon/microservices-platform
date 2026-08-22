@@ -82,7 +82,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Value.Should().Be(1);
@@ -99,7 +99,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("", 11, 100, CompletionStopReasons.MaxTokens));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle()
             .Which.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(CompletionStopReasons.MaxTokens);
@@ -112,7 +112,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultSent);
@@ -126,7 +126,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("本文", 11, 22, "some_future_reason"));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle()
             .Which.Tags[LlmCompletionMetrics.StopReasonTag].Should().Be(LlmCompletionMetrics.ValueOther);
@@ -140,7 +140,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("本文", 11, 22, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete", Request("experimental-purpose-xyz"));
+        await client.PostAsJsonAsync("/complete", Request("experimental-purpose-xyz"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle()
             .Which.Tags[LlmCompletionMetrics.PurposeTag].Should().Be(LlmCompletionMetrics.ValueOther);
@@ -168,7 +168,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                     ];
                 }))).CreateClient();
 
-        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"));
+        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultEgressDenied);
@@ -191,7 +191,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
             })).CreateClient();
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultUpstreamError);
@@ -220,7 +220,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
             })).CreateClient();
 
-        await client.PostAsJsonAsync("/complete", Request("analysis"));
+        await client.PostAsJsonAsync("/complete", Request("analysis"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().HaveCount(2, "見送った候補と成功した候補が別々に計上される");
 
@@ -248,7 +248,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new MetricsProbe();
         var client = ClientReturning(new CompletionResult("", 11, 0, CompletionStopReasons.Refusal));
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultSent);
@@ -300,7 +300,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new OutputTokensProbe();
         var client = ClientReturning(new CompletionResult("回答本文", 11, 222, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         var m = probe.Measurements.Should().ContainSingle().Subject;
         m.Value.Should().Be(222);
@@ -316,7 +316,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new OutputTokensProbe();
         var client = ClientReturning(new CompletionResult("回答本文", 11, 22, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle()
             .Which.Tags.Should().NotContainKey(LlmCompletionMetrics.ResultTag);
@@ -347,7 +347,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                     ];
                 }))).CreateClient();
 
-        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"));
+        await client.PostAsJsonAsync("/complete", Request("analysis", "confidential"), TestContext.Current.CancellationToken);
 
         counter.Measurements.Should().ContainSingle()
             .Which.Tags[LlmCompletionMetrics.ResultTag].Should().Be(LlmCompletionMetrics.ResultEgressDenied);
@@ -369,7 +369,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
             })).CreateClient();
 
-        await client.PostAsJsonAsync("/complete", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().BeEmpty();
     }
@@ -381,7 +381,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
         using var probe = new OutputTokensProbe();
         var client = ClientReturning(new CompletionResult("回答本文", 11, 77, CompletionStopReasons.EndTurn));
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         probe.Measurements.Should().ContainSingle().Which.Value.Should().Be(77);
     }
@@ -404,7 +404,7 @@ public class CompletionMetricsTests(TestWebApplicationFactory factory)
                 s.AddKeyedSingleton<ILlmProvider>("copilot", provider);
             })).CreateClient();
 
-        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"));
+        await client.PostAsJsonAsync("/complete/stream", Request("rag-answer"), TestContext.Current.CancellationToken);
 
         // Counter は計上する（送信は成立している）が、分布には 0 を積まない。
         counter.Measurements.Should().ContainSingle()
