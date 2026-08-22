@@ -317,6 +317,48 @@ chart/overlay 検証が走るジョブ名を追記するドキュメント変更
 `ci.yml` の `on:` に `paths:` フィルタを持たず全 PR で起動し、`types:` に `reopened` を含み、
 matrix ジョブでもないため、既存の「必須チェックに指定する際の注意」の 3 条件をいずれも満たす）。
 
+### ［2026-08-22 追記 2 / #783］`ci.yml` への導入（#900 / #882 の着地順調整の後）
+
+`.github/workflows/**` は #900 / #882 も触るため、着手前に確認を取った。**#882 は `ci.yml` を
+触らずに済むことが判明し順番待ちは解除、#900 は床の実測待ちで停止中**だったため、本作業が先に
+`static-checks-units` ジョブへ `kubeconform` の導入ステップを足した。
+
+- **バージョン pin**: `KUBECONFORM_VERSION=v0.8.0`（`latest` 追従はしない。ESO helm install の
+  `--version` 検査と同じ方針）。
+- **チェックサム検証**: 公式リリースの `CHECKSUMS` から取得した `kubeconform-linux-amd64.tar.gz` の
+  SHA256（`9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883`）を埋め込み、
+  `sha256sum -c` で突合してから展開・導入する。
+- 導入位置は `azure/setup-helm@v4` / `azure/setup-kubectl@v4` の直後（同じ `static-checks-units`
+  ジョブ。別ジョブへ離すと検査が動かないため）。
+
+`scripts/scripts.repo.test.js` の CI 突合テスト（#783 既存の `ok('NFR / #783: ci.yml に
+deploy-manifests ジョブが在り...')`）へ、kubeconform 導入の検査を 3 本追加した
+（導入されていること／バージョン pin されていること／チェックサム検証をしていること）。
+
+#### 変異試験（2 本。追加した 3 本のうち version pin ／ checksum の 2 本を実測。3 本目は
+既存の helm/kubectl 導入検査と同型の `assert.match` であり、その型は既に本仕様書の初版
+（変異試験 D 系列）で実証済みのため重複実測はしていない）
+
+| # | 変異 | 期待 | 実測 |
+| --- | --- | --- | --- |
+| G | `ci.yml` の `KUBECONFORM_VERSION=v0.8.0` を `KUBECONFORM_VERSION=latest` へ | 突合テストが fail | **AssertionError**「kubeconform の導入がバージョン pin されていない（latest 追従になっている）」 |
+| H | `ci.yml` から `sha256sum -c` の行を削る | 突合テストが fail | **AssertionError**「kubeconform の導入がチェックサム検証をしていない」 |
+
+各変異のあと `git diff -- .github/workflows/ci.yml` で該当箇所のみの変化を確認してから実行し、
+復旧後に `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が `✓ 579 tests passed` へ戻ることを
+確認した。
+
+#### 実行結果（本コミット確定版）
+
+```console
+$ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js
+✓ 579 tests passed
+```
+
+`.github/workflows/ci.yml` の `on:` ブロックは変更していない（push: develop/main・
+pull_request: opened/synchronize/reopened のまま）。ジョブの追加・削除も無く、既存ステップの
+実行順序も変えていない（`static-checks-units` へステップを 1 つ挿入しただけ）。
+
 ### 後半の切り分け（引き継ぎ）
 
 - やること②「統合スタックを CI で起こす経路」（#466 の土台）は**未着手のまま**。
