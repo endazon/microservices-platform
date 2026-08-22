@@ -34,6 +34,8 @@ builder.Services.AddHttpClient("AuthorizationService", c =>
         ?? "http://authorization-service:5005"));
 builder.Services.AddScoped<IGraphAccessResolver, GraphAccessResolver>();
 builder.Services.AddScoped<IGraphStore, EfGraphStore>();
+// UC-10: ホップごと判定を守る近傍探索（#909）。
+builder.Services.AddScoped<GraphTraversal>();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）。段・合成可能ポートはまだホストしない。
 builder.Services.AddPlatformIntrospection("graph-service", new PipelineOptions());

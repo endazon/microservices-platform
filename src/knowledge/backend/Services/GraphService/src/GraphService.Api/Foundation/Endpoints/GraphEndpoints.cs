@@ -57,6 +57,48 @@ public static class GraphEndpoints
           .Produces<GraphViewResponse>()
           .Produces(StatusCodes.Status404NotFound);
 
+        // FR-17, UC-10, ADR-0034 決定 1・2・3・4: 近傍探索（多ホップ）。
+        //
+        // 🔴 **hops 上限の超過は 400 で拒否する。黙って切り詰めない**（決定 3）。
+        // 切り詰めると、利用者は「3 ホップ先まで見た」と思い込んだまま欠けた結果を受け取る。
+        g.MapGet("/{documentId:guid}/neighbors", async (
+            Guid documentId,
+            int? hops,
+            IGraphAccessResolver accessResolver,
+            IGraphStore store,
+            GraphTraversal traversal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            var requested = hops ?? GraphTraversal.DefaultHops;
+            if (requested < 1 || requested > GraphTraversal.MaxHops)
+                return Results.BadRequest(new
+                {
+                    error = "hops_out_of_range",
+                    message = $"hops は 1〜{GraphTraversal.MaxHops} で指定する（既定 {GraphTraversal.DefaultHops}）。",
+                });
+
+            var scope = await accessResolver.ResolveAsync(http, ct);
+            if (!scope.Granted)
+                return NotFound();
+
+            var start = await store.FindNodeAsync(documentId, ct);
+            if (start is null)
+                return NotFound();
+
+            var origin = AuthorizedNode.Authorize(start, scope);
+            if (origin is null)
+                return NotFound();
+
+            var subgraph = await traversal.ExploreAsync(origin, scope, requested, ct);
+
+            return Results.Ok(GraphViewResponse.Seal(subgraph, scope));
+        }).WithName("GetGraphNeighbors")
+          .RequireAuthorization()
+          .Produces<GraphViewResponse>()
+          .Produces(StatusCodes.Status400BadRequest)
+          .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 
