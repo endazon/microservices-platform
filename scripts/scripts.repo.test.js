@@ -1225,11 +1225,12 @@ module.exports = ({ ok, assert }) => {
     // ［2026-08-22 / #455 U4］Platform.Shared.Infrastructure.Tests の新設で 15 → 16
     // ［2026-08-22 / #908］GraphService.Api.Tests の新設で 16 → 17（実測: develop 16 件 ＋ 本 PR 1 件）。
     // ［2026-08-23 / #600］NotificationService.Api.Tests の新設で 17 → 18。
+    // ［2026-08-23 / #445］McpServer.Api.Tests の新設で 18 → 19。
     // **これはテストプロジェクトの実数であって、カバレッジ床（src/coverage-floor.json）ではない。**
     // 床の置き直しは #900 の測定（integration.yml の手動実行）を待って別途行う。
     // （ADR-0027 手順 3〜5 の共通ヘルパと、部分移行の安全弁を試験する）。
     assert.strictEqual(
-      found.length, 18,
+      found.length, 19,
       `テストプロジェクトの検出数が想定と異なる（走査の破損 or 増減。増えたなら本数を更新する）: ${found.length} 件\n` +
         found.map((f) => path.relative(repoRoot, f)).join('\n'),
     );

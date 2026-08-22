@@ -342,3 +342,4 @@
 | [IADR-0266](./IADR-0266_ai-suggestion-llm-boundary.md) | **スコープの絞りは候補列挙の段で確定させ、LLM へ渡す値を型で塞ぐ**。「渡してから捨てる」との差は後段フィルタの有無ではなく、非許可ノードを持つ値が呼び出しの引数として存在し得るかである。#915 | Accepted |
 | [IADR-0267](./IADR-0267_notification-service-backend-subject-scoping-and-send-rate.md) | **宛先の主体はトークンからのみ解決し、要求に主体の口を作らない**。永続化とメール送出を別トランザクションに分け、上限到達も 1 事象として状態・監査ログ・計測の 3 面へ残す。#600 | Accepted |
 | [IADR-0268](./IADR-0268_drift-unverifiable-cause-split-and-baseline-guard.md) | **「検証不能」を原因で分ける** —— 収集対象に未登録（恒久的に突合されない）は `Warning`、登録済みで応答なしは `Info`。突合の基準が空のまま起動しないよう、宣言の指定ありで段 0 件なら起動を失敗させる。#444 | Accepted |
+| [IADR-0269](./IADR-0269_mcp-tool-publication-and-service-account-exclusion.md) | **公開は許可リストの側から申告を探し、載っていないツールは「不明なツール」として存在ごと秘匿する**。サービスアカウントの個人資料除外は要求側と応答側の 2 層で強制し、判定は集合帰属で書く（否定で書くと属性の無い文書が巻き添えで落ちる）。#445 | Proposed |

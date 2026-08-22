@@ -117,6 +117,11 @@
       "remaining": 0,
       "migrated": true
     },
+    "src/platform/backend/Services/McpServer/tests/McpServer.Api.Tests/McpServer.Api.Tests.csproj": {
+      "project": "McpServer.Api.Tests",
+      "remaining": 0,
+      "migrated": true
+    },
     "src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj": {
       "project": "Platform.Shared.Infrastructure.Tests",
       "remaining": 4,
