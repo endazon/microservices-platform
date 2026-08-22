@@ -30,6 +30,14 @@ issue: "#882"
 した外挿がプロジェクト単位ではまったく当てにならないことを示す
 （詳細は [`20260822_issue-882_dashboardservice-xunit1051.md`](20260822_issue-882_dashboardservice-xunit1051.md)）。
 
+### 起点 ID の置き方
+
+`related_ids` の `FR-04` / `FR-07` は「**移行対象のテストが何を検証しているか**」という文脈であり
+（`RagOrchestratorTests.cs` の先頭コメントが名乗っている）、**本 PR が実装したものではない**。
+件名のスコープを無採番 `NFR` ＋ `IADR-0238` にしている理由は
+[`20260822_issue-882_dashboardservice-xunit1051.md`](20260822_issue-882_dashboardservice-xunit1051.md)
+の「起点 ID の置き方」節に書いた（**同じ判断を各仕様書へ複写しない**）。
+
 ## 対象の母集合（走査で引いた）
 
 `dotnet build src/knowledge/backend/backend.slnx -t:Rebuild -p:NoWarn= -m:1` の出力を
