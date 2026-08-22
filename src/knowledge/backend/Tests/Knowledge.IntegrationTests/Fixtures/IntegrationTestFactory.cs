@@ -89,7 +89,7 @@ public abstract class IntegrationTestFactoryBase<TProgram> : WebApplicationFacto
             // を**出荷される pipeline.json に対して検査するテストが無かった**。コンシューマの
             // クラス名や namespace を変えると、本番は起動時に落ちるのに、テストは緑のままだった。
             //
-            // 🔴 **［2026-08-22 訂正 / #892 の追随］従前ここには「4 つの fail-fast を検査するテストが
+            // 🔴 **［2026-08-22 訂正 / #892］従前ここには「4 つの fail-fast を検査するテストが
             // 1 件も無かった」と書いていた。誤りである。** 規則 2〜5 は ConversionService.Worker.Tests の
             // PipelineStepRegistrationTests が**合成した宣言に対して**既に検査していた（2026-07-08 の
             // #111 で追加。本コメントを書いた時点で 6 週間前から存在した）。無かったのは
