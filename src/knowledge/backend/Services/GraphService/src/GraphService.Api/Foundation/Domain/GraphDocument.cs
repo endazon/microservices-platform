@@ -7,7 +7,7 @@ namespace GraphService.Api.Foundation.Domain;
 // 評価するためで、属性がグラフ側に無いとホップごとに別サービスへ同期照会することになり探索が
 // 実用にならない。追随は DocumentUpdated 購読で行う（#911）。
 //
-// **属性レコードが無いノードは不可視である**（IADR-0241 決定 12-3）。新規文書はイベントの初回同期
+// **属性レコードが無いノードは不可視である**（IADR-0242 決定 12-3）。新規文書はイベントの初回同期
 // まで、イベント欠損時は恒久的に、グラフ上に現れない。AbacNodeFilter の「属性キー欠落は不一致」と
 // 同じ向き（欠落は安全側に倒す）。
 public class GraphDocument
@@ -25,7 +25,7 @@ public class GraphDocument
     // （「本文が変更されたこと」だけが条件で、変更量のしきい値は設けない）。利用は #914。
     public string? BodyHash { get; private set; }
 
-    // ADR-0033 決定 2, IADR-0241 決定 12-4: 複製元イベントの更新時刻。
+    // ADR-0033 決定 2, IADR-0242 決定 12-4: 複製元イベントの更新時刻。
     // **順序ガードに使う** —— 保持中より古いイベントは適用しない。再配信・追い越しで
     // 「厳格化したのに緩和が復活する」事故を塞ぐ。
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -47,7 +47,7 @@ public class GraphDocument
             UpdatedAt = updatedAt,
         };
 
-    // ADR-0033 決定 2, IADR-0241 決定 12-4: 複製を更新する。
+    // ADR-0033 決定 2, IADR-0242 決定 12-4: 複製を更新する。
     // **古いイベントは適用しない**（冪等・追い越し耐性）。適用したかを返す。
     public bool TryApply(
         string title,

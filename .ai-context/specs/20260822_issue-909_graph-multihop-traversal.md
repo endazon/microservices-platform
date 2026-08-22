@@ -2,7 +2,7 @@
 title: グラフ多ホップ探索 — prune-before-expand・表示上限・ホップ超過の拒否
 type: spec
 status: draft
-related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, IADR-0241]
+related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, IADR-0242]
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -21,7 +21,7 @@ plan_refs:
 - 機能要求: **FR-17**（探索は ABAC スコープ内に限定し**判定はホップごと**。閲覧権のない文書への辺は件数・匿名ノードを含め一切返さない）
 - ユースケース: **UC-10**（関係を辿って根拠に到達する。hops 既定 2 / 上限 3）
 - 関連 ADR: **ADR-0034** 決定 1・2・3・4 / ADR-0033 決定 6
-- 実装 ADR: **IADR-0241**（暫定番号。#908 と同時に develop の最大＋1 へ付け替える）
+- 実装 ADR: **IADR-0242**（暫定番号。#908 と同時に develop の最大＋1 へ付け替える）
 
 ## 対象範囲
 

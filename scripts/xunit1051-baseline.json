@@ -108,9 +108,8 @@
     },
     "templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests/SampleService.Tests.csproj": {
       "project": "SampleService.Tests",
-      "remaining": 1,
-      "migrated": false,
-      "deferReason": "雛形（17 本目）。CI の template-backend-build が src/.template-buildcheck-unit-template/ へ複製してビルドするため src/Directory.Build.props が効く。実測 1 件。1 行で移行できるが、本 PR は器だけの約束なのでテストの .cs を変えない。次段で剥がす。"
+      "remaining": 0,
+      "migrated": true
     }
   }
 }

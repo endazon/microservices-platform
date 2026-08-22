@@ -3,7 +3,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Foundation.Services;
 
-// FR-17, UC-10, ADR-0034 決定 1, IADR-0241 決定 2: **ホップごと ABAC の型ゲート（展開の入口）。**
+// FR-17, UC-10, ADR-0034 決定 1, IADR-0242 決定 2: **ホップごと ABAC の型ゲート（展開の入口）。**
 //
 // ADR-0034 決定 1 は「ホップごとに ABAC 判定を行う。終端でまとめてフィルタしない」を定める。
 // 本リポジトリの認可判定 API（POST /authz/scope）が返すのは**フィルタ集合**であって資源ごとの

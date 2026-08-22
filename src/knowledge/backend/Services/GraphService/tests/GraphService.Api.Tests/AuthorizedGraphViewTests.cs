@@ -7,7 +7,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, UC-10, ADR-0034 決定 2, IADR-0241 決定 2・6: **出力ゲートの意味論を固定する。**
+// FR-17, UC-10, ADR-0034 決定 2, IADR-0242 決定 2・6: **出力ゲートの意味論を固定する。**
 //
 // `Seal` は「未フィルタが外へ出ない」ことを担保する多層防御の 2 段目である。入口のゲート
 // （`AuthorizedNode`）を通っていれば結果は変わらないが、**迂回経路があっても出口で必ず濾される**
@@ -48,7 +48,7 @@ public class AuthorizedGraphViewTests
         view.Nodes.Should().ContainSingle().Which.DocumentId.Should().Be(ok);
     }
 
-    // 🔴 IADR-0241 決定 6: **辺は両端点が許可されたときのみ可視。**
+    // 🔴 IADR-0242 決定 6: **辺は両端点が許可されたときのみ可視。**
     // 片端が濾されたら、その辺は件数にも現れない。
     [Fact]
     public void Seal_drops_an_edge_whose_far_endpoint_is_not_visible()
@@ -88,7 +88,7 @@ public class AuthorizedGraphViewTests
         GraphViewResponse.Seal(sub, InternalOnly()).Truncated.Should().BeTrue();
     }
 
-    // IADR-0241 決定 11: ストアの空入力が例外にならない（探索の初手・終端で必ず通る経路）。
+    // IADR-0242 決定 11: ストアの空入力が例外にならない（探索の初手・終端で必ず通る経路）。
     [Fact]
     public async Task Store_returns_empty_for_empty_inputs()
     {

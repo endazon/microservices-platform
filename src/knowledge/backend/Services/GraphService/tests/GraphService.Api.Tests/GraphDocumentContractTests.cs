@@ -3,7 +3,7 @@ using GraphService.Api.Foundation.Domain;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, ADR-0033 決定 2, IADR-0241 決定 12: **属性の複製の鮮度契約を固定する。**
+// FR-17, ADR-0033 決定 2, IADR-0242 決定 12: **属性の複製の鮮度契約を固定する。**
 //
 // 消費側（DocumentUpdated の購読）は #911 が足すが、**順序ガードは契約であって実装詳細ではない**
 // ため、契約を定義した本 issue で試験する。ここが緩むと、再配信や追い越しで
@@ -16,7 +16,7 @@ public class GraphDocumentContractTests
             new Dictionary<string, string> { ["confidentiality"] = confidentiality },
             hash, DateTimeOffset.Parse(ts));
 
-    // IADR-0241 決定 12-4: 新しいイベントは適用する。
+    // IADR-0242 決定 12-4: 新しいイベントは適用する。
     [Fact]
     public void TryApply_applies_a_newer_event()
     {
@@ -32,7 +32,7 @@ public class GraphDocumentContractTests
         doc.BodyHash.Should().Be("hash-2");
     }
 
-    // 🔴 IADR-0241 決定 12-4: **古いイベントは適用しない。**
+    // 🔴 IADR-0242 決定 12-4: **古いイベントは適用しない。**
     // ここが逆だと、厳格化イベントの後に遅れて届いた緩和イベントが権限を戻してしまう。
     [Fact]
     public void TryApply_rejects_a_stale_event_and_keeps_the_stricter_state()

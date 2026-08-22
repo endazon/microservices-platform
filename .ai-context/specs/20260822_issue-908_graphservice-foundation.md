@@ -2,7 +2,7 @@
 title: GraphService 新設 — スキーマ・ホップごと ABAC 骨格・型ゲート・単一ノード読み取り
 type: spec
 status: draft
-related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, ADR-0004, ADR-0036, IADR-0241]
+related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, ADR-0004, ADR-0036, IADR-0242]
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -20,7 +20,7 @@ plan_refs:
 - ユースケース（UC）: **UC-10**（関係を辿って根拠に到達する。hops 既定 2 / 上限 3）
 - 画面（SC）: SC-18 / SC-21 は**本作業の対象外**（ADR-0039 が `Proposed`）
 - 関連 ADR: **ADR-0033**（データモデルと格納先）・**ADR-0034**（探索時 ABAC 強制方式）・ADR-0004（Keycloak＋ABAC）・ADR-0036（所有者ベース裁量制御）
-- 実装 ADR: **IADR-0241**（暫定番号。マージ直前に develop の最大＋1 へ付け替える）
+- 実装 ADR: **IADR-0242**（暫定番号。マージ直前に develop の最大＋1 へ付け替える）
 - 計画書リンク: GitHub 上の `endazon/project-planning` `projects/microservices-platform/07_adr/` を直接参照する（本リポジトリは planning に依存しない。ADR-0048 決定 2）
 
 ### ゲートの実測（2026-08-22）
@@ -137,7 +137,7 @@ public sealed class AuthorizedNode
 
 ### 3. スキーマ
 
-詳細（列・索引・制約・トレードオフ）は **データ仕様書 `docs/data/knowledge-graph.md`** と **IADR-0241** に置く。本単位で作るのは `graph_documents` / `edge_types` / `edges` の 3 表である（`ai_suggestions` は #914）。
+詳細（列・索引・制約・トレードオフ）は **データ仕様書 `docs/data/knowledge-graph.md`** と **IADR-0242** に置く。本単位で作るのは `graph_documents` / `edge_types` / `edges` の 3 表である（`ai_suggestions` は #914）。
 
 要点のみ:
 

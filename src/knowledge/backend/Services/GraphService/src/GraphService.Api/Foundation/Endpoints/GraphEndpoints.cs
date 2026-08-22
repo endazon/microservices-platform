@@ -38,7 +38,7 @@ public static class GraphEndpoints
             var node = await store.FindNodeAsync(documentId, ct);
 
             // 「文書が無い」と「属性の複製がまだ届いていない」は同じ扱いになる
-            // （IADR-0241 決定 12-3: 複製が無いノードは不可視）。
+            // （IADR-0242 決定 12-3: 複製が無いノードは不可視）。
             if (node is null)
                 return NotFound();
 
