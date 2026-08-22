@@ -97,9 +97,10 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
 
     // ADR-0027 手順 3: 1 回の発行で **両方の購読者**が受信することを固定する。
     // 手順 3 を誤って競合コンシューマ化すると、片方の待ち受けがタイムアウトしてここが落ちる。
-    [DockerFact]
+    [Fact]
     public async Task PublishOnce_BothSubscribersReceive()
     {
+        DockerRequired.SkipUnlessAvailable();
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,
@@ -117,7 +118,7 @@ public sealed class DocumentUpdatedFanOutTests(PostgresFixture postgres, RabbitM
         // （Knowledge.Contracts.Events:DocumentUpdated）なので、発行側の選択は結果に影響しない。
         await using (var scope = _wiki.Services.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt);
+            await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt, TestContext.Current.CancellationToken);
         }
 
         // ── 購読者 1: IngestionService（終端副作用 = ベクトルストアへの upsert）

@@ -62,11 +62,14 @@ public sealed class EdgeRecorder
     // 失敗時に「誰が何通受けたか」を出す。タイムアウトだけ見せられても原因に辿り着けない。
     public string Snapshot(Guid correlationId)
     {
-        var roles = new[]
-        {
-            PublisherLocalBaitHandler.Role, IngestionEdgeHandler.Role, WikiEdgeHandler.Role,
-        };
-        var seen = string.Join(", ", roles.Select(r => $"{r}={CountFor(r, correlationId)}"));
+        // 🔴 役の一覧をここへ直書きしない。**記録された役から取る。**
+        // 直書きしていた版は W3 の 3 役だけを並べ、#441 E1 の器が使う役を「存在しない」かのように
+        // 出していた（変異 E-1 の失敗出力で実際に踏んだ。本当の手掛かりは全記録の側にしか無かった）。
+        // **診断が嘘をつくと、落ちた理由に辿り着くのが遅れる。**
+        var seen = string.Join(
+            ", ", _byRole.Keys.OrderBy(r => r, StringComparer.Ordinal)
+                .Select(r => $"{r}={CountFor(r, correlationId)}"));
+        if (seen.Length == 0) seen = "(この相関 ID を受け取った役は無い)";
         var all = string.Join(" | ", _byRole.Select(kv => $"{kv.Key}:{kv.Value.Count}"));
         return $"[{correlationId:N}] {seen} / 全記録: {all}";
     }

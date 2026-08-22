@@ -1,3 +1,6 @@
+using Wolverine;
+using Wolverine.RabbitMQ;
+using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
@@ -31,6 +34,7 @@ builder.Services.AddDbContext<ConversionJobDbContext>(opt => opt.UseNpgsql(connS
 
 // DB 到達性の readiness ヘルスチェック（DataSourceService 準拠）。
 builder.Services.AddPlatformHealthChecks()
+    .AddPlatformWolverineBroker()
     .AddNpgSql(connStr, tags: ["ready"]);
 
 // FR-12, ADR-0012: 本文変換（pandoc ラッパー）。
@@ -57,6 +61,11 @@ builder.Services.AddScoped<IConversionJobStore, EfConversionJobStore>();
 // 本文の図ブロックを置換して DocumentNormalized を再発行する（再変換ではない）。
 builder.Services.AddScoped<IFigureCorrectionService, FigureCorrectionService>();
 
+// FR-12 / #441 E1: DocumentNormalized の発行は MassTransit のまま（辺は E2 の射程）。
+// 🔴 **別ファイルへ切り出してある** —— 同一ファイルに両トランスポートの using が同居すると、
+// トポロジ検査の発行側 union に wolverine が混ざり、E2 で違反が報告されなくなる。
+builder.Services.AddScoped<IDocumentNormalizedPublisher, MassTransitDocumentNormalizedPublisher>();
+
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
 builder.AddPlatformPipelineConfig();
@@ -65,22 +74,39 @@ var pipeline = builder.Configuration.GetPlatformPipeline();
 // FR-15, ADR-0018, IADR-0029: 自己申告（イントロスペクション）— この段（convert）の実効値を申告する。
 // これによりドリフト検出でワーカー段が Verifiable となり、適用漏れ（MissingApply）を検出できる。
 builder.Services.AddPlatformIntrospection("conversion-service", pipeline,
-    i => i.AddStep<RawDocumentFetchedConsumer>());
+    i => i.AddWolverineStep<RawDocumentFetchedConsumer>());
 
+// 🔴 ADR-0027 / #441 E1: **購読は Wolverine へ移した。発行は MassTransit のままである。**
+// DocumentNormalized の辺は E2 の射程であり、辺は原子的に動かす（IADR-0234 決定 3）ため
+// 本 PR では触らない。したがって本サービスは移行期間中 **両スタックを同居させる**。
+var rabbitConnection = builder.Configuration["RabbitMq:ConnectionString"]
+    ?? "amqp://guest:guest@rabbitmq:5672";
+
+// 発行側（DocumentNormalized）だけが残る MassTransit。段の登録はもう行わない。
 builder.Services.AddMassTransit(x =>
-{
-    x.AddPlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline);
     x.UsingRabbitMq((ctx, cfg) =>
     {
-        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672");
-
-        // FR-12, UC-06 例外フロー / ADR-0003（Superseded by ADR-0027・注記は #580）: 変換失敗（pandoc エラー・保存失敗）は再試行する。
-        // 再試行を使い切った継続失敗は MassTransit が自動で <queue>_error（デッドレター）へ送る（共通設定）。
+        cfg.Host(rabbitConnection);
         cfg.UsePlatformRetry();
-
         cfg.ConfigureEndpoints(ctx);
-    });
+    }));
+
+// 購読側（RawDocumentFetched）は Wolverine。
+builder.Host.UseWolverine(opts =>
+{
+    opts.ServiceName = "conversion-service";
+
+    // 宣言との突合は共通ヘルパが行う（未宣言・consumer 不一致・input 不一致は起動失敗）。
+    // 戻り値の段宣言を受けるのは、queue 上書きを黙って無視しないためである（IADR-0239 決定 4）。
+    var step = opts.AddPlatformWolverineStep<RawDocumentFetchedConsumer>(pipeline);
+
+    opts.UseRabbitMq(new Uri(rabbitConnection)).AutoProvision();
+
+    // 手順 3 の適用点。queue 宣言があればそれを、無ければイベント型名を使う。
+    opts.ListenToPlatformQueue("conversion-service", step?.Queue ?? nameof(RawDocumentFetched));
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
 });
 
 var app = builder.Build();

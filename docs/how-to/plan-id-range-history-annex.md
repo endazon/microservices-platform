@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-21
+updated: 2026-08-22
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048]
+adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#449, #450, #451, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424]
+issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,43 @@ issues: [#449, #450, #451, #620, #624, #688, #753, #872, planning#74, planning#1
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-08-22］ADR `0001..0048` → `0001..0054`（6 件まとめて前進。**隣接クローンの鮮度で 1 度空振りした**）
+
+**`ADR` だけが `0001..0048` → `0001..0054` へ増えた**（6 件）。**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件。計画 `02_requirements` / `03_usecases` / `05_screens` を `origin/main` から直接走査して確認）。
+
+| ADR | 状態 | 内容 |
+| --- | --- | --- |
+| `ADR-0049` | Accepted | 総数の算出に限り表示上限を超えて探索してよい（`ADR-0034` 決定 3・4 の具体化の部分改定） |
+| `ADR-0050` | Accepted | 本文変更の検知手段は `DocumentUpdated` が運ぶ本文指紋とする |
+| `ADR-0051` | Accepted | AI 提案生成の ABAC 境界 —— 類似度は全文書横断で算出してよく、提示段階で完全に絞る |
+| `ADR-0052` | Accepted | Wolverine 移行の完了条件を尽くす |
+| `ADR-0053` | Accepted | デッドレター到達の検知はキュー名に依存させず、アプリケーションが出すメトリクスを正とする |
+| `ADR-0054` | Accepted | 個人資料を表す ABAC 属性を `doc_scope` として新設し、値を `private-note` / `organization` とする |
+
+前進の契機は前世代と同じく **`check-trace-blocks.js` の値域検査**である。`ADR-0054` を引く記述を書こうとして落ちた（`trace ブロック adrs: 計画 ADR レンジ（ADR-0001..0048）外です: ADR-0054`）。**前世代（`0047` → `0048`）とまったく同型の検出であり、この検査器が入口の宣言レンジを守る唯一の機械である**ことが 2 度実証された。
+
+**`ADR` の欠番は `seq 1 54` との `diff` で機械的に確かめた**（EXIT=0）。「54 件あるから連番」は連番の証明にならない、という作法をそのまま踏襲している。
+
+```bash
+diff <(git -C ../project-planning ls-tree -r --name-only origin/main \
+        -- projects/microservices-platform/07_adr/ \
+        | grep -oE 'ADR-[0-9]{4}' | sort -u) \
+     <(seq -f 'ADR-%04g' 1 54)
+# EXIT=0（54 件・欠番なし）
+```
+
+> 🔴 **本世代で作法を 1 つ変えた —— 隣接クローンは `origin/<ブランチ>` を明示して走査する。**
+>
+> 前世代までの記録は `ls ../project-planning/projects/.../07_adr/` の形、すなわち**隣接クローンの作業ツリー**を読んでいた。**pin 撤去後の隣接クローンは「読み取り専用・pin 固定なし」の生きたクローンであり、fetch していなければ黙って古い**（[IADR-0228](../../.ai-context/adr/IADR-0228_planning-dependency-removal.md)）。
+>
+> **本世代で実際に空振りした。** 作業ツリー（ローカル `main` = `d5fa84b`）は `origin/main` = `fbd4dda` から **22 コミット遅れ**ており、上の `diff` を作業ツリーに対して走らせたとき **`ADR-0048` 以降の 7 件が「存在しない」と出た**（`DIFF_EXIT=1`・件数 47）。**「まだ増えていない」と読み違える一歩手前だった。**
+>
+> **空振りと成功が同じ見た目にならない**ように、以後は次の 2 点を守る。
+> 1. **走査前に `git -C ../project-planning fetch` する。**
+> 2. **`ls` ではなく `git ls-tree <ref>` で ref を明示する**（作業ツリーの状態に依存させない）。
+>
+> **件数だけを見ると空振りに気付けない** —— 47 件も 54 件も「それらしい数」である。**`diff` の EXIT と、`seq` の上限を実測した最大値から取ること**が歯止めになる。
 
 ### ［2026-08-21］ADR `0001..0047` → `0001..0048`（pin 撤去後の初回。隣接クローンで直接確認）
 

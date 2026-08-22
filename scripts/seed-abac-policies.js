@@ -34,6 +34,7 @@
  *   ABAC_SEED_INFRA_NS（既定 platform-infra）/ ABAC_SEED_REALM（既定 platform）
  *   ABAC_SEED_CLIENT_ID（既定 bff）/ ABAC_SEED_USER（既定 admin）
  *   ABAC_SEED_PASSWORD（既定は realm ファイルから引く。値をここへ写さない。#972）
+ *   ABAC_SEED_CLIENT_SECRET（既定は realm ファイルから引く。confidential のときだけ送る。#984）
  *   ABAC_SEED_REALM_FILE（既定 deploy/keycloak/microservices-platform-realm.json）
  *
  * 終了コード: 0=投入済み（no-op を含む） / 1=失敗 / 2=前提未整備（k8s へ到達できない等）
@@ -69,15 +70,58 @@ const REALM_FILE = env(
   'ABAC_SEED_REALM_FILE',
   path.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'),
 );
-function passwordFromRealm(username) {
+function readRealm() {
   try {
-    const realm = JSON.parse(fs.readFileSync(REALM_FILE, 'utf8'));
-    const user = (realm.users || []).find((u) => u.username === username);
-    const cred = ((user || {}).credentials || []).find((c) => c.type === 'password');
-    return (cred && cred.value) || null;
+    return JSON.parse(fs.readFileSync(REALM_FILE, 'utf8'));
   } catch {
     return null;
   }
+}
+function passwordFromRealm(username) {
+  const realm = readRealm();
+  if (!realm) return null;
+  const user = (realm.users || []).find((u) => u.username === username);
+  const cred = ((user || {}).credentials || []).find((c) => c.type === 'password');
+  return (cred && cred.value) || null;
+}
+
+// 🔴 confidential クライアントは client_secret を要求する（#984）。
+//
+// 経緯: `#439`（BFF セッション / Token Handler）が `bff` を **publicClient=false** へ変えた。
+// 投入器は client_id だけで password grant を送っていたため、Keycloak が 401（invalid_client）を返した。
+// **realm の変更に投入器が追随しなかったのは今日 2 回目**で、1 回目（`#933` のパスワード一斉変更）は
+// 値の写し取り、2 回目は**クライアントの種別という構造の変化**である。値を直すだけでは次も落ちる。
+//
+// realm の全 9 クライアントを実測したところ **`directAccessGrantsEnabled=true` は `bff` だけ**なので、
+// 別のクライアントへ逃げる道は無い。secret を送るしかない。
+function clientFromRealm(clientId) {
+  const realm = readRealm();
+  if (!realm) return null;
+  return (realm.clients || []).find((c) => c.clientId === clientId) || null;
+}
+function clientSecretFromRealm(clientId) {
+  const c = clientFromRealm(clientId);
+  return (c && c.secret) || null;
+}
+// realm が confidential と言っているか。判定できないときは null（＝分からない）を返す。
+function isConfidentialInRealm(clientId) {
+  const c = clientFromRealm(clientId);
+  if (!c) return null;
+  return c.publicClient === false;
+}
+
+// トークン要求の本体を組み立てる。**純粋関数にして試験できるようにする**（決定 2）。
+// confidential なら client_secret を載せ、public なら載せない。
+function buildTokenForm({ clientId, username, password, confidential, clientSecret }) {
+  const form = new URLSearchParams({
+    grant_type: 'password',
+    client_id: clientId,
+    username,
+    password,
+    scope: 'openid',
+  });
+  if (confidential && clientSecret) form.set('client_secret', clientSecret);
+  return form;
 }
 const PASSWORD = (() => {
   if (process.env.ABAC_SEED_PASSWORD) return process.env.ABAC_SEED_PASSWORD;
@@ -90,6 +134,8 @@ const PASSWORD = (() => {
   );
   return '';
 })();
+// client_secret も同じ作法で引く（値をここへ写さない。#984）。
+const CLIENT_SECRET = process.env.ABAC_SEED_CLIENT_SECRET || clientSecretFromRealm(CLIENT_ID) || '';
 
 // --- 一時 port-forward（自分で張り、終了時に必ず片付ける） -------------------------
 const forwards = [];
@@ -147,12 +193,21 @@ async function postJson(url, token, body) {
 }
 
 async function fetchToken(kcUrl) {
-  const form = new URLSearchParams({
-    grant_type: 'password',
-    client_id: CLIENT_ID,
+  const confidential = isConfidentialInRealm(CLIENT_ID);
+  const clientSecret = CLIENT_SECRET;
+  if (confidential && !clientSecret) {
+    // 黙って secret 無しで投げない。投げれば 401 になるが、理由が読み手に見えない。
+    warn(
+      `[seed-abac-policies] realm は client ${CLIENT_ID} を confidential としていますが、` +
+        ' client_secret を解決できませんでした。ABAC_SEED_CLIENT_SECRET を指定してください。',
+    );
+  }
+  const form = buildTokenForm({
+    clientId: CLIENT_ID,
     username: USER,
     password: PASSWORD,
-    scope: 'openid',
+    confidential,
+    clientSecret,
   });
   const res = await fetch(`${kcUrl}/realms/${REALM}/protocol/openid-connect/token`, {
     method: 'POST',
@@ -160,7 +215,10 @@ async function fetchToken(kcUrl) {
     body: form,
   });
   if (!res.ok) {
-    throw new Error(`Keycloak のトークン取得に失敗しました（${res.status}）。ユーザー ${USER} と client ${CLIENT_ID} を確認してください。`);
+    const kind = confidential === null ? '（realm から種別を判定できず）' : confidential ? '（confidential）' : '（public）';
+    throw new Error(
+      `Keycloak のトークン取得に失敗しました（${res.status}）。ユーザー ${USER} と client ${CLIENT_ID}${kind} を確認してください。`,
+    );
   }
   return (await res.json()).access_token;
 }
@@ -256,7 +314,16 @@ async function main(argv) {
   return 0;
 }
 
-module.exports = { selectMissingAttributes, selectMissingPolicies, passwordFromRealm, REALM_FILE };
+module.exports = {
+  selectMissingAttributes,
+  selectMissingPolicies,
+  passwordFromRealm,
+  clientSecretFromRealm,
+  isConfidentialInRealm,
+  buildTokenForm,
+  REALM_FILE,
+  CLIENT_ID,
+};
 
 if (require.main === module) {
   main(process.argv.slice(2))

@@ -38,9 +38,10 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
                 .Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.Conflict);
     }
 
-    [DockerFact]
+    [Fact]
     public async Task CreateDocument_ThenGet_ReturnsDocument()
     {
+        DockerRequired.SkipUnlessAvailable();
         // Arrange
         await RegisterTagsAsync("test", "integration");
         var req = new
@@ -53,51 +54,53 @@ public sealed class DocumentCrudTests(PostgresFixture postgres, RabbitMqFixture 
         };
 
         // Act — POST /documents
-        var createResp = await _client.PostAsJsonAsync("/documents", req);
+        var createResp = await _client.PostAsJsonAsync("/documents", req, TestContext.Current.CancellationToken);
         createResp.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var created = await createResp.Content.ReadFromJsonAsync<DocumentResponse>();
+        var created = await createResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
         created.Should().NotBeNull();
         created!.Title.Should().Be("統合テスト文書");
 
         // Act — GET /documents/{id}
-        var getResp = await _client.GetAsync($"/documents/{created.Id}");
+        var getResp = await _client.GetAsync($"/documents/{created.Id}", TestContext.Current.CancellationToken);
         getResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var fetched = await getResp.Content.ReadFromJsonAsync<DocumentResponse>();
+        var fetched = await getResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
         fetched!.Title.Should().Be("統合テスト文書");
         fetched.Status.Should().BeOneOf("Draft", "draft");
     }
 
-    [DockerFact]
+    [Fact]
     public async Task ListDocuments_ReturnsAll()
     {
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
-        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
+        DockerRequired.SkipUnlessAvailable();
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 A", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+        await _client.PostAsJsonAsync("/documents", new { title = "文書 B", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
 
-        var resp = await _client.GetAsync("/documents");
+        var resp = await _client.GetAsync("/documents", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var list = await resp.Content.ReadFromJsonAsync<List<DocumentResponse>>();
+        var list = await resp.Content.ReadFromJsonAsync<List<DocumentResponse>>(TestContext.Current.CancellationToken);
         list.Should().NotBeNull();
         // ［2026-08-21 / #455 A-3］BeGreaterOrEqualTo は FluentAssertions v7 の非推奨エイリアスで、
         // AwesomeAssertions（v7 系フォーク）には**存在しない**。新名 BeGreaterThanOrEqualTo を使う。
         list!.Count.Should().BeGreaterThanOrEqualTo(2);
     }
 
-    [DockerFact]
+    [Fact]
     public async Task UpdateDocument_ChangesTitle()
     {
+        DockerRequired.SkipUnlessAvailable();
         var createResp = await _client.PostAsJsonAsync("/documents",
-            new { title = "元タイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
-        var doc = await createResp.Content.ReadFromJsonAsync<DocumentResponse>();
+            new { title = "元タイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+        var doc = await createResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
 
         var updateResp = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "新しいタイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
+            new { title = "新しいタイトル", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
         updateResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var getResp = await _client.GetAsync($"/documents/{doc.Id}");
-        var updated = await getResp.Content.ReadFromJsonAsync<DocumentResponse>();
+        var getResp = await _client.GetAsync($"/documents/{doc.Id}", TestContext.Current.CancellationToken);
+        var updated = await getResp.Content.ReadFromJsonAsync<DocumentResponse>(TestContext.Current.CancellationToken);
         updated!.Title.Should().Be("新しいタイトル");
     }
 
