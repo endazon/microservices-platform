@@ -132,8 +132,17 @@
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
     ],
+    "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "DocScopeValidationTests",
+      "PrivateNoteLifecycleTests",
+      "PrivateNoteQuotaTests"
+    ],
     "docs/tests/FR-20_document-sharing.md": [
       "DocumentShareTests"
+    ],
+    "docs/tests/FR-20_obsidian-sync.md": [
+      "ObsidianSyncProtocolTests",
+      "SyncDeviceTokenTests"
     ],
     "docs/tests/FR-22_user-notifications.md": [
       "EmailIndependenceTests",

@@ -23,6 +23,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // （縮退実装 `NullObjectStorageClient` は本文を保持しないため ⑦ が測れない）。
     public RecordingObjectStorageClient Storage { get; } = new();
 
+    // FR-22: 通知の発火を記録するスタブ（HTTP 送出の HttpPrivateNoteNotifier を差し替える）。
+    public RecordingPrivateNoteNotifier Notifier { get; } = new();
+
+    // FR-20, ADR-0037 決定 9: 監査ログの記録スタブ（「誰が・いつ・何件」とタイトル不記載の検証用）。
+    public RecordingAuditLogger Audit { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -48,6 +54,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // FR-21: オブジェクトストレージを記録用スタブへ差し替える。
             services.RemoveAll<IObjectStorageClient>();
             services.AddSingleton<IObjectStorageClient>(Storage);
+
+            // FR-22: 通知の発火側を記録用スタブへ差し替える（HTTP 送出は結合テストの範囲外）。
+            services.RemoveAll<DocumentService.Api.Foundation.Ports.IPrivateNoteNotifier>();
+            services.AddSingleton<DocumentService.Api.Foundation.Ports.IPrivateNoteNotifier>(Notifier);
+
+            // FR-20: 監査ログを記録用スタブへ差し替える。
+            services.RemoveAll<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger>();
+            services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger>(Audit);
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();
