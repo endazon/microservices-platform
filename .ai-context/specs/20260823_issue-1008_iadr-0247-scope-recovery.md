@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — IADR-0247 の射程判断（BOM の除外根拠・不可視破壊 4 class）を回収する
 type: spec
-status: review
+status: done
 related_ids:
   - IADR-0247
 author: claude
