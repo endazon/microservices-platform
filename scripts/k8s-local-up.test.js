@@ -1672,4 +1672,59 @@ ok('LOCALEDGE=1: coredns-custom を当ててから rollout restart する（impo
   assert.ok(applyEdge !== -1 && applyEdge < applyCoredns, 'edge overlay の apply より前に coredns を触っている');
 });
 
+// --- IADR-0243 (#780 第2段): Keycloak issuer のエッジ移行 --------------------------------------
+//
+// KC_HOSTNAME_URL・Auth:MetadataAddress・Auth:ValidIssuers の 3 点は「どちらが in-cluster でどちらが
+// エッジか」を取り違えると、.NET の OIDC metadata 取得がエッジの自己署名/ローカル CA に阻まれて
+// TLS ハンドシェイクで落ちる（IADR-0086 決定の裏返し）。値の中身までは kustomize build も helm template
+// も検証しないため（文字列として妥当な YAML であれば通ってしまう）、ここで静的に固定する。
+
+const KEYCLOAK_DEPLOY = readAt(REPO_ROOT, 'deploy', 'local', 'infra', 'keycloak.yaml');
+const VALUES_LOCAL = readAt(REPO_ROOT, 'deploy', 'local', 'values-local.yaml');
+
+ok('#780 第2段: KC_HOSTNAME_URL がエッジ host（https://keycloak.localhost）を指す', () => {
+  assert.ok(
+    /KC_HOSTNAME_URL\s*\n\s*value:\s*https:\/\/keycloak\.localhost\s*$/m.test(KEYCLOAK_DEPLOY),
+    'KC_HOSTNAME_URL が https://keycloak.localhost でない（issuer の単一情報源がずれている）',
+  );
+});
+
+ok('#780 第2段: Auth:MetadataAddress は in-cluster（http://keycloak:8080）を指す', () => {
+  const m = /metadataAddress:\s*(\S+)/.exec(VALUES_LOCAL);
+  assert.ok(m, 'global.auth.metadataAddress が values-local.yaml に無い');
+  assert.ok(
+    m[1].startsWith('http://keycloak:8080/'),
+    `metadataAddress が in-cluster host でない: ${m[1]}`,
+  );
+  assert.ok(
+    !m[1].includes('keycloak.localhost'),
+    'metadataAddress がエッジ host を指している（.NET の metadata 取得がローカル CA 未信頼で失敗し得る）',
+  );
+});
+
+ok('#780 第2段: Auth:ValidIssuers はエッジ host（https://keycloak.localhost）を指す', () => {
+  const m = /validIssuers:\s*(\S+)/.exec(VALUES_LOCAL);
+  assert.ok(m, 'global.auth.validIssuers が values-local.yaml に無い');
+  assert.ok(
+    m[1].startsWith('https://keycloak.localhost/'),
+    `validIssuers がエッジ host でない: ${m[1]}`,
+  );
+  assert.ok(
+    !m[1].includes('keycloak:8080'),
+    'validIssuers が in-cluster host を指している（エッジ issuer の token が受理されない）',
+  );
+});
+
+ok('#780 第2段: metadataAddress と validIssuers が同じ realm パスを指す', () => {
+  const metaRealm = (/metadataAddress:.*realms\/(\S+?)\//.exec(VALUES_LOCAL) || [])[1];
+  const issuerRealm = (/validIssuers:.*realms\/(\S+)/.exec(VALUES_LOCAL) || [])[1];
+  assert.ok(metaRealm, 'metadataAddress から realm 名を取り出せない');
+  assert.ok(issuerRealm, 'validIssuers から realm 名を取り出せない');
+  assert.strictEqual(
+    metaRealm,
+    issuerRealm.replace(/\/$/, ''),
+    `metadataAddress（realm=${metaRealm}）と validIssuers（realm=${issuerRealm}）の realm が食い違っている`,
+  );
+});
+
 process.stdout.write(`\n✓ ${passed} tests passed\n`);
