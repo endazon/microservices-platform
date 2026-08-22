@@ -517,6 +517,29 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.CreateEdgeTypeRequest": {
+        "kind": "record",
+        "members": {
+          "IsSymmetric": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          },
+          "Layer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.CreateTagRequest": {
         "kind": "record",
         "members": {
@@ -820,6 +843,70 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.EdgeTypeDto": {
+        "kind": "record",
+        "members": {
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "IsSeed": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 4
+          },
+          "IsSymmetric": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 3
+          },
+          "Layer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UsageCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 5
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.EdgeTypeInUseResponse": {
+        "kind": "record",
+        "members": {
+          "Error": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          },
+          "Message": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "UsageCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.FeedbackDto": {
         "kind": "record",
         "members": {
@@ -1018,6 +1105,17 @@
             "type": "string?",
             "required": false,
             "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.RenameEdgeTypeRequest": {
+        "kind": "record",
+        "members": {
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
           }
         }
       },
