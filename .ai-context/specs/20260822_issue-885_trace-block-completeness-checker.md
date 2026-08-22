@@ -144,6 +144,14 @@ node scripts/scripts.test.js
 
 🔴 `CLAUDE.md` と `.github/workflows/**` は M-A の除外対象であり、本 PR に含めない（前者は修正不要と実測、後者は別 issue）。
 
+## ［2026-08-22 追記 / #885］採番の付け替え
+
+着手時に採った `IADR-0234` は、先にマージされた PR #922（`cf66094`）が確保した。**番号は先着尊重で予約できない**（`check-adr-numbering.js` が昇順・欠番なしを fail で見る）ため、本作業は **`IADR-0235`** へ付け替えた。同じブランチに載っていたカバレッジの `IADR-0235`（#900）は **`IADR-0236`** へ繰り下げた。
+
+追随させたのは、ファイル名・本文の自称番号・`.ai-context/adr/README.md` の索引（昇順）・本仕様書・#900 の仕様書・`scripts/check-coverage-floor.js`・`scripts/scripts.repo.test.js`・`IADR-0123` の相互参照、および **PR タイトル**である。`docs/**` の trace ブロックは走査の結果 0 件で対象外だった（`grep -rn "IADR-023[45]" docs/` が EXIT=1）。`scripts/adr-index-title-baseline.json` にも当該 ID は無い。
+
+**過去のコミット件名（`chore(NFR,IADR-0234): ...` 等）は書き換えない**（force push 禁止）。件名の `IADR-0234` は現在 別 ADR を指すが、履歴不変の原則を優先する。
+
 ## 未決事項
 
 - 「本文を改稿した文書は、改稿根拠の記録 ID を trace ブロックへ追記する義務があるか」の**規約裁定**（`IADR-0235` 決定 3・4）。裁定が下るまで現存する欠落は遡及是正しない。
