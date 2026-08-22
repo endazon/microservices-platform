@@ -95,10 +95,14 @@ jobs:
 
       # k8s-local-up.sh 自身が k3d cluster create を行う（ポートは LOCALEDGE=1 が決める）。
       # K3S_IMAGE で k3s のイメージだけを pin する（scripts/k8s-local-up.test.js が既定バイト等価を固定）。
-      - name: Bring up the integration stack (LOCALEDGE=1)
+      # ABACSEED=1 は #517 / IADR-0133 の初期投入経路（宣言的 JSON ＋ 管理 API・冪等）。
+      # 既定オフの設計は変えない —— deny-by-default はセキュリティ上の既定値であり、
+      # 「dev だから」で緩めない。**この使い捨てスタックでだけ opt-in する**（#972）。
+      # 🔴 投入しなければ ABAC は必ず deny へ倒れ、正常系は原理的に観測できない。
+      - name: Bring up the integration stack (LOCALEDGE=1, ABACSEED=1)
         run: |
           set -euo pipefail
-          LOCALEDGE=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
+          LOCALEDGE=1 ABACSEED=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
       # **待つだけで、判定はしない。** 待てたことを成功の根拠にしない —— このステップは検査ではなく、
@@ -116,6 +120,27 @@ jobs:
       # G4（エッジと issuer の完全一致）/ G5（admin=50000）をすべて fail-closed で判定する。
       - name: 🔴 Gate — the stack is actually up
         run: node scripts/check-stack-ready.js
+
+      # 🔴 `k8s-local-up.sh` の ABACSEED は **best-effort**（失敗しても WARN で通す）。
+      # 投入が失敗したまま「空」になると、次の門が「認可の故障」と「投入漏れ」を区別できない。
+      # 投入器は冪等（既存と突き合わせて足りないものだけ入れる）なので、readiness の後に
+      # **明示的に再実行して終了コードを見る**。ここが緑なら、次の門の空はポリシー起因ではない。
+      # up の中では pod がまだ起きておらず失敗しうるため、この順序が要る。
+      - name: ABAC ポリシーの投入を確定させる（冪等・失敗を握り潰さない）
+        run: node scripts/seed-abac-policies.js
+
+      # 🔴 ここが 2 つめの門である（#972）。readiness は「起きている」までしか言わない。
+      # 認証後に **結果が出る**ことは別の判定が要る。
+      #
+      # 段 7 は状態コードしか見ないため、ABAC が deny へ縮退して「200 ＋ 空リスト」を返しても
+      # PASS する（`BffScopeResolver` が null → `Results.Ok(new List<DocumentDto>())`）。
+      # **直っていても壊れていても同じ緑**になるので、ABAC_POSITIVE=1 で
+      # 正の対照（許可 → 非空）と負の対照（属性なし → 0 件）を対で測る。
+      #
+      # ABAC_POSITIVE=1 は **文書を 1 件作る**。このクラスタは次のステップで破棄されるので
+      # 副作用は残らない（`Tear down` は if: always()）。
+      - name: 🔴 Gate — ABAC の正常系が観測できる（#972）
+        run: ABAC_POSITIVE=1 bash scripts/verify-oidc-edge-flow.sh
 
       # 失敗したときに原因を名指しできる情報を残す（#466 のスコープ「失敗時に原因が特定できる出力」）。
       - name: Dump cluster state (診断用・失敗時のみ)

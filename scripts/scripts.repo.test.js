@@ -109,6 +109,43 @@ module.exports = ({ ok, assert }) => {
       assert.strictEqual(seed.selectMissingPolicies(wanted, []).length, 2);
     });
 
+    // --- 投入器の資格情報が realm から drift しないこと（#972 / #933 の実例） ---------
+    //
+    // 実際に起きたこと: 既定が `admin`/`admin` の直書きで、#933 が realm のパスワードを
+    // `Admin-Dev2026` へ変えたときに追随せず、投入が 401 で失敗するようになった。
+    // ABACSEED は best-effort（WARN で通す）なので**壊れていることが見えなかった**。
+    // ポリシー 0 件 → ABAC は deny へ倒れ、画面は空になるが、それは deny-by-default と区別が付かない。
+
+    ok('seed: 管理者のパスワードを realm ファイル（単一情報源）から引ける', () => {
+      const pw = seed.passwordFromRealm('admin');
+      assert.ok(
+        typeof pw === 'string' && pw.length > 0,
+        `realm から admin のパスワードを引けない（${seed.REALM_FILE}）。realm の構造が変わった可能性がある`
+      );
+    });
+
+    ok('seed: 実在しない利用者では null を返す（黙って既定値へ落ちない）', () => {
+      assert.strictEqual(seed.passwordFromRealm('no-such-user-in-realm'), null);
+    });
+
+    ok('★ seed: realm のパスワード値がスクリプトへ直書きされていない（#933 型の drift の再発防止）', () => {
+      const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      // realm が持つ**すべての**平文パスワードについて見る。admin だけを見ると、
+      // 別の利用者で同じ写し取りが起きたときに素通りする。
+      const secrets = (realm.users || [])
+        .flatMap((u) => u.credentials || [])
+        .filter((c) => c.type === 'password' && c.value)
+        .map((c) => c.value);
+      assert.ok(secrets.length > 0, 'realm に平文パスワードが 1 つも無い（前提が変わった）');
+      for (const s of secrets) {
+        assert.ok(
+          !src.includes(`'${s}'`) && !src.includes(`"${s}"`),
+          `realm のパスワードがスクリプトへ直書きされている（${s.slice(0, 3)}…）。realm から引くこと`
+        );
+      }
+    });
+
     // 投入データそのものの回帰。**階段の最下段（clearance=public）を欠くと、
     // clearance=public の利用者はどのポリシーにもマッチせず public 文書すら読めない**
     // （deny-by-default）。README が謳う「階段」と投入データを一致させ続けるために固定する。
