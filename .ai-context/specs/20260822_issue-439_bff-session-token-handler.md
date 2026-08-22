@@ -25,7 +25,52 @@ plan_refs:
 - 実装側: **IADR-0121 決定 6**（`oidc-client-ts` は第 1 段で撤去せず**第 3 段で撤去**）／
   `#446` 仕様書 §段階分割（段の表の正本。**第 3 段＝「認証: BFF セッション方式へ移行し `oidc-client-ts` を撤去」**）
 
-### 完了条件の正本
+### 3b（SPA の切り替えと `oidc-client-ts` 撤去）の実測と受け入れ基準
+
+**3a は `6aeba042` で着地した。** 本節は 3b の着手前に実測した値である。
+
+### 撤去対象（実測）
+
+| 対象 | 実測 | 備考 |
+| --- | --- | --- |
+| `oidc-client-ts` の**宣言** | **2**（`platform/frontend/package.json` / `knowledge/frontend/package.json`） | knowledge 側は knip が「真の未使用」と記録しているもの（import 0 件） |
+| `oidc-client-ts` の **import** | **10 ファイル**（すべて `platform/frontend/src/foundation/` 配下。`auth/` 8・`testing/` 1・`ui/` 1） | |
+
+🔴 **受け入れ基準は「宣言と import の両方が 0」である。** 片方だけでは完了条件（「ワークスペースから消えている」）を満たさない。
+
+### 🔴 見込みが外れた —— 消費側は 18 ではなく 28 ファイル
+
+起草時の見込みは「`useAuth()` / `RequireRole` の継ぎ目を保てば**消費側 18 ファイル**の多くは無改修」だった。**実測は 28 ファイルである**（`foundation/auth/` 自身の 10 を除く）。
+
+| 群 | 実測 | 無改修で済むか |
+| --- | --- | --- |
+| `platform/frontend/e2e/*.smoke.spec.ts` | **13** | 🔴 **済まない見込み。** ログイン導線そのものが変わる（`oidc-client-ts` のリダイレクト → `/bff/auth/login`）。**見込みはここを数え落としていた** |
+| `knowledge/frontend` の features | 7 | 継ぎ目を保てば無改修の見込み |
+| `platform/frontend/src`（`auth/` 以外） | 8 | 同上 |
+
+**「継ぎ目を保てば多くは無改修」は `src` 配下（15）には当てはまるが、e2e（13）には当てはまらない。**
+
+> 1 件注記: 一致に `foundation/api/generated/documents/documents.ts` が含まれるが**生成物**である。手で編集せず `pnpm run codegen` で追随させる（3a の CI 赤で学んだ形）。
+
+### 受け入れ基準の射程 —— **AST は含めない**
+
+🔴 `ai-stock-trading` は submodule であり、**本リポジトリからは是正できない**（`IADR-0120`）。同 submodule も `oidc-client-ts` を持つ（`package.json` 宣言・`test/foundation-stub/auth/` 2 本・`e2e/harness/AuthHarness.tsx`・feature の access テスト 3 本）。
+
+**3b の受け入れ基準は「`platform` ＋ `knowledge` から消えている」に限定する。** 完了条件が AST を含むかは **planning#450** で裁定待ちであり、**解釈を実装側で決めない。**
+
+### テスト装置についての注意
+
+🔴 **`TestAuthHandler` を触るなら、変更後の装置が実体の契約より甘くなっていないかを確かめる。**
+
+#948 で **`FeedbackStubHandler` が `Authorization` を記録するだけで検査せず、常に成功を返していた**ために、BFF の資格情報転送の欠落が緑を通った実例がある。**認証まわりのテスト装置は実体より甘くなりやすい。**
+
+確かめ方は**変異試験**とする —— **実体が拒否する入力を装置が通してしまわないこと**を、負例で落として確認する。
+
+### 否定形テストには陽性対照を対で置く
+
+「**トークンがブラウザへ露出しない**」を否定形だけで書くと、**常に 404 を返す実装**が通る。同じ装置で「**セッション Cookie は在る**」「**`/bff/auth/me` は 200 で身元を返す**」を対で固定する。
+
+## 完了条件の正本
 
 **`13_frontend-stack` §採用技術一覧そのもの**である。`10_feedback/20260804_frontend-migration-staging-interpretation.md` は
 経緯の記録であり、自ら一次情報源の座を計画本文へ譲っている。該当行:
