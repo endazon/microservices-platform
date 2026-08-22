@@ -166,6 +166,7 @@ function runUp(extraEnv) {
     'ABACSEED',
     'HEADLAMP_OIDC_ISSUER_URL',
     'HEADLAMP_OIDC_CLIENT_ID',
+    'K3S_IMAGE', // #783: k3s イメージの pin。実行環境に漏れていると既定のバイト等価が崩れる
   ]) {
     delete base[k];
   }
@@ -443,6 +444,30 @@ ok('LOCALEDGE=1: cluster create ポートが loopback 80/443/50000・8080/8443 �
 
 ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
   assert.ok(anyLineHas(runUp({ LOCALEDGE: '1' }).lines, 'apply -k deploy/local/edge'), 'deploy/local/edge が apply されない');
+});
+
+// --- K3S_IMAGE による k3s の pin（NFR / #783・#442 子 5） -----------------------
+// CI では k3s のバージョンを固定する。**揃っていないことが静かに素通りする**ためであり
+// （traefik chart 25 系では admin(50000) の reconcile が型不一致で落ちるが up は EXIT=0 で返る。#953）、
+// 「好みでバージョンを合わせる」話ではない。既定（未設定）は 1 バイトも変えない。
+ok('K3S_IMAGE 未設定: cluster create 引数に --image が現れない（既定バイト等価）', () => {
+  assert.ok(!anyLineHas(DEFAULT.lines, '--image'), '既定なのに --image が現れた');
+  assert.strictEqual(clusterCreateLine(DEFAULT.lines), EXPECTED_DEFAULT_CREATE);
+});
+
+ok('K3S_IMAGE 設定時: cluster create に --image <値> が付く', () => {
+  const line = clusterCreateLine(runUp({ K3S_IMAGE: 'rancher/k3s:v1.35.4-k3s1' }).lines);
+  assert.ok(line, 'cluster create 行が採取できていない');
+  assert.ok(line.includes('--image rancher/k3s:v1.35.4-k3s1'), `--image が付いていない: ${line}`);
+  // 既定のポート指定を壊していない（追加であって置換ではない）。
+  assert.ok(line.includes('-p 8080:80@loadbalancer'), `既定ポートが失われた: ${line}`);
+});
+
+ok('K3S_IMAGE は LOCALEDGE=1 とも併用できる（ポートの切替を壊さない）', () => {
+  const line = clusterCreateLine(runUp({ LOCALEDGE: '1', K3S_IMAGE: 'rancher/k3s:v1.35.4-k3s1' }).lines);
+  assert.ok(line.includes('--image rancher/k3s:v1.35.4-k3s1'), `--image が付いていない: ${line}`);
+  assert.ok(line.includes('127.0.0.1:50000:50000@loadbalancer'), `LOCALEDGE のポートが失われた: ${line}`);
+  assert.ok(!line.includes('8080:80@loadbalancer'), `LOCALEDGE=1 なのに既定ポートが残っている: ${line}`);
 });
 
 // LOCALEDGE の argocd-ingress は「argocd namespace 存在時のみ」条件付き apply（fail-safe・ns 不在で失敗させない）。

@@ -321,3 +321,4 @@
 | [IADR-0245](./IADR-0245_mt-wolverine-interop-and-edge-cutover.md) | MT ↔ Wolverine はエンベロープ非互換。**MT→Wolverine は黙って捨て**（復旧不可）、**Wolverine→MT は `_error` へ保全**。二重購読も二重発行も採れず、辺の切替は「停止 → 排出 → 切替」の 3 段にする。排出判定は `messages`。#441 | Accepted |
 | [IADR-0246](./IADR-0246_confinement-checker-blind-spots.md) | **封じ込め検査器の不可視領域は費用を測ってから塞ぐか決める**。走査の 2 件（`dist/` 配下・UTF-16LE）は偽陽性ゼロなので塞ぎ、値レベルはテストが届いており偽陽性が高いので塞がない。#919 / #920 | Accepted |
 | [IADR-0247](./IADR-0247_nul-byte-check.md) | **生の NUL バイトは追跡下すべてで検査する**（拡張子の許可リストにしない・復号しない）。入ると git と grep がバイナリ扱いし diff もレビューも走査もできなくなる。実際に 4 回起きた。#956 | Accepted |
+| [IADR-0248](./IADR-0248_integration-stack-ci-readiness-gate.md) | **`k8s-local-up.sh` の EXIT=0 は readiness の証明にならない**。統合スタックは nightly で起こし、6 門を fail-closed で判定。k3s は pin。#783 | Accepted |
