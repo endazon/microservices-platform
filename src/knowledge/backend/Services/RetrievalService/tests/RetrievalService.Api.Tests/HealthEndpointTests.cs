@@ -11,7 +11,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetHealthLive_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/health/live");
+        var response = await factory.CreateClient().GetAsync("/health/live", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -21,7 +21,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     {
         var response = await factory.CreateClient()
             .PostAsJsonAsync("/search",
-                new { Query = "ナレッジ管理", TopK = 3 });
+                new { Query = "ナレッジ管理", TopK = 3 }, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

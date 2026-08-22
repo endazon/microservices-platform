@@ -1,7 +1,12 @@
+using System.Reflection;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
+using Wolverine.Runtime;
+using Wolverine.Transports;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 
@@ -103,5 +108,139 @@ public static class WolverineExtensions
             .Then.MoveToErrorQueue();
 
         return options;
+    }
+    // readiness タグ。MapPlatformHealthChecks の /health/ready は
+    // `Predicate = hc => hc.Tags.Contains("ready")` だけを条件にするため、この 1 語が
+    // 「ready に載るか」を決める唯一の接点である。
+    private const string ReadyTag = "ready";
+
+    // 既定の登録名。
+    public const string BrokerHealthCheckName = "wolverine-broker";
+
+    // ADR-0027: Wolverine へ移した発行元のブローカ疎通を readiness へ載せる。
+    //
+    // 🔴 **これが無いと、移行した瞬間に readiness が黙って消える。**
+    // MassTransit は AddMassTransit が "masstransit-bus"（tag ready）を**暗黙に**登録していた。
+    // Wolverine 側は `AddWolverine` ＋ `UseRabbitMq` で**ヘルスチェックを 0 件しか登録しない**（実測）。
+    // 気づかずに移すと /health/ready はブローカ不達でも 200 を返し、
+    // **probe が自分の主張することを検査しなくなる**（k8s は publish できない pod へ流す）。
+    //
+    // 🔴 **opt-in である。AddPlatformHealthChecks へ自動登録しない。**
+    // 自動にすると (1) ブローカを使わないサービス（認可・LLM ゲートウェイ・ダッシュボード）にまで付き、
+    // (2)「チェック 0 件なら両方 200」という共通ヘルパの基準を偽にする。
+    //
+    // ⚠️ Wolverine の `IHealthCheck` 実装（アダプタ）は internal であり、ドロップイン代替は無い（実測）。
+    // 公開されているのは `ITransport.BuildHealthCheck(IWolverineRuntime)` と、それが返す
+    // `WolverineTransportHealthCheck.CheckHealthAsync(CancellationToken)` までである。ここで橋渡しする。
+    public static IHealthChecksBuilder AddPlatformWolverineBroker(
+        this IHealthChecksBuilder builder, string name = BrokerHealthCheckName)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        return builder.AddCheck<WolverineBrokerHealthCheck>(
+            name, failureStatus: HealthStatus.Unhealthy, tags: [ReadyTag]);
+    }
+}
+
+// ADR-0027: Wolverine のトランスポート健全性を ASP.NET の IHealthCheck へ橋渡しする。
+//
+// 🔴 **例外を握り潰して Healthy を返さない。** ブローカが落ちているときに 200 を返す readiness は、
+// 無いのと同じであるうえに「在るように見える」ぶん悪い。到達不能・設定不備はいずれも Unhealthy にする。
+internal sealed class WolverineBrokerHealthCheck(IWolverineRuntime runtime) : IHealthCheck
+{
+    // ADR-0027 / ADR-0028: 本プラットフォームがブローカとして使う protocol。
+    // 組み込み（stub / local / tcp）は検査対象にしない —— それらはブローカ疎通を表さない。
+    private static readonly string[] BrokerProtocols = ["rabbitmq", "kafka"];
+
+    // 🔴 **`ITransport` 経由で BuildHealthCheck を呼んではならない —— null が返る。**
+    //
+    // `ITransport.BuildHealthCheck` は既定実装つきの仮想メソッドだが、`RabbitMqTransport` 側の
+    // 同名メソッドは **non-virtual**（override ではなく shadow）である。よってインタフェース型で
+    // 呼ぶと**具象の実装ではなく既定実装が走り、null が返る**（Wolverine 6.24.4 で実測）。
+    //
+    // これを踏むと「健全なブローカに対して恒久的に Unhealthy」——
+    // **readiness が永久に赤いまま**という、無いより悪い状態になる。実際に一度書いて踏んだ。
+    // 具象型に宣言されたメソッドを名指しで呼ぶ。見つからなければ健全と偽らず Unhealthy にする。
+    private static async Task<TransportHealthResult?> CheckAsync(
+        ITransport transport, IWolverineRuntime runtime, CancellationToken cancellationToken)
+    {
+        var method = transport.GetType().GetMethod(
+            nameof(ITransport.BuildHealthCheck),
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+        if (method?.Invoke(transport, [runtime]) is not WolverineTransportHealthCheck check)
+        {
+            return null;
+        }
+
+        return await check.CheckHealthAsync(cancellationToken);
+    }
+
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        // 🔴 **組み込みトランスポートを除外する denylist にしない。**
+        // 素の Wolverine ホストは常に `stub` / `local` / `tcp` の 3 つを持つ（実測）。
+        // 当初 `local` だけを除いたところ、`stub` と `tcp` にヘルスチェックを掛けて
+        // NullReferenceException になった。版が増やせば同じ事故が再発する。
+        // **ブローカの protocol を allowlist で挙げる**（ADR-0027 / ADR-0028: RabbitMQ と Kafka）。
+        var transports = runtime.Options.Transports
+            .Where(t => BrokerProtocols.Contains(t.Protocol))
+            .ToArray();
+
+        // ブローカのトランスポートが 1 つも無い＝繋ぐ設定がされていない。
+        // 「繋ぎ先が無いので健全」と読むと、配線忘れが緑になる。
+        if (transports.Length == 0)
+        {
+            return HealthCheckResult.Unhealthy(
+                "Wolverine にブローカのトランスポート（"
+                + string.Join(" / ", BrokerProtocols)
+                + "）が設定されていません（ブローカ疎通を検査できません）。");
+        }
+
+        var unhealthy = new List<string>();
+        var degraded = new List<string>();
+
+        foreach (var transport in transports)
+        {
+            TransportHealthResult? result;
+            try
+            {
+                result = await CheckAsync(transport, runtime, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                unhealthy.Add($"{transport.Protocol}: {ex.Message}");
+                continue;
+            }
+
+            if (result is null)
+            {
+                // 健全と読まない。観測できないことは「異常が無い」ことの証拠にならない。
+                unhealthy.Add(
+                    $"{transport.Protocol}: ヘルスチェックを取得できませんでした"
+                    + "（Wolverine の版更新で BuildHealthCheck の形が変わった可能性があります）。");
+                continue;
+            }
+
+            switch (result.Status)
+            {
+                case TransportHealthStatus.Unhealthy:
+                    unhealthy.Add($"{result.Protocol}: {result.Message}");
+                    break;
+                case TransportHealthStatus.Degraded:
+                    degraded.Add($"{result.Protocol}: {result.Message}");
+                    break;
+            }
+        }
+
+        if (unhealthy.Count > 0)
+        {
+            return HealthCheckResult.Unhealthy(string.Join(" / ", unhealthy));
+        }
+
+        return degraded.Count > 0
+            ? HealthCheckResult.Degraded(string.Join(" / ", degraded))
+            : HealthCheckResult.Healthy();
     }
 }

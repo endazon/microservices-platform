@@ -18,10 +18,10 @@ public class IntrospectionEndpointTests : IClassFixture<TestWebApplicationFactor
     {
         var client = _factory.CreateClient();
 
-        var res = await client.GetAsync("/internal/introspection");
+        var res = await client.GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
         res.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>();
+        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(TestContext.Current.CancellationToken);
         report.Should().NotBeNull();
         report!.Service.Should().Be("retrieval-service");
         report.Ports.Select(p => p.Port).Should().Contain(["vector-store", "embedding"]);

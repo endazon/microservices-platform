@@ -147,6 +147,40 @@ only [DocumentDeleted]    -> violations=0   only [DocumentUpdated]    -> violati
 **残る 3 行はどの辺からも到達しない**（`Knowledge.Contracts.Tests` / `Knowledge.IntegrationTests` /
 `Platform.Shared.Infrastructure`）。C1〜C3 を別建てにしているのはそのためである。
 
+> 🔴 ［2026-08-22 追記 / #441］**チェーンへ `W4`（Wolverine ブローカ readiness）を足した。**
+> E1 の着手前に実測して判明した —— `AddMassTransit` が暗黙に登録していた
+> `masstransit-bus`（tag `ready`）に対し、**`AddWolverine` ＋ `UseRabbitMq` はヘルスチェックを
+> 0 件しか登録しない**。気づかずに発行元を移すと `/health/ready` がブローカ不達でも 200 を返し、
+> **probe が自分の主張することを検査しなくなる**。同じ readiness コメントは DataSourceService・
+> DocumentService・WikiService の 3 つに在り、E1〜E3b へ等しく効くため辺の移行とは別単位にした。
+>
+> **位置は W3 の次・E1 の前**（前提は W1 のみ）。**baseline は 13 のまま動かさない。**
+> 実装は共通ヘルパへの **opt-in の別拡張**とする —— 自動登録にすると
+> `AddPlatformHealthChecks` の本番 call site **12 箇所すべてが Wolverine を配線していない**（実測）ため、
+> **メッセージングと無関係な 12 サービスがブローカ停止で 503 を返す**。
+> 「壊れているのに 200」の逆で「無関係なサービスが騒ぐ」形だが、どちらも readiness の意味を壊す。
+>
+> **W4 の実測（2026-08-22。クラスタの RabbitMQ へ `kubectl port-forward` し、自前の TCP 中継を挟んで測った。ブローカには触れていない）:**
+>
+> 1. 🔴 **起動時のブローカ障害は readiness の対象外である。** 到達不能なブローカに対し Wolverine ホストは
+>    **20 回再試行し、約 135 秒後に `BrokerInitializationException` で起動に失敗する**。
+>    ホストが立たない以上 `/health/ready` は存在せず、**試験対象が無い**（pod は crash loop になる＝安全側）。
+>    **readiness が守れるのは「起動後に到達できなくなる」場合だけ**である。
+> 2. **ブローカ障害は degrade ではない。** 上のとおり**起動を約 135 秒ブロックしてから失敗**させる。
+>    E1 以降のデプロイ窓の考慮事項であり、従前どこにも記録が無かった。
+> 3. **検知はキャッシュされない。約 3 秒である。** 3 秒間隔で観測した実測値:
+>    `t=45s Healthy` →（中継を遮断）→ `t=48s Unhealthy Msg=RabbitMQ sending connection is down`。
+>    これが「W4 は装飾ではない」ことの根拠である。
+> 4. 🔴 **`BuildHealthCheck` の shadowing の罠。** `ITransport.BuildHealthCheck` は既定実装つきの
+>    **virtual** メソッドだが、`RabbitMqTransport` 側の同名メソッドは **non-virtual**（override ではなく
+>    shadow）である。よって**インタフェース型で呼ぶと null が返る**。これを踏むと
+>    **健全なブローカに対して恒久的に Unhealthy**（readiness が永久に赤い）になる。実際に一度書いて踏んだ。
+>    具象型に宣言されたメソッドを名指しで呼ぶこと。**「取得できない」は Healthy ではなく Unhealthy に倒す** ——
+>    観測できないことは、異常が無いことの証拠ではない。
+>
+> ⚠️ **限界。** 再現に使ったのは自前の TCP 中継の切断であり、**ブローカのクラッシュとバイト等価ではない**
+> （RST / 無応答 / 半開の違いがある）。再現できたのは「確立済み接続が落ち、再接続もできない」形である。
+
 ### 決定 4: U5 は「型制約の緩和」としては発生しない。IADR-0233 決定 4 をここで改める
 
 [IADR-0233](./IADR-0233_wolverine-shared-helper-confinement.md) 決定 4（Superseded by 本 IADR 決定 4）は

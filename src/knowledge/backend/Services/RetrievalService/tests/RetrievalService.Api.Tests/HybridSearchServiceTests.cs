@@ -166,7 +166,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, embed) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted));
+        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted), TestContext.Current.CancellationToken);
 
         store.VectorCalls.Should().Be(1);
         store.KeywordCalls.Should().Be(1);
@@ -179,7 +179,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, embed) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Keyword));
+        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Keyword), TestContext.Current.CancellationToken);
 
         store.KeywordCalls.Should().Be(1);
         store.VectorCalls.Should().Be(0);
@@ -192,7 +192,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, embed) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Semantic));
+        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Semantic), TestContext.Current.CancellationToken);
 
         store.VectorCalls.Should().Be(1);
         store.KeywordCalls.Should().Be(0);
@@ -206,10 +206,10 @@ public class HybridSearchServiceTests
     {
         var (svc, store, _) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Keyword));
+        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Keyword), TestContext.Current.CancellationToken);
         store.LastKeywordTopK.Should().Be(5);
 
-        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Hybrid));
+        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Hybrid), TestContext.Current.CancellationToken);
         store.LastKeywordTopK.Should().Be(20, "hybrid は融合のため候補を広く取る");
     }
 
@@ -222,7 +222,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, _) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, mode));
+        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, mode), TestContext.Current.CancellationToken);
 
         store.VectorCalls.Should().Be(1);
         store.KeywordCalls.Should().Be(1);
@@ -234,7 +234,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, _) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, "KEYWORD"));
+        await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, "KEYWORD"), TestContext.Current.CancellationToken);
 
         store.KeywordCalls.Should().Be(1);
         store.VectorCalls.Should().Be(0);
@@ -246,7 +246,7 @@ public class HybridSearchServiceTests
     {
         var (svc, store, _) = NewService();
 
-        var results = await svc.SearchAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword));
+        var results = await svc.SearchAsync(new SearchRequest("q", 10, null, null, SearchModes.Keyword), TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
         store.KeywordCalls.Should().Be(0, "スコープ未解決なら系統を一切呼ばない");
@@ -275,7 +275,7 @@ public class HybridSearchServiceTests
         var recent = Hit(Guid.NewGuid(), updatedAt: At(12, 31));
         var (svc, _, _) = NewService(keywordResults: [old, recent]);
 
-        var results = await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Keyword));
+        var results = await svc.SearchAsync(new SearchRequest("q", 10, null, Granted, SearchModes.Keyword), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should().Equal([old.ChunkId, recent.ChunkId],
             "既定では取得順（関連度順）を並べ替えない");
@@ -291,7 +291,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: [mid, oldest, newest]);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should().Equal(newest.ChunkId, mid.ChunkId, oldest.ChunkId);
     }
@@ -307,7 +307,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: [unknown, oldest, newest]);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should().Equal([newest.ChunkId, oldest.ChunkId, unknown.ChunkId],
             "日時なしは末尾。DateTimeOffset.MinValue 扱いにすると『とても古い文書』と区別できなくなる");
@@ -325,7 +325,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: [first, second, noDateFirst, noDateSecond]);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, SearchSorts.Updated), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should()
             .Equal(first.ChunkId, second.ChunkId, noDateFirst.ChunkId, noDateSecond.ChunkId);
@@ -343,7 +343,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: [old, recent]);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, sort));
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, sort), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should().Equal(old.ChunkId, recent.ChunkId);
     }
@@ -357,7 +357,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: [old, recent]);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, "UPDATED"));
+            new SearchRequest("q", 10, null, Granted, SearchModes.Keyword, "UPDATED"), TestContext.Current.CancellationToken);
 
         results.Select(r => r.ChunkId).Should().Equal(recent.ChunkId, old.ChunkId);
     }
@@ -369,11 +369,11 @@ public class HybridSearchServiceTests
     {
         var (svc, store, _) = NewService();
 
-        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Keyword));
+        await svc.SearchAsync(new SearchRequest("q", 5, null, Granted, SearchModes.Keyword), TestContext.Current.CancellationToken);
         store.LastKeywordTopK.Should().Be(5, "関連度順なら単系統は広げない（従来どおり）");
 
         await svc.SearchAsync(
-            new SearchRequest("q", 5, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+            new SearchRequest("q", 5, null, Granted, SearchModes.Keyword, SearchSorts.Updated), TestContext.Current.CancellationToken);
         store.LastKeywordTopK.Should().Be(20, "日時順は並べ替えるので候補を広く取る");
     }
 
@@ -386,7 +386,7 @@ public class HybridSearchServiceTests
         var (svc, _, _) = NewService(keywordResults: hits);
 
         var results = await svc.SearchAsync(
-            new SearchRequest("q", 3, null, Granted, SearchModes.Keyword, SearchSorts.Updated));
+            new SearchRequest("q", 3, null, Granted, SearchModes.Keyword, SearchSorts.Updated), TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(3);
         results[0].UpdatedAt.Should().Be(At(1, 12), "最も新しい 3 件が返る");
