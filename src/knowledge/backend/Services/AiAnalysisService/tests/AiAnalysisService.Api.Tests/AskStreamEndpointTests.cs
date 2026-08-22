@@ -12,12 +12,12 @@ public class AskStreamEndpointTests(TestWebApplicationFactory factory)
     public async Task PostAskStream_EmitsCitationsThenTokensThenDone()
     {
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/ask/stream", new { Question = "経費規程は？" });
+            .PostAsJsonAsync("/analysis/ask/stream", new { Question = "経費規程は？" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         resp.Content.Headers.ContentType!.MediaType.Should().Be("text/event-stream");
 
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // 出典が本文より先に送られる。
         var citationsIdx = body.IndexOf("event: citations", StringComparison.Ordinal);

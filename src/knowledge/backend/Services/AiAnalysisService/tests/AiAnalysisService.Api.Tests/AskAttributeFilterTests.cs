@@ -130,7 +130,7 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
                 ["tags"] = ["経理", "規程"],
                 ["department"] = ["finance"],
             },
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         Stub.LastAskFilters.Should().NotBeNull();
@@ -148,10 +148,10 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
         {
             question = "経理の規程は？",
             attributeFilters = new Dictionary<string, string[]> { ["tags"] = ["経理"] },
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        await resp.Content.ReadAsStringAsync();
+        await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Stub.LastStreamFilters.Should().NotBeNull();
         Stub.LastStreamFilters!["tags"].Should().Equal(["経理"]);
     }
@@ -164,10 +164,10 @@ public class AskAttributeFilterTests(TestWebApplicationFactory factory)
         Stub.ResetRecording();
 
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/ask", new { question = "経理の規程は？" });
+            .PostAsJsonAsync("/analysis/ask", new { question = "経理の規程は？" }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await resp.Content.ReadFromJsonAsync<AiAnswerDto>())!.Answer.Should().NotBeNullOrEmpty();
+        (await resp.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken))!.Answer.Should().NotBeNullOrEmpty();
         Stub.LastAskFilters.Should().BeNull("送らなければ後段にも渡らない");
     }
 }

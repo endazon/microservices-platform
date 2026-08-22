@@ -12,10 +12,10 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
     public async Task PostAnalysisAsk_ReturnsAnswerWithCitations()
     {
         var response = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/ask", new { question = "規程の更新手順は？" });
+            .PostAsJsonAsync("/analysis/ask", new { question = "規程の更新手順は？" }, TestContext.Current.CancellationToken);
 
         response.IsSuccessStatusCode.Should().BeTrue();
-        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
 
         answer.Should().NotBeNull();
         answer!.Answer.Should().NotBeNullOrWhiteSpace();
@@ -34,10 +34,10 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
                 instruction = "2025 年の経費規程を比較して",
                 taskType = "Compare",
                 range = new { attributeFilters = new { year = new[] { "2025" } } }
-            });
+            }, TestContext.Current.CancellationToken);
 
         response.IsSuccessStatusCode.Should().BeTrue();
-        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
 
         answer.Should().NotBeNull();
         answer!.Answer.Should().NotBeNullOrWhiteSpace();
@@ -49,9 +49,9 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
     public async Task PostAnalysisAsk_AnswerHasAnswerId()
     {
         var response = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/ask", new { question = "経費規程は？" });
+            .PostAsJsonAsync("/analysis/ask", new { question = "経費規程は？" }, TestContext.Current.CancellationToken);
 
-        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await response.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
         answer!.AnswerId.Should().NotBe(Guid.Empty);
     }
 
@@ -60,7 +60,7 @@ public class AnalysisEndpointTests(TestWebApplicationFactory factory)
     public async Task PostAnalyze_RejectsEmptyInstruction()
     {
         var response = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/analyze", new { instruction = "" });
+            .PostAsJsonAsync("/analysis/analyze", new { instruction = "" }, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
     }

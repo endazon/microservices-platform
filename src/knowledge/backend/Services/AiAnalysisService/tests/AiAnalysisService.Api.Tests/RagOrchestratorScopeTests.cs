@@ -49,7 +49,7 @@ public class RagOrchestratorScopeTests
 
         var events = new List<AskEvent>();
         await foreach (var ev in orchestrator.AskStreamAsync(
-            "質問", "user-1", new Dictionary<string, string>()))
+            "質問", "user-1", new Dictionary<string, string>(), ct: TestContext.Current.CancellationToken))
         {
             events.Add(ev);
         }

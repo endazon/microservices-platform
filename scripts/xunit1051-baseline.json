@@ -22,8 +22,8 @@
   "projects": {
     "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": {
       "project": "AiAnalysisService.Api.Tests",
-      "remaining": 30,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": {
       "project": "ConversionService.Worker.Tests",
