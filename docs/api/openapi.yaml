@@ -1983,6 +1983,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/EmbedApiResponse"
 
+  /bff/graph/{documentId}:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      # NFR-09: 認証のみ・ロール不問。**可視性はロールではなく ABAC が決める** ——
+      # GraphService が JWT から解決したスコープでホップごとに判定する（ADR-0034 決定 1）。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-17, UC-10: 起点ノード 1 件（グラフ読み取り）"
+      description: |
+        FR-17, UC-10, ADR-0034: 起点となる文書のノードを 1 件返す。
+
+        **権限外・複製未到達・不存在はすべて 404 に倒す**（ADR-0034 決定 2）。
+        利用者は「リンク切れ」と「権限不足」を区別できない —— これは受け入れ済みの副作用である。
+        403 は返さない（403 は「権限が無いだけで存在はする」ことを漏らす）。
+      operationId: bff-graph-node
+      responses:
+        "200":
+          description: グラフ（ノード 1 件）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphView" }
+        "404": { description: 権限外・不存在（区別しない） }
+
+  /bff/graph/{documentId}/neighbors:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      # クエリ引数は **操作（get）の下**へ置く。path レベルへ置くと orval が
+      # 空の分解代入を含む URL 組み立てを生成し、noUnusedLocals（TS6198）で型検査が落ちる（実測）。
+      parameters:
+        - name: hops
+          in: query
+          required: false
+          description: "探索の深さ。既定 2 / 上限 3（ADR-0034 決定 3）。上限超過は 400 で拒否し、黙って切り詰めない"
+          schema: { type: integer, minimum: 1, maximum: 3 }
+      # NFR-09: 認証のみ・ロール不問（上と同じ。可視性は ABAC が決める）。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-17, UC-10: 近傍探索（ホップごとに権限を判定する）"
+      description: |
+        FR-17, UC-10, ADR-0034: 起点から関係を辿った近傍グラフを返す。
+
+        **判定はホップごとに行い、権限外ノードは展開の前に刈る**（決定 1）。
+        したがって権限外ノードが「橋」となって権限外の隣接文書が浮上することはない。
+        **表示上限（ノード 200 / 辺 500）の計数は権限判定を通過した品目に対してのみ行う**ため、
+        件数から権限外文書の存在が漏れることもない（決定 4）。
+      operationId: bff-graph-neighbors
+      responses:
+        "200":
+          description: 近傍グラフ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GraphView" }
+        "400": { description: hops が範囲外（1〜3） }
+        "404": { description: 権限外・不存在（区別しない） }
+
 components:
   schemas:
     SearchRequest:
@@ -2072,6 +2129,43 @@ components:
             後段 DocumentService の `/tags/{id}` へ中継する。書き込みはシステム管理者限定）。
         name: { type: string, description: 表示名。改名で変わるのはこちらだけである。 }
         usageCount: { type: integer, format: int32 }
+
+    GraphNodeItem:
+      type: object
+      description: "FR-17: グラフのノード（文書単位）"
+      required: [documentId, title]
+      properties:
+        documentId: { type: string, format: uuid }
+        title: { type: string }
+
+    GraphEdgeItem:
+      type: object
+      description: |
+        FR-17, ADR-0033 決定 4: グラフの辺。**辺の型は識別子で返す**（表示名は辞書側で解決する。
+        改名に追随するため）。`provenance` は出所（auto / user / ai-approved）。
+      required: [id, sourceDocumentId, targetDocumentId, edgeTypeId, provenance]
+      properties:
+        id: { type: string, format: uuid }
+        sourceDocumentId: { type: string, format: uuid }
+        targetDocumentId: { type: string, format: uuid }
+        edgeTypeId: { type: string, format: uuid }
+        provenance: { type: string, enum: [auto, user, ai-approved] }
+
+    GraphView:
+      type: object
+      description: |
+        FR-17, UC-10, ADR-0034 決定 4: 近傍グラフ。`truncated` は表示上限で打ち切ったかを表す。
+        **上限の計数は権限判定を通過した品目に対してのみ行われる**ため、この値が権限外文書の
+        存在を漏らすことはない。
+      required: [nodes, edges, truncated]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/GraphNodeItem" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/GraphEdgeItem" }
+        truncated: { type: boolean }
 
     TagDictionaryResponse:
       type: object
