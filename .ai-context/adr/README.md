@@ -326,3 +326,4 @@
 | [IADR-0250](./IADR-0250_ai-review-trace-followthrough-observation.md) | **記録と文書の追随は AI レビューの観点として宣言する**。ただし「機能している防護の格上げ」ではない —— 63 PR を引くと本物の漏れ 16 件に対し指摘は 1 件で**検出率は約 6%**、n=2 の根拠は生存者バイアスだった。効果は主張せず再測定の手順を残す。#906 | Accepted |
 | [IADR-0251](./IADR-0251_bff-session-token-handler.md) | BFF セッションの内部設計。**CSRF は SameSite+ヘッダ**（同一オリジン・CORS 0 件の実測が前提。再検討条件を明記）。`ResponseMode=query`。**失効は TicketStore の削除**。#439 | Accepted |
 | [IADR-0252](./IADR-0252_abac-positive-path-observation.md) | **ABAC の正常系は「許可 → 非空」と「属性なし → 0 件」の対で観測する**。状態コードだけでは deny と無データを区別できない。nightly の統合スタックへ置く。#972 | Accepted |
+| [IADR-0253](./IADR-0253_authz-scope-disjunction-contract.md) | **認可スコープ契約に選言（OR）を載せる**。名前つき分岐（分岐内 AND・分岐間 OR）を足し、既存の `AllowedFilters` は据え置く —— 分岐の和の部分集合であるため移行中の乖離は deny 側へ倒れる。#989 | Proposed |
