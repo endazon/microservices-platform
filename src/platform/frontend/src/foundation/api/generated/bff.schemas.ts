@@ -68,6 +68,46 @@ export interface AttributeValuesResponse {
 }
 
 /**
+ * FR-17: グラフのノード（文書単位）
+ */
+export interface GraphNodeItem {
+  documentId: string;
+  title: string;
+}
+
+export type GraphEdgeItemProvenance = typeof GraphEdgeItemProvenance[keyof typeof GraphEdgeItemProvenance];
+
+
+export const GraphEdgeItemProvenance = {
+  auto: 'auto',
+  user: 'user',
+  'ai-approved': 'ai-approved',
+} as const;
+
+/**
+ * FR-17, ADR-0033 決定 4: グラフの辺。**辺の型は識別子で返す**（表示名は辞書側で解決する。
+ * 改名に追随するため）。`provenance` は出所（auto / user / ai-approved）。
+ */
+export interface GraphEdgeItem {
+  id: string;
+  sourceDocumentId: string;
+  targetDocumentId: string;
+  edgeTypeId: string;
+  provenance: GraphEdgeItemProvenance;
+}
+
+/**
+ * FR-17, UC-10, ADR-0034 決定 4: 近傍グラフ。`truncated` は表示上限で打ち切ったかを表す。
+ * **上限の計数は権限判定を通過した品目に対してのみ行われる**ため、この値が権限外文書の
+ * 存在を漏らすことはない。
+ */
+export interface GraphView {
+  nodes: GraphNodeItem[];
+  edges: GraphEdgeItem[];
+  truncated: boolean;
+}
+
+/**
  * FR-09, SC-09（#640）: 辞書へタグを追加する。 **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
  */
 export interface CreateTagRequest {
@@ -1224,5 +1264,14 @@ export type BffConversionJobRetryParams = {
  * 別経路の呼び出しが素通りするためである。
  */
 discardCorrections?: boolean;
+};
+
+export type BffGraphNeighborsParams = {
+/**
+ * 探索の深さ。既定 2 / 上限 3（ADR-0034 決定 3）。上限超過は 400 で拒否し、黙って切り詰めない
+ * @minimum 1
+ * @maximum 3
+ */
+hops?: number;
 };
 

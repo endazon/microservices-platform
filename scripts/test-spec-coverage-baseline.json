@@ -153,6 +153,7 @@
     ],
     "docs/tests/UC-10_graph-traversal.md": [
       "AuthorizedGraphViewTests",
+      "BffGraphEndpointTests",
       "GraphEndpointsSecrecyTests",
       "GraphTraversalTests"
     ]

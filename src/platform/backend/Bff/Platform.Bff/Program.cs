@@ -56,6 +56,12 @@ builder.Services.AddHttpClient("RetrievalService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:RetrievalService"]
         ?? "http://retrieval-service:5003"));
 
+// FR-17, UC-10, #916a: グラフ読み取り（GraphService）。**利用者の JWT を伝播して呼ぶ**
+// —— GraphService は自分で ABAC を解決する型であり、本文で scope を渡す方式は採らない。
+builder.Services.AddHttpClient("GraphService", c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
+        ?? "http://graph-service:5015"));
+
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:DocumentService"]
