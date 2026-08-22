@@ -183,6 +183,21 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-reading-budget.js
 
+      # NFR, Issue #956, IADR-0247: 追跡下ファイルへの生の NUL バイト混入を検査する。
+      # 生の NUL が入ると git と grep がファイルをバイナリ扱いする（git diff が中身を出さず、
+      # grep が行番号を出さない）ため、混入したまま気付かずマージされ得る（実際に 4 回起きた）。
+      # 検査範囲は「追跡下すべて」で拡張子の許可リストにしない（新しいテキスト拡張子が黙って
+      # 対象から外れる無音の失敗を避けるため。IADR-0247 決定 1）。git を呼ぶため fetch-depth や
+      # submodule 取得は要らない（git ls-files で足りる）。scripts.repo.test.js の companion 経由
+      # でも自己試験・実データ走査・変異試験を回すが、専用ステップにすると失敗がジョブ名で見える
+      # （check-test-spec-coverage.js と同じ理由）。
+      - name: Self-test NUL byte checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-nul-bytes.js --self-test
+      - name: Check for raw NUL bytes
+        if: ${{ !cancelled() }}
+        run: node scripts/check-nul-bytes.js
+
       # FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成のスキーマ検証（安全弁）。
       # 本リポジトリはこの任意コンポーネントを**採用する**（ADR-0018 で確定）。
       # 検証を通らない構成は適用不可（必須チェック）。--self-test で検証器自体も毎回試験する。
