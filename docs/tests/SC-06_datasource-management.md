@@ -3,7 +3,7 @@ title: SC-06 データソース管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:

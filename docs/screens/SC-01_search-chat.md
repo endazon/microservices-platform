@@ -3,7 +3,7 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
