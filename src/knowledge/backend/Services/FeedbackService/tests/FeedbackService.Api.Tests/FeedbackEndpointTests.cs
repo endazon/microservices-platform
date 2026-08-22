@@ -18,10 +18,10 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var answerId = Guid.NewGuid();
 
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(answerId, "up"));
+            new FeedbackRequest(answerId, "up"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var dto = await resp.Content.ReadFromJsonAsync<FeedbackDto>();
+        var dto = await resp.Content.ReadFromJsonAsync<FeedbackDto>(TestContext.Current.CancellationToken);
         dto!.Rating.Should().Be("up");
         dto.AnswerId.Should().Be(answerId);
     }
@@ -34,10 +34,10 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var answerId = Guid.NewGuid();
 
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(answerId, "DOWN", Comment: "出典が不足していた", Question: "経費規程は？"));
+            new FeedbackRequest(answerId, "DOWN", Comment: "出典が不足していた", Question: "経費規程は？"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var dto = await resp.Content.ReadFromJsonAsync<FeedbackDto>();
+        var dto = await resp.Content.ReadFromJsonAsync<FeedbackDto>(TestContext.Current.CancellationToken);
         dto!.Rating.Should().Be("down");
         dto.Comment.Should().Be("出典が不足していた");
     }
@@ -49,14 +49,14 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         var answerId = Guid.NewGuid();
 
-        var first = await client.PostAsJsonAsync("/feedback", new FeedbackRequest(answerId, "up"));
+        var first = await client.PostAsJsonAsync("/feedback", new FeedbackRequest(answerId, "up"), TestContext.Current.CancellationToken);
         first.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var second = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(answerId, "down", Comment: "やっぱり不十分"));
+            new FeedbackRequest(answerId, "down", Comment: "やっぱり不十分"), TestContext.Current.CancellationToken);
         second.StatusCode.Should().Be(HttpStatusCode.OK); // 更新は 200
 
-        var list = await client.GetFromJsonAsync<List<FeedbackDto>>($"/feedback?answerId={answerId}");
+        var list = await client.GetFromJsonAsync<List<FeedbackDto>>($"/feedback?answerId={answerId}", TestContext.Current.CancellationToken);
         list!.Should().HaveCount(1);
         list[0].Rating.Should().Be("down");
         list[0].Comment.Should().Be("やっぱり不十分");
@@ -68,7 +68,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "maybe"));
+            new FeedbackRequest(Guid.NewGuid(), "maybe"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -78,7 +78,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(Guid.Empty, "up"));
+            new FeedbackRequest(Guid.Empty, "up"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -88,7 +88,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "up", Comment: new string('あ', 2001)));
+            new FeedbackRequest(Guid.NewGuid(), "up", Comment: new string('あ', 2001)), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -104,11 +104,11 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var a2 = Guid.NewGuid();
         var a3 = Guid.NewGuid();
 
-        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a1, "up"));
-        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a2, "up"));
-        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a3, "down"));
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a1, "up"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a2, "up"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(a3, "down"), TestContext.Current.CancellationToken);
 
-        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>("/feedback/stats");
+        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>("/feedback/stats", TestContext.Current.CancellationToken);
         stats!.Up.Should().BeGreaterThanOrEqualTo(2);
         stats.Down.Should().BeGreaterThanOrEqualTo(1);
         stats.Total.Should().Be(stats.Up + stats.Down);
@@ -122,9 +122,9 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     public async Task Stats_WithDays_CountsInRange()
     {
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"));
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
-        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>("/feedback/stats?days=1");
+        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>("/feedback/stats?days=1", TestContext.Current.CancellationToken);
 
         stats!.Total.Should().BeGreaterThanOrEqualTo(1); // 当日投入分は days=1 の範囲内。
         stats.Total.Should().Be(stats.Up + stats.Down);
@@ -136,9 +136,9 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = factory.CreateClient();
         var downId = Guid.NewGuid();
-        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(downId, "down"));
+        await client.PostAsJsonAsync("/feedback", new FeedbackRequest(downId, "down"), TestContext.Current.CancellationToken);
 
-        var list = await client.GetFromJsonAsync<List<FeedbackDto>>($"/feedback?rating=down&answerId={downId}");
+        var list = await client.GetFromJsonAsync<List<FeedbackDto>>($"/feedback?rating=down&answerId={downId}", TestContext.Current.CancellationToken);
         list!.Should().OnlyContain(f => f.Rating == "down");
         list.Should().ContainSingle(f => f.AnswerId == downId);
     }
@@ -156,7 +156,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var answerId = Guid.NewGuid();
 
         var requests = Enumerable.Range(0, 8)
-            .Select(_ => client.PostAsJsonAsync("/feedback", new FeedbackRequest(answerId, "up")));
+            .Select(_ => client.PostAsJsonAsync("/feedback", new FeedbackRequest(answerId, "up"), TestContext.Current.CancellationToken));
         var responses = await Task.WhenAll(requests);
 
         responses.Should().OnlyContain(r => r.IsSuccessStatusCode); // 500 等を出さない（冪等・no-crash）。
@@ -170,7 +170,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var req = new HttpRequestMessage(HttpMethod.Get, "/feedback");
         req.Headers.Add(TestAuthHandler.RolesHeader, "viewer"); // 管理者以外のロールを明示。
 
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -182,10 +182,10 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         // 同一利用者(test-user)でも AnswerId が異なれば別行になる（3 行以上を投入）。
         for (var i = 0; i < 3; i++)
-            await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"));
+            await client.PostAsJsonAsync("/feedback", new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
         // 共有 DB には他テスト分も含め十分な行がある。take=2 で返却が 2 件に制限されることを確認する。
-        var list = await client.GetFromJsonAsync<List<FeedbackDto>>("/feedback?take=2");
+        var list = await client.GetFromJsonAsync<List<FeedbackDto>>("/feedback?take=2", TestContext.Current.CancellationToken);
         list!.Should().HaveCount(2);
     }
 
@@ -206,7 +206,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "up"));
+            new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -220,7 +220,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
 
         var resp = await client.PostAsJsonAsync("/feedback",
-            new FeedbackRequest(Guid.NewGuid(), "up"));
+            new FeedbackRequest(Guid.NewGuid(), "up"), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
@@ -232,7 +232,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var resp = await client.GetAsync("/feedback/stats");
+        var resp = await client.GetAsync("/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -244,7 +244,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "viewer");
 
-        var resp = await client.GetAsync("/feedback/stats");
+        var resp = await client.GetAsync("/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -257,7 +257,7 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, "platform-operator");
 
-        var resp = await client.GetAsync("/feedback/stats");
+        var resp = await client.GetAsync("/feedback/stats", TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
