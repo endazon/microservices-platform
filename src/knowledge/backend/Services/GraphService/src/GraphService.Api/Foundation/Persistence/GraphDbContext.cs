@@ -50,6 +50,8 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
             e.Property(t => t.Layer).HasMaxLength(20).IsRequired();
             e.Property(t => t.IsSymmetric).IsRequired();
             e.Property(t => t.IsSeed).IsRequired();
+            // FR-04, ADR-0035 決定 2 (#947a): 二段検索の再ランクで使う重み（#970 が使う。現時点は未使用）。
+            e.Property(t => t.Weight).IsRequired().HasDefaultValue(EdgeType.DefaultWeight);
 
             // SC-09: 「新しい名前は既存値と重複しない」。正規化後の名前で一意。
             e.HasIndex(t => t.Name).IsUnique().HasDatabaseName("ux_edge_types_name");

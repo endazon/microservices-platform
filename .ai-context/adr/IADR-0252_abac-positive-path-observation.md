@@ -1,5 +1,5 @@
 ---
-title: IADR-0251 ABAC の正常系は「許可 → 非空」と「属性なし → 0 件」の対で観測する（状態コードだけでは deny と無データを区別できない）
+title: IADR-0252 ABAC の正常系は「許可 → 非空」と「属性なし → 0 件」の対で観測する（状態コードだけでは deny と無データを区別できない）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0036_abac-attribute-model.md
 ---
 
-# IADR-0251 ABAC 正常系の観測
+# IADR-0252 ABAC 正常系の観測
 
 ## 状況
 

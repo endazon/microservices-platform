@@ -13,20 +13,27 @@ public static class EdgeTypeSeed
     // ADR-0033 決定 3: 自動抽出の既定型。未定義型のフォールバック先でもある（#912）。
     public const string DefaultTypeName = "related";
 
-    // (name, layer, isSymmetric)
-    private static readonly (string Name, string Layer, bool IsSymmetric)[] Entries =
+    // (name, layer, isSymmetric, weight)
+    //
+    // FR-04, ADR-0035 決定 2 (#947a): **重みは二段検索の再ランクが使う**（#970。現時点では未使用）。
+    // ADR が名指しで決めているのは 2 つだけである ——「`supersedes` は最新版へ**強く**誘導し、
+    // `related` は**弱く**扱う」。**残りは実装側の判断**であり、根拠を仕様書へ書いた。
+    //
+    // 🔴 **これは実測値ではない。** 実データの次数・型分布が無い（取り込み経路が未配線）。
+    // 実データが入った時点で測り直す。
+    private static readonly (string Name, string Layer, bool IsSymmetric, double Weight)[] Entries =
     [
         // 中核 5 種。related のみ対称。
-        (DefaultTypeName, EdgeTypeLayer.Core,        true),
-        ("cites",         EdgeTypeLayer.Core,        false),
-        ("supersedes",    EdgeTypeLayer.Core,        false),
-        ("derived-from",  EdgeTypeLayer.Core,        false),
-        ("embeds",        EdgeTypeLayer.Core,        false),
-        // 追加推奨 4 種。
-        ("implements",    EdgeTypeLayer.Recommended, false),
-        ("refines",       EdgeTypeLayer.Recommended, false),
-        ("depends-on",    EdgeTypeLayer.Recommended, false),
-        ("part-of",       EdgeTypeLayer.Recommended, false),
+        (DefaultTypeName, EdgeTypeLayer.Core,        true,  0.3), // ADR: 弱く扱う
+        ("cites",         EdgeTypeLayer.Core,        false, 0.7),
+        ("supersedes",    EdgeTypeLayer.Core,        false, 1.0), // ADR: 強く誘導する
+        ("derived-from",  EdgeTypeLayer.Core,        false, 0.8), // 系列辿りの主軸
+        ("embeds",        EdgeTypeLayer.Core,        false, 0.7),
+        // 追加推奨 4 種。差を付ける根拠が無いので中庸で揃える。
+        ("implements",    EdgeTypeLayer.Recommended, false, EdgeType.DefaultWeight),
+        ("refines",       EdgeTypeLayer.Recommended, false, EdgeType.DefaultWeight),
+        ("depends-on",    EdgeTypeLayer.Recommended, false, EdgeType.DefaultWeight),
+        ("part-of",       EdgeTypeLayer.Recommended, false, EdgeType.DefaultWeight),
     ];
 
     public static int Count => Entries.Length;
@@ -45,7 +52,7 @@ public static class EdgeTypeSeed
 
         var missing = Entries
             .Where(e => !have.Contains(e.Name))
-            .Select(e => EdgeType.Create(e.Name, e.Layer, e.IsSymmetric, isSeed: true))
+            .Select(e => EdgeType.Create(e.Name, e.Layer, e.IsSymmetric, isSeed: true, weight: e.Weight))
             .ToList();
 
         if (missing.Count == 0)

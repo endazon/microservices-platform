@@ -69,7 +69,7 @@ public class EmbeddingPurposeTests
             ("Embedding:SelfHosted:QueryPrefix", "検索クエリ: "),
             ("Embedding:SelfHosted:DocumentPrefix", "検索文書: ")));
 
-        await provider.EmbedAsync("瑠璃色とは", "ruri-v3", 768, EmbeddingRoutePurpose.Index);
+        await provider.EmbedAsync("瑠璃色とは", "ruri-v3", 768, EmbeddingRoutePurpose.Index, TestContext.Current.CancellationToken);
 
         Field(handler.Body, "input").Should().Be("検索文書: 瑠璃色とは");
     }
@@ -84,7 +84,7 @@ public class EmbeddingPurposeTests
             ("Embedding:SelfHosted:QueryPrefix", "検索クエリ: "),
             ("Embedding:SelfHosted:DocumentPrefix", "検索文書: ")));
 
-        await provider.EmbedAsync("瑠璃色とは", "ruri-v3", 768, EmbeddingRoutePurpose.Query);
+        await provider.EmbedAsync("瑠璃色とは", "ruri-v3", 768, EmbeddingRoutePurpose.Query, TestContext.Current.CancellationToken);
 
         Field(handler.Body, "input").Should().Be("検索クエリ: 瑠璃色とは");
     }
@@ -99,7 +99,7 @@ public class EmbeddingPurposeTests
         var provider = new SelfHostedEmbeddingProvider(new SingleClientFactory(handler), Config(
             ("Embedding:SelfHosted:BaseUrl", "http://embedding-service:8080")));
 
-        await provider.EmbedAsync("瑠璃色とは", "bge-m3", 1024, EmbeddingRoutePurpose.Index);
+        await provider.EmbedAsync("瑠璃色とは", "bge-m3", 1024, EmbeddingRoutePurpose.Index, TestContext.Current.CancellationToken);
 
         Field(handler.Body, "input").Should().Be("瑠璃色とは", "プレフィクス未設定なら素の本文を送る");
     }
@@ -114,7 +114,7 @@ public class EmbeddingPurposeTests
         var provider = new VoyageEmbeddingProvider(new SingleClientFactory(handler), Config(
             ("Embedding:Voyage:ApiKey", "test-key")));
 
-        await provider.EmbedAsync("瑠璃色とは", "voyage-3.5", 1024, EmbeddingRoutePurpose.Index);
+        await provider.EmbedAsync("瑠璃色とは", "voyage-3.5", 1024, EmbeddingRoutePurpose.Index, TestContext.Current.CancellationToken);
 
         handler.Body.Should().Contain("\"input_type\":\"document\"");
     }
@@ -127,7 +127,7 @@ public class EmbeddingPurposeTests
         var provider = new VoyageEmbeddingProvider(new SingleClientFactory(handler), Config(
             ("Embedding:Voyage:ApiKey", "test-key")));
 
-        await provider.EmbedAsync("瑠璃色とは", "voyage-3.5", 1024, EmbeddingRoutePurpose.Query);
+        await provider.EmbedAsync("瑠璃色とは", "voyage-3.5", 1024, EmbeddingRoutePurpose.Query, TestContext.Current.CancellationToken);
 
         handler.Body.Should().Contain("\"input_type\":\"query\"");
     }
@@ -144,11 +144,11 @@ public class EmbeddingPurposeTests
 
         var h1 = new CapturingHandler();
         await new SelfHostedEmbeddingProvider(new SingleClientFactory(h1), selfHostedConfig)
-            .EmbedAsync("同じ本文", "ruri-v3", 768, EmbeddingRoutePurpose.Query);
+            .EmbedAsync("同じ本文", "ruri-v3", 768, EmbeddingRoutePurpose.Query, TestContext.Current.CancellationToken);
 
         var h2 = new CapturingHandler();
         await new SelfHostedEmbeddingProvider(new SingleClientFactory(h2), selfHostedConfig)
-            .EmbedAsync("同じ本文", "ruri-v3", 768, EmbeddingRoutePurpose.Index);
+            .EmbedAsync("同じ本文", "ruri-v3", 768, EmbeddingRoutePurpose.Index, TestContext.Current.CancellationToken);
 
         h1.Body.Should().NotBe(h2.Body, "用途を無視すると両者が同一になる（本 issue の欠陥そのもの）");
 
@@ -156,11 +156,11 @@ public class EmbeddingPurposeTests
 
         var h3 = new CapturingHandler();
         await new VoyageEmbeddingProvider(new SingleClientFactory(h3), voyageConfig)
-            .EmbedAsync("同じ本文", "voyage-3.5", 1024, EmbeddingRoutePurpose.Query);
+            .EmbedAsync("同じ本文", "voyage-3.5", 1024, EmbeddingRoutePurpose.Query, TestContext.Current.CancellationToken);
 
         var h4 = new CapturingHandler();
         await new VoyageEmbeddingProvider(new SingleClientFactory(h4), voyageConfig)
-            .EmbedAsync("同じ本文", "voyage-3.5", 1024, EmbeddingRoutePurpose.Index);
+            .EmbedAsync("同じ本文", "voyage-3.5", 1024, EmbeddingRoutePurpose.Index, TestContext.Current.CancellationToken);
 
         h3.Body.Should().NotBe(h4.Body, "用途を無視すると両者が同一になる（本 issue の欠陥そのもの）");
     }

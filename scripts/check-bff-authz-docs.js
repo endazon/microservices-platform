@@ -294,10 +294,13 @@ function collectImplementation(files, consts, policies) {
       // したがって**群・端点・ハンドラ内・ヘルパの 4 経路のいずれかに認可が在れば真**とする。
       const requiresAuth =
         group.requiresAuth || HAS_REQUIRE_AUTH.test(stmt) || effective !== null;
+      // NFR, ADR-0032 / #439: 認証チャレンジの発行しかしない端点（ログイン開始）は無認証を許す。
+      const challengeOnly = isChallengeOnly(stmt);
       endpoints.push({
         file: path.relative(REPO, file),
         path: joinPath(group.prefix, m[3]),
         method: m[2].toLowerCase(),
+        challengeOnly,
         roles: effective,
         requiresAuth,
       });
@@ -355,6 +358,28 @@ function fmt(roles) {
   return roles.size === 0 ? '(空)' : [...roles].sort().join(' + ');
 }
 
+/**
+ * **認証チャレンジの発行しかしていない端点か。**
+ *
+ * ログイン開始（`/bff/auth/login`）は本質的に無認証である —— **ログインするために認証は要求できない。**
+ * 一方で本検査器は「`/bff/*` に無認証の端点は存在してはならない」を不変条件にしている。
+ *
+ * 🔴 **免除する端点を列挙するのではない。判定条件を精密にしただけである。**
+ * 本検査器は「事故を隠す仕組みを持たない」という設計判断（#647 受け入れ基準）を維持している。
+ * 経路名や端点名は一切参照せず、**ハンドラが何をしているか**だけで判定する ——
+ * 資料を返さず認証チャレンジを出すだけなら、そこから漏れる情報が無いので無認証で構わない。
+ * 判断の記録は [[IADR-0251]]。
+ *
+ * **抜け道にならない理由**: `Results.Ok(...)` 等でデータを返す形は下の全称条件に引っかかる。
+ * 「チャレンジも出すがデータも返す」ハンドラは**違反のまま**である（負例で実測する）。
+ */
+function isChallengeOnly(stmt) {
+  // 無認証であることを**書き手が明示している**ことを要求する（暗黙の無認証は依然として違反）。
+  if (!/\.AllowAnonymous\s*\(/.test(stmt)) return false;
+  const produced = [...stmt.matchAll(/\b(?:Typed)?Results\s*\.\s*(\w+)\s*\(/g)].map((m) => m[1]);
+  return produced.length > 0 && produced.every((name) => name === 'Challenge');
+}
+
 /** 純関数の判定本体。ファイル I/O に触らないのでそのまま試験できる。 */
 function findViolations(endpoints, contractOps) {
   const violations = [];
@@ -369,8 +394,13 @@ function findViolations(endpoints, contractOps) {
       continue;
     }
     if (ep.requiresAuth === false) {
-      violations.push({ kind: 'anonymous', key, file: ep.file });
-      continue;
+      // NFR, ADR-0032 / IADR-0251 / #439: **認証チャレンジの発行しかしない端点だけは例外**。
+      // ログイン開始は本質的に無認証である（ログインするために認証は要求できない）。
+      // **経路名は参照しない** —— ハンドラが資料を返さないことで判定する（isChallengeOnly）。
+      if (!ep.challengeOnly) {
+        violations.push({ kind: 'anonymous', key, file: ep.file });
+        continue;
+      }
     }
     const declared = contractOps.get(key);
     if (!declared) {
@@ -462,6 +492,7 @@ module.exports = {
   collectImplementation,
   collectAuthHelpers,
   rolesFromAuthorizeAsync,
+  isChallengeOnly,
   collectContract,
   normalizePath,
   findViolations,

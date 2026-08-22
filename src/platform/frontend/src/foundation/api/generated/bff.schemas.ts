@@ -881,6 +881,18 @@ export interface FeedbackDto {
 }
 
 /**
+ * SC-16: 現在ログインしている利用者。**トークンを含めない**（ADR-0032）。
+ */
+export interface BffIdentityDto {
+  /** 表示名（Keycloak の preferred_username） */
+  name: string;
+  /** 認可サーバ上の一意な識別子（sub） */
+  subject: string;
+  /** 実効ロール */
+  roles: string[];
+}
+
+/**
  * フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）
  */
 export interface FeedbackStatsDto {
@@ -1227,6 +1239,20 @@ export interface EmbedApiResponse {
   /** true は一時障害（呼び出し側は再試行）。false は恒久理由（呼び出し側はスキップ） */
   retryable: boolean;
 }
+
+export type BffAuthLoginParams = {
+/**
+ * ログイン後の戻り先。**自サイト内のパスに限る**（オープンリダイレクト防止）
+ */
+returnUrl?: string;
+};
+
+export type BffAuthLogoutParams = {
+/**
+ * ログアウト後の戻り先。**自サイト内のパスに限る**
+ */
+returnUrl?: string;
+};
 
 export type BffFeedbackStatsParams = {
 /**

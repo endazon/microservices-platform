@@ -28,7 +28,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var source = DataSource.Create("boom", "filesystem", "");
         source.LastSyncedAt.Should().BeNull();
 
-        var result = await svc.SyncAsync(source);
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
         result.ConnectorAvailable.Should().BeTrue();
         result.DiscoverSucceeded.Should().BeFalse();
@@ -47,7 +47,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var svc = BuildService(scope, new FetchThrowingConnector());
         var source = DataSource.Create("partial", "filesystem", "");
 
-        var result = await svc.SyncAsync(source);
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
         result.Failed.Should().Be(1);
         result.ShouldAdvanceWatermark.Should().BeFalse();
@@ -63,7 +63,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var source = DataSource.Create("share", "filesystem", "",
             new Dictionary<string, string> { ["rootPath"] = dir });
 
-        var result = await svc.SyncAsync(source);
+        var result = await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
         result.Fetched.Should().Be(1);
         result.Failed.Should().Be(0);
@@ -84,12 +84,12 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         // しきい値の 1 つ手前までは未到達である。
         for (var i = 1; i < DataSourceSyncService.AlertThreshold; i++)
         {
-            await svc.SyncAsync(source);
+            await svc.SyncAsync(source, TestContext.Current.CancellationToken);
             source.ConsecutiveFailureCount.Should().Be(i);
             source.ConsecutiveFailureCount.Should().BeLessThan(DataSourceSyncService.AlertThreshold);
         }
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
         source.ConsecutiveFailureCount.Should().Be(DataSourceSyncService.AlertThreshold);
         DataSourceSyncService.AlertThreshold.Should().Be(DataSourceSyncHealth.DefaultRetryLimit,
@@ -106,12 +106,12 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var source = DataSource.Create("recovering", "filesystem", "",
             new Dictionary<string, string> { ["rootPath"] = dir });
 
-        await BuildService(scope, new DiscoverThrowingConnector()).SyncAsync(source);
+        await BuildService(scope, new DiscoverThrowingConnector()).SyncAsync(source, TestContext.Current.CancellationToken);
         source.ConsecutiveFailureCount.Should().Be(1);
         source.LastSyncError.Should().NotBeNull();
 
         await BuildService(scope, new FileSystemConnector(NullLogger<FileSystemConnector>.Instance))
-            .SyncAsync(source);
+            .SyncAsync(source, TestContext.Current.CancellationToken);
 
         source.ConsecutiveFailureCount.Should().Be(0);
         source.LastSyncError.Should().BeNull();
@@ -126,7 +126,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var svc = BuildService(scope, new SecretLeakingConnector());
         var source = DataSource.Create("leaky", "filesystem", "");
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
         source.LastSyncError.Should().NotBeNull();
         source.LastSyncError.Should().NotContain("hunter2", "接続文字列の秘密が平文で保存されてはならない");
@@ -151,9 +151,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var source = DataSource.Create("share", "filesystem", "",
             new Dictionary<string, string> { ["rootPath"] = dir });
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>()
+        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(p => p.Context.Message)
             .Where(m => m.SourceId == source.Id)
             .ToList();
@@ -179,9 +179,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var svc = BuildService(scope, new TwoItemConnector(updatedBy: null));
         var source = DataSource.Create("share", "filesystem", "");
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>()
+        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(p => p.Context.Message)
             .Where(m => m.SourceId == source.Id)
             .ToList();
@@ -207,9 +207,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
         var source = DataSource.Create("share", "filesystem", "");
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>()
+        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(p => p.Context.Message)
             .Where(m => m.SourceId == source.Id)
             .ToList();
@@ -234,9 +234,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var source = DataSource.Create("share", "filesystem", "",
             defaultAttributes: new Dictionary<string, string> { [DataSource.OwnerKey] = "explicit-owner" });
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>()
+        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(p => p.Context.Message)
             .Where(m => m.SourceId == source.Id)
             .ToList();
@@ -258,9 +258,9 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         var svc = BuildService(scope, new PerItemUpdaterConnector());
         var source = DataSource.Create("share", "filesystem", "");
 
-        await svc.SyncAsync(source);
+        await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>()
+        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(p => p.Context.Message)
             .Where(m => m.SourceId == source.Id)
             .OrderBy(m => m.OriginalPath)
