@@ -54,7 +54,42 @@ const { excludedUnits, makeIsExcludedPath } = require('./lib/excluded-units.js')
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SRC_DIR = 'src';
 const BASELINE_FILE = path.join(__dirname, 'backend-library-baseline.json');
-const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'dist', 'coverage']);
+// 🔴 **`dist` を入れない**（#919 / SX-1）。ディレクトリ**名**一致の除外なので、`dist` という名の
+// ディレクトリへ `.cs` を置くだけで封じ込め検査が素通りしていた（実測: 検査器 EXIT=0 / 同じ内容を
+// `dist/` の外へ置くと EXIT=1）。MSBuild は `dist\Sneak.cs(1,57): error CS1061` で拾うため実害は
+// 出ていなかったが、**検査器単体としては fail-open** であり、MSBuild を経由しない用途へ流用すると穴になる。
+//
+// 外した費用は実測でゼロだった —— 追跡下の `dist/` 配下ファイル 0 件（検査対象拡張子も 0 件）、
+// 作業ツリーの未追跡込みでも `.cs` / `.csproj` は 0 件、走査時間は 3000 ファイルの合成 `dist` を
+// 置いても 118ms → 128〜131ms（`dist` を skip したままの 165ms より速く、計測ノイズの範囲）。
+// 🔴 **「0 件だから安い」ではなく「0 件である限り安い」。** フロントエンドのビルド成果物が
+// 追跡下へ置かれる構成に変わったら、走査費用を測り直すこと（IADR-0246）。
+const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj', '.git', 'coverage']);
+
+/**
+ * ソースを読む（#919 / SX-2）。
+ *
+ * 🔴 **`utf8` 固定で読んではならない。** UTF-16LE の `.cs` を `utf8` で読むと、識別子が
+ * `P\u0000r\u0000e\u0000...` のように NUL 混じりへ化け、**どの正規表現にも一致しなくなる**
+ * （実測: 検査器 EXIT=0 で素通り。MSBuild は `Sneak16.cs(1,59): error CS1061` で拾う）。
+ * **コンパイラが読めるファイルをスキャナが読めない**のは、スキャナ側の素の欠陥である。
+ *
+ * BOM を見て復号する。BOM が無ければ従来どおり UTF-8 として読む（実測: 追跡下の `.cs` 498 件は
+ * UTF-16 BOM 0 / UTF-8 BOM 15 / BOM なし 483 で、**この変更で挙動が変わるファイルは 0 件**）。
+ * BOM 無しの UTF-16 は判定できないが、C# コンパイラも BOM 無し UTF-16 を既定では読まないため
+ * 射程外とする（IADR-0246「検出しないこと」）。
+ */
+function readSource(abs) {
+  const buf = fs.readFileSync(abs);
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.subarray(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    const swapped = Buffer.from(buf.subarray(2));
+    swapped.swap16();
+    return swapped.toString('utf16le');
+  }
+  if (buf.length >= 3 && buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) return buf.subarray(3).toString('utf8');
+  return buf.toString('utf8');
+}
 
 /**
  * 検査対象外のユニット。ADR-0030 は **MSP（microservices-platform）の計画 ADR** であり、
@@ -706,7 +741,7 @@ function scanTree(root = REPO_ROOT) {
   const csRoots = [SRC_DIR, TEMPLATE_DIR];
   for (const dir of csRoots) {
     for (const cs of walk(dir, (p) => /\.cs$/i.test(p) && !isExcludedPath(p), [], root)) {
-      const content = fs.readFileSync(path.join(root, cs), 'utf8');
+      const content = readSource(path.join(root, cs));
       const proj = owningProject(cs, csprojPaths);
       if (proj) {
         // using の許否は「その .cs がどのプロジェクトに属するか」で決まる（ADR-0041 決定 2。#500）。
@@ -723,7 +758,7 @@ function scanTree(root = REPO_ROOT) {
   // 規則 5(b): 封じ込め API が本拠から消えていないか。**(a) だけでは静かに no-op になる。**
   // 本拠のファイルごと消えた場合も、全シンボルが欠けた扱いで報告される（fail-closed）。
   const homeAbs = path.join(root, CONFINED_API_HOME);
-  const homeContent = fs.existsSync(homeAbs) ? fs.readFileSync(homeAbs, 'utf8') : '';
+  const homeContent = fs.existsSync(homeAbs) ? readSource(homeAbs) : '';
   for (const missing of confinedApiHomeGaps(homeContent)) {
     domain.push({ kind: 'confined-api-missing', project: CONFINED_API_HOME, detail: missing });
   }
@@ -1203,6 +1238,62 @@ function selfTest() {
     FORBIDDEN_APIS.some((f) => f.symbol === 'UseConventionalRouting'));
   t('UseConventionalRouting の呼び出しを検出する',
     forbiddenApiViolations('a/B.cs', 'opts.UseRabbitMq().UseConventionalRouting();').length === 1);
+
+  // --- #919: 走査の不可視領域（SX-1 / SX-2）------------------------------------
+  //
+  // いずれも「検査器は EXIT=0（素通り）だが MSBuild は拾う」形で実測された（#903 の U4 変異試験）。
+  // 現存 0 件だが**検査器単体としては fail-open** であり、MSBuild を経由しない用途へ流用すると穴になる。
+
+  t('★ SKIP_DIRS に dist を入れない（#919 / SX-1。dist/ 配下の .cs が素通りしていた）',
+    !SKIP_DIRS.has('dist'), [...SKIP_DIRS]);
+  t('SKIP_DIRS はビルド生成物と VCS だけを除く（走査対象を不用意に狭めない）',
+    SKIP_DIRS.has('node_modules') && SKIP_DIRS.has('bin') && SKIP_DIRS.has('obj') && SKIP_DIRS.has('.git'),
+    [...SKIP_DIRS]);
+
+  {
+    // readSource は BOM を見て復号する。utf8 固定だと UTF-16LE の識別子が NUL 混じりへ化け、
+    // **どの正規表現にも一致しない**（＝検査が素通りする）。
+    const os = require('os');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cbl-selftest-'));
+    const body = 'public class S { void M(dynamic o) { o.PrefixIdentifiers(); } }\n';
+    const write = (name, buf) => { const f = path.join(dir, name); fs.writeFileSync(f, buf); return f; };
+    const utf8 = write('u8.cs', Buffer.from(body, 'utf8'));
+    const le = write('u16le.cs', Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(body, 'utf16le')]));
+    const beRaw = Buffer.from(body, 'utf16le'); const be = Buffer.from(beRaw); be.swap16();
+    const bev = write('u16be.cs', Buffer.concat([Buffer.from([0xFE, 0xFF]), be]));
+    const bom8 = write('u8bom.cs', Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(body, 'utf8')]));
+
+    t('readSource: UTF-8（BOM なし）をそのまま読む', readSource(utf8).includes('PrefixIdentifiers'));
+    t('★ readSource: UTF-16LE を復号する（#919 / SX-2。utf8 固定では素通りしていた）',
+      readSource(le).includes('PrefixIdentifiers'), JSON.stringify(readSource(le).slice(0, 40)));
+    t('readSource: UTF-16BE も復号する', readSource(bev).includes('PrefixIdentifiers'));
+    t('readSource: UTF-8 BOM を剥がす（先頭に ﻿ を残さない）',
+      readSource(bom8).startsWith('public'), JSON.stringify(readSource(bom8).slice(0, 12)));
+    t('★ 対照: utf8 固定で読むと UTF-16LE は一致しない（素通りの機序そのもの）',
+      !fs.readFileSync(le, 'utf8').includes('PrefixIdentifiers'));
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // --- #920: 値レベルの変異は**意図して**検出しない -----------------------------
+  //
+  // 🔴 **これは検出漏れではなく、実測に基づく裁定である**（IADR-0246）。
+  // 手順 3・5 の「シンボルの有無」は規則 5 が見るが、「代入された値」「前置の有無」「区切り文字」
+  // までは見ない。3 変異とも既存テストが落ちるため**テストが届かない範囲が無く**、
+  // 値レベルの検証は正当なリファクタ（定数化・命名変更）で落ちる偽陽性の費用が高い。
+  // **この非対称を固定しておかないと、後から見た人が「強化したのに素通りする」を欠陥と読む。**
+  {
+    const home = CONFINED_API_HOME;
+    const withValue = (v) => `options.ServiceLocationPolicy = ServiceLocationPolicy.${v};`;
+    t('★ #920: 規則 5 は代入値を見ない（AlwaysAllowed / NotAllowed のどちらでも違反にならない）',
+      confinedApiViolations(home, withValue('AlwaysAllowed')).length
+        === confinedApiViolations(home, withValue('NotAllowed')).length,
+      { allowed: confinedApiViolations(home, withValue('AlwaysAllowed')).length,
+        notAllowed: confinedApiViolations(home, withValue('NotAllowed')).length });
+    t('★ #920: 規則 5 は前置の有無を見ない（引数が何であれシンボルの存在だけを見る）',
+      confinedApiViolations(home, 'options.ListenToRabbitQueue(queueName);').length
+        === confinedApiViolations(home, 'options.ListenToRabbitQueue(PlatformQueueName(s, q));').length);
+  }
 
   let failed = 0;
   for (const c of cases) {
