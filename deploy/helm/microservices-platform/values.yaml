@@ -247,6 +247,9 @@ services:
     # appsettings 既定はローカル用ポート（5003/5007）のため、k8s Service の実 DNS（:8080）へ上書きする。
     # llm-gateway の Service 名は llmgateway-service（chart のキー llmgateway 由来）である点に注意。
     extraEnv:
+      # FR-13 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
       - name: Services__RetrievalService
         value: "http://retrieval-service:8080"
       - name: Services__LlmGateway
@@ -280,6 +283,9 @@ services:
     # IADR-0021: Wiki.js への同期（GraphQL push）先とサービスアカウント API キー。
     # API キーは Secret 経由で注入（コミットしない。事前に kubectl/ArgoCD で作成する。docs/security）。
     extraEnv:
+      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決の宛先。コード既定 :5005 は開いていない。
+      - name: Services__AuthorizationService
+        value: "http://authorization-service:8080"
       - name: WikiJs__GraphQlEndpoint
         value: "http://wiki-js:3000/graphql"
       - name: WikiJs__ApiKey
