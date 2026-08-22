@@ -1,9 +1,12 @@
 {
   "$comment": [
-    "ADR-0030 の不採用ライブラリに対する既知違反の baseline（Issue #455）。",
+    "ADR-0030 の不採用ライブラリに対する既知違反の baseline（Issue #455 で新設）。",
     "ratchet: 新規混入は fail、ここに載る残件は warn、消えたのに残っていれば fail。",
-    "各サービスの再実装 issue（#438〜#451）は移行と同時に自プロジェクトの行を削除すること。",
-    "baseline が空になったら Directory.Packages.props から不採用パッケージを削除する。"
+    "🔴 残件はすべて MassTransit であり、Wolverine 移行（#441）で落ちる。**行が減る最小単位は",
+    "イベント辺**（1 イベントの発行元＋全購読先を一括）であり、辺はサービスをまたぐため、各サービスの",
+    "再実装 issue（#438〜#451）には入れられない。旧版の「各サービスの再実装 issue が移行と同時に",
+    "自プロジェクトの行を削除する」は誤りであった（IADR-0234 決定 2 が訂正）。",
+    "baseline が空になったら Directory.Packages.props から不採用パッケージを削除する（#441 / C3）。"
   ],
   "projects": {
     "src/knowledge/backend/Services/ConversionService/src/ConversionService.Worker/ConversionService.Worker.csproj": [
