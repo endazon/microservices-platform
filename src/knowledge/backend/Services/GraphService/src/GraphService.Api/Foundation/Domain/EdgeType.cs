@@ -1,6 +1,6 @@
 namespace GraphService.Api.Foundation.Domain;
 
-// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0240 決定 7: 辺の型辞書のエントリ。
+// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0241 決定 7: 辺の型辞書のエントリ。
 //
 // **コード定義（C# の enum）にも DB の列挙型にもしない。** ADR-0033 決定 3 は「値の追加手続きは
 // SC-09（タグ辞書）で管理する」と定めており、列挙型にすると値の追加がそのままマイグレーションに
@@ -24,7 +24,7 @@ public class EdgeType
     public string Layer { get; private set; } = EdgeTypeLayer.Core;
 
     // ADR-0033: 対称関係か。true のとき辺は (min, max) に正規化して 1 行で持ち、
-    // 読み取り時に無向として提示する（IADR-0240 決定 9）。
+    // 読み取り時に無向として提示する（IADR-0241 決定 9）。
     public bool IsSymmetric { get; private set; }
 
     // 初期値集合（コア 5 種＋推奨 4 種）の目印。**削除ガードとは独立である** ——

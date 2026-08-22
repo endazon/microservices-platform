@@ -5,7 +5,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, ADR-0034 決定 6・8・9, ADR-0036, IADR-0240 フォローアップ:
+// FR-17, ADR-0034 決定 6・8・9, ADR-0036, IADR-0241 フォローアップ:
 // 🔴 **現時点で強制できていない認可軸を固定する。**
 //
 // ADR-0034 決定 6・8・9（個人資料の境界）と ADR-0036（所有者ベースの裁量制御）は、

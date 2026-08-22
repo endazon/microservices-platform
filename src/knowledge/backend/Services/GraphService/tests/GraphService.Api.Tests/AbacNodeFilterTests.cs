@@ -5,7 +5,7 @@ using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, FR-05, UC-10, ADR-0004, ADR-0034, IADR-0240 決定 3:
+// FR-17, FR-05, UC-10, ADR-0004, ADR-0034, IADR-0241 決定 3:
 // **AbacNodeFilter の意味論が WikiService の AbacPageFilter と一致することを固定する。**
 //
 // 一致していないと、同じ文書が Wiki では見えないのにグラフでは見える（またはその逆）という

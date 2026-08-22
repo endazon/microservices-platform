@@ -12,7 +12,7 @@
     <ProjectReference Include="..\..\..\..\Shared\Knowledge.Contracts\Knowledge.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
     <ProjectReference Include="..\..\..\..\..\..\platform\backend\Shared\Platform.Shared.Infrastructure\Platform.Shared.Infrastructure.csproj" />
-    <!-- IADR-0240: 型ゲート（UnfilteredSubgraph / Seal）は internal である。
+    <!-- IADR-0241: 型ゲート（UnfilteredSubgraph / Seal）は internal である。
          その「回避経路が無いこと」をアーキテクチャテストが検査するため、テストへ公開する。 -->
     <InternalsVisibleTo Include="GraphService.Api.Tests" />
   </ItemGroup>

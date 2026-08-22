@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-17, FR-18, UC-10, SC-09, SC-10, SC-18, SC-21]
 adrs: [ADR-0002, ADR-0004, ADR-0033, ADR-0034, ADR-0036]
-iadrs: [IADR-0027, IADR-0138, IADR-0152, IADR-0153, IADR-0240]
+iadrs: [IADR-0027, IADR-0138, IADR-0152, IADR-0153, IADR-0241]
 specs: [20260822_issue-908_graphservice-foundation]
 issues: [#450, #516, #908, #909, #910, #911, #912, #913, #914]
 -->

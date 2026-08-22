@@ -1,5 +1,5 @@
 ---
-title: IADR-0240 グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ
+title: IADR-0241 グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ
 type: impl-adr
 status: Proposed
 related_ids: [FR-17, UC-10, ADR-0033, ADR-0034, ADR-0004, ADR-0036]
@@ -11,7 +11,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0034_graph-traversal-abac-enforcement.md
 ---
 
-# IADR-0240: グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ
+# IADR-0241: グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ
 
 > **番号は暫定である。** マージ直前に develop の最大＋1 へ付け直し、`.ai-context/adr/README.md` の索引も更新する（`check-adr-numbering.js` は昇順・欠番なしを fail で見る）。
 

@@ -100,7 +100,7 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
 
         // 🔴 **graph_documents への外部キーは張らない。**
         // リンク抽出（#912）はノード同期（#911）より先に届き得るし、ノードレコードの欠落は
-        // 「不可視」として認可側で吸収される（IADR-0240 決定 12-3）。FK を張るとイベントの
+        // 「不可視」として認可側で吸収される（IADR-0241 決定 12-3）。FK を張るとイベントの
         // 到着順に人工的な依存が生まれる。
     }
 }
