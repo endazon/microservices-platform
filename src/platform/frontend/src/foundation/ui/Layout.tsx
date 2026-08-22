@@ -9,6 +9,7 @@ import { navGroups } from '@foundation/routing/nav';
 import type { NavItemView } from '@foundation/routing/nav';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { NotificationBell } from '@foundation/notifications/NotificationBell';
+import { AiChatPanel } from '@foundation/ai-chat/AiChatPanel';
 import { Notifications } from './notifications';
 
 // Issue #126 / 05_screens §共通シェル: 認証済み領域の共通シェル。features は Outlet に載る。
@@ -16,8 +17,10 @@ import { Notifications } from './notifications';
 // ADR-0031 / IADR-0121 決定 4: 見た目は Tailwind v4 のトークン（@platform/ui）で表す。
 //
 // 本シェルが持つのは 05_screens §共通シェル のうち #490 の範囲——ブランド表示名・左ナビ（4 グループ）・
-// ユーザーアイコン（→ SC-16）・通知——である。パンくず・権限バッジは #452、
-// 右レール AI チャットパネルは移行第 4 段（IADR-0121 決定 5）。
+// ユーザーアイコン（→ SC-16）・通知——である。パンくず・権限バッジは #452。
+// **右レール AI チャットパネルは移行第 4 段（#788 / IADR-0121 決定 5）で入った**——
+// シェル側の追加は `<AiChatPanel />` の 1 要素だけであり、開閉・履歴・SSE はすべて
+// `foundation/ai-chat/` が持つ（シェルへ状態を持ち上げると、通知と同じ器がもう 1 つ増える）。
 
 /** SC-16 アカウント設定（Keycloak アカウントコンソール）の URL。実行時 config から組み立てる。 */
 export function accountConsoleUrl(authority: string): string {
@@ -110,6 +113,9 @@ export function Layout() {
         </main>
       </div>
       <Notifications />
+      {/* 05_screens §共通シェル: 右レール AI チャットパネル（#788）。
+          既定は閉じており、閉じている間はランチャーのボタンだけを描く。 */}
+      <AiChatPanel />
     </div>
   );
 }

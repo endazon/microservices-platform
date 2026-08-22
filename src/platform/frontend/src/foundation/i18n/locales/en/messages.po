@@ -46,6 +46,10 @@ msgstr "({shownCount} shown)"
 msgid "{count} 件で絞り込み中"
 msgstr "Narrowed by {count}"
 
+#: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
+msgid "{max} 文字以内で入力してください。"
+msgstr "Enter no more than {max} characters."
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "{totalHits} 件（権限内のみ表示）"
 msgstr "{totalHits} result(s) (only documents you may access)"
@@ -85,6 +89,22 @@ msgstr "ABAC settings sections"
 #: knowledge/frontend/src/features/sc09-admin-abac/routes/sc09AdminAbacRoute.tsx
 msgid "ABAC設定"
 msgstr "ABAC settings"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "AI チャット"
+msgstr "AI chat"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "AI チャットパネル"
+msgstr "AI chat panel"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "AI チャットを閉じる"
+msgstr "Close AI chat"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "AI チャットを開く"
+msgstr "Open AI chat"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "AI 回答"
@@ -179,6 +199,7 @@ msgstr "There are no event bindings."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 #: platform/frontend/src/foundation/notifications/NotificationBell.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
 #: platform/frontend/src/foundation/ui/notifications.tsx
@@ -242,6 +263,18 @@ msgstr "This tag is used by {inUseCount} document(s) and cannot be deleted."
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "This attribute is in use and cannot be deleted. Review the policies that reference it first."
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "この画面について質問する"
+msgstr "Ask about this screen"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "この画面の会話履歴はまだありません。"
+msgstr "No conversation history for this screen yet."
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "この画面の履歴を消去"
+msgstr "Clear this screen's history"
 
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コミット"
@@ -554,6 +587,10 @@ msgstr "User"
 msgid "ラベル"
 msgstr "Label"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "並べ替え"
+msgstr "Sort"
+
 #: platform/frontend/src/foundation/ui/Layout.tsx
 msgid "主要ナビゲーション"
 msgstr "Main navigation"
@@ -585,6 +622,10 @@ msgstr "Count"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "任意"
 msgstr "Optional"
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "会話履歴"
+msgstr "Conversation history"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "作成"
@@ -655,6 +696,14 @@ msgstr "The original image cannot be displayed."
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "入力 {inputTokens} ・出力 {outputTokens} トークン"
 msgstr "{inputTokens} input / {outputTokens} output tokens"
+
+#: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
+msgid "入力してください。"
+msgstr "This field is required."
+
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "全消去"
+msgstr "Clear all"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "公開"
@@ -733,6 +782,10 @@ msgstr "Usage (daily)"
 msgid "利用状況（日次）の一覧"
 msgstr "List of daily usage"
 
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "利用状況（日次）の推移グラフ"
+msgstr "Daily usage trend chart"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "利用者"
@@ -798,7 +851,12 @@ msgstr "Name"
 msgid "名前（必須）"
 msgstr "Name (required)"
 
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "回答を生成できませんでした。時間をおいて再度お試しください。"
+msgstr "The answer could not be generated. Please try again later."
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "回答を生成中…"
 msgstr "Generating the answer…"
 
@@ -1237,6 +1295,10 @@ msgid "検索傾向（上位語）の一覧"
 msgstr "List of top search terms"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+msgid "検索傾向（上位語）の棒グラフ"
+msgstr "Top search terms bar chart"
+
+#: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "検索傾向はまだありません。"
 msgstr "There are no search trends yet."
 
@@ -1554,6 +1616,10 @@ msgstr "Loading…"
 msgid "警告"
 msgstr "Warning"
 
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
+msgid "質問"
+msgstr "Question"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "質問・キーワード"
 msgstr "Question or keyword"
@@ -1576,6 +1642,7 @@ msgid "追加する"
 msgstr "Add"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "送信"
 msgstr "Send"
 
@@ -1657,6 +1724,7 @@ msgid "重要"
 msgstr "Important"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
+#: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "閉じる"
 msgstr "Close"
 

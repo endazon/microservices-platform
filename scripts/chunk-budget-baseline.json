@@ -3,7 +3,18 @@
   "requiredChunks": [
     "ui",
     "vendor-react",
-    "vendor-query"
+    "vendor-query",
+    "vendor-echarts"
+  ],
+  "$comment_requiredChunks": [
+    "［2026-08-23 / #788］vendor-echarts を足した。vite.config.ts へ manualChunks の規則を足したら、",
+    "**この配列にも足す**（自己試験が両者の完全一致を突き合わせる。baseline 冒頭の $comment が正本）。",
+    "起草時に「vendor-echarts は遅延チャンクだから requiredChunks へは足さない（図を使う画面が",
+    "1 つも無いビルドで落ちる）」と判断した記録が vite.config.ts のコメントに残っていたが、**誤りである**。",
+    "この配列は『初期ロードに載る規則』の一覧ではなく『manualChunks が返す名前』の一覧であり、",
+    "遅延か否かを区別しない。区別しているのは initialTotalBytes（初期ロードの合計）のほうである。",
+    "懸念そのものは実在しない —— 本リポジトリのビルドは 1 つ（platform/frontend が knowledge の",
+    "features を合成する）で、SC-10 が EChart を使うため vendor-echarts は必ず出力される。"
   ],
   "$comment_initialTotalBytes": [
     "［2026-08-15 / #578］586,557 → 622,064（+35.51 kB）へ引き上げた。増加は本 PR の変更ではなく、",

@@ -288,6 +288,9 @@ export default tseslint.config(
     files: [
       'platform/frontend/src/foundation/i18n/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/ui/**/*.{ts,tsx}',
+      // #788（移行第 4 段）: 右レール AI チャットパネル。共通シェルに載る文言なので、
+      // foundation/ui と同じ規則の下に置く。
+      'platform/frontend/src/foundation/ai-chat/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/auth/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/routing/nav.ts',
       'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',

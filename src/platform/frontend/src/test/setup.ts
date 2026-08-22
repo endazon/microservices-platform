@@ -19,3 +19,29 @@ activate('ja');
 if (typeof window !== 'undefined') {
   window.scrollTo = () => {};
 }
+
+// ADR-0031 §採用技術一覧（チャート = Apache ECharts）/ #788: ECharts は **SVG レンダラ**でも
+// 文字幅の実測に canvas の 2D コンテキストを使う（zrender の既定 `platformApi.measureText`）。
+// jsdom は `HTMLCanvasElement.prototype.getContext` を実装しておらず、図を描くテストが走るたびに
+// 「Not implemented」を stderr へ大量に吐いてテスト出力が読めなくなる（実測: SC-10 の 1 ファイルで 21 行）。
+//
+// **`canvas` パッケージは入れない** —— ネイティブビルドを要する重い依存であり、
+// 得られるのは「文字幅が正確になる」ことだけである。図の**判断の部分**（系列・順序・欠測の扱い）は
+// 純関数（`dashboardCharts.ts`）のテストが固定しており、描画の画素は検証対象ではない。
+// よって幅を返すだけの最小のスタブを置く（`window.scrollTo` を no-op にしたのと同じ作法）。
+if (typeof HTMLCanvasElement !== 'undefined') {
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    measureText: (text: string) => ({ width: text.length * 6 }),
+    fillText: () => {},
+    fillRect: () => {},
+    clearRect: () => {},
+    save: () => {},
+    restore: () => {},
+    beginPath: () => {},
+    closePath: () => {},
+    setTransform: () => {},
+    translate: () => {},
+    scale: () => {},
+    drawImage: () => {},
+  })) as unknown as HTMLCanvasElement['getContext'];
+}
