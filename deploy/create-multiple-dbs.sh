@@ -13,6 +13,9 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     CREATE DATABASE wiki_svc;
     CREATE DATABASE feedback_svc;
     CREATE DATABASE dashboard_svc;
+    -- FR-17, UC-10, ADR-0033/ADR-0034 (#908/#957): 知識グラフの GraphService 専用 DB。compose の
+    -- graph-service が Host=postgres;Database=graph_svc へ接続するため作成する（未作成だとクラッシュループ）。
+    CREATE DATABASE graph_svc;
     -- Issue #283, IADR-0070: AST 設定画面の ConfigurationService 専用 DB。compose の configuration-service が
     -- Host=postgres;Database=configuration_svc へ接続するため作成する（未作成だと DB 不在でクラッシュループ）。
     CREATE DATABASE configuration_svc;
@@ -42,6 +45,7 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     ALTER DATABASE wiki_svc OWNER TO kp;
     ALTER DATABASE feedback_svc OWNER TO kp;
     ALTER DATABASE dashboard_svc OWNER TO kp;
+    ALTER DATABASE graph_svc OWNER TO kp;
     ALTER DATABASE configuration_svc OWNER TO kp;
     ALTER DATABASE risk_management_svc OWNER TO kp;
     ALTER DATABASE market_monitor_svc OWNER TO kp;
