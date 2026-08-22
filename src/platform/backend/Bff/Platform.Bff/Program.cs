@@ -58,9 +58,14 @@ builder.Services.AddHttpClient("RetrievalService", c =>
 
 // FR-17, UC-10, #916a: グラフ読み取り（GraphService）。**利用者の JWT を伝播して呼ぶ**
 // —— GraphService は自分で ABAC を解決する型であり、本文で scope を渡す方式は採らない。
+//
+// 既定は :8080（メッシュ内の実 Service ポート）。IADR-0089 の「コード既定＝ローカル開発ポート、
+// manifest が :8080 へ上書き」は**先発サービスの経緯**であり、**後発（conversion / AST 系）は
+// コード既定を 8080 にする**——GraphService も後発なのでそちらに揃える。上書き漏れで不達になる
+// 面（#342 の 21 秒タイムアウト）を最初から作らない。check-bff-downstreams.js が実効ポートを検査する。
 builder.Services.AddHttpClient("GraphService", c =>
     c.BaseAddress = new Uri(builder.Configuration["Services:GraphService"]
-        ?? "http://graph-service:5015"));
+        ?? "http://graph-service:8080"));
 
 // FR-06, UC-03/UC-07, SC-03: 文書閲覧の集約用。ABAC スコープ解決（AuthorizationService）→ 文書取得。
 builder.Services.AddHttpClient("DocumentService", c =>
