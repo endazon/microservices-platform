@@ -37,7 +37,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         await SeedAsync();
         factory.Scope = new AccessScopeResponse("u", [], Granted: false);
 
-        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages");
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages", TestContext.Current.CancellationToken);
 
         pages.Should().NotBeNull();
         pages!.Should().BeEmpty();
@@ -51,7 +51,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         factory.Scope = new AccessScopeResponse("u",
             [new AttributeFilter("confidentiality", ["public", "internal"])], Granted: true);
 
-        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages");
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages", TestContext.Current.CancellationToken);
 
         pages.Should().ContainSingle();
         pages![0].Title.Should().Be("公開規程");
@@ -65,7 +65,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         factory.Scope = new AccessScopeResponse("u",
             [new AttributeFilter("confidentiality", ["public"])], Granted: true);
 
-        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{restrictedDoc}");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{restrictedDoc}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -81,10 +81,10 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         factory.Scope = new AccessScopeResponse("u",
             [new AttributeFilter("confidentiality", ["public"])], Granted: true);
 
-        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{publicDoc}");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{publicDoc}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var view = await response.Content.ReadFromJsonAsync<PageView>();
+        var view = await response.Content.ReadFromJsonAsync<PageView>(TestContext.Current.CancellationToken);
         view.Should().NotBeNull();
         // 本文は自前 DB ではなく Wiki.js（スタブ）から取得され、DocumentId 由来の安定パスを指す。
         view!.WikiPath.Should().Be($"doc/{publicDoc}");
@@ -101,7 +101,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
 
         // "機密規程" の slug（ToSlug 適用後）を直接取得しても 404。
         var restrictedSlug = ResolveSlug("機密規程");
-        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{restrictedSlug}");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{restrictedSlug}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -115,10 +115,10 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
             [new AttributeFilter("confidentiality", ["public"])], Granted: true);
 
         var publicSlug = ResolveSlug("公開規程");
-        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{publicSlug}");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/{publicSlug}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var view = await response.Content.ReadFromJsonAsync<PageView>();
+        var view = await response.Content.ReadFromJsonAsync<PageView>(TestContext.Current.CancellationToken);
         view.Should().NotBeNull();
         // 本文は自前 DB ではなく Wiki.js（スタブ）から取得され、DocumentId 由来の安定パスを指す。
         view!.WikiPath.Should().Be($"doc/{publicDoc}");
@@ -133,7 +133,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         await ArchiveAsync(publicDoc);
         factory.Scope = new AccessScopeResponse("u", [], Granted: true);
 
-        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages");
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>("/wiki/pages", TestContext.Current.CancellationToken);
 
         pages!.Should().NotContain(p => p.DocumentId == publicDoc);
     }
@@ -146,7 +146,7 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         await ArchiveAsync(publicDoc);
         factory.Scope = new AccessScopeResponse("u", [], Granted: true);
 
-        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{publicDoc}");
+        var response = await factory.CreateClient().GetAsync($"/wiki/pages/by-doc/{publicDoc}", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }

@@ -67,8 +67,8 @@
     },
     "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": {
       "project": "WikiService.Api.Tests",
-      "remaining": 51,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": {
       "project": "Knowledge.Contracts.Tests",

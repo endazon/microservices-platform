@@ -42,6 +42,7 @@ public class BffEndpointCompositionTests
             app.MapAuthzBffEndpoints();
             app.MapDataSourceBffEndpoints();
             app.MapTagDictionaryBffEndpoints();
+            app.MapGraphBffEndpoints();
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
@@ -54,11 +55,11 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_registry_holds_all_endpoint_modules()
     {
-        // 全 13 モジュール。ナレッジ 8 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary）は
+        // 全 14 モジュール。ナレッジ 9 ドメイン（Search/Document/Analysis/Feedback/Dashboard/Conversion/DataSource/TagDictionary/Graph）は
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
         // platform 同居。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
         // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
-        BffEndpointComposition.Modules.Should().HaveCount(13);
+        BffEndpointComposition.Modules.Should().HaveCount(14);
     }
 
     // 内容一致の検証（claude-review 指摘対応）: 合成点経由でビルドした実アプリ（全 DI 込み）の実体化ルートが、
@@ -67,7 +68,7 @@ public class BffEndpointCompositionTests
     [Fact]
     public void Composition_maps_exactly_the_expected_bff_route_groups()
     {
-        // 期待する 13 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
+        // 期待する 14 ルートグループのプレフィックス（各 BFF エンドポイントモジュールの MapGroup）。
         string[] expectedGroups =
         [
             "/bff/admin/authz",
@@ -87,6 +88,8 @@ public class BffEndpointCompositionTests
             // FR-09, SC-09, #640: タグ辞書の管理（追加・改名・削除）。後段は DocumentService
             // （knowledge ユニット）なので Knowledge.Bff.Endpoints が配る。
             "/bff/tags",
+            // #916a, FR-17, UC-10: グラフ読み取り（後段は GraphService。Authorization を伝播する）。
+            "/bff/graph",
         ];
 
         using var factory = new BffTestFactory();

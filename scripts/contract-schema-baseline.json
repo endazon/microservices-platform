@@ -1131,6 +1131,81 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.GraphEdgeItemDto": {
+        "kind": "record",
+        "members": {
+          "EdgeTypeId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 3
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Provenance": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          },
+          "SourceDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "TargetDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.GraphNodeItemDto": {
+        "kind": "record",
+        "members": {
+          "DocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Title": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.GraphViewDto": {
+        "kind": "record",
+        "members": {
+          "Edges": {
+            "source": "positional",
+            "type": "List<GraphEdgeItemDto>",
+            "required": true,
+            "position": 1
+          },
+          "Nodes": {
+            "source": "positional",
+            "type": "List<GraphNodeItemDto>",
+            "required": true,
+            "position": 0
+          },
+          "Truncated": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 2
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.PatchDataSourceRequest": {
         "kind": "record",
         "members": {

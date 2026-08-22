@@ -69,17 +69,17 @@ public class PipelineRecomposeTests
         await harness.Start();
 
         // DocumentDeleted は処理される（削除段は有効のまま）
-        await harness.Bus.Publish(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow));
-        (await harness.Consumed.Any<DocumentDeleted>()).Should().BeTrue();
+        await harness.Bus.Publish(new DocumentDeleted(Guid.NewGuid(), DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+        (await harness.Consumed.Any<DocumentDeleted>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
         // DocumentUpdated は購読されない（同期段は構成で無効）
         await harness.Bus.Publish(new DocumentUpdated(
             Guid.NewGuid(), "組み替えテスト", "published", "s3://b/doc.md",
             new Dictionary<string, string> { ["confidentiality"] = "internal" },
-            ["ops"], DateTimeOffset.UtcNow));
-        (await harness.Consumed.Any<DocumentUpdated>()).Should().BeFalse();
+            ["ops"], DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
+        (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeFalse();
 
-        await harness.Stop();
+        await harness.Stop(TestContext.Current.CancellationToken);
     }
 }
 

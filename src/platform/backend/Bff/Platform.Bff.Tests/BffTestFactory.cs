@@ -60,6 +60,17 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152）。**テスト間で共有される**（IClassFixture）ため、
     // 観測する側が呼ぶ前に既定へ戻すこと。
     public List<TagDto> StubTagDictionary { get; set; } = [new(Guid.NewGuid(), "経理", 3)];
+    // FR-17, UC-10, #916a: グラフ読み取りの中継。
+    //
+    // 🔴 **スタブは Authorization の有無で応答を変える。** GraphService は自分で JWT から ABAC を
+    // 解決し、利用者を特定できなければ Granted=false へ縮退して 404 を返す型である。
+    // その挙動をスタブでも再現しないと、**BFF がヘッダを伝播し忘れても全部 404 で緑のまま**になり、
+    // 伝播が効いていることを測れない（陽性対照が成立しない）。
+    public string? LastGraphForwardedAuthorization { get; private set; }
+    public HttpStatusCode GraphStubStatusCode { get; set; } = HttpStatusCode.OK;
+    public string? LastGraphPath { get; private set; }
+    public GraphViewDto StubGraphView { get; set; } = new([], [], false);
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -278,6 +289,8 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 .ConfigurePrimaryHttpMessageHandler(() => new AuthzStubHandler(this));
             services.AddHttpClient("RetrievalService")
                 .ConfigurePrimaryHttpMessageHandler(() => new RetrievalStubHandler(this));
+            services.AddHttpClient("GraphService")
+                .ConfigurePrimaryHttpMessageHandler(() => new GraphStubHandler(this));
             // FR-06 (SC-03 文書閲覧): DocumentService をスタブ化する。
             services.AddHttpClient("DocumentService")
                 .ConfigurePrimaryHttpMessageHandler(() => new DocumentStubHandler(this));
@@ -677,6 +690,32 @@ public class BffTestFactory : WebApplicationFactory<Program>
 
     // FR-03 (SC-01): RetrievalService /search をスタブ化する。StubSearchResponse を返す。
     // FR-03, SC-02, #532: BFF が後段へ渡した並び順を観測できるようにする（縮退させず運ぶことの検証用）。
+    // FR-17, UC-10, #916a: GraphService のスタブ。
+    private sealed class GraphStubHandler(BffTestFactory owner) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            owner.LastGraphPath = request.RequestUri?.PathAndQuery;
+            var auth = request.Headers.Authorization?.ToString()
+                ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
+            owner.LastGraphForwardedAuthorization = auth;
+
+            // 🔴 資格情報が届かなければ、GraphService は anonymous として deny-closed へ倒れる。
+            // その結果は **404**（存在秘匿）であって 401 ではない。
+            if (string.IsNullOrEmpty(auth))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            if (owner.GraphStubStatusCode != HttpStatusCode.OK)
+                return Task.FromResult(new HttpResponseMessage(owner.GraphStubStatusCode));
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(owner.StubGraphView)
+            });
+        }
+    }
+
     private sealed class RetrievalStubHandler(BffTestFactory owner) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(
