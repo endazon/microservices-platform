@@ -335,3 +335,4 @@
 | [IADR-0259](./IADR-0259_vector-store-document-scoped-search.md) | **文書 ID 制約つき検索は既存 `SearchAsync` の省略可能引数にせず別メソッドで足す**。省略可能引数だと「渡し忘れ＝絞りなし」が既定になり、本口の意味（空集合＝該当なし）と逆向きの縮退口が開く。ABAC とは AND。#969 | Accepted |
 | [IADR-0260](./IADR-0260_db-guard-verification-method.md) | **DB 層の防壁は「宣言」ではなく「発火」と「カタログ」の両方で確認する**。InMemory プロバイダは一意索引も外部キーも強制しないため、実 PostgreSQL で SqlState と制約名を見て、あわせてマイグレーション出力を情報スキーマと突合する。#941 | Accepted |
 | [IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md) | **Keycloak テーマは `parent=keycloak` 継承 ＋ CSS 追加で作り、`smtpServer` の実値は realm.json へ入れない**。値は Vault → ExternalSecret → `kcadm` の経路で注入し、リポジトリには手順だけを残す。#438 | Accepted |
+| [IADR-0262](./IADR-0262_bulletproof-react-directory-conformance.md) | **計画のディレクトリ構成へは名前だけでなくツリー全体で適合させる**。`@foundation` はエイリアス名を変えず区分ごとに向き先を差し替える（利用は全て `@foundation/<区分>` で裸の参照は 0 件）。#785 | Accepted |
