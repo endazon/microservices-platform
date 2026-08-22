@@ -69,15 +69,25 @@ ABAC_POSITIVE="${ABAC_POSITIVE:-}"
 DENY_USER="${ABAC_DENY_USER:-poc-operator}"
 DENY_PASSWORD="${ABAC_DENY_PASSWORD:-PocOperator-2026}"
 
-if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=13; else TOTAL=9; fi
+if [ "$ABAC_POSITIVE" = "1" ]; then TOTAL=17; else TOTAL=11; fi
 
 PASS=0
 FAIL=0
+# 🔴 #466: **番号つきの段が実際に何本走ったか**を数える。判定（PASS/FAIL）ではなく段を数える。
+#    TOTAL は「本来走るべき段数」の単一情報源であり、末尾で STEPS と突き合わせる。これが無いと、
+#    段を削っても・if ガードで静かに飛ばしても PASS が減るだけで **EXIT=0（緑）** になる。
+#    🔴 **判定の数（PASS+FAIL）と突き合わせてはならない** —— 段 6 は 4 判定、段 7 は宛先ごとに刻むため、
+#    正常な実行でも判定数は段数と一致しない（実測: probe run 32554867883 は PASS 12 / FAIL 2 ＝ 14 判定に対し TOTAL=9）。
+STEPS=0
 hr() { printf -- '----------------------------------------------------------------------\n'; }
 pass() { PASS=$((PASS + 1)); printf '  PASS  %s\n' "$*"; }
 fail() { FAIL=$((FAIL + 1)); printf '  FAIL  %s\n' "$*"; }
 info() { printf '        %s\n' "$*"; }
-step() { printf '\n[%s] %s\n' "$1" "$2"; }
+step() {
+  # 番号つき（"N/TOTAL"）の段だけを数える。前提確認の step "前提" は数えない。
+  case "$1" in [0-9]*/*) STEPS=$((STEPS + 1));; esac
+  printf '\n[%s] %s\n' "$1" "$2"
+}
 
 for cmd in curl openssl node; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
@@ -256,15 +266,65 @@ else
   fail "POST /bff/documents（無トークン）→ $code（401 でなければ認証が効いていない）"
 fi
 
-# ---- 10〜13) ABAC の正常系（#972。ABAC_POSITIVE=1 のときだけ） ----------------------
+# ---- 10〜11) SC-01 / SC-02: 横断検索の導線（#466） --------------------------------
+#
+# 🔴 **ここで「見つかること」は判定しない。判定できないからである。** 根拠を残す（後から
+#    「検索は緑だから動いている」と読まれると、段 14 が潰したのと同じ誤読が再発する）。
+#
+#    `POST /bff/search` は次の**すべて**で `200 ＋ 空` を返す（SearchBffEndpoints.cs）:
+#      (a) Query が空 / (b) BffScopeResolver が null（ABAC が deny へ縮退・認可サービス不調）
+#      (c) RetrievalService への HttpRequestException / TaskCanceledException
+#    つまり「検索が全く動いていない」と「該当が無い」がエッジからは区別できない。
+#
+#    そのうえで、**このスタックでは索引そのものが空である**:
+#      BFF 経由で作った文書は `MarkdownUri` を持たない（CreateDocumentRequest に項目が無い）。
+#      DocumentService は `ToEvent` で `d.MarkdownUri`（=null）を載せて DocumentUpdated を出し、
+#      IngestionService の DocumentUpdatedConsumer は先頭で
+#      `if (ev.MarkdownUri is null) { ...; return; }` と早期 return する。
+#      **parse→chunk→embed→index に一度も入らない。**
+#      加えて values-local.yaml の `Llm__ApiKey` は未設定＝空（外部 LLM を呼ばない fail-safe）で、
+#      k8s-local-up.sh が投入するのは ABAC ポリシーだけである（文書の初期投入経路が無い）。
+#
+#    よって**観測できることだけ**を門にする —— 認証が要ること、応答が契約どおりの形であること。
+#    「空であること」は PASS の根拠にしていない。索引可能な文書を用意する経路は別 issue。
+
+step "10/$TOTAL" "無トークンで検索を叩く（401 になること）"
+code=$(curl -s $CURL_K -m 15 -o /dev/null -w '%{http_code}' -X POST   -H 'Content-Type: application/json' -d '{"query":"smoke","topK":5}' "$EDGE_URL/bff/search")
+if [ "$code" = "401" ]; then
+  pass "POST /bff/search（無トークン）→ 401（RequireAuthorization が効いている）"
+else
+  fail "POST /bff/search（無トークン）→ $code（401 を期待。無認証で検索できている）"
+fi
+
+# 🔴 200 だけを PASS にしない。**契約の形**（results が配列・totalHits と elapsedMs が数値）まで見る。
+#    形を見ないと、後段が別の JSON を 200 で返しても・壊れた本文を返しても素通りする。
+step "11/$TOTAL" "認証ありで検索を叩く（200 かつ SearchResponse の形であること）"
+body_file=$(mktemp)
+code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST   -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json'   -d '{"query":"smoke","topK":5}' "$EDGE_URL/bff/search")
+shape=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const o=JSON.parse(s);const g=k=>o[k]!==undefined?o[k]:o[k[0].toUpperCase()+k.slice(1)];const r=g('results'),t=g('totalHits'),e=g('elapsedMs');console.log(Array.isArray(r)&&typeof t==='number'&&typeof e==='number'?'ok:'+r.length:'bad')}catch{console.log('bad')}})" < "$body_file")
+if [ "$code" = "000" ]; then
+  fail "POST /bff/search（認証あり）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
+elif [ "$code" != "200" ]; then
+  fail "POST /bff/search（認証あり）→ $code（200 を期待）"
+  info "$(head -c 200 "$body_file")"
+elif [ "$shape" = "bad" ]; then
+  fail "POST /bff/search（認証あり）→ 200 だが SearchResponse の形ではない"
+  info "$(head -c 200 "$body_file")"
+else
+  pass "POST /bff/search（認証あり）→ 200・契約どおりの形（results ${shape#ok:} 件）"
+  info "🔴 件数は判定に使っていない。このスタックは索引が空である（上のコメント参照）。"
+fi
+rm -f "$body_file"
+
+# ---- 12〜15) ABAC の正常系（#972。ABAC_POSITIVE=1 のときだけ） ----------------------
 #
 # 🔴 ここが本題である。段 7 は状態コードしか見ないので、認可が deny へ縮退して
 #    「200 ＋ 空リスト」になっても PASS する。**直っていても壊れていても同じ緑**になる。
 #    正の対照（許可されたら非空）と負の対照（権限が無ければ 0 件）を**対で**置いて区別する。
 if [ "$ABAC_POSITIVE" = "1" ]; then
 
-  # ---- 10) 負の対照用のトークン --------------------------------------------------
-  step "10/$TOTAL" "負の対照の利用者（$DENY_USER）のトークンを取る"
+  # ---- 12) 負の対照用のトークン --------------------------------------------------
+  step "12/$TOTAL" "負の対照の利用者（$DENY_USER）のトークンを取る"
   if acquire_token "$DENY_USER" "$DENY_PASSWORD" 0; then
     DENY_ACCESS="$ACQUIRED_TOKEN"
     pass "$DENY_USER の access_token を取得"
@@ -273,11 +333,12 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
     fail "$DENY_USER のトークンを取得できない: $ACQUIRE_ERR"
   fi
 
-  # ---- 11) 正の対照: 許可された主体は作成できる ------------------------------------
+  # ---- 13) 正の対照: 許可された主体は作成できる ------------------------------------
   # POST は deny なら Results.Forbid()（403）を返す（DocumentBffEndpoints）。
   # 🔴 したがって 403 か否かは、文書が 1 件も無くても「許可が出たか」を示す。
-  step "11/$TOTAL" "許可のある利用者で文書を作成する（deny なら 403 になる）"
+  step "13/$TOTAL" "許可のある利用者で文書を作成する（deny なら 403 になる）"
   PROBE_TITLE="abac-positive-probe-$$"
+  PROBE_DOC_ID=""
   # 属性は abac-seed のポリシーが見る軸（confidentiality）と、利用者側の department を両方入れる。
   # 片方しか入れないと、スコープのフィルタにもう一方の鍵が含まれる構成で不可視になる。
   #
@@ -293,6 +354,8 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   case "$code" in
     2*)
       pass "POST /bff/documents → $code（ABAC が許可を返した）"
+      # SC-03（#466）: 単体取得の対象にするため id を捕まえる。取れなければ段 16 が FAIL する。
+      PROBE_DOC_ID=$(json_field id < "$body_file")
       ;;
     403)
       fail "POST /bff/documents → 403（ABAC が deny へ倒れている。ポリシーが投入されていない疑い）"
@@ -311,14 +374,19 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   esac
   rm -f "$body_file"
 
-  # ---- 12) 🔴 正の対照: 一覧が非空であること ----------------------------------------
+  # ---- 14) 🔴 正の対照: 一覧が非空であること ----------------------------------------
   # **これが本 issue の中心である。** 「200 ＋ 空リスト」を PASS にしない。
-  step "12/$TOTAL" "許可のある利用者の一覧が非空であること（200 ＋ 空リストを PASS にしない）"
+  step "14/$TOTAL" "許可のある利用者の一覧が非空であること（200 ＋ 空リストを PASS にしない）"
   body_file=$(mktemp)
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
     -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
   count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
-  has_probe=$(grep -c "$PROBE_TITLE" "$body_file" 2>/dev/null || printf '0')
+  # 🔴 #466: ここは `grep -c ... || printf '0'` だった（#982 由来）。**その形は恒久的に fail-open だった。**
+  #    grep -c は無マッチでも stdout へ 0 を書きつつ **exit 1** を返す（実測）。exit が非 0 なので
+  #    `||` の右辺も走り、値が 0 ではなく **2 行の 0**（0 改行 0）になる。結果 [ "$has_probe" = "0" ] は
+  #    常に偽となり、**「一覧は非空だが作成した文書が含まれない」を検出する分岐へ到達しなかった**。
+  #    件数を数えず**述語**で聞く（grep -q）。ファイルが無い場合も 0 になり fail-closed 側へ倒れる。
+  if grep -q "$PROBE_TITLE" "$body_file" 2>/dev/null; then has_probe=1; else has_probe=0; fi
   if [ "$code" = "000" ]; then
     fail "GET /bff/documents（許可あり）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
   elif [ "$code" != "200" ]; then
@@ -333,12 +401,12 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   fi
   rm -f "$body_file"
 
-  # ---- 13) 負の対照: 権限が無ければ 0 件 -------------------------------------------
+  # ---- 15) 負の対照: 権限が無ければ 0 件 -------------------------------------------
   # 🔴 これが無いと「全開放でも緑」になる。正の対照だけを足すと逆向きの穴が開く。
   #    $DENY_USER は platform-operator を持つので **RBAC は通る**。落ちるのは ABAC だけである。
-  step "13/$TOTAL" "ABAC 属性を持たない利用者の一覧が 0 件であること（全開放を検出する）"
+  step "15/$TOTAL" "ABAC 属性を持たない利用者の一覧が 0 件であること（全開放を検出する）"
   if [ -z "$DENY_ACCESS" ]; then
-    fail "負の対照のトークンが無いため判定できない（段 10 を参照）"
+    fail "負の対照のトークンが無いため判定できない（段 12 を参照）"
   else
     body_file=$(mktemp)
     code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
@@ -355,10 +423,65 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
     fi
     rm -f "$body_file"
   fi
+
+  # ---- 16〜17) SC-03: 文書詳細の導線（#466） ---------------------------------------
+  #
+  # 段 14 は一覧（GET /bff/documents）を見る。SC-03 は**単体取得**であり、一覧 → 詳細が
+  # 実際に繋がることを別に見る必要がある（一覧だけ通って詳細が 404 になる形を捕まえる）。
+  # 🔴 200 だけを PASS にしない —— id と title の一致まで見る。**別の文書が返っても 200 だからである。**
+  step "16/$TOTAL" "作成した文書を単体取得できること（id と title が一致すること）"
+  if [ -z "$PROBE_DOC_ID" ]; then
+    fail "作成した文書の id を取得できていないため判定できない（段 13 を参照）"
+  else
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
+    got_id=$(json_field id < "$body_file")
+    got_title=$(json_field title < "$body_file")
+    if [ "$code" = "000" ]; then
+      fail "GET /bff/documents/$PROBE_DOC_ID → 応答なし（タイムアウト）。上流の宛先が不達の疑い"
+    elif [ "$code" != "200" ]; then
+      fail "GET /bff/documents/$PROBE_DOC_ID → $code（200 を期待）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$got_id" != "$PROBE_DOC_ID" ]; then
+      fail "詳細の id が一致しない（期待 $PROBE_DOC_ID / 実際 ${got_id:-（無し）}）"
+    elif [ "$got_title" != "$PROBE_TITLE" ]; then
+      fail "詳細の title が一致しない（期待 $PROBE_TITLE / 実際 ${got_title:-（無し）}）"
+    else
+      pass "GET /bff/documents/$PROBE_DOC_ID → 200・id と title が一致（SC-03 の導線が通った）"
+    fi
+    rm -f "$body_file"
+  fi
+
+  # 🔴 負の対照が無いと「詳細は誰にでも見える」形を捕まえられない。段 15 の一覧と対になる判定である。
+  #    deny-by-default は**存在を秘匿する**（[[IADR-0009]]）ので、403 でも 404 でも合格とする。
+  #    **200 だけが不合格**である。
+  step "17/$TOTAL" "属性を持たない利用者が同じ文書の詳細を引けないこと"
+  if [ -z "$DENY_ACCESS" ] || [ -z "$PROBE_DOC_ID" ]; then
+    fail "負の対照のトークンまたは文書 id が無いため判定できない（段 12・13 を参照）"
+  else
+    body_file=$(mktemp)
+    code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -H "Authorization: Bearer $DENY_ACCESS" "$EDGE_URL/bff/documents/$PROBE_DOC_ID")
+    if [ "$code" = "200" ]; then
+      fail "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ 200（属性が無いのに詳細が見えている）"
+      info "$(head -c 200 "$body_file")"
+    elif [ "$code" = "000" ]; then
+      fail "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ 応答なし（タイムアウト）"
+    else
+      pass "GET /bff/documents/$PROBE_DOC_ID（$DENY_USER）→ $code（詳細も deny されている）"
+    fi
+    rm -f "$body_file"
+  fi
 fi
 
 hr
-printf '結果: PASS %d / FAIL %d\n' "$PASS" "$FAIL"
+# 🔴 #466: **段が消えていないこと**を最後に見る。ここが無いと、段を削っても・if ガードで静かに
+#    飛ばしても PASS が減るだけで EXIT=0（緑）になる。TOTAL が「本来走るべき段数」の単一情報源なので、
+#    別ファイルの baseline は置かない（[[IADR-0141]]「参照点を 1 つに畳む」）。
+#    **判定数（PASS+FAIL）ではなく段数を見る**理由は STEPS の宣言箇所のコメントに書いた。
+if [ "$STEPS" -ne "$TOTAL" ]; then
+  fail "実行した段が $STEPS 本で、宣言（TOTAL=$TOTAL）と一致しません。段が消えたか、静かに飛ばされています"
+fi
+printf '結果: PASS %d / FAIL %d（段 %d/%d）\n' "$PASS" "$FAIL" "$STEPS" "$TOTAL"
 if [ "$FAIL" -gt 0 ]; then
   printf '導線に失敗があります。\n'
   exit 1

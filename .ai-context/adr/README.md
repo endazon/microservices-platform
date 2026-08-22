@@ -328,3 +328,4 @@
 | [IADR-0252](./IADR-0252_abac-positive-path-observation.md) | **ABAC の正常系は「許可 → 非空」と「属性なし → 0 件」の対で観測する**。状態コードだけでは deny と無データを区別できない。nightly の統合スタックへ置く。#972 | Accepted |
 | [IADR-0253](./IADR-0253_authz-scope-disjunction-contract.md) | **認可スコープ契約に選言（OR）を載せる**。名前つき分岐（分岐内 AND・分岐間 OR）を足し、既存の `AllowedFilters` は据え置く —— 分岐の和の部分集合であるため移行中の乖離は deny 側へ倒れる。#989 | Proposed |
 | [IADR-0254](./IADR-0254_trace-followthrough-record-rule.md) | **trace 追随の検査は「記録単位」で置き、warn にする**。#885 が退けたのは pair-rule（精度 10.2%）で、record-rule は精度 76.2% / 再現率 94.1%（束ね PR を除くと精度 100%）。ゲートにしないのは、偽陽性のとき人ができるのが「無関係な ID を足す」ことだけだから。#975 | Accepted |
+| [IADR-0255](./IADR-0255_edge-smoke-step-loss-gate-and-unobservable-search.md) | エッジ導線スモークは**段数**（`TOTAL`）で fail-closed にする（判定数ではない）。検索は「見つかること」を判定しない——`200 ＋ 空`が 3 つの失敗と区別できず、BFF 作成文書は `MarkdownUri` が null で索引に入らないため。#466 | Accepted |
