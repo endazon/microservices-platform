@@ -5,7 +5,7 @@ status: Proposed
 related_ids: [FR-05, FR-19, FR-20, FR-21, UC-11, ADR-0004, ADR-0034, ADR-0036, ADR-0046, ADR-0054]
 author: claude
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-23
 plan_refs:
   - planning:projects/microservices-platform/06_technical/07_abac-attribute-model.md
   - planning:projects/microservices-platform/07_adr/ADR-0046_private-note-not-synced-to-wikijs.md
@@ -117,6 +117,20 @@ public record AccessScopeResponse(
 
 **`AllowedFilters` の削除は全サービスの移行完了後に別 IADR で判断する。** 本 IADR では消さない。
 
+［2026-08-23 追記 / #989］🔴 **「`AllowedFilters` は分岐の和の部分集合（deny 側へ倒れる）」には
+反例がある。** ポリシー A `{ confidentiality: [internal], department: [hr] }` と
+B `{ confidentiality: [public], department: [sales] }` が同時マッチのとき、キー単位 union は
+`confidentiality ∈ {internal, public} AND department ∈ {hr, sales}` になり、文書
+`(internal, sales)` を許可する——**この文書はどちらのポリシー単独でも許可されない**（分岐評価では
+不可視）。すなわちキー単位 union は**複数ポリシーの値の混成を許す向き（漏れる向き）の乖離**を含む。
+現在の実効的な認可軸は `confidentiality` 1 本（#516）でありキーが 1 つなら混成は起きないため
+**今日の実データでは漏れない**が、包含関係は一般には成立しない。**決定 2（据え置き）自体は
+変えない**（未移行サービスの挙動を変えないことが目的であり、この乖離は本 IADR 以前から在る
+既存挙動である）。現状固定テスト
+`AbacEvaluatorTests.AllowedFilters_KeyUnion_CanGrantCrossPolicyMixture_CurrentBehaviour` で記録し、
+フォローアップ 2（`AllowedFilters` の削除判断）の材料とする。**含意: 複数キーの文書条件を持つ
+ポリシーを運用へ入れる前に、段 3 の全サービス移行を終えること。**
+
 ### 決定 3: `${current_user}` の束縛は**評価器（AuthorizationService）でのみ**解決する
 
 **述語側（`AbacNodeFilter` 等）はプレースホルダを解釈しない。** 既存テスト
@@ -152,6 +166,27 @@ public record AccessScopeRequest(
 ```
 
 `AuthzEndpoints` のハードコードを `req.Action` へ置き換える。**既定値があるため後方互換である。**
+
+［2026-08-23 追記 / #989］**本決定は不十分であったため、次の 3 点へ改定する**（発見の経緯は
+#989 コメント 2026-08-22——`PolicyAction` の値域に `write` が無く、`AbacValidation` が
+`IsValid` で弾くため、**`Action` を足しても `write` ポリシーはそもそも作れない**。planning#466 で
+独立に検算済み）。
+
+1. **`PolicyAction` へ `Write = "write"` を足す**（値域を 3 → 4 値へ拡張し、`All` に含める。
+   `AbacValidation` は `PolicyAction.All` 経由で自動追随する）。計画は
+   `07_abac-attribute-model` §ポリシー評価モデル の 2026-08-22 追記で値域へ `write` を
+   加えており（planning#466。`ADR-0036` D-07 の write 規則と D-01「単一の評価モデル」の帰結）、
+   **実装が計画の値域に追随する改定である**。🔴 **値域の拡張そのものは何も許可しない** ——
+   deny-by-default により、`write` ポリシーが 1 件も無い間は `write` スコープは全件遮断のままである。
+   なお SC-09（管理画面）の action 選択肢・語彙（`POLICY_ACTIONS`）の追随は別作業とする
+   （追随するまで write ポリシーを画面から作れないだけであり、権限は緩まない）。
+2. **`AccessScopeRequest` の `Action` の既定値はリテラル `"read"` とする**（原案の
+   `= PolicyAction.Read` は誤り——`PolicyAction` は AuthorizationService のドメイン型であり、
+   `Platform.Shared.Contracts` から参照できない。値の一致は評価器側のテストで固定する）。
+3. **`/authz/scope` は `req.Action` を `PolicyAction.IsValid` で検証し、不正値は 400 を返す**。
+   未知アクションを黙って空スコープへ写さない（呼び出し側の設定誤りが「常に全件遮断」として
+   沈黙するのを防ぐ）。既知の全呼び出し元（5 件）は非 2xx を Granted=false へ縮退させるため、
+   400 でも deny 側へ倒れる。
 
 ### 決定 6: 段を 5 つに分ける（各段が単独でマージ可能）
 
