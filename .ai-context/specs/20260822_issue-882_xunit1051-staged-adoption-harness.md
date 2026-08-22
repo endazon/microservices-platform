@@ -151,13 +151,21 @@ gitlink（`9b9c676`）には在るが、作業ツリーが指す `abce001` に�
 
 ### 抑止は `WarningsAsErrors` に勝つ（実測）
 
-| 条件 | 結果 |
-| --- | --- |
-| `WarningsAsErrors` のみ | **error・exit 1** |
-| `WarningsAsErrors` ＋ `.editorconfig` の `severity = none` | `.editorconfig` が勝つ・exit 0 |
-| `WarningsAsErrors` ＋ `NoWarn` | `NoWarn` が勝つ・exit 0 |
+移行済みプロジェクト（`Knowledge.Contracts.Tests`）に再発を仕込んだうえで、抑止を 1 つずつ足して測った。
+**評価されたプロパティを毎回確認してから**ビルドの EXIT を読んでいる（「抑止が実際に効いた状態」で
+測っていることを先に固定するため）。
 
-→ 移行済みへ後から抑止を足せば ratchet は黙って外れる。検査器の `stray-suppression` が止める。
+| # | 条件 | 評価された `NoWarn` / `WarningsAsErrors` | 結果 |
+| --- | --- | --- | --- |
+| M-PREC-A | `WarningsAsErrors` のみ | `1701;1702` / `;xUnit1051;…` | **`error xUnit1051` 2 行・exit 1** |
+| M-PREC-B | ＋ `.editorconfig` の `severity = none` | `1701;1702` / `;xUnit1051;…` | **`.editorconfig` が勝つ**（error 0・warning 0・exit 0） |
+| M-PREC-C | ＋ csproj の `NoWarn` | `1701;1702;xUnit1051` / `;xUnit1051;…` | **`NoWarn` が勝つ**（error 0・warning 0・exit 0） |
+
+B は `NoWarn` が付いていない（`1701;1702` のまま）のに診断が消える —— **`.editorconfig` の抑止は
+MSBuild のプロパティを経由せずに勝つ**ため、props だけを見ても気付けない。
+
+→ 移行済みへ後から抑止を足せば ratchet は黙って外れる。検査器の `stray-suppression` が止める
+（M-CHK-5 で実地確認）。
 
 ### `Contains` / `EndsWith` は序数・大文字小文字を区別する（実測）
 
@@ -201,6 +209,7 @@ M-BUILD-2 は器が load-bearing であること（無ければ緑）を示す�
 | M-CHK-2 | baseline に実在しない `Ghost.Tests` を足す | `removed` | **exit 1・`[removed]` 1 件** |
 | M-CHK-3 | props の許可リストを `Tests` → `tests` に崩す | `props-desync` | **exit 1・`[props-desync]` 2 件（両方向）** |
 | M-CHK-4 | **検査器を no-op 化**して M-CHK-1 を再適用 | **緑になってしまう** | **exit 0**（＝検査器が効いていた証拠） |
+| M-CHK-5 | 移行済みプロジェクトへ `.editorconfig`（`severity = none`）を置く | `stray-suppression` | **exit 1・`[stray-suppression]` 1 件**（同時にビルドは緑＝判定 6 が唯一の防波堤） |
 
 落ちた件数と種別を毎回読んだ。**全部落ちる（器が壊れただけ）という結果は 1 度も出ていない** ——
 M-CHK-1〜3 はいずれも意図した種別だけが、意図した件数（1・1・2）出た。
