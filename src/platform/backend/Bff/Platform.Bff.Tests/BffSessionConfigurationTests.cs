@@ -1,4 +1,6 @@
 using AwesomeAssertions;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
@@ -114,17 +116,30 @@ public class BffSessionConfigurationTests
         c.Path.Should().Be("/");
     }
 
-    // 🔴 ★ **3a は受け皿を足すだけで切り替えない。**
-    // `AddAuthentication(scheme)` の引数つき版を使うと既定スキームを奪い、既存の BFF 端点が
-    // 一斉に Cookie を要求し始める（現行 SPA と既存テストが全部落ちる）。切り替えは 3b。
+    // 🔴 ★ **［3b で反転した］既定スキームは BffSession である。**
+    //
+    // 3a ではこのテストが逆向き（「JwtBearer の既定を奪わない」）だった —— 受け皿を足すだけで
+    // 切り替えない段だったためで、**3a / 3b の境界に置いた意図的な見張り**である。
+    // 3b で既定を移したので、**落ちるのが正しい**。落ちたことを確認したうえで反転させた
+    // （実測: 既定を移すと本テスト 1 件だけが落ち、他の 277 件は緑のままだった）。
+    //
+    // ⚠️ **この 1 件だけが落ちたことを「安全の証拠」と読まないこと。**
+    // 既存テストは `BffTestFactory` が既定スキームを `Test` へ上書きしており、**本物の認証経路を
+    // 迂回する**。セッション経路そのものは `RedisTicketStoreTests` が受け持つ。
     [Fact]
-    public void Adding_the_session_scheme_does_not_steal_the_default_scheme_from_jwt_bearer()
+    public async Task Session_scheme_is_the_default_after_the_switchover()
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
         var services = new ServiceCollection();
         services.AddLogging();
-        // 本番と同じ順序: 先に JwtBearer（AddPlatformAuth 相当）、あとから BFF セッション。
-        services.AddAuthentication("Bearer");
+        // 本番と同じ順序・同じ形: 先に JwtBearer（AddPlatformAuth 相当。**スキームを登録する**）、
+        // あとから BFF セッション。
+        //
+        // ⚠️ `AddAuthentication("Bearer")` だけでは既定の**名前**が決まるだけでハンドラが
+        // 登録されない。本番の `AddPlatformAuth` は `.AddJwtBearer(...)` まで行うので、
+        // ここもそう書かないと「Bearer が消えていないこと」を検査できない
+        // （最初この行が抜けていて、下の assert が正しく落ちた）。
+        services.AddAuthentication("Bearer").AddJwtBearer();
         services.AddBffSession(config);
 
         using var sp = services.BuildServiceProvider();
@@ -132,6 +147,17 @@ public class BffSessionConfigurationTests
 
         // `AddAuthentication(scheme)` が設定するのは `DefaultScheme` である
         // （`DefaultAuthenticateScheme` は null のままで、解決時にこれへ落ちる）。
-        auth.DefaultScheme.Should().Be("Bearer");
+        // ［案 B］既定は**振り分けスキーム**である。Cookie と Bearer の両方を受理するため、
+        // 既定を BffSession 単体にしない（単体にすると /bff/* への Bearer 呼び出しが 401 になる。
+        // DefaultSchemeRoutingTests が実測で固定している）。
+        auth.DefaultScheme.Should().Be(BffSessionExtensions.SmartScheme);
+
+        var schemes = sp.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        // ★ **振り分け先が両方とも登録されている。**
+        (await schemes.GetSchemeAsync(BffSessionExtensions.SessionScheme)).Should().NotBeNull(
+            "セッション（Cookie）側の受理先が無ければブラウザがログインできない");
+        (await schemes.GetSchemeAsync("Bearer")).Should().NotBeNull(
+            "サービス間の Bearer 認証まで消してはならない");
     }
 }
