@@ -214,3 +214,30 @@ $ docker info   → exit 1（この環境に Docker daemon は無い）
 🔴 **6 件はすべて skip であり、1 件も実行されていない。**「緑だった」は「走った」の証拠にならない
 （issue #941 本文の警告そのもの）。**実走は `integration.yml`（develop への push ＋ 日次）で確認する。**
 確認の見方は IADR-0260「実走の確認手順」を参照。
+
+## ［2026-08-23 追記 / #941］実走で 1 件が落ちた —— 追跡下の親削除は DB へ届かない
+
+統括側の Docker のある環境で実走したところ、**6 件中 1 件が落ちた**（2 回再現）。
+
+```
+Failed ...EdgeTypeDbGuardTests.参照中の辺の型は削除がDBのRESTRICTで拒まれる
+System.InvalidOperationException : The association between entity types 'EdgeType' and 'Edge'
+has been severed, ... because the foreign key is not nullable.
+   at ... InternalDbSet`1.Remove(TEntity entity)
+Failed! - Failed: 1, Passed: 5, Skipped: 0, Total: 6
+```
+
+**例外は `Remove()` の中で出ており、DELETE 文は 1 度も発行されていない。** すなわち
+**PostgreSQL の `ON DELETE RESTRICT` には到達していなかった** —— 本仕様書の設計判断 2
+（DbContext を直接叩く）に、**「依存側を追跡していない文脈から操作する」という条件が
+欠けていた**。理由と是正は IADR-0260 の同日追記が正本である。
+
+是正: 型と辺の作成を 1 つ目のスコープで行い、**削除は辺を 1 件も読み込んでいない別スコープの
+DbContext から**行う。削除の直前に `ChangeTracker.Entries<Edge>()` が空であることを表明し、
+将来この不変条件が破れたら黙って DB へ届かなくなる代わりにその場で落ちるようにした。
+
+**この環境では Docker が無いため、是正後の実走は依然としてできていない**（6 件とも skip）。
+是正の妥当性の根拠は (a) EF Core の挙動（追跡下の実体にだけ切断が適用される・`Immediate` の
+既定タイミングで `Remove()` 中に判定が走る）、(b) **同一クラスの 4 件目が生 SQL で辺を挿入して
+おり、初版のまま合格していた**という対比、(c) 本番の削除経路も辺を追跡しない（使用件数は
+スカラの `CountAsync`）という一致、の 3 点である。

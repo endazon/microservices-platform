@@ -55,16 +55,31 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres)
     // FR-17, SC-09, ADR-0033 決定 9: 参照が 1 件でもある辺の型は、**DB 層の ON DELETE RESTRICT が
     // 削除を拒む**。アプリ層の事前カウントを通らない経路（DbContext 直接）で確かめる ——
     // 変異試験 G-1 が「アプリ層を外すと黙って消える」ことを実測した、その最後の防壁である。
+    //
+    // 🔴 **削除は「辺を 1 件も読み込んでいない DbContext」から行わなければならない。**
+    // 型と辺を同じ DbContext で作ってから `Remove` すると、**DELETE 文が 1 度も発行されない**。
+    // EF Core のカスケード／切断の挙動は**変更追跡下の実体にだけ**適用され、既定の
+    // `CascadeTiming.Immediate` では `Remove()` の呼び出し中にその判定が走る。`Restrict` は
+    // 追跡中の依存側に対して何もしないため、依存側の非 null 外部キーが削除済みの主体を指したまま
+    // 「概念上の null」になり、EF は SQL を組み立てる前に同期的に `InvalidOperationException`
+    //（"The association between entity types 'EdgeType' and 'Edge' has been severed…"）を投げる。
+    // **例外は出るが PostgreSQL には一度も届かない** —— 防壁を確かめたつもりで何も確かめていない、
+    // 本 issue が正そうとしている当の形である（実測: 初版がこの形で fail した）。
+    //
+    // 依存側を読み込んでいなければ EF は何も切断せず、DELETE 文がそのまま発行されて
+    // データベース側の参照アクションが効く。**本番の削除経路と同じ形でもある** ——
+    // エンドポイントは型だけを読み、使用件数はスカラの COUNT で数えるので辺を 1 件も追跡しない。
     [Fact]
     public async Task 参照中の辺の型は削除がDBのRESTRICTで拒まれる()
     {
         DockerRequired.SkipUnlessAvailable();
         var ct = TestContext.Current.CancellationToken;
 
+        // (1) 型と、それを参照する辺を作る。ここで作った DbContext は捨てる。
         Guid typeId;
-        await using (var scope = _factory.Services.CreateAsyncScope())
+        await using (var seeding = _factory.Services.CreateAsyncScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<GraphDbContext>();
+            var db = seeding.ServiceProvider.GetRequiredService<GraphDbContext>();
             var type = EdgeType.Create($"restrict-{Guid.NewGuid():N}", EdgeTypeLayer.Core, isSymmetric: false);
             db.EdgeTypes.Add(type);
             await db.SaveChangesAsync(ct);
@@ -73,6 +88,19 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres)
             db.Edges.Add(Edge.Create(Guid.NewGuid(), Guid.NewGuid(), typeId,
                 isSymmetric: false, EdgeProvenance.Auto));
             await db.SaveChangesAsync(ct);
+        }
+
+        // (2) **辺を 1 件も読み込んでいない**別の DbContext から削除する。
+        await using (var deleting = _factory.Services.CreateAsyncScope())
+        {
+            var db = deleting.ServiceProvider.GetRequiredService<GraphDbContext>();
+            var type = await db.EdgeTypes.FirstAsync(t => t.Id == typeId, ct);
+
+            // 🔴 **この不変条件が破れると、この試験は黙って DB へ届かなくなる。**
+            // 辺を 1 件でも追跡した状態で Remove すると、上の注記のとおり EF が
+            // クライアント側で例外を投げ、DELETE 文が発行されない。ここで先に落とす。
+            db.ChangeTracker.Entries<Edge>().Should().BeEmpty(
+                "辺を追跡していると EF が Remove の時点で例外を投げ、PostgreSQL の RESTRICT に到達しない");
 
             db.EdgeTypes.Remove(type);
             var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(ct));
@@ -82,7 +110,7 @@ public sealed class EdgeTypeDbGuardTests(PostgresFixture postgres)
             pg.ConstraintName.Should().Be("FK_edges_edge_types_EdgeTypeId");
         }
 
-        // **型の行は残っている。** 「例外は出たが実は消えていた」を排除する。
+        // (3) **型の行は残っている。** 「例外は出たが実は消えていた」を排除する。
         await using (var verify = _factory.Services.CreateAsyncScope())
         {
             var db = verify.ServiceProvider.GetRequiredService<GraphDbContext>();

@@ -17,7 +17,6 @@ updated: 2026-08-23
 
 # IADR-0260 DB 層の防壁は「宣言」ではなく「発火」と「カタログ」の両方で確認する
 
-> **本 IADR の番号は仮番号である**（#941 の並行作業のため統括側が最終採番する）。
 
 ## 状況
 
@@ -49,10 +48,12 @@ GraphService の辺の型辞書には**アプリ層と DB 層の 2 段の防壁*
    ホストを起こすだけでスキーマはマイグレーション出力そのものになる。
    （`DocumentService` 側の既存テストは `EnsureCreatedAsync` を呼んでいる。**同じにしない。**）
 
-2. **防壁は HTTP ではなく `DbContext` を直接叩いて発火させる。**
+2. **防壁は HTTP ではなく `DbContext` を直接叩いて発火させる。ただし依存側を追跡していない
+   文脈から操作する。**
    アプリ層のガードを外す変異を入れて確かめると、試験できるのは「変異を入れた版」だけであり、
    **出荷される版の防壁は未発火のまま残る**。DbContext 直接なら、出荷される版のまま
    アプリ層の事前検査だけを迂回できる。
+   **後半の条件は決定の一部である**（下の ［2026-08-23 追記 / #941］ を参照）。
 
 3. **スキーマそのものを PostgreSQL のカタログで突合する**
    （`pg_constraint.confdeltype` / `pg_indexes.indexdef` / `information_schema.columns`）。
@@ -103,3 +104,59 @@ skip する。「CI が緑だった」は「テストが実行された」の証
 - **カタログ突合だけで済ませる。** 制約の存在は測れるが、**その制約が書き込みを実際に拒む
   ことは測れない**（例: `DEFERRABLE` や無効化された制約はカタログには現れる）。
   発火とカタログは互いの死角を埋めるので、**両方置く**。
+
+## ［2026-08-23 追記 / #941］決定 2 には条件が要る —— 依存側を追跡していると DB へ届かない
+
+**本 IADR の初版に沿って書いたテストが、実 PostgreSQL で落ちた。** 実測（Docker のある環境。2 回再現）:
+
+```
+Failed ...EdgeTypeDbGuardTests.参照中の辺の型は削除がDBのRESTRICTで拒まれる
+System.InvalidOperationException : The association between entity types 'EdgeType' and 'Edge'
+has been severed, but the relationship is either marked as required or is implicitly required
+because the foreign key is not nullable.
+   at ... InternalDbSet`1.Remove(TEntity entity)
+```
+
+**例外の発生位置は `Remove()` の中であり、`SaveChangesAsync` ではない。** つまり
+**DELETE 文が 1 度も発行されておらず、PostgreSQL の `ON DELETE RESTRICT` には到達していなかった。**
+「防壁が発火したことを確かめる」ための試験が、**発火を確かめずに終わっていた** ——
+本 IADR が「実走の確認手順」で警戒した「測った証拠にならない緑」と同型の失敗である
+（今回は赤だったので気付けたが、赤の理由は防壁ではなく O/R マッパのクライアント側検知だった）。
+
+### なぜそうなるか（EF Core の挙動）
+
+- EF Core のカスケード／切断の挙動は **変更追跡下（loaded）の実体にだけ**適用される。
+  読み込んでいない依存側にはデータベース側の参照アクションがそのまま効く。
+- `DeleteBehavior.Restrict` の**追跡下の依存側に対する効果は「何もしない」**である。その結果、
+  依存側の**非 null の外部キー**が削除済みの主体を指したままになり、EF はこれを
+  **「概念上の null（conceptual null）」**として検出して `InvalidOperationException` を投げる。
+- 既定の `ChangeTracker.CascadeDeleteTiming` / `DeleteOrphansTiming` は `Immediate` なので、
+  この判定は **`Remove()` の呼び出し中に同期的に**走る。SQL は組み立てられない。
+
+### 決定への追加
+
+**決定 2 に条件を加える: DbContext 直接で防壁を発火させるときは、依存側を 1 件も読み込んでいない
+文脈（別スコープの新しい DbContext、または生 SQL で挿入して EF に見せない）から操作する。**
+
+- **これは本番の経路とも一致する。** 削除エンドポイントは型だけを読み、使用件数は**スカラの
+  `CountAsync`** で数えるため、辺の実体を 1 件も追跡しない。
+- **対比が根拠である。** 同じテストクラスの `RESTRICTに弾かれた削除は409になる` は、辺を
+  **別接続の生 SQL** で挿入して EF に追跡させないため、初版のまま PostgreSQL へ到達して合格していた
+  （実測: 6 件中 5 件合格・落ちたのは追跡下で `Remove` した 1 件だけ）。
+- **不変条件は試験の中で機械的に守る。** 削除の直前で
+  `db.ChangeTracker.Entries<Edge>()` が空であることを表明する。将来この文脈が辺を読み込むように
+  変わったら、**黙って DB へ届かなくなる代わりに、その場で落ちる。**
+
+### 走査（同型の罠が他に無いか）
+
+本リポジトリの製品コードが宣言する EF の関係は **3 本だけ**である（実測）。
+
+| 関係 | 削除規則 | 追跡下の親削除を行うテスト |
+| --- | --- | --- |
+| `edges` → `edge_types` | `Restrict` | **本件のみ**（是正済み） |
+| 文書 → 版 | `Cascade` | 無し |
+| 変換ジョブ → 生成物 | `Cascade` | 無し |
+
+テストコード全体で実体の `Remove` / `RemoveRange` を呼ぶのは 2 箇所で、1 つは本件、
+もう 1 つは関係を 1 本も宣言していない DbContext の後始末である（依存側が存在しないため対象外）。
+残りの一致はすべて `IServiceCollection.Remove`（DI 登録の差し替え）で、EF とは無関係である。
