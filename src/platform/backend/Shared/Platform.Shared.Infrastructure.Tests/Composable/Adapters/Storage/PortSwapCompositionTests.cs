@@ -8,7 +8,7 @@ using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using Wolverine;
 
-namespace Platform.Shared.Infrastructure.Tests.Foundation.Pipeline;
+namespace Platform.Shared.Infrastructure.Tests.Composable.Adapters.Storage;
 
 // FR-14, ADR-0018 (#444): 「接続先コンポーネントの差し替え」＝ポート実装を構成だけで交換できること、
 // および交換しても宣言的パイプラインが壊れないこと（issue #444 の退行防止 3 項目目）。
