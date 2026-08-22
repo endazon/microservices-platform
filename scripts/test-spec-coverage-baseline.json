@@ -114,6 +114,11 @@
       "GraphTypeGateArchitectureTests",
       "UserAuthoredEdgeTests"
     ],
+    "docs/tests/FR-18_ai-suggestions.md": [
+      "AiSuggestionEndpointsTests",
+      "AiSuggestionStateMachineTests",
+      "AiSuggestionWiringTests"
+    ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
     ],

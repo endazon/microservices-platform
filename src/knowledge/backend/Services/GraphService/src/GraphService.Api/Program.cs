@@ -36,6 +36,8 @@ builder.Services.AddScoped<IGraphAccessResolver, GraphAccessResolver>();
 builder.Services.AddScoped<IGraphStore, EfGraphStore>();
 // UC-10: ホップごと判定を守る近傍探索（#909）。
 builder.Services.AddScoped<GraphTraversal>();
+// FR-18 (#914): 却下・解除の時刻。テストから固定できるよう TimeProvider を通す。
+builder.Services.AddSingleton(TimeProvider.System);
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）。段・合成可能ポートはまだホストしない。
 builder.Services.AddPlatformIntrospection("graph-service", new PipelineOptions());
@@ -61,6 +63,9 @@ app.MapOpenApi();
 app.MapGraphEndpoints();
 // FR-17, SC-09, SC-10: 辺の型辞書（#910）。
 app.MapEdgeTypeEndpoints();
+// FR-18, SC-21, SC-03, ADR-0033 決定 7・10: AI 提案の 3 状態遷移（#914）。
+// **一括承認の口は無い**（FR-18 / SC-21「描いてはいけないもの」）。
+app.MapAiSuggestionEndpoints();
 
 app.Run();
 

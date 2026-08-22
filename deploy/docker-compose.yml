@@ -375,6 +375,9 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=wiki_svc;Username=kp;Password=kp
       # IADR-0021: Wiki.js への同期先（GraphQL push）。API キーはシークレット経由で注入（コミットしない）。
       Services__WikiJs: http://wiki-js:3000
+      # FR-05 / IADR-0089 / #958: ABAC の許可スコープ解決（POST /authz/scope）の宛先。
+      # コード既定は :5005 だが authorization-service が開けているのは 8080 だけである。
+      Services__AuthorizationService: http://authorization-service:8080
       WikiJs__GraphQlEndpoint: http://wiki-js:3000/graphql
       WikiJs__ApiKey: ${WIKIJS_API_KEY:-}
     depends_on:

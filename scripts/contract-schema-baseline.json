@@ -49,6 +49,71 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.AiSuggestionDto": {
+        "kind": "record",
+        "members": {
+          "EdgeTypeId": {
+            "source": "positional",
+            "type": "Guid?",
+            "required": true,
+            "position": 4
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Kind": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          },
+          "Rationale": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 6
+          },
+          "ReinstatedReason": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 9
+          },
+          "RejectedCount": {
+            "source": "positional",
+            "type": "int",
+            "required": true,
+            "position": 8
+          },
+          "SourceDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 2
+          },
+          "State": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 7
+          },
+          "TagValue": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 5
+          },
+          "TargetDocumentId": {
+            "source": "positional",
+            "type": "Guid?",
+            "required": true,
+            "position": 3
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.AnalysisDataRange": {
         "kind": "record",
         "members": {
@@ -1266,6 +1331,23 @@
             "source": "positional",
             "type": "string?",
             "required": false,
+            "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.RejectAiSuggestionRequest": {
+        "kind": "record",
+        "members": {
+          "SourceFingerprint": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
+            "position": 0
+          },
+          "TargetFingerprint": {
+            "source": "positional",
+            "type": "string?",
+            "required": true,
             "position": 1
           }
         }
