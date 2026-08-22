@@ -57,6 +57,16 @@ public class PipelineStepRegistrationTests
             {
                 opts.AddPlatformWolverineStep<RawDocumentFetchedConsumer>(pipeline);
 
+                // 🔴 **規約探索を意図的に「効いている」状態にする。器を甘くしないため。**
+                // Wolverine は明示登録とは独立にアセンブリを走査してハンドラを見つける。
+                // **走査対象の決まり方は環境に依存する** —— 実測では同じコードが Windows では
+                // 段の型を拾わず、Linux の CI では拾った。その結果 `enabled:false` の試験が
+                // **手元だけ緑**になり、CI で落ちた（#441 E1）。
+                //
+                // ここで明示的にアセンブリを足すと、**どの環境でも「規約探索が段の型を見つけ得る」
+                // 側に固定できる**。無効化が効くことを、いちばん厳しい条件で測る。
+                opts.Discovery.IncludeAssembly(typeof(RawDocumentFetchedConsumer).Assembly);
+
                 // 🔴 **本番（Program.cs）と同じ既定を必ず通す。**
                 // ここを省いた最初の版は、サービスロケーションを許さない Wolverine の既定のまま走り、
                 // EF の `AddDbContext`（不透明なラムダ Factory）に依存する段のコード生成が
@@ -122,6 +132,10 @@ public class PipelineStepRegistrationTests
     public async Task 無効化した段は登録されず購読されない()
     {
         // 規則8: enabled: false → 登録しない（購読・キューを生成しない＝構成のみで段を外せる＝FR-14）
+        //
+        // 🔴 **「IncludeType を呼ばない」だけでは足りない。** 規約探索が独立に段の型を拾うので、
+        // ヘルパは明示的に除外する（`CustomizeHandlerDiscovery` の Excludes）。
+        // 本テストは規約探索を効かせた状態で、それでも購読が生えないことを見る。
         var (host, publisher) = await StartAsync(Options(enabled: false));
         using var _ = host;
 

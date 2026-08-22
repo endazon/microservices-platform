@@ -606,6 +606,54 @@ E1 の器の役は「存在しない」かのように出て、本当の手掛�
 「サービス単位の段階移行」は成立しない（planning#438 で環流済み・未裁定）。
 本書は辺単位・3 段で進める。
 
+## 🔴 `enabled:false` は効いていなかった（CI の赤から見つかった本番欠陥）
+
+**症状**: `PipelineStepRegistrationTests.無効化した段は登録されず購読されない` が
+**手元（Windows・Debug も Release も）で緑・CI（Linux・Release）で赤**。
+
+**原因（実測で特定した。当てずっぽうで直していない）**:
+
+**Wolverine の規約探索（conventional discovery）は、明示登録とは独立にアセンブリを走査して
+ハンドラを見つける。** 段の型は普通のハンドラの形をしているので、
+**`AddPlatformWolverineStep` が `IncludeType` を呼ばないだけでは購読が生える。**
+
+🔴 **そして走査対象の決まり方が環境に依存する** —— 同じコードが Windows では段の型を拾わず、
+Linux の CI では拾った。**手元で再現しなかったのは環境の偶然である。**
+
+**特定の手順**（推測ではなく実験で確かめた）:
+
+1. Release でも手元は緑 → 構成の違いではない
+2. 器が `DisableConventionalDiscovery()` を呼んでいないことに気付く（実ブローカ器は呼んでいる）
+3. **`opts.Discovery.IncludeAssembly(...)` で規約探索を強制** → **手元で CI と同じ失敗文言を再現**
+4. これで原因が確定した
+
+**本番への影響**: `Program.cs` も `DisableConventionalDiscovery()` を呼んでいない。
+つまり **`pipeline.json` の `enabled:false` は、段を止められていなかった可能性がある**。
+**FR-14（構成のみで段を外せる）を無言で破っていた。**
+
+**修正**: `AddPlatformWolverineStep` の規則 8（無効）で**明示的に除外する**。
+
+```csharp
+options.Discovery.CustomizeHandlerDiscovery(q => q.Excludes.WithCondition(
+    $"パイプライン段 '{stepName}' は構成で無効化されている（pipeline.json enabled:false）",
+    t => t == typeof(TStep)));
+```
+
+**「登録しない」ではなく「登録させない」でなければならない。**
+
+**器の側も直した（弱めていない・むしろ厳しくした）**:
+テストの器で `opts.Discovery.IncludeAssembly(...)` を**恒久的に**呼び、
+**どの環境でも「規約探索が段の型を見つけ得る」側に固定する**。
+無効化が効くことを、いちばん厳しい条件で測る。
+
+**変異 D**（除外をやめ `IncludeType` を呼ばないだけに戻す）: **当該テストのみ失敗**（他 8 件は緑）。
+**修正前は Windows で緑だった同じ変異が、修正後は Windows でも落ちる** ——
+器が環境依存でなくなったことの実測である。
+
+⚠️ **未実施**: 共通ヘルパ側（`Platform.Shared.Infrastructure.Tests` の
+`WolverinePipelineExtensionsTests`）に、この除外を直接測るユニットテストは置いていない。
+本 PR は ConversionService 側の結合的な試験で押さえている。**E2 以降で薄いと感じたら足すこと。**
+
 ## 🔴 引き継ぎ（次セッションへ・2026-08-22 時点）
 
 ### いま止まっている理由
