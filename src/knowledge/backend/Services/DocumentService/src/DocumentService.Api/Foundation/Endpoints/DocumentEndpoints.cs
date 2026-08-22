@@ -4,6 +4,7 @@ using DocumentService.Api.Foundation.Services;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -66,7 +67,7 @@ public static class DocumentEndpoints
         // `AdminOnly` であり、DocumentService はメッシュ内部でイングレス非公開である。
         // **裁定が出たらここを追随させる。**
         write.MapPost("/", async (CreateDocumentRequest req, DocumentDbContext db,
-            IPublishEndpoint bus) =>
+            IObjectStorageClient storage, IPublishEndpoint bus, CancellationToken ct) =>
         {
             // FR-06, UC-03: タイトルは必須
             if (string.IsNullOrWhiteSpace(req.Title))
@@ -74,6 +75,11 @@ public static class DocumentEndpoints
                 {
                     ["title"] = ["タイトルは必須です。"]
                 });
+
+            // FR-21 受け入れ基準 ⑥: 本文が 1 MB を超える登録要求は **413** で拒否する。
+            // **切り詰めて成功を返さない**（切り詰めると ⑦「全文が索引される」が静かに破れる）。
+            if (!string.IsNullOrEmpty(req.Body) && DocumentBodyIntake.ExceedsLimit(req.Body))
+                return BodyTooLargeProblem();
 
             // FR-05, UC-03, SC-05, IADR-0047: 機密区分（必須属性）のサーバー側検証（最終防衛線）。
             // 欠落・未知値は保存拒否（400）。フロントの既定値に依存せず、BFF 迂回でも実効化する。
@@ -84,8 +90,24 @@ public static class DocumentEndpoints
             var (createTagIds, createUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (createUnknown.Count > 0) return UnknownTagsProblem(createUnknown);
 
-            var doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
-                req.Attributes, createTagIds);
+            // FR-21 受け入れ基準 ①③④: 本文が付いていればオブジェクトストレージへ格納し、
+            // DB へは参照（storage:// URI）だけを持たせる。`OriginalUri` は別列なので**併存する**。
+            // ID を先に採るのは、オブジェクトキーが文書 ID から決まるためである。
+            Document doc;
+            if (string.IsNullOrEmpty(req.Body))
+            {
+                doc = Document.Create(req.Title, req.OriginalUri, req.ContentType,
+                    req.Attributes, createTagIds);
+            }
+            else
+            {
+                var newId = Guid.NewGuid();
+                var bodyUri = await storage.PutTextAsync(
+                    DocumentBodyIntake.StorageKey(newId), req.Body,
+                    DocumentBodyIntake.ContentType, ct);
+                doc = Document.CreateWithBody(newId, req.Title, bodyUri,
+                    req.OriginalUri, req.ContentType, req.Attributes, createTagIds);
+            }
             db.Documents.Add(doc);
             await db.SaveChangesAsync();
             var createNames = await TagResolver.NamesAsync(db);
@@ -206,6 +228,52 @@ public static class DocumentEndpoints
             return Results.Ok(ToDto(doc, names));
         }).RequireAuthorization(PlatformAuthPolicies.AdminOnly);
 
+        // ── FR-21, UC-03: 文書本文の直接受け入れ（既存文書への投入） ──
+        //
+        // 🔴 **この群にはロールを積まない。** FR-21 要求文は「本文の書き込み権限は ABAC の**動的束縛**
+        // （`doc.owner ∈ { ${current_user} }`）で表現し、**ロールによる判定を追加しない**」と定めており、
+        // ADR-0036 D-07 も同じことを述べている。**上の `write` 群（admin / operator）へ入れてはならない**
+        // —— 入れると受け入れ基準 ⑤「一般利用者が自分の文書の本文を投入できる」が満たせなくなる。
+        // 認証だけは要る（主体が決まらないと動的束縛が評価できない）。
+        var bodyIntake = app.MapGroup("/documents").WithTags("Documents").RequireAuthorization();
+
+        bodyIntake.MapPut("/{id:guid}/body", async (Guid id, UpdateDocumentBodyRequest req,
+            DocumentDbContext db, IObjectStorageClient storage, IPublishEndpoint bus,
+            HttpContext http, CancellationToken ct) =>
+        {
+            if (req.Body is null)
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["body"] = ["本文は必須です。"]
+                });
+
+            var doc = await db.Documents.FindAsync([id], ct);
+            if (doc is null) return Results.NotFound();
+
+            // FR-21 受け入れ基準 ⑤⑧, ADR-0036 D-02/D-07/D-14: 所有者ベースの動的束縛で判定する。
+            // **主体が判定の入力である** —— 同じ文書 ID でも別の利用者なら拒否される（⑧）。
+            // 認可を先に見るのは、他人の文書に対する副作用（格納）をサイズ判定より先に止めるためである。
+            if (!DocumentBodyIntake.CanWrite(doc.Attributes, http.User.Identity?.Name))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+
+            // FR-21 受け入れ基準 ⑥: 1 MB 超は 413。**切り詰めない。**
+            if (DocumentBodyIntake.ExceedsLimit(req.Body))
+                return BodyTooLargeProblem();
+
+            // FR-21 受け入れ基準 ④⑦: 全文をオブジェクトストレージへ格納し、DB は参照のみ持つ。
+            var bodyUri = await storage.PutTextAsync(
+                DocumentBodyIntake.StorageKey(doc.Id), req.Body,
+                DocumentBodyIntake.ContentType, ct);
+            doc.SetMarkdownUri(bodyUri);
+            await db.SaveChangesAsync(ct);
+
+            // FR-21 受け入れ基準 ①②: DocumentUpdated が取り込み（parse→chunk→embed→index）を起動し、
+            // 索引反映を経て RAG 検索の結果として返るようになる。
+            var bodyNames = await TagResolver.NamesAsync(db);
+            await bus.Publish(ToEvent(doc, bodyNames), ct);
+            return Results.Ok(ToDto(doc, bodyNames));
+        }).WithName("DocumentBodyPut");
+
         // FR-06, UC-03: 版履歴一覧（新しい順）。
         g.MapGet("/{id:guid}/versions", async (Guid id, DocumentDbContext db) =>
         {
@@ -298,6 +366,14 @@ public static class DocumentEndpoints
         d.Id, d.Title, d.Status, d.MarkdownUri,
         d.Attributes, TagResolver.ToNames(d.Tags, names), d.UpdatedAt);
 
+    // FR-21 受け入れ基準 ⑥: 本文が上限を超えたときの応答。**413 であって 400 ではない**
+    // （計画が status を名指ししている）。本文へ上限を書き、切り詰めた成功と取り違えられないようにする。
+    private static IResult BodyTooLargeProblem() => Results.Problem(
+        title: "本文が上限を超えています。",
+        detail: $"本文の上限は {DocumentBodyIntake.MaxBytes} バイト（UTF-8）です。"
+              + "上限を超える本文は切り詰めずに拒否します。",
+        statusCode: StatusCodes.Status413PayloadTooLarge);
+
     // SC-05, #635: 辞書に無いタグ名を 400 にする（「既定タグ辞書に整合」。手入力は自動登録しない）。
     private static IResult UnknownTagsProblem(List<string> unknown) =>
         Results.ValidationProblem(new Dictionary<string, string[]>
@@ -311,7 +387,14 @@ public record CreateDocumentRequest(
     string? OriginalUri,
     string? ContentType,
     Dictionary<string, string>? Attributes,
-    List<string>? Tags);
+    List<string>? Tags,
+    // FR-21: 文書の**本文**。**任意**であり、既存の登録経路を壊さない（要求文「本文フィールドは任意」）。
+    // 既定値つきで**末尾へ**足す —— 途中へ挿すと位置引数の呼び出しが壊れ、既定値が無いと
+    // 旧クライアントの要求が必須項目を欠く（IADR-0122 決定 2 と同じ理由）。
+    string? Body = null);
+
+// FR-21, UC-03: 既存文書への本文投入リクエスト（`PUT /documents/{id}/body`）。
+public record UpdateDocumentBodyRequest(string? Body);
 
 public record UpdateDocumentRequest(
     string Title,

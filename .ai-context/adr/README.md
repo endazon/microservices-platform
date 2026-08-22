@@ -337,3 +337,4 @@
 | [IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md) | **Keycloak テーマは `parent=keycloak` 継承 ＋ CSS 追加で作り、`smtpServer` の実値は realm.json へ入れない**。値は Vault → ExternalSecret → `kcadm` の経路で注入し、リポジトリには手順だけを残す。#438 | Accepted |
 | [IADR-0262](./IADR-0262_bulletproof-react-directory-conformance.md) | **計画のディレクトリ構成へは名前だけでなくツリー全体で適合させる**。`@foundation` はエイリアス名を変えず区分ごとに向き先を差し替える（利用は全て `@foundation/<区分>` で裸の参照は 0 件）。#785 | Accepted |
 | [IADR-0263](./IADR-0263_two-stage-graph-expansion-stage.md) | **二段検索の段はデコレータで足し、既定オフは「DI に登録しない」で表す**（フラグ分岐にしない）。近接度は `Score` に混ぜず、合成は再ランクの 1 か所だけに置く。#970 | Accepted |
+| [IADR-0264](./IADR-0264_document-body-intake-path.md) | **本文はオブジェクトストレージへ置き DB は参照だけを持つ**。上限は UTF-8 のバイト数で測り、超過は切り詰めずに 413 で拒む。所有者判定は主体をキャッシュキーに含める。#447 | Accepted |

@@ -4,6 +4,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,6 +35,12 @@ builder.Services.AddOpenApi();
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
+
+// FR-21, ADR-0014/ADR-0015: 文書本文の直接受け入れ経路が本文を格納する先（MinIO）。
+// **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は
+// ConversionService が担っており（`AddPlatformObjectStorageBootstrap`）、同じバケットを
+// 2 か所から作りにいく理由が無い。未設定の dev/test では縮退クライアントが登録される。
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit + RabbitMQ
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。

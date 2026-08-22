@@ -59,6 +59,36 @@ public class Document
         return doc;
     }
 
+    // FR-21, UC-03: **本文を伴う登録**（文書本文の直接受け入れ経路）。
+    // 本文はオブジェクトストレージへ格納済みであり、ここで受け取るのは参照 URI だけである
+    // （受け入れ基準 ④「DB は参照のみ持つ」）。
+    //
+    // **`OriginalUri` を同時に受ける**——受け入れ基準 ③ は本文と `OriginalUri` を排他にせず
+    // **併存**させることを要求している。`CreateNormalized`（取り込み経路）は `OriginalUri` を
+    // 持たないため、そちらを流用すると ③ が満たせない。
+    //
+    // 状態は `normalized` である。本文は正規化済み Markdown としてそのまま受け入れるので、
+    // 変換（ConversionService）を経た文書と同じ状態に置く。**この状態が取り込みと Wiki 同期の
+    // 起動条件**であり、①（取り込み・分割・埋め込みが起動する）はここで成立する。
+    public static Document CreateWithBody(Guid id, string title, string markdownUri,
+        string? originalUri, string? contentType,
+        Dictionary<string, string>? attributes = null, List<Guid>? tags = null)
+    {
+        var doc = new Document
+        {
+            Id = id,
+            Title = title,
+            MarkdownUri = markdownUri,
+            OriginalUri = originalUri,
+            ContentType = contentType,
+            Status = DocumentStatus.Normalized,
+            Attributes = attributes ?? [],
+            Tags = tags ?? [],
+        };
+        doc.Snapshot("created-with-body");
+        return doc;
+    }
+
     public void Update(string title, Dictionary<string, string> attributes, List<Guid> tags,
         string? changeNote = null)
     {

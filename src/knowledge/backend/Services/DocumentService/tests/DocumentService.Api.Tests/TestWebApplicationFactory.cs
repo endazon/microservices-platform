@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
 
 namespace DocumentService.Api.Tests;
 
@@ -17,6 +18,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // ところが DB 名が固定だと**ストアだけがプロセス内で共有され**、
     // 他クラスの書き込みが見えてしまう（`DocumentTest` で実際に発火した。#660）。
     private readonly string _dbName = $"DocumentTest_{Guid.NewGuid()}";
+
+    // FR-21, ADR-0014/ADR-0015: 本文の格納先。**テストから格納内容を読める実装へ差し替える**
+    // （縮退実装 `NullObjectStorageClient` は本文を保持しないため ⑦ が測れない）。
+    public RecordingObjectStorageClient Storage { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -39,6 +44,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // 読み取りはロール不要のため、既定 admin でも非権限ロールでも到達できる。
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+
+            // FR-21: オブジェクトストレージを記録用スタブへ差し替える。
+            services.RemoveAll<IObjectStorageClient>();
+            services.AddSingleton<IObjectStorageClient>(Storage);
 
             // MassTransit をテストハーネスへ差し替え
             services.RemoveAll<IBusControl>();

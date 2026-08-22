@@ -1353,6 +1353,33 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.RagContextPolicy": {
+        "kind": "class",
+        "members": {}
+      },
+      "Knowledge.Contracts.Dtos.RagContextSelection": {
+        "kind": "record",
+        "members": {
+          "ContextChunks": {
+            "source": "positional",
+            "type": "IReadOnlyList<SearchResultDto>",
+            "required": true,
+            "position": 1
+          },
+          "ExcludedFromContextChunkIds": {
+            "source": "positional",
+            "type": "IReadOnlyList<Guid>",
+            "required": true,
+            "position": 2
+          },
+          "SearchResults": {
+            "source": "positional",
+            "type": "IReadOnlyList<SearchResultDto>",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.RejectAiSuggestionRequest": {
         "kind": "record",
         "members": {
