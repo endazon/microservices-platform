@@ -87,8 +87,8 @@
     },
     "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": {
       "project": "AuthorizationService.Api.Tests",
-      "remaining": 74,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": {
       "project": "LlmGateway.Api.Tests",
