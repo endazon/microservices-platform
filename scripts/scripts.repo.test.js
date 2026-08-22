@@ -5199,13 +5199,14 @@ ${r.stderr}`);
     const path = require('path');
     const { execFileSync, spawnSync } = require('child_process');
     const REPO = path.join(__dirname, '..');
-    const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js'];
+    // ★ #975 で check-trace-followthrough.js を追加（範囲の diff と終端の文書を読むためクラス A）。
+    const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js', 'check-trace-followthrough.js'];
     // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
     const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-nul-bytes.js', 'check-plan-id-qualification.js'];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=2 / B=2 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=3 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -5230,7 +5231,7 @@ ${r.stderr}`);
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 該当 4 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 6 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -5421,7 +5422,10 @@ ${r.stderr}`);
         //    **40 → 41**（同上。#956 と同じ PR 群で独立に増えたので、どちらも 39 → 40 と書いていた。
         //    合わせて 41 が正）。git を一切呼ばず kubectl / curl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-deploy-manifests.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 41, `検査器の母集合が 41 本から変わった（${scripts.length} 件）`);
+        // ★ #975 で `check-trace-followthrough.js`（記録と文書の追随。record-rule）を新設した
+        //    ため 41 → 42（ラチェットが設計どおり発火した）。**warn であってゲートではない**
+        //    （IADR-0254 決定 2）が、母集合としては検査器である。
+        assert.strictEqual(scripts.length, 42, `検査器の母集合が 42 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
