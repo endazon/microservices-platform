@@ -652,7 +652,17 @@ options.Discovery.CustomizeHandlerDiscovery(q => q.Excludes.WithCondition(
 
 ⚠️ **未実施**: 共通ヘルパ側（`Platform.Shared.Infrastructure.Tests` の
 `WolverinePipelineExtensionsTests`）に、この除外を直接測るユニットテストは置いていない。
-本 PR は ConversionService 側の結合的な試験で押さえている。**E2 以降で薄いと感じたら足すこと。**
+本 PR は ConversionService 側の結合的な試験で押さえている。
+
+🔴 **これを含む追試を #1004 として起票した。** 同 issue は **「直っていない箇所がある」ではなく
+「確かめていないことがある」を扱う** —— 実測した射程は次のとおりで、当初の見立てより狭い。
+
+| 項目 | 実測 |
+| --- | --- |
+| 出荷中の `pipeline.json` の段 | **5 段すべて `enabled: true`** |
+| **現時点で無効化に依存している段** | **0 段**（欠陥は潜在的で、稼働中の被害は無い） |
+| 欠陥のある経路 | **Wolverine 版のみ**。MassTransit 版は `AddConsumer` を呼ばない形で自動走査が無く、同じ穴は無い |
+| 修正の効き方 | **共通ヘルパ 1 箇所**なので、現在および将来のすべての Wolverine 段に効く |
 
 ## 🔴 引き継ぎ（次セッションへ・2026-08-22 時点）
 
@@ -840,6 +850,7 @@ Testcontainers は containerd 環境で動かないため、`DataSourceTests` �
 | 4 | 共有クラスタの滞留（`wolverine-dead-letter-queue` 3 通 / `interop-b-*-q_error` 1 通） | **利用者判断待ち。触らない**（由来は IADR-0245 に記録済み） |
 | 5 | 段 a・b の運用実行（デプロイ時） | 本 PR の射程外。手順は本書「運用手順」節 |
 | 6 | `ADR-0053` のデッドレター到達カウンタ | **未実装**。手順 10 の射程で別単位 |
+| 7 | **`enabled:false` が段を止めることを外形から確かめる追試** | **#1004 で起票済み**（下記） |
 
 
 ## 未決事項
