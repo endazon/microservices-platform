@@ -27,6 +27,7 @@
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",
       "CitationMapperTests",
+      "RagAnswerContractTests",
       "RagOrchestratorDegradedModelTests",
       "TagFilteringTests"
     ],

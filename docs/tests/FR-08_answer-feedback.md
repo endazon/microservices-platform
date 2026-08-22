@@ -3,7 +3,7 @@ title: テスト仕様書 — FR-08 回答へのフィードバック収集
 type: test-spec
 status: in-progress
 created: 2026-07-03
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -11,7 +11,7 @@ ids: [FR-08, SC-10, UC-01]
 adrs: []
 iadrs: [IADR-0010, IADR-0039, IADR-0044, IADR-0131, IADR-0158]
 specs: [20260703_FR-08_answer-feedback-collection]
-issues: [#521, #586, planning#236, planning#244]
+issues: [#448, #521, #586, planning#236, planning#244]
 -->
 
 # テスト仕様書: 回答へのフィードバック収集
@@ -37,6 +37,7 @@ issues: [#521, #586, planning#236, planning#244]
 | T-17 | **統計の認証** | 無認証 | `GET /feedback/stats` / `GET /bff/feedback/stats` | **401**（403 と区別する。管理系画面のロールゲーティングの決定による） | `Stats_WhenAnonymous_IsUnauthorized`（**両層**） |
 | T-18 | **投稿はロールを問わない** | 認証済・非特権ロール | `POST /feedback` / `POST /bff/feedback` | **201**（狭めすぎていないこと） | `PostFeedback_AsNonPrivilegedRole_IsAllowed`（**両層**） |
 | T-19 | **統計は運用者に開く** | 認証済・`platform-operator` | `GET /feedback/stats` / `GET /bff/feedback/stats` | **200**（運用ダッシュボードと同じ線） | `Stats_AsOperator_IsAllowed`（**両層**） |
+| T-20 | **再投稿は集計を増やさない** | 同一 (AnswerId, UserId) で 👍 → 👎 と送信 | `GET /feedback/stats?answerId` | **`total=1`・`down=1`・`up=0`**（後の投稿が勝つ）。計画の受け入れ基準は**集計の側**を名指ししており、T-03（一覧の件数）だけでは**集計が二重計上する実装へ変えても緑のまま**であった（#448 の変異試験で実測） | `SameUserSameAnswer_CountsOnceInStats` |
 
 > **［2026-08-07 追記 / #586］T-15 / T-16 は計画が 2026-08-07 に追加した受け入れ基準の写像である。**
 > 計画リポジトリの 02_requirements（コミット `3e58b97`。裁定依頼を反映したもの）で、フィードバック収集の要求に
