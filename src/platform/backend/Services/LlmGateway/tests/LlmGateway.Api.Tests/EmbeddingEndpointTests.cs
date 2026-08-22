@@ -49,10 +49,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var client = ClientWith(voyage, ruri);
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("本文", "public", EmbedPurpose.Index));
+            new EmbedApiRequest("本文", "public", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(1024);
         body.Collection.Should().Be("knowledge_chunks_voyage_3_5");
@@ -72,10 +72,10 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var client = ClientWith(voyage, ruri); // 既定 appsettings では selfhosted-ruri は Enabled=false
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("極秘の本文", confidentiality, EmbedPurpose.Index));
+            new EmbedApiRequest("極秘の本文", confidentiality, EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeFalse();       // 索引しない
         body.Vector.Should().BeEmpty();
         body.RoutingReason.Should().Contain("拒否");
@@ -93,9 +93,9 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var client = ClientWith(voyage, ruri);
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("区分不明の本文"));
+            new EmbedApiRequest("区分不明の本文"), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeFalse();
         voyage.Calls.Should().Be(0);
     }
@@ -127,9 +127,9 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         });
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("極秘の本文", "confidential", EmbedPurpose.Index));
+            new EmbedApiRequest("極秘の本文", "confidential", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(768);
         body.Collection.Should().Be("knowledge_chunks_ruri_v3");
@@ -147,9 +147,9 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var client = ClientWith(voyage, ruri);
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("検索クエリ", Confidentiality: null, Purpose: EmbedPurpose.Query));
+            new EmbedApiRequest("検索クエリ", Confidentiality: null, Purpose: EmbedPurpose.Query), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeTrue();
         body.Dimensions.Should().Be(1024);
         body.Collection.Should().Be("knowledge_chunks_voyage_3_5");
@@ -165,9 +165,9 @@ public class EmbeddingEndpointTests(TestWebApplicationFactory factory)
         var client = ClientWith(voyage, ruri);
 
         var resp = await client.PostAsJsonAsync("/embed",
-            new EmbedApiRequest("本文", "public", EmbedPurpose.Index));
+            new EmbedApiRequest("本文", "public", EmbedPurpose.Index), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(TestContext.Current.CancellationToken);
         body!.Embedded.Should().BeFalse();
         body.RoutingReason.Should().Contain("次元");
     }
