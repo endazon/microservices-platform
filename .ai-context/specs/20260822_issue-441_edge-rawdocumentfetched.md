@@ -606,6 +606,117 @@ E1 の器の役は「存在しない」かのように出て、本当の手掛�
 「サービス単位の段階移行」は成立しない（planning#438 で環流済み・未裁定）。
 本書は辺単位・3 段で進める。
 
+## 🔴 引き継ぎ（次セッションへ・2026-08-22 時点）
+
+### いま止まっている理由
+
+**PR #998（head `ace20eb6`）は赤である。** 直さずに止めた（利用者指示）。
+
+```
+失敗: ConversionService.Worker.Tests.PipelineStepRegistrationTests.無効化した段は登録されず購読されない
+理由: Expected a <System.Exception> to be thrown, but no exception was thrown.
+CI  : backend-build (knowledge) / ubuntu-latest / Release  → 失敗
+手元: Windows / Debug → 単体で再実行しても合格（287 ms）
+```
+
+**環境依存である。** 当該テストは「段が無効なら `IMessageBus.InvokeAsync` が宛先なしで失敗する」と
+表明しているが、**Wolverine が宛先なしのとき常に例外を投げるとは限らない**可能性が高い
+（`NoHandlerExecutor` の挙動）。**手元で緑だったのは環境の偶然かもしれず、表明の側を疑うこと。**
+
+🔴 **「握り潰して発行 0 件だけを見る」形へ戻さないこと** —— それだとハンドラが在って何もしない実装と
+区別できない（元のコメント参照）。**登録されていないことを、例外以外の観測点で示す**必要がある
+（例: `IMessageBus` ではなく Wolverine ランタイムのハンドラ表から確かめる）。
+
+### 🔴 「ローカル緑・CI で CS0246」を見たら、真っ先に develop の新着を疑う
+
+**`pull_request` の CI は head と base の *マージ* をビルドする。**
+したがって**自分のブランチに無い削除・改名が効く**。**ローカルの緑は「自分の基点での緑」でしかない。**
+
+**判別手順（この順で 1 分で切り分く）:**
+
+```bash
+git fetch origin
+git log --oneline -10 origin/develop            # 自分の基点以降に何が入ったか
+git merge-base --is-ancestor <自分のrebase基点> origin/develop   && echo "基点は最新" || echo "🔴 基点が古い（これが原因）"
+git log --oneline --diff-filter=D origin/develop -- <見つからない型のファイル>
+```
+
+**実例（本 PR）**: `[BrokerFact]` が「見つからない」と CI だけが言った。
+`#997`（`IADR-0231`）が `FactAttribute` 派生の skip 属性を廃止し `BrokerFactAttribute` を削除したのが、
+**自分の rebase の後**だった。**同一アセンブリで片方のファイルだけ CS0246 は原理的にありえない**という
+消去法が、最後に「前提（＝ CI と手元でツリーが同じ）の方が違う」へ導いた。
+
+**移行先**: `[Fact]` ＋ 各テスト冒頭で `BrokerRequired.SkipUnlessObtainable()`。
+
+⚠️ **移行すると xUnit1051 が露出する。** `Knowledge.IntegrationTests` は
+`XUnit1051Migrated`（`src/Directory.Build.props`）に**既に載っており `WarningsAsErrors` が効く**ので、
+`Task.Delay(...)` 等は `TestContext.Current.CancellationToken` を渡さないと**ビルドが落ちる**。
+本 PR で 2 件出た —— **カスタム属性がアナライザを隠していた「81 箇所」の 82 件目**を新規に作りかけていた。
+
+### 🔴 force push を使わずに PR ブランチへ develop を取り込む手順
+
+CLAUDE.md は force push を禁じているが、**rebase は唯一解ではない**。
+目的は「develop の最新を取り込んだ状態で CI を通す」ことであって「履歴を直線にする」ことではない。
+
+```bash
+git switch -c <work> <PR の現 head SHA>       # 履歴は温存
+GIT_EDITOR=true git merge --no-edit origin/develop   # 追記なので非破壊
+git read-tree -u --reset <完成済みツリーの SHA>       # 完成品をそのまま載せる
+git commit -m "..."                            # 追記（amend しない）
+```
+
+**push 前の確認 3 点（すべて満たすこと）:**
+
+1. `git diff <完成済みSHA> HEAD` が**空**（0 バイト。空でなければ `read-tree` が効いていない）
+2. `git merge-base --is-ancestor <PR の現 head> HEAD` が **EXIT=0**（fast-forward の証拠）
+3. **push 先は PR から取り直す** —— `gh pr view <N> --json headRefName`。
+   `git push origin <work>:<その名前>`。**push 後に GitHub 側の head SHA を取り直して一致を確認する。**
+
+> 🔴 **3 が要る理由（実際に踏んだ）**: `git branch -m` が「同名ブランチが既に存在」で失敗したのに、
+> 続けて実行した `git push origin <その名前>` が**その既存のブランチ**を push した。
+> **`git rev-parse HEAD` は自分のローカルの状態を正しく答えるだけで、push 先を教えない。**
+> **前のコマンドが失敗して次のコマンドの前提が変わったのに、次のコマンドはそれを知らない。**
+
+**副次効果**: この手順だとブランチが develop のマージを含むので、
+**CI がビルドする「head と base のマージ」と手元のツリーが一致し、上の食い違いが構造的に塞がる。**
+
+### E2（辺 `DocumentNormalized`）の着手前提
+
+**射程**: ConversionService（発行）→ DocumentService（購読）。baseline は **11 → 9** の見込み。
+
+🔴 **`#882`（xUnit1051 の段階採用 ratchet）との順番調整が要る。**
+
+| プロジェクト | `remaining` | 状態 | E2 との関係 |
+| --- | --- | --- | --- |
+| `DocumentService.Api.Tests` | **94** | 未移行（`NoWarn` 継続） | **E2 が大幅に書き換える**。先に #882 が移行すると同じ行を 2 度触る |
+| `ConversionService.Worker.Tests` | 138（**古い**） | 未移行 | **E1 が既に書き換えた**ので実数は動いている |
+| `Knowledge.IntegrationTests` | — | **移行済み** | `WarningsAsErrors` が効く。新規テストは最初から `TestContext.Current.CancellationToken` |
+
+- `remaining` は **informational で何もゲートしない**（`scripts/xunit1051-baseline.json` の `$comment` が正本）。
+  **アナライザの報告ベースなので実数より小さく**、手更新なので古くなる。**測り直す手順も同 `$comment` にある。**
+- **E1 が `ConversionService.Worker.Tests` を変更したので、138 は本 PR 時点で既に陳腐化している。**
+
+**E2 で `DocumentService.Api.Tests` をどう扱うか（E1 の形をそのまま使える）:**
+`AddMassTransitTestHarness` を `RecordingMessageBus`（`IMessageBus` のテストダブル）へ差し替える。
+**同ダブルは既に 2 箇所に重複している**（DataSourceService / ConversionService）——
+**E2 で 3 つ目が要るなら、そこで共通化を検討する**（各テストプロジェクトは自己完結しており共有ヘルパが無い）。
+
+**E2 の pre-poisoning は E1 で解消済み** —— `DocumentNormalized` の発行は
+`MassTransitDocumentNormalizedPublisher.cs` に隔離され、**1 ファイル 1 トランスポート**が保たれている。
+`check-event-topology.js` の実測で `発行 [ConversionService(masstransit)]` 単独であることを確認済み。
+
+### やり残し
+
+| # | 内容 | 状態 |
+| --- | --- | --- |
+| 1 | **PR #998 の失敗テストを直す**（上記。表明の側を疑う） | 🔴 未着手・**最優先** |
+| 2 | マージ後に `integration.yml` が実ブローカ試験を**本当に走らせたか**を skip 件数の生読みで確認 | 未実施（マージ前のため） |
+| 3 | `WolverineBrokerEdgeTests.cs:36` の表明メッセージが削除済みの `BrokerFact` を名指ししている | **#997 の担当へ回す。触らない** |
+| 4 | 共有クラスタの滞留（`wolverine-dead-letter-queue` 3 通 / `interop-b-*-q_error` 1 通） | **利用者判断待ち。触らない**（由来は IADR-0245 に記録済み） |
+| 5 | 段 a・b の運用実行（デプロイ時） | 本 PR の射程外。手順は本書「運用手順」節 |
+| 6 | `ADR-0053` のデッドレター到達カウンタ | **未実装**。手順 10 の射程で別単位 |
+
+
 ## 未決事項
 
 1. **手動 API 2 経路の機械的封鎖**を行うか。本書は運用合意で足りるとしたが、
