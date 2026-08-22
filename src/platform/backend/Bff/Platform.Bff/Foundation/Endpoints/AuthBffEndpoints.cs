@@ -9,7 +9,7 @@ using System.Security.Claims;
 
 namespace Platform.Bff.Foundation.Endpoints;
 
-// NFR, SC-16, ADR-0032, IADR-0249, #439: BFF セッションの入口。
+// NFR, SC-16, ADR-0032, IADR-0250, #439: BFF セッションの入口。
 //
 // **画面そのもの（SC-13〜15 のログイン・MFA・パスワード再設定）は Keycloak テーマ側であり
 // 本実装の対象ではない**（ADR-0026）。ここが担うのはセッションの土台と、SC-16（アカウント設定）の
@@ -20,7 +20,7 @@ namespace Platform.Bff.Foundation.Endpoints;
 //
 // 🔴 **パスが `/bff/` 配下なのは飾りではない。** エッジは `/bff` と `/bff/` しか BFF へ通さず、
 // それ以外は SPA へ委譲する。フレームワーク既定（`/signin-oidc` 等）のままでは
-// **認可サーバからのコールバックが BFF に永久に届かない**（IADR-0249 決定 3・実測）。
+// **認可サーバからのコールバックが BFF に永久に届かない**（IADR-0250 決定 3・実測）。
 public static class AuthBffEndpoints
 {
     public static IEndpointRouteBuilder MapAuthBffEndpoints(this IEndpointRouteBuilder app)

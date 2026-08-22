@@ -39,7 +39,7 @@ public static class BffEndpointComposition
         new DelegateBffEndpointModule(a => a.MapConfigBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapConversionBffEndpoints()),
         new DelegateBffEndpointModule(a => a.MapAuthzBffEndpoints()),
-        // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口
+        // NFR, SC-16, ADR-0032 / IADR-0250 / #439 第 3 段(3a): BFF セッションの入口
         // （ログイン開始・ログアウト・現在の身元）。コールバックは OIDC ハンドラが
         // `/bff/auth/callback` で受けるため、ここには現れない。
         new DelegateBffEndpointModule(a => a.MapAuthBffEndpoints()),

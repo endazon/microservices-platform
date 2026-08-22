@@ -1,6 +1,6 @@
 namespace Platform.Bff.Foundation.Session;
 
-// NFR, ADR-0032, IADR-0249, #439: BFF セッション（Token Handler パターン）の構成値。
+// NFR, ADR-0032, IADR-0250, #439: BFF セッション（Token Handler パターン）の構成値。
 //
 // **ブラウザはセッションキーだけを持ち、アクセストークン／リフレッシュトークンは BFF 側にのみ置く。**
 // 値の既定はローカル開発が動く形にしてあるが、**本番は構成で上書きする**（とくに ClientSecret）。
@@ -38,18 +38,18 @@ public sealed class BffSessionOptions
 
     /// <summary>
     /// セッション Cookie 名。`__Host-` 接頭辞は Secure ＋ Path=/ ＋ Domain 無しを
-    /// **ブラウザ側で強制する**（IADR-0249 の Cookie 属性と整合する）。
+    /// **ブラウザ側で強制する**（IADR-0250 の Cookie 属性と整合する）。
     /// </summary>
     public string CookieName { get; set; } = "__Host-msp-session";
 
     /// <summary>
-    /// CSRF 対策のカスタムヘッダ名（IADR-0249 決定 1）。
+    /// CSRF 対策のカスタムヘッダ名（IADR-0250 決定 1）。
     /// **値は何でもよい。存在することが preflight を強制する**ことに意味がある。
     /// </summary>
     public string CsrfHeaderName { get; set; } = "X-MSP-CSRF";
 
     /// <summary>
-    /// セッションの寿命（秒）。**realm の値に合わせる**（IADR-0249 決定 6）。
+    /// セッションの寿命（秒）。**realm の値に合わせる**（IADR-0250 決定 6）。
     /// フレームワーク既定の 14 日には根拠が無いので使わない。
     /// </summary>
     public int SessionLifetimeSeconds { get; set; } = 2592000;

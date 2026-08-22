@@ -46,7 +46,7 @@ public class BffEndpointCompositionTests
             app.MapAssumptionsBffEndpoints();
             app.MapRiskControlsBffEndpoints();
             app.MapMonitorBffEndpoints();
-            // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口。
+            // NFR, SC-16, ADR-0032 / IADR-0250 / #439 第 3 段(3a): BFF セッションの入口。
             app.MapAuthBffEndpoints();
         });
 
@@ -61,7 +61,7 @@ public class BffEndpointCompositionTests
         // knowledge の Knowledge.Bff.Endpoints へ移設済み・例外3 で合成点参照。platform 固有 2（Config/Authz）は
         // platform 同居。AST の Assumptions（#283・AST/SC-01）／RiskControls（#287・AST/SC-02/AST/SC-03）／Monitor（#288・AST/SC-02 watchlist）は
         // #286（IADR-0073）で AiStockTrading.Bff.Endpoints（AST submodule の unit-owned Bff）へ移設済み・例外3 で合成点参照。
-        // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口（Auth）を追加した。
+        // NFR, SC-16, ADR-0032 / IADR-0250 / #439 第 3 段(3a): BFF セッションの入口（Auth）を追加した。
         BffEndpointComposition.Modules.Should().HaveCount(15);
     }
 
@@ -78,7 +78,7 @@ public class BffEndpointCompositionTests
             "/bff/admin/config",
             "/bff/analysis",
             "/bff/assumptions",
-            // NFR, SC-16, ADR-0032 / IADR-0249 / #439 第 3 段(3a): BFF セッションの入口。
+            // NFR, SC-16, ADR-0032 / IADR-0250 / #439 第 3 段(3a): BFF セッションの入口。
             // ログイン開始・ログアウト・現在の身元。**トークンはここからも出さない。**
             // OIDC のコールバック（/bff/auth/callback）はハンドラが直接受けるため、
             // 端点として登録されず本一覧にも現れない。

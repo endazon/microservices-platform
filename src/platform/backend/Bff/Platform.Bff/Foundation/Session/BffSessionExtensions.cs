@@ -10,10 +10,10 @@ using System.Security.Claims;
 
 namespace Platform.Bff.Foundation.Session;
 
-// NFR, ADR-0032, IADR-0249, #439: BFF セッション（Token Handler パターン）の配線。
+// NFR, ADR-0032, IADR-0250, #439: BFF セッション（Token Handler パターン）の配線。
 //
 // 🔴 **ここで上書きしている既定値は、すべて実測して「既定のままでは要件を満たさない」と判った
-// ものである**（IADR-0249 §前提の実測）。**「既定で良さそう」で省略しないこと。**
+// ものである**（IADR-0250 §前提の実測）。**「既定で良さそう」で省略しないこと。**
 public static class BffSessionExtensions
 {
     /// <summary>認証スキーム名。JwtBearer（サービス間）とは別に持つ。</summary>
@@ -26,11 +26,11 @@ public static class BffSessionExtensions
         config.GetSection(BffSessionOptions.SectionName).Bind(options);
         services.AddSingleton(options);
 
-        // ── セッション実体の置き場（IADR-0249 決定 4）
+        // ── セッション実体の置き場（IADR-0250 決定 4）
         services.AddStackExchangeRedisCache(o => o.Configuration = options.RedisConnectionString);
         services.AddSingleton<RedisTicketStore>();
 
-        // ── DataProtection の鍵リング（IADR-0249 決定 5）
+        // ── DataProtection の鍵リング（IADR-0250 決定 5）
         //
         // 🔴 **共有しないと、リクエストが別レプリカへ振られた瞬間に Cookie を復号できず、
         // ログアウトしたように見える。単一プロセスの単体テストでは絶対に捕まらない**
@@ -56,7 +56,7 @@ public static class BffSessionExtensions
                 o.Cookie.HttpOnly = true;
                 // 実測: 既定は SameAsRequest。ADR-0032 §決定 は Secure を要求するので固定する。
                 o.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-                // ADR-0032 §決定 と IADR-0249 決定 1（CSRF の 1 枚目の壁）。
+                // ADR-0032 §決定 と IADR-0250 決定 1（CSRF の 1 枚目の壁）。
                 o.Cookie.SameSite = SameSiteMode.Lax;
                 // `__Host-` 接頭辞の条件（Secure ＋ Path=/ ＋ Domain 無し）を満たす。
                 o.Cookie.Path = "/";
@@ -129,7 +129,7 @@ public static class BffSessionExtensions
                 o.Scope.Add("offline_access");
             });
 
-        // 🔴 IADR-0249 決定 4: `SessionStore` を DI 経由で差し込む。
+        // 🔴 IADR-0250 決定 4: `SessionStore` を DI 経由で差し込む。
         // これが無いとチケットは Cookie 本体に載り（実測した既定）、**サーバ側に消す対象が無いため
         // 「全セッション即時失効」が構造的に実現できない。**
         services.AddOptions<CookieAuthenticationOptions>(SessionScheme)

@@ -2743,7 +2743,7 @@ ${r.stderr}`);
       assert.ok(!out.includes('omment'), 'コメントが残っている');
     });
 
-    // ── NFR, ADR-0032 / IADR-0249 / #439: 「認証チャレンジの発行しかしない端点」だけ無認証を許す。
+    // ── NFR, ADR-0032 / IADR-0250 / #439: 「認証チャレンジの発行しかしない端点」だけ無認証を許す。
     //
     // 🔴 **これは allowlist の追加ではなく、判定条件の精密化である。**
     // 本検査器は「allowlist は事故を隠し、検査器が形骸化する」という設計判断で allowlist を
@@ -2969,7 +2969,7 @@ ${r.stderr}`);
         walkBff(pathD.join(__dirname, '..', r));
       }
       const eps = authz.collectImplementation(bffFiles.sort(), real.consts, real.policies);
-      // NFR, ADR-0032 / IADR-0249 / #439: **認証チャレンジの発行しかしない端点は除く。**
+      // NFR, ADR-0032 / IADR-0250 / #439: **認証チャレンジの発行しかしない端点は除く。**
       // ログイン開始は本質的に無認証である（ログインするために認証は要求できない）。
       // 🔴 **allowlist ではない** —— 経路名を列挙するのではなく、`isChallengeOnly` が
       // 「ハンドラが資料を返さないこと」で判定する。データも返す形は依然として違反である

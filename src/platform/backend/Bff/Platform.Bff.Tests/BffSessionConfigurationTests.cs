@@ -10,7 +10,7 @@ using Platform.Bff.Foundation.Session;
 
 namespace Platform.Bff.Tests;
 
-// NFR, ADR-0032, IADR-0249, #439 第 3 段(3a): **実測した既定値の上書きを固定する。**
+// NFR, ADR-0032, IADR-0250, #439 第 3 段(3a): **実測した既定値の上書きを固定する。**
 //
 // 🔴 **本ファイルの存在理由は「既定値のままでは要件を満たさない」ことが実測で判ったからである。**
 // 6 つの既定を上書きしており、**どれも黙って戻ると要件が静かに壊れる**:
@@ -61,7 +61,7 @@ public class BffSessionConfigurationTests
         o.UsePkce.Should().BeTrue();
     }
 
-    // ★ IADR-0249 決定 2: form_post だと correlation / nonce が SameSite=None（＝Secure 必須）になり、
+    // ★ IADR-0250 決定 2: form_post だと correlation / nonce が SameSite=None（＝Secure 必須）になり、
     // 平文 http のローカル開発でログインが壊れる。
     [Fact]
     public void Callback_is_received_by_query_so_correlation_cookies_can_stay_lax()
@@ -74,7 +74,7 @@ public class BffSessionConfigurationTests
         o.NonceCookie.SameSite.Should().Be(SameSiteMode.Lax);
     }
 
-    // ★ IADR-0249 決定 3: エッジは /bff と /bff/ しか BFF へ通さない。
+    // ★ IADR-0250 決定 3: エッジは /bff と /bff/ しか BFF へ通さない。
     // 既定（/signin-oidc 等）のままでは認可サーバからのコールバックが BFF に永久に届かない。
     [Fact]
     public void All_oidc_paths_live_under_the_bff_prefix_that_the_edge_routes()
@@ -87,7 +87,7 @@ public class BffSessionConfigurationTests
         o.RemoteSignOutPath.Value.Should().StartWith("/bff/");
     }
 
-    // ★ IADR-0249 決定 4: **これが「全セッション即時失効」の実現手段である。**
+    // ★ IADR-0250 決定 4: **これが「全セッション即時失効」の実現手段である。**
     // 既定（null）だとチケットが Cookie 本体に載り、サーバ側に消す対象が無い。
     [Fact]
     public void Session_lives_server_side_so_it_can_be_revoked_immediately()
