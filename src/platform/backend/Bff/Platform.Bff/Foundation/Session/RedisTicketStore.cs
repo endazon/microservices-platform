@@ -5,7 +5,7 @@ using System.Security.Claims;
 
 namespace Platform.Bff.Foundation.Session;
 
-// NFR, ADR-0032, IADR-0250 決定 4, #439: セッション実体を Redis に置く。
+// NFR, ADR-0032, IADR-0251 決定 4, #439: セッション実体を Redis に置く。
 //
 // 🔴 **これが「全セッション即時失効」の実現手段そのものである。**
 // `CookieAuthenticationOptions.SessionStore` の既定は `null` で、その場合チケットは

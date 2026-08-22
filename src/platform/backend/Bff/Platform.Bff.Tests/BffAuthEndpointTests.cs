@@ -5,7 +5,7 @@ using Platform.Bff.Foundation.Session;
 
 namespace Platform.Bff.Tests;
 
-// NFR, SC-16, ADR-0032, IADR-0250, #439 第 3 段(3a): BFF セッションの入口の性質。
+// NFR, SC-16, ADR-0032, IADR-0251, #439 第 3 段(3a): BFF セッションの入口の性質。
 public class BffAuthEndpointTests
 {
     // ── オープンリダイレクト防止（否定形）と、**その陽性対照**
@@ -31,7 +31,7 @@ public class BffAuthEndpointTests
     public void Login_return_url_inside_this_site_is_preserved(string returnUrl)
         => AuthBffEndpoints.SafeReturnUrl(returnUrl).Should().Be(returnUrl);
 
-    // ── CSRF（IADR-0250 決定 1 の 2 枚目の壁）
+    // ── CSRF（IADR-0251 決定 1 の 2 枚目の壁）
     private static DefaultHttpContext Request(string method, bool withSessionCookie)
     {
         var ctx = new DefaultHttpContext();

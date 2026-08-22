@@ -48,7 +48,7 @@ tags:
   - name: Config
     description: "FR-15, SC-11, ADR-0018, IADR-0029/IADR-0030: 構成情報 API（読み取り専用）。実効構成とドリフトを管理者・運用者（ConfigViewer ポリシー）へ返す"
   - name: Auth
-    description: "NFR, SC-16, ADR-0032, IADR-0250: BFF セッション（Token Handler）。トークンはブラウザへ出さず BFF 側の Redis セッションにのみ保持する"
+    description: "NFR, SC-16, ADR-0032, IADR-0251: BFF セッション（Token Handler）。トークンはブラウザへ出さず BFF 側の Redis セッションにのみ保持する"
   - name: Notifications
     description: "FR-22, UC-11, ADR-0037, ADR-0045, IADR-0215: 利用者本人へのアプリ内通知。**本文は件数と期限のみ**で、資料のタイトル・本文を含めない（スキーマに自由文の項目を置かない）"
 

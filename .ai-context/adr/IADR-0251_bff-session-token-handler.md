@@ -1,5 +1,5 @@
 ---
-title: IADR-0250 BFF セッション（Token Handler）の内部設計 — CSRF は SameSite+ヘッダ、コールバックは query、失効は TicketStore の削除
+title: IADR-0251 BFF セッション（Token Handler）の内部設計 — CSRF は SameSite+ヘッダ、コールバックは query、失効は TicketStore の削除
 type: impl-adr
 status: Accepted
 related_ids: [NFR, SC-16, ADR-0026, ADR-0031, ADR-0032, IADR-0033, IADR-0121, IADR-0248]
@@ -13,7 +13,7 @@ related_specs:
   - ../specs/20260822_issue-439_bff-session-token-handler.md
 ---
 
-# IADR-0250: BFF セッション（Token Handler）の内部設計
+# IADR-0251: BFF セッション（Token Handler）の内部設計
 
 > 実装リポジトリ内の意思決定記録。計画 ADR（`ADR-XXXX`）とは別系統（`IADR-XXXX`）で、実装に閉じた決定を記録する。
 
