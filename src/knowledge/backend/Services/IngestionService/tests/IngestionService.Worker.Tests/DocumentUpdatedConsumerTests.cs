@@ -49,14 +49,14 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
 
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
             // 見出し 2 つ → 2 チャンク。パース本文の内容がチャンクに反映される。
             store.Upserts.Should().HaveCount(2);
             store.Upserts.Select(u => u.Text).Should().Contain(t => t.Contains("本文アルファ"));
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // FR-03, SC-02, #536（IADR-0149 決定 5）: **更新日時はイベントが運んできた値をそのまま索引へ渡す。**
@@ -75,14 +75,14 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent(updatedAt: documentUpdatedAt));
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(updatedAt: documentUpdatedAt), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             store.Upserts.Should().NotBeEmpty();
             store.Upserts.Should().OnlyContain(u => u.UpdatedAt == documentUpdatedAt,
                 "索引には文書の更新日時が載る（取り込み時刻ではない）");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-03: ペイロードに chunk_index / tags / attributes が保持される
@@ -97,14 +97,14 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             store.Upserts.Select(u => u.ChunkIndex).Should().BeEquivalentTo(new[] { 0, 1 });
             store.Upserts.Should().OnlyContain(u => u.Tags.Contains("knowledge-mgmt"));
             store.Upserts.Should().OnlyContain(u => u.Attributes["confidentiality"] == "internal");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-04: 決定的チャンク ID により再取り込みで ID が一致する（冪等）
@@ -121,11 +121,11 @@ public class DocumentUpdatedConsumerTests
             await harness.Start();
             try
             {
-                await harness.Bus.Publish(SampleEvent());
-                (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+                await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
+                (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
                 return store.Upserts.Select(u => u.ChunkId).ToList();
             }
-            finally { await harness.Stop(); }
+            finally { await harness.Stop(TestContext.Current.CancellationToken); }
         }
 
         var first = await IngestOnce();
@@ -145,10 +145,10 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
-            (await harness.Published.Any<IngestionCompleted>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
+            (await harness.Published.Any<IngestionCompleted>(TestContext.Current.CancellationToken)).Should().BeTrue();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-05: MarkdownUri が null なら登録 0 件で正常終了する（例外フロー E1）
@@ -163,11 +163,11 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent(markdownUri: null));
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(markdownUri: null), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
             store.Upserts.Should().BeEmpty();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-07 (FR-02, ADR-0016): 文書の機密区分（confidentiality）が埋め込みへ渡される。
@@ -184,12 +184,12 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent()); // confidentiality=internal
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken); // confidentiality=internal
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             embed.Requests.Should().OnlyContain(r => r.Confidentiality == "internal");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-08 (FR-02, ADR-0016): ゲートウェイが返したモデル別コレクションへ索引する。
@@ -205,12 +205,12 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             store.Upserts.Should().OnlyContain(u => u.Collection == "knowledge_chunks_voyage_3_5");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-09 (FR-02, FR-05, ADR-0016): fail-closed。埋め込みが Embedded=false（高機密でセルフホスト未有効等）なら
@@ -227,14 +227,14 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent(confidentiality: "confidential"));
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(confidentiality: "confidential"), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             // 索引は 0 件（fail-closed で書き込まない）。埋め込みは試行される（機密区分は渡る）。
             store.Upserts.Should().BeEmpty();
             embed.Requests.Should().OnlyContain(r => r.Confidentiality == "confidential");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-11 (FR-02, Issue #98): 一時的な埋め込み障害（Retryable=true）は fail-closed（意図的スキップ）と区別し、
@@ -252,15 +252,15 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
 
             // 消費は例外で失敗（fault）する。恒久スキップにはしない。
-            (await harness.Consumed.Any<DocumentUpdated>(x => x.Exception is not null)).Should().BeTrue();
+            (await harness.Consumed.Any<DocumentUpdated>(x => x.Exception is not null, TestContext.Current.CancellationToken)).Should().BeTrue();
             // 一時障害では索引せず、完了イベントも発行しない（取りこぼしを DLQ で検知可能にする）。
             store.Upserts.Should().BeEmpty();
-            (await harness.Published.Any<IngestionCompleted>()).Should().BeFalse();
+            (await harness.Published.Any<IngestionCompleted>(TestContext.Current.CancellationToken)).Should().BeFalse();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // T-10 (FR-02, FR-05, ADR-0016): 取り込み冒頭で全モデル別コレクションから当該文書を削除する
@@ -276,12 +276,12 @@ public class DocumentUpdatedConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(SampleEvent());
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(SampleEvent(), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             store.DeletedFromAll.Should().Contain(SampleEvent().DocumentId);
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 }
 

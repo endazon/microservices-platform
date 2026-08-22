@@ -57,8 +57,8 @@
     },
     "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": {
       "project": "IngestionService.Worker.Tests",
-      "remaining": 33,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": {
       "project": "RetrievalService.Api.Tests",
