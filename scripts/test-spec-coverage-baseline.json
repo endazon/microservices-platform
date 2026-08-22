@@ -123,6 +123,13 @@
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
     ],
+    "docs/tests/FR-22_user-notifications.md": [
+      "EmailIndependenceTests",
+      "EmailSendRateTests",
+      "NotificationContractTests",
+      "NotificationOwnerScopingTests",
+      "NotificationRetentionTests"
+    ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
     ],

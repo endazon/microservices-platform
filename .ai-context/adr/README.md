@@ -340,3 +340,4 @@
 | [IADR-0264](./IADR-0264_document-body-intake-path.md) | **本文はオブジェクトストレージへ置き DB は参照だけを持つ**。上限は UTF-8 のバイト数で測り、超過は切り詰めずに 413 で拒む。所有者判定は主体をキャッシュキーに含める。#447 | Accepted |
 | [IADR-0265](./IADR-0265_llm-usage-cost-and-knowledge-health-metrics.md) | **単価は有効期間つきの設定として持ち、金額換算はゲートウェイ側で行う**（ダッシュボードに単価を書かない）。期間外は無音の 0 円にせず警告し、金額を積まない。#443 | Accepted |
 | [IADR-0266](./IADR-0266_ai-suggestion-llm-boundary.md) | **スコープの絞りは候補列挙の段で確定させ、LLM へ渡す値を型で塞ぐ**。「渡してから捨てる」との差は後段フィルタの有無ではなく、非許可ノードを持つ値が呼び出しの引数として存在し得るかである。#915 | Accepted |
+| [IADR-0267](./IADR-0267_notification-service-backend-subject-scoping-and-send-rate.md) | **宛先の主体はトークンからのみ解決し、要求に主体の口を作らない**。永続化とメール送出を別トランザクションに分け、上限到達も 1 事象として状態・監査ログ・計測の 3 面へ残す。#600 | Accepted |

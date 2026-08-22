@@ -112,6 +112,11 @@
       "remaining": 0,
       "migrated": true
     },
+    "src/platform/backend/Services/NotificationService/tests/NotificationService.Api.Tests/NotificationService.Api.Tests.csproj": {
+      "project": "NotificationService.Api.Tests",
+      "remaining": 0,
+      "migrated": true
+    },
     "src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj": {
       "project": "Platform.Shared.Infrastructure.Tests",
       "remaining": 4,

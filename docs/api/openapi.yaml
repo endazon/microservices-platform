@@ -462,8 +462,10 @@ paths:
   # 配信は **SPA からのポーリング**（既定 60 秒）である。SSE は移行第 4 段（#788）の射程なので使わない
   # ——したがってこの 2 本は orval の生成対象になる（orval-bff-only.cjs の SSE 除外規則に当たらない）。
   #
-  # **実装（BFF 端点・NotificationService）は未着手である**（IADR-0215 決定 6 / #600）。契約が先に載っている。
-  # このため check-bff-authz-docs.js（実装 → 契約の一方向）は当面この 2 本を検査しない。
+  # **後段（NotificationService）は実装済みだが、BFF 端点はまだである**（IADR-0267 決定 5 / #600）。
+  # 後段は同じ形の面（/notifications, /notifications/{id}/read）を持ち、宛先はトークンの主体（sub）
+  # だけで絞る —— BFF は主体をパラメータで渡さず、利用者のトークンをそのまま後段へ届けること。
+  # BFF 端点が無い間、check-bff-authz-docs.js（実装 → 契約の一方向）はこの 2 本を検査しない。
   /bff/notifications:
     get:
       # 認証は要るがロールは問わない。**通知は主体（JWT の sub）で絞る**——役割ではない。
