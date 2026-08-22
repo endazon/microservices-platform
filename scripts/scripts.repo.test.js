@@ -5101,7 +5101,11 @@ module.exports = ({ ok, assert }) => {
         //    claude-review の下限を追い越したことの検知）を新設したため 37 → 38（同上）。
         //    GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 38, `検査器の母集合が 38 本から変わった（${scripts.length} 件）`);
+        // ★ #882 / IADR-0235 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
+        //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
+        //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 39, `検査器の母集合が 39 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
