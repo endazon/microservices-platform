@@ -318,3 +318,4 @@
 | [IADR-0242](./IADR-0242_graph-hop-abac-and-typed-edge-schema.md) | グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ。認可 API はフィルタ集合しか返さないため、素朴に使うと「探索してから濾す」形になる。#908 | Proposed |
 | [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) | Keycloak issuer をエッジ host（`https://keycloak.localhost`）へ移す。.NET は `Auth:MetadataAddress`（in-cluster）＋`Auth:ValidIssuers`（エッジ）で追随し、非 .NET クライアントはエッジへ直接到達する。#780 | Accepted |
 | [IADR-0244](./IADR-0244_observability-test-seam-and-unobservable-otlp-endpoint.md) | **テレメトリ設定は「三信号のリソース一致」で守り、OTLP 送信先は internal のシームで導出だけ守る**。送信先は 3 経路で観測不能を確認。届いているかは検出しない。#901 | Accepted |
+| [IADR-0247](./IADR-0247_integration-stack-ci-readiness-gate.md) | **`k8s-local-up.sh` の EXIT=0 は readiness の証明にならない**。統合スタックは nightly で起こし、6 門を fail-closed で判定。k3s は pin。#783 | Accepted |
