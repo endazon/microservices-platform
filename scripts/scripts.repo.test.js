@@ -1316,7 +1316,7 @@ module.exports = ({ ok, assert }) => {
     assert.ok(text.includes('比 行 2.00'), text);
   });
 
-  // --- check-coverage-floor: レポート跨ぎの行重複排除（#900 / IADR-0235） ---
+  // --- check-coverage-floor: レポート跨ぎの行重複排除（#900 / IADR-0236） ---
   //
   // NFR（#900）: テストプロジェクト A と B が同じ共有ライブラリを参照すると、同じソース行が
   // 両方の Cobertura に載り、単純合算では分母に 2 回入る（#899 で実際に床が割れた）。

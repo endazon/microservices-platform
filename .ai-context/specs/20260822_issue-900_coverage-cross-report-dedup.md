@@ -7,7 +7,7 @@ related_ids:
   - IADR-0118
   - IADR-0123
   - IADR-0232
-  - IADR-0235
+  - IADR-0236
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
