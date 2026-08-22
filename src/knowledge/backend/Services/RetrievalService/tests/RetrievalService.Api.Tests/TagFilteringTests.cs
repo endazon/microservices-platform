@@ -37,7 +37,7 @@ public class TagFilteringTests
             Chunk("営業の文書", Dept("sales"), ["営業"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]);
+            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("経理の文書");
     }
@@ -49,7 +49,7 @@ public class TagFilteringTests
         var store = StoreWith(Chunk("複数タグ", Dept("finance"), ["経理", "規程", "年次"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["規程"])]);
+            [new AttributeFilter(AttributeValueKeys.Tags, ["規程"])], TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle("配列の 2 番目の要素でも一致する");
     }
@@ -64,7 +64,7 @@ public class TagFilteringTests
             Chunk("無関係", Dept("hr"), ["採用"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理", "営業"])]);
+            [new AttributeFilter(AttributeValueKeys.Tags, ["経理", "営業"])], TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(2);
     }
@@ -78,7 +78,7 @@ public class TagFilteringTests
             Chunk("営業", Dept("sales"), ["営業"]));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter("department", ["finance"])]);
+            [new AttributeFilter("department", ["finance"])], TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("経理");
     }
@@ -96,7 +96,7 @@ public class TagFilteringTests
         [
             new AttributeFilter(AttributeValueKeys.Tags, ["経理"]),
             new AttributeFilter("department", ["finance"]),
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentTitle.Should().Be("両方満たす");
     }
@@ -109,7 +109,7 @@ public class TagFilteringTests
         var store = StoreWith(Chunk("タグ無し", Dept("finance"), []));
 
         var results = await store.SearchAsync([0.1f], 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]);
+            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
     }
@@ -123,7 +123,7 @@ public class TagFilteringTests
             Chunk("営業の文書", Dept("sales"), ["営業"]));
 
         var results = await store.KeywordSearchAsync("文書", 10,
-            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])]);
+            [new AttributeFilter(AttributeValueKeys.Tags, ["経理"])], TestContext.Current.CancellationToken);
 
         results.Should().OnlyContain(r => r.DocumentTitle == "経理の文書");
     }

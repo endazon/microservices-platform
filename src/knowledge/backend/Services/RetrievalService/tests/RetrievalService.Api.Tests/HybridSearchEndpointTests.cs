@@ -37,10 +37,10 @@ public class HybridSearchEndpointTests
         // FR-05: 検索には許可スコープが必須（fail-closed）。全件許可の空フィルタ＋GrantsAccess=true。
         var resp = await factory.CreateClient()
             .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 10,
-                Scope: new AccessScope([], GrantsAccess: true)));
+                Scope: new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().NotBeEmpty();
         body.Results[0].ChunkId.Should().Be(target.ChunkId, "キーワード一致は両系統に出現し最上位になる");
         // 結果に出典が付く（受け入れ基準①）
@@ -61,10 +61,10 @@ public class HybridSearchEndpointTests
         var resp = await factory.CreateClient().PostAsJsonAsync("/search",
             new SearchRequest("四半期 売上", TopK: 10,
                 AttributeFilters: new() { ["dept"] = "sales" },
-                Scope: new AccessScope([], GrantsAccess: true)));
+                Scope: new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         var ids = body!.Results.Select(r => r.ChunkId).ToList();
         ids.Should().Contain(authorized.ChunkId);
         ids.Should().NotContain(forbidden.ChunkId, "権限の無い文書は結果に現れない");
@@ -83,10 +83,10 @@ public class HybridSearchEndpointTests
         var scope = new AccessScope(
             [new AttributeFilter("confidentiality", ["public", "internal"])], GrantsAccess: true);
         var resp = await factory.CreateClient().PostAsJsonAsync("/search",
-            new SearchRequest("製品 概要", TopK: 10, Scope: scope));
+            new SearchRequest("製品 概要", TopK: 10, Scope: scope), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         var ids = body!.Results.Select(r => r.ChunkId).ToList();
         ids.Should().Contain([pub.ChunkId, intl.ChunkId]);
         ids.Should().NotContain(conf.ChunkId, "許可値集合に無い機密文書は現れない");
@@ -104,9 +104,9 @@ public class HybridSearchEndpointTests
         var scope = new AccessScope(
             [new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
         var resp = await factory.CreateClient().PostAsJsonAsync("/search",
-            new SearchRequest("規程 文書", TopK: 10, Scope: scope));
+            new SearchRequest("規程 文書", TopK: 10, Scope: scope), TestContext.Current.CancellationToken);
 
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         var ids = body!.Results.Select(r => r.ChunkId).ToList();
         ids.Should().Contain(tagged.ChunkId);
         ids.Should().NotContain(untagged.ChunkId, "属性キーを持たない文書は除外される");
@@ -122,10 +122,10 @@ public class HybridSearchEndpointTests
 
         var deniedScope = new AccessScope([], GrantsAccess: false);
         var resp = await factory.CreateClient().PostAsJsonAsync("/search",
-            new SearchRequest("公開 文書", TopK: 10, Scope: deniedScope));
+            new SearchRequest("公開 文書", TopK: 10, Scope: deniedScope), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty("許可ポリシーが無い利用者は何も閲覧できない");
     }
 
@@ -142,10 +142,10 @@ public class HybridSearchEndpointTests
             Chunk("公開 手順 書"));
 
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search", new SearchRequest("公開", TopK: 10));
+            .PostAsJsonAsync("/search", new SearchRequest("公開", TopK: 10), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty("Scope 未指定は deny-by-default（fail-closed）で 0 件");
     }
 
@@ -157,10 +157,10 @@ public class HybridSearchEndpointTests
         await SeedAsync(factory, Chunk("何らかの 文書"));
 
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search", new SearchRequest("", TopK: 5));
+            .PostAsJsonAsync("/search", new SearchRequest("", TopK: 5), TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         body!.Results.Should().BeEmpty();
     }
 
@@ -170,9 +170,9 @@ public class HybridSearchEndpointTests
         TestWebApplicationFactory factory, string key, AccessScope? scope)
     {
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/search/attribute-values", new AttributeValuesRequest(key, scope));
+            .PostAsJsonAsync("/search/attribute-values", new AttributeValuesRequest(key, scope), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        return (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>())!;
+        return (await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken))!;
     }
 
     // **ADR-0043 決定 1**: 返すのは「**到達できる文書に実際に付与された値**」だけである。
@@ -206,12 +206,12 @@ public class HybridSearchEndpointTests
             Chunk("C", tags: ["単独"]));
 
         var resp = await factory.CreateClient().PostAsJsonAsync("/search/attribute-values",
-            new AttributeValuesRequest(AttributeValueKeys.Tags, new AccessScope([], GrantsAccess: true)));
-        var raw = await resp.Content.ReadAsStringAsync();
+            new AttributeValuesRequest(AttributeValueKeys.Tags, new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
+        var raw = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         raw.Should().NotContainAny("count", "Count", "件数");
         // 「共有」は 2 件あるが、応答には値が 1 つ現れるだけで多重度も出ない。
-        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>();
+        var body = await resp.Content.ReadFromJsonAsync<AttributeValuesResponse>(TestContext.Current.CancellationToken);
         body!.Values.Should().Equal(["共有", "単独"]);
     }
 
@@ -229,8 +229,8 @@ public class HybridSearchEndpointTests
             [new AttributeFilter("confidentiality", ["internal"])], GrantsAccess: true);
 
         var searchResp = await factory.CreateClient().PostAsJsonAsync("/search",
-            new SearchRequest("アルファ", TopK: 10, Scope: scope));
-        var search = await searchResp.Content.ReadFromJsonAsync<SearchResponse>();
+            new SearchRequest("アルファ", TopK: 10, Scope: scope), TestContext.Current.CancellationToken);
+        var search = await searchResp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
         var values = await ListValuesAsync(factory, AttributeValueKeys.Tags, scope);
 
         search!.Results.Should().ContainSingle("スコープが 1 件へ絞る");
