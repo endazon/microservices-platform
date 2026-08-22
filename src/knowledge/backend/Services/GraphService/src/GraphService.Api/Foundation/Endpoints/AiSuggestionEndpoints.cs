@@ -91,7 +91,7 @@ public static class AiSuggestionEndpoints
                 if (!duplicate) db.Edges.Add(edge);
             }
             // タグ提案の反映先は DocumentService のタグであり、本サービスは辺を持たない。
-            // 反映の経路は #915 / #918 で決める（本 issue は状態遷移までを射程とする）。
+            // 反映の経路は #918 で決める（#915 は生成までを射程とし、承認後の反映は含まない）。
 
             await db.SaveChangesAsync(ct);
             return Results.Ok(ToDto(suggestion));
@@ -119,6 +119,26 @@ public static class AiSuggestionEndpoints
             await db.SaveChangesAsync(ct);
             return Results.Ok(ToDto(suggestion));
         }).WithName("RejectAiSuggestion").Produces<AiSuggestionDto>();
+
+        // FR-18, ADR-0034 決定 5, ADR-0051 決定 1〜4, IADR-0266 (#915): **提案の生成。**
+        //
+        // 🔴 **1 実行 = 1 利用者のスコープ**である（ADR-0051 決定 4 の唯一の要件）。要求から解決した
+        // スコープが、その実行で LLM へ渡せるものを決める。
+        //
+        // 🔴 **応答は生成できた提案の配列のみ。** 「候補が N 件あった」「N 件落とした」を返さない
+        // （ADR-0051 決定 2「件数・存在も出さない」）。起点が見えない場合は 404（403 ではない）。
+        g.MapPost("/generate/{documentId:guid}", async (Guid documentId,
+            IGraphAccessResolver accessResolver, AiSuggestionGenerator generator,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var scope = await accessResolver.ResolveAsync(http, ct);
+
+            var created = await generator.GenerateAsync(documentId, scope, ct);
+            // 「存在しない」と「見えない」を同じ 404 に倒す（ADR-0034 決定 2）。
+            if (created is null) return NotFound();
+
+            return Results.Ok(created.Select(ToDto).ToList());
+        }).WithName("GenerateAiSuggestions").Produces<List<AiSuggestionDto>>();
 
         return app;
     }

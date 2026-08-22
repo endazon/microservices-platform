@@ -1,5 +1,6 @@
 using GraphService.Api.Foundation.Domain;
 using GraphService.Api.Foundation.Services;
+using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Foundation.Ports;
 
@@ -41,4 +42,24 @@ public interface IGraphStore
     // 別の話である（あちらは集計値を**応答に載せる**話、こちらは**内部の展開判断**に使う話）。
     Task<IReadOnlyDictionary<Guid, int>> LoadDegreesAsync(
         IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default);
+
+    // FR-18, ADR-0051 決定 3, ADR-0033 決定 7, IADR-0266 決定 2 (#915):
+    // **AI 提案の候補列挙。スコープ述語をこの段で適用する。**
+    //
+    // 🔴 **戻り値は IReadOnlyList<AuthorizedNode> しかない。** ADR-0051 決定 3 は順序を
+    // 「全文書横断で類似度 → **スコープで絞る** → LLM へ渡す」と定め、**絞りを LLM 呼び出しより
+    // 後ろに置くことを禁じた。** 本口が非許可ノードを返さないことで、「LLM へ渡してから捨てる」形が
+    // 呼び出し側で書けなくなる。**署名を GraphDocument や Guid へ緩めてはならない。**
+    //
+    // 同じ段で次も落とす（DB から出さない）。
+    //   - 起点自身
+    //   - **却下済みの組み合わせ**（ADR-0033 決定 7「却下した組み合わせは以後の提案生成で候補から除外」）
+    //   - 既に辺がある組み合わせ・既に提案がある組み合わせ（二重提案の防止）
+    //
+    // 🔴 **落とした件数を返さない。** ADR-0051 決定 2 の「件数・存在も出さない」に従う。
+    Task<IReadOnlyList<AuthorizedNode>> EnumerateAuthorizedCandidatesAsync(
+        Guid originDocumentId,
+        IReadOnlyCollection<Guid> candidateDocumentIds,
+        AccessScopeResponse scope,
+        CancellationToken ct = default);
 }

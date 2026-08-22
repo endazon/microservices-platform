@@ -1,3 +1,4 @@
+using GraphService.Api.Composable.Adapters;
 using GraphService.Api.Foundation.Endpoints;
 using GraphService.Api.Foundation.Persistence;
 using GraphService.Api.Foundation.Ports;
@@ -38,6 +39,18 @@ builder.Services.AddScoped<IGraphStore, EfGraphStore>();
 builder.Services.AddScoped<GraphTraversal>();
 // FR-18 (#914): 却下・解除の時刻。テストから固定できるよう TimeProvider を通す。
 builder.Services.AddSingleton(TimeProvider.System);
+
+// FR-18, ADR-0010, ADR-0034 決定 5, ADR-0051, IADR-0266 (#915): AI 提案の生成。
+//
+// 🔴 **LLM への送信は SuggestionPrompt（封）を通る経路しか無い。** 封の構築には
+// AuthorizedNode と AccessScopeResponse の両方が要る（IADR-0266 決定 1）。
+builder.Services.AddHttpClient<ISuggestionLlmClient, LlmGatewaySuggestionClient>(c =>
+    c.BaseAddress = new Uri(builder.Configuration["Services:LlmGateway"]
+        ?? "http://llm-gateway:5010"));
+// ADR-0051 決定 1 が認めた「全文書横断の類似度」の口が RetrievalService に無いため、
+// **既定は空を返すアダプタである**（fail-closed 側。IADR-0266 論点 C）。
+builder.Services.AddScoped<ISimilarityCandidateSource, UnconfiguredSimilarityCandidateSource>();
+builder.Services.AddScoped<AiSuggestionGenerator>();
 
 // FR-15, ADR-0018: 自己申告（イントロスペクション）。段・合成可能ポートはまだホストしない。
 builder.Services.AddPlatformIntrospection("graph-service", new PipelineOptions());
