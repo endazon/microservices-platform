@@ -28,6 +28,46 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const PROGRAM_PATH = 'src/platform/backend/Bff/Platform.Bff/Program.cs';
+
+/**
+ * 検査対象の「呼び出し元」（#958 で BFF 1 件から拡張）。
+ *
+ * 🔴 **母集合が Platform.Bff/Program.cs の 1 ファイルに限定されていたため、サービス間
+ * （service → service）の named client を誰も見ていなかった。** その死角で WikiService と
+ * AiAnalysisService が AuthorizationService を :5005 で呼んでいた —— #342 / IADR-0089 と
+ * まったく同じ形の 2 回目である（CLAUDE.md「同型の事故が 2 回起きたら」）。
+ *
+ * 🔴 **compose と helm でサービスキーの綴りが違う**（`wiki-service` / `wiki`）。両方を持つ。
+ * 🔴 **上書きの探索は必ず「呼び出し元のブロック内」で行う。** 全文検索にすると
+ * **BFF 用の上書きを呼び出し元の上書きと取り違えて「違反 0 件」と誤答する**
+ * （本 issue の調査中に実際に 1 度誤答した）。extractServiceBlock を必ず通すこと。
+ */
+const CALLERS = [
+  {
+    label: 'Platform.Bff',
+    program: PROGRAM_PATH,
+    compose: 'bff',
+    helm: 'bff',
+  },
+  {
+    label: 'AiAnalysisService',
+    program: 'src/knowledge/backend/Services/AiAnalysisService/src/AiAnalysisService.Api/Program.cs',
+    compose: 'aianalysis-service',
+    helm: 'aianalysis',
+  },
+  {
+    label: 'GraphService',
+    program: 'src/knowledge/backend/Services/GraphService/src/GraphService.Api/Program.cs',
+    compose: 'graph-service',
+    helm: 'graph',
+  },
+  {
+    label: 'WikiService',
+    program: 'src/knowledge/backend/Services/WikiService/src/WikiService.Api/Program.cs',
+    compose: 'wiki-service',
+    helm: 'wiki',
+  },
+];
 const VALUES_PATH = 'deploy/helm/microservices-platform/values.yaml';
 const COMPOSE_PATH = 'deploy/docker-compose.yml';
 const EXPECTED_PORT = 8080; // メッシュ内の全 downstream Service の実ポート（k8s values services.*.port / compose expose）。
@@ -131,8 +171,9 @@ function computeViolations({ defaults, overridesByEnv, expectedPort = EXPECTED_P
             `期待ポート ${expectedPort} と不一致。` +
             (overrides.has(name)
               ? ` manifest の Services__${name} 上書きを http://<host>:${expectedPort} に是正してください。`
-              : ` Program.cs 既定が :${expectedPort} でないため、manifest の bff env に ` +
-                `Services__${name}: http://<host>:${expectedPort} を追加してください。`),
+              : ` Program.cs 既定が :${expectedPort} でないため、manifest の当該サービスの env に ` +
+                `Services__${name}: http://<host>:${expectedPort} を追加してください` +
+                `（env ラベルの先頭が呼び出し元です）。`),
         });
       }
     }
@@ -147,13 +188,41 @@ function readRepoFile(relPath) {
 }
 
 function checkTree() {
-  const defaults = parseProgramDefaults(readRepoFile(PROGRAM_PATH));
-  if (defaults.size === 0) {
-    return [{ env: '-', name: '-', detail: `${PROGRAM_PATH} から named HttpClient の既定を導出できなかった（パーサまたはコードの破綻）` }];
+  const valuesText = readRepoFile(VALUES_PATH);
+  const composeText = readRepoFile(COMPOSE_PATH);
+  const violations = [];
+  let totalDownstreams = 0;
+
+  for (const caller of CALLERS) {
+    const defaults = parseProgramDefaults(readRepoFile(caller.program));
+    if (defaults.size === 0) {
+      violations.push({
+        env: '-', name: '-',
+        detail: `${caller.program} から named HttpClient の既定を導出できなかった（パーサまたはコードの破綻）`,
+      });
+      continue;
+    }
+    totalDownstreams += defaults.size;
+    // 🔴 上書きは**呼び出し元のブロック内**でのみ探す（全文検索にしない）。
+    const helm = parseHelmServicesEnv(extractServiceBlock(valuesText, caller.helm));
+    const compose = parseComposeServicesEnv(extractServiceBlock(composeText, caller.compose));
+    violations.push(...computeViolations({
+      defaults,
+      overridesByEnv: {
+        [`${caller.label} / helm values.yaml`]: helm,
+        [`${caller.label} / docker-compose.yml`]: compose,
+      },
+    }));
   }
-  const helm = parseHelmServicesEnv(extractServiceBlock(readRepoFile(VALUES_PATH), 'bff'));
-  const compose = parseComposeServicesEnv(extractServiceBlock(readRepoFile(COMPOSE_PATH), 'bff'));
-  return computeViolations({ defaults, overridesByEnv: { 'helm values.yaml': helm, 'docker-compose.yml': compose } });
+
+  // 0 件走査で静かに緑にしない（#664 の門）。呼び出し元が全部空振りしたら走査が壊れている。
+  if (totalDownstreams === 0) {
+    violations.push({
+      env: '-', name: '-',
+      detail: `呼び出し元 ${CALLERS.length} 件のどこからも named HttpClient を導出できなかった（走査の破綻）`,
+    });
+  }
+  return violations;
 }
 
 // --- 自己試験（--self-test） --------------------------------------------------
@@ -265,7 +334,7 @@ function main() {
   if (process.argv.includes('--self-test')) { selfTest(); return; }
   const violations = checkTree();
   if (violations.length === 0) {
-    console.log(`[check-bff-downstreams] OK: BFF 全 downstream の実効上流が :${EXPECTED_PORT} に解決されています（ドリフト 0）。`);
+    console.log(`[check-bff-downstreams] OK: 呼び出し元 ${CALLERS.length} 件の全 downstream の実効上流が :${EXPECTED_PORT} に解決されています（ドリフト 0）。`);
     process.exit(0);
   }
   console.error(`[check-bff-downstreams] BFF downstream の上流ポートに ${violations.length} 件のドリフトを検出しました:`);

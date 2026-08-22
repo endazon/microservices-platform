@@ -9,6 +9,16 @@
     <!-- ASP.NET Core (net10.0) -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+    <!-- NFR, ADR-0032 / IADR-0251 / #439: BFF が OIDC のコンフィデンシャルクライアントとして
+         Authorization Code + PKCE を実施する（Token Handler パターン）。SPA 側は認証ライブラリを持たない。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+    <!-- NFR, ADR-0032 / IADR-0251 決定 4: セッション実体を Redis に置き、削除で即時失効させる
+         （ITicketStore の裏）。ADR-0032 §決定 が「セッションストアは Redis」と定めている。 -->
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.10" />
+    <!-- NFR, IADR-0251 決定 5: DataProtection の鍵リングをレプリカ間で共有する。共有しないと
+         リクエストが別レプリカへ振られた瞬間に Cookie を復号できず、ログアウトしたように見える。
+         **単一プロセスの単体テストでは捕まらない**（鍵リングが 1 つしか無いため緑になる）。 -->
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection.StackExchangeRedis" Version="10.0.10" />
     <!-- NFR(セキュリティ): Microsoft.OpenApi を直接ピンし NU1903(GHSA-v5pm-xwqc-g5wc, High) を解消(#61, #80)。
          AspNetCore.OpenApi 10.0.9 の推移依存が脆弱な 2.x を引き込むため、パッチ版 2.7.5 以上へ引き上げる。 -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />

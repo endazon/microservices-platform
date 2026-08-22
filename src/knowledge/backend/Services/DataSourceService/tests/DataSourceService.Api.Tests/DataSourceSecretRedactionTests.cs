@@ -24,20 +24,20 @@ public class DataSourceSecretRedactionTests(TestWebApplicationFactory factory)
                 ["apiToken"] = "super-secret-token",
                 ["listPath"] = "/api/pages",
             },
-        });
+        }, TestContext.Current.CancellationToken);
         create.EnsureSuccessStatusCode();
-        var id = JsonDocument.Parse(await create.Content.ReadAsStringAsync())
+        var id = JsonDocument.Parse(await create.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .RootElement.GetProperty("id").GetGuid();
 
         // 作成応答でも秘密はマスクされる。
-        using (var created = JsonDocument.Parse(await create.Content.ReadAsStringAsync()))
+        using (var created = JsonDocument.Parse(await create.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)))
         {
             created.RootElement.GetProperty("config").GetProperty("apiToken").GetString().Should().Be("***");
         }
 
-        var get = await client.GetAsync($"/datasources/{id}");
+        var get = await client.GetAsync($"/datasources/{id}", TestContext.Current.CancellationToken);
         get.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await get.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(await get.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var config = doc.RootElement.GetProperty("config");
 
         config.GetProperty("apiToken").GetString().Should().Be("***", "秘密キーはマスクする");
@@ -54,11 +54,11 @@ public class DataSourceSecretRedactionTests(TestWebApplicationFactory factory)
             sourceType = "wiki",
             connectionUri = "https://wiki2.example.com",
             config = new Dictionary<string, string> { ["apiToken"] = "list-secret" },
-        });
+        }, TestContext.Current.CancellationToken);
 
-        var list = await client.GetAsync("/datasources");
+        var list = await client.GetAsync("/datasources", TestContext.Current.CancellationToken);
         list.EnsureSuccessStatusCode();
-        var json = await list.Content.ReadAsStringAsync();
+        var json = await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         json.Should().NotContain("list-secret", "一覧応答に平文の秘密を含めない");
     }
