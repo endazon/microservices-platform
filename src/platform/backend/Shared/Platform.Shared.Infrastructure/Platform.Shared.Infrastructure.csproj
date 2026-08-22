@@ -7,6 +7,12 @@
     <ProjectReference Include="..\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- NFR / #901: 試験専用のシーム。OTLP の送信先は AddOtlpExporter の中に閉じ、外から観測できない
+         （名前総当り・IConfigureOptions の登録数 0・リフレクション走査の 3 経路で実測）。
+         導出（ObservabilityExtensions.OtlpEndpointOf）だけでも試験できるよう internal を開ける。 -->
+    <InternalsVisibleTo Include="Platform.Shared.Infrastructure.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />

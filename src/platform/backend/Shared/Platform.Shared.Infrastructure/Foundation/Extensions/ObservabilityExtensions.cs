@@ -16,7 +16,16 @@ public static class ObservabilityExtensions
     // ADR-0006, IADR-0216: ログ・トレース・メトリクスは同じ OTLP 先と同じリソース属性を共有する。
     // 「相関 ID で三者を突合する」（ADR-0006 §決定）はリソース属性が一致していて初めて成立するため、
     // 導出を 2 箇所に書かず、この 2 つのヘルパへ集約する。
-    private static Uri OtlpEndpointOf(IConfiguration config) =>
+    // 🔴 **試験用に internal で開けている**（#901 / private ではない）。
+    // OTLP の送信先は AddOtlpExporter(o => o.Endpoint = ...) の中に閉じてしまい、
+    // 外から一切観測できない —— IOptionsMonitor<OtlpExporterOptions> はどの名前でも既定値
+    // （http://localhost:4317）を返し、IConfigureOptions<OtlpExporterOptions> の登録数は 0、
+    // TracerProviderSdk をリフレクションで走査しても URI を持つ Otlp 型は見つからない（3 経路で実測）。
+    // そのため「設定キーを変えた」「既定値を書き換えた」という退行が**まったく検出できない**。
+    // 導出だけでも観測可能にするため、ここを internal にして直接試験する。
+    // **残る観測不能領域**: 下の戻り値が実際に exporter へ届いているかは依然として証明できない
+    // （IADR の「検出しないこと」を参照）。
+    internal static Uri OtlpEndpointOf(IConfiguration config) =>
         new(config["Otlp:Endpoint"] ?? DefaultOtlpEndpoint);
 
     private static ResourceBuilder ResourceOf(string serviceName) =>
