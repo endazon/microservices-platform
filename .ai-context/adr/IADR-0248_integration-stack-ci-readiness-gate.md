@@ -1,5 +1,5 @@
 ---
-title: IADR-0247 統合スタックを CI で起こす経路は nightly に置き、`k8s-local-up.sh` の EXIT=0 を成功と見なさず自前の readiness ゲートで判定する
+title: IADR-0248 統合スタックを CI で起こす経路は nightly に置き、`k8s-local-up.sh` の EXIT=0 を成功と見なさず自前の readiness ゲートで判定する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -21,7 +21,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0021_runtime-platform.md
 ---
 
-# IADR-0247: 統合スタックを CI で起こす経路（#783 後半）
+# IADR-0248: 統合スタックを CI で起こす経路（#783 後半）
 
 - 状態: Accepted
 - 日付: 2026-08-22
