@@ -33,7 +33,7 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
     public async Task 実ブローカ経由で1回の発行が2購読先へ届き_発行元へは配送されない()
     {
         BrokerRequired.SkipUnlessObtainable();
-        rabbit.IsAvailable.Should().BeTrue("BrokerFact が走った以上ブローカは供給されているはず");
+        rabbit.IsAvailable.Should().BeTrue("BrokerRequired.SkipUnlessObtainable() を通過した以上ブローカは供給されているはず");
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
 

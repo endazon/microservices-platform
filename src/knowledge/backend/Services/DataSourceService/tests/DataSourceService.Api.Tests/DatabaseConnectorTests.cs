@@ -14,7 +14,7 @@ namespace DataSourceService.Api.Tests;
 // 業務DB コネクタ（参照専用 SQL・行→文書化）の単体テスト。
 // 実 DB を要さないハンドロール ADO.NET フェイク（DbConnection/DbCommand/DbDataReader）で、
 // 行→SourceItem マッピング・更新列によるインメモリ増分・本文取得・縮退・DB エラー伝播を検証する。
-// ※ 実 SQL の正しさ（派生表ラップ・WHERE id=@id）は実 PostgreSQL の統合テスト（DockerFact・follow-up）で確認する。
+// ※ 実 SQL の正しさ（派生表ラップ・WHERE id=@id）は実 PostgreSQL の統合テスト（DockerRequired.SkipUnlessAvailable()・follow-up）で確認する。
 // ※ SQLite は SQLitePCLRaw の未修正 CVE-2025-6965（NU1903）を持ち込むため採用しない。
 public sealed class DatabaseConnectorTests
 {
