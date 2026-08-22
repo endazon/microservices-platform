@@ -1,5 +1,5 @@
 {
-  "$comment": "NFR / #455 子 C: Wolverine 移行 手順 1 の対応表。移行前の正解表であり、移行後もこの表が変わらないことが移行の正しさの証拠になる。増減の両方向を違反にする。 各 owner の値は**トランスポート**（masstransit / wolverine）である。購読者が発行側と 1 つもトランスポートを共有していなければ、その購読者は 1 通も受け取れないため違反にする（部分移行の検出。#455 Phase 0 / U2）。二重購読（両方で待つ）は移行手順なので違反にしない。",
+  "$comment": "NFR / #455 子 C: Wolverine 移行 手順 1 の対応表。移行前の正解表であり、移行後もこの表が変わらないことが移行の正しさの証拠になる。増減の両方向を違反にする。 各 owner の値は**トランスポート**（masstransit / wolverine）である。購読者が発行側と 1 つもトランスポートを共有していなければ、その購読者は 1 通も受け取れないため違反にする（部分移行の検出。#455 Phase 0 / U2）。二重購読（両方で待つ）は移行手順なので違反にしない。 **トランスポートの変化そのものも突合する**（#921 / IADR-0259）。前進（masstransit → wolverine）は本ファイルの更新を促し、逆行（wolverine → masstransit）は --update でも書き込まない（--allow-regression が要る）。",
   "topology": {
     "DocumentDeleted": {
       "publishers": {
@@ -55,12 +55,12 @@
     "RawDocumentFetched": {
       "publishers": {
         "knowledge/DataSourceService": [
-          "masstransit"
+          "wolverine"
         ]
       },
       "subscribers": {
         "knowledge/ConversionService": [
-          "masstransit"
+          "wolverine"
         ]
       }
     }
