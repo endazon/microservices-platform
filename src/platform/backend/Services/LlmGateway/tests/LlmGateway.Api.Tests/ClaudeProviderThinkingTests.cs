@@ -40,7 +40,7 @@ public class ClaudeProviderThinkingTests
     {
         var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock("要約本文")}"), sanitize: true);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5"), TestContext.Current.CancellationToken);
 
         result.Text.Should().Be("要約本文");
         result.InputTokens.Should().Be(10);
@@ -60,7 +60,7 @@ public class ClaudeProviderThinkingTests
         var body = $$"""{"action":"{{action}}","rationale":"根拠","referencePrice":190.5,"stopLossDistancePerShare":5.5}""";
         var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock(body)}"), sanitize: true);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("判断して", 4096, "claude-sonnet-5"));
+        var result = await provider.CompleteAsync(new CompletionRequest("判断して", 4096, "claude-sonnet-5"), TestContext.Current.CancellationToken);
 
         result.Text.Should().Be(body);
         JsonSerializer.Deserialize<JsonElement>(result.Text)
@@ -74,7 +74,7 @@ public class ClaudeProviderThinkingTests
         var provider = CreateProvider(
             Envelope($$"""{"type":"some_future_block","payload":1},{{TextBlock("本文")}}"""), sanitize: true);
 
-        (await provider.CompleteAsync(new CompletionRequest("q", 4096, null))).Text.Should().Be("本文");
+        (await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken)).Text.Should().Be("本文");
     }
 
     // 変異テスト: サニタイズを外すと同じ応答で例外になる（ガードが load-bearing であることの実証）。
@@ -83,7 +83,7 @@ public class ClaudeProviderThinkingTests
     {
         var provider = CreateProvider(Envelope($"{ThinkingBlock},{TextBlock("要約本文")}"), sanitize: false);
 
-        var act = () => provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5"));
+        var act = () => provider.CompleteAsync(new CompletionRequest("要約して", 4096, "claude-sonnet-5"), TestContext.Current.CancellationToken);
 
         (await act.Should().ThrowAsync<JsonException>()).WithMessage("*Unknown type thinking*");
     }
@@ -95,7 +95,7 @@ public class ClaudeProviderThinkingTests
     {
         var provider = CreateProvider(Envelope(TextBlock("素通し本文")), sanitize: true);
 
-        (await provider.CompleteAsync(new CompletionRequest("q", 4096, null))).Text.Should().Be("素通し本文");
+        (await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken)).Text.Should().Be("素通し本文");
     }
 
     // IADR-0104 の安全既定は不変: 拒否（refusal）は thinking の有無に関わらず本文を返さない。
@@ -105,7 +105,7 @@ public class ClaudeProviderThinkingTests
         var provider = CreateProvider(
             Envelope($"{ThinkingBlock},{TextBlock("断片")}", stopReason: "refusal"), sanitize: true);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("q", 4096, null));
+        var result = await provider.CompleteAsync(new CompletionRequest("q", 4096, null), TestContext.Current.CancellationToken);
 
         result.Text.Should().BeEmpty();
         result.StopReason.Should().Be("refusal");

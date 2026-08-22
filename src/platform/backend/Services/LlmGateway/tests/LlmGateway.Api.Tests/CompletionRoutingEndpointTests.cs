@@ -28,10 +28,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_WithoutMaxTokens_PassesContractDefaultToProvider()
     {
         var req = new { Prompt = "要約", Confidentiality = "public", Purpose = "default" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Text.Should().Contain("maxTokens=4096");
     }
@@ -41,10 +41,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_Confidential_RoutesToProtectedExternalAndSends()
     {
         var req = new { Prompt = "機密文書の要約", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
         body.Text.Should().NotBeNullOrWhiteSpace();
@@ -71,10 +71,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_WithoutExplicitModel_SelectsPurposeModel(string purpose, string expectedModel)
     {
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = purpose };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         // 用途別モデルが選択される（呼び出し元が既定モデルを固定送信しないため）。
         body.Model.Should().Be(expectedModel);
@@ -91,10 +91,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_ConfidentialAnalysis_ResolvesZdrModel()
     {
         var req = new { Prompt = "機密文書の分析", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
         body.Model.Should().Be("claude-opus-5");
@@ -127,10 +127,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
 
         // Confidentiality を指定しない（null）。安全側では restricted 相当 → ティアC 不可で拒否。
         var req = new { Prompt = "分類不明の文書", MaxTokens = 100, Purpose = "analysis" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
         body.RoutingReason.Should().Contain("拒否");
     }
@@ -156,10 +156,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
                 }))).CreateClient();
 
         var req = new { Prompt = "機密文書の要約", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();          // 外部送信していない（縮退）
         body.RoutingReason.Should().Contain("拒否");
     }
@@ -221,10 +221,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_RagAnswer_SelectsSonnet5AndDoesNotFallBackToDefault()
     {
         var req = new { Prompt = "文書を要約して", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Model.Should().Be("claude-sonnet-5");
         body.Model.Should().NotBe("claude-opus-5");  // DefaultModel への無音フォールバックでないこと
@@ -247,10 +247,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_ReportKindPurpose_SelectsKindSpecificModel(string purpose, string expectedModel)
     {
         var req = new { Prompt = "報告書の散文", MaxTokens = 100, Confidentiality = "internal", Purpose = purpose };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Model.Should().Be(expectedModel);
     }
@@ -262,10 +262,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_TradeDecision_SelectsSonnet5AndDoesNotFallBackToDefault()
     {
         var req = new { Prompt = "銘柄の売買判断", MaxTokens = 100, Confidentiality = "internal", Purpose = "trade-decision" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Model.Should().Be("claude-sonnet-5");
         body.Model.Should().NotBe("claude-opus-5");   // DefaultModel への無音フォールバックでないこと
@@ -283,10 +283,10 @@ public class CompletionRoutingEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_ReportMonthly_KeepsAssignedModelAcrossSensitivities(string confidentiality)
     {
         var req = new { Prompt = "月報の散文", MaxTokens = 100, Confidentiality = confidentiality, Purpose = "report-monthly" };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue();
         body.Endpoint.Should().Be("claude-managed");
         body.Model.Should().Be("claude-opus-5");

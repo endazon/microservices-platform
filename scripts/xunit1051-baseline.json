@@ -108,8 +108,8 @@
     },
     "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": {
       "project": "LlmGateway.Api.Tests",
-      "remaining": 114,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj": {
       "project": "Platform.Shared.Infrastructure.Tests",

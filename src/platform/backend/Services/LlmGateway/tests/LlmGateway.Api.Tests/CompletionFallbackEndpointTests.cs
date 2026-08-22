@@ -48,10 +48,10 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing("claude-opus-5", HttpStatusCode.BadRequest);
 
-        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest());
+        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（ADR-0038 決定 4）");
         body.Model.Should().Be("claude-sonnet-5");
         body.Model.Should().NotBe("claude-opus-5");
@@ -66,10 +66,10 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing("claude-opus-5", HttpStatusCode.TooManyRequests);
 
-        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest());
+        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse("429 は再試行であってフォールバックではない（ADR-0038 決定 4）");
         body.Model.Should().Be("claude-opus-5", "見送らずに第 1 候補のまま縮退する");
         body.Text.Should().Contain("現在利用できません");
@@ -81,9 +81,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing("claude-opus-5", HttpStatusCode.InternalServerError);
 
-        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest());
+        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
         body.Model.Should().Be("claude-opus-5");
     }
@@ -94,9 +94,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing(ModelScriptedProvider.AnyModel, HttpStatusCode.BadRequest);
 
-        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest());
+        var response = await client.PostAsJsonAsync("/complete", AnalysisRequest(), TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
         body.Model.Should().Be("claude-sonnet-5", "鎖の最後の候補まで試したことが応答から読める");
     }
@@ -111,10 +111,10 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
         var client = ClientFailing("claude-sonnet-5", HttpStatusCode.BadRequest);
 
         var req = new { Prompt = "要約", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeTrue("400 系はフォールバックの発火条件である（ADR-0038 決定 4）");
         body.Model.Should().Be("claude-haiku-4-5");
         body.Endpoint.Should().Be("claude-managed");
@@ -130,9 +130,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
         var client = ClientFailing(ModelScriptedProvider.AnyModel, HttpStatusCode.BadRequest);
 
         var req = new { Prompt = "週報", MaxTokens = 100, Confidentiality = "public", Purpose = "report-weekly" };
-        var response = await client.PostAsJsonAsync("/complete", req);
+        var response = await client.PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
 
-        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CompletionResponse>(TestContext.Current.CancellationToken);
         body!.Sent.Should().BeFalse();
         body.Model.Should().Be("claude-opus-5", "鎖が無いので第 1 候補のまま縮退する");
     }
@@ -145,9 +145,9 @@ public class CompletionFallbackEndpointTests(TestWebApplicationFactory factory)
     {
         var client = ClientFailing("claude-opus-5", HttpStatusCode.BadRequest);
 
-        var response = await client.PostAsJsonAsync("/complete/stream", AnalysisRequest());
+        var response = await client.PostAsJsonAsync("/complete/stream", AnalysisRequest(), TestContext.Current.CancellationToken);
 
-        var sse = await response.Content.ReadAsStringAsync();
+        var sse = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         sse.Should().Contain("\"sent\":false");
         sse.Should().NotContain("claude-sonnet-5");
     }
