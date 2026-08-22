@@ -35,6 +35,14 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh          # 必要に応じ OBSERVABILIT
 > LAN からアクセスさせたい場合のみ、利用者が明示的に bind host を広げる（自己責任）。Rancher Desktop は内蔵 LB の
 > 公開設定に従う。
 
+> 🔴 **`HelmChartConfig` の反映は待ち合わせて検査する（#953 / IADR-0260）**。`traefik-entrypoint.yaml` の効果は
+> k3s の helm-controller が**非同期に**実現するため、`kubectl apply` が成功しても reconcile は失敗し得る
+> （`expose` の values スキーマは traefik chart のバージョンで型が変わる）。`k8s-local-up.sh` は overlay 適用の直後に
+> `kube-system/traefik` の `admin=50000` を最大 180 秒待ち、**来なければ非 0 で落ちる**（警告して続行はしない）。
+> 落ちたら stderr の診断（実ポート・`helmchart` の状態・`helm-install-traefik` のログ）を読み、
+> k3s の版を `K3S_IMAGE=rancher/k3s:v1.35.4-k3s1` のように固定するか、`expose` を chart の版に合わせて切替える。
+> **この門が確実に効くのはクラスタ作成直後である**（既存クラスタでは前回成功時の Service が残るため）。
+
 ### k3d はポートが cluster 作成時固定 → 既存クラスタは再作成が必要（ユーザー実行）
 
 ポート公開は k3d の cluster **作成時**にしか設定できない（後付け不可）。既存クラスタに `LOCALEDGE` を効かせるには
