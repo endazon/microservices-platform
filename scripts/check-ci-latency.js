@@ -138,7 +138,7 @@ function min(xs) {
 function judge({ targetDurations, baselineDurations, stepRatio = STEP_RATIO, minSamples = MIN_SAMPLES, epoch = null }) {
   const t = median(targetDurations);
   const b = min(baselineDurations);
-  // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（IADR-0240）。
+  // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（IADR-0241）。
   // 🔴 **この門を null 判定より前に置く。** 0 本のときこそ epoch を理由に添えねばならない ——
   // 「サンプルが足りない」とだけ言われると、**check 名の設定ミスと区別が付かない**。
   // 中央値は「窓の多数派」を映す。構成を変えた直後は多数派が旧構成のままなので、
@@ -292,7 +292,7 @@ function integrationBranch(prs) {
 }
 
 /**
- * 「CI 構成が最後に変わった時刻」（epoch）を GitHub API から引く。IADR-0240（追随元: AST/IADR-0208 決定 15）。
+ * 「CI 構成が最後に変わった時刻」（epoch）を GitHub API から引く。IADR-0241（追随元: AST/IADR-0208 決定 15）。
  *
  * 🔴 **日付を焼き込まない。** 固定値は必ず腐る —— 本検査器が「しきい値を固定値で持たない
  * （自己校正）」と決めたのと同じ理由である。構成ファイルの最終変更時刻なら、
@@ -327,7 +327,7 @@ async function fetchConfigEpoch({ base, token, path = CONFIG_PATH, branch = null
  * 「どの構成で**測られた**か」であって「いつマージされたか」ではない。
  * **CI が走ったのは構成変更の前、マージはその後**という PR は普通に起こる
  * （PR を放置している間に develop 側で `ci.yml` が変わり、リベースせずマージされた場合）。
- * その 1 本は旧構成の値なのに母集合へ残り、**IADR-0240 が塞ごうとした穴を epoch 自身が再現する**。
+ * その 1 本は旧構成の値なのに母集合へ残り、**IADR-0241 が塞ごうとした穴を epoch 自身が再現する**。
  *
  * 🔴 **逆に、計測時刻だけで判定すると今度は取りこぼす**（実データで判明）。
  * **構成変更を持ち込んだ PR 自身**は、その run が**新しい `ci.yml` で走っている**
@@ -365,7 +365,7 @@ async function collect({ repo, token, samples }) {
   }
   const merged = sortByMergedAtDesc(prs).slice(0, samples);
 
-  // 🔴 **現在の CI 構成で測られた PR だけを母集合にする**（IADR-0240）。
+  // 🔴 **現在の CI 構成で測られた PR だけを母集合にする**（IADR-0241）。
   // 中央値は「窓の多数派」を映すので、構成を変えた直後の窓は旧構成の値を現在の値として報告する。
   // 判定は下のループで、**計測時刻（check 群の開始）**に対して行う（マージ時刻ではない）。
   const branch = integrationBranch(merged);
@@ -386,7 +386,7 @@ async function collect({ repo, token, samples }) {
     const sha = pr.head && pr.head.sha;
     if (!sha) continue;
 
-    // 「構成変更を持ち込んだ PR か」を見るために変更ファイル一覧を引く（IADR-0240）。
+    // 「構成変更を持ち込んだ PR か」を見るために変更ファイル一覧を引く（IADR-0241）。
     // 🔴 **1 ページ目だけ見てはならない。** 変更 100 件を超える PR で構成ファイルが 101 件目以降に
     // あると取りこぼす（AST で実測 —— 変更 619 ファイルの PR が該当した）。
     let changedFiles = null; // 読み切れなかった／引けなかったときは null のまま
@@ -421,7 +421,7 @@ async function collect({ repo, token, samples }) {
     }
     const all = runs.check_runs || [];
     const t0 = checkSetStart(all);
-    // 🔴 旧構成で測られた run は母集合に入れない（IADR-0240）。
+    // 🔴 旧構成で測られた run は母集合に入れない（IADR-0241）。
     // **計測時刻で見る**（マージ時刻ではない）。ただし構成変更を持ち込んだ PR 自身は残す。
     //
     // 🔴 **ここだけ fail-open の向きが逆なのは意図的である。**
