@@ -14,7 +14,7 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task Health_は200を返す()
     {
-        var response = await _factory.CreateClient().GetAsync("/health");
+        var response = await _factory.CreateClient().GetAsync("/health", TestContext.Current.CancellationToken);
 
         response.IsSuccessStatusCode.Should().BeTrue();
     }
