@@ -226,17 +226,24 @@ for path in /bff/documents /bff/dashboard/summary /bff/datasources; do
   rm -f "$body_file"
 done
 
-# ---- 8) 無トークンの読み取り（現行の設計を測る） ------------------------------------
-step "8/$TOTAL" "無トークンで読み取り系を叩く（現行の設計を測る）"
+# ---- 8) 無トークンの読み取り（認証必須の確認） --------------------------------------
+#
+# 🔴 想定を 200 → 401 へ更新した（#972 で実測）。
+#    従前ここは「読み取り系は匿名を許容する現行設計」を前提に **200 を PASS** としていた。
+#    しかし #659（2026-08-10）が無認証で到達できた BFF 9 端点を塞ぎ、読み取り群にも
+#    `RequireAuthorization()` が付いている（`DocumentBffEndpoints.cs`）。
+#    **本スクリプトは自動実行されていなかったため、この陳腐化が 12 日間気づかれなかった。**
+#    ——「走っていない検査は、正しさを保証しない」ことの実例なので、経緯ごと残す。
+#    （#458 は全 API OIDC/JWT・mTLS・Vault への移行を扱う親 issue で、今も OPEN である。
+#      読み取り群の穴だけが #659 で先に閉じた。）
+step "8/$TOTAL" "無トークンで読み取り系を叩く（401 になること）"
 code=$(curl -s $CURL_K -m 15 -o /dev/null -w '%{http_code}' "$EDGE_URL/bff/documents")
-if [ "$code" = "200" ]; then
-  pass "GET /bff/documents（無トークン）→ 200"
-  info "読み取り系は匿名を許容する現行設計（DocumentBffEndpoints.cs「読み取りは SC-02/03 用に無制限」）。"
-  info "データは ABAC の deny-by-default で空に縮退するため漏洩はしないが、"
-  info "計画 NFR「全 API OIDC/JWT」との差は #458 が扱う。"
+if [ "$code" = "401" ]; then
+  pass "GET /bff/documents（無トークン）→ 401（#659 で読み取り群にも認証が要る）"
+elif [ "$code" = "200" ]; then
+  fail "GET /bff/documents（無トークン）→ 200（#659 で塞いだはずの無認証読み取りが復活している）"
 else
-  # 401 になっているなら #458 が適用済み＝本スクリプトの想定を更新すること。
-  fail "GET /bff/documents（無トークン）→ $code（現行設計は 200。#458 適用済みなら本判定を更新する）"
+  fail "GET /bff/documents（無トークン）→ $code（401 を期待）"
 fi
 
 # ---- 9) 無トークンの書き込み（認証必須の確認） --------------------------------------
@@ -273,7 +280,12 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   PROBE_TITLE="abac-positive-probe-$$"
   # 属性は abac-seed のポリシーが見る軸（confidentiality）と、利用者側の department を両方入れる。
   # 片方しか入れないと、スコープのフィルタにもう一方の鍵が含まれる構成で不可視になる。
-  create_body=$(printf '{"title":"%s","originalUri":null,"contentType":"text/plain","attributes":{"confidentiality":"public","department":"engineering"},"tags":["abac-probe"]}' "$PROBE_TITLE")
+  #
+  # 🔴 tags は付けない。DocumentService は辞書に無いタグを 400 にする（SC-05 / #635）ので、
+  #    探針が独自のタグを付けると **ABAC とは無関係の 400** で落ち、正の対照が測れなくなる。
+  #    実測でこれを踏んだ（`辞書に無いタグです: abac-probe`）。
+  #    なお **400 は「ABAC が許可した」ことの証拠でもある** —— deny なら後段へ届かず 403 になる。
+  create_body=$(printf '{"title":"%s","originalUri":null,"contentType":"text/plain","attributes":{"confidentiality":"public","department":"engineering"}}' "$PROBE_TITLE")
   body_file=$(mktemp)
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' -X POST \
     -H "Authorization: Bearer $ACCESS" -H 'Content-Type: application/json' \
