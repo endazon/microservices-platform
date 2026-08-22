@@ -1375,6 +1375,12 @@ module.exports = ({ ok, assert }) => {
   // 実ツリーへレポートを 1 件だけ置いて素実行する。関数単位の試験では「走査 → 除外 → 出力」の
   // 配線（レポートが実際に読まれ、診断が CI ログへ出ること）を確かめられないため。
   // coverage*.xml は .gitignore 済みだが、異常終了時に残さないよう finally で必ず撤去する。
+  //
+  // 🔴 **フィクスチャは意図して被覆 100% にしてある。** 本試験が見たいのは**配線**であって
+  //    床の判定ではない。被覆が床を下回るフィクスチャを置くと、**床を ratchet で上げるたびに
+  //    この試験が巻き添えで落ちる**（#900 で床を 38 → 88 へ置き直したとき実際に落ちた。当時の
+  //    フィクスチャは 2/3 = 66.67% で、旧床 38 は超えるが新床 88 は超えなかった）。
+  //    床の判定そのものは compareToFloor の単体試験と --self-test が見ている。
   ok('素実行: 実ツリーのレポートから AST 由来の行を落とし、診断を出して exit 0', () => {
     const { spawnSync } = require('child_process');
     const repoRoot = path.join(__dirname, '..');
@@ -1383,17 +1389,19 @@ module.exports = ({ ok, assert }) => {
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(file, coberturaReport([
-        coberturaClass('Platform.Bff.X', 'platform/backend/Bff/X.cs', [[1, 1], [2, 0], [3, 1]]),
+        coberturaClass('Platform.Bff.X', 'platform/backend/Bff/X.cs', [[1, 1], [2, 1], [3, 1]]),
         coberturaClass('AiStockTrading.Bff.Endpoints.MonitorBffEndpoints',
           `${AST_UNIT}/backend/Bff/MonitorBffEndpoints.cs`, [[1, 1], [2, 1]]),
-      ], { sources: ['/home/runner/work/msp/msp/src/'], attrs: 'lines-valid="5" lines-covered="4"' }));
+      ], { sources: ['/home/runner/work/msp/msp/src/'], attrs: 'lines-valid="5" lines-covered="5"' }));
 
       const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js')], { encoding: 'utf8' });
       assert.strictEqual(r.status, 0, `素実行が失敗:\n${r.stdout}\n${r.stderr}`);
-      assert.match(r.stdout, /レポート 1 件を集計: line 66\.67%（2\/3）/);
+      assert.match(r.stdout, /レポート 1 件を集計: line 100%（3\/3）/);
       assert.match(r.stdout, /由来 1 クラス \/ 2 行（被覆 2）/);
-      assert.match(r.stdout, /除外前: line 80%（4\/5）/);
+      assert.match(r.stdout, /除外前: line 100%（5\/5）/);
       assert.match(r.stdout, /lines-valid 5（本実装 5・一致）/);
+      // レポート 1 件では重複排除は恒等（notice も出さない）。配線が通っていることの確認。
+      assert.match(r.stdout, /レポート跨ぎの重複排除（#900）: 1 レポート。/);
     } finally {
       fs.rmSync(path.join(repoRoot, 'src', 'platform', 'backend', '.coverage-floor-probe'), { recursive: true, force: true });
     }
