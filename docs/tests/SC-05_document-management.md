@@ -66,10 +66,10 @@ E2E は `src/platform/frontend/e2e/sc05-documents.smoke.spec.ts`
 | 12 | **契約の不在**（実装しない要素） | 画面仕様書 §hi-fi 対応 #6 | 「変換」列が無い。**先に「機密区分」「版」の列が在ることを確かめてから**無いことを見る |
 | 13 | ロケール `en` | —| 見出し・保存ボタンが英語で描画される |
 
-## 純関数（`src/knowledge/frontend/src/features/abac/confidentiality.test.ts`）
+## 純関数（`src/knowledge/frontend/src/features/abac/types/confidentiality.test.ts`）
 
 機密区分の値集合は **文書管理画面（文書の機密区分。必須）とデータソース管理画面（既定の機密区分）が共有する語彙**であり、
-`features/abac/confidentiality.ts` に 1 つだけ置く。値集合は **ABAC の一次情報**
+`features/abac/types/confidentiality.ts` に 1 つだけ置く。値集合は **ABAC の一次情報**
 （計画 06_technical/07_abac-attribute-model の 4 値）に由来し、**増減は機密区分の取り違えに直結する**
 （減れば選べない区分が生まれ、増えれば後段が知らない区分で保存される）。
 画面テスト経由の間接被覆では「4 値であること」自体を固定できないため、直接固定する。

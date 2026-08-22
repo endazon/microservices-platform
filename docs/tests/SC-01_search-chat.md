@@ -94,7 +94,7 @@ issues: [#502, #539]
 
 ## 対象範囲フィルタ（#539 / 裁定 Q1・Q3・Q9）
 
-**実装は `features/scope-filter/scopeSelection.test.ts`（7 件）と `ScopeFilter.test.tsx`（8 件）。
+**実装は `features/scope-filter/types/scopeSelection.test.ts`（7 件）と `features/scope-filter/components/ScopeFilter.test.tsx`（8 件）。
 AI 分析ダッシュボードと共有する部品なので、テストも 1 か所に置く。**
 
 | # | 確かめること | 実装 |

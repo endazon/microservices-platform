@@ -167,8 +167,11 @@ export default tseslint.config(
   },
   // 可変ユニット（@knowledge）は @foundation のみ参照可。platform の合成点（@features）は参照しない。
   //
-  // **`knowledge/frontend/src/` の中身は `features/` だけである**（実測）。したがって本ブロックの
-  // 適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止をここへ足せば足りる。
+  // **`knowledge/frontend/src/` で中身を持つのは `features/` だけである**（実測 2026-08-23。#785 で
+  // 計画 13_frontend-stack §ディレクトリ構成 へ適合させ、`app/ assets/ components/ hooks/ lib/
+  // locales/ stores/ testing/ types/ utils/` を置いたが、いずれも `.gitkeep` だけの枠である）。
+  // したがって本ブロックの適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止を
+  // ここへ足せば足りる。**枠へ実体が入ったらこの前提を引き直すこと。**
   // **専用のブロックを新設しない** —— flat config は同一ルールを後勝ちで**置換**するため、
   // `features/**` を対象にした 2 本目の `no-restricted-imports` を置くと、
   // このブロックの `BANNED_IMPORT_PATTERNS` と `@features` 禁止が丸ごと無効化される

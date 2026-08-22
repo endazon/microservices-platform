@@ -50,7 +50,7 @@ related_specs:
 | 面 | 現状（`de55761`） | 根拠 |
 | --- | --- | --- |
 | BFF `POST /bff/conversion/jobs/{id}/retry` | **admin または operator**（グループ一括） | [`ConversionBffEndpoints.cs`](../../src/knowledge/backend/Bff/Knowledge.Bff.Endpoints/ConversionBffEndpoints.cs) 18-22 行の `MapGroup(...).RequireAuthorization(p => p.RequireRole(AdminRole, OperatorRole))` に `retry` も含まれる |
-| 画面（着手時点の develop `de55761`） | **admin または operator**（`RequireRole anyOf=[Admin, Operator]`。ボタンはロールを見ずに出る） | [`features/sc07-conversions/index.tsx`](../../src/knowledge/frontend/src/features/sc07-conversions/index.tsx) 20 行 |
+| 画面（着手時点の develop `de55761`） | **admin または operator**（`RequireRole anyOf=[Admin, Operator]`。ボタンはロールを見ずに出る） | [`features/sc07-conversions/routes/sc07ConversionsRoute.tsx`](../../src/knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx) 20 行（［2026-08-23 追記 / #785］計画のディレクトリ構成へ適合させた際、当時の `index.tsx` は`routes/sc07ConversionsRoute.tsx` へ移動した。**リンク先の実パスだけを追随させた**——本文の記述と当時の実測は変えていない） |
 | 画面（#503 / PR #508。**2026-08-05 に develop へマージ済み** `5ce3ec9`） | 到達は admin/operator のまま、**再変換ボタンは `platform-admin` のみ** | [IADR-0127](../adr/IADR-0127_sc07-retry-admin-only-and-derived-states.md) 決定 1 |
 
 画面のボタンを消しても、**API を直接叩ける運用者は依然 retry できる**。本作業は API 側の是正を行う。

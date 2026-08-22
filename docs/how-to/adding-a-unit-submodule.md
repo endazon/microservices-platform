@@ -32,7 +32,8 @@ issues: [#229, #230, #245]
     package.json                ← name: @<unit>/frontend、pnpm workspace で自動認識。**依存を明示宣言する**
     tsconfig.json               ← paths で @foundation を解決（無いと typecheck が動かない）
     src/features/               ← 画面 feature 群と合成用 index.ts。Feature 単位を
-                                ←   api/ components/ hooks/ routes/ types/ へ割る（Bulletproof React）
+                                ←   api/ components/ hooks/ routes/ stores/ types/ へ割る
+                                ←   （Bulletproof React。6 区分は閉じた集合で utils/ を足さない）
 ```
 
 - **フロントの依存は雛形の `package.json` に宣言済みのものを引き継ぐ。** pnpm は npm workspaces と違い

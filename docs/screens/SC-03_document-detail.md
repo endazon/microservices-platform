@@ -102,7 +102,7 @@ issues: [#12, #452, #490, #502, #519, #541, #553, #586, planning#197, planning#2
 > **したがって「後続で実装する」段が来ている**——**引き受けるのは #452**（ナレッジグラフビュー・AI 提案一覧と同じ段）であり、
 > #586 は planning pin の更新と事実の追随に限り、**本画面の実装は変更していない**。
 > 同じ予告を書いた
-> [`DocumentDetailPage.tsx`](../../src/knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx)
+> [`DocumentDetailPage.tsx`](../../src/knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx)
 > のコメントと**対**である（コードだけを直して仕様書を残さない非対称を作らない）。
 - 計画側の本画面が「ここに置くのは次の 2 つのみである: ①ナレッジグラフビューへの導線、②AI 提案の承認欄」と
   述べているのは、**バックリンク欄・ローカルグラフを Wiki 閲覧側に置く**という分界の説明であり、
