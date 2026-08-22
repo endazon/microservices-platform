@@ -304,7 +304,7 @@ msgstr "タイトル"
 #: knowledge/frontend/src/features/sc03-document/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/TagDictionaryPanel.tsx
-#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
+#: knowledge/frontend/src/features/scope-filter/scopeSelection.ts
 msgid "タグ"
 msgstr "タグ"
 
@@ -466,7 +466,7 @@ msgstr "フィードバックを送信しました。"
 msgid "フィードバックを送信できませんでした。"
 msgstr "フィードバックを送信できませんでした。"
 
-#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
+#: knowledge/frontend/src/features/scope-filter/scopeSelection.ts
 msgid "プロジェクト"
 msgstr "プロジェクト"
 
@@ -1648,7 +1648,7 @@ msgid "選択してください"
 msgstr "選択してください"
 
 #: knowledge/frontend/src/features/sc03-document/attributes.ts
-#: knowledge/frontend/src/features/scope-filter/scopeFilter.ts
+#: knowledge/frontend/src/features/scope-filter/scopeSelection.ts
 msgid "部門"
 msgstr "部門"
 

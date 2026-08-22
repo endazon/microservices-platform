@@ -17,8 +17,8 @@ import { citationKind } from './citations';
 import type { AskCitation } from './citations';
 import { useAskStream, useFeedback } from './useAskStream';
 import { ScopeFilter } from '../scope-filter/ScopeFilter';
-import { EMPTY_SELECTION, toAttributeFilters } from '../scope-filter/scopeFilter';
-import type { ScopeSelection } from '../scope-filter/scopeFilter';
+import { EMPTY_SELECTION, toAttributeFilters } from '../scope-filter/scopeSelection';
+import type { ScopeSelection } from '../scope-filter/scopeSelection';
 
 // SC-01, UC-01, FR-03/FR-04/FR-05/FR-08: 検索／チャット質問画面（本システムの主入口。ルート /ask）。
 // 1 つの入力から根拠付き AI 回答（真の SSE ストリーミング・出典併記）を得る。

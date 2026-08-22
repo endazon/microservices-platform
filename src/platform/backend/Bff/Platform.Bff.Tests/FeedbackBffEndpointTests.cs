@@ -117,4 +117,22 @@ public class FeedbackBffEndpointTests(BffTestFactory factory)
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
+
+    // T-17 / #948: ★ **統計取得も FeedbackService へ資格情報を伝播する。**
+    //
+    // `/feedback/stats` は #521 で RequireRole(admin, operator) を獲得したが、**BFF 側の 2 つの
+    // 呼び出しはどちらも取り残されていた** —— ここ（`GET /bff/feedback/stats`）と、
+    // ダッシュボード集約（`GET /bff/dashboard/summary`。#948 の症状として報告された方）である。
+    // **投稿（POST）だけが伝播していた**ため、その 1 本を見て「伝播している」と読めてしまう形だった。
+    [Fact]
+    public async Task GetStats_PropagatesAuthorizationHeaderToFeedbackService()
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", "stats-token");
+
+        await client.GetAsync("/bff/feedback/stats");
+
+        factory.LastFeedbackForwardedAuthorization.Should().Be("Bearer stats-token");
+    }
 }
