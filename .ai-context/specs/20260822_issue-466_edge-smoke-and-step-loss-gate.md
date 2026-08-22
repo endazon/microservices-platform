@@ -16,7 +16,7 @@ related_ids:
   - IADR-0232
   - IADR-0243
   - IADR-0248
-  - IADR-0251
+  - IADR-0252
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -24,8 +24,8 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
-  - "../adr/IADR-0248_integration-stack-ci-path.md"
-  - "../adr/IADR-0251_abac-positive-control.md"
+  - "../adr/IADR-0248_integration-stack-ci-readiness-gate.md"
+  - "../adr/IADR-0252_abac-positive-path-observation.md"
 ---
 
 # 作業仕様書: 主要導線スモークと段の消失を検出する門（#466）
