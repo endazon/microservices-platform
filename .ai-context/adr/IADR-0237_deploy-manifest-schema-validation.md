@@ -116,7 +116,11 @@ EXIT=1
 
 ## フォローアップ
 
-- [ ] #783 後半（`ci.yml` へ `kubeconform` の導入ステップを足す）で、バージョン pin の具体的な導入方法
-      （GitHub Action か curl によるバイナリ取得か）を確定する
-- [ ] `scripts/scripts.repo.test.js` の CI 突合テストへ kubeconform 導入の検査を追加する
-      （#783 後半と同一コミットで行う）
+- [x] `ci.yml` へ `kubeconform` の導入ステップを足す（curl によるバイナリ取得＋チェックサム検証。
+      版 pin は `v0.8.0`）。本 PR 2 番目のコミット（`a7296a7`）で完了
+- [x] `scripts/scripts.repo.test.js` の CI 突合テストへ kubeconform 導入の検査を追加する。
+      同じく `a7296a7` で完了（変異試験 2 本を実測）
+
+上記 2 点は「#783 後半」（統合スタックを CI で起こす経路。#466 の土台）とは別物である —— 本 PR が
+足したのは前半（chart / overlay の検証ジョブ）への kubeconform 導入であり、後半は依然未着手のまま
+（`.ai-context/specs/20260821_issue-783_deploy-manifest-ci.md`「後半の切り分け」節を参照）。
