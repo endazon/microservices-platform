@@ -86,6 +86,22 @@ public static class DocumentEndpoints
             if (ConfidentialityProblemOrNull(req.Attributes) is { } createError)
                 return createError;
 
+            // FR-19, ADR-0054, [[IADR-0270]] 決定 2: doc_scope の値域検証（未知値は 400）。
+            // さらに**一般経路での個人資料の作成を拒否する** —— 台帳（PrivateNote）を持たない
+            // 個人資料ができると容量算入（FR-19）から漏れる。作成経路は /private-notes と
+            // /private-notes/sync に限る。
+            if (DocScopeProblemOrNull(req.Attributes) is { } createScopeError)
+                return createScopeError;
+            if (DocumentAttributes.IsPrivateNote(req.Attributes))
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    [DocumentAttributes.DocScopeKey] =
+                    [
+                        "個人資料（doc_scope=private-note）はこの経路では作成できません。"
+                        + "/private-notes（SC-19）または Obsidian 同期から作成してください。"
+                    ]
+                });
+
             // SC-05, #635: タグ名を辞書の識別子へ解決する。**辞書に無い名前は 400**（手入力は自動登録しない）。
             var (createTagIds, createUnknown) = await TagResolver.ToIdsAsync(db, req.Tags);
             if (createUnknown.Count > 0) return UnknownTagsProblem(createUnknown);
@@ -129,6 +145,10 @@ public static class DocumentEndpoints
             if (ConfidentialityProblemOrNull(req.Attributes) is { } updateError)
                 return updateError;
 
+            // FR-19, ADR-0054: doc_scope の値域検証（未知値は 400。欠落は拒否しない — 遡及付与しない方針）。
+            if (DocScopeProblemOrNull(req.Attributes) is { } updateScopeError)
+                return updateScopeError;
+
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
 
@@ -160,6 +180,10 @@ public static class DocumentEndpoints
             // FR-05, UC-03, SC-05, IADR-0047: メタデータ更新も属性を全置換するため機密区分を必須検証する。
             if (ConfidentialityProblemOrNull(req.Attributes) is { } metaError)
                 return metaError;
+
+            // FR-19, ADR-0054: doc_scope の値域検証（未知値は 400）。
+            if (DocScopeProblemOrNull(req.Attributes) is { } metaScopeError)
+                return metaScopeError;
 
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
@@ -324,6 +348,19 @@ public static class DocumentEndpoints
             : Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 [DocumentAttributes.ConfidentialityKey] = [error!]
+            });
+    }
+
+    // FR-19, ADR-0054, [[IADR-0270]] 決定 2: doc_scope（文書スコープ）の値域検証。
+    // 🔴 欠落は拒否しない（既存文書は遡及付与しない方針 — ADR-0054 §結果）。未知値のみ 400。
+    private static IResult? DocScopeProblemOrNull(Dictionary<string, string>? attributes)
+    {
+        var (ok, error) = DocumentAttributes.ValidateDocScope(attributes);
+        return ok
+            ? null
+            : Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [DocumentAttributes.DocScopeKey] = [error!]
             });
     }
 

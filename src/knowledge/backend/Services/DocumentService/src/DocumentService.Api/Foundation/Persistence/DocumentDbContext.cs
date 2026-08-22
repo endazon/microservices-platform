@@ -19,6 +19,11 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先。
     public DbSet<DocumentShare> DocumentShares => Set<DocumentShare>();
 
+    // FR-19, FR-20, ADR-0037, [[IADR-0270]] 決定 2: 個人資料の台帳・保存容量・同期端末。
+    public DbSet<PrivateNote> PrivateNotes => Set<PrivateNote>();
+    public DbSet<PrivateNoteQuota> PrivateNoteQuotas => Set<PrivateNoteQuota>();
+    public DbSet<SyncDevice> SyncDevices => Set<SyncDevice>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -79,6 +84,41 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .WithMany()
                 .HasForeignKey(s => s.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FR-19, FR-20, ADR-0037, [[IADR-0270]] 決定 2: 個人資料の台帳（Document と 1:1）。
+        // 文書の物理削除（完全削除）で台帳行も連動削除する —— 行が消えることが
+        // 「容量から外れる」の実体である（決定 19・20）。
+        mb.Entity<PrivateNote>(e =>
+        {
+            e.HasKey(n => n.DocumentId);
+            e.Property(n => n.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(n => n.VaultPath).HasMaxLength(1024).IsRequired();
+            e.Property(n => n.ContentHash).HasMaxLength(64);
+            e.HasIndex(n => n.OwnerId);
+            e.HasOne<Document>()
+                .WithOne()
+                .HasForeignKey<PrivateNote>(n => n.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // FR-19, NFR-27: 利用者ごとの保存容量（既定 1 GB・最大 1 TB）。
+        mb.Entity<PrivateNoteQuota>(e =>
+        {
+            e.HasKey(q => q.OwnerId);
+            e.Property(q => q.OwnerId).HasMaxLength(200);
+        });
+
+        // FR-20, ADR-0037 決定 10〜13: 同期端末。トークンはハッシュのみ保存する。
+        // ハッシュの一意索引は照合の入口でもある（Bearer トークン → ハッシュ → 端末）。
+        mb.Entity<SyncDevice>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.OwnerId).HasMaxLength(200).IsRequired();
+            e.Property(d => d.DeviceName).HasMaxLength(200).IsRequired();
+            e.Property(d => d.TokenHash).HasMaxLength(64).IsRequired();
+            e.HasIndex(d => d.TokenHash).IsUnique();
+            e.HasIndex(d => d.OwnerId);
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である
