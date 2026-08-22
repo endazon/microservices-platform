@@ -322,3 +322,4 @@
 | [IADR-0246](./IADR-0246_confinement-checker-blind-spots.md) | **封じ込め検査器の不可視領域は費用を測ってから塞ぐか決める**。走査の 2 件（`dist/` 配下・UTF-16LE）は偽陽性ゼロなので塞ぎ、値レベルはテストが届いており偽陽性が高いので塞がない。#919 / #920 | Accepted |
 | [IADR-0247](./IADR-0247_nul-byte-check.md) | **生の NUL バイトは追跡下すべてで検査する**（拡張子の許可リストにしない・復号しない）。入ると git と grep がバイナリ扱いし diff もレビューも走査もできなくなる。実際に 4 回起きた。#956 | Accepted |
 | [IADR-0248](./IADR-0248_integration-stack-ci-readiness-gate.md) | **`k8s-local-up.sh` の EXIT=0 は readiness の証明にならない**。統合スタックは nightly で起こし、6 門を fail-closed で判定。k3s は pin。#783 | Accepted |
+| [IADR-0249](./IADR-0249_upstream-port-check-population.md) | **上流ポート検査の母集合はサービス間 named client まで含める**。判定は実効値で「上書きの有無」ではない（後発サービスはコード既定が 8080）。上書きの探索は呼び出し元のブロック内で行う。#958 | Accepted |
