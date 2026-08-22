@@ -41,10 +41,10 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
     public async Task Validate_ValidPolicy_ReturnsValid()
     {
         var res = await Client.PostAsJsonAsync("/authz/policies/validate",
-            PolicyBody(UniqueName("妥当")));
+            PolicyBody(UniqueName("妥当")), TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(HttpStatusCode.OK, "矛盾の有無は要求の成否とは別である");
-        var body = await res.Content.ReadFromJsonAsync<ValidateResponse>();
+        var body = await res.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken);
         body!.Valid.Should().BeTrue();
         body.Errors.Should().BeEmpty();
     }
@@ -55,10 +55,10 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
     public async Task Validate_InvalidPolicy_ReturnsErrorsWithOk()
     {
         var res = await Client.PostAsJsonAsync("/authz/policies/validate",
-            PolicyBody(name: "", action: "未知のアクション"));
+            PolicyBody(name: "", action: "未知のアクション"), TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await res.Content.ReadFromJsonAsync<ValidateResponse>();
+        var body = await res.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken);
         body!.Valid.Should().BeFalse();
         body.Errors.Should().NotBeEmpty();
     }
@@ -68,13 +68,13 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Validate_DoesNotPersistAnything()
     {
-        var before = (await Client.GetFromJsonAsync<List<PolicyDto>>("/authz/policies"))!.Count;
+        var before = (await Client.GetFromJsonAsync<List<PolicyDto>>("/authz/policies", TestContext.Current.CancellationToken))!.Count;
         var name = UniqueName("保存されない");
 
-        (await Client.PostAsJsonAsync("/authz/policies/validate", PolicyBody(name)))
+        (await Client.PostAsJsonAsync("/authz/policies/validate", PolicyBody(name), TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var after = await Client.GetFromJsonAsync<List<PolicyDto>>("/authz/policies");
+        var after = await Client.GetFromJsonAsync<List<PolicyDto>>("/authz/policies", TestContext.Current.CancellationToken);
         after!.Count.Should().Be(before, "dry-run は副作用を持たない");
         after.Should().NotContain(p => p.Name == name);
     }
@@ -95,22 +95,22 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
             AllowedValues = new[] { "hr" },
             Required = false,
             Scope = "document",
-        });
+        }, TestContext.Current.CancellationToken);
         attr.StatusCode.Should().Be(HttpStatusCode.Created);
-        var key = (await attr.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("key").GetString()!;
+        var key = (await attr.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).GetProperty("key").GetString()!;
 
         var body = PolicyBody(UniqueName("食い違い検出"),
             doc: new Dictionary<string, List<string>> { [key] = ["辞書に無い値"] });
 
         // dry-run の結果
-        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body);
+        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body, TestContext.Current.CancellationToken);
         dryRun.StatusCode.Should().Be(HttpStatusCode.OK);
-        var dryRunErrors = (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>())!.Errors;
+        var dryRunErrors = (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken))!.Errors;
 
         // 保存の結果（400 ＋ RFC7807 の errors）
-        var save = await Client.PostAsJsonAsync("/authz/policies", body);
+        var save = await Client.PostAsJsonAsync("/authz/policies", body, TestContext.Current.CancellationToken);
         save.StatusCode.Should().Be(HttpStatusCode.BadRequest, "保存側の契約は従来どおり 400 である");
-        var problem = await save.Content.ReadFromJsonAsync<JsonElement>();
+        var problem = await save.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         var saveErrors = problem.GetProperty("errors").GetProperty("errors")
             .EnumerateArray().Select(e => e.GetString()!).ToList();
 
@@ -125,10 +125,10 @@ public class PolicyDryRunValidationTests(TestWebApplicationFactory factory)
     {
         var body = PolicyBody(UniqueName("両方通る"));
 
-        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body);
-        (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>())!.Valid.Should().BeTrue();
+        var dryRun = await Client.PostAsJsonAsync("/authz/policies/validate", body, TestContext.Current.CancellationToken);
+        (await dryRun.Content.ReadFromJsonAsync<ValidateResponse>(TestContext.Current.CancellationToken))!.Valid.Should().BeTrue();
 
-        var save = await Client.PostAsJsonAsync("/authz/policies", body);
+        var save = await Client.PostAsJsonAsync("/authz/policies", body, TestContext.Current.CancellationToken);
         save.StatusCode.Should().Be(HttpStatusCode.Created, "dry-run が通ったなら保存も通る");
     }
 }

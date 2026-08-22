@@ -2422,6 +2422,86 @@ module.exports = ({ ok, assert }) => {
 
   // --- NFR / #581 / IADR-0144: IADR 採番の機械検査 ---------------------------------
   // 採番の一意性・連続性（`0000` 起点）・索引との双方向一致・索引行の「形」（#580 から統合）。
+  // --- check-nul-bytes: 生の NUL バイトの混入（#956） --------------------------
+  //
+  // NFR（#956）: 生の NUL が入ると **git と grep がファイルをバイナリ扱いする** ——
+  // `git diff` が中身を出さず（Binary files differ）、`grep` が行番号を出さない
+  // （Binary file … matches）。**レビューも走査もできなくなる。**
+  //
+  // 🔴 実際に 4 回起きている（#900 の検査器 → #919 の検査器 → その是正を記録した仕様書 →
+  // **本検査器そのもの**）。4 回目は本検査器が自分で捕まえた（`scripts/check-nul-bytes.js` 10 行目）。
+  // 4 回とも実行時挙動は正常で、テストも他の検査器も緑だった。
+  {
+    const { spawnSync: spawnNul } = require('child_process');
+    const pathNul = require('path');
+    const fsNul = require('fs');
+    const osNul = require('os');
+    const nulScript = pathNul.join(__dirname, 'check-nul-bytes.js');
+    const runNul = (args, opts) =>
+      spawnNul(process.execPath, [nulScript, ...args], { encoding: 'utf8', ...opts });
+
+    ok('check-nul-bytes --self-test が通る', () => {
+      const r = runNul(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:
+${r.stdout}
+${r.stderr}`);
+    });
+
+    ok('check-nul-bytes が実データ（追跡下すべて）で違反 0 件', () => {
+      const r = runNul([]);
+      assert.strictEqual(r.status, 0, `生の NUL バイトが混入している:
+${r.stdout}
+${r.stderr}`);
+    });
+
+    // 🔴 **実データが clean なので、検出力は変異でしか示せない。**
+    // 追跡下のファイルへ 1 バイト入れて、CLI が exit 1 を返し**ファイル名と行番号を名指しする**ことを見る。
+    ok('check-nul-bytes: 追跡下のファイルへ NUL を 1 バイト入れると exit 1 で名指しする', () => {
+      const target = pathNul.join(__dirname, '..', 'docs', 'README.md');
+      const orig = fsNul.readFileSync(target);
+      try {
+        fsNul.writeFileSync(target, Buffer.concat([orig, Buffer.from([0x00])]));
+        const r = runNul([]);
+        assert.notStrictEqual(r.status, 0, 'NUL を入れたのに exit 0 だった');
+        assert.match(r.stderr, /docs\/README\.md/, 'ファイル名を名指ししていない');
+        assert.match(r.stderr, /行目 \/ バイトオフセット/, '位置を出していない');
+      } finally {
+        fsNul.writeFileSync(target, orig);
+      }
+      // 戻したら緑に戻ること（対照）。
+      assert.strictEqual(runNul([]).status, 0, '復元後も落ちたままである');
+    });
+
+    // 🔴 **検査器が「自分が検出したいもの」で壊れないこと。**
+    // NUL だらけのファイルを含むツリーでも、復号しないので例外にならず、検出だけする。
+    ok('check-nul-bytes: バイナリ同然のファイルでも例外を投げず検出する', () => {
+      const nul = require('./check-nul-bytes.js');
+      const dir = fsNul.mkdtempSync(pathNul.join(osNul.tmpdir(), 'nul-repo-'));
+      try {
+        fsNul.writeFileSync(pathNul.join(dir, 'b.md'), Buffer.from([0x89, 0x50, 0x00, 0xFF, 0x00]));
+        const v = nul.inspectFile(dir, 'b.md');
+        assert.ok(v && v.offset === 2, `検出できていない: ${JSON.stringify(v)}`);
+      } finally {
+        fsNul.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    // 0 件走査で静かに緑にしない門（#664 の作法）。
+    ok('check-nul-bytes: 走査件数の門が 0 件を fail 側に置く', () => {
+      const nul = require('./check-nul-bytes.js');
+      assert.strictEqual(nul.isScanTooSmall(0), true);
+      assert.strictEqual(nul.isScanTooSmall(nul.MIN_SCANNED - 1), true);
+      assert.strictEqual(nul.isScanTooSmall(nul.MIN_SCANNED), false);
+    });
+
+    // 🔴 除外リストは**空であることが正解の状態**（未整備ではない）。広げたら気付けるようにする。
+    ok('check-nul-bytes: BINARY_EXTENSIONS は空である', () => {
+      const nul = require('./check-nul-bytes.js');
+      assert.deepStrictEqual([...nul.BINARY_EXTENSIONS], [],
+        '除外を足したなら、そのぶん検査されなくなることを IADR へ記録すること');
+    });
+  }
+
   // **実データは全判定 clean なので、検出力は変異でしか示せない** —— 一時ツリーで当てる。
   {
     const { spawnSync: spawnAdrNum } = require('child_process');
@@ -4955,7 +5035,8 @@ module.exports = ({ ok, assert }) => {
     const { execFileSync, spawnSync } = require('child_process');
     const REPO = path.join(__dirname, '..');
     const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js'];
-    const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-plan-id-qualification.js'];
+    // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
+    const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-nul-bytes.js', 'check-plan-id-qualification.js'];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
@@ -5166,11 +5247,16 @@ module.exports = ({ ok, assert }) => {
         //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
         //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        // ★ #956 で `check-nul-bytes.js`（生の NUL バイトの混入検知 —— 入ると git と grep が
+        //    バイナリ扱いし、diff もレビューも走査もできなくなる。実際に 4 回起きた）を
+        //    新設したため 39 → 40。**git ls-files を呼ぶので TRACKED_CHECKERS に載る**
+        //    （追跡下のファイル一覧を母集合にするため。未追跡は定義上の対象外）。
         // ★ #783（#442 子 5）後半で `check-stack-ready.js`（統合スタックが**実際に起きている**ことの
         //    判定 —— `k8s-local-up.sh` の EXIT=0 は readiness の証明にならないため）を新設したため
-        //    39 → 40（同上）。git を一切呼ばず kubectl / curl を外部コマンドとして叩くため、
+        //    **40 → 41**（同上。#956 と同じ PR 群で独立に増えたので、どちらも 39 → 40 と書いていた。
+        //    合わせて 41 が正）。git を一切呼ばず kubectl / curl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-deploy-manifests.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 40, `検査器の母集合が 40 本から変わった（${scripts.length} 件）`);
+        assert.strictEqual(scripts.length, 41, `検査器の母集合が 41 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

@@ -61,10 +61,10 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
     public async Task ResolveScopeEndpoint_ResponseBodyContainsGranted()
     {
         var res = await factory.CreateClient().PostAsJsonAsync("/authz/scope",
-            new AccessScopeRequest("contract-probe", new Dictionary<string, string>()));
+            new AccessScopeRequest("contract-probe", new Dictionary<string, string>()), TestContext.Current.CancellationToken);
 
         res.EnsureSuccessStatusCode();
-        var body = JsonNode.Parse(await res.Content.ReadAsStringAsync())!.AsObject();
+        var body = JsonNode.Parse(await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!.AsObject();
 
         body.Should().ContainKey("granted");
         // granted は真偽値である（値そのものは共有 DB のポリシー状態に依存するため主張しない）。
