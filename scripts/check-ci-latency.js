@@ -365,7 +365,7 @@ async function collect({ repo, token, samples }) {
   }
   const merged = sortByMergedAtDesc(prs).slice(0, samples);
 
-  // 🔴 **現在の CI 構成で測られた PR だけを母集合にする**（IADR-0239）。
+  // 🔴 **現在の CI 構成で測られた PR だけを母集合にする**（IADR-0240）。
   // 中央値は「窓の多数派」を映すので、構成を変えた直後の窓は旧構成の値を現在の値として報告する。
   // 判定は下のループで、**計測時刻（check 群の開始）**に対して行う（マージ時刻ではない）。
   const branch = integrationBranch(merged);
@@ -386,7 +386,7 @@ async function collect({ repo, token, samples }) {
     const sha = pr.head && pr.head.sha;
     if (!sha) continue;
 
-    // 「構成変更を持ち込んだ PR か」を見るために変更ファイル一覧を引く（IADR-0239）。
+    // 「構成変更を持ち込んだ PR か」を見るために変更ファイル一覧を引く（IADR-0240）。
     // 🔴 **1 ページ目だけ見てはならない。** 変更 100 件を超える PR で構成ファイルが 101 件目以降に
     // あると取りこぼす（AST で実測 —— 変更 619 ファイルの PR が該当した）。
     let changedFiles = null; // 読み切れなかった／引けなかったときは null のまま
@@ -421,7 +421,7 @@ async function collect({ repo, token, samples }) {
     }
     const all = runs.check_runs || [];
     const t0 = checkSetStart(all);
-    // 🔴 旧構成で測られた run は母集合に入れない（IADR-0239）。
+    // 🔴 旧構成で測られた run は母集合に入れない（IADR-0240）。
     // **計測時刻で見る**（マージ時刻ではない）。ただし構成変更を持ち込んだ PR 自身は残す。
     //
     // 🔴 **ここだけ fail-open の向きが逆なのは意図的である。**
