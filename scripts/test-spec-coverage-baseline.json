@@ -105,6 +105,13 @@
       "DriftDetectorTests",
       "KeycloakRolesClaimsTransformationTests"
     ],
+    "docs/tests/FR-17_knowledge-graph.md": [
+      "AbacNodeFilterTests",
+      "AbacUnenforcedAxisTests",
+      "EdgeTypeDictionaryTests",
+      "GraphAccessResolverTests",
+      "GraphTypeGateArchitectureTests"
+    ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
     ],
@@ -141,6 +148,9 @@
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
+    ],
+    "docs/tests/UC-10_graph-traversal.md": [
+      "GraphEndpointsSecrecyTests"
     ]
   }
 }

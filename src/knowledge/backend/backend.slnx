@@ -42,6 +42,13 @@
   <Folder Name="/Services/FeedbackService/tests/">
     <Project Path="Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj" />
   </Folder>
+  <Folder Name="/Services/GraphService/" />
+  <Folder Name="/Services/GraphService/src/">
+    <Project Path="Services/GraphService/src/GraphService.Api/GraphService.Api.csproj" />
+  </Folder>
+  <Folder Name="/Services/GraphService/tests/">
+    <Project Path="Services/GraphService/tests/GraphService.Api.Tests/GraphService.Api.Tests.csproj" />
+  </Folder>
   <Folder Name="/Services/IngestionService/" />
   <Folder Name="/Services/IngestionService/src/">
     <Project Path="Services/IngestionService/src/IngestionService.Worker/IngestionService.Worker.csproj" />

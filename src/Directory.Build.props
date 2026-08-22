@@ -60,7 +60,7 @@
   -->
   <PropertyGroup>
     <!-- 移行済みプロジェクト。前後と各項目の区切りは ';'（Contains の部分一致を防ぐため）。 -->
-    <XUnit1051Migrated>;DashboardService.Api.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;</XUnit1051Migrated>
+    <XUnit1051Migrated>;DashboardService.Api.Tests;GraphService.Api.Tests;Knowledge.Contracts.Tests;Knowledge.IntegrationTests;Platform.Shared.Kernel.Tests;SampleService.Tests;</XUnit1051Migrated>
   </PropertyGroup>
 
   <!-- 未移行のテストプロジェクト（AST・雛形を含む）: 従来どおり抑止する。 -->
