@@ -13,7 +13,7 @@ related_ids:
   - IADR-0206
   - IADR-0220
   - IADR-0227
-  - IADR-0244
+  - IADR-0243
 author: claude
 created: 2026-08-17
 updated: 2026-08-22
@@ -23,7 +23,7 @@ related_specs:
   - "../adr/IADR-0227_edge-host-pod-side-resolution.md"
   - "../adr/IADR-0206_local-edge-tls-cert-manager.md"
   - "../adr/IADR-0086_oidc-issuer-metadata-split.md"
-  - "../adr/IADR-0244_keycloak-edge-issuer-migration.md"
+  - "../adr/IADR-0243_keycloak-edge-issuer-migration.md"
 ---
 
 # 作業仕様書: Keycloak のエッジ公開と https issuer（#780 ＝ #442 の子 2）
@@ -214,9 +214,9 @@ scripts/verify-oidc-edge-flow.sh
 - [x] `scripts/verify-oidc-edge-flow.sh` が **hosts 追記と port-forward の前提なしに**完走（§10.4・§10.5。PASS 12 / FAIL 2。FAIL は issuer 移行と無関係な既存の BFF ルーティング欠陥で別 issue 化済み）
 - [~] ブラウザ OIDC を持つ 7 クライアントすべてでログインが成立 — **`platform-spa` は実機で確認済み（§10.5）。残る 6 ツール（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は redirect 設定の変更が不要と判明したのみで、個別のブラウザログインは未検証**（§10.7 残作業）
 - [~] `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版 URL を宣言 — **対象外と判明**（§10.2 項目3・4。実測で redirect URI 変更自体が不要だったため宣言する新規制約が無い）
-- [x] [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) を改定するか、手順 B の既定化を決める新 IADR を起こす（**どちらかを明示的に選ぶ**）→ [IADR-0244](../adr/IADR-0244_keycloak-edge-issuer-migration.md) を新設
+- [x] [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) を改定するか、手順 B の既定化を決める新 IADR を起こす（**どちらかを明示的に選ぶ**）→ [IADR-0243](../adr/IADR-0243_keycloak-edge-issuer-migration.md) を新設
 - [x] **[IADR-0091](../adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 と却下代替案「Keycloak も 50000 集約」を Supersede**
-      （#779 から移してきた約束。#779 は issuer を 1 バイトも変えないため決定 3 のみを Supersede した）→ [IADR-0244] 「Superseded」節
+      （#779 から移してきた約束。#779 は issuer を 1 バイトも変えないため決定 3 のみを Supersede した）→ [IADR-0243] 「Superseded」節
 - [x] **admin:50000 の TLS 化を扱うか、扱わないなら別 issue へ送る** → [IADR-0220] が既に済ませている（§10.2 項目6）
 
 ## 6. 個別の落とし穴（issue が挙げたもの・着手時に再確認する）
@@ -318,9 +318,9 @@ kubectl -n platform-infra delete ingress keycloak-edge
 | --- | --- | --- |
 | 1 | `KC_HOSTNAME_URL` → `https://keycloak.localhost` | **実施**（`deploy/local/infra/keycloak.yaml`） |
 | 2 | realm の作り直し | **実施**（`keycloak-data` PVC 削除 → 空 PVC 再作成 → `--import-realm`） |
-| 3 | 7 クライアントの redirect/logout URI | **不要と判明（実測）**。6 ツール（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は既に集約後 URL（`https://<tool>.localhost:50000/...`）を持ち、issuer host とは独立。`platform-spa` も変更不要。詳細は [IADR-0244] 決定3 |
+| 3 | 7 クライアントの redirect/logout URI | **不要と判明（実測）**。6 ツール（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は既に集約後 URL（`https://<tool>.localhost:50000/...`）を持ち、issuer host とは独立。`platform-spa` も変更不要。詳細は [IADR-0243] 決定3 |
 | 4 | `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` | **対象外**（項目3が不要だったため） |
-| 5 | [IADR-0091] 決定5 の Supersede | **実施**（[IADR-0244] 「Superseded」節） |
+| 5 | [IADR-0091] 決定5 の Supersede | **実施**（[IADR-0243] 「Superseded」節） |
 | 6 | admin:50000 TLS 化 | 既に [IADR-0220] が済ませている（変更なし） |
 
 ### 10.3 ★ 未知のバグを発見・修正した — realm.json の seed user 4 件が自分の password policy に違反していた
@@ -379,7 +379,7 @@ $ curl -s http://localhost:18081/realms/platform/.well-known/openid-configuratio
 "issuer":"https://keycloak.localhost/realms/platform"
 ```
 
-**両経路（in-cluster / エッジ）で issuer が完全一致した** —— [IADR-0244] 決定1（`KC_HOSTNAME_URL` が
+**両経路（in-cluster / エッジ）で issuer が完全一致した** —— [IADR-0243] 決定1（`KC_HOSTNAME_URL` が
 単一情報源）が実機で成立することを確認した。
 
 **`scripts/verify-oidc-edge-flow.sh` の実行**（hosts 追記・port-forward なし。フロントエンドは
@@ -409,7 +409,7 @@ $ curl -s http://localhost:18081/realms/platform/.well-known/openid-configuratio
 
 ### 10.6 静的検査・変異試験
 
-`scripts/k8s-local-up.test.js` に4 件追加（IADR-0244 節）:
+`scripts/k8s-local-up.test.js` に4 件追加（IADR-0243 節）:
 
 | # | 検査 | 変異 | 結果 |
 | --- | --- | --- | --- |

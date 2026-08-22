@@ -19,7 +19,7 @@
 #
 #   経路B のエッジは **Traefik**（k3s 内蔵。Istio ではない。IADR-0091）で、
 #   `/bff` → bff-service、catch-all → frontend-service に振っている。
-#   issuer はエッジ host `https://keycloak.localhost` へ移した（IADR-0076 決定3 手順B・IADR-0244・
+#   issuer はエッジ host `https://keycloak.localhost` へ移した（IADR-0076 決定3 手順B・IADR-0243・
 #   #780 第2段）。pod からの到達は IADR-0227（coredns-custom）が既に可能にしているため、
 #   **hosts 追記・port-forward（手順A）は前提にしない**。TLS はローカル CA（local-edge-ca。
 #   IADR-0206）の自己署名であり検証しない（`curl -k`。dev 専用の検証スクリプトのため）。
@@ -86,7 +86,7 @@ info "エッジ: 到達"
 DISCOVERY="$KC_URL/realms/$REALM/.well-known/openid-configuration"
 if ! curl -s $CURL_K -o /dev/null -m 5 "$DISCOVERY"; then
   info "Keycloak（$KC_URL）へ到達できません。"
-  info "エッジ issuer（IADR-0244・#780 第2段）が有効か、LOCALEDGE=1 で経路B を起動したか確認してください。"
+  info "エッジ issuer（IADR-0243・#780 第2段）が有効か、LOCALEDGE=1 で経路B を起動したか確認してください。"
   exit 2
 fi
 ISSUER=$(curl -s $CURL_K -m 5 "$DISCOVERY" | json_field issuer)

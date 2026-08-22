@@ -316,4 +316,4 @@
 | [IADR-0240](./IADR-0240_deploy-manifest-schema-validation.md) | chart / overlay 検証は構文だけ見ておりスキーマ不整合を検出しない。`kubeconform` を追加し、標準は既定カタログ、CRD は `datreeio/CRDs-catalog` で解決する。未知スキーマは fail-closed。#783 | Accepted |
 | [IADR-0241](./IADR-0241_ci-latency-watch-population-epoch.md) | **逆転監視の母集合は「現在の CI 構成で測られた PR」に限る**。中央値は窓の多数派を映すので、構成変更の直後は**旧構成の値を現在の値として報告する**（定常性の門は 1.8 倍の段差をくぐった）。しきい値ではなく母集合を正す | Accepted |
 | [IADR-0242](./IADR-0242_graph-hop-abac-and-typed-edge-schema.md) | グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ。認可 API はフィルタ集合しか返さないため、素朴に使うと「探索してから濾す」形になる。#908 | Proposed |
-| [IADR-0244](./IADR-0244_keycloak-edge-issuer-migration.md) | Keycloak issuer をエッジ host（`https://keycloak.localhost`）へ移す。.NET は `Auth:MetadataAddress`（in-cluster）＋`Auth:ValidIssuers`（エッジ）で追随し、非 .NET クライアントはエッジへ直接到達する。#780 | Accepted |
+| [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) | Keycloak issuer をエッジ host（`https://keycloak.localhost`）へ移す。.NET は `Auth:MetadataAddress`（in-cluster）＋`Auth:ValidIssuers`（エッジ）で追随し、非 .NET クライアントはエッジへ直接到達する。#780 | Accepted |

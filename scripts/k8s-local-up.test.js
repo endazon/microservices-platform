@@ -1672,7 +1672,7 @@ ok('LOCALEDGE=1: coredns-custom を当ててから rollout restart する（impo
   assert.ok(applyEdge !== -1 && applyEdge < applyCoredns, 'edge overlay の apply より前に coredns を触っている');
 });
 
-// --- IADR-0244 (#780 第2段): Keycloak issuer のエッジ移行 --------------------------------------
+// --- IADR-0243 (#780 第2段): Keycloak issuer のエッジ移行 --------------------------------------
 //
 // KC_HOSTNAME_URL・Auth:MetadataAddress・Auth:ValidIssuers の 3 点は「どちらが in-cluster でどちらが
 // エッジか」を取り違えると、.NET の OIDC metadata 取得がエッジの自己署名/ローカル CA に阻まれて

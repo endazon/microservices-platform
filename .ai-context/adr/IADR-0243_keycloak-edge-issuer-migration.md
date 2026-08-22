@@ -1,5 +1,5 @@
 ---
-title: IADR-0244 Keycloak の issuer をエッジ host（https://keycloak.localhost）へ移し、.NET は Auth:MetadataAddress（in-cluster）＋ Auth:ValidIssuers（エッジ）で追随する
+title: IADR-0243 Keycloak の issuer をエッジ host（https://keycloak.localhost）へ移し、.NET は Auth:MetadataAddress（in-cluster）＋ Auth:ValidIssuers（エッジ）で追随する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -20,7 +20,7 @@ created: 2026-08-22
 updated: 2026-08-22
 ---
 
-# IADR-0244 Keycloak issuer のエッジ移行（#780 第2段）
+# IADR-0243 Keycloak issuer のエッジ移行（#780 第2段）
 
 ## 状況
 
