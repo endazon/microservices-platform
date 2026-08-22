@@ -2501,6 +2501,14 @@ components:
         userAttributes:
           type: object
           additionalProperties: { type: string }
+        action:
+          type: string
+          description: >-
+            ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。
+            `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で
+            従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、
+            書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を
+            deny へ縮退させる）。
 
     AccessScopeResponse:
       type: object
@@ -2976,7 +2984,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        action: { type: string, description: "`read` / `analyze` / `manage`" }
+        action: { type: string, description: "`read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`）" }
         userConditions:
           $ref: "#/components/schemas/AbacConditionMap"
         documentConditions:
@@ -3034,7 +3042,7 @@ components:
       description: "FR-09, UC-05: ポリシーの登録・更新（更新も同じ型を用いる）"
       properties:
         name: { type: string }
-        action: { type: string, description: "`read` / `analyze` / `manage`" }
+        action: { type: string, description: "`read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`）" }
         userConditions:
           $ref: "#/components/schemas/AbacConditionMap"
         documentConditions:

@@ -1,9 +1,19 @@
 namespace Platform.Shared.Contracts.Dtos;
 
 // FR-05, UC-05: ABAC 権限スコープ解決用 DTO
+//
+// FR-21, ADR-0036 D-07, IADR-0253 決定 5（2026-08-23 改定 / #989）: Action は解決したい
+// アクション（read / analyze / manage / write）。従前は /authz/scope がサーバ側で read を
+// ハードコードしており、書き込みの認可スコープをこの経路で出せなかった。
+//
+// **既定値はリテラル "read" である** —— 値域の正（PolicyAction）は AuthorizationService の
+// ドメイン型であり、契約プロジェクトからは参照できない。値の一致は評価器側のテストで固定する。
+// **Action は末尾に置き、既定値を付けてある**（既定値付き末尾追加＝非破壊。IADR-0122 決定 2）。
+// 既存の呼び出し元は無改修で従来どおり read のスコープを得る。
 public record AccessScopeRequest(
     string UserId,
-    Dictionary<string, string> UserAttributes);
+    Dictionary<string, string> UserAttributes,
+    string Action = "read");
 
 // FR-05, FR-19, ADR-0036, ADR-0046 D-06, IADR-0253 決定 1: 認可スコープの 1 分岐。
 // **分岐内のフィルタは AND、分岐どうしは OR** で評価する。

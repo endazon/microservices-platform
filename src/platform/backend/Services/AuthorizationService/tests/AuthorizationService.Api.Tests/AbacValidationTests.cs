@@ -117,6 +117,17 @@ public class AbacValidationTests
         errors.Should().Contain(e => e.Contains("action"));
     }
 
+    // FR-21, ADR-0036 D-07, IADR-0253 決定 5（2026-08-23 改定 / #989）: write は有効な値域である
+    // （上の否定形と対の陽性対照。値域を広げた側が固定されないと、否定形だけでは
+    // 「常に action エラーを返す実装」も緑になる）。
+    [Fact]
+    public void ValidatePolicy_WriteAction_IsValid()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "owner-write", PolicyAction.Write, new(), new(), []);
+        errors.Should().BeEmpty();
+    }
+
     // FR-09, UC-05: 辞書外の文書属性値を条件に含むポリシーはエラー（矛盾検証）
     [Fact]
     public void ValidatePolicy_DocValueOutsideDictionary_Error()

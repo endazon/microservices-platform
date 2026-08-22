@@ -3,15 +3,15 @@ title: 文書属性・タグ／ABAC ポリシー管理 機能仕様書
 type: functional-spec
 status: draft
 created: 2026-07-02
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-09, SC-05, SC-09, UC-05]
-adrs: [ADR-0004, ADR-0043]
-iadrs: [IADR-0006, IADR-0040, IADR-0044, IADR-0129, IADR-0152, IADR-0153]
+adrs: [ADR-0004, ADR-0036, ADR-0043]
+iadrs: [IADR-0006, IADR-0040, IADR-0044, IADR-0129, IADR-0152, IADR-0153, IADR-0253]
 specs: []
-issues: [#634, #635, planning#304]
+issues: [#634, #635, #989, planning#304, planning#466]
 -->
 
 # 機能仕様書: 文書属性・タグ／ABAC ポリシー管理
@@ -35,7 +35,7 @@ issues: [#634, #635, planning#304]
 | 入力 | 属性辞書（key/label/allowedValues/required/scope）, ポリシー（name/action/userConditions/documentConditions）, 文書属性（key→value） |
 | 処理 | 属性辞書・ポリシーの CRUD＋有効/無効切替。保存前に `AbacValidation` で入力検証・辞書整合検証。文書属性は `POST /authz/attributes/validate` で辞書整合を検証（副作用なし） |
 | 出力 | 管理対象エンティティ（JSON）／検証結果 `{ valid, errors }`／エラー時は RFC7807 `ValidationProblem`（400） |
-| 業務ルール | ①属性辞書のキーは同一スコープ内で一意。②Key/Scope は不変。③許可値は非空・重複不可。④ポリシーの action は read/analyze/manage。⑤条件・文書属性は辞書に定義済みキーのみ許可値整合を検証し、未定義キーは許容（段階導入）。⑥必須属性（Required）は文書属性検証で充足を強制。 |
+| 業務ルール | ①属性辞書のキーは同一スコープ内で一意。②Key/Scope は不変。③許可値は非空・重複不可。④ポリシーの action は read/analyze/manage/write（write は所有者ベースの書き込み判定用に追加。書き込みポリシーが存在しない間、書き込みスコープは全件遮断のまま）。⑤条件・文書属性は辞書に定義済みキーのみ許可値整合を検証し、未定義キーは許容（段階導入）。⑥必須属性（Required）は文書属性検証で充足を強制。 |
 
 ## 主要コンポーネント
 

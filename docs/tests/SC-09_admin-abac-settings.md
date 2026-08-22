@@ -3,15 +3,15 @@ title: SC-09 管理者設定（ABAC） テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, SC-05, SC-06, SC-07, SC-09, SC-10, SC-11, UC-05]
 adrs: [ADR-0031]
-iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153]
+iadrs: [IADR-0006, IADR-0009, IADR-0040, IADR-0119, IADR-0127, IADR-0129, IADR-0153, IADR-0253]
 specs: [20260805_issue-504_sc09-11-admin-ops-screens]
-issues: [#503, #504, #510, #535, #640]
+issues: [#503, #504, #510, #535, #640, #989]
 -->
 
 # テスト仕様書: 管理者設定（ABAC）
@@ -96,7 +96,7 @@ issues: [#503, #504, #510, #535, #640]
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
-| P1 | 値集合 | アクションが契約の **3 値**（`read` / `analyze` / `manage`）と完全一致する |
+| P1 | 値集合 | アクションが画面の提供する **3 値**（`read` / `analyze` / `manage`）と完全一致する。🔴 **契約側の値域は `write` を含む 4 値へ拡張済み**——本テストが固定するのは**画面語彙**であり、契約との完全一致は `write` の画面追随（別作業）まで成立しない |
 | P2 | 値集合 | スコープが契約の **2 値**（`document` / `user`）と完全一致する |
 | P3 | 写像 | 各値に表示名が対で決まる |
 | P4 | **未知の値** | 生値をそのまま出す（`—`・「不明」へ丸めない） |

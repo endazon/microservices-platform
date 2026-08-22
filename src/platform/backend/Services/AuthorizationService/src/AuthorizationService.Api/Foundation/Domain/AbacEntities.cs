@@ -99,7 +99,13 @@ public static class PolicyAction
     public const string Read = "read";
     public const string Analyze = "analyze";
     public const string Manage = "manage";
+    // FR-05, FR-21, ADR-0036 D-01/D-07, IADR-0253 決定 5（2026-08-23 改定 / #989）:
+    // 計画の write 規則（doc.owner ∈ { ${current_user} }）を同じポリシーモデルで表現するための値。
+    // 計画 07_abac-attribute-model §ポリシー評価モデル は 2026-08-22 追記で値域へ write を加えており
+    // （planning#466）、実装が追随する。**値域の拡張そのものは何も許可しない** ——
+    // deny-by-default により、write ポリシーが 1 件も無い間は write スコープは全件遮断のままである。
+    public const string Write = "write";
 
-    public static readonly string[] All = [Read, Analyze, Manage];
+    public static readonly string[] All = [Read, Analyze, Manage, Write];
     public static bool IsValid(string action) => All.Contains(action);
 }

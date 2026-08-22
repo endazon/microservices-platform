@@ -2049,6 +2049,12 @@
       "Platform.Shared.Contracts.Dtos.AccessScopeRequest": {
         "kind": "record",
         "members": {
+          "Action": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 2
+          },
           "UserAttributes": {
             "source": "positional",
             "type": "Dictionary<string,string>",
