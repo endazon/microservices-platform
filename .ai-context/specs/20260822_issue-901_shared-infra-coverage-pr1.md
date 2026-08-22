@@ -32,11 +32,11 @@ issue: "#901"
 
 **計 44 行。** 選定理由（優先順位は「依存の広さ × 壊れたときの静かさ」）:
 
-1. **`MapPlatformHealthChecks`**（本番 11 箇所）—— `/health/live` の唯一の消費者は k8s の probe。
+1. **`MapPlatformHealthChecks`**（本番 **12** 箇所）—— `/health/live` の唯一の消費者は k8s の probe。
    `Predicate = _ => false` が `_ => true` へ退行すれば**依存障害で全 pod が再起動ループ**、
    ready 側が `_ => false` へ退行すれば**未準備 pod へ常時トラフィック**。
    🔴 **どちらも HTTP は 200 を返し続け、ビルドも通る。最も静かで最も広い。**
-2. **`UsePlatformMiddleware`**（本番 10 箇所）—— ミドルウェアの**順序**が散文以外で守られていない。
+2. **`UsePlatformMiddleware`**（本番 **11** 箇所）—— ミドルウェアの**順序**が散文以外で守られていない。
    `CorrelationIdMiddleware` が抜けると相関 ID の `BeginScope` が消え、`ADR-0006` が静かに成立しなくなる（ログは出続ける）。
 
 **両方 `WebApplication` 拡張なので試験の器を共有できる。**
@@ -227,3 +227,33 @@ C は**述語ではなく経路名**の退行である。C で落ちた 4 件に
 
 着手前の実測で `正順=200 / 入替=401` の差を確認したため、順序の試験を書いた。
 実装後の変異 E でも 1 件が落ちており、**事前実測と実装後の変異が一致している**。
+
+## 🔴 ［2026-08-22 追記 / #929］本番 call site の件数を引き直した
+
+着手時に「`AddPlatformHealthChecks` 本番 11 / `UsePlatformMiddleware` 本番 10」と書いたが、
+**`#929`（GraphService 新設・`3b3136ef`）が着地して利用側が 1 つ増えた**ため誤りになった。
+`develop` を取り込んで**実測で引き直した**。
+
+| 拡張 | 着手時 | 引き直し後 |
+| --- | ---: | ---: |
+| `AddPlatformHealthChecks` | 11 | **12** |
+| `UsePlatformMiddleware` | 10 | **11** |
+
+🔴 **引き直しの過程で自分の走査を 1 度間違えた（記録として残す）。**
+`grep -v '/tests/' -v '/Tests/'` で試験を除いたつもりが、実際のパスは
+`Platform.Shared.Infrastructure.Tests/` であり **`Tests` の直前が `/` ではなく `.`** のため
+除外が効かず、自分の試験ファイル 7 件を本番 call site として数えて **19 / 13** という値を出した。
+**生の出力を読んで気付いた。** 母集合の規則 4「行フィルタで絞らない。パスから引く」の実例である。
+確定値は `--include='Program.cs'` で引き、`Program.cs` 以外に本番参照が無いことも別途確認した
+（定義本体 2 件と自分の試験のみ）。
+
+**この件数の変化は本 PR の内容に影響しない** —— 試験は拡張の**挙動**を固定するものであり、
+利用側の数に依存しない。`develop` 取り込み後も 47 件全通（EXIT=0）を確認した。
+
+### W4（Wolverine ブローカ readiness）との重なり
+
+**12 の call site すべてが Wolverine / RabbitMQ を配線していない**（各サービス根を
+`AddWolverine` / `UseRabbitMq` / `WolverineFx` で走査。GraphService を含めて 0 件）。
+したがって W4 が `AddPlatformHealthChecks` の中で `ready` タグ付きチェックを登録すると、
+**メッセージングを使っていない 12 サービス全部がブローカ停止時に `/health/ready` で 503 を返す**。
+W4 は Wolverine を配線する場所で opt-in の拡張として足すのが妥当である（実測は下記）。
