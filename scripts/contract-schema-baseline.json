@@ -866,6 +866,35 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.EdgeTypeCatalogItemDto": {
+        "kind": "record",
+        "members": {
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "IsSymmetric": {
+            "source": "positional",
+            "type": "bool",
+            "required": true,
+            "position": 3
+          },
+          "Layer": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 2
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.EdgeTypeDto": {
         "kind": "record",
         "members": {

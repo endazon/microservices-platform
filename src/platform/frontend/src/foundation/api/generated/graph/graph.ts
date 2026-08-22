@@ -20,6 +20,7 @@ import type {
 
 import type {
   BffGraphNeighborsParams,
+  EdgeTypeCatalogItem,
   GraphView
 } from '../bff.schemas';
 
@@ -44,6 +45,109 @@ const withQueryKey = <T extends object, K>(query: T, queryKey: K): T & { queryKe
   }
   return result;
 };
+
+export type bffGraphEdgeTypesResponse200 = {
+  data: EdgeTypeCatalogItem[]
+  status: 200
+}
+
+export type bffGraphEdgeTypesResponse403 = {
+  data: void
+  status: 403
+}
+
+export type bffGraphEdgeTypesResponseSuccess = (bffGraphEdgeTypesResponse200) & {
+  headers: Headers;
+};
+export type bffGraphEdgeTypesResponseError = (bffGraphEdgeTypesResponse403) & {
+  headers: Headers;
+};
+
+export type bffGraphEdgeTypesResponse = (bffGraphEdgeTypesResponseSuccess | bffGraphEdgeTypesResponseError)
+
+export const getBffGraphEdgeTypesUrl = () => {
+
+
+
+
+  return `/bff/graph/edge-types`
+}
+
+/**
+ * FR-17, SC-18, ADR-0033, ADR-0039: 辺の型の識別子・名前・層・対称性を返す。
+ *
+ * グラフ読み取りの応答が返すのは `edgeTypeId` だけなので、**辺の描き分けと型フィルタには
+ * このカタログが要る**（表示名は辞書側で解決する。改名に追随させるため。ADR-0033 決定 9）。
+ *
+ * **使用件数は含まない。** 件数は全辺を数えており ABAC で絞られていないため、
+ * 一般利用者へ返すと権限外の辺を含む総量が漏れる。件数が要る管理用途（SC-09 / SC-10）は
+ * admin / operator 限定の別口が担う。
+ * @summary FR-17, SC-18: 辺の型カタログ（描画用）
+ */
+export const bffGraphEdgeTypes = async ( options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphEdgeTypesResponse> => {
+
+  return bffFetch<bffGraphEdgeTypesResponse>(getBffGraphEdgeTypesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphEdgeTypesQueryKey = () => {
+    return [
+    `/bff/graph/edge-types`
+    ] as const;
+    }
+
+
+export const getBffGraphEdgeTypesQueryOptions = <TData = Awaited<ReturnType<typeof bffGraphEdgeTypes>>, TError = void>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphEdgeTypes>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffGraphEdgeTypesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffGraphEdgeTypes>>> = ({ signal }) => bffGraphEdgeTypes({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffGraphEdgeTypes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffGraphEdgeTypesQueryResult = NonNullable<Awaited<ReturnType<typeof bffGraphEdgeTypes>>>
+export type BffGraphEdgeTypesQueryError = void
+
+
+/**
+ * @summary FR-17, SC-18: 辺の型カタログ（描画用）
+ */
+
+export function useBffGraphEdgeTypes<TData = Awaited<ReturnType<typeof bffGraphEdgeTypes>>, TError = void>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphEdgeTypes>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffGraphEdgeTypesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
 
 export type bffGraphNodeResponse200 = {
   data: GraphView

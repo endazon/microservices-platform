@@ -26,6 +26,21 @@ public record EdgeTypeDto(
     bool IsSeed,
     int UsageCount);
 
+// FR-17, SC-18 (#962): **描画用**の 1 件。SC-18（一般利用者のグラフビュー）が辺の型名・層・
+// 対称性を解決するために使う。
+//
+// 🔴 **`UsageCount` を持たない。これは省略ではなく、意図した除外である。**
+// 使用件数は `db.Edges.CountAsync(...)` で**全辺を数えて**おり ABAC で絞られていない
+// （管理者向けの `EdgeTypeDto` では設計どおり）。一般利用者へ返すと、ホップごと ABAC
+// （IADR-0242）が個々のノード・辺を隠しているのに**集計値が総量を漏らす**。
+// 隠すのは集計値であって語彙ではない —— 型名そのものはタグ辞書と同じ「語彙」であり、
+// これを絞る理由は無い。
+public record EdgeTypeCatalogItemDto(
+    Guid Id,
+    string Name,
+    string Layer,
+    bool IsSymmetric);
+
 // FR-17, SC-09: 辞書へ型を追加する。
 // **識別子は辞書が採番する**（呼び出し側から与えない。改名で変わらない値を外から決めさせない）。
 public record CreateEdgeTypeRequest(string Name, string Layer, bool IsSymmetric);

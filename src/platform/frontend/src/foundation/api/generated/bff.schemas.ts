@@ -97,6 +97,20 @@ export interface GraphEdgeItem {
 }
 
 /**
+ * FR-17, SC-18: 辺の型（描画用）。**使用件数を持たない** —— 意図した除外である
+ * （件数は ABAC で絞られておらず、一般利用者へ返すと総量が漏れる）。
+ */
+export interface EdgeTypeCatalogItem {
+  id: string;
+  /** 表示名。改名されても id は変わらない */
+  name: string;
+  /** 型の層（core / domain / user 等） */
+  layer: string;
+  /** 対称な関係か（向きを持たないか） */
+  isSymmetric: boolean;
+}
+
+/**
  * FR-17, UC-10, ADR-0034 決定 4: 近傍グラフ。`truncated` は表示上限で打ち切ったかを表す。
  * **上限の計数は権限判定を通過した品目に対してのみ行われる**ため、この値が権限外文書の
  * 存在を漏らすことはない。

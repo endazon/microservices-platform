@@ -17,16 +17,30 @@ import type {
 } from 'msw';
 
 import type {
+  EdgeTypeCatalogItem,
   GraphView
 } from '../bff.schemas';
 
 import {
+  getBffGraphEdgeTypesResponseMock,
   getBffGraphNeighborsResponseMock,
   getBffGraphNodeResponseMock
 } from './graph.faker';
 
-export { getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock } from './graph.faker';
+export { getBffGraphEdgeTypesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock } from './graph.faker';
 
+
+export const getBffGraphEdgeTypesMockHandler = (overrideResponse?: EdgeTypeCatalogItem[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<EdgeTypeCatalogItem[]> | EdgeTypeCatalogItem[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/graph/edge-types', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffGraphEdgeTypesResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 
 export const getBffGraphNodeMockHandler = (overrideResponse?: GraphView | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<GraphView> | GraphView), options?: RequestHandlerOptions) => {
   return http.get('*/bff/graph/:documentId', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
@@ -52,6 +66,7 @@ export const getBffGraphNeighborsMockHandler = (overrideResponse?: GraphView | (
   }, options)
 }
 export const getGraphMock = () => [
+  getBffGraphEdgeTypesMockHandler(),
   getBffGraphNodeMockHandler(),
   getBffGraphNeighborsMockHandler()
 ]

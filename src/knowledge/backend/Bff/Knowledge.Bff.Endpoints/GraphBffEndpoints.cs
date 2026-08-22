@@ -36,7 +36,7 @@ public static class GraphBffEndpoints
         // FR-17, UC-10: 起点ノード 1 件。
         g.MapGet("/{documentId:guid}", (Guid documentId, IHttpClientFactory httpFactory,
                 HttpContext http, CancellationToken ct)
-            => ProxyAsync(httpFactory, http, $"/graph/{documentId}", ct))
+            => ProxyAsync<GraphViewDto>(httpFactory, http, $"/graph/{documentId}", ct))
             .WithName("BffGraphNode")
             .Produces<GraphViewDto>()
             .Produces(StatusCodes.Status404NotFound);
@@ -46,12 +46,27 @@ public static class GraphBffEndpoints
         // BFF では正規化も握り潰しもしない（検索モードを後段へ透過する SearchBff と同じ作法）。
         g.MapGet("/{documentId:guid}/neighbors", (Guid documentId, int? hops,
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
-            => ProxyAsync(httpFactory, http,
+            => ProxyAsync<GraphViewDto>(httpFactory, http,
                 $"/graph/{documentId}/neighbors" + (hops is null ? "" : $"?hops={hops}"), ct))
             .WithName("BffGraphNeighbors")
             .Produces<GraphViewDto>()
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound);
+
+        // FR-17, SC-18 (#962): 辺の型カタログ。**辺の型名を解決するのに要る** ——
+        // グラフ応答が返すのは `EdgeTypeId` だけなので、これが無いと辺の描き分けも型フィルタも描けない。
+        //
+        // 🔴 **後段は `/graph/edge-types/catalog`（認証のみ・使用件数なし）であって、
+        // `/graph/edge-types`（admin / operator 限定・使用件数つき）ではない。**
+        // 後者へ向けると (1) 一般利用者が 403 になり (2) ABAC で絞られていない集計値が漏れる。
+        //
+        // ルートの衝突は起きない —— 上の 2 本は `{documentId:guid}` に制約されており、
+        // `edge-types` は GUID として解釈されない。
+        g.MapGet("/edge-types", (IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+            => ProxyAsync<List<EdgeTypeCatalogItemDto>>(httpFactory, http, "/graph/edge-types/catalog", ct))
+            .WithName("BffGraphEdgeTypes")
+            .Produces<List<EdgeTypeCatalogItemDto>>()
+            .Produces(StatusCodes.Status403Forbidden);
 
         return app;
     }
@@ -61,7 +76,7 @@ public static class GraphBffEndpoints
     // 🔴 **状態コードはそのまま返す。** とくに 404 を別の値へ置き換えない ——
     // GraphService は「権限外・複製未到達・不存在」をすべて 404 に倒して存在を秘匿しており
     // （ADR-0034 決定 2）、BFF がここで 403 や 200 へ変換すると**その秘匿が BFF 層で破れる**。
-    private static async Task<IResult> ProxyAsync(
+    private static async Task<IResult> ProxyAsync<T>(
         IHttpClientFactory httpFactory, HttpContext http, string path, CancellationToken ct)
     {
         var client = httpFactory.CreateClient("GraphService");
@@ -77,7 +92,7 @@ public static class GraphBffEndpoints
             if (!resp.IsSuccessStatusCode)
                 return Results.StatusCode((int)resp.StatusCode);
 
-            var view = await resp.Content.ReadFromJsonAsync<GraphViewDto>(ct);
+            var view = await resp.Content.ReadFromJsonAsync<T>(ct);
             return view is null
                 ? Results.StatusCode(StatusCodes.Status502BadGateway)
                 : Results.Ok(view);
