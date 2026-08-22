@@ -177,6 +177,29 @@ ADR-0033 の未決事項「GraphService が用いるストア製品」は**実�
 | 改名追随 | `EdgeTypeRenameTests`（改名前後で `edges` 行の全列が不変） |
 | 未強制の明示 | `AbacUnenforcedAxisTests`（`owner` だけ異なる 2 文書が区別されないことを assert。テスト名に未強制である旨を書く） |
 
+### テスト仕様書（`docs/tests/`）を本 issue で作った理由
+
+**着手後に必須ゲートとして判明した。** `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が
+「仕様書なしで実装が先行（allowlist 外）: FR-17 / UC-10」で fail した（`check-test-traceability.js` の
+逆方向検査）。テストが起点 ID を参照しているのに `docs/tests/<ID>_*.md` が無い状態を止める検査である。
+
+**allowlist へ逃がさず、仕様書を書く方を選んだ。** 根拠は `scripts/test-traceability-allowlist.json` の
+`$comment_specMissing` にある 2 つの記述である:
+
+1. 既存の `UC-01`〜`UC-07` は「**各 UC を再実装する issue（#438〜#452）が `docs/tests/UC-xx_*.md` を
+   作った時点で削除する**」既知残件として載っている。つまり allowlist は**着手前**の状態を許すもので、
+   着手した issue が仕様書を書くことが前提になっている
+2. 🔴 **「保留対象の ID は、その機能に着手する issue が初めて書く。」** #502 が保留中の機能の ID を
+   テストへ書いて allowlist で黙らせ、検査器が「**意図的に保留した機能を『実装が先行している』と
+   報告する**」実害を出した経緯が記録されている
+
+**#908 は FR-17 / UC-10 に着手する最初の issue である**から、ここが「初めて書く」地点にあたる。
+よって `docs/tests/FR-17_knowledge-graph.md` と `docs/tests/UC-10_graph-traversal.md` を作成し、
+allowlist には**何も足していない**。
+
+`UC-10` の仕様書は**深さ 0 までしか覆っていない**（多ホップは #909）。空欄を「網羅済み」と読ませない
+よう、当該表に**未実装であることを明示した行**（T-08〜T-10）を置き、その旨を本文にも書いた。
+
 **変異試験**: 型ゲートとアーキテクチャテストは、それが実際に落ちることを変異で確かめる。手順は「①変異を入れる ②`git diff` で当該箇所のみ変化したことを読む ③`dotnet build` が `Build succeeded` EXIT=0 であることを読む ④その後にテスト結果を読む」。**ビルドが落ちる変異はテストの検出力を何も示さない**ため、変異はビルドが通る形（例: `Authorize` の可視性を public に上げる／`Seal` を経ない構築経路を足す）で入れる。
 
 ## 計画書との差異
