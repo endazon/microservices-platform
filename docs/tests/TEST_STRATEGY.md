@@ -9,9 +9,9 @@ author: Claude
 <!-- trace:
 ids: [SC-05, SC-06, SC-07, SC-08]
 adrs: [ADR-0027, ADR-0030]
-iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231]
-specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration]
-issues: [#454, #503, #510, #568, #571, #580, #882, planning#146, planning#160, planning#161, planning#162, planning#180]
+iadrs: [IADR-0034, IADR-0049, IADR-0115, IADR-0116, IADR-0118, IADR-0120, IADR-0122, IADR-0123, IADR-0130, IADR-0137, IADR-0138, IADR-0195, IADR-0231, IADR-0236]
+specs: [20260803_issue-453_regression-test-foundation, 20260807_issue-571_coverage-exclude-generated, 20260821_issue-455_xunit-v3-migration, 20260822_issue-900_coverage-cross-report-dedup]
+issues: [#454, #503, #510, #568, #571, #580, #882, #899, #900, planning#146, planning#160, planning#161, planning#162, planning#180]
 -->
 
 # テスト戦略 — 再実装の退行防止基盤
@@ -73,7 +73,7 @@ it('0 件のとき空状態を表示する', () => { ... })
 | **写像検査（順方向）** | `docs/tests/` の FR/SC ↔ `src/` のテスト | [`check-test-traceability.js`](../../scripts/check-test-traceability.js) | allowlist（`pending`）に無い未写像 → **fail**。allowlist 内 → warn。写像済みなのに allowlist 残置 → **fail** |
 | **写像検査（逆方向・[#472](https://github.com/endazon/microservices-platform/issues/472)）** | 計画レンジ（[`.claude/rules/traceability.md`](../../.claude/rules/traceability.md)「起点 ID の種別」節）↔ `docs/tests/` | 同上 | 仕様書の無い計画 ID → **warn**（未着手は正当）。うち `src/` のテストが参照済み（＝実装先行）で allowlist（`specMissing`）に無いもの → **fail**。仕様書ができたのに `specMissing` 残置 → **fail**。レンジをパースできない → **fail**（0 件検査への退行を止める） |
 | **記載の被覆（[#510](https://github.com/endazon/microservices-platform/issues/510)）** | **`docs/tests/` の仕様書ファイル × `src/**/*Tests.cs` のクラス**（AST を除く）の対 | [`check-test-spec-coverage.js`](../../scripts/check-test-spec-coverage.js) | [`test-spec-coverage-baseline.json`](../../scripts/test-spec-coverage-baseline.json) の床にある対が消えた → **fail**（節の消失。**他の仕様書に同じクラスの記載が残っていても落ちる**——落ちるのは節であり、節は仕様書に属するため）。床にある対のクラスが実在しない → **fail**。記載された対が床に無い → **fail**（`--update` で上げる）。どの仕様書にも載らず床にも無いクラス → warn。走査 0 件・床が読めない → **fail**（テスト仕様書の「節ごと落ちる」を、テストクラス単位の被覆 ratchet で機械検査するという実装判断による） |
-| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する。**生成コードも対象外**——EF（`Migrations/` 配下・`*ModelSnapshot.cs`）は [#571](https://github.com/endazon/microservices-platform/issues/571) / カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す、**source generator の出力（`obj/` 配下）は [#574](https://github.com/endazon/microservices-platform/issues/574) / カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 38` / `branch 27`）未満 → **fail**（バックエンドのカバレッジ床（単一情報源・実測からの切り下げ・ratchet）の実装 ADR） |
+| **バックエンド カバレッジ床** | `src/platform/backend/**` ・ `src/knowledge/backend/**`（**AST は対象外**。レポートのファイルパスに加え、**行を `<class filename>` でユニットへ帰属させて**合成点経由の混入も落とす——後述「合成点テスト経由の混入」・[#468](https://github.com/endazon/microservices-platform/issues/468) / カバレッジ床の集計は Cobertura の class 直下 `<lines>` を正とし、`<class filename>` でユニットへ帰属させて除外する。**生成コードも対象外**——EF（`Migrations/` 配下・`*ModelSnapshot.cs`）は [#571](https://github.com/endazon/microservices-platform/issues/571) / カバレッジ床は生成コード（EF の Migrations / ModelSnapshot）を集計から落とし、床を置き直す、**source generator の出力（`obj/` 配下）は [#574](https://github.com/endazon/microservices-platform/issues/574) / カバレッジ床は source generator の出力（`obj/` 配下）も集計から落とし、床を置き直す**。**集計はレポートを跨いで行を重複排除する**——[#900](https://github.com/endazon/microservices-platform/issues/900) / カバレッジ集計はレポートを跨いで行を重複排除し、被覆は OR で畳む） | [`check-coverage-floor.js`](../../scripts/check-coverage-floor.js) ＋ `ci.yml` | [`src/coverage-floor.json`](../../src/coverage-floor.json) の床（現在 `line 88` / `branch 68`）未満 → **fail**（バックエンドのカバレッジ床（単一情報源・実測からの切り下げ・ratchet）の実装 ADR） |
 | **フロント カバレッジ ratchet** | `src/*/frontend/**` | [`frontend-tests.yml`](../../.github/workflows/frontend-tests.yml) | [`src/vitest.config.ts`](../../src/vitest.config.ts) の `thresholds` 未満 → **fail**（フロントエンドのカバレッジゲート） |
 | **ユニット依存規則** | `.csproj` の `ProjectReference` ・Foundation→Composable | [`check-unit-dependencies.js`](../../scripts/check-unit-dependencies.js) | 違反 → **fail** |
 | **BFF 境界** | BFF の downstream | [`check-bff-downstreams.js`](../../scripts/check-bff-downstreams.js) | 違反 → **fail** |
@@ -262,6 +262,16 @@ submodule populate 済み）である——**line 34.14%（9314/27280） / branc
 > しないため、共有ライブラリの行は**参照するテストプロジェクトの数だけ**分母に載る。
 > 新しいテストプロジェクトが「被覆のごく薄いもう 1 部」を足すと加重平均が下がる。
 > 🔴 **被覆の実態は 1 行も悪化していない。** 現在の値の正は `src/coverage-floor.json` である。
+
+> **［2026-08-22 追記 / #900］上のブロックも当時の記録である。床は 4 度目の置き直しで
+> `line 38` → `88` / `branch 27` → `68` になった。**
+> 直前の追記が「正しい直し方」として指していた改修が入り、**集計がレポートを跨いで行を重複排除する**
+> ようになった。キーは class 名・正規化したファイル経路・行番号の 3 つ組で、被覆は OR で畳む。
+> 分母から水増し 18604 行が取れ、7292 行になった。
+> 🔴 **これも測定定義の変更に伴う置き直しであって、テストが厚くなったのではない**——
+> 旧定義で測れば `line 38.5%` のままである。**分母が約 3.5 分の 1 になったので、被覆 1 行あたりの
+> 率の動きが約 3.5 倍になった。ratchet で引き上げるときは pt ではなく被覆行の本数で余裕を見ること。**
+> 現在の値の正は `src/coverage-floor.json` である。
 
 > バックエンド床の方式・値の置き方・AST 除外・fail-open の決定と根拠は
 > バックエンドのカバレッジ床（単一情報源・実測からの切り下げ・ratchet）を定めた実装 ADR を正とする
