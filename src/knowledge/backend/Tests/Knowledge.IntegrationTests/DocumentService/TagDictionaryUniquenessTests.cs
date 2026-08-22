@@ -37,23 +37,25 @@ public sealed class TagDictionaryUniquenessTests(PostgresFixture postgres, Rabbi
     }
 
     // SC-09: 「新しい名前は既存値と重複しない」。**逐次の重複は事前検証が 409 を返す。**
-    [DockerFact]
+    [Fact]
     public async Task CreateTag_Duplicate_Returns409()
     {
+        DockerRequired.SkipUnlessAvailable();
         var name = $"重複-{Guid.NewGuid():N}";
 
-        (await _client.PostAsJsonAsync("/tags", new { name })).StatusCode
+        (await _client.PostAsJsonAsync("/tags", new { name }, TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Created);
-        (await _client.PostAsJsonAsync("/tags", new { name })).StatusCode
+        (await _client.PostAsJsonAsync("/tags", new { name }, TestContext.Current.CancellationToken)).StatusCode
             .Should().Be(HttpStatusCode.Conflict);
     }
 
     // **同時登録（race）でも 500 にならない。**
     // 事前検証（`AnyAsync`）と保存の間に別の要求が同名を入れられるため、事前検証だけでは埋まらない。
     // DB の一意インデックス違反を `DbUpdateException` として捕まえ、409 へ写している。
-    [DockerFact]
+    [Fact]
     public async Task CreateTag_Concurrently_ExactlyOneSucceeds_AndNoServerError()
     {
+        DockerRequired.SkipUnlessAvailable();
         var name = $"競合-{Guid.NewGuid():N}";
 
         var responses = await Task.WhenAll(
@@ -68,8 +70,8 @@ public sealed class TagDictionaryUniquenessTests(PostgresFixture postgres, Rabbi
                 .Should().Be(1, "一意インデックスが 1 件だけを通す");
 
             // 辞書にも 1 件しか入っていない。
-            var list = await (await _client.GetAsync("/tags"))
-                .Content.ReadFromJsonAsync<TagListResponse>();
+            var list = await (await _client.GetAsync("/tags", TestContext.Current.CancellationToken))
+                .Content.ReadFromJsonAsync<TagListResponse>(TestContext.Current.CancellationToken);
             list!.Tags.Count(t => t.Name == name).Should().Be(1);
         }
         finally
