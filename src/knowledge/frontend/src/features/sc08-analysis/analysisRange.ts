@@ -2,7 +2,7 @@ import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schemas';
 import type { AnalysisTaskRequest } from '@foundation/api/generated/bff.schemas';
-import { toAttributeFilters, type ScopeSelection } from '../scope-filter/scopeFilter';
+import { toAttributeFilters, type ScopeSelection } from '../scope-filter/scopeSelection';
 
 // SC-08, UC-02, FR-07: 分析要求の組み立て（純関数）。
 //

@@ -5,7 +5,7 @@ import {
   selectedCount,
   toAttributeFilters,
   toggleScopeValue,
-} from './scopeFilter';
+} from './scopeSelection';
 
 // FR-04, FR-05, SC-01, SC-08, #539: 対象範囲の純粋ロジック。
 describe('scope filter (SC-01 / SC-08)', () => {
