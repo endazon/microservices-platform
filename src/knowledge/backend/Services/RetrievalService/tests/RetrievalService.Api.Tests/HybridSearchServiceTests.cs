@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Services;
@@ -51,6 +52,28 @@ internal sealed class CountingEmbeddingService : IEmbeddingService
         Calls++;
         return Task.FromResult(new[] { 0.1f, 0.2f });
     }
+}
+
+// FR-03, ADR-0016, #995: 埋め込みが得られない状態のスタブ。
+// `/embed` は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
+// **200 ＋ 空ベクトル（Embedded=false）** を返す契約であり、本スタブはその戻り値を再現する。
+internal sealed class EmptyVectorEmbeddingService : IEmbeddingService
+{
+    public int Calls { get; private set; }
+
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+    {
+        Calls++;
+        return Task.FromResult(Array.Empty<float>());
+    }
+}
+
+// FR-03, #995: **後段が本当に壊れている**状態のスタブ（ゲートウェイへ到達できない等）。
+// 縮退（空ベクトル）と区別するために置く。
+internal sealed class ThrowingEmbeddingService : IEmbeddingService
+{
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+        => throw new HttpRequestException("llm gateway unreachable");
 }
 
 // FR-03, UC-01: ハイブリッド検索の核 — Reciprocal Rank Fusion ロジックの単体テスト
@@ -157,7 +180,7 @@ public class HybridSearchServiceTests
             KeywordResults = keywordResults ?? [Hit(Guid.NewGuid())],
         };
         var embed = new CountingEmbeddingService();
-        return (new HybridSearchService(store, embed), store, embed);
+        return (new HybridSearchService(store, embed, NullLogger<HybridSearchService>.Instance), store, embed);
     }
 
     // 既定（Mode 未指定）は従来どおりハイブリッド＝両系統を呼ぶ（後方互換）。
@@ -390,5 +413,68 @@ public class HybridSearchServiceTests
 
         results.Should().HaveCount(3);
         results[0].UpdatedAt.Should().Be(At(1, 12), "最も新しい 3 件が返る");
+    }
+
+    // --- FR-03, SC-01, #995: 埋め込みが得られないときの縮退（統合スタックの段 11 が 500 になっていた） ---
+    //
+    // 🔴 **空ベクトルを後段（ベクトルDB）へ渡さない。** 実装（Qdrant）は次元付きコレクションへ
+    // 0 次元のクエリを投げると `RpcException` を返し、`/search` は本文なしの 500 になっていた。
+    // `InMemoryVectorStore` / `RecordingVectorStore` は `queryVector` を参照しないため、
+    // **「ベクトル系統を呼んだかどうか」でしか観測できない**（[[IADR-0014]] と同型の死角）。
+
+    private static (HybridSearchService svc, RecordingVectorStore store) NewServiceWith(
+        IEmbeddingService embed, List<SearchResultDto>? keywordResults = null)
+    {
+        var store = new RecordingVectorStore
+        {
+            VectorResults = [Hit(Guid.NewGuid())],
+            KeywordResults = keywordResults ?? [Hit(Guid.NewGuid())],
+        };
+        return (new HybridSearchService(store, embed, NullLogger<HybridSearchService>.Instance), store);
+    }
+
+    // FR-03, SC-01, #995: hybrid で埋め込みが空なら、ベクトル系統を**呼ばず**全文だけで続行する。
+    // 全文の結果は残る（「埋め込めない＝全滅」にしない）。
+    [Fact]
+    public async Task Hybrid_EmptyQueryEmbedding_SkipsVectorSystemAndKeepsKeywordResults()
+    {
+        var keywordHit = Hit(Guid.NewGuid());
+        var (svc, store) = NewServiceWith(new EmptyVectorEmbeddingService(), keywordResults: [keywordHit]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted), TestContext.Current.CancellationToken);
+
+        store.VectorCalls.Should().Be(0, "0 次元のクエリをベクトルDB へ渡すと RpcException になる（#995 の 500）");
+        store.KeywordCalls.Should().Be(1);
+        results.Select(r => r.ChunkId).Should().Equal(new[] { keywordHit.ChunkId }, "全文の結果は残る");
+    }
+
+    // FR-03, SC-01, #995: semantic で埋め込みが空なら、使える系統が無いので 0 件で返す。
+    // **全文へ振り替えない**（利用者が選んだモードを勝手に変えない）。
+    [Fact]
+    public async Task Semantic_EmptyQueryEmbedding_ReturnsEmptyWithoutQueryingEitherSystem()
+    {
+        var (svc, store) = NewServiceWith(new EmptyVectorEmbeddingService());
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Semantic), TestContext.Current.CancellationToken);
+
+        results.Should().BeEmpty();
+        store.VectorCalls.Should().Be(0);
+        store.KeywordCalls.Should().Be(0, "semantic を全文へ振り替えない");
+    }
+
+    // FR-03, SC-01, #995: 🔴 **後段の故障は潰さない。** ゲートウェイへ到達できない場合は例外が伝播し、
+    // `/search` は 500 のままである（[[IADR-0257]] 決定 3）。200 ＋ 空へ縮退させると、
+    // 後段が死んでいても検索は緑に見えるようになる。
+    [Fact]
+    public async Task Hybrid_EmbeddingBackendFailure_PropagatesAndIsNotSwallowed()
+    {
+        var (svc, _) = NewServiceWith(new ThrowingEmbeddingService());
+
+        var act = async () => await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
     }
 }

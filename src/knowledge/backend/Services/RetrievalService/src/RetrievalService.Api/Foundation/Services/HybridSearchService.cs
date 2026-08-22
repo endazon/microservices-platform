@@ -5,7 +5,8 @@ using RetrievalService.Api.Foundation.Ports;
 namespace RetrievalService.Api.Foundation.Services;
 
 // FR-03, UC-01: ベクトル検索と全文検索を Reciprocal Rank Fusion で統合するハイブリッド検索
-public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
+public class HybridSearchService(
+    IVectorStore store, IEmbeddingService embed, ILogger<HybridSearchService> logger)
     : IHybridSearchService
 {
     // RRF の平滑化定数（順位ベース統合。上位の影響を緩める一般的な既定値）
@@ -51,13 +52,37 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         if (mode == SearchModes.Semantic)
         {
             var semanticVector = await embed.EmbedAsync(request.Query, ct);
+            // FR-03, ADR-0016, #995: 埋め込みが得られないなら、意味検索は**行えない**。
+            // 全文へ振り替えると利用者が選んだモードを勝手に変えることになるので 0 件で返す（HTTP 200）。
+            if (semanticVector.Length == 0)
+            {
+                WarnEmbeddingUnavailable(mode);
+                return [];
+            }
+
             return Finish(await store.SearchAsync(semanticVector, singleModeK, filters, ct),
                 sort, request.TopK);
         }
 
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
         var vector = await embed.EmbedAsync(request.Query, ct);
-        var vectorTask = store.SearchAsync(vector, candidateK, filters, ct);
+
+        // FR-03, ADR-0016, #995: 🔴 **空ベクトルを後段（ベクトルDB）へ渡さない。**
+        // `/embed` は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
+        // **200 ＋ 空ベクトル（`Embedded=false`）** を返す設計であり、これは**故障ではなく縮退**である。
+        // それを次元付きコレクションへ投げると Qdrant が `RpcException` を返し、`/search` は
+        // **本文なしの 500** になっていた（#995。統合スタックの段 11 が実測）。
+        // **`InMemoryVectorStore` は `queryVector` を参照しないためテストは緑のまま**で、
+        // [[IADR-0014]] が記録した「テストは緑・本番は壊れている」と同型であった。
+        //
+        // 全文検索が使えないときにベクトルのみへ降りる（`QdrantVectorStore.KeywordSearchAsync`）のと
+        // **対称に**、意味検索が使えないときは全文のみで続ける。**空にはしない。**
+        if (vector.Length == 0)
+            WarnEmbeddingUnavailable(mode);
+
+        var vectorTask = vector.Length > 0
+            ? store.SearchAsync(vector, candidateK, filters, ct)
+            : Task.FromResult(new List<SearchResultDto>());
         var keywordTask = store.KeywordSearchAsync(request.Query, candidateK, filters, ct);
         await Task.WhenAll(vectorTask, keywordTask);
 
@@ -65,6 +90,14 @@ public class HybridSearchService(IVectorStore store, IEmbeddingService embed)
         var fused = ReciprocalRankFusion(vectorTask.Result, keywordTask.Result);
         return Finish(fused, sort, request.TopK);
     }
+
+    // FR-03, ADR-0016, #995: 🔴 **静かに縮退しない。** 「検索は 200 なのに意味検索が効いていない」は
+    // 応答からは区別できない（`SearchResponse` は縮退の有無を持たない）。**ログだけが手掛かりである。**
+    // 原因（送信拒否か・キー未設定か・不調か）はゲートウェイ側が `RoutingReason` 付きで記録している。
+    private void WarnEmbeddingUnavailable(string mode) =>
+        logger.LogWarning(
+            "Query embedding unavailable (empty vector from LLM gateway); "
+            + "degrading search mode {Mode} without the semantic channel", mode);
 
     // FR-03, SC-02, #532: 並び順を適用して topK 件へ切る（IADR-0150 決定 1・3・4）。
     //

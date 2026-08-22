@@ -9,6 +9,9 @@ using RetrievalService.Api.Foundation.Ports;
 
 namespace RetrievalService.Api.Tests;
 
+// FR-03: 既定は InMemory ストア ＋ ゼロベクトルのスタブ。
+// 🔴 **xUnit の class fixture は「公開コンストラクタ 1 本・引数なし」しか構築できない**ため、
+// 差し替えが要るテストは**本クラスを継承して `ConfigureWebHost` を重ねる**（#995 で実測）。
 public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)

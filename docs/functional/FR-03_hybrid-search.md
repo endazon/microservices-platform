@@ -3,15 +3,15 @@ title: ハイブリッド検索 機能仕様書
 type: functional-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, UC-01]
-adrs: [ADR-0009]
-iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150]
-specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at]
-issues: [#536]
+ids: [FR-03, FR-02, UC-01]
+adrs: [ADR-0009, ADR-0016]
+iadrs: [IADR-0012, IADR-0014, IADR-0149, IADR-0150, IADR-0257]
+specs: [20260809_issue-532_search-sort-order, 20260809_issue-536_search-result-updated-at, 20260823_issue-995_bff-search-500]
+issues: [#536, #995]
 -->
 
 # 機能仕様書: ハイブリッド検索
@@ -38,7 +38,7 @@ issues: [#536]
 | 入力 | `SearchRequest`（`Query` 必須, `TopK`=10 既定, 後方互換の単値 `AttributeFilters`, ABAC `Scope`） |
 | 処理 | fail-closed 検証（`Scope.GrantsAccess=true` のみ実行）→ 単値/多値フィルタを 1 本の allow-list へ正規化 → クエリ埋め込み → ベクトル検索と全文検索を候補数 `max(TopK*4, TopK)` で並行実行 → RRF（k=60）で統合 → `TopK` 件へ切り詰め |
 | 出力 | `SearchResponse`（`Results: SearchResultDto[]`, `TotalHits`, `ElapsedMs`）。各結果に出典（`DocumentTitle`/`MarkdownUri`）と融合スコアを付与 |
-| 業務ルール | ①`Query` 空・`Scope` 未指定/`GrantsAccess=false` は結果 0 件。②ABAC フィルタは両系統へ適用（フィルタ間 AND、値集合内 OR）。属性キーを持たない文書は不一致。③RRF は順位ベース（`score += 1/(60+rank+1)` を `ChunkId` 単位で加算）でスコアのスケール差を正規化なしに吸収。④全文インデックス未作成時はベクトルのみへ縮退し検索全体は失敗させない。 |
+| 業務ルール | ①`Query` 空・`Scope` 未指定/`GrantsAccess=false` は結果 0 件。②ABAC フィルタは両系統へ適用（フィルタ間 AND、値集合内 OR）。属性キーを持たない文書は不一致。③RRF は順位ベース（`score += 1/(60+rank+1)` を `ChunkId` 単位で加算）でスコアのスケール差を正規化なしに吸収。④全文インデックス未作成時はベクトルのみへ縮退し検索全体は失敗させない。⑤クエリ埋め込みが得られない（ゲートウェイが空ベクトルで応答）ときは意味検索の系統を落とし、全文のみで続行する（`semantic` 指定時は 0 件）。**空ベクトルをベクトルDB へ渡さない。** |
 
 ### SearchResultDto（検索結果 1 件＝チャンク単位）
 
@@ -72,6 +72,8 @@ flowchart TD
   J --> K[SearchResponse を返す]
   G -->|全文index無/RpcException| L[全文0件へ縮退]
   L --> H
+  E -->|空ベクトル＝埋め込み不可| M[ベクトル系統を呼ばない]
+  M --> H
 ```
 
 ## 例外・エラー処理
@@ -82,6 +84,9 @@ flowchart TD
 | `Scope` 未指定（null） | 空結果 | fail-closed。呼び出し側 Scope を無検証で信任しない |
 | `Scope.GrantsAccess=false` | 空結果 | 許可ポリシー無し＝閲覧可能文書なし |
 | 全文インデックス未作成（`RpcException`） | 全文 0 件へ縮退しベクトルのみで融合 | `LogWarning` を出力、検索全体は成功 |
+| **クエリ埋め込みが得られない（ゲートウェイが 200 ＋ 空ベクトル）** | **意味検索の系統を落とし全文のみで続行**（`semantic` 指定時は 0 件）。HTTP 200 | 送信拒否（越境ポリシーの fail-closed）・次元不整合・呼び出し失敗はいずれもこの形。**故障ではなく設計上の縮退**。`LogWarning` を出力 |
+| **埋め込みゲートウェイへ到達できない／非 2xx** | **例外を伝播（HTTP 500）** | 🔴 **潰さない。** 200 ＋ 空へ縮退させると、後段が死んでいても検索が緑に見える |
+| **ベクトル検索の `RpcException`** | **例外を伝播（HTTP 500）** | 同上。空ベクトルを渡さなくなったので、残るのは実際のベクトルDB 障害だけである |
 | 両系統 0 件 | 空結果（HTTP 200） | エラーにしない |
 
 ## 受け入れ基準

@@ -3,15 +3,15 @@ title: ハイブリッド検索 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-03, SC-02, UC-01]
-adrs: []
-iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150]
-specs: []
-issues: [#532, #536, #642]
+ids: [FR-03, SC-01, SC-02, UC-01]
+adrs: [ADR-0016]
+iadrs: [IADR-0014, IADR-0131, IADR-0149, IADR-0150, IADR-0257]
+specs: [20260823_issue-995_bff-search-500]
+issues: [#532, #536, #642, #995]
 -->
 
 # テスト仕様書: ハイブリッド検索
@@ -27,7 +27,10 @@ issues: [#532, #536, #642]
 
 - 対象: RRF 融合ロジック（`HybridSearchService.ReciprocalRankFusion`）、`/search` エンドポイント結合（`InMemoryVectorStore`）、ABAC フィルタ適用（両系統）、
   Qdrant ペイロードからの ABAC 属性復元（`QdrantVectorStore.ExtractAttributes`）、**Qdrant ペイロードへのタグ書き込みと復元（`QdrantVectorStore.BuildPayload` / `QdrantVectorStore.ExtractTags`。［2026-08-09 追記 / #642］）**。
+- 対象: 上記に加え、**クエリ埋め込みが得られないときの縮退と、後段の故障を隠さないこと**（`HybridSearchService`）。
 - 対象外: 実 Qdrant の full-text Match 挙動・実埋め込みモデルの精度、反映時間（インジェスト責務）、負荷/p95、画面。
+- 🔴 **`InMemoryVectorStore` は `queryVector` を参照しない**ため、「0 次元ベクトルを渡すと実機が失敗する」ことは
+  **結合テストの応答からは観測できない**。観測できるのは「ベクトル系統を呼んだかどうか」だけである（T-37/T-38）。
 
 ## テスト観点
 
@@ -75,6 +78,10 @@ issues: [#532, #536, #642]
 | T-34 | タグを持つ `ChunkPayload` | `QdrantVectorStore.BuildPayload` | `payload["tags"]` が `ListValue[StringValue]`（**取り込み側 `QdrantIngestionVectorStore.BuildChunkPayload` と同じ表現**） | 表現の一致（属性ペイロードの表現統一・#642） | 自動 |
 | T-35 | タグ 0 件の `ChunkPayload` | 同上 | `tags` キー自体を書かない（`attributes` と同じ扱い） | 表現の一致 | 自動 |
 | T-36 | タグを持つ `ChunkPayload` | `BuildPayload` → `ExtractTags` | 書いた表現をそのまま復元できる（**書き込みと復元の表現の一致**を往復で固定する。本番の欠陥は復元側だけで、書き込み側に呼び出し元は無い） | 表現の一致（検索結果一覧・#642） | 自動 |
+| T-37 | 埋め込みが空ベクトル（ゲートウェイの縮退）、hybrid | `SearchAsync` | **ベクトル系統を呼ばない**（呼ぶと 0 次元クエリで実機が失敗する）。全文の結果は残る | 縮退（設計上） | 自動 |
+| T-38 | 同上、`Mode = semantic` | 同上 | **0 件**。全文へ振り替えない（利用者が選んだモードを変えない） | 縮退（設計上） | 自動 |
+| T-39 | 同上、`POST /search` | エンドポイント結合 | **200 ＋ `SearchResponse` の形**（`results` が配列・`totalHits` が数値）。実機の統合スタックが見ているのと同じ条件 | 縮退（設計上） | 自動 |
+| T-40 | 埋め込みゲートウェイへ到達できない（`HttpRequestException`） | `SearchAsync` | 🔴 **例外が伝播する**（200 ＋ 空へ潰さない。潰すと後段が死んでも緑になる） | 故障を隠さない | 自動 |
 
 ## テストデータ
 

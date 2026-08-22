@@ -1,7 +1,9 @@
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Platform.Shared.Contracts.Dtos;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using RetrievalService.Api.Foundation.Ports;
 using System.Net;
 using System.Net.Http.Json;
@@ -283,5 +285,43 @@ public class HybridSearchEndpointTests
         var body = await ListValuesAsync(factory, key, new AccessScope([], GrantsAccess: true));
 
         body.Values.Should().BeEmpty();
+    }
+
+    // FR-03, SC-01, #995: 🔴 **埋め込みが得られなくても `POST /search` は 200 ＋ SearchResponse の形で返る。**
+    // 統合スタック（`scripts/verify-oidc-edge-flow.sh` 段 11）が見ているのと同じ条件である
+    // —— 段 11 は「200 であること」と「results が配列・totalHits と elapsedMs が数値であること」を見る。
+    // 従前は空ベクトルをそのままベクトルDB へ渡していたため、実機では **本文なしの 500** になっていた。
+    [Fact]
+    public async Task PostSearch_WhenQueryEmbeddingUnavailable_Returns200WithSearchResponseShape()
+    {
+        await using var factory = new EmptyEmbeddingFactory();
+        await SeedAsync(factory, Chunk("アルファ 機能 の 説明"));
+
+        var resp = await factory.CreateClient()
+            .PostAsJsonAsync("/search", new SearchRequest("アルファ", TopK: 5,
+                Scope: new AccessScope([], GrantsAccess: true)), TestContext.Current.CancellationToken);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<SearchResponse>(TestContext.Current.CancellationToken);
+        body.Should().NotBeNull();
+        body!.Results.Should().NotBeNull();
+        // 全文検索だけで続行するので、キーワード一致は残る（「埋め込めない＝全滅」にしない）。
+        body.Results.Should().NotBeEmpty();
+        body.TotalHits.Should().Be(body.Results.Count);
+    }
+
+    // FR-03, #995: 埋め込みが得られない状態（`/embed` が 200 ＋ 空ベクトルを返す）を再現する。
+    // 既定ファクトリの後に重ねるので、既定のスタブを外して差し替えられる。
+    private sealed class EmptyEmbeddingFactory : TestWebApplicationFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            base.ConfigureWebHost(builder);
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IEmbeddingService>();
+                services.AddSingleton<IEmbeddingService, EmptyVectorEmbeddingService>();
+            });
+        }
     }
 }
