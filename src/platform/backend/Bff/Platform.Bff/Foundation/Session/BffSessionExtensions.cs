@@ -44,12 +44,16 @@ public static class BffSessionExtensions
             .PersistKeysToStackExchangeRedis(() => lazyRedis.Value.GetDatabase(), "bff:dataprotection-keys")
             .SetApplicationName("microservices-platform-bff");
 
-        // 🔴 **既定スキームを変えない。** `AddAuthentication(scheme)` の引数つき版は
-        // `DefaultScheme` を上書きするため、先に走る `AddPlatformAuth`（JwtBearer）を奪ってしまい、
-        // **既存の BFF 端点が一斉に Cookie を要求し始める**（＝現行 SPA と既存テストが全部落ちる）。
-        // 第 3 段は 2 つに分かれており、**本段（3a）は受け皿を足すだけで切り替えない。**
-        // 既定を BffSession へ移すのは 3b（SPA 側の切り替えと `oidc-client-ts` 撤去）である。
-        services.AddAuthentication()
+        // 🔴 **［3b］既定スキームを BffSession へ移す。**
+        //
+        // 3a では引数なし版を使い、`AddPlatformAuth`（JwtBearer）の既定を奪わないようにしていた
+        // —— 受け皿を足すだけで切り替えない段だったためである。本段でブラウザ ↔ BFF の
+        // 資格情報が Cookie になるので、**既定もそちらへ移す。**
+        //
+        // **サービス間の JwtBearer は残る。** `AddPlatformAuth` が登録するスキーム自体は消えず、
+        // 後段サービスへの伝播と、Bearer を明示する呼び出しは従来どおり動く。
+        // 変わるのは「スキームを指定しない端点がどちらを見るか」だけである。
+        services.AddAuthentication(SessionScheme)
             .AddCookie(SessionScheme, o =>
             {
                 o.Cookie.Name = options.CookieName;
