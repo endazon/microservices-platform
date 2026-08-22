@@ -50,6 +50,11 @@
       "remaining": 30,
       "migrated": false
     },
+    "src/knowledge/backend/Services/GraphService/tests/GraphService.Api.Tests/GraphService.Api.Tests.csproj": {
+      "project": "GraphService.Api.Tests",
+      "remaining": 0,
+      "migrated": true
+    },
     "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": {
       "project": "IngestionService.Worker.Tests",
       "remaining": 33,
