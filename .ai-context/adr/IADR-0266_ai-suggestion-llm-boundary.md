@@ -1,7 +1,7 @@
 ---
 title: IADR-0266 AI 提案の LLM 境界を「候補列挙の段で絞る」型ゲートで表し、生成は要求時・利用者スコープで走らせる
 type: impl-adr
-status: Proposed
+status: Accepted
 related_ids: [FR-18, UC-10, SC-03, SC-21, ADR-0033, ADR-0034, ADR-0051, IADR-0242]
 author: claude
 created: 2026-08-23
@@ -13,9 +13,7 @@ plan_refs:
 
 # IADR-0266: AI 提案の LLM 境界を「候補列挙の段で絞る」型ゲートで表し、生成は要求時・利用者スコープで走らせる
 
-> **番号は暫定である。** マージ直前に develop の最大＋1 へ付け直し、`.ai-context/adr/README.md` の索引も更新する（`check-adr-numbering.js` は昇順・欠番なしを fail で見る）。
-
-- 状態: Proposed
+- 状態: Accepted
 - 日付: 2026-08-23
 - 決定者: claude（#915 / 親 #450 子 8）
 

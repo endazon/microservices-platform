@@ -124,8 +124,10 @@
     ],
     "docs/tests/FR-18_ai-suggestions.md": [
       "AiSuggestionEndpointsTests",
+      "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
-      "AiSuggestionWiringTests"
+      "AiSuggestionWiringTests",
+      "SuggestionPromptGateTests"
     ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
