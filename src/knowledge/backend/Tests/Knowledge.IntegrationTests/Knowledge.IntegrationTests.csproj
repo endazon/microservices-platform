@@ -27,6 +27,14 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
     <PackageReference Include="MassTransit" />
     <PackageReference Include="Testcontainers" />
+    <!-- ADR-0027 手順 8 / #455 W3: 実ブローカ結合テストの器が Wolverine ホストを起こす。
+         WolverineFx / WolverineFx.RabbitMQ は Platform.Shared.Infrastructure 経由でも届くが、
+         本プロジェクトが直接使う以上は明示する。RuntimeCompilation は
+         Directory.Packages.props が「ホストを起こす各プロジェクトが足す」と定めるもので、
+         これが無いと既定の TypeLoadMode.Dynamic でホストが起動しない。 -->
+    <PackageReference Include="WolverineFx" />
+    <PackageReference Include="WolverineFx.RabbitMQ" />
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="Testcontainers.RabbitMq" />
     <!-- FR-06/FR-12, ADR-0015: MinIO ラウンドトリップ統合テスト用 -->

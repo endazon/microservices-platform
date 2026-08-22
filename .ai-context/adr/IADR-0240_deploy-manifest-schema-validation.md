@@ -1,5 +1,5 @@
 ---
-title: IADR-0237 chart / overlay の CI 検証へ kubeconform によるスキーマ突合を足し、CRD スキーマは datreeio/CRDs-catalog で解決する
+title: IADR-0240 chart / overlay の CI 検証へ kubeconform によるスキーマ突合を足し、CRD スキーマは datreeio/CRDs-catalog で解決する
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ created: 2026-08-22
 updated: 2026-08-22
 ---
 
-# IADR-0237 chart / overlay のスキーマ突合（kubeconform + CRDs-catalog）
+# IADR-0240 chart / overlay のスキーマ突合（kubeconform + CRDs-catalog）
 
 ## 状況
 

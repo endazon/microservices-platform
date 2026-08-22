@@ -14,7 +14,7 @@ related_adrs:
   - IADR-0130
   - IADR-0209
   - IADR-0169
-  - IADR-0237
+  - IADR-0240
 issue: "#783"
 related_issues:
   - "#442"
@@ -270,7 +270,7 @@ on:
 1. **スキーマ突合**: `helm lint` / `helm template` / `kubectl kustomize` は**構文検証のみ**で、
    Kubernetes スキーマへの適合（型・enum 等）は見ていなかった。`.ai-context/specs/` の当初版
    「スコープ外」節がこれを「CRD スキーマの供給元を決める判断が要る」として保留していた。
-   **[IADR-0237] でその判断を確定し、`kubeconform` ＋ `datreeio/CRDs-catalog` を追加した。**
+   **[IADR-0240] でその判断を確定し、`kubeconform` ＋ `datreeio/CRDs-catalog` を追加した。**
    設計・実測（変異試験含む）は IADR 本文を参照。
 2. **必須チェックの昇格**: `docs/ai-workflow.md` §必須チェックの有効化 の表に、chart/overlay 検証が
    走る `static-checks-units` ジョブを追加した（下記）。

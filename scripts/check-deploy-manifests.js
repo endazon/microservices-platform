@@ -22,11 +22,11 @@
  *    （IADR-0209 の `include ⊆ paths` と同じ型）。
  *
  * 4. **「レンダリングできる」と「スキーマに適合する」は別の性質であり、前者は後者を代替しない**
- *    （[IADR-0237]。#783 前半の実測。2026-08-21 版の本スクリプトは helm lint / helm template /
+ *    （[IADR-0240]。#783 前半の実測。2026-08-21 版の本スクリプトは helm lint / helm template /
  *    kubectl kustomize の**成功だけ**を見ており、`spec.replicas` に文字列を入れる等の型違反は
  *    Go テンプレート／YAML としては正当なため検出できない）。**`kubeconform` でレンダリング結果を
  *    Kubernetes の JSON Schema と突合する。** 標準リソースは既定カタログ、Istio 等の CRD は
- *    `datreeio/CRDs-catalog`（[IADR-0237]で選定・実測確認済み）で解決する。**未知の CRD で
+ *    `datreeio/CRDs-catalog`（[IADR-0240]で選定・実測確認済み）で解決する。**未知の CRD で
  *    スキーマが見つからない場合も fail-closed**（`-ignore-missing-schemas` は使わない）——
  *    「スキーマが無い」を人が気づける形にするためで、要点 3 と同じ設計判断である。
  */
@@ -49,7 +49,7 @@ const ALLOW_MISSING_TOOLS_ENV = 'DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS';
 const REQUIRED_TOOLS = ['helm', 'kubectl', 'kubeconform'];
 
 /**
- * kubeconform のスキーマ供給元（[IADR-0237]）。
+ * kubeconform のスキーマ供給元（[IADR-0240]）。
  * 1 段目 `default` は kubeconform 同梱の標準 Kubernetes スキーマ。
  * 2 段目は Istio 等 CRD のスキーマ集約カタログ（datreeio/CRDs-catalog）。
  * 両方に無ければ fail-closed（-ignore-missing-schemas は使わない。要点 4）。

@@ -310,4 +310,7 @@
 | [IADR-0234](./IADR-0234_wolverine-migration-boundary-455-441.md) | #455 はここで成長を止め、baseline がゼロになることで測られるものはすべて #441 が持つ。移行の単位はイベント辺であり、型制約は緩和ではなく C3 で始末する。#455 / #441 | Accepted |
 | [IADR-0235](./IADR-0235_trace-block-completeness-checker-rejected.md) | trace ブロックの網羅性検査器は**追加しない**。候補 A は精度 1/38 ≈ 2.6%（母集合 19 コミット全数・違反 38 件・赤 7）で、偽陽性の主因は束ね PR の直積（8 記録 × 4 文書 = 32）という構造。「過去 2 件の再現」と「偽陽性の許容」は両立しない。規約自体が未裁定であり裁定が機械化に先行する。#885 | Accepted |
 | [IADR-0236](./IADR-0236_coverage-cross-report-line-dedup.md) | **カバレッジ集計はレポートを跨いで行を重複排除し、被覆は OR で畳む**。共有ライブラリの行が参照するテストプロジェクトの数だけ多重計上され、テストを増やすほど床が下がっていた（ratchet と逆）。#900 | Accepted |
-| [IADR-0237](./IADR-0237_deploy-manifest-schema-validation.md) | chart / overlay 検証は構文だけ見ておりスキーマ不整合を検出しない。`kubeconform` を追加し、標準は既定カタログ、CRD は `datreeio/CRDs-catalog` で解決する。未知スキーマは fail-closed。#783 | Accepted |
+| [IADR-0237](./IADR-0237_broker-integration-harness-detection-power.md) | 実ブローカ結合テストの器は「届いた」ではなく「ローカルへ落ちなかった」を証拠にする。手順 4 の破れは明示ルーティングを持たないホストでしか観測できず（実測）、検出器が生きていることを示す陽性対照を対で置く。器の状態は実行ごとに隔離する（固定名は変異を隠した）。#455 | Accepted |
+| [IADR-0238](./IADR-0238_xunit1051-staged-adoption-ratchet.md) | xUnit1051 の段階採用は「許可リスト＋`WarningsAsErrors`」で行い、剥がしたら戻れないようにする。`TreatWarningsAsErrors` は false のため `NoWarn` を外すだけでは再発しても緑。実数は 943 件（1,886 は 2 倍の重複計上）。#882 | Accepted |
+| [IADR-0239](./IADR-0239_wolverine-pipeline-step-registration.md) | Wolverine 版の段登録は入力型を `IPipelineStep<TIn>` から取り、**導出できないこと自体を起動失敗**にする（MassTransit 経路の「素通り」を継承しない）。自己申告の型名だけでは空洞なのでハンドラメソッドの存在まで見る。照合は Ordinal。#441 | Accepted |
+| [IADR-0240](./IADR-0240_deploy-manifest-schema-validation.md) | chart / overlay 検証は構文だけ見ておりスキーマ不整合を検出しない。`kubeconform` を追加し、標準は既定カタログ、CRD は `datreeio/CRDs-catalog` で解決する。未知スキーマは fail-closed。#783 | Accepted |

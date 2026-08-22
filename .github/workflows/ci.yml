@@ -371,7 +371,7 @@ jobs:
           node-version: "20"
       - uses: azure/setup-helm@v4
       - uses: azure/setup-kubectl@v4
-      # NFR, IADR-0237, Issue #783（#442 子 5）: kubeconform を導入する（chart / overlay の
+      # NFR, IADR-0240, Issue #783（#442 子 5）: kubeconform を導入する（chart / overlay の
       # スキーマ突合に要る）。latest には追従しない —— 版を pin し、公式リリースの CHECKSUMS と
       # 突合してから導入する（本リポジトリは latest 追従を問題として扱っている。
       # k8s-local-up.test.js の ESO helm install --version 検査と同じ方針）。
@@ -399,7 +399,7 @@ jobs:
         run: node scripts/check-unit-dependencies.js
 
       # NFR, ADR-0007 / ADR-0021, Issue #783（#442 子 5）: deploy/ の chart と overlay が
-      # レンダリングできること、および Kubernetes のスキーマに適合すること（IADR-0237）を検査する。
+      # レンダリングできること、および Kubernetes のスキーマに適合すること（IADR-0240）を検査する。
       # CI に helm / kustomize / kubeconform の検証が 1 つも無く、chart や overlay が壊れても
       # マージまで気づけなかった。
       #
@@ -594,7 +594,7 @@ jobs:
         run: node scripts/check-coverage-floor.js --self-test
       # 🔴 PR では床を強制しない（--report-only。IADR-0232 改定 3）。
       #
-      # 床 line 38 / branch 27 は**統合テストを含む全量の実測**から置かれている
+      # 床 line 88 / branch 68 は**統合テストを含む全量の実測**から置かれている
       # （src/coverage-floor.json の根拠欄）。統合テストを PR から外した以上、この床を PR へ
       # 当てると**必ず割れる**。かといって PR 用に低い床を別に置くと、床が 2 つ並んで
       # **どちらが本物か分からなくなる**。

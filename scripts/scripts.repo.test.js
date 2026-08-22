@@ -1375,6 +1375,12 @@ module.exports = ({ ok, assert }) => {
   // 実ツリーへレポートを 1 件だけ置いて素実行する。関数単位の試験では「走査 → 除外 → 出力」の
   // 配線（レポートが実際に読まれ、診断が CI ログへ出ること）を確かめられないため。
   // coverage*.xml は .gitignore 済みだが、異常終了時に残さないよう finally で必ず撤去する。
+  //
+  // 🔴 **フィクスチャは意図して被覆 100% にしてある。** 本試験が見たいのは**配線**であって
+  //    床の判定ではない。被覆が床を下回るフィクスチャを置くと、**床を ratchet で上げるたびに
+  //    この試験が巻き添えで落ちる**（#900 で床を 38 → 88 へ置き直したとき実際に落ちた。当時の
+  //    フィクスチャは 2/3 = 66.67% で、旧床 38 は超えるが新床 88 は超えなかった）。
+  //    床の判定そのものは compareToFloor の単体試験と --self-test が見ている。
   ok('素実行: 実ツリーのレポートから AST 由来の行を落とし、診断を出して exit 0', () => {
     const { spawnSync } = require('child_process');
     const repoRoot = path.join(__dirname, '..');
@@ -1383,17 +1389,19 @@ module.exports = ({ ok, assert }) => {
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(file, coberturaReport([
-        coberturaClass('Platform.Bff.X', 'platform/backend/Bff/X.cs', [[1, 1], [2, 0], [3, 1]]),
+        coberturaClass('Platform.Bff.X', 'platform/backend/Bff/X.cs', [[1, 1], [2, 1], [3, 1]]),
         coberturaClass('AiStockTrading.Bff.Endpoints.MonitorBffEndpoints',
           `${AST_UNIT}/backend/Bff/MonitorBffEndpoints.cs`, [[1, 1], [2, 1]]),
-      ], { sources: ['/home/runner/work/msp/msp/src/'], attrs: 'lines-valid="5" lines-covered="4"' }));
+      ], { sources: ['/home/runner/work/msp/msp/src/'], attrs: 'lines-valid="5" lines-covered="5"' }));
 
       const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js')], { encoding: 'utf8' });
       assert.strictEqual(r.status, 0, `素実行が失敗:\n${r.stdout}\n${r.stderr}`);
-      assert.match(r.stdout, /レポート 1 件を集計: line 66\.67%（2\/3）/);
+      assert.match(r.stdout, /レポート 1 件を集計: line 100%（3\/3）/);
       assert.match(r.stdout, /由来 1 クラス \/ 2 行（被覆 2）/);
-      assert.match(r.stdout, /除外前: line 80%（4\/5）/);
+      assert.match(r.stdout, /除外前: line 100%（5\/5）/);
       assert.match(r.stdout, /lines-valid 5（本実装 5・一致）/);
+      // レポート 1 件では重複排除は恒等（notice も出さない）。配線が通っていることの確認。
+      assert.match(r.stdout, /レポート跨ぎの重複排除（#900）: 1 レポート。/);
     } finally {
       fs.rmSync(path.join(repoRoot, 'src', 'platform', 'backend', '.coverage-floor-probe'), { recursive: true, force: true });
     }
@@ -5151,7 +5159,11 @@ module.exports = ({ ok, assert }) => {
         //    claude-review の下限を追い越したことの検知）を新設したため 37 → 38（同上）。
         //    GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 38, `検査器の母集合が 38 本から変わった（${scripts.length} 件）`);
+        // ★ #882 / IADR-0238 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
+        //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
+        //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
+        //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
+        assert.strictEqual(scripts.length, 39, `検査器の母集合が 39 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],
@@ -5518,8 +5530,9 @@ module.exports = ({ ok, assert }) => {
 
     // --- #574: 「現在の床」を書いた文書が coverage-floor.json と食い違わない（IADR-0195） ---
     //
-    // ★ 床の値は **3 度**置き直された（#571 で line 34 → 33、#574 で line 33 → 39 / branch 17 → 27、
-    //   #899 で line 39 → 38）。**この行は #899 の時点で古くなっており、#900 の作業で母集合を
+    // ★ 床の値は **4 度**置き直された（#571 で line 34 → 33、#574 で line 33 → 39 / branch 17 → 27、
+    //   #899 で line 39 → 38、#900 で line 38 → 88 / branch 27 → 68）。
+    //   **この行は #899 の時点で古くなっており、#900 の作業で母集合を
     //   引き直して初めて見つかった** —— 下の正規表現は「バッククォート付きの並記形 ＋ 同一行の
     //   『未満』」しか拾わないため、**この平文コメント自身を検査対象にできない**。
     //   機械検査の母集合を自分の母集合として採用すると同じ見落としを繰り返す（#902 の自己批判）。
@@ -7283,7 +7296,7 @@ module.exports = ({ ok, assert }) => {
       assert.ok(unitsJob, 'static-checks-units ジョブを切り出せない');
       assert.match(unitsJob[1], /azure\/setup-helm/, 'static-checks-units に helm の導入が無い');
       assert.match(unitsJob[1], /azure\/setup-kubectl/, 'static-checks-units に kubectl の導入が無い');
-      // NFR / #783（IADR-0237）: kubeconform も同じジョブで導入されていること。
+      // NFR / #783（IADR-0240）: kubeconform も同じジョブで導入されていること。
       // バージョンを pin していること（latest 追従は本リポジトリが問題として扱っている）と、
       // ダウンロードした tarball をチェックサムで検証してから導入していることも併せて固定する。
       assert.match(
@@ -7337,4 +7350,73 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  //
+  // NFR / #882 / IADR-0238: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
+  //
+  // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
+  // `.github/workflows/` に新ジョブは作らない —— ci.yml の scripts-tests ジョブ
+  // （`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が本 companion を読み込むので、
+  // ここから呼ぶ（check-adr-numbering / check-doc-updated と同じ相乗り。IADR-0140 決定 2）。
+  //
+  // 🔴 **この検査器だけでは「剥がしたら 0 件」は守れない。** 守っているのは
+  // `src/Directory.Build.props` の **WarningsAsErrors** であり（`TreatWarningsAsErrors` は false
+  // なので NoWarn を外すだけでは再発しても CI は緑のまま）、本検査器はその配線が外れていないこと
+  // ——許可リストと baseline が一致し、抑止が混入していないこと——を見る。役割を取り違えないこと。
+  {
+    const pathXu = require('path');
+    const { spawnSync: spawnXu } = require('child_process');
+    const xuScript = pathXu.join(__dirname, 'check-xunit1051-ratchet.js');
+    const runXu = (args) => spawnXu(process.execPath, [xuScript, ...args], { encoding: 'utf8' });
+
+    ok('check-xunit1051-ratchet --self-test が通る（M0〜M7 と fail-closed を対で固定）', () => {
+      const r = runXu(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-xunit1051-ratchet が実データで違反 0 件', () => {
+      const r = runXu([]);
+      assert.strictEqual(r.status, 0, `xUnit1051 ratchet に違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // **実バイナリ経路での検出力**。自己試験は関数を直接叩くので、CLI が exit 1 を返すかは別に見る。
+    ok('check-xunit1051-ratchet: baseline と props がずれた状態で exit 1', () => {
+      const { checkXUnit1051Ratchet } = require('./check-xunit1051-ratchet.js');
+      const kinds = checkXUnit1051Ratchet({
+        projects: ['src/a/Alpha.Tests/Alpha.Tests.csproj'],
+        propsText: '<XUnit1051Migrated>;</XUnit1051Migrated>',
+        suppressionFiles: [],
+        baseline: {
+          projects: {
+            'src/a/Alpha.Tests/Alpha.Tests.csproj': { project: 'Alpha.Tests', remaining: 0, migrated: true },
+          },
+        },
+      }).map((v) => v.kind);
+      assert.ok(kinds.includes('props-desync'), `props-desync を検出しない: ${JSON.stringify(kinds)}`);
+    });
+
+    // baseline の migrated 集合と props の許可リストは**実データでも**一致していること。
+    // 2 つのリストを別々に持つと片方だけ腐るため、ここで実ファイル同士を突き合わせる。
+    ok('実データ: baseline の migrated 集合と props の XUnit1051Migrated が一致する', () => {
+      const fsXu = require('fs');
+      const { readMigratedFromProps, BASELINE_PATH, PROPS_PATH } = require('./check-xunit1051-ratchet.js');
+      const baseline = JSON.parse(fsXu.readFileSync(BASELINE_PATH, 'utf8'));
+      const fromProps = readMigratedFromProps(fsXu.readFileSync(PROPS_PATH, 'utf8'));
+      assert.ok(fromProps, 'props から XUnit1051Migrated を読めない（配線が外れている）');
+      const fromBaseline = Object.values(baseline.projects)
+        .filter((e) => e.migrated === true)
+        .map((e) => e.project);
+      // fail-closed の門: 移行済みが 0 件なら、この試験は何も見ていない。
+      assert.ok(fromBaseline.length > 0, '移行済みプロジェクトが 0 件（段階採用が始まっていない）');
+      assert.deepStrictEqual([...fromProps].sort(), fromBaseline.sort());
+    });
+
+    // 抑止（NoWarn / editorconfig の severity=none）は WarningsAsErrors に**勝つ**（#882 で実測）。
+    // 正規の 1 箇所以外に xUnit1051 が現れたら、ratchet は黙って外れている。
+    ok('実データ: xUnit1051 の抑止は src/Directory.Build.props の 1 箇所に限る', () => {
+      const r = runXu([]);
+      assert.doesNotMatch(String(r.stderr), /stray-suppression/, `抑止が混入している:\n${r.stderr}`);
+    });
+  }
+
 };
