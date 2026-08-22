@@ -50,9 +50,10 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
             .UseNpgsql(connectionString)
             .Options);
 
-    [DockerFact]
+    [Fact]
     public async Task Migration_RewritesDisplayNamesToIdentifiers()
     {
+        DockerRequired.SkipUnlessAvailable();
         if (!postgres.IsAvailable) return;
 
         var cs = await CreateDatabaseAsync(postgres.ConnectionString!,
@@ -62,7 +63,7 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
         await using (var db = NewContext(cs))
         {
             var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(BeforeMigration);
+            await migrator.MigrateAsync(BeforeMigration, TestContext.Current.CancellationToken);
         }
 
         var docKeep = Guid.NewGuid();      // 順序・重複を保つ文書
@@ -72,7 +73,7 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
 
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
 
             // **辞書には「規程」だけを先に入れておく。**
             // 移行が既存エントリを重複登録しないこと（`NOT EXISTS`）も同時に見る。
@@ -95,13 +96,13 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
         await using (var db = NewContext(cs))
         {
             var migrator = db.GetService<IMigrator>();
-            await migrator.MigrateAsync(TargetMigration);
+            await migrator.MigrateAsync(TargetMigration, TestContext.Current.CancellationToken);
         }
 
         // ── 検証: EF が `List<Guid>` として読めること（＝形式が正しいこと）──
         await using (var db = NewContext(cs))
         {
-            var tags = await db.Tags.ToDictionaryAsync(t => t.Name, t => t.Id);
+            var tags = await db.Tags.ToDictionaryAsync(t => t.Name, t => t.Id, TestContext.Current.CancellationToken);
 
             tags.Keys.Should().Contain(["経理", "規程", "旧タグ"],
                 "現行版・版履歴の双方の表示名が辞書へ登録される");
@@ -110,65 +111,66 @@ public sealed class TagIdentityMigrationTests(PostgresFixture postgres)
             tags.Keys.Should().NotContain(n => n != n.Trim(),
                 "登録される名前は正規化済みである（C# の Trim と同じ集合で落とす）");
 
-            var keep = await db.Documents.SingleAsync(d => d.Id == docKeep);
+            var keep = await db.Documents.SingleAsync(d => d.Id == docKeep, TestContext.Current.CancellationToken);
             keep.Tags.Should().Equal([tags["経理"], tags["規程"], tags["経理"]],
                 "並びも重複もそのまま保つ（並びは画面の表示順である）");
 
-            var blank = await db.Documents.SingleAsync(d => d.Id == docBlank);
+            var blank = await db.Documents.SingleAsync(d => d.Id == docBlank, TestContext.Current.CancellationToken);
             blank.Tags.Should().BeEmpty(
                 "解決できない要素しか無い行も表示名のまま取り残さない（LEFT JOIN + FILTER）");
 
-            var empty = await db.Documents.SingleAsync(d => d.Id == docEmpty);
+            var empty = await db.Documents.SingleAsync(d => d.Id == docEmpty, TestContext.Current.CancellationToken);
             empty.Tags.Should().BeEmpty();
 
-            var whitespace = await db.Documents.SingleAsync(d => d.Id == docWhitespace);
+            var whitespace = await db.Documents.SingleAsync(d => d.Id == docWhitespace, TestContext.Current.CancellationToken);
             whitespace.Tags.Should().Equal([tags["経理"]],
                 "全角空白で囲まれた名前も同じタグへ解決される");
 
-            var version = await db.DocumentVersions.SingleAsync(v => v.DocumentId == docKeep);
+            var version = await db.DocumentVersions.SingleAsync(v => v.DocumentId == docKeep, TestContext.Current.CancellationToken);
             version.Tags.Should().Equal([tags["旧タグ"], tags["経理"]],
                 "版履歴も識別子へ移る（過去版も新しい名前で表示されるための前提である）");
 
             // **辞書に既に在ったものは重複登録されない。**
-            (await db.Tags.CountAsync(t => t.Name == "規程")).Should().Be(1);
+            (await db.Tags.CountAsync(t => t.Name == "規程", TestContext.Current.CancellationToken)).Should().Be(1);
 
             // 未改名のタグは `UpdatedAt` == `CreatedAt` である（`Tag.Create` と揃える）。
             // **scaffold の既定値 `0001-01-01` をそのまま使うと、未改名のタグが
             // 「西暦 1 年に改名された」ように見える。**
-            var seeded = await db.Tags.SingleAsync(t => t.Name == "規程");
+            var seeded = await db.Tags.SingleAsync(t => t.Name == "規程", TestContext.Current.CancellationToken);
             seeded.UpdatedAt.Should().Be(seeded.CreatedAt);
         }
     }
 
     // **下りも検証する。** 巻き戻せないマイグレーションを「巻き戻せる」と称して置くと、
     // 障害時に初めて分かる。
-    [DockerFact]
+    [Fact]
     public async Task Migration_Down_RestoresDisplayNames()
     {
+        DockerRequired.SkipUnlessAvailable();
         if (!postgres.IsAvailable) return;
 
         var cs = await CreateDatabaseAsync(postgres.ConnectionString!,
             $"tagmigdown_{Guid.NewGuid():N}");
 
         await using (var db = NewContext(cs))
-            await db.GetService<IMigrator>().MigrateAsync(BeforeMigration);
+            await db.GetService<IMigrator>().MigrateAsync(BeforeMigration, TestContext.Current.CancellationToken);
 
         var docId = Guid.NewGuid();
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             await InsertDocumentAsync(conn, docId, "往復", """["経理", "規程"]""");
             await InsertVersionAsync(conn, docId, 1, "往復", """["経理"]""");
         }
 
         await using (var db = NewContext(cs))
-            await db.GetService<IMigrator>().MigrateAsync(TargetMigration);
+            await db.GetService<IMigrator>().MigrateAsync(TargetMigration, TestContext.Current.CancellationToken);
         await using (var db = NewContext(cs))
-            await db.GetService<IMigrator>().MigrateAsync(BeforeMigration);
+            await db.GetService<IMigrator>().MigrateAsync(BeforeMigration, TestContext.Current.CancellationToken);
 
         await using (var conn = new NpgsqlConnection(cs))
         {
-            await conn.OpenAsync();
+            await conn.OpenAsync(TestContext.Current.CancellationToken);
             (await ScalarAsync(conn,
                 $"""SELECT "Tags"::text FROM "Documents" WHERE "Id" = '{docId}';"""))
                 .Should().Be("""["経理", "規程"]""",
