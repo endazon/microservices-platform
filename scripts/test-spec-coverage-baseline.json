@@ -96,15 +96,21 @@
       "WikiJsGraphQlClientTests"
     ],
     "docs/tests/FR-14_composability.md": [
+      "PipelineDeclarationEffectivenessTests",
       "PipelineRecomposeTests",
       "PipelineStepRegistrationTests",
+      "PortSwapCompositionTests",
       "QueueOverrideFanOutTests"
     ],
     "docs/tests/FR-15_config-info-api.md": [
       "ConfigBffEndpointTests",
+      "ConfigInspectionDeclarationGuardTests",
       "ConfigViewerPolicyTests",
       "DriftDetectorTests",
-      "KeycloakRolesClaimsTransformationTests"
+      "DriftServiceCoverageTests",
+      "KeycloakRolesClaimsTransformationTests",
+      "PipelineDeclarationEffectivenessTests",
+      "PortSwapCompositionTests"
     ],
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",

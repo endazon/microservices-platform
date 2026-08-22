@@ -7,6 +7,7 @@ namespace Platform.Shared.Infrastructure.Foundation.Introspection;
 // 不一致（ドリフト）を検出する純粋関数。10_composability-design.md §6 のドリフト種別に対応する。
 // 判定粒度は「段の存在・有効状態・購読バインディング（input/consumer）」とし、キュー名の相違は
 // 情報レベルに留めて誤検知を抑制する（未決事項: ドリフト判定粒度・誤検知抑制）。
+// 検証不能（Unverifiable）は 2 つの原因を持ち、深刻度で分ける（#444。下記 IsServiceConfigured）。
 public static class DriftDetector
 {
     // ドリフト種別（DriftFindingDto.Kind）。
@@ -50,7 +51,21 @@ public static class DriftDetector
                 if (!hosted || !eff.Step.Enabled)
                 {
                     // 担当サービスが到達不能なら「検証不能」に留め、適用漏れとは断定しない（誤検知抑制）。
-                    if (!IsServiceReachable(decl.Service, effective))
+                    //
+                    // 🔴 **「一過性の到達不能」と「そもそも収集対象に入っていない」は分けて報告する（#444）。**
+                    // 収集対象（Introspection:Services）に service が無い段は、**永久に突合されない**。
+                    // 両方を Info で出すと、宣言はあるのに検証だけが静かに欠けた状態が、
+                    // 再起動待ちの一過性の雑音に紛れる —— FR-15 の「不一致を検出・警告する」が
+                    // そのサービスについてだけ効かなくなる。恒久的な構成の誤りは Warning で出す。
+                    // 種別・深刻度の値域（5 分類 / 2 値）は変えない（SC-11 の確定値域）。
+                    if (!IsServiceConfigured(decl.Service, effective))
+                    {
+                        findings.Add(new DriftFindingDto(
+                            Unverifiable, SeverityWarning, decl.Name,
+                            $"宣言で有効な段 '{decl.Name}' の担当サービス '{decl.Service}' が自己申告の収集対象に" +
+                            "登録されていないため、実効を恒久的に検証できません（Introspection:Services を確認）。"));
+                    }
+                    else if (!IsServiceReachable(decl.Service, effective))
                     {
                         findings.Add(new DriftFindingDto(
                             Unverifiable, SeverityInfo, decl.Name,
@@ -102,7 +117,14 @@ public static class DriftDetector
         return findings;
     }
 
-    // 担当サービスが到達済み（自己申告を返した）か。未設定・到達不能はいずれも「検証不能」扱い。
+    // 担当サービスが到達済み（自己申告を返した）か。
     private static bool IsServiceReachable(string service, EffectiveCollection effective) =>
         effective.ReachableServices.Contains(service);
+
+    // 担当サービスが自己申告の収集対象として設定済みか（応答の有無は問わない）。#444。
+    // 収集対象は「応答した」∪「設定済みだが応答しなかった」であり、そのどちらにも無い service は
+    // 収集器が一度も問い合わせていない＝設定に無い、を意味する。
+    private static bool IsServiceConfigured(string service, EffectiveCollection effective) =>
+        effective.ReachableServices.Contains(service)
+        || effective.UnreachableServices.Contains(service);
 }
