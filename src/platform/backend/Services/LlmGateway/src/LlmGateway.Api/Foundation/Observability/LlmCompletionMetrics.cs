@@ -55,8 +55,6 @@ public sealed class LlmCompletionMetrics
         CompletionStopReasons.ToolUse,
     };
 
-    private const string DefaultPurpose = "default";
-
     // IADR-0212 (#786): 既定の max_tokens 4096（IADR-0101）の妥当性を読むための境界。
     // 上限付近を細かく刻む（2048 / 3072 / 4096）—— 「上限に張り付いているのか、余裕があるのか」が
     // 4096 の再調整の判断材料そのものだからである。4096 超は既定を上げた場合の観測用に 1 段だけ置く。
@@ -128,19 +126,14 @@ public sealed class LlmCompletionMetrics
     // purpose は呼び出し側が自由に指定できるため、設定（PurposeModels）で値域を閉じる。
     // other の増加は「定義していない purpose が来ている」＝ルーティングが既定へ落ちている状態の遅い警報にもなる。
     //
-    // "default" は現行 appsettings の PurposeModels にも存在するが、設定に依存せず**常に**既知として扱う。
-    // これはエンドポイント自身が purpose 未指定時に補う値（CompletionEndpoints の `?? "default"`）であり、
-    // 設定から消えた場合に「呼び出し側は何も指定していないのに other が増える」誤検知になるためである。
+    // ［#443］正規化の実体は LlmMetricValues へ出した。**費用系の計器（LlmUsageMetrics）と同じ軸で
+    // 読めなければ用途別モデル振り分けの効果を測れない**ため（ADR-0044 決定 1）、値域の定義を 1 箇所に持つ。
     //
     // PurposeModels は LlmRoutingOptions 側で StringComparer.OrdinalIgnoreCase の辞書として初期化されており
     // （設定バインダはその辞書インスタンスへマージする）、キー照合は大小文字非依存になる。
     private string NormalizePurpose(string purpose)
-    {
-        if (string.Equals(purpose, DefaultPurpose, StringComparison.OrdinalIgnoreCase))
-            return DefaultPurpose;
-        return _routing.CurrentValue.PurposeModels.ContainsKey(purpose) ? purpose.ToLowerInvariant() : ValueOther;
-    }
+        => LlmMetricValues.NormalizePurpose(_routing.CurrentValue, purpose);
 
     private static string Or(string? value, string fallback)
-        => string.IsNullOrWhiteSpace(value) ? fallback : value;
+        => LlmMetricValues.Or(value, fallback);
 }

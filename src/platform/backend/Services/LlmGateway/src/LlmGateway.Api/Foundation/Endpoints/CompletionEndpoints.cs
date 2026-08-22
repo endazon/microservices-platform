@@ -30,6 +30,7 @@ public static class CompletionEndpoints
             IServiceProvider services,
             ILoggerFactory loggerFactory,
             LlmCompletionMetrics metrics,
+            LlmUsageMetrics usage,
             CancellationToken ct) =>
         {
             var logger = loggerFactory.CreateLogger("LlmGateway.Complete");
@@ -81,6 +82,10 @@ public static class CompletionEndpoints
                     metrics.RecordCompletion(
                         LlmCompletionMetrics.ResultSent, result.StopReason, attempt, purpose, sensitivity,
                         result.OutputTokens);
+                    // FR-10, ADR-0044 決定 1・3 (#443): 用途別・モデル別のトークン累計と金額換算。
+                    // **実際に投げたモデル（attempt）で計上する** —— フォールバックが起きた呼び出しの
+                    // 費用は第 1 候補ではなく成功した候補の単価で発生する。
+                    usage.RecordUsage(attempt, purpose, sensitivity, result.InputTokens, result.OutputTokens);
                     return Results.Ok(new CompletionApiResponse(
                         result.Text, attempt.Model ?? string.Empty, result.InputTokens, result.OutputTokens,
                         Sent: true, Endpoint: attempt.EndpointName, RoutingReason: attempt.Reason,
@@ -130,6 +135,7 @@ public static class CompletionEndpoints
             IServiceProvider services,
             ILoggerFactory loggerFactory,
             LlmCompletionMetrics metrics,
+            LlmUsageMetrics usage,
             HttpContext http,
             CancellationToken ct) =>
         {
@@ -232,6 +238,10 @@ public static class CompletionEndpoints
                 metrics.RecordCompletion(
                     LlmCompletionMetrics.ResultSent, stopReason, decision, purpose, sensitivity,
                     sawDone ? outputTokens : null);
+                // FR-10, ADR-0044 決定 1・3 (#443): 利用実績は **Done で実数を受け取れたときだけ**計上する。
+                // 途中で終わった送信を 0 トークンとして積むと、費用が実態より安く見える。
+                if (sawDone)
+                    usage.RecordUsage(decision, purpose, sensitivity, inputTokens, outputTokens);
                 await Send(new CompletionStreamEvent(
                     string.Empty, Done: true, Sent: true, Model: decision.Model ?? string.Empty,
                     InputTokens: inputTokens, OutputTokens: outputTokens, RoutingReason: decision.Reason,

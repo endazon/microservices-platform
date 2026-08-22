@@ -4,9 +4,11 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using LlmGateway.Api.Foundation.Endpoints;
 using LlmGateway.Api.Foundation.Observability;
+using LlmGateway.Api.Foundation.Pricing;
 using LlmGateway.Api.Foundation.Ports;
 using LlmGateway.Api.Composable.Adapters;
 using LlmGateway.Api.Foundation.Routing;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
 
@@ -23,6 +25,19 @@ builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 // AddPlatformObservability を変更せずにサービス固有の Meter を追加できる。
 builder.Services.AddMetrics();
 builder.Services.AddSingleton<LlmCompletionMetrics>();
+
+// FR-10, NFR, ADR-0006, ADR-0044 決定 1・3 (#443): LLM 利用実績（用途別・モデル別のトークン累計と
+// 金額換算）。**金額換算は単価表を読む側＝このゲートウェイで行う**（Grafana のクエリに単価を書かない）。
+// 単価表は有効期間つきの設定であり、区間の重なり・負値は起動時に落とす（ValidateOnStart）。
+builder.Services.AddOptions<ModelPricingOptions>()
+    .Bind(builder.Configuration.GetSection(ModelPricingOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<ModelPricingOptions>, ModelPricingOptionsValidator>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<ModelPriceTable>();
+builder.Services.AddSingleton<LlmUsageMetrics>();
+
+// Meter は 1 本（サービス名と一致）。補完カウンタと利用実績の計器は同じ Meter に載る。
 builder.Services.AddOpenTelemetry()
     .WithMetrics(metrics => metrics.AddMeter(LlmCompletionMetrics.MeterName));
 builder.Services.AddPlatformAuth(builder.Configuration);

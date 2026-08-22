@@ -3,15 +3,15 @@ title: 運用仕様書
 type: operations-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-22
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-01, FR-02, FR-11, FR-13, FR-15, NFR-21, SC-02, UC-04, UC-07]
-adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0030, ADR-0038, ADR-0040, ADR-0042]
-iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225]
+adrs: [ADR-0005, ADR-0006, ADR-0007, ADR-0008, ADR-0011, ADR-0016, ADR-0017, ADR-0030, ADR-0038, ADR-0040, ADR-0042, ADR-0044]
+iadrs: [IADR-0002, IADR-0009, IADR-0013, IADR-0017, IADR-0020, IADR-0021, IADR-0023, IADR-0025, IADR-0026, IADR-0028, IADR-0029, IADR-0032, IADR-0046, IADR-0049, IADR-0050, IADR-0051, IADR-0066, IADR-0069, IADR-0074, IADR-0076, IADR-0079, IADR-0080, IADR-0081, IADR-0082, IADR-0085, IADR-0088, IADR-0104, IADR-0110, IADR-0112, IADR-0149, IADR-0165, IADR-0168, IADR-0210, IADR-0225, IADR-0265]
 specs: []
-issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, planning#196]
+issues: [#66, #88, #98, #124, #144, #145, #192, #196, #197, #198, #207, #271, #299, #303, #320, #324, #325, #395, #455, #532, #536, #546, #587, #665, #674, #863, #443, planning#196]
 -->
 
 # 運用仕様書
@@ -589,11 +589,17 @@ BFF は永続化せず注入スライスを surfacing する（履歴ストア�
   **是正前は k8s 側にダッシュボードが 1 枚も無く、下記 `llm-usage.json` へ経路 B から辿り着けなかった。**
 - **ダッシュボード**: `deploy/grafana/provisioning/dashboards/microservices-platform-overview.json`（サービス別
   スループット・5xx 率・p99・RAG レイテンシ）と
-  [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の呼び出し回数。費用ではない**）。
+  [`llm-usage.json`](../../deploy/grafana/provisioning/dashboards/llm-usage.json)（**LLM の金額・トークン消費量・
+  呼び出し回数**。**［2026-08-23］費用のパネルを追加した**）。
 - **LLM 費用の統制（暫定）**: **上限アラートは Alertmanager 配備後に有効となる。配備までは月次の手動確認である**
   （計画 決定 39〜41 / #546）。手順・担当・記録は
   [`llm-cost-monthly-review-runbook.md`](llm-cost-monthly-review-runbook.md) が定める。
-  **費用の金額は現状 1 円も出せない**（トークン消費量・金額換算とも未実装。補完の終了理由メトリクスの実装 ADR §結果 フォローアップ 2）。
+  **［2026-08-23］費用の金額が出るようになった**（用途別・モデル別のトークン消費量と金額換算。
+  換算はゲートウェイが**有効期間つき単価表**を読んで行い、Grafana のクエリには単価を書かない）。
+  🔴 **金額は「単価を解決できなかった呼び出し」が 0 のときだけ正しい** —— 該当する単価が無い呼び出しは
+  金額に計上されないため、**0 でなければ表示は過小である**（無音で 0 円にしないための警報である）。
+  **自動検知が無いことと、検知の遅れが最大 1 か月であることは変わらない**（Alertmanager は未配備であり、
+  月次予算のしきい値も未確定である）。
 - **ピン留めモデルの版数移行と利用不能時の振る舞い**: 用途別にピン留めした LLM モデルの版数を上げる手順
   （**Stage 0 再検証が前提**）と、**モデルが使えないときは取引判断を実行せず発注もしない**（**障害ではなく
   設計上の正常な結果**）ことは [`llm-model-pin-runbook.md`](llm-model-pin-runbook.md) が定める（#587。報告書の種別別用途と取引判断モデルの改定を定めた実装 ADR の決定 3）。
