@@ -28,8 +28,8 @@ import {
 import type { TaskType } from './analysisRange';
 import { useAnalysisTask } from './useAnalysisTask';
 import { ScopeFilter } from '../scope-filter/ScopeFilter';
-import { EMPTY_SELECTION } from '../scope-filter/scopeFilter';
-import type { ScopeSelection } from '../scope-filter/scopeFilter';
+import { EMPTY_SELECTION } from '../scope-filter/scopeSelection';
+import type { ScopeSelection } from '../scope-filter/scopeSelection';
 
 // SC-08, UC-02, FR-07/FR-11/FR-05: AI分析ダッシュボード（05_screens: ルート /analyze）。
 // 範囲を指定して分析（比較・抽出を含む）を依頼し、結果と出典を確認する。出典から SC-03 へ遷移する。

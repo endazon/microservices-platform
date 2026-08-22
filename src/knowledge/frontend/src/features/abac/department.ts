@@ -1,7 +1,7 @@
 // FR-05, UC-04, SC-06: 所管部門（ABAC 文書属性 `department`）の語彙。
 //
 // **画面ではなく語彙の単位で置く**（`confidentiality.ts` と同じ理由）。`department` は SC-06 の
-// 「既定の部門」だけでなく、SC-01 / SC-08 の対象範囲軸（`scope-filter/scopeFilter.ts` の `SCOPE_AXES`）
+// 「既定の部門」だけでなく、SC-01 / SC-08 の対象範囲軸（`scope-filter/scopeSelection.ts` の `SCOPE_AXES`）
 // でも同じキーを指す。どちらかの画面フォルダに置くと、もう一方が「その画面に依存する画面」になる。
 //
 // 計画の正は `06_technical/09_datasource-connectors.md` §システム投入経路での `owner` / `department` /
