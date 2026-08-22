@@ -29,4 +29,16 @@ public interface IGraphStore
     // 利用者から見て「見えたり見えなかったり」する（ADR-0034 決定 4 / IADR-0242 決定 4）。
     Task<IReadOnlyList<Edge>> LoadIncidentEdgesAsync(
         IReadOnlyList<AuthorizedNode> frontier, CancellationToken ct = default);
+
+    // FR-04, ADR-0035 決定 2 (#947a): 文書ごとの次数（接続する辺の本数）。
+    // ハブ文書を**展開の中継点にしない**判定に使う。
+    //
+    // 🔴 **ABAC で絞らない。全辺を数える。**
+    // 可視の辺だけを数えると、**同じ文書が利用者によってハブになったりならなかったりする** ——
+    // ハブ判定はグラフの構造上の性質であって、利用者の権限の関数ではない。
+    //
+    // 🔴 **次数は応答に現れない。** #962 で「使用件数を一般利用者へ返さない」と判断したのとは
+    // 別の話である（あちらは集計値を**応答に載せる**話、こちらは**内部の展開判断**に使う話）。
+    Task<IReadOnlyDictionary<Guid, int>> LoadDegreesAsync(
+        IReadOnlyCollection<Guid> documentIds, CancellationToken ct = default);
 }
