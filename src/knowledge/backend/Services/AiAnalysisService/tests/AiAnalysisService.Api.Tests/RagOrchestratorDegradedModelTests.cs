@@ -19,7 +19,8 @@ public class RagOrchestratorDegradedModelTests
     {
         var orchestrator = Create(new StubHttpClientFactory(granted: false));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().BeEmpty();
         answer.Model.Should().NotBe("claude-opus-5");
@@ -43,7 +44,8 @@ public class RagOrchestratorDegradedModelTests
         var orchestrator = Create(new StubHttpClientFactory(
             llmBody: CompletionJson(sent: false, model: "", text: "機密区分により送信できません。")));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().BeEmpty();
     }
@@ -69,7 +71,8 @@ public class RagOrchestratorDegradedModelTests
         var orchestrator = Create(new StubHttpClientFactory(
             llmBody: "unavailable", llmStatus: HttpStatusCode.ServiceUnavailable));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().BeEmpty();
     }
@@ -93,7 +96,8 @@ public class RagOrchestratorDegradedModelTests
         var orchestrator = Create(new StubHttpClientFactory(
             llmBody: CompletionJson(sent: true, model: ResolvedModel, text: "回答本文")));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().Be(ResolvedModel);
     }
@@ -122,7 +126,8 @@ public class RagOrchestratorDegradedModelTests
             llmBody: CompletionJson(sent: false, model: ResolvedModel,
                 text: "呼び出し先 claude-managed が現在利用できません。")));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().Be(ResolvedModel);
     }
@@ -148,7 +153,8 @@ public class RagOrchestratorDegradedModelTests
     {
         var orchestrator = Create(new StubHttpClientFactory(llmBody: "null"));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Model.Should().BeEmpty();
         answer.Answer.Should().Be("回答を生成できませんでした。");

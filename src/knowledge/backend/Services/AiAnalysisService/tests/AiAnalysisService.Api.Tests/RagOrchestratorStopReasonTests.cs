@@ -19,7 +19,8 @@ public class RagOrchestratorStopReasonTests
         var orchestrator = new RagOrchestrator(
             new RoutingHttpClientFactory(CompletionJson(stopReason: "refusal", text: "")));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Answer.Should().Contain("拒否");
         answer.Answer.Should().NotContain("回答を生成できませんでした");
@@ -32,7 +33,8 @@ public class RagOrchestratorStopReasonTests
         var orchestrator = new RagOrchestrator(
             new RoutingHttpClientFactory(CompletionJson(stopReason: "end_turn", text: "回答本文")));
 
-        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>());
+        var answer = await orchestrator.AskAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken);
 
         answer.Answer.Should().Be("回答本文");
     }
@@ -49,7 +51,8 @@ public class RagOrchestratorStopReasonTests
             new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
-        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
+        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken))
             events.Add(ev);
 
         events.OfType<AskTokenEvent>().Should().Contain(t => t.Text.Contains("拒否"));
@@ -69,7 +72,8 @@ public class RagOrchestratorStopReasonTests
             new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
-        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
+        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken))
             events.Add(ev);
 
         var notice = events.OfType<AskTokenEvent>().Should().ContainSingle().Subject;
@@ -91,7 +95,8 @@ public class RagOrchestratorStopReasonTests
             new RoutingHttpClientFactory(sse, "text/event-stream"));
 
         var events = new List<AskEvent>();
-        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>()))
+        await foreach (var ev in orchestrator.AskStreamAsync("質問", "user-1", new Dictionary<string, string>(),
+            ct: TestContext.Current.CancellationToken))
             events.Add(ev);
 
         var tokens = events.OfType<AskTokenEvent>().ToList();
