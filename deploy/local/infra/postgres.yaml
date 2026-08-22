@@ -22,6 +22,8 @@ data:
       CREATE DATABASE wiki_svc;
       CREATE DATABASE feedback_svc;
       CREATE DATABASE dashboard_svc;
+      -- FR-17, UC-10 (#908/#957): 知識グラフ GraphService 専用 DB。
+      CREATE DATABASE graph_svc;
       CREATE DATABASE wikijs;
       CREATE USER kp WITH PASSWORD 'kp';
       ALTER DATABASE document_svc OWNER TO kp;
@@ -33,6 +35,7 @@ data:
       ALTER DATABASE wiki_svc OWNER TO kp;
       ALTER DATABASE feedback_svc OWNER TO kp;
       ALTER DATABASE dashboard_svc OWNER TO kp;
+      ALTER DATABASE graph_svc OWNER TO kp;
       ALTER DATABASE wikijs OWNER TO kp;
 
       -- AST（ai-stock-trading）専有 DB。owner=ai（AST compose 既定 POSTGRES_USER と一致）。

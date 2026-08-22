@@ -42,6 +42,9 @@ MAPPING=(
   "microservices-platform/llm-gateway|src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Dockerfile"
   "microservices-platform/feedback-service|src/knowledge/backend/Services/FeedbackService/src/FeedbackService.Api/Dockerfile"
   "microservices-platform/dashboard-service|src/knowledge/backend/Services/DashboardService/src/DashboardService.Api/Dockerfile"
+  # FR-17, UC-10 (#908/#957): 知識グラフ。Dockerfile は #929 で入ったが compose / MAPPING への登録が
+  # 漏れており、イメージが焼かれずデプロイにも出ていなかった。
+  "microservices-platform/graph-service|src/knowledge/backend/Services/GraphService/src/GraphService.Api/Dockerfile"
   "microservices-platform/bff|src/platform/backend/Bff/Platform.Bff/Dockerfile"
   # 以下 3 件の SERVICE_PROJECT / SERVICE_DLL は deploy/docker-compose.yml の build args と同値でなければ
   # ならない（check-image-mapping.js の args-mismatch 検査。IADR-0068 / IADR-0070）。片側だけ動かさない。

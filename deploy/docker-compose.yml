@@ -494,6 +494,26 @@ services:
       postgres:
         condition: service_healthy
 
+  # FR-17, UC-10, ADR-0033/ADR-0034 (#908/#957): 知識グラフ（ノード・辺・辺の型辞書）。
+  # BFF の /bff/graph/* が http://graph-service:8080 を呼ぶ（#916a）。
+  graph-service:
+    build:
+      context: ..
+      dockerfile: src/knowledge/backend/Services/GraphService/src/GraphService.Api/Dockerfile
+    # IADR-0017: 内部 API のため host 公開しない（BFF 経由で到達）
+    expose:
+      - "8080"
+    environment:
+      <<: [*common-env, *db-env]
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=graph_svc;Username=kp;Password=kp
+      # 🔴 IADR-0089 (#342) / #958: ABAC スコープ解決先。appsettings 既定は :5005（ローカル用）で、
+      # ここで上書きしないと不達 → GraphAccessResolver が Granted=false へ縮退し、
+      # **グラフが常に空になる**（エラーにならないので気付けない）。
+      Services__AuthorizationService: http://authorization-service:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Issue #283, AST/FR-17, AST/UC-06, IADR-0070: AST 設定画面（全体前提条件）の BFF 先＝ConfigurationService。
   # AST は全サービスホスト（pin 91d52c2 時点で 11 件）で共有する単一のパラメータ化 Dockerfile
   # （backend/Dockerfile＋build args）を持ち、ビルド context は AST ユニットルート
