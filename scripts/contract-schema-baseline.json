@@ -540,6 +540,29 @@
           }
         }
       },
+      "Knowledge.Contracts.Dtos.CreateGraphEdgeRequest": {
+        "kind": "record",
+        "members": {
+          "EdgeTypeId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 2
+          },
+          "SourceDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "TargetDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          }
+        }
+      },
       "Knowledge.Contracts.Dtos.CreateTagRequest": {
         "kind": "record",
         "members": {
@@ -1070,6 +1093,41 @@
             "type": "string",
             "required": true,
             "position": 1
+          }
+        }
+      },
+      "Knowledge.Contracts.Dtos.GraphEdgeCreatedDto": {
+        "kind": "record",
+        "members": {
+          "EdgeTypeId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 3
+          },
+          "Id": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 0
+          },
+          "Provenance": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 4
+          },
+          "SourceDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 1
+          },
+          "TargetDocumentId": {
+            "source": "positional",
+            "type": "Guid",
+            "required": true,
+            "position": 2
           }
         }
       },
