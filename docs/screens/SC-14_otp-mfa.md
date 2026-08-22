@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
-iadrs: [IADR-0197]
+iadrs: [IADR-0197, IADR-0261]
 specs: [20260823_issue-438_keycloak-theme-and-smtp]
 issues: [#438]
 -->
