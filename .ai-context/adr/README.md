@@ -326,3 +326,4 @@
 | [IADR-0250](./IADR-0250_ai-review-trace-followthrough-observation.md) | **記録と文書の追随は AI レビューの観点として宣言する**。ただし「機能している防護の格上げ」ではない —— 63 PR を引くと本物の漏れ 16 件に対し指摘は 1 件で**検出率は約 6%**、n=2 の根拠は生存者バイアスだった。効果は主張せず再測定の手順を残す。#906 | Accepted |
 | [IADR-0251](./IADR-0251_bff-session-token-handler.md) | BFF セッションの内部設計。**CSRF は SameSite+ヘッダ**（同一オリジン・CORS 0 件の実測が前提。再検討条件を明記）。`ResponseMode=query`。**失効は TicketStore の削除**。#439 | Accepted |
 | [IADR-0252](./IADR-0252_abac-positive-path-observation.md) | **ABAC の正常系は「許可 → 非空」と「属性なし → 0 件」の対で観測する**。状態コードだけでは deny と無データを区別できない。nightly の統合スタックへ置く。#972 | Accepted |
+| [IADR-0253](./IADR-0253_edge-smoke-step-loss-gate-and-unobservable-search.md) | エッジ導線スモークは**段数**（`TOTAL`）で fail-closed にする（判定数ではない）。検索は「見つかること」を判定しない——`200 ＋ 空`が 3 つの失敗と区別できず、BFF 作成文書は `MarkdownUri` が null で索引に入らないため。#466 | Accepted |
