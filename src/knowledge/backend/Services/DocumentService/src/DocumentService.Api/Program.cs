@@ -86,6 +86,8 @@ app.MapOpenApi();
 app.MapDocumentEndpoints();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
 app.MapTagDictionaryEndpoints();
+// FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先（所有者のみ変更可）。
+app.MapDocumentShareEndpoints();
 
 app.Run();
 

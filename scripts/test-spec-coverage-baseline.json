@@ -130,6 +130,9 @@
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
     ],
+    "docs/tests/FR-20_document-sharing.md": [
+      "DocumentShareTests"
+    ],
     "docs/tests/FR-22_user-notifications.md": [
       "EmailIndependenceTests",
       "EmailSendRateTests",

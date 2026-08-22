@@ -16,6 +16,9 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
     // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
     public DbSet<Tag> Tags => Set<Tag>();
 
+    // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先。
+    public DbSet<DocumentShare> DocumentShares => Set<DocumentShare>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         mb.Entity<Document>(e =>
@@ -60,6 +63,22 @@ public class DocumentDbContext(DbContextOptions<DocumentDbContext> options) : Db
                 .HasConversion(ListConverter())
                 .HasColumnType("jsonb")
                 .Metadata.SetValueComparer(ListComparer());
+        });
+
+        // FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先。
+        // 同一文書 × 同一主体の共有は 1 行（重複付与を構造で防ぐ）。文書削除で連動削除する
+        // （共有だけが残ると、存在しない文書への到達権が記録として残り続ける）。
+        mb.Entity<DocumentShare>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.SubjectType).HasMaxLength(20).IsRequired();
+            e.Property(s => s.SubjectId).HasMaxLength(200).IsRequired();
+            e.Property(s => s.GrantedBy).HasMaxLength(200).IsRequired();
+            e.HasIndex(s => new { s.DocumentId, s.SubjectType, s.SubjectId }).IsUnique();
+            e.HasOne<Document>()
+                .WithMany()
+                .HasForeignKey(s => s.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // FR-09, SC-09, #634: タグ辞書。表示名は**一意**である
