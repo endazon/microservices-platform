@@ -138,7 +138,7 @@ function min(xs) {
 function judge({ targetDurations, baselineDurations, stepRatio = STEP_RATIO, minSamples = MIN_SAMPLES, epoch = null }) {
   const t = median(targetDurations);
   const b = min(baselineDurations);
-  // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（決定 15）。
+  // 🔴 **現在の CI 構成で測られた PR が少なすぎるうちは判定しない**（IADR-0240）。
   // 🔴 **この門を null 判定より前に置く。** 0 本のときこそ epoch を理由に添えねばならない ——
   // 「サンプルが足りない」とだけ言われると、**check 名の設定ミスと区別が付かない**。
   // 中央値は「窓の多数派」を映す。構成を変えた直後は多数派が旧構成のままなので、
@@ -292,7 +292,7 @@ function integrationBranch(prs) {
 }
 
 /**
- * 「CI 構成が最後に変わった時刻」（epoch）を GitHub API から引く。IADR-0208 決定 15。
+ * 「CI 構成が最後に変わった時刻」（epoch）を GitHub API から引く。IADR-0240（追随元: AST/IADR-0208 決定 15）。
  *
  * 🔴 **日付を焼き込まない。** 固定値は必ず腐る —— 本検査器が「しきい値を固定値で持たない
  * （自己校正）」と決めたのと同じ理由である。構成ファイルの最終変更時刻なら、
@@ -327,13 +327,13 @@ async function fetchConfigEpoch({ base, token, path = CONFIG_PATH, branch = null
  * 「どの構成で**測られた**か」であって「いつマージされたか」ではない。
  * **CI が走ったのは構成変更の前、マージはその後**という PR は普通に起こる
  * （PR を放置している間に develop 側で `ci.yml` が変わり、リベースせずマージされた場合）。
- * その 1 本は旧構成の値なのに母集合へ残り、**決定 15 が塞ごうとした穴を epoch 自身が再現する**。
+ * その 1 本は旧構成の値なのに母集合へ残り、**IADR-0240 が塞ごうとした穴を epoch 自身が再現する**。
  *
  * 🔴 **逆に、計測時刻だけで判定すると今度は取りこぼす**（実データで判明）。
  * **構成変更を持ち込んだ PR 自身**は、その run が**新しい `ci.yml` で走っている**
  * （`pull_request` の run は base を取り込んだ merge ref で動く）のに、
  * epoch＝develop へ載った時刻はその run より**後**になるため落ちてしまう。
- * 実測では #546 がこれに当たり、**母集合が 0 本になった**。
+ * 実測では AST#546 がこれに当たり、**母集合が 0 本になった**。
  * 落ちるのは「新しい構成での最初の 1 本」＝**最も知りたいサンプル**である。
  *
  * したがって両方を見る。変更ファイル一覧は backend の判定のために既に引いており、追加の API 呼び出しは無い。
@@ -706,7 +706,7 @@ async function selfTest() {
       '計測時刻で見ていない',
     ));
   // 🔴 実データで判明した取りこぼしの回帰テスト。**計測時刻だけで判定していたら落ちてしまう形。**
-  ok('🔴 representsCurrentConfig: 構成変更を持ち込んだ PR 自身は残す（実測 #546）', () =>
+  ok('🔴 representsCurrentConfig: 構成変更を持ち込んだ PR 自身は残す（実測 AST#546）', () =>
     eq(
       rep({ t0: at('2026-08-21T23:57:00Z'), mergedAt: '2026-08-22T00:15:29Z', changedConfig: true }),
       true,
