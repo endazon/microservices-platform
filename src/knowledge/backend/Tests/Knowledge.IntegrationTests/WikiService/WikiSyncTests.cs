@@ -31,23 +31,26 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    [DockerFact]
+    [Fact]
     public async Task GetWikiPages_ReturnsOk()
     {
-        var resp = await _client.GetAsync("/wiki/pages");
+        DockerRequired.SkipUnlessAvailable();
+        var resp = await _client.GetAsync("/wiki/pages", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
-    [DockerFact]
+    [Fact]
     public async Task GetWikiPageBySlug_NotFound_Returns404()
     {
-        var resp = await _client.GetAsync("/wiki/pages/nonexistent-slug");
+        DockerRequired.SkipUnlessAvailable();
+        var resp = await _client.GetAsync("/wiki/pages/nonexistent-slug", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    [DockerFact]
+    [Fact]
     public async Task PublishDocumentUpdated_BusReceivesEvent()
     {
+        DockerRequired.SkipUnlessAvailable();
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,
@@ -60,13 +63,13 @@ public sealed class WikiSyncTests(PostgresFixture postgres, RabbitMqFixture rabb
 
         await using var scope = _factory.Services.CreateAsyncScope();
         var bus = scope.ServiceProvider.GetRequiredService<IBus>();
-        await bus.Publish(evt);
+        await bus.Publish(evt, TestContext.Current.CancellationToken);
 
         // メッセージ送信後 2 秒待機（非同期消費の確認は E2E テストの範囲）
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         // Wiki ページ一覧エンドポイントが正常動作していることを確認
-        var resp = await _client.GetAsync("/wiki/pages");
+        var resp = await _client.GetAsync("/wiki/pages", TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

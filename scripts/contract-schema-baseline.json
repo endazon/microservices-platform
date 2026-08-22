@@ -2002,6 +2002,23 @@
           }
         }
       },
+      "Platform.Shared.Contracts.Dtos.AccessScopeBranch": {
+        "kind": "record",
+        "members": {
+          "Filters": {
+            "source": "positional",
+            "type": "List<AttributeFilter>",
+            "required": true,
+            "position": 1
+          },
+          "Name": {
+            "source": "positional",
+            "type": "string",
+            "required": true,
+            "position": 0
+          }
+        }
+      },
       "Platform.Shared.Contracts.Dtos.AccessScopeRequest": {
         "kind": "record",
         "members": {
@@ -2027,6 +2044,12 @@
             "type": "List<AttributeFilter>",
             "required": true,
             "position": 1
+          },
+          "Branches": {
+            "source": "positional",
+            "type": "List<AccessScopeBranch>?",
+            "required": false,
+            "position": 3
           },
           "Granted": {
             "source": "positional",

@@ -146,6 +146,68 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
+    // --- confidential クライアントへの追随（#984 / #439 の実例） ---------------------
+    //
+    // 実際に起きたこと: #439（BFF セッション / Token Handler）が `bff` を publicClient=false へ変えた。
+    // 投入器は client_id だけで password grant を送っていたため Keycloak が 401（invalid_client）を返した。
+    // 🔴 realm の変更に追随しなかったのは今日 2 回目で、1 回目は**値**の写し取り、
+    // 2 回目は**クライアントの種別という構造**の変化である。値を直すだけでは次も落ちる。
+
+    ok('★ seed: realm が confidential と言う client には client_secret を載せる（#439 型の再発防止）', () => {
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const client = (realm.clients || []).find((c) => c.clientId === seed.CLIENT_ID);
+      assert.ok(client, `realm に client ${seed.CLIENT_ID} が無い（投入器の既定と realm が食い違っている）`);
+
+      // 🔴 password grant を使う以上、直接付与が有効でなければ設計から見直しが要る。
+      assert.strictEqual(
+        client.directAccessGrantsEnabled,
+        true,
+        `client ${seed.CLIENT_ID} の directAccessGrantsEnabled が false。password grant が使えない`
+      );
+
+      const confidential = seed.isConfidentialInRealm(seed.CLIENT_ID);
+      assert.strictEqual(confidential, client.publicClient === false);
+
+      const secret = seed.clientSecretFromRealm(seed.CLIENT_ID);
+      if (confidential) {
+        assert.ok(secret, `confidential なのに realm から client_secret を引けない（${seed.CLIENT_ID}）`);
+        const form = seed.buildTokenForm({
+          clientId: seed.CLIENT_ID,
+          username: 'admin',
+          password: 'x',
+          confidential,
+          clientSecret: secret,
+        });
+        assert.strictEqual(form.get('client_secret'), secret, 'confidential なのに client_secret が載っていない');
+      }
+    });
+
+    ok('seed: public な client には client_secret を載せない', () => {
+      const form = seed.buildTokenForm({
+        clientId: 'platform-spa',
+        username: 'admin',
+        password: 'x',
+        confidential: false,
+        clientSecret: 'should-not-be-sent',
+      });
+      assert.strictEqual(form.get('client_secret'), null);
+      // 種別を判定できないとき（realm に無い client）も載せない。
+      assert.strictEqual(seed.isConfidentialInRealm('no-such-client'), null);
+    });
+
+    ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
+      const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const secrets = (realm.clients || []).map((c) => c.secret).filter(Boolean);
+      assert.ok(secrets.length > 0, 'realm に client secret が 1 つも無い（前提が変わった）');
+      for (const s of secrets) {
+        assert.ok(
+          !src.includes(`'${s}'`) && !src.includes(`"${s}"`),
+          `realm の client secret がスクリプトへ直書きされている（${s.slice(0, 4)}…）。realm から引くこと`
+        );
+      }
+    });
+
     // 投入データそのものの回帰。**階段の最下段（clearance=public）を欠くと、
     // clearance=public の利用者はどのポリシーにもマッチせず public 文書すら読めない**
     // （deny-by-default）。README が謳う「階段」と投入データを一致させ続けるために固定する。
@@ -5137,13 +5199,14 @@ ${r.stderr}`);
     const path = require('path');
     const { execFileSync, spawnSync } = require('child_process');
     const REPO = path.join(__dirname, '..');
-    const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js'];
+    // ★ #975 で check-trace-followthrough.js を追加（範囲の diff と終端の文書を読むためクラス A）。
+    const HEAD_CHECKERS = ['check-doc-updated.js', 'check-landed-subjects.js', 'check-trace-followthrough.js'];
     // ★ #956 で check-nul-bytes.js を追加（git ls-files を母集合にするためクラス B）。
     const TRACKED_CHECKERS = ['check-cross-repo-refs.js', 'check-nul-bytes.js', 'check-plan-id-qualification.js'];
     const GUARDED = [...HEAD_CHECKERS, ...TRACKED_CHECKERS];
     const readScript = (f) => fs.readFileSync(path.join(REPO, 'scripts', f), 'utf8');
 
-    ok('#683: 偽の緑を返しうる検査器が A=2 / B=2 で宣言されている', () => {
+    ok('#683: 偽の緑を返しうる検査器が A=3 / B=3 で宣言されている', () => {
       const all = fs
         .readdirSync(path.join(REPO, 'scripts'))
         .filter((f) => /\.js$/.test(f) && !/\.test\.js$/.test(f))
@@ -5168,7 +5231,7 @@ ${r.stderr}`);
       assert.deepStrictEqual(strays, [], 'クラス C の検査器に順序警告が足されている');
     });
 
-    ok('#683: 該当 4 本すべてが実際に警告を出し、終了コードを変えない', () => {
+    ok('#683: 該当 6 本すべてが実際に警告を出し、終了コードを変えない', () => {
       const probe = path.join(REPO, '.tmp-worktree-state-probe-683');
       const run = (f) =>
         spawnSync(process.execPath, [path.join(REPO, 'scripts', f)], {
@@ -5359,7 +5422,10 @@ ${r.stderr}`);
         //    **40 → 41**（同上。#956 と同じ PR 群で独立に増えたので、どちらも 39 → 40 と書いていた。
         //    合わせて 41 が正）。git を一切呼ばず kubectl / curl を外部コマンドとして叩くため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-deploy-manifests.js` と同じ扱い）。
-        assert.strictEqual(scripts.length, 41, `検査器の母集合が 41 本から変わった（${scripts.length} 件）`);
+        // ★ #975 で `check-trace-followthrough.js`（記録と文書の追随。record-rule）を新設した
+        //    ため 41 → 42（ラチェットが設計どおり発火した）。**warn であってゲートではない**
+        //    （IADR-0254 決定 2）が、母集合としては検査器である。
+        assert.strictEqual(scripts.length, 42, `検査器の母集合が 42 本から変わった（${scripts.length} 件）`);
         assert.deepStrictEqual(
           NOT_CHECKERS.filter((f) => !all.includes(f)),
           [],

@@ -29,13 +29,14 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         if (_factory is not null) await _factory.DisposeAsync();
     }
 
-    [DockerFact]
+    [Fact]
     public async Task CreateUpdate_BuildsVersionHistory()
     {
+        DockerRequired.SkipUnlessAvailable();
         // SC-05, #635: **タグは辞書に在る名前しか付けられない**（手入力は自動登録しない。
         // [[IADR-0153]] 決定 5）。辞書へ先に登録する。
         foreach (var name in new[] { "v1", "v2", "v3" })
-            (await _client.PostAsJsonAsync("/tags", new { name })).StatusCode
+            (await _client.PostAsJsonAsync("/tags", new { name }, TestContext.Current.CancellationToken)).StatusCode
                 .Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.Conflict);
 
         var create = await _client.PostAsJsonAsync("/documents", new
@@ -43,9 +44,9 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
             title = "版管理テスト",
             attributes = new { confidentiality = "internal", dept = "engineering" },
             tags = new[] { "v1" }
-        });
+        }, TestContext.Current.CancellationToken);
         create.StatusCode.Should().Be(HttpStatusCode.Created);
-        var doc = await create.Content.ReadFromJsonAsync<DocResponse>();
+        var doc = await create.Content.ReadFromJsonAsync<DocResponse>(TestContext.Current.CancellationToken);
         doc!.Version.Should().Be(1);
 
         // メタデータのみ更新（版 2）
@@ -53,35 +54,36 @@ public sealed class DocumentVersioningTests(PostgresFixture postgres, RabbitMqFi
         {
             attributes = new { confidentiality = "internal", dept = "sales" },
             tags = new[] { "v2" }
-        });
+        }, TestContext.Current.CancellationToken);
         patch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // タイトル更新（版 3）
         await _client.PutAsJsonAsync($"/documents/{doc.Id}",
-            new { title = "改題", attributes = new { confidentiality = "internal" }, tags = new[] { "v3" } });
+            new { title = "改題", attributes = new { confidentiality = "internal" }, tags = new[] { "v3" } }, TestContext.Current.CancellationToken);
 
-        var versionsResp = await _client.GetAsync($"/documents/{doc.Id}/versions");
+        var versionsResp = await _client.GetAsync($"/documents/{doc.Id}/versions", TestContext.Current.CancellationToken);
         versionsResp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var versions = await versionsResp.Content.ReadFromJsonAsync<List<VersionResponse>>();
+        var versions = await versionsResp.Content.ReadFromJsonAsync<List<VersionResponse>>(TestContext.Current.CancellationToken);
         versions!.Count.Should().Be(3);
         versions[0].Version.Should().Be(3);
 
         // 版 1 のスナップショットが作成時点の属性・タイトルを保持する
-        var v1Resp = await _client.GetAsync($"/documents/{doc.Id}/versions/1");
-        var v1 = await v1Resp.Content.ReadFromJsonAsync<VersionResponse>();
+        var v1Resp = await _client.GetAsync($"/documents/{doc.Id}/versions/1", TestContext.Current.CancellationToken);
+        var v1 = await v1Resp.Content.ReadFromJsonAsync<VersionResponse>(TestContext.Current.CancellationToken);
         v1!.Title.Should().Be("版管理テスト");
         v1.Attributes["dept"].Should().Be("engineering");
     }
 
-    [DockerFact]
+    [Fact]
     public async Task Update_WithStaleVersion_Returns409()
     {
+        DockerRequired.SkipUnlessAvailable();
         var create = await _client.PostAsJsonAsync("/documents",
-            new { title = "並行制御", attributes = new { confidentiality = "internal" }, tags = new string[] { } });
-        var doc = await create.Content.ReadFromJsonAsync<DocResponse>();
+            new { title = "並行制御", attributes = new { confidentiality = "internal" }, tags = new string[] { } }, TestContext.Current.CancellationToken);
+        var doc = await create.Content.ReadFromJsonAsync<DocResponse>(TestContext.Current.CancellationToken);
 
         var conflict = await _client.PutAsJsonAsync($"/documents/{doc!.Id}",
-            new { title = "x", attributes = new { confidentiality = "internal" }, tags = new string[] { }, expectedVersion = 99 });
+            new { title = "x", attributes = new { confidentiality = "internal" }, tags = new string[] { }, expectedVersion = 99 }, TestContext.Current.CancellationToken);
         conflict.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 

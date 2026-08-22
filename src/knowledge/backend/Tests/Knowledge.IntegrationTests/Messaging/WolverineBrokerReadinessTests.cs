@@ -52,9 +52,10 @@ public sealed class WolverineBrokerReadinessTests(RabbitMqFixture rabbit) : ICla
     private static async Task<HttpStatusCode> GetAsync(WebApplication app, string path) =>
         (await app.GetTestClient().GetAsync(path)).StatusCode;
 
-    [BrokerFact]
+    [Fact]
     public async Task ブローカ健全時はreadyが200を返す_陽性対照()
     {
+        BrokerRequired.SkipUnlessObtainable();
         // 🔴 **これが無いと次の試験は無意味になる。**「常に 503 を返す実装」でも
         // 503 の試験だけなら緑になるからである。**検出器が生きていることを先に示す。**
         var conn = rabbit.ConnectionString;
@@ -69,9 +70,10 @@ public sealed class WolverineBrokerReadinessTests(RabbitMqFixture rabbit) : ICla
             HttpStatusCode.OK, "live 側は Predicate = _ => false のため常に 200 である");
     }
 
-    [BrokerFact]
+    [Fact]
     public async Task 起動後にブローカへ到達できなくなるとreadyが503になりliveは200のまま()
     {
+        BrokerRequired.SkipUnlessObtainable();
         // 🔴 W4 の完了条件そのもの。
         // ブローカ本体は止めない —— **自分が作った中継だけを落とす**（共有資源に触れない）。
         var conn = rabbit.ConnectionString;

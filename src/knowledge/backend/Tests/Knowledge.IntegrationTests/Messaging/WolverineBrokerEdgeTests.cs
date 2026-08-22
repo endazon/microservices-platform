@@ -29,9 +29,10 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
 
     private const string ExchangeName = "w3-broker-edge";
 
-    [BrokerFact]
+    [Fact]
     public async Task 実ブローカ経由で1回の発行が2購読先へ届き_発行元へは配送されない()
     {
+        BrokerRequired.SkipUnlessObtainable();
         rabbit.IsAvailable.Should().BeTrue("BrokerFact が走った以上ブローカは供給されているはず");
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
@@ -44,7 +45,7 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
         await ReceiveOrExplain(edge, IngestionEdgeHandler.Role, correlationId);
         await ReceiveOrExplain(edge, WikiEdgeHandler.Role, correlationId);
 
-        await Task.Delay(BaitSettleWindow);
+        await Task.Delay(BaitSettleWindow, TestContext.Current.CancellationToken);
 
         // (3) 🔴 器の要。囮はリスニングを持たないため、ブローカ経由では原理的に受信できない。
         // 1 通でも受けていたら、発行がプロセス内へ閉じたということである。
@@ -62,9 +63,10 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
     //
     // 🔴 このテストが無いと、次の「受信しない」テストは無意味になる。囮が壊れて二度と
     // 発火しなくなっても「受信 0 件」で緑になるからである。**検出器が生きていることを先に示す。**
-    [BrokerFact]
+    [Fact]
     public async Task 共通既定を当てなければ発行はプロセス内へ閉じ囮が受信する()
     {
+        BrokerRequired.SkipUnlessObtainable();
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
 
@@ -75,7 +77,7 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
         publishError.Should().BeNull("規約ローカルルーティングが経路を与えるため送信は成功する");
 
         await probe.Recorder.Received(PublisherLocalBaitHandler.Role, correlationId)
-            .WaitAsync(ReceiveTimeout);
+            .WaitAsync(ReceiveTimeout, TestContext.Current.CancellationToken);
 
         probe.Recorder.CountFor(PublisherLocalBaitHandler.Role, correlationId).Should().Be(
             1, "共通既定が無ければ publish はプロセス内のハンドラへ配送される");
@@ -84,9 +86,10 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
     // 手順 4 の**本体**。共通既定を当てれば、同じ形でも囮は受信しない。
     // これが W3 が塞ぐリスクの核心である —— デュアルスタック期間に publish が
     // 黙ってプロセス内へ閉じ、外部購読者へ 1 通も出て行かない形。
-    [BrokerFact]
+    [Fact]
     public async Task 共通既定を当てれば発行はプロセス内へ閉じない()
     {
+        BrokerRequired.SkipUnlessObtainable();
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
 
@@ -97,7 +100,7 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
 
         // 送信が例外になったかどうかは問わない。経路が無いこと自体は正しい結果である。
         // 問うのは 1 点だけ ——「プロセス内へ配送されなかったか」。
-        await Task.Delay(BaitSettleWindow);
+        await Task.Delay(BaitSettleWindow, TestContext.Current.CancellationToken);
 
         probe.Recorder.CountFor(PublisherLocalBaitHandler.Role, correlationId).Should().Be(
             0,
@@ -149,7 +152,7 @@ public sealed class WolverineBrokerEdgeTests(RabbitMqFixture rabbit) : IClassFix
             Assert.Skip($"{RabbitMqFixture.ExternalEndpointVariable} 未設定のため判定対象外");
         }
 
-        BrokerFactAttribute.IsBrokerObtainable().Should().BeTrue(
+        BrokerRequired.IsObtainable().Should().BeTrue(
             "外部エンドポイントが設定されているなら Docker の有無に関わらず実走させる");
     }
 }

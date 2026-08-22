@@ -1,7 +1,7 @@
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Services;
 using Knowledge.Contracts.Dtos;
-using MassTransit;
+using Wolverine;
 
 namespace ConversionService.Worker.Foundation.Endpoints;
 
@@ -36,7 +36,7 @@ public static class ConversionJobEndpoints
         // 05_screens:333）。**確認をダイアログだけに置くと、生成クライアントや別経路の呼び出しが
         // 素通りする**ため、API 側で強制する。
         g.MapPost("/{id:guid}/retry", async (Guid id, IConversionJobStore store,
-            IPublishEndpoint bus, bool? discardCorrections, CancellationToken ct) =>
+            IMessageBus bus, bool? discardCorrections, CancellationToken ct) =>
         {
             var job = await store.GetAsync(id, ct);
             if (job is null)
@@ -67,7 +67,12 @@ public static class ConversionJobEndpoints
             var ev = await store.PrepareRetryAsync(id, discard, ct);
             if (ev is null)
                 return Results.Conflict(new { error = "not_retryable", status = job.Status }); // 競合で状態が変わった等
-            await bus.Publish(ev, ct);
+            // 🔴 ADR-0027 / #441 E1: **辺 RawDocumentFetched の 2 つ目の発行元である。**
+            // 型名が発行行に現れないため `check-event-topology.js` からは見えない
+            // （IADR-0245 決定 6-2）。ここを MassTransit のまま残すと、購読側は Wolverine なので
+            // **再変換は受理されたまま永久に実行されず、キュー深さのアラームも鳴らない**
+            // （Wolverine が受け取って捨てるため。IADR-0245 の実測）。**辺は原子的に動かす。**
+            await bus.PublishAsync(ev);
             return Results.Accepted($"/jobs/{id}");
         }).WithName("ConversionJobRetry");
 

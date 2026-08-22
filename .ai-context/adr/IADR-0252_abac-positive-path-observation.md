@@ -163,6 +163,30 @@ realm ファイル（単一情報源）から引く形へ直し、**realm の全
 - **段 7 の他の 2 端点（`/bff/datasources` など）は状態コードのみ**である。
   非空の判定を入れたのは `/bff/documents` だけで、**残りは同じ穴を持ったままである**
 
+## ［2026-08-22 追記 / #984］同じ形が 1 時間後に 2 回目を出した
+
+**決定 4（投入の成否を握り潰さない）が、着地から 1 時間で新しい破損を捕まえた。**
+
+`#439`（BFF セッション / Token Handler）が realm の `bff` を **`publicClient=false`（confidential）**へ変えた。
+投入器は `client_id` だけで password grant を送っていたため、Keycloak が **401（invalid_client）**を返した。
+
+| 回 | 契機 | 壊れ方 |
+| --- | --- | --- |
+| 1 | `#933` が realm のパスワードを一斉変更 | 直書きの既定が追随せず 401 |
+| 2 | **`#439` が `bff` を confidential 化** | **secret を送っていないので 401** |
+
+🔴 **1 回目は値の写し取り、2 回目はクライアントの種別という構造の変化である。**
+値を直すだけでは次も落ちるので、**トークン要求の組み立てを純粋関数へ切り出し、
+「realm が confidential と言う client には `client_secret` が載る」ことをテストで固定した**
+（変異を注入すると「confidential なのに client_secret が載っていない」で落ちる。実測）。
+
+realm の全 9 クライアントを実測したところ **`directAccessGrantsEnabled=true` は `bff` だけ**であり、
+別のクライアントへ逃げる道は無い。**`directAccessGrantsEnabled` が false になったら password grant 自体が
+使えなくなる**ので、その不変条件もテストで見張る。
+
+**1 回目が無音だったのは `ABACSEED` が best-effort（WARN で通す）だったからである。**
+**2 回目が即座に見えたのは決定 4 のためで、これがこの決定の効果の実測値である。**
+
 ## 影響
 
 - `scripts/verify-oidc-edge-flow.sh`（段 10〜13 を opt-in で追加。段 3〜5 を関数へ切り出し）

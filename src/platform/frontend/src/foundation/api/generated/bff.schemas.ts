@@ -350,6 +350,16 @@ export type AccessScopeResponseAllowedFiltersItem = {
   allowedValues: string[];
 };
 
+export type AccessScopeResponseBranchesItemFiltersItem = {
+  key: string;
+  allowedValues: string[];
+};
+
+export type AccessScopeResponseBranchesItem = {
+  name: string;
+  filters: AccessScopeResponseBranchesItemFiltersItem[];
+};
+
 /**
  * FR-05, ADR-0004: ABAC スコープ解決結果（`Platform.Shared.Contracts/Dtos/AccessScopeDto.cs`）。
  *
@@ -369,12 +379,29 @@ export type AccessScopeResponseAllowedFiltersItem = {
  *
  * ［2026-08-10 / #525］`granted` はこの版で追加した。それ以前の本スキーマは
  * `userId` と `allowedFilters` しか持たず、上表の 1 行目と 2 行目が同一の応答になっていた。
+ *
+ * ［2026-08-22 / #989］`branches` をこの版で追加した。**上表は `branches` が空／未指定のときの
+ * 読み方であり、それは従来と変わらない。** 計画の `read` 規則は「静的属性ベース ∨ 所有者ベース ∨
+ * 共有先ベース」の**選言**だが、`allowedFilters` は**単一の連言しか表せない**ため所有者ベースの
+ * 判定が成立しなかった（`ADR-0046` D-06 部品 3）。`branches` はその選言を運ぶ。
+ *
+ * | `branches` | 読み方 |
+ * | --- | --- |
+ * | 空 / 未指定 | **従来どおり `allowedFilters` で評価する**（後方互換） |
+ * | 1 件以上 | **いずれかの分岐のフィルタをすべて満たす文書が可視**（分岐内 AND・分岐間 OR） |
+ *
+ * 🔴 **`allowedFilters` は算出アルゴリズムごと据え置いてある。** 未移行の消費側は挙動が
+ * 1 ビットも変わらない。**`allowedFilters`（分岐の積に相当）は `branches`（分岐の和）の
+ * 部分集合であるため、未移行側が余分に見せることは構造上あり得ない** —— 移行中の乖離は
+ * 常に deny 側へ倒れる。
  */
 export interface AccessScopeResponse {
   userId: string;
   /** 許可ポリシーが 1 つでも一致したか。`false` は「閲覧可能な文書が無い」を意味し、 `allowedFilters` が空でも**全件開放ではない**。 */
   granted: boolean;
   allowedFilters: AccessScopeResponseAllowedFiltersItem[];
+  /** FR-19, ADR-0036, ADR-0046 D-06: `read` の選言を運ぶ名前つき分岐（`AccessScopeBranch`）。 **分岐内のフィルタは AND、分岐どうしは OR。** 空／未指定なら `allowedFilters` で評価する。 `name` は監査・デバッグ用の識別子（`attribute` / `owner` / `shared`）であり、 **どの分岐で可視になったかを言えるようにするために持たせている。** */
+  branches?: AccessScopeResponseBranchesItem[] | null;
 }
 
 export type CreateDocumentRequestAttributes = {[key: string]: string};

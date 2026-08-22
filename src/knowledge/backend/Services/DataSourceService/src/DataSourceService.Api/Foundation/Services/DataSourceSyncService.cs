@@ -3,7 +3,7 @@ using DataSourceService.Api.Foundation.Ports;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
-using MassTransit;
+using Wolverine;
 
 namespace DataSourceService.Api.Foundation.Services;
 
@@ -13,7 +13,7 @@ namespace DataSourceService.Api.Foundation.Services;
 public sealed class DataSourceSyncService(
     ConnectorRegistry registry,
     IObjectStorageClient storage,
-    IPublishEndpoint bus,
+    IMessageBus bus,
     ILogger<DataSourceSyncService> logger)
 {
     // UC-04 例外フロー / SC-06（Q14 / #537）: 連続失敗がこの回数に達した時点でアラート（継続失敗の警告）。
@@ -121,11 +121,11 @@ public sealed class DataSourceSyncService(
                 // 挙動は 1 バイトも変わらない。** 器と経路だけを先に作っている。
                 var attributes = source.GetEffectiveAttributes(PerItemAttributes(item));
 
-                await bus.Publish(new RawDocumentFetched(
+                await bus.PublishAsync(new RawDocumentFetched(
                     fetchId, source.Id, source.SourceType,
                     item.Path, storageUri, raw.ContentType,
                     attributes, [],
-                    DateTimeOffset.UtcNow), ct);
+                    DateTimeOffset.UtcNow));
                 fetched++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
