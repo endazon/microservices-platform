@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -18,6 +19,12 @@ public static class BffSessionExtensions
 {
     /// <summary>認証スキーム名。JwtBearer（サービス間）とは別に持つ。</summary>
     public const string SessionScheme = "BffSession";
+
+    /// <summary>
+    /// 既定の振り分けスキーム。`Authorization: Bearer` が在れば JwtBearer、無ければ
+    /// セッション Cookie へ委ねる。**両方を受理する**ための入口（IADR-0251 決定 9）。
+    /// </summary>
+    public const string SmartScheme = "BffSmart";
 
     public static IServiceCollection AddBffSession(
         this IServiceCollection services, IConfiguration config)
@@ -44,16 +51,32 @@ public static class BffSessionExtensions
             .PersistKeysToStackExchangeRedis(() => lazyRedis.Value.GetDatabase(), "bff:dataprotection-keys")
             .SetApplicationName("microservices-platform-bff");
 
-        // 🔴 **［3b］既定スキームを BffSession へ移す。**
+        // 🔴 **［3b］既定は「振り分けスキーム」にする。Cookie と Bearer の**両方**を受理する。**
         //
-        // 3a では引数なし版を使い、`AddPlatformAuth`（JwtBearer）の既定を奪わないようにしていた
-        // —— 受け皿を足すだけで切り替えない段だったためである。本段でブラウザ ↔ BFF の
-        // 資格情報が Cookie になるので、**既定もそちらへ移す。**
+        // 素直に `AddAuthentication(SessionScheme)` とすると、**スキームを指定しない端点は
+        // Cookie しか見なくなり、`/bff/*` への Bearer 呼び出しが 401 になる**（実測。
+        // `DefaultSchemeRoutingTests` が固定している）。`scripts/verify-oidc-edge-flow.sh` は
+        // `/bff/*` を Bearer で 4 箇所叩いており、**統合スタックで動いている唯一の外形確認**である。
+        // 移行の副作用でそれを失わない。
         //
-        // **サービス間の JwtBearer は残る。** `AddPlatformAuth` が登録するスキーム自体は消えず、
-        // 後段サービスへの伝播と、Bearer を明示する呼び出しは従来どおり動く。
-        // 変わるのは「スキームを指定しない端点がどちらを見るか」だけである。
-        services.AddAuthentication(SessionScheme)
+        // 🔴 **これは計画が許した形ではなく、実装側の判断である。** ADR-0032 が禁じているのは
+        // **SPA がトークンを扱うこと**であって、非ブラウザの呼び出し口が `/bff/*` を Bearer で
+        // 叩くことではない（原文に言及が無い）。**言及が無いことは許可ではない**ので、
+        // 移行期の姿勢として採り、狭める条件を [[IADR-0251]] 決定 9 に書く。
+        //
+        // **振り分けスキームにするのは、既定ポリシーだけでは足りないからである。**
+        // 端点が `RequireAuthorization(p => p.RequireRole(...))` で作る内側のポリシーは
+        // **スキームを持たない**ため、`context.User` が誰から作られたかに依存する。
+        // ここで振り分けておくと、**既定ポリシーの端点もロール要求の端点も同じように**両方を受理する。
+        services.AddAuthentication(SmartScheme)
+            .AddPolicyScheme(SmartScheme, SmartScheme, o =>
+            {
+                o.ForwardDefaultSelector = ctx =>
+                    ctx.Request.Headers.Authorization.ToString()
+                        .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                        ? JwtBearerDefaults.AuthenticationScheme
+                        : SessionScheme;
+            })
             .AddCookie(SessionScheme, o =>
             {
                 o.Cookie.Name = options.CookieName;

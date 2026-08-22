@@ -50,6 +50,106 @@ public class DefaultSchemeRoutingTests
         }
     }
 
+    // 本番と同じ形: 振り分けスキームを既定に置き、Bearer が在れば Bearer 側・無ければ Cookie 側へ委ねる。
+    private static async Task<IHost> HostWithSmartDefault()
+    {
+        var host = await new HostBuilder()
+            .ConfigureWebHost(web => web
+                .UseTestServer()
+                .ConfigureServices(s =>
+                {
+                    s.AddRouting();
+                    s.AddAuthorization();
+                    s.AddAuthentication("Smart")
+                        .AddPolicyScheme("Smart", "Smart", o =>
+                            o.ForwardDefaultSelector = ctx =>
+                                ctx.Request.Headers.Authorization.ToString()
+                                    .StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                                    ? BearerLike : CookieLike)
+                        .AddScheme<AuthenticationSchemeOptions, StubHandler>(CookieLike, _ => { })
+                        .AddScheme<AuthenticationSchemeOptions, StubHandler>(BearerLike, _ => { });
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseAuthentication();
+                    app.UseAuthorization();
+                    app.UseEndpoints(e =>
+                    {
+                        // 既存の BFF 端点と同じ 2 形。**内側のポリシーはスキームを持たない。**
+                        e.MapGet("/bff/thing", () => Results.Ok("ok")).RequireAuthorization();
+                        e.MapGet("/bff/roled", () => Results.Ok("ok"))
+                            .RequireAuthorization(p => p.RequireAuthenticatedUser());
+                    });
+                }))
+            .StartAsync();
+        return host;
+    }
+
+    // ── ［3b・案 B］3 点セット。**3 つ目が陰性対照**である。
+    // 2 つだけだと「常に通す実装」が両方を通してしまう。
+
+    // ★ 1: Cookie 呼び出しが通る。
+    [Fact]
+    public async Task Smart_default_accepts_cookie()
+    {
+        using var host = await HostWithSmartDefault();
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Add("Cookie", "session=abc");
+
+        (await client.GetAsync("/bff/thing")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ★ 2: Bearer 呼び出しも通る（統合スタックの外形確認を失わない）。
+    [Fact]
+    public async Task Smart_default_accepts_bearer()
+    {
+        using var host = await HostWithSmartDefault();
+        var client = host.GetTestClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "t");
+
+        (await client.GetAsync("/bff/thing")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // 🔴 ★ 3（**陰性対照**）: **どちらも無ければ 401。**
+    // これが無いと「常に通す」実装が 1・2 の両方を満たしてしまう。
+    [Fact]
+    public async Task Smart_default_rejects_when_neither_credential_is_present()
+    {
+        using var host = await HostWithSmartDefault();
+
+        (await host.GetTestClient().GetAsync("/bff/thing"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    // 🔴 ★ 条件 4: **Bearer 経路が認可を迂回していない。**
+    // ロール要求を持つ端点（内側のポリシーがスキームを持たない形）でも、
+    // **両方の経路が同じ判定を通る**こと。片方だけ認可が効かない形にしない。
+    [Theory]
+    [InlineData(true)]   // Bearer 経路
+    [InlineData(false)]  // Cookie 経路
+    public async Task Both_paths_go_through_the_same_authorization_on_roled_endpoints(bool useBearer)
+    {
+        using var host = await HostWithSmartDefault();
+        var client = host.GetTestClient();
+        if (useBearer)
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "t");
+        else
+            client.DefaultRequestHeaders.Add("Cookie", "session=abc");
+
+        (await client.GetAsync("/bff/roled")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ★ 陰性対照（条件 4 の裏）: 資格情報が無ければ、ロール端点も 401 である。
+    [Fact]
+    public async Task Roled_endpoint_rejects_without_any_credential()
+    {
+        using var host = await HostWithSmartDefault();
+
+        (await host.GetTestClient().GetAsync("/bff/roled"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     private static async Task<IHost> HostWithDefault(string defaultScheme)
     {
         var host = await new HostBuilder()

@@ -147,11 +147,16 @@ public class BffSessionConfigurationTests
 
         // `AddAuthentication(scheme)` が設定するのは `DefaultScheme` である
         // （`DefaultAuthenticateScheme` は null のままで、解決時にこれへ落ちる）。
-        auth.DefaultScheme.Should().Be(BffSessionExtensions.SessionScheme);
+        // ［案 B］既定は**振り分けスキーム**である。Cookie と Bearer の両方を受理するため、
+        // 既定を BffSession 単体にしない（単体にすると /bff/* への Bearer 呼び出しが 401 になる。
+        // DefaultSchemeRoutingTests が実測で固定している）。
+        auth.DefaultScheme.Should().Be(BffSessionExtensions.SmartScheme);
 
-        // ★ **JwtBearer のスキーム自体は消えない。** 後段サービスへの伝播と、
-        // Bearer を明示する呼び出しは従来どおり動く。変わるのは既定だけである。
         var schemes = sp.GetRequiredService<IAuthenticationSchemeProvider>();
+
+        // ★ **振り分け先が両方とも登録されている。**
+        (await schemes.GetSchemeAsync(BffSessionExtensions.SessionScheme)).Should().NotBeNull(
+            "セッション（Cookie）側の受理先が無ければブラウザがログインできない");
         (await schemes.GetSchemeAsync("Bearer")).Should().NotBeNull(
             "サービス間の Bearer 認証まで消してはならない");
     }
