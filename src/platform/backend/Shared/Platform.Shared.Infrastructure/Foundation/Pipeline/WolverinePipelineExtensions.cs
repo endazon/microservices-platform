@@ -119,6 +119,21 @@ public static class WolverinePipelineExtensions
         // 規則 8: enabled:false → 登録しない（購読・キューを生成しない）。
         if (!step.Enabled)
         {
+            // 🔴 **「IncludeType を呼ばない」だけでは段は無効にならない。**
+            // Wolverine の**規約探索**（conventional discovery）は、明示登録とは独立に
+            // アセンブリを走査してハンドラを見つける。段の型は普通のハンドラの形をしているので、
+            // 何もしなければ **enabled:false のまま購読が生える**。
+            //
+            // これは FR-14（構成のみで段を外せる）を無言で破る。しかも**走査対象の決まり方が
+            // 環境に依存する**ため、「手元では無効・CI では有効」のように*再現しない形*で現れる
+            // （#441 E1 で実測: 同じコードが Windows では例外を投げ、Linux の CI では投げなかった。
+            // 原因は規約探索が段の型を拾ったこと。`Discovery.IncludeAssembly` で手元でも再現した）。
+            //
+            // よって**明示的に除外する**。「登録しない」ではなく「登録させない」でなければならない。
+            options.Discovery.CustomizeHandlerDiscovery(q => q.Excludes.WithCondition(
+                $"パイプライン段 '{stepName}' は構成で無効化されている（pipeline.json enabled:false）",
+                t => t == typeof(TStep)));
+
             logger?.LogWarning(
                 "Pipeline step {Step} ({Handler}) is disabled by configuration; "
                 + "no subscription or queue will be created", stepName, typeof(TStep).Name);

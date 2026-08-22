@@ -1,5 +1,5 @@
 using DataSourceService.Api.Foundation.Persistence;
-using MassTransit;
+using Wolverine;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -37,8 +37,19 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             services.AddAuthentication(TestAuthHandler.SchemeName)
                 .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
 
-            services.RemoveAll<IBusControl>();
-            services.AddMassTransitTestHarness();
+            // ADR-0027（#441 E1）: 本サービスの発行は Wolverine へ移った。
+            // 実ブローカへ繋がずに「何を発行したか」だけを観測するため、IMessageBus を差し替える。
+            // 🔴 実 Wolverine ホストは起こさない —— テストの目的は発行内容の固定であって、
+            // 実ブローカ越しの配送は Knowledge.IntegrationTests の実ブローカ試験が測る。
+            // 🔴 ADR-0027（#441 E1）: **これが無いとテストが約 135 秒ハングする。**
+            // 本番の Program.cs が UseWolverine + UseRabbitMq を呼ぶため、テストホストの起動が
+            // 実ブローカへの接続を試み、**20 回再試行して BrokerInitializationException で失敗する**
+            // （W4 で実測した挙動）。外部トランスポートを無効化して、起動を実ブローカから切り離す。
+            services.DisableAllExternalWolverineTransports();
+
+            services.RemoveAll<IMessageBus>();
+            services.AddSingleton<RecordingMessageBus>();
+            services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
         });
     }
 
