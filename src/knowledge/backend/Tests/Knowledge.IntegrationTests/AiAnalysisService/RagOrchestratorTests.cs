@@ -31,11 +31,11 @@ public sealed class RagOrchestratorTests : IClassFixture<RagIntegrationFactory>
     {
         // Act
         var resp = await _client.PostAsJsonAsync("/analysis/ask",
-            new { Question = "プロジェクト憲章の承認フローを教えて" });
+            new { Question = "プロジェクト憲章の承認フローを教えて" }, TestContext.Current.CancellationToken);
 
         // Assert
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
         answer.Should().NotBeNull();
         answer!.Answer.Should().NotBeNullOrEmpty();
     }
@@ -49,10 +49,10 @@ public sealed class RagOrchestratorTests : IClassFixture<RagIntegrationFactory>
             instruction = "2025 年度の規程変更を比較して",
             taskType = "Compare",
             range = new { attributeFilters = new { year = new[] { "2025" } } }
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>();
+        var answer = await resp.Content.ReadFromJsonAsync<AiAnswerDto>(TestContext.Current.CancellationToken);
         answer.Should().NotBeNull();
         answer!.Answer.Should().NotBeNullOrEmpty();
     }
