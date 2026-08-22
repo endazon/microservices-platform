@@ -15,7 +15,7 @@ namespace ConversionService.Worker.Tests;
 // それ以外は `NotSupportedException` を投げる —— 使われたら黙って成功させず、**気づける形にする**。
 //
 // ⚠️ 実ブローカ越しの配送は本ダブルでは測れない（測るのは Knowledge.IntegrationTests の
-// `[BrokerFact]` である）。ここで固定するのは「何を発行したか」だけである。
+// `BrokerRequired.SkipUnlessObtainable()` を使う試験である）。ここで固定するのは「何を発行したか」だけである。
 public sealed class RecordingMessageBus : IMessageBus
 {
     private readonly ConcurrentQueue<object> _published = new();

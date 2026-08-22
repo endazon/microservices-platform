@@ -426,7 +426,7 @@ E1 で発行を `IDocumentNormalizedPublisher` へ切り出した結果、ハン
 ### 実ブローカ経路との分担
 
 上記はいずれもブローカを使わない。**辺が実際に配送されること**は
-`Knowledge.IntegrationTests` の `[BrokerFact]` が持ち、本 3 ファイルの射程ではない。
+`Knowledge.IntegrationTests` の実ブローカ試験が持ち、本 3 ファイルの射程ではない。
 
 ## 変異試験（計画）
 
@@ -548,11 +548,23 @@ W3 の器（`WolverineBrokerEdge`）から**囮の作法だけを引き継ぎ、
 | ローカル・ブローカ無し | **skip 32 → 34**（＝ 2 件とも走っていない） |
 | ローカル・実ブローカあり（`PLATFORM_TEST_RABBITMQ`） | **合格 2 / skip 0**。統合全体は 30 合格 → **38 合格・skip 34 → 26** |
 | PR の CI（`ci.yml`） | `--filter "Category!=Integration"` により**設計どおり走らない** |
-| 回収先（`integration.yml`） | `ubuntu-latest`・**`--filter` 無し**・push develop ＋ 日次。Docker があるので `BrokerFact` は skip しない |
+| 回収先（`integration.yml`） | `ubuntu-latest`・**`--filter` 無し**・push develop ＋ 日次。Docker があるので `BrokerRequired.SkipUnlessObtainable()` は skip しない |
 
 🔴 **PR の CI では緑にならない（走らないから）。** 手順 8 の充足を主張する根拠は
 **ローカルでの実ブローカ実行 ＋ 回収先が全量で回る配線**であり、CI 上の初回実行は develop への
 マージ後（または `workflow_dispatch`）である。**「CI が緑だから満たした」とは書けない。**
+
+### 🔴 ［2026-08-22 追随 / #441］skip の実現手段が develop で変わった
+
+本器を書いた時点の skip 判定は `[BrokerFact]`（`FactAttribute` 派生のカスタム属性）だったが、
+**`#997`（`IADR-0231`）が「`FactAttribute` 派生の skip 属性をやめる」として 81 箇所を移行し、
+`BrokerFactAttribute` ごと削除した**（理由: **xUnit1051 は `FactAttribute` 派生のカスタム属性を認識しない**）。
+
+**本 PR はその変更より前の develop へ rebase していたため、ローカルでは緑・CI では赤になった。**
+CI（`pull_request`）は**head と base のマージ**をビルドするので、
+**自分のブランチに無い削除が効く** —— **ローカルの緑は「自分の基点での緑」でしかない。**
+
+`[Fact]` ＋ 各テスト冒頭の `BrokerRequired.SkipUnlessObtainable()` へ移した。
 
 ### 変異（実ブローカ上で実測）
 

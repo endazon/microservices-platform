@@ -28,10 +28,11 @@ public sealed class RawDocumentFetchedEdgeTests(RabbitMqFixture rabbit) : IClass
 
     private const string ExchangeName = "e1-rawdoc-edge";
 
-    [BrokerFact]
+    [Fact]
     public async Task 実ブローカ経由でRawDocumentFetchedが本物のハンドラへ届き_発行元へは配送されない()
     {
-        rabbit.IsAvailable.Should().BeTrue("BrokerFact が走った以上ブローカは供給されているはず");
+        BrokerRequired.SkipUnlessObtainable();
+        rabbit.IsAvailable.Should().BeTrue("skip されなかった以上ブローカは供給されているはず");
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
 
@@ -43,7 +44,7 @@ public sealed class RawDocumentFetchedEdgeTests(RabbitMqFixture rabbit) : IClass
         // 受信して例外で落ちても購読キューからは消えるので、受信だけでは成功と言えない。
         await ReceiveOrExplain(edge, RawDocumentFetchedEdge.RecordingPublisher.Role, sourceId);
 
-        await Task.Delay(BaitSettleWindow);
+        await Task.Delay(BaitSettleWindow, TestContext.Current.CancellationToken);
 
         // (2) 🔴 器の要。囮はリスニングを持たないため、ブローカ経由では原理的に受信できない。
         edge.Recorder.CountFor(RawDocumentFetchedEdge.BaitHandler.Role, sourceId).Should().Be(
@@ -53,12 +54,13 @@ public sealed class RawDocumentFetchedEdgeTests(RabbitMqFixture rabbit) : IClass
             1, "1 回の発行に対し購読先はちょうど 1 通処理する");
     }
 
-    [BrokerFact]
+    [Fact]
     public async Task 型名が発行行に現れない発行でも同じ経路を通る()
     {
         // 🔴 発行 ②（`ConversionJobEndpoints.cs` の再変換）と同じ形 —— 変数を渡す publish。
         // **静的検査はこの形を見ない**ので、実行時に同じ経路を通ることは実ブローカでしか示せない。
-        rabbit.IsAvailable.Should().BeTrue("BrokerFact が走った以上ブローカは供給されているはず");
+        BrokerRequired.SkipUnlessObtainable();
+        rabbit.IsAvailable.Should().BeTrue("skip されなかった以上ブローカは供給されているはず");
         var connectionString = rabbit.ConnectionString;
         connectionString.Should().NotBeNull();
 
@@ -68,7 +70,7 @@ public sealed class RawDocumentFetchedEdgeTests(RabbitMqFixture rabbit) : IClass
 
         await ReceiveOrExplain(edge, RawDocumentFetchedEdge.RecordingPublisher.Role, sourceId);
 
-        await Task.Delay(BaitSettleWindow);
+        await Task.Delay(BaitSettleWindow, TestContext.Current.CancellationToken);
 
         edge.Recorder.CountFor(RawDocumentFetchedEdge.BaitHandler.Role, sourceId).Should().Be(
             0, "型名の可視・不可視は配送経路を変えない（変えるなら移行の前提が崩れる）");

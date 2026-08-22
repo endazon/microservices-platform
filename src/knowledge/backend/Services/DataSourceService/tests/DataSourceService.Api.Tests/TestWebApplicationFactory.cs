@@ -40,7 +40,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
             // ADR-0027（#441 E1）: 本サービスの発行は Wolverine へ移った。
             // 実ブローカへ繋がずに「何を発行したか」だけを観測するため、IMessageBus を差し替える。
             // 🔴 実 Wolverine ホストは起こさない —— テストの目的は発行内容の固定であって、
-            // 実ブローカ越しの配送は Knowledge.IntegrationTests の [BrokerFact] が測る。
+            // 実ブローカ越しの配送は Knowledge.IntegrationTests の実ブローカ試験が測る。
             // 🔴 ADR-0027（#441 E1）: **これが無いとテストが約 135 秒ハングする。**
             // 本番の Program.cs が UseWolverine + UseRabbitMq を呼ぶため、テストホストの起動が
             // 実ブローカへの接続を試み、**20 回再試行して BrokerInitializationException で失敗する**
