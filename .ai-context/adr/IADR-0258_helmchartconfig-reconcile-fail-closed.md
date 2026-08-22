@@ -1,5 +1,5 @@
 ---
-title: IADR-0260 HelmChartConfig は「置けたこと」ではなく「効いたこと」を待ち、来なければ落とす
+title: IADR-0258 HelmChartConfig は「置けたこと」ではなく「効いたこと」を待ち、来なければ落とす
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ created: 2026-08-23
 updated: 2026-08-23
 ---
 
-# IADR-0260 HelmChartConfig は「置けたこと」ではなく「効いたこと」を待つ
+# IADR-0258 HelmChartConfig は「置けたこと」ではなく「効いたこと」を待つ
 
 ## 状況
 

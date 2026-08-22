@@ -1,5 +1,5 @@
 ---
-title: IADR-0259 トランスポート ratchet の向きを非対称にする（前進は baseline 更新を促し、逆行は --update でも通さない）
+title: IADR-0257 トランスポート ratchet の向きを非対称にする（前進は baseline 更新を促し、逆行は --update でも通さない）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -16,7 +16,7 @@ plan_refs:
 issue: "#921"
 ---
 
-# IADR-0259: トランスポート ratchet の向きを非対称にする
+# IADR-0257: トランスポート ratchet の向きを非対称にする
 
 - 状態: Accepted
 - 日付: 2026-08-23

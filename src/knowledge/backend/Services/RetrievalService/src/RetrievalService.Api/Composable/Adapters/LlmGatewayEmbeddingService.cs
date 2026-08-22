@@ -16,7 +16,7 @@ public class LlmGatewayEmbeddingService(HttpClient http) : IEmbeddingService
             new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query),
             ct);
         // **到達できない・非 2xx はここで例外にする（潰さない）。** ゲートウェイの故障を
-        // 「該当なし」に化けさせないため（[[IADR-0257]] 決定 3）。
+        // 「該当なし」に化けさせないため（[[IADR-0256]] 決定 3）。
         resp.EnsureSuccessStatusCode();
         var result = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(ct);
 

@@ -1,5 +1,5 @@
 ---
-title: IADR-0257 検索は「後段の設計上の縮退」だけ続行し、「後段の故障」は 500 のまま上げる
+title: IADR-0256 検索は「後段の設計上の縮退」だけ続行し、「後段の故障」は 500 のまま上げる
 type: impl-adr
 status: Accepted
 related_ids:
@@ -23,7 +23,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0023_mesh-and-ports.md
 ---
 
-# IADR-0257 検索の縮退と故障の切り分け（#995）
+# IADR-0256 検索の縮退と故障の切り分け（#995）
 
 - 状態: Accepted
 - 日付: 2026-08-23

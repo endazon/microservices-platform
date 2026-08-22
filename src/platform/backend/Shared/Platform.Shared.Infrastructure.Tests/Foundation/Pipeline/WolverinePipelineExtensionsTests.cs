@@ -2,6 +2,7 @@ using System.Reflection;
 using AwesomeAssertions;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
 using Wolverine;
+using Wolverine.Configuration;
 
 namespace Platform.Shared.Infrastructure.Tests.Foundation.Pipeline;
 

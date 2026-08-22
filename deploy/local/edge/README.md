@@ -35,7 +35,7 @@ LOCALEDGE=1 bash scripts/k8s-local-up.sh          # 必要に応じ OBSERVABILIT
 > LAN からアクセスさせたい場合のみ、利用者が明示的に bind host を広げる（自己責任）。Rancher Desktop は内蔵 LB の
 > 公開設定に従う。
 
-> 🔴 **`HelmChartConfig` の反映は待ち合わせて検査する（#953 / IADR-0260）**。`traefik-entrypoint.yaml` の効果は
+> 🔴 **`HelmChartConfig` の反映は待ち合わせて検査する（#953 / IADR-0258）**。`traefik-entrypoint.yaml` の効果は
 > k3s の helm-controller が**非同期に**実現するため、`kubectl apply` が成功しても reconcile は失敗し得る
 > （`expose` の values スキーマは traefik chart のバージョンで型が変わる）。`k8s-local-up.sh` は overlay 適用の直後に
 > `kube-system/traefik` の `admin=50000` を最大 180 秒待ち、**来なければ非 0 で落ちる**（警告して続行はしない）。

@@ -27,7 +27,7 @@
  * 5. **MassTransit と Wolverine の両方の記法を読む。** 移行中は同居し得る。
  *    **移行しても表が変わらないことが、移行が正しいことの証拠**になる。
  * 6. **トランスポートも記録し、発行側と購読側の食い違いを違反にする**（#455 Phase 0 / U2）。
- * 7. **トランスポートの変化そのものを baseline と突き合わせる ratchet**（#921 / IADR-0259）。
+ * 7. **トランスポートの変化そのものを baseline と突き合わせる ratchet**（#921 / IADR-0257）。
  *    向きは非対称である —— **前進（MassTransit → Wolverine）は baseline の更新を促し、
  *    逆行（Wolverine → MassTransit）は `--update` でも通さない**（`--allow-regression` が要る）。
  *
@@ -351,7 +351,7 @@ function loadBaseline() {
 
 /**
  * baseline と突き合わせる。増減の**両方向**を違反にする。
- * **owner の増減に加え、両方に居る owner の transport 変化も違反にする**（#921 / IADR-0259）。
+ * **owner の増減に加え、両方に居る owner の transport 変化も違反にする**（#921 / IADR-0257）。
  */
 function diffAgainstBaseline(topology, baseline) {
   const violations = [];
@@ -599,7 +599,7 @@ function selfTest() {
     assert.ok(Number.isInteger(countSubscribers(cur)), '合計が NaN になっていない');
   });
 
-  // ---- ★ トランスポート ratchet（#921 / IADR-0259。owner 名は同じままの変化） ----
+  // ---- ★ トランスポート ratchet（#921 / IADR-0257。owner 名は同じままの変化） ----
 
   const baseOf = (pub, sub) => ({ topology: { DocumentUpdated: { publishers: pub, subscribers: sub } } });
   const curOf = (pub, sub) => ({ DocumentUpdated: { publishers: pub, subscribers: sub } });
@@ -719,7 +719,7 @@ function main() {
   }
 
   if (argv.includes('--update')) {
-    // 🔴 ratchet の向き（#921 / IADR-0259）: 逆行を含む表は書き込まない。
+    // 🔴 ratchet の向き（#921 / IADR-0257）: 逆行を含む表は書き込まない。
     // これが無いと「逆行の指摘は --update 1 回で消える」ことになり、ADR-0027 の制約が溶ける。
     const regressions = transportChanges(topology, loadBaseline()).filter((c) => c.kind === 'regression');
     if (regressions.length > 0 && !argv.includes('--allow-regression')) {
@@ -748,7 +748,7 @@ function main() {
             '購読者が発行側と 1 つもトランスポートを共有していなければ、その購読者は 1 通も' +
             '受け取れないため違反にする（部分移行の検出。#455 Phase 0 / U2）。' +
             '二重購読（両方で待つ）は移行手順なので違反にしない。' +
-            ' **トランスポートの変化そのものも突合する**（#921 / IADR-0259）。' +
+            ' **トランスポートの変化そのものも突合する**（#921 / IADR-0257）。' +
             '前進（masstransit → wolverine）は本ファイルの更新を促し、' +
             '逆行（wolverine → masstransit）は --update でも書き込まない（--allow-regression が要る）。',
           topology,

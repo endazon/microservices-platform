@@ -19,7 +19,7 @@
 # **つまりこの宣言は k3s のバージョンに暗黙に依存している。** 依存に対する打ち手は 2 つあり、両方要る:
 #   1. **回避**: `K3S_IMAGE` で k3s を pin する（scripts/k8s-local-up.sh の [1/7]・#783 / IADR-0248）。
 #   2. **検知**: `k8s-local-up.sh` が LOCALEDGE=1 のとき、この HelmChartConfig の**反映**（traefik svc の
-#      `admin=50000`）を待ち、来なければ**非 0 で落とす**（#953 / IADR-0260）。`kubectl apply` は
+#      `admin=50000`）を待ち、来なければ**非 0 で落とす**（#953 / IADR-0258）。`kubectl apply` は
 #      reconcile の失敗を知らないため、これが無いと **admin が立たないまま up が EXIT=0 で返る**。
 # k3s を上げ下げして下記が通らなくなったら、chart の版に合わせて `expose: true`（bool）へ切替えること。
 #

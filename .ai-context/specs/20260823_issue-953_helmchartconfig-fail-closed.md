@@ -10,7 +10,7 @@ related_ids:
   - IADR-0220
   - IADR-0248
   - IADR-0255
-  - IADR-0260
+  - IADR-0258
 author: claude
 created: 2026-08-23
 updated: 2026-08-23
@@ -155,7 +155,7 @@ $ grep -rhn "^kind:" deploy/ | sed 's/^[0-9]*://' | sort | uniq -c | sort -rn
    **既存の opt-in の挙動を変える**（バイト等価が崩れる）。
 3. #953 の受け入れ基準は `HelmChartConfig` に閉じている。射程を広げるなら別 issue が要る（残件へ記す）。
 
-## 決定（詳細は [IADR-0260]）
+## 決定（詳細は [IADR-0258]）
 
 1. `kubectl apply -k deploy/local/edge` の**直後**に、`HelmChartConfig` の**観測可能な結果**
    （`kube-system/traefik` Service の `admin=50000`）を **`kubectl wait` で待ち、来なければ非 0 で落とす**。
@@ -203,7 +203,7 @@ echo "EXIT_after=$?"                               # 期待: 非 0（門が落�
   job レベル（`helm-install-traefik` の `condition=Complete`）まで見れば塞げるが、
   **job 名・ラベルが k3s のバージョン依存**であり、**バージョン依存を塞ぐ門をバージョン依存の
   識別子で書くのは自己矛盾**である。加えて誤ればローカル開発が全員即座に止まる（偽陽性の代償が大きい）。
-  実クラスタで確かめられない本作業では採らない（[IADR-0260] 決定 3・残件へ）。
+  実クラスタで確かめられない本作業では採らない（[IADR-0258] 決定 3・残件へ）。
 - **実クラスタでの実走は未実施**である（本作業環境に k8s クラスタが無い）。
   ただし `kubectl wait --for=jsonpath` の意味論は **kubectl のソースで検証した**（下記）。
 
@@ -212,7 +212,7 @@ echo "EXIT_after=$?"                               # 期待: 非 0（門が落�
 - `scripts/k8s-local-up.sh` — 反映待ちの追加（`LOCALEDGE` ブロック内・既定オフでは 1 バイトも実行されない）
 - `deploy/local/edge/traefik-entrypoint.yaml` — バージョン依存の注記を実測で書き直す
 - `deploy/local/edge/README.md` — 門の存在を運用手順へ 1 行足す
-- `.ai-context/adr/IADR-0260_*.md` ＋ `.ai-context/adr/README.md` — 決定の記録と索引
+- `.ai-context/adr/IADR-0258_*.md` ＋ `.ai-context/adr/README.md` — 決定の記録と索引
 
 ## `kubectl wait --for=jsonpath` の意味論を **ソースで**確かめた（記憶で書かない）
 

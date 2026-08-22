@@ -382,7 +382,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "==> [opt-in] local edge aggregation (Traefik admin:50000 + Ingress, IADR-0091)"
   kubectl apply -k deploy/local/edge
 
-  # IADR-0260 (#953): ★ **HelmChartConfig の反映を待つ。来なければ落とす（fail-closed）。**
+  # IADR-0258 (#953): ★ **HelmChartConfig の反映を待つ。来なければ落とす（fail-closed）。**
   #
   # `deploy/local/edge` の先頭資源 traefik-entrypoint.yaml は `kind: HelmChartConfig` であり、その効果
   # （Traefik Service に admin=50000 が生えること）は **k3s の helm-controller が非同期に**実現する。
@@ -401,7 +401,7 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   # 既知の限界（隠さない）: **既存クラスタへの再実行では、新たに壊した宣言を捕まえられない**。前回の
   # reconcile が成功していれば Service は admin=50000 を保持し続けるためである。確実に効くのは
   # クラスタ作成直後。job レベル（helm-install-traefik の Complete）まで見れば塞げるが、job 名・ラベルが
-  # k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書くこと**になる（IADR-0260 決定 3）。
+  # k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書くこと**になる（IADR-0258 決定 3）。
   echo "    -> HelmChartConfig の反映を待つ: kube-system/traefik svc に admin=50000 が生えること (#953)"
   if ! kubectl -n kube-system wait --for=jsonpath='{.spec.ports[?(@.name=="admin")].port}'=50000 \
        svc/traefik --timeout=180s; then

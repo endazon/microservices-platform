@@ -117,7 +117,7 @@ const PLAIN_STUB = (name) =>
 // STUB_VAULT_DEPLOY_ABSENT=1 で `kubectl -n ... get deploy vault` を非0（未作成）に返させ、ESO=1 の
 // 「VAULT=1 なしなら fail-fast」ガード（IADR-0096）を検証できるようにする。
 // STUB_TRAEFIK_ADMIN_MISSING=1 で `kubectl wait --for=jsonpath=... svc/traefik` を非0（＝反映が来ない）に
-// 返させ、HelmChartConfig の reconcile が落ちたときの fail-closed（IADR-0260 / #953）を検証できるように
+// 返させ、HelmChartConfig の reconcile が落ちたときの fail-closed（IADR-0258 / #953）を検証できるように
 // する。**診断の `get svc traefik` 等は 0 のままにする**——落ちるのは待ち合わせであって get ではない。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
@@ -450,7 +450,7 @@ ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
   assert.ok(anyLineHas(runUp({ LOCALEDGE: '1' }).lines, 'apply -k deploy/local/edge'), 'deploy/local/edge が apply されない');
 });
 
-// --- IADR-0260 (#953): HelmChartConfig の反映は fail-closed で待つ ---------------------
+// --- IADR-0258 (#953): HelmChartConfig の反映は fail-closed で待つ ---------------------
 //
 // `kubectl apply` が見るのは「オブジェクトを置けたか」だけで、**反映は k3s の helm-controller が
 // 非同期に**行う。そこで落ちても呼び出し側へは伝わらない —— 実測では admin(50000) が立たないまま

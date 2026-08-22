@@ -14,6 +14,24 @@ public interface IVectorStore
         IReadOnlyList<AttributeFilter>? filters,
         CancellationToken ct = default);
 
+    // FR-04, FR-17, ADR-0035, #969: 文書 ID 集合に絞った意味検索（二段検索の後段）。
+    // グラフ近傍展開が返すのは**文書単位**の候補であり、出典（CitationDto）が要る
+    // ChunkId / Score / Snippet を持たない。その文書 ID に絞って本口を走らせることで、
+    // チャンク単位のスコアとスニペットを**正規の経路で**得る。
+    //
+    // 🔴 **`documentIds` が空なら「該当なし」（空リスト）を返す。「全件」ではない**
+    // ——空を全件と読むと、グラフが 0 件を返したときに検索が全文書へ広がる。
+    // 🔴 **`filters`（ABAC）とは AND で結合する。** 文書 ID による絞りは ABAC を置き換えるものではなく、
+    // **追加の制約**である。
+    //
+    // 既存の `SearchAsync` は変更しない（ADR-0035 決定 1「既存検索の実装は変更せず、後段を足す」）。
+    Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
+        float[] queryVector,
+        int topK,
+        IReadOnlyCollection<Guid> documentIds,
+        IReadOnlyList<AttributeFilter>? filters,
+        CancellationToken ct = default);
+
     // FR-03: 全文検索（キーワード／語句一致）。ハイブリッド検索の全文側を担う。
     // FR-05: filters は ABAC 多値 allow-list（key ∈ values の AND 結合）。
     Task<List<SearchResultDto>> KeywordSearchAsync(

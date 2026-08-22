@@ -34,6 +34,13 @@ internal sealed class RecordingVectorStore : IVectorStore
         return Task.FromResult(KeywordResults);
     }
 
+    // FR-04, FR-17, #969: 二段検索の後段（文書 ID 制約つき検索）。本スタブは検索モードの分岐だけを
+    // 観測する目的であり、この口は呼ばれない（呼ばれたら空を返す）。
+    public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
+        float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
+        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult(new List<SearchResultDto>());
+
     public Task<List<string>> ListAttributeValuesAsync(
         string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
         => Task.FromResult<List<string>>([]);
@@ -465,7 +472,7 @@ public class HybridSearchServiceTests
     }
 
     // FR-03, SC-01, #995: 🔴 **後段の故障は潰さない。** ゲートウェイへ到達できない場合は例外が伝播し、
-    // `/search` は 500 のままである（[[IADR-0257]] 決定 3）。200 ＋ 空へ縮退させると、
+    // `/search` は 500 のままである（[[IADR-0256]] 決定 3）。200 ＋ 空へ縮退させると、
     // 後段が死んでいても検索は緑に見えるようになる。
     [Fact]
     public async Task Hybrid_EmbeddingBackendFailure_PropagatesAndIsNotSwallowed()

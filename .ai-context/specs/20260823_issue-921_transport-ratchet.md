@@ -7,7 +7,7 @@ related_ids:
   - ADR-0027
   - ADR-0030
   - ADR-0052
-  - IADR-0259
+  - IADR-0257
 author: claude
 created: 2026-08-23
 updated: 2026-08-23
@@ -67,7 +67,7 @@ $ node scripts/check-event-topology.js
 
 - 対象: `scripts/check-event-topology.js`（`diffAgainstBaseline()` へのトランスポート突合追加・
   `--update` の逆行ガード・自己試験）／`scripts/event-topology-baseline.json`（前進 1 件の記録）／
-  `scripts/README.md` の該当行／`IADR-0259`（＋索引 1 行）。
+  `scripts/README.md` の該当行／`IADR-0257`（＋索引 1 行）。
 - 対象外:
   - **発行検出 regex の拡張**（`Publish(変数)` / `Publish(メソッド呼び出し())` の 7 件）。issue が
     明示的にスコープ外とした（型解析が要り regex では原理的に埋まらない）。
@@ -117,7 +117,7 @@ baseline と現状の**両方に居る owner** について transport 配列を�
   —— これが無いと ratchet は「更新すれば消える指摘」に過ぎず、`ADR-0027`（MassTransit 不採用）の
   制約が baseline 更新 1 回で溶ける。escape hatch は残すが、**明示・記録必須**とする。
 
-決定の根拠は `IADR-0259` に残す。
+決定の根拠は `IADR-0257` に残す。
 
 ### 3. 触らないもの
 
@@ -169,7 +169,7 @@ baseline と現状の**両方に居る owner** について transport 配列を�
 | 1 | `scripts/check-event-topology.js` | `normalizeTransports()` / `classifyTransportChange()` / `transportChanges()` / `fmtTransportChange()` を新設し、`diffAgainstBaseline()` から呼ぶ。`--update` に逆行ガード（`--allow-regression` で解除）。ヘッダに設計要点 7 とその根拠。自己試験 **19 → 26 件** |
 | 2 | `scripts/event-topology-baseline.json` | **`RawDocumentFetched` の両側を `masstransit` → `wolverine` へ**（実ソースは既に Wolverine 化していたのに表が追随していなかった＝穴の現物）。`$comment` に ratchet の説明 |
 | 3 | `scripts/README.md` | 当該行に ratchet の説明を追記。自己試験件数 19 → 26。`--allow-regression` を明記 |
-| 4 | `.ai-context/adr/IADR-0259_transport-ratchet-direction.md`（＋索引 1 行） | ratchet の向きを非対称にする決定 |
+| 4 | `.ai-context/adr/IADR-0257_transport-ratchet-direction.md`（＋索引 1 行） | ratchet の向きを非対称にする決定 |
 
 ## 変異試験の証跡（`docs/DEFINITION_OF_DONE.md`「機械検査を新設・改修する」）
 
