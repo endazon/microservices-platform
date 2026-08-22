@@ -381,7 +381,12 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
   code=$(curl -s $CURL_K -m 30 -o "$body_file" -w '%{http_code}' \
     -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
   count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
-  has_probe=$(grep -c "$PROBE_TITLE" "$body_file" 2>/dev/null || printf '0')
+  # 🔴 #466: ここは `grep -c ... || printf '0'` だった（#982 由来）。**その形は恒久的に fail-open だった。**
+  #    grep -c は無マッチでも stdout へ 0 を書きつつ **exit 1** を返す（実測）。exit が非 0 なので
+  #    `||` の右辺も走り、値が 0 ではなく **2 行の 0**（0 改行 0）になる。結果 [ "$has_probe" = "0" ] は
+  #    常に偽となり、**「一覧は非空だが作成した文書が含まれない」を検出する分岐へ到達しなかった**。
+  #    件数を数えず**述語**で聞く（grep -q）。ファイルが無い場合も 0 になり fail-closed 側へ倒れる。
+  if grep -q "$PROBE_TITLE" "$body_file" 2>/dev/null; then has_probe=1; else has_probe=0; fi
   if [ "$code" = "000" ]; then
     fail "GET /bff/documents（許可あり）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
   elif [ "$code" != "200" ]; then
