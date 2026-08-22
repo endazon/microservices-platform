@@ -126,7 +126,7 @@ $ git -C src/ai-stock-trading show 9b9c676:Directory.Build.props
 `check-adr-numbering` と同じ経路で、既存の `scripts-tests` ジョブが走らせる）。
 **`.github/workflows/ci.yml` は 1 行も変更していない。**
 
-> ［2026-08-22 追記 / #966］🔴 **`remaining` の件数検証を足すかを、費用を測って判断し「足さない」と決めた。**
+> ［2026-08-22 追記 / #968］🔴 **`remaining` の件数検証を足すかを、費用を測って判断し「足さない」と決めた。**
 >
 > **陳腐化は実在する。** #961 の実測で、未移行 6 行のうち **2 行が 1 日で古くなっていた**
 > （`Platform.Shared.Infrastructure.Tests` 0→4 / `Platform.Bff.Tests` 229→232）。
