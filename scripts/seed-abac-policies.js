@@ -32,7 +32,9 @@
  * 主な環境変数:
  *   ABAC_SEED_DIR（既定 deploy/local/abac-seed）/ ABAC_SEED_NS（既定 microservices-platform）
  *   ABAC_SEED_INFRA_NS（既定 platform-infra）/ ABAC_SEED_REALM（既定 platform）
- *   ABAC_SEED_CLIENT_ID（既定 bff）/ ABAC_SEED_USER・ABAC_SEED_PASSWORD（既定 admin/admin）
+ *   ABAC_SEED_CLIENT_ID（既定 bff）/ ABAC_SEED_USER（既定 admin）
+ *   ABAC_SEED_PASSWORD（既定は realm ファイルから引く。値をここへ写さない。#972）
+ *   ABAC_SEED_REALM_FILE（既定 deploy/keycloak/microservices-platform-realm.json）
  *
  * 終了コード: 0=投入済み（no-op を含む） / 1=失敗 / 2=前提未整備（k8s へ到達できない等）
  */
@@ -48,10 +50,46 @@ const INFRA_NS = env('ABAC_SEED_INFRA_NS', 'platform-infra');
 const REALM = env('ABAC_SEED_REALM', 'platform');
 const CLIENT_ID = env('ABAC_SEED_CLIENT_ID', 'bff');
 const USER = env('ABAC_SEED_USER', 'admin');
-const PASSWORD = env('ABAC_SEED_PASSWORD', 'admin');
 
 const log = (s) => process.stdout.write(`${s}\n`);
 const warn = (s) => process.stderr.write(`${s}\n`);
+
+// 🔴 パスワードは realm ファイル（単一情報源）から引く。既定値としてここへ写さない（#972）。
+//
+// 経緯: 既定はユーザ名と同じ短い値を直書きしていた。#933 が realm のパスワードを
+// パスワードポリシー（12 文字以上）適合の値へ一斉に変えたとき、この既定は追随せず
+// **投入が 401 で失敗するようになった**（値そのものはここへ書かない。realm ファイルが正本である）。
+// しかも `k8s-local-up.sh` の ABACSEED は best-effort（失敗しても WARN で通す）ため、
+// **壊れていることが誰にも見えなかった** —— ポリシーが 0 件のまま ABAC は deny へ倒れ、
+// 画面は空になるが、それは仕様どおりの deny-by-default とまったく区別が付かない。
+//
+// 値を写すと同じ drift がまた起きるので、**realm ファイルから読む**（構造的な根拠にする）。
+// 経路B の realm は平文でパスワードを持つ（dev 専用。本番の値は Vault / ESO 側にある）。
+const REALM_FILE = env(
+  'ABAC_SEED_REALM_FILE',
+  path.join(__dirname, '..', 'deploy', 'keycloak', 'microservices-platform-realm.json'),
+);
+function passwordFromRealm(username) {
+  try {
+    const realm = JSON.parse(fs.readFileSync(REALM_FILE, 'utf8'));
+    const user = (realm.users || []).find((u) => u.username === username);
+    const cred = ((user || {}).credentials || []).find((c) => c.type === 'password');
+    return (cred && cred.value) || null;
+  } catch {
+    return null;
+  }
+}
+const PASSWORD = (() => {
+  if (process.env.ABAC_SEED_PASSWORD) return process.env.ABAC_SEED_PASSWORD;
+  const fromRealm = passwordFromRealm(USER);
+  if (fromRealm) return fromRealm;
+  // 黙って既定値へ落ちない。落ちた事実を出す（無音の失敗がこの不具合の本体だった）。
+  warn(
+    `[seed-abac-policies] realm ファイルから ${USER} のパスワードを読めませんでした（${REALM_FILE}）。` +
+      ' ABAC_SEED_PASSWORD を指定してください。',
+  );
+  return '';
+})();
 
 // --- 一時 port-forward（自分で張り、終了時に必ず片付ける） -------------------------
 const forwards = [];
@@ -218,7 +256,7 @@ async function main(argv) {
   return 0;
 }
 
-module.exports = { selectMissingAttributes, selectMissingPolicies };
+module.exports = { selectMissingAttributes, selectMissingPolicies, passwordFromRealm, REALM_FILE };
 
 if (require.main === module) {
   main(process.argv.slice(2))
