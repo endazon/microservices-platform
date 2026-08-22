@@ -19,7 +19,7 @@ related_specs:
 
 ## 状況
 
-逆転監視（[IADR-0232](IADR-0232_ci-pr-latency-reduction.md) 決定 9。`ci-latency-watch.yml` /
+逆転監視（[IADR-0232](IADR-0232_ci-pr-latency-reduction.md) 決定 8。`ci-latency-watch.yml` /
 `scripts/check-ci-latency.js`）は「`build-and-test` の**中央値** > `claude-review` の**最小値**」で判定する。
 
 **中央値は「直近 N 本のマージ済み PR が同じ CI 構成で走った」と仮定している。**
@@ -80,7 +80,7 @@ OK: 逆転していない。
    **本数の門は null 判定より前**に置く —— **0 本のときこそ epoch を理由に添えねばならない**。
 4. **0 本のときの「check 名の設定ミスを疑え」は、epoch で外したのが原因なら出さない。**
    原因が分かっているのに**読み手を誤った方向へ差し向ける**のは、監視が黙って壊れるのと同じくらい害になる。
-5. **定常性の門（[IADR-0232](IADR-0232_ci-pr-latency-reduction.md) 決定 9）は残す。**
+5. **定常性の門（[IADR-0232](IADR-0232_ci-pr-latency-reduction.md) 決定 8）は残す。**
    epoch は**既知の構成変更**を、門は **`ci.yml` を触らない原因**（依存更新でテストが重くなる等）で
    段差が出た場合を扱う。**役割が違うので片方に寄せない。**
 6. **fail-open の向きを 1 箇所だけ逆にしている（意図的）。**
