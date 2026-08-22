@@ -57,6 +57,58 @@ public static class GraphEndpoints
           .Produces<GraphViewResponse>()
           .Produces(StatusCodes.Status404NotFound);
 
+        // FR-17, UC-10, ADR-0034 決定 1・2・3・4: 近傍探索（多ホップ）。
+        //
+        // 🔴 **hops 上限の超過は 400 で拒否する。黙って切り詰めない**（決定 3）。
+        // 切り詰めると、利用者は「3 ホップ先まで見た」と思い込んだまま欠けた結果を受け取る。
+        g.MapGet("/{documentId:guid}/neighbors", async (
+            Guid documentId,
+            int? hops,
+            IGraphAccessResolver accessResolver,
+            IGraphStore store,
+            GraphTraversal traversal,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            // 🔴 **hops の検証は認可より前に置く。順序を入れ替えてはならない。**
+            //
+            // 入れ替えると存在秘匿が壊れる —— 認可を先にすると、権限外・不存在の文書は 404、
+            // 可視の文書だけが 400 を返すようになり、**hops=4 を投げるだけで文書の存在が判る**。
+            // hops の妥当性は文書に依存しないので、先に弾けば何も漏れない。
+            //
+            // ⚠ CodeQL の `cs/user-controlled-bypass` がここを high で指摘する（利用者入力が
+            // 条件を制御しているため）。**バイパスではない** —— この分岐は要求を*拒否*するだけで、
+            // 通過した場合の認可（スコープ解決・Authorize）は無条件に実行される。
+            // 指摘に従って順序を変えると、上記のとおり実際の情報漏れを作ることになる。
+            var requested = hops ?? GraphTraversal.DefaultHops;
+            if (requested < 1 || requested > GraphTraversal.MaxHops)
+                return Results.BadRequest(new
+                {
+                    error = "hops_out_of_range",
+                    message = $"hops は 1〜{GraphTraversal.MaxHops} で指定する（既定 {GraphTraversal.DefaultHops}）。",
+                });
+
+            var scope = await accessResolver.ResolveAsync(http, ct);
+            if (!scope.Granted)
+                return NotFound();
+
+            var start = await store.FindNodeAsync(documentId, ct);
+            if (start is null)
+                return NotFound();
+
+            var origin = AuthorizedNode.Authorize(start, scope);
+            if (origin is null)
+                return NotFound();
+
+            var subgraph = await traversal.ExploreAsync(origin, scope, requested, ct);
+
+            return Results.Ok(GraphViewResponse.Seal(subgraph, scope));
+        }).WithName("GetGraphNeighbors")
+          .RequireAuthorization()
+          .Produces<GraphViewResponse>()
+          .Produces(StatusCodes.Status400BadRequest)
+          .Produces(StatusCodes.Status404NotFound);
+
         return app;
     }
 

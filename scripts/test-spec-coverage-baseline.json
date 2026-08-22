@@ -150,7 +150,9 @@
       "DashboardEndpointTests"
     ],
     "docs/tests/UC-10_graph-traversal.md": [
-      "GraphEndpointsSecrecyTests"
+      "AuthorizedGraphViewTests",
+      "GraphEndpointsSecrecyTests",
+      "GraphTraversalTests"
     ]
   }
 }
