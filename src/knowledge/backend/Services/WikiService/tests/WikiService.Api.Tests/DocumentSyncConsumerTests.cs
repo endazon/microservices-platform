@@ -62,8 +62,8 @@ public class DocumentSyncConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Event("入社手続き", "normalized"));
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(Event("入社手続き", "normalized"), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             using var scope = provider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
@@ -81,7 +81,7 @@ public class DocumentSyncConsumerTests
             // 多層防御: confidentiality=internal は public 以外のため Wiki.js 上でも非公開（deny-closed）。
             wiki.Pushed[0].IsPrivate.Should().BeTrue();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 多層防御（ADR-0011/IADR-0021）: confidentiality=public のみ Wiki.js 上で公開、以外は非公開。
@@ -98,14 +98,14 @@ public class DocumentSyncConsumerTests
         try
         {
             await harness.Bus.Publish(Event("規程", "published",
-                new() { ["confidentiality"] = confidentiality }));
+                new() { ["confidentiality"] = confidentiality }), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null);
 
             var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
             wiki.Pushed.Should().ContainSingle();
             wiki.Pushed[0].IsPrivate.Should().Be(expectedPrivate);
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 多層防御: confidentiality 属性が欠落する場合も安全側（非公開）に倒す（deny-closed）。
@@ -118,14 +118,14 @@ public class DocumentSyncConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Event("属性なし規程", "published", new Dictionary<string, string>()));
+            await harness.Bus.Publish(Event("属性なし規程", "published", new Dictionary<string, string>()), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null);
 
             var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
             wiki.Pushed.Should().ContainSingle();
             wiki.Pushed[0].IsPrivate.Should().BeTrue();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 未公開（draft 等）は同期しない。
@@ -138,8 +138,8 @@ public class DocumentSyncConsumerTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Event("下書き", "draft"));
-            (await harness.Consumed.Any<DocumentUpdated>()).Should().BeTrue();
+            await harness.Bus.Publish(Event("下書き", "draft"), TestContext.Current.CancellationToken);
+            (await harness.Consumed.Any<DocumentUpdated>(TestContext.Current.CancellationToken)).Should().BeTrue();
 
             using var scope = provider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
@@ -147,7 +147,7 @@ public class DocumentSyncConsumerTests
             // 未公開は Wiki.js へも反映しない。
             provider.GetRequiredService<RecordingWikiJsClient>().Pushed.Should().BeEmpty();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 再同期で既存ページが更新される（タイトル・属性が反映される）。
@@ -162,12 +162,12 @@ public class DocumentSyncConsumerTests
         {
             // 1 通目を発行し、ページが作成されるまで待つ。
             await harness.Bus.Publish(Event("旧タイトル", "published",
-                new() { ["confidentiality"] = "internal" }));
+                new() { ["confidentiality"] = "internal" }), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Title == "旧タイトル");
 
             // 2 通目（同一 DocumentId）を発行し、既存ページが更新されるまで待つ。
             await harness.Bus.Publish(Event("新タイトル", "published",
-                new() { ["confidentiality"] = "public" }));
+                new() { ["confidentiality"] = "public" }), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Title == "新タイトル");
 
             using var scope = provider.CreateScope();
@@ -176,7 +176,7 @@ public class DocumentSyncConsumerTests
             pages.Should().ContainSingle();
             pages[0].Attributes["confidentiality"].Should().Be("public");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 }
 

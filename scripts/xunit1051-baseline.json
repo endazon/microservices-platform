@@ -62,13 +62,13 @@
     },
     "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": {
       "project": "RetrievalService.Api.Tests",
-      "remaining": 47,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": {
       "project": "WikiService.Api.Tests",
-      "remaining": 51,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": {
       "project": "Knowledge.Contracts.Tests",

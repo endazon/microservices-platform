@@ -75,10 +75,10 @@ public class DocumentDeleteArchiveSyncTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Updated("規程", "published"));
+            await harness.Bus.Publish(Updated("規程", "published"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Status == WikiPageStatus.Active);
 
-            await harness.Bus.Publish(Updated("規程", "archived"));
+            await harness.Bus.Publish(Updated("規程", "archived"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Status == WikiPageStatus.Archived);
 
             // Wiki.js 側も非公開化（unpublish + private）される。
@@ -87,7 +87,7 @@ public class DocumentDeleteArchiveSyncTests
             // 実体撤去ではない（アーカイブは非公開化。削除は DocumentDeleted で行う）。
             wiki.Deleted.Should().BeEmpty();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // アーカイブ（未同期 ID）: メタデータが無くても例外にせず、Wiki.js 側の非公開化のみ試みる（冪等）。
@@ -99,7 +99,7 @@ public class DocumentDeleteArchiveSyncTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Updated("未同期", "archived"));
+            await harness.Bus.Publish(Updated("未同期", "archived"), TestContext.Current.CancellationToken);
             var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
             await WaitForWikiJsAsync(() => wiki.Archived.Count > 0);
 
@@ -108,7 +108,7 @@ public class DocumentDeleteArchiveSyncTests
             var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
             db.Pages.Any(p => p.DocumentId == DocId).Should().BeFalse();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // アーカイブ後の再公開: published の再受信でメタデータが Active に戻る（アーカイブは可逆）。
@@ -120,16 +120,16 @@ public class DocumentDeleteArchiveSyncTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Updated("規程", "published"));
+            await harness.Bus.Publish(Updated("規程", "published"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Status == WikiPageStatus.Active);
-            await harness.Bus.Publish(Updated("規程", "archived"));
+            await harness.Bus.Publish(Updated("規程", "archived"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Status == WikiPageStatus.Archived);
 
-            await harness.Bus.Publish(Updated("規程（改訂）", "published"));
+            await harness.Bus.Publish(Updated("規程（改訂）", "published"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null && p.Status == WikiPageStatus.Active
                 && p.Title == "規程（改訂）");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 削除: DocumentDeleted の受信で Wiki.js の実体を撤去し、メタデータ行も削除する。
@@ -141,17 +141,17 @@ public class DocumentDeleteArchiveSyncTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(Updated("削除予定", "published"));
+            await harness.Bus.Publish(Updated("削除予定", "published"), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is not null);
 
-            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow));
+            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
             await WaitForAsync(provider, p => p is null);
 
             // 実体撤去（社内文書の外部システム残存防止）。
             var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
             wiki.Deleted.Should().Contain($"doc/{DocId}");
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 
     // 削除（未同期 ID）: メタデータが無くても例外にせず、Wiki.js 側の撤去のみ試みる（冪等・再配信安全）。
@@ -163,15 +163,15 @@ public class DocumentDeleteArchiveSyncTests
         await harness.Start();
         try
         {
-            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow));
+            await harness.Bus.Publish(new DocumentDeleted(DocId, DateTimeOffset.UtcNow), TestContext.Current.CancellationToken);
             var wiki = provider.GetRequiredService<RecordingWikiJsClient>();
             await WaitForWikiJsAsync(() => wiki.Deleted.Count > 0);
 
             wiki.Deleted.Should().Contain($"doc/{DocId}");
             // 例外が出ていればハーネスの Consumed にフォールトが残る。正常消費のみであること。
-            (await harness.Consumed.Any<DocumentDeleted>()).Should().BeTrue();
+            (await harness.Consumed.Any<DocumentDeleted>(TestContext.Current.CancellationToken)).Should().BeTrue();
         }
-        finally { await harness.Stop(); }
+        finally { await harness.Stop(TestContext.Current.CancellationToken); }
     }
 }
 

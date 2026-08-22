@@ -318,4 +318,4 @@
 | [IADR-0242](./IADR-0242_graph-hop-abac-and-typed-edge-schema.md) | グラフ探索のホップごと ABAC を型で強制し、辺の型はサロゲートキーの行データで持つ。認可 API はフィルタ集合しか返さないため、素朴に使うと「探索してから濾す」形になる。#908 | Proposed |
 | [IADR-0243](./IADR-0243_keycloak-edge-issuer-migration.md) | Keycloak issuer をエッジ host（`https://keycloak.localhost`）へ移す。.NET は `Auth:MetadataAddress`（in-cluster）＋`Auth:ValidIssuers`（エッジ）で追随し、非 .NET クライアントはエッジへ直接到達する。#780 | Accepted |
 | [IADR-0244](./IADR-0244_observability-test-seam-and-unobservable-otlp-endpoint.md) | **テレメトリ設定は「三信号のリソース一致」で守り、OTLP 送信先は internal のシームで導出だけ守る**。送信先は 3 経路で観測不能を確認。届いているかは検出しない。#901 | Accepted |
-| [IADR-0245](./IADR-0245_confinement-checker-blind-spots.md) | **封じ込め検査器の不可視領域は費用を測ってから塞ぐか決める**。走査の 2 件（`dist/` 配下・UTF-16LE）は偽陽性ゼロなので塞ぎ、値レベルはテストが届いており偽陽性が高いので塞がない。#919 / #920 | Accepted |
+| [IADR-0245](./IADR-0245_mt-wolverine-interop-and-edge-cutover.md) | MT ↔ Wolverine はエンベロープ非互換。**MT→Wolverine は黙って捨て**（復旧不可）、**Wolverine→MT は `_error` へ保全**。二重購読も二重発行も採れず、辺の切替は「停止 → 排出 → 切替」の 3 段にする。排出判定は `messages`。#441 | Accepted |
