@@ -56,3 +56,31 @@ public record RenameEdgeTypeRequest(string Name);
 // **件数を添える** —— ADR-0033 決定 9 が「削除前に使用件数を示す」と定めており、
 // 数だけでも「まず 3 本の辺を付け替えてから消す」と管理者が行動できる。
 public record EdgeTypeInUseResponse(string Error, string Message, int UsageCount);
+
+// FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（#914）。
+//
+// **リンク提案とタグ提案を 1 つの型で表す。** SC-21 が同一一覧を求めており（画面を分けると
+// 片方が忘れられる）、DTO を分けるとクライアント側で 2 経路に割れる。種別固有の欄は null 可。
+//
+// 🔴 **本文指紋を公開面へ出さない。** 指紋は却下解除の判定に使う内部状態であり、
+// 利用者に見せる意味が無い。出すと「文書の内容が変わったか」を、文書を読めない利用者にも
+// 判定させる副次経路になり得る。
+public record AiSuggestionDto(
+    Guid Id,
+    string Kind,
+    Guid SourceDocumentId,
+    Guid? TargetDocumentId,
+    Guid? EdgeTypeId,
+    string? TagValue,
+    string Rationale,
+    string State,
+    // ADR-0033 §結果 フォローアップ: SC-10 が「3 回以上却下された件数」を観測する。
+    int RejectedCount,
+    // SC-21: 再提示には**理由を必ず添える**。"source" / "target" / "both" / null。
+    string? ReinstatedReason);
+
+// FR-18, ADR-0033 決定 10: 却下。**両端の本文指紋を添える**（解除の判定に使う）。
+//
+// 指紋は不透明な文字列であり、作り方は本サービスの関心ではない。**現状 `DocumentUpdated` は
+// 本文指紋を持たない**ため、供給元は #911 が決める（#914 仕様書 §未決事項）。
+public record RejectAiSuggestionRequest(string? SourceFingerprint, string? TargetFingerprint);
