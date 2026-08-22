@@ -21,7 +21,9 @@
  *        - baseline にあるプロジェクトの違反   → warn（残件として実行サマリに出す）
  *        - baseline にあるのに違反が消えた     → fail（baseline の減らし忘れを検出する）
  *      3 番目が要点である。カバレッジ ratchet と同じく **床は下げられるが上げっぱなしにできない**。
- *      各サービスの再実装 issue（#438〜#451）は移行と同時に baseline から自プロジェクトを削除する。
+ *      🔴 **行が減る最小単位はイベント辺**（1 イベントの発行元＋全購読先を一括）であり、辺はサービスを
+ *      またぐため各サービスの再実装 issue（#438〜#451）には入れられない。残件は Wolverine 移行（#441）が
+ *      落とす。旧版の「各サービスの再実装 issue が自プロジェクトの行を削除する」は誤り（IADR-0234 決定 2）。
  *   2) Domain 層の外部依存ゼロ: *.Domain.csproj は PackageReference を持てない
  *      （ProjectReference は共有カーネル Platform.Shared.Kernel のみ許可）。ADR-0030 選定基準 3 の機械化。
  *   4) 禁止 API シンボル（計画 ADR-0027 移行チェックリスト 手順 3・手順 6。#455）:
@@ -1220,10 +1222,13 @@ function writeBaseline() {
   const { current } = scanTree();
   const body = {
     $comment: [
-      'ADR-0030 の不採用ライブラリに対する既知違反の baseline（Issue #455）。',
+      'ADR-0030 の不採用ライブラリに対する既知違反の baseline（Issue #455 で新設）。',
       'ratchet: 新規混入は fail、ここに載る残件は warn、消えたのに残っていれば fail。',
-      '各サービスの再実装 issue（#438〜#451）は移行と同時に自プロジェクトの行を削除すること。',
-      'baseline が空になったら Directory.Packages.props から不採用パッケージを削除する。',
+      '🔴 残件はすべて MassTransit であり、Wolverine 移行（#441）で落ちる。**行が減る最小単位は',
+      'イベント辺**（1 イベントの発行元＋全購読先を一括）であり、辺はサービスをまたぐため、各サービスの',
+      '再実装 issue（#438〜#451）には入れられない。旧版の「各サービスの再実装 issue が移行と同時に',
+      '自プロジェクトの行を削除する」は誤りであった（IADR-0234 決定 2 が訂正）。',
+      'baseline が空になったら Directory.Packages.props から不採用パッケージを削除する（#441 / C3）。',
     ],
     projects: current,
   };
@@ -1242,7 +1247,7 @@ function main() {
   if (known.length) {
     const byProject = new Set(known.map((k) => k.project));
     notice(`ADR-0030 不採用ライブラリの残件: ${known.length} 件 / ${byProject.size} プロジェクト（baseline 済み）。` +
-      '各サービスの再実装 issue で解消し baseline から削除すること。');
+      'Wolverine 移行（#441）がイベント辺の単位で解消し baseline から削除する（IADR-0234 決定 2・3）。');
     const summary = process.env.GITHUB_STEP_SUMMARY;
     if (summary) {
       const lines = ['### ADR-0030 不採用ライブラリの残件（baseline）', '', '| プロジェクト | ライブラリ |', '| --- | --- |'];

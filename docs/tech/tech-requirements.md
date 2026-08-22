@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -339,10 +339,10 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 
 | 防壁 | 現状 | 備考 |
 | --- | --- | --- |
-| **ビルド** | ✅ **現在は止まる** | `PipelineExtensions.cs` / `IntrospectionExtensions.cs` の `where TConsumer : class, IConsumer, IPipelineStep` が、`IConsumer<T>` を捨てたコンシューマの登録をコンパイルエラーにする |
+| **ビルド** | ⚠️ **経路によって違う**（2026-08-22 実測） | `PipelineExtensions.AddPlatformPipelineStep` は現在コンパイルエラーになる。ただし止めているのは型制約そのものではなく**本体実装**であり、`IntrospectionExtensions` の `AddStep` 経路は**既に何も強制していない**。下記［2026-08-22 訂正］を参照 |
 | ユニットテスト | ⚠️ 半分 | 購読側を差し替えるとテストは落ちるが、**それは追随漏れの検出であって転送互換性の検証ではない** |
 | **トポロジ検査** | ✅ **止まる** | `check-event-topology.js` はトランスポートを記録し、同一イベントで発行側と購読側のトランスポートが食い違ったら fail する。従前は `IConsumer<T>` と `Handle(T)` を同じ集合へ入れて素通りしていた（射程外だった） |
-| **封じ込め検査** | ✅ **止まる** | `check-backend-libraries.js` 規則 5 が、キュー名前置・規約ローカルルーティング無効化・サービスロケーション許可の適用点を共通ヘルパ 1 ファイルへ閉じ込める。許可外での使用に加え、**本拠から消えたこと**も fail させる |
+| **封じ込め検査** | ✅ **止まる**（走査範囲に既知の限界あり） | `check-backend-libraries.js` 規則 5 が、キュー名前置・規約ローカルルーティング無効化・サービスロケーション許可の適用点を共通ヘルパ 1 ファイルへ閉じ込める。許可外での使用に加え、**本拠から消えたこと**も fail させる。**走査されない領域**は下記［2026-08-22 訂正］を参照 |
 | 統合テスト | ⚠️ **fan-out の退行（手順 3）だけは捕まえる** | 2 購読者同時受信テストを置いた（後述）。トランスポートの取り違え（MT 発行 → Wolverine 購読）そのものは依然として射程外である |
 
 > **［2026-08-21 訂正］従前ここには「ビルドもユニットテストもトポロジ検査も通ったまま
@@ -362,6 +362,44 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 >
 > 🔴 **この着手順は散文から機械へ移した。** `PartialMigrationSafetyValveTests` が型制約の存在を
 > assert するため、**U5 はこのテストを落とさずに制約を緩められない**（判断の記録は実装ADRにある）。
+>
+> 🔴 ［2026-08-22 訂正 / #455 U4 の独立検証］**「`IConsumer<T>` を捨てたコンシューマの登録を
+> コンパイルエラーにする」は誤りである。** 型制約に現れるのは**非ジェネリックなマーカー
+> `MassTransit.IConsumer`** であり、`IConsumer` と `IPipelineStep` だけを実装して `IConsumer<T>` を
+> 持たない型は**制約を満たしてビルドが通る**（プローブを置いて BUILD_EXIT=0 を実測）。その場合
+> `PipelineExtensions` の `inputType is not null` により **input 宣言の突合が黙ってスキップされる**。
+> 実際の Wolverine 化はマーカーごと捨てるため CS0311 で止まるが、**止めている根拠は
+> 「`IConsumer<T>` の喪失」ではない。**
+>
+> 🔴 **コンパイル時の強制力は、型制約ではなく本体実装の副作用である。** `bus.AddConsumer<TConsumer>()`
+> が `class` + `IConsumer` を、`TConsumer.StepName` が `IPipelineStep` の static abstract を要求している。
+> 制約だけを外す変異は 3 通りとも**テストではなくコンパイルが落ちた**（CS0311 / CS0704 / CS0452。
+> テストは 1 件も実行されない）。逆に**本体を U5 相当（`bus.AddConsumer` 撤去）へ変えると
+> BUILD_EXIT=0 になり、落ちるのは `PartialMigrationSafetyValveTests` だけになった**。
+> つまりこの安全弁は U5 に対して独立に効くのではなく、**U5 が本体を書き換えた瞬間に
+> 型制約と一緒に失われる**。以後の防壁はテストとトポロジ検査だけである。
+>
+> 🔴 **`AddStep` 経路では、コンパイラは既に何も強制していない。** 本体が `typeof(TConsumer)` と
+> `TConsumer.StepName` しか使わないため、`IConsumer` 制約を外す変異は **BUILD_EXIT=0 で通り、
+> 落ちたのはテスト 1 件だけだった**。この経路の唯一の防壁はテストである。
+>
+> 🔴 **封じ込め検査には走査されない領域がある。** `SKIP_DIRS` は `dist` / `coverage` を
+> **ディレクトリ名一致で任意の深さ**から除外し、ファイルは `utf8` 固定で読む。そのため
+> (1) `dist/` という名のディレクトリ配下の `.cs`、(2) UTF-16 の `.cs` は検査器から不可視である一方、
+> **MSBuild は両方ともコンパイルする**（`error CS1061` がファイルを名指しすることで確認）。
+> 現時点で該当ディレクトリ・該当エンコーディングのファイルは**いずれも 0 件**であり実害は無いが、
+> **将来 fail-open になり得る**。`check-event-topology.js` も同じ `SKIP_DIRS` を持つ。
+>
+> 🔴 ［2026-08-22 追記 / #441］**「U5（型制約の緩和）で安全弁を外す」という単位は起こさない。**
+> 上の段落群が U5 と呼んでいた作業は、実測の結果 2 つの別々の作業に分かれた（判断の記録は実装ADRにある）。
+> 登録経路のほうはレシーバ自体が撤去対象のライブラリの型であり、**制約を緩めるのではなくメソッドごと削除**する。
+> 自己申告経路のほうは制約を狭めても意味が残る一方、**入力型の導出元を移さないと突合が黙って空洞化**するため
+> **置き換え**になる。いずれも移行チェーンの最終単位（C3）で行う。
+>
+> 🔴 **あわせて「安全弁は検査器側へ移った」も言い過ぎである。** トポロジ検査は**見える発行だけを覆う
+> 部分的な網**であり（発行側トランスポートを和集合で取るため、旧トランスポートの発行元が 1 つでも
+> 残ると食い違いがすべて隠れる。加えて一部の `Publish` は検査器から不可視）、登録点に対して全域だった
+> 型制約とは**等価ではない**。外す前に要る証跡は実装ADRが定める。
 
 **統合テストは本番配線を通るようになった**（2026-08-21。#455 Phase 0 / U0a）。従前
 `IntegrationTestFactory` はサービス自身のメッセージング配線をアセンブリ単位で除去してから

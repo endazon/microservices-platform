@@ -6,6 +6,7 @@ related_ids:
   - ADR-0027
   - ADR-0030
   - IADR-0217
+  - IADR-0234
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -142,6 +143,25 @@ Wolverine の規約ルーティングはリスニングキュー名をメッセ�
 規則 1（`using` の許否）はプロジェクト所属を要するが、**規則 4・5 はファイル単位の規律**であり
 所属を問う必要が無い。検査対象が「プロジェクトグラフが偶然拾ったファイル」になっていた。
 
+🔴 **［2026-08-22 追記 / #455 U4 の独立検証］「所属プロジェクトを問わない」は正しいが、
+「`src/` と `templates/` の両方」は走査範囲の主張として過大である。** 変異試験で 2 つの
+不可視領域を実測した。
+
+- `SKIP_DIRS`（`node_modules` / `bin` / `obj` / `.git` / `dist` / `coverage`）は
+  **ディレクトリ名一致で任意の深さ**に効く。`dist` / `coverage` はフロントエンド向けの除外名だが、
+  C# ツリーでも同じ名前のディレクトリを丸ごと飛ばす。**MSBuild の既定 glob が除外するのは
+  `bin` / `obj` だけ**なので、`…/WikiService.Api/dist/X.cs` は**コンパイルされるのに走査されない**
+  （プローブで `dist\X.cs(1,57): error CS1061` を確認＝MSBuild は拾う。検査器は EXIT=0）。
+- ファイルは `readFileSync(…, 'utf8')` 固定で読む。**UTF-16(BOM) の `.cs` は C# コンパイラが受理する**
+  一方、検査器では NUL 混じりになりバレ識別子に一致しない（同様にプローブで実測）。
+
+現時点で `src/` `templates/` 配下に該当ディレクトリは **0 件**、UTF-16 BOM を持つ `.cs` も **0 件**で
+あり**実害は無い**。記録するのは「今は無い」と「検査している」が別物だからである。
+`check-event-topology.js` も同じ `SKIP_DIRS` を持つ。
+
+**この 2 つは本 IADR の射程外の限界として記録するに留める**（是正は検査器側の設計判断であり、
+`dist` を C# 走査から外さない・エンコーディングを判定する等の選択肢がある）。
+
 ### 決定 4: 部分移行の安全弁の存在を、散文ではなくテストで固定する
 
 `AddPlatformPipelineStep<TConsumer>` と `IntrospectionBuilder.AddStep<TConsumer>` の
@@ -153,6 +173,45 @@ Wolverine の規約ルーティングはリスニングキュー名をメッセ�
 型制約を緩められない。**落ちること自体が設計意図**であり、U5 はテストを削除するのではなく
 「安全弁は検査器側（`check-event-topology.js` のトランスポート認識判定）へ移った」ことを
 示す形へ書き換える。
+
+> 🔴 ［2026-08-22 追記 / #441］**決定 4 のうち「U5 で外す」は
+> [IADR-0234](./IADR-0234_wolverine-migration-boundary-455-441.md) 決定 4 が改めた（Superseded by IADR-0234 決定 4）。**
+> **U5（型制約の緩和）という単位は起こさない。** 実測で 2 点が判明したためである。
+>
+> 1. `AddPlatformPipelineStep` は**レシーバ自体が MassTransit 型**（`this IBusRegistrationConfigurator`）で
+>    本体が `bus.AddConsumer<TConsumer>()` を呼ぶ。型制約だけを緩めた中間形に意味が無く、**C3 でメソッドごと削除**する。
+> 2. `IntrospectionBuilder.AddStep` は逆に、`where TConsumer : class, IPipelineStep` が**移行後も意味を持つ**
+>    （レシーバが自リポジトリの型で、イントロスペクションはトランスポート非依存）。ただし制約だけ外すと
+>    `input` が黙って `string.Empty` になるため、**入力型の情報源ごと置き換える**。
+>
+> また「安全弁は検査器側へ移った」は**言い過ぎ**である。`check-event-topology.js` は
+> **見える発行だけを覆う部分的な網**であり（発行側トランスポートの和集合・不可視の `bus.Publish` を実測）、
+> 登録点に対して全域だった型制約とは**等価ではない**。IADR-0234 決定 5 が C3 の証跡要件を定める。
+
+🔴 **［2026-08-22 追記 / #455 U4 の独立検証］「現存する唯一のコンパイル時安全弁」は、
+型制約そのものの性質ではなく本体実装の副作用である。** 変異試験で切り分けた。
+
+| 変異 | ビルド | 落ちたもの |
+| --- | --- | --- |
+| `AddPlatformPipelineStep` から `class` / `IConsumer` / `IPipelineStep` を各々外す | **EXIT=1** | **コンパイル**（CS0452 / CS0311 / CS0704）。テストは 1 件も実行されない |
+| `IntrospectionBuilder.AddStep` から `IConsumer` を外す | **EXIT=0** | **テスト 1 件**のみ |
+| `AddPlatformPipelineStep` の制約を外し、本体も U5 相当（`bus.AddConsumer` 撤去）へ | **EXIT=0** | **テスト 1 件**のみ |
+
+制約を強制しているのは `bus.AddConsumer<TConsumer>()`（`class` + `IConsumer` を要求）と
+`TConsumer.StepName`（`IPipelineStep` の static abstract を要求）であり、**U5 が本体を Wolverine 化
+した瞬間、コンパイル時の強制力は型制約と一緒に失われる**。安全弁は U5 に対して独立には効かない。
+`AddStep` 経路に至っては**現時点で既にコンパイラは何も強制しておらず**、テストが唯一の防壁である。
+
+したがって決定 4 の「テストで固定する」判断は**実測で正当性が裏付けられた**（テストが無ければ
+`AddStep` 経路の緩和は完全に無音で通る）。一方で「コンパイル時安全弁」という語は、
+**U5 以後には成り立たない**ものとして読むこと。
+
+🔴 **`NotBeNull("…登録経路そのものが消えていない")` 2 件は到達不能である。**
+`nameof(PipelineExtensions.AddPlatformPipelineStep)` はコンパイル時束縛のため、メソッドが消えると
+**テストアセンブリが CS0117 で組めず** assertion は評価されない（改名変異で TEST_EXIT=1・
+実行テスト 0 件を実測）。登録経路の消滅を守っているのはコンパイラであってこのテストではない。
+**assert は残す**（無害であり、public/static の変更など将来の経路では意味を持ち得る）が、
+**「このテストが守っている」とは書かない。**
 
 ### 決定 5: 手順 4 の観測はリフレクションで行う
 
