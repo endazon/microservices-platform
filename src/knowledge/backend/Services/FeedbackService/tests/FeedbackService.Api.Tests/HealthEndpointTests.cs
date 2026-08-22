@@ -9,14 +9,14 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetHealthLive_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/health/live");
+        var response = await factory.CreateClient().GetAsync("/health/live", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 
     [Fact]
     public async Task GetFeedback_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/feedback");
+        var response = await factory.CreateClient().GetAsync("/feedback", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 }
