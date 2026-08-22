@@ -10,6 +10,8 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
     public DbSet<GraphDocument> Documents => Set<GraphDocument>();
     public DbSet<EdgeType> EdgeTypes => Set<EdgeType>();
     public DbSet<Edge> Edges => Set<Edge>();
+    // FR-18, ADR-0033 決定 7・10: AI 提案（リンク・タグを同居させる。#914）。
+    public DbSet<AiSuggestion> AiSuggestions => Set<AiSuggestion>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -51,6 +53,49 @@ public class GraphDbContext(DbContextOptions<GraphDbContext> options) : DbContex
 
             // SC-09: 「新しい名前は既存値と重複しない」。正規化後の名前で一意。
             e.HasIndex(t => t.Name).IsUnique().HasDatabaseName("ux_edge_types_name");
+        });
+
+        // FR-18, ADR-0033 決定 7・10: AI 提案（#914）。
+        //
+        // **リンク提案とタグ提案を 1 表に同居させる。** SC-21 が「画面を分けると片方が忘れられる」
+        // として同一一覧を求めており、表を分けると一覧の実装が 2 経路に割れて同じ事故を招く。
+        // 種別ごとに使う列が違うため、**種別固有の列は NULL 可**にする。
+        mb.Entity<AiSuggestion>(e =>
+        {
+            e.ToTable("ai_suggestions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(10).IsRequired();
+            e.Property(x => x.SourceDocumentId).IsRequired();
+            // リンク提案のみ。タグ提案では NULL。
+            e.Property(x => x.TargetDocumentId);
+            e.Property(x => x.EdgeTypeId);
+            // タグ提案のみ。
+            e.Property(x => x.TagValue).HasMaxLength(100);
+            e.Property(x => x.Rationale).HasMaxLength(2000).IsRequired().HasDefaultValue(string.Empty);
+            e.Property(x => x.State).HasMaxLength(10).IsRequired();
+
+            // ADR-0033 §結果 フォローアップ: 却下回数。**しきい値を後から入れられるように数える。**
+            e.Property(x => x.RejectedCount).IsRequired().HasDefaultValue(0);
+            e.Property(x => x.RejectedAt);
+            // 決定 10: 却下時点の**本文指紋**。本文そのものは持たない。
+            e.Property(x => x.SourceFingerprint).HasMaxLength(128);
+            e.Property(x => x.TargetFingerprint).HasMaxLength(128);
+            // 決定 10 の具体化: 解除は削除ではなく**無効化として記録**する。
+            e.Property(x => x.ReinstatedAt);
+            e.Property(x => x.ReinstatedReason).HasMaxLength(10);
+            e.Property(x => x.CreatedAt).IsRequired();
+
+            // SC-21: 既定は state=pending の一覧。状態で引く索引を置く。
+            e.HasIndex(x => x.State).HasDatabaseName("ix_ai_suggestions_state");
+            // 決定 7 の具体化「却下された組み合わせは以後の提案生成で候補から除外する」——
+            // 生成側（#915）が組み合わせで引く。
+            e.HasIndex(x => new { x.SourceDocumentId, x.TargetDocumentId })
+                .HasDatabaseName("ix_ai_suggestions_endpoints");
+
+            // 🔴 **辺の型への外部キーを張らない。**
+            // 張ると、参照している提案が pending / rejected でも型の削除が RESTRICT で拒まれる。
+            // ADR-0033 決定 9 が削除を拒む条件は「**辺**が参照していること」であり、提案は辺ではない
+            // （未承認の提案は辺を持たない）。外部キーを張ると決定 9 より厳しい規則を勝手に作ることになる。
         });
 
         // FR-17, ADR-0033 決定 4・5・6: 辺。
