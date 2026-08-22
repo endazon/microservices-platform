@@ -101,6 +101,46 @@ public class AuthorizedGraphViewTests
         (await store.FindNodeAsync(Guid.NewGuid(), TestContext.Current.CancellationToken)).Should().BeNull();
     }
 
+    // ADR-0034 決定 4 / IADR-0242 決定 4: **接続辺は決定的順序（CreatedAt, Id）で返る。**
+    //
+    // 🔴 **挿入順とソート順を意図的にずらす。** 一致させたフィクスチャでは、順序保証を外しても
+    // 結果が変わらず（InMemory は挿入順を返す）、変異試験が等価変異になって**何も測れない**。
+    // 実際 T-12（打ち切りの決定性）は OrderBy を外しても緑のままだった。
+    [Fact]
+    public async Task Store_returns_incident_edges_in_deterministic_order()
+    {
+        await using var db = new GraphDbContext(new DbContextOptionsBuilder<GraphDbContext>()
+            .UseInMemoryDatabase($"Order_{Guid.NewGuid()}").Options);
+
+        var me = Guid.NewGuid();
+        var typeId = Guid.NewGuid();
+        db.Documents.Add(GraphDocument.Create(me, "me",
+            new Dictionary<string, string> { ["confidentiality"] = "internal" }, null, DateTimeOffset.UtcNow));
+
+        // 先に作った辺ほど CreatedAt が古い。
+        var older = Edge.Create(me, Guid.NewGuid(), typeId, false, EdgeProvenance.Auto);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+        var newer = Edge.Create(me, Guid.NewGuid(), typeId, false, EdgeProvenance.Auto);
+
+        // **挿入は新しい方から**（＝挿入順とソート順が逆になる）。
+        db.Edges.Add(newer);
+        db.Edges.Add(older);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // フィクスチャが判別可能であることを先に固定する（そうでないとこのテストは空振りする）。
+        older.CreatedAt.Should().BeBefore(newer.CreatedAt, "遅延が効かないと順序差が作れない");
+
+        var node = await db.Documents.AsNoTracking()
+            .FirstAsync(d => d.DocumentId == me, TestContext.Current.CancellationToken);
+        var authorized = AuthorizedNode.Authorize(node, InternalOnly());
+
+        var edges = await new EfGraphStore(db)
+            .LoadIncidentEdgesAsync([authorized!], TestContext.Current.CancellationToken);
+
+        edges.Select(e => e.Id).Should().Equal([older.Id, newer.Id],
+            "CreatedAt の昇順で返らなければ、打ち切りで落ちる辺が実行ごとに変わる");
+    }
+
     // FR-17: 接続辺は**双方向**に引く（バックリンクが行を増やさずに返るための前提）。
     [Fact]
     public async Task Store_loads_incident_edges_in_both_directions()

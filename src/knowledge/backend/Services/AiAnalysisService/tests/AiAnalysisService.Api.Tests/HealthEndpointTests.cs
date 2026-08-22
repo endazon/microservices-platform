@@ -10,7 +10,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetHealthLive_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/health/live");
+        var response = await factory.CreateClient().GetAsync("/health/live", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 
@@ -18,7 +18,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     public async Task PostAnalysisAsk_Returns200()
     {
         var response = await factory.CreateClient()
-            .PostAsJsonAsync("/analysis/ask", new { question = "test question" });
+            .PostAsJsonAsync("/analysis/ask", new { question = "test question" }, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 }
