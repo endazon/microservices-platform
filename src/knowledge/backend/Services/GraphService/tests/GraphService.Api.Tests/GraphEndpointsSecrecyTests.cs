@@ -36,7 +36,7 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
             db.Documents.Add(GraphDocument.Create(forbidden, "forbidden",
                 new Dictionary<string, string> { ["confidentiality"] = "restricted" },
                 null, DateTimeOffset.UtcNow));
-            // 属性の複製がまだ届いていないノード（IADR-0239 決定 12-3 で不可視）。
+            // 属性の複製がまだ届いていないノード（IADR-0240 決定 12-3 で不可視）。
             db.Documents.Add(GraphDocument.Create(noAttributes, "not-yet-synced",
                 [], null, DateTimeOffset.UtcNow));
             return Task.CompletedTask;

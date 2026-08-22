@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0239 決定 7: 辺の型辞書の性質を固定する。
+// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0240 決定 7: 辺の型辞書の性質を固定する。
 //
 // CRUD の API は #910 が足す。ここで固定するのは**モデルの性質**である ——
 // 改名が既存の辺を書き換えないこと、初期値集合が入ること、seed が既存を壊さないこと。
@@ -110,7 +110,7 @@ public class EdgeTypeDictionaryTests
             .Be(1, "改名で空いた名前は seed が埋め直すが、改名した型を戻してはならない");
     }
 
-    // IADR-0239 決定 9: 対称型は (min, max) へ正規化して 1 行にする。
+    // IADR-0240 決定 9: 対称型は (min, max) へ正規化して 1 行にする。
     [Fact]
     public void Symmetric_edges_are_normalized_by_document_id_order()
     {

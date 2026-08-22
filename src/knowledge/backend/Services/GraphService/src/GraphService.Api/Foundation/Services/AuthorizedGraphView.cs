@@ -15,7 +15,7 @@ public sealed record GraphEdgeDto(
     Guid EdgeTypeId,
     string Provenance);
 
-// FR-17, UC-10, ADR-0034 決定 1・2・4, IADR-0239 決定 2: **ホップごと ABAC の型ゲート（出力）。**
+// FR-17, UC-10, ADR-0034 決定 1・2・4, IADR-0240 決定 2: **ホップごと ABAC の型ゲート（出力）。**
 //
 // 応答 DTO は private コンストラクタを持ち、構築経路は AuthorizedGraphView.Seal ただ 1 つである。
 // Seal は未フィルタの部分グラフと**許可スコープの両方**を要求するため、
@@ -27,7 +27,7 @@ public sealed record GraphEdgeDto(
 //   - AuthorizedNode  → 濾したのが**ホップごと**であること（橋を作らせない）
 //   - Seal            → 未フィルタが**外へ出ない**こと
 //
-// **辺は両端点が許可されたときのみ可視である**（ADR-0034 決定 2 / IADR-0239 決定 6）。
+// **辺は両端点が許可されたときのみ可視である**（ADR-0034 決定 2 / IADR-0240 決定 6）。
 // 端点の片方でも許可集合に無い辺は、件数にも匿名ノードにも一切現れない。
 public sealed class GraphViewResponse
 {

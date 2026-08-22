@@ -13,7 +13,7 @@ namespace GraphService.Api.Foundation.Services;
 //   - AllowedFilters が空 かつ Granted=true → 条件無しで全件可。
 //
 // 🔴 **本クラスは単独では ADR-0034 決定 1 を満たさない。** 述語をどこで適用するかが決定 1 の
-// 論点であり、「探索してから濾す」形を防ぐのは AuthorizedNode の型ゲートである（IADR-0239 決定 2）。
+// 論点であり、「探索してから濾す」形を防ぐのは AuthorizedNode の型ゲートである（IADR-0240 決定 2）。
 // 述語を直接呼ぶのではなく AuthorizedNode.Authorize を通すこと。
 public static class AbacNodeFilter
 {

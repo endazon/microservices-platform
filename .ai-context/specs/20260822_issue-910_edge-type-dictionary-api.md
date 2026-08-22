@@ -2,7 +2,7 @@
 title: 辺の型辞書 API — 改名追随・参照ありの削除拒否・型別使用件数
 type: spec
 status: draft
-related_ids: [FR-17, SC-09, SC-10, ADR-0033, IADR-0239]
+related_ids: [FR-17, SC-09, SC-10, ADR-0033, IADR-0240]
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
