@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234, IADR-0238]
 specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
@@ -280,8 +280,16 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 - **`ITestOutputHelper` が `Xunit.Abstractions` → `Xunit` へ移動**（1 ファイル）。
 - **アナライザ `xUnit1051` は `src/Directory.Build.props` でテストプロジェクトのみ抑止**した。
   `TestContext.Current.CancellationToken` の採用は全テストの呼び出し側を書き換える別作業であり、
-  切替そのものの射程を超える（抑止しないと **1,886 件**の助言警告が実害のある警告を埋める）。
-  **抑止は恒久ではなく、段階採用の完了時に外す。**
+  切替そのものの射程を超える（抑止しないと**実測 943 件**の助言警告が実害のある警告を埋める）。
+  🔴 **従前ここは「1,886 件」と書いていたが、これは 2 倍の重複計上だった** ——
+  MSBuild は 1 件の警告をビルド中の行と末尾のサマリの 2 箇所へ出すため、ログ行を素朴に数えると
+  実数の 2 倍になる。**実数は 943 件**（16 プロジェクト中 13 プロジェクトに分布）。数え直しは
+  `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1`（`-m:1` を落とすとノード接頭辞が付いて一意化に失敗する）。
+  **抑止は恒久ではなく、段階採用の完了時に外す。** 段階採用は**許可リスト**（移行済みだけを列挙し、
+  挙がったものは `NoWarn` を失って `WarningsAsErrors` に入る）で行う ——
+  `TreatWarningsAsErrors` は `false` なので、**`NoWarn` を外すだけでは再発しても CI は緑のままである**。
+  残件の単一情報源は [`scripts/xunit1051-baseline.json`](../../scripts/xunit1051-baseline.json)、
+  一致の検査は `scripts/check-xunit1051-ratchet.js` が行う。
 
 **年 1 回、AwesomeAssertions・Wolverine のライセンス / 保守状況を点検する**（バックエンド標準ライブラリの計画 ADR のフォローアップ）。
 手順は[運用仕様書](../operations/)に記載する。

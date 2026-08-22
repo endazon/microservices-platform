@@ -5,9 +5,10 @@ status: Accepted
 related_ids:
   - ADR-0030
   - IADR-0229
+  - IADR-0238
 author: claude
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (テスト = xUnit v3)
 ---
@@ -35,6 +36,20 @@ v2 のままのプロジェクトは非互換の runner と組み合わさる。
 本リポと CPM を共有しない（両ファイルとも `<Import>` を持たず、`DirectoryPackagesPropsPath` の
 上書きもリポジトリ全体で 0 件。MSBuild は最も近い祖先だけを使う）。AST は先に v3 へ移行済みで、
 **本切替の参照実装として読めた**（csproj の形・`IAsyncLifetime` の `ValueTask` 化がそのまま使えた）。
+
+> ［2026-08-22 追記 / #882］🔴 **上の「両ファイルとも `<Import>` を持たず」は
+> `Directory.Build.props` については誤りである。** AST の `Directory.Build.props` は
+> `GetPathOfFileAbove` で親（`src/Directory.Build.props`）を **import-chain で継承する**。
+>
+> ```
+> $ git -C src/ai-stock-trading show 9b9c676:Directory.Build.props
+> <Import Project="$(ParentDirectoryBuildProps)" Condition="'$(ParentDirectoryBuildProps)' != ''" />
+> ```
+>
+> `Directory.Packages.props`（CPM を共有しない）についての記述は正しく、**本決定の結論
+> 「AST は対象外」も変わらない**。ただし `src/Directory.Build.props` へ足したプロパティは
+> AST の **38 本のテストプロジェクトへ届く**ため、#882 の段階採用は
+> **許可リスト方式**を採って `WarningsAsErrors` が AST へ届かないようにした（[[IADR-0238]] 決定 2）。
 
 ### 決定 2: 版整合の検査を**対称**にする
 
@@ -64,6 +79,15 @@ v2 に依存する）。v3 標準の `Assert.Skip` / `Assert.SkipUnless` / `Asse
 v3 のアナライザは「`CancellationToken` を受ける呼び出しには `TestContext.Current.CancellationToken`
 を渡せ」と勧告する。切替直後の本リポジトリでは **1,886 件**発生する。
 
+> ［2026-08-22 追記 / #882］🔴 **この「1,886 件」は 2 倍の重複計上であり、実数は 943 件である。**
+> MSBuild は 1 件の警告を**ビルド中の行と末尾のサマリの 2 箇所**へ出力するため、ログ行を素朴に
+> 数えると実数の 2 倍になる。ファイル・行・列で一意化した実数は **943 件**（16 プロジェクト中
+> 13 プロジェクトに分布）。MSBuild 自身のサマリ（platform 417 ＋ knowledge 528、うち `CS0618` が 2）
+> とも一致する。数え直しは
+> `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1`（`-m:1` を落とすとノード接頭辞 `N>` が付いて
+> 一意化に失敗する）。**抑止する判断そのものは変わらない**（943 件でも実害のある警告を埋める）。
+> 残件の単一情報源は `scripts/xunit1051-baseline.json`（[[IADR-0238]] 決定 3）。
+
 `src/Directory.Build.props` でテストプロジェクトのみ `NoWarn` する。**「面倒だから」ではない** ——
 本リポジトリは `check-backend-libraries.js` に「**赤の常態化は『赤を無視する学習』を生み、検査の
 目的そのものを壊す**」と記録している。1,886 件の助言警告を出し続ければ、同じ理由で `CS0618` の
@@ -86,7 +110,7 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
   - `xUnit1051` を抑止したぶん、キャンセル応答性の助言は当面働かない（決定 4。別 issue）
   - `Knowledge.IntegrationTests` の 9 ファイルが `ValueTask` へ変わった（v3 の破壊的変更）
 - **フォローアップ**
-  - `TestContext.Current.CancellationToken` の段階採用（**#882**）
+  - `TestContext.Current.CancellationToken` の段階採用（**#882**。器は [[IADR-0238]]）
 
 ## 棄却した案
 
