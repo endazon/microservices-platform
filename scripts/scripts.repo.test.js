@@ -1316,6 +1316,56 @@ module.exports = ({ ok, assert }) => {
     assert.ok(text.includes('比 行 2.00'), text);
   });
 
+  // --- check-coverage-floor: レポート跨ぎの行重複排除（#900 / IADR-0236） ---
+  //
+  // NFR（#900）: テストプロジェクト A と B が同じ共有ライブラリを参照すると、同じソース行が
+  // 両方の Cobertura に載り、単純合算では分母に 2 回入る（#899 で実際に床が割れた）。
+  //
+  // 🔴 ここで固定するのは「素朴な合算」と「畳み込み後」が**同じ入力で異なる**ことである。
+  //   差の存在を assert しないと、aggregateReports が畳み込みを呼ばなくなる変異（配線切れ）が
+  //   すり抜ける —— check-backend-libraries.js 規則 5 が「(a) だけでは静かに no-op になる」で
+  //   踏んだ穴と同型である。**合算はテスト内で再実装せず、既存 export の mergeTotals を使う。**
+  ok('レポート跨ぎの重複排除: 素朴な合算と畳み込み後が同じ入力で異なる（配線ごと効いている）', () => {
+    const xml = coberturaReport([
+      coberturaClass('Platform.Shared.Infrastructure.Db',
+        'src/platform/backend/Shared/Platform.Shared.Infrastructure/Db.cs', [[1, 1], [2, 0]]),
+    ]);
+    const parsed = [cov.parseCobertura(xml), cov.parseCobertura(xml)];
+    const naive = cov.mergeTotals(parsed);        // 旧方式（単純合算）
+    const agg = cov.aggregateReports(parsed);     // 配線済みの入口を通す
+    assert.strictEqual(naive.lines, 4, '単純合算は分母が 2 倍になる（前提の確認）');
+    assert.strictEqual(agg.totals.lines, 2, '畳み込み後は 1 部ぶん');
+    assert.strictEqual(agg.totals.covered, 1);
+    assert.notStrictEqual(agg.totals.lines, naive.lines, '差が出ること自体を固定（no-op 化の検出）');
+    assert.strictEqual(agg.diagnostics.dedup.droppedLines, naive.lines - agg.totals.lines,
+      '診断の droppedLines は単純和との差と一致する');
+    // 🔴 決定 4 の照合は重複排除**前**の単純和で行う（畳んだ値から組むと恒常的に割れる）。
+    assert.strictEqual(agg.beforeExclusion.lines, 4, 'beforeExclusion は単純和のまま');
+  });
+
+  ok('レポート跨ぎの重複排除: キーは正規化経路で作る（生 filename では畳めない）', () => {
+    const a = coberturaReport([coberturaClass('Shared.X', 'src/platform/backend/Shared/X.cs', [[1, 1]])]);
+    const b = coberturaReport([coberturaClass('Shared.X', 'platform/backend/Shared/X.cs', [[1, 0]])],
+      { sources: ['/home/runner/work/msp/msp/src/'] });
+    const agg = cov.aggregateReports([cov.parseCobertura(a), cov.parseCobertura(b)]);
+    assert.strictEqual(agg.totals.lines, 1, '表記の違う同一ファイルが畳まれていない');
+    assert.strictEqual(agg.totals.covered, 1, 'hits>0 の OR が効いていない');
+    assert.strictEqual(
+      cov.dedupFileKey(cov.unitOfFilename('src/platform/backend/Shared/X.cs')).key,
+      cov.dedupFileKey(cov.unitOfFilename('platform/backend/Shared/X.cs', ['/home/runner/work/msp/msp/src/'])).key,
+    );
+  });
+
+  ok('レポート跨ぎの重複排除: Foo と <Foo>d__2 は潰さない（キーに class name が要る）', () => {
+    const only = (name, hits) => coberturaReport([
+      coberturaClass(name, 'src/platform/backend/X.cs', [[10, hits]]),
+    ]);
+    const agg = cov.aggregateReports([cov.parseCobertura(only('Foo', 1)),
+      cov.parseCobertura(only('Foo/<Foo>d__2', 0))]);
+    assert.strictEqual(agg.totals.lines, 2,
+      '同一行を異なる観点で計測した行が潰れている（IADR-0123 選択肢 C の破れ）');
+  });
+
   ok('check-coverage-floor --self-test は exit 0（帰属・二重記載・warn 経路を含む）', () => {
     const { spawnSync } = require('child_process');
     const r = spawnSync(process.execPath, [path.join(__dirname, 'check-coverage-floor.js'), '--self-test'], { encoding: 'utf8' });
@@ -5101,7 +5151,7 @@ module.exports = ({ ok, assert }) => {
         //    claude-review の下限を追い越したことの検知）を新設したため 37 → 38（同上）。
         //    GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        // ★ #882 / IADR-0235 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
+        // ★ #882 / IADR-0237 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
         //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
         //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
@@ -5472,7 +5522,11 @@ module.exports = ({ ok, assert }) => {
 
     // --- #574: 「現在の床」を書いた文書が coverage-floor.json と食い違わない（IADR-0195） ---
     //
-    // ★ 床の値は **2 度**置き直された（#571 で line 34 → 33、#574 で line 33 → 39 / branch 17 → 27）。
+    // ★ 床の値は **3 度**置き直された（#571 で line 34 → 33、#574 で line 33 → 39 / branch 17 → 27、
+    //   #899 で line 39 → 38）。**この行は #899 の時点で古くなっており、#900 の作業で母集合を
+    //   引き直して初めて見つかった** —— 下の正規表現は「バッククォート付きの並記形 ＋ 同一行の
+    //   『未満』」しか拾わないため、**この平文コメント自身を検査対象にできない**。
+    //   機械検査の母集合を自分の母集合として採用すると同じ見落としを繰り返す（#902 の自己批判）。
     //   そのたびに追随が要る文書が複数あり、**追随漏れは「文書が古い床を現在値として述べる」**
     //   という形で現れる。旧値の文字列を全数走査する形は使えない —— 置き直しの**経緯**を書いた
     //   文書（IADR-0118 / IADR-0138 / IADR-0195 / TEST_STRATEGY・確定済みの作業仕様書）が
@@ -7271,7 +7325,7 @@ module.exports = ({ ok, assert }) => {
   }
 
   //
-  // NFR / #882 / IADR-0235: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
+  // NFR / #882 / IADR-0237: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
   //
   // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
   // `.github/workflows/` に新ジョブは作らない —— ci.yml の scripts-tests ジョブ

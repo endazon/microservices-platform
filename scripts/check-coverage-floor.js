@@ -229,9 +229,16 @@ function zeroTotals() {
   return { lines: 0, covered: 0, branches: 0, coveredBranches: 0 };
 }
 
-/** テキスト中の <line> を数える（重複排除しない）。 */
-function countLines(text) {
+/**
+ * テキスト中の <line> を数える（重複排除しない）。
+ *
+ * collect: true のときは行そのものも entries として返す（レポート跨ぎの重複排除に使う。#900 /
+ * IADR-0236）。既定で集めないのは、診断用の raw（<methods> 配下の重複込みで実測 5 万行規模）まで
+ * 行の配列を持つのが無駄だからである。
+ */
+function countLines(text, { collect = false } = {}) {
   const totals = zeroTotals();
+  const entries = collect ? [] : null;
   const re = /<line\b([^>]*?)\/?>/g;
   let m;
   while ((m = re.exec(String(text))) !== null) {
@@ -241,7 +248,9 @@ function countLines(text) {
     if (line.hits > 0) totals.covered++;
     totals.branches += line.branches;
     totals.coveredBranches += line.coveredBranches;
+    if (entries) entries.push(line);
   }
+  if (entries) totals.entries = entries;
   return totals;
 }
 
@@ -250,7 +259,7 @@ function countLines(text) {
  * class 直下に <lines> が無く <methods> 配下にしか行が無いクラスのフォールバック専用。
  * 同じ行番号が複数のメソッドに現れた場合は hits の大きい方（＝実行された記録）を採る。
  */
-function countLinesUnique(text) {
+function countLinesUnique(text, { collect = false } = {}) {
   const byNumber = new Map();
   const noNumber = [];
   const re = /<line\b([^>]*?)\/?>/g;
@@ -266,12 +275,14 @@ function countLinesUnique(text) {
     if (!prev || line.hits > prev.hits || line.branches > prev.branches) byNumber.set(line.number, line);
   }
   const totals = zeroTotals();
-  for (const line of [...byNumber.values(), ...noNumber]) {
+  const kept = [...byNumber.values(), ...noNumber];
+  for (const line of kept) {
     totals.lines++;
     if (line.hits > 0) totals.covered++;
     totals.branches += line.branches;
     totals.coveredBranches += line.coveredBranches;
   }
+  if (collect) totals.entries = kept;
   return totals;
 }
 
@@ -281,11 +292,11 @@ function countLinesUnique(text) {
  *   - class 直下に行が無いクラスは <methods> 配下を行番号で重複排除して採る（source: 'methods-fallback'）
  */
 function classLineStats(body) {
-  const direct = countLines(stripMethods(body));
+  const direct = countLines(stripMethods(body), { collect: true });
   if (direct.lines > 0) return { ...direct, source: 'class-lines' };
-  const fallback = countLinesUnique(methodsOf(body));
+  const fallback = countLinesUnique(methodsOf(body), { collect: true });
   if (fallback.lines > 0) return { ...fallback, source: 'methods-fallback' };
-  return { ...zeroTotals(), source: 'empty' };
+  return { ...zeroTotals(), entries: [], source: 'empty' };
 }
 
 /** パスの途中に src/<unit>/ を含むならその <unit> を返す。 */
@@ -317,6 +328,39 @@ function unitOfFilename(filename, sources = []) {
     if (m) return { unit: m[1], how: 'source-joined', resolved: joined };
   }
   return { unit: null, how: 'unattributed', resolved: raw };
+}
+
+/**
+ * レポート間の重複排除に使うファイルキー（#900 / IADR-0236 決定 2）。
+ *
+ * 🔴 **生の `filename` をキーにしてはならない。** `unitOfFilename` は同じファイルをレポートごとに
+ * 違う文字列で返す（`relative` / `absolute` / `source-joined`）。IADR-0123 決定 4 の CI 実測は
+ * 「そのまま(相対) 645 / <sources> 結合 1391」で、**同一 CI 実行の中で両形が混在している**。
+ * 生パスをキーにすると重複排除が一部にしか効かず、しかも診断には何も出ない（無音の部分適用）。
+ *
+ * そこで帰属で解決した経路（attribution.resolved）を **SRC_UNIT_RE の最初のマッチ位置＝
+ * `src/<unit>/` の先頭以降**へ切り詰める。相対でも <sources> 結合でも同じ文字列へ落ちる。
+ *
+ * **大文字小文字は潰さない。** CI は Linux で大小が意味を持つ。潰すと「別ファイルを畳む＝分母過小
+ * ＝床が甘くなる」方向に壊れる。畳み残し（分母過大）は保守的な壊れ方であり、その逆は退行を隠す。
+ *
+ * **既知の限界**: `Services/<X>/src/<X>.Api/…` のように**内側にも `src/` を持つ**経路では、
+ * 最初のマッチが内側 `src/` に食い付く（`unitOfFilename` の帰属も同じ位置で当たっており、本関数は
+ * その規則を変えない）。内側 `src/` に当たる場合、切り出される接尾辞は <sources> の深さに依らず
+ * 同一なのでレポート間でキーは揃う。揃わないのは**絶対パス形**が混在したときだけで、
+ * その場合は先頭側の `src/<unit>/` に当たってキーが割れる —— 方向は**畳み残し（分母過大＝保守的）**
+ * であり、下の重複排除の診断（落とした行数・レポート数の内訳）に変動として現れる。
+ * IADR-0123 決定 4 の CI 実測では絶対形は 0 件だった。
+ */
+function dedupFileKey(attribution) {
+  const resolved = attribution && attribution.resolved;
+  if (resolved === null || resolved === undefined || resolved === '') {
+    return { key: '(filename なし)', normalized: false };
+  }
+  const p = toPosix(resolved);
+  const m = SRC_UNIT_RE.exec(p);
+  if (!m) return { key: p, normalized: false };
+  return { key: p.slice(m.index + (p.charAt(m.index) === '/' ? 1 : 0)), normalized: true };
 }
 
 /**
@@ -418,6 +462,11 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
   const unattributedSamples = [];
   let fallbackClasses = 0;
   let emptyClasses = 0;
+  // #900 / IADR-0236: 集計対象として残った行の同一性。aggregateReports がレポート間で畳む。
+  const includedEntries = [];
+  const includedUnkeyed = zeroTotals();
+  let unnormalizedLines = 0;
+  const occurrence = new Map();
 
   for (const c of classes) {
     const attribution = unitOfFilename(c.filename, sources);
@@ -469,15 +518,48 @@ function parseCobertura(xml, { units = EXCLUDED_UNITS } = {}) {
       continue;
     }
     addTotals(totals, stats);
+
+    // #900 / IADR-0236: 集計に残った行へ (class name, 正規化 filename, 行番号) のキーを与える。
+    //
+    // 🔴 **同一レポート内の同キーは畳まない。** 出現順の連番をキーへ足して衝突させないことで、
+    // **レポート 1 件のときは重複排除が恒等になる**（IADR-0123 決定 3・決定 4 の非退行が
+    // 構成上保証される）。畳むのはレポートを跨いだぶんだけである。
+    const fileKey = dedupFileKey(attribution);
+    if (!fileKey.normalized) unnormalizedLines += stats.lines;
+    for (const e of stats.entries) {
+      if (e.number === null) {
+        // 行番号を持たない <line> は識別できない＝畳めない。単純和のまま集計へ残し、件数を診断へ出す。
+        includedUnkeyed.lines++;
+        if (e.hits > 0) includedUnkeyed.covered++;
+        includedUnkeyed.branches += e.branches;
+        includedUnkeyed.coveredBranches += e.coveredBranches;
+        continue;
+      }
+      const base = `${c.name === null ? '' : c.name}\u0000${fileKey.key}\u0000${e.number}`;
+      const seen = occurrence.get(base) || 0;
+      occurrence.set(base, seen + 1);
+      includedEntries.push({
+        key: seen === 0 ? base : `${base}\u0000#${seen}`,
+        hits: e.hits,
+        branches: e.branches,
+        coveredBranches: e.coveredBranches,
+      });
+    }
   }
 
   // どの <class> にも属さない <line>。帰属できない＝除外できないため集計には残し、診断で可視化する
   // （黙って落とすと実測値が理由不明に下がる）。正常な coverlet 出力では 0 件である。
   const orphan = countLines(outside);
   addTotals(totals, orphan);
+  // orphan は class も filename も持たずキーを作れない。畳めないぶんとして単純和で残す。
+  addTotals(includedUnkeyed, orphan);
 
   return {
     ...totals,
+    // #900 / IADR-0236: レポート間の重複排除の材料。totals は「このレポート単体の集計値」のままで、
+    // 意味を変えない（aggregateReports が畳んだ値を別に作る）。
+    // 不変条件: totals.lines === included.entries.length + included.unkeyed.lines
+    included: { entries: includedEntries, unkeyed: includedUnkeyed, unnormalizedLines },
     excluded: { ...excluded, classes: excludedClasses },
     generated: {
       ...generated,
@@ -518,11 +600,86 @@ function mergeTotals(totalsList) {
 }
 
 /**
+ * レポート間で行を重複排除して畳む（#900 / IADR-0236 決定 1）。
+ *
+ * 共有ライブラリ（Platform.Shared.Infrastructure 等）の行は、それを参照するテストプロジェクトの
+ * 数だけ各レポートに載る。従来はレポート単位の集計値を単純加算していたため、**分母が参照数だけ
+ * 水増しされ、テストプロジェクトを増やす行為が床判定では罰になっていた**（#899 で実際に割れた）。
+ *
+ * 畳み方は同一キーの行についてフィールドごとの max である。
+ *   - hits            … max > 0 なら被覆＝**OR**（1 つのレポートで被覆されていれば被覆）
+ *   - branches        … 分岐分母
+ *   - coveredBranches … 分岐分子
+ * 各レポートで coveredBranches <= branches なので max(coveredBranches) <= max(branches) が成り立ち、
+ * 分子が分母を超えることはない。
+ *
+ * 🔴 **分岐の max は「測定定義の変更」である**（IADR-0236 決定 3）。Cobertura の <line> が分岐に
+ * ついて持つのは condition-coverage="50% (1/2)" という**個数だけ**で、どの分岐が通ったかの識別子が
+ * 無い。レポート A が分岐 1 を、B が分岐 2 を被覆していても（真の和集合は 2/2）合成できず 1/2 に
+ * とどまる。max は真の和集合の**下界**であり、誤差は常に「実際より低く見える」方向にしか出ない
+ * （床の検査としては fail-safe）。IADR-0123 決定 4 の 2026-08-04 追記により、分岐の定義の変更は
+ * **床の置き直しとセットでしか行えない**。
+ */
+function foldLineEntries(parsedList) {
+  const byKey = new Map();
+  const unkeyed = zeroTotals();
+  let unnormalizedLines = 0;
+  for (const p of parsedList) {
+    const inc = p.included || { entries: [], unkeyed: zeroTotals(), unnormalizedLines: 0 };
+    for (const e of inc.entries) {
+      const prev = byKey.get(e.key);
+      if (!prev) {
+        byKey.set(e.key, {
+          hits: e.hits, branches: e.branches, coveredBranches: e.coveredBranches, reports: 1,
+        });
+        continue;
+      }
+      // 同一レポート内のキーは連番で衝突を避けてあるので、ここに来るのは必ず別レポート由来である。
+      prev.reports++;
+      if (e.hits > prev.hits) prev.hits = e.hits;
+      if (e.branches > prev.branches) prev.branches = e.branches;
+      if (e.coveredBranches > prev.coveredBranches) prev.coveredBranches = e.coveredBranches;
+    }
+    addTotals(unkeyed, inc.unkeyed);
+    unnormalizedLines += inc.unnormalizedLines || 0;
+  }
+  const totals = { ...unkeyed };
+  // 出現レポート数 → キー数。**プレーンオブジェクトで持つ**（Map は JSON.stringify で {} に消える）。
+  const histogram = {};
+  let duplicatedKeys = 0;
+  for (const r of byKey.values()) {
+    totals.lines++;
+    if (r.hits > 0) totals.covered++;
+    totals.branches += r.branches;
+    totals.coveredBranches += r.coveredBranches;
+    if (r.reports > 1) {
+      duplicatedKeys++;
+      histogram[r.reports] = (histogram[r.reports] || 0) + 1;
+    }
+  }
+  return {
+    totals, duplicatedKeys, histogram, unnormalizedLines,
+    keyCount: byKey.size,
+    unkeyedLines: unkeyed.lines,
+  };
+}
+
+/**
  * parseCobertura の結果（レポート単位）を合算する。
  * 集計対象（totals）・除外分（excluded）・診断（diagnostics）をまとめて返す。
+ *
+ * 🔴 **重複排除するのは totals だけである**（#900 / IADR-0236 決定 4）。
+ * excluded / generated / beforeExclusion / beforeGeneratedExclusion / unitTotals は**単純和のまま**。
+ * とくに beforeExclusion は IADR-0123 決定 4 の「coverlet の lines-valid との照合」に使われ、
+ * 照合相手（diagnostics.reported）は**レポートごとの lines-valid を単純加算した値**である
+ * ——coverlet はレポート間の重複を知らない。ここを重複排除すると、行側で唯一の反証装置が
+ * 恒常的に「乖離・要調査」を出すようになり、本当の前提破れと区別できなくなる。
  */
 function aggregateReports(parsedList) {
-  const totals = mergeTotals(parsedList);
+  // 重複排除**前**の単純和。beforeExclusion 系の再構成と、重複排除の前後比較に使う。
+  const summed = mergeTotals(parsedList);
+  const fold = foldLineEntries(parsedList);
+  const totals = fold.totals;
   const excluded = mergeTotals(parsedList.map((p) => p.excluded));
   const generated = mergeTotals(parsedList.map((p) => p.generated));
   const generatedByUnit = {};
@@ -593,11 +750,14 @@ function aggregateReports(parsedList) {
       byKind: generatedByKind,
       samples: generatedSamples,
     },
-    // 生成コードだけを戻した値（#571 / IADR-0138 の前後比較用）。
-    beforeGeneratedExclusion: mergeTotals([totals, generated]),
+    // 生成コードだけを戻した値（#571 / IADR-0138 の前後比較用）。**重複込み・単純和**。
+    beforeGeneratedExclusion: mergeTotals([summed, generated]),
     // すべての除外の前（＝混入込み・生成コード込み）の値。coverlet の lines-valid との照合
     // （IADR-0123 決定 4）はこの値で行う——除外を足し戻さないと突合が成立しない。
-    beforeExclusion: mergeTotals([totals, excluded, generated]),
+    // 🔴 **summed（重複排除前）から組む。** 畳んだ totals から組むと照合が恒常的に割れる。
+    beforeExclusion: mergeTotals([summed, excluded, generated]),
+    // レポート跨ぎの重複排除の**前**の集計値（#900 / IADR-0236。前後比較の観測点）。
+    beforeCrossReportDedup: summed,
     diagnostics: {
       sources: [...sources],
       classCount,
@@ -609,6 +769,18 @@ function aggregateReports(parsedList) {
       reported: reportsWithReported ? reported : null,
       reportsWithReported,
       reportCount: parsedList.length,
+      // #900 / IADR-0236: レポート跨ぎの重複排除の観測点。
+      dedup: {
+        droppedLines: summed.lines - totals.lines,
+        droppedCovered: summed.covered - totals.covered,
+        droppedBranches: summed.branches - totals.branches,
+        droppedCoveredBranches: summed.coveredBranches - totals.coveredBranches,
+        duplicatedKeys: fold.duplicatedKeys,
+        keyCount: fold.keyCount,
+        histogram: fold.histogram,
+        unnormalizedLines: fold.unnormalizedLines,
+        unkeyedLines: fold.unkeyedLines,
+      },
       fallbackClasses,
       emptyClasses,
       filenameSamples,
@@ -687,6 +859,36 @@ function attributionMessages(agg) {
     }
   }
 
+  // NFR（#900 / IADR-0236 決定 5）: レポートが 2 件以上あるのに重複排除で 1 行も落ちない状態は、
+  // 「共有ライブラリを参照するテストが重なっていない」か「<class name> や正規化キーがレポート間で
+  // 揃わず畳めていない（＝分母が二重計上のまま）」かのどちらかである。**<class name> がレポート跨ぎで
+  // 安定していることは未確認**（実装時に手元へ実レポートが 0 件だった）ため、素通りに毎回気付ける
+  // ようにする。正常に 0 行になり得るので fail でも warn でもなく notice にする
+  // （IADR-0138 決定 3 / IADR-0195 決定 2 と同じ「除外量 0 = フィルタ素通り」の作法）。
+  //
+  // reportCount > 1 でゲートするのは、1 レポートなら重複排除は定義上恒等であり、
+  // ローカル実行や単一フィクスチャで恒常ノイズになるためである（IADR-0118 決定 6 の段階ポリシー）。
+  if (d.reportCount > 1 && d.dedup && d.dedup.droppedLines === 0) {
+    msgs.push({
+      level: 'notice',
+      text:
+        `[check-coverage-floor] レポート跨ぎの重複排除で落ちた行は 0 行でした（${d.reportCount} レポート）。` +
+        ' 共有プロジェクトを参照するテストが重なっていないか、<class name> や正規化キーが' +
+        'レポート間で揃わず畳めていない（＝分母が二重計上のまま）状態です（#900 / IADR-0236 決定 2）。',
+    });
+  }
+
+  if (d.dedup && d.dedup.unnormalizedLines > 0) {
+    msgs.push({
+      level: 'notice',
+      text:
+        `[check-coverage-floor] 重複排除キーを src/<unit>/ 経路へ正規化できなかった行が ` +
+        `${d.dedup.unnormalizedLines} 行あります（未帰属クラス由来）。生の filename をキーにしているため、` +
+        '同じファイルでもレポート間で表記が違うと畳まれず、分母が二重計上のまま残ります' +
+        `（#900 / IADR-0236 決定 2）。filename 例: ${JSON.stringify(d.unattributedSamples)}`,
+    });
+  }
+
   if (d.fallbackClasses > 0) {
     msgs.push({
       level: 'notice',
@@ -740,10 +942,33 @@ function formatDiagnostics(agg, floor = {}) {
   const out = [];
   const units = [...EXCLUDED_UNITS].join(', ') || '（なし）';
 
+  // NFR（#900 / IADR-0236 決定 5）: レポート跨ぎの重複排除を毎回出す。共有ライブラリの行が
+  // 参照するテストプロジェクトの数だけ分母に載る状態を、CI ログからそのまま読めるようにする。
+  {
+    const dd = d.dedup || {};
+    const hist = Object.keys(dd.histogram || {})
+      .map(Number)
+      .sort((a, b) => a - b)
+      .map((n) => `${n} 部 ${dd.histogram[n]} 行`)
+      .join(' / ');
+    out.push(
+      `レポート跨ぎの重複排除（#900）: ${d.reportCount} レポート。重複排除前 ${formatTotals(agg.beforeCrossReportDedup)}` +
+        ` → 後 ${formatTotals(agg.totals)}。落とした重複 ${dd.droppedLines} 行（被覆 ${dd.droppedCovered}） / ` +
+        `分岐分母 ${dd.droppedBranches}（被覆 ${dd.droppedCoveredBranches}）。` +
+        ` 重複していたキー ${dd.duplicatedKeys} 件 / 全キー ${dd.keyCount} 件。` +
+        ` 出現レポート数の内訳: ${hist || '（重複なし）'}。` +
+        ` キーを src/<unit>/ へ正規化できなかった行 ${dd.unnormalizedLines} 行（未帰属クラス由来。生パスをキーにしている）／` +
+        `行番号を持たず畳めなかった <line> ${dd.unkeyedLines} 行。`,
+    );
+  }
+
   out.push(
     `除外（filename 帰属・#468）: 集計対象外ユニット（${units}）由来 ${agg.excluded.classes.length} クラス / ` +
       `${agg.excluded.lines} 行（被覆 ${agg.excluded.covered}） / 分岐 ${agg.excluded.branches}（被覆 ${agg.excluded.coveredBranches}）を落としました。` +
-      ` 除外前: ${formatTotals(agg.beforeExclusion)}（生成コードも戻した値）`,
+      ` 除外前: ${formatTotals(agg.beforeExclusion)}（生成コードも戻した値）` +
+      // #900 / IADR-0236 決定 4: 除外量と「除外前」はレポート跨ぎの重複を**含んだ単純和**である。
+      // 床が判定に使う値（重複排除後）と桁が違うため、混同されないよう毎回書く。
+      '。※ この行の値はレポート跨ぎの重複込み・単純和（coverlet の lines-valid と突き合わせるため）',
   );
 
   // NFR（#571 / IADR-0138 決定 2）: 生成コードの除外量を毎回出す。AST 除外と同じ作法で、
@@ -1282,6 +1507,246 @@ function selfTest() {
       p.excluded.lines === 1 && p.diagnostics.how.unattributed === 0, p.diagnostics);
   }
 
+  // --- #900 / IADR-0236: レポート跨ぎの行重複排除 ---------------------------------
+  //
+  // 🔴 **受け入れ基準を rate で書いてはならない。** 「同じレポートを 2 部与えても集計値が変わらない」
+  // は正しいが、**同じレポート 2 部では被覆率は動かない**（分子分母が等倍で増えるため 50% のまま）。
+  // 率が動くのは「同じ行を違う被覆で載せた 2 部」のときだけである。変異試験を rate で書くと
+  // **重複排除を外しても緑のまま通る**（検査が静かに no-op 化する）。
+  //
+  // 🔴 **ケース 1（不変）とケース 2（差が出る）の両方**を必ず置く。片方だけでは片方向の穴が開く ——
+  //   ケース 1 だけ: 畳み込みを「常に全部潰す」実装にしても通る
+  //   ケース 2 だけ: 「何もしない」実装では落ちるが、過剰に潰す実装は通る
+  // check-backend-libraries.js 規則 5 が「(a) だけでは静かに no-op になる」で踏んだ穴と同型である。
+
+  const SHARED_FILE = 'src/platform/backend/Shared/Platform.Shared.Infrastructure/X.cs';
+
+  {
+    // ケース 1: 同一レポート 2 部で totals 不変。lines / covered / branches を**個別に** assert する。
+    const xml = '<coverage lines-valid="2" lines-covered="1"><packages><package><classes>' +
+      `<class name="Shared.X" filename="${SHARED_FILE}"><lines>` +
+      '<line number="1" hits="1" branch="true" condition-coverage="50% (1/2)" />' +
+      '<line number="2" hits="0" />' +
+      '</lines></class></classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(xml), parseCobertura(xml)]);
+    t('aggregateReports: 同一レポート 2 部でも行は 1 部ぶん（単純合算なら 4）',
+      agg.totals.lines === 2, agg.totals);
+    t('aggregateReports: 同一レポート 2 部でも被覆行は 1 部ぶん（単純合算なら 2）',
+      agg.totals.covered === 1, agg.totals);
+    t('aggregateReports: 同一レポート 2 部でも分岐は 1 部ぶん（分母 2 / 分子 1）',
+      agg.totals.branches === 2 && agg.totals.coveredBranches === 1, agg.totals);
+    t('aggregateReports: 重複排除前の値を別に保つ（前後比較の観測点）',
+      agg.beforeCrossReportDedup.lines === 4 && agg.beforeCrossReportDedup.covered === 2,
+      agg.beforeCrossReportDedup);
+    t('aggregateReports: 落とした重複を診断へ出す（2 行 / 重複キー 2 件 / 2 部が 2 行）',
+      agg.diagnostics.dedup.droppedLines === 2 && agg.diagnostics.dedup.duplicatedKeys === 2
+        && agg.diagnostics.dedup.histogram[2] === 2, agg.diagnostics.dedup);
+    // 🔴 決定 4 の非退行: 照合は重複排除**前**の単純和で行う（lines-valid の和 4 と一致し続ける）。
+    t('aggregateReports: beforeExclusion は単純和のまま（lines-valid の和と一致し続ける）',
+      agg.beforeExclusion.lines === 4 && agg.diagnostics.reported.lines === 4, agg.beforeExclusion);
+    t('formatDiagnostics: 重複排除の前後と内訳を出す',
+      formatDiagnostics(agg).join('\n').includes('落とした重複 2 行'), formatDiagnostics(agg));
+  }
+
+  {
+    // ケース 2: 被覆の違う 2 部を OR で畳む。A(hits=1,0) ＋ B(hits=0,0) → lines 2 / covered 1。
+    // 現行（単純合算）は lines 4 / covered 1 で rate 50% → 25% になる。**唯一 rate でも差が出る**。
+    const mk = (h1, h2) => '<coverage><packages><package><classes>' +
+      `<class name="Shared.X" filename="${SHARED_FILE}"><lines>` +
+      `<line number="1" hits="${h1}" /><line number="2" hits="${h2}" />` +
+      '</lines></class></classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(mk(1, 0)), parseCobertura(mk(0, 0))]);
+    t('aggregateReports: 片方のレポートでのみ被覆された行は OR で被覆扱い（lines 2 / covered 1）',
+      agg.totals.lines === 2 && agg.totals.covered === 1, agg.totals);
+    t('aggregateReports: OR の結果は rate でも差が出る（単純合算の 25% ではなく 50%）',
+      rate(agg.totals.covered, agg.totals.lines) === 50, agg.totals);
+    // 逆順でも同じ（畳み込みが「最初のレポート優先」に退化していないこと）。
+    const rev = aggregateReports([parseCobertura(mk(0, 0)), parseCobertura(mk(1, 0))]);
+    t('aggregateReports: OR はレポートの順序に依らない',
+      rev.totals.covered === 1, rev.totals);
+  }
+
+  {
+    // ケース 2b: 分岐も同じく max で畳む。**被覆の低い側が先に来る順序を必ず含める** ——
+    // 「最初のレポートの値を採る」実装は、高い側が先の順序だけでは落ちない（M5 変異で実測した）。
+    const mk = (cov2) => '<coverage><packages><package><classes>' +
+      `<class name="Shared.X" filename="${SHARED_FILE}"><lines>` +
+      `<line number="1" hits="1" branch="true" condition-coverage="x% (${cov2}/2)" />` +
+      '</lines></class></classes></package></packages></coverage>';
+    const lowFirst = aggregateReports([parseCobertura(mk(0)), parseCobertura(mk(2))]);
+    t('aggregateReports: 分岐分子は max で畳む（被覆の低い側が先でも 2/2）',
+      lowFirst.totals.branches === 2 && lowFirst.totals.coveredBranches === 2, lowFirst.totals);
+    const highFirst = aggregateReports([parseCobertura(mk(2)), parseCobertura(mk(0))]);
+    t('aggregateReports: 分岐の畳み込みはレポートの順序に依らない',
+      highFirst.totals.coveredBranches === 2, highFirst.totals);
+    // 分岐分母も同様（分母が違う形で現れたら大きい方を採る）。
+    const denom = (b) => '<coverage><packages><package><classes>' +
+      `<class name="Shared.X" filename="${SHARED_FILE}"><lines>` +
+      `<line number="1" hits="1" branch="true" condition-coverage="x% (0/${b})" />` +
+      '</lines></class></classes></package></packages></coverage>';
+    const wide = aggregateReports([parseCobertura(denom(2)), parseCobertura(denom(4))]);
+    t('aggregateReports: 分岐分母は max で畳む（小さい側が先でも 4）',
+      wide.totals.branches === 4, wide.totals);
+  }
+
+  {
+    // ケース 3: 1 レポートだけなら現行と完全同値（IADR-0123 決定 3・決定 4 の非退行）。
+    const p = parseCobertura(FIXTURE_ATTRIBUTED);
+    const agg = aggregateReports([p]);
+    t('aggregateReports: 1 レポートなら重複排除は恒等（totals がレポート単体の値と全項一致）',
+      agg.totals.lines === p.lines && agg.totals.covered === p.covered
+        && agg.totals.branches === p.branches && agg.totals.coveredBranches === p.coveredBranches
+        && agg.diagnostics.dedup.droppedLines === 0,
+      { totals: agg.totals, parsed: { lines: p.lines, covered: p.covered } });
+    t('aggregateReports: 1 レポートの beforeExclusion は lines-valid と一致し続ける（決定 4 の照合）',
+      agg.beforeExclusion.lines === 4 && agg.diagnostics.reported.lines === 4, agg.beforeExclusion);
+    // 不変条件: totals.lines === キー付きの行数 ＋ 畳めなかった行数
+    t('parseCobertura: totals は「キー付きの行 ＋ 畳めない行」に分解できる',
+      p.lines === p.included.entries.length + p.included.unkeyed.lines,
+      { lines: p.lines, keyed: p.included.entries.length, unkeyed: p.included.unkeyed.lines });
+  }
+
+  {
+    // ケース 4: Foo と <Foo>d__2（非同期ステートマシン）は同一 filename・同一行番号でも潰さない。
+    // (filename, 行番号) をキーにすると潰れる —— IADR-0123 が選択肢 C を退けた理由をキー側で保つ。
+    const xml = '<coverage><packages><package><classes>' +
+      '<class name="Foo" filename="src/platform/backend/X.cs">' +
+      '<lines><line number="10" hits="1" /></lines></class>' +
+      '<class name="Foo/<Foo>d__2" filename="src/platform/backend/X.cs">' +
+      '<lines><line number="10" hits="0" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(xml), parseCobertura(xml)]);
+    t('aggregateReports: 同一 filename・同一行番号でも class が違えば潰さない（lines 2）',
+      agg.totals.lines === 2 && agg.totals.covered === 1, agg.totals);
+
+    // 🔴 上のケースだけでは **キーから class name を落とす変異を検出できない**（実測した）。
+    // 同一レポート内の同キーには出現連番が付くため、class name を落としても
+    // `Foo` と `<Foo>d__2` は別キーのまま残ってしまい、行数が変わらないからである。
+    // **2 つのクラスが別々のレポートに分かれて現れる形**で初めて差が出る ——
+    // class name がキーに無いと、この 2 行が同じキーへ落ちて 1 行に潰れる。
+    const only = (name, hits) => '<coverage><packages><package><classes>' +
+      `<class name="${name}" filename="src/platform/backend/X.cs">` +
+      `<lines><line number="10" hits="${hits}" /></lines></class>` +
+      '</classes></package></packages></coverage>';
+    const split = aggregateReports([
+      parseCobertura(only('Foo', 1)),
+      parseCobertura(only('Foo/<Foo>d__2', 0)),
+    ]);
+    t('aggregateReports: 別レポートに分かれた Foo と <Foo>d__2 も潰さない（キーに class name が要る）',
+      split.totals.lines === 2 && split.totals.covered === 1, split.totals);
+  }
+
+  {
+    // ケース 5: filename の形が違う 2 レポート（A: relative / B: <sources> ＋相対の source-joined）でも
+    // 正規化キーが一致して畳まれる。生 filename をキーにすると畳めない（無音の部分適用になる）。
+    const a = '<coverage><packages><package><classes>' +
+      '<class name="Shared.X" filename="src/platform/backend/Shared/X.cs">' +
+      '<lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const b = '<coverage><sources><source>/home/runner/work/msp/msp/src/</source></sources>' +
+      '<packages><package><classes>' +
+      '<class name="Shared.X" filename="platform/backend/Shared/X.cs">' +
+      '<lines><line number="1" hits="0" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const pa = parseCobertura(a);
+    const pb = parseCobertura(b);
+    t('parseCobertura: 前提 —— 2 レポートは filename の解釈が違う（relative と source-joined）',
+      pa.diagnostics.how.relative === 1 && pb.diagnostics.how['source-joined'] === 1,
+      { a: pa.diagnostics.how, b: pb.diagnostics.how });
+    t('dedupFileKey: 表記の違う同一ファイルが同じキーへ落ちる',
+      dedupFileKey(unitOfFilename('src/platform/backend/Shared/X.cs')).key
+        === dedupFileKey(unitOfFilename('platform/backend/Shared/X.cs', ['/home/runner/work/msp/msp/src/'])).key,
+      dedupFileKey(unitOfFilename('src/platform/backend/Shared/X.cs')).key);
+    const agg = aggregateReports([pa, pb]);
+    t('aggregateReports: 表記の違う同一ファイルでも畳む（lines 1 / covered 1）',
+      agg.totals.lines === 1 && agg.totals.covered === 1, agg.totals);
+    t('dedupFileKey: 帰属できない filename は正規化できない（生パスをキーにする）',
+      dedupFileKey(unitOfFilename('Foo/Bar.cs')).normalized === false
+        && dedupFileKey(unitOfFilename('Foo/Bar.cs')).key === 'Foo/Bar.cs');
+  }
+
+  {
+    // ケース 6: レポートが 2 件以上あるのに重複排除量が 0 行なら notice（素通りに気付ける）。
+    const a = '<coverage><packages><package><classes>' +
+      '<class name="A" filename="src/platform/backend/A.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const b = '<coverage><packages><package><classes>' +
+      '<class name="B" filename="src/knowledge/backend/B.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const msgs = attributionMessages(aggregateReports([parseCobertura(a), parseCobertura(b)]));
+    t('attributionMessages: 複数レポートで重複排除 0 行は notice（畳めていない状態を可視化）',
+      msgs.some((m) => m.level === 'notice' && /重複排除で落ちた行は 0 行/.test(m.text))
+        && msgs.every((m) => m.level !== 'warn'), msgs);
+    // 1 レポートでは定義上 0 行になるため出さない（恒常ノイズにしない。IADR-0118 決定 6）。
+    const single = attributionMessages(aggregateReports([parseCobertura(a)]));
+    t('attributionMessages: 1 レポートでは重複排除 0 行の notice を出さない',
+      single.every((m) => !/重複排除で落ちた行は 0 行/.test(m.text)), single);
+    // 実際に畳めていれば notice は出ない。
+    const folded = attributionMessages(aggregateReports([parseCobertura(a), parseCobertura(a)]));
+    t('attributionMessages: 畳めていれば重複排除の notice は出ない',
+      folded.every((m) => !/重複排除で落ちた行は 0 行/.test(m.text)), folded);
+  }
+
+  {
+    // 未帰属クラスは正規化できないので生パスをキーにする。件数を診断と notice へ出す。
+    const xml = '<coverage><packages><package><classes>' +
+      '<class name="X" filename="Foo/Bar.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '<class name="Y" filename="src/platform/backend/Y.cs"><lines><line number="1" hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(xml)]);
+    t('aggregateReports: 正規化できなかった行数を診断へ出す',
+      agg.diagnostics.dedup.unnormalizedLines === 1, agg.diagnostics.dedup);
+    t('attributionMessages: 正規化できない行があれば notice で名指しする',
+      attributionMessages(agg).some((m) => m.level === 'notice' && /正規化できなかった/.test(m.text)),
+      attributionMessages(agg));
+  }
+
+  {
+    // 行番号を持たない <line> は畳めないため単純和で残す（黙って落とさない）。
+    const xml = '<coverage><packages><package><classes>' +
+      '<class name="X" filename="src/platform/backend/X.cs"><lines><line hits="1" /></lines></class>' +
+      '</classes></package></packages></coverage>';
+    const agg = aggregateReports([parseCobertura(xml), parseCobertura(xml)]);
+    t('aggregateReports: 行番号を持たない <line> は畳まず単純和で残す（2 部で 2 行）',
+      agg.totals.lines === 2 && agg.diagnostics.dedup.unkeyedLines === 2, agg.diagnostics.dedup);
+  }
+
+  {
+    // 同一レポート内に同じ (class name, filename, 行番号) が 2 度現れても畳まない。
+    // これが 1 レポートのときの恒等性（＝決定 3・決定 4 の非退行）を**構成上**保証している。
+    const xml = '<coverage><packages>' +
+      '<package name="P1"><classes><class name="X" filename="src/platform/backend/X.cs">' +
+      '<lines><line number="1" hits="1" /></lines></class></classes></package>' +
+      '<package name="P2"><classes><class name="X" filename="src/platform/backend/X.cs">' +
+      '<lines><line number="1" hits="0" /></lines></class></classes></package>' +
+      '</packages></coverage>';
+    const p = parseCobertura(xml);
+    t('aggregateReports: 同一レポート内の同キー重複は畳まない（1 レポートの恒等性）',
+      p.lines === 2 && aggregateReports([p]).totals.lines === 2,
+      { parsed: p.lines, agg: aggregateReports([p]).totals.lines });
+    t('aggregateReports: その形でもレポートを跨げば畳む（2 部でも 2 行のまま）',
+      aggregateReports([p, parseCobertura(xml)]).totals.lines === 2,
+      aggregateReports([p, parseCobertura(xml)]).totals);
+  }
+
+  {
+    // 🔴 畳み込みが配線ごと効いていること（no-op 化の検出）。素朴な合算（mergeTotals）と
+    //    畳み込み後（aggregateReports の入口）を**同じ入力**で比べ、**差が出ること自体**を固定する。
+    const xml = '<coverage><packages><package><classes>' +
+      `<class name="Shared.X" filename="${SHARED_FILE}"><lines>` +
+      '<line number="1" hits="1" /><line number="2" hits="0" />' +
+      '</lines></class></classes></package></packages></coverage>';
+    const parsed = [parseCobertura(xml), parseCobertura(xml)];
+    const naive = mergeTotals(parsed);
+    const agg = aggregateReports(parsed);
+    t('foldLineEntries: 素朴な合算と畳み込み後が同じ入力で異なる（no-op 化の検出）',
+      naive.lines === 4 && agg.totals.lines === 2 && naive.lines !== agg.totals.lines,
+      { naive: naive.lines, folded: agg.totals.lines });
+    t('foldLineEntries: 診断の droppedLines は素朴な合算との差と一致する',
+      agg.diagnostics.dedup.droppedLines === naive.lines - agg.totals.lines,
+      agg.diagnostics.dedup);
+  }
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -1404,10 +1869,12 @@ module.exports = {
   countLinesUnique,
   classLineStats,
   unitOfFilename,
+  dedupFileKey,
   isGeneratedFilename,
   generatedKindOf,
   parseCobertura,
   mergeTotals,
+  foldLineEntries,
   aggregateReports,
   attributionMessages,
   formatDiagnostics,

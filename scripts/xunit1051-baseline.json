@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "xUnit1051（TestContext.Current.CancellationToken）の段階採用 ratchet（#882 / IADR-0235）。",
+    "xUnit1051（TestContext.Current.CancellationToken）の段階採用 ratchet（#882 / IADR-0237）。",
     "1 PR = 1 プロジェクト。移行したら migrated:true にし、src/Directory.Build.props の",
     "XUnit1051Migrated へ同じ名前を足す。両者の一致は check-xunit1051-ratchet.js が強制する。",
     "",

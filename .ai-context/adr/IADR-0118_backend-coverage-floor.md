@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, IADR-0034, IADR-0115, IADR-0116, IADR-0123]
 author: Claude
 created: 2026-08-03
-updated: 2026-08-15
+updated: 2026-08-22
 plan_refs:
   - planning:projects/microservices-platform/02_requirements/01_requirements.md
 related_specs:
@@ -198,6 +198,18 @@ B は目的（床の強制）に対して導入コストが釣り合わない。
    > 測定条件: develop `1d7edce` / .NET SDK `10.0.400` / Release 構成 / レポート **14 件**（CI と同数）/
    > 2026-08-15。実測 `line 39.92%（9486/23762）` / `branch 28.01%（1663/5938）`。
    > 値の正は [`src/coverage-floor.json`](../../src/coverage-floor.json)（`$comment` に導出を記録）。
+
+   > 🔴 **［2026-08-22 追記 / #899］3 度目の置き直しが本 ADR に記録されていなかった（`line 39` → `38`）。**
+   > `#897` がテストプロジェクトを 1 本新設したところ develop の `Integration` が落ちたため、
+   > CI 実測 `line 38.49%（9967/25896）` を切り下げて `38` にした（`branch` は実測 27.32% で `27` 据え置き）。
+   > **これは引き下げでも定義変更でもなく、測定基盤の変化への追随である** —— 既存テストは 1 件も減って
+   > おらず、分母だけがふくらんだ。原因は「集計がレポートを跨いで重複排除しない」ことであり、
+   > 共有ライブラリの行が参照するテストプロジェクトの数だけ分母に載る。
+   > **本追記は #900 の作業中に、床の値を誤りの側の文字列で全走査して見つけた欠落である**
+   > —— 当時 [IADR-0116](IADR-0116_reimplementation-branching-and-pr-policy.md) と
+   > `TEST_STRATEGY.md` は「3 度目」を記録したが、**本 ADR だけが履歴を 2 回で止めていた**。
+   > 機械検査（`scripts.repo.test.js` の「ゲートの床を述べた文書」）は
+   > **バッククォート付きの並記形＋同一行の「未満」しか拾わない**ため、この欠落を拾えない。
 
 3. **運用は ratchet とする**（床は上げるが下げない）。テストを増やしたら床を引き上げ、床を割る変更を
    CI で止める。床の引き下げは**退行**であり、行う場合は正当な理由を作業仕様書に記す（検査器の失敗

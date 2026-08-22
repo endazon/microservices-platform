@@ -7,14 +7,14 @@ related_ids:
   - ADR-0030
   - IADR-0140
   - IADR-0231
-  - IADR-0235
+  - IADR-0237
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (テスト = xUnit v3)
 related_specs:
-  - "../adr/IADR-0235_xunit1051-staged-adoption-ratchet.md"
+  - "../adr/IADR-0237_xunit1051-staged-adoption-ratchet.md"
   - "../adr/IADR-0231_xunit-v3-simultaneous-switch.md"
 issue: "#882"
 ---
@@ -27,7 +27,7 @@ issue: "#882"
 **`src/` のテストの `.cs` を 1 行も変えない。** これにより「テスト件数が減らない」は自明に満たされ、
 レビューは器の設計だけに集中できる。
 
-決定そのものは [`IADR-0235`](../adr/IADR-0235_xunit1051-staged-adoption-ratchet.md) にある。
+決定そのものは [`IADR-0237`](../adr/IADR-0237_xunit1051-staged-adoption-ratchet.md) にある。
 本書は**引いた母集合・実測値・変異試験**を残す。
 
 ## 着手前の実測（前提の確認）
@@ -233,10 +233,10 @@ src/.template-buildcheck-unit-template  →  削除済み（git status --short -
 | `scripts/check-xunit1051-ratchet.js` | **新規**。判定 7 種＋自己試験 18 件 |
 | `scripts/scripts.repo.test.js` | 検査器の CI 呼び出し口（自己試験・実データ・検出力・実データ突合の 5 件） |
 | `scripts/README.md` | 主表と CI 対応表に 1 行ずつ |
-| `.ai-context/adr/IADR-0235_*.md` | **新規**。決定 4 件 |
+| `.ai-context/adr/IADR-0237_*.md` | **新規**。決定 4 件 |
 | `.ai-context/adr/IADR-0231_*.md` | 日付つき追記 2 件（`<Import>` の誤り・件数の重複計上）。`updated:` を前進 |
-| `.ai-context/adr/README.md` | `IADR-0235` の索引行。**あわせて `IADR-0234`/`0235` の並び順を昇順へ直した**（後述） |
-| `docs/tech/tech-requirements.md` | 件数を 943 へ訂正し、許可リスト方式を明記。trace ブロックへ `IADR-0235` |
+| `.ai-context/adr/README.md` | `IADR-0237` の索引行。**あわせて `IADR-0234`/`0235` の並び順を昇順へ直した**（後述） |
+| `docs/tech/tech-requirements.md` | 件数を 943 へ訂正し、許可リスト方式を明記。trace ブロックへ `IADR-0237` |
 
 ### 🔴 `.github/workflows/ci.yml` は 1 行も変更していない
 
@@ -247,7 +247,7 @@ src/.template-buildcheck-unit-template  →  削除済み（git status --short -
 
 ### 🔴 他セッションの赤を 1 件直した（範囲外だが自 PR の CI を通すために必要）
 
-着手中に `.ai-context/adr/README.md` の索引が **`IADR-0235` → `IADR-0234` の順**で着地しており
+着手中に `.ai-context/adr/README.md` の索引が **`IADR-0237` → `IADR-0234` の順**で着地しており
 （`cce974a`）、`check-adr-numbering` が `index-not-sorted` で **exit 1** になっていた。
 自 PR の CI もこれで落ちるため、**2 行の並べ替えのみ**行った（本文は 1 文字も変えていない）。
 

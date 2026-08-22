@@ -2,7 +2,7 @@
 'use strict';
 /*
  * check-xunit1051-ratchet.js
- * NFR / issue #882 / IADR-0235: xUnit1051（TestContext.Current.CancellationToken）の
+ * NFR / issue #882 / IADR-0237: xUnit1051（TestContext.Current.CancellationToken）の
  * 段階採用を ratchet で守る。
  *
  * 背景（この検査が無いと何が起きるか）:
@@ -421,7 +421,7 @@ function main() {
   console.error(`[check-xunit1051-ratchet] 違反 ${violations.length} 件を検出しました:`);
   console.error(formatReport(violations));
   console.error(
-    '\n段階採用の規約（IADR-0235）: 1 PR = 1 プロジェクト。移行したら baseline を migrated:true にし、\n' +
+    '\n段階採用の規約（IADR-0237）: 1 PR = 1 プロジェクト。移行したら baseline を migrated:true にし、\n' +
       'src/Directory.Build.props の XUnit1051Migrated へ同じ名前を足す。**剥がしたら戻れない。**\n' +
       '残件の数え直しは dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1（採り方は baseline の $comment）。\n'
   );
