@@ -6,7 +6,7 @@ related_ids:
   - NFR
 author: claude
 created: 2026-08-21
-updated: 2026-08-21
+updated: 2026-08-22
 plan_refs:
   - "ADR-0007（CI/CD）"
   - "ADR-0021（エッジ・実行基盤）"
@@ -14,6 +14,7 @@ related_adrs:
   - IADR-0130
   - IADR-0209
   - IADR-0169
+  - IADR-0240
 issue: "#783"
 related_issues:
   - "#442"
@@ -244,3 +245,125 @@ on:
       **実行時間が PR ゲートの上限を超えるなら nightly へ分離する**判断を含む
 - 依存の #780（Keycloak をエッジへ・issuer https 化）は**まだ open** である。
       本作業（①）は #780 に依存しなかったが、②は統合スタックを起こすため依存する可能性が高い
+
+---
+
+## ［2026-08-22 追記 / #783］前半の残り（スキーマ突合・必須チェック昇格）に着手
+
+### 着手前の再検証 —— `blocked` ラベルの裏取り
+
+棚卸しセッションの判定「#783 は `blocked` だが前半に実質的な依存は無い」を自分でも裏取りした。
+依存として本文に挙がる #779（クローズ済み）・#780（Keycloak を エッジへ、issuer https 化）を確認した
+ところ、#780 の変更範囲（Keycloak の Ingress 露出・issuer host・realm 設定・.NET/フロントの issuer 検証）
+は helm lint / kustomize build / kubeconform によるチャート・オーバーレイの構文・スキーマ検証と無関係
+だった。**前半は #779/#780 いずれにも依存しない**。後半（やること②「統合スタックを CI で起こす経路」・
+#466 の土台）は #466 が実ブラウザ OIDC ログインを要求するため #780 に依存し得る
+（[IADR-0227] が issuer は移さないと確定済みだが、#466 の受け入れ基準は実クラスタでの認証成功を要求する
+ため、#780 の Ingress 露出自体は前提になり得る。**この切り分けは未確定のまま次セッションへ引き継ぐ**）。
+
+### 前半に残っていた 2 件
+
+上の「残る作業」節は issue #783 の「やること②」だけを追跡していたが、**issue #783 の受け入れ基準 1
+自体（「chart / overlay の構文エラー・スキーマ不整合が PR で止まる」）が、前回（#878）の実装では
+半分しか満たされていなかった。**
+
+1. **スキーマ突合**: `helm lint` / `helm template` / `kubectl kustomize` は**構文検証のみ**で、
+   Kubernetes スキーマへの適合（型・enum 等）は見ていなかった。`.ai-context/specs/` の当初版
+   「スコープ外」節がこれを「CRD スキーマの供給元を決める判断が要る」として保留していた。
+   **[IADR-0240] でその判断を確定し、`kubeconform` ＋ `datreeio/CRDs-catalog` を追加した。**
+   設計・実測（変異試験含む）は IADR 本文を参照。
+2. **必須チェックの昇格**: `docs/ai-workflow.md` §必須チェックの有効化 の表に、chart/overlay 検証が
+   走る `static-checks-units` ジョブを追加した（下記）。
+
+### 変異試験（2 本。C# 同様、壊すと実際に落ちることを先に実測してから判定した）
+
+| # | 変異 | 対象 | `helm lint`/`helm template`/`kubectl kustomize` | `kubeconform` |
+| --- | --- | --- | --- | --- |
+| E（chart） | `deploy/helm/microservices-platform/templates/deployment.yaml` の `replicas: {{ $svc.replicas \| default 1 }}` を `replicas: "not-a-number"` へ | `ingestion-service` / `conversion-service` の 2 Deployment | **EXIT=0**（両方） | **EXIT=1**「got string, want null or integer」× 2 件 |
+| F（overlay） | `deploy/local/headlamp/headlamp.yaml` の `replicas: 1` を `replicas: "not-a-number"` へ | `headlamp` Deployment | **EXIT=0**（`kubectl kustomize`） | **EXIT=1**「got string, want null or integer」 |
+
+各変異のあと復旧を確認した（E/F とも該当ファイルの `git diff` が空になることを確認）。
+**E・F とも「レンダリングは通るがスキーマには違反する」を実際に再現し、拡張前の検証（helm/kubectl のみ）
+がこれを検出しないこと、拡張後（kubeconform 追加）が検出することの両方を実測した。**
+
+### 実行環境（本セッションの実測）
+
+本作業は共有ワークツリーでの並行セッション事故（他セッションの未コミット変更を巻き込むリスク）を
+避けるため、`.claude/worktrees/issue-783-deploy-schema-validation`（`origin/develop` 基点の
+git worktree）で行った。helm v4.2.1、kubectl（kustomize v5.7.1 内蔵）、kubeconform v0.8.0
+（`yannh/kubeconform` の公式リリースから取得。ローカル検証専用でリポジトリには含めない）。
+
+🔴 **`scripts/check-deploy-manifests.js` の `hasTool()`（`command -v` を `spawnSync(..., {shell:true})`
+で呼ぶ）は、本セッションの Windows 環境では常に失敗する**（Node の `shell:true` は win32 で `cmd.exe`
+を起動し、POSIX の `command` ビルトインを持たないため）。この挙動は本変更で**新たに壊したものではない**
+——同じ機構を使う既存の helm / kubectl 判定も同一環境で同じく失敗する（`git stash` 相当の巻き戻しで
+変更前のコードでも再現を確認済み）。CI は `ubuntu-latest`（POSIX シェル）で走るため実害は無いが、
+**この Windows 環境では `node scripts/check-deploy-manifests.js` の end-to-end 実行そのものは
+自己検証できない**。かわりに `run()` / `validateSchema()` が呼ぶ実処理（`spawnSync` を `shell:true`
+無しで直接 `helm.exe` / `kubeconform.exe` を起動する経路）を単体で再現し、変異試験 E・F を含め
+実際の helm / kubectl / kubeconform 呼び出しで検証した（上表）。`--self-test`（`node
+scripts/check-deploy-manifests.js --self-test`）は 6 件全て OK（新設 1 件を含む。**本 Windows 環境では
+`hasTool()` が常に false を返すため、追加した「kubeconform 不在時の fail-closed」自己試験は
+早期 return せず実際にアサーションを通った**）。
+
+### 必須チェック昇格の実態 —— branch protection は未配備のまま
+
+`gh api repos/endazon/microservices-platform/branches/develop/protection` を実測したところ
+`404 Branch not protected` だった（2026-08-22）。**develop に branch protection 自体が無い**ため、
+「必須チェックへ昇格」は GitHub API を叩く行為ではなく、`docs/ai-workflow.md` §必須チェックの
+有効化 の表（**将来 branch protection を配備するときに `contexts` へ並べる一覧**）へ、
+chart/overlay 検証が走るジョブ名を追記するドキュメント変更である。追記した内容と根拠は
+`docs/ai-workflow.md` 本体を参照（要点: check 名は `static-checks-units`。理由は本ジョブが
+`ci.yml` の `on:` に `paths:` フィルタを持たず全 PR で起動し、`types:` に `reopened` を含み、
+matrix ジョブでもないため、既存の「必須チェックに指定する際の注意」の 3 条件をいずれも満たす）。
+
+### ［2026-08-22 追記 2 / #783］`ci.yml` への導入（#900 / #882 の着地順調整の後）
+
+`.github/workflows/**` は #900 / #882 も触るため、着手前に確認を取った。**#882 は `ci.yml` を
+触らずに済むことが判明し順番待ちは解除、#900 は床の実測待ちで停止中**だったため、本作業が先に
+`static-checks-units` ジョブへ `kubeconform` の導入ステップを足した。
+
+- **バージョン pin**: `KUBECONFORM_VERSION=v0.8.0`（`latest` 追従はしない。ESO helm install の
+  `--version` 検査と同じ方針）。
+- **チェックサム検証**: 公式リリースの `CHECKSUMS` から取得した `kubeconform-linux-amd64.tar.gz` の
+  SHA256（`9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883`）を埋め込み、
+  `sha256sum -c` で突合してから展開・導入する。
+- 導入位置は `azure/setup-helm@v4` / `azure/setup-kubectl@v4` の直後（同じ `static-checks-units`
+  ジョブ。別ジョブへ離すと検査が動かないため）。
+
+`scripts/scripts.repo.test.js` の CI 突合テスト（#783 既存の `ok('NFR / #783: ci.yml に
+deploy-manifests ジョブが在り...')`）へ、kubeconform 導入の検査を 3 本追加した
+（導入されていること／バージョン pin されていること／チェックサム検証をしていること）。
+
+#### 変異試験（2 本。追加した 3 本のうち version pin ／ checksum の 2 本を実測。3 本目は
+既存の helm/kubectl 導入検査と同型の `assert.match` であり、その型は既に本仕様書の初版
+（変異試験 D 系列）で実証済みのため重複実測はしていない）
+
+| # | 変異 | 期待 | 実測 |
+| --- | --- | --- | --- |
+| G | `ci.yml` の `KUBECONFORM_VERSION=v0.8.0` を `KUBECONFORM_VERSION=latest` へ | 突合テストが fail | **AssertionError**「kubeconform の導入がバージョン pin されていない（latest 追従になっている）」 |
+| H | `ci.yml` から `sha256sum -c` の行を削る | 突合テストが fail | **AssertionError**「kubeconform の導入がチェックサム検証をしていない」 |
+
+各変異のあと `git diff -- .github/workflows/ci.yml` で該当箇所のみの変化を確認してから実行し、
+復旧後に `REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js` が `✓ 579 tests passed` へ戻ることを
+確認した。
+
+#### 実行結果（本コミット確定版）
+
+```console
+$ REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js
+✓ 579 tests passed
+```
+
+`.github/workflows/ci.yml` の `on:` ブロックは変更していない（push: develop/main・
+pull_request: opened/synchronize/reopened のまま）。ジョブの追加・削除も無く、既存ステップの
+実行順序も変えていない（`static-checks-units` へステップを 1 つ挿入しただけ）。
+
+### 後半の切り分け（引き継ぎ）
+
+- やること②「統合スタックを CI で起こす経路」（#466 の土台）は**未着手のまま**。
+- #780（Keycloak エッジ化・issuer https 化）は依然 OPEN。#466 が実ブラウザ OIDC ログインを要求する
+  以上、後半は #780 に依存し得ると判断しているが、**依存の強さ（issuer 自体は不要でも Ingress 露出は
+  要るのか等）は未確定**。着手時に #780 の実装内容を再確認すること。
+- 実行時間が PR ゲートの上限を超える場合は nightly へ分離する判断が要る（#783 の「やること」欄に
+  明記済み）。実測見積もりは未着手。

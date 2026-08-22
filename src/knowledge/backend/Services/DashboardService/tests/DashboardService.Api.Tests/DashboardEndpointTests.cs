@@ -16,7 +16,7 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "経費規程"));
+            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "経費規程"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -26,7 +26,7 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("ANSWER"));
+            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("ANSWER"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -36,7 +36,7 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var resp = await factory.CreateClient()
-            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("click"));
+            .PostAsJsonAsync("/dashboard/events", new UsageEventRequest("click"), TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -46,13 +46,13 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "a"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "b"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"));
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "a"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "b"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"), TestContext.Current.CancellationToken);
 
         // レスポンスが null の場合は素の NullReferenceException ではなく明示的な失敗にしてから
         // 非 null 変数へ確定させ、以降の拡張メソッド Where で CS8604 を誘発しないようにする。
-        var response = await client.GetFromJsonAsync<List<UsagePointDto>>("/dashboard/usage");
+        var response = await client.GetFromJsonAsync<List<UsagePointDto>>("/dashboard/usage", TestContext.Current.CancellationToken);
         response.Should().NotBeNull();
         var points = response!;
 
@@ -67,10 +67,10 @@ public class DashboardEndpointTests
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
         for (var i = 0; i < 3; i++)
-            await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "経費"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "有給"));
+            await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "経費"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "有給"), TestContext.Current.CancellationToken);
 
-        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends", TestContext.Current.CancellationToken);
         trendsResponse.Should().NotBeNull();
         var trends = trendsResponse!;
 
@@ -85,11 +85,11 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "Foo"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", " foo "));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "FOO"));
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "Foo"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", " foo "), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "FOO"), TestContext.Current.CancellationToken);
 
-        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends");
+        var trendsResponse = await client.GetFromJsonAsync<List<SearchTrendDto>>("/dashboard/trends", TestContext.Current.CancellationToken);
         trendsResponse.Should().NotBeNull();
         var trends = trendsResponse!;
 
@@ -104,11 +104,11 @@ public class DashboardEndpointTests
     {
         using var factory = new TestWebApplicationFactory();
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "契約"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "契約"));
-        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"));
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "契約"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("search", "契約"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/dashboard/events", new UsageEventRequest("answer"), TestContext.Current.CancellationToken);
 
-        var summaryResponse = await client.GetFromJsonAsync<DashboardUsageDto>("/dashboard/summary");
+        var summaryResponse = await client.GetFromJsonAsync<DashboardUsageDto>("/dashboard/summary", TestContext.Current.CancellationToken);
         summaryResponse.Should().NotBeNull();
         var summary = summaryResponse!;
 
@@ -131,7 +131,7 @@ public class DashboardEndpointTests
         var req = new HttpRequestMessage(HttpMethod.Get, path);
         req.Headers.Add(TestAuthHandler.RolesHeader, "platform-operator");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK,
             "計画 §SC-10 は閲覧を運用者・管理者ロール限定と定めている（裁定 Q19 / Q28）");
@@ -152,7 +152,7 @@ public class DashboardEndpointTests
         var req = new HttpRequestMessage(HttpMethod.Get, path);
         req.Headers.Add(TestAuthHandler.RolesHeader, "viewer"); // 管理系以外のロールを明示。
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
@@ -169,7 +169,7 @@ public class DashboardEndpointTests
         };
         req.Headers.Add(TestAuthHandler.RolesHeader, "viewer");
 
-        var resp = await factory.CreateClient().SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
     }

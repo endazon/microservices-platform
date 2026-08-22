@@ -313,4 +313,5 @@
 | [IADR-0237](./IADR-0237_broker-integration-harness-detection-power.md) | 実ブローカ結合テストの器は「届いた」ではなく「ローカルへ落ちなかった」を証拠にする。手順 4 の破れは明示ルーティングを持たないホストでしか観測できず（実測）、検出器が生きていることを示す陽性対照を対で置く。器の状態は実行ごとに隔離する（固定名は変異を隠した）。#455 | Accepted |
 | [IADR-0238](./IADR-0238_xunit1051-staged-adoption-ratchet.md) | xUnit1051 の段階採用は「許可リスト＋`WarningsAsErrors`」で行い、剥がしたら戻れないようにする。`TreatWarningsAsErrors` は false のため `NoWarn` を外すだけでは再発しても緑。実数は 943 件（1,886 は 2 倍の重複計上）。#882 | Accepted |
 | [IADR-0239](./IADR-0239_wolverine-pipeline-step-registration.md) | Wolverine 版の段登録は入力型を `IPipelineStep<TIn>` から取り、**導出できないこと自体を起動失敗**にする（MassTransit 経路の「素通り」を継承しない）。自己申告の型名だけでは空洞なのでハンドラメソッドの存在まで見る。照合は Ordinal。#441 | Accepted |
-| [IADR-0240](./IADR-0240_ci-latency-watch-population-epoch.md) | **逆転監視の母集合は「現在の CI 構成で測られた PR」に限る**。中央値は窓の多数派を映すので、構成変更の直後は**旧構成の値を現在の値として報告する**（定常性の門は 1.8 倍の段差をくぐった）。しきい値ではなく母集合を正す | Accepted |
+| [IADR-0240](./IADR-0240_deploy-manifest-schema-validation.md) | chart / overlay 検証は構文だけ見ておりスキーマ不整合を検出しない。`kubeconform` を追加し、標準は既定カタログ、CRD は `datreeio/CRDs-catalog` で解決する。未知スキーマは fail-closed。#783 | Accepted |
+| [IADR-0241](./IADR-0241_ci-latency-watch-population-epoch.md) | **逆転監視の母集合は「現在の CI 構成で測られた PR」に限る**。中央値は窓の多数派を映すので、構成変更の直後は**旧構成の値を現在の値として報告する**（定常性の門は 1.8 倍の段差をくぐった）。しきい値ではなく母集合を正す | Accepted |

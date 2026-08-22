@@ -1,7 +1,7 @@
 <!-- trace:
 adrs: [ADR-0048]
-iadrs: [IADR-0067, IADR-0180]
-issues: [#268, planning#286]
+iadrs: [IADR-0067, IADR-0180, IADR-0240]
+issues: [#268, #783, planning#286]
 -->
 
 # AI 駆動の実装ワークフロー（Runbook）
@@ -142,6 +142,7 @@ GitHub Actions が report する status check の context は**ジョブ側の�
 | `commit-messages` | `ci.yml` | 件名規約（スカッシュ前の中間コミット） |
 | `pr-title` | `pr-title.yml` | スカッシュ後件名の唯一の予防線 |
 | `image-build` | `images.yml` | サービスイメージのビルド検証（compose を単一情報源とする独立ワークフロー）の集約ジョブ |
+| `static-checks-units` | `ci.yml` | submodule 取得が要る静的検査の集約ジョブ（unit 依存方向・chart / overlay のレンダリング＋スキーマ突合・unit サービス所有権）。`paths:` を持たず全 PR で起動し、matrix でもない |
 | ~~`CodeQL`~~ | `codeql.yml` | **必須にしない（#719 で除外へ変更）**。`pull_request` に `paths:` を持つため、コード変更の無い PR では check 自体が report されず、必須指定すると恒久 pending になる。集約 check 名 `CodeQL`（ジョブ名 `Analyze (csharp)` と別物）である点は従来どおり。網羅は push（develop/main）と週次 schedule の全量解析が担保する |
 | `claude-review` | `claude-code-review.yml` | **完了**を担保する（後述の注意を必ず読むこと） |
 
