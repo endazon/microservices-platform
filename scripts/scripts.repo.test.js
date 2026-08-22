@@ -5151,7 +5151,7 @@ module.exports = ({ ok, assert }) => {
         //    claude-review の下限を追い越したことの検知）を新設したため 37 → 38（同上）。
         //    GitHub API を叩くが git は一切呼ばないため、TRACKED_CHECKERS / HEAD_CHECKERS の
         //    どちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
-        // ★ #882 / IADR-0237 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
+        // ★ #882 / IADR-0238 で `check-xunit1051-ratchet.js`（xUnit1051 段階採用の ratchet ——
         //    baseline ⇔ 実在テストプロジェクト ⇔ props の許可リストの一致と、抑止の混入）を
         //    新設したため 38 → 39（同上）。git を一切呼ばず fs のみで走査するため、
         //    TRACKED_CHECKERS / HEAD_CHECKERS のどちらにも載らない（`check-trace-blocks.js` と同じ扱い）。
@@ -7325,7 +7325,7 @@ module.exports = ({ ok, assert }) => {
   }
 
   //
-  // NFR / #882 / IADR-0237: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
+  // NFR / #882 / IADR-0238: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
   //
   // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
   // `.github/workflows/` に新ジョブは作らない —— ci.yml の scripts-tests ジョブ

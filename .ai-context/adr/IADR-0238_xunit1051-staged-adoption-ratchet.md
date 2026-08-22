@@ -1,5 +1,5 @@
 ---
-title: IADR-0237 xUnit1051 の段階採用は「許可リスト＋WarningsAsErrors」で行い、剥がしたら戻れないようにする
+title: IADR-0238 xUnit1051 の段階採用は「許可リスト＋WarningsAsErrors」で行い、剥がしたら戻れないようにする
 type: impl-adr
 status: Accepted
 related_ids:
@@ -14,7 +14,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0030_backend-application-libraries.md (テスト = xUnit v3)
 ---
 
-# IADR-0237 xUnit1051 の段階採用は「許可リスト＋WarningsAsErrors」で行い、剥がしたら戻れないようにする
+# IADR-0238 xUnit1051 の段階採用は「許可リスト＋WarningsAsErrors」で行い、剥がしたら戻れないようにする
 
 ## 状況
 

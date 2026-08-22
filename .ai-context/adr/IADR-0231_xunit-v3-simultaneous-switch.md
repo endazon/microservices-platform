@@ -5,7 +5,7 @@ status: Accepted
 related_ids:
   - ADR-0030
   - IADR-0229
-  - IADR-0237
+  - IADR-0238
 author: claude
 created: 2026-08-21
 updated: 2026-08-22
@@ -49,7 +49,7 @@ v2 のままのプロジェクトは非互換の runner と組み合わさる。
 > `Directory.Packages.props`（CPM を共有しない）についての記述は正しく、**本決定の結論
 > 「AST は対象外」も変わらない**。ただし `src/Directory.Build.props` へ足したプロパティは
 > AST の **38 本のテストプロジェクトへ届く**ため、#882 の段階採用は
-> **許可リスト方式**を採って `WarningsAsErrors` が AST へ届かないようにした（[[IADR-0237]] 決定 2）。
+> **許可リスト方式**を採って `WarningsAsErrors` が AST へ届かないようにした（[[IADR-0238]] 決定 2）。
 
 ### 決定 2: 版整合の検査を**対称**にする
 
@@ -86,7 +86,7 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
 > とも一致する。数え直しは
 > `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1`（`-m:1` を落とすとノード接頭辞 `N>` が付いて
 > 一意化に失敗する）。**抑止する判断そのものは変わらない**（943 件でも実害のある警告を埋める）。
-> 残件の単一情報源は `scripts/xunit1051-baseline.json`（[[IADR-0237]] 決定 3）。
+> 残件の単一情報源は `scripts/xunit1051-baseline.json`（[[IADR-0238]] 決定 3）。
 
 `src/Directory.Build.props` でテストプロジェクトのみ `NoWarn` する。**「面倒だから」ではない** ——
 本リポジトリは `check-backend-libraries.js` に「**赤の常態化は『赤を無視する学習』を生み、検査の
@@ -110,7 +110,7 @@ v3 のアナライザは「`CancellationToken` を受ける呼び出しには `T
   - `xUnit1051` を抑止したぶん、キャンセル応答性の助言は当面働かない（決定 4。別 issue）
   - `Knowledge.IntegrationTests` の 9 ファイルが `ValueTask` へ変わった（v3 の破壊的変更）
 - **フォローアップ**
-  - `TestContext.Current.CancellationToken` の段階採用（**#882**。器は [[IADR-0237]]）
+  - `TestContext.Current.CancellationToken` の段階採用（**#882**。器は [[IADR-0238]]）
 
 ## 棄却した案
 
