@@ -344,3 +344,4 @@
 | [IADR-0268](./IADR-0268_drift-unverifiable-cause-split-and-baseline-guard.md) | **「検証不能」を原因で分ける** —— 収集対象に未登録（恒久的に突合されない）は `Warning`、登録済みで応答なしは `Info`。突合の基準が空のまま起動しないよう、宣言の指定ありで段 0 件なら起動を失敗させる。#444 | Accepted |
 | [IADR-0269](./IADR-0269_mcp-tool-publication-and-service-account-exclusion.md) | **公開は許可リストの側から申告を探し、載っていないツールは「不明なツール」として存在ごと秘匿する**。サービスアカウントの個人資料除外は要求側と応答側の 2 層で強制し、判定は集合帰属で書く（否定で書くと属性の無い文書が巻き添えで落ちる）。#445 | Proposed |
 | [IADR-0270](./IADR-0270_private-note-obsidian-sync-backend-core.md) | **個人資料は 1:1 の台帳で表し、容量規則をデータの形で守る**（台帳は最新版のバイト数しか持たないので版履歴は構造的に非算入）。同期トークンは別系統の不透明トークンとし、個人資料は取り込み・索引・Wiki 同期へ一切流さない。#451 | Proposed |
+| [IADR-0271](./IADR-0271_spa-stage4-client-foundations.md) | **契約に口が無いものはサーバー状態ではない** —— 右レールの会話履歴はクライアント状態に閉じる。再評価条件は判断で置き換えず実測し（`streamedQuery` は今も experimental）、図は表の代替ではなく補助として足す。#788 | Accepted |
