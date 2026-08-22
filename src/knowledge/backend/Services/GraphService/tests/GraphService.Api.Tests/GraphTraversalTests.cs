@@ -248,6 +248,29 @@ public class GraphTraversalTests : IClassFixture<TestWebApplicationFactory>
                 "打ち切りが非決定だとテストが flake し、利用者から見て見えたり見えなかったりする");
     }
 
+    // 🔴 ADR-0034 決定 2: **hops の検証は文書の可視性を漏らしてはならない。**
+    //
+    // 認可を先に置くと、権限外・不存在は 404 / 可視だけ 400 となり、hops=4 を投げるだけで
+    // 文書の存在が判る。検証を先に置く現在の順序ならどちらも 400 で区別できない。
+    // このテストは「順序を入れ替えたら落ちる」ことで順序を固定する。
+    [Fact]
+    public async Task Hops_validation_does_not_leak_document_visibility()
+    {
+        var (visible, _, _) = await SeedChainAsync("internal");
+        var nonexistent = Guid.NewGuid();
+        _factory.ScopeProvider = _ => InternalOnly();
+        var client = _factory.CreateClient();
+
+        var a = await client.GetAsync($"/graph/{visible}/neighbors?hops=4", TestContext.Current.CancellationToken);
+        var b = await client.GetAsync($"/graph/{nonexistent}/neighbors?hops=4", TestContext.Current.CancellationToken);
+
+        a.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        b.StatusCode.Should().Be(HttpStatusCode.BadRequest, "不存在でも hops の検証が先に効く");
+        (await a.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Be(await b.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+                "応答本文に差があると、そこから文書の存在が読める");
+    }
+
     // FR-05: スコープが無ければ探索そのものが 404（起点も見せない）。
     [Fact]
     public async Task Not_granted_scope_yields_404_for_traversal_too()

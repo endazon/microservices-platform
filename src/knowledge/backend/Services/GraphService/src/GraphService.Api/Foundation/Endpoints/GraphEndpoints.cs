@@ -70,6 +70,16 @@ public static class GraphEndpoints
             HttpContext http,
             CancellationToken ct) =>
         {
+            // 🔴 **hops の検証は認可より前に置く。順序を入れ替えてはならない。**
+            //
+            // 入れ替えると存在秘匿が壊れる —— 認可を先にすると、権限外・不存在の文書は 404、
+            // 可視の文書だけが 400 を返すようになり、**hops=4 を投げるだけで文書の存在が判る**。
+            // hops の妥当性は文書に依存しないので、先に弾けば何も漏れない。
+            //
+            // ⚠ CodeQL の `cs/user-controlled-bypass` がここを high で指摘する（利用者入力が
+            // 条件を制御しているため）。**バイパスではない** —— この分岐は要求を*拒否*するだけで、
+            // 通過した場合の認可（スコープ解決・Authorize）は無条件に実行される。
+            // 指摘に従って順序を変えると、上記のとおり実際の情報漏れを作ることになる。
             var requested = hops ?? GraphTraversal.DefaultHops;
             if (requested < 1 || requested > GraphTraversal.MaxHops)
                 return Results.BadRequest(new
