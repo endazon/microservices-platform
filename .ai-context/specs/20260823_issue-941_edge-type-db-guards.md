@@ -1,13 +1,13 @@
 ---
 title: 作業仕様書 — 辺の型辞書の DB 層の防壁が機能したことを確認する（#941）
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-17
   - SC-09
   - ADR-0033
   - IADR-0242
-  - IADR-0261
+  - IADR-0260
 author: claude
 created: 2026-08-23
 updated: 2026-08-23
@@ -150,7 +150,7 @@ $ grep -rn "ux_edges\|ux_edge_types_name\|DeleteBehavior.Restrict\|23503\|23505"
   `docs/tests/FR-17_knowledge-graph.md` の T-39 / T-40 の状態更新は**別担当のファイル領域と交差する
   ため本 PR では触らない**（残件へ記載）。
 
-## 設計判断（→ IADR-0261）
+## 設計判断（→ IADR-0260）
 
 1. **スキーマは `EnsureCreatedAsync` ではなくマイグレーションから作る。** 既存の
    `TagDictionaryUniquenessTests` は `EnsureCreatedAsync` を呼ぶが、それではモデルから直接
@@ -182,4 +182,35 @@ $ grep -rn "ux_edges\|ux_edge_types_name\|DeleteBehavior.Restrict\|23503\|23505"
   `integration.yml`（develop への push ＋ 日次 ＋ 手動）が回収する。IADR-0232）。
 - 🔴 **`[DockerFact]` 相当（`DockerRequired.SkipUnlessAvailable()`）は Docker が無いと skip する。
   「緑だった」は「走った」の証拠にならない。** 実走の確認は `dotnet test` の生の出力で
-  skip 件数と `Passed` を読む（手順は IADR-0261）。
+  skip 件数と `Passed` を読む（手順は IADR-0260）。
+
+## 検証の実測（本 PR 時点・2026-08-23）
+
+```console
+$ dotnet build knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj
+Build succeeded.  2 Warning(s)（既存の CS0618。ObjectStorageRoundTripTests の MinioBuilder）  0 Error(s)
+
+$ dotnet test knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj \
+    --no-build --filter "FullyQualifiedName~Graph"
+  Skipped ...EdgeTypeDbGuardTests.参照中の辺の型は削除がDBのRESTRICTで拒まれる
+  Skipped ...EdgeTypeDbGuardTests.同名の辺の型は一意索引で2件目が拒まれる
+  Skipped ...EdgeTypeDbGuardTests.同一の関係を表す辺は一意索引で2行目が拒まれる
+  Skipped ...EdgeTypeDbGuardTests.同名を同時に登録しても1件だけ成功し500にならない
+  Skipped ...EdgeTypeDbGuardTests.RESTRICTに弾かれた削除は409になる
+  Skipped ...EdgeTypeDbGuardTests.マイグレーションが出力したスキーマがカタログと一致する
+Skipped! - Failed: 0, Passed: 0, Skipped: 6, Total: 6
+
+$ dotnet test knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj --no-build
+Passed! - Failed: 0, Passed: 31, Skipped: 40, Total: 71
+  （本 PR の追加分 6 件を差し引くと Total 65 / Skipped 34。これは実測ではなく引き算である）
+
+$ dotnet format knowledge/backend/backend.slnx --verify-no-changes   → exit 0
+$ node scripts/check-test-traceability.js                            → exit 0
+$ node scripts/check-unit-dependencies.js                            → OK（csproj 35 / .cs 531・違反 0）
+
+$ docker info   → exit 1（この環境に Docker daemon は無い）
+```
+
+🔴 **6 件はすべて skip であり、1 件も実行されていない。**「緑だった」は「走った」の証拠にならない
+（issue #941 本文の警告そのもの）。**実走は `integration.yml`（develop への push ＋ 日次）で確認する。**
+確認の見方は IADR-0260「実走の確認手順」を参照。
