@@ -1983,6 +1983,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/EmbedApiResponse"
 
+  /bff/graph/edge-types:
+    get:
+      # NFR-09: 認証のみ・ロール不問。
+      # 🔴 **後段は /graph/edge-types/catalog（認証のみ・使用件数なし）であって、
+      # /graph/edge-types（admin / operator 限定・使用件数つき）ではない。**
+      # 後者へ向けると一般利用者が 403 になり、かつ ABAC で絞られていない集計値が漏れる。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-17, SC-18: 辺の型カタログ（描画用）"
+      description: |
+        FR-17, SC-18, ADR-0033, ADR-0039: 辺の型の識別子・名前・層・対称性を返す。
+
+        グラフ読み取りの応答が返すのは `edgeTypeId` だけなので、**辺の描き分けと型フィルタには
+        このカタログが要る**（表示名は辞書側で解決する。改名に追随させるため。ADR-0033 決定 9）。
+
+        **使用件数は含まない。** 件数は全辺を数えており ABAC で絞られていないため、
+        一般利用者へ返すと権限外の辺を含む総量が漏れる。件数が要る管理用途（SC-09 / SC-10）は
+        admin / operator 限定の別口が担う。
+      operationId: bff-graph-edge-types
+      responses:
+        "200":
+          description: 辺の型カタログ
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EdgeTypeCatalogItem" }
+        "403": { description: 後段が拒否した（そのまま透過する） }
+
   /bff/graph/{documentId}:
     parameters:
       - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -2150,6 +2179,18 @@ components:
         targetDocumentId: { type: string, format: uuid }
         edgeTypeId: { type: string, format: uuid }
         provenance: { type: string, enum: [auto, user, ai-approved] }
+
+    EdgeTypeCatalogItem:
+      type: object
+      description: |
+        FR-17, SC-18: 辺の型（描画用）。**使用件数を持たない** —— 意図した除外である
+        （件数は ABAC で絞られておらず、一般利用者へ返すと総量が漏れる）。
+      required: [id, name, layer, isSymmetric]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: "表示名。改名されても id は変わらない" }
+        layer: { type: string, description: "型の層（core / domain / user 等）" }
+        isSymmetric: { type: boolean, description: "対称な関係か（向きを持たないか）" }
 
     GraphView:
       type: object

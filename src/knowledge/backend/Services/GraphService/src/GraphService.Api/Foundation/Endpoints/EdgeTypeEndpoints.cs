@@ -31,6 +31,19 @@ public static class EdgeTypeEndpoints
             Results.Ok(await LoadWithUsageAsync(db, ct)))
             .WithName("ListEdgeTypes").Produces<List<EdgeTypeDto>>();
 
+        // FR-17, SC-18 (#962): **描画用カタログ。認証のみでロールを問わない。**
+        //
+        // 🔴 **上の一覧を一般利用者へ開けてはならない。** `UsageCount` は全辺を数えており
+        // ABAC で絞られていない。ホップごと ABAC（IADR-0242）が個々のノード・辺を隠しているのに、
+        // **集計値が総量を漏らす**。だから件数を含まない別の口を置く。
+        //
+        // 🔴 **ロール要求を足さないこと。** SC-18 は一般利用者の画面であり、辺の型名が引けないと
+        // 辺の描き分けも型フィルタも描けない（グラフ応答が返すのは `EdgeTypeId` だけである）。
+        app.MapGet("/graph/edge-types/catalog", async (GraphDbContext db, CancellationToken ct) =>
+            Results.Ok(await LoadCatalogAsync(db, ct)))
+            .WithTags("EdgeTypes").RequireAuthorization()
+            .WithName("ListEdgeTypeCatalog").Produces<List<EdgeTypeCatalogItemDto>>();
+
         // FR-17, SC-09: 追加。**同名は 409**（正規化後の名前で比較する）。
         write.MapPost("/", async (CreateEdgeTypeRequest req, GraphDbContext db, CancellationToken ct) =>
         {
@@ -148,6 +161,15 @@ public static class EdgeTypeEndpoints
     // **外部キーの列を数えるだけ**（`ix_edges_type` が効く）。一覧・改名・削除がこの 1 つを共有する。
     private static async Task<int> UsageOfAsync(GraphDbContext db, Guid typeId, CancellationToken ct)
         => await db.Edges.CountAsync(e => e.EdgeTypeId == typeId, ct);
+
+    // FR-17, SC-18 (#962): 描画用カタログ。**辺を一切参照しない** ——
+    // 参照しないことが、集計値を漏らさないことの構造的な保証である。
+    private static async Task<List<EdgeTypeCatalogItemDto>> LoadCatalogAsync(
+        GraphDbContext db, CancellationToken ct)
+        => await db.EdgeTypes.AsNoTracking()
+            .OrderBy(t => t.Name)
+            .Select(t => new EdgeTypeCatalogItemDto(t.Id, t.Name, t.Layer, t.IsSymmetric))
+            .ToListAsync(ct);
 
     private static async Task<List<EdgeTypeDto>> LoadWithUsageAsync(GraphDbContext db, CancellationToken ct)
     {

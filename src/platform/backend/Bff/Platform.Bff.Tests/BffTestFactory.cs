@@ -71,6 +71,9 @@ public class BffTestFactory : WebApplicationFactory<Program>
     public string? LastGraphPath { get; private set; }
     public GraphViewDto StubGraphView { get; set; } = new([], [], false);
 
+    // FR-17, #962: 辺の型カタログのスタブ応答。
+    public List<EdgeTypeCatalogItemDto> StubEdgeTypeCatalog { get; set; } = [];
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -701,17 +704,24 @@ public class BffTestFactory : WebApplicationFactory<Program>
                 ?? (request.Headers.TryGetValues("Authorization", out var v) ? string.Join(",", v) : null);
             owner.LastGraphForwardedAuthorization = auth;
 
-            // 🔴 資格情報が届かなければ、GraphService は anonymous として deny-closed へ倒れる。
-            // その結果は **404**（存在秘匿）であって 401 ではない。
+            var isCatalog = owner.LastGraphPath?.Contains("edge-types", StringComparison.Ordinal) == true;
+
+            // 🔴 **資格情報が届かないときの応答は口によって違う。実サービスに合わせる。**
+            //   グラフ読み取り: GraphAccessResolver が anonymous → Granted=false → **404**（存在秘匿）
+            //   カタログ      : `RequireAuthorization()` が弾く → **401**（隠すものが無いので秘匿しない）
+            // ここを一律にすると、片方の伝播が切れても気付けないテストになる。
             if (string.IsNullOrEmpty(auth))
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+                return Task.FromResult(new HttpResponseMessage(
+                    isCatalog ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound));
 
             if (owner.GraphStubStatusCode != HttpStatusCode.OK)
                 return Task.FromResult(new HttpResponseMessage(owner.GraphStubStatusCode));
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = JsonContent.Create(owner.StubGraphView)
+                Content = isCatalog
+                    ? JsonContent.Create(owner.StubEdgeTypeCatalog)
+                    : JsonContent.Create(owner.StubGraphView)
             });
         }
     }

@@ -13,9 +13,12 @@ import {
 } from '@faker-js/faker';
 
 import type {
+  EdgeTypeCatalogItem,
   GraphView
 } from '../bff.schemas';
 
+
+export const getBffGraphEdgeTypesResponseMock = (): EdgeTypeCatalogItem[] => (Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), name: faker.string.alpha({length: {min: 10, max: 20}}), layer: faker.string.alpha({length: {min: 10, max: 20}}), isSymmetric: faker.datatype.boolean()})))
 
 export const getBffGraphNodeResponseMock = (overrideResponse: Partial<Extract<GraphView, object>> = {}): GraphView => ({nodes: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({documentId: faker.string.uuid(), title: faker.string.alpha({length: {min: 10, max: 20}})})), edges: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => ({id: faker.string.uuid(), sourceDocumentId: faker.string.uuid(), targetDocumentId: faker.string.uuid(), edgeTypeId: faker.string.uuid(), provenance: faker.helpers.arrayElement(['auto','user','ai-approved'] as const)})), truncated: faker.datatype.boolean(), ...overrideResponse})
 
