@@ -1,5 +1,5 @@
 ---
-title: IADR-0245 封じ込め検査器の不可視領域は、費用を測ってから塞ぐか決める（走査の 2 件は塞ぎ、値レベルは塞がない）
+title: IADR-0246 封じ込め検査器の不可視領域は、費用を測ってから塞ぐか決める（走査の 2 件は塞ぎ、値レベルは塞がない）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -15,7 +15,7 @@ plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0027_messaging-wolverine.md
 ---
 
-# IADR-0245 封じ込め検査器の不可視領域と、その塞ぎ方の判断
+# IADR-0246 封じ込め検査器の不可視領域と、その塞ぎ方の判断
 
 ## 状況
 
