@@ -42,7 +42,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson(finishReason, "本文"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(expected);
     }
@@ -56,7 +56,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = Copilot(ChatCompletionJson(finishReason, "本文"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(expected);
     }
@@ -68,7 +68,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson("content_filter", "途中まで書きかけ"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"));
+        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
         CompletionStopReasons.IsRefusal(result.StopReason).Should().BeTrue();
         result.Text.Should().BeEmpty();
@@ -80,7 +80,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = Copilot(ChatCompletionJson("content_filter", "途中まで書きかけ"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"));
+        var result = await provider.CompleteAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken);
 
         CompletionStopReasons.IsRefusal(result.StopReason).Should().BeTrue();
         result.Text.Should().BeEmpty();
@@ -92,7 +92,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson("length", "途中まで"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"));
+        var result = await provider.CompleteAsync(new CompletionRequest("長文の要約"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be(CompletionStopReasons.MaxTokens);
         result.Text.Should().Be("途中まで");
@@ -104,7 +104,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson("guardrail_triggered", "本文"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().Be("guardrail_triggered");
         result.Text.Should().Be("本文");   // 未知理由では本文を破棄しない（refusal 相当のみ破棄）
@@ -116,7 +116,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson("guardrail_triggered", "本文"), out var logs);
 
-        await provider.CompleteAsync(new CompletionRequest("要約して"));
+        await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         logs.Entries.Should().ContainSingle(e => e.Level == LogLevel.Warning)
             .Which.Message.Should().Contain("guardrail_triggered");
@@ -128,7 +128,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson(null, "本文"), out var logs);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.StopReason.Should().BeNull();
         result.Text.Should().Be("本文");
@@ -145,7 +145,7 @@ public class OpenAiProviderStopReasonTests
         ILlmProvider provider = SelfHosted(ChatCompletionJson("content_filter", "書きかけ"), out _);
 
         var chunks = new List<CompletionChunk>();
-        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("危険な要求")))
+        await foreach (var chunk in provider.StreamAsync(new CompletionRequest("危険な要求"), TestContext.Current.CancellationToken))
             chunks.Add(chunk);
 
         var done = chunks.Should().ContainSingle(c => c.Done).Subject;
@@ -158,7 +158,7 @@ public class OpenAiProviderStopReasonTests
     {
         var provider = SelfHosted(ChatCompletionJson("stop", "回答本文"), out _);
 
-        var result = await provider.CompleteAsync(new CompletionRequest("要約して"));
+        var result = await provider.CompleteAsync(new CompletionRequest("要約して"), TestContext.Current.CancellationToken);
 
         result.Text.Should().Be("回答本文");
         result.InputTokens.Should().Be(11);

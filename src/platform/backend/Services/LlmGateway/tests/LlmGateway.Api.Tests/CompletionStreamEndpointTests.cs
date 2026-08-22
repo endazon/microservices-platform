@@ -19,11 +19,11 @@ public class CompletionStreamEndpointTests(TestWebApplicationFactory factory)
     public async Task PostCompleteStream_Allowed_StreamsDeltaAndDone()
     {
         var req = new { Prompt = "要約して", MaxTokens = 100, Confidentiality = "public", Purpose = "rag-answer" };
-        var resp = await factory.CreateClient().PostAsJsonAsync("/complete/stream", req);
+        var resp = await factory.CreateClient().PostAsJsonAsync("/complete/stream", req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         resp.Content.Headers.ContentType!.MediaType.Should().Be("text/event-stream");
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         body.Should().Contain("テスト回答");        // 本文デルタ
         body.Should().Contain("\"done\":true");       // 最終イベント
@@ -53,10 +53,10 @@ public class CompletionStreamEndpointTests(TestWebApplicationFactory factory)
                 }))).CreateClient();
 
         var req = new { Prompt = "機密文書の要約", MaxTokens = 100, Confidentiality = "confidential", Purpose = "analysis" };
-        var resp = await client.PostAsJsonAsync("/complete/stream", req);
+        var resp = await client.PostAsJsonAsync("/complete/stream", req, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadAsStringAsync();
+        var body = await resp.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         body.Should().Contain("\"sent\":false");
         body.Should().Contain("拒否");

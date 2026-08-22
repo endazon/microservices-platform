@@ -13,7 +13,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task GetHealthLive_Returns200()
     {
-        var response = await factory.CreateClient().GetAsync("/health/live");
+        var response = await factory.CreateClient().GetAsync("/health/live", TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -22,7 +22,7 @@ public class HealthEndpointTests(TestWebApplicationFactory factory)
     public async Task PostComplete_Returns200()
     {
         var req = new { Prompt = "テスト", MaxTokens = 100 };
-        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req);
+        var response = await factory.CreateClient().PostAsJsonAsync("/complete", req, TestContext.Current.CancellationToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 }

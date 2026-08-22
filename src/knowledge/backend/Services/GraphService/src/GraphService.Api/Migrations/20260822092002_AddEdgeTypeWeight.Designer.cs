@@ -3,6 +3,7 @@ using System;
 using GraphService.Api.Foundation.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GraphService.Api.Migrations
 {
     [DbContext(typeof(GraphDbContext))]
-    partial class GraphDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260822092002_AddEdgeTypeWeight")]
+    partial class AddEdgeTypeWeight
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -182,9 +185,7 @@ namespace GraphService.Api.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<double>("Weight")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("double precision")
-                        .HasDefaultValue(0.5);
+                        .HasColumnType("double precision");
 
                     b.HasKey("Id");
 
