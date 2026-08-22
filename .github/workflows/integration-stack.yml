@@ -101,8 +101,10 @@ jobs:
           LOCALEDGE=1 K8S_LOCAL_RUNTIME=k3d bash scripts/k8s-local-up.sh "${CLUSTER}"
 
       # 🔴 up が EXIT=0 で戻ってもアプリ pod は起きていない。ここで待つ。
-      # **待つだけで、判定はしない** —— `kubectl wait --all` は対象が 0 件のとき成功してしまうため、
-      # 「待てたこと」を成功の根拠にはできない。判定は次のステップの検査器が行う。
+      # **待つだけで、判定はしない。** 待てたことを成功の根拠にしない —— このステップは検査ではなく、
+      # 弱められても消されても誰も気づかないからである。判定は次のゲートへ集約する。
+      # （当初は「wait --all は 0 件のとき成功する」を根拠にしていたが、実測では
+      #   `error: no matching resources found` で exit 1 になる。根拠を書き直した。）
       - name: Wait for pods to become Ready (待つだけ。判定はしない)
         run: |
           set -euo pipefail

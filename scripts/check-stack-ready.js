@@ -19,8 +19,14 @@
  * - **G1 readiness**: 対象 namespace の Deployment がすべて `availableReplicas >= 1` で、
  *   pod が Ready であること。**待つのは呼び出し側（kubectl wait）で、ここは判定だけを行う。**
  * - **G2 0 件で緑にしない**: 走査した Deployment が 0 件なら失敗にする。
- *   `kubectl wait --for=condition=Ready pods --all` は**対象が 0 件のとき成功する** ——
- *   数えずに待つと「何も無いから緑」が起きる（「沈黙の exit 0」#797 と同型）。
+ *   🔴 **理由は「`kubectl wait --all` が 0 件のとき成功するから」ではない。** 当初そう書いていたが
+ *   **実測は逆で、`error: no matching resources found` で exit 1 になる**（run 32556579646 の
+ *   empty-cluster: `WAIT_EXIT_platform-infra=1`）。**誤った根拠だったので書き直した。**
+ *   本当の理由は **ゲートが単独で完結する判定でなければならない**ことである。G2 が無いと
+ *   `evaluateDeployments([])` は失敗を 1 件も返さないため、**アプリのサービスが 1 つも
+ *   デプロイされていない状態でゲートが緑になる**（実測: 同 run の control-pinned では、
+ *   infra とエッジが健全なまま `microservices-platform` が空であり、**それを捕まえたのは G2 だけ**だった）。
+ *   待つステップは検査ではなく、弱められても消されても誰も気づかない（「沈黙の exit 0」#797 と同型）。
  * - **G3 ツール不在は失敗**: `kubectl` が無ければ失敗。**抜け道の環境変数を置かない。**
  *   （`check-deploy-manifests.js` は `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS` を持つが、
  *   あちらは「ローカルで部分的に走らせたい」需要がある静的検査である。本検査は
@@ -139,7 +145,7 @@ function evaluateDeployments(ns, items) {
   if (!Array.isArray(items) || items.length === 0) {
     failures.push(
       `[G2] namespace ${ns} の Deployment が 0 件だった。走査が壊れているか、スタックが起きていない。` +
-        `**0 件を緑にしない**（kubectl wait --all は対象 0 件のとき成功してしまう）。`,
+        `**0 件を緑にしない**（ゲートは単独で完結する判定でなければならない）。`,
     );
     return { failures, total: 0, ready: 0 };
   }
@@ -346,7 +352,7 @@ function selfTest() {
     console.log(`  ok  ${name}`);
   };
 
-  ok('G2: Deployment 0 件は失敗になる（kubectl wait --all が自明に成功する穴を塞ぐ）', () => {
+  ok('G2: Deployment 0 件は失敗になる（ゲート単独で「何もデプロイされていない」を捕まえる）', () => {
     const r = evaluateDeployments('ns', []);
     assert.strictEqual(r.total, 0);
     assert.ok(r.failures.some((f) => f.includes('[G2]')), '0 件が失敗になっていない');

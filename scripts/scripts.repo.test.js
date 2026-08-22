@@ -7369,8 +7369,11 @@ module.exports = ({ ok, assert }) => {
   {
     const REPO_IS = path.join(__dirname, '..');
     const WF_PATH = '.github/workflows/integration-stack.yml';
+    // 🔴 改行を LF へ正規化してから見る。**Windows の作業ツリーでは CRLF になり得る**（git は
+    // コミット時に LF へ正規化するので差分には出ないが、ファイルをそのまま読む本試験は落ちる）。
+    // 実際に踏んだ: `\n` 直書きの一致が CRLF で外れ、「門が up より前に在る」と誤報した。
     const wf = fs.existsSync(path.join(REPO_IS, WF_PATH))
-      ? fs.readFileSync(path.join(REPO_IS, WF_PATH), 'utf8')
+      ? fs.readFileSync(path.join(REPO_IS, WF_PATH), 'utf8').replace(/\r\n/g, '\n')
       : null;
 
     ok('NFR / #783 後半: integration-stack.yml が在る', () => {

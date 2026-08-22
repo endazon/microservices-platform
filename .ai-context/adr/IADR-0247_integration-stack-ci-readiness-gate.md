@@ -137,7 +137,10 @@ error calling eq: incompatible types for comparison
 4. 🔴 **`k8s-local-up.sh` の EXIT=0 を成功と見なさない。** `scripts/check-stack-ready.js` を門として置き、
    **6 つの門をすべて fail-closed** で判定する。
    - **G1** Deployment の `availableReplicas` と Pod の Ready
-   - **G2** 走査 0 件を緑にしない（`kubectl wait --all` は**対象が 0 件のとき成功する**）
+   - **G2** 走査 0 件を緑にしない。🔴 **根拠は「`kubectl wait --all` が 0 件で成功するから」ではない**
+     —— 実測は逆（`error: no matching resources found` / exit 1）。**ゲートが単独で完結する判定で
+     なければならない**からであり、実際 probe の control-pinned では「アプリのサービスが 1 つも
+     デプロイされていない」を**捕まえたのは G2 だけ**だった
    - **G3** `kubectl` / `curl` 不在は失敗。**抜け道の環境変数を置かない**
    - **G4** `keycloak-edge` Ingress の存在と、discovery の `issuer` が `KC_HOSTNAME_URL` ＋ `/realms/<realm>` と
      **文字列として完全一致**すること（[IADR-0243] の受け入れ基準を CI で固定する）
