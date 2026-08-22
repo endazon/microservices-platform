@@ -118,6 +118,19 @@ export interface EdgeTypeCatalogItem {
 export interface GraphView {
   nodes: GraphNodeItem[];
   edges: GraphEdgeItem[];
+  /**
+     * FR-17, ADR-0049 決定 1・3: **許可済み**ノードの総数。表示上限（200）を超えて数えた値。
+     * 🔴 **権限外は 1 件も含まない** —— 数えてよいのは ABAC 判定を通過した品目だけである。
+     */
+  totalNodes?: number;
+  /** 許可済みの辺の総数（同上） */
+  totalEdges?: number;
+  /**
+     * ADR-0049 決定 3: 算出用の上限（ノード 2,000 / 辺 5,000）に達したか。
+     * **立っていれば総数は「以上」の意味である**（例:「2,000 件以上」）。
+     * ⚠️ このとき `updated` / `degree` の並びは**厳密な上位 200 件ではない**（同 決定 4）。
+     */
+  totalIsLowerBound?: boolean;
   truncated: boolean;
 }
 
@@ -1340,5 +1353,19 @@ export type BffGraphNeighborsParams = {
  * @maximum 3
  */
 hops?: number;
+/**
+ * 間引きの基準（ADR-0049 決定 4）。表示上限（ノード 200）を超えた候補集合から何を残すか。
+ * **未知の値・未指定は既定（distance）へ縮退する** —— 例外にしない。
+ */
+by?: BffGraphNeighborsBy;
 };
+
+export type BffGraphNeighborsBy = typeof BffGraphNeighborsBy[keyof typeof BffGraphNeighborsBy];
+
+
+export const BffGraphNeighborsBy = {
+  distance: 'distance',
+  updated: 'updated',
+  degree: 'degree',
+} as const;
 

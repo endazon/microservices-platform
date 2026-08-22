@@ -2101,6 +2101,13 @@ paths:
           required: false
           description: "探索の深さ。既定 2 / 上限 3（ADR-0034 決定 3）。上限超過は 400 で拒否し、黙って切り詰めない"
           schema: { type: integer, minimum: 1, maximum: 3 }
+        - name: by
+          in: query
+          required: false
+          description: |
+            間引きの基準（ADR-0049 決定 4）。表示上限（ノード 200）を超えた候補集合から何を残すか。
+            **未知の値・未指定は既定（distance）へ縮退する** —— 例外にしない。
+          schema: { type: string, enum: [distance, updated, degree] }
       # NFR-09: 認証のみ・ロール不問（上と同じ。可視性は ABAC が決める）。
       x-roles: []
       tags: [Graph]
@@ -2259,6 +2266,20 @@ components:
         edges:
           type: array
           items: { $ref: "#/components/schemas/GraphEdgeItem" }
+        totalNodes:
+          type: integer
+          description: |
+            FR-17, ADR-0049 決定 1・3: **許可済み**ノードの総数。表示上限（200）を超えて数えた値。
+            🔴 **権限外は 1 件も含まない** —— 数えてよいのは ABAC 判定を通過した品目だけである。
+        totalEdges:
+          type: integer
+          description: "許可済みの辺の総数（同上）"
+        totalIsLowerBound:
+          type: boolean
+          description: |
+            ADR-0049 決定 3: 算出用の上限（ノード 2,000 / 辺 5,000）に達したか。
+            **立っていれば総数は「以上」の意味である**（例:「2,000 件以上」）。
+            ⚠️ このとき `updated` / `degree` の並びは**厳密な上位 200 件ではない**（同 決定 4）。
         truncated: { type: boolean }
 
     TagDictionaryResponse:
