@@ -35,15 +35,15 @@ public class TestDbIsolationTests
         using var second = new TestWebApplicationFactory();
 
         var name = $"isolation-probe-{Guid.NewGuid()}";
-        var created = await first.CreateClient().PostAsJsonAsync("/authz/policies", PolicyBody(name));
+        var created = await first.CreateClient().PostAsJsonAsync("/authz/policies", PolicyBody(name), TestContext.Current.CancellationToken);
         created.EnsureSuccessStatusCode();
 
         // 書いた側からは見える。
-        var fromFirst = await first.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies");
+        var fromFirst = await first.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies", TestContext.Current.CancellationToken);
         fromFirst.Should().Contain(p => p.Name == name);
 
         // ★ もう一方からは見えない。**ここが #660 の核心である。**
-        var fromSecond = await second.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies");
+        var fromSecond = await second.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies", TestContext.Current.CancellationToken);
         fromSecond.Should().NotContain(p => p.Name == name,
             "テストクラスごとに DB が分離されていないと、他クラスの副作用を数えてしまう（#660）");
     }
@@ -56,11 +56,11 @@ public class TestDbIsolationTests
         using var factory = new TestWebApplicationFactory();
 
         var name = $"same-instance-{Guid.NewGuid()}";
-        (await factory.CreateClient().PostAsJsonAsync("/authz/policies", PolicyBody(name)))
+        (await factory.CreateClient().PostAsJsonAsync("/authz/policies", PolicyBody(name), TestContext.Current.CancellationToken))
             .EnsureSuccessStatusCode();
 
         // **別の HttpClient** から読んでも同じストアを見る。
-        var policies = await factory.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies");
+        var policies = await factory.CreateClient().GetFromJsonAsync<List<PolicyDto>>("/authz/policies", TestContext.Current.CancellationToken);
         policies.Should().Contain(p => p.Name == name);
     }
 }
