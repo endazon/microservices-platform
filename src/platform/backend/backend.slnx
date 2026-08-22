@@ -18,13 +18,6 @@
   <Folder Name="/Services/NotificationService/tests/">
     <Project Path="Services/NotificationService/tests/NotificationService.Api.Tests/NotificationService.Api.Tests.csproj" />
   </Folder>
-  <Folder Name="/Services/McpServer/" />
-  <Folder Name="/Services/McpServer/src/">
-    <Project Path="Services/McpServer/src/McpServer.Api/McpServer.Api.csproj" />
-  </Folder>
-  <Folder Name="/Services/McpServer/tests/">
-    <Project Path="Services/McpServer/tests/McpServer.Api.Tests/McpServer.Api.Tests.csproj" />
-  </Folder>
   <Folder Name="/Services/LlmGateway/" />
   <Folder Name="/Services/LlmGateway/src/">
     <Project Path="Services/LlmGateway/src/LlmGateway.Api/LlmGateway.Api.csproj" />
