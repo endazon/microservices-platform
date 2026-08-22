@@ -43,7 +43,7 @@ public class InMemoryVectorStore : IVectorStore
         var scope = documentIds.ToHashSet();
 
         var results = _store
-            .Where(c => MatchesFilters(c, filters))
+            .Where(c => scope.Contains(c.DocumentId) && MatchesFilters(c, filters))
             .Select(c => (Chunk: c, Score: CosineSimilarity(queryVector, c.Vector)))
             .OrderByDescending(x => x.Score)
             .Take(topK)
