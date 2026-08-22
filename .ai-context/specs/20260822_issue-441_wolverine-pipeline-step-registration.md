@@ -18,7 +18,7 @@ plan_refs:
 related_adrs:
   - IADR-0233
   - IADR-0234
-  - IADR-0237
+  - IADR-0239
 issue: "#441"
 ---
 

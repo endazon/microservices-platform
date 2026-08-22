@@ -74,10 +74,12 @@
          FluentAssertions も消化済みのため削除した（#455 A-3。表明は AwesomeAssertions へ移した。
          v8 の商用ライセンス化が理由で、AwesomeAssertions は v7 系のフォークである）。
          残る ratchet 対象は MassTransit だけである（Wolverine 移行 = 別作業の射程）。
-         WolverineFx.RuntimeCompilation と CSharpFunctionalExtensions は**引き続き**未参照エントリ
-         である（IADR-0217 決定 4。由来と参照を足す時期は各行のコメントを参照）。前者は移行
-         チェックリスト手順 2 の射程であり、**ホストを起こす各サービス**が足す —— 共通ヘルパは
-         ホストを起こさないため参照しない。
+         ［2026-08-22 更新 / #455 W3］従前ここは WolverineFx.RuntimeCompilation を「**引き続き**
+         未参照エントリである」と書いていた。**参照された**（ADR-0027 手順 8 の実ブローカ結合
+         テストの器が Wolverine ホストを実際に起こすため。Knowledge.IntegrationTests）。
+         「ホストを起こす側が足す」という原則自体は変わっていない —— 器はホストを起こす側である。
+         CSharpFunctionalExtensions は依然として未参照であり、CPM の未参照エントリは無害である
+         （IADR-0217 決定 4。由来と参照を足す時期は各行のコメントを参照）。
          ============================================================================ -->
     <!-- Application 層: ローカル/リモートハンドラ・Outbox（ADR-0027）・検証・マッピング・DI -->
     <PackageVersion Include="WolverineFx" Version="6.24.4" />
@@ -88,7 +90,9 @@
          本パッケージが無いと既定の TypeLoadMode.Dynamic でホストが起動しない（計画 ADR-0027 §決定 の
          2026-08-04 追記 / 12_backend-application-stack の移行チェックリスト手順 2）。
          版は上の WolverineFx 系 3 つと必ず同値に保つ。PackageReference は各サービスの再実装
-         issue（#438〜#451 / #441）が移行と同時に足す。 -->
+         issue（#438〜#451 / #441）が移行と同時に足す。
+         ［2026-08-22 追記 / #455 W3］最初の参照元は実ブローカ結合テストの器
+         （Knowledge.IntegrationTests）である。サービス側の追加はこれから。 -->
     <PackageVersion Include="WolverineFx.RuntimeCompilation" Version="6.24.4" />
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="Riok.Mapperly" Version="4.3.1" />

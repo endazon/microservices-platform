@@ -1,5 +1,5 @@
 ---
-title: IADR-0237 Wolverine 版の段登録は入力型を IPipelineStep<TIn> から取り、導出できないこと自体を起動失敗にする（MassTransit 経路の「素通り」を継承しない）
+title: IADR-0239 Wolverine 版の段登録は入力型を IPipelineStep<TIn> から取り、導出できないこと自体を起動失敗にする（MassTransit 経路の「素通り」を継承しない）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -18,7 +18,7 @@ plan_refs:
   - planning:projects/microservices-platform/06_technical/10_composability-design.md (§2 Subscribe / Process / Publish・§5 安全弁)
 ---
 
-# IADR-0237 Wolverine 版の段登録経路の設計
+# IADR-0239 Wolverine 版の段登録経路の設計
 
 ## 状況
 
