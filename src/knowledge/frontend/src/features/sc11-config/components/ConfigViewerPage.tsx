@@ -17,6 +17,9 @@ import {
 import { ApiError } from '@foundation/api/ApiError';
 import { i18n } from '@foundation/i18n';
 import { toMessages } from '@foundation/ui/apiErrors';
+// ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同名のローカル実装を持っていたが、
+// **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
+import { formatDateTime } from '@foundation/ui/formatDateTime';
 import { driftKindLabel, driftSeverityView, driftTargets, hadDriftLabel } from '../types/driftView';
 import {
   useConfigDrift,
@@ -54,13 +57,6 @@ const DRIFT_SECTION_ID = 'sc11-drift-section';
 /** MessageDescriptor を描画時に解決する（モジュール初期化時に確定させるとロケール切替に追随しない）。 */
 function labelOf(label: MessageDescriptor | string): string {
   return typeof label === 'string' ? label : i18n._(label);
-}
-
-/** ISO 8601（DateTimeOffset 由来）をロケール表記に整形する。解釈できない値はそのまま表示する。 */
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '—';
-  const t = Date.parse(value);
-  return Number.isNaN(t) ? value : new Date(t).toLocaleString();
 }
 
 /** コミット ID は先頭 7 桁で示す（完全な値は title 属性に残す）。 */

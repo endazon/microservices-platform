@@ -190,6 +190,34 @@ describe('AnalysisDashboardPage (SC-08)', () => {
     expect(callsTo('/analysis/analyze')).toHaveLength(0);
   });
 
+  // ADR-0031 §採用技術一覧（フォーム = RHF + Zod）/ #788:
+  // 空白だけの指示も送らない（`useState` の手書き判定から Zod スキーマへ移しても同じ）。
+  it('does not submit a whitespace-only instruction', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    await user.type(screen.getByLabelText(/分析内容（指示）/), '   ');
+    await user.tab();
+
+    expect(await screen.findByText('入力してください。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '分析実行' })).toBeDisabled();
+    expect(callsTo('/analysis/analyze')).toHaveLength(0);
+  });
+
+  // #788: 検証エラーは**文言そのもの**で伝える（INDEX 決定 21「色だけで意味を持たせない」）。
+  // 触れる前は出さない（打鍵のたびに赤くしない）。
+  it('shows the validation message only after the field is touched', async () => {
+    const user = userEvent.setup();
+    await renderPage();
+    expect(screen.queryByText('入力してください。')).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(/分析内容（指示）/));
+    await user.tab();
+    const message = await screen.findByText('入力してください。');
+    expect(message).toBeInTheDocument();
+    // `aria-invalid` も付く（読み上げでも不正だと分かる）。
+    expect(screen.getByLabelText(/分析内容（指示）/)).toHaveAttribute('aria-invalid', 'true');
+  });
+
   // 05_screens §SC-08 の注記（データ越境ポリシーと存在秘匿）。
   it('states the egress policy and the existence-hiding rule', async () => {
     await renderPage();

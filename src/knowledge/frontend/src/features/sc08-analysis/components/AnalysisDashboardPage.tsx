@@ -1,5 +1,11 @@
 import { useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
+// ADR-0031 §採用技術一覧「フォーム = React Hook Form / Zod / @hookform/resolvers」/ #788:
+// 3 つの useState ＋ 手書きの送信可否判定を置き換える。検証規則の実体は
+// `types/analysisFormSchema.ts`（Zod）が持ち、**文言はスキーマではなくここが持つ**
+// （スキーマに日本語を書くと Lingui の抽出から外れる）。
+import { Controller, useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Link } from '@tanstack/react-router';
 import {
   Alert,
@@ -19,14 +25,15 @@ import { AnalysisTaskRequestTaskType } from '@foundation/api/generated/bff.schem
 import type { AiAnswerDto, CitationDto } from '@foundation/api/generated/bff.schemas';
 import {
   buildAnalysisRequest,
-  isSubmittableInstruction,
   MAX_INSTRUCTION_LENGTH,
   MAX_RANGE_QUERY_LENGTH,
   TASK_TYPES,
   taskTypeLabel,
 } from '../types/analysisRange';
-import type { TaskType } from '../types/analysisRange';
+import { analysisFormSchema } from '../types/analysisFormSchema';
+import type { AnalysisFormError, AnalysisFormValues } from '../types/analysisFormSchema';
 import { useAnalysisTask } from '../api/useAnalysisTask';
+import { FormDevTools } from './FormDevTools';
 import { EMPTY_SELECTION, ScopeFilter } from '../../scope-filter';
 import type { ScopeSelection } from '../../scope-filter';
 
@@ -40,16 +47,46 @@ import type { ScopeSelection } from '../../scope-filter';
 // チップは SC-01 と同じ部品（`features/scope-filter`）を使う——同じ操作が画面ごとに違うと、
 // 利用者は操作を覚え直すことになる。
 
+/** 検証エラーの符号を表示文言へ写す。**符号ごとに 1 文だけ**を持つ（画面ごとに言い回しを割らない）。 */
+function useErrorText() {
+  const { t } = useLingui();
+  return (code: string | undefined, max: number): string | null => {
+    if (!code) return null;
+    const known = code as AnalysisFormError;
+    if (known === 'required') return t`入力してください。`;
+    if (known === 'tooLong') return t`${max} 文字以内で入力してください。`;
+    // 未知の符号は握り潰さない（スキーマを増やしたのに文言を足し忘れたことが見える）。
+    return code;
+  };
+}
+
 export function AnalysisDashboardPage() {
   const { t } = useLingui();
-  const [instruction, setInstruction] = useState('');
-  const [taskType, setTaskType] = useState<TaskType>(AnalysisTaskRequestTaskType.Analyze);
-  const [rangeQuery, setRangeQuery] = useState('');
+  const errorText = useErrorText();
   // FR-07, SC-08, #539: 分析対象のチップ（タグ・部門・プロジェクト）。
+  // **チップは RHF の管理下に置かない**——値は配列の集合であり、`register` の対象になる
+  // フォーム入力ではない（Controller で包んでも得るものが無い）。
   const [scope, setScope] = useState<ScopeSelection>(EMPTY_SELECTION);
   const { outcome, run } = useAnalysisTask();
 
-  const canSubmit = isSubmittableInstruction(instruction) && outcome.kind !== 'running';
+  const {
+    control,
+    register,
+    handleSubmit,
+    formState: { errors, isValid },
+  } = useForm<AnalysisFormValues>({
+    resolver: zodResolver(analysisFormSchema),
+    // 打鍵のたびに赤くしない。**1 度触れてから**（blur）検証し、以後は入力に追随させる。
+    mode: 'onTouched',
+    defaultValues: {
+      instruction: '',
+      taskType: AnalysisTaskRequestTaskType.Analyze,
+      rangeQuery: '',
+    },
+  });
+
+  const running = outcome.kind === 'running';
+  const canSubmit = isValid && !running;
 
   return (
     <section>
@@ -62,16 +99,15 @@ export function AnalysisDashboardPage() {
 
       {/* SC-08: 分析対象の指定（チップ）。**候補は権限内に限る**（#540 の口）。 */}
       <div className="mb-3">
-        <ScopeFilter selection={scope} onChange={setScope} disabled={outcome.kind === 'running'} />
+        <ScopeFilter selection={scope} onChange={setScope} disabled={running} />
       </div>
 
       <form
         className="grid gap-3 md:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!canSubmit) return;
-          run(buildAnalysisRequest(instruction, taskType, rangeQuery, scope));
-        }}
+        onSubmit={handleSubmit((values) => {
+          if (running) return;
+          run(buildAnalysisRequest(values.instruction, values.taskType, values.rangeQuery, scope));
+        })}
       >
         <Card>
           <CardHeader>
@@ -86,11 +122,12 @@ export function AnalysisDashboardPage() {
             </Label>
             <Input
               id="range-query"
-              value={rangeQuery}
               maxLength={MAX_RANGE_QUERY_LENGTH}
-              onChange={(e) => setRangeQuery(e.target.value)}
+              aria-invalid={errors.rangeQuery ? true : undefined}
               placeholder={t`省略時は分析内容を流用します`}
+              {...register('rangeQuery')}
             />
+            <FieldError text={errorText(errors.rangeQuery?.message, MAX_RANGE_QUERY_LENGTH)} />
           </CardContent>
         </Card>
 
@@ -108,28 +145,34 @@ export function AnalysisDashboardPage() {
               <Textarea
                 id="instruction"
                 rows={3}
-                value={instruction}
                 maxLength={MAX_INSTRUCTION_LENGTH}
-                onChange={(e) => setInstruction(e.target.value)}
+                aria-invalid={errors.instruction ? true : undefined}
                 placeholder={t`例: Q1の営業報告を部門別に比較し、共通する失注要因を抽出して`}
+                {...register('instruction')}
               />
+              <FieldError text={errorText(errors.instruction?.message, MAX_INSTRUCTION_LENGTH)} />
             </div>
             <div>
               {/* FR-07「分析・比較・抽出」。選択肢が無いと比較・抽出へ到達できない。 */}
               <Label htmlFor="task-type" requiredHint={t`（必須）`}>
                 <Trans>タスク種別</Trans>
               </Label>
-              <Select
-                id="task-type"
-                value={taskType}
-                onChange={(e) => setTaskType(e.target.value as TaskType)}
-              >
-                {TASK_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {i18n._(taskTypeLabel(type))}
-                  </option>
-                ))}
-              </Select>
+              {/* `Controller` で包むのは、`Select` が `@platform/ui` のプリミティブであり
+                  `register` の ref 転送に依存させたくないためである（プリミティブ側の
+                  実装詳細にフォームの動作を結び付けない）。 */}
+              <Controller
+                control={control}
+                name="taskType"
+                render={({ field }) => (
+                  <Select id="task-type" {...field}>
+                    {TASK_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {i18n._(taskTypeLabel(type))}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              />
             </div>
             <div>
               <Button type="submit" variant="primary" disabled={!canSubmit}>
@@ -139,6 +182,9 @@ export function AnalysisDashboardPage() {
           </CardContent>
         </Card>
       </form>
+
+      {/* 開発時のみ RHF DevTools を載せる（ADR-0031 の「RHF DevTools」。本番の初期ロードへは入れない）。 */}
+      <FormDevTools control={control} />
 
       {outcome.kind === 'running' && (
         <p role="status" className="mt-3 text-sm text-[--color-fg-muted]">
@@ -245,5 +291,15 @@ function CitationLink({ citation }: { citation: CitationDto }) {
     >
       {citation.documentTitle}
     </Link>
+  );
+}
+
+/** 項目の検証エラー。**色だけで意味を持たせない**（INDEX 決定 21）——文言そのものを出す。 */
+function FieldError({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <p role="alert" className="mt-1 text-xs text-[--color-danger]">
+      {text}
+    </p>
   );
 }

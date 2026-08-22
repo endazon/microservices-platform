@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { i18n } from '@foundation/i18n';
-import {
-  buildAnalysisRequest,
-  isSubmittableInstruction,
-  MAX_INSTRUCTION_LENGTH,
-  TASK_TYPES,
-  taskTypeLabel,
-} from './analysisRange';
+import { buildAnalysisRequest, TASK_TYPES, taskTypeLabel } from './analysisRange';
 
 // SC-08, UC-02, FR-07: 分析要求の組み立て（純関数）。
 
@@ -43,12 +37,7 @@ describe('analysisRange (SC-08)', () => {
     expect(Object.keys(request.range ?? {})).toEqual(['query']);
   });
 
-  // 上限超過はサーバが 400 を返すため手前で止める。
-  it('rejects an empty or over-long instruction', () => {
-    expect(isSubmittableInstruction('')).toBe(false);
-    expect(isSubmittableInstruction('   ')).toBe(false);
-    expect(isSubmittableInstruction('a')).toBe(true);
-    expect(isSubmittableInstruction('a'.repeat(MAX_INSTRUCTION_LENGTH))).toBe(true);
-    expect(isSubmittableInstruction('a'.repeat(MAX_INSTRUCTION_LENGTH + 1))).toBe(false);
-  });
+  // **［#788］送信可否の検証は `analysisFormSchema.test.ts` へ移った。**
+  // 規則の実体が Zod スキーマ（ADR-0031 §採用技術一覧 のフォーム基盤）へ移ったためであり、
+  // 検証が消えたわけではない（同じ 5 条件を符号つきで固定している）。
 });

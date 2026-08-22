@@ -302,6 +302,41 @@ describe('SC-10 access control (#504)', () => {
     expect(forbidden).toBe(absent.container.firstElementChild?.outerHTML);
   });
 
+  // ADR-0031 §採用技術一覧（チャート = ECharts）/ #788:
+  // **図は表を置き換えない。** 図が読めない利用者（スクリーンリーダ・色覚特性）と、
+  // 図の遅延読み込みが済んでいない瞬間の両方で、同じ数値が表から読める必要がある。
+  it('draws the charts in addition to the tables, not instead of them', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
+    await renderPage();
+
+    expect(
+      await screen.findByRole('img', { name: '利用状況（日次）の推移グラフ' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '検索傾向（上位語）の棒グラフ' })).toBeInTheDocument();
+    // 表は残っている（同じ数値が読める）。
+    expect(screen.getByRole('table', { name: '利用状況（日次）の一覧' })).toBeInTheDocument();
+    const trendTable = screen.getByRole('table', { name: '検索傾向（上位語）の一覧' });
+    expect(within(trendTable).getByText('経費精算')).toBeInTheDocument();
+  });
+
+  // ADR-0031 §採用技術一覧（テーブル = TanStack Table）/ #788:
+  // 並べ替えが効き、向きが `aria-sort` で読める（INDEX 決定 21「色だけで意味を持たせない」）。
+  it('sorts the search-trend table and exposes the direction', async () => {
+    mocks.apiRequest.mockResolvedValue(jsonResponse(SUMMARY));
+    const user = userEvent.setup();
+    await renderPage();
+
+    const table = await screen.findByRole('table', { name: '検索傾向（上位語）の一覧' });
+    const header = within(table).getByRole('columnheader', { name: /検索語/ });
+    expect(header).toHaveAttribute('aria-sort', 'none');
+
+    await user.click(within(header).getByRole('button'));
+    expect(header).toHaveAttribute('aria-sort', 'ascending');
+    const firstTerm = within(within(table).getAllByRole('rowgroup')[1]).getAllByRole('row')[0]
+      .textContent;
+    expect(firstTerm).toContain('就業規則');
+  });
+
   // ★ #544: ナビも**ルートゲートと同じ範囲**でなければならない——
   // 揃っていないと「ナビに出ないのに URL では開ける」か「押すと NotFound」のどちらかになる。
   it('exposes a nav entry limited to the admin and operator roles in the ops group', () => {

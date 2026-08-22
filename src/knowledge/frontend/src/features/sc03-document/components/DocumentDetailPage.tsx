@@ -17,6 +17,9 @@ import {
   Tag,
 } from '@platform/ui';
 import { appConfig } from '@foundation/config/runtimeConfig';
+// ADR-0031 §採用技術一覧（日付 = dayjs）/ #788: 同じ整形を自前で持っていたが、
+// **同じ整形規則を 2 か所に置かない**ため foundation の 1 本へ寄せた。
+import { formatDateTime } from '@foundation/ui/formatDateTime';
 import { attributeLabel, orderedAttributes } from '../types/attributes';
 import { isNotFound, useDocumentQueries } from '../api/useDocumentQueries';
 // SC-03, IADR-0135 決定 1: 表示に使う型は**契約（OpenAPI）から生成された DTO** である。
@@ -75,7 +78,7 @@ export function DocumentDetailPage() {
   // （プロパティ参照・関数呼び出しはカタログの ID を壊す）。
   const status = doc.status;
   const version = doc.version;
-  const updatedAt = formatDate(doc.updatedAt);
+  const updatedAt = formatDateTime(doc.updatedAt);
   return (
     <section className="flex flex-col gap-4 lg:flex-row">
       <div className="min-w-0 grow">
@@ -124,13 +127,6 @@ export function DocumentDetailPage() {
       </div>
     </section>
   );
-}
-
-/** ISO 8601（DateTimeOffset 由来）をロケール表記に整形する。解釈できない値はそのまま表示する。 */
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
-  const time = Date.parse(value);
-  return Number.isNaN(time) ? value : new Date(time).toLocaleString(i18n.locale);
 }
 
 /**
@@ -287,7 +283,7 @@ function VersionTable({ versions }: { versions: DocumentVersionDto[] }) {
           <TableRow key={v.version}>
             <TableCell>v{v.version}</TableCell>
             <TableCell>{v.changeNote ?? '—'}</TableCell>
-            <TableCell>{formatDate(v.createdAt)}</TableCell>
+            <TableCell>{formatDateTime(v.createdAt)}</TableCell>
           </TableRow>
         ))}
       </TableBody>

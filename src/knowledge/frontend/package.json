@@ -8,16 +8,23 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.9.1",
     "@lingui/core": "^6.6.0",
     "@lingui/react": "^6.6.0",
     "@platform/ui": "workspace:*",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-router": "^1.170.18",
+    "@tanstack/react-table": "^9.1.2",
+    "echarts": "^6.1.0",
+    "lucide-react": "^0.577.0",
     "oidc-client-ts": "^3.1.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.86.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@hookform/devtools": "^4.4.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "typescript": "^5.6.2"

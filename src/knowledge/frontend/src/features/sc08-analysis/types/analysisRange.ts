@@ -74,8 +74,9 @@ export function buildAnalysisRequest(
   };
 }
 
-/** 指示が送信可能か（1 文字以上・上限内）。上限超過はサーバが 400 を返すため手前で止める。 */
-export function isSubmittableInstruction(instruction: string): boolean {
-  const trimmed = instruction.trim();
-  return trimmed.length > 0 && trimmed.length <= MAX_INSTRUCTION_LENGTH;
-}
+// **［#788］`isSubmittableInstruction` はここから消えた。**
+// 送信可否の判定（1 文字以上・上限内）は `analysisFormSchema.ts`（Zod）が持つ。
+// ADR-0031 §採用技術一覧 が定めるフォーム基盤へ移した以上、同じ規則を 2 か所に置くと
+// 片方だけ直したときに「検証は通るのにボタンが押せない」（あるいはその逆）が起きる。
+// 上限値（`MAX_INSTRUCTION_LENGTH` / `MAX_RANGE_QUERY_LENGTH`）の正本は引き続き本ファイルであり、
+// スキーマはそれを参照する。

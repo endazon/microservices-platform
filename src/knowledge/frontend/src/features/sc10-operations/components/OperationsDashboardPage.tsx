@@ -1,24 +1,16 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { msg } from '@lingui/core/macro';
 import type { MessageDescriptor } from '@lingui/core';
 import { Link } from '@tanstack/react-router';
-import {
-  Alert,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Label,
-  Select,
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeaderCell,
-  TableRow,
-} from '@platform/ui';
+import { Alert, Card, CardContent, CardHeader, CardTitle, Label, Select } from '@platform/ui';
+// ADR-0031 §採用技術一覧（テーブル = TanStack Table）/ #788: 表は共通の DataTable へ載せる。
+// 見た目と表構造の a11y は `@platform/ui` の Table 一式が持ったままである（DataTable の冒頭を参照）。
+import { DataTable } from '../../../components/DataTable';
+import type { DataTableColumns } from '../../../components/DataTable';
+// ADR-0031 §採用技術一覧（チャート = Apache ECharts）/ #788: 図は表の**補助**である（表は残す）。
+import { EChart } from '../../../components/EChart';
+import { searchTermBarOption, usageTrendLineOption } from '../types/dashboardCharts';
 import { ApiError } from '@foundation/api/ApiError';
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { i18n } from '@foundation/i18n';
@@ -229,8 +221,31 @@ function Kpi({ label, value, note }: { label: string; value: string; note?: stri
   );
 }
 
+/**
+ * 利用状況（日次）。**図と表を両方出す。**
+ *
+ * ADR-0031 §採用技術一覧 は ECharts を「SC-08 / SC-10 のダッシュボードで使用」とするが、
+ * 図に**置き換える**とは書いていない。表を残すのは (1) 図が読めない利用者（スクリーンリーダ・
+ * 色覚特性）に同じ情報を届けるため、(2) ECharts は遅延読み込みであり、読み込み前・失敗時にも
+ * 数値が読めるようにするため、である（INDEX 決定 21 / #788）。
+ */
 function UsageTrendTable({ points }: { points: UsagePointDto[] }) {
   const { t } = useLingui();
+  // 列定義は描画のたびに作り直さない（TanStack Table の行モデルが毎回無効になる）。
+  const columns = useMemo<DataTableColumns<UsagePointDto>>(
+    () => [
+      { id: 'date', accessorKey: 'date', header: t`日付` },
+      {
+        id: 'eventType',
+        accessorFn: (row: UsagePointDto) => usageEventLabel(row.eventType),
+        header: t`種別`,
+      },
+      { id: 'count', accessorKey: 'count', header: t`件数` },
+    ],
+    [t],
+  );
+  const chartOption = useMemo(() => usageTrendLineOption(points, usageEventLabel), [points]);
+
   return (
     <Card>
       <CardHeader>
@@ -244,39 +259,33 @@ function UsageTrendTable({ points }: { points: UsagePointDto[] }) {
             <Trans>期間内の利用はありません。</Trans>
           </p>
         ) : (
-          <Table>
-            <TableCaption>{t`利用状況（日次）の一覧`}</TableCaption>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell>
-                  <Trans>日付</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <Trans>種別</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <Trans>件数</Trans>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {points.map((p, i) => (
-                <TableRow key={`${p.date}-${p.eventType}-${i}`}>
-                  <TableCell>{p.date}</TableCell>
-                  <TableCell>{usageEventLabel(p.eventType)}</TableCell>
-                  <TableCell>{p.count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <>
+            <EChart option={chartOption} ariaLabel={t`利用状況（日次）の推移グラフ`} />
+            <DataTable
+              caption={t`利用状況（日次）の一覧`}
+              sortHint={t`並べ替え`}
+              columns={columns}
+              data={points}
+            />
+          </>
         )}
       </CardContent>
     </Card>
   );
 }
 
+/** 検索傾向（上位語）。図と表を両方出す理由は `UsageTrendTable` と同じ。 */
 function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
   const { t } = useLingui();
+  const columns = useMemo<DataTableColumns<SearchTrendDto>>(
+    () => [
+      { id: 'term', accessorKey: 'term', header: t`検索語` },
+      { id: 'count', accessorKey: 'count', header: t`件数` },
+    ],
+    [t],
+  );
+  const chartOption = useMemo(() => searchTermBarOption(terms, t`件数`), [terms, t]);
+
   return (
     <Card>
       <CardHeader>
@@ -290,27 +299,15 @@ function SearchTrendTable({ terms }: { terms: SearchTrendDto[] }) {
             <Trans>検索傾向はまだありません。</Trans>
           </p>
         ) : (
-          <Table>
-            <TableCaption>{t`検索傾向（上位語）の一覧`}</TableCaption>
-            <TableHead>
-              <TableRow>
-                <TableHeaderCell>
-                  <Trans>検索語</Trans>
-                </TableHeaderCell>
-                <TableHeaderCell>
-                  <Trans>件数</Trans>
-                </TableHeaderCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {terms.map((term) => (
-                <TableRow key={term.term}>
-                  <TableCell>{term.term}</TableCell>
-                  <TableCell>{term.count}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <>
+            <EChart option={chartOption} ariaLabel={t`検索傾向（上位語）の棒グラフ`} />
+            <DataTable
+              caption={t`検索傾向（上位語）の一覧`}
+              sortHint={t`並べ替え`}
+              columns={columns}
+              data={terms}
+            />
+          </>
         )}
       </CardContent>
     </Card>
