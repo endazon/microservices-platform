@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * NFR / #783（#442 子 5）: deploy/ の chart と overlay が「レンダリングできる」ことを機械で検査する。
+ * NFR / #783（#442 子 5）: deploy/ の chart と overlay が「レンダリングできる」こと、および
+ * **レンダリング結果が Kubernetes のスキーマに適合すること**を機械で検査する。
  *
  * 計画 ADR-0007（CI/CD）・ADR-0021（エッジ・実行基盤）。CI に helm / kustomize の検証ジョブが
  * 1 つも無く、chart や overlay が壊れてもマージまで気づけなかった。
  *
- * ## 設計の要点（3 つとも、本リポジトリが実際に踏んだ事故への対処である）
+ * ## 設計の要点（4 つとも、本リポジトリが実際に踏んだ事故／実測した穴への対処である）
  *
  * 1. **列挙を持たない。** overlay も chart も走査で発見する。ワークフローにも本ファイルにも
  *    名前を書かない。書くと次に増えたとき静かに検査対象から外れる —— `paths:` の片側取りこぼしを
@@ -15,10 +16,19 @@
  * 2. **0 件走査で緑を返さない。** 走査が壊れて 0 件になったら exit 1 にする。
  *    「何も無い」と「問題が無い」を同じ出力にしない（「沈黙の exit 0」#797）。
  *
- * 3. **ツール不在は fail-closed。** helm / kubectl が無いとき既定は exit 1 にし、
+ * 3. **ツール不在は fail-closed。** helm / kubectl / kubeconform が無いとき既定は exit 1 にし、
  *    `DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS=1` のときだけ notice つきで skip する。
  *    **この抜け道を CI が使っていないことは scripts/scripts.repo.test.js が突合する**
  *    （IADR-0209 の `include ⊆ paths` と同じ型）。
+ *
+ * 4. **「レンダリングできる」と「スキーマに適合する」は別の性質であり、前者は後者を代替しない**
+ *    （[IADR-0240]。#783 前半の実測。2026-08-21 版の本スクリプトは helm lint / helm template /
+ *    kubectl kustomize の**成功だけ**を見ており、`spec.replicas` に文字列を入れる等の型違反は
+ *    Go テンプレート／YAML としては正当なため検出できない）。**`kubeconform` でレンダリング結果を
+ *    Kubernetes の JSON Schema と突合する。** 標準リソースは既定カタログ、Istio 等の CRD は
+ *    `datreeio/CRDs-catalog`（[IADR-0240]で選定・実測確認済み）で解決する。**未知の CRD で
+ *    スキーマが見つからない場合も fail-closed**（`-ignore-missing-schemas` は使わない）——
+ *    「スキーマが無い」を人が気づける形にするためで、要点 3 と同じ設計判断である。
  */
 
 'use strict';
@@ -34,6 +44,20 @@ const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', 'covera
 
 /** 抜け道の環境変数名。CI がこれを立てていないことを scripts.repo.test.js が固定する。 */
 const ALLOW_MISSING_TOOLS_ENV = 'DEPLOY_MANIFESTS_ALLOW_MISSING_TOOLS';
+
+/** 検査に要る外部バイナリ。3 つとも fail-closed 対象（要点 3）。 */
+const REQUIRED_TOOLS = ['helm', 'kubectl', 'kubeconform'];
+
+/**
+ * kubeconform のスキーマ供給元（[IADR-0240]）。
+ * 1 段目 `default` は kubeconform 同梱の標準 Kubernetes スキーマ。
+ * 2 段目は Istio 等 CRD のスキーマ集約カタログ（datreeio/CRDs-catalog）。
+ * 両方に無ければ fail-closed（-ignore-missing-schemas は使わない。要点 4）。
+ */
+const SCHEMA_LOCATIONS = [
+  'default',
+  'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json',
+];
 
 /** ディレクトリを再帰的に走査し、`name` に一致するファイルの**所属ディレクトリ**を返す。 */
 function findDirsContaining(root, name, skipDirs = SKIP_DIRS) {
@@ -84,12 +108,23 @@ function hasTool(bin) {
   return r.status === 0 && String(r.stdout || '').trim() !== '';
 }
 
-function run(bin, args, cwd = REPO_ROOT) {
-  const r = spawnSync(bin, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+function run(bin, args, cwd = REPO_ROOT, input = undefined) {
+  const r = spawnSync(bin, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, input });
   return {
     ok: r.status === 0,
     out: `${r.stdout || ''}${r.stderr || ''}`.trim(),
   };
+}
+
+/**
+ * レンダリング済み YAML を kubeconform へ標準入力で渡し、Kubernetes のスキーマと突合する。
+ * `-strict`（未知フィールドも違反にする）・`-summary`（件数の要約を出す）。
+ * `-ignore-missing-schemas` は使わない —— 要点 4（未知の CRD は fail-closed）。
+ */
+function validateSchema(yaml, cwd = REPO_ROOT) {
+  const args = ['-strict', '-summary'];
+  for (const loc of SCHEMA_LOCATIONS) args.push('-schema-location', loc);
+  return run('kubeconform', args, cwd, yaml);
 }
 
 /** 検査本体。結果オブジェクトを返す（プロセスは終了させない — 自己試験から呼べるようにするため）。 */
@@ -109,11 +144,12 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
   if (failures.length > 0) return { overlays, charts, failures, notices, skipped: false };
 
   // 要点 3: ツール不在は fail-closed。
-  const missing = ['helm', 'kubectl'].filter((b) => !hasTool(b));
+  const missing = REQUIRED_TOOLS.filter((b) => !hasTool(b));
   if (missing.length > 0) {
     if (!allowMissingTools) {
       failures.push(
-        `${missing.join(' / ')} が PATH にありません。chart / overlay の検証には両方が要ります。\n` +
+        `${missing.join(' / ')} が PATH にありません。chart / overlay の検証（レンダリング＋スキーマ突合）には` +
+          ` ${REQUIRED_TOOLS.join(' / ')} の全てが要ります。\n` +
           `  導入するか、意図的に飛ばす場合のみ ${ALLOW_MISSING_TOOLS_ENV}=1 を立ててください。\n` +
           `  **CI では立てないこと**（scripts/scripts.repo.test.js が突合します）。`,
       );
@@ -130,13 +166,24 @@ function check({ repoRoot = REPO_ROOT, allowMissingTools = false } = {}) {
     const lint = run('helm', ['lint', c], repoRoot);
     if (!lint.ok) failures.push(`helm lint が失敗した: ${c}\n${lint.out}`);
     const tpl = run('helm', ['template', 'ci-check', c], repoRoot);
-    if (!tpl.ok) failures.push(`helm template が失敗した: ${c}\n${tpl.out}`);
+    if (!tpl.ok) {
+      failures.push(`helm template が失敗した: ${c}\n${tpl.out}`);
+    } else {
+      const schema = validateSchema(tpl.out, repoRoot);
+      if (!schema.ok) failures.push(`kubeconform（chart）でスキーマ不整合: ${c}\n${schema.out}`);
+    }
   }
 
   for (const o of overlays) {
     const built = run('kubectl', ['kustomize', o], repoRoot);
-    if (!built.ok) failures.push(`kubectl kustomize が失敗した: ${o}\n${built.out}`);
-    else if (built.out.trim() === '') failures.push(`kubectl kustomize の出力が空だった: ${o}`);
+    if (!built.ok) {
+      failures.push(`kubectl kustomize が失敗した: ${o}\n${built.out}`);
+    } else if (built.out.trim() === '') {
+      failures.push(`kubectl kustomize の出力が空だった: ${o}`);
+    } else {
+      const schema = validateSchema(built.out, repoRoot);
+      if (!schema.ok) failures.push(`kubeconform（overlay）でスキーマ不整合: ${o}\n${schema.out}`);
+    }
   }
 
   return { overlays, charts, failures, notices, skipped: false };
@@ -185,7 +232,7 @@ function selfTest() {
 
   ok('ツール不在は既定で失敗にし、抜け道の環境変数名を必ず示す', () => {
     const r = check({ repoRoot: tmp, allowMissingTools: false });
-    const usable = ['helm', 'kubectl'].every((b) => hasTool(b));
+    const usable = REQUIRED_TOOLS.every((b) => hasTool(b));
     if (usable) return; // ツールが在る環境ではこの分岐を試験できない
     assert.ok(r.failures.length > 0, 'ツール不在なのに失敗していない');
     assert.ok(r.failures.some((f) => f.includes(ALLOW_MISSING_TOOLS_ENV)), '抜け道の名前を示していない');
@@ -193,10 +240,17 @@ function selfTest() {
 
   ok('抜け道を立てたときは notice を出し、検査していない旨を明示する', () => {
     const r = check({ repoRoot: tmp, allowMissingTools: true });
-    const usable = ['helm', 'kubectl'].every((b) => hasTool(b));
+    const usable = REQUIRED_TOOLS.every((b) => hasTool(b));
     if (usable) return;
     assert.strictEqual(r.skipped, true);
     assert.ok(r.notices.some((x) => x.includes('検査していない')), '検査していない旨が出ていない');
+  });
+
+  ok('kubeconform が居なければ helm / kubectl が在っても fail-closed になる（3 点とも要る）', () => {
+    const hasKubeconform = hasTool('kubeconform');
+    if (hasKubeconform) return; // kubeconform が在る環境ではこの分岐を試験できない
+    const r = check({ repoRoot: tmp, allowMissingTools: false });
+    assert.ok(r.failures.some((f) => f.includes('kubeconform')), 'kubeconform 不在が失敗理由に出ていない');
   });
 
   fs.rmSync(tmp, { recursive: true, force: true });
@@ -232,7 +286,7 @@ function main() {
   }
   console.log(
     `[check-deploy-manifests] OK: chart ${r.charts.length} 件 / overlay ${r.overlays.length} 件が` +
-      `レンダリングできる。\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
+      `レンダリングでき、スキーマにも適合する。\n  chart:   ${r.charts.join(', ')}\n  overlay: ${r.overlays.join(', ')}`,
   );
 }
 

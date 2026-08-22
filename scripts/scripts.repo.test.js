@@ -7290,12 +7290,30 @@ module.exports = ({ ok, assert }) => {
         ci.includes('node scripts/check-deploy-manifests.js\n'),
         'static-checks-units ジョブが本走査を呼んでいない',
       );
-      // helm / kubectl の導入が同じジョブに在ること（別ジョブへ離れると検査が動かない）。
+      // helm / kubectl / kubeconform の導入が同じジョブに在ること（別ジョブへ離れると検査が動かない）。
       const unitsJob = /\n {2}static-checks-units:\n([\s\S]*?)(?=\n {2}[a-z][a-z0-9-]*:\n)/
         .exec(`${ci}\n  zzz:\n`);
       assert.ok(unitsJob, 'static-checks-units ジョブを切り出せない');
       assert.match(unitsJob[1], /azure\/setup-helm/, 'static-checks-units に helm の導入が無い');
       assert.match(unitsJob[1], /azure\/setup-kubectl/, 'static-checks-units に kubectl の導入が無い');
+      // NFR / #783（IADR-0240）: kubeconform も同じジョブで導入されていること。
+      // バージョンを pin していること（latest 追従は本リポジトリが問題として扱っている）と、
+      // ダウンロードした tarball をチェックサムで検証してから導入していることも併せて固定する。
+      assert.match(
+        unitsJob[1],
+        /kubeconform-linux-amd64\.tar\.gz/,
+        'static-checks-units に kubeconform の導入が無い',
+      );
+      assert.match(
+        unitsJob[1],
+        /KUBECONFORM_VERSION=v\d+\.\d+\.\d+/,
+        'kubeconform の導入がバージョン pin されていない（latest 追従になっている）',
+      );
+      assert.match(
+        unitsJob[1],
+        /sha256sum -c/,
+        'kubeconform の導入がチェックサム検証をしていない',
+      );
 
       // 抜け道を「立てている」行だけを違反にする。注意書きとして名前に言及するのは許す
       // （コメント行は行頭が `#`）。
