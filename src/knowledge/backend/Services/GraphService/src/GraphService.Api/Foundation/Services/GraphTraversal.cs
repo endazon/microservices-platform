@@ -22,6 +22,22 @@ internal sealed class GraphTraversal(IGraphStore store)
     public const int MaxNodes = 200;
     public const int MaxEdges = 500;
 
+    // FR-04, ADR-0035 決定 2 (#947a): **ハブ文書の次数上限。**
+    //
+    // 🔴 **意味は「展開の中継点にしない」であって「結果から除く」ではない。**
+    // 除くと、利用者から見えるはずの関係が消える（「全社共通規程を参照している」という事実
+    // 自体は正しい関係である）。狙いは**ハブ経由で無関係な文書が芋づる式に湧くこと**の抑制で
+    // あって、ハブ自体の隠蔽ではない。
+    //
+    // 🔴 **この値は実測ではない。** ADR-0035 §結果 は「実データの次数分布を見て定める」と
+    // 実装側へ委譲しているが、**その実データが無い**（取り込み経路が未配線。#911 / #912）。
+    // 暫定値であり、実データが入った時点で測り直す（#947a 仕様書 §未決事項）。
+    //
+    // 暫定 50 の根拠: 表示上限（ノード 200）に対し 1 つのノードが結果の 1/4 を占めるあたりが
+    // 「ハブ」の境目であること／ADR が挙げる例（全社共通規程・用語集）は数百から参照される
+    // 想定であり 50 は確実に捕らえること／通常の文書を誤って中継点から外さないこと。
+    public const int MaxHubDegree = 50;
+
     public async Task<UnfilteredSubgraph> ExploreAsync(
         AuthorizedNode origin,
         AccessScopeResponse scope,
@@ -56,6 +72,10 @@ internal sealed class GraphTraversal(IGraphStore store)
 
             var loaded = (await store.LoadNodesAsync(unseen, ct))
                 .ToDictionary(n => n.DocumentId);
+
+            // ADR-0035 決定 2 (#947a): 次数を先に引く。**ABAC で絞らない**（ポートの注記参照）。
+            // 引くのは「今回新しく見えた候補」だけでよい —— 既訪問はもう展開しないためである。
+            var degrees = await store.LoadDegreesAsync(unseen, ct);
 
             var next = new List<AuthorizedNode>();
 
@@ -95,6 +115,15 @@ internal sealed class GraphTraversal(IGraphStore store)
 
                 visited.Add(far);
                 nodes.Add(node);
+
+                // 🔴 ADR-0035 決定 2: ハブ文書は**中継点にしない**。
+                //
+                // **すでに nodes へ入れてある** —— 結果には現れる。ここで制御するのは
+                // 「次のホップの起点になるか」だけである。**next へ入れないこと**が
+                // 「中継点にしない」の意味であり、nodes から外すことではない。
+                if (degrees.GetValueOrDefault(far) > MaxHubDegree)
+                    continue;
+
                 next.Add(authorized);
             }
 
