@@ -6,7 +6,7 @@
 
 | | 計画ADR | 実装ADR |
 | --- | --- | --- |
-| 場所 | 計画リポ `projects/<name>/07_adr/` | 本リポ `docs/adr/` |
+| 場所 | 計画リポ `projects/<name>/07_adr/` | 本リポ `.ai-context/adr/` |
 | ID | `ADR-XXXX` | `IADR-XXXX` |
 | 対象 | 上流の意思決定（プロダクト全体） | 実装レベルの意思決定（内部設計・ライブラリ選定等） |
 
@@ -308,3 +308,5 @@
 | [IADR-0232](./IADR-0232_ci-pr-latency-reduction.md) | PR は速さを採り、落とした精度は回収先（develop への push・日次・週次）で必ず取り戻す。統合テスト・CodeQL の全量解析・vulnerable-scan を PR から外し、回収先の失敗は自動起票する。回収先は --filter を付けず全量で回す（床を置き直さずに済み、二重集計も起きない）。必須 check 名は集約ジョブで維持 | Accepted |
 | [IADR-0233](./IADR-0233_wolverine-shared-helper-confinement.md) | Wolverine 共通ヘルパはブローカ固有 API まで抱え、封じ込め検査は「他所で書けない」と「本拠に在り続ける」の両方を見る。許可はファイル単位。部分移行の安全弁の存在をテストで固定する。#455 | Accepted |
 | [IADR-0234](./IADR-0234_wolverine-migration-boundary-455-441.md) | #455 はここで成長を止め、baseline がゼロになることで測られるものはすべて #441 が持つ。移行の単位はイベント辺であり、型制約は緩和ではなく C3 で始末する。#455 / #441 | Accepted |
+| [IADR-0235](./IADR-0235_trace-block-completeness-checker-rejected.md) | trace ブロックの網羅性検査器は**追加しない**。候補 A は精度 1/38 ≈ 2.6%（母集合 19 コミット全数・違反 38 件・赤 7）で、偽陽性の主因は束ね PR の直積（8 記録 × 4 文書 = 32）という構造。「過去 2 件の再現」と「偽陽性の許容」は両立しない。規約自体が未裁定であり裁定が機械化に先行する。#885 | Accepted |
+| [IADR-0236](./IADR-0236_coverage-cross-report-line-dedup.md) | **カバレッジ集計はレポートを跨いで行を重複排除し、被覆は OR で畳む**。共有ライブラリの行が参照するテストプロジェクトの数だけ多重計上され、テストを増やすほど床が下がっていた（ratchet と逆）。#900 | Accepted |
