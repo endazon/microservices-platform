@@ -184,10 +184,12 @@ public class DocumentSyncConsumerTests
     // 🔴 **否定形テストには陽性対照を対で置いてある。** 「常に早期 return する実装」も
     // 「doc_scope を一切見ない実装」も、否定形（private-note が同期されない）だけなら通す。
     //
-    // 🔴 **とりわけ Consumer_SyncsDocument_WhenDocScopeMissing が要である。** 除外条件を
-    // `doc_scope != "organization"` と書いた実装は、個人資料が実データに 1 件も無い現在、
-    // 否定形テストも organization の陽性対照も通ってしまう。**doc_scope を持たない文書
-    // （実データ 2,368 件がこの形）が同期されることを確かめる本テストだけが両者を分ける。**
+    // 🔴 **Consumer_SyncsDocument_WhenDocScopeMissing の役割は「診断」である。**
+    // 除外条件を `doc_scope != "organization"` と書く誤りは、変異試験の実測では 45 件中 10 件を
+    // 落とす（既存 7 件のフィクスチャが doc_scope を持たないため巻き添えで落ちる）。
+    // **検出そのものは既存テストでも起きる。** ただし既存テストは「機密区分の話をしているテストが
+    // push 0 件で落ちる」形になり、**なぜ落ちたのかを言わない**。
+    // **本テストだけが「doc_scope の欠落を個人資料と誤判定してはならない」という理由つきで落ちる。**
 
     // 個人資料は Wiki.js へ push されず、ABAC 同期メタデータも作られない。
     [Fact]
