@@ -544,7 +544,7 @@
       "credentials": [
         {
           "type": "password",
-          "value": "admin",
+          "value": "Admin-Dev2026",
           "temporary": false
         }
       ]
@@ -558,7 +558,7 @@
       "emailVerified": true,
       "attributes": { "clearance": ["internal"], "department": ["engineering"] },
       "groups": ["/clearance/internal", "/department/engineering"],
-      "credentials": [{ "type": "password", "value": "poc-password", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "Poc-Passwd2026", "temporary": false }]
     },
     {
       "username": "poc-operator",
@@ -568,7 +568,7 @@
       "enabled": true,
       "emailVerified": true,
       "realmRoles": ["platform-operator"],
-      "credentials": [{ "type": "password", "value": "poc-operator-password", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "PocOperator-2026", "temporary": false }]
     },
     {
       "username": "developer",
@@ -580,7 +580,7 @@
       "attributes": { "clearance": ["restricted"], "department": ["engineering"] },
       "groups": ["/clearance/restricted", "/department/engineering"],
       "realmRoles": ["platform-admin", "platform-operator", "wiki-editor", "trading-owner"],
-      "credentials": [{ "type": "password", "value": "developer", "temporary": false }]
+      "credentials": [{ "type": "password", "value": "Developer-2026", "temporary": false }]
     },
     {
       "username": "service-account-ai-stock-trading-kb-writer",

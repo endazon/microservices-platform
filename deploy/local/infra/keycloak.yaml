@@ -1,9 +1,14 @@
 # IADR-0066 / ADR-0004: 認証（Keycloak, dev）。realm `platform` を import。
 # realm JSON は kustomization.yaml の configMapGenerator が実ファイル（deploy/keycloak/…）から生成し、
 # /opt/keycloak/data/import へマウントする（単一情報源＝既存 realm ファイル）。
-# 発行者(issuer)は in-cluster 正準名に固定する: MSP chart の Auth__Authority=
-# http://keycloak:8080/realms/platform（values.yaml global.auth.authority）と一致させ、
-# サービス間 JWT 検証を成立させる。ブラウザ OIDC（Wiki.js 等）は別途 hostname 設定が要る（README 参照）。
+#
+# NFR-09 / ADR-0023 / IADR-0076 決定3・IADR-0227・IADR-0244（#780 第2段）: 発行者(issuer)はエッジ host
+# `https://keycloak.localhost` に固定する（KC_HOSTNAME_URL がその単一情報源）。
+# サービス間 JWT 検証（.NET）は in-cluster から到達できる `http://keycloak:8080/.../well-known/...` を
+# `Auth__MetadataAddress` で引き、`Auth__ValidIssuers` にエッジ issuer を許可リストとして足す
+# （IADR-0086 の分離。values-local.yaml global.auth 参照）。非 .NET の OIDC クライアント
+# （Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は pod からエッジ issuer へ直接到達する
+# （coredns-custom。IADR-0227・deploy/local/aliases/coredns-edge-hosts.yaml）。
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,9 +35,10 @@ spec:
                 secretKeyRef:
                   name: keycloak-admin
                   key: password
-            # in-cluster 正準 issuer。サービス間検証と一致（README にブラウザ経路の注記あり）。
+            # エッジ issuer（#780 第2段）。単一情報源はこの1行。.NET は Auth__MetadataAddress で
+            # in-cluster well-known を引くため無停止で追随する（IADR-0086）。
             - name: KC_HOSTNAME_URL
-              value: http://keycloak:8080
+              value: https://keycloak.localhost
             - name: KC_HEALTH_ENABLED
               value: "true"
           ports:

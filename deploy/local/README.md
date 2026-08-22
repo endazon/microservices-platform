@@ -184,11 +184,18 @@ realm import（`deploy/keycloak/microservices-platform-realm.json`）に含ま�
 
 | ユーザー / パスワード | ロール・属性 | 用途 |
 | --- | --- | --- |
-| `developer` / `developer` | `platform-admin`+`platform-operator`+`wiki-editor`、clearance=`restricted` | 全機能を 1 アカウントで疎通確認する dev 用スーパーユーザー |
-| `poc-user` / `poc-password` | ロール無し・ABAC 属性のみ（clearance=`internal`） | ABAC 属性ユーザーの検証 |
-| `poc-operator` / `poc-operator-password` | `platform-operator` のみ | 運用者ロールの検証 |
+| `developer` / `Developer-2026` | `platform-admin`+`platform-operator`+`wiki-editor`、clearance=`restricted` | 全機能を 1 アカウントで疎通確認する dev 用スーパーユーザー |
+| `poc-user` / `Poc-Passwd2026` | ロール無し・ABAC 属性のみ（clearance=`internal`） | ABAC 属性ユーザーの検証 |
+| `poc-operator` / `PocOperator-2026` | `platform-operator` のみ | 運用者ロールの検証 |
 
 > ロール別の挙動差分（権限分離）を確認したい場合は `developer` ではなく `poc-*` を使うこと。
+>
+> **［2026-08-22 変更 / #780 第2段］パスワードを realm の `passwordPolicy`
+> （`length(12)` ＋ 3-of-4 文字種）に適合する値へ変更した。** 旧パスワード（`developer` /
+> `poc-password` / `poc-operator-password`）は realm 自身のポリシーに違反しており、
+> **PVC が空の状態から `--import-realm` すると import 自体が失敗する**潜在バグだった
+> （PVC 永続化で再 import が常にスキップされていたため無自覚に隠れていた。#780 第2段の
+> realm 作り直しで顕在化・実測）。
 
 ## AST 統合スタック疎通（エッジ /bff・ブラウザ OIDC・Issue #284）
 

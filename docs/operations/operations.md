@@ -235,7 +235,7 @@ Grafana（`/var/lib/grafana`）**も永続化される（マウント先は各 c
 
 ローカル k8s dev（経路B。k3d ＋ dev 専用 in-cluster インフラ資産で構成する）に [Headlamp](https://headlamp.dev/)
 （CNCF Sandbox の k8s 管理 UI）を **opt-in** で導入し、Pod / Deployment / Service / ログ等をブラウザから閲覧・
-操作できる。認証は既存 Keycloak（OIDC）に一元化し、`developer` / `developer` を流用する（新規資格情報を作らない）。
+操作できる。認証は既存 Keycloak（OIDC）に一元化し、`developer` / `Developer-2026` を流用する（新規資格情報を作らない）。
 本番像（`deploy/helm` / `deploy/argocd` / compose）は不変で、資産は `deploy/local/headlamp/`（dev 専用）に閉じる。
 
 - **有効化**: `HEADLAMP=1 bash scripts/k8s-local-up.sh`（既定オフ・fail-safe）。`deploy/local/headlamp` を適用し、
