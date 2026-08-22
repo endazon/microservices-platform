@@ -32,8 +32,8 @@
     },
     "src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj": {
       "project": "DashboardService.Api.Tests",
-      "remaining": 24,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": {
       "project": "DataSourceService.Api.Tests",
