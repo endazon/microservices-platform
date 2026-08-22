@@ -72,11 +72,27 @@ public sealed class ToolCatalogRefresher(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // 🔴 構成の破損（検証失敗）と、収集の一時失敗は別物である（#445 レビュー指摘）。
+            // 前者は再試行しても直らず、握り潰すと「公開されているつもりの公開されていない」状態が
+            // エラーログだけを吐きながら継続する。ホストを止めて気づかせる
+            // （BackgroundServiceExceptionBehavior の既定は StopHost）。
+            ToolPublicationConfig published;
+            try
+            {
+                published = loader.Load();
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogCritical(ex, "MCP publication config is invalid; stopping host");
+                throw;
+            }
+
+            // 後者（自己申告の収集）は到達不能なサービスがあり得るため、次の周期へ持ち越す。
             try
             {
                 using var scope = services.CreateScope();
                 var source = scope.ServiceProvider.GetRequiredService<IToolDeclarationSource>();
-                catalog.Refresh(loader.Load(), await source.CollectAsync(stoppingToken));
+                catalog.Refresh(published, await source.CollectAsync(stoppingToken));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

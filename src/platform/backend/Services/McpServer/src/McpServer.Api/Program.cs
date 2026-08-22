@@ -66,6 +66,13 @@ builder.Services.AddMcpServer()
 
 var app = builder.Build();
 
+// 🔴 FR-16, ADR-0024 §5: 公開構成の検証は**ここで**行う（#445 レビュー指摘）。
+// ToolCatalogRefresher は BackgroundService であり、その ExecuteAsync は IHost の起動を塞がない。
+// 収集の定期実行に検証を任せると、壊れた構成でも Web サーバーは起動し、カタログが空のまま
+// 「公開されているつもりの公開されていない」状態でヘルスチェックだけ緑になる。
+// **要求を受ける前に落とす**ことでしか「逸脱が起動時に止まる」は成立しない。
+app.Services.GetRequiredService<ToolPublicationConfigLoader>().Load();
+
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<McpDbContext>();
