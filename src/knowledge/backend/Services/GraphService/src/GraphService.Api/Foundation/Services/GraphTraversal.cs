@@ -38,21 +38,54 @@ internal sealed class GraphTraversal(IGraphStore store)
     // 想定であり 50 は確実に捕らえること／通常の文書を誤って中継点から外さないこと。
     public const int MaxHubDegree = 50;
 
+    // FR-17, ADR-0049 決定 3 (#980): **総数の算出のための探索上限。** 表示上限とは別である。
+    //
+    // 🔴 ADR-0049 は ADR-0034 の「内部の探索も同じ上限で打ち切る」1 行だけを改めた。
+    // **決定 1 の具体化（不許可ノードはその場で打ち切り、次ホップへ進まない）は改まっていない。**
+    // むしろ ADR-0049 の前提である —— 許可済みだけを数える限り「中間結果に不許可文書が
+    // 載らない」という理由は損なわれない、というのが改定の根拠だからである。
+    //
+    // **「上限を超えてよい」は「無制限でよい」ではない。** 算出用の上限にも達した場合は、
+    // 総数を「以上」として示す（正確な数を出すために探索を伸ばさない）。
+    //
+    // ⚠️ **この値は実測ではない。** ADR-0049 自身が「表示上限の 10 倍を置いた。運用で不足または
+    // 過大と判明した時点で見直す」と明記している。
+    public const int CountingMaxNodes = 2_000;
+    public const int CountingMaxEdges = 5_000;
+
+
+
+    // FR-17, UC-10, ADR-0034, ADR-0049 (#980): 二段の上限で探索する。
+    //
+    // 🔴 **段が 2 つあることが本メソッドの要点である。**
+    //   ① **探索**は算出用の上限（2,000 / 5,000）まで進み、**許可済みの総数**を数える
+    //   ② **選抜**は表示上限（200 / 500）で、①の候補集合から間引き基準に従って選ぶ
+    //
+    // **①が無いと②の母集合が存在しない。** 200 で打ち切る実装には「上位 200 件」を選ぶ
+    // 対象が無く、間引き基準（更新日順・次数順）が意味を持たない（ADR-0049 決定 4）。
     public async Task<UnfilteredSubgraph> ExploreAsync(
         AuthorizedNode origin,
         AccessScopeResponse scope,
         int hops,
+        string? thinning = null,
         CancellationToken ct = default)
     {
         var visited = new HashSet<Guid> { origin.DocumentId };
+
+        // 🔴 **候補集合。判定を通過したものだけが入る。**
+        // ADR-0049 決定 1 が「数えてよいのは ABAC 判定を通過した品目だけ」と明記しており、
+        // その条件下でのみ ADR-0034 の「中間結果に不許可文書が載らない」という理由が保たれる。
         var nodes = new List<GraphDocument> { origin.Node };
         var edges = new List<Edge>();
         var emitted = new HashSet<Guid>();
-        var truncated = false;
+
+        // 間引き基準の材料。**距離は到達順（挿入順）で表す**ので別に持たない。
+        var degreeOf = new Dictionary<Guid, int>();
+        var countingLimitHit = false;
 
         var frontier = new List<AuthorizedNode> { origin };
 
-        for (var depth = 1; depth <= hops && frontier.Count > 0 && !truncated; depth++)
+        for (var depth = 1; depth <= hops && frontier.Count > 0 && !countingLimitHit; depth++)
         {
             // フロンティアに接続する辺を双方向に一括ロード（バックリンクを含む。決定的順序）。
             var incident = await store.LoadIncidentEdgesAsync(frontier, ct);
@@ -73,9 +106,10 @@ internal sealed class GraphTraversal(IGraphStore store)
             var loaded = (await store.LoadNodesAsync(unseen, ct))
                 .ToDictionary(n => n.DocumentId);
 
-            // ADR-0035 決定 2 (#947a): 次数を先に引く。**ABAC で絞らない**（ポートの注記参照）。
-            // 引くのは「今回新しく見えた候補」だけでよい —— 既訪問はもう展開しないためである。
-            var degrees = await store.LoadDegreesAsync(unseen, ct);
+            // ADR-0035 決定 2 (#947a): 次数。**ABAC で絞らない**（ポートの注記参照）。
+            // **ホップを跨いで累積する** —— 間引き基準 `degree` が全候補について要るためである。
+            foreach (var (id, d) in await store.LoadDegreesAsync(unseen, ct))
+                degreeOf[id] = d;
 
             var next = new List<AuthorizedNode>();
 
@@ -89,7 +123,7 @@ internal sealed class GraphTraversal(IGraphStore store)
                 if (visited.Contains(far))
                 {
                     // 既に可視と判定済みのノードどうしを結ぶ辺。両端が許可済みなので出してよい。
-                    if (edges.Count >= MaxEdges) { truncated = true; break; }
+                    if (edges.Count >= CountingMaxEdges) { countingLimitHit = true; break; }
                     edges.Add(edge);
                     emitted.Add(edge.Id);
                     continue;
@@ -97,6 +131,10 @@ internal sealed class GraphTraversal(IGraphStore store)
 
                 // ★ホップごと判定★ —— 展開にも計数にも先立つ。
                 //   ノードレコードが無い場合（属性の複製が未到達）も不許可と同じく落とす（fail-closed）。
+                //
+                // 🔴 **ADR-0049 はこの判定を改めていない。** 改めたのは「内部の探索も表示上限で
+                // 打ち切る」の 1 行だけであり、決定 1 の具体化（不許可ノードはその場で打ち切り、
+                // 次ホップへ進まない）は**むしろ本改定の前提**である。
                 if (!loaded.TryGetValue(far, out var node))
                     continue;
                 var authorized = AuthorizedNode.Authorize(node, scope);
@@ -104,11 +142,8 @@ internal sealed class GraphTraversal(IGraphStore store)
                     continue;
 
                 // ここから先は「許可済み」だけを数える。権限外は上限に一切影響しない。
-                //
-                // 新しいノードを入れられないなら**辺も出さない**。片端が応答に無い辺を出すと、
-                // Seal が落として辻褄は合うが、上限の意味が「見えている辺の数」からずれる。
-                if (nodes.Count >= MaxNodes) { truncated = true; continue; }
-                if (edges.Count >= MaxEdges) { truncated = true; break; }
+                if (nodes.Count >= CountingMaxNodes) { countingLimitHit = true; continue; }
+                if (edges.Count >= CountingMaxEdges) { countingLimitHit = true; break; }
 
                 edges.Add(edge);
                 emitted.Add(edge.Id);
@@ -121,7 +156,7 @@ internal sealed class GraphTraversal(IGraphStore store)
                 // **すでに nodes へ入れてある** —— 結果には現れる。ここで制御するのは
                 // 「次のホップの起点になるか」だけである。**next へ入れないこと**が
                 // 「中継点にしない」の意味であり、nodes から外すことではない。
-                if (degrees.GetValueOrDefault(far) > MaxHubDegree)
+                if (degreeOf.GetValueOrDefault(far) > MaxHubDegree)
                     continue;
 
                 next.Add(authorized);
@@ -130,7 +165,62 @@ internal sealed class GraphTraversal(IGraphStore store)
             frontier = next;
         }
 
-        return new UnfilteredSubgraph(nodes, edges, truncated);
+        // ── ② 選抜 ─────────────────────────────────────────────
+        return Select(origin.DocumentId, nodes, edges, degreeOf, thinning, countingLimitHit);
+    }
+
+    // FR-17, SC-18, ADR-0049 決定 1・3・4 (#980): 候補集合から表示分を選ぶ。
+    //
+    // **総数は「間引く前の全体」であって「返した件数」ではない。** 両者が一致する小さな
+    // データでは取り違えを検出できないため、試験はわざと食い違う母集合で測る（仕様書 T-01）。
+    private static UnfilteredSubgraph Select(
+        Guid originId,
+        List<GraphDocument> nodes,
+        List<Edge> edges,
+        IReadOnlyDictionary<Guid, int> degreeOf,
+        string? thinning,
+        bool countingLimitHit)
+    {
+        var totalNodes = nodes.Count;
+        var totalEdges = edges.Count;
+
+        // 上限に収まっているなら選抜は要らない（**現行と同一の結果になる**）。
+        if (totalNodes <= MaxNodes && totalEdges <= MaxEdges)
+            return new UnfilteredSubgraph(nodes, edges, false, totalNodes, totalEdges, countingLimitHit);
+
+        var by = GraphThinning.Normalize(thinning);
+
+        // 🔴 **起点は必ず残す。** 起点が消えると「起点ありの近傍探索」が成立しない（SC-18 主要素 2）。
+        var origin = nodes.First(n => n.DocumentId == originId);
+        var rest = nodes.Where(n => n.DocumentId != originId);
+
+        // **距離（既定）は到達順そのもの** —— BFS の挿入順が距離の昇順である。
+        // 並べ替えは**安定**でなければならない（同値の並びが実行ごとに変わると打ち切りが非決定になる）。
+        var ordered = by switch
+        {
+            GraphThinning.Updated => rest.OrderByDescending(n => n.UpdatedAt).ThenBy(n => n.DocumentId),
+            GraphThinning.Degree => rest.OrderByDescending(n => degreeOf.GetValueOrDefault(n.DocumentId))
+                                        .ThenBy(n => n.DocumentId),
+            _ => rest.OrderBy(_ => 0),   // 到達順を保つ（OrderBy は安定ソート）
+        };
+
+        var selected = new List<GraphDocument> { origin };
+        selected.AddRange(ordered.Take(MaxNodes - 1));
+        var selectedIds = selected.Select(n => n.DocumentId).ToHashSet();
+
+        // **両端が選抜に残った辺だけを出す。** 片端が欠けた辺を出すと、Seal が落として辻褄は
+        // 合うが、上限の意味が「見えている辺の数」からずれる。
+        var selectedEdges = edges
+            .Where(e => selectedIds.Contains(e.SourceDocumentId) && selectedIds.Contains(e.TargetDocumentId))
+            .Take(MaxEdges)
+            .ToList();
+
+        return new UnfilteredSubgraph(
+            selected, selectedEdges,
+            Truncated: true,
+            TotalNodes: totalNodes,
+            TotalEdges: totalEdges,
+            TotalIsLowerBound: countingLimitHit);
     }
 
     // フロンティア側でない端点。両端がフロンティアにある辺は target 側を「相手」とみなす
@@ -139,4 +229,26 @@ internal sealed class GraphTraversal(IGraphStore store)
         => frontierIds.Contains(edge.SourceDocumentId)
             ? edge.TargetDocumentId
             : edge.SourceDocumentId;
+}
+
+// FR-17, SC-18, ADR-0049 決定 4 (#980): 表示上限を超えた候補集合から 200 件を選ぶときの基準。
+//
+// **未知の値・未指定は既定（distance）へ縮退する** —— `SearchModes` / `SearchSorts` と同じ作法。
+// 例外にすると、綴りを 1 つ間違えただけで画面が壊れる。
+public static class GraphThinning
+{
+    // 起点からの距離が近い順。**既定であり、現行（改定前）の挙動と同じ**。
+    public const string Distance = "distance";
+    // 更新日が新しい順。
+    public const string Updated = "updated";
+    // 次数が大きい順。
+    public const string Degree = "degree";
+
+    public static readonly string[] All = [Distance, Updated, Degree];
+
+    public static bool IsValid(string? value)
+        => value is not null && All.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    public static string Normalize(string? value)
+        => IsValid(value) ? value!.ToLowerInvariant() : Distance;
 }

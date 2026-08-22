@@ -68,6 +68,10 @@ public static class GraphEndpoints
         g.MapGet("/{documentId:guid}/neighbors", async (
             Guid documentId,
             int? hops,
+            // FR-17, SC-18, ADR-0049 決定 4 (#980): 間引きの基準（distance 既定 / updated / degree）。
+            // **未知の値・未指定は既定へ縮退する**（例外にしない。SearchModes / SearchSorts と同じ作法）
+            // —— 綴りを 1 つ間違えただけで画面が壊れる形にしない。
+            string? by,
             IGraphAccessResolver accessResolver,
             IGraphStore store,
             GraphTraversal traversal,
@@ -104,7 +108,7 @@ public static class GraphEndpoints
             if (origin is null)
                 return NotFound();
 
-            var subgraph = await traversal.ExploreAsync(origin, scope, requested, ct);
+            var subgraph = await traversal.ExploreAsync(origin, scope, requested, by, ct);
 
             return Results.Ok(GraphViewResponse.Seal(subgraph, scope));
         }).WithName("GetGraphNeighbors")

@@ -38,16 +38,38 @@ public sealed class GraphViewResponse
     // このフラグが権限外文書の存在を漏らすことはない。
     public bool Truncated { get; }
 
+    // FR-17, ADR-0049 決定 1・3 (#980): **許可済み**の総数。表示（200 / 500）を超えて数えた値。
+    //
+    // 🔴 **権限外は 1 件も含まない。** ADR-0049 決定 1 が「数えてよいのは ABAC 判定を通過した
+    // 品目だけ」と明記しており、その条件下でのみ ADR-0034 の「中間結果に不許可文書が載らない」
+    // という理由が保たれる。
+    public int TotalNodes { get; }
+    public int TotalEdges { get; }
+
+    // ADR-0049 決定 3: 算出用の上限（ノード 2,000 / 辺 5,000）に達したか。
+    // **立っていれば総数は「以上」の意味である**（例: 「2,000 件以上」）。
+    //
+    // ⚠️ **母集合が算出用上限で打ち切られている場合、`updated` / `degree` の並びは厳密な
+    // 上位 200 件ではない**（ADR-0049 決定 4 がこの限界を認めている）。**本フラグが立っている
+    // ことで読み取れる** —— 黙って正確なふりをしない。
+    public bool TotalIsLowerBound { get; }
+
     // 🔴 **private である。** ここを緩めると出力ゲートが無効になる
     // （GraphTypeGateArchitectureTests が公開コンストラクタの不在を assert する）。
     private GraphViewResponse(
         IReadOnlyList<GraphNodeDto> nodes,
         IReadOnlyList<GraphEdgeDto> edges,
-        bool truncated)
+        bool truncated,
+        int totalNodes,
+        int totalEdges,
+        bool totalIsLowerBound)
     {
         Nodes = nodes;
         Edges = edges;
         Truncated = truncated;
+        TotalNodes = totalNodes;
+        TotalEdges = totalEdges;
+        TotalIsLowerBound = totalIsLowerBound;
     }
 
     // FR-17, ADR-0034 決定 1・2: **唯一の構築経路。**
@@ -55,7 +77,7 @@ public sealed class GraphViewResponse
     {
         // FR-05: deny-by-default。許可ポリシーが無ければ何も返さない。
         if (!scope.Granted)
-            return new GraphViewResponse([], [], subgraph.Truncated);
+            return new GraphViewResponse([], [], subgraph.Truncated, 0, 0, false);
 
         // 多層防御: 入口のゲートを通っていれば恒等だが、迂回経路があってもここで濾す。
         var visible = new List<GraphDocument>();
@@ -81,6 +103,7 @@ public sealed class GraphViewResponse
             .Select(n => new GraphNodeDto(n.DocumentId, n.Title))
             .ToList();
 
-        return new GraphViewResponse(nodes, edges, subgraph.Truncated);
+        return new GraphViewResponse(nodes, edges, subgraph.Truncated,
+            subgraph.TotalNodes, subgraph.TotalEdges, subgraph.TotalIsLowerBound);
     }
 }

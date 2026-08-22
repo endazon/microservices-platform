@@ -30,4 +30,15 @@ public record GraphEdgeItemDto(
 public record GraphViewDto(
     List<GraphNodeItemDto> Nodes,
     List<GraphEdgeItemDto> Edges,
-    bool Truncated);
+    bool Truncated,
+    // FR-17, SC-18, ADR-0049 決定 1・3 (#980): **許可済み**の総数。表示（200 / 500）を超えて数えた値。
+    // 権限外は 1 件も含まない —— ADR-0049 決定 1 が「数えてよいのは ABAC 判定を通過した品目だけ」
+    // と明記しており、その条件下でのみ ADR-0034 の「中間結果に不許可文書が載らない」理由が保たれる。
+    //
+    // 既定値つきで足す（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
+    int TotalNodes = 0,
+    int TotalEdges = 0,
+    // ADR-0049 決定 3: 算出用上限に達したか。**立っていれば総数は「以上」の意味**である。
+    // ⚠️ このとき `updated` / `degree` の並びは厳密な上位 200 件ではない（同 決定 4 が限界を認める）。
+    // **黙って正確なふりをしないため、フラグで読み取れる形にする。**
+    bool TotalIsLowerBound = false);

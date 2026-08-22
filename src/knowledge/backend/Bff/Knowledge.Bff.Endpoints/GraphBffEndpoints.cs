@@ -44,10 +44,10 @@ public static class GraphBffEndpoints
         // FR-17, UC-10, ADR-0034 決定 3: 近傍探索。
         // **hops はそのまま後段へ渡す。** 上限超過の拒否（400）は GraphService が一箇所で行い、
         // BFF では正規化も握り潰しもしない（検索モードを後段へ透過する SearchBff と同じ作法）。
-        g.MapGet("/{documentId:guid}/neighbors", (Guid documentId, int? hops,
+        g.MapGet("/{documentId:guid}/neighbors", (Guid documentId, int? hops, string? by,
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
             => ProxyAsync<GraphViewDto>(httpFactory, http,
-                $"/graph/{documentId}/neighbors" + (hops is null ? "" : $"?hops={hops}"), ct))
+                $"/graph/{documentId}/neighbors" + BuildQuery(hops, by), ct))
             .WithName("BffGraphNeighbors")
             .Produces<GraphViewDto>()
             .Produces(StatusCodes.Status400BadRequest)
@@ -69,6 +69,16 @@ public static class GraphBffEndpoints
             .Produces(StatusCodes.Status403Forbidden);
 
         return app;
+    }
+
+    // FR-17, SC-18, ADR-0049 (#980): hops と間引き基準を**そのまま後段へ渡す**。
+    // 正規化も既定値の補完も BFF では行わない（一箇所で決める。GraphService が持つ）。
+    private static string BuildQuery(int? hops, string? by)
+    {
+        var parts = new List<string>();
+        if (hops is not null) parts.Add($"hops={hops}");
+        if (!string.IsNullOrWhiteSpace(by)) parts.Add($"by={Uri.EscapeDataString(by)}");
+        return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
     }
 
     // GraphService へ中継する。
