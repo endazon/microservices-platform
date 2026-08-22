@@ -656,24 +656,34 @@ options.Discovery.CustomizeHandlerDiscovery(q => q.Excludes.WithCondition(
 
 ## 🔴 引き継ぎ（次セッションへ・2026-08-22 時点）
 
-### いま止まっている理由
+### ［2026-08-22 更新］E1 は着地した（本節は当初「赤のまま止めた」と書いていた）
 
-**PR #998（head `ace20eb6`）は赤である。** 直さずに止めた（利用者指示）。
+**PR #998 は CI 全緑（success 39 / skipped 3 / failure 0）でマージ済み**（`d9c21f6b`）。
 
-```
-失敗: ConversionService.Worker.Tests.PipelineStepRegistrationTests.無効化した段は登録されず購読されない
-理由: Expected a <System.Exception> to be thrown, but no exception was thrown.
-CI  : backend-build (knowledge) / ubuntu-latest / Release  → 失敗
-手元: Windows / Debug → 単体で再実行しても合格（287 ms）
-```
+当初ここには「PR #998（head `ace20eb6`）は赤である。直さずに止めた」と書き、
+失敗の原因を**テスト側の表明の疑い**（「Wolverine が宛先なしのとき常に例外を投げるとは限らない」）
+として引き継いでいた。**その見立ては外れていた。**
 
-**環境依存である。** 当該テストは「段が無効なら `IMessageBus.InvokeAsync` が宛先なしで失敗する」と
-表明しているが、**Wolverine が宛先なしのとき常に例外を投げるとは限らない**可能性が高い
-（`NoHandlerExecutor` の挙動）。**手元で緑だったのは環境の偶然かもしれず、表明の側を疑うこと。**
+**実際の原因は本番の欠陥**であり、上の「`enabled:false` は効いていなかった」節が正本である ——
+規約探索が段の型を独立に拾うため、`enabled:false` が段を止められていなかった。
+**テストの表明は正しく、実装の側が間違っていた。**
 
-🔴 **「握り潰して発行 0 件だけを見る」形へ戻さないこと** —— それだとハンドラが在って何もしない実装と
-区別できない（元のコメント参照）。**登録されていないことを、例外以外の観測点で示す**必要がある
-（例: `IMessageBus` ではなく Wolverine ランタイムのハンドラ表から確かめる）。
+🔴 **引き継ぎに「原因はたぶんこれ」と書くと、次の担当がそこから調べ始める。**
+本件では「表明を疑え」と書いており、**実装を疑う方向を塞ぎかけていた。**
+**未特定のときは「未特定である」と書くほうが安全である。**
+
+**推測を引き継ぐなら、強度を添える。** 「これは推測であり、根拠は〈これだけ〉である」と書けば、
+次の担当は**その根拠の薄さごと**受け取れる。断定形で書くと、根拠の強さの情報が落ちる。
+
+### 🔴 同じ日に、同じ形で 1 度滑った（自己申告）
+
+CI で半日を使った当のセッションが、**develop の新着を merge した直後に再検証せず push した**。
+直後に気付いて全検証を回し直し、緑を確認したので被害は無い。
+
+**なぜ起きたか**: 「もう検証は済んでいる」という感覚が残っていた ——
+**merge が入る前の検証**に対して。**merge は入力を変えるので、検証はやり直しである。**
+**知っていることと、その場で思い出すことは別である。**（CI が head と base のマージを
+ビルドするという、まさにこの日に半日かけて学んだ事実の系である。）
 
 ### 🔴 「ローカル緑・CI で CS0246」を見たら、真っ先に develop の新着を疑う
 
@@ -753,12 +763,55 @@ git commit -m "..."                            # 追記（amend しない）
 `MassTransitDocumentNormalizedPublisher.cs` に隔離され、**1 ファイル 1 トランスポート**が保たれている。
 `check-event-topology.js` の実測で `発行 [ConversionService(masstransit)]` 単独であることを確認済み。
 
+### マージ後の検証（`integration.yml`・`d9c21f6b`）
+
+🔴 **skip 件数を生で読んだ。** `Total tests: 65 / Passed: 62 / Failed: 2 / Skipped: 1`。
+
+| 確認したいこと | 実測 |
+| --- | --- |
+| 実ブローカ試験は**走ったか** | ✅ **走って通った** —— `RawDocumentFetchedEdgeTests` の 2 件が `Passed`（5 秒 / 2 秒） |
+| skip されたのは何か | **1 件のみ**。`WolverineBrokerEdgeTests.外部ブローカが設定されていればDockerが無くても実走する` —— 外部エンドポイント未設定時に skip する既存試験であり、**本 PR の分ではない** |
+
+**これで手順 8 の充足が実測で確定した**（PR の CI は `Category!=Integration` で走らないため、
+充足の根拠は最後までここに掛かっていた）。
+
+### 🔴 ただし同じ実行が、本 PR が入れた回帰を 1 件検出した
+
+```
+Knowledge.IntegrationTests.DataSourceService.DataSourceTests（2 件）
+Wolverine.Transports.BrokerInitializationException : Unable to initialize the Broker rabbitmq in time
+```
+
+**原因**: `DataSourceService.Api` が Wolverine ホストを起こすようになった（E1）。
+Wolverine は**接続先をホスト構築時に読む**が、統合テストの器は接続先を
+`ConfigureAppConfiguration` で差し替えており、**その上書きは読み取りに間に合わない**。
+MassTransit は `UsingRabbitMq` のラムダ内で**遅延して**読むので間に合っていた。
+
+🔴 **器のコメントが、まさにこの罠を明記していた** ——
+「`RabbitMq:ConnectionString` が `ConfigureAppConfiguration` で効いていたのは、あちらが
+遅延して読まれるからである。**『統合テストの config 上書きは効く』を一般化してはならない
+—— 読まれる時点で決まる。**」**書いてある罠を踏んだ。**
+
+**修正**: 器で `UseSetting("RabbitMq:ConnectionString", ...)` も行う。
+`UseSetting` は**ホスト構成へ書くので `CreateBuilder` が構成を組む時点から見える** ——
+`Pipeline:ConfigPath` が同じ理由で `UseSetting` を使っている（**これで 2 例目**）。
+`ConfigureAppConfiguration` 側の上書きは残す（MassTransit 経路のサービスがまだ在るため）。
+**両方の読み取り時点を満たす。**
+
+⚠️ **この回帰は PR の CI では原理的に検出できない**（`ci.yml` は `Category!=Integration`）。
+**辺の移行 PR は、マージ後に `integration.yml` を必ず確認すること。**
+
+⚠️ **手元では再現できない**: `PostgresFixture` に外部エンドポイントの口が無く、
+Testcontainers は containerd 環境で動かないため、`DataSourceTests` はローカルでは常に skip する。
+**検証は `integration.yml` の `workflow_dispatch` をブランチに対して実行して行った。**
+
 ### やり残し
 
 | # | 内容 | 状態 |
 | --- | --- | --- |
-| 1 | **PR #998 の失敗テストを直す**（上記。表明の側を疑う） | 🔴 未着手・**最優先** |
-| 2 | マージ後に `integration.yml` が実ブローカ試験を**本当に走らせたか**を skip 件数の生読みで確認 | 未実施（マージ前のため） |
+| 1 | PR #998 の失敗テスト（`enabled:false`） | ✅ **直した**（本番欠陥だった。上記の節） |
+| 1b | **マージ後に integration.yml が検出した回帰**（`DataSourceTests` 2 件） | ✅ **直した**（下記） |
+| 2 | マージ後に `integration.yml` が実ブローカ試験を**本当に走らせたか**を skip 件数の生読みで確認 | ✅ **実施・走った**（下記） |
 | 3 | `WolverineBrokerEdgeTests.cs:36` の表明メッセージが削除済みの `BrokerFact` を名指ししている | **#997 の担当へ回す。触らない** |
 | 4 | 共有クラスタの滞留（`wolverine-dead-letter-queue` 3 通 / `interop-b-*-q_error` 1 通） | **利用者判断待ち。触らない**（由来は IADR-0245 に記録済み） |
 | 5 | 段 a・b の運用実行（デプロイ時） | 本 PR の射程外。手順は本書「運用手順」節 |
