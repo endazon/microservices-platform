@@ -1,23 +1,25 @@
 ---
 title: ワンタイムコード（OTP／多要素認証） 画面仕様書
 type: screen-spec
-status: draft
+status: completed
 created: 2026-08-15
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [SC-01, SC-13, SC-14, SC-15, SC-16, UC-05]
 adrs: [ADR-0026]
 iadrs: [IADR-0197]
-specs: []
+specs: [20260823_issue-438_keycloak-theme-and-smtp]
 issues: [#438]
 -->
 
 # 画面仕様書: ワンタイムコード（OTP／多要素認証）
 
-> **本仕様書は realm 設定の側だけが実装済みである。** 画面（Keycloak テーマ）の実体は未実装であり、
-> **担当は #438**（計画 決定 30）。本書は #578 が引き受けた下位タスク＝「realm 設定と画面仕様書の作成」の成果物である。
+> **realm 設定に加え、Keycloak テーマ（ブランド適用の CSS）を実装した。** テーマ実体は
+> `deploy/keycloak/themes/platform/login/`（`parent=keycloak` を継承し、テンプレートは複製せず
+> CSS のみ追加する方式）。**docker-compose 環境では有効。k8s ローカル環境（`deploy/local/`）は
+> ConfigMap の手動作成が必要**（残件は本書 §未決事項）。
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -118,24 +120,27 @@ flowchart LR
 
 | 計画側の要素 | 実装 | 満たしていない条件 / 理由 | 計画側の該当箇所 |
 | --- | --- | --- | --- |
-| TOTP による MFA を必須とする | **一部する** | **realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）は投入済み。画面（Keycloak テーマ）が未実装**のため、利用者から見た体験は成立しない。テーマは #438 の射程 | 計画側の画面設計 §ワンタイムコード（OTP） |
+| TOTP による MFA を必須とする | **する** | realm ポリシー（`otpPolicyType` / `CONFIGURE_TOTP` の `defaultAction`）＋テーマ（`loginTheme=platform`）が揃った。k8s ローカル環境は残件（§未決事項） | 計画側の画面設計 §ワンタイムコード（OTP） |
 | 6 桁・前後 1 ステップ許容 | **する** | — | 同上 |
-| 6 桁コード入力・デバイス選択・戻る導線 | **一部する** | **Keycloak 既定テーマが 3 要素とも提供する**ため要素は存在する。**ブランド適用（テーマ）が未実装** | 同上 |
-| 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **一部する** | `CONFIGURE_TOTP` を `defaultAction` にしたため**既定テーマでは誘導が働き、QR・手動キー・デバイス名・確認コードも既定で提供される**。**ブランド適用のみが欠ける** | 同上 |
-| リカバリーコードを登録完了時に 1 回のみ表示 | **一部する** | **必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` を realm へ登録済み**（レルム改名と認証ポリシー投入の実装 ADR の決定 4）。**「登録完了時に 1 回のみ表示」する導線はテーマ側の作り込みで未実装** | 同上 |
-| リカバリーコードをアカウント設定から再発行 | **一部する** | provider は登録済みだが、**アカウント設定（アカウントコンソールのテーマ）が未実装**のため再発行の導線が無い。#438 の射程 | 計画側の画面設計 §アカウント設定 |
+| 6 桁コード入力・デバイス選択・戻る導線 | **する** | Keycloak 既定テーマが 3 要素とも提供し、`platform` テーマでブランド適用済み | 同上 |
+| 初回セットアップ（QR・手動キー・デバイス名・確認コード） | **する** | `CONFIGURE_TOTP` を `defaultAction` にしたため既定テーマで誘導が働き、テーマでブランド適用済み | 同上 |
+| リカバリーコードを登録完了時に 1 回のみ表示 | **する** | 必須アクション `CONFIGURE_RECOVERY_AUTHN_CODES` は realm へ登録済み（レルム改名と認証ポリシー投入の実装 ADR）。**表示回数の制御は Keycloak 本体の既定挙動**（登録フロー完了時に 1 回のみ表示する）に依存し、テーマは表示の作り込みを追加しない | 同上 |
+| リカバリーコードをアカウント設定から再発行 | **する** | provider 登録済み・アカウントコンソールへ `accountTheme=platform` を適用済み。再発行の導線は Keycloak 既定のアカウントコンソールが提供する | 計画側の画面設計 §アカウント設定 |
 
 ## 関連仕様
 
-- 実装 ADR: レルムを `platform` へ改名し、計画 ADR の認証ポリシーを realm へ投入する
+- 実装 ADR: レルムを `platform` へ改名し、計画 ADR の認証ポリシーを realm へ投入する実装 ADR／
+  テーマ実装方針・smtp 注入方式を決めた実装 ADR
 - テスト仕様書: [ワンタイムコード（OTP）](../tests/SC-14_otp-mfa.md)
-- 画面仕様書: [パスワードリセット](./SC-15_password-reset.md)
+- 画面仕様書: [ログイン](./SC-13_login.md)／[パスワードリセット](./SC-15_password-reset.md)／
+  [アカウント設定](./SC-16_account-settings.md)
 
 ## 未決事項
 
-- **リカバリーコードの表示・再発行の導線**。**provider（`CONFIGURE_RECOVERY_AUTHN_CODES`）は realm へ登録済み**であり、ピン留めしている `quay.io/keycloak/keycloak:24.0` に存在する。残るのはテーマ側の作り込み。
 - **★ `requiredActions` を書くと Keycloak の既定は一切登録されない。** 本作業の初版は 7 件しか列挙せず、**この provider を落としていた**（PR #746 の ADR 監査が検出）。現在は既定 13 件を全列挙し、`check-realm-constraints.js` が宣言漏れを検出する。
-- **テーマの実体**（`loginTheme`）。参照先のテーマが存在しないと Keycloak が解決できないため、**テーマ実体と同時に `realm.json` へ入れる**（本作業では投入しない）。
+- **k8s ローカル環境（`deploy/local/`）ではテーマがまだ自動配線されていない。** ConfigMap
+  （`keycloak-theme-platform`）の生成が `scripts/k8s-local-up.sh` に未組み込みのため、当面は
+  `deploy/local/README.md`「手動でステップ実行する場合」の手順を実行する必要がある（follow-up）。
 
 <!-- trace-table:
 row1: SC-13

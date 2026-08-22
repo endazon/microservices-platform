@@ -334,3 +334,4 @@
 | [IADR-0258](./IADR-0258_helmchartconfig-reconcile-fail-closed.md) | **`HelmChartConfig` は「置けたこと」ではなく「効いたこと」を待つ**。`kubectl apply` は reconcile 失敗を知らず、up が EXIT=0 で返っていた。traefik svc の `admin=50000` を待ち、来なければ**非 0 で落とす**（警告して続行しない）。見るのは k3s の版に依存しない観測可能な結果。#953 | Accepted |
 | [IADR-0259](./IADR-0259_vector-store-document-scoped-search.md) | **文書 ID 制約つき検索は既存 `SearchAsync` の省略可能引数にせず別メソッドで足す**。省略可能引数だと「渡し忘れ＝絞りなし」が既定になり、本口の意味（空集合＝該当なし）と逆向きの縮退口が開く。ABAC とは AND。#969 | Accepted |
 | [IADR-0260](./IADR-0260_db-guard-verification-method.md) | **DB 層の防壁は「宣言」ではなく「発火」と「カタログ」の両方で確認する**。InMemory プロバイダは一意索引も外部キーも強制しないため、実 PostgreSQL で SqlState と制約名を見て、あわせてマイグレーション出力を情報スキーマと突合する。#941 | Accepted |
+| [IADR-0261](./IADR-0261_keycloak-theme-and-smtp-injection.md) | **Keycloak テーマは `parent=keycloak` 継承 ＋ CSS 追加で作り、`smtpServer` の実値は realm.json へ入れない**。値は Vault → ExternalSecret → `kcadm` の経路で注入し、リポジトリには手順だけを残す。#438 | Accepted |

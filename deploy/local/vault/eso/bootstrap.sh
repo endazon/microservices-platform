@@ -47,11 +47,20 @@ vexec "vault kv put secret/msp/headlamp-oidc client-secret='${HEADLAMP_OIDC_CLIE
 vexec "vault kv put secret/msp/postgres password='${PG_PASSWORD:-postgres}'"
 vexec "vault kv put secret/msp/rabbitmq password='${RABBITMQ_PASSWORD:-guest}'"
 vexec "vault kv put secret/msp/keycloak-admin password='${KEYCLOAK_ADMIN_PASSWORD:-admin}'"
+# #438, ADR-0045 決定 2-b/6: SMTP リレー（go-live では Google Workspace への STARTTLS リレー）の資格情報。
+# **実環境の値は未供給のため既定は空文字**（他 secret と同じ fail-safe。空のままでは Keycloak の smtpServer は
+# 機能しない＝現状と不変）。値の投入手順・Secret の消費方法は
+# docs/operations/keycloak-smtp-relay-setup-runbook.md を参照。host/port/starttls は ADR-0045 決定 2-b の
+# 確定値（smtp.gmail.com / 587 / true）を既定に置く——これらは接続先の書式であり秘匿値ではない。
+vexec "vault kv put secret/msp/keycloak-smtp \
+  host='${SMTP_HOST:-smtp.gmail.com}' port='${SMTP_PORT:-587}' starttls='${SMTP_STARTTLS:-true}' \
+  from='${SMTP_FROM:-}' user='${SMTP_USER:-}' password='${SMTP_PASSWORD:-}'"
 
 echo ""
 echo "done. ExternalSecret が Vault→k8s Secret を同期する（refresh 1h）:"
 echo "  PR-1: llm-provider-credentials / PR-2: minio-credentials, wikijs-db, wikijs-sync"
 echo "  PR-3: minio-oidc (MSP ns) / grafana-oidc, vault-oidc, headlamp-oidc (platform-infra ns)"
 echo "  PR-4: postgres, rabbitmq, keycloak-admin (platform-infra ns・creationPolicy: Merge・手動 apply は保持)"
+echo "  #438: keycloak-smtp (platform-infra ns。既定は空＝実値未供給。docs/operations/keycloak-smtp-relay-setup-runbook.md 参照)"
 echo "  確認(MSP): kubectl -n microservices-platform get externalsecret,secret llm-provider-credentials minio-credentials wikijs-db wikijs-sync minio-oidc"
-echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc grafana-oidc headlamp-oidc"
+echo "  確認(infra): kubectl -n platform-infra get externalsecret,secret postgres rabbitmq keycloak-admin vault-oidc grafana-oidc headlamp-oidc keycloak-smtp"

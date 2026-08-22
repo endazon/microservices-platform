@@ -97,8 +97,16 @@ services:
       KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: kp
       KC_DB_PASSWORD: kp
+      # #438, ADR-0026: realm.json の loginTheme/accountTheme=platform を解決するテーマ実体を
+      # ./keycloak/themes/platform 配下からマウントする（下記 volumes）。dev ではテーマファイルを
+      # 編集しながら確認できるよう、テーマ・テンプレートのキャッシュを無効化する
+      # （Keycloak dev ガイド「Disabling theme caching」。本番では効かせたいため compose 限定）。
+      KC_SPI_THEME_CACHE_THEMES: "false"
+      KC_SPI_THEME_CACHE_TEMPLATES: "false"
+      KC_SPI_THEME_STATIC_MAX_AGE: "-1"
     volumes:
       - ./keycloak/microservices-platform-realm.json:/opt/keycloak/data/import/microservices-platform-realm.json:ro
+      - ./keycloak/themes/platform:/opt/keycloak/themes/platform:ro
     ports:
       - "8080:8080"
     # Issue #118 監査: Keycloak 24 イメージは curl/wget 非搭載で curl 検査は常に unhealthy になる
