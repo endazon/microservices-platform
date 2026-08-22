@@ -214,5 +214,5 @@ public record AccessScopeRequest(
 
 - Supersedes: なし
 - Superseded by: なし
-- 実装 issue: #451（FR-19 / FR-20）/ #516（必須属性）/ #986（`ADR-0046` D-01）
+- 実装 issue: **#989（本 IADR を起こした issue）** / #451（FR-19 / FR-20）/ #516（必須属性）/ #986（`ADR-0046` D-01）
 - 環流: planning#464 / planning#465
