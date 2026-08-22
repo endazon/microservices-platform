@@ -146,6 +146,68 @@ module.exports = ({ ok, assert }) => {
       }
     });
 
+    // --- confidential クライアントへの追随（#984 / #439 の実例） ---------------------
+    //
+    // 実際に起きたこと: #439（BFF セッション / Token Handler）が `bff` を publicClient=false へ変えた。
+    // 投入器は client_id だけで password grant を送っていたため Keycloak が 401（invalid_client）を返した。
+    // 🔴 realm の変更に追随しなかったのは今日 2 回目で、1 回目は**値**の写し取り、
+    // 2 回目は**クライアントの種別という構造**の変化である。値を直すだけでは次も落ちる。
+
+    ok('★ seed: realm が confidential と言う client には client_secret を載せる（#439 型の再発防止）', () => {
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const client = (realm.clients || []).find((c) => c.clientId === seed.CLIENT_ID);
+      assert.ok(client, `realm に client ${seed.CLIENT_ID} が無い（投入器の既定と realm が食い違っている）`);
+
+      // 🔴 password grant を使う以上、直接付与が有効でなければ設計から見直しが要る。
+      assert.strictEqual(
+        client.directAccessGrantsEnabled,
+        true,
+        `client ${seed.CLIENT_ID} の directAccessGrantsEnabled が false。password grant が使えない`
+      );
+
+      const confidential = seed.isConfidentialInRealm(seed.CLIENT_ID);
+      assert.strictEqual(confidential, client.publicClient === false);
+
+      const secret = seed.clientSecretFromRealm(seed.CLIENT_ID);
+      if (confidential) {
+        assert.ok(secret, `confidential なのに realm から client_secret を引けない（${seed.CLIENT_ID}）`);
+        const form = seed.buildTokenForm({
+          clientId: seed.CLIENT_ID,
+          username: 'admin',
+          password: 'x',
+          confidential,
+          clientSecret: secret,
+        });
+        assert.strictEqual(form.get('client_secret'), secret, 'confidential なのに client_secret が載っていない');
+      }
+    });
+
+    ok('seed: public な client には client_secret を載せない', () => {
+      const form = seed.buildTokenForm({
+        clientId: 'platform-spa',
+        username: 'admin',
+        password: 'x',
+        confidential: false,
+        clientSecret: 'should-not-be-sent',
+      });
+      assert.strictEqual(form.get('client_secret'), null);
+      // 種別を判定できないとき（realm に無い client）も載せない。
+      assert.strictEqual(seed.isConfidentialInRealm('no-such-client'), null);
+    });
+
+    ok('★ seed: realm の client secret がスクリプトへ直書きされていない', () => {
+      const src = fsSeed.readFileSync(pathSeed.join(__dirname, 'seed-abac-policies.js'), 'utf8');
+      const realm = JSON.parse(fsSeed.readFileSync(seed.REALM_FILE, 'utf8'));
+      const secrets = (realm.clients || []).map((c) => c.secret).filter(Boolean);
+      assert.ok(secrets.length > 0, 'realm に client secret が 1 つも無い（前提が変わった）');
+      for (const s of secrets) {
+        assert.ok(
+          !src.includes(`'${s}'`) && !src.includes(`"${s}"`),
+          `realm の client secret がスクリプトへ直書きされている（${s.slice(0, 4)}…）。realm から引くこと`
+        );
+      }
+    });
+
     // 投入データそのものの回帰。**階段の最下段（clearance=public）を欠くと、
     // clearance=public の利用者はどのポリシーにもマッチせず public 文書すら読めない**
     // （deny-by-default）。README が謳う「階段」と投入データを一致させ続けるために固定する。
