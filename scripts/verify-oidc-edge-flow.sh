@@ -295,8 +295,14 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
       pass "POST /bff/documents → $code（ABAC が許可を返した）"
       ;;
     403)
-      fail "POST /bff/documents → 403（ABAC が deny へ倒れている。ポリシー未投入か認可サービス不達）"
+      fail "POST /bff/documents → 403（ABAC が deny へ倒れている。ポリシーが投入されていない疑い）"
       info "$(head -c 200 "$body_file")"
+      ;;
+    000)
+      # 🔴 curl が応答を得られなかった（タイムアウト）。実測でこの形を踏んだ（#972 の変異 M1）。
+      #    k8s では ClusterIP に無いポートへ繋ぐと RST が返らず **ハングする**ため、
+      #    上流の宛先が不達だと deny へ縮退する前に呼び出し側が待たされる。
+      fail "POST /bff/documents → 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
       ;;
     *)
       fail "POST /bff/documents → $code（作成できない。ABAC 以外の理由の可能性）"
@@ -313,7 +319,9 @@ if [ "$ABAC_POSITIVE" = "1" ]; then
     -H "Authorization: Bearer $ACCESS" "$EDGE_URL/bff/documents")
   count=$(node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const a=JSON.parse(s);console.log(Array.isArray(a)?a.length:-1)}catch{console.log(-1)}})" < "$body_file")
   has_probe=$(grep -c "$PROBE_TITLE" "$body_file" 2>/dev/null || printf '0')
-  if [ "$code" != "200" ]; then
+  if [ "$code" = "000" ]; then
+    fail "GET /bff/documents（許可あり）→ 応答なし（タイムアウト）。上流の宛先が不達の疑い（#342 / #958 の形）"
+  elif [ "$code" != "200" ]; then
     fail "GET /bff/documents（許可あり）→ $code"
   elif [ "$count" -lt 1 ] 2>/dev/null; then
     fail "GET /bff/documents（許可あり）→ 200 だが $count 件（空）。ABAC が deny へ縮退している疑い"
