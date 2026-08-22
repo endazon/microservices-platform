@@ -151,6 +151,78 @@ public class WikiEndpointsAbacTests(TestWebApplicationFactory factory)
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    // ---- FR-19, ADR-0036, ADR-0046 D-06 部品 3, IADR-0253 段 3: 分岐（選言）の端点越しの適用 ----
+
+    private async Task<(Guid MineDoc, Guid TheirsDoc, Guid OrgDoc)> SeedOwnerPagesAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WikiDbContext>();
+        db.Pages.RemoveRange(db.Pages);
+        await db.SaveChangesAsync();
+
+        var mine = WikiPage.CreateFromDocument(Guid.NewGuid(), "自分の個人資料", "s3://b/mine.md",
+            new() { ["owner"] = "me" }, []);
+        var theirs = WikiPage.CreateFromDocument(Guid.NewGuid(), "他人の個人資料", "s3://b/theirs.md",
+            new() { ["owner"] = "someone-else" }, []);
+        var org = WikiPage.CreateFromDocument(Guid.NewGuid(), "組織文書", "s3://b/org.md",
+            new() { ["confidentiality"] = "internal" }, []);
+        db.Pages.AddRange(mine, theirs, org);
+        await db.SaveChangesAsync();
+        return (mine.DocumentId, theirs.DocumentId, org.DocumentId);
+    }
+
+    // 認可サービスが段 2 以降に返す形: 所有者ベース（束縛済み）＋属性ベースの 2 分岐。
+    private static AccessScopeResponse TwoBranchScope() =>
+        new("me", [], Granted: true, Branches:
+        [
+            new AccessScopeBranch("個人資料", [new AttributeFilter("owner", ["me"])]),
+            new AccessScopeBranch("組織文書", [new AttributeFilter("confidentiality", ["internal"])]),
+        ]);
+
+    // #989 回帰テスト 1・2（陽性対照）: 一覧に「自分の個人資料」と「組織文書」の**両方**が現れる。
+    // 従来は連言に潰れて積集合しか見えず、owner 無し文書は全滅していた。
+    // 否定形（3）と対: 「他人の個人資料」は現れない。
+    [Fact]
+    public async Task GetPages_WithBranches_ShowsOwnAndOrgButNotTheirs()
+    {
+        var (mineDoc, theirsDoc, orgDoc) = await SeedOwnerPagesAsync();
+        factory.Scope = TwoBranchScope();
+
+        var pages = await factory.CreateClient().GetFromJsonAsync<List<PageSummary>>(
+            "/wiki/pages", TestContext.Current.CancellationToken);
+
+        pages!.Select(p => p.DocumentId).Should().BeEquivalentTo([mineDoc, orgDoc],
+            "所有者ベースの分岐と属性ベースの分岐の和が見え、他人の個人資料は見えない");
+        pages!.Select(p => p.DocumentId).Should().NotContain(theirsDoc);
+    }
+
+    // #989 回帰テスト 3（否定形・端点越し）: 他人の個人資料は本文も 404（存在秘匿を維持）。
+    [Fact]
+    public async Task GetPageByDoc_WithBranches_Returns404_ForSomeoneElsesNote()
+    {
+        var (_, theirsDoc, _) = await SeedOwnerPagesAsync();
+        factory.Scope = TwoBranchScope();
+
+        var response = await factory.CreateClient().GetAsync(
+            $"/wiki/pages/by-doc/{theirsDoc}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    // #989 回帰テスト 4（陽性対照・3 と対）: 自分の個人資料は 200 で読める。
+    // これが無いと「常に 404 を返す実装」が上の否定形を通す。
+    [Fact]
+    public async Task GetPageByDoc_WithBranches_Returns200_ForOwnNote()
+    {
+        var (mineDoc, _, _) = await SeedOwnerPagesAsync();
+        factory.Scope = TwoBranchScope();
+
+        var response = await factory.CreateClient().GetAsync(
+            $"/wiki/pages/by-doc/{mineDoc}", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private async Task ArchiveAsync(Guid documentId)
     {
         using var scope = factory.Services.CreateScope();
