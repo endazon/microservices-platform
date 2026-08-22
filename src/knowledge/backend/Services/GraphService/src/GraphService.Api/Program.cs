@@ -59,6 +59,8 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapGraphEndpoints();
+// FR-17, SC-09, SC-10: 辺の型辞書（#910）。
+app.MapEdgeTypeEndpoints();
 
 app.Run();
 

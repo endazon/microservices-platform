@@ -109,6 +109,7 @@
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
       "EdgeTypeDictionaryTests",
+      "EdgeTypeEndpointsTests",
       "GraphAccessResolverTests",
       "GraphTypeGateArchitectureTests"
     ],
