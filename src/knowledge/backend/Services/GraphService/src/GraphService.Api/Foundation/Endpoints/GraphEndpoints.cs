@@ -1,4 +1,8 @@
+using GraphService.Api.Foundation.Domain;
+using GraphService.Api.Foundation.Persistence;
 using GraphService.Api.Foundation.Ports;
+using Knowledge.Contracts.Dtos;
+using Microsoft.EntityFrameworkCore;
 using GraphService.Api.Foundation.Services;
 
 namespace GraphService.Api.Foundation.Endpoints;
@@ -108,6 +112,86 @@ public static class GraphEndpoints
           .Produces<GraphViewResponse>()
           .Produces(StatusCodes.Status400BadRequest)
           .Produces(StatusCodes.Status404NotFound);
+
+        // FR-17, ADR-0034 決定 8: 利用者が明示的に辺を付与する。
+        //
+        // 🔴 **作成時に到達可能性を検証する。** 決定 8 は「個人資料から権限外文書へのリンクは
+        // 張れない。リンク作成時に権限を検証する」と定める。検証しないと、**辺を張る行為そのものが
+        // 権限外文書の存在を確かめる手段**になる（張れたら在る、張れなければ無い）。
+        //
+        // **両端を検証する。** 終点だけ見ると、見えない文書を起点にして辺を生やせてしまう。
+        // 辺の可視条件（両端が許可）と作成条件を揃える（IADR-0242 決定 6）。
+        //
+        // 🔴 **不可視・不存在はすべて 404。403 にしない** —— 403 は「権限が無いだけで存在はする」
+        // ことを漏らす。読み取り側（存在秘匿）と同じ線を引く。
+        g.MapPost("/edges", async (
+            CreateGraphEdgeRequest req,
+            IGraphAccessResolver accessResolver,
+            IGraphStore store,
+            GraphDbContext db,
+            HttpContext http,
+            CancellationToken ct) =>
+        {
+            if (req.SourceDocumentId == Guid.Empty || req.TargetDocumentId == Guid.Empty)
+                return Results.BadRequest(new { error = "document_id_required" });
+            if (req.SourceDocumentId == req.TargetDocumentId)
+                return Results.BadRequest(new { error = "self_edge_not_allowed" });
+
+            var scope = await accessResolver.ResolveAsync(http, ct);
+            if (!scope.Granted)
+                return NotFound();
+
+            // 型は先に引く。**存在しない型は 400**（文書の可視性とは無関係な入力誤りであり、
+            // 404 にすると型の実在が文書の存在秘匿と混ざって読めなくなる）。
+            var edgeType = await db.EdgeTypes.AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == req.EdgeTypeId, ct);
+            if (edgeType is null)
+                return Results.BadRequest(new { error = "unknown_edge_type" });
+
+            // ★到達可能性の検証★ —— 両端とも呼び出し主体のスコープで可視でなければならない。
+            var source = await store.FindNodeAsync(req.SourceDocumentId, ct);
+            var target = await store.FindNodeAsync(req.TargetDocumentId, ct);
+            if (source is null || target is null)
+                return NotFound();
+            if (AuthorizedNode.Authorize(source, scope) is null
+                || AuthorizedNode.Authorize(target, scope) is null)
+                return NotFound();
+
+            var edge = Edge.Create(
+                req.SourceDocumentId, req.TargetDocumentId, edgeType.Id,
+                edgeType.IsSymmetric, EdgeProvenance.User);
+
+            // 重複の事前検査。**対称型は正規化後の並びで突き合わせる**（Edge.Create が正規化済み）。
+            // ⚠ InMemory は一意索引を強制しないため、ここが実質唯一の防壁になる（#941）。
+            var duplicate = await db.Edges.AnyAsync(e =>
+                e.SourceDocumentId == edge.SourceDocumentId
+                && e.TargetDocumentId == edge.TargetDocumentId
+                && e.EdgeTypeId == edge.EdgeTypeId
+                && e.SourceAnchor == edge.SourceAnchor
+                && e.TargetAnchor == edge.TargetAnchor, ct);
+            if (duplicate)
+                return Results.Conflict(new { error = "edge_exists" });
+
+            db.Edges.Add(edge);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // 検査と保存の間の競合。一意制約違反を素の 500 にせず 409 へ変換する。
+                return Results.Conflict(new { error = "edge_exists" });
+            }
+
+            return Results.Created($"/graph/edges/{edge.Id}", new GraphEdgeCreatedDto(
+                edge.Id, edge.SourceDocumentId, edge.TargetDocumentId,
+                edge.EdgeTypeId, edge.Provenance));
+        }).WithName("CreateGraphEdge")
+          .RequireAuthorization()
+          .Produces<GraphEdgeCreatedDto>(StatusCodes.Status201Created)
+          .Produces(StatusCodes.Status400BadRequest)
+          .Produces(StatusCodes.Status404NotFound)
+          .Produces(StatusCodes.Status409Conflict);
 
         return app;
     }

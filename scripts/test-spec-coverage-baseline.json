@@ -111,7 +111,8 @@
       "EdgeTypeDictionaryTests",
       "EdgeTypeEndpointsTests",
       "GraphAccessResolverTests",
-      "GraphTypeGateArchitectureTests"
+      "GraphTypeGateArchitectureTests",
+      "UserAuthoredEdgeTests"
     ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
