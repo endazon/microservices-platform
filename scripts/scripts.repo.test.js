@@ -7265,4 +7265,73 @@ module.exports = ({ ok, assert }) => {
       );
     });
   }
+
+  //
+  // NFR / #882 / IADR-0235: xUnit1051（TestContext.Current.CancellationToken）段階採用の ratchet。
+  //
+  // **ここが check-xunit1051-ratchet.js の CI 呼び出し口である。** 新しい検査器を足しても
+  // `.github/workflows/` に新ジョブは作らない —— ci.yml の scripts-tests ジョブ
+  // （`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`）が本 companion を読み込むので、
+  // ここから呼ぶ（check-adr-numbering / check-doc-updated と同じ相乗り。IADR-0140 決定 2）。
+  //
+  // 🔴 **この検査器だけでは「剥がしたら 0 件」は守れない。** 守っているのは
+  // `src/Directory.Build.props` の **WarningsAsErrors** であり（`TreatWarningsAsErrors` は false
+  // なので NoWarn を外すだけでは再発しても CI は緑のまま）、本検査器はその配線が外れていないこと
+  // ——許可リストと baseline が一致し、抑止が混入していないこと——を見る。役割を取り違えないこと。
+  {
+    const pathXu = require('path');
+    const { spawnSync: spawnXu } = require('child_process');
+    const xuScript = pathXu.join(__dirname, 'check-xunit1051-ratchet.js');
+    const runXu = (args) => spawnXu(process.execPath, [xuScript, ...args], { encoding: 'utf8' });
+
+    ok('check-xunit1051-ratchet --self-test が通る（M0〜M7 と fail-closed を対で固定）', () => {
+      const r = runXu(['--self-test']);
+      assert.strictEqual(r.status, 0, `自己試験が失敗した:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    ok('check-xunit1051-ratchet が実データで違反 0 件', () => {
+      const r = runXu([]);
+      assert.strictEqual(r.status, 0, `xUnit1051 ratchet に違反がある:\n${r.stdout}\n${r.stderr}`);
+    });
+
+    // **実バイナリ経路での検出力**。自己試験は関数を直接叩くので、CLI が exit 1 を返すかは別に見る。
+    ok('check-xunit1051-ratchet: baseline と props がずれた状態で exit 1', () => {
+      const { checkXUnit1051Ratchet } = require('./check-xunit1051-ratchet.js');
+      const kinds = checkXUnit1051Ratchet({
+        projects: ['src/a/Alpha.Tests/Alpha.Tests.csproj'],
+        propsText: '<XUnit1051Migrated>;</XUnit1051Migrated>',
+        suppressionFiles: [],
+        baseline: {
+          projects: {
+            'src/a/Alpha.Tests/Alpha.Tests.csproj': { project: 'Alpha.Tests', remaining: 0, migrated: true },
+          },
+        },
+      }).map((v) => v.kind);
+      assert.ok(kinds.includes('props-desync'), `props-desync を検出しない: ${JSON.stringify(kinds)}`);
+    });
+
+    // baseline の migrated 集合と props の許可リストは**実データでも**一致していること。
+    // 2 つのリストを別々に持つと片方だけ腐るため、ここで実ファイル同士を突き合わせる。
+    ok('実データ: baseline の migrated 集合と props の XUnit1051Migrated が一致する', () => {
+      const fsXu = require('fs');
+      const { readMigratedFromProps, BASELINE_PATH, PROPS_PATH } = require('./check-xunit1051-ratchet.js');
+      const baseline = JSON.parse(fsXu.readFileSync(BASELINE_PATH, 'utf8'));
+      const fromProps = readMigratedFromProps(fsXu.readFileSync(PROPS_PATH, 'utf8'));
+      assert.ok(fromProps, 'props から XUnit1051Migrated を読めない（配線が外れている）');
+      const fromBaseline = Object.values(baseline.projects)
+        .filter((e) => e.migrated === true)
+        .map((e) => e.project);
+      // fail-closed の門: 移行済みが 0 件なら、この試験は何も見ていない。
+      assert.ok(fromBaseline.length > 0, '移行済みプロジェクトが 0 件（段階採用が始まっていない）');
+      assert.deepStrictEqual([...fromProps].sort(), fromBaseline.sort());
+    });
+
+    // 抑止（NoWarn / editorconfig の severity=none）は WarningsAsErrors に**勝つ**（#882 で実測）。
+    // 正規の 1 箇所以外に xUnit1051 が現れたら、ratchet は黙って外れている。
+    ok('実データ: xUnit1051 の抑止は src/Directory.Build.props の 1 箇所に限る', () => {
+      const r = runXu([]);
+      assert.doesNotMatch(String(r.stderr), /stray-suppression/, `抑止が混入している:\n${r.stderr}`);
+    });
+  }
+
 };

@@ -1,0 +1,111 @@
+{
+  "$comment": [
+    "xUnit1051（TestContext.Current.CancellationToken）の段階採用 ratchet（#882 / IADR-0235）。",
+    "1 PR = 1 プロジェクト。移行したら migrated:true にし、src/Directory.Build.props の",
+    "XUnit1051Migrated へ同じ名前を足す。両者の一致は check-xunit1051-ratchet.js が強制する。",
+    "",
+    "🔴 remaining は **実測値**である（推定ではない）。採り方:",
+    "  dotnet build src/<unit>/backend/backend.slnx -t:Rebuild -p:NoWarn= -m:1",
+    "  → 'warning xUnit1051' の行をファイル・行・列で一意化して数える。",
+    "🔴 MSBuild は 1 件の警告をビルド中とサマリの 2 箇所へ出す。ログ行を素朴に数えると 2 倍になる",
+    "  （IADR-0231 決定 4 の『1,886 件』はこの重複計上であり、実数は 943 件だった。#882 で訂正）。",
+    "  -m:1 を付けないと 'N>' ノード接頭辞が付いて一意化にも失敗する。",
+    "",
+    "測定時点: 8abff2e（develop, 2026-08-22）。SDK 10.0.301 / xunit.v3 の同梱アナライザ。",
+    "",
+    "対象外（意図的。走査もしない）:",
+    "  - src/ai-stock-trading/** … 別プロジェクトの submodule（check-backend-libraries.js と同じ扱い）。",
+    "    許可リストは AST へ WarningsAsErrors を届かせないため、AST の挙動は本 ratchet で変わらない。",
+    "  - src/.template-buildcheck-* … CI が雛形を複製する一時ディレクトリ（追跡下に無い）。",
+    "    複製の元である templates/ 側の実体は下に 1 件として載せてある。"
+  ],
+  "projects": {
+    "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": {
+      "project": "AiAnalysisService.Api.Tests",
+      "remaining": 30,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": {
+      "project": "ConversionService.Worker.Tests",
+      "remaining": 138,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/DashboardService/tests/DashboardService.Api.Tests/DashboardService.Api.Tests.csproj": {
+      "project": "DashboardService.Api.Tests",
+      "remaining": 24,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": {
+      "project": "DataSourceService.Api.Tests",
+      "remaining": 75,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": {
+      "project": "DocumentService.Api.Tests",
+      "remaining": 94,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/FeedbackService/tests/FeedbackService.Api.Tests/FeedbackService.Api.Tests.csproj": {
+      "project": "FeedbackService.Api.Tests",
+      "remaining": 30,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/IngestionService/tests/IngestionService.Worker.Tests/IngestionService.Worker.Tests.csproj": {
+      "project": "IngestionService.Worker.Tests",
+      "remaining": 33,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/RetrievalService/tests/RetrievalService.Api.Tests/RetrievalService.Api.Tests.csproj": {
+      "project": "RetrievalService.Api.Tests",
+      "remaining": 47,
+      "migrated": false
+    },
+    "src/knowledge/backend/Services/WikiService/tests/WikiService.Api.Tests/WikiService.Api.Tests.csproj": {
+      "project": "WikiService.Api.Tests",
+      "remaining": 51,
+      "migrated": false
+    },
+    "src/knowledge/backend/Shared/Knowledge.Contracts.Tests/Knowledge.Contracts.Tests.csproj": {
+      "project": "Knowledge.Contracts.Tests",
+      "remaining": 0,
+      "migrated": true
+    },
+    "src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj": {
+      "project": "Knowledge.IntegrationTests",
+      "remaining": 4,
+      "migrated": false
+    },
+    "src/platform/backend/Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj": {
+      "project": "Platform.Bff.Tests",
+      "remaining": 229,
+      "migrated": false
+    },
+    "src/platform/backend/Services/AuthorizationService/tests/AuthorizationService.Api.Tests/AuthorizationService.Api.Tests.csproj": {
+      "project": "AuthorizationService.Api.Tests",
+      "remaining": 74,
+      "migrated": false
+    },
+    "src/platform/backend/Services/LlmGateway/tests/LlmGateway.Api.Tests/LlmGateway.Api.Tests.csproj": {
+      "project": "LlmGateway.Api.Tests",
+      "remaining": 114,
+      "migrated": false
+    },
+    "src/platform/backend/Shared/Platform.Shared.Infrastructure.Tests/Platform.Shared.Infrastructure.Tests.csproj": {
+      "project": "Platform.Shared.Infrastructure.Tests",
+      "remaining": 0,
+      "migrated": false,
+      "deferReason": "0 件だが本 PR では剥がさない。U5 / Wolverine 移行チェーン（#455 系）が本プロジェクトへテストを追加中で、WarningsAsErrors を先に入れると並行 PR が自分の追加分で落ちる。移行チェーンの着地後に単独 PR で剥がす。"
+    },
+    "src/platform/backend/Shared/Platform.Shared.Kernel.Tests/Platform.Shared.Kernel.Tests.csproj": {
+      "project": "Platform.Shared.Kernel.Tests",
+      "remaining": 0,
+      "migrated": true
+    },
+    "templates/unit-template/backend/Services/SampleService/tests/SampleService.Tests/SampleService.Tests.csproj": {
+      "project": "SampleService.Tests",
+      "remaining": 1,
+      "migrated": false,
+      "deferReason": "雛形（17 本目）。CI の template-backend-build が src/.template-buildcheck-unit-template/ へ複製してビルドするため src/Directory.Build.props が効く。実測 1 件。1 行で移行できるが、本 PR は器だけの約束なのでテストの .cs を変えない。次段で剥がす。"
+    }
+  }
+}

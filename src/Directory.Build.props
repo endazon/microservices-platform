@@ -9,23 +9,67 @@
   </PropertyGroup>
 
   <!--
-    テストプロジェクトのみ: xUnit1051 を抑止する（#455 A-2）。
+    xUnit1051（#455 A-2 で抑止し、#882 で段階採用する）。
 
     v3 のアナライザは「CancellationToken を受ける呼び出しには TestContext.Current.CancellationToken を
     渡せ」と勧告する（テストのキャンセル応答性の助言であって、正しさの検査ではない）。
-    v2 → v3 の切替直後の本リポジトリでは **1,886 件**発生する。採用には全テストの呼び出し側を
-    書き換える大規模改修が要り、A-2（切替そのもの）の射程を大きく超える。
 
     抑止する理由は「面倒だから」ではない。本リポジトリは
     scripts/check-backend-libraries.js に「**赤の常態化は『赤を無視する学習』を生み、検査の目的
-    そのものを壊す**」と記録している。1,886 件の助言警告を出し続けると、同じ理由で
+    そのものを壊す**」と記録している。助言警告を出し続けると、同じ理由で
     CS0618 のような実害のある警告が埋もれる。**段階採用へ回すのが同じ判断である。**
 
-    採用は別 issue #882 で段階的に行う（TestContext.Current.CancellationToken への移行）。
-    🔴 この抑止は恒久ではなく、#882 の完了時にこの PropertyGroup ごと削除する。
-    TreatWarningsAsErrors は false であり、この抑止はビルドの成否を変えない。
+    🔴 件数の訂正（#882 で実測）。旧版と IADR-0231 決定 4 は **1,886 件**と書いていたが、
+    これは **2 倍の重複計上**である。MSBuild は 1 件の警告をビルド中の行と末尾のサマリの
+    2 箇所へ出すため、ログ行を数えると実数の 2 倍になる。ファイル・行・列で一意化した
+    **実数は 943 件**（16 プロジェクト中 13 プロジェクトに分布）。実測は
+    `dotnet build <slnx> -t:Rebuild -p:NoWarn= -m:1` で採れる（NoWarn はコマンドラインの
+    グローバルプロパティで打ち消せるので、本ファイルを書き換えなくても数え直せる）。
+    残件の単一情報源は scripts/xunit1051-baseline.json であり、**ここへ件数の内訳を書かない。**
+
+    ==========================================================================================
+    段階採用の仕組み（#882 / IADR-0235）—— **許可リスト**であって拒否リストではない。
+
+    XUnit1051Migrated には**移行済みプロジェクトだけ**を挙げる。挙がったものは NoWarn を失い、
+    同時に WarningsAsErrors へ入るので、**再発すればビルドが落ちる**。
+    TreatWarningsAsErrors は false のままであり、**NoWarn を外すだけでは CI は緑のままである**
+    ——「剥がしたら 0 件」を機械で担保しているのは WarningsAsErrors のほうである。
+
+    🔴 **なぜ拒否リスト（未移行を列挙し、それ以外へ WarningsAsErrors）にしないか。**
+    本ファイルは import-chain で **src/ai-stock-trading（AST submodule）にも届く**
+    —— AST の Directory.Build.props が GetPathOfFileAbove で親を Import する
+    （IADR-0231 決定 1 の「両ファイルとも <Import> を持たず」は誤りで、#882 で訂正した）。
+    AST のテストプロジェクトは **38 本すべてが 'Tests' で終わる**ため、拒否リストにすると
+    WarningsAsErrors が AST 全体へ届く。AST を守っていたのは AST 自身の .editorconfig の
+    `dotnet_diagnostic.xUnit1051.severity = none` だが、**AST はその行を後続コミットで削除している**
+    （gitlink 9b9c676 には在り、abce001 で消えた）。他リポジトリの .editorconfig の現状に
+    本リポジトリの CI の成否を依存させない。
+    許可リストなら WarningsAsErrors は AST へ**一度も届かない**ので、AST の挙動は現状と変わらない。
+    雛形（templates/ を src/.template-buildcheck-* へ複製して CI がビルドする）も同じ理由で現状のままである。
+
+    🔴 **抑止は WarningsAsErrors に勝つ**（#882 で実測）。`.editorconfig` の
+    `dotnet_diagnostic.xUnit1051.severity = none` も `<NoWarn>` も、WarningsAsErrors を
+    **黙って無効化する**。移行済みプロジェクトへ後から抑止を足せば ratchet は外れるため、
+    scripts/check-xunit1051-ratchet.js が追跡下の .editorconfig / .csproj / .props を走査して止める。
+
+    🔴 **Contains / EndsWith は序数・大文字小文字を区別する**（実測）。綴りを誤った項目は
+    「NoWarn も WarningsAsErrors も付かない」プロジェクトを生み、**警告は出るが CI は緑**になる。
+    同じ検査器が許可リストと実在プロジェクトを突合してこれを止める。
+
+    🔴 この抑止は恒久ではなく、#882 の完了時に本コメントと下の 3 つの PropertyGroup ごと削除する。
   -->
-  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
+  <PropertyGroup>
+    <!-- 移行済みプロジェクト。前後と各項目の区切りは ';'（Contains の部分一致を防ぐため）。 -->
+    <XUnit1051Migrated>;Knowledge.Contracts.Tests;Platform.Shared.Kernel.Tests;</XUnit1051Migrated>
+  </PropertyGroup>
+
+  <!-- 未移行のテストプロジェクト（AST・雛形を含む）: 従来どおり抑止する。 -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests')) and !$(XUnit1051Migrated.Contains(';$(MSBuildProjectName);'))">
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+
+  <!-- 移行済み: 戻れない。再発はビルドで止める。 -->
+  <PropertyGroup Condition="$(XUnit1051Migrated.Contains(';$(MSBuildProjectName);'))">
+    <WarningsAsErrors>$(WarningsAsErrors);xUnit1051</WarningsAsErrors>
   </PropertyGroup>
 </Project>
