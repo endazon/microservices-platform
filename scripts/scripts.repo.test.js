@@ -3275,19 +3275,28 @@ ${r.stderr}`);
     ok('llm-usage ダッシュボード: 式の名前がすべて実装に実在する', () => {
       const d = JSON.parse(fsG.readFileSync(pathG.join(root, dashFile), 'utf8'));
       const exprs = d.panels.flatMap((p) => (p.targets || []).map((t) => t.expr)).join(' ');
-      const src = fsG.readFileSync(pathG.join(root,
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs'), 'utf8');
-      const dto = fsG.readFileSync(pathG.join(root,
-        'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs'), 'utf8');
-      const impl = src + dto;
+      // ★ **母集合はメトリクスを宣言するファイルすべてである。** 1 ファイルに固定すると、
+      // 新しい計測点を別ファイルへ足したときに「実装に無い」と誤判定するか、逆に
+      // 名前の突合が効かないまま素通りする（#443 で後者を踏んだ）。
+      const implFiles = [
+        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmUsageMetrics.cs',
+        'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs',
+      ];
+      const impl = implFiles.map((f) => fsG.readFileSync(pathG.join(root, f), 'utf8')).join('\n');
 
       // メトリクス名（OTel の `.` は Prometheus で `_` になる）。
+      // **列挙を持たない。** 式に現れた名前がすべて実装に実在することを見る（増減そのものは
+      // 差分に出るので、ここで固定するのは「名前が一致していること」だけでよい）。
       const metrics = [...new Set(exprs.match(/\bllm_[a-z_]+_total\b/g) || [])];
-      assert.deepStrictEqual(metrics, ['llm_completion_total'], '式のメトリクス名が想定と違う');
-      assert.ok(/"llm\.completion\.total"/.test(impl), '実装に llm.completion.total が無い');
+      assert.ok(metrics.length > 0, '式からメトリクス名が 1 つも取れていない（走査が壊れている）');
+      for (const m of metrics) {
+        const otel = m.replace(/_/g, '.');
+        assert.ok(impl.includes(`"${otel}"`), `式のメトリクス ${m} が実装に無い（期待: "${otel}"）`);
+      }
 
       // 属性名。
-      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality)\b/g) || [])) {
+      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality|token_type|pricing_status|currency)\b/g) || [])) {
         const otel = attr.replace(/^llm_/, 'llm.');
         assert.ok(impl.includes(`"${otel}"`), `式の属性 ${attr} が実装に無い`);
       }
