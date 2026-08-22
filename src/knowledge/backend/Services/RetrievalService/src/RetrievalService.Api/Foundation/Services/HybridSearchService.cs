@@ -12,11 +12,34 @@ public class HybridSearchService(
     // RRF の平滑化定数（順位ベース統合。上位の影響を緩める一般的な既定値）
     internal const int RrfK = 60;
 
+    // FR-03, UC-01: 既存の呼び出し面。**振る舞いは従前と 1 バイトも変わらない。**
     public async Task<List<SearchResultDto>> SearchAsync(
         SearchRequest request, CancellationToken ct = default)
     {
+        var outcome = await SearchDetailedAsync(request, ct);
+        return Finish(outcome.Fused, outcome.Sort, outcome.TopK);
+    }
+
+    // FR-04, FR-17, ADR-0035 決定 1 (#970): 二段検索の段が要る**中間値**を添えて返す内部口。
+    //
+    // 🔴 **既存検索のアルゴリズムは変えていない**（ADR-0035 決定 1「既存検索の実装は変更せず、
+    // 後段を足す」）。変えたのは「途中の値を返すかどうか」だけで、`SearchAsync` の観測可能な
+    // 振る舞い（戻り値・埋め込みの呼び出し回数・ストアの呼び出し回数）は同一である。
+    //
+    // **なぜ後段（デコレータ）が自前でやり直さないのか。**
+    //   - 段② の起点は **ベクトル側の順位**である（ADR-0035 決定 2。融合結果ではない）
+    //   - 段③ は `queryVector` と **同じ ABAC フィルタ**を要求する（IADR-0259 決定 3）
+    // やり直すと、**1 回の検索で埋め込みを 2 回呼ぶ**うえ `BuildFilters` の真実源が 2 つに割れる。
+    internal async Task<HybridSearchOutcome> SearchDetailedAsync(
+        SearchRequest request, CancellationToken ct = default)
+    {
+        // FR-03, SC-02, #532: 並び順（2 値）。未知・未指定は既定（relevance）へ縮退する。
+        // **取得後に並べ替える**（IADR-0150 決定 1）——関連度が候補を決め、日時は表示順だけを決める。
+        // **早期復帰でも同じ値を返す**ため、経路の先頭で 1 度だけ正規化する。
+        var sort = SearchSorts.Normalize(request.SortBy);
+
         if (string.IsNullOrWhiteSpace(request.Query))
-            return [];
+            return HybridSearchOutcome.Empty(sort, request.TopK);
 
         // FR-05: deny-by-default（fail-closed）。IADR-0012。
         //   Scope 未指定（null）＝呼び出し側が ABAC スコープを解決していない、
@@ -25,7 +48,7 @@ public class HybridSearchService(
         //   ここを null 許容にすると Scope 無しの呼び出しがフィルタ無しで全文書を返し、
         //   ネットワーク到達可能な相手が ABAC を全面バイパスできてしまう（呼び出し側 Scope の無検証信任）。
         if (request.Scope is not { GrantsAccess: true })
-            return [];
+            return HybridSearchOutcome.Empty(sort, request.TopK);
 
         // FR-05: 単値フィルタ（後方互換）と ABAC 多値スコープを 1 本の allow-list に正規化する。
         var filters = BuildFilters(request);
@@ -36,18 +59,16 @@ public class HybridSearchService(
         // FR-03, SC-02, #531: 検索モード（3 値）で使う系統を選ぶ。未知・未指定は hybrid へ縮退する。
         var mode = SearchModes.Normalize(request.Mode);
 
-        // FR-03, SC-02, #532: 並び順（2 値）。未知・未指定は既定（relevance）へ縮退する。
-        // **取得後に並べ替える**（IADR-0150 決定 1）——関連度が候補を決め、日時は表示順だけを決める。
-        var sort = SearchSorts.Normalize(request.SortBy);
-
         // 単系統のときは候補を広げる意味が無い（融合しないため）ので topK をそのまま使う。
         // **ただし日時順のときは広げる**（IADR-0150 決定 3）——並べ替える以上、候補が広いほど
         // 「もっと新しい関連文書」を拾える。融合と同じ幅に揃える（同じ検索で 2 つの候補幅を持たない）。
         var singleModeK = sort == SearchSorts.Updated ? candidateK : request.TopK;
 
         if (mode == SearchModes.Keyword)
-            return Finish(await store.KeywordSearchAsync(request.Query, singleModeK, filters, ct),
-                sort, request.TopK);
+            // 全文検索だけの経路。**ベクトル側が無いので段② の起点も無い**（起点はベクトル側のみ）。
+            return new HybridSearchOutcome(
+                await store.KeywordSearchAsync(request.Query, singleModeK, filters, ct),
+                [], [], filters, sort, request.TopK, candidateK);
 
         if (mode == SearchModes.Semantic)
         {
@@ -57,11 +78,12 @@ public class HybridSearchService(
             if (semanticVector.Length == 0)
             {
                 WarnEmbeddingUnavailable(mode);
-                return [];
+                return HybridSearchOutcome.Empty(sort, request.TopK);
             }
 
-            return Finish(await store.SearchAsync(semanticVector, singleModeK, filters, ct),
-                sort, request.TopK);
+            var semanticHits = await store.SearchAsync(semanticVector, singleModeK, filters, ct);
+            return new HybridSearchOutcome(
+                semanticHits, semanticHits, semanticVector, filters, sort, request.TopK, candidateK);
         }
 
         // FR-03: 意味検索（ベクトル）と全文検索（キーワード）を並行実行し p95 を抑える
@@ -88,7 +110,8 @@ public class HybridSearchService(
 
         // FR-03: 順位ベースで両系統を統合（スコアのスケール差を正規化なしで吸収）
         var fused = ReciprocalRankFusion(vectorTask.Result, keywordTask.Result);
-        return Finish(fused, sort, request.TopK);
+        return new HybridSearchOutcome(
+            fused, vectorTask.Result, vector, filters, sort, request.TopK, candidateK);
     }
 
     // FR-03, ADR-0016, #995: 🔴 **静かに縮退しない。** 「検索は 200 なのに意味検索が効いていない」は
@@ -173,4 +196,26 @@ public class HybridSearchService(
             .Select(kv => byId[kv.Key] with { Score = (float)kv.Value })
             .ToList();
     }
+}
+
+// FR-04, FR-17, ADR-0035 決定 1・2 (#970): ハイブリッド検索の結果と、二段検索の段が要る中間値。
+//
+// **`Fused` は並び替え・切り詰めの前**である（`Finish` を通す前）。再ランクは候補が広いほど
+// 意味を持つため、段は広い候補集合を受け取り、**最後に一度だけ** `Finish` で並べて切る。
+internal sealed record HybridSearchOutcome(
+    List<SearchResultDto> Fused,
+    // ADR-0035 決定 2「展開の起点は**ベクトル検索の上位 N 件のみ**（全文検索側は起点にしない）」。
+    // 融合後の順位からは「どちらの系統が見つけたか」が読めないので、ベクトル側を別に持つ。
+    List<SearchResultDto> VectorSide,
+    // 段③（文書 ID 制約つき検索）が同じベクトルで採点するために要る。埋め込みを 2 度呼ばない。
+    float[] QueryVector,
+    // 段③の ABAC フィルタ。**文書 ID の制約は ABAC を置き換えない**（AND。IADR-0259 決定 3）。
+    IReadOnlyList<AttributeFilter>? Filters,
+    string Sort,
+    int TopK,
+    int CandidateK)
+{
+    // 早期復帰（空クエリ・スコープ無し・埋め込み不能）。**段も何もできない**（起点が無い）。
+    public static HybridSearchOutcome Empty(string sort, int topK) =>
+        new([], [], [], null, sort, topK, topK);
 }
