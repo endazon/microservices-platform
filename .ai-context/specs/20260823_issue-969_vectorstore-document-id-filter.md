@@ -13,7 +13,7 @@ related_ids:
   - ADR-0035
   - IADR-0014
   - IADR-0151
-  - IADR-0293
+  - IADR-0259
 author: claude
 created: 2026-08-23
 updated: 2026-08-23
@@ -164,5 +164,5 @@ CI（integration）に委ねる。純関数へ切り出した面（#5）は実�
 
 - なし（結線・再ランク・出典採番は #970 の射程）
 
-> 設計判断の記録は `.ai-context/adr/IADR-0293_vector-store-document-scoped-search.md` に置いた。
+> 設計判断の記録は `.ai-context/adr/IADR-0259_vector-store-document-scoped-search.md` に置いた。
 > **番号は仮であり、統括側が最終的に付け替える**（並行採番のため）。
