@@ -21,7 +21,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     public async Task List_NonPrivilegedRole_Returns403()
     {
         var client = ClientAs("viewer");
-        (await client.GetAsync("/datasources")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.GetAsync("/datasources", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
             name = "fs",
             sourceType = "filesystem",
             connectionUri = "smb://share/docs",
-        });
+        }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -41,7 +41,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     public async Task Sync_NonPrivilegedRole_Returns403()
     {
         var client = ClientAs("viewer");
-        var resp = await client.PostAsync($"/datasources/{Guid.NewGuid()}/sync", content: null);
+        var resp = await client.PostAsync($"/datasources/{Guid.NewGuid()}/sync", content: null, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -56,7 +56,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
         var client = ClientAs("viewer");
         var path = template.Replace("{id}", Guid.NewGuid().ToString());
         using var req = new HttpRequestMessage(new HttpMethod(method), path);
-        var resp = await client.SendAsync(req);
+        var resp = await client.SendAsync(req, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -65,7 +65,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     {
         // 運用者は BFF ゲート（IADR-0039）と同様に許可される。
         var client = ClientAs("platform-operator");
-        (await client.GetAsync("/datasources")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.GetAsync("/datasources", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // FR-01, SC-06（#628）: **登録は管理者限定**である（計画 §SC-06・裁定 Q19「破壊的操作は管理者限定」）。
@@ -79,7 +79,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
             name = "fs",
             sourceType = "filesystem",
             connectionUri = "smb://share/docs",
-        });
+        }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -88,7 +88,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     public async Task Delete_OperatorRole_Returns403()
     {
         var client = ClientAs("platform-operator");
-        (await client.DeleteAsync($"/datasources/{Guid.NewGuid()}"))
+        (await client.DeleteAsync($"/datasources/{Guid.NewGuid()}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
@@ -100,7 +100,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     public async Task Sync_OperatorRole_IsAllowed()
     {
         var client = ClientAs("platform-operator");
-        var resp = await client.PostAsync($"/datasources/{Guid.NewGuid()}/sync", content: null);
+        var resp = await client.PostAsync($"/datasources/{Guid.NewGuid()}/sync", content: null, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -109,7 +109,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
     public async Task GetById_OperatorRole_IsAllowed()
     {
         var client = ClientAs("platform-operator");
-        (await client.GetAsync($"/datasources/{Guid.NewGuid()}"))
+        (await client.GetAsync($"/datasources/{Guid.NewGuid()}", TestContext.Current.CancellationToken))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -123,12 +123,12 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
             name = "admin-only-fs",
             sourceType = "filesystem",
             connectionUri = "smb://share/admin",
-        });
+        }, TestContext.Current.CancellationToken);
         created.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        var body = await created.Content.ReadFromJsonAsync<Dictionary<string, JsonElement>>();
+        var body = await created.Content.ReadFromJsonAsync<Dictionary<string, JsonElement>>(TestContext.Current.CancellationToken);
         var id = body!["id"].GetGuid();
-        (await client.DeleteAsync($"/datasources/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.DeleteAsync($"/datasources/{id}", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     // FR-01, SC-06（Q16 / #534）: **更新は管理者限定**である（計画 §SC-06「登録・更新・無効化は管理者限定」）。
@@ -149,7 +149,7 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
                 connectionUri = "smb://x",
             }),
         };
-        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
     [Theory]
@@ -167,6 +167,6 @@ public class DataSourceAuthorizationTests(TestWebApplicationFactory factory)
                 connectionUri = "smb://x",
             }),
         };
-        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 }
