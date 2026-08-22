@@ -47,26 +47,27 @@ public sealed class ObjectStorageRoundTripTests
     }
 
     // 本文（Markdown）・資産（バイナリ）を保存し、参照 URI から実体を取得できる（プレースホルダーの解消）。
-    [DockerFact]
+    [Fact]
     public async Task Persists_and_reads_markdown_and_asset()
     {
+        DockerRequired.SkipUnlessAvailable();
         var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
             .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync();
+        await minio.StartAsync(TestContext.Current.CancellationToken);
         try
         {
             var (s3, options) = await ConnectAsync(minio);
             var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
 
-            var mdUri = await client.PutTextAsync("doc-1/document.md", "# 本文\nhello", "text/markdown");
+            var mdUri = await client.PutTextAsync("doc-1/document.md", "# 本文\nhello", "text/markdown", TestContext.Current.CancellationToken);
             var assetBytes = Encoding.UTF8.GetBytes("PNGDATA");
-            var assetUri = await client.PutBytesAsync("doc-1/assets/fig-1.png", assetBytes, "image/png");
+            var assetUri = await client.PutBytesAsync("doc-1/assets/fig-1.png", assetBytes, "image/png", TestContext.Current.CancellationToken);
 
             mdUri.Should().Be("storage://test-normalized/doc-1/document.md");
             client.CanResolve(mdUri).Should().BeTrue();
 
-            (await client.GetTextAsync(mdUri)).Should().Be("# 本文\nhello");
-            (await client.GetBytesAsync(assetUri)).Should().Equal(assetBytes);
+            (await client.GetTextAsync(mdUri, TestContext.Current.CancellationToken)).Should().Be("# 本文\nhello");
+            (await client.GetBytesAsync(assetUri, TestContext.Current.CancellationToken)).Should().Equal(assetBytes);
         }
         finally
         {
@@ -75,22 +76,23 @@ public sealed class ObjectStorageRoundTripTests
     }
 
     // 冪等な再変換（同一キー）は上書きされ、最新本文が読める。バージョニングで履歴は保持される。
-    [DockerFact]
+    [Fact]
     public async Task Reconversion_overwrites_same_key_idempotently()
     {
+        DockerRequired.SkipUnlessAvailable();
         var minio = new MinioBuilder().WithImage("minio/minio:RELEASE.2025-04-08T15-41-24Z")
             .WithUsername(AccessKey).WithPassword(SecretKey).Build();
-        await minio.StartAsync();
+        await minio.StartAsync(TestContext.Current.CancellationToken);
         try
         {
             var (s3, options) = await ConnectAsync(minio);
             var client = new S3ObjectStorageClient(s3, options, NullLogger<S3ObjectStorageClient>.Instance);
 
-            var first = await client.PutTextAsync("doc-2/document.md", "v1", "text/markdown");
-            var second = await client.PutTextAsync("doc-2/document.md", "v2", "text/markdown");
+            var first = await client.PutTextAsync("doc-2/document.md", "v1", "text/markdown", TestContext.Current.CancellationToken);
+            var second = await client.PutTextAsync("doc-2/document.md", "v2", "text/markdown", TestContext.Current.CancellationToken);
 
             second.Should().Be(first); // 決定的キー（IADR-0008）＝同一参照 URI
-            (await client.GetTextAsync(second)).Should().Be("v2");
+            (await client.GetTextAsync(second, TestContext.Current.CancellationToken)).Should().Be("v2");
 
             // 署名付き URL（ABAC 判定後の一時 DL 用）が発行できる。
             client.CreatePresignedGetUrl(second).Should().StartWith("http");

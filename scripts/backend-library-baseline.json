@@ -15,12 +15,6 @@
     "src/knowledge/backend/Services/ConversionService/tests/ConversionService.Worker.Tests/ConversionService.Worker.Tests.csproj": [
       "MassTransit"
     ],
-    "src/knowledge/backend/Services/DataSourceService/src/DataSourceService.Api/DataSourceService.Api.csproj": [
-      "MassTransit"
-    ],
-    "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": [
-      "MassTransit"
-    ],
     "src/knowledge/backend/Services/DocumentService/src/DocumentService.Api/DocumentService.Api.csproj": [
       "MassTransit"
     ],

@@ -32,9 +32,10 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
     }
 
     // FR-01: DocumentNormalized を発行するとカタログへ status=normalized で登録される
-    [DockerFact]
+    [Fact]
     public async Task PublishDocumentNormalized_CatalogsDocument()
     {
+        DockerRequired.SkipUnlessAvailable();
         var docId = Guid.NewGuid();
         var evt = new DocumentNormalized(
             DocumentId: docId,
@@ -56,9 +57,10 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
     }
 
     // FR-01: 同一 DocumentId の再配信でも重複登録されない（冪等）
-    [DockerFact]
+    [Fact]
     public async Task PublishDocumentNormalized_Twice_IsIdempotent()
     {
+        DockerRequired.SkipUnlessAvailable();
         var docId = Guid.NewGuid();
         DocumentNormalized Make(string title) => new(
             DocumentId: docId,
@@ -79,8 +81,8 @@ public sealed class DocumentNormalizedSyncTests(PostgresFixture postgres, Rabbit
         updated.Should().NotBeNull();
         updated!.Title.Should().Be("更新タイトル");
 
-        var listResp = await _client.GetAsync("/documents");
-        var list = await listResp.Content.ReadFromJsonAsync<List<DocumentResponse>>();
+        var listResp = await _client.GetAsync("/documents", TestContext.Current.CancellationToken);
+        var list = await listResp.Content.ReadFromJsonAsync<List<DocumentResponse>>(TestContext.Current.CancellationToken);
         list!.Count(d => d.Id == docId).Should().Be(1, "同一 DocumentId は 1 件のみ");
     }
 

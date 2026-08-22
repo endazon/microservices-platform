@@ -14,15 +14,16 @@ namespace Knowledge.IntegrationTests.DataSourceService;
 [Trait("Category", "Integration")]
 public sealed class DataSourceSyncSingleWriterTests
 {
-    [DockerFact]
+    [Fact]
     public async Task TwoCoordinators_ContendForSameLease_OnlyOneAcquires_ReleasesForNextCycle()
     {
+        DockerRequired.SkipUnlessAvailable();
         var pg = new PostgreSqlBuilder("postgres:16-alpine")
             .WithDatabase("single_writer_test")
             .WithUsername("kp")
             .WithPassword("kp")
             .Build();
-        await pg.StartAsync();
+        await pg.StartAsync(TestContext.Current.CancellationToken);
         try
         {
             var cs = pg.GetConnectionString();

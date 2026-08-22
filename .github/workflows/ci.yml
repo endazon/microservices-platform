@@ -153,6 +153,18 @@ jobs:
       - name: Check trace blocks (ADR-0048 決定 4)
         if: ${{ !cancelled() }}
         run: node scripts/check-trace-blocks.js
+
+      # NFR / #975 / IADR-0254: 新規記録と docs 改稿の同居で、trace ブロックへの追随を見る。
+      # 🔴 **warn であってゲートではない。** 違反があっても EXIT=0 で、CI は赤くならない。
+      #    偽陽性のとき人ができるのは「無関係な ID を trace ブロックへ足す」ことだけで、
+      #    それは守ろうとしているメタデータそのものを汚す。除外の手段を設計するまで赤にしない。
+      #    赤くならないので、**このステップが消されても誰も気づかない**。README の表と対で残す。
+      - name: Self-test trace follow-through checker
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trace-followthrough.js --self-test
+      - name: Check trace follow-through (#975・warn)
+        if: ${{ !cancelled() }}
+        run: node scripts/check-trace-followthrough.js
       - name: Self-test knowledge graph generator
         if: ${{ !cancelled() }}
         run: node scripts/gen-knowledge-graph.js --self-test

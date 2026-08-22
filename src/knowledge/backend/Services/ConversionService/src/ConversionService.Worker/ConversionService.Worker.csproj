@@ -3,6 +3,14 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="MassTransit.RabbitMQ" />
+    <!-- ADR-0027 §決定 必須設定 1 / #441 E1: 本プロジェクトは Wolverine ホストを起こす。
+         WolverineFx 本体は Platform.Shared.Infrastructure 経由で届くが、RuntimeCompilation は
+         **ホストを起こす各プロジェクトが足す**（Directory.Packages.props の定め）。
+         🔴 これが無いと既定の TypeLoadMode.Dynamic で **ホストが起動しない**。
+         ビルドは通るため、参照漏れはコンパイルでは捕まらない（実測）。
+         計画は事前生成（codegen write ＋ TypeLoadMode.Static）を明示的に禁じている。 -->
+    <PackageReference Include="WolverineFx.RuntimeCompilation" />
+
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
     <!-- IADR-0043: 変換ジョブ読み取りモデルの Postgres+EF 永続化。 -->
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />

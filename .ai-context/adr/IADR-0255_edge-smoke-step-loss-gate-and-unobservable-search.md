@@ -1,5 +1,5 @@
 ---
-title: IADR-0253 エッジ導線スモークは段数で fail-closed にし、検索は「見つかること」を判定しない（観測できないため）
+title: IADR-0255 エッジ導線スモークは段数で fail-closed にし、検索は「見つかること」を判定しない（観測できないため）
 type: impl-adr
 status: Accepted
 related_ids:
@@ -21,7 +21,7 @@ plan_refs:
   - planning:projects/microservices-platform/05_screens/01_screens.md
 ---
 
-# IADR-0253 エッジ導線スモークの門と、観測できない検索
+# IADR-0255 エッジ導線スモークの門と、観測できない検索
 
 ## 状況
 

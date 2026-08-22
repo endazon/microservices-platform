@@ -6,8 +6,6 @@ using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Ports.Storage;
-using MassTransit;
-using MassTransit.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -145,7 +143,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     public async Task Sync_DoesNotTurnFolderNameIntoTag()
     {
         using var scope = factory.Services.CreateScope();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var dir = CreateTempDirWithFile("ok.md", "ok");
         var svc = BuildService(scope, new FileSystemConnector(NullLogger<FileSystemConnector>.Instance));
         var source = DataSource.Create("share", "filesystem", "",
@@ -153,8 +151,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(p => p.Context.Message)
+        var published = bus.PublishedOf<RawDocumentFetched>()
             .Where(m => m.SourceId == source.Id)
             .ToList();
 
@@ -175,14 +172,13 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     public async Task Sync_WhenConnectorCarriesNoUpdater_AttributesAreUnchanged()
     {
         using var scope = factory.Services.CreateScope();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = BuildService(scope, new TwoItemConnector(updatedBy: null));
         var source = DataSource.Create("share", "filesystem", "");
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(p => p.Context.Message)
+        var published = bus.PublishedOf<RawDocumentFetched>()
             .Where(m => m.SourceId == source.Id)
             .ToList();
 
@@ -203,14 +199,13 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     public async Task Sync_WhenItemCarriesUpdater_OwnerBeatsReservedValue()
     {
         using var scope = factory.Services.CreateScope();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
         var source = DataSource.Create("share", "filesystem", "");
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(p => p.Context.Message)
+        var published = bus.PublishedOf<RawDocumentFetched>()
             .Where(m => m.SourceId == source.Id)
             .ToList();
 
@@ -227,7 +222,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     public async Task Sync_WhenSourceHasExplicitOwner_ItemUpdaterDoesNotOverrideIt()
     {
         using var scope = factory.Services.CreateScope();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = BuildService(scope, new TwoItemConnector(updatedBy: "alice"));
         // 🔴 名前付き引数で渡す。4 番目の位置引数は `config` であり `defaultAttributes` ではない
         // （位置で渡して 1 度取り違えた。属性ではなく接続設定に入り、テストが誤って落ちた）。
@@ -236,8 +231,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(p => p.Context.Message)
+        var published = bus.PublishedOf<RawDocumentFetched>()
             .Where(m => m.SourceId == source.Id)
             .ToList();
 
@@ -254,14 +248,13 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
     public async Task Sync_WhenItemsCarryDifferentUpdaters_EachKeepsItsOwn()
     {
         using var scope = factory.Services.CreateScope();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var svc = BuildService(scope, new PerItemUpdaterConnector());
         var source = DataSource.Create("share", "filesystem", "");
 
         await svc.SyncAsync(source, TestContext.Current.CancellationToken);
 
-        var published = harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(p => p.Context.Message)
+        var published = bus.PublishedOf<RawDocumentFetched>()
             .Where(m => m.SourceId == source.Id)
             .OrderBy(m => m.OriginalPath)
             .ToList();
@@ -275,7 +268,7 @@ public sealed class DataSourceSyncServiceTests(TestWebApplicationFactory factory
         IServiceScope scope, IDataSourceConnector connector)
     {
         var storage = scope.ServiceProvider.GetRequiredService<IObjectStorageClient>();
-        var bus = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
+        var bus = scope.ServiceProvider.GetRequiredService<RecordingMessageBus>();
         var registry = new ConnectorRegistry([connector]);
         return new DataSourceSyncService(registry, storage, bus,
             NullLogger<DataSourceSyncService>.Instance);

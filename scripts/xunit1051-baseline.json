@@ -34,7 +34,7 @@
     "  - src/ai-stock-trading/** … 別プロジェクトの submodule（check-backend-libraries.js と同じ扱い）",
     "  - src/.template-buildcheck-* … CI が雛形を複製する一時ディレクトリ（追跡下に無い）"
   ],
-  "remainingMeasuredAt": "29635cce (2026-08-22) — 未移行 6 プロジェクトを -p:NoWarn= の full rebuild で実測。migrated:true の 0 は WarningsAsErrors が常時強制するため対象外。",
+  "remainingMeasuredAt": "f6b458f3 (2026-08-22) — 未移行 6 プロジェクトを -p:NoWarn= の full rebuild で実測。migrated:true の 0 は WarningsAsErrors が常時強制するため対象外。",
   "projects": {
     "src/knowledge/backend/Services/AiAnalysisService/tests/AiAnalysisService.Api.Tests/AiAnalysisService.Api.Tests.csproj": {
       "project": "AiAnalysisService.Api.Tests",
@@ -94,7 +94,8 @@
     "src/knowledge/backend/Tests/Knowledge.IntegrationTests/Knowledge.IntegrationTests.csproj": {
       "project": "Knowledge.IntegrationTests",
       "remaining": 0,
-      "migrated": true
+      "migrated": true,
+      "note": "#946 形 5 の根治（FactAttribute 派生の廃止）まで、この 0 は 31 メソッドが未検査のまま出ていた偽の 0 だった。根治後にアナライザが全メソッドを見たうえでの 0 である（隠れていた 81 箇所を同時に移行した）。"
     },
     "src/platform/backend/Bff/Platform.Bff.Tests/Platform.Bff.Tests.csproj": {
       "project": "Platform.Bff.Tests",

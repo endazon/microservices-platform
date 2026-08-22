@@ -116,9 +116,10 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
     //   queue 上書きが無視される  → 既定キュー名は別々 → **両方**が受信 → **落ちる**
     // したがって「上書きが効くこと」と「効いた結果 fan-out が壊れること」を同時に証明する。
     // U0d のような別建ての「本当に読み込まれたか」テストは要らない（本テストが兼ねる）。
-    [DockerFact]
+    [Fact]
     public async Task SharedQueueDeclaration_CollapsesFanOut_OnlyOneSubscriberReceives()
     {
+        DockerRequired.SkipUnlessAvailable();
         var docId = Guid.NewGuid();
         var evt = new DocumentUpdated(
             DocumentId: docId,
@@ -131,7 +132,7 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
 
         await using (var scope = _wiki.Services.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt);
+            await scope.ServiceProvider.GetRequiredService<IBus>().Publish(evt, TestContext.Current.CancellationToken);
         }
 
         // **どちらかが受信するまで**待つ。
@@ -150,7 +151,7 @@ public sealed class QueueOverrideFanOutTests(PostgresFixture postgres, RabbitMqF
 
         // 🔴 **受信したあと猶予を置いてから、もう片方が発火していないことを確かめる。**
         // 「来ない」ことの確認なので、待たずに判定すると単に「まだ来ていない」を見てしまう。
-        await Task.Delay(TimeSpan.FromSeconds(5));
+        await Task.Delay(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         var ingestedFinal = await _probe.IngestionUpserts.WaitAsync(docId, TimeSpan.FromMilliseconds(1));
         var syncedFinal = await WikiPageExistsAsync(docId);

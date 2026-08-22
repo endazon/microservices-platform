@@ -20,7 +20,7 @@ public record ConversionJobDto(
     int Attempts,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    // 再試行を使い切って <queue>_error（デッドレター）へ送られたか。true の間は自動では直らない
+    // 自動再試行を使い切った（＝デッドレター）か。true の間は自動では直らない
     // （人が原本に手を入れるまで再実行しても同じ結果になる）ことを示す。Status == failed のときだけ真。
     bool DeadLettered = false,
     // 1 回の配信で行う自動再試行の試行上限（初回 ＋ 再試行）。**手動再変換の回数上限ではない**

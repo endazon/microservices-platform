@@ -7,7 +7,8 @@ using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using MassTransit;
+using Wolverine;
+using Wolverine.RabbitMQ;
 using Microsoft.EntityFrameworkCore;
 
 const string ServiceName = "microservices-platform.datasource-service";
@@ -19,11 +20,15 @@ builder.Logging.AddPlatformLogging(builder.Configuration, ServiceName);
 builder.Services.AddPlatformObservability(builder.Configuration, ServiceName);
 builder.Services.AddPlatformAuth(builder.Configuration);
 builder.Services.AddPlatformHealthChecks()
+    // ADR-0027 / #441 E1 / W4: MassTransit を外すと "masstransit-bus" の readiness も消える。
+    // Wolverine 側は自動登録しないので明示的に足す（無いとブローカ不達でも /health/ready が 200）。
+    .AddPlatformWolverineBroker()
     .AddNpgSql(
         builder.Configuration.GetConnectionString("DefaultConnection")
             ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp",
         tags: ["ready"]);
-// #269: ブローカ疎通の readiness は MassTransit 組み込みの "masstransit-bus"（tag "ready"）で満たす。
+// #269 / #441 E1: ブローカ疎通の readiness。**MassTransit 撤去に伴い "masstransit-bus" は消えた**ため、
+// W4 の AddPlatformWolverineBroker() が肩代わりする（上の health checks へ配線済み）。
 // 外部 AspNetCore.HealthChecks.Rabbitmq は RabbitMQ.Client 7 と非互換（TypeLoadException 'IModel'）のため使用しない。
 builder.Services.AddOpenApi();
 
@@ -32,15 +37,19 @@ var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=datasource_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DataSourceDbContext>(opt => opt.UseNpgsql(connStr));
 
-// ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit
-builder.Services.AddMassTransit(x =>
+// ADR-0027 / #441 E1: メッセージング基盤は Wolverine。**本サービスは発行のみで購読を持たない。**
+builder.Host.UseWolverine(opts =>
 {
-    x.UsingRabbitMq((ctx, cfg) =>
-    {
-        cfg.Host(builder.Configuration["RabbitMq:ConnectionString"]
-            ?? "amqp://guest:guest@rabbitmq:5672");
-        cfg.ConfigureEndpoints(ctx);
-    });
+    opts.ServiceName = "datasource-service";
+
+    // 段をホストしないので探索は要らない。規約探索を切って明示配線に寄せる。
+    opts.Discovery.DisableConventionalDiscovery();
+
+    opts.UseRabbitMq(new Uri(builder.Configuration["RabbitMq:ConnectionString"]
+        ?? "amqp://guest:guest@rabbitmq:5672")).AutoProvision();
+
+    // 手順 4・5 ＋ retry/DLQ の共通既定（W1）。
+    opts.UsePlatformMessagingDefaults();
 });
 
 // FR-15, ADR-0018, IADR-0029 (#143): 自己申告（イントロスペクション）。パイプライン段はホストせず、

@@ -40,9 +40,10 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
     // 正本 pipeline.json の段は 5 件（convert / catalog / ingest / wiki-sync / wiki-delete）。
     // 件数を直接固定するのではなく、**宣言が読み込まれていること**と
     // **本サービスが使う段が宣言に居ること**の両方を見る。
-    [DockerFact]
+    [Fact]
     public void PipelineDeclaration_IsActuallyLoaded()
     {
+        DockerRequired.SkipUnlessAvailable();
         var cfg = _factory.Services.GetRequiredService<IConfiguration>();
         var pipeline = cfg.GetPlatformPipeline();
 
@@ -59,9 +60,10 @@ public sealed class PipelineDeclarationLoadedTests(PostgresFixture postgres, Rab
     // 規則 3・4 が実際に効いていることの裏取り。宣言の consumer / input は実装と一致していなければ
     // 起動時に InvalidOperationException になる。ここまで起動できている＝一致している、という含意を
     // テスト名で明示しておく（変異試験でこの含意が正しいことを実測する）。
-    [DockerFact]
+    [Fact]
     public void DeclaredConsumerAndInput_MatchImplementation_OtherwiseHostWouldNotStart()
     {
+        DockerRequired.SkipUnlessAvailable();
         var cfg = _factory.Services.GetRequiredService<IConfiguration>();
         var wikiSync = cfg.GetPlatformPipeline().FindStep("wiki-sync");
 
