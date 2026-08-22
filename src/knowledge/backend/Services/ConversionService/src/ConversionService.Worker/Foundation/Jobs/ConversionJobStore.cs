@@ -17,7 +17,10 @@ public interface IConversionJobStore
     // IADR-0154 決定 1: 図の記録も一緒に受け取り、成功のたびに洗い替える。
     Task SucceedAsync(Guid id, Guid documentId, string markdownUri,
         IReadOnlyList<NormalizedFigure>? figures = null, CancellationToken ct = default);
-    // SC-07: deadLettered＝この失敗で自動再試行を使い切ったか（<queue>_error へ送られる失敗か）。
+    // SC-07 / ADR-0053 決定 2: deadLettered＝この失敗で**自動再試行を使い切ったか**。
+    // 🔴 **デッドレターの宛先キュー名で説明しない。** 宛先はトランスポートの都合で変わる
+    // （Wolverine の既定は共有 1 本。IADR-0245 決定 9）。**契機は業務上の事実であり、
+    // 意味としてトランスポートに依存しない**ため、移行の前後で同じことを指す。
     Task FailAsync(Guid id, string error, bool deadLettered = false, CancellationToken ct = default);
     Task<IReadOnlyList<ConversionJobDto>> ListAsync(string? status, CancellationToken ct = default);
     Task<ConversionJobDto?> GetAsync(Guid id, CancellationToken ct = default);

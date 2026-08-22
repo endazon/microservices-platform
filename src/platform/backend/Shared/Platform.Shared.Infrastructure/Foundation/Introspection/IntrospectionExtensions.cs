@@ -75,6 +75,38 @@ public sealed class IntrospectionBuilder
         return this;
     }
 
+    // ADR-0027 / #441 E1: Wolverine 段の自己申告。**MassTransit の IConsumer を要求しない。**
+    //
+    // 🔴 **名前を AddStep にできない。** 制約はシグネチャの一部ではないため、制約違いの
+    // オーバーロードは CS0111（重複メンバー）でコンパイルできない。引数で回避しても、
+    // PartialMigrationSafetyValveTests の GetMethod("AddStep", …) が AmbiguousMatchException を
+    // 投げ、**アサーションへ到達する前にテストが死ぬ**（同経路の唯一の防壁である）。
+    // したがって別名にする。既存の AddStep は 1 バイトも変えない。
+    //
+    // 🔴 **入力型は IPipelineStep<TIn> から取り、導出できなければ起動失敗にする。**
+    // MassTransit 版は IConsumer<> から導出し、導出できないと `?? string.Empty` で
+    // **空文字を自己申告する**。それをドリフト検出が実行時の警告として拾う形になり、
+    // 起動時には何も起きない。Wolverine 段では起動時に落とす（IADR-0239 決定 2 と同じ方針）。
+    public IntrospectionBuilder AddWolverineStep<TStep>()
+        where TStep : class, IPipelineStep
+    {
+        var name = TStep.StepName;
+        var handler = typeof(TStep).FullName!;
+        var inputType = typeof(TStep).GetInterfaces()
+            .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IPipelineStep<>))
+            ?.GetGenericArguments()[0]
+            ?? throw new InvalidOperationException(
+                $"段 '{name}' の実装 '{handler}' が IPipelineStep<TIn> を実装していないため"
+                + " 入力イベント型を導出できません。空文字で自己申告するとドリフト検出が"
+                + "実行時まで気づけないので、起動を止めます。");
+
+        var decl = _pipeline.FindStep(name);
+        var enabled = decl?.Enabled ?? true;
+        var outputs = decl?.Outputs is { Count: > 0 } o ? o : [];
+        Steps.Add(new StepIntrospectionDto(name, handler, inputType.Name, outputs, enabled));
+        return this;
+    }
+
     // 選択中のポート実装（例: vector-store / QdrantIngestionVectorStore / qdrant:6334）を申告する。
     public IntrospectionBuilder AddPort(string port, string implementation, string? target = null)
     {

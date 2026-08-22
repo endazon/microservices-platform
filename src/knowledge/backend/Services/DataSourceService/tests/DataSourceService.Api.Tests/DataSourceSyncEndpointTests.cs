@@ -4,7 +4,6 @@ using DataSourceService.Api.Foundation.Domain;
 using DataSourceService.Api.Foundation.Persistence;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
-using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -24,7 +23,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     public async Task Sync_WithoutExplicitAttributes_PublishesRawDocumentWithDefaultConfidentiality()
     {
         var client = factory.CreateClient();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var dir = CreateTempDirWithFile("guide.md", "# Guide");
 
         var id = await CreateDataSourceAsync(client, new
@@ -38,7 +37,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
-        var published = await FirstPublishedForAsync(harness, id);
+        var published = FirstPublishedFor(bus, id);
         published.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
         published.OriginalPath.Should().EndWith("guide.md");
         published.ContentType.Should().Be("text/markdown");
@@ -49,7 +48,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     public async Task Sync_WithExplicitAttributes_PropagatesThemToRawDocument()
     {
         var client = factory.CreateClient();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var dir = CreateTempDirWithFile("policy.txt", "hr policy");
 
         var id = await CreateDataSourceAsync(client, new
@@ -68,7 +67,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
-        var published = await FirstPublishedForAsync(harness, id);
+        var published = FirstPublishedFor(bus, id);
         published.Attributes["confidentiality"].Should().Be("confidential");
         published.Attributes["department"].Should().Be("hr");
     }
@@ -79,7 +78,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     public async Task Sync_WithLegacyEmptyAttributes_PublishesRawDocumentWithDefaultConfidentiality()
     {
         var client = factory.CreateClient();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
         var dir = CreateTempDirWithFile("legacy.md", "legacy");
 
         Guid id;
@@ -99,7 +98,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
-        var published = await FirstPublishedForAsync(harness, id);
+        var published = FirstPublishedFor(bus, id);
         published.Attributes.Should().ContainKey("confidentiality").WhoseValue.Should().Be("internal");
     }
 
@@ -110,7 +109,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
     public async Task Sync_UnsupportedSourceType_DegradesWithoutPublishing()
     {
         var client = factory.CreateClient();
-        var harness = factory.Services.GetRequiredService<ITestHarness>();
+        var bus = factory.Services.GetRequiredService<RecordingMessageBus>();
 
         var id = await CreateDataSourceAsync(client, new
         {
@@ -125,17 +124,15 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
         using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         body.RootElement.GetProperty("connectorAvailable").GetBoolean().Should().BeFalse();
         body.RootElement.GetProperty("fetched").GetInt32().Should().Be(0);
-        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id, TestContext.Current.CancellationToken))
-            .Should().BeFalse();
+        bus.PublishedOf<RawDocumentFetched>().Where(m => m.SourceId == id)
+            .Should().BeEmpty("コネクタが無いときは 1 件も発行しない");
     }
 
-    private static async Task<RawDocumentFetched> FirstPublishedForAsync(ITestHarness harness, Guid id)
+    private static RawDocumentFetched FirstPublishedFor(RecordingMessageBus bus, Guid id)
     {
-        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id, TestContext.Current.CancellationToken))
-            .Should().BeTrue();
-        return harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
-            .Select(x => x.Context.Message)
-            .First(m => m.SourceId == id);
+        var matches = bus.PublishedOf<RawDocumentFetched>().Where(m => m.SourceId == id).ToList();
+        matches.Should().NotBeEmpty("同期が成功したなら当該ソースの原本イベントが発行される");
+        return matches[0];
     }
 
     private string CreateTempDirWithFile(string fileName, string content)

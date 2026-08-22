@@ -160,7 +160,7 @@ public class ConversionJobStoreTests
     [Fact]
     public async Task Fail_at_attempt_limit_marks_dead_letter_without_changing_status()
     {
-        // AC-6/AC-7: 再試行を使い切った失敗は <queue>_error へ送られる＝デッドレター。
+        // AC-6/AC-7: 自動再試行を使い切った失敗＝デッドレター（宛先キュー名ではなく契機で定義する）。
         // AC-3: それでも状態値は failed のままである（4 値モデルを壊さない）。
         var store = NewStore();
         var id = Guid.NewGuid();

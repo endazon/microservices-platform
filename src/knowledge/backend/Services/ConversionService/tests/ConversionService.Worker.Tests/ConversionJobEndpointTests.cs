@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Wolverine;
 
 namespace ConversionService.Worker.Tests;
 
@@ -86,6 +87,15 @@ public class ConversionJobEndpointTests
         // 断定するとレース（フレーク）になる。queued 化は決定的な store 単体テスト
         // （PrepareRetry_requeues_and_returns_original_event）で担保する。
         resp.StatusCode.Should().Be(HttpStatusCode.Accepted);
+
+        // 🔴 発行 ②（不可視の発行元）が **Wolverine のバスへ**出ていることを固定する。
+        // MassTransit のまま残すと、購読側は Wolverine なので**再変換は受理されたまま
+        // 永久に実行されず、キュー深さのアラームも鳴らない**（IADR-0245 方向 1）。
+        // **202 だけを見ていると、この壊れ方は全く見えない。**
+        var published = factory.Services.GetRequiredService<RecordingMessageBus>()
+            .PublishedOf<RawDocumentFetched>();
+        published.Should().ContainSingle("再変換は RawDocumentFetched をちょうど 1 通発行する")
+            .Which.FetchId.Should().Be(id);
     }
 
     [Fact]
@@ -191,6 +201,19 @@ public class ConversionJobEndpointTests
                 // 実 RabbitMQ 接続を避けるため MassTransit をテストハーネスへ差し替える（再変換の Publish 用）。
                 services.RemoveAll<MassTransit.IBusControl>();
                 services.AddMassTransitTestHarness();
+                // 🔴 ADR-0027（#441 E1）: Program.cs は Wolverine ホストも起こす。外部トランスポートを
+                // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
+                // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
+                services.DisableAllExternalWolverineTransports();
+
+                // 🔴 ADR-0027（#441 E1）: **再変換の発行（発行 ②）を観測するための差し替え。**
+                // この発行は `bus.PublishAsync(ev)` の形で**型名が発行行に現れず、
+                // `check-event-topology.js` から見えない** —— 変異 A の実測では、ここを
+                // MassTransit のまま残しても検査の終了コード・報告行・baseline のバイト列が
+                // 1 つも動かなかった。**静的検査では捕まらないので、試験で固定するしかない。**
+                services.RemoveAll<IMessageBus>();
+                services.AddSingleton<RecordingMessageBus>();
+                services.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingMessageBus>());
             });
         }
     }

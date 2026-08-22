@@ -18,7 +18,7 @@ public class ConversionJob
     public string? MarkdownUri { get; private set; }
     public int Attempts { get; private set; }
 
-    // FR-12, SC-07, IADR-0137: 再試行を使い切って <queue>_error へ送られたか（failed の内訳）。
+    // FR-12, SC-07, IADR-0137 / ADR-0053 決定 2: この失敗で**自動再試行を使い切ったか**（failed の内訳）。
     // 導出（Attempts >= 上限）にしないのは、Attempts が手動再変換をまたいで累積するためである。
     public bool DeadLettered { get; private set; }
 
@@ -90,7 +90,7 @@ public class ConversionJob
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    // SC-07: deadLettered は「この失敗で自動再試行を使い切った（＝<queue>_error へ送られる）」ことを
+    // SC-07 / ADR-0053 決定 2: deadLettered は「この失敗で自動再試行を使い切った」ことを
     // コンシューマから受け取る。再試行の余地が残る失敗では立たない（failed の内訳を区別するため）。
     public void MarkFailed(string error, bool deadLettered = false)
     {

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Wolverine;
 
 namespace ConversionService.Worker.Tests;
 
@@ -342,6 +343,10 @@ public class ConversionFigureCorrectionTests
                 services.AddSingleton<IObjectStore>(_objects);
                 services.RemoveAll<MassTransit.IBusControl>();
                 services.AddMassTransitTestHarness();
+                // 🔴 ADR-0027（#441 E1）: Program.cs は Wolverine ホストも起こす。外部トランスポートを
+                // 落とさないと、テストごとに実 RabbitMQ への接続再試行（実測 20 回・約 135 秒）が走り、
+                // **落ちるのではなく黙って遅くなる**（1 テスト 2 分半）。ビルドも赤にならないので気づきにくい。
+                services.DisableAllExternalWolverineTransports();
             });
         }
     }

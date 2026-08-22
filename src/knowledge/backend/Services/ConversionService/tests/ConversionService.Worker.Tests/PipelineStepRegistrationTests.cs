@@ -2,19 +2,29 @@ using ConversionService.Worker.Composable.Steps;
 using ConversionService.Worker.Foundation.Domain;
 using ConversionService.Worker.Foundation.Jobs;
 using ConversionService.Worker.Foundation.Persistence;
+using ConversionService.Worker.Foundation.Ports;
 using ConversionService.Worker.Foundation.Services;
 using AwesomeAssertions;
 using Knowledge.Contracts.Events;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
-using MassTransit.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Wolverine;
 
 namespace ConversionService.Worker.Tests;
 
-// FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成からの MassTransit トポロジ生成。
+// FR-14, ADR-0018, IADR-0028: 宣言的パイプライン構成からのトポロジ生成。
 // 登録規則（既定登録・有効/無効・fail-fast）が仕様どおりであることを検証する。
+//
+// 🔴 ADR-0027 / #441 E1: **本ファイルは実際に Wolverine ホストを起こす。**
+// ここで測るのは「登録経路（`AddPlatformWolverineStep`）が仕様どおり働くか」であり、
+// ハンドラを直接呼ぶ形にすると**登録経路そのものが壊れても全部緑のまま**になる
+// （W2 で作った経路が本当に使われていることを確かめる価値がある）。
+// 外部トランスポートは `DisableAllExternalWolverineTransports()` で落とすので、
+// ブローカは要らない —— 配送は `InvokeAsync`（プロセス内呼び出し）で駆動する。
 public class PipelineStepRegistrationTests
 {
     private const string ConvertConsumer =
@@ -41,16 +51,40 @@ public class PipelineStepRegistrationTests
             ],
         };
 
-    private static ServiceProvider Build(PipelineOptions pipeline)
-        => new ServiceCollection()
-            .AddLogging()
-            .AddSingleton<INormalizationService>(new NoopNormalizer())
-            // SC-07, IADR-0043: コンシューマは変換ジョブストア（EF・状況記録）に依存する。
-            .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()))
-            .AddScoped<IConversionJobStore, EfConversionJobStore>()
-            .AddMassTransitTestHarness(cfg =>
-                cfg.AddPlatformPipelineStep<RawDocumentFetchedConsumer>(pipeline))
-            .BuildServiceProvider(true);
+    private static IHost Build(PipelineOptions pipeline)
+        => new HostBuilder()
+            .UseWolverine(opts =>
+            {
+                opts.AddPlatformWolverineStep<RawDocumentFetchedConsumer>(pipeline);
+
+                // 🔴 **本番（Program.cs）と同じ既定を必ず通す。**
+                // ここを省いた最初の版は、サービスロケーションを許さない Wolverine の既定のまま走り、
+                // EF の `AddDbContext`（不透明なラムダ Factory）に依存する段のコード生成が
+                // `InvalidServiceLocationException` で落ちた。本番はヘルパの手順 5 でこれを許可済みなので、
+                // **落ちたのはテストの器だけ**である —— つまり器が本番から乖離すると、
+                // 本番に無い失敗を作り、本番に在る失敗を見逃す。器は本番の構成をなぞること。
+                opts.UsePlatformMessagingDefaults();
+            })
+            .ConfigureServices(services => services
+                .AddLogging()
+                .AddSingleton<INormalizationService>(new NoopNormalizer())
+                .AddSingleton<RecordingDocumentNormalizedPublisher>()
+                .AddSingleton<IDocumentNormalizedPublisher>(sp =>
+                    sp.GetRequiredService<RecordingDocumentNormalizedPublisher>())
+                // SC-07, IADR-0043: 段は変換ジョブストア（EF・状況記録）に依存する。
+                .AddDbContext<ConversionJobDbContext>(o => o.UseInMemoryDatabase(Guid.NewGuid().ToString()))
+                .AddScoped<IConversionJobStore, EfConversionJobStore>()
+                // 実ブローカ接続を避ける（Wolverine が公式に用意している試験用の口）。
+                .DisableAllExternalWolverineTransports())
+            .Build();
+
+    private static async Task<(IHost Host, RecordingDocumentNormalizedPublisher Publisher)> StartAsync(
+        PipelineOptions pipeline)
+    {
+        var host = Build(pipeline);
+        await host.StartAsync(TestContext.Current.CancellationToken);
+        return (host, host.Services.GetRequiredService<RecordingDocumentNormalizedPublisher>());
+    }
 
     private static RawDocumentFetched SampleEvent() => new(
         Guid.NewGuid(), Guid.NewGuid(), "filesystem", "/docs/pipe.docx",
@@ -62,70 +96,63 @@ public class PipelineStepRegistrationTests
     public async Task 構成なしのとき段は既定で登録される()
     {
         // 規則1: 宣言なし（Steps 空）→ 既定登録（現行配線と等価。ローカル・テスト互換）
-        await using var provider = Build(new PipelineOptions());
-        using var scope = provider.CreateScope();
-        scope.ServiceProvider.GetService<RawDocumentFetchedConsumer>().Should().NotBeNull();
+        var (host, publisher) = await StartAsync(new PipelineOptions());
+        using var _ = host;
+
+        await host.Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(SampleEvent(), TestContext.Current.CancellationToken);
+
+        publisher.Calls.Should().ContainSingle();
     }
 
     [Fact]
     public async Task 有効な段は構成に従い登録されイベントを処理する()
     {
-        // 規則6: enabled: true → 登録（購読→処理→発行が機能する）
-        await using var provider = Build(Options(enabled: true));
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
+        // 規則8: enabled: true → 登録（購読→処理→発行が機能する）
+        var (host, publisher) = await StartAsync(Options(enabled: true));
+        using var _ = host;
 
-        await harness.Bus.Publish(SampleEvent());
+        await host.Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(SampleEvent(), TestContext.Current.CancellationToken);
 
-        (await harness.Consumed.Any<RawDocumentFetched>()).Should().BeTrue();
-        (await harness.Published.Any<DocumentNormalized>()).Should().BeTrue();
-
-        await harness.Stop();
+        publisher.Calls.Should().ContainSingle();
     }
 
     [Fact]
     public async Task 無効化した段は登録されず購読されない()
     {
-        // 規則5: enabled: false → 購読・キューを生成しない（構成のみで段を外せる＝FR-14）
-        await using var provider = Build(Options(enabled: false));
-        using (var scope = provider.CreateScope())
-        {
-            scope.ServiceProvider.GetService<RawDocumentFetchedConsumer>().Should().BeNull();
-        }
+        // 規則8: enabled: false → 登録しない（購読・キューを生成しない＝構成のみで段を外せる＝FR-14）
+        var (host, publisher) = await StartAsync(Options(enabled: false));
+        using var _ = host;
 
-        var harness = provider.GetRequiredService<ITestHarness>();
-        await harness.Start();
+        // ハンドラが登録されていないので、プロセス内呼び出しは「宛先なし」で失敗する。
+        // **握り潰して「発行が無い」だけを見ると、ハンドラが在って何もしない実装と区別できない。**
+        var act = () => host.Services.GetRequiredService<IMessageBus>()
+            .InvokeAsync(SampleEvent(), TestContext.Current.CancellationToken);
+        await act.Should().ThrowAsync<Exception>();
 
-        await harness.Bus.Publish(SampleEvent());
-
-        (await harness.Consumed.Any<RawDocumentFetched>()).Should().BeFalse();
-        (await harness.Published.Any<DocumentNormalized>()).Should().BeFalse();
-
-        await harness.Stop();
+        publisher.Calls.Should().BeEmpty();
     }
 
     [Fact]
     public void 構成があるのに段が未宣言なら起動失敗する()
     {
         // 規則2: 適用漏れ・名称ずれの fail-fast（誤構成対策 = 10_composability-design.md §5）
-        var act = () => Build(Options(name: "other-step"));
-        act.Should().Throw<InvalidOperationException>().WithMessage("*convert*");
+        ShouldFailToBuild(Options(name: "other-step"), "convert");
     }
 
     [Fact]
     public void consumer型の宣言が実装と不一致なら起動失敗する()
     {
         // 規則3: 段名の付け替え誤りの fail-fast
-        var act = () => Build(Options(consumer: "Wrong.Namespace.WrongConsumer"));
-        act.Should().Throw<InvalidOperationException>().WithMessage("*consumer*");
+        ShouldFailToBuild(Options(consumer: "Wrong.Namespace.WrongConsumer"), "consumer");
     }
 
     [Fact]
     public void input宣言が実装の購読イベントと不一致なら起動失敗する()
     {
-        // 規則4: 配線ずれの fail-fast
-        var act = () => Build(Options(input: "DocumentUpdated"));
-        act.Should().Throw<InvalidOperationException>().WithMessage("*input*");
+        // 規則7: 配線ずれの fail-fast
+        ShouldFailToBuild(Options(input: "DocumentUpdated"), "input");
     }
 
     [Theory]
@@ -135,8 +162,25 @@ public class PipelineStepRegistrationTests
     {
         // 規則3・4 の補強: 宣言がある以上、照合対象の空欄は照合スキップではなく起動失敗
         // （CI 検証をすり抜けた手書き構成への二重の安全弁。PR #114 レビュー指摘対応）
-        var act = () => Build(Options(consumer: consumer, input: input));
-        act.Should().Throw<InvalidOperationException>().WithMessage("*空*");
+        ShouldFailToBuild(Options(consumer: consumer, input: input), "空");
+    }
+
+    // Wolverine はオプション構成中の例外を包むことがあるため、内側まで辿って本文を照合する。
+    // **「何か落ちた」で通すと、別の理由で落ちても緑に見える。**
+    private static void ShouldFailToBuild(PipelineOptions pipeline, string expectedFragment)
+    {
+        var act = () => Build(pipeline).Dispose();
+
+        var thrown = act.Should().Throw<Exception>().Which;
+        var chain = new List<Exception>();
+        for (Exception? e = thrown; e is not null; e = e.InnerException) chain.Add(e);
+
+        chain.Should().Contain(
+            e => e is InvalidOperationException
+                && e.Message.Contains(expectedFragment, StringComparison.Ordinal),
+            "登録規則の違反は InvalidOperationException で、理由を本文に持って報告されるべきである"
+            + $"（期待する語: '{expectedFragment}'）。実際の連鎖: "
+            + string.Join(" -> ", chain.Select(e => $"{e.GetType().Name}: {e.Message}")));
     }
 
     [Fact]
