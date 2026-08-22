@@ -119,6 +119,9 @@
       "AiSuggestionStateMachineTests",
       "AiSuggestionWiringTests"
     ],
+    "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
+      "DocumentSyncConsumerTests"
+    ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
     ],
