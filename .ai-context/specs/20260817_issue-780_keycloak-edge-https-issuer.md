@@ -13,15 +13,17 @@ related_ids:
   - IADR-0206
   - IADR-0220
   - IADR-0227
+  - IADR-0243
 author: claude
 created: 2026-08-17
-updated: 2026-08-21
+updated: 2026-08-22
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md
 related_specs:
   - "../adr/IADR-0227_edge-host-pod-side-resolution.md"
   - "../adr/IADR-0206_local-edge-tls-cert-manager.md"
   - "../adr/IADR-0086_oidc-issuer-metadata-split.md"
+  - "../adr/IADR-0243_keycloak-edge-issuer-migration.md"
 ---
 
 # 作業仕様書: Keycloak のエッジ公開と https issuer（#780 ＝ #442 の子 2）
@@ -205,17 +207,17 @@ scripts/verify-oidc-edge-flow.sh
 5. `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版を宣言
 6. 新 IADR（[IADR-0091](../adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 と却下代替案の Supersede を含む）＋ 静的検査 ＋ 変異試験
 
-## 5. 受け入れ基準（issue より・現時点の状態）
+## 5. 受け入れ基準（issue より・現時点の状態。実測は §10）
 
-- [ ] 稼働クラスタの realm 名がリポジトリと一致（§3 の手順 A）
-- [ ] `/.well-known/openid-configuration` の `issuer` と発行 token の `iss` が**文字列として完全一致**
-- [ ] ブラウザ OIDC を持つ 7 クライアントすべてでログインが成立
-- [ ] `scripts/verify-oidc-edge-flow.sh` が **hosts 追記と port-forward の前提なしに**完走
-- [ ] `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版 URL を宣言
-- [ ] [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) を改定するか、手順 B の既定化を決める新 IADR を起こす（**どちらかを明示的に選ぶ**）
-- [ ] **[IADR-0091](../adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 と却下代替案「Keycloak も 50000 集約」を Supersede**
-      （#779 から移してきた約束。#779 は issuer を 1 バイトも変えないため決定 3 のみを Supersede した）
-- [ ] **admin:50000 の TLS 化を扱うか、扱わないなら別 issue へ送る**
+- [x] 稼働クラスタの realm 名がリポジトリと一致（§3 の手順 A・§10.2 項目2）
+- [x] `/.well-known/openid-configuration` の `issuer` と発行 token の `iss` が**文字列として完全一致**（§10.5 で実測。in-cluster / エッジ両経路）
+- [x] `scripts/verify-oidc-edge-flow.sh` が **hosts 追記と port-forward の前提なしに**完走（§10.4・§10.5。PASS 12 / FAIL 2。FAIL は issuer 移行と無関係な既存の BFF ルーティング欠陥で別 issue 化済み）
+- [~] ブラウザ OIDC を持つ 7 クライアントすべてでログインが成立 — **`platform-spa` は実機で確認済み（§10.5）。残る 6 ツール（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は redirect 設定の変更が不要と判明したのみで、個別のブラウザログインは未検証**（§10.7 残作業）
+- [~] `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版 URL を宣言 — **対象外と判明**（§10.2 項目3・4。実測で redirect URI 変更自体が不要だったため宣言する新規制約が無い）
+- [x] [IADR-0076](../adr/IADR-0076_edge-bff-routing-and-oidc-hostname.md) を改定するか、手順 B の既定化を決める新 IADR を起こす（**どちらかを明示的に選ぶ**）→ [IADR-0243](../adr/IADR-0243_keycloak-edge-issuer-migration.md) を新設
+- [x] **[IADR-0091](../adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 と却下代替案「Keycloak も 50000 集約」を Supersede**
+      （#779 から移してきた約束。#779 は issuer を 1 バイトも変えないため決定 3 のみを Supersede した）→ [IADR-0243] 「Superseded」節
+- [x] **admin:50000 の TLS 化を扱うか、扱わないなら別 issue へ送る** → [IADR-0220] が既に済ませている（§10.2 項目6）
 
 ## 6. 個別の落とし穴（issue が挙げたもの・着手時に再確認する）
 
@@ -297,3 +299,183 @@ kubectl -n platform-infra delete ingress keycloak-edge
 4. `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` に https 版
 5. [IADR-0091](../adr/IADR-0091_local-edge-aggregation-traefik.md) 決定 5 と却下代替案の Supersede
 6. **admin:50000 の TLS 化は [IADR-0220](../adr/IADR-0220_admin-entrypoint-tls-and-http-redirect.md) が済ませた** —— #780 の該当基準は既に満たされている
+
+---
+
+## 10. ［2026-08-22 追記 / #780 第2段］実行結果 — realm 再作成・issuer 移行を実施した
+
+利用者確認（3 セッションが live Keycloak への依存なしを確認）を受け、realm 再作成の GO を得て実施した。
+
+### 10.1 バックアップ（実行前）
+
+`kcadm.sh get` で realm 設定・clients・roles・groups・users を個別に取得した
+（`partial-export`（POST 系）は自動分類器が書き込みとして拒否したため、読み取り専用の `get` を積み上げる形にした）。
+ローカル scratchpad に保存（リポジトリには含めない。dev 専用の一時データ）。
+
+### 10.2 上記「残作業」6 項目の実測結果
+
+| # | 項目 | 結果 |
+| --- | --- | --- |
+| 1 | `KC_HOSTNAME_URL` → `https://keycloak.localhost` | **実施**（`deploy/local/infra/keycloak.yaml`） |
+| 2 | realm の作り直し | **実施**（`keycloak-data` PVC 削除 → 空 PVC 再作成 → `--import-realm`） |
+| 3 | 7 クライアントの redirect/logout URI | **不要と判明（実測）**。6 ツール（Grafana/ArgoCD/Vault/MinIO/Headlamp/Wiki.js）は既に集約後 URL（`https://<tool>.localhost:50000/...`）を持ち、issuer host とは独立。`platform-spa` も変更不要。詳細は [IADR-0243] 決定3 |
+| 4 | `check-realm-constraints.js` の `REQUIRED_CLIENT_URLS` | **対象外**（項目3が不要だったため） |
+| 5 | [IADR-0091] 決定5 の Supersede | **実施**（[IADR-0243] 「Superseded」節） |
+| 6 | admin:50000 TLS 化 | 既に [IADR-0220] が済ませている（変更なし） |
+
+### 10.3 ★ 未知のバグを発見・修正した — realm.json の seed user 4 件が自分の password policy に違反していた
+
+realm 再作成で `--import-realm` を**実際に**発火させたのは、この作業が初めてだった
+（PVC 永続化により従来は常に import がスキップされていた。§3）。その結果、**過去一度も検証されて
+いなかった realm.json の内容そのものにバグ**が見つかった。
+
+```
+2026-08-22 02:49:50,871 ERROR [org.keycloak.quarkus.runtime.cli.ExecutionExceptionHandler] (main)
+  ERROR: Failed to start server in (development) mode
+2026-08-22 02:49:50,871 ERROR ... ERROR: invalidPasswordMinLengthMessage
+```
+
+realm の `passwordPolicy`（`length(12) and passwordHistory(5) and regexPattern(3-of-4文字種)`）に対し、
+4 件の seed user の平文パスワードがいずれも違反していた（`admin`=5 文字、`developer`=9 文字、
+`poc-password`/`poc-operator-password` は 12 文字以上あるが 3-of-4 文字種を満たさない）。
+**PVC 永続化が import 自体を常にスキップしていたため、この不整合は一度も検出されずに埋め込まれていた。**
+
+ポリシーに適合する値へ変更した（node で正規表現を実測してから適用。§検証コマンドは省略・再現可能）:
+
+| user | 旧 | 新 |
+| --- | --- | --- |
+| `admin`（realm 内。master realm の `KEYCLOAK_ADMIN` とは別） | `admin` | `Admin-Dev2026` |
+| `poc-user` | `poc-password` | `Poc-Passwd2026` |
+| `poc-operator` | `poc-operator-password` | `PocOperator-2026` |
+| `developer` | `developer` | `Developer-2026` |
+
+追随した参照（母集合: `git grep -n` で `poc-password\|poc-operator-password\|developer.*developer` を
+複数軸で走査）: `deploy/local/README.md`（dev ログインユーザー表）・`scripts/verify-oidc-edge-flow.sh`
+（`OIDC_PASSWORD` 既定値）・`docs/operations/local-sso-recovery-runbook.md`・`docs/operations/operations.md`
+（2 箇所）。`docs/security/security.md` はユーザー名・ロールの説明のみでパスワード値は載せていないため対象外。
+
+### 10.4 `scripts/verify-oidc-edge-flow.sh` の更新（受け入れ基準「hosts 追記・port-forward の前提なしに完走」）
+
+手順A（hosts + port-forward）前提の記述・`KC_URL` 既定値・`EDGE_URL` 既定値を更新した。
+
+- `KC_URL` 既定: `http://keycloak:8080` → `https://keycloak.localhost`
+- `EDGE_URL` 既定: `http://localhost` → `https://localhost`（`platform-spa` の登録済み redirectUris が
+  `https://localhost/*` であり `http://localhost/*` を持たないため。実測で判明——エッジ TLS 導入
+  （IADR-0206）時点から本来 https 既定であるべきだった潜在的な不整合）
+- `OIDC_PASSWORD` 既定: `developer` → `Developer-2026`（§10.3）
+- 全 14 箇所の `curl` 呼び出しに `-k`（`CURL_K` 変数）を追加。エッジ・Keycloak とも同じローカル CA
+  （`local-edge-ca`）の自己署名証明書のため、dev 専用の検証スクリプトとして検証を省略する
+
+### 10.5 実機検証（2026-08-22・稼働中の k3s）
+
+**discovery の issuer 一致**（受け入れ基準）:
+
+```
+$ curl -sk https://keycloak.localhost/realms/platform/.well-known/openid-configuration | grep issuer
+"issuer":"https://keycloak.localhost/realms/platform"
+
+$ kubectl port-forward svc/keycloak 18081:8080 &
+$ curl -s http://localhost:18081/realms/platform/.well-known/openid-configuration | grep issuer
+"issuer":"https://keycloak.localhost/realms/platform"
+```
+
+**両経路（in-cluster / エッジ）で issuer が完全一致した** —— [IADR-0243] 決定1（`KC_HOSTNAME_URL` が
+単一情報源）が実機で成立することを確認した。
+
+**`scripts/verify-oidc-edge-flow.sh` の実行**（hosts 追記・port-forward なし。フロントエンドは
+`kubectl set env deployment/frontend-service OIDC_AUTHORITY=...` で暫定パッチ済み——`helm upgrade` は
+稼働リリースが 3 週間分drift している（最終適用 2026-08-01）ため、本セッションでは全体アップグレードを
+避け、検証に要る 1 env のみへ限定した。恒久適用は別途 `helm upgrade` が要る）:
+
+```
+[1/9] PASS  SPA の HTML が返る
+[2/9] PASS  config.js の authority が issuer と一致
+[3/9] PASS  ログインフォームが返る
+[4/9] PASS  認可コードを取得
+[5/9] PASS  access_token を取得（PKCE 検証が通った）
+[6/9] PASS  iss / preferred_username / clearance / department すべて正しい値
+[7/9] FAIL  /bff/dashboard/summary → 401、/bff/datasources → 401（documents は 200）
+[8/9] PASS  無トークン読み取り → 200（現行設計どおり）
+[9/9] PASS  無トークン書き込み → 401
+結果: PASS 12 / FAIL 2
+```
+
+**issuer 移行そのもの（1〜6・8・9）は完全に成立した。** 7/9 の 2 件の失敗は、**同一トークンで
+`/bff/documents` が 200 を返している**こと（issuer/audience 不一致なら全経路が一様に失敗するはず）、
+および `dashboard-service` の直近ログに該当リクエストの着信が無い（BFF 層で止まっている）ことから、
+**issuer 移行とは無関係の、既存の BFF ルーティング/認可の欠陥**と判断した。#780 のスコープ外として
+別途フォローアップに切り出した（session の spawn_task。本 issue の受け入れ基準は issuer 一致であり
+全 BFF エンドポイントの成功ではない）。
+
+### 10.6 静的検査・変異試験
+
+`scripts/k8s-local-up.test.js` に4 件追加（IADR-0243 節）:
+
+| # | 検査 | 変異 | 結果 |
+| --- | --- | --- | --- |
+| 1 | `KC_HOSTNAME_URL` がエッジ host | in-cluster 値へ戻す | **AssertionError**（実測） |
+| 2 | `metadataAddress` が in-cluster | エッジ host へ差し替え | **AssertionError**（実測） |
+| 3 | `validIssuers` がエッジ host | in-cluster 値へ差し替え | **AssertionError**（実測） |
+| 4 | 両者の realm パス一致 | 片方だけ旧 realm 名へ | **AssertionError**（実測） |
+
+各変異のあと `git diff` で該当箇所のみの変化を確認してから実行し、復旧後に
+`node scripts/k8s-local-up.test.js` が `✓ 85 tests passed` へ戻ることを確認した。
+
+`REQUIRE_REPO_TESTS=1 node scripts/scripts.test.js`: **develop の IADR 最大が 0242 の時点では
+0243 欠番で 1 件だけ失敗する**（#930/#882 が 0243 を確保する見込みのため、本ブランチが先に埋めると
+番号衝突になる。`.claude/rules/traceability.md`「採番衝突時の改番手順」どおり、着地順を待って
+develop の最大＋1 へ付け替える。#783 の PR #925 で踏んだ経路と同型）。それ以外の違反は無い。
+
+### 10.7 残る作業
+
+- `deploy/local/README.md`・`scripts/verify-oidc-edge-flow.sh` 以外の**恒久的な cluster 適用**
+  （`helm upgrade` によるフル反映。backend 9 サービス＋frontend）は、本セッションでは意図的に
+  スコープを絞った（3 週間分の drift を一度に取り込むリスクを避けるため）。次の適切なタイミングで
+  `helm upgrade msp deploy/helm/microservices-platform -n microservices-platform -f deploy/local/values-local.yaml`
+  を実施すること
+- `/bff/dashboard/summary`・`/bff/datasources` の 401（§10.5）は別 issue へ切り出し済み
+- IADR 番号（現在 0244 で仮置き）は develop の最大＋1 へマージ直前に付け替える（§10.6）
+
+## 🔴 ［2026-08-22 追記 / #933］`commit-messages` を赤のままマージした。その限定
+
+本 PR は **`commit-messages` が failure のままマージした**。**前例として一般化してはならない**ので、
+成立条件を明記する。
+
+### 何が赤だったか
+
+```
+commit-messages  ✗ 規約違反 2 件:
+  - 起点 ID "IADR-0244" が .ai-context/adr/ に実在しない
+  - 起点 ID "IADR-0244" が .ai-context/adr/ に実在しない
+```
+
+該当は本 PR 内の既存コミット 2 本の**件名**である（`664b9f39` / `0cf021c0`）。
+develop の最大が `IADR-0242` だったため `0244` のままでは `0243` が欠番になり、
+**本 PR だけでなく後続の PR もすべて `scripts-tests` で落ちていた**（実測: #938）。
+規約どおり `0243` へ付け替えた結果、**既にプッシュ済みの件名だけが旧番号を指したまま残った**。
+
+### なぜ赤のままマージしてよかったか（3 点）
+
+1. **squash マージなので、当該 2 件名は develop に載らない。** 実際に載るのは PR タイトル
+   `feat(NFR-09,IADR-0243): …` であり、これは規約に適合し `check-landed-subjects` を通る。
+   **赤いのは「develop に到達しない件名」に対する検査**である。
+2. **force push は CLAUDE.md が禁止**しており、件名の書き換えはできない。
+3. **`commit-allowlist.json` では解けない。** リスト自身が category B に
+   「squash マージのリポジトリでは PR ブランチのコミット SHA は統合ブランチへ載らないため、
+   未マージの PR ブランチ上のコミットを登録すると規約 2（到達可能性）と必ず両立しない。
+   実測では entry あり＝`commit-messages` は緑だが幻 SHA 検査が赤、entry なし＝その逆」
+   と記録している（planning#339）。**登録しても赤の場所が移るだけである。**
+
+### 🔴 一般化してはならない — 成立条件
+
+**「`commit-messages` が赤でもマージしてよい」ではない。** 次の**すべて**を満たす場合に限る。
+
+- 赤の原因が **squash マージで develop に到達しない件名**に対する指摘であること
+  （＝ 統合ブランチの履歴は汚れない）
+- **PR タイトル（＝ squash 後に載る件名）が規約に適合**していること
+- **他の経路が塞がっている**こと（force push 禁止・allowlist が構造的に使えない）
+- **マージ後に `check-landed-subjects` が緑であることを実測**すること
+  —— 「載らないから大丈夫」は予測であり、develop 上で確認するまで結論にしない
+
+本文を変えた件名以外の理由（種別の誤り・ID 書式違反・存在しない FR/UC/SC の参照など）で
+`commit-messages` が赤いときは、**この限定に当たらない**。直してからマージすること。

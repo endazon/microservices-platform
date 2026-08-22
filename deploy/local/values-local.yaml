@@ -10,6 +10,13 @@ global:
     # ビルド/インポートは scripts/k8s-local-images.sh が同じ接頭辞・タグで行う。
     registry: k3d-local
     pullPolicy: IfNotPresent
+  # #780 第2段 / IADR-0086 / IADR-0243: Keycloak の issuer をエッジ host（https://keycloak.localhost）へ
+  # 移した後も、.NET の OIDC metadata 取得は in-cluster から到達できる well-known を使う（エッジの
+  # 自己署名/ローカル CA を .NET 側で信頼させる必要が無い）。ValidIssuers でエッジ issuer を追加受理する
+  # （IADR-0086 決定3: ValidateIssuer は弱めない。署名鍵は常に in-cluster metadata 由来）。
+  auth:
+    metadataAddress: http://keycloak:8080/realms/platform/.well-known/openid-configuration
+    validIssuers: https://keycloak.localhost/realms/platform
 
 # Istio 未導入のローカルでは mTLS/サイドカー注入を無効化する（本番像 STRICT は不変）。
 namespace:
@@ -103,6 +110,10 @@ services:
 # 本番像 values.yaml の frontend.extraEnv は空のまま不変（実 Wiki URL は per-env で extraEnv 供給・opt-in・後方互換）。
 frontend:
   enabled: true
+  # #780 第2段 / IADR-0243: ブラウザが到達する OIDC issuer をエッジ host（https://keycloak.localhost）へ。
+  # config.js の authority はここから描画される（base values.yaml のコメントが per-env 上書きを指示している）。
+  oidc:
+    authority: "https://keycloak.localhost/realms/platform"
   extraEnv:
     - name: WIKI_BASE_URL
       value: "https://wiki.localhost:50000"

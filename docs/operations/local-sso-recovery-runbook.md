@@ -3,7 +3,7 @@ title: 経路B SSO 復旧 Runbook（揮発 live 設定の再適用手順）
 type: runbook
 status: active
 created: 2026-07-25
-updated: 2026-08-21
+updated: 2026-08-22
 author: claude
 ---
 <!-- trace:
@@ -129,7 +129,7 @@ kubectl -n ai-stock-trading get deploy | grep -c opend                          
 
 | ツール | URL | 資格情報 | 管理者への解決経路 |
 | --- | --- | --- | --- |
-| SPA/BFF | `https://localhost/` | `developer`/`developer` | `realm_access.roles` |
+| SPA/BFF | `https://localhost/` | `developer`/`Developer-2026` | `realm_access.roles` |
 | Grafana | `grafana.localhost:50000` | `admin`/`admin` | claim `roles` → `platform-admin` → Admin |
 | ArgoCD | `argocd.localhost:50000` | `admin`/`admin` | claim `groups` → `g, platform-admin, role:admin` |
 | MinIO | `minio.localhost:50000` | `admin`/`admin` | claim `policy` = `["consoleAdmin"]`（client ロール） |
