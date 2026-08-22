@@ -1,5 +1,6 @@
 using JasperFx.CodeGeneration.Model;
 using Wolverine;
+using Wolverine.ErrorHandling;
 using Wolverine.RabbitMQ;
 
 namespace Platform.Shared.Infrastructure.Foundation.Extensions;
@@ -17,9 +18,25 @@ namespace Platform.Shared.Infrastructure.Foundation.Extensions;
 // プロセス内へ閉じ、手順 5 を怠ると internal 実装型に依存するハンドラが最初の受信時に落ちる。
 //
 // MassTransit 経路（MassTransitExtensions / PipelineExtensions）とは併存する別 API であり、
-// 本ファイルは既存の登録経路を一切変更しない（部分移行に対する型制約の安全弁は U5 まで残す）。
+// 本ファイルは既存の登録経路を一切変更しない（部分移行に対する型制約の安全弁は C3 まで残す。
+// **U5「型制約の緩和」という単位は起こさない** —— IADR-0234 決定 4 が IADR-0233 決定 4 を改めた）。
 public static class WolverineExtensions
 {
+    // ADR-0027 §決定「遅延実行・再試行・スケジュール配信は Wolverine の耐久メッセージ機能で賄い」:
+    // 自動再試行の間隔。**要素数がそのまま再試行回数**である（MassTransit 側の RetryIntervals と同じ約束）。
+    //
+    // 🔴 **MassTransit 側（MassTransitExtensions.RetryIntervals）と同値でなければならないが、参照しない。**
+    // 共有すると「両方を同時に変える変異」が等価性試験をすり抜ける —— 片側を変えても他方が追随するため
+    // **変異が当たらない試験**になる。値を 2 か所に置いたうえで一致を試験で縛る作法は
+    // ConversionJobRetryPolicy.MaxAttempts の先例（IADR-0137 決定 3）に倣う。一致は
+    // WolverineExtensionsTests が MassTransit 側をリフレクションで読んで束ねる。
+    private static readonly TimeSpan[] RetryIntervals =
+        [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)];
+
+    // 1 回の配信で行う試行の上限（初回 1 回 ＋ 自動再試行 RetryIntervals.Length 回）。
+    // これに達した失敗はデッドレターへ送られる。**試行上限の単一情報源**である。
+    public static int MaxAttempts => RetryIntervals.Length + 1;
+
     // 手順 3: リスニングキュー名にサービス名を前置する。
     //
     // 前置の目的は fan-out の保存である。同一イベントを 2 サービスが購読するとき（正本の
@@ -70,6 +87,20 @@ public static class WolverineExtensions
         // 実行時コンパイル（IADR-0217）と組み合わさるため起動時には現れない。サービスロケーションを
         // 明示的に許可して、この「受信するまで分からない失敗」を消す。
         options.ServiceLocationPolicy = ServiceLocationPolicy.AlwaysAllowed;
+
+        // 再試行・デッドレター（ADR-0027 §決定。移行チェックリストの 8 手順には含まれない）:
+        // MassTransit 側の UsePlatformRetry が与える挙動と等価な既定を全サービス共通で与える。
+        //
+        // 🔴 **Wolverine の既定は「再試行 0 回・初回失敗で即デッドレター」である**（実測）。
+        // 手順 4・5 と同じく「設定しなくても起動し、ビルドもトポロジ検査も封じ込め検査も通る」種類の
+        // 設定であり、移行したハンドラが黙って回復性を失う。だから移行の全辺より先にここへ置く。
+        //
+        // ⚠️ **.Then.MoveToErrorQueue() は挙動としては冗長である**（既定でも試行を使い切れば
+        // デッドレターへ行くことを実測済み）。**意図の明示と、変異試験のための面**として残す ——
+        // これが無いと「デッドレター送りを無効化する」変異を注入する場所が存在しない。
+        options.Policies.OnAnyException()
+            .RetryWithCooldown(RetryIntervals)
+            .Then.MoveToErrorQueue();
 
         return options;
     }

@@ -9,8 +9,8 @@ author: claude
 <!-- trace:
 ids: [FR-14]
 adrs: [ADR-0002, ADR-0004, ADR-0005, ADR-0007, ADR-0008, ADR-0019, ADR-0020, ADR-0027, ADR-0028, ADR-0029, ADR-0030, ADR-0031, ADR-0032, ADR-0041]
-iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233]
-specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper]
+iadrs: [IADR-0002, IADR-0009, IADR-0012, IADR-0024, IADR-0025, IADR-0026, IADR-0027, IADR-0028, IADR-0029, IADR-0037, IADR-0048, IADR-0049, IADR-0056, IADR-0117, IADR-0121, IADR-0124, IADR-0125, IADR-0134, IADR-0216, IADR-0219, IADR-0231, IADR-0233, IADR-0234]
+specs: [20260803_issue-455_backend-application-standard, 20260821_issue-455_awesome-assertions-knowledge, 20260821_issue-455_xunit-v3-migration, 20260821_issue-455_wolverine-phase0-preconditions, 20260821_issue-455_integration-tests-production-wiring, 20260821_issue-455_workers-in-integration-tests, 20260821_issue-455_two-subscribers-fanout-test, 20260821_issue-455_pipeline-declaration-in-integration-tests, 20260821_issue-455_queue-override-fanout, 20260822_issue-455_wolverine-shared-helper, 20260822_issue-441_wolverine-retry-dlq-defaults]
 issues: [#184, #196, #197, #198, #209, #441, #455, #490, #838, #882, #887, planning#146, planning#160, planning#161, planning#162, planning#180, planning#390]
 -->
 
@@ -389,6 +389,17 @@ platform 3 プロジェクト（段 1）・knowledge 11 プロジェクト（段
 > **MSBuild は両方ともコンパイルする**（`error CS1061` がファイルを名指しすることで確認）。
 > 現時点で該当ディレクトリ・該当エンコーディングのファイルは**いずれも 0 件**であり実害は無いが、
 > **将来 fail-open になり得る**。`check-event-topology.js` も同じ `SKIP_DIRS` を持つ。
+>
+> 🔴 ［2026-08-22 追記 / #441］**「U5（型制約の緩和）で安全弁を外す」という単位は起こさない。**
+> 上の段落群が U5 と呼んでいた作業は、実測の結果 2 つの別々の作業に分かれた（判断の記録は実装ADRにある）。
+> 登録経路のほうはレシーバ自体が撤去対象のライブラリの型であり、**制約を緩めるのではなくメソッドごと削除**する。
+> 自己申告経路のほうは制約を狭めても意味が残る一方、**入力型の導出元を移さないと突合が黙って空洞化**するため
+> **置き換え**になる。いずれも移行チェーンの最終単位（C3）で行う。
+>
+> 🔴 **あわせて「安全弁は検査器側へ移った」も言い過ぎである。** トポロジ検査は**見える発行だけを覆う
+> 部分的な網**であり（発行側トランスポートを和集合で取るため、旧トランスポートの発行元が 1 つでも
+> 残ると食い違いがすべて隠れる。加えて一部の `Publish` は検査器から不可視）、登録点に対して全域だった
+> 型制約とは**等価ではない**。外す前に要る証跡は実装ADRが定める。
 
 **統合テストは本番配線を通るようになった**（2026-08-21。#455 Phase 0 / U0a）。従前
 `IntegrationTestFactory` はサービス自身のメッセージング配線をアセンブリ単位で除去してから

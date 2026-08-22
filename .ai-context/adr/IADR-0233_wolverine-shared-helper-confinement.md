@@ -6,6 +6,7 @@ related_ids:
   - ADR-0027
   - ADR-0030
   - IADR-0217
+  - IADR-0234
 author: claude
 created: 2026-08-22
 updated: 2026-08-22
@@ -172,6 +173,20 @@ Wolverine の規約ルーティングはリスニングキュー名をメッセ�
 型制約を緩められない。**落ちること自体が設計意図**であり、U5 はテストを削除するのではなく
 「安全弁は検査器側（`check-event-topology.js` のトランスポート認識判定）へ移った」ことを
 示す形へ書き換える。
+
+> 🔴 ［2026-08-22 追記 / #441］**決定 4 のうち「U5 で外す」は
+> [IADR-0234](./IADR-0234_wolverine-migration-boundary-455-441.md) 決定 4 が改めた（Superseded by IADR-0234 決定 4）。**
+> **U5（型制約の緩和）という単位は起こさない。** 実測で 2 点が判明したためである。
+>
+> 1. `AddPlatformPipelineStep` は**レシーバ自体が MassTransit 型**（`this IBusRegistrationConfigurator`）で
+>    本体が `bus.AddConsumer<TConsumer>()` を呼ぶ。型制約だけを緩めた中間形に意味が無く、**C3 でメソッドごと削除**する。
+> 2. `IntrospectionBuilder.AddStep` は逆に、`where TConsumer : class, IPipelineStep` が**移行後も意味を持つ**
+>    （レシーバが自リポジトリの型で、イントロスペクションはトランスポート非依存）。ただし制約だけ外すと
+>    `input` が黙って `string.Empty` になるため、**入力型の情報源ごと置き換える**。
+>
+> また「安全弁は検査器側へ移った」は**言い過ぎ**である。`check-event-topology.js` は
+> **見える発行だけを覆う部分的な網**であり（発行側トランスポートの和集合・不可視の `bus.Publish` を実測）、
+> 登録点に対して全域だった型制約とは**等価ではない**。IADR-0234 決定 5 が C3 の証跡要件を定める。
 
 🔴 **［2026-08-22 追記 / #455 U4 の独立検証］「現存する唯一のコンパイル時安全弁」は、
 型制約そのものの性質ではなく本体実装の副作用である。** 変異試験で切り分けた。
