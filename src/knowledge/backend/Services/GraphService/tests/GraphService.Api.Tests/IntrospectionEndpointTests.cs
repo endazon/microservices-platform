@@ -12,10 +12,10 @@ public class IntrospectionEndpointTests(TestWebApplicationFactory factory)
     [Fact]
     public async Task Reports_service_presence()
     {
-        var res = await factory.CreateClient().GetAsync("/internal/introspection");
+        var res = await factory.CreateClient().GetAsync("/internal/introspection", TestContext.Current.CancellationToken);
         res.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>();
+        var report = await res.Content.ReadFromJsonAsync<ServiceIntrospectionDto>(TestContext.Current.CancellationToken);
         report.Should().NotBeNull();
         report!.Service.Should().Be("graph-service");
     }

@@ -9,7 +9,7 @@ author: claude
 <!-- trace:
 ids: [FR-05, FR-17, UC-10]
 adrs: [ADR-0004, ADR-0033, ADR-0034]
-iadrs: [IADR-0238]
+iadrs: [IADR-0239]
 specs: [20260822_issue-908_graphservice-foundation]
 issues: [#450, #908, #909, #916]
 -->

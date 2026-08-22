@@ -1,13 +1,13 @@
 namespace GraphService.Api.Foundation.Domain;
 
-// FR-17, UC-10, ADR-0033 決定 4・5・6, IADR-0238 決定 9: 文書間の辺。
+// FR-17, UC-10, ADR-0033 決定 4・5・6, IADR-0239 決定 9: 文書間の辺。
 //
 // **常に 1 行である。** 方向型（cites / supersedes / derived-from / embeds ほか）は
 // SourceDocumentId → TargetDocumentId が意味方向そのもの。対称型（related）は書き込み時に
 // 文書 ID の昇順へ正規化して重複を防ぐ（一意制約が効く）。**バックリンク（FR-17）は行を増やさず**
 // TargetDocumentId の索引の逆引きで実現する。
 //
-// **辺自身は機密属性を持たない**（IADR-0238 決定 6）。辺の機微性は「両端文書の存在と関係を明かす
+// **辺自身は機密属性を持たない**（IADR-0239 決定 6）。辺の機微性は「両端文書の存在と関係を明かす
 // こと」に由来し、両端点の認可判定の連言で完全に覆われる。辺に独自の ACL 軸を足すのは計画に無い
 // 抽象化である。Provenance は認可軸ではなくメタデータである。
 //
@@ -44,7 +44,7 @@ public class Edge
 
     private Edge() { }
 
-    // FR-17, IADR-0238 決定 9: 辺を作る。
+    // FR-17, IADR-0239 決定 9: 辺を作る。
     // **対称型は (min, max) へ正規化する** —— 正規化しないと A→B と B→A が別行として入り、
     // 一意制約が重複を防げなくなる。
     public static Edge Create(

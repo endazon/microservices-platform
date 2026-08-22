@@ -36,7 +36,7 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
             db.Documents.Add(GraphDocument.Create(forbidden, "forbidden",
                 new Dictionary<string, string> { ["confidentiality"] = "restricted" },
                 null, DateTimeOffset.UtcNow));
-            // 属性の複製がまだ届いていないノード（IADR-0238 決定 12-3 で不可視）。
+            // 属性の複製がまだ届いていないノード（IADR-0239 決定 12-3 で不可視）。
             db.Documents.Add(GraphDocument.Create(noAttributes, "not-yet-synced",
                 [], null, DateTimeOffset.UtcNow));
             return Task.CompletedTask;
@@ -46,14 +46,14 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
         var client = _factory.CreateClient();
 
         // 対照群: 見えるものは見える（テストが「全部 404」で空振りしていないことの担保）。
-        var ok = await client.GetAsync($"/graph/{visible}");
+        var ok = await client.GetAsync($"/graph/{visible}", TestContext.Current.CancellationToken);
         ok.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var responses = new List<HttpResponseMessage>
         {
-            await client.GetAsync($"/graph/{forbidden}"),
-            await client.GetAsync($"/graph/{noAttributes}"),
-            await client.GetAsync($"/graph/{nonexistent}"),
+            await client.GetAsync($"/graph/{forbidden}", TestContext.Current.CancellationToken),
+            await client.GetAsync($"/graph/{noAttributes}", TestContext.Current.CancellationToken),
+            await client.GetAsync($"/graph/{nonexistent}", TestContext.Current.CancellationToken),
         };
 
         foreach (var r in responses)
@@ -62,7 +62,7 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
         // 本文が 1 バイトも違わないこと。
         var bodies = new List<string>();
         foreach (var r in responses)
-            bodies.Add(await r.Content.ReadAsStringAsync());
+            bodies.Add(await r.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         bodies.Distinct().Should().HaveCount(1,
             "応答本文に差があると、そこから存在の有無が読める");
 
@@ -86,7 +86,7 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
 
         _factory.ScopeProvider = _ => new AccessScopeResponse("test-user", [], false);
 
-        var res = await _factory.CreateClient().GetAsync($"/graph/{doc}");
+        var res = await _factory.CreateClient().GetAsync($"/graph/{doc}", TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(HttpStatusCode.NotFound,
             "403 を返すと『権限が無いだけで存在はする』ことが漏れる");
@@ -99,7 +99,7 @@ public class GraphEndpointsSecrecyTests : IClassFixture<TestWebApplicationFactor
         var client = _factory.CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.AnonymousHeader, "1");
 
-        var res = await client.GetAsync($"/graph/{Guid.NewGuid()}");
+        var res = await client.GetAsync($"/graph/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
 
         res.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }

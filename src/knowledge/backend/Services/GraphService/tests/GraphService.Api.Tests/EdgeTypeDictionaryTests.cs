@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GraphService.Api.Tests;
 
-// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0238 決定 7: 辺の型辞書の性質を固定する。
+// FR-17, SC-09, ADR-0033 決定 3・9, IADR-0239 決定 7: 辺の型辞書の性質を固定する。
 //
 // CRUD の API は #910 が足す。ここで固定するのは**モデルの性質**である ——
 // 改名が既存の辺を書き換えないこと、初期値集合が入ること、seed が既存を壊さないこと。
@@ -26,14 +26,14 @@ public class EdgeTypeDictionaryTests
         db.EdgeTypes.Add(type);
         var edge = Edge.Create(Guid.NewGuid(), Guid.NewGuid(), type.Id, true, EdgeProvenance.Auto);
         db.Edges.Add(edge);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var before = await db.Edges.AsNoTracking().SingleAsync();
+        var before = await db.Edges.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
 
         type.Rename("relates-to");
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var after = await db.Edges.AsNoTracking().SingleAsync();
+        var after = await db.Edges.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
 
         after.Id.Should().Be(before.Id);
         after.EdgeTypeId.Should().Be(before.EdgeTypeId);
@@ -44,7 +44,7 @@ public class EdgeTypeDictionaryTests
             "改名は辺の内容変更ではないため、辺の更新時刻すら動いてはならない");
 
         // 追随していること（辺は表示名を複写していない）。
-        var resolved = await db.EdgeTypes.AsNoTracking().SingleAsync(t => t.Id == after.EdgeTypeId);
+        var resolved = await db.EdgeTypes.AsNoTracking().SingleAsync(t => t.Id == after.EdgeTypeId, TestContext.Current.CancellationToken);
         resolved.Name.Should().Be("relates-to");
     }
 
@@ -65,9 +65,9 @@ public class EdgeTypeDictionaryTests
     {
         await using var db = NewDb();
 
-        await EdgeTypeSeed.EnsureSeededAsync(db);
+        await EdgeTypeSeed.EnsureSeededAsync(db, TestContext.Current.CancellationToken);
 
-        var all = await db.EdgeTypes.AsNoTracking().ToListAsync();
+        var all = await db.EdgeTypes.AsNoTracking().ToListAsync(TestContext.Current.CancellationToken);
         all.Should().HaveCount(EdgeTypeSeed.Count);
         all.Count(t => t.Layer == EdgeTypeLayer.Core).Should().Be(5);
         all.Count(t => t.Layer == EdgeTypeLayer.Recommended).Should().Be(4);
@@ -83,10 +83,10 @@ public class EdgeTypeDictionaryTests
     {
         await using var db = NewDb();
 
-        await EdgeTypeSeed.EnsureSeededAsync(db);
-        await EdgeTypeSeed.EnsureSeededAsync(db);
+        await EdgeTypeSeed.EnsureSeededAsync(db, TestContext.Current.CancellationToken);
+        await EdgeTypeSeed.EnsureSeededAsync(db, TestContext.Current.CancellationToken);
 
-        (await db.EdgeTypes.CountAsync()).Should().Be(EdgeTypeSeed.Count);
+        (await db.EdgeTypes.CountAsync(TestContext.Current.CancellationToken)).Should().Be(EdgeTypeSeed.Count);
     }
 
     // 🔴 ADR-0033 決定 9: seed が**改名を巻き戻さない**。
@@ -95,22 +95,22 @@ public class EdgeTypeDictionaryTests
     public async Task Seed_does_not_resurrect_renamed_types()
     {
         await using var db = NewDb();
-        await EdgeTypeSeed.EnsureSeededAsync(db);
+        await EdgeTypeSeed.EnsureSeededAsync(db, TestContext.Current.CancellationToken);
 
-        var cites = await db.EdgeTypes.SingleAsync(t => t.Name == "cites");
+        var cites = await db.EdgeTypes.SingleAsync(t => t.Name == "cites", TestContext.Current.CancellationToken);
         var id = cites.Id;
         cites.Rename("references");
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await EdgeTypeSeed.EnsureSeededAsync(db);
+        await EdgeTypeSeed.EnsureSeededAsync(db, TestContext.Current.CancellationToken);
 
-        var renamed = await db.EdgeTypes.AsNoTracking().SingleAsync(t => t.Id == id);
+        var renamed = await db.EdgeTypes.AsNoTracking().SingleAsync(t => t.Id == id, TestContext.Current.CancellationToken);
         renamed.Name.Should().Be("references");
-        (await db.EdgeTypes.CountAsync(t => t.Name == "cites")).Should()
+        (await db.EdgeTypes.CountAsync(t => t.Name == "cites", TestContext.Current.CancellationToken)).Should()
             .Be(1, "改名で空いた名前は seed が埋め直すが、改名した型を戻してはならない");
     }
 
-    // IADR-0238 決定 9: 対称型は (min, max) へ正規化して 1 行にする。
+    // IADR-0239 決定 9: 対称型は (min, max) へ正規化して 1 行にする。
     [Fact]
     public void Symmetric_edges_are_normalized_by_document_id_order()
     {

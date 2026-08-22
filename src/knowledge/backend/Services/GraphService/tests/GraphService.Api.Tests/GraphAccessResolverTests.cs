@@ -30,7 +30,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
 
-        var scope = await resolver.ResolveAsync(Ctx());
+        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
         scope.AllowedFilters.Should().BeEmpty();
@@ -42,7 +42,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => throw new HttpRequestException("refused")));
 
-        var scope = await resolver.ResolveAsync(Ctx());
+        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -53,7 +53,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => throw new TaskCanceledException("timeout")));
 
-        var scope = await resolver.ResolveAsync(Ctx());
+        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -67,7 +67,7 @@ public class GraphAccessResolverTests
                 Content = new StringContent("null", System.Text.Encoding.UTF8, "application/json"),
             }));
 
-        var scope = await resolver.ResolveAsync(Ctx());
+        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -87,11 +87,11 @@ public class GraphAccessResolverTests
             };
         }));
 
-        var scope = await resolver.ResolveAsync(Ctx());
+        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeTrue();
         captured.Should().NotBeNull();
-        var body = await captured!.Content!.ReadAsStringAsync();
+        var body = await captured!.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("clearance").And.Contain("department");
     }
 
