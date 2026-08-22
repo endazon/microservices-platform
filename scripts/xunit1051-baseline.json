@@ -53,8 +53,8 @@
     },
     "src/knowledge/backend/Services/DataSourceService/tests/DataSourceService.Api.Tests/DataSourceService.Api.Tests.csproj": {
       "project": "DataSourceService.Api.Tests",
-      "remaining": 75,
-      "migrated": false
+      "remaining": 0,
+      "migrated": true
     },
     "src/knowledge/backend/Services/DocumentService/tests/DocumentService.Api.Tests/DocumentService.Api.Tests.csproj": {
       "project": "DocumentService.Api.Tests",

@@ -26,9 +26,9 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
             connectionUri = "smb://old/share",
             config = new Dictionary<string, string> { ["rootPath"] = "/old", ["apiToken"] = "s3cret" },
             defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "confidential" },
-        });
+        }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        return await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -46,10 +46,10 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
             connectionUri = "https://wiki.example.test",
             config = new Dictionary<string, string> { ["listPath"] = "/pages" },
             defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("name").GetString().Should().Be("after");
         body.GetProperty("sourceType").GetString().Should().Be("wiki");
         body.GetProperty("connectionUri").GetString().Should().Be("https://wiki.example.test");
@@ -76,10 +76,10 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
             connectionUri = "smb://new/share",
             config = new Dictionary<string, string>(),
             defaultAttributes = new Dictionary<string, string>(),
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("defaultAttributes").GetProperty("confidentiality").GetString()
             .Should().Be("internal", "属性を省略した更新でも機密区分はフェイルセーフで補完される");
     }
@@ -95,10 +95,10 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         var resp = await client.PatchAsJsonAsync($"/datasources/{id}", new
         {
             connectionUri = "smb://relocated/share",
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("connectionUri").GetString().Should().Be("smb://relocated/share");
         body.GetProperty("name").GetString().Should().Be("keep-me", "省略した項目は現状維持");
         body.GetProperty("sourceType").GetString().Should().Be("filesystem", "省略した項目は現状維持");
@@ -116,14 +116,14 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         var id = created.GetProperty("id").GetGuid();
         created.GetProperty("config").GetProperty("apiToken").GetString().Should().Be("***");
 
-        var resp = await client.PatchAsJsonAsync($"/datasources/{id}", new { name = "renamed" });
+        var resp = await client.PatchAsJsonAsync($"/datasources/{id}", new { name = "renamed" }, TestContext.Current.CancellationToken);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // 保存された実体が *** で潰れていないことを、DB から直接読んで確かめる（応答は常にマスクされるため）。
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
-        var entity = await db.DataSources.FindAsync(id);
+        var entity = await db.DataSources.FindAsync([id], TestContext.Current.CancellationToken);
         entity!.Config["apiToken"].Should().Be("s3cret", "Config を送らない PATCH は秘密を書き換えない");
     }
 
@@ -151,12 +151,12 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
                 defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
             }),
         };
-        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
-        var entity = await db.DataSources.FindAsync(id);
+        var entity = await db.DataSources.FindAsync([id], TestContext.Current.CancellationToken);
         entity!.Config["apiToken"].Should().Be("s3cret", "マスク値は本物の秘密を上書きしない");
         entity.Config["rootPath"].Should().Be("/new", "秘密でない項目は要求どおり更新される");
     }
@@ -173,12 +173,12 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         await client.PatchAsJsonAsync($"/datasources/{id}", new
         {
             config = new Dictionary<string, string> { ["rootPath"] = "***" },
-        });
+        }, TestContext.Current.CancellationToken);
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
-        var entity = await db.DataSources.FindAsync(id);
+        var entity = await db.DataSources.FindAsync([id], TestContext.Current.CancellationToken);
         entity!.Config["rootPath"].Should().Be("***");
     }
 
@@ -207,7 +207,7 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         };
         body.Remove(omitted);
 
-        var resp = await client.PutAsJsonAsync($"/datasources/{id}", body);
+        var resp = await client.PutAsJsonAsync($"/datasources/{id}", body, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             "PUT は全置換なので、消えては困る項目の省略を受理しない（消すなら {} と明示させる）");
@@ -216,7 +216,7 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
-        var entity = await db.DataSources.FindAsync(id);
+        var entity = await db.DataSources.FindAsync([id], TestContext.Current.CancellationToken);
         entity!.Config["apiToken"].Should().Be("s3cret", "拒否された更新は秘密を壊さない");
     }
 
@@ -235,13 +235,13 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
             connectionUri = "smb://new/share",
             config = new Dictionary<string, string>(),
             defaultAttributes = new Dictionary<string, string> { ["confidentiality"] = "internal" },
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider
             .GetRequiredService<Foundation.Persistence.DataSourceDbContext>();
-        var entity = await db.DataSources.FindAsync(id);
+        var entity = await db.DataSources.FindAsync([id], TestContext.Current.CancellationToken);
         entity!.Config.Should().BeEmpty("空辞書は「消す」という明示である");
     }
 
@@ -264,7 +264,7 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
                 defaultAttributes = new Dictionary<string, string>(),
             }),
         };
-        (await client.SendAsync(req)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await client.SendAsync(req, TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -274,15 +274,15 @@ public class DataSourceUpdateEndpointTests(TestWebApplicationFactory factory)
         var client = factory.CreateClient();
         var created = await CreateAsync(client, "to-disable");
         var id = created.GetProperty("id").GetGuid();
-        (await client.DeleteAsync($"/datasources/{id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await client.DeleteAsync($"/datasources/{id}", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var resp = await client.PatchAsJsonAsync($"/datasources/{id}", new
         {
             connectionUri = "smb://rotated/share",
-        });
+        }, TestContext.Current.CancellationToken);
 
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
         body.GetProperty("status").GetString().Should().Be("disabled", "更新は無効状態を変えない");
         body.GetProperty("connectionUri").GetString().Should().Be("smb://rotated/share");
     }

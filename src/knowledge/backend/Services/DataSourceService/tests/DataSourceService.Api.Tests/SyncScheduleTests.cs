@@ -123,9 +123,9 @@ public sealed class SyncScheduleTests
         await CreateDataSourceAsync(client, "共有フォルダ", "filesystem");
         await CreateDataSourceAsync(client, "社内 Wiki", "wiki");
 
-        var list = await client.GetAsync("/datasources");
+        var list = await client.GetAsync("/datasources", TestContext.Current.CancellationToken);
         list.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         var values = doc.RootElement.EnumerateArray()
             .Select(e => e.GetProperty("nextSyncAt").GetDateTimeOffset())
@@ -146,9 +146,9 @@ public sealed class SyncScheduleTests
         var client = factory.CreateClient();
         await CreateDataSourceAsync(client, "無効時ソース", "filesystem");
 
-        var list = await client.GetAsync("/datasources");
+        var list = await client.GetAsync("/datasources", TestContext.Current.CancellationToken);
         list.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         doc.RootElement.EnumerateArray()
             .Select(e => e.GetProperty("nextSyncAt").ValueKind)
@@ -163,7 +163,7 @@ public sealed class SyncScheduleTests
             name,
             sourceType,
             connectionUri = "file://share/docs",
-        });
+        }, TestContext.Current.CancellationToken);
         resp.EnsureSuccessStatusCode();
     }
 

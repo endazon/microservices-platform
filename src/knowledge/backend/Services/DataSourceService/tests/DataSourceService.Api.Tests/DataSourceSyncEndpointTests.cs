@@ -35,7 +35,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
             config = new Dictionary<string, string> { ["rootPath"] = dir },
         });
 
-        var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
+        var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
         var published = await FirstPublishedForAsync(harness, id);
@@ -65,7 +65,7 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
             },
         });
 
-        var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
+        var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
         var published = await FirstPublishedForAsync(harness, id);
@@ -92,11 +92,11 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
             db.DataSources.Add(ds);
             db.Entry(ds).Property(nameof(DataSource.DefaultAttributes)).CurrentValue =
                 new Dictionary<string, string>();
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
             id = ds.Id;
         }
 
-        var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
+        var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
         var published = await FirstPublishedForAsync(harness, id);
@@ -119,21 +119,21 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
             connectionUri = "https://example.com",
         });
 
-        var res = await client.PostAsync($"/datasources/{id}/sync", content: null);
+        var res = await client.PostAsync($"/datasources/{id}/sync", content: null, TestContext.Current.CancellationToken);
         res.EnsureSuccessStatusCode();
 
-        using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await res.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         body.RootElement.GetProperty("connectorAvailable").GetBoolean().Should().BeFalse();
         body.RootElement.GetProperty("fetched").GetInt32().Should().Be(0);
-        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id))
+        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id, TestContext.Current.CancellationToken))
             .Should().BeFalse();
     }
 
     private static async Task<RawDocumentFetched> FirstPublishedForAsync(ITestHarness harness, Guid id)
     {
-        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id))
+        (await harness.Published.Any<RawDocumentFetched>(m => m.Context.Message.SourceId == id, TestContext.Current.CancellationToken))
             .Should().BeTrue();
-        return harness.Published.Select<RawDocumentFetched>()
+        return harness.Published.Select<RawDocumentFetched>(TestContext.Current.CancellationToken)
             .Select(x => x.Context.Message)
             .First(m => m.SourceId == id);
     }
@@ -149,9 +149,9 @@ public class DataSourceSyncEndpointTests(TestWebApplicationFactory factory)
 
     private static async Task<Guid> CreateDataSourceAsync(HttpClient client, object body)
     {
-        var create = await client.PostAsJsonAsync("/datasources", body);
+        var create = await client.PostAsJsonAsync("/datasources", body, TestContext.Current.CancellationToken);
         create.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await create.Content.ReadAsStringAsync());
+        using var doc = JsonDocument.Parse(await create.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         return doc.RootElement.GetProperty("id").GetGuid();
     }
 
