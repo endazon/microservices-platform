@@ -48,6 +48,105 @@ public class WolverinePipelineExtensionsTests
         public void Process(OtherEvent message) { }
     }
 
+    // #1004（#441 E1 の追試）用のダミー段とイベント。
+    //
+    // 🔴 **型名をわざと `Consumer` で終わらせている。** Wolverine の規約探索（`HandlerQuery`）は
+    // 既定で型名サフィックス `Handler` / `Consumer` を含み判定に使う（decompile で確認。作業仕様書
+    // `.ai-context/specs/20260823_issue-1004_pipeline-enabled-false-gate.md` 参照）。上の `GoodStep` 等は
+    // どれもこのサフィックスを持たないため、**既存試験は一度も規約探索に拾われる型を対象にしていない**。
+    // 本ファイルの実際の生産段（`RawDocumentFetchedConsumer` 等）と同じ経路を再現するには、
+    // ダミー側もこの命名規則に合わせる必要がある。
+    public sealed record GateProbeEvent(string Id);
+
+    public sealed class GateProbeConsumer : IPipelineStep<GateProbeEvent>
+    {
+        public const string GateStepName = "gate-probe";
+        public static string StepName => GateStepName;
+
+        public void Handle(GateProbeEvent message) { }
+    }
+
+    private static PipelineOptions GateProbeDeclared(bool enabled)
+        => new()
+        {
+            Steps =
+            [
+                new PipelineStepOptions
+                {
+                    Name = GateProbeConsumer.GateStepName,
+                    Service = "conversion-service",
+                    Consumer = typeof(GateProbeConsumer).FullName!,
+                    Input = nameof(GateProbeEvent),
+                    Outputs = [],
+                    Enabled = enabled,
+                },
+            ],
+        };
+
+    // `HandlerDiscovery.FindCalls` は internal だが、**「明示登録（ExplicitTypes）と規約探索
+    // （HandlerQuery.Find）を合成して、実際に登録される (型, ハンドラメソッド) の組」を計算する
+    // まさにその関数**である（decompile で確認）。`RegisteredTypes`（ExplicitTypes だけを読む既存
+    // ヘルパ）では規約探索側の除外が効いているかを見られないため、本試験群だけこちらを使う。
+    private static (Type Type, MethodInfo Method)[] FindCalls(WolverineOptions options)
+    {
+        var method = typeof(HandlerDiscovery).GetMethod(
+            "FindCalls", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "HandlerDiscovery.FindCalls が見つかりません。"
+                + " Wolverine の版更新で登録候補の計算箇所が変わった可能性があります。");
+        var result = method.Invoke(options.Discovery, [options]);
+        return (ValueTuple<Type, MethodInfo>[])result!;
+    }
+
+    [Fact]
+    public void 規約探索の前提_GateProbeConsumerは明示登録なしでも規約探索に拾われる()
+    {
+        // FR-14, NFR: 後続の 2 試験が成立する前提の検証。ここが崩れていると
+        // 「規約探索が拾わない型を除外した」だけの空証明になり、規則 8 の検出力が無いまま緑になる。
+        var options = new WolverineOptions();
+        options.Discovery.IncludeAssembly(typeof(GateProbeConsumer).Assembly);
+
+        var calls = FindCalls(options);
+
+        calls.Select(c => c.Type).Should().Contain(typeof(GateProbeConsumer),
+            "型名サフィックス 'Consumer' により Wolverine の規約探索が既定で拾うはずである"
+            + "（本試験群はこの前提の上で規則 8 の除外を測る）");
+    }
+
+    [Fact]
+    public void 規則8_規約探索が効いている条件でも無効化した段は探索結果に現れない()
+    {
+        // FR-14, NFR: #441 E1 で見つけた本番欠陥の直接追試（#1004）。
+        // 🔴 **`RegisteredTypes`（ExplicitTypes のみ）ではなく `FindCalls`（規約探索込みの合成結果）を見る。**
+        // 「IncludeType を呼ばない」だけでは段は無効にならない —— 規約探索は明示登録と独立に
+        // アセンブリを走査するため、`AddPlatformWolverineStep` が規則 8 で `CustomizeHandlerDiscovery`
+        // の Excludes を通じて明示的に除外していなければ、enabled:false でも購読が生える。
+        var options = new WolverineOptions();
+        options.AddPlatformWolverineStep<GateProbeConsumer>(GateProbeDeclared(enabled: false));
+        // 🔴 走査対象の決定は環境依存（#441 E1: 同じコードが Windows では拾わず Linux の CI では拾った）。
+        // ここで明示的にアセンブリを足し、どの環境でも「規約探索が対象を見つけ得る」側へ固定する。
+        options.Discovery.IncludeAssembly(typeof(GateProbeConsumer).Assembly);
+
+        var calls = FindCalls(options);
+
+        calls.Select(c => c.Type).Should().NotContain(typeof(GateProbeConsumer),
+            "pipeline.json の enabled:false は、明示登録だけでなく規約探索からも段を除外しなければならない");
+    }
+
+    [Fact]
+    public void 規則9_規約探索が効いている条件で有効な段は探索結果に現れる()
+    {
+        // FR-14, NFR: 規則 8 試験の対照条件。これが無いと「常に見えない」壊れた実装でも
+        // 規則 8 試験だけは緑になり得る。
+        var options = new WolverineOptions();
+        options.AddPlatformWolverineStep<GateProbeConsumer>(GateProbeDeclared(enabled: true));
+        options.Discovery.IncludeAssembly(typeof(GateProbeConsumer).Assembly);
+
+        var calls = FindCalls(options);
+
+        calls.Select(c => c.Type).Should().Contain(typeof(GateProbeConsumer));
+    }
+
     private static PipelineOptions Declared(
         string name = StepName,
         string? consumer = null,
