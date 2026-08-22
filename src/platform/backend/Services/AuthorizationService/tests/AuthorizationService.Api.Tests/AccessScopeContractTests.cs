@@ -70,4 +70,74 @@ public class AccessScopeContractTests(TestWebApplicationFactory factory)
         // granted は真偽値である（値そのものは共有 DB のポリシー状態に依存するため主張しない）。
         body["granted"]!.GetValueKind().Should().BeOneOf(JsonValueKind.True, JsonValueKind.False);
     }
+
+    // ---- FR-19, ADR-0036, ADR-0046 D-06 部品 3, IADR-0253 段 1: 名前つき分岐 ----------------
+    //
+    // 🔴 **段 1 の完了条件は「Branches が常に null であること」である。**
+    // 本段は契約へ型を足すだけで、評価器（段 2）も消費側（段 3）も変えていない。
+    // したがって**挙動は 1 ビットも変わらない**——下のテストはその「変わらなさ」を固定する。
+
+    // 既定は null。既存の 3 引数呼び出しがそのまま通る（既定値付き追加＝非破壊）。
+    [Fact]
+    public void Branches_DefaultsToNull_SoExistingCallSitesAreUnchanged()
+    {
+        var scope = new AccessScopeResponse("u1", [], Granted: true);
+
+        scope.Branches.Should().BeNull(
+            "段 1 では分岐を組み立てる生産者が 1 つも無い（評価器の対応は段 2）");
+    }
+
+    // 既定の応答は、分岐の導入前と同じ意味を運ぶ（後方互換）。
+    // `allowedFilters` と `granted` の載り方が変わっていないことを固定する。
+    [Fact]
+    public void Serialize_WithoutBranches_KeepsAllowedFiltersAndGrantedUnchanged()
+    {
+        var body = Serialize(new AccessScopeResponse(
+            "u1", [new AttributeFilter("confidentiality", ["internal"])], Granted: true));
+
+        body["granted"]!.GetValue<bool>().Should().BeTrue();
+        body["allowedFilters"]!.AsArray().Should().HaveCount(1);
+        body["allowedFilters"]![0]!["key"]!.GetValue<string>().Should().Be("confidentiality");
+    }
+
+    // 分岐が表現できる: 分岐内は AND（フィルタの並び）、分岐どうしは OR（要素の並び）。
+    // **意味論はここで固定するが、この形を作る生産者は段 2 まで存在しない。**
+    [Fact]
+    public void Branches_CanCarryDisjunctionOfConjunctions()
+    {
+        var scope = new AccessScopeResponse("u1", [], Granted: true, Branches:
+        [
+            new AccessScopeBranch("attribute", [new AttributeFilter("confidentiality", ["internal"])]),
+            new AccessScopeBranch("owner", [new AttributeFilter("owner", ["u1"])]),
+        ]);
+
+        scope.Branches.Should().HaveCount(2, "read 規則は 3 節の選言であり、単一の連言では表せない");
+        scope.Branches![0].Name.Should().Be("attribute");
+        scope.Branches[1].Name.Should().Be("owner");
+
+        var body = Serialize(scope);
+        body["branches"]!.AsArray().Should().HaveCount(2);
+        body["branches"]![1]!["name"]!.GetValue<string>().Should().Be("owner",
+            "分岐に名前が要る——計画が『どの分岐で検証したかを必ず添えること』と定めている");
+    }
+
+    // 🔴 `AllowedFilters` は分岐の**積**に相当し、`Branches` は分岐の**和**である。
+    // 未移行のサービスは `AllowedFilters` しか読まないため、**余分に見せることは構造上あり得ない**
+    // （IADR-0253 決定 2）。ここでは「両方が本文に載り、別のキーとして区別できる」ことを固定する。
+    [Fact]
+    public void Serialize_WithBranches_KeepsAllowedFiltersSeparatelyForUnmigratedConsumers()
+    {
+        var body = Serialize(new AccessScopeResponse(
+            "u1",
+            [new AttributeFilter("confidentiality", ["internal"])],
+            Granted: true,
+            Branches: [new AccessScopeBranch("owner", [new AttributeFilter("owner", ["u1"])])]));
+
+        // 未移行の消費側が読む面は従来のまま。
+        body["allowedFilters"]!.AsArray().Should().HaveCount(1);
+        body["allowedFilters"]![0]!["key"]!.GetValue<string>().Should().Be("confidentiality");
+        // 移行済みの消費側が読む面は別キーで並存する。
+        body["branches"]!.AsArray().Should().HaveCount(1);
+        body["branches"]![0]!["filters"]![0]!["key"]!.GetValue<string>().Should().Be("owner");
+    }
 }
