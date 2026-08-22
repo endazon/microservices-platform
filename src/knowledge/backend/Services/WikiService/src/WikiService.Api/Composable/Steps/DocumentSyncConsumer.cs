@@ -30,6 +30,23 @@ public class DocumentSyncConsumer(
     // FR-14, ADR-0018: 宣言的パイプライン構成上の段名（pipeline.json steps[].name）。
     public static string StepName => "wiki-sync";
 
+    // FR-19, ADR-0046 D-01, ADR-0054 決定 1・2: 個人資料かどうかを判定する軸。
+    // 属性キー・値の綴りは計画 ADR-0054 が確定させたものをそのまま用いる（実装で言い換えない）。
+    private const string DocScopeKey = "doc_scope";
+    private const string PrivateNoteScope = "private-note";
+
+    // 🔴 **集合帰属で判定する。「organization でない」で書いてはならない。**
+    // doc_scope は 2026-08-22 新設で実データ 0 件であり、既存 2,368 件へ遡及付与しない方針
+    // （ADR-0054 §結果）。否定で書くと属性を持たない既存文書がすべて該当し、**組織文書の同期が
+    // 一斉に止まる**。ADR-0036 D-04 が評価の性質を「集合帰属」と定めているのと同じ理由である。
+    //
+    // **この 2 つは動作で見分けがつかない** —— 個人資料が実データに 1 件も無い現在、どちらも
+    // 「個人資料を同期しない」。分けられるのは「doc_scope を持たない文書が同期される」という
+    // 陽性対照テストだけである（DocumentSyncConsumerTests）。
+    private static bool IsPrivateNote(IReadOnlyDictionary<string, string> attributes)
+        => attributes.TryGetValue(DocScopeKey, out var scope)
+            && string.Equals(scope, PrivateNoteScope, StringComparison.OrdinalIgnoreCase);
+
     public async Task Consume(ConsumeContext<DocumentUpdated> ctx)
     {
         var ev = ctx.Message;
@@ -53,6 +70,26 @@ public class DocumentSyncConsumer(
         }
 
         if (ev.Status != "published" && ev.Status != "normalized") return;
+
+        // FR-19, ADR-0046 D-01: 個人資料は Wiki.js の同期対象から外す。
+        // 「private-note は WikiService の push 対象に含めない。Wiki.js 上に個人資料のページは
+        // 作られない」（同 D-01）。本文編集は Obsidian 経路に限る（同 D-03）。
+        //
+        // **アーカイブ伝播（上の分岐）より後に置いてある。** 個人資料であってもアーカイブは通し、
+        // ページが在れば非公開化する（ArchivePageAsync は冪等で deny-closed の向き）。
+        //
+        // 🔴 **組織文書として同期済みの文書が後から個人資料へ変わった場合、既に作られた Wiki.js
+        // ページはここでは消さない。** ADR-0046 D-01 は「ページは作られない」と定めるが「既にある
+        // ページを消す」とは定めておらず、doc_scope が生涯で変わり得るのかも計画は述べていない。
+        // **実装で決めず、現状の振る舞いをテストで固定して計画へ問う**（作業仕様書
+        // 20260822_issue-986_private-note-wikijs-sync-exclusion.md §5・§8）。
+        if (IsPrivateNote(ev.Attributes))
+        {
+            logger.LogInformation(
+                "Skipped Wiki.js sync for private-note document {DocumentId} (ADR-0046 D-01)",
+                ev.DocumentId);
+            return;
+        }
 
         // 1) ABAC 同期メタデータの upsert（ゲートウェイのフィルタ用・単一真実源）。
         var existing = await db.Pages
