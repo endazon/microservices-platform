@@ -4,7 +4,14 @@ using Platform.Shared.Contracts.Dtos;
 namespace GraphService.Api.Foundation.Services;
 
 // FR-17, UC-10, ADR-0034 決定 2・4: 利用者へ返すグラフ表現（ノード）。
-public sealed record GraphNodeDto(Guid DocumentId, string Title);
+//
+// SC-18, ADR-0054, IADR-0274 決定 2・3 (#917): `IsPrivateNote` は描き分け（組織文書＝円＋📄 /
+// 個人資料＝角丸四角＋👤）のための 1 bit である。**漏洩の向きは検討済み** —— 値が付くのは
+// ABAC 判定を通過して既に見えているノードだけであり、個人資料は所有者本人にしか見えない
+// （権限外の文書はノードごと存在しない。ADR-0034 決定 2）。導出は Seal 時の
+// GraphDocumentScope.IsPrivateNote（値が無い ⇒ 組織文書。ADR-0054 決定 5 が根拠）。
+// 既定値つきで足す（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
+public sealed record GraphNodeDto(Guid DocumentId, string Title, bool IsPrivateNote = false);
 
 // FR-17, ADR-0033 決定 4: 利用者へ返すグラフ表現（辺）。
 // **辺の型は識別子で返す**（表示名は型辞書の 1 回ロードで解決する。改名に追随するため）。
@@ -100,7 +107,7 @@ public sealed class GraphViewResponse
             .ToList();
 
         var nodes = visible
-            .Select(n => new GraphNodeDto(n.DocumentId, n.Title))
+            .Select(n => new GraphNodeDto(n.DocumentId, n.Title, GraphDocumentScope.IsPrivateNote(n.Attributes)))
             .ToList();
 
         return new GraphViewResponse(nodes, edges, subgraph.Truncated,

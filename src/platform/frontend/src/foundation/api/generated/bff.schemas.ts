@@ -68,11 +68,15 @@ export interface AttributeValuesResponse {
 }
 
 /**
- * FR-17: グラフのノード（文書単位）
+ * FR-17: グラフのノード（文書単位）。
+ * `isPrivateNote` は SC-18 の描き分け（組織文書＝円＋📄 / 個人資料＝角丸四角＋👤）のための
+ * 1 bit（ADR-0054 / #917）。値が付くのは ABAC 判定を通過した可視ノードだけであり、
+ * **doc_scope を持たない文書は組織文書（false）として返る**（ADR-0054 決定 5）。
  */
 export interface GraphNodeItem {
   documentId: string;
   title: string;
+  isPrivateNote?: boolean;
 }
 
 export type GraphEdgeItemProvenance = typeof GraphEdgeItemProvenance[keyof typeof GraphEdgeItemProvenance];
@@ -1366,6 +1370,15 @@ hops?: number;
  * **未知の値・未指定は既定（distance）へ縮退する** —— 例外にしない。
  */
 by?: BffGraphNeighborsBy;
+/**
+ * SC-18 (#917): 辺の型フィルタ（型 ID のカンマ区切り。未指定・空 = 絞らない）。
+ * 🔴 **絞りはサーバ側で探索の入口に適用される**（planning#446）——クライアントで
+ * 打ち切り後に絞ると「上位 200 件のうち一致したもの」になり範囲が意図せず狭まる。
+ * 総数（totalNodes / totalEdges）もフィルタ後の母集合で数え直される。
+ * GUID として読めない要素は 400（`edge_type_filter_invalid`）。**実在しない型 ID は
+ * エラーにならず、単に 1 本も一致しない**（型辞書は公開済みの語彙であり秘匿対象ではない）。
+ */
+types?: string;
 };
 
 export type BffGraphNeighborsBy = typeof BffGraphNeighborsBy[keyof typeof BffGraphNeighborsBy];

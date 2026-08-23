@@ -11,7 +11,12 @@ namespace Knowledge.Contracts.Dtos;
 // （`CLAUDE.md` の依存規則。ユニット外参照は `platform/backend/Shared/` のみ）。
 
 // FR-17: グラフのノード（文書単位）。
-public record GraphNodeItemDto(Guid DocumentId, string Title);
+//
+// SC-18, ADR-0054, IADR-0274 決定 2・3 (#917): `IsPrivateNote` は描き分け（組織文書＝円＋📄 /
+// 個人資料＝角丸四角＋👤）のための 1 bit。値が付くのは ABAC 判定を通過した可視ノードだけで、
+// **値が無い文書は組織文書（false）として描く**（ADR-0054 決定 5。GraphService の Seal が導出する）。
+// 既定値つきで足す（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
+public record GraphNodeItemDto(Guid DocumentId, string Title, bool IsPrivateNote = false);
 
 // FR-17, ADR-0033 決定 4: グラフの辺。
 // **辺の型は識別子で返す**（表示名は辞書側で解決する。改名に追随するため）。

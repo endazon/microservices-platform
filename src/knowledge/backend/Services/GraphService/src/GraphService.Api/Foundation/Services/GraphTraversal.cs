@@ -63,11 +63,19 @@ internal sealed class GraphTraversal(IGraphStore store)
     //
     // **①が無いと②の母集合が存在しない。** 200 で打ち切る実装には「上位 200 件」を選ぶ
     // 対象が無く、間引き基準（更新日順・次数順）が意味を持たない（ADR-0049 決定 4）。
+    //
+    // FR-17, SC-18 (#917): `edgeTypes` は辺の型フィルタ（null = 絞らない）。
+    // 🔴 **絞りは探索の入口（候補へ入れる前）で適用する。サーバ側で絞るのが仕様である** ——
+    // 表示上限で打ち切った後にクライアントで絞ると「フィルタ後の上位 200 件」ではなく
+    // 「上位 200 件のうち一致したもの」になり、利用者が見る範囲が意図せず狭まる（planning#446。
+    // 05_screens §SC-18「辺の種別フィルタはサーバ側で適用する」）。総数（TotalNodes / TotalEdges）も
+    // フィルタ後の母集合で数える —— 帯の「全 N 件」は「いま選んでいる型での全数」を意味する。
     public async Task<UnfilteredSubgraph> ExploreAsync(
         AuthorizedNode origin,
         AccessScopeResponse scope,
         int hops,
         string? thinning = null,
+        IReadOnlySet<Guid>? edgeTypes = null,
         CancellationToken ct = default)
     {
         var visited = new HashSet<Guid> { origin.DocumentId };
@@ -88,7 +96,14 @@ internal sealed class GraphTraversal(IGraphStore store)
         for (var depth = 1; depth <= hops && frontier.Count > 0 && !countingLimitHit; depth++)
         {
             // フロンティアに接続する辺を双方向に一括ロード（バックリンクを含む。決定的順序）。
-            var incident = await store.LoadIncidentEdgesAsync(frontier, ct);
+            IReadOnlyList<Edge> incident = await store.LoadIncidentEdgesAsync(frontier, ct);
+
+            // FR-17, SC-18 (#917): 辺の型フィルタ。**候補へ入れる前（展開・計数・ノードのロードより前）に
+            // 落とす。** ここより後ろに置くと、落とした辺が上限の計数や次ホップの展開に混ざり、
+            // 「フィルタ後の上位 200 件」という意味が壊れる。
+            if (edgeTypes is not null)
+                incident = incident.Where(e => edgeTypes.Contains(e.EdgeTypeId)).ToList();
+
             if (incident.Count == 0)
                 break;
 

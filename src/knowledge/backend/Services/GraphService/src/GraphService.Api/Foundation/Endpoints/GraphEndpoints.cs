@@ -72,6 +72,9 @@ public static class GraphEndpoints
             // **未知の値・未指定は既定へ縮退する**（例外にしない。SearchModes / SearchSorts と同じ作法）
             // —— 綴りを 1 つ間違えただけで画面が壊れる形にしない。
             string? by,
+            // FR-17, SC-18 (#917): 辺の型フィルタ（型 ID のカンマ区切り。未指定・空 = 絞らない）。
+            // サーバ側で絞るのが仕様である（planning#446。クライアントで打ち切り後に絞ると範囲が狭まる）。
+            string? types,
             IGraphAccessResolver accessResolver,
             IGraphStore store,
             GraphTraversal traversal,
@@ -96,6 +99,30 @@ public static class GraphEndpoints
                     message = $"hops は 1〜{GraphTraversal.MaxHops} で指定する（既定 {GraphTraversal.DefaultHops}）。",
                 });
 
+            // FR-17, SC-18 (#917): 辺の型フィルタの検証。**hops と同じく認可より前に置く** ——
+            // 後ろへ置くと、権限外・不存在の文書は 404、可視の文書だけが 400 を返すようになり、
+            // 不正な types を投げるだけで文書の存在が判る（hops の注記と同じ理由）。
+            // 形式不正（GUID として読めない要素）だけを 400 で拒む。**実在しない型 ID は拒まない** ——
+            // 辺の型辞書は認証のみで全利用者へ公開済みの語彙であり（#962）、実在の有無は秘匿対象では
+            // なく、単に 1 本も一致しないだけである（辞書の改廃と URL の共有が競合しても壊れない）。
+            IReadOnlySet<Guid>? edgeTypes = null;
+            if (!string.IsNullOrWhiteSpace(types))
+            {
+                var parsed = new HashSet<Guid>();
+                foreach (var part in types.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (!Guid.TryParse(part, out var typeId))
+                        return Results.BadRequest(new
+                        {
+                            error = "edge_type_filter_invalid",
+                            message = "types は辺の型 ID（GUID）のカンマ区切りで指定する。",
+                        });
+                    parsed.Add(typeId);
+                }
+                if (parsed.Count > 0)
+                    edgeTypes = parsed;
+            }
+
             var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted)
                 return NotFound();
@@ -108,7 +135,7 @@ public static class GraphEndpoints
             if (origin is null)
                 return NotFound();
 
-            var subgraph = await traversal.ExploreAsync(origin, scope, requested, by, ct);
+            var subgraph = await traversal.ExploreAsync(origin, scope, requested, by, edgeTypes, ct);
 
             return Results.Ok(GraphViewResponse.Seal(subgraph, scope));
         }).WithName("GetGraphNeighbors")
