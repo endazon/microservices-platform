@@ -65,6 +65,12 @@ export default defineConfig({
           // あの配列は「初期ロードに載る規則」の一覧ではなく「manualChunks が返す名前」の一覧であり、
           // 遅延か否かを区別しない（区別しているのは `initialTotalBytes` のほう）。
           // 自己試験が両者の完全一致を突き合わせるため、片方だけ足すと CI が落ちる。
+          // SC-18 / ADR-0039 / IADR-0274 (#917): GraphChart（グラフ画面の面）は**専用チャンク**に分ける。
+          // graph 固有のモジュールは echarts/lib/chart/graph/ 配下に閉じており、共有部
+          // （echarts/core・zrender）は従来どおり vendor-echarts が持つ。分けないと
+          // vendor-echarts が 603.30 kB（実測）になり 1 チャンク上限（600 kB）を超える。
+          // SC-08 / SC-10（折れ線・棒）しか開かない利用者に graph の面は届かない。
+          if (/^echarts\/lib\/chart\/graph\//.test(pkg)) return 'vendor-echarts-graph';
           if (/^(echarts|zrender)\//.test(pkg)) return 'vendor-echarts';
           return undefined;
         },

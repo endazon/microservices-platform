@@ -1,6 +1,10 @@
 // ADR-0031 §採用技術一覧「チャート = Apache ECharts（自己ホスト）」/ 08_data-egress-policy /
 // NFR・IADR-0134（初期ロード予算）/ IADR-0121 決定 1 の第 4 段（#788）。
 //
+// ■ 本ファイルが扱うのは**折れ線・棒の面（SC-08 / SC-10）だけ**である
+//   グラフ描画（GraphChart・SC-18）は別の登録層・読み込み口（echartsGraphBundle.ts /
+//   echartsGraphLoader.ts）が同じ作法で持つ（#917 / IADR-0274）。束ねない理由はあちらの冒頭を参照。
+//
 // ■ なぜ読み込みを 1 箇所に閉じるか
 //   ECharts は本リポジトリで最大級の依存である。**静的 import すると初期ロードへ載る**
 //   （IADR-0134 の ratchet に直撃する）。読み込みをこの関数に閉じ、呼び出し側は

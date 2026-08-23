@@ -4,7 +4,8 @@
     "ui",
     "vendor-react",
     "vendor-query",
-    "vendor-echarts"
+    "vendor-echarts",
+    "vendor-echarts-graph"
   ],
   "$comment_requiredChunks": [
     "［2026-08-23 / #788］vendor-echarts を足した。vite.config.ts へ manualChunks の規則を足したら、",
@@ -76,26 +77,30 @@
   ],
   "maxChunkBytes": 600000,
   "$comment_initialTotalBytes_20260823": [
-    "［2026-08-23 / #788］629,689 → 646,133（+16.44 kB）へ引き上げた。**実測値である**",
-    "（src/ai-stock-trading submodule を populate し pnpm run build を通して測った。",
-    "着手時の環境では submodule 未取得でビルドが通らず、推測で数字を書かないため保留していた）。",
-    "増加は共通シェルへ載った右レール AI チャットパネル（Zustand ストア・SSE フック・パネル本体）と、",
-    "foundation の Error Boundary（react-error-boundary）・日付整形（dayjs）、および",
-    "それらの Lingui カタログ 2 ロケール分である。**いずれも共通シェルに載るので遅延させられない**",
-    "——右レールのランチャーはシェルの一部であり、遅延させると開くまでボタンが出ない。",
-    "ECharts は初期ロードに入っていない（vendor-echarts は独立した遅延チャンク）。"
-  ],
-  "$comment_initialTotalBytes_20260823": [
     "［2026-08-23 / #439］575,417 → 575,856（+439 B）。bffBaseUrl の同一オリジン検査を",
     "loadAppConfig へ足したぶんである。この検査は入口チャンクに入る（起動時に走らせるため）。",
     "代償を払う理由: BFF セッション方式では資格情報が Cookie であり、別オリジンの bffBaseUrl を",
     "注入すると全要求が静かに未認証になる。症状が「ログインし直して」の形で出るため気付きにくい。",
     "439 B で、配備の設定ミスを起動時に落とせる。"
   ],
-  "initialTotalBytes": 575856,
+  "initialTotalBytes": 582839,
+  "$comment_initialTotalBytes_20260823_sc18": [
+    "［2026-08-23 / #917］575,856 → 582,842（+6.99 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
+    "（features/index.ts の合成点・validateSearch・左ナビ項目）と、Lingui カタログ 47 メッセージ × 2",
+    "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**。",
+    "画面本体（GraphViewPage 12.96 kB）と ECharts の graph 面（vendor-echarts-graph 18.16 kB）は",
+    "ルート単位の遅延チャンクであり、初期ロードには入っていない。",
+    "",
+    "あわせて requiredChunks へ vendor-echarts-graph を足した。GraphChart を既存の vendor-echarts に",
+    "同居させると 603.30 kB（実測）で 1 チャンク上限（600,000）を超えるため、echarts/lib/chart/graph/",
+    "配下を専用チャンクへ分けた（vendor-echarts 586.04 kB ＋ vendor-echarts-graph 18.16 kB）。",
+    "SC-08 / SC-10（折れ線・棒）しか開かない利用者に graph の面は届かない。"
+  ],
   "$comment_smallLazyChunks": [
     "［2026-08-23 / #788］4 → 5。echartsBundle.ts を分けたことで登録層が 1 本の小チャンクになった。",
-    "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。"
+    "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
+    "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
   ],
-  "smallLazyChunks": 5
+  "smallLazyChunks": 6
 }

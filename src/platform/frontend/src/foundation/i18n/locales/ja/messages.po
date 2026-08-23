@@ -46,6 +46,14 @@ msgstr "（表示 {shownCount} 件）"
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "{h}（上限）"
+msgstr "{h}（上限）"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "{h}（既定）"
+msgstr "{h}（既定）"
+
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "{max} 文字以内で入力してください。"
 msgstr "{max} 文字以内で入力してください。"
@@ -114,6 +122,10 @@ msgstr "AI 回答"
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "AI 提案由来の辺は破線（承認済みのみ表示）"
+msgstr "AI 提案由来の辺は破線（承認済みのみ表示）"
+
 #: knowledge/frontend/src/features/sc08-analysis/routes/sc08AnalysisRoute.ts
 msgid "AI分析"
 msgstr "AI分析"
@@ -126,9 +138,21 @@ msgstr "AI分析依頼"
 msgid "AI回答（ストリーミング）"
 msgstr "AI回答（ストリーミング）"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "cites: 実線・矢印"
+msgstr "cites: 実線・矢印"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "consumer"
 msgstr "consumer"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "derived-from: 破線・矢印"
+msgstr "derived-from: 破線・矢印"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "embeds: 点線・矢印"
+msgstr "embeds: 点線・矢印"
 
 #: platform/frontend/src/foundation/auth/LoginPage.tsx
 msgid "Keycloak でサインイン"
@@ -138,9 +162,17 @@ msgstr "Keycloak でサインイン"
 msgid "Mermaid {coded}図"
 msgstr "Mermaid {coded}図"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "related: 実線・細（向きなし）"
+msgstr "related: 実線・細（向きなし）"
+
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "SaaS"
 msgstr "SaaS"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "supersedes: 太実線・矢印（旧→新）"
+msgstr "supersedes: 太実線・矢印（旧→新）"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "Wiki"
@@ -236,6 +268,14 @@ msgstr "キーワード検索のみ →"
 msgid "キャンセル"
 msgstr "キャンセル"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "グラフを読み込めませんでした。時間をおいて再試行してください。"
+msgstr "グラフを読み込めませんでした。時間をおいて再試行してください。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "グラフ内検索"
+msgstr "グラフ内検索"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "コネクタ"
 msgstr "コネクタ"
@@ -263,6 +303,10 @@ msgstr "このタグは {inUseCount} 件の文書で使われているため削�
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "この文書には表示できる関係がありません。"
+msgstr "この文書には表示できる関係がありません。"
 
 #: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "この画面について質問する"
@@ -316,6 +360,10 @@ msgstr "ソース"
 msgid "ソースの登録・無効化は管理者のみ実行できます"
 msgstr "ソースの登録・無効化は管理者のみ実行できます"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
+msgstr "その他の型（implements / refines / depends-on / part-of）は細い実線で表示"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "タイトル"
@@ -332,6 +380,10 @@ msgstr "タグ"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "タグ {tag} を削除"
 msgstr "タグ {tag} を削除"
+
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "タグ:"
+msgstr "タグ:"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 msgid "タグの新しい名前: {tagName}"
@@ -446,6 +498,21 @@ msgstr "ドリフト明細の一覧"
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "なし"
 msgstr "なし"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/routes/sc18GraphRoute.ts
+msgid "ナレッジグラフ"
+msgstr "ナレッジグラフ"
+
+#. placeholder {0}: nodes.length
+#. placeholder {1}: edges.length
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
+msgstr "ナレッジグラフ（ノード {0} 件・辺 {1} 本）。詳細は凡例と選択パネルを参照"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から 「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
+msgstr "ナレッジグラフは起点となる文書から関係をたどります。検索結果や文書詳細から 「ナレッジグラフで表示」を選ぶか、URL の root パラメータで起点を指定してください。"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "ナレッジ検索・AI質問"
@@ -575,6 +642,19 @@ msgstr "ユーザー"
 msgid "ラベル"
 msgstr "ラベル"
 
+#. placeholder {0}: nodes.length
+#. placeholder {1}: view.totalNodes
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "上位 {0} 件を表示（全 {1} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "上位 {0} 件を表示（全 {1} 件）。すべては表示していません。 探索深さを浅くするか、辺の型を絞ってください。"
+
+#. placeholder {0}: nodes.length
+#. placeholder {1}: view.totalNodes
+#. placeholder {2}: nodes.length
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
+msgstr "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
+
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "並べ替え"
 msgstr "並べ替え"
@@ -665,6 +745,11 @@ msgstr "個人資料 {count} 件が {deadline} に完全削除されます（7 �
 msgid "個人資料 {count} 件を完全削除しました"
 msgstr "個人資料 {count} 件を完全削除しました"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "個人資料（自分のみ）"
+msgstr "個人資料（自分のみ）"
+
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "候補を読み込み中…"
 msgstr "候補を読み込み中…"
@@ -697,6 +782,10 @@ msgstr "全消去"
 msgid "公開"
 msgstr "公開"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "円 = 組織文書"
+msgstr "円 = 組織文書"
+
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "再取得"
 msgstr "再取得"
@@ -716,6 +805,10 @@ msgstr "再変換を受け付けました。"
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 msgid "再試行中（{failures}/{limit}）"
 msgstr "再試行中（{failures}/{limit}）"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "凡例（アイコンと形で区別・色は補助）"
+msgstr "凡例（アイコンと形で区別・色は補助）"
 
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "出典:"
@@ -909,9 +1002,17 @@ msgstr "変更メモ"
 msgid "外部ツールの導線は未設定です。"
 msgstr "外部ツールの導線は未設定です。"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "太い輪郭・大きい表示 = 起点"
+msgstr "太い輪郭・大きい表示 = 起点"
+
 #: knowledge/frontend/src/features/sc07-conversions/types/jobStatus.ts
 msgid "失敗"
 msgstr "失敗"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "孤立文書（表示中の辺なし）"
+msgstr "孤立文書（表示中の辺なし）"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -1045,6 +1146,18 @@ msgstr "手動同期"
 msgid "抽出"
 msgstr "抽出"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは 区別できません。"
+msgstr "指定された起点の文書は表示できません。文書が存在しないのか、閲覧権限がないのかは 区別できません。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "探索深さ（hops）"
+msgstr "探索深さ（hops）"
+
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "接続している辺:"
+msgstr "接続している辺:"
+
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "接続の不一致"
 msgstr "接続の不一致"
@@ -1104,6 +1217,10 @@ msgstr "文書の取得に失敗しました。"
 msgid "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
 msgstr "文書の登録・編集・公開・アーカイブ・削除は管理者のみ実行できます"
 
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "文書の詳細は表示できません。"
+msgstr "文書の詳細は表示できません。"
+
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書はありません。"
 msgstr "文書はありません。"
@@ -1139,6 +1256,10 @@ msgstr "文書を登録しました。"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "文書を編集（v{version}）"
 msgstr "文書を編集（v{version}）"
+
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "文書を開く"
+msgstr "文書を開く"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "文書一覧"
@@ -1187,6 +1308,14 @@ msgstr "既読にできませんでした"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "日付"
 msgstr "日付"
+
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "更新日:"
+msgstr "更新日:"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "更新日が新しい順"
+msgstr "更新日が新しい順"
 
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "更新日時"
@@ -1354,6 +1483,10 @@ msgstr "構成情報は利用できません。"
 msgid "構成情報を取得できませんでした。"
 msgstr "構成情報を取得できませんでした。"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "権限のある文書がありません"
+msgstr "権限のある文書がありません"
+
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
 msgstr "横断検索と根拠付きAI回答（ストリーミング・出典表示）"
@@ -1370,6 +1503,10 @@ msgstr "機密区分（ABAC属性）"
 #: knowledge/frontend/src/features/sc08-analysis/components/AnalysisDashboardPage.tsx
 msgid "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
 msgstr "機密区分の高いデータは外部 API へ送信せずセルフホスト LLM で処理します（UC-02 代替フロー・ データ越境ポリシー）。権限外のデータは黙って対象外になります（存在秘匿）。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "次数が大きい順"
+msgstr "次数が大きい順"
 
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 msgid "正規化文書（Markdown）プレビュー"
@@ -1406,6 +1543,10 @@ msgstr "深刻度"
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 msgid "満足率"
 msgstr "満足率"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "点線の輪郭 = 孤立文書（表示中の辺なし）"
+msgstr "点線の輪郭 = 孤立文書（表示中の辺なし）"
 
 #: knowledge/frontend/src/features/sc06-datasources/types/syncState.ts
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
@@ -1484,6 +1625,10 @@ msgstr "社内ナレッジ検索・AI 回答プラットフォーム"
 msgid "種別"
 msgstr "種別"
 
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "種別:"
+msgstr "種別:"
+
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/foundation/routing/nav.ts
 msgid "管理"
@@ -1502,6 +1647,8 @@ msgid "範囲指定の分析依頼・結果・出典"
 msgstr "範囲指定の分析依頼・結果・出典"
 
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "組織文書"
 msgstr "組織文書"
 
@@ -1524,6 +1671,18 @@ msgstr "絞り込める候補はありません。"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 msgid "編集"
 msgstr "編集"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "表示上限"
+msgstr "表示上限"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "表示中のノードをタイトルで絞り込む"
+msgstr "表示中のノードをタイトルで絞り込む"
+
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "表示中の辺はありません（孤立文書）。"
+msgstr "表示中の辺はありません（孤立文書）。"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
@@ -1550,6 +1709,10 @@ msgstr "補正対象の図の元画像"
 msgid "見つかりませんでした"
 msgstr "見つかりませんでした"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
+msgid "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
+msgstr "角丸四角（破線の輪郭）= 個人資料（自分のみ）"
+
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "記法"
 msgstr "記法"
@@ -1565,6 +1728,10 @@ msgstr "許可値"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/AttributeDictionaryPanel.tsx
 msgid "許可値（カンマ区切り）"
 msgstr "許可値（カンマ区切り）"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "該当するノードがありません。"
+msgstr "該当するノードがありません。"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "該当する変換ジョブはありません。"
@@ -1586,6 +1753,10 @@ msgstr "詳細ツール"
 msgid "説明"
 msgstr "説明"
 
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "読み込みエラー"
+msgstr "読み込みエラー"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -1595,6 +1766,7 @@ msgstr "説明"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 #: platform/frontend/src/foundation/auth/RequireAuth.tsx
 #: platform/frontend/src/foundation/auth/RequireRole.tsx
 msgid "読み込み中…"
@@ -1619,6 +1791,18 @@ msgstr "質問またはキーワードを入力…（例: 経費精算の締め�
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
 msgid "購読者"
 msgstr "購読者"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "起点からの距離が近い順"
+msgstr "起点からの距離が近い順"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "起点が未指定です"
+msgstr "起点が未指定です"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "辺の型:"
+msgstr "辺の型:"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
@@ -1702,6 +1886,10 @@ msgstr "適用者 {appliedBy}"
 msgid "選択してください"
 msgstr "選択してください"
 
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
+msgid "選択中の文書"
+msgstr "選択中の文書"
+
 #: knowledge/frontend/src/features/sc03-document/types/attributes.ts
 #: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
 msgid "部門"
@@ -1712,9 +1900,22 @@ msgid "重要"
 msgstr "重要"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
+#: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 #: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "閉じる"
 msgstr "閉じる"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "間引きの基準"
+msgstr "間引きの基準"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "関係が表示されない場合、関係が存在しないのか、閲覧権限がないのかは区別できません。 これは、閲覧権限のない文書の存在を知られないようにするための仕様です。 個人資料が表示されるのは、所有者が「ナレッジグラフに表示する」を ON にした資料のみです（既定 OFF）。AI 提案の辺は承認済みのみ表示されます。"
+msgstr "関係が表示されない場合、関係が存在しないのか、閲覧権限がないのかは区別できません。 これは、閲覧権限のない文書の存在を知られないようにするための仕様です。 個人資料が表示されるのは、所有者が「ナレッジグラフに表示する」を ON にした資料のみです（既定 OFF）。AI 提案の辺は承認済みのみ表示されます。"
+
+#: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
+msgid "関係する文書がありません"
+msgstr "関係する文書がありません"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 msgid "閲覧"

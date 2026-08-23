@@ -11,6 +11,7 @@ import { createSc08AnalysisRoute, sc08AnalysisNav } from './sc08-analysis';
 import { createSc09AdminAbacRoute, sc09AdminAbacNav } from './sc09-admin-abac';
 import { createSc10OperationsRoute, sc10OperationsNav } from './sc10-operations';
 import { createSc11ConfigRoute, sc11ConfigNav } from './sc11-config';
+import { createSc18GraphRoute, sc18GraphNav } from './sc18-graph';
 
 // ADR-0031 / IADR-0124 決定 1: 本ユニットの画面を 1 本のタプルにして公開する。
 // platform の合成点は、このタプルをスプレッドして型付きルート木へ組み込む。
@@ -31,6 +32,7 @@ export const createKnowledgeRoutes = (shell: ShellRoute) =>
     createSc09AdminAbacRoute(shell), // SC-09 管理者設定（ABAC）（#135 → 新スタックで再実装 #504）
     createSc10OperationsRoute(shell), // SC-10 運用ダッシュボード（#136 → 新スタックで再実装 #504）
     createSc11ConfigRoute(shell), // SC-11 構成ビューア（#137/#138/#140 → 新スタックで再実装 #504）
+    createSc18GraphRoute(shell), // SC-18 ナレッジグラフビュー（#917）
   ] as const;
 
 // 05_screens §共通シェル: 左ナビへ出す項目。グループ（利用者／個人／管理／運用）は各 feature が宣言する。
@@ -43,6 +45,7 @@ export const knowledgeNavItems: readonly PlanNavItem[] = [
   sc02ResultsNav,
   sc04WikiNav,
   sc08AnalysisNav,
+  sc18GraphNav,
   sc05DocumentsNav,
   sc06DataSourcesNav,
   sc07ConversionsNav,
