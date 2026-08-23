@@ -188,6 +188,10 @@
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
     ],
+    "docs/tests/SC-21_ai-suggestion-list.md": [
+      "AiSuggestionEndpointsTests",
+      "BffGraphSuggestionTests"
+    ],
     "docs/tests/UC-10_graph-traversal.md": [
       "AuthorizedGraphViewTests",
       "BffGraphEdgeTypeTests",

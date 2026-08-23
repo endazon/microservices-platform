@@ -115,6 +115,43 @@ export interface EdgeTypeCatalogItem {
 }
 
 /**
+ * FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
+ *
+ * **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
+ * 型を分けるとクライアント側で 2 経路に割れる。種別固有の欄は省略可である。
+ *
+ * 🔴 **本文指紋（却下解除の判定に使う内部状態）は公開面に出さない。**
+ *
+ * 🔴 **辺の型の表示名を持たない。** 名前は辞書（`/bff/graph/edge-types`）で解決し、
+ * 改名に追随させる（ADR-0033 決定 9）。ここへ焼き込むと改名後も古い名前を出し続ける。
+ */
+export interface AiSuggestion {
+  id: string;
+  /** link（リンク候補）/ tag（タグ候補） */
+  kind: string;
+  /** リンク提案では起点、タグ提案では対象文書。**どちらの種別でも必ず入る** */
+  sourceDocumentId: string;
+  /** リンク提案のみ */
+  targetDocumentId?: string | null;
+  /** リンク提案のみ。表示名は辺の型カタログで解決する */
+  edgeTypeId?: string | null;
+  /** タグ提案のみ。SC-09 のタグ辞書に整合する値であること */
+  tagValue?: string | null;
+  /** なぜ関連と判断したか（SC-21 主要素 6） */
+  rationale: string;
+  /** pending（承認待ち）/ approved（承認済み）/ rejected（却下） */
+  state: string;
+  /** 累積の却下回数 */
+  rejectedCount: number;
+  /** 再提示の理由。source / target / both のいずれか。**非 null なら再提示であり、 画面は固定文言を必ず添える**（ADR-0033 決定 10。理由の無い再提示を起こさない） */
+  reinstatedReason?: string | null;
+  /** 起点（タグ提案では対象）の文書名。SC-21 の「提案の内容」列が要る */
+  sourceDocumentTitle: string;
+  /** 終点の文書名。タグ提案では終点が無いため null である */
+  targetDocumentTitle?: string | null;
+}
+
+/**
  * FR-17, UC-10, ADR-0034 決定 4: 近傍グラフ。`truncated` は表示上限で打ち切ったかを表す。
  * **上限の計数は権限判定を通過した品目に対してのみ行われる**ため、この値が権限外文書の
  * 存在を漏らすことはない。
@@ -1388,5 +1425,39 @@ export const BffGraphNeighborsBy = {
   distance: 'distance',
   updated: 'updated',
   degree: 'degree',
+} as const;
+
+export type BffGraphSuggestionsParams = {
+/**
+ * SC-21 (#918): 状態フィルタ。**未指定は `pending`（既定）**であり、`all` は絞りを外す。
+ * 🔴 **`all` は状態の値ではない** —— 永続層に `all` という状態は存在しない。
+ * 未知の値は 400（`invalid_state`）。**既定の補完も値域の検査も後段が一箇所で持つ**
+ * （BFF は透過するだけである）。
+ */
+state?: BffGraphSuggestionsState;
+/**
+ * SC-21 (#918): 種類フィルタ。未指定は絞らない（＝すべて）。
+ * 🔴 **リンク提案とタグ提案は同一の一覧に同居させる。画面を分けない**（FR-18）。
+ * 未知の値は 400（`invalid_kind`）。
+ */
+kind?: BffGraphSuggestionsKind;
+};
+
+export type BffGraphSuggestionsState = typeof BffGraphSuggestionsState[keyof typeof BffGraphSuggestionsState];
+
+
+export const BffGraphSuggestionsState = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+  all: 'all',
+} as const;
+
+export type BffGraphSuggestionsKind = typeof BffGraphSuggestionsKind[keyof typeof BffGraphSuggestionsKind];
+
+
+export const BffGraphSuggestionsKind = {
+  link: 'link',
+  tag: 'tag',
 } as const;
 

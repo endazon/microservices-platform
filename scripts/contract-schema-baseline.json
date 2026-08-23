@@ -94,6 +94,12 @@
             "required": true,
             "position": 2
           },
+          "SourceDocumentTitle": {
+            "source": "positional",
+            "type": "string",
+            "required": false,
+            "position": 10
+          },
           "State": {
             "source": "positional",
             "type": "string",
@@ -111,6 +117,12 @@
             "type": "Guid?",
             "required": true,
             "position": 3
+          },
+          "TargetDocumentTitle": {
+            "source": "positional",
+            "type": "string?",
+            "required": false,
+            "position": 11
           }
         }
       },

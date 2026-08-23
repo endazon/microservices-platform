@@ -42,6 +42,18 @@ msgstr "（終端）"
 msgid "（表示 {shownCount} 件）"
 msgstr "（表示 {shownCount} 件）"
 
+#. placeholder {0}: s.sourceDocumentTitle
+#. placeholder {1}: s.targetDocumentTitle ?? ''
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{0} → {1}（{typeName}）"
+msgstr "{0} → {1}（{typeName}）"
+
+#. placeholder {0}: s.sourceDocumentTitle
+#. placeholder {1}: s.tagValue ?? ''
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "{0} に「{1}」を付与"
+msgstr "{0} に「{1}」を付与"
+
 #: knowledge/frontend/src/features/scope-filter/components/ScopeFilter.tsx
 msgid "{count} 件で絞り込み中"
 msgstr "{count} 件で絞り込み中"
@@ -98,6 +110,10 @@ msgstr "ABAC 設定の区画"
 msgid "ABAC設定"
 msgstr "ABAC設定"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。 承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、 両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。 閲覧権限のない文書に関する提案は、件数を含め表示されません。"
+msgstr "AI が提案したリンク候補・タグ候補を棚卸しするための一覧です。 承認・却下はこの画面では行いません。各行の「文書詳細で確認」から文書詳細へ移動し、 両端の文書の内容を見たうえで判断してください。まとめて承認する操作は提供していません。 閲覧権限のない文書に関する提案は、件数を含め表示されません。"
+
 #: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 msgid "AI チャット"
 msgstr "AI チャット"
@@ -122,6 +138,14 @@ msgstr "AI 回答"
 msgid "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 msgstr "AI 回答を生成できませんでした。キーワード検索の結果をご確認ください。"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "AI 提案の一覧"
+msgstr "AI 提案の一覧"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "AI 提案一覧"
+msgstr "AI 提案一覧"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "AI 提案由来の辺は破線（承認済みのみ表示）"
 msgstr "AI 提案由来の辺は破線（承認済みのみ表示）"
@@ -137,6 +161,10 @@ msgstr "AI分析依頼"
 #: knowledge/frontend/src/features/sc01-search/components/SearchChatPage.tsx
 msgid "AI回答（ストリーミング）"
 msgstr "AI回答（ストリーミング）"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/routes/sc21AiSuggestionsRoute.ts
+msgid "AI提案"
+msgstr "AI提案"
 
 #: knowledge/frontend/src/features/sc18-graph/components/GraphLegend.tsx
 msgid "cites: 実線・矢印"
@@ -231,6 +259,7 @@ msgstr "イベント接続はありません。"
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 #: platform/frontend/src/foundation/ai-chat/AiChatPanel.tsx
 #: platform/frontend/src/foundation/notifications/NotificationBell.tsx
 #: platform/frontend/src/foundation/ui/ErrorBoundary.tsx
@@ -304,6 +333,10 @@ msgstr "このタグは {inUseCount} 件の文書で使われているため削�
 msgid "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 msgstr "この属性は使用中のため削除できません。参照しているポリシーを先に見直してください。"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
+msgstr "この提案は一度却下されましたが、文書が更新されたため再度提示しています。"
+
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
 msgid "この文書には表示できる関係がありません。"
 msgstr "この文書には表示できる関係がありません。"
@@ -345,6 +378,7 @@ msgid "スコープ"
 msgstr "スコープ"
 
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "すべて"
 msgstr "すべて"
 
@@ -373,6 +407,7 @@ msgstr "タイトル"
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/TagDictionaryPanel.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 #: knowledge/frontend/src/features/scope-filter/types/scopeSelection.ts
 msgid "タグ"
 msgstr "タグ"
@@ -642,6 +677,10 @@ msgstr "ユーザー"
 msgid "ラベル"
 msgstr "ラベル"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "リンク"
+msgstr "リンク"
+
 #. placeholder {0}: nodes.length
 #. placeholder {1}: view.totalNodes
 #: knowledge/frontend/src/features/sc18-graph/components/GraphViewPage.tsx
@@ -656,6 +695,7 @@ msgid "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限
 msgstr "上位 {0} 件を表示（全 {1} 件以上）。総数の探索も上限に達した ため、「更新日が新しい順」「次数が大きい順」は厳密な上位 {2} 件ではありません。 探索深さを浅くするか、辺の型を絞ってください。"
 
 #: knowledge/frontend/src/features/sc10-operations/components/OperationsDashboardPage.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "並べ替え"
 msgstr "並べ替え"
 
@@ -883,6 +923,10 @@ msgstr "削除"
 msgid "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
 msgstr "削除済みの個人資料が {count} 件あります。最短で {deadline} に完全削除されます"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "却下（再提示を抑止中）"
+msgstr "却下（再提示を抑止中）"
+
 #: knowledge/frontend/src/features/sc03-document/components/DocumentDetailPage.tsx
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "原本"
@@ -964,6 +1008,10 @@ msgstr "図を補正して再登録しました。"
 #: knowledge/frontend/src/features/sc07-conversions/components/FigureCorrectionPanel.tsx
 msgid "図を読み込み中…"
 msgstr "図を読み込み中…"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "型不明"
+msgstr "型不明"
 
 #: knowledge/frontend/src/features/sc07-conversions/routes/sc07ConversionsRoute.tsx
 msgid "変換ジョブ"
@@ -1142,6 +1190,14 @@ msgstr "成功"
 msgid "手動同期"
 msgstr "手動同期"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "承認待ち"
+msgstr "承認待ち"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "承認済み"
+msgstr "承認済み"
+
 #: knowledge/frontend/src/features/sc08-analysis/types/analysisRange.ts
 msgid "抽出"
 msgstr "抽出"
@@ -1173,6 +1229,14 @@ msgstr "接続先 URI"
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
 msgid "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
 msgstr "接続情報（認証情報）は Vault 管理です。接続の継続失敗はアラートで通知されます。"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "提案"
+msgstr "提案"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "提案の一覧を取得できませんでした。時間をおいて再度お試しください。"
+msgstr "提案の一覧を取得できませんでした。時間をおいて再度お試しください。"
 
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentManagementPage.tsx
 #: knowledge/frontend/src/features/sc06-datasources/components/DataSourceManagementPage.tsx
@@ -1276,6 +1340,14 @@ msgstr "文書管理"
 #: knowledge/frontend/src/features/sc05-documents/components/DocumentForm.tsx
 msgid "文書編集"
 msgstr "文書編集"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "文書詳細"
+msgstr "文書詳細"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "文書詳細で確認"
+msgstr "文書詳細で確認"
 
 #: platform/frontend/src/foundation/notifications/notificationMessages.ts
 msgid "新しいお知らせが {count} 件あります"
@@ -1567,6 +1639,7 @@ msgstr "版"
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 #: knowledge/frontend/src/features/sc09-admin-abac/components/PolicyEditorPanel.tsx
 #: knowledge/frontend/src/features/sc11-config/components/ConfigViewerPage.tsx
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
 msgid "状態"
 msgstr "状態"
 
@@ -1628,6 +1701,10 @@ msgstr "種別"
 #: knowledge/frontend/src/features/sc18-graph/components/NodeSidePanel.tsx
 msgid "種別:"
 msgstr "種別:"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "種類"
+msgstr "種類"
 
 #: knowledge/frontend/src/features/sc09-admin-abac/types/abacVocabulary.ts
 #: platform/frontend/src/foundation/routing/nav.ts
@@ -1741,6 +1818,10 @@ msgstr "該当する変換ジョブはありません。"
 msgid "該当する情報が見つかりませんでした。"
 msgstr "該当する情報が見つかりませんでした。"
 
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "該当する提案はありません。"
+msgstr "該当する提案はありません。"
+
 #: knowledge/frontend/src/features/sc02-results/components/SearchResultsPage.tsx
 msgid "該当する文書が見つかりませんでした。"
 msgstr "該当する文書が見つかりませんでした。"
@@ -1771,6 +1852,10 @@ msgstr "読み込みエラー"
 #: platform/frontend/src/foundation/auth/RequireRole.tsx
 msgid "読み込み中…"
 msgstr "読み込み中…"
+
+#: knowledge/frontend/src/features/sc21-ai-suggestions/components/AiSuggestionListPage.tsx
+msgid "読み込み中です。"
+msgstr "読み込み中です。"
 
 #: knowledge/frontend/src/features/sc11-config/types/driftView.ts
 msgid "警告"

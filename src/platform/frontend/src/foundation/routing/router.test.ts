@@ -23,6 +23,8 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-09', '/admin/abac'],
   ['SC-10', '/admin/ops'],
   ['SC-11', '/admin/config-viewer'],
+  // #918: SC-21 は既定の検索パラメータ（?state=pending）を持つが、木に載るのはパスだけである。
+  ['SC-21', '/ai-suggestions'],
 ];
 
 const fullPaths = () => Object.keys(router.routesByPath);

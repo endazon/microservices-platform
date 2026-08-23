@@ -2152,6 +2152,53 @@ paths:
         "400": { description: hops が範囲外（1〜3） }
         "404": { description: 権限外・不存在（区別しない） }
 
+  /bff/graph/suggestions:
+    get:
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: |
+            SC-21 (#918): 状態フィルタ。**未指定は `pending`（既定）**であり、`all` は絞りを外す。
+            🔴 **`all` は状態の値ではない** —— 永続層に `all` という状態は存在しない。
+            未知の値は 400（`invalid_state`）。**既定の補完も値域の検査も後段が一箇所で持つ**
+            （BFF は透過するだけである）。
+          schema: { type: string, enum: [pending, approved, rejected, all] }
+        - name: kind
+          in: query
+          required: false
+          description: |
+            SC-21 (#918): 種類フィルタ。未指定は絞らない（＝すべて）。
+            🔴 **リンク提案とタグ提案は同一の一覧に同居させる。画面を分けない**（FR-18）。
+            未知の値は 400（`invalid_kind`）。
+          schema: { type: string, enum: [link, tag] }
+      # NFR-09: 認証のみ・ロール不問。**可視性はロールではなく ABAC が決める** ——
+      # 権限のない文書に関する提案は一覧にも件数にも現れない（05_screens §SC-21 アクセス制御）。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）"
+      description: |
+        FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
+
+        🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
+        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+        **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
+        承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
+
+        **権限のない文書に関する提案は、件数を含め一切現れない**（存在秘匿）。
+        後段が引けないときは 502 であり、**空配列へ縮退しない** ——
+        「提案が 1 件も無い」と「一覧が引けない」は利用者にとって別の意味である。
+      operationId: bff-graph-suggestions
+      responses:
+        "200":
+          description: AI 提案の一覧（権限内のもののみ）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AiSuggestion" }
+        "400": { description: state / kind が値域外（そのまま透過する） }
+
 components:
   schemas:
     SearchRequest:
@@ -2279,6 +2326,62 @@ components:
         name: { type: string, description: "表示名。改名されても id は変わらない" }
         layer: { type: string, description: "型の層（core / domain / user 等）" }
         isSymmetric: { type: boolean, description: "対称な関係か（向きを持たないか）" }
+
+    AiSuggestion:
+      type: object
+      description: |
+        FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
+
+        **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
+        型を分けるとクライアント側で 2 経路に割れる。種別固有の欄は省略可である。
+
+        🔴 **本文指紋（却下解除の判定に使う内部状態）は公開面に出さない。**
+
+        🔴 **辺の型の表示名を持たない。** 名前は辞書（`/bff/graph/edge-types`）で解決し、
+        改名に追随させる（ADR-0033 決定 9）。ここへ焼き込むと改名後も古い名前を出し続ける。
+      required:
+        [id, kind, sourceDocumentId, rationale, state, rejectedCount, sourceDocumentTitle]
+      properties:
+        id: { type: string, format: uuid }
+        kind:
+          type: string
+          description: "link（リンク候補）/ tag（タグ候補）"
+        sourceDocumentId:
+          type: string
+          format: uuid
+          description: "リンク提案では起点、タグ提案では対象文書。**どちらの種別でも必ず入る**"
+        targetDocumentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "リンク提案のみ"
+        edgeTypeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "リンク提案のみ。表示名は辺の型カタログで解決する"
+        tagValue:
+          type: string
+          nullable: true
+          description: "タグ提案のみ。SC-09 のタグ辞書に整合する値であること"
+        rationale: { type: string, description: "なぜ関連と判断したか（SC-21 主要素 6）" }
+        state:
+          type: string
+          description: "pending（承認待ち）/ approved（承認済み）/ rejected（却下）"
+        rejectedCount: { type: integer, description: "累積の却下回数" }
+        reinstatedReason:
+          type: string
+          nullable: true
+          description: >-
+            再提示の理由。source / target / both のいずれか。**非 null なら再提示であり、
+            画面は固定文言を必ず添える**（ADR-0033 決定 10。理由の無い再提示を起こさない）
+        sourceDocumentTitle:
+          type: string
+          description: "起点（タグ提案では対象）の文書名。SC-21 の「提案の内容」列が要る"
+        targetDocumentTitle:
+          type: string
+          nullable: true
+          description: "終点の文書名。タグ提案では終点が無いため null である"
 
     GraphView:
       type: object

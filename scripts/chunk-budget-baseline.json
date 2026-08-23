@@ -95,7 +95,21 @@
     "注入すると全要求が静かに未認証になる。症状が「ログインし直して」の形で出るため気付きにくい。",
     "439 B で、配備の設定ミスを起動時に落とせる。"
   ],
-  "initialTotalBytes": 582839,
+  "$comment_initialTotalBytes_20260823_sc21": [
+    "［2026-08-23 / #918］582,839 → 586,001（+3.16 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-21 AI 提案一覧のルート登録",
+    "（features/index.ts の合成点・validateSearch・左ナビ項目）と、Lingui カタログ 19 メッセージ × 2",
+    "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**",
+    "（SC-18 の +6.98 kB と同じ経路）。",
+    "",
+    "画面本体（AiSuggestionListPage 3.81 kB）と表の土台（DataTable 39.07 kB。TanStack Table v9 を含む）は",
+    "**どちらもルート単位の遅延チャンク**であり、初期ロードには入っていない —— 本画面が DataTable の",
+    "最初の利用者であり、これまで実コードから参照されていなかったため出力チャンク自体が無かった。",
+    "**表を使わない画面しか開かない利用者に 39 kB は届かない。**",
+    "",
+    "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
+  ],
+  "initialTotalBytes": 586001,
   "$comment_initialTotalBytes_20260823_sc18": [
     "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
