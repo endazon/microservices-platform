@@ -8,10 +8,10 @@ author: claude
 ---
 <!-- trace:
 ids: [FR-03, FR-04, FR-05, FR-19, FR-21, SC-01, SC-08, UC-01, UC-05]
-adrs: [ADR-0036, ADR-0043, ADR-0046]
-iadrs: [IADR-0151, IADR-0253]
-specs: [20260823_issue-989_authz-scope-disjunction-stages]
-issues: [#540, #542, #989, planning#466]
+adrs: [ADR-0034, ADR-0036, ADR-0043, ADR-0046]
+iadrs: [IADR-0151, IADR-0253, IADR-0272]
+specs: [20260823_issue-989_authz-scope-disjunction-stages, 20260823_issue-993_graph-write-action-authorization]
+issues: [#540, #542, #989, #993, planning#466]
 -->
 
 # 機能仕様書: ABAC 文書アクセス制御
@@ -73,6 +73,12 @@ ABAC ポリシーで突き合わせ、**アクセス可能な文書のみ**を�
   ハードコードしており、書き込みの認可スコープをこの経路で出せなかった。ポリシーの action
   値域には `write`（所有者ベースの書き込み判定用）が加わっている——**write ポリシーが存在しない間、
   write スコープは全件遮断のまま**（deny-by-default。値域の拡張そのものは何も許可しない）。
+- **消費側のアクション**: グラフの書き込み経路（辺の付与・AI 提案の承認／却下）は、
+  **到達可能性の検証を `read`、変更の可否を `write`** で解決する（**同じ 1 回の解決では両方に
+  答えられない**——閲覧権限の検証と書き込み権限の判定は別の問いである）。
+  それ以外の経路（Wiki 閲覧・検索・AI 回答・提案の生成）は `read` で解決する。
+  🔴 **既定値に頼らず、呼び出しごとにアクションを明示すること**——「書かなければ `read`」は、
+  書き忘れがそのまま認可の緩みとして現れる形である。
 
 ## 受け入れ基準との対応
 

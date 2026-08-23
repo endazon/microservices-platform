@@ -11,14 +11,19 @@ namespace GraphService.Api.Foundation.Services;
 // （WikiAccessResolver.ResolveAsync / RagOrchestrator.ResolveScopeAsync と同一方針）。
 // グラフでは 1 文書の露出が近傍の存在まで明かすため、fail-open は特に許されない。
 //
-// **本サービスはリクエストごとに 1 回だけ解決する。キャッシュは持たない。**
+// **アクションは呼び出し側が明示する**（IADR-0272 決定 4。既定値は置かない）。読み取りは read、
+// 書き込みは write —— **同じ 1 回の解決で「見えるか」と「書いてよいか」の両方には答えられない**
+// （ADR-0034 決定 8 は閲覧権限を、ADR-0036 D-07 は書き込み権限を求めている）。
+//
+// **本サービスは 1 アクションにつきリクエストごとに 1 回だけ解決する。キャッシュは持たない。**
 // ADR-0034 未決事項「ホップ展開結果のキャッシュ方針」は実装ガイド送りだが、決定 1 が
 // 「キャッシュキーに利用者スコープを含める」ことのみ確定しており、ADR-0036 D-14 も
 // 「キャッシュキーは必ず subject を含む —— 省くと他人の認可結果が漏れる」と定めている。
 // 導入する場合はその制約に従うこと（本単位では導入しない）。
 public class GraphAccessResolver(IHttpClientFactory httpFactory) : IGraphAccessResolver
 {
-    public async Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
+    public async Task<AccessScopeResponse> ResolveAsync(
+        HttpContext ctx, string action, CancellationToken ct = default)
     {
         var userId = ctx.User.Identity?.Name ?? "anonymous";
         var userAttrs = ExtractUserAttributes(ctx);
@@ -27,7 +32,7 @@ public class GraphAccessResolver(IHttpClientFactory httpFactory) : IGraphAccessR
         try
         {
             var resp = await authzClient.PostAsJsonAsync("/authz/scope",
-                new AccessScopeRequest(userId, userAttrs), ct);
+                new AccessScopeRequest(userId, userAttrs, action), ct);
             return (resp.IsSuccessStatusCode
                 ? await resp.Content.ReadFromJsonAsync<AccessScopeResponse>(ct)
                 : null) ?? new AccessScopeResponse(userId, [], false);

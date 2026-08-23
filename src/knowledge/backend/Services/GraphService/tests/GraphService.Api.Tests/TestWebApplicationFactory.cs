@@ -23,9 +23,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
     // 固定名にすると xUnit のクラス並列実行で書き込みが混ざる。
     private readonly string _dbName = $"GraphTest_{Guid.NewGuid()}";
 
-    // 既定は「マッチするポリシーがあり、条件は無し」＝全許可。
+    // 既定は「マッチするポリシーがあり、条件は無し」＝全許可。**read のスコープ。**
     public Func<HttpContext, AccessScopeResponse> ScopeProvider { get; set; } =
         _ => new AccessScopeResponse("test-user", [], true);
+
+    // #993, IADR-0272 決定 2: **write のスコープ**（書き込み経路が解決するもの）。
+    // null なら ScopeProvider へ委譲する —— 既存テストは read だけを差し替えて書けたままになる。
+    // **書き込みの認可を測るテストは、必ずここを明示的に置くこと。**
+    public Func<HttpContext, AccessScopeResponse>? WriteScopeProvider { get; set; }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -61,8 +66,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 
     private sealed class StubAccessResolver(TestWebApplicationFactory owner) : IGraphAccessResolver
     {
-        public Task<AccessScopeResponse> ResolveAsync(HttpContext ctx, CancellationToken ct = default)
-            => Task.FromResult(owner.ScopeProvider(ctx));
+        public Task<AccessScopeResponse> ResolveAsync(
+            HttpContext ctx, string action, CancellationToken ct = default)
+            => Task.FromResult(action == GraphAccessAction.Write
+                ? (owner.WriteScopeProvider ?? owner.ScopeProvider)(ctx)
+                : owner.ScopeProvider(ctx));
     }
 
     private static void ReplaceDbContext<TContext>(IServiceCollection services, string dbName)

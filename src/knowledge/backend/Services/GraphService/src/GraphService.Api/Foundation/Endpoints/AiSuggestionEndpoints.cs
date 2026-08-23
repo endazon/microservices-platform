@@ -34,7 +34,7 @@ public static class AiSuggestionEndpoints
             if (kind is not null && !SuggestionKind.IsValid(kind))
                 return Results.BadRequest(new { error = "invalid_kind" });
 
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted) return Results.Ok(new List<AiSuggestionDto>());
 
             // SC-21: 既定は pending。
@@ -57,15 +57,22 @@ public static class AiSuggestionEndpoints
         //
         // 🔴 **承認は #913 と同じ到達可能性の検証を通す。** 両端が承認者のスコープで可視でなければ
         // 拒む —— 見えない文書へ辺を張れると、辺の存在から文書の存在が漏れる。
+        //
+        // 🔴 **承認は辺を作る＝書き込みである**（ADR-0033 決定 7「承認済みの提案だけが辺になる」）。
+        // したがって到達可能性（read）とは別に **write スコープで判定する**（#993 / IADR-0272 決定 2）。
         g.MapPost("/{id:guid}/approve", async (Guid id, IGraphAccessResolver accessResolver,
             IGraphStore store, GraphDbContext db, HttpContext http, CancellationToken ct) =>
         {
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted) return NotFound();
 
             var suggestion = await db.AiSuggestions.FirstOrDefaultAsync(s => s.Id == id, ct);
             if (suggestion is null) return NotFound();
             if (!await IsVisibleAsync(suggestion, scope, db, ct)) return NotFound();
+
+            // ★書き込みの認可★ —— **状態遷移より前に置く**（拒否したときに副作用を残さない）。
+            var writeScope = await accessResolver.ResolveAsync(http, GraphAccessAction.Write, ct);
+            if (!await IsSourceWritableAsync(suggestion, writeScope, db, ct)) return NotFound();
 
             if (!suggestion.TryApprove())
                 return Results.Conflict(new { error = "invalid_transition", state = suggestion.State });
@@ -99,18 +106,26 @@ public static class AiSuggestionEndpoints
 
         // FR-18, ADR-0033 決定 7・10: 却下。**pending からのみ。**
         //
+        // 🔴 **却下も書き込みである** —— 提案は端点が見える利用者に共有される行であり、却下すると
+        // **他の利用者の pending 一覧からも消える**。read しか持たない主体が他人の提案を握り潰せる
+        // 形にしない（#993 / IADR-0272 決定 2）。
+        //
         // 却下回数を増やし、両端の**本文指紋**を控える（解除の判定に使う）。
         // 指紋は呼び出し側が与える —— 本サービスは本文を持たない。
         g.MapPost("/{id:guid}/reject", async (Guid id, RejectAiSuggestionRequest? req,
             IGraphAccessResolver accessResolver, GraphDbContext db, HttpContext http,
             TimeProvider clock, CancellationToken ct) =>
         {
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted) return NotFound();
 
             var suggestion = await db.AiSuggestions.FirstOrDefaultAsync(s => s.Id == id, ct);
             if (suggestion is null) return NotFound();
             if (!await IsVisibleAsync(suggestion, scope, db, ct)) return NotFound();
+
+            // ★書き込みの認可★ —— **状態遷移より前に置く**（拒否したときに副作用を残さない）。
+            var writeScope = await accessResolver.ResolveAsync(http, GraphAccessAction.Write, ct);
+            if (!await IsSourceWritableAsync(suggestion, writeScope, db, ct)) return NotFound();
 
             if (!suggestion.TryReject(req?.SourceFingerprint, req?.TargetFingerprint,
                     clock.GetUtcNow()))
@@ -127,11 +142,17 @@ public static class AiSuggestionEndpoints
         //
         // 🔴 **応答は生成できた提案の配列のみ。** 「候補が N 件あった」「N 件落とした」を返さない
         // （ADR-0051 決定 2「件数・存在も出さない」）。起点が見えない場合は 404（403 ではない）。
+        //
+        // 🔴 **本経路は read で解決する**（#993 / IADR-0272 決定 6）。提案行を書きはするが、
+        // **正しいアクションは `analyze` である可能性が高く、計画は `analyze` の判定規則を
+        // 定めていない**（値域に列挙するだけである）。推測で write を当てると生成が全件遮断される。
+        // ADR-0051 決定 4 は本経路の不変条件を「1 実行 = 1 利用者のスコープ」だけとしており、
+        // read で解決する現状が計画に反しているとは読めない。**裁定待ちとして範囲の外に置く。**
         g.MapPost("/generate/{documentId:guid}", async (Guid documentId,
             IGraphAccessResolver accessResolver, AiSuggestionGenerator generator,
             HttpContext http, CancellationToken ct) =>
         {
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
 
             var created = await generator.GenerateAsync(documentId, scope, ct);
             // 「存在しない」と「見えない」を同じ 404 に倒す（ADR-0034 決定 2）。
@@ -163,6 +184,20 @@ public static class AiSuggestionEndpoints
         var target = await db.Documents.AsNoTracking()
             .FirstOrDefaultAsync(d => d.DocumentId == s.TargetDocumentId.Value, ct);
         return target is not null && AuthorizedNode.Authorize(target, scope) is not null;
+    }
+
+    // #993, IADR-0272 決定 3: 提案の**起点文書**が write スコープで許可されているか。
+    //
+    // **Granted だけを見ない** —— write ポリシーの文書条件を捨てると、狭い write 権限で
+    // 範囲外の文書を触れてしまう。述語は直接呼ばず型ゲート（AuthorizedNode.Authorize）を通す。
+    // **終点は見ない**（ADR-0034 決定 8 が終点に課すのは閲覧権限である）。
+    private static async Task<bool> IsSourceWritableAsync(
+        AiSuggestion s, Platform.Shared.Contracts.Dtos.AccessScopeResponse writeScope,
+        GraphDbContext db, CancellationToken ct)
+    {
+        var source = await db.Documents.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.DocumentId == s.SourceDocumentId, ct);
+        return source is not null && AuthorizedNode.Authorize(source, writeScope) is not null;
     }
 
     private static AiSuggestionDto ToDto(AiSuggestion s) => new(

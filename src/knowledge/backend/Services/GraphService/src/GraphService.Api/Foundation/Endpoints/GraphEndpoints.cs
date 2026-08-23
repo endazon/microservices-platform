@@ -33,7 +33,7 @@ public static class GraphEndpoints
         {
             // ADR-0034: スコープはリクエストごとに 1 回だけ解決する。
             // 認可サービス障害時は Granted=false へ縮退する（GraphAccessResolver）。
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
 
             // FR-05: deny-by-default。許可ポリシーが無ければ起点自体も見せない。
             if (!scope.Granted)
@@ -96,7 +96,7 @@ public static class GraphEndpoints
                     message = $"hops は 1〜{GraphTraversal.MaxHops} で指定する（既定 {GraphTraversal.DefaultHops}）。",
                 });
 
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted)
                 return NotFound();
 
@@ -128,6 +128,12 @@ public static class GraphEndpoints
         //
         // 🔴 **不可視・不存在はすべて 404。403 にしない** —— 403 は「権限が無いだけで存在はする」
         // ことを漏らす。読み取り側（存在秘匿）と同じ線を引く。
+        //
+        // 🔴 **read と write の 2 つのスコープを解決する**（#993 / IADR-0272 決定 2）。従前は
+        // read のスコープ 1 本で「見えるか」と「書いてよいか」の両方を判定しており、
+        // **「読めるなら書ける」形**だった。**同じ 1 回の解決で両方には答えられない** ——
+        // ADR-0034 決定 8 の具体化は到達可能性の検証を「**閲覧**権限」と明示し、
+        // ADR-0036 D-07 は書き込みを `doc.owner ∈ { ${current_user} }` で判定すると定める。
         g.MapPost("/edges", async (
             CreateGraphEdgeRequest req,
             IGraphAccessResolver accessResolver,
@@ -141,7 +147,7 @@ public static class GraphEndpoints
             if (req.SourceDocumentId == req.TargetDocumentId)
                 return Results.BadRequest(new { error = "self_edge_not_allowed" });
 
-            var scope = await accessResolver.ResolveAsync(http, ct);
+            var scope = await accessResolver.ResolveAsync(http, GraphAccessAction.Read, ct);
             if (!scope.Granted)
                 return NotFound();
 
@@ -159,6 +165,23 @@ public static class GraphEndpoints
                 return NotFound();
             if (AuthorizedNode.Authorize(source, scope) is null
                 || AuthorizedNode.Authorize(target, scope) is null)
+                return NotFound();
+
+            // ★書き込みの認可★ —— **変更の直前に置く**（#993 / IADR-0272 決定 2・3）。
+            //
+            // 🔴 **Granted だけを見ない。** 見ると write ポリシーの文書条件を捨てることになり、
+            // 「public に限った write 権限で restricted の文書へ辺を張る」が通る。**解決した
+            // スコープを使わないのは #993 と同型の欠陥である。** 述語は直接呼ばず、型ゲート
+            // （AuthorizedNode.Authorize）を通す（IADR-0242 決定 2 の作法）。
+            //
+            // **起点にだけ要求する。** 終点へ write を課すと、ADR-0034 決定 8 が明らかに想定して
+            // いる「個人資料から会社文書へリンクを張る」操作が成立しなくなる（同決定が終点に課す
+            // のは閲覧権限である）。**計画に無い制約を足さない。**
+            //
+            // ⚠ **write ポリシーが 1 件も無い間、この経路は全件 404 になる**（deny-by-default。
+            // 計画 FR-05「既定は拒否」の正しい帰結）。配備時に write ポリシーの登録が要る。
+            var writeScope = await accessResolver.ResolveAsync(http, GraphAccessAction.Write, ct);
+            if (AuthorizedNode.Authorize(source, writeScope) is null)
                 return NotFound();
 
             var edge = Edge.Create(
