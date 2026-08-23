@@ -127,12 +127,37 @@ public class DataSourceTests
     [InlineData("owner", "system")]
     [InlineData("department", "unassigned")]
     [InlineData("lifecycle", "active")]
+    [InlineData("doc_scope", "organization")]
     public void Create_WithBlankRequiredAttribute_FallsBackToReservedValue(string key, string expected)
     {
         var ds = DataSource.Create("fs", "filesystem", "smb://share",
             defaultAttributes: new Dictionary<string, string> { [key] = "   " });
 
         ds.DefaultAttributes[key].Should().Be(expected);
+    }
+
+    // FR-05, ADR-0054 決定 5 (#1009): 取り込み経路の `doc_scope` は常に `organization`。
+    // **取り込み経路が個人資料を作ることはない**ので、既定が終端である（予約値を持たない）。
+    //
+    // 🔴 これが入らないと、`doc_scope` をポリシーの文書条件に名指した瞬間に、取り込み済みの
+    // 文書が一斉に不可視化する（ABAC は属性キーの欠落を不一致に倒す）。
+    [Fact]
+    public void Create_WithoutDocScope_DefaultsToOrganization()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share");
+
+        ds.DefaultAttributes["doc_scope"].Should().Be("organization");
+    }
+
+    // 陽性対照: 明示指定は上書きしない（他の必須属性と同じ規約であることを固定する）。
+    // これが無いと「常に organization を書き込む」実装でも上の 2 件が緑になる。
+    [Fact]
+    public void Create_WithExplicitDocScope_PreservesValue()
+    {
+        var ds = DataSource.Create("fs", "filesystem", "smb://share",
+            defaultAttributes: new Dictionary<string, string> { ["doc_scope"] = "private-note" });
+
+        ds.DefaultAttributes["doc_scope"].Should().Be("private-note");
     }
 
     // #516: 4 属性すべて明示ならすべて素通しする

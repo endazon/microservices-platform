@@ -68,6 +68,12 @@ public class DataSource
     // 終端の `active` は指定が無いときだけ効く。
     public const string DefaultLifecycle = "active";
 
+    // FR-05, ADR-0054 決定 5 (#1009): システム投入経路（人が居ない取り込み）で作られる文書の
+    // `doc_scope` の既定。**取り込み経路が個人資料を作ることはない**ため、既定が終端である
+    // （`owner` / `department` と違い「解決できないときの予約値」を持たない）。
+    public const string DocScopeKey = "doc_scope";
+    public const string DefaultDocScope = "organization";
+
     public static DataSource Create(string name, string sourceType, string connectionUri,
         Dictionary<string, string>? config = null,
         Dictionary<string, string>? defaultAttributes = null)
@@ -181,6 +187,16 @@ public class DataSource
         // （裁定 planning#361。`department` と同じ 3 段の形だが、**ソース側から解決する対応物が無い**
         // ためファイルの状態からは決まらず、1 段目が無い形になる）。
         FillIfBlank(result, LifecycleKey, DefaultLifecycle);
+
+        // `doc_scope` は取り込み経路では常に `organization`（ADR-0054 決定 5・
+        // 09_datasource-connectors の既定表「解決の余地が無い」）。**1 段の形である** ——
+        // ソース側から解決する対応物が無く、予約値も持たない。
+        //
+        // 🔴 **これが入らないと、`doc_scope` をポリシーの文書条件に名指した瞬間に、
+        // 取り込み済みの文書が一斉に不可視化する**（`AbacEvaluator` は属性キーの欠落を
+        // 不一致に倒すため）。名指しは個人資料を組織文書の経路から締め出すための本筋の
+        // 手段であり、その前提としてここが要る。
+        FillIfBlank(result, DocScopeKey, DefaultDocScope);
 
         return result;
     }
