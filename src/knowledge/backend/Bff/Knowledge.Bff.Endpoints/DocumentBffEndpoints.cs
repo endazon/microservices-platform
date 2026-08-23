@@ -1,4 +1,5 @@
 using Knowledge.Contracts.Dtos;
+using Platform.Shared.Contracts.Dtos;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -43,7 +44,7 @@ public static class DocumentBffEndpoints
                 return Results.Ok(new List<DocumentDto>());
 
             var docs = await FetchListAsync(httpFactory, ct);
-            var visible = docs.Where(d => BffScopeResolver.Matches(d.Attributes, scope)).ToList();
+            var visible = docs.Where(d => IsManageable(d, scope)).ToList();
             return Results.Ok(visible);
         }).WithName("BffDocumentList").Produces<List<DocumentDto>>()
             .RequireAuthorization(p => p.RequireRole(
@@ -191,6 +192,33 @@ public static class DocumentBffEndpoints
     }
 
     // 文書を取得し、利用者スコープに合致するときのみ返す（deny/不在/解決不能 → null＝404 秘匿）。
+    // FR-19, ADR-0036 D-08 (#1009): SC-05 文書管理の経路に個人資料を出さない。
+    //
+    // 🔴 **ABAC のスコープ判定だけでは足りない。** `BffScopeResolver.Matches` は
+    // `scope.Filters` に**現れたキーだけ**を見るため、`doc_scope` を条件に持たないポリシー
+    // （＝現行の全ポリシー。ADR-0054 は 2026-08-22 新設で実データ 0 件）では、この属性は
+    // **判定に一切効かない**。個人資料は `confidentiality=restricted` で作られるので、
+    // 「restricted 取扱者は全区分を読める」型のポリシーに**そのまま合致する**。
+    //
+    // ADR-0036 D-08 は「管理者・運用者は平時、非公開の個人資料を**一切閲覧できない**」と定め、
+    // 第三者の発動経路を管理者を含めて設けないとしている。ポリシー側に `doc_scope` を足すのが
+    // 本筋だが、**それは配備データに依存する統制であり、コードは無防備なままになる**
+    // （既存文書は `doc_scope` を持たないため、ポリシーで名指した瞬間に一斉に不可視化する
+    // 副作用もある）。ここで構造的に落とす。
+    //
+    // **除外は所有者を問わず一律である。** 個人資料は SC-19（`/private-notes`。本人スコープ）が
+    // 持ち、SC-05 は組織文書の管理画面である。所有者判定をここへ持ち込むと、判定軸が 2 本になり
+    // 片方が壊れても気付けない。**判定は集合帰属で書く**（「organization でない」ではない ——
+    // 属性を持たない既存文書が全部 個人資料 に化ける。ADR-0054 決定 5）。
+    private static bool IsManageable(DocumentDto doc, AccessScope scope)
+        => BffScopeResolver.Matches(doc.Attributes, scope) && !IsPrivateNote(doc);
+
+    // `DocumentAttributes`（DocumentService）はユニット外から参照できないため、判定を持つ
+    // （GraphService が `GraphDocumentScope` を持つのと同じ理由・同じ形）。
+    private static bool IsPrivateNote(DocumentDto doc)
+        => doc.Attributes.TryGetValue("doc_scope", out var scope)
+            && string.Equals(scope, "private-note", StringComparison.OrdinalIgnoreCase);
+
     private static async Task<DocumentDto?> FetchAuthorizedAsync(
         Guid id, IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
     {
@@ -213,8 +241,8 @@ public static class DocumentBffEndpoints
             return null; // 404 等（不在）は秘匿し区別しない
 
         var doc = await resp.Content.ReadFromJsonAsync<DocumentDto>(ct);
-        if (doc is null || !BffScopeResolver.Matches(doc.Attributes, scope))
-            return null; // スコープ外は不在と同じ 404
+        if (doc is null || !IsManageable(doc, scope))
+            return null; // スコープ外・個人資料は不在と同じ 404
 
         return doc;
     }
