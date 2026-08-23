@@ -1,5 +1,5 @@
 {
-  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。",
+  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。",
   "requiredChunks": [
     "ui",
     "vendor-react",
@@ -50,7 +50,7 @@
     "**遅延させられない**——閉じる導線は共通シェルの通知パネルと同じチャンクに居る必要がある",
     "（別チャンクにすると、パネルを開いた直後の Escape が読み込み待ちで効かない）。",
     "",
-    "［2026-08-23 / #439］646,270 → 575,417（−69.19 kB）へ**引き下げた**。あわせて smallLazyChunks 4 → 5。",
+    "［2026-08-23 / #439］646,133 → 575,417（−70.72 kB）へ**引き下げた**。",
     "BFF セッション移行で oidc-client-ts（と authConfig / CallbackPage）が初期ロードから消えたぶんの",
     "実測である（pnpm run build → node scripts/check-chunk-budget.js --update）。締めるのは再導入を",
     "床で止めるため。代償: 初期ロードへ正当にコードを足す次の PR は、増分が床を超えたら",
