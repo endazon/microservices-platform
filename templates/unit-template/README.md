@@ -58,11 +58,15 @@
 > `app/` と `locales/` は、ユニットでは通常空のままになる（アプリホストである
 > `platform/frontend` が持つ）。枠だけ残して「ユニット側には置かない」ことを見せている。
 
-> **雛形は実装（`src/knowledge/frontend`）ではなく計画に合わせてある。** knowledge の各 feature は
-> まだ内部を割っておらず 1 階層にファイルが並ぶが、計画 13_frontend-stack（`status: fixed`）は
-> **Feature 単位を `api/ components/ hooks/ routes/ stores/ types/` に割る**と定めており、
-> 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定）が確定している。
-> **knowledge を真似て 1 階層へ戻さないこと**——これから作られる全ユニットが不適合を継承する。
+> **［2026-08-23 更新 / #785］`src/knowledge/frontend` は本雛形と同じ構成へ揃った。** 従前ここは
+> 「knowledge の各 feature はまだ内部を割っておらず 1 階層にファイルが並ぶ」と書いていたが、
+> 13 feature すべてを `api/ components/ hooks/ routes/ stores/ types/` へ割り、ユニット直下の
+> 区分も枠を置いた（IADR-0262）。**`src/platform/frontend` の `foundation/` 分解は第 2 段として
+> 未了である**ため、参照するなら knowledge 側を見ること。
+>
+> 計画 13_frontend-stack（`status: fixed`）が **Feature 単位を上記 6 区分へ割る**と定め、
+> 「計画書は絶対的な正である。実装を計画へ合わせる」（2026-07-30 裁定・2026-08-22 再確定）が
+> 確定している。**1 階層へ戻さないこと**——これから作られる全ユニットが不適合を継承する。
 
 - **アプリケーション層の標準は ADR-0030**（Vertical Slice / Minimal API / ローカルディスパッチも
   Wolverine ハンドラ / Domain は共有カーネルを除き外部依存ゼロ（ADR-0041。#500） / 採用・不採用ライブラリ）。実装側の要点は

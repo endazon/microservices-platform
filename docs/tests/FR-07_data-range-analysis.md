@@ -3,7 +3,7 @@ title: 指定データ範囲AI分析 テスト仕様書
 type: test-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -11,7 +11,7 @@ ids: [FR-04, FR-07, UC-02]
 adrs: [ADR-0004, ADR-0010]
 iadrs: [IADR-0004, IADR-0005]
 specs: []
-issues: []
+issues: [#448]
 -->
 
 # テスト仕様書: 指定データ範囲での分析・比較・抽出
@@ -59,6 +59,9 @@ issues: []
 | T-17 | 同上 | `POST /analysis/analyze`（instruction, taskType=Compare, range.attributeFilters.year=[2025]） | 200 OK、`Answer` 非空 | 範囲・種別指定の分析 | 自動 |
 | T-18 | 実 CitationMapper 経路（TestWebApplicationFactory） | `POST /analysis/analyze`（同上） | 200 OK、`Answer` 非空、`Citations` 非空 | 出典付与 | 自動 |
 | T-19 | 同上 | `POST /analysis/analyze`（instruction 空） | 400 Bad Request | instruction 必須 | 自動 |
+| T-20 | ABAC={department:sales} で検索が実データを返す | `RagOrchestrator.AnalyzeAsync`（種別 Compare） | ゲートウェイ要求の用途が `analysis`・モデル指定は null（用途別の割当を呼び出し側で潰さない） | 用途別モデル割当の前提（#448） | 自動 |
+| T-21 | 同上 | `RagOrchestrator.AskAsync` | ゲートウェイ要求の用途が `rag-answer`（分析と同じ用途名にしない） | 同上 | 自動 |
+| T-22 | 種別 Analyze/Compare/Extract | `AnalyzeAsync` | 種別語がプロンプトへ乗り、**検索結果（権限内文書）を根拠として含む**。単体の組み立てだけでなく**後段へ届くこと**を固定する | 種別の後段到達（#448） | 自動 |
 
 ## テストデータ
 

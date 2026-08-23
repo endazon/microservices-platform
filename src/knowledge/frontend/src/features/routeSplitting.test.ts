@@ -22,29 +22,39 @@ const trace =
     return await importOriginal();
   };
 
-vi.mock('./sc01-search/SearchChatPage', (o) => trace('sc01', o as () => Promise<unknown>)());
-vi.mock('./sc02-results/SearchResultsPage', (o) => trace('sc02', o as () => Promise<unknown>)());
-vi.mock('./sc03-document/DocumentDetailPage', (o) => trace('sc03', o as () => Promise<unknown>)());
-vi.mock('./sc04-wiki/WikiAccessPage', (o) => trace('sc04', o as () => Promise<unknown>)());
-vi.mock('./sc05-documents/DocumentManagementPage', (o) =>
+vi.mock('./sc01-search/components/SearchChatPage', (o) =>
+  trace('sc01', o as () => Promise<unknown>)(),
+);
+vi.mock('./sc02-results/components/SearchResultsPage', (o) =>
+  trace('sc02', o as () => Promise<unknown>)(),
+);
+vi.mock('./sc03-document/components/DocumentDetailPage', (o) =>
+  trace('sc03', o as () => Promise<unknown>)(),
+);
+vi.mock('./sc04-wiki/components/WikiAccessPage', (o) =>
+  trace('sc04', o as () => Promise<unknown>)(),
+);
+vi.mock('./sc05-documents/components/DocumentManagementPage', (o) =>
   trace('sc05', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc06-datasources/DataSourceManagementPage', (o) =>
+vi.mock('./sc06-datasources/components/DataSourceManagementPage', (o) =>
   trace('sc06', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc07-conversions/ConversionJobsPage', (o) =>
+vi.mock('./sc07-conversions/components/ConversionJobsPage', (o) =>
   trace('sc07', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc08-analysis/AnalysisDashboardPage', (o) =>
+vi.mock('./sc08-analysis/components/AnalysisDashboardPage', (o) =>
   trace('sc08', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc09-admin-abac/AdminAbacSettingsPage', (o) =>
+vi.mock('./sc09-admin-abac/components/AdminAbacSettingsPage', (o) =>
   trace('sc09', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc10-operations/OperationsDashboardPage', (o) =>
+vi.mock('./sc10-operations/components/OperationsDashboardPage', (o) =>
   trace('sc10', o as () => Promise<unknown>)(),
 );
-vi.mock('./sc11-config/ConfigViewerPage', (o) => trace('sc11', o as () => Promise<unknown>)());
+vi.mock('./sc11-config/components/ConfigViewerPage', (o) =>
+  trace('sc11', o as () => Promise<unknown>)(),
+);
 
 /**
  * 画面（SC）と、その feature index の importer・ガードの有無。

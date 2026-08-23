@@ -3,15 +3,15 @@ title: 別紙 — 計画 ID レンジの追随記録と、計画 ADR の状態�
 type: how-to
 status: fixed
 created: 2026-08-11
-updated: 2026-08-22
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-17, FR-18, FR-19, FR-20, FR-21, SC-06, SC-18, SC-19, SC-20]
-adrs: [ADR-0006, ADR-0023, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054]
+adrs: [ADR-0006, ADR-0023, ADR-0031, ADR-0033, ADR-0034, ADR-0035, ADR-0036, ADR-0037, ADR-0038, ADR-0039, ADR-0043, ADR-0044, ADR-0045, ADR-0046, ADR-0047, ADR-0048, ADR-0049, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0054, ADR-0055, ADR-0056, ADR-0057, ADR-0058]
 iadrs: [IADR-0119, IADR-0142, IADR-0172, IADR-0173, IADR-0177, IADR-0179, IADR-0228]
 specs: []
-issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424]
+issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, planning#193, planning#197, planning#200, planning#237, planning#244, planning#250, planning#284, planning#295, planning#300, planning#304, planning#305, planning#308, planning#344, planning#346, planning#347, planning#361, planning#362, planning#363, planning#364, planning#383, planning#386, planning#392, planning#394, planning#424, planning#470, planning#471, planning#472, planning#473, planning#474, planning#475]
 -->
 
 # 別紙: 計画 ID レンジの追随 —— 記録と経緯
@@ -23,6 +23,52 @@ issues: [#449, #450, #451, #987, #620, #624, #688, #753, #872, planning#74, plan
 >
 > **本別紙が持つのは「レンジをいつどう引き直したか」（pin 時代の記録を含む）「計画 ADR の状態がいつどう動いたか」
 > 「なぜ CI で守れなかったか」の記録だけ**である（必読規約の減量にあたり、入口の見出しはスタブとして残し中身を別紙へ出す、という方針による）。
+
+### ［2026-08-23・2 回目］ADR `0001..0055` → `0001..0058`（3 件。**環流の裁定がそのまま新 ADR になった**）
+
+**`ADR` だけが `0001..0055` → `0001..0058` へ増えた**（3 件）。**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件。計画 `02_requirements` / `03_usecases` / `05_screens` を `origin/main` から直接走査して確認。`FR-06` は本文が変わったが**採番は動いていない**）。
+
+| ADR | 状態 | 内容 |
+| --- | --- | --- |
+| `ADR-0056` | Accepted | 404 と 403 の打ち分けは「**主体がその文書を読めるか**」で行う。操作の種別で判定しない（`ADR-0036` D-04 の部分改定） |
+| `ADR-0057` | Accepted | 削除は本文の実体（オブジェクトストレージ）と索引（ベクトルストア）まで及ぶ。監査・法務目的の残余は置かない |
+| `ADR-0058` | Accepted | `doc_scope` は作成時に確定し、以後変更できない（`ADR-0054` が残した論点の後続 ADR） |
+
+**前世代とも前々世代とも契機が違う。** 前々世代は「新しい ADR を引こうとして検査器が落ちた」＝**踏んでから直す**、前世代は「クロス監査が計画側の実ファイルと突き合わせた」＝**踏む前に見つけた**。**本世代は、自分が起票した環流の裁定がそのまま新 ADR になったので、レンジが動くことを起票の時点で知っていた**形である。
+
+**この形が一番安全である** —— 環流を出した側は、裁定が ADR になれば宣言レンジが動くことを**構造的に予測できる**。裁定を受け取ったら**まずレンジを引き直す**、を作法にすれば、前 2 世代のどちらの契機も要らなくなる。
+
+**`ADR` の欠番は `seq 1 58` との `diff` で機械的に確かめた**（EXIT=0）。
+
+```bash
+diff <(git -C ../project-planning ls-tree -r --name-only origin/main \
+        -- projects/microservices-platform/07_adr/ \
+        | grep -oE 'ADR-[0-9]{4}' | sort -u) \
+     <(seq -f 'ADR-%04g' 1 58)
+# EXIT=0（58 件・欠番なし）
+```
+
+### ［2026-08-23］ADR `0001..0054` → `0001..0055`（1 件。**検査器ではなく監査が見つけた**）
+
+**`ADR` だけが `0001..0054` → `0001..0055` へ増えた**（1 件）。**他の 4 種は不動**（`FR-01..22` 22 件 / `NFR-01..27` 27 件 / `UC-01..11` 11 件 / `SC-01..21` 21 件。計画 `02_requirements` / `03_usecases` / `05_screens` を `origin/main` から直接走査して確認。`FR-23..27` は `NFR-2x` の部分列で拾われる artifact であり、実在しない）。
+
+| ADR | 状態 | 内容 |
+| --- | --- | --- |
+| `ADR-0055` | Accepted | Git フックは CI と同一の検査器を呼ぶ。lint-staged / Commitlint は採らない |
+
+**前進の契機は前 2 世代と異なり、`check-trace-blocks.js` ではなくクロス監査（フレッシュな文脈の監査エージェント）である。** 前 2 世代はいずれも「新しい ADR を引く記述を書こうとして検査器が落ちた」＝**踏んでから直す**形だった。本世代は**まだ誰も `ADR-0055` を引いていない段階**で、監査が計画側の実ファイルと宣言レンジを突き合わせて検出した。
+
+**この差は重要である。** 宣言レンジは fail-closed であり、遅れたまま放置すると「実在する ADR を引いた作業が、理由の分かりにくい形で止まる」。`ADR-0055` は `ADR-0031_frontend-stack` に related で結ばれており、フロント系の作業が踏む確率が高い側の陳腐化だった。**検査器は「踏んだこと」しか教えず、「遅れていること」は教えない** —— 定期的な突合が要る、というのが本世代の学びである。
+
+**`ADR` の欠番は `seq 1 55` との `diff` で機械的に確かめた**（EXIT=0）。
+
+```bash
+diff <(git -C ../project-planning ls-tree -r --name-only origin/main \
+        -- projects/microservices-platform/07_adr/ \
+        | grep -oE 'ADR-[0-9]{4}' | sort -u) \
+     <(seq -f 'ADR-%04g' 1 55)
+# EXIT=0（55 件・欠番なし）
+```
 
 ### ［2026-08-22］ADR `0001..0048` → `0001..0054`（6 件まとめて前進。**隣接クローンの鮮度で 1 度空振りした**）
 

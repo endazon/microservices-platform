@@ -1,5 +1,6 @@
 using DashboardService.Api.Foundation.Endpoints;
 using DashboardService.Api.Foundation.Persistence;
+using Platform.Shared.Infrastructure.Foundation.Audit;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
 using Platform.Shared.Infrastructure.Foundation.Introspection;
 using Platform.Shared.Infrastructure.Foundation.Pipeline;
@@ -29,6 +30,10 @@ builder.Services.AddDbContext<DashboardDbContext>(opt => opt.UseNpgsql(connStr))
 // ホストしないが、到達可能性とトポロジ（段なし）を実効構成へ与えるため存在申告する。
 builder.Services.AddPlatformIntrospection("dashboard-service", new PipelineOptions());
 
+// FR-10, FR-17, FR-18, SC-10, ADR-0004 (#443): ナレッジ健全性指標の閲覧を監査ログに残す
+// （計画 §ナレッジ健全性の指標「閲覧は監査ログに記録する」）。
+builder.Services.AddSingleton<IAuditLogger, AuditLogger>();
+
 var app = builder.Build();
 
 // FR-10: 起動時にスキーマを最新 Migration へ更新
@@ -45,6 +50,7 @@ app.MapPlatformIntrospection();
 app.MapOpenApi();
 
 app.MapDashboardEndpoints();
+app.MapKnowledgeHealthEndpoints();
 
 app.Run();
 

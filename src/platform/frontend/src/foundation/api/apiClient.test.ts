@@ -1,17 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { apiFetch, setTokenProvider, setUnauthorizedHandler } from './apiClient';
+import { apiFetch, CSRF_HEADER_NAME, setUnauthorizedHandler } from './apiClient';
 import { ApiError } from './ApiError';
 
-// Issue #126: apiFetch は Bearer を付与し、HTTP ステータスを ApiError へ写像する（IADR-0009: 404→notFound）。
+// Issue #126 / ADR-0032, IADR-0273, #439: apiFetch はセッション Cookie（ブラウザ自動付与）で
+// BFF を呼び、HTTP ステータスを ApiError へ写像する（IADR-0009: 404→notFound）。
 describe('apiFetch', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    setTokenProvider(() => null);
     setUnauthorizedHandler(() => {});
   });
 
-  it('attaches the bearer token and returns parsed JSON', async () => {
-    setTokenProvider(() => 'test-token');
+  // ★ 陽性対照: リクエストは出る・CSRF ヘッダが付く・JSON が返る。
+  // 下の「Authorization を付けない」だけだと「何も送らない実装」が緑になる。
+  it('sends the CSRF header and returns parsed JSON', async () => {
     const fetchMock = vi.fn<typeof fetch>(
       async () =>
         new Response(JSON.stringify({ ok: true }), {
@@ -28,7 +29,34 @@ describe('apiFetch', () => {
     expect(String(url)).toContain('/bff/dashboard/summary');
     const headers = init?.headers as Headers;
     expect(headers).toBeInstanceOf(Headers);
-    expect(headers.get('Authorization')).toBe('Bearer test-token');
+    expect(headers.get(CSRF_HEADER_NAME)).toBe('1');
+  });
+
+  // 🔴 否定形（ADR-0032）: **SPA はトークンを扱わない＝ Authorization ヘッダを一切付けない。**
+  // 陽性対照は上（CSRF ヘッダは付く）。
+  it('never attaches an Authorization header', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await apiFetch('/dashboard/summary');
+
+    const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
+    expect(headers.has('Authorization')).toBe(false);
+  });
+
+  // /auth/me（認証状態の確認）は 401 が正常な答え。再ログイン導線を起動しない。
+  it("suppresses the unauthorized handler when on401 is 'silent'", async () => {
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 401 })),
+    );
+
+    await expect(apiFetch('/auth/me', { on401: 'silent' })).rejects.toMatchObject({
+      kind: 'unauthorized',
+    });
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   it('maps 404 to notFound (existence hidden, IADR-0009)', async () => {
@@ -131,15 +159,5 @@ describe('apiFetch', () => {
       }),
     );
     await expect(apiFetch('/x')).rejects.toMatchObject({ kind: 'network' });
-  });
-
-  it('omits Authorization when no token is available', async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
-    vi.stubGlobal('fetch', fetchMock);
-
-    await apiFetch('/x');
-
-    const headers = fetchMock.mock.calls[0][1]?.headers as Headers;
-    expect(headers.has('Authorization')).toBe(false);
   });
 });

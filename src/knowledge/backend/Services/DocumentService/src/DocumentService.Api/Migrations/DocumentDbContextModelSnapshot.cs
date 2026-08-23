@@ -72,6 +72,41 @@ namespace DocumentService.Api.Migrations
                     b.ToTable("Documents");
                 });
 
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.DocumentShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("GrantedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SubjectId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SubjectType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "SubjectType", "SubjectId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentShares");
+                });
+
             modelBuilder.Entity("DocumentService.Api.Foundation.Domain.DocumentVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -121,6 +156,131 @@ namespace DocumentService.Api.Migrations
                     b.ToTable("DocumentVersions");
                 });
 
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.PrivateNote", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IncludeInAi")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeInGraph")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IncludeInSearch")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("LatestBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("PurgeAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("PurgeImminentNotifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VaultPath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.HasKey("DocumentId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("PrivateNotes");
+                });
+
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.PrivateNoteQuota", b =>
+                {
+                    b.Property<string>("OwnerId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<long>("LimitBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Warned80")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Warned95")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("WeeklyDigestSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("OwnerId");
+
+                    b.ToTable("PrivateNoteQuotas");
+                });
+
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.SyncDevice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("DeviceName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("ExpiryNotifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("LastSyncAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("SyncDevices");
+                });
+
             modelBuilder.Entity("DocumentService.Api.Foundation.Domain.Tag", b =>
                 {
                     b.Property<Guid>("Id")
@@ -146,11 +306,29 @@ namespace DocumentService.Api.Migrations
                     b.ToTable("Tags");
                 });
 
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.DocumentShare", b =>
+                {
+                    b.HasOne("DocumentService.Api.Foundation.Domain.Document", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("DocumentService.Api.Foundation.Domain.DocumentVersion", b =>
                 {
                     b.HasOne("DocumentService.Api.Foundation.Domain.Document", null)
                         .WithMany("Versions")
                         .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("DocumentService.Api.Foundation.Domain.PrivateNote", b =>
+                {
+                    b.HasOne("DocumentService.Api.Foundation.Domain.Document", null)
+                        .WithOne()
+                        .HasForeignKey("DocumentService.Api.Foundation.Domain.PrivateNote", "DocumentId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

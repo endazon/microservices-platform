@@ -80,6 +80,10 @@ public class BffTestFactory : WebApplicationFactory<Program>
     // FR-17, #962: 辺の型カタログのスタブ応答。
     public List<EdgeTypeCatalogItemDto> StubEdgeTypeCatalog { get; set; } = [];
 
+    // FR-18, SC-21, #918: AI 提案一覧のスタブ応答。**テスト間で共有される**（IClassFixture）ため、
+    // 観測する側が呼ぶ前に既定へ戻すこと。
+    public List<AiSuggestionDto> StubAiSuggestions { get; set; } = [];
+
     public bool TagDictionaryFetched { get; set; }
     public HttpStatusCode TagDictionaryStatusCode { get; set; } = HttpStatusCode.OK;
 
@@ -716,23 +720,31 @@ public class BffTestFactory : WebApplicationFactory<Program>
             owner.LastGraphForwardedAuthorization = auth;
 
             var isCatalog = owner.LastGraphPath?.Contains("edge-types", StringComparison.Ordinal) == true;
+            // FR-18, SC-21, #918: 提案の一覧。**カタログと同じく `RequireAuthorization()` が
+            // 先に弾く群**なので、資格情報が届かなければ 401 である（404 ではない）。
+            var isSuggestions =
+                owner.LastGraphPath?.Contains("suggestions", StringComparison.Ordinal) == true;
 
             // 🔴 **資格情報が届かないときの応答は口によって違う。実サービスに合わせる。**
             //   グラフ読み取り: GraphAccessResolver が anonymous → Granted=false → **404**（存在秘匿）
-            //   カタログ      : `RequireAuthorization()` が弾く → **401**（隠すものが無いので秘匿しない）
+            //   カタログ / 提案: `RequireAuthorization()` が弾く → **401**（隠すものが無いので秘匿しない）
             // ここを一律にすると、片方の伝播が切れても気付けないテストになる。
             if (string.IsNullOrEmpty(auth))
                 return Task.FromResult(new HttpResponseMessage(
-                    isCatalog ? HttpStatusCode.Unauthorized : HttpStatusCode.NotFound));
+                    isCatalog || isSuggestions
+                        ? HttpStatusCode.Unauthorized
+                        : HttpStatusCode.NotFound));
 
             if (owner.GraphStubStatusCode != HttpStatusCode.OK)
                 return Task.FromResult(new HttpResponseMessage(owner.GraphStubStatusCode));
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = isCatalog
-                    ? JsonContent.Create(owner.StubEdgeTypeCatalog)
-                    : JsonContent.Create(owner.StubGraphView)
+                Content = isSuggestions
+                    ? JsonContent.Create(owner.StubAiSuggestions)
+                    : isCatalog
+                        ? JsonContent.Create(owner.StubEdgeTypeCatalog)
+                        : JsonContent.Create(owner.StubGraphView)
             });
         }
     }

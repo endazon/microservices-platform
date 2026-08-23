@@ -27,6 +27,24 @@
  * 5. **MassTransit と Wolverine の両方の記法を読む。** 移行中は同居し得る。
  *    **移行しても表が変わらないことが、移行が正しいことの証拠**になる。
  * 6. **トランスポートも記録し、発行側と購読側の食い違いを違反にする**（#455 Phase 0 / U2）。
+ * 7. **トランスポートの変化そのものを baseline と突き合わせる ratchet**（#921 / IADR-0257）。
+ *    向きは非対称である —— **前進（MassTransit → Wolverine）は baseline の更新を促し、
+ *    逆行（Wolverine → MassTransit）は `--update` でも通さない**（`--allow-regression` が要る）。
+ *
+ * ## 🔴 なぜ 7 を足したか —— 要点 6 だけでは「辺の両側を同時に移した」ことが見えない
+ *
+ * 要点 6（`transportMismatches`）が見るのは**同一イベントの発行側と購読側の食い違い**だけである。
+ * 辺の両側を同時に切り替えると交差は空にならないので、この判定は何も言わない。一方 baseline 突合
+ * （`diffAgainstBaseline`）は `ownersOf()`＝`Object.keys()` で **transport 配列を捨てていた**ため、
+ * owner 名が変わらない限り差分は 0 件だった。**すなわち辺 1 本の移行は、正解表を 1 行も更新しないまま
+ * 緑で通った** —— 実際に `RawDocumentFetched`（#441）がその状態で develop に載っていた（#921 で実測）。
+ *
+ * 移行の正しさの証拠は「表が変わらないこと」（要点 5）だが、**表が transport を持つ以上、
+ * transport が変わったなら表は変わっている**。変わったことを人が明示的に記録して初めて、
+ * 「意図した移行」と「気付かぬ退行」が区別できる。
+ *
+ * **逆行だけ `--update` を拒むのは、ADR-0027 が MassTransit を不採用と決めているからである。**
+ * 前進と同じ扱い（更新すれば消える指摘）にすると、その制約は baseline 更新 1 回で溶ける。
  *
  * ## 🔴 なぜ 6 を足したか —— 従前この検査は部分移行を原理的に検出できなかった
  *
@@ -240,9 +258,87 @@ function normalizeSide(side) {
   return side && typeof side === 'object' ? side : {};
 }
 
-/** 片側の owner 名を並べる（増減の突合は従来どおり owner 集合で行う）。 */
+/**
+ * 片側の owner 名を並べる。
+ *
+ * 🔴 **この関数は transport を捨てる。** owner の増減を見るためだけに使い、
+ * **突合をこれだけで終わらせない**（transport の突合は `transportChanges()` が担う。#921）。
+ */
 function ownersOf(side) {
   return Object.keys(normalizeSide(side)).sort();
+}
+
+/** 片側の 1 owner ぶんの transport 配列を正規化する（重複を潰し、順序を固定する）。 */
+function normalizeTransports(ts) {
+  return [...new Set(Array.isArray(ts) ? ts : [])].sort();
+}
+
+/**
+ * baseline と現状の transport を比べ、変化を分類する（#921）。
+ *
+ * 返り値 `null` は「判定しない」である。**どちらかが不明（空）なら保留する** ——
+ * 旧形式の baseline（owner の配列）や、`using` を持たないファイル（取り込みが global usings 側に
+ * あると起こる）で一斉に赤くすると、検査そのものが信用されなくなる。`transportMismatches()` と
+ * 同じ作法である。**保留は「安全」ではなく「見えていない」であることを承知して使うこと。**
+ *
+ * 逆行の定義は **`wolverine` を失った、または `masstransit` が新たに混入した**である
+ * （ADR-0027: Wolverine 採用・MassTransit 不採用）。残りは前進 —— 取り得る値が 2 つしか
+ * 無いため、逆行でない変化は `wolverine` の追加か `masstransit` の脱落のいずれかになる。
+ */
+function classifyTransportChange(baseTs, curTs) {
+  const from = normalizeTransports(baseTs);
+  const to = normalizeTransports(curTs);
+  if (from.length === 0 || to.length === 0) return null; // 不明 → 保留
+  if (from.join('+') === to.join('+')) return null; // 変化なし
+  const lost = from.filter((t) => !to.includes(t));
+  const added = to.filter((t) => !from.includes(t));
+  const regression = lost.includes(WOLVERINE) || added.includes(MT);
+  return { kind: regression ? 'regression' : 'forward', from, to, lost, added };
+}
+
+/**
+ * baseline と現状で **両方に居る owner** の transport 変化を列挙する（#921）。
+ *
+ * 増えた／減った owner は `diffAgainstBaseline()` の owner 差分が既に報告しているため、
+ * ここでは扱わない（同じ事実を 2 通の違反として出さない）。
+ */
+function transportChanges(topology, baseline) {
+  const out = [];
+  const base = baseline && baseline.topology ? baseline.topology : {};
+  for (const ev of Object.keys(topology).sort()) {
+    const old = base[ev];
+    if (!old) continue; // 新設イベントは owner 差分の側で報告済み
+    for (const side of ['publishers', 'subscribers']) {
+      const oldSide = normalizeSide(old[side]);
+      const curSide = normalizeSide(topology[ev][side]);
+      for (const owner of Object.keys(curSide).sort()) {
+        if (!Object.prototype.hasOwnProperty.call(oldSide, owner)) continue; // 増えた owner
+        const change = classifyTransportChange(oldSide[owner], curSide[owner]);
+        if (change) out.push({ event: ev, side, owner, ...change });
+      }
+    }
+  }
+  return out;
+}
+
+/** transport 変化 1 件を違反メッセージへ整形する。**前進と逆行で文面を分ける。** */
+function fmtTransportChange(c, label) {
+  const from = `[${c.from.join(', ')}]`;
+  const to = `[${c.to.join(', ')}]`;
+  if (c.kind === 'regression') {
+    return (
+      `「${c.event}」の${label} ${c.owner} のトランスポートが**逆行**した: ${from} → ${to}\n` +
+      `      **ADR-0027 は Wolverine を採用し MassTransit を不採用と決めている。**\n` +
+      `      これは baseline の更新では通らない —— \`--update\` も逆行を含む表を書き込まない。\n` +
+      `      撤退が本当に要るなら \`--update --allow-regression\` を使い、IADR で根拠を残すこと。`
+    );
+  }
+  return (
+    `「${c.event}」の${label} ${c.owner} のトランスポートが変わった: ${from} → ${to}\n` +
+    `      **移行そのものは前進だが、baseline（正解表）の更新を忘れている。**\n` +
+    `      owner 名が変わらないため、従前の突合（owner 集合だけ）では素通りしていた（#921）。\n` +
+    `      意図した移行なら \`--update\` で表を更新し、**辺の全メンバが同時に移っているか**を確かめること。`
+  );
 }
 
 function loadBaseline() {
@@ -253,10 +349,14 @@ function loadBaseline() {
   }
 }
 
-/** baseline と突き合わせる。増減の**両方向**を違反にする。 */
+/**
+ * baseline と突き合わせる。増減の**両方向**を違反にする。
+ * **owner の増減に加え、両方に居る owner の transport 変化も違反にする**（#921 / IADR-0257）。
+ */
 function diffAgainstBaseline(topology, baseline) {
   const violations = [];
   const base = baseline && baseline.topology ? baseline.topology : {};
+  const changes = transportChanges(topology, baseline);
   const evs = [...new Set([...Object.keys(topology), ...Object.keys(base)])].sort();
 
   for (const ev of evs) {
@@ -288,6 +388,9 @@ function diffAgainstBaseline(topology, baseline) {
           `「${ev}」の${label}が増えた: ${added.join(', ')}\n` +
             `      baseline の更新を忘れている（増加を黙って許すと baseline が形骸化する）。`,
         );
+      }
+      for (const c of changes.filter((x) => x.event === ev && x.side === kind)) {
+        violations.push(fmtTransportChange(c, label));
       }
     }
   }
@@ -496,6 +599,72 @@ function selfTest() {
     assert.ok(Number.isInteger(countSubscribers(cur)), '合計が NaN になっていない');
   });
 
+  // ---- ★ トランスポート ratchet（#921 / IADR-0257。owner 名は同じままの変化） ----
+
+  const baseOf = (pub, sub) => ({ topology: { DocumentUpdated: { publishers: pub, subscribers: sub } } });
+  const curOf = (pub, sub) => ({ DocumentUpdated: { publishers: pub, subscribers: sub } });
+
+  ok('★ owner 名が同じでトランスポートだけ変わると違反になる（本 ratchet の中核）', () => {
+    // 従前はここが 0 件だった —— ownersOf() が Object.keys() で transport を捨てていたため。
+    const v = diffAgainstBaseline(
+      curOf({ a: ['wolverine'] }, { x: ['wolverine'] }),
+      baseOf({ a: ['masstransit'] }, { x: ['masstransit'] }),
+    );
+    assert.strictEqual(v.length, 2, '発行側と購読側で 1 件ずつ出る');
+    assert.ok(v[0].includes('発行元 a のトランスポートが変わった: [masstransit] → [wolverine]'));
+    assert.ok(v[1].includes('購読先 x のトランスポートが変わった'));
+  });
+
+  ok('★ 前進（masstransit → wolverine）は「baseline の更新を忘れている」として出す', () => {
+    const v = diffAgainstBaseline(curOf({ a: ['wolverine'] }, {}), baseOf({ a: ['masstransit'] }, {}));
+    assert.strictEqual(v.length, 1);
+    assert.ok(v[0].includes('baseline（正解表）の更新を忘れている'));
+    assert.ok(!v[0].includes('逆行'));
+  });
+
+  ok('★ 逆行（wolverine → masstransit）は「逆行」として出す（文面が違う）', () => {
+    const v = diffAgainstBaseline(curOf({ a: ['masstransit'] }, {}), baseOf({ a: ['wolverine'] }, {}));
+    assert.strictEqual(v.length, 1);
+    assert.ok(v[0].includes('トランスポートが**逆行**した: [wolverine] → [masstransit]'));
+    assert.ok(v[0].includes('ADR-0027'));
+  });
+
+  ok('★ 二重購読への拡張は前進 / MassTransit の再混入は逆行', () => {
+    assert.strictEqual(
+      classifyTransportChange(['masstransit'], ['masstransit', 'wolverine']).kind, 'forward',
+    );
+    assert.strictEqual(classifyTransportChange(['masstransit', 'wolverine'], ['wolverine']).kind, 'forward');
+    assert.strictEqual(
+      classifyTransportChange(['wolverine'], ['wolverine', 'masstransit']).kind, 'regression',
+    );
+    assert.strictEqual(classifyTransportChange(['masstransit', 'wolverine'], ['masstransit']).kind, 'regression');
+  });
+
+  ok('★ トランスポート不明・順序違いは変化としない（旧 baseline で一斉に赤くしない）', () => {
+    assert.strictEqual(classifyTransportChange([], ['wolverine']), null);
+    assert.strictEqual(classifyTransportChange(['masstransit'], []), null);
+    assert.strictEqual(classifyTransportChange(['wolverine', 'masstransit'], ['masstransit', 'wolverine']), null);
+    // 旧形式（owner の配列）の baseline は transport を持たないので保留になる。
+    const legacy = { topology: { DocumentUpdated: { publishers: ['a'], subscribers: ['x'] } } };
+    assert.deepStrictEqual(
+      diffAgainstBaseline(curOf({ a: ['wolverine'] }, { x: ['wolverine'] }), legacy), [],
+    );
+  });
+
+  ok('★ owner の増減とトランスポート変化を二重報告しない', () => {
+    // a が消えて b が増えた。b は baseline に居ないので transport の突合対象にしない。
+    const v = diffAgainstBaseline(curOf({ b: ['wolverine'] }, {}), baseOf({ a: ['masstransit'] }, {}));
+    assert.strictEqual(v.length, 2);
+    assert.ok(v[0].includes('発行元が減った'));
+    assert.ok(v[1].includes('発行元が増えた'));
+    assert.ok(!v.some((m) => m.includes('トランスポートが')));
+  });
+
+  ok('★ transportChanges は baseline に無いイベントを触らない（新設は owner 差分が報告する）', () => {
+    assert.deepStrictEqual(transportChanges(curOf({ a: ['wolverine'] }, {}), { topology: {} }), []);
+    assert.deepStrictEqual(transportChanges(curOf({ a: ['wolverine'] }, {}), null), []);
+  });
+
   ok('発行元が居ないイベントは判定しない（購読 0 件の孤児と同じ扱い）', () => {
     assert.deepStrictEqual(
       transportMismatches({ IngestionCompleted: { publishers: {}, subscribers: { x: ['wolverine'] } } }),
@@ -550,6 +719,24 @@ function main() {
   }
 
   if (argv.includes('--update')) {
+    // 🔴 ratchet の向き（#921 / IADR-0257）: 逆行を含む表は書き込まない。
+    // これが無いと「逆行の指摘は --update 1 回で消える」ことになり、ADR-0027 の制約が溶ける。
+    const regressions = transportChanges(topology, loadBaseline()).filter((c) => c.kind === 'regression');
+    if (regressions.length > 0 && !argv.includes('--allow-regression')) {
+      console.error(
+        `[check-event-topology] 逆行（Wolverine → MassTransit）を含む表は書き込まない: ${regressions.length} 件`,
+      );
+      for (const c of regressions) {
+        console.error(
+          `  - ${c.event} / ${c.side} / ${c.owner}: [${c.from.join(', ')}] → [${c.to.join(', ')}]`,
+        );
+      }
+      console.error(
+        '  ADR-0027 は Wolverine を採用し MassTransit を不採用と決めている。\n' +
+          '  撤退が本当に必要なら --allow-regression を明示し、IADR で根拠を残すこと。',
+      );
+      process.exit(1);
+    }
     fs.writeFileSync(
       BASELINE,
       `${JSON.stringify(
@@ -560,7 +747,10 @@ function main() {
             ' 各 owner の値は**トランスポート**（masstransit / wolverine）である。' +
             '購読者が発行側と 1 つもトランスポートを共有していなければ、その購読者は 1 通も' +
             '受け取れないため違反にする（部分移行の検出。#455 Phase 0 / U2）。' +
-            '二重購読（両方で待つ）は移行手順なので違反にしない。',
+            '二重購読（両方で待つ）は移行手順なので違反にしない。' +
+            ' **トランスポートの変化そのものも突合する**（#921 / IADR-0257）。' +
+            '前進（masstransit → wolverine）は本ファイルの更新を促し、' +
+            '逆行（wolverine → masstransit）は --update でも書き込まない（--allow-regression が要る）。',
           topology,
         },
         null,
@@ -611,4 +801,5 @@ if (require.main === module) main();
 module.exports = {
   buildTopology, discoverEvents, findPublishers, findSubscribers, diffAgainstBaseline,
   transportMismatches, transportsOfFile, normalizeSide, ownersOf, countSubscribers, ownerOf, isTestPath,
+  classifyTransportChange, transportChanges, normalizeTransports,
 };

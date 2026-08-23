@@ -10,9 +10,9 @@ namespace GraphService.Api.Tests;
 
 // FR-18, ADR-0033 決定 7・10: AI 提案の承認・却下（#914）。
 //
-// **覆うのは FR-18 である。** 一覧を消費する画面は未実装でテスト仕様書も無いため、
-// 画面の ID をここから参照しない（参照すると「画面の受け入れ基準を試験している」と
-// 主張することになり、逆方向のトレーサビリティ検査が正しく止める）。
+// **［2026-08-23 追記 / #918］SC-21（AI 提案一覧）の実装に伴い、一覧の口が画面の受け入れ基準を
+// 直接支えるようになったため、一覧に関するテストは SC-21 も参照する。** 承認・却下の状態遷移
+// （#914 の射程）は従来どおり FR-18 だけを参照する。テスト仕様書は `docs/tests/SC-21_*.md`。
 public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly TestWebApplicationFactory _factory;
@@ -203,5 +203,107 @@ public class AiSuggestionEndpointsTests : IClassFixture<TestWebApplicationFactor
         approve.Should().NotBeEmpty();
         approve.Should().OnlyContain(r => r.Contains("{id:guid}", StringComparison.Ordinal),
             "id を取らない承認の口は、実質の一括承認になり得る");
+    }
+
+    // ---- #918（SC-21 AI 提案一覧）が要求する一覧の形 ----
+
+    private async Task<Guid> SeedTagAsync(Guid document, string tagValue, string conf = "internal")
+    {
+        var s = AiSuggestion.CreateTag(document, tagValue, "根拠", DateTimeOffset.UtcNow);
+        await _factory.SeedAsync(db =>
+        {
+            db.Documents.Add(Doc(document, conf));
+            db.AiSuggestions.Add(s);
+            return Task.CompletedTask;
+        });
+        return s.Id;
+    }
+
+    // FR-18, SC-21 主要素 1: 一覧は**両端の文書名**を運ぶ。ID だけでは「提案の内容」列を描けない。
+    [Fact]
+    public async Task The_listing_carries_both_endpoint_titles()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var source = Guid.NewGuid();
+        var target = Guid.NewGuid();
+        await SeedLinkAsync(source, target);
+
+        var items = await ListAsync("?state=pending&kind=link");
+
+        var row = items.Single(i => i.SourceDocumentId == source);
+        row.SourceDocumentTitle.Should().Be($"doc-{source:N}");
+        row.TargetDocumentTitle.Should().Be($"doc-{target:N}");
+    }
+
+    // FR-18, SC-21: タグ提案は終点を持たない。**終点の名前は null であって空文字ではない**
+    // （空文字だと「名前の無い文書がある」と読める）。
+    [Fact]
+    public async Task A_tag_suggestion_carries_no_target_title()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var document = Guid.NewGuid();
+        await SeedTagAsync(document, "経理");
+
+        var items = await ListAsync("?state=pending&kind=tag");
+
+        var row = items.Single(i => i.SourceDocumentId == document);
+        row.SourceDocumentTitle.Should().Be($"doc-{document:N}");
+        row.TargetDocumentTitle.Should().BeNull();
+        row.TagValue.Should().Be("経理");
+    }
+
+    // FR-18, SC-21 入力/バリデーション: 状態フィルタの 4 値目「すべて」。
+    //
+    // 🔴 **陽性対照と対で置く** —— 既定（pending）でも同じ件数が返る実装だと、
+    // 「すべてが返る」だけを見るテストは緑のまま通る。
+    [Fact]
+    public async Task State_all_returns_every_state_while_the_default_returns_only_pending()
+    {
+        _factory.ScopeProvider = _ => InternalOnly();
+        var pendingSource = Guid.NewGuid();
+        await SeedLinkAsync(pendingSource, Guid.NewGuid());
+        var approvedSource = Guid.NewGuid();
+        var (approvedId, _) = await SeedLinkAsync(approvedSource, Guid.NewGuid());
+        await _factory.CreateClient().PostAsync($"/graph/suggestions/{approvedId}/approve", null,
+            TestContext.Current.CancellationToken);
+
+        var defaults = await ListAsync("");
+        var all = await ListAsync("?state=all");
+
+        // 陽性対照: 既定は pending だけを返す。
+        defaults.Should().Contain(i => i.SourceDocumentId == pendingSource);
+        defaults.Should().NotContain(i => i.SourceDocumentId == approvedSource,
+            "既定は pending であり、承認済みは含まれない");
+        // 本題: すべてを返す。
+        all.Should().Contain(i => i.SourceDocumentId == pendingSource);
+        all.Should().Contain(i => i.SourceDocumentId == approvedSource,
+            "『すべて』は状態の絞りを外す");
+    }
+
+    // 🔴 `all` は**フィルタの解除**であって状態の値ではない。永続層へ書ける状態にしない。
+    [Fact]
+    public void All_is_not_a_persistable_state()
+    {
+        SuggestionState.IsValid(GraphService.Api.Foundation.Endpoints.AiSuggestionEndpoints.AnyState)
+            .Should().BeFalse("all を状態の値集合へ入れると、行の State 列へ書けてしまう");
+    }
+
+    // 値域の検査は生きている（`all` を通したことで穴が開いていない）。**陽性対照の対**。
+    [Fact]
+    public async Task An_unknown_state_is_still_rejected()
+    {
+        var res = await _factory.CreateClient()
+            .GetAsync("/graph/suggestions/?state=maybe", TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    private async Task<List<AiSuggestionDto>> ListAsync(string query)
+    {
+        var res = await _factory.CreateClient()
+            .GetAsync($"/graph/suggestions/{query}", TestContext.Current.CancellationToken);
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        return (await res.Content.ReadFromJsonAsync<List<AiSuggestionDto>>(
+            TestContext.Current.CancellationToken))!;
     }
 }

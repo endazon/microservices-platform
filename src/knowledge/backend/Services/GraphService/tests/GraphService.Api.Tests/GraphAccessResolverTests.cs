@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using AwesomeAssertions;
+using GraphService.Api.Foundation.Ports;
 using GraphService.Api.Foundation.Services;
 using Microsoft.AspNetCore.Http;
 
@@ -30,7 +31,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError)));
 
-        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
+        var scope = await resolver.ResolveAsync(Ctx(), GraphAccessAction.Read, TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
         scope.AllowedFilters.Should().BeEmpty();
@@ -42,7 +43,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => throw new HttpRequestException("refused")));
 
-        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
+        var scope = await resolver.ResolveAsync(Ctx(), GraphAccessAction.Read, TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -53,7 +54,7 @@ public class GraphAccessResolverTests
         var resolver = new GraphAccessResolver(
             new StubHttpClientFactory(_ => throw new TaskCanceledException("timeout")));
 
-        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
+        var scope = await resolver.ResolveAsync(Ctx(), GraphAccessAction.Read, TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -67,7 +68,7 @@ public class GraphAccessResolverTests
                 Content = new StringContent("null", System.Text.Encoding.UTF8, "application/json"),
             }));
 
-        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
+        var scope = await resolver.ResolveAsync(Ctx(), GraphAccessAction.Read, TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeFalse();
     }
@@ -87,12 +88,38 @@ public class GraphAccessResolverTests
             };
         }));
 
-        var scope = await resolver.ResolveAsync(Ctx(), TestContext.Current.CancellationToken);
+        var scope = await resolver.ResolveAsync(Ctx(), GraphAccessAction.Read, TestContext.Current.CancellationToken);
 
         scope.Granted.Should().BeTrue();
         captured.Should().NotBeNull();
         var body = await captured!.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
         body.Should().Contain("clearance").And.Contain("department");
+    }
+
+    // 🔴 #993, IADR-0272 決定 4: **要求本文へ action が実際に載る。**
+    // 載らなければ /authz/scope は既定の read を解決し、書き込み経路が読み取り権限で通る。
+    [Theory]
+    [InlineData(GraphAccessAction.Read, "read")]
+    [InlineData(GraphAccessAction.Write, "write")]
+    public async Task Sends_the_requested_action_in_the_scope_request(string action, string expected)
+    {
+        HttpRequestMessage? captured = null;
+        var resolver = new GraphAccessResolver(new StubHttpClientFactory(req =>
+        {
+            captured = req;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"userId":"test-user","allowedFilters":[],"granted":true}""",
+                    System.Text.Encoding.UTF8, "application/json"),
+            };
+        }));
+
+        await resolver.ResolveAsync(Ctx(), action, TestContext.Current.CancellationToken);
+
+        var body = await captured!.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("action").GetString().Should().Be(expected);
     }
 
     private sealed class StubHttpClientFactory(Func<HttpRequestMessage, HttpResponseMessage> respond)

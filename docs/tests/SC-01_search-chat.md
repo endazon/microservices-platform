@@ -3,7 +3,7 @@ title: SC-01 検索／チャット質問画面 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-22
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -88,13 +88,13 @@ issues: [#502, #539]
 | --- | --- | --- |
 | E-1 | 未認証で `/ask` | `/login` へ誘導（`?from=` 保持） |
 
-**限界**: 認証済みの導線は E2E で実走できない。トークンは `InMemoryWebStorage` に保持され
-（`foundation/auth/authConfig.ts`）、外部から注入できないためである。認証済みの導線は
+**限界**: 認証済みの導線は E2E で実走できない。セッションは BFF（認可サーバとの往復）で成立し、
+プレビュー環境にはどちらも無いためである。認証済みの導線は
 **導線テスト**（`searchFlow.test.tsx`。3 ルートを 1 本のルータへ載せる）が担う。
 
 ## 対象範囲フィルタ（#539 / 裁定 Q1・Q3・Q9）
 
-**実装は `features/scope-filter/scopeSelection.test.ts`（7 件）と `ScopeFilter.test.tsx`（8 件）。
+**実装は `features/scope-filter/types/scopeSelection.test.ts`（7 件）と `features/scope-filter/components/ScopeFilter.test.tsx`（8 件）。
 AI 分析ダッシュボードと共有する部品なので、テストも 1 か所に置く。**
 
 | # | 確かめること | 実装 |

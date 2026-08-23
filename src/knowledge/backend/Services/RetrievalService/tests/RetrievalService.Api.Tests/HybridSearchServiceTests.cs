@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Knowledge.Contracts.Dtos;
+using Microsoft.Extensions.Logging.Abstractions;
 using Platform.Shared.Contracts.Dtos;
 using RetrievalService.Api.Foundation.Ports;
 using RetrievalService.Api.Foundation.Services;
@@ -33,6 +34,13 @@ internal sealed class RecordingVectorStore : IVectorStore
         return Task.FromResult(KeywordResults);
     }
 
+    // FR-04, FR-17, #969: 二段検索の後段（文書 ID 制約つき検索）。本スタブは検索モードの分岐だけを
+    // 観測する目的であり、この口は呼ばれない（呼ばれたら空を返す）。
+    public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
+        float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
+        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult(new List<SearchResultDto>());
+
     public Task<List<string>> ListAttributeValuesAsync(
         string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
         => Task.FromResult<List<string>>([]);
@@ -51,6 +59,28 @@ internal sealed class CountingEmbeddingService : IEmbeddingService
         Calls++;
         return Task.FromResult(new[] { 0.1f, 0.2f });
     }
+}
+
+// FR-03, ADR-0016, #995: 埋め込みが得られない状態のスタブ。
+// `/embed` は送信拒否（fail-closed）・次元不整合・呼び出し失敗のいずれでも
+// **200 ＋ 空ベクトル（Embedded=false）** を返す契約であり、本スタブはその戻り値を再現する。
+internal sealed class EmptyVectorEmbeddingService : IEmbeddingService
+{
+    public int Calls { get; private set; }
+
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+    {
+        Calls++;
+        return Task.FromResult(Array.Empty<float>());
+    }
+}
+
+// FR-03, #995: **後段が本当に壊れている**状態のスタブ（ゲートウェイへ到達できない等）。
+// 縮退（空ベクトル）と区別するために置く。
+internal sealed class ThrowingEmbeddingService : IEmbeddingService
+{
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+        => throw new HttpRequestException("llm gateway unreachable");
 }
 
 // FR-03, UC-01: ハイブリッド検索の核 — Reciprocal Rank Fusion ロジックの単体テスト
@@ -157,7 +187,7 @@ public class HybridSearchServiceTests
             KeywordResults = keywordResults ?? [Hit(Guid.NewGuid())],
         };
         var embed = new CountingEmbeddingService();
-        return (new HybridSearchService(store, embed), store, embed);
+        return (new HybridSearchService(store, embed, NullLogger<HybridSearchService>.Instance), store, embed);
     }
 
     // 既定（Mode 未指定）は従来どおりハイブリッド＝両系統を呼ぶ（後方互換）。
@@ -390,5 +420,276 @@ public class HybridSearchServiceTests
 
         results.Should().HaveCount(3);
         results[0].UpdatedAt.Should().Be(At(1, 12), "最も新しい 3 件が返る");
+    }
+
+    // --- FR-03, SC-01, #995: 埋め込みが得られないときの縮退（統合スタックの段 11 が 500 になっていた） ---
+    //
+    // 🔴 **空ベクトルを後段（ベクトルDB）へ渡さない。** 実装（Qdrant）は次元付きコレクションへ
+    // 0 次元のクエリを投げると `RpcException` を返し、`/search` は本文なしの 500 になっていた。
+    // `InMemoryVectorStore` / `RecordingVectorStore` は `queryVector` を参照しないため、
+    // **「ベクトル系統を呼んだかどうか」でしか観測できない**（[[IADR-0014]] と同型の死角）。
+
+    private static (HybridSearchService svc, RecordingVectorStore store) NewServiceWith(
+        IEmbeddingService embed, List<SearchResultDto>? keywordResults = null)
+    {
+        var store = new RecordingVectorStore
+        {
+            VectorResults = [Hit(Guid.NewGuid())],
+            KeywordResults = keywordResults ?? [Hit(Guid.NewGuid())],
+        };
+        return (new HybridSearchService(store, embed, NullLogger<HybridSearchService>.Instance), store);
+    }
+
+    // FR-03, SC-01, #995: hybrid で埋め込みが空なら、ベクトル系統を**呼ばず**全文だけで続行する。
+    // 全文の結果は残る（「埋め込めない＝全滅」にしない）。
+    [Fact]
+    public async Task Hybrid_EmptyQueryEmbedding_SkipsVectorSystemAndKeepsKeywordResults()
+    {
+        var keywordHit = Hit(Guid.NewGuid());
+        var (svc, store) = NewServiceWith(new EmptyVectorEmbeddingService(), keywordResults: [keywordHit]);
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted), TestContext.Current.CancellationToken);
+
+        store.VectorCalls.Should().Be(0, "0 次元のクエリをベクトルDB へ渡すと RpcException になる（#995 の 500）");
+        store.KeywordCalls.Should().Be(1);
+        results.Select(r => r.ChunkId).Should().Equal(new[] { keywordHit.ChunkId }, "全文の結果は残る");
+    }
+
+    // FR-03, SC-01, #995: semantic で埋め込みが空なら、使える系統が無いので 0 件で返す。
+    // **全文へ振り替えない**（利用者が選んだモードを勝手に変えない）。
+    [Fact]
+    public async Task Semantic_EmptyQueryEmbedding_ReturnsEmptyWithoutQueryingEitherSystem()
+    {
+        var (svc, store) = NewServiceWith(new EmptyVectorEmbeddingService());
+
+        var results = await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted, SearchModes.Semantic), TestContext.Current.CancellationToken);
+
+        results.Should().BeEmpty();
+        store.VectorCalls.Should().Be(0);
+        store.KeywordCalls.Should().Be(0, "semantic を全文へ振り替えない");
+    }
+
+    // FR-03, SC-01, #995: 🔴 **後段の故障は潰さない。** ゲートウェイへ到達できない場合は例外が伝播し、
+    // `/search` は 500 のままである（[[IADR-0256]] 決定 3）。200 ＋ 空へ縮退させると、
+    // 後段が死んでいても検索は緑に見えるようになる。
+    [Fact]
+    public async Task Hybrid_EmbeddingBackendFailure_PropagatesAndIsNotSwallowed()
+    {
+        var (svc, _) = NewServiceWith(new ThrowingEmbeddingService());
+
+        var act = async () => await svc.SearchAsync(
+            new SearchRequest("q", 10, null, Granted), TestContext.Current.CancellationToken);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+    }
+}
+
+// --- FR-03, UC-01, #448: 検索の回帰評価セット（代表クエリ × 期待文書）--------------
+//
+// **なぜ要るか。** 既存のテストは RRF の性質（両系統出現が上位・降順・取りこぼし無し）を
+// **合成した 1〜2 件のヒットで**確かめており、**「実際の順位がどう変わるか」を固定していない**。
+// 融合の定数（`RrfK`）・融合の対象（どちらの系統を何位まで見るか）・並び替えの位置を変えると、
+// 性質のテストは緑のまま**順位だけが静かに劣化する**。
+//
+// **固定するもの** —— 固定コーパス（5 文書）× 代表クエリ（3 本）× 期待文書。
+// 期待は 3 段で持つ:
+//   ① 1 位が期待文書であること（最も強い要求）
+//   ② 期待関連文書がすべて上位 3 件に入ること（recall@3 = 1.0）
+//   ③ 融合後の上位 3 件の**並びそのもの**（golden。①②が緑でも順位が動けば落ちる）
+//
+// 🔴 **対象外**: チャンク化（IngestionService の責務であり本サービスにコードが無い）と、
+// 実埋め込みモデルによる nDCG@10 の実測（実配備が要る。#336）。本セットが検知するのは
+// **検索サービス内の順位付け（融合・並び順・候補幅）の回帰**である。
+internal sealed class EvaluationCorpusStore(IReadOnlyList<EvaluationCorpusStore.Doc> docs) : IVectorStore
+{
+    internal sealed record Doc(string Title, string Text, float[] Vector)
+    {
+        public Guid ChunkId { get; } = Guid.NewGuid();
+        public Guid DocumentId { get; } = Guid.NewGuid();
+    }
+
+    // 意味検索の代理。**実際に `queryVector` を見る**（コサイン類似度で採点する）。
+    // `RecordingVectorStore` / `InMemoryVectorStore.SearchAsync` は `queryVector` を見ないため、
+    // 順位の回帰は原理的に観測できない（[[IADR-0014]] と同型の死角）。
+    public Task<List<SearchResultDto>> SearchAsync(
+        float[] queryVector, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult(docs
+            .Select(d => (Doc: d, Score: Cosine(queryVector, d.Vector)))
+            .OrderByDescending(x => x.Score)
+            .Take(topK)
+            .Select(x => Result(x.Doc, x.Score))
+            .ToList());
+
+    // 全文検索の代理。語句の一致数で採点する（一致 0 件は返さない＝実際の全文検索と同じ）。
+    public Task<List<SearchResultDto>> KeywordSearchAsync(
+        string query, int topK, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+    {
+        var terms = query.Split([' ', '　'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return Task.FromResult(docs
+            .Select(d => (Doc: d, Hits: terms.Count(t => d.Text.Contains(t, StringComparison.OrdinalIgnoreCase))))
+            .Where(x => x.Hits > 0)
+            .OrderByDescending(x => x.Hits)
+            .Take(topK)
+            .Select(x => Result(x.Doc, x.Hits))
+            .ToList());
+    }
+
+    private static SearchResultDto Result(Doc d, float score) =>
+        new(d.ChunkId, d.DocumentId, d.Title, d.Text, score, $"s3://docs/{d.DocumentId}.md", new(), []);
+
+    private static float Cosine(float[] a, float[] b)
+    {
+        if (a.Length == 0 || a.Length != b.Length)
+            return 0f;
+        double dot = 0, na = 0, nb = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            dot += (double)a[i] * b[i];
+            na += (double)a[i] * a[i];
+            nb += (double)b[i] * b[i];
+        }
+        return na == 0 || nb == 0 ? 0f : (float)(dot / (Math.Sqrt(na) * Math.Sqrt(nb)));
+    }
+
+    public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
+        float[] queryVector, int topK, IReadOnlyCollection<Guid> documentIds,
+        IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult(new List<SearchResultDto>());
+
+    public Task<List<string>> ListAttributeValuesAsync(
+        string payloadKey, IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)
+        => Task.FromResult<List<string>>([]);
+
+    public Task UpsertAsync(ChunkPayload chunk, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task DeleteByDocumentAsync(Guid documentId, CancellationToken ct = default) => Task.CompletedTask;
+}
+
+// 評価セットのクエリ埋め込み。**クエリ文ごとに固定のベクトル**を返す（実モデルを使わずに
+// 意味検索の順位を決定論にするため）。未登録のクエリは零ベクトル＝どの文書とも似ていない。
+internal sealed class FixedQueryEmbeddingService(IReadOnlyDictionary<string, float[]> vectors) : IEmbeddingService
+{
+    public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+        => Task.FromResult(vectors.TryGetValue(text, out var v) ? v : [0f, 0f, 0f]);
+}
+
+// FR-03, UC-01, #448: 検索の回帰評価セット。
+public class SearchRelevanceRegressionSet
+{
+    private static readonly AccessScope Granted = new([], true);
+
+    // 固定コーパス（投入順が同点時の並びを決めるため、順序も固定の一部である）。
+    private const string Expense = "経費精算規程";
+    private const string Travel = "出張旅費マニュアル";
+    private const string Attendance = "勤怠管理ガイド";
+    private const string Security = "情報セキュリティ方針";
+    private const string AccountingOps = "経理システム操作手順";
+
+    private static EvaluationCorpusStore.Doc[] Corpus() =>
+    [
+        new(Expense, "経費 精算 申請 経理 提出 規程", [1f, 0f, 0f]),
+        new(Travel, "出張 旅費 交通費 宿泊 手当", [0.9f, 0.44f, 0f]),
+        new(Attendance, "勤怠 打刻 休暇 申請", [0f, 1f, 0f]),
+        new(Security, "情報 セキュリティ 方針 遵守", [0f, 0f, 1f]),
+        new(AccountingOps, "経理 システム 操作 手順", [0.6f, 0f, 0.8f]),
+    ];
+
+    // 代表クエリ（クエリ文 → 固定のクエリ埋め込み）。
+    private static readonly Dictionary<string, float[]> QueryVectors = new()
+    {
+        ["経費 精算"] = [1f, 0f, 0f],
+        ["勤怠 打刻 休暇"] = [0f, 1f, 0f],
+        ["経理 手順"] = [0.6f, 0f, 0.8f],
+    };
+
+    // 評価データ（正本）: クエリ / 1 位に来るべき文書 / 上位 3 件に入るべき関連文書 /
+    // 上位 3 件に入ってはならない文書。**ここだけを直せば 3 つの観点すべてが追随する。**
+    //
+    // 「経理 手順」は **両系統が見つけた文書が、片系統の高スコア文書より上位に来る**代表例である。
+    // `経費精算規程` はベクトル類似度 0.6 で `情報セキュリティ方針`（0.8）に負けるが、
+    // 全文側にも現れるため融合後は上位に来る。融合をやめると 1 位も recall@3 も落ちる。
+    private static readonly (string Query, string Top, string[] Relevant, string[] Unrelated)[] Cases =
+    [
+        ("経費 精算", Expense, [Expense], [Attendance, Security]),
+        ("勤怠 打刻 休暇", Attendance, [Attendance], [Security, AccountingOps]),
+        ("経理 手順", AccountingOps, [AccountingOps, Expense], [Attendance]),
+    ];
+
+    public static TheoryData<string, string> TopHitCases()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var c in Cases) data.Add(c.Query, c.Top);
+        return data;
+    }
+
+    public static TheoryData<string, string[]> RelevantCases()
+    {
+        var data = new TheoryData<string, string[]>();
+        foreach (var c in Cases) data.Add(c.Query, c.Relevant);
+        return data;
+    }
+
+    public static TheoryData<string, string[]> UnrelatedCases()
+    {
+        var data = new TheoryData<string, string[]>();
+        foreach (var c in Cases) data.Add(c.Query, c.Unrelated);
+        return data;
+    }
+
+    private static HybridSearchService NewService() =>
+        new(new EvaluationCorpusStore(Corpus()), new FixedQueryEmbeddingService(QueryVectors),
+            NullLogger<HybridSearchService>.Instance);
+
+    private static Task<List<SearchResultDto>> SearchAsync(string query) =>
+        NewService().SearchAsync(new SearchRequest(query, 3, null, Granted), TestContext.Current.CancellationToken);
+
+    // T-41: ① 代表クエリの 1 位が期待文書であること。
+    [Theory]
+    [MemberData(nameof(TopHitCases))]
+    public async Task 評価セットの1位が期待文書である(string query, string expectedTop)
+    {
+        var results = await SearchAsync(query);
+
+        results.Should().NotBeEmpty();
+        results[0].DocumentTitle.Should().Be(expectedTop, $"クエリ「{query}」の 1 位");
+    }
+
+    // T-42: ② 期待関連文書がすべて上位 3 件に入ること（recall@3 = 1.0）。
+    [Theory]
+    [MemberData(nameof(RelevantCases))]
+    public async Task 期待関連文書がすべて上位3件に入る(string query, string[] expectedRelevant)
+    {
+        var titles = (await SearchAsync(query)).Select(r => r.DocumentTitle).ToList();
+
+        titles.Should().Contain(expectedRelevant, $"クエリ「{query}」の recall@3");
+    }
+
+    // T-43: ③ 明らかに無関係な文書が上位 3 件に現れないこと（否定形）。
+    [Theory]
+    [MemberData(nameof(UnrelatedCases))]
+    public async Task 無関係文書は上位3件に現れない(string query, string[] unrelated)
+    {
+        var titles = (await SearchAsync(query)).Select(r => r.DocumentTitle).ToList();
+
+        titles.Should().NotIntersectWith(unrelated, $"クエリ「{query}」の上位 3 件");
+    }
+
+    // T-44: ④ 融合後の上位 3 件の**並びそのもの**（golden）。
+    // ①②③ が緑でも順位が動けば落ちる。リランク（融合の定数・候補幅・並び替えの位置）の
+    // 変更で劣化したことを、値の変化として PR の diff に現す。
+    [Fact]
+    public async Task 融合後の上位3件の並びが変わらない()
+    {
+        (await SearchAsync("経費 精算")).Select(r => r.DocumentTitle)
+            .Should().Equal(Expense, Travel, AccountingOps);
+
+        (await SearchAsync("勤怠 打刻 休暇")).Select(r => r.DocumentTitle)
+            .Should().Equal(Attendance, Travel, Expense);
+
+        // 全文にも現れる `経費精算規程` が、ベクトル類似度で上回る `情報セキュリティ方針` を抜く。
+        (await SearchAsync("経理 手順")).Select(r => r.DocumentTitle)
+            .Should().Equal(AccountingOps, Expense, Security);
     }
 }

@@ -17,5 +17,5 @@ import type {
 } from '../bff.schemas';
 
 
-export const getBffAuthMeResponseMock = (overrideResponse: Partial<Extract<BffIdentityDto, object>> = {}): BffIdentityDto => ({name: faker.string.alpha({length: {min: 10, max: 20}}), subject: faker.string.alpha({length: {min: 10, max: 20}}), roles: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), ...overrideResponse})
+export const getBffAuthMeResponseMock = (overrideResponse: Partial<Extract<BffIdentityDto, object>> = {}): BffIdentityDto => ({name: faker.string.alpha({length: {min: 10, max: 20}}), subject: faker.string.alpha({length: {min: 10, max: 20}}), roles: Array.from({ length: faker.number.int({min: 1, max: 10}) }, (_, i) => i + 1).map(() => (faker.string.alpha({length: {min: 10, max: 20}}))), logoutUrl: faker.helpers.arrayElement([faker.string.alpha({length: {min: 10, max: 20}}), null]), ...overrideResponse})
 

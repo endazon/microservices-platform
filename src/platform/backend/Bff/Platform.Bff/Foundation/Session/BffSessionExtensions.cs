@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using StackExchange.Redis;
 using System.Security.Claims;
@@ -36,6 +37,13 @@ public static class BffSessionExtensions
         // ── セッション実体の置き場（IADR-0251 決定 4）
         services.AddStackExchangeRedisCache(o => o.Configuration = options.RedisConnectionString);
         services.AddSingleton<RedisTicketStore>();
+
+        // ── ［3b］失効・refresh の処理系（IADR-0273）。TimeProvider は本番時計を既定にし、
+        // テストが差し替える（既に登録済みなら尊重する）。
+        services.AddHttpClient();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<SessionTokenRefresher>();
+        services.AddSingleton<BackchannelLogoutProcessor>();
 
         // ── DataProtection の鍵リング（IADR-0251 決定 5）
         //
@@ -107,6 +115,12 @@ public static class BffSessionExtensions
                     ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
                     return Task.CompletedTask;
                 };
+
+                // ── ［3b］アクセストークンの refresh（IADR-0273 決定 3）。
+                // セッション（30 日）はアクセストークン（分単位）より桁で長い。毎認証時に期限を見て
+                // 更新し、**refresh を拒まれたらその場でセッションを殺す**（無効化の第 2 の即時失効経路）。
+                o.Events.OnValidatePrincipal = ctx => ctx.HttpContext.RequestServices
+                    .GetRequiredService<SessionTokenRefresher>().ValidatePrincipalAsync(ctx);
             })
             .AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, o =>
             {
@@ -152,8 +166,64 @@ public static class BffSessionExtensions
                 o.Scope.Add("openid");
                 o.Scope.Add("profile");
                 o.Scope.Add("email");
-                // リフレッシュトークンを BFF 側に保持するため（ブラウザには一切出さない）。
-                o.Scope.Add("offline_access");
+                // 🔴 **`offline_access` は要求しない**（3a からの是正。IADR-0273 決定 3）。
+                // オフライントークンは **SSO セッションが終了しても生き残る** —— 「無効化・退職時に
+                // 全セッション即時失効」と**逆向き**の性質である。通常（セッション連動）の refresh token は
+                // Keycloak 側のセッション失効と同時に死ぬので、refresh 拒否 → セッション破棄の
+                // 失効経路（SessionTokenRefresher）がそのまま効く。code フローの confidential client には
+                // `offline_access` 無しでも refresh token が発行される（Keycloak の既定）。
+
+                // ── ［3b］Cookie セッションの principal にレルムロールを載せる（IADR-0273 決定 5）。
+                //
+                // 🔴 realm の `roles` クライアントスコープは、既定では realm_access を**アクセストークン
+                // にだけ**入れる（id_token / userinfo には入らない）。何もしないと Cookie 経路の
+                // `RequireRole` / `/bff/auth/me` のロールが**空**になり、管理画面が全員 403 になる。
+                // コード交換で受け取ったアクセストークン（**認可サーバから TLS 直で受けたもの**）から
+                // `realm_access` を principal へ複写する。展開そのものは既存の
+                // KeycloakRolesClaimsTransformation が毎リクエスト行う（複写はその入力を置くだけ）。
+                o.Events.OnTokenValidated = ctx =>
+                {
+                    var accessToken = ctx.TokenEndpointResponse?.AccessToken;
+                    if (string.IsNullOrEmpty(accessToken)
+                        || ctx.Principal?.Identity is not ClaimsIdentity identity
+                        || identity.HasClaim(c => c.Type == "realm_access"))
+                        return Task.CompletedTask;
+                    try
+                    {
+                        var jwt = new Microsoft.IdentityModel.JsonWebTokens.JsonWebToken(accessToken);
+                        if (jwt.TryGetClaim("realm_access", out var realmAccess))
+                            identity.AddClaim(new Claim("realm_access", realmAccess.Value));
+                    }
+                    catch (ArgumentException)
+                    {
+                        // 解析不能なら付与しない（fail-closed: ロール無しのまま通す）。
+                    }
+                    return Task.CompletedTask;
+                };
+
+                // ── ［3b］バックチャネルログアウトの受け口（IADR-0273 決定 2）。
+                //
+                // 🔴 フレームワーク既定の remote-signout 処理は「リクエストが運ぶ Cookie のセッション」
+                // しか消せない。認可サーバからの **サーバ間 POST（Cookie 無し・logout_token）** では
+                // **何も失効しない**ため、ここで処理を乗っ取り、logout_token を検証して
+                // **subject の全セッションをストアから削除する**。端点は増やさない
+                // （`/bff/*` の無認証端点を増やさない不変条件（check-bff-authz-docs）と整合させるため、
+                // 認証ハンドラの領分で処理する）。
+                o.Events.OnRemoteSignOut = async ctx =>
+                {
+                    var logoutToken = ctx.ProtocolMessage?.GetParameter("logout_token");
+                    if (string.IsNullOrEmpty(logoutToken))
+                        return; // front-channel 形（sid/iss のみ）は既定処理に委ねる。
+
+                    ctx.HandleResponse();
+                    var accepted = await ctx.HttpContext.RequestServices
+                        .GetRequiredService<BackchannelLogoutProcessor>()
+                        .ProcessAsync(logoutToken, ctx.HttpContext.RequestAborted);
+                    ctx.Response.StatusCode = accepted
+                        ? StatusCodes.Status200OK
+                        : StatusCodes.Status400BadRequest;
+                    ctx.Response.Headers.CacheControl = "no-store";
+                };
             });
 
         // 🔴 IADR-0251 決定 4: `SessionStore` を DI 経由で差し込む。

@@ -3,7 +3,7 @@ title: コンポーザビリティ（宣言的パイプライン構成による�
 type: functional-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -11,7 +11,7 @@ ids: [FR-14, FR-15]
 adrs: [ADR-0018]
 iadrs: [IADR-0027, IADR-0028]
 specs: [20260708_issue-102_composability-fixed-variable-separation, 20260708_issue-111_declarative-pipeline-config]
-issues: []
+issues: [#444]
 -->
 
 # 機能仕様書: コンポーザビリティ（宣言的パイプライン構成による組み替え）
@@ -44,7 +44,7 @@ issues: []
 | 項目 | 内容 |
 | --- | --- |
 | 入力 | `pipeline.json`（Git 管理。events / sources / steps）。Helm ConfigMap（`pipeline-config.yaml`）が `{"Pipeline": {...}}` 形のオーバレイへ変換し、`Pipeline__ConfigPath` で各サービスへ供給 |
-| 処理 | 起動時に `AddKnowledgePlatformPipelineConfig()` が宣言を読み込み、`AddKnowledgePlatformPipelineStep<TConsumer>()` が宣言に従いコンシューマを登録（`enabled: false` は購読・キューを生成しない） |
+| 処理 | 起動時に `AddPlatformPipelineConfig()` が宣言を読み込み、`AddPlatformPipelineStep<TConsumer>()` が宣言に従いコンシューマを登録（`enabled: false` は購読・キューを生成しない） |
 | 出力 | 宣言どおりの MassTransit トポロジ（購読・キュー）。実効構成は読み取り専用の構成情報 API で可視化 |
 | 業務ルール | 宣言と実装の不整合は起動時 fail-fast（下記） |
 
@@ -80,7 +80,7 @@ flowchart LR
 | --- | --- | --- |
 | スキーマ違反・接続性欠落・循環 | CI 失敗（マージ不可） | `validate-pipeline-config.js` |
 | 宣言と実装の名称・型不整合 | サービス起動失敗（fail-fast） | `PipelineExtensions` |
-| 宣言ファイル欠落（ローカル） | 既定配線で動作（警告ログ） | `AddKnowledgePlatformPipelineConfig` |
+| 宣言ファイル欠落（ローカル） | 既定配線で動作（警告ログ） | `AddPlatformPipelineConfig` |
 
 ## 受け入れ基準
 

@@ -68,11 +68,15 @@ export interface AttributeValuesResponse {
 }
 
 /**
- * FR-17: グラフのノード（文書単位）
+ * FR-17: グラフのノード（文書単位）。
+ * `isPrivateNote` は SC-18 の描き分け（組織文書＝円＋📄 / 個人資料＝角丸四角＋👤）のための
+ * 1 bit（ADR-0054 / #917）。値が付くのは ABAC 判定を通過した可視ノードだけであり、
+ * **doc_scope を持たない文書は組織文書（false）として返る**（ADR-0054 決定 5）。
  */
 export interface GraphNodeItem {
   documentId: string;
   title: string;
+  isPrivateNote?: boolean;
 }
 
 export type GraphEdgeItemProvenance = typeof GraphEdgeItemProvenance[keyof typeof GraphEdgeItemProvenance];
@@ -108,6 +112,43 @@ export interface EdgeTypeCatalogItem {
   layer: string;
   /** 対称な関係か（向きを持たないか） */
   isSymmetric: boolean;
+}
+
+/**
+ * FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
+ *
+ * **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
+ * 型を分けるとクライアント側で 2 経路に割れる。種別固有の欄は省略可である。
+ *
+ * 🔴 **本文指紋（却下解除の判定に使う内部状態）は公開面に出さない。**
+ *
+ * 🔴 **辺の型の表示名を持たない。** 名前は辞書（`/bff/graph/edge-types`）で解決し、
+ * 改名に追随させる（ADR-0033 決定 9）。ここへ焼き込むと改名後も古い名前を出し続ける。
+ */
+export interface AiSuggestion {
+  id: string;
+  /** link（リンク候補）/ tag（タグ候補） */
+  kind: string;
+  /** リンク提案では起点、タグ提案では対象文書。**どちらの種別でも必ず入る** */
+  sourceDocumentId: string;
+  /** リンク提案のみ */
+  targetDocumentId?: string | null;
+  /** リンク提案のみ。表示名は辺の型カタログで解決する */
+  edgeTypeId?: string | null;
+  /** タグ提案のみ。SC-09 のタグ辞書に整合する値であること */
+  tagValue?: string | null;
+  /** なぜ関連と判断したか（SC-21 主要素 6） */
+  rationale: string;
+  /** pending（承認待ち）/ approved（承認済み）/ rejected（却下） */
+  state: string;
+  /** 累積の却下回数 */
+  rejectedCount: number;
+  /** 再提示の理由。source / target / both のいずれか。**非 null なら再提示であり、 画面は固定文言を必ず添える**（ADR-0033 決定 10。理由の無い再提示を起こさない） */
+  reinstatedReason?: string | null;
+  /** 起点（タグ提案では対象）の文書名。SC-21 の「提案の内容」列が要る */
+  sourceDocumentTitle: string;
+  /** 終点の文書名。タグ提案では終点が無いため null である */
+  targetDocumentTitle?: string | null;
 }
 
 /**
@@ -340,6 +381,8 @@ export type AccessScopeRequestUserAttributes = {[key: string]: string};
 export interface AccessScopeRequest {
   userId: string;
   userAttributes: AccessScopeRequestUserAttributes;
+  /** ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。 `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で 従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、 書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を deny へ縮退させる）。 */
+  action?: string;
 }
 
 /**
@@ -770,7 +813,7 @@ export interface AbacConditionMap {[key: string]: string[]}
 export interface AbacPolicyDto {
   id: string;
   name: string;
-  /** `read` / `analyze` / `manage` */
+  /** `read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`） */
   action: string;
   userConditions: AbacConditionMap;
   documentConditions: AbacConditionMap;
@@ -813,7 +856,7 @@ export interface ValidatePolicyResponse {
  */
 export interface CreatePolicyRequest {
   name: string;
-  /** `read` / `analyze` / `manage` */
+  /** `read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`） */
   action: string;
   userConditions: AbacConditionMap;
   documentConditions: AbacConditionMap;
@@ -930,6 +973,8 @@ export interface BffIdentityDto {
   subject: string;
   /** 実効ロール */
   roles: string[];
+  /** ログアウト先（セッションの sid を含む）。sid を持たないセッションでは null */
+  logoutUrl?: string | null;
 }
 
 /**
@@ -1289,6 +1334,10 @@ returnUrl?: string;
 
 export type BffAuthLogoutParams = {
 /**
+ * セッションの sid。`/bff/auth/me` の `logoutUrl` が持つ値をそのまま使う
+ */
+sid: string;
+/**
  * ログアウト後の戻り先。**自サイト内のパスに限る**
  */
 returnUrl?: string;
@@ -1358,6 +1407,15 @@ hops?: number;
  * **未知の値・未指定は既定（distance）へ縮退する** —— 例外にしない。
  */
 by?: BffGraphNeighborsBy;
+/**
+ * SC-18 (#917): 辺の型フィルタ（型 ID のカンマ区切り。未指定・空 = 絞らない）。
+ * 🔴 **絞りはサーバ側で探索の入口に適用される**（planning#446）——クライアントで
+ * 打ち切り後に絞ると「上位 200 件のうち一致したもの」になり範囲が意図せず狭まる。
+ * 総数（totalNodes / totalEdges）もフィルタ後の母集合で数え直される。
+ * GUID として読めない要素は 400（`edge_type_filter_invalid`）。**実在しない型 ID は
+ * エラーにならず、単に 1 本も一致しない**（型辞書は公開済みの語彙であり秘匿対象ではない）。
+ */
+types?: string;
 };
 
 export type BffGraphNeighborsBy = typeof BffGraphNeighborsBy[keyof typeof BffGraphNeighborsBy];
@@ -1367,5 +1425,39 @@ export const BffGraphNeighborsBy = {
   distance: 'distance',
   updated: 'updated',
   degree: 'degree',
+} as const;
+
+export type BffGraphSuggestionsParams = {
+/**
+ * SC-21 (#918): 状態フィルタ。**未指定は `pending`（既定）**であり、`all` は絞りを外す。
+ * 🔴 **`all` は状態の値ではない** —— 永続層に `all` という状態は存在しない。
+ * 未知の値は 400（`invalid_state`）。**既定の補完も値域の検査も後段が一箇所で持つ**
+ * （BFF は透過するだけである）。
+ */
+state?: BffGraphSuggestionsState;
+/**
+ * SC-21 (#918): 種類フィルタ。未指定は絞らない（＝すべて）。
+ * 🔴 **リンク提案とタグ提案は同一の一覧に同居させる。画面を分けない**（FR-18）。
+ * 未知の値は 400（`invalid_kind`）。
+ */
+kind?: BffGraphSuggestionsKind;
+};
+
+export type BffGraphSuggestionsState = typeof BffGraphSuggestionsState[keyof typeof BffGraphSuggestionsState];
+
+
+export const BffGraphSuggestionsState = {
+  pending: 'pending',
+  approved: 'approved',
+  rejected: 'rejected',
+  all: 'all',
+} as const;
+
+export type BffGraphSuggestionsKind = typeof BffGraphSuggestionsKind[keyof typeof BffGraphSuggestionsKind];
+
+
+export const BffGraphSuggestionsKind = {
+  link: 'link',
+  tag: 'tag',
 } as const;
 

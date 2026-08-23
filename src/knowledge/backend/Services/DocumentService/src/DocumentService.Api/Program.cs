@@ -4,6 +4,7 @@ using Platform.Shared.Infrastructure.Foundation.Introspection;
 using DocumentService.Api.Foundation.Endpoints;
 using DocumentService.Api.Foundation.Persistence;
 using Platform.Shared.Infrastructure.Foundation.Extensions;
+using Platform.Shared.Infrastructure.Composable.Adapters.Storage;
 using MassTransit;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,6 +35,29 @@ builder.Services.AddOpenApi();
 var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? "Host=postgres;Port=5432;Database=document_svc;Username=kp;Password=kp";
 builder.Services.AddDbContext<DocumentDbContext>(opt => opt.UseNpgsql(connStr));
+
+// FR-21, ADR-0014/ADR-0015: 文書本文の直接受け入れ経路が本文を格納する先（MinIO）。
+// **バケットの作成（Bootstrap）はここでは行わない** —— 書き込み側の起動時保証は
+// ConversionService が担っており（`AddPlatformObjectStorageBootstrap`）、同じバケットを
+// 2 か所から作りにいく理由が無い。未設定の dev/test では縮退クライアントが登録される。
+builder.Services.AddPlatformObjectStorage(builder.Configuration);
+
+// FR-19, FR-20, FR-22, [[IADR-0270]]: 個人資料（private-note）と Obsidian 同期の中核。
+// - 監査ログ（同期・完全削除の「誰が・いつ・何件」。ADR-0037 決定 9）
+// - 通知の発火側（検知は本サービス・実体は NotificationService。受け口が入るまで送出失敗は
+//   エラーログに記録される）
+// - 定期処理（90 日 purge・版刈り取り・通知検知）
+builder.Services.AddSingleton<Platform.Shared.Infrastructure.Foundation.Audit.IAuditLogger,
+    Platform.Shared.Infrastructure.Foundation.Audit.AuditLogger>();
+builder.Services.AddHttpClient(
+    DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier.ClientName,
+    c => c.BaseAddress = new Uri(builder.Configuration["Services:NotificationService"]
+        ?? "http://notification-service:8080"));
+builder.Services.AddScoped<DocumentService.Api.Foundation.Ports.IPrivateNoteNotifier,
+    DocumentService.Api.Foundation.Services.HttpPrivateNoteNotifier>();
+builder.Services.AddScoped<DocumentService.Api.Foundation.Services.PrivateNoteMaintenanceService>();
+builder.Services.AddHostedService<
+    DocumentService.Api.Foundation.Services.PrivateNoteMaintenanceHostedService>();
 
 // ADR-0003（Superseded by ADR-0027・注記は #580）: MassTransit + RabbitMQ
 // FR-14, ADR-0018: 宣言的パイプライン構成（pipeline.json）。GitOps 配送された構成があれば読み込む。
@@ -79,6 +103,14 @@ app.MapOpenApi();
 app.MapDocumentEndpoints();
 // FR-09, SC-05, SC-09, #634: タグ辞書（IADR-0152 決定 1）。
 app.MapTagDictionaryEndpoints();
+// FR-19, FR-20, ADR-0036 D-06, IADR-0253 決定 4（段 4）: 文書の共有先（所有者のみ変更可）。
+app.MapDocumentShareEndpoints();
+// FR-19, SC-19: 個人資料のライフサイクル（一覧・作成・削除・復元・完全削除・露出・容量）。
+app.MapPrivateNoteEndpoints();
+// FR-20, SC-20: 同期端末とトークン（発行・再発行・失効）。
+app.MapSyncDeviceEndpoints();
+// FR-20, ADR-0037: Obsidian プラグイン向け同期プロトコル（同期トークン認証）。
+app.MapObsidianSyncEndpoints();
 
 app.Run();
 

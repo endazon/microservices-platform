@@ -37,3 +37,11 @@ ai-stock-trading/
 platform/frontend/src/foundation/api/generated/
 # IADR-0125 決定 4: Lingui のカタログも同じ理由（`i18n catalogs are up to date` と衝突。実測: 2 ファイル）。
 platform/frontend/src/foundation/i18n/locales/
+
+# --- Plop の雛形（ADR-0031 / IADR-0275・issue #493） --------------------------
+# `plop-templates/**/*.hbs` は **TS / TSX に Handlebars の差し込みを混ぜたもの**である。
+# Prettier は拡張子 `.hbs` を **glimmer（Ember のテンプレート）パーサ**で解釈するため、
+# 中身が TS/TSX であるこれらのファイルを整形対象に取ると壊す（`format:check` も落ちる）。
+# **「手で書かないもの」ではなく「Prettier が正しく解釈できない言語のファイル」としての除外である。**
+# 生成された **結果**（実ユニットの .ts / .tsx）は通常どおり整形ゲートの対象になる。
+*.hbs

@@ -20,13 +20,24 @@ public class TestAuthHandler(
     public const string SchemeName = "Test";
     public const string RolesHeader = "X-Test-Roles";
 
+    // FR-21, ADR-0036 D-02: 主体（`${current_user}`）を差し替えるヘッダ。
+    // 所有者ベースの動的束縛は**主体が変われば結果が変わる**ため、
+    // 「別の利用者として同じ文書 ID へ書き込む」（受け入れ基準 ⑧）を試すには主体を変えられる必要がある。
+    public const string UserHeader = "X-Test-User";
+    public const string DefaultUser = "test-user";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var roles = Request.Headers.TryGetValue(RolesHeader, out var header)
             ? header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : ["platform-admin"];
 
-        var claims = new List<Claim> { new(ClaimTypes.Name, "test-user") };
+        var user = Request.Headers.TryGetValue(UserHeader, out var userHeader)
+            && !string.IsNullOrWhiteSpace(userHeader.ToString())
+            ? userHeader.ToString()
+            : DefaultUser;
+
+        var claims = new List<Claim> { new(ClaimTypes.Name, user) };
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
         var identity = new ClaimsIdentity(claims, SchemeName);

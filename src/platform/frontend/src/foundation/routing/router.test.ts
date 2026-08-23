@@ -23,6 +23,8 @@ const PLANNED_ROUTES: ReadonlyArray<readonly [string, string]> = [
   ['SC-09', '/admin/abac'],
   ['SC-10', '/admin/ops'],
   ['SC-11', '/admin/config-viewer'],
+  // #918: SC-21 は既定の検索パラメータ（?state=pending）を持つが、木に載るのはパスだけである。
+  ['SC-21', '/ai-suggestions'],
 ];
 
 const fullPaths = () => Object.keys(router.routesByPath);
@@ -32,8 +34,11 @@ describe('route tree (05_screens §共通シェル のルートパス)', () => {
     expect(fullPaths()).toContain(path);
   });
 
-  it('mounts the authentication routes', () => {
-    expect(fullPaths()).toEqual(expect.arrayContaining(['/login', '/callback']));
+  it('mounts the login route and no SPA-side callback (BFF receives the OIDC callback)', () => {
+    // ADR-0032 / IADR-0273 / #439: コールバックは BFF（/bff/auth/callback）が受ける。
+    // SPA 側に /callback を復活させないこと（存在すると認可コードが SPA へ届く形に戻り得る）。
+    expect(fullPaths()).toContain('/login');
+    expect(fullPaths()).not.toContain('/callback');
   });
 
   it('keeps the old paths gone (they were not the planned ones)', () => {
@@ -102,7 +107,6 @@ describe('existence hiding: catch-all wiring (IADR-0009)', () => {
 
   it.each([
     ['/login', '認証導線'],
-    ['/callback', '認証導線'],
     ['/ask', 'ユニットの画面（SC-01）'],
     ['/admin/config-viewer', 'ユニットの画面（SC-11）'],
     ['/settings', '旧契約ブリッジ（AST）'],

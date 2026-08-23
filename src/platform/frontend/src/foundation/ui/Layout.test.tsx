@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { I18nProvider } from '@lingui/react';
+import { i18n } from '@lingui/core';
 import { RouterProvider } from '@tanstack/react-router';
-import type { User } from 'oidc-client-ts';
 import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
 // 実アプリのルータを使う（合成点のナビ登録もこの import の副作用で行われる）。
@@ -12,23 +13,14 @@ import { accountConsoleUrl } from './Layout';
 // Issue #136 / IADR-0035: ナビはユニットの登録から導出し、権限外の項目は描画しない（存在秘匿）。
 // 05_screens §共通シェル / IADR-0124 決定 6・7: ブランド表示名・4 グループ・ユーザーアイコン（→ SC-16）。
 
-function makeJwt(payload: unknown): string {
-  const b64url = (obj: unknown) =>
-    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `h.${b64url(payload)}.sig`;
-}
-
 /**
  * 共通シェルを実アプリのルータの上で描画する。
  * 既定の器は SC-04（純表示の画面）。存在秘匿の検証では未知パス・権限外パスを渡す。
  */
 async function renderLayout(roles: string[], path = '/wiki') {
-  const user = {
-    access_token: makeJwt({ realm_access: { roles } }),
-    profile: { preferred_username: 'tester' },
-  } as unknown as User;
   const value: AuthState = {
-    user,
+    // ADR-0032: 身元は /bff/auth/me の形（トークンは無い）。
+    user: { name: 'tester', subject: 'tester', roles },
     isAuthenticated: true,
     isLoading: false,
     login: async () => {},
@@ -45,12 +37,18 @@ async function renderLayout(roles: string[], path = '/wiki') {
       mutations: { retry: false },
     },
   });
+  // #788: 共通シェルは右レール AI チャットパネルを持ち、そこは `<Trans>` を使う。
+  // 実アプリ（`App.tsx`）と同じく `I18nProvider` で包む——包まないと
+  // 「useLingui hook was used without I18nProvider」でシェル全体が落ち、
+  // ナビの検証まで巻き添えになる（実測。`NotificationBell.test.tsx` と同じ作法）。
   const result = render(
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={value}>
-        <RouterProvider router={router} />
-      </AuthContext.Provider>
-    </QueryClientProvider>,
+    <I18nProvider i18n={i18n}>
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={value}>
+          <RouterProvider router={router} />
+        </AuthContext.Provider>
+      </QueryClientProvider>
+    </I18nProvider>,
   );
   // TanStack Router の初期描画は非同期（マッチの解決を待つ）。
   await act(async () => {

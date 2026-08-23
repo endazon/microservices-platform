@@ -22,6 +22,56 @@ public class InMemoryVectorStore : IVectorStore
         return Task.FromResult(results);
     }
 
+    // FR-04, FR-17, ADR-0035, #969: 文書 ID 集合に絞った意味検索（二段検索の後段）。
+    // **Qdrant 実装と同じ意味論**にする——文書 ID の制約は ABAC を置き換えず **AND** で重なり、
+    // 🔴 **空集合は「該当なし」であって「全件」ではない**（グラフが 0 件を返したときに全文書へ広げない）。
+    //
+    // 🔴 **本口は `queryVector` を実際に見る**（コサイン類似度で採点し降順に並べる）。
+    // 上の `SearchAsync` は `queryVector` を参照せずスコア `0.9f` を返す作りであり、
+    // **ベクトル側の欠陥がテストで緑のまま通り抜ける**（#995 で実際に起きた）。
+    // 二段検索の後段はチャンクの `Score` そのものを出典へ載せるため、
+    // ここで「見ているふり」をすると #970 の順位検証が空振りする。
+    // 空ベクトル・零ベクトル・次元不一致はスコア 0 とする（#995 の縮退で空ベクトルが渡り得るため、
+    // 例外にしない）。
+    public Task<List<SearchResultDto>> SearchWithinDocumentsAsync(float[] queryVector, int topK,
+        IReadOnlyCollection<Guid> documentIds, IReadOnlyList<AttributeFilter>? filters,
+        CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return Task.FromResult(new List<SearchResultDto>());
+
+        var scope = documentIds.ToHashSet();
+
+        var results = _store
+            .Where(c => scope.Contains(c.DocumentId) && MatchesFilters(c, filters))
+            .Select(c => (Chunk: c, Score: CosineSimilarity(queryVector, c.Vector)))
+            .OrderByDescending(x => x.Score)
+            .Take(topK)
+            .Select(x => new SearchResultDto(x.Chunk.ChunkId, x.Chunk.DocumentId, x.Chunk.DocumentTitle,
+                x.Chunk.Text, x.Score, x.Chunk.MarkdownUri, x.Chunk.Attributes, x.Chunk.Tags,
+                x.Chunk.UpdatedAt))
+            .ToList();
+
+        return Task.FromResult(results);
+    }
+
+    // FR-04, #969: コサイン類似度。次元が違う／ノルムが 0 のときは 0（比較不能を「似ていない」とする）。
+    private static float CosineSimilarity(float[] a, float[] b)
+    {
+        if (a.Length == 0 || a.Length != b.Length)
+            return 0f;
+
+        double dot = 0, normA = 0, normB = 0;
+        for (var i = 0; i < a.Length; i++)
+        {
+            dot += (double)a[i] * b[i];
+            normA += (double)a[i] * a[i];
+            normB += (double)b[i] * b[i];
+        }
+
+        return normA == 0 || normB == 0 ? 0f : (float)(dot / (Math.Sqrt(normA) * Math.Sqrt(normB)));
+    }
+
     // FR-03: 全文検索（語句オーバーラップによる簡易キーワード一致。テスト/ローカル用）
     public Task<List<SearchResultDto>> KeywordSearchAsync(string query, int topK,
         IReadOnlyList<AttributeFilter>? filters, CancellationToken ct = default)

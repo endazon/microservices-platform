@@ -1,17 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import type { User } from 'oidc-client-ts';
 import { AuthContext } from './AuthContext';
 import type { AuthState } from './AuthContext';
 import { RequireRole } from './RequireRole';
 
 // IADR-0035 / IADR-0009: 権限外は NotFound（存在秘匿）。読み込み中は中立表示。
-
-function makeJwt(payload: unknown): string {
-  const b64url = (obj: unknown) =>
-    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `h.${b64url(payload)}.sig`;
-}
+// ADR-0032 / IADR-0273: 身元は /bff/auth/me の形（roles 配列。トークンは無い）。
 
 function renderGuard(state: Partial<AuthState>) {
   const value: AuthState = {
@@ -31,8 +25,8 @@ function renderGuard(state: Partial<AuthState>) {
   );
 }
 
-function userWithRoles(roles: string[]): User {
-  return { access_token: makeJwt({ realm_access: { roles } }) } as unknown as User;
+function userWithRoles(roles: string[]) {
+  return { name: 'tester', subject: 'tester', roles };
 }
 
 describe('RequireRole', () => {

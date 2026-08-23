@@ -205,6 +205,13 @@ services:
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
     worker: true
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
+    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
+    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    extraEnv:
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -223,6 +230,13 @@ services:
     # （バックグラウンドワーカーは /health/* を持たず、可用性判定に HTTP プローブが不適なため）。
     port: 8080
     worker: true
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
+    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
+    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    extraEnv:
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }
@@ -233,6 +247,13 @@ services:
     image: microservices-platform/retrieval-service
     tag: latest
     port: 8080
+    # FR-02, FR-03, ADR-0016, #995: 埋め込みゲートウェイの宛先。
+    # 🔴 **k8s の Service 名は `llmgateway-service` である**（chart のキー `llmgateway` ＋ `-service`）。
+    # コード既定・appsettings の `http://llm-gateway:...` は **compose のサービス名**であり、
+    # k8s には同名の Service も ExternalName エイリアスも無い。上書きが無いと名前解決に失敗する。
+    extraEnv:
+      - name: Services__LlmGateway
+        value: "http://llmgateway-service:8080"
     resources:
       requests: { cpu: 100m, memory: 128Mi }
       limits: { cpu: 500m, memory: 512Mi }

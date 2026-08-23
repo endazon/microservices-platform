@@ -10,7 +10,7 @@ namespace Knowledge.IntegrationTests.DataSourceService;
 // FR-01, UC-04, IADR-0083 (#305): 定期同期の単一書き手化の核心を実 PostgreSQL で回帰ガードする。
 // PostgresAdvisoryLockLeaseCoordinator が pg_try_advisory_lock により「同時刻に 1 レプリカのみ取得成功」
 // （＝本番マルチレプリカでも 1 サイクル 1 fetch）になること、および解放後は別レプリカが取得できる（liveness）ことを
-// 実コンテナで検証する。Docker 不在時は [DockerFact] がスキップする（CI は Docker あり）。
+// 実コンテナで検証する。Docker 不在時は DockerRequired.SkipUnlessAvailable() がスキップする（CI は Docker あり）。
 [Trait("Category", "Integration")]
 public sealed class DataSourceSyncSingleWriterTests
 {

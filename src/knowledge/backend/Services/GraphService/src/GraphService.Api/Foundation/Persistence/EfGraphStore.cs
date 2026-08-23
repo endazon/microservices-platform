@@ -2,6 +2,7 @@ using GraphService.Api.Foundation.Domain;
 using GraphService.Api.Foundation.Ports;
 using GraphService.Api.Foundation.Services;
 using Microsoft.EntityFrameworkCore;
+using Platform.Shared.Contracts.Dtos;
 
 namespace GraphService.Api.Foundation.Persistence;
 
@@ -81,5 +82,76 @@ public class EfGraphStore(GraphDbContext db) : IGraphStore
         foreach (var r in asSource) degrees[r.Id] = degrees.GetValueOrDefault(r.Id) + r.Count;
         foreach (var r in asTarget) degrees[r.Id] = degrees.GetValueOrDefault(r.Id) + r.Count;
         return degrees;
+    }
+    // FR-18, ADR-0051 決定 3, ADR-0033 決定 7, IADR-0266 決定 2 (#915):
+    // **AI 提案の候補列挙。スコープ述語をこの段で適用する。**
+    //
+    // 🔴 **ABAC 述語を SQL へ押し込めないことを、ごまかさずに書いておく。**
+    // graph_documents.attributes は値変換（jsonb ↔ Dictionary<string,string>）で持っており、
+    // AbacNodeFilter の意味論（キー欠落は不一致・値集合内 OR・フィルタ間 AND）を EF が翻訳できない。
+    // **本番の Npgsql でもテストの InMemory でも同じ制約である。**
+    //
+    // **それでも「候補列挙の段で絞った」と言えるのは、非許可ノードを持つ値が LLM 呼び出しの引数として
+    // 存在し得ないからである** —— 本メソッドの戻り値の型が AuthorizedNode であり、呼び出し側は
+    // これを封（SuggestionPrompt.Seal）へ渡す以外に LLM へ届ける経路を持たない。
+    // ADR-0051 決定 3 が禁じたのは「絞りを LLM 呼び出しより**後ろ**に置く」ことであって
+    // 「SQL で絞る」ことではない。
+    public async Task<IReadOnlyList<AuthorizedNode>> EnumerateAuthorizedCandidatesAsync(
+        Guid originDocumentId,
+        IReadOnlyCollection<Guid> candidateDocumentIds,
+        AccessScopeResponse scope,
+        CancellationToken ct = default)
+    {
+        // FR-05: deny-by-default。許可ポリシーが無ければ候補は 1 件も無い。
+        if (!scope.Granted || candidateDocumentIds.Count == 0)
+            return [];
+
+        // 起点自身は候補にしない（自己ループは提案しない）。
+        var ids = candidateDocumentIds
+            .Where(id => id != originDocumentId && id != Guid.Empty)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0)
+            return [];
+
+        // ADR-0033 決定 7: **却下済みの組み合わせは以後の提案生成で候補から除外する。**
+        // 状態を問わず既存のリンク提案があるものを外す —— pending / approved も二重提案になる。
+        var existing = await db.AiSuggestions.AsNoTracking()
+            .Where(s => s.Kind == SuggestionKind.Link
+                     && (s.SourceDocumentId == originDocumentId
+                         || (s.TargetDocumentId != null && s.TargetDocumentId == originDocumentId)))
+            .Select(s => new { s.SourceDocumentId, s.TargetDocumentId })
+            .ToListAsync(ct);
+
+        var excluded = new HashSet<Guid>();
+        foreach (var e in existing)
+        {
+            if (e.SourceDocumentId == originDocumentId && e.TargetDocumentId is { } t)
+                excluded.Add(t);
+            else if (e.TargetDocumentId == originDocumentId)
+                excluded.Add(e.SourceDocumentId);
+        }
+
+        // 既に辺がある組み合わせも提案しない（確定済みの関係を提案し直さない）。
+        var linked = await db.Edges.AsNoTracking()
+            .Where(e => e.SourceDocumentId == originDocumentId || e.TargetDocumentId == originDocumentId)
+            .Select(e => new { e.SourceDocumentId, e.TargetDocumentId })
+            .ToListAsync(ct);
+        foreach (var e in linked)
+            excluded.Add(e.SourceDocumentId == originDocumentId ? e.TargetDocumentId : e.SourceDocumentId);
+
+        var wanted = ids.Where(id => !excluded.Contains(id)).ToList();
+        if (wanted.Count == 0)
+            return [];
+
+        var rows = await db.Documents.AsNoTracking()
+            .Where(d => wanted.Contains(d.DocumentId))
+            // 決定的順序（IADR-0242 決定 4 と同じ理由。並びが非決定だとテストが flake する）。
+            .OrderBy(d => d.DocumentId)
+            .ToListAsync(ct);
+
+        // 🔴 **ここが述語の適用点である。** 非許可ノードは黙って落ちる —— **件数も返さない**
+        // （ADR-0051 決定 2 / ADR-0034 決定 2「見えない辺は完全に隠す」）。
+        return AuthorizedNode.AuthorizeAll(rows, scope);
     }
 }

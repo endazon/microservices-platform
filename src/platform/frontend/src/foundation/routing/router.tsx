@@ -1,13 +1,6 @@
 import { createRouter } from '@tanstack/react-router';
 import type { AnyRoute } from '@tanstack/react-router';
-import {
-  rootRoute,
-  loginRoute,
-  callbackRoute,
-  shellRoute,
-  homeRedirectRoute,
-  catchAllRoute,
-} from './shell';
+import { rootRoute, loginRoute, shellRoute, homeRedirectRoute, catchAllRoute } from './shell';
 import { createLegacyRoutes } from './featureRegistry';
 import { registerNavItems, registerUnitNavGroups } from './nav';
 import { createUnitRoutes, planNavItems, legacyUnitFeatures, unitNavGroups } from '@features/index';
@@ -45,7 +38,7 @@ registerNavItems(planNavItems);
 // （総称の「その他」は使わない）。並びは計画の 4 グループの後（nav.ts の navGroups）。
 registerUnitNavGroups(unitNavGroups);
 
-export const routeTree = rootRoute.addChildren([loginRoute, callbackRoute, shellWithUnits]);
+export const routeTree = rootRoute.addChildren([loginRoute, shellWithUnits]);
 
 export const router = createRouter({ routeTree });
 

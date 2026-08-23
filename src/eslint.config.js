@@ -4,6 +4,9 @@ import lingui from 'eslint-plugin-lingui';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import storybook from 'eslint-plugin-storybook';
+import tanstackQuery from '@tanstack/eslint-plugin-query';
+import tanstackRouter from '@tanstack/eslint-plugin-router';
+import testingLibrary from 'eslint-plugin-testing-library';
 import tseslint from 'typescript-eslint';
 
 // ADR-0031 / IADR-0121 決定 8: 新スタックの禁止事項を機械強制する。専用の検査スクリプトを作らないのは、
@@ -94,6 +97,46 @@ export const NO_LEGACY_ROUTER_PATHS = ['react-router', 'react-router-dom'].map((
     'react-router は不採用（ADR-0031）。ルーティングは @tanstack/react-router を使う（IADR-0124）。',
 }));
 
+// ADR-0031 / IADR-0275: `eslint-plugin-testing-library` のうち**個別に理由があって off にする規則**。
+// `export` しているのは `eslint.templates.config.js`（雛形用の入口）が同じ値を使い回すためである
+// ——**雛形へ別立ての規則表を書かない**（2 本になった時点で必ず片方が古くなる。IADR-0203 追記 条件 2）。
+export const TESTING_LIBRARY_RULE_OVERRIDES = {
+  // ▼ ここから下の 3 つは**個別に理由があって off にしている**（一律 off ではない）。
+  //   残り 19 規則（`await-async-*` / `no-await-sync-*` / `prefer-find-by` /
+  //   `prefer-presence-queries` / `no-dom-import` / `no-debugging-utils` /
+  //   `no-render-in-lifecycle` / `no-unnecessary-act` / `no-wait-for-*` ほか）は
+  //   **error のまま**であり、導入時点の違反は 0 件である（実測 2026-08-23）。
+
+  // `container.querySelector(...)` を禁じる規則。**本リポジトリの中核の回帰試験と衝突する。**
+  // 「状態を色だけで表さない」（INDEX 決定 21 / IADR-0125 決定 1）の担保は
+  // 「tone ごとに**装飾アイコン**が在り、かつ tone 間で異なること」を見ることであり、
+  // 装飾アイコン（`aria-hidden="true"`）には**アクセシブルな名前が無い＝ Testing Library の
+  // クエリで取れない**。規則の指示どおり `getByRole()` へ寄せると、この回帰試験は書けなくなる。
+  // 代替として本番コンポーネントへ `data-testid` を足すのは、試験の都合で本番の markup を
+  // 変える手であり採らない。実測 6 件（`packages/ui` の Alert / StatusBadge / Tag）。
+  'testing-library/no-container': 'off',
+  // `.closest()` / `.parentElement` / DOM の直接操作を禁じる規則。**行スコープの慣用と衝突する。**
+  // 本リポジトリは「ある行の中だけを見る」検証を `within(link.closest('tr')!)` で書いている
+  // （表の 1 行に同じ語が複数出るため、`screen` 直下のクエリでは書けない）。
+  // Testing Library には「この要素を含む行」を取るクエリが無く、規則が指す代替が存在しない。
+  // 実測 18 件（`packages/ui` 11 ＋ `knowledge` 4 ＋ `platform` 3）。
+  'testing-library/no-node-access': 'off',
+  // `render()` の戻り値の変数名を `view` / `utils` に限る規則。**aggressive reporting の誤爆である。**
+  // 当プラグインは**名前が `render` で始まる関数はすべて render とみなす**ため、本リポジトリの
+  // ハーネス（`renderUnitRoute` / `renderLayout` / `renderFilter` ほか）の戻り値まで対象になる。
+  // それらが返すのはルータやモック関数であって render の戻り値ではない
+  // （実測: `const onChange = renderFilter(...)` は **`vi.fn()` を受けている**）。
+  // 加えて本リポジトリは `absent` / `unknown` のように**その試験での意味**を変数名に載せており、
+  // `view` へ揃えると読み手が失う情報のほうが大きい。実測 8 件。
+  'testing-library/render-result-naming-convention': 'off',
+};
+
+// ADR-0031 / IADR-0275: **既存違反の grandfather は `eslint-suppressions.json`（ESLint 9.24+ の
+// 抑制ファイル。同ディレクトリ）が持つ。** 規則を弱めるのでも、ファイルを ignore するのでもなく、
+// **「その時点で在った件数」だけを file × rule 単位で抑える**ので、**新しい違反はそのまま error になる**。
+// 本リポジトリの他のラチェット（`scripts/knip-baseline.json` ほか）と同じ性質で、
+// **使われなくなった抑制は exit 2 で落ちる**（`eslint . --prune-suppressions` で締める）。
+// 中身は「承認」ではなく **grandfather** である。理由と解消の道筋は IADR-0275 §決定 4。
 export default tseslint.config(
   {
     ignores: [
@@ -167,8 +210,11 @@ export default tseslint.config(
   },
   // 可変ユニット（@knowledge）は @foundation のみ参照可。platform の合成点（@features）は参照しない。
   //
-  // **`knowledge/frontend/src/` の中身は `features/` だけである**（実測）。したがって本ブロックの
-  // 適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止をここへ足せば足りる。
+  // **`knowledge/frontend/src/` で中身を持つのは `features/` だけである**（実測 2026-08-23。#785 で
+  // 計画 13_frontend-stack §ディレクトリ構成 へ適合させ、`app/ assets/ components/ hooks/ lib/
+  // locales/ stores/ testing/ types/ utils/` を置いたが、いずれも `.gitkeep` だけの枠である）。
+  // したがって本ブロックの適用範囲がそのまま「画面」の範囲であり、#555 の `apiFetch` 禁止を
+  // ここへ足せば足りる。**枠へ実体が入ったらこの前提を引き直すこと。**
   // **専用のブロックを新設しない** —— flat config は同一ルールを後勝ちで**置換**するため、
   // `features/**` を対象にした 2 本目の `no-restricted-imports` を置くと、
   // このブロックの `BANNED_IMPORT_PATTERNS` と `@features` 禁止が丸ごと無効化される
@@ -285,6 +331,9 @@ export default tseslint.config(
     files: [
       'platform/frontend/src/foundation/i18n/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/ui/**/*.{ts,tsx}',
+      // #788（移行第 4 段）: 右レール AI チャットパネル。共通シェルに載る文言なので、
+      // foundation/ui と同じ規則の下に置く。
+      'platform/frontend/src/foundation/ai-chat/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/auth/**/*.{ts,tsx}',
       'platform/frontend/src/foundation/routing/nav.ts',
       'knowledge/frontend/src/features/sc01-search/**/*.{ts,tsx}',
@@ -335,6 +384,41 @@ export default tseslint.config(
       'lingui/no-expression-in-message': 'error',
       'lingui/no-single-variables-to-translate': 'error',
       'lingui/t-call-in-function': 'error',
+    },
+  },
+  // ADR-0031 / IADR-0275: 13_frontend-stack §採用技術一覧 の Linter 欄
+  // 「**TanStack** / **Testing Library** / Storybook / Lingui のプラグインを併用」のうち、
+  // 落ちていた TanStack（Query / Router）と Testing Library を足す（issue #493）。
+  //
+  // **`ai-stock-trading/**` は適用範囲から外す。** 別プロジェクトの submodule であり本リポジトリからは
+  // 是正できない（IADR-0120）。既存の `NO_LEGACY_ROUTER_PATHS` が同じ理由で AST を外しているのと
+  // 同じ線引きである（**規則を弱めるのではなく、他リポジトリへ本リポの規約を及ぼさない**）。
+  // 実測（2026-08-23）: AST には `@tanstack/react-query` / `@tanstack/react-router` の利用が 0 件、
+  // Testing Library の利用が 15 ファイルある。
+  ...tanstackQuery.configs['flat/recommended'].map((config) => ({
+    ...config,
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['ai-stock-trading/**'],
+  })),
+  ...tanstackRouter.configs['flat/recommended'].map((config) => ({
+    ...config,
+    name: 'tanstack/router/flat/recommended',
+    files: ['**/*.{ts,tsx}'],
+    ignores: ['ai-stock-trading/**'],
+  })),
+  // **Testing Library の規則は Vitest の単体テストにだけ効かせる。**
+  // Playwright の E2E（`**/e2e/**`）を含めてはならない —— 当プラグインは "aggressive reporting" で
+  // **名前の形だけ**から Testing Library の利用を推測するため、Playwright の `page.getByRole(...)` を
+  // Testing Library のクエリと誤認し、`prefer-screen-queries` が全 E2E で error になる
+  // （実測 2026-08-23: `platform/frontend/e2e/*.smoke.spec.ts` で 13 件。**いずれも Testing Library を
+  // 一切 import していないファイルである**）。これは規則の無効化ではなく**射程の確定**である。
+  {
+    ...testingLibrary.configs['flat/react'],
+    files: ['**/*.{test,spec}.{ts,tsx}'],
+    ignores: ['ai-stock-trading/**', '**/e2e/**'],
+    rules: {
+      ...testingLibrary.configs['flat/react'].rules,
+      ...TESTING_LIBRARY_RULE_OVERRIDES,
     },
   },
   // Storybook の stories に対する規約（既定の recommended）。

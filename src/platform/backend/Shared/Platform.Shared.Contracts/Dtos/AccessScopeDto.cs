@@ -1,9 +1,19 @@
 namespace Platform.Shared.Contracts.Dtos;
 
 // FR-05, UC-05: ABAC 権限スコープ解決用 DTO
+//
+// FR-21, ADR-0036 D-07, IADR-0253 決定 5（2026-08-23 改定 / #989）: Action は解決したい
+// アクション（read / analyze / manage / write）。従前は /authz/scope がサーバ側で read を
+// ハードコードしており、書き込みの認可スコープをこの経路で出せなかった。
+//
+// **既定値はリテラル "read" である** —— 値域の正（PolicyAction）は AuthorizationService の
+// ドメイン型であり、契約プロジェクトからは参照できない。値の一致は評価器側のテストで固定する。
+// **Action は末尾に置き、既定値を付けてある**（既定値付き末尾追加＝非破壊。IADR-0122 決定 2）。
+// 既存の呼び出し元は無改修で従来どおり read のスコープを得る。
 public record AccessScopeRequest(
     string UserId,
-    Dictionary<string, string> UserAttributes);
+    Dictionary<string, string> UserAttributes,
+    string Action = "read");
 
 // FR-05, FR-19, ADR-0036, ADR-0046 D-06, IADR-0253 決定 1: 認可スコープの 1 分岐。
 // **分岐内のフィルタは AND、分岐どうしは OR** で評価する。
@@ -28,9 +38,17 @@ public record AccessScopeBranch(string Name, List<AttributeFilter> Filters);
 //   Branches が 1 件以上                   → **いずれかの分岐のフィルタをすべて満たす文書が可視**
 //
 // 🔴 **AllowedFilters は算出アルゴリズムごと据え置く**（IADR-0253 決定 2）。未移行のサービスは
-//   挙動が 1 ビットも変わらない。**AllowedFilters（分岐の積に相当）は Branches（分岐の和）の
-//   部分集合であるため、未移行側が余分に見せることは構造上あり得ない** —— 移行中の乖離は
-//   常に deny 側へ倒れる。「気をつける」ではなく包含関係から従う。
+//   挙動が 1 ビットも変わらない。
+//
+//   ［2026-08-23 追記 / #989］**「AllowedFilters は Branches の部分集合であり、未移行側が余分に
+//   見せることは構造上あり得ない」という従前の記述は誤りである**（IADR-0253 決定 2 の同日の追記が
+//   正本）。反例: 複数のポリシーが**同じ複数キー**を別の値で条件づけると、キー単位の union が
+//   **どのポリシー単独も許可しない値の混成**を許す（A=internal×hr、B=public×sales のとき
+//   internal×sales の文書）。包含関係は一般には成立しない。
+//
+//   **今日の実データでは漏れない** —— 実効軸が confidentiality の 1 本しか無いためであり、
+//   構造的な保証ではない。したがって**複数キーの文書条件を持つポリシーの運用開始は、
+//   全消費側の分岐対応（IADR-0253 段 3）が終わるまで行ってはならない**。
 //
 // **Branches は末尾に置き、既定値 null を付けてある。** 途中へ挿すと位置引数の呼び出しが壊れ、
 // 既定値が無いと旧発行者のメッセージが必須項目を欠く（どちらも scripts/check-contract-schema.js

@@ -32,6 +32,13 @@
  * invalid_redirect_uri で完了しなかった。長さと違い URL 欠落は静的に列挙できるため import 前に止める。
  * 対象 client が realm に存在しない場合は検査しない（realm 分割・将来の client 削除で誤検出しない）。
  *
+ * 検査4: realm が指すテーマの実体が解決できるか（SC-13 / SC-16・IADR-0261 決定 1）。
+ * 背景: `loginTheme` / `accountTheme` は**名前の文字列**でしかない。実体が無くても realm import は成功し、
+ * Keycloak は既定テーマへ黙って落ちる —— 画面は出るのでヘルスチェックも E2E のログインも緑のまま、
+ * **ブランド適用だけが静かに外れる**。styles が挙げる css の欠落も同型で、404 を出すだけでログインは成功する。
+ * したがって「テーマを実装した」ことは realm.json の 1 行では担保されず、実体との突合が要る。
+ * 併せて parent の宣言（テンプレート非複製の方針）と、言語切替に要る i18n 設定も静的に確かめる。
+ *
  * 使い方:
  *   node scripts/check-realm-constraints.js            # deploy/keycloak/*-realm.json を検査。違反で exit 1。
  *   node scripts/check-realm-constraints.js <path...>  # 明示したファイルのみ検査。
@@ -42,6 +49,10 @@ const path = require('path');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const REALM_DIR = 'deploy/keycloak';
+// テーマ実体の置き場（IADR-0261 決定 1）。realm の宣言と突き合わせる。
+const THEME_ROOT = 'deploy/keycloak/themes';
+// realm のテーマ宣言フィールド → テーマ種別のディレクトリ名。
+const THEME_FIELDS = { loginTheme: 'login', accountTheme: 'account' };
 // Keycloak の該当カラムはいずれも varchar(255)。閾値は 1 箇所に集約する。
 const MAX_LEN = 255;
 
@@ -295,6 +306,56 @@ function checkRealmPolicyText(text, opts) {
   return collectPolicyDeviations(JSON.parse(text), opts);
 }
 
+// realm が宣言するテーマ（loginTheme / accountTheme）と、ディスク上の実体との齟齬を列挙する。
+// I/O は reader（{ exists, read }）として注入し、この関数自体は純粋に保つ（自己試験できるようにする）。
+// 返り値は [{ path, detail }]。path は realm JSON 内のフィールドか、解決したテーマのパス。
+function collectThemeGaps(realm, reader, themeRoot = THEME_ROOT) {
+  const gaps = [];
+  for (const [field, kind] of Object.entries(THEME_FIELDS)) {
+    const name = realm && realm[field];
+    // 宣言していないテーマは検査しない（既定テーマのままにするのは正当な選択である）。
+    if (typeof name !== 'string' || name === '') continue;
+    const dir = `${themeRoot}/${name}/${kind}`;
+    const props = `${dir}/theme.properties`;
+    if (!reader.exists(props)) {
+      gaps.push({ path: field, detail: `テーマ "${name}" の実体がない（期待: ${props}）。realm import は成功し Keycloak は既定テーマへ黙って落ちる` });
+      continue;
+    }
+    const text = reader.read(props);
+    const parent = /^\s*parent\s*=\s*(\S+)\s*$/m.exec(text);
+    if (!parent) {
+      gaps.push({ path: props, detail: 'parent= の宣言がない。継承しないテーマは Keycloak 本体のテンプレート更新（セキュリティ修正・新フロー）から切り離される' });
+    }
+    const styles = /^\s*styles\s*=\s*(.+?)\s*$/m.exec(text);
+    if (styles) {
+      for (const href of styles[1].split(/\s+/).filter(Boolean)) {
+        // 親テーマが供給する css（自テーマの resources/ に無くてよい）は、親を持つ場合に限り許す。
+        const own = `${dir}/resources/${href}`;
+        if (reader.exists(own)) continue;
+        if (parent) continue; // 親から解決され得る
+        gaps.push({ path: props, detail: `styles の ${href} が ${own} に無く、親テーマも宣言されていない` });
+      }
+    }
+  }
+  // 言語切替（SC-13 の主要素）は realm 設定だけで完結する。既定ロケールが supportedLocales に
+  // 無いと Keycloak は既定言語へ落ちるため、包含まで確かめる。
+  if (realm && realm.internationalizationEnabled === true) {
+    const supported = Array.isArray(realm.supportedLocales) ? realm.supportedLocales : [];
+    const def = realm.defaultLocale;
+    if (typeof def === 'string' && def !== '' && !supported.includes(def)) {
+      gaps.push({ path: 'defaultLocale', detail: `defaultLocale "${def}" が supportedLocales ${JSON.stringify(supported)} に含まれていない` });
+    }
+    if (supported.length < 2) {
+      gaps.push({ path: 'supportedLocales', detail: `internationalizationEnabled が true なのに supportedLocales が ${supported.length} 件しかない（切替先が無い）` });
+    }
+  }
+  return gaps;
+}
+
+function checkRealmThemeText(text, reader, themeRoot = THEME_ROOT) {
+  return collectThemeGaps(JSON.parse(text), reader, themeRoot);
+}
+
 // --- I/O（副作用は main / checkFiles に閉じる） --------------------------------
 
 // 既定の検査対象（REALM_DIR 配下の *-realm.json）をリポジトリ相対で列挙する。
@@ -304,6 +365,14 @@ function defaultRealmFiles() {
   return fs.readdirSync(dir)
     .filter((n) => n.endsWith('-realm.json'))
     .map((n) => `${REALM_DIR}/${n}`);
+}
+
+// ディスクを見る reader。collectThemeGaps へ注入して、ロジック側を純粋に保つ。
+function diskReader() {
+  return {
+    exists: (rel) => fs.existsSync(path.join(REPO_ROOT, rel)),
+    read: (rel) => fs.readFileSync(path.join(REPO_ROOT, rel), 'utf8'),
+  };
 }
 
 function checkFiles(relPaths) {
@@ -316,6 +385,7 @@ function checkFiles(relPaths) {
       violations: checkRealmText(text),
       missing: checkRealmUrlsText(text),
       deviations: checkRealmPolicyText(text),
+      themeGaps: checkRealmThemeText(text, diskReader()),
     });
   }
   return results;
@@ -526,6 +596,80 @@ function selfTest() {
     pass: !PASSWORD_CLASS_REGEX.includes(' and ') && AUTH_POLICY_SCALARS.passwordPolicy.endsWith(')'),
   });
 
+  // --- 検査4（テーマ参照の解決可能性・SC-13 / SC-16） --------------------------
+  // reader をメモリ上の擬似 FS で与える。ディスクに触らないので、実データの状態に依存しない。
+  const fakeReader = (files) => ({
+    exists: (rel) => Object.prototype.hasOwnProperty.call(files, rel),
+    read: (rel) => files[rel],
+  });
+  const okTheme = 'parent=keycloak\nimport=common/keycloak\n\nstyles=css/login.css css/platform.css\n';
+  const themedRealm = {
+    loginTheme: 'platform', accountTheme: 'platform',
+    internationalizationEnabled: true, supportedLocales: ['ja', 'en'], defaultLocale: 'ja',
+  };
+  const fullFiles = {
+    'deploy/keycloak/themes/platform/login/theme.properties': okTheme,
+    'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+  };
+
+  cases.push({
+    name: 'テーマ: 実体・parent・i18n が揃っていれば齟齬なし（陽性対照）',
+    pass: collectThemeGaps(themedRealm, fakeReader(fullFiles)).length === 0,
+  });
+  cases.push({
+    name: 'テーマ: realm が指すのに実体が無いと検出する（既定テーマへ黙って落ちる事故）',
+    pass: (() => {
+      const g = collectThemeGaps(themedRealm, fakeReader({
+        'deploy/keycloak/themes/platform/account/theme.properties': okTheme,
+      }));
+      return g.length === 1 && g[0].path === 'loginTheme';
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: parent= が無いと検出する（本体のテンプレート更新から切り離される）',
+    pass: (() => {
+      const g = collectThemeGaps({ loginTheme: 'platform' }, fakeReader({
+        'deploy/keycloak/themes/platform/login/theme.properties': 'styles=css/platform.css\n',
+      }));
+      return g.length === 2 && g.some((x) => /parent=/.test(x.detail)) && g.some((x) => /styles の/.test(x.detail));
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: 宣言していないテーマ種別は検査しない（既定のままにするのは正当）',
+    pass: collectThemeGaps({ loginTheme: 'platform' }, fakeReader(fullFiles)).length === 0
+      && collectThemeGaps({}, fakeReader({})).length === 0
+      && collectThemeGaps({ loginTheme: '' }, fakeReader({})).length === 0,
+  });
+  cases.push({
+    name: 'テーマ: defaultLocale が supportedLocales に無いと検出する（既定言語へ落ちる）',
+    pass: (() => {
+      const g = collectThemeGaps({ internationalizationEnabled: true, supportedLocales: ['en', 'de'], defaultLocale: 'ja' }, fakeReader({}));
+      return g.length === 1 && g[0].path === 'defaultLocale';
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: 切替先が 1 つしか無い i18n を検出する（言語切替が成立しない）',
+    pass: (() => {
+      const g = collectThemeGaps({ internationalizationEnabled: true, supportedLocales: ['ja'], defaultLocale: 'ja' }, fakeReader({}));
+      return g.length === 1 && g[0].path === 'supportedLocales';
+    })(),
+  });
+  cases.push({
+    name: 'テーマ: i18n が無効なら supportedLocales は問わない（無効化は正当な選択）',
+    pass: collectThemeGaps({ internationalizationEnabled: false, supportedLocales: [], defaultLocale: 'ja' }, fakeReader({})).length === 0,
+  });
+  cases.push({
+    name: 'テーマ: 実データの realm と themes/ が実際に解決できる（実データ・ラチェット）',
+    pass: (() => {
+      const realmPath = path.join(REPO_ROOT, REALM_DIR, 'microservices-platform-realm.json');
+      if (!fs.existsSync(realmPath)) return true; // realm が無い配布物では skip
+      const realm = JSON.parse(fs.readFileSync(realmPath, 'utf8'));
+      // 実データ側が「そもそも宣言していない」状態で緑になるのを防ぐ（0 件走査の門）。
+      if (realm.loginTheme !== 'platform' || realm.accountTheme !== 'platform') return false;
+      return collectThemeGaps(realm, diskReader()).length === 0;
+    })(),
+  });
+
   let failed = 0;
   for (const c of cases) {
     process.stdout.write(`  ${c.pass ? 'ok  ' : 'FAIL'} ${c.name}\n`);
@@ -553,8 +697,9 @@ function main() {
   const total = results.reduce((n, r) => n + r.violations.length, 0);
   const totalMissing = results.reduce((n, r) => n + r.missing.length, 0);
   const totalDeviations = results.reduce((n, r) => n + r.deviations.length, 0);
-  if (total === 0 && totalMissing === 0 && totalDeviations === 0) {
-    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱はありません。`);
+  const totalThemeGaps = results.reduce((n, r) => n + r.themeGaps.length, 0);
+  if (total === 0 && totalMissing === 0 && totalDeviations === 0 && totalThemeGaps === 0) {
+    console.log(`[check-realm-constraints] OK: ${files.length} ファイルに ${MAX_LEN} 文字超のフィールド・必須 URL の欠落・ADR-0026 からの逸脱・テーマ参照の齟齬はありません。`);
     process.exit(0);
   }
 
@@ -588,6 +733,17 @@ function main() {
     console.error('\nSC-14（OTP／多要素認証）・SC-15（パスワードリセット）が計画の確定要件を満たさなくなります。'
       + '\n確定値の正は planning の ADR-0026 であり、実装側の記録は IADR-0197（#578）です。');
   }
+  if (totalThemeGaps > 0) {
+    console.error(`[check-realm-constraints] realm が指すテーマの解決に関する齟齬 ${totalThemeGaps} 件を検出しました:`);
+    for (const r of results) {
+      for (const g of r.themeGaps) {
+        console.error(`\n  ${r.file}\n    ${g.path}: ${g.detail}`);
+      }
+    }
+    console.error('\nいずれも realm import は成功し画面も出るため、E2E では気付けません（ブランド適用・言語切替だけが静かに外れます）。'
+      + '\nテーマ実装の方針は IADR-0261 決定 1、要件の正は planning の ADR-0026 です。');
+  }
+
   process.exit(1);
 }
 
@@ -602,6 +758,8 @@ module.exports = {
   checkRealmUrlsText,
   collectPolicyDeviations,
   checkRealmPolicyText,
+  collectThemeGaps,
+  checkRealmThemeText,
   satisfiesPasswordClasses,
   MAX_LEN,
   REQUIRED_CLIENT_URLS,
@@ -610,4 +768,6 @@ module.exports = {
   AUTH_POLICY_SCALARS,
   AUTH_POLICY_REQUIRED_ACTIONS,
   AUTH_POLICY_REQUIRED_ACTION_ALIASES,
+  THEME_ROOT,
+  THEME_FIELDS,
 };

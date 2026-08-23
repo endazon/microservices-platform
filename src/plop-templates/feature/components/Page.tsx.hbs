@@ -1,0 +1,25 @@
+import { Trans } from '@lingui/react/macro';
+
+// TODO(起点 ID): 計画書の `SC-xx` / `UC-xx` / `FR-xx` をここへ書く。
+//
+// 雛形が体現している約束（消さないこと）:
+// - **UI プリミティブは `@platform/ui` から取る**（Tailwind v4 ＋ shadcn/ui 派生。IADR-0121 決定 4 /
+//   IADR-0125 決定 1）。ユニット側で同等品を作り直さない。深い参照（`@platform/ui/src/...`）は
+//   ESLint が禁止する。
+// - **表示文言は Lingui のマクロで書く**（ADR-0031 = ja / en・コンパイル時抽出）。追加したら
+//   `pnpm run i18n` でカタログを再生成し翻訳を入れる（未翻訳キーは `check-i18n-catalogs.js` が止める）。
+// - **状態を色だけで表さない**（色 ＋ アイコン ＋ テキスト）。`StatusBadge` / `Alert` / `notify` を使う。
+// - **BFF 呼び出しは orval 生成フック**（`api/` に置く）。手書きの HTTP クライアントは ESLint が error にする。
+// - **外部 CDN・Web フォント・analytics を使わない**（08_data-egress-policy。アイコンは lucide-react）。
+export function {{pascalCase name}}Page() {
+  return (
+    <section>
+      <h1>
+        <Trans>{{{title}}}</Trans>
+      </h1>
+      <p>
+        <Trans>この画面はまだ実装されていない。</Trans>
+      </p>
+    </section>
+  );
+}

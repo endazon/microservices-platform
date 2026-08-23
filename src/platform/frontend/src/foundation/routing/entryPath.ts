@@ -7,8 +7,8 @@
  * 値は**パス文字列**であってユニットへの参照ではない（IADR-0056 決定 3 に抵触しない）。
  * 実在することは `router.test.ts` が実行時に固定する。
  *
- * 依存ゼロの単独モジュールにしてあるのは、`shell.tsx`（ルート定義）と
- * `auth/CallbackPage.tsx`（OIDC 復帰）の**両方**が要るためである。どちらかに置くと
- * `shell.tsx` → `CallbackPage` → `shell.tsx` の循環 import になる。
+ * 依存ゼロの単独モジュールにしてある（かつては `auth/CallbackPage.tsx`（OIDC 復帰）との
+ * 循環 import 回避が理由だった。BFF セッション方式への移行（#439）で SPA 側のコールバックは
+ * 消えたが、ルート定義から独立した「既定の入口」という位置づけは変わらない）。
  */
 export const ENTRY_ROUTE_PATH = '/ask';

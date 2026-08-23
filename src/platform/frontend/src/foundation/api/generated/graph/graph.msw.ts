@@ -17,6 +17,7 @@ import type {
 } from 'msw';
 
 import type {
+  AiSuggestion,
   EdgeTypeCatalogItem,
   GraphView
 } from '../bff.schemas';
@@ -24,10 +25,11 @@ import type {
 import {
   getBffGraphEdgeTypesResponseMock,
   getBffGraphNeighborsResponseMock,
-  getBffGraphNodeResponseMock
+  getBffGraphNodeResponseMock,
+  getBffGraphSuggestionsResponseMock
 } from './graph.faker';
 
-export { getBffGraphEdgeTypesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock } from './graph.faker';
+export { getBffGraphEdgeTypesResponseMock, getBffGraphNodeResponseMock, getBffGraphNeighborsResponseMock, getBffGraphSuggestionsResponseMock } from './graph.faker';
 
 
 export const getBffGraphEdgeTypesMockHandler = (overrideResponse?: EdgeTypeCatalogItem[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<EdgeTypeCatalogItem[]> | EdgeTypeCatalogItem[]), options?: RequestHandlerOptions) => {
@@ -65,8 +67,21 @@ export const getBffGraphNeighborsMockHandler = (overrideResponse?: GraphView | (
       })
   }, options)
 }
+
+export const getBffGraphSuggestionsMockHandler = (overrideResponse?: AiSuggestion[] | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<AiSuggestion[]> | AiSuggestion[]), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/graph/suggestions', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
+
+
+    return HttpResponse.json(overrideResponse !== undefined
+    ? (typeof overrideResponse === "function" ? await overrideResponse(info) : overrideResponse)
+    : getBffGraphSuggestionsResponseMock(),
+      { status: 200
+      })
+  }, options)
+}
 export const getGraphMock = () => [
   getBffGraphEdgeTypesMockHandler(),
   getBffGraphNodeMockHandler(),
-  getBffGraphNeighborsMockHandler()
+  getBffGraphNeighborsMockHandler(),
+  getBffGraphSuggestionsMockHandler()
 ]

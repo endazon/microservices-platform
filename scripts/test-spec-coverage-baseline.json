@@ -27,6 +27,7 @@
     "docs/tests/FR-04_ai-answer-citations.md": [
       "AskAttributeFilterTests",
       "CitationMapperTests",
+      "RagAnswerContractTests",
       "RagOrchestratorDegradedModelTests",
       "TagFilteringTests"
     ],
@@ -63,6 +64,12 @@
       "TagIdentityMigrationTests",
       "TagIdentityTests"
     ],
+    "docs/tests/FR-10_dashboard.md": [
+      "DashboardEndpointTests",
+      "KnowledgeHealthEndpointTests",
+      "LlmUsageMetricsTests",
+      "ModelPriceTableTests"
+    ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicContentBlockSanitizerTests",
       "ClaudeProviderStopReasonTests",
@@ -95,19 +102,36 @@
       "WikiJsGraphQlClientTests"
     ],
     "docs/tests/FR-14_composability.md": [
+      "PipelineDeclarationEffectivenessTests",
       "PipelineRecomposeTests",
       "PipelineStepRegistrationTests",
+      "PortSwapCompositionTests",
       "QueueOverrideFanOutTests"
     ],
     "docs/tests/FR-15_config-info-api.md": [
       "ConfigBffEndpointTests",
+      "ConfigInspectionDeclarationGuardTests",
       "ConfigViewerPolicyTests",
       "DriftDetectorTests",
-      "KeycloakRolesClaimsTransformationTests"
+      "DriftServiceCoverageTests",
+      "KeycloakRolesClaimsTransformationTests",
+      "PipelineDeclarationEffectivenessTests",
+      "PortSwapCompositionTests"
+    ],
+    "docs/tests/FR-16_mcp-server.md": [
+      "EgressPolicyTests",
+      "LogForgingSanitizationTests",
+      "McpClientEndpointTests",
+      "ServiceAccountDocumentFilterTests",
+      "ToolCatalogTests",
+      "ToolInvocationServiceTests",
+      "ToolPublicationConfigValidatorTests",
+      "ToolPublicationFailFastTests"
     ],
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
+      "EdgeTypeDbGuardTests",
       "EdgeTypeDictionaryTests",
       "EdgeTypeEndpointsTests",
       "GraphAccessResolverTests",
@@ -116,11 +140,35 @@
     ],
     "docs/tests/FR-18_ai-suggestions.md": [
       "AiSuggestionEndpointsTests",
+      "AiSuggestionGenerationTests",
       "AiSuggestionStateMachineTests",
-      "AiSuggestionWiringTests"
+      "AiSuggestionWiringTests",
+      "SuggestionPromptGateTests"
     ],
     "docs/tests/FR-19_private-note-wikijs-exclusion.md": [
       "DocumentSyncConsumerTests"
+    ],
+    "docs/tests/FR-19_private-notes-lifecycle.md": [
+      "DocScopeValidationTests",
+      "PrivateNoteLifecycleTests",
+      "PrivateNoteQuotaTests"
+    ],
+    "docs/tests/FR-20_document-sharing.md": [
+      "DocumentShareTests"
+    ],
+    "docs/tests/FR-20_obsidian-sync.md": [
+      "ObsidianSyncProtocolTests",
+      "SyncDeviceTokenTests"
+    ],
+    "docs/tests/FR-21_direct-body-intake.md": [
+      "DocumentBodyIntakeTests"
+    ],
+    "docs/tests/FR-22_user-notifications.md": [
+      "EmailIndependenceTests",
+      "EmailSendRateTests",
+      "NotificationContractTests",
+      "NotificationOwnerScopingTests",
+      "NotificationRetentionTests"
     ],
     "docs/tests/NFR-09_bff-edge-authentication.md": [
       "BffEndpointAuthenticationTests"
@@ -158,6 +206,20 @@
     "docs/tests/SC-10_operations-dashboard.md": [
       "DashboardBffEndpointTests",
       "DashboardEndpointTests"
+    ],
+    "docs/tests/SC-21_ai-suggestion-list.md": [
+      "AiSuggestionEndpointsTests",
+      "BffGraphSuggestionTests"
+    ],
+    "docs/tests/UC-08_mcp-agent-knowledge-access.md": [
+      "EgressPolicyTests",
+      "ServiceAccountDocumentFilterTests",
+      "ToolCatalogTests",
+      "ToolInvocationServiceTests"
+    ],
+    "docs/tests/UC-09_mcp-client-management.md": [
+      "McpClientEndpointTests",
+      "ToolPublicationConfigValidatorTests"
     ],
     "docs/tests/UC-10_graph-traversal.md": [
       "AuthorizedGraphViewTests",

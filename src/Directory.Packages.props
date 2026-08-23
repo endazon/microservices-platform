@@ -53,6 +53,10 @@
     <PackageVersion Include="Polly.Extensions.Http" Version="3.0.0" />
     <!-- LLM -->
     <PackageVersion Include="Anthropic.SDK" Version="4.0.0" />
+    <!-- FR-16, ADR-0024: MCP（Model Context Protocol）サーバーの公式 C# SDK。
+         計画 06_technical/11_mcp-server-integration §前提 が「公式 C# SDK（ModelContextProtocol）を
+         利用する」と指定している。Core は AspNetCore が推移的に引くため、直接ピンは置かない。 -->
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <!-- Test -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <!-- xUnit v3（ADR-0030 のテスト標準。#455 A-2 で v2 から一斉に切り替えた）。

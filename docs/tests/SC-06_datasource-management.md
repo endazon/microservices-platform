@@ -3,7 +3,7 @@ title: SC-06 データソース管理 テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -100,9 +100,9 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 | P5 | 日時整形 | 空は `—`、解釈できない値はそのまま出す |
 
 **機密区分の値集合**（登録フォームの「既定の機密区分」）は文書管理画面と共有する語彙であり、
-`features/abac/confidentiality.test.ts` が固定する（[文書管理画面のテスト仕様書 §純関数](./SC-05_document-management.md)）。
+`features/abac/types/confidentiality.test.ts` が固定する（[文書管理画面のテスト仕様書 §純関数](./SC-05_document-management.md)）。
 
-### 語彙（`features/abac/department.test.ts`。［2026-08-15 / #767］）
+### 語彙（`features/abac/types/department.test.ts`。［2026-08-15 / #767］）
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |
@@ -113,7 +113,7 @@ E2E は `src/platform/frontend/e2e/sc06-datasources.smoke.spec.ts`
 後段はフェイルセーフで `unassigned` を入れるため、**画面上は何も起きずに管理者の入力だけが消える**。
 画面テスト経由の間接被覆では文字列そのものを固定できないため、`confidentiality` と同じく直接固定する。
 
-### 語彙（`features/abac/lifecycle.test.ts`。［2026-08-16 / #796］）
+### 語彙（`features/abac/types/lifecycle.test.ts`。［2026-08-16 / #796］）
 
 | # | 観点 | 検証内容 |
 | --- | --- | --- |

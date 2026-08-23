@@ -62,6 +62,29 @@ public class FeedbackEndpointTests(TestWebApplicationFactory factory)
         list[0].Comment.Should().Be("やっぱり不十分");
     }
 
+    // FR-08, #448: 🔴 計画の受け入れ基準は**集計の側**を名指ししている ——
+    // 「**同一利用者が同一回答へ 2 回投稿しても、集計される件数が 1 件のままである**」。
+    // T-03 は一覧（`/feedback`）の件数しか見ておらず、**集計（`/feedback/stats`）が
+    // 二重計上する実装へ変えても緑のまま**であった。基準の文言どおり集計側で固定する。
+    [Fact]
+    public async Task SameUserSameAnswer_CountsOnceInStats()
+    {
+        var client = factory.CreateClient();
+        var answerId = Guid.NewGuid();
+
+        await client.PostAsJsonAsync("/feedback",
+            new FeedbackRequest(answerId, "up"), TestContext.Current.CancellationToken);
+        await client.PostAsJsonAsync("/feedback",
+            new FeedbackRequest(answerId, "down"), TestContext.Current.CancellationToken);
+
+        var stats = await client.GetFromJsonAsync<FeedbackStatsDto>(
+            $"/feedback/stats?answerId={answerId}", TestContext.Current.CancellationToken);
+
+        stats!.Total.Should().Be(1, "再投稿は上書きであり 2 件目を作らない");
+        stats.Down.Should().Be(1, "後の投稿が勝つ");
+        stats.Up.Should().Be(0);
+    }
+
     // T-04: 不正な rating は 400。
     [Fact]
     public async Task InvalidRating_Returns400()

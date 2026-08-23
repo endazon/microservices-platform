@@ -274,7 +274,12 @@ fi
 #    `POST /bff/search` は次の**すべて**で `200 ＋ 空` を返す（SearchBffEndpoints.cs）:
 #      (a) Query が空 / (b) BffScopeResolver が null（ABAC が deny へ縮退・認可サービス不調）
 #      (c) RetrievalService への HttpRequestException / TaskCanceledException
+#      (d) クエリ埋め込みが得られない（LLM ゲートウェイが 200 ＋ 空ベクトルで応答。#995 / IADR-0256）
+#          —— このスタックは埋め込み API キーを配線していないので **(d) は必ず起きる**。
 #    つまり「検索が全く動いていない」と「該当が無い」がエッジからは区別できない。
+#
+#    🔴 **(d) は #995 以前は 500 だった。** 空ベクトルをそのままベクトルDB へ渡していたためである
+#    （本段が実際にそれを捕まえた）。**200 に戻ったことは「検索が効く」ことを意味しない。**
 #
 #    そのうえで、**このスタックでは索引そのものが空である**:
 #      BFF 経由で作った文書は `MarkdownUri` を持たない（CreateDocumentRequest に項目が無い）。

@@ -4,7 +4,8 @@ import { Navigate, useSearch } from '@tanstack/react-router';
 import { Button } from '@platform/ui';
 import { useAuth } from './useAuth';
 
-// Issue #126: 明示ログイン画面。ボタン押下で Keycloak の認可コードフロー（PKCE）を開始する。
+// Issue #126 / ADR-0032, IADR-0273, #439: 明示ログイン画面。ボタン押下で BFF のログイン端点へ
+// トップレベル遷移し、認可コードフロー（PKCE）は **BFF が実施する**（SPA はトークンを扱わない）。
 // 既に認証済みなら遷移元（RequireAuth が付ける ?from=）へ戻す。無ければ SC-01（主入口）へ。
 // 05_screens §共通シェル: ブランド表示名は「汎用プラットフォーム」で統一する。
 export function LoginPage() {
@@ -28,7 +29,9 @@ export function LoginPage() {
       <p className="mt-2 text-sm text-[--color-fg-muted]">
         {i18n._(msg`社内ナレッジ検索・AI 回答プラットフォーム`)}
       </p>
-      <Button variant="primary" className="mt-6" onClick={() => void login()}>
+      {/* ログイン完了後の戻り先は遷移元（?from=。loginRoute の validateSearch が SPA 内部の
+          絶対パスへ検証済み）。無ければ主入口へ。BFF 側でも SafeReturnUrl が再検証する。 */}
+      <Button variant="primary" className="mt-6" onClick={() => void login(from ?? '/ask')}>
         {i18n._(msg`Keycloak でサインイン`)}
       </Button>
     </main>

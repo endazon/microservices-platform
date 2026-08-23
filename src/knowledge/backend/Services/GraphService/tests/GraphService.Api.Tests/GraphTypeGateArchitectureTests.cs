@@ -77,6 +77,24 @@ public class GraphTypeGateArchitectureTests
             "未フィルタの部分グラフが公開型だと、アセンブリの外へ濾さずに渡せてしまう");
     }
 
+    // 🔴 FR-05, FR-21, IADR-0272 決定 4 (#993): **解決アクションに既定値を置かせない。**
+    //
+    // #993 は「/authz/scope が read を返すこと」を暗黙の前提にした呼び出しが書き込み経路へ効いて
+    // いた欠陥である。既定値を復活させると、**新しい経路を足した人が書き忘れることで認可が緩む**。
+    // 既定値が無ければ、アクションの選択がコンパイラに強制される。
+    [Fact]
+    public void GraphAccessResolver_action_parameter_has_no_default_value()
+    {
+        var method = typeof(GraphService.Api.Foundation.Ports.IGraphAccessResolver)
+            .GetMethod(nameof(GraphService.Api.Foundation.Ports.IGraphAccessResolver.ResolveAsync));
+
+        method.Should().NotBeNull();
+        var action = method!.GetParameters().SingleOrDefault(p => p.Name == "action");
+        action.Should().NotBeNull("書き込み経路が read で判定されないよう、アクションは引数で渡す");
+        action!.HasDefaultValue.Should().BeFalse(
+            "既定値を置くと『書かなければ read』になり、書き忘れが認可の緩みとして現れる（#993）");
+    }
+
     // 戻り値が T そのもの、または Nullable/コレクション越しに T を運ぶ経路も拾う。
     private static bool Produces(Type returnType, Type target)
     {

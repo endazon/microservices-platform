@@ -1,0 +1,45 @@
+{{#if withNav}}import { msg } from '@lingui/core/macro';
+{{/if}}import { createRoute, lazyRouteComponent } from '@tanstack/react-router';
+import type { ShellRoute } from '@foundation/routing/shell';
+{{#if withNav}}import type { PlanNavItem } from '@foundation/routing/featureRegistry';
+{{/if}}
+
+// TODO(起点 ID): 計画書の `SC-xx` / `UC-xx` / `FR-xx` をここへ書く
+// （`.claude/rules/traceability.md`「残す箇所と書式」。**起点 ID を持たない画面を作らない**）。
+//
+// ADR-0031 / IADR-0124 決定 1: 可変ユニットは **`(shell: ShellRoute) => Route` のファクトリ**で
+// ルートを公開する。platform を import せず共通シェルを引数で受け取る——これが
+// 「platform → 可変ユニットの参照禁止」（IADR-0056 決定 3）を保ったまま型付きルート木を組む唯一の形である。
+// **戻り値へ型注釈を付けない**（付けるとルート ID とパスの union が失われ、`<Link to>` の静的検査が消える）。
+//
+// NFR, ADR-0031 / IADR-0134: 画面はルート単位の遅延チャンクへ分ける（初期チャンクに載せない）。
+const {{pascalCase name}}Page = lazyRouteComponent(
+  () => import('../components/{{pascalCase name}}Page'),
+  '{{pascalCase name}}Page',
+);
+
+export const create{{pascalCase name}}Route = (shell: ShellRoute) =>
+  createRoute({
+    getParentRoute: () => shell,
+    // 05_screens のルート表の値を使う。ロール限定が要る画面は `RequireRole` で包み
+    // `wrapInSuspense: true` を付ける（権限外は NotFound。存在秘匿。IADR-0009 / IADR-0035）。
+    path: '{{routePath}}',
+    component: {{pascalCase name}}Page,
+  });
+{{#if withNav}}
+
+// 05_screens §共通シェル: 左ナビへ出す項目。
+//
+// **`group` は必須である**（`PlanNavItem` が `tsc` で強制する）。総称のフォールバック（「その他」）は
+// 廃止されたため、宣言し忘れた項目は**どのグループにも属さず静かに消える**
+// ——ルートは載るのに左ナビに出ない、という追跡しにくい壊れ方をする。
+//
+// ADR-0031 / IADR-0125 決定 6: 表示名は **MessageDescriptor**（`msg` マクロ）で持ち、解決は描画時に行う。
+// ここは**モジュール初期化時**に評価されるため、翻訳済みの文字列で持つとロケール切替に追随しない。
+export const {{camelCase name}}Nav: PlanNavItem = {
+  id: '{{name}}',
+  label: msg`{{{title}}}`,
+  to: '{{routePath}}',
+  group: '{{navGroup}}',
+};
+{{/if}}

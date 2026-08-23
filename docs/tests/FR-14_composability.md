@@ -3,15 +3,15 @@ title: FR-14 コンポーザビリティ（宣言的パイプライン構成） 
 type: test-spec
 status: draft
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
-ids: [FR-14]
+ids: [FR-14, FR-15]
 adrs: [ADR-0018]
-iadrs: [IADR-0027, IADR-0028]
+iadrs: [IADR-0027, IADR-0028, IADR-0268]
 specs: [20260708_issue-111_declarative-pipeline-config]
-issues: []
+issues: [#444]
 -->
 
 # テスト仕様書: コンポーザビリティ（宣言的パイプライン構成）
@@ -34,6 +34,8 @@ issues: []
 - 既定互換: 宣言なしでは既定配線で登録される（ローカル・テスト回帰なし）。
 - fail-fast: 未宣言の段・consumer 型名不一致・input 型名不一致で起動失敗する。
 - 組み替え: `enabled: false` で購読・キューが生成されない。`queue` 指定で受信エンドポイント名が変わる。
+  **宣言の値が実効構成の表示（イベント接続）にまで届くことを、宣言が在ることとは別に確かめる。**
+- ポート差し替え: 接続先コンポーネントの選択が構成だけで入れ替わり、宣言的な段の登録を乱さない。
 - 宣言検証: スキーマ違反・発行元のないイベント購読・循環・型名形式違反を CI 段階で検出する。
 
 ## テストケース（実装済みテストへの写像）
@@ -47,6 +49,10 @@ issues: []
 | 3c | 組み替え | `queue` 上書きの**実挙動**（受信エンドポイント名が宣言値へ差し替わる）。2 購読者へ同一の queue を宣言すると競合コンシューマになり丁度 1 つが受信する | `Knowledge.IntegrationTests/Messaging/QueueOverrideFanOutTests`（実ブローカ） |
 | 4 | 宣言検証 | スキーマ・接続性・循環・型名形式（V1〜V6） | `scripts/validate-pipeline-config.js --self-test`（CI: `ci.yml`） |
 | 5 | 参照方向 | Foundation → Composable 参照なし | レビュー・grep による検査（Issue #118 監査で確認済み） |
+| 6 | 宣言の実効性 | **正の宣言そのもの**を本番と同じ読み込み経路で束縛し、入出力イベントが events 列挙に閉じる | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PipelineDeclarationEffectivenessTests` |
+| 6b | 宣言の実効性 | 宣言の有効な段の担当サービスが compose・Helm の自己申告収集対象に実在する（宣言が突合へ届いている） | 同上 |
+| 6c | 宣言の実効性 | 無効化した段が実効構成のイベント接続（購読者・発行者）から消える（＋有効な段は現れる対照条件） | 同上 |
+| 7 | ポート差し替え | 構成だけでポート実装が入れ替わり（縮退 ↔ 実クライアント）、段の登録・実効構成の段/イベント接続は不変 | `Platform.Shared.Infrastructure.Tests/Foundation/Pipeline/PortSwapCompositionTests` |
 
 ## 合否判定
 

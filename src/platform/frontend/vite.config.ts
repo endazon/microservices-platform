@@ -54,6 +54,24 @@ export default defineConfig({
           // TanStack Query の内部も全画面が使う。放置すると @platform/ui と同じ理由で
           // 遅延チャンク側へ切り出される（実測: useMutation 3.10 kB / Table 11.41 kB の 2 本）。
           if (/^@tanstack\/(react-)?query(-core)?\//.test(pkg)) return 'vendor-query';
+          // ADR-0031 §採用技術一覧（チャート = Apache ECharts・自己ホスト）/ #788:
+          // ECharts と zrender は本リポジトリで最大級の依存である。**初期ロードへ入れない**
+          // （IADR-0134 の初期ロード ratchet に直撃する）。実際の遅延は
+          // `knowledge/frontend/src/components/echartsLoader.ts` の**動的 import**が作っており、
+          // この規則はそれを 1 本のチャンクへ束ねて意図を固定するためのものである
+          // （規則が無いと図を使う画面ごとに echarts の断片が散る）。
+          //
+          // 🔴 **規則を足したら `scripts/chunk-budget-baseline.json` の `requiredChunks` にも足す。**
+          // あの配列は「初期ロードに載る規則」の一覧ではなく「manualChunks が返す名前」の一覧であり、
+          // 遅延か否かを区別しない（区別しているのは `initialTotalBytes` のほう）。
+          // 自己試験が両者の完全一致を突き合わせるため、片方だけ足すと CI が落ちる。
+          // SC-18 / ADR-0039 / IADR-0274 (#917): GraphChart（グラフ画面の面）は**専用チャンク**に分ける。
+          // graph 固有のモジュールは echarts/lib/chart/graph/ 配下に閉じており、共有部
+          // （echarts/core・zrender）は従来どおり vendor-echarts が持つ。分けないと
+          // vendor-echarts が 603.30 kB（実測）になり 1 チャンク上限（600 kB）を超える。
+          // SC-08 / SC-10（折れ線・棒）しか開かない利用者に graph の面は届かない。
+          if (/^echarts\/lib\/chart\/graph\//.test(pkg)) return 'vendor-echarts-graph';
+          if (/^(echarts|zrender)\//.test(pkg)) return 'vendor-echarts';
           return undefined;
         },
       },

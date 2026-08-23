@@ -3,15 +3,15 @@ title: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy） �
 type: data-spec
 status: in-progress
 created: 2026-07-04
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09]
-adrs: [ADR-0002, ADR-0004]
-iadrs: []
-specs: []
-issues: []
+adrs: [ADR-0002, ADR-0004, ADR-0036]
+iadrs: [IADR-0253]
+specs: [20260823_issue-989_authz-scope-disjunction-stages]
+issues: [#989, planning#466]
 -->
 
 # データ仕様書: ABAC 属性辞書・ポリシー（AttributeDefinition / AbacPolicy）
@@ -31,7 +31,7 @@ issues: []
 
 AttributeDefinition は管理者が定義する**属性辞書エントリ**で、属性キー・ラベル・取りうる値（AllowedValues）・必須有無・スコープ（`document` / `user`）を保持する。文書側の属性（`Document.Attributes`）と利用者側の属性の両方の語彙を定義する。
 
-AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。
+AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manage` / `write`）ごとに、**利用者属性条件（UserConditions）**と**文書属性条件（DocumentConditions）**を保持する。
 条件は「キー → 許容値リスト」の辞書で、評価エンジン（AbacEvaluator）がこれを突き合わせて許可判定を行う。
 文書の属性は `document-and-version.md` の `Document.Attributes`、検索フィルタは `data-source.md` の payload `attributes.<key>` と対応する。
 
@@ -56,7 +56,7 @@ AbacPolicy は評価ルールで、アクション（`read` / `analyze` / `manag
 | --- | --- | --- | --- | --- |
 | Id | Guid (uuid) | ○ | 主キー。既定 `Guid.NewGuid()` | ポリシー識別子 |
 | Name | string (varchar(200)) | ○ | 最大長 200 | ポリシー名 |
-| Action | string (varchar(50)) | ○ | 最大長 50。既定 `read`。値: `read` / `analyze` / `manage` | 許可対象アクション |
+| Action | string (varchar(50)) | ○ | 最大長 50。既定 `read`。値: `read` / `analyze` / `manage` / `write` | 許可対象アクション（`write` は所有者ベースの書き込み判定用。計画の評価モデルの値域追記に追随） |
 | UserConditions | Dictionary&lt;string,List&lt;string&gt;&gt; (jsonb) | ○ | NULL 不可（省略時は空辞書＝条件なし） | 利用者属性条件（例: `{"clearance":["confidential","restricted"]}`） |
 | DocumentConditions | Dictionary&lt;string,List&lt;string&gt;&gt; (jsonb) | ○ | NULL 不可（省略時は空辞書＝条件なし） | 文書属性条件（例: `{"confidentiality":["public","internal"]}`） |
 | IsActive | bool (boolean) | ○ | 既定 true。`SetActive()` で切替 | 有効／無効（削除せず一時停止） |
@@ -106,7 +106,7 @@ erDiagram
 - **属性キーの一意性**: `(Key, Scope)` 一意制約により、同一スコープ内での属性キー重複を DB で防止。`Key` / `Scope` はエンティティ上も不変。
 - **条件の NULL を保存しない**: `UserConditions` / `DocumentConditions` は `Create` / `Update` で `?? []` により空辞書化。評価エンジンが null を foreach して落ちるのを防ぐ（「条件なし」＝空辞書＝無制約）。
 - **有効／無効の分離**: ポリシーは物理削除せず `IsActive` で一時停止できる。
-- **アクション・スコープの妥当性**: `PolicyAction.IsValid` / `AttributeScope.IsValid` で列挙値を検証（`read`/`analyze`/`manage`、`document`/`user`）。
+- **アクション・スコープの妥当性**: `PolicyAction.IsValid` / `AttributeScope.IsValid` で列挙値を検証（`read`/`analyze`/`manage`/`write`、`document`/`user`）。
 - **文書属性との整合**: `DocumentConditions` のキーは `Document.Attributes` のキー、検索時は Qdrant payload `attributes.<key>` と突き合わせる（越境整合。ABAC によるアクセス制御の前提）。
 
 ## 永続化方針

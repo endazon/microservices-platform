@@ -19,7 +19,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AiSuggestion,
   BffGraphNeighborsParams,
+  BffGraphSuggestionsParams,
   EdgeTypeCatalogItem,
   GraphView
 } from '../bff.schemas';
@@ -356,6 +358,118 @@ export function useBffGraphNeighbors<TData = Awaited<ReturnType<typeof bffGraphN
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getBffGraphNeighborsQueryOptions(documentId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffGraphSuggestionsResponse200 = {
+  data: AiSuggestion[]
+  status: 200
+}
+
+export type bffGraphSuggestionsResponse400 = {
+  data: void
+  status: 400
+}
+
+export type bffGraphSuggestionsResponseSuccess = (bffGraphSuggestionsResponse200) & {
+  headers: Headers;
+};
+export type bffGraphSuggestionsResponseError = (bffGraphSuggestionsResponse400) & {
+  headers: Headers;
+};
+
+export type bffGraphSuggestionsResponse = (bffGraphSuggestionsResponseSuccess | bffGraphSuggestionsResponseError)
+
+export const getBffGraphSuggestionsUrl = (params?: BffGraphSuggestionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/bff/graph/suggestions?${stringifiedParams}` : `/bff/graph/suggestions`
+}
+
+/**
+ * FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
+ *
+ * 🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
+ * 承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+ * **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
+ * 承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
+ *
+ * **権限のない文書に関する提案は、件数を含め一切現れない**（存在秘匿）。
+ * 後段が引けないときは 502 であり、**空配列へ縮退しない** ——
+ * 「提案が 1 件も無い」と「一覧が引けない」は利用者にとって別の意味である。
+ * @summary FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）
+ */
+export const bffGraphSuggestions = async (params?: BffGraphSuggestionsParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffGraphSuggestionsResponse> => {
+
+  return bffFetch<bffGraphSuggestionsResponse>(getBffGraphSuggestionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getBffGraphSuggestionsQueryKey = (params?: BffGraphSuggestionsParams,) => {
+    return [
+    `/bff/graph/suggestions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getBffGraphSuggestionsQueryOptions = <TData = Awaited<ReturnType<typeof bffGraphSuggestions>>, TError = void>(params?: BffGraphSuggestionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphSuggestions>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffGraphSuggestionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffGraphSuggestions>>> = ({ signal }) => bffGraphSuggestions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffGraphSuggestions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type BffGraphSuggestionsQueryResult = NonNullable<Awaited<ReturnType<typeof bffGraphSuggestions>>>
+export type BffGraphSuggestionsQueryError = void
+
+
+/**
+ * @summary FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）
+ */
+
+export function useBffGraphSuggestions<TData = Awaited<ReturnType<typeof bffGraphSuggestions>>, TError = void>(
+ params?: BffGraphSuggestionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffGraphSuggestions>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffGraphSuggestionsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

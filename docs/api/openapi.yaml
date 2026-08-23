@@ -73,12 +73,21 @@ paths:
       responses:
         "302": { description: 認可サーバへのリダイレクト }
   /bff/auth/logout:
-    post:
+    get:
       x-roles: []
       tags: [Auth]
       summary: "NFR, ADR-0032: ログアウト（ブラウザと認可サーバの双方）"
+      description: |
+        トップレベルナビゲーションで呼ぶ（認可サーバの end-session への往復は fetch では完結しない）。
+        CSRF（強制ログアウト）対策として、**セッションの sid と一致する `sid` クエリを要求する**。
+        sid は `/bff/auth/me` の `logoutUrl` だけが配る（攻撃者は HttpOnly セッションの sid を知り得ない）。
       operationId: bff-auth-logout
       parameters:
+        - name: sid
+          in: query
+          required: true
+          schema: { type: string }
+          description: "セッションの sid。`/bff/auth/me` の `logoutUrl` が持つ値をそのまま使う"
         - name: returnUrl
           in: query
           required: false
@@ -86,6 +95,7 @@ paths:
           description: "ログアウト後の戻り先。**自サイト内のパスに限る**"
       responses:
         "302": { description: 認可サーバのログアウト経路へのリダイレクト }
+        "400": { description: sid 不一致・欠落（ログアウトは起きない） }
         "401": { description: 未認証 }
   /bff/auth/me:
     get:
@@ -462,8 +472,10 @@ paths:
   # 配信は **SPA からのポーリング**（既定 60 秒）である。SSE は移行第 4 段（#788）の射程なので使わない
   # ——したがってこの 2 本は orval の生成対象になる（orval-bff-only.cjs の SSE 除外規則に当たらない）。
   #
-  # **実装（BFF 端点・NotificationService）は未着手である**（IADR-0215 決定 6 / #600）。契約が先に載っている。
-  # このため check-bff-authz-docs.js（実装 → 契約の一方向）は当面この 2 本を検査しない。
+  # **後段（NotificationService）は実装済みだが、BFF 端点はまだである**（IADR-0267 決定 5 / #600）。
+  # 後段は同じ形の面（/notifications, /notifications/{id}/read）を持ち、宛先はトークンの主体（sub）
+  # だけで絞る —— BFF は主体をパラメータで渡さず、利用者のトークンをそのまま後段へ届けること。
+  # BFF 端点が無い間、check-bff-authz-docs.js（実装 → 契約の一方向）はこの 2 本を検査しない。
   /bff/notifications:
     get:
       # 認証は要るがロールは問わない。**通知は主体（JWT の sub）で絞る**——役割ではない。
@@ -2108,6 +2120,17 @@ paths:
             間引きの基準（ADR-0049 決定 4）。表示上限（ノード 200）を超えた候補集合から何を残すか。
             **未知の値・未指定は既定（distance）へ縮退する** —— 例外にしない。
           schema: { type: string, enum: [distance, updated, degree] }
+        - name: types
+          in: query
+          required: false
+          description: |
+            SC-18 (#917): 辺の型フィルタ（型 ID のカンマ区切り。未指定・空 = 絞らない）。
+            🔴 **絞りはサーバ側で探索の入口に適用される**（planning#446）——クライアントで
+            打ち切り後に絞ると「上位 200 件のうち一致したもの」になり範囲が意図せず狭まる。
+            総数（totalNodes / totalEdges）もフィルタ後の母集合で数え直される。
+            GUID として読めない要素は 400（`edge_type_filter_invalid`）。**実在しない型 ID は
+            エラーにならず、単に 1 本も一致しない**（型辞書は公開済みの語彙であり秘匿対象ではない）。
+          schema: { type: string }
       # NFR-09: 認証のみ・ロール不問（上と同じ。可視性は ABAC が決める）。
       x-roles: []
       tags: [Graph]
@@ -2128,6 +2151,53 @@ paths:
               schema: { $ref: "#/components/schemas/GraphView" }
         "400": { description: hops が範囲外（1〜3） }
         "404": { description: 権限外・不存在（区別しない） }
+
+  /bff/graph/suggestions:
+    get:
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: |
+            SC-21 (#918): 状態フィルタ。**未指定は `pending`（既定）**であり、`all` は絞りを外す。
+            🔴 **`all` は状態の値ではない** —— 永続層に `all` という状態は存在しない。
+            未知の値は 400（`invalid_state`）。**既定の補完も値域の検査も後段が一箇所で持つ**
+            （BFF は透過するだけである）。
+          schema: { type: string, enum: [pending, approved, rejected, all] }
+        - name: kind
+          in: query
+          required: false
+          description: |
+            SC-21 (#918): 種類フィルタ。未指定は絞らない（＝すべて）。
+            🔴 **リンク提案とタグ提案は同一の一覧に同居させる。画面を分けない**（FR-18）。
+            未知の値は 400（`invalid_kind`）。
+          schema: { type: string, enum: [link, tag] }
+      # NFR-09: 認証のみ・ロール不問。**可視性はロールではなく ABAC が決める** ——
+      # 権限のない文書に関する提案は一覧にも件数にも現れない（05_screens §SC-21 アクセス制御）。
+      x-roles: []
+      tags: [Graph]
+      summary: "FR-18, UC-10, SC-21: AI 提案の一覧（棚卸し用・読み取りのみ）"
+      description: |
+        FR-18, UC-10, SC-21, ADR-0033 決定 7・10: AI が提案したリンク候補・タグ候補を一覧で返す。
+
+        🔴 **読み取りだけである。承認・却下の口は BFF に無い。**
+        承認の主導線は SC-03（文書詳細）であり、SC-21 は棚卸し用の**従**である。
+        **一括承認の手段は画面・API のいずれにも設けない**（FR-18。一覧の 1 行に収まる情報では
+        承認を判断できず、タイトルだけを見て機械的に承認する運用に落ちるためである）。
+
+        **権限のない文書に関する提案は、件数を含め一切現れない**（存在秘匿）。
+        後段が引けないときは 502 であり、**空配列へ縮退しない** ——
+        「提案が 1 件も無い」と「一覧が引けない」は利用者にとって別の意味である。
+      operationId: bff-graph-suggestions
+      responses:
+        "200":
+          description: AI 提案の一覧（権限内のもののみ）
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AiSuggestion" }
+        "400": { description: state / kind が値域外（そのまま透過する） }
 
 components:
   schemas:
@@ -2221,11 +2291,16 @@ components:
 
     GraphNodeItem:
       type: object
-      description: "FR-17: グラフのノード（文書単位）"
+      description: |
+        FR-17: グラフのノード（文書単位）。
+        `isPrivateNote` は SC-18 の描き分け（組織文書＝円＋📄 / 個人資料＝角丸四角＋👤）のための
+        1 bit（ADR-0054 / #917）。値が付くのは ABAC 判定を通過した可視ノードだけであり、
+        **doc_scope を持たない文書は組織文書（false）として返る**（ADR-0054 決定 5）。
       required: [documentId, title]
       properties:
         documentId: { type: string, format: uuid }
         title: { type: string }
+        isPrivateNote: { type: boolean, default: false }
 
     GraphEdgeItem:
       type: object
@@ -2251,6 +2326,62 @@ components:
         name: { type: string, description: "表示名。改名されても id は変わらない" }
         layer: { type: string, description: "型の層（core / domain / user 等）" }
         isSymmetric: { type: boolean, description: "対称な関係か（向きを持たないか）" }
+
+    AiSuggestion:
+      type: object
+      description: |
+        FR-18, SC-21, ADR-0033 決定 7・10: AI 提案（リンク候補・タグ候補）。
+
+        **リンク提案とタグ提案を 1 つの型で表す** —— SC-21 が同一の一覧を求めており、
+        型を分けるとクライアント側で 2 経路に割れる。種別固有の欄は省略可である。
+
+        🔴 **本文指紋（却下解除の判定に使う内部状態）は公開面に出さない。**
+
+        🔴 **辺の型の表示名を持たない。** 名前は辞書（`/bff/graph/edge-types`）で解決し、
+        改名に追随させる（ADR-0033 決定 9）。ここへ焼き込むと改名後も古い名前を出し続ける。
+      required:
+        [id, kind, sourceDocumentId, rationale, state, rejectedCount, sourceDocumentTitle]
+      properties:
+        id: { type: string, format: uuid }
+        kind:
+          type: string
+          description: "link（リンク候補）/ tag（タグ候補）"
+        sourceDocumentId:
+          type: string
+          format: uuid
+          description: "リンク提案では起点、タグ提案では対象文書。**どちらの種別でも必ず入る**"
+        targetDocumentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "リンク提案のみ"
+        edgeTypeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: "リンク提案のみ。表示名は辺の型カタログで解決する"
+        tagValue:
+          type: string
+          nullable: true
+          description: "タグ提案のみ。SC-09 のタグ辞書に整合する値であること"
+        rationale: { type: string, description: "なぜ関連と判断したか（SC-21 主要素 6）" }
+        state:
+          type: string
+          description: "pending（承認待ち）/ approved（承認済み）/ rejected（却下）"
+        rejectedCount: { type: integer, description: "累積の却下回数" }
+        reinstatedReason:
+          type: string
+          nullable: true
+          description: >-
+            再提示の理由。source / target / both のいずれか。**非 null なら再提示であり、
+            画面は固定文言を必ず添える**（ADR-0033 決定 10。理由の無い再提示を起こさない）
+        sourceDocumentTitle:
+          type: string
+          description: "起点（タグ提案では対象）の文書名。SC-21 の「提案の内容」列が要る"
+        targetDocumentTitle:
+          type: string
+          nullable: true
+          description: "終点の文書名。タグ提案では終点が無いため null である"
 
     GraphView:
       type: object
@@ -2499,6 +2630,14 @@ components:
         userAttributes:
           type: object
           additionalProperties: { type: string }
+        action:
+          type: string
+          description: >-
+            ［2026-08-23 / #989］解決したいアクション（`read` / `analyze` / `manage` / `write`。
+            `enum` にしない——値域の正は `PolicyAction`）。省略時は `read`（旧クライアントは無改修で
+            従来どおり読み取りスコープを得る）。従前はサーバ側が `read` をハードコードしており、
+            書き込みの認可スコープをこの経路で出せなかった。値域外は 400（呼び出し側は非 2xx を
+            deny へ縮退させる）。
 
     AccessScopeResponse:
       type: object
@@ -2974,7 +3113,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
-        action: { type: string, description: "`read` / `analyze` / `manage`" }
+        action: { type: string, description: "`read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`）" }
         userConditions:
           $ref: "#/components/schemas/AbacConditionMap"
         documentConditions:
@@ -3032,7 +3171,7 @@ components:
       description: "FR-09, UC-05: ポリシーの登録・更新（更新も同じ型を用いる）"
       properties:
         name: { type: string }
-        action: { type: string, description: "`read` / `analyze` / `manage`" }
+        action: { type: string, description: "`read` / `analyze` / `manage` / `write`（`enum` にしない。値域の正は `PolicyAction`）" }
         userConditions:
           $ref: "#/components/schemas/AbacConditionMap"
         documentConditions:
@@ -3156,6 +3295,10 @@ components:
           type: array
           items: { type: string }
           description: "実効ロール"
+        logoutUrl:
+          type: string
+          nullable: true
+          description: "ログアウト先（セッションの sid を含む）。sid を持たないセッションでは null"
     FeedbackStatsDto:
       type: object
       description: "フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）"

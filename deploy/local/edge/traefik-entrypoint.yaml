@@ -4,9 +4,24 @@
 #   - k3d: `-p 50000:50000@loadbalancer`（k8s-local-up.sh の LOCALEDGE=1 が cluster 作成時に公開）。
 #   - Rancher Desktop: 内蔵 k3s の LoadBalancer が localhost へ自動公開（cluster 再作成不要）。
 #
-# ⚠️ `expose` の values スキーマは Traefik Helm chart バージョンで異なる。新しめ(chart v25+/Traefik v3)は
-# 下記のマップ形 `expose: { default: true }`。古い chart では真偽値 `expose: true` を使う。k3s の Traefik 版に
-# 追随して切替えること（`kubectl -n kube-system get helmchart traefik -o yaml` で版を確認できる）。
+# 🔴 #953: `expose` の values スキーマは **traefik Helm chart のバージョンで型が変わる**。
+# 下記のマップ形 `expose: { default: true }` は **chart 26 以降**でしか通らない。実測（issue #953）:
+#
+#   | k3s              | 同梱 traefik chart | `expose` の型 | 下記の宣言 |
+#   | ---------------- | ------------------ | ------------- | ---------- |
+#   | v1.30.4+k3s1     | 25.0.3             | **bool**      | ❌ `error calling eq: incompatible types for comparison` で reconcile 失敗 |
+#   | v1.31.5+k3s1 以降 | 26 以降            | map           | ✅ `admin=50000` が立つ |
+#
+# **［2026-08-23 追記 / #953］以前ここには「新しめ(chart v25+)は下記のマップ形」と書いてあったが、
+# それは誤りである。** chart 25.0.3 は bool であり、map を渡すと落ちる。上の表は実測（GitHub ホストランナー・
+# run 32554867883）に基づく。版の確認は `kubectl -n kube-system get helmchart traefik -o yaml`。
+#
+# **つまりこの宣言は k3s のバージョンに暗黙に依存している。** 依存に対する打ち手は 2 つあり、両方要る:
+#   1. **回避**: `K3S_IMAGE` で k3s を pin する（scripts/k8s-local-up.sh の [1/7]・#783 / IADR-0248）。
+#   2. **検知**: `k8s-local-up.sh` が LOCALEDGE=1 のとき、この HelmChartConfig の**反映**（traefik svc の
+#      `admin=50000`）を待ち、来なければ**非 0 で落とす**（#953 / IADR-0258）。`kubectl apply` は
+#      reconcile の失敗を知らないため、これが無いと **admin が立たないまま up が EXIT=0 で返る**。
+# k3s を上げ下げして下記が通らなくなったら、chart の版に合わせて `expose: true`（bool）へ切替えること。
 #
 # IADR-0220 (#841): admin(50000) を TLS 終端にし、web(80) は websecure(443) へ恒久リダイレクトする。
 # 計画 NFR-11「外部から到達し得るすべてのエンドポイントを HTTPS とし、平文 HTTP を残さない」の適用範囲は

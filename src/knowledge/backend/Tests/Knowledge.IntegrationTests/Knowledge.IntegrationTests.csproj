@@ -52,6 +52,11 @@
     <ProjectReference Include="..\..\Services\ConversionService\src\ConversionService.Worker\ConversionService.Worker.csproj" />
     <ProjectReference Include="..\..\Services\RetrievalService\src\RetrievalService.Api\RetrievalService.Api.csproj" />
     <ProjectReference Include="..\..\Services\AiAnalysisService\src\AiAnalysisService.Api\AiAnalysisService.Api.csproj" />
+    <!-- FR-17, SC-09, ADR-0033 決定 9 / #941: 辺の型辞書の **DB 層の防壁**（ON DELETE RESTRICT /
+         ux_edge_types_name / ux_edges）は実 PostgreSQL でしか発火しない。GraphService.Api.Tests は
+         EF InMemory であり、InMemory は一意索引も外部キーも強制しないため原理的に測れない。
+         Program 型の衝突（CS0433）は GraphServiceTestMarker で避ける（IADR-0027 の作法）。 -->
+    <ProjectReference Include="..\..\Services\GraphService\src\GraphService.Api\GraphService.Api.csproj" />
     <ProjectReference Include="..\..\..\..\platform\backend\Shared\Platform.Shared.Contracts\Platform.Shared.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>

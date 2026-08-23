@@ -1,11 +1,16 @@
 import { useMemo } from 'react';
-import type { User } from 'oidc-client-ts';
+import type { SessionUser } from './AuthContext';
 import { useAuth } from './useAuth';
 
-// IADR-0035: SPA のロール判定は access_token(JWT) の realm_access.roles を一次情報とする
-// （バックエンドの KeycloakRolesClaimsTransformation と同一ソース）。表示制御・存在秘匿の
+// IADR-0035 / IADR-0273: ロール判定は `/bff/auth/me` が返す roles を一次情報とする
+// （BFF 側の KeycloakRolesClaimsTransformation と同一ソース）。表示制御・存在秘匿の
 // 出し分け専用であり、認可の実効境界はサーバ側（AdminOnly=403 / ConfigViewer=404 秘匿）に置く。
-// 復号不能・欠落時は空配列（＝権限なし）として扱う（フェイルクローズ）。
+// 取得不能・欠落時は空配列（＝権限なし）として扱う（フェイルクローズ）。
+//
+// 🔴 **`access_token` の JWT 復号はフォールバックである（IADR-0273 決定 7）。**
+// 本体の SPA はトークンを持たない（ADR-0032）。残しているのは `ai-stock-trading` submodule の
+// テストが旧形（`{ access_token }`）の値を AuthContext へ流し込むためで、AST 側が追随したら
+// このフォールバックごと削る。**新しいコードから access_token を供給してはならない。**
 
 export const PlatformRole = {
   Admin: 'platform-admin',
@@ -37,9 +42,17 @@ function decodeJwtPayload(token: string): unknown {
   }
 }
 
-/** access_token(JWT) の realm_access.roles を取り出す。取得不能・欠落時は空配列（フェイルクローズ）。 */
-export function extractRealmRoles(user: User | null): string[] {
-  const token = user?.access_token;
+/**
+ * 現在の身元からレルムロールを取り出す。第 1 情報源は `roles` 配列（`/bff/auth/me`）。
+ * 旧形（`access_token` のみ）の値には JWT 復号でフォールバックする（上の注記）。
+ * どちらも取れなければ空配列（フェイルクローズ）。
+ */
+export function extractRealmRoles(user: SessionUser | null): string[] {
+  if (!user) return [];
+  if (Array.isArray(user.roles)) {
+    return user.roles.filter((r): r is string => typeof r === 'string');
+  }
+  const token = user.access_token;
   if (!token) return [];
   const claims = decodeJwtPayload(token) as AccessTokenClaims | null;
   const roles = claims?.realm_access?.roles;

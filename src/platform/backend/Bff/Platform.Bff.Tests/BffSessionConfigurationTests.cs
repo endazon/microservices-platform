@@ -101,6 +101,17 @@ public class BffSessionConfigurationTests
         Cookie(sp).SessionStore.Should().BeOfType<RedisTicketStore>();
     }
 
+    // 🔴 ★ IADR-0273 決定 3: **`offline_access` を要求しない。**
+    // オフライントークンは SSO セッションが終了しても生き残り、「無効化 → 即時失効」と逆向きになる。
+    // セッション連動の refresh token なら、Keycloak 側の失効が refresh 拒否 → セッション破棄として効く。
+    [Fact]
+    public void Scope_stays_session_bound_and_never_requests_offline_access()
+    {
+        using var sp = Build();
+
+        Oidc(sp).Scope.Should().BeEquivalentTo(["openid", "profile", "email"]);
+    }
+
     // ★ ADR-0032 §決定 の Cookie 属性。既定の SecurePolicy は SameAsRequest（＝平文でも出る）。
     [Fact]
     public void Session_cookie_is_httponly_secure_and_lax()

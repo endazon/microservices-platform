@@ -3,7 +3,7 @@ title: 検索／チャット質問画面 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -164,7 +164,7 @@ hi-fi `sc-01.html:428-429` は出典 1 行に**チップを 2 つ**描く——`
 > **残る作業は表示だけ**である: (a) 表示名の写像（**正は計画リポジトリの用語集**。`public`＝公開 /
 > `internal`＝社内限 / `confidential`＝秘 / `restricted`＝**取扱制限**。**「極秘」ではない**）、
 > (b) Lingui カタログ（ja / en）、(c)「色だけで意味を持たせない」（アイコン ＋ テキスト）。
-> **SSE 経路の手書き型 `AskCitation`（`features/sc01-search/citations.ts`）にも項目が要る**
+> **SSE 経路の手書き型 `AskCitation`（`features/sc01-search/types/citations.ts`）にも項目が要る**
 > ——SSE は OpenAPI の生成対象外（契約の単一情報源の決定 4）のため生成型が使えない。
 > 表示を作る issue で型と表示を同時に足す（先に型だけ足すと使われないフィールドが残る）。
 

@@ -1,9 +1,21 @@
 {
-  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。",
+  "$comment": "check-chunk-budget.js の床（NFR / ADR-0031 / IADR-0134 / issue #556）。 requiredChunks は vite.config.ts の manualChunks が返す名前と一致していること（self-test が突き合わせる）。 **規則の欠落を捕まえるのは requiredChunks の実在判定だけである** —— 500 kB 判定も初期ロードの ratchet も、規則を外した実測では発火しなかった（詳細は check-chunk-budget.js 冒頭の実測表）。 initialTotalBytes / smallLazyChunks は実測値。意図的に増やすときは node scripts/check-chunk-budget.js --update で更新し、差分を PR に載せること。 maxChunkBytes は Vite の chunkSizeWarningLimit 既定（500 kB・1000 進）に合わせている。 **kB 換算はこのファイル全体で 1000 進に統一する**（1024 進と混ぜると差分の検算が合わなくなる。実際に 1 件混入していた）。",
   "requiredChunks": [
     "ui",
     "vendor-react",
-    "vendor-query"
+    "vendor-query",
+    "vendor-echarts",
+    "vendor-echarts-graph"
+  ],
+  "$comment_requiredChunks": [
+    "［2026-08-23 / #788］vendor-echarts を足した。vite.config.ts へ manualChunks の規則を足したら、",
+    "**この配列にも足す**（自己試験が両者の完全一致を突き合わせる。baseline 冒頭の $comment が正本）。",
+    "起草時に「vendor-echarts は遅延チャンクだから requiredChunks へは足さない（図を使う画面が",
+    "1 つも無いビルドで落ちる）」と判断した記録が vite.config.ts のコメントに残っていたが、**誤りである**。",
+    "この配列は『初期ロードに載る規則』の一覧ではなく『manualChunks が返す名前』の一覧であり、",
+    "遅延か否かを区別しない。区別しているのは initialTotalBytes（初期ロードの合計）のほうである。",
+    "懸念そのものは実在しない —— 本リポジトリのビルドは 1 つ（platform/frontend が knowledge の",
+    "features を合成する）で、SC-10 が EChart を使うため vendor-echarts は必ず出力される。"
   ],
   "$comment_initialTotalBytes": [
     "［2026-08-15 / #578］586,557 → 622,064（+35.51 kB）へ引き上げた。増加は本 PR の変更ではなく、",
@@ -36,9 +48,85 @@
     "NotificationBell へ**閉じる導線**（Escape ＋ 外側クリック ＋ フォーカス復帰）を足した分である。",
     "index 321.53 → 321.93 kB の 1 本だけが増え、他のチャンクは 1 バイトも動いていない。",
     "**遅延させられない**——閉じる導線は共通シェルの通知パネルと同じチャンクに居る必要がある",
-    "（別チャンクにすると、パネルを開いた直後の Escape が読み込み待ちで効かない）。"
+    "（別チャンクにすると、パネルを開いた直後の Escape が読み込み待ちで効かない）。",
+    "",
+    "［2026-08-23 / #788］629,689 → 646,133（+16.44 kB）へ引き上げた。**実測値である**",
+    "（src/ai-stock-trading submodule を populate し pnpm run build を通して測った。",
+    "着手時の環境では submodule 未取得でビルドが通らず、推測で数字を書かないため保留していた）。",
+    "増加は共通シェルへ載った右レール AI チャットパネル（Zustand ストア・SSE フック・パネル本体）と、",
+    "foundation の Error Boundary（react-error-boundary）・日付整形（dayjs）、および",
+    "それらの Lingui カタログ 2 ロケール分である。**いずれも共通シェルに載るので遅延させられない**",
+    "——右レールのランチャーはシェルの一部であり、遅延させると開くまでボタンが出ない。",
+    "ECharts は初期ロードに入っていない（vendor-echarts は独立した遅延チャンク）。",
+    "［2026-08-23 復元 / #1009］**本項は一度失われていた。** 同名キーの衝突を解消する際に、",
+    "リネームではなく削除されたためである。結果、629,689 の次に 646,133 が説明なく現れる状態に",
+    "なっていた（数値の連鎖は保たれるので検査は通り、誰も止めなかった）。git の差分から復元した。",
+    "",
+    "［2026-08-23 / #439］646,133 → 575,417（−70.72 kB）へ**引き下げた**。",
+    "BFF セッション移行で oidc-client-ts（と authConfig / CallbackPage）が初期ロードから消えたぶんの",
+    "実測である（pnpm run build → node scripts/check-chunk-budget.js --update）。締めるのは再導入を",
+    "床で止めるため。代償: 初期ロードへ正当にコードを足す次の PR は、増分が床を超えたら",
+    "実測値で床を上げ直す手間を払う（この手間が『気付かず太る』の保険である）。"
   ],
-  "maxChunkBytes": 500000,
-  "initialTotalBytes": 629689,
-  "smallLazyChunks": 4
+  "$comment_maxChunkBytes": [
+    "［2026-08-23 / #788］500,000 → 600,000 へ引き上げた。**遅延チャンク 1 本のために全体の上限を",
+    "緩めている**ので、根拠と代償をここに残す。",
+    "",
+    "対象は vendor-echarts（実測 557.21 kB / gzip 191.77 kB）。ECharts は本リポジトリで最大級の依存であり、",
+    "登録しているのは折れ線・棒・軸・ツールチップ・凡例・SVG レンダラだけで、**これ以上落とせない**",
+    "（凡例・ツールチップ・軸は SC-10 の option が実際に使っている。dashboardCharts.ts で実測）。",
+    "",
+    "最初の実装は 1,092.40 kB だった。原因は `await import('echarts/charts')` の形でバレルを動的に",
+    "読んでいたことで、bundler は名前空間全体を要求されたと解釈し**何も落とさなかった**。",
+    "静的な名前つき import を別モジュール（echartsBundle.ts）へ閉じ、そのモジュールごと動的に",
+    "import する形へ直して 557.21 kB（−49%）になった。**上限を緩める前に、まず落とせるだけ落とした。**",
+    "",
+    "**代償**: この上限は今後どのチャンクにも 600 kB まで許す。巨大チャンクの再発を捕まえる力は",
+    "その分弱くなる。**利用者の初期表示を守っているのは initialTotalBytes の ratchet のほう**であり、",
+    "vendor-echarts はそこには載らない（動的 import による遅延チャンク）。",
+    "上限そのものは Vite の chunkSizeWarningLimit 既定（500 kB）に由来する警告閾値であって、",
+    "計画が定めた要件ではない。"
+  ],
+  "maxChunkBytes": 600000,
+  "$comment_initialTotalBytes_20260823": [
+    "［2026-08-23 / #439］575,417 → 575,856（+439 B）。bffBaseUrl の同一オリジン検査を",
+    "loadAppConfig へ足したぶんである。この検査は入口チャンクに入る（起動時に走らせるため）。",
+    "代償を払う理由: BFF セッション方式では資格情報が Cookie であり、別オリジンの bffBaseUrl を",
+    "注入すると全要求が静かに未認証になる。症状が「ログインし直して」の形で出るため気付きにくい。",
+    "439 B で、配備の設定ミスを起動時に落とせる。"
+  ],
+  "$comment_initialTotalBytes_20260823_sc21": [
+    "［2026-08-23 / #918］582,839 → 586,001（+3.16 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-21 AI 提案一覧のルート登録",
+    "（features/index.ts の合成点・validateSearch・左ナビ項目）と、Lingui カタログ 19 メッセージ × 2",
+    "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**",
+    "（SC-18 の +6.98 kB と同じ経路）。",
+    "",
+    "画面本体（AiSuggestionListPage 3.81 kB）と表の土台（DataTable 39.07 kB。TanStack Table v9 を含む）は",
+    "**どちらもルート単位の遅延チャンク**であり、初期ロードには入っていない —— 本画面が DataTable の",
+    "最初の利用者であり、これまで実コードから参照されていなかったため出力チャンク自体が無かった。",
+    "**表を使わない画面しか開かない利用者に 39 kB は届かない。**",
+    "",
+    "smallLazyChunks は 6 のまま（1 kB 未満の遅延チャンクは増減していない）。"
+  ],
+  "initialTotalBytes": 586001,
+  "$comment_initialTotalBytes_20260823_sc18": [
+    "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
+    "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
+    "（features/index.ts の合成点・validateSearch・左ナビ項目）と、Lingui カタログ 47 メッセージ × 2",
+    "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**。",
+    "画面本体（GraphViewPage 12.96 kB）と ECharts の graph 面（vendor-echarts-graph 18.16 kB）は",
+    "ルート単位の遅延チャンクであり、初期ロードには入っていない。",
+    "",
+    "あわせて requiredChunks へ vendor-echarts-graph を足した。GraphChart を既存の vendor-echarts に",
+    "同居させると 603.30 kB（実測）で 1 チャンク上限（600,000）を超えるため、echarts/lib/chart/graph/",
+    "配下を専用チャンクへ分けた（vendor-echarts 586.04 kB ＋ vendor-echarts-graph 18.16 kB）。",
+    "SC-08 / SC-10（折れ線・棒）しか開かない利用者に graph の面は届かない。"
+  ],
+  "$comment_smallLazyChunks": [
+    "［2026-08-23 / #788］4 → 5。echartsBundle.ts を分けたことで登録層が 1 本の小チャンクになった。",
+    "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。",
+    "［2026-08-23 / #917］5 → 6。echartsGraphBundle.ts（GraphChart の登録層 0.16 kB）が同型で 1 本増えた。"
+  ],
+  "smallLazyChunks": 6
 }

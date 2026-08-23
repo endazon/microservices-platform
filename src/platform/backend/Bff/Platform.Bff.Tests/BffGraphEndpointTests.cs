@@ -100,6 +100,40 @@ public class BffGraphEndpointTests : IClassFixture<BffTestFactory>
         _factory.LastGraphPath.Should().Contain($"/graph/{id}/neighbors");
     }
 
+    // FR-17, SC-18 (#917): 間引き基準と辺の型フィルタも**そのまま**後段へ渡す。
+    // 検証（types の形式不正 400 を含む）は GraphService の一箇所であり、BFF は正規化しない。
+    [Fact]
+    public async Task Neighbors_forwards_thinning_and_edge_type_filter()
+    {
+        _factory.GraphStubStatusCode = HttpStatusCode.OK;
+        _factory.StubGraphView = new GraphViewDto([], [], false);
+        var (typeA, typeB) = (Guid.NewGuid(), Guid.NewGuid());
+
+        var res = await CreateAuthenticatedClient().GetAsync(
+            $"/bff/graph/{Guid.NewGuid()}/neighbors?by=updated&types={typeA},{typeB}",
+            TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastGraphPath.Should().Contain("by=updated");
+        _factory.LastGraphPath.Should().Contain($"types={typeA}%2C{typeB}",
+            "types はエスケープ以外の変形をせずに渡す");
+    }
+
+    // FR-17, SC-18 陽性対照の対（上のテストの裏面）: フィルタ未指定なら types を**足さない**。
+    // 空の types を送ると「空 = 全部落とす」か「空 = 絞らない」かの解釈が後段依存になる。
+    [Fact]
+    public async Task Neighbors_without_filter_sends_no_types_parameter()
+    {
+        _factory.GraphStubStatusCode = HttpStatusCode.OK;
+        _factory.StubGraphView = new GraphViewDto([], [], false);
+
+        var res = await CreateAuthenticatedClient().GetAsync(
+            $"/bff/graph/{Guid.NewGuid()}/neighbors", TestContext.Current.CancellationToken);
+
+        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        _factory.LastGraphPath.Should().NotContain("types=");
+    }
+
     // B-06: 深さ上限の超過は 400 のまま透過する。**BFF で握り潰さない。**
     [Fact]
     public async Task Hops_out_of_range_400_passes_through()

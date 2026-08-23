@@ -35,7 +35,7 @@ const MUST_BE_EAGER = [
   ['NotFound', '存在秘匿の描画。未知パスと権限による秘匿の両方で即座に要る（IADR-0009）'],
   ['RequireAuth', '認証ガード。ルート解決の前段で判定する'],
   ['RequireRole', 'ロールガード。**画面チャンクを取りに行く前**に判定させるため初期側に置く'],
-  ['AuthProvider', '認証（oidc-client-ts）の入口。全ルートの前提'],
+  ['AuthProvider', '認証（BFF セッション）の入口。全ルートの前提'],
   ['@platform/ui', 'UI プリミティブ。全画面が使うので分けても往復が増えるだけ'],
 ] as const;
 

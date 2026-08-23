@@ -66,29 +66,141 @@ data:
           path: /etc/grafana/provisioning/dashboards
   llm-usage.json: |
     {
-      "title": "LLM Usage (proxy for cost — NOT cost)",
+      "title": "LLM Usage & Cost",
       "uid": "llm-usage",
       "schemaVersion": 38,
-      "version": 1,
+      "version": 2,
       "refresh": false,
-      "tags": ["microservices-platform", "llm", "cost-proxy"],
-      "time": { "from": "now-30d", "to": "now" },
+      "tags": [
+        "microservices-platform",
+        "llm",
+        "cost"
+      ],
+      "time": {
+        "from": "now-30d",
+        "to": "now"
+      },
       "panels": [
         {
           "id": 1,
-          "title": "READ ME FIRST — これは費用ではない / This is NOT cost",
+          "title": "READ ME FIRST — 金額の読み方 / How to read the cost",
           "type": "text",
-          "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 24,
+            "h": 7
+          },
           "options": {
             "mode": "markdown",
-            "content": "**このダッシュボードは費用を表示しない。** トークン消費量・金額換算・単価表はいずれも未実装である（`IADR-0110` §結果 フォローアップ 2 / #443）。\n\n表示しているのは **`llm_completion_total`（補完の呼び出し回数）** であり、**費用の代理指標**にすぎない。1 回あたりのトークン数はプロンプトと応答の長さで大きく変わるため、**回数が横ばいでも費用は増えうる**。\n\n**使い方**（#546 / 計画 決定 39・41）: 毎月 1 回、`docs/operations/llm-cost-monthly-review-runbook.md` の手順に従って**前月比の増減**と**月内累計の推移**を見る。**絶対額のしきい値は持たない**（月次予算の金額は実測後に確定する）。\n\n**自動検知は無い。** Alertmanager が未配備のため、超過してもアラートは飛ばない。**検知の遅れは最大 1 か月である。**"
+            "content": "**このダッシュボードは費用（金額）を表示する。** 用途別・モデル別のトークン消費量と金額換算は **単価表を読むゲートウェイ側**で計算している（`llm_cost_total` / `llm_tokens_total`。#443）。**Grafana のクエリに単価を書かない** —— 式に単価が散ると有効期間を判定する主体が居なくなり、期限切れの警告を出せる場所が無くなるためである。\n\n**🔴 「単価を解決できなかった呼び出し」パネルを最初に見ること。** そこが 0 でない間、**金額は過小である**（該当する単価が無い呼び出しは金額に計上されない）。原因は単価表の期限切れか、モデルの登録漏れである。`Llm:Pricing:Models` を直すこと。\n\n**使い方**（#546 / 計画 決定 39・41）: 毎月 1 回、`docs/operations/llm-cost-monthly-review-runbook.md` の手順に従って**前月比の増減**と**月内累計の推移**を見る。**絶対額のしきい値は持たない**（月次予算の金額は実測後に確定する）。\n\n**自動検知は無い。** Alertmanager が未配備のため、超過してもアラートは飛ばない。**検知の遅れは最大 1 か月である。**"
           }
+        },
+        {
+          "id": 20,
+          "title": "単価を解決できなかった呼び出し / Unpriced completions (MUST be 0)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 7,
+            "w": 24,
+            "h": 6
+          },
+          "description": "**0 でなければ金額は過小である。** `out_of_period` = 単価表の期限切れ（導入価格の終了日を反映し忘れ）、`no_entry` = そのモデルの単価が未登録。**無音で 0 円として扱わないための警報である**（ADR-0044 決定 3）。",
+          "targets": [
+            {
+              "datasource": "Prometheus",
+              "expr": "sum by (llm_pricing_status, llm_model) (increase(llm_pricing_unpriced_total[$__range]))",
+              "legendFormat": "{{llm_pricing_status}} / {{llm_model}}"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "title": "費用（選択期間の累計・用途別） / Cost by purpose (selected range)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 13,
+            "w": 12,
+            "h": 9
+          },
+          "description": "**選択した時間範囲の累計**（`$__range` に追随する）。Runbook の手順どおり範囲を前月 1 か月へ合わせてから読む。単位は単価表の通貨（既定 USD）。",
+          "targets": [
+            {
+              "datasource": "Prometheus",
+              "expr": "sum by (llm_purpose) (increase(llm_cost_total[$__range]))",
+              "legendFormat": "{{llm_purpose}}"
+            }
+          ]
+        },
+        {
+          "id": 22,
+          "title": "費用（選択期間の累計・モデル別） / Cost by model (selected range)",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 12,
+            "y": 13,
+            "w": 12,
+            "h": 9
+          },
+          "description": "モデル振り分けの効果を金額で見る（用途別モデル振り分けの前後を同じ軸で比較する）。",
+          "targets": [
+            {
+              "datasource": "Prometheus",
+              "expr": "sum by (llm_model) (increase(llm_cost_total[$__range]))",
+              "legendFormat": "{{llm_model}}"
+            }
+          ]
+        },
+        {
+          "id": 23,
+          "title": "トークン消費量（用途別・入出力別） / Tokens by purpose and type",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 22,
+            "w": 12,
+            "h": 9
+          },
+          "description": "費用の分子。入力と出力は単価が異なるため分けて見る（出力の**分布**は max_tokens の妥当性を見る別の面であり、`llm.completion.output_tokens` のヒストグラムが持つ）。",
+          "targets": [
+            {
+              "datasource": "Prometheus",
+              "expr": "sum by (llm_purpose, llm_token_type) (increase(llm_tokens_total[$__range]))",
+              "legendFormat": "{{llm_purpose}} / {{llm_token_type}}"
+            }
+          ]
+        },
+        {
+          "id": 24,
+          "title": "費用の前月比（用途別） / Cost month-over-month by purpose",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 12,
+            "y": 22,
+            "w": 12,
+            "h": 9
+          },
+          "description": "直近 30 日と、その 30 日前との比。1 を超えていれば増加している（計画 決定 41 の「前月比の増減」）。",
+          "targets": [
+            {
+              "datasource": "Prometheus",
+              "expr": "sum by (llm_purpose) (increase(llm_cost_total[30d])) / clamp_min(sum by (llm_purpose) (increase(llm_cost_total[30d] offset 30d)), 1e-9)",
+              "legendFormat": "{{llm_purpose}}"
+            }
+          ]
         },
         {
           "id": 2,
           "title": "呼び出し回数（選択期間の累計・用途別） / Cumulative by purpose (selected range)",
           "type": "timeseries",
-          "gridPos": { "x": 0, "y": 6, "w": 12, "h": 9 },
+          "gridPos": {
+            "x": 0,
+            "y": 31,
+            "w": 12,
+            "h": 9
+          },
           "description": "**選択した時間範囲の累計**（`$__range` に追随する）。Runbook の手順どおり範囲を前月 1 か月へ合わせてから読む（決定 41 の「月内累計の推移」）。既定は直近 30 日。",
           "targets": [
             {
@@ -102,7 +214,12 @@ data:
           "id": 3,
           "title": "呼び出し回数（選択期間の累計・モデル別） / Cumulative by model (selected range)",
           "type": "timeseries",
-          "gridPos": { "x": 12, "y": 6, "w": 12, "h": 9 },
+          "gridPos": {
+            "x": 12,
+            "y": 31,
+            "w": 12,
+            "h": 9
+          },
           "description": "モデル振り分けの効果を見る。上位モデルの比率が上がっていれば費用は回数以上に増える。",
           "targets": [
             {
@@ -116,7 +233,12 @@ data:
           "id": 4,
           "title": "前月比（用途別） / Month-over-month by purpose",
           "type": "timeseries",
-          "gridPos": { "x": 0, "y": 15, "w": 12, "h": 9 },
+          "gridPos": {
+            "x": 0,
+            "y": 40,
+            "w": 12,
+            "h": 9
+          },
           "description": "直近 30 日と、その 30 日前との比。1 を超えていれば増加している（決定 41 の「前月比の増減」）。",
           "targets": [
             {
@@ -130,7 +252,12 @@ data:
           "id": 5,
           "title": "送信可否の内訳（選択期間） / Egress result breakdown (selected range)",
           "type": "timeseries",
-          "gridPos": { "x": 12, "y": 15, "w": 12, "h": 9 },
+          "gridPos": {
+            "x": 12,
+            "y": 40,
+            "w": 12,
+            "h": 9
+          },
           "description": "sent が費用の発生する経路である。egress_denied は機密区分により送信していない（費用は発生しない）。",
           "targets": [
             {
@@ -144,7 +271,12 @@ data:
           "id": 6,
           "title": "拒否率 / Refusal rate",
           "type": "timeseries",
-          "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+          "gridPos": {
+            "x": 0,
+            "y": 49,
+            "w": 12,
+            "h": 8
+          },
           "description": "送ったがモデルが拒否した割合。費用は発生しているのに成果が無い分である（IADR-0104 / IADR-0110）。",
           "targets": [
             {
@@ -158,7 +290,12 @@ data:
           "id": 7,
           "title": "max_tokens 打ち切り率 / Truncation rate",
           "type": "timeseries",
-          "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+          "gridPos": {
+            "x": 12,
+            "y": 49,
+            "w": 12,
+            "h": 8
+          },
           "description": "打ち切りは再試行を招きやすく、費用の押し上げ要因になる。",
           "targets": [
             {

@@ -3,14 +3,14 @@ title: BFF 通知（/bff/notifications）通信仕様書
 type: api-spec
 status: in-progress
 created: 2026-08-16
-updated: 2026-08-21
+updated: 2026-08-23
 author: Claude
 ---
 <!-- trace:
 ids: [FR-22, UC-11]
 adrs: [ADR-0037, ADR-0045]
-iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0215]
-specs: [20260816_issue-600_fr22-in-app-notifications]
+iadrs: [IADR-0009, IADR-0121, IADR-0131, IADR-0132, IADR-0135, IADR-0215, IADR-0267]
+specs: [20260816_issue-600_fr22-in-app-notifications, 20260823_issue-600_notification-service-backend]
 issues: [#600, #788]
 -->
 
@@ -19,10 +19,12 @@ issues: [#600, #788]
 > 要求・応答・ステータスの**正は [`openapi.yaml`](openapi.yaml)** である。本書はその上位にある
 > 設計の意図（**なぜこの形なのか**）を記す。境界の横断規約は [`BFF_bff-surface.md`](BFF_bff-surface.md)。
 
-> **`status: in-progress` の理由**: **契約は載っているが、後段（`NotificationService`）と BFF 端点の
-> 実装は入っていない。** 線引きの正本は、通知サービス新設を定めた実装 ADR の決定 6 である。**追跡は #600。**
+> **`status: in-progress` の理由**: **後段（`NotificationService`）は入ったが、BFF 端点の実装は
+> まだである。** 線引きの正本は送出側の実装 ADR の決定 5 である。**追跡は #600。**
 > **契約先行である**——受け入れ基準「本文が件数と期限のみ」を、実装ではなく契約で守らせるため
-> （同実装 ADR の決定 2）、契約を先に置いた。
+> （通知サービス新設の実装 ADR の決定 2）、契約を先に置いた。
+> **後段は同じ形の面（`/notifications` / `/notifications/{id}/read`）を実装済みであり、
+> BFF は集約（主体つきの転送）だけを足せばよい。**
 
 ## 起点となる計画書（トレーサビリティ）
 
@@ -119,7 +121,7 @@ issues: [#600, #788]
 sequenceDiagram
   participant S as SPA（共通シェル）
   participant B as BFF
-  participant N as NotificationService（未実装・#600）
+  participant N as NotificationService（実装済み）
   loop 60 秒ごと
     S->>B: GET /bff/notifications?limit=50
     B->>N: 本人（JWT の sub）宛の通知を取得
@@ -144,16 +146,20 @@ sequenceDiagram
 
 - 機能仕様書: [利用者通知](../functional/FR-22_user-notifications.md)
 - テスト仕様書: [利用者通知](../tests/FR-22_user-notifications.md)
-- データ仕様書: **未作成**（送出側の永続化は本 PR の射程外）
+- データ仕様書: [通知](../data/notification.md)
 - 実装 ADR: 通知は NotificationService を新設して担い、アプリ内通知はポーリングで配信する
 
 ## 未決事項
 
-1. **BFF 端点と後段の実装が無い間、`x-roles: []` の宣言は突合されない**——
+1. **BFF 端点の実装が無い間、`x-roles: []` の宣言は突合されない**——
    `scripts/check-bff-authz-docs.js` は**実装 → 契約**の一方向しか見ないため、
    **実装の無い端点は検査対象に入らない**（実測）。**この穴をここに開示しておく。**
+   **後段が入っても塞がらない**（同検査が見るのは BFF 側である）。
 2. **未読件数だけを返す軽い端点（`/unread-count`）は置いていない。** 一覧が `unreadCount` を返すため、
    面を 2 つに増やす理由が現時点で無い。ポーリングの負荷が問題になったら足す。
+3. **後段は主体（トークンの `sub`）でしか宛先を決めない。** BFF は**主体を引数として渡さず、
+   利用者のトークンをそのまま後段へ届ける形にする必要がある**——
+   主体をパラメータで渡す形にすると、後段が守っている境界を BFF が迂回できてしまう。
 
 <!-- trace-table:
 row1: FR-22, UC-11

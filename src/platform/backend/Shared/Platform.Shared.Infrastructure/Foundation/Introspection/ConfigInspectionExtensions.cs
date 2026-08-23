@@ -16,6 +16,7 @@ public static class ConfigInspectionExtensions
         // 宣言（pipeline.json）を読み込み、突合の基準として共有する。
         builder.AddPlatformPipelineConfig();
         var pipeline = builder.Configuration.GetPlatformPipeline();
+        EnsureDeclarationUsable(builder.Configuration, pipeline);
         builder.Services.AddSingleton(pipeline);
 
         builder.Services.Configure<IntrospectionOptions>(
@@ -40,6 +41,28 @@ public static class ConfigInspectionExtensions
         builder.Services.AddHostedService<DriftDetectionHostedService>();
 
         return builder;
+    }
+
+    // FR-15 (#444): 突合の基準そのものが空のまま起動することを止める。
+    //
+    // 🔴 **宣言の読み込みは「指定はあるが読めなかった」を黙って許す。** `AddPlatformPipelineConfig` は
+    // `Pipeline:ConfigPath` が指すファイルが無ければ何もせずに返る（段ホストがローカルで既定配線に
+    // 縮退できるようにするための仕様）。構成情報 API 側でそれが起きると、**宣言 0 件が突合の基準になり、
+    // 実効の購読すべてが `UndeclaredSubscription` として偽陽性で並ぶ** —— #146 / #118 監査で実際に
+    // 起きた回帰である。当時の是正は compose / Helm のマウント配線を静的に検査するものであり、
+    // **読む側には防壁が無かった**。宣言を要求しておきながら受け取れていないなら起動させない。
+    //
+    // ConfigPath 未指定（ローカル・単体試験）は従来どおり素通りする（宣言なしは正当な構成である）。
+    private static void EnsureDeclarationUsable(IConfiguration configuration, PipelineOptions pipeline)
+    {
+        var path = configuration[$"{PipelineOptions.SectionName}:ConfigPath"];
+        if (string.IsNullOrWhiteSpace(path) || pipeline.Steps.Count > 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"構成情報 API はパイプライン宣言を突合の基準として要求しますが、'{path}' から段を 1 件も"
+            + " 読み込めませんでした（マウント漏れ・空ファイル・形式違いの疑い）。宣言 0 件のまま起動すると"
+            + " 実効の全購読が UndeclaredSubscription として誤報されるため、起動を止めます。");
     }
 
     private static void TryAddSingletonTimeProvider(this IServiceCollection services)

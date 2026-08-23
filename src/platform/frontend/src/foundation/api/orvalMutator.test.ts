@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { bffFetch } from './orvalMutator';
-import { setTokenProvider, setUnauthorizedHandler } from './apiClient';
+import { CSRF_HEADER_NAME, setUnauthorizedHandler } from './apiClient';
 import { ApiError } from './ApiError';
 import { resetAppConfigCache } from '@foundation/config/runtimeConfig';
 
@@ -13,7 +13,6 @@ describe('foundation/api/orvalMutator（生成クライアントの唯一の出�
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
-    setTokenProvider(() => null);
     setUnauthorizedHandler(() => {});
     resetAppConfigCache();
   });
@@ -40,14 +39,17 @@ describe('foundation/api/orvalMutator（生成クライアントの唯一の出�
     expect(fetchMock.mock.calls[0][0]).toBe('/bff/search');
   });
 
-  it('attaches the bearer token supplied by the auth module', async () => {
-    setTokenProvider(() => 'token-abc');
+  // ADR-0032 / IADR-0273: 生成クライアント経由でも SPA はトークンを扱わない。
+  // 資格情報はセッション Cookie（ブラウザが自動付与）で、CSRF ヘッダだけを付ける。
+  it('sends the CSRF header and never an Authorization header', async () => {
     fetchMock.mockResolvedValue(jsonResponse({}));
 
     await bffFetch('/bff/dashboard/summary');
 
     const init = fetchMock.mock.calls[0][1] as RequestInit;
-    expect(new Headers(init.headers).get('Authorization')).toBe('Bearer token-abc');
+    const headers = new Headers(init.headers);
+    expect(headers.get(CSRF_HEADER_NAME)).toBe('1');
+    expect(headers.get('Authorization')).toBeNull();
   });
 
   it('returns the { data, status, headers } shape the generated code expects', async () => {

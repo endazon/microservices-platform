@@ -1,0 +1,60 @@
+/*
+ * platform ログインテーマ 追加 CSS（IADR-0261 / #438）。
+ *
+ * - 親テーマ（keycloak）の login.css に追加で読み込まれる（theme.properties の styles 参照）。
+ * - 外部フォント・外部 CDN は使わない（計画 08_data-egress-policy）。system-ui 相当のみを使う。
+ * - セレクタは Keycloak 既定テーマ（PatternFly ベース）の既知クラスに対して書く。
+ *   一致しない環境（テンプレート差し替え・バージョン差）でも、未使用の CSS ルールは無害である
+ *   （壊れるのではなく、単に適用されないだけ）。
+ */
+
+:root {
+  --platform-brand: #0f4c81;
+  --platform-brand-dark: #0b3a63;
+  --platform-brand-contrast: #ffffff;
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Kaku Gothic ProN", "Hiragino Sans",
+    Meiryo, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ヘッダー・タイトル（realm displayName＝「汎用プラットフォーム」を表示する領域） */
+#kc-header-wrapper,
+.login-pf-header h1,
+#kc-page-title {
+  color: var(--platform-brand-dark);
+}
+
+/* カード（フォーム全体を囲む枠） */
+.card-pf,
+#kc-form-wrapper {
+  border-top: 4px solid var(--platform-brand);
+}
+
+/* 主ボタン（ログイン・送信） */
+.btn-primary,
+input[type="submit"].btn-primary {
+  background-color: var(--platform-brand);
+  border-color: var(--platform-brand-dark);
+  color: var(--platform-brand-contrast);
+}
+
+.btn-primary:hover,
+.btn-primary:focus,
+.btn-primary:active {
+  background-color: var(--platform-brand-dark);
+  border-color: var(--platform-brand-dark);
+}
+
+/* リンク（パスワードリセット・言語切替 等） */
+#kc-form-options a,
+.login-pf-page a {
+  color: var(--platform-brand);
+}
+
+#kc-form-options a:hover,
+.login-pf-page a:hover {
+  color: var(--platform-brand-dark);
+}

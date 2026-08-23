@@ -44,10 +44,10 @@ public static class GraphBffEndpoints
         // FR-17, UC-10, ADR-0034 決定 3: 近傍探索。
         // **hops はそのまま後段へ渡す。** 上限超過の拒否（400）は GraphService が一箇所で行い、
         // BFF では正規化も握り潰しもしない（検索モードを後段へ透過する SearchBff と同じ作法）。
-        g.MapGet("/{documentId:guid}/neighbors", (Guid documentId, int? hops, string? by,
+        g.MapGet("/{documentId:guid}/neighbors", (Guid documentId, int? hops, string? by, string? types,
                 IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
             => ProxyAsync<GraphViewDto>(httpFactory, http,
-                $"/graph/{documentId}/neighbors" + BuildQuery(hops, by), ct))
+                $"/graph/{documentId}/neighbors" + BuildQuery(hops, by, types), ct))
             .WithName("BffGraphNeighbors")
             .Produces<GraphViewDto>()
             .Produces(StatusCodes.Status400BadRequest)
@@ -68,16 +68,58 @@ public static class GraphBffEndpoints
             .Produces<List<EdgeTypeCatalogItemDto>>()
             .Produces(StatusCodes.Status403Forbidden);
 
+        // FR-18, UC-10, SC-21 (#918): **AI 提案の一覧**（読み取りのみ）。
+        //
+        // 🔴 **開けるのは読み取り口だけである。** 承認（`{id}/approve`）・却下（`{id}/reject`）・
+        // 生成（`generate/{documentId}`）は **BFF へ公開しない。**
+        //   - SC-21 は「本画面では実行しない」と明記された**書き込みを一切しない画面**である
+        //     （05_screens §SC-21 入力/バリデーション 第 3 行）。承認の主導線は SC-03 であり、
+        //     その承認欄は別 issue（#452）の射程である。
+        //   - 消費者の無い書き込み口を先に開けると、**IADR-0272 の write 認可の境界が
+        //     測られないまま公開面へ出る。** 「後段で効いているから BFF 経由でも効く」は
+        //     測った証拠にならない（#952 → #962 の教訓）。境界のテストは承認欄と同じ PR に置く。
+        //   - 🔴 **一括承認の口はどの層にも作らない**（FR-18・SC-21「描いてはいけないもの」）。
+        //     不在は `BffGraphSuggestionTests` がルート表の走査で固定する。
+        //
+        // 🔴 **後段のパスは末尾スラッシュつきの `/graph/suggestions/` である**（群 `/graph/suggestions`
+        // の直下に `MapGet("/")` で生えている）。スラッシュを落とすと 404 になり、
+        // 画面には「提案が 1 件も無い」ではなく後段エラーとして出る。
+        //
+        // ルートの衝突は起きない —— `{documentId:guid}` の 2 本は GUID に制約されており、
+        // `suggestions` は GUID として解釈されない（`edge-types` と同じ）。
+        g.MapGet("/suggestions", (string? state, string? kind,
+                IHttpClientFactory httpFactory, HttpContext http, CancellationToken ct)
+            => ProxyAsync<List<AiSuggestionDto>>(httpFactory, http,
+                "/graph/suggestions/" + BuildSuggestionQuery(state, kind), ct))
+            .WithName("BffGraphSuggestions")
+            .Produces<List<AiSuggestionDto>>()
+            .Produces(StatusCodes.Status400BadRequest);
+
         return app;
     }
 
-    // FR-17, SC-18, ADR-0049 (#980): hops と間引き基準を**そのまま後段へ渡す**。
-    // 正規化も既定値の補完も BFF では行わない（一箇所で決める。GraphService が持つ）。
-    private static string BuildQuery(int? hops, string? by)
+    // FR-18, SC-21 (#918): 状態・種類の絞りを**そのまま後段へ渡す**。
+    //
+    // **正規化も既定値の補完も検証も BFF では行わない**（グラフ読み取りと同じ作法）。
+    // 既定（未指定 = `pending`）と値域の検査（`invalid_state` / `invalid_kind` の 400）は
+    // GraphService が一箇所で持つ。ここで既定を補うと、**既定値の情報源が 2 つ**になる。
+    private static string BuildSuggestionQuery(string? state, string? kind)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(state)) parts.Add($"state={Uri.EscapeDataString(state)}");
+        if (!string.IsNullOrWhiteSpace(kind)) parts.Add($"kind={Uri.EscapeDataString(kind)}");
+        return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+    }
+
+    // FR-17, SC-18, ADR-0049 (#980), #917: hops・間引き基準・辺の型フィルタを**そのまま後段へ渡す**。
+    // 正規化も既定値の補完も検証も BFF では行わない（一箇所で決める。GraphService が持つ ——
+    // types の形式不正 400 も GraphService が返し、BFF はそのまま透過する）。
+    private static string BuildQuery(int? hops, string? by, string? types = null)
     {
         var parts = new List<string>();
         if (hops is not null) parts.Add($"hops={hops}");
         if (!string.IsNullOrWhiteSpace(by)) parts.Add($"by={Uri.EscapeDataString(by)}");
+        if (!string.IsNullOrWhiteSpace(types)) parts.Add($"types={Uri.EscapeDataString(types)}");
         return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
     }
 

@@ -77,7 +77,19 @@ public record AiSuggestionDto(
     // ADR-0033 §結果 フォローアップ: SC-10 が「3 回以上却下された件数」を観測する。
     int RejectedCount,
     // SC-21: 再提示には**理由を必ず添える**。"source" / "target" / "both" / null。
-    string? ReinstatedReason);
+    string? ReinstatedReason,
+    // FR-18, SC-21 (#918): 一覧が描く**両端の文書名**。SC-21 主要素 1 の「提案の内容」列は
+    // 「両端の文書名・辺の型、またはタグ名」であり、ID だけでは描けない。
+    //
+    // 🔴 **既定値つきで足す**（既定値の無いメンバー追加は契約上の破壊的変更。IADR-0122 決定 2）。
+    //
+    // 🔴 **辺の型名はここへ入れない。** 表示名は辞書（`/graph/edge-types/catalog`）で解決し、
+    // 改名に追随させる（ADR-0033 決定 9）。DTO へ焼き込むと改名後も古い名前を出し続ける。
+    //
+    // 可視性は一覧側が既に両端の複製を読んで判定しているため、**照会は 1 件も増えない**。
+    // タグ提案は終点を持たないので `TargetDocumentTitle` は null である。
+    string SourceDocumentTitle = "",
+    string? TargetDocumentTitle = null);
 
 // FR-18, ADR-0033 決定 10: 却下。**両端の本文指紋を添える**（解除の判定に使う）。
 //

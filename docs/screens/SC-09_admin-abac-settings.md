@@ -3,15 +3,15 @@ title: 管理者設定（ABAC） 画面仕様書
 type: screen-spec
 status: completed
 created: 2026-07-09
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
 ids: [FR-05, FR-09, FR-13, FR-17, FR-18, FR-19, FR-20, FR-21, SC-02, SC-04, SC-05, SC-09, SC-10, SC-12, UC-05, UC-08]
 adrs: [ADR-0031, ADR-0033, ADR-0037]
-iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142]
+iadrs: [IADR-0006, IADR-0009, IADR-0035, IADR-0040, IADR-0119, IADR-0121, IADR-0124, IADR-0125, IADR-0127, IADR-0129, IADR-0135, IADR-0142, IADR-0253]
 specs: [20260805_issue-504_sc09-11-admin-ops-screens, 20260807_issue-586_planning-pin-adr-accepted]
-issues: [#445, #452, #496, #504, #506, #519, #535, #586, #599, #640, planning#237, planning#244]
+issues: [#445, #452, #496, #504, #506, #519, #535, #586, #599, #640, #989, planning#237, planning#244]
 -->
 
 # 画面仕様書: 管理者設定（ABAC）
@@ -151,7 +151,7 @@ issues: [#445, #452, #496, #504, #506, #519, #535, #586, #599, #640, planning#23
 | 属性スコープ | 必須 | 選択 | **`document` / `user` の 2 値**（`abacVocabulary.ts` が固定） |
 | 属性の必須フラグ | 任意 | チェック | — |
 | ポリシー名 | 必須 | テキスト | 空のあいだは保存ボタンが `disabled` |
-| 対象アクション | 必須 | 選択 | **`read` / `analyze` / `manage` の 3 値**（同上） |
+| 対象アクション | 必須 | 選択 | **`read` / `analyze` / `manage` の 3 値**（同上）。🔴 **契約側の値域には `write` が追加済み**（所有者ベースの書き込み判定用）だが、**本画面の選択肢は未追随**——`write` ポリシーを画面から作成できない（機能欠落であり権限は緩まない。語彙 `abacVocabulary.ts` の追随は別作業） |
 | **対象属性**（条件） | 任意 | 選択 | **定義済み属性のみ**（属性辞書の `key` を選択肢にする。計画の入力表 2 行目） |
 | **条件の値** | 任意 | 選択 | **選択した属性の `allowedValues` のみ**。許可値を持たない属性は値の選択肢が無く、条件を足せない |
 | **ポリシー条件（矛盾）** | — | — | **サーバ検証**。保存時の 400 に加え、**保存せず検証だけ行う dry-run**を持つ。**両者は後段で同じ検証関数を通る** |

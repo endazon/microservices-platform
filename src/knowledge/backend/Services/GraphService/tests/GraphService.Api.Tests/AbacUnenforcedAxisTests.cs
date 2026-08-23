@@ -29,8 +29,17 @@ namespace GraphService.Api.Tests;
 //      これは情報が漏れる向きではない。
 //   2. ADR-0036 が定めた `read` の 3 分岐 OR（属性ベース / 所有者ベース / 共有ベース）を
 //      表現する構造が `AccessScopeResponse` に無い（複数ポリシーはキー単位の和で AND に畳まれる）
-//   3. `/authz/scope` は `PolicyAction.Read` をサーバ側でハードコードしており、
-//      `AccessScopeRequest` に Action フィールドが無い
+//   3. ~~`/authz/scope` は `PolicyAction.Read` をサーバ側でハードコードしており、
+//      `AccessScopeRequest` に Action フィールドが無い~~
+//
+//      **［2026-08-23 追記 / #993］理由 3 は解消した。** `AccessScopeRequest` は `Action`（既定
+//      `read`）を持ち（IADR-0253 決定 5 / #989）、`AuthzEndpoints` のハードコードは消え、
+//      `PolicyAction` は `write` を含む 4 値になった。**GraphService も書き込み経路で `write` を
+//      渡すようになった**（IADR-0272 / #993。`WriteActionAuthorizationTests` が固定する）。
+//
+//      🔴 **それでも本テストは赤くならない。** 解消したのは「**行為**を区別できない」ことであり、
+//      本テストが測っているのは「**所有者（owner）で見え方が変わらない**」ことだからである
+//      —— 軸が違う。**理由 1・2 は今も成立している**ため、下の 2 件は緑のままで正しい。
 //
 // **本テストは「まだ強制していない」ことを明示的に固定するものである。**
 // 上記が是正されると本テストは赤くなる —— それが狙いであり、そのとき初めて

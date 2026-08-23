@@ -1224,11 +1224,13 @@ module.exports = ({ ok, assert }) => {
     // ［2026-08-21 / #455］Platform.Shared.Kernel.Tests の新設で 14 → 15。
     // ［2026-08-22 / #455 U4］Platform.Shared.Infrastructure.Tests の新設で 15 → 16
     // ［2026-08-22 / #908］GraphService.Api.Tests の新設で 16 → 17（実測: develop 16 件 ＋ 本 PR 1 件）。
+    // ［2026-08-23 / #600］NotificationService.Api.Tests の新設で 17 → 18。
+    // ［2026-08-23 / #445］McpServer.Api.Tests の新設で 18 → 19。
     // **これはテストプロジェクトの実数であって、カバレッジ床（src/coverage-floor.json）ではない。**
     // 床の置き直しは #900 の測定（integration.yml の手動実行）を待って別途行う。
     // （ADR-0027 手順 3〜5 の共通ヘルパと、部分移行の安全弁を試験する）。
     assert.strictEqual(
-      found.length, 17,
+      found.length, 19,
       `テストプロジェクトの検出数が想定と異なる（走査の破損 or 増減。増えたなら本数を更新する）: ${found.length} 件\n` +
         found.map((f) => path.relative(repoRoot, f)).join('\n'),
     );
@@ -3275,19 +3277,28 @@ ${r.stderr}`);
     ok('llm-usage ダッシュボード: 式の名前がすべて実装に実在する', () => {
       const d = JSON.parse(fsG.readFileSync(pathG.join(root, dashFile), 'utf8'));
       const exprs = d.panels.flatMap((p) => (p.targets || []).map((t) => t.expr)).join(' ');
-      const src = fsG.readFileSync(pathG.join(root,
-        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs'), 'utf8');
-      const dto = fsG.readFileSync(pathG.join(root,
-        'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs'), 'utf8');
-      const impl = src + dto;
+      // ★ **母集合はメトリクスを宣言するファイルすべてである。** 1 ファイルに固定すると、
+      // 新しい計測点を別ファイルへ足したときに「実装に無い」と誤判定するか、逆に
+      // 名前の突合が効かないまま素通りする（#443 で後者を踏んだ）。
+      const implFiles = [
+        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmCompletionMetrics.cs',
+        'src/platform/backend/Services/LlmGateway/src/LlmGateway.Api/Foundation/Observability/LlmUsageMetrics.cs',
+        'src/platform/backend/Shared/Platform.Shared.Contracts/Dtos/CompletionDto.cs',
+      ];
+      const impl = implFiles.map((f) => fsG.readFileSync(pathG.join(root, f), 'utf8')).join('\n');
 
       // メトリクス名（OTel の `.` は Prometheus で `_` になる）。
+      // **列挙を持たない。** 式に現れた名前がすべて実装に実在することを見る（増減そのものは
+      // 差分に出るので、ここで固定するのは「名前が一致していること」だけでよい）。
       const metrics = [...new Set(exprs.match(/\bllm_[a-z_]+_total\b/g) || [])];
-      assert.deepStrictEqual(metrics, ['llm_completion_total'], '式のメトリクス名が想定と違う');
-      assert.ok(/"llm\.completion\.total"/.test(impl), '実装に llm.completion.total が無い');
+      assert.ok(metrics.length > 0, '式からメトリクス名が 1 つも取れていない（走査が壊れている）');
+      for (const m of metrics) {
+        const otel = m.replace(/_/g, '.');
+        assert.ok(impl.includes(`"${otel}"`), `式のメトリクス ${m} が実装に無い（期待: "${otel}"）`);
+      }
 
       // 属性名。
-      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality)\b/g) || [])) {
+      for (const attr of new Set(exprs.match(/\bllm_(?:result|purpose|model|provider|stop_reason|confidentiality|token_type|pricing_status|currency)\b/g) || [])) {
         const otel = attr.replace(/^llm_/, 'llm.');
         assert.ok(impl.includes(`"${otel}"`), `式の属性 ${attr} が実装に無い`);
       }

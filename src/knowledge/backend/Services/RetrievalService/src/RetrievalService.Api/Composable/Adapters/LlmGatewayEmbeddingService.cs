@@ -15,8 +15,19 @@ public class LlmGatewayEmbeddingService(HttpClient http) : IEmbeddingService
             "/embed",
             new EmbedApiRequest(text, Confidentiality: null, Purpose: EmbedPurpose.Query),
             ct);
+        // **到達できない・非 2xx はここで例外にする（潰さない）。** ゲートウェイの故障を
+        // 「該当なし」に化けさせないため（[[IADR-0256]] 決定 3）。
         resp.EnsureSuccessStatusCode();
         var result = await resp.Content.ReadFromJsonAsync<EmbedApiResponse>(ct);
-        return result?.Vector ?? [];
+
+        // FR-02, FR-03, ADR-0016, #995: **`Embedded` を読む。** `/embed` は送信拒否（fail-closed）・
+        // 次元不整合・呼び出し失敗のいずれでも **200 ＋ `Vector: [], Embedded: false`** を返す契約であり
+        // （`EmbedApiResponse` / `EmbeddingEndpoints`）、**呼び出し側が `Embedded` を見て降りる**のが前提である。
+        // 従前は `result?.Vector ?? []` と Vector だけを読んでおり、**契約の意図に暗黙依存していた**。
+        // 空ベクトルは「意味検索の系統が使えない」の合図であり、呼び出し側（HybridSearchService）が読む。
+        if (result is not { Embedded: true })
+            return [];
+
+        return result.Vector;
     }
 }

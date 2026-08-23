@@ -116,12 +116,16 @@ const PLAIN_STUB = (name) =>
 // 条件付き apply の「ns 不在＝skip」フローを検証できるようにする（IADR-0091）。
 // STUB_VAULT_DEPLOY_ABSENT=1 で `kubectl -n ... get deploy vault` を非0（未作成）に返させ、ESO=1 の
 // 「VAULT=1 なしなら fail-fast」ガード（IADR-0096）を検証できるようにする。
+// STUB_TRAEFIK_ADMIN_MISSING=1 で `kubectl wait --for=jsonpath=... svc/traefik` を非0（＝反映が来ない）に
+// 返させ、HelmChartConfig の reconcile が落ちたときの fail-closed（IADR-0258 / #953）を検証できるように
+// する。**診断の `get svc traefik` 等は 0 のままにする**——落ちるのは待ち合わせであって get ではない。
 const KUBECTL_STUB = [
   '#!/usr/bin/env bash',
   'echo "kubectl $*" >> "$STUB_LOG"',
   'if [ "${STUB_CRD_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "crd" ]; then exit 1; fi',
   'if [ "${STUB_NS_ABSENT:-}" = "1" ] && [ "${1:-}" = "get" ] && [ "${2:-}" = "namespace" ] && [ "${3:-}" = "argocd" ]; then exit 1; fi',
   'if [ "${STUB_VAULT_DEPLOY_ABSENT:-}" = "1" ]; then case "$*" in *"get deploy vault"*) exit 1;; esac; fi',
+  'if [ "${STUB_TRAEFIK_ADMIN_MISSING:-}" = "1" ]; then case "$*" in *--for=jsonpath*svc/traefik*) exit 1;; esac; fi',
   'exit 0',
   '',
 ].join('\n');
@@ -444,6 +448,38 @@ ok('LOCALEDGE=1: cluster create ポートが loopback 80/443/50000・8080/8443 �
 
 ok('LOCALEDGE=1: エッジ overlay（deploy/local/edge）を apply', () => {
   assert.ok(anyLineHas(runUp({ LOCALEDGE: '1' }).lines, 'apply -k deploy/local/edge'), 'deploy/local/edge が apply されない');
+});
+
+// --- IADR-0258 (#953): HelmChartConfig の反映は fail-closed で待つ ---------------------
+//
+// `kubectl apply` が見るのは「オブジェクトを置けたか」だけで、**反映は k3s の helm-controller が
+// 非同期に**行う。そこで落ちても呼び出し側へは伝わらない —— 実測では admin(50000) が立たないまま
+// up が EXIT=0 で返った（GitHub ホストランナー・run 32554867883・traefik chart 25.0.3 の型不一致）。
+//
+// **この門は、消されても弱められても誰も気付かない。** up のログは長く、緑で返れば誰も読まない。
+// だから人の注意力ではなく機械が持つ（[IADR-0255] 決定 1 と同じ判断）。
+//
+// 🔴 **対照（正常系）と変異（反映が来ない）を対で見る。** 片方だけだと、「常に落ちる実装」も
+// 「常に通る実装」も緑になる —— 変異だけなら `exit 1` を無条件に書けば通り、対照だけなら
+// 待ち合わせを丸ごと消しても通る。
+
+ok('#953: 反映（traefik svc の admin=50000）が来なければ up は非 0 で終わる（変異試験）', () => {
+  const broken = runUp({ LOCALEDGE: '1', STUB_TRAEFIK_ADMIN_MISSING: '1' });
+  assert.notStrictEqual(broken.status, 0, 'reconcile が反映されないのに up が成功で返った（#953 の欠陥そのもの）');
+  // 待ち合わせが実際に発行されていること（`exit 1` を別の理由で踏んでいないことの裏取り）。
+  assert.ok(
+    broken.lines.some((l) => l.includes(' wait ') && l.includes('--for=jsonpath') && l.includes('svc/traefik') && l.includes('50000')),
+    `反映の待ち合わせ（kubectl wait --for=jsonpath ... svc/traefik）が発行されていない`,
+  );
+  // **落ちる位置が原因の位置に近いこと。** 後続段（cert-manager）まで進んでから落ちるのでは、
+  // 何が壊れたのか読み取れない（従来は最後まで走り切って緑だった）。
+  assert.ok(!anyLineHas(broken.lines, 'cert-manager'), '反映に失敗したのに後続の cert-manager 段まで進んでいる');
+});
+
+ok('#953: 対照 —— 反映が来れば LOCALEDGE=1 は従来どおり完走する（門が常に落ちる実装ではない）', () => {
+  const healthy = runUp({ LOCALEDGE: '1' });
+  assert.strictEqual(healthy.status, 0, `反映が来ているのに up が落ちた: ${healthy.stderr}`);
+  assert.ok(anyLineHas(healthy.lines, 'cert-manager'), '正常系なのに後続段へ進んでいない（門を置く位置が誤っている）');
 });
 
 // --- K3S_IMAGE による k3s の pin（NFR / #783・#442 子 5） -----------------------

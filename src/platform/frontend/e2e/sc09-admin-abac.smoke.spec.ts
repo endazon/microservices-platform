@@ -5,8 +5,8 @@ import { test, expect } from '@playwright/test';
 // **未知のパスとして 404 になるのではなく、認証ガードが先に効く**ことを見る
 // （ルートが登録されていないと NotFound が出て /login へ行かないため、この 1 本で
 //   「ルートが実在すること」も同時に固定できる）。
-// 属性辞書・ポリシー定義・検証結果・権限別の出し分けは Vitest（単体）で検証する——トークンは
-// InMemoryWebStorage に保持され外部から注入できないため、認証済みの導線は Playwright で実走できない。
+// 属性辞書・ポリシー定義・検証結果・権限別の出し分けは Vitest（単体）で検証する——セッションは
+// BFF（Keycloak）との往復で成立し、プレビューにはどちらも無いため、認証済みの導線は Playwright で実走できない。
 test('unauthenticated visit to /admin/abac redirects to /login', async ({ page }) => {
   await page.goto('/admin/abac');
 

@@ -382,6 +382,43 @@ if [ "${LOCALEDGE:-}" = "1" ]; then
   echo "==> [opt-in] local edge aggregation (Traefik admin:50000 + Ingress, IADR-0091)"
   kubectl apply -k deploy/local/edge
 
+  # IADR-0258 (#953): ★ **HelmChartConfig の反映を待つ。来なければ落とす（fail-closed）。**
+  #
+  # `deploy/local/edge` の先頭資源 traefik-entrypoint.yaml は `kind: HelmChartConfig` であり、その効果
+  # （Traefik Service に admin=50000 が生えること）は **k3s の helm-controller が非同期に**実現する。
+  # `kubectl apply` が見るのは「オブジェクトを置けたか」だけで、後段の `helm upgrade` が values スキーマの
+  # 型不一致（`error calling eq: incompatible types for comparison`）で落ちても **呼び出し側へは伝わらない**。
+  # 実測では admin(50000) が立たないまま本スクリプトが EXIT=0 で返った（GitHub ホストランナー・
+  # run 32554867883・k3s v1.30.4 同梱の traefik chart 25.0.3）。#783 の K3S_IMAGE pin は**回避**であって
+  # 解決ではない —— pin が外れれば同じ穴へ落ちる。
+  #
+  # 🔴 **警告を出して続行してはならない。** それは EXIT=0 と同じであり、#953 が塞ごうとしている穴そのものである。
+  # 待ちは `kubectl wait`（下の certificate/edge-tls 待ちと同じ形。条件だけ jsonpath である）。reconcile が
+  # 失敗すると helm-controller は Service を更新しないので、条件はタイムアウトまで満たされない＝非 0 で終わる。
+  # 見るのは **宣言の status ではなく観測可能な結果（Service の port）** である —— HelmChart の status に
+  # 何が載るかは k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書かない**。
+  #
+  # 既知の限界（隠さない）: **既存クラスタへの再実行では、新たに壊した宣言を捕まえられない**。前回の
+  # reconcile が成功していれば Service は admin=50000 を保持し続けるためである。確実に効くのは
+  # クラスタ作成直後。job レベル（helm-install-traefik の Complete）まで見れば塞げるが、job 名・ラベルが
+  # k3s のバージョン依存であり、**バージョン依存を塞ぐ門をバージョン依存の識別子で書くこと**になる（IADR-0258 決定 3）。
+  echo "    -> HelmChartConfig の反映を待つ: kube-system/traefik svc に admin=50000 が生えること (#953)"
+  if ! kubectl -n kube-system wait --for=jsonpath='{.spec.ports[?(@.name=="admin")].port}'=50000 \
+       svc/traefik --timeout=180s; then
+    echo "ERROR: HelmChartConfig(traefik) の反映が確認できません。admin(50000) entrypoint が立っていません。" >&2
+    echo "       **kubectl apply は成功していても reconcile は失敗し得ます**（#953）。以下を確認してください:" >&2
+    echo "       - traefik chart の values スキーマは chart バージョンで変わります（deploy/local/edge/traefik-entrypoint.yaml の注記）" >&2
+    echo "       - k3s のバージョンは K3S_IMAGE で固定できます（例: K3S_IMAGE=rancher/k3s:v1.35.4-k3s1）" >&2
+    echo "--- kube-system/traefik svc の実ポート ---" >&2
+    kubectl -n kube-system get svc traefik \
+      -o jsonpath='{range .spec.ports[*]}{.name}={.port}{"\n"}{end}' >&2 || true
+    echo "--- helm-controller の宣言と状態 ---" >&2
+    kubectl -n kube-system get helmchartconfig,helmchart traefik >&2 || true
+    echo "--- helm-install-traefik の直近ログ（reconcile の失敗理由）---" >&2
+    kubectl -n kube-system logs job/helm-install-traefik --tail=40 >&2 || true
+    exit 1
+  fi
+
   # IADR-0227 (#780): エッジ host（*.localhost）を **pod からも** 解決できるようにする。
   # k3s の CoreDNS は Corefile 末尾に import /etc/coredns/custom/*.server を持ち、coredns Deployment は
   # coredns-custom ConfigMap を optional で既にマウントしている。置けば効き、消せば元に戻る（fail-safe）。

@@ -18,6 +18,12 @@ public class QdrantVectorStore(
     private readonly string _collection =
         config["Qdrant:CollectionName"] ?? config["Qdrant:Collection"] ?? "knowledge_chunks";
 
+    // FR-03, FR-04, FR-17, #969: 文書 ID のペイロードキー。書き込み（BuildPayload）・復元（MapPayload）・
+    // 削除（DeleteByDocumentAsync）・**文書 ID 絞り込み（BuildDocumentScopedFilter）**が同じ 1 つの値を使う。
+    // 取り込み側 IngestionService の QdrantIngestionVectorStore と同じキーであること
+    // （#539 が絞り込みキーで踏んだ「片方だけ直すと静かに割れる」型を持ち込まない）。
+    internal const string DocumentIdKey = "document_id";
+
     public async Task<List<SearchResultDto>> SearchAsync(
         float[] queryVector, int topK,
         IReadOnlyList<AttributeFilter>? filters,
@@ -29,6 +35,57 @@ public class QdrantVectorStore(
             filter: filter, cancellationToken: ct);
 
         return results.Select(r => MapPayload(r.Id.Uuid, r.Payload, r.Score)).ToList();
+    }
+
+    // FR-04, FR-17, ADR-0035, #969: 文書 ID 集合に絞った意味検索（二段検索の後段）。
+    // **絞り込みの機構は新しくない** —— `DeleteByDocumentAsync` が既に `document_id` の Match で
+    // 同じことをしている（単一 ID は `Match.Keyword`、集合は `Match.Keywords`）。同じ書き方に揃える。
+    //
+    // 🔴 **空集合は「該当なし」であり「全件」ではない**（`IVectorStore` の契約）。
+    // **クライアントを呼ぶ前に返す** —— 空の Keywords を投げて Qdrant 側の解釈に委ねると、
+    // 実装差で「全件」に化けうる（グラフが 0 件を返した瞬間に全文書へ広がる）。
+    public async Task<List<SearchResultDto>> SearchWithinDocumentsAsync(
+        float[] queryVector, int topK,
+        IReadOnlyCollection<Guid> documentIds,
+        IReadOnlyList<AttributeFilter>? filters,
+        CancellationToken ct = default)
+    {
+        if (documentIds.Count == 0)
+            return [];
+
+        var results = await client.SearchAsync(_collection, queryVector, limit: (ulong)topK,
+            filter: BuildDocumentScopedFilter(documentIds, filters), cancellationToken: ct);
+
+        return results.Select(r => MapPayload(r.Id.Uuid, r.Payload, r.Score)).ToList();
+    }
+
+    // FR-04, FR-05, FR-17, #969: 「文書 ID ∈ 集合」と ABAC 条件を **Must（AND）** で並べる。
+    // **ABAC を置き換えない**——文書 ID の制約は追加の条件である。
+    // **`internal` にしてあるのは `BuildAttributeConditions` と同じ理由**で、
+    // 実機 Qdrant なしで固定できる唯一の面だからである（テストが直接呼ぶ）。
+    internal static Filter BuildDocumentScopedFilter(
+        IReadOnlyCollection<Guid> documentIds, IReadOnlyList<AttributeFilter>? filters)
+    {
+        var conditions = new List<Condition>
+        {
+            new()
+            {
+                Field = new FieldCondition
+                {
+                    Key = DocumentIdKey,
+                    Match = new Match
+                    {
+                        Keywords = new RepeatedStrings
+                        {
+                            Strings = { documentIds.Select(id => id.ToString()) }
+                        }
+                    }
+                }
+            }
+        };
+        conditions.AddRange(BuildAttributeConditions(filters));
+
+        return new Filter { Must = { conditions } };
     }
 
     // FR-03: 全文検索（Qdrant のペイロード `text` への full-text Match）
@@ -142,7 +199,7 @@ public class QdrantVectorStore(
         string idUuid, IReadOnlyDictionary<string, Value> payload, float score) =>
         new(
             ChunkId: Guid.Parse(idUuid),
-            DocumentId: Guid.TryParse(payload.GetValueOrDefault("document_id")?.StringValue, out var docId) ? docId : Guid.Empty,
+            DocumentId: Guid.TryParse(payload.GetValueOrDefault(DocumentIdKey)?.StringValue, out var docId) ? docId : Guid.Empty,
             DocumentTitle: payload.GetValueOrDefault("document_title")?.StringValue ?? "",
             Text: payload.GetValueOrDefault("text")?.StringValue ?? "",
             Score: score,
@@ -252,7 +309,7 @@ public class QdrantVectorStore(
     {
         var payload = new Dictionary<string, Value>
         {
-            ["document_id"] = new Value { StringValue = chunk.DocumentId.ToString() },
+            [DocumentIdKey] = new Value { StringValue = chunk.DocumentId.ToString() },
             ["document_title"] = new Value { StringValue = chunk.DocumentTitle },
             ["text"] = new Value { StringValue = chunk.Text },
             ["markdown_uri"] = new Value { StringValue = chunk.MarkdownUri ?? "" },
@@ -302,7 +359,7 @@ public class QdrantVectorStore(
                     {
                         Field = new FieldCondition
                         {
-                            Key = "document_id",
+                            Key = DocumentIdKey,
                             Match = new Match { Keyword = documentId.ToString() }
                         }
                     }
