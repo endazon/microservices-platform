@@ -37,7 +37,8 @@ public sealed class ToolInvocationService(
         if (tool is null)
         {
             logger.LogInformation(
-                "Rejected unknown MCP tool {Tool} for client {ClientId}", toolName, subject.ClientId);
+                "Rejected unknown MCP tool {Tool} for client {ClientId}",
+                SanitizeForLog(toolName), subject.ClientId);
             return ToolInvocationOutcome.Rejected($"不明なツールです: {toolName}");
         }
 
@@ -75,5 +76,24 @@ public sealed class ToolInvocationService(
     {
         var (subject, _, _) = await resolver.ResolveAsync(principal, ct);
         return subject is null ? [] : catalog.PublishedTools;
+    }
+
+    /// <summary>ログ出力上限。要求由来の名前でログを溢れさせない。</summary>
+    private const int MaxLoggedToolNameLength = 128;
+
+    // CodeQL(cs/log-forging): ツール名は JSON-RPC の本文（`params.name`）由来であり、
+    // 改行を含み得る。**行指向のログへ未加工で落とすと、偽の監査行を注入できる**
+    // （本番の Program.cs は ClearProviders を呼んでおらず Console プロバイダが有効である）。
+    // LlmRouter が同じ理由で置いている Sanitize と同型にする。長さも切る。
+    private static string SanitizeForLog(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return string.Empty;
+
+        var cleaned = new string(Array.ConvertAll(
+            value.ToCharArray(), c => char.IsControl(c) ? '_' : c));
+        return cleaned.Length <= MaxLoggedToolNameLength
+            ? cleaned
+            : cleaned[..MaxLoggedToolNameLength] + "…";
     }
 }
