@@ -85,7 +85,7 @@
   ],
   "initialTotalBytes": 582839,
   "$comment_initialTotalBytes_20260823_sc18": [
-    "［2026-08-23 / #917］575,856 → 582,842（+6.99 kB）へ引き上げた。実測値である（pnpm run build →",
+    "［2026-08-23 / #917］575,856 → 582,839（+6.98 kB）へ引き上げた。実測値である（pnpm run build →",
     "node scripts/check-chunk-budget.js --update）。増加は SC-18 ナレッジグラフビューのルート登録",
     "（features/index.ts の合成点・validateSearch・左ナビ項目）と、Lingui カタログ 47 メッセージ × 2",
     "ロケール分である。**カタログは foundation/i18n が静的 import するため必ず初期ロードへ入る**。",
