@@ -64,6 +64,12 @@
       "TagIdentityMigrationTests",
       "TagIdentityTests"
     ],
+    "docs/tests/FR-10_dashboard.md": [
+      "DashboardEndpointTests",
+      "KnowledgeHealthEndpointTests",
+      "LlmUsageMetricsTests",
+      "ModelPriceTableTests"
+    ],
     "docs/tests/FR-11_llm-egress-routing.md": [
       "AnthropicContentBlockSanitizerTests",
       "ClaudeProviderStopReasonTests",
@@ -112,6 +118,16 @@
       "PipelineDeclarationEffectivenessTests",
       "PortSwapCompositionTests"
     ],
+    "docs/tests/FR-16_mcp-server.md": [
+      "EgressPolicyTests",
+      "LogForgingSanitizationTests",
+      "McpClientEndpointTests",
+      "ServiceAccountDocumentFilterTests",
+      "ToolCatalogTests",
+      "ToolInvocationServiceTests",
+      "ToolPublicationConfigValidatorTests",
+      "ToolPublicationFailFastTests"
+    ],
     "docs/tests/FR-17_knowledge-graph.md": [
       "AbacNodeFilterTests",
       "AbacUnenforcedAxisTests",
@@ -143,6 +159,9 @@
     "docs/tests/FR-20_obsidian-sync.md": [
       "ObsidianSyncProtocolTests",
       "SyncDeviceTokenTests"
+    ],
+    "docs/tests/FR-21_direct-body-intake.md": [
+      "DocumentBodyIntakeTests"
     ],
     "docs/tests/FR-22_user-notifications.md": [
       "EmailIndependenceTests",
@@ -191,6 +210,16 @@
     "docs/tests/SC-21_ai-suggestion-list.md": [
       "AiSuggestionEndpointsTests",
       "BffGraphSuggestionTests"
+    ],
+    "docs/tests/UC-08_mcp-agent-knowledge-access.md": [
+      "EgressPolicyTests",
+      "ServiceAccountDocumentFilterTests",
+      "ToolCatalogTests",
+      "ToolInvocationServiceTests"
+    ],
+    "docs/tests/UC-09_mcp-client-management.md": [
+      "McpClientEndpointTests",
+      "ToolPublicationConfigValidatorTests"
     ],
     "docs/tests/UC-10_graph-traversal.md": [
       "AuthorizedGraphViewTests",

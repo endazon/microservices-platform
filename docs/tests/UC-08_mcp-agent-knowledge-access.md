@@ -52,3 +52,10 @@ issues: [#445]
 
 - 実サービスとの結合（各サービスのツール実行口が未実装）。
 - 認可判定そのもの（本サービスは判定を持たず各サービスへ委譲する）。
+
+## 実装マッピング
+
+- `ToolInvocationServiceTests` — 基本フロー 3〜5（トークン → 登録済みクライアント → 公開確認 → 実行スコープ）
+- `ServiceAccountDocumentFilterTests` — 基本フロー 5 の個人資料除外
+- `EgressPolicyTests` — 代替フロー（本文 → 参照リンクの縮退）
+- `ToolCatalogTests` — 基本フロー 1（呼び出し主体から見た公開ツール一覧）

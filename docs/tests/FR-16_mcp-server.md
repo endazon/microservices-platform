@@ -124,6 +124,17 @@ CI は緑のままで、**壊れた構成のまま Web サーバーが起動し�
 | 無効化の判定を外す | C-3 が落ちる |
 | 構成の検証失敗を握り潰して空の構成で続行する | **A-8 が落ちる**（A-9・A-10 は通る＝「常に落ちる実装」との区別がつく） |
 
+## 実装マッピング
+
+- `ToolCatalogTests` — 公開構成の許可リストと実効一覧
+- `ToolInvocationServiceTests` — 単一経路の統制（登録確認 → 公開確認 → 個人資料の除外 → 越境 → 監査）
+- `ToolPublicationConfigValidatorTests` — 構成の値域と拒否条件
+- `ToolPublicationFailFastTests` — 要求受付前の同期検証（A-8〜A-10）
+- `ServiceAccountDocumentFilterTests` — サービスアカウント実行の個人資料一律除外（2 層目）
+- `EgressPolicyTests` — 送信可否の判定と参照リンクへの縮退
+- `McpClientEndpointTests` — クライアント登録簿の管理
+- `LogForgingSanitizationTests` — 要求由来のツール名をログへ落とす際の制御文字除去
+
 ## 未実施・残件
 
 - ツール一覧変化のクライアントへの通知は未実装である（実効一覧の版は進むが配信しない）。

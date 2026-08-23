@@ -52,3 +52,8 @@ issues: [#445]
 
 - 管理画面（フロントエンド）。
 - 認可サーバー側のクライアント登録との整合（登録簿は本サービスが独立に持つ）。
+
+## 実装マッピング
+
+- `McpClientEndpointTests` — クライアントの登録・無効化・一覧
+- `ToolPublicationConfigValidatorTests` — 登録時に拒否する構成の値域
