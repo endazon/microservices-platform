@@ -11,8 +11,8 @@ import type { SseEvent } from '@foundation/api/apiClient';
 // 実際に受け取れる形か」を見る。ここが割れていても画面単体のテストは全部通る（#502 が 3 画面を
 // 1 本の issue にまとめた理由そのもの）。
 //
-// 認証済みの導線を Playwright で実走できないため（トークンは InMemoryWebStorage に保持され外から
-// 注入できない。docs/tests/SC-01_search-chat.md §E2E の限界）、この層が導線の受け皿である。
+// 認証済みの導線を Playwright で実走できないため（セッションは BFF（Keycloak）との往復で成立し、
+// プレビューにはどちらも無い。docs/tests/SC-01_search-chat.md §E2E の限界）、この層が導線の受け皿である。
 //
 // IADR-0135 決定 4（#519）: 検索・文書は生成物経由（→ `apiRequest`）、AI 回答は SSE のまま
 // （`apiStream`。orval は SSE を扱えない。IADR-0131 決定 4）。**モックは両方に当てる。**

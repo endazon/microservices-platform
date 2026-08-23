@@ -9,15 +9,11 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
-  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
-  MutationFunction,
   QueryFunction,
   QueryKey,
-  UseMutationOptions,
-  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
@@ -153,19 +149,24 @@ export type bffAuthLogoutResponse302 = {
   status: 302
 }
 
+export type bffAuthLogoutResponse400 = {
+  data: void
+  status: 400
+}
+
 export type bffAuthLogoutResponse401 = {
   data: void
   status: 401
 }
 
 ;
-export type bffAuthLogoutResponseError = (bffAuthLogoutResponse302 | bffAuthLogoutResponse401) & {
+export type bffAuthLogoutResponseError = (bffAuthLogoutResponse302 | bffAuthLogoutResponse400 | bffAuthLogoutResponse401) & {
   headers: Headers;
 };
 
 export type bffAuthLogoutResponse = (bffAuthLogoutResponseError)
 
-export const getBffAuthLogoutUrl = (params?: BffAuthLogoutParams,) => {
+export const getBffAuthLogoutUrl = (params: BffAuthLogoutParams,) => {
   const normalizedParams = new URLSearchParams();
 
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -181,14 +182,17 @@ export const getBffAuthLogoutUrl = (params?: BffAuthLogoutParams,) => {
 }
 
 /**
+ * トップレベルナビゲーションで呼ぶ（認可サーバの end-session への往復は fetch では完結しない）。
+ * CSRF（強制ログアウト）対策として、**セッションの sid と一致する `sid` クエリを要求する**。
+ * sid は `/bff/auth/me` の `logoutUrl` だけが配る（攻撃者は HttpOnly セッションの sid を知り得ない）。
  * @summary NFR, ADR-0032: ログアウト（ブラウザと認可サーバの双方）
  */
-export const bffAuthLogout = async (params?: BffAuthLogoutParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffAuthLogoutResponse> => {
+export const bffAuthLogout = async (params: BffAuthLogoutParams, options?: Parameters<typeof bffFetch>[1]): Promise<bffAuthLogoutResponse> => {
 
   return bffFetch<bffAuthLogoutResponse>(getBffAuthLogoutUrl(params),
   {
     ...options,
-    method: 'POST'
+    method: 'GET'
 
 
   }
@@ -198,51 +202,57 @@ export const bffAuthLogout = async (params?: BffAuthLogoutParams, options?: Para
 
 
 
-export const getBffAuthLogoutMutationOptions = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError,{params?: BffAuthLogoutParams}, TContext>, request?: SecondParameter<typeof bffFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError,{params?: BffAuthLogoutParams}, TContext> => {
-
-const mutationKey = ['bffAuthLogout'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
+export const getBffAuthLogoutQueryKey = (params?: BffAuthLogoutParams,) => {
+    return [
+    `/bff/auth/logout`, ...(params ? [params] : [])
+    ] as const;
+    }
 
 
+export const getBffAuthLogoutQueryOptions = <TData = Awaited<ReturnType<typeof bffAuthLogout>>, TError = void>(params: BffAuthLogoutParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getBffAuthLogoutQueryKey(params);
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bffAuthLogout>>, {params?: BffAuthLogoutParams}> = (props) => {
-          const {params} = props ?? {};
 
-          return  bffAuthLogout(params,requestOptions)
-        }
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof bffAuthLogout>>> = ({ signal }) => bffAuthLogout(params, { signal, ...requestOptions });
 
 
 
 
 
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError, TData> & { queryKey: QueryKey }
+}
 
-  return  { mutationFn, ...mutationOptions }}
+export type BffAuthLogoutQueryResult = NonNullable<Awaited<ReturnType<typeof bffAuthLogout>>>
+export type BffAuthLogoutQueryError = void
 
-    export type BffAuthLogoutMutationResult = NonNullable<Awaited<ReturnType<typeof bffAuthLogout>>>
 
-    export type BffAuthLogoutMutationError = void
-
-    /**
+/**
  * @summary NFR, ADR-0032: ログアウト（ブラウザと認可サーバの双方）
  */
-export const useBffAuthLogout = <TError = void,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError,{params?: BffAuthLogoutParams}, TContext>, request?: SecondParameter<typeof bffFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof bffAuthLogout>>,
-        TError,
-        {params?: BffAuthLogoutParams},
-        TContext
-      > => {
-      return useMutation(getBffAuthLogoutMutationOptions(options));
-    }
-    export type bffAuthMeResponse200 = {
+
+export function useBffAuthLogout<TData = Awaited<ReturnType<typeof bffAuthLogout>>, TError = void>(
+ params: BffAuthLogoutParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof bffAuthLogout>>, TError, TData>, request?: SecondParameter<typeof bffFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getBffAuthLogoutQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+export type bffAuthMeResponse200 = {
   data: BffIdentityDto
   status: 200
 }

@@ -43,10 +43,8 @@ function NavLink({ item }: { item: NavItemView }) {
 export function Layout() {
   const { user, logout } = useAuth();
   const roles = useRoles();
-  const name =
-    (user?.profile.preferred_username as string | undefined) ??
-    user?.profile.name ??
-    i18n._(msg`ユーザー`);
+  // 表示名は BFF セッションの身元（/bff/auth/me の name = preferred_username）から。
+  const name = user?.name || i18n._(msg`ユーザー`);
 
   // 権限のある項目のみ表示する（requiresAnyRole 未指定は全員に表示）。
   // 絞り込みの結果 0 件になったグループは見出しごと落とす（存在秘匿。IADR-0035）。

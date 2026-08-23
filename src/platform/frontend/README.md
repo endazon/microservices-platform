@@ -8,8 +8,8 @@
 
 ## スタック
 
-React 18 + TypeScript(strict) + Vite / React Router / oidc-client-ts（Keycloak OIDC public client + PKCE）/
-Vitest + Testing Library（単体）/ Playwright（e2e スモーク）/ ESLint。
+React 19 + TypeScript(strict) + Vite / TanStack Router / BFF セッション認証（ADR-0032。OIDC は
+BFF が実施し、SPA はトークンを扱わない）/ Vitest + Testing Library（単体）/ Playwright（e2e スモーク）/ ESLint。
 
 ## 構成（ユニット分離）
 

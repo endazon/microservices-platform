@@ -6,8 +6,9 @@ import { test, expect } from '@playwright/test';
 // （index.html の modulepreload・チャンク間の相対 URL・base の解決）は検査していない。
 // 分割の壊れ方は「テストは緑・実機は白画面」であり、それが起きるのはまさにこの層である。
 //
-// **認証済みの遅延ルートはこの層では実走できない**——トークンは InMemoryWebStorage に保持され、
-// 外部から注入できない（#504 と同じ制約）。よってここで見るのは初期ロードの健全性に限る。
+// **認証済みの遅延ルートはこの層では実走できない**——BFF セッション方式（ADR-0032）では
+// 認証は BFF/Keycloak との往復であり、プレビューにはどちらも無い（#504 と同じ制約の後継）。
+// よってここで見るのは初期ロードの健全性に限る。
 // 遅延ルート自体の描画は Vitest 側（各画面のテスト）が実際に動的 import を通して固定している。
 //
 // Issue #554: 接続先は `baseURL` フィクスチャ（＝ playwright.config.ts の単一定数）から得る。
@@ -29,6 +30,10 @@ test('boots from the split bundle with every requested asset served', async ({ p
   page.on('response', (res) => {
     const url = res.url();
     if (!url.startsWith(origin)) return;
+    // 本検査の対象は**バンドル成果物の配信**である。`/bff/*` はバックエンド API であり、
+    // プレビューには BFF が無いので失敗して当然（BFF セッション方式では起動時に
+    // `/bff/auth/me` を読む——未認証へ倒れて /login が出ることは下の可視性検査が見る）。
+    if (new URL(url).pathname.startsWith('/bff/')) return;
     observed.push(url);
     if (res.status() >= 400) failed.push(`${res.status()} ${url}`);
     if (new URL(url).pathname.endsWith('.js')) scripts.push(new URL(url).pathname);

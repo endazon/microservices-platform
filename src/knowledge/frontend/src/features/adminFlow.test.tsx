@@ -12,8 +12,8 @@ import { jsonResponse } from '@foundation/testing/bffResponse';
 // 実際に受け取れる形か」を見る。ここが割れていても画面単体のテストは全部通る
 // （#503 が 4 画面を 1 本の issue にまとめた理由そのもの）。
 //
-// 認証済みの導線を Playwright で実走できないため（トークンは InMemoryWebStorage に保持され
-// 外から注入できない）、この層が導線の受け皿である。
+// 認証済みの導線を Playwright で実走できないため（セッションは BFF（Keycloak）との往復で成立し、
+// プレビューにはどちらも無い）、この層が導線の受け皿である。
 //
 // IADR-0135 決定 4（#519）: 4 画面とも orval 生成フックで呼ぶため、モックは `apiRequest` に当てる。
 const mocks = vi.hoisted(() => ({ apiRequest: vi.fn() }));

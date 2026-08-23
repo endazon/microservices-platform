@@ -37,8 +37,8 @@ export const getBffAuthLoginMockHandler = (overrideResponse?: unknown | ((info: 
   }, options)
 }
 
-export const getBffAuthLogoutMockHandler = (overrideResponse?: unknown | ((info: Parameters<Parameters<typeof http.post>[1]>[0]) => Promise<unknown> | unknown), options?: RequestHandlerOptions) => {
-  return http.post('*/bff/auth/logout', async (info: Parameters<Parameters<typeof http.post>[1]>[0]) => {
+export const getBffAuthLogoutMockHandler = (overrideResponse?: unknown | ((info: Parameters<Parameters<typeof http.get>[1]>[0]) => Promise<unknown> | unknown), options?: RequestHandlerOptions) => {
+  return http.get('*/bff/auth/logout', async (info: Parameters<Parameters<typeof http.get>[1]>[0]) => {
   if (typeof overrideResponse === 'function') {await overrideResponse(info); }
 
     return new HttpResponse(null,

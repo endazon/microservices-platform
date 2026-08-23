@@ -256,9 +256,6 @@ importers:
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.8)
-      oidc-client-ts:
-        specifier: ^3.1.0
-        version: 3.5.0
       react:
         specifier: ^19.2.0
         version: 19.2.8
@@ -354,9 +351,6 @@ importers:
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.2.8)
-      oidc-client-ts:
-        specifier: ^3.1.0
-        version: 3.5.0
       react:
         specifier: ^19.2.0
         version: 19.2.8

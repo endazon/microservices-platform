@@ -932,6 +932,8 @@ export interface BffIdentityDto {
   subject: string;
   /** 実効ロール */
   roles: string[];
+  /** ログアウト先（セッションの sid を含む）。sid を持たないセッションでは null */
+  logoutUrl?: string | null;
 }
 
 /**
@@ -1290,6 +1292,10 @@ returnUrl?: string;
 };
 
 export type BffAuthLogoutParams = {
+/**
+ * セッションの sid。`/bff/auth/me` の `logoutUrl` が持つ値をそのまま使う
+ */
+sid: string;
 /**
  * ログアウト後の戻り先。**自サイト内のパスに限る**
  */

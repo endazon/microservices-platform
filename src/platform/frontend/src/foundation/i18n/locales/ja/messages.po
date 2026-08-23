@@ -292,18 +292,6 @@ msgstr "サービスメッシュ"
 msgid "サインアウト"
 msgstr "サインアウト"
 
-#: platform/frontend/src/foundation/auth/CallbackPage.tsx
-msgid "サインインに失敗しました。"
-msgstr "サインインに失敗しました。"
-
-#: platform/frontend/src/foundation/auth/CallbackPage.tsx
-msgid "サインインに失敗しました。時間をおいて再度お試しください。"
-msgstr "サインインに失敗しました。時間をおいて再度お試しください。"
-
-#: platform/frontend/src/foundation/auth/CallbackPage.tsx
-msgid "サインイン処理中…"
-msgstr "サインイン処理中…"
-
 #: knowledge/frontend/src/features/sc07-conversions/components/ConversionJobsPage.tsx
 msgid "ジョブ"
 msgstr "ジョブ"

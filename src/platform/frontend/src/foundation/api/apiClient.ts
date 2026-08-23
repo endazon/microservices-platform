@@ -1,23 +1,23 @@
-// Issue #126: BFF 境界の HTTP クライアント。BFF（/bff/*）＋ OpenAPI を契約とし、features は本 client
-// 経由でのみバックエンドへアクセスする（疎結合。接続先は実行時 config）。
-// - 認証: 現在のアクセストークン（Keycloak JWT）を Bearer として付与する。トークンの取得は
-//   auth モジュールが setTokenProvider で注入し、api は auth 実装に直接依存しない。
+// Issue #126 / NFR, ADR-0032, IADR-0273, #439: BFF 境界の HTTP クライアント。BFF（/bff/*）＋ OpenAPI を
+// 契約とし、features は本 client 経由でのみバックエンドへアクセスする（疎結合。接続先は実行時 config）。
+// - 認証: **BFF セッション（HttpOnly Cookie）。** ブラウザが同一オリジンのリクエストへ自動で付ける。
+//   **SPA はトークンを扱わず、Authorization ヘッダを付けない**（付けた時点で ADR-0032 が崩れる）。
+// - CSRF: 全リクエストへカスタムヘッダを付ける（2 枚目の壁。BFF 側は状態変更の動詞にだけ要求する）。
 // - エラー: HTTP ステータスを ApiError へ写像する（404 は存在秘匿と整合。IADR-0009）。
-// - 401: IADR-0033 の「401 は再ログイン」を骨組みレベルで担保するため、setUnauthorizedHandler で
-//   注入された再ログイン導線を起動する（features 個別実装に依存しない）。
+// - 401: セッション失効中の操作は setUnauthorizedHandler で注入された再ログイン導線を起動する
+//   （features 個別実装に依存しない）。`on401: 'silent'` は認証状態の確認（/auth/me）専用。
 import { appConfig } from '@foundation/config/runtimeConfig';
 import { ApiError } from './ApiError';
 
-type TokenProvider = () => string | null | Promise<string | null>;
 type UnauthorizedHandler = () => void;
 
-let tokenProvider: TokenProvider = () => null;
 let unauthorizedHandler: UnauthorizedHandler = () => {};
 
-/** アクセストークンの供給元を注入する（AuthProvider が UserManager を渡す）。 */
-export function setTokenProvider(provider: TokenProvider): void {
-  tokenProvider = provider;
-}
+/**
+ * CSRF 対策のカスタムヘッダ（BFF の既定と同名）。**値に意味は無い**。存在することで
+ * クロスオリジンからの呼び出しが preflight を要し、CORS 許可の無い BFF でブラウザに遮断される。
+ */
+export const CSRF_HEADER_NAME = 'X-MSP-CSRF';
 
 /** 401 時の再ログイン導線を注入する（AuthProvider が login を渡す）。 */
 export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
@@ -27,6 +27,11 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler): void {
 export interface ApiRequest extends Omit<RequestInit, 'body'> {
   /** JSON 本文。指定時は Content-Type: application/json を付与する。 */
   json?: unknown;
+  /**
+   * 401 の扱い。既定（'handle'）は再ログイン導線を起動する。'silent' は起動しない ——
+   * **未認証が正常な答えである呼び出し（/auth/me）専用**。安易に広げない。
+   */
+  on401?: 'handle' | 'silent';
 }
 
 /**
@@ -37,17 +42,22 @@ export interface ApiRequest extends Omit<RequestInit, 'body'> {
  * （bffBaseUrl）も 401 再ログイン導線も効かないためである。本文の解釈だけを呼び出し側に委ねる
  * （JSON を返す apiFetch / 生成コードの応答形へ包む bffFetch）。
  */
-export async function apiRequest(path: string, init: RequestInit = {}): Promise<Response> {
+export async function apiRequest(
+  path: string,
+  init: RequestInit & { on401?: 'handle' | 'silent' } = {},
+): Promise<Response> {
   const cfg = appConfig();
-  const token = await tokenProvider();
+  const { on401, ...rest } = init;
 
-  const headers = new Headers(init.headers);
+  const headers = new Headers(rest.headers);
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  // ADR-0032 / IADR-0251 決定 1: CSRF の 2 枚目の壁。資格情報はブラウザが自動で付ける
+  // セッション Cookie であり、**Authorization ヘッダはここでは決して付けない**。
+  headers.set(CSRF_HEADER_NAME, '1');
 
   let res: Response;
   try {
-    res = await fetch(cfg.bffBaseUrl + path, { ...init, headers });
+    res = await fetch(cfg.bffBaseUrl + path, { ...rest, headers });
   } catch (err) {
     // 呼び出し側の意図的な中断（AbortController）はネットワーク障害へ丸めない。
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
@@ -55,8 +65,8 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
   }
 
   if (!res.ok) {
-    // IADR-0033: 401（未認証/期限切れ）は再ログイン導線を起動する（silent renew 失敗時の安全網）。
-    if (res.status === 401) {
+    // 401（セッション未成立・失効）は再ログイン導線を起動する（on401: 'silent' の確認呼び出しを除く）。
+    if (res.status === 401 && on401 !== 'silent') {
       unauthorizedHandler();
     }
     // FR-09, SC-09: 検証（400）・競合（409）は本文の詳細メッセージを抽出して伝える（矛盾・構文エラー表示用）。
@@ -72,6 +82,7 @@ export async function apiRequest(path: string, init: RequestInit = {}): Promise<
 /** BFF へ JSON リクエストを送り、応答を型 T として返す。失敗時は ApiError を投げる。 */
 export async function apiFetch<T>(path: string, req: ApiRequest = {}): Promise<T> {
   const { json, headers: initHeaders, ...rest } = req;
+  // `on401` は rest に含まれ、apiRequest がそのまま解釈する。
 
   const headers = new Headers(initHeaders);
   headers.set('Accept', 'application/json');
@@ -143,8 +154,9 @@ export function parseSseBlock(block: string): SseEvent | null {
 }
 
 /**
- * BFF の SSE エンドポイントを購読する（真のストリーミング）。EventSource は Authorization を付与できないため
- * fetch + ReadableStream で実装する。Bearer を付与し、イベントごとに onEvent を呼ぶ。失敗時は ApiError。
+ * BFF の SSE エンドポイントを購読する（真のストリーミング）。EventSource は POST 本文も
+ * カスタムヘッダ（CSRF）も送れないため fetch + ReadableStream で実装する。
+ * 資格情報はセッション Cookie（ブラウザが自動で付ける）。イベントごとに onEvent を呼ぶ。失敗時は ApiError。
  */
 export async function apiStream(
   path: string,
@@ -154,11 +166,11 @@ export async function apiStream(
 ): Promise<void> {
   const { json, headers: initHeaders, method, ...rest } = req;
   const cfg = appConfig();
-  const token = await tokenProvider();
 
   const headers = new Headers(initHeaders);
   headers.set('Accept', 'text/event-stream');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  // CSRF の 2 枚目の壁（apiRequest と同じ。POST なので BFF 側が存在を要求する）。
+  headers.set(CSRF_HEADER_NAME, '1');
   let body: BodyInit | undefined;
   if (json !== undefined) {
     headers.set('Content-Type', 'application/json');

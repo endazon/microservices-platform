@@ -236,10 +236,24 @@ export default defineConfig({
       //   画像 404 の縮退・補正済みの図の引き継ぎに試験を足し、**92.01% へ戻してから確定させた**。
       //   **床を下げる判断でも、床の据え置きで済ませる判断でもなく、被覆を戻す判断を採った。**
       //   **`coverage.exclude` は増やしていない**（除外で稼いだ数値ではない）。
+      // ［2026-08-23 / #439］BFF セッション移行（3b）に伴う引き上げ。
+      //   実測（測定条件は上と同じ。ブランチ `claude/implementation-repo-all-issues-hilvbs` /
+      //         `pnpm run test:coverage`。MSP 所有分は lcov.info を `ai-stock-trading` の有無で分けて集計した）:
+      //     全ユニット横断  lines/statements 98.02%（8255/8421）/ branches 91.52%（1857/2029）/
+      //                     functions 94.14%（563/598）
+      //     MSP 所有分のみ  lines 98.03%（5671/5785）/ branches 92.66%（1237/1335）/
+      //                     functions 94.75%（397/419）
+      //   同じ導出規則（MSP 所有分の実測から 5pt 下・切り捨て）を適用して床を
+      //   lines/statements 91 → 93 / functions 88 → 89 へ引き上げる（branches は 87 のまま
+      //   ＝ 92.66 − 5 = 87.66 の切り捨て）。
+      //   上げた分は「認証の置き換え（AuthProvider の /me 読み・401 の静黙・遷移の集約）に
+      //   テストを付けた」ことと、**カバレッジの低かった oidc-client-ts 依存コード
+      //   （authConfig / CallbackPage）が実装ごと消えた**ことによる。
+      //   **`coverage.exclude` は増やしていない**（除外で稼いだ引き上げではない）。
       thresholds: {
-        lines: 91,
-        statements: 91,
-        functions: 88,
+        lines: 93,
+        statements: 93,
+        functions: 89,
         branches: 87,
       },
     },

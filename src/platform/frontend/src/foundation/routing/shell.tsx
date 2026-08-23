@@ -3,9 +3,8 @@ import { Layout } from '@foundation/ui/Layout';
 import { NotFound } from '@foundation/ui/NotFound';
 import { RequireAuth } from '@foundation/auth/RequireAuth';
 import { LoginPage } from '@foundation/auth/LoginPage';
-import { CallbackPage } from '@foundation/auth/CallbackPage';
 import { toInternalPath } from '@foundation/auth/safeRedirect';
-// `/` の遷移先。CallbackPage も使うため、循環 import を避けて単独モジュールに置く（IADR-0124 決定 6）。
+// `/` の遷移先。ルート定義から独立した既定の入口（IADR-0124 決定 6。単独モジュールの経緯は同ファイル）。
 import { ENTRY_ROUTE_PATH } from './entryPath';
 
 // ADR-0031 / IADR-0124: ルート木の「骨格」。可変機能ユニットのルートはここには現れない
@@ -21,7 +20,8 @@ export const rootRoute = createRootRoute({
 // 認証導線。**計画のルート表（05_screens §共通シェル）の対象外**である
 // （［2026-08-04 確定］「SPA 内部の認証中継パス `/login`・`/callback` は本表の対象外とする」。
 //  同表は画面と 1 対 1 に対応する表であり、画面を持たない中継点を入れると表の定義が緩む）。
-// **ADR-0032（BFF セッション方式）への移行時に見直す**——これも計画側の方針である（第 3 段 / #439）。
+// ADR-0032（BFF セッション方式）への移行（第 3 段 / #439）で `/callback` は消えた ——
+// OIDC のコールバックは BFF（`/bff/auth/callback`）が受け、SPA には戻り先の画面だけが現れる。
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
@@ -34,12 +34,6 @@ export const loginRoute = createRoute({
     return from === null ? {} : { from };
   },
   component: LoginPage,
-});
-
-export const callbackRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/callback',
-  component: CallbackPage,
 });
 
 // IADR-0124 決定 1: 認証済み領域の共通シェル。path を持たない「レイアウトルート」であり、

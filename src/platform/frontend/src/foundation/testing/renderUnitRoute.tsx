@@ -11,7 +11,6 @@ import {
 import type { AnyRoute } from '@tanstack/react-router';
 import { configure, getConfig } from '@testing-library/dom';
 import { act, render } from '@testing-library/react';
-import type { User } from 'oidc-client-ts';
 import { afterEach } from 'vitest';
 import { AuthContext } from '@foundation/auth/AuthContext';
 import type { AuthState } from '@foundation/auth/AuthContext';
@@ -40,20 +39,10 @@ afterEach(() => {
   configure({ asyncUtilTimeout: DEFAULT_ASYNC_UTIL_TIMEOUT });
 });
 
-function makeJwt(payload: unknown): string {
-  const b64url = (obj: unknown) =>
-    btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `h.${b64url(payload)}.sig`;
-}
-
-/** ロールを持つ認証済みユーザーの AuthState（ロール判定は access_token の realm_access.roles）。 */
+/** ロールを持つ認証済みユーザーの AuthState（ADR-0032: 身元は /bff/auth/me の形。トークンは無い）。 */
 export function authStateWithRoles(roles: readonly string[]): AuthState {
-  const user = {
-    access_token: makeJwt({ realm_access: { roles } }),
-    profile: { preferred_username: 'tester' },
-  } as unknown as User;
   return {
-    user,
+    user: { name: 'tester', subject: 'tester', roles: [...roles] },
     isAuthenticated: true,
     isLoading: false,
     login: async () => {},
