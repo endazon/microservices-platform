@@ -2,11 +2,15 @@ import js from '@eslint/js';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
+import tanstackQuery from '@tanstack/eslint-plugin-query';
+import tanstackRouter from '@tanstack/eslint-plugin-router';
+import testingLibrary from 'eslint-plugin-testing-library';
 import {
   BANNED_IMPORT_PATTERNS,
   NO_APIFETCH_IN_FEATURES,
   NO_BFFFETCH_IN_FEATURES,
   NO_LEGACY_ROUTER_PATHS,
+  TESTING_LIBRARY_RULE_OVERRIDES,
 } from './eslint.config.js';
 
 // FR-14 / IADR-0056 / IADR-0060: 追加可変機能ユニットの**雛形**（`templates/*/frontend`）用の lint 設定。
@@ -60,6 +64,30 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  // ADR-0031 / IADR-0275 / issue #493: 計画 §採用技術一覧 の Linter 欄が定める TanStack /
+  // Testing Library のプラグインを、**雛形にも同じ規則で効かせる。**
+  // 雛形は Plop（`src/plopfile.js`）の生成先候補でもあり、**ここが緩いと「生成した瞬間は緑だが
+  // 実ユニットへ複製すると赤い」雛形**が育つ。規則の値は `eslint.config.js` から import する
+  // （`TESTING_LIBRARY_RULE_OVERRIDES`。理由は同ファイル）。
+  //
+  // **`files` はリポジトリルートからの相対で書く**（本設定は cwd = リポジトリルートで実行される）。
+  ...tanstackQuery.configs['flat/recommended'].map((config) => ({
+    ...config,
+    files: ['templates/*/frontend/src/**/*.{ts,tsx}'],
+  })),
+  ...tanstackRouter.configs['flat/recommended'].map((config) => ({
+    ...config,
+    name: 'tanstack/router/flat/recommended',
+    files: ['templates/*/frontend/src/**/*.{ts,tsx}'],
+  })),
+  {
+    ...testingLibrary.configs['flat/react'],
+    files: ['templates/*/frontend/src/**/*.{test,spec}.{ts,tsx}'],
+    rules: {
+      ...testingLibrary.configs['flat/react'].rules,
+      ...TESTING_LIBRARY_RULE_OVERRIDES,
     },
   },
 );
