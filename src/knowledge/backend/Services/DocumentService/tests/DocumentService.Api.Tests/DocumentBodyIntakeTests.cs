@@ -195,8 +195,9 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var denied = await ClientAs(user: "bob")
             .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "bob が上書きした本文" });
 
-        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        // 拒否が「書き込みの後で 403 を返した」ではないこと ——本文は alice のままである。
+        // ADR-0056 決定 1・[[IADR-0277]]: 拒否は 404（存在秘匿）。403 にしない。
+        denied.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        // 拒否が「書き込みの後で拒否を返した」ではないこと ——本文は alice のままである。
         (await factory.Storage.GetTextAsync(bodyUri)).Should().Be("alice の本文");
     }
 
@@ -223,10 +224,13 @@ public class DocumentBodyIntakeTests(TestWebApplicationFactory factory)
         var resp = await ClientAs(user: "alice")
             .PutAsJsonAsync($"/documents/{doc.Id}/body", new { body = "誰かの本文" });
 
-        resp.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // ADR-0056 決定 1: 拒否は 404。
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
-    // FR-21: 不在の文書への投入は 404（認可より先に不在を返す口ではないことの確認を兼ねる）。
+    // FR-21: 不在の文書への投入は 404。
+    // 🔴 **ADR-0056 決定 1 の適用後、不在と拒否は同じ 404 であり本テストは両者を区別しない。**
+    // それが存在秘匿の狙いである。検出力は陽性対照（所有者は 200）が担う。
     [Fact]
     public async Task 不在の文書への本文投入は404()
     {

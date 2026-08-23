@@ -277,8 +277,13 @@ public static class DocumentEndpoints
             // FR-21 受け入れ基準 ⑤⑧, ADR-0036 D-02/D-07/D-14: 所有者ベースの動的束縛で判定する。
             // **主体が判定の入力である** —— 同じ文書 ID でも別の利用者なら拒否される（⑧）。
             // 認可を先に見るのは、他人の文書に対する副作用（格納）をサイズ判定より先に止めるためである。
+            //
+            // 🔴 **拒否は 404 である。403 にしない**（ADR-0056 決定 1・[[IADR-0277]]）。
+            // 打ち分けの軸は「主体がその文書を読めるか」であり、**本サービスは ABAC の
+            // 読み取り判定を持たない**ため「読めるが書けない」（403 が許される決定 2 の側）だと
+            // 言い切れない。403 を返すと**文書 ID の総当たりで実在が判別できてしまう**。
             if (!DocumentBodyIntake.CanWrite(doc.Attributes, http.User.Identity?.Name))
-                return Results.StatusCode(StatusCodes.Status403Forbidden);
+                return Results.NotFound();
 
             // FR-21 受け入れ基準 ⑥: 1 MB 超は 413。**切り詰めない。**
             if (DocumentBodyIntake.ExceedsLimit(req.Body))

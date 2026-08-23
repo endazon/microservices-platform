@@ -9,7 +9,10 @@ namespace DocumentService.Api.Tests;
 // 文書の共有先（DocumentShare）の付与・取り消し・一覧。
 //
 // 🔴 認可の変更なので、否定形（許してはならない操作が通らない）と陽性対照を対で置く。
-// 「常に 403 を返す実装」は否定形だけを通す——所有者ができることの固定が証拠の残り半分である。
+// 「常に拒否する実装」は否定形だけを通す——所有者ができることの固定が証拠の残り半分である。
+//
+// 拒否の応答は 404 である（ADR-0056 決定 1・[[IADR-0277]]）。不在との区別ができないことが
+// 存在秘匿の狙いであり、区別できないぶんの検出力は陽性対照が担う。
 public class DocumentShareTests(TestWebApplicationFactory factory)
     : IClassFixture<TestWebApplicationFactory>
 {
@@ -73,6 +76,9 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
     // FR-19, ADR-0036 D-06/D-08（否定形）: 所有者でない主体は共有を付与できない。
     // 既定の役割は platform-admin である——**管理者ロールでも所有者でなければ拒否される**
     // （共有の管理はロールでなく所有の裁量。平時は管理者も裁量外）。
+    //
+    // 🔴 **拒否は 404 である**（ADR-0056 決定 1・[[IADR-0277]]）。403 を返すと
+    // 「権限が無いだけで存在はする」が漏れ、文書 ID の総当たりで実在を判別できてしまう。
     [Fact]
     public async Task 所有者でない主体は管理者ロールでも共有を付与できない()
     {
@@ -81,12 +87,12 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var grant = await ClientAs("mallory").PostAsJsonAsync($"/documents/{docId}/shares",
             new { subjectType = "user", subjectId = "mallory-friend" });
 
-        grant.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+        grant.StatusCode.Should().Be(HttpStatusCode.NotFound,
             "他人の文書を共有できるなら、共有経路が所有者裁量制御の抜け道になる");
     }
 
     // FR-19, ADR-0036 D-06（否定形・再共有不可）: 共有された相手は第三者へ共有できない。
-    // 所有者の制御が及ぶ範囲を保つ——被共有者は owner ではないため 403 になる。
+    // 所有者の制御が及ぶ範囲を保つ——被共有者は owner ではないため拒否される（404。ADR-0056 決定 1）。
     [Fact]
     public async Task 被共有者は第三者へ再共有できない()
     {
@@ -98,7 +104,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var reshare = await ClientAs("bob").PostAsJsonAsync($"/documents/{docId}/shares",
             new { subjectType = "user", subjectId = "carol" });
 
-        reshare.StatusCode.Should().Be(HttpStatusCode.Forbidden,
+        reshare.StatusCode.Should().Be(HttpStatusCode.NotFound,
             "再共有を許すと所有者の制御が及ばない範囲へ文書が広がる（計画は再共有不可と定めている）");
     }
 
@@ -132,7 +138,7 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
 
         var revoke = await ClientAs("bob").DeleteAsync($"/documents/{docId}/shares/user/carol");
 
-        revoke.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        revoke.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // FR-20: 同一主体への重複付与は 409（同一文書 × 同一主体の共有は 1 行）。
@@ -180,10 +186,14 @@ public class DocumentShareTests(TestWebApplicationFactory factory)
         var grant = await ClientAs("alice").PostAsJsonAsync($"/documents/{docId}/shares",
             new { subjectType = "user", subjectId = "bob" });
 
-        grant.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        grant.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     // 存在しない文書への共有操作は 404（存在の作り込みをしない）。
+    //
+    // 🔴 **ADR-0056 決定 1 の適用後、本テストは「不在」と「拒否」を区別しない。**
+    // 両方 404 になるのが**存在秘匿の狙いそのもの**であり、区別できることが値ではない。
+    // 検出力は上の陽性対照（所有者は 201 / 200 になる）が担う。
     [Fact]
     public async Task 存在しない文書への共有は404になる()
     {
