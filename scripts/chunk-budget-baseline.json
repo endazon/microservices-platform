@@ -49,7 +49,40 @@
     "**遅延させられない**——閉じる導線は共通シェルの通知パネルと同じチャンクに居る必要がある",
     "（別チャンクにすると、パネルを開いた直後の Escape が読み込み待ちで効かない）。"
   ],
-  "maxChunkBytes": 500000,
-  "initialTotalBytes": 629689,
-  "smallLazyChunks": 4
+  "$comment_maxChunkBytes": [
+    "［2026-08-23 / #788］500,000 → 600,000 へ引き上げた。**遅延チャンク 1 本のために全体の上限を",
+    "緩めている**ので、根拠と代償をここに残す。",
+    "",
+    "対象は vendor-echarts（実測 557.21 kB / gzip 191.77 kB）。ECharts は本リポジトリで最大級の依存であり、",
+    "登録しているのは折れ線・棒・軸・ツールチップ・凡例・SVG レンダラだけで、**これ以上落とせない**",
+    "（凡例・ツールチップ・軸は SC-10 の option が実際に使っている。dashboardCharts.ts で実測）。",
+    "",
+    "最初の実装は 1,092.40 kB だった。原因は `await import('echarts/charts')` の形でバレルを動的に",
+    "読んでいたことで、bundler は名前空間全体を要求されたと解釈し**何も落とさなかった**。",
+    "静的な名前つき import を別モジュール（echartsBundle.ts）へ閉じ、そのモジュールごと動的に",
+    "import する形へ直して 557.21 kB（−49%）になった。**上限を緩める前に、まず落とせるだけ落とした。**",
+    "",
+    "**代償**: この上限は今後どのチャンクにも 600 kB まで許す。巨大チャンクの再発を捕まえる力は",
+    "その分弱くなる。**利用者の初期表示を守っているのは initialTotalBytes の ratchet のほう**であり、",
+    "vendor-echarts はそこには載らない（動的 import による遅延チャンク）。",
+    "上限そのものは Vite の chunkSizeWarningLimit 既定（500 kB）に由来する警告閾値であって、",
+    "計画が定めた要件ではない。"
+  ],
+  "maxChunkBytes": 600000,
+  "$comment_initialTotalBytes_20260823": [
+    "［2026-08-23 / #788］629,689 → 646,133（+16.44 kB）へ引き上げた。**実測値である**",
+    "（src/ai-stock-trading submodule を populate し pnpm run build を通して測った。",
+    "着手時の環境では submodule 未取得でビルドが通らず、推測で数字を書かないため保留していた）。",
+    "増加は共通シェルへ載った右レール AI チャットパネル（Zustand ストア・SSE フック・パネル本体）と、",
+    "foundation の Error Boundary（react-error-boundary）・日付整形（dayjs）、および",
+    "それらの Lingui カタログ 2 ロケール分である。**いずれも共通シェルに載るので遅延させられない**",
+    "——右レールのランチャーはシェルの一部であり、遅延させると開くまでボタンが出ない。",
+    "ECharts は初期ロードに入っていない（vendor-echarts は独立した遅延チャンク）。"
+  ],
+  "initialTotalBytes": 646133,
+  "$comment_smallLazyChunks": [
+    "［2026-08-23 / #788］4 → 5。echartsBundle.ts を分けたことで登録層が 1 本の小チャンクになった。",
+    "判定 4 は warn であり fail にしない（往復の増加は性能の劣化ではあっても壊れではない）。"
+  ],
+  "smallLazyChunks": 5
 }

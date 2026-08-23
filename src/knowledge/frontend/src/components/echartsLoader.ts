@@ -10,6 +10,12 @@
 //   全部入り（`import * as echarts from 'echarts'`）は使わない機能まで束ねる。
 //   使う 2 種（折れ線・棒）と、軸・ツールチップ・凡例だけを登録する。
 //
+// ■ なぜ登録を `echartsBundle.ts` へ分けるか（🔴 これを間違えると tree-shaking が効かない）
+//   `echarts/charts` 等は**バレル**であり、`await import('echarts/charts')` と書くと
+//   bundler は名前空間全体を要求されたと解釈して**何も落とさない**（実測 1,092.40 kB）。
+//   静的な名前つき import なら落とせるので、登録だけを別モジュールへ閉じ、
+//   **そのモジュールごと**動的に import する。遅延は保たれる。
+//
 // ■ なぜ SVG レンダラか
 //   (1) jsdom には canvas が無く、Canvas レンダラだと単体テストで描画が落ちる。
 //   (2) 成果物に canvas 依存を持ち込まない。
@@ -39,21 +45,8 @@ let cached: Promise<EChartsModule> | null = null;
 
 export function loadECharts(): Promise<EChartsModule> {
   cached ??= (async () => {
-    const [core, charts, components, renderers] = await Promise.all([
-      import('echarts/core'),
-      import('echarts/charts'),
-      import('echarts/components'),
-      import('echarts/renderers'),
-    ]);
-    core.use([
-      charts.LineChart,
-      charts.BarChart,
-      components.GridComponent,
-      components.TooltipComponent,
-      components.LegendComponent,
-      renderers.SVGRenderer,
-    ]);
-    return core as unknown as EChartsModule;
+    const { echarts } = await import('./echartsBundle');
+    return echarts as unknown as EChartsModule;
   })();
   return cached;
 }

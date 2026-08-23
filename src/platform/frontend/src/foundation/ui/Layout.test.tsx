@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { I18nProvider } from '@lingui/react';
+import { i18n } from '@lingui/core';
 import { RouterProvider } from '@tanstack/react-router';
 import type { User } from 'oidc-client-ts';
 import { AuthContext } from '@foundation/auth/AuthContext';
@@ -45,12 +47,18 @@ async function renderLayout(roles: string[], path = '/wiki') {
       mutations: { retry: false },
     },
   });
+  // #788: 共通シェルは右レール AI チャットパネルを持ち、そこは `<Trans>` を使う。
+  // 実アプリ（`App.tsx`）と同じく `I18nProvider` で包む——包まないと
+  // 「useLingui hook was used without I18nProvider」でシェル全体が落ち、
+  // ナビの検証まで巻き添えになる（実測。`NotificationBell.test.tsx` と同じ作法）。
   const result = render(
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={value}>
-        <RouterProvider router={router} />
-      </AuthContext.Provider>
-    </QueryClientProvider>,
+    <I18nProvider i18n={i18n}>
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={value}>
+          <RouterProvider router={router} />
+        </AuthContext.Provider>
+      </QueryClientProvider>
+    </I18nProvider>,
   );
   // TanStack Router の初期描画は非同期（マッチの解決を待つ）。
   await act(async () => {
