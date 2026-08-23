@@ -347,3 +347,4 @@
 | [IADR-0271](./IADR-0271_spa-stage4-client-foundations.md) | **契約に口が無いものはサーバー状態ではない** —— 右レールの会話履歴はクライアント状態に閉じる。再評価条件は判断で置き換えず実測し（`streamedQuery` は今も experimental）、図は表の代替ではなく補助として足す。#788 | Accepted |
 | [IADR-0272](./IADR-0272_graph-write-action-authorization.md) | **グラフの書き込みは read と write の 2 スコープで判定する** —— 到達可能性は閲覧権限（ADR-0034 決定 8）、変更の可否は write（ADR-0036 D-07）。解決アクションは既定値の無い必須引数にし、`Granted` だけでなく文書条件まで適用する。#993 | Proposed |
 | [IADR-0273](./IADR-0273_bff-session-completion.md) | **BFF セッション移行の完了** —— バックチャネルログアウトで subject の全セッションを即時失効し、refresh 拒否は fail-closed で第 2 の失効経路にする。セッションのトークンは受信リクエストのヘッダへ昇格して下流へ運び、ログアウトは GET＋sid 一致、SPA はトークンに一切触れない。#439 | Accepted |
+| [IADR-0274](./IADR-0274_sc18-graph-rendering-echarts.md) | SC-18 のグラフ描画は**既存依存 ECharts の GraphChart を専用遅延チャンク**で用いる（新規依存 0・ADR-0039 の 4 条件は実測で確認）。**doc_scope の値が無い文書は組織文書として描く** —— 暫定ではなく決定（ADR-0054 決定 5 が根拠）。辺の型フィルタはサーバ側・探索の入口で適用し、総数もフィルタ後の母集合で数え直す。#917 | Accepted |
