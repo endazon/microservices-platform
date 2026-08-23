@@ -391,4 +391,43 @@ describe('DocumentManagementPage (SC-05)', () => {
 
     expect(await screen.findByText('文書はありません。')).toBeInTheDocument();
   });
+
+  // SC-05, ADR-0058 決定 3, [[IADR-0278]]: 文書スコープ（doc_scope）は編集不可である。
+  //
+  // 🔴 **画面で編集できてしまい保存時に初めて弾かれる形にしない**（サーバ側の拒否と併せた二層）。
+  // 本画面は入力欄を持たず、**既存の値をそのまま送り返す**ことで不変性を満たす。
+  // 入力欄を足すと（あるいは属性を落とすと）ここが赤くなる。
+  it('offers no editable control for the document scope and echoes the stored value back', async () => {
+    const SCOPED_DOC = {
+      ...DRAFT_DOC,
+      attributes: { ...DRAFT_DOC.attributes, doc_scope: 'organization' },
+    };
+    mocks.apiRequest.mockResolvedValue(jsonResponse([SCOPED_DOC]));
+    const user = userEvent.setup();
+    await renderPage();
+
+    await user.click(await screen.findByRole('button', { name: '編集' }));
+
+    // 入力欄が無い（label・role のどちらからも到達できない）。
+    expect(screen.queryByLabelText(/文書スコープ|doc_scope/i)).toBeNull();
+    expect(screen.queryByRole('combobox', { name: /文書スコープ|doc_scope/i })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() =>
+      expect(mocks.apiRequest).toHaveBeenCalledWith(
+        `/documents/${DOC_ID}`,
+        expect.objectContaining({ method: 'PUT' }),
+      ),
+    );
+    // 🔴 陽性対照: 既存の値を**落とさず同じ値で**送り返す。
+    // 落とすとサーバ側の不変性検証が 400 を返す（全置換なので削除も変更である）。
+    expect(
+      sentBody(
+        mocks.apiRequest.mock.calls.find(([, init]) => (init as RequestInit).method === 'PUT')!,
+      ),
+    ).toMatchObject({
+      attributes: { confidentiality: 'internal', department: 'finance', doc_scope: 'organization' },
+    });
+  });
 });

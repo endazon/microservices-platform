@@ -8,10 +8,10 @@ author: Claude
 ---
 <!-- trace:
 ids: [FR-19, FR-20, FR-21, FR-22, UC-11, SC-19, SC-20]
-adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054]
-iadrs: [IADR-0253, IADR-0270]
+adrs: [ADR-0036, ADR-0037, ADR-0046, ADR-0054, ADR-0056, ADR-0058]
+iadrs: [IADR-0253, IADR-0270, IADR-0277, IADR-0278]
 specs: [20260823_issue-451_private-note-obsidian-sync-core]
-issues: [#451, #516, #600, #986]
+issues: [#451, #516, #600, #986, planning#472, planning#475]
 -->
 
 # 機能仕様書: 個人資料（private-note）
@@ -94,6 +94,7 @@ stateDiagram-v2
 | 削除済みでない資料の完全削除 | 409 |
 | 本文 1 MB 超 | 413（切り詰めない） |
 | `doc_scope` の未知値 | 400。一般文書経路での `private-note` 作成も 400（台帳の無い個人資料を作らせない） |
+| `doc_scope` を作成後に変える更新 | **400**。文書スコープは作成時に確定し、以後変更できない。**属性は全置換であるため、既存値の削除も後からの新規付与も「変更」に当たる**（同じ値の同送は通る）。内容を移したい場合は移し先のスコープで新しい文書を作る |
 
 ## 関連
 

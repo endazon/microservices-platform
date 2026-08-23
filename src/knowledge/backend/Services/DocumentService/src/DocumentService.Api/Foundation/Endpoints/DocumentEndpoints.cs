@@ -152,6 +152,10 @@ public static class DocumentEndpoints
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
 
+            // FR-06, FR-19, ADR-0058 決定 2: doc_scope は作成時に確定し、以後変更できない。
+            if (DocScopeChangedProblemOrNull(req.Attributes, doc.Attributes) is { } updateScopeFixed)
+                return updateScopeFixed;
+
             // FR-06, UC-03: 楽観的並行制御。期待版が現在版と異なれば lost update を防ぐため 409。
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
                 return Results.Conflict(new
@@ -187,6 +191,10 @@ public static class DocumentEndpoints
 
             var doc = await db.Documents.FindAsync(id);
             if (doc is null) return Results.NotFound();
+
+            // FR-06, FR-19, ADR-0058 決定 2: doc_scope は作成時に確定し、以後変更できない。
+            if (DocScopeChangedProblemOrNull(req.Attributes, doc.Attributes) is { } metaScopeFixed)
+                return metaScopeFixed;
 
             if (req.ExpectedVersion is { } expected && expected != doc.Version)
                 return Results.Conflict(new
@@ -353,6 +361,21 @@ public static class DocumentEndpoints
             : Results.ValidationProblem(new Dictionary<string, string[]>
             {
                 [DocumentAttributes.ConfidentialityKey] = [error!]
+            });
+    }
+
+    // FR-06, FR-19, ADR-0058 決定 2, [[IADR-0278]]: doc_scope の不変性検証。
+    // **値域検証（DocScopeProblemOrNull）とは別の検査である** —— あちらは「知らない値か」を、
+    // こちらは「作成時に確定した値から動いたか」を見る。**既存文書が要るため取得の後に呼ぶ。**
+    private static IResult? DocScopeChangedProblemOrNull(
+        Dictionary<string, string>? incoming, IReadOnlyDictionary<string, string> current)
+    {
+        var (ok, error) = DocumentAttributes.ValidateDocScopeUnchanged(incoming, current);
+        return ok
+            ? null
+            : Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                [DocumentAttributes.DocScopeKey] = [error!]
             });
     }
 
