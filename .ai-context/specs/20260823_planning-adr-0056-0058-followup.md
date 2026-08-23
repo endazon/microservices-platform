@@ -1,7 +1,7 @@
 ---
 title: 作業仕様書 — 計画 ADR-0056 / ADR-0058 と planning#470 への追随
 type: spec
-status: in-progress
+status: done
 related_ids:
   - FR-05
   - FR-06
