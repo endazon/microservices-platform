@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderUnitRoute } from '@foundation/testing/renderUnitRoute';
+import { create{{pascalCase name}}Route{{#if withNav}}, {{camelCase name}}Nav{{/if}} } from '../index';
+
+// テストは実装と同居させ `*.{test,spec}.{ts,tsx}` で命名する（CLAUDE.md §テスト）。
+//
+// 描画は `@foundation/testing/renderUnitRoute` を使う（ADR-0031 / IADR-0124）。**自 feature の
+// factory だけを載せる**——合成点（`@features`）を経由すると、ユニット単体のテストが
+// 他ユニットの存在に依存する。
+//
+// BFF を叩く画面では `apiRequest` を差し替える（`vi.mock('@foundation/api/apiClient', …)`）。
+// **`apiFetch` を差し替えても orval 生成コードの経路には効かない**——生成コードは
+// mutator（`bffFetch`）→ `apiRequest` を通る（IADR-0135 決定 4）。
+describe('{{pascalCase name}}Page', () => {
+  it('ルート factory が公開したパスで画面が描画される', async () => {
+    await renderUnitRoute((shell) => [create{{pascalCase name}}Route(shell)], {
+      initialEntry: '{{routePath}}',
+    });
+
+    expect(await screen.findByRole('heading', { name: '{{{title}}}' })).toBeInTheDocument();
+  });
+{{#if withNav}}
+
+  // IADR-0124 決定 5: **ナビはデータであり `<Link to>` の静的検査が効かない。**
+  // よって「ナビ項目の `to` がルート木に解決すること」を単体テストで固定する。
+  it('ナビ項目の遷移先が描画され、グループを宣言している', async () => {
+    expect({{camelCase name}}Nav.group).toBeTruthy();
+
+    await renderUnitRoute((shell) => [create{{pascalCase name}}Route(shell)], {
+      initialEntry: {{camelCase name}}Nav.to,
+    });
+
+    expect(await screen.findByRole('heading', { name: '{{{title}}}' })).toBeInTheDocument();
+  });
+{{/if}}
+});
