@@ -31,6 +31,28 @@ public class BffAuthEndpointTests
     public void Login_return_url_inside_this_site_is_preserved(string returnUrl)
         => AuthBffEndpoints.SafeReturnUrl(returnUrl).Should().Be(returnUrl);
 
+    // ── ログアウト URL（IADR-0273 決定 6。sid は `/me` だけが配る）
+
+    // ★ 陽性: sid を持つセッションには、ログアウト端点の sid 検査を通る URL を配る。
+    [Fact]
+    public void Logout_url_carries_the_session_sid()
+    {
+        var user = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            [new System.Security.Claims.Claim("sid", "sess 1/x")], "test"));
+
+        AuthBffEndpoints.LogoutUrl(user).Should().Be("/bff/auth/logout?sid=sess%201%2Fx");
+    }
+
+    // ★ 陰性: sid の無いセッションには配らない（端点側も拒否する。fail-closed の対）。
+    [Fact]
+    public void Logout_url_is_absent_when_the_session_has_no_sid()
+    {
+        var user = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity([], "test"));
+
+        AuthBffEndpoints.LogoutUrl(user).Should().BeNull();
+    }
+
     // ── CSRF（IADR-0251 決定 1 の 2 枚目の壁）
     private static DefaultHttpContext Request(string method, bool withSessionCookie)
     {

@@ -44,8 +44,20 @@ public static class AuthBffEndpoints
         }).WithName("BffAuthLogin").AllowAnonymous();
 
         // ログアウト。ブラウザのセッションと認可サーバのセッションの両方を終わらせる。
-        g.MapPost("/logout", (string? returnUrl) =>
+        //
+        // 🔴 **GET ＋ `sid` 一致検査である（IADR-0273 決定 6）。POST に戻さないこと。**
+        // 認可サーバへの往復（end-session → logout-callback）は**トップレベルナビゲーション**でしか
+        // 完結しない。フォーム POST はカスタムヘッダ（CSRF の 2 枚目の壁）を付けられず、
+        // fetch の POST は 302 の先へブラウザを運べない。GET にする代わりに、CSRF（強制ログアウト）は
+        // **セッションの `sid` クレームと一致するクエリ**で防ぐ —— sid は HttpOnly セッションの中に
+        // しか無く、攻撃者は知り得ない（Duende BFF と同じ形）。sid は `/me` の `logoutUrl` が配る。
+        g.MapGet("/logout", (string? sid, string? returnUrl, HttpContext http) =>
         {
+            var sessionSid = http.User.FindFirst("sid")?.Value;
+            // sid を持たないセッションは照合不能＝**拒否**（fail-closed。Keycloak は常に sid を発行する）。
+            if (string.IsNullOrEmpty(sessionSid) || sid != sessionSid)
+                return Results.BadRequest();
+
             var target = SafeReturnUrl(returnUrl);
             return Results.SignOut(
                 new AuthenticationProperties { RedirectUri = target },
@@ -53,6 +65,7 @@ public static class AuthBffEndpoints
         }).WithName("BffAuthLogout").RequireAuthorization(sessionOnly);
 
         // 現在の身元。**トークンは返さない。** SPA が「誰としてログインしているか」を知る唯一の口。
+        // `logoutUrl` は上のログアウト端点の sid 検査を通る形で組み立てて配る（SC-16 整合）。
         g.MapGet("/me", (HttpContext http) =>
         {
             var user = http.User;
@@ -62,7 +75,8 @@ public static class AuthBffEndpoints
             return Results.Ok(new BffIdentityDto(
                 user.Identity.Name ?? string.Empty,
                 user.FindFirst("sub")?.Value ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? string.Empty,
-                [.. user.FindAll(ClaimTypes.Role).Select(c => c.Value).Distinct().Order()]));
+                [.. user.FindAll(ClaimTypes.Role).Select(c => c.Value).Distinct().Order()],
+                LogoutUrl(user)));
         }).WithName("BffAuthMe").RequireAuthorization(sessionOnly).Produces<BffIdentityDto>();
 
         return app;
@@ -79,7 +93,17 @@ public static class AuthBffEndpoints
         && !returnUrl.StartsWith("/\\", StringComparison.Ordinal)
             ? returnUrl
             : "/";
+
+    /// <summary>
+    /// ログアウト URL。セッションの `sid` を含める（上の GET /logout の一致検査を通る唯一の配り口）。
+    /// sid を持たないセッションには**配らない**（ログアウト端点側も拒否する。fail-closed の対）。
+    /// </summary>
+    internal static string? LogoutUrl(ClaimsPrincipal user) =>
+        user.FindFirst("sid")?.Value is { Length: > 0 } sid
+            ? "/bff/auth/logout?sid=" + Uri.EscapeDataString(sid)
+            : null;
 }
 
 /// <summary>SC-16: 画面が出す「今ログインしている人」。**トークンは含めない。**</summary>
-public sealed record BffIdentityDto(string Name, string Subject, IReadOnlyList<string> Roles);
+public sealed record BffIdentityDto(
+    string Name, string Subject, IReadOnlyList<string> Roles, string? LogoutUrl);

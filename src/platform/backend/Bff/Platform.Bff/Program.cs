@@ -108,9 +108,9 @@ builder.Services.AddHttpClient("MarketMonitorService", c =>
 // 未構成時は NullObjectStorageClient（CanResolve=false）へ縮退し、本文はプレースホルダへフォールバックする。
 builder.Services.AddPlatformObjectStorage(builder.Configuration);
 
-// NFR, ADR-0032 / IADR-0251 / #439 第 3 段(3a): BFF セッション（Token Handler）の受け皿。
-// **既定の認証スキームは JwtBearer のままである。**本段は受け皿を足すだけで切り替えない
-// （切り替えは 3b。SPA 側の置き換えと oidc-client-ts の撤去と同時に行う）。
+// NFR, ADR-0032 / IADR-0251 / IADR-0273 / #439 第 3 段: BFF セッション（Token Handler）。
+// **既定の認証スキームは振り分け（BffSmart）である**（3b①）—— `Authorization: Bearer` が
+// 在れば JwtBearer、無ければセッション Cookie。SPA はセッション方式（3b②③で切り替え済み）。
 builder.Services.AddBffSession(builder.Configuration);
 
 var app = builder.Build();
@@ -121,6 +121,10 @@ app.UsePlatformMiddleware();
 // **セッション Cookie を運ぶ状態変更リクエストにだけ**カスタムヘッダを要求する
 // （Bearer 呼び出しは対象外 —— ブラウザが自動で付ける資格情報ではないため CSRF が成立しない）。
 app.UseMiddleware<CsrfHeaderMiddleware>();
+// NFR, ADR-0032 / IADR-0273 決定 4 / #439: セッション認証のリクエストに、チケット保存済みの
+// アクセストークンを Authorization ヘッダとして昇格する（下流転送の契約を変えないための橋。
+// CSRF 検査の**後**に置く —— 拒否されたリクエストにトークンを付けない）。
+app.UseMiddleware<SessionTokenPropagationMiddleware>();
 app.MapPlatformHealthChecks();
 app.MapOpenApi();
 

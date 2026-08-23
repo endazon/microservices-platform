@@ -73,12 +73,21 @@ paths:
       responses:
         "302": { description: 認可サーバへのリダイレクト }
   /bff/auth/logout:
-    post:
+    get:
       x-roles: []
       tags: [Auth]
       summary: "NFR, ADR-0032: ログアウト（ブラウザと認可サーバの双方）"
+      description: |
+        トップレベルナビゲーションで呼ぶ（認可サーバの end-session への往復は fetch では完結しない）。
+        CSRF（強制ログアウト）対策として、**セッションの sid と一致する `sid` クエリを要求する**。
+        sid は `/bff/auth/me` の `logoutUrl` だけが配る（攻撃者は HttpOnly セッションの sid を知り得ない）。
       operationId: bff-auth-logout
       parameters:
+        - name: sid
+          in: query
+          required: true
+          schema: { type: string }
+          description: "セッションの sid。`/bff/auth/me` の `logoutUrl` が持つ値をそのまま使う"
         - name: returnUrl
           in: query
           required: false
@@ -86,6 +95,7 @@ paths:
           description: "ログアウト後の戻り先。**自サイト内のパスに限る**"
       responses:
         "302": { description: 認可サーバのログアウト経路へのリダイレクト }
+        "400": { description: sid 不一致・欠落（ログアウトは起きない） }
         "401": { description: 未認証 }
   /bff/auth/me:
     get:
@@ -3166,6 +3176,10 @@ components:
           type: array
           items: { type: string }
           description: "実効ロール"
+        logoutUrl:
+          type: string
+          nullable: true
+          description: "ログアウト先（セッションの sid を含む）。sid を持たないセッションでは null"
     FeedbackStatsDto:
       type: object
       description: "フィードバック集計（satisfactionRate = up / total、total=0 のとき 0）"
