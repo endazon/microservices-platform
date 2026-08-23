@@ -30,7 +30,7 @@ import {
   TASK_TYPES,
   taskTypeLabel,
 } from '../types/analysisRange';
-import { analysisFormSchema } from '../types/analysisFormSchema';
+import { ANALYSIS_FORM_ERRORS, analysisFormSchema } from '../types/analysisFormSchema';
 import type { AnalysisFormError, AnalysisFormValues } from '../types/analysisFormSchema';
 import { useAnalysisTask } from '../api/useAnalysisTask';
 import { FormDevTools } from './FormDevTools';
@@ -52,7 +52,9 @@ function useErrorText() {
   const { t } = useLingui();
   return (code: string | undefined, max: number): string | null => {
     if (!code) return null;
-    const known = code as AnalysisFormError;
+    // **符号の値域は `ANALYSIS_FORM_ERRORS` が正本である。** 素の型注釈（`code as AnalysisFormError`）で
+    // 済ませると、スキーマに無い文字列も既知の符号として扱えてしまう。実在を照合してから分岐する。
+    const known = ANALYSIS_FORM_ERRORS.find((c): c is AnalysisFormError => c === code);
     if (known === 'required') return t`入力してください。`;
     if (known === 'tooLong') return t`${max} 文字以内で入力してください。`;
     // 未知の符号は握り潰さない（スキーマを増やしたのに文言を足し忘れたことが見える）。
