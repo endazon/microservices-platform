@@ -346,3 +346,4 @@
 | [IADR-0270](./IADR-0270_private-note-obsidian-sync-backend-core.md) | **個人資料は 1:1 の台帳で表し、容量規則をデータの形で守る**（台帳は最新版のバイト数しか持たないので版履歴は構造的に非算入）。同期トークンは別系統の不透明トークンとし、個人資料は取り込み・索引・Wiki 同期へ一切流さない。#451 | Proposed |
 | [IADR-0271](./IADR-0271_spa-stage4-client-foundations.md) | **契約に口が無いものはサーバー状態ではない** —— 右レールの会話履歴はクライアント状態に閉じる。再評価条件は判断で置き換えず実測し（`streamedQuery` は今も experimental）、図は表の代替ではなく補助として足す。#788 | Accepted |
 | [IADR-0272](./IADR-0272_graph-write-action-authorization.md) | **グラフの書き込みは read と write の 2 スコープで判定する** —— 到達可能性は閲覧権限（ADR-0034 決定 8）、変更の可否は write（ADR-0036 D-07）。解決アクションは既定値の無い必須引数にし、`Granted` だけでなく文書条件まで適用する。#993 | Proposed |
+| [IADR-0273](./IADR-0273_bff-session-completion.md) | **BFF セッション移行の完了** —— バックチャネルログアウトで subject の全セッションを即時失効し、refresh 拒否は fail-closed で第 2 の失効経路にする。セッションのトークンは受信リクエストのヘッダへ昇格して下流へ運び、ログアウトは GET＋sid 一致、SPA はトークンに一切触れない。#439 | Accepted |

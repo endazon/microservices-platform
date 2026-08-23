@@ -12,7 +12,7 @@ related_ids:
   - IADR-0121
 author: claude
 created: 2026-07-08
-updated: 2026-08-04
+updated: 2026-08-23
 plan_refs:
   - planning:projects/microservices-platform/05_screens
   - planning:projects/microservices-platform/07_adr/ADR-0004_authz-abac.md
@@ -42,7 +42,7 @@ plan_refs:
 | 決定 1（React 18 + TS + Vite） | **置換**（React 19 + TanStack。IADR-0121 決定 1・移行第 1／第 2 段） |
 | 決定 2（配置 `frontend/`） | **置換済み**（FR-14 / [IADR-0056](./IADR-0056_repo-unit-structure-platform-knowledge.md) が `src/<unit>/frontend` へ移動済み。さらに `src/packages/ui` を追加。IADR-0121 決定 4） |
 | 決定 3（foundation / features 分離） | **継承**（Bulletproof React の Feature First と両立する。合成点の契約は第 2 段で見直す） |
-| 決定 4（OIDC public client + PKCE・`oidc-client-ts`） | **置換予定**（ADR-0032（計画リポ） の BFF セッション方式へ。IADR-0121 決定 6・移行第 3 段／#439） |
+| 決定 4（OIDC public client + PKCE・`oidc-client-ts`） | **置換済み**（ADR-0032（計画リポ） の BFF セッション方式へ移行完了（2026-08-23・#439。[IADR-0251](./IADR-0251_bff-session-token-handler.md) / [IADR-0273](./IADR-0273_bff-session-completion.md)）。`oidc-client-ts` は platform / knowledge から撤去） |
 | 決定 5（BFF を境界に疎結合・実行時 config） | **継承・強化**（orval 生成物の HTTP 出口を `foundation/api` の mutator へ集約。IADR-0121 決定 3） |
 | 決定 6（存在秘匿・401 導線・ErrorBoundary） | **継承**（`ApiError` / 404 の扱いは新スタックでも変えない） |
 | 決定 7（配信・CI） | **更新**（CI は pnpm 化。IADR-0121 決定 2） |

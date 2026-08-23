@@ -3,7 +3,7 @@ title: SC-10 運用ダッシュボード テスト仕様書
 type: test-spec
 status: completed
 created: 2026-07-08
-updated: 2026-08-21
+updated: 2026-08-23
 author: claude
 ---
 <!-- trace:
@@ -138,7 +138,7 @@ E2E は `src/platform/frontend/e2e/sc10-operations.smoke.spec.ts`
 
 ## テストデータ
 
-- ロール別のダミー `User`（`access_token` の `realm_access.roles`。`renderUnitRoute` が生成する）。
+- ロール別のダミー利用者（セッション身元の `roles` 配列。`renderUnitRoute` が生成する）。
 - `DashboardSummaryDto` のダミー（`totalSearches` / `totalAnswers` / `usageTrend` / `topSearchTerms` / `quality`）。
 - 実行時 config（`window.__APP_CONFIG__.opsLinks`）。**各テストでキャッシュを破棄する**
   （`resetAppConfigCache()`。持ち越すと前のテストの config を次が読む）。

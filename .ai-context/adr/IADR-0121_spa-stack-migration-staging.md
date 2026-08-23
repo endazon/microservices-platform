@@ -5,7 +5,7 @@ status: Accepted
 related_ids: [NFR, ADR-0031, ADR-0032, IADR-0033, IADR-0034, IADR-0056, IADR-0060, IADR-0116, IADR-0117, IADR-0119, IADR-0142, IADR-0120, IADR-0124, IADR-0125, IADR-0203, IADR-0205]
 author: Claude
 created: 2026-08-04
-updated: 2026-08-16
+updated: 2026-08-23
 plan_refs:
   - planning:projects/microservices-platform/07_adr/ADR-0031_frontend-stack.md
   - planning:projects/microservices-platform/07_adr/ADR-0032_spa-auth-bff-session.md
@@ -295,6 +295,11 @@ ADR-0031 の追補（2026-07-30 裁定）が「実装リポジトリ側で `IADR
 配置（決定 2）・認証（決定 4）は本決定と第 2〜3 段が置き換える。**存在秘匿・エラー方針（決定 6）と
 BFF 境界（決定 5）は思想として引き継ぐ**（本決定 3 の mutator 集約がその実装上の担保である）。
 IADR-0033 に `Superseded by IADR-0121` を追記する。
+
+> **［2026-08-23 追記 / #439］決定 6 の撤去は実行された。** BFF 側の受け皿（3a・[IADR-0251](./IADR-0251_bff-session-token-handler.md)）と
+> SPA の切り替え・`oidc-client-ts` の撤去（3b・[IADR-0273](./IADR-0273_bff-session-completion.md)）が着地し、
+> **第 3 段は完了である**（宣言・import とも platform / knowledge で 0。`ai-stock-trading` submodule の
+> 撤去は別リポジトリの作業として残る —— 計画側の完了判定はそちらを待つ）。
 
 ### 決定 8: 機械強制は ESLint で行い、`foundation/api` と生成物以外に HTTP の出口を作らせない
 
