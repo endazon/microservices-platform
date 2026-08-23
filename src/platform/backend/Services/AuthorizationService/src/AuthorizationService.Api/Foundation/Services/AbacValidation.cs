@@ -70,8 +70,42 @@ public static class AbacValidation
         var defList = definitions.ToList();
         ValidateConditions("userConditions", userConditions, defList, AttributeScope.User, errors);
         ValidateConditions("documentConditions", documentConditions, defList, AttributeScope.Document, errors);
+        ValidateSingleDocumentConditionKey(documentConditions, errors);
 
         return errors;
+    }
+
+    // FR-05, FR-09, SC-09（planning#470 の裁定・2026-08-23）: **文書条件に 2 つ以上の属性キーを
+    // 持つポリシーの保存を拒否する。**
+    //
+    // 🔴 **理由は評価器の潰し方にある。** 認可スコープ契約は選言（ポリシー単位の連言の OR）を
+    // 運べないため、`AbacEvaluator` は**マッチした全ポリシーの文書条件をキー単位 union で
+    // 1 本の連言へ潰す**。その結果、多キーポリシーが複数マッチすると
+    // **どのポリシー単独も許可しない値の混成が許可される**。
+    //
+    //   P1: { dept: [sales], conf: [public] }   P2: { dept: [hr], conf: [confidential] }
+    //   union → { dept: [sales, hr], conf: [public, confidential] }
+    //   → (dept=sales, conf=confidential) が通る。**P1 も P2 も許可していない組合せである。**
+    //
+    // 🔴 **これは暫定であり、恒久の制限ではない。** 消費側が選言（ポリシー単位の連言）へ
+    // 対応した時点で本検証を外す。**今日漏れていないのは実効軸が confidentiality 1 本だから**
+    // であって、統制が効いているからではない。
+    //
+    // **利用者条件は対象外である** —— 潰しているのは文書条件の側だけであり、利用者条件は
+    // 「すべて満たすか」の判定にしか使われない。
+    private static void ValidateSingleDocumentConditionKey(
+        Dictionary<string, List<string>>? documentConditions, List<string> errors)
+    {
+        if (documentConditions is null || documentConditions.Count <= 1) return;
+
+        errors.Add(
+            "documentConditions に指定できる属性キーは 1 つまでです"
+            + $"（指定: {string.Join(", ", documentConditions.Keys)}）。"
+            + "認可スコープが選言を運べないため、評価器は複数ポリシーの文書条件をキー単位で"
+            + "統合します。2 つ以上のキーを持つポリシーが複数マッチすると、"
+            + "どのポリシー単独も許可しない値の組合せが許可されてしまいます。"
+            + "キーごとにポリシーを分けてください。"
+            + "（この制限は暫定です。認可スコープが選言に対応した時点で解除されます。）");
     }
 
     private static void ValidateConditions(

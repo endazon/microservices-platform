@@ -32,7 +32,7 @@ updated: 2026-08-23
 ## 背景
 
 本セッションで planning へ起票した環流 6 件（planning#470〜#475）に**すべて裁定が下り**、
-`origin/main` へマージされた（`b6c3cc0..c0b9223`。PR planning#476 / #477 / #478）。
+`origin/main` へマージされた（`b6c3cc0..c0b9223`。PR planning#476 / planning#477 / planning#478）。
 新設された計画 ADR は **ADR-0056 / ADR-0057 / ADR-0058** の 3 本である。
 
 利用者裁定（2026-08-23）により、**本 PR で着地させるのは小玉のみ**とし、

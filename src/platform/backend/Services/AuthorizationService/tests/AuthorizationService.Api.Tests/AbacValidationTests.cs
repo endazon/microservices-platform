@@ -234,4 +234,72 @@ public class AbacValidationTests
             new() { ["confidentiality"] = "public", ["topic"] = "onboarding" }, defs);
         errors.Should().BeEmpty();
     }
+
+    // ---- 文書条件のキー数（planning#470 の裁定・暫定統制） ----
+
+    // FR-05, FR-09, SC-09: **文書条件に 2 つ以上の属性キーを持つポリシーは保存できない。**
+    //
+    // 🔴 認可スコープは選言を運べないため、評価器は複数ポリシーの文書条件を**キー単位 union**で
+    // 1 本の連言へ潰す。多キーポリシーが複数マッチすると
+    // **どのポリシー単独も許可しない値の混成**が通る（planning#470 の反例）。
+    [Fact]
+    public void ValidatePolicy_MultiKeyDocumentConditions_Error()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "多キー", "read",
+            new Dictionary<string, List<string>> { ["clearance"] = ["restricted"] },
+            new Dictionary<string, List<string>>
+            {
+                ["confidentiality"] = ["public"],
+                ["department"] = ["sales"],
+            },
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().Contain(e => e.Contains("documentConditions"));
+    }
+
+    // 🔴 陽性対照 1: **1 キーは通る。** これが無いと「文書条件を持つポリシーを一律拒否」でも
+    // 上の否定形が緑になる。
+    [Fact]
+    public void ValidatePolicy_SingleKeyDocumentConditions_NoErrors()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "単キー", "read",
+            new Dictionary<string, List<string>> { ["clearance"] = ["restricted"] },
+            new Dictionary<string, List<string>> { ["confidentiality"] = ["public", "internal"] },
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().BeEmpty();
+    }
+
+    // 🔴 陽性対照 2: **利用者条件は何キーあっても通る。**
+    // 潰しているのは文書条件の側だけであり、制限を利用者条件へ広げてはならない。
+    [Fact]
+    public void ValidatePolicy_MultiKeyUserConditions_NoErrors()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "利用者条件は多キーでよい", "read",
+            new Dictionary<string, List<string>>
+            {
+                ["clearance"] = ["restricted"],
+                ["department"] = ["sales"],
+            },
+            new Dictionary<string, List<string>> { ["confidentiality"] = ["public"] },
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().BeEmpty();
+    }
+
+    // 陽性対照 3: 文書条件が空のポリシー（既存テストが作る形）は従来どおり通る。
+    [Fact]
+    public void ValidatePolicy_EmptyDocumentConditions_NoErrors()
+    {
+        var errors = AbacValidation.ValidatePolicy(
+            "文書条件なし", "read",
+            new Dictionary<string, List<string>> { ["clearance"] = ["restricted"] },
+            new Dictionary<string, List<string>>(),
+            [Confidentiality(), Clearance()]);
+
+        errors.Should().BeEmpty();
+    }
 }
