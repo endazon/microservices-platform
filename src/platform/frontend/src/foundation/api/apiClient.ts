@@ -2,6 +2,10 @@
 // 契約とし、features は本 client 経由でのみバックエンドへアクセスする（疎結合。接続先は実行時 config）。
 // - 認証: **BFF セッション（HttpOnly Cookie）。** ブラウザが同一オリジンのリクエストへ自動で付ける。
 //   **SPA はトークンを扱わず、Authorization ヘッダを付けない**（付けた時点で ADR-0032 が崩れる）。
+//   🔴 **したがって `bffBaseUrl` は相対パスでなければならない**（実行時 config。既定 `/bff`）。絶対 URL を
+//   注入して別オリジンを指すと `credentials: 'same-origin'` で Cookie が送られず、**全要求が静かに未認証**に
+//   なる（Bearer 方式のときは成立していた構成が、セッション方式では成立しない）。既定値へ頼らず明示するのは、
+//   この前提を読み手とテストの両方へ見せるためである。`assertSameOriginBffBaseUrl` が起動時に固定する。
 // - CSRF: 全リクエストへカスタムヘッダを付ける（2 枚目の壁。BFF 側は状態変更の動詞にだけ要求する）。
 // - エラー: HTTP ステータスを ApiError へ写像する（404 は存在秘匿と整合。IADR-0009）。
 // - 401: セッション失効中の操作は setUnauthorizedHandler で注入された再ログイン導線を起動する
@@ -57,7 +61,7 @@ export async function apiRequest(
 
   let res: Response;
   try {
-    res = await fetch(cfg.bffBaseUrl + path, { ...rest, headers });
+    res = await fetch(cfg.bffBaseUrl + path, { ...rest, headers, credentials: 'same-origin' });
   } catch (err) {
     // 呼び出し側の意図的な中断（AbortController）はネットワーク障害へ丸めない。
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
@@ -185,6 +189,7 @@ export async function apiStream(
       headers,
       body,
       signal,
+      credentials: 'same-origin',
     });
   } catch (err) {
     // SC-01: ヘッダ受信前に AbortController.abort() された場合は AbortError（DOMException）を保持して

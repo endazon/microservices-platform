@@ -52,12 +52,40 @@ function fromEnv(): AppConfig {
   };
 }
 
+// NFR, ADR-0032, IADR-0273, #439: BFF セッション方式は資格情報を **HttpOnly Cookie** で運ぶ。
+// ブラウザが Cookie を付けるのは同一オリジンの要求だけであり（`apiClient` は `credentials: 'same-origin'`）、
+// BFF は CORS を許可していない（それが CSRF ヘッダを 2 枚目の壁として成立させている前提でもある）。
+//
+// 🔴 **別オリジンを指す `bffBaseUrl` を注入すると、全要求が静かに未認証になる** —— 応答は 401 で、
+// 画面はログインへ飛び、また 401 になる。エラーの形が「壊れている」ではなく「ログインし直して」なので、
+// 設定ミスだと気付くまでに時間がかかる。**Bearer 方式のときは成立していた構成であり、移行で意味が変わった。**
+// したがってここで**起動時に落とす**（deny-by-default。静かに縮退させない）。
+export function assertSameOriginBffBaseUrl(bffBaseUrl: string, pageOrigin: string): void {
+  // 相対パスは常に同一オリジン（本番・dev の既定はこちら）。
+  if (bffBaseUrl.startsWith('/') && !bffBaseUrl.startsWith('//')) return;
+
+  let origin: string;
+  try {
+    origin = new URL(bffBaseUrl, pageOrigin).origin;
+  } catch {
+    throw new Error(`bffBaseUrl が URL として解釈できない: ${bffBaseUrl}`);
+  }
+  if (origin !== pageOrigin) {
+    throw new Error(
+      `bffBaseUrl は画面と同一オリジンでなければならない（BFF セッションの Cookie が送られない）: ` +
+        `bffBaseUrl=${bffBaseUrl} / 画面=${pageOrigin}`,
+    );
+  }
+}
+
 /** 実行時 config を解決する。window.__APP_CONFIG__ を env より優先し、欠落項目は env で補う。 */
 export function loadAppConfig(win: Window = window): AppConfig {
   const env = fromEnv();
   const injected = win.__APP_CONFIG__ ?? {};
+  const bffBaseUrl = injected.bffBaseUrl ?? env.bffBaseUrl;
+  assertSameOriginBffBaseUrl(bffBaseUrl, win.location.origin);
   return {
-    bffBaseUrl: injected.bffBaseUrl ?? env.bffBaseUrl,
+    bffBaseUrl,
     oidc: {
       authority: injected.oidc?.authority ?? env.oidc.authority,
       clientId: injected.oidc?.clientId ?? env.oidc.clientId,
